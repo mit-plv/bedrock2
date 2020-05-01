@@ -224,9 +224,7 @@ Section Scalars.
     apply LittleEndian.combine_bound.
   Qed.
 
-  Definition ptsto_word(addr w: word): mem -> Prop :=
-    ptsto_bytes (@bytes_per width Syntax.access_size.word) addr (LittleEndian.split _ (word.unsigned w)).
-
 End Scalars.
 
 Notation scalar8 := ptsto (only parsing).
+Notation ptsto_word := scalar (only parsing).
