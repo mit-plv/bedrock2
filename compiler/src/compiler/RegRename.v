@@ -724,6 +724,9 @@ Section RegAlloc.
       pose proof E1 as E1'.
       apply @rename_binds_props in E1;
         [|eapply map.empty_injective|eapply map.not_in_range_empty|eapply available_impvars_NoDup].
+      (* remove the indirect dependency of available_impvars in H,
+         and replace H by a dummy hyp to preserve numbering *)
+      clear H. pose I as H.
       simp.
       apply_in_hyps @invert_NoDup_app. simp.
       pose proof E2 as E2'.
@@ -870,11 +873,11 @@ Section RegAlloc.
     apply @rename_props in A;
       [|eapply map.empty_injective|eapply map.not_in_range_empty|eapply available_impvars_NoDup].
     specialize (Rrr eq_refl).
-    simp.
+    simp. try rewrite Arrrll in *.
     apply_in_hyps @invert_NoDup_app. simp.
     eapply exec.weaken.
     - eapply rename_correct.
-      1: subst; eassumption.
+      1: rewrite Arrrll; eassumption.
       1: eassumption.
       1: eassumption.
       4: {
