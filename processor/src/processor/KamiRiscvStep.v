@@ -33,11 +33,12 @@ Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
 
 Require Export processor.KamiProc.
-Require Import processor.FetchOk processor.DecExecOk.
+Require Import processor.Consistency.
 
 Local Open Scope Z_scope.
 
-Section WordFacts.
+(** Consistency between the Kami word and the Z-based word *)
+Section WordZ.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
 
   Lemma bitSlice_range_ex:
@@ -49,28 +50,6 @@ Section WordFacts.
     unfold bitSlice'.
     apply Z.mod_pos_bound.
     apply Z.pow_pos_nonneg; blia.
-  Qed.
-
-  Lemma sumbool_rect_weq {T} a b n x y :
-    sumbool_rect (fun _ => T) (fun _ => a) (fun _ => b) (@weq n x y) = if weqb x y then a else b.
-  Proof.
-    cbv [sumbool_rect].
-    destruct (weq _ _), (weqb _ _) eqn:?;
-                                   try match goal with H : _ |- _ => eapply weqb_true_iff in H end;
-      trivial; congruence.
-  Qed.
-
-  Lemma sumbool_rect_bool_weq n x y :
-    sumbool_rect (fun _ => bool) (fun _ => true) (fun _ => false) (@weq n x y) = weqb x y.
-  Proof. rewrite sumbool_rect_weq; destruct (weqb x y); trivial. Qed.
-
-  Lemma unsigned_eqb n x y : Z.eqb (Z.of_N (wordToN x)) (Z.of_N (wordToN y)) = @weqb n x y.
-  Proof.
-    destruct (Z.eqb_spec (Z.of_N (wordToN x)) (Z.of_N (wordToN y))).
-    - apply N2Z.inj, wordToN_inj in e; subst.
-      apply eq_sym, weqb_eq; reflexivity.
-    - apply eq_sym, weqb_ne.
-      intro Hx; subst; auto.
   Qed.
 
   Lemma unsigned_split1_as_bitSlice a b x :
@@ -161,7 +140,7 @@ Section WordFacts.
       apply Z.pow_le_mono_r; Lia.lia.
   Qed.
 
-  Section KamiWordArb.
+  Section __.
     Variable a: Z.
     Hypothesis (Ha: 0 < a).
     Instance kworda: coqutil.Word.Interface.word a := KamiWord.word a.
@@ -177,8 +156,7 @@ Section WordFacts.
       pose proof (word.signed_eq_swrap_unsigned w).
       auto.
     Qed.
-
-  End KamiWordArb.
+  End __.
 
   Lemma kami_evalSignExtendTrunc:
     forall {a} (w: Word.word a) b,
@@ -505,18 +483,7 @@ Section WordFacts.
     reflexivity.
   Qed.
 
-  Lemma kunsigned_split1_mod:
-    forall n m w,
-      Z.of_N (wordToN (split1 n m w)) = Z.of_N (wordToN w) mod (2 ^ (Z.of_nat n)).
-  Proof.
-    intros.
-    rewrite wordToN_split1.
-    rewrite N2Z.inj_mod by apply NatLib.Npow2_not_zero.
-    rewrite NatLib.Z_of_N_Npow2.
-    reflexivity.
-  Qed.
-
-End WordFacts.
+End WordZ.
 
 Section Equiv.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
@@ -538,7 +505,7 @@ Section Equiv.
              (Hkmem2: memSizeLg <= width)
              (* 16 used to be disjoint to MMIO addresses.
               * [Hkmem2] is meaningless assuming this [Hkmemdisj]
-              * but still having that in context ease some proofs. *)
+              * but still having that in context eases some proofs. *)
              (Hkmemdisj: memSizeLg <= 16).
   Local Notation Hinstr := (conj Hinstr1 Hinstr2).
 
@@ -2990,7 +2957,7 @@ Section Equiv.
       regs_get_red_goal.
       cbv [regToShamt].
       rewrite wlshift_sll.
-      rewrite kunsigned_split1_mod.
+      rewrite unsigned_split1_mod.
       reflexivity.
     }
 
@@ -2999,7 +2966,7 @@ Section Equiv.
       regs_get_red_goal.
       cbv [regToShamt].
       rewrite wrshift_srl.
-      rewrite kunsigned_split1_mod.
+      rewrite unsigned_split1_mod.
       reflexivity.
     }
 
@@ -3008,7 +2975,7 @@ Section Equiv.
       regs_get_red_goal.
       cbv [regToShamt].
       rewrite wrshifta_sra.
-      rewrite kunsigned_split1_mod.
+      rewrite unsigned_split1_mod.
       reflexivity.
     }
 
@@ -3373,9 +3340,9 @@ Section Equiv.
       kamiStep m1 m2 klbl ->
       states_related (m1, t0) m1' ->
       mcomp_sat_unit (run1 iset) m1' post ->
-      (* Three cases for each Kami step:
-       * 1) riscv-coq does not proceed or
-       * 2) both Kami and riscv-coq proceed, preserving [states_related]. *)
+      (* Two cases for each Kami step:
+       * 1) Kami does not (yet) execute the step that riscv-coq considers to be the next step
+       * 2) Kami's step corresponds to riscv-coq's step and satisfies its postcondition *)
       (states_related (m2, t0) m1' /\ klbl.(calls) = FMap.M.empty _) \/
       exists m2' t,
         KamiLabelR klbl t /\ states_related (m2, t ++ t0) m2' /\ post m2'.

@@ -34,7 +34,7 @@ Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
 
 Require Export processor.KamiProc.
-Require Import processor.FetchOk processor.DecExecOk.
+Require Import processor.Consistency.
 Require Import processor.KamiRiscvStep.
 
 Lemma get_of_list_not_In:
