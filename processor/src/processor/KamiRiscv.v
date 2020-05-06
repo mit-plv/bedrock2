@@ -98,7 +98,8 @@ Section Equiv.
   Variable (memInit: Vec (ConstT (Bit BitsPerByte)) (Z.to_nat memSizeLg)).
   Definition kamiMemInit := ConstVector memInit.
   Local Definition kamiProc :=
-    @KamiProc.proc instrMemSizeLg memSizeLg Hinstr kamiMemInit kami_FE310_AbsMMIO.
+    @KamiProc.proc instrMemSizeLg memSizeLg Hinstr kamiMemInit
+                   (kami_AbsMMIO (Z.to_N memSizeLg)).
 
   (* redefine mcomp_sat to simplify for the case where no answer is returned *)
   Local Notation mcomp_sat_unit m initialL post :=
@@ -257,8 +258,8 @@ Section Equiv.
 
   Definition mm: Modules := Kami.Ex.SC.mm
                               (existT _ rv32DataBytes eq_refl)
-                              kamiMemInit kami_FE310_AbsMMIO.
-  Definition p4mm: Modules := p4mm Hinstr kamiMemInit kami_FE310_AbsMMIO.
+                              kamiMemInit (kami_AbsMMIO (Z.to_N memSizeLg)).
+  Definition p4mm: Modules := p4mm Hinstr kamiMemInit (kami_AbsMMIO (Z.to_N memSizeLg)).
 
   Fixpoint setRegsInit (kinits: kword 5 -> kword width) (n: nat): Registers :=
     match n with
@@ -434,7 +435,7 @@ Section Equiv.
 
   Lemma states_related_init:
     states_related
-      (initRegs (getRegInits (proc Hinstr kamiMemInit kami_FE310_AbsMMIO)), [])
+      (initRegs (getRegInits (proc Hinstr kamiMemInit (kami_AbsMMIO (Z.to_N memSizeLg)))), [])
       {| getMachine :=
            {| RiscvMachine.getRegs := riscvRegsInit;
               RiscvMachine.getPc := word.of_Z 0;

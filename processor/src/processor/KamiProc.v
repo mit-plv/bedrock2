@@ -293,18 +293,7 @@ Section PerInstAddr.
 
 End PerInstAddr.
 
-Require Import coqutil.Z.HexNotation.
-
-(* NOTE: this definition should be consistent to the one in
- * [riscv-coq/src/riscv/Platform/FE310ExtSpec.v]. *)
-Definition Kx n := NToWord nwidth (Z.to_N (Ox n)).
-Instance kami_FE310_AbsMMIO: AbsMMIO (Z.to_nat width) :=
+Instance kami_AbsMMIO (memSizeLg: N): AbsMMIO (Z.to_nat width) :=
   {| isMMIO :=
-       fun _ addr =>
-         ((UniBit (Trunc 2 30) # (addr) == $$(WO~0~0))
-            && (($$(Kx"00020000") <= #addr) && (#addr < $$(Kx"00022000"))
-                || ($$(Kx"10008000") <= #addr) && (#addr < $$(Kx"10010000"))
-                || ($$(Kx"10012000") <= #addr) && (#addr < $$(Kx"10013000"))
-                || ($$(Kx"10013000") <= #addr) && (#addr < $$(Kx"10014000"))
-                || ($$(Kx"10024000") <= #addr) && (#addr < $$(Kx"10025000"))))%kami_expr
+       fun _ addr => ($$(NToWord _ (2 ^ memSizeLg)) <= #addr)%kami_expr
   |}.
