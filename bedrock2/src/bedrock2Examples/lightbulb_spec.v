@@ -183,24 +183,31 @@ Section LightbulbSpec.
     one ("st", !(Ox"10012038"), !(Z.shiftl (Ox"f") 2)) +++
     one ("st", !(Ox"10012008"), !(Z.shiftl 1 23)).
 
-  Definition traceOfBoot : list OP -> Prop :=
+  Definition BootSeq : list OP -> Prop :=
     iocfg +++ (lan9250_init_trace
                  ||| lan9250_boot_timeout
                  ||| (any+++spi_timeout)).
 
-  Definition traceOfOneInteraction: list OP -> Prop :=
-    (fun t => exists (packet : list byte) (cmd : bool),
-         (lan9250_recv packet +++ gpio_set 23 cmd) t /\
-         lightbulb_packet_rep cmd packet) |||
+  Definition Recv (cmd : bool) (t : list OP) : Prop :=
+    exists (packet : list byte),
+      lan9250_recv packet t /\
+      lightbulb_packet_rep cmd packet.
+
+  Definition LightbulbCmd (cmd : bool) : list OP -> Prop := gpio_set 23 cmd.
+
+  Definition RecvInvalid : list OP -> Prop :=
     (fun t => exists (packet : list byte),
          lan9250_recv packet t /\
          ~ (exists (cmd : bool), lightbulb_packet_rep cmd packet)) |||
-    (lan9250_recv_no_packet) |||
     (lan9250_recv_packet_too_long) |||
     (any+++spi_timeout).
 
+  Definition PollNone : list OP -> Prop := lan9250_recv_no_packet.
+
   Definition goodHlTrace: list OP -> Prop :=
-    traceOfBoot +++ traceOfOneInteraction ^*.
+    BootSeq +++ ((EX b: bool, Recv b +++ LightbulbCmd b)
+                 ||| RecvInvalid ||| PollNone) ^*.
+
 End LightbulbSpec.
 
 Lemma align_trace_cons {T} x xs cont t (H : xs = app cont t) : @cons T x xs = app (cons x cont) t.

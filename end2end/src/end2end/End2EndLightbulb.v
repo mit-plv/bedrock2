@@ -292,7 +292,7 @@ Proof.
   - (* preserve invariant *)
     intros.
     specialize (H ltac:(repeat constructor)).
-    unfold hl_inv, isReady, goodTrace, goodHlTrace, traceOfOneInteraction in *.
+    unfold hl_inv, isReady, goodTrace, goodHlTrace in *.
     Simp.simp.
     repeat ProgramLogic.straightline.
     pose proof link_lightbulb_loop as P.
@@ -307,17 +307,18 @@ Proof.
     Simp.simp.
     repeat ProgramLogic.straightline.
     split; eauto.
+    unfold existsl, Recv, LightbulbCmd in *.
     destruct Hrr0rr; Simp.simp;
       (eexists; split; [eapply Forall2_app; eauto|]).
     1,2: apply concat_kleene_r_app; eauto; Simp.simp.
-    { left. left. left. left. eauto. }
+    { unfold "+++" in Hl|-*. left. left. Simp.simp. eauto 10. }
     destruct H; Simp.simp.
-    { left. left. left. right. eauto. }
+    { left. right. left. left. eauto. }
     destruct H; Simp.simp.
-    { left. left. right. eauto. }
+    { right. unfold PollNone. eauto. }
     destruct H; Simp.simp.
-    { left. right. eauto. }
-    right. eauto.
+    { left. right. left. right. eauto. }
+    left. right. right. eauto.
 
   - vm_compute. intros. discriminate.
   - (* Here we prove that all > 700 instructions are valid, using Ltac.

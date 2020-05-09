@@ -222,7 +222,7 @@ Section WithParameters.
         (fun t' m' rets => rets = [] /\ m' = m /\
           exists iol, t' = iol ++ t /\
           exists ioh, mmio_trace_abstraction_relation ioh iol /\
-          traceOfBoot _ ioh
+          BootSeq _ ioh
         ).
 
   Require Import bedrock2.AbsintWordToZ.
@@ -262,7 +262,7 @@ Section WithParameters.
         (left+right); eexists _, _; split; exact eq_refl
     end.
 
-    cbv [traceOfBoot].
+    cbv [BootSeq].
     eapply concat_app.
     { eapply (concat_app _ _ [_] [_]); exact eq_refl. }
 

@@ -128,4 +128,7 @@ Module TracePredicateNotations.
   Notation "P ^+" := (concat P (kleene P)) (at level 50).
   Infix "+++" := concat (at level 60).
   Infix "|||" := choice (at level 70).
+  Notation "'EX' x .. y , p" := (existsl (fun x => .. (existsl (fun y => p)) ..))
+    (at level 200, x binder, right associativity,
+     format "'[' 'EX'  '/  ' x  ..  y ,  '/  ' p ']'").
 End TracePredicateNotations.
