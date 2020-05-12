@@ -557,6 +557,15 @@ Module GallinaIncr.
         | _ => False
         end ->
         let v := (map.get m k) in
+        (forall garbage mem',
+            v = None ->
+            (AnnotatedMap m_ptr M * Key k_ptr k * R')%sep mem' ->
+            find default_impl
+            implementing (pred default)
+            with-locals (map.put (map.put locals err (word.of_Z 1))
+                              var garbage)
+            and-memory mem' and-trace tr and-rest R
+            and-functions functions) ->
         (forall head hd_ptr mem',
             v = Some head ->
             (AnnotatedMap m_ptr
@@ -567,15 +576,6 @@ Module GallinaIncr.
             implementing (pred (K head))
             with-locals (map.put (map.put locals err (word.of_Z 0))
                               var hd_ptr)
-            and-memory mem' and-trace tr and-rest R
-            and-functions functions) ->
-        (forall garbage mem',
-            v = None ->
-            (AnnotatedMap m_ptr M * Key k_ptr k * R')%sep mem' ->
-            find default_impl
-            implementing (pred default)
-            with-locals (map.put (map.put locals err (word.of_Z 1))
-                              var garbage)
             and-memory mem' and-trace tr and-rest R
             and-functions functions) ->
         (let head := v in
@@ -646,11 +646,94 @@ Module GallinaIncr.
           { ecancel_assumption. } } }
     Qed.
 
+    Instance spec_of_map_put : spec_of "put" :=
+      fun functions =>
+        forall pm m pk k pv v R tr mem,
+          (AnnotatedMap pm m
+           * Key pk k * Value pv v * R)%sep mem ->
+          WeakestPrecondition.call
+            functions "put" tr mem [pm; pk; pv]
+            (fun tr' mem' rets =>
+               tr = tr'
+               /\ length rets = 2%nat
+               /\ let was_overwrite := hd (word.of_Z 0) rets in
+                 let old_ptr := hd (word.of_Z 0) (tl rets) in
+                 match map.get m k with
+                 | Some (a, old_v) =>
+                   match a with
+                   | Borrowed _ => True (* no guarantees *)
+                   | Reserved pv' =>
+                     was_overwrite = word.of_Z 1
+                     /\ old_ptr = pv'
+                     /\ (AnnotatedMap pm (map.put m k (Reserved pv, v))
+                        * Key pk k * Value old_ptr old_v * R)%sep mem'
+                   | Owned =>
+                     was_overwrite = word.of_Z 1
+                     /\ (AnnotatedMap pm (map.put m k (Owned, v))
+                        * Key pk k * Value old_ptr old_v * R)%sep mem'
+                   end
+                 | None =>
+                   (* if there was no previous value, the map consumes both
+                       the key and value memory *)
+                   was_overwrite = word.of_Z 0
+                   /\ (AnnotatedMap pm (map.put m k (Owned, v))
+                      * R)%sep mem'
+                 end).
+
+    Lemma compile_map_put_replace :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+             tr R R' functions T (pred: T -> _ -> Prop)
+             m m_ptr m_var M
+             k k_ptr k_var
+             v v_ptr v_var
+             old_v
+             K K_impl,
+        spec_of_map_put functions ->
+        m = deannotate M ->
+      forall overwrt_var oldv_var,
+        overwrt_var <> oldv_var ->
+        (AnnotatedMap m_ptr M * Key k_ptr k * Value v_ptr v * R')%sep mem ->
+        map.get locals m_var = Some m_ptr ->
+        map.get locals k_var = Some k_ptr ->
+        map.get locals v_var = Some v_ptr ->
+        map.get m k = Some old_v ->
+        match map.get M k with
+        | Some (Borrowed _, _) => False
+        | None => False
+        | _ => True
+        end ->
+        let m := (map.put m k v) in (* FIXME this should say put_replace *)
+        (forall old_v_ptr mem',
+           let head := m in
+           match map.get M k with
+           | Some (Reserved ptr, _) => old_v_ptr = ptr
+           | _ => True
+           end ->
+           (AnnotatedMap m_ptr (map.put M k (Reserved v_ptr, v))
+            * Key k_ptr k * Value old_v_ptr old_v * R')%sep mem' ->
+           find K_impl
+           implementing (pred (K head))
+           with-locals (map.put (map.put locals overwrt_var (word.of_Z 1))
+                                oldv_var old_v_ptr)
+           and-memory mem' and-trace tr and-rest R
+           and-functions functions) ->
+        (let head := m in
+         find (cmd.seq
+                 (cmd.call [overwrt_var; oldv_var]
+                           (fst (@KVStore.put ops))
+                           [expr.var m_var; expr.var k_var; expr.var v_var])
+                 K_impl)
+         implementing (pred (dlet head K))
+         with-locals locals and-memory mem and-trace tr and-rest R
+         and-functions functions).
+    Admitted.
+
     Derive kvswap_body SuchThat
            (let kvswap := ("kvswap", (["m"; "k1"; "k2"], [],
                                       kvswap_body)) in
             program_logic_goal_for kvswap
             (forall functions,
+                spec_of_map_get functions ->
                 forall pm m pk1 k1 pk2 k2 R tr mem,
                   k1 <> k2 -> (* TODO: try removing *)
                   (Map pm m * Key pk1 k1 * Key pk2 k2 * R)%sep mem ->
@@ -667,6 +750,62 @@ Module GallinaIncr.
         setup.
         add_map_annotations.
         eapply compile_map_get with (var:="v1") (err:="err") (M:=annotate m).
-        all:repeat t.
+        all: repeat t; eauto.
+        { admit. }
+        { congruence. }
+        { autorewrite with mapsimpl.
+          admit.                (* Make this into a definition *) }
+        { intros.               (* FIXME t *)
+          clear_old_seps.
+          t.
+          Hint Unfold MapAndTwoKeys : compiler.
+          unfold MapAndTwoKeys.
+          cbn [fst snd].
+          remove_map_annotations. (* FIXME *)
+          t. }
+        { intros.
+          clear_old_seps.       (* FIXME infer `m` *)
+          eapply compile_map_get with (var:="v2") (err:="err") (M:=(map.put (annotate m) k1 (Reserved hd_ptr, head))).
+          { eassumption. }      (* FIXME t does the wrong thing here *)
+          { admit. }
+          { congruence. }
+          { ecancel_assumption. (* Missing from t *)
+            }
+          { t. }
+          { t. }
+          { autorewrite with mapsimpl.
+            admit. }
+          { intros.
+            clear_old_seps.
+            remove_map_annotations.
+            repeat t. }
+          { intros; clear_old_seps.
+            repeat t.
+            borrow hd_ptr.
+            lazymatch goal with
+            | [ H: context[AnnotatedMap _ ?M'] |- _ ] =>
+              eapply compile_map_put_replace with (overwrt_var := "overwrt") (oldv_var := "oldv")
+                                                  (M:=M')
+            end.
+            4: { ecancel_assumption. }
+            all: repeat t.
+            all: eauto.
+            all: autorewrite with mapsimpl.
+            all: eauto.
+            4: {
+              intros.
+              clear_old_seps.
+              borrow hd_ptr0.
+              subst.
+              rewrite map.put_put_same in H4.
+
+              (* Could have two version of put; one that returns you a pointer that was not borrowed before and hands you ownership of that; and one that assumes the key is there but borrowed, and doesnt't return you anything. *)
+
+            lazymatch goal with
+            | [ H: context[AnnotatedMap _ ?M'] |- _ ] => (* FIXME put same vars? *)
+              eapply compile_map_put_replace with (overwrt_var := "overwrt1") (oldv_var := "oldv1")
+                                                  (M:=M')
+            end.
+
     Admitted.
 End GallinaIncr.
