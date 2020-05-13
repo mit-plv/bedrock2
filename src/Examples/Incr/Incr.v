@@ -473,7 +473,151 @@ Module GallinaIncr.
 
     Existing Instances ops kvp ok.
     Existing Instances map_ok annotated_map_ok key_eq_dec.
-    Existing Instances spec_of_map_get spec_of_map_put.
+    Existing Instances spec_of_map_get.
+
+    Local Declare Scope sep_scope.
+    Local Delimit Scope sep_scope with sep.
+    Local Infix "*" := (sep) : sep_scope.
+
+    (* MAP LAYOUTS
+
+
+    pk | key
+    pk+1 | pointer (pv)
+
+    pv | value
+
+    get v returns pk+1
+
+
+    Keys = words, inline
+    Values = ?? (pointers stored inline)
+
+    map = linked list of (key, value pointer) pairs
+
+    entry:
+
+    pk   | key1
+    pk+1 | value1
+    pk+2 | pk'
+    ...
+    pk'   | key2
+    pk'+1 | value2
+    pk'+2 | NULL
+
+    Value value1 tt
+    Value := fun (value : word) (x : unit) => emp True
+    get key1 --> value1 (and you now "own" value1, which means nothing)
+
+    put key1 value3 --> (1, value1) (and you now "own" value1, which means nothing)
+
+    pk   | key1
+    pk+1 | value3
+    pk+2 | pk'
+    ...
+    pk'   | key2
+    pk'+1 | value2
+    pk'+2 | NULL
+    ...
+    pk3 | key3
+
+    put key3 value4 --> (0, NULL)
+
+    pk   | key1
+    pk+1 | value3
+    pk+2 | pk'
+    ...
+    pk'   | key2
+    pk'+1 | value2
+    pk'+2 | pk3
+    ...
+    pk3 | key3
+
+
+
+    entry:
+
+    pk   | key1
+    pk+1 | pv1
+    pk+2 | pk'
+    ...
+    pv1 | value1
+    ...
+    pk'   | key2
+    pk'+1 | pv2
+    pk'+2 | NULL
+    ...
+    pv2 | value2
+
+    Value pv1 value1 * Value pv2 value2
+    Value := fun (addr x : word) => mem[addr] = x
+    Key := fun (addr : word) (x : unit) => emp True
+    get key1 --> pv1
+    get key2 --> pv2
+    borrow pv1
+    borrow pv2
+
+    pk   | key1
+    pk+1 | (pv1)
+    pk+2 | pk'
+    ...
+    pv1 | value1
+    ...
+    pk'   | key2
+    pk'+1 | (pv2)
+    pk'+2 | NULL
+    ...
+    pv2 | value2
+
+    put key1 pv2 (you own pv1 and pv2) --> 1 (map now owns pv2)
+
+    pk   | key1
+    pk+1 | pv2
+    pk+2 | pk'
+    ...
+    pv1 | value1
+    ...
+    pk'   | key2
+    pk'+1 | (pv2)
+    pk'+2 | NULL
+    ...
+    pv2 | value2
+
+    put key2 pv1 (you own pv1) --> 1 (map now owns pv1)
+
+    pk   | key1
+    pk+1 | pv2
+    pk+2 | pk'
+    ...
+    pv1 | value1
+    ...
+    pk'   | key2
+    pk'+1 | pv1
+    pk'+2 | NULL
+    ...
+    pv2 | value2
+
+    *)
+
+    Instance spec_of_map_put : spec_of "put" :=
+      fun functions =>
+        forall pm m pk k pv v R tr mem,
+          (AnnotatedMap pm m
+           * Key pk k * Value pv v * R)%sep mem ->
+          WeakestPrecondition.call
+            functions "put" tr mem [pm; pk; pv]
+            (fun tr' mem' rets =>
+               tr = tr'
+               /\ length rets = 0%nat
+               /\ match map.get m k with
+                  | Some (Borrowed _, old_v) =>
+                    (AnnotatedMap pm (map.put m k (Owned, v))
+                     * Key pk k * R)%sep mem'
+                  | _ =>
+                    (* not allowed! no guarantees for you *)
+                    True
+                  end).
+
 
     Definition do_or_default {A B}
                (a : option A) (f : A -> B) (default : B) : B :=
@@ -514,9 +658,6 @@ Module GallinaIncr.
       ))).
      *)
 
-    Local Declare Scope sep_scope.
-    Local Delimit Scope sep_scope with sep.
-    Local Infix "*" := (sep) : sep_scope.
     Definition MapAndTwoKeys pm pk1 pk2 v :=
       let m := fst (fst v) in
       let k1 := snd (fst v) in
@@ -646,6 +787,7 @@ Module GallinaIncr.
           { ecancel_assumption. } } }
     Qed.
 
+    (*
     Instance spec_of_map_put : spec_of "put" :=
       fun functions =>
         forall pm m pk k pv v R tr mem,
@@ -679,6 +821,7 @@ Module GallinaIncr.
                    /\ (AnnotatedMap pm (map.put m k (Owned, v))
                       * R)%sep mem'
                  end).
+     *)
 
     Lemma compile_map_put_replace :
       forall (locals: Semantics.locals) (mem: Semantics.mem)
@@ -690,36 +833,28 @@ Module GallinaIncr.
              K K_impl,
         spec_of_map_put functions ->
         m = deannotate M ->
-      forall overwrt_var oldv_var,
-        overwrt_var <> oldv_var ->
         (AnnotatedMap m_ptr M * Key k_ptr k * Value v_ptr v * R')%sep mem ->
         map.get locals m_var = Some m_ptr ->
         map.get locals k_var = Some k_ptr ->
         map.get locals v_var = Some v_ptr ->
         map.get m k = Some old_v ->
         match map.get M k with
-        | Some (Borrowed _, _) => False
-        | None => False
-        | _ => True
+        | Some (Borrowed _, _) => True
+        | _ => False
         end ->
         let m := (map.put m k v) in (* FIXME this should say put_replace *)
-        (forall old_v_ptr mem',
+        (forall mem',
            let head := m in
-           match map.get M k with
-           | Some (Reserved ptr, _) => old_v_ptr = ptr
-           | _ => True
-           end ->
-           (AnnotatedMap m_ptr (map.put M k (Reserved v_ptr, v))
-            * Key k_ptr k * Value old_v_ptr old_v * R')%sep mem' ->
+           (AnnotatedMap m_ptr (map.put M k (Owned, v))
+            * Key k_ptr k * R')%sep mem' ->
            find K_impl
            implementing (pred (K head))
-           with-locals (map.put (map.put locals overwrt_var (word.of_Z 1))
-                                oldv_var old_v_ptr)
+           with-locals locals
            and-memory mem' and-trace tr and-rest R
            and-functions functions) ->
         (let head := m in
          find (cmd.seq
-                 (cmd.call [overwrt_var; oldv_var]
+                 (cmd.call []
                            (fst (@KVStore.put ops))
                            [expr.var m_var; expr.var k_var; expr.var v_var])
                  K_impl)
@@ -734,6 +869,7 @@ Module GallinaIncr.
             program_logic_goal_for kvswap
             (forall functions,
                 spec_of_map_get functions ->
+                spec_of_map_put functions ->
                 forall pm m pk1 k1 pk2 k2 R tr mem,
                   k1 <> k2 -> (* TODO: try removing *)
                   (Map pm m * Key pk1 k1 * Key pk2 k2 * R)%sep mem ->
@@ -782,30 +918,39 @@ Module GallinaIncr.
           { intros; clear_old_seps.
             repeat t.
             borrow hd_ptr.
+            borrow hd_ptr0.
             lazymatch goal with
             | [ H: context[AnnotatedMap _ ?M'] |- _ ] =>
-              eapply compile_map_put_replace with (overwrt_var := "overwrt") (oldv_var := "oldv")
-                                                  (M:=M')
+              eapply compile_map_put_replace with (M:=M')
             end.
-            4: { ecancel_assumption. }
+            3: ecancel_assumption.
             all: repeat t.
             all: eauto.
             all: autorewrite with mapsimpl.
             all: eauto.
-            4: {
+            1:admit.
               intros.
               clear_old_seps.
-              borrow hd_ptr0.
-              subst.
-              rewrite map.put_put_same in H4.
-
-              (* Could have two version of put; one that returns you a pointer that was not borrowed before and hands you ownership of that; and one that assumes the key is there but borrowed, and doesnt't return you anything. *)
+              rewrite map.put_put_same in H3.
 
             lazymatch goal with
             | [ H: context[AnnotatedMap _ ?M'] |- _ ] => (* FIXME put same vars? *)
-              eapply compile_map_put_replace with (overwrt_var := "overwrt1") (oldv_var := "oldv1")
-                                                  (M:=M')
+              eapply compile_map_put_replace with (M:=M')
             end.
+
+            3:ecancel_assumption.
+            all: subst head1.
+            all: eauto.
+            all: repeat t.
+            all:autorewrite with mapsimpl.
+            all:eauto.
+            1:admit.
+
+            intros.
+            clear_old_seps.
+            remove_map_annotations.
+
+            repeat t.
 
     Admitted.
 End GallinaIncr.
