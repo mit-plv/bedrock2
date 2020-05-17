@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.Syntax bedrock2.BasicCSyntax bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
@@ -10,24 +11,30 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 
 (** This file defines MMIO-only semantics. There is nothing FE310-specific here. *)
 
+(*tag:symex*)
 Definition MMIOREAD : string := "MMIOREAD".
 Definition MMIOWRITE : string := "MMIOWRITE".
 
+(*tag:workaround*)
 Module parameters.
+  (*tag:spec*)
   Class parameters := {
     word :> Word.Interface.word 32;
     word_ok :> word.ok word; (* for impl of mem below *)
     mem :> Interface.map.map word Byte.byte;
     mem_ok :> Interface.map.ok mem; (* for impl of mem below *)
   }.
+(*tag:workaround*)
 End parameters. Notation parameters := parameters.parameters.
 
+(*tag:importboilerplate*)
 Section WithParameters.
   Context {p : parameters}.
   Import Interface.map.
 
   Local Notation bedrock2_trace := (list (parameters.mem * String.string * list parameters.word * (parameters.mem * list parameters.word))).
 
+  (*tag:workaround*)
   (* FIXME: this is a copypaste from [riscv.Platform.FE310ExtSpec.FE310_mmio] *)
   Definition isMMIOAddr (addr:parameters.word) :=
     Ox "00020000" <= word.unsigned addr < Ox "00022000" \/
@@ -39,6 +46,7 @@ Section WithParameters.
   Definition isMMIOAligned (n : nat) (addr : parameters.word) :=
     n = 4%nat /\ word.unsigned addr mod 4 = 0.
 
+  (*tag:spec*)
   Definition ext_spec (t : bedrock2_trace) (mGive : parameters.mem) a (args: list parameters.word) (post:parameters.mem -> list parameters.word -> Prop) :=
     if String.eqb "MMIOWRITE" a
     then
@@ -63,6 +71,7 @@ Section WithParameters.
     Semantics.ext_spec := ext_spec;
   |}.
 
+  (*tag:lemma*)
   Global Instance ext_spec_ok : ext_spec.ok _.
   Proof.
     split;
@@ -88,9 +97,11 @@ Section WithParameters.
     { exact (SortedListString.ok _). }
   Qed.
 
+  (*tag:workaround*)
   (* COPY-PASTE this *)
   Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
         (preprocess [autorewrite with rew_word_morphism],
          morphism (Properties.word.ring_morph (word := Semantics.word)),
          constants [Properties.word_cst]).
+  (*tag:importboilerplate*)
 End WithParameters.

@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.dlet.
 Require Import Coq.Classes.Morphisms BinIntDef.
 Require Import coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Interface. Import map.
@@ -14,6 +15,7 @@ Section TailRecrsion.
     {functions : list (String.string * (list String.string * list String.string * Syntax.cmd))}.
   Let call := WeakestPrecondition.call functions.
 
+  (*tag:workaround*)
   Local Notation "A /\ B" := (Markers.split (A /\ B)).
   Local Notation "A /\ B" := (Markers.split (A /\ B)) : type_scope.
 
@@ -123,6 +125,7 @@ Section TailRecrsion.
     { pose proof fun t m => hlist.foralls_forall (Hpost t m); clear Hpost; eauto. }
   Qed.
 
+  (*tag:lemma*)
   Lemma tailrec_localsmap
     {e c t} {m : mem} {l} {post : _->_->_-> Prop}
     {measure : Type} (spec:_->_->_->_->(Prop*(_->_->_-> Prop))) lt
@@ -395,4 +398,5 @@ Section TailRecrsion.
       intros. rewrite (sep_comm _ dR), <-(sep_assoc _ dR), dQ; trivial. }
     { eapply Hpost, Qi, Hpc. }
   Qed.
+  (*tag:importboilerplate*)
 End TailRecrsion.

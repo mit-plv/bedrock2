@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import bedrock2.TracePredicate.
 Require Import Coq.ZArith.BinInt coqutil.Z.HexNotation.
 Require Import coqutil.Word.Interface.
@@ -9,6 +10,7 @@ Section LightbulbSpec.
   Let width := 32%Z.
   Context (word : word width).
 
+  (*tag:spec*)
   Declare Scope word_scope.
   Notation "! n" := (word.of_Z n) (at level 0, n at level 0, format "! n") : word_scope.
   Notation "# n" := (Z.of_nat n) (at level 0, n at level 0, format "# n") : word_scope.
@@ -209,6 +211,7 @@ Section LightbulbSpec.
                  ||| RecvInvalid ||| PollNone) ^*.
 
 End LightbulbSpec.
+(*tag:lemma*)
 
 Lemma align_trace_cons {T} x xs cont t (H : xs = app cont t) : @cons T x xs = app (cons x cont) t.
 Proof. intros. cbn. congruence. Qed.

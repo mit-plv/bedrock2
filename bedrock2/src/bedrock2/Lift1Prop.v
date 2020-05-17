@@ -1,15 +1,21 @@
+(*tag:importboilerplate*)
 Require Import Coq.Classes.Morphisms.
 
+(*tag:unrelated*)
 Section Binary.
+(*tag:spec*)
   Context {T: Type} (P Q: T -> Prop).
   Definition impl1 := forall x, P x -> Q x.
   Definition iff1 := forall x, P x <-> Q x.
   Definition and1 := forall x, P x /\ Q x.
   Definition or1 := forall x, P x \/ Q x.
+(*tag:unrelated*)
 End Binary.
 
+(*tag:spec*)
 Definition ex1 {A B} (P : A -> B -> Prop) := fun (b:B) => exists a:A, P a b.
 
+(*tag:lemma*)
 Global Instance Transitive_impl1 T : Transitive (@impl1 T). firstorder idtac. Qed.
 Global Instance Reflexive_impl1 T : Reflexive (@impl1 T). firstorder idtac. Qed.
 Global Instance Proper_impl1_impl1 T : Proper (Basics.flip impl1 ==> impl1 ==> Basics.impl) (@impl1 T). firstorder idtac. Qed.

@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import bedrock2.Syntax bedrock2.BasicCSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import coqutil.Z.div_mod_to_equations.
@@ -15,6 +16,7 @@ Local Notation MMIOREAD := "MMIOREAD".
 Require bedrock2Examples.lightbulb_spec.
 Local Notation patience := lightbulb_spec.patience.
 
+(*tag:code*)
 Definition spi_write : function :=
   let b : String.string := "b" in
   let busy : String.string := "busy" in
@@ -61,6 +63,7 @@ Definition spi_xchg : function :=
     unpack! b, busy = spi_read()
   ))).
 
+(*tag:importboilerplate*)
 Require Import bedrock2.ProgramLogic.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Word.Interface.
@@ -73,6 +76,7 @@ Import ReversedListNotations.
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
 
+  (*tag:spec*)
   Definition mmio_event_abstraction_relation
     (h : lightbulb_spec.OP parameters.word)
     (l : parameters.mem * string * list parameters.word * (parameters.mem * list parameters.word)) :=
@@ -94,6 +98,7 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ lightbulb_spec.spi_read_empty _ ^* ioh /\ Z.of_nat (length ioh) = patience)
         (word.unsigned err = 0 /\ lightbulb_spec.spi_read parameters.word b ioh)).
 
+  (*tag:bitvector*)
   Lemma nonzero_because_high_bit_set x (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
     : word.unsigned x <> 0.
   Proof.
@@ -105,6 +110,7 @@ Section WithParameters.
     exact (H eq_refl).
   Qed.
 
+  (*tag:importboilerplate*)
   Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
         (preprocess [autorewrite with rew_word_morphism],
          morphism (Properties.word.ring_morph (word := Semantics.word)),
@@ -112,11 +118,14 @@ Section WithParameters.
 
   Import coqutil.Tactics.letexists.
   Import TailRecursion.
+  (*tag:lemma*)
   Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
+  (*tag:symex*)
   Proof.
     repeat straightline.
     rename H into Hb.
 
+    (*tag:spec*)
     (* WHY do theese parentheses matter? *)
     refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
        b = B /\
@@ -127,6 +136,7 @@ Section WithParameters.
        exists th, mmio_trace_abstraction_relation th tl /\
        lightbulb_spec.spi_write_full _ ^* th /\
        Z.of_nat (length th) + word.unsigned I = patience
+       (*tag:workaround*)
        )) _ _ _ _ _ _ _);
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
            HList.hlist.foralls HList.tuple.foralls
@@ -136,6 +146,7 @@ Section WithParameters.
            List.repeat Datatypes.length
            HList.polymorphic_list.repeat HList.polymorphic_list.length
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
+           (*tag:symex*)
     { repeat straightline. }
     { eapply (Z.lt_wf 0). }
     { eexists; split; repeat straightline.
@@ -271,6 +282,7 @@ Section WithParameters.
 
   Lemma spi_read_ok : program_logic_goal_for_function! spi_read.
     repeat straightline.
+  (*tag:spec*)
     refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
        v = word.unsigned I /\
        word.unsigned I <> 0 /\
@@ -282,6 +294,7 @@ Section WithParameters.
        Z.of_nat (length th) + word.unsigned I = patience
             ))
             _ _ _ _ _ _ _);
+            (*tag:workaround*)
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
            HList.hlist.foralls HList.tuple.foralls
            HList.hlist.existss HList.tuple.existss
@@ -290,6 +303,7 @@ Section WithParameters.
            List.repeat Datatypes.length
            HList.polymorphic_list.repeat HList.polymorphic_list.length
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *; repeat straightline.
+  (*tag:symex*)
     { exact (Z.lt_wf 0). }
     { subst i; rewrite word.unsigned_of_Z in H. inversion H. }
     { split; trivial.
@@ -440,6 +454,7 @@ Section WithParameters.
           trivial. } } }
   Qed.
 
+  (*tag:spec*)
   Global Instance spec_of_spi_xchg : spec_of "spi_xchg" := fun functions => forall t m b_out,
     word.unsigned b_out < 2 ^ 8 ->
     WeakestPrecondition.call functions "spi_xchg" t m [b_out] (fun T M RETS =>
@@ -447,6 +462,7 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\ lightbulb_spec.spi_xchg Semantics.word (byte.of_Z (word.unsigned b_out)) b_in ioh)).
 
+  (*tag:symex*)
   Lemma spi_xchg_ok : program_logic_goal_for_function! spi_xchg.
   Proof.
     repeat (
@@ -511,4 +527,5 @@ Section WithParameters.
 
     eauto using Trace__concat_app. }
   Qed.
+  (*tag:importboilerplate*)
 End WithParameters.

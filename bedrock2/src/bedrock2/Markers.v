@@ -1,3 +1,4 @@
+(*tag:workaround*)
 Local Set Universe Polymorphism.
 Section WithT.
   Context {T : Type}.

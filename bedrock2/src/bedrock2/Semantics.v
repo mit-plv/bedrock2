@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil.Byte.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import coqutil.Decidable.
@@ -8,6 +9,7 @@ Require Export bedrock2.Memory.
 
 Require Import Coq.Lists.List.
 
+(*tag:spec*)
 Class parameters := {
   width : Z;
   word :> Word.Interface.word width;
@@ -88,6 +90,7 @@ Section binops.
     | bopname.eq => fun a b =>
       if word.eqb a b then word.of_Z 1 else word.of_Z 0
     end.
+  (*tag:importboilerplate*)
 End binops.
 
 Section semantics.
@@ -95,6 +98,7 @@ Section semantics.
 
   Local Notation metrics := MetricLog.
 
+  (*tag:unrelated*)
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
     Fixpoint eval_expr (e : expr) (mc : metrics) : option (word * metrics) :=
@@ -118,6 +122,7 @@ Section semantics.
                                        (addMetricLoads 2 mc''))
       end.
 
+  (*tag:spec*)
     Fixpoint eval_expr_old (e : expr) : option word :=
       match e with
       | expr.literal v => Some (word.of_Z v)
@@ -139,6 +144,7 @@ Section semantics.
         Some (v :: args, mc'')
       | _ => Some (nil, mc)
       end.
+    (*tag:importboilerplate*)
 
   End WithMemAndLocals.
 End semantics.
@@ -148,7 +154,9 @@ Module exec. Section WithEnv.
 
   Local Notation metrics := MetricLog.
 
+  (*tag:workaround*)
   Implicit Types post : trace -> mem -> locals -> metrics -> Prop. (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
+  (*tag:spec*)
   Inductive exec :
     cmd -> trace -> mem -> locals -> metrics ->
     (trace -> mem -> locals -> metrics -> Prop) -> Prop :=
@@ -238,6 +246,7 @@ Module exec. Section WithEnv.
                        (addMetricLoads 2 mc'))))
     : exec (cmd.interact binds action arges) t m l mc post
   .
+  (*tag:importboilerplate*)
   End WithEnv.
   Arguments exec {_} _.
 End exec. Notation exec := exec.exec.

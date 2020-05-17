@@ -1,8 +1,10 @@
+(*tag:importboilerplate*)
 From coqutil Require Import subst.
 Require Import Coq.Strings.String.
 Open Scope string_scope.
 
 Definition with_name (n : string) {T} (v : T) := v.
+(*tag:workaround*)
 
 (* WHY and in which cases is one fresh not enough, Jason? *)
 Ltac multifresh H :=

@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import coqutil.Z.Lia.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
@@ -14,14 +15,17 @@ From bedrock2.Map Require Import Separation SeparationLogic.
 Import ZArith.
 Local Open Scope Z_scope.
 
+(*tag:workaround*)
 (* indicates that if we were to replace blia by omega, we'd run out of heap, stack, or time *)
 Ltac omega_safe ::= fail.
 
+(*tag:bitvector*)
 (* TODO: refactor *)
 Lemma word__unsigned_of_Z_nowrap {width} {word: word.word width} {ok : word.ok word} x : 0 <= x < 2 ^ width -> word.unsigned (word.of_Z x) = x.
 Proof.
   intros. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Z.mod_small; trivial.
 Qed.
+(*tag:symex*)
 Local Ltac seplog_use_array_load1 H i :=
   let iNat := eval cbv in (Z.to_nat i) in
   let H0 := fresh in pose proof H as H0;
@@ -47,6 +51,7 @@ Local Ltac split_if :=
         | cmd.cond _ _ _ => letexists; split; [solve[repeat straightline]|split]
         end
   end.
+(*tag:importboilerplate*)
 
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
@@ -56,6 +61,7 @@ Section WithParameters.
   Local Coercion var (x : String.string) : expr := expr.var x.
   Local Coercion name_of_func (f : BasicCSyntax.function) := fst f.
 
+  (*tag:code*)
   Definition lightbulb_loop :=
       let p_addr : String.string := "p_addr" in
       let bytesWritten : String.string := "bytesWritten" in
@@ -159,6 +165,7 @@ Section WithParameters.
       unpack! err = lan9250_init()
     ))).
 
+  (*tag:importboilerplate*)
   Import Datatypes List.
   Local Notation bytes := (array scalar8 (word.of_Z 1)).
   Local Infix "*" := (sep).
@@ -168,6 +175,7 @@ Section WithParameters.
   Import Word.Properties.
   Import lightbulb_spec.
 
+  (*tag:spec*)
   Instance spec_of_recvEthernet : spec_of "recvEthernet" := fun functions =>
     forall p_addr (buf:list byte) R m t,
       (array scalar8 (word.of_Z 1) p_addr buf * R) m ->
@@ -224,10 +232,12 @@ Section WithParameters.
           exists ioh, mmio_trace_abstraction_relation ioh iol /\
           BootSeq _ ioh
         ).
+  (*tag:importboilerplate*)
 
   Require Import bedrock2.AbsintWordToZ.
   Import WeakestPreconditionProperties.
 
+  (*tag:symex*)
   Lemma lightbulb_init_ok : program_logic_goal_for_function! lightbulb_init.
   Proof.
     repeat straightline.
@@ -303,6 +313,7 @@ Section WithParameters.
     end;
     repeat match goal with H:absint_eq ?x ?x |- _ => clear H end;
     repeat match goal with H:?A |- _ => clear H; match goal with G:A |- _ => idtac end end.
+  (*tag:bitvector*)
 
   Lemma byte_mask_byte (b : byte) : word.and (word.of_Z (byte.unsigned b)) (word.of_Z 255) = word.of_Z (byte.unsigned b) :> Semantics.word.
   Proof.
@@ -318,6 +329,7 @@ Section WithParameters.
     Z.bitwise. Btauto.btauto.
   Qed.
 
+  (*tag:symex*)
   Lemma lightbulb_handle_ok : program_logic_goal_for_function! lightbulb_handle.
   Proof.
     repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).
@@ -411,11 +423,13 @@ Section WithParameters.
     all : intros; exact True.
   Qed.
 
+  (*tag:importboilerplate*)
   Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
         (preprocess [autorewrite with rew_word_morphism],
          morphism (Properties.word.ring_morph (word := Semantics.word)),
          constants [Properties.word_cst]).
 
+  (*tag:symex*)
   Lemma recvEthernet_ok : program_logic_goal_for_function! recvEthernet.
   Proof.
     straightline.
@@ -706,13 +720,16 @@ Section WithParameters.
       eexists; split; intuition eauto. }
   Defined.
 
+  (*tag:importboilerplate*)
   Import SPI.
 
+  (*tag:code*)
   Definition function_impls :=
     [lightbulb_init; lan9250_init; lan9250_wait_for_boot; lan9250_mac_write;
     lightbulb_loop; lightbulb_handle; recvEthernet;  lan9250_writeword; lan9250_readword;
     spi_xchg; spi_write; spi_read].
 
+  (*tag:workaround*)
   Lemma link_lightbulb_loop : spec_of_lightbulb_loop function_impls.
   Proof.
     eapply lightbulb_loop_ok;
@@ -728,6 +745,7 @@ Section WithParameters.
         eapply spi_xchg_ok;
         (eapply spi_write_ok || eapply spi_read_ok).
   Qed.
+  (*tag:unrelated*)
 
 
   (* Print Assumptions link_lightbulb. *)
@@ -748,6 +766,8 @@ Section WithParameters.
     idtac c_code.
   Abort.
   *)
+  (*tag:importboilerplate*)
 End WithParameters.
 
+(*tag:workaround*)
 Ltac omega_safe ::= idtac.

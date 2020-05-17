@@ -1,9 +1,11 @@
+(*tag:importboilerplate*)
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.ReversedListNotations.
 
 Section ListPred.
   Context {T: Type}.
 
+  (*tag:spec*)
   Definition constraint (P : Prop): list T -> Prop := fun _ => P.
 
   Definition one(t: T): list T -> Prop := eq [t].
@@ -33,6 +35,7 @@ Section ListPred.
       | S n => concat P (multiple n)
       end.
 
+    (*tag:lemma*)
     Lemma kleene_multiple n xs
       (H : multiple n xs) : kleene xs.
     Proof.
@@ -45,12 +48,14 @@ Section ListPred.
 
   (* more powerful than regex: *)
 
+  (*tag:spec*)
   Definition both(P1 P2: list T -> Prop): list T -> Prop :=
     fun l => P1 l /\ P2 l.
 
   Definition existsl{A: Type}(P: A -> list T -> Prop): list T -> Prop :=
     fun l => exists a, P a l.
 
+  (*tag:lemma*)
   Lemma concat_app (P Q : list T->Prop) x y (HP : P x) (HQ : Q y) : concat P Q (y ++ x).
   Proof. cbv [concat]; eauto. Qed.
 
@@ -120,10 +125,12 @@ Section ListPred.
   Lemma  multiple_expand_right : forall P n xs,
     @multiple P (S n) xs <-> concat (multiple P n) P xs.
   Proof. cbn; intros; eapply multiple_assoc. Qed.
+  (*tag:importboilerplate*)
 
 End ListPred.
 
 Module TracePredicateNotations.
+  (*tag:spec*)
   Notation "P ^*" := (kleene P) (at level 50).
   Notation "P ^+" := (concat P (kleene P)) (at level 50).
   Infix "+++" := concat (at level 60).
@@ -131,4 +138,5 @@ Module TracePredicateNotations.
   Notation "'EX' x .. y , p" := (existsl (fun x => .. (existsl (fun y => p)) ..))
     (at level 200, x binder, right associativity,
      format "'[' 'EX'  '/  ' x  ..  y ,  '/  ' p ']'").
+  (*tag:importboilerplate*)
 End TracePredicateNotations.

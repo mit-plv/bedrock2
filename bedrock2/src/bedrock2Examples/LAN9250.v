@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import bedrock2.Syntax bedrock2.BasicCSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import coqutil.Z.prove_Zeq_bitwise.
@@ -15,6 +16,7 @@ Local Coercion literal (z : Z) : expr := expr.literal z.
 Local Coercion var (x : String.string) : expr := expr.var x.
 Local Coercion name_of_func (f : function) := fst f.
 
+(*tag:code*)
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
 
@@ -133,6 +135,7 @@ Definition lan9250_init : function :=
           unpack! err = lan9250_writeword(constr:(Ox"070"), constr:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
   ))).
 
+(*tag:importboilerplate*)
 Require Import bedrock2.ProgramLogic.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Word.Interface.
@@ -147,6 +150,7 @@ Import TailRecursion.
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
 
+  (*tag:spec*)
   Global Instance spec_of_lan9250_readword : ProgramLogic.spec_of "lan9250_readword" := fun functions => forall t m a,
     (Ox"0" <= Word.Interface.word.unsigned a < Ox"400") ->
     WeakestPrecondition.call functions "lan9250_readword" t m [a] (fun T M RETS =>
@@ -169,7 +173,9 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
         (word.unsigned err = 0 /\ lightbulb_spec.lan9250_write4 _ a v ioh)).
 
+  (*tag:importboilerplate*)
   Import lightbulb_spec.
+  (*tag:spec*)
 
   Global Instance spec_of_lan9250_mac_write : ProgramLogic.spec_of "lan9250_mac_write" := fun functions =>
     forall t m a v,
@@ -207,6 +213,7 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ lan9250_boot_timeout _ ioh))
         (word.unsigned err = 0 /\ lan9250_init_trace _ ioh)).
 
+  (*tag:symex*)
   Local Ltac split_if :=
     lazymatch goal with
       |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
@@ -216,6 +223,7 @@ Section WithParameters.
           end
     end.
 
+  (*tag:workaround*)
   Ltac evl := (* COQBUG(has_variable) *)
     repeat match goal with
       | |- context G[string_dec ?x ?y] =>
@@ -242,6 +250,7 @@ Section WithParameters.
         change goal
     end.
 
+  (*tag:symex*)
   Ltac trace_alignment :=
     repeat (eapply lightbulb_spec.align_trace_app
       || eapply lightbulb_spec.align_trace_cons
@@ -283,7 +292,9 @@ Section WithParameters.
     | |- Semantics.ext_spec _ _ _ _ _ => progress cbn [semantics_parameters Semantics.ext_spec]
     end.
 
+  (*tag:importboilerplate*)
   Import Word.Properties.
+  (*tag:symex*)
 
   Lemma lan9250_init_ok : program_logic_goal_for_function! lan9250_init.
   Proof.
@@ -316,7 +327,6 @@ Section WithParameters.
     eexists.
     repeat eapply concat_app; eauto.
   Qed.
-  Print Assumptions lan9250_init_ok.
 
   Lemma lan9250_writeword_ok : program_logic_goal_for_function! lan9250_writeword.
   Proof.
@@ -814,4 +824,5 @@ Section WithParameters.
     all : rewrite ?Z.shiftl_mul_pow2 by Lia.lia.
     all : try (Z.div_mod_to_equations; Lia.lia).
   Qed.
+  (*tag:importboilerplate*)
 End WithParameters.

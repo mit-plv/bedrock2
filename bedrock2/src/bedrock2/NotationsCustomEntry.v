@@ -1,9 +1,11 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.BinIntDef.
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 
 (** Grammar for expressions *)
 
 Import bopname.
+(*tag:compiletimecode*)
 Declare Custom Entry bedrock_expr.
 Notation "bedrock_expr:( e )"   := e   (e custom bedrock_expr,
                                         format "'bedrock_expr:(' e ')'").
@@ -119,6 +121,7 @@ Notation "x" := (@cons String.string x nil) (in custom bedrock_call_lhs at level
 Notation "x , y , .. , z" := (@cons String.string x (@cons String.string y .. (@cons String.string z (@nil String.string)) ..))
   (in custom bedrock_call_lhs at level 0, x global, y constr at level 0, z constr at level 0).
 
+(*tag:workaround*)
 (* COQBUG(9532) *)
 (* functions of up to 6 arguments *)
 Notation "f ( )" :=  (call nil f nil) (in custom bedrock_cmd at level 0, f global).
@@ -155,6 +158,7 @@ Notation "io! lhs = f ( x , y , z , a )" :=  (interact lhs f (@cons expr x (@con
 Notation "io! lhs = f ( x , y , z , a , b )" :=  (interact lhs f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@cons b (@nil expr))))))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f global, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr, b custom bedrock_expr).
 Notation "io! lhs = f ( x , y , z , a , b , c )" :=  (interact lhs f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@cons expr b (@cons expr c (@nil expr)))))))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f global, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr, b custom bedrock_expr, c custom bedrock_expr).
 
+(*tag:compiletimecode*)
 Declare Scope bedrock_tail.
 Delimit Scope bedrock_tail with bedrock_tail.
 Notation "bedrock_func_body:( c )"   := (c%bedrock_tail) (c custom bedrock_cmd at level 0,
@@ -180,6 +184,7 @@ Notation "'require' '!' e 'else' { c1 } ; c2" := (require_is_not_available_insid
   format "'[v' 'require' '!'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_nontail.
 Undelimit Scope bedrock_tail.
 Undelimit Scope bedrock_nontail.
+(*tag:test*)
 
 
 Module test.

@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Coq.Lists.List.
@@ -15,6 +16,7 @@ Open Scope Z_scope.
 Section Memory.
   Context {width: Z} {word: word width} {mem: map.map word byte}.
 
+  (*tag:spec*)
   Definition footprint(a: word)(sz: nat): tuple word sz :=
     tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.
 
@@ -54,6 +56,7 @@ Section Memory.
   Definition store(sz: access_size)(m: mem)(a: word)(v: word): option mem :=
     store_Z sz m a (word.unsigned v).
 
+  (*tag:lemma*)
   Lemma load_None: forall sz m a,
       8 <= width ->
       map.get m a = None ->
@@ -78,9 +81,11 @@ Section Memory.
       reflexivity.
   Qed.
 
+  (*tag:importboilerplate*)
   Context {mem_ok: map.ok mem}.
   Context {word_ok: word.ok word}.
 
+  (*tag:lemma*)
   Lemma store_preserves_domain: forall sz m a v m',
       store sz m a v = Some m' ->
       map.same_domain m m'.
@@ -95,4 +100,5 @@ Section Memory.
       eassumption.
   Qed.
 
+  (*tag:importboilerplate*)
 End Memory.

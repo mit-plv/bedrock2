@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.Classes.Morphisms.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation.
 Require Coq.Lists.List.
@@ -10,6 +11,7 @@ Section SepProperties.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
   Local Infix "*" := sep.
 
+  (*tag:lemma*)
   Global Instance Proper_sep_iff1 : Proper (iff1 ==> iff1 ==> iff1) sep. firstorder idtac. Qed.
   Global Instance Proper_sep_impl1 : Proper (impl1 ==> impl1 ==> impl1) sep. firstorder idtac. Qed.
 
@@ -170,21 +172,26 @@ Section SepProperties.
 
   Lemma seps_nth_to_head n xs : iff1 (sep (nth n xs) (seps (remove_nth n xs))) (seps xs).
   Proof.
+    (*tag:lists*)
     cbv [nth remove_nth].
     pose proof (List.firstn_skipn n xs : (firstn n xs ++ skipn n xs) = xs).
     set (xsr := skipn n xs) in *; clearbody xsr.
     set (xsl := firstn n xs) in *; clearbody xsl.
     subst xs.
+    (*tag:lemma*)
     setoid_rewrite <-seps'_iff1_seps.
     destruct xsr.
+    (*tag:lists*)
     { cbn [seps']; rewrite sep_emp_True_l, 2List.app_nil_r; exact (reflexivity _). }
     cbn [hd tl].
+    (*tag:lemma*)
     induction xsl; cbn; [exact (reflexivity _)|].
     rewrite <-IHxsl; clear IHxsl.
     rewrite (sep_comm _ (seps' _)), <-(sep_assoc _ (seps' _)), <-(sep_comm _ (_ * seps' _)).
     exact (reflexivity _).
   Qed.
 
+  (*tag:automation*)
   Lemma cancel_emps_at_indices i j xs ys P Q
         (Hi : nth i xs = emp P)
         (Hj : nth j ys = emp Q)

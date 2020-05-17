@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Semantics bedrock2.Array coqutil.Word.LittleEndian.
 Require Import Coq.Lists.List Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface coqutil.Map.Interface. (* coercions word and rep *)
@@ -16,6 +17,7 @@ Section Scalars.
 
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
 
+  (*tag:spec*)
   Definition littleendian (n : nat) (addr : word) (value : Z) : mem -> Prop :=
     ptsto_bytes n addr (LittleEndian.split n value).
 
@@ -33,6 +35,7 @@ Section Scalars.
   Definition scalar addr (value: word) : mem -> Prop :=
     truncated_scalar Syntax.access_size.word addr (word.unsigned value).
 
+  (*tag:lemma*)
   Lemma load_Z_of_sep sz addr (value: Z) R m
     (Hsep : sep (truncated_scalar sz addr value) R m)
     : Memory.load_Z sz m addr = Some (Z.land value (Z.ones (Z.of_nat (bytes_per (width:=width) sz)*8))).
@@ -40,10 +43,12 @@ Section Scalars.
     cbv [load scalar littleendian load_Z] in *.
     erewrite load_bytes_of_sep by exact Hsep; apply f_equal.
     rewrite LittleEndian.combine_split.
+    (*tag:bitvector*)
     set (x := (Z.of_nat (bytes_per sz) * 8)%Z).
     assert ((0 <= x)%Z) by (subst x; destruct sz; blia).
     rewrite <- Z.land_ones by assumption.
     reflexivity.
+    (*tag:lemma*)
   Qed.
 
   Lemma store_Z_of_sep sz addr (oldvalue value: Z) R m (post:_->Prop)
@@ -58,6 +63,7 @@ Section Scalars.
   Proof.
     cbv [load].
     erewrite load_Z_of_sep by exact Hsep; f_equal.
+    (*tag:bitvector*)
     cbv [bytes_per].
     eapply Properties.word.unsigned_inj.
     rewrite !word.unsigned_of_Z.
@@ -70,6 +76,7 @@ Section Scalars.
     destruct (Z.leb_spec0 0 i); try blia; cbn [andb]; [].
     eapply Z.ltb_lt.
     rewrite Z2Nat.id; Z.div_mod_to_equations; Lia.nia.
+    (*tag:lemma*)
   Qed.
 
   Lemma load_one_of_sep addr value R m
@@ -116,6 +123,7 @@ Section Scalars.
     intros; eapply Hpost; ecancel_assumption.
   Qed.
 
+  (*tag:bitvector*)
   Local Ltac remove_wrap x :=
     match x with
     | Z.shiftr ?x' ?n =>
@@ -137,6 +145,7 @@ Section Scalars.
     cbv [byte.wrap word.wrap];
     Z.bitblast.
 
+  (*tag:lemma*)
   Lemma store_two_of_sep addr (oldvalue : word16) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar16 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar16 addr (word.of_Z (word.unsigned value))) R m -> post m)
@@ -144,6 +153,7 @@ Section Scalars.
   Proof.
     cbv [scalar16 truncated_scalar littleendian ptsto_bytes bytes_per tuple.to_list LittleEndian.split PrimitivePair.pair._1 PrimitivePair.pair._2 array] in Hsep, Hpost.
     eapply (store_bytes_of_sep _ 2 (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ tt))); cbn; [ecancel_assumption|].
+    (*tag:bitvector*)
     cbv [LittleEndian.split].
     intros; eapply Hpost.
     rewrite word.unsigned_of_Z.
@@ -152,6 +162,7 @@ Section Scalars.
              let x' := remove_wrap x in
              replace (@byte.of_Z x) with (@byte.of_Z x') by byte_bitblast
            end.
+           (*tag:lemma*)
     ecancel_assumption.
   Qed.
 
@@ -161,6 +172,7 @@ Section Scalars.
     : exists m1, Memory.store Syntax.access_size.four m addr value = Some m1 /\ post m1.
   Proof.
     cbv [scalar32 truncated_scalar littleendian ptsto_bytes bytes_per tuple.to_list LittleEndian.split PrimitivePair.pair._1 PrimitivePair.pair._2 array] in Hsep, Hpost.
+    (*tag:bitvector*)
     eapply (store_bytes_of_sep _ 4 (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ tt))))); cbn; [ecancel_assumption|].
     cbv [LittleEndian.split].
     intros; eapply Hpost.
@@ -170,6 +182,7 @@ Section Scalars.
              let x' := remove_wrap x in
              replace (@byte.of_Z x) with (@byte.of_Z x') by byte_bitblast
            end.
+           (*tag:lemma*)
     ecancel_assumption.
   Qed.
 
@@ -223,6 +236,7 @@ Section Scalars.
       rewrite tuple.to_list_of_list. reflexivity. }
     apply LittleEndian.combine_bound.
   Qed.
+  (*tag:importboilerplate*)
 
 End Scalars.
 

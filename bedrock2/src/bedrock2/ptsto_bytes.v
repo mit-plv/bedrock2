@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import coqutil.Map.Interface coqutil.Map.Properties bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Semantics bedrock2.Array.
 Require Import Coq.Lists.List Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Map.Interface.
@@ -14,9 +15,11 @@ Section Scalars.
 
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
 
+  (*tag:spec*)
   Definition ptsto_bytes (n : nat) (addr : word) (value : tuple byte n) : mem -> Prop :=
     array ptsto (word.of_Z 1) addr (tuple.to_list value).
 
+  (*tag:lemma*)
   Lemma load_bytes_of_sep a n bs R m
     (Hsep : sep (ptsto_bytes n a bs) R m)
     : Memory.load_bytes n m a = Some bs.
@@ -33,8 +36,10 @@ Section Scalars.
     SeparationLogic.ecancel_assumption.
   Qed.
 
+  (*tag:workaround*)
   Arguments Z.of_nat: simpl never.
 
+  (*tag:lemma*)
   Lemma invert_getmany_of_tuple_Some_footprint
     (n : nat) (a: word) (vs : tuple byte (S n)) (m : mem)
     (D: Z.of_nat n < 2 ^ width)

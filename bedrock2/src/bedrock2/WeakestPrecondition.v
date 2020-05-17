@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Notations coqutil.Map.Interface.
 Require Import Coq.ZArith.BinIntDef coqutil.Word.Interface.
 Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
@@ -5,6 +6,7 @@ Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 Section WeakestPrecondition.
   Context {p : unique! Semantics.parameters}.
 
+  (*tag:spec*)
   Definition literal v (post : word -> Prop) : Prop :=
     dlet! v := word.of_Z v in post v.
   Definition get (l : locals) (x : String.string) (post : word -> Prop) : Prop :=
@@ -119,6 +121,7 @@ Section WeakestPrecondition.
   Definition program funcs main t m l post : Prop := cmd (call funcs) main t m l post.
 End WeakestPrecondition.
 
+(*tag:workaround*)
 Ltac unfold1_cmd e :=
   lazymatch e with
     @cmd ?params ?CA ?c ?t ?m ?l ?post =>

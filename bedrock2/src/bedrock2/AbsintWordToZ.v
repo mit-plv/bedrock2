@@ -1,8 +1,10 @@
+(*tag:importboilerplate*)
 Require Import Coq.Strings.String Coq.ZArith.ZArith.
 From coqutil Require Import Word.Interface Word.Properties.
 From coqutil Require Import Tactics.rdelta Z.div_mod_to_equations.
 Require Import coqutil.Z.Lia.
 Local Open Scope Z_scope.
+(*tag:bitvector*)
 
 (** Bounds propagation *)
 
@@ -290,6 +292,7 @@ Module unsigned.
     end.
 End unsigned.
 
+(*tag:test*)
 Require coqutil.Word.Naive.
 Module absint_test.
   Import Word.Naive.

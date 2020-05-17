@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import  coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Properties.
 Require bedrock2.WeakestPrecondition.
 
@@ -6,6 +7,7 @@ Require Import Coq.Classes.Morphisms.
 Section WeakestPrecondition.
   Context {p : unique! Semantics.parameters}.
 
+  (*tag:workaround*)
   Ltac ind_on X :=
     intros;
     (* Note: "before p" means actually "after p" when reading from top to bottom, because,
@@ -20,6 +22,7 @@ Section WeakestPrecondition.
     match goal with x : X |- _ => induction x end;
     intros.
 
+  (*tag:lemma*)
   Global Instance Proper_literal : Proper (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)) WeakestPrecondition.literal.
   Proof. cbv [WeakestPrecondition.literal]; cbv [Proper respectful pointwise_relation Basics.impl]; firstorder idtac. Qed.
 
@@ -98,10 +101,12 @@ Section WeakestPrecondition.
       { eapply Proper_list_map; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl]; intuition eauto 2.
         eapply Proper_expr; eauto. }
       { eapply H. 2: eauto.
+      (*tag:workaround*)
         (* COQBUG (performance), measured in Coq 8.9:
            "firstorder eauto" works, but takes ~100s and increases memory usage by 1.8GB.
            On the other hand, the line below takes just 5ms *)
         cbv beta; intros ? ? ? (?&?&?); eauto. } }
+    (*tag:lemma*)
     { destruct H1 as (?&?&?). eexists. split.
       { eapply Proper_list_map; eauto; try exact H4; cbv [respectful pointwise_relation Basics.impl].
         { eapply Proper_expr; eauto. }

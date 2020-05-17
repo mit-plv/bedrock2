@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 From coqutil.Tactics Require Import letexists eabstract rdelta.
 Require Import bedrock2.WeakestPrecondition.
@@ -9,6 +10,7 @@ Require bedrock2.string2ident.
 Definition spec_of (procname:String.string) := list (String.string * (list String.string * list String.string * Syntax.cmd.cmd)) -> Prop.
 Existing Class spec_of.
 
+(*tag:workaround*)
 Section bindcmd.
   Context {T : Type}.
   Fixpoint bindcmd (c : Syntax.cmd) (k : Syntax.cmd -> T) {struct c} : T :=
@@ -77,6 +79,7 @@ Ltac enter f :=
 
 Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
+(*tag:automation*)
 Ltac straightline_cleanup :=
   match goal with
   | x : Word.Interface.word.rep _ |- _ => clear x
@@ -251,6 +254,7 @@ Ltac seprewrite_by Hrw tac :=
   let H := multimatch goal with H: _ m |- _ => H end in
   seprewrite_in_by Hrw H tac.
 
+(*tag:unrelated*)
 Ltac show_program :=
   lazymatch goal with
   | |- @cmd ?D ?E ?c ?F ?G ?H ?I =>
