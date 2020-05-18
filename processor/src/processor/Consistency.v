@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import String BinInt.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
@@ -23,6 +24,7 @@ Require Import processor.KamiProc.
 
 Local Open Scope Z_scope.
 
+(*tag:workaround*)
 Lemma evalExpr_bit_eq_rect:
   forall n1 n2 (Hn: n1 = n2) e,
     evalExpr (eq_rect n1 (fun sz => Expr type (SyntaxKind (Bit sz))) e n2 Hn) =
@@ -33,6 +35,7 @@ Proof.
   reflexivity.
 Qed.
 
+(*tag:importboilerplate*)
 Section FetchOk.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
   Context {mem: map.map word byte}.
@@ -48,6 +51,7 @@ Section FetchOk.
   Local Notation nwidth := (Z.to_nat width).
   Local Notation width_inst_valid := (width_inst_valid HinstrMemBound).
 
+  (*tag:lemma*)
   Definition instrMemSize: nat := NatLib.pow2 (2 + Z.to_nat instrMemSizeLg).
 
   Definition pc_related (kpc rpc: kword width): Prop :=
@@ -62,6 +66,7 @@ Section FetchOk.
     | S n' => $(base + n') :: alignedXAddrsRange base n'
     end.
 
+  (*tag:lists*)
   Lemma alignedXAddrsRange_bound:
     forall base n a,
       In a (alignedXAddrsRange base n) ->
@@ -80,6 +85,7 @@ Section FetchOk.
     - etransitivity; [eauto|blia].
   Qed.
 
+  (*tag:lemma*)
   (* set of executable addresses in the kami processor *)
   Definition kamiXAddrs: XAddrs :=
     alignedXAddrsRange 0 instrMemSize.
@@ -151,6 +157,7 @@ Section FetchOk.
            (evalExpr (IsaRv32.rv32ToIAddr _ _ width_inst_valid type rpc))).
   Proof.
     intros.
+    (*tag:bitvector*)
     cbv [IsaRv32.rv32ToAddr IsaRv32.rv32ToIAddr].
     unfold eq_rect_r; rewrite evalExpr_bit_eq_rect.
     cbv [evalExpr evalBinBit evalUniBit].
@@ -175,6 +182,7 @@ Section FetchOk.
 
     rewrite wordToN_combine.
     rewrite wordToN_wzero.
+    (*tag:lemma*)
     rewrite N.add_0_l.
     rewrite N.mul_comm at 2.
     rewrite N.div_mul by discriminate.
@@ -192,6 +200,7 @@ Section FetchOk.
         combine 4 rinst = kunsigned (width:= 32) (SC.combineBytes 4 rpc kmem).
   Proof.
     intros.
+    (*tag:bitvector*)
 
     assert (Z.pow 2 (Z.of_nat (2 + ninstrMemSizeLg)) < Z.pow 2 memSizeLg) as Hkmemp
         by (apply Z.pow_lt_mono_r; Lia.lia).
@@ -250,6 +259,7 @@ Section FetchOk.
       Lia.lia.
     }
 
+    (*tag:maps*)
     cbv [Memory.footprint HList.tuple.unfoldn].
     eexists; split.
     - pose proof (H rpc); rewrite Hrpc0 in H1.
@@ -275,6 +285,7 @@ Section FetchOk.
       cbv [PrimitivePair.pair._2].
       reflexivity.
 
+      (*tag:bitvector*)
     - cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2
                    word.unsigned WordsKami KamiWord.word kunsigned
                    SC.combineBytes].
@@ -289,6 +300,7 @@ Section FetchOk.
       reflexivity.
   Qed.
 
+  (*tag:lemma*)
   Lemma fetch_ok:
     forall (kmemi: kword instrMemSizeLg -> kword width)
            (kmemd: kword memSizeLg -> kword 8)
@@ -313,6 +325,7 @@ Section FetchOk.
     rewrite <-H4.
     eapply getmany_of_tuple_combineBytes_consistent; assumption.
   Qed.
+  (*tag:importboilerplate*)
 
 End FetchOk.
 
@@ -330,10 +343,12 @@ Section DecExecOk.
   Context {Registers: map.map Register word}
           (Registers_ok : map.ok Registers).
 
+  (*tag:lemma*)
   Definition regs_related (krf: kword 5 -> kword width)
              (rrf: Registers): Prop :=
     forall w, w <> $0 -> map.get rrf (Z.of_N (wordToN w)) = Some (krf w).
 
+  (*tag:bitvector*)
   Lemma regs_related_get:
     forall krf (Hkrf0: krf $0 = $0) rrf,
       regs_related krf rrf ->
@@ -355,6 +370,7 @@ Section DecExecOk.
       apply N2Z.inj in e.
       rewrite <-wordToN_wzero with (sz:= 5%nat) in e.
       apply wordToN_inj in e; auto.
+      (*tag:lemma*)
     - subst; rewrite H; [reflexivity|].
       intro; subst; auto.
   Qed.
@@ -375,7 +391,9 @@ Section DecExecOk.
     - rewrite map.get_put_diff.
       + apply Hrf; auto.
       + subst; intro.
+        (*tag:bitvector*)
         apply N2Z.inj, wordToN_inj in H; auto.
+        (*tag:lemma*)
   Qed.
 
 End DecExecOk.

@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Strings.String.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -20,19 +21,23 @@ Require Import coqutil.Map.Z_keyed_SortedListMap.
 Open Scope Z_scope.
 Open Scope string_scope.
 
+(*tag:compiletimecode*)
 Definition instrMemSizeLg: Z := 10. (* means 2^12 bytes *) (* TODO is this enough? *)
+(*tag:lemma*)
 Lemma instrMemSizeLg_bounds : 3 <= instrMemSizeLg <= 30. Proof. cbv. intuition discriminate. Qed.
 
 Definition memSizeLg: Z := 13.
 Lemma memSizeLg_valid : instrMemSizeLg + 2 < memSizeLg <= 16.
 Proof. cbv. intuition discriminate. Qed.
 
+(*tag:compiletimecode*)
 Definition stack_size_in_bytes: Z := 2 ^ 11.
 
 Definition ml: MemoryLayout :=
   End2EndPipeline.ml (mem_ok := @SortedListWord.ok 32 word word_ok Init.Byte.byte)
                      instrMemSizeLg memSizeLg stack_size_in_bytes.
 
+(*tag:test*)
 Remark this_is_the_value_of_ml: ml = {|
   MemoryLayout.code_start    := word.of_Z 0;
   MemoryLayout.code_pastend  := word.of_Z (2 ^ 12);
@@ -43,8 +48,10 @@ Remark this_is_the_value_of_ml: ml = {|
 |}.
 Proof. reflexivity. Qed.
 
+(*tag:compiletimecode*)
 Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 
+(*tag:spec*)
 Definition spec: ProgramSpec := {|
   datamem_start := ml.(heap_start);
   datamem_pastend := ml.(heap_pastend);
@@ -60,6 +67,7 @@ Proof.
   constructor; try reflexivity; try (cbv; discriminate).
 Qed.
 
+(*tag:importboilerplate*)
 Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                                      (Z.to_nat memSizeLg)): Kami.Syntax.Modules :=
   p4mm instrMemSizeLg _ memInit instrMemSizeLg_bounds.
@@ -90,6 +98,7 @@ Local Definition parameters_match :
 
 Open Scope string_scope.
 
+(*tag:code*)
 (* note: this function is totally redundant now *)
 (* I spent an hour trying to short-circuit it, but failed because loop is not redundant, and loop is not in the enviroenment in which lightbulb_init is proven, and Pipeline wants init proven in the extended environment that includes loop *)
 Definition init :=
@@ -103,6 +112,7 @@ Definition loop :=
 Definition funimplsList := init :: loop :: lightbulb.function_impls.
 Definition prog := map.of_list funimplsList.
 
+(*tag:compiletimecode*)
 Definition lightbulb_insts_unevaluated:
   option (list Decode.Instruction * FlatToRiscvDef.FlatToRiscvDef.funname_env Z) :=
   ToplevelLoop.compile_prog ml prog.
@@ -128,6 +138,7 @@ Definition compilation_result:
   ToplevelLoop.compile_prog ml prog = Some (lightbulb_insts, function_positions).
 Proof. reflexivity. Qed.
 
+(*tag:test*)
 Module PrintProgram.
   Import riscv.Utility.InstructionNotations.
   Import bedrock2.NotationsCustomEntry.
@@ -147,6 +158,7 @@ Module PrintProgram.
   Unset Printing Width.
 End PrintProgram.
 
+(*tag:lemma*)
 Lemma iohi_to_iolo: forall ioh (iomid: list RiscvMachine.LogItem),
     Forall2 SPI.mmio_event_abstraction_relation ioh iomid ->
     exists iolo : list KamiRiscvStep.Event, KamiRiscvStep.traces_related iolo iomid.

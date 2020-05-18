@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
@@ -46,6 +47,7 @@ Require Import compiler.ExprImpEventLoopSpec.
 
 Local Open Scope Z_scope.
 
+(*tag:lists*)
 (* TODO move to coqutil *)
 Module List. Section WithA.
   Context {A : Type}.
@@ -65,6 +67,7 @@ Module List. Section WithA.
     - reflexivity.
     - simpl. destruct len; simpl; f_equal; auto.
   Qed.
+(*tag:importboilerplate*)
 
 End WithA. End List.
 
@@ -75,6 +78,7 @@ refine (@KamiRiscvWordProperties.kami_word_riscv_ok 5 _ _).
 all: cbv; congruence.
 Qed.
 
+(*tag:lemma*)
 (* TODO these definitions should be in KamiRiscv.v: *)
 
 Definition get_kamiMemInit{memSizeLg: Z}
@@ -87,6 +91,7 @@ Definition kami_mem_contains_bytes(bs: list Coq.Init.Byte.byte){memSizeLg}(from:
            (mem: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg)): Prop :=
   List.map (get_kamiMemInit mem) (seq 0 (List.length bs)) = bs.
 
+(*tag:importboilerplate*)
 Section Connect.
 
   Context (instrMemSizeLg memSizeLg stack_size_in_bytes: Z).
@@ -96,6 +101,7 @@ Section Connect.
           {mem: map.map (KamiWord.word 32) byte}
           {mem_ok: map.ok mem}.
 
+  (*tag:lemma*)
   Instance mmio_params: MMIO.parameters.
     econstructor; try typeclasses eauto.
     - exact (@KamiWord.wordWok _ (or_introl eq_refl)).
@@ -113,6 +119,7 @@ Section Connect.
     stack_pastend := word.of_Z (2 ^ memSizeLg);
   |}.
 
+  (*tag:importboilerplate*)
   Context (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                                (Z.to_nat memSizeLg)).
 
@@ -126,6 +133,7 @@ Section Connect.
                    (proj2 instrMemSizeLg_bounds)
                    memInit.
 
+  (*tag:workaround*)
   Add Ring wring : (word.ring_theory (word := Utility.word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := Utility.word)),
@@ -136,11 +144,13 @@ Section Connect.
                               MetricRiscvMachine).
   Abort.
 
+  (*tag:compiletimecode*)
   Instance pipeline_params: PipelineWithRename.Pipeline.parameters := {|
     Pipeline.ext_spec := FE310CSemantics.ext_spec;
     Pipeline.compile_ext_call := FlatToRiscvDef.compile_ext_call;
   |}.
 
+  (*tag:lemma*)
   Existing Instance MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives.
 
   Instance pipeline_assumptions: @PipelineWithRename.Pipeline.assumptions pipeline_params.
@@ -178,6 +188,7 @@ Section Connect.
       states_related (m, t) m' -> traces_related t m'.(getLog).
   Proof. intros. inversion H. simpl. assumption. Qed.
 
+  (*tag:workaround*)
   (* for debugging f_equal *)
   Lemma cong_app: forall {A B: Type} (f f': A -> B) (a a': A),
       f = f' ->
@@ -185,6 +196,7 @@ Section Connect.
       f a = f' a'.
   Proof. intros. congruence. Qed.
 
+  (*tag:importboilerplate*)
   (* to tell that we want string names Semantics.params, because there's also
      Z names Semantics.params lingering around *)
   Notation strname_sem := (FlattenExpr.mk_Semantics_params
@@ -197,6 +209,7 @@ Section Connect.
   Hypothesis stack_size_div: stack_size_in_bytes mod bytes_per_word = 0.
   Hypothesis stack_size_bounds: 0 <= stack_size_in_bytes <= 2 ^ memSizeLg - instrMemSizeBytes.
 
+  (*tag:bitvector*)
   Lemma mlOk: MemoryLayoutOk ml.
   Proof.
     constructor;
@@ -236,6 +249,7 @@ Section Connect.
       }
       rewrite ?Z.mod_small; try split; try apply Z.pow_nonneg; try blia.
     Qed.
+    (*tag:lemma*)
 
   Hypothesis funimplsList_NoDup: NoDup (List.map fst funimplsList).
 
@@ -272,24 +286,29 @@ Section Connect.
     induction len; intros.
     - cbv. auto.
     - unfold PipelineWithRename.ptsto_bytes, riscvMemInit_values in *.
+      (*tag:workaround*)
       cbn [seq map array map.of_list].
       (* PARAMRECORDS *)
       change (KamiWord.word 32) with (@Utility.word Words32).
       match goal with
       | |- context [map.put ?m ?k ?v] => pose proof map.put_putmany_commute k v m map.empty as P
       end.
+      (*tag:lemma*)
       rewrite map.putmany_empty_r in P.
       rewrite P. clear P.
       eapply sep_comm.
       unfold sep.
       do 2 eexists.
       ssplit; cycle 1.
+      (*tag:workaround*)
       + specialize (IHlen (S from)).
         replace (Z.of_nat (S from)) with (Z.of_nat from + 1) in IHlen by blia.
         (* PARAMRECORDS *)
         change (KamiWord.word 32) with (@Utility.word Words32) in IHlen.
+        (*tag:bitvector*)
         rewrite word.ring_morph_add in IHlen.
         apply IHlen. blia.
+        (*tag:maps*)
       + unfold ptsto. reflexivity.
       + unfold map.split, map.disjoint. split; [reflexivity|].
         intros.
@@ -307,6 +326,7 @@ Section Connect.
           unfold fst in C.
           apply in_map_iff in C.
           destruct C as [ from' [E C] ].
+          (*tag:bitvector*)
           apply (f_equal word.unsigned) in E.
           do 2 rewrite word.unsigned_of_Z in E.
           unfold word.wrap in E.
@@ -325,6 +345,7 @@ Section Connect.
           blia.
   Qed.
 
+  (*tag:lemma*)
   Lemma riscvMemInit_to_seplog:
     (PipelineWithRename.ptsto_bytes (word.of_Z 0) riscvMemInit_all_values)
     (riscvMemInit memSizeLg memInit).
@@ -332,6 +353,7 @@ Section Connect.
     intros.
     unfold riscvMemInit_all_values, riscvMemInit.
     pose proof (riscvMemInit_to_seplog_aux (Z.to_nat (2 ^ memSizeLg)) 0) as P.
+    (*tag:bitvector*)
     change (Z.of_nat 0) with 0 in *.
     (* TODO could adapt riscvMemInit definition to make this not needed *)
     replace (2 ^ BinIntDef.Z.to_nat memSizeLg)%nat with (Z.to_nat (2 ^ memSizeLg)).
@@ -341,6 +363,7 @@ Section Connect.
     - rewrite N_Z_nat_conversions.Z2Nat.inj_pow; try blia. reflexivity.
   Qed.
 
+  (*tag:lemma*)
   (* end to end, but still generic over the program *)
   Lemma end2end:
     (* Assumptions on the program logic level: *)
@@ -433,6 +456,7 @@ Section Connect.
         unfold code_start, code_pastend, heap_start, heap_pastend, stack_start, stack_pastend, ml in *.
         assert (Bounds_instrs: 0 <= Z.of_nat (Datatypes.length (instrencode instrs))) by blia.
         assert (Bounds_unused_imem: Z.of_nat (Datatypes.length (instrencode instrs)) <= instrMemSizeBytes). {
+          (*tag:bitvector*)
           move L at bottom.
           rewrite ?word.unsigned_of_Z in L.
           change (word.wrap 0) with 0 in L.
@@ -448,6 +472,7 @@ Section Connect.
           change width with 32.
           apply Z.pow_lt_mono_r; try blia.
         }
+        (*tag:lemma*)
         assert (Datatypes.length riscvMemInit_all_values = Z.to_nat (2 ^ memSizeLg)). {
           unfold riscvMemInit_all_values.
           rewrite map_length. rewrite seq_length.
@@ -542,6 +567,7 @@ Section Connect.
                    end.
             rewrite ?firstn_length.
             rewrite ?skipn_length.
+            (*tag:bitvector*)
             simpl_word_exprs (@Utility.word_ok (@Words32 mmio_params)).
             f_equal.
             blia.
@@ -555,6 +581,7 @@ Section Connect.
              change Semantics.width with 32 in *.
         all: try (
           Z.div_mod_to_equations;
+          (*tag:workaround*)
           (* COQBUG (performance) https://github.com/coq/coq/issues/10743#issuecomment-530673037
              cond_hyp_factor: *)
           repeat match goal with
@@ -562,14 +589,17 @@ Section Connect.
                    pose proof (fun u : x => conj (H u) (H' u)); clear H H'
                  end;
           blia).
+          (*tag:lemma*)
       + change (word.unsigned (code_start ml)) with 0.
         assert (Hend: code_pastend ml = word.of_Z instrMemSizeBytes) by reflexivity.
+        (*tag:bitvector*)
         setoid_rewrite Hend.
         rewrite word.unsigned_of_Z.
         cbv [word.wrap].
         rewrite Z.mod_small by (split; [apply Z.pow_nonneg; Lia.lia
                                        |apply Z.pow_lt_mono_r; cbn; Lia.lia]).
         assumption.
+        (*tag:lemma*)
       + reflexivity.
       + reflexivity.
       + unfold FlatToRiscvCommon.regs_initialized. intros.

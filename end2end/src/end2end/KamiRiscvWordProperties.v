@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Z.BitOps.
@@ -17,8 +18,10 @@ Section KamiRiscvWord.
 
   Instance kami_word_ok: word.ok (KamiWord.word (2 ^ log2width)) := KamiWord.ok _ width_nonneg.
 
+  (*tag:workaround*)
   Arguments Z.mul: simpl never.
 
+  (*tag:bitvector*)
   Lemma pow_pow_lt: 2 ^ log2width < 2 ^ 2 ^ log2width.
   Proof.
     apply Z.log2_lt_pow2; [Lia.lia|].

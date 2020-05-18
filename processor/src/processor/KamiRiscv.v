@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
@@ -37,6 +38,7 @@ Require Export processor.KamiProc.
 Require Import processor.Consistency.
 Require Import processor.KamiRiscvStep.
 
+(*tag:lists*)
 Lemma get_of_list_not_In:
   forall (key: Type) (key_dec: forall k1 k2: key, {k1 = k2} + {k1 <> k2})
          (value: Type) (map: map.map key value),
@@ -53,12 +55,14 @@ Proof.
     apply IHl; intuition idtac.
 Qed.
 
+(*tag:lists*)
 Lemma alignedXAddrsRange_zero_bound_in:
   forall n a,
     (wordToN a < N.of_nat n)%N -> In a (alignedXAddrsRange 0 n).
 Proof.
   induction n; [Lia.lia|].
   intros.
+  (*tag:bitvector*)
   assert (wordToN a = N.of_nat n \/ wordToN a < N.of_nat n)%N by Lia.lia.
   clear H; destruct H0.
   - unfold alignedXAddrsRange; fold alignedXAddrsRange.
@@ -68,9 +72,11 @@ Proof.
     pose proof (wordToN_bound a); rewrite H in H0.
     rewrite <-wordToN_NToWord_2 with (sz:= Z.to_nat width) (n:= N.of_nat n) by assumption.
     rewrite NToWord_nat, Nnat.Nat2N.id; reflexivity.
+    (*tag:lists*)
   - right; auto.
 Qed.
 
+(*tag:importboilerplate*)
 Section Equiv.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
 
@@ -113,8 +119,10 @@ Section Equiv.
   Local Notation kamiStep :=
     (@kamiStep _ _ Hinstr1 Hinstr2 memInit).
 
+  (*tag:workaround*)
   Arguments Z.add: simpl never.
 
+  (*tag:lemma*)
   Lemma KamiLabelR_unique: forall {klbl t t'},
       KamiLabelR klbl t ->
       KamiLabelR klbl t' ->
@@ -127,12 +135,14 @@ Section Equiv.
     + simpl in *. rewrite H1 in H5.
       apply (f_equal (FMap.M.find "mmioExec"%string)) in H5.
       do 2 rewrite FMap.M.find_add_1 in H5.
+      (*tag:workaround*)
       apply Option.eq_of_eq_Some in H5.
       apply Eqdep.EqdepTheory.inj_pair2 in H5.
       inversion H5; subst; clear H5.
       reflexivity.
   Qed.
 
+  (*tag:lemma*)
   Inductive KamiLabelSeqR: list LabelT -> list Event -> Prop :=
   | KamiSeqNil: KamiLabelSeqR nil nil
   | KamiSeqCons:
@@ -275,6 +285,7 @@ Section Equiv.
     red; intros.
 
     clear -Registers_ok.
+    (*tag:bitvector*)
     pose proof (wordToN_bound w).
     change (NatLib.Npow2 (BinInt.Z.to_nat 5)) with 32%N in H.
     assert (wordToN w = 0 \/ wordToN w = 1 \/ wordToN w = 2 \/ wordToN w = 3 \/
@@ -297,15 +308,18 @@ Section Equiv.
              apply wordToN_inj in H; subst; simpl
          end.
     all: cbv [riscvRegsInit setRegsInit].
+    (*tag:maps*)
     all: repeat rewrite map.get_put_diff by discriminate.
     all: rewrite map.get_put_same.
     all: reflexivity.
+    (*tag:lemma*)
   Qed.
 
   Lemma riscvRegsInit_sound:
     forall reg, 0 < reg < 32 -> map.get riscvRegsInit reg <> None.
   Proof.
     intros.
+    (*tag:bitvector*)
     assert (reg = 1 \/ reg = 2 \/ reg = 3 \/
             reg = 4 \/ reg = 5 \/ reg = 6 \/ reg = 7 \/
             reg = 8 \/ reg = 9 \/ reg = 10 \/ reg = 11 \/
@@ -320,11 +334,13 @@ Section Equiv.
            | H: _ \/ _ |- _ => destruct H
            end.
 
+    (*tag:maps*)
     all: subst.
     all: cbv [riscvRegsInit setRegsInit].
     all: repeat rewrite map.get_put_diff by discriminate.
     all: rewrite map.get_put_same.
     all: discriminate.
+    (*tag:lemma*)
   Qed.
 
   Definition riscvMemInit := map.of_list (List.map
@@ -341,15 +357,18 @@ Section Equiv.
       map.get riscvMemInit addr = None.
   Proof.
     intros.
+    (*tag:lists*)
     apply get_of_list_not_In; [exact (@weq (Z.to_nat width))|assumption|].
 
     intro Hx.
+    (*tag:maps*)
     apply in_map_iff in Hx; destruct Hx as [[addr' v] [? Hx]].
     simpl in H0; subst.
     apply in_map_iff in Hx; destruct Hx as [n [? ?]].
     inversion H0; subst; clear H0.
     apply in_seq in H1; destruct H1 as [_ ?]; simpl in H0.
 
+    (*tag:bitvector*)
     apply Nat2Z.inj_lt in H0.
     rewrite N_Z_nat_conversions.Nat2Z.inj_pow in H0.
     rewrite Z2Nat.id in H0 by Lia.lia.
@@ -367,6 +386,7 @@ Section Equiv.
           eapply Z.lt_le_trans; [eassumption|];
           apply Z.pow_le_mono_r; Lia.lia).
     Lia.lia.
+    (*tag:lemma*)
   Qed.
 
   Lemma mem_related_riscvMemInit : mem_related _ (evalConstT kamiMemInit) riscvMemInit.
@@ -375,6 +395,7 @@ Section Equiv.
     intros addr.
     case (kunsigned addr <? 2 ^ memSizeLg) eqn:H.
     2: { apply riscvMemInit_get_None; assumption. }
+    (*tag:bitvector*)
     assert (#addr < 2 ^ Z.to_nat memSizeLg)%nat.
     { rewrite <-wordToN_to_nat.
       apply Nat2Z.inj_lt.
@@ -382,6 +403,7 @@ Section Equiv.
       rewrite Z2Nat.id by Lia.lia.
       apply Z.ltb_lt; assumption.
     }
+    (*tag:lists*)
     erewrite Properties.map.get_of_list_In_NoDup; trivial.
     1: eapply NoDup_nth_error; intros i j ?.
     2: eapply (nth_error_In _ (wordToNat addr)).
@@ -396,6 +418,7 @@ Section Equiv.
       { rewrite (@map_nth_error _ _ _ _ _ j).
         2: etransitivity; [eapply nth_error_nth'|];
             rewrite ?seq_length, ?seq_nth; trivial.
+            (*tag:bitvector*)
         intros HX.
         injection HX; clear HX; intros HX.
         eapply (f_equal (@wordToZ _)) in HX.
@@ -432,6 +455,7 @@ Section Equiv.
     }
     Unshelve. all: exact O.
   Qed.
+  (*tag:lemma*)
 
   Lemma states_related_init:
     states_related
@@ -499,6 +523,7 @@ Section Equiv.
     cbv [disjoint of_list elem_of]; intros.
     pose proof (mmio_mem_disjoint _ Hkmemdisj x).
     destruct (Z.ltb_spec (kunsigned x) (2 ^ memSizeLg)).
+    (*tag:bitvector*)
     - right; intro Hx; auto.
     - left; intro Hx.
       apply kamiXAddrs_isXAddr1_bound in Hx.
@@ -509,6 +534,7 @@ Section Equiv.
       cbv [kunsigned] in *.
       Lia.lia.
   Qed.
+  (*tag:lemma*)
 
   Lemma riscv_to_kamiImplProcessor:
     forall (traceProp: list Event -> Prop)

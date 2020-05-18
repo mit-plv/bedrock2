@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.Syntax bedrock2.BasicCSyntax bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
@@ -19,18 +20,23 @@ Instance word_ok: word.ok word := KamiWord.ok 32 eq_refl.
 
 Local Existing Instance SortedListString.ok.
 
+(*tag:workaround*)
 Instance word_riscv_ok: word.riscv_ok word.
 refine (@kami_word_riscv_ok 5 _ _).
 all: cbv; congruence.
 Qed.
 
+(*tag:lemma*)
 Instance FE310CSemanticsParameters : FE310CSemantics.parameters.parameters := {|
   FE310CSemantics.parameters.word := word;
   FE310CSemantics.parameters.mem := SortedListWord.map _ _;
+  (*tag:workaround*)
   (* FIXME: we shouldn't need the next line *)
   FE310CSemantics.parameters.mem_ok := SortedListWord.ok _ _;
+  (*tag:lemma*)
 |}.
 
+(*tag:workaround*)
 Goal True.
   pose (_: Semantics.parameters).
 Abort.

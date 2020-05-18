@@ -22,6 +22,14 @@ count "   - control flow lemmas" WeakestPreconditionProperties.v TailRecursion.v
 count "   - heap lemmas" ptsto_bytes.v Scalars.v Array.v Memory.v
 count "   - proof automation" ProgramLogic.v Map/SeparationLogic.v AbsintWordToZ.v string2ident.v Markers.v
 cd ../../..
+
+cd processor/src/processor
+count "- decode & exec" KamiRiscvStep.v KamiWord.v ../../../end2end/src/end2end/KamiRiscvWordProperties.v
+count "- top-level simulation" KamiRiscv.v KamiProc.v Consistency.v
+cd ../../..
+
+count "glue proof" end2end/src/end2end/Bedrock2SemanticsForKami.v end2end/src/end2end/End2EndPipeline.v end2end/src/end2end/End2EndLightbulb.v
+
 exit 0
 
 cd compiler/src/compiler
@@ -38,12 +46,3 @@ cd ../../..
 count "- risc-v spec (not discussed here)" deps/riscv-coq/src/riscv/Spec/*.v deps/riscv-coq/src/riscv/Platform/Memory.v
 count "- MMIO \"platform\" model & lemmas" deps/riscv-coq/src/riscv/Platform/FE310ExtSpec.v deps/riscv-coq/src/riscv/Platform/MinimalMMIO.v deps/riscv-coq/src/riscv/Platform/Sane.v
 count "- i-cache lemmas" deps/riscv-coq/src/riscv/Platform/RiscvMachine.v
-
-cd processor/src/processor
-count "- fetch" KamiProc.v KamiRiscv.v
-count "- decode & exec" KamiRiscvStep.v KamiWord.v DecExecOk.v ../../../end2end/src/end2end/KamiRiscvWordProperties.v
-count "- top-level simulation" KamiProc.v KamiRiscv.v
-cd ../../..
-
-count "glue proof" end2end/src/end2end/Bedrock2SemanticsForKami.v end2end/src/end2end/End2EndPipeline.v end2end/src/end2end/End2EndLightbulb.v
-count "utilities we wish were in Coq standard library" deps/coqutil

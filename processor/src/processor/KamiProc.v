@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -30,6 +31,7 @@ Section Parametrized.
   Definition pprocInl := scmmInl Hdb fetch dec exec ammio procInit memInit.
   Definition pproc := projT1 pprocInl.
 
+  (*tag:lemma*)
   (** The auxiliary hardware state; this is for manipulating hardware state
    * without knowing much about Kami states.
    *)
@@ -62,13 +64,16 @@ Section Parametrized.
             mem := evalConstT memInit |}.
   Proof.
     simpl; unfold pRegsToT.
+    (*tag:workaround*)
     Opaque decKind.
+    (*tag:lemma*)
     simpl.
     kregmap_red.
     Transparent decKind.
     reflexivity.
   Qed.
 
+  (*tag:automation*)
   Ltac kinvert_more :=
     kinvert;
     try (repeat
@@ -81,6 +86,7 @@ Section Parametrized.
   Definition PgmInitNotMMIO :=
     Kami.Ex.SCMMInv.PgmInitNotMMIO fetch ammio.
 
+  (*tag:workaround*)
   Lemma invert_Kami_pgmInit:
     forall (Hi: PgmInitNotMMIO) km1 kt1 kupd klbl,
       pRegsToT km1 = Some kt1 ->
@@ -219,10 +225,12 @@ Section Parametrized.
 
 End Parametrized.
 
+(*tag:lemma*)
 Definition width: Z := 32.
 Definition width_cases: width = 32 \/ width = 64 := or_introl eq_refl.
 Local Notation nwidth := (Z.to_nat width).
 
+(*tag:importboilerplate*)
 Section PerInstAddr.
   Context {instrMemSizeLg memSizeLg: Z}.
   Hypothesis (Hiaddr: 3 <= instrMemSizeLg <= 30).
@@ -230,6 +238,7 @@ Section PerInstAddr.
   Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
   Local Notation nmemSizeLg := (Z.to_nat memSizeLg).
 
+  (*tag:lemma*)
   Lemma width_inst_valid:
     nwidth = (2 + ninstrMemSizeLg + (nwidth - (2 + ninstrMemSizeLg)))%nat.
   Proof.

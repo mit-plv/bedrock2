@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith Coq.ZArith.BinIntDef Coq.ZArith.BinInt coqutil.Z.Lia.
 Require Import coqutil.sanity coqutil.Tactics.forward coqutil.Word.Interface. Import word.
 Require Import Kami.Lib.Word.
@@ -9,6 +10,7 @@ Local Open Scope Z_scope.
 
 Section KamiWordFacts.
 
+  (*tag:bitvector*)
   Lemma wordToN_split2 a b w :
     wordToN (@split2 a b w) = BinNat.N.div (wordToN w) (NatLib.Npow2 a).
   Proof.
@@ -240,6 +242,7 @@ Section KamiWordFacts.
     reflexivity.
   Qed.
 
+  (*tag:importboilerplate*)
 End KamiWordFacts.
 
 Section WithWidth.
@@ -252,6 +255,7 @@ Section WithWidth.
   Definition ksigned: kword -> Z := @wordToZ sz.
   Definition kofZ: Z -> kword := ZToWord sz.
 
+  (*tag:lemma*)
   Definition riscvZdivu(x y: Z): Z :=
     if y =? 0 then 2 ^ width - 1 else Z.div x y.
 
@@ -306,9 +310,11 @@ Section WithWidth.
 
   |}.
 
+  (*tag:importboilerplate*)
   Section __.
     Import BinNat Word. Local Open Scope N_scope.
 
+    (*tag:bitvector*)
     Lemma wordToN_WS b n w :
       wordToN (@WS b n w) = 2*wordToN w + N.b2n b.
     Proof.
@@ -569,6 +575,7 @@ Section WithWidth.
         case (Z.ltb_spec (wordToZ x) (wordToZ y)) as [G|G];
         trivial; Lia.lia. }
   Qed.
+  (*tag:importboilerplate*)
 End WithWidth.
 Arguments word : clear implicits.
 Arguments ok : clear implicits.

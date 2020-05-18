@@ -46,9 +46,8 @@ count "- i-cache lemmas" deps/riscv-coq/src/riscv/Platform/RiscvMachine.v
 
 cd processor/src/processor
 printf "processor rv32im proof:\n"
-count "- fetch" KamiProc.v KamiRiscv.v
 count "- decode & exec" KamiRiscvStep.v KamiWord.v DecExecOk.v ../../../end2end/src/end2end/KamiRiscvWordProperties.v
-count "- top-level simulation" KamiProc.v KamiRiscv.v
+count "- top-level simulation" KamiRiscv.v KamiProc.v Consistency.v
 printf "%s\n" "- pipeline correctess proof is described in Kami ICFP paper (repo weighs 50k lines?)"
 cd ../../..
 printf "%s " "- HDL specification" ; coqwc deps/kami/Kami/Semantics.v | tail -1 | cut -d ' ' -f7

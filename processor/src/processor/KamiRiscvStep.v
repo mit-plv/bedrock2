@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import String.
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
@@ -41,6 +42,7 @@ Local Open Scope Z_scope.
 Section WordZ.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
 
+  (*tag:bitvector*)
   Lemma bitSlice_range_ex:
     forall z n m,
       0 <= n <= m -> 0 <= bitSlice z n m < 2 ^ (m - n).
@@ -336,9 +338,11 @@ Section WordZ.
     reflexivity.
   Qed.
 
+  (*tag:workaround*)
   Instance kword32: coqutil.Word.Interface.word 32 := KamiWord.word 32.
   Instance kword32_ok: word.ok kword32. eapply KamiWord.ok. reflexivity. Qed.
 
+  (*tag:bitvector*)
   Lemma signExtend_word_of_Z_nop:
     forall z, word.of_Z (width:= 32) (signExtend 32 z) = word.of_Z (width:= 32) z.
   Proof.
@@ -483,6 +487,7 @@ Section WordZ.
     reflexivity.
   Qed.
 
+  (*tag:importboilerplate*)
 End WordZ.
 
 Section Equiv.
@@ -538,6 +543,7 @@ Section Equiv.
 
   (** * Relations between Kami and riscv-coq *)
 
+  (*tag:lemma*)
   Definition signedByteTupleToReg{n: nat}(v: HList.tuple byte n): word :=
     word.of_Z (BitOps.signExtend (8 * Z.of_nat n) (LittleEndian.combine n v)).
 
@@ -664,6 +670,7 @@ Section Equiv.
       + eapply IHt'; eassumption.
   Qed.
 
+  (*tag:bitvector*)
   Lemma is_mmio_spec:
     forall a, evalExpr (isMMIO type a) = true <-> 2 ^ memSizeLg <= kunsigned a.
   Proof.
@@ -735,6 +742,7 @@ Section Equiv.
     destruct H as [|[|[|[|]]]]; destruct H; Lia.lia.
   Qed.
 
+  (*tag:lemma*)
   Lemma pgm_init_not_mmio:
     Kami.Ex.SCMMInv.PgmInitNotMMIO rv32Fetch (kami_AbsMMIO (Z.to_N memSizeLg)).
   Proof.
@@ -744,6 +752,7 @@ Section Equiv.
     apply Z.le_ngt in Hmmio.
     elim Hmmio; clear Hmmio.
 
+    (*tag:bitvector*)
     cbv [toAddr rv32Fetch rv32ToAddr eq_rect_r].
     rewrite evalExpr_bit_eq_rect.
     unfold kunsigned.
@@ -768,6 +777,7 @@ Section Equiv.
     - apply Z.pow_lt_mono_r; Lia.lia.
   Qed.
 
+  (*tag:lemma*)
   Lemma kamiStep_sound_case_pgmInit:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
@@ -848,6 +858,7 @@ Section Equiv.
       reflexivity.
   Qed.
 
+  (*tag:bitvector*)
   Lemma nat_power_of_two_boundary_shrink:
     forall n z,
       - BinInt.Z.of_nat (Nat.pow 2 n) <= z < BinInt.Z.of_nat (Nat.pow 2 n) ->
@@ -910,6 +921,7 @@ Section Equiv.
     assumption.
   Qed.
 
+  (*tag:lemma*)
   Lemma mem_related_load_bytes_Some:
     forall kmem rmem,
       mem_related memSizeLg kmem rmem ->
@@ -931,6 +943,7 @@ Section Equiv.
     assumption.
   Qed.
 
+  (*tag:bitvector*)
   Lemma evalZeroExtendTrunc_bound_eq:
     forall (a b: kword width),
       kunsigned a < 2 ^ memSizeLg ->
@@ -957,6 +970,7 @@ Section Equiv.
     assumption.
   Qed.
 
+  (*tag:lemma*)
   Lemma mem_related_put:
     forall kmem rmem,
       mem_related memSizeLg kmem rmem ->
@@ -982,6 +996,7 @@ Section Equiv.
       apply evalZeroExtendTrunc_bound_eq; assumption.
   Qed.
 
+  (*tag:bitvector*)
   Lemma combineBytes_word_removeXAddr:
     forall xaddrs a ra,
       kunsigned a < 2 ^ memSizeLg ->
@@ -1027,6 +1042,7 @@ Section Equiv.
     reflexivity.
   Qed.
 
+  (*tag:lemma*)
   Lemma RiscvXAddrsSafe_removeXAddr_write_ok:
     forall kmemi kmemd xaddrs,
       RiscvXAddrsSafe kmemi kmemd xaddrs ->
@@ -1048,11 +1064,13 @@ Section Equiv.
     specialize (H _ H2); clear H2; destruct H as [? ?].
     split; [assumption|].
 
+    (*tag:bitvector*)
     assert (BinInt.Z.of_N (NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg)) < 2 ^ memSizeLg).
     { rewrite NatLib.Z_of_N_Npow2.
       apply Z.pow_lt_mono_r; Lia.lia.
     }
 
+    (*tag:lemma*)
     intros.
     specialize (H2 H4 _ H5).
     rewrite <-H2.
@@ -1080,6 +1098,7 @@ Section Equiv.
     red; auto.
   Qed.
 
+  (*tag:automation*)
   (** * Utility Ltacs *)
 
   Ltac kami_step_case_empty :=
@@ -1100,6 +1119,7 @@ Section Equiv.
        | free.act ?a ?k =>
          let pf := constr:(HR : free.interp interp_action ucode state post) in
          (let HRR := fresh in pose proof pf as HRR; clear HR; rename HRR into HR);
+         (*tag:workaround*)
          remember k as kV;
          (* Note:
             conversion is slow if we don't remember k.
@@ -1115,6 +1135,7 @@ Section Equiv.
                      getRegs getPc getNextPc getMem getXAddrs getLog]
          in (interp_action a state (fun x state' => mcomp_sat (kV x) state' post)) in
              change TR in HR; subst kV
+         (*tag:automation*)
        | free.ret ?v => change (post v state) in HR
        | _ => idtac
        end).
@@ -1127,6 +1148,7 @@ Section Equiv.
              end in
     destruct c; try (exfalso; contradiction); [].
 
+  (*tag:workaround*)
   Ltac zcstP x :=
     let x := rdelta x in
     let t := isZcst x in
@@ -1158,9 +1180,11 @@ Section Equiv.
              change e
            end.
 
+  (*tag:automation*)
   (* kitchen sink goal simplification? *)
   Ltac t  :=
     match goal with
+    (*tag:workaround*)
     | H : ?LHS = let x := ?v in ?C |- _ =>
         change (let x := v in LHS = C) in H
     | H := let x := ?v in @?C x |- _ =>
@@ -1180,7 +1204,9 @@ Section Equiv.
         change e in H
     | _ => progress eval2 Z.add zcstP zcstP
     | _ => progress eval2 Z.eqb zcstP zcstP
+    (*tag:automation*)
     | H: ?t = ?t -> _ |- _ => specialize (H eq_refl)
+    | H : ?LHS = let x := ?v in ?C |- _ =>
     | H: mcomp_sat _ _ _ |- _ => mcomp_step_in H
     | H: exists _, _ |- _ => destruct H
     | H: _ /\ _ |- _ => destruct H
@@ -1190,12 +1216,14 @@ Section Equiv.
   (* simplification for riscv-coq semantics (execution) *)
   Ltac r :=
     match goal with
+    (*tag:workaround*)
     | [H: context G [let x := ?y in @?z x] |- _] =>
       let x' := fresh x in
       pose y as x';
       let zy := eval cbv beta in (z x') in
       let h' := context G [zy] in
       change h' in H
+    (*tag:automation*)
     | [H: Memory.load_bytes _ _ _ = Some _, G: context [Memory.load_bytes] |- _] =>
       rewrite H in G
     | _ => (* the below tactic should precede evaluation for [mcomp_sat] *)
@@ -1219,6 +1247,7 @@ Section Equiv.
 
   Ltac rt := repeat (r || t).
 
+  (*tag:bitvector*)
   Ltac simpl_bit_combine_Z :=
     repeat
       match goal with
@@ -1240,6 +1269,7 @@ Section Equiv.
            | _ => repeat rewrite ?Z.lor_0_r, ?Z.shiftl_lor, ?Z.shiftl_shiftl by Lia.lia
            end.
 
+  (*tag:automation*)
   Ltac prove_KamiLabelR_silent :=
     split; [|split];
     [eapply KamiSilent; reflexivity| |eassumption].
@@ -1378,6 +1408,7 @@ Section Equiv.
           destruct H as (rinst & ? & ?)
         end.
 
+  (*tag:workaround*)
   Ltac kami_cbn_all :=
     cbn [evalExpr evalUniBool evalBinBool evalBinBit
                   evalConstT getDefaultConst isEq Data BitsPerByte Nat.mul Nat.add Nat.sub
@@ -1407,9 +1438,11 @@ Section Equiv.
     assert (Ht: t = tc) by reflexivity;
     rewrite Ht in H; clear Ht.
 
+  (*tag:bitvector*)
   Ltac weq_to_Zeqb :=
     (* -- convert [weq] to [Z.eqb] in Kami decoding/execution *)
     (** Heads-up: COQBUG(rewrite pattern matching on if/match is broken
+    (*tag:workaround*)
      * due to "hidden branch types") *)
     repeat match goal with
            | |- context G [if ?x then ?a else ?b] =>
@@ -1431,6 +1464,7 @@ Section Equiv.
            end;
     repeat rewrite ?sumbool_rect_bool_weq, <-?unsigned_eqb;
     cbv [bool_rect] in *;
+    (*tag:bitvector*)
     (* -- some more word-to-Z conversions *)
     progress
       repeat (match goal with
@@ -1460,6 +1494,7 @@ Section Equiv.
                 change e in H
               end).
 
+  (*tag:automation*)
   Ltac dest_Zeqb :=
     progress
       repeat match goal with
@@ -1480,6 +1515,7 @@ Section Equiv.
              | [H : context G [if (_ && _ && Z.eqb ?x ?y)%bool then _ else _] |- _] =>
                destruct (Z.eqb_spec x y)
 
+               (*tag:workaround*)
              | [H: ?x = ?a, G: ?x = ?b |- _] =>
                let aa := eval cbv in a in
                let bb := eval cbv in b in
@@ -1497,6 +1533,7 @@ Section Equiv.
                clear G
              end.
 
+  (*tag:bitvector*)
   Ltac simpl_bit_manip :=
     cbv [evalUniBit] in *;
     repeat match goal with
@@ -1546,6 +1583,7 @@ Section Equiv.
              change (Z.of_N (@wordToN w x)) with (@kunsigned 32 x) in H
            end.
 
+  (*tag:automation*)
   Ltac eval_decode :=
     idtac "KamiRiscv: evaluating [decode] in riscv-coq; this might take several minutes...";
     let dec := fresh "dec" in
@@ -1560,6 +1598,7 @@ Section Equiv.
       end;
     repeat
       (match goal with
+                             (*tag:workaround*)
        | _ => progress cbn iota beta delta
                        [iset andb
                              Z.gtb Z.eqb Pos.eqb
@@ -1568,13 +1607,16 @@ Section Equiv.
                              Datatypes.length nth
                              (* grep Definition ./deps/riscv-coq/src/riscv/Spec/Decode.v | cut -d' ' -f2 | sort | uniq | tr '\n' ' ' ; echo *)
                              bitwidth decode FPRegister funct12_EBREAK funct12_ECALL funct12_MRET funct12_SRET funct12_URET funct12_WFI funct2_FMADD_S funct3_ADD funct3_ADDI funct3_ADDIW funct3_ADDW funct3_AMOD funct3_AMOW funct3_AND funct3_ANDI funct3_BEQ funct3_BGE funct3_BGEU funct3_BLT funct3_BLTU funct3_BNE funct3_CSRRC funct3_CSRRCI funct3_CSRRS funct3_CSRRSI funct3_CSRRW funct3_CSRRWI funct3_DIV funct3_DIVU funct3_DIVUW funct3_DIVW funct3_FCLASS_S funct3_FENCE funct3_FENCE_I funct3_FEQ_S funct3_FLE_S funct3_FLT_S funct3_FLW funct3_FMAX_S funct3_FMIN_S funct3_FMV_X_W funct3_FSGNJN_S funct3_FSGNJ_S funct3_FSGNJX_S funct3_FSW funct3_LB funct3_LBU funct3_LD funct3_LH funct3_LHU funct3_LW funct3_LWU funct3_MUL funct3_MULH funct3_MULHSU funct3_MULHU funct3_MULW funct3_OR funct3_ORI funct3_PRIV funct3_REM funct3_REMU funct3_REMUW funct3_REMW funct3_SB funct3_SD funct3_SH funct3_SLL funct3_SLLI funct3_SLLIW funct3_SLLW funct3_SLT funct3_SLTI funct3_SLTIU funct3_SLTU funct3_SRA funct3_SRAI funct3_SRAIW funct3_SRAW funct3_SRL funct3_SRLI funct3_SRLIW funct3_SRLW funct3_SUB funct3_SUBW funct3_SW funct3_XOR funct3_XORI funct5_AMOADD funct5_AMOAND funct5_AMOMAX funct5_AMOMAXU funct5_AMOMIN funct5_AMOMINU funct5_AMOOR funct5_AMOSWAP funct5_AMOXOR funct5_LR funct5_SC funct6_SLLI funct6_SRAI funct6_SRLI funct7_ADD funct7_ADDW funct7_AND funct7_DIV funct7_DIVU funct7_DIVUW funct7_DIVW funct7_FADD_S funct7_FCLASS_S funct7_FCVT_S_W funct7_FCVT_W_S funct7_FDIV_S funct7_FEQ_S funct7_FMIN_S funct7_FMUL_S funct7_FMV_W_X funct7_FMV_X_W funct7_FSGNJ_S funct7_FSQRT_S funct7_FSUB_S funct7_MUL funct7_MULH funct7_MULHSU funct7_MULHU funct7_MULW funct7_OR funct7_REM funct7_REMU funct7_REMUW funct7_REMW funct7_SFENCE_VMA funct7_SLL funct7_SLLIW funct7_SLLW funct7_SLT funct7_SLTU funct7_SRA funct7_SRAIW funct7_SRAW funct7_SRL funct7_SRLIW funct7_SRLW funct7_SUB funct7_SUBW funct7_XOR isValidA isValidA64 isValidCSR isValidF isValidF64 isValidI isValidI64 isValidM isValidM64 Opcode opcode_AMO opcode_AUIPC opcode_BRANCH opcode_JAL opcode_JALR opcode_LOAD opcode_LOAD_FP opcode_LUI opcode_MADD opcode_MISC_MEM opcode_MSUB opcode_NMADD opcode_NMSUB opcode_OP opcode_OP_32 opcode_OP_FP opcode_OP_IMM opcode_OP_IMM_32 opcode_STORE opcode_STORE_FP opcode_SYSTEM Register RoundMode rs2_FCVT_L_S rs2_FCVT_LU_S rs2_FCVT_W_S rs2_FCVT_WU_S supportsA supportsF supportsM] in *
+                             (*tag:automation*)
        | x := @nil _ |- _ => subst x
        | _ => t
        end).
 
   Ltac eval_decodeI decodeI :=
+    (*tag:workaround*)
     try cbn in decodeI;
     cbv [funct12_EBREAK funct12_ECALL funct12_MRET funct12_SRET funct12_URET funct12_WFI funct2_FMADD_S funct3_ADD funct3_ADDI funct3_ADDIW funct3_ADDW funct3_AMOD funct3_AMOW funct3_AND funct3_ANDI funct3_BEQ funct3_BGE funct3_BGEU funct3_BLT funct3_BLTU funct3_BNE funct3_CSRRC funct3_CSRRCI funct3_CSRRS funct3_CSRRSI funct3_CSRRW funct3_CSRRWI funct3_DIV funct3_DIVU funct3_DIVUW funct3_DIVW funct3_FCLASS_S funct3_FENCE funct3_FENCE_I funct3_FEQ_S funct3_FLE_S funct3_FLT_S funct3_FLW funct3_FMAX_S funct3_FMIN_S funct3_FMV_X_W funct3_FSGNJN_S funct3_FSGNJ_S funct3_FSGNJX_S funct3_FSW funct3_LB funct3_LBU funct3_LD funct3_LH funct3_LHU funct3_LW funct3_LWU funct3_MUL funct3_MULH funct3_MULHSU funct3_MULHU funct3_MULW funct3_OR funct3_ORI funct3_PRIV funct3_REM funct3_REMU funct3_REMUW funct3_REMW funct3_SB funct3_SD funct3_SH funct3_SLL funct3_SLLI funct3_SLLIW funct3_SLLW funct3_SLT funct3_SLTI funct3_SLTIU funct3_SLTU funct3_SRA funct3_SRAI funct3_SRAIW funct3_SRAW funct3_SRL funct3_SRLI funct3_SRLIW funct3_SRLW funct3_SUB funct3_SUBW funct3_SW funct3_XOR funct3_XORI funct5_AMOADD funct5_AMOAND funct5_AMOMAX funct5_AMOMAXU funct5_AMOMIN funct5_AMOMINU funct5_AMOOR funct5_AMOSWAP funct5_AMOXOR funct5_LR funct5_SC funct6_SLLI funct6_SRAI funct6_SRLI funct7_ADD funct7_ADDW funct7_AND funct7_DIV funct7_DIVU funct7_DIVUW funct7_DIVW funct7_FADD_S funct7_FCLASS_S funct7_FCVT_S_W funct7_FCVT_W_S funct7_FDIV_S funct7_FEQ_S funct7_FMIN_S funct7_FMUL_S funct7_FMV_W_X funct7_FMV_X_W funct7_FSGNJ_S funct7_FSQRT_S funct7_FSUB_S funct7_MUL funct7_MULH funct7_MULHSU funct7_MULHU funct7_MULW funct7_OR funct7_REM funct7_REMU funct7_REMUW funct7_REMW funct7_SFENCE_VMA funct7_SLL funct7_SLLIW funct7_SLLW funct7_SLT funct7_SLTU funct7_SRA funct7_SRAIW funct7_SRAW funct7_SRL funct7_SRLIW funct7_SRLW funct7_SUB funct7_SUBW funct7_XOR isValidA isValidA64 isValidCSR isValidF isValidF64 isValidI isValidI64 isValidM isValidM64 Opcode opcode_AMO opcode_AUIPC opcode_BRANCH opcode_JAL opcode_JALR opcode_LOAD opcode_LOAD_FP opcode_LUI opcode_MADD opcode_MISC_MEM opcode_MSUB opcode_NMADD opcode_NMSUB opcode_OP opcode_OP_32 opcode_OP_FP opcode_OP_IMM opcode_OP_IMM_32 opcode_STORE opcode_STORE_FP opcode_SYSTEM Register RoundMode rs2_FCVT_L_S rs2_FCVT_LU_S rs2_FCVT_W_S rs2_FCVT_WU_S supportsA supportsF supportsM] in *;
+    (*tag:automation*)
     repeat match goal with
            | [v := context [Z.eqb ?x ?y], H: ?x <> ?y |- _] =>
              destruct (Z.eqb_spec x y) in *; [exfalso; auto; fail|cbn in v]
@@ -1583,6 +1625,7 @@ Section Equiv.
 
   Ltac kami_struct_cbv H :=
     let t := type of H in
+    (*tag:workaround*)
     let tc :=
       eval cbv [ilist.ilist_to_fun_m
                   Notations.icons'
@@ -1591,12 +1634,14 @@ Section Equiv.
                   Notations.fieldAccessor
                   Struct.attrName StringEq.string_eq StringEq.ascii_eq Bool.eqb andb
                   Vector.caseS projT2]
+                  (*tag:automation*)
     in t in
     let Ht := fresh "H" in
     assert (Ht: t = tc) by reflexivity;
     rewrite Ht in H; clear Ht.
 
   Ltac kami_struct_cbv_goal :=
+    (*tag:workaround*)
     cbv [ilist.ilist_to_fun_m
            Notations.icons'
            VectorFacts.Vector_nth_map VectorFacts.Vector_nth_map' Fin.t_rect
@@ -1608,6 +1653,7 @@ Section Equiv.
   (** * Step-consistency lemmas *)
   Arguments isMMIO: simpl never.
 
+  (*tag:lemma*)
   Lemma kamiStep_sound_case_execLd:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
@@ -1674,6 +1720,7 @@ Section Equiv.
       end.
       kami_cbn_hint_func Heqnpc rv32NextPc.
 
+      (*tag:bitvector*)
       weq_to_Zeqb.
 
       (* -- eliminate trivially contradictory cases *)
@@ -1693,6 +1740,7 @@ Section Equiv.
          | context [Z.eqb ?x ?y] =>
            destruct (Z.eqb_spec x y) in e; discriminate
          end.
+      (*tag:lemma*)
 
       (* -- separate out cases of Kami execution *)
       dest_Zeqb.
@@ -1820,6 +1868,7 @@ Section Equiv.
       end.
       kami_cbn_hint_func Heqnpc rv32NextPc.
 
+      (*tag:bitvector*)
       (* -- eliminate trivially contradictory cases *)
       weq_to_Zeqb.
       match type of H15 with
@@ -1845,6 +1894,7 @@ Section Equiv.
       (* -- further simplification *)
       all: simpl_bit_manip.
 
+         (*tag:lemma*)
       (** Evaluation of riscv-coq decode/execute *)
 
       all: eval_decode.
@@ -1894,6 +1944,7 @@ Section Equiv.
       all: prove_states_related.
 
       all: regs_get_red_goal.
+      (*tag:bitvector*)
       all: cbv [int8ToReg int16ToReg uInt8ToReg uInt16ToReg int32ToReg
                           MachineWidth_XLEN word.of_Z word WordsKami wordW KamiWord.word kofZ].
       all: subst v oimm12 rs1.
@@ -1902,6 +1953,7 @@ Section Equiv.
                   ZToReg MachineWidth_XLEN
                   word.add word WordsKami wordW KamiWord.word
                   word.of_Z kofZ] in Hlv;
+                  (*tag:lemma*)
         cbv [Memory.load_bytes] in Hlv;
         cbv [map.getmany_of_tuple
                Memory.footprint PrimitivePair.pair._1 PrimitivePair.pair._2
@@ -1922,6 +1974,7 @@ Section Equiv.
                apply Some_inv in Hlv; subst lv
            end.
 
+           (*tag:bitvector*)
       { (* lb *)
         rewrite split1_combine.
         cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2].
@@ -1998,6 +2051,7 @@ Section Equiv.
       all: idtac "KamiRiscv: [kamiStep_sound_case_execLd] starting the Qed...".
   Time Qed.
 
+  (*tag:lemma*)
   Lemma kamiStep_sound_case_execLdZ:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),
@@ -2055,6 +2109,7 @@ Section Equiv.
       end.
       kami_cbn_hint_func Heqnpc rv32NextPc.
 
+      (*tag:bitvector*)
       weq_to_Zeqb.
 
       (* -- eliminate trivially contradictory cases *)
@@ -2081,6 +2136,7 @@ Section Equiv.
       (* -- further simplification *)
       simpl_bit_manip.
 
+      (*tag:lemma*)
       (** Evaluation of riscv-coq decode/execute *)
       eval_decode.
 
@@ -2121,6 +2177,7 @@ Section Equiv.
                   apply eq_sym, is_mmio_spec in Heqic;
                   eapply mem_related_load_bytes_Some in Hlv; [|eassumption|discriminate];
                   clear -Heqic Hlv;
+      (*tag:bitvector*)
                   cbv [Utility.add
                          ZToReg MachineWidth_XLEN
                          word.add word WordsKami wordW KamiWord.word
@@ -2129,6 +2186,7 @@ Section Equiv.
                   blia
                 end).
 
+      (*tag:lemma*)
       all: match goal with
            | [H: nonmem_load _ _ _ _ _ |- _] =>
              let Hpost := fresh "H" in destruct H as [? [? Hpost]]
@@ -2150,6 +2208,7 @@ Section Equiv.
         regs_get_red_goal.
         constructor; [|assumption].
         apply events_related_mmioLoadEvent.
+        (*tag:bitvector*)
         { rewrite kami_evalZeroExtendTrunc_32.
           rewrite kami_evalSignExtendTrunc by (cbv; Lia.lia).
           rewrite unsigned_split2_as_bitSlice.
@@ -2157,6 +2216,7 @@ Section Equiv.
         }
         { apply signExtend_combine_split_signed. }
       }
+      (*tag:lemma*)
 
     - (** load *)
       block_subst kupd.
@@ -2191,6 +2251,7 @@ Section Equiv.
       end.
       kami_cbn_hint_func Heqnpc rv32NextPc.
 
+      (*tag:bitvector*)
       (* -- eliminate trivially contradictory cases *)
       weq_to_Zeqb.
       match type of H15 with
@@ -2218,6 +2279,7 @@ Section Equiv.
 
       (** Evaluation of riscv-coq decode/execute *)
 
+      (*tag:lemma*)
       all: eval_decode.
       all: try subst opcode; try subst funct3; try subst funct6; try subst funct7;
         try subst shamtHi; try subst shamtHiTest.
@@ -2328,6 +2390,7 @@ Section Equiv.
       end.
       kami_cbn_hint_func Heqnpc rv32NextPc.
 
+      (*tag:bitvector*)
       weq_to_Zeqb.
 
       (* -- eliminate trivially contradictory cases *)
@@ -2350,6 +2413,7 @@ Section Equiv.
       (* -- further simplification *)
       all: simpl_bit_manip.
 
+      (*tag:lemma*)
       (** Evaluation of riscv-coq decode/execute *)
 
       all: eval_decode.
@@ -2414,6 +2478,7 @@ Section Equiv.
         regs_get_red_goal.
         constructor; [|assumption].
         apply events_related_mmioStoreEvent.
+        (*tag:bitvector*)
         { rewrite kami_evalZeroExtendTrunc_32.
           rewrite kami_evalSignExtendTrunc_32.
           rewrite kami_evalSignExtendTrunc by (cbv; Lia.lia).
@@ -2429,6 +2494,7 @@ Section Equiv.
           reflexivity.
         }
       }
+      (*tag:lemma*)
       { intros _.
         do 4 apply RiscvXAddrsSafe_removeXAddr_sound.
         assumption.
@@ -2469,6 +2535,7 @@ Section Equiv.
       end.
       kami_cbn_hint_func Heqnpc rv32NextPc.
 
+      (*tag:bitvector*)
       (* -- eliminate trivially contradictory cases *)
       weq_to_Zeqb.
       match type of H14 with
@@ -2490,6 +2557,7 @@ Section Equiv.
       (* -- further simplification *)
       all: simpl_bit_manip.
 
+      (*tag:lemma*)
       (** Evaluation of riscv-coq decode/execute *)
 
       all: eval_decode.
@@ -2521,9 +2589,11 @@ Section Equiv.
                  destruct (Memory.store_bytes sz m a v) as [nmem|] eqn:Hnmem
                end.
 
+               (*tag:bitvector*)
       all: rewrite @kunsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat) in *.
       all: simpl_bit_manip.
 
+      (*tag:lemma*)
       all: try match goal with
                | [H: nonmem_store _ _ _ _ _ _ |- _] =>
                  destruct H as [? [[? ?] ?]]; discriminate
@@ -2612,20 +2682,24 @@ Section Equiv.
           destruct_one_match_hyp; [|discriminate].
           assumption.
         }
+        (*tag:bitvector*)
         { cbv [word.unsigned].
           setoid_rewrite <-kunsigned_byte_split1.
           rewrite ?kunsigned_split2_shiftr.
           reflexivity.
+        (*tag:lemma*)
         }
       }
       { (* sw *)
         repeat (apply mem_related_put;
+        (*tag:bitvector*)
                 [| |cbv [word.unsigned];
                     setoid_rewrite <-kunsigned_byte_split1;
                     rewrite ?kunsigned_split2_shiftr;
                     reflexivity]).
         1: assumption.
         all: cbv [word.add word WordsKami wordW KamiWord.word word.of_Z kofZ].
+        (*tag:lemma*)
         all: match goal with
              | [Hmr: mem_related _ _ _ |- _] => clear -Hlv Hmr
              end.
@@ -2756,6 +2830,7 @@ Section Equiv.
     all: eexists _, _.
     all: prove_KamiLabelR_silent.
 
+    (*tag:bitvector*)
     all:
       repeat match goal with
              | H : negb ?x = true |- _ => eapply Bool.negb_true_iff in H
@@ -2764,6 +2839,7 @@ Section Equiv.
              end;
       try (case (Z.eq_dec rd Register0) as [X|_];
            [match goal with H : bitSlice (kunsigned _) 7 12 <> _ |- _ => case (H X) end|]).
+    (*tag:lemma*)
     all: try subst regs; try subst kupd.
 
     (** Proving simulation; solve trivial goals first *)
@@ -2775,6 +2851,7 @@ Section Equiv.
 
     (* -- remaining [pc_related] proofs *)
 
+    (*tag:bitvector*)
     { (* [pc_related_and_valid] for `JAL` *)
       subst newPC jimm20.
       split; [apply AddrAligned_consistent; assumption|].
@@ -2943,6 +3020,7 @@ Section Equiv.
       reflexivity.
     }
 
+    (*tag:lemma*)
     all: idtac "KamiRiscv: [kamiStep_sound_case_execNm] starting the Qed...".
   Time Qed.
 
@@ -3024,6 +3102,7 @@ Section Equiv.
     11: (match type of H15 with (* derived from [rd <> 0] in [execNm] *)
          | (?x =? ?y) = true => destruct (Z.eqb_spec x y) in *; [|discriminate]
          end;
+         (*tag:workaround*)
          subst rd decodeI decodeCSR resultI resultCSR results;
          (* It takes too much time to just use [dest_Zeqb] with [Hdec],
           * thus we manually do case analysis first by destructing `opcode`
@@ -3046,6 +3125,7 @@ Section Equiv.
                   exfalso; remember x; clear -H G;
                   cbv in H; cbv in G; rewrite H in G; inversion G
                 end;
+         (*tag:lemma*)
          repeat rewrite ?Bool.andb_true_l, ?Bool.andb_false_l in Hdec; cbn in Hdec;
          repeat
            match type of Hdec with
@@ -3089,6 +3169,7 @@ Section Equiv.
 
     (* -- remaining [pc_related] proofs *)
 
+    (*tag:bitvector*)
     { (* jal *)
       subst newPC jimm20.
       split; [apply AddrAligned_consistent; assumption|].
@@ -3293,6 +3374,7 @@ Section Equiv.
       destruct (wlt_dec _ _); [|discriminate].
       apply pc_related_plus4; red; eauto.
     }
+    (*tag:lemma*)
 
     all: idtac "KamiRiscv: [kamiStep_sound_case_execNmZ] starting the Qed...".
   Time Qed.
@@ -3332,4 +3414,5 @@ Section Equiv.
     - kinvert_pre; right; eapply kamiStep_sound_case_execNmZ; eauto.
   Qed.
 
+  (*tag:importboilerplate*)
 End Equiv.
