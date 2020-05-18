@@ -1206,7 +1206,6 @@ Section Equiv.
     | _ => progress eval2 Z.eqb zcstP zcstP
     (*tag:automation*)
     | H: ?t = ?t -> _ |- _ => specialize (H eq_refl)
-    | H : ?LHS = let x := ?v in ?C |- _ =>
     | H: mcomp_sat _ _ _ |- _ => mcomp_step_in H
     | H: exists _, _ |- _ => destruct H
     | H: _ /\ _ |- _ => destruct H
