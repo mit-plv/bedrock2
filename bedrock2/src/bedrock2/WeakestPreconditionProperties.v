@@ -22,6 +22,9 @@ Section WeakestPrecondition.
     match goal with x : X |- _ => induction x end;
     intros.
 
+  (*tag:proofsummary*)
+  (* we prove weakening lemmas for all WP definitions in a syntax-directed fashion,
+   * moving from postcondition towars precondition one logical connective at a time. *)
   (*tag:obvious*)
   Global Instance Proper_literal : Proper (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)) WeakestPrecondition.literal.
   Proof. cbv [WeakestPrecondition.literal]; cbv [Proper respectful pointwise_relation Basics.impl]; firstorder idtac. Qed.
@@ -198,7 +201,7 @@ Section WeakestPrecondition.
              | _ => progress cbv [dlet.dlet WeakestPrecondition.dexpr WeakestPrecondition.dexprs WeakestPrecondition.store] in *
              end; eauto.
 
-  (*tag:spec*)
+  (*tag:proof*)
   Lemma expr_sound m l e mc post (H : WeakestPrecondition.expr m l e post)
     : exists v mc', Semantics.eval_expr m l e mc = Some (v, mc') /\ post v.
   (*tag:obvious*)
@@ -245,7 +248,7 @@ Section WeakestPrecondition.
 
   Local Hint Constructors Semantics.exec : core.
   Lemma sound_cmd' e c t m l mc post
-  (*tag:trickyproof*)
+  (*tag:proof*)
         (H:WeakestPrecondition.cmd (semantics_call e) c t m l post)
     : Semantics.exec e c t m l mc (fun t' m' l' mc' => post t' m' l').
   (*tag:obvious*)
@@ -254,7 +257,7 @@ Section WeakestPrecondition.
     { destruct (BinInt.Z.eq_dec (Interface.word.unsigned x) (BinNums.Z0)) as [Hb|Hb]; cycle 1.
       { econstructor; t. }
       { eapply Semantics.exec.if_false; t. } }
-    (*tag:trickyproof*)
+    (*tag:proof*)
     { revert dependent l; revert dependent m; revert dependent t; revert dependent mc; pattern x2.
       eapply (well_founded_ind H); t.
     (*tag:obvious*)
@@ -273,7 +276,7 @@ Section WeakestPrecondition.
     Context fs (E: Semantics.env) (HE: List.Forall (fun '(k, v) => map.get E k = Some v) fs).
     Import coqutil.Tactics.Tactics.
     Lemma sound_call' n t m args post
-      (*tag:spec*)
+      (*tag:proof*)
       (H : WeakestPrecondition.call fs n t m args post)
       : semantics_call E n t m args post.
       (*tag:obvious*)
@@ -295,7 +298,7 @@ Section WeakestPrecondition.
     Qed.
 
     Lemma sound_cmd'' c t m l mc post
-  (*tag:trickyproof*)
+  (*tag:proof*)
       (H : WeakestPrecondition.cmd (WeakestPrecondition.call fs) c t m l post)
       : Semantics.exec E c t m l mc (fun t' m' l' mc' => post t' m' l').
   (*tag:obvious*)
@@ -309,7 +312,7 @@ Section WeakestPrecondition.
   End WithE.
 
   Lemma sound_cmd fs c t m l mc post
-  (*tag:spec*)
+  (*tag:proof*)
     (Hnd : List.NoDup (List.map fst fs))
     (H : WeakestPrecondition.cmd (WeakestPrecondition.call fs) c t m l post)
     : Semantics.exec (map.of_list fs) c t m l mc (fun t' m' l' mc' => post t' m' l').
