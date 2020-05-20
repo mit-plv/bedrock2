@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.rewr.
 Require Import coqutil.Datatypes.PropSet.
@@ -33,10 +34,11 @@ Require Import coqutil.Map.TestLemmas.
 
 Import Utility MetricLogging.
 
-
+(*tag:unrelated*)
 (* indicates that if we were to replace blia by omega, we'd run out of heap, stack, or time *)
 Ltac omega_safe ::= fail.
 
+(*tag:importboilerplate*)
 Section Proofs.
   Context {p: FlatToRiscvCommon.parameters}.
   Context {h: FlatToRiscvCommon.assumptions}.
@@ -48,13 +50,16 @@ Section Proofs.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
 
+  (*tag:proof*)
   Lemma framesize_nonneg: forall argvars resvars body,
       0 <= framelength (argvars, resvars, body).
+  (*tag:obvious*)
   Proof.
     intros. unfold framelength.
     unfold bytes_per_word, Memory.bytes_per. blia.
   Qed.
 
+  (*tag:proof*)
   Lemma fits_stack_nonneg: forall n e s,
       fits_stack n e s ->
       0 <= n.
@@ -62,6 +67,7 @@ Section Proofs.
     induction 1; try blia. pose proof (@framesize_nonneg argnames retnames body). blia.
   Qed.
 
+  (*tag:doc*)
   (* high stack addresses     | stackframe of main             \
                               ...                               \
     g|                        ---                                }- stuffed into R
@@ -75,22 +81,19 @@ Section Proofs.
 
      low stack addresses *)
 
+  (*tag:importboilerplate*)
   Notation fun_pos_env := (@funname_env p Z).
 
-  Ltac cancel_emps_at_indices i j :=
-    lazymatch goal with
-    | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
-      simple refine (cancel_emps_at_indices i j LHS RHS _ _ eq_refl eq_refl _ _);
-      cbn [firstn skipn app hd tl]
-    end.
-
+  (*tag:proof*)
   Lemma functions_expose: forall base rel_positions impls f pos impl,
       map.get rel_positions f = Some pos ->
       map.get impls f = Some impl ->
       iff1 (functions base rel_positions impls)
            (functions base rel_positions (map.remove impls f) *
             program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl))%sep.
-  Proof.
+  (*tag:proofsummary*)
+  Proof. (* using map.fold_remove and the cancel tactic, qed *)
+    (*tag:obvious*)
     intros. unfold functions.
     match goal with
     | |- context[map.fold ?F] => pose proof (map.fold_remove F) as P
@@ -102,6 +105,7 @@ Section Proofs.
     - intros. apply iff1ToEq. cancel.
   Qed.
 
+  (*tag:proof*)
   Lemma modVars_as_list_valid_FlatImp_var: forall (s: stmt Z),
       valid_FlatImp_vars s ->
       Forall valid_FlatImp_var (modVars_as_list Z.eqb s).
@@ -109,8 +113,10 @@ Section Proofs.
     induction s; intros; simpl in *; simp; eauto 10 using @union_Forall.
   Qed.
 
+  (*tag:administrivia*)
   Set Printing Depth 100000.
 
+  (*tag:proof*)
   Ltac tag P ::=
     let __ := lazymatch type of P with
               | @map.rep _ _ _ -> Prop => idtac
@@ -136,6 +142,9 @@ Section Proofs.
     | _ => fail "no recognizable address"
     end.
 
+  (*tag:proofsummary*)
+  (* solve sideconditions using cancelling, first order logic, lia, and rearrange_footpr_subset *)
+  (*tag:obvious*)
   Ltac safe_sidecond :=
     match goal with
     (* proving these equalties with eq_refl will make other goals harder to prove,
@@ -166,6 +175,7 @@ Section Proofs.
                blia
     end.
 
+  (*tag:notations*)
   Declare Scope word_scope.
   Notation "! n" := (word.of_Z n) (at level 0, n at level 0, format "! n") : word_scope.
   Notation "# n" := (Z.of_nat n) (at level 0, n at level 0, format "# n") : word_scope.
@@ -178,6 +188,7 @@ Section Proofs.
 
   Open Scope word_scope.
 
+  (*tag:obvious*)
   Lemma preserve_valid_FlatImp_var_domain_put: forall y z (l: locals),
       valid_FlatImp_var y ->
       (forall x v, map.get l x = Some v -> valid_FlatImp_var x) ->
@@ -190,6 +201,10 @@ Section Proofs.
     * eauto.
   Qed.
 
+  (*tag:proofsummary*)
+  (* after symbolically executing one RISC-V instruction, simplify word expressions, and
+     solve the goals using first order logic, lia, cancellation, and rearrange_footpr_subset *)
+  (*tag:obvious*)
   Ltac run1done :=
     apply runsToDone;
     simpl_MetricRiscvMachine_get_set;
@@ -269,6 +284,7 @@ Section Proofs.
     intro OK. intros. map_solver OK.
   Qed.
 
+  (*tag:library*)
   Lemma pigeonhole{A: Type}{aeqb: A -> A -> bool}{aeqb_sepc: EqDecider aeqb}: forall (l s: list A),
       (* no pigeonhole contains more than one pigeon: *)
       NoDup l ->
@@ -297,11 +313,14 @@ Section Proofs.
         simpl in *. blia.
   Qed.
 
+  (*tag:proof*)
   Lemma NoDup_valid_FlatImp_vars_bound_length: forall xs,
       NoDup xs ->
       Forall valid_FlatImp_var xs ->
       (Datatypes.length xs <= 29)%nat.
-  Proof.
+  (*tag:proofsummary*)
+  Proof. (* using the pigeon hole principle *)
+    (*tag:obvious*)
     intros.
     apply (pigeonhole xs (List.unfoldn Z.succ 29 3) H).
     - intros.
@@ -313,11 +332,13 @@ Section Proofs.
       apply NoDup_nil.
   Qed.
 
+  (*tag:proof*)
   Lemma NoDup_modVars_as_list: forall s,
       NoDup (modVars_as_list Z.eqb s).
   Proof.
-    induction s; simpl; repeat constructor; try (intro C; exact C);
-      try (eapply list_union_preserves_NoDup; eassumption || constructor).
+    induction s; simpl; repeat constructor; try (intro C; exact C); try (eapply list_union_preserves_NoDup;
+    (*tag:obvious*)
+      eassumption || constructor).
   Qed.
 
   Ltac clear_old_sep_hyps :=
@@ -337,6 +358,7 @@ Section Proofs.
     repeat (autounfold with unf_to_array);
     repeat ( rewr getEq_length_load_save_regs in |-* || rewr get_array_rewr_eq in |-* ).
 
+  (*tag:spec*)
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
         compiles_FlatToRiscv_correctly
@@ -344,7 +366,11 @@ Section Proofs.
     (forall s,
         compiles_FlatToRiscv_correctly
           compile_stmt s).
-  Proof.
+  (*tag:proofsummary*)
+  Proof. (* by induction on the FlatImp execution, symbolically executing through concrete
+     RISC-V instructions, and using the IH for lists of abstract instructions (eg a then or else branch),
+     using cancellation, bitvector reasoning, lia, and firstorder for the sideconditions. *)
+    (*tag:obvious*)
     intros compile_ext_call_correct.
     unfold compiles_FlatToRiscv_correctly.
     induction 1; intros; unfold goodMachine in *;
@@ -1260,7 +1286,9 @@ Section Proofs.
     + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
              middle_regs into lL.
 
-      (*
+      (*tag:proofsummary*)
+      (* The following list of lemmas and about that much helper code would probably be required
+         even in a near-perfect proof assistant:
 
          Summary of what happened in FlatImp:
 
@@ -1291,6 +1319,7 @@ Section Proofs.
          load result values from stack    load_regs_correct       middle_regs3
        *)
 
+      (*tag:obvious*)
       lazymatch goal with
       | H: map.putmany_of_list_zip _ _ _ = Some middle_regs3 |- _ =>
         rename H into P; move P at bottom
@@ -1686,6 +1715,7 @@ Section Proofs.
     all: repeat (exact Z0 || assumption || constructor).
   Qed. (* <-- takes a while *)
 
+(*tag:administrivia*)
 End Proofs.
 
 Ltac omega_safe ::= idtac.
