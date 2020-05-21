@@ -22,7 +22,9 @@ Section bindcmd.
     end.
 End bindcmd.
 
+(*tag:unrelated*)
 (* TODO: use a deduplicating set instead of a list *)
+(*tag:workaround*)
 Fixpoint callees (c : Syntax.cmd) : list String.string :=
   match c with
   | cmd.cond _ c1 c2 | cmd.seq c1 c2 => callees c1 ++ callees c2
@@ -38,9 +40,11 @@ Ltac assuming_correctness_of_in callees functions P :=
     let f_spec := lazymatch constr:(_:spec_of f) with ?x => x end in
     constr:(f_spec functions -> ltac:(let t := assuming_correctness_of_in callees functions P in exact t))
   end.
+(*tag:workaround*)
 Local Notation function_t := ((String.string * (list String.string * list String.string * Syntax.cmd.cmd))%type).
 Local Notation functions_t := (list function_t).
 
+(*tag:spec*)
 Ltac program_logic_goal_for_function proc :=
   let __ := constr:(proc : function_t) in
   let fname := eval cbv in (fst proc) in
@@ -49,6 +53,7 @@ Ltac program_logic_goal_for_function proc :=
   constr:(forall functions : functions_t, ltac:(
     let s := assuming_correctness_of_in callees functions (spec (cons proc functions)) in
     exact s)).
+(*tag:workaround*)
 Definition program_logic_goal_for (_ : function_t) (P : Prop) := P.
 
 Notation "program_logic_goal_for_function! proc" := (program_logic_goal_for proc ltac:(
@@ -79,7 +84,7 @@ Ltac enter f :=
 
 Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
-(*tag:automation*)
+(*tag:workaround*)
 Ltac straightline_cleanup :=
   match goal with
   | x : Word.Interface.word.rep _ |- _ => clear x
@@ -129,9 +134,11 @@ Ltac straightline_cleanup :=
     destruct H
   end.
 
+(*tag:importboilerplate*)
 Import WeakestPrecondition.
 Import coqutil.Map.Interface.
 
+(*tag:symex*)
 Ltac straightline :=
   match goal with
   | _ => straightline_cleanup

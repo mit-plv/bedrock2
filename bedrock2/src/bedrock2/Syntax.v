@@ -5,21 +5,21 @@ Require Import Coq.Numbers.BinNums.
 
 (*tag:workaround*)
 Module Import bopname.
-  (*tag:compiletimecode*)
+  (*tag:code*)
   Inductive bopname := add | sub | mul | mulhuu | divu | remu | and | or | xor | sru | slu | srs | lts | ltu | eq.
 (*tag:workaround*)
 End bopname.
 Notation bopname := bopname.bopname.
 
 Module access_size.
-  (*tag:compiletimecode*)
+  (*tag:code*)
   Variant access_size := one | two | four | word.
   Scheme Equality for access_size.
 End access_size. Notation access_size := access_size.access_size.
 (*tag:workaround*)
 
 Module expr.
-  (*tag:compiletimecode*)
+  (*tag:code*)
   Inductive expr  : Type :=
   | literal (v: Z)
   | var (x: String.string)
@@ -28,7 +28,7 @@ Module expr.
 (*tag:workaround*)
 End expr. Notation expr := expr.expr.
 
-  (*tag:compiletimecode*)
+  (*tag:code*)
 Module cmd.
   Inductive cmd :=
   | skip

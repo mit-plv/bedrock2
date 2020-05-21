@@ -16,15 +16,18 @@ Local Coercion literal (z : Z) : expr := expr.literal z.
 Local Coercion var (x : String.string) : expr := expr.var x.
 Local Coercion name_of_func (f : function) := fst f.
 
-(*tag:code*)
+(*tag:workaround*)
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
+(*tag:code*)
 
 Definition lan9250_readword : function :=
+  (*tag:workaround*)
   let addr : String.string := "addr" in
   let ret : String.string := "ret" in
   let err : String.string := "err" in
   let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
+  (*tag:code*)
   ("lan9250_readword", ((addr::nil), (ret::err::nil), bedrock_func_body:(
     SPI_CSMODE_ADDR = (constr:(Ox"10024018"));
     io! ret = MMIOREAD(SPI_CSMODE_ADDR);
@@ -51,6 +54,7 @@ Definition lan9250_readword : function :=
   ))).
 
 Definition lan9250_writeword : function :=
+  (*tag:workaround*)
   let addr : String.string := "addr" in
   let data : String.string := "data" in
   let Oxff : String.string := "Oxff" in
@@ -58,13 +62,16 @@ Definition lan9250_writeword : function :=
   let ret : String.string := "ret" in
   let err : String.string := "err" in
   let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
+  (*tag:code*)
   ("lan9250_writeword", ((addr::data::nil), (err::nil), bedrock_func_body:(
     SPI_CSMODE_ADDR = (constr:(Ox"10024018"));
     io! ret = MMIOREAD(SPI_CSMODE_ADDR);
     ret = (ret | constr:(2));
     output! MMIOWRITE(SPI_CSMODE_ADDR, ret);
 
+    (*tag:doc*)
     (* manually register-allocated, apologies for variable reuse *)
+    (*tag:code*)
     Oxff = (constr:(Ox"ff"));
     eight = (constr:(8));
     unpack! ret, err = spi_xchg(constr:(Ox"02")); require !err; (* FASTREAD *)
@@ -89,9 +96,11 @@ Definition MAC_CSR_CMD : Z := Ox"0A4".
 Definition BYTE_TEST : Z := Ox"64".
 
 Definition lan9250_mac_write : function :=
+  (*tag:workaround*)
   let addr : String.string := "addr" in
   let data : String.string := "data" in
   let err : String.string := "err" in
+  (*tag:code*)
   ("lan9250_mac_write", ((addr::data::nil), (err::nil), bedrock_func_body:(
     unpack! err = lan9250_writeword(MAC_CSR_DATA, data);
     require !err;
@@ -102,9 +111,11 @@ unpack! err = lan9250_writeword(MAC_CSR_CMD, constr:(Z.shiftl 1 31)|addr);
   ))).
 
 Definition lan9250_wait_for_boot : function :=
+  (*tag:workaround*)
   let err : String.string := "err" in
   let i : String.string := "i" in
   let byteorder : String.string := "byteorder" in
+  (*tag:code*)
   ("lan9250_wait_for_boot", (nil, (err::nil), bedrock_func_body:(
   err = (constr:(0));
   byteorder = (constr:(0));
@@ -117,8 +128,10 @@ Definition lan9250_wait_for_boot : function :=
   ))).
 
 Definition lan9250_init : function :=
+  (*tag:workaround*)
   let hw_cfg : String.string := "hw_cfg" in
   let err : String.string := "err" in
+  (*tag:code*)
   ("lan9250_init", (nil, (err::nil), bedrock_func_body:(
           unpack! err = lan9250_wait_for_boot();
     require !err;
@@ -129,7 +142,9 @@ Definition lan9250_init : function :=
     unpack! err = lan9250_writeword(lightbulb_spec.HW_CFG, hw_cfg);
     require !err;
 
+    (*tag:doc*)
     (* 20: full duplex; 18: promiscuous; 2, 3: TXEN/RXEN *)
+    (*tag:code*)
         unpack! err = lan9250_mac_write(constr:(1), constr:(Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2)))));
     require !err;
           unpack! err = lan9250_writeword(constr:(Ox"070"), constr:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
@@ -561,15 +576,15 @@ Section WithParameters.
   Lemma lan9250_wait_for_boot_ok : program_logic_goal_for_function! lan9250_wait_for_boot.
   Proof.
     repeat straightline.
+    (*tag:proof*)
     refine ((atleastonce ["err"; "i"; "byteorder"] (fun v T M ERR I BUSY =>
-       v = word.unsigned I /\
-       word.unsigned I <> 0 /\
-       M = m /\
+       v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        exists n, (multiple (lan9250_boot_attempt _) n) th /\
        Z.of_nat n + word.unsigned I = patience
             ))
+    (*tag:workaround*)
             _ _ _ _ _ _ _);
       cbn [reconstruct map.putmany_of_list HList.tuple.to_list
            HList.hlist.foralls HList.tuple.foralls
@@ -579,6 +594,7 @@ Section WithParameters.
            List.repeat Datatypes.length
            HList.polymorphic_list.repeat HList.polymorphic_list.length
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *; repeat straightline.
+    (*tag:symex*)
     { exact (Z.lt_wf 0). }
     { exfalso. subst i. rewrite word.unsigned_of_Z in H0; inversion H0. }
     { subst i; repeat t.

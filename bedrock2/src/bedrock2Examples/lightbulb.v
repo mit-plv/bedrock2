@@ -61,14 +61,15 @@ Section WithParameters.
   Local Coercion var (x : String.string) : expr := expr.var x.
   Local Coercion name_of_func (f : BasicCSyntax.function) := fst f.
 
-  (*tag:code*)
   Definition lightbulb_loop :=
+    (*tag:workaround*)
       let p_addr : String.string := "p_addr" in
       let bytesWritten : String.string := "bytesWritten" in
       let recvEthernet : String.string := "recvEthernet" in
       let lightbulb_handle : String.string := "lightbulb_handle" in
       let err : String.string := "err" in
 
+  (*tag:code*)
     ("lightbulb_loop", ((p_addr::nil), (err::nil), bedrock_func_body:(
       unpack! bytesWritten, err = recvEthernet(p_addr);
       if !err { (* success, packet *)
@@ -80,12 +81,14 @@ Section WithParameters.
     ))).
 
   Definition recvEthernet :=
+    (*tag:workaround*)
       let buf : String.string := "buf" in
       let num_bytes : String.string := "num_bytes" in
       let i : String.string := "i" in
       let err : String.string := "err" in
       let read : String.string := "read" in
 
+    (*tag:code*)
       ("recvEthernet", ((buf::nil), (num_bytes::err::nil), bedrock_func_body:(
           num_bytes = (constr:(0));
           unpack! read, err = lan9250_readword(constr:(Ox"7C")); (* RX_FIFO_INF *)
@@ -95,7 +98,9 @@ Section WithParameters.
           require !err else { err = (constr:(-1)) };
 
           num_bytes = (read >> constr:(16) & constr:(2^14-1));
+          (*tag:doc*)
           (* round up to next word *)
+          (*tag:code*)
           num_bytes = ((num_bytes + constr:(4-1)) >> constr:(2));
           num_bytes = (num_bytes + num_bytes);
           num_bytes = (num_bytes + num_bytes);
@@ -110,6 +115,7 @@ Section WithParameters.
       ))).
 
   Definition lightbulb_handle :=
+    (*tag:workaround*)
       let packet : String.string := "packet" in
       let len : String.string := "len" in
       let ethertype : String.string := "ethertype" in
@@ -121,6 +127,7 @@ Section WithParameters.
       let MMIOREAD : String.string := "MMIOREAD" in
       let MMIOWRITE : String.string := "MMIOWRITE" in
       let r : String.string := "r" in
+      (*tag:code*)
 
     ("lightbulb_handle", ((packet::len::nil), (r::nil), bedrock_func_body:(
       r = (constr:(42));
@@ -142,10 +149,12 @@ Section WithParameters.
       command = ((load1(r))&Oxff);
       command = (command&constr:(1));
 
+      (*tag:unrelated*)
       (* pin output enable -- TODO do this in init
       io! mmio_val = MMIOREAD(constr:(Ox"10012008"));
       output! MMIOWRITE(constr:(Ox"10012008"), mmio_val | constr:(2^23));
       *)
+      (*tag:code*)
 
       r = (constr:(Ox"1001200c"));
       io! mmio_val = MMIOREAD(r);
@@ -156,9 +165,11 @@ Section WithParameters.
     ))).
 
   Definition lightbulb_init :=
+    (*tag:workaround*)
       let err : String.string := "err" in
       let MMIOWRITE : String.string := "MMIOWRITE" in
 
+      (*tag:code*)
     ("lightbulb_init", (@nil String.string, @nil String.string, bedrock_func_body:(
       output! MMIOWRITE(constr:(Ox"10012038"), constr:((Z.shiftl (Ox"f") 2)));
       output! MMIOWRITE(constr:(Ox"10012008"), constr:((Z.shiftl 1 23)));
@@ -440,25 +451,24 @@ Section WithParameters.
     3: {
 
     refine (TailRecursion.tailrec_earlyout
+      (*tag:workaround*)
       (HList.polymorphic_list.cons (list byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
       ["buf";"num_bytes";"i";"read";"err"]
+    (*tag:proof*)
       (fun v scratch R t m buf num_bytes_loop i read err => PrimitivePair.pair.mk (
-        word.unsigned err = 0 /\
-        word.unsigned i <= word.unsigned num_bytes /\
-        v = word.unsigned i /\
-        (bytes (word.add buf i) scratch * R) m /\
+        word.unsigned err = 0 /\ word.unsigned i <= word.unsigned num_bytes /\
+        v = word.unsigned i /\ (bytes (word.add buf i) scratch * R) m /\
         Z.of_nat (List.length scratch) = word.unsigned (word.sub num_bytes i) /\
         word.unsigned i mod 4 = word.unsigned num_bytes mod 4 /\
         num_bytes_loop = num_bytes)
       (fun T M BUF NUM_BYTES I READ ERR =>
          NUM_BYTES = num_bytes_loop /\
-         exists RECV,
-         (bytes (word.add buf i) RECV * R) M /\
+         exists RECV, (bytes (word.add buf i) RECV * R) M /\
          List.length RECV = List.length scratch /\
-         exists iol, T = iol ++ t /\
-         exists ioh, mmio_trace_abstraction_relation ioh iol /\
+         exists iol, T = iol ++ t /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\
          (word.unsigned ERR = 0 /\ lan9250_readpacket _ RECV ioh \/
           word.unsigned ERR = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout word) ioh ) )
+          (*tag:workaround*)
       )
       _ _ _ _ _ _ _ _);
     (* TODO wrap this into a tactic with the previous refine? *)
@@ -469,6 +479,7 @@ Section WithParameters.
          List.repeat Datatypes.length
          HList.polymorphic_list.repeat HList.polymorphic_list.length
          PrimitivePair.pair._1 PrimitivePair.pair._2] in *;
+    (*tag:symex*)
       repeat (straightline || split_if || eapply interact_nomem || eauto 99).
     { exact (Z.gt_wf (word.unsigned num_bytes)). }
     1: repeat (refine (conj _ _)); eauto.

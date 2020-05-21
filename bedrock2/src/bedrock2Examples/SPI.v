@@ -16,12 +16,13 @@ Local Notation MMIOREAD := "MMIOREAD".
 Require bedrock2Examples.lightbulb_spec.
 Local Notation patience := lightbulb_spec.patience.
 
-(*tag:code*)
 Definition spi_write : function :=
+(*tag:workaround*)
   let b : String.string := "b" in
   let busy : String.string := "busy" in
   let i : String.string := "i" in
   let SPI_WRITE_ADDR := Ox"10024048" in
+(*tag:code*)
   ("spi_write", ((b::nil), (busy::nil), bedrock_func_body:(
     busy = (constr:(-1));
     i = (patience); while (i) { i = (i - constr:(1));
@@ -37,10 +38,12 @@ Definition spi_write : function :=
   ))).
 
 Definition spi_read : function :=
+(*tag:workaround*)
   let b : String.string := "b" in
   let busy : String.string := "busy" in
   let i : String.string := "i" in
   let SPI_READ_ADDR := Ox"1002404c" in
+  (*tag:code*)
   ("spi_read", (nil, (b::busy::nil), bedrock_func_body:(
     busy = (constr:(-1));
     b = (constr:(Ox"5a"));
@@ -55,8 +58,10 @@ Definition spi_read : function :=
   ))).
 
 Definition spi_xchg : function :=
+  (*tag:code*)
   let b : String.string := "b" in
   let busy : String.string := "busy" in
+  (*tag:code*)
   ("spi_xchg", (b::nil, b::busy::nil, bedrock_func_body:(
     unpack! busy = spi_write(b);
     require !busy;

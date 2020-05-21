@@ -16,8 +16,10 @@ Section WeakestPrecondition.
   Definition store sz m a v post :=
     bind_ex_Some m <- store sz m a v; post m.
 
+  (*tag:importboilerplate*)
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
+    (*tag:spec*)
     Definition expr_body rec (e : Syntax.expr) (post : word -> Prop) : Prop :=
       match e with
       | expr.literal v =>
@@ -32,11 +34,15 @@ Section WeakestPrecondition.
         rec e (fun a =>
         load s m a post)
     end.
+    (*tag:workaround*)
     Fixpoint expr e := expr_body expr e.
+    (*tag:importboilerplate*)
   End WithMemAndLocals.
 
+  (*tag:importboilerplate*)
   Section WithF.
     Context {A B} (f: A -> (B -> Prop) -> Prop).
+    (*tag:workaround*)
     Definition list_map_body rec (xs : list A) (post : list B -> Prop) : Prop :=
       match xs with
       | nil => post nil
@@ -46,15 +52,20 @@ Section WeakestPrecondition.
         post (cons y ys')))
       end.
     Fixpoint list_map xs := list_map_body list_map xs.
+    (*tag:importboilerplate*)
   End WithF.
 
   Section WithFunctions.
     Context (call : String.string -> trace -> mem -> list word -> (trace -> mem -> list word -> Prop) -> Prop).
+    (*tag:spec*)
     Definition dexpr m l e v := expr m l e (eq v).
     Definition dexprs m l es vs := list_map (expr m l) es (eq vs).
     Definition cmd_body (rec:_->_->_->_->_->Prop) (c : cmd) (t : trace) (m : mem) (l : locals)
+      (*tag:workaround*)
              (post : trace -> mem -> locals -> Prop) : Prop :=
+      (*tag:doc*)
       (* give value of each pure expression when stating its subproof *)
+      (*tag:spec*)
       match c with
       | cmd.skip => post t m l
       | cmd.set x ev =>
@@ -97,9 +108,12 @@ Section WeakestPrecondition.
           exists m, map.split m mKeep mReceive /\
           post (cons ((mGive, action, args), (mReceive, rets)) t) m l)
       end.
+    (*tag:workaround*)
     Fixpoint cmd c := cmd_body cmd c.
+    (*tag:importboilerplate*)
   End WithFunctions.
 
+  (*tag:spec*)
   Definition func call '(innames, outnames, c) (t : trace) (m : mem) (args : list word) (post : trace -> mem -> list word -> Prop) :=
       bind_ex_Some l <- map.of_list_zip innames args;
       cmd call c t m l (fun t m l =>
@@ -116,9 +130,12 @@ Section WeakestPrecondition.
       then func (rec functions) decl t m args post
       else rec functions fname t m args post
     end.
+  (*tag:workaround*)
   Fixpoint call functions := call_body call functions.
 
+  (*tag:spec*)
   Definition program funcs main t m l post : Prop := cmd (call funcs) main t m l post.
+  (*tag:importboilerplate*)
 End WeakestPrecondition.
 
 (*tag:workaround*)

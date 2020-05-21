@@ -9,13 +9,13 @@ Require Import coqutil.Z.HexNotation.
 Import String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
+(*tag:doc*)
 (** This file defines MMIO-only semantics. There is nothing FE310-specific here. *)
 
-(*tag:symex*)
+(*tag:workaround*)
 Definition MMIOREAD : string := "MMIOREAD".
 Definition MMIOWRITE : string := "MMIOWRITE".
 
-(*tag:workaround*)
 Module parameters.
   (*tag:spec*)
   Class parameters := {
@@ -48,14 +48,12 @@ Section WithParameters.
 
   (*tag:spec*)
   Definition ext_spec (t : bedrock2_trace) (mGive : parameters.mem) a (args: list parameters.word) (post:parameters.mem -> list parameters.word -> Prop) :=
-    if String.eqb "MMIOWRITE" a
-    then
+    if String.eqb "MMIOWRITE" a then
       exists addr val,
         args = [addr; val] /\
         (mGive = Interface.map.empty /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0) /\
         post Interface.map.empty nil
-    else if String.eqb "MMIOREAD" a
-    then
+    else if String.eqb "MMIOREAD" a then
       exists addr,
         args = [addr] /\
         (mGive = Interface.map.empty /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0) /\
@@ -71,7 +69,7 @@ Section WithParameters.
     Semantics.ext_spec := ext_spec;
   |}.
 
-  (*tag:lemma*)
+  (*tag:obvious*)
   Global Instance ext_spec_ok : ext_spec.ok _.
   Proof.
     split;

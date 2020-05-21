@@ -11,7 +11,7 @@ Section SepProperties.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
   Local Infix "*" := sep.
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Global Instance Proper_sep_iff1 : Proper (iff1 ==> iff1 ==> iff1) sep. firstorder idtac. Qed.
   Global Instance Proper_sep_impl1 : Proper (impl1 ==> impl1 ==> impl1) sep. firstorder idtac. Qed.
 
@@ -25,8 +25,10 @@ Section SepProperties.
     | _ => progress intuition idtac
     end.
 
+  (*tag:doc*)
   (* sep and sep *)
   Lemma sep_comm p q : iff1 (p*q) (q*p).
+  (*tag:proof*)
   Proof. cbv [iff1 sep split]; t; eauto 10 using putmany_comm, (fun m1 m2 => proj2 (disjoint_comm m1 m2)). Qed.
   Lemma sep_assoc p q r : iff1 ((p*q)*r) (p*(q*r)).
   Proof. cbv [iff1 sep split]; t; eauto 15 using eq_sym, putmany_assoc, ((fun m1 m2 m3 => proj2 (disjoint_putmany_l m1 m2 m3))), ((fun m1 m2 m3 => proj2 (disjoint_putmany_r m1 m2 m3))). Qed.
@@ -35,13 +37,16 @@ Section SepProperties.
   Proof. rewrite H, get_put_same; trivial. Qed.
   Lemma get_sep k v R m (H : sep (ptsto k v) R m) : get m k = Some v.
   Proof.
+    (*tag:obvious*)
     destruct H as (mk&mR&H&Hp&HR); eapply get_ptsto in Hp; subst.
     destruct (get_split k _ _ _ H) as [[]|[]]; congruence.
   Qed.
+  (*tag:proof*)
   Lemma sep_get k v m (H : get m k = Some v) :
     sep (ptsto k v) (eq (map.remove m k)) m.
   Proof.
     unfold sep. exists (map.put map.empty k v).
+    (*tag:obvious*)
     eexists. repeat split.
     - apply map_ext. intros.
       rewrite get_putmany_dec.
@@ -55,11 +60,13 @@ Section SepProperties.
       + subst. rewrite get_remove_same in H1. discriminate.
       + rewrite get_put_diff in H0 by congruence. rewrite get_empty in H0. discriminate.
   Qed.
+  (*tag:proof*)
   Lemma sep_put k v m v_old R (H : sep (ptsto k v_old) R m) : sep (ptsto k v) R (put m k v).
   Proof.
     eapply sep_comm in H; eapply sep_comm.
     destruct H as (mR&mk&[Heq Hd]&HR&Hp); cbv [ptsto] in Hp; subst mk; subst m.
     exists mR, (put empty k v); split; [|solve[repeat split; trivial]]; split.
+    (*tag:obvious*)
     { eapply map_ext; intro k'; destruct (key_eq_dec k' k); try subst k';
         rewrite ?get_put_same, ?get_put_diff by trivial.
       { erewrite get_putmany_right; trivial. rewrite get_put_same; trivial. }
@@ -69,33 +76,41 @@ Section SepProperties.
       { rewrite get_put_diff, get_empty in Hget by trivial; inversion Hget. } }
   Qed.
 
+  (*tag:proof*)
   Lemma sepeq_on_undef_put: forall m addr b,
       map.get m addr = None ->
       (sep (ptsto addr b) (eq m)) (map.put m addr b).
   Proof.
     intros. unfold sep. exists (map.put map.empty addr b). exists m.
+    (*tag:obvious*)
     split; [|split; reflexivity].
     apply map.split_undef_put. assumption.
   Qed.
 
+  (*tag:proof*)
   Lemma sep_on_undef_put: forall m addr b (R: _ -> Prop),
       map.get m addr = None ->
       R m ->
       (sep (ptsto addr b) R) (map.put m addr b).
   Proof.
     intros. unfold sep. exists (map.put map.empty addr b). exists m.
+    (*tag:obvious*)
     split; [|split; reflexivity || trivial].
     apply split_undef_put. assumption.
   Qed.
 
+  (*tag:workaround*)
   Lemma iff1_sep_cancel P Q1 Q2 (H : iff1 Q1 Q2) : iff1 (P * Q1) (P * Q2).
   Proof. exact (Proper_sep_iff1 _ _ (reflexivity _) _ _ H). Qed.
 
+  (*tag:proof*)
   (* More Conntectives *)
   Global Instance Proper_emp_iff : Proper (iff ==> iff1) emp. firstorder idtac. Qed.
   Global Instance Proper_emp_impl : Proper (Basics.impl ==> impl1) emp. firstorder idtac. Qed.
 
+  (*tag:doc*)
   (* sep and emp *)
+  (*tag:proof*)
   Lemma sep_emp_emp p q : iff1 (sep (emp p) (emp q)) (emp (p /\ q)).
   Proof. cbv [iff1 sep emp split]; t; intuition eauto 20 using putmany_empty_l, disjoint_empty_l. Qed.
   Lemma sep_comm_emp_r a b : iff1 (a * emp b) (emp b * a). eapply sep_comm. Qed.
@@ -106,35 +121,44 @@ Section SepProperties.
 
   Lemma sep_emp_l a b m : sep (emp a) b m <-> a /\ b m.
   Proof.
+    (*tag:obvious*)
     split.
     { intros (?&?&(?&?)&(?&?)&?); subst; rewrite putmany_empty_l; auto. }
     { intros (?&?). exists empty, m.
+    (*tag:proof*)
       cbv [emp]; edestruct split_empty_l; intuition eauto. }
   Qed.
   Lemma sep_emp_r a b m : sep a (emp b) m <-> a m /\ b.
+    (*tag:obvious*)
   Proof.
     setoid_rewrite (and_comm _ b).
     setoid_rewrite sep_comm || (etransitivity; [eapply sep_comm|]). (* WHY? *)
     eapply sep_emp_l.
   Qed.
+  (*tag:proof*)
   Lemma sep_emp_True_l p : iff1 (sep (emp True) p) p.
   Proof. intros m; rewrite sep_emp_l; intuition idtac. Qed.
   Lemma sep_emp_True_r p : iff1 (sep p (emp True)) p.
   Proof. intros m; rewrite sep_emp_r; intuition idtac. Qed.
 
+  (*tag:doc*)
   (* sep and ex1 *)
+  (*tag:proof*)
   Lemma sep_ex1_r {T} p (q:T->_) : iff1 (p * ex1 q) (ex1 (fun h => p * q h)).
   Proof. firstorder idtac. Qed.
   Lemma sep_ex1_l {T} p (q:T->_) : iff1 (ex1 q * p) (ex1 (fun h => q h * p)).
   Proof. rewrite sep_comm. rewrite sep_ex1_r. setoid_rewrite (sep_comm p). reflexivity. Qed.
 
+  (*tag:doc*)
   (* impl1 and emp *)
+  (*tag:proof*)
   Lemma impl1_l_sep_emp (a:Prop) b c : impl1 (emp a * b) c <-> (a -> impl1 b c).
   Proof. cbv [impl1 emp sep split]; t; rewrite ?putmany_empty_l; eauto 10 using putmany_empty_l, disjoint_empty_l. Qed.
   Lemma impl1_r_sep_emp a b c : (b /\ impl1 a c) -> impl1 a (emp b * c).
   Proof. cbv [impl1 emp sep split]; t; eauto 10 using putmany_empty_l, disjoint_empty_l. Qed.
 
-  (* shallow reflection from a list of predicates *)
+(*tag:workaround*)
+(** shallow reflection from a list of predicates for faster cancellation proofs *)
   Fixpoint seps' (xs : list (rep -> Prop)) : rep -> Prop :=
     match xs with
     | cons x xs => sep x (seps' xs)
@@ -172,26 +196,21 @@ Section SepProperties.
 
   Lemma seps_nth_to_head n xs : iff1 (sep (nth n xs) (seps (remove_nth n xs))) (seps xs).
   Proof.
-    (*tag:lists*)
     cbv [nth remove_nth].
     pose proof (List.firstn_skipn n xs : (firstn n xs ++ skipn n xs) = xs).
     set (xsr := skipn n xs) in *; clearbody xsr.
     set (xsl := firstn n xs) in *; clearbody xsl.
     subst xs.
-    (*tag:lemma*)
     setoid_rewrite <-seps'_iff1_seps.
     destruct xsr.
-    (*tag:lists*)
     { cbn [seps']; rewrite sep_emp_True_l, 2List.app_nil_r; exact (reflexivity _). }
     cbn [hd tl].
-    (*tag:lemma*)
     induction xsl; cbn; [exact (reflexivity _)|].
     rewrite <-IHxsl; clear IHxsl.
     rewrite (sep_comm _ (seps' _)), <-(sep_assoc _ (seps' _)), <-(sep_comm _ (_ * seps' _)).
     exact (reflexivity _).
   Qed.
 
-  (*tag:automation*)
   Lemma cancel_emps_at_indices i j xs ys P Q
         (Hi : nth i xs = emp P)
         (Hj : nth j ys = emp Q)
@@ -346,9 +365,11 @@ Ltac cancel_emp_r :=
     [syntactic_exact_deltavar (@eq_refl _ _)|]
   end.
 
+(*tag:doc*)
 (* leaves two open goals:
    1) equality between left sep clause #i and right sep clause #j
    2) updated main goal *)
+   (*tag:proof*)
 Ltac cancel_seps_at_indices i j :=
   lazymatch goal with
   | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
@@ -442,12 +463,14 @@ Ltac seprewrite0_in Hrw H :=
   | _ => fail "hypothesis must be of form 'P m'"
   end;
   let pf := fresh in
+  (*tag:workaround*)
   (* COQBUG(faster use ltac:(...) here if that was multi-success *)
   eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
       by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
   let H' := fresh H in (* rename H into H' (* COGBUG(9937) *) *)
   epose proof (proj1 (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) (proj1 (pf _) H)) as H';
   clear H pf.
+(*tag:proof*)
 
 
 Ltac seprewrite_in Hrw H :=
@@ -469,6 +492,7 @@ Ltac seprewrite_in_by Hrw H tac :=
   end.
 
 
+(*tag:workaround*)
 (* the same (but slightly different) for rewriting in the goal
    TODO can we do with less duplication, but without unreadable abstraction? *)
 

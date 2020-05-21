@@ -326,7 +326,7 @@ Section WeakestPrecondition.
 
   (*tag:importboilerplate*)
   Import bedrock2.Syntax bedrock2.Semantics bedrock2.WeakestPrecondition coqutil.Word.Interface.
-  (*tag:conveniencelemma*)
+  (*tag:proof*)
   Lemma interact_nomem call action binds arges t m l post
         args (Hargs : dexprs m l arges args)
         (Hext : ext_spec t map.empty binds args (fun mReceive (rets : list Semantics.word) =>

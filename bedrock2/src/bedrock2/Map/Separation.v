@@ -10,7 +10,7 @@ Section Sep.
   Definition ptsto k v := fun m => m = put empty k v.
   Definition read k (P : value -> rep -> Prop) := (ex1 (fun v => sep (ptsto k v) (P v))).
 
-  (*tag:lemma*)
+  (*tag:workaround*)
   Fixpoint seps (xs : list (rep -> Prop)) : rep -> Prop :=
     match xs with
     | cons x nil => x

@@ -16,9 +16,13 @@ Section TailRecrsion.
   Let call := WeakestPrecondition.call functions.
 
   (*tag:workaround*)
+  (* marking logical connectives with the source file they were used in for limiting unfolding *)
   Local Notation "A /\ B" := (Markers.split (A /\ B)).
   Local Notation "A /\ B" := (Markers.split (A /\ B)) : type_scope.
 
+  (*tag:workaround*)
+  (* shallow reflection for resolving map accesses during symbolic execution *)
+  (* each lemma below is duplicated for various levels of use of this trick *)
   Definition reconstruct (variables:list String.string) (values:tuple word (length variables)) : locals :=
     map.putmany_of_tuple (tuple.of_list variables) values map.empty.
   Fixpoint gather (variables : list String.string) (l : locals) : option (locals *  tuple word (length variables)) :=
@@ -125,7 +129,7 @@ Section TailRecrsion.
     { pose proof fun t m => hlist.foralls_forall (Hpost t m); clear Hpost; eauto. }
   Qed.
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Lemma tailrec_localsmap
     {e c t} {m : mem} {l} {post : _->_->_-> Prop}
     {measure : Type} (spec:_->_->_->_->(Prop*(_->_->_-> Prop))) lt
@@ -149,6 +153,7 @@ Section TailRecrsion.
     eexists measure, lt, (fun v t m l =>
       let S := spec v t m l in let '(P, Q) := S in
       P /\ forall T M L, Q T M L -> Q0 T M L).
+      (*tag:obvious*)
     split; [assumption|].
     cbv [Markers.split] in *.
     split; [solve[eauto]|].
@@ -162,6 +167,7 @@ Section TailRecrsion.
     { eauto. }
   Qed.
 
+  (*tag:proof*)
   Definition with_bottom {T} R (x y : option T) :=
     match x, y with
     | None, Some _ => True
@@ -197,6 +203,7 @@ Section TailRecrsion.
       ((word.unsigned br <> 0 -> exists v, ov = Some v /\ invariant v t m l) /\
       (word.unsigned br =  0 -> ov = None /\ post t m l))).
     split; auto using well_founded_with_bottom; []. split.
+    (*tag:obvious*)
     { destruct Henter as [br [He Henter]].
       destruct (BinInt.Z.eq_dec (word.unsigned br) 0).
       { exists None, br; split; trivial.
@@ -223,6 +230,7 @@ Section TailRecrsion.
     eapply Hexit.
   Qed.
 
+  (*tag:proof*)
   Lemma tailrec_earlyout_localsmap
     {e c t} {m : mem} {l} {post : _->_->_-> Prop}
     {measure : Type} (spec:_->_->_->_->(Prop*(_->_->_-> Prop))) lt
@@ -252,6 +260,7 @@ Section TailRecrsion.
           P /\ forall T M L, Q T M L -> Q0 T M L
       end).
     split; auto using well_founded_with_bottom; []; cbv [Markers.split] in *.
+    (*tag:obvious*)
     split.
     { exists (Some v0); eauto. }
     intros [vi|] ti mi li inv_i; [destruct inv_i as (?&Qi)|destruct inv_i as (br&Hebr&Hbr0&HQ)].
@@ -265,6 +274,7 @@ Section TailRecrsion.
     repeat esplit || eauto || intros; contradiction.
   Qed.
 
+  (*tag:workaround*)
   Lemma tailrec_earlyout
     {params_ok : Semantics.parameters_ok p}
     {e c t localsmap} {m : mem}
@@ -363,6 +373,8 @@ Section TailRecrsion.
   Qed.
 
 
+  (*tag:unrelated*)
+  (* Bedrock-style loop rule *)
   Context {mem_ok : map.ok mem}.
   Local Infix "*" := Separation.sep.
   Local Infix "*" := Separation.sep : type_scope.

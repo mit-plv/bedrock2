@@ -15,7 +15,7 @@ End Binary.
 (*tag:spec*)
 Definition ex1 {A B} (P : A -> B -> Prop) := fun (b:B) => exists a:A, P a b.
 
-(*tag:lemma*)
+(*tag:proof*)
 Global Instance Transitive_impl1 T : Transitive (@impl1 T). firstorder idtac. Qed.
 Global Instance Reflexive_impl1 T : Reflexive (@impl1 T). firstorder idtac. Qed.
 Global Instance Proper_impl1_impl1 T : Proper (Basics.flip impl1 ==> impl1 ==> Basics.impl) (@impl1 T). firstorder idtac. Qed.

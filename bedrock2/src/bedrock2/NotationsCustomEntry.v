@@ -5,7 +5,7 @@ Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 (** Grammar for expressions *)
 
 Import bopname.
-(*tag:compiletimecode*)
+(*tag:code*)
 Declare Custom Entry bedrock_expr.
 Notation "bedrock_expr:( e )"   := e   (e custom bedrock_expr,
                                         format "'bedrock_expr:(' e ')'").
@@ -158,7 +158,7 @@ Notation "io! lhs = f ( x , y , z , a )" :=  (interact lhs f (@cons expr x (@con
 Notation "io! lhs = f ( x , y , z , a , b )" :=  (interact lhs f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@cons b (@nil expr))))))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f global, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr, b custom bedrock_expr).
 Notation "io! lhs = f ( x , y , z , a , b , c )" :=  (interact lhs f (@cons expr x (@cons expr y (@cons expr z (@cons expr a (@cons expr b (@cons expr c (@nil expr)))))))) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f global, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr, a custom bedrock_expr, b custom bedrock_expr, c custom bedrock_expr).
 
-(*tag:compiletimecode*)
+(*tag:code*)
 Declare Scope bedrock_tail.
 Delimit Scope bedrock_tail with bedrock_tail.
 Notation "bedrock_func_body:( c )"   := (c%bedrock_tail) (c custom bedrock_cmd at level 0,

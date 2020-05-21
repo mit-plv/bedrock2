@@ -20,20 +20,28 @@ Class parameters := {
   trace := list ((mem * String.string * list word) * (mem * list word));
 
   ExtSpec :=
+  (*tag:doc*)
     (* Given a trace of what happened so far,
        the given-away memory, an action label and a list of function call arguments, *)
+  (*tag:spec*)
     trace -> mem -> String.string -> list word ->
+  (*tag:doc*)
     (* and a postcondition on the received memory and function call results, *)
+  (*tag:spec*)
     (mem -> list word -> Prop) ->
+  (*tag:doc*)
     (* tells if this postcondition will hold *)
     Prop;
+  (*tag:spec*)
 
   ext_spec: ExtSpec;
 }.
 
 Module ext_spec.
   Class ok{p: parameters}: Prop := {
+    (*tag:doc*)
     (* The action name and arguments uniquely determine the footprint of the given-away memory. *)
+    (*tag:spec*)
     unique_mGive_footprint: forall t1 t2 mGive1 mGive2 a args
                                             (post1 post2: mem -> list word -> Prop),
         ext_spec t1 mGive1 a args post1 ->
@@ -54,9 +62,11 @@ Module ext_spec.
         ext_spec t mGive a args (fun mReceive resvals =>
                                    post1 mReceive resvals /\ post2 mReceive resvals);
   }.
+(*tag:administrativia*)
 End ext_spec.
 Arguments ext_spec.ok: clear implicits.
 
+(*tag:spec*)
 Class parameters_ok{p: parameters}: Prop := {
   width_cases : width = 32 \/ width = 64;
   word_ok :> word.ok word;
@@ -65,10 +75,12 @@ Class parameters_ok{p: parameters}: Prop := {
   env_ok :> map.ok env;
   ext_spec_ok :> ext_spec.ok p;
 }.
+(*tag:administrativia*)
 Arguments parameters_ok: clear implicits.
 
 Section binops.
   Context {width : Z} {word : Word.Interface.word width}.
+  (*tag:spec*)
   Definition interp_binop (bop : bopname) : word -> word -> word :=
     match bop with
     | bopname.add => word.add
@@ -99,6 +111,7 @@ Section semantics.
   Local Notation metrics := MetricLog.
 
   (*tag:unrelated*)
+  (* this is the expr evaluator that is used to verify execution time, the just-correctness-oriented version is below *)
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
     Fixpoint eval_expr (e : expr) (mc : metrics) : option (word * metrics) :=
