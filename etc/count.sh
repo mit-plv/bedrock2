@@ -1,34 +1,29 @@
 #!/bin/sh
+DIR="$(dirname "$(readlink -f "$0")")"
 
 count() {
 	printf "%s: " "$1"
 	shift
-	cloc --include-lang=Coq --json $@ | jq .Coq.code
+	cat $@ | python3 "$DIR/tagcount.py"
 }
 
 count "top-level trace specification" bedrock2/src/bedrock2Examples/lightbulb_spec.v
 
 cd bedrock2/src/bedrock2Examples
-printf "software:\n"
-count "- SPI driver" SPI.v
-count "- ethernet driver" LAN9250.v
-count "- lightbulb server" lightbulb.v
+count "- software" SPI.v LAN9250.v lightbulb.v
 cd ../../..
 
 cd bedrock2/src/bedrock2
-printf "language:\n"
-count "- parsing" NotationsCustomEntry.v
-count "- abstract syntax" Syntax.v
-count "- parameters and semantics" Semantics.v FE310CSemantics.v Notations.v
-printf "  program logic:\n"
-count "   - definitions" WeakestPrecondition.v Map/Separation.v TracePredicate.v Lift1Prop.v ReversedListNotations.v
-count "   - control flow lemmas" WeakestPreconditionProperties.v TailRecursion.v 
-count "   - heap lemmas" ptsto_bytes.v Scalars.v Array.v Memory.v
-count "   - proof automation" ProgramLogic.v Map/SeparationLogic.v AbsintWordToZ.v string2ident.v Markers.v
+count "- program logic" WeakestPrecondition.v Map/Separation.v TracePredicate.v Lift1Prop.v ReversedListNotations.v FE310CSemantics.v Notations.v \
+  WeakestPreconditionProperties.v TailRecursion.v \
+  ProgramLogic.v Map/SeparationLogic.v AbsintWordToZ.v string2ident.v Markers.v \
+  ptsto_bytes.v Scalars.v Array.v Memory.v
 cd ../../..
 
 cd compiler/src/compiler
 printf "compiler:\n"
+count "- parsing" ../../../bedrock2/src/bedrock2/{Syntax.v,NotationsCustomEntry.v}
+count "- semantics" ../../../bedrock2/src/bedrock2/Semantics.v
 count "- flattening" ExprImp.v FlatImp.v FlattenExpr.v FlattenExprDef.v StringNameGen.v FlattenExprSimulation.v NameGen.v # TODO why so much?
 count "- register allocation" RegRename.v
 count "- rv32im backend" FlatToRiscvDef.v FlatToRiscvFunctions.v FlatToRiscvCommon.v FlatToRiscvSimulation.v
