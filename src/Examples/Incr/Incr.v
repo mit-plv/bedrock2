@@ -25,6 +25,20 @@ Require Import Rupicola.Examples.KVStore.Properties.
 Local Open Scope string_scope.
 Import ListNotations.
 
+Section __.
+  Context {key value} {map : map.map key value}
+          {map_ok : map.ok map}
+          {key_eqb}
+          {key_eq_dec :
+             forall x y : key, BoolSpec (x = y) (x <> y) (key_eqb x y)}.
+
+  Lemma put_noop' k v m m':
+    m = m' ->
+    map.get m' k = Some v ->
+    m = map.put m' k v.
+  Admitted.
+End __.
+
 Module GallinaIncr.
   Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
   Local Existing Instance BasicC64Semantics.parameters.
@@ -597,15 +611,18 @@ Module GallinaIncr.
     ...
     pv2 | value2
 
-    *)
+     *)
+    Import KVStore.
 
-    Instance spec_of_map_put : spec_of "put" :=
+    Local Coercion name_of_func (f : KVStore.bedrock_func) := fst f.
+
+    Instance spec_of_map_put : spec_of put :=
       fun functions =>
         forall pm m pk k pv v R tr mem,
           (AnnotatedMap pm m
            * Key pk k * Value pv v * R)%sep mem ->
           WeakestPrecondition.call
-            functions "put" tr mem [pm; pk; pv]
+            functions put tr mem [pm; pk; pv]
             (fun tr' mem' rets =>
                tr = tr'
                /\ length rets = 0%nat
@@ -669,14 +686,42 @@ Module GallinaIncr.
         (fun (m' : map.rep) (k : key) (v : annotation * value) =>
            map.put m' k (snd v)) map.empty m.
 
-    Lemma get_deannotate_Some m k v :
-      map.get m k = Some v ->
-      map.get (deannotate m) k = Some (snd v).
+    Lemma get_deannotate_Some m k a v :
+      map.get m k = Some (a, v) ->
+      map.get (deannotate m) k = Some v.
     Admitted.
     Lemma get_deannotate_None m k :
       map.get m k = None ->
       map.get (deannotate m) k = None.
     Admitted.
+
+    Definition is_owned {A} (an: annotation * A) :=
+      match an with
+      | (Owned, _) => True
+      | _ => False
+      end.
+    (* Arguments is_owned {A} / !an. *)
+
+    Definition is_borrowed {A} (an: annotation * A) :=
+      match an with
+      | (Borrowed _, _) => True
+      | _ => False
+      end.
+    (* Arguments is_borrowed {A} / !an. *)
+
+    Lemma get_annotate_is_Owned:
+      forall (m : map) (k1 : key) (a : annotation * value),
+        map.get (annotate m) k1 = Some a -> is_owned a.
+    Proof.
+      intros m k1 a H.
+      autorewrite with mapsimpl in H.
+      destruct_one_match_hyp.
+      - match goal with
+        | [ H: Some _ = Some _ |- _ ] => inversion H
+        end.
+        reflexivity.
+      - discriminate.
+    Qed.
 
     Lemma compile_map_get :
       forall (locals: Semantics.locals) (mem: Semantics.mem)
@@ -692,11 +737,7 @@ Module GallinaIncr.
         (AnnotatedMap m_ptr M * Key k_ptr k * R')%sep mem ->
         map.get locals m_var = Some m_ptr ->
         map.get locals k_var = Some k_ptr ->
-        match map.get M k with
-        | None => True
-        | Some (Owned, _) => True
-        | _ => False
-        end ->
+        (forall a, map.get M k = Some a -> is_owned a) ->
         let v := (map.get m k) in
         (forall garbage mem',
             v = None ->
@@ -740,7 +781,10 @@ Module GallinaIncr.
       kv_hammer.
       destruct_one_match_hyp_of_type (option (annotation * value)).
       { destruct_products.
-        destruct_one_match_hyp_of_type annotation; try contradiction.
+        destruct_one_match_hyp_of_type annotation;
+          match goal with
+          | [ H: forall a, Some _ = Some a -> _ |- _ ] => specialize (H _ eq_refl); cbn in H
+          end; try contradiction.
         subst. subst m. subst v.
         match goal with
         | l := context [map.put _ err] |- _ => subst l
@@ -788,13 +832,13 @@ Module GallinaIncr.
     Qed.
 
     (*
-    Instance spec_of_map_put : spec_of "put" :=
+    Instance spec_of_map_put : spec_of put :=
       fun functions =>
         forall pm m pk k pv v R tr mem,
           (AnnotatedMap pm m
            * Key pk k * Value pv v * R)%sep mem ->
           WeakestPrecondition.call
-            functions "put" tr mem [pm; pk; pv]
+            functions put tr mem [pm; pk; pv]
             (fun tr' mem' rets =>
                tr = tr'
                /\ length rets = 2%nat
@@ -829,7 +873,6 @@ Module GallinaIncr.
              m m_ptr m_var M
              k k_ptr k_var
              v v_ptr v_var
-             old_v
              K K_impl,
         spec_of_map_put functions ->
         m = deannotate M ->
@@ -837,11 +880,7 @@ Module GallinaIncr.
         map.get locals m_var = Some m_ptr ->
         map.get locals k_var = Some k_ptr ->
         map.get locals v_var = Some v_ptr ->
-        map.get m k = Some old_v ->
-        match map.get M k with
-        | Some (Borrowed _, _) => True
-        | _ => False
-        end ->
+        (exists a, map.get M k = Some a /\ is_borrowed a) ->
         let m := (map.put m k v) in (* FIXME this should say put_replace *)
         (forall mem',
            let head := m in
@@ -861,7 +900,57 @@ Module GallinaIncr.
          implementing (pred (dlet head K))
          with-locals locals and-memory mem and-trace tr and-rest R
          and-functions functions).
+    Proof.
+      intros.
+      repeat straightline.
+      exists [m_ptr; k_ptr; v_ptr].
+      split.
+      { cbn.
+        eexists; split; eauto.
+        eexists; split; eauto.
+        eexists; split; eauto. }
+      { kv_hammer.
+        match goal with
+        | [ H: forall mem, _ mem -> _ |- _ ] => apply H
+        end.
+        destruct_one_match_hyp_of_type annotation; try contradiction.
+        eassumption. }
+    Qed.
+
+    Hint Resolve get_annotate_is_Owned : compiler.
+
+    Lemma deannotate_annotate:
+      forall m : map, m = deannotate (annotate m).
+    Proof.
     Admitted.
+
+    Hint Resolve deannotate_annotate : compiler.
+
+    Lemma get_deannotate_annotate:
+      forall k v (m : map),
+        map.get m k = v ->
+        map.get (deannotate (annotate m)) k = v.
+    Proof.
+      intros. rewrite <- deannotate_annotate; eauto.
+    Qed.
+
+    Hint Resolve get_deannotate_annotate : compiler.
+    Hint Unfold MapAndTwoKeys : compiler.
+
+    Lemma deannotate_put:
+      forall (m : map) M (k : key) (p : annotation * value),
+        m = map.put (deannotate M) k (snd p) ->
+        m = deannotate (map.put M k p).
+    Proof.
+    Admitted.
+
+    Hint Resolve deannotate_put : compiler.
+
+    Hint Extern 1 => simple eapply put_noop' : compiler.
+
+
+    Axiom __magic__ : forall {A}, A.
+    Ltac admitt := exfalso; clear; apply __magic__.
 
     Derive kvswap_body SuchThat
            (let kvswap := ("kvswap", (["m"; "k1"; "k2"], [],
@@ -883,74 +972,96 @@ Module GallinaIncr.
                           (kvswap_gallina m k1 k2)) R tr)))
         As kvswap_body_correct.
     Proof.
-        setup.
-        add_map_annotations.
-        eapply compile_map_get with (var:="v1") (err:="err") (M:=annotate m).
-        all: repeat t; eauto.
-        { admit. }
-        { congruence. }
-        { autorewrite with mapsimpl.
-          admit.                (* Make this into a definition *) }
-        { intros.               (* FIXME t *)
-          clear_old_seps.
-          t.
-          Hint Unfold MapAndTwoKeys : compiler.
-          unfold MapAndTwoKeys.
-          cbn [fst snd].
-          remove_map_annotations. (* FIXME *)
-          t. }
+      setup.
+      (* Is there a systematic way to move from unannotated to annotated? The
+      annotated spec is better for composing definitions, but the unannotated
+      one is better for reading specs. *)
+      add_map_annotations.
+      eapply compile_map_get with (var:="v1") (err:="err") (M:=annotate m).
+      all: repeat t; eauto with compiler.
+      { match goal with
+        | [  |- _ <> _ ] => congruence
+        end. }
+      { intros.               (* FIXME t *)
+        clear_old_seps.
+        t.
+        autounfold with compiler.
+        cbn [fst snd].
+        remove_map_annotations. (* FIXME *)
+        t. }
+      { intros.
+        clear_old_seps.
+        eapply compile_map_get with (var:="v2") (err:="err"); repeat t;
+          eauto with compiler.
+        { match goal with
+          | [  |- _ <> _ ] => congruence
+          end. }
         { intros.
-          clear_old_seps.       (* FIXME infer `m` *)
-          eapply compile_map_get with (var:="v2") (err:="err") (M:=(map.put (annotate m) k1 (Reserved hd_ptr, head))).
-          { eassumption. }      (* FIXME t does the wrong thing here *)
-          { admit. }
-          { congruence. }
-          { ecancel_assumption. (* Missing from t *)
-            }
-          { t. }
-          { t. }
-          { autorewrite with mapsimpl.
-            admit. }
+          Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
+               @annotate_get_Some @annotate_get_None
+               using (typeclasses eauto || congruence) : mapsimpl_not_too_much.
+          autorewrite with mapsimpl_not_too_much in *. (* FIXME is that enough for the other cases? *)
+          eauto with compiler. }
+        { intros.
+          clear_old_seps.
+          repeat t.
+          remove_map_annotations. (* Should be done only in the skip case *)
+          repeat t. }
+        { intros; clear_old_seps.
+          repeat t.
+          eapply compile_map_put_replace;
+            lazymatch goal with
+            | [  |- sep _ _ _ ] => borrow_all
+            | _ => idtac
+            end.
+          3: ecancel_assumption.
+          all: repeat t; eauto with compiler.
+          { Print HintDb compiler.
+            simple apply deannotate_put.
+            cbn.
+            eapply put_noop';
+              eauto 10 with compiler.
+            autorewrite with mapsimpl_not_too_much.
+            admitt.
+          }
+          all: eauto.
+          { repeat match goal with
+                   | [  |- exists _, _ ] => eexists
+                   | [  |- _ /\ _ ] => split
+                   | _ => progress autorewrite with mapsimpl_not_too_much
+                   | _ => reflexivity
+                   end. }
+          intros.
+          clear_old_seps.
+
+          (* autorewrite with mapsimpl. *)
+          (* rewrite map.put_put_same in H3. *)
+
+          eapply compile_map_put_replace;
+            lazymatch goal with
+            | [  |- sep _ _ _ ] => try borrow_all
+            | _ => idtac
+            end.
+
+          all: repeat t; eauto with compiler.
+
+          all: subst head1.
+          2:   { repeat match goal with
+                   | [  |- exists _, _ ] => eexists
+                   | [  |- _ /\ _ ] => split
+                   | _ => progress autorewrite with mapsimpl_not_too_much
+                   | _ => reflexivity
+                        end. }
+          { apply map.map_ext.
+            intros; autorewrite with mapsimpl.
+            admitt. }
           { intros.
             clear_old_seps.
-            remove_map_annotations.
+            repeat t.
+            remove_map_annotations. (* Should be done only in the skip case *)
             repeat t. }
-          { intros; clear_old_seps.
-            repeat t.
-            borrow hd_ptr.
-            borrow hd_ptr0.
-            lazymatch goal with
-            | [ H: context[AnnotatedMap _ ?M'] |- _ ] =>
-              eapply compile_map_put_replace with (M:=M')
-            end.
-            3: ecancel_assumption.
-            all: repeat t.
-            all: eauto.
-            all: autorewrite with mapsimpl.
-            all: eauto.
-            1:admit.
-              intros.
-              clear_old_seps.
-              rewrite map.put_put_same in H3.
+      } }
+    Abort.
 
-            lazymatch goal with
-            | [ H: context[AnnotatedMap _ ?M'] |- _ ] => (* FIXME put same vars? *)
-              eapply compile_map_put_replace with (M:=M')
-            end.
-
-            3:ecancel_assumption.
-            all: subst head1.
-            all: eauto.
-            all: repeat t.
-            all:autorewrite with mapsimpl.
-            all:eauto.
-            1:admit.
-
-            intros.
-            clear_old_seps.
-            remove_map_annotations.
-
-            repeat t.
-
-    Admitted.
+End KVSwap.
 End GallinaIncr.
