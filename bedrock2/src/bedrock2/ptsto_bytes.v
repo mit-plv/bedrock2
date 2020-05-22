@@ -19,7 +19,7 @@ Section Scalars.
   Definition ptsto_bytes (n : nat) (addr : word) (value : tuple byte n) : mem -> Prop :=
     array ptsto (word.of_Z 1) addr (tuple.to_list value).
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Lemma load_bytes_of_sep a n bs R m
     (Hsep : sep (ptsto_bytes n a bs) R m)
     : Memory.load_bytes n m a = Some bs.
@@ -39,7 +39,7 @@ Section Scalars.
   (*tag:workaround*)
   Arguments Z.of_nat: simpl never.
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Lemma invert_getmany_of_tuple_Some_footprint
     (n : nat) (a: word) (vs : tuple byte (S n)) (m : mem)
     (D: Z.of_nat n < 2 ^ width)
@@ -49,6 +49,7 @@ Section Scalars.
   Proof.
     apply map.invert_getmany_of_tuple_Some in H. destruct H as [B1 B2].
     exists (map.remove m a).
+    (*tag:obvious*)
     repeat split.
     - apply map.map_ext. intros k.
       pose proof (map.putmany_spec (map.put map.empty a (pair._1 vs)) (map.remove m a) k) as P.
@@ -78,11 +79,10 @@ Section Scalars.
       clear -B2 mem_ok word_ok D. destruct vs as [v vs]. simpl in *.
       assert (0 < 1) as Y by blia.
       assert (1 + Z.of_nat n <= 2 ^ width)%Z as X by blia. clear D.
-      revert Y X B2.
-      generalize 1%Z as d.
-      clear v.
-      revert a vs.
-      induction n; intros a vs d Y X B2; simpl in *.
+      (*tag:proof*)
+      revert Y X B2. generalize 1%Z as d. clear v. revert a vs. induction n;
+      (*tag:obvious*)
+      intros a vs d Y X B2; simpl in *.
       + destruct vs. reflexivity.
       + apply map.invert_getmany_of_tuple_Some in B2. simpl in B2. destruct B2 as [A B].
         destruct vs as [v vs]. simpl in *.
@@ -119,6 +119,7 @@ Section Scalars.
           { rewrite (morph_add word.ring_morph). rewrite word.add_assoc. reflexivity. }
   Qed.
 
+  (*tag:proof*)
   Lemma sep_of_load_bytes_aux: forall (n: nat) (a: word) (bs: tuple byte n) (m: mem) (Q: mem -> Prop),
       Z.of_nat n <= 2 ^ width ->
       sep (fun m0 => Memory.load_bytes n m0 a = Some bs) Q m ->
@@ -143,6 +144,7 @@ Section Scalars.
       | x: tuple _ (S _) |- _ => destruct x as [b bs]; simpl in *
       end.
 
+      (*tag:obvious*)
       Fail (* TODO ecancel_assumption why does it fail? *)
       match goal with
       | IHn: _ |- _ => edestruct IHn as [R IH]; [..|exists R; ecancel_assumption]
@@ -165,26 +167,29 @@ Section Scalars.
         unfold sep, ptsto, footprint in *. eauto 10.
   Qed.
 
+  (*tag:doc*)
   (* The side condition is actually needed: If n was bigger than 2^width,
      ptsto_bytes would star together the same address more than once. *)
+  (*tag:proof*)
   Lemma sep_of_load_bytes: forall (n: nat) (a: word) (bs: tuple byte n) (m: mem),
       Z.of_nat n <= 2 ^ width ->
       Memory.load_bytes n m a = Some bs ->
       exists R, sep (ptsto_bytes n a bs) R m.
   Proof.
-    intros.
-    edestruct sep_of_load_bytes_aux as [R P].
+    intros. edestruct sep_of_load_bytes_aux as [R P].
+    (*tag:obvious*)
     - eassumption.
     - apply sep_comm. apply sep_emp_l. split; [apply I|eassumption].
-    - exists R. ecancel_assumption.
+    - eexists; ecancel_assumption.
   Qed.
 
+  (*tag:proof*)
   Lemma unchecked_store_bytes_of_sep(a: word)(n: nat)(oldbs bs: tuple byte n)(R: mem -> Prop)(m: mem)
     (Hsep : sep (ptsto_bytes n a oldbs) R m)
     : sep (ptsto_bytes n a bs) R (Memory.unchecked_store_bytes n m a bs).
   Proof.
-    revert oldbs bs m R a Hsep.
-    induction n; [solve[cbn; intros []; trivial]|].
+    revert oldbs bs m R a Hsep; induction n; [solve[cbn; intros []; trivial]|].
+    (*tag:obvious*)
     intros [oldb0 oldbs] [b0 bs] m R a Hsep.
     cbn in *.
     apply sep_assoc.
@@ -198,19 +203,14 @@ Section Scalars.
     - seplog.
   Qed.
 
+  (*tag:proof*)
   Lemma unchecked_store_bytes_of_sep'
       (a: word)(n: nat)(bs1 bs2: tuple byte n)(R1 R2 F: mem -> Prop)(m: mem):
       R1 m ->
       iff1 R1 (sep (ptsto_bytes n a bs1) F) ->
       iff1 R2 (sep (ptsto_bytes n a bs2) F) ->
       R2 (Memory.unchecked_store_bytes n m a bs2).
-  Proof.
-    intros A B C.
-    apply C.
-    eapply unchecked_store_bytes_of_sep.
-    apply B.
-    assumption.
-  Qed.
+  Proof. intros A B C. eapply C, unchecked_store_bytes_of_sep, B, A. Qed.
 
   Lemma store_bytes_of_sep(a: word)(n: nat)(oldbs bs: tuple byte n)(R post: mem -> Prop)(m: mem)
     (Hsep : sep (ptsto_bytes n a oldbs) R m)

@@ -19,7 +19,7 @@ Section Array.
 
   Local Infix "*" := sep.
 
-  (*tag:lemma*)
+  (*tag:obvious*)
   Lemma array_cons x xs start:
     iff1 (array start (x :: xs)) (sep (element start x) (array (word.add start size) xs)).
   Proof. reflexivity. Qed.
@@ -28,6 +28,7 @@ Section Array.
     iff1 (array start nil) (emp True).
   Proof. reflexivity. Qed.
 
+  (*tag:proof*)
   Lemma array_append xs ys start:
     iff1 (array start (xs ++ ys))
          (array start xs * array (word.add start (word.of_Z (word.unsigned size * Z.of_nat (length xs)))) ys).
@@ -37,6 +38,7 @@ Section Array.
       match goal with
       | |- iff1 _ (sep _ (array ?mid _)) => replace mid with start; cycle 1
       end.
+      (*tag:bitvector*)
       { eapply word.unsigned_inj.
         repeat (rewrite ?word.unsigned_add, ?word.unsigned_of_Z, ?Z.mul_0_r, ?Z.mod_0_l, ?Z.add_0_r, ?word.wrap_unsigned || unfold word.wrap); trivial. }
       cancel.
@@ -44,7 +46,7 @@ Section Array.
       specialize (IHxs ys (word.add start size)). simpl in IHxs.
       rewrite IHxs.
       cancel.
-            (*tag:bitvector*)
+      (*tag:bitvector*)
       (* TODO this step should be done by an automatic semi-canceler *)
       match goal with
       | |- iff1 (seps (array ?addr1 ys :: nil)) (seps (array ?addr2 ys :: nil)) =>
@@ -54,9 +56,9 @@ Section Array.
         repeat (rewrite ?word.unsigned_add, ?word.unsigned_of_Z, ?Z.mul_0_r, ?Z.mul_1_r, ?Z.mod_0_l, ?Z.add_0_r, ?Z.mul_add_distr_l, ?word.wrap_unsigned, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l || unfold word.wrap); trivial.
         f_equal.
         blia. }
-        (*tag:lemma*)
   Qed.
 
+  (*tag:obvious*)
   Lemma array_append' xs ys start:
     iff1 (array start (xs ++ ys))
          (array start xs * array (word.add start
@@ -68,23 +70,24 @@ Section Array.
     eapply word.unsigned_inj.
     repeat (rewrite ?word.unsigned_of_Z, ?word.unsigned_mul, ?Zdiv.Zmult_mod_idemp_r || unfold word.wrap).
     reflexivity.
-    (*tag:lemma*)
   Qed.
 
-  (*tag:lists*)
+  (*tag:obvious*)
   Lemma list__tl_skipn {A} n (xs : list A) : tl (skipn n xs) = skipn (S n) xs.
   Proof. revert xs; induction n, xs; auto; []; eapply IHn. Qed.
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Lemma array_index_nat xs start n :
     iff1 (array start xs)
       ( array start (firstn n xs) * (
         match hd_error (skipn n xs) with Some x => element (word.add start (word.of_Z (word.unsigned size*Z.of_nat n))) x | None => emp True end *
         array (word.add (word.add start (word.of_Z (word.unsigned size*Z.of_nat n))) size) (skipn (S n) xs))).
   Proof.
+    (*tag:obvious*)
     pose proof (firstn_skipn n xs) as H.
     rewrite <-!list__tl_skipn.
     remember (firstn n xs) as A in *; remember (skipn n xs) as B in *; rewrite <-H.
+    (*tag:proof*)
     etransitivity; [eapply array_append|]; eapply iff1_sep_cancel.
     destruct B; cbn [array hd_error tl]; [solve[cancel]|].
     (*tag:lists*)
@@ -94,6 +97,7 @@ Section Array.
     (*tag:lemma*)
   Qed.
 
+  (*tag:obvious*)
   Context {default : T}.
   Lemma array_index_nat_inbounds xs start n (H : (n < length xs)%nat) :
     iff1 (array start xs)
@@ -102,14 +106,13 @@ Section Array.
        array (word.add (word.add start (word.of_Z (word.unsigned size * Z.of_nat n))) size) (skipn (S n) xs))).
   Proof.
     pose proof array_index_nat xs start n.
-    (*tag:lists*)
     rewrite <-(firstn_skipn n xs), app_length in H.
     destruct (skipn n xs) in *; cbn [tl hd hd_error] in *; [|assumption].
     { cbn [length] in H. rewrite PeanoNat.Nat.add_0_r in H.
       rewrite firstn_length in H. blia. }
-    (*tag:lemma*)
   Qed.
 
+  (*tag:proof*)
   Lemma array_address_inbounds xs start a
     (Hlen : word.unsigned (word.sub a start) < Z.mul (word.unsigned size) (Z.of_nat (length xs)))
     (Hmod : word.unsigned (word.sub a start) mod (word.unsigned size) = 0)
@@ -139,8 +142,9 @@ Section Array.
     { eapply word.unsigned_inj.
       repeat (rewrite ?word.unsigned_of_Z, ?word.unsigned_mul, ?Zdiv.Zmult_mod_idemp_r, ?Zdiv.Zmult_mod_idemp_l || unfold word.wrap).
       f_equal. blia. }
-    (*tag:lemma*)
+    (*tag:proof*)
     eapply (array_index_nat_inbounds xs start n); subst n.
+    (*tag:obvious*)
     rewrite <-Znat.Nat2Z.id.
     eapply Znat.Z2Nat.inj_lt; try eapply Z.div_pos; try blia; [].
     eapply Z.div_lt_upper_bound; blia.
@@ -154,7 +158,7 @@ Section ByteArray.
   Local Notation array := (array (mem:=mem) ptsto (word.of_Z 1)).
   Local Infix "*" := sep.
 
-  (*tag:lemma*)
+  (*tag:obvious*)
   Lemma bytearray_address_inbounds xs (start : word) a
     (Hlen : word.unsigned (word.sub a start) < Z.of_nat (length xs))
     (i := Z.to_nat (word.unsigned (word.sub a start)))
@@ -180,6 +184,7 @@ Section ByteArray.
     all : rewrite word.word_sub_add_l_same_l; trivial.
   Qed.
 
+  (*tag:proof*)
   Lemma bytearray_append xs ys start :
     iff1 (array start (xs ++ ys))
          (array start xs * array (word.add start (word.of_Z (Z.of_nat (length xs)))) ys).
@@ -197,4 +202,5 @@ Section ByteArray.
     pose proof word.of_Z_unsigned i as HH; rewrite H in HH.
     subst i; symmetry; apply bytearray_append.
   Qed.
+  (*tag:importboilerplate*)
 End ByteArray.

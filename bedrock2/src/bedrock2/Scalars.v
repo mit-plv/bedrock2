@@ -35,7 +35,7 @@ Section Scalars.
   Definition scalar addr (value: word) : mem -> Prop :=
     truncated_scalar Syntax.access_size.word addr (word.unsigned value).
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Lemma load_Z_of_sep sz addr (value: Z) R m
     (Hsep : sep (truncated_scalar sz addr value) R m)
     : Memory.load_Z sz m addr = Some (Z.land value (Z.ones (Z.of_nat (bytes_per (width:=width) sz)*8))).
@@ -48,9 +48,9 @@ Section Scalars.
     assert ((0 <= x)%Z) by (subst x; destruct sz; blia).
     rewrite <- Z.land_ones by assumption.
     reflexivity.
-    (*tag:lemma*)
   Qed.
 
+  (*tag:proof*)
   Lemma store_Z_of_sep sz addr (oldvalue value: Z) R m (post:_->Prop)
     (Hsep : sep (truncated_scalar sz addr oldvalue) R m)
     (Hpost : forall m, sep (truncated_scalar sz addr value) R m -> post m)
@@ -76,7 +76,7 @@ Section Scalars.
     destruct (Z.leb_spec0 0 i); try blia; cbn [andb]; [].
     eapply Z.ltb_lt.
     rewrite Z2Nat.id; Z.div_mod_to_equations; Lia.nia.
-    (*tag:lemma*)
+    (*tag:proof*)
   Qed.
 
   Lemma load_one_of_sep addr value R m
@@ -89,6 +89,8 @@ Section Scalars.
     eapply Z.lor_0_r.
   Qed.
 
+  (*tag:obvious*)
+  (*essentially duplicates of the previous lemma...*)
   Lemma load_two_of_sep addr value R m
     (Hsep : sep (scalar16 addr value) R m)
     : Memory.load Syntax.access_size.two m addr = Some (word.of_Z (word.unsigned value)).
@@ -113,6 +115,7 @@ Section Scalars.
     reflexivity.
   Qed.
 
+  (*tag:proof*)
   Lemma store_one_of_sep addr (oldvalue : byte) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar8 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar8 addr (byte.of_Z (word.unsigned value))) R m -> post m)
@@ -145,7 +148,7 @@ Section Scalars.
     cbv [byte.wrap word.wrap];
     Z.bitblast.
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Lemma store_two_of_sep addr (oldvalue : word16) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar16 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar16 addr (word.of_Z (word.unsigned value))) R m -> post m)
@@ -162,10 +165,10 @@ Section Scalars.
              let x' := remove_wrap x in
              replace (@byte.of_Z x) with (@byte.of_Z x') by byte_bitblast
            end.
-           (*tag:lemma*)
     ecancel_assumption.
   Qed.
 
+  (*tag:proof*)
   Lemma store_four_of_sep addr (oldvalue : word32) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar32 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar32 addr (word.of_Z (word.unsigned value))) R m -> post m)
@@ -182,10 +185,10 @@ Section Scalars.
              let x' := remove_wrap x in
              replace (@byte.of_Z x) with (@byte.of_Z x') by byte_bitblast
            end.
-           (*tag:lemma*)
     ecancel_assumption.
   Qed.
 
+  (*tag:proof*)
   Lemma store_word_of_sep addr (oldvalue value: word) R m (post:_->Prop)
     (Hsep : sep (scalar addr oldvalue) R m)
     (Hpost : forall m, sep (scalar addr value) R m -> post m)
@@ -207,6 +210,8 @@ Section Scalars.
     eapply Z.mod_pos_bound; reflexivity.
   Qed.
 
+  (*tag:obvious*)
+  (*essentially duplicates of the previous lemma...*)
   Lemma scalar32_of_bytes a l (H : List.length l = 4%nat) :
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar32 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
