@@ -2,9 +2,9 @@
 DIR="$(dirname "$(readlink -f "$0")")"
 
 count() {
-	printf "%s: " "$1"
-	shift
-	cat $@ | python3 "$DIR/tagcount.py"
+        printf "%s: " "$1"
+        shift
+        cat $@ | python3 "$DIR/tagcount.py"
 }
 
 count "top-level trace specification" bedrock2/src/bedrock2Examples/lightbulb_spec.v
@@ -21,6 +21,7 @@ count "- program logic" WeakestPrecondition.v Map/Separation.v TracePredicate.v 
 cd ../../..
 
 cd compiler/src/compiler
+# count "compiler" ../../../bedrock2/src/bedrock2/{Syntax.v,NotationsCustomEntry.v} ../../../bedrock2/src/bedrock2/Semantics.v ExprImp.v FlatImp.v FlattenExpr.v FlattenExprDef.v StringNameGen.v FlattenExprSimulation.v NameGen.v RegRename.v FlatToRiscvDef.v FlatToRiscvFunctions.v FlatToRiscvCommon.v FlatToRiscvSimulation.v ../compilerExamples/MMIO.v EmitsValid.v ../../../deps/riscv-coq/src/riscv/Proofs/*.v PipelineWithRename.v CompilerInvariant.v FitsStack.v ForeverSafe.v Simulation.v MemoryLayout.v ToplevelLoop.v RiscvEventLoop.v SeparationLogic.v SimplWordExpr.v DivisibleBy4.v Simp.v mod4_0.v Rem4.v on_hyp_containing.v eqexact.v
 printf "compiler:\n"
 count "- parsing" ../../../bedrock2/src/bedrock2/{Syntax.v,NotationsCustomEntry.v}
 count "- semantics" ../../../bedrock2/src/bedrock2/Semantics.v
