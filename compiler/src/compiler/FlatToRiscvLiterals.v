@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import riscv.Spec.Decode.
 Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Platform.RiscvMachine.
@@ -9,7 +10,6 @@ Require Import compiler.util.Common.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
-Require Import compiler.EmitsValid.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Require Import coqutil.Tactics.autoforward.
@@ -26,6 +26,7 @@ Section FlatToRiscvLiterals.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
 
+  (*tag:unrelated*)
   Definition updateMetricsForLiteral v initialMetrics : MetricLog :=
     let cost :=
         if ((- 2 ^ 11 <=? v)%Z && (v <? 2 ^ 11)%Z)%bool
@@ -50,6 +51,7 @@ Section FlatToRiscvLiterals.
     repeat (destruct_one_match; try blia).
   Qed.
 
+  (*tag:obvious*)
   Ltac match_apply_runsTo :=
     match goal with
     | R: runsTo ?m ?post |- runsTo ?m' ?post =>
@@ -79,6 +81,7 @@ Section FlatToRiscvLiterals.
     intros. destruct b1; destruct b2; constructor; auto.
   Qed.
 
+  (*tag:obvious*)
   Lemma compile_lit_correct_full_raw: forall (initialL: RiscvMachineL) post x v R Rexec,
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       let insts := compile_lit x v in
@@ -96,7 +99,6 @@ Section FlatToRiscvLiterals.
       runsTo initialL post.
   Proof.
     intros *. intros E1 insts d F P V Vm N.
-    pose proof (compile_lit_emits_valid v SeparationLogic.iset V) as EV.
     simpl in *.
     destruct_RiscvMachine initialL.
     subst d insts. subst.
@@ -155,12 +157,8 @@ Section FlatToRiscvLiterals.
       + solve_word_eq word_ok.
       + solve_word_eq word_ok.
     - unfold compile_lit_64bit, compile_lit_32bit in *.
-      match type of EV with
-      | context [ Xori _ _ ?a ] => remember a as mid
-      end.
-      match type of EV with
-      | context [ Z.lxor ?a mid ] => remember a as hi
-      end.
+      remember (signExtend 12 (signExtend 32 (bitSlice v 32 64))) as mid.
+      remember (signExtend 32 (signExtend 32 (bitSlice v 32 64))) as hi.
       cbv [List.app program array] in P.
       simpl in *. (* if you don't remember enough values, this might take forever *)
       repeat match type of X with
@@ -202,6 +200,7 @@ Section FlatToRiscvLiterals.
       + solve_word_eq word_ok.
   Qed.
 
+  (*tag:proof*)
   Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R Rexec,
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       let insts := compile_lit x v in
@@ -217,6 +216,11 @@ Section FlatToRiscvLiterals.
              (withMetrics (updateMetricsForLiteral v initialL.(getMetrics)) initialL))))
              post ->
       runsTo initialL post.
-  Proof. eauto using compile_lit_correct_full_raw, valid_FlatImp_var_implies_valid_register. Qed.
+  (*tag:proofsummary*)
+  Proof. (* by case distinction on literal size and symbolic execution through the instructions
+    emitted by compile_lit *)
+    (*tag:obvious*)
+    eauto using compile_lit_correct_full_raw, valid_FlatImp_var_implies_valid_register.
+  Qed.
 
 End FlatToRiscvLiterals.

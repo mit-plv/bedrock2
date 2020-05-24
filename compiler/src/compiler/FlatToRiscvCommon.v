@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import riscv.Utility.Monads. Require Import riscv.Utility.MonadNotations.
 Require Import coqutil.Macros.unique.
 Require Import compiler.FlatImp.
@@ -30,7 +31,6 @@ Require Import riscv.Utility.MkMachineWidth.
 Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
-Require Import compiler.EmitsValid.
 Require Import compiler.SeparationLogic.
 Require Import bedrock2.Scalars.
 Require Import compiler.Simp.
@@ -54,6 +54,7 @@ Set Implicit Arguments.
 
 Export FlatToRiscvDef.FlatToRiscvDef.
 
+(*tag:spec*)
 Class parameters := {
   def_params :> FlatToRiscvDef.parameters;
 
@@ -69,6 +70,7 @@ Class parameters := {
              mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop;
 }.
 
+(*tag:obvious*)
 Arguments Z.mul: simpl never.
 Arguments Z.add: simpl never.
 Arguments Z.of_nat: simpl never.
@@ -89,12 +91,14 @@ Section WithParameters.
     FlatImp.ext_spec := ext_spec;
   |}.
 
+  (*tag:proof*)
   Definition regs_initialized(regs: locals): Prop :=
     forall r : Z, 0 < r < 32 -> exists v : word, map.get regs r = Some v.
 
   Section WithLocalsOk.
     Context {locals_ok: map.ok locals}.
 
+    (*tag:obvious*)
     Lemma regs_initialized_put: forall l x v,
         regs_initialized l ->
         regs_initialized (map.put l x v).
@@ -113,12 +117,14 @@ Section WithParameters.
       rewrite map.get_put_dec. destruct_one_match; subst; eauto.
     Qed.
 
+    (*tag:proof*)
     Lemma preserve_regs_initialized_after_putmany_of_list_zip: forall vars vals (regs regs': locals),
         regs_initialized regs ->
         map.putmany_of_list_zip vars vals regs = Some regs' ->
         regs_initialized regs'.
     Proof.
       induction vars; intros.
+      (*tag:obvious*)
       - simpl in H0. destruct vals; try discriminate.
         replace regs' with regs in * by congruence. assumption.
       - simpl in H0.
@@ -130,6 +136,7 @@ Section WithParameters.
 
   End WithLocalsOk.
 
+  (*tag:proof*)
   Definition runsTo: MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
 
@@ -140,15 +147,18 @@ Section WithParameters.
     | _ => emp False
     end.
 
+  (*tag:doc*)
   (* Note: This definition would not be usable in the same way if we wanted to support
      recursive functions, because separation logic would prevent us from mentioning
      the snippet of code being run twice (once in [program initialL.(getPc) insts] and
      a second time inside [functions]).
      To avoid this double mentioning, we will remove the function being called from the
      list of functions before entering the body of the function. *)
+  (*tag:proof*)
   Definition functions(base: word)(rel_positions: funname_env Z): env -> mem -> Prop :=
     map.fold (fun P fname fbody => (function base rel_positions fname fbody * P)%sep) (emp True).
 
+  (*tag:doc*)
   (*
      high addresses!             ...
                       p_sp   --> mod_var_0 of previous function call arg0
@@ -164,6 +174,7 @@ Section WithParameters.
                       new_sp --> mod_var_0
      low addresses               ...
   *)
+  (*tag:spec*)
   Definition stackframe(p_sp: word)(argvals retvals: list word)
              (ra_val: word)(modvarvals: list word): mem -> Prop :=
     word_array
@@ -179,9 +190,11 @@ Section WithParameters.
       let mod_vars := ListSet.list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
       Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
 
+  (*tag:doc*)
   (* Note:
      - This predicate cannot be proved for recursive functions
      - Measured in words, needs to be multiplied by 4 or 8 *)
+  (*tag:spec*)
   Inductive fits_stack: Z -> env -> stmt Z -> Prop :=
   | fits_stack_load: forall n e sz x y,
       0 <= n ->
@@ -221,6 +234,7 @@ Section WithParameters.
       0 <= n ->
       fits_stack n e (SInteract binds act args).
 
+  (*tag:doc*)
   (* Ghost state used to describe low-level state introduced by the compiler.
      Called "ghost constants" because after executing a piece of code emitted by
      the compiler, these values should still be the same.
@@ -229,6 +243,7 @@ Section WithParameters.
      the amount of available stack shrinks, the stack pointer decreases, and if we're
      in a function call, the function being called is removed from funnames so that
      it can't be recursively called again. *)
+  (*tag:spec*)
   Record GhostConsts := {
     p_sp: word;
     num_stackwords: Z;
@@ -365,10 +380,12 @@ Section WithParameters.
                   regs_initialized finalL.(getRegs) /\
                   valid_machine finalL).
 
+  (*tag:proof*)
   Lemma compile_ext_call_correct_compatibility{mem_ok: map.ok mem}{locals_ok: map.ok locals}:
     forall resvars action argvars,
       compile_ext_call_correct_alt resvars action argvars ->
       compiles_FlatToRiscv_correctly compile_ext_call (SInteract resvars action argvars).
+  (*tag:obvious*)
   Proof.
     unfold compile_ext_call_correct_alt, compiles_FlatToRiscv_correctly, goodMachine.
     intros. destruct_RiscvMachine initialL. destruct g. simpl in *. simp. subst.
@@ -458,7 +475,7 @@ Ltac simpl_bools :=
            clear H
          end.
 
-
+(*tag:administrivia*)
 Section FlatToRiscv1.
   Context {p: unique! parameters}.
   Context {h: unique! assumptions}.
@@ -470,6 +487,7 @@ Section FlatToRiscv1.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
+  (*tag:bitvector*)
   Lemma reduce_eq_to_sub_and_lt: forall (y z: word),
       word.eqb y z = word.ltu (word.sub y z) (word.of_Z 1).
   Proof.
@@ -498,10 +516,12 @@ Section FlatToRiscv1.
       assert (k <> 0); Lia.nia.
   Qed.
 
+  (*tag:workaround*)
   (* Set Printing Projections.
      Prints some implicit arguments it shouldn't print :(
      COQBUG https://github.com/coq/coq/issues/9814 *)
 
+  (*tag:proof*)
   Ltac simulate''_step :=
     first (* not everyone wants these: *)
           [ eapply go_loadByte       ; [sidecondition..|]
@@ -526,6 +546,7 @@ Section FlatToRiscv1.
       mcomp_sat (f tt)
                 (withRegs (map.put initialL.(getRegs) x v) (updateMetrics (addMetricLoads 1) initialL)) post ->
       mcomp_sat (Bind (execute (compile_load sz x a 0)) f) initialL post.
+  (*tag:obvious*)
   Proof.
     unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per.
     destruct width_cases as [E | E];
@@ -548,6 +569,7 @@ Section FlatToRiscv1.
 
   Arguments invalidateWrittenXAddrs: simpl never.
 
+  (*tag:proof*)
   Lemma go_store: forall sz (x a: Z) (addr v: word) (initialL: RiscvMachineL) m' post f,
       valid_register x ->
       valid_register a ->
@@ -559,6 +581,7 @@ Section FlatToRiscv1.
                        (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
       mcomp_sat (Bind (execute (compile_store sz a x 0)) f) initialL post.
   Proof.
+    (*tag:obvious*)
     unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per;
     destruct width_cases as [E | E];
       (* note: "rewrite E" does not work because "width" also appears in the type of "word",
@@ -576,8 +599,10 @@ Section FlatToRiscv1.
         simp; simulate''; simpl; simpl_word_exprs word_ok; try eassumption.
   Qed.
 
+  (*tag:proof*)
   Lemma run_compile_load: forall sz: Syntax.access_size,
       run_Load_spec (@Memory.bytes_per width sz) (compile_load sz) id.
+  (*tag:obvious*)
   Proof.
     intro sz. destruct sz; unfold compile_load; simpl.
     - refine run_Lbu.
@@ -590,8 +615,10 @@ Section FlatToRiscv1.
       + refine run_Ld_unsigned.
   Qed.
 
+  (*tag:proof*)
   Lemma run_compile_store: forall sz: Syntax.access_size,
       run_Store_spec (@Memory.bytes_per width sz) (compile_store sz).
+  (*tag:obvious*)
   Proof.
     intro sz. destruct sz; unfold compile_store; simpl.
     - refine run_Sb.
@@ -602,8 +629,10 @@ Section FlatToRiscv1.
       + refine run_Sd.
   Qed.
 
+  (*tag:doc*)
   (* almost the same as run_compile_load, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
+  (*tag:proof*)
   Lemma run_load_word: forall (base addr v : word) (rd rs : Z) (ofs : MachineInt)
                               (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
       valid_register rd ->
@@ -629,6 +658,7 @@ Section FlatToRiscv1.
   Proof.
     intros.
     eapply mcomp_sat_weaken; cycle 1.
+    (*tag:obvious*)
     - eapply (run_compile_load Syntax.access_size.word); cycle -2; try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
       etransitivity. 1: eassumption.
@@ -640,8 +670,10 @@ Section FlatToRiscv1.
       + clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
   Qed.
 
+  (*tag:doc*)
   (* almost the same as run_compile_store, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
+  (*tag:proof*)
   Lemma run_store_word: forall (base addr v_new : word) (v_old : word) (rs1 rs2 : Z)
               (ofs : MachineInt) (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
       valid_register rs1 ->
@@ -669,15 +701,18 @@ Section FlatToRiscv1.
            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
            valid_machine finalL).
   Proof.
+    (*tag:obvious*)
     intros.
     eapply mcomp_sat_weaken; cycle 1.
     - eapply (run_compile_store Syntax.access_size.word); cycle -2; try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
   Qed.
 
+  (*tag:proof*)
   Lemma one_step: forall initialL P,
       mcomp_sat (run1 iset) initialL P ->
       runsTo initialL P.
+  (*tag:obvious*)
   Proof.
     intros.
     eapply runsToStep; [eassumption|].
@@ -685,11 +720,13 @@ Section FlatToRiscv1.
     apply runsToDone. assumption.
   Qed.
 
+  (*tag:proof*)
   Lemma runsTo_det_step_with_valid_machine: forall initialL midL (P : RiscvMachineL -> Prop),
       valid_machine initialL ->
       mcomp_sat (Run.run1 iset) initialL (eq midL) ->
       (valid_machine midL -> runsTo midL P) ->
       runsTo initialL P.
+  (*tag:obvious*)
   Proof.
     intros.
     eapply runsToStep with (midset := fun m' => m' = midL /\ valid_machine m').
@@ -698,10 +735,12 @@ Section FlatToRiscv1.
     - intros ? (? & ?). subst. eapply H1. assumption.
   Qed.
 
+  (*tag:proof*)
   Lemma disjoint_putmany_preserves_store_bytes: forall n a vs (m1 m1' mq: mem),
       store_bytes n m1 a vs = Some m1' ->
       map.disjoint m1 mq ->
       store_bytes n (map.putmany m1 mq) a vs = Some (map.putmany m1' mq).
+  (*tag:obvious*)
   Proof.
     intros.
     unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
@@ -720,25 +759,24 @@ Section FlatToRiscv1.
     eapply map.sub_domain_disjoint; eassumption.
   Qed.
 
+  (*tag:proof*)
   Lemma store_bytes_preserves_footprint: forall n a v (m m': mem),
       Memory.store_bytes n m a v = Some m' ->
       map.same_domain m m'.
+  (*tag:obvious*)
   Proof.
     intros. unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
     eauto using map.putmany_of_tuple_preserves_domain.
   Qed.
 
-  Lemma iset_is_supported: supported_iset iset.
-  Proof.
-    unfold iset. destruct_one_match; constructor.
-  Qed.
-
+  (*tag:proof*)
   Lemma seplog_subst_eq{A B R: mem -> Prop} {mL mH: mem}
       (H: A mL)
       (H0: iff1 A (R * eq mH)%sep)
       (H1: B mH):
       (B * R)%sep mL.
   Proof.
+    (*tag:obvious*)
     unfold iff1 in *.
     destruct (H0 mL) as [P1 P2]. specialize (P1 H).
     apply sep_comm.
@@ -746,12 +784,14 @@ Section FlatToRiscv1.
     destruct P1 as (mR & mH' & P11 & P12 & P13). subst mH'. eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma subst_load_bytes_for_eq {sz} {mH mL: mem} {addr: word} {bs P R}:
       let n := @Memory.bytes_per width sz in
       bedrock2.Memory.load_bytes n mH addr = Some bs ->
       (P * eq mH * R)%sep mL ->
       exists Q, (P * ptsto_bytes n addr bs * Q * R)%sep mL.
   Proof.
+    (*tag:obvious*)
     intros n H H0.
     apply sep_of_load_bytes in H; cycle 1. {
       subst n. clear. destruct sz; destruct width_cases as [C | C]; rewrite C; cbv; discriminate.
@@ -761,10 +801,12 @@ Section FlatToRiscv1.
     eapply seplog_subst_eq; [exact H0|..|exact A]. ecancel.
   Qed.
 
+  (*tag:proof*)
   Lemma store_bytes_frame: forall {n: nat} {m1 m1' m: mem} {a: word} {v: HList.tuple byte n} {F},
       Memory.store_bytes n m1 a v = Some m1' ->
       (eq m1 * F)%sep m ->
       exists m', (eq m1' * F)%sep m' /\ Memory.store_bytes n m a v = Some m'.
+  (*tag:obvious*)
   Proof.
     intros.
     unfold sep in H0.
@@ -786,10 +828,12 @@ Section FlatToRiscv1.
 
 End FlatToRiscv1.
 
+(*tag:proofsummary*)
 (* if we have valid_machine for the current machine, and need to prove a
    runsTo with valid_machine in the postcondition, this tactic can
    replace the valid_machine in the postcondition by True *)
 Ltac get_run1valid_for_free :=
+(*tag:obvious*)
   let R := fresh "R" in
   evar (R: MetricRiscvMachine -> Prop);
   eapply runsTo_get_sane with (P := R);
@@ -835,6 +879,7 @@ Ltac subst_load_bytes_for_eq :=
     edestruct P as [Q ?]; clear P; [ecancel_assumption|]
   end.
 
+(*tag:proof*)
 Ltac simulate'_step :=
   match goal with
   (* lemmas introduced only in this file: *)

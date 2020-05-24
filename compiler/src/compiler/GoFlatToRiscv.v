@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.Lia.
@@ -53,30 +54,38 @@ Section Go.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
+  (*tag:proof*)
   Lemma spec_Bind_det{A B: Type}: forall (initialL: RiscvMachineL)
        (post: B -> RiscvMachineL -> Prop) (m: M A) (f : A -> M B) (a: A) (mid: RiscvMachineL),
       mcomp_sat m initialL (fun a' mid' => a' = a /\ mid' = mid) ->
       mcomp_sat (f a) mid post ->
       mcomp_sat (Bind m f) initialL post.
+  (*tag:obvious*)
   Proof.
     intros. eapply spec_Bind. eexists. split; [exact H|]. intros. simpl in *.
     destruct H1. subst. assumption.
   Qed.
 
+  (*tag:doc*)
   (* redefine mcomp_sat to simplify for the case where no answer is returned *)
+  (*tag:spec*)
   Definition mcomp_sat(m: M unit)(initialL: RiscvMachineL)(post: RiscvMachineL -> Prop): Prop :=
     mcomp_sat m initialL (fun (_: unit) => post).
 
+  (*tag:proof*)
   Lemma mcomp_sat_weaken: forall initialL m (post1 post2: RiscvMachineL -> Prop),
       (forall mach, post1 mach -> post2 mach) ->
       mcomp_sat m initialL post1 ->
       mcomp_sat m initialL post2.
+  (*tag:obvious*)
   Proof.
     intros. eapply mcomp_sat_weaken; [|eassumption].
     simpl. intros _. assumption.
   Qed.
 
+  (*tag:doc*)
   (* nicer version of mcomp_sat_weaken which gives you two more hypotheses while proving P -> Q *)
+  (*tag:proof*)
   Lemma run1_get_sane: forall iset (P Q: RiscvMachineL -> Prop) mach,
       valid_machine mach ->
       mcomp_sat (run1 iset) mach P ->
@@ -89,6 +98,7 @@ Section Go.
   Proof.
     intros.
     pose proof run1_sane as A.
+    (*tag:obvious*)
     unfold mcomp_sane in A.
     specialize A with (1 := H) (2 := H0).
     apply proj2 in A.
@@ -97,6 +107,7 @@ Section Go.
     eapply H1; eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma runsTo_sane: forall iset (P: RiscvMachineL -> Prop) mach,
       runsTo (mcomp_sat (run1 iset)) mach P ->
       valid_machine mach ->
@@ -104,6 +115,7 @@ Section Go.
         (P mach' /\ exists diff, mach'.(getLog) = diff ++ mach.(getLog)) /\ valid_machine mach').
   Proof.
     induction 1; intros.
+    (*tag:obvious*)
     - eapply runsToDone. ssplit; try assumption. exists nil. reflexivity.
     - pose proof run1_sane as A.
       unfold mcomp_sane in A.
@@ -118,7 +130,9 @@ Section Go.
         rewrite H7. rewrite H4. rewrite app_assoc. eexists. reflexivity.
   Qed.
 
+  (*tag:doc*)
   (* a nicer version of runsTo_weaken which gives you two more hypotheses while proving P -> Q *)
+  (*tag:proof*)
   Lemma runsTo_get_sane: forall iset (P Q: RiscvMachineL -> Prop) mach,
       valid_machine mach ->
       runsTo (mcomp_sat (run1 iset)) mach P ->
@@ -128,6 +142,7 @@ Section Go.
           P mach' ->
           Q mach') ->
       runsTo (mcomp_sat (run1 iset)) mach Q.
+  (*tag:obvious*)
   Proof.
     intros.
     eapply runsTo_weaken.
@@ -136,11 +151,13 @@ Section Go.
       eapply H1; assumption.
   Qed.
 
+  (*tag:proof*)
   Lemma spec_Bind_unit: forall (initialL: RiscvMachineL)
        (mid post: RiscvMachineL -> Prop) (m1: M unit) (m2 : M unit),
       mcomp_sat m1 initialL mid ->
       (forall middle, mid middle -> mcomp_sat m2 middle post) ->
       mcomp_sat (Bind m1 (fun _ => m2)) initialL post.
+  (*tag:obvious*)
   Proof.
     intros. eapply spec_Bind. eexists. split; [exact H|]. intros. simpl in *.
     apply H0. assumption.
@@ -296,6 +313,7 @@ Section Go.
   Definition unchecked_store_program(addr: word)(p: list Decode.Instruction)(m: mem): mem :=
     unchecked_store_byte_list addr (Z32s_to_bytes (List.map encode p)) m.
 
+  (*tag:proof*)
   Lemma putmany_of_footprint_None: forall n (vs: HList.tuple byte n) (addr: word) (z: Z) (m: mem),
       0 < z ->
       z + Z.of_nat n < 2 ^ width ->
@@ -304,6 +322,7 @@ Section Go.
               addr = None.
   Proof.
     induction n; intros.
+    (*tag:obvious*)
     - simpl. assumption.
     - destruct vs as [v vs]. simpl.
       assert (2 ^ width > 0) as Gz. {
@@ -335,6 +354,7 @@ Section Go.
       assumption.
   Qed.
 
+  (*tag:obvious*)
   Lemma putmany_of_footprint_None'': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
       0 < word.unsigned (word.sub a1 a2) ->
       word.unsigned (word.sub a1 a2) + Z.of_nat n < 2 ^ width ->
@@ -395,22 +415,27 @@ Section Go.
     apply putmany_of_footprint_None; try assumption.
   Qed.
 
+  (*tag:library*)
   Fixpoint in_tuple{T: Type}(a: T){n: nat}: HList.tuple T n -> Prop :=
     match n with
     | O => fun _ => False
     | S n' => fun '(PrimitivePair.pair.mk t ts) => a = t \/ in_tuple a ts
     end.
 
+  (*tag:proof*)
   Lemma ptsto_bytes_putmany_of_tuple: forall n addr vs (R: mem -> Prop) m,
       Z.of_nat n < 2 ^ width ->
       R m ->
       (forall k, in_tuple k (footprint addr n) -> map.get m k = None) ->
       (ptsto_bytes n addr vs * R)%sep (map.putmany_of_tuple (footprint addr n) vs m).
+  (*tag:obvious*)
   Proof.
     assert (2 ^ width > 0) as Gz. {
       destruct width_cases as [E | E]; rewrite E; reflexivity.
     }
+    (*tag:proof*)
     induction n; intros.
+    (*tag:obvious*)
     - simpl. unfold ptsto_bytes. destruct vs. simpl. apply sep_emp_l. auto.
     - simpl. unfold ptsto_bytes. destruct vs as [v vs].
       simpl.
@@ -427,11 +452,13 @@ Section Go.
         simpl. right. assumption.
   Qed.
 
+  (*tag:proof*)
   Lemma ptsto_bytes_putmany_of_tuple_empty: forall n addr vs,
       Z.of_nat n < 2 ^ width ->
       ptsto_bytes n addr vs (map.putmany_of_tuple (footprint addr n) vs map.empty).
   Proof.
     induction n; intros.
+    (*tag:obvious*)
     - cbv. auto.
     - simpl. unfold ptsto_bytes. destruct vs as [v vs].
       simpl.
@@ -442,26 +469,31 @@ Section Go.
       + apply IHn. bomega.
   Qed.
 
+  (*tag:proof*)
   Lemma ptsto_bytes_array: forall (l: list byte) (addr: word),
       iff1 (array ptsto (word.of_Z 1) addr l)
            (ptsto_bytes (length l) addr (HList.tuple.of_list l)).
   Proof.
     induction l; intros.
+    (*tag:obvious*)
     - simpl. reflexivity.
     - simpl. unfold ptsto_bytes. simpl. apply iff1_sep_cancel. apply IHl.
   Qed.
 
+  (*tag:proof*)
   Lemma array_on_undef_store_byte_list: forall addr l (R: mem -> Prop) m,
       Z.of_nat (length l) < 2 ^ width ->
       R m ->
       (forall k, in_tuple k (footprint addr (length l)) -> map.get m k = None) ->
       (array ptsto (word.of_Z 1) addr l * R)%sep (unchecked_store_byte_list addr l m).
+  (*tag:obvious*)
   Proof.
     intros.
     seprewrite ptsto_bytes_array.
     apply ptsto_bytes_putmany_of_tuple; assumption.
   Qed.
 
+  (*tag:library*)
   Lemma length_flat_map: forall {A B: Type} (f: A -> list B) n (l: list A),
       (forall (a: A), length (f a) = n) ->
       length (flat_map f l) = (n * length l)%nat.
@@ -496,114 +528,11 @@ Section Go.
     destruct width_cases as [E | E]; rewrite E; cbv; discriminate.
   Qed.
 
-  (* proves goals of the form
-  addr <> word.add (word.add (word.add addr (word.of_Z 1)) (word.of_Z 1)) (word.of_Z 1)
-  (any number of +1s)
-   *)
-  Ltac word_neq_add :=
-    word_simpl;
-    let C := fresh in
-    intro C;
-    apply (f_equal word.unsigned) in C;
-    match type of C with
-    | word.unsigned ?addr = _ => rewrite <- (word.of_Z_unsigned addr) in C at 1
-    end;
-    unfold word.wrap in C;
-    rewrite !word.unsigned_add in C; unfold word.wrap in C;
-    rewrite !word.unsigned_of_Z in C; unfold word.wrap in C;
-    rewrite ?Z.add_mod_idemp_r in C by (apply pow2width_nonzero);
-    rewrite ?Z.mod_mod in C by (apply pow2width_nonzero);
-    (apply mod_eq_to_diff in C; [|apply pow2width_nonzero]);
-    match type of C with
-    | ?x mod _ = 0 => ring_simplify x in C
-    end;
-    destruct width_cases as [E | E]; rewrite E in C;
-    cbv in C; discriminate C.
-
-  Lemma store_program_empty: forall prog addr,
-      4 * Z.of_nat (length prog) < 2 ^ width ->
-      (word.unsigned addr) mod 4 = 0 ->
-      Forall (fun instr => verify instr iset) prog ->
-      program addr prog (unchecked_store_program addr prog map.empty).
-  Proof.
-    induction prog; intros.
-    - cbv. auto.
-    - unfold unchecked_store_program, Z32s_to_bytes. simpl.
-      rewrite! unchecked_store_byte_list_cons.
-      unfold ptsto_instr, truncated_scalar, littleendian, Memory.bytes_per, ptsto_bytes. simpl.
-      match goal with
-      | |- (?A1 * (?A2 * (?A3 * (?A4 * emp True))) * ?P1 * ?P2 * ?B)%sep ?m =>
-        assert ((A1 * (A2 * (A3 * (A4 * (P1 * (P2 * B))))))%sep m); [|ecancel_assumption]
-      end.
-      eapply sep_on_undef_put; try exact word.eqb_spec. {
-        rewrite !map.get_put_diff by word_neq_add.
-        word_simpl.
-        apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
-        erewrite length_flat_map by (intro; simpl; reflexivity).
-        rewrite map_length.
-        change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-        blia.
-      }
-      eapply sep_on_undef_put; try exact word.eqb_spec. {
-        rewrite !map.get_put_diff by word_neq_add.
-        remember (word.add addr (word.of_Z 1)) as addr'.
-        word_simpl.
-        apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
-        erewrite length_flat_map by (intro; simpl; reflexivity).
-        rewrite map_length.
-        change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-        blia.
-      }
-      eapply sep_on_undef_put; try exact word.eqb_spec. {
-        rewrite !map.get_put_diff by word_neq_add.
-        remember (word.add (word.add addr (word.of_Z 1)) (word.of_Z 1)) as addr'.
-        word_simpl.
-        apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
-        erewrite length_flat_map by (intro; simpl; reflexivity).
-        rewrite map_length.
-        change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-        blia.
-      }
-      eapply sep_on_undef_put; try exact word.eqb_spec. {
-        apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
-        erewrite length_flat_map by (intro; simpl; reflexivity).
-        rewrite map_length.
-        change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-        blia.
-      }
-      word_simpl.
-      destruct H0. inversion H1. subst.
-      apply sep_emp_l; split; [assumption|].
-      apply sep_emp_l; split; [reflexivity|].
-      apply IHprog.
-      + change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H. blia.
-      + clear. rewrite word.unsigned_add. rewrite word.unsigned_of_Z.
-        unfold word.wrap.
-        pose proof (word.unsigned_range addr).
-        forget (word.unsigned addr) as a.
-        rewrite Zplus_mod_idemp_r.
-        (* COQBUG(performance regression) https://github.com/coq/coq/issues/11436.
-           In Coq 8.9 and 8.10, the following was fast:
-        Z.div_mod_to_equations.
-        destruct width_cases as [E | E]; rewrite E in *; blia. *)
-        destruct width_cases as [E | E]; rewrite E in *; rewrite mod4_0.mod_pow2_mod4.
-        2,4: cbv; intros; discriminate.
-        all: clear; Z.div_mod_to_equations; blia.
-      + assumption.
-  Qed.
-
-  Lemma array_map: forall {T1 T2: Type} sz (f: T1 -> T2) elem (l: list T1) (addr: word),
-      iff1 (array elem                                (word.of_Z sz) addr (List.map f l))
-           (array (fun addr0 v0 => elem addr0 (f v0)) (word.of_Z sz) addr l).
-  Proof.
-    induction l; intros.
-    - simpl. reflexivity.
-    - simpl. apply iff1_sep_cancel. apply IHl.
-  Qed.
-
+  (*tag:proof*)
   Lemma ptsto_subset_to_isXAddr1: forall a v xAddrs,
       subset (footpr (ptsto a v)) (of_list xAddrs) ->
       isXAddr1 a xAddrs.
+  (*tag:obvious*)
   Proof.
     unfold subset, footpr, footprint_underapprox, ptsto, elem_of, of_list, isXAddr1.
     intros.
@@ -614,9 +543,11 @@ Section Go.
     apply map.get_put_same.
   Qed.
 
+  (*tag:proof*)
   Lemma ptsto_instr_subset_to_isXAddr4: forall a i xAddrs,
       subset (footpr (ptsto_instr a i)) (of_list xAddrs) ->
       isXAddr4 a xAddrs.
+  (*tag:obvious*)
   Proof.
     unfold isXAddr4, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes, array. simpl.
     intros.
@@ -624,6 +555,7 @@ Section Go.
       (eapply shrink_footpr_subset; [eassumption|wcancel]).
   Qed.
 
+  (*tag:proof*)
   Lemma go_fetch_inst{initialL: RiscvMachineL} {inst pc0 R Rexec} (post: RiscvMachineL -> Prop):
       pc0 = initialL.(getPc) ->
       subset (footpr (program pc0 [inst] * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
@@ -631,6 +563,7 @@ Section Go.
       mcomp_sat (Bind (execute inst) (fun _ => step))
                 (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (run1 iset) initialL post.
+  (*tag:obvious*)
   Proof.
     intros. subst.
     unfold run1.
@@ -642,11 +575,13 @@ Section Go.
       assert ((T * R * Rexec * P1 * P2)%sep m) as A by ecancel_assumption; clear H
     end.
     do 2 (apply sep_emp_r in A; destruct A as [A ?]).
+    (*tag:proof*)
     eapply go_loadWord_Fetch.
     - eapply ptsto_instr_subset_to_isXAddr4.
       eapply shrink_footpr_subset. 1: eassumption. simpl. ecancel.
     - unfold Memory.loadWord.
       eapply load_bytes_of_sep.
+      (*tag:obvious*)
       unfold truncated_scalar, littleendian, Memory.bytes_per in A.
       (* TODO here it would be useful if seplog unfolded Memory.bytes_per for me,
          ie. did more than just syntactic unify *)
@@ -668,10 +603,11 @@ Section Go.
       rewrite decode_encode; assumption.
   Qed.
 
-
+  (*tag:doc*)
   (* go_load/storeXxx lemmas phrased in terms of separation logic instead of
      Memory.load/storeXxx *)
 
+  (*tag:obvious*)
   Lemma go_loadByte_sep:
     forall (initialL : RiscvMachineL) (addr : word) (v : w8)
            (f : w8 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
@@ -684,12 +620,14 @@ Section Go.
     eapply load_bytes_of_sep. eassumption.
   Qed.
 
+  (*tag:proof*)
   Lemma preserve_subset_of_xAddrs: forall m Rexec n (R: mem -> Prop) (xAddrs: list word) addr v,
       subset (footpr Rexec) (of_list xAddrs) ->
       (ptsto_bytes n addr v * R * Rexec)%sep m ->
       subset (footpr Rexec) (of_list (invalidateWrittenXAddrs n addr xAddrs)).
   Proof.
     induction n; intros.
+    (*tag:obvious*)
     - simpl. assumption.
     - destruct v as [v vs]. unfold ptsto_bytes in *. simpl in *.
       assert (exists R',
@@ -744,6 +682,7 @@ Section Go.
           mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs 1 addr initialL.(getXAddrs))
                            (withMem m' (updateMetrics (addMetricStores 1) initialL))) post) ->
       mcomp_sat (Bind (storeByte Execute addr v_new) f) initialL post.
+  (*tag:obvious*)
   Proof.
     intros.
     pose proof (store_bytes_of_sep (mem_ok := mem_ok)) as P.
@@ -805,6 +744,7 @@ Section Go.
     eapply load_bytes_of_sep. eassumption.
   Qed.
 
+  (*tag:doc*)
   Lemma go_storeWord_sep:
     forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w32)
            (m': mem) (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
@@ -826,6 +766,7 @@ Section Go.
        after the storeWord operation, so the conclusion would not hold. *)
   Abort.
 
+  (*tag:obvious*)
   Lemma go_storeWord_sep:
     forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w32)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R Rexec: mem -> Prop),
@@ -857,6 +798,7 @@ Section Go.
     erewrite load_bytes_of_sep; eauto using unchecked_store_bytes_of_sep.
   Qed.
 
+  (*tag:doc*)
   Lemma go_storeWord_sep_holds_but_results_in_evars_out_of_scope:
     forall (initialL : RiscvMachineL) (addr : word) (v_old v_new : w32)
            (post : RiscvMachineL -> Prop) (f : unit -> M unit) (R: mem -> Prop),
@@ -874,6 +816,7 @@ Section Go.
     eapply go_storeWord; eassumption.
   Qed.
 
+  (*tag:obvious*)
   Lemma go_loadDouble_sep:
     forall (initialL : RiscvMachineL) (addr : word) (v : w64)
            (f : w64 -> M unit) (post : RiscvMachineL -> Prop) (R: mem -> Prop),
@@ -987,11 +930,13 @@ Ltac sidecondition :=
   | |- _ => sidecondition_hook
   end.
 
+(*tag:workaround*)
 (* eapply and rapply don't always work (they failed in compiler.MMIO), so we use refine below
    Trick to test if right number of underscores:
           let c := open_constr:(go_associativity _ _ _ _ _ _) in
           let t := type of c in idtac t. *)
 
+(*tag:proof*)
 Ltac simulate_step :=
   first (* lemmas packing multiple primitives need to go first: *)
         [ refine (go_fetch_inst _ _ _ _ _);        [sidecondition..|]

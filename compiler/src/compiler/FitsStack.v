@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Decidable.
 Require Import coqutil.Tactics.destr.
@@ -12,6 +13,7 @@ Local Open Scope Z_scope.
 Section FitsStack.
   Context {p: FlatToRiscvCommon.parameters}.
 
+  (*tag:compiletimecode*)
   Definition stack_usage_impl(outer_rec: env -> stmt Z -> option Z)(e: env): stmt Z -> option Z :=
     fix inner_rec s :=
       match s with
@@ -61,19 +63,23 @@ Section FitsStack.
   Definition stack_usage(funimpls: env): option Z :=
     map.fold (update_stack_usage funimpls) (Some 0) funimpls.
 
+  (*tag:proof*)
   Lemma fits_stack_monotone: forall e z1 s,
       fits_stack z1 e s -> forall z2, z1 <= z2 -> fits_stack z2 e s.
   Proof.
     induction 1; intros; econstructor; eauto; try blia.
+    (*tag:obvious*)
     eapply IHfits_stack. blia.
   Qed.
 
   Context {env_ok: map.ok env}.
 
+  (*tag:proof*)
   Lemma fits_stack_monotone_env: forall e1 z s,
       fits_stack z e1 s -> forall e2, map.extends e2 e1 -> fits_stack z e2 s.
   Proof.
     induction 1; intros; econstructor; eauto; try blia.
+    (*tag:obvious*)
     eapply IHfits_stack. (* TODO make map solver work: Solver.map_solver env_ok. *)
     unfold map.extends in *.
     intros.
@@ -83,11 +89,13 @@ Section FitsStack.
     - rewrite map.get_remove_diff in H2 by congruence. eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma stack_usage_rec_correct: forall n e s z,
       stack_usage_rec n e s = Some z ->
       fits_stack z e s.
   Proof.
     induction n; intros.
+    (*tag:obvious*)
     - simpl in H. discriminate.
     - simpl in H.
       revert z H.
@@ -98,6 +106,7 @@ Section FitsStack.
       f_equal. unfold framelength. blia.
   Qed.
 
+  (*tag:proof*)
   (* The art of figuring out the right induction hypothesis... *)
   Let P(e_glob e_done: env)(r: option Z): Prop :=
     forall e_rest f fbody z,
@@ -110,6 +119,7 @@ Section FitsStack.
       P e_glob e_done (map.fold (update_stack_usage e_glob) (Some 0) e_done).
   Proof.
     intro e_glob. eapply map.fold_spec.
+    (*tag:obvious*)
     - subst P. cbv beta. intros. rewrite map.get_empty in H0. discriminate.
     - intros. subst P. cbv beta in *.
       intros.
@@ -155,11 +165,13 @@ Section FitsStack.
       all: simp; eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma stack_usage_correct: forall e z f fbody,
       map.get e f = Some (nil, nil, fbody) ->
       stack_usage e = Some z ->
       fits_stack (z - framelength (nil, nil, fbody)) (map.remove e f) fbody.
   Proof.
+    (*tag:obvious*)
     intros. unfold stack_usage in *.
     pose proof stack_usage_correct_aux as Q.
     subst P.

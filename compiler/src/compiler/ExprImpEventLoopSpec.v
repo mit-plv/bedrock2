@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Coq.Strings.String.
 Require Import coqutil.Map.Interface coqutil.Word.Interface.
@@ -10,13 +11,18 @@ Section Params1.
 
   Set Implicit Arguments.
 
+  (*tag:spec*)
   Record ProgramSpec: Type := {
     datamem_start: Semantics.word;
     datamem_pastend: Semantics.word;
+    (*tag:doc*)
     (* trace invariant which holds at the beginning (and end) of each loop iteration,
        but might not hold in the middle of the loop because more needs to be appended *)
+    (*tag:spec*)
     goodTrace: Semantics.trace -> Prop;
+    (*tag:doc*)
     (* state invariant which holds at the beginning (and end) of each loop iteration *)
+    (*tag:spec*)
     isReady: Semantics.trace -> Semantics.mem -> Prop;
   }.
 
@@ -25,8 +31,10 @@ Section Params1.
     : Prop := (* Restriction: no locals can be shared between loop iterations *)
     spec.(isReady) t m /\ spec.(goodTrace) t.
 
+  (*tag:administrivia*)
   Local Set Warnings "-cannot-define-projection".
 
+  (*tag:spec*)
   Record ProgramSatisfiesSpec(init_f loop_f: String.string)
          (e: Semantics.env)
          (spec: ProgramSpec): Prop :=

@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
@@ -5,6 +6,8 @@ Require Import riscv.Utility.Utility.
 Require Import compiler.mod4_0.
 
 Local Open Scope Z_scope.
+
+(*tag:obvious*)
 
 Lemma divisibleBy4Signed{W: Words}: forall (w: word),
     (word.unsigned w) mod 4 = 0 ->

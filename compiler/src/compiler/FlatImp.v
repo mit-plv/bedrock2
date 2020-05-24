@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.Bool.Bool.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -14,8 +15,7 @@ Require Import compiler.Simp.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Datatypes.ListSet.
 
-(*Local Set Ltac Profiling.*)
-
+(*tag:compiletimecode*)
 Inductive bbinop: Type :=
 | BEq
 | BNe
@@ -45,6 +45,7 @@ Section Syntax.
     | SCall(binds: list varname)(f: String.string)(args: list varname)
     | SInteract(binds: list varname)(a: String.string)(args: list varname).
 
+  (*tag:spec*)
   Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
     match s with
     | SLoad sz x a => 1
@@ -62,17 +63,21 @@ Section Syntax.
     | SInteract binds f args => 7 (* TODO don't hardcode a magic number *)
     end.
 
+  (*tag:obvious*)
   Fixpoint stmt_size(s: stmt): Z := stmt_size_body stmt_size s.
   Lemma stmt_size_unfold : forall s, stmt_size s = stmt_size_body stmt_size s.
   Proof. destruct s; reflexivity. Qed.
 
   Arguments Z.add _ _ : simpl never.
 
+  (*tag:proof*)
   Lemma stmt_size_nonneg: forall s, 0 <= stmt_size s.
+  (*tag:obvious*)
   Proof.
     induction s; simpl; try blia.
   Qed.
 
+  (*tag:compiletimecode*)
   Fixpoint modVars_as_list(veq: varname -> varname -> bool)(s: stmt): list varname :=
     match s with
     | SSkip | SStore _ _ _ => []
@@ -82,6 +87,7 @@ Section Syntax.
     | SCall binds _ _ | SInteract binds _ _ => list_union veq binds []
     end.
 
+  (*tag:spec*)
   Definition ForallVars_bcond(P: varname -> Prop)(cond: bcond) : Prop :=
     match cond with
     | CondBinary _ x y => P x /\ P y
@@ -104,20 +110,25 @@ Section Syntax.
       | SInteract binds _ args => Forall P binds /\ Forall P args
       end.
 
+  (*tag:proof*)
   Lemma ForallVars_bcond_impl: forall (P Q: varname -> Prop),
       (forall x, P x -> Q x) ->
       forall s, ForallVars_bcond P s -> ForallVars_bcond Q s.
+  (*tag:obvious*)
   Proof.
     intros. destruct s; simpl in *; intuition eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma ForallVars_stmt_impl: forall (P Q: varname -> Prop),
       (forall x, P x -> Q x) ->
       forall s, ForallVars_stmt P s -> ForallVars_stmt Q s.
   Proof.
+    (*tag:obvious*)
     induction s; intros; simpl in *; intuition eauto using ForallVars_bcond_impl, Forall_impl.
   Qed.
 
+  (*tag:administrivia*)
 End Syntax.
 
 Arguments bcond: clear implicits.
@@ -133,6 +144,7 @@ Local Notation "' x <- a ; f" :=
 
 Local Open Scope Z_scope.
 
+(*tag:spec*)
 Class parameters(varname: Type) := {
   varname_eqb: varname -> varname -> bool;
   width : Z;
@@ -220,6 +232,8 @@ Section FlatImp1.
           Some (negb (word.eqb mx (word.of_Z 0)))
       end.
 
+    (*tag:unrelated*)
+    (* Fixpoint semantics are not currently used *)
     (* If we want a bigstep evaluation relation, we either need to put
        fuel into the SLoop constructor, or give it as argument to eval *)
     Fixpoint eval_stmt(f: nat)(st: locals)(m: mem)(s: stmt varname):
@@ -364,6 +378,7 @@ Section FlatImp1.
 
   End WithEnv.
 
+  (*tag:spec*)
   (* returns the set of modified vars *)
   Fixpoint modVars(s: stmt varname): set varname :=
     match s with
@@ -518,10 +533,12 @@ Module exec.
         post t m l mc ->
         exec SSkip t m l mc post.
 
+    (*tag:proof*)
     Lemma det_step: forall t0 m0 l0 mc0 s1 s2 t1 m1 l1 mc1 post,
         exec s1 t0 m0 l0 mc0 (fun t1' m1' l1' mc1' => t1' = t1 /\ m1' = m1 /\ l1' = l1 /\ mc1 = mc1') ->
         exec s2 t1 m1 l1 mc1 post ->
         exec (SSeq s1 s2) t0 m0 l0 mc0 post.
+    (*tag:obvious*)
     Proof.
       intros.
       eapply seq; [eassumption|].
@@ -529,6 +546,7 @@ Module exec.
       assumption.
     Qed.
 
+    (*tag:proof*)
     Lemma weaken: forall t l m mc s post1,
         exec s t m l mc post1 ->
         forall post2,
@@ -536,6 +554,7 @@ Module exec.
           exec s t m l mc post2.
     Proof.
       induction 1; intros; try solve [econstructor; eauto].
+      (*tag:obvious*)
       - eapply interact; try eassumption.
         intros; simp.
         edestruct H2; [eassumption|].
@@ -556,6 +575,7 @@ Module exec.
              end;
       simp.
 
+    (*tag:proof*)
     Lemma intersect: forall t l m mc s post1,
         exec s t m l mc post1 ->
         forall post2,
@@ -563,6 +583,7 @@ Module exec.
           exec s t m l mc (fun t' m' l' mc' => post1 t' m' l' mc' /\ post2 t' m' l' mc').
     Proof.
       induction 1; intros;
+        (*tag:obvious*)
         match goal with
         | H: exec _ _ _ _ _ _ |- _ => inversion H; subst; clear H
         end;
@@ -626,6 +647,7 @@ Module exec.
 End exec.
 Notation exec := exec.exec.
 
+(*tag:unrelated*)
 Ltac invert_eval_stmt :=
   lazymatch goal with
   | E: eval_stmt _ (S ?fuel) _ _ ?s = Some _ |- _ =>
@@ -716,12 +738,14 @@ Section FlatImp2.
       try solve [map_solver locals_ok |refine (map.only_differ_putmany _ _ _ _ _); eassumption].
   Qed.
 
+  (*tag:proof*)
   Lemma modVarsSound: forall e s initialT (initialSt: locals) initialM (initialMc: MetricLog) post,
       exec e s initialT initialM initialSt initialMc post ->
       exec e s initialT initialM initialSt initialMc
            (fun finalT finalM finalSt _ => map.only_differ initialSt (modVars s) finalSt).
   Proof.
     induction 1;
+      (*tag:obvious*)
       try solve [ econstructor; [eassumption..|simpl; map_solver locals_ok] ].
     - eapply exec.interact; try eassumption.
       intros; simp.
@@ -769,6 +793,7 @@ Section FlatImp2.
 
 End FlatImp2.
 
+(*tag:unrelated*)
 (* used to work at adfc32e107439abcda2d99052f74e9ae891e95bf
 
 Module Import FlatImpSemanticsEquiv.

@@ -8,7 +8,6 @@ Require Import compiler.Simp.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
-Require Import compiler.EmitsValid.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Import Utility.
@@ -55,16 +54,6 @@ Section Proofs.
       apply runsToNonDet.runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
     - simpl in *. simp.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
-      assert (valid_instructions SeparationLogic.iset
-                [(compile_store Syntax.access_size.word RegisterNames.sp a offset)]). {
-        eapply compile_store_emits_valid; try eassumption.
-        assert (bytes_per_word * Z.of_nat (S (List.length vars)) > 0). {
-          unfold Z.of_nat.
-          unfold bytes_per_word, Memory.bytes_per in *.
-          destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
-        }
-        simpl. bomega.
-      }
       destruct oldvalues as [|oldvalue oldvalues]; simpl in *; [discriminate|].
       eapply runsToNonDet.runsToStep. {
         eapply run_store_word with (Rexec0 := (program (word.add (getPc initial) (word.of_Z 4))
@@ -134,16 +123,6 @@ Section Proofs.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       assert (valid_register a). {
         unfold valid_register, valid_FlatImp_var in *. blia.
-      }
-      assert (valid_instructions SeparationLogic.iset
-                [(compile_load Syntax.access_size.word a RegisterNames.sp offset)]). {
-        eapply compile_load_emits_valid; try eassumption.
-        assert (bytes_per_word * Z.of_nat (S (List.length vars)) > 0). {
-          unfold Z.of_nat.
-          unfold bytes_per_word, Memory.bytes_per in *.
-          destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
-        }
-        simpl. bomega.
       }
       destruct values as [|value values]; simpl in *; [discriminate|].
       eapply runsToNonDet.runsToStep. {

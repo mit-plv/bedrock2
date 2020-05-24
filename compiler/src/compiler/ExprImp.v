@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.Program.Tactics.
@@ -32,11 +33,13 @@ Section ExprImp1.
   Notation func := String.string (only parsing).
   Notation vars := (var -> Prop).
 
+  (*tag:spec*)
   Definition SimState: Type := trace * mem * locals * bedrock2.MetricLogging.MetricLog.
   Definition SimExec(e: env)(c: cmd): SimState -> (SimState -> Prop) -> Prop :=
     fun '(t, m, l, mc) post => exec e c t m l mc
                                     (fun t' m' l' mc' => post (t', m', l', mc')).
 
+  (*tag:administrivia*)
   (*Hypothesis String.string_empty: String.string = Empty_set.*)
   Local Notation varname := String.string.
 
@@ -46,6 +49,8 @@ Section ExprImp1.
   Section WithEnv.
     Context (e: env).
 
+    (*tag:unrelated*)
+    (* Fixoint semantics are not used at the moment, but could be useful to run a source program *)
     Fixpoint eval_cmd(f: nat)(st: locals)(m: mem)(s: cmd): option (locals * mem) :=
       match f with
       | O => None (* out of fuel *)
@@ -84,6 +89,7 @@ Section ExprImp1.
         end
       end.
 
+    (*tag:spec*)
     Fixpoint expr_size(e: expr): Z :=
       match e with
       | expr.literal _ => 15
@@ -92,11 +98,13 @@ Section ExprImp1.
       | expr.op op e1 e2 => expr_size e1 + expr_size e2 + 2
       end.
 
+    (*tag:proof*)
     Lemma expr_size_pos: forall exp, expr_size exp > 0.
     Proof.
       induction exp; simpl; try blia.
     Qed.
 
+    (*tag:spec*)
     Definition exprs_size(es: list expr): Z := fold_right (fun e res => res + expr_size e) 0 es.
 
     Fixpoint cmd_size(s: cmd): Z :=
@@ -114,12 +122,14 @@ Section ExprImp1.
                                          over this *)
       end.
 
+    (*tag:proof*)
     Lemma exprs_size_nonneg: forall es, 0 <= exprs_size es.
     Proof.
       induction es; simpl in *; try blia. pose proof (expr_size_pos a). blia.
     Qed.
 
     Lemma cmd_size_nonneg: forall s, 0 <= cmd_size s.
+    (*tag:obvious*)
     Proof.
       induction s; simpl;
       repeat match goal with
@@ -129,6 +139,7 @@ Section ExprImp1.
       try blia.
     Qed.
 
+    (*tag:unrelated*)
     Local Ltac inversion_lemma :=
       intros;
       simpl in *;
@@ -205,7 +216,10 @@ Section ExprImp1.
 
   End WithEnv.
 
-  (* Returns a list to make it obvious that it's a finite set. *)
+  (*tag:doc*)
+  (* Returns a list to make it obvious that it's a finite set.
+     Needed by the fresh name generator. *)
+  (*tag:compiletimecode*)
   Fixpoint allVars_expr_as_list(e: expr): list var :=
     match e with
     | expr.literal v => []
@@ -230,6 +244,7 @@ Section ExprImp1.
     | cmd.interact binds _ args => binds ++ allVars_exprs_as_list args
     end.
 
+  (*tag:spec*)
   Fixpoint allVars_expr(e: expr): set var :=
     match e with
     | expr.literal v => empty_set
@@ -254,17 +269,23 @@ Section ExprImp1.
     | cmd.interact binds _ args => union (of_list binds) (allVars_exprs args)
     end.
 
+  (*tag:proof*)
   Lemma allVars_expr_allVars_expr_as_list: forall e x,
       x \in allVars_expr e <-> In x (allVars_expr_as_list e).
-  Proof.
+  (*tag:proofsummary*)
+  Proof. (*by induction on e*)
+    (*tag:obvious*)
     induction e; intros; simpl in *; set_solver; try apply in_or_app; set_solver.
     apply in_app_or in H3.
     destruct H3; eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma allVars_exprs_allVars_exprs_as_list: forall es x,
       x \in allVars_exprs es <-> In x (allVars_exprs_as_list es).
-  Proof.
+  (*tag:proofsummary*)
+  Proof. (*by induction on es*)
+    (*tag:obvious*)
     induction es; intros; simpl in *; set_solver.
     - apply in_or_app. unfold allVars_exprs in H1. simpl in H1.
       pose proof (allVars_expr_allVars_expr_as_list a).
@@ -274,9 +295,12 @@ Section ExprImp1.
       simpl. destruct H1; set_solver.
   Qed.
 
+  (*tag:proof*)
   Lemma allVars_cmd_allVars_cmd_as_list: forall s x,
       x \in allVars_cmd s <-> In x (allVars_cmd_as_list s).
-  Proof.
+  (*tag:proofsummary*)
+  Proof. (*by induction on s*)
+    (*tag:obvious*)
     induction s; intros; simpl in *;
       repeat match goal with
              | e: expr |- _ => unique pose proof (allVars_expr_allVars_expr_as_list e x)
@@ -289,8 +313,10 @@ Section ExprImp1.
       try solve [set_solver].
   Qed.
 
+  (*tag:doc*)
   (* Returns a static approximation of the set of modified vars.
      The returned set might be too big, but is guaranteed to include all modified vars. *)
+  (*tag:compiletimecode*)
   Fixpoint modVars(s: cmd): vars :=
     match s with
     | cmd.store _ _ _ => empty_set
@@ -303,11 +329,13 @@ Section ExprImp1.
     | cmd.interact binds _ _ => of_list binds
     end.
 
+  (*tag:proof*)
   Lemma modVars_subset_allVars: forall s, subset (modVars s) (allVars_cmd s).
   Proof.
     intros. induction s; simpl in *; set_solver.
   Qed.
 
+  (*tag:spec*)
   Definition valid_fun: list String.string * list String.string * cmd -> Prop :=
     fun '(argnames, retnames, body) => NoDup argnames /\ NoDup retnames.
     (* TODO later maybe also check size of body *)
@@ -315,9 +343,10 @@ Section ExprImp1.
   Definition valid_funs(e: env): Prop :=
     forall f F, map.get e f = Some F -> valid_fun F.
 
+  (*tag:administrivia*)
 End ExprImp1.
 
-
+(*tag:unrelated*)
 Ltac invert_eval_cmd :=
   lazymatch goal with
   | E: eval_cmd _ (S ?fuel) _ _ ?s = Some _ |- _ =>
@@ -346,7 +375,7 @@ Ltac invert_eval_cmd :=
     ]
   end.
 
-
+(*tag:administrivia*)
 Section ExprImp2.
 
   Context {p : unique! Semantics.parameters}.
@@ -365,6 +394,7 @@ Section ExprImp2.
   Ltac state_calc := map_solver locals_ok.
   Ltac set_solver := set_solver_generic String.string.
 
+  (*tag:unrelated*)
   Lemma modVarsSound_fixpointsemantics: forall (e: env) fuel s initialS initialM finalS finalM,
     eval_cmd e fuel initialS initialM s = Some (finalS, finalM) ->
     map.only_differ initialS (modVars s) finalS.
@@ -382,12 +412,15 @@ Section ExprImp2.
       try solve [state_calc | refine (map.only_differ_putmany _ _ _ _ _); eassumption].
   Qed.
 
+  (*tag:proof*)
   Lemma intersect_exec: forall env t l m mc s post1,
       exec env s t m l mc post1 ->
       forall post2,
         exec env s t m l mc post2 ->
         exec env s t m l mc (fun t' m' l' mc' => post1 t' m' l' mc' /\ post2 t' m' l' mc').
-  Proof.
+  (*tag:proofsummary*)
+  Proof. (*by induction on the first exec*)
+    (*tag:obvious*)
     induction 1; intros;
       match goal with
       | H: exec _ _ _ _ _ _ _ |- _ => inversion H; subst; clear H
@@ -444,6 +477,7 @@ Section ExprImp2.
         eauto 10.
   Qed.
 
+  (*tag:proof*)
   Lemma weaken_exec: forall env t l m mc s post1,
       exec env s t m l mc post1 ->
       forall post2: _ -> _ -> _ -> _ -> Prop,
@@ -451,7 +485,9 @@ Section ExprImp2.
         exec env s t m l mc post2.
   Proof.
     induction 1; intros; try solve [econstructor; eauto].
-    - eapply @exec.call.
+    (*tag:obvious*)
+    - (* firstorder eauto 10 using @exec.call. doesn't return within 1 minute *)
+      eapply @exec.call.
       4: eapply IHexec.
       all: eauto.
       intros.
@@ -464,6 +500,7 @@ Section ExprImp2.
       eauto 10.
   Qed.
 
+  (*tag:doc*)
   (* As we see, one can prove this lemma as is, but the proof is a bit cumbersome because
      the seq and while case have to instantiate mid with the intersection, and use
      intersect_exec to prove it.
@@ -473,11 +510,13 @@ Section ExprImp2.
      in combination with intersect_exec.
      So it makes more sense to directly prove the conjunction version which follows after
      this proof. *)
+  (*tag:proof*)
   Lemma modVarsSound_less_useful: forall e s t m l mc post,
       exec e s t m l mc post ->
       exec e s t m l mc (fun t' m' l' mc' => map.only_differ l (modVars s) l').
   Proof.
     induction 1;
+      (*tag:obvious*)
       try solve [ econstructor; [eassumption..|simpl; map_solver locals_ok] ].
     - eapply exec.if_true; try eassumption.
       eapply weaken_exec; [eassumption|].
@@ -515,11 +554,13 @@ Section ExprImp2.
       eapply map.only_differ_putmany. eassumption.
   Qed.
 
+  (*tag:proof*)
   Lemma modVarsSound: forall e s t m l mc post,
       exec e s t m l mc post ->
       exec e s t m l mc (fun t' m' l' mc' => map.only_differ l (modVars s) l' /\ post t' m' l' mc').
   Proof.
     induction 1;
+      (*tag:obvious*)
       try solve [econstructor; repeat split; try eassumption; simpl; map_solver locals_ok].
     - eapply exec.if_true; try eassumption.
       eapply weaken_exec; [eassumption|].

@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.Lists.List.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import riscv.Utility.Monads.
@@ -31,6 +32,7 @@ Section ForeverSafe.
   Context {PR: MetricPrimitives PRParams}.
   Variable iset: Decode.InstructionSet.
 
+  (*tag:proof*)
   Lemma extend_runsTo_to_good_trace:
     forall (safe: RiscvMachineL -> Prop) (good_trace: trace -> Prop),
       (forall st, safe st -> good_trace st.(getLog)) ->
@@ -39,6 +41,7 @@ Section ForeverSafe.
         runsTo (mcomp_sat (run1 iset)) st safe ->
         exists rest : trace, good_trace (rest ++ getLog st).
   Proof.
+    (*tag:obvious*)
     intros ? ? safe2good st V R. induction R.
     - exists nil. rewrite List.app_nil_l. eauto.
     - rename P into safe1.
@@ -53,6 +56,7 @@ Section ForeverSafe.
       eexists. exact G.
   Qed.
 
+  (*tag:proof*)
   Variables safe1 safe2: RiscvMachineL -> Prop.
 
   Hypothesis exclusive: forall state, ~ (safe1 state /\ safe2 state).
@@ -68,23 +72,27 @@ Section ForeverSafe.
       runsTo (mcomp_sat (run1 iset)) state safe2.
   Proof.
     induction 1; rename P into safe1.
+    (*tag:obvious*)
     - eauto.
     - eapply runsToStep. 1: eassumption.
       intros.
       eapply H1; eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma run_pong: forall state,
       runsTo (mcomp_sat (run1 iset)) state safe2 ->
       runsTo (mcomp_sat (run1 iset)) state safe1.
   Proof.
     induction 1; rename P into safe2.
+    (*tag:obvious*)
     - eauto.
     - eapply runsToStep. 1: eassumption.
       intros.
       eapply H1; eauto.
   Qed.
 
+  (*tag:unrelated*)
   Lemma runsTo_safe1_inv: forall (st: RiscvMachineL),
       runsTo (mcomp_sat (run1 iset)) st safe1 ->
       mcomp_sat (run1 iset) st (fun st' => runsTo (mcomp_sat (run1 iset)) st' safe1).
@@ -100,11 +108,14 @@ Section ForeverSafe.
       eapply H0. assumption.
   Fail Qed. Abort. (* TODO report *)
 
+  (*tag:doc*)
   (* one step of invariant preservation: *)
+  (*tag:proof*)
   Lemma runsTo_safe1_inv: forall (st: RiscvMachineL),
       runsTo (mcomp_sat (run1 iset)) st safe1 ->
       mcomp_sat (run1 iset) st (fun st' => runsTo (mcomp_sat (run1 iset)) st' safe1).
   Proof.
+    (*tag:obvious*)
     intros st R. destruct R.
     - pose proof (run_1_2 _ H) as P. inversion P.
       + exfalso. eapply exclusive; eauto.
@@ -115,6 +126,7 @@ Section ForeverSafe.
       intros. eapply H0. assumption.
   Qed.
 
+  (*tag:unrelated*)
   Fixpoint runN(n: nat): M unit :=
     match n with
     | O => Return tt

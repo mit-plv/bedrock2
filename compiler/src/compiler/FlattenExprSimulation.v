@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
@@ -12,19 +13,23 @@ Require Import compiler.Simp.
 Section Sim.
   Context {p: FlattenExpr.parameters}.
 
+  (*tag:spec*)
   Definition related(max_size: Z)(done: bool): ExprImp.SimState -> FlatImp.SimState String.string -> Prop :=
     fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
       t1 = t2 /\
       m1 = m2 /\
       l1 = map.empty.
 
+  (*tag:proof*)
   Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}(max_size: Z)
         (e1: FlattenExpr.ExprImp_env)(e2: FlattenExpr.FlatImp_env)(funname: String.string):
     flatten_functions max_size e1 = Some e2 ->
     simulation (ExprImp.SimExec e1 (Syntax.cmd.call nil funname nil))
                (FlatImp.SimExec String.string e2 (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall nil funname nil)))
                (related max_size).
-  Proof.
+  (*tag:proofsummary*)
+  Proof. (*using FlatImp.exec.weaken. and flattenStmt_correct_aux*)
+    (*tag:obvious*)
     unfold simulation, related, ExprImp.SimExec, FlatImp.SimExec.
     intros H.
     intros (((done1 & t1) & m1) & l1) (((done2 & t2) & m2) & l2).
@@ -65,6 +70,7 @@ Section Sim.
         * congruence.
   Qed.
 
+(*tag:doc*)
 (*
 The postcondition of flattenStmt_correct says
 

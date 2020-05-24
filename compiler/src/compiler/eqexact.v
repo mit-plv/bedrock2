@@ -1,3 +1,4 @@
+(*tag:library*)
 Ltac make_args_match e1 e2 :=
   match e1 with
   | _ => unify e1 e2

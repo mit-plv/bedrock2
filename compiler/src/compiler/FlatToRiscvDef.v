@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import coqutil.Macros.unique.
 Require Import coqutil.Decidable.
 Require Import compiler.FlatImp.
@@ -23,16 +24,21 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
+(*tag:spec*)
 Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Prop :=
   forall instr, In instr prog -> verify instr iset.
 
+(*tag:doc*)
 (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
+(*tag:spec*)
 Definition valid_FlatImp_var(x: Z): Prop := 3 <= x < 32.
 
+(*tag:proof*)
 Lemma valid_FlatImp_var_implies_valid_register: forall (x: Z),
     valid_FlatImp_var x -> valid_register x.
 Proof. unfold valid_FlatImp_var, valid_register. intros. blia. Qed.
 
+(*tag:administrivia*)
 Module Import FlatToRiscvDef.
 
   Class parameters := {
@@ -48,6 +54,7 @@ End FlatToRiscvDef.
 Section FlatToRiscv1.
   Context {p: unique! FlatToRiscvDef.parameters}.
 
+  (*tag:doc*)
   (* Part 1: Definitions needed to state when compilation outputs valid code *)
 
   (* If stmt_size is < 2^10, it is compiled to < 2^10 instructions, which is
@@ -56,18 +63,23 @@ Section FlatToRiscv1.
      11 encode the jump length as a multiple of 2, so jump lengths have to
      be < 2^12 bytes, i.e. < 2^10 instructions, so this bound is tight,
      unless we start using multi-instruction jumps. *)
+  (*tag:unused*)
   Definition stmt_not_too_big(s: stmt Z): Prop := stmt_size s < 2 ^ 10.
 
+  (*tag:spec*)
   Definition valid_registers_bcond: bcond Z -> Prop := ForallVars_bcond valid_register.
   Definition valid_FlatImp_vars_bcond: bcond Z -> Prop := ForallVars_bcond valid_FlatImp_var.
 
+  (*tag:proof*)
   Lemma valid_FlatImp_vars_bcond_implies_valid_registers_bcond: forall b,
       valid_FlatImp_vars_bcond b -> valid_registers_bcond b.
+  (*tag:obvious*)
   Proof.
     unfold valid_FlatImp_vars_bcond, valid_registers_bcond.
     intros. eauto using ForallVars_bcond_impl, valid_FlatImp_var_implies_valid_register.
   Qed.
 
+  (*tag:spec*)
   Definition valid_FlatImp_vars: stmt Z -> Prop := ForallVars_stmt valid_FlatImp_var.
 
   Definition valid_FlatImp_fun: list Z * list Z * stmt Z -> Prop :=
@@ -80,6 +92,7 @@ Section FlatToRiscv1.
       stmt_not_too_big body.
 
 
+  (*tag:doc*)
   (* Part 2: compilation *)
 
   (* load & store depend on the bitwidth: on 32-bit machines, Lw just loads 4 bytes,
@@ -89,6 +102,7 @@ Section FlatToRiscv1.
      but Lwu on 64-bit.
      We can't just always choose Lwu, because Lwu is not available on 32-bit machines. *)
 
+  (*tag:compiletimecode*)
   Definition compile_load(sz: access_size):
     Z -> Z -> Z -> Instruction :=
     match sz with
@@ -129,6 +143,7 @@ Section FlatToRiscv1.
   Definition compile_lit_12bit(rd: Z)(v: Z): list Instruction :=
     [[ Addi rd Register0 (signExtend 12 v) ]].
 
+  (*tag:doc*)
   (* On a 64bit machine, loading a constant -2^31 <= v < 2^31 is not always possible with
      a Lui followed by an Addi:
      If the constant is of the form 0x7ffffXXX, and XXX has its highest bit set, we would
@@ -147,6 +162,7 @@ Section FlatToRiscv1.
      Lui+Addi pairs for all desired values in the range -2^31 <= v < 2^31
  *)
 
+  (*tag:compiletimecode*)
   Definition compile_lit_32bit(rd: Z)(v: Z): list Instruction :=
     let lo := signExtend 12 v in
     let hi := Z.lxor (signExtend 32 v) lo in
@@ -203,9 +219,11 @@ Section FlatToRiscv1.
                    :: (load_regs regs (offset + bytes_per_word))
     end.
 
+  (*tag:doc*)
   (* All positions are relative to the beginning of the progam, so we get completely
      position independent code. *)
 
+  (*tag:compiletimecode*)
   Context {env: map.map String.string (list Z * list Z * stmt Z)}.
 
   Section WithEnv.
@@ -252,6 +270,7 @@ Section FlatToRiscv1.
       | SInteract _ _ _ => compile_ext_call e mypos s
       end.
 
+    (*tag:doc*)
     (*
      Stack layout:
 
@@ -272,6 +291,7 @@ Section FlatToRiscv1.
      Expected stack layout at beginning of function call: like above, but only filled up to arg0.
      Stack grows towards low addresses.
     *)
+    (*tag:compiletimecode*)
     Definition compile_function(mypos: Z):
       (list Z * list Z * stmt Z) -> list Instruction :=
       fun '(argvars, resvars, body) =>

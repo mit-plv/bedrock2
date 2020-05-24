@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import coqutil.Word.Properties.
 Require Import compiler.util.Common.
 Require compiler.ExprImp.
@@ -16,6 +17,7 @@ Require Import coqutil.Datatypes.String.
 
 Open Scope Z_scope.
 
+(*tag:spec*)
 Module Import FlattenExpr.
   Class parameters := {
     W :> Words;
@@ -30,6 +32,7 @@ Module Import FlattenExpr.
     NG :> NameGen String.string NGstate;
   }.
 
+  (*tag:obvious*)
   Instance mk_Semantics_params(p: parameters) : Semantics.parameters := {|
     Semantics.word := Utility.word;
     Semantics.env := ExprImp_env;
@@ -41,6 +44,7 @@ Module Import FlattenExpr.
     FlatImp.ext_spec := ext_spec;
   }.
 
+  (*tag:spec*)
   Class assumptions{p: parameters}: Prop := {
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
@@ -48,6 +52,7 @@ Module Import FlattenExpr.
     FlatImp_env_ok :> map.ok FlatImp_env;
     ext_spec_ok: FlatImp.ext_spec.ok _ _;
   }.
+  (*tag:obvious*)
   Arguments assumptions: clear implicits.
 
   Instance mk_ExprImp_ext_spec_ok(p: parameters)(hyps: assumptions p): ext_spec.ok (mk_Semantics_params p).
@@ -88,6 +93,7 @@ Section FlattenExpr1.
   Ltac set_solver :=
     set_solver_generic (@String.string p).
 
+  (*tag:compiletimecode*)
   Definition genFresh_if_needed(resVar: option String.string)(ngs: NGstate): (String.string * NGstate) :=
     match resVar with
     | Some r => (r, ngs)
