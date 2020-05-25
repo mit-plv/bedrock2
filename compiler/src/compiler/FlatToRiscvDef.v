@@ -63,7 +63,7 @@ Section FlatToRiscv1.
      11 encode the jump length as a multiple of 2, so jump lengths have to
      be < 2^12 bytes, i.e. < 2^10 instructions, so this bound is tight,
      unless we start using multi-instruction jumps. *)
-  (*tag:unused*)
+  (*tag:unrelated*)
   Definition stmt_not_too_big(s: stmt Z): Prop := stmt_size s < 2 ^ 10.
 
   (*tag:spec*)

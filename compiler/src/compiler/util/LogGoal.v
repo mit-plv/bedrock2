@@ -1,3 +1,4 @@
+(*tag:unrelated*)
 Ltac log_goal :=
   idtac "---begin-goal---";
   try match reverse goal with

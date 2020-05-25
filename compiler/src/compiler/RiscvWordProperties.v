@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Z.BitOps.
@@ -7,7 +8,9 @@ Module word.
   Section RiscvWord.
     Context {width: Z} {word: word.word width}.
 
+    (*tag:doc*)
     (* TODO maybe we can put more fundamental axioms here, and turn the axioms below into lemmas *)
+    (*tag:spec*)
     Class riscv_ok: Prop := {
       sru_ignores_hibits: forall y z,
           word.sru y (word.of_Z (word.unsigned z mod 2 ^ Z.log2 width)) = word.sru y z;

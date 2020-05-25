@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -53,10 +54,12 @@ Section EventLoop.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
+  (*tag:doc*)
   (* goodReadyState is the invariant which says that the machine is ready to execute
      the next iteration of the infinite event loop.
      It also gets a `done` boolean which says whether the PC is supposed to be at the
      beginning or at the end of the loop body, and should check for that *)
+  (*tag:proof*)
   Variable goodReadyState: bool -> RiscvMachineL -> Prop.
 
   Variables pc_start pc_end: word.
@@ -115,6 +118,7 @@ Section EventLoop.
         destruct goodReadyState_implies_jump_back_instr. simp.
         specialize (goodReadyState_checks_PC _ _ H). subst pc_end.
         eapply run_Jal0; try eauto.
+        (*tag:obvious*)
         - unfold program, array.
           eapply rearrange_footpr_subset; [ eassumption | ].
           rewrite goodReadyState_checks_PC.

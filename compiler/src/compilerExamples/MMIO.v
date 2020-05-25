@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Macros.unique.
@@ -21,7 +22,6 @@ Require Import riscv.Spec.MetricPrimitives.
 Require Import compiler.MetricsToRiscv.
 Require Import compiler.FlatToRiscvDef.
 Require Import riscv.Utility.runsToNonDet.
-Require Import compiler.Rem4.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Datatypes.Option.
@@ -38,6 +38,7 @@ Import ListNotations.
 
 Open Scope ilist_scope.
 
+(*tag:compiletimecode*)
 Definition compile_ext_call(results: list Z) a (args: list Z):
   list Instruction :=
   if String.eqb "MMIOWRITE" a then
@@ -51,6 +52,7 @@ Definition compile_ext_call(results: list Z) a (args: list Z):
     | _, _ => [[]] (* invalid, excluded by ext_spec *)
     end.
 
+(*tag:unrelated*)
 Lemma compile_ext_call_length: forall binds f args,
     Z.of_nat (List.length (compile_ext_call binds f args)) <= 1.
 Proof.
@@ -94,6 +96,7 @@ Proof.
     repeat split; (blia || assumption).
 Qed.
 
+(*tag:administrivia*)
 Module Import MMIO.
   Class parameters := {
     word :> Word.Interface.word 32;
@@ -116,6 +119,7 @@ Section MMIO1.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
+  (*tag:obvious*)
   Local Instance Words32: Utility.Words := {
     Utility.word := word;
     Utility.width_cases := or_introl eq_refl;
@@ -127,6 +131,7 @@ Section MMIO1.
     FE310CSemantics.parameters.mem := mem;
     FE310CSemantics.parameters.mem_ok := _ |}.
 
+  (*tag:compiletimecode*)
   Instance compilation_params: FlatToRiscvDef.parameters := {|
     FlatToRiscvDef.compile_ext_call _ _ s :=
       match s with
@@ -135,6 +140,7 @@ Section MMIO1.
       end;
   |}.
 
+  (*tag:obvious*)
   Instance FlatToRiscv_params: FlatToRiscvCommon.parameters := {
     FlatToRiscvCommon.def_params := compilation_params;
     FlatToRiscvCommon.locals := locals;
@@ -145,6 +151,7 @@ Section MMIO1.
     FlatToRiscvCommon.ext_spec := FE310CSemantics.ext_spec;
   }.
 
+  (*tag:test*)
   Section CompilationTest.
     Definition magicMMIOAddrLit: Z := Ox"10024000".
     Variable addr: Z.
@@ -173,6 +180,7 @@ Section MMIO1.
     Abort.
   End CompilationTest.
 
+  (*tag:obvious*)
   Lemma load4bytes_in_MMIO_is_None: forall (m: mem) (addr: word),
       map.undef_on m isMMIOAddr ->
       isMMIOAddr addr ->
@@ -280,19 +288,22 @@ Section MMIO1.
     - eapply MetricMinimalMMIOSatisfiesPrimitives; cbn; intuition eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma compile_ext_call_correct: forall resvars extcall argvars,
       FlatToRiscvCommon.compiles_FlatToRiscv_correctly
         (@FlatToRiscvDef.compile_ext_call compilation_params)
         (FlatImp.SInteract resvars extcall argvars).
+  (*tag:obvious*)
   Proof.
     intros.
     eapply @FlatToRiscvCommon.compile_ext_call_correct_compatibility.
     - simpl. typeclasses eauto.
     - simpl. typeclasses eauto.
     - (* compile_ext_call_correct *)
+      (*tag:proof*)
       unfold FlatToRiscvCommon.compile_ext_call_correct_alt.
+      (*tag:obvious*)
       intros *. intros ? ? ? V_argvars V_resvars. intros. rename extcall into action.
-      pose proof (compile_ext_call_emits_valid SeparationLogic.iset _ action _ V_resvars V_argvars).
       destruct_RiscvMachine initialL.
       unfold FlatToRiscvDef.compile_ext_call, FlatToRiscvCommon.def_params,
              FlatToRiscv_params, compilation_params, compile_ext_call in *.
@@ -307,7 +318,9 @@ Section MMIO1.
         match goal with
         | H: FE310CSemantics.ext_spec _ _ _ _ _ |- _ => rename H into Ex
         end.
+        (*tag:proof*)
         cbv [ext_spec FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec FE310CSemantics.ext_spec] in Ex.
+        (*tag:obvious*)
         simpl in *|-.
 
         rewrite E in *.

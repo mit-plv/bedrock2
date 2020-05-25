@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Export Coq.Lists.List.
 Require Import Coq.ZArith.ZArith.
 Export ListNotations.
@@ -49,14 +50,16 @@ Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Import Utility.
 
-  (* TODO: move *)
-  Lemma HList__tuple__length_to_list {A n} xs : length (@HList.tuple.to_list A n xs) = n.
-  Proof. revert xs; induction n; cbn; eauto. Qed.
-
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
 
+(*tag:library*)
+(* TODO: move *)
+Lemma HList__tuple__length_to_list {A n} xs : length (@HList.tuple.to_list A n xs) = n.
+Proof. revert xs; induction n; cbn; eauto. Qed.
+
+(*tag:spec*)
 Section WithWordAndMem.
   Context {width: Z} {word: word.word width} {mem: map.map word byte}.
 
@@ -86,6 +89,7 @@ Module Import Pipeline.
     PRParams :> PrimitivesParams M MetricRiscvMachine;
   }.
 
+  (*tag:obvious*)
   Instance FlatToRiscvDef_parameters{p: parameters}: FlatToRiscvDef.FlatToRiscvDef.parameters := {|
     FlatToRiscvDef.FlatToRiscvDef.compile_ext_call := compile_ext_call;
   |}.
@@ -102,6 +106,7 @@ Module Import Pipeline.
     FlatToRiscvCommon.ext_spec := ext_spec;
   |}.
 
+  (*tag:spec*)
   Class assumptions{p: parameters}: Prop := {
     word_riscv_ok :> RiscvWordProperties.word.riscv_ok word;
     string_keyed_map_ok :> forall T, map.ok (string_keyed_map T);
@@ -117,6 +122,7 @@ Module Import Pipeline.
       List.length (compile_ext_call posmap2 pos2 c);
   }.
 
+(*tag:administrivia*)
 End Pipeline.
 
 
@@ -130,6 +136,7 @@ Section Pipeline1.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
+  (*tag:obvious*)
   Instance mk_FlatImp_ext_spec_ok:
     FlatImp.ext_spec.ok  string (FlattenExpr.mk_FlatImp_params FlattenExpr_parameters).
   Proof.
@@ -149,9 +156,11 @@ Section Pipeline1.
     - apply mk_FlatImp_ext_spec_ok.
   Qed.
 
+  (*tag:compiletimecode*)
   Definition available_registers: list Z :=
     Eval cbv in List.unfoldn Z.succ 29 3.
 
+  (*tag:obvious*)
   Lemma NoDup_available_registers: NoDup available_registers.
   Proof. cbv. repeat constructor; cbv; intros; intuition congruence. Qed.
 
@@ -162,14 +171,17 @@ Section Pipeline1.
   Local Notation flat_env := (@string_keyed_map p (list string * list string * FlatImp.stmt string)).
   Local Notation renamed_env := (@string_keyed_map p (list Z * list Z * FlatImp.stmt Z)).
 
+  (*tag:compiletimecode*)
   Definition flattenPhase(prog: source_env): option flat_env := flatten_functions (2^10) prog.
   Definition renamePhase(prog: flat_env): option renamed_env :=
     rename_functions available_registers prog.
 
+  (*tag:doc*)
   (* Note: we could also track code size from the source program all the way to the target
      program, and a lot of infrastructure is already there, will do once/if we want to get
      a total compiler.
      Returns the fun_pos_env so that users know where to jump to call the compiled functions. *)
+  (*tag:compiletimecode*)
   Definition riscvPhase(ml: MemoryLayout)(prog: renamed_env):
     option (list Instruction * funname_env Z) :=
     bind_opt stack_needed <- stack_usage prog;
@@ -191,6 +203,7 @@ Section Pipeline1.
     (composePhases renamePhase
                    (riscvPhase ml))).
 
+  (*tag:proof*)
   Section Sim.
     Context (ml: MemoryLayout)
             (mlOk: MemoryLayoutOk ml)
@@ -238,6 +251,7 @@ Section Pipeline1.
       FlatImp.stmt_size body < 2 ^ 10 ->
       FlatToRiscvDef.valid_FlatImp_fun impl'.
   Proof.
+    (*tag:obvious*)
     unfold rename_fun, FlatToRiscvDef.valid_FlatImp_fun.
     intros.
     simp.
@@ -353,11 +367,13 @@ Section Pipeline1.
   Local Instance  EqDecider_FlatImp__word_eq : EqDecider FlatImp__word_eq.
   Proof. eapply word.eqb_spec. Unshelve. exact word_ok. Qed.
 
-  Definition mem_available_to_exists: forall start pastend m P,
+  (*tag:proof*)
+  Lemma mem_available_to_exists: forall start pastend m P,
       (mem_available start pastend * P)%sep m ->
       exists anybytes,
         Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
         (ptsto_bytes start anybytes * P)%sep m.
+  (*tag:obvious*)
   Proof.
     unfold mem_available. intros * H.
     eapply sep_ex1_l in H. (* semicolon here fails *) destruct H.
@@ -366,15 +382,18 @@ Section Pipeline1.
     eauto.
   Qed.
 
+  (*tag:proof*)
   Definition mem_to_available: forall start pastend m P anybytes,
      Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) ->
      (ptsto_bytes start anybytes * P)%sep m ->
      (mem_available start pastend * P)%sep m.
+  (*tag:obvious*)
   Proof.
     unfold mem_available. intros * H Hsep.
     eapply sep_ex1_l. eexists. eapply sep_assoc. eapply sep_emp_l. eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma cast_word_array_to_bytes bs addr : iff1
     (array ptsto_word (word.of_Z bytes_per_word) addr bs)
     (ptsto_bytes addr (flat_map (fun x =>
@@ -382,6 +401,7 @@ Section Pipeline1.
           bs)).
   Proof.
     revert addr; induction bs; intros; [reflexivity|].
+    (*tag:obvious*)
     cbn [array flat_map].
     assert (CC: @map.ok (@word (@W p)) Init.Byte.byte (@mem p))
       by exact mem_ok.
@@ -400,6 +420,7 @@ Section Pipeline1.
     rewrite Z2Nat.id; blia.
   Qed.
 
+  (*tag:proof*)
   Lemma byte_list_to_word_list_array: forall bytes,
     Z.of_nat (length bytes) mod bytes_per_word = 0 ->
     exists word_list,
@@ -408,6 +429,7 @@ Section Pipeline1.
     forall p,
       iff1 (array ptsto (word.of_Z 1) p bytes)
            (array ptsto_word (word.of_Z bytes_per_word) p word_list).
+  (*tag:obvious*)
   Proof.
     assert (AA: 0 < bytes_per_word). {
       unfold bytes_per_word.
@@ -477,9 +499,11 @@ Section Pipeline1.
     destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
   Qed.
 
+  (*tag:proof*)
   Lemma get_compile_funs_pos: forall e,
       let '(insts, posmap) := FlatToRiscvDef.compile_funs map.empty e in
       forall f impl, map.get e f = Some impl -> exists pos2, map.get posmap f = Some pos2 /\ pos2 mod 4 = 0.
+  (*tag:obvious*)
   Proof.
     intros e.
     unfold FlatToRiscvDef.compile_funs.
@@ -494,6 +518,7 @@ Section Pipeline1.
       solve_divisibleBy4.
   Qed.
 
+  (*tag:library*)
   Lemma mod_2width_mod_bytes_per_word: forall x,
       (x mod 2 ^ width) mod bytes_per_word = x mod bytes_per_word.
   Proof.
@@ -513,6 +538,7 @@ Section Pipeline1.
            reflexivity.
   Qed.
 
+  (*tag:obvious*)
   Lemma stack_length_divisible: forall (ml: MemoryLayout) {mlOk: MemoryLayoutOk ml},
     word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) mod bytes_per_word = 0.
   Proof.
@@ -577,22 +603,27 @@ Section Pipeline1.
            | |- (_ + _)%nat = (_ + _)%nat => f_equal
            end.
 
+  (*tag:proof*)
   Lemma compile_stmt_length_ignores_positions: forall posmap1 posmap2 c pos1 pos2,
       List.length (FlatToRiscvDef.compile_stmt posmap1 pos1 c) =
       List.length (FlatToRiscvDef.compile_stmt posmap2 pos2 c).
   Proof.
     induction c; intros; ignore_positions.
+    (*tag:obvious*)
     apply compile_ext_call_length_ignores_positions.
   Qed.
 
+  (*tag:proof*)
   Lemma compile_function_length_ignores_positions: forall posmap1 posmap2 pos1 pos2 impl,
       List.length (FlatToRiscvDef.compile_function posmap1 pos1 impl) =
       List.length (FlatToRiscvDef.compile_function posmap2 pos2 impl).
+  (*tag:obvious*)
   Proof.
     intros. destruct impl as [ [args rets] body ]. ignore_positions.
     apply compile_stmt_length_ignores_positions.
   Qed.
 
+  (*tag:proof*)
   Lemma build_fun_pos_env_ignores_posmap_aux: forall posmap1 posmap2 e i1 m1 i2 m2,
       map.fold (FlatToRiscvDef.add_compiled_function posmap1) ([], map.empty) e = (i1, m1) ->
       map.fold (FlatToRiscvDef.add_compiled_function posmap2) ([], map.empty) e = (i2, m2) ->
@@ -601,6 +632,7 @@ Section Pipeline1.
     intros until e.
     eapply map.fold_parametricity with (fa := (FlatToRiscvDef.add_compiled_function posmap1))
                                        (fb := (FlatToRiscvDef.add_compiled_function posmap2));
+      (*tag:obvious*)
       intros.
     - destruct a as [insts1 map1]. destruct b as [insts2 map2].
       unfold FlatToRiscvDef.add_compiled_function in *.
@@ -627,6 +659,7 @@ Section Pipeline1.
     - assumption.
   Qed.
 
+  (*tag:doc*)
   (* This lemma should relate two map.folds which fold two different f over the same env e:
      1) FlatToRiscvDef.compile_funs, which folds FlatToRiscvDef.add_compiled_function.
         Note that this one is called twice: First in build_fun_pos_env, and then in
@@ -636,10 +669,12 @@ Section Pipeline1.
      is layed out in memory), while 2) should be commutative because the "function"
      separation logic predicate it seps onto the separation logic formula is the same
      if we pass it the same function position map. *)
+  (*tag:proof*)
   Lemma functions_to_program: forall ml functions_start e instrs pos_map,
       riscvPhase ml e = Some (instrs, pos_map) ->
       iff1 (program functions_start instrs)
            (FlatToRiscvCommon.functions functions_start (FlatToRiscvDef.build_fun_pos_env e) e).
+  (*tag:obvious*)
   Proof.
     (* PARAMRECORDS *)
     assert (map.ok FlatImp.env). { unfold FlatImp.env. simpl. typeclasses eauto. }
@@ -650,11 +685,13 @@ Section Pipeline1.
     simp.
     unfold FlatToRiscvDef.compile_funs, functions in *.
     remember (FlatToRiscvDef.build_fun_pos_env e) as positions.
+    (*tag:proof*)
     (* choose your IH carefully! *)
     lazymatch goal with
     | |- ?G => enough ((forall f, map.get r f <> None <-> map.get e f <> None) /\
                        ((forall f pos, map.get r f = Some pos -> map.get positions f = Some pos) -> G))
     end.
+    (*tag:obvious*)
     1: {
       destruct H0. apply H1; clear H1.
       intros. rewrite <- H1. f_equal.
@@ -666,12 +703,16 @@ Section Pipeline1.
     }
     revert E1.
     revert instrs r. clear E E0 z.
+    (*tag:proof*)
     eapply (map.fold_spec (R:=(list Instruction * _))) with (m:=e); repeat (cbn || simp || intros).
+    (*tag:obvious*)
     { rewrite map.fold_empty. intuition try reflexivity.
       - eapply H0. eapply map.get_empty.
       - eapply H0. eapply map.get_empty.
     }
+    (*tag:proof*)
     rewrite map.fold_put; trivial.
+    (*tag:obvious*)
     2: { intros.
       eapply functional_extensionality_dep; intros x.
       eapply PropExtensionality.propositional_extensionality; revert x.
@@ -714,6 +755,7 @@ Section Pipeline1.
 
   Open Scope ilist_scope.
 
+  (*tag:spec*)
   Definition machine_ok(p_functions: word)(f_entry_rel_pos: Z)(stack_start stack_pastend: word)
              (finstrs: list Instruction)
              (p_call pc: word)(mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
@@ -762,6 +804,7 @@ Section Pipeline1.
           machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
                      p_call (word.add p_call (word.of_Z 4)) mH' Rdata Rexec final).
   Proof.
+    (*tag:obvious*)
     intros.
     match goal with
     | H: map.get pos_map _ = Some _ |- _ => rename H into GetPos
@@ -1041,6 +1084,7 @@ Section Pipeline1.
     all: try exact mem_ok.
   Qed.
 
+  (*tag:compiletimecode*)
   Definition instrencode(p: list Instruction): list byte :=
     List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
 

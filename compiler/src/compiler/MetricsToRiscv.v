@@ -1,3 +1,4 @@
+(*tag:unrelated*)
 Require Export bedrock2.MetricLogging. (* Naming is easier if this is first *)
 Require Export riscv.Platform.MetricLogging.
 

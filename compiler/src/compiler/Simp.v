@@ -1,3 +1,4 @@
+(*tag:library*)
 Require Import Coq.ZArith.ZArith.
 
 Ltac head_of_app e :=

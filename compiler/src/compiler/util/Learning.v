@@ -1,3 +1,4 @@
+(*tag:workaround*)
 Module Type LEARNING.
   Parameter Learnt: Prop -> Prop.
   Parameter markLearnt: forall {P: Prop} (p: P), Learnt P.

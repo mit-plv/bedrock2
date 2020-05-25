@@ -1,3 +1,4 @@
+(*tag:library*)
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.BitOps.

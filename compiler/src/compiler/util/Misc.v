@@ -1,3 +1,4 @@
+(*tag:obvious*)
 
 Lemma distr_if_over_app: forall T U P1 P2 (c: sumbool P1 P2) (f1 f2: T -> U) (x: T),
     (if c then f1 else f2) x = if c then f1 x else f2 x.

@@ -1,3 +1,4 @@
+(*tag:test*)
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require bedrock2Examples.Demos.

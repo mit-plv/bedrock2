@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import compiler.FlatImp.
 Require Import coqutil.Decidable.
@@ -29,6 +30,7 @@ Section RegAlloc.
   Context {src2imp: map.map String.string Z}.
   Context {src2impOk: map.ok src2imp}.
 
+  (*tag:compiletimecode*)
   Local Notation srcvar := String.string (only parsing).
   Local Notation impvar := Z (only parsing).
   Local Notation stmt  := (@FlatImp.stmt srcvar). (* input type *)
@@ -74,9 +76,11 @@ Section RegAlloc.
     | CondNez x => bind_opt x' <- map.get m x; Some (CondNez x')
     end.
 
+  (*tag:doc*)
   (* The simplest dumbest possible "register allocator": Just renames, according to
      a global mapping m being constructed as we go.
      Returns None if not enough registers. *)
+  (*tag:compiletimecode*)
   Fixpoint rename
            (m: src2imp)              (* current mapping, growing *)
            (s: stmt)                 (* current sub-statement *)
@@ -128,6 +132,7 @@ Section RegAlloc.
     bind_opt (_, body', _) <- rename m body av;
     Some (argnames', retnames', body').
 
+  (*tag:administrivia*)
   Context {W: Utility.Words} {mem: map.map word byte}.
   Context {srcLocals: map.map srcvar word}.
   Context {impLocals: map.map impvar word}.
@@ -138,6 +143,7 @@ Section RegAlloc.
   Context (ext_spec:  list (mem * String.string * list word * (mem * list word)) ->
                       mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop).
 
+  (*tag:obvious*)
   Instance srcSemanticsParams: FlatImp.parameters srcvar. refine ({|
     FlatImp.varname_eqb := String.eqb;
     FlatImp.locals := srcLocals;
@@ -152,19 +158,23 @@ Section RegAlloc.
   |}).
   Defined.
 
+  (*tag:compiletimecode*)
   Definition rename_functions: srcEnv -> option impEnv :=
     map.map_all_values rename_fun.
 
+  (*tag:doc*)
   (* Should lH and m have the same domain?
      - lH could have fewer vars in domain because we didn't pass through one branch of the if
      - lH cannot have more vars in its domain because that would mean we don't know where to store
        the value in the target program
      So, (dom lH) subsetOf (dom m) *)
+  (*tag:proof*)
   Definition states_compat(lH: srcLocals)(m: src2imp)(lL: impLocals) :=
     forall (x: srcvar) (v: word),
       map.get lH x = Some v ->
       exists y, map.get m x = Some y /\ map.get lL y = Some v.
 
+  (*tag:unrelated*)
   Definition states_compat'(lH: srcLocals)(m: src2imp)(lL: impLocals) :=
     forall (x: srcvar) (y: impvar),
       map.get m x = Some y ->
@@ -179,12 +189,14 @@ Section RegAlloc.
         map.get m x = Some y ->
         map.get lH x = map.get lL y).
 
+  (*tag:proof*)
   Lemma states_compat_put_raw: forall lH lL r x y v,
       map.injective r ->
       map.get r x = Some y ->
       states_compat lH r lL ->
       states_compat (map.put lH x v) r (map.put lL y v).
   Proof.
+    (*tag:obvious*)
     unfold states_compat. intros.
     rewrite map.get_put_dec in H2.
     destruct_one_match_hyp.
@@ -198,6 +210,7 @@ Section RegAlloc.
       + assumption.
   Qed.
 
+  (*tag:proof*)
   Lemma getmany_of_list_states_compat: forall srcnames impnames r lH lL argvals,
       map.getmany_of_list lH srcnames = Some argvals ->
       map.getmany_of_list r srcnames = Some impnames ->
@@ -205,6 +218,7 @@ Section RegAlloc.
       map.getmany_of_list lL impnames = Some argvals.
   Proof.
     induction srcnames; intros;
+      (*tag:obvious*)
       destruct argvals as [|argval argvals];
       destruct impnames as [|impname impnames];
       try reflexivity;
@@ -219,6 +233,7 @@ Section RegAlloc.
     erewrite IHsrcnames; eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma putmany_of_list_states_compat: forall r: src2imp,
       map.injective r ->
       forall srcnames impnames lH lH' lL vals,
@@ -230,12 +245,14 @@ Section RegAlloc.
   Proof.
     intros r Inj.
     induction srcnames; intros; simpl in *; simp.
+    (*tag:obvious*)
     - exists lL. unfold map.getmany_of_list in H0. simpl in H0. simp.
       simpl. auto.
     - unfold map.getmany_of_list in H0. simpl in H0. simp.
       edestruct IHsrcnames; eauto using states_compat_put_raw.
   Qed.
 
+  (*tag:spec*)
   Definition envs_related(e1: srcEnv)(e2: impEnv): Prop :=
     forall f impl1,
       map.get e1 f = Some impl1 ->
@@ -243,6 +260,7 @@ Section RegAlloc.
         rename_fun impl1 = Some impl2 /\
         map.get e2 f = Some impl2.
 
+  (*tag:obvious*)
   Lemma rename_assignment_lhs_get{r x av r' i av'}:
     rename_assignment_lhs r x av = Some (r', i, av') ->
     map.get r' x = Some i.
@@ -287,6 +305,7 @@ Section RegAlloc.
         destruct_one_match; try congruence.
   Qed.
 
+  (*tag:unrelated*)
   Lemma states_compat_put': forall lH lL r x av r' y av' v,
       map.injective r ->
       map.not_in_range r av ->
@@ -306,6 +325,7 @@ Section RegAlloc.
       do 2 destruct_one_match; subst; try congruence. eauto.
   Qed.
 
+  (*tag:obvious*)
   Ltac srew_sidec := first [rewrite map.get_put_same; reflexivity | eauto].
   Ltac srew_h := simpl_rewrite_in_hyps ltac:(fun _ => srew_sidec).
   Ltac srew_g := simpl_rewrite_in_goal ltac:(fun _ => srew_sidec).
@@ -341,6 +361,7 @@ Section RegAlloc.
     congruence.
   Qed.
 
+  (*tag:unrelated*)
   Lemma eval_bcond_compat': forall (lH : srcLocals) r (lL: impLocals) condH condL b,
       rename_cond r condH = Some condL ->
       states_compat' lH r lL ->
@@ -357,6 +378,7 @@ Section RegAlloc.
       srew_h; simp; srew_g; reflexivity.
   Qed.
 
+  (*tag:obvious*)
   Lemma states_compat_extends: forall lL lH r1 r2,
       map.extends r2 r1 ->
       states_compat lH r1 lL ->
@@ -367,6 +389,7 @@ Section RegAlloc.
     eauto.
   Qed.
 
+  (*tag:library*)
   (* TODO is this really in no library? *)
   Lemma invert_Forall_app: forall {T: Type} (l1 l2: list T) (P: T -> Prop),
       Forall P (l1 ++ l2) ->
@@ -390,6 +413,7 @@ Section RegAlloc.
         * eauto using in_or_app.
   Qed.
 
+  (*tag:proof*)
   Lemma rename_assignment_lhs_props: forall {x r1 r2 y av1 av2},
       rename_assignment_lhs r1 x av1 = Some (r2, y, av2) ->
       map.injective r1 ->
@@ -402,6 +426,7 @@ Section RegAlloc.
                     map.not_in_range r2 av2 /\
                     forall x y, map.get r2 x = Some y -> List.In y used \/ map.get r1 x = Some y) /\
       map.get r2 x = Some y.
+  (*tag:obvious*)
   Proof.
     pose proof (map.not_in_range_put (ok := src2impOk)).
     intros.
@@ -421,7 +446,9 @@ Section RegAlloc.
     rewrite map.get_put_dec in H0. destruct_one_match_hyp; try assert (y = y0) by congruence; auto.
   Qed.
 
+  (*tag:doc*)
   (* a list of useful properties of rename_binds, all proved in one induction *)
+  (*tag:proof*)
   Lemma rename_binds_props: forall {bH r1 r2 bL av1 av2},
       rename_binds r1 bH av1 = Some (r2, bL, av2) ->
       map.injective r1 ->
@@ -436,6 +463,7 @@ Section RegAlloc.
       map.getmany_of_list r2 bH = Some bL.
   Proof.
     induction bH; intros; simpl in *; simp.
+    (*tag:obvious*)
     - split; [assumption|].
       split; [apply extends_refl|].
       split; [intros; reflexivity|].
@@ -468,6 +496,7 @@ Section RegAlloc.
       + unfold map.getmany_of_list in *. simpl. srew_g. reflexivity.
   Qed.
 
+  (*tag:obvious*)
   Lemma rename_cond_props: forall {r1 cond cond'},
       rename_cond r1 cond = Some cond' ->
       (forall r3, map.extends r3 r1 -> rename_cond r3 cond = Some cond') /\
@@ -478,6 +507,7 @@ Section RegAlloc.
     - destruct_one_match_hyp; simp; eauto.
   Qed.
 
+  (*tag:proof*)
   (* a list of useful properties of rename, all proved in one induction *)
   Lemma rename_props: forall {sH r1 r2 sL av1 av2},
       rename r1 sH av1 = Some (r2, sL, av2) ->
@@ -493,6 +523,7 @@ Section RegAlloc.
       ForallVars_stmt (fun y => exists x, map.get r2 x = Some y) sL.
   Proof.
     induction sH; simpl in *; intros; simp;
+      (*tag:obvious*)
       apply_in_hyps @rename_assignment_lhs_props; simp;
         try (repeat match goal with
                     | |- _ /\ _ => split
@@ -621,6 +652,7 @@ Section RegAlloc.
         * eapply map.getmany_of_list_in_map. eapply map.getmany_of_list_extends; eassumption.
   Qed.
 
+  (*tag:proof*)
   Lemma states_compat_putmany_of_list: forall srcvars lH lH' lL r impvars av r' av' values,
       map.injective r ->
       map.not_in_range r av ->
@@ -633,6 +665,7 @@ Section RegAlloc.
         states_compat lH' r' lL'.
   Proof.
     induction srcvars; intros; simpl in *.
+    (*tag:obvious*)
     - simp. eexists. simpl. eauto.
     - simp.
       apply_in_hyps @rename_assignment_lhs_props. simp.
@@ -649,20 +682,24 @@ Section RegAlloc.
       simp. simpl. eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma rename_binds_preserves_length: forall vars vars' r r' av av',
       rename_binds r vars av = Some (r', vars', av') ->
       List.length vars' = List.length vars.
   Proof.
     induction vars; intros.
+    (*tag:obvious*)
     - simpl in *. simp. reflexivity.
     - simpl in *. simp. simpl. f_equal. eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma rename_preserves_stmt_size: forall sH r av r' sL av',
       rename r sH av = Some (r', sL, av') ->
       stmt_size sH = stmt_size sL.
   Proof.
     induction sH; intros; simpl in *; simp; simpl;
+      (*tag:obvious*)
       erewrite ?IHsH1 by eassumption;
       erewrite ?IHsH2 by eassumption;
       try reflexivity.
@@ -671,6 +708,7 @@ Section RegAlloc.
     congruence.
   Qed.
 
+  (*tag:proof*)
   Lemma rename_correct(available_impvars_NoDup: NoDup available_impvars): forall eH eL,
       envs_related eH eL ->
       forall sH t m lH mc post,
@@ -686,6 +724,7 @@ Section RegAlloc.
                     post t' m' lH' mc').
   Proof.
     induction 2; intros; simpl in *; simp;
+      (*tag:obvious*)
       repeat match goal with
              | H: rename_assignment_lhs _ _ _ = _ |- _ =>
                unique pose proof (rename_assignment_lhs_get H)
@@ -846,6 +885,7 @@ Section RegAlloc.
         eapply IH2; try eassumption.
   Qed.
 
+  (*tag:spec*)
   Definition related(done: bool):
     @FlatImp.SimState _ srcSemanticsParams -> @FlatImp.SimState _ impSemanticsParams -> Prop :=
     fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
@@ -861,6 +901,7 @@ Section RegAlloc.
       rename map.empty c1 available_impvars = Some (r', c2, av') ->
       simulation (@FlatImp.SimExec _ srcSemanticsParams e1 c1)
                  (@FlatImp.SimExec _ impSemanticsParams e2 c2) related.
+  (*tag:obvious*)
   Proof.
     unfold simulation.
     intros *. intros ER Ren.
@@ -875,8 +916,10 @@ Section RegAlloc.
     specialize (Rrr eq_refl).
     simp. try rewrite Arrrll in *.
     apply_in_hyps @invert_NoDup_app. simp.
+    (*tag:proof*)
     eapply exec.weaken.
     - eapply rename_correct.
+      (*tag:obvious*)
       1: rewrite Arrrll; eassumption.
       1: eassumption.
       1: eassumption.

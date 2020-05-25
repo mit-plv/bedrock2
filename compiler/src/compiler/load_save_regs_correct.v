@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Tactics.Tactics.
 Require Import riscv.Spec.Primitives.
@@ -23,6 +24,7 @@ Section Proofs.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
 
+  (*tag:proof*)
   Lemma save_regs_correct: forall vars offset R Rexec (initial: RiscvMachineL) p_sp oldvalues
                                   newvalues,
       Forall valid_register vars ->
@@ -50,6 +52,7 @@ Section Proofs.
   Proof.
     unfold map.getmany_of_list.
     induction vars; intros.
+    (*tag:obvious*)
     - simpl in *. simp. destruct oldvalues; simpl in *; [|discriminate].
       apply runsToNonDet.runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
     - simpl in *. simp.
@@ -89,6 +92,7 @@ Section Proofs.
       + reflexivity.
   Qed.
 
+  (*tag:proof*)
   Lemma length_save_regs: forall vars offset,
       List.length (save_regs vars offset) = List.length vars.
   Proof.
@@ -117,6 +121,7 @@ Section Proofs.
           valid_machine final).
   Proof.
     induction vars; intros.
+    (*tag:obvious*)
     - simpl in *. simp. destruct values; simpl in *; [|discriminate].
       apply runsToNonDet.runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
     - simpl in *. simp.
@@ -167,9 +172,12 @@ Section Proofs.
         solve_word_eq word_ok.
   Qed.
 
+  (*tag:proof*)
   Lemma length_load_regs: forall vars offset,
       List.length (load_regs vars offset) = List.length vars.
-  Proof.
+  (*tag:proofsummary*)
+  Proof. (*by induction on vars should be all we need to say *)
+    (*tag:obvious*)
     induction vars; intros; simpl; rewrite? IHvars; reflexivity.
   Qed.
 

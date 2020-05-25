@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import coqutil.Tactics.rewr.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
@@ -31,6 +32,7 @@ Section Pipeline1.
   Context (ml: MemoryLayout)
           (mlOk: MemoryLayoutOk ml).
 
+  (*tag:obvious*)
   Lemma instrencode_cons: forall instr instrs,
       instrencode (instr :: instrs) =
       HList.tuple.to_list (LittleEndian.split 4 (encode instr)) ++ instrencode instrs.
@@ -48,11 +50,13 @@ Section Pipeline1.
       apply IHinstrs1.
   Qed.
 
+  (*tag:spec*)
   Definition imem(code_start code_pastend: Semantics.word)(instrs: list Instruction): Semantics.mem -> Prop :=
     (ptsto_bytes code_start (instrencode instrs) *
      mem_available (word.add code_start (word.of_Z (Z.of_nat (List.length (instrencode instrs)))))
                    code_pastend)%sep.
 
+  (*tag:proof*)
   Lemma ptsto_bytes_to_program: forall instrs p_code,
       word.unsigned p_code mod 4 = 0 ->
       Forall (fun i => verify i iset) instrs ->
@@ -60,6 +64,7 @@ Section Pipeline1.
            (program p_code instrs).
   Proof.
     induction instrs; intros.
+    (*tag:obvious*)
     - reflexivity.
     - simp. unfold program in *. rewrite array_cons.
       specialize (IHinstrs (word.add p_code (word.of_Z 4))).
@@ -79,15 +84,19 @@ Section Pipeline1.
       split; [assumption|reflexivity].
   Qed.
 
+  (*tag:proof*)
   Lemma ptsto_bytes_range: forall bs start pastend m a v,
       ptsto_bytes start bs m ->
       word.unsigned start + Z.of_nat (List.length bs) <= word.unsigned pastend ->
       map.get m a = Some v ->
       word.unsigned start <= word.unsigned a < word.unsigned pastend.
+  (*tag:obvious*)
   Proof.
     assert (map.ok Pipeline.mem) as Ok by exact FlatToRiscvCommon.mem_ok.
     assert (word.ok FlatImp.word) as Okk by exact word_ok. (* PARAMRECORDS *)
+    (*tag:proof*)
     induction bs; intros.
+    (*tag:obvious*)
     - simpl in *. unfold emp in *. simp. rewrite map.get_empty in H1. discriminate.
     - simpl in *.
       unfold sep in H. simp.
@@ -138,6 +147,7 @@ Section Pipeline1.
         destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
   Qed.
 
+  (*tag:spec*)
   Context (spec: @ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
@@ -164,6 +174,7 @@ Section Pipeline1.
     (forall initial, initial_conditions initial -> ll_inv ml spec initial) /\
     (forall st, ll_inv ml spec st -> GoFlatToRiscv.mcomp_sat (run1 iset) st (ll_inv ml spec)) /\
     (forall st, ll_inv ml spec st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog))).
+  (*tag:obvious*)
   Proof.
     assert (map.ok Pipeline.mem) as Okk by exact FlatToRiscvCommon.mem_ok. (* PARAMRECORDS *)
     ssplit; intros.

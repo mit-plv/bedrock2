@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 From Coq Require Import ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.Lia.
@@ -52,6 +53,7 @@ Section Run.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
+  (*tag:proof*)
   Ltac simulate'_step :=
     first [ eapply go_loadByte_sep ; simpl; [sidecondition..|]
           | eapply go_storeByte_sep; simpl; [sidecondition..|intros]
@@ -66,6 +68,9 @@ Section Run.
 
   Ltac simulate' := repeat simulate'_step.
 
+  (*tag:proofsummary*)
+  (*With more powerful automation, these verbose intermediate helper lemmas would not be needed*)
+  (*tag:obvious*)
   Definition run_Jalr0_spec :=
     forall (rs1: Z) (oimm12: MachineInt) (initialL: RiscvMachineL) (R Rexec: mem -> Prop)
            (dest: word),

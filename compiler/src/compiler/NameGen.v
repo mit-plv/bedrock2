@@ -1,7 +1,8 @@
+(*tag:importboilerplate*)
 Require Import Coq.Lists.List.
 Require Import coqutil.Datatypes.PropSet.
 
-
+(*tag:spec*)
 Class NameGen(var st: Type) := mkNameGen {
   (* Return a state which generates vars not contained in the given list.
      We use list instead of set to guarantee that it's finite. *)

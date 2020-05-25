@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Export Coq.Lists.List.
 Require Import Coq.ZArith.ZArith.
 Export ListNotations.
@@ -69,6 +70,7 @@ Section Pipeline1.
   Context {p: Pipeline.parameters}.
   Context {h: Pipeline.assumptions}.
 
+  (*tag:compiletimecode*)
   Context (ml: MemoryLayout)
           (mlOk: MemoryLayoutOk ml).
 
@@ -100,6 +102,7 @@ Section Pipeline1.
     let to_prepend := init_sp_insts ++ init_insts init_fun_pos ++ loop_insts loop_fun_pos ++ backjump_insts in
     Some (to_prepend ++ functions_insts, positions).
 
+  (*tag:proof*)
   Context (spec: @ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
   (* Holds each time before executing the loop body *)
@@ -123,11 +126,13 @@ Section Pipeline1.
 
   Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_good.
 
+  (*tag:administrivia*)
   Add Ring wring : (word.ring_theory (word := Utility.word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := Utility.word)),
        constants [word_cst]).
 
+  (*tag:obvious*)
   Lemma machine_ok_change_call: forall functions_pos f_entry_rel_pos_1 f_entry_rel_pos_2
                                        p_stack_start p_stack_pastend instrs
                                        p_call_1 p_call_2 pc mH Rdata Rexec Rexec1 mach,
@@ -158,6 +163,7 @@ Section Pipeline1.
       wwcancel.
   Qed.
 
+  (*tag:spec*)
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
     exists (srcprog: source_env) (instrs: list Instruction) (positions: funname_env Z) (R: mem -> Prop),
       ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
@@ -176,6 +182,7 @@ Section Pipeline1.
       initial.(getLog) = nil /\
       valid_machine initial.
 
+  (*tag:library*)
   Lemma signed_of_Z_small: forall c,
       - 2 ^ 31 <= c < 2 ^ 31 ->
       word.signed (word.of_Z c) = c.
@@ -192,9 +199,11 @@ Section Pipeline1.
       clear E; Z.div_mod_to_equations; blia.
   Qed.
 
+  (*tag:proof*)
   Lemma establish_ll_inv: forall (initial: MetricRiscvMachine),
       initial_conditions initial ->
       ll_inv initial.
+  (*tag:obvious*)
   Proof.
     unfold initial_conditions.
     intros. simp.
@@ -405,8 +414,10 @@ Section Pipeline1.
           reflexivity.
   Qed.
 
+  (*tag:proof*)
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
       ll_inv st -> GoFlatToRiscv.mcomp_sat (run1 iset) st ll_inv.
+  (*tag:obvious*)
   Proof.
     (* PARAMRECORDS *)
     assert (Ok: map.ok Pipeline.mem) by exact mem_ok.
@@ -489,8 +500,10 @@ Section Pipeline1.
         intros. simp. eauto 15.
   Qed.
 
+  (*tag:proof*)
   Lemma ll_inv_implies_prefix_of_good: forall st,
       ll_inv st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog)).
+  (*tag:obvious*)
   Proof.
     unfold ll_inv, runsToGood_Invariant. intros. simp.
     eapply extend_runsTo_to_good_trace. 2,3: eassumption.

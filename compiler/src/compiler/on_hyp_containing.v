@@ -1,3 +1,4 @@
+(*tag:library*)
 Tactic Notation "on" "hyp" "[" constr(t1) "]" "do" tactic(f) :=
   match goal with
   | H: _ |- _ =>

@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface.
 Require Import riscv.Utility.Utility.
@@ -8,6 +9,7 @@ Open Scope Z_scope.
 Section Params1.
   Context {W: Words}.
 
+  (*tag:spec*)
   Record MemoryLayout: Type := {
     code_start: word;
     code_pastend: word;
@@ -17,7 +19,9 @@ Section Params1.
     stack_pastend: word;
   }.
 
+  (*tag:doc*)
   (* Could also just require disjointness but <= is simpler to state *)
+  (*tag:spec*)
   Record MemoryLayoutOk(ml: MemoryLayout): Prop := {
     code_start_aligned: (word.unsigned ml.(code_start)) mod 4 = 0;
     stack_start_aligned: (word.unsigned ml.(stack_start)) mod bytes_per_word = 0;

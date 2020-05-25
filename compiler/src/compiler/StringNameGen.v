@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import Coq.Strings.Ascii.
 Require Import Coq.Strings.String.
 Require Import Coq.Lists.List.
@@ -11,9 +12,11 @@ Local Open Scope string_scope.
 Local Open Scope char_scope.
 Local Open Scope N_scope.
 
+(*tag:compiletimecode*)
 Definition maxLength: list string -> nat :=
   List.fold_right (fun s res => max res (String.length s)) 0%nat.
 
+(*tag:library*)
 (* reversed binary string *)
 Fixpoint rev_binary_pos(p: positive): string :=
   match p with
@@ -98,11 +101,13 @@ Proof.
         cbv. reflexivity.
 Qed.
 
+(*tag:compiletimecode*)
 Definition start_state(l: list string): N := 2 ^ N.of_nat (maxLength l).
 
 Definition fresh_string_var(state: N): string * N :=
   (String "x" (rev_binary state), state + 1).
 
+(*tag:proof*)
 Definition all_from(state: N): string -> Prop :=
   fun v => exists state', String "x" (rev_binary state') = v /\ state <= state'.
 
@@ -111,6 +116,7 @@ Lemma fresh_string_var_spec: forall (s s' : N) (x : string),
     PropSet.elem_of x (all_from s) /\
     ~ PropSet.elem_of x (all_from s') /\
     PropSet.subset (all_from s') (all_from s).
+(*tag:obvious*)
 Proof.
   unfold fresh_string_var, all_from, PropSet.subset, PropSet.elem_of; intros.
   inversion H; subst; clear H. ssplit.
@@ -122,12 +128,16 @@ Proof.
     eexists. split; [reflexivity|]. blia.
 Qed.
 
+(*tag:proof*)
 Lemma start_state_spec: forall (l : list string) (v : string),
     In v l -> ~ PropSet.elem_of v (all_from (start_state l)).
+(*tag:obvious*)
 Proof.
   unfold fresh_string_var, all_from, start_state, PropSet.subset, PropSet.elem_of; intros.
   intro C. destruct C as [state [E C]]. subst v.
+  (*tag:proof*)
   revert dependent l. induction l; simpl; intros.
+  (*tag:obvious*)
   - assumption.
   - destruct H.
     + subst. simpl in *.

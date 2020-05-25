@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Export Coq.Lists.List. Export ListNotations.
 Require Export Coq.ZArith.BinInt. Open Scope Z_scope.
 Require Export coqutil.Word.Interface coqutil.Word.Properties.
@@ -28,14 +29,16 @@ Arguments iff1 {T} (_)%sep (_)%sep.
 (* TODO does not get rid of %sep in printing as intended *)
 Arguments sep {key} {value} {map} (_)%sep (_)%sep.
 
-
+(*tag:library*)
 Lemma f_equal2: forall {A B: Type} {f1 f2: A -> B} {a1 a2: A},
     f1 = f2 -> a1 = a2 -> f1 a1 = f2 a2.
 Proof. intros. congruence. Qed.
 
+(*tag:doc*)
 (* unifies two separation logic clauses syntactically, instantiating as many evars
    as it wants, but for subterms of type word, applies word solver instead of syntatic unify,
    and for subterms of type Z, applies lia instead of syntactic unify *)
+(*tag:proof*)
 Ltac wclause_unify OK :=
   lazymatch type of OK with
   | word.ok ?WORD =>
@@ -67,11 +70,12 @@ Ltac wclause_unify OK :=
   | _ => fail 1000 "OK does not have the right type"
   end.
 
-
+(*tag:administrivia*)
 Section ptstos.
   Context {W: Words}.
   Context {mem : map.map word byte} {mem_ok: map.ok mem}.
 
+  (*tag:spec*)
   Definition bytes_per_word: Z := Z.of_nat (@Memory.bytes_per width Syntax.access_size.word).
 
   Definition word_array: word -> list word -> mem -> Prop :=
@@ -79,8 +83,10 @@ Section ptstos.
 
   Definition iset := if Utility.width =? 32 then RV32I else RV64I.
 
+  (*tag:doc*)
   (* contains all the conditions needed to successfully execute instr, except
      that addr needs to be in the set of executable addresses, which is dealt with elsewhere *)
+  (*tag:spec*)
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
     (truncated_scalar Syntax.access_size.four addr (encode instr) *
      emp (verify instr iset) *
@@ -89,6 +95,7 @@ Section ptstos.
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
     array ptsto_instr (word.of_Z 4) addr prog.
 
+  (*tag:obvious*)
   Lemma invert_ptsto_instr: forall {addr instr R m},
     (ptsto_instr addr instr * R)%sep m ->
      verify instr iset /\
@@ -115,11 +122,13 @@ Section ptstos.
 
 End ptstos.
 
+(*tag:doc*)
 (* This can be overridden by the user.
    The idea of a "tag" is that it's a subterm of a sepclause which is so unique that if
    the same tag appears both on the left and on the right of an iff1, we're sure that
    these two clauses should be matched & canceled with each other.
    "tag" should return any Gallina term. *)
+(*tag:proof*)
 Ltac tag P :=
   let __ := lazymatch type of P with
             | @map.rep _ _ _ -> Prop => idtac
@@ -129,11 +138,13 @@ Ltac tag P :=
   | _ => fail "no recognizable tag"
   end.
 
+(*tag:doc*)
 (* This can be overridden by the user.
    The idea of "addr" is that if the addresses of two sepclauses are the same,
    we're sure that these two clauses should be matched & canceled with each other,
    even if they still contain many evars outside of their address.
    "addr" should return a Gallina term of type "word" *)
+(*tag:proof*)
 Ltac addr P :=
   let __ := lazymatch type of P with
             | @map.rep _ _ _ -> Prop => idtac
@@ -149,7 +160,9 @@ Ltac addr P :=
   | _ => fail "no recognizable address"
   end.
 
+(*tag:doc*)
 (* completely solves a sepclause equality or fails *)
+(*tag:proof*)
 Ltac sepclause_eq OK :=
   match goal with
   | |- ?G => assert_fails (has_evar G);
@@ -214,6 +227,7 @@ Ltac cancel_by_tag :=
   constr_eq tagL tagR;
   cancel_seps_at_indices i j.
 
+(*tag:workaround*)
 Ltac simpl_addrs :=
   simpl_Z_nat;
   unfold Register, MachineInt in *;
@@ -228,6 +242,7 @@ Ltac simpl_addrs :=
            progress prewrite LHS E
          end.
 
+(*tag:doc*)
 (* Note that "rewr" only works with equalities, not with iff1, so we use
    iff1ToEq to turn iff1 into eq (requires functional and propositionl extensionality).
    Alternatively, we could use standard rewrite (which might instantiate too many evars),
@@ -236,6 +251,7 @@ Ltac simpl_addrs :=
    seprewrite which first puts the clause to be replaced as the left-most, and then
    eapplies a "Proper_sep_iff1: Proper (iff1 ==> iff1 ==> iff1) sep", but that would
    change the order of the clauses. *)
+(*tag:workaround*)
 Ltac get_array_rewr_eq t :=
   lazymatch t with
   | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
@@ -252,6 +268,7 @@ Ltac wseplog_pre :=
   repeat (autounfold with unf_to_array);
   repeat ( rewr get_array_rewr_eq in |-* ).
 
+(*tag:proof*)
 Ltac wwcancel :=
   wseplog_pre;
   simpl_addrs;
@@ -261,14 +278,18 @@ Ltac wcancel_assumption := use_sep_assumption; wwcancel.
 
 Hint Unfold program word_array: unf_to_array.
 
+(*tag:spec*)
 Section Footprint.
   Context {key value} {map : map.map key value} {ok : map.ok map}.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
 
+  (*tag:doc*)
   (* if P allows different footprints, we return the intersection of all possible footprints *)
+  (*tag:spec*)
   Definition footprint_underapprox(P: map -> Prop): key -> Prop :=
     fun a => forall m, P m -> exists v, map.get m a = Some v.
 
+  (*tag:unrelated*)
   (* if P allows different footprints, we return the union of all possible footprints *)
   Definition footprint_overapprox(P: map -> Prop): key -> Prop :=
     fun a => exists m v, P m /\ map.get m a = Some v.
@@ -320,6 +341,7 @@ Section Footprint.
 
   Definition footpr := footprint_underapprox.
 
+  (*tag:obvious*)
   Lemma in_footpr_sep_l: forall (x: key) (P Q: map -> Prop),
       elem_of x (footpr P) ->
       elem_of x (footpr (P * Q)%sep).
@@ -366,18 +388,22 @@ Section Footprint.
     unfold subset. eauto using in_footpr_sep_r.
   Qed.
 
+  (*tag:proof*)
   Lemma rearrange_footpr_subset(P Q: map -> Prop) (A: key -> Prop)
       (H1: subset (footpr P) A)
       (H2: iff1 P Q):
-      subset (footpr Q) A.
+    subset (footpr Q) A.
+  (*tag:obvious*)
   Proof.
     intros. apply iff1ToEq in H2. subst P. assumption.
   Qed.
 
+  (*tag:proof*)
   Lemma shrink_footpr_subset(P Q R: map -> Prop) (A: key -> Prop)
       (H1: subset (footpr Q) A)
       (H2: iff1 Q (P * R)%sep):
       subset (footpr P) A.
+  (*tag:obvious*)
   Proof.
     intros.
     apply iff1ToEq in H2. subst Q.
@@ -418,6 +444,7 @@ Section Footprint.
         congruence.
   Qed.
 
+  (*tag:unrelated*)
   Lemma unique_footprint_sep(P Q: map -> Prop):
     unique_footprint P ->
     unique_footprint Q ->
