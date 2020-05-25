@@ -29,6 +29,7 @@ if u:
 s -= u
 counts.pop('UNTAGGED', None)
 #print ('\n'.join(reversed(sorted(('%2d%% %5d %s'%(100*v/s, v, k)) for (k, v) in counts.items()))))
-print(counts)
+print ('\n'.join(reversed(sorted(('%5d %s'%(v, k)) for (k, v) in counts.items()))))
+#print(counts)
 if invalidUtf8:
     print(f'{invalidUtf8} lines contained invalid utf-8 and were still counted, but not regex-matched')
