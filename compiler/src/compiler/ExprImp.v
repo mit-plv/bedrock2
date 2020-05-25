@@ -272,10 +272,10 @@ Section ExprImp1.
   (*tag:proof*)
   Lemma allVars_expr_allVars_expr_as_list: forall e x,
       x \in allVars_expr e <-> In x (allVars_expr_as_list e).
-  (*tag:proofsummary*)
-  Proof. (*by induction on e*)
-    (*tag:obvious*)
-    induction e; intros; simpl in *; set_solver; try apply in_or_app; set_solver.
+  Proof.
+    induction e;
+      (*tag:obvious*)
+      intros; simpl in *; set_solver; try apply in_or_app; set_solver.
     apply in_app_or in H3.
     destruct H3; eauto.
   Qed.
@@ -283,10 +283,9 @@ Section ExprImp1.
   (*tag:proof*)
   Lemma allVars_exprs_allVars_exprs_as_list: forall es x,
       x \in allVars_exprs es <-> In x (allVars_exprs_as_list es).
-  (*tag:proofsummary*)
-  Proof. (*by induction on es*)
-    (*tag:obvious*)
+  Proof.
     induction es; intros; simpl in *; set_solver.
+    (*tag:obvious*)
     - apply in_or_app. unfold allVars_exprs in H1. simpl in H1.
       pose proof (allVars_expr_allVars_expr_as_list a).
       set_solver.
@@ -298,10 +297,10 @@ Section ExprImp1.
   (*tag:proof*)
   Lemma allVars_cmd_allVars_cmd_as_list: forall s x,
       x \in allVars_cmd s <-> In x (allVars_cmd_as_list s).
-  (*tag:proofsummary*)
-  Proof. (*by induction on s*)
-    (*tag:obvious*)
-    induction s; intros; simpl in *;
+  Proof.
+    induction s;
+      (*tag:obvious*)
+      intros; simpl in *;
       repeat match goal with
              | e: expr |- _ => unique pose proof (allVars_expr_allVars_expr_as_list e x)
              | es: list expr |- _ => unique pose proof (allVars_exprs_allVars_exprs_as_list es x)
@@ -418,10 +417,10 @@ Section ExprImp2.
       forall post2,
         exec env s t m l mc post2 ->
         exec env s t m l mc (fun t' m' l' mc' => post1 t' m' l' mc' /\ post2 t' m' l' mc').
-  (*tag:proofsummary*)
-  Proof. (*by induction on the first exec*)
-    (*tag:obvious*)
-    induction 1; intros;
+  Proof.
+    induction 1;
+      (*tag:obvious*)
+      intros;
       match goal with
       | H: exec _ _ _ _ _ _ _ |- _ => inversion H; subst; clear H
       end;

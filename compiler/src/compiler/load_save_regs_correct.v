@@ -175,9 +175,7 @@ Section Proofs.
   (*tag:proof*)
   Lemma length_load_regs: forall vars offset,
       List.length (load_regs vars offset) = List.length vars.
-  (*tag:proofsummary*)
-  Proof. (*by induction on vars should be all we need to say *)
-    (*tag:obvious*)
+  Proof.
     induction vars; intros; simpl; rewrite? IHvars; reflexivity.
   Qed.
 

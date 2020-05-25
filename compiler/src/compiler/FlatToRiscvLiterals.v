@@ -216,7 +216,7 @@ Section FlatToRiscvLiterals.
              (withMetrics (updateMetricsForLiteral v initialL.(getMetrics)) initialL))))
              post ->
       runsTo initialL post.
-  (*tag:proofsummary*)
+  (*tag:proof*)
   Proof. (* by case distinction on literal size and symbolic execution through the instructions
     emitted by compile_lit *)
     (*tag:obvious*)

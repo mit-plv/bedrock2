@@ -828,15 +828,16 @@ Section FlatToRiscv1.
 
 End FlatToRiscv1.
 
-(*tag:proofsummary*)
+(*tag:doc*)
 (* if we have valid_machine for the current machine, and need to prove a
    runsTo with valid_machine in the postcondition, this tactic can
    replace the valid_machine in the postcondition by True *)
+(*tag:proof*)
 Ltac get_run1valid_for_free :=
-(*tag:obvious*)
   let R := fresh "R" in
   evar (R: MetricRiscvMachine -> Prop);
   eapply runsTo_get_sane with (P := R);
+  (*tag:obvious*)
   [ (* valid_machine *)
     assumption
   | (* the simpler runsTo goal, left open *)

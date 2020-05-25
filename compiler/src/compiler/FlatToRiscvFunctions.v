@@ -90,8 +90,7 @@ Section Proofs.
       iff1 (functions base rel_positions impls)
            (functions base rel_positions (map.remove impls f) *
             program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl))%sep.
-  (*tag:proofsummary*)
-  Proof. (* using map.fold_remove and the cancel tactic, qed *)
+  Proof.
     (*tag:obvious*)
     intros. unfold functions.
     match goal with
@@ -141,8 +140,6 @@ Section Proofs.
     | _ => fail "no recognizable address"
     end.
 
-  (*tag:proofsummary*)
-  (* solve sideconditions using cancelling, first order logic, lia, and rearrange_footpr_subset *)
   (*tag:obvious*)
   Ltac safe_sidecond :=
     match goal with
@@ -165,8 +162,10 @@ Section Proofs.
                      | solve_divisibleBy4
                      | solve_valid_machine (@word_ok (@W (@def_params p))) ]
     | H: subset (footpr _) _ |- subset (footpr _) _ =>
+    (*tag:proof*)
       eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ]
     | |- _ => solve [wcancel_assumption]
+    (*tag:obvious*)
     | |- ?G => is_lia G; assert_fails (has_evar G);
                (* not sure why this line is needed, lia should be able to deal with (x := _) hyps,
                   maybe it changes some implicit args or universes? *)
@@ -200,9 +199,6 @@ Section Proofs.
     * eauto.
   Qed.
 
-  (*tag:proofsummary*)
-  (* after symbolically executing one RISC-V instruction, simplify word expressions, and
-     solve the goals using first order logic, lia, cancellation, and rearrange_footpr_subset *)
   (*tag:obvious*)
   Ltac run1done :=
     apply runsToDone;
@@ -317,11 +313,12 @@ Section Proofs.
       NoDup xs ->
       Forall valid_FlatImp_var xs ->
       (Datatypes.length xs <= 29)%nat.
-  (*tag:proofsummary*)
-  Proof. (* using the pigeon hole principle *)
-    (*tag:obvious*)
+  (*tag:obvious*)
+  Proof.
     intros.
+    (*tag:proof*)
     apply (pigeonhole xs (List.unfoldn Z.succ 29 3) H).
+    (*tag:obvious*)
     - intros.
       eapply (proj1 (Forall_forall valid_FlatImp_var xs)) in H0.
       2: eassumption.
@@ -365,11 +362,10 @@ Section Proofs.
     (forall s,
         compiles_FlatToRiscv_correctly
           compile_stmt s).
-  (*tag:proofsummary*)
+  (*tag:proof*)
   Proof. (* by induction on the FlatImp execution, symbolically executing through concrete
      RISC-V instructions, and using the IH for lists of abstract instructions (eg a then or else branch),
      using cancellation, bitvector reasoning, lia, and firstorder for the sideconditions. *)
-    (*tag:obvious*)
     intros compile_ext_call_correct.
     unfold compiles_FlatToRiscv_correctly.
     induction 1; intros; unfold goodMachine in *;
@@ -381,6 +377,8 @@ Section Proofs.
       all: subst.
       all: simp.
       all: unfold Register, MachineInt in *.
+    (*about this many lines should have been enough to prove this...*)
+    (*tag:obvious*)
 
     - idtac "Case compile_stmt_correct/SInteract".
       eapply runsTo_weaken.
@@ -1285,7 +1283,7 @@ Section Proofs.
     + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
              middle_regs into lL.
 
-      (*tag:proofsummary*)
+      (*tag:proof*)
       (* The following list of lemmas and about that much helper code would probably be required
          even in a near-perfect proof assistant:
 

@@ -177,12 +177,11 @@ Section FlattenExpr1.
   Lemma flattenExpr_uses_Some_resVar: forall e s resVar1 resVar2 ngs ngs',
       flattenExpr ngs (Some resVar1) e = (s, resVar2, ngs') ->
       resVar2 = resVar1.
-  (*tag:proofsummary*)
-  Proof. (* by induction on e *)
-    (*tag:obvious*)
+  Proof.
     induction e; intros; simpl in *; simp; reflexivity.
   Qed.
 
+  (*tag:obvious*)
   Lemma flattenExpr_valid_resVar: forall e s oResVar ngs ngs' resVar,
       flattenExpr ngs oResVar e = (s, resVar, ngs') ->
       disjoint (union (ExprImp.allVars_expr e) (of_option oResVar)) (allFreshVars ngs) ->

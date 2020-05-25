@@ -27,8 +27,7 @@ Section Sim.
     simulation (ExprImp.SimExec e1 (Syntax.cmd.call nil funname nil))
                (FlatImp.SimExec String.string e2 (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall nil funname nil)))
                (related max_size).
-  (*tag:proofsummary*)
-  Proof. (*using FlatImp.exec.weaken. and flattenStmt_correct_aux*)
+  Proof.
     (*tag:obvious*)
     unfold simulation, related, ExprImp.SimExec, FlatImp.SimExec.
     intros H.

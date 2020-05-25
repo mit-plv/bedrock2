@@ -22,9 +22,9 @@ Section WeakestPrecondition.
     match goal with x : X |- _ => induction x end;
     intros.
 
-  (*tag:proofsummary*)
+  (*tag:doc*)
   (* we prove weakening lemmas for all WP definitions in a syntax-directed fashion,
-   * moving from postcondition towars precondition one logical connective at a time. *)
+   * moving from postcondition towards precondition one logical connective at a time. *)
   (*tag:obvious*)
   Global Instance Proper_literal : Proper (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)) WeakestPrecondition.literal.
   Proof. cbv [WeakestPrecondition.literal]; cbv [Proper respectful pointwise_relation Basics.impl]; firstorder idtac. Qed.

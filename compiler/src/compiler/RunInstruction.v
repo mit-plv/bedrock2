@@ -68,8 +68,6 @@ Section Run.
 
   Ltac simulate' := repeat simulate'_step.
 
-  (*tag:proofsummary*)
-  (*With more powerful automation, these verbose intermediate helper lemmas would not be needed*)
   (*tag:obvious*)
   Definition run_Jalr0_spec :=
     forall (rs1: Z) (oimm12: MachineInt) (initialL: RiscvMachineL) (R Rexec: mem -> Prop)
