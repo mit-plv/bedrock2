@@ -304,6 +304,7 @@ Section MMIO1.
       unfold FlatToRiscvCommon.compile_ext_call_correct_alt.
       (*tag:obvious*)
       intros *. intros ? ? ? V_argvars V_resvars. intros. rename extcall into action.
+      pose proof (compile_ext_call_emits_valid SeparationLogic.iset _ action _ V_resvars V_argvars).
       destruct_RiscvMachine initialL.
       unfold FlatToRiscvDef.compile_ext_call, FlatToRiscvCommon.def_params,
              FlatToRiscv_params, compilation_params, compile_ext_call in *.
