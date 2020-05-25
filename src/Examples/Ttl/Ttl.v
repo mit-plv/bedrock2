@@ -25,6 +25,22 @@ Require Import Incr.
 Import GallinaIncr.
 Import dlet.
 
+
+Local Notation function_t := ((String.string * (list String.string * list String.string * Syntax.cmd.cmd))%type).
+Local Notation functions_t := (list function_t).
+(* modified version of program_logic_goal_for_function, in which callee names
+  are manually inserted *)
+Ltac program_logic_goal_for_function proc callees :=
+  let __ := constr:(proc : function_t) in
+  let fname := (eval cbv in (fst proc)) in
+  let callees := (eval cbv in callees) in
+  let spec := lazymatch constr:(_:spec_of fname) with ?s => s end in
+  constr:(forall functions : functions_t,
+             ltac:(let s := assuming_correctness_of_in
+                              callees functions
+                              (spec (cons proc functions)) in
+                   exact s)).
+
 Module Ttl.
   Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
   Local Existing Instance BasicC64Semantics.parameters.
@@ -199,20 +215,30 @@ Module Ttl.
   Hint Unfold Packet : compiler.
   Opaque dlet.
 
+  Notation "'forall!' x .. y ',' pre '===>' fname '@' args '==>' post" :=
+    (fun functions =>
+       (forall x,
+           .. (forall y,
+                  forall R tr mem,
+                    (pre * R)%sep mem ->
+                    WeakestPrecondition.call
+                      functions fname tr mem args
+                      (postcondition_for post R tr)) ..))
+         (x binder, y binder, only parsing, at level 199).
+  Instance spec_of_decr : spec_of "decr" :=
+    forall! pp p,
+      Packet pp p ===> "decr" @ [pp] ==> Packet pp (decr_gallina p).
+
+  (* TODO: something like program_logic_goal_for_function! *)
   Derive decr_body SuchThat
-       (let decr := ("decr", (["p"], [], decr_body)) in
-        program_logic_goal_for decr
-        (forall functions,
-            forall pp p R tr mem,
-              (Packet pp p * R)%sep mem ->
-              WeakestPrecondition.call
-                (decr :: functions)
-                "decr"
-                tr mem [pp]
-                (postcondition_for
-                   (Packet pp (decr_gallina p)) R tr)))
+         (let decr := ("decr", (["p"], [], decr_body)) in
+          program_logic_goal_for
+            decr
+            (ltac:(let x := program_logic_goal_for_function decr (@nil string) in
+                   exact x)))
     As decr_body_correct.
   Proof.
+    cbv [program_logic_goal_for spec_of_decr].
     setup.
     assert (Z.of_nat 2 < 2 ^ Semantics.width)%Z by (cbn; lia).
     eapply compile_nth with (var := "ttl").
@@ -222,6 +248,8 @@ Module Ttl.
     intros.
     eapply compile_replace.
     1-4:repeat t; eauto.
+    unfold Packet in *.
+    intros.
     repeat t.
   Qed.
 End Ttl.
