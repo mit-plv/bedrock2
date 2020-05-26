@@ -2,9 +2,11 @@
 DIR="$(dirname "$(readlink -f "$0")")"
 
 count() {
-        printf "%s: " "$1"
         shift
-        cat $@ | python3 "$DIR/tagcount.py"
+	while [ $# -gt 0 ]; do
+		realpath "$1"
+		shift
+	done
 }
 
 count "top-level trace specification" bedrock2/src/bedrock2Examples/lightbulb_spec.v
