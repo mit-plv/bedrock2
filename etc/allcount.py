@@ -41,5 +41,6 @@ for line in sys.stdin.read().splitlines():
     if line.startswith('#'):
         continue
     cts = count_lines_in_file(line)
-    table += collections.Counter((row+':'+k, v) for (k,v) in cts.items())
-print (table)
+    table += collections.Counter(dict((row+':'+k, v) for (k,v) in cts.items()))
+for k,v in table.items():
+    print (k, v)
