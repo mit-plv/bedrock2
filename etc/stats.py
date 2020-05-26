@@ -11,7 +11,7 @@ d["coqutil"] = {'UNTAGGED': 6437}
 
 d["kami"] = {'UNTAGGED': 54227}
 
-d["riscv-coq"] = {'UNTAGGED': 6907}
+d["riscv-coq"] = {'importboilerplate': 358, 'unrelated': 3112, 'doc': 35, 'spec': 2166, 'obvious': 587, 'test': 112, 'proof': 118, 'workaround': 6, 'administrivia': 25, 'library': 120, 'compiletimecode': 232}
 
 d["end-to-end"] = {'UNTAGGED': 78, 'importboilerplate': 151, 'compiletimecode': 31, 'lemma': 494, 'test': 24, 'spec': 13, 'code': 10, 'workaround': 45, 'lists': 17, 'bitvector': 190, 'maps': 17}
 

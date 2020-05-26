@@ -13,7 +13,7 @@ def obvious(x):
     return x.get('obvious', 0) + x.get('workaround', 0) + x.get('bitvector', 0) + x.get('lemma', 0) + x.get('symex', 0)
 
 def unrelated(x):
-    return x.get('unrelated', 0) + x.get('UNTAGGED', 0)
+    return x.get('unrelated', 0) + x.get('test', 0) # x.get('UNTAGGED', 0)
 
 def boilerplate(x):
     return x.get('importboilerplate', 0) + x.get('administrivia', 0)
@@ -62,6 +62,7 @@ with open('loc.tex', 'w') as f2:
     line('lightbulb app', True)
     line('program logic', False)
     line('compiler', True)
-    f2.write('SW/HW interface      & todo & todo & todo & todo &      \\NA &      \\NA \\\\ \\hline\n') # TODO merge riscv-coq and bedrock2/processor directory
+    d['SW/HW interface'] = d['riscv-coq'] # TODO merge riscv-coq and bedrock2/processor directory
+    line('SW/HW interface', False)
     line('end-to-end', False)
     f2.write('Total                & todo & todo & todo & todo &      \\NA &      \\NA \\\\ \\hline\n')

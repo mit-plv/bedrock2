@@ -11,7 +11,7 @@ Require        compiler.FlatImp.
 Require Export riscv.Spec.Decode.
 Require Export riscv.Spec.Machine.
 Require Export riscv.Platform.Run.
-Require Export riscv.Platform.Minimal.
+Require Export riscv.Platform.RiscvMachine.
 Require Export riscv.Platform.MetricLogging.
 Require Export riscv.Utility.Monads.
 Require Import riscv.Utility.runsToNonDet.
