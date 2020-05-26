@@ -43,20 +43,25 @@ with open('loc_excluded.tex', 'w') as f1:
     def line(what, v):
         f1.write(f'  {what:10s} & {v:5d} \\\\ \\hline \n')
     line('unrelated', unrel)
+    line('library', library)
     line('imports', boilerp)
     line('doc', doc)
     line('Kami', kami)
 
 with open('loc.tex', 'w') as f2:
-    def line(what):
-        overh =      (spec(d[what]) + proof(d[what]) + obvious(d[what])) * 100.0 / code(d[what])
-        idealOverh = (spec(d[what]) + proof(d[what])                   ) * 100.0 / code(d[what])
-        f2.write(f'{what:20s} & {code(d[what]):4d} & {spec(d[what]):4d} & {proof(d[what]):4d} & {obvious(d[what]):4d} &   {overh:6.0f} &   {idealOverh:6.0f} \\\\ \\hline\n')
+    def line(what, oh=True):
+        overh =      (code(d[what]) + spec(d[what]) + proof(d[what]) + obvious(d[what]) + 0.0) / code(d[what])
+        idealOverh = (code(d[what]) + spec(d[what]) + proof(d[what])                    + 0.0) / code(d[what])
+        f2.write(f'{what:20s} & {code(d[what]):4d} & {spec(d[what]):4d} & {proof(d[what]):4d} & {obvious(d[what]):4d} &')
+        if oh:
+            f2.write(f'   {overh:6.1f} &   {idealOverh:6.1f}')
+        else:
+            f2.write('      \\NA &      \\NA')
+        f2.write(' \\\\ \\hline\n')
     f2.write('                     % code & spec &   pf & obvi & overhead &    ideal \\\\\n')
-    line('lightbulb app')
-    line('program logic')
-    line('compiler')
-    f2.write('SW/HW interface      & todo & todo & todo & todo &     todo &     todo \\\\ \\hline\n') # TODO merge riscv-coq and bedrock2/processor directory
-    line('end-to-end')
-    f2.write(f'Missing libraries    &  \\NA &  \\NA &  \\NA & {library:4d} &      \\NA &      \\NA \\\\ \\hline\n')
-    f2.write('Total                & todo & todo & todo & todo &     todo &     todo \\\\ \\hline\n')
+    line('lightbulb app', True)
+    line('program logic', False)
+    line('compiler', True)
+    f2.write('SW/HW interface      & todo & todo & todo & todo &      \\NA &      \\NA \\\\ \\hline\n') # TODO merge riscv-coq and bedrock2/processor directory
+    line('end-to-end', False)
+    f2.write('Total                & todo & todo & todo & todo &      \\NA &      \\NA \\\\ \\hline\n')
