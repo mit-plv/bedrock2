@@ -2,7 +2,8 @@
 DIR="$(dirname "$(readlink -f "$0")")"
 
 count() {
-        shift
+	printf "#= $1\n"
+	shift
 	while [ $# -gt 0 ]; do
 		realpath "$1"
 		shift
