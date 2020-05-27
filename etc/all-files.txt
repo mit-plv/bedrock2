@@ -74,7 +74,6 @@
 ./compiler/src/compiler/DivisibleBy4.v
 ./compiler/src/compiler/Simp.v
 ./compiler/src/compiler/mod4_0.v
-./compiler/src/compiler/Rem4.v
 ./compiler/src/compiler/on_hyp_containing.v
 ./compiler/src/compiler/eqexact.v
 ./compiler/src/compiler/RiscvWordProperties.v
@@ -100,7 +99,6 @@
 #=hwsw
 ./processor/src/processor/KamiRiscvStep.v
 ./processor/src/processor/KamiWord.v
-./processor/src/processor/DecExecOk.v
 ./end2end/src/end2end/KamiRiscvWordProperties.v
 ./processor/src/processor/KamiRiscv.v
 ./processor/src/processor/KamiProc.v
