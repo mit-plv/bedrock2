@@ -94,7 +94,6 @@ Section Array.
     subst A; destruct (Compare_dec.le_le_S_dec (length xs) n) as [Hle|Hle].
     { rewrite firstn_all2, <-app_nil_r in H by assumption; eapply app_inv_head in H; discriminate H. }
     rewrite firstn_length_le by blia; reflexivity.
-    (*tag:lemma*)
   Qed.
 
   (*tag:obvious*)
