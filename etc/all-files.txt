@@ -1,8 +1,9 @@
-#=programlogic
+#=lightbulb
 ./bedrock2/src/bedrock2Examples/lightbulb_spec.v
 ./bedrock2/src/bedrock2Examples/SPI.v
 ./bedrock2/src/bedrock2Examples/LAN9250.v
 ./bedrock2/src/bedrock2Examples/lightbulb.v
+#=programlogic
 ./bedrock2/src/bedrock2/WeakestPrecondition.v
 ./bedrock2/src/bedrock2/Map/Separation.v
 ./bedrock2/src/bedrock2/TracePredicate.v

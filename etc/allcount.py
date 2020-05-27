@@ -71,5 +71,37 @@ for line in sys.stdin.read().splitlines():
         continue
     cts = count_lines_in_file(line)
     table += collections.Counter(dict((row+':'+k, v) for (k,v) in cts.items()))
+
+def countBy(p):
+    items = [(k,v) for (k, v) in table.items() if p(k)]
+    for k,v in items:
+        del table[k]
+    return sum(v for (k,v) in items)
+
+with open('loc_excluded.tex', 'w') as f1:
+    def line(what, v):
+        f1.write(f'  {what:10s} & {v:5d} \\\\ \\hline \n')
+    line('unrelated', countBy(lambda s: s.startswith('unrelated:') or s.endswith(':unrelated')))
+    line('library', countBy(lambda s: s.startswith('coqutil:') or s.endswith(':library')))
+    line('imports', countBy(lambda s: s.endswith(':imports')))
+    line('doc', countBy(lambda s: s.endswith(':doc')))
+    line('Kami', countBy(lambda s: s.startswith('kami:')))
+
+with open('loc.tex', 'w') as f2:
+    for (row, rowname) in list(dict(programlogic='program logic', lightbulb='lightbulb app', compiler='compiler', hwsw='SW/HW interface').items())+[('end-to-end','end-to-end')]:
+        print(f'{rowname:20s} & ', end='', file=f2)
+        r = dict()
+        for column in ['interface', 'implementation', 'interesting proof', 'low-insight proof']:
+            r[column] = countBy(lambda s: s == row+':'+column)
+            print(f'{r[column]:4d} & ', end='', file=f2)
+        if r['implementation']:
+            overh =      (r['implementation'] + r['interface'] + r['interesting proof'] + r['low-insight proof'] + 0.0) / r['implementation']
+            idealOverh = (r['implementation'] + r['interface'] + r['interesting proof']                          + 0.0) / r['implementation']
+            f2.write(f'   {overh:6.1f} &   {idealOverh:6.1f}')
+        else:
+            f2.write('      \\NA &      \\NA')
+        f2.write(' \\\\ \\hline\n')
+
+print('code unaccounted for:')
 for k,v in table.items():
     print (k, v)
