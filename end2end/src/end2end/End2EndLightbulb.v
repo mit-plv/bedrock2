@@ -21,18 +21,18 @@ Require Import coqutil.Map.Z_keyed_SortedListMap.
 Open Scope Z_scope.
 Open Scope string_scope.
 
-(*tag:compiletimecode*)
+(*tag:spec*)
 Definition instrMemSizeLg: Z := 10. (* means 2^12 bytes *) (* TODO is this enough? *)
 (*tag:obvious*)
 Lemma instrMemSizeLg_bounds : 3 <= instrMemSizeLg <= 30. Proof. cbv. intuition discriminate. Qed.
 
-(*tag:compiletimecode*)
+(*tag:spec*)
 Definition memSizeLg: Z := 13.
 (*tag:obvious*)
 Lemma memSizeLg_valid : instrMemSizeLg + 2 < memSizeLg <= 16.
 Proof. cbv. intuition discriminate. Qed.
 
-(*tag:compiletimecode*)
+(*tag:spec*)
 Definition stack_size_in_bytes: Z := 2 ^ 11.
 
 Definition ml: MemoryLayout :=
@@ -50,10 +50,9 @@ Remark this_is_the_value_of_ml: ml = {|
 |}.
 Proof. reflexivity. Qed.
 
-(*tag:compiletimecode*)
+(*tag:spec*)
 Definition buffer_addr: Z := word.unsigned ml.(heap_start).
 
-(*tag:spec*)
 Definition spec: ProgramSpec := {|
   datamem_start := ml.(heap_start);
   datamem_pastend := ml.(heap_pastend);
@@ -102,10 +101,9 @@ Local Definition parameters_match :
 
 Open Scope string_scope.
 
-(*tag:doc*)
+(*tag:administrivia*)
 (* note: this function is totally redundant now *)
 (* I spent an hour trying to short-circuit it, but failed because loop is not redundant, and loop is not in the enviroenment in which lightbulb_init is proven, and Pipeline wants init proven in the extended environment that includes loop *)
-(*tag:code*)
 Definition init :=
   ("init", ([]: list string, []: list string,
            (cmd.call [] "lightbulb_init" []))).
@@ -117,7 +115,7 @@ Definition loop :=
 Definition funimplsList := init :: loop :: lightbulb.function_impls.
 Definition prog := map.of_list funimplsList.
 
-(*tag:compiletimecode*)
+(*tag:spec*)
 Definition lightbulb_insts_unevaluated:
   option (list Decode.Instruction * FlatToRiscvDef.FlatToRiscvDef.funname_env Z) :=
   ToplevelLoop.compile_prog ml prog.
@@ -126,7 +124,7 @@ Definition lightbulb_insts_unevaluated:
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
    and to check if there are any axioms which could block the computation. *)
-(*tag:compiletimecode*)
+(*tag:spec*)
 Definition lightbulb_insts: list Decode.Instruction.
   let r := eval cbv in lightbulb_insts_unevaluated in set (res := r).
   match goal with

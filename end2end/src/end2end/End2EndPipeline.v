@@ -145,7 +145,7 @@ Section Connect.
                               MetricRiscvMachine).
   Abort.
 
-  (*tag:compiletimecode*)
+  (*tag:proof*)
   Instance pipeline_params: PipelineWithRename.Pipeline.parameters := {|
     Pipeline.ext_spec := FE310CSemantics.ext_spec;
     Pipeline.compile_ext_call := FlatToRiscvDef.compile_ext_call;
