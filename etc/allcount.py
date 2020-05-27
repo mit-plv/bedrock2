@@ -1,12 +1,41 @@
 import sys, re, traceback, collections
 
+tag2col = {
+    # tags to recategorize:
+    'lemma': 'TODO',
+    'notations': 'TODO',
+    'automation': 'TODO',
+
+    # tags mapped to rows in "Excluded" mini-table:
+    'unrelated': 'unrelated',
+    'test': 'unrelated',
+    'library': 'library',
+    'importboilerplate': 'imports',
+    'administrativia': 'imports',
+    'administrivia': 'imports',
+    'doc': 'doc',
+
+    # tags mapped to columns in main table:
+    'code': 'implementation',
+    'compiletimecode': 'implementation',
+    'spec': 'interface',
+    'proof': 'interesting proof',
+    'loopinv': 'interesting proof',
+    'workaround': 'low-insight proof',
+    'bitvector': 'low-insight proof',
+    'symex': 'low-insight proof',
+    'obvious': 'low-insight proof',
+    'lists': 'low-insight proof',
+    'maps': 'low-insight proof'
+}
+
 def maplabel(l):
-    return l
+    return tag2col[l]
 
 def count_lines_in_file(filepath):
   counts = dict()
   current = 'UNTAGGED'
-  
+
   invalidUtf8 = 0
   lines=[]
   try:
@@ -14,7 +43,7 @@ def count_lines_in_file(filepath):
           lines = f.read().splitlines()
   except Exception as e:
       traceback.print_exc(file=sys.stderr)
-  
+
   for line in lines:
       try:
           line = line.decode('utf-8')
