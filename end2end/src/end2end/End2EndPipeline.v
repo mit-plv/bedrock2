@@ -47,7 +47,7 @@ Require Import compiler.ExprImpEventLoopSpec.
 
 Local Open Scope Z_scope.
 
-(*tag:lists*)
+(*tag:library*)
 (* TODO move to coqutil *)
 Module List. Section WithA.
   Context {A : Type}.
@@ -78,7 +78,7 @@ refine (@KamiRiscvWordProperties.kami_word_riscv_ok 5 _ _).
 all: cbv; congruence.
 Qed.
 
-(*tag:lemma*)
+(*tag:proof*)
 (* TODO these definitions should be in KamiRiscv.v: *)
 
 Definition get_kamiMemInit{memSizeLg: Z}
@@ -101,13 +101,14 @@ Section Connect.
           {mem: map.map (KamiWord.word 32) byte}
           {mem_ok: map.ok mem}.
 
-  (*tag:lemma*)
+  (*tag:obvious*)
   Instance mmio_params: MMIO.parameters.
     econstructor; try typeclasses eauto.
     - exact (@KamiWord.wordWok _ (or_introl eq_refl)).
     - exact SortedListString.ok.
   Defined.
 
+  (*tag:proof*)
   Let instrMemSizeBytes: Z := 2 ^ (2 + instrMemSizeLg).
 
   Definition ml: MemoryLayout := {|
@@ -150,9 +151,10 @@ Section Connect.
     Pipeline.compile_ext_call := FlatToRiscvDef.compile_ext_call;
   |}.
 
-  (*tag:lemma*)
+  (*tag:workaround*)
   Existing Instance MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives.
 
+  (*tag:obvious*)
   Instance pipeline_assumptions: @PipelineWithRename.Pipeline.assumptions pipeline_params.
     refine ({|
       Pipeline.PR := _ ; (*MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives;*)
@@ -173,11 +175,13 @@ Section Connect.
     @states_related Pipeline.Registers mem instrMemSizeLg memSizeLg
                     (proj1 instrMemSizeLg_bounds) (proj2 instrMemSizeLg_bounds).
 
+  (*tag:proof*)
   Lemma split_ll_trace: forall {t2' t1' t},
       traces_related t (t2' ++ t1') ->
       exists t1 t2, t = t2 ++ t1 /\ traces_related t1 t1' /\ traces_related t2 t2'.
   Proof.
     induction t2'; intros.
+    (*tag:obvious*)
     - exists t, nil. simpl in *. repeat constructor. assumption.
     - simpl in H. simp. specialize IHt2' with (1 := H4).
       destruct IHt2' as (t1 & t2 & E & R1 & R2). subst.
@@ -201,6 +205,7 @@ Section Connect.
      Z names Semantics.params lingering around *)
   Notation strname_sem := (FlattenExpr.mk_Semantics_params
                              (@Pipeline.FlattenExpr_parameters pipeline_params)).
+  (*tag:spec*)
   Context (spec: @ProgramSpec strname_sem)
           (funimplsList: list (string * (list string * list string * cmd))).
 
@@ -248,24 +253,29 @@ Section Connect.
         apply Z.pow_lt_mono_r; blia.
       }
       rewrite ?Z.mod_small; try split; try apply Z.pow_nonneg; try blia.
-    Qed.
-    (*tag:lemma*)
+  Qed.
 
+  (*tag:spec*)
   Hypothesis funimplsList_NoDup: NoDup (List.map fst funimplsList).
 
+  (*tag:doc*)
   (* goodTrace in terms of "exchange format" (list Event).
      Only holds at the beginning/end of each loop iteration,
      will be transformed into "exists suffix, ..." form later *)
+  (*tag:spec*)
   Definition goodTraceE(t: list Event): Prop :=
     exists bedrockTrace, traces_related t bedrockTrace /\ spec.(goodTrace) bedrockTrace.
 
+  (*tag:proof*)
   Definition bedrock2Inv := (fun t m l => forall mc, hl_inv spec t m l mc).
 
   Let funspecs := WeakestPrecondition.call (p := strname_sem) funimplsList.
 
+  (*tag:spec*)
   Hypothesis goodTrace_implies_related_to_Events: forall (t: list LogItem),
       spec.(goodTrace) t -> exists t': list Event, traces_related t' t.
 
+  (*tag:proof*)
   Definition riscvMemInit_all_values: list byte :=
     List.map (get_kamiMemInit memInit) (seq 0 (Z.to_nat (2 ^ memSizeLg))).
 
@@ -293,7 +303,7 @@ Section Connect.
       match goal with
       | |- context [map.put ?m ?k ?v] => pose proof map.put_putmany_commute k v m map.empty as P
       end.
-      (*tag:lemma*)
+      (*tag:obvious*)
       rewrite map.putmany_empty_r in P.
       rewrite P. clear P.
       eapply sep_comm.
@@ -345,7 +355,7 @@ Section Connect.
           blia.
   Qed.
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Lemma riscvMemInit_to_seplog:
     (PipelineWithRename.ptsto_bytes (word.of_Z 0) riscvMemInit_all_values)
     (riscvMemInit memSizeLg memInit).
@@ -363,8 +373,9 @@ Section Connect.
     - rewrite N_Z_nat_conversions.Z2Nat.inj_pow; try blia. reflexivity.
   Qed.
 
-  (*tag:lemma*)
+  (*tag:doc*)
   (* end to end, but still generic over the program *)
+  (*tag:spec*)
   Lemma end2end:
     (* Assumptions on the program logic level: *)
     forall init_code loop_body,
@@ -392,6 +403,7 @@ Section Connect.
          least one way to complete it to a good trace *)
       exists (t': list Event), KamiLabelSeqR t t' /\
                                exists (suffix: list Event), goodTraceE (suffix ++ t').
+  (*tag:obvious*)
   Proof.
     intros *. intros GetInit Establish GetLoop Preserve. intros *. intros C L F V M. intros *. intros B.
 
@@ -403,7 +415,9 @@ Section Connect.
     (* stack of proofs, bottom-up: *)
 
     (* 1) Kami pipelined processor to riscv-coq *)
+    (*tag:proof*)
     pose proof @riscv_to_kamiImplProcessor as P1.
+    (*tag:obvious*)
     specialize_first P1 traceProp.
     specialize_first P1 (ll_inv ml spec).
     specialize_first P1 B.
@@ -413,7 +427,9 @@ Section Connect.
     (* destruct spec. TODO why "Error: sat is already used." ?? *)
 
     (* 2) riscv-coq to bedrock2 semantics *)
+    (*tag:proof*)
     pose proof compiler_invariant_proofs as P2.
+    (*tag:obvious*)
     specialize_first P2 spec.
     specialize_first P2 ml.
     specialize_first P2 mlOk.
@@ -472,7 +488,7 @@ Section Connect.
           change width with 32.
           apply Z.pow_lt_mono_r; try blia.
         }
-        (*tag:lemma*)
+        (*tag:obvious*)
         assert (Datatypes.length riscvMemInit_all_values = Z.to_nat (2 ^ memSizeLg)). {
           unfold riscvMemInit_all_values.
           rewrite map_length. rewrite seq_length.
@@ -589,7 +605,7 @@ Section Connect.
                    pose proof (fun u : x => conj (H u) (H' u)); clear H H'
                  end;
           blia).
-          (*tag:lemma*)
+          (*tag:obvious*)
       + change (word.unsigned (code_start ml)) with 0.
         assert (Hend: code_pastend ml = word.of_Z instrMemSizeBytes) by reflexivity.
         (*tag:bitvector*)
@@ -599,7 +615,7 @@ Section Connect.
         rewrite Z.mod_small by (split; [apply Z.pow_nonneg; Lia.lia
                                        |apply Z.pow_lt_mono_r; cbn; Lia.lia]).
         assumption.
-        (*tag:lemma*)
+        (*tag:obvious*)
       + reflexivity.
       + reflexivity.
       + unfold FlatToRiscvCommon.regs_initialized. intros.
@@ -634,8 +650,3 @@ Section Connect.
   Qed.
 
 End Connect.
-
-(*
-About end2end.
-Print Assumptions end2end.
-*)

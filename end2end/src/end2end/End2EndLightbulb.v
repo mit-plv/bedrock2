@@ -23,10 +23,12 @@ Open Scope string_scope.
 
 (*tag:compiletimecode*)
 Definition instrMemSizeLg: Z := 10. (* means 2^12 bytes *) (* TODO is this enough? *)
-(*tag:lemma*)
+(*tag:obvious*)
 Lemma instrMemSizeLg_bounds : 3 <= instrMemSizeLg <= 30. Proof. cbv. intuition discriminate. Qed.
 
+(*tag:compiletimecode*)
 Definition memSizeLg: Z := 13.
+(*tag:obvious*)
 Lemma memSizeLg_valid : instrMemSizeLg + 2 < memSizeLg <= 16.
 Proof. cbv. intuition discriminate. Qed.
 
@@ -37,7 +39,7 @@ Definition ml: MemoryLayout :=
   End2EndPipeline.ml (mem_ok := @SortedListWord.ok 32 word word_ok Init.Byte.byte)
                      instrMemSizeLg memSizeLg stack_size_in_bytes.
 
-(*tag:test*)
+(*tag:doc*)
 Remark this_is_the_value_of_ml: ml = {|
   MemoryLayout.code_start    := word.of_Z 0;
   MemoryLayout.code_pastend  := word.of_Z (2 ^ 12);
@@ -62,7 +64,9 @@ Definition spec: ProgramSpec := {|
     Z.of_nat (Datatypes.length buf) = 1520;
 |}.
 
+(*tag:proof*)
 Lemma mlOk: MemoryLayoutOk ml.
+(*tag:obvious*)
 Proof.
   constructor; try reflexivity; try (cbv; discriminate).
 Qed.
@@ -98,9 +102,10 @@ Local Definition parameters_match :
 
 Open Scope string_scope.
 
-(*tag:code*)
+(*tag:doc*)
 (* note: this function is totally redundant now *)
 (* I spent an hour trying to short-circuit it, but failed because loop is not redundant, and loop is not in the enviroenment in which lightbulb_init is proven, and Pipeline wants init proven in the extended environment that includes loop *)
+(*tag:code*)
 Definition init :=
   ("init", ([]: list string, []: list string,
            (cmd.call [] "lightbulb_init" []))).
@@ -117,9 +122,11 @@ Definition lightbulb_insts_unevaluated:
   option (list Decode.Instruction * FlatToRiscvDef.FlatToRiscvDef.funname_env Z) :=
   ToplevelLoop.compile_prog ml prog.
 
+(*tag:doc*)
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
    and to check if there are any axioms which could block the computation. *)
+(*tag:compiletimecode*)
 Definition lightbulb_insts: list Decode.Instruction.
   let r := eval cbv in lightbulb_insts_unevaluated in set (res := r).
   match goal with
@@ -134,6 +141,7 @@ Definition function_positions: FlatToRiscvDef.FlatToRiscvDef.funname_env Z.
   end.
 Defined.
 
+(*tag:obvious*)
 Definition compilation_result:
   ToplevelLoop.compile_prog ml prog = Some (lightbulb_insts, function_positions).
 Proof. reflexivity. Qed.
@@ -158,12 +166,13 @@ Module PrintProgram.
   Unset Printing Width.
 End PrintProgram.
 
-(*tag:lemma*)
+(*tag:proof*)
 Lemma iohi_to_iolo: forall ioh (iomid: list RiscvMachine.LogItem),
     Forall2 SPI.mmio_event_abstraction_relation ioh iomid ->
     exists iolo : list KamiRiscvStep.Event, KamiRiscvStep.traces_related iolo iomid.
 Proof.
   induction ioh; intros.
+  (*tag:obvious*)
   - simp. exists nil. constructor.
   - destruct iomid; try solve [inversion H].
     simp.
@@ -193,6 +202,7 @@ Qed.
 
 Arguments goodHlTrace {_}.
 
+(*tag:proof*)
 Lemma kami_and_lightbulb_abstract_bedrockTrace_the_same_way:
   forall bedrockTrace (kamiTrace lightbulbTrace : list (string * Utility.word * Utility.word)),
     SPI.mmio_trace_abstraction_relation lightbulbTrace bedrockTrace ->
@@ -200,17 +210,21 @@ Lemma kami_and_lightbulb_abstract_bedrockTrace_the_same_way:
     kamiTrace = lightbulbTrace.
 Proof.
   intro l. unfold SPI.mmio_trace_abstraction_relation. induction l; intros.
+  (*tag:obvious*)
   - simp. reflexivity.
   - simp. f_equal. 2: eauto.
     inversion H4; inversion H3; simp; reflexivity || discriminate.
 Qed.
 
+(*tag:spec*)
 Definition bytes_at(bs: list Init.Byte.byte)(addr: Z)
            (m: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg)): Prop :=
   @kami_mem_contains_bytes bs 13 (word.of_Z addr) m.
 
+(*tag:doc*)
 (* it's a prefix in the temporal sense -- since traces grow on the left,
    this definition looks more like a suffix *)
+(*tag:spec*)
 Definition prefix_of{A: Type}(l: list A)(P: list A -> Prop): Prop :=
   exists completion, P (completion ++ l)%list.
 
@@ -223,6 +237,7 @@ Theorem end2end_lightbulb: forall mem0 t state,
 Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
+  (*tag:obvious*)
   specialize_first Q spec.
   specialize_first Q instrMemSizeLg_bounds.
   intros *. intro KB.
@@ -269,7 +284,9 @@ Proof.
   - (* establish invariant *)
     repeat ProgramLogic.straightline.
     refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _);
+      (*tag:proof*)
       [|exact (link_lightbulb_init m nil)].
+      (*tag:obvious*)
 
     intros ? ? ? ?.
     repeat ProgramLogic.straightline.
@@ -307,7 +324,9 @@ Proof.
     unfold hl_inv, isReady, goodTrace, goodHlTrace in *.
     Simp.simp.
     repeat ProgramLogic.straightline.
+    (*tag:proof*)
     pose proof link_lightbulb_loop as P.
+    (*tag:obvious*)
     cbv [spec_of_lightbulb_loop] in P.
     specialize_first P Hll.
     specialize_first P t0.
