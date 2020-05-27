@@ -74,7 +74,6 @@
 ./compiler/src/compiler/DivisibleBy4.v
 ./compiler/src/compiler/Simp.v
 ./compiler/src/compiler/mod4_0.v
-./compiler/src/compiler/Rem4.v
 ./compiler/src/compiler/on_hyp_containing.v
 ./compiler/src/compiler/eqexact.v
 ./compiler/src/compiler/RiscvWordProperties.v
@@ -100,7 +99,6 @@
 #=hwsw
 ./processor/src/processor/KamiRiscvStep.v
 ./processor/src/processor/KamiWord.v
-./processor/src/processor/DecExecOk.v
 ./end2end/src/end2end/KamiRiscvWordProperties.v
 ./processor/src/processor/KamiRiscv.v
 ./processor/src/processor/KamiProc.v
@@ -306,7 +304,6 @@
 ./compiler/src/compilerExamples/InlineAssemblyMacro.v
 ./compiler/src/compilerExamples/SimpleInvariant.v
 ./compiler/src/compilerExamples/swap.v
-./processor/integration/clk.v
 ./deps/riscv-coq/src/riscv/Platform/AtomicMinimal.v
 ./deps/riscv-coq/src/riscv/Platform/AtomicRiscvMachine.v
 ./deps/riscv-coq/src/riscv/Platform/Example64Literal.v
