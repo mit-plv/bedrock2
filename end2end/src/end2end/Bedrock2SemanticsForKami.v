@@ -26,14 +26,13 @@ refine (@kami_word_riscv_ok 5 _ _).
 all: cbv; congruence.
 Qed.
 
-(*tag:lemma*)
+(*tag:proof*)
 Instance FE310CSemanticsParameters : FE310CSemantics.parameters.parameters := {|
   FE310CSemantics.parameters.word := word;
   FE310CSemantics.parameters.mem := SortedListWord.map _ _;
   (*tag:workaround*)
   (* FIXME: we shouldn't need the next line *)
   FE310CSemantics.parameters.mem_ok := SortedListWord.ok _ _;
-  (*tag:lemma*)
 |}.
 
 (*tag:workaround*)

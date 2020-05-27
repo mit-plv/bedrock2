@@ -51,7 +51,7 @@ Section FetchOk.
   Local Notation nwidth := (Z.to_nat width).
   Local Notation width_inst_valid := (width_inst_valid HinstrMemBound).
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Definition instrMemSize: nat := NatLib.pow2 (2 + Z.to_nat instrMemSizeLg).
 
   Definition pc_related (kpc rpc: kword width): Prop :=
@@ -85,11 +85,12 @@ Section FetchOk.
     - etransitivity; [eauto|blia].
   Qed.
 
-  (*tag:lemma*)
+  (*tag:proof*)
   (* set of executable addresses in the kami processor *)
   Definition kamiXAddrs: XAddrs :=
     alignedXAddrsRange 0 instrMemSize.
 
+  (*tag:bitvector*)
   Lemma AddrAligned_plus4:
     forall rpc,
       AddrAligned rpc ->
@@ -125,6 +126,7 @@ Section FetchOk.
     apply H.
   Qed.
 
+  (*tag:proof*)
   Definition mem_related (kmem: kword memSizeLg -> kword 8)
              (rmem : mem): Prop :=
     forall addr: kword width,
@@ -182,15 +184,17 @@ Section FetchOk.
 
     rewrite wordToN_combine.
     rewrite wordToN_wzero.
-    (*tag:lemma*)
+    (*tag:obvious*)
     rewrite N.add_0_l.
     rewrite N.mul_comm at 2.
     rewrite N.div_mul by discriminate.
     reflexivity.
   Qed.
 
+  (*tag:importboilerplate*)
   Hypothesis (Hkmem: 2 + instrMemSizeLg < memSizeLg <= width).
 
+  (*tag:proof*)
   Lemma getmany_of_tuple_combineBytes_consistent:
     forall kmem rmem rpc,
       mem_related kmem rmem ->
@@ -300,7 +304,7 @@ Section FetchOk.
       reflexivity.
   Qed.
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Lemma fetch_ok:
     forall (kmemi: kword instrMemSizeLg -> kword width)
            (kmemd: kword memSizeLg -> kword 8)
@@ -343,12 +347,12 @@ Section DecExecOk.
   Context {Registers: map.map Register word}
           (Registers_ok : map.ok Registers).
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Definition regs_related (krf: kword 5 -> kword width)
              (rrf: Registers): Prop :=
     forall w, w <> $0 -> map.get rrf (Z.of_N (wordToN w)) = Some (krf w).
 
-  (*tag:bitvector*)
+  (*tag:obvious*)
   Lemma regs_related_get:
     forall krf (Hkrf0: krf $0 = $0) rrf,
       regs_related krf rrf ->
@@ -368,9 +372,10 @@ Section DecExecOk.
       exfalso.
       rewrite <-N2Z.inj_0 in e.
       apply N2Z.inj in e.
+      (*tag:bitvector*)
       rewrite <-wordToN_wzero with (sz:= 5%nat) in e.
       apply wordToN_inj in e; auto.
-      (*tag:lemma*)
+      (*tag:obvious*)
     - subst; rewrite H; [reflexivity|].
       intro; subst; auto.
   Qed.
@@ -393,7 +398,7 @@ Section DecExecOk.
       + subst; intro.
         (*tag:bitvector*)
         apply N2Z.inj, wordToN_inj in H; auto.
-        (*tag:lemma*)
   Qed.
+        (*tag:importboilerplate*)
 
 End DecExecOk.

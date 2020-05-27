@@ -122,7 +122,7 @@ Section Equiv.
   (*tag:workaround*)
   Arguments Z.add: simpl never.
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Lemma KamiLabelR_unique: forall {klbl t t'},
       KamiLabelR klbl t ->
       KamiLabelR klbl t' ->
@@ -142,7 +142,7 @@ Section Equiv.
       reflexivity.
   Qed.
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Inductive KamiLabelSeqR: list LabelT -> list Event -> Prop :=
   | KamiSeqNil: KamiLabelSeqR nil nil
   | KamiSeqCons:
@@ -312,7 +312,7 @@ Section Equiv.
     all: repeat rewrite map.get_put_diff by discriminate.
     all: rewrite map.get_put_same.
     all: reflexivity.
-    (*tag:lemma*)
+    (*tag:obvious*)
   Qed.
 
   Lemma riscvRegsInit_sound:
@@ -340,7 +340,7 @@ Section Equiv.
     all: repeat rewrite map.get_put_diff by discriminate.
     all: rewrite map.get_put_same.
     all: discriminate.
-    (*tag:lemma*)
+    (*tag:proof*)
   Qed.
 
   Definition riscvMemInit := map.of_list (List.map
@@ -349,8 +349,10 @@ Section Equiv.
        byte.of_Z (uwordToZ (evalConstT kamiMemInit $i))))
     (seq 0 (2 ^ Z.to_nat memSizeLg))).
 
+  (*tag:obvious*)
   Instance kword32: coqutil.Word.Interface.word 32 := KamiWord.word 32.
   Instance kword32_ok: word.ok kword32. eapply KamiWord.ok. reflexivity. Qed.
+  (*tag:proof*)
   Lemma riscvMemInit_get_None:
     forall addr,
       (kunsigned addr <? 2 ^ memSizeLg) = false ->
@@ -386,16 +388,16 @@ Section Equiv.
           eapply Z.lt_le_trans; [eassumption|];
           apply Z.pow_le_mono_r; Lia.lia).
     Lia.lia.
-    (*tag:lemma*)
   Qed.
 
+    (*tag:proof*)
   Lemma mem_related_riscvMemInit : mem_related _ (evalConstT kamiMemInit) riscvMemInit.
   Proof.
     cbv [mem_related riscvMemInit].
+    (*tag:bitvector*)
     intros addr.
     case (kunsigned addr <? 2 ^ memSizeLg) eqn:H.
     2: { apply riscvMemInit_get_None; assumption. }
-    (*tag:bitvector*)
     assert (#addr < 2 ^ Z.to_nat memSizeLg)%nat.
     { rewrite <-wordToN_to_nat.
       apply Nat2Z.inj_lt.
@@ -455,7 +457,7 @@ Section Equiv.
     }
     Unshelve. all: exact O.
   Qed.
-  (*tag:lemma*)
+  (*tag:proof*)
 
   Lemma states_related_init:
     states_related
@@ -470,6 +472,7 @@ Section Equiv.
          getMetrics := MetricLogging.EmptyMetricLog; |}.
   Proof.
     econstructor; try reflexivity.
+    (*tag:obvious*)
     - econstructor.
     - eapply pRegsToT_init.
     - intros; discriminate.
@@ -478,6 +481,7 @@ Section Equiv.
     - apply mem_related_riscvMemInit.
   Qed.
 
+  (*tag:proof*)
   Lemma equivalentLabel_preserves_KamiLabelR:
     forall l1 l2,
       equivalentLabel (liftToMap1 (@idElementwise _)) l1 l2 ->
@@ -493,6 +497,7 @@ Section Equiv.
     - eapply KamiMMIO; eauto.
   Qed.
 
+  (*tag:lists*)
   Lemma equivalentLabelSeq_preserves_KamiLabelSeqR:
     forall t1 t2,
       equivalentLabelSeq (liftToMap1 (@idElementwise _)) t1 t2 ->
@@ -506,17 +511,20 @@ Section Equiv.
     eapply equivalentLabel_preserves_KamiLabelR; eauto.
   Qed.
 
+  (*tag:proof*)
   Lemma riscv_init_memory_undef_on_MMIO:
     map.undef_on riscvMemInit isMMIOAddr.
   Proof.
     cbv [map.undef_on map.agree_on]; intros.
     cbv [elem_of] in H.
     pose proof (mmio_mem_disjoint _ Hkmemdisj _ H); clear H.
+    (*tag:obvious*)
     rewrite map.get_empty.
     apply riscvMemInit_get_None.
     destruct (Z.ltb_spec (kunsigned k) (2 ^ memSizeLg)); intuition idtac.
   Qed.
 
+  (*tag:proof*)
   Lemma mmio_init_xaddrs_disjoint:
     disjoint (of_list (kamiXAddrs instrMemSizeLg)) isMMIOAddr.
   Proof.
@@ -534,12 +542,14 @@ Section Equiv.
       cbv [kunsigned] in *.
       Lia.lia.
   Qed.
-  (*tag:lemma*)
+  (*tag:proof*)
 
   Lemma riscv_to_kamiImplProcessor:
     forall (traceProp: list Event -> Prop)
+    (*tag:doc*)
            (* --- hypotheses which will be proven by the compiler --- *)
-           (RvInv: RiscvMachine -> Prop)
+    (*tag:proof*)
+           (RvlemmaInv: RiscvMachine -> Prop)
            (establishRvInv:
               forall (m0RV: RiscvMachine),
                 m0RV.(RiscvMachine.getMem) = riscvMemInit ->
@@ -558,13 +568,17 @@ Section Equiv.
               forall (m: RiscvMachine),
                 RvInv m -> exists t, traces_related t m.(getLog) /\
                                      traceProp t),
+                                     (*tag:doc*)
     (* --- final end to end theorem will start here --- *)
+                                     (*tag:proof*)
     forall (t: list LabelT) (mFinal: KamiImplMachine),
       Behavior p4mm mFinal t ->
+      (*tag:doc*)
       (* --- conclusion ---
          The trace produced by the kami implementation can be mapped to an MMIO trace
          (this guarantees that the only external behavior of the kami implementation is MMIO)
          and moreover, this MMIO trace satisfies some desirable property. *)
+         (*tag:proof*)
       exists (t': list Event), KamiLabelSeqR t t' /\ traceProp t'.
   Proof.
     intros.

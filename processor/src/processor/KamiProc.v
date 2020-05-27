@@ -31,10 +31,11 @@ Section Parametrized.
   Definition pprocInl := scmmInl Hdb fetch dec exec ammio procInit memInit.
   Definition pproc := projT1 pprocInl.
 
-  (*tag:lemma*)
+  (*tag:doc*)
   (** The auxiliary hardware state; this is for manipulating hardware state
    * without knowing much about Kami states.
    *)
+  (*tag:proof*)
   Record pst :=
     mk { pc: Word.word addrSize;
          rf: Word.word rfIdx -> Word.word (dataBytes * BitsPerByte);
@@ -52,8 +53,10 @@ Section Parametrized.
     (Some {| pc := pcv; rf := rfv;
              pinit := pinitv; pgm := pgmv; mem := memv |}))%mapping.
 
+  (*tag:doc*)
   (** * Inverting Kami rules for instruction executions *)
 
+  (*tag:proof*)
   Lemma pRegsToT_init:
     pRegsToT (initRegs (getRegInits pproc)) =
     Some {| pc := evalConstT (pcInit procInit);
@@ -63,17 +66,18 @@ Section Parametrized.
                                    (replicate (ConstBit (wzero _)) iaddrSize));
             mem := evalConstT memInit |}.
   Proof.
-    simpl; unfold pRegsToT.
     (*tag:workaround*)
+    simpl; unfold pRegsToT.
     Opaque decKind.
-    (*tag:lemma*)
     simpl.
+    (*tag:proof*)
     kregmap_red.
+    (*tag:workaround*)
     Transparent decKind.
     reflexivity.
   Qed.
 
-  (*tag:automation*)
+  (*tag:proof*)
   Ltac kinvert_more :=
     kinvert;
     try (repeat
@@ -225,7 +229,7 @@ Section Parametrized.
 
 End Parametrized.
 
-(*tag:lemma*)
+(*tag:proof*)
 Definition width: Z := 32.
 Definition width_cases: width = 32 \/ width = 64 := or_introl eq_refl.
 Local Notation nwidth := (Z.to_nat width).
@@ -238,7 +242,7 @@ Section PerInstAddr.
   Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
   Local Notation nmemSizeLg := (Z.to_nat memSizeLg).
 
-  (*tag:lemma*)
+  (*tag:obvious*)
   Lemma width_inst_valid:
     nwidth = (2 + ninstrMemSizeLg + (nwidth - (2 + ninstrMemSizeLg)))%nat.
   Proof.
