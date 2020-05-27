@@ -211,7 +211,7 @@ Section LightbulbSpec.
                  ||| RecvInvalid ||| PollNone) ^*.
 
 End LightbulbSpec.
-(*tag:lemma*)
+(*tag:obvious*)
 
 Lemma align_trace_cons {T} x xs cont t (H : xs = app cont t) : @cons T x xs = app (cons x cont) t.
 Proof. intros. cbn. congruence. Qed.

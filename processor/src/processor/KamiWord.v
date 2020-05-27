@@ -255,7 +255,7 @@ Section WithWidth.
   Definition ksigned: kword -> Z := @wordToZ sz.
   Definition kofZ: Z -> kword := ZToWord sz.
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Definition riscvZdivu(x y: Z): Z :=
     if y =? 0 then 2 ^ width - 1 else Z.div x y.
 
@@ -268,6 +268,7 @@ Section WithWidth.
 
   Definition riscvZmods(x y: Z): Z :=
     if y =? 0 then x else Z.rem x y.
+  (*tag:obvious*)
 
   Instance word : word.word width := {|
     rep := kword;
@@ -297,7 +298,9 @@ Section WithWidth.
     modu x y := kofZ (riscvZmodu (kunsigned x) (kunsigned y));
     mods x y := kofZ (riscvZmods (ksigned x) (ksigned y));
 
+    (*tag:doc*)
     (* shifts only look at the lowest 5-6 bits of the shift amount *)
+    (*tag:obvious*)
     slu x y := wlshift x (Z.to_nat ((kunsigned y) mod width));
     sru x y := wrshift x (Z.to_nat ((kunsigned y) mod width));
     srs x y := wrshifta x (Z.to_nat ((kunsigned y) mod width));

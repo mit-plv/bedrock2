@@ -123,9 +123,8 @@ Section WithParameters.
 
   Import coqutil.Tactics.letexists.
   Import TailRecursion.
-  (*tag:lemma*)
-  Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
   (*tag:symex*)
+  Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
   Proof.
     repeat straightline.
     rename H into Hb.

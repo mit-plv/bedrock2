@@ -35,7 +35,7 @@ Section ListPred.
       | S n => concat P (multiple n)
       end.
 
-    (*tag:lemma*)
+    (*tag:proof*)
     Lemma kleene_multiple n xs
       (H : multiple n xs) : kleene xs.
     Proof.
@@ -55,7 +55,7 @@ Section ListPred.
   Definition existsl{A: Type}(P: A -> list T -> Prop): list T -> Prop :=
     fun l => exists a, P a l.
 
-  (*tag:lemma*)
+  (*tag:proof*)
   Lemma concat_app (P Q : list T->Prop) x y (HP : P x) (HQ : Q y) : concat P Q (y ++ x).
   Proof. cbv [concat]; eauto. Qed.
 
