@@ -173,7 +173,7 @@ Section Proofs.
                blia
     end.
 
-  (*tag:notations*)
+  (*tag:spec*)
   Declare Scope word_scope.
   Notation "! n" := (word.of_Z n) (at level 0, n at level 0, format "! n") : word_scope.
   Notation "# n" := (Z.of_nat n) (at level 0, n at level 0, format "# n") : word_scope.

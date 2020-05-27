@@ -1,11 +1,6 @@
 import sys, re, traceback, collections
 
 tag2col = {
-    # tags to recategorize:
-    'lemma': 'TODO',
-    'notations': 'TODO',
-    'automation': 'TODO',
-
     # tags mapped to rows in "Excluded" mini-table:
     'unrelated': 'unrelated',
     'test': 'unrelated',
@@ -58,6 +53,9 @@ def count_lines_in_file(filepath):
           current = maplabel(m[1])
       else:
           counts[current] = counts.get(current, 0) + 1
+          #if current == 'UNTAGGED':
+          #    print(f'UNTAGGED {filepath}')
+          #    current = 'UNTAGGED2'
   return counts
 
 row = 'NOCATEGORY'
@@ -88,10 +86,10 @@ with open('loc_excluded.tex', 'w') as f1:
     line('Kami', countBy(lambda s: s.startswith('kami:')))
 
 with open('loc.tex', 'w') as f2:
-    for (row, rowname) in list(dict(programlogic='program logic', lightbulb='lightbulb app', compiler='compiler', hwsw='SW/HW interface').items())+[('end-to-end','end-to-end')]:
+    for (row, rowname) in [('lightbulb','lightbulb app'), ('programlogic','program logic'), ('compiler', 'compiler'), ('hwsw', 'SW/HW interface'), ('end-to-end','end-to-end')]:
         print(f'{rowname:20s} & ', end='', file=f2)
         r = dict()
-        for column in ['interface', 'implementation', 'interesting proof', 'low-insight proof']:
+        for column in ['implementation', 'interface', 'interesting proof', 'low-insight proof']:
             r[column] = countBy(lambda s: s == row+':'+column)
             print(f'{r[column]:4d} & ', end='', file=f2)
         if r['implementation']:

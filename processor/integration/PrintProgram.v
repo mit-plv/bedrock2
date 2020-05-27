@@ -1,3 +1,4 @@
+(*tag:importboilerplate*)
 Require Import List Coq.ZArith.ZArith.
 
 Require Import end2end.End2EndLightbulb.
@@ -11,11 +12,13 @@ Local Open Scope hexdump_scope.
 
 Set Printing Width 108.
 
+(*tag:compiletimecode*)
 Goal True.
   pose lightbulb_insts as p.
   unfold lightbulb_insts in p.
   let x := eval cbv in (PipelineWithRename.instrencode lightbulb_insts) in idtac x.
 
+(*tag:unrelated*)
   (* pose ((IInstruction (Jal 0 8)) *)
   (*         :: (IInstruction (Jal 0 0)) (* When a test gets failed.. *) *)
   (*         :: (IInstruction (Lui 1 (Ox"00004000"))) *)
@@ -41,6 +44,6 @@ Goal True.
   (*         :: nil) *)
   (*   as p. *)
   (* let x := eval cbv in (PipelineWithRename.instrencode p) in idtac x. *)
-  
+
 Abort.
 Unset Printing Width.
