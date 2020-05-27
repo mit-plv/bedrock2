@@ -549,7 +549,7 @@ Section Equiv.
     (*tag:doc*)
            (* --- hypotheses which will be proven by the compiler --- *)
     (*tag:proof*)
-           (RvlemmaInv: RiscvMachine -> Prop)
+           (RvInv: RiscvMachine -> Prop)
            (establishRvInv:
               forall (m0RV: RiscvMachine),
                 m0RV.(RiscvMachine.getMem) = riscvMemInit ->
