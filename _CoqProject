@@ -1,13 +1,25 @@
 -R src Rupicola
 -Q bedrock2/bedrock2/src/bedrock2 bedrock2
 -Q bedrock2/deps/coqutil/src/coqutil coqutil
+src/Examples/Assoc/Assoc.v
 src/Examples/CapitalizeThird/CapitalizeThird.v
 src/Examples/CapitalizeThird/Properties.v
-src/Examples/Incr/Incr.v
-src/Examples/Ttl/Ttl.v
-src/Examples/Swap/Swap.v
-src/Examples/Swap/Properties.v
-src/Examples/KVStore/Examples.v
+src/Examples/Cells/Cells.v
+src/Examples/Cells/Incr.v
+src/Examples/Cells/Swap.v
+src/Examples/KVStore/Automated.v
 src/Examples/KVStore/KVStore.v
+src/Examples/KVStore/Manual.v
 src/Examples/KVStore/Properties.v
 src/Examples/KVStore/Tactics.v
+src/Examples/Swap/Properties.v
+src/Examples/Swap/Swap.v
+src/Examples/Tree/Tree.v
+src/Examples/Ttl/Ttl.v
+src/Lib/Api.v
+src/Lib/Compiler.v
+src/Lib/Core.v
+src/Lib/Gensym.v
+src/Lib/LegacyCompiler.v
+src/Lib/Notations.v
+src/Lib/Tactics.v

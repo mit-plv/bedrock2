@@ -1,13 +1,7 @@
-Require Import Coq.ZArith.ZArith.
-Require Import bedrock2.Map.Separation.
-Require Import bedrock2.Map.SeparationLogic.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
-Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Tactics.letexists.
-Require Import coqutil.Tactics.Tactics.
+Require Import Rupicola.Lib.Api.
+
 Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
-Require bedrock2.ProgramLogic.
 
 Ltac borrow_step filter :=
   match goal with
@@ -92,29 +86,6 @@ Ltac unreserve_all :=
 Ltac unreserve p :=
   progress (repeat unreserve_step ltac:(fun p' => unify p p')).
 
-Ltac destruct_lists_of_known_length :=
-  repeat match goal with
-         | H : S _ = S _ |- _ => apply Nat.succ_inj in H
-         | H : length ?x = S _ |- _ =>
-           destruct x; cbn [length] in H; [ congruence | ]
-         | H : length ?x = 0 |- _ =>
-           destruct x; cbn [length] in H; [ clear H | congruence]
-         end;
-  cbn [hd tl] in *.
-
-Ltac boolean_cleanup :=
-  repeat match goal with
-         | H : _ |- _ =>
-           rewrite word.unsigned_of_Z_0 in H
-         | H : _ |- _ =>
-           rewrite word.unsigned_of_Z_1 in H
-         | H : ?x = word.of_Z 0%Z |- _ => subst x
-         | H : ?x = word.of_Z 1%Z |- _ => subst x
-         | x := word.of_Z 0%Z |- _ => subst x
-         | x := word.of_Z 1%Z |- _ => subst x
-         | _ => congruence
-         end.
-
 Ltac clear_owned :=
   repeat match goal with
          | H : _ |- _ => rewrite put_owned_annotate in H
@@ -126,26 +97,6 @@ Ltac clear_owned :=
                           destr.destr (key_eqb a b) end;
                  subst; congruence)
          end.
-
-(* just a wrapper that calls straightline_call + straightline, and also
-   destructs output lists *)
-Ltac handle_call :=
-  ProgramLogic.straightline_call; [ ecancel_assumption | ];
-  repeat ProgramLogic.straightline;
-  destruct_lists_of_known_length;
-  repeat ProgramLogic.straightline.
-
-(* stolen from a bedrock2 example file (LAN9250.v) *)
-Ltac split_if :=
-  lazymatch goal with
-    |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
-    let c := eval hnf in c in
-        lazymatch c with
-        | Syntax.cmd.cond _ _ _ =>
-          letexists; split;
-          [solve[repeat ProgramLogic.straightline]|split]
-        end
-  end.
 
 Ltac add_map_annotations :=
   match goal with
@@ -166,15 +117,6 @@ Ltac remove_map_annotations :=
   match goal with
   | H : context [annotate] |- _ =>
     seprewrite_in unannotate_iff1 H
-  end.
-
-Ltac clear_old_seps :=
-  match goal with
-  | H : sep _ _ ?mem |- context [?mem] =>
-    repeat match goal with
-           | H' : sep _ _ ?m |- _ =>
-             assert_fails (unify m mem); clear H'
-           end
   end.
 
 Ltac kv_hammer :=

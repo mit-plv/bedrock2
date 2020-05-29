@@ -1,27 +1,4 @@
-Require Import Coq.ZArith.ZArith.
-Require Import Coq.Strings.String.
-Require Import Coq.Lists.List.
-Require Import Coq.micromega.Lia.
-Require Import bedrock2.Array.
-Require Import bedrock2.BasicCSyntax.
-Require Import bedrock2.BasicC64Semantics.
-Require Import bedrock2.ProgramLogic.
-Require Import bedrock2.Scalars.
-Require Import bedrock2.Syntax.
-Require Import bedrock2.WeakestPreconditionProperties.
-Require Import bedrock2.Map.Separation.
-Require Import bedrock2.Map.SeparationLogic.
-Require Import bedrock2.NotationsCustomEntry.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
-Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Map.SortedList.
-Require Import coqutil.Tactics.destr.
-Local Open Scope string_scope.
-Import ListNotations.
-
-Local Declare Scope sep_scope.
-Local Delimit Scope sep_scope with sep.
-Local Infix "*" := (sep) : sep_scope.
+Require Import Rupicola.Lib.Api.
 
 (* TODO: should move upstream to coqutil *)
 Module map.
@@ -56,20 +33,6 @@ Module map.
 End map.
 
 Section KVStore.
-  (* TODO: once bedrock2 version is updated, these can be replaced by the
-     commented-out generalized version below. *)
-  Local Existing Instance BasicCSyntax.StringNames_params.
-  Local Existing Instance BasicC64Semantics.parameters.
-  Local Existing Instance BasicC64Semantics.parameters_ok.
-  (*
-  Context {p : Semantics.parameters} {word_size_in_bytes : Z}.
-  Context {p_ok : Semantics.parameters_ok p}.
-   *)
-  Local Notation address := Semantics.word (only parsing).
-  Local Definition bedrock_func : Type :=
-    funname * (list string * list string * cmd).
-  Local Coercion name_of_func (f : bedrock_func) := fst f.
-
   Inductive annotation : Type :=
   | Reserved : address -> annotation
   | Borrowed : address -> annotation
@@ -155,7 +118,7 @@ Section KVStore.
           (truncated_scalar
              access_size.word p (word.unsigned start)
            * Lift1Prop.ex1
-               (fun xs =>
+               (fun xs: list _ =>
                   sep (emp (length xs = init_map_size_in_bytes))
                       (array ptsto (word.of_Z 1) start xs))
            * R)%sep mem ->

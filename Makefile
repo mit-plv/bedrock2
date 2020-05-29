@@ -37,10 +37,14 @@ vofile: Makefile.coq
 
 %.vo: deps +vofile
 
-_CoqProject: ;
+_CoqProject:
+	@echo "-R src Rupicola" > _CoqProject
+	@echo "-Q bedrock2/bedrock2/src/bedrock2 bedrock2" >> _CoqProject
+	@echo "-Q bedrock2/deps/coqutil/src/coqutil coqutil" >> _CoqProject
+	git ls-files '*.v' >> _CoqProject
 
 Makefile: ;
 
 phony: ;
 
-.PHONY: all clean phony base coqutil clean-coqutil bedrock2 clean-bedrock2 deps cleanall
+.PHONY: all clean phony base coqutil clean-coqutil bedrock2 clean-bedrock2 deps cleanall _CoqProject

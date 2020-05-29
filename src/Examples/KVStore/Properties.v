@@ -1,23 +1,5 @@
-Require Import Coq.ZArith.ZArith.
-Require Import Coq.Strings.String.
-Require Import Coq.Lists.List.
-Require Import Coq.micromega.Lia.
-Require Import bedrock2.Array.
-Require Import bedrock2.BasicCSyntax.
-Require Import bedrock2.BasicC64Semantics.
-Require Import bedrock2.ProgramLogic.
-Require Import bedrock2.Scalars.
-Require Import bedrock2.Syntax.
-Require Import bedrock2.WeakestPreconditionProperties.
-Require Import bedrock2.Map.Separation.
-Require Import bedrock2.Map.SeparationLogic.
-Require Import bedrock2.NotationsCustomEntry.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
-Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Tactics.Tactics.
+Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.KVStore.KVStore.
-Local Open Scope string_scope.
-Import ListNotations.
 
 Section properties.
   Context {ops key value Value}
@@ -133,6 +115,20 @@ Section properties.
     destruct_one_match; reflexivity.
   Qed.
 End properties.
+
+Section Maps.
+  Context {key value} {map : map.map key value}
+          {map_ok : map.ok map}
+          {key_eqb}
+          {key_eq_dec :
+             forall x y : key, BoolSpec (x = y) (x <> y) (key_eqb x y)}.
+
+  Lemma put_noop' k v m m':
+    m = m' ->
+    map.get m' k = Some v ->
+    m = map.put m' k v.
+  Admitted.
+End Maps.
 
 Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
      @annotate_get_Some @annotate_get_None @annotate_get_full

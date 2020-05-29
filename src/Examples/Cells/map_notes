@@ -1,0 +1,13 @@
+
+    (top[p]
+       (left[p+1] pv1)  ----> m[pv1] = v1
+       (right[p+2] pv2))
+
+      m[p] = [_;pv1;pv2]
+      m[pv1] = v1
+      m[pv2] = v2
+
+    v1 = m[k1] → m = [k1 → reserved pv1 v1; k2 → v2]
+    v2 = m[k2] → m = [k1 → reserved pv1 v1; k2 → reserved pv2 v2]
+    skip → v2 * [k1 → reserved pv1 v1; k2 → borrowed (v2)]
+    put k1 v2 → v1 * [k1 → reserved pv2 v2; k2 → borrowed (v2)]

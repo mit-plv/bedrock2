@@ -1,44 +1,11 @@
-Require Import Coq.ZArith.ZArith.
-Require Import Coq.Strings.String.
-Require Import Coq.Lists.List.
-Require Import Coq.micromega.Lia.
-Require Import bedrock2.Array.
-Require Import bedrock2.BasicCSyntax.
-Require Import bedrock2.BasicC64Semantics.
-Require Import bedrock2.ProgramLogic.
-Require Import bedrock2.Scalars.
-Require Import bedrock2.Syntax.
-Require Import bedrock2.WeakestPreconditionProperties.
-Require Import bedrock2.Map.Separation.
-Require Import bedrock2.Map.SeparationLogic.
-Require Import bedrock2.NotationsCustomEntry.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
-Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Tactics.destr.
-Require Import coqutil.Tactics.Tactics.
+Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
 Require Import Rupicola.Examples.KVStore.Tactics.
-Local Open Scope string_scope.
-Import ListNotations.
 
-Local Declare Scope sep_scope.
-Local Delimit Scope sep_scope with sep.
-Local Infix "*" := (sep) : sep_scope.
-
-(* TODO: is there a better way to do this? *)
-Local Notation bedrock_func := KVStore.bedrock_func.
+Require Import bedrock2.NotationsCustomEntry.
 
 Section examples.
-  (*
-  Context {p : Semantics.parameters} {word_size_in_bytes : Z}.
-  Context {p_ok : Semantics.parameters_ok p}.
-   *)
-  Local Coercion name_of_func (f : bedrock_func) := fst f.
-  Local Coercion literal (z : Z) : Syntax.expr := expr.literal z.
-  Local Coercion var (x : string) : Syntax.expr := expr.var x.
-
   Section put_sum.
     Context {add : bedrock_func}.
     Definition Int (addr : Semantics.word) (x : Z) : Semantics.mem -> Prop :=
@@ -71,6 +38,9 @@ Section examples.
       | Some v1, Some v2 => map.put m k3 (word.wrap (v1 + v2)%Z)
       | _, _ => m
       end.
+
+    Local Coercion literal (z : Z) : Syntax.expr := expr.literal z.
+    Local Coercion var (x : string) : Syntax.expr := expr.var x.
 
     (* like put, returns a boolean indicating whether the put was an
          overwrite, and stores the old value in v if the boolean is true *)
@@ -212,6 +182,9 @@ Section examples.
         map.put (map.put m k2 v1) k1 v2
       | _, _ => m
       end.
+
+    Local Coercion literal : Z >-> Syntax.expr.
+    Local Coercion var : string >-> Syntax.expr.
 
     Definition swap : bedrock_func :=
       let m := "m" in
