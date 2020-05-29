@@ -15,6 +15,8 @@ Local Notation MMIOREAD := "MMIOREAD".
 Require bedrock2Examples.lightbulb_spec.
 Local Notation patience := lightbulb_spec.patience.
 
+Require Import coqutil.dlet.
+
 (*
 
 Definition spi_write : function :=
@@ -157,6 +159,12 @@ Section WithParameters.
   Admitted.
 *)
 
+  Lemma set_cps: forall e t m metrics l0 x ev rest (post: trace -> mem -> locals -> _ -> Prop),
+      WeakestPrecondition.expr m l0 ev (fun v =>
+         dlet! l := (map.put l0 x v) in exec e rest t m l metrics post) -> (* TODO metrics might change *)
+      exec e (cmd.seq (cmd.set x ev) rest) t m l0 metrics post.
+  Admitted.
+
   (* combined with seq, and state updates baked in: *)
   Lemma set: forall e t m metrics l x ev rest v (post: trace -> mem -> locals -> _ -> Prop),
       WeakestPrecondition.dexpr m l ev v ->
@@ -206,7 +214,7 @@ Section WithParameters.
   Qed.
 
   Tactic Notation "$" constr(lhs) "=" constr(rhs) :=
-    eapply set with (x := lhs) (ev := rhs); [try reflexivity|intros].
+    eapply set_cps with (x := lhs) (ev := rhs); repeat straightline.
 
   Axiom TODO: False.
 
@@ -244,6 +252,7 @@ Section WithParameters.
       split; [reflexivity|].
       split; [reflexivity|].
       split. {
+        subst v0.
         rewrite word.unsigned_of_Z. discriminate.
       }
       split; [reflexivity|].
@@ -253,28 +262,13 @@ Section WithParameters.
       { constructor. }
       split.
       { constructor. }
+      subst v0.
       rewrite word.unsigned_of_Z. reflexivity.
     }
-    intros.
-    repeat straightline_cleanup.
-    letexists.
-    split.
-    { (* loop condition evaluates *)
-      unfold WeakestPrecondition.dexpr, WeakestPrecondition.expr. simpl.
-      subst l0. unfold WeakestPrecondition.get.
-      (* TODO why doesn't computation on concrete maps work? *)
-      rewrite map.get_put_same. subst b1. eauto.
-    }
-    split; intros; straightline_cleanup.
+    repeat straightline.
+    split; repeat straightline.
     { (* loop body *)
-
       $ i = (expr.op bopname.sub i 1).
-      {
-        unfold WeakestPrecondition.dexpr, WeakestPrecondition.expr. simpl.
-        unfold WeakestPrecondition.get. subst l0. eexists.
-        rewrite map.get_put_same. split; [reflexivity|].
-        unfold WeakestPrecondition.literal, dlet.dlet. reflexivity.
-      }
 
       eapply ExtCall with (binds := [busy]) (action := MMIOREAD) (arges := [expr.literal SPI_WRITE_ADDR])
                           (mGive := map.empty).
@@ -321,14 +315,6 @@ Section WithParameters.
       { (* else branch *)
 
         $ i = (expr.op bopname.xor i i).
-        {
-          cbv [WeakestPrecondition.dexpr WeakestPrecondition.expr WeakestPrecondition.expr_body].
-          simpl.
-          cbv [WeakestPrecondition.get].
-          eexists. simpl. split; [reflexivity|].
-          eexists. split;  reflexivity.
-        }
-
         eapply Skip.
       }
 
@@ -341,7 +327,7 @@ Section WithParameters.
       { (* we took the then-branch *)
         subst. eexists. split.
         { eexists. eexists. split. {
-            subst l' l0. reflexivity. (* takes some time, but whatever *)
+            subst l l0. reflexivity. (* takes some time, but whatever *)
           }
           split; [reflexivity|].
           split. {
@@ -431,14 +417,6 @@ Section WithParameters.
       intros.
 
       $ busy = (expr.op bopname.xor busy busy).
-      {
-        cbv [WeakestPrecondition.dexpr WeakestPrecondition.expr WeakestPrecondition.expr_body].
-        simpl.
-        cbv [WeakestPrecondition.get].
-        eexists. simpl. split; [reflexivity|].
-        eexists. split;  reflexivity.
-      }
-
       eapply Skip.
     }
 
