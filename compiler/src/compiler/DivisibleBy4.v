@@ -6,6 +6,7 @@ Require Import compiler.mod4_0.
 
 Local Open Scope Z_scope.
 
+
 Lemma divisibleBy4Signed{W: Words}: forall (w: word),
     (word.unsigned w) mod 4 = 0 ->
     (word.signed w) mod 4 = 0.

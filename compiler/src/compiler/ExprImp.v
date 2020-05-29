@@ -46,6 +46,7 @@ Section ExprImp1.
   Section WithEnv.
     Context (e: env).
 
+    (* Fixoint semantics are not used at the moment, but could be useful to run a source program *)
     Fixpoint eval_cmd(f: nat)(st: locals)(m: mem)(s: cmd): option (locals * mem) :=
       match f with
       | O => None (* out of fuel *)
@@ -205,7 +206,8 @@ Section ExprImp1.
 
   End WithEnv.
 
-  (* Returns a list to make it obvious that it's a finite set. *)
+  (* Returns a list to make it obvious that it's a finite set.
+     Needed by the fresh name generator. *)
   Fixpoint allVars_expr_as_list(e: expr): list var :=
     match e with
     | expr.literal v => []
@@ -257,7 +259,8 @@ Section ExprImp1.
   Lemma allVars_expr_allVars_expr_as_list: forall e x,
       x \in allVars_expr e <-> In x (allVars_expr_as_list e).
   Proof.
-    induction e; intros; simpl in *; set_solver; try apply in_or_app; set_solver.
+    induction e;
+      intros; simpl in *; set_solver; try apply in_or_app; set_solver.
     apply in_app_or in H3.
     destruct H3; eauto.
   Qed.
@@ -277,7 +280,8 @@ Section ExprImp1.
   Lemma allVars_cmd_allVars_cmd_as_list: forall s x,
       x \in allVars_cmd s <-> In x (allVars_cmd_as_list s).
   Proof.
-    induction s; intros; simpl in *;
+    induction s;
+      intros; simpl in *;
       repeat match goal with
              | e: expr |- _ => unique pose proof (allVars_expr_allVars_expr_as_list e x)
              | es: list expr |- _ => unique pose proof (allVars_exprs_allVars_exprs_as_list es x)
@@ -317,7 +321,6 @@ Section ExprImp1.
 
 End ExprImp1.
 
-
 Ltac invert_eval_cmd :=
   lazymatch goal with
   | E: eval_cmd _ (S ?fuel) _ _ ?s = Some _ |- _ =>
@@ -345,7 +348,6 @@ Ltac invert_eval_cmd :=
     | let x := fresh "Case_interact" in pose proof tt as x; move x at top
     ]
   end.
-
 
 Section ExprImp2.
 
@@ -388,7 +390,8 @@ Section ExprImp2.
         exec env s t m l mc post2 ->
         exec env s t m l mc (fun t' m' l' mc' => post1 t' m' l' mc' /\ post2 t' m' l' mc').
   Proof.
-    induction 1; intros;
+    induction 1;
+      intros;
       match goal with
       | H: exec _ _ _ _ _ _ _ |- _ => inversion H; subst; clear H
       end;
@@ -451,7 +454,8 @@ Section ExprImp2.
         exec env s t m l mc post2.
   Proof.
     induction 1; intros; try solve [econstructor; eauto].
-    - eapply @exec.call.
+    - (* firstorder eauto 10 using @exec.call. doesn't return within 1 minute *)
+      eapply @exec.call.
       4: eapply IHexec.
       all: eauto.
       intros.

@@ -55,17 +55,12 @@ Section Memory.
     store_Z sz m a (word.unsigned v).
 
   Lemma load_None: forall sz m a,
-      8 <= width ->
+      8 <= width -> (* note: [0 < width] is sufficient *)
       map.get m a = None ->
       load sz m a = None.
   Proof.
-    intros.
-    destruct sz;
-      try solve [
-            cbv [load load_Z load_bytes map.getmany_of_tuple footprint
-                 tuple.option_all tuple.map tuple.unfoldn bytes_per];
-            rewrite H0; reflexivity].
-    cbv [load load_Z load_bytes map.getmany_of_tuple footprint bytes_per].
+    intros. destruct sz; cbv [load load_Z load_bytes map.getmany_of_tuple footprint bytes_per tuple.option_all tuple.map tuple.unfoldn];
+    try solve [ rewrite H0; reflexivity].
     destruct (Z.to_nat ((width + 7) / 8)) eqn: E.
     - exfalso.
       assert (0 < (width + 7) / 8) as A. {
@@ -82,8 +77,7 @@ Section Memory.
   Context {word_ok: word.ok word}.
 
   Lemma store_preserves_domain: forall sz m a v m',
-      store sz m a v = Some m' ->
-      map.same_domain m m'.
+      store sz m a v = Some m' -> map.same_domain m m'.
   Proof.
     destruct sz;
       cbv [store store_Z store_bytes bytes_per load_bytes unchecked_store_bytes];

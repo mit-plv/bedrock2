@@ -10,7 +10,7 @@ Require        compiler.FlatImp.
 Require Export riscv.Spec.Decode.
 Require Export riscv.Spec.Machine.
 Require Export riscv.Platform.Run.
-Require Export riscv.Platform.Minimal.
+Require Export riscv.Platform.RiscvMachine.
 Require Export riscv.Platform.MetricLogging.
 Require Export riscv.Utility.Monads.
 Require Import riscv.Utility.runsToNonDet.
@@ -27,7 +27,6 @@ Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.MkMachineWidth.
 Require Export riscv.Proofs.DecodeEncode.
 Require Export riscv.Proofs.EncodeBound.
-Require Export compiler.EmitsValid.
 Require coqutil.Map.SortedList.
 Require Import riscv.Utility.Utility.
 Require Export riscv.Platform.Memory.

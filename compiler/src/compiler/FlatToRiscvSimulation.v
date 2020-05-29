@@ -15,7 +15,6 @@ Require Import compiler.SeparationLogic.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.DivisibleBy4.
-Require Import compiler.EmitsValid.
 Require Import compiler.MetricsToRiscv.
 Require Import compiler.FlatImp.
 Require Import compiler.RunInstruction.
@@ -29,6 +28,8 @@ Require Import riscv.Utility.InstructionCoercions.
 Section Sim.
   Context {p: FlatToRiscvCommon.parameters}.
 
+  Local Open Scope ilist_scope.
+
   Add Ring wring : (word.ring_theory (word := Utility.word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := Utility.word)),
@@ -40,8 +41,6 @@ Section Sim.
           (Rdata Rexec: mem -> Prop)
           (functions_start stack_start stack_pastend: word)
           (prog: env).
-
-  Local Open Scope ilist_scope.
 
   Definition ghostConsts: GhostConsts := {|
     p_sp := stack_pastend;

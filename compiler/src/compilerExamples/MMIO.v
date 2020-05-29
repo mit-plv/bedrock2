@@ -21,7 +21,6 @@ Require Import riscv.Spec.MetricPrimitives.
 Require Import compiler.MetricsToRiscv.
 Require Import compiler.FlatToRiscvDef.
 Require Import riscv.Utility.runsToNonDet.
-Require Import compiler.Rem4.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Datatypes.Option.

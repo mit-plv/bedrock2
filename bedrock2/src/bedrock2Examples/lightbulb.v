@@ -429,20 +429,16 @@ Section WithParameters.
       (HList.polymorphic_list.cons (list byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
       ["buf";"num_bytes";"i";"read";"err"]
       (fun v scratch R t m buf num_bytes_loop i read err => PrimitivePair.pair.mk (
-        word.unsigned err = 0 /\
-        word.unsigned i <= word.unsigned num_bytes /\
-        v = word.unsigned i /\
-        (bytes (word.add buf i) scratch * R) m /\
+        word.unsigned err = 0 /\ word.unsigned i <= word.unsigned num_bytes /\
+        v = word.unsigned i /\ (bytes (word.add buf i) scratch * R) m /\
         Z.of_nat (List.length scratch) = word.unsigned (word.sub num_bytes i) /\
         word.unsigned i mod 4 = word.unsigned num_bytes mod 4 /\
         num_bytes_loop = num_bytes)
       (fun T M BUF NUM_BYTES I READ ERR =>
          NUM_BYTES = num_bytes_loop /\
-         exists RECV,
-         (bytes (word.add buf i) RECV * R) M /\
+         exists RECV, (bytes (word.add buf i) RECV * R) M /\
          List.length RECV = List.length scratch /\
-         exists iol, T = iol ++ t /\
-         exists ioh, mmio_trace_abstraction_relation ioh iol /\
+         exists iol, T = iol ++ t /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\
          (word.unsigned ERR = 0 /\ lan9250_readpacket _ RECV ioh \/
           word.unsigned ERR = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout word) ioh ) )
       )

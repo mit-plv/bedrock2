@@ -119,10 +119,7 @@ Section WithParameters.
 
     (* WHY do theese parentheses matter? *)
     refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
-       b = B /\
-       v = word.unsigned I /\
-       word.unsigned I <> 0 /\
-       M = m /\
+       b = B /\ v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        lightbulb_spec.spi_write_full _ ^* th /\
@@ -272,9 +269,7 @@ Section WithParameters.
   Lemma spi_read_ok : program_logic_goal_for_function! spi_read.
     repeat straightline.
     refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
-       v = word.unsigned I /\
-       word.unsigned I <> 0 /\
-       M = m /\
+       v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        B = word.of_Z (byte.unsigned (byte.of_Z (word.unsigned B))) /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
@@ -402,6 +397,7 @@ Section WithParameters.
         { econstructor; try eassumption; right; eauto. }
         eexists (byte.of_Z (word.unsigned b)), _; split.
         { subst b; f_equal.
+          (* tag:bitwise *)
           (* automatable: multi-word bitwise *)
           change (255) with (Z.ones 8).
           pose proof Properties.word.unsigned_range v0.
@@ -417,12 +413,14 @@ Section WithParameters.
           change Semantics.width with 32.
           change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
           clear. Z.div_mod_to_equations. Lia.lia. }
+        (* tag:symex *)
         { right; split.
           { subst busy. rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent; exact eq_refl. }
           eexists x3, (cons _ nil); split; cbn [app]; eauto.
           split; eauto.
           eexists; split; cbv [one]; trivial.
           split.
+          (* tag:bitwise *)
           { subst v0. rewrite Properties.word.unsigned_sru_nowrap in H
              by (rewrite word.unsigned_of_Z; exact eq_refl);
              rewrite word.unsigned_of_Z in H; exact H. }

@@ -41,6 +41,6 @@ Goal True.
   (*         :: nil) *)
   (*   as p. *)
   (* let x := eval cbv in (PipelineWithRename.instrencode p) in idtac x. *)
-  
+
 Abort.
 Unset Printing Width.

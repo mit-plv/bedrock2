@@ -14,8 +14,6 @@ Require Import compiler.Simp.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Datatypes.ListSet.
 
-(*Local Set Ltac Profiling.*)
-
 Inductive bbinop: Type :=
 | BEq
 | BNe
@@ -220,6 +218,7 @@ Section FlatImp1.
           Some (negb (word.eqb mx (word.of_Z 0)))
       end.
 
+    (* Fixpoint semantics are not currently used *)
     (* If we want a bigstep evaluation relation, we either need to put
        fuel into the SLoop constructor, or give it as argument to eval *)
     Fixpoint eval_stmt(f: nat)(st: locals)(m: mem)(s: stmt varname):

@@ -28,7 +28,6 @@ Arguments iff1 {T} (_)%sep (_)%sep.
 (* TODO does not get rid of %sep in printing as intended *)
 Arguments sep {key} {value} {map} (_)%sep (_)%sep.
 
-
 Lemma f_equal2: forall {A B: Type} {f1 f2: A -> B} {a1 a2: A},
     f1 = f2 -> a1 = a2 -> f1 a1 = f2 a2.
 Proof. intros. congruence. Qed.
@@ -66,7 +65,6 @@ Ltac wclause_unify OK :=
     end
   | _ => fail 1000 "OK does not have the right type"
   end.
-
 
 Section ptstos.
   Context {W: Words}.
@@ -369,7 +367,7 @@ Section Footprint.
   Lemma rearrange_footpr_subset(P Q: map -> Prop) (A: key -> Prop)
       (H1: subset (footpr P) A)
       (H2: iff1 P Q):
-      subset (footpr Q) A.
+    subset (footpr Q) A.
   Proof.
     intros. apply iff1ToEq in H2. subst P. assumption.
   Qed.

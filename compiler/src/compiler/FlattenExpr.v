@@ -15,8 +15,6 @@ Require Import compiler.Simp.
 Require Import coqutil.Datatypes.String.
 Require Import compiler.FlattenExprDef.
 
-Local Set Ltac Profiling.
-
 Open Scope Z_scope.
 
 Import FlattenExpr.
@@ -38,6 +36,7 @@ Section FlattenExpr1.
     | _ => idtac
     end.
 
+  (* We don't currently track code size, we just validate at the end that no immediates grew too big *)
   Lemma flattenExpr_size: forall e s oResVar resVar ngs ngs',
     flattenExpr ngs oResVar e = (s, resVar, ngs') ->
     0 <= FlatImp.stmt_size s <= ExprImp.expr_size e.

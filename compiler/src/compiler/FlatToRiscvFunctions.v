@@ -16,7 +16,6 @@ Require Import compiler.SeparationLogic.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.DivisibleBy4.
-Require Import compiler.EmitsValid.
 Require Import compiler.MetricsToRiscv.
 Require Import compiler.FlatImp.
 Require Import compiler.RunInstruction.
@@ -32,7 +31,6 @@ Require Import compiler.MemoryLayout.
 Require Import coqutil.Map.TestLemmas.
 
 Import Utility MetricLogging.
-
 
 (* indicates that if we were to replace blia by omega, we'd run out of heap, stack, or time *)
 Ltac omega_safe ::= fail.
@@ -76,13 +74,6 @@ Section Proofs.
      low stack addresses *)
 
   Notation fun_pos_env := (@funname_env p Z).
-
-  Ltac cancel_emps_at_indices i j :=
-    lazymatch goal with
-    | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
-      simple refine (cancel_emps_at_indices i j LHS RHS _ _ eq_refl eq_refl _ _);
-      cbn [firstn skipn app hd tl]
-    end.
 
   Lemma functions_expose: forall base rel_positions impls f pos impl,
       map.get rel_positions f = Some pos ->
@@ -316,8 +307,8 @@ Section Proofs.
   Lemma NoDup_modVars_as_list: forall s,
       NoDup (modVars_as_list Z.eqb s).
   Proof.
-    induction s; simpl; repeat constructor; try (intro C; exact C);
-      try (eapply list_union_preserves_NoDup; eassumption || constructor).
+    induction s; simpl; repeat constructor; try (intro C; exact C); try (eapply list_union_preserves_NoDup;
+      eassumption || constructor).
   Qed.
 
   Ltac clear_old_sep_hyps :=
@@ -344,7 +335,9 @@ Section Proofs.
     (forall s,
         compiles_FlatToRiscv_correctly
           compile_stmt s).
-  Proof.
+  Proof. (* by induction on the FlatImp execution, symbolically executing through concrete
+     RISC-V instructions, and using the IH for lists of abstract instructions (eg a then or else branch),
+     using cancellation, bitvector reasoning, lia, and firstorder for the sideconditions. *)
     intros compile_ext_call_correct.
     unfold compiles_FlatToRiscv_correctly.
     induction 1; intros; unfold goodMachine in *;
@@ -356,6 +349,7 @@ Section Proofs.
       all: subst.
       all: simp.
       all: unfold Register, MachineInt in *.
+    (*about this many lines should have been enough to prove this...*)
 
     - idtac "Case compile_stmt_correct/SInteract".
       eapply runsTo_weaken.
@@ -1260,7 +1254,8 @@ Section Proofs.
     + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
              middle_regs into lL.
 
-      (*
+      (* The following list of lemmas and about that much helper code would probably be required
+         even in a near-perfect proof assistant:
 
          Summary of what happened in FlatImp:
 

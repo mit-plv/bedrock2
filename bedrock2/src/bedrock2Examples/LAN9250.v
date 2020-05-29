@@ -316,7 +316,6 @@ Section WithParameters.
     eexists.
     repeat eapply concat_app; eauto.
   Qed.
-  Print Assumptions lan9250_init_ok.
 
   Lemma lan9250_writeword_ok : program_logic_goal_for_function! lan9250_writeword.
   Proof.
@@ -552,9 +551,7 @@ Section WithParameters.
   Proof.
     repeat straightline.
     refine ((atleastonce ["err"; "i"; "byteorder"] (fun v T M ERR I BUSY =>
-       v = word.unsigned I /\
-       word.unsigned I <> 0 /\
-       M = m /\
+       v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        exists n, (multiple (lan9250_boot_attempt _) n) th /\

@@ -82,6 +82,7 @@ Section Scalars.
     eapply Z.lor_0_r.
   Qed.
 
+  (*essentially duplicates of the previous lemma...*)
   Lemma load_two_of_sep addr value R m
     (Hsep : sep (scalar16 addr value) R m)
     : Memory.load Syntax.access_size.two m addr = Some (word.of_Z (word.unsigned value)).
@@ -194,6 +195,7 @@ Section Scalars.
     eapply Z.mod_pos_bound; reflexivity.
   Qed.
 
+  (*essentially duplicates of the previous lemma...*)
   Lemma scalar32_of_bytes a l (H : List.length l = 4%nat) :
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar32 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).

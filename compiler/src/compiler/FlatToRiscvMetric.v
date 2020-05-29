@@ -13,7 +13,6 @@ Require Import compiler.SeparationLogic.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.DivisibleBy4.
-Require Import compiler.EmitsValid.
 Require Import compiler.MetricsToRiscv.
 Require Import compiler.FlatImp.
 Require Import compiler.RiscvWordProperties.
@@ -99,7 +98,6 @@ Section Proofs.
            lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
           valid_machine finalL).
   Proof.
-    pose proof compile_stmt_emits_valid.
     induction 1; intros;
       repeat match goal with
              | m: _ |- _ => destruct_RiscvMachine m; simpl_MetricRiscvMachine_get_set
@@ -127,10 +125,12 @@ Section Proofs.
       simpl_MetricRiscvMachine_get_set.
       assert ((eq m * (program initialL_pc [[compile_store sz a v 0]] * Rexec * R))%sep
         initialL_mem) as A by ecancel_assumption.
-      pose proof (store_bytes_frame H2 A) as P.
+      match goal with
+      | H: _ |- _ => pose proof (store_bytes_frame H A) as P; move H at bottom;
+                       unfold Memory.store, Memory.store_Z, Memory.store_bytes in H
+      end.
       destruct P as (finalML & P1 & P2).
-      move H2 at bottom.
-      unfold Memory.store, Memory.store_Z, Memory.store_bytes in H2. simp.
+      simp.
       subst_load_bytes_for_eq.
       run1det. run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.
@@ -245,7 +245,8 @@ Section Proofs.
           { intro V. simpl in *. run1done. }
 
     - (* SSeq *)
-      rename IHexec into IH1, H2 into IH2.
+      on hyp[(stmt_not_too_big s1); runsTo] do (fun H => rename H into IH1).
+      on hyp[(stmt_not_too_big s2); runsTo] do (fun H => rename H into IH2).
       eapply runsTo_trans.
       + eapply IH1; IH_sidecondition.
       + simpl. intros. destruct_RiscvMachine middle. simp. subst.

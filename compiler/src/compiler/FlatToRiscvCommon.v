@@ -30,7 +30,6 @@ Require Import riscv.Utility.MkMachineWidth.
 Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
-Require Import compiler.EmitsValid.
 Require Import compiler.SeparationLogic.
 Require Import bedrock2.Scalars.
 Require Import compiler.Simp.
@@ -458,7 +457,6 @@ Ltac simpl_bools :=
            clear H
          end.
 
-
 Section FlatToRiscv1.
   Context {p: unique! parameters}.
   Context {h: unique! assumptions}.
@@ -726,11 +724,6 @@ Section FlatToRiscv1.
   Proof.
     intros. unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
     eauto using map.putmany_of_tuple_preserves_domain.
-  Qed.
-
-  Lemma iset_is_supported: supported_iset iset.
-  Proof.
-    unfold iset. destruct_one_match; constructor.
   Qed.
 
   Lemma seplog_subst_eq{A B R: mem -> Prop} {mL mH: mem}

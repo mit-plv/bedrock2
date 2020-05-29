@@ -8,7 +8,7 @@ Require Export compiler.FlattenExpr.
 Require        compiler.FlatImp.
 Require Export riscv.Spec.Machine.
 Require Export riscv.Platform.Run.
-Require Export riscv.Platform.Minimal.
+Require Export riscv.Platform.RiscvMachine.
 Require Export riscv.Platform.MetricLogging.
 Require Export riscv.Utility.Monads.
 Require Import riscv.Utility.runsToNonDet.
@@ -26,7 +26,6 @@ Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.MkMachineWidth.
 Require Export riscv.Proofs.DecodeEncode.
 Require Export riscv.Proofs.EncodeBound.
-Require Export compiler.EmitsValid.
 Require Import riscv.Utility.Utility.
 Require Export riscv.Platform.Memory.
 Require Export riscv.Utility.InstructionCoercions.
@@ -50,13 +49,13 @@ Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Import Utility.
 
-  (* TODO: move *)
-  Lemma HList__tuple__length_to_list {A n} xs : length (@HList.tuple.to_list A n xs) = n.
-  Proof. revert xs; induction n; cbn; eauto. Qed.
-
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
+
+(* TODO: move *)
+Lemma HList__tuple__length_to_list {A n} xs : length (@HList.tuple.to_list A n xs) = n.
+Proof. revert xs; induction n; cbn; eauto. Qed.
 
 Section WithWordAndMem.
   Context {width: Z} {word: word.word width} {mem: map.map word byte}.
@@ -354,7 +353,7 @@ Section Pipeline1.
   Local Instance  EqDecider_FlatImp__word_eq : EqDecider FlatImp__word_eq.
   Proof. eapply word.eqb_spec. Unshelve. exact word_ok. Qed.
 
-  Definition mem_available_to_exists: forall start pastend m P,
+  Lemma mem_available_to_exists: forall start pastend m P,
       (mem_available start pastend * P)%sep m ->
       exists anybytes,
         Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\

@@ -1608,6 +1608,8 @@ Section Equiv.
   (** * Step-consistency lemmas *)
   Arguments isMMIO: simpl never.
 
+  (* Below a lot of code is duplicated to simplify troubleshooting of performance issues. *)
+  (* The first instance of a pattern will be counted as proof, others obvious *)
   Lemma kamiStep_sound_case_execLd:
     forall km1 t0 rm1 post kupd cs
            (Hkinv: scmm_inv (Z.to_nat memSizeLg) rv32RfIdx rv32Fetch km1),

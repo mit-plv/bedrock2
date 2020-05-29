@@ -95,6 +95,7 @@ Section semantics.
 
   Local Notation metrics := MetricLog.
 
+  (* this is the expr evaluator that is used to verify execution time, the just-correctness-oriented version is below *)
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
     Fixpoint eval_expr (e : expr) (mc : metrics) : option (word * metrics) :=

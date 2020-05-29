@@ -235,7 +235,7 @@ Section Connect.
         apply Z.pow_lt_mono_r; blia.
       }
       rewrite ?Z.mod_small; try split; try apply Z.pow_nonneg; try blia.
-    Qed.
+  Qed.
 
   Hypothesis funimplsList_NoDup: NoDup (List.map fst funimplsList).
 
@@ -604,8 +604,3 @@ Section Connect.
   Qed.
 
 End Connect.
-
-(*
-About end2end.
-Print Assumptions end2end.
-*)

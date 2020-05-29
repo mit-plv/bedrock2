@@ -496,111 +496,6 @@ Section Go.
     destruct width_cases as [E | E]; rewrite E; cbv; discriminate.
   Qed.
 
-  (* proves goals of the form
-  addr <> word.add (word.add (word.add addr (word.of_Z 1)) (word.of_Z 1)) (word.of_Z 1)
-  (any number of +1s)
-   *)
-  Ltac word_neq_add :=
-    word_simpl;
-    let C := fresh in
-    intro C;
-    apply (f_equal word.unsigned) in C;
-    match type of C with
-    | word.unsigned ?addr = _ => rewrite <- (word.of_Z_unsigned addr) in C at 1
-    end;
-    unfold word.wrap in C;
-    rewrite !word.unsigned_add in C; unfold word.wrap in C;
-    rewrite !word.unsigned_of_Z in C; unfold word.wrap in C;
-    rewrite ?Z.add_mod_idemp_r in C by (apply pow2width_nonzero);
-    rewrite ?Z.mod_mod in C by (apply pow2width_nonzero);
-    (apply mod_eq_to_diff in C; [|apply pow2width_nonzero]);
-    match type of C with
-    | ?x mod _ = 0 => ring_simplify x in C
-    end;
-    destruct width_cases as [E | E]; rewrite E in C;
-    cbv in C; discriminate C.
-
-  Lemma store_program_empty: forall prog addr,
-      4 * Z.of_nat (length prog) < 2 ^ width ->
-      (word.unsigned addr) mod 4 = 0 ->
-      Forall (fun instr => verify instr iset) prog ->
-      program addr prog (unchecked_store_program addr prog map.empty).
-  Proof.
-    induction prog; intros.
-    - cbv. auto.
-    - unfold unchecked_store_program, Z32s_to_bytes. simpl.
-      rewrite! unchecked_store_byte_list_cons.
-      unfold ptsto_instr, truncated_scalar, littleendian, Memory.bytes_per, ptsto_bytes. simpl.
-      match goal with
-      | |- (?A1 * (?A2 * (?A3 * (?A4 * emp True))) * ?P1 * ?P2 * ?B)%sep ?m =>
-        assert ((A1 * (A2 * (A3 * (A4 * (P1 * (P2 * B))))))%sep m); [|ecancel_assumption]
-      end.
-      eapply sep_on_undef_put; try exact word.eqb_spec. {
-        rewrite !map.get_put_diff by word_neq_add.
-        word_simpl.
-        apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
-        erewrite length_flat_map by (intro; simpl; reflexivity).
-        rewrite map_length.
-        change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-        blia.
-      }
-      eapply sep_on_undef_put; try exact word.eqb_spec. {
-        rewrite !map.get_put_diff by word_neq_add.
-        remember (word.add addr (word.of_Z 1)) as addr'.
-        word_simpl.
-        apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
-        erewrite length_flat_map by (intro; simpl; reflexivity).
-        rewrite map_length.
-        change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-        blia.
-      }
-      eapply sep_on_undef_put; try exact word.eqb_spec. {
-        rewrite !map.get_put_diff by word_neq_add.
-        remember (word.add (word.add addr (word.of_Z 1)) (word.of_Z 1)) as addr'.
-        word_simpl.
-        apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
-        erewrite length_flat_map by (intro; simpl; reflexivity).
-        rewrite map_length.
-        change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-        blia.
-      }
-      eapply sep_on_undef_put; try exact word.eqb_spec. {
-        apply unchecked_store_byte_list_None; try reflexivity; try apply map.get_empty.
-        erewrite length_flat_map by (intro; simpl; reflexivity).
-        rewrite map_length.
-        change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H.
-        blia.
-      }
-      word_simpl.
-      destruct H0. inversion H1. subst.
-      apply sep_emp_l; split; [assumption|].
-      apply sep_emp_l; split; [reflexivity|].
-      apply IHprog.
-      + change (Z.of_nat (length (a :: prog))) with (Z.of_nat (1 + length prog)) in H. blia.
-      + clear. rewrite word.unsigned_add. rewrite word.unsigned_of_Z.
-        unfold word.wrap.
-        pose proof (word.unsigned_range addr).
-        forget (word.unsigned addr) as a.
-        rewrite Zplus_mod_idemp_r.
-        (* COQBUG(performance regression) https://github.com/coq/coq/issues/11436.
-           In Coq 8.9 and 8.10, the following was fast:
-        Z.div_mod_to_equations.
-        destruct width_cases as [E | E]; rewrite E in *; blia. *)
-        destruct width_cases as [E | E]; rewrite E in *; rewrite mod4_0.mod_pow2_mod4.
-        2,4: cbv; intros; discriminate.
-        all: clear; Z.div_mod_to_equations; blia.
-      + assumption.
-  Qed.
-
-  Lemma array_map: forall {T1 T2: Type} sz (f: T1 -> T2) elem (l: list T1) (addr: word),
-      iff1 (array elem                                (word.of_Z sz) addr (List.map f l))
-           (array (fun addr0 v0 => elem addr0 (f v0)) (word.of_Z sz) addr l).
-  Proof.
-    induction l; intros.
-    - simpl. reflexivity.
-    - simpl. apply iff1_sep_cancel. apply IHl.
-  Qed.
-
   Lemma ptsto_subset_to_isXAddr1: forall a v xAddrs,
       subset (footpr (ptsto a v)) (of_list xAddrs) ->
       isXAddr1 a xAddrs.
@@ -667,7 +562,6 @@ Section Go.
       rewrite Z.mod_small; try assumption; try apply encode_range.
       rewrite decode_encode; assumption.
   Qed.
-
 
   (* go_load/storeXxx lemmas phrased in terms of separation logic instead of
      Memory.load/storeXxx *)
