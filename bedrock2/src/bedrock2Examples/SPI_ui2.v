@@ -161,7 +161,9 @@ Section WithParameters.
 
   Lemma set_cps: forall e t m metrics l0 x ev rest (post: trace -> mem -> locals -> _ -> Prop),
       WeakestPrecondition.expr m l0 ev (fun v =>
-         dlet! l := (map.put l0 x v) in exec e rest t m l metrics post) -> (* TODO metrics might change *)
+         dlet! v := v in
+         dlet! l := (map.put l0 x v) in
+         exec e rest t m l metrics post) -> (* TODO metrics might change *)
       exec e (cmd.seq (cmd.set x ev) rest) t m l0 metrics post.
   Admitted.
 
@@ -182,29 +184,35 @@ Section WithParameters.
        exists b : word,
          WeakestPrecondition.dexpr m0 l0 c b /\
          (word.unsigned b <> 0 -> exec e body t0 m0 l0 mc0 (fun t' m' l' _ =>
-            exists v', inv v' t' m' l' /\ lt v' v')) /\
+            exists v', inv v' t' m' l' /\ lt v' v)) /\
          (word.unsigned b = 0 -> exec e rest t0 m0 l0 mc0 post)) ->
       exec e (cmd.seq (cmd.while c body) rest) t m l metrics post.
   Admitted.
+
+  (* not about atleastonce but about whether inv needs to hold at exit.
+     Difference between atleastonce and While: in While, inv also needs to hold after the last loop iteration, whereas in atleastonce, the distinction on the value of the condition is made *after* running the loop body, and inv is only asserted if will run again.
+ *)
 
   Lemma If: forall e t m l mc c thn els rest v Q1 Q2 post,
       WeakestPrecondition.dexpr m l c v ->
       (word.unsigned v <> 0 -> exec e thn t m l mc Q1) ->
       (word.unsigned v = 0  -> exec e els t m l mc Q2) ->
-      (forall t' m' l' mc', Q1 t' m' l' mc' \/ Q2 t' m' l' mc' -> exec e rest t' m' l' mc' post) ->
+      (forall t' m' l' mc', word.unsigned v <> 0 /\ Q1 t' m' l' mc' \/
+                            word.unsigned v = 0  /\ Q2 t' m' l' mc' ->
+                            exec e rest t' m' l' mc' post) ->
       exec e (cmd.seq (cmd.cond c thn els) rest) t m l mc post.
   Admitted.
 
-  Lemma ExtCall: forall e t m l binds arges args mKeep mGive action rest post mc,
-      WeakestPrecondition.dexprs m l arges args ->
-      map.split m mKeep mGive ->
-      ext_spec t mGive action args (fun mReceive rets => exists l0 : locals,
-         map.putmany_of_list_zip binds rets l = Some l0 /\
+  Lemma ExtCall: forall e t1 m1 l1 binds arges args mKeep mGive action rest post mc,
+      WeakestPrecondition.dexprs m1 l1 arges args ->
+      map.split m1 mKeep mGive ->
+      ext_spec t1 mGive action args (fun mReceive rets => exists l : locals,
+         map.putmany_of_list_zip binds rets l1 = Some l /\
          (exists m0,
              map.split m0 mKeep mReceive /\
-             let t0 := ((mGive, action, args, (mReceive, rets)) :: t) in
-             exec e rest t0 m0 l0 mc post)) ->
-      exec e (cmd.seq (cmd.interact binds action arges) rest) t m l mc post.
+             dlet! t := ((mGive, action, args, (mReceive, rets)) :: t1) in
+             exec e rest t m0 l mc post)) ->
+      exec e (cmd.seq (cmd.interact binds action arges) rest) t1 m1 l1 mc post.
     Admitted.
 
   Lemma Skip: forall e t m l mc,
@@ -293,21 +301,13 @@ Section WithParameters.
           Lia.lia.
         + reflexivity.
       }
-      intros.
-      eexists. split; [reflexivity|].
+      repeat straightline.
       eexists. split. {
         eapply Properties.map.split_empty_r. reflexivity.
       }
-      intros.
+      straightline.
 
-      eapply If with (c := (expr.op bopname.sru busy 31)); intros.
-      {
-        cbv [WeakestPrecondition.dexpr WeakestPrecondition.expr WeakestPrecondition.expr_body].
-        simpl.
-        cbv [WeakestPrecondition.get].
-        eexists. simpl. split; [reflexivity|].
-        cbv [WeakestPrecondition.literal dlet.dlet]. reflexivity.
-      }
+      eapply If with (c := (expr.op bopname.sru busy 31)); intros; repeat straightline.
 
       { (* then branch *)
         eapply Skip.
@@ -327,14 +327,13 @@ Section WithParameters.
       { (* we took the then-branch *)
         subst. eexists. split.
         { eexists. eexists. split. {
-            subst l l0. reflexivity. (* takes some time, but whatever *)
+            cbv -[v1 v2 v3]. reflexivity. (* takes some time, but whatever *)
           }
           split; [reflexivity|].
           split. {
-            case TODO. (* need to fix loop invariant or use something like atleastonce *)
+            subst v3 v2 v1. case TODO.
           }
           split; [reflexivity|].
-          subst t0 t1.
           eexists (_ ;++ cons _ nil); split.
           { rewrite <-app_assoc; cbn [app]; f_equal. }
           eexists. split.
@@ -347,24 +346,32 @@ Section WithParameters.
           refine (kleene_step _ _ nil _ (kleene_empty _)).
           repeat econstructor.
           repeat match goal with x:=_|-_=>subst x end.
-          (* TODO some info went lost *) case TODO. (*
-          rewrite Properties.word.unsigned_sru_nowrap in H by (rewrite word.unsigned_of_Z; exact eq_refl).
-          rewrite word.unsigned_of_Z in H; eapply H. *) }
+          rewrite Properties.word.unsigned_sru_nowrap in H1 by (rewrite word.unsigned_of_Z; exact eq_refl).
+          rewrite word.unsigned_of_Z in H1. unfold not. eapply H1. }
           { rewrite app_length, Znat.Nat2Z.inj_add; cbn [app Datatypes.length].
             unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
-            replace 0 with (word.unsigned (word.of_Z 0)) in H0; cycle 1.
-            { rewrite word.unsigned_of_Z; exact eq_refl. }
-            case TODO. (*
-            eapply Properties.word.unsigned_inj in H0.
-            assert (HA: word.add (word.sub x1 (word.of_Z 1)) (word.of_Z 1) = word.of_Z 1). {
-              match goal with H : _ |- _ => rewrite H; ring end. }
-            ring_simplify in HA; subst.
+            subst v1 v2 v3.
             ring_simplify.
-            rewrite word.unsigned_of_Z; reflexivity. } } }
-            *)
+            rewrite <- Z.add_assoc.
+            eapply (proj2 (Z.add_cancel_l _ _ _)).
+            rewrite word.unsigned_sub.
+            rewrite word.unsigned_of_Z. cbv [word.wrap].
+            rewrite (Z.mod_small 1). 2: {
+              cbv. intuition congruence.
+            }
+            rewrite Z.mod_small. 1: ring.
+            pose proof (Properties.word.unsigned_range x0).
+            Lia.blia.
           }
         }
-        case TODO.
+        subst v1 v2 v3.
+        rewrite word.unsigned_sub.
+        rewrite word.unsigned_of_Z. cbv [word.wrap].
+        rewrite (Z.mod_small 1). 2: {
+          cbv. intuition congruence.
+        }
+        pose proof (Properties.word.unsigned_range x0).
+        rewrite Z.mod_small; Lia.blia.
       }
       { (* we took the else-branch *)
         case TODO.
