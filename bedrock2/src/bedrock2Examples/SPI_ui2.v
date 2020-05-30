@@ -174,6 +174,64 @@ Section WithParameters.
       exec e (cmd.seq (cmd.set x ev) rest) t m l metrics post.
   Admitted.
 
+  (* Trying to do something like atleastonce:
+     inv needs to hold whenever the body is about to be executed.
+     Contrary to other loop rules, inv does not need to hold if the loop body is never executed,
+     and inv does not need to hold after the last execution of the loop body
+     Not useful because needs to prove exec for the rest 2x! *)
+  Lemma While: forall (measure : Type) (lt : measure -> measure -> Prop)
+                      (inv : measure -> trace -> mem -> locals -> Prop)
+                      post t m l mc rest c body (e: env),
+      well_founded lt ->
+      (exists b : word,
+          WeakestPrecondition.dexpr m l c b /\
+          (word.unsigned b <> 0 -> exists v0, inv v0 t m l) /\
+          (word.unsigned b = 0 -> exec e rest t m l mc post)) ->
+      (forall (vi : measure) (ti : trace) (mi : mem) (li : locals) mci,
+          inv vi ti mi li ->
+          exec e body ti mi li mci (fun t' m' l' mc' =>
+             (exists b : word,
+                 WeakestPrecondition.dexpr m' l' c b /\
+                 (word.unsigned b <> 0 -> exists v', inv v' t' m' l' /\ lt v' vi) /\
+                 (word.unsigned b = 0 -> exec e rest t m l mc post)))) ->
+      exec e (cmd.seq (cmd.while c body) rest) t m l mc post.
+  Abort.
+
+  (* try two invariants: one for done, one for not done
+     both user specified?
+     --> equivalent to one big invariant which holds before and after the loop, and does
+     case distinction on the value of the condition, but the big invariant has the advantage
+     that it common invariants can be shared
+     the "done" invariant is not the same as Q *)
+  Lemma While: forall (measure : Type) (lt : measure -> measure -> Prop)
+                      (Inv Q : measure -> trace -> mem -> locals -> Prop)
+                      post t1 m1 l1 mc1 b1 rest c body (e: env),
+      well_founded lt ->
+      WeakestPrecondition.dexpr m1 l1 c b1 ->
+      (word.unsigned b1 <> 0 -> exists v, Inv v t1 m1 l1) ->
+      (forall v t m l mc b,
+          WeakestPrecondition.dexpr m l c b ->
+          word.unsigned b <> 0 ->
+          Inv v t m l ->
+          exec e body t m l mc (fun t' m' l' mc' =>
+                                  (* should not be an existential, just an evar ?Q *)
+                                  exists v', Q v' t' m' l')) ->
+      (forall v t m l,
+          Q v t m l ->
+          exists b, WeakestPrecondition.dexpr m l c b /\
+                    (word.unsigned b <> 0 -> exists v', Inv v t m l /\ lt v' v)) ->
+      (forall v t m l mc,
+          WeakestPrecondition.dexpr m l c (word.of_Z 0) ->
+          t = t1 /\ m = m1 /\ l = l1 \/ Q v t m l -> exec e rest t m l mc post) ->
+      exec e (cmd.seq (cmd.while c body) rest) t1 m1 l1 mc1 post.
+  Abort.
+
+  (* The invariant needs to hold before we enter the loop and after we exit the loop.
+     Often, this will require a case split on whether the loop condition is satisfied,
+     which might seem cumbersome at first sight, but it's actually useful, because
+     this allows us to control the shape of the symbolic state both before the loop
+     body and before code after the loop, and share as many formulas between the
+     two as desired. *)
   Lemma While: forall (measure : Type) (lt : measure -> measure -> Prop)
                       (inv : measure -> trace -> mem -> locals -> Prop)
                       (v_init: measure) post metrics t m l rest c body (e: env),
@@ -188,10 +246,6 @@ Section WithParameters.
          (word.unsigned b = 0 -> exec e rest t0 m0 l0 mc0 post)) ->
       exec e (cmd.seq (cmd.while c body) rest) t m l metrics post.
   Admitted.
-
-  (* not about atleastonce but about whether inv needs to hold at exit.
-     Difference between atleastonce and While: in While, inv also needs to hold after the last loop iteration, whereas in atleastonce, the distinction on the value of the condition is made *after* running the loop body, and inv is only asserted if will run again.
- *)
 
   Lemma If: forall e t m l mc c thn els rest v Q1 Q2 post,
       WeakestPrecondition.dexpr m l c v ->
@@ -244,25 +298,23 @@ Section WithParameters.
     $ i = patience.
 
     eapply While with (c := i) (inv := (fun v T M L =>
+       (* this part of the loop invariant is needed no matter whether it runs again or we exit: *)
        exists BUSY I,
        L = map.put (map.put (map.put map.empty b b0) busy BUSY) i I /\
        v = word.unsigned I /\
-       word.unsigned I <> 0 /\
        M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
-       lightbulb_spec.spi_write_full _ ^* th /\
-       Z.of_nat (length th) + word.unsigned I = patience
+       (* this part of the loop invariant is only needed if we run again: *)
+       (word.unsigned I <> 0 ->
+          lightbulb_spec.spi_write_full _ ^* th /\
+          Z.of_nat (length th) + word.unsigned I = patience)
        )).
     1: exact (Z.lt_wf 0).
     { (* invariant holds initially *)
       eexists. eexists.
       split; [reflexivity|].
       split; [reflexivity|].
-      split. {
-        subst v0.
-        rewrite word.unsigned_of_Z. discriminate.
-      }
       split; [reflexivity|].
       eexists; split.
       { rewrite app_nil_l; trivial. }
@@ -330,9 +382,6 @@ Section WithParameters.
             cbv -[v1 v2 v3]. reflexivity. (* takes some time, but whatever *)
           }
           split; [reflexivity|].
-          split. {
-            subst v3 v2 v1. case TODO.
-          }
           split; [reflexivity|].
           eexists (_ ;++ cons _ nil); split.
           { rewrite <-app_assoc; cbn [app]; f_equal. }
@@ -349,6 +398,7 @@ Section WithParameters.
           rewrite Properties.word.unsigned_sru_nowrap in H1 by (rewrite word.unsigned_of_Z; exact eq_refl).
           rewrite word.unsigned_of_Z in H1. unfold not. eapply H1. }
           { rewrite app_length, Znat.Nat2Z.inj_add; cbn [app Datatypes.length].
+            intros.
             unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
             subst v1 v2 v3.
             ring_simplify.
@@ -374,7 +424,20 @@ Section WithParameters.
         rewrite Z.mod_small; Lia.blia.
       }
       { (* we took the else-branch *)
-        case TODO.
+        subst. eexists. split.
+        { eexists. eexists. split. {
+            cbv -[v1 v2 v3 word.xor]. reflexivity. (* takes some time, but whatever *)
+          }
+          split; [reflexivity|].
+          split; [reflexivity|].
+          eexists (_ ;++ cons _ nil); split.
+          { rewrite <-app_assoc; cbn [app]; f_equal. }
+          eexists. split.
+          { econstructor; try eassumption; right; eauto. }
+          intros X.
+          rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent in X; contradiction. }
+        { rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent.
+          subst v1. pose proof (Properties.word.unsigned_range x0). Lia.blia. }
       }
     }
 
@@ -430,42 +493,47 @@ Section WithParameters.
     eapply exec.skip.
     repeat straightline_cleanup.
     (* prove that computed post implies desired post: *)
-    (* TODO something is wrong here wrt loop invariant, x0 is 0 and <> 0 at the same time *)
-    intuition idtac. (* <-- should not work *)
-
-    (*
-    repeat straightline.
-    split; trivial. subst t0.
-    eexists (_ ;++ cons _ (cons _ nil)). split.
-    { rewrite <-app_assoc. cbn [app]. f_equal. }
-    eexists. split.
-    { eapply List.Forall2_app; eauto.
-      { constructor.
+    intuition idtac.
+    { (* case 1: polling timeout *)
+      case TODO. }
+    { (* case 2: success *)
+      repeat straightline.
+      eexists. split. {
+        subst l'. unfold busy. reflexivity.
+      }
+      split; trivial. subst t0 t'.
+      eexists (_ ;++ (cons _ nil)). split.
+      { rewrite <-app_assoc. cbn [app]. f_equal. }
+      eexists. split.
+      { eapply List.Forall2_app; eauto.
+        constructor.
         { left. eexists _, _; repeat split. }
-        { right; [|constructor].
-          right; eexists _, _; repeat split. } } }
-    eexists; split; trivial.
-    right.
-    subst busy.
-    split.
-    { f_equal. rewrite Properties.word.unsigned_xor_nowrap; rewrite Z.lxor_nilpotent; reflexivity. }
-    cbv [lightbulb_spec.spi_write].
-    eexists _, _; split; eauto; []; split; eauto.
-    eexists (cons _ nil), (cons _ nil); split; cbn [app]; eauto.
-    split; repeat econstructor.
-    { repeat match goal with x:=_|-_=>subst x end.
-      rewrite Properties.word.unsigned_sru_nowrap in H by (rewrite word.unsigned_of_Z; exact eq_refl).
-      rewrite word.unsigned_of_Z in H; eapply H. }
-    { cbv [lightbulb_spec.spi_write_enqueue one].
-      repeat f_equal.
-      eapply Properties.word.unsigned_inj.
-      clear -p Hb.
-      pose proof Properties.word.unsigned_range x.
-      change (Semantics.width) with 32 in *.
-      change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
-      rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small by Lia.lia.
-      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small; Lia.lia. }
-     *)
+        constructor.
+      }
+      eexists; split; trivial.
+      right.
+      split.
+      { f_equal. rewrite Properties.word.unsigned_xor_nowrap; rewrite Z.lxor_nilpotent; reflexivity. }
+      cbv [lightbulb_spec.spi_write].
+      case TODO.
+      (*
+      eexists _, _; split; eauto; []; split; eauto.
+      eexists (cons _ nil), (cons _ nil); split; cbn [app]; eauto.
+      split; repeat econstructor.
+      { repeat match goal with x:=_|-_=>subst x end.
+        rewrite Properties.word.unsigned_sru_nowrap in H by (rewrite word.unsigned_of_Z; exact eq_refl).
+        rewrite word.unsigned_of_Z in H; eapply H. }
+      { cbv [lightbulb_spec.spi_write_enqueue one].
+        repeat f_equal.
+        eapply Properties.word.unsigned_inj.
+        clear -p Hb.
+        pose proof Properties.word.unsigned_range x.
+        change (Semantics.width) with 32 in *.
+        change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
+        rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small by Lia.lia.
+        rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small; Lia.lia. }
+       *)
+    }
   Defined.
 
   Eval unfold spi_write in match spi_write with
