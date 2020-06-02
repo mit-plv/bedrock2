@@ -3,7 +3,6 @@ Require Import Coq.Strings.String.
 Require Import Coq.Lists.List.
 Require Import Coq.micromega.Lia.
 Require Import bedrock2.Array.
-Require Import bedrock2.BasicCSyntax.
 Require Import bedrock2.BasicC64Semantics.
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.Scalars.
@@ -11,6 +10,7 @@ Require Import bedrock2.Syntax.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.Map.Separation.
 Require Import bedrock2.Map.SeparationLogic.
+Require Import coqutil.Byte.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Z.PushPullMod.
@@ -30,7 +30,7 @@ Hint Rewrite @firstn_length @skipn_length @map_length @app_length
 Hint Rewrite @skipn_app @skipn_O @skipn_cons @List.skipn_skipn : push_skipn.
 Hint Rewrite @firstn_app @firstn_O @firstn_cons @firstn_firstn : push_firstn.
 
-Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
+
 Local Coercion literal (z : Z) : Syntax.expr := expr.literal z.
 Local Coercion var (x : string) : Syntax.expr := expr.var x.
 Local Coercion name_of_func (f : bedrock_func) := fst f.
@@ -138,6 +138,9 @@ Section Generalizable.
 
   Lemma sub_succ_l x : (S x - x)%nat = 1%nat.
   Proof. lia. Qed.
+
+  Lemma byte_of_Z_unsigned b : byte.of_Z (byte.unsigned b) = b.
+  Proof. destruct b; reflexivity. Qed.
 End Generalizable.
 
 Ltac natsimplify :=
@@ -179,16 +182,16 @@ Ltac listsimplify :=
 
 Section Proofs.
   Context (functions' : list bedrock_func)
-          (toupper_body : Semantics.byte -> Semantics.byte).
+          (toupper_body : Byte.byte -> Byte.byte).
 
-  Local Definition byte_to_word : Semantics.byte -> Semantics.word :=
-    fun b => word.of_Z (word.unsigned b).
+  Local Definition byte_to_word : Byte.byte -> Semantics.word :=
+    fun b => word.of_Z (byte.unsigned b).
 
   Context
     (wordsize_eq : wordsize = 8) (* using C64 semantics; 8 bytes *)
     (charsize_eq : charsize = 1) (* char = 1 byte *)
     (toupper_correct :
-       forall (c : Semantics.byte) tr mem,
+       forall (c : Byte.byte) tr mem,
          WeakestPrecondition.call
            functions' toupper tr mem [byte_to_word c]
            (fun tr' mem' rets =>
@@ -251,7 +254,7 @@ Section Proofs.
     naddr = word.add (word.add addr (word.of_Z wordsize))
                      (word.mul (word.of_Z charsize)
                                (word.of_Z (Z.of_nat n))) ->
-    sep (ptsto naddr (List.hd (word.of_Z 0) (List.skipn n (chars s))))
+    sep (ptsto naddr (List.hd (byte.of_Z 0) (List.skipn n (chars s))))
         (sep
            (sep
               (array ptsto (word.of_Z charsize)
@@ -279,7 +282,7 @@ Section Proofs.
     { rewrite sep_comm, <-sep_assoc.
       apply iff1_sep_cancel.
       eapply array_index_nat_inbounds
-        with (n0:=n) (default:=word.of_Z 0);
+        with (n0:=n) (default:=byte.of_Z 0);
         eauto using Semantics.word_ok, Semantics.mem_ok.
       lia. }
     rewrite word.ring_morph_mul, !word.of_Z_unsigned.
@@ -329,8 +332,8 @@ Section Proofs.
     cbn [WeakestPrecondition.call
            WeakestPrecondition.call_body
            capitalize_String name_of_func fst].
-    match goal with |- if Semantics.funname_eqb ?x ?x then _ else _ =>
-                    destr (Semantics.funname_eqb x x) end;
+    match goal with |- if String.eqb ?x ?x then _ else _ =>
+                    destr (String.eqb x x) end;
       [ | congruence ].
 
     (* load arguments as initial local variables *)
@@ -603,7 +606,7 @@ Section Proofs.
           |- Lift1Prop.iff1 (sep (array _ _ _ (List.firstn ?i _)) _)
                             (array _ _ _ ?ls) =>
           rewrite array_index_nat_inbounds
-          with (n:=i) (default:=word.of_Z 0) (xs:=ls)
+          with (n:=i) (default:=byte.of_Z 0) (xs:=ls)
             by (autorewrite with push_length; lia)
         end.
         rewrite !Z2Nat.id by apply word.unsigned_range.
@@ -631,9 +634,9 @@ Section Proofs.
         (* TODO: sepearate lemma? *)
         (* simplify the conversions on the selected element *)
         match goal with
-          |- context [word.of_Z (word.unsigned (byte_to_word ?b))] =>
-          replace (word.of_Z (word.unsigned (byte_to_word b))) with b
-            by (clear; pose proof (word.unsigned_range b); cbv [byte_to_word]; rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small, word.of_Z_unsigned by (cbn in *; lia); reflexivity)
+          |- context [byte.of_Z (word.unsigned (byte_to_word ?b))] =>
+          replace (byte.of_Z (word.unsigned (byte_to_word b))) with b
+            by (clear; pose proof (byte.unsigned_range b); cbv [byte_to_word]; rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small, byte_of_Z_unsigned by (cbn in *; lia); reflexivity)
         end.
 
         push_list_fast.
@@ -739,8 +742,8 @@ Section Proofs.
     cbn [WeakestPrecondition.call].
     cbn [WeakestPrecondition.call_body
            capitalize_3rd name_of_func fst].
-    match goal with |- if Semantics.funname_eqb ?x ?x then _ else _ =>
-                    destr (Semantics.funname_eqb x x) end;
+    match goal with |- if String.eqb ?x ?x then _ else _ =>
+                    destr (String.eqb x x) end;
       [ | congruence ].
 
     (* load arguments as initial local variables *)

@@ -2,7 +2,6 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.Strings.String.
 Require Import Coq.Lists.List.
 Require Import bedrock2.Syntax.
-Require Import bedrock2.BasicCSyntax.
 Require Import bedrock2.NotationsCustomEntry.
 Require bedrock2.WeakestPrecondition.
 Local Open Scope Z_scope. Local Open Scope string_scope.
@@ -10,9 +9,8 @@ Import ListNotations.
 
 (* bedrock2 code *)
 Module Bedrock2.
-  Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
   Definition bedrock_func : Type :=
-    funname * (list varname * list varname * cmd).
+    string * (list string * list string * cmd).
   Local Coercion literal (z : Z) : Syntax.expr := expr.literal z.
   Local Coercion var (x : string) : Syntax.expr := expr.var x.
   Local Coercion name_of_func (f : bedrock_func) := fst f.
@@ -23,12 +21,12 @@ Module Bedrock2.
 
   (* TODO: use bedrock2 Structs? *)
   Definition capitalize_String : bedrock_func :=
-    let s_ptr : varname := "s_ptr" in
-    let ret : varname := "ret" in
-    let len : varname := "len" in
-    let i : varname := "i" in
-    let x : varname := "x" in
-    let c_ptr : varname := "c_ptr" in
+    let s_ptr : string := "s_ptr" in
+    let ret : string := "ret" in
+    let len : string := "len" in
+    let i : string := "i" in
+    let x : string := "x" in
+    let c_ptr : string := "c_ptr" in
     ("capitalize_String",
      ([s_ptr], [ret], bedrock_func_body:(
        len = (load( s_ptr )) ;
@@ -43,8 +41,8 @@ Module Bedrock2.
        ret = (constr:(1))))).
 
   Definition capitalize_3rd : bedrock_func :=
-    let inp : varname := "inp" in
-    let ret : varname := "ret" in
+    let inp : string := "inp" in
+    let ret : string := "ret" in
     let offset : Z := 2 * wordsize in
     ("capitalize_3rd",
      ([inp], [ret], bedrock_func_body:(

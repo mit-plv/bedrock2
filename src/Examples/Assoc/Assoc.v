@@ -2,7 +2,6 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.Strings.String.
 Require Import Coq.Lists.List.
 Require Import bedrock2.Syntax.
-Require Import bedrock2.BasicCSyntax.
 Require Import bedrock2.NotationsCustomEntry.
 (* Require bedrock2.WeakestPrecondition. *)
 
@@ -11,10 +10,8 @@ Local Open Scope string_scope.
 Import ListNotations.
 
 Module Bedrock2.
-  Local Existing Instance bedrock2.BasicCSyntax.StringNames_params.
-
   Definition bedrock_func : Type :=
-    funname * (list varname * list varname * cmd).
+    string * (list string * list string * cmd).
 
   Local Coercion literal (z : Z) : Syntax.expr := expr.literal z.
   Local Coercion var (x : string) : Syntax.expr := expr.var x.
@@ -23,15 +20,15 @@ Module Bedrock2.
   Axiom word_size : Z.
   Definition pair_size : Z := 4 (* key *) + word_size (* pointer *).
 
-  Notation pairs := ("pairs" : varname).
-  Notation len := ("len" : varname).
-  Notation k := ("k" : varname).
+  Notation pairs := ("pairs" : string).
+  Notation len := ("len" : string).
+  Notation k := ("k" : string).
 
-  Notation found := ("found" : varname).
-  Notation out := ("out" : varname).
+  Notation found := ("found" : string).
+  Notation out := ("out" : string).
 
-  Notation pairs_end := ("pairs_end" : varname).
-  Notation key := ("key" : varname).
+  Notation pairs_end := ("pairs_end" : string).
+  Notation key := ("key" : string).
 
   Definition assoc_found : bedrock_func :=
     ("assoc",

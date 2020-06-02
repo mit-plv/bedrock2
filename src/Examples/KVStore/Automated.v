@@ -535,8 +535,7 @@ Section KVSwap.
           end.
         3: ecancel_assumption.
         all: repeat compile_step; eauto with compiler.
-        { Print HintDb compiler.
-          simple apply deannotate_put.
+        { simple apply deannotate_put.
           cbn.
           eapply put_noop';
             eauto 10 with compiler.

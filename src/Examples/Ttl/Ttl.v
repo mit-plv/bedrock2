@@ -19,7 +19,7 @@ Ltac program_logic_goal_for_function proc callees :=
                    exact s)).
 
 (* Definition packet := *)
-(*   hlist.t ["field1"; …; "ttl"] [Semantics.byte; …; Semantics.byte]. (* field1, ttl *) *)
+(*   hlist.t ["field1"; …; "ttl"] [Byte.byte; …; Byte.byte]. (* field1, ttl *) *)
 
 Definition packet :=
   Vector.t Semantics.word 2. (* field1, ttl *)
