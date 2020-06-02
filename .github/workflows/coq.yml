@@ -61,7 +61,7 @@ jobs:
     - uses: actions/checkout@v2
     - name: submodules-init
       run: git submodule update --init --recursive
-  # - name: add Coq matcher
-  #   run: echo "::add-matcher::.github/coq.json"
+    - name: make dependencies
+      run: make -j2 deps
     - name: make
       run: make -j2
