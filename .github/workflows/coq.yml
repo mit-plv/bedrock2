@@ -40,9 +40,6 @@ jobs:
         echo "::group::lsb_release -a"
         lsb_release -a
         echo "::endgroup::"
-        echo "::group::ghc --version"
-        ghc --version
-        echo "::endgroup::"
         echo "::group::gcc -v"
         gcc -v
         echo "::endgroup::"
