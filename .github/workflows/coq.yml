@@ -60,4 +60,4 @@ jobs:
     - name: make dependencies
       run: make -j2 deps
     - name: make all
-      run: make all # TODO: investigate why this fails with -j2
+      run: make -j2 all

@@ -11,7 +11,7 @@ clean: Makefile.coq
 	rm -f Makefile.coq
 
 Makefile.coq: _CoqProject Makefile
-	coq_makefile -f _CoqProject -o Makefile.coq INSTALLDEFAULTROOT = Rupicola | sed 's/$$(COQCHK) $$(COQCHKFLAGS) $$(COQLIBS)/$$(COQCHK) $$(COQCHKFLAGS) $$(subst -Q,-R,$$(COQLIBS))/' > Makefile.coq
+	coq_makefile -f _CoqProject -o Makefile.coq INSTALLDEFAULTROOT = Rupicola
 
 COQUTIL_FOLDER := bedrock2/deps/coqutil
 BEDROCK2_FOLDER := bedrock2/bedrock2
