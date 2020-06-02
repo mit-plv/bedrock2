@@ -1,0 +1,73 @@
+# Based on a similar workflow for the mit-plv/fiat-crypto repository
+
+name: Coq
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 0 1 * *'
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        env:
+        - { COQ_VERSION: "8.11.1", COQ_PACKAGE: "coq-8.11.1 libcoq-8.11.1-ocaml-dev", PPA: "ppa:jgross-h/many-coq-versions-ocaml-4-05" }
+        - { COQ_VERSION: "8.10.2", COQ_PACKAGE: "coq-8.10.2 libcoq-8.10.2-ocaml-dev", PPA: "ppa:jgross-h/many-coq-versions-ocaml-4-05" }
+        - { COQ_VERSION: "master", COQ_PACKAGE: "coq libcoq-ocaml-dev"              , PPA: "ppa:jgross-h/coq-master-daily" }
+        ghc: [ '8.8.1' ]
+        cabal: [ '3.0' ]
+
+    env: ${{ matrix.env }}
+
+    steps:
+    - name: install Coq
+      run: |
+        sudo sed -i 's/azure\.//' /etc/apt/sources.list
+        if [ ! -z "$PPA" ]; then sudo add-apt-repository "$PPA" -y; fi
+        sudo apt-get -o Acquire::Retries=30 update -q
+        sudo apt-get -o Acquire::Retries=30 install ocaml-findlib $COQ_PACKAGE -y --allow-unauthenticated
+    - uses: actions/setup-haskell@v1
+      with:
+        ghc-version: ${{ matrix.ghc }}
+        cabal-version: ${{ matrix.cabal }}
+    - name: echo build params
+      run: |
+        echo "::group::lscpu"
+        lscpu
+        echo "::endgroup::"
+        echo "::group::uname -a"
+        uname -a
+        echo "::endgroup::"
+        echo "::group::lsb_release -a"
+        lsb_release -a
+        echo "::endgroup::"
+        echo "::group::ghc --version"
+        ghc --version
+        echo "::endgroup::"
+        echo "::group::gcc -v"
+        gcc -v
+        echo "::endgroup::"
+        echo "::group::ocamlc -config"
+        ocamlc -config
+        echo "::endgroup::"
+        echo "::group::coqc --config"
+        coqc --config
+        echo "::endgroup::"
+        echo "::group::coqc --version"
+        coqc --version
+        echo "::endgroup::"
+        echo "::group::echo | coqtop"
+        echo | coqtop
+        echo "::endgroup::"
+    - uses: actions/checkout@v2
+    - name: submodules-init
+      run: git submodule update --init --recursive
+  # - name: add Coq matcher
+  #   run: echo "::add-matcher::.github/coq.json"
+    - name: make
+      run: make -j2
