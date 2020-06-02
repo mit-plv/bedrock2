@@ -81,7 +81,7 @@ Ltac straightline_cleanup :=
   match goal with
   | x : Word.Interface.word.rep _ |- _ => clear x
   | x : Semantics.word |- _ => clear x
-  | x : Byte.byte |- _ => clear x
+  | x : Init.Byte.byte |- _ => clear x
   | x : Semantics.locals |- _ => clear x
   | x : Semantics.trace |- _ => clear x
   | x : Syntax.cmd |- _ => clear x
@@ -94,7 +94,7 @@ Ltac straightline_cleanup :=
   | x : nat |- _ => clear x
   | x := _ : Word.Interface.word.rep _ |- _ => clear x
   | x := _ : Semantics.word |- _ => clear x
-  | x := _ : Byte.byte |- _ => clear x
+  | x := _ : Init.Byte.byte |- _ => clear x
   | x := _ : Semantics.locals |- _ => clear x
   | x := _ : Semantics.trace |- _ => clear x
   | x := _ : Syntax.cmd |- _ => clear x

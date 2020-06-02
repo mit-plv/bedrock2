@@ -31,15 +31,16 @@ Section Syntax.
   .
 
   Inductive stmt: Type :=
-    | SLoad(sz: Syntax.access_size)(x: varname)(a: varname): stmt
-    | SStore(sz: Syntax.access_size)(a: varname)(v: varname): stmt
-    | SLit(x: varname)(v: Z): stmt
-    | SOp(x: varname)(op: bopname)(y z: varname): stmt
-    | SSet(x y: varname): stmt
-    | SIf(cond: bcond)(bThen bElse: stmt): stmt
-    | SLoop(body1: stmt)(cond: bcond)(body2: stmt): stmt
-    | SSeq(s1 s2: stmt): stmt
-    | SSkip: stmt
+    | SLoad(sz: Syntax.access_size)(x: varname)(a: varname)
+    | SStore(sz: Syntax.access_size)(a: varname)(v: varname)
+    | SStackalloc(x : varname)(nbytes: Z)(body: stmt)
+    | SLit(x: varname)(v: Z)
+    | SOp(x: varname)(op: bopname)(y z: varname)
+    | SSet(x y: varname)
+    | SIf(cond: bcond)(bThen bElse: stmt)
+    | SLoop(body1: stmt)(cond: bcond)(body2: stmt)
+    | SSeq(s1 s2: stmt)
+    | SSkip
     | SCall(binds: list varname)(f: String.string)(args: list varname)
     | SInteract(binds: list varname)(a: String.string)(args: list varname).
 
@@ -47,6 +48,7 @@ Section Syntax.
     match s with
     | SLoad sz x a => 1
     | SStore sz a v => 1
+    | SStackalloc x a body => 1 + rec body
     | SLit x v => 8
     | SOp x op y z => 2
     | SSet x y => 1
@@ -74,6 +76,7 @@ Section Syntax.
   Fixpoint modVars_as_list(veq: varname -> varname -> bool)(s: stmt): list varname :=
     match s with
     | SSkip | SStore _ _ _ => []
+    | SStackalloc x n body => list_union veq [x] (modVars_as_list veq body)
     | SLoad _ x _ | SLit x _ | SOp x _ _ _ | SSet x _ => [x]
     | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 =>
         list_union veq (modVars_as_list veq s1) (modVars_as_list veq s2)
@@ -91,6 +94,7 @@ Section Syntax.
       match s with
       | SLoad _ x a => P x /\ P a
       | SStore _ a x => P a /\ P x
+      | SStackalloc x n body => P x /\ rec body
       | SLit x _ => P x
       | SOp x _ y z => P x /\ P y /\ P z
       | SSet x y => P x /\ P y
@@ -235,6 +239,10 @@ Section FlatImp1.
             'Some v <- map.get st v;
             'Some m <- store sz m a v;
             Some (st, m)
+        | SStackalloc x n body =>
+          (* the deterministic semantics do not support stack alloc, because at
+             this level, we don't have a means of obtaining a stack address *)
+           None
         | SLit x v =>
             Some (map.put st x (word.of_Z v), m)
         | SOp x op y z =>
@@ -296,6 +304,11 @@ Section FlatImp1.
                          store sz initialM a v = Some finalM /\
                          final = (initialSt, finalM).
     Proof. inversion_lemma. Qed.
+
+    Lemma invert_eval_SStackalloc : forall st m1 p2 f x n body,
+      eval_stmt (S f) st m1 (SStackalloc x n body) = Some p2 ->
+      False.
+    Proof. inversion_lemma. discriminate. Qed.
 
     Lemma invert_eval_SLit: forall fuel initialSt initialM x v final,
       eval_stmt (S fuel) initialSt initialM (SLit x v) = Some final ->
@@ -368,6 +381,7 @@ Section FlatImp1.
     match s with
     | SLoad sz x y => singleton_set x
     | SStore sz x y => empty_set
+    | SStackalloc x n body => union (singleton_set x) (modVars body)
     | SLit x v => singleton_set x
     | SOp x op y z => singleton_set x
     | SSet x y => singleton_set x
@@ -451,6 +465,17 @@ Module exec.
              (addMetricInstructions 1
              (addMetricStores 1 mc))) ->
         exec (SStore sz a v) t m l mc post
+    | stackalloc: forall t mSmall l mc x n body post,
+        n mod (bytes_per_word width) = 0 ->
+        (forall a mStack mCombined,
+            anybytes a n mStack ->
+            map.split mCombined mSmall mStack ->
+            exec body t mCombined l mc (fun t' mCombined' l' mc' =>
+              exists mSmall' mStack',
+                anybytes a n mStack' /\
+                map.split mCombined' mSmall' mStack' /\
+                post t' mSmall' l' mc')) ->
+        exec (SStackalloc x n body) t mSmall l mc post
     | lit: forall t m l mc x v post,
         post t m (map.put l x (word.of_Z v))
              (addMetricLoads 8
@@ -545,6 +570,10 @@ Module exec.
         intros. simp.
         specialize H3 with (1 := H5).
         simp. eauto 10.
+      - eapply stackalloc. 1: assumption.
+        intros.
+        eapply H1; eauto.
+        intros. simp. eauto 10.
     Qed.
 
     Ltac equalities :=
@@ -602,6 +631,21 @@ Module exec.
         equalities.
         eauto 10.
 
+      - (* SStackalloc *)
+        eapply @stackalloc. 1: eassumption.
+        intros.
+        rename H0 into Ex1, H12 into Ex2.
+        eapply weaken. 1: eapply H1. 1,2: eassumption.
+        1: eapply Ex2. 1,2: eassumption.
+        cbv beta. clear -ok.
+        intros. simp.
+        lazymatch goal with
+          | A: map.split _ _ _, B: map.split _ _ _ |- _ =>
+            specialize @map.split_diff with (4 := A) (5 := B) as P
+        end.
+        edestruct P; try typeclasses eauto. 2: subst; eauto 10.
+        eapply anybytes_unique_domain; eassumption.
+
       - (* SLoop *)
         eapply @loop.
         + eapply IHexec. exact H10.
@@ -631,6 +675,7 @@ Ltac invert_eval_stmt :=
     destruct s;
     [ apply invert_eval_SLoad in E
     | apply invert_eval_SStore in E
+    | apply invert_eval_SStackalloc in E
     | apply invert_eval_SLit in E
     | apply invert_eval_SOp in E
     | apply invert_eval_SSet in E
@@ -643,6 +688,7 @@ Ltac invert_eval_stmt :=
     deep_destruct E;
     [ let x := fresh "Case_SLoad" in pose proof tt as x; move x at top
     | let x := fresh "Case_SStore" in pose proof tt as x; move x at top
+    | let x := fresh "Case_SStackalloc" in pose proof tt as x; move x at top
     | let x := fresh "Case_SLit" in pose proof tt as x; move x at top
     | let x := fresh "Case_SOp" in pose proof tt as x; move x at top
     | let x := fresh "Case_SSet" in pose proof tt as x; move x at top
@@ -695,7 +741,7 @@ Section FlatImp2.
       | H : _ = false |- _ => rewrite H
       end;
       eauto.
-      contradiction.
+      all: contradiction.
   Qed.
 
   Lemma modVarsSound_fixpoint: forall fuel e s initialSt initialM finalSt finalM,
@@ -734,6 +780,14 @@ Section FlatImp2.
       edestruct H3; try eassumption. simp.
       do 2 eexists; split; [|split]; try eassumption.
       eapply map.only_differ_putmany. eassumption.
+    - eapply exec.stackalloc; try eassumption.
+      intros.
+      eapply exec.weaken.
+      + eapply exec.intersect.
+        * eapply H0; eassumption.
+        * eapply H1; eassumption.
+      + simpl. intros. simp.
+        do 2 eexists. split; [eassumption|]. split; [eassumption|]. map_solver locals_ok.
     - eapply exec.if_true; try eassumption.
       eapply exec.weaken; [eassumption|].
       simpl; intros. map_solver locals_ok.

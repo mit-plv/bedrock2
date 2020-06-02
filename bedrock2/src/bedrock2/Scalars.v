@@ -58,7 +58,7 @@ Section Scalars.
   Proof.
     cbv [load].
     erewrite load_Z_of_sep by exact Hsep; f_equal.
-    cbv [bytes_per].
+    cbv [bytes_per bytes_per_word].
     eapply Properties.word.unsigned_inj.
     rewrite !word.unsigned_of_Z.
     rewrite <-Properties.word.wrap_unsigned at 2.
@@ -184,7 +184,7 @@ Section Scalars.
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar16 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
   Proof.
-    do 2 (destruct l as [?|?x l]; [discriminate|]). destruct l; [|discriminate].
+    do 2 (destruct l as [|?x l]; [discriminate|]). destruct l; [|discriminate].
     cbv [scalar16 truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
     eapply Morphisms.eq_subrelation; [exact _|].
     f_equal.
@@ -200,7 +200,7 @@ Section Scalars.
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar32 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
   Proof.
-    do 4 (destruct l as [?|?x l]; [discriminate|]). destruct l; [|discriminate].
+    do 4 (destruct l as [|?x l]; [discriminate|]). destruct l; [|discriminate].
     cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
     eapply Morphisms.eq_subrelation; [exact _|].
     f_equal.
@@ -217,7 +217,7 @@ Section Scalars.
   Proof.
     cbv [scalar truncated_scalar littleendian ptsto_bytes]. subst width.
     replace (bytes_per Syntax.access_size.word) with (length l). 2: {
-      unfold bytes_per. clear.
+      unfold bytes_per, bytes_per_word. clear.
       Z.div_mod_to_equations. blia.
     }
     rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.

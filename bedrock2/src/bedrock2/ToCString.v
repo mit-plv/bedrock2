@@ -59,6 +59,9 @@ Section ToCString.
     match c with
     | cmd.store s ea ev
       => indent ++ "*("++c_size s++"*)(" ++ c_expr ea ++ ") = " ++ c_expr ev ++ ";" ++ LF
+    | cmd.stackalloc x n body =>
+      indent ++ c_var x ++ " = alloca(" ++ c_lit n ++ "); // TODO untested" ++ LF ++
+      c_cmd indent body
     | cmd.set x ev =>
       indent ++ c_var x ++ " = " ++ c_expr ev ++ ";" ++ LF
     | cmd.unset x =>

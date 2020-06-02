@@ -67,6 +67,7 @@ Section WeakestPrecondition.
         bind_ex v <- dexpr m l ev;
         store sz m a v (fun m =>
         post t m l)
+      | cmd.stackalloc x n body => False (* TODO that's safe but not as useful as it could be *)
       | cmd.cond br ct cf =>
         bind_ex v <- dexpr m l br;
         (word.unsigned v <> 0%Z -> rec ct t m l post) /\

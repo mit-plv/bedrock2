@@ -26,6 +26,8 @@ Module cmd.
   | set (lhs : String.string) (rhs : expr)
   | unset (lhs : String.string)
   | store (_ : access_size) (address : expr) (value : expr)
+  | stackalloc (lhs : String.string) (nbytes : Z) (body : cmd)
+  (* { lhs = alloca(nbytes); body; /*allocated memory freed right here*/ } *)
   | cond (condition : expr) (nonzero_branch zero_branch : cmd)
   | seq (s1 s2: cmd)
   | while (test : expr) (body : cmd)

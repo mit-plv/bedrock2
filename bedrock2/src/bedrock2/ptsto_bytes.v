@@ -136,9 +136,7 @@ Section Scalars.
       end.
 
       Fail (* TODO ecancel_assumption why does it fail? *)
-      match goal with
-      | IHn: _ |- _ => edestruct IHn as [R IH]; [..|exists R; ecancel_assumption]
-      end.
+      edestruct IHn as [R IH]; [..|exists R; ecancel_assumption].
 
       Ltac ecancel_assumption_fix_just_for_here :=
         seplog;
@@ -147,9 +145,7 @@ Section Scalars.
         [exact (RelationClasses.reflexivity _)|];
         ecancel.
 
-      match goal with
-      | IHn: _ |- _ => edestruct IHn as [R IH]; [..|exists R; ecancel_assumption_fix_just_for_here]
-      end.
+      edestruct IHn as [R IH]; [..|exists R; ecancel_assumption_fix_just_for_here].
       + blia.
       + match goal with
         | |- sep ?BS (sep ?P ?Q) ?m => assert (sep (sep P BS) Q m); [|ecancel_assumption]

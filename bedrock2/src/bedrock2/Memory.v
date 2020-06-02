@@ -12,11 +12,19 @@ Require Import coqutil.Byte.
 
 Open Scope Z_scope.
 
+Definition bytes_per_word(width: Z): Z := (width + 7) / 8.
+
 Section Memory.
   Context {width: Z} {word: word width} {mem: map.map word byte}.
 
   Definition footprint(a: word)(sz: nat): tuple word sz :=
     tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.
+
+  Definition anybytes(a: word)(n: Z)(m: mem): Prop :=
+    exists bytes, map.putmany_of_tuple (footprint a (Z.to_nat n)) bytes map.empty = m.
+
+  Definition anybytes'(a: word)(n: Z)(m: mem): Prop :=
+    forall a', word.unsigned (word.sub a' a) < n <-> exists v, map.get m a' = Some v.
 
   Definition load_bytes(sz: nat)(m: mem)(addr: word): option (tuple byte sz) :=
     map.getmany_of_tuple m (footprint addr sz).
@@ -33,7 +41,7 @@ Section Memory.
   Definition bytes_per sz :=
     match sz with
       | access_size.one => 1 | access_size.two => 2 | access_size.four => 4
-      | access_size.word => Z.to_nat (Z.div (Z.add width 7) 8)
+      | access_size.word => Z.to_nat (bytes_per_word width)
     end%nat.
 
   Definition load_Z(sz: access_size)(m: mem)(a: word): option Z :=
@@ -59,7 +67,7 @@ Section Memory.
       map.get m a = None ->
       load sz m a = None.
   Proof.
-    intros. destruct sz; cbv [load load_Z load_bytes map.getmany_of_tuple footprint bytes_per tuple.option_all tuple.map tuple.unfoldn];
+    intros. destruct sz; cbv [load load_Z load_bytes map.getmany_of_tuple footprint bytes_per bytes_per_word tuple.option_all tuple.map tuple.unfoldn];
     try solve [ rewrite H0; reflexivity].
     destruct (Z.to_nat ((width + 7) / 8)) eqn: E.
     - exfalso.
@@ -87,6 +95,17 @@ Section Memory.
       subst;
       eapply map.putmany_of_tuple_preserves_domain;
       eassumption.
+  Qed.
+
+  Lemma anybytes_unique_domain: forall a n m1 m2,
+      anybytes a n m1 ->
+      anybytes a n m2 ->
+      map.same_domain m1 m2.
+  Proof.
+    unfold anybytes. intros.
+    destruct H as [vs1 ?]. destruct H0 as [vs2 ?]. subst m1 m2.
+    eapply map.putmany_of_tuple_same_domain.
+    apply map.same_domain_refl.
   Qed.
 
 End Memory.
