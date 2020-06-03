@@ -1,23 +1,5 @@
 Require Import Rupicola.Lib.Api.
 
-Local Notation function_t :=
-  ((String.string * (list String.string * list String.string * Syntax.cmd.cmd))%type).
-Local Notation functions_t :=
-  (list function_t).
-
-(* modified version of program_logic_goal_for_function, in which callee names
-  are manually inserted *)
-Ltac program_logic_goal_for_function proc callees :=
-  let __ := constr:(proc : function_t) in
-  let fname := (eval cbv in (fst proc)) in
-  let callees := (eval cbv in callees) in
-  let spec := lazymatch constr:(_:spec_of fname) with ?s => s end in
-  constr:(forall functions : functions_t,
-             ltac:(let s := assuming_correctness_of_in
-                              callees functions
-                              (spec (cons proc functions)) in
-                   exact s)).
-
 (* Definition packet := *)
 (*   hlist.t ["field1"; …; "ttl"] [Byte.byte; …; Byte.byte]. (* field1, ttl *) *)
 
