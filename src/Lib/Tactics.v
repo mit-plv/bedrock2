@@ -31,16 +31,14 @@ Ltac handle_call :=
   destruct_lists_of_known_length;
   repeat ProgramLogic.straightline.
 
-
 (* stolen from a bedrock2 example file (LAN9250.v) *)
-Ltac split_if :=
+Ltac split_if solver :=
   lazymatch goal with
     |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
     let c := eval hnf in c in
         lazymatch c with
         | Syntax.cmd.cond _ _ _ =>
-          letexists; split;
-          [solve[repeat ProgramLogic.straightline]|split]
+          letexists; split; [solve[solver]|split]
         end
   end.
 

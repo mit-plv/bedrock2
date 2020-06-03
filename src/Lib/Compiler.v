@@ -2,6 +2,9 @@ Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.Notations.
 Require Export Rupicola.Lib.Gensym.
 
+Section with_semantics.
+  Context {semantics : Semantics.parameters}.
+
 Lemma compile_skip :
   forall (locals: Semantics.locals) (mem: Semantics.mem)
     tr R functions T (pred: T -> _ -> Prop) head,
@@ -72,6 +75,7 @@ Proof.
   red.
   eassumption.
 Qed.
+End with_semantics.
 
 Ltac setup_step :=
   match goal with
@@ -104,19 +108,19 @@ Ltac setup :=
     unfold hd
   end.
 
-Ltac lookup_variable locals ptr :=
-  lazymatch locals with
-  | [] => fail
-  | (?k, ptr) :: _ => k
-  | (_, _) :: ?tl => lookup_variable tl ptr
+Ltac lookup_variable m val :=
+  lazymatch m with
+  | map.put _ ?k val => constr:(k)
+  | map.put ?m' _ _ => lookup_variable m' val
   end.
 
 Ltac solve_map_get_goal :=
   lazymatch goal with
-  | [  |- map.get {| value := ?locals; _value_ok := _ |} _ = Some ?val ] =>
-    let var := lookup_variable locals val in
+  | [  |- map.get ?m _ = Some ?val ] =>
+    let var := lookup_variable m val in
     instantiate (1 := var);
-    reflexivity
+    rewrite ?map.get_put_diff by congruence;
+    apply map.get_put_same
   end.
 
 Create HintDb compiler.
@@ -134,7 +138,6 @@ Ltac compile_custom := fail.
 Ltac compile_step :=
   lazymatch goal with
   | [  |- let _ := _ in _ ] => intros
-  | [  |- context[map.put _ _ _] ] => simpl map.put
   | [  |- WeakestPrecondition.cmd _ _ _ _ _ _ ] =>
     first [compile_custom | compile_basics ]
   | [  |- sep _ _ _ ] =>

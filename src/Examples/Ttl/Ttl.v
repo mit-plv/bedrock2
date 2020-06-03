@@ -21,14 +21,13 @@ Ltac program_logic_goal_for_function proc callees :=
 (* Definition packet := *)
 (*   hlist.t ["field1"; …; "ttl"] [Byte.byte; …; Byte.byte]. (* field1, ttl *) *)
 
+Section with_semantics.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width_gt_1 : (1 < Semantics.width)%Z}. (* without this, we have no guarantee that index 2 fits in the allowed integer size *)
+
 Definition packet :=
   Vector.t Semantics.word 2. (* field1, ttl *)
-
-Local Declare Scope sep_scope.
-Local Delimit Scope sep_scope with sep.
-Local Infix "*" := (sep) : sep_scope.
-
-Notation address := Semantics.word.
 
 Notation field1_index := Fin.F1.
 Notation ttl_index := (Fin.FS Fin.F1).
@@ -209,13 +208,17 @@ Derive decr_body SuchThat
 Proof.
   cbv [program_logic_goal_for spec_of_decr].
   setup.
-  assert (Z.of_nat 2 < 2 ^ Semantics.width)%Z by (cbn; lia).
+  assert (Z.of_nat 2 < 2 ^ Semantics.width)%Z
+    by (change (Z.of_nat 2) with (2 ^ 1)%Z;
+        apply Z.pow_lt_mono_r; lia).
   eapply compile_nth with (var := "ttl").
   1-3:repeat compile_step; eauto.
-  do 6 compile_step.
+  do 4 compile_step.
   1-2:repeat compile_step.
   intros.
   eapply compile_replace.
   1-4:repeat compile_step; eauto.
   repeat compile_step.
 Qed.
+
+End with_semantics.

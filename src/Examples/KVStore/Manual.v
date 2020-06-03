@@ -6,6 +6,9 @@ Require Import Rupicola.Examples.KVStore.Tactics.
 Require Import bedrock2.NotationsCustomEntry.
 
 Section examples.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok semantics}.
+
   Section put_sum.
     Context {add : bedrock_func}.
     Definition Int (addr : Semantics.word) (x : Z) : Semantics.mem -> Prop :=
@@ -14,7 +17,7 @@ Section examples.
 
     Context {ops} {key : Type}
             {kvp : kv_parameters}
-            {ok : @kv_parameters_ok ops key Z Int kvp}.
+            {ok : @kv_parameters_ok semantics ops key Z Int kvp}.
 
     Existing Instances map_ok annotated_map_ok key_eq_dec.
     Existing Instances spec_of_map_get spec_of_map_put.
@@ -143,8 +146,9 @@ Section examples.
      *)
     Lemma put_sum_ok : program_logic_goal_for_function! put_sum.
     Proof.
-      repeat straightline. cbv [put_sum_gallina].
-      add_map_annotations.
+      repeat straightline.
+      repeat modified_straightline.
+      cbv [put_sum_gallina]. add_map_annotations.
 
       repeat match goal with
              | _ => progress kv_hammer
@@ -169,7 +173,7 @@ Section examples.
   Section swap.
     Context {ops} {key value : Type} {Value}
             {kvp : kv_parameters}
-            {ok : @kv_parameters_ok ops key value Value kvp}.
+            {ok : @kv_parameters_ok semantics ops key value Value kvp}.
 
     Existing Instances map_ok annotated_map_ok key_eq_dec.
     Existing Instances spec_of_map_get spec_of_map_put.

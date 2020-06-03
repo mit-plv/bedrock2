@@ -33,6 +33,9 @@ Module map.
 End map.
 
 Section KVStore.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok semantics}.
+
   Inductive annotation : Type :=
   | Reserved : address -> annotation
   | Borrowed : address -> annotation

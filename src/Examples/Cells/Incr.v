@@ -1,6 +1,10 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.Cells.Cells.
 
+Section with_semantics.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok semantics}.
+
 Definition incr_gallina_spec (c: cell) :=
   let/d v := get c in
   let/d one := word.of_Z 1 in
@@ -23,3 +27,5 @@ Derive body SuchThat
 Proof.
   compile.
 Qed.
+
+End with_semantics.

@@ -1,9 +1,9 @@
 Require Export Coq.Strings.String.
+Require Export Coq.Numbers.DecimalString.
 Require Export Coq.Lists.List.
 Require Export Coq.ZArith.ZArith.
 Require Export Coq.micromega.Lia.
 Require Export bedrock2.Array.
-Require Export bedrock2.BasicC64Semantics.
 Require Export bedrock2.Map.Separation.
 Require Export bedrock2.ProgramLogic.
 Require Export bedrock2.Map.SeparationLogic.
@@ -29,8 +29,6 @@ Set Nested Proofs Allowed.
 (* TODO: once bedrock2 version is updated, these can be replaced by the
    commented-out generalized version below. *)
 
-Local Existing Instance BasicC64Semantics.parameters.
-Local Existing Instance BasicC64Semantics.parameters_ok.
 (*
 Context {p : Semantics.parameters} {word_size_in_bytes : Z}.
 Context {p_ok : Semantics.parameters_ok p}.
@@ -46,5 +44,3 @@ Notation address := word (only parsing).
 Definition bedrock_func : Type :=
   string * (list string * list string * cmd).
 Coercion name_of_func (f : bedrock_func) := fst f.
-
-(* FIXME update bedrock2 to get rid of Byte.byte *)

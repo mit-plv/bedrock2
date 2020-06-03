@@ -14,7 +14,7 @@ Ltac gen_sym_inc :=
 Ltac gen_sym_fetch prefix :=
   lazymatch goal with
   | H : Counter ?n |- _ =>
-    let x := constr:((prefix ++ DecimalString.NilEmpty.string_of_uint (Nat.to_uint n))%string) in
+    let x := constr:((prefix ++ NilEmpty.string_of_uint (Nat.to_uint n))%string) in
     let x := eval cbv in x in
         constr:(x)
   end.

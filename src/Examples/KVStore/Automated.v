@@ -4,10 +4,12 @@ Require Import Rupicola.Examples.KVStore.Properties.
 Require Import Rupicola.Examples.KVStore.Tactics.
 
 Section KVSwap.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok semantics}.
   Context {ops} {key value : Type} {Value}
           {dummy_value : value}
           {kvp : kv_parameters}
-          {ok : @kv_parameters_ok ops key value Value kvp}.
+          {ok : @kv_parameters_ok semantics ops key value Value kvp}.
 
   Existing Instances ops kvp ok.
   Existing Instances map_ok annotated_map_ok key_eq_dec.
@@ -315,7 +317,11 @@ Section KVSwap.
         split.
         { rewrite ?map.get_put_diff, map.get_put_same by congruence.
           reflexivity. }
-        { reflexivity. } }
+        { cbv [WeakestPrecondition.expr
+                 WeakestPrecondition.expr_body
+                 WeakestPrecondition.literal
+                 Semantics.interp_binop dlet.dlet].
+          rewrite word.eqb_eq; reflexivity. } }
       { rewrite word.unsigned_of_Z_1.
         split; try congruence; [ ]. intros.
         cbn [fst snd].
@@ -338,7 +344,11 @@ Section KVSwap.
         split.
         { rewrite ?map.get_put_diff, map.get_put_same by congruence.
           reflexivity. }
-        { reflexivity. } }
+        { cbv [WeakestPrecondition.expr
+                 WeakestPrecondition.expr_body
+                 WeakestPrecondition.literal
+                 Semantics.interp_binop dlet.dlet].
+          destr (word.eqb (word.of_Z 1) (word.of_Z 0)); congruence. } }
       { rewrite word.unsigned_of_Z_0.
         split; try congruence; [ ]. intros.
         cbn [fst snd].
@@ -527,7 +537,6 @@ Section KVSwap.
         remove_map_annotations. (* Should be done only in the skip case *)
         repeat compile_step. }
       { intros; clear_old_seps.
-        repeat compile_step.
         eapply compile_map_put_replace;
           lazymatch goal with
           | [  |- sep _ _ _ ] => borrow_all

@@ -2,9 +2,11 @@ Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.KVStore.KVStore.
 
 Section properties.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok semantics}.
   Context {ops key value Value}
           {kvp : kv_parameters}
-          {ok : @kv_parameters_ok ops key value Value kvp}.
+          {ok : @kv_parameters_ok semantics ops key value Value kvp}.
   Existing Instances map_ok annotated_map_ok key_eq_dec.
 
   Lemma Map_put_iff1 :

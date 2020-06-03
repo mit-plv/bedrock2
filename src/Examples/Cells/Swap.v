@@ -1,6 +1,10 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.Cells.Cells.
 
+Section with_parameters.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok semantics}.
+
 Definition swap_gallina_spec (c1 c2: cell) :=
   let/d v1 := get c1 in
   let/d v2 := get c2 in
@@ -23,3 +27,4 @@ Derive swap_body SuchThat
 Proof.
   compile.
 Qed.
+End with_parameters.

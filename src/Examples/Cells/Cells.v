@@ -1,5 +1,8 @@
 Require Import Rupicola.Lib.Api.
 
+Section with_semantics.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok semantics}.
 Record cell := { data : Semantics.word }.
 
 Definition cell_value (addr: address) (c: cell) : Semantics.mem -> Prop :=
@@ -86,6 +89,8 @@ Proof.
     end.
     eassumption. }
 Qed.
+End with_semantics.
+Hint Unfold TwoCells : compiler.
 
 Ltac cell_compile_step :=
   gen_sym_inc;
