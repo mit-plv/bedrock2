@@ -5,76 +5,76 @@ Require Export Rupicola.Lib.Gensym.
 Section with_semantics.
   Context {semantics : Semantics.parameters}.
 
-Lemma compile_skip :
-  forall (locals: Semantics.locals) (mem: Semantics.mem)
-    tr R functions T (pred: T -> _ -> Prop) head,
-    sep (pred head) R mem ->
-    (find cmd.skip
-     implementing (pred head)
-     with-locals locals and-memory mem and-trace tr and-rest R
-     and-functions functions).
-Proof.
-  intros.
-  repeat straightline.
-  red; red; eauto.
-Qed.
-
-Lemma compile_constant :
-  forall (locals: Semantics.locals) (mem: Semantics.mem)
-    tr R functions T (pred: T -> _ -> Prop) z k k_impl,
-  forall var,
-    let v := word.of_Z z in
-    (let head := v in
-     find k_impl
-     implementing (pred (k head))
-     with-locals (map.put locals var head)
-     and-memory mem and-trace tr and-rest R
-     and-functions functions) ->
-    (let head := v in
-     find (cmd.seq (cmd.set var (expr.literal z)) k_impl)
-     implementing (pred (dlet head k))
-     with-locals locals and-memory mem and-trace tr and-rest R
-     and-functions functions).
-Proof.
-  intros.
-  repeat straightline.
-  eassumption.
-Qed.
-
-(* FIXME add let pattern to other lemmas *)
-Lemma compile_add :
-  forall (locals: Semantics.locals) (mem: Semantics.mem)
-    tr R (* R' *) functions T (pred: T -> _ -> Prop) x x_var y y_var k k_impl,
-  forall var,
-    (* WeakestPrecondition.dexpr mem locals (expr.var x_var) x -> *)
-    (* WeakestPrecondition.dexpr mem locals (expr.var y_var) y -> *)
-    map.get locals x_var = Some x ->
-    map.get locals y_var = Some y ->
-    let v := word.add x y in
-    (let head := v in
-     find k_impl
-     implementing (pred (k head))
-     with-locals (map.put locals var head)
-     and-memory mem and-trace tr and-rest R
-     and-functions functions) ->
-    (let head := v in
-     find (cmd.seq (cmd.set var (expr.op bopname.add (expr.var x_var) (expr.var y_var)))
-                   k_impl)
-     implementing (pred (dlet head k))
-     with-locals locals and-memory mem and-trace tr and-rest R
-     and-functions functions).
-Proof.
-  intros.
-  repeat straightline.
-  eexists; split.
-  { repeat straightline.
-    exists x; split; try eassumption.
+  Lemma compile_skip :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      tr R functions T (pred: T -> _ -> Prop) head,
+      sep (pred head) R mem ->
+      (find cmd.skip
+       implementing (pred head)
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
     repeat straightline.
-    exists y; split; try eassumption.
-    reflexivity. }
-  red.
-  eassumption.
-Qed.
+    red; red; eauto.
+  Qed.
+
+  Lemma compile_constant :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      tr R functions T (pred: T -> _ -> Prop) z k k_impl,
+    forall var,
+      let v := word.of_Z z in
+      (let head := v in
+       find k_impl
+       implementing (pred (k head))
+       with-locals (map.put locals var head)
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (let head := v in
+       find (cmd.seq (cmd.set var (expr.literal z)) k_impl)
+       implementing (pred (dlet head k))
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline.
+    eassumption.
+  Qed.
+
+  (* FIXME add let pattern to other lemmas *)
+  Lemma compile_add :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      tr R (* R' *) functions T (pred: T -> _ -> Prop) x x_var y y_var k k_impl,
+    forall var,
+      (* WeakestPrecondition.dexpr mem locals (expr.var x_var) x -> *)
+      (* WeakestPrecondition.dexpr mem locals (expr.var y_var) y -> *)
+      map.get locals x_var = Some x ->
+      map.get locals y_var = Some y ->
+      let v := word.add x y in
+      (let head := v in
+       find k_impl
+       implementing (pred (k head))
+       with-locals (map.put locals var head)
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (let head := v in
+       find (cmd.seq (cmd.set var (expr.op bopname.add (expr.var x_var) (expr.var y_var)))
+                     k_impl)
+       implementing (pred (dlet head k))
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline.
+    eexists; split.
+    { repeat straightline.
+        exists x; split; try eassumption.
+        repeat straightline.
+        exists y; split; try eassumption.
+        reflexivity. }
+    red.
+    eassumption.
+  Qed.
 End with_semantics.
 
 Ltac setup_step :=
