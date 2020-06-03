@@ -1,19 +1,49 @@
 Require Import Rupicola.Lib.Api.
 
-Axiom bounds : Type.
-Axiom loose_bounds : bounds.
-Axiom tight_bounds : bounds.
-Axiom list_Z_bounded_by : bounds -> list Z -> Prop.
-Axiom Bignum : forall {p : Semantics.parameters},
-    word -> list word -> Semantics.mem -> Prop.
-Axiom eval : list Z -> Z.
-Axiom M : Z.
-Axiom n : nat.
+(* TODO: generalize *)
+Notation "'liftexists' x .. y ',' P" :=
+  (Lift1Prop.ex1
+     (fun x =>
+        ..
+          (Lift1Prop.ex1
+             (fun y => P)) .. ))
+    (x binder, y binder, only parsing, at level 199).
 
+(* TODO: generalize *)
+(* TODO: fix indentation *)
+(* precondition is more permissively handled than postcondition in order to
+   allow multiple separation-logic preconditions *)
+Local Notation "'forall!' x .. y ',' pre '===>' fname '@' args '==>' post" :=
+(fun functions =>
+   (forall x,
+       .. (forall y,
+              forall R tr mem,
+                pre R mem ->
+                WeakestPrecondition.call
+                  functions fname tr mem args
+                  (postcondition_for post R tr)) ..))
+     (x binder, y binder, only parsing, at level 199).
+
+(* TODO: copy the specs back over into fiat-crypto and prove that they are
+   obeyed to validate the slight rephrasings here *)
 Section __.
   Context {semantics : Semantics.parameters}.
   Context {mul add sub square scmula24 : string}.
-  Context {a24 : Z}.
+  Context {M a24 : Z}.
+
+  (* In practice, these would be instantiated as:
+     bignum := list word
+     eval := (fun ws => Positional.eval weight n (map word.unsigned ws))
+     Bignum := (fun addr xs =>
+                 (emp (length xs = n) * array scalar addr xs)%sep)
+     bounds := list (option zrange)
+     bounded_by := (fun bs ws =>
+                      list_Z_bounded_by bs (map word.unsigned ws)) *)
+  Context {bignum : Type} {eval : bignum -> Z}
+          {Bignum : word -> bignum -> Semantics.mem -> Prop}
+          {bounds : Type}
+          {bounded_by : bounds -> bignum -> Prop}.
+  Context {loose_bounds tight_bounds : bounds}.
 
   Section Gallina.
     Local Open Scope Z_scope.
@@ -24,7 +54,7 @@ Section __.
 
     Definition point : Type := (Z * Z).
 
-    Definition ladderstep
+    Definition ladderstep_gallina
                (X1: Z) (P1 P2: point)  : (point * point) :=
       let '(X2, Z2) := P1 in
       let '(X3, Z3) := P2 in
@@ -46,63 +76,112 @@ Section __.
   End Gallina.
 
   Section Field.
-    (* Notations for the specification of a unary operation *)
-    Local Notation fieldspec_unop name op xbounds outbounds :=
-      (fun functions =>
-         forall (wx : list word) (px pout : word) (wold_out : list word)
-                (t : Semantics.trace) (m : Semantics.mem)
-                (Ra Rr : Semantics.mem -> Prop),
-           let x := List.map word.unsigned wx in
-           list_Z_bounded_by xbounds x ->
-           length (List.map word.unsigned wold_out) = n ->
-           (Bignum px wx * Ra)%sep m ->
-           (Bignum pout wold_out * Rr)%sep m ->
-           WeakestPrecondition.call
-             functions name t m [px; pout]
-             (fun (t' : Semantics.trace) (m' : Interface.map.rep)
-                  (rets : list word) =>
-                t = t' /\ rets = [] /\
-                (exists wout : list word.rep,
-                    let out := List.map word.unsigned wout in
-                    (eval out mod M = ((op (eval x)) mod M))%Z
-                    /\ list_Z_bounded_by outbounds out
-                    /\ (Bignum pout wout * Rr)%sep m'))) (only parsing).
+    Local Notation unop_spec name op xbounds outbounds :=
+      (forall! (x : bignum) (px pout : word) (old_out : bignum),
+          (fun Rr mem =>
+             bounded_by xbounds x
+             /\ (exists Ra, (Bignum px x * Ra)%sep mem)
+             /\ (Bignum pout old_out * Rr)%sep mem)
+            ===> name @ [px; pout] ==>
+            (liftexists out,
+             (emp ((eval out mod M = (op (eval x)) mod M)%Z
+                   /\ bounded_by outbounds out)
+              * Bignum pout out)%sep))
+        (only parsing).
 
-    (* Notations for the specification of a binary operation *)
-    Local Notation fieldspec_binop name op xbounds ybounds outbounds :=
-      (fun functions =>
-         forall (wx wy : list word)
-                (px py pout : word) (wold_out : list word)
-                (t : Semantics.trace) (m : Semantics.mem)
-                (Ra Rr : Semantics.mem -> Prop),
-           let x := List.map word.unsigned wx in
-           let y := List.map word.unsigned wy in
-           list_Z_bounded_by xbounds x ->
-           list_Z_bounded_by ybounds y ->
-           length (List.map word.unsigned wold_out) = n ->
-           (Bignum px wx * Bignum py wy * Ra)%sep m ->
-           (Bignum pout wold_out * Rr)%sep m ->
-           WeakestPrecondition.call
-             functions name t m [px; py; pout]
-             (fun (t' : Semantics.trace) (m' : Interface.map.rep)
-                  (rets : list word) =>
-                t = t' /\ rets = [] /\
-                (exists wout : list word.rep,
-                    let out := List.map word.unsigned wout in
-                    (eval out mod M = ((op (eval x) (eval y)) mod M))%Z
-                    /\ list_Z_bounded_by outbounds out
-                    /\ (Bignum pout wout * Rr)%sep m'))) (only parsing).
+    Local Notation binop_spec name op xbounds ybounds outbounds :=
+      (forall! (x y : bignum) (px py pout : word) (old_out : bignum),
+          (fun Rr mem =>
+             bounded_by xbounds x
+             /\ bounded_by ybounds y
+             /\ (exists Ra, (Bignum px x * Ra)%sep mem)
+             /\ (Bignum pout old_out * Rr)%sep mem)
+            ===> name @ [px; py; pout] ==>
+            (liftexists out,
+             (emp ((eval out mod M = (op (eval x) (eval y)) mod M)%Z
+                   /\ bounded_by outbounds out)
+              * Bignum pout out)%sep)) (only parsing).
 
     Instance spec_of_mul : spec_of mul :=
-      fieldspec_binop mul Z.mul loose_bounds loose_bounds tight_bounds.
+      binop_spec mul Z.mul loose_bounds loose_bounds tight_bounds.
     Instance spec_of_square : spec_of square :=
-      fieldspec_unop square (fun x => Z.mul x x) loose_bounds tight_bounds.
+      unop_spec square (fun x => Z.mul x x) loose_bounds tight_bounds.
     Instance spec_of_add : spec_of add :=
-      fieldspec_binop add Z.add tight_bounds tight_bounds loose_bounds.
+      binop_spec add Z.add tight_bounds tight_bounds loose_bounds.
     Instance spec_of_sub : spec_of sub :=
-      fieldspec_binop sub Z.sub tight_bounds tight_bounds loose_bounds.
+      binop_spec sub Z.sub tight_bounds tight_bounds loose_bounds.
     Instance spec_of_scmula24 : spec_of scmula24 :=
-      fieldspec_unop scmula24 (Z.mul a24) loose_bounds tight_bounds.
+      unop_spec scmula24 (Z.mul a24) loose_bounds tight_bounds.
   End Field.
+  Existing Instances spec_of_mul spec_of_square spec_of_add
+           spec_of_sub spec_of_scmula24.
+
+  Section Separation.
+    Definition bytes_per_word :=
+      Z.of_nat (@Memory.bytes_per Semantics.width access_size.word).
+
+    Definition Point (addr : Semantics.word) (P : point)
+      : Semantics.mem -> Prop :=
+      let px := addr in
+      let py := word.add addr (word.of_Z bytes_per_word) in
+      liftexists X Y,
+      (emp (word.unsigned X = fst P /\ word.unsigned Y = snd P)
+       * scalar px X * scalar py Y)%sep.
+
+    Definition TwoPoints (pP1 pP2 : Semantics.word) (Ps : point * point)
+      : Semantics.mem -> Prop :=
+      (Point pP1 (fst Ps) * Point pP2 (snd Ps))%sep.
+  End Separation.
+
+  Instance spec_of_ladderstep : spec_of "ladderstep" :=
+    forall! (X1 X2 Z2 X3 Z3 A AA B BB E C D DA CB : bignum)
+          (pX1 pX2 pZ2 pX3 pZ3
+               pA pAA pB pBB pE pC pD pDA pCB : Semantics.word),
+      (fun R m =>
+        bounded_by tight_bounds X1
+        /\ bounded_by tight_bounds X2
+        /\ bounded_by tight_bounds Z2
+        /\ bounded_by tight_bounds X3
+        /\ bounded_by tight_bounds Z3
+        /\ (Bignum pX1 X1
+            * Bignum pX2 X2 * Bignum pZ2 Z2
+            * Bignum pX3 X3 * Bignum pZ3 Z3
+            * Bignum pA A * Bignum pAA AA
+            * Bignum pB B * Bignum pBB BB
+            * Bignum pE E * Bignum pC C * Bignum pD D
+            * Bignum pDA DA * Bignum pCB CB
+            * R)%sep m)
+        ===>
+        "ladderstep" @ [pX1; pX2; pZ2; pX3; pZ3; pA; pAA; pB; pBB; pE; pC; pD; pDA; pCB]
+        ==>
+        (liftexists X4 Z4 X5 Z5 (* output values *)
+                    A' AA' B' BB' E' C' D' DA' CB' (* new intermediates *)
+         : bignum,
+           (emp (ladderstep_gallina
+                   (eval X1) (eval X2, eval Z2) (eval X3, eval Z3)
+                 = ((eval X4, eval Z4), (eval X5, eval Z5))
+                 /\ bounded_by tight_bounds X4
+                 /\ bounded_by tight_bounds Z4
+                 /\ bounded_by tight_bounds X5
+                 /\ bounded_by tight_bounds Z5)
+            * Bignum pX1 X1 * Bignum pX2 X4 * Bignum pZ2 Z4
+            * Bignum pX3 X5 * Bignum pZ3 Z5
+            * Bignum pA A' * Bignum pAA AA'
+            * Bignum pB B' * Bignum pBB BB'
+            * Bignum pE E' * Bignum pC C' * Bignum pD D'
+            * Bignum pDA DA' * Bignum pCB CB')%sep).
+
+  Derive ladderstep_body SuchThat
+         (let args := ["pX1"; "pX2"; "pZ2"; "pX3"; "pZ3";
+                          "pA"; "pAA"; "pB"; "pBB"; "pE"; "pC";
+                            "pD"; "pDA"; "pCB"] in
+           let ladderstep := ("ladderstep", (args, [], ladderstep_body)) in
+          program_logic_goal_for
+            ladderstep
+            (ltac:(let x := program_logic_goal_for_function
+                              ladderstep [mul;add;sub;square;scmula24] in
+                   exact x)))
+    As ladderstep_body_correct.
+  Abort.
 
 End __.
