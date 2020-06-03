@@ -1,6 +1,4 @@
-![](https://github.com/mit-plv/rupicola/workflows/Coq/badge.svg)
-
-# Rupicola
+# Rupicola ![](https://github.com/mit-plv/rupicola/workflows/Coq/badge.svg)
 
 Gallina to imperative code compilation, currently in design phase.
 
