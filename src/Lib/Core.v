@@ -26,14 +26,6 @@ Infix "*" := (sep) : sep_scope.
 
 Set Nested Proofs Allowed.
 
-(* TODO: once bedrock2 version is updated, these can be replaced by the
-   commented-out generalized version below. *)
-
-(*
-Context {p : Semantics.parameters} {word_size_in_bytes : Z}.
-Context {p_ok : Semantics.parameters_ok p}.
- *)
-
 Notation word := Semantics.word.
 
 (* FIXME instead of cbn [fst snd], use simpl never hints in the sep case *)
