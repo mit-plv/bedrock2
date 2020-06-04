@@ -512,7 +512,7 @@ Section KVSwap.
       end. }
     { intros.               (* FIXME compile_step *)
       clear_old_seps.
-      compile_step.
+      compile_done.
       autounfold with compiler.
       cbn [fst snd].
       remove_map_annotations. (* FIXME *)
@@ -535,7 +535,7 @@ Section KVSwap.
         clear_old_seps.
         repeat compile_step.
         remove_map_annotations. (* Should be done only in the skip case *)
-        repeat compile_step. }
+        compile_done. }
       { intros; clear_old_seps.
         eapply compile_map_put_replace;
           lazymatch goal with
@@ -586,6 +586,6 @@ Section KVSwap.
           clear_old_seps.
           repeat compile_step.
           remove_map_annotations. (* Should be done only in the skip case *)
-          repeat compile_step. }
+          compile_done. }
   Abort.
 End KVSwap.

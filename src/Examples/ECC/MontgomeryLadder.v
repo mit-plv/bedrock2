@@ -579,7 +579,7 @@ Section __.
     compile_step; clear_old_seps.
 
     (* done *)
-    compile_step.
+    compile_done.
     cbv [LadderStepResult].
     repeat lazymatch goal with
            | |- Lift1Prop.ex1 _ _ => eexists

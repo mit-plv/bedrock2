@@ -126,12 +126,10 @@ Ltac solve_map_get_goal :=
 Create HintDb compiler.
 
 Ltac compile_basics :=
-  (* FIXME compile_skip applies in all cases, so guard it *)
   gen_sym_inc;
   let name := gen_sym_fetch "v" in
   first [simple eapply compile_constant with (var := name) |
-         simple eapply compile_add with (var := name) |
-         simple eapply compile_skip].
+         simple eapply compile_add with (var := name) ].
 
 Ltac compile_custom := fail.
 
@@ -148,5 +146,7 @@ Ltac compile_step :=
   | _ => eauto with compiler
   end.
 
+Ltac compile_done := simple eapply compile_skip; repeat compile_step.
+
 Ltac compile :=
-  setup; repeat compile_step.
+  setup; repeat compile_step; compile_done.

@@ -194,13 +194,10 @@ Section with_semantics.
       by (change (Z.of_nat 2) with (2 ^ 1)%Z;
           apply Z.pow_lt_mono_r; lia).
     eapply compile_nth with (var := "ttl").
-    1-3:repeat compile_step; eauto.
-    do 4 compile_step.
-    1-2:repeat compile_step.
-    intros.
+    all:repeat compile_step.
     eapply compile_replace.
-    1-4:repeat compile_step; eauto.
-    repeat compile_step.
+    all:repeat compile_step.
+    compile_done.
   Qed.
 
 End with_semantics.
