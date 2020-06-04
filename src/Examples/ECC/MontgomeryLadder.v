@@ -471,7 +471,6 @@ Section __.
   Proof.
     cbv [program_logic_goal_for spec_of_ladderstep].
     setup.
-    cleanup. (* TODO: add to setup *)
     compile_step; [ repeat compile_step .. | ].
     compile_step; clear_old_seps.
     compile_step; [ repeat compile_step .. | ].

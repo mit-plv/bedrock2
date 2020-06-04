@@ -107,7 +107,8 @@ Ltac setup :=
       with (postcondition_norets (pred spec) R tr);
     let hd := term_head spec in
     unfold hd
-  end.
+  end;
+  cleanup.
 
 Ltac lookup_variable m val :=
   lazymatch m with
