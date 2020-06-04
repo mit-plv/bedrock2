@@ -32,10 +32,8 @@ deps: bedrock2
 
 cleanall: clean clean-coqutil clean-bedrock2
 
-vofile: Makefile.coq
+%.vo: deps Makefile.coq
 	+make -f Makefile.coq $@
-
-%.vo: deps +vofile
 
 _CoqProject:
 	@echo "-R src Rupicola" > _CoqProject
