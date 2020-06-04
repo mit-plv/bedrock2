@@ -136,6 +136,7 @@ Section __.
         (let head := v in
          forall out m,
            eval out mod M = head ->
+           bounded_by loose_bounds out ->
            sep (Bignum out_ptr out) Rout m ->
            (find k_impl
             implementing (pred (k (eval out mod M)))
@@ -176,6 +177,7 @@ Section __.
         (let head := v in
          forall out m,
            eval out mod M = head ->
+           bounded_by tight_bounds out ->
            sep (Bignum out_ptr out) Rout m ->
            (find k_impl
             implementing (pred (k (eval out mod M)))
@@ -203,7 +205,37 @@ Section __.
     Qed.
   End Compile.
 
+  (* helper for Zpow_mod *)
+  Lemma Zpow_mod_nonneg a b m :
+    0 <= b -> (a ^ b) mod m = ((a mod m) ^ b) mod m.
+  Proof.
+    intros. revert a m.
+    apply natlike_ind with (x:=b); intros;
+      repeat first [ rewrite Z.pow_0_r
+                   | rewrite Z.pow_succ_r by auto
+                   | reflexivity
+                   | solve [auto] ]; [ ].
+    Z.push_mod.
+    match goal with
+      H : context [ (_ ^ _) mod _ = (_ ^ _) mod _ ] |- _ =>
+      rewrite H end.
+    Z.push_pull_mod. reflexivity.
+  Qed.
+
+  (* TODO: upstream to coqutil's Z.pull_mod *)
+  Lemma Zpow_mod a b m : (a ^ b) mod m = ((a mod m) ^ b) mod m.
+  Proof.
+    destruct (Z_le_dec 0 b); auto using Zpow_mod_nonneg; [ ].
+    rewrite !Z.pow_neg_r by lia. reflexivity.
+  Qed.
+
+  (* TODO: replace with Z.pull_mod once Zpow_mod is upstreamed *)
+  Local Ltac pull_mod :=
+    repeat first [ progress Z.pull_mod
+                 | rewrite <-Zpow_mod ].
+
   Ltac field_compile_step :=
+    pull_mod;
     first [ simple eapply compile_add
           | simple eapply compile_square ].
 
@@ -276,9 +308,9 @@ Section __.
     compile_step.
     1-8:repeat compile_step.
     compile_step.
-    (* TODO: need to rewrite ((eval out mod M ^ 2) mod M) to
-       (eval out ^ 2 mod M) for compile_square to apply *)
-    (* eapply compile_square. *)
+    compile_step.
+    1-6:repeat compile_step.
+    compile_step.
   Abort.
 
 End __.
