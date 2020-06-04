@@ -2,6 +2,7 @@ Require Import bedrock2.Syntax bedrock2.BasicCSyntax.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Byte.
+Require Import coqutil.Tactics.Tactics.
 
 Import BinInt String List.ListNotations ZArith.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
@@ -94,6 +95,22 @@ Section WithParameters.
       (exists a v, h = ("st", a, v) /\ l = (map.empty, "MMIOWRITE", [a; v], (map.empty, [])))
       (exists a v, h = ("ld", a, v) /\ l = (map.empty, "MMIOREAD", [a], (map.empty, [v]))).
   Definition mmio_trace_abstraction_relation := List.Forall2 mmio_event_abstraction_relation.
+
+  Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
+        (preprocess [autorewrite with rew_word_morphism],
+         morphism (Properties.word.ring_morph (word := Semantics.word)),
+         constants [Properties.word_cst]).
+
+  Lemma nonzero_because_high_bit_set x (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
+    : word.unsigned x <> 0.
+  Proof.
+    rewrite Properties.word.unsigned_sru_nowrap in H.
+    2: { rewrite word.unsigned_of_Z; exact eq_refl. }
+    intro HX.
+    rewrite HX in H.
+    rewrite word.unsigned_of_Z in H.
+    exact (H eq_refl).
+  Qed.
 
   Ltac provide_next s :=
     match goal with
@@ -320,30 +337,31 @@ Section WithParameters.
        (word.unsigned err = 0 /\ lightbulb_spec.spi_write parameters.word (byte.of_Z (word.unsigned b)) ioh))}).
 
     refine ("spi_write", existT _ (["b"], ["busy"], _) _).
-
     intros. cbv [call]. straightline. intros.
 
     $ busy = (-1).
     $ i = patience.
-
-    eapply While with (c := i) (inv := (fun v T M L =>
-       (* this part of the loop invariant is needed no matter whether it runs again or we exit: *)
+    (*$*) eapply DoWhile with (c := i) (Inv := (fun v T M L =>
        exists BUSY I,
        L = map.put (map.put (map.put map.empty b b0) busy BUSY) i I /\
        v = word.unsigned I /\
+       word.unsigned I <> 0 /\
        M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
-       (* this part of the loop invariant is only needed if we run again: *)
-       (word.unsigned I <> 0 ->
-          lightbulb_spec.spi_write_full _ ^* th /\
-          Z.of_nat (length th) + word.unsigned I = patience)
+       lightbulb_spec.spi_write_full _ ^* th /\
+       Z.of_nat (length th) + word.unsigned I = patience
        )).
+
     1: exact (Z.lt_wf 0).
     { (* invariant holds initially *)
       eexists. eexists.
       split; [reflexivity|].
       split; [reflexivity|].
+      split. {
+        subst v0.
+        rewrite word.unsigned_of_Z. discriminate.
+      }
       split; [reflexivity|].
       eexists; split.
       { rewrite app_nil_l; trivial. }
@@ -355,12 +373,12 @@ Section WithParameters.
       rewrite word.unsigned_of_Z. reflexivity.
     }
     repeat straightline.
-    split; repeat straightline.
-    { (* loop body *)
-      $ i = (expr.op bopname.sub i 1).
 
-      eapply ExtCall with (binds := [busy]) (action := MMIOREAD) (arges := [expr.literal SPI_WRITE_ADDR])
+      (* loop body *)
+      $ i = (expr.op bopname.sub i 1).
+      (*$*) eapply ExtCall with (binds := [busy]) (action := MMIOREAD) (arges := [expr.literal SPI_WRITE_ADDR])
                           (mGive := map.empty).
+
       {
         cbv [WeakestPrecondition.dexprs  WeakestPrecondition.list_map WeakestPrecondition.list_map_body
              WeakestPrecondition.expr WeakestPrecondition.expr_body WeakestPrecondition.literal dlet.dlet].
@@ -388,30 +406,75 @@ Section WithParameters.
       }
       straightline.
 
-      eapply If with (c := (expr.op bopname.sru busy 31)); intros; repeat straightline.
-
-      { (* then branch *)
-        eapply Skip.
-      }
-      { (* else branch *)
-
+      (*$*) eapply If with (c := (expr.op bopname.sru busy 31)); intros; repeat straightline.
+      { (* $ then branch *) eapply Skip. }
+      { (* $ else branch *)
         $ i = (expr.op bopname.xor i i).
-        eapply Skip.
-      }
+        (*$*) eapply Skip. }
 
       (* after the if-then-else, still in loop body *)
-      eapply exec.skip.
+      (*$*) eapply exec.skip.
 
-      (* calculated postcondition of loop body implies loop invariant: *)
+      (* calculated postcondition of loop body implies end-of-loop-body condition: *)
       cbv beta in *.
-      intuition idtac.
-      { (* we took the then-branch *)
-        subst. eexists. split.
+   (* problem: there are two reasons for exiting the loop:
+      1) busy >> constr:(31) == 0 : i.e. device not busy any more, ok to go ahead and write,
+         loop exited by setting i=0 (aka i=i^i)
+      2) timeout, i reached 0 through decrement, record timeout in queue
+
+      In both cases, we want to provide the same after-the-loop code, so we can't do a
+      case split and step through the after-the-loop code twice, like it was done before.
+      Or maybe we could: The first time, we'd instantiate the evar for the command, and
+      the second time we would step through existing code, but I don't want to maintain a
+      second program logic mode where the commands are already given.
+      The original proof did case split first on the outcome of the if, second on whether
+      exiting loop.
+      In the new proof, we need to do case split first on whether we exit the loop, and
+      second on which branch of the if was taken, to make sure we give the after-the-loop
+      code only once.
+
+      Therefore, we need to instantiate "b1" existential (to get to the split on whether
+      it's 0 or not) without first destructing H0, so we need to transform H0 from
+      (cond /\ var1 = val1Then /\ var2 = val2Then) \/ (~cond /\ var1 = val1Else /\ var2 = val2Else)
+      into
+      var1 = if cond then val1Then else val1Else /\ var2 = if cond then val2Then else val2Else.
+      It should be possible to do this automatically but so far we don't have this automation. *)
+      assert (
+          t' = (t ;++ x1);+(map.empty, MMIOREAD, [];+word.of_Z SPI_WRITE_ADDR, (map.empty, [];+val)) /\
+          m' = m /\
+          l' = map.put (map.put (map.put map.empty b b0) busy val)
+                       i (if word.eqb (word.sru val (word.of_Z 31)) (word.of_Z 0)
+                          then (word.xor v3 v3)
+                          else v3) /\
+          mc' = mc) as H0'. {
+        intuition idtac; subst l'.
+        - destruct_one_match.
+          + exfalso. apply H0.
+            apply (f_equal word.unsigned) in E. etransitivity.
+            1: exact E. rewrite word.unsigned_of_Z. reflexivity.
+          + reflexivity.
+        - destruct_one_match.
+          + reflexivity.
+          + exfalso. apply E.
+            apply Properties.word.unsigned_inj.
+            rewrite word.unsigned_of_Z. exact H0.
+      }
+      clear H0.
+      repeat straightline.
+      split; intros.
+      { (* CASE b1 <> 0: stay in loop *)
+        eexists. split.
         { eexists. eexists. split. {
-            cbv -[v1 v2 v3]. reflexivity. (* takes some time, but whatever *)
+            subst l'.
+            cbv -[v1 v2 v3 parameters.word(*<--otherwise different implicits won't be recognized by destruct*)
+                     word.eqb word.xor word.sru word.of_Z].
+            reflexivity. (* takes some time, but whatever *)
           }
           split; [reflexivity|].
+          subst b1.
+          split; [assumption|].
           split; [reflexivity|].
+          subst t'.
           eexists (_ ;++ cons _ nil); split.
           { rewrite <-app_assoc; cbn [app]; f_equal. }
           eexists. split.
@@ -424,8 +487,14 @@ Section WithParameters.
           refine (kleene_step _ _ nil _ (kleene_empty _)).
           repeat econstructor.
           repeat match goal with x:=_|-_=>subst x end.
-          rewrite Properties.word.unsigned_sru_nowrap in H1 by (rewrite word.unsigned_of_Z; exact eq_refl).
-          rewrite word.unsigned_of_Z in H1. unfold not. eapply H1. }
+          destruct_one_match_hyp.
+          { rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent in H0; contradiction. }
+          { intro C. apply E.
+            apply Properties.word.unsigned_inj.
+            rewrite Properties.word.unsigned_sru_nowrap; rewrite !word.unsigned_of_Z.
+            { exact C. }
+            { reflexivity. } }
+          }
           { rewrite app_length, Znat.Nat2Z.inj_add; cbn [app Datatypes.length].
             intros.
             unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
@@ -433,6 +502,8 @@ Section WithParameters.
             ring_simplify.
             rewrite <- Z.add_assoc.
             eapply (proj2 (Z.add_cancel_l _ _ _)).
+            destruct_one_match_hyp.
+            { rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent in H0. contradiction. }
             rewrite word.unsigned_sub.
             rewrite word.unsigned_of_Z. cbv [word.wrap].
             rewrite (Z.mod_small 1). 2: {
@@ -443,6 +514,9 @@ Section WithParameters.
             Lia.blia.
           }
         }
+        subst b1.
+        destruct_one_match_hyp.
+        { rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent in H0. contradiction. }
         subst v1 v2 v3.
         rewrite word.unsigned_sub.
         rewrite word.unsigned_of_Z. cbv [word.wrap].
@@ -452,26 +526,12 @@ Section WithParameters.
         pose proof (Properties.word.unsigned_range x0).
         rewrite Z.mod_small; Lia.blia.
       }
-      { (* we took the else-branch *)
-        subst. eexists. split.
-        { eexists. eexists. split. {
-            cbv -[v1 v2 v3 word.xor]. reflexivity. (* takes some time, but whatever *)
-          }
-          split; [reflexivity|].
-          split; [reflexivity|].
-          eexists (_ ;++ cons _ nil); split.
-          { rewrite <-app_assoc; cbn [app]; f_equal. }
-          eexists. split.
-          { econstructor; try eassumption; right; eauto. }
-          intros X.
-          rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent in X; contradiction. }
-        { rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent.
-          subst v1. pose proof (Properties.word.unsigned_range x0). Lia.blia. }
-      }
-    }
+      { (* CASE b1 = 0: exit loop *)
 
-    eapply If with (c := bedrock_expr:(busy >> constr:(31))); intros.
+    (*$*) eapply If with (c := bedrock_expr:(busy >> constr:(31))); intros.
+
     {
+      (* TODO why doesn't straightline work here? *)
       cbv [WeakestPrecondition.dexpr WeakestPrecondition.expr WeakestPrecondition.expr_body].
       simpl.
       cbv [WeakestPrecondition.get].
@@ -479,19 +539,18 @@ Section WithParameters.
       cbv [WeakestPrecondition.literal dlet.dlet]. reflexivity.
     }
 
-    { (* then branch *)
-      eapply Skip.
-    }
+    { (* $ then branch *) eapply Skip. }
     { (* else branch *)
-      eapply ExtCall with (binds := []) (action := MMIOWRITE)
+      (*$*) eapply ExtCall with (binds := []) (action := MMIOWRITE)
                           (arges := [expr.literal SPI_WRITE_ADDR; expr.var b])
                           (mGive := map.empty).
+
       {
         cbv [WeakestPrecondition.dexprs  WeakestPrecondition.list_map WeakestPrecondition.list_map_body
              WeakestPrecondition.expr WeakestPrecondition.expr_body WeakestPrecondition.literal dlet.dlet
              WeakestPrecondition.get].
         eexists. split.
-        { subst l0. reflexivity. }
+        { subst l'. reflexivity. }
         reflexivity.
       }
       { eapply Properties.map.split_empty_r. reflexivity. }
@@ -519,49 +578,85 @@ Section WithParameters.
       eapply Skip.
     }
 
-    eapply exec.skip.
-    repeat straightline_cleanup.
+    (*$*) eapply exec.skip.
+
     (* prove that computed post implies desired post: *)
+    repeat straightline_cleanup.
     intuition idtac.
     { (* case 1: polling timeout *)
-      case TODO. }
+      repeat straightline.
+      eexists. split. {
+        subst l'. unfold busy. reflexivity.
+      }
+      split; eauto.
+      subst t'.
+      eexists (_ ;++ cons _ nil); split.
+      { rewrite <-app_assoc; cbn [app]; f_equal. }
+      eexists. split.
+      { eapply Forall2_app; eauto.
+        constructor; [|constructor].
+        right; eauto. }
+      eexists. split; trivial.
+      { left; repeat split.
+        { eapply nonzero_because_high_bit_set. assumption. }
+        { (* copied from above -- trace element for "fifo full" *)
+          eapply kleene_app; eauto.
+          refine (kleene_step _ _ nil _ (kleene_empty _)).
+          repeat econstructor.
+          repeat match goal with x:=_|-_=>subst x end.
+          rewrite Properties.word.unsigned_sru_nowrap in H1 by (rewrite word.unsigned_of_Z; exact eq_refl).
+          unfold not.
+          rewrite word.unsigned_of_Z in H1; eapply H1. }
+        { rewrite app_length, Znat.Nat2Z.inj_add; cbn [app Datatypes.length]. subst v3.
+          unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
+          replace 0 with (word.unsigned (word.of_Z 0)) in H0; cycle 1.
+          { rewrite word.unsigned_of_Z; exact eq_refl. }
+          eapply Properties.word.unsigned_inj in H0.
+          subst b1. destruct_one_match_hyp. {
+            exfalso. apply H1. apply (f_equal word.unsigned) in E. etransitivity.
+            1: exact E. rewrite word.unsigned_of_Z. reflexivity.
+          }
+          ring_simplify.
+          subst v2.
+          assert (HA: word.add (word.sub x0 (word.of_Z 1)) (word.of_Z 1) = word.of_Z 1). {
+            match goal with H : _ |- _ => rewrite H; ring end. }
+          ring_simplify in HA; subst.
+          rewrite word.unsigned_of_Z; reflexivity. } } }
     { (* case 2: success *)
       repeat straightline.
       eexists. split. {
         subst l'. unfold busy. reflexivity.
       }
-      split; trivial. subst t0 t'.
-      eexists (_ ;++ (cons _ nil)). split.
-      { rewrite <-app_assoc. cbn [app]. f_equal. }
-      eexists. split.
-      { eapply List.Forall2_app; eauto.
-        constructor.
+    split; trivial. subst t' t'0.
+    eexists (_ ;++ cons _ (cons _ nil)). split.
+    { rewrite <-app_assoc. cbn [app]. f_equal. }
+    eexists. split.
+    { eapply List.Forall2_app; eauto.
+      { constructor.
         { left. eexists _, _; repeat split. }
-        constructor.
-      }
-      eexists; split; trivial.
-      right.
-      split.
-      { f_equal. rewrite Properties.word.unsigned_xor_nowrap; rewrite Z.lxor_nilpotent; reflexivity. }
-      cbv [lightbulb_spec.spi_write].
-      case TODO.
-      (*
-      eexists _, _; split; eauto; []; split; eauto.
-      eexists (cons _ nil), (cons _ nil); split; cbn [app]; eauto.
-      split; repeat econstructor.
-      { repeat match goal with x:=_|-_=>subst x end.
-        rewrite Properties.word.unsigned_sru_nowrap in H by (rewrite word.unsigned_of_Z; exact eq_refl).
-        rewrite word.unsigned_of_Z in H; eapply H. }
-      { cbv [lightbulb_spec.spi_write_enqueue one].
-        repeat f_equal.
-        eapply Properties.word.unsigned_inj.
-        clear -p Hb.
-        pose proof Properties.word.unsigned_range x.
-        change (Semantics.width) with 32 in *.
-        change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
-        rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small by Lia.lia.
-        rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small; Lia.lia. }
-       *)
+        { right; [|constructor].
+          right; eexists _, _; repeat split. } } }
+    eexists; split; trivial.
+    right.
+    split.
+    { f_equal. rewrite Properties.word.unsigned_xor_nowrap; rewrite Z.lxor_nilpotent; reflexivity. }
+    cbv [lightbulb_spec.spi_write].
+    eexists _, _; split; eauto; []; split; eauto.
+    eexists (cons _ nil), (cons _ nil); split; cbn [app]; eauto.
+    split; repeat econstructor.
+    { repeat match goal with x:=_|-_=>subst x end.
+      rewrite Properties.word.unsigned_sru_nowrap in H1 by (rewrite word.unsigned_of_Z; exact eq_refl).
+      rewrite word.unsigned_of_Z in H1; eapply H1. }
+    { cbv [lightbulb_spec.spi_write_enqueue one].
+      repeat f_equal.
+      eapply Properties.word.unsigned_inj.
+      pose proof Properties.word.unsigned_range x.
+      pose proof Properties.word.unsigned_range b0.
+      change (Semantics.width) with 32 in *.
+      change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
+      rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small by Lia.lia.
+      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small; Lia.lia. }
+    }
     }
   Defined.
 
@@ -571,15 +666,15 @@ Section WithParameters.
 (*
      = bedrock_func_body:((busy = (constr:(-1)));
                           (i = (constr:(patience)));
-                          (while i {
-                             (i = (i - constr:(1)));
-                             (io! constr:([];+busy) = MMIOREAD (constr:(expr.literal SPI_WRITE_ADDR)));
-                             (if !busy >> constr:(31) {
-                                (i = (i ^ i));
-                                /*skip*/
-                              });
-                             /*skip*/
-                           });
+                          (constr:(cmd.dowhile
+                                     bedrock_func_body:((i = (i - constr:(1)));
+                                                        (io! constr:([];+busy) = MMIOREAD
+                                                         (constr:(expr.literal SPI_WRITE_ADDR)));
+                                                        (if !busy >> constr:(31) {
+                                                           (i = (i ^ i));
+                                                           /*skip*/
+                                                         });
+                                                        /*skip*/) i));
                           (if !busy >> constr:(31) {
                              (io! constr:([]) = MMIOWRITE (constr:(expr.literal SPI_WRITE_ADDR),
                               constr:(expr.var b)));
@@ -589,5 +684,7 @@ Section WithParameters.
                           /*skip*/)
      : cmd
 *)
+
+  Print Assumptions spi_write. (* all the used program logic rules, cmd.dowhile, but no other TODOs *)
 
 End WithParameters.
