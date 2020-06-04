@@ -48,10 +48,10 @@ Section __.
   Context {loose_bounds tight_bounds : bounds}.
 
   Section Gallina.
-    Local Infix "+" := (fun x y => x + y mod M).
-    Local Infix "-" := (fun x y => x - y mod M).
-    Local Infix "*" := (fun x y => x * y mod M).
-    Local Infix "^" := (fun x y => x ^ y mod M).
+    Local Infix "+" := (fun x y => (x + y) mod M).
+    Local Infix "-" := (fun x y => (x - y) mod M).
+    Local Infix "*" := (fun x y => (x * y) mod M).
+    Local Infix "^" := (fun x y => (x ^ y) mod M).
 
     Definition point : Type := (Z * Z).
 
@@ -95,7 +95,7 @@ Section __.
           (fun Rr mem =>
              bounded_by xbounds x
              /\ bounded_by ybounds y
-             /\ (exists Ra, (Bignum px x * Ra)%sep mem)
+             /\ (exists Ra, (Bignum px x * Bignum py y * Ra)%sep mem)
              /\ (Bignum pout old_out * Rr)%sep mem)
             ===> name @ [px; py; pout] ==>
             (liftexists out,
@@ -119,6 +119,49 @@ Section __.
 
   Section Compile.
 
+    Lemma compile_add :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+        tr R Rin Rout functions T (pred: T -> _ -> Prop)
+        (x y out : bignum) x_ptr x_var y_ptr y_var out_ptr out_var
+        k k_impl,
+        spec_of_add functions ->
+        bounded_by tight_bounds x ->
+        bounded_by tight_bounds y ->
+        (Bignum x_ptr x * Bignum y_ptr y * Rin)%sep mem ->
+        (Bignum out_ptr out * Rout)%sep mem ->
+        map.get locals x_var = Some x_ptr ->
+        map.get locals y_var = Some y_ptr ->
+        map.get locals out_var = Some out_ptr ->
+        let v := (eval x + eval y) mod M in
+        (let head := v in
+         forall out m,
+           eval out mod M = head ->
+           sep (Bignum out_ptr out) Rout m ->
+           (find k_impl
+            implementing (pred (k (eval out mod M)))
+            with-locals locals and-memory m and-trace tr and-rest R
+            and-functions functions)) ->
+        (let head := v in
+         find (cmd.seq
+                 (cmd.call [] add [expr.var x_var; expr.var y_var;
+                                     expr.var out_var])
+                 k_impl)
+         implementing (pred (dlet head k))
+         with-locals locals and-memory mem and-trace tr and-rest R
+         and-functions functions).
+    Proof.
+      repeat straightline'.
+      handle_call; [ solve [eauto] .. | ].
+      sepsimpl.
+      repeat match goal with x := _ mod M |- _ =>
+                                  subst x end.
+      match goal with H : _ mod M = ?x mod M
+                      |- context [dlet (?x mod M)] =>
+                      rewrite <-H
+      end.
+      eauto.
+    Qed.
+
     Lemma compile_square :
       forall (locals: Semantics.locals) (mem: Semantics.mem)
         tr R Rin Rout functions T (pred: T -> _ -> Prop)
@@ -131,12 +174,11 @@ Section __.
         map.get locals out_var = Some out_ptr ->
         let v := (eval x ^ 2) mod M in
         (let head := v in
-         forall m,
-           (exists out,
-               eval out mod M = head
-               /\ sep (Bignum out_ptr out) Rout m) ->
+         forall out m,
+           eval out mod M = head ->
+           sep (Bignum out_ptr out) Rout m ->
            (find k_impl
-            implementing (pred (k head))
+            implementing (pred (k (eval out mod M)))
             with-locals locals and-memory m and-trace tr and-rest R
             and-functions functions)) ->
         (let head := v in
@@ -148,21 +190,22 @@ Section __.
          and-functions functions).
     Proof.
       repeat straightline'.
-      straightline_call;
-        [ ssplit; try ecancel_assumption; solve [eauto]
-        | cbv [postcondition_for] in * ].
-      repeat straightline'.
+      handle_call; [ solve [eauto] .. | ].
       sepsimpl.
       repeat match goal with x := _ mod M |- _ =>
                                   subst x end.
-      match goal with H : _ |- _ => eapply H end.
-      eexists; split; [ | ecancel_assumption ].
-      rewrite Z.pow_2_r. eauto.
+      rewrite Z.pow_2_r in *.
+      match goal with H : _ mod M = ?x mod M
+                      |- context [dlet (?x mod M)] =>
+                      rewrite <-H
+      end.
+      eauto.
     Qed.
   End Compile.
 
   Ltac field_compile_step :=
-    first [simple eapply compile_square ].
+    first [ simple eapply compile_add
+          | simple eapply compile_square ].
 
   Ltac compile_custom ::= field_compile_step.
 
@@ -229,6 +272,13 @@ Section __.
   Proof.
     cbv [program_logic_goal_for spec_of_ladderstep].
     setup.
+    cleanup. (* TODO: add to setup *)
+    compile_step.
+    1-8:repeat compile_step.
+    compile_step.
+    (* TODO: need to rewrite ((eval out mod M ^ 2) mod M) to
+       (eval out ^ 2 mod M) for compile_square to apply *)
+    (* eapply compile_square. *)
   Abort.
 
 End __.

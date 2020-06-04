@@ -1,4 +1,5 @@
 Require Import Rupicola.Lib.Core.
+Require Import Rupicola.Lib.Notations.
 
 Ltac boolean_cleanup :=
   repeat match goal with
@@ -26,10 +27,16 @@ Ltac destruct_lists_of_known_length :=
 (* just a wrapper that calls straightline_call + straightline, and also
    destructs output lists *)
 Ltac handle_call :=
-  ProgramLogic.straightline_call; [ ecancel_assumption | ];
-  repeat ProgramLogic.straightline;
-  destruct_lists_of_known_length;
-  repeat ProgramLogic.straightline.
+  straightline_call;
+  [ ssplit;
+    lazymatch goal with
+    | |- sep _ _ _ => ecancel_assumption
+    | |- exists R, sep _ R _ => eexists; ecancel_assumption
+    | _ => idtac
+    end
+  | cbv [postcondition_for] in *;
+    repeat straightline; destruct_lists_of_known_length;
+    repeat straightline ].
 
 (* stolen from a bedrock2 example file (LAN9250.v) *)
 Ltac split_if solver :=
