@@ -119,6 +119,50 @@ Section __.
 
   Section Compile.
 
+    Lemma compile_mul :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+        tr R Rin Rout functions T (pred: T -> _ -> Prop)
+        (x y out : bignum) x_ptr x_var y_ptr y_var out_ptr out_var
+        k k_impl,
+        spec_of_mul functions ->
+        bounded_by loose_bounds x ->
+        bounded_by loose_bounds y ->
+        (Bignum x_ptr x * Bignum y_ptr y * Rin)%sep mem ->
+        (Bignum out_ptr out * Rout)%sep mem ->
+        map.get locals x_var = Some x_ptr ->
+        map.get locals y_var = Some y_ptr ->
+        map.get locals out_var = Some out_ptr ->
+        let v := (eval x * eval y) mod M in
+        (let head := v in
+         forall out m,
+           eval out mod M = head ->
+           bounded_by tight_bounds out ->
+           sep (Bignum out_ptr out) Rout m ->
+           (find k_impl
+            implementing (pred (k (eval out mod M)))
+            with-locals locals and-memory m and-trace tr and-rest R
+            and-functions functions)) ->
+        (let head := v in
+         find (cmd.seq
+                 (cmd.call [] mul [expr.var x_var; expr.var y_var;
+                                     expr.var out_var])
+                 k_impl)
+         implementing (pred (dlet head k))
+         with-locals locals and-memory mem and-trace tr and-rest R
+         and-functions functions).
+    Proof.
+      repeat straightline'.
+      handle_call; [ solve [eauto] .. | ].
+      sepsimpl.
+      repeat match goal with x := _ mod M |- _ =>
+                                  subst x end.
+      match goal with H : _ mod M = ?x mod M
+                      |- context [dlet (?x mod M)] =>
+                      rewrite <-H
+      end.
+      eauto.
+    Qed.
+
     Lemma compile_add :
       forall (locals: Semantics.locals) (mem: Semantics.mem)
         tr R Rin Rout functions T (pred: T -> _ -> Prop)
@@ -145,6 +189,50 @@ Section __.
         (let head := v in
          find (cmd.seq
                  (cmd.call [] add [expr.var x_var; expr.var y_var;
+                                     expr.var out_var])
+                 k_impl)
+         implementing (pred (dlet head k))
+         with-locals locals and-memory mem and-trace tr and-rest R
+         and-functions functions).
+    Proof.
+      repeat straightline'.
+      handle_call; [ solve [eauto] .. | ].
+      sepsimpl.
+      repeat match goal with x := _ mod M |- _ =>
+                                  subst x end.
+      match goal with H : _ mod M = ?x mod M
+                      |- context [dlet (?x mod M)] =>
+                      rewrite <-H
+      end.
+      eauto.
+    Qed.
+
+    Lemma compile_sub :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+        tr R Rin Rout functions T (pred: T -> _ -> Prop)
+        (x y out : bignum) x_ptr x_var y_ptr y_var out_ptr out_var
+        k k_impl,
+        spec_of_sub functions ->
+        bounded_by tight_bounds x ->
+        bounded_by tight_bounds y ->
+        (Bignum x_ptr x * Bignum y_ptr y * Rin)%sep mem ->
+        (Bignum out_ptr out * Rout)%sep mem ->
+        map.get locals x_var = Some x_ptr ->
+        map.get locals y_var = Some y_ptr ->
+        map.get locals out_var = Some out_ptr ->
+        let v := (eval x - eval y) mod M in
+        (let head := v in
+         forall out m,
+           eval out mod M = head ->
+           bounded_by loose_bounds out ->
+           sep (Bignum out_ptr out) Rout m ->
+           (find k_impl
+            implementing (pred (k (eval out mod M)))
+            with-locals locals and-memory m and-trace tr and-rest R
+            and-functions functions)) ->
+        (let head := v in
+         find (cmd.seq
+                 (cmd.call [] sub [expr.var x_var; expr.var y_var;
                                      expr.var out_var])
                  k_impl)
          implementing (pred (dlet head k))
@@ -236,7 +324,9 @@ Section __.
 
   Ltac field_compile_step :=
     pull_mod;
-    first [ simple eapply compile_add
+    first [ simple eapply compile_mul
+          | simple eapply compile_add
+          | simple eapply compile_sub
           | simple eapply compile_square ].
 
   Ltac compile_custom ::= field_compile_step.
