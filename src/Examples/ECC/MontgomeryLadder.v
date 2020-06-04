@@ -1,4 +1,5 @@
 Require Import Rupicola.Lib.Api.
+Local Open Scope Z_scope.
 
 (* TODO: generalize *)
 Notation "'liftexists' x .. y ',' P" :=
@@ -27,7 +28,8 @@ Local Notation "'forall!' x .. y ',' pre '===>' fname '@' args '==>' post" :=
 (* TODO: copy the specs back over into fiat-crypto and prove that they are
    obeyed to validate the slight rephrasings here *)
 Section __.
-  Context {semantics : Semantics.parameters}.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok semantics}.
   Context {mul add sub square scmula24 : string}.
   Context {M a24 : Z}.
 
@@ -46,7 +48,6 @@ Section __.
   Context {loose_bounds tight_bounds : bounds}.
 
   Section Gallina.
-    Local Open Scope Z_scope.
     Local Infix "+" := (fun x y => x + y mod M).
     Local Infix "-" := (fun x y => x - y mod M).
     Local Infix "*" := (fun x y => x * y mod M).
@@ -133,6 +134,77 @@ Section __.
       (Point pP1 (fst Ps) * Point pP2 (snd Ps))%sep.
   End Separation.
 
+  Section Compile.
+
+    Lemma compile_square :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+        tr R Rin Rout functions T (pred: T -> _ -> Prop)
+        (x out : bignum) x_ptr x_var out_ptr out_var k k_impl,
+        spec_of_square functions ->
+        bounded_by loose_bounds x ->
+        (Bignum x_ptr x * Rin)%sep mem ->
+        (Bignum out_ptr out * Rout)%sep mem ->
+        map.get locals x_var = Some x_ptr ->
+        map.get locals out_var = Some out_ptr ->
+        let v := (eval x ^ 2) mod M in
+        (let head := v in
+         forall m,
+           (exists out,
+               eval out mod M = head
+               /\ sep (Bignum out_ptr out) Rout m) ->
+           (find k_impl
+            implementing (pred (k head))
+            with-locals locals and-memory m and-trace tr and-rest R
+            and-functions functions)) ->
+        (let head := v in
+         find (cmd.seq
+                 (cmd.call [] square [expr.var x_var; expr.var out_var])
+                 k_impl)
+         implementing (pred (dlet head k))
+         with-locals locals and-memory mem and-trace tr and-rest R
+         and-functions functions).
+    Proof.
+      repeat straightline'.
+      straightline_call;
+        [ ssplit; try ecancel_assumption; solve [eauto]
+        | cbv [postcondition_for] in * ].
+      repeat straightline'.
+      sepsimpl.
+      repeat match goal with x := _ mod M |- _ =>
+                                  subst x end.
+      match goal with H : _ |- _ => eapply H end.
+      eexists; split; [ | ecancel_assumption ].
+      rewrite Z.pow_2_r. eauto.
+    Qed.
+  End Compile.
+
+  Ltac field_compile_step :=
+    first [simple eapply compile_square ].
+
+  Ltac compile_custom ::= field_compile_step.
+
+  (* single predicate for all ladderstep end-state information *)
+  Definition LadderStepResult
+             (X1 X2 Z2 X3 Z3 : bignum)
+             (pX1 pX2 pZ2 pX3 pZ3 : Semantics.word)
+             (pA pAA pB pBB pE pC pD pDA pCB : Semantics.word)
+             (result : point * point)
+    : Semantics.mem -> Prop :=
+    (liftexists X4 Z4 X5 Z5 (* output values *)
+                A' AA' B' BB' E' C' D' DA' CB' (* new intermediates *)
+     : bignum,
+       (emp (result = ((eval X4, eval Z4), (eval X5, eval Z5))
+             /\ bounded_by tight_bounds X4
+             /\ bounded_by tight_bounds Z4
+             /\ bounded_by tight_bounds X5
+             /\ bounded_by tight_bounds Z5)
+        * Bignum pX1 X1 * Bignum pX2 X4 * Bignum pZ2 Z4
+        * Bignum pX3 X5 * Bignum pZ3 Z5
+        * Bignum pA A' * Bignum pAA AA'
+        * Bignum pB B' * Bignum pBB BB'
+        * Bignum pE E' * Bignum pC C' * Bignum pD D'
+        * Bignum pDA DA' * Bignum pCB CB')%sep).
+
   Instance spec_of_ladderstep : spec_of "ladderstep" :=
     forall! (X1 X2 Z2 X3 Z3 A AA B BB E C D DA CB : bignum)
           (pX1 pX2 pZ2 pX3 pZ3
@@ -154,22 +226,11 @@ Section __.
         ===>
         "ladderstep" @ [pX1; pX2; pZ2; pX3; pZ3; pA; pAA; pB; pBB; pE; pC; pD; pDA; pCB]
         ==>
-        (liftexists X4 Z4 X5 Z5 (* output values *)
-                    A' AA' B' BB' E' C' D' DA' CB' (* new intermediates *)
-         : bignum,
-           (emp (ladderstep_gallina
-                   (eval X1) (eval X2, eval Z2) (eval X3, eval Z3)
-                 = ((eval X4, eval Z4), (eval X5, eval Z5))
-                 /\ bounded_by tight_bounds X4
-                 /\ bounded_by tight_bounds Z4
-                 /\ bounded_by tight_bounds X5
-                 /\ bounded_by tight_bounds Z5)
-            * Bignum pX1 X1 * Bignum pX2 X4 * Bignum pZ2 Z4
-            * Bignum pX3 X5 * Bignum pZ3 Z5
-            * Bignum pA A' * Bignum pAA AA'
-            * Bignum pB B' * Bignum pBB BB'
-            * Bignum pE E' * Bignum pC C' * Bignum pD D'
-            * Bignum pDA DA' * Bignum pCB CB')%sep).
+        (LadderStepResult
+           X1 X2 Z2 X3 Z3 pX1 pX2 pZ2 pX3 pZ3
+           pA pAA pB pBB pE pC pD pDA pCB
+           (ladderstep_gallina
+              (eval X1) (eval X2, eval Z2) (eval X3, eval Z3))).
 
   Derive ladderstep_body SuchThat
          (let args := ["pX1"; "pX2"; "pZ2"; "pX3"; "pZ3";
@@ -182,6 +243,9 @@ Section __.
                               ladderstep [mul;add;sub;square;scmula24] in
                    exact x)))
     As ladderstep_body_correct.
+  Proof.
+    cbv [program_logic_goal_for spec_of_ladderstep].
+    setup.
   Abort.
 
 End __.
