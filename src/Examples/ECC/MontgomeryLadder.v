@@ -457,6 +457,19 @@ Section __.
            (ladderstep_gallina
               (eval X1) (eval X2, eval Z2) (eval X3, eval Z3))).
 
+  Local Ltac overwrite p :=
+    change (Bignum p) with (Placeholder p) in *;
+    field_compile_step; [ repeat compile_step .. | ];
+    (* if the output we selected was one of the inputs, need to write the
+       Placeholder back into a Bignum for the arguments precondition *)
+    lazymatch goal with
+    | |- sep _ _ _ =>
+      change (Placeholder p) with (Bignum p) in * |- ;
+      solve [repeat compile_step]
+    | _ => idtac
+    end;
+    [ solve [repeat compile_step] .. | intros ].
+
   Derive ladderstep_body SuchThat
          (let args := ["X1"; "X2"; "Z2"; "X3"; "Z3";
                           "A"; "AA"; "B"; "BB"; "E"; "C";
@@ -471,115 +484,23 @@ Section __.
   Proof.
     cbv [program_logic_goal_for spec_of_ladderstep].
     setup.
-    compile_step; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-    compile_step; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-    compile_step; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-    compile_step; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-    compile_step; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-    compile_step; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-    compile_step; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-    compile_step; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-    compile_step; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
+    repeat (compile_step; [ solve [repeat compile_step] ..
+                          | intros ]).
 
-    (* here, we're out of Placeholders; need to decide
+    (* by now, we're out of Placeholders; need to decide (manually for now)
        where output gets stored *)
-    change (Bignum pX3) with (Placeholder pX3) in *.
-    compile_step; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
+    overwrite pX3.
+    overwrite pX3.
+    overwrite pZ3.
+    overwrite pZ3.
+    overwrite pZ3.
+    overwrite pX2.
+    overwrite pZ2.
+    overwrite pZ2.
+    overwrite pZ2.
 
-    change (Bignum pX3) with (Placeholder pX3) in *.
-    compile_step; [ repeat compile_step .. | ];
-      (* since the output we selected was one of the inputs, need to write the
-         Placeholder back into a Bignum for arguments *)
-      lazymatch goal with
-      | |- sep _ _ _ => change (Placeholder pX3) with (Bignum pX3) in * |-;
-                          solve [repeat compile_step]
-      | _ => idtac
-      end; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-
-    change (Bignum pZ3) with (Placeholder pZ3) in *.
-    compile_step; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-
-    change (Bignum pZ3) with (Placeholder pZ3) in *.
-    compile_step; [ repeat compile_step .. | ];
-      (* since the output we selected was one of the inputs, need to write the
-         Placeholder back into a Bignum for arguments *)
-      lazymatch goal with
-      | |- sep _ _ _ => change (Placeholder pZ3) with (Bignum pZ3) in * |- ;
-                          solve [repeat compile_step]
-      | _ => idtac
-      end; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-
-    change (Bignum pZ3) with (Placeholder pZ3) in *.
-    compile_step; [ repeat compile_step .. | ];
-      (* since the output we selected was one of the inputs, need to write the
-         Placeholder back into a Bignum for arguments *)
-      lazymatch goal with
-      | |- sep _ _ _ => change (Placeholder pZ3) with (Bignum pZ3) in * |- ;
-                          solve [repeat compile_step]
-      | _ => idtac
-      end; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-
-    change (Bignum pX2) with (Placeholder pX2) in *.
-    compile_step; [ repeat compile_step .. | ];
-      (* since the output we selected was one of the inputs, need to write the
-         Placeholder back into a Bignum for arguments *)
-      lazymatch goal with
-      | |- sep _ _ _ => change (Placeholder pX2) with (Bignum pX2) in * |- ;
-                          solve [repeat compile_step]
-      | _ => idtac
-      end; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-
-    change (Bignum pZ2) with (Placeholder pZ2) in *.
-    compile_step; [ repeat compile_step .. | ];
-      (* since the output we selected was one of the inputs, need to write the
-         Placeholder back into a Bignum for arguments *)
-      lazymatch goal with
-      | |- sep _ _ _ => change (Placeholder pZ2) with (Bignum pZ2) in * |- ;
-                          solve [repeat compile_step]
-      | _ => idtac
-      end; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-
-    change (Bignum pZ2) with (Placeholder pZ2) in *.
-    compile_step; [ repeat compile_step .. | ];
-      (* since the output we selected was one of the inputs, need to write the
-         Placeholder back into a Bignum for arguments *)
-      lazymatch goal with
-      | |- sep _ _ _ => change (Placeholder pZ2) with (Bignum pZ2) in * |- ;
-                          solve [repeat compile_step]
-      | _ => idtac
-      end; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-
-    change (Bignum pZ2) with (Placeholder pZ2) in *.
-    compile_step; [ repeat compile_step .. | ];
-      (* since the output we selected was one of the inputs, need to write the
-         Placeholder back into a Bignum for arguments *)
-      lazymatch goal with
-      | |- sep _ _ _ => change (Placeholder pZ2) with (Bignum pZ2) in * |- ;
-                          solve [repeat compile_step]
-      | _ => idtac
-      end; [ repeat compile_step .. | ].
-    compile_step; clear_old_seps.
-
-    (* done *)
-    compile_done.
-    cbv [LadderStepResult].
+    (* done! now just prove postcondition *)
+    compile_done. cbv [LadderStepResult].
     repeat lazymatch goal with
            | |- Lift1Prop.ex1 _ _ => eexists
            | |- sep _ _ _ =>
