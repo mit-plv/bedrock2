@@ -164,8 +164,14 @@ Section WithParameters.
     letexists. split.
     { repeat straightline. exact eq_refl. }
     (* evaluate condition then split if *) letexists; split; [solve[repeat straightline]|split].
-    all: repeat straightline.
-    { eexists; split.
+    all: intros.
+    { (* CASE if-condition was true (word.unsigned v0 <> 0), i.e. NOP, loop exit depends on whether timeout *)
+    repeat straightline. (* <-- does split on a postcondition of the form
+                        (word.unsigned br <> 0 -> loop invariant still holds) /\
+                        (word.unsigned br =  0 -> code after loop is fine)
+                        which corresponds to case distinction over whether loop was exited *)
+    { (* SUBCASE loop condition was true (do loop again) *)
+      eexists; split.
       { repeat (split; trivial; []). subst t0.
         eexists (_ ;++ cons _ nil); split; [exact eq_refl|].
         eexists; split.
@@ -187,7 +193,8 @@ Section WithParameters.
           ring. } }
         { split; try eapply Properties.word.decrement_nonzero_lt;
           try eapply Properties.word.unsigned_range; eauto. } }
-    { letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
+    { (* SUBCASE loop condition was false (exit loop because of timeout *)
+      letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
       split; eauto.
       subst t0.
       eexists (_ ;++ cons _ nil); split.
@@ -215,6 +222,9 @@ Section WithParameters.
           ring_simplify in HA; subst.
           ring_simplify.
           rewrite word.unsigned_of_Z; reflexivity. } } }
+    }
+    (* CASE if-condition was false (word.unsigned v0 = 0), i.e. we'll set i=i^i and exit loop *)
+    repeat straightline.
     { subst i.
       rewrite Properties.word.unsigned_xor_nowrap in *; rewrite Z.lxor_nilpotent in *; contradiction. }
     (* evaluate condition then split if *) letexists; split; [solve[repeat straightline]|split].
