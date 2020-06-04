@@ -146,9 +146,8 @@ Section examples.
      *)
     Lemma put_sum_ok : program_logic_goal_for_function! put_sum.
     Proof.
-      repeat straightline.
-      repeat modified_straightline.
-      cbv [put_sum_gallina]. add_map_annotations.
+      repeat straightline'. cbv [put_sum_gallina].
+      add_map_annotations.
 
       repeat match goal with
              | _ => progress kv_hammer

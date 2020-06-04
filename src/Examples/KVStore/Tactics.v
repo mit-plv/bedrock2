@@ -119,41 +119,10 @@ Ltac remove_map_annotations :=
     seprewrite_in unannotate_iff1 H
   end.
 
-(* modification of a few clauses in the straightline tactic (to handle maps
-   where put is not computable) *)
-Ltac modified_straightline :=
-  match goal with
-  | _ => straightline
-  | |- exists x, ?P /\ ?Q =>
-    let x := fresh x in
-    refine (let x := _ in ex_intro (fun x => P /\ Q) x _); split;
-    [ solve [ repeat modified_straightline ] |  ]
-  | |- map.get _ _ = Some ?e' =>
-    let e := rdelta.rdelta e' in
-    is_evar e;
-    (let M := lazymatch goal with
-              | |- @map.get _ _ ?M _ _ = _ => M
-              end in
-     let __ := match M with
-               | Semantics.locals => idtac
-               end in
-     let k := lazymatch goal with
-              | |- map.get _ ?k = _ => k
-              end in
-     once (let v :=
-               multimatch goal with
-                 x := context[@map.put _ _ M _ k ?v] |- _ => v end in
-           unify e v);
-     repeat match goal with
-              x := context[map.put _ k _] |- _ => subst x
-            end;
-     autorewrite with mapsimpl; exact eq_refl)
-  end.
-
 Ltac kv_hammer :=
   repeat match goal with
          | _ => progress subst
-         | _ => modified_straightline
+         | _ => straightline'
          | _ => progress destruct_products
          | _ => progress clear_old_seps
          | H : map.get _ _ = Some _ |- _ => rewrite H in *
@@ -164,7 +133,7 @@ Ltac kv_hammer :=
               destruct map get and only allow one remaining subgoal *)
            destruct_one_match_hyp_of_type (option value);
            destruct_products; try clear_old_seps; try congruence;
-           split_if ltac:(repeat modified_straightline);
+           split_if ltac:(repeat straightline');
            intros; boolean_cleanup; [ ]
          | kvp : @kv_parameters _ _ _ ?value _ |- _ =>
            (* handles case analysis of map-get other than require !err:
@@ -173,7 +142,7 @@ Ltac kv_hammer :=
            destruct_products; try clear_old_seps;
            (* make sure this doesn't work on require !err *)
            (* TODO: why doesn't assert_fails work? *)
-           tryif split_if ltac:(repeat modified_straightline)
+           tryif split_if ltac:(repeat straightline')
            then fail else idtac;
            boolean_cleanup
          | H : _ |- _ =>

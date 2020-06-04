@@ -65,15 +65,25 @@ Ltac sepsimpl_step' :=
   | |- sep _ (fun m => emp _ m) _ => apply sep_emp_r
   | |- sep (Lift1Prop.ex1 _) _ _ => apply sep_ex1_l
   | |- sep _ (Lift1Prop.ex1 _) _ => apply sep_ex1_r
+  | |- sep (fun m => Lift1Prop.ex1 _ m) _ _ => apply sep_ex1_l
+  | |- sep _ (fun m => Lift1Prop.ex1 _ m) _ => apply sep_ex1_r
   | |- emp _ _ => split; [ congruence | ]
+  end.
+
+Ltac sepsimpl_step_no_comm :=
+  match goal with
+  | _ => sepsimpl_step'
+  | |- sep (sep _ _) _ _ => apply sep_assoc; sepsimpl_step'
+  | |- sep (sep (sep _ _) _) _ _ =>
+    apply sep_assoc; apply sep_assoc; sepsimpl_step'
   end.
 
 Ltac sepsimpl_step :=
   match goal with
-  | _ => sepsimpl_step'
-  | |- sep (sep _ _) _ _ => apply sep_assoc; sepsimpl_step'
-  | |- sep _ (sep _ _) _ => apply sep_comm, sep_assoc; sepsimpl_step'
-  | |- sep _ _ _ => apply sep_comm; sepsimpl_step'
+  | _ => sepsimpl_step_no_comm
+  | |- sep _ (sep _ _) _ =>
+    apply sep_comm, sep_assoc; sepsimpl_step_no_comm
+  | |- sep _ _ _ => apply sep_comm; sepsimpl_step_no_comm
   end.
 
 Ltac sepsimpl_in H :=
@@ -90,18 +100,33 @@ Ltac sepsimpl_in H :=
     eapply sep_ex1_l in H; destruct H
   | sep _ (Lift1Prop.ex1 _) _ =>
     eapply sep_ex1_r in H; destruct H
+  | sep (fun m => Lift1Prop.ex1 _ m) _ _ =>
+    eapply sep_ex1_l in H; destruct H
+  | sep _ (fun m => Lift1Prop.ex1 _ m) _ =>
+    eapply sep_ex1_r in H; destruct H
   end.
 
-Ltac sepsimpl_hyps_step :=
+Ltac sepsimpl_hyps_step_no_comm :=
   match goal with
   | H : False |- _ => tauto
   | H : emp _ _ |- _ => cbv [emp] in H; destruct H
   | H : Lift1Prop.ex1 _ _ |- _ => destruct H
   | H : sep (sep ?p ?q) _ _ |- _ =>
     eapply (sep_assoc p q) in H; sepsimpl_in H
+  | H : sep (sep (sep ?p ?q) ?r) _ _ |- _ =>
+    eapply (sep_assoc (sep p q) r) in H;
+    eapply (sep_assoc p q) in H;
+    sepsimpl_in H
   | H : sep _ _ _ |- _ => sepsimpl_in H
+  end.
+
+Ltac sepsimpl_hyps_step :=
+  match goal with
+  | _ => sepsimpl_hyps_step_no_comm
   | H : sep _ (sep ?p ?q) _ |- _ =>
-    eapply sep_comm, (sep_assoc p q) in H; sepsimpl_in H
+    (* reverse order and try simplifying again *)
+    eapply sep_comm, (sep_assoc p q) in H;
+    sepsimpl_hyps_step_no_comm
   end.
 
 Ltac sepsimpl_hyps :=
@@ -113,6 +138,41 @@ Ltac sepsimpl :=
                | match goal with |- _ /\ _ => split end
                | progress sepsimpl_step
                | progress sepsimpl_hyps_step ].
+
+(* modification of a few clauses in the straightline tactic (to handle maps
+   where put is not computable) *)
+Ltac straightline' :=
+  match goal with
+  | _ => straightline
+  | |- exists x, ?P /\ ?Q =>
+    let x := fresh x in
+    refine (let x := _ in ex_intro (fun x => P /\ Q) x _); split;
+    [ solve [ repeat straightline' ] |  ]
+  | |- map.get _ _ = Some ?e' =>
+    let e := rdelta.rdelta e' in
+    is_evar e;
+    (let M := lazymatch goal with
+              | |- @map.get _ _ ?M _ _ = _ => M
+              end in
+     let __ := match M with
+               | Semantics.locals => idtac
+               end in
+     let k := lazymatch goal with
+              | |- map.get _ ?k = _ => k
+              end in
+     once (let v :=
+               multimatch goal with
+                 x := context[@map.put _ _ M _ k ?v] |- _ => v end in
+           unify e v);
+     repeat match goal with
+              x := context[map.put _ k _] |- _ => subst x
+            end;
+     autorewrite with mapsimpl; exact eq_refl)
+  | |- map.get _ _ = Some ?v =>
+    let v' := rdelta.rdelta v in
+    is_evar v'; change_no_check v with v'; eassumption
+  end.
+
 
 (* Notations for program_logic_goal_for_function *)
 Local Notation function_t :=
