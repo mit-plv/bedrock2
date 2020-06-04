@@ -320,6 +320,47 @@ Section __.
       end.
       eauto.
     Qed.
+
+    Lemma compile_scmula24 :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+        tr R Rin Rout functions T (pred: T -> _ -> Prop)
+        (x out : bignum) x_ptr x_var out_ptr out_var k k_impl,
+        spec_of_scmula24 functions ->
+        bounded_by loose_bounds x ->
+        (Bignum x_ptr x * Rin)%sep mem ->
+        (Placeholder out_ptr out * Rout)%sep mem ->
+        map.get locals x_var = Some x_ptr ->
+        map.get locals out_var = Some out_ptr ->
+        let v := (a24 * eval x) mod M in
+        (let head := v in
+         forall out m,
+           eval out mod M = head ->
+           bounded_by tight_bounds out ->
+           sep (Bignum out_ptr out) Rout m ->
+           (find k_impl
+            implementing (pred (k (eval out mod M)))
+            with-locals locals and-memory m and-trace tr and-rest R
+            and-functions functions)) ->
+        (let head := v in
+         find (cmd.seq
+                 (cmd.call [] scmula24 [expr.var x_var; expr.var out_var])
+                 k_impl)
+         implementing (pred (dlet head k))
+         with-locals locals and-memory mem and-trace tr and-rest R
+         and-functions functions).
+    Proof.
+      cbv [Placeholder] in *.
+      repeat straightline'.
+      handle_call; [ solve [eauto] .. | ].
+      sepsimpl.
+      repeat match goal with x := _ mod M |- _ =>
+                                  subst x end.
+      match goal with H : _ mod M = ?x mod M
+                      |- context [dlet (?x mod M)] =>
+                      rewrite <-H
+      end.
+      eauto.
+    Qed.
   End Compile.
 
   (* helper for Zpow_mod *)
@@ -357,11 +398,16 @@ Section __.
     first [ simple eapply compile_mul
           | simple eapply compile_add
           | simple eapply compile_sub
-          | simple eapply compile_square ].
+          | simple eapply compile_square
+          | simple eapply compile_scmula24 ].
 
   Ltac compile_custom ::= field_compile_step.
 
   (* single predicate for all ladderstep end-state information *)
+  (* N.B. it's important to leave the associativity of the predicate so that the
+     emp is separated from the rest. This way, sepsimpl can easily pull it
+     out. If sepsimpl is improved to handle very nested emps, this will not be
+     necessary. *)
   Definition LadderStepResult
              (X1 X2 Z2 X3 Z3 : bignum)
              (pX1 pX2 pZ2 pX3 pZ3 : Semantics.word)
@@ -371,17 +417,18 @@ Section __.
     (liftexists X4 Z4 X5 Z5 (* output values *)
                 A' AA' B' BB' E' C' D' DA' CB' (* new intermediates *)
      : bignum,
-       (emp (result = ((eval X4, eval Z4), (eval X5, eval Z5))
+       (emp (result = ((eval X4 mod M, eval Z4 mod M),
+                       (eval X5 mod M, eval Z5 mod M))
              /\ bounded_by tight_bounds X4
              /\ bounded_by tight_bounds Z4
              /\ bounded_by tight_bounds X5
              /\ bounded_by tight_bounds Z5)
-        * Bignum pX1 X1 * Bignum pX2 X4 * Bignum pZ2 Z4
-        * Bignum pX3 X5 * Bignum pZ3 Z5
-        * Bignum pA A' * Bignum pAA AA'
-        * Bignum pB B' * Bignum pBB BB'
-        * Bignum pE E' * Bignum pC C' * Bignum pD D'
-        * Bignum pDA DA' * Bignum pCB CB')%sep).
+        * (Bignum pX1 X1 * Bignum pX2 X4 * Bignum pZ2 Z4
+           * Bignum pX3 X5 * Bignum pZ3 Z5
+           * Bignum pA A' * Bignum pAA AA'
+           * Bignum pB B' * Bignum pBB BB'
+           * Bignum pE E' * Bignum pC C' * Bignum pD D'
+           * Bignum pDA DA' * Bignum pCB CB'))%sep).
 
   Instance spec_of_ladderstep : spec_of "ladderstep" :=
     forall! (X1 X2 Z2 X3 Z3 A AA B BB E C D DA CB : bignum)
@@ -498,8 +545,82 @@ Section __.
       end; [ repeat compile_step .. | ].
     compile_step; clear_old_seps.
 
-    (* Next up: scmula24 *)
+    change (Bignum pZ2) with (Placeholder pZ2) in *.
+    compile_step; [ repeat compile_step .. | ];
+      (* since the output we selected was one of the inputs, need to write the
+         Placeholder back into a Bignum for arguments *)
+      lazymatch goal with
+      | |- sep _ _ _ => change (Placeholder pZ2) with (Bignum pZ2) in * |- ;
+                          solve [repeat compile_step]
+      | _ => idtac
+      end; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
 
-  Abort.
+    change (Bignum pZ2) with (Placeholder pZ2) in *.
+    compile_step; [ repeat compile_step .. | ];
+      (* since the output we selected was one of the inputs, need to write the
+         Placeholder back into a Bignum for arguments *)
+      lazymatch goal with
+      | |- sep _ _ _ => change (Placeholder pZ2) with (Bignum pZ2) in * |- ;
+                          solve [repeat compile_step]
+      | _ => idtac
+      end; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
 
+    change (Bignum pZ2) with (Placeholder pZ2) in *.
+    compile_step; [ repeat compile_step .. | ];
+      (* since the output we selected was one of the inputs, need to write the
+         Placeholder back into a Bignum for arguments *)
+      lazymatch goal with
+      | |- sep _ _ _ => change (Placeholder pZ2) with (Bignum pZ2) in * |- ;
+                          solve [repeat compile_step]
+      | _ => idtac
+      end; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+
+    (* done *)
+    compile_step.
+    cbv [LadderStepResult].
+    repeat lazymatch goal with
+           | |- Lift1Prop.ex1 _ _ => eexists
+           | |- sep _ _ _ =>
+             first [ progress sepsimpl
+                   | ecancel_assumption ]
+           | _ => idtac
+           end.
+    all:lazymatch goal with
+        | |- bounded_by _ _ => solve [auto with compiler]
+        | _ => idtac
+        end.
+    reflexivity.
+  Qed.
 End __.
+
+(*
+Require Import bedrock2.NotationsCustomEntry.
+Require Import bedrock2.NotationsInConstr.
+Print ladderstep_body.
+*)
+(* ladderstep_body =
+ *  fun mul add sub square scmula24 : string =>
+ *  (cmd.call [] add [expr.var "pX2"; expr.var "pZ2"; expr.var "pA"];;
+ *  cmd.call [] square [expr.var "pA"; expr.var "pAA"];;
+ *  cmd.call [] sub [expr.var "pX2"; expr.var "pZ2"; expr.var "pB"];;
+ *  cmd.call [] square [expr.var "pB"; expr.var "pBB"];;
+ *  cmd.call [] sub [expr.var "pAA"; expr.var "pBB"; expr.var "pE"];;
+ *  cmd.call [] add [expr.var "pX3"; expr.var "pZ3"; expr.var "pC"];;
+ *  cmd.call [] sub [expr.var "pX3"; expr.var "pZ3"; expr.var "pD"];;
+ *  cmd.call [] mul [expr.var "pD"; expr.var "pA"; expr.var "pDA"];;
+ *  cmd.call [] mul [expr.var "pC"; expr.var "pB"; expr.var "pCB"];;
+ *  cmd.call [] add [expr.var "pDA"; expr.var "pCB"; expr.var "pX3"];;
+ *  cmd.call [] square [expr.var "pX3"; expr.var "pX3"];;
+ *  cmd.call [] sub [expr.var "pDA"; expr.var "pCB"; expr.var "pZ3"];;
+ *  cmd.call [] square [expr.var "pZ3"; expr.var "pZ3"];;
+ *  cmd.call [] mul [expr.var "pX1"; expr.var "pZ3"; expr.var "pZ3"];;
+ *  cmd.call [] mul [expr.var "pAA"; expr.var "pBB"; expr.var "pX2"];;
+ *  cmd.call [] scmula24 [expr.var "pE"; expr.var "pZ2"];;
+ *  cmd.call [] add [expr.var "pAA"; expr.var "pZ2"; expr.var "pZ2"];;
+ *  cmd.call [] mul [expr.var "pE"; expr.var "pZ2"; expr.var "pZ2"];;
+ *  /*skip*/)%bedrock_cmd
+ *      : string -> string -> string -> string -> string -> cmd
+ *)
