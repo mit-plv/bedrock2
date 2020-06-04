@@ -377,8 +377,6 @@ Section __.
           | simple eapply compile_square
           | simple eapply compile_scmula24 ].
 
-  Ltac compile_custom ::= field_compile_step.
-
   (* single predicate for all ladderstep end-state information *)
   (* N.B. it's important to leave the associativity of the predicate so that the
      emp is separated from the rest. This way, sepsimpl can easily pull it
@@ -433,18 +431,26 @@ Section __.
            (ladderstep_gallina
               (eval X1) (eval X2, eval Z2) (eval X3, eval Z3))).
 
-  Local Ltac overwrite p :=
-    change (Bignum p) with (Placeholder p) in *;
+  Ltac compile_custom ::=
     field_compile_step; [ repeat compile_step .. | ];
     (* if the output we selected was one of the inputs, need to write the
        Placeholder back into a Bignum for the arguments precondition *)
     lazymatch goal with
     | |- sep _ _ _ =>
-      change (Placeholder p) with (Bignum p) in * |- ;
+      change Placeholder with Bignum in * |- ;
       solve [repeat compile_step]
     | _ => idtac
     end;
     [ solve [repeat compile_step] .. | intros ].
+
+  (* only apply compile_step when repeat_compile_step solves all the side
+     conditions but one *)
+  Local Ltac safe_compile_step :=
+    compile_step; [ solve [repeat compile_step] .. | ].
+
+  Local Ltac overwrite p :=
+    change (Bignum p) with (Placeholder p) in *;
+    safe_compile_step.
 
   Derive ladderstep_body SuchThat
          (let args := ["X1"; "X2"; "Z2"; "X3"; "Z3";
@@ -460,8 +466,7 @@ Section __.
   Proof.
     cbv [program_logic_goal_for spec_of_ladderstep].
     setup.
-    repeat (compile_step; [ solve [repeat compile_step] ..
-                          | intros ]).
+    repeat safe_compile_step.
 
     (* by now, we're out of Placeholders; need to decide (manually for now)
        where output gets stored *)
