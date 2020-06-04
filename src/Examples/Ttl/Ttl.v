@@ -165,19 +165,9 @@ Section with_semantics.
   Hint Unfold Packet : compiler.
   Opaque dlet.
 
-  Notation "'forall!' x .. y ',' pre '===>' fname '@' args '==>' post" :=
-    (fun functions =>
-       (forall x,
-           .. (forall y,
-                  forall R tr mem,
-                    (pre * R)%sep mem ->
-                    WeakestPrecondition.call
-                      functions fname tr mem args
-                      (postcondition_for post R tr)) ..))
-         (x binder, y binder, only parsing, at level 199).
   Instance spec_of_decr : spec_of "decr" :=
     forall! pp p,
-      Packet pp p ===> "decr" @ [pp] ==> Packet pp (decr_gallina p).
+      (sep (Packet pp p)) ===> "decr" @ [pp] ===> Packet pp (decr_gallina p).
 
   (* TODO: something like program_logic_goal_for_function! *)
   Derive decr_body SuchThat

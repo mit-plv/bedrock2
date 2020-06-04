@@ -23,3 +23,24 @@ Notation "'find' body 'implementing' spec 'with-locals' locals 'and-memory' mem 
      (WeakestPrecondition.call fns)
      body tr mem locals
      (postcondition_norets spec R tr)) (at level 0).
+
+Notation "'liftexists' x .. y ',' P" :=
+  (Lift1Prop.ex1
+     (fun x =>
+        ..
+          (Lift1Prop.ex1
+             (fun y => P)) .. ))
+    (x binder, y binder, only parsing, at level 199).
+
+(* precondition is more permissively handled than postcondition in order to
+   non-separation-logic (or multiple separation-logic) preconditions *)
+Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
+(fun functions =>
+   (forall x,
+       .. (forall y,
+              forall R tr mem,
+                pre R mem ->
+                WeakestPrecondition.call
+                  functions fname tr mem args
+                  (postcondition_for post R tr)) ..))
+     (x binder, y binder, only parsing, at level 199).

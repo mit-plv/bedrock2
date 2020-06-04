@@ -1,30 +1,6 @@
 Require Import Rupicola.Lib.Api.
 Local Open Scope Z_scope.
 
-(* TODO: generalize *)
-Notation "'liftexists' x .. y ',' P" :=
-  (Lift1Prop.ex1
-     (fun x =>
-        ..
-          (Lift1Prop.ex1
-             (fun y => P)) .. ))
-    (x binder, y binder, only parsing, at level 199).
-
-(* TODO: generalize *)
-(* TODO: fix indentation *)
-(* precondition is more permissively handled than postcondition in order to
-   allow multiple separation-logic preconditions *)
-Local Notation "'forall!' x .. y ',' pre '===>' fname '@' args '==>' post" :=
-(fun functions =>
-   (forall x,
-       .. (forall y,
-              forall R tr mem,
-                pre R mem ->
-                WeakestPrecondition.call
-                  functions fname tr mem args
-                  (postcondition_for post R tr)) ..))
-     (x binder, y binder, only parsing, at level 199).
-
 (* TODO: copy the specs back over into fiat-crypto and prove that they are
    obeyed to validate the slight rephrasings here *)
 Section __.
@@ -100,7 +76,7 @@ Section __.
              bounded_by xbounds x
              /\ (exists Ra, (Bignum px x * Ra)%sep mem)
              /\ (Bignum pout old_out * Rr)%sep mem)
-            ===> name @ [px; pout] ==>
+            ===> name @ [px; pout] ===>
             (liftexists out,
              (emp ((eval out mod M = (op (eval x)) mod M)%Z
                    /\ bounded_by outbounds out)
@@ -114,7 +90,7 @@ Section __.
              /\ bounded_by ybounds y
              /\ (exists Ra, (Bignum px x * Bignum py y * Ra)%sep mem)
              /\ (Bignum pout old_out * Rr)%sep mem)
-            ===> name @ [px; py; pout] ==>
+            ===> name @ [px; py; pout] ===>
             (liftexists out,
              (emp ((eval out mod M = (op (eval x) (eval y)) mod M)%Z
                    /\ bounded_by outbounds out)
@@ -450,7 +426,7 @@ Section __.
             * Placeholder pCB CB * R)%sep m)
         ===>
         "ladderstep" @ [pX1; pX2; pZ2; pX3; pZ3; pA; pAA; pB; pBB; pE; pC; pD; pDA; pCB]
-        ==>
+        ===>
         (LadderStepResult
            X1 X2 Z2 X3 Z3 pX1 pX2 pZ2 pX3 pZ3
            pA pAA pB pBB pE pC pD pDA pCB
