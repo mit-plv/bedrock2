@@ -458,9 +458,9 @@ Section __.
               (eval X1) (eval X2, eval Z2) (eval X3, eval Z3))).
 
   Derive ladderstep_body SuchThat
-         (let args := ["pX1"; "pX2"; "pZ2"; "pX3"; "pZ3";
-                          "pA"; "pAA"; "pB"; "pBB"; "pE"; "pC";
-                            "pD"; "pDA"; "pCB"] in
+         (let args := ["X1"; "X2"; "Z2"; "X3"; "Z3";
+                          "A"; "AA"; "B"; "BB"; "E"; "C";
+                            "D"; "DA"; "CB"] in
            let ladderstep := ("ladderstep", (args, [], ladderstep_body)) in
           program_logic_goal_for
             ladderstep
@@ -603,24 +603,24 @@ Print ladderstep_body.
 *)
 (* ladderstep_body =
  *  fun mul add sub square scmula24 : string =>
- *  (cmd.call [] add [expr.var "pX2"; expr.var "pZ2"; expr.var "pA"];;
- *  cmd.call [] square [expr.var "pA"; expr.var "pAA"];;
- *  cmd.call [] sub [expr.var "pX2"; expr.var "pZ2"; expr.var "pB"];;
- *  cmd.call [] square [expr.var "pB"; expr.var "pBB"];;
- *  cmd.call [] sub [expr.var "pAA"; expr.var "pBB"; expr.var "pE"];;
- *  cmd.call [] add [expr.var "pX3"; expr.var "pZ3"; expr.var "pC"];;
- *  cmd.call [] sub [expr.var "pX3"; expr.var "pZ3"; expr.var "pD"];;
- *  cmd.call [] mul [expr.var "pD"; expr.var "pA"; expr.var "pDA"];;
- *  cmd.call [] mul [expr.var "pC"; expr.var "pB"; expr.var "pCB"];;
- *  cmd.call [] add [expr.var "pDA"; expr.var "pCB"; expr.var "pX3"];;
- *  cmd.call [] square [expr.var "pX3"; expr.var "pX3"];;
- *  cmd.call [] sub [expr.var "pDA"; expr.var "pCB"; expr.var "pZ3"];;
- *  cmd.call [] square [expr.var "pZ3"; expr.var "pZ3"];;
- *  cmd.call [] mul [expr.var "pX1"; expr.var "pZ3"; expr.var "pZ3"];;
- *  cmd.call [] mul [expr.var "pAA"; expr.var "pBB"; expr.var "pX2"];;
- *  cmd.call [] scmula24 [expr.var "pE"; expr.var "pZ2"];;
- *  cmd.call [] add [expr.var "pAA"; expr.var "pZ2"; expr.var "pZ2"];;
- *  cmd.call [] mul [expr.var "pE"; expr.var "pZ2"; expr.var "pZ2"];;
+ *  (cmd.call [] add [expr.var "X2"; expr.var "Z2"; expr.var "A"];;
+ *   cmd.call [] square [expr.var "A"; expr.var "AA"];;
+ *   cmd.call [] sub [expr.var "X2"; expr.var "Z2"; expr.var "B"];;
+ *   cmd.call [] square [expr.var "B"; expr.var "BB"];;
+ *   cmd.call [] sub [expr.var "AA"; expr.var "BB"; expr.var "E"];;
+ *   cmd.call [] add [expr.var "X3"; expr.var "Z3"; expr.var "C"];;
+ *   cmd.call [] sub [expr.var "X3"; expr.var "Z3"; expr.var "D"];;
+ *   cmd.call [] mul [expr.var "D"; expr.var "A"; expr.var "DA"];;
+ *   cmd.call [] mul [expr.var "C"; expr.var "B"; expr.var "CB"];;
+ *   cmd.call [] add [expr.var "DA"; expr.var "CB"; expr.var "X3"];;
+ *   cmd.call [] square [expr.var "X3"; expr.var "X3"];;
+ *   cmd.call [] sub [expr.var "DA"; expr.var "CB"; expr.var "Z3"];;
+ *   cmd.call [] square [expr.var "Z3"; expr.var "Z3"];;
+ *   cmd.call [] mul [expr.var "X1"; expr.var "Z3"; expr.var "Z3"];;
+ *   cmd.call [] mul [expr.var "AA"; expr.var "BB"; expr.var "X2"];;
+ *   cmd.call [] scmula24 [expr.var "E"; expr.var "Z2"];;
+ *   cmd.call [] add [expr.var "AA"; expr.var "Z2"; expr.var "Z2"];;
+ *   cmd.call [] mul [expr.var "E"; expr.var "Z2"; expr.var "Z2"];;
  *  /*skip*/)%bedrock_cmd
  *      : string -> string -> string -> string -> string -> cmd
  *)
