@@ -1,6 +1,7 @@
 Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.Notations.
 Require Export Rupicola.Lib.Gensym.
+Require Import Rupicola.Lib.Tactics.
 
 Section with_semantics.
   Context {semantics : Semantics.parameters}.
@@ -137,6 +138,7 @@ Ltac compile_step :=
   lazymatch goal with
   | [  |- let _ := _ in _ ] => intros
   | [  |- WeakestPrecondition.cmd _ _ _ _ _ _ ] =>
+    try clear_old_seps;
     first [compile_custom | compile_basics ]
   | [  |- sep _ _ _ ] =>
     autounfold with compiler in *;
