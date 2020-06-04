@@ -80,6 +80,10 @@ Import TailRecursion.
 
 Require Import bedrock2.Semantics.
 
+Module cmd.
+  Axiom dowhile: cmd -> expr -> cmd.
+End cmd.
+
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
 
@@ -231,7 +235,12 @@ Section WithParameters.
      which might seem cumbersome at first sight, but it's actually useful, because
      this allows us to control the shape of the symbolic state both before the loop
      body and before code after the loop, and share as many formulas between the
-     two as desired. *)
+     two as desired.
+     However, note that in with this lemma, "rest" has to be executed by just assuming
+     inv, whereas in do-while loops or in the atleastonce lemma, we can chain the
+     execution of "rest" into the postcondition of "body", and therefore can get an
+     auto-computed condition to continue with "rest", rather than having to spell out
+     all of this in inv. *)
   Lemma While: forall (measure : Type) (lt : measure -> measure -> Prop)
                       (inv : measure -> trace -> mem -> locals -> Prop)
                       (v_init: measure) post metrics t m l rest c body (e: env),
@@ -245,6 +254,26 @@ Section WithParameters.
             exists v', inv v' t' m' l' /\ lt v' v)) /\
          (word.unsigned b = 0 -> exec e rest t0 m0 l0 mc0 post)) ->
       exec e (cmd.seq (cmd.while c body) rest) t m l metrics post.
+  Admitted.
+
+  (* do while loops are nice, because before running the code after the loop,
+     there's no need to merge the "0 iterations" case with the ">0 iterations" case,
+     so we don't need to use an invariant or additional prop to characterize this merge,
+     and we can simply chain the exec of the rest into the postcondition of the body, and
+     continue with whatever symbolic state we have without ever having to write that
+     symbolic state down explicitly. *)
+  Lemma DoWhile: forall (measure : Type) (lt : measure -> measure -> Prop)
+                        (Inv : measure -> trace -> mem -> locals -> Prop)
+                        post v1 t1 m1 l1 mc1 body c rest (e: env),
+      well_founded lt ->
+      Inv v1 t1 m1 l1 ->
+      (forall v t m l mc,
+          Inv v t m l ->
+          exec e body t m l mc (fun t' m' l' mc' =>
+             exists b, WeakestPrecondition.dexpr m' l' c b /\
+                       (word.unsigned b <> 0 -> exists v', Inv v' t' m' l' /\ lt v' v) /\
+                       (word.unsigned b = 0 -> exec e rest t' m' l' mc' post))) ->
+      exec e (cmd.seq (cmd.dowhile body c) rest) t1 m1 l1 mc1 post.
   Admitted.
 
   Lemma If: forall e t m l mc c thn els rest v Q1 Q2 post,
