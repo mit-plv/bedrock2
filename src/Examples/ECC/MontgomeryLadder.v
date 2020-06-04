@@ -45,7 +45,12 @@ Section __.
           {Bignum : word -> bignum -> Semantics.mem -> Prop}
           {bounds : Type}
           {bounded_by : bounds -> bignum -> Prop}.
-  Context {loose_bounds tight_bounds : bounds}.
+  Context {loose_bounds tight_bounds : bounds}
+          {relax_bounds :
+             forall X : bignum,
+               bounded_by tight_bounds X ->
+               bounded_by loose_bounds X}.
+  Hint Resolve relax_bounds : compiler.
 
   Section Gallina.
     Local Infix "+" := (fun x y => (x + y) mod M).
@@ -68,10 +73,22 @@ Section __.
       let/d D := X3-Z3 in
       let/d DA := D*A in
       let/d CB := C*B in
-      let/d X5 := (DA+CB)^2 in
-      let/d Z5 := X1*(DA-CB)^2 in
+      (* TODO: create a pattern that will rewrite [X5 := (DA+CB)^2] into
+         [let/d X5 := DA+CB in let/d X5 := X5^2] (and maybe also some nice
+         handling of writing those two outputs into the same place) *)
+      let/d X5 := (DA+CB) in
+      let/d X5 := X5^2 in
+      (* see comment above: more natural phrasing would be
+         Z5 := X1*(DA-CB)^2 *)
+      let/d Z5 := (DA-CB) in
+      let/d Z5 := Z5^2 in
+      let/d Z5 := X1*Z5 in
       let/d X4 := AA*BB in
-      let/d Z4 := E*(AA + a24*E) in
+      (* see comment above: more natural phrasing would be
+         Z4 := E*(AA + a24*E) *)
+      let/d Z4 := a24*E in
+      let/d Z4 := AA+Z4 in
+      let/d Z4 := E*Z4 in
       ((X4, Z4), (X5, Z5)).
 
   End Gallina.
@@ -118,6 +135,14 @@ Section __.
            spec_of_sub spec_of_scmula24.
 
   Section Compile.
+    (* In compilation, we need to decide where to store outputs. In particular,
+       we don't want to overwrite a variable that we want to use later with the
+       output of some operation. The [Placeholder] alias explicitly signifies
+       which Bignums are overwritable.
+
+       TODO: in the future, it would be nice to be able to look through the
+       Gallina code and see which Bignums get used later and which don't. *)
+    Definition Placeholder := Bignum.
 
     Lemma compile_mul :
       forall (locals: Semantics.locals) (mem: Semantics.mem)
@@ -128,7 +153,7 @@ Section __.
         bounded_by loose_bounds x ->
         bounded_by loose_bounds y ->
         (Bignum x_ptr x * Bignum y_ptr y * Rin)%sep mem ->
-        (Bignum out_ptr out * Rout)%sep mem ->
+        (Placeholder out_ptr out * Rout)%sep mem ->
         map.get locals x_var = Some x_ptr ->
         map.get locals y_var = Some y_ptr ->
         map.get locals out_var = Some out_ptr ->
@@ -151,6 +176,7 @@ Section __.
          with-locals locals and-memory mem and-trace tr and-rest R
          and-functions functions).
     Proof.
+      cbv [Placeholder] in *.
       repeat straightline'.
       handle_call; [ solve [eauto] .. | ].
       sepsimpl.
@@ -172,7 +198,7 @@ Section __.
         bounded_by tight_bounds x ->
         bounded_by tight_bounds y ->
         (Bignum x_ptr x * Bignum y_ptr y * Rin)%sep mem ->
-        (Bignum out_ptr out * Rout)%sep mem ->
+        (Placeholder out_ptr out * Rout)%sep mem ->
         map.get locals x_var = Some x_ptr ->
         map.get locals y_var = Some y_ptr ->
         map.get locals out_var = Some out_ptr ->
@@ -195,6 +221,7 @@ Section __.
          with-locals locals and-memory mem and-trace tr and-rest R
          and-functions functions).
     Proof.
+      cbv [Placeholder] in *.
       repeat straightline'.
       handle_call; [ solve [eauto] .. | ].
       sepsimpl.
@@ -216,7 +243,7 @@ Section __.
         bounded_by tight_bounds x ->
         bounded_by tight_bounds y ->
         (Bignum x_ptr x * Bignum y_ptr y * Rin)%sep mem ->
-        (Bignum out_ptr out * Rout)%sep mem ->
+        (Placeholder out_ptr out * Rout)%sep mem ->
         map.get locals x_var = Some x_ptr ->
         map.get locals y_var = Some y_ptr ->
         map.get locals out_var = Some out_ptr ->
@@ -239,6 +266,7 @@ Section __.
          with-locals locals and-memory mem and-trace tr and-rest R
          and-functions functions).
     Proof.
+      cbv [Placeholder] in *.
       repeat straightline'.
       handle_call; [ solve [eauto] .. | ].
       sepsimpl.
@@ -258,7 +286,7 @@ Section __.
         spec_of_square functions ->
         bounded_by loose_bounds x ->
         (Bignum x_ptr x * Rin)%sep mem ->
-        (Bignum out_ptr out * Rout)%sep mem ->
+        (Placeholder out_ptr out * Rout)%sep mem ->
         map.get locals x_var = Some x_ptr ->
         map.get locals out_var = Some out_ptr ->
         let v := (eval x ^ 2) mod M in
@@ -279,6 +307,7 @@ Section __.
          with-locals locals and-memory mem and-trace tr and-rest R
          and-functions functions).
     Proof.
+      cbv [Placeholder] in *.
       repeat straightline'.
       handle_call; [ solve [eauto] .. | ].
       sepsimpl.
@@ -323,6 +352,7 @@ Section __.
                  | rewrite <-Zpow_mod ].
 
   Ltac field_compile_step :=
+    Z.push_pull_mod;
     pull_mod;
     first [ simple eapply compile_mul
           | simple eapply compile_add
@@ -366,11 +396,11 @@ Section __.
         /\ (Bignum pX1 X1
             * Bignum pX2 X2 * Bignum pZ2 Z2
             * Bignum pX3 X3 * Bignum pZ3 Z3
-            * Bignum pA A * Bignum pAA AA
-            * Bignum pB B * Bignum pBB BB
-            * Bignum pE E * Bignum pC C * Bignum pD D
-            * Bignum pDA DA * Bignum pCB CB
-            * R)%sep m)
+            * Placeholder pA A * Placeholder pAA AA
+            * Placeholder pB B * Placeholder pBB BB
+            * Placeholder pE E * Placeholder pC C
+            * Placeholder pD D * Placeholder pDA DA
+            * Placeholder pCB CB * R)%sep m)
         ===>
         "ladderstep" @ [pX1; pX2; pZ2; pX3; pZ3; pA; pAA; pB; pBB; pE; pC; pD; pDA; pCB]
         ==>
@@ -395,12 +425,81 @@ Section __.
     cbv [program_logic_goal_for spec_of_ladderstep].
     setup.
     cleanup. (* TODO: add to setup *)
-    compile_step.
-    1-8:repeat compile_step.
-    compile_step.
-    compile_step.
-    1-6:repeat compile_step.
-    compile_step.
+    compile_step; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+    compile_step; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+    compile_step; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+    compile_step; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+    compile_step; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+    compile_step; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+    compile_step; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+    compile_step; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+    compile_step; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+
+    (* here, we're out of Placeholders; need to decide
+       where output gets stored *)
+    change (Bignum pX3) with (Placeholder pX3) in *.
+    compile_step; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+
+    change (Bignum pX3) with (Placeholder pX3) in *.
+    compile_step; [ repeat compile_step .. | ];
+      (* since the output we selected was one of the inputs, need to write the
+         Placeholder back into a Bignum for arguments *)
+      lazymatch goal with
+      | |- sep _ _ _ => change (Placeholder pX3) with (Bignum pX3) in * |-;
+                          solve [repeat compile_step]
+      | _ => idtac
+      end; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+
+    change (Bignum pZ3) with (Placeholder pZ3) in *.
+    compile_step; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+
+    change (Bignum pZ3) with (Placeholder pZ3) in *.
+    compile_step; [ repeat compile_step .. | ];
+      (* since the output we selected was one of the inputs, need to write the
+         Placeholder back into a Bignum for arguments *)
+      lazymatch goal with
+      | |- sep _ _ _ => change (Placeholder pZ3) with (Bignum pZ3) in * |- ;
+                          solve [repeat compile_step]
+      | _ => idtac
+      end; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+
+    change (Bignum pZ3) with (Placeholder pZ3) in *.
+    compile_step; [ repeat compile_step .. | ];
+      (* since the output we selected was one of the inputs, need to write the
+         Placeholder back into a Bignum for arguments *)
+      lazymatch goal with
+      | |- sep _ _ _ => change (Placeholder pZ3) with (Bignum pZ3) in * |- ;
+                          solve [repeat compile_step]
+      | _ => idtac
+      end; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+
+    change (Bignum pX2) with (Placeholder pX2) in *.
+    compile_step; [ repeat compile_step .. | ];
+      (* since the output we selected was one of the inputs, need to write the
+         Placeholder back into a Bignum for arguments *)
+      lazymatch goal with
+      | |- sep _ _ _ => change (Placeholder pX2) with (Bignum pX2) in * |- ;
+                          solve [repeat compile_step]
+      | _ => idtac
+      end; [ repeat compile_step .. | ].
+    compile_step; clear_old_seps.
+
+    (* Next up: scmula24 *)
+
   Abort.
 
 End __.
