@@ -326,6 +326,11 @@ Section __.
       eauto.
     Qed.
 
+    (* noop indicating that the last argument should store output *)
+    Definition overwrite1 {A B} := @id (A -> B).
+    (* noop indicating that the 2nd-to-last argument should store output *)
+    Definition overwrite2 {A B C} := @id (A -> B -> C).
+
     Lemma compile_compose_l :
       forall (locals: Semantics.locals) (mem: Semantics.mem)
         tr R Rout functions T (pred: T -> _ -> Prop)
@@ -337,7 +342,7 @@ Section __.
         (let head := v in
          (find k_impl
           implementing (pred (dlet (op1 x y mod M)
-          (fun xy => dlet (op2 xy z mod M) k)))
+          (fun xy => dlet ((overwrite2 op2) xy z mod M) k)))
           with-locals locals and-memory mem and-trace tr and-rest R
           and-functions functions)) ->
         (let head := v in
@@ -346,10 +351,8 @@ Section __.
          with-locals locals and-memory mem and-trace tr and-rest R
          and-functions functions).
     Proof.
-      cbv [Placeholder] in *.
-      repeat straightline'.
-      cbv [dlet.dlet] in *.
-      auto.
+      cbv [Placeholder overwrite1 overwrite2] in *.
+      repeat straightline'. auto.
     Qed.
 
     Lemma compile_compose_r :
@@ -363,7 +366,7 @@ Section __.
         (let head := v in
          (find k_impl
           implementing (pred (dlet (op1 x y mod M)
-          (fun xy => dlet (op2 z xy mod M) k)))
+          (fun xy => dlet ((overwrite1 op2) z xy mod M) k)))
           with-locals locals and-memory mem and-trace tr and-rest R
           and-functions functions)) ->
         (let head := v in
@@ -372,10 +375,58 @@ Section __.
          with-locals locals and-memory mem and-trace tr and-rest R
          and-functions functions).
     Proof.
+      cbv [Placeholder overwrite1 overwrite2] in *.
+      repeat straightline'. auto.
+    Qed.
+
+    Lemma compile_overwrite1 :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+        tr R Rin functions T (pred: T -> _ -> Prop)
+        (x : Z) (op : Z -> Z -> Z) (y : bignum) y_ptr y_var k k_impl,
+        (Bignum y_ptr y * Rin)%sep mem ->
+        map.get locals y_var = Some y_ptr ->
+        let v := ((overwrite1 op) x (eval y mod M)) mod M in
+        let v' := (op x (eval y mod M)) mod M in
+        (let __ := 0 in (* placeholder *)
+         forall m,
+           sep (Placeholder y_ptr y) Rin m ->
+           (find k_impl
+            implementing (pred (dlet v' k))
+            with-locals locals and-memory m and-trace tr and-rest R
+            and-functions functions)) ->
+        (let head := v in
+         find k_impl
+         implementing (pred (dlet head k))
+         with-locals locals and-memory mem and-trace tr and-rest R
+         and-functions functions).
+    Proof.
       cbv [Placeholder] in *.
-      repeat straightline'.
-      cbv [dlet.dlet] in *.
-      auto.
+      repeat straightline'. auto.
+    Qed.
+
+    Lemma compile_overwrite2 :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+        tr R Rin functions T (pred: T -> _ -> Prop)
+        (y : Z) (op : Z -> Z -> Z) (x : bignum) x_ptr x_var k k_impl,
+        (Bignum x_ptr x * Rin)%sep mem ->
+        map.get locals x_var = Some x_ptr ->
+        let v := ((overwrite2 op) (eval x mod M) y) mod M in
+        let v' := (op (eval x mod M) y) mod M in
+        (let __ := 0 in (* placeholder *)
+         forall m,
+           sep (Placeholder x_ptr x) Rin m ->
+           (find k_impl
+            implementing (pred (dlet v' k))
+            with-locals locals and-memory m and-trace tr and-rest R
+            and-functions functions)) ->
+        (let head := v in
+         find k_impl
+         implementing (pred (dlet head k))
+         with-locals locals and-memory mem and-trace tr and-rest R
+         and-functions functions).
+    Proof.
+      cbv [Placeholder] in *.
+      repeat straightline'. auto.
     Qed.
   End Compile.
 
@@ -473,7 +524,9 @@ Section __.
   Ltac compile_compose_step :=
     Z.push_mod;
     first [ simple eapply compile_compose_l
-          | simple eapply compile_compose_r ];
+          | simple eapply compile_compose_r
+          | simple eapply compile_overwrite1
+          | simple eapply compile_overwrite2 ];
     [ solve [repeat compile_step] .. | intros ].
 
   Ltac compile_custom ::=
@@ -494,9 +547,15 @@ Section __.
   Local Ltac safe_compile_step :=
     compile_step; [ solve [repeat compile_step] .. | ].
 
-  Local Ltac overwrite p :=
-    change (Bignum p) with (Placeholder p) in *;
-    safe_compile_step.
+  Ltac lookup_Bignum_pointer x :=
+    lazymatch goal with
+    | H : sep _ _ ?m |- context [?m] =>
+      lazymatch type of H with
+        context [Bignum ?p x] => p
+      end
+    end.
+
+  Local Ltac overwrite p := change (Bignum p) with (Placeholder p) in *.
 
   Derive ladderstep_body SuchThat
          (let args := ["X1"; "X2"; "Z2"; "X3"; "Z3";
@@ -516,15 +575,10 @@ Section __.
 
     (* by now, we're out of Placeholders; need to decide (manually for now)
        where output gets stored *)
-    overwrite pX3.
-    overwrite pX3.
-    overwrite pZ3.
-    overwrite pZ3.
-    overwrite pZ3.
-    overwrite pX2.
-    overwrite pZ2.
-    overwrite pZ2.
-    overwrite pZ2.
+    overwrite pX3; repeat safe_compile_step.
+    overwrite pZ3; repeat safe_compile_step.
+    overwrite pX2; repeat safe_compile_step.
+    overwrite pZ2; repeat safe_compile_step.
 
     (* done! now just prove postcondition *)
     compile_done. cbv [LadderStepResult].
