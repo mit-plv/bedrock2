@@ -117,23 +117,6 @@ Section __.
   Existing Instances spec_of_mul spec_of_square spec_of_add
            spec_of_sub spec_of_scmula24.
 
-  Section Separation.
-    Definition bytes_per_word :=
-      Z.of_nat (@Memory.bytes_per Semantics.width access_size.word).
-
-    Definition Point (addr : Semantics.word) (P : point)
-      : Semantics.mem -> Prop :=
-      let px := addr in
-      let py := word.add addr (word.of_Z bytes_per_word) in
-      liftexists X Y,
-      (emp (word.unsigned X = fst P /\ word.unsigned Y = snd P)
-       * scalar px X * scalar py Y)%sep.
-
-    Definition TwoPoints (pP1 pP2 : Semantics.word) (Ps : point * point)
-      : Semantics.mem -> Prop :=
-      (Point pP1 (fst Ps) * Point pP2 (snd Ps))%sep.
-  End Separation.
-
   Section Compile.
 
     Lemma compile_square :
