@@ -49,22 +49,10 @@ Section __.
       let/d D := X3-Z3 in
       let/d DA := D*A in
       let/d CB := C*B in
-      (* TODO: create a pattern that will rewrite [X5 := (DA+CB)^2] into
-         [let/d X5 := DA+CB in let/d X5 := X5^2] (and maybe also some nice
-         handling of writing those two outputs into the same place) *)
-      let/d X5 := (DA+CB) in
-      let/d X5 := X5^2 in
-      (* see comment above: more natural phrasing would be
-         Z5 := X1*(DA-CB)^2 *)
-      let/d Z5 := (DA-CB) in
-      let/d Z5 := Z5^2 in
-      let/d Z5 := X1*Z5 in
+      let/d X5 := (DA+CB)^2 in
+      let/d Z5 := X1*(DA-CB)^2 in
       let/d X4 := AA*BB in
-      (* see comment above: more natural phrasing would be
-         Z4 := E*(AA + a24*E) *)
-      let/d Z4 := a24*E in
-      let/d Z4 := AA+Z4 in
-      let/d Z4 := E*Z4 in
+      let/dZ4 := E*(AA + a24*E) in
       ((X4, Z4), (X5, Z5)).
 
   End Gallina.
@@ -337,6 +325,58 @@ Section __.
       end.
       eauto.
     Qed.
+
+    Lemma compile_compose_l :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+        tr R Rout functions T (pred: T -> _ -> Prop)
+        (op1 op2 : Z -> Z -> Z)
+        x y z out out_ptr out_var k k_impl,
+        (Placeholder out_ptr out * Rout)%sep mem ->
+        map.get locals out_var = Some out_ptr ->
+        let v := ((op2 (op1 x y mod M) z)) mod M in
+        (let head := v in
+         (find k_impl
+          implementing (pred (dlet (op1 x y mod M)
+          (fun xy => dlet (op2 xy z mod M) k)))
+          with-locals locals and-memory mem and-trace tr and-rest R
+          and-functions functions)) ->
+        (let head := v in
+         find k_impl
+         implementing (pred (dlet head k))
+         with-locals locals and-memory mem and-trace tr and-rest R
+         and-functions functions).
+    Proof.
+      cbv [Placeholder] in *.
+      repeat straightline'.
+      cbv [dlet.dlet] in *.
+      auto.
+    Qed.
+
+    Lemma compile_compose_r :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+        tr R Rout functions T (pred: T -> _ -> Prop)
+        (op1 op2 : Z -> Z -> Z)
+        x y z out out_ptr out_var k k_impl,
+        (Placeholder out_ptr out * Rout)%sep mem ->
+        map.get locals out_var = Some out_ptr ->
+        let v := ((op2 z (op1 x y mod M))) mod M in
+        (let head := v in
+         (find k_impl
+          implementing (pred (dlet (op1 x y mod M)
+          (fun xy => dlet (op2 z xy mod M) k)))
+          with-locals locals and-memory mem and-trace tr and-rest R
+          and-functions functions)) ->
+        (let head := v in
+         find k_impl
+         implementing (pred (dlet head k))
+         with-locals locals and-memory mem and-trace tr and-rest R
+         and-functions functions).
+    Proof.
+      cbv [Placeholder] in *.
+      repeat straightline'.
+      cbv [dlet.dlet] in *.
+      auto.
+    Qed.
   End Compile.
 
   (* helper for Zpow_mod *)
@@ -369,8 +409,7 @@ Section __.
                  | rewrite <-Zpow_mod ].
 
   Ltac field_compile_step :=
-    Z.push_pull_mod;
-    pull_mod;
+    Z.push_pull_mod; pull_mod;
     first [ simple eapply compile_mul
           | simple eapply compile_add
           | simple eapply compile_sub
@@ -431,7 +470,14 @@ Section __.
            (ladderstep_gallina
               (eval X1) (eval X2, eval Z2) (eval X3, eval Z3))).
 
+  Ltac compile_compose_step :=
+    Z.push_mod;
+    first [ simple eapply compile_compose_l
+          | simple eapply compile_compose_r ];
+    [ solve [repeat compile_step] .. | intros ].
+
   Ltac compile_custom ::=
+    repeat compile_compose_step;
     field_compile_step; [ repeat compile_step .. | ];
     (* if the output we selected was one of the inputs, need to write the
        Placeholder back into a Bignum for the arguments precondition *)
