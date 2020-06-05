@@ -149,6 +149,11 @@ Ltac compile_step :=
   | _ => eauto with compiler
   end.
 
+(* only apply compile_step when repeat_compile_step solves all the side
+     conditions but one *)
+Ltac safe_compile_step :=
+  compile_step; [ solve [repeat compile_step] .. | ].
+
 Ltac compile_done := simple eapply compile_skip; repeat compile_step.
 
 Ltac compile :=
