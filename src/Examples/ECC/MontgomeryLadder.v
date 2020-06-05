@@ -6,8 +6,9 @@ Local Open Scope Z_scope.
 Section __.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok semantics}.
-  Context {mul add sub square scmula24 : string}.
+  Context {mul add sub square scmula24 inv : string}.
   Context {M a24 : Z}.
+  Context {Finv : Z -> Z}. (* modular inverse in Z/M *)
 
   (* In practice, these would be instantiated as:
      bignum := list word
@@ -55,6 +56,59 @@ Section __.
       let/dZ4 := E*(AA + a24*E) in
       ((X4, Z4), (X5, Z5)).
 
+    Fixpoint downto_iter (i:nat) : list nat :=
+      match i with
+      | Datatypes.S i' => cons i' (downto_iter i')
+      | O => nil
+      end.
+
+    Definition downto
+               {state} init count (step:state->nat->state) : state :=
+      List.fold_left step (downto_iter count) init.
+
+    Definition cswap (swap:bool) (a b: point) : point * point :=
+      if swap then (b, a) else (a, b).
+
+    (* TODO: figure out recursive notation here and move to Notations *)
+    Local Notation
+          "'let/d' '''(' x , y ')' := val 'in' body" :=
+      (dlet val
+            (fun v =>
+               let x := fst v in
+               let y := snd v in
+               body))
+        (at level 4, only parsing).
+    Local Notation
+          "'let/d' '''(' x , y , z ')' := val 'in' body" :=
+      (dlet val
+            (fun v =>
+               let x := fst (fst v) in
+               let y := snd (fst v) in
+               let z := snd v in
+               body))
+        (at level 4, only parsing).
+
+    Definition montladder bound (testbit:nat->bool) (u:Z) : Z :=
+      let P1 : point := (1, 0) in
+      let P2 : point := (u, 1) in
+      let swap := false in
+      let/d ''(P1, P2, swap) :=
+         downto
+           (P1, P2, swap) (* initial state *)
+           bound (* count *)
+           (fun state i =>
+              let '(P1, P2, swap) := state in
+              let/d s_i := testbit i in
+              let/d swap := xorb swap s_i in
+              let/d ''(P1, P2) := cswap swap P1 P2 in
+              let/d swap := s_i in
+              let/d ''(P1, P2) := ladderstep_gallina u P1 P2 in
+              (P1, P2, swap)
+           ) in
+      let/d ''(P1, P2) := cswap swap P1 P2 in
+      let '(x, z) := P1 in
+      let/d r := (x * Finv z) in
+      r.
   End Gallina.
 
   Section Field.
@@ -94,9 +148,13 @@ Section __.
       binop_spec sub Z.sub tight_bounds tight_bounds loose_bounds.
     Instance spec_of_scmula24 : spec_of scmula24 :=
       unop_spec scmula24 (Z.mul a24) loose_bounds tight_bounds.
+
+    (* TODO: what are the bounds for inv? *)
+    Instance spec_of_inv : spec_of inv :=
+      unop_spec inv Finv tight_bounds loose_bounds.
   End Field.
   Existing Instances spec_of_mul spec_of_square spec_of_add
-           spec_of_sub spec_of_scmula24.
+           spec_of_sub spec_of_scmula24 spec_of_inv.
 
   Section Compile.
     (* In compilation, we need to decide where to store outputs. In particular,
