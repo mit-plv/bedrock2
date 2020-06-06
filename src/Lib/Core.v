@@ -37,3 +37,6 @@ Notation address := word (only parsing).
 Definition bedrock_func : Type :=
   string * (list string * list string * cmd).
 Coercion name_of_func (f : bedrock_func) := fst f.
+
+Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
+     using (typeclasses eauto || congruence) : mapsimpl.

@@ -1,6 +1,7 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.ECC.Field.
 Require Import Rupicola.Examples.ECC.DownTo.
+Require Import Rupicola.Examples.ECC.CondSwap.
 Local Open Scope Z_scope.
 
 (* TODO: figure out recursive notation here and move to Notations *)
@@ -64,9 +65,6 @@ Section __.
       let/d X4 := AA*BB in
       let/dZ4 := E*(AA + a24*E) in
       ((X4, Z4), (X5, Z5)).
-
-    Definition cswap (swap:bool) (a b: point) : point * point :=
-      if swap then (b, a) else (a, b).
 
     Definition montladder bound (testbit:nat->bool) (u:Z) : Z :=
       let P1 : point := (1, 0) in

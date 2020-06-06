@@ -31,13 +31,6 @@ Section Compile.
                    * (Point P1_ptr P1 * Point P2_ptr P2))
 
   *)
-  Local Ltac subst_lets_in_goal :=
-    repeat match goal with
-           | x := _ |- _ =>
-                  lazymatch goal with
-                    |- context [x] => subst x end
-           end.
-
   Local Ltac handle_downto_locals :=
     repeat match goal with
            | H : (?P ?l1 _ * ?R)%sep ?m

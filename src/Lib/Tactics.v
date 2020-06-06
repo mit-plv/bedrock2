@@ -14,6 +14,14 @@ Ltac boolean_cleanup :=
          | _ => congruence
          end.
 
+Ltac subst_lets_in_goal :=
+  repeat match goal with
+         | x := _ |- _ =>
+           lazymatch goal with
+             |- context [x] => subst x end
+         end.
+
+
 Ltac destruct_lists_of_known_length :=
   repeat match goal with
          | H : S _ = S _ |- _ => apply Nat.succ_inj in H
@@ -155,18 +163,10 @@ Ltac straightline' :=
     let x := fresh x in
     refine (let x := _ in ex_intro (fun x => P /\ Q) x _); split;
     [ solve [ repeat straightline' ] |  ]
-  | |- map.get _ _ = Some ?e' =>
+  | |- @map.get _ _ ?M _ ?k = Some ?e' =>
     let e := rdelta.rdelta e' in
     is_evar e;
-    (let M := lazymatch goal with
-              | |- @map.get _ _ ?M _ _ = _ => M
-              end in
-     let __ := match M with
-               | Semantics.locals => idtac
-               end in
-     let k := lazymatch goal with
-              | |- map.get _ ?k = _ => k
-              end in
+    (match M with | Semantics.locals => idtac end;
      once (let v :=
                multimatch goal with
                  x := context[@map.put _ _ M _ k ?v] |- _ => v end in
@@ -175,6 +175,16 @@ Ltac straightline' :=
               x := context[map.put _ k _] |- _ => subst x
             end;
      autorewrite with mapsimpl; exact eq_refl)
+  | |- @map.get _ _ ?M _ ?k = Some ?e' =>
+    let e := rdelta.rdelta e' in
+    is_evar e;
+    (match M with | Semantics.locals => idtac end;
+     once (let v :=
+               multimatch goal with
+               | H : @map.get _ _ M _ k = Some ?v |- _ => v end in
+           unify e v);
+     subst_lets_in_goal;
+     autorewrite with mapsimpl; eassumption)
   | |- map.get _ _ = Some ?v =>
     let v' := rdelta.rdelta v in
     is_evar v'; change_no_check v with v'; eassumption
