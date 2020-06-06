@@ -9,6 +9,19 @@ Class FieldParameters :=
     (** function names **)
     mul : string; add : string; sub : string;
     square : string; scmula24 : string; inv : string;
+
+    (* TODO: add literal + copy to fiat-crypto *)
+    (* bignum_literal p X :=
+         store p (expr.literal (word.unsigned X[0]));
+         store (p+4) (expr.literal (word.unsigned X[1]));
+         ...
+
+       bignum_copy pX pY :=
+         store pX (load pY);
+         store (pX+4) (load (pY+4));
+         ... *)
+    bignum_copy : string;
+    bignum_literal : Z -> string;
   }.
 
 (* In practice, these would be instantiated with:
@@ -80,9 +93,22 @@ Section Specs.
   (* TODO: what are the bounds for inv? *)
   Instance spec_of_inv : spec_of inv :=
     unop_spec inv Finv tight_bounds loose_bounds.
+
+  Instance spec_of_bignum_copy : spec_of bignum_copy :=
+    forall! (x : bignum) (px pout : word) (old_out : bignum),
+      (sep (Bignum px x * Bignum pout old_out)%sep)
+        ===> bignum_copy @ [px; pout] ===>
+        (Bignum px x * Bignum pout x)%sep.
+
+  Instance spec_of_bignum_literal (x : bignum) literal_name
+    : spec_of literal_name :=
+    forall! (pout : word) (old_out : bignum),
+      (sep (Bignum pout old_out))
+        ===> literal_name @ [pout] ===>
+        (Bignum pout x)%sep.
 End Specs.
 Existing Instances spec_of_mul spec_of_square spec_of_add
-         spec_of_sub spec_of_scmula24 spec_of_inv.
+         spec_of_sub spec_of_scmula24 spec_of_inv spec_of_bignum_copy.
 
 Section Compile.
   Context {semantics : Semantics.parameters}
@@ -315,6 +341,75 @@ Section Compile.
                     rewrite <-H
     end.
     eauto.
+  Qed.
+
+  Lemma compile_bignum_copy :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      tr R R' functions T (pred: T -> _ -> Prop)
+      (x out : bignum) x_ptr x_var out_ptr out_var k k_impl,
+      spec_of_bignum_copy functions ->
+      (Bignum x_ptr x * Placeholder out_ptr out * R')%sep mem ->
+      map.get locals x_var = Some x_ptr ->
+      map.get locals out_var = Some out_ptr ->
+      let v := eval x in
+      (let head := v in
+       forall m,
+         (Bignum x_ptr x * Bignum out_ptr x * R')%sep m ->
+         (find k_impl
+          implementing (pred (k head))
+          with-locals locals and-memory m and-trace tr and-rest R
+          and-functions functions)) ->
+      (let head := v in
+       find (cmd.seq
+               (cmd.call [] bignum_copy [expr.var x_var; expr.var out_var])
+               k_impl)
+       implementing (pred (dlet head k))
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    cbv [Placeholder] in *.
+    repeat straightline'.
+    handle_call; [ solve [eauto] .. | ].
+    sepsimpl. auto.
+  Qed.
+
+  Lemma compile_bignum_literal :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      tr R R' functions T (pred: T -> _ -> Prop)
+      (x out : bignum) out_ptr out_var k k_impl,
+      let literal_name := bignum_literal (eval x) in
+      spec_of_bignum_literal x literal_name functions ->
+      (Placeholder out_ptr out * R')%sep mem ->
+      map.get locals out_var = Some out_ptr ->
+      let v := eval x in
+      (let head := v in
+       forall m,
+         (Bignum out_ptr x * R')%sep m ->
+         (find k_impl
+          implementing (pred (k head))
+          with-locals locals and-memory m and-trace tr and-rest R
+          and-functions functions)) ->
+      (let head := v in
+       find (cmd.seq
+               (cmd.call [] literal_name [expr.var out_var])
+               k_impl)
+       implementing (pred (dlet head k))
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    cbv [Placeholder] in *.
+    repeat straightline'.
+    (* inline straightline_call because typeclass instance for spec has
+       arguments and inference won't find it *)
+    lazymatch goal with
+      Hcall : spec_of_bignum_literal _ _ _ |- _ =>
+      eapply Proper_call; cycle -1;
+        [ eapply Hcall | .. ];
+        [ .. | intros ? ? ? ? ]
+    end; try ecancel_assumption.
+    cbv[postcondition_for] in *; repeat straightline;
+      destruct_lists_of_known_length; repeat straightline.
+    sepsimpl. auto.
   Qed.
 
   (* noop indicating that the last argument should store output *)
