@@ -143,6 +143,65 @@ Section __.
            (ladderstep_gallina
               (eval X1) (eval X2, eval Z2) (eval X3, eval Z3))).
 
+  Section with_testbit.
+    Context (testbit_gallina : nat -> bool).
+
+    Instance spec_of_testbit : spec_of "testbit" :=
+      fun functions =>
+        forall (i : word) tr mem,
+          WeakestPrecondition.call
+            functions "testbit" tr mem [i]
+            (fun tr' m' rets =>
+               tr = tr' /\ mem = m'
+               /\ let i_nat := Z.to_nat (word.unsigned i) in
+                  rets = [word.of_Z (Z.b2z (testbit_gallina i_nat))]).
+
+    (* TODO: make Placeholder [Lift1Prop.ex1 (fun x => Bignum p x)], and prove
+       an iff1 with Bignum? Then we could even do some loop over the pointers to
+       construct the seplogic condition *)
+    (* TODO: should montladder return a pointer to the result, or just write
+       into P1? *)
+    Definition MontLadderResult
+               (X1 : bignum) (pX1 : Semantics.word)
+               (pU pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB : Semantics.word)
+               (result : Z)
+      : Semantics.mem -> Prop :=
+      (liftexists U' Z1' X2' Z2' A' AA' B' BB' E' C' D' DA' CB' : bignum,
+         (emp (result = eval X1 mod M)
+         * (Bignum pU U' * Bignum pX1 X1 * Bignum pZ1 Z1'
+            * Bignum pX2 X2' * Bignum pZ2 Z2'
+            * Bignum pA A' * Bignum pAA AA'
+            * Bignum pB B' * Bignum pBB BB'
+            * Bignum pE E' * Bignum pC C' * Bignum pD D'
+            * Bignum pDA DA' * Bignum pCB CB'))%sep).
+
+    Instance spec_of_montladder : spec_of "montladder" :=
+      forall! (bound : word)
+            (U X1 Z1 X2 Z2 : bignum) (* u, P1, P2 *)
+            (A AA B BB E C D DA CB : bignum) (* ladderstep intermediates *)
+            (pU pX1 pZ1 pX2 pZ2
+                pA pAA pB pBB pE pC pD pDA pCB : Semantics.word),
+        (fun R m =>
+           bounded_by tight_bounds U
+           /\ (Bignum pU U
+               * Placeholder pX1 X1 * Placeholder pZ1 Z1
+               * Placeholder pX2 X2 * Placeholder pZ2 Z2
+               * Placeholder pA A * Placeholder pAA AA
+               * Placeholder pB B * Placeholder pBB BB
+               * Placeholder pE E * Placeholder pC C
+               * Placeholder pD D * Placeholder pDA DA
+               * Placeholder pCB CB * R)%sep m)
+          ===>
+          "montladder" @
+          [pU; pX1; pZ1; pX2; pZ2; pA; pAA; pB; pBB; pE; pC; pD; pDA; pCB]
+          ===>
+          (MontLadderResult
+             U pU pX1 pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB
+             (montladder
+                (Z.to_nat (word.unsigned bound)) testbit_gallina (eval U))).
+
+  End with_testbit.
+
   Ltac ladderstep_compile_custom :=
     repeat compile_compose_step;
     field_compile_step; [ repeat compile_step .. | ];
