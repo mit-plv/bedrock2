@@ -42,6 +42,28 @@ Section with_semantics.
     eassumption.
   Qed.
 
+  Lemma compile_bool :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      tr R functions T (pred: T -> _ -> Prop) (b : bool) k k_impl,
+    forall var,
+      let v := b in
+      (let head := v in
+       find k_impl
+       implementing (pred (k head))
+       with-locals (map.put locals var (word.of_Z (Z.b2z b)))
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (let head := v in
+       find (cmd.seq (cmd.set var (expr.literal (Z.b2z b))) k_impl)
+       implementing (pred (dlet head k))
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline.
+    eassumption.
+  Qed.
+
   (* FIXME add let pattern to other lemmas *)
   Lemma compile_add :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
@@ -131,6 +153,7 @@ Ltac compile_basics :=
   gen_sym_inc;
   let name := gen_sym_fetch "v" in
   first [simple eapply compile_constant with (var := name) |
+         simple eapply compile_bool with (var := name) |
          simple eapply compile_add with (var := name) ].
 
 Ltac compile_custom := fail.
