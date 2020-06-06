@@ -66,7 +66,13 @@ Section Compile.
   (* TODO: move *)
   Lemma skipn_seq_step n start len :
     skipn n (seq start len) = seq (start + n) (len - n).
-  Admitted. (* TODO *)
+  Proof.
+    revert start len.
+    induction n; destruct len; cbn; try reflexivity.
+    { repeat (f_equal; try lia). }
+    { rewrite IHn.
+      repeat (f_equal; try lia). }
+  Qed.
 
   (* TODO: move *)
   Lemma fold_left_skipn_seq {A} i count (step :A -> _) init :
