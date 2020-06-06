@@ -7,6 +7,7 @@ src/Examples/CapitalizeThird/Properties.v
 src/Examples/Cells/Cells.v
 src/Examples/Cells/Incr.v
 src/Examples/Cells/Swap.v
+src/Examples/ECC/DownTo.v
 src/Examples/ECC/Field.v
 src/Examples/ECC/MontgomeryLadder.v
 src/Examples/KVStore/Automated.v

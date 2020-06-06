@@ -1,5 +1,6 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.ECC.Field.
+Require Import Rupicola.Examples.ECC.DownTo.
 Local Open Scope Z_scope.
 
 (* TODO: figure out recursive notation here and move to Notations *)
@@ -63,16 +64,6 @@ Section __.
       let/d X4 := AA*BB in
       let/dZ4 := E*(AA + a24*E) in
       ((X4, Z4), (X5, Z5)).
-
-    Fixpoint downto_iter (i:nat) : list nat :=
-      match i with
-      | Datatypes.S i' => cons i' (downto_iter i')
-      | O => nil
-      end.
-
-    Definition downto
-               {state} init count (step:state->nat->state) : state :=
-      List.fold_left step (downto_iter count) init.
 
     Definition cswap (swap:bool) (a b: point) : point * point :=
       if swap then (b, a) else (a, b).
