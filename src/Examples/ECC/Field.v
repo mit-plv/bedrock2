@@ -468,17 +468,4 @@ Ltac compile_compose_step :=
         | simple eapply compile_overwrite2 ];
   [ solve [repeat compile_step] .. | intros ].
 
-Ltac compile_custom ::=
-  repeat compile_compose_step;
-  field_compile_step; [ repeat compile_step .. | ];
-  (* if the output we selected was one of the inputs, need to write the
-       Placeholder back into a Bignum for the arguments precondition *)
-  lazymatch goal with
-  | |- sep _ _ _ =>
-    change Placeholder with Bignum in * |- ;
-    solve [repeat compile_step]
-  | _ => idtac
-  end;
-  [ solve [repeat compile_step] .. | intros ].
-
-Ltac overwrite_bignum p := change (Bignum p) with (Placeholder p) in *.
+Ltac free p := change (Bignum p) with (Placeholder p) in *.

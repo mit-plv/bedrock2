@@ -143,6 +143,21 @@ Section __.
            (ladderstep_gallina
               (eval X1) (eval X2, eval Z2) (eval X3, eval Z3))).
 
+  Ltac ladderstep_compile_custom :=
+    repeat compile_compose_step;
+    field_compile_step; [ repeat compile_step .. | ];
+    (* if the output we selected was one of the inputs, need to write the
+       Placeholder back into a Bignum for the arguments precondition *)
+    lazymatch goal with
+    | |- sep _ _ _ =>
+      change Placeholder with Bignum in * |- ;
+      solve [repeat compile_step]
+    | _ => idtac
+    end;
+    [ solve [repeat compile_step] .. | intros ].
+
+  Ltac compile_custom ::= ladderstep_compile_custom.
+
   Derive ladderstep_body SuchThat
          (let args := ["X1"; "X2"; "Z2"; "X3"; "Z3";
                          "A"; "AA"; "B"; "BB"; "E"; "C";
@@ -161,10 +176,10 @@ Section __.
 
     (* by now, we're out of Placeholders; need to decide (manually for now)
        where output gets stored *)
-    overwrite_bignum pX3; repeat safe_compile_step.
-    overwrite_bignum pZ3; repeat safe_compile_step.
-    overwrite_bignum pX2; repeat safe_compile_step.
-    overwrite_bignum pZ2; repeat safe_compile_step.
+    free pX3; repeat safe_compile_step.
+    free pZ3; repeat safe_compile_step.
+    free pX2; repeat safe_compile_step.
+    free pZ2; repeat safe_compile_step.
 
     (* done! now just prove postcondition *)
     compile_done. cbv [LadderStepResult].
