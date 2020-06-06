@@ -148,6 +148,11 @@ Section __.
             (one zero : bignum) (eval_one : eval one = 1)
             (eval_zero : eval zero = 0).
 
+    Instance spec_of_literal0 : spec_of (bignum_literal 0) :=
+      spec_of_bignum_literal zero (bignum_literal 0).
+    Instance spec_of_literal1 : spec_of (bignum_literal 1) :=
+      spec_of_bignum_literal one (bignum_literal 1).
+
     Instance spec_of_testbit : spec_of testbit :=
       fun functions =>
         forall (i : word) tr mem,
@@ -202,6 +207,34 @@ Section __.
              (montladder
                 (Z.to_nat (word.unsigned bound)) testbit_gallina (eval U))).
 
+    Ltac compile_custom ::=
+      first [ simple eapply compile_downto
+            | simple eapply compile_point_assign
+            | simple eapply compile_bignum_literal
+            | simple eapply compile_bignum_copy
+            | simple eapply compile_cswap_nocopy ].
+
+    Derive montladder_body SuchThat
+           (let args := ["bound"; "U"; "X1"; "Z1"; "X2"; "Z2";
+                           "A"; "AA"; "B"; "BB"; "E"; "C"; "D"; "DA"; "CB"] in
+            let montladder := ("montladder", (args, [], montladder_body)) in
+            program_logic_goal_for
+              montladder
+              (ltac:(
+                 let callees :=
+                     constr:([(bignum_literal 0); (bignum_literal 1);
+                                bignum_copy; "ladderstep"; testbit]) in
+                 let x := program_logic_goal_for_function
+                                montladder callees in
+                     exact x)))
+           As montladder_body_correct.
+    Proof.
+      cbv [program_logic_goal_for spec_of_montladder].
+      cbv [spec_of_literal0 spec_of_literal1].
+      rewrite <-eval_one, <-eval_zero.
+      setup.
+      repeat safe_compile_step.
+    Abort.
   End MontLadder.
 
   Ltac ladderstep_compile_custom :=
