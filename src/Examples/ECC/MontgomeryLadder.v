@@ -1,5 +1,6 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.ECC.Field.
+Require Import Rupicola.Examples.ECC.Point.
 Require Import Rupicola.Examples.ECC.DownTo.
 Require Import Rupicola.Examples.ECC.CondSwap.
 Local Open Scope Z_scope.
@@ -31,7 +32,7 @@ Section __.
   Context {field_parameters : FieldParameters}.
   Context {bignum_representaton : BignumRepresentation}.
   Existing Instances spec_of_mul spec_of_square spec_of_add
-           spec_of_sub spec_of_scmula24 spec_of_inv.
+           spec_of_sub spec_of_scmula24 spec_of_inv spec_of_bignum_copy.
 
   Context {relax_bounds :
              forall X : bignum,
@@ -44,8 +45,6 @@ Section __.
     Local Infix "-" := (fun x y => (x - y) mod M).
     Local Infix "*" := (fun x y => (x * y) mod M).
     Local Infix "^" := (fun x y => (x ^ y) mod M).
-
-    Definition point : Type := (Z * Z).
 
     Definition ladderstep_gallina
                (X1: Z) (P1 P2: point)  : (point * point) :=
@@ -67,13 +66,14 @@ Section __.
       ((X4, Z4), (X5, Z5)).
 
     Definition montladder bound (testbit:nat->bool) (u:Z) : Z :=
-      let P1 : point := (1, 0) in
-      let P2 : point := (u, 1) in
-      let swap := false in
+      let/d P1 := (1, 0) in
+      let/d P2 := (u, 1) in
+      let/d swap := false in
+      let/d count := bound in
       let/d ''(P1, P2, swap) :=
          downto
            (P1, P2, swap) (* initial state *)
-           bound (* count *)
+           count
            (fun state i =>
               let '(P1, P2, swap) := state in
               let/d s_i := testbit i in
@@ -143,14 +143,16 @@ Section __.
            (ladderstep_gallina
               (eval X1) (eval X2, eval Z2) (eval X3, eval Z3))).
 
-  Section with_testbit.
-    Context (testbit_gallina : nat -> bool).
+  Section MontLadder.
+    Context (testbit: string) (testbit_gallina : nat -> bool)
+            (one zero : bignum) (eval_one : eval one = 1)
+            (eval_zero : eval zero = 0).
 
-    Instance spec_of_testbit : spec_of "testbit" :=
+    Instance spec_of_testbit : spec_of testbit :=
       fun functions =>
         forall (i : word) tr mem,
           WeakestPrecondition.call
-            functions "testbit" tr mem [i]
+            functions testbit tr mem [i]
             (fun tr' m' rets =>
                tr = tr' /\ mem = m'
                /\ let i_nat := Z.to_nat (word.unsigned i) in
@@ -193,14 +195,14 @@ Section __.
                * Placeholder pCB CB * R)%sep m)
           ===>
           "montladder" @
-          [pU; pX1; pZ1; pX2; pZ2; pA; pAA; pB; pBB; pE; pC; pD; pDA; pCB]
+          [bound; pU; pX1; pZ1; pX2; pZ2; pA; pAA; pB; pBB; pE; pC; pD; pDA; pCB]
           ===>
           (MontLadderResult
              U pU pX1 pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB
              (montladder
                 (Z.to_nat (word.unsigned bound)) testbit_gallina (eval U))).
 
-  End with_testbit.
+  End MontLadder.
 
   Ltac ladderstep_compile_custom :=
     repeat compile_compose_step;

@@ -11,6 +11,7 @@ src/Examples/ECC/CondSwap.v
 src/Examples/ECC/DownTo.v
 src/Examples/ECC/Field.v
 src/Examples/ECC/MontgomeryLadder.v
+src/Examples/ECC/Point.v
 src/Examples/KVStore/Automated.v
 src/Examples/KVStore/KVStore.v
 src/Examples/KVStore/Manual.v
