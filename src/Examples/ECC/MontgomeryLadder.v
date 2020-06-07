@@ -145,6 +145,7 @@ Section __.
 
   Section MontLadder.
     Context (testbit: string) (testbit_gallina : nat -> bool)
+            (bound : word)
             (one zero : bignum) (eval_one : eval one = 1)
             (eval_zero : eval zero = 0).
 
@@ -183,13 +184,14 @@ Section __.
             * Bignum pDA DA' * Bignum pCB CB'))%sep).
 
     Instance spec_of_montladder : spec_of "montladder" :=
-      forall! (bound : word)
+      forall!
             (U X1 Z1 X2 Z2 : bignum) (* u, P1, P2 *)
             (A AA B BB E C D DA CB : bignum) (* ladderstep intermediates *)
             (pU pX1 pZ1 pX2 pZ2
                 pA pAA pB pBB pE pC pD pDA pCB : Semantics.word),
         (fun R m =>
            bounded_by tight_bounds U
+           /\ 0 < word.unsigned bound
            /\ (Bignum pU U
                * Placeholder pX1 X1 * Placeholder pZ1 Z1
                * Placeholder pX2 X2 * Placeholder pZ2 Z2
@@ -214,6 +216,64 @@ Section __.
             | simple eapply compile_bignum_copy
             | simple eapply compile_cswap_nocopy ].
 
+    Definition downto_state
+               (locals : Semantics.locals)
+               X1_var Z1_var X2_var Z2_var swap_var si_var :=
+      fun l (st : point * point * bool) =>
+        let '(P1, P2, swap) := st in
+        let '(X1z, Z1z) := P1 in
+        let '(X2z, Z2z) := P2 in
+        liftexists X1 Z1 X2 Z2 X1_ptr Z1_ptr X2_ptr Z2_ptr,
+        (emp (map.only_differ
+                locals
+                (PropSet.of_list [swap_var; X1_var; Z1_var;
+                                    X2_var; Z2_var; si_var]) l
+              /\ map.get l swap_var = Some (word.of_Z (Z.b2z swap))
+              /\ map.get l X1_var = Some X1_ptr
+              /\ map.get l Z1_var = Some Z1_ptr
+              /\ map.get l X2_var = Some X2_ptr
+              /\ map.get l Z2_var = Some Z2_ptr
+              /\ eval X1 = X1z
+              /\ eval Z1 = Z1z
+              /\ eval X2 = X2z
+              /\ eval Z2 = Z2z)
+         * (Bignum X1_ptr X1 * Bignum Z1_ptr Z1
+            * Bignum X2_ptr X2 * Bignum Z2_ptr Z2))%sep.
+
+    (* TODO: look in fiat-crypto Bedrock/Util for similar lemmas *)
+    (* TODO: move *)
+    Lemma map_only_differ_put_r m k v :
+      map.only_differ m (PropSet.singleton_set k) (map.put m k v).
+    Admitted.
+    Lemma map_only_differ_subset m1 m2 ks1 ks2 :
+      PropSet.subset ks1 ks2 ->
+      map.only_differ m1 ks1 m2 ->
+      map.only_differ m1 ks2 m2.
+    Admitted.
+    Lemma of_list_subset_singleton {E} x l :
+      @PropSet.subset E (PropSet.singleton_set x) (PropSet.of_list l).
+    Admitted.
+
+    Ltac prove_downto_state_ok :=
+      cbv [downto_state];
+      repeat lazymatch goal with
+               | |- Lift1Prop.ex1 _ _ => eexists
+               | _ => progress sepsimpl
+             end;
+      lazymatch goal with
+      | |- eval _ = _ => exact eq_refl
+      | |- sep _ _ _ => ecancel_assumption
+      | _ => idtac
+      end;
+      lazymatch goal with
+      | |- map.get _ _ = Some _ =>
+        subst_lets_in_goal; solve_map_get_goal
+      | |- map.only_differ _ _ _ =>
+        solve [eauto using map_only_differ_subset,
+               of_list_subset_singleton,
+               map_only_differ_put_r]
+      end.
+
     Derive montladder_body SuchThat
            (let args := ["bound"; "U"; "X1"; "Z1"; "X2"; "Z2";
                            "A"; "AA"; "B"; "BB"; "E"; "C"; "D"; "DA"; "CB"] in
@@ -234,6 +294,26 @@ Section __.
       rewrite <-eval_one, <-eval_zero.
       setup.
       repeat safe_compile_step.
+
+      rewrite Z2Nat.id in * by apply word.unsigned_range.
+
+      let si_var := constr:("si") in
+      let i := constr:("i") in
+      let locals := lazymatch goal with
+                    | |- WeakestPrecondition.cmd _ _ _ _ ?l _ => l end in
+      simple eapply compile_downto with
+                          (i_var := i)
+                          (State := downto_state locals _ _ _ _ _ si_var);
+        lazymatch goal with
+        | |- sep _ _ _ => prove_downto_state_ok
+        | |- word.unsigned _ = Z.of_nat _ =>
+          subst_lets_in_goal;
+            rewrite Z2Nat.id by apply word.unsigned_range; reflexivity
+        | |- (0 < _)%nat =>
+          subst_lets_in_goal;
+            change 0%nat with (Z.to_nat 0); apply Z2Nat.inj_lt; lia
+        | _ => idtac
+        end.
     Abort.
   End MontLadder.
 
