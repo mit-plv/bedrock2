@@ -10,27 +10,6 @@ Section Compile.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok semantics}.
 
-  (* in our case, the variables changed are:
-     - P1/P2 pointers
-     - P1/P2 memory values
-     - swap, i (local variables)
-     - s_i (local to each loop instance)
-
-     The parts that need to carry over between iterations are entirely captured
-     in loop state + i; no memory except loop state
-
-     State := fun l '(P1, P2, swap) =>
-                liftexists P1_ptr P2_ptr swap_value,
-                  (emp (map.only_differ locals l
-                                        [swap_var; P1_var; P2_var; si_var]
-                        /\ map.get l swap_var = (if swap
-                                                 then word.of_Z 1
-                                                 else word.of_Z 0)
-                        /\ map.get l P1_var = Some P1_ptr
-                        /\ map.get l P2_var = Some P2_ptr)
-                   * (Point P1_ptr P1 * Point P2_ptr P2))
-
-  *)
   Local Ltac handle_downto_locals :=
     repeat match goal with
            | H : (?P ?l1 _ * ?R)%sep ?m
@@ -93,22 +72,24 @@ Section Compile.
        (* loop iteration case *)
        forall tr l li m st i,
          let wi := word.of_Z (Z.of_nat i) in
+         let IterationResult :=
+             fun st tr' m' l' =>
+               (tr = tr'
+                /\ map.get l' i_var = Some wi (* didn't change i *)
+                /\ (State l' st * R')%sep m') in
          (State l st * R')%sep m ->
          li = map.put l i_var wi ->
          WeakestPrecondition.cmd
            (WeakestPrecondition.call functions) step_impl tr m li
-           (fun tr' m' l' =>
-              tr = tr'
-              /\ map.get l' i_var = Some wi (* didn't change i *)
-              /\ (State l' (step st i) * R')%sep m')) ->
+           (IterationResult (step st i))) ->
       (let head := v in
        (* post-loop case *)
        forall tr l m,
          (State l head * R')%sep m ->
-         WeakestPrecondition.cmd
-           (WeakestPrecondition.call functions) k_impl tr m l
-           (fun tr' m' l' =>
-              tr = tr' /\ (pred (k head) * R)%sep m')) ->
+         find k_impl
+         implementing (pred (k head))
+         with-locals l and-memory m and-trace tr and-rest R
+         and-functions functions) ->
       (let head := v in
        (* while (i = n; 0 < i; pass)
           { i--; step i } *)
@@ -207,8 +188,7 @@ Section Compile.
           replace i with 0 in H by lia; cbn [skipn] in H
         end.
         use_cmd_hyp.
-        { cbv [postcondition_norets postcondition_for].
-          cleanup. ssplit; auto. }
+        { eauto. }
         { subst_lets_in_goal. assumption. } } }
   Qed.
 
