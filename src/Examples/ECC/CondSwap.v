@@ -49,4 +49,36 @@ Section Compile.
   Proof.
     repeat straightline'. subst_lets_in_goal. eauto.
   Qed.
+
+  Lemma compile_cswap_pair :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
+      tr R functions T (pred: T -> _ -> Prop)
+      {data} (x1 x2 y1 y2 : data) swap k k_impl,
+      let v := cswap swap (x1,x2) (y1,y2) in
+      (let __ := 0 in (* placeholder *)
+       (find k_impl
+        implementing (pred (dlet (cswap swap x1 y1)
+                                 (fun xy1 =>
+                                    dlet (cswap swap x2 y2)
+                                         (fun xy2 =>
+                                            let x := (fst xy1, fst xy2) in
+                                            let y := (snd xy1, snd xy2) in
+                                            k (x, y)))))
+        and-locals-post locals_ok
+        with-locals locals
+        and-memory mem and-trace tr and-rest R
+        and-functions functions)) ->
+      (let head := v in
+       find k_impl
+       implementing (pred (dlet head k))
+       and-locals-post locals_ok
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    repeat straightline'.
+    subst_lets_in_goal.
+    destruct swap; cbv [cswap dlet] in *; cbn [fst snd] in *.
+    all:eauto.
+  Qed.
 End Compile.

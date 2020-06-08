@@ -244,14 +244,21 @@ Section __.
                 (Z.to_nat (word.unsigned bound)) testbit_gallina (eval U))).
 
     Ltac compile_custom ::=
+      gen_sym_inc;
+      let name := gen_sym_fetch "v" in
       first [ simple eapply compile_downto
-            | gen_sym_inc;
-              let name := gen_sym_fetch "v" in
-              simple eapply compile_testbit with (var:=name)
+            | simple eapply compile_testbit with (var:=name)
             | simple eapply compile_point_assign
             | simple eapply compile_bignum_literal
             | simple eapply compile_bignum_copy
-            | simple eapply compile_cswap_nocopy ].
+            | simple eapply compile_cswap_pair
+            | simple eapply compile_cswap_nocopy with
+                  (Data :=
+                     fun p (X : Z) =>
+                       (Lift1Prop.ex1
+                          (fun x =>
+                             (emp (eval x = X) * Bignum p x)%sep)))
+                  (var:=name) ].
 
     Definition downto_state
                (locals : Semantics.locals)
@@ -378,7 +385,20 @@ Section __.
           [ solve [repeat compile_step] .. | ].
 
         repeat safe_compile_step.
-        simple eapply compile_cswap_nocopy.
+        cleanup.
+
+        compile_step;
+          [ lazymatch goal with
+            | |- sep _ _ _ =>
+              repeat lazymatch goal with
+                     | |- Lift1Prop.ex1 _ _ => eexists
+                     | |- eval _ = _ => eassumption
+                     | _ => progress sepsimpl
+                     end; ecancel_assumption
+            | _ => idtac
+            end .. | ];
+          [ repeat compile_step .. | ];
+          [ congruence .. | ].
     Abort.
   End MontLadder.
 
