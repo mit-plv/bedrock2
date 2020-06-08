@@ -248,12 +248,14 @@ Ltac lookup_variable m val :=
   end.
 
 Ltac solve_map_get_goal :=
-  lazymatch goal with
+  match goal with
   | [  |- map.get ?m _ = Some ?val ] =>
     let var := lookup_variable m val in
     instantiate (1 := var);
     rewrite ?map.get_put_diff by congruence;
     apply map.get_put_same
+  | [ H : map.get ?m1 _ = Some ?val |- map.get ?m2 _ = Some ?val ] =>
+    rewrite ?map.get_put_diff; [ apply H | congruence .. ]
   end.
 
 Create HintDb compiler.
@@ -279,7 +281,9 @@ Ltac compile_step :=
     autounfold with compiler in *;
     cbn [fst snd] in *;
     ecancel_assumption
-  | [  |- map.get _ _ = Some _ ] => solve_map_get_goal
+  | [  |- map.get _ _ = Some _ ] =>
+    first [ solve_map_get_goal
+          | progress subst_lets_in_goal; solve_map_get_goal ]
   | _ => eauto with compiler
   end.
 
