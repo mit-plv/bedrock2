@@ -13,6 +13,7 @@ Section Compile.
 
   Lemma compile_point_assign :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
       tr R functions T (pred: T -> _ -> Prop)
       (x y : Z) (X Y : bignum) k k_impl,
       eval X = x ->
@@ -20,14 +21,16 @@ Section Compile.
       let v := (x, y) in
       (let head := v in
        find k_impl
-            implementing (pred (dlet (eval X)
-                                     (fun x => dlet (eval Y)
-                                                    (fun y => k (x, y)))))
+       implementing (pred (dlet (eval X)
+                                (fun x => dlet (eval Y)
+                                               (fun y => k (x, y)))))
+       and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions) ->
       (let head := v in
        find k_impl
        implementing (pred (dlet head k))
+       and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
   Proof.

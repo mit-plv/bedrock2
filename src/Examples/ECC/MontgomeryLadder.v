@@ -164,25 +164,9 @@ Section __.
                /\ let i_nat := Z.to_nat (word.unsigned i) in
                   rets = [word.of_Z (Z.b2z (testbit_gallina i_nat))]).
 
-    Locate "implementing".
-    Print postcondition_norets.
-    Print postcondition_for.
-
-    (* TODO: use this everywhere to allow flexibility with locals! *)
-    Definition postcondition_cmd
-               {semantics : Semantics.parameters}
-               (on_locals : Semantics.locals -> Prop)
-               (spec R : Semantics.mem -> Prop)
-               (tr tr' : Semantics.trace) (mem' : Semantics.mem)
-               (locals' : Semantics.locals) : Prop :=
-      (tr = tr' /\ on_locals locals' /\ (spec * R)%sep mem').
-
-    (* TODO: the find/implementing notation is not flexible enough to say
-       anything about the locals, which loops need to do, so the loops break all
-       the compilation stuff *)
     Lemma compile_testbit :
       forall (locals: Semantics.locals) (mem: Semantics.mem)
-        (on_locals : Semantics.locals -> Prop)
+        (locals_ok : Semantics.locals -> Prop)
         tr R functions T (pred: T -> _ -> Prop)
         (i : nat) wi i_var var k k_impl,
         spec_of_testbit functions ->
@@ -190,16 +174,19 @@ Section __.
         map.get locals i_var = Some wi ->
         let v := testbit_gallina i in
         (let head := v in
-         WeakestPrecondition.cmd
-           (WeakestPrecondition.call functions) k_impl
-           tr mem  (map.put locals var (word.of_Z (Z.b2z head)))
-           (postcondition_cmd on_locals (pred (dlet head k)) R tr)) ->
+         find k_impl
+         implementing (pred (k head))
+         and-locals-post locals_ok
+         with-locals (map.put locals var (word.of_Z (Z.b2z head)))
+         and-memory mem and-trace tr and-rest R
+         and-functions functions) ->
         (let head := v in
-         WeakestPrecondition.cmd
-           (WeakestPrecondition.call functions)
-           (cmd.seq (cmd.call [var] testbit [expr.var i_var]) k_impl)
-           tr mem locals
-           (postcondition_cmd on_locals (pred (dlet head k)) R tr)).
+         find (cmd.seq (cmd.call [var] testbit [expr.var i_var]) k_impl)
+         implementing (pred (dlet head k))
+         and-locals-post locals_ok
+         with-locals locals
+         and-memory mem and-trace tr and-rest R
+         and-functions functions).
     Proof.
       repeat straightline'.
       straightline_call.
@@ -207,8 +194,7 @@ Section __.
       subst_lets_in_goal.
       match goal with H : word.unsigned ?wi = Z.of_nat ?i |- _ =>
                       rewrite H end.
-      rewrite Nat2Z.id.
-      eauto.
+      rewrite Nat2Z.id; eauto.
     Qed.
 
 
@@ -305,6 +291,17 @@ Section __.
       @PropSet.subset E (PropSet.singleton_set x) (PropSet.of_list l).
     Admitted.
 
+    Lemma word_of_small_nat n :
+      (Z.of_nat n < 2 ^ Semantics.width) ->
+      word.unsigned (word.of_Z (Z.of_nat n)) = Z.of_nat n.
+    Admitted.
+    Hint Resolve word_of_small_nat : compiler.
+
+    Lemma word_wrap_small x :
+      (0 <= x < 2 ^ Semantics.width) ->
+      word.wrap x = x.
+    Proof. apply Z.mod_small. Qed.
+
     Ltac prove_downto_state_ok :=
       cbv [downto_state];
       repeat lazymatch goal with
@@ -365,11 +362,16 @@ Section __.
             change 0%nat with (Z.to_nat 0); apply Z2Nat.inj_lt; lia
         | _ => idtac
         end.
-      { (* loop body *)
+      2:{ (* loop body *)
         intros. repeat destruct_one_match.
-        repeat safe_compile_step.
-        (* need to rephrase compile_downto in terms of cmd post *)
-        eapply compile_testbit.
+        pose proof (word.unsigned_range bound).
+        eapply compile_testbit with (wi:=wi).
+        all:repeat compile_step.
+        { subst wi.
+          rewrite word.unsigned_of_Z, word_wrap_small by lia.
+          reflexivity. }
+        { subst_lets_in_goal.
+          solve_map_get_goal. }
     Abort.
   End MontLadder.
 

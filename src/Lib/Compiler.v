@@ -4,7 +4,8 @@ Require Export Rupicola.Lib.Gensym.
 Require Import Rupicola.Lib.Tactics.
 
 Section with_semantics.
-  Context {semantics : Semantics.parameters}.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok _}.
 
   Lemma compile_skip :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
@@ -134,6 +135,26 @@ Section with_semantics.
     red.
     eassumption.
   Qed.
+
+  Lemma postcondition_for_postcondition_norets
+        locals_ok {T} (pred : T -> _)
+        spec k R tr mem locals functions :
+    WeakestPrecondition.cmd
+      (WeakestPrecondition.call functions)
+      k tr mem locals
+      (postcondition_norets locals_ok (pred spec) R tr) ->
+    WeakestPrecondition.cmd
+      (WeakestPrecondition.call functions)
+      k tr mem locals
+      (fun tr' m' _ =>
+         postcondition_for (pred spec) R tr tr' m' []).
+  Proof.
+    cbv [postcondition_norets]; intros.
+    eapply Proper_cmd;
+      [ solve [apply Proper_call] | repeat intro
+        | eassumption ].
+    cleanup; eauto.
+  Qed.
 End with_semantics.
 
 Ltac setup_step :=
@@ -160,12 +181,11 @@ Ltac setup :=
          | [ H := _ |- _ ] => subst H
          end;
   match goal with
-  | [  |- context[postcondition_for (?pred ?spec) ?R ?tr] ] =>
-    change (fun x y _ => postcondition_for (pred spec) R tr x y [])
-      with (postcondition_norets (fun _ => True) (pred spec) R tr);
-    let hd := term_head spec in
-    unfold hd
+  | [  |- context[postcondition_for (?pred ?spec)] ] =>
+    let hd := term_head spec in unfold hd
   end;
+  apply postcondition_for_postcondition_norets
+    with (locals_ok := fun _ => True);
   cleanup.
 
 Ltac lookup_variable m val :=

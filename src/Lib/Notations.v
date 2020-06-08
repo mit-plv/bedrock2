@@ -24,6 +24,7 @@ Infix "~>" := scalar (at level 40, only parsing).
 
 Notation "[[ locals ]]" := ({| value := locals; _value_ok := _ |}) (only printing).
 
+(* TODO: rets are not always nil!! *)
 Definition postcondition_for
            {semantics : Semantics.parameters} spec R tr :=
   (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (rets : list address) =>
