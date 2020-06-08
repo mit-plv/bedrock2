@@ -78,9 +78,6 @@ Section Compile.
     cbv [downto']; apply fold_left_skipn_seq.
   Qed.
 
-  Locate "implementing".
-  Print postcondition_norets.
-  Print postcondition_for.
   Lemma compile_downto :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
