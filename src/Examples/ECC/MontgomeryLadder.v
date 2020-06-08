@@ -164,6 +164,54 @@ Section __.
                /\ let i_nat := Z.to_nat (word.unsigned i) in
                   rets = [word.of_Z (Z.b2z (testbit_gallina i_nat))]).
 
+    Locate "implementing".
+    Print postcondition_norets.
+    Print postcondition_for.
+
+    (* TODO: use this everywhere to allow flexibility with locals! *)
+    Definition postcondition_cmd
+               {semantics : Semantics.parameters}
+               (on_locals : Semantics.locals -> Prop)
+               (spec R : Semantics.mem -> Prop)
+               (tr tr' : Semantics.trace) (mem' : Semantics.mem)
+               (locals' : Semantics.locals) : Prop :=
+      (tr = tr' /\ on_locals locals' /\ (spec * R)%sep mem').
+
+    (* TODO: the find/implementing notation is not flexible enough to say
+       anything about the locals, which loops need to do, so the loops break all
+       the compilation stuff *)
+    Lemma compile_testbit :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+        (on_locals : Semantics.locals -> Prop)
+        tr R functions T (pred: T -> _ -> Prop)
+        (i : nat) wi i_var var k k_impl,
+        spec_of_testbit functions ->
+        word.unsigned wi = Z.of_nat i ->
+        map.get locals i_var = Some wi ->
+        let v := testbit_gallina i in
+        (let head := v in
+         WeakestPrecondition.cmd
+           (WeakestPrecondition.call functions) k_impl
+           tr mem  (map.put locals var (word.of_Z (Z.b2z head)))
+           (postcondition_cmd on_locals (pred (dlet head k)) R tr)) ->
+        (let head := v in
+         WeakestPrecondition.cmd
+           (WeakestPrecondition.call functions)
+           (cmd.seq (cmd.call [var] testbit [expr.var i_var]) k_impl)
+           tr mem locals
+           (postcondition_cmd on_locals (pred (dlet head k)) R tr)).
+    Proof.
+      repeat straightline'.
+      straightline_call.
+      repeat straightline'.
+      subst_lets_in_goal.
+      match goal with H : word.unsigned ?wi = Z.of_nat ?i |- _ =>
+                      rewrite H end.
+      rewrite Nat2Z.id.
+      eauto.
+    Qed.
+
+
     (* TODO: make Placeholder [Lift1Prop.ex1 (fun x => Bignum p x)], and prove
        an iff1 with Bignum? Then we could even do some loop over the pointers to
        construct the seplogic condition *)
@@ -211,6 +259,9 @@ Section __.
 
     Ltac compile_custom ::=
       first [ simple eapply compile_downto
+            | gen_sym_inc;
+              let name := gen_sym_fetch "v" in
+              simple eapply compile_testbit with (var:=name)
             | simple eapply compile_point_assign
             | simple eapply compile_bignum_literal
             | simple eapply compile_bignum_copy
@@ -314,6 +365,11 @@ Section __.
             change 0%nat with (Z.to_nat 0); apply Z2Nat.inj_lt; lia
         | _ => idtac
         end.
+      { (* loop body *)
+        intros. repeat destruct_one_match.
+        repeat safe_compile_step.
+        (* need to rephrase compile_downto in terms of cmd post *)
+        eapply compile_testbit.
     Abort.
   End MontLadder.
 
