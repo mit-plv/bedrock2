@@ -99,7 +99,60 @@ Section with_semantics.
     eassumption.
   Qed.
 
-  (* FIXME add let pattern to other lemmas *)
+  (* TODO : move? *)
+  Lemma word_unsigned_of_Z_b2z b :
+    word.unsigned (word.of_Z (Z.b2z b)) = Z.b2z b.
+  Proof.
+    destruct b; cbn [Z.b2z];
+      auto using word.unsigned_of_Z_0, word.unsigned_of_Z_1.
+  Qed.
+  Lemma Z_lxor_xorb a b : Z.lxor (Z.b2z a) (Z.b2z b) = Z.b2z (xorb a b).
+  Proof. destruct a, b; reflexivity. Qed.
+
+  Lemma compile_xorb :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
+           tr R functions T (pred: T -> _ -> Prop)
+           x x_var y y_var k k_impl,
+    forall var,
+      map.get locals x_var = Some (word.of_Z (Z.b2z x)) ->
+      map.get locals y_var = Some (word.of_Z (Z.b2z y)) ->
+      let v := xorb x y in
+      (let head := v in
+       find k_impl
+       implementing (pred (k head))
+       and-locals-post locals_ok
+       with-locals (map.put locals var (word.of_Z (Z.b2z head)))
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (let head := v in
+       find (cmd.seq (cmd.set var (expr.op bopname.xor (expr.var x_var) (expr.var y_var)))
+                     k_impl)
+       implementing (pred (dlet head k))
+       and-locals-post locals_ok
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline.
+    eexists; split.
+    { repeat straightline.
+      eexists; split; [ eassumption | ].
+      repeat straightline.
+      eexists; split; [ eassumption | ].
+      reflexivity. }
+    red.
+    match goal with
+      H : context [map.put locals var ?v1]
+      |- context [map.put locals var ?v2] =>
+      replace v2 with v1; [ exact H | ]
+    end.
+    rewrite <-(word.of_Z_unsigned (word.xor _ _)).
+    rewrite word.unsigned_xor_nowrap.
+    rewrite !word_unsigned_of_Z_b2z, Z_lxor_xorb.
+    reflexivity.
+  Qed.
+
   Lemma compile_add :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
@@ -210,6 +263,7 @@ Ltac compile_basics :=
   let name := gen_sym_fetch "v" in
   first [simple eapply compile_constant with (var := name) |
          simple eapply compile_bool with (var := name) |
+         simple eapply compile_xorb with (var := name) |
          simple eapply compile_nat with (var := name) |
          simple eapply compile_add with (var := name) ].
 
