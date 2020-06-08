@@ -364,14 +364,21 @@ Section __.
         end.
       2:{ (* loop body *)
         intros. repeat destruct_one_match.
+        cbv [downto_state] in * |- . repeat destruct_one_match_hyp.
+        sepsimpl_hyps.
+
         pose proof (word.unsigned_range bound).
-        eapply compile_testbit with (wi:=wi).
-        all:repeat compile_step.
-        { subst wi.
-          rewrite word.unsigned_of_Z, word_wrap_small by lia.
-          reflexivity. }
-        { subst_lets_in_goal.
-          solve_map_get_goal. }
+        assert (word.unsigned wi = Z.of_nat i) by
+            (subst wi; rewrite word.unsigned_of_Z, word_wrap_small by lia;
+             reflexivity).
+        (* need to pass in the var manually, because downto_state talks about it
+        specifically *)
+        (* TODO: do we actually need to know the only_differ part? *)
+        eapply compile_testbit with (wi:=wi) (var:="si");
+          [ solve [repeat compile_step] .. | ].
+
+        repeat safe_compile_step.
+        simple eapply compile_cswap_nocopy.
     Abort.
   End MontLadder.
 
