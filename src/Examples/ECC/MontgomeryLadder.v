@@ -79,9 +79,8 @@ Section __.
               let/d s_i := testbit i in
               let/d swap := xorb swap s_i in
               let/d ''(P1, P2) := cswap swap P1 P2 in
-              let/d swap := s_i in
               let/d ''(P1, P2) := ladderstep_gallina u P1 P2 in
-              (P1, P2, swap)
+              (P1, P2, s_i)
            ) in
       let/d ''(P1, P2) := cswap swap P1 P2 in
       let '(x, z) := P1 in
@@ -243,22 +242,37 @@ Section __.
              (montladder
                 (Z.to_nat (word.unsigned bound)) testbit_gallina (eval U))).
 
+    Ltac apply_compile_cswap_nocopy name :=
+      simple eapply compile_cswap_nocopy with
+        (Data :=
+           fun p (X : Z) =>
+             (Lift1Prop.ex1
+                (fun x =>
+                   (emp (eval x = X) * Bignum p x)%sep)))
+        (var:=name);
+      [ lazymatch goal with
+        | |- sep _ _ _ =>
+          repeat lazymatch goal with
+                 | |- Lift1Prop.ex1 _ _ => eexists
+                 | |- eval _ = _ => eassumption
+                 | _ => progress sepsimpl
+                 end; ecancel_assumption
+        | _ => idtac
+        end .. | ];
+      [ repeat compile_step .. | ];
+      [ try congruence .. | ].
+
     Ltac compile_custom ::=
       gen_sym_inc;
       let name := gen_sym_fetch "v" in
+      cleanup;
       first [ simple eapply compile_downto
             | simple eapply compile_testbit with (var:=name)
             | simple eapply compile_point_assign
             | simple eapply compile_bignum_literal
             | simple eapply compile_bignum_copy
             | simple eapply compile_cswap_pair
-            | simple eapply compile_cswap_nocopy with
-                  (Data :=
-                     fun p (X : Z) =>
-                       (Lift1Prop.ex1
-                          (fun x =>
-                             (emp (eval x = X) * Bignum p x)%sep)))
-                  (var:=name) ].
+            | apply_compile_cswap_nocopy name ].
 
     Definition downto_state
                (locals : Semantics.locals)
@@ -385,20 +399,7 @@ Section __.
           [ solve [repeat compile_step] .. | ].
 
         repeat safe_compile_step.
-        cleanup.
 
-        compile_step;
-          [ lazymatch goal with
-            | |- sep _ _ _ =>
-              repeat lazymatch goal with
-                     | |- Lift1Prop.ex1 _ _ => eexists
-                     | |- eval _ = _ => eassumption
-                     | _ => progress sepsimpl
-                     end; ecancel_assumption
-            | _ => idtac
-            end .. | ];
-          [ repeat compile_step .. | ];
-          [ congruence .. | ].
     Abort.
   End MontLadder.
 
