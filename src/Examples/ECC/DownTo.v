@@ -1,9 +1,12 @@
 Require Import Rupicola.Lib.Api.
 
 Section Gallina.
+  Definition foreach_nat
+             {state} init nats (step:state->nat->state) : state :=
+    fold_left step nats init.
   Definition downto
              {state} init count (step:state->nat->state) : state :=
-    fold_left step (rev (seq 0 count)) init.
+    foreach_nat init (seq 0 count) step.
 End Gallina.
 
 Section Compile.
@@ -59,10 +62,166 @@ Section Compile.
     reflexivity.
   Qed.
 
+  (* TODO : move *)
+  Lemma hd_map {A B} (f : A -> B) (x : A) l :
+    hd (f x) (List.map f l) = f (hd x l).
+  Proof. destruct l; reflexivity. Qed.
+
+  Lemma compile_foreach_nat :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
+      tr R R' functions T (pred: T -> _ -> Prop)
+      {state} (init : state) ns ws step step_impl k k_impl i_var
+      (step_locals : Semantics.locals -> nat -> Semantics.locals)
+      (State : Semantics.locals -> state -> Semantics.mem -> Prop),
+      (State (map.put locals i_var (hd (word.of_Z 0) ws)) init * R')%sep mem ->
+      ns = List.map Z.to_nat (List.map word.unsigned ws) ->
+      let v := foreach_nat init ns step in
+      (let head := v in
+       (* loop iteration case *)
+       forall tr l li m st i,
+         let wi := word.of_Z (Z.of_nat i) in
+         (State l st * R')%sep m ->
+         l = foreach_nat locals (firstn i ns) step_locals ->
+         li = map.put l i_var wi ->
+         find step_impl
+         implementing (State (step_locals l i) (step st i))
+         and-locals-post (eq (step_locals l i))
+         with-locals li and-memory m and-trace tr and-rest R
+         and-functions functions) ->
+      (let head := v in
+       (* post-loop case *)
+       forall tr l m,
+         (State l head * R')%sep m ->
+         l = foreach_nat locals ns step_locals ->
+         find k_impl
+         implementing (pred (k head))
+         and-locals-post locals_ok
+         with-locals l and-memory m and-trace tr and-rest R
+         and-functions functions) ->
+      (let head := v in
+       (* while (i = n; 0 < i; pass)
+          { i--; step i } *)
+       find (cmd.seq
+               (cmd.seq
+                  (cmd.set i_var (expr.literal (Z.of_nat (hd 0 ns))))
+                  (cmd.while
+                     (expr.op bopname.ltu
+                              (expr.literal 0) (expr.var i_var))
+                     (cmd.seq
+                        (cmd.set i_var
+                                 (expr.op bopname.sub
+                                          (expr.var i_var)
+                                          (expr.literal 1)))
+                        step_impl)))
+               k_impl)
+       implementing (pred (dlet head k))
+       and-locals-post locals_ok
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    repeat straightline'.
+
+    (* handle while *)
+    WeakestPrecondition.unfold1_cmd_goal;
+      (cbv beta match delta [WeakestPrecondition.cmd_body]).
+    exists nat, lt.
+    exists (fun i t m l =>
+              let st :=
+                  foreach_nat init (firstn i ns) step in
+              (State l st * R')%sep m
+              /\ tr = t
+              /\ (exists wi,
+                     word.unsigned wi = Z.of_nat i
+                     /\ map.get l i_var = Some wi)).
+    ssplit; eauto using lt_wf; [ | ].
+
+    { cbv zeta.
+      exists (hd (Z.to_nat (word.unsigned (word.of_Z 0))) ns);
+        subst ns; ssplit;
+        [ | | | exists (hd (word.of_Z 0) ws)];
+        repeat match goal with
+               | _ => rewrite hd_map
+               | _ => rewrite map.put_put_same by auto
+               | _ => rewrite map.get_put_same by auto
+               | _ => rewrite word.of_Z_unsigned
+               | _ => rewrite skipn_all2 by (rewrite seq_length; lia)
+               | _ => progress subst_lets_in_goal
+               | _ => progress cbn [rev]
+               | _ => solve [eauto]
+               end.
+      { replace (hd 0) with (hd (Z.to_nat (word.unsigned (word.of_Z 0)))).
+      rewrite hd_map.
+      Search List.hd List.map.
+      Search hd List.map.
+
+    }
+
+    { intros. cleanup.
+      repeat straightline'.
+      lazymatch goal with x := context [word.ltu] |- _ => subst x end.
+      rewrite word.unsigned_ltu, word.unsigned_of_Z_0.
+      match goal with
+      | H1 : ?y = Z.of_nat ?x, H2 : 0 < ?x |- _ =>
+        assert (0 < y)%Z by
+            (rewrite H1; change 0%Z with (Z.of_nat 0);
+             apply Nat2Z.inj_lt; auto)
+      end.
+      destruct_one_match;
+        rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1;
+        ssplit; try lia; [ | ].
+      { repeat straightline'.
+        use_cmd_hyp; [ | try solve [handle_downto_locals] .. ].
+        2:{
+          Search l.
+          Search l0.
+          subst l0.
+        cleanup; subst.
+        lazymatch goal with
+        | H : word.unsigned ?w = Z.of_nat ?x
+          |- exists i : nat, _ /\ i < ?x =>
+          exists (x-1)%nat; ssplit;
+            lazymatch goal with
+            | |- exists _, _ => exists (word.sub w (word.of_Z 1))
+            | |- sep _ _ _ =>
+              rewrite <-fold_left_skipn_seq by lia; assumption
+            | _ => auto; try lia
+            end
+        end; [ ].
+        ssplit; handle_downto_locals; [ ].
+        rewrite word.unsigned_of_Z.
+        lazymatch goal with
+        | H : word.unsigned ?w = Z.of_nat ?i
+          |- word.wrap (Z.of_nat (?i - 1)) = Z.of_nat (?i - 1) =>
+          pose proof (word.unsigned_range w);
+            apply Z.mod_small; rewrite Nat2Z.inj_sub, <-H by lia
+        end.
+        lia. }
+      { repeat straightline'.
+        match goal with
+        | H : (word.unsigned ?x <= 0)%Z |- _ =>
+          let H' := fresh in
+          assert (word.unsigned x = 0%Z) as H'
+              by (pose proof word.unsigned_range x; lia)
+        end.
+        match goal with
+        | H : context [skipn ?i] |- _ =>
+          replace i with 0 in H by lia; cbn [skipn] in H
+        end.
+        use_cmd_hyp.
+        { eauto. }
+        { subst_lets_in_goal. assumption. } } }
+  Qed.
+
+  Locate "implementing".
+  Print postcondition_norets.
+  Print postcondition_for.
   Lemma compile_downto :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
       tr R R' functions T (pred: T -> _ -> Prop)
       {state} (init : state) count wcount step step_impl k k_impl i_var
+      (step_locals : Semantics.locals -> nat -> Semantics.locals)
       (State : Semantics.locals -> state -> Semantics.mem -> Prop),
       (State (map.put locals i_var wcount) init * R')%sep mem ->
       word.unsigned wcount = Z.of_nat count ->
@@ -72,22 +231,22 @@ Section Compile.
        (* loop iteration case *)
        forall tr l li m st i,
          let wi := word.of_Z (Z.of_nat i) in
-         let IterationResult :=
-             fun st tr' m' l' =>
-               (tr = tr'
-                /\ map.get l' i_var = Some wi (* didn't change i *)
-                /\ (State l' st * R')%sep m') in
          (State l st * R')%sep m ->
+         l = downto' locals i count step_locals ->
          li = map.put l i_var wi ->
-         WeakestPrecondition.cmd
-           (WeakestPrecondition.call functions) step_impl tr m li
-           (IterationResult (step st i))) ->
+         find step_impl
+         implementing (State (step_locals l i) (step st i))
+         and-locals-post (eq (step_locals l i))
+         with-locals li and-memory m and-trace tr and-rest R
+         and-functions functions) ->
       (let head := v in
        (* post-loop case *)
        forall tr l m,
          (State l head * R')%sep m ->
+         l = downto locals count step_locals ->
          find k_impl
          implementing (pred (k head))
+         and-locals-post locals_ok
          with-locals l and-memory m and-trace tr and-rest R
          and-functions functions) ->
       (let head := v in
@@ -107,6 +266,7 @@ Section Compile.
                         step_impl)))
                k_impl)
        implementing (pred (dlet head k))
+       and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
   Proof.
@@ -154,7 +314,11 @@ Section Compile.
         rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1;
         ssplit; try lia; [ | ].
       { repeat straightline'.
-        use_cmd_hyp; [ | solve [handle_downto_locals] .. ].
+        use_cmd_hyp; [ | try solve [handle_downto_locals] .. ].
+        2:{
+          Search l.
+          Search l0.
+          subst l0.
         cleanup; subst.
         lazymatch goal with
         | H : word.unsigned ?w = Z.of_nat ?x

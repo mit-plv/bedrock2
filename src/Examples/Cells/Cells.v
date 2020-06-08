@@ -18,7 +18,9 @@ Section with_semantics.
 
   Lemma compile_get :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr R R' functions T (pred: T -> _ -> Prop) c c_ptr c_var k k_impl,
+           (locals_ok : Semantics.locals -> Prop)
+           tr R R' functions T (pred: T -> _ -> Prop)
+           c c_ptr c_var k k_impl,
     forall var,
       sep (cell_value c_ptr c) R' mem ->
       map.get locals c_var = Some c_ptr ->
@@ -26,6 +28,7 @@ Section with_semantics.
       (let head := v in
        find k_impl
        implementing (pred (k head))
+       and-locals-post locals_ok
        with-locals (map.put locals var head)
        and-memory mem and-trace tr and-rest R
        and-functions functions) ->
@@ -33,6 +36,7 @@ Section with_semantics.
        find (cmd.seq (cmd.set var (expr.load access_size.word (expr.var c_var)))
                      k_impl)
        implementing (pred (dlet head k))
+       and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
   Proof.
@@ -54,7 +58,9 @@ Section with_semantics.
 
   Lemma compile_put :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr R R' functions T (pred: T -> _ -> Prop) c c_ptr c_var x x_var k k_impl,
+           (locals_ok : Semantics.locals -> Prop)
+           tr R R' functions T (pred: T -> _ -> Prop)
+           c c_ptr c_var x x_var k k_impl,
       sep (cell_value c_ptr c) R' mem ->
       map.get locals c_var = Some c_ptr ->
       map.get locals x_var = Some x ->
@@ -64,6 +70,7 @@ Section with_semantics.
          sep (cell_value c_ptr head) R' m ->
          (find k_impl
           implementing (pred (k head))
+          and-locals-post locals_ok
           with-locals locals
           and-memory m and-trace tr and-rest R
           and-functions functions)) ->
@@ -71,6 +78,7 @@ Section with_semantics.
        find (cmd.seq (cmd.store access_size.word (expr.var c_var) (expr.var x_var))
                      k_impl)
        implementing (pred (dlet head k))
+       and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
   Proof.

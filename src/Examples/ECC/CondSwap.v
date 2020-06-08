@@ -14,6 +14,7 @@ Section Compile.
      data. This version swaps the pointers without doing any copying. *)
   Lemma compile_cswap_nocopy :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
       tr R R' functions T (pred: T -> _ -> Prop)
       {data} (x y : data) swap x_var x_ptr y_var y_ptr k k_impl
       (Data : word -> data -> Semantics.mem -> Prop) var,
@@ -27,6 +28,7 @@ Section Compile.
       (let head := v in
        (find k_impl
         implementing (pred (k head))
+        and-locals-post locals_ok
         with-locals
                (map.put (map.put (map.put locals var x_ptr) x_var y_ptr)
                         y_var x_ptr)
@@ -41,6 +43,7 @@ Section Compile.
                   (cmd.set y_var (expr.var var)))
                k_impl)
        implementing (pred (dlet head k))
+       and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
   Proof.

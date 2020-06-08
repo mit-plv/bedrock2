@@ -31,15 +31,15 @@ Definition postcondition_for
      /\ sep spec R mem').
 
 Definition postcondition_norets
-           {semantics : Semantics.parameters} spec R tr :=
-  (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (_ : Semantics.locals) =>
-     postcondition_for spec R tr tr' mem' []).
+           {semantics : Semantics.parameters} locals_post spec R tr :=
+  (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (locals : Semantics.locals) =>
+     locals_post locals /\ postcondition_for spec R tr tr' mem' []).
 
-Notation "'find' body 'implementing' spec 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
+Notation "'find' body 'implementing' spec 'and-locals-post' locals_post 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
   (WeakestPrecondition.cmd
      (WeakestPrecondition.call fns)
      body tr mem locals
-     (postcondition_norets spec R tr)) (at level 0).
+     (postcondition_norets locals_post spec R tr)) (at level 0).
 
 Notation "'liftexists' x .. y ',' P" :=
   (Lift1Prop.ex1
