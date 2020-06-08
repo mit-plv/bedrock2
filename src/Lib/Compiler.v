@@ -49,7 +49,7 @@ Section with_semantics.
     eassumption.
   Qed.
 
-  Lemma compile_nat :
+  Lemma compile_nat_constant :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
            tr R functions T (pred: T -> _ -> Prop) (n : nat) k k_impl,
@@ -74,7 +74,7 @@ Section with_semantics.
     eassumption.
   Qed.
 
-  Lemma compile_bool :
+  Lemma compile_bool_constant :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
            tr R functions T (pred: T -> _ -> Prop) (b : bool) k k_impl,
@@ -264,9 +264,9 @@ Ltac compile_basics :=
   gen_sym_inc;
   let name := gen_sym_fetch "v" in
   first [simple eapply compile_constant with (var := name) |
-         simple eapply compile_bool with (var := name) |
+         simple eapply compile_bool_constant with (var := name) |
+         simple eapply compile_nat_constant with (var := name) |
          simple eapply compile_xorb with (var := name) |
-         simple eapply compile_nat with (var := name) |
          simple eapply compile_add with (var := name) ].
 
 Ltac compile_custom := fail.
