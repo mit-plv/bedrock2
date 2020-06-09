@@ -47,13 +47,13 @@ Ltac handle_call :=
     repeat straightline ].
 
 (* stolen from a bedrock2 example file (LAN9250.v) *)
-Ltac split_if solver :=
+Ltac split_if t :=
   lazymatch goal with
     |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
     let c := eval hnf in c in
         lazymatch c with
         | Syntax.cmd.cond _ _ _ =>
-          letexists; split; [solve[solver]|split]
+          letexists; split; [t|split]
         end
   end.
 

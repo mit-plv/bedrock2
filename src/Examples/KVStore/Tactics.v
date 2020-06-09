@@ -133,7 +133,7 @@ Ltac kv_hammer :=
               destruct map get and only allow one remaining subgoal *)
            destruct_one_match_hyp_of_type (option value);
            destruct_products; try clear_old_seps; try congruence;
-           split_if ltac:(repeat straightline');
+           split_if ltac:(solve[repeat straightline']);
            intros; boolean_cleanup; [ ]
          | kvp : @kv_parameters _ _ _ ?value _ |- _ =>
            (* handles case analysis of map-get other than require !err:
@@ -142,7 +142,7 @@ Ltac kv_hammer :=
            destruct_products; try clear_old_seps;
            (* make sure this doesn't work on require !err *)
            (* TODO: why doesn't assert_fails work? *)
-           tryif split_if ltac:(repeat straightline')
+           tryif split_if ltac:(solve[repeat straightline'])
            then fail else idtac;
            boolean_cleanup
          | H : _ |- _ =>

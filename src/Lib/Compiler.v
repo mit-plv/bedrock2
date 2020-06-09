@@ -254,7 +254,12 @@ Ltac solve_map_get_goal :=
     instantiate (1 := var);
     rewrite ?map.get_put_diff by congruence;
     apply map.get_put_same
+  | [  |- map.get ?m _ = None ] =>
+    rewrite ?map.get_put_diff by congruence;
+    apply map.get_empty
   | [ H : map.get ?m1 _ = Some ?val |- map.get ?m2 _ = Some ?val ] =>
+    rewrite ?map.get_put_diff; [ apply H | congruence .. ]
+  | [ H : map.get _ ?k = None  |- map.get _ ?k = None ] =>
     rewrite ?map.get_put_diff; [ apply H | congruence .. ]
   end.
 
@@ -281,7 +286,7 @@ Ltac compile_step :=
     autounfold with compiler in *;
     cbn [fst snd] in *;
     ecancel_assumption
-  | [  |- map.get _ _ = Some _ ] =>
+  | [  |- map.get _ _ = _ ] =>
     first [ solve_map_get_goal
           | progress subst_lets_in_goal; solve_map_get_goal ]
   | _ => eauto with compiler

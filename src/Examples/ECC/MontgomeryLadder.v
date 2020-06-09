@@ -41,6 +41,8 @@ Section __.
   Hint Resolve relax_bounds : compiler.
 
   Section Gallina.
+    Local Notation "0" := (0 mod M).
+    Local Notation "1" := (1 mod M).
     Local Infix "+" := (fun x y => (x + y) mod M).
     Local Infix "-" := (fun x y => (x - y) mod M).
     Local Infix "*" := (fun x y => (x * y) mod M).
@@ -140,18 +142,21 @@ Section __.
            X1 X2 Z2 X3 Z3 pX1 pX2 pZ2 pX3 pZ3
            pA pAA pB pBB pE pC pD pDA pCB
            (ladderstep_gallina
-              (eval X1) (eval X2, eval Z2) (eval X3, eval Z3))).
+              (eval X1 mod M) (eval X2 mod M, eval Z2 mod M)
+              (eval X3 mod M, eval Z3 mod M))).
 
   Section MontLadder.
     Context (testbit: string) (testbit_gallina : nat -> bool)
-            (bound : word)
-            (one zero : bignum) (eval_one : eval one = 1)
-            (eval_zero : eval zero = 0).
+            (bound : word) (one zero : bignum)
+            (one_bounds : bounded_by tight_bounds one)
+            (zero_bounds : bounded_by tight_bounds zero)
+            (eval_one : eval one mod M = 1 mod M)
+            (eval_zero : eval zero mod M = 0 mod M).
 
-    Instance spec_of_literal0 : spec_of (bignum_literal 0) :=
-      spec_of_bignum_literal zero (bignum_literal 0).
-    Instance spec_of_literal1 : spec_of (bignum_literal 1) :=
-      spec_of_bignum_literal one (bignum_literal 1).
+    Instance spec_of_literal0 : spec_of (bignum_literal (0 mod M)) :=
+      spec_of_bignum_literal zero (bignum_literal (0 mod M)).
+    Instance spec_of_literal1 : spec_of (bignum_literal (1 mod M)) :=
+      spec_of_bignum_literal one (bignum_literal (1 mod M)).
 
     Instance spec_of_testbit : spec_of testbit :=
       fun functions =>
@@ -196,6 +201,88 @@ Section __.
       rewrite Nat2Z.id; eauto.
     Qed.
 
+    Lemma compile_ladderstep :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+        (locals_ok : Semantics.locals -> Prop)
+        tr R R' functions T (pred: T -> _ -> Prop)
+        x1 x2 z2 x3 z3
+        X1 X1_ptr X1_var X2 X2_ptr X2_var Z2 Z2_ptr Z2_var
+        X3 X3_ptr X3_var Z3 Z3_ptr Z3_var
+        A A_ptr A_var AA AA_ptr AA_var B B_ptr B_var BB BB_ptr BB_var
+        E E_ptr E_var C C_ptr C_var D D_ptr D_var
+        DA DA_ptr DA_var CB CB_ptr CB_var
+        k k_impl,
+        spec_of_ladderstep functions ->
+        eval X1 mod M = x1 mod M ->
+        eval X2 mod M = x2 mod M ->
+        eval Z2 mod M = z2 mod M ->
+        eval X3 mod M = x3 mod M ->
+        eval Z3 mod M = z3 mod M ->
+        bounded_by tight_bounds X1 ->
+        bounded_by tight_bounds X2 ->
+        bounded_by tight_bounds Z2 ->
+        bounded_by tight_bounds X3 ->
+        bounded_by tight_bounds Z3 ->
+        (Bignum X1_ptr X1
+         * Bignum X2_ptr X2 * Bignum Z2_ptr Z2
+         * Bignum X3_ptr X3 * Bignum Z3_ptr Z3
+         * Placeholder A_ptr A * Placeholder AA_ptr AA
+         * Placeholder B_ptr B * Placeholder BB_ptr BB
+         * Placeholder E_ptr E * Placeholder C_ptr C
+         * Placeholder D_ptr D * Placeholder DA_ptr DA
+         * Placeholder CB_ptr CB * R')%sep mem ->
+        map.get locals X1_var = Some X1_ptr ->
+        map.get locals X2_var = Some X2_ptr ->
+        map.get locals Z2_var = Some Z2_ptr ->
+        map.get locals X3_var = Some X3_ptr ->
+        map.get locals Z3_var = Some Z3_ptr ->
+        map.get locals A_var = Some A_ptr ->
+        map.get locals AA_var = Some AA_ptr ->
+        map.get locals B_var = Some B_ptr ->
+        map.get locals BB_var = Some BB_ptr ->
+        map.get locals E_var = Some E_ptr ->
+        map.get locals C_var = Some C_ptr ->
+        map.get locals D_var = Some D_ptr ->
+        map.get locals DA_var = Some DA_ptr ->
+        map.get locals CB_var = Some CB_ptr ->
+        let v := ladderstep_gallina
+                   (x1 mod M) (x2 mod M, z2 mod M) (x3 mod M, z3 mod M) in
+        (let head := v in
+         forall m,
+           (LadderStepResult
+             X1 X2 Z2 X3 Z3 X1_ptr X2_ptr Z2_ptr X3_ptr
+             Z3_ptr A_ptr AA_ptr B_ptr BB_ptr E_ptr C_ptr D_ptr DA_ptr
+             CB_ptr head * R')%sep m ->
+           (find k_impl
+            implementing (pred (k head))
+            and-locals-post locals_ok
+            with-locals locals
+            and-memory m and-trace tr and-rest R
+            and-functions functions)) ->
+        (let head := v in
+         find (cmd.seq
+                 (cmd.call [] "ladderstep"
+                           [ expr.var X1_var; expr.var X2_var;
+                               expr.var Z2_var; expr.var X3_var;
+                                 expr.var Z3_var; expr.var A_var;
+                                   expr.var AA_var; expr.var B_var;
+                                     expr.var BB_var; expr.var E_var;
+                                       expr.var C_var; expr.var D_var;
+                                         expr.var DA_var; expr.var CB_var ])
+
+                 k_impl)
+         implementing (pred (dlet head k))
+         and-locals-post locals_ok
+         with-locals locals
+         and-memory mem and-trace tr and-rest R
+         and-functions functions).
+    Proof.
+      repeat straightline'.
+      handle_call; [ solve [eauto] .. | ].
+      repeat match goal with H : eval _ mod _ = _ |- _ =>
+                             rewrite H in * end.
+      auto.
+    Qed.
 
     (* TODO: make Placeholder [Lift1Prop.ex1 (fun x => Bignum p x)], and prove
        an iff1 with Bignum? Then we could even do some loop over the pointers to
@@ -242,14 +329,14 @@ Section __.
              (montladder
                 (Z.to_nat (word.unsigned bound)) testbit_gallina (eval U))).
 
-    Ltac apply_compile_cswap_nocopy name :=
+    Ltac apply_compile_cswap_nocopy :=
       simple eapply compile_cswap_nocopy with
         (Data :=
            fun p (X : Z) =>
              (Lift1Prop.ex1
                 (fun x =>
                    (emp (eval x = X) * Bignum p x)%sep)))
-        (var:=name);
+        (tmp:="tmp");
       [ lazymatch goal with
         | |- sep _ _ _ =>
           repeat lazymatch goal with
@@ -272,11 +359,12 @@ Section __.
             | simple eapply compile_bignum_literal
             | simple eapply compile_bignum_copy
             | simple eapply compile_cswap_pair
-            | apply_compile_cswap_nocopy name ].
+            | apply_compile_cswap_nocopy
+            | simple eapply compile_ladderstep ].
 
     Definition downto_state
                (locals : Semantics.locals)
-               X1_var Z1_var X2_var Z2_var swap_var si_var :=
+               X1_var Z1_var X2_var Z2_var swap_var si_var tmp_var :=
       fun l (st : point * point * bool) =>
         let '(P1, P2, swap) := st in
         let '(X1z, Z1z) := P1 in
@@ -285,16 +373,21 @@ Section __.
         (emp (map.only_differ
                 locals
                 (PropSet.of_list [swap_var; X1_var; Z1_var;
-                                    X2_var; Z2_var; si_var]) l
+                                    X2_var; Z2_var; si_var; tmp_var]) l
               /\ map.get l swap_var = Some (word.of_Z (Z.b2z swap))
               /\ map.get l X1_var = Some X1_ptr
               /\ map.get l Z1_var = Some Z1_ptr
               /\ map.get l X2_var = Some X2_ptr
               /\ map.get l Z2_var = Some Z2_ptr
-              /\ eval X1 = X1z
-              /\ eval Z1 = Z1z
-              /\ eval X2 = X2z
-              /\ eval Z2 = Z2z)
+              /\ map.get l tmp_var = None
+              /\ bounded_by tight_bounds X1
+              /\ bounded_by tight_bounds Z1
+              /\ bounded_by tight_bounds X2
+              /\ bounded_by tight_bounds Z2
+              /\ eval X1 mod M = X1z
+              /\ eval Z1 mod M = Z1z
+              /\ eval X2 mod M = X2z
+              /\ eval Z2 mod M = Z2z)
          * (Bignum X1_ptr X1 * Bignum Z1_ptr Z1
             * Bignum X2_ptr X2 * Bignum Z2_ptr Z2))%sep.
 
@@ -310,6 +403,14 @@ Section __.
     Admitted.
     Lemma of_list_subset_singleton {E} x l :
       @PropSet.subset E (PropSet.singleton_set x) (PropSet.of_list l).
+    Admitted.
+    Lemma map_get_only_differ_excl_r m1 m2 k ks :
+      map.only_differ m1 ks m2 ->
+      ~ PropSet.elem_of k ks ->
+      map.get m2 k = map.get m1 k.
+    Admitted.
+    Lemma of_list_elem_of_In {E} l (k : E) :
+      PropSet.elem_of k (PropSet.of_list l) <-> In k l.
     Admitted.
 
     Lemma word_of_small_nat n :
@@ -335,13 +436,60 @@ Section __.
       | _ => idtac
       end;
       lazymatch goal with
-      | |- map.get _ _ = Some _ =>
-        subst_lets_in_goal; solve_map_get_goal
-      | |- map.only_differ _ _ _ =>
-        solve [eauto using map_only_differ_subset,
-               of_list_subset_singleton,
-               map_only_differ_put_r]
+      | |- map.get _ _ = _ => subst_lets_in_goal; solve_map_get_goal
+      | |- map.only_differ _ _ _ => solve
+                                      [ eauto
+                                          using map_only_differ_subset, of_list_subset_singleton,
+                                        map_only_differ_put_r ]
+      | |- bounded_by _ _ => solve [ auto ]
+      | |- ?x => fail "unrecognized side condition" x
       end.
+
+    Lemma eval_fst_cswap s a b A B :
+      eval a = A ->
+      eval b = B ->
+      eval (fst (cswap s a b)) = fst (cswap s A B).
+    Proof. destruct s; cbn; auto. Qed.
+
+    Lemma eval_snd_cswap s a b A B :
+      eval a = A ->
+      eval b = B ->
+      eval (snd (cswap s a b)) = snd (cswap s A B).
+    Proof. destruct s; cbn; auto. Qed.
+
+    (* TODO: move to cswap *)
+    Lemma cswap_iff1
+          {T} (pred : word ->T -> Semantics.mem -> Prop) s pa pb a b :
+      Lift1Prop.iff1
+        ((pred (fst (cswap s pa pb)) (fst (cswap s a b)))
+         * pred (snd (cswap s pa pb))
+                (snd (cswap s a b)))%sep
+        (pred pa a * pred pb b)%sep.
+    Proof. destruct s; cbn [cswap fst snd]; ecancel. Qed.
+
+    (* TODO: move to cswap *)
+    Lemma map_get_cswap_fst
+          {key value} {map : map.map key value}
+          (m : map.rep (map:=map)) s ka kb a b :
+      map.get m ka = Some a ->
+      map.get m kb = Some b ->
+      map.get m (fst (cswap s ka kb)) = Some (fst (cswap s a b)).
+    Proof. destruct s; cbn [cswap fst fst]; auto. Qed.
+    Lemma map_get_cswap_snd
+          {key value} {map : map.map key value}
+          (m : map.rep (map:=map)) s ka kb a b :
+      map.get m ka = Some a ->
+      map.get m kb = Some b ->
+      map.get m (snd (cswap s ka kb)) = Some (snd (cswap s a b)).
+    Proof. destruct s; cbn [cswap fst snd]; auto. Qed.
+
+    (* TODO: move to cswap *)
+    Lemma cswap_cases_fst {T} (P : T -> Prop) s a b :
+      P a -> P b -> P (fst (cswap s a b)).
+    Proof. destruct s; cbn [cswap fst snd]; auto. Qed.
+    Lemma cswap_cases_snd {T} (P : T -> Prop) s a b :
+      P a -> P b -> P (snd (cswap s a b)).
+    Proof. destruct s; cbn [cswap fst snd]; auto. Qed.
 
     Derive montladder_body SuchThat
            (let args := ["bound"; "U"; "X1"; "Z1"; "X2"; "Z2";
@@ -351,7 +499,8 @@ Section __.
               montladder
               (ltac:(
                  let callees :=
-                     constr:([(bignum_literal 0); (bignum_literal 1);
+                     constr:([(bignum_literal (0 mod M));
+                                (bignum_literal (1 mod M));
                                 bignum_copy; "ladderstep"; testbit]) in
                  let x := program_logic_goal_for_function
                                 montladder callees in
@@ -360,19 +509,61 @@ Section __.
     Proof.
       cbv [program_logic_goal_for spec_of_montladder].
       cbv [spec_of_literal0 spec_of_literal1].
-      rewrite <-eval_one, <-eval_zero.
+      replace (bignum_literal (0 mod M))
+        with (bignum_literal (eval zero mod M))
+        by (rewrite eval_zero; reflexivity).
+      replace (bignum_literal (1 mod M))
+        with (bignum_literal (eval one mod M))
+        by (rewrite eval_one; reflexivity).
       setup.
       repeat safe_compile_step.
 
+      compile_step.
+      all:compile_step.
+      all:compile_step.
+
       rewrite Z2Nat.id in * by apply word.unsigned_range.
 
+      let tmp_var := constr:("tmp") in
       let si_var := constr:("si") in
       let i := constr:("i") in
       let locals := lazymatch goal with
                     | |- WeakestPrecondition.cmd _ _ _ _ ?l _ => l end in
       simple eapply compile_downto with
                           (i_var := i)
-                          (State := downto_state locals _ _ _ _ _ si_var);
+                          (State := downto_state
+                                      locals _ _ _ _ _ si_var tmp_var).
+      2:{
+        Print prove_downto_state_ok.
+        cbv[downto_state];
+          repeat
+            lazymatch goal with
+            | |- Lift1Prop.ex1 _ _ => eexists
+            | _ => progress sepsimpl
+            end.
+        12:{
+          subst_lets_in_goal.
+          lazymatch goal with
+          | |- eval _ mod ?M = eval one =>
+            instantiate (1:=one);
+              rewrite !eval_one; lia
+          end.
+          
+          rewrite eval_one, <-(Z.mod_1_l M).
+          lazymatch goal with
+          | |- eval _ = _ => exact eq_refl
+          | |- (_ * _)%sep _ => ecancel_assumption
+          | _ => idtac
+          end;
+          lazymatch goal with
+          | |- map.get _ _ = _ => subst_lets_in_goal; solve_map_get_goal
+          | |- map.only_differ _ _ _ => solve
+                                          [ eauto
+                                              using map_only_differ_subset, of_list_subset_singleton,
+                                            map_only_differ_put_r ]
+          | |- bounded_by _ _ => solve [ auto ]
+          | |- ?x => fail "unrecognized side condition" x
+          end
         lazymatch goal with
         | |- sep _ _ _ => prove_downto_state_ok
         | |- word.unsigned _ = Z.of_nat _ =>
@@ -399,6 +590,93 @@ Section __.
           [ solve [repeat compile_step] .. | ].
 
         repeat safe_compile_step.
+
+        compile_step.
+        all:
+          lazymatch goal with
+          | |- eval _ = _ =>
+            solve [eauto using eval_fst_cswap, eval_snd_cswap]
+          | |- sep _ _ _ =>
+            repeat seprewrite (cswap_iff1 Bignum);
+              ecancel_assumption
+          | _ => idtac
+          end.
+        all:lazymatch goal with
+            | |- map.get _ _ = Some _ =>
+              try solve [subst_lets_in_goal; solve_map_get_goal]
+            | |- bounded_by _ (fst (cswap _ _ _)) =>
+              apply cswap_cases_fst; solve [auto]
+            | |- bounded_by _ (snd (cswap _ _ _)) =>
+              apply cswap_cases_snd; solve [auto]
+            | |- context [WeakestPrecondition.cmd] => idtac
+            | _ => eauto
+            end.
+        all:
+          lazymatch goal with
+          | H : map.only_differ ?m1 ?ks _
+            |- map.get ?m2 ?k = ?val =>
+            let H' := fresh in
+            subst_lets_in_goal;
+            assert (map.get m1 k = val) as H' by solve_map_get_goal;
+              autorewrite with mapsimpl;
+              erewrite map_get_only_differ_excl_r;
+              [ solve [apply H'] | exact H | ]; clear H';
+              cbn [In PropSet.elem_of PropSet.of_list];
+              clear; intuition; congruence
+          | _ => idtac
+          end.
+
+        repeat safe_compile_step.
+        compile_done.
+        { (* instantiate step_locals *)
+          match goal with
+          | |- ?step ?l ?i = ?rhs =>
+            is_evar step;
+              let p := lazymatch (eval pattern i in rhs)
+                       with ?f _ => f end in
+              let p := lazymatch (eval pattern l in p)
+                       with ?f _ => f end in
+              instantiate (1:=p)
+          end.
+          reflexivity. }
+        { (* prove invariant is still true *)
+          clear H10.
+          cbv [LadderStepResult] in *.
+          cleanup; sepsimpl_hyps.
+          match goal with
+          | H : ?x = (_, _) |- context [fst ?x] =>
+            rewrite H; progress cbn [fst snd]
+          end.
+          clear_old_seps.
+          cbv[downto_state];
+            repeat destruct_one_match;
+            repeat
+              lazymatch goal with
+              | |- Lift1Prop.ex1 _ _ => eexists
+              | _ => progress sepsimpl
+              end.
+          12:{
+            Search x7.
+            Search head12.
+          all:
+            lazymatch goal with
+            | |- eval _ = _ => exact eq_refl
+            | |- (_ * _)%sep _ => ecancel_assumption
+            | _ => idtac
+            end.
+          all:
+            lazymatch goal with
+            | |- map.get _ _ = _ => subst_lets_in_goal; solve_map_get_goal
+            | |- map.only_differ _ _ _ => solve
+                                            [ eauto
+                                                using map_only_differ_subset, of_list_subset_singleton,
+                                              map_only_differ_put_r ]
+            | |- bounded_by _ _ => solve [ auto ]
+            | |- ?x => fail "unrecognized side condition" x
+            end.
+          Print
+          prove_downto_state_ok.
+          prove_downto_state_ok.
 
     Abort.
   End MontLadder.

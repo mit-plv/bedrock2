@@ -78,6 +78,8 @@ Section Compile.
     cbv [downto']; apply fold_left_skipn_seq.
   Qed.
 
+  (* TODO: find a better phrasing than step_locals *)
+  (* TODO: use separation logic for locals? *)
   Lemma compile_downto :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
@@ -110,7 +112,7 @@ Section Compile.
          with-locals li and-memory m and-trace tr and-rest R'
          and-functions functions) ->
       (let head := v in
-       (* post-loop case *)
+       (* continuation *)
        forall tr l m,
          (State l head * R')%sep m ->
          l = downto start_locals count step_locals' ->

@@ -367,7 +367,7 @@ Section Compile.
       (Bignum x_ptr x * Placeholder out_ptr out * R')%sep mem ->
       map.get locals x_var = Some x_ptr ->
       map.get locals out_var = Some out_ptr ->
-      let v := eval x in
+      let v := (eval x mod M)%Z in
       (let head := v in
        forall m,
          (Bignum x_ptr x * Bignum out_ptr x * R')%sep m ->
@@ -396,11 +396,11 @@ Section Compile.
            (locals_ok : Semantics.locals -> Prop)
       tr R R' functions T (pred: T -> _ -> Prop)
       (x out : bignum) out_ptr out_var k k_impl,
-      let literal_name := bignum_literal (eval x) in
+      let literal_name := bignum_literal (eval x mod M) in
       spec_of_bignum_literal x literal_name functions ->
       (Placeholder out_ptr out * R')%sep mem ->
       map.get locals out_var = Some out_ptr ->
-      let v := eval x in
+      let v := (eval x mod M)%Z in
       (let head := v in
        forall m,
          (Bignum out_ptr x * R')%sep m ->
