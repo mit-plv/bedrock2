@@ -82,7 +82,8 @@ Section __.
               let/d swap := xorb swap s_i in
               let/d ''(P1, P2) := cswap swap P1 P2 in
               let/d ''(P1, P2) := ladderstep_gallina u P1 P2 in
-              (P1, P2, s_i)
+              let/d swap := s_i in
+              (P1, P2, swap)
            ) in
       let/d ''(P1, P2) := cswap swap P1 P2 in
       let '(x, z) := P1 in
@@ -199,6 +200,32 @@ Section __.
       match goal with H : word.unsigned ?wi = Z.of_nat ?i |- _ =>
                       rewrite H end.
       rewrite Nat2Z.id; eauto.
+    Qed.
+
+    (* TODO: move, make more types *)
+    Lemma compile_rename_bool :
+      forall (locals: Semantics.locals) (mem: Semantics.mem)
+        (locals_ok : Semantics.locals -> Prop)
+        tr R functions T (pred: T -> _ -> Prop)
+        x x_var var k k_impl,
+        map.get locals x_var = Some (word.of_Z (Z.b2z x)) ->
+        let v := x in
+        (let head := v in
+         find k_impl
+         implementing (pred (k head))
+         and-locals-post locals_ok
+         with-locals (map.put locals var (word.of_Z (Z.b2z x)))
+         and-memory mem and-trace tr and-rest R
+         and-functions functions) ->
+        (let head := v in
+         find (cmd.seq (cmd.set var (expr.var x_var)) k_impl)
+         implementing (pred (dlet head k))
+         and-locals-post locals_ok
+         with-locals locals
+         and-memory mem and-trace tr and-rest R
+         and-functions functions).
+    Proof.
+      repeat straightline'. eauto.
     Qed.
 
     Lemma compile_ladderstep :
@@ -337,7 +364,7 @@ Section __.
            fun p (X : Z) =>
              (Lift1Prop.ex1
                 (fun x =>
-                   (emp (eval x mod M = X) * Bignum p x)%sep)))
+                   (emp (eval x mod M = X mod M) * Bignum p x)%sep)))
         (tmp:="tmp");
       [ lazymatch goal with
         | |- sep _ _ _ =>
@@ -366,12 +393,15 @@ Section __.
 
     Definition downto_state
                (locals : Semantics.locals)
-               X1_var Z1_var X2_var Z2_var swap_var si_var tmp_var :=
+               X1_var Z1_var X2_var Z2_var
+               swap_var si_var tmp_var
+               A_ptr AA_ptr B_ptr BB_ptr E_ptr C_ptr D_ptr DA_ptr CB_ptr :=
       fun l (st : point * point * bool) =>
         let '(P1, P2, swap) := st in
         let '(X1z, Z1z) := P1 in
         let '(X2z, Z2z) := P2 in
-        liftexists X1 Z1 X2 Z2 X1_ptr Z1_ptr X2_ptr Z2_ptr,
+        liftexists X1 Z1 X2 Z2 X1_ptr Z1_ptr X2_ptr Z2_ptr
+                   A AA B BB E C D DA CB,
         (emp (map.only_differ
                 locals
                 (PropSet.of_list [swap_var; X1_var; Z1_var;
@@ -386,12 +416,21 @@ Section __.
               /\ bounded_by tight_bounds Z1
               /\ bounded_by tight_bounds X2
               /\ bounded_by tight_bounds Z2
-              /\ eval X1 mod M = X1z
-              /\ eval Z1 mod M = Z1z
-              /\ eval X2 mod M = X2z
-              /\ eval Z2 mod M = Z2z)
+              /\ X1z mod M = X1z
+              /\ Z1z mod M = Z1z
+              /\ X2z mod M = X2z
+              /\ Z2z mod M = Z2z
+              /\ eval X1 mod M = X1z mod M
+              /\ eval Z1 mod M = Z1z mod M
+              /\ eval X2 mod M = X2z mod M
+              /\ eval Z2 mod M = Z2z mod M)
          * (Bignum X1_ptr X1 * Bignum Z1_ptr Z1
-            * Bignum X2_ptr X2 * Bignum Z2_ptr Z2))%sep.
+            * Bignum X2_ptr X2 * Bignum Z2_ptr Z2
+            * Placeholder A_ptr A * Placeholder AA_ptr AA
+            * Placeholder B_ptr B * Placeholder BB_ptr BB
+            * Placeholder E_ptr E * Placeholder C_ptr C
+            * Placeholder D_ptr D * Placeholder DA_ptr DA
+            * Placeholder CB_ptr CB))%sep.
 
     (* TODO: look in fiat-crypto Bedrock/Util for similar lemmas *)
     (* TODO: move *)
@@ -433,7 +472,9 @@ Section __.
                | _ => progress sepsimpl
              end;
       lazymatch goal with
-      | |- eval _ mod _ = _ => exact eq_refl
+      | |- eval _ mod _ = _ =>
+        subst_lets_in_goal;
+        rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
       | |- sep _ _ _ => ecancel_assumption
       | _ => idtac
       end;
@@ -444,19 +485,21 @@ Section __.
                                           using map_only_differ_subset, of_list_subset_singleton,
                                         map_only_differ_put_r ]
       | |- bounded_by _ _ => solve [ auto ]
+      | |- ?x mod M = ?x => subst_lets_in_goal;
+                            rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
       | |- ?x => fail "unrecognized side condition" x
       end.
 
     Lemma eval_fst_cswap s a b A B :
-      eval a = A ->
-      eval b = B ->
-      eval (fst (cswap s a b)) = fst (cswap s A B).
+      eval a mod M = A mod M->
+      eval b mod M = B mod M ->
+      eval (fst (cswap s a b)) mod M = (fst (cswap s A B)) mod M.
     Proof. destruct s; cbn; auto. Qed.
 
     Lemma eval_snd_cswap s a b A B :
-      eval a = A ->
-      eval b = B ->
-      eval (snd (cswap s a b)) = snd (cswap s A B).
+      eval a mod M = A mod M->
+      eval b mod M = B mod M ->
+      eval (snd (cswap s a b)) mod M = (snd (cswap s A B)) mod M.
     Proof. destruct s; cbn; auto. Qed.
 
     (* TODO: move to cswap *)
@@ -492,6 +535,15 @@ Section __.
     Lemma cswap_cases_snd {T} (P : T -> Prop) s a b :
       P a -> P b -> P (snd (cswap s a b)).
     Proof. destruct s; cbn [cswap fst snd]; auto. Qed.
+
+    Local Ltac swap_mod :=
+      subst_lets_in_goal;
+      repeat lazymatch goal with
+             | H : ?x mod M = ?x |- context [cswap _ ?x] => rewrite <-H
+             | H : ?x mod M = ?x |- context [cswap _ _ ?x] => rewrite <-H
+             end;
+      first [apply cswap_cases_fst | apply cswap_cases_snd ];
+      auto using Z.mod_mod, M_nonzero.
 
     Derive montladder_body SuchThat
            (let args := ["bound"; "U"; "X1"; "Z1"; "X2"; "Z2";
@@ -530,7 +582,8 @@ Section __.
       simple eapply compile_downto with
                           (i_var := i)
                           (State := downto_state
-                                      locals _ _ _ _ _ si_var tmp_var);
+                                       locals _ _ _ _ _ si_var tmp_var
+                                       pA pAA pB pBB pE pC pD pDA pCB);
         lazymatch goal with
         | |- sep _ _ _ => prove_downto_state_ok
         | |- word.unsigned _ = Z.of_nat _ =>
@@ -550,19 +603,30 @@ Section __.
         assert (word.unsigned wi = Z.of_nat i) by
             (subst wi; rewrite word.unsigned_of_Z, word_wrap_small by lia;
              reflexivity).
-        (* need to pass in the var manually, because downto_state talks about it
-        specifically *)
-        (* TODO: do we actually need to know the only_differ part? *)
+
+        (* Since the loop invariant discusses a specific whitelist of variables,
+           we need to pass in si specifically *)
         eapply compile_testbit with (wi:=wi) (var:="si");
           [ solve [repeat compile_step] .. | ].
 
         repeat safe_compile_step.
 
-        (*
+        (* to preserve the loop state, we need to rename this variable (the swap
+           for the next iteration) *)
+        Search head8.
+
+        match goal with
+        | |- context [dlet (ladderstep_gallina _ (?x1, ?z1) (?x2, ?z2))] =>
+          replace x1 with (x1 mod M) by swap_mod;
+          replace z1 with (z1 mod M) by swap_mod;
+          replace x2 with (x2 mod M) by swap_mod;
+          replace z2 with (z2 mod M) by swap_mod
+        end.
+
         compile_step.
         all:
           lazymatch goal with
-          | |- eval _ = _ =>
+          | |- eval _ mod _ = _ =>
             solve [eauto using eval_fst_cswap, eval_snd_cswap]
           | |- sep _ _ _ =>
             repeat seprewrite (cswap_iff1 Bignum);
@@ -580,7 +644,7 @@ Section __.
             | _ => eauto
             end.
         all:
-          lazymatch goal with
+          match goal with
           | H : map.only_differ ?m1 ?ks _
             |- map.get ?m2 ?k = ?val =>
             let H' := fresh in
@@ -595,6 +659,16 @@ Section __.
           end.
 
         repeat safe_compile_step.
+
+        (* TODO: how can this rename happen automatically? *)
+        (* the variable under "si" needs to be renamed to "swap" for the next
+           iteration of the loop. *)
+        let swap_var := lazymatch goal with
+                          H : map.get _ ?x = Some (word.of_Z (Z.b2z _)) |- _ =>
+                          x end in
+        eapply compile_rename_bool with (var := swap_var);
+          [ solve [repeat compile_step] | ].
+
         compile_done.
         { (* instantiate step_locals *)
           match goal with
@@ -607,7 +681,7 @@ Section __.
               instantiate (1:=p)
           end.
           reflexivity. }
-        { (* prove invariant is still true *)
+        { (* prove loop body postcondition (invariant held) *)
           clear_old_seps.
           cbv [LadderStepResult] in *.
           cleanup; sepsimpl_hyps.
@@ -615,7 +689,9 @@ Section __.
           | H : ?x = (_, _) |- context [fst ?x] =>
             rewrite H; progress cbn [fst snd]
           end.
-          clear_old_seps.
+          match goal with H : _ = downto' _ _ _ _ |- _ =>
+                          clear H
+          end.
           cbv[downto_state];
             repeat destruct_one_match;
             repeat
@@ -623,29 +699,39 @@ Section __.
               | |- Lift1Prop.ex1 _ _ => eexists
               | _ => progress sepsimpl
               end.
-          12:{
-            Search x7.
-            Search head12.
+          all:
+          lazymatch goal with
+          | |- eval _ mod _ = _ =>
+            subst_lets_in_goal;
+              rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
+          | |- (eval _ mod _) mod _ = _ =>
+            subst_lets_in_goal;
+              rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
+          | |- sep _ _ _ =>
+            change Placeholder with Bignum; ecancel_assumption
+          | _ => idtac
+          end.
           all:
             lazymatch goal with
-            | |- eval _ = _ => exact eq_refl
-            | |- (_ * _)%sep _ => ecancel_assumption
+            | |- bounded_by _ _ => solve [ auto ]
+            | |- map.get _ _ = Some _ =>
+              subst_lets_in_goal;
+                autorewrite with mapsimpl;
+                reflexivity
+            | |- map.get _ _ = None =>
+              subst_lets_in_goal;
+                autorewrite with mapsimpl;
+                solve_map_get_goal
             | _ => idtac
             end.
-          all:
-            lazymatch goal with
-            | |- map.get _ _ = _ => subst_lets_in_goal; solve_map_get_goal
-            | |- map.only_differ _ _ _ => solve
-                                            [ eauto
-                                                using map_only_differ_subset, of_list_subset_singleton,
-                                              map_only_differ_put_r ]
-            | |- bounded_by _ _ => solve [ auto ]
-            | |- ?x => fail "unrecognized side condition" x
-            end.
-          Print
-          prove_downto_state_ok.
-          prove_downto_state_ok.
-*)
+          subst_lets_in_goal.
+          (* TODO: this is the proof of only_differ, and requires only_differ_trans as well as annoying elimination of other variables. Not bothering right now because it might not be worth it if I'm going to change the local-variables reasoning anyway *)
+          admit. } }
+      { (* step_locals won't change i *)
+        intros. cbv beta.
+        autorewrite with mapsimpl. reflexivity. }
+      { (* loop done; rest of function *)
+        repeat safe_compile_step.
     Abort.
   End MontLadder.
 
@@ -733,4 +819,3 @@ Print ladderstep_body.
  *      : string -> string -> string -> string -> string -> cmd
  *)
 
-(* TODO: use something like fiat-crypto's F for field, which enforces within the type that the number is taken mod M. This would a) remove the need to constantly and carefully write "mod M" everywere and b) simplify cases like swap, where for the lemmas to apply we have to prove that (cswap s (a mod M) (b mod M)) = (cswap s a b) mod M *)

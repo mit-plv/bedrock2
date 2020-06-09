@@ -3,7 +3,8 @@ Local Open Scope Z_scope.
 
 Class FieldParameters :=
   { (** mathematical parameters **)
-    M : Z; (* modulus *)
+    M_pos : positive; (* modulus *)
+    M : Z := Z.pos M_pos;
     a24 : Z; (* (a+2) / 4 or (a-2) / 4, depending on the implementation *)
     Finv : Z -> Z; (* modular inverse in Z/M *)
     (** function names **)
@@ -23,6 +24,9 @@ Class FieldParameters :=
     bignum_copy : string;
     bignum_literal : Z -> string;
   }.
+
+Lemma M_nonzero {fp : FieldParameters} : M <> 0.
+Proof. cbv [M]. congruence. Qed.
 
 (* In practice, these would be instantiated with:
    bignum := list word
