@@ -327,7 +327,9 @@ Section __.
           (MontLadderResult
              U pU pX1 pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB
              (montladder
-                (Z.to_nat (word.unsigned bound)) testbit_gallina (eval U))).
+                (Z.to_nat (word.unsigned bound))
+                testbit_gallina
+                (eval U mod M))).
 
     Ltac apply_compile_cswap_nocopy :=
       simple eapply compile_cswap_nocopy with
@@ -335,13 +337,13 @@ Section __.
            fun p (X : Z) =>
              (Lift1Prop.ex1
                 (fun x =>
-                   (emp (eval x = X) * Bignum p x)%sep)))
+                   (emp (eval x mod M = X) * Bignum p x)%sep)))
         (tmp:="tmp");
       [ lazymatch goal with
         | |- sep _ _ _ =>
           repeat lazymatch goal with
                  | |- Lift1Prop.ex1 _ _ => eexists
-                 | |- eval _ = _ => eassumption
+                 | |- eval _ mod _ = _ => eassumption
                  | _ => progress sepsimpl
                  end; ecancel_assumption
         | _ => idtac
@@ -431,7 +433,7 @@ Section __.
                | _ => progress sepsimpl
              end;
       lazymatch goal with
-      | |- eval _ = _ => exact eq_refl
+      | |- eval _ mod _ = _ => exact eq_refl
       | |- sep _ _ _ => ecancel_assumption
       | _ => idtac
       end;
@@ -518,10 +520,6 @@ Section __.
       setup.
       repeat safe_compile_step.
 
-      compile_step.
-      all:compile_step.
-      all:compile_step.
-
       rewrite Z2Nat.id in * by apply word.unsigned_range.
 
       let tmp_var := constr:("tmp") in
@@ -532,38 +530,7 @@ Section __.
       simple eapply compile_downto with
                           (i_var := i)
                           (State := downto_state
-                                      locals _ _ _ _ _ si_var tmp_var).
-      2:{
-        Print prove_downto_state_ok.
-        cbv[downto_state];
-          repeat
-            lazymatch goal with
-            | |- Lift1Prop.ex1 _ _ => eexists
-            | _ => progress sepsimpl
-            end.
-        12:{
-          subst_lets_in_goal.
-          lazymatch goal with
-          | |- eval _ mod ?M = eval one =>
-            instantiate (1:=one);
-              rewrite !eval_one; lia
-          end.
-          
-          rewrite eval_one, <-(Z.mod_1_l M).
-          lazymatch goal with
-          | |- eval _ = _ => exact eq_refl
-          | |- (_ * _)%sep _ => ecancel_assumption
-          | _ => idtac
-          end;
-          lazymatch goal with
-          | |- map.get _ _ = _ => subst_lets_in_goal; solve_map_get_goal
-          | |- map.only_differ _ _ _ => solve
-                                          [ eauto
-                                              using map_only_differ_subset, of_list_subset_singleton,
-                                            map_only_differ_put_r ]
-          | |- bounded_by _ _ => solve [ auto ]
-          | |- ?x => fail "unrecognized side condition" x
-          end
+                                      locals _ _ _ _ _ si_var tmp_var);
         lazymatch goal with
         | |- sep _ _ _ => prove_downto_state_ok
         | |- word.unsigned _ = Z.of_nat _ =>
@@ -591,6 +558,7 @@ Section __.
 
         repeat safe_compile_step.
 
+        (*
         compile_step.
         all:
           lazymatch goal with
@@ -640,7 +608,7 @@ Section __.
           end.
           reflexivity. }
         { (* prove invariant is still true *)
-          clear H10.
+          clear_old_seps.
           cbv [LadderStepResult] in *.
           cleanup; sepsimpl_hyps.
           match goal with
@@ -677,7 +645,7 @@ Section __.
           Print
           prove_downto_state_ok.
           prove_downto_state_ok.
-
+*)
     Abort.
   End MontLadder.
 
@@ -764,3 +732,5 @@ Print ladderstep_body.
  *  /*skip*/)%bedrock_cmd
  *      : string -> string -> string -> string -> string -> cmd
  *)
+
+(* TODO: use something like fiat-crypto's F for field, which enforces within the type that the number is taken mod M. This would a) remove the need to constantly and carefully write "mod M" everywere and b) simplify cases like swap, where for the lemmas to apply we have to prove that (cswap s (a mod M) (b mod M)) = (cswap s a b) mod M *)
