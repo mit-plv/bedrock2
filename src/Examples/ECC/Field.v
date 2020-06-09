@@ -96,7 +96,16 @@ Section Specs.
 
   (* TODO: what are the bounds for inv? *)
   Instance spec_of_inv : spec_of inv :=
-    unop_spec inv Finv tight_bounds loose_bounds.
+    (forall! (x : bignum) (px pout : word) (old_out : bignum),
+        (fun Rr mem =>
+           bounded_by tight_bounds x
+           /\ (exists Ra, (Bignum px x * Ra)%sep mem)
+           /\ (Bignum pout old_out * Rr)%sep mem)
+          ===> inv @ [px; pout] ===>
+          (liftexists out,
+           (emp ((eval out mod M = (Finv (eval x mod M)) mod M)%Z
+                 /\ bounded_by loose_bounds out)
+            * Bignum pout out)%sep)).
 
   Instance spec_of_bignum_copy : spec_of bignum_copy :=
     forall! (x : bignum) (px pout : word) (old_out : bignum),
@@ -362,6 +371,50 @@ Section Compile.
     eauto.
   Qed.
 
+  Lemma compile_inv :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
+      tr R Rin Rout functions T (pred: T -> _ -> Prop)
+      (x out : bignum) x_ptr x_var out_ptr out_var k k_impl,
+      spec_of_inv functions ->
+      bounded_by tight_bounds x ->
+      (Bignum x_ptr x * Rin)%sep mem ->
+      (Placeholder out_ptr out * Rout)%sep mem ->
+      map.get locals x_var = Some x_ptr ->
+      map.get locals out_var = Some out_ptr ->
+      let v := (Finv (eval x mod M)) mod M in
+      (let head := v in
+       forall out m,
+         eval out mod M = head ->
+         bounded_by loose_bounds out ->
+         sep (Bignum out_ptr out) Rout m ->
+         (find k_impl
+          implementing (pred (k (eval out mod M)))
+          and-locals-post locals_ok
+          with-locals locals and-memory m and-trace tr and-rest R
+          and-functions functions)) ->
+      (let head := v in
+       find (cmd.seq
+               (cmd.call [] inv [expr.var x_var; expr.var out_var])
+               k_impl)
+       implementing (pred (dlet head k))
+       and-locals-post locals_ok
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    cbv [Placeholder] in *.
+    repeat straightline'.
+    handle_call; [ solve [eauto] .. | ].
+    sepsimpl.
+    repeat match goal with x := _ mod M |- _ =>
+                                subst x end.
+    match goal with H : _ mod M = ?x mod M
+                    |- context [dlet (?x mod M)] =>
+                    rewrite <-H
+    end.
+    eauto.
+  Qed.
+
   Lemma compile_bignum_copy :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
@@ -590,7 +643,8 @@ Ltac field_compile_step :=
         | simple eapply compile_add
         | simple eapply compile_sub
         | simple eapply compile_square
-        | simple eapply compile_scmula24 ].
+        | simple eapply compile_scmula24
+        | simple eapply compile_inv ].
 
 Ltac compile_compose_step :=
   Z.push_mod;
