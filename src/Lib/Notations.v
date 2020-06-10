@@ -20,6 +20,25 @@ Notation "'let/n' x := val 'in' body" :=
 
 Check (let/n x := 1 in let/n x := x + 1 in x).
 
+(* TODO: figure out recursive notation for this *)
+Notation
+      "'let/d' '''(' x , y ')' := val 'in' body" :=
+  (dlet val
+        (fun v =>
+           let x := fst v in
+           let y := snd v in
+           body))
+    (at level 4, only parsing).
+Notation
+      "'let/d' '''(' x , y , z ')' := val 'in' body" :=
+  (dlet val
+        (fun v =>
+           let x := fst (fst v) in
+           let y := snd (fst v) in
+           let z := snd v in
+           body))
+    (at level 4, only parsing).
+
 Infix "~>" := scalar (at level 40, only parsing).
 
 Notation "[[ locals ]]" := ({| value := locals; _value_ok := _ |}) (only printing).

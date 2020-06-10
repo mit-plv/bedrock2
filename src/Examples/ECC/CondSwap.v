@@ -115,3 +115,41 @@ Section Compile.
     all:eauto.
   Qed.
 End Compile.
+
+Section Helpers.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok semantics}.
+
+  Lemma cswap_iff1
+        {T} (pred : word ->T -> Semantics.mem -> Prop) s pa pb a b :
+    Lift1Prop.iff1
+      ((pred (fst (cswap s pa pb)) (fst (cswap s a b)))
+       * pred (snd (cswap s pa pb))
+              (snd (cswap s a b)))%sep
+      (pred pa a * pred pb b)%sep.
+  Proof. destruct s; cbn [cswap fst snd]; ecancel. Qed.
+
+  Lemma map_get_cswap_fst
+        {key value} {map : map.map key value}
+        (m : map.rep (map:=map)) s ka kb a b :
+    map.get m ka = Some a ->
+    map.get m kb = Some b ->
+    map.get m (fst (cswap s ka kb)) = Some (fst (cswap s a b)).
+  Proof. destruct s; cbn [cswap fst fst]; auto. Qed.
+
+  Lemma map_get_cswap_snd
+        {key value} {map : map.map key value}
+        (m : map.rep (map:=map)) s ka kb a b :
+    map.get m ka = Some a ->
+    map.get m kb = Some b ->
+    map.get m (snd (cswap s ka kb)) = Some (snd (cswap s a b)).
+  Proof. destruct s; cbn [cswap fst snd]; auto. Qed.
+
+  Lemma cswap_cases_fst {T} (P : T -> Prop) s a b :
+    P a -> P b -> P (fst (cswap s a b)).
+  Proof. destruct s; cbn [cswap fst snd]; auto. Qed.
+
+  Lemma cswap_cases_snd {T} (P : T -> Prop) s a b :
+    P a -> P b -> P (snd (cswap s a b)).
+  Proof. destruct s; cbn [cswap fst snd]; auto. Qed.
+End Helpers.

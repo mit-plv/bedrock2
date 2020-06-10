@@ -51,6 +51,8 @@ Class BignumRepresentation :=
     tight_bounds : bounds;
   }.
 
+(* TODO: copy the specs back over into fiat-crypto and prove that they are
+   obeyed to validate the slight rephrasings here *)
 Section Specs.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok semantics}.

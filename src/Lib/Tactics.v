@@ -21,6 +21,12 @@ Ltac subst_lets_in_goal :=
              |- context [x] => subst x end
          end.
 
+Ltac lift_eexists :=
+  repeat
+    lazymatch goal with
+    | |- Lift1Prop.ex1 _ _ => eexists
+    | |- sep (Lift1Prop.ex1 _) _ _ => apply sep_ex1_l
+    end.
 
 Ltac destruct_lists_of_known_length :=
   repeat match goal with
