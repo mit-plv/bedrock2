@@ -22,16 +22,6 @@ nondeterminism.
 
 Inductive bopname := add | sub | mul.
 
-(* The source and target language only differ in their expressions, so we use the same
-   commands for both: *)
-Inductive cmd(expr: Type) :=
-| CDiscard(e: expr) (* evaluate an expression just for its side effects and discard its result *)
-| CIf(condition: expr)(nonzero_branch zero_branch: cmd expr)
-| CSeq(c1 c2: cmd expr)
-| CWhile(test: expr)(body: cmd expr)
-| CInput(lhs: String.string)
-| COutput(v: expr).
-
 (* Source language *)
 
 Inductive pexpr :=
@@ -40,9 +30,9 @@ Inductive pexpr :=
 | POp(e1: pexpr)(op: bopname)(e2: pexpr)
 | PPair(e1 e2: pexpr)
 | PFst(e: pexpr)
-| PSnd(e: pexpr).
-
-Definition pcmd := cmd pexpr.
+| PSnd(e: pexpr)
+| PLetIn(x: String.string)(e: pexpr)(body: pexpr)
+| PIf(cond thn els: pexpr).
 
 (* Target language *)
 
@@ -54,11 +44,10 @@ Inductive mexpr :=
 | MSet(lhs: String.string)(rhs: mexpr)
 | MOp(e1: mexpr)(op: bopname)(e2: mexpr)
 | MMalloc(amount: mexpr)
-| MComma(e1 e2: mexpr) (* evaluate e1 just for its side effects, return e2 *).
+| MComma(e1 e2: mexpr) (* evaluate e1 just for its side effects, return e2 *)
+| MIf(cond thn els: mexpr).
 
-Definition mcmd := cmd mexpr.
-
-(* TODO maybe add lets to source, and input/output/if to both, and remove cmd? *)
+(* TODO can we make this work without a fresh name generator and map reasoning? *)
 
 Inductive value :=
 | VWord(w: Z)
