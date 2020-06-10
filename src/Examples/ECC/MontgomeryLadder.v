@@ -21,6 +21,9 @@ Section __.
                bounded_by loose_bounds X}.
   Hint Resolve relax_bounds : compiler.
 
+  Context (bound : nat) (testbit_gallina : nat -> bool).
+  Context (bound_pos : (bound > 0)%nat).
+
   Section Gallina.
     (* Everything in gallina-world is mod M; ideally we will use a type like
        fiat-crypto's F for this *)
@@ -31,18 +34,17 @@ Section __.
     Local Infix "*" := (fun x y => (x * y) mod M).
     Local Infix "^" := (fun x y => (x ^ y) mod M).
 
-    Definition montladder bound (testbit:nat->bool) (u:Z) : Z :=
+    Definition montladder_gallina (u:Z) : Z :=
       let/d P1 := (1, 0) in
       let/d P2 := (u, 1) in
       let/d swap := false in
-      let/d count := bound in
       let/d ''(P1, P2, swap) :=
          downto
            (P1, P2, swap) (* initial state *)
-           count
+           bound
            (fun state i =>
               let '(P1, P2, swap) := state in
-              let/d s_i := testbit i in
+              let/d s_i := testbit_gallina i in
               let/d swap := xorb swap s_i in
               let/d ''(P1, P2) := cswap swap P1 P2 in
               let/d ''(P1, P2) := ladderstep_gallina u P1 P2 in
@@ -57,12 +59,14 @@ Section __.
   End Gallina.
 
   Section MontLadder.
-    Context (testbit: string) (testbit_gallina : nat -> bool)
-            (bound : word) (one zero : bignum)
-            (one_bounds : bounded_by tight_bounds one)
-            (zero_bounds : bounded_by tight_bounds zero)
-            (eval_one : eval one mod M = 1 mod M)
+    Context (testbit : string).
+    (* need the literal Z form of bound to give to expr.literal *)
+    Context (wbound : word)
+            (wbound_eq : word.unsigned wbound = Z.of_nat bound).
+    Context (zero : bignum) (zero_bounds : bounded_by tight_bounds zero)
             (eval_zero : eval zero mod M = 0 mod M).
+    Context (one : bignum) (one_bounds : bounded_by tight_bounds one)
+            (eval_one : eval one mod M = 1 mod M).
 
     Instance spec_of_literal0 : spec_of (bignum_literal (0 mod M)) :=
       spec_of_bignum_literal zero (bignum_literal (0 mod M)).
@@ -164,7 +168,6 @@ Section __.
                 pA pAA pB pBB pE pC pD pDA pCB : Semantics.word),
         (fun R m =>
            bounded_by tight_bounds U
-           /\ 0 < word.unsigned bound
            /\ (Bignum pU U
                * Placeholder pX1 X1 * Placeholder pZ1 Z1
                * Placeholder pX2 X2 * Placeholder pZ2 Z2
@@ -175,14 +178,11 @@ Section __.
                * Placeholder pCB CB * R)%sep m)
           ===>
           "montladder" @
-          [bound; pU; pX1; pZ1; pX2; pZ2; pA; pAA; pB; pBB; pE; pC; pD; pDA; pCB]
+          [pU; pX1; pZ1; pX2; pZ2; pA; pAA; pB; pBB; pE; pC; pD; pDA; pCB]
           ===>
           (MontLadderResult
              pU pX1 pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB
-             (montladder
-                (Z.to_nat (word.unsigned bound))
-                testbit_gallina
-                (eval U mod M))).
+             (montladder_gallina (eval U mod M))).
 
     Ltac apply_compile_cswap_nocopy :=
       simple eapply compile_cswap_nocopy with
@@ -366,7 +366,7 @@ Section __.
     Axiom admitt : forall {T}, T.
 
     Derive montladder_body SuchThat
-           (let args := ["bound"; "U"; "X1"; "Z1"; "X2"; "Z2";
+           (let args := ["U"; "X1"; "Z1"; "X2"; "Z2";
                            "A"; "AA"; "B"; "BB"; "E"; "C"; "D"; "DA"; "CB"] in
             let montladder := ("montladder", (args, [], montladder_body)) in
             program_logic_goal_for
@@ -393,8 +393,6 @@ Section __.
       setup.
       repeat safe_compile_step.
 
-      rewrite Z2Nat.id in * by apply word.unsigned_range.
-
       let tmp_var := constr:("tmp") in
       let si_var := constr:("si") in
       let x2_var := constr:("X2") in
@@ -410,12 +408,12 @@ Section __.
                                        pA pAA pB pBB pE pC pD pDA pCB);
         lazymatch goal with
         | |- sep _ _ _ => prove_downto_state_ok
+        | _ => idtac
+        end;
+      lazymatch goal with
         | |- word.unsigned _ = Z.of_nat _ =>
-          subst_lets_in_goal;
-            rewrite Z2Nat.id by apply word.unsigned_range; reflexivity
-        | |- (0 < _)%nat =>
-          subst_lets_in_goal;
-            change 0%nat with (Z.to_nat 0); apply Z2Nat.inj_lt; lia
+          apply wbound_eq
+        | |- (0 < _)%nat => subst_lets_in_goal; lia
         | _ => idtac
         end.
       2:{ (* loop body *)
@@ -433,7 +431,7 @@ Section __.
         end.
         sepsimpl_hyps.
 
-        pose proof (word.unsigned_range bound).
+        pose proof (word.unsigned_range wbound).
         assert (word.unsigned wi = Z.of_nat i) by
             (subst wi; rewrite word.unsigned_of_Z, word_wrap_small by lia;
              reflexivity).
@@ -732,6 +730,10 @@ Section __.
   End MontLadder.
 End __.
 
+(* TODO:
+   - fix downto to plug in a literal z instead of Z.of_nat for bound -- maybe require it to be a variable and take it in as an argument
+   - fix naming of bignum literal functions
+*)
 (*
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.NotationsInConstr.
@@ -746,9 +748,8 @@ Print montladder_body.
  *  cmd.call [] (bignum_literal (eval zero mod M)) [expr.var "Z1"];;
  *  cmd.call [] bignum_copy [expr.var "U"; expr.var "X2"];;
  *  cmd.call [] (bignum_literal (eval one mod M)) [expr.var "Z2"];;
- *  "v6" = (uintptr_t)Z.b2z falseULL;;
- *  "v7" = (uintptr_t)Z.of_nat (Z.to_nat (word.unsigned bound))ULL;;
- *  ("i" = (uintptr_t)Z.of_nat (Z.to_nat (word.unsigned bound))ULL;;
+ *  "v6" = (uintptr_t)0ULL;;
+ *  ("i" = (uintptr_t)Z.of_nat boundULL;;
  *   while ((uintptr_t)0ULL < expr.var "i") {{
  *     "i" = expr.var "i" - (uintptr_t)1ULL;;
  *     cmd.call ["si"] testbit [expr.var "i"];;
@@ -792,5 +793,5 @@ Print montladder_body.
  *      : forall semantics : Semantics.parameters,
  *        FieldParameters ->
  *        forall bignum_representaton : BignumRepresentation,
- *        string -> word -> bignum -> bignum -> cmd
+ *        nat -> string -> word -> bignum -> bignum -> cmd
  *)

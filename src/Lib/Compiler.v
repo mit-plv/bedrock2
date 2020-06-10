@@ -52,18 +52,20 @@ Section with_semantics.
   Lemma compile_nat_constant :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R functions T (pred: T -> _ -> Prop) (n : nat) k k_impl,
+           tr R functions T (pred: T -> _ -> Prop)
+           (n : nat) (zn : Z) k k_impl,
     forall var,
+      zn = Z.of_nat n ->
       let v := n in
       (let head := v in
        find k_impl
        implementing (pred (k head))
        and-locals-post locals_ok
-       with-locals (map.put locals var (word.of_Z (Z.of_nat n)))
+       with-locals (map.put locals var (word.of_Z zn))
        and-memory mem and-trace tr and-rest R
        and-functions functions) ->
       (let head := v in
-       find (cmd.seq (cmd.set var (expr.literal (Z.of_nat n))) k_impl)
+       find (cmd.seq (cmd.set var (expr.literal zn)) k_impl)
        implementing (pred (dlet head k))
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
@@ -74,21 +76,46 @@ Section with_semantics.
     eassumption.
   Qed.
 
-  Lemma compile_bool_constant :
+  Lemma compile_false :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R functions T (pred: T -> _ -> Prop) (b : bool) k k_impl,
+           tr R functions T (pred: T -> _ -> Prop) k k_impl,
     forall var,
-      let v := b in
+      let v := false in
       (let head := v in
        find k_impl
        implementing (pred (k head))
        and-locals-post locals_ok
-       with-locals (map.put locals var (word.of_Z (Z.b2z b)))
+       with-locals (map.put locals var (word.of_Z (Z.b2z head)))
        and-memory mem and-trace tr and-rest R
        and-functions functions) ->
       (let head := v in
-       find (cmd.seq (cmd.set var (expr.literal (Z.b2z b))) k_impl)
+       find (cmd.seq (cmd.set var (expr.literal 0)) k_impl)
+       implementing (pred (dlet head k))
+       and-locals-post locals_ok
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline.
+    eassumption.
+  Qed.
+
+  Lemma compile_true :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
+           tr R functions T (pred: T -> _ -> Prop) k k_impl,
+    forall var,
+      let v := true in
+      (let head := v in
+       find k_impl
+       implementing (pred (k head))
+       and-locals-post locals_ok
+       with-locals (map.put locals var (word.of_Z (Z.b2z head)))
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (let head := v in
+       find (cmd.seq (cmd.set var (expr.literal 1)) k_impl)
        implementing (pred (dlet head k))
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
@@ -269,7 +296,8 @@ Ltac compile_basics :=
   gen_sym_inc;
   let name := gen_sym_fetch "v" in
   first [simple eapply compile_constant with (var := name) |
-         simple eapply compile_bool_constant with (var := name) |
+         simple eapply compile_false with (var := name) |
+         simple eapply compile_true with (var := name) |
          simple eapply compile_nat_constant with (var := name) |
          simple eapply compile_xorb with (var := name) |
          simple eapply compile_add with (var := name) ].
