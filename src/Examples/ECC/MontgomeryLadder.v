@@ -41,6 +41,8 @@ Section __.
   Hint Resolve relax_bounds : compiler.
 
   Section Gallina.
+    (* Everything in gallina-world is mod M; ideally we will use a type like
+       fiat-crypto's F for this *)
     Local Notation "0" := (0 mod M).
     Local Notation "1" := (1 mod M).
     Local Infix "+" := (fun x y => (x + y) mod M).
@@ -87,7 +89,8 @@ Section __.
            ) in
       let/d ''(P1, P2) := cswap swap P1 P2 in
       let '(x, z) := P1 in
-      let/d r := (x * Finv z) in
+      let/d r := Finv z mod M in
+      let/d r := (x * r) in
       r.
   End Gallina.
 
@@ -317,13 +320,12 @@ Section __.
     (* TODO: should montladder return a pointer to the result, or just write
        into P1? *)
     Definition MontLadderResult
-               (X1 : bignum) (pX1 : Semantics.word)
-               (pU pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB : Semantics.word)
+               (pU pX1 pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB : Semantics.word)
                (result : Z)
       : Semantics.mem -> Prop :=
-      (liftexists U' Z1' X2' Z2' A' AA' B' BB' E' C' D' DA' CB' : bignum,
-         (emp (result = eval X1 mod M)
-         * (Bignum pU U' * Bignum pX1 X1 * Bignum pZ1 Z1'
+      (liftexists U' X1' Z1' X2' Z2' A' AA' B' BB' E' C' D' DA' CB' : bignum,
+         (emp (result = eval U' mod M)
+         * (Bignum pU U' * Bignum pX1 X1' * Bignum pZ1 Z1'
             * Bignum pX2 X2' * Bignum pZ2 Z2'
             * Bignum pA A' * Bignum pAA AA'
             * Bignum pB B' * Bignum pBB BB'
@@ -352,7 +354,7 @@ Section __.
           [bound; pU; pX1; pZ1; pX2; pZ2; pA; pAA; pB; pBB; pE; pC; pD; pDA; pCB]
           ===>
           (MontLadderResult
-             U pU pX1 pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB
+             pU pX1 pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB
              (montladder
                 (Z.to_nat (word.unsigned bound))
                 testbit_gallina
@@ -393,19 +395,33 @@ Section __.
 
     Definition downto_state
                (locals : Semantics.locals)
+               X1_ptr_orig Z1_ptr_orig X2_ptr_orig Z2_ptr_orig
                X1_var Z1_var X2_var Z2_var
                swap_var si_var tmp_var
                A_ptr AA_ptr B_ptr BB_ptr E_ptr C_ptr D_ptr DA_ptr CB_ptr :=
       fun l (st : point * point * bool) =>
-        let '(P1, P2, swap) := st in
-        let '(X1z, Z1z) := P1 in
-        let '(X2z, Z2z) := P2 in
-        liftexists X1 Z1 X2 Z2 X1_ptr Z1_ptr X2_ptr Z2_ptr
+        let P1 := fst (fst st) in
+        let P2 := snd (fst st) in
+        let swap := snd st in
+        let X1z := fst P1 in
+        let Z1z := snd P1 in
+        let X2z := fst P2 in
+        let Z2z := snd P2 in
+        liftexists X1_ptr Z1_ptr X2_ptr Z2_ptr X1 Z1 X2 Z2
                    A AA B BB E C D DA CB,
         (emp (map.only_differ
                 locals
                 (PropSet.of_list [swap_var; X1_var; Z1_var;
                                     X2_var; Z2_var; si_var; tmp_var]) l
+              (* the pointers may be swapped from their original positions *)
+              /\ ((X1_ptr = X1_ptr_orig
+                   /\ Z1_ptr = Z1_ptr_orig
+                   /\ X2_ptr = X2_ptr_orig
+                   /\ Z2_ptr = Z2_ptr_orig)
+                  \/ (X1_ptr = X2_ptr_orig
+                      /\ Z1_ptr = Z2_ptr_orig
+                      /\ X2_ptr = X1_ptr_orig
+                      /\ Z2_ptr = Z1_ptr_orig))
               /\ map.get l swap_var = Some (word.of_Z (Z.b2z swap))
               /\ map.get l X1_var = Some X1_ptr
               /\ map.get l Z1_var = Some Z1_ptr
@@ -465,12 +481,31 @@ Section __.
       word.wrap x = x.
     Proof. apply Z.mod_small. Qed.
 
+    (* TODO: move to Tactics *)
+    Local Ltac lift_eexists :=
+        repeat
+          lazymatch goal with
+          | |- Lift1Prop.ex1 _ _ => eexists
+          | |- sep (Lift1Prop.ex1 _) _ _ => apply sep_ex1_l
+          end.
+
     Ltac prove_downto_state_ok :=
-      cbv [downto_state];
-      repeat lazymatch goal with
-               | |- Lift1Prop.ex1 _ _ => eexists
-               | _ => progress sepsimpl
-             end;
+      match goal with
+        |- context [downto_state _ ?pX1 ?pZ1 ?pX2 ?pZ2] =>
+        cbv[downto_state];
+        apply sep_ex1_l; exists pX1;
+        apply sep_ex1_l; exists pZ1;
+        apply sep_ex1_l; exists pX2;
+        apply sep_ex1_l; exists pZ2
+      end;
+      lift_eexists; sepsimpl;
+      (* first fill in any map.get goals where we know the variable names *)
+      lazymatch goal with
+      | |- map.get _ ?x = Some _ =>
+        tryif is_evar x then idtac
+        else (autorewrite with mapsimpl; reflexivity)
+      | _ => idtac
+      end;
       lazymatch goal with
       | |- eval _ mod _ = _ =>
         subst_lets_in_goal;
@@ -480,13 +515,14 @@ Section __.
       end;
       lazymatch goal with
       | |- map.get _ _ = _ => subst_lets_in_goal; solve_map_get_goal
-      | |- map.only_differ _ _ _ => solve
-                                      [ eauto
-                                          using map_only_differ_subset, of_list_subset_singleton,
-                                        map_only_differ_put_r ]
+      | |- map.only_differ _ _ _ =>
+        solve
+          [ eauto using map_only_differ_subset, of_list_subset_singleton,
+            map_only_differ_put_r ]
       | |- bounded_by _ _ => solve [ auto ]
       | |- ?x mod M = ?x => subst_lets_in_goal;
                             rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
+      | |- _ \/ _ => left; ssplit; congruence
       | |- ?x => fail "unrecognized side condition" x
       end.
 
@@ -545,6 +581,8 @@ Section __.
       first [apply cswap_cases_fst | apply cswap_cases_snd ];
       auto using Z.mod_mod, M_nonzero.
 
+    Axiom admitt : forall {T}, T.
+
     Derive montladder_body SuchThat
            (let args := ["bound"; "U"; "X1"; "Z1"; "X2"; "Z2";
                            "A"; "AA"; "B"; "BB"; "E"; "C"; "D"; "DA"; "CB"] in
@@ -555,7 +593,8 @@ Section __.
                  let callees :=
                      constr:([(bignum_literal (0 mod M));
                                 (bignum_literal (1 mod M));
-                                bignum_copy; "ladderstep"; testbit]) in
+                                bignum_copy; "ladderstep"; testbit;
+                                  inv; mul]) in
                  let x := program_logic_goal_for_function
                                 montladder callees in
                      exact x)))
@@ -576,13 +615,16 @@ Section __.
 
       let tmp_var := constr:("tmp") in
       let si_var := constr:("si") in
+      let x2_var := constr:("X2") in
       let i := constr:("i") in
       let locals := lazymatch goal with
                     | |- WeakestPrecondition.cmd _ _ _ _ ?l _ => l end in
       simple eapply compile_downto with
                           (i_var := i)
                           (State := downto_state
-                                       locals _ _ _ _ _ si_var tmp_var
+                                      locals
+                                      pX1 pZ1 pX2 pZ2
+                                      _ _ x2_var _ _ si_var tmp_var
                                        pA pAA pB pBB pE pC pD pDA pCB);
         lazymatch goal with
         | |- sep _ _ _ => prove_downto_state_ok
@@ -596,7 +638,17 @@ Section __.
         end.
       2:{ (* loop body *)
         intros. repeat destruct_one_match.
-        cbv [downto_state] in * |- . repeat destruct_one_match_hyp.
+        (* clear unnecessary locals hypothesis *)
+        match goal with H : _ = downto' _ _ _ _ |- _ =>
+                        clear H
+        end.
+        match goal with
+          H : context [downto_state] |- _ =>
+          match type of H with (?P (?p1, ?p2, ?swap) * ?R)%sep _ =>
+                               destruct p1, p2
+          end;
+            cbv [downto_state] in H
+        end.
         sepsimpl_hyps.
 
         pose proof (word.unsigned_range bound).
@@ -610,10 +662,6 @@ Section __.
           [ solve [repeat compile_step] .. | ].
 
         repeat safe_compile_step.
-
-        (* to preserve the loop state, we need to rename this variable (the swap
-           for the next iteration) *)
-        Search head8.
 
         match goal with
         | |- context [dlet (ladderstep_gallina _ (?x1, ?z1) (?x2, ?z2))] =>
@@ -671,15 +719,46 @@ Section __.
 
         compile_done.
         { (* instantiate step_locals *)
-          match goal with
-          | |- ?step ?l ?i = ?rhs =>
-            is_evar step;
-              let p := lazymatch (eval pattern i in rhs)
-                       with ?f _ => f end in
-              let p := lazymatch (eval pattern l in p)
-                       with ?f _ => f end in
-              instantiate (1:=p)
-          end.
+          (* N.B. The QED will fail if step_locals is illegally instantiated
+             with an expression that relies on state variables, even though the
+             tactics will allow it (see
+             https://github.com/coq/coq/issues/9937). Therefore, we need to
+             manually replace all references to state variables with lookups in
+             the locals. *)
+
+          pose (get_or_default :=
+                  fun l v => match map.get l v with
+                             | Some x => x
+                             | None => word.of_Z 0
+                             end).
+          subst_lets_in_goal.
+          let li := lazymatch goal with |- ?step ?li _ = _ => li end in
+          repeat match goal with
+                 | H : map.get l ?v = Some ?x |- context [?x] =>
+                   replace x with (get_or_default li v)
+                     by (subst get_or_default; cbv beta;
+                         autorewrite with mapsimpl;
+                         rewrite H; reflexivity)
+                 | H : map.get l ?v = Some (word.of_Z (Z.b2z ?b))
+                   |- context [?b] =>
+                   replace b with
+                       (Z.testbit (word.unsigned (get_or_default li v)) 0)
+                     by (subst get_or_default; cbv beta;
+                         autorewrite with mapsimpl;
+                         rewrite H, word_unsigned_of_Z_b2z;
+                         apply Z.b2z_bit0)
+                 end.
+          subst_lets_in_goal. cbv beta.
+          let p :=
+              lazymatch goal with
+              | |- ?step ?l ?i = ?rhs =>
+                  let p := lazymatch (eval pattern i in rhs)
+                           with ?f _ => f end in
+                  let p := lazymatch (eval pattern l in p)
+                           with ?f _ => f end in
+                  p
+              end in
+          instantiate (1:=p).
           reflexivity. }
         { (* prove loop body postcondition (invariant held) *)
           clear_old_seps.
@@ -689,16 +768,8 @@ Section __.
           | H : ?x = (_, _) |- context [fst ?x] =>
             rewrite H; progress cbn [fst snd]
           end.
-          match goal with H : _ = downto' _ _ _ _ |- _ =>
-                          clear H
-          end.
-          cbv[downto_state];
-            repeat destruct_one_match;
-            repeat
-              lazymatch goal with
-              | |- Lift1Prop.ex1 _ _ => eexists
-              | _ => progress sepsimpl
-              end.
+          cbv[downto_state]; lift_eexists.
+          sepsimpl.
           all:
           lazymatch goal with
           | |- eval _ mod _ = _ =>
@@ -716,23 +787,166 @@ Section __.
             | |- bounded_by _ _ => solve [ auto ]
             | |- map.get _ _ = Some _ =>
               subst_lets_in_goal;
-                autorewrite with mapsimpl;
+                repeat match goal with
+                       | H : map.get _ _ = Some _ |- _ => rewrite H
+                       | _ => rewrite word_unsigned_of_Z_b2z, Z.b2z_bit0
+                       | _ => progress autorewrite with mapsimpl
+                       end;
                 reflexivity
             | |- map.get _ _ = None =>
               subst_lets_in_goal;
-                autorewrite with mapsimpl;
+                repeat match goal with
+                       | H : map.get _ _ = Some _ |- _ => rewrite H
+                       | _ => rewrite word_unsigned_of_Z_b2z, Z.b2z_bit0
+                       | _ => progress autorewrite with mapsimpl
+                       end;
                 solve_map_get_goal
+            | |- _ \/ _ =>
+              cbv [cswap];
+                destruct_one_match; cbn [fst snd]; tauto
             | _ => idtac
             end.
           subst_lets_in_goal.
           (* TODO: this is the proof of only_differ, and requires only_differ_trans as well as annoying elimination of other variables. Not bothering right now because it might not be worth it if I'm going to change the local-variables reasoning anyway *)
-          admit. } }
+          apply admitt. } }
       { (* step_locals won't change i *)
         intros. cbv beta.
-        autorewrite with mapsimpl. reflexivity. }
+        autorewrite with mapsimpl.
+        reflexivity. }
       { (* loop done; rest of function *)
+        intros.
+        match goal with H : _ = downto _ _ _ |- _ => clear H end.
+        match goal with
+          H : context [downto_state] |- _ =>
+          match type of H with (?P ?st * ?R)%sep _ =>
+                               destruct st as [ [ [? ?] [? ?] ] ?]
+          end;
+            cbv [downto_state] in H
+        end.
+        sepsimpl_hyps.
+
         repeat safe_compile_step.
-    Abort.
+
+        (* pull the eval out of all the swaps so field lemmas work *)
+        repeat match goal with
+               | x := cswap _ _ _ |- _ => subst x
+               | Ha : eval ?A mod M = ?a mod M,
+                      Hb : eval ?B mod M = ?b mod M
+                 |- context [fst (cswap ?s ?a ?b)] =>
+                 replace (fst (cswap s a b)) with (eval (fst (cswap s A B)) mod M)
+                   by (destruct s; cbn [cswap fst snd]; congruence)
+               end.
+
+        field_compile_step.
+        (* TODO: factor all the below into a tactic, they are exactly copy-pasted *)
+        all:
+          lazymatch goal with
+          | |- eval _ mod _ = _ =>
+            solve [eauto using eval_fst_cswap, eval_snd_cswap]
+          | |- sep _ _ _ =>
+            repeat seprewrite (cswap_iff1 Bignum);
+              ecancel_assumption
+          | _ => idtac
+          end.
+        all:lazymatch goal with
+            | |- map.get _ _ = Some _ =>
+              try solve [subst_lets_in_goal; solve_map_get_goal]
+            | |- bounded_by _ (fst (cswap _ _ _)) =>
+              apply cswap_cases_fst; solve [auto]
+            | |- bounded_by _ (snd (cswap _ _ _)) =>
+              apply cswap_cases_snd; solve [auto]
+            | |- context [WeakestPrecondition.cmd] => idtac
+            | _ => eauto
+            end.
+        all:
+          match goal with
+          | H : map.only_differ ?m1 ?ks _
+            |- map.get ?m2 ?k = ?val =>
+            let H' := fresh in
+            subst_lets_in_goal;
+            assert (map.get m1 k = val) as H' by solve_map_get_goal;
+              autorewrite with mapsimpl;
+              erewrite map_get_only_differ_excl_r;
+              [ solve [apply H'] | exact H | ]; clear H';
+              cbn [In PropSet.elem_of PropSet.of_list];
+              clear; intuition; congruence
+          | _ => idtac
+          end.
+
+        repeat safe_compile_step.
+
+        (* the output of this last operation needs to be stored in the pointer
+           for the output, so we guide the automation to the right pointer *)
+        change Placeholder with Bignum in *.
+        clear_old_seps.
+        lazymatch goal with
+        | H : context [Bignum ?p U] |- _ =>
+          change (Bignum p) with (Placeholder p) in H
+        end.
+        field_compile_step.
+        all:
+          lazymatch goal with
+          | |- eval _ mod _ = _ =>
+            solve [eauto using eval_fst_cswap, eval_snd_cswap]
+          | |- sep _ _ _ =>
+              try ecancel_assumption
+          | _ => idtac
+          end.
+        4:{
+          (* TODO: make this a tactic *)
+          (* create a new evar to take on the second swap clause *)
+          match goal with
+            |- (?P * ?R)%sep _ =>
+            match P with context [cswap] => idtac end;
+            is_evar R;
+            let R1 := fresh "R" in
+            let R2 := fresh "R" in
+            evar (R1 : Semantics.mem -> Prop);
+            evar (R2 : Semantics.mem -> Prop);
+            unify R (sep R1 R2);
+            seprewrite (cswap_iff1 Bignum)
+          end.
+          ecancel_assumption. }
+        all:lazymatch goal with
+            | |- map.get _ _ = Some _ =>
+              try solve [subst_lets_in_goal; solve_map_get_goal]
+            | |- bounded_by _ (fst (cswap _ _ _)) =>
+              apply cswap_cases_fst; solve [auto]
+            | |- bounded_by _ (snd (cswap _ _ _)) =>
+              apply cswap_cases_snd; solve [auto]
+            | |- context [WeakestPrecondition.cmd] => idtac
+            | _ => eauto
+            end.
+        all:
+          match goal with
+          | H : map.only_differ ?m1 ?ks _
+            |- map.get ?m2 ?k = ?val =>
+            let H' := fresh in
+            subst_lets_in_goal;
+            assert (map.get m1 k = val) as H' by solve_map_get_goal;
+              autorewrite with mapsimpl;
+              erewrite map_get_only_differ_excl_r;
+              [ solve [apply H'] | exact H | ]; clear H';
+              cbn [In PropSet.elem_of PropSet.of_list];
+              clear; intuition; congruence
+          | _ => idtac
+          end.
+
+        repeat safe_compile_step.
+        compile_done.
+        cbv [MontLadderResult].
+        (* destruct the hypothesis identifying the new pointers as some swapping
+           of the original ones *)
+        match goal with H : (_ = _/\ _) \/ _|- _ =>
+                        destruct H; cleanup; subst
+        end.
+        { lift_eexists.
+          sepsimpl; [ reflexivity | ].
+          ecancel_assumption. }
+        { lift_eexists.
+          sepsimpl; [ reflexivity | ].
+          ecancel_assumption. } }
+    Qed.
   End MontLadder.
 
   Ltac ladderstep_compile_custom :=
