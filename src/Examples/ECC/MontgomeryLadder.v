@@ -61,8 +61,9 @@ Section __.
   Section MontLadder.
     Context (testbit : string).
     (* need the literal Z form of bound to give to expr.literal *)
-    Context (wbound : word)
-            (wbound_eq : word.unsigned wbound = Z.of_nat bound).
+    Context (zbound : Z)
+            (zbound_small : word.wrap zbound = zbound)
+            (zbound_eq : zbound = Z.of_nat bound).
 
     Instance spec_of_testbit : spec_of testbit :=
       fun functions =>
@@ -373,6 +374,7 @@ Section __.
                     | |- WeakestPrecondition.cmd _ _ _ _ ?l _ => l end in
       simple eapply compile_downto with
                           (i_var := i)
+                          (zcount := zbound)
                           (State := downto_state
                                       locals
                                       pX1 pZ1 pX2 pZ2
@@ -383,9 +385,12 @@ Section __.
         | _ => idtac
         end;
         lazymatch goal with
-        | |- word.unsigned _ = Z.of_nat _ =>
-          apply wbound_eq
-        | |- (0 < _)%nat => subst_lets_in_goal; lia
+        | |- word.unsigned _ = _ =>
+          rewrite word.unsigned_of_Z, zbound_small;
+            solve [eauto using zbound_eq]
+        | |- (0 < _)%nat =>
+          subst_lets_in_goal;
+            rewrite ?word.unsigned_of_Z, ?zbound_small; lia
         | _ => idtac
         end.
       2:{ (* loop body *)
@@ -403,7 +408,9 @@ Section __.
         end.
         sepsimpl_hyps.
 
-        pose proof (word.unsigned_range wbound).
+        let H := fresh in
+        pose proof (word.unsigned_range (word.of_Z zbound)) as H;
+        rewrite word.unsigned_of_Z, zbound_small in H.
         assert (word.unsigned wi = Z.of_nat i) by
             (subst wi; rewrite word.unsigned_of_Z, word_wrap_small by lia;
              reflexivity).
@@ -703,7 +710,6 @@ Section __.
 End __.
 
 (* TODO:
-   - fix downto to plug in a literal z instead of Z.of_nat for bound -- maybe require it to be a variable and take it in as an argument
    - make testbit a proper bitwise implementation
 *)
 (*
@@ -712,13 +718,14 @@ Require Import bedrock2.NotationsInConstr.
 Print montladder_body.
 *)
 (* montladder_body =
- * fun (field_parameters : FieldParameters) (bound : nat) (testbit : string)
- * (cmd.call [] bignum_literal [(uintptr_t)1ULL%bedrock_expr; expr.var "X1"];;
- *  cmd.call [] bignum_literal [(uintptr_t)0ULL%bedrock_expr; expr.var "Z1"];;
+ * fun (field_parameters : FieldParameters) (testbit : string) (zbound : Z)
+ * =>
+ * (cmd.call [] bignum_literal [(uintptr_t)1ULL%bedrock_expr; expr.var "X1"
+ *  cmd.call [] bignum_literal [(uintptr_t)0ULL%bedrock_expr; expr.var "Z1"
  *  cmd.call [] bignum_copy [expr.var "U"; expr.var "X2"];;
- *  cmd.call [] bignum_literal [(uintptr_t)1ULL%bedrock_expr; expr.var "Z2"];;
+ *  cmd.call [] bignum_literal [(uintptr_t)1ULL%bedrock_expr; expr.var "Z2"
  *  "v6" = (uintptr_t)0ULL;;
- *  ("i" = (uintptr_t)Z.of_nat boundULL;;
+ *  ("i" = (uintptr_t)zboundULL;;
  *   while ((uintptr_t)0ULL < expr.var "i") {{
  *     "i" = expr.var "i" - (uintptr_t)1ULL;;
  *     cmd.call ["si"] testbit [expr.var "i"];;
@@ -759,5 +766,5 @@ Print montladder_body.
  *  cmd.call [] inv [expr.var "Z1"; expr.var "A"];;
  *  cmd.call [] mul [expr.var "X1"; expr.var "A"; expr.var "U"];;
  *  /*skip*/)%bedrock_cmd
- *      : FieldParameters -> nat -> string -> cmd
+ *     : FieldParameters -> string -> Z -> cmd
  *)

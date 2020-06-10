@@ -84,7 +84,8 @@ Section Compile.
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
       tr R R' functions T (pred: T -> _ -> Prop)
-      {state} (init : state) count wcount step step_impl k k_impl i_var
+      {state} (init : state)
+      count wcount zcount step step_impl k k_impl i_var
       (step_locals : Semantics.locals -> nat -> Semantics.locals)
       (State : Semantics.locals -> state -> Semantics.mem -> Prop),
       let start_locals := map.put locals i_var wcount in
@@ -96,6 +97,7 @@ Section Compile.
           map.get (step_locals l i) i_var = map.get l i_var) ->
       (State start_locals init * R')%sep mem ->
       word.unsigned wcount = Z.of_nat count ->
+      word.unsigned wcount = zcount ->
       0 < count ->
       let v := downto init count step in
       (let head := v in
@@ -126,7 +128,7 @@ Section Compile.
           { i--; step i } *)
        find (cmd.seq
                (cmd.seq
-                  (cmd.set i_var (expr.literal (Z.of_nat count)))
+                  (cmd.set i_var (expr.literal zcount))
                   (cmd.while
                      (expr.op bopname.ltu
                               (expr.literal 0) (expr.var i_var))
@@ -159,7 +161,7 @@ Section Compile.
                      /\ map.get l i_var = Some wi)).
     ssplit; eauto using lt_wf; [ | ].
 
-    { cbv zeta.
+    { cbv zeta. subst.
       exists count; ssplit; [ | | | | exists wcount];
         repeat match goal with
                | H : _ = Z.of_nat count |- _ => rewrite <-H
