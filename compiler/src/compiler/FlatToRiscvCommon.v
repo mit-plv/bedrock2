@@ -151,6 +151,9 @@ Section WithParameters.
   (*
      high addresses!             ...
                       p_sp   --> mod_var_0 of previous function call arg0
+                                 stack scratch space last byte
+                                 ...
+        new_sp + stackoffset --> stack scratch space first byte
                                  argn
                                  ...
                                  arg0
@@ -163,18 +166,11 @@ Section WithParameters.
                       new_sp --> mod_var_0
      low addresses               ...
   *)
-  Definition stackframe(p_sp: word)(argvals retvals: list word)
-             (ra_val: word)(modvarvals: list word): mem -> Prop :=
-    word_array
-      (word.add p_sp
-         (word.of_Z
-           (- (bytes_per_word *
-             Z.of_nat (List.length argvals + List.length retvals + 1 + List.length modvarvals)))))
-      (modvarvals ++ [ra_val] ++ retvals ++ argvals).
 
   (* measured in words, needs to be multiplied by 4 or 8 *)
   Definition framelength: list Z * list Z * stmt Z -> Z :=
     fun '(argvars, resvars, body) =>
+      stackalloc_size body / bytes_per_word +
       let mod_vars := ListSet.list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
       Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
 
@@ -188,6 +184,10 @@ Section WithParameters.
   | fits_stack_store: forall n e sz x y,
       0 <= n ->
       fits_stack n e (SStore sz x y)
+  | fits_stack_stackalloc: forall n e x n' body,
+      (* no need to add n' here because it's already counted in framelength via stackalloc_size *)
+      fits_stack n e body ->
+      fits_stack n e (SStackalloc x n' body)
   | fits_stack_lit: forall n e x v,
       0 <= n ->
       fits_stack n e (SLit x v)
@@ -230,7 +230,8 @@ Section WithParameters.
      it can't be recursively called again. *)
   Record GhostConsts := {
     p_sp: word;
-    num_stackwords: Z;
+    num_stackwords: Z; (* remaining number of available stack words *)
+    stackoffset: Z; (* next stack allocation will happen at $sp + stackoffset *)
     p_insts: word;
     insts: list Instruction;
     program_base: word;
@@ -288,14 +289,14 @@ Section WithParameters.
   Local Notation stmt := (stmt Z).
 
   Definition compiles_FlatToRiscv_correctly
-    (f: funname_env Z -> Z -> stmt -> list Instruction)
+    (f: funname_env Z -> Z -> Z -> stmt -> list Instruction)
     (s: stmt): Prop :=
     forall e_impl_full initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
-    forall (g: GhostConsts) (initialL: MetricRiscvMachine) (pos: Z),
+    forall (g: GhostConsts) (initialL: MetricRiscvMachine) (pos: Z) (stackoffset: Z),
     good_reduced_e_impl g.(e_impl) e_impl_full g.(num_stackwords) g.(e_pos) ->
     fits_stack g.(num_stackwords) g.(e_impl) s ->
-    f g.(e_pos) pos s = g.(insts) ->
+    f g.(e_pos) pos stackoffset s = g.(insts) ->
     stmt_not_too_big s ->
     valid_FlatImp_vars s ->
     pos mod 4 = 0 ->
@@ -525,7 +526,7 @@ Section FlatToRiscv1.
                 (withRegs (map.put initialL.(getRegs) x v) (updateMetrics (addMetricLoads 1) initialL)) post ->
       mcomp_sat (Bind (execute (compile_load sz x a 0)) f) initialL post.
   Proof.
-    unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per.
+    unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per, Memory.bytes_per_word.
     destruct width_cases as [E | E];
       (* note: "rewrite E" does not work because "width" also appears in the type of "word",
          but we don't need to rewrite in the type of word, only in the type of the tuple,
@@ -557,7 +558,7 @@ Section FlatToRiscv1.
                        (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
       mcomp_sat (Bind (execute (compile_store sz a x 0)) f) initialL post.
   Proof.
-    unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per;
+    unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per, Memory.bytes_per_word;
     destruct width_cases as [E | E];
       (* note: "rewrite E" does not work because "width" also appears in the type of "word",
          but we don't need to rewrite in the type of word, only in the type of the tuple,

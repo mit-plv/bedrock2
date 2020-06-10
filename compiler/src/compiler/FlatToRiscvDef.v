@@ -203,6 +203,12 @@ Section FlatToRiscv1.
                    :: (load_regs regs (offset + bytes_per_word))
     end.
 
+  Fixpoint stackalloc_size(s: stmt Z): Z :=
+    match s with
+    | SStackalloc x n body => n + stackalloc_size body
+    | _ => 0
+    end.
+
   (* All positions are relative to the beginning of the progam, so we get completely
      position independent code. *)
 
@@ -211,33 +217,38 @@ Section FlatToRiscv1.
   Section WithEnv.
     Variable e: funname_env Z.
 
-    Definition compile_stmt: Z -> stmt Z -> list Instruction :=
-      fix compile_stmt(mypos: Z)(s: stmt Z) :=
+    (* mypos: position of the code relative to the positions in e
+       stackoffset: $sp + stackoffset is the first free (lowest) used stack address (for SStackalloc),
+                    grows upwards (contrary to stack growth direction)
+       s: statement to be compiled *)
+    Fixpoint compile_stmt(mypos: Z)(stackoffset: Z)(s: stmt Z): list Instruction :=
       match s with
       | SLoad  sz x y => [[compile_load  sz x y 0]]
       | SStore sz x y => [[compile_store sz x y 0]]
+      | SStackalloc x n body =>
+          [[Addi x sp stackoffset]] ++ compile_stmt (mypos + 4) (stackoffset + n) body
       | SLit x v => compile_lit x v
       | SOp x op y z => compile_op x op y z
       | SSet x y => [[Add x Register0 y]]
       | SIf cond bThen bElse =>
-          let bThen' := compile_stmt (mypos + 4) bThen in
-          let bElse' := compile_stmt (mypos + 4 + 4 * Z.of_nat (length bThen') + 4) bElse in
+          let bThen' := compile_stmt (mypos + 4) stackoffset bThen in
+          let bElse' := compile_stmt (mypos + 4 + 4 * Z.of_nat (length bThen') + 4) stackoffset bElse in
           (* only works if branch lengths are < 2^12 *)
           [[compile_bcond_by_inverting cond ((Z.of_nat (length bThen') + 2) * 4)]] ++
           bThen' ++
           [[Jal Register0 ((Z.of_nat (length bElse') + 1) * 4)]] ++
           bElse'
       | SLoop body1 cond body2 =>
-          let body1' := compile_stmt mypos body1 in
-          let body2' := compile_stmt (mypos + (Z.of_nat (length body1') + 1) * 4) body2 in
+          let body1' := compile_stmt mypos stackoffset body1 in
+          let body2' := compile_stmt (mypos + (Z.of_nat (length body1') + 1) * 4) stackoffset body2 in
           (* only works if branch lengths are < 2^12 *)
           body1' ++
           [[compile_bcond_by_inverting cond ((Z.of_nat (length body2') + 2) * 4)]] ++
           body2' ++
           [[Jal Register0 (- Z.of_nat (length body1' + 1 + length body2') * 4)]]
       | SSeq s1 s2 =>
-          let s1' := compile_stmt mypos s1 in
-          let s2' := compile_stmt (mypos + 4 * Z.of_nat (length s1')) s2 in
+          let s1' := compile_stmt mypos stackoffset s1 in
+          let s2' := compile_stmt (mypos + 4 * Z.of_nat (length s1')) stackoffset s2 in
           s1' ++ s2'
       | SSkip => nil
       | SCall resvars f argvars =>
@@ -257,6 +268,9 @@ Section FlatToRiscv1.
 
      high addresses              ...
                       old sp --> mod_var_0 of previous function call arg0
+                                 stack scratch space last byte
+                                 ...
+        new sp + stackoffset --> stack scratch space first byte
                                  argn
                                  ...
                                  arg0
@@ -276,14 +290,14 @@ Section FlatToRiscv1.
       (list Z * list Z * stmt Z) -> list Instruction :=
       fun '(argvars, resvars, body) =>
         let mod_vars := list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
-        let framelength := Z.of_nat (length argvars + length resvars + 1 + length mod_vars) in
-        let framesize := bytes_per_word * framelength in
+        let stackoffset := bytes_per_word * Z.of_nat (length argvars + length resvars + 1 + length mod_vars) in
+        let framesize := stackalloc_size body + stackoffset in
         [[ Addi sp sp (-framesize) ]] ++
         [[ compile_store access_size.word sp ra
                          (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
         save_regs mod_vars 0 ++
         load_regs argvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
-        compile_stmt (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars))) body ++
+        compile_stmt (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars))) stackoffset body ++
         save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1))) ++
         load_regs mod_vars 0 ++
         [[ compile_load access_size.word ra sp

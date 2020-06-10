@@ -97,7 +97,7 @@ Section Proofs.
       valid_FlatImp_vars s ->
       Forall valid_FlatImp_var (modVars_as_list Z.eqb s).
   Proof.
-    induction s; intros; simpl in *; simp; eauto 10 using @union_Forall.
+    induction s; intros; cbn -[list_union] in *; simp; eauto 10 using @union_Forall.
   Qed.
 
   Set Printing Depth 100000.
@@ -307,8 +307,9 @@ Section Proofs.
   Lemma NoDup_modVars_as_list: forall s,
       NoDup (modVars_as_list Z.eqb s).
   Proof.
-    induction s; simpl; repeat constructor; try (intro C; exact C); try (eapply list_union_preserves_NoDup;
-      eassumption || constructor).
+    induction s; cbn -[list_union];
+      repeat constructor; try (intro C; exact C);
+        try (eapply list_union_preserves_NoDup; eassumption || constructor).
   Qed.
 
   Ltac clear_old_sep_hyps :=
