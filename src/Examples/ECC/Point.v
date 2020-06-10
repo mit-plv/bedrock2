@@ -15,14 +15,12 @@ Section Compile.
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
       tr R functions T (pred: T -> _ -> Prop)
-      (x y : Z) (X Y : bignum) k k_impl,
-      (eval X mod M = x mod M)%Z ->
-      (eval Y mod M = y mod M)%Z ->
+      (x y : Z) k k_impl,
       let v := (x mod M, y mod M)%Z in
-      (let head := v in
+      (let __ := 0 in (* placeholder *)
        find k_impl
-       implementing (pred (dlet (eval X mod M)%Z
-                                (fun x => dlet (eval Y mod M)%Z
+       implementing (pred (dlet (x mod M)%Z
+                                (fun x => dlet (y mod M)%Z
                                                (fun y => k (x, y)))))
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
@@ -34,11 +32,6 @@ Section Compile.
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
   Proof.
-    repeat straightline'.
-    repeat match goal with
-             H : (?x mod M = _ mod M)%Z |- _ =>
-             rewrite H in *
-           end.
-    eauto.
+    repeat straightline'. eauto.
   Qed.
 End Compile.

@@ -13,7 +13,7 @@ Section __.
   Context {bignum_representaton : BignumRepresentation}.
   Existing Instances spec_of_mul spec_of_square spec_of_add
            spec_of_sub spec_of_scmula24 spec_of_inv spec_of_bignum_copy
-           spec_of_ladderstep.
+           spec_of_bignum_literal spec_of_ladderstep.
 
   Context {relax_bounds :
              forall X : bignum,
@@ -63,15 +63,6 @@ Section __.
     (* need the literal Z form of bound to give to expr.literal *)
     Context (wbound : word)
             (wbound_eq : word.unsigned wbound = Z.of_nat bound).
-    Context (zero : bignum) (zero_bounds : bounded_by tight_bounds zero)
-            (eval_zero : eval zero mod M = 0 mod M).
-    Context (one : bignum) (one_bounds : bounded_by tight_bounds one)
-            (eval_one : eval one mod M = 1 mod M).
-
-    Instance spec_of_literal0 : spec_of (bignum_literal (0 mod M)) :=
-      spec_of_bignum_literal zero (bignum_literal (0 mod M)).
-    Instance spec_of_literal1 : spec_of (bignum_literal (1 mod M)) :=
-      spec_of_bignum_literal one (bignum_literal (1 mod M)).
 
     Instance spec_of_testbit : spec_of testbit :=
       fun functions =>
@@ -279,7 +270,7 @@ Section __.
       word.wrap x = x.
     Proof. apply Z.mod_small. Qed.
 
-    Ltac prove_downto_state_ok :=
+    Ltac setup_downto_state_init :=
       match goal with
         |- context [downto_state _ ?pX1 ?pZ1 ?pX2 ?pZ2] =>
         cbv[downto_state];
@@ -297,12 +288,11 @@ Section __.
       | _ => idtac
       end;
       lazymatch goal with
-      | |- eval _ mod _ = _ =>
-        subst_lets_in_goal;
-        rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
-      | |- sep _ _ _ => ecancel_assumption
+      | |- (_ * _)%sep _ => ecancel_assumption
       | _ => idtac
-      end;
+      end.
+
+    Ltac solve_downto_state_subgoals :=
       lazymatch goal with
       | |- map.get _ _ = _ => subst_lets_in_goal; solve_map_get_goal
       | |- map.only_differ _ _ _ =>
@@ -310,11 +300,17 @@ Section __.
           [ eauto using map_only_differ_subset, of_list_subset_singleton,
             map_only_differ_put_r ]
       | |- bounded_by _ _ => solve [ auto ]
+      | |- eval _ mod _ = _ =>
+        subst_lets_in_goal; rewrite ?Z.mod_mod by apply M_nonzero;
+        first [ reflexivity | assumption ]
       | |- ?x mod M = ?x => subst_lets_in_goal;
                             rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
       | |- _ \/ _ => left; ssplit; congruence
       | |- ?x => fail "unrecognized side condition" x
       end.
+
+    Ltac prove_downto_state_ok :=
+      setup_downto_state_init; solve_downto_state_subgoals.
 
     Lemma eval_fst_cswap s a b A B :
       eval a mod M = A mod M->
@@ -337,6 +333,17 @@ Section __.
       first [apply cswap_cases_fst | apply cswap_cases_snd ];
       auto using Z.mod_mod, M_nonzero.
 
+
+    (* Adding word.unsigned_of_Z_1 and word.unsigned_of_Z_0 as hints to
+       compiler doesn't work, presumably because of the typeclass
+       preconditions. This is a hacky workaround. *)
+    (* TODO: figure out a cleaner way to do this *)
+    Lemma unsigned_of_Z_1 : word.unsigned (word.of_Z 1) = 1.
+    Proof. exact word.unsigned_of_Z_1. Qed.
+    Lemma unsigned_of_Z_0 : word.unsigned (word.of_Z 0) = 0.
+    Proof. exact word.unsigned_of_Z_0. Qed.
+    Hint Resolve unsigned_of_Z_0 unsigned_of_Z_1 : compiler.
+
     Axiom admitt : forall {T}, T.
 
     Derive montladder_body SuchThat
@@ -347,23 +354,14 @@ Section __.
               montladder
               (ltac:(
                  let callees :=
-                     constr:([(bignum_literal (0 mod M));
-                                (bignum_literal (1 mod M));
-                                bignum_copy; "ladderstep"; testbit;
-                                  inv; mul]) in
+                     constr:([bignum_literal; bignum_copy; "ladderstep";
+                                testbit; inv; mul]) in
                  let x := program_logic_goal_for_function
                                 montladder callees in
                      exact x)))
            As montladder_body_correct.
     Proof.
       cbv [program_logic_goal_for spec_of_montladder].
-      cbv [spec_of_literal0 spec_of_literal1].
-      replace (bignum_literal (0 mod M))
-        with (bignum_literal (eval zero mod M))
-        by (rewrite eval_zero; reflexivity).
-      replace (bignum_literal (1 mod M))
-        with (bignum_literal (eval one mod M))
-        by (rewrite eval_one; reflexivity).
       setup.
       repeat safe_compile_step.
 
@@ -384,7 +382,7 @@ Section __.
         | |- sep _ _ _ => prove_downto_state_ok
         | _ => idtac
         end;
-      lazymatch goal with
+        lazymatch goal with
         | |- word.unsigned _ = Z.of_nat _ =>
           apply wbound_eq
         | |- (0 < _)%nat => subst_lets_in_goal; lia
@@ -706,7 +704,7 @@ End __.
 
 (* TODO:
    - fix downto to plug in a literal z instead of Z.of_nat for bound -- maybe require it to be a variable and take it in as an argument
-   - fix naming of bignum literal functions
+   - make testbit a proper bitwise implementation
 *)
 (*
 Require Import bedrock2.NotationsCustomEntry.
@@ -714,27 +712,24 @@ Require Import bedrock2.NotationsInConstr.
 Print montladder_body.
 *)
 (* montladder_body =
- * fun (semantics : Semantics.parameters)
- *   (field_parameters : FieldParameters)
- *   (bignum_representaton : BignumRepresentation) (testbit : string)
- *   (bound : word) (one zero : bignum) =>
- * (cmd.call [] (bignum_literal (eval one mod M)) [expr.var "X1"];;
- *  cmd.call [] (bignum_literal (eval zero mod M)) [expr.var "Z1"];;
+ * fun (field_parameters : FieldParameters) (bound : nat) (testbit : string)
+ * (cmd.call [] bignum_literal [(uintptr_t)1ULL%bedrock_expr; expr.var "X1"];;
+ *  cmd.call [] bignum_literal [(uintptr_t)0ULL%bedrock_expr; expr.var "Z1"];;
  *  cmd.call [] bignum_copy [expr.var "U"; expr.var "X2"];;
- *  cmd.call [] (bignum_literal (eval one mod M)) [expr.var "Z2"];;
+ *  cmd.call [] bignum_literal [(uintptr_t)1ULL%bedrock_expr; expr.var "Z2"];;
  *  "v6" = (uintptr_t)0ULL;;
  *  ("i" = (uintptr_t)Z.of_nat boundULL;;
  *   while ((uintptr_t)0ULL < expr.var "i") {{
  *     "i" = expr.var "i" - (uintptr_t)1ULL;;
  *     cmd.call ["si"] testbit [expr.var "i"];;
- *     "v8" = expr.var "v6" .^ expr.var "si";;
- *     (if (expr.var "v8") {{
+ *     "v7" = expr.var "v6" .^ expr.var "si";;
+ *     (if (expr.var "v7") {{
  *        (("tmp" = expr.var "X1";;
  *          "X1" = expr.var "X2");;
  *         "X2" = expr.var "tmp");;
  *        cmd.unset "tmp"
  *      }});;
- *     (if (expr.var "v8") {{
+ *     (if (expr.var "v7") {{
  *        (("tmp" = expr.var "Z1";;
  *          "Z1" = expr.var "Z2");;
  *         "Z2" = expr.var "tmp");;
@@ -764,8 +759,5 @@ Print montladder_body.
  *  cmd.call [] inv [expr.var "Z1"; expr.var "A"];;
  *  cmd.call [] mul [expr.var "X1"; expr.var "A"; expr.var "U"];;
  *  /*skip*/)%bedrock_cmd
- *      : forall semantics : Semantics.parameters,
- *        FieldParameters ->
- *        forall bignum_representaton : BignumRepresentation,
- *        nat -> string -> word -> bignum -> bignum -> cmd
+ *      : FieldParameters -> nat -> string -> cmd
  *)

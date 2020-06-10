@@ -9,7 +9,8 @@ Section __.
   Context {field_parameters : FieldParameters}.
   Context {bignum_representaton : BignumRepresentation}.
   Existing Instances spec_of_mul spec_of_square spec_of_add
-           spec_of_sub spec_of_scmula24 spec_of_inv spec_of_bignum_copy.
+           spec_of_sub spec_of_scmula24 spec_of_inv spec_of_bignum_copy
+           spec_of_bignum_literal.
 
   Context {relax_bounds :
              forall X : bignum,

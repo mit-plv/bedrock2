@@ -12,9 +12,11 @@ Class FieldParameters :=
     square : string; scmula24 : string; inv : string;
 
     (* TODO: add literal + copy to fiat-crypto *)
-    (* bignum_literal p X :=
-         store p (expr.literal (word.unsigned X[0]));
-         store (p+4) (expr.literal (word.unsigned X[1]));
+    (* N.B. in current form, bignum_literal only works for literals that fit in
+       a word -- what would a more general form look like? Is it needed? *)
+    (* bignum_literal p x :=
+         store p (expr.literal x);
+         store (p+4) (expr.literal 0);
          ...
 
        bignum_copy pX pY :=
@@ -22,7 +24,7 @@ Class FieldParameters :=
          store (pX+4) (load (pY+4));
          ... *)
     bignum_copy : string;
-    bignum_literal : Z -> string;
+    bignum_literal : string;
   }.
 
 Lemma M_nonzero {fp : FieldParameters} : M <> 0.
@@ -115,15 +117,18 @@ Section Specs.
         ===> bignum_copy @ [px; pout] ===>
         (Bignum px x * Bignum pout x)%sep.
 
-  Instance spec_of_bignum_literal (x : bignum) literal_name
-    : spec_of literal_name :=
-    forall! (pout : word) (old_out : bignum),
+  Instance spec_of_bignum_literal : spec_of bignum_literal :=
+    forall! (x pout : word) (old_out : bignum),
       (sep (Bignum pout old_out))
-        ===> literal_name @ [pout] ===>
-        (Bignum pout x)%sep.
+        ===> bignum_literal @ [x; pout] ===>
+        (Lift1Prop.ex1
+           (fun X => (emp (eval X mod M = word.unsigned x mod M
+                           /\ bounded_by tight_bounds X)
+                      * Bignum pout X)%sep)).
 End Specs.
 Existing Instances spec_of_mul spec_of_square spec_of_add
-         spec_of_sub spec_of_scmula24 spec_of_inv spec_of_bignum_copy.
+         spec_of_sub spec_of_scmula24 spec_of_inv spec_of_bignum_copy
+         spec_of_bignum_literal.
 
 Section Compile.
   Context {semantics : Semantics.parameters}
@@ -454,15 +459,17 @@ Section Compile.
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
       tr R R' functions T (pred: T -> _ -> Prop)
-      (x out : bignum) out_ptr out_var k k_impl,
-      let literal_name := bignum_literal (eval x mod M) in
-      spec_of_bignum_literal x literal_name functions ->
+      (wx : word) (x : Z) (out : bignum) out_ptr out_var k k_impl,
+      spec_of_bignum_literal functions ->
       (Placeholder out_ptr out * R')%sep mem ->
       map.get locals out_var = Some out_ptr ->
-      let v := (eval x mod M)%Z in
+      word.unsigned wx = x ->
+      let v := (x mod M)%Z in
       (let head := v in
-       forall m,
-         (Bignum out_ptr x * R')%sep m ->
+       forall X m,
+         (Bignum out_ptr X * R')%sep m ->
+         eval X mod M = head ->
+         bounded_by tight_bounds X ->
          (find k_impl
           implementing (pred (k head))
           and-locals-post locals_ok
@@ -470,7 +477,8 @@ Section Compile.
           and-functions functions)) ->
       (let head := v in
        find (cmd.seq
-               (cmd.call [] literal_name [expr.var out_var])
+               (cmd.call [] bignum_literal
+                         [expr.literal x; expr.var out_var])
                k_impl)
        implementing (pred (dlet head k))
        and-locals-post locals_ok
@@ -478,18 +486,12 @@ Section Compile.
        and-functions functions).
   Proof.
     cbv [Placeholder] in *.
-    repeat straightline'.
-    (* inline straightline_call because typeclass instance for spec has
-       arguments and inference won't find it *)
-    lazymatch goal with
-      Hcall : spec_of_bignum_literal _ _ _ |- _ =>
-      eapply Proper_call; cycle -1;
-        [ eapply Hcall | .. ];
-        [ .. | intros ? ? ? ? ]
-    end; try ecancel_assumption.
-    cbv[postcondition_for] in *; repeat straightline;
-      destruct_lists_of_known_length; repeat straightline.
-    sepsimpl. auto.
+    repeat straightline'. subst.
+    handle_call.
+    sepsimpl.
+    match goal with H : _ |- _ =>
+                    rewrite word.of_Z_unsigned in H end.
+    eauto.
   Qed.
 
   (* noop indicating that the last argument should store output *)
