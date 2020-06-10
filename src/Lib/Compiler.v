@@ -216,6 +216,34 @@ Section with_semantics.
     eassumption.
   Qed.
 
+  (* TODO: make more types *)
+  (* N.B. this should *not* be added to any compilation tactics, since it will
+     always apply; it needs to be applied manually *)
+  Lemma compile_rename_bool :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      (locals_ok : Semantics.locals -> Prop)
+      tr R functions T (pred: T -> _ -> Prop)
+      x x_var var k k_impl,
+      map.get locals x_var = Some (word.of_Z (Z.b2z x)) ->
+      let v := x in
+      (let head := v in
+       find k_impl
+       implementing (pred (k head))
+       and-locals-post locals_ok
+       with-locals (map.put locals var (word.of_Z (Z.b2z x)))
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (let head := v in
+       find (cmd.seq (cmd.set var (expr.var x_var)) k_impl)
+       implementing (pred (dlet head k))
+       and-locals-post locals_ok
+       with-locals locals
+       and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    repeat straightline'. eauto.
+  Qed.
+
   Lemma postcondition_for_postcondition_norets
         locals_ok {T} (pred : T -> _)
         spec k R tr mem locals functions :

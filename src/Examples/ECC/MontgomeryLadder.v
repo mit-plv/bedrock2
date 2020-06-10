@@ -116,32 +116,6 @@ Section __.
       rewrite Nat2Z.id; eauto.
     Qed.
 
-    (* TODO: move, make more types *)
-    Lemma compile_rename_bool :
-      forall (locals: Semantics.locals) (mem: Semantics.mem)
-        (locals_ok : Semantics.locals -> Prop)
-        tr R functions T (pred: T -> _ -> Prop)
-        x x_var var k k_impl,
-        map.get locals x_var = Some (word.of_Z (Z.b2z x)) ->
-        let v := x in
-        (let head := v in
-         find k_impl
-         implementing (pred (k head))
-         and-locals-post locals_ok
-         with-locals (map.put locals var (word.of_Z (Z.b2z x)))
-         and-memory mem and-trace tr and-rest R
-         and-functions functions) ->
-        (let head := v in
-         find (cmd.seq (cmd.set var (expr.var x_var)) k_impl)
-         implementing (pred (dlet head k))
-         and-locals-post locals_ok
-         with-locals locals
-         and-memory mem and-trace tr and-rest R
-         and-functions functions).
-    Proof.
-      repeat straightline'. eauto.
-    Qed.
-
     (* TODO: make Placeholder [Lift1Prop.ex1 (fun x => Bignum p x)], and prove
        an iff1 with Bignum? Then we could even do some loop over the pointers to
        construct the seplogic condition *)
