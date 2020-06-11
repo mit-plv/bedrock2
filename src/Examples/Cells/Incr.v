@@ -22,7 +22,7 @@ Section with_semantics.
                (swap :: functions)
                "swap"
                tr mem [c_ptr]
-               (postcondition_for (cell_value c_ptr (incr_gallina_spec c)) R tr)))
+               (postcondition_for (cell_value c_ptr (incr_gallina_spec c)) R tr (fun r => r = nil))))
     As body_correct.
   Proof.
     compile.

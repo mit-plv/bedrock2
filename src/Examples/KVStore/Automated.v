@@ -504,7 +504,8 @@ Section KVSwap.
                   (postcondition_for
                      (MapAndTwoKeys
                         pm pk1 pk2
-                        (kvswap_gallina m k1 k2)) R tr)))
+                        (kvswap_gallina m k1 k2)) R tr
+                     (fun r => r = nil))))
       As kvswap_body_correct.
   Proof.
     setup.

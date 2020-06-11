@@ -255,9 +255,29 @@ Section with_semantics.
       (WeakestPrecondition.call functions)
       k tr mem locals
       (fun tr' m' _ =>
-         postcondition_for (pred spec) R tr tr' m' []).
+         postcondition_for (pred spec) R tr (fun r => r = nil) tr' m' []).
   Proof.
     cbv [postcondition_norets]; intros.
+    eapply Proper_cmd;
+      [ solve [apply Proper_call] | repeat intro
+        | eassumption ].
+    cleanup; eauto.
+  Qed.
+
+  Lemma postcondition_for_postcondition_withrets
+        locals_ok {T} (pred : T -> _)
+        spec k R tr mem locals rets functions :
+    WeakestPrecondition.cmd
+      (WeakestPrecondition.call functions)
+      k tr mem locals
+      (postcondition_withrets locals_ok (pred spec) R tr rets) ->
+    WeakestPrecondition.cmd
+      (WeakestPrecondition.call functions)
+      k tr mem locals
+      (fun tr' m' _ =>
+         postcondition_for (pred spec) R tr (fun r => r = rets) tr' m' rets).
+  Proof.
+    cbv [postcondition_withrets]; intros.
     eapply Proper_cmd;
       [ solve [apply Proper_call] | repeat intro
         | eassumption ].
