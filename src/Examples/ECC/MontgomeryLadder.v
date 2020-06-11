@@ -680,57 +680,84 @@ End __.
 (*
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.NotationsInConstr.
+Coercion expr.var : string >-> Syntax.expr.
+Local Open Scope bedrock_expr.
 Print montladder_body.
 *)
-(* montladder_body =
- * fun (field_parameters : FieldParameters)
+(* fun (field_parameters : FieldParameters)
  *   (scalar_field_parameters : ScalarFieldParameters)
  *   (zbound : Z) =>
- * (cmd.call [] bignum_literal [(uintptr_t)1ULL%bedrock_expr; expr.var "X1"];;
- *  cmd.call [] bignum_literal [(uintptr_t)0ULL%bedrock_expr; expr.var "Z1"];;
- *  cmd.call [] bignum_copy [expr.var "U"; expr.var "X2"];;
- *  cmd.call [] bignum_literal [(uintptr_t)1ULL%bedrock_expr; expr.var "Z2"];;
+ * (cmd.call [] bignum_literal [(uintptr_t)1ULL; "X1"];;
+ *  cmd.call [] bignum_literal [(uintptr_t)0ULL; "Z1"];;
+ *  cmd.call [] bignum_copy ["U"; "X2"];;
+ *  cmd.call [] bignum_literal [(uintptr_t)1ULL; "Z2"];;
  *  "v6" = (uintptr_t)0ULL;;
  *  ("i" = (uintptr_t)zboundULL;;
- *   while ((uintptr_t)0ULL < expr.var "i") {{
- *     "i" = expr.var "i" - (uintptr_t)1ULL;;
- *     cmd.call ["si"] sctestbit [expr.var "K"; expr.var "i"];;
- *     "v7" = expr.var "v6" .^ expr.var "si";;
- *     (if (expr.var "v7") {{
- *        (("tmp" = expr.var "X1";;
- *          "X1" = expr.var "X2");;
- *         "X2" = expr.var "tmp");;
+ *   while ((uintptr_t)0ULL < "i") {{
+ *     "i" = "i" - (uintptr_t)1ULL;;
+ *     cmd.call ["si"] sctestbit ["K"; "i"];;
+ *     "v7" = "v6" .^ "si";;
+ *     (if ("v7") {{
+ *        (("tmp" = "X1";;
+ *          "X1" = "X2");;
+ *         "X2" = "tmp");;
  *        cmd.unset "tmp"
  *      }});;
- *     (if (expr.var "v7") {{
- *        (("tmp" = expr.var "Z1";;
- *          "Z1" = expr.var "Z2");;
- *         "Z2" = expr.var "tmp");;
+ *     (if ("v7") {{
+ *        (("tmp" = "Z1";;
+ *          "Z1" = "Z2");;
+ *         "Z2" = "tmp");;
  *        cmd.unset "tmp"
  *      }});;
  *     cmd.call [] "ladderstep"
- *       [expr.var "U"; expr.var "X1"; expr.var "Z1";
- *       expr.var "X2"; expr.var "Z2"; expr.var "A";
- *       expr.var "AA"; expr.var "B"; expr.var "BB";
- *       expr.var "E"; expr.var "C"; expr.var "D"; expr.var "DA";
- *       expr.var "CB"];;
- *     "v6" = expr.var "si";;
+ *       ["U"; "X1"; "Z1"; "X2"; "Z2"; "A"; "AA"; "B"; "BB"; "E"; "C"; "D";
+ *       "DA"; "CB"];;
+ *     "v6" = "si";;
  *     /*skip*/
  *   }});;
- *  (if (expr.var "v6") {{
- *     (("tmp" = expr.var "X1";;
- *       "X1" = expr.var "X2");;
- *      "X2" = expr.var "tmp");;
+ *  (if ("v6") {{
+ *     (("tmp" = "X1";;
+ *       "X1" = "X2");;
+ *      "X2" = "tmp");;
  *     cmd.unset "tmp"
  *   }});;
- *  (if (expr.var "v6") {{
- *     (("tmp" = expr.var "Z1";;
- *       "Z1" = expr.var "Z2");;
- *      "Z2" = expr.var "tmp");;
+ *  (if ("v6") {{
+ *     (("tmp" = "Z1";;
+ *       "Z1" = "Z2");;
+ *      "Z2" = "tmp");;
  *     cmd.unset "tmp"
  *   }});;
- *  cmd.call [] inv [expr.var "Z1"; expr.var "A"];;
- *  cmd.call [] mul [expr.var "X1"; expr.var "A"; expr.var "U"];;
+ *  cmd.call [] inv ["Z1"; "A"];;
+ *  cmd.call [] mul ["X1"; "A"; "U"];;
  *  /*skip*/)%bedrock_cmd
- *     : FieldParameters -> ScalarFieldParameters -> Z -> cmd
+ *      : FieldParameters -> ScalarFieldParameters -> Z -> cmd
  *)
+(*
+(* TODO: for some reason the existing notations for these don't print *)
+Notation "f ( x , y )" := (cmd.call nil f (cons x (cons y nil))) (at level 40).
+Notation "f ( x , y , z )" := (cmd.call nil f (cons x (cons y (cons z nil)))) (at level 40).
+Notation "x ( a , b , c , d , e , f , g , h , i , j , k , l , m , n )" :=
+  (cmd.call nil x (cons a (cons b (cons c (cons d (cons e (cons f (cons g (cons h (cons i (cons j (cons k (cons l (cons m (cons n nil))))))))))))))) (at level 40).
+Notation "unpack! r = f ( x , y )" := (cmd.call (cons r nil) f (cons x (cons y nil))) (at level 40).
+
+Instance fp : FieldParameters :=
+  {| M_pos := (2^155-19)%positive;
+     a24 := 121665;
+     Finv := (fun x => x ^ (x - 2));
+     mul := "fe25519_mul";
+     add := "fe25519_add";
+     sub := "fe25519_sub";
+     square := "fe25519_square";
+     scmula24 := "fe25519_scmula24";
+     inv := "fe25519_inv";
+     bignum_copy := "fe25519_copy";
+     bignum_literal := "fe25519_encode"
+  |}.
+
+Instance sp : ScalarFieldParameters :=
+  {| L_pos := (2^252 + 27742317777372353535851937790883648493)%positive;
+     sctestbit := "sc25519_testbit";
+  |}.
+
+Compute (montladder_body 254).
+*)
