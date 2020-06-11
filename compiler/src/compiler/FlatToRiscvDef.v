@@ -40,7 +40,7 @@ Module Import FlatToRiscvDef.
        and EmitsValid needs width_cases *)
     W :> Utility.Words;
     funname_env :> forall T: Type, map.map String.string T; (* abstract T for better reusability *)
-    compile_ext_call: funname_env Z -> Z -> stmt Z -> list Instruction;
+    compile_ext_call: funname_env Z -> Z -> Z -> stmt Z -> list Instruction;
   }.
 
 End FlatToRiscvDef.
@@ -218,15 +218,14 @@ Section FlatToRiscv1.
     Variable e: funname_env Z.
 
     (* mypos: position of the code relative to the positions in e
-       stackoffset: $sp + stackoffset is the first free (lowest) used stack address (for SStackalloc),
-                    grows upwards (contrary to stack growth direction)
+       stackoffset: $sp + stackoffset is the (last) highest used stack address (for SStackalloc)
        s: statement to be compiled *)
     Fixpoint compile_stmt(mypos: Z)(stackoffset: Z)(s: stmt Z): list Instruction :=
       match s with
       | SLoad  sz x y => [[compile_load  sz x y 0]]
       | SStore sz x y => [[compile_store sz x y 0]]
       | SStackalloc x n body =>
-          [[Addi x sp stackoffset]] ++ compile_stmt (mypos + 4) (stackoffset + n) body
+          [[Addi x sp (stackoffset-n)]] ++ compile_stmt (mypos + 4) (stackoffset-n) body
       | SLit x v => compile_lit x v
       | SOp x op y z => compile_op x op y z
       | SSet x y => [[Add x Register0 y]]
@@ -260,17 +259,14 @@ Section FlatToRiscv1.
         save_regs argvars (- bytes_per_word * Z.of_nat (length argvars)) ++
         [[ Jal ra (fpos - (mypos + 4 * Z.of_nat (length argvars))) ]] ++
         load_regs resvars (- bytes_per_word * Z.of_nat (length argvars + length resvars))
-      | SInteract _ _ _ => compile_ext_call e mypos s
+      | SInteract _ _ _ => compile_ext_call e mypos stackoffset s
       end.
 
     (*
      Stack layout:
 
      high addresses              ...
-                      old sp --> mod_var_0 of previous function call arg0
-                                 stack scratch space last byte
-                                 ...
-        new sp + stackoffset --> stack scratch space first byte
+                      old sp --> begin of stack scratch space of previous function
                                  argn
                                  ...
                                  arg0
@@ -280,7 +276,10 @@ Section FlatToRiscv1.
                                  ra
                                  mod_var_n
                                  ...
-                      new sp --> mod_var_0
+                                 mod_var_0
+                                 end of stack scratch space of current function
+                                 ...  (stack scratch space also grows downwards, from "end" to "begin")
+                      new sp --> begin of stack scratch space of current function
      low addresses               ...
 
      Expected stack layout at beginning of function call: like above, but only filled up to arg0.
@@ -290,14 +289,15 @@ Section FlatToRiscv1.
       (list Z * list Z * stmt Z) -> list Instruction :=
       fun '(argvars, resvars, body) =>
         let mod_vars := list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
-        let stackoffset := bytes_per_word * Z.of_nat (length argvars + length resvars + 1 + length mod_vars) in
-        let framesize := stackalloc_size body + stackoffset in
+        let framesize := bytes_per_word * Z.of_nat (length argvars + length resvars + 1 + length mod_vars)
+                         + stackalloc_size body in
         [[ Addi sp sp (-framesize) ]] ++
         [[ compile_store access_size.word sp ra
                          (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
         save_regs mod_vars 0 ++
         load_regs argvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
-        compile_stmt (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars))) stackoffset body ++
+        compile_stmt (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars)))
+                     (stackalloc_size body) body ++
         save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1))) ++
         load_regs mod_vars 0 ++
         [[ compile_load access_size.word ra sp

@@ -230,8 +230,8 @@ Section WithParameters.
      it can't be recursively called again. *)
   Record GhostConsts := {
     p_sp: word;
-    num_stackwords: Z; (* remaining number of available stack words *)
-    stackoffset: Z; (* next stack allocation will happen at $sp + stackoffset *)
+    num_stackwords: Z; (* remaining number of available stack words (including unused scratch stack) *)
+    stackoffset: Z; (* next stack allocation will end just before $sp + stackoffset *)
     p_insts: word;
     insts: list Instruction;
     program_base: word;
@@ -263,7 +263,7 @@ Section WithParameters.
     (exists stack_trash,
         Z.of_nat (List.length stack_trash) = g.(num_stackwords) /\
         (g.(dframe) * g.(xframe) * eq m *
-         word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(num_stackwords))))
+         word_array (word.add g.(p_sp) (word.of_Z (g.(stackoffset) - bytes_per_word * g.(num_stackwords))))
                     stack_trash *
          program g.(p_insts) g.(insts) *
          functions g.(program_base) g.(e_pos) g.(e_impl))%sep lo.(getMem)) /\
@@ -324,8 +324,8 @@ Section WithParameters.
   (* previously used definition: *)
   Definition compile_ext_call_correct_alt resvars action argvars := forall (initialL: MetricRiscvMachine)
         postH newPc insts initialMH R Rexec initialRegsH
-        argvals mKeep mGive outcome p_sp e mypos,
-      insts = compile_ext_call e mypos (SInteract resvars action argvars) ->
+        argvals mKeep mGive outcome p_sp e mypos stackoffset,
+      insts = compile_ext_call e mypos stackoffset (SInteract resvars action argvars) ->
       newPc = word.add initialL.(getPc) (word.of_Z (4 * (Z.of_nat (List.length insts)))) ->
       map.extends initialL.(getRegs) initialRegsH ->
       Forall valid_FlatImp_var argvars ->

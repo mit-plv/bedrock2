@@ -72,11 +72,17 @@ Section Proofs.
   Hypothesis no_ext_calls: forall t mGive action argvals outcome,
       ext_spec t mGive action argvals outcome -> False.
 
+  Hypothesis stackalloc_always_0: forall x n body t m l mc post,
+      FlatImp.exec map.empty (SStackalloc x n body) t m l mc post -> n = 0.
+
+  Hypothesis sp_always_set: forall l: locals,
+      map.get l RegisterNames.sp = Some (word.of_Z 42).
+
   Lemma compile_stmt_correct:
     forall (s: stmt Z) t initialMH initialRegsH postH initialMetricsH,
     FlatImp.exec map.empty s t initialMH initialRegsH initialMetricsH postH ->
     forall R Rexec (initialL: RiscvMachineL) insts pos,
-    @compile_stmt def_params map.empty pos s = insts ->
+    @compile_stmt def_params map.empty pos 12345678 s = insts ->
     stmt_not_too_big s ->
     valid_FlatImp_vars s ->
     divisibleBy4 initialL.(getPc) ->
@@ -135,6 +141,40 @@ Section Proofs.
       run1det. run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.
       ecancel_assumption.
+
+    - (* SStackalloc *)
+      assert (valid_register RegisterNames.sp) by (cbv; auto).
+      specialize (stackalloc_always_0 x n body t mSmall l mc post). move stackalloc_always_0 at bottom.
+      assert (n = 0). {
+        eapply stackalloc_always_0. econstructor; eauto.
+      }
+      subst n.
+      run1det.
+      eapply runsTo_weaken. {
+        eapply H1 with (mStack := map.empty) (mCombined := mSmall).
+        { unfold Memory.anybytes. exists tt. simpl. reflexivity. }
+        { rewrite map.split_empty_r. reflexivity. }
+        all: IH_sidecondition.
+      }
+      simpl.
+      intros.
+      unfold Memory.anybytes in *.
+      simp. simpl in *. rewrite map.split_empty_r in H6lrl. subst mSmall'.
+      repeat match goal with
+             | m: _ |- _ => destruct_RiscvMachine m; simpl_MetricRiscvMachine_get_set
+             end.
+      eexists. eexists.
+      split; [eassumption|].
+      split; [solve [sidecondition]|].
+      split; [solve [sidecondition]|].
+      split. {
+        subst. solve_word_eq word_ok.
+      }
+      split; [solve [sidecondition]|].
+      split. {
+        solve_MetricLog.
+      }
+      assumption.
 
     - (* SLit *)
       get_run1valid_for_free.

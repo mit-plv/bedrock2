@@ -182,7 +182,7 @@ Module exec. Section WithEnv.
     (_ : forall a mStack mCombined,
         anybytes a n mStack ->
         map.split mCombined mSmall mStack ->
-        exec body t mCombined l mc (fun t' mCombined' l' mc' =>
+        exec body t mCombined (map.put l x a) mc (fun t' mCombined' l' mc' =>
             exists mSmall' mStack',
               anybytes a n mStack' /\
               map.split mCombined' mSmall' mStack' /\
