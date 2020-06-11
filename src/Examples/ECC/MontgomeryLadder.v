@@ -4,16 +4,19 @@ Require Import Rupicola.Examples.ECC.Point.
 Require Import Rupicola.Examples.ECC.DownTo.
 Require Import Rupicola.Examples.ECC.CondSwap.
 Require Import Rupicola.Examples.ECC.LadderStep.
+Require Import Rupicola.Examples.ECC.ScalarField.
 Local Open Scope Z_scope.
 
 Section __.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok semantics}.
-  Context {field_parameters : FieldParameters}.
-  Context {bignum_representaton : BignumRepresentation}.
+  Context {field_parameters : FieldParameters}
+          {scalar_field_parameters : ScalarFieldParameters}.
+  Context {bignum_representaton : BignumRepresentation}
+          {scalar_representation : ScalarRepresentation}.
   Existing Instances spec_of_mul spec_of_square spec_of_add
            spec_of_sub spec_of_scmula24 spec_of_inv spec_of_bignum_copy
-           spec_of_bignum_literal spec_of_ladderstep.
+           spec_of_bignum_literal spec_of_sctestbit spec_of_ladderstep.
 
   Context {relax_bounds :
              forall X : bignum,
@@ -21,7 +24,7 @@ Section __.
                bounded_by loose_bounds X}.
   Hint Resolve relax_bounds : compiler.
 
-  Context (bound : nat) (testbit_gallina : nat -> bool).
+  Context (bound : nat).
   Context (bound_pos : (bound > 0)%nat).
 
   Section Gallina.
@@ -34,7 +37,7 @@ Section __.
     Local Infix "*" := (fun x y => (x * y) mod M).
     Local Infix "^" := (fun x y => (x ^ y) mod M).
 
-    Definition montladder_gallina (u:Z) : Z :=
+    Definition montladder_gallina (testbit:nat ->bool) (u:Z) : Z :=
       let/d P1 := (1, 0) in
       let/d P2 := (u, 1) in
       let/d swap := false in
@@ -44,7 +47,7 @@ Section __.
            bound
            (fun state i =>
               let '(P1, P2, swap) := state in
-              let/d s_i := testbit_gallina i in
+              let/d s_i := testbit i in
               let/d swap := xorb swap s_i in
               let/d ''(P1, P2) := cswap swap P1 P2 in
               let/d ''(P1, P2) := ladderstep_gallina u P1 P2 in
@@ -59,54 +62,10 @@ Section __.
   End Gallina.
 
   Section MontLadder.
-    Context (testbit : string).
     (* need the literal Z form of bound to give to expr.literal *)
     Context (zbound : Z)
             (zbound_small : word.wrap zbound = zbound)
             (zbound_eq : zbound = Z.of_nat bound).
-
-    Instance spec_of_testbit : spec_of testbit :=
-      fun functions =>
-        forall (i : word) tr mem,
-          WeakestPrecondition.call
-            functions testbit tr mem [i]
-            (fun tr' m' rets =>
-               tr = tr' /\ mem = m'
-               /\ let i_nat := Z.to_nat (word.unsigned i) in
-                  rets = [word.of_Z (Z.b2z (testbit_gallina i_nat))]).
-
-    Lemma compile_testbit :
-      forall (locals: Semantics.locals) (mem: Semantics.mem)
-        (locals_ok : Semantics.locals -> Prop)
-        tr R functions T (pred: T -> _ -> Prop)
-        (i : nat) wi i_var var k k_impl,
-        spec_of_testbit functions ->
-        word.unsigned wi = Z.of_nat i ->
-        map.get locals i_var = Some wi ->
-        let v := testbit_gallina i in
-        (let head := v in
-         find k_impl
-         implementing (pred (k head))
-         and-locals-post locals_ok
-         with-locals (map.put locals var (word.of_Z (Z.b2z head)))
-         and-memory mem and-trace tr and-rest R
-         and-functions functions) ->
-        (let head := v in
-         find (cmd.seq (cmd.call [var] testbit [expr.var i_var]) k_impl)
-         implementing (pred (dlet head k))
-         and-locals-post locals_ok
-         with-locals locals
-         and-memory mem and-trace tr and-rest R
-         and-functions functions).
-    Proof.
-      repeat straightline'.
-      straightline_call.
-      repeat straightline'.
-      subst_lets_in_goal.
-      match goal with H : word.unsigned ?wi = Z.of_nat ?i |- _ =>
-                      rewrite H end.
-      rewrite Nat2Z.id; eauto.
-    Qed.
 
     (* TODO: make Placeholder [Lift1Prop.ex1 (fun x => Bignum p x)], and prove
        an iff1 with Bignum? Then we could even do some loop over the pointers to
@@ -114,27 +73,30 @@ Section __.
     (* TODO: should montladder return a pointer to the result? Currently writes
        result into U. *)
     Definition MontLadderResult
-               (pU pX1 pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB : Semantics.word)
+               (K : scalar)
+               (pK pU pX1 pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB : Semantics.word)
                (result : Z)
       : Semantics.mem -> Prop :=
       (liftexists U' X1' Z1' X2' Z2' A' AA' B' BB' E' C' D' DA' CB' : bignum,
          (emp (result = eval U' mod M)
-         * (Bignum pU U' * Bignum pX1 X1' * Bignum pZ1 Z1'
-            * Bignum pX2 X2' * Bignum pZ2 Z2'
-            * Bignum pA A' * Bignum pAA AA'
-            * Bignum pB B' * Bignum pBB BB'
-            * Bignum pE E' * Bignum pC C' * Bignum pD D'
-            * Bignum pDA DA' * Bignum pCB CB'))%sep).
+          * (Scalar pK K * Bignum pU U'
+             * Bignum pX1 X1' * Bignum pZ1 Z1'
+             * Bignum pX2 X2' * Bignum pZ2 Z2'
+             * Bignum pA A' * Bignum pAA AA'
+             * Bignum pB B' * Bignum pBB BB'
+             * Bignum pE E' * Bignum pC C' * Bignum pD D'
+             * Bignum pDA DA' * Bignum pCB CB'))%sep).
 
     Instance spec_of_montladder : spec_of "montladder" :=
       forall!
+            (K : scalar)
             (U X1 Z1 X2 Z2 : bignum) (* u, P1, P2 *)
             (A AA B BB E C D DA CB : bignum) (* ladderstep intermediates *)
-            (pU pX1 pZ1 pX2 pZ2
+            (pK pU pX1 pZ1 pX2 pZ2
                 pA pAA pB pBB pE pC pD pDA pCB : Semantics.word),
         (fun R m =>
            bounded_by tight_bounds U
-           /\ (Bignum pU U
+           /\ (Scalar pK K * Bignum pU U
                * Placeholder pX1 X1 * Placeholder pZ1 Z1
                * Placeholder pX2 X2 * Placeholder pZ2 Z2
                * Placeholder pA A * Placeholder pAA AA
@@ -144,11 +106,13 @@ Section __.
                * Placeholder pCB CB * R)%sep m)
           ===>
           "montladder" @
-          [pU; pX1; pZ1; pX2; pZ2; pA; pAA; pB; pBB; pE; pC; pD; pDA; pCB]
+          [pK; pU; pX1; pZ1; pX2; pZ2; pA; pAA; pB; pBB; pE; pC; pD; pDA; pCB]
           ===>
           (MontLadderResult
-             pU pX1 pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB
-             (montladder_gallina (eval U mod M))).
+             K pK pU pX1 pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB
+             (montladder_gallina
+                (fun i => Z.testbit (sceval K) (Z.of_nat i))
+                (eval U mod M))).
 
     Ltac apply_compile_cswap_nocopy :=
       simple eapply compile_cswap_nocopy with
@@ -175,7 +139,7 @@ Section __.
       let name := gen_sym_fetch "v" in
       cleanup;
       first [ simple eapply compile_downto
-            | simple eapply compile_testbit with (var:=name)
+            | simple eapply compile_sctestbit
             | simple eapply compile_point_assign
             | simple eapply compile_bignum_literal
             | simple eapply compile_bignum_copy
@@ -185,6 +149,7 @@ Section __.
 
     Definition downto_state
                (locals : Semantics.locals)
+               K K_ptr K_var
                X1_ptr_orig Z1_ptr_orig X2_ptr_orig Z2_ptr_orig
                X1_var Z1_var X2_var Z2_var
                swap_var si_var tmp_var
@@ -217,6 +182,7 @@ Section __.
               /\ map.get l Z1_var = Some Z1_ptr
               /\ map.get l X2_var = Some X2_ptr
               /\ map.get l Z2_var = Some Z2_ptr
+              /\ map.get l K_var = Some K_ptr
               /\ map.get l tmp_var = None
               /\ bounded_by tight_bounds X1
               /\ bounded_by tight_bounds Z1
@@ -230,7 +196,7 @@ Section __.
               /\ eval Z1 mod M = Z1z mod M
               /\ eval X2 mod M = X2z mod M
               /\ eval Z2 mod M = Z2z mod M)
-         * (Bignum X1_ptr X1 * Bignum Z1_ptr Z1
+         * (Scalar K_ptr K * Bignum X1_ptr X1 * Bignum Z1_ptr Z1
             * Bignum X2_ptr X2 * Bignum Z2_ptr Z2
             * Placeholder A_ptr A * Placeholder AA_ptr AA
             * Placeholder B_ptr B * Placeholder BB_ptr BB
@@ -273,7 +239,7 @@ Section __.
 
     Ltac setup_downto_state_init :=
       match goal with
-        |- context [downto_state _ ?pX1 ?pZ1 ?pX2 ?pZ2] =>
+        |- context [downto_state _ _ _ _ ?pX1 ?pZ1 ?pX2 ?pZ2] =>
         cbv[downto_state];
         apply sep_ex1_l; exists pX1;
         apply sep_ex1_l; exists pZ1;
@@ -348,7 +314,7 @@ Section __.
     Axiom admitt : forall {T}, T.
 
     Derive montladder_body SuchThat
-           (let args := ["U"; "X1"; "Z1"; "X2"; "Z2";
+           (let args := ["K"; "U"; "X1"; "Z1"; "X2"; "Z2";
                            "A"; "AA"; "B"; "BB"; "E"; "C"; "D"; "DA"; "CB"] in
             let montladder := ("montladder", (args, [], montladder_body)) in
             program_logic_goal_for
@@ -356,7 +322,7 @@ Section __.
               (ltac:(
                  let callees :=
                      constr:([bignum_literal; bignum_copy; "ladderstep";
-                                testbit; inv; mul]) in
+                                sctestbit; inv; mul]) in
                  let x := program_logic_goal_for_function
                                 montladder callees in
                      exact x)))
@@ -376,7 +342,7 @@ Section __.
                           (i_var := i)
                           (zcount := zbound)
                           (State := downto_state
-                                      locals
+                                      locals _ pK _
                                       pX1 pZ1 pX2 pZ2
                                       _ _ x2_var _ _ si_var tmp_var
                                        pA pAA pB pBB pE pC pD pDA pCB);
@@ -417,7 +383,9 @@ Section __.
 
         (* Since the loop invariant discusses a specific whitelist of variables,
            we need to pass in si specifically *)
-        eapply compile_testbit with (wi:=wi) (var:="si");
+        (* TODO: make safe_compile_step run repeat_compile_step twice to solve
+           after evars are filled; that is why wi is passed here *)
+        eapply compile_sctestbit with (wi0:=wi) (var:="si");
           [ solve [repeat compile_step] .. | ].
 
         repeat safe_compile_step.
@@ -709,26 +677,24 @@ Section __.
   End MontLadder.
 End __.
 
-(* TODO:
-   - make testbit a proper bitwise implementation
-*)
 (*
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.NotationsInConstr.
 Print montladder_body.
 *)
 (* montladder_body =
- * fun (field_parameters : FieldParameters) (testbit : string) (zbound : Z)
- * =>
- * (cmd.call [] bignum_literal [(uintptr_t)1ULL%bedrock_expr; expr.var "X1"
- *  cmd.call [] bignum_literal [(uintptr_t)0ULL%bedrock_expr; expr.var "Z1"
+ * fun (field_parameters : FieldParameters)
+ *   (scalar_field_parameters : ScalarFieldParameters)
+ *   (zbound : Z) =>
+ * (cmd.call [] bignum_literal [(uintptr_t)1ULL%bedrock_expr; expr.var "X1"];;
+ *  cmd.call [] bignum_literal [(uintptr_t)0ULL%bedrock_expr; expr.var "Z1"];;
  *  cmd.call [] bignum_copy [expr.var "U"; expr.var "X2"];;
- *  cmd.call [] bignum_literal [(uintptr_t)1ULL%bedrock_expr; expr.var "Z2"
+ *  cmd.call [] bignum_literal [(uintptr_t)1ULL%bedrock_expr; expr.var "Z2"];;
  *  "v6" = (uintptr_t)0ULL;;
  *  ("i" = (uintptr_t)zboundULL;;
  *   while ((uintptr_t)0ULL < expr.var "i") {{
  *     "i" = expr.var "i" - (uintptr_t)1ULL;;
- *     cmd.call ["si"] testbit [expr.var "i"];;
+ *     cmd.call ["si"] sctestbit [expr.var "K"; expr.var "i"];;
  *     "v7" = expr.var "v6" .^ expr.var "si";;
  *     (if (expr.var "v7") {{
  *        (("tmp" = expr.var "X1";;
@@ -766,5 +732,5 @@ Print montladder_body.
  *  cmd.call [] inv [expr.var "Z1"; expr.var "A"];;
  *  cmd.call [] mul [expr.var "X1"; expr.var "A"; expr.var "U"];;
  *  /*skip*/)%bedrock_cmd
- *     : FieldParameters -> string -> Z -> cmd
+ *     : FieldParameters -> ScalarFieldParameters -> Z -> cmd
  *)

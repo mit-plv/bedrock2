@@ -13,6 +13,7 @@ src/Examples/ECC/Field.v
 src/Examples/ECC/LadderStep.v
 src/Examples/ECC/MontgomeryLadder.v
 src/Examples/ECC/Point.v
+src/Examples/ECC/ScalarField.v
 src/Examples/KVStore/Automated.v
 src/Examples/KVStore/KVStore.v
 src/Examples/KVStore/Manual.v
