@@ -267,7 +267,7 @@ Section WithParameters.
                     functions g.(program_base) g.(e_pos) g.(e_impl))%sep)
            (of_list lo.(getXAddrs)) /\
     (exists stack_trash,
-        Z.of_nat (List.length stack_trash) = g.(rem_stackwords) + g.(rem_framewords) /\
+        g.(rem_stackwords) = Z.of_nat (List.length stack_trash) - g.(rem_framewords) /\
         (g.(dframe) * g.(xframe) * eq m *
          word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(rem_stackwords)))) stack_trash *
          program g.(p_insts) g.(insts) *
@@ -413,7 +413,7 @@ Section WithParameters.
         left. unfold PropSet.union, PropSet.elem_of, PropSet.of_list in *.
         left. apply ListSet.In_list_union_l. assumption.
       + eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
-      + eexists. split; [eassumption|].
+      + eexists. split; [reflexivity|].
         ecancel_assumption.
   Qed.
 

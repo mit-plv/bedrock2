@@ -427,35 +427,39 @@ Section Proofs.
         Z.div_mod_to_equations.
         blia.
       }
-      assert (exists remaining_stack remaining_scratch old_modvarvals old_ra old_retvals old_argvals,
-                 old_stackvals = remaining_stack ++ remaining_scratch ++ old_modvarvals ++ [old_ra] ++
-                                                 old_retvals ++ old_argvals /\
-                 List.length remaining_scratch = Z.to_nat rem_stackwords /\
+      assert (exists remaining_stack old_scratch old_modvarvals old_ra old_retvals old_argvals unused_scratch,
+                 old_stackvals = remaining_stack ++ old_scratch ++ old_modvarvals ++ [old_ra] ++
+                                                 old_retvals ++ old_argvals ++ unused_scratch /\
+                 List.length old_scratch = Z.to_nat (stackalloc_size body / bytes_per_word) /\
                  List.length old_modvarvals =
                     List.length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames) /\
                  List.length old_retvals = List.length retnames /\
-                 List.length old_argvals = List.length argnames) as TheSplit. {
+                 List.length old_argvals = List.length argnames /\
+                 List.length unused_scratch = Z.to_nat rem_framewords) as TheSplit. {
         clear IHexec.
         subst FL. unfold framelength in *.
         rename old_stackvals into ToSplit.
+        split_from_right ToSplit ToSplit unused_scratch (Z.to_nat rem_framewords).
         split_from_right ToSplit ToSplit old_argvals (List.length argnames).
         split_from_right ToSplit ToSplit old_retvals (List.length retnames).
         split_from_right ToSplit ToSplit old_ras 1%nat.
         split_from_right ToSplit ToSplit old_modvarvals
                 (Datatypes.length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)).
-        split_from_right ToSplit ToSplit remaining_stack (Z.to_nat rem_stackwords).
-
-        all: admit. (*
-        TODO
-
+        split_from_right ToSplit ToSplit old_scratch (Z.to_nat (stackalloc_size body / bytes_per_word)).
         destruct old_ras as [|old_ra rest]; try discriminate.
         destruct rest; try discriminate.
-        repeat econstructor;
-          [ do 3 rewrite <- List.app_assoc; reflexivity | blia.. ].
-                *)
+        repeat match goal with
+               | |- exists _, _ => eexists
+               end.
+        split.
+        - do 5 rewrite <- List.app_assoc; reflexivity.
+        - (*  Time blia. (* takes ~20secs *) *)
+          repeat split; assumption.
       }
-      destruct TheSplit as (remaining_stack & remaining_scratch &
-                            old_modvarvals & old_ra & old_retvals & old_argvals & ? & ? & ? & ?).
+      repeat match type of TheSplit with
+             | exists x, _ => destruct TheSplit as [x TheSplit]
+             | _ /\ _ => destruct TheSplit as [? TheSplit]
+             end.
       subst old_stackvals.
 
       (* note: left-to-right rewriting with all [length _ = length _] equations has to
@@ -476,14 +480,6 @@ Section Proofs.
                 (offset := (- bytes_per_word * Z.of_nat (List.length args))%Z); simpl; cycle -4.
         - eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
         - wcancel_assumption.
-
-          cancel_seps_at_indices 6%nat 0%nat. {
-            f_equal.
-            apply reduce_eq_to_diff0.
-            ring_simplify.
-
-          }
-
         - sidecondition.
         - sidecondition.
         - sidecondition.
