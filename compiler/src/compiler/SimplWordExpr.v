@@ -85,14 +85,26 @@ Hint Unfold
 
 Ltac simpl_Z_nat_getEq t :=
   match t with
+  (* no assumptions: *)
   | context[ Z.of_nat (S ?n) ] => constr:(Nat2Z.inj_succ n)
   | context[ Z.of_nat (?n + ?m) ] => constr:(Nat2Z.inj_add n m)
   | context[ Z.of_nat (?n * ?m) ] => constr:(Nat2Z.inj_mul n m)
   | context[ length (?l1 ++ ?l2) ] => constr:(List.app_length l1 l2)
+  (* only assumption: 0 <= a *)
+  | context[ Z.of_nat (Z.to_nat ?a) ] => constr:(Z2Nat.id a)
   end.
 
 Ltac simpl_Z_nat_step :=
-  rewr simpl_Z_nat_getEq in * ||
+  (* NOTE: For consistency with Coq's "rewrite", "rewr" adopts the same unintuitive
+     priorities between "by" and "||", namely that "||" binds stronger than "by".
+     For instance,
+        rewrite ?Z.mul_assoc by fail || rewrite Z.add_assoc by fail
+     is
+        rewrite ?Z.mul_assoc by (fail || rewrite Z.add_assoc by fail)
+     instead of
+        (rewrite ?Z.mul_assoc by fail) || (rewrite Z.add_assoc by fail)
+     and "rewr" does the same, so we do need parentheses here *)
+  (rewr simpl_Z_nat_getEq in * by assumption) ||
   autounfold with unf_simpl_Z_nat in * ||
   cbn [List.length] in * ||
   simpl_Zcsts.

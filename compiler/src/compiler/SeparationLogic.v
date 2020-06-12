@@ -213,7 +213,6 @@ Ltac cancel_by_tag :=
   cancel_seps_at_indices i j.
 
 Ltac simpl_addrs :=
-  simpl_Z_nat;
   unfold Register, MachineInt in *;
   (* note: it's the user's responsability to ensure that left-to-right rewriting with all
    nat and Z equations terminates, otherwise we'll loop infinitely here *)
@@ -224,6 +223,8 @@ Ltac simpl_addrs :=
            | nat => idtac
            end;
            progress prewrite LHS E
+         (* inside the loop because the above rewriting can create new opportunities for simpl_Z_nat *)
+         | |- _ => progress simpl_Z_nat
          end.
 
 (* Note that "rewr" only works with equalities, not with iff1, so we use
