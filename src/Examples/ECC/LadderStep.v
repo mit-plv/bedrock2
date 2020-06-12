@@ -103,7 +103,6 @@ Section __.
               (eval X1 mod M) (eval X2 mod M, eval Z2 mod M)
               (eval X3 mod M, eval Z3 mod M))).
 
-
     Lemma compile_ladderstep :
       forall (locals: Semantics.locals) (mem: Semantics.mem)
         (locals_ok : Semantics.locals -> Prop)

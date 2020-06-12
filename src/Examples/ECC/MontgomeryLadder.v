@@ -761,3 +761,47 @@ Instance sp : ScalarFieldParameters :=
 
 Compute (montladder_body 254).
 *)
+(* = ("fe25519_encode" ((uintptr_t)1ULL, "X1");;
+ *     "fe25519_encode" ((uintptr_t)0ULL, "Z1");;
+ *     "fe25519_copy" ("U", "X2");;
+ *     "fe25519_encode" ((uintptr_t)1ULL, "Z2");;
+ *     "v6" = (uintptr_t)0ULL;;
+ *     ("i" = (uintptr_t)254ULL;;
+ *      while ((uintptr_t)0ULL < "i") {{
+ *        "i" = "i" - (uintptr_t)1ULL;;
+ *        unpack! "si" = "sc25519_testbit" ("K", "i");;
+ *        "v7" = "v6" .^ "si";;
+ *        (if ("v7") {{
+ *           (("tmp" = "X1";;
+ *             "X1" = "X2");;
+ *            "X2" = "tmp");;
+ *           cmd.unset "tmp"
+ *         }});;
+ *        (if ("v7") {{
+ *           (("tmp" = "Z1";;
+ *             "Z1" = "Z2");;
+ *            "Z2" = "tmp");;
+ *           cmd.unset "tmp"
+ *         }});;
+ *        "ladderstep" ("U", "X1", "Z1", "X2", "Z2", "A", "AA", "B",
+ *        "BB", "E", "C", "D", "DA", "CB");;
+ *        "v6" = "si";;
+ *        /*skip*/
+ *      }});;
+ *     (if ("v6") {{
+ *        (("tmp" = "X1";;
+ *          "X1" = "X2");;
+ *         "X2" = "tmp");;
+ *        cmd.unset "tmp"
+ *      }});;
+ *     (if ("v6") {{
+ *        (("tmp" = "Z1";;
+ *          "Z1" = "Z2");;
+ *         "Z2" = "tmp");;
+ *        cmd.unset "tmp"
+ *      }});;
+ *     "fe25519_inv" ("Z1", "A");;
+ *     "fe25519_mul" ("X1", "A", "U");;
+ *     /*skip*/)%bedrock_cmd
+ *  : cmd
+ *)

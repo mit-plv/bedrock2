@@ -1,5 +1,6 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.Cells.Cells.
+Local Infix "~>" := cell_value.
 
 Section with_semantics.
   Context {semantics : Semantics.parameters}
@@ -12,19 +13,24 @@ Section with_semantics.
     let/d c := put v c in
     c.
 
+  Instance spec_of_incr : spec_of "incr" :=
+    (forall! (c_ptr : address) (c :cell),
+        (sep (c_ptr ~> c))
+          ===>
+          "incr" @ [c_ptr]
+          ===>
+          (c_ptr ~> (incr_gallina_spec c))).
+
   Derive body SuchThat
-         (let swap := ("swap", (["c"], [], body)) in
-          program_logic_goal_for swap
-          (forall functions,
-           forall c_ptr c tr R mem,
-             seps [cell_value c_ptr c; R] mem ->
-             WeakestPrecondition.call
-               (swap :: functions)
-               "swap"
-               tr mem [c_ptr]
-               (postcondition_for (cell_value c_ptr (incr_gallina_spec c)) R tr (fun r => r = nil))))
-    As body_correct.
+         (let incr := ("incr", (["c_ptr"], [], body)) in
+          program_logic_goal_for
+            incr
+            (ltac:(let x := program_logic_goal_for_function
+                              incr (@nil string) in
+                   exact x)))
+         As body_correct.
   Proof.
+    cbv [spec_of_incr program_logic_goal_for].
     compile.
   Qed.
 
