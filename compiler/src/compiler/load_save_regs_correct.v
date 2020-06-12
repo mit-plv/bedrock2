@@ -147,14 +147,13 @@ Section Proofs.
           end.
           { rewrite <- word.add_assoc. rewrite <- word.ring_morph_add. reflexivity. }
           ecancel.
-        * unfold bytes_per_word, Memory.bytes_per in *.
-          rewrite Znat.Nat2Z.inj_succ in *. rewrite <- Z.add_1_r in *.
+        * rewrite Znat.Nat2Z.inj_succ in *. rewrite <- Z.add_1_r in *.
           rewrite Z.mul_add_distr_l in *.
           assert (bytes_per_word > 0). {
             unfold bytes_per_word, Memory.bytes_per in *.
             destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
           }
-          bomega.
+          blia.
         * rewrite map.get_put_diff. 1: assumption.
           unfold RegisterNames.sp, valid_FlatImp_var in *. blia.
         * blia.

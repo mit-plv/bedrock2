@@ -174,51 +174,57 @@ Section WithParameters.
       let mod_vars := ListSet.list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
       Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
 
-  (* Note:
+  (* "fits_stack M N env s" means that statement s will not run out of stack space
+     if there are M words available before the stack pointer (in current frame),
+     and there are N words available after the stack pointer (for the frames of the
+     callees). Note:
      - This predicate cannot be proved for recursive functions
      - Measured in words, needs to be multiplied by 4 or 8 *)
-  Inductive fits_stack: Z -> env -> stmt Z -> Prop :=
-  | fits_stack_load: forall n e sz x y,
-      0 <= n ->
-      fits_stack n e (SLoad sz x y)
-  | fits_stack_store: forall n e sz x y,
-      0 <= n ->
-      fits_stack n e (SStore sz x y)
-  | fits_stack_stackalloc: forall n e x n' body,
-      (* no need to add n' here because it's already counted in framelength via stackalloc_size *)
-      fits_stack n e body ->
-      fits_stack n e (SStackalloc x n' body)
-  | fits_stack_lit: forall n e x v,
-      0 <= n ->
-      fits_stack n e (SLit x v)
-  | fits_stack_op: forall n e op x y z,
-      0 <= n ->
-      fits_stack n e (SOp x op y z)
-  | fits_stack_set: forall n e x y,
-      0 <= n ->
-      fits_stack n e (SSet x y)
-  | fits_stack_if: forall n e c s1 s2,
-      fits_stack n e s1 ->
-      fits_stack n e s2 ->
-      fits_stack n e (SIf c s1 s2)
-  | fits_stack_loop: forall n e c s1 s2,
-      fits_stack n e s1 ->
-      fits_stack n e s2 ->
-      fits_stack n e (SLoop s1 c s2)
-  | fits_stack_seq: forall n e s1 s2,
-      fits_stack n e s1 ->
-      fits_stack n e s2 ->
-      fits_stack n e (SSeq s1 s2)
-  | fits_stack_skip: forall n e,
-      0 <= n ->
-      fits_stack n e SSkip
-  | fits_stack_call: forall n e binds fname args argnames retnames body,
+  Inductive fits_stack: Z -> Z -> env -> stmt Z -> Prop :=
+  | fits_stack_load: forall M N e sz x y,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SLoad sz x y)
+  | fits_stack_store: forall M N e sz x y,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SStore sz x y)
+  | fits_stack_stackalloc: forall M N e x n body,
+      0 <= M -> 0 <= n ->
+      fits_stack (M - n) N e body ->
+      fits_stack M N e (SStackalloc x n body)
+  | fits_stack_lit: forall M N e x v,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SLit x v)
+  | fits_stack_op: forall M N e op x y z,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SOp x op y z)
+  | fits_stack_set: forall M N e x y,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SSet x y)
+  | fits_stack_if: forall M N e c s1 s2,
+      fits_stack M N e s1 ->
+      fits_stack M N e s2 ->
+      fits_stack M N e (SIf c s1 s2)
+  | fits_stack_loop: forall M N e c s1 s2,
+      fits_stack M N e s1 ->
+      fits_stack M N e s2 ->
+      fits_stack M N e (SLoop s1 c s2)
+  | fits_stack_seq: forall M N e s1 s2,
+      fits_stack M N e s1 ->
+      fits_stack M N e s2 ->
+      fits_stack M N e (SSeq s1 s2)
+  | fits_stack_skip: forall M N e,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e SSkip
+  | fits_stack_call: forall M N e binds fname args argnames retnames body,
+      0 <= M ->
       map.get e fname = Some (argnames, retnames, body) ->
-      fits_stack (n - framelength (argnames, retnames, body)) (map.remove e fname) body ->
-      fits_stack n e (SCall binds fname args)
-  | fits_stack_interact: forall n e binds act args,
-      0 <= n ->
-      fits_stack n e (SInteract binds act args).
+      fits_stack (stackalloc_size body) (N - framelength (argnames, retnames, body)) (map.remove e fname) body ->
+      fits_stack M N e (SCall binds fname args)
+  | fits_stack_interact: forall M N e binds act args,
+      0 <= M -> 0 <= N ->
+      (* TODO it would be nice to allow external functions to use the stack too by requiring
+         stack_needed act <= N *)
+      fits_stack M N e (SInteract binds act args).
 
   (* Ghost state used to describe low-level state introduced by the compiler.
      Called "ghost constants" because after executing a piece of code emitted by
@@ -230,8 +236,8 @@ Section WithParameters.
      it can't be recursively called again. *)
   Record GhostConsts := {
     p_sp: word;
-    num_stackwords: Z; (* remaining number of available stack words (including unused scratch stack) *)
-    stackoffset: Z; (* next stack allocation will end just before $sp + stackoffset *)
+    rem_stackwords: Z; (* remaining number of available stack words (not including those in current frame) *)
+    rem_framewords: Z; (* remaining number of available stack words inside the current frame *)
     p_insts: word;
     insts: list Instruction;
     program_base: word;
@@ -261,10 +267,9 @@ Section WithParameters.
                     functions g.(program_base) g.(e_pos) g.(e_impl))%sep)
            (of_list lo.(getXAddrs)) /\
     (exists stack_trash,
-        Z.of_nat (List.length stack_trash) = g.(num_stackwords) /\
+        Z.of_nat (List.length stack_trash) = g.(rem_stackwords) + g.(rem_framewords) /\
         (g.(dframe) * g.(xframe) * eq m *
-         word_array (word.add g.(p_sp) (word.of_Z (g.(stackoffset) - bytes_per_word * g.(num_stackwords))))
-                    stack_trash *
+         word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(rem_stackwords)))) stack_trash *
          program g.(p_insts) g.(insts) *
          functions g.(program_base) g.(e_pos) g.(e_impl))%sep lo.(getMem)) /\
     (* trace: *)
@@ -278,25 +283,22 @@ Section WithParameters.
       valid_FlatImp_fun fun_impl /\
       exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0.
 
+  Local Notation stmt := (stmt Z).
+
   (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
      we enter a new function body, to make sure functions cannot call themselves, while
      [e_impl] and [e_pos] remain the same throughout because that's mandated by
      [FlatImp.exec] and [compile_stmt], respectively *)
-  Definition good_reduced_e_impl(e_impl_reduced e_impl: env)(num_stackwords: Z)(e_pos: funname_env Z): Prop :=
-      map.extends e_impl e_impl_reduced /\
-      good_e_impl e_impl_reduced e_pos.
-
-  Local Notation stmt := (stmt Z).
-
   Definition compiles_FlatToRiscv_correctly
     (f: funname_env Z -> Z -> Z -> stmt -> list Instruction)
     (s: stmt): Prop :=
     forall e_impl_full initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
-    forall (g: GhostConsts) (initialL: MetricRiscvMachine) (pos: Z) (stackoffset: Z),
-    good_reduced_e_impl g.(e_impl) e_impl_full g.(num_stackwords) g.(e_pos) ->
-    fits_stack g.(num_stackwords) g.(e_impl) s ->
-    f g.(e_pos) pos stackoffset s = g.(insts) ->
+    forall (g: GhostConsts) (initialL: MetricRiscvMachine) (pos: Z),
+    map.extends e_impl_full g.(e_impl) ->
+    good_e_impl g.(e_impl) g.(e_pos) ->
+    fits_stack g.(rem_framewords) g.(rem_stackwords) g.(e_impl) s ->
+    f g.(e_pos) pos (bytes_per_word * g.(rem_framewords)) s = g.(insts) ->
     stmt_not_too_big s ->
     valid_FlatImp_vars s ->
     pos mod 4 = 0 ->
@@ -411,7 +413,7 @@ Section WithParameters.
         left. unfold PropSet.union, PropSet.elem_of, PropSet.of_list in *.
         left. apply ListSet.In_list_union_l. assumption.
       + eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
-      + eexists. split; [reflexivity|].
+      + eexists. split; [eassumption|].
         ecancel_assumption.
   Qed.
 
@@ -420,7 +422,7 @@ End WithParameters.
 Existing Instance Semantics_params.
 
 Ltac simpl_g_get :=
-  cbn [p_sp num_stackwords p_insts insts program_base e_pos e_impl
+  cbn [p_sp rem_framewords rem_stackwords p_insts insts program_base e_pos e_impl
             dframe xframe] in *.
 
 Ltac solve_stmt_not_too_big :=

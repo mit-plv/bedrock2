@@ -205,7 +205,7 @@ Section FlatToRiscv1.
 
   Fixpoint stackalloc_size(s: stmt Z): Z :=
     match s with
-    | SStackalloc x n body => n + stackalloc_size body
+    | SStackalloc x n body => Z.max 0 n + stackalloc_size body
     | _ => 0
     end.
 
@@ -289,19 +289,20 @@ Section FlatToRiscv1.
       (list Z * list Z * stmt Z) -> list Instruction :=
       fun '(argvars, resvars, body) =>
         let mod_vars := list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
+        let scratchsize := stackalloc_size body in
         let framesize := bytes_per_word * Z.of_nat (length argvars + length resvars + 1 + length mod_vars)
-                         + stackalloc_size body in
+                         + scratchsize in
         [[ Addi sp sp (-framesize) ]] ++
         [[ compile_store access_size.word sp ra
-                         (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
-        save_regs mod_vars 0 ++
-        load_regs argvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
+                         (scratchsize + bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
+        save_regs mod_vars scratchsize ++
+        load_regs argvars (scratchsize + bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
         compile_stmt (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars)))
-                     (stackalloc_size body) body ++
-        save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1))) ++
-        load_regs mod_vars 0 ++
+                     scratchsize body ++
+        save_regs resvars (scratchsize + bytes_per_word * (Z.of_nat (length mod_vars + 1))) ++
+        load_regs mod_vars scratchsize ++
         [[ compile_load access_size.word ra sp
-                        (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
+                        (scratchsize + bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
         [[ Addi sp sp framesize ]] ++
         [[ Jalr zero ra 0 ]].
 

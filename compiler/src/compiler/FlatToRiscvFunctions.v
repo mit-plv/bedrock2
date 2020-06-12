@@ -46,16 +46,27 @@ Section Proofs.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
 
+  Lemma stackalloc_size_nonneg: forall s,
+      0 <= stackalloc_size s.
+  Proof.
+    induction s; simpl; blia.
+  Qed.
+
   Lemma framesize_nonneg: forall argvars resvars body,
       0 <= framelength (argvars, resvars, body).
   Proof.
     intros. unfold framelength.
-    unfold bytes_per_word, Memory.bytes_per. blia.
+    pose proof (stackalloc_size_nonneg body).
+    assert (bytes_per_word = 4 \/ bytes_per_word = 8). {
+      unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+    }
+    Z.div_mod_to_equations.
+    blia.
   Qed.
 
-  Lemma fits_stack_nonneg: forall n e s,
-      fits_stack n e s ->
-      0 <= n.
+  Lemma fits_stack_nonneg: forall M N e s,
+      fits_stack M N e s ->
+      0 <= M /\ 0 <= N.
   Proof.
     induction 1; try blia. pose proof (@framesize_nonneg argnames retnames body). blia.
   Qed.
@@ -237,9 +248,9 @@ Section Proofs.
   Ltac split_from_right nameOrig nameL nameR len :=
     let nL := fresh in let nR := fresh in
     destruct (split_from_right nameOrig len) as [ nL [ nR [ ? [ ? ? ] ] ] ];
-    [ blia | ];
-    subst nameOrig;
-    rename nL into nameL, nR into nameR.
+    [ try blia
+    | subst nameOrig;
+      rename nL into nameL, nR into nameR ].
 
   Lemma map_extends_remove: forall (m1 m2: funname_env (list Z * list Z * stmt Z)) k,
       map.extends m1 m2 ->
@@ -342,7 +353,7 @@ Section Proofs.
     intros compile_ext_call_correct.
     unfold compiles_FlatToRiscv_correctly.
     induction 1; intros; unfold goodMachine in *;
-      destruct g as [p_sp num_stackwords p_insts insts program_base
+      destruct g as [p_sp rem_stackwords rem_framewords p_insts insts program_base
                      e_pos e_impl funnames frame].
       all: repeat match goal with
                   | m: _ |- _ => destruct_RiscvMachine m
@@ -359,27 +370,15 @@ Section Proofs.
             (postH := post) (g := {| program_base := program_base |}) (pos := pos)
             (extcall := action) (argvars := argvars) (resvars := resvars) (initialMH := m);
           simpl;
-          clear compile_ext_call_correct.
-        * econstructor; try eassumption.
-        * eassumption.
-        * econstructor. blia.
-        * reflexivity.
-        * eassumption.
-        * split; assumption.
-        * assumption.
-        * assumption.
-        * reflexivity.
-        * reflexivity.
-        * unfold goodMachine, valid_FlatImp_var in *. simpl. ssplit; eauto.
+          clear compile_ext_call_correct; cycle -1.
+        { unfold goodMachine, valid_FlatImp_var in *. simpl. ssplit; eauto. }
+        all: eauto using exec.interact, fits_stack_interact.
       + simpl. intros finalL A. destruct_RiscvMachine finalL. unfold goodMachine in *. simpl in *.
         destruct_products. subst.
         do 4 eexists; ssplit; eauto.
 
     - idtac "Case compile_stmt_correct/SCall".
       (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
-      lazymatch goal with
-      | H: good_reduced_e_impl _ _ _ _ |- _ => destruct H as (? & ?)
-      end.
       unfold good_e_impl, valid_FlatImp_fun in *.
       simpl in *.
       simp.
@@ -409,36 +408,54 @@ Section Proofs.
 
       set (FL := framelength (argnames, retnames, body)) in *.
       (* We have enough stack space for this call: *)
-      assert (FL <= Z.of_nat (List.length old_stackvals)) as enough_stack_space. {
+      (* Note that if we haven't used all stack scratch space of the caller's stack frame yet, we
+         skip (waste) it, so we have to add "stackoffset / bytes_per_word" on the left of the inequality. *)
+      assert (rem_framewords + FL <= Z.of_nat (List.length old_stackvals)) as enough_stack_space. {
         match goal with
-        | H: fits_stack _ _ _ |- _ => apply fits_stack_nonneg in H; clear -H
+        | H: fits_stack _ _ _ _ |- _ => apply fits_stack_nonneg in H
         end.
         unfold framelength in *. subst FL. simpl in *.
         blia.
       }
 
-      assert (exists remaining_stack old_modvarvals old_ra old_retvals old_argvals,
-                 old_stackvals = remaining_stack ++ old_modvarvals ++ [old_ra] ++
+      assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
+        unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+      }
+      assert (0 <= stackalloc_size body / bytes_per_word) as ScratchNonneg. {
+        clear -B48.
+        pose proof (stackalloc_size_nonneg body) as P.
+        Z.div_mod_to_equations.
+        blia.
+      }
+      assert (exists remaining_stack remaining_scratch old_modvarvals old_ra old_retvals old_argvals,
+                 old_stackvals = remaining_stack ++ remaining_scratch ++ old_modvarvals ++ [old_ra] ++
                                                  old_retvals ++ old_argvals /\
+                 List.length remaining_scratch = Z.to_nat rem_stackwords /\
                  List.length old_modvarvals =
                     List.length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames) /\
                  List.length old_retvals = List.length retnames /\
                  List.length old_argvals = List.length argnames) as TheSplit. {
+        clear IHexec.
         subst FL. unfold framelength in *.
-        clear -enough_stack_space.
         rename old_stackvals into ToSplit.
         split_from_right ToSplit ToSplit old_argvals (List.length argnames).
         split_from_right ToSplit ToSplit old_retvals (List.length retnames).
         split_from_right ToSplit ToSplit old_ras 1%nat.
         split_from_right ToSplit ToSplit old_modvarvals
                 (Datatypes.length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)).
+        split_from_right ToSplit ToSplit remaining_stack (Z.to_nat rem_stackwords).
+
+        all: admit. (*
+        TODO
+
         destruct old_ras as [|old_ra rest]; try discriminate.
         destruct rest; try discriminate.
         repeat econstructor;
           [ do 3 rewrite <- List.app_assoc; reflexivity | blia.. ].
+                *)
       }
-      destruct TheSplit as (remaining_stack & old_modvarvals & old_ra & old_retvals & old_argvals
-                                & ? & ? &  ? & ?).
+      destruct TheSplit as (remaining_stack & remaining_scratch &
+                            old_modvarvals & old_ra & old_retvals & old_argvals & ? & ? & ? & ?).
       subst old_stackvals.
 
       (* note: left-to-right rewriting with all [length _ = length _] equations has to
@@ -459,6 +476,14 @@ Section Proofs.
                 (offset := (- bytes_per_word * Z.of_nat (List.length args))%Z); simpl; cycle -4.
         - eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
         - wcancel_assumption.
+
+          cancel_seps_at_indices 6%nat 0%nat. {
+            f_equal.
+            apply reduce_eq_to_diff0.
+            ring_simplify.
+
+          }
+
         - sidecondition.
         - sidecondition.
         - sidecondition.
