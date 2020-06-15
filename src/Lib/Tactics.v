@@ -160,15 +160,20 @@ Ltac sepsimpl :=
                | progress sepsimpl_step
                | progress sepsimpl_hyps_step ].
 
+(* Version of straightline that allows integration of custom solvers *)
+Ltac straightline_plus t :=
+  first [ straightline | t
+          | match goal with
+              |- exists x, ?P /\ ?Q =>
+              let x := fresh x in
+              refine (let x := _ in ex_intro (fun x => P /\ Q) x _); split;
+              [ solve [ repeat straightline_plus t ] |  ]
+            end ].
+
 (* modification of a few clauses in the straightline tactic (to handle maps
    where put is not computable) *)
-Ltac straightline' :=
+Ltac straightline_map_solver :=
   match goal with
-  | _ => straightline
-  | |- exists x, ?P /\ ?Q =>
-    let x := fresh x in
-    refine (let x := _ in ex_intro (fun x => P /\ Q) x _); split;
-    [ solve [ repeat straightline' ] |  ]
   | |- @map.get _ _ ?M _ ?k = Some ?e' =>
     let e := rdelta.rdelta e' in
     is_evar e;
@@ -196,6 +201,7 @@ Ltac straightline' :=
     is_evar v'; change_no_check v with v'; eassumption
   end.
 
+Ltac straightline' := straightline_plus ltac:(solve [straightline_map_solver]).
 
 (* Notations for program_logic_goal_for_function *)
 Local Notation function_t :=

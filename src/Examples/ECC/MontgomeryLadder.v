@@ -41,10 +41,11 @@ Section __.
       let/d P1 := (1, 0) in
       let/d P2 := (u, 1) in
       let/d swap := false in
+      let/d count := bound in
       let/d ''(P1, P2, swap) :=
          downto
            (P1, P2, swap) (* initial state *)
-           bound
+           count
            (fun state i =>
               let '(P1, P2, swap) := state in
               let/d s_i := testbit i in
@@ -147,44 +148,63 @@ Section __.
             | apply_compile_cswap_nocopy
             | simple eapply compile_ladderstep ].
 
-    Definition downto_state
-               (locals : Semantics.locals)
-               K K_ptr K_var
-               X1_ptr_orig Z1_ptr_orig X2_ptr_orig Z2_ptr_orig
-               X1_var Z1_var X2_var Z2_var
-               swap_var si_var tmp_var
-               A_ptr AA_ptr B_ptr BB_ptr E_ptr C_ptr D_ptr DA_ptr CB_ptr :=
-      fun l (st : point * point * bool) =>
-        let P1 := fst (fst st) in
-        let P2 := snd (fst st) in
-        let swap := snd st in
-        let X1z := fst P1 in
-        let Z1z := snd P1 in
-        let X2z := fst P2 in
-        let Z2z := snd P2 in
-        liftexists X1_ptr Z1_ptr X2_ptr Z2_ptr X1 Z1 X2 Z2
-                   A AA B BB E C D DA CB,
-        (emp (map.only_differ
-                locals
-                (PropSet.of_list [swap_var; X1_var; Z1_var;
-                                    X2_var; Z2_var; si_var; tmp_var]) l
-              (* the pointers may be swapped from their original positions *)
-              /\ ((X1_ptr = X1_ptr_orig
-                   /\ Z1_ptr = Z1_ptr_orig
-                   /\ X2_ptr = X2_ptr_orig
-                   /\ Z2_ptr = Z2_ptr_orig)
-                  \/ (X1_ptr = X2_ptr_orig
-                      /\ Z1_ptr = Z2_ptr_orig
-                      /\ X2_ptr = X1_ptr_orig
-                      /\ Z2_ptr = Z1_ptr_orig))
-              /\ map.get l swap_var = Some (word.of_Z (Z.b2z swap))
-              /\ map.get l X1_var = Some X1_ptr
-              /\ map.get l Z1_var = Some Z1_ptr
-              /\ map.get l X2_var = Some X2_ptr
-              /\ map.get l Z2_var = Some Z2_ptr
-              /\ map.get l K_var = Some K_ptr
-              /\ map.get l tmp_var = None
-              /\ bounded_by tight_bounds X1
+    (* TODO: move *)
+    Definition map_get_or_default {key value} {map : map.map key value}
+               (d : value) (m : map.rep (map:=map)) (k : key) : value :=
+      match map.get m k with
+      | Some v => v
+      | None => d
+      end.
+
+    (* TODO: move *)
+    Definition locals_get_or_default
+               (l : Semantics.locals) (name : string) : word :=
+      map_get_or_default (word.of_Z 0) l name.
+
+    Definition downto_inv_locals
+               (K_ptr X1_ptr Z1_ptr X2_ptr Z2_ptr : word)
+               (K_var X1_var Z1_var X2_var Z2_var swap_var : string)
+               (st : point * point * bool)
+               (gst : word * word * word * word)
+      : Semantics.locals -> Prop :=
+      let swap := snd st in
+      let X1_ptr' := fst (fst (fst gst)) in
+      let Z1_ptr' := snd (fst (fst gst)) in
+      let X2_ptr' := snd (fst gst) in
+      let Z2_ptr' := snd gst in
+      (emp ((* the pointers may be swapped from their original positions *)
+           ((X1_ptr' = X1_ptr
+             /\ Z1_ptr' = Z1_ptr
+             /\ X2_ptr' = X2_ptr
+             /\ Z2_ptr' = Z2_ptr)
+            \/ (X1_ptr' = X2_ptr
+                /\ Z1_ptr' = Z2_ptr
+                /\ X2_ptr' = X1_ptr
+                /\ Z2_ptr' = Z1_ptr)))
+       * (Var swap_var (word.of_Z (Z.b2z swap)) * Var K_var K_ptr
+          * Var X1_var X1_ptr' * Var Z1_var Z1_ptr'
+          * Var X2_var X2_ptr' * Var Z2_var Z2_ptr'))%sep.
+
+    Definition downto_inv
+               K K_ptr
+               X1_ptr Z1_ptr X2_ptr Z2_ptr
+               A_ptr AA_ptr B_ptr BB_ptr E_ptr C_ptr D_ptr DA_ptr CB_ptr
+               (st : point * point * bool)
+               (gst : word * word * word * word)
+      : Semantics.mem -> Prop :=
+      let P1 := fst (fst st) in
+      let P2 := snd (fst st) in
+      let swap := snd st in
+      let X1z := fst P1 in
+      let Z1z := snd P1 in
+      let X2z := fst P2 in
+      let Z2z := snd P2 in
+      let X1_ptr' := fst (fst (fst gst)) in
+      let Z1_ptr' := snd (fst (fst gst)) in
+      let X2_ptr' := snd (fst gst) in
+      let Z2_ptr' := snd gst in
+      liftexists X1 Z1 X2 Z2 A AA B BB E C D DA CB,
+        (emp (bounded_by tight_bounds X1
               /\ bounded_by tight_bounds Z1
               /\ bounded_by tight_bounds X2
               /\ bounded_by tight_bounds Z2
@@ -203,6 +223,30 @@ Section __.
             * Placeholder E_ptr E * Placeholder C_ptr C
             * Placeholder D_ptr D * Placeholder DA_ptr DA
             * Placeholder CB_ptr CB))%sep.
+
+    (* What's the best way to do this?
+
+       considerations:
+       1) the locals and memory postconditions have to be separate, that's required by the automation
+       2) might be awkward to look stuff up in the locals in the memory condition, because you need to know what's there for sure
+       3) can't include the locals in the mem invariant without specifying how they change
+
+       IDEA:
+       make loop invariant a regular postcondition (maybe without trace)
+       this would require reworking all the stuff that forces separation
+
+
+       Another idea:
+       use a "ghost state" that gets put under an exists for both
+       is this possible with the current layout?
+
+
+       Rephrasing:
+       Pointers stored in local variables can be part of loop states
+       In this case, they need to be referenced in both places
+       Memory condition, essentially, must do a lookup in the locals
+       They both want to have the same exists (for pointer)
+    *)
 
     (* TODO: look in fiat-crypto Bedrock/Util for similar lemmas *)
     (* TODO: move *)
@@ -237,6 +281,7 @@ Section __.
       word.wrap x = x.
     Proof. apply Z.mod_small. Qed.
 
+    (*
     Ltac setup_downto_state_init :=
       match goal with
         |- context [downto_state _ _ _ _ ?pX1 ?pZ1 ?pX2 ?pZ2] =>
@@ -278,6 +323,7 @@ Section __.
 
     Ltac prove_downto_state_ok :=
       setup_downto_state_init; solve_downto_state_subgoals.
+     *)
 
     Lemma eval_fst_cswap s a b A B :
       eval a mod M = A mod M->
@@ -300,6 +346,25 @@ Section __.
       first [apply cswap_cases_fst | apply cswap_cases_snd ];
       auto using Z.mod_mod, M_nonzero.
 
+    (* TODO: move *)
+    Lemma Var_put_undef l n v (R : Semantics.locals -> Prop) :
+      map.get l n = None ->
+      R l ->
+      (Var n v * R)%sep (map.put l n v).
+    Proof.
+      intros. cbv [Var].
+      exists (map.put map.empty n v). exists l.
+      ssplit; eauto using map.split_undef_put; [ ].
+      autorewrite with mapsimpl; reflexivity.
+    Qed.
+
+    Ltac locals_sep l :=
+      match l with
+      | map.put ?l ?n ?v =>
+        let R := locals_sep l in
+        constr:((Var n v * R)%sep)
+      | map.empty => constr:(emp True)
+      end.
 
     (* Adding word.unsigned_of_Z_1 and word.unsigned_of_Z_0 as hints to
        compiler doesn't work, presumably because of the typeclass
@@ -332,20 +397,46 @@ Section __.
       setup.
       repeat safe_compile_step.
 
+      let locals := lazymatch goal with
+                    | |- WeakestPrecondition.cmd _ _ _ _ ?l _ => l end in
+      let R := locals_sep locals in
+      assert (R locals).
+
       let tmp_var := constr:("tmp") in
-      let si_var := constr:("si") in
       let x2_var := constr:("X2") in
       let i := constr:("i") in
       let locals := lazymatch goal with
                     | |- WeakestPrecondition.cmd _ _ _ _ ?l _ => l end in
       simple eapply compile_downto with
                           (i_var := i)
-                          (zcount := zbound)
-                          (State := downto_state
-                                      locals _ pK _
-                                      pX1 pZ1 pX2 pZ2
-                                      _ _ x2_var _ _ si_var tmp_var
-                                       pA pAA pB pBB pE pC pD pDA pCB);
+                          (ginit := (pX1, pZ1, pX2, pZ2))
+                          (Invl :=
+                             downto_inv_locals pK pX1 pZ1 pX2 pZ2
+                                               _ _ _ x2_var _ _)
+                          (Inv :=
+                             downto_inv _ pK pX1 pZ1 pX2 pZ2
+                                       pA pAA pB pBB pE pC pD pDA pCB).
+      { cbv [downto_inv_locals].
+        sepsimpl; [ tauto | ].
+        
+        eapply Proper_sep_iff1.
+        3:{
+          Search Var map.put.
+          match goal with 
+          apply Var_put_undef.
+        match goal with
+        | |- (Var _ ?v * _)%sep ?l =>
+          idtac l
+        end.
+        
+          match l with context [map.put ?n ?v] =>
+                       idtac n
+          end
+        end.
+        
+
+        
+        Search Var.
         lazymatch goal with
         | |- sep _ _ _ => prove_downto_state_ok
         | _ => idtac
