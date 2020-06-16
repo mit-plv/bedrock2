@@ -1373,11 +1373,9 @@ Section Proofs.
       rewrite P. clear P.
       simpl.
       wwcancel.
-    + epose (?[new_ra]: word) as new_ra. cbv delta [id] in new_ra.
-      match goal with
-      | H:   #(Datatypes.length ?new_remaining_stack) = _ |- _ =>
-        exists (new_remaining_stack ++ newvalues ++ [new_ra] ++ retvs ++ argvs)
-      end.
+    + (* TODO name correctly at the beginning *) rename funnames into dframe, frame into xframe.
+      epose (?[new_ra]: word) as new_ra. cbv delta [id] in new_ra.
+      exists (stack_trash ++ newvalues ++ [new_ra] ++ retvs ++ argvs ++ unused_scratch).
       assert (Datatypes.length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames) = Datatypes.length newvalues). {
         eapply map.getmany_of_list_length. eassumption.
       }
@@ -1390,7 +1388,7 @@ Section Proofs.
       (* PARAMRECORDS *)
       change Z with Register in *.
       subst FL new_ra. simpl_addrs.
-      split. 2: {
+      split. { ring. (* faster than lia *) }
       use_sep_assumption.
       wseplog_pre.
       pose proof functions_expose as P.
@@ -1415,28 +1413,6 @@ Section Proofs.
              end.
       rewrite! length_save_regs. rewrite! length_load_regs. (* <- needs to be before simpl_addrs *)
       simpl_addrs. simpl. (* PARAMRECORDS *)
-
-      assert (
-(array scalar !bytes_per_word
-                   (p_sp -
-                    !(bytes_per_word *
-                      (stackalloc_words body +
-                       (#(Datatypes.length argnames) + #(Datatypes.length binds) + 1 +
-                        #(Datatypes.length newvalues)))) -
-                    !(bytes_per_word * (#(Datatypes.length stack_trash) - stackalloc_words body))) stack_trash)
-=
-(array scalar !bytes_per_word
-   (p_sp -
-    !(bytes_per_word *
-      (#(Datatypes.length stack_trash) - stackalloc_words body +
-       (stackalloc_words body +
-        (#(Datatypes.length newvalues) +
-         (#(Datatypes.length binds) + (#(Datatypes.length argnames) + rem_framewords) + 1))) - rem_framewords)))
-   remaining_stack)).
-      {
-        f_equal.
-
-
       wcancel.
     + reflexivity.
     + assumption.
@@ -1468,6 +1444,8 @@ Section Proofs.
       run1det. run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.
       ecancel_assumption.
+
+    - idtac "Case compile_stmt_correct/SStackalloc".
 
     - idtac "Case compile_stmt_correct/SLit".
       get_run1valid_for_free.
