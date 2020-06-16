@@ -170,7 +170,7 @@ Section WithParameters.
   (* measured in words, needs to be multiplied by 4 or 8 *)
   Definition framelength: list Z * list Z * stmt Z -> Z :=
     fun '(argvars, resvars, body) =>
-      stackalloc_size body / bytes_per_word +
+      stackalloc_words body +
       let mod_vars := ListSet.list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
       Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
 
@@ -188,8 +188,10 @@ Section WithParameters.
       0 <= M -> 0 <= N ->
       fits_stack M N e (SStore sz x y)
   | fits_stack_stackalloc: forall M N e x n body,
-      0 <= M -> 0 <= n ->
-      fits_stack (M - n) N e body ->
+      0 <= M ->
+      0 <= n ->
+      n mod bytes_per_word = 0 ->
+      fits_stack (M - n / bytes_per_word) N e body ->
       fits_stack M N e (SStackalloc x n body)
   | fits_stack_lit: forall M N e x v,
       0 <= M -> 0 <= N ->
@@ -218,7 +220,9 @@ Section WithParameters.
   | fits_stack_call: forall M N e binds fname args argnames retnames body,
       0 <= M ->
       map.get e fname = Some (argnames, retnames, body) ->
-      fits_stack (stackalloc_size body) (N - framelength (argnames, retnames, body)) (map.remove e fname) body ->
+      fits_stack (stackalloc_words body)
+                 (N - framelength (argnames, retnames, body))
+                 (map.remove e fname) body ->
       fits_stack M N e (SCall binds fname args)
   | fits_stack_interact: forall M N e binds act args,
       0 <= M -> 0 <= N ->

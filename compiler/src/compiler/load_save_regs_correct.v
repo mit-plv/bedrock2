@@ -26,7 +26,6 @@ Section Proofs.
   Lemma save_regs_correct: forall vars offset R Rexec (initial: RiscvMachineL) p_sp oldvalues
                                   newvalues,
       Forall valid_register vars ->
-      - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
       map.getmany_of_list initial.(getRegs) vars = Some newvalues ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length oldvalues = List.length vars ->
@@ -76,14 +75,6 @@ Section Proofs.
           solve_word_eq word_ok.
       }
       all: try eassumption.
-      + rewrite Znat.Nat2Z.inj_succ in *. rewrite <- Z.add_1_r in *.
-        rewrite Z.mul_add_distr_l in *.
-        remember (bytes_per_word * BinInt.Z.of_nat (List.length vars)) as K.
-        assert (bytes_per_word > 0). {
-          unfold bytes_per_word, Memory.bytes_per in *.
-          destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
-        }
-        bomega.
       + simpl in *. eapply shrink_footpr_subset. 1: eassumption. wcancel.
       + simpl. use_sep_assumption. wcancel.
       + reflexivity.
@@ -97,7 +88,6 @@ Section Proofs.
 
   Lemma load_regs_correct: forall p_sp vars offset R Rexec (initial: RiscvMachineL) values,
       Forall valid_FlatImp_var vars ->
-      - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length values = List.length vars ->
       subset (footpr (program initial.(getPc) (load_regs vars offset) * Rexec)%sep)
@@ -147,13 +137,6 @@ Section Proofs.
           end.
           { rewrite <- word.add_assoc. rewrite <- word.ring_morph_add. reflexivity. }
           ecancel.
-        * rewrite Znat.Nat2Z.inj_succ in *. rewrite <- Z.add_1_r in *.
-          rewrite Z.mul_add_distr_l in *.
-          assert (bytes_per_word > 0). {
-            unfold bytes_per_word, Memory.bytes_per in *.
-            destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
-          }
-          blia.
         * rewrite map.get_put_diff. 1: assumption.
           unfold RegisterNames.sp, valid_FlatImp_var in *. blia.
         * blia.
