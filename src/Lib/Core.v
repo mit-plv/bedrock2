@@ -38,11 +38,6 @@ Definition bedrock_func : Type :=
   string * (list string * list string * cmd).
 Coercion name_of_func (f : bedrock_func) := fst f.
 
-Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
-     @map.get_empty
-     using (typeclasses eauto || congruence) : mapsimpl.
-
-
 (* TODO: should move upstream to coqutil *)
 Module map.
   Section __.
@@ -72,5 +67,62 @@ Module map.
                                destr (key_eqb x y) end;
         congruence.
     Qed.
+
+    Lemma disjoint_put_r m1 m2 k v :
+      map.get m1 k = None ->
+      map.disjoint m1 m2 ->
+      map.disjoint m1 (map.put m2 k v).
+    Proof.
+      cbv [map.disjoint]. intros.
+      match goal with H : context [map.get (map.put _ ?k _) ?k'] |- _ =>
+                      rewrite map.get_put_dec in H
+      end.
+      destruct_one_match_hyp; subst; eauto; congruence.
+    Qed.
+
+    Lemma disjoint_put_l m1 m2 k v :
+      map.get m2 k = None ->
+      map.disjoint m1 m2 ->
+      map.disjoint (map.put m1 k v) m2.
+    Proof.
+      cbv [map.disjoint]. intros.
+      match goal with H : context [map.get (map.put _ ?k _) ?k'] |- _ =>
+                      rewrite map.get_put_dec in H
+      end.
+      destruct_one_match_hyp; subst; eauto; congruence.
+    Qed.
+
+    Lemma put_remove_same m k v :
+      map.put (map.remove m k)  k v = map.put m k v.
+    Proof.
+      apply map.map_ext; intro.
+      rewrite !map.get_put_dec, !map.get_remove_dec.
+      destruct_one_match; congruence.
+    Qed.
+
+    Lemma remove_put_same m k v :
+      map.remove (map.put m k v) k = map.remove m k.
+    Proof.
+      intros; apply map.map_ext; intro.
+      rewrite !map.get_remove_dec, !map.get_put_dec.
+      destruct_one_match; congruence.
+    Qed.
+
+    Lemma remove_put_diff m k1 k2 v :
+      k1 <> k2 ->
+      map.remove (map.put m k1 v) k2 = map.put (map.remove m k2) k1 v.
+    Proof.
+      intros; apply map.map_ext; intro.
+      rewrite !map.get_put_dec, !map.get_remove_dec.
+      repeat destruct_one_match; subst;
+        rewrite ?map.get_put_diff, ?map.get_put_same by congruence;
+        congruence.
+    Qed.
   End __.
 End map.
+
+Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
+     @map.remove_put_diff @map.remove_put_same
+     @map.remove_empty @map.get_empty
+     using (typeclasses eauto || congruence) : mapsimpl.
+
