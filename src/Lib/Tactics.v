@@ -229,3 +229,8 @@ Ltac use_hyp_with_matching_cmd :=
   eapply Proper_cmd;
   [ solve [apply Proper_call]
   | repeat intro | eapply H ].
+
+Ltac push_map_remove :=
+  repeat first [ rewrite map.remove_put_diff by congruence
+               | rewrite map.remove_put_same ];
+  rewrite map.remove_empty.

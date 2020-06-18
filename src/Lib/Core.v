@@ -169,3 +169,28 @@ Section Lists.
     erewrite <-IHcs. reflexivity.
   Qed.
 End Lists.
+
+(* TODO: should be upstreamed to coqutil *)
+Module word.
+  Section __.
+    Context {width} {word : Interface.word width} {ok : word.ok word}.
+
+    Lemma wrap_small x :
+      (0 <= x < 2 ^ width)%Z ->
+      word.wrap x = x.
+    Proof. apply Z.mod_small. Qed.
+
+    Lemma unsigned_of_Z_b2z b :
+      word.unsigned (word.of_Z (Z.b2z b)) = Z.b2z b.
+    Proof.
+      destruct b; cbn [Z.b2z];
+        auto using word.unsigned_of_Z_0, word.unsigned_of_Z_1.
+    Qed.
+  End __.
+End word.
+
+(* TODO: should be upstreamed to coqutil *)
+Module Z.
+  Lemma lxor_xorb a b : Z.lxor (Z.b2z a) (Z.b2z b) = Z.b2z (xorb a b).
+  Proof. destruct a, b; reflexivity. Qed.
+End Z.

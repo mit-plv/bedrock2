@@ -152,4 +152,10 @@ Section Helpers.
   Lemma cswap_cases_snd {T} (P : T -> Prop) s a b :
     P a -> P b -> P (snd (cswap s a b)).
   Proof. destruct s; cbn [cswap fst snd]; auto. Qed.
+
+  Lemma cswap_pair {A B} b (x y : A * B) :
+    cswap b x y =
+    (fst (cswap b (fst x) (fst y)), fst (cswap b (snd x) (snd y)),
+     (snd (cswap b (fst x) (fst y)), snd (cswap b (snd x) (snd y)))).
+  Proof. destruct b; destruct_products; reflexivity. Qed.
 End Helpers.

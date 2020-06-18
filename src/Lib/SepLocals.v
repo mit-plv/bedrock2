@@ -123,3 +123,64 @@ Ltac straightline' ::=
   straightline_plus
     ltac:(first [ straightline_map_solver_locals
                 | straightline_map_solver ]).
+
+Ltac locals_sep' l seen_names :=
+  match l with
+  | map.put ?l ?n ?v =>
+    let R := locals_sep' l (n :: seen_names) in
+    (* check if n is already in the proposition due to a superceding put,
+       and skip it if so *)
+    lazymatch seen_names with
+    | context [cons n] => constr:(R)
+    | _ => constr:((Var n v * R)%sep)
+    end
+  | map.empty => constr:(emp True)
+  end.
+Ltac locals_sep l := locals_sep' l constr:(@nil string).
+
+Ltac cancel_Var :=
+  lazymatch goal with
+  | |- (emp True * _)%sep ?l => eapply sep_emp_l
+  | |- (Var ?n ?v * _)%sep ?l =>
+    lazymatch l with
+    | map.put ?m n _ =>
+      match m with
+      | context [map.put _ n] =>
+        eapply Var_put_remove; push_map_remove
+      | _ => eapply Var_put_undef;
+             [ autorewrite with mapsimpl; reflexivity | ]
+      end
+    | context [map.put _ n v] =>
+      repeat rewrite (map.put_put_diff_comm n _ v) by congruence
+    | context [map.put _ n ?v'] =>
+      fail "var" n "has mismatched value;" v "<>" v'
+    | _ => fail "could not find var" n
+    end
+  | |- emp True map.empty => cbv [emp]; tauto
+  end.
+
+Ltac sep_from_literal_locals locals :=
+  let R := locals_sep locals in
+  assert (R locals) by (repeat cancel_Var).
+
+Ltac literal_locals_from_sep :=
+  let l := lazymatch goal with
+           | H : @sep _ _ Semantics.locals ?p ?q ?l |- context [?l] =>
+             l end in
+  match goal with
+  | H : @sep _ _ Semantics.locals ?p ?q ?l |- context [?l] =>
+    seprewrite_in Var_exact H
+  end;
+  repeat
+    lazymatch goal with
+    | H : @sep _ _ Semantics.locals ?p ?q ?l |- context [?l] =>
+      first [ seprewrite_in Var_put_eq_r H
+            | seprewrite_in Var_put_eq_l H];
+      [ rewrite ?map.get_put_diff by congruence;
+        apply map.get_empty | ]
+    end;
+  sepsimpl_hyps;
+  lazymatch goal with
+    H : _ = l |- _=>
+    first [subst l | rewrite <-H ]
+  end.

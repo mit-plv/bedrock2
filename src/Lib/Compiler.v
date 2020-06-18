@@ -126,16 +126,6 @@ Section with_semantics.
     eassumption.
   Qed.
 
-  (* TODO : move? *)
-  Lemma word_unsigned_of_Z_b2z b :
-    word.unsigned (word.of_Z (Z.b2z b)) = Z.b2z b.
-  Proof.
-    destruct b; cbn [Z.b2z];
-      auto using word.unsigned_of_Z_0, word.unsigned_of_Z_1.
-  Qed.
-  Lemma Z_lxor_xorb a b : Z.lxor (Z.b2z a) (Z.b2z b) = Z.b2z (xorb a b).
-  Proof. destruct a, b; reflexivity. Qed.
-
   Lemma compile_xorb :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
@@ -176,7 +166,7 @@ Section with_semantics.
     end.
     rewrite <-(word.of_Z_unsigned (word.xor _ _)).
     rewrite word.unsigned_xor_nowrap.
-    rewrite !word_unsigned_of_Z_b2z, Z_lxor_xorb.
+    rewrite !word.unsigned_of_Z_b2z, Z.lxor_xorb.
     reflexivity.
   Qed.
 

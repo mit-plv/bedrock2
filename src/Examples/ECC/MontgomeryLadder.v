@@ -220,18 +220,6 @@ Section __.
       let swap := xorb swap (Z.testbit (sceval K) (Z.of_nat i)) in
       cswap swap P1 P2.
 
-    (* TODO: move *)
-    Lemma cswap_pair {A B} b (x y : A * B) :
-      cswap b x y =
-      (fst (cswap b (fst x) (fst y)), fst (cswap b (snd x) (snd y)),
-       (snd (cswap b (fst x) (fst y)), snd (cswap b (snd x) (snd y)))).
-    Proof. destruct b; destruct_products; reflexivity. Qed.
-
-    Lemma word_wrap_small x :
-      (0 <= x < 2 ^ Semantics.width) ->
-      word.wrap x = x.
-    Proof. apply Z.mod_small. Qed.
-
     Ltac setup_downto_inv_init :=
       lift_eexists; sepsimpl;
       (* first fill in any map.get goals where we know the variable names *)
@@ -279,52 +267,6 @@ Section __.
       first [apply cswap_cases_fst | apply cswap_cases_snd ];
       auto using Z.mod_mod, M_nonzero.
 
-    Ltac locals_sep' l seen_names :=
-      match l with
-      | map.put ?l ?n ?v =>
-        let R := locals_sep' l (n :: seen_names) in
-        (* check if n is already in the proposition due to a superceding put,
-           and skip it if so *)
-        lazymatch seen_names with
-        | context [cons n] => constr:(R)
-        | _ => constr:((Var n v * R)%sep)
-        end
-      | map.empty => constr:(emp True)
-      end.
-    Ltac locals_sep l := locals_sep' l constr:(@nil string).
-
-    (* TODO: move *)
-    Ltac push_map_remove :=
-      repeat first [ rewrite map.remove_put_diff by congruence
-                   | rewrite map.remove_put_same ];
-      rewrite map.remove_empty.
-
-    (* TODO: move *)
-    Ltac cancel_Var :=
-      lazymatch goal with
-      | |- (emp True * _)%sep ?l => eapply sep_emp_l
-      | |- (Var ?n ?v * _)%sep ?l =>
-        lazymatch l with
-        | map.put ?m n _ =>
-          match m with
-          | context [map.put _ n] =>
-            eapply Var_put_remove; push_map_remove
-          | _ => eapply Var_put_undef;
-                 [ autorewrite with mapsimpl; reflexivity | ]
-          end
-        | context [map.put _ n v] =>
-          repeat rewrite (map.put_put_diff_comm n _ v) by congruence
-        | context [map.put _ n ?v'] =>
-          fail "var" n "has mismatched value;" v "<>" v'
-        | _ => fail "could not find var" n
-        end
-      | |- emp True map.empty => cbv [emp]; tauto
-      end.
-
-    Ltac sep_from_literal_locals locals :=
-      let R := locals_sep locals in
-      assert (R locals) by (repeat cancel_Var).
-
     (* Adding word.unsigned_of_Z_1 and word.unsigned_of_Z_0 as hints to
        compiler doesn't work, presumably because of the typeclass
        preconditions. This is a hacky workaround. *)
@@ -364,30 +306,6 @@ Section __.
            end) in
       eapply compile_unset with (var := v); [ ];
       push_map_remove.
-
-    (* TODO: move? *)
-    Ltac literal_locals_from_sep :=
-      let l := lazymatch goal with
-               | H : @sep _ _ Semantics.locals ?p ?q ?l |- context [?l] =>
-                 l end in
-      match goal with
-      | H : @sep _ _ Semantics.locals ?p ?q ?l |- context [?l] =>
-        seprewrite_in Var_exact H
-      end;
-      repeat
-        lazymatch goal with
-        | H : @sep _ _ Semantics.locals ?p ?q ?l |- context [?l] =>
-          first [ seprewrite_in Var_put_eq_r H
-                | seprewrite_in Var_put_eq_l H];
-          [ clear - semantics_ok;
-            rewrite ?map.get_put_diff by congruence;
-            apply map.get_empty | ]
-        end;
-      sepsimpl_hyps;
-      lazymatch goal with
-        H : _ = l |- _=>
-        first [subst l | rewrite <-H ]
-      end.
 
     Derive montladder_body SuchThat
            (let args := ["K"; "U"; "X1"; "Z1"; "X2"; "Z2";
@@ -456,7 +374,7 @@ Section __.
         pose proof (word.unsigned_range (word.of_Z zbound)) as H;
         rewrite word.unsigned_of_Z, zbound_small in H.
         assert (word.unsigned wi = Z.of_nat i) by
-            (subst wi; rewrite word.unsigned_of_Z, word_wrap_small by lia;
+            (subst wi; rewrite word.unsigned_of_Z, word.wrap_small by lia;
              reflexivity).
 
         (* convert locals back to literal map using the separation-logic
