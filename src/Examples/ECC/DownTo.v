@@ -9,16 +9,78 @@ Section Gallina.
     downto' init 0 count step.
 End Gallina.
 
-Section Compile.
+(* TODO: move *)
+Module map.
+  Section __.
+    Context {key value} {map : map.map key value} {ok : map.ok map}.
+    Context {key_eqb}
+            {key_eq_dec :
+               forall x y : key, BoolSpec (x = y) (x <> y) (key_eqb x y)}.
+
+    Lemma disjoint_put_r m1 m2 k v :
+      map.get m1 k = None ->
+      map.disjoint m1 m2 ->
+      map.disjoint m1 (map.put m2 k v).
+    Proof.
+      cbv [map.disjoint]. intros.
+      match goal with H : context [map.get (map.put _ ?k _) ?k'] |- _ =>
+                      rewrite map.get_put_dec in H
+      end.
+      destruct_one_match_hyp; subst; eauto; congruence.
+    Qed.
+
+    Lemma disjoint_put_l m1 m2 k v :
+      map.get m2 k = None ->
+      map.disjoint m1 m2 ->
+      map.disjoint (map.put m1 k v) m2.
+    Proof.
+      cbv [map.disjoint]. intros.
+      match goal with H : context [map.get (map.put _ ?k _) ?k'] |- _ =>
+                      rewrite map.get_put_dec in H
+      end.
+      destruct_one_match_hyp; subst; eauto; congruence.
+    Qed.
+
+    Lemma put_remove_same m k v :
+      map.put (map.remove m k)  k v = map.put m k v.
+    Proof.
+      apply map.map_ext; intro.
+      rewrite !map.get_put_dec, !map.get_remove_dec.
+      destruct_one_match; congruence.
+    Qed.
+
+    Lemma remove_put_same m k v :
+      map.remove (map.put m k v) k = map.remove m k.
+    Proof.
+      intros; apply map.map_ext; intro.
+      rewrite !map.get_remove_dec, !map.get_put_dec.
+      destruct_one_match; congruence.
+    Qed.
+
+    Lemma remove_put_diff m k1 k2 v :
+      k1 <> k2 ->
+      map.remove (map.put m k1 v) k2 = map.put (map.remove m k2) k1 v.
+    Proof.
+      intros; apply map.map_ext; intro.
+      rewrite !map.get_put_dec, !map.get_remove_dec.
+      repeat destruct_one_match; subst;
+        autorewrite with mapsimpl; congruence.
+    Qed.
+  End __.
+End map.
+Hint Rewrite @map.remove_put_diff @map.remove_empty
+     @map.remove_put_same using (typeclasses eauto || congruence)
+  : mapsimpl.
+
+(* TODO: move *)
+(* TODO: ideally, all compilation lemmas would now use seplogic for locals *)
+Section Var.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok semantics}.
 
-  (* TODO: move *)
   Definition Var (name : string) (value : word)
     : Semantics.locals -> Prop :=
-    fun l => map.get l name = Some value.
-
-  (* TODO: ideally, all compilation lemmas would now use seplogic for locals *)
+    eq (map.put map.empty name value).
 
   Lemma Var_get l name value R :
     (Var name value * R)%sep l ->
@@ -27,50 +89,13 @@ Section Compile.
     destruct 1; cbv [Var] in *; cleanup.
     match goal with H : map.split _ _ _ |- _ =>
                     apply map.get_split with (k:=name) in H;
-                      destruct H; cleanup; [ | congruence ]
+                      destruct H; cleanup
     end.
-    congruence.
+    all:subst; autorewrite with mapsimpl in *.
+    all:congruence.
   Qed.
 
-  (* TODO: move *)
-  Lemma disjoint_put_r {key value} {map : map.map key value}
-        {key_eqb}
-        {key_eq_dec :
-           forall x y : key, BoolSpec (x = y) (x <> y) (key_eqb x y)} :
-    map.ok map ->
-    forall m1 m2 k v v',
-      map.get m2 k = Some v ->
-      map.disjoint m1 m2 ->
-      map.disjoint m1 (map.put m2 k v').
-  Proof.
-    cbv [map.disjoint]. intros.
-    match goal with H : context [map.get (map.put _ ?k _) ?k'] |- _ =>
-                    rewrite map.get_put_dec in H
-    end.
-    destruct_one_match_hyp; subst; eauto.
-  Qed.
-
-  (* TODO: move *)
-  Lemma disjoint_put_l {key value} {map : map.map key value}
-        {key_eqb}
-        {key_eq_dec :
-           forall x y : key, BoolSpec (x = y) (x <> y) (key_eqb x y)} :
-    map.ok map ->
-    forall m1 m2 k v v',
-      map.get m1 k = Some v ->
-      map.disjoint m1 m2 ->
-      map.disjoint (map.put m1 k v') m2.
-  Proof.
-    cbv [map.disjoint]. intros.
-    match goal with H : context [map.get (map.put _ ?k _) ?k'] |- _ =>
-                    rewrite map.get_put_dec in H
-    end.
-    destruct_one_match_hyp; subst; eauto.
-  Qed.
-
-
-  (* TODO: move *)
-  Lemma Var_put l n v v' (R : _ -> Prop) :
+  Lemma Var_put_replace l n v v' (R : _ -> Prop) :
     (Var n v * R)%sep l ->
     (Var n v' * R)%sep (map.put l n v').
   Proof.
@@ -78,30 +103,104 @@ Section Compile.
     match goal with H : map.split _ _ _ |- _ =>
                     pose proof H;
                     apply map.get_split with (k:=n) in H;
-                      destruct H; cleanup; [ | congruence ]
-    end.
-    exists (map.put x n v'), x0.
-    ssplit; [ | autorewrite with mapsimpl; reflexivity | solve [eauto] ].
-    cbv [map.split] in *; cleanup.
-    ssplit; [ | eapply disjoint_put_l; eauto using Semantics.locals_ok ].
+                      destruct H; cleanup
+    end;
+      subst; autorewrite with mapsimpl in *; [ | congruence ].
+    do 2 eexists.
+    ssplit; [ | reflexivity | eassumption ].
+    cbv [map.split] in *; cleanup; subst.
+    ssplit; [ | eapply map.disjoint_put_l;
+                eauto using map.disjoint_empty_l ].
     subst. rewrite map.putmany_comm by auto.
     rewrite map.put_putmany_commute.
+    rewrite map.put_put_same.
     apply map.putmany_comm.
-    eapply disjoint_put_r; eauto using Semantics.locals_ok.
-    apply map.disjoint_comm. assumption.
+    eapply map.disjoint_put_r; eauto using map.disjoint_empty_r.
   Qed.
 
-  (* TODO: move *)
-  Ltac extract_var H name :=
-    let l := match type of H with
-               sep _ _ ?l => l end in
-    let i := match type of H with
-                 context [Var name ?i] => i end in
-    let R := fresh "R" in
-    let H' := fresh in
-    evar (R : Semantics.locals -> Prop);
-    assert ((Var name i * R)%sep l) as H' by ecancel_assumption;
-    subst R; clear H; rename H' into H.
+  Lemma Var_put_remove l n v (R : _ -> Prop) :
+    R (map.remove l n) ->
+    (Var n v * R)%sep (map.put l n v).
+  Proof.
+    intros.
+    do 2 eexists.
+    ssplit; [ | reflexivity | eassumption ].
+    cbv [map.split] in *; cleanup; subst.
+    ssplit; [ | eapply map.disjoint_put_l;
+                eauto using map.disjoint_empty_l, map.get_remove_same ].
+    rewrite map.putmany_comm
+      by (apply map.disjoint_put_l;
+          eauto using map.disjoint_empty_l, map.get_remove_same).
+    rewrite <-map.put_putmany_commute.
+    rewrite map.putmany_empty_r.
+    eapply map.map_ext; intros.
+    rewrite !map.get_put_dec, !map.get_remove_dec.
+    destruct_one_match; congruence.
+  Qed.
+
+  Lemma Var_put_undef l n v (R : Semantics.locals -> Prop) :
+    map.get l n = None ->
+    R l ->
+    (Var n v * R)%sep (map.put l n v).
+  Proof.
+    cbv [Var]; intros. do 2 eexists.
+    ssplit; [ | reflexivity | eassumption ].
+    eauto using map.split_undef_put.
+  Qed.
+
+  Lemma Var_exact n v :
+    Lift1Prop.iff1 (Var n v) (eq (map.put map.empty n v)).
+  Proof. reflexivity. Qed.
+
+  Lemma Var_put_eq_l l n v :
+    map.get l n = None ->
+    Lift1Prop.iff1 (eq l * Var n v)%sep (eq (map.put l n v)).
+  Proof.
+    repeat intro; cbv [Var sep].
+    split; intros; cleanup; subst.
+    { match goal with H : map.split _ _ (map.put map.empty _ _) |- _ =>
+                      apply map.split_put_r2l, map.split_empty_r in H;
+                        [ | autorewrite with mapsimpl; reflexivity ]
+      end.
+      congruence. }
+    { do 2 eexists. ssplit; [ | reflexivity .. ].
+      apply map.split_put_l2r, map.split_empty_r; eauto. }
+  Qed.
+
+  Lemma Var_put_eq_r l n v :
+    map.get l n = None ->
+    Lift1Prop.iff1 (Var n v * eq l)%sep (eq (map.put l n v)).
+  Proof.
+    rewrite sep_comm. apply Var_put_eq_l.
+  Qed.
+End Var.
+
+(* TODO: move *)
+Ltac extract_var H name :=
+  let l := match type of H with
+             sep _ _ ?l => l end in
+  let i := match type of H with
+             context [Var name ?i] => i end in
+  let R := fresh "R" in
+  let H' := fresh in
+  evar (R : Semantics.locals -> Prop);
+  assert ((Var name i * R)%sep l) as H' by ecancel_assumption;
+  subst R; clear H; rename H' into H.
+
+(* TODO : move *)
+Ltac straightline_locals :=
+  match goal with
+  | |- @map.get _ _ Semantics.locals _ _ = Some _ =>
+    eapply Var_get; ecancel_assumption
+  end.
+Ltac straightline' ::=
+  straightline_plus
+    ltac:(first [ straightline_locals
+                | straightline_map_solver ]).
+
+Section Compile.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok semantics}.
 
   Local Ltac handle_downto_locals :=
     repeat match goal with
@@ -117,7 +216,7 @@ Section Compile.
            | |- context [S (?x - 1)] =>
              replace (S (x-1)) with x by lia
            | H : (_ * _)%sep ?l |- _ (map.put ?l ?i_var _) =>
-             extract_var H i_var; eapply Var_put in H;
+             extract_var H i_var; eapply Var_put_replace in H;
              ecancel_assumption
            | _ => progress subst_lets_in_goal
            | _ => progress change 1%Z with (Z.of_nat 1)
@@ -171,16 +270,42 @@ Section Compile.
     cbv [downto']; apply fold_left_skipn_seq.
   Qed.
 
-  Ltac straightline_locals :=
-    match goal with
-    | |- @map.get _ _ Semantics.locals _ _ = Some _ =>
-      eapply Var_get; ecancel_assumption
-    end.
+  Definition fold_left_dependent
+             {A B C} (stepA : A -> C -> A) (stepB : A -> B -> C -> B)
+             cs initA initB :=
+    fold_left (fun ab c =>
+                 (stepA (fst ab) c, stepB (fst ab) (snd ab) c))
+              cs (initA, initB).
+  Lemma fold_left_dependent_fst {A B C} stepA stepB :
+    forall cs initA initB,
+      fst (@fold_left_dependent A B C stepA stepB cs initA initB) =
+      fold_left stepA cs initA.
+  Proof.
+    induction cs; intros; [ reflexivity | ].
+    cbn [fold_left fold_left_dependent fst snd].
+    erewrite <-IHcs. reflexivity.
+  Qed.
 
-  Ltac straightline' ::=
-    straightline_plus
-      ltac:(first [ straightline_locals
-                  | straightline_map_solver ]).
+  (* helper definition *)
+  Definition downto'_dependent
+             {A B} initA initB start count
+             (stepA : A -> nat -> A) (stepB : A -> B -> nat -> B) :=
+    fold_left_dependent stepA stepB
+                        (rev (skipn start (seq 0 count))) initA initB.
+
+  Lemma downto'_dependent_fst {A B} initA initB stepA stepB i count :
+      fst (@downto'_dependent A B initA initB i count stepA stepB) =
+      downto' initA i count stepA.
+  Proof. apply fold_left_dependent_fst. Qed.
+
+  Lemma downto'_dependent_step
+        {A B} i count stepA stepB (initA : A) (initB : B) :
+    0 < i <= count ->
+    (fun ab c =>
+       (stepA (fst ab) c, stepB (fst ab) (snd ab) c))
+      (downto'_dependent initA initB i count stepA stepB) (i-1)
+    = downto'_dependent initA initB (i-1) count stepA stepB.
+  Proof. apply fold_left_skipn_seq. Qed.
 
   (* TODO: find a better phrasing than step_locals *)
   (* TODO: use separation logic for locals? *)
@@ -190,35 +315,42 @@ Section Compile.
       tr Rl R R' functions T (pred: T -> _ -> Prop)
       {state} {ghost_state} (init : state) (ginit : ghost_state)
       count wcount step step_impl k k_impl i_var
-      (Invl : state -> ghost_state -> Semantics.locals -> Prop) (* locals loop invariant *)
-      (Inv : state -> ghost_state -> Semantics.mem -> Prop) (* memory loop invariant *),
-      (Invl init ginit * Var i_var wcount * Rl)%sep locals ->
-      (Inv init ginit * R')%sep mem ->
+      (ghost_step : state -> ghost_state -> nat -> ghost_state)
+      (Invl : ghost_state -> state -> Semantics.locals -> Prop) (* locals loop invariant *)
+      (Inv : ghost_state -> state -> Semantics.mem -> Prop) (* memory loop invariant *),
+      (Invl ginit init * Var i_var wcount * Rl)%sep locals ->
+      (Inv ginit init * R')%sep mem ->
       word.unsigned wcount = Z.of_nat count ->
       0 < count ->
       let v := downto init count step in
       (let head := v in
        (* loop iteration case *)
        forall tr l m st gst i wi,
-         let li := map.put l i_var wi in
-         let st' := step st i in
+         let gst' := ghost_step st gst i in
          wi = word.of_Z (Z.of_nat i) ->
-         (Invl st gst * Var i_var wi * Rl)%sep li ->
-         (Inv st gst * R')%sep m ->
+         (Invl gst st * Var i_var wi * Rl)%sep l ->
+         (Inv gst st * R')%sep m ->
          i < count ->
+         find step_impl
+         implementing (Inv gst' (step st i))
+         and-locals-post (Invl gst' (step st i) * Var i_var wi * Rl)%sep
+         with-locals l and-memory m and-trace tr and-rest R'
+         and-functions functions) ->
+      (*
          WeakestPrecondition.cmd
            (WeakestPrecondition.call functions)
            step_impl tr m li
            (fun tr' m' l' =>
               tr = tr'
               /\ (exists gst',
-                     (Invl st' gst' * Var i_var wi * Rl)%sep l'
-                     /\ (Inv st' gst' * R')%sep m'))) ->
+                     (Invl (step st i) gst' * Var i_var wi * Rl)%sep l'
+                     /\ (Inv (step st i) gst' * R')%sep m'))) ->
+       *)
       (let head := v in
        (* continuation *)
        forall tr l m gst,
-         (Invl head gst * Var i_var (word.of_Z 0) * Rl)%sep l ->
-         (Inv head gst * R')%sep m ->
+         (Invl gst head * Var i_var (word.of_Z 0) * Rl)%sep l ->
+         (Inv gst head * R')%sep m ->
          find k_impl
          implementing (pred (k head))
          and-locals-post locals_ok
@@ -250,22 +382,26 @@ Section Compile.
       (cbv beta match delta [WeakestPrecondition.cmd_body]).
     exists nat, lt.
     exists (fun i t m l =>
-              let st := downto' init i count step in
-              i <= count
+              let stgst :=
+                  downto'_dependent init ginit i count
+                                    step ghost_step in
+              let st := fst stgst in
+              let gst := snd stgst in
+              (Inv gst st * R')%sep m
+              /\ i <= count
               /\ tr = t
-              /\ (exists wi gst,
+              /\ (exists wi,
                      word.unsigned wi = Z.of_nat i
-                     /\ (Invl st gst * Var i_var wi * Rl)%sep l
-                     /\ (Inv st gst * R')%sep m)).
+                     /\ (Invl gst st * Var i_var wi * Rl)%sep l)).
     ssplit; eauto using lt_wf; [ | ].
 
     { cbv zeta. subst.
-      exists count; ssplit; [ | | exists wcount, ginit];
+      cbv [downto'_dependent downto'].
+      exists count; ssplit; [ | | | exists wcount];
         repeat match goal with
                | _ => rewrite skipn_all2 by (rewrite seq_length; lia)
                | _ => progress subst_lets_in_goal
                | _ => progress cbn [rev fold_left]
-               | _ => progress cbv [downto']
                | _ => solve [eauto]
                end. }
 
@@ -284,21 +420,20 @@ Section Compile.
         ssplit; try lia; [ | ].
       { repeat straightline'.
         use_cmd_hyp;
-          [ | solve [handle_downto_locals] .. ].
+          [ | try solve [handle_downto_locals] .. ].
         cbv [postcondition_norets postcondition_for] in *;
           cleanup; subst.
         lazymatch goal with
         | H : word.unsigned ?w = Z.of_nat ?x
           |- exists i : nat, _ /\ i < ?x =>
           exists (x-1)%nat; ssplit;
-            rewrite <-?downto'_step by lia;
+            rewrite <-?downto'_dependent_step by lia; cbn [fst snd];
             lazymatch goal with
             | |- exists _, _ => exists (word.sub w (word.of_Z 1))
             | |- sep _ _ _ => ecancel_assumption
             | _ => auto; try lia; try solve [handle_downto_locals]
             end
         end; [ ].
-        eexists.
         ssplit; handle_downto_locals; [ ].
         rewrite word.unsigned_of_Z.
         lazymatch goal with
@@ -309,6 +444,7 @@ Section Compile.
         end.
         lia. }
       { repeat straightline'.
+        rewrite @downto'_dependent_fst in *.
         match goal with
         | H : (word.unsigned ?x <= 0)%Z |- _ =>
           let H' := fresh in
@@ -320,12 +456,11 @@ Section Compile.
           replace x with (word.of_Z 0) in H
             by (rewrite <-(word.of_Z_unsigned x); congruence)
         end.
-        use_cmd_hyp;
-          subst_lets_in_goal;
-          match goal with
-          | H : context [downto' _ ?i] |- _ =>
-            replace i with 0 in * by lia
-          end; eauto. } }
+        match goal with
+        | H : context [downto'_dependent _ _ ?i] |- _ =>
+          replace i with 0 in * by lia
+        end.
+        use_cmd_hyp; subst_lets_in_goal; eauto. } }
   Qed.
 
 End Compile.

@@ -64,13 +64,13 @@ Ltac split_if t :=
   end.
 
 Ltac clear_old_seps :=
-  match goal with
-  | H : sep _ _ ?mem |- context [?mem] =>
-    repeat match goal with
-           | H' : sep _ _ ?m |- _ =>
-             assert_fails (unify m mem); clear H'
+  repeat match goal with
+         | H : sep _ _ ?m |- _ =>
+           lazymatch goal with
+           | |- context [m] => fail
+           | _ => clear H
            end
-  end.
+         end.
 
 Ltac cleanup :=
   repeat first [ progress cbn [fst snd eq_rect] in *

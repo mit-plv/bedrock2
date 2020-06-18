@@ -39,6 +39,7 @@ Definition bedrock_func : Type :=
 Coercion name_of_func (f : bedrock_func) := fst f.
 
 Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
+     @map.get_empty
      using (typeclasses eauto || congruence) : mapsimpl.
 
 

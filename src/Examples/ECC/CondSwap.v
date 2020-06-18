@@ -87,13 +87,13 @@ Section Compile.
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
       tr R functions T (pred: T -> _ -> Prop)
-      {data} (x1 x2 y1 y2 : data) swap k k_impl,
-      let v := cswap swap (x1,x2) (y1,y2) in
+      {data} (x y : data * data) swap k k_impl,
+      let v := cswap swap x y in
       (let __ := 0 in (* placeholder *)
        (find k_impl
-        implementing (pred (dlet (cswap swap x1 y1)
+        implementing (pred (dlet (cswap swap (fst x) (fst y))
                                  (fun xy1 =>
-                                    dlet (cswap swap x2 y2)
+                                    dlet (cswap swap (snd x) (snd y))
                                          (fun xy2 =>
                                             let x := (fst xy1, fst xy2) in
                                             let y := (snd xy1, snd xy2) in
@@ -110,7 +110,7 @@ Section Compile.
        and-functions functions).
   Proof.
     repeat straightline'.
-    subst_lets_in_goal.
+    subst_lets_in_goal. destruct_products.
     destruct swap; cbv [cswap dlet] in *; cbn [fst snd] in *.
     all:eauto.
   Qed.

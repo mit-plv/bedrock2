@@ -244,6 +244,29 @@ Section with_semantics.
     repeat straightline'. eauto.
   Qed.
 
+  (* N.B. this should *not* be added to any compilation tactics, since it will
+     always apply; it needs to be applied manually *)
+  Lemma compile_unset :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+      (locals_ok : Semantics.locals -> Prop)
+      tr R functions T (pred: T -> _ -> Prop)
+      var k k_impl,
+      (find k_impl
+       implementing (pred k)
+       and-locals-post locals_ok
+       with-locals (map.remove locals var)
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (find (cmd.seq (cmd.unset var) k_impl)
+       implementing (pred k)
+       and-locals-post locals_ok
+       with-locals locals
+       and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    repeat straightline'. eauto.
+  Qed.
+
   Lemma postcondition_for_postcondition_norets
         locals_ok {T} (pred : T -> _)
         spec k R tr mem locals functions :
