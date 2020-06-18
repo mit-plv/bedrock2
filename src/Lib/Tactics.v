@@ -221,3 +221,11 @@ Ltac program_logic_goal_for_function proc callees :=
                               callees functions
                               (spec (cons proc functions)) in
                    exact s)).
+
+Ltac use_hyp_with_matching_cmd :=
+  let H := lazymatch goal with
+           | H: context [WeakestPrecondition.cmd _ ?impl]
+             |- WeakestPrecondition.cmd _ ?impl _ _ _ _ => H end in
+  eapply Proper_cmd;
+  [ solve [apply Proper_call]
+  | repeat intro | eapply H ].

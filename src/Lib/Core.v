@@ -126,3 +126,46 @@ Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
      @map.remove_empty @map.get_empty
      using (typeclasses eauto || congruence) : mapsimpl.
 
+(* TODO: should move upstream to coqutil *)
+Section Lists.
+  Context {A : Type}.
+
+  Lemma skipn_seq_step n start len :
+    skipn n (seq start len) = seq (start + n) (len - n).
+  Proof.
+    revert start len.
+    induction n; destruct len; cbn; try reflexivity.
+    { repeat (f_equal; try lia). }
+    { rewrite IHn.
+      repeat (f_equal; try lia). }
+  Qed.
+
+  Lemma fold_left_skipn_seq i count (step :A -> _) init :
+    0 < i <= count ->
+    step (fold_left step (rev (skipn i (seq 0 count))) init) (i-1) =
+    fold_left step (rev (skipn (i-1) (seq 0 count))) init.
+  Proof.
+    intros. rewrite !skipn_seq_step, !Nat.add_0_l.
+    replace (count - (i - 1)) with (S (count - i)) by lia.
+    cbn [seq rev]. rewrite fold_left_app. cbn [fold_left].
+    replace (S (i-1)) with i by lia.
+    reflexivity.
+  Qed.
+
+  Definition fold_left_dependent
+             {B C} (stepA : A -> C -> A) (stepB : A -> B -> C -> B)
+             cs initA initB :=
+    fold_left (fun ab c =>
+                 (stepA (fst ab) c, stepB (fst ab) (snd ab) c))
+              cs (initA, initB).
+
+  Lemma fold_left_dependent_fst {B C} stepA stepB :
+    forall cs initA initB,
+      fst (@fold_left_dependent B C stepA stepB cs initA initB) =
+      fold_left stepA cs initA.
+  Proof.
+    induction cs; intros; [ reflexivity | ].
+    cbn [fold_left fold_left_dependent fst snd].
+    erewrite <-IHcs. reflexivity.
+  Qed.
+End Lists.

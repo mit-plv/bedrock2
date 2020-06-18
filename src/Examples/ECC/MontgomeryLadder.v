@@ -1,4 +1,5 @@
 Require Import Rupicola.Lib.Api.
+Require Import Rupicola.Lib.SepLocals.
 Require Import Rupicola.Examples.ECC.Field.
 Require Import Rupicola.Examples.ECC.Point.
 Require Import Rupicola.Examples.ECC.DownTo.
@@ -340,7 +341,7 @@ Section __.
       [ repeat compile_step .. | idtac ];
       (* second pass must solve *)
       [ first [ solve [repeat compile_step]
-              | solve [straightline_locals] ] .. | idtac ].
+              | solve [straightline_map_solver_locals] ] .. | idtac ].
 
     (* TODO: move? *)
     Ltac remove_unused_var :=

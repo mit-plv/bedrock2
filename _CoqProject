@@ -30,4 +30,5 @@ src/Lib/Gensym.v
 src/Lib/IdentParsing.v
 src/Lib/LegacyCompiler.v
 src/Lib/Notations.v
+src/Lib/SepLocals.v
 src/Lib/Tactics.v
