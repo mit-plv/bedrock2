@@ -341,6 +341,21 @@ Section __.
         seprewrite (cswap_iff1 Bignum)
       end.
 
+    Ltac safe_field_compile_step :=
+      field_compile_step;
+      lazymatch goal with
+      | |- sep _ ?R _ =>
+        tryif is_evar R
+        then (repeat rewrite_cswap_iff1_with_evar_frame)
+        else (repeat seprewrite (cswap_iff1 Bignum));
+        ecancel_assumption
+      | _ => idtac
+      end;
+      lazymatch goal with
+      | |- context [WeakestPrecondition.cmd] => idtac
+      | _ => solve_field_subgoals_with_cswap
+      end.
+
     Derive montladder_body SuchThat
            (let args := ["K"; "U"; "X1"; "Z1"; "X2"; "Z2";
                            "A"; "AA"; "B"; "BB"; "E"; "C"; "D"; "DA"; "CB"] in
@@ -467,8 +482,7 @@ Section __.
                  end.
           clear_old_seps.
           rewrite cswap_pair; cbn [fst snd].
-          lift_eexists.
-          sepsimpl.
+          lift_eexists. sepsimpl.
           (* first, resolve evars *)
           all:lazymatch goal with
               | |- sep _ _ _ =>
@@ -476,21 +490,12 @@ Section __.
               | _ => idtac
               end.
           (* now solve other subgoals *)
-          all:lazymatch goal with
-              | |- eval _ mod _ = _ =>
-                subst_lets_in_goal;
-                  rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
-              | |- (eval _ mod _) mod _ = _ =>
-                subst_lets_in_goal;
-                  rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
-              | |- bounded_by _ _ => solve [ auto ]
-              end. } }
+          all:subst_lets_in_goal;
+              rewrite ?Z.mod_mod by apply M_nonzero; eauto. } }
       { (* loop done; rest of function *)
-        intros.
-        destruct_products.
+        intros. destruct_products.
         cbv [downto_inv downto_inv_locals] in *.
         sepsimpl_hyps.
-
         (* convert locals back to literal map using the separation-logic
            condition; an alternative would be to have all lemmas play nice with
            locals in separation logic *)
@@ -506,42 +511,18 @@ Section __.
                | x := cswap _ _ _ |- _ => subst x
                end.
 
-        field_compile_step.
-        (* TODO: factor all the below into a tactic, they are exactly copy-pasted *)
-        all:
-          lazymatch goal with
-          | |- sep _ _ _ =>
-            repeat seprewrite (cswap_iff1 Bignum); ecancel_assumption
-          | _ => idtac
-          end.
-        all:lazymatch goal with
-            | |- context [WeakestPrecondition.cmd] => idtac
-            | _ => solve_field_subgoals_with_cswap
-            end.
-
+        safe_field_compile_step.
         repeat safe_compile_step.
 
         (* the output of this last operation needs to be stored in the pointer
            for the output, so we guide the automation to the right pointer *)
-        clear_old_seps.
-        change Placeholder with Bignum in *.
+        clear_old_seps. change Placeholder with Bignum in *.
         lazymatch goal with
         | H : context [Bignum ?p U] |- _ =>
           change (Bignum p) with (Placeholder p) in H
         end.
 
-        field_compile_step.
-        all: lazymatch goal with
-             | |- sep _ _ _ =>
-               repeat rewrite_cswap_iff1_with_evar_frame;
-                 ecancel_assumption
-             | _ => idtac
-             end.
-        all:lazymatch goal with
-            | |- context [WeakestPrecondition.cmd] => idtac
-            | _ => solve_field_subgoals_with_cswap
-            end.
-
+        safe_field_compile_step.
         repeat safe_compile_step.
         compile_done. cbv [MontLadderResult].
         (* destruct the hypothesis identifying the new pointers as some swapping
