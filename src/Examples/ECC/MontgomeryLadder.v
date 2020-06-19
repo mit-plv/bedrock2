@@ -258,6 +258,12 @@ Section __.
       eval (snd (cswap s a b)) mod M = (snd (cswap s A B)) mod M.
     Proof. destruct s; cbn; auto. Qed.
 
+    Lemma eval_fst_cswap_small s a b A B :
+      eval a mod M = A ->
+      eval b mod M = B ->
+      eval (fst (cswap s a b)) mod M = (fst (cswap s A B)).
+    Proof. destruct s; cbn; auto. Qed.
+
     Local Ltac swap_mod :=
       subst_lets_in_goal;
       repeat lazymatch goal with
@@ -307,6 +313,34 @@ Section __.
       eapply compile_unset with (var := v); [ ];
       push_map_remove.
 
+    Ltac solve_field_subgoals_with_cswap :=
+      lazymatch goal with
+      | |- map.get _ _ = Some _ =>
+        solve [subst_lets_in_goal; solve_map_get_goal]
+      | |- eval _ mod _ = _ =>
+        solve [eauto using eval_fst_cswap, eval_snd_cswap]
+      | |- bounded_by _ (fst (cswap _ _ _)) =>
+        apply cswap_cases_fst; solve [auto]
+      | |- bounded_by _ (snd (cswap _ _ _)) =>
+        apply cswap_cases_snd; solve [auto]
+      | |- context [WeakestPrecondition.cmd] => idtac
+      | _ => solve [eauto]
+      end.
+
+    (* create a new evar to take on the second swap clause *)
+    Ltac rewrite_cswap_iff1_with_evar_frame :=
+      match goal with
+        |- (?P * ?R)%sep _ =>
+        match P with context [cswap] => idtac end;
+        is_evar R;
+        let R1 := fresh "R" in
+        let R2 := fresh "R" in
+        evar (R1 : Semantics.mem -> Prop);
+        evar (R2 : Semantics.mem -> Prop);
+        unify R (sep R1 R2);
+        seprewrite (cswap_iff1 Bignum)
+      end.
+
     Derive montladder_body SuchThat
            (let args := ["K"; "U"; "X1"; "Z1"; "X2"; "Z2";
                            "A"; "AA"; "B"; "BB"; "E"; "C"; "D"; "DA"; "CB"] in
@@ -354,8 +388,8 @@ Section __.
         all:solve_downto_inv_subgoals. }
       { rewrite word.unsigned_of_Z, zbound_small;
           solve [eauto using zbound_eq]. }
-      { subst_lets_in_goal;
-            rewrite ?word.unsigned_of_Z, ?zbound_small; lia. }
+      { subst_lets_in_goal.
+        rewrite ?word.unsigned_of_Z, ?zbound_small; lia. }
       { (* loop body *)
         intros. clear_old_seps.
         match goal with gst' := downto_ghost_step _ _ _ _ |- _ =>
@@ -379,31 +413,24 @@ Section __.
         end.
 
         compile_step.
-        all:
-          lazymatch goal with
-          | |- eval _ mod _ = _ =>
-            solve [eauto using eval_fst_cswap, eval_snd_cswap]
-          | |- sep _ _ _ =>
-            repeat seprewrite (cswap_iff1 Bignum);
-              ecancel_assumption
-          | _ => idtac
-          end.
+        (* first, resolve evars *)
         all:lazymatch goal with
-            | |- map.get _ _ = Some _ =>
-              try solve [subst_lets_in_goal; solve_map_get_goal]
-            | |- bounded_by _ (fst (cswap _ _ _)) =>
-              apply cswap_cases_fst; solve [auto]
-            | |- bounded_by _ (snd (cswap _ _ _)) =>
-              apply cswap_cases_snd; solve [auto]
+            | |- eval _ mod _ = _ =>
+              solve [eauto using eval_fst_cswap, eval_snd_cswap]
+            | _ => idtac
+            end.
+        (* *after* evar resolution *)
+        all:lazymatch goal with
+            | |- sep _ _ _ =>
+              repeat seprewrite (cswap_iff1 Bignum);
+                ecancel_assumption
             | |- context [WeakestPrecondition.cmd] => idtac
-            | _ => eauto
+            | _ => solve_field_subgoals_with_cswap
             end.
 
         repeat safe_compile_step.
 
-        (* TODO: how can this rename happen automatically? *)
-        (* the variable under "si" needs to be renamed to "swap" for the next
-           iteration of the loop. *)
+        (* TODO: use nlet to do this rename automatically *)
         let locals := lazymatch goal with
                       | |- WeakestPrecondition.cmd _ _ _ _ ?l _ => l end in
         let b := lazymatch goal with |- context [xorb ?b] => b end in
@@ -442,24 +469,22 @@ Section __.
           rewrite cswap_pair; cbn [fst snd].
           lift_eexists.
           sepsimpl.
-          all:
-            (* first, resolve evars *)
-            lazymatch goal with
-            | |- sep _ _ _ =>
-              change Placeholder with Bignum; ecancel_assumption
-            | _ => idtac
-            end.
-          all:
-            (* now solve other subgoals *)
-            lazymatch goal with
-            | |- eval _ mod _ = _ =>
-              subst_lets_in_goal;
-                rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
-            | |- (eval _ mod _) mod _ = _ =>
-              subst_lets_in_goal;
-                rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
-            | |- bounded_by _ _ => solve [ auto ]
-            end. } }
+          (* first, resolve evars *)
+          all:lazymatch goal with
+              | |- sep _ _ _ =>
+                change Placeholder with Bignum; ecancel_assumption
+              | _ => idtac
+              end.
+          (* now solve other subgoals *)
+          all:lazymatch goal with
+              | |- eval _ mod _ = _ =>
+                subst_lets_in_goal;
+                  rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
+              | |- (eval _ mod _) mod _ = _ =>
+                subst_lets_in_goal;
+                  rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
+              | |- bounded_by _ _ => solve [ auto ]
+              end. } }
       { (* loop done; rest of function *)
         intros.
         destruct_products.
@@ -475,95 +500,58 @@ Section __.
 
         (* pull the eval out of all the swaps so field lemmas work *)
         repeat match goal with
+               | H1 : ?y mod ?M = ?y, H2 : eval ?x mod M = ?y mod M |- _ =>
+                 rewrite <-H2 in H1
+               | _ => erewrite <-eval_fst_cswap_small by eauto
                | x := cswap _ _ _ |- _ => subst x
-               | Ha : eval ?A mod M = ?a mod M,
-                      Hb : eval ?B mod M = ?b mod M
-                 |- context [fst (cswap ?s ?a ?b)] =>
-                 replace (fst (cswap s a b)) with (eval (fst (cswap s A B)) mod M)
-                   by (destruct s; cbn [cswap fst snd]; congruence)
                end.
 
         field_compile_step.
         (* TODO: factor all the below into a tactic, they are exactly copy-pasted *)
         all:
           lazymatch goal with
-          | |- eval _ mod _ = _ =>
-            solve [eauto using eval_fst_cswap, eval_snd_cswap]
           | |- sep _ _ _ =>
-            repeat seprewrite (cswap_iff1 Bignum);
-              ecancel_assumption
+            repeat seprewrite (cswap_iff1 Bignum); ecancel_assumption
           | _ => idtac
           end.
         all:lazymatch goal with
-            | |- map.get _ _ = Some _ =>
-              try solve [subst_lets_in_goal; solve_map_get_goal]
-            | |- bounded_by _ (fst (cswap _ _ _)) =>
-              apply cswap_cases_fst; solve [auto]
-            | |- bounded_by _ (snd (cswap _ _ _)) =>
-              apply cswap_cases_snd; solve [auto]
             | |- context [WeakestPrecondition.cmd] => idtac
-            | _ => eauto
+            | _ => solve_field_subgoals_with_cswap
             end.
 
         repeat safe_compile_step.
 
         (* the output of this last operation needs to be stored in the pointer
            for the output, so we guide the automation to the right pointer *)
-        change Placeholder with Bignum in *.
         clear_old_seps.
+        change Placeholder with Bignum in *.
         lazymatch goal with
         | H : context [Bignum ?p U] |- _ =>
           change (Bignum p) with (Placeholder p) in H
         end.
+
         field_compile_step.
-        all:
-          lazymatch goal with
-          | |- eval _ mod _ = _ =>
-            solve [eauto using eval_fst_cswap, eval_snd_cswap]
-          | |- sep _ _ _ =>
-              try ecancel_assumption
-          | _ => idtac
-          end.
-        4:{
-          (* TODO: make this a tactic *)
-          (* create a new evar to take on the second swap clause *)
-          match goal with
-            |- (?P * ?R)%sep _ =>
-            match P with context [cswap] => idtac end;
-            is_evar R;
-            let R1 := fresh "R" in
-            let R2 := fresh "R" in
-            evar (R1 : Semantics.mem -> Prop);
-            evar (R2 : Semantics.mem -> Prop);
-            unify R (sep R1 R2);
-            seprewrite (cswap_iff1 Bignum)
-          end.
-          ecancel_assumption. }
+        all: lazymatch goal with
+             | |- sep _ _ _ =>
+               repeat rewrite_cswap_iff1_with_evar_frame;
+                 ecancel_assumption
+             | _ => idtac
+             end.
         all:lazymatch goal with
-            | |- map.get _ _ = Some _ =>
-              try solve [subst_lets_in_goal; solve_map_get_goal]
-            | |- bounded_by _ (fst (cswap _ _ _)) =>
-              apply cswap_cases_fst; solve [auto]
-            | |- bounded_by _ (snd (cswap _ _ _)) =>
-              apply cswap_cases_snd; solve [auto]
             | |- context [WeakestPrecondition.cmd] => idtac
-            | _ => eauto
+            | _ => solve_field_subgoals_with_cswap
             end.
 
         repeat safe_compile_step.
-        compile_done.
-        cbv [MontLadderResult].
+        compile_done. cbv [MontLadderResult].
         (* destruct the hypothesis identifying the new pointers as some swapping
            of the original ones *)
         match goal with H : (_ = _/\ _) \/ _|- _ =>
                         destruct H; cleanup; subst
         end.
-        { lift_eexists.
-          sepsimpl; [ reflexivity | ].
-          ecancel_assumption. }
-        { lift_eexists.
-          sepsimpl; [ reflexivity | ].
-          ecancel_assumption. } }
+        all:lift_eexists.
+        all:sepsimpl; [ reflexivity | ].
+        all:ecancel_assumption. }
     Qed.
   End MontLadder.
 End __.
