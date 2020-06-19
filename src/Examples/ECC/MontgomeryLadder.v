@@ -352,30 +352,16 @@ Section __.
       { cbv [downto_inv].
         setup_downto_inv_init.
         all:solve_downto_inv_subgoals. }
-      all:
-        lazymatch goal with
-        | |- word.unsigned _ = _ =>
-          rewrite word.unsigned_of_Z, zbound_small;
-            solve [eauto using zbound_eq]
-        | |- (0 < _)%nat =>
-          subst_lets_in_goal;
-            rewrite ?word.unsigned_of_Z, ?zbound_small; lia
-        | _ => idtac
-        end.
+      { rewrite word.unsigned_of_Z, zbound_small;
+          solve [eauto using zbound_eq]. }
+      { subst_lets_in_goal;
+            rewrite ?word.unsigned_of_Z, ?zbound_small; lia. }
       { (* loop body *)
         intros. clear_old_seps.
         match goal with gst' := downto_ghost_step _ _ _ _ |- _ =>
                                 subst gst' end.
         cbv [downto_inv downto_inv_locals] in * |-.
-        destruct_products.
-        sepsimpl_hyps.
-
-        let H := fresh in
-        pose proof (word.unsigned_range (word.of_Z zbound)) as H;
-        rewrite word.unsigned_of_Z, zbound_small in H.
-        assert (word.unsigned wi = Z.of_nat i) by
-            (subst wi; rewrite word.unsigned_of_Z, word.wrap_small by lia;
-             reflexivity).
+        destruct_products. sepsimpl_hyps.
 
         (* convert locals back to literal map using the separation-logic
            condition; an alternative would be to have all lemmas play nice with
