@@ -53,10 +53,6 @@ Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
 
-(* TODO: move *)
-Lemma HList__tuple__length_to_list {A n} xs : length (@HList.tuple.to_list A n xs) = n.
-Proof. revert xs; induction n; cbn; eauto. Qed.
-
 Section WithWordAndMem.
   Context {width: Z} {word: word.word width} {mem: map.map word byte}.
 
@@ -373,108 +369,6 @@ Section Pipeline1.
   Proof.
     unfold mem_available. intros * H Hsep.
     eapply sep_ex1_l. eexists. eapply sep_assoc. eapply sep_emp_l. eauto.
-  Qed.
-
-  Lemma cast_word_array_to_bytes bs addr : iff1
-    (array ptsto_word (word.of_Z bytes_per_word) addr bs)
-    (ptsto_bytes addr (flat_map (fun x =>
-       HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x)))
-          bs)).
-  Proof.
-    revert addr; induction bs; intros; [reflexivity|].
-    cbn [array flat_map].
-    assert (CC: @map.ok (@word (@W p)) Init.Byte.byte (@mem p))
-      by exact mem_ok.
-    etransitivity. 1:eapply Proper_sep_iff1; [reflexivity|]. 1:eapply IHbs.
-    etransitivity. 2:symmetry; eapply bytearray_append.
-    eapply Proper_sep_iff1.
-    { cbv [ptsto_word ptsto_bytes.ptsto_bytes Memory.bytes_per bytes_per_word].
-      rewrite Z2Nat.id by (destruct width_cases as [E | E]; rewrite E; cbv; discriminate); reflexivity. }
-    assert (0 < bytes_per_word). { (* TODO: deduplicate *)
-      unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
-    }
-    Morphisms.f_equiv.
-    Morphisms.f_equiv.
-    Morphisms.f_equiv.
-    rewrite HList__tuple__length_to_list.
-    rewrite Z2Nat.id; blia.
-  Qed.
-
-  Lemma byte_list_to_word_list_array: forall bytes,
-    Z.of_nat (length bytes) mod bytes_per_word = 0 ->
-    exists word_list,
-      Z.of_nat (Datatypes.length word_list) =
-      Z.of_nat (Datatypes.length bytes) / bytes_per_word /\
-    forall p,
-      iff1 (array ptsto (word.of_Z 1) p bytes)
-           (array ptsto_word (word.of_Z bytes_per_word) p word_list).
-  Proof.
-    assert (AA: 0 < bytes_per_word). {
-      unfold bytes_per_word.
-      simpl.
-      destruct width_cases as [E | E]; rewrite E; cbv; reflexivity.
-    }
-    assert (BB: @word.ok (@width (@W p))(@word (@W p)))
-      by exact word_ok.
-    assert (CC: @map.ok (@word (@W p)) Init.Byte.byte (@mem p))
-      by exact mem_ok.
-    intros.
-    Z.div_mod_to_equations.
-    subst r.
-    specialize (H0 ltac:(Lia.lia)); clear H1.
-    ring_simplify in H0.
-    assert (0 <= q) by Lia.nia.
-    revert dependent bytes.
-    pattern q.
-    refine (natlike_ind _ _ _ q H); clear -AA BB CC; intros.
-    { case bytes in *; cbn in *; ring_simplify in H0; try discriminate.
-      exists nil; split; reflexivity. }
-    rewrite Z.mul_succ_r in *.
-    specialize (H0 (List.skipn (Z.to_nat bytes_per_word) bytes)).
-    rewrite List.length_skipn in H0.
-    specialize (H0 ltac:(Lia.nia)).
-    case H0 as [words' [Hlen Hsep] ].
-    eexists (cons _ words').
-    split; [cbn; blia|].
-    intros p0; specialize (Hsep (word.add p0 (word.of_Z bytes_per_word))).
-    rewrite array_cons.
-    etransitivity.
-    2:eapply Proper_sep_iff1; [reflexivity|].
-    2:eapply Hsep.
-    clear Hsep.
-
-    rewrite <-(List.firstn_skipn (Z.to_nat bytes_per_word) bytes) at 1.
-    unfold ptsto_word, truncated_scalar, littleendian.
-    rewrite <-bytearray_index_merge.
-    1: eapply Proper_sep_iff1; [|reflexivity].
-    2: rewrite word.unsigned_of_Z; setoid_rewrite Z.mod_small.
-    3: {
-      unfold bytes_per_word.
-      simpl.
-      destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
-    }
-    2: rewrite List.length_firstn_inbounds; Lia.nia.
-    cbv [ptsto_bytes.ptsto_bytes].
-    Morphisms.f_equiv.
-    setoid_rewrite word.unsigned_of_Z.
-    setoid_rewrite Z.mod_small.
-    1: unshelve setoid_rewrite LittleEndian.split_combine.
-    1: {
-      eapply eq_rect; [exact (HList.tuple.of_list (List.firstn (Z.to_nat bytes_per_word) bytes))|].
-      abstract (
-      rewrite List.length_firstn_inbounds; try Lia.nia;
-      unfold bytes_per_word; apply Nat2Z.id). }
-    1:rewrite HList.tuple.to_list_eq_rect.
-    1:rewrite HList.tuple.to_list_of_list; trivial.
-    match goal with |- context[LittleEndian.combine _ ?xs] => generalize xs end.
-    intros.
-    pose proof (LittleEndian.combine_bound t).
-    split; [blia|].
-    destruct H0.
-    eapply Z.lt_le_trans. 1: eassumption.
-    eapply Z.pow_le_mono_r. 1: reflexivity.
-    simpl.
-    destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
   Qed.
 
   Lemma get_compile_funs_pos: forall e,

@@ -46,28 +46,6 @@ Require Import compiler.ExprImpEventLoopSpec.
 
 Local Open Scope Z_scope.
 
-(* TODO move to coqutil *)
-Module List. Section WithA.
-  Context {A : Type}.
-
-  Lemma firstn_map{B: Type}: forall (f: A -> B) (n: nat) (l: list A),
-      firstn n (map f l) = map f (firstn n l).
-  Proof.
-    induction n; intros.
-    - reflexivity.
-    - simpl. destruct l; simpl; congruence.
-  Qed.
-
-  Lemma firstn_seq: forall (n from len: nat),
-      firstn n (seq from len) = seq from (min n len).
-  Proof.
-    induction n; intros.
-    - reflexivity.
-    - simpl. destruct len; simpl; f_equal; auto.
-  Qed.
-
-End WithA. End List.
-
 Require Import Coq.Classes.Morphisms.
 
 Instance word_riscv_ok: @RiscvWordProperties.word.riscv_ok 32 KamiWord.wordW.

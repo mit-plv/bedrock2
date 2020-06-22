@@ -357,7 +357,7 @@ Section Proofs.
     unfold compiles_FlatToRiscv_correctly.
     induction 1; intros; unfold goodMachine in *;
       destruct g as [p_sp rem_stackwords rem_framewords p_insts insts program_base
-                     e_pos e_impl funnames frame].
+                     e_pos e_impl dframe xframe].
       all: repeat match goal with
                   | m: _ |- _ => destruct_RiscvMachine m
                   end.
@@ -1373,8 +1373,7 @@ Section Proofs.
       rewrite P. clear P.
       simpl.
       wwcancel.
-    + (* TODO name correctly at the beginning *) rename funnames into dframe, frame into xframe.
-      epose (?[new_ra]: word) as new_ra. cbv delta [id] in new_ra.
+    + epose (?[new_ra]: word) as new_ra. cbv delta [id] in new_ra.
       exists (stack_trash ++ newvalues ++ [new_ra] ++ retvs ++ argvs ++ unused_scratch).
       assert (Datatypes.length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames) = Datatypes.length newvalues). {
         eapply map.getmany_of_list_length. eassumption.
@@ -1446,6 +1445,142 @@ Section Proofs.
       ecancel_assumption.
 
     - idtac "Case compile_stmt_correct/SStackalloc".
+      rename H1 into IHexec.
+      assert (x <> RegisterNames.sp). {
+        unfold valid_FlatImp_var, RegisterNames.sp in *.
+        blia.
+      }
+      assert (valid_register RegisterNames.sp) by (cbv; auto).
+      run1det.
+      assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
+        unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+      }
+      assert (n / bytes_per_word <= Z.of_nat (List.length stack_trash)) as enough_stack_space. {
+        match goal with
+        | H: fits_stack _ _ _ _ |- _ => apply fits_stack_nonneg in H; move H at bottom
+        end.
+        blia.
+      }
+      assert (0 <= n / bytes_per_word) as Nonneg. {
+        Z.div_mod_to_equations. blia.
+      }
+      split_from_right stack_trash remaining_stack allocated_stack (Z.to_nat (n / bytes_per_word)).
+      match goal with
+      | H: Datatypes.length remaining_stack = _ |- _ => clear H
+      end.
+
+      edestruct (ll_mem_to_hl_mem mSmall initialL_mem (p_sp + !(bytes_per_word * rem_framewords - n)))
+        as (mStack & P & D & Ab). {
+        use_sep_assumption.
+        wseplog_pre.
+        rewrite (cast_word_array_to_bytes allocated_stack).
+        simpl_addrs.
+        simpl. (* <-- PARAMRECORDS *)
+        wcancel.
+        cancel_seps_at_indices 3%nat 0%nat. {
+          f_equal.
+          eapply reduce_eq_to_diff0.
+          match goal with
+          | |- ?LHS = _ => ring_simplify LHS
+          end.
+          rewrite <- word.ring_morph_opp.
+          rewrite <- (word.ring_morph_mul (- bytes_per_word) (n / bytes_per_word)).
+          rewrite Z.mul_opp_l.
+          rewrite <- Z_div_exact_2.
+          1: ring.
+          all: blia.
+        }
+        cbn [seps].
+        reflexivity.
+      }
+      match reverse goal with
+      | H: _ initialL_mem |- _ => clear H
+      end.
+
+      eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+      + eapply IHexec with (g := {| p_sp := p_sp;
+                                    p_insts := program_base + !pos + !4;
+                                    rem_framewords := rem_framewords - n / bytes_per_word;
+                                    program_base := program_base;
+                                    e_impl := e_impl; |})
+                           (a := (p_sp + !(bytes_per_word * rem_framewords - n)))
+                           (mStack := mStack)
+                           (mCombined := map.putmany mSmall mStack);
+          simpl_MetricRiscvMachine_get_set;
+          simpl_g_get;
+          rewrite ?@length_save_regs, ?@length_load_regs in *;
+          unfold Register, MachineInt in *;
+          simpl_word_exprs (@word_ok (@W (@def_params p)));
+          ssplit;
+          cycle -5.
+        { reflexivity. }
+        {
+          match goal with
+          | H:subset (footpr _) _
+            |- subset (footpr _) _ => eapply rearrange_footpr_subset; [ exact H |  ]
+          end.
+          wwcancel.
+        }
+        { exists remaining_stack. split. 1: reflexivity.
+          (* PARAMRECORDS *)
+          change FlatImp.word with word in *.
+          change FlatImp.mem with mem in *.
+          change FlatImp.width with width in *.
+          wcancel_assumption.
+        }
+        { reflexivity. }
+        { assumption. }
+        { match goal with
+          | |- ?G => let t := type of Ab in replace G with t; [exact Ab|f_equal]
+          end.
+          rewrite length_flat_map with (n0 := Z.to_nat bytes_per_word).
+          - simpl_addrs. rewrite !Z2Nat.id by blia. rewrite <- Z_div_exact_2; blia.
+          - clear. intros. rewrite HList.tuple.length_to_list. reflexivity.
+        }
+        { unfold map.split; split. 1: reflexivity. assumption. }
+        { eassumption. }
+        { eassumption. }
+        { match goal with
+          | H: fits_stack _ ?N _ _ |- fits_stack _ ?N' _ _ => replace N' with N; [exact H|blia]
+          end. }
+        { f_equal. Z.div_mod_to_equations. blia. }
+        { solve_stmt_not_too_big. }
+        { eassumption. }
+        { safe_sidecond. }
+        { safe_sidecond. }
+        { safe_sidecond. }
+        { safe_sidecond. }
+        { map_solver locals_ok. }
+        { solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]. }
+        { map_solver locals_ok. }
+        { solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]. }
+      + intros. destruct_RiscvMachine middle. simp. subst. run1done.
+        * rewrite ?of_list_list_union in *.
+          repeat match goal with
+                 | H: (_ * _)%sep _ |- _ => clear H
+                 | H: valid_machine _ |- _ => clear H
+                 end.
+          clear IHexec.
+          (* TODO map_solver should work here, but it's too slow *)
+          unfold map.only_differ.
+          intros y.
+
+          admit.
+          (*
+          unfold PropSet.union, PropSet.elem_of, of_list.
+          destruct (in_dec Z.eq_dec x (modVars_as_list Z.eqb body)) as [HI | HNI].
+          1: clear -HI; auto.
+          destr (Z.eqb x RegisterNames.ra). {
+            subst. unfold singleton_set. auto.
+          }
+          right.
+          lazymatch goal with
+          | H: map.putmany_of_list_zip ?S _ middle_regs1 = Some middle_regs2 |- _ =>
+            destruct (in_dec Z.eq_dec x S) as [HI' | HNI']
+          end.
+          *)
+        * eexists (_ ++ _). split. 2: {
+
 
     - idtac "Case compile_stmt_correct/SLit".
       get_run1valid_for_free.
