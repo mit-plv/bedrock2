@@ -300,11 +300,10 @@ Section Go.
       0 < z ->
       z + Z.of_nat (length l) < 2 ^ width ->
       map.get m addr = None ->
-      map.get (unchecked_store_byte_list (word.add addr (word.of_Z z)) l m)
-              addr = None.
+      map.get (unchecked_store_byte_list (word.add addr (word.of_Z z)) l m) addr = None.
   Proof.
     intros. unfold unchecked_store_byte_list, unchecked_store_bytes.
-    apply putmany_of_footprint_None; try assumption.
+    apply putmany_of_footprint_None; try assumption; try blia.
   Qed.
 
   Fixpoint in_tuple{T: Type}(a: T){n: nat}: HList.tuple T n -> Prop :=

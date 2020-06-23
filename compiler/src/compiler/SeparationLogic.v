@@ -9,7 +9,6 @@ Require Export coqutil.Datatypes.PropSet.
 Require Export bedrock2.Lift1Prop.
 Require Export bedrock2.Map.Separation.
 Require Export bedrock2.Map.SeparationLogic.
-Require Export bedrock2.Memory.
 Require Export bedrock2.Array.
 Require Export bedrock2.Scalars.
 Require Export bedrock2.ptsto_bytes.
@@ -140,7 +139,7 @@ Section ptstos.
       0 < z ->
       z + Z.of_nat n <= 2 ^ width ->
       map.get m addr = None ->
-      map.get (map.putmany_of_tuple (footprint (word.add addr (word.of_Z z)) n) vs m)
+      map.get (map.putmany_of_tuple (Memory.footprint (word.add addr (word.of_Z z)) n) vs m)
               addr = None.
   Proof.
     induction n; intros.
@@ -179,7 +178,7 @@ Section ptstos.
       0 < word.unsigned (word.sub a1 a2) ->
       word.unsigned (word.sub a1 a2) + Z.of_nat n <= 2 ^ width ->
       map.get m a2 = None ->
-      map.get (map.putmany_of_tuple (footprint a1 n) vs m) a2 = None.
+      map.get (map.putmany_of_tuple (Memory.footprint a1 n) vs m) a2 = None.
   Proof.
     intros.
     pose proof putmany_of_footprint_None as P.
@@ -201,7 +200,7 @@ Section ptstos.
       a1 <> a2 ->
       word.unsigned (word.sub a1 a2) + Z.of_nat n <= 2 ^ width ->
       map.get m a2 = None ->
-      map.get (map.putmany_of_tuple (footprint a1 n) vs m) a2 = None.
+      map.get (map.putmany_of_tuple (Memory.footprint a1 n) vs m) a2 = None.
   Proof.
     intros.
     apply putmany_of_footprint_None''; try assumption.
@@ -296,36 +295,38 @@ Section ptstos.
     destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
   Qed.
 
-  Lemma array_1_to_putmany_of_tuple: forall bs m addr,
+  Arguments Z.of_nat: simpl never.
+
+  Lemma array_1_to_of_disjoint_list_zip: forall bs m (addr: word),
       array ptsto (word.of_Z 1) addr bs m ->
-      m = map.putmany_of_tuple (Memory.footprint addr (List.length bs)) (HList.tuple.of_list bs) map.empty.
+      map.of_disjoint_list_zip (Memory.ftprint addr (Z.of_nat (List.length bs))) bs = Some m.
   Proof.
+    unfold map.of_disjoint_list_zip.
     induction bs; intros.
     - simpl in *. unfold emp in *. intuition congruence.
     - simpl in *. unfold sep in *. simp.
       specialize IHbs with (1 := Hrr). subst.
       unfold map.split in *. unfold ptsto in Hrl. simp. subst mp.
-      remember (map.putmany_of_tuple (Memory.footprint (word.add addr (word.of_Z 1)) (Datatypes.length bs))
-                                     (HList.tuple.of_list bs) map.empty) as M.
-      rewrite map.putmany_comm by assumption.
-      rewrite <- map.put_putmany_commute.
-      f_equal.
-      apply map.putmany_empty_r.
+      unfold Memory.ftprint in *. rewrite Nat2Z.id in *. simpl.
+      rewrite IHbs.
+      destr (map.get mq addr).
+      + unfold map.disjoint in *. specialize (Hlr addr).
+        rewrite map.get_put_same in Hlr.
+        specialize Hlr with (2 := E).
+        exfalso. eapply Hlr. reflexivity.
+      + f_equal.
+        rewrite map.putmany_comm by assumption.
+        rewrite <- map.put_putmany_commute.
+        f_equal.
+        symmetry. apply map.putmany_empty_r.
   Qed.
-
-  (* this one would be my favorite, but it uses separation logic, which is not currently
-     used in Semantics.exec *)
-  Definition anybytes''(a: word)(n: Z)(m: mem): Prop :=
-    exists bytes, array ptsto (word.of_Z 1) a bytes m.
 
   Lemma array_1_to_anybytes: forall bs m (addr: word),
       array ptsto (word.of_Z 1) addr bs m ->
       Memory.anybytes addr (Z.of_nat (List.length bs)) m.
   Proof.
     unfold Memory.anybytes.
-    intros.
-    eapply array_1_to_putmany_of_tuple in H. subst.
-    rewrite Nat2Z.id. eexists. reflexivity.
+    intros. eauto using array_1_to_of_disjoint_list_zip.
   Qed.
 
   Lemma ll_mem_to_hl_mem: forall mH mL (addr: word) bs R,
@@ -341,16 +342,19 @@ Section ptstos.
     eauto 10 using array_1_to_anybytes.
   Qed.
 
-  Lemma putmany_of_tuple_to_array_1: forall n addr bs,
-      Z.of_nat n <= 2 ^ width ->
-      array ptsto (word.of_Z 1) addr (HList.tuple.to_list bs)
-          (map.putmany_of_tuple (Memory.footprint addr n) bs map.empty).
+  Lemma of_disjoint_list_zip_to_array_1: forall n (addr: word) bs m,
+      map.of_disjoint_list_zip (Memory.ftprint addr (Z.of_nat n)) bs = Some m ->
+      array ptsto (word.of_Z 1) addr bs m.
   Proof.
     induction n; intros.
-    - simpl. unfold emp. auto.
-    - simpl. destruct bs as [b bs].
-      eapply sep_on_undef_put. 2: apply IHn. 2: blia.
-      eapply putmany_of_footprint_None; rewrite ?map.get_empty; try reflexivity; blia.
+    - change (Z.of_nat 0) with 0 in *. unfold Memory.ftprint, map.of_disjoint_list_zip in *. simpl in *.
+      simp. simpl. unfold emp. auto.
+    - unfold Memory.ftprint, map.of_disjoint_list_zip in H.
+      rewrite Nat2Z.id in H.
+      simpl in H. simp. simpl.
+      eapply sep_on_undef_put. 1: assumption. apply IHn. unfold map.of_disjoint_list_zip, Memory.ftprint.
+      rewrite Nat2Z.id.
+      exact E.
   Qed.
 
   Lemma anybytes_to_array_1: forall m (addr: word) n,
@@ -360,24 +364,36 @@ Section ptstos.
     unfold Memory.anybytes.
     intros.
     simp.
-    exists (HList.tuple.to_list bytes).
-    rewrite HList.tuple.length_to_list.
-    split; [|reflexivity].
-    eapply putmany_of_tuple_to_array_1.
-    (* PROBLEM: "Memory.anybytes addr n m" does not guarantee "n <= 2^width" *)
-  Abort.
+    assert (n < 0 \/ 0 <= n) as C by blia. destruct C as [C | C]. {
+      destruct n; try blia.
+      unfold Memory.ftprint in H.
+      rewrite Z2Nat.inj_neg in H.
+      simpl in *.
+      unfold map.of_disjoint_list_zip in H. simpl in H. simp.
+      exists nil. simpl. unfold emp. auto.
+    }
+    exists bytes.
+    pose proof of_disjoint_list_zip_to_array_1 (Z.to_nat n) addr bytes m as P.
+    rewrite Z2Nat.id in P by assumption. split; auto.
+    unfold Memory.ftprint in H.
+    apply map.of_disjoint_list_zip_length in H.
+    rewrite List.length_unfoldn in H.
+    blia.
+  Qed.
 
   Lemma hl_mem_to_ll_mem: forall mH mHSmall mTraded mL (addr: word) n R,
       map.split mH mHSmall mTraded ->
       Memory.anybytes addr n mTraded ->
       (eq mH * R)%sep mL ->
       exists bs,
+        List.length bs = Z.to_nat n /\
         (eq mHSmall * array ptsto (word.of_Z 1) addr bs * R)%sep mL.
   Proof.
     unfold sep, map.split.
     intros.
-    simp.
-  Abort.
+    apply anybytes_to_array_1 in H0.
+    simp. repeat eexists; try eassumption.
+  Qed.
 
 End ptstos.
 

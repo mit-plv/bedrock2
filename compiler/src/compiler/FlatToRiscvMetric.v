@@ -152,14 +152,15 @@ Section Proofs.
       run1det.
       eapply runsTo_weaken. {
         eapply H1 with (mStack := map.empty) (mCombined := mSmall).
-        { unfold Memory.anybytes. exists tt. simpl. reflexivity. }
+        { unfold Memory.anybytes. exists nil. reflexivity. }
         { rewrite map.split_empty_r. reflexivity. }
         all: IH_sidecondition.
       }
       simpl.
       intros.
-      unfold Memory.anybytes in *.
-      simp. simpl in *. rewrite map.split_empty_r in H6lrl. subst mSmall'.
+      unfold Memory.anybytes, Memory.ftprint, map.of_disjoint_list_zip in *. simpl in *.
+      simp.
+      rewrite map.split_empty_r in H6lrl. subst mSmall'.
       repeat match goal with
              | m: _ |- _ => destruct_RiscvMachine m; simpl_MetricRiscvMachine_get_set
              end.

@@ -17,14 +17,14 @@ Definition bytes_per_word(width: Z): Z := (width + 7) / 8.
 Section Memory.
   Context {width: Z} {word: word width} {mem: map.map word byte}.
 
-  Definition footprint(a: word)(sz: nat): tuple word sz :=
-    tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.
+  Definition ftprint(a: word)(n: Z): list word :=
+    List.unfoldn (fun w => word.add w (word.of_Z 1)) (Z.to_nat n) a.
 
   Definition anybytes(a: word)(n: Z)(m: mem): Prop :=
-    exists bytes, map.putmany_of_tuple (footprint a (Z.to_nat n)) bytes map.empty = m.
+    exists bytes: list byte, map.of_disjoint_list_zip (ftprint a n) bytes = Some m.
 
-  Definition anybytes'(a: word)(n: Z)(m: mem): Prop :=
-    forall a', word.unsigned (word.sub a' a) < n <-> exists v, map.get m a' = Some v.
+  Definition footprint(a: word)(sz: nat): tuple word sz :=
+    tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.
 
   Definition load_bytes(sz: nat)(m: mem)(addr: word): option (tuple byte sz) :=
     map.getmany_of_tuple m (footprint addr sz).
@@ -103,9 +103,8 @@ Section Memory.
       map.same_domain m1 m2.
   Proof.
     unfold anybytes. intros.
-    destruct H as [vs1 ?]. destruct H0 as [vs2 ?]. subst m1 m2.
-    eapply map.putmany_of_tuple_same_domain.
-    apply map.same_domain_refl.
+    destruct H as [vs1 ?]. destruct H0 as [vs2 ?].
+    eapply map.of_disjoint_list_zip_same_domain; eassumption.
   Qed.
 
 End Memory.

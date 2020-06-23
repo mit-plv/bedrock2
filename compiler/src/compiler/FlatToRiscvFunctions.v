@@ -1579,8 +1579,42 @@ Section Proofs.
             destruct (in_dec Z.eq_dec x S) as [HI' | HNI']
           end.
           *)
-        * eexists (_ ++ _). split. 2: {
-
+        * edestruct hl_mem_to_ll_mem with (mL := middle_mem) (mTraded := mStack') as (returned_bytes & L & Q).
+          1, 2: eassumption.
+          1: ecancel_assumption.
+          edestruct (byte_list_to_word_list_array returned_bytes) as (returned_words & LL & QQ). {
+            rewrite L. rewrite Z2Nat.id; assumption.
+          }
+          eexists (stack_trash ++ returned_words). split. 2: {
+            seprewrite_in QQ Q.
+            replace (Datatypes.length remaining_stack) with (Datatypes.length stack_trash) by blia.
+            assert (!bytes_per_word * !(n / bytes_per_word) = !n) as DivExact. {
+              (* PARAMRECORDS *)
+              change FlatImp.word with word in *.
+              change FlatImp.mem with mem in *.
+              change FlatImp.width with width in *.
+              rewrite <- (word.ring_morph_mul (bytes_per_word) (n / bytes_per_word)).
+              rewrite <- Z_div_exact_2.
+              1: reflexivity. all: blia.
+            }
+            wcancel_assumption.
+            cancel_seps_at_indices 0%nat 0%nat. {
+              f_equal.
+              eapply reduce_eq_to_diff0.
+              match goal with
+              | |- ?LHS = _ => ring_simplify LHS
+              end.
+              (* PARAMRECORDS *)
+              change FlatImp.word with word in *.
+              change FlatImp.mem with mem in *.
+              change FlatImp.width with width in *.
+              rewrite DivExact.
+              ring.
+            }
+            reflexivity.
+          }
+          simpl_addrs.
+          blia.
 
     - idtac "Case compile_stmt_correct/SLit".
       get_run1valid_for_free.
