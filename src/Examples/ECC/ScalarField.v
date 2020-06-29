@@ -38,9 +38,9 @@ Section Specs.
            (exists Ra, (Scalar px x * Ra)%sep mem)
            /\ Rr mem)
           ===>
-          sctestbit @ [px; wi] returns [word.of_Z (Z.b2z b)]
+          sctestbit @ [px; wi] returns r
           ===>
-          (emp True)).
+          (emp (r = word.of_Z (Z.b2z b)))).
 End Specs.
 Existing Instances spec_of_sctestbit.
 
@@ -81,10 +81,10 @@ Section Compile.
   Proof.
     repeat straightline'.
     handle_call; [ solve [eauto] .. | ].
-    sepsimpl.
+    sepsimpl. subst.
     subst_lets_in_goal.
     match goal with H : word.unsigned _ = Z.of_nat _ |- _ =>
-                    rewrite H
+                    rewrite H in *
     end.
     eauto.
   Qed.

@@ -83,7 +83,7 @@ Notation "'liftexists' x .. y ',' P" :=
 
 (* precondition is more permissively handled than postcondition in order to
    non-separation-logic (or multiple separation-logic) preconditions *)
-Notation "'forall!' x .. y ',' pre '===>' fname '@' args 'returns' rets '===>' post" :=
+Notation "'forall!' x .. y ',' pre '===>' fname '@' args 'returns' a .. b '===>' post" :=
 (fun functions =>
    (forall x,
        .. (forall y,
@@ -91,8 +91,17 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args 'returns' rets '===>' p
                 pre R mem ->
                 WeakestPrecondition.call
                   functions fname tr mem args
-                  (postcondition_for post R tr (fun r => r = rets))) ..))
-     (x binder, y binder, only parsing, at level 199).
+                  (fun tr' m' rets =>
+                     (exists a,
+                         .. (exists b,
+                                postcondition_for
+                                  post R tr
+                                  (fun r =>
+                                     r = (cons a .. (cons b nil)..))
+                                  tr' m' rets)
+                            .. )))
+                  .. ))
+     (x binder, y binder, a binder, b binder, only parsing, at level 199).
 
 (* shorthand for no return values *)
 Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
