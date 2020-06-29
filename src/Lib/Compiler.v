@@ -21,9 +21,7 @@ Section with_semantics.
   Proof.
     intros.
     repeat straightline.
-    red; ssplit; eauto; [ ].
-    red; ssplit; eauto; [ ].
-    sepsimpl; eauto.
+    red; ssplit; eauto.
   Qed.
 
   Lemma compile_constant :
@@ -259,39 +257,27 @@ Section with_semantics.
     repeat straightline'. eauto.
   Qed.
 
-  Lemma postcondition_for_postcondition_norets
+  Lemma postcondition_func_norets_postcondition_cmd
         locals_ok {T} (pred : T -> _)
         spec k R tr mem locals functions :
     WeakestPrecondition.cmd
       (WeakestPrecondition.call functions)
       k tr mem locals
-      (postcondition_norets locals_ok (pred spec) R tr) ->
+      (postcondition_cmd locals_ok (pred spec) R tr) ->
     WeakestPrecondition.cmd
       (WeakestPrecondition.call functions)
       k tr mem locals
       (fun tr' m' _ =>
-         postcondition_for
-           (fun r => (emp (r = nil) * pred spec)%sep) R tr tr' m' []).
+         postcondition_func_norets (pred spec) R tr tr' m' []).
   Proof.
-    cbv [postcondition_norets]; intros.
+    cbv [postcondition_func_norets
+           postcondition_func postcondition_cmd]; intros.
     eapply Proper_cmd;
       [ solve [apply Proper_call] | repeat intro
         | eassumption ].
-    cleanup; eauto.
+    sepsimpl; cleanup; eauto.
   Qed.
 End with_semantics.
-
-Ltac setup_step :=
-  match goal with
-  | _ => progress (cbv zeta; unfold program_logic_goal_for)
-  | [  |- forall _, _ ] => intros
-  | [  |- exists _, _ ] => eexists
-  | [  |- _ /\ _ ] => split
-  | [  |- context[postcondition_for _ _ _] ] =>
-    set (postcondition_for _ _ _)
-  | _ => reflexivity
-  | _ => cbn
-  end.
 
 Ltac term_head x :=
   match x with
@@ -300,15 +286,22 @@ Ltac term_head x :=
   end.
 
 Ltac setup :=
-  repeat setup_step; subst_lets_in_goal;
-  apply postcondition_for_postcondition_norets with
-      (locals_ok := fun _ => True); cleanup;
-  match goal with
-  | |- context [ postcondition_norets _ (?pred ?spec) _ _ ] =>
-    let hd := term_head spec in
-    unfold hd
-  end;
-  cleanup.
+  cbv [program_logic_goal_for];
+  (* modified version of a clause in straightline *)
+  (intros; WeakestPrecondition.unfold1_call_goal;
+   (cbv beta match delta [WeakestPrecondition.call_body]);
+   lazymatch goal with
+   | |- if ?test then ?T else _ =>
+     replace test with true by reflexivity; change_no_check T
+   end; cbv beta match delta [WeakestPrecondition.func]);
+  repeat straightline; subst_lets_in_goal;
+  apply postcondition_func_norets_postcondition_cmd with
+      (locals_ok := fun _ => True);
+   match goal with
+   | |- context [ postcondition_cmd _ (?pred ?spec) _ _ ] =>
+         let hd := term_head spec in
+         unfold hd
+   end.
 
 Ltac lookup_variable m val :=
   lazymatch m with

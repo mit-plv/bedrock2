@@ -184,8 +184,7 @@ Section Compile.
           | _ => idtac
           end;
           [ |  eauto using word_to_nat_sub_1; lia .. ].
-        cbv [postcondition_norets postcondition_for] in *;
-          sepsimpl; cleanup; subst.
+        cbv [postcondition_cmd] in *; sepsimpl; cleanup; subst.
         repeat match goal with
                | |- exists _, _ => eexists; ssplit
                | _ => erewrite <-downto'_dependent_step;

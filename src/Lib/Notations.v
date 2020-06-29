@@ -43,24 +43,28 @@ Infix "~>" := scalar (at level 40, only parsing).
 
 Notation "[[ locals ]]" := ({| value := locals; _value_ok := _ |}) (only printing).
 
-Definition postcondition_for
+Definition postcondition_func
            {semantics : Semantics.parameters} spec R tr :=
   (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (rets : list address) =>
      tr = tr'
      /\ sep (spec rets) R mem').
 
-Definition postcondition_norets
+Definition postcondition_func_norets
+           {semantics : Semantics.parameters} spec R tr :=
+  postcondition_func (fun r => sep (emp (r = nil)) spec) R tr.
+
+Definition postcondition_cmd
            {semantics : Semantics.parameters} locals_post spec R tr :=
   (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (locals : Semantics.locals) =>
-     locals_post locals
-     /\ postcondition_for (fun r => (emp (r = nil) * spec)%sep)
-                          R tr tr' mem' []).
+     tr = tr'
+     /\ locals_post locals
+     /\ sep spec R mem').
 
 Notation "'find' body 'implementing' spec 'and-locals-post' locals_post 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
   (WeakestPrecondition.cmd
      (WeakestPrecondition.call fns)
      body tr mem locals
-     (postcondition_norets locals_post spec R tr)) (at level 0).
+     (postcondition_cmd locals_post spec R tr)) (at level 0).
 
 Notation "'liftexists' x .. y ',' P" :=
   (Lift1Prop.ex1
@@ -80,7 +84,7 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args 'returns' a .. b '===>'
                 pre R mem ->
                 WeakestPrecondition.call
                   functions fname tr mem args
-                  (postcondition_for
+                  (postcondition_func
                      (fun r =>
                         (Lift1Prop.ex1
                            (fun a =>
@@ -103,9 +107,7 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
                 pre R mem ->
                 WeakestPrecondition.call
                   functions fname tr mem args
-                  (postcondition_for
-                     (fun r => (emp (r = []) * post)%sep)
-                     R tr)) ..))
+                  (postcondition_func_norets post R tr)) ..))
      (x binder, y binder, only parsing, at level 199).
 
 

@@ -22,9 +22,8 @@ Derive swap_body SuchThat
              (swap :: functions)
              "swap"
              tr mem [a_ptr;b_ptr]
-             (postcondition_for
-                (fun r => (emp (r = nil)
-                           * TwoCells a_ptr b_ptr (swap_gallina_spec a b))%sep)
+             (postcondition_func_norets
+                (TwoCells a_ptr b_ptr (swap_gallina_spec a b))
                 R tr)))
   As swap_body_correct.
 Proof.

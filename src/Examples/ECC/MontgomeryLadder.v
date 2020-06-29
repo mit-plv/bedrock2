@@ -386,7 +386,7 @@ Section __.
                     | |- WeakestPrecondition.cmd _ _ _ _ ?l _ => l end in
       remember locals as L;
         simple eapply compile_downto with
-            (wcount := word.of_Z zbound)
+            (wcount := word.of_Z (word.wrap zbound))
             (ginit := ((pX1, pZ1), (pX2, pZ2)))
             (ghost_step := downto_ghost_step K)
             (Invl :=
@@ -401,8 +401,8 @@ Section __.
       { cbv [downto_inv].
         setup_downto_inv_init.
         all:solve_downto_inv_subgoals. }
-      { rewrite word.unsigned_of_Z, zbound_small;
-          solve [eauto using zbound_eq]. }
+      { rewrite ?zbound_small, word.unsigned_of_Z;
+          solve [eauto using zbound_small]. }
       { subst_lets_in_goal.
         rewrite ?word.unsigned_of_Z, ?zbound_small; lia. }
       { (* loop body *)

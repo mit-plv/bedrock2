@@ -48,7 +48,7 @@ Ltac handle_call :=
     | |- exists R, sep _ R _ => eexists; ecancel_assumption
     | _ => idtac
     end
-  | cbv [postcondition_for] in *;
+  | cbv [postcondition_func postcondition_func_norets] in *;
     repeat straightline; destruct_lists_of_known_length;
     repeat straightline ].
 
