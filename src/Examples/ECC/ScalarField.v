@@ -80,13 +80,12 @@ Section Compile.
        and-functions functions).
   Proof.
     repeat straightline'.
-    handle_call; [ solve [eauto] .. | ].
-    sepsimpl. subst.
-    subst_lets_in_goal.
+    handle_call; [ solve [eauto] .. | sepsimpl ].
+    subst_lets_in_goal. subst.
     match goal with H : word.unsigned _ = Z.of_nat _ |- _ =>
-                    rewrite H in *
+                    rewrite H
     end.
-    eauto.
+    repeat straightline'; eauto.
   Qed.
 End Compile.
 

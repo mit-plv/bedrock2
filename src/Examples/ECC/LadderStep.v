@@ -180,7 +180,8 @@ Section __.
          and-functions functions).
     Proof.
       repeat straightline'.
-      handle_call; [ solve [eauto] .. | ].
+      handle_call; [ solve [eauto] .. | sepsimpl ].
+      repeat straightline'.
       repeat match goal with H : eval _ mod _ = _ |- _ =>
                              rewrite H in * end.
       auto.

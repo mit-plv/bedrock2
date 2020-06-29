@@ -44,34 +44,23 @@ Infix "~>" := scalar (at level 40, only parsing).
 Notation "[[ locals ]]" := ({| value := locals; _value_ok := _ |}) (only printing).
 
 Definition postcondition_for
-           {semantics : Semantics.parameters} spec R tr rets_ok :=
+           {semantics : Semantics.parameters} spec R tr :=
   (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (rets : list address) =>
-     tr = tr' /\ rets_ok rets
-     /\ sep spec R mem').
+     tr = tr'
+     /\ sep (spec rets) R mem').
 
 Definition postcondition_norets
            {semantics : Semantics.parameters} locals_post spec R tr :=
   (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (locals : Semantics.locals) =>
      locals_post locals
-     /\ postcondition_for spec R tr (fun r => r = nil) tr' mem' []).
-
-Definition postcondition_withrets
-           {semantics : Semantics.parameters} locals_post spec R tr rets :=
-  (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (locals : Semantics.locals) =>
-     locals_post locals
-     /\ postcondition_for spec R tr (fun r => r = rets) tr' mem' rets).
+     /\ postcondition_for (fun r => (emp (r = nil) * spec)%sep)
+                          R tr tr' mem' []).
 
 Notation "'find' body 'implementing' spec 'and-locals-post' locals_post 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
   (WeakestPrecondition.cmd
      (WeakestPrecondition.call fns)
      body tr mem locals
      (postcondition_norets locals_post spec R tr)) (at level 0).
-
-Notation "'find' body 'implementing' spec 'and-returning' rets 'and-locals-post' locals_post 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
-  (WeakestPrecondition.cmd
-     (WeakestPrecondition.call fns)
-     body tr mem locals
-     (postcondition_withrets locals_post spec R tr rets)) (at level 0).
 
 Notation "'liftexists' x .. y ',' P" :=
   (Lift1Prop.ex1
@@ -91,16 +80,18 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args 'returns' a .. b '===>'
                 pre R mem ->
                 WeakestPrecondition.call
                   functions fname tr mem args
-                  (fun tr' m' rets =>
-                     (exists a,
-                         .. (exists b,
-                                postcondition_for
-                                  post R tr
-                                  (fun r =>
-                                     r = (cons a .. (cons b nil)..))
-                                  tr' m' rets)
-                            .. )))
-                  .. ))
+                  (postcondition_for
+                     (fun r =>
+                        (Lift1Prop.ex1
+                           (fun a =>
+                              ..
+                                (Lift1Prop.ex1
+                                   (fun b =>
+                                      sep
+                                        (emp (r = (cons a .. (cons b nil)..)))
+                                        post)) .. )))
+                     R tr))
+          .. ))
      (x binder, y binder, a binder, b binder, only parsing, at level 199).
 
 (* shorthand for no return values *)
@@ -112,6 +103,19 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
                 pre R mem ->
                 WeakestPrecondition.call
                   functions fname tr mem args
-                  (postcondition_for post R tr (fun r => r = nil))) ..))
+                  (postcondition_for
+                     (fun r => (emp (r = []) * post)%sep)
+                     R tr)) ..))
      (x binder, y binder, only parsing, at level 199).
 
+
+(* quick test for spec notation *)
+Check
+  (fun (semantics : Semantics.parameters) =>
+     (forall! (pa : address) (a b : word),
+         (sep (pa ~> a))
+           ===>
+           "example" @ [pa; b] returns c d
+           ===>
+           (emp (c = word.add d b)
+            * (pa ~> d))%sep)).

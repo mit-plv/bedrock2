@@ -21,7 +21,9 @@ Section with_semantics.
   Proof.
     intros.
     repeat straightline.
-    red; ssplit; try red; eauto.
+    red; ssplit; eauto; [ ].
+    red; ssplit; eauto; [ ].
+    sepsimpl; eauto.
   Qed.
 
   Lemma compile_constant :
@@ -268,29 +270,10 @@ Section with_semantics.
       (WeakestPrecondition.call functions)
       k tr mem locals
       (fun tr' m' _ =>
-         postcondition_for (pred spec) R tr (fun r => r = nil) tr' m' []).
+         postcondition_for
+           (fun r => (emp (r = nil) * pred spec)%sep) R tr tr' m' []).
   Proof.
     cbv [postcondition_norets]; intros.
-    eapply Proper_cmd;
-      [ solve [apply Proper_call] | repeat intro
-        | eassumption ].
-    cleanup; eauto.
-  Qed.
-
-  Lemma postcondition_for_postcondition_withrets
-        locals_ok {T} (pred : T -> _)
-        spec k R tr mem locals rets functions :
-    WeakestPrecondition.cmd
-      (WeakestPrecondition.call functions)
-      k tr mem locals
-      (postcondition_withrets locals_ok (pred spec) R tr rets) ->
-    WeakestPrecondition.cmd
-      (WeakestPrecondition.call functions)
-      k tr mem locals
-      (fun tr' m' _ =>
-         postcondition_for (pred spec) R tr (fun r => r = rets) tr' m' rets).
-  Proof.
-    cbv [postcondition_withrets]; intros.
     eapply Proper_cmd;
       [ solve [apply Proper_call] | repeat intro
         | eassumption ].
@@ -317,16 +300,14 @@ Ltac term_head x :=
   end.
 
 Ltac setup :=
-  repeat setup_step;
-  repeat match goal with
-         | [ H := _ |- _ ] => subst H
-         end;
+  repeat setup_step; subst_lets_in_goal;
+  apply postcondition_for_postcondition_norets with
+      (locals_ok := fun _ => True); cleanup;
   match goal with
-  | [  |- context[postcondition_for (?pred ?spec)] ] =>
-    let hd := term_head spec in unfold hd
+  | |- context [ postcondition_norets _ (?pred ?spec) _ _ ] =>
+    let hd := term_head spec in
+    unfold hd
   end;
-  apply postcondition_for_postcondition_norets
-    with (locals_ok := fun _ => True);
   cleanup.
 
 Ltac lookup_variable m val :=

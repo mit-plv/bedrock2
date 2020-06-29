@@ -182,10 +182,8 @@ Section Compile.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'.
-    handle_call; [ solve [eauto] .. | ].
-    sepsimpl.
-    repeat match goal with x := _ mod M |- _ =>
-                                subst x end.
+    handle_call; [ solve [eauto] .. | sepsimpl ].
+    repeat straightline'.
     match goal with H : _ mod M = ?x mod M
                     |- context [dlet (?x mod M)] =>
                     rewrite <-H
@@ -230,10 +228,8 @@ Section Compile.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'.
-    handle_call; [ solve [eauto] .. | ].
-    sepsimpl.
-    repeat match goal with x := _ mod M |- _ =>
-                                subst x end.
+    handle_call; [ solve [eauto] .. | sepsimpl ].
+    repeat straightline'.
     match goal with H : _ mod M = ?x mod M
                     |- context [dlet (?x mod M)] =>
                     rewrite <-H
@@ -278,10 +274,8 @@ Section Compile.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'.
-    handle_call; [ solve [eauto] .. | ].
-    sepsimpl.
-    repeat match goal with x := _ mod M |- _ =>
-                                subst x end.
+    handle_call; [ solve [eauto] .. | sepsimpl ].
+    repeat straightline'.
     match goal with H : _ mod M = ?x mod M
                     |- context [dlet (?x mod M)] =>
                     rewrite <-H
@@ -322,10 +316,8 @@ Section Compile.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'.
-    handle_call; [ solve [eauto] .. | ].
-    sepsimpl.
-    repeat match goal with x := _ mod M |- _ =>
-                                subst x end.
+    handle_call; [ solve [eauto] .. | sepsimpl ].
+    repeat straightline'.
     rewrite Z.pow_2_r in *.
     match goal with H : _ mod M = ?x mod M
                     |- context [dlet (?x mod M)] =>
@@ -367,10 +359,8 @@ Section Compile.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'.
-    handle_call; [ solve [eauto] .. | ].
-    sepsimpl.
-    repeat match goal with x := _ mod M |- _ =>
-                                subst x end.
+    handle_call; [ solve [eauto] .. | sepsimpl ].
+    repeat straightline'.
     match goal with H : _ mod M = ?x mod M
                     |- context [dlet (?x mod M)] =>
                     rewrite <-H
@@ -411,10 +401,8 @@ Section Compile.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'.
-    handle_call; [ solve [eauto] .. | ].
-    sepsimpl.
-    repeat match goal with x := _ mod M |- _ =>
-                                subst x end.
+    handle_call; [ solve [eauto] .. | sepsimpl ].
+    repeat straightline'.
     match goal with H : _ mod M = ?x mod M
                     |- context [dlet (?x mod M)] =>
                     rewrite <-H
@@ -451,8 +439,9 @@ Section Compile.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'.
-    handle_call; [ solve [eauto] .. | ].
-    sepsimpl. auto.
+    handle_call; [ solve [eauto] .. | sepsimpl ].
+    repeat straightline'.
+    eauto.
   Qed.
 
   Lemma compile_bignum_literal :
@@ -487,8 +476,8 @@ Section Compile.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'. subst.
-    handle_call.
-    sepsimpl.
+    handle_call; [ solve [eauto] .. | sepsimpl ].
+    repeat straightline'.
     match goal with H : _ |- _ =>
                     rewrite word.of_Z_unsigned in H end.
     eauto.

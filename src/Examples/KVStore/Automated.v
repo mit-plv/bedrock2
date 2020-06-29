@@ -502,10 +502,11 @@ Section KVSwap.
                   "kvswap"
                   tr mem [pm; pk1; pk2]
                   (postcondition_for
-                     (MapAndTwoKeys
-                        pm pk1 pk2
-                        (kvswap_gallina m k1 k2)) R tr
-                     (fun r => r = nil))))
+                     (fun r =>
+                        (emp (r = nil)
+                         * MapAndTwoKeys
+                             pm pk1 pk2
+                             (kvswap_gallina m k1 k2))%sep) R tr)))
       As kvswap_body_correct.
   Proof.
     setup.
