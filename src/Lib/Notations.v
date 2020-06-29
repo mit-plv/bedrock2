@@ -74,29 +74,43 @@ Notation "'liftexists' x .. y ',' P" :=
              (fun y => P)) .. ))
     (x binder, y binder, only parsing, at level 199).
 
+
 (* precondition is more permissively handled than postcondition in order to
    non-separation-logic (or multiple separation-logic) preconditions *)
 Notation "'forall!' x .. y ',' pre '===>' fname '@' args 'returns' a .. b '===>' post" :=
-(fun functions =>
-   (forall x,
-       .. (forall y,
-              forall R tr mem,
-                pre R mem ->
-                WeakestPrecondition.call
-                  functions fname tr mem args
-                  (postcondition_func
-                     (fun r =>
-                        (Lift1Prop.ex1
-                           (fun a =>
-                              ..
-                                (Lift1Prop.ex1
-                                   (fun b =>
-                                      sep
-                                        (emp (r = (cons a .. (cons b nil)..)))
-                                        post)) .. )))
-                     R tr))
-          .. ))
+  (fun functions =>
+     (forall x,
+         .. (forall y,
+                forall R tr mem,
+                  pre R mem ->
+                  WeakestPrecondition.call
+                    functions fname tr mem args
+                    (postcondition_func
+                       (fun rets =>
+                          let r := rets in
+                          (dlet (hd (word.of_Z 0) r)
+                                (fun a =>
+                                   let r := tl r in
+                                   ..
+                                     (dlet (hd (word.of_Z 0) r)
+                                           (fun b =>
+                                              let r := tl r in
+                                              sep
+                                                (emp (length rets = length (cons a .. (cons b nil) .. )))
+                                                post)) ..)))
+                       R tr))
+            .. ))
      (x binder, y binder, a binder, b binder, only parsing, at level 199).
+(* quick test for spec notation *)
+Check
+  (fun (semantics : Semantics.parameters) =>
+     (forall! (pa : address) (a b : word),
+         (sep (pa ~> a))
+           ===>
+           "example" @ [pa; b] returns c d e
+           ===>
+           (emp (c = word.add d b)
+            * (pa ~> d))%sep)).
 
 (* shorthand for no return values *)
 Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
@@ -109,15 +123,3 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
                   functions fname tr mem args
                   (postcondition_func_norets post R tr)) ..))
      (x binder, y binder, only parsing, at level 199).
-
-
-(* quick test for spec notation *)
-Check
-  (fun (semantics : Semantics.parameters) =>
-     (forall! (pa : address) (a b : word),
-         (sep (pa ~> a))
-           ===>
-           "example" @ [pa; b] returns c d
-           ===>
-           (emp (c = word.add d b)
-            * (pa ~> d))%sep)).

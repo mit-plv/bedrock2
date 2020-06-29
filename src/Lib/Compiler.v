@@ -277,6 +277,7 @@ Section with_semantics.
         | eassumption ].
     sepsimpl; cleanup; eauto.
   Qed.
+
 End with_semantics.
 
 Ltac term_head x :=
