@@ -69,6 +69,10 @@ Section Compile.
     congruence.
   Qed.
 
+  (* In this lemma, state refers to the accumulator type for the Gallina downto
+     loop, and ghost_state is any extra information that locals/memory invariants
+     need access to. *)
+  (* TODO: consider taking in range of count instead of providing word? *)
   Lemma compile_downto :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
