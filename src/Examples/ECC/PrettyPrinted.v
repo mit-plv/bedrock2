@@ -39,7 +39,9 @@ Instance sp : ScalarFieldParameters :=
      sctestbit := "sc25519_testbit";
   |}.
 
+(****
 Compute (montladder_body 254).
+****)
 (* = ("fe25519_encode" ((uintptr_t)1ULL, "X1");;
  *    "fe25519_encode" ((uintptr_t)0ULL, "Z1");;
  *    "fe25519_copy" ("U", "X2");;
@@ -87,7 +89,9 @@ Compute (montladder_body 254).
  * : cmd
  *)
 
+(****
 Compute ladderstep_body.
+****)
 (* = ("fe25519_add" ("X2", "Z2", "A");;
  *    "fe25519_square" ("A", "AA");;
  *    "fe25519_sub" ("X2", "Z2", "B");;
