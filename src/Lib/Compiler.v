@@ -258,17 +258,16 @@ Section with_semantics.
   Qed.
 
   Lemma postcondition_func_norets_postcondition_cmd
-        locals_ok {T} (pred : T -> _)
-        spec k R tr mem locals functions :
+        post k R tr mem locals functions :
     WeakestPrecondition.cmd
       (WeakestPrecondition.call functions)
       k tr mem locals
-      (postcondition_cmd locals_ok (pred spec) R tr) ->
+      (postcondition_cmd (fun _ => True) post R tr) ->
     WeakestPrecondition.cmd
       (WeakestPrecondition.call functions)
       k tr mem locals
       (fun tr' m' _ =>
-         postcondition_func_norets (pred spec) R tr tr' m' []).
+         postcondition_func_norets post R tr tr' m' []).
   Proof.
     cbv [postcondition_func_norets
            postcondition_func postcondition_cmd]; intros.
@@ -278,6 +277,53 @@ Section with_semantics.
     sepsimpl; cleanup; eauto.
   Qed.
 
+  Lemma getmany_list_map l :
+    forall a vs (P :_ -> Prop),
+      map.getmany_of_list l a = Some vs ->
+      P vs ->
+      WeakestPrecondition.list_map (WeakestPrecondition.get l) a P.
+  Proof.
+    induction a; cbn [WeakestPrecondition.list_map
+                        WeakestPrecondition.list_map_body]; intros;
+      match goal with
+      | H : map.getmany_of_list _ [] = _ |- _ => cbn in H; congruence
+      | H : map.getmany_of_list _ (_ :: _) = _ |- _ =>
+        pose proof (map.getmany_of_list_exists_elem
+                      _ _ _ _ ltac:(eauto using in_eq) H);
+          cbn in H
+      end.
+      cleanup; eexists; ssplit; [ eassumption | ].
+      repeat destruct_one_match_hyp; try congruence; [ ].
+      repeat match goal with
+             | H : Some _ = Some _ |- _ =>
+               inversion H; clear H; subst
+             end.
+      eapply IHa; eauto.
+  Qed.
+
+  Lemma postcondition_func_postcondition_cmd
+        spec k R tr mem locals retvars functions :
+    (exists rets,
+        WeakestPrecondition.cmd
+          (WeakestPrecondition.call functions)
+          k tr mem locals
+          (postcondition_cmd
+             (fun l => map.getmany_of_list l retvars = Some rets)
+             (spec rets) R tr)) ->
+    WeakestPrecondition.cmd
+      (WeakestPrecondition.call functions)
+      k tr mem locals
+      (fun tr' m' l =>
+         WeakestPrecondition.list_map
+           (WeakestPrecondition.get l) retvars
+           (fun rets : list word =>
+              postcondition_func spec R tr tr' m' rets)).
+  Proof.
+    cbv [postcondition_func postcondition_cmd]; intros.
+    cleanup.
+    use_hyp_with_matching_cmd; cleanup; subst.
+    eauto using getmany_list_map.
+  Qed.
 End with_semantics.
 
 Ltac term_head x :=
@@ -296,8 +342,8 @@ Ltac setup :=
      replace test with true by reflexivity; change_no_check T
    end; cbv beta match delta [WeakestPrecondition.func]);
   repeat straightline; subst_lets_in_goal;
-  apply postcondition_func_norets_postcondition_cmd with
-      (locals_ok := fun _ => True);
+  first [ apply postcondition_func_norets_postcondition_cmd
+        | apply postcondition_func_postcondition_cmd ];
    match goal with
    | |- context [ postcondition_cmd _ (?pred ?spec) _ _ ] =>
          let hd := term_head spec in
