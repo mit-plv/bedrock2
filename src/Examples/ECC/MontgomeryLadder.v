@@ -392,8 +392,7 @@ Section __.
                                 subst gst' end.
         destruct_products.
         cbv [downto_inv] in * |-. sepsimpl_hyps.
-        evar (new_locals : map.rep (map:=Semantics.locals));
-              exists new_locals.
+        eexists; intros.
 
         (* convert locals back to literal map using the separation-logic
            condition; an alternative would be to have all lemmas play nice with
@@ -406,6 +405,7 @@ Section __.
         literal_locals_from_sep.
 
         repeat safe_compile_step.
+        cbv zeta.
 
         match goal with
         | |- context [dlet (ladderstep_gallina _ (?x1, ?z1) (?x2, ?z2))] =>
@@ -499,6 +499,7 @@ Section __.
         literal_locals_from_sep.
 
         repeat safe_compile_step.
+        cbv match zeta.
 
         (* pull the eval out of all the swaps so field lemmas work *)
         repeat match goal with

@@ -73,7 +73,7 @@ Ltac clear_old_seps :=
          end.
 
 Ltac cleanup :=
-  repeat first [ progress cbn [fst snd eq_rect] in *
+  repeat first [ progress cbn beta iota delta [fst snd eq_rect] in *
                | match goal with H : _ /\ _ |- _ => destruct H end
                | match goal with H : exists _, _ |- _ => destruct H end
                | match goal with H : ?x = ?x |- _ => clear H end ].

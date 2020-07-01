@@ -93,7 +93,8 @@ Section Compile.
          (Inv (map.remove l i_var) gst st * R')%sep m ->
          word.unsigned wi = Z.of_nat i ->
          i < count ->
-         exists l',
+         exists new_locals,
+           let l' := new_locals in
            find step_impl
            implementing (Inv (map.remove l' i_var) gst' (step st i))
            and-locals-post (fun l => l = l' /\ map.get l i_var = Some wi)
