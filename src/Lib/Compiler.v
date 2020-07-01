@@ -206,6 +206,38 @@ Section with_semantics.
     eassumption.
   Qed.
 
+  Lemma compile_eqb :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
+           tr R functions T (pred: T -> _ -> Prop)
+           x x_var y y_var k k_impl,
+    forall var,
+      map.get locals x_var = Some x ->
+      map.get locals y_var = Some y ->
+      let v := word.eqb x y in
+      (let head := v in
+       find k_impl
+       implementing (pred (k head))
+       and-locals-post locals_ok
+       with-locals (map.put locals var (word.of_Z (Z.b2z head)))
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (let head := v in
+       find (cmd.seq
+               (cmd.set var (expr.op bopname.eq
+                                     (expr.var x_var) (expr.var y_var)))
+               k_impl)
+       implementing (pred (dlet head k))
+       and-locals-post locals_ok
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros. repeat straightline'.
+    subst_lets_in_goal.
+    rewrite word.unsigned_eqb in *. cbv [Z.b2z] in *.
+    destruct_one_match; eauto.
+  Qed.
+
   (* TODO: make more types *)
   (* N.B. this should *not* be added to any compilation tactics, since it will
      always apply; it needs to be applied manually *)
@@ -257,6 +289,117 @@ Section with_semantics.
     repeat straightline'. eauto.
   Qed.
 
+  (* N.B. should only be added to compilation tactics that solve their subgoals,
+  since this applies to any shape of goal *)
+  Lemma compile_pointer :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
+           tr R' R functions T (pred: T -> _ -> Prop)
+           {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop)
+           x_var x_ptr (x : data) k k_impl var,
+      (Data x_ptr x * R')%sep mem ->
+      map.get locals x_var = Some x_ptr ->
+      let v := x in
+      (let head := v in
+       find k_impl
+       implementing (pred (k head))
+       and-locals-post locals_ok
+       with-locals (map.put locals var x_ptr)
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (let head := v in
+       find (cmd.seq (cmd.set var (expr.var x_var)) k_impl)
+       implementing (pred (dlet head k))
+       and-locals-post locals_ok
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline'.
+    eassumption.
+  Qed.
+
+  Lemma compile_if_word :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
+           tr R functions T (pred: T -> _ -> Prop)
+           t_var f_var (t f : word) (c : bool) c_var
+           k k_impl var,
+      map.get locals c_var = Some (word.of_Z (Z.b2z c)) ->
+      map.get locals t_var = Some t ->
+      map.get locals f_var = Some f ->
+      let v := if c then t else f in
+      (let head := v in
+        find k_impl
+        implementing (pred (k head))
+        and-locals-post locals_ok
+        with-locals (map.put locals var head)
+        and-memory mem and-trace tr and-rest R
+        and-functions functions) ->
+      (let head := v in
+       find (cmd.seq
+               (cmd.cond (expr.var c_var)
+                         (cmd.set var (expr.var t_var))
+                         (cmd.set var (expr.var f_var)))
+               k_impl)
+       implementing (pred (dlet head k))
+       and-locals-post locals_ok
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline'.
+    split_if ltac:(repeat straightline').
+    { subst_lets_in_goal. rewrite word.unsigned_of_Z_b2z.
+      cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
+      intros. repeat straightline'. eauto. }
+    { subst_lets_in_goal. rewrite word.unsigned_of_Z_b2z.
+      cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
+      intros. repeat straightline'. eauto. }
+  Qed.
+
+  Lemma compile_if_pointer :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
+           tr Rt Rf R functions T (pred: T -> _ -> Prop)
+           {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop)
+           t_var f_var t_ptr f_ptr (t f : data) (c : bool) c_var
+           k k_impl var,
+      (Data t_ptr t * Rt)%sep mem ->
+      (Data f_ptr f * Rf)%sep mem ->
+      map.get locals c_var = Some (word.of_Z (Z.b2z c)) ->
+      map.get locals t_var = Some t_ptr ->
+      map.get locals f_var = Some f_ptr ->
+      let v := if c then t else f in
+      (let head := v in
+        find k_impl
+        implementing (pred (k head))
+        and-locals-post locals_ok
+        with-locals (map.put locals var (if c then t_ptr else f_ptr))
+        and-memory mem and-trace tr and-rest R
+        and-functions functions) ->
+      (let head := v in
+       find (cmd.seq
+               (cmd.cond (expr.var c_var)
+                         (cmd.set var (expr.var t_var))
+                         (cmd.set var (expr.var f_var)))
+               k_impl)
+       implementing (pred (dlet head k))
+       and-locals-post locals_ok
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline'.
+    split_if ltac:(repeat straightline').
+    { subst_lets_in_goal. rewrite word.unsigned_of_Z_b2z.
+      cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
+      intros. repeat straightline'. eauto. }
+    { subst_lets_in_goal. rewrite word.unsigned_of_Z_b2z.
+      cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
+      intros. repeat straightline'. eauto. }
+  Qed.
+
   Lemma postcondition_func_norets_postcondition_cmd
         post k R tr mem locals functions :
     WeakestPrecondition.cmd
@@ -302,13 +445,15 @@ Section with_semantics.
   Qed.
 
   Lemma postcondition_func_postcondition_cmd
-        spec k R tr mem locals retvars functions :
+        spec k R tr mem locals retvars n functions :
     (exists rets,
         WeakestPrecondition.cmd
           (WeakestPrecondition.call functions)
           k tr mem locals
           (postcondition_cmd
-             (fun l => map.getmany_of_list l retvars = Some rets)
+             (fun l =>
+                map.getmany_of_list l retvars = Some rets
+                /\ length rets = n)
              (spec rets) R tr)) ->
     WeakestPrecondition.cmd
       (WeakestPrecondition.call functions)
@@ -317,12 +462,15 @@ Section with_semantics.
          WeakestPrecondition.list_map
            (WeakestPrecondition.get l) retvars
            (fun rets : list word =>
-              postcondition_func spec R tr tr' m' rets)).
+              postcondition_func
+                (fun rets =>
+                   sep (emp (length rets = n))
+                       (spec rets)) R tr tr' m' rets)).
   Proof.
     cbv [postcondition_func postcondition_cmd]; intros.
     cleanup.
     use_hyp_with_matching_cmd; cleanup; subst.
-    eauto using getmany_list_map.
+    eapply getmany_list_map; sepsimpl; eauto.
   Qed.
 End with_semantics.
 
@@ -341,9 +489,9 @@ Ltac setup :=
    | |- if ?test then ?T else _ =>
      replace test with true by reflexivity; change_no_check T
    end; cbv beta match delta [WeakestPrecondition.func]);
-  repeat straightline; subst_lets_in_goal;
+  repeat straightline; subst_lets_in_goal; cbn [length];
   first [ apply postcondition_func_norets_postcondition_cmd
-        | apply postcondition_func_postcondition_cmd ];
+        | apply postcondition_func_postcondition_cmd; eexists ];
    match goal with
    | |- context [ postcondition_cmd _ (?pred ?spec) _ _ ] =>
          let hd := term_head spec in
@@ -382,7 +530,10 @@ Ltac compile_basics :=
          simple eapply compile_true with (var := name) |
          simple eapply compile_nat_constant with (var := name) |
          simple eapply compile_xorb with (var := name) |
-         simple eapply compile_add with (var := name) ].
+         simple eapply compile_add with (var := name) |
+         simple eapply compile_eqb with (var := name) |
+         simple eapply compile_if_word with (var := name) |
+         simple eapply compile_if_pointer with (var := name) ].
 
 Ltac compile_custom := fail.
 
