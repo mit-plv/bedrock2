@@ -149,34 +149,12 @@ Section __.
             | apply_compile_cswap_nocopy
             | simple eapply compile_ladderstep ].
 
-    Definition downto_inv_locals
-               (K_ptr X1_ptr Z1_ptr X2_ptr Z2_ptr : word)
-               (K_var X1_var Z1_var X2_var Z2_var swap_var : string)
-               (gst : (word * word) * (word * word))
-               (st : point * point * bool)
-      : Semantics.locals -> Prop :=
-      let swap := snd st in
-      let X1_ptr' := fst (fst gst) in
-      let Z1_ptr' := snd (fst gst) in
-      let X2_ptr' := fst (snd gst) in
-      let Z2_ptr' := snd (snd gst) in
-      (emp ((* the pointers may be swapped from their original positions *)
-           ((X1_ptr' = X1_ptr
-             /\ Z1_ptr' = Z1_ptr
-             /\ X2_ptr' = X2_ptr
-             /\ Z2_ptr' = Z2_ptr)
-            \/ (X1_ptr' = X2_ptr
-                /\ Z1_ptr' = Z2_ptr
-                /\ X2_ptr' = X1_ptr
-                /\ Z2_ptr' = Z1_ptr)))
-       * (Var swap_var (word.of_Z (Z.b2z swap)) * Var K_var K_ptr
-          * Var X1_var X1_ptr' * Var Z1_var Z1_ptr'
-          * Var X2_var X2_ptr' * Var Z2_var Z2_ptr'))%sep.
-
     Definition downto_inv
-               K K_ptr
+               swap_var X1_var Z1_var X2_var Z2_var K_var
+               K K_ptr X1_ptr Z1_ptr X2_ptr Z2_ptr Rl
                A_ptr AA_ptr B_ptr BB_ptr E_ptr C_ptr D_ptr DA_ptr CB_ptr
-               (gst : (word * word) * (word * word))
+               (locals : Semantics.locals)
+               (gst : bool)
                (st : point * point * bool)
       : Semantics.mem -> Prop :=
       let P1 := fst (fst st) in
@@ -186,11 +164,9 @@ Section __.
       let Z1z := snd P1 in
       let X2z := fst P2 in
       let Z2z := snd P2 in
-      let X1_ptr := fst (fst gst) in
-      let Z1_ptr := snd (fst gst) in
-      let X2_ptr := fst (snd gst) in
-      let Z2_ptr := snd (snd gst) in
-      liftexists X1 Z1 X2 Z2 A AA B BB E C D DA CB,
+      let swapped := gst in
+      liftexists X1_ptr' Z1_ptr' X2_ptr' Z2_ptr'
+                 X1 Z1 X2 Z2 A AA B BB E C D DA CB,
         (emp (bounded_by tight_bounds X1
               /\ bounded_by tight_bounds Z1
               /\ bounded_by tight_bounds X2
@@ -202,9 +178,22 @@ Section __.
               /\ eval X1 mod M = X1z mod M
               /\ eval Z1 mod M = Z1z mod M
               /\ eval X2 mod M = X2z mod M
-              /\ eval Z2 mod M = Z2z mod M)
-         * (Scalar K_ptr K * Bignum X1_ptr X1 * Bignum Z1_ptr Z1
-            * Bignum X2_ptr X2 * Bignum Z2_ptr Z2
+              /\ eval Z2 mod M = Z2z mod M
+              /\ (if swapped
+                  then (X1_ptr' = X2_ptr
+                        /\ Z1_ptr' = Z2_ptr
+                        /\ X2_ptr' = X1_ptr
+                        /\ Z2_ptr' = Z1_ptr)
+                  else (X1_ptr' = X1_ptr
+                        /\ Z1_ptr' = Z1_ptr
+                        /\ X2_ptr' = X2_ptr
+                        /\ Z2_ptr' = Z2_ptr))
+              /\ (Var swap_var (word.of_Z (Z.b2z swap)) * Var K_var K_ptr
+                  * Var X1_var X1_ptr' * Var Z1_var Z1_ptr'
+                  * Var X2_var X2_ptr' * Var Z2_var Z2_ptr'
+                  * Rl)%sep locals)
+         * (Scalar K_ptr K * Bignum X1_ptr' X1 * Bignum Z1_ptr' Z1
+            * Bignum X2_ptr' X2 * Bignum Z2_ptr' Z2
             * Placeholder A_ptr A * Placeholder AA_ptr AA
             * Placeholder B_ptr B * Placeholder BB_ptr BB
             * Placeholder E_ptr E * Placeholder C_ptr C
@@ -213,12 +202,10 @@ Section __.
 
     Definition downto_ghost_step
                (K : scalar) (st : point * point * bool)
-               (gst : (word * word) * (word * word)) (i : nat) :=
-      let P1 := fst gst in
-      let P2 := snd gst in
+               (gst : bool) (i : nat) :=
       let swap := snd st in
       let swap := xorb swap (Z.testbit (sceval K) (Z.of_nat i)) in
-      cswap swap P1 P2.
+      xorb gst swap.
 
     Ltac setup_downto_inv_init :=
       lift_eexists; sepsimpl;
@@ -243,6 +230,7 @@ Section __.
         first [ reflexivity | assumption ]
       | |- ?x mod M = ?x => subst_lets_in_goal;
                             rewrite ?Z.mod_mod by apply M_nonzero; reflexivity
+      | |- ?x = ?x => reflexivity
       | |- ?x => fail "unrecognized side condition" x
       end.
 
@@ -305,7 +293,10 @@ Section __.
                | context [map.put _ ?n] =>
                  lazymatch P with
                  | context [n] => fail
-                 | _ => n
+                  | _ => lazymatch pred with
+                         | context [n] => fail
+                         | _ => n
+                         end
                  end
                end
              end
@@ -375,32 +366,47 @@ Section __.
       setup.
       repeat safe_compile_step.
 
-      let locals := lazymatch goal with
-                    | |- WeakestPrecondition.cmd _ _ _ _ ?l _ => l end in
-      sep_from_literal_locals locals.
-
-      let tmp_var := constr:("tmp") in
-      let x2_var := constr:("X2") in
-      let L := fresh "L" in
+      let i_var := gen_sym_fetch "v" in (* last used variable name *)
       let locals := lazymatch goal with
                     | |- WeakestPrecondition.cmd _ _ _ _ ?l _ => l end in
       remember locals as L;
+      evar (l : map.rep (map:=Semantics.locals));
+        let Hl := fresh in
+        assert (map.remove L i_var = l) as Hl by
+              (subst L; push_map_remove; subst_lets_in_goal; reflexivity);
+          subst l;
+          match type of Hl with
+          | _ = ?l =>
+            sep_from_literal_locals l;
+              match goal with H : sep _ _ l |- _ =>
+                              rewrite <-Hl in H; clear Hl
+              end
+          end.
+
+      let tmp_var := constr:("tmp") in
+      let x1_var := constr:("X1") in
+      let z1_var := constr:("Z1") in
+      let x2_var := constr:("X2") in
+      let z2_var := constr:("Z2") in
+      let counter_var := gen_sym_fetch "v" in
+      let locals := lazymatch goal with
+                    | |- WeakestPrecondition.cmd _ _ _ _ ?l _ => l end in
         simple eapply compile_downto with
             (wcount := word.of_Z (word.wrap zbound))
-            (ginit := ((pX1, pZ1), (pX2, pZ2)))
+            (ginit := false)
+            (i_var := counter_var)
             (ghost_step := downto_ghost_step K)
-            (Invl :=
-               downto_inv_locals pK pX1 pZ1 pX2 pZ2
-                                 _ _ _ x2_var _ _)
             (Inv :=
-               downto_inv _ pK pA pAA pB pBB pE pC pD pDA pCB);
+               downto_inv
+                 _ x1_var z1_var x2_var z2_var _
+                 _ pK pX1 pZ1 pX2 pZ2
+                 _ pA pAA pB pBB pE pC pD pDA pCB);
         [ .. | subst L | subst L ].
-      { cbv [downto_inv_locals].
-        sepsimpl; [ tauto | ].
-        ecancel_assumption. }
       { cbv [downto_inv].
         setup_downto_inv_init.
         all:solve_downto_inv_subgoals. }
+      { subst. autorewrite with mapsimpl.
+        reflexivity. }
       { rewrite ?zbound_small, word.unsigned_of_Z;
           solve [eauto using zbound_small]. }
       { subst_lets_in_goal.
@@ -409,12 +415,19 @@ Section __.
         intros. clear_old_seps.
         match goal with gst' := downto_ghost_step _ _ _ _ |- _ =>
                                 subst gst' end.
-        cbv [downto_inv downto_inv_locals] in * |-.
-        destruct_products. sepsimpl_hyps.
+        destruct_products.
+        cbv [downto_inv] in * |-. sepsimpl_hyps.
+        evar (new_locals : map.rep (map:=Semantics.locals));
+              exists new_locals.
 
         (* convert locals back to literal map using the separation-logic
            condition; an alternative would be to have all lemmas play nice with
            locals in separation logic *)
+        match goal with H : sep _ _ (map.remove _ ?i_var)
+                        |- context [map.get _ ?i_var = Some ?wi] =>
+                        eapply Var_put_remove with (v:=wi) in H;
+                          eapply sep_assoc in H
+        end.
         literal_locals_from_sep.
 
         repeat safe_compile_step.
@@ -448,7 +461,7 @@ Section __.
         (* TODO: use nlet to do this rename automatically *)
         let locals := lazymatch goal with
                       | |- WeakestPrecondition.cmd _ _ _ _ ?l _ => l end in
-        let b := lazymatch goal with |- context [xorb ?b] => b end in
+        let b := lazymatch goal with x := xorb ?b _ |- _ => b end in
         let swap_var := lazymatch locals with
                           context [map.put _ ?x (word.of_Z (Z.b2z b))] => x end in
         eapply compile_rename_bool with (var := swap_var);
@@ -459,20 +472,11 @@ Section __.
         repeat remove_unused_var.
 
         compile_done.
-        { (* prove loop body postcondition for locals (invariant held) *)
-          cbv [downto_inv_locals downto_ghost_step].
-          cbv [LadderStepResult] in *.
-          cleanup; sepsimpl_hyps.
-          sepsimpl;
-            [ lazymatch goal with |- context [cswap ?b] =>
-                                  destr b end;
-              cbn [cswap fst snd]; tauto | ].
-          clear_old_seps.
-          rewrite !cswap_pair. cbn [fst snd dlet.dlet].
-          let locals := match goal with |- ?P ?l => l end in
-          sep_from_literal_locals locals.
-          ecancel_assumption. }
-        { (* prove loop body postcondition for memory (invariant held) *)
+        { (* prove locals postcondition *)
+          autorewrite with mapsimpl.
+          ssplit; [ | reflexivity ].
+          subst_lets_in_goal. reflexivity. }
+        { (* prove loop invariant held *)
           cbv [downto_inv downto_ghost_step].
           cbv [LadderStepResult] in *.
           cleanup; sepsimpl_hyps.
@@ -481,24 +485,42 @@ Section __.
                    rewrite H; progress cbn [fst snd]
                  end.
           clear_old_seps.
-          rewrite cswap_pair; cbn [fst snd].
           lift_eexists. sepsimpl.
           (* first, resolve evars *)
           all:lazymatch goal with
-              | |- sep _ _ _ =>
+              | |- @sep _ _ Semantics.mem _ _ _ =>
                 change Placeholder with Bignum; ecancel_assumption
+              | |- @sep _ _ Semantics.locals _ _ ?locals =>
+                subst_lets_in_goal; push_map_remove;
+                  let locals := match goal with |- ?P ?l => l end in
+                  sep_from_literal_locals locals;
+                    ecancel_assumption
               | _ => idtac
               end.
           (* now solve other subgoals *)
           all:subst_lets_in_goal;
-              rewrite ?Z.mod_mod by apply M_nonzero; eauto. } }
+              rewrite ?Z.mod_mod by apply M_nonzero; eauto.
+          match goal with
+          | H : if ?gst then _ else _ |-
+            if xorb ?gst ?x then _ else _ =>
+            destr gst; cleanup; subst;
+              cbn [xorb]; destr x
+          end.
+          all:cbn [cswap fst snd]; ssplit; reflexivity. } }
       { (* loop done; rest of function *)
         intros. destruct_products.
-        cbv [downto_inv downto_inv_locals] in *.
+        cbv [downto_inv downto_inv] in *.
         sepsimpl_hyps.
+
         (* convert locals back to literal map using the separation-logic
            condition; an alternative would be to have all lemmas play nice with
            locals in separation logic *)
+        match goal with H : sep _ _ (map.remove _ ?i_var),
+                            Hget : map.get _ ?i_var = Some ?wi |- _ =>
+                        eapply Var_put_remove with (v:=wi) in H;
+                          eapply sep_assoc in H;
+                          rewrite map.put_noop in H by assumption
+        end.
         literal_locals_from_sep.
 
         repeat safe_compile_step.
@@ -527,9 +549,8 @@ Section __.
         compile_done. cbv [MontLadderResult].
         (* destruct the hypothesis identifying the new pointers as some swapping
            of the original ones *)
-        match goal with H : (_ = _/\ _) \/ _|- _ =>
-                        destruct H; cleanup; subst
-        end.
+        destruct_one_match_hyp_of_type bool.
+        all:cleanup; subst.
         all:lift_eexists.
         all:sepsimpl; [ reflexivity | ].
         all:ecancel_assumption. }

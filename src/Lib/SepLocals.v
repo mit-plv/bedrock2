@@ -161,7 +161,7 @@ Ltac cancel_Var :=
 
 Ltac sep_from_literal_locals locals :=
   let R := locals_sep locals in
-  assert (R locals) by (repeat cancel_Var).
+  assert (R locals) by (try subst locals; repeat cancel_Var).
 
 Ltac literal_locals_from_sep :=
   let l := lazymatch goal with

@@ -1,5 +1,4 @@
 Require Import Rupicola.Lib.Api.
-Require Import Rupicola.Lib.SepLocals.
 
 Section Gallina.
   Definition downto'
@@ -76,14 +75,14 @@ Section Compile.
   Lemma compile_downto :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr Rl R R' functions T (pred: T -> _ -> Prop)
+      tr R R' functions T (pred: T -> _ -> Prop)
       {state} {ghost_state} (init : state) (ginit : ghost_state)
       count wcount step step_impl k k_impl i_var
       (ghost_step : state -> ghost_state -> nat -> ghost_state)
-      (Invl : ghost_state -> state -> Semantics.locals -> Prop) (* locals loop invariant *)
-      (Inv : ghost_state -> state -> Semantics.mem -> Prop) (* memory loop invariant *),
-      (Invl ginit init * Var i_var wcount * Rl)%sep locals ->
-      (Inv ginit init * R')%sep mem ->
+      (Inv : Semantics.locals -> ghost_state -> state
+             -> Semantics.mem -> Prop) (* loop invariant *),
+      (Inv (map.remove locals i_var) ginit init * R')%sep mem ->
+      map.get locals i_var = Some wcount ->
       word.unsigned wcount = Z.of_nat count ->
       0 < count ->
       let v := downto init count step in
@@ -91,20 +90,21 @@ Section Compile.
        (* loop iteration case *)
        forall tr l m st gst i wi,
          let gst' := ghost_step st gst i in
+         (Inv (map.remove l i_var) gst st * R')%sep m ->
          word.unsigned wi = Z.of_nat i ->
-         (Invl gst st * Var i_var wi * Rl)%sep l ->
-         (Inv gst st * R')%sep m ->
          i < count ->
-         find step_impl
-         implementing (Inv gst' (step st i))
-         and-locals-post (Invl gst' (step st i) * Var i_var wi * Rl)%sep
-         with-locals l and-memory m and-trace tr and-rest R'
-         and-functions functions) ->
+         exists l',
+           find step_impl
+           implementing (Inv (map.remove l' i_var) gst' (step st i))
+           and-locals-post (fun l => l = l' /\ map.get l i_var = Some wi)
+           with-locals (map.put l i_var wi)
+           and-memory m and-trace tr and-rest R'
+           and-functions functions) ->
       (let head := v in
        (* continuation *)
        forall tr l m gst,
-         (Invl gst head * Var i_var (word.of_Z 0) * Rl)%sep l ->
-         (Inv gst head * R')%sep m ->
+         (Inv (map.remove l i_var) gst head * R')%sep m ->
+         map.get l i_var = Some (word.of_Z 0) ->
          find k_impl
          implementing (pred (k head))
          and-locals-post locals_ok
@@ -141,12 +141,12 @@ Section Compile.
                                     step ghost_step in
               let st := fst stgst in
               let gst := snd stgst in
-              (Inv gst st * R')%sep m
+              (Inv (map.remove l i_var) gst st * R')%sep m
               /\ i <= count
               /\ tr = t
               /\ (exists wi,
                      word.unsigned wi = Z.of_nat i
-                     /\ (Invl gst st * Var i_var wi * Rl)%sep l)).
+                     /\ map.get l i_var = Some wi)).
     ssplit; eauto using lt_wf; [ | ].
 
     { cbv zeta. subst.
@@ -171,19 +171,21 @@ Section Compile.
         rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1;
         ssplit; try lia; [ | ].
       { repeat straightline'.
-        use_hyp_with_matching_cmd;
-          lazymatch goal with
-          | |- sep _ _ _ =>
-            subst_lets_in_goal;
-            match goal with
-            | H : (_ * _)%sep ?l |- _ (map.put ?l ?i_var _) =>
-              extract_Var H i_var; eapply Var_put_replace in H;
-                ecancel_assumption
-            | _ => ecancel_assumption
-            end
-          | _ => idtac
-          end;
-          [ |  eauto using word_to_nat_sub_1; lia .. ].
+        subst_lets_in_goal.
+        match goal with
+        | Hcmd:context [ WeakestPrecondition.cmd _ ?impl ],
+               Hinv : context [Inv _ (snd ?stgst) (fst ?stgst)],
+                      Hi : word.unsigned ?wi = Z.of_nat ?i
+          |- WeakestPrecondition.cmd
+               _ ?impl ?tr ?mem
+               (map.put ?locals ?i_var (word.sub ?wi (word.of_Z 1)))
+               ?post =>
+          specialize (Hcmd tr locals mem (fst stgst) (snd stgst)
+                           (i-1) (word.sub wi (word.of_Z 1)));
+            destruct Hcmd
+        end;
+          [ eauto using word_to_nat_sub_1; lia .. | ].
+        use_hyp_with_matching_cmd; [ ].
         cbv [postcondition_cmd] in *; sepsimpl; cleanup; subst.
         repeat match goal with
                | |- exists _, _ => eexists; ssplit
