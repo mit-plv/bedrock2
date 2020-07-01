@@ -279,31 +279,6 @@ Section __.
       [ first [ solve [repeat compile_step]
               | solve [straightline_map_solver_locals] ] .. | idtac ].
 
-    (* TODO: move? *)
-    Ltac remove_unused_var :=
-      let v :=
-          (lazymatch goal with
-           | |- find _ implementing ?pred ?k
-                and-locals-post ?P with-locals ?l
-                and-memory _ and-trace _ and-rest _ and-functions _ =>
-             lazymatch k with
-             | dlet _ _ => fail "compilation not complete!"
-             | _ =>
-               match l with
-               | context [map.put _ ?n] =>
-                 lazymatch P with
-                 | context [n] => fail
-                  | _ => lazymatch pred with
-                         | context [n] => fail
-                         | _ => n
-                         end
-                 end
-               end
-             end
-           end) in
-      eapply compile_unset with (var := v); [ ];
-      push_map_remove.
-
     Ltac solve_field_subgoals_with_cswap :=
       lazymatch goal with
       | |- map.get _ _ = Some _ =>
