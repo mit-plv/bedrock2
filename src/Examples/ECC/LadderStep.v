@@ -58,22 +58,23 @@ Section __.
              (pX1 pX2 pZ2 pX3 pZ3 : Semantics.word)
              (pA pAA pB pBB pE pC pD pDA pCB : Semantics.word)
              (result : point * point)
-    : Semantics.mem -> Prop :=
-    (liftexists X4 Z4 X5 Z5 (* output values *)
-                A' AA' B' BB' E' C' D' DA' CB' (* new intermediates *)
-     : bignum,
-       (emp (result = ((eval X4 mod M, eval Z4 mod M),
-                       (eval X5 mod M, eval Z5 mod M))
-             /\ bounded_by tight_bounds X4
-             /\ bounded_by tight_bounds Z4
-             /\ bounded_by tight_bounds X5
-             /\ bounded_by tight_bounds Z5)
-        * (Bignum pX1 X1 * Bignum pX2 X4 * Bignum pZ2 Z4
-           * Bignum pX3 X5 * Bignum pZ3 Z5
-           * Bignum pA A' * Bignum pAA AA'
-           * Bignum pB B' * Bignum pBB BB'
-           * Bignum pE E' * Bignum pC C' * Bignum pD D'
-           * Bignum pDA DA' * Bignum pCB CB'))%sep).
+    : list word -> Semantics.mem -> Prop :=
+    fun _ =>
+      (liftexists X4 Z4 X5 Z5 (* output values *)
+                  A' AA' B' BB' E' C' D' DA' CB' (* new intermediates *)
+       : bignum,
+         (emp (result = ((eval X4 mod M, eval Z4 mod M),
+                         (eval X5 mod M, eval Z5 mod M))
+               /\ bounded_by tight_bounds X4
+               /\ bounded_by tight_bounds Z4
+               /\ bounded_by tight_bounds X5
+               /\ bounded_by tight_bounds Z5)
+          * (Bignum pX1 X1 * Bignum pX2 X4 * Bignum pZ2 Z4
+             * Bignum pX3 X5 * Bignum pZ3 Z5
+             * Bignum pA A' * Bignum pAA AA'
+             * Bignum pB B' * Bignum pBB BB'
+             * Bignum pE E' * Bignum pC C' * Bignum pD D'
+             * Bignum pDA DA' * Bignum pCB CB'))%sep).
 
   Instance spec_of_ladderstep : spec_of "ladderstep" :=
     forall! (X1 X2 Z2 X3 Z3 A AA B BB E C D DA CB : bignum)
@@ -106,7 +107,7 @@ Section __.
     Lemma compile_ladderstep :
       forall (locals: Semantics.locals) (mem: Semantics.mem)
         (locals_ok : Semantics.locals -> Prop)
-        tr R R' functions T (pred: T -> _ -> Prop)
+        tr retvars R R' functions T (pred: T -> _ -> _ -> Prop)
         x1 x2 z2 x3 z3
         X1 X1_ptr X1_var X2 X2_ptr X2_var Z2 Z2_ptr Z2_var
         X3 X3_ptr X3_var Z3 Z3_ptr Z3_var
@@ -154,9 +155,10 @@ Section __.
            (LadderStepResult
              X1 X2 Z2 X3 Z3 X1_ptr X2_ptr Z2_ptr X3_ptr
              Z3_ptr A_ptr AA_ptr B_ptr BB_ptr E_ptr C_ptr D_ptr DA_ptr
-             CB_ptr head * R')%sep m ->
+             CB_ptr head [] * R')%sep m ->
            (find k_impl
             implementing (pred (k head))
+            and-returning retvars
             and-locals-post locals_ok
             with-locals locals
             and-memory m and-trace tr and-rest R
@@ -174,6 +176,7 @@ Section __.
 
                  k_impl)
          implementing (pred (dlet head k))
+         and-returning retvars
          and-locals-post locals_ok
          with-locals locals
          and-memory mem and-trace tr and-rest R

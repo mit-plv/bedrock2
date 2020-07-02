@@ -51,20 +51,25 @@ Definition postcondition_func
 
 Definition postcondition_func_norets
            {semantics : Semantics.parameters} spec R tr :=
-  postcondition_func (fun r => sep (emp (r = nil)) spec) R tr.
+  postcondition_func (fun r => sep (emp (r = nil)) (spec r)) R tr.
 
+(* TODO: see if all uses of locals_post can be rephrased using retvars *)
 Definition postcondition_cmd
-           {semantics : Semantics.parameters} locals_post spec R tr :=
-  (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (locals : Semantics.locals) =>
+           {semantics : Semantics.parameters}
+           locals_post spec retvars R tr :=
+  (fun (tr' : Semantics.trace) (mem' : Semantics.mem)
+       (locals : Semantics.locals) =>
      tr = tr'
      /\ locals_post locals
-     /\ sep spec R mem').
+     /\ exists rets,
+         map.getmany_of_list locals retvars = Some rets
+         /\ sep (spec rets) R mem').
 
-Notation "'find' body 'implementing' spec 'and-locals-post' locals_post 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
+Notation "'find' body 'implementing' spec 'and-returning' retvars 'and-locals-post' locals_post 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
   (WeakestPrecondition.cmd
      (WeakestPrecondition.call fns)
      body tr mem locals
-     (postcondition_cmd locals_post spec R tr)) (at level 0).
+     (postcondition_cmd locals_post spec retvars R tr)) (at level 0).
 
 Notation "'liftexists' x .. y ',' P" :=
   (Lift1Prop.ex1
@@ -73,7 +78,6 @@ Notation "'liftexists' x .. y ',' P" :=
           (Lift1Prop.ex1
              (fun y => P)) .. ))
     (x binder, y binder, only parsing, at level 199).
-
 
 (* precondition is more permissively handled than postcondition in order to
    non-separation-logic (or multiple separation-logic) preconditions *)
@@ -97,20 +101,26 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args 'returns' a .. b '===>'
                                               let r := tl r in
                                               sep
                                                 (emp (length rets = length (cons a .. (cons b nil) .. )))
-                                                post)) ..)))
+                                                (post rets))) ..)))
                        R tr))
             .. ))
      (x binder, y binder, a binder, b binder, only parsing, at level 199).
+
 (* quick test for spec notation *)
 Check
   (fun (semantics : Semantics.parameters) =>
+     let Result :=
+         (fun (pa : address) (b c d : word) (rets : list word) =>
+            sep (map:=Semantics.mem)
+                (emp (rets = [c;d]
+                      /\ c = word.add d b))
+                (pa ~> d)) in
      (forall! (pa : address) (a b : word),
          (sep (pa ~> a))
            ===>
            "example" @ [pa; b] returns c d e
            ===>
-           (emp (c = word.add d b)
-            * (pa ~> d))%sep)).
+           Result pa b c d)).
 
 (* shorthand for no return values *)
 Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
@@ -123,3 +133,13 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
                   functions fname tr mem args
                   (postcondition_func_norets post R tr)) ..))
      (x binder, y binder, only parsing, at level 199).
+(* quick test for spec notation *)
+Check
+  (fun (semantics : Semantics.parameters) =>
+     (forall! (pa : address) (a b : word),
+         (sep (pa ~> a))
+           ===>
+           "example" @ [pa; b]
+           ===>
+           (emp True)%sep)).
+

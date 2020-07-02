@@ -68,7 +68,8 @@ Section Specs.
            /\ (exists Ra, (Bignum px x * Ra)%sep mem)
            /\ (Bignum pout old_out * Rr)%sep mem)
           ===> name @ [px; pout] ===>
-          (liftexists out,
+          (fun _ =>
+           liftexists out,
            (emp ((eval out mod M = (op (eval x)) mod M)%Z
                  /\ bounded_by outbounds out)
             * Bignum pout out)%sep))
@@ -82,7 +83,8 @@ Section Specs.
            /\ (exists Ra, (Bignum px x * Bignum py y * Ra)%sep mem)
            /\ (Bignum pout old_out * Rr)%sep mem)
           ===> name @ [px; py; pout] ===>
-          (liftexists out,
+          (fun _ =>
+           liftexists out,
            (emp ((eval out mod M = (op (eval x) (eval y)) mod M)%Z
                  /\ bounded_by outbounds out)
             * Bignum pout out)%sep)) (only parsing).
@@ -106,7 +108,8 @@ Section Specs.
            /\ (exists Ra, (Bignum px x * Ra)%sep mem)
            /\ (Bignum pout old_out * Rr)%sep mem)
           ===> inv @ [px; pout] ===>
-          (liftexists out,
+          (fun _ =>
+           liftexists out,
            (emp ((eval out mod M = (Finv (eval x mod M)) mod M)%Z
                  /\ bounded_by loose_bounds out)
             * Bignum pout out)%sep)).
@@ -115,13 +118,15 @@ Section Specs.
     forall! (x : bignum) (px pout : word) (old_out : bignum),
       (sep (Bignum px x * Bignum pout old_out)%sep)
         ===> bignum_copy @ [px; pout] ===>
-        (Bignum px x * Bignum pout x)%sep.
+        (fun _ =>
+           Bignum px x * Bignum pout x)%sep.
 
   Instance spec_of_bignum_literal : spec_of bignum_literal :=
     forall! (x pout : word) (old_out : bignum),
       (sep (Bignum pout old_out))
         ===> bignum_literal @ [x; pout] ===>
-        (Lift1Prop.ex1
+        (fun _ =>
+           Lift1Prop.ex1
            (fun X => (emp (eval X mod M = word.unsigned x mod M
                            /\ bounded_by tight_bounds X)
                       * Bignum pout X)%sep)).
@@ -148,7 +153,7 @@ Section Compile.
   Lemma compile_mul :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R Rin Rout functions T (pred: T -> _ -> Prop)
+      tr retvars R Rin Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
       (x y out : bignum) x_ptr x_var y_ptr y_var out_ptr out_var
       k k_impl,
       spec_of_mul functions ->
@@ -167,6 +172,7 @@ Section Compile.
          sep (Bignum out_ptr out) Rout m ->
          (find k_impl
           implementing (pred (k (eval out mod M)))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals locals and-memory m and-trace tr and-rest R
           and-functions functions)) ->
@@ -176,6 +182,7 @@ Section Compile.
                                    expr.var out_var])
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -194,7 +201,7 @@ Section Compile.
   Lemma compile_add :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R Rin Rout functions T (pred: T -> _ -> Prop)
+      tr retvars R Rin Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
       (x y out : bignum) x_ptr x_var y_ptr y_var out_ptr out_var
       k k_impl,
       spec_of_add functions ->
@@ -213,6 +220,7 @@ Section Compile.
          sep (Bignum out_ptr out) Rout m ->
          (find k_impl
           implementing (pred (k (eval out mod M)))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals locals and-memory m and-trace tr and-rest R
           and-functions functions)) ->
@@ -222,6 +230,7 @@ Section Compile.
                                    expr.var out_var])
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -240,7 +249,7 @@ Section Compile.
   Lemma compile_sub :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R Rin Rout functions T (pred: T -> _ -> Prop)
+      tr retvars R Rin Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
       (x y out : bignum) x_ptr x_var y_ptr y_var out_ptr out_var
       k k_impl,
       spec_of_sub functions ->
@@ -259,6 +268,7 @@ Section Compile.
          sep (Bignum out_ptr out) Rout m ->
          (find k_impl
           implementing (pred (k (eval out mod M)))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals locals and-memory m and-trace tr and-rest R
           and-functions functions)) ->
@@ -268,6 +278,7 @@ Section Compile.
                                    expr.var out_var])
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -286,7 +297,7 @@ Section Compile.
   Lemma compile_square :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R Rin Rout functions T (pred: T -> _ -> Prop)
+      tr retvars R Rin Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
       (x out : bignum) x_ptr x_var out_ptr out_var k k_impl,
       spec_of_square functions ->
       bounded_by loose_bounds x ->
@@ -302,6 +313,7 @@ Section Compile.
          sep (Bignum out_ptr out) Rout m ->
          (find k_impl
           implementing (pred (k (eval out mod M)))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals locals and-memory m and-trace tr and-rest R
           and-functions functions)) ->
@@ -310,6 +322,7 @@ Section Compile.
                (cmd.call [] square [expr.var x_var; expr.var out_var])
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -329,7 +342,7 @@ Section Compile.
   Lemma compile_scmula24 :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R Rin Rout functions T (pred: T -> _ -> Prop)
+      tr retvars R Rin Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
       (x out : bignum) x_ptr x_var out_ptr out_var k k_impl,
       spec_of_scmula24 functions ->
       bounded_by loose_bounds x ->
@@ -345,6 +358,7 @@ Section Compile.
          sep (Bignum out_ptr out) Rout m ->
          (find k_impl
           implementing (pred (k (eval out mod M)))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals locals and-memory m and-trace tr and-rest R
           and-functions functions)) ->
@@ -353,6 +367,7 @@ Section Compile.
                (cmd.call [] scmula24 [expr.var x_var; expr.var out_var])
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -371,7 +386,7 @@ Section Compile.
   Lemma compile_inv :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R Rin Rout functions T (pred: T -> _ -> Prop)
+      tr retvars R Rin Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
       (x out : bignum) x_ptr x_var out_ptr out_var k k_impl,
       spec_of_inv functions ->
       bounded_by tight_bounds x ->
@@ -387,6 +402,7 @@ Section Compile.
          sep (Bignum out_ptr out) Rout m ->
          (find k_impl
           implementing (pred (k (eval out mod M)))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals locals and-memory m and-trace tr and-rest R
           and-functions functions)) ->
@@ -395,6 +411,7 @@ Section Compile.
                (cmd.call [] inv [expr.var x_var; expr.var out_var])
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -413,7 +430,7 @@ Section Compile.
   Lemma compile_bignum_copy :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R R' functions T (pred: T -> _ -> Prop)
+      tr retvars R R' functions T (pred: T -> list word -> Semantics.mem -> Prop)
       (x out : bignum) x_ptr x_var out_ptr out_var k k_impl,
       spec_of_bignum_copy functions ->
       (Bignum x_ptr x * Placeholder out_ptr out * R')%sep mem ->
@@ -425,6 +442,7 @@ Section Compile.
          (Bignum x_ptr x * Bignum out_ptr x * R')%sep m ->
          (find k_impl
           implementing (pred (k head))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals locals and-memory m and-trace tr and-rest R
           and-functions functions)) ->
@@ -433,6 +451,7 @@ Section Compile.
                (cmd.call [] bignum_copy [expr.var x_var; expr.var out_var])
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -447,7 +466,7 @@ Section Compile.
   Lemma compile_bignum_literal :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R R' functions T (pred: T -> _ -> Prop)
+      tr retvars R R' functions T (pred: T -> list word -> Semantics.mem -> Prop)
       (wx : word) (x : Z) (out : bignum) out_ptr out_var k k_impl,
       spec_of_bignum_literal functions ->
       (Placeholder out_ptr out * R')%sep mem ->
@@ -461,6 +480,7 @@ Section Compile.
          bounded_by tight_bounds X ->
          (find k_impl
           implementing (pred (k head))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals locals and-memory m and-trace tr and-rest R
           and-functions functions)) ->
@@ -470,6 +490,7 @@ Section Compile.
                          [expr.literal x; expr.var out_var])
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -491,7 +512,7 @@ Section Compile.
   Lemma compile_compose_l :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R Rout functions T (pred: T -> _ -> Prop)
+      tr retvars R Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
       (op1 op2 : Z -> Z -> Z)
       x y z out out_ptr out_var k k_impl,
       (Placeholder out_ptr out * Rout)%sep mem ->
@@ -501,12 +522,14 @@ Section Compile.
        (find k_impl
         implementing (pred (dlet (op1 x y mod M)
         (fun xy => dlet ((overwrite2 op2) xy z mod M) k)))
+        and-returning retvars
         and-locals-post locals_ok
         with-locals locals and-memory mem and-trace tr and-rest R
         and-functions functions)) ->
       (let head := v in
        find k_impl
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -518,7 +541,7 @@ Section Compile.
   Lemma compile_compose_r :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R Rout functions T (pred: T -> _ -> Prop)
+      tr retvars R Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
       (op1 op2 : Z -> Z -> Z)
       x y z out out_ptr out_var k k_impl,
       (Placeholder out_ptr out * Rout)%sep mem ->
@@ -528,12 +551,14 @@ Section Compile.
        (find k_impl
         implementing (pred (dlet (op1 x y mod M)
         (fun xy => dlet ((overwrite1 op2) z xy mod M) k)))
+        and-returning retvars
         and-locals-post locals_ok
         with-locals locals and-memory mem and-trace tr and-rest R
         and-functions functions)) ->
       (let head := v in
        find k_impl
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -545,7 +570,7 @@ Section Compile.
   Lemma compile_overwrite1 :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R Rin functions T (pred: T -> _ -> Prop)
+      tr retvars R Rin functions T (pred: T -> list word -> Semantics.mem -> Prop)
       (x : Z) (op : Z -> Z -> Z) (y : bignum) y_ptr y_var k k_impl,
       (Bignum y_ptr y * Rin)%sep mem ->
       map.get locals y_var = Some y_ptr ->
@@ -556,12 +581,14 @@ Section Compile.
          sep (Placeholder y_ptr y) Rin m ->
          (find k_impl
           implementing (pred (dlet v' k))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals locals and-memory m and-trace tr and-rest R
           and-functions functions)) ->
       (let head := v in
        find k_impl
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -573,7 +600,7 @@ Section Compile.
   Lemma compile_overwrite2 :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R Rin functions T (pred: T -> _ -> Prop)
+      tr retvars R Rin functions T (pred: T -> list word -> Semantics.mem -> Prop)
       (y : Z) (op : Z -> Z -> Z) (x : bignum) x_ptr x_var k k_impl,
       (Bignum x_ptr x * Rin)%sep mem ->
       map.get locals x_var = Some x_ptr ->
@@ -584,12 +611,14 @@ Section Compile.
          sep (Placeholder x_ptr x) Rin m ->
          (find k_impl
           implementing (pred (dlet v' k))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals locals and-memory m and-trace tr and-rest R
           and-functions functions)) ->
       (let head := v in
        find k_impl
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).

@@ -189,6 +189,7 @@ Ltac remove_unused_var :=
   let v :=
       (lazymatch goal with
        | |- find _ implementing ?pred ?k
+            and-returning ?retvars
             and-locals-post ?P with-locals ?l
             and-memory _ and-trace _ and-rest _ and-functions _ =>
          lazymatch k with
@@ -200,7 +201,11 @@ Ltac remove_unused_var :=
              | context [n] => fail
              | _ => lazymatch pred with
                     | context [n] => fail
-                    | _ => n
+                    | _ =>
+                      lazymatch retvars with
+                      | context [n] => fail
+                      | _ => n
+                      end
                     end
              end
            end

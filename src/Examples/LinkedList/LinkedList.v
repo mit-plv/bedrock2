@@ -72,21 +72,24 @@ Section Compile.
   Lemma compile_ll_hd :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R' R functions T (pred: T -> _ -> Prop)
-      d end_ptr ll ll_var ll_ptr k k_impl var,
+      tr retvars R' R functions T (pred: T -> _ -> _ -> Prop)
+      d end_ptr ll ll_var ll_ptr ll'_ptr k k_impl var,
       map.get locals ll_var = Some ll_ptr ->
-      (LinkedList end_ptr ll_ptr ll * R')%sep mem ->
-      ll <> nil ->
+      (scalar ll_ptr (ll_hd d ll)
+       * scalar (next_word ll_ptr) ll'_ptr
+       * LinkedList end_ptr ll'_ptr (ll_next ll)
+       * R')%sep mem ->
       let v := ll_hd d ll in
       (let head := v in
-       forall m pll',
+       forall m,
          let ll' := ll_next ll in
          (scalar ll_ptr head
-          * scalar (next_word ll_ptr) pll'
-          * LinkedList end_ptr pll' ll'
+          * scalar (next_word ll_ptr) ll'_ptr
+          * LinkedList end_ptr ll'_ptr ll'
           * R')%sep m ->
          find k_impl
          implementing (pred (k head))
+         and-returning retvars
          and-locals-post locals_ok
          with-locals (map.put locals var head)
          and-memory m and-trace tr and-rest R
@@ -97,11 +100,11 @@ Section Compile.
                         (expr.load access_size.word (expr.var ll_var)))
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
   Proof.
-    destruct ll; [ congruence | ].
     cbn [LinkedList ll_hd hd]; intros.
     sepsimpl. repeat straightline'.
     use_hyp_with_matching_cmd; eauto;
@@ -113,11 +116,10 @@ Section Compile.
   Lemma compile_ll_next :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R' R functions T (pred: T -> _ -> Prop)
+      tr retvars R' R functions T (pred: T -> _ -> _ -> Prop)
       end_ptr (ll ll' : linkedlist word) ll_var ll_ptr ll'_ptr
       dummy k k_impl var,
       map.get locals ll_var = Some ll_ptr ->
-      ll <> nil ->
       (scalar ll_ptr (ll_hd dummy ll)
        * scalar (next_word ll_ptr) ll'_ptr
        * LinkedList end_ptr ll'_ptr (ll_next ll)
@@ -126,6 +128,7 @@ Section Compile.
       (let head := v in
        find k_impl
        implementing (pred (k head))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals (map.put locals var ll'_ptr)
        and-memory mem and-trace tr and-rest R
@@ -141,6 +144,7 @@ Section Compile.
                                        (Z.of_nat word_size_in_bytes)))))
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).

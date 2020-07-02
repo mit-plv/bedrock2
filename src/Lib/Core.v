@@ -118,6 +118,17 @@ Module map.
         rewrite ?map.get_put_diff, ?map.get_put_same by congruence;
         congruence.
     Qed.
+
+    Lemma getmany_of_list_cons m k ks v vs :
+      map.get m k = Some v ->
+      map.getmany_of_list m ks = Some vs ->
+      map.getmany_of_list m (k :: ks) = Some (v :: vs).
+    Proof.
+      intros. cbv [map.getmany_of_list] in *.
+      cbn [List.map List.option_all].
+      destruct_one_match; try congruence; [ ].
+      destruct_one_match; congruence.
+    Qed.
   End __.
 End map.
 

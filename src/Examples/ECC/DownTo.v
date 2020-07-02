@@ -75,13 +75,14 @@ Section Compile.
   Lemma compile_downto :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R R' functions T (pred: T -> _ -> Prop)
+           tr retvars R R' functions
+           T (pred: T -> list word -> Semantics.mem -> Prop)
       {state} {ghost_state} (init : state) (ginit : ghost_state)
       count wcount step step_impl k k_impl i_var
       (ghost_step : state -> ghost_state -> nat -> ghost_state)
-      (Inv : Semantics.locals -> ghost_state -> state
-             -> Semantics.mem -> Prop) (* loop invariant *),
-      (Inv (map.remove locals i_var) ginit init * R')%sep mem ->
+      (Inv : Semantics.locals -> nat -> ghost_state -> state
+             -> list word -> Semantics.mem -> Prop) (* loop invariant *),
+      (Inv (map.remove locals i_var) count ginit init [] * R')%sep mem ->
       map.get locals i_var = Some wcount ->
       word.unsigned wcount = Z.of_nat count ->
       0 < count ->
@@ -90,13 +91,14 @@ Section Compile.
        (* loop iteration case *)
        forall tr l m st gst i wi,
          let gst' := ghost_step st gst i in
-         (Inv (map.remove l i_var) gst st * R')%sep m ->
+         (Inv (map.remove l i_var) (S i) gst st [] * R')%sep m ->
          word.unsigned wi = Z.of_nat i ->
          i < count ->
          exists new_locals,
            let l' := new_locals in
            find step_impl
-           implementing (Inv (map.remove l' i_var) gst' (step st i))
+           implementing (Inv (map.remove l' i_var) i gst' (step st i))
+           and-returning [] (* TODO: use this? *)
            and-locals-post (fun l => l = l' /\ map.get l i_var = Some wi)
            with-locals (map.put l i_var wi)
            and-memory m and-trace tr and-rest R'
@@ -104,10 +106,11 @@ Section Compile.
       (let head := v in
        (* continuation *)
        forall tr l m gst,
-         (Inv (map.remove l i_var) gst head * R')%sep m ->
+         (Inv (map.remove l i_var) 0 gst head [] * R')%sep m ->
          map.get l i_var = Some (word.of_Z 0) ->
          find k_impl
          implementing (pred (k head))
+         and-returning retvars
          and-locals-post locals_ok
          with-locals l and-memory m and-trace tr and-rest R
          and-functions functions) ->
@@ -126,6 +129,7 @@ Section Compile.
                      step_impl))
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -142,7 +146,7 @@ Section Compile.
                                     step ghost_step in
               let st := fst stgst in
               let gst := snd stgst in
-              (Inv (map.remove l i_var) gst st * R')%sep m
+              (Inv (map.remove l i_var) i gst st [] * R')%sep m
               /\ i <= count
               /\ tr = t
               /\ (exists wi,
@@ -175,7 +179,7 @@ Section Compile.
         subst_lets_in_goal.
         match goal with
         | Hcmd:context [ WeakestPrecondition.cmd _ ?impl ],
-               Hinv : context [Inv _ (snd ?stgst) (fst ?stgst)],
+               Hinv : context [Inv _ _ (snd ?stgst) (fst ?stgst)],
                       Hi : word.unsigned ?wi = Z.of_nat ?i
           |- WeakestPrecondition.cmd
                _ ?impl ?tr ?mem
@@ -183,11 +187,15 @@ Section Compile.
                ?post =>
           specialize (Hcmd tr locals mem (fst stgst) (snd stgst)
                            (i-1) (word.sub wi (word.of_Z 1)));
+            replace (S (i-1)) with i in Hcmd by lia;
             destruct Hcmd
         end;
           [ eauto using word_to_nat_sub_1; lia .. | ].
         use_hyp_with_matching_cmd; [ ].
         cbv [postcondition_cmd] in *; sepsimpl; cleanup; subst.
+        match goal with H : map.getmany_of_list _ [] = Some _ |- _ =>
+                        inversion H; clear H; subst
+        end.
         repeat match goal with
                | |- exists _, _ => eexists; ssplit
                | _ => erewrite <-downto'_dependent_step;

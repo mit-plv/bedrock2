@@ -15,7 +15,8 @@ Section Compile.
   Lemma compile_cswap_nocopy :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R R' functions T (pred: T -> _ -> Prop)
+      tr retvars R R' functions
+      T (pred: T -> list word -> _ -> Prop)
       {data} (x y : data) swap swap_var x_var x_ptr y_var y_ptr k k_impl
       (Data : word -> data -> Semantics.mem -> Prop) tmp,
       x_var <> y_var ->
@@ -30,6 +31,7 @@ Section Compile.
       (let head := v in
        (find k_impl
         implementing (pred (k head))
+        and-returning retvars
         and-locals-post locals_ok
         with-locals
                (map.put (map.put locals
@@ -51,6 +53,7 @@ Section Compile.
                   (cmd.skip))
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -86,7 +89,8 @@ Section Compile.
   Lemma compile_cswap_pair :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R functions T (pred: T -> _ -> Prop)
+           tr retvars R functions
+           T (pred: T -> list word -> _ -> Prop)
       {data} (x y : data * data) swap k k_impl,
       let v := cswap swap x y in
       (let __ := 0 in (* placeholder *)
@@ -98,6 +102,7 @@ Section Compile.
                                             let x := (fst xy1, fst xy2) in
                                             let y := (snd xy1, snd xy2) in
                                             k (x, y)))))
+        and-returning retvars
         and-locals-post locals_ok
         with-locals locals
         and-memory mem and-trace tr and-rest R
@@ -105,6 +110,7 @@ Section Compile.
       (let head := v in
        find k_impl
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).

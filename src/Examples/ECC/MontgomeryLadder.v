@@ -78,7 +78,8 @@ Section __.
                (K : scalar)
                (pK pU pX1 pZ1 pX2 pZ2 pA pAA pB pBB pE pC pD pDA pCB : Semantics.word)
                (result : Z)
-      : Semantics.mem -> Prop :=
+      : list word -> Semantics.mem -> Prop :=
+      fun _ =>
       (liftexists U' X1' Z1' X2' Z2' A' AA' B' BB' E' C' D' DA' CB' : bignum,
          (emp (result = eval U' mod M)
           * (Scalar pK K * Bignum pU U'
@@ -154,6 +155,7 @@ Section __.
                K K_ptr X1_ptr Z1_ptr X2_ptr Z2_ptr Rl
                A_ptr AA_ptr B_ptr BB_ptr E_ptr C_ptr D_ptr DA_ptr CB_ptr
                (locals : Semantics.locals)
+               (_ : nat)
                (gst : bool)
                (st : point * point * bool)
       : Semantics.mem -> Prop :=

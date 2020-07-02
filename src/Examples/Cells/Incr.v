@@ -19,7 +19,7 @@ Section with_semantics.
           ===>
           "incr" @ [c_ptr]
           ===>
-          (c_ptr ~> (incr_gallina_spec c))).
+          (OneCell c_ptr (incr_gallina_spec c))).
 
   Derive body SuchThat
          (let incr := ("incr", (["c_ptr"], [], body)) in
@@ -30,7 +30,7 @@ Section with_semantics.
                    exact x)))
          As body_correct.
   Proof.
-    cbv [spec_of_incr program_logic_goal_for].
+    cbv [spec_of_incr].
     compile.
   Qed.
 

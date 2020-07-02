@@ -40,7 +40,8 @@ Section Specs.
           ===>
           sctestbit @ [px; wi] returns r
           ===>
-          (emp (r = word.of_Z (Z.b2z b)))).
+          (fun rets => emp (rets = [r]
+                            /\ r = word.of_Z (Z.b2z b)))).
 End Specs.
 Existing Instances spec_of_sctestbit.
 
@@ -53,7 +54,8 @@ Section Compile.
   Lemma compile_sctestbit :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R R' functions T (pred: T -> _ -> Prop)
+           tr retvars R R' functions
+           T (pred: T -> list word -> Semantics.mem -> Prop)
       x x_ptr x_var i wi i_var k k_impl var,
       spec_of_sctestbit functions ->
       (Scalar x_ptr x * R')%sep mem ->
@@ -66,6 +68,7 @@ Section Compile.
          (Scalar x_ptr x * R')%sep m ->
          (find k_impl
           implementing (pred (k head))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals (map.put locals var (word.of_Z (Z.b2z head)))
           and-memory m and-trace tr and-rest R
@@ -75,6 +78,7 @@ Section Compile.
                (cmd.call [var] sctestbit [expr.var x_var; expr.var i_var])
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).

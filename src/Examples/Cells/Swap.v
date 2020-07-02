@@ -17,7 +17,7 @@ Derive swap_body SuchThat
         program_logic_goal_for swap
         (forall functions,
          forall a_ptr a b_ptr b tr R mem,
-           sep (TwoCells a_ptr b_ptr (a,b)) R mem ->
+           sep (TwoCells a_ptr b_ptr (a,b) []) R mem ->
            WeakestPrecondition.call
              (swap :: functions)
              "swap"

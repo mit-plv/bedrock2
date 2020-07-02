@@ -10,11 +10,14 @@ Section with_semantics.
   Lemma compile_skip :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : _ -> Prop)
-           tr R functions T (pred: T -> _ -> Prop) head,
+           tr retvars rets R functions T
+           (pred: T -> list word -> _ -> Prop) head,
       locals_ok locals ->
-      sep (pred head) R mem ->
+      map.getmany_of_list locals retvars = Some rets ->
+      sep (pred head rets) R mem ->
       (find cmd.skip
        implementing (pred head)
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -27,12 +30,13 @@ Section with_semantics.
   Lemma compile_constant :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R functions T (pred: T -> _ -> Prop) z k k_impl,
+           tr retvars R functions T (pred: T -> _ -> _ -> Prop) z k k_impl,
     forall var,
       let v := word.of_Z z in
       (let head := v in
        find k_impl
        implementing (pred (k head))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals (map.put locals var head)
        and-memory mem and-trace tr and-rest R
@@ -40,6 +44,7 @@ Section with_semantics.
       (let head := v in
        find (cmd.seq (cmd.set var (expr.literal z)) k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -52,7 +57,7 @@ Section with_semantics.
   Lemma compile_nat_constant :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R functions T (pred: T -> _ -> Prop)
+           tr retvars R functions T (pred: T -> _ -> _ -> Prop)
            (n : nat) (zn : Z) k k_impl,
     forall var,
       zn = Z.of_nat n ->
@@ -60,6 +65,7 @@ Section with_semantics.
       (let head := v in
        find k_impl
        implementing (pred (k head))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals (map.put locals var (word.of_Z zn))
        and-memory mem and-trace tr and-rest R
@@ -67,6 +73,7 @@ Section with_semantics.
       (let head := v in
        find (cmd.seq (cmd.set var (expr.literal zn)) k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -79,12 +86,13 @@ Section with_semantics.
   Lemma compile_false :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R functions T (pred: T -> _ -> Prop) k k_impl,
+           tr retvars R functions T (pred: T -> _ -> _ -> Prop) k k_impl,
     forall var,
       let v := false in
       (let head := v in
        find k_impl
        implementing (pred (k head))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals (map.put locals var (word.of_Z (Z.b2z head)))
        and-memory mem and-trace tr and-rest R
@@ -92,6 +100,7 @@ Section with_semantics.
       (let head := v in
        find (cmd.seq (cmd.set var (expr.literal 0)) k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -104,12 +113,13 @@ Section with_semantics.
   Lemma compile_true :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R functions T (pred: T -> _ -> Prop) k k_impl,
+           tr retvars R functions T (pred: T -> _ -> _ -> Prop) k k_impl,
     forall var,
       let v := true in
       (let head := v in
        find k_impl
        implementing (pred (k head))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals (map.put locals var (word.of_Z (Z.b2z head)))
        and-memory mem and-trace tr and-rest R
@@ -117,6 +127,7 @@ Section with_semantics.
       (let head := v in
        find (cmd.seq (cmd.set var (expr.literal 1)) k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -129,7 +140,7 @@ Section with_semantics.
   Lemma compile_xorb :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R functions T (pred: T -> _ -> Prop)
+           tr retvars R functions T (pred: T -> _ -> _ -> Prop)
            x x_var y y_var k k_impl,
     forall var,
       map.get locals x_var = Some (word.of_Z (Z.b2z x)) ->
@@ -138,6 +149,7 @@ Section with_semantics.
       (let head := v in
        find k_impl
        implementing (pred (k head))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals (map.put locals var (word.of_Z (Z.b2z head)))
        and-memory mem and-trace tr and-rest R
@@ -146,6 +158,7 @@ Section with_semantics.
        find (cmd.seq (cmd.set var (expr.op bopname.xor (expr.var x_var) (expr.var y_var)))
                      k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -173,7 +186,7 @@ Section with_semantics.
   Lemma compile_add :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R functions T (pred: T -> _ -> Prop)
+           tr retvars R functions T (pred: T -> _ -> _ -> Prop)
            x x_var y y_var k k_impl,
     forall var,
       map.get locals x_var = Some x ->
@@ -182,6 +195,7 @@ Section with_semantics.
       (let head := v in
        find k_impl
        implementing (pred (k head))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals (map.put locals var head)
        and-memory mem and-trace tr and-rest R
@@ -190,6 +204,7 @@ Section with_semantics.
        find (cmd.seq (cmd.set var (expr.op bopname.add (expr.var x_var) (expr.var y_var)))
                      k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -209,7 +224,7 @@ Section with_semantics.
   Lemma compile_eqb :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R functions T (pred: T -> _ -> Prop)
+           tr retvars R functions T (pred: T -> _ -> _ -> Prop)
            x x_var y y_var k k_impl,
     forall var,
       map.get locals x_var = Some x ->
@@ -218,6 +233,7 @@ Section with_semantics.
       (let head := v in
        find k_impl
        implementing (pred (k head))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals (map.put locals var (word.of_Z (Z.b2z head)))
        and-memory mem and-trace tr and-rest R
@@ -228,6 +244,7 @@ Section with_semantics.
                                      (expr.var x_var) (expr.var y_var)))
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -244,13 +261,14 @@ Section with_semantics.
   Lemma compile_rename_bool :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
       (locals_ok : Semantics.locals -> Prop)
-      tr R functions T (pred: T -> _ -> Prop)
+      tr retvars R functions T (pred: T -> _ -> _ -> Prop)
       x x_var var k k_impl,
       map.get locals x_var = Some (word.of_Z (Z.b2z x)) ->
       let v := x in
       (let head := v in
        find k_impl
        implementing (pred (k head))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals (map.put locals var (word.of_Z (Z.b2z x)))
        and-memory mem and-trace tr and-rest R
@@ -258,6 +276,7 @@ Section with_semantics.
       (let head := v in
        find (cmd.seq (cmd.set var (expr.var x_var)) k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals
        and-memory mem and-trace tr and-rest R
@@ -271,16 +290,18 @@ Section with_semantics.
   Lemma compile_unset :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
       (locals_ok : Semantics.locals -> Prop)
-      tr R functions T (pred: T -> _ -> Prop)
+      tr retvars R functions T (pred: T -> _ -> _ -> Prop)
       var k k_impl,
       (find k_impl
        implementing (pred k)
+       and-returning retvars
        and-locals-post locals_ok
        with-locals (map.remove locals var)
        and-memory mem and-trace tr and-rest R
        and-functions functions) ->
       (find (cmd.seq (cmd.unset var) k_impl)
        implementing (pred k)
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals
        and-memory mem and-trace tr and-rest R
@@ -294,7 +315,7 @@ Section with_semantics.
   Lemma compile_pointer :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R' R functions T (pred: T -> _ -> Prop)
+           tr retvars R' R functions T (pred: T -> _ -> _ -> Prop)
            {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop)
            x_var x_ptr (x : data) k k_impl var,
       (Data x_ptr x * R')%sep mem ->
@@ -303,6 +324,7 @@ Section with_semantics.
       (let head := v in
        find k_impl
        implementing (pred (k head))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals (map.put locals var x_ptr)
        and-memory mem and-trace tr and-rest R
@@ -310,6 +332,7 @@ Section with_semantics.
       (let head := v in
        find (cmd.seq (cmd.set var (expr.var x_var)) k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -322,7 +345,7 @@ Section with_semantics.
   Lemma compile_if_word :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R functions T (pred: T -> _ -> Prop)
+           tr retvars R functions T (pred: T -> _ -> _ -> Prop)
            t_var f_var (t f : word) (c : bool) c_var
            k k_impl var,
       map.get locals c_var = Some (word.of_Z (Z.b2z c)) ->
@@ -332,6 +355,7 @@ Section with_semantics.
       (let head := v in
         find k_impl
         implementing (pred (k head))
+        and-returning retvars
         and-locals-post locals_ok
         with-locals (map.put locals var head)
         and-memory mem and-trace tr and-rest R
@@ -343,6 +367,7 @@ Section with_semantics.
                          (cmd.set var (expr.var f_var)))
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -361,7 +386,7 @@ Section with_semantics.
   Lemma compile_if_pointer :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr Rt Rf R functions T (pred: T -> _ -> Prop)
+           tr retvars Rt Rf R functions T (pred: T -> _ -> _ -> Prop)
            {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop)
            t_var f_var t_ptr f_ptr (t f : data) (c : bool) c_var
            k k_impl var,
@@ -374,6 +399,7 @@ Section with_semantics.
       (let head := v in
         find k_impl
         implementing (pred (k head))
+        and-returning retvars
         and-locals-post locals_ok
         with-locals (map.put locals var (if c then t_ptr else f_ptr))
         and-memory mem and-trace tr and-rest R
@@ -385,6 +411,7 @@ Section with_semantics.
                          (cmd.set var (expr.var f_var)))
                k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -405,7 +432,8 @@ Section with_semantics.
     WeakestPrecondition.cmd
       (WeakestPrecondition.call functions)
       k tr mem locals
-      (postcondition_cmd (fun _ => True) post R tr) ->
+      (postcondition_cmd
+         (fun _ => True) post [] R tr) ->
     WeakestPrecondition.cmd
       (WeakestPrecondition.call functions)
       k tr mem locals
@@ -417,7 +445,11 @@ Section with_semantics.
     eapply Proper_cmd;
       [ solve [apply Proper_call] | repeat intro
         | eassumption ].
-    sepsimpl; cleanup; eauto.
+    sepsimpl; cleanup; eauto; [ ].
+    match goal with H : map.getmany_of_list _ [] = Some _ |- _ =>
+                    inversion H; clear H; subst
+    end.
+    eauto.
   Qed.
 
   Lemma getmany_list_map l :
@@ -445,16 +477,14 @@ Section with_semantics.
   Qed.
 
   Lemma postcondition_func_postcondition_cmd
-        spec k R tr mem locals retvars n functions :
-    (exists rets,
-        WeakestPrecondition.cmd
-          (WeakestPrecondition.call functions)
-          k tr mem locals
-          (postcondition_cmd
-             (fun l =>
-                map.getmany_of_list l retvars = Some rets
-                /\ length rets = n)
-             (spec rets) R tr)) ->
+        (spec : list word -> Semantics.mem -> Prop)
+        k R tr mem locals retvars n functions :
+    length retvars = n ->
+    (WeakestPrecondition.cmd
+       (WeakestPrecondition.call functions)
+       k tr mem locals
+       (postcondition_cmd
+          (fun _ => True) spec retvars R tr)) ->
     WeakestPrecondition.cmd
       (WeakestPrecondition.call functions)
       k tr mem locals
@@ -464,13 +494,14 @@ Section with_semantics.
            (fun rets : list word =>
               postcondition_func
                 (fun rets =>
-                   sep (emp (length rets = n))
-                       (spec rets)) R tr tr' m' rets)).
+                   (emp (length rets = n) * (spec rets))%sep)
+                R tr tr' m' rets)).
   Proof.
     cbv [postcondition_func postcondition_cmd]; intros.
     cleanup.
     use_hyp_with_matching_cmd; cleanup; subst.
     eapply getmany_list_map; sepsimpl; eauto.
+    eauto using map.getmany_of_list_length, eq_sym.
   Qed.
 End with_semantics.
 
@@ -491,9 +522,10 @@ Ltac setup :=
    end; cbv beta match delta [WeakestPrecondition.func]);
   repeat straightline; subst_lets_in_goal; cbn [length];
   first [ apply postcondition_func_norets_postcondition_cmd
-        | apply postcondition_func_postcondition_cmd; eexists ];
+        | apply postcondition_func_postcondition_cmd;
+          [ cbn [length]; reflexivity | ] ];
    match goal with
-   | |- context [ postcondition_cmd _ (?pred ?spec) _ _ ] =>
+   | |- context [ postcondition_cmd _ (fun r => _ ?spec r) ] =>
          let hd := term_head spec in
          unfold hd
    end.
@@ -550,6 +582,7 @@ Ltac compile_step :=
   | [  |- map.get _ _ = _ ] =>
     first [ solve_map_get_goal
           | progress subst_lets_in_goal; solve_map_get_goal ]
+  | [  |- map.getmany_of_list _ [] = Some _ ] => reflexivity
   | _ => eauto with compiler
   end.
 

@@ -196,10 +196,11 @@ Section KVSwap.
    *)
 
   Definition MapAndTwoKeys pm pk1 pk2 v :=
-    let m := fst (fst v) in
-    let k1 := snd (fst v) in
-    let k2 := snd v in
-    (Map pm m * Key pk1 k1 * Key pk2 k2)%sep.
+    fun _ : list word =>
+      let m := fst (fst v) in
+      let k1 := snd (fst v) in
+      let k2 := snd v in
+      (Map pm m * Key pk1 k1 * Key pk2 k2)%sep.
 
   Definition deannotate (m : annotated_map) : map.rep (map:=map) :=
     map.fold
@@ -246,7 +247,7 @@ Section KVSwap.
   Lemma compile_map_get :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R R' functions T (pred: T -> _ -> Prop)
+           tr retvars R R' functions T (pred: T -> _ -> _ -> Prop)
            m m_ptr m_var M
            k k_ptr k_var
            default default_impl
@@ -265,6 +266,7 @@ Section KVSwap.
           (AnnotatedMap m_ptr M * Key k_ptr k * R')%sep mem' ->
           find default_impl
           implementing (pred default)
+          and-returning retvars
           and-locals-post locals_ok
           with-locals (map.put (map.put locals err (word.of_Z 1))
                             var garbage)
@@ -278,6 +280,7 @@ Section KVSwap.
            * Key k_ptr k * R')%sep mem' ->
           find K_impl
           implementing (pred (K head))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals (map.put (map.put locals err (word.of_Z 0))
                             var hd_ptr)
@@ -290,6 +293,7 @@ Section KVSwap.
                          K_impl
                          default_impl))
        implementing (pred (do_or_default head K default))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -402,7 +406,7 @@ Section KVSwap.
   Lemma compile_map_put_replace :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-           tr R R' functions T (pred: T -> _ -> Prop)
+           tr retvars R R' functions T (pred: T -> _ -> _ -> Prop)
            m m_ptr m_var M
            k k_ptr k_var
            v v_ptr v_var
@@ -421,6 +425,7 @@ Section KVSwap.
           * Key k_ptr k * R')%sep mem' ->
          find K_impl
          implementing (pred (K head))
+         and-returning retvars
          and-locals-post locals_ok
          with-locals locals
          and-memory mem' and-trace tr and-rest R
@@ -432,6 +437,7 @@ Section KVSwap.
                          [expr.var m_var; expr.var k_var; expr.var v_var])
                K_impl)
        implementing (pred (dlet head K))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).

@@ -19,8 +19,9 @@ Section with_semantics.
   Definition WordVector {n} (addr: address) (v: Vector.t Semantics.word n) : Semantics.mem -> Prop :=
     array scalar (word.of_Z 8) addr (Vector.to_list v).
 
-  Definition Packet (addr: address) (p: packet) : Semantics.mem -> Prop :=
-    WordVector addr p.
+  Definition Packet (addr: address) (p: packet)
+    : list word -> Semantics.mem -> Prop :=
+    fun _ => WordVector addr p.
 
   Definition decr_gallina (p: packet) :=
     let/d ttl := (ttl p) in
@@ -45,7 +46,7 @@ Section with_semantics.
   Lemma compile_nth :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R R' functions T (pred: T -> _ -> Prop)
+      tr retvars R R' functions T (pred: T -> _ -> _ -> Prop)
       {n} (vector: Vector.t Semantics.word n) vector_ptr vector_var
       offset var k k_impl,
       (Z.of_nat n < 2 ^ Semantics.width)%Z ->
@@ -58,6 +59,7 @@ Section with_semantics.
          sep (WordVector vector_ptr vector) R' m ->
          (find k_impl
           implementing (pred (k head))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals (map.put locals var head)
           and-memory m and-trace tr and-rest R
@@ -72,6 +74,7 @@ Section with_semantics.
                                     (expr.literal ((word.unsigned (word.of_Z 8) * Z.of_nat noffset))))))
                      k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -106,7 +109,7 @@ Section with_semantics.
   Lemma compile_replace :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
-      tr R R' functions T (pred: T -> _ -> Prop)
+      tr retvars R R' functions T (pred: T -> _ -> _ -> Prop)
       {n} (vector: Vector.t Semantics.word n) vector_ptr vector_var
       value value_var offset
       k k_impl,
@@ -121,6 +124,7 @@ Section with_semantics.
          sep (WordVector vector_ptr head) R' m ->
          (find k_impl
           implementing (pred (k head))
+          and-returning retvars
           and-locals-post locals_ok
           with-locals locals
           and-memory m and-trace tr and-rest R
@@ -133,6 +137,7 @@ Section with_semantics.
                                 (expr.var value_var))
                      k_impl)
        implementing (pred (dlet head k))
+       and-returning retvars
        and-locals-post locals_ok
        with-locals locals and-memory mem and-trace tr and-rest R
        and-functions functions).
@@ -173,7 +178,7 @@ Section with_semantics.
 
   Instance spec_of_decr : spec_of "decr" :=
     forall! pp p,
-      (sep (Packet pp p)) ===> "decr" @ [pp] ===> Packet pp (decr_gallina p).
+      (sep (Packet pp p [])) ===> "decr" @ [pp] ===> Packet pp (decr_gallina p).
 
   (* TODO: something like program_logic_goal_for_function! *)
   Derive decr_body SuchThat
