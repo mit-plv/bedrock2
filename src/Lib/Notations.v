@@ -91,7 +91,7 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args 'returns' rets '===>' p
                   functions fname tr mem args
                   (postcondition_func (fun rets => post) R tr)) ..))
      (x binder, y binder, only parsing, at level 199).
-(* quick test for spec notation *)
+(* test for spec notation *)
 Check
   (fun (semantics : Semantics.parameters) =>
      (forall! (pa : address) (a b : word),
@@ -99,7 +99,16 @@ Check
            ===>
            "example" @ [pa; b] returns r
            ===>
-           (liftexists x, emp (r = [x]))%sep)).
+           (liftexists x, emp (r = [x]) * (pa ~> x))%sep)).
+(* test for spec notation *)
+Check
+  (fun (semantics : Semantics.parameters) =>
+     (forall! (pa : address) (a b : word),
+         (sep (pa ~> a))
+           ===>
+           "example" @ [pa; b] returns r
+           ===>
+           (emp (r = []) * (pa ~> word.add a b))%sep)).
 
 (* shorthand for no return values *)
 Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
@@ -112,7 +121,7 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
                   functions fname tr mem args
                   (postcondition_func_norets post R tr)) ..))
      (x binder, y binder, only parsing, at level 199).
-(* quick test for spec notation *)
+(* test for spec notation *)
 Check
   (fun (semantics : Semantics.parameters) =>
      (forall! (pa : address) (a b : word),
