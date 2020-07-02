@@ -91,24 +91,23 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args 'returns' rets '===>' p
                   functions fname tr mem args
                   (postcondition_func (fun rets => post) R tr)) ..))
      (x binder, y binder, only parsing, at level 199).
-(* test for spec notation *)
-Check
-  (fun (semantics : Semantics.parameters) =>
+
+Example spec_example_withrets {semantics : Semantics.parameters}
+  : spec_of "example" :=
+  (forall! (pa : address) (a b : word),
+      (sep (pa ~> a))
+        ===>
+        "example" @ [pa; b] returns r
+        ===>
+        (liftexists x, emp (r = [x]) * (pa ~> x))%sep).
+Example spec_example_norets {semantics : Semantics.parameters}
+  : spec_of "example" :=
      (forall! (pa : address) (a b : word),
          (sep (pa ~> a))
            ===>
            "example" @ [pa; b] returns r
            ===>
-           (liftexists x, emp (r = [x]) * (pa ~> x))%sep)).
-(* test for spec notation *)
-Check
-  (fun (semantics : Semantics.parameters) =>
-     (forall! (pa : address) (a b : word),
-         (sep (pa ~> a))
-           ===>
-           "example" @ [pa; b] returns r
-           ===>
-           (emp (r = []) * (pa ~> word.add a b))%sep)).
+           (emp (r = []) * (pa ~> word.add a b))%sep).
 
 (* shorthand for no return values *)
 Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
@@ -121,12 +120,20 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
                   functions fname tr mem args
                   (postcondition_func_norets post R tr)) ..))
      (x binder, y binder, only parsing, at level 199).
-(* test for spec notation *)
-Check
-  (fun (semantics : Semantics.parameters) =>
-     (forall! (pa : address) (a b : word),
-         (sep (pa ~> a))
-           ===>
-           "example" @ [pa; b]
-           ===>
-           (fun _ => emp True)%sep)).
+
+(* N.B. postconditions with no return values still need to take in an argument
+   for return values to make types line up. However, the shorthand notation inserts
+   a clause to the postcondition saying the return values are nil, so the
+   postcondition does not need to ensure this. *)
+Example spec_example_norets_short {semantics : Semantics.parameters}
+  : spec_of "example" :=
+  (forall! (pa : address) (a b : word),
+      (sep (pa ~> a))
+        ===>
+        "example" @ [pa; b]
+        ===>
+        (fun _ => pa ~> word.add a b)%sep).
+
+(* unify short and long notations for functions without return values (fails if
+   spec_example_norets and spec_example_norets_short are not equivalent) *)
+Compute (let x := ltac:(unify @spec_example_norets @spec_example_norets_short) in x).
