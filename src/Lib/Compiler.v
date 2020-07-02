@@ -522,6 +522,9 @@ Ltac setup :=
    | |- context [ postcondition_cmd _ (?pred ?spec) ] =>
          let hd := term_head spec in
          unfold hd
+   | |- context [ postcondition_cmd _ (fun r => ?pred ?spec r) ] =>
+         let hd := term_head spec in
+         unfold hd
    end.
 
 Ltac lookup_variable m val :=

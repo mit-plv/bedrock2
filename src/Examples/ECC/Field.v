@@ -118,18 +118,17 @@ Section Specs.
     forall! (x : bignum) (px pout : word) (old_out : bignum),
       (sep (Bignum px x * Bignum pout old_out)%sep)
         ===> bignum_copy @ [px; pout] ===>
-        (fun _ =>
-           Bignum px x * Bignum pout x)%sep.
+        (fun _ => Bignum px x * Bignum pout x)%sep.
 
   Instance spec_of_bignum_literal : spec_of bignum_literal :=
     forall! (x pout : word) (old_out : bignum),
       (sep (Bignum pout old_out))
         ===> bignum_literal @ [x; pout] ===>
         (fun _ =>
-           Lift1Prop.ex1
-           (fun X => (emp (eval X mod M = word.unsigned x mod M
-                           /\ bounded_by tight_bounds X)
-                      * Bignum pout X)%sep)).
+           liftexists X,
+           (emp (eval X mod M = word.unsigned x mod M
+                 /\ bounded_by tight_bounds X)
+            * Bignum pout X)%sep).
 End Specs.
 Existing Instances spec_of_mul spec_of_square spec_of_add
          spec_of_sub spec_of_scmula24 spec_of_inv spec_of_bignum_copy
@@ -460,7 +459,8 @@ Section Compile.
     repeat straightline'.
     handle_call; [ solve [eauto] .. | sepsimpl ].
     repeat straightline'.
-    eauto.
+    use_hyp_with_matching_cmd; eauto;
+      ecancel_assumption.
   Qed.
 
   Lemma compile_bignum_literal :

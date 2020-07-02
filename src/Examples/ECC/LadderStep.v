@@ -64,7 +64,7 @@ Section __.
                   A' AA' B' BB' E' C' D' DA' CB' (* new intermediates *)
        : bignum,
          (emp (result = ((eval X4 mod M, eval Z4 mod M),
-                         (eval X5 mod M, eval Z5 mod M))
+                            (eval X5 mod M, eval Z5 mod M))
                /\ bounded_by tight_bounds X4
                /\ bounded_by tight_bounds Z4
                /\ bounded_by tight_bounds X5
@@ -187,7 +187,7 @@ Section __.
       repeat straightline'.
       repeat match goal with H : eval _ mod _ = _ |- _ =>
                              rewrite H in * end.
-      auto.
+      eauto.
     Qed.
 
   Ltac ladderstep_compile_custom :=

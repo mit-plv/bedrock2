@@ -38,10 +38,11 @@ Section Specs.
            (exists Ra, (Scalar px x * Ra)%sep mem)
            /\ Rr mem)
           ===>
-          sctestbit @ [px; wi] returns r
+          sctestbit @ [px; wi] returns rets
           ===>
-          (fun rets => emp (rets = [r]
-                            /\ r = word.of_Z (Z.b2z b)))).
+          (liftexists r,
+           emp (rets = [r]
+                /\ r = word.of_Z (Z.b2z b)))).
 End Specs.
 Existing Instances spec_of_sctestbit.
 

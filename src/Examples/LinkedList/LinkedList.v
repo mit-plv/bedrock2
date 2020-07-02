@@ -152,3 +152,74 @@ Section Compile.
     repeat straightline'. eauto.
   Qed.
 End Compile.
+
+Section Helpers.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {element : Type} {element_size : access_size}
+          {Element : address -> element -> Semantics.mem -> Prop}.
+
+  Local Notation element_size_in_bytes :=
+    (@Memory.bytes_per Semantics.width element_size).
+  Local Notation skip_element :=
+    (fun p : address =>
+       word.add p (word.of_Z (Z.of_nat element_size_in_bytes))).
+  Local Notation LinkedList :=
+    (@LinkedList semantics element element_size Element).
+
+  Lemma LinkedList_snoc_iff1 :
+    forall l pl x end_ptr,
+      Lift1Prop.iff1
+        (LinkedList end_ptr pl (l ++ [x])%list)
+        (liftexists px,
+            LinkedList px pl l
+            * Element px x
+            * scalar (skip_element px) end_ptr)%sep.
+  Proof.
+    induction l; cbn [LinkedList List.app]; intros.
+    { intros; split; intros; sepsimpl.
+      all:lift_eexists; sepsimpl; subst.
+      all:try ecancel_assumption.
+      all:reflexivity. }
+    { intros; split; intros.
+      { sepsimpl.
+        match goal with H : sep _ _ _ |- _ =>
+                        seprewrite_in IHl H end.
+        sepsimpl_hyps.
+        repeat (lift_eexists; sepsimpl; subst).
+        ecancel_assumption. }
+      { sepsimpl.
+        lift_eexists.
+        seprewrite IHl.
+        repeat (lift_eexists; sepsimpl; subst).
+        ecancel_assumption. } }
+  Qed.
+
+  Lemma LinkedList_append_impl1 :
+    forall l1 l2 p1 p2 end_ptr,
+      Lift1Prop.impl1
+        (LinkedList p2 p1 l1 * LinkedList end_ptr p2 l2)%sep
+        (LinkedList end_ptr p1 (l1 ++ l2)%list).
+  Proof.
+    induction l1; cbn [LinkedList List.app]; intros.
+    { intro; intros.
+      sepsimpl; subst; eauto. }
+    { (* TODO: this proof would be nicer if impl1 automation was better *)
+      rewrite !sep_ex1_l.
+      eapply Lift1Prop.impl1_ex1_l.
+      intros.
+      eapply Lift1Prop.impl1_ex1_r.
+      erewrite <-IHl1 with (p2 := p2).
+      repeat intro.
+      ecancel_assumption. }
+  Qed.
+
+  Lemma ll_next_eq {A} (ll ll' : linkedlist A) (x : A) :
+    ll = x :: ll' -> ll_next ll = ll'.
+  Proof. intros; subst; reflexivity. Qed.
+
+  Lemma ll_hd_next_eq {A} (ll : linkedlist A) (d : A) :
+    ll <> nil ->
+    ll = ll_hd d ll :: ll_next ll.
+  Proof. intros; subst; destruct ll; cbn; congruence. Qed.
+End Helpers.

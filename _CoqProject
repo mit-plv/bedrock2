@@ -20,6 +20,7 @@ src/Examples/KVStore/KVStore.v
 src/Examples/KVStore/Manual.v
 src/Examples/KVStore/Properties.v
 src/Examples/KVStore/Tactics.v
+src/Examples/LinkedList/Find.v
 src/Examples/LinkedList/LinkedList.v
 src/Examples/Swap/Properties.v
 src/Examples/Swap/Swap.v

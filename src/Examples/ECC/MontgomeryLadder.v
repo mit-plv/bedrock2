@@ -158,6 +158,7 @@ Section __.
                (_ : nat)
                (gst : bool)
                (st : point * point * bool)
+               (_ : list word)
       : Semantics.mem -> Prop :=
       let P1 := fst (fst st) in
       let P2 := snd (fst st) in
