@@ -478,8 +478,7 @@ Section with_semantics.
 
   Lemma postcondition_func_postcondition_cmd
         (spec : list word -> Semantics.mem -> Prop)
-        k R tr mem locals retvars n functions :
-    length retvars = n ->
+        k R tr mem locals retvars functions :
     (WeakestPrecondition.cmd
        (WeakestPrecondition.call functions)
        k tr mem locals
@@ -492,16 +491,12 @@ Section with_semantics.
          WeakestPrecondition.list_map
            (WeakestPrecondition.get l) retvars
            (fun rets : list word =>
-              postcondition_func
-                (fun rets =>
-                   (emp (length rets = n) * (spec rets))%sep)
-                R tr tr' m' rets)).
+              postcondition_func spec R tr tr' m' rets)).
   Proof.
     cbv [postcondition_func postcondition_cmd]; intros.
     cleanup.
     use_hyp_with_matching_cmd; cleanup; subst.
     eapply getmany_list_map; sepsimpl; eauto.
-    eauto using map.getmany_of_list_length, eq_sym.
   Qed.
 End with_semantics.
 
@@ -522,10 +517,9 @@ Ltac setup :=
    end; cbv beta match delta [WeakestPrecondition.func]);
   repeat straightline; subst_lets_in_goal; cbn [length];
   first [ apply postcondition_func_norets_postcondition_cmd
-        | apply postcondition_func_postcondition_cmd;
-          [ cbn [length]; reflexivity | ] ];
+        | apply postcondition_func_postcondition_cmd ];
    match goal with
-   | |- context [ postcondition_cmd _ (fun r => _ ?spec r) ] =>
+   | |- context [ postcondition_cmd _ (?pred ?spec) ] =>
          let hd := term_head spec in
          unfold hd
    end.
