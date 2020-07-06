@@ -44,8 +44,10 @@ Infix "~>" := scalar (at level 40, only parsing).
 Notation "[[ locals ]]" := ({| value := locals; _value_ok := _ |}) (only printing).
 
 Definition postcondition_func
-           {semantics : Semantics.parameters} spec R tr :=
-  (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (rets : list address) =>
+           {semantics : Semantics.parameters}
+           (spec : list word -> Semantics.mem -> Prop)
+           R tr :=
+  (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (rets : list word) =>
      tr = tr'
      /\ sep (spec rets) R mem').
 
