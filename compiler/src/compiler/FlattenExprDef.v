@@ -176,6 +176,9 @@ Section FlattenExpr1.
     | Syntax.cmd.set x e =>
         let '(e', x', ngs') := flattenExpr ngs (Some x) e in (* assert(x' = x) *)
         (e', ngs')
+    | Syntax.cmd.stackalloc x n body =>
+        let '(body', ngs') := flattenStmt ngs body in
+        (FlatImp.SStackalloc x n body', ngs')
     | Syntax.cmd.cond cond sThen sElse =>
         let '(cond', bcond, ngs') := flattenExprAsBoolExpr ngs cond in
         let '(sThen', ngs'') := flattenStmt ngs' sThen in

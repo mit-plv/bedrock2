@@ -636,6 +636,14 @@ Section FlattenExpr1.
           { eapply flattenExpr_valid_resVar in E; maps. }
           { repeat eexists; repeat (split || eassumption || solve_MetricLog); maps. }
 
+    - (* exec.stackalloc *)
+      eapply @FlatImp.exec.stackalloc. 1: eassumption.
+      intros. rename H2 into IHexec.
+      eapply @FlatImp.exec.weaken.
+      { eapply IHexec; try reflexivity; try eassumption; maps. }
+      { intros. simpl in *. simp. do 2 eexists. ssplit; try eassumption.
+        do 2 eexists. ssplit; try eassumption; try solve_MetricLog. maps. }
+
     - (* if_true *)
       eapply @FlatImp.exec.seq.
       + eapply flattenBooleanExpr_correct_with_modVars; try eassumption. maps.

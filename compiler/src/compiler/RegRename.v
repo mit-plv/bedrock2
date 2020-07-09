@@ -92,6 +92,10 @@ Section RegAlloc.
       bind_opt x' <- map.get m x;
       bind_opt y' <- map.get m y;
       Some (m, SStore sz x' y', a)
+    | SStackalloc x n body =>
+      bind_opt (m', y, a') <- rename_assignment_lhs m x a;
+      bind_opt (m'', body', a'') <- rename m' body a';
+      Some (m'', SStackalloc y n body', a'')
     | SIf cond s1 s2 =>
       bind_opt (m', s1', a') <- rename m s1 a;
       bind_opt (m'', s2', a'') <- rename m' s2 a';
@@ -512,6 +516,31 @@ Section RegAlloc.
       1: srew_g; reflexivity.
       simpl. ssplit; eauto 10.
       refine (ex_intro _ nil (conj eq_refl _)). eauto.
+    - (* SStackalloc *)
+      specialize IHsH with (1 := E0).
+      apply_in_hyps @invert_NoDup_app.
+      apply_in_hyps @invert_Forall_app.
+      simp.
+      auto_specialize. simp.
+      split; [assumption|].
+      pose proof (rename_assignment_lhs_props E) as P. auto_specialize. simp.
+      unfold map.extends in *.
+      split; [eauto|].
+      split; [intros; srew_g; reflexivity|].
+      split. 2: simpl; eauto.
+      refine (ex_intro _ (_ ++ _) (conj _ (conj _ _))). 2: assumption.
+      1: rewrite <- List.app_assoc; reflexivity.
+      intros x' y A.
+      match goal with
+      | H: _ |- _ => specialize H with (1 := A); rename H into D
+      end.
+      destruct D as [D | D].
+      + rewrite in_app_iff. intuition idtac.
+      + apply_in_hyps app_inv_tail. subst used1.
+        match goal with
+        | H: forall _ _ _, _ \/ _ |- _ => specialize H with (1 := D); rename H into D'
+        end.
+        rewrite in_app_iff. intuition idtac.
     - (* SOp *)
       ssplit; simpl; eauto 10.
       intros; unfold map.extends in *; srew_g; reflexivity.
@@ -665,6 +694,7 @@ Section RegAlloc.
     induction sH; intros; simpl in *; simp; simpl;
       erewrite ?IHsH1 by eassumption;
       erewrite ?IHsH2 by eassumption;
+      erewrite ?IHsH by eassumption;
       try reflexivity.
     eapply rename_binds_preserves_length in E0.
     eapply map.getmany_of_list_length in E.
@@ -762,6 +792,16 @@ Section RegAlloc.
           eapply map.getmany_of_list_extends; eassumption.
         * eassumption.
         * eauto.
+    - (* @exec.stackalloc *)
+      eapply @exec.stackalloc. 1: eassumption.
+      rename H2 into IHexec.
+      intros.
+      eapply exec.weaken.
+      + apply_in_hyps @rename_assignment_lhs_props. simp.
+        apply_in_hyps @invert_NoDup_app. simp.
+        specialize IHexec with (6 := E0). eapply IHexec; try eassumption.
+        eauto using states_compat_put.
+      + cbv beta. intros. simp. eauto 10.
     - (* @exec.if_true *)
       eapply @exec.if_true.
       + eauto using eval_bcond_compat.
