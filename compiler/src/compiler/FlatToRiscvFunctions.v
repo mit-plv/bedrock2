@@ -1,6 +1,8 @@
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.rewr.
 Require Import coqutil.Datatypes.PropSet.
+Require Import Coq.Logic.FunctionalExtensionality.
+Require Import Coq.Logic.PropExtensionality.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Platform.RiscvMachine.
@@ -1561,24 +1563,26 @@ Section Proofs.
                  | H: valid_machine _ |- _ => clear H
                  end.
           clear IHexec.
-          (* TODO map_solver should work here, but it's too slow *)
-          unfold map.only_differ.
-          intros y.
-
-          admit.
-          (*
-          unfold PropSet.union, PropSet.elem_of, of_list.
-          destruct (in_dec Z.eq_dec x (modVars_as_list Z.eqb body)) as [HI | HNI].
-          1: clear -HI; auto.
-          destr (Z.eqb x RegisterNames.ra). {
-            subst. unfold singleton_set. auto.
+          repeat match goal with
+                 | H: map.only_differ _ _ _ |- _ => revert H
+                 end.
+          intros OD.
+          replace (of_list
+                     (if find (Z.eqb x) (modVars_as_list Z.eqb body)
+                      then modVars_as_list Z.eqb body
+                      else x :: modVars_as_list Z.eqb body))
+            with (union (singleton_set x) (of_list (modVars_as_list Z.eqb body))). 2: {
+            clear.
+            unfold union, of_list.
+            extensionality y.
+            apply propositional_extensionality.
+            unfold PropSet.elem_of, singleton_set.
+            destr (find (Z.eqb x) (modVars_as_list Z.eqb body)).
+            - apply List.find_some in E. simp. apply Z.eqb_eq in Er. subst z. intuition congruence.
+            - simpl. reflexivity.
           }
-          right.
-          lazymatch goal with
-          | H: map.putmany_of_list_zip ?S _ middle_regs1 = Some middle_regs2 |- _ =>
-            destruct (in_dec Z.eq_dec x S) as [HI' | HNI']
-          end.
-          *)
+          unfold Register, MachineInt in *.
+          map_solver locals_ok.
         * edestruct hl_mem_to_ll_mem with (mL := middle_mem) (mTraded := mStack') as (returned_bytes & L & Q).
           1, 2: eassumption.
           1: ecancel_assumption.
