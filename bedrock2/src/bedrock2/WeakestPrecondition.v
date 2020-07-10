@@ -67,7 +67,15 @@ Section WeakestPrecondition.
         bind_ex v <- dexpr m l ev;
         store sz m a v (fun m =>
         post t m l)
-      | cmd.stackalloc x n body => False (* TODO that's safe but not as useful as it could be *)
+      | cmd.stackalloc x n c =>
+        Z.modulo n (bytes_per_word width) = 0 /\
+        forall a mStack mCombined,
+          anybytes a n mStack -> map.split mCombined m mStack ->
+          dlet! l := map.put l x a in
+          rec c t mCombined l (fun t' mCombined' l' =>
+          exists m' mStack', 
+          anybytes a n mStack' /\ map.split mCombined' m' mStack' /\
+          post t' m' l')
       | cmd.cond br ct cf =>
         bind_ex v <- dexpr m l br;
         (word.unsigned v <> 0%Z -> rec ct t m l post) /\

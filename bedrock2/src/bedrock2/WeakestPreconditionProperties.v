@@ -76,6 +76,8 @@ Section WeakestPrecondition.
           { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
           { eauto. } }
         { eapply Proper_store; eauto; cbv [pointwise_relation Basics.impl]; eauto. } } }
+    { eapply H1; [ | | eapply H3; eassumption ].
+      2 : intros ? ? ? (?&?&?&?&?). all : eauto 7. }
     { destruct H1 as (?&?&?). eexists. split.
       { eapply Proper_expr.
         { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
