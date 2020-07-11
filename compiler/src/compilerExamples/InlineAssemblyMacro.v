@@ -96,7 +96,7 @@ Definition test: stmt var :=
         (SInteract [_r; _garbage] "Select"%string [_s; _a; _b; _c]))))).
 
 Instance compilation_params: FlatToRiscvDef.parameters. refine ({|
-  FlatToRiscvDef.compile_ext_call _ _ s :=
+  FlatToRiscvDef.compile_ext_call _ _ _ s :=
     match s with
     | SInteract results a args => compile_ext_call results a args
     | _ => []
@@ -104,7 +104,7 @@ Instance compilation_params: FlatToRiscvDef.parameters. refine ({|
 |}). all: case TODO. Defined.
 
 Definition compiled0: list Instruction.
-  refine (@compile_stmt compilation_params map.empty 0 test).
+  refine (@compile_stmt compilation_params map.empty 0 0 test).
 Defined.
 
 Goal False. Proof. let r := eval cbv in compiled0 in set (compiled := r). Abort.

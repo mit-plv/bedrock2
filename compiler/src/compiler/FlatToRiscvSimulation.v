@@ -44,7 +44,8 @@ Section Sim.
 
   Definition ghostConsts: GhostConsts := {|
     p_sp := stack_pastend;
-    num_stackwords := word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
+    rem_stackwords := word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
+    rem_framewords := 0;
     p_insts := p_call;
     insts := [[Jal RegisterNames.ra (f_entry_rel_pos + word.signed (word.sub functions_start p_call))]];
     program_base := functions_start;
@@ -68,7 +69,7 @@ Section Sim.
     (word.unsigned p_call) mod 4 = 0 ->
     (word.unsigned functions_start) mod 4 = 0 ->
     map.get (build_fun_pos_env prog) f_entry_name = Some f_entry_rel_pos ->
-    fits_stack ghostConsts.(num_stackwords) prog c ->
+    fits_stack ghostConsts.(rem_framewords) ghostConsts.(rem_stackwords) prog c ->
     good_e_impl prog ghostConsts.(e_pos) ->
     simulation (FlatImp.SimExec Z prog c) FlatToRiscvCommon.runsTo related.
   Proof.
@@ -95,11 +96,8 @@ Section Sim.
         match goal with
         | H: _ |- _ => exact H
         end.
-      + unfold good_reduced_e_impl.
-        split. {
-          clear. intros k v ?. eassumption.
-        }
-        assumption.
+      + clear. intros k v ?. eassumption.
+      + assumption.
       + eauto using fits_stack_call.
       + simpl. change (4 * BinIntDef.Z.of_nat 0) with 0. rewrite Z.add_0_r.
         rewrite_match. f_equal. f_equal. f_equal. ring.

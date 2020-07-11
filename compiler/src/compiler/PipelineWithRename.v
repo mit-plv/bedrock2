@@ -75,7 +75,7 @@ Module Import Pipeline.
     trace := list (mem * string * list word * (mem * list word));
     ExtSpec := trace -> mem -> string -> list word -> (mem -> list word -> Prop) -> Prop;
     ext_spec : ExtSpec;
-    compile_ext_call : string_keyed_map Z -> Z -> FlatImp.stmt Z -> list Instruction;
+    compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z -> list Instruction;
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
@@ -108,9 +108,9 @@ Module Import Pipeline.
     compile_ext_call_correct: forall resvars extcall argvars,
         compiles_FlatToRiscv_correctly
           compile_ext_call (FlatImp.SInteract resvars extcall argvars);
-    compile_ext_call_length_ignores_positions: forall posmap1 posmap2 c pos1 pos2,
-      List.length (compile_ext_call posmap1 pos1 c) =
-      List.length (compile_ext_call posmap2 pos2 c);
+    compile_ext_call_length_ignores_positions: forall stackoffset posmap1 posmap2 c pos1 pos2,
+      List.length (compile_ext_call posmap1 pos1 stackoffset c) =
+      List.length (compile_ext_call posmap2 pos2 stackoffset c);
   }.
 
 End Pipeline.
@@ -208,7 +208,7 @@ Section Pipeline1.
             (H_p_call: word.unsigned p_call mod 4 = 0)
             (H_p_functions: word.unsigned p_functions mod 4 = 0)
             (G: map.get (FlatToRiscvDef.build_fun_pos_env prog) f_entry_name = Some f_entry_rel_pos)
-            (F: fits_stack (word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word) prog
+            (F: fits_stack 0 (word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word) prog
                            (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])))
             (GEI: good_e_impl prog (FlatToRiscvDef.build_fun_pos_env prog)).
 
@@ -398,13 +398,8 @@ Section Pipeline1.
     - destruct width_cases as [E | E]; rewrite E; reflexivity.
     - unfold Z.divide.
       exists (2 ^ width / bytes_per_word).
-      unfold bytes_per_word.
-      destruct width_cases as [E | E]; rewrite E; simpl.
-      1: change (Z.of_nat (Pos.to_nat 4)) with (2 ^ 2).
-      2: change (Z.of_nat (Pos.to_nat 8)) with (2 ^ 3).
-      all: rewrite <- Z.pow_sub_r by blia;
-           rewrite <- Z.pow_add_r by blia;
-           reflexivity.
+      unfold bytes_per_word, Memory.bytes_per_word.
+      destruct width_cases as [E | E]; rewrite E; reflexivity.
   Qed.
 
   Lemma stack_length_divisible: forall (ml: MemoryLayout) {mlOk: MemoryLayoutOk ml},
@@ -471,9 +466,9 @@ Section Pipeline1.
            | |- (_ + _)%nat = (_ + _)%nat => f_equal
            end.
 
-  Lemma compile_stmt_length_ignores_positions: forall posmap1 posmap2 c pos1 pos2,
-      List.length (FlatToRiscvDef.compile_stmt posmap1 pos1 c) =
-      List.length (FlatToRiscvDef.compile_stmt posmap2 pos2 c).
+  Lemma compile_stmt_length_ignores_positions: forall posmap1 posmap2 c stackoffset pos1 pos2,
+      List.length (FlatToRiscvDef.compile_stmt posmap1 pos1 stackoffset c) =
+      List.length (FlatToRiscvDef.compile_stmt posmap2 pos2 stackoffset c).
   Proof.
     induction c; intros; ignore_positions.
     apply compile_ext_call_length_ignores_positions.
@@ -700,7 +695,7 @@ Section Pipeline1.
       { unfold riscvPhase in *. simp. exact GetPos. }
       { simpl. unfold riscvPhase in *. simpl in *. simp.
         move E1 at bottom.
-        eapply fits_stack_seq. 1: eapply fits_stack_skip. {
+        eapply fits_stack_seq. 1: eapply fits_stack_skip. 1: reflexivity. {
           eapply Z.div_pos.
           - eapply proj1. eapply word.unsigned_range.
           - clear. unfold bytes_per_word, Memory.bytes_per.
@@ -716,12 +711,9 @@ Section Pipeline1.
         repeat match goal with
                | H: _ |- _ => autoforward with typeclass_instances in H
                end.
-        econstructor. 1: eassumption.
-        eapply fits_stack_monotone. 2: {
-          apply Z.sub_le_mono_r.
-          eassumption.
-        }
-        eapply stack_usage_correct; eassumption. }
+        econstructor. 1: reflexivity. 1: eassumption.
+        eapply fits_stack_monotone.
+        1: eapply stack_usage_correct; eassumption. 1: reflexivity. blia. }
       { unfold good_e_impl.
         intros.
         simpl in *.
@@ -832,6 +824,7 @@ Section Pipeline1.
         match goal with
         | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
         end.
+        rewrite Z.sub_0_r. symmetry.
         apply Hlength_stack_trash_words. }
       { reflexivity. }
       { unfold machine_ok in *. simp. assumption. }
@@ -857,7 +850,7 @@ Section Pipeline1.
       eexists. split. 1: eassumption.
       unfold machine_ok. ssplit; try assumption.
       + assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
-        cbv [num_stackwords ghostConsts] in H2lrrrrrrrrrll.
+        cbv [rem_stackwords rem_framewords ghostConsts] in H2lrrrrrrrrrll.
         cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).
         exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x))) stack_trash).
@@ -868,12 +861,12 @@ Section Pipeline1.
             unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
           }
           rewrite (length_flat_map _ (Z.to_nat bytes_per_word)).
-          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia.
-            rewrite H2lrrrrrrrrrll, <-Z_div_exact_2; try trivial.
+          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H2lrrrrrrrrrll.
+            rewrite <-H2lrrrrrrrrrll, <-Z_div_exact_2; try trivial.
             { eapply Z.lt_gt; assumption. }
             { eapply stack_length_divisible; trivial. } }
           intros w.
-          rewrite HList__tuple__length_to_list; trivial. }
+          rewrite HList.tuple.length_to_list; trivial. }
         use_sep_assumption.
         cbn [dframe xframe ghostConsts program_base ghostConsts e_pos e_impl p_insts insts].
         progress simpl (@FlatToRiscvCommon.mem (@FlatToRiscv_params p)).
@@ -882,7 +875,7 @@ Section Pipeline1.
           reflexivity.
         }
         cancel_seps_at_indices 0%nat 2%nat. {
-          cbn [num_stackwords ghostConsts p_sp].
+          cbn [rem_stackwords rem_framewords ghostConsts p_sp].
           replace (word.sub (stack_pastend ml) (word.of_Z (bytes_per_word *
                       (word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word))))
             with (stack_start ml). 2: {
