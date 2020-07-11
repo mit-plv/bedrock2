@@ -203,13 +203,15 @@ Section FlatToRiscv1.
                    :: (load_regs regs (offset + bytes_per_word))
     end.
 
-  (* number of words of stack allocation space needed *)
+  (* number of words of stack allocation space needed within current frame *)
   Fixpoint stackalloc_words(s: stmt Z): Z :=
     match s with
-      (* ignore negative values, and round up values that are not divisible by bytes_per_word *)
+    | SLoad _ _ _ | SStore _ _ _ | SLit _ _ | SOp _ _ _ _ | SSet _ _
+    | SSkip | SCall _ _ _ | SInteract _ _ _ => 0
+    | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 => Z.max (stackalloc_words s1) (stackalloc_words s2)
+    (* ignore negative values, and round up values that are not divisible by bytes_per_word *)
     | SStackalloc x n body => (Z.max 0 n + bytes_per_word - 1) / bytes_per_word
                               + stackalloc_words body
-    | _ => 0
     end.
 
   (* All positions are relative to the beginning of the progam, so we get completely
