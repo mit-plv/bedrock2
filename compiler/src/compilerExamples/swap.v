@@ -38,7 +38,7 @@ Axiom TODO: forall {T: Type}, T.
 
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
   funname_env T := TODO;
-  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ _ s :=
+  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ _ _ s :=
     match s with
     | FlatImp.SInteract _ fname _ =>
       if string_dec fname "nop" then
@@ -63,7 +63,11 @@ Instance pipeline_params : Pipeline.parameters. simple refine {|
 
 Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. Admitted.
 
-Definition allFuns: list swap.bedrock_func := [swap; swap_swap; main].
+Definition main_stackalloc :=
+  ("main", ([]: list String.string, []: list String.string,
+     cmd.stackalloc "x" 4 (cmd.stackalloc "y" 4 (cmd.call [] "swap_swap" [expr.var "x"; expr.var "y"])))).
+
+Definition allFuns: list swap.bedrock_func := [swap; swap_swap; main_stackalloc].
 
 Definition e := map.putmany_of_list allFuns map.empty.
 
@@ -102,51 +106,62 @@ Defined.
 Module PrintAssembly.
   Import riscv.Utility.InstructionNotations.
   Goal True. let r := eval unfold swap_asm in swap_asm in idtac (* r *). Abort.
-  (* Annotated (was 64bit, now we print for 32bit):
-
-  set_sp:
-     lui     x2, -4096
-     xori    x2, x2, -2048
-
-  main:
-     addi    x3, x0, 100   // load literals
-     addi    x4, x0, 108
-     sd      x2, x3, -16   // push args on stack
-     sd      x2, x4, -8
-     jal     x1, 64        // call swap_swap
+  (*
+  swap_swap:
+     addi    x2, x2, -20   // decrease sp
+     sw      x2, x1, 8     // save ra
+     sw      x2, x3, 0     // save registers modified by swap_swap
+     sw      x2, x4, 4
+     lw      x3, x2, 12    // load args
+     lw      x4, x2, 16
+     sw      x2, x3, -8    // store args for first call to swap
+     sw      x2, x4, -4
+     jal     x1, 36        // first call to swap
+     sw      x2, x3, -8    // store args for second call to swap
+     sw      x2, x4, -4
+     jal     x1, 24        // second call to swap
+     lw      x3, x2, 0     // restore registers modified by swap_swap
+     lw      x4, x2, 4
+     lw      x1, x2, 8     // load ra
+     addi    x2, x2, 20    // increase sp
+     jalr    x0, x1, 0     // return
 
   swap:
-     addi    x2, x2, -40   // decrease sp
-     sd      x2, x1, 16    // save ra
-     sd      x2, x5, 0     // save registers modified by swap
-     sd      x2, x6, 8
-     ld      x3, x2, 24    // load args
-     ld      x4, x2, 32    // body of swap
-     ld      x5, x4, 0
-     ld      x6, x3, 0
-     sd      x4, x6, 0
-     sd      x3, x5, 0
-     ld      x5, x2, 0     // restore modified registers
-     ld      x6, x2, 8
-     ld      x1, x2, 16    // load ra
-     addi    x2, x2, 40    // increase sp
+     addi    x2, x2, -28   // decrease sp
+     sw      x2, x1, 16    // save ra
+     sw      x2, x5, 0     // save registers modified by swap
+     sw      x2, x6, 4
+     sw      x2, x3, 8
+     sw      x2, x4, 12
+     lw      x3, x2, 20    // load args
+     lw      x4, x2, 24
+     lw      x5, x4, 0     // body of swap
+     lw      x6, x3, 0
+     sw      x4, x6, 0
+     sw      x3, x5, 0
+     lw      x5, x2, 0     // restore registers modified by swap
+     lw      x6, x2, 4
+     lw      x3, x2, 8
+     lw      x4, x2, 12
+     lw      x1, x2, 16    // restore ra
+     addi    x2, x2, 28    // increase sp
      jalr    x0, x1, 0     // return
 
-  swap_swap:
-     addi    x2, x2, -24   // decrease sp
-     sd      x2, x1, 0     // save ra
-     ld      x3, x2, 8     // load args from stack
-     ld      x4, x2, 16
-     sd      x2, x3, -16
-     sd      x2, x4, -8
-     jal     x1, -84       // first call to swap
-     sd      x2, x3, -16   // previous call had no ret vals to be loaded. push args onto stack
-     sd      x2, x4, -8
-     jal     x1, -96       // second call to swap
-     ld      x1, x2, 0     // load ra
-     addi    x2, x2, 24    // increase sp
+  main:
+     addi    x2, x2, -20   // decrease sp
+     sw      x2, x1, 16    // save ra
+     sw      x2, x3, 8     // save registers modified by main
+     sw      x2, x4, 12
+     addi    x3, x2, 4     // first stackalloc invocation returns sp+4
+     addi    x4, x2, 0     // second stackalloc invocation returns sp
+     sw      x2, x3, -8    // store args for call to swap_swap
+     sw      x2, x4, -4
+     jal     x1, -176      // call swap_swap
+     lw      x3, x2, 8     // restore registers modified by main
+     lw      x4, x2, 12
+     lw      x1, x2, 16    // restore ra
+     addi    x2, x2, 20    // increase sp
      jalr    x0, x1, 0     // return
-
   *)
 End PrintAssembly.
 
