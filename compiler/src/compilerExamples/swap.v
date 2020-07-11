@@ -23,6 +23,7 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require bedrock2.Hexdump.
 Require Import bedrock2Examples.swap.
+Require Import bedrock2Examples.stackalloc.
 
 Open Scope Z_scope.
 Open Scope string_scope.
@@ -67,7 +68,7 @@ Definition main_stackalloc :=
   ("main", ([]: list String.string, []: list String.string,
      cmd.stackalloc "x" 4 (cmd.stackalloc "y" 4 (cmd.call [] "swap_swap" [expr.var "x"; expr.var "y"])))).
 
-Definition allFuns: list swap.bedrock_func := [swap; swap_swap; main_stackalloc].
+Definition allFuns: list swap.bedrock_func := [swap; swap_swap; main_stackalloc; stacknondet; stackdisj].
 
 Definition e := map.putmany_of_list allFuns map.empty.
 
@@ -147,6 +148,61 @@ Module PrintAssembly.
      addi    x2, x2, 28    // increase sp
      jalr    x0, x1, 0     // return
 
+  stacknondet:
+     addi    x2, x2, -56
+     sw      x2, x1, 44
+     sw      x2, x5, 4
+     sw      x2, x6, 8
+     sw      x2, x7, 12
+     sw      x2, x3, 16
+     sw      x2, x8, 20
+     sw      x2, x9, 24
+     sw      x2, x10, 28
+     sw      x2, x11, 32
+     sw      x2, x12, 36
+     sw      x2, x4, 40
+     addi    x5, x2, 0
+     lw      x6, x5, 0
+     addi    x7, x0, 8
+     srl     x3, x6, x7
+     addi    x8, x0, 3
+     add     x9, x3, x8
+     addi    x10, x0, 42
+     sb      x9, x10, 0
+     lw      x11, x5, 0
+     addi    x12, x0, 8
+     srl     x4, x11, x12
+     sw      x2, x3, 48
+     sw      x2, x4, 52
+     lw      x5, x2, 4
+     lw      x6, x2, 8
+     lw      x7, x2, 12
+     lw      x3, x2, 16
+     lw      x8, x2, 20
+     lw      x9, x2, 24
+     lw      x10, x2, 28
+     lw      x11, x2, 32
+     lw      x12, x2, 36
+     lw      x4, x2, 40
+     lw      x1, x2, 44
+     addi    x2, x2, 56
+     jalr    x0, x1, 0
+
+  stackdisj:
+     addi    x2, x2, -28
+     sw      x2, x1, 16
+     sw      x2, x3, 8
+     sw      x2, x4, 12
+     addi    x3, x2, 4
+     addi    x4, x2, 0
+     sw      x2, x3, 20
+     sw      x2, x4, 24
+     lw      x3, x2, 8
+     lw      x4, x2, 12
+     lw      x1, x2, 16
+     addi    x2, x2, 28
+     jalr    x0, x1, 0
+
   main:
      addi    x2, x2, -20   // decrease sp
      sw      x2, x1, 16    // save ra
@@ -156,7 +212,7 @@ Module PrintAssembly.
      addi    x4, x2, 0     // second stackalloc invocation returns sp
      sw      x2, x3, -8    // store args for call to swap_swap
      sw      x2, x4, -4
-     jal     x1, -176      // call swap_swap
+     jal     x1, -380      // call swap_swap
      lw      x3, x2, 8     // restore registers modified by main
      lw      x4, x2, 12
      lw      x1, x2, 16    // restore ra
