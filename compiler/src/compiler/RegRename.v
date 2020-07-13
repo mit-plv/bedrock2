@@ -5,6 +5,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.simpl_rewrite.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import riscv.Utility.Utility.
+Require Import coqutil.Z.Lia.
 Require Import coqutil.Macros.unique.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Properties.
@@ -16,6 +17,7 @@ Require Import coqutil.Datatypes.ListSet.
 Require Import compiler.Simp.
 Require Import compiler.Simulation.
 
+Open Scope Z_scope.
 
 Notation "'bind_opt' x <- a ; f" :=
   (match a with
@@ -34,16 +36,11 @@ Section RegAlloc.
   Local Notation stmt  := (@FlatImp.stmt srcvar). (* input type *)
   Local Notation stmt' := (@FlatImp.stmt impvar). (* output type *)
 
-  Variable available_impvars: list impvar.
-
-  Definition rename_assignment_lhs(m: src2imp)(x: srcvar)(a: list impvar):
-    option (src2imp * impvar * list impvar) :=
+  Definition rename_assignment_lhs(m: src2imp)(x: srcvar)(a: impvar):
+    option (src2imp * impvar * impvar) :=
     match map.get m x with
     | Some y => Some (m, y, a)
-    | None   => match a with
-                | y :: rest => Some (map.put m x y, y, rest)
-                | nil => None
-                end
+    | None   => Some (map.put m x a, a, a + 1)
     end.
 
   Definition rename_assignment_rhs(m: src2imp)(s: stmt)(y: impvar): option stmt' :=
@@ -56,8 +53,8 @@ Section RegAlloc.
     | _ => None
     end.
 
-  Fixpoint rename_binds(m: src2imp)(binds: list srcvar)(a: list impvar):
-    option (src2imp * list impvar * list impvar) :=
+  Fixpoint rename_binds(m: src2imp)(binds: list srcvar)(a: impvar):
+    option (src2imp * list impvar * impvar) :=
     match binds with
     | nil => Some (m, nil, a)
     | x :: binds =>
@@ -80,9 +77,9 @@ Section RegAlloc.
   Fixpoint rename
            (m: src2imp)              (* current mapping, growing *)
            (s: stmt)                 (* current sub-statement *)
-           (a: list impvar)          (* available registers, shrinking *)
+           (a: impvar)               (* smallest available register, increasing *)
            {struct s}
-    : option (src2imp * stmt' * list impvar) :=
+    : option (src2imp * stmt' * impvar) :=
     match s with
     | SLoad _ x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
       bind_opt (m', y, a) <- rename_assignment_lhs m x a;
@@ -121,16 +118,20 @@ Section RegAlloc.
     | SSkip => Some (m, SSkip, a)
     end.
 
-  Definition rename_stmt(m: src2imp)(s: stmt)(av: list impvar): option stmt' :=
+  Definition rename_stmt(m: src2imp)(s: stmt)(av: impvar): option stmt' :=
     bind_opt (_, s', _) <- rename m s av; Some s'.
+
+  (* 0 is the constant 0, 1 is the return address register, 2 is the stack pointer, 3 onward is available *)
+  Definition lowest_available_impvar := 3.
+  Definition lowest_nonregister := 32.
 
   Definition rename_fun(F: list srcvar * list srcvar * stmt):
     option (list impvar * list impvar * stmt') :=
     let '(argnames, retnames, body) := F in
-    bind_opt (m, argnames', av) <- rename_binds map.empty argnames available_impvars;
+    bind_opt (m, argnames', av) <- rename_binds map.empty argnames lowest_available_impvar;
     bind_opt (m, retnames', av) <- rename_binds m retnames av;
-    bind_opt (_, body', _) <- rename m body av;
-    Some (argnames', retnames', body').
+    bind_opt (_, body', av) <- rename m body av;
+    if Z.leb av lowest_nonregister then Some (argnames', retnames', body') else None.
 
   Context {W: Utility.Words} {mem: map.map word byte}.
   Context {srcLocals: map.map srcvar word}.
@@ -254,14 +255,22 @@ Section RegAlloc.
     intros.
     unfold rename_assignment_lhs in *.
     destruct_one_match_hyp; try congruence.
-    destruct_one_match_hyp; try congruence.
     simp.
     apply map.get_put_same.
   Qed.
 
+  (* domain of m is upper-bounded by bound *)
+  Definition dom_bound(m: src2imp)(bound: impvar): Prop :=
+    forall k v, map.get m k = Some v -> v < bound.
+
+  Lemma dom_bound_empty: forall bound, dom_bound map.empty bound.
+  Proof.
+    unfold dom_bound. intros. rewrite map.get_empty in H. discriminate.
+  Qed.
+
   Lemma states_compat_put: forall lH lL r x av r' y av' v,
       map.injective r ->
-      map.not_in_range r av ->
+      dom_bound r av ->
       rename_assignment_lhs r x av = Some (r', y, av') ->
       states_compat lH r lL ->
       states_compat (map.put lH x v) r' (map.put lL y v).
@@ -282,18 +291,19 @@ Section RegAlloc.
         specialize H with (1 := E) (2 := H2l). congruence.
     - rewrite map.get_put_dec in H3.
       setoid_rewrite map.get_put_dec.
-      unfold map.not_in_range in *. simp.
+      unfold dom_bound in *. simp.
       destruct_one_match; subst; simp.
       + eexists. split; [reflexivity|].
         destruct_one_match; subst; simp; congruence.
       + specialize H2 with (1 := H3). simp.
         eexists. split; [eassumption|].
         destruct_one_match; try congruence.
+        specialize H0 with (1 := H2l). exfalso. blia.
   Qed.
 
   Lemma states_compat_put': forall lH lL r x av r' y av' v,
       map.injective r ->
-      map.not_in_range r av ->
+      dom_bound r av ->
       rename_assignment_lhs r x av = Some (r', y, av') ->
       states_compat' lH r lL ->
       states_compat' (map.put lH x v) r' (map.put lL y v).
@@ -306,8 +316,10 @@ Section RegAlloc.
       unfold map.injective in H.
       specialize H with (1 := E) (2 := H3). congruence.
     - rewrite map.get_put_dec in H3.
-      unfold map.not_in_range in *. simp.
-      do 2 destruct_one_match; subst; try congruence. eauto.
+      unfold dom_bound in *. simp.
+      do 2 destruct_one_match; subst; try congruence.
+      + specialize H0 with (1 := H3). exfalso. blia.
+      + eauto.
   Qed.
 
   Ltac srew_sidec := first [rewrite map.get_put_same; reflexivity | eauto].
@@ -397,55 +409,47 @@ Section RegAlloc.
   Lemma rename_assignment_lhs_props: forall {x r1 r2 y av1 av2},
       rename_assignment_lhs r1 x av1 = Some (r2, y, av2) ->
       map.injective r1 ->
-      map.not_in_range r1 av1 ->
-      NoDup av1 ->
+      dom_bound r1 av1 ->
       map.injective r2 /\
       map.extends r2 r1 /\
       (forall r3 av3, map.extends r3 r2 -> rename_assignment_lhs r3 x av3 = Some (r3, y, av3)) /\
-      (exists used, av1 = used ++ av2 /\
-                    map.not_in_range r2 av2 /\
-                    forall x y, map.get r2 x = Some y -> List.In y used \/ map.get r1 x = Some y) /\
+      av1 <= av2 /\
+      dom_bound r2 av2 /\
+      (forall x y, map.get r2 x = Some y -> av1 <= y < av2 \/ map.get r1 x = Some y) /\
       map.get r2 x = Some y.
   Proof.
-    pose proof (map.not_in_range_put (ok := src2impOk)).
     intros.
-    unfold rename_assignment_lhs, map.extends, map.not_in_range in *; intros; simp.
-    destruct_one_match_hyp; simp;
-      (split; [ (try eapply map.injective_put); eassumption
-              | split;
-                [ intros; rewrite ?map.get_put_diff by congruence
-                | split; [ intros; rewrite ?map.get_put_same; srew_g
-                         | split; [ first [ refine (ex_intro _ nil (conj eq_refl _))
-                                          | refine (ex_intro _ [_] (conj eq_refl _)) ]
-                                  | rewrite ?map.get_put_same; eauto ]]];
-                eauto ]).
-    split; eauto.
-    simpl.
-    intros.
-    rewrite map.get_put_dec in H0. destruct_one_match_hyp; try assert (y = y0) by congruence; auto.
+    unfold rename_assignment_lhs, map.extends, dom_bound in *; intros; simp.
+    destruct_one_match_hyp; simp; ssplit; (intuition eauto); srew_g;
+      try blia;
+      rewrite ?map.get_put_diff by congruence;
+      rewrite ?map.get_put_same by congruence;
+      eauto;
+      try (eapply map.injective_put; firstorder blia).
+    - rewrite map.get_put_dec in H. destruct_one_match_hyp; simp; subst; firstorder blia.
+    - rewrite map.get_put_dec in H. destruct_one_match_hyp; simp; subst; try blia; eauto.
   Qed.
 
   (* a list of useful properties of rename_binds, all proved in one induction *)
   Lemma rename_binds_props: forall {bH r1 r2 bL av1 av2},
       rename_binds r1 bH av1 = Some (r2, bL, av2) ->
       map.injective r1 ->
-      map.not_in_range r1 av1 ->
-      NoDup av1 ->
+      dom_bound r1 av1 ->
       map.injective r2 /\
       map.extends r2 r1 /\
       (forall r3 av3, map.extends r3 r2 -> rename_binds r3 bH av3 = Some (r3, bL, av3)) /\
-      (exists used, av1 = used ++ av2 /\
-                    map.not_in_range r2 av2 /\
-                    forall x y, map.get r2 x = Some y -> List.In y used \/ map.get r1 x = Some y) /\
+      av1 <= av2 /\
+      dom_bound r2 av2 /\
+      (forall x y, map.get r2 x = Some y -> av1 <= y < av2 \/ map.get r1 x = Some y) /\
       map.getmany_of_list r2 bH = Some bL.
   Proof.
     induction bH; intros; simpl in *; simp.
     - split; [assumption|].
       split; [apply extends_refl|].
       split; [intros; reflexivity|].
-      split; [|reflexivity].
-      exists nil.
       split; [reflexivity|].
+      split; [assumption|].
+      split; [|reflexivity].
       eauto.
     - specialize IHbH with (1 := E0).
       destruct (rename_assignment_lhs_props E); try assumption. simp.
@@ -456,19 +460,18 @@ Section RegAlloc.
       ssplit.
       + intros. eapply extends_trans; eassumption.
       + intros. srew_g. reflexivity.
-      + refine (ex_intro _ (_ ++ _) (conj _ (conj _ _))).
-        2: eassumption.
-        1: rewrite <- List.app_assoc; reflexivity.
-        intros x y A.
+      + blia.
+      + assumption.
+      + intros x y A.
         match goal with
         | H: _ |- _ => specialize H with (1 := A); rename H into D
         end.
         destruct D as [D | D].
-        * rewrite in_app_iff. intuition idtac.
+        * blia.
         * match goal with
           | H: forall _ _ _, _ \/ _ |- _ => specialize H with (1 := D); rename H into D'
           end.
-          rewrite in_app_iff. intuition idtac.
+          intuition blia.
       + unfold map.getmany_of_list in *. simpl. srew_g. reflexivity.
   Qed.
 
@@ -486,14 +489,13 @@ Section RegAlloc.
   Lemma rename_props: forall {sH r1 r2 sL av1 av2},
       rename r1 sH av1 = Some (r2, sL, av2) ->
       map.injective r1 ->
-      map.not_in_range r1 av1 ->
-      NoDup av1 ->
+      dom_bound r1 av1 ->
       map.injective r2 /\
       map.extends r2 r1 /\
       (forall r3 av3, map.extends r3 r2 -> rename r3 sH av3 = Some (r3, sL, av3)) /\
-      (exists used, av1 = used ++ av2 /\
-                    map.not_in_range r2 av2 /\
-                    forall x y, map.get r2 x = Some y -> List.In y used \/ map.get r1 x = Some y) /\
+      av1 <= av2 /\
+      dom_bound r2 av2 /\
+      (forall x y, map.get r2 x = Some y -> av1 <= y < av2 \/ map.get r1 x = Some y) /\
       ForallVars_stmt (fun y => exists x, map.get r2 x = Some y) sL.
   Proof.
     induction sH; simpl in *; intros; simp;
@@ -515,7 +517,7 @@ Section RegAlloc.
                       eauto]).
       1: srew_g; reflexivity.
       simpl. ssplit; eauto 10.
-      refine (ex_intro _ nil (conj eq_refl _)). eauto.
+      reflexivity.
     - (* SStackalloc *)
       specialize IHsH with (1 := E0).
       apply_in_hyps @invert_NoDup_app.
@@ -527,20 +529,20 @@ Section RegAlloc.
       unfold map.extends in *.
       split; [eauto|].
       split; [intros; srew_g; reflexivity|].
+      split; [blia|].
+      split; [assumption|].
       split. 2: simpl; eauto.
-      refine (ex_intro _ (_ ++ _) (conj _ (conj _ _))). 2: assumption.
-      1: rewrite <- List.app_assoc; reflexivity.
+      (*firstorder blia. too slow and fails, COQBUG https://github.com/coq/coq/issues/12687 *)
       intros x' y A.
       match goal with
       | H: _ |- _ => specialize H with (1 := A); rename H into D
       end.
       destruct D as [D | D].
-      + rewrite in_app_iff. intuition idtac.
-      + apply_in_hyps app_inv_tail. subst used1.
-        match goal with
+      + intuition blia.
+      + match goal with
         | H: forall _ _ _, _ \/ _ |- _ => specialize H with (1 := D); rename H into D'
         end.
-        rewrite in_app_iff. intuition idtac.
+        intuition blia.
     - (* SOp *)
       ssplit; simpl; eauto 10.
       intros; unfold map.extends in *; srew_g; reflexivity.
@@ -555,6 +557,8 @@ Section RegAlloc.
       unfold map.extends in *.
       split; [eauto|].
       split; [intros; srew_g; reflexivity|].
+      split; [blia|].
+      split; [assumption|].
       split. 2: {
         simpl. ssplit.
         + eapply ForallVars_bcond_impl. 2: eassumption.
@@ -563,18 +567,16 @@ Section RegAlloc.
           simpl. intros. simp. eauto.
         + eauto.
       }
-      refine (ex_intro _ (_ ++ _) (conj _ (conj _ _))). 2: assumption.
-      1: rewrite <- List.app_assoc; reflexivity.
       intros x y A.
       match goal with
       | H: _ |- _ => specialize H with (1 := A); rename H into D
       end.
       destruct D as [D | D].
-      + rewrite in_app_iff. intuition idtac.
+      + intuition blia.
       + match goal with
         | H: forall _ _ _, _ \/ _ |- _ => specialize H with (1 := D); rename H into D'
         end.
-        rewrite in_app_iff. intuition idtac.
+        intuition blia.
     - (* SLoop *)
       specialize IHsH1 with (1 := E). auto_specialize. simp.
       apply_in_hyps @invert_NoDup_app.
@@ -588,18 +590,18 @@ Section RegAlloc.
       unfold map.extends in *.
       ssplit.
       + intros; srew_g; reflexivity.
-      + refine (ex_intro _ (_ ++ _) (conj _ (conj _ _))). 2: assumption.
-        1: rewrite <- List.app_assoc; reflexivity.
-        intros x y A.
+      + blia.
+      + assumption.
+      + intros x y A.
         match goal with
         | H: _ |- _ => specialize H with (1 := A); rename H into D
         end.
         destruct D as [D | D].
-        * rewrite in_app_iff. intuition idtac.
+        * intuition blia.
         * match goal with
           | H: forall _ _ _, _ \/ _ |- _ => specialize H with (1 := D); rename H into D'
           end.
-          rewrite in_app_iff. intuition idtac.
+          intuition blia.
       + simpl. ssplit.
         * eapply ForallVars_bcond_impl. 2: eassumption.
           simpl. intros. simp. eauto.
@@ -616,26 +618,26 @@ Section RegAlloc.
       unfold map.extends in *.
       split; [eauto|].
       split; [intros; srew_g; reflexivity|].
-      split.
-      + refine (ex_intro _ (_ ++ _) (conj _ (conj _ _))). 2: assumption.
-        1: rewrite <- List.app_assoc; reflexivity.
-        intros x y A.
+      ssplit.
+      + blia.
+      + assumption.
+      + intros x y A.
         match goal with
         | H: _ |- _ => specialize H with (1 := A); rename H into D
         end.
         destruct D as [D | D].
-        * rewrite in_app_iff. intuition idtac.
+        * intuition blia.
         * match goal with
           | H: forall _ _ _, _ \/ _ |- _ => specialize H with (1 := D); rename H into D'
           end.
-          rewrite in_app_iff. intuition idtac.
+          intuition blia.
       + simpl. split.
         * eapply ForallVars_stmt_impl. 2: eassumption.
           simpl. intros. simp. eauto.
         * eauto.
     - (* SSkip *)
       repeat split; unfold map.extends in *; eauto.
-      exists nil. simpl. auto.
+      simpl. reflexivity.
     - (* SCall *)
       apply_in_hyps @rename_binds_props. simp; ssplit; eauto.
       + intros. pose proof @map.getmany_of_list_extends. srew_g. reflexivity.
@@ -652,8 +654,7 @@ Section RegAlloc.
 
   Lemma states_compat_putmany_of_list: forall srcvars lH lH' lL r impvars av r' av' values,
       map.injective r ->
-      map.not_in_range r av ->
-      NoDup av ->
+      dom_bound r av ->
       rename_binds r srcvars av = Some (r', impvars, av') ->
       states_compat lH r lL ->
       map.putmany_of_list_zip srcvars values lH = Some lH' ->
@@ -667,8 +668,8 @@ Section RegAlloc.
       apply_in_hyps @rename_assignment_lhs_props. simp.
       apply_in_hyps @invert_NoDup_app. simp.
       edestruct IHsrcvars as [lL' ?].
+      3: eassumption.
       4: eassumption.
-      5: eassumption.
       all: try eassumption.
       1: {
         eapply states_compat_put.
@@ -701,14 +702,13 @@ Section RegAlloc.
     congruence.
   Qed.
 
-  Lemma rename_correct(available_impvars_NoDup: NoDup available_impvars): forall eH eL,
+  Lemma rename_correct: forall eH eL,
       envs_related eH eL ->
       forall sH t m lH mc post,
       @exec _ srcSemanticsParams eH sH t m lH mc post ->
       forall lL r r' av av' sL,
       map.injective r ->
-      map.not_in_range r av ->
-      NoDup av ->
+      dom_bound r av ->
       rename r sH av = Some (r', sL, av') ->
       states_compat lH r lL ->
       @exec _ impSemanticsParams eL sL t m lL mc (fun t' m' lL' mc' =>
@@ -733,14 +733,14 @@ Section RegAlloc.
       rename l into lH.
       eapply @exec.interact; try eassumption.
       + eapply getmany_of_list_states_compat; eassumption.
-      + intros. specialize (H3 _ _ H7). simp.
+      + intros. specialize (H3 _ _ H6). simp.
         pose proof putmany_of_list_states_compat as P.
         specialize P with (1 := E0_uacl).
         pose proof states_compat_extends as Q.
-        specialize Q with (1 := E0_uacrl) (2 := H8).
+        specialize Q with (1 := E0_uacrl) (2 := H7).
         specialize P with (3 := Q); clear Q.
         specialize P with (1 := H3l).
-        specialize P with (1 := E0_uacrrrr).
+        specialize P with (1 := E0_uacrrrrrr).
         simp.
         eauto 10.
     - (* @exec.call *)
@@ -753,16 +753,11 @@ Section RegAlloc.
       apply_in_hyps @rename_binds_props.
       pose proof E1 as E1'.
       apply @rename_binds_props in E1;
-        [|eapply map.empty_injective|eapply map.not_in_range_empty|eapply available_impvars_NoDup].
-      (* remove the indirect dependency of available_impvars in H,
-         and replace H by a dummy hyp to preserve numbering *)
-      clear H. pose I as H.
+        [|eapply map.empty_injective|eapply dom_bound_empty].
       simp.
-      apply_in_hyps @invert_NoDup_app. simp.
       pose proof E2 as E2'.
       apply @rename_binds_props in E2; [|assumption..].
       simp.
-      apply_in_hyps @invert_NoDup_app. simp.
       apply_in_hyps @rename_props. simp.
       edestruct putmany_of_list_states_compat as [ lLF' [? ?] ].
       2: exact H2.
@@ -777,13 +772,12 @@ Section RegAlloc.
       + eassumption.
       + eauto.
       + cbv beta. intros. simp.
-        specialize H4 with (1 := H11r). move H4 at bottom. simp.
+        specialize H4 with (1 := H10r). move H4 at bottom. simp.
         edestruct states_compat_putmany_of_list as [ lL' [? ?] ].
-        5: exact H9.
-        5: eassumption.
+        4: exact H8.
+        4: eassumption.
         1: assumption.
-        3: exact E0.
-        1: assumption.
+        2: exact E0.
         1: assumption.
         do 2 eexists. split; [|split].
         * eapply getmany_of_list_states_compat.
@@ -799,7 +793,7 @@ Section RegAlloc.
       eapply exec.weaken.
       + apply_in_hyps @rename_assignment_lhs_props. simp.
         apply_in_hyps @invert_NoDup_app. simp.
-        specialize IHexec with (6 := E0). eapply IHexec; try eassumption.
+        specialize IHexec with (5 := E0). eapply IHexec; try eassumption.
         eauto using states_compat_put.
       + cbv beta. intros. simp. eauto 10.
     - (* @exec.if_true *)
@@ -819,7 +813,7 @@ Section RegAlloc.
         apply_in_hyps @invert_NoDup_app. simp.
         destruct (rename_props E0); try assumption. simp.
         apply_in_hyps @invert_NoDup_app. simp.
-        eapply IHexec. 4: eassumption. all: try eassumption.
+        eapply IHexec. 3: eassumption. all: try eassumption.
         eapply states_compat_extends; cycle 1; try eassumption.
     - (* @exec.loop *)
       destruct (rename_props E); try assumption. simp.
@@ -829,19 +823,19 @@ Section RegAlloc.
       rename IHexec into IH1.
       rename H4 into IH2.
       rename H6 into IH12.
-      specialize IH1 with (4 := E).
-      specialize IH2 with (6 := E1).
+      specialize IH1 with (3 := E).
+      specialize IH2 with (5 := E1).
       move IH1 at bottom.
       specialize (IH1 lL). auto_specialize.
       assert (rename r' (SLoop body1 cond body2) av' = Some (r', (SLoop s b s0), av')) as R. {
         simpl.
-        rewrite H12rl by assumption.
+        rewrite H11rl by assumption.
         rewrite (proj1 (rename_cond_props E0)) by eassumption.
-        rewrite H13rl by apply extends_refl.
+        rewrite H12rl by apply extends_refl.
         reflexivity.
       }
       simpl in R.
-      specialize IH12 with (5 := R). clear R.
+      specialize IH12 with (4 := R). clear R.
       move IH1 at bottom.
       eapply @exec.loop.
       + eapply IH1.
@@ -878,8 +872,8 @@ Section RegAlloc.
       apply_in_hyps @invert_NoDup_app. simp.
       destruct (rename_props E0); try assumption. simp.
       rename IHexec into IH1, H2 into IH2.
-      specialize IH1 with (4 := E).
-      specialize IH2 with (5 := E0).
+      specialize IH1 with (3 := E).
+      specialize IH2 with (4 := E0).
       eapply @exec.seq.
       + eapply IH1; eassumption.
       + cbv beta. intros. simp.
@@ -894,11 +888,11 @@ Section RegAlloc.
       (done = false -> l1 = map.empty /\ l2 = map.empty /\ mc1 = mc2).
       (* TODO could/should also relate l1 and l2 *)
 
-  Lemma renameSim(available_impvars_NoDup: NoDup available_impvars)
+  Lemma renameSim
         (e1: srcEnv)(e2: impEnv)(c1: stmt)(c2: stmt'):
     forall av' r',
       envs_related e1 e2 ->
-      rename map.empty c1 available_impvars = Some (r', c2, av') ->
+      rename map.empty c1 lowest_available_impvar = Some (r', c2, av') ->
       simulation (@FlatImp.SimExec _ srcSemanticsParams e1 c1)
                  (@FlatImp.SimExec _ impSemanticsParams e2 c2) related.
   Proof.
@@ -911,19 +905,17 @@ Section RegAlloc.
     simp.
     pose proof Ren as A.
     apply @rename_props in A;
-      [|eapply map.empty_injective|eapply map.not_in_range_empty|eapply available_impvars_NoDup].
+      [|eapply map.empty_injective|eapply dom_bound_empty].
     specialize (Rrr eq_refl).
     simp. try rewrite Arrrll in *.
     apply_in_hyps @invert_NoDup_app. simp.
     eapply exec.weaken.
     - eapply rename_correct.
-      1: rewrite Arrrll; eassumption.
       1: eassumption.
       1: eassumption.
-      4: {
+      3: {
         eapply Arrl. eapply extends_refl.
       }
-      1: eassumption.
       1: eassumption.
       1: eassumption.
       unfold states_compat. intros *. intro A.

@@ -145,22 +145,13 @@ Section Pipeline1.
     - apply mk_FlatImp_ext_spec_ok.
   Qed.
 
-  Definition available_registers: list Z :=
-    Eval cbv in List.unfoldn Z.succ 29 3.
-
-  Lemma NoDup_available_registers: NoDup available_registers.
-  Proof. cbv. repeat constructor; cbv; intros; intuition congruence. Qed.
-
-  Lemma valid_FlatImp_vars_available_registers: Forall FlatToRiscvDef.valid_FlatImp_var available_registers.
-  Proof. repeat constructor; cbv; intros; discriminate. Qed.
-
   Local Notation source_env := (@string_keyed_map p (list string * list string * Syntax.cmd)).
   Local Notation flat_env := (@string_keyed_map p (list string * list string * FlatImp.stmt string)).
   Local Notation renamed_env := (@string_keyed_map p (list Z * list Z * FlatImp.stmt Z)).
 
   Definition flattenPhase(prog: source_env): option flat_env := flatten_functions (2^10) prog.
   Definition renamePhase(prog: flat_env): option renamed_env :=
-    rename_functions available_registers prog.
+    rename_functions prog.
 
   (* Note: we could also track code size from the source program all the way to the target
      program, and a lot of infrastructure is already there, will do once/if we want to get
@@ -202,9 +193,9 @@ Section Pipeline1.
             (Hf: flatten_functions (2 ^ 10) e1 = Some e2).
     Let c2 := (@FlatImp.SSeq String.string FlatImp.SSkip (FlatImp.SCall [] funname [])).
     Let c3 := (@FlatImp.SSeq Z FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])).
-    Context (av' : list Z) (r' : string_keyed_map Z)
-            (ER: envs_related available_registers e2 prog)
-            (Ren: rename map.empty c2 available_registers = Some (r', c3, av'))
+    Context (av' : Z) (r' : string_keyed_map Z)
+            (ER: envs_related e2 prog)
+            (Ren: rename map.empty c2 lowest_available_impvar = Some (r', c3, av'))
             (H_p_call: word.unsigned p_call mod 4 = 0)
             (H_p_functions: word.unsigned p_functions mod 4 = 0)
             (G: map.get (FlatToRiscvDef.build_fun_pos_env prog) f_entry_name = Some f_entry_rel_pos)
@@ -215,7 +206,7 @@ Section Pipeline1.
     Definition flattenSim: simulation _ _ _ :=
       FlattenExprSimulation.flattenExprSim (2^10) e1 e2 funname Hf.
     Definition regAllocSim: simulation _ _ _ :=
-      renameSim available_registers (@ext_spec p) NoDup_available_registers
+      renameSim (@ext_spec p)
                 e2 prog c2 c3 av' r' ER Ren.
     Definition flatToRiscvSim: simulation _ _ _ :=
       FlatToRiscvSimulation.flatToRiscvSim
@@ -228,7 +219,7 @@ Section Pipeline1.
   End Sim.
 
   Lemma rename_fun_valid: forall argnames retnames body impl',
-      rename_fun available_registers (argnames, retnames, body) = Some impl' ->
+      rename_fun (argnames, retnames, body) = Some impl' ->
       NoDup argnames ->
       NoDup retnames ->
       FlatImp.stmt_size body < 2 ^ 10 ->
@@ -239,23 +230,16 @@ Section Pipeline1.
     simp.
     eapply rename_binds_props in E; cycle 1.
     { eapply map.empty_injective. }
-    { eapply map.not_in_range_empty. }
-    { apply NoDup_available_registers. }
+    { eapply dom_bound_empty. }
     simp.
     eapply rename_binds_props in E0; cycle 1.
     { assumption. }
     { assumption. }
-    { pose proof NoDup_available_registers as P.
-      replace available_registers with (used ++ l) in P by assumption.
-      apply invert_NoDup_app in P. tauto. }
     simp.
     pose proof E1 as E1'.
     eapply rename_props in E1; cycle 1.
     { assumption. }
     { assumption. }
-    { pose proof NoDup_available_registers as P.
-      replace available_registers with (used ++ used0 ++ l1) in P by assumption.
-      apply invert_NoDup_app in P. simp. apply invert_NoDup_app in Prl. simp. assumption. }
     simp.
     ssplit.
     - eapply Forall_impl. 2: {
@@ -267,10 +251,9 @@ Section Pipeline1.
       | X: _ |- _ => specialize X with (1 := H); rename X into A
       end.
       destruct A as [A | A].
-      + pose proof valid_FlatImp_vars_available_registers as V.
-        eapply (proj1 (Forall_forall _ _) V).
-        replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
-        rewrite ?in_app_iff. auto.
+      + apply Zle_bool_imp_le in E2.
+        unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
+        blia.
       + rewrite map.get_empty in A. discriminate A.
     - eapply Forall_impl. 2: {
         eapply map.getmany_of_list_in_map. eassumption.
@@ -281,18 +264,16 @@ Section Pipeline1.
       | X: _ |- _ => specialize X with (1 := H); rename X into A
       end.
       destruct A as [A | A].
-      + pose proof valid_FlatImp_vars_available_registers as V.
-        eapply (proj1 (Forall_forall _ _) V).
-        replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
-        rewrite ?in_app_iff. auto.
+      + apply Zle_bool_imp_le in E2.
+        unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
+        blia.
       + match goal with
         | X: _ |- _ => specialize X with (1 := A); rename X into B
         end.
         destruct B as [B | B].
-        * pose proof valid_FlatImp_vars_available_registers as V.
-          eapply (proj1 (Forall_forall _ _) V).
-          replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
-          rewrite ?in_app_iff. auto.
+        * apply Zle_bool_imp_le in E2.
+          unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
+          blia.
         * rewrite map.get_empty in B. discriminate B.
     - eapply FlatImp.ForallVars_stmt_impl; [|eassumption].
       simpl. intros. simp.
@@ -300,26 +281,23 @@ Section Pipeline1.
       | X: _ |- _ => specialize X with (1 := H); rename X into A
       end.
       destruct A as [A | A].
-      + pose proof valid_FlatImp_vars_available_registers as V.
-        eapply (proj1 (Forall_forall _ _) V).
-        replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
-        rewrite ?in_app_iff. auto.
+      + apply Zle_bool_imp_le in E2.
+        unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
+        blia.
       + match goal with
         | X: _ |- _ => specialize X with (1 := A); rename X into B
         end.
         destruct B as [B | B].
-        * pose proof valid_FlatImp_vars_available_registers as V.
-          eapply (proj1 (Forall_forall _ _) V).
-          replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
-          rewrite ?in_app_iff. auto.
+        * apply Zle_bool_imp_le in E2.
+          unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
+          blia.
         * match goal with
           | X: _ |- _ => specialize X with (1 := B); rename X into C
           end.
           destruct C as [C | C].
-          -- pose proof valid_FlatImp_vars_available_registers as V.
-             eapply (proj1 (Forall_forall _ _) V).
-             replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
-             rewrite ?in_app_iff. auto.
+          -- apply Zle_bool_imp_le in E2.
+             unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
+             blia.
           -- rewrite map.get_empty in C. discriminate C.
     - eapply map.getmany_of_list_injective_NoDup. 3: eassumption. all: eassumption.
     - eapply map.getmany_of_list_injective_NoDup. 3: eassumption. all: eassumption.
@@ -718,7 +696,7 @@ Section Pipeline1.
         intros.
         simpl in *.
         match goal with
-        | H: rename_functions _ _ = _ |- _ => rename H into RenameEq
+        | H: rename_functions _ = _ |- _ => rename H into RenameEq
         end.
         unfold rename_functions in RenameEq.
         match goal with
