@@ -129,7 +129,7 @@ Section Proofs.
 
     - (* SStore *)
       simpl_MetricRiscvMachine_get_set.
-      assert ((eq m * (program initialL_pc [[compile_store sz a v 0]] * Rexec * R))%sep
+      assert ((eq m * (program initialL_pc [[compile_store sz a v o]] * Rexec * R))%sep
         initialL_mem) as A by ecancel_assumption.
       match goal with
       | H: _ |- _ => pose proof (store_bytes_frame H A) as P; move H at bottom;

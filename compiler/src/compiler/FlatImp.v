@@ -31,8 +31,8 @@ Section Syntax.
   .
 
   Inductive stmt: Type :=
-    | SLoad(sz: Syntax.access_size)(x: varname)(a: varname)
-    | SStore(sz: Syntax.access_size)(a: varname)(v: varname)
+    | SLoad(sz: Syntax.access_size)(x: varname)(a: varname)(offset: Z)
+    | SStore(sz: Syntax.access_size)(a: varname)(v: varname)(offset: Z)
     | SStackalloc(x : varname)(nbytes: Z)(body: stmt)
     | SLit(x: varname)(v: Z)
     | SOp(x: varname)(op: bopname)(y z: varname)
@@ -46,8 +46,8 @@ Section Syntax.
 
   Definition stmt_size_body(rec: stmt -> Z)(s: stmt): Z :=
     match s with
-    | SLoad sz x a => 1
-    | SStore sz a v => 1
+    | SLoad sz x a o => 1
+    | SStore sz a v o => 1
     | SStackalloc x a body => 1 + rec body
     | SLit x v => 8
     | SOp x op y z => 2
@@ -75,9 +75,9 @@ Section Syntax.
 
   Fixpoint modVars_as_list(veq: varname -> varname -> bool)(s: stmt): list varname :=
     match s with
-    | SSkip | SStore _ _ _ => []
+    | SSkip | SStore _ _ _ _ => []
     | SStackalloc x n body => list_union veq [x] (modVars_as_list veq body)
-    | SLoad _ x _ | SLit x _ | SOp x _ _ _ | SSet x _ => [x]
+    | SLoad _ x _ _ | SLit x _ | SOp x _ _ _ | SSet x _ => [x]
     | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 =>
         list_union veq (modVars_as_list veq s1) (modVars_as_list veq s2)
     | SCall binds _ _ | SInteract binds _ _ => list_union veq binds []
@@ -92,8 +92,8 @@ Section Syntax.
   Definition ForallVars_stmt(P: varname -> Prop): stmt -> Prop :=
     fix rec s :=
       match s with
-      | SLoad _ x a => P x /\ P a
-      | SStore _ a x => P a /\ P x
+      | SLoad _ x a _ => P x /\ P a
+      | SStore _ a x _ => P a /\ P x
       | SStackalloc x n body => P x /\ rec body
       | SLit x _ => P x
       | SOp x _ y z => P x /\ P y /\ P z
@@ -230,14 +230,14 @@ Section FlatImp1.
       match f with
       | O => None (* out of fuel *)
       | S f => match s with
-        | SLoad sz x a =>
+        | SLoad sz x a o =>
             'Some a <- map.get st a;
-            'Some v <- load sz m a;
+            'Some v <- load sz m (word.add a (word.of_Z o));
             Some (map.put st x v, m)
-        | SStore sz a v =>
+        | SStore sz a v o =>
             'Some a <- map.get st a;
             'Some v <- map.get st v;
-            'Some m <- store sz m a v;
+            'Some m <- store sz m (word.add a (word.of_Z o)) v;
             Some (st, m)
         | SStackalloc x n body =>
           (* the deterministic semantics do not support stack alloc, because at
@@ -290,18 +290,18 @@ Section FlatImp1.
       subst;
       eauto 10.
 
-    Lemma invert_eval_SLoad: forall fuel initialSt initialM sz x y final,
-      eval_stmt (S fuel) initialSt initialM (SLoad sz x y) = Some final ->
+    Lemma invert_eval_SLoad: forall fuel initialSt initialM sz x y o final,
+      eval_stmt (S fuel) initialSt initialM (SLoad sz x y o) = Some final ->
       exists a v, map.get initialSt y = Some a /\
-                  load sz initialM a = Some v /\
+                  load sz initialM (word.add a (word.of_Z o)) = Some v /\
                   final = (map.put initialSt x v, initialM).
     Proof. inversion_lemma. Qed.
 
-    Lemma invert_eval_SStore: forall fuel initialSt initialM sz x y final,
-      eval_stmt (S fuel) initialSt initialM (SStore sz x y) = Some final ->
+    Lemma invert_eval_SStore: forall fuel initialSt initialM sz x y o final,
+      eval_stmt (S fuel) initialSt initialM (SStore sz x y o) = Some final ->
       exists a v finalM, map.get initialSt x = Some a /\
                          map.get initialSt y = Some v /\
-                         store sz initialM a v = Some finalM /\
+                         store sz initialM (word.add a (word.of_Z o)) v = Some finalM /\
                          final = (initialSt, finalM).
     Proof. inversion_lemma. Qed.
 
@@ -379,8 +379,8 @@ Section FlatImp1.
   (* returns the set of modified vars *)
   Fixpoint modVars(s: stmt varname): set varname :=
     match s with
-    | SLoad sz x y => singleton_set x
-    | SStore sz x y => empty_set
+    | SLoad sz x y o => singleton_set x
+    | SStore sz x y o => empty_set
     | SStackalloc x n body => union (singleton_set x) (modVars body)
     | SLit x v => singleton_set x
     | SOp x op y z => singleton_set x
@@ -449,22 +449,22 @@ Module exec.
               map.putmany_of_list_zip binds retvs l = Some l' /\
               post t' m' l' mc') ->
         exec (SCall binds fname args) t m l mc post
-    | load: forall t m l mc sz x a v addr post,
+    | load: forall t m l mc sz x a o v addr post,
         map.get l a = Some addr ->
-        load sz m addr = Some v ->
+        load sz m (word.add addr (word.of_Z o)) = Some v ->
         post t m (map.put l x v)
              (addMetricLoads 2
              (addMetricInstructions 1 mc)) ->
-        exec (SLoad sz x a) t m l mc post
-    | store: forall t m m' mc l sz a addr v val post,
+        exec (SLoad sz x a o) t m l mc post
+    | store: forall t m m' mc l sz a o addr v val post,
         map.get l a = Some addr ->
         map.get l v = Some val ->
-        store sz m addr val = Some m' ->
+        store sz m (word.add addr (word.of_Z o)) val = Some m' ->
         post t m' l
              (addMetricLoads 1
              (addMetricInstructions 1
              (addMetricStores 1 mc))) ->
-        exec (SStore sz a v) t m l mc post
+        exec (SStore sz a v o) t m l mc post
     | stackalloc: forall t mSmall l mc x n body post,
         n mod (bytes_per_word width) = 0 ->
         (forall a mStack mCombined,

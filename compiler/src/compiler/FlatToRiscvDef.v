@@ -206,7 +206,7 @@ Section FlatToRiscv1.
   (* number of words of stack allocation space needed within current frame *)
   Fixpoint stackalloc_words(s: stmt Z): Z :=
     match s with
-    | SLoad _ _ _ | SStore _ _ _ | SLit _ _ | SOp _ _ _ _ | SSet _ _
+    | SLoad _ _ _ _ | SStore _ _ _ _ | SLit _ _ | SOp _ _ _ _ | SSet _ _
     | SSkip | SCall _ _ _ | SInteract _ _ _ => 0
     | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 => Z.max (stackalloc_words s1) (stackalloc_words s2)
     (* ignore negative values, and round up values that are not divisible by bytes_per_word *)
@@ -227,8 +227,8 @@ Section FlatToRiscv1.
        s: statement to be compiled *)
     Fixpoint compile_stmt(mypos: Z)(stackoffset: Z)(s: stmt Z): list Instruction :=
       match s with
-      | SLoad  sz x y => [[compile_load  sz x y 0]]
-      | SStore sz x y => [[compile_store sz x y 0]]
+      | SLoad  sz x y ofs => [[compile_load  sz x y ofs]]
+      | SStore sz x y ofs => [[compile_store sz x y ofs]]
       | SStackalloc x n body =>
           [[Addi x sp (stackoffset-n)]] ++ compile_stmt (mypos + 4) (stackoffset-n) body
       | SLit x v => compile_lit x v

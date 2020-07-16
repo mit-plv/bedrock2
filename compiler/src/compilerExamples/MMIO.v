@@ -161,10 +161,10 @@ Section MMIO1.
     *)
     Definition doubler: stmt Z :=
       (SSeq (SLit addr magicMMIOAddrLit)
-            (SLoop (SLoad Syntax.access_size.four i addr)
+            (SLoop (SLoad Syntax.access_size.four i addr 0)
                    (CondNez i)
                    (SSeq (SOp s Syntax.bopname.add i i)
-                         (SStore Syntax.access_size.four addr s)))).
+                         (SStore Syntax.access_size.four addr s 0)))).
 
     Definition compiled: list Instruction := Eval cbv in compile_stmt map.empty 0 0 doubler.
     Goal True.

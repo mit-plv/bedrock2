@@ -111,7 +111,7 @@ Section FlattenExpr1.
     | Syntax.expr.load sz e =>
         let '(s1, r1, ngs') := flattenExpr ngs None e in
         let '(x, ngs'') := genFresh_if_needed resVar ngs' in
-        (FlatImp.SSeq s1 (FlatImp.SLoad sz x r1), x, ngs'')
+        (FlatImp.SSeq s1 (FlatImp.SLoad sz x r1 0), x, ngs'')
     | Syntax.expr.op op e1 e2 =>
         let '(s1, r1, ngs') := flattenExpr ngs None e1 in
         let '(s2, r2, ngs'') := flattenExpr ngs' None e2 in
@@ -172,7 +172,7 @@ Section FlattenExpr1.
     | Syntax.cmd.store sz a v =>
         let '(sa, ra, ngs') := flattenExpr ngs None a in
         let '(sv, rv, ngs'') := flattenExpr ngs' None v in
-        (FlatImp.SSeq sa (FlatImp.SSeq sv (FlatImp.SStore sz ra rv)), ngs'')
+        (FlatImp.SSeq sa (FlatImp.SSeq sv (FlatImp.SStore sz ra rv 0)), ngs'')
     | Syntax.cmd.set x e =>
         let '(e', x', ngs') := flattenExpr ngs (Some x) e in (* assert(x' = x) *)
         (e', ngs')

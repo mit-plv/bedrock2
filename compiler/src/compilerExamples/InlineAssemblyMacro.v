@@ -89,7 +89,7 @@ Definition _garbage: var := 31.
 Definition _s: var := 9.
 
 Definition test: stmt var :=
-  (SSeq (SLoad Syntax.access_size.four _s _addr)
+  (SSeq (SLoad Syntax.access_size.four _s _addr 0)
   (SSeq (SOp _a Syntax.bopname.or _inp1 _inp2)
   (SSeq (SOp _b Syntax.bopname.add _inp1 _inp2)
   (SSeq (SOp _c Syntax.bopname.sub _inp1 _inp2)

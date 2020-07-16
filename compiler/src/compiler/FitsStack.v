@@ -19,7 +19,8 @@ Section FitsStack.
   Definition stack_usage_impl(outer_rec: env -> stmt Z -> option (Z*Z))(e: env): stmt Z -> option (Z*Z) :=
     fix inner_rec s :=
       match s with
-      | SLoad _ _ _ | SStore _ _ _ | SLit _ _ | SOp _ _ _ _ | SSet _ _ | SSkip | SInteract _ _ _ => Some (0,0)
+      | SLoad _ _ _ _ | SStore _ _ _ _ | SLit _ _
+      | SOp _ _ _ _ | SSet _ _ | SSkip | SInteract _ _ _ => Some (0,0)
       | SStackalloc x n body =>
         if Z.leb 0 n then
           if Z.eqb (n mod SeparationLogic.bytes_per_word) 0 then

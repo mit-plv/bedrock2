@@ -181,12 +181,12 @@ Section WithParameters.
      - This predicate cannot be proved for recursive functions
      - Measured in words, needs to be multiplied by 4 or 8 *)
   Inductive fits_stack: Z -> Z -> env -> stmt Z -> Prop :=
-  | fits_stack_load: forall M N e sz x y,
+  | fits_stack_load: forall M N e sz x y o,
       0 <= M -> 0 <= N ->
-      fits_stack M N e (SLoad sz x y)
-  | fits_stack_store: forall M N e sz x y,
+      fits_stack M N e (SLoad sz x y o)
+  | fits_stack_store: forall M N e sz x y o,
       0 <= M -> 0 <= N ->
-      fits_stack M N e (SStore sz x y)
+      fits_stack M N e (SStore sz x y o)
   | fits_stack_stackalloc: forall M N e x n body,
       0 <= M ->
       0 <= n ->
@@ -523,14 +523,14 @@ Section FlatToRiscv1.
 
   Ltac simulate'' := repeat simulate''_step.
 
-  Lemma go_load: forall sz (x a: Z) (addr v: word) (initialL: RiscvMachineL) post f,
+  Lemma go_load: forall sz (x a ofs: Z) (addr v: word) (initialL: RiscvMachineL) post f,
       valid_register x ->
       valid_register a ->
       map.get initialL.(getRegs) a = Some addr ->
-      Memory.load sz (getMem initialL) addr = Some v ->
+      Memory.load sz (getMem initialL) (word.add addr (word.of_Z ofs)) = Some v ->
       mcomp_sat (f tt)
                 (withRegs (map.put initialL.(getRegs) x v) (updateMetrics (addMetricLoads 1) initialL)) post ->
-      mcomp_sat (Bind (execute (compile_load sz x a 0)) f) initialL post.
+      mcomp_sat (Bind (execute (compile_load sz x a ofs)) f) initialL post.
   Proof.
     unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per, Memory.bytes_per_word.
     destruct width_cases as [E | E];
@@ -553,16 +553,17 @@ Section FlatToRiscv1.
 
   Arguments invalidateWrittenXAddrs: simpl never.
 
-  Lemma go_store: forall sz (x a: Z) (addr v: word) (initialL: RiscvMachineL) m' post f,
+  Lemma go_store: forall sz (x a ofs: Z) (addr v: word) (initialL: RiscvMachineL) m' post f,
       valid_register x ->
       valid_register a ->
       map.get initialL.(getRegs) x = Some v ->
       map.get initialL.(getRegs) a = Some addr ->
-      Memory.store sz (getMem initialL) addr v = Some m' ->
-      mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs (@Memory.bytes_per width sz) addr
-                                                            (getXAddrs initialL))
+      Memory.store sz (getMem initialL) (word.add addr (word.of_Z ofs)) v = Some m' ->
+      mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs
+                                      (@Memory.bytes_per width sz) (word.add addr (word.of_Z ofs))
+                                      (getXAddrs initialL))
                        (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
-      mcomp_sat (Bind (execute (compile_store sz a x 0)) f) initialL post.
+      mcomp_sat (Bind (execute (compile_store sz a x ofs)) f) initialL post.
   Proof.
     unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per, Memory.bytes_per_word;
     destruct width_cases as [E | E];

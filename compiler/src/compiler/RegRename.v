@@ -45,7 +45,7 @@ Section RegAlloc.
 
   Definition rename_assignment_rhs(m: src2imp)(s: stmt)(y: impvar): option stmt' :=
     match s with
-    | SLoad sz x a => bind_opt a' <- map.get m a; Some (SLoad sz y a')
+    | SLoad sz x a ofs => bind_opt a' <- map.get m a; Some (SLoad sz y a' ofs)
     | SLit x v => Some (SLit y v)
     | SOp x op a b => bind_opt a' <- map.get m a; bind_opt b' <- map.get m b;
                       Some (SOp y op a' b')
@@ -81,14 +81,14 @@ Section RegAlloc.
            {struct s}
     : option (src2imp * stmt' * impvar) :=
     match s with
-    | SLoad _ x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
+    | SLoad _ x _ _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
       bind_opt (m', y, a) <- rename_assignment_lhs m x a;
       bind_opt s' <- rename_assignment_rhs m s y;
       Some (m', s', a)
-    | SStore sz x y =>
+    | SStore sz x y ofs =>
       bind_opt x' <- map.get m x;
       bind_opt y' <- map.get m y;
-      Some (m, SStore sz x' y', a)
+      Some (m, SStore sz x' y' ofs, a)
     | SStackalloc x n body =>
       bind_opt (m', y, a') <- rename_assignment_lhs m x a;
       bind_opt (m'', body', a'') <- rename m' body a';
