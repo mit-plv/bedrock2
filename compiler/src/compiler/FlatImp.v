@@ -89,7 +89,7 @@ Section Syntax.
     | CondNez x => P x
     end.
 
-  Definition ForallVars_stmt(P: varname -> Prop): stmt -> Prop :=
+  Definition Forall_vars_stmt(P: varname -> Prop)(P_calls: varname -> Prop): stmt -> Prop :=
     fix rec s :=
       match s with
       | SLoad _ x a _ => P x /\ P a
@@ -102,9 +102,11 @@ Section Syntax.
       | SLoop s1 c s2 => ForallVars_bcond P c /\ rec s1 /\ rec s2
       | SSeq s1 s2 => rec s1 /\ rec s2
       | SSkip => True
-      | SCall binds _ args => Forall P binds /\ Forall P args
-      | SInteract binds _ args => Forall P binds /\ Forall P args
+      | SCall binds _ args => Forall P_calls binds /\ Forall P_calls args
+      | SInteract binds _ args => Forall P_calls binds /\ Forall P_calls args
       end.
+
+  Definition ForallVars_stmt P := Forall_vars_stmt P P.
 
   Lemma ForallVars_bcond_impl: forall (P Q: varname -> Prop),
       (forall x, P x -> Q x) ->
@@ -113,12 +115,18 @@ Section Syntax.
     intros. destruct s; simpl in *; intuition eauto.
   Qed.
 
-  Lemma ForallVars_stmt_impl: forall (P Q: varname -> Prop),
+  Lemma Forall_vars_stmt_impl: forall (P Q P_calls Q_calls: varname -> Prop),
       (forall x, P x -> Q x) ->
-      forall s, ForallVars_stmt P s -> ForallVars_stmt Q s.
+      (forall x, P_calls x -> Q_calls x) ->
+      forall s, Forall_vars_stmt P P_calls s -> Forall_vars_stmt Q Q_calls s.
   Proof.
     induction s; intros; simpl in *; intuition eauto using ForallVars_bcond_impl, Forall_impl.
   Qed.
+
+  Lemma ForallVars_stmt_impl: forall (P Q: varname -> Prop),
+      (forall x, P x -> Q x) ->
+      forall s, ForallVars_stmt P s -> ForallVars_stmt Q s.
+  Proof. unfold ForallVars_stmt. eauto using Forall_vars_stmt_impl. Qed.
 
 End Syntax.
 

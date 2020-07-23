@@ -18,9 +18,10 @@ Open Scope Z_scope.
 Section Spilling.
 
   Notation stmt := (stmt Z).
-  (* 0: constant 0 *)
-  (* 1: return address *)
-  (* 2: stack pointer *)
+
+  Definition zero := 0.
+  Definition ra := 1.
+  Definition sp := 2.
   Definition tmp1 := 3.
   Definition tmp2 := 4.
   Definition fp := 5. (* returned by stackalloc, always a constant away from sp: a wasted register *)
@@ -86,7 +87,7 @@ Section Spilling.
       load_arg_reg1 x;; load_arg_reg2 y;;
       SStore sz (arg_reg1 x) (arg_reg2 y) o
     | SStackalloc x n body =>
-      SStackalloc (res_reg x) n body;;
+      SStackalloc (res_reg x) n (spill_stmt body);;
       save_res_reg x
     | SLit x n =>
       SLit (res_reg x) n;;
@@ -111,6 +112,13 @@ Section Spilling.
     | SInteract argvars f resvars => SInteract argvars f resvars
     end.
 
+  Definition valid_vars_bcond(c: bcond Z): Prop :=
+    match c with
+    | CondBinary _ x y => fp < x /\ fp < y
+    | CondNez x => fp < x
+    end.
+
+  (*
   Fixpoint calls_use_registers(s: stmt): bool :=
     match s with
     | SLoad _ _ _ _ | SStore _ _ _ _ | SLit _ _ | SOp _ _ _ _ | SSet _ _ | SSkip => true
@@ -119,6 +127,7 @@ Section Spilling.
     | SCall argvars _ resvars | SInteract argvars _ resvars =>
       List.forallb (Z.gtb 32) argvars && List.forallb (Z.gtb 32) resvars
     end.
+   *)
 
   Definition max_var_bcond(c: bcond Z): Z :=
     match c with
@@ -139,11 +148,8 @@ Section Spilling.
     | SCall argvars f resvars | SInteract argvars f resvars => 0
     end.
 
-  Definition spill_fbody(s: stmt): option stmt :=
-    if calls_use_registers s
-    then Some (SStackalloc fp (bytes_per_word * (max_var s - 32)) (spill_stmt s))
-    else None.
-
+  Definition spill_fbody(s: stmt): stmt :=
+    SStackalloc fp (bytes_per_word * (max_var s - 32)) (spill_stmt s).
 
   Context {locals: map.map Z word}.
   Context {localsOk: map.ok locals}.
@@ -158,15 +164,55 @@ Section Spilling.
   |}).
   Defined.
 
+  Definition valid_vars_src(maxvar: Z): stmt -> Prop :=
+    Forall_vars_stmt (fun x => fp < x <= maxvar) (fun x => fp < x < 32).
+
+  Definition valid_vars_tgt: stmt -> Prop :=
+    Forall_vars_stmt (fun x => sp < x <= 32) (fun x => sp < x < 32).
+
+  Lemma spill_stmt_valid_vars: forall s m,
+      max_var s <= m ->
+      valid_vars_src m s ->
+      valid_vars_tgt (spill_stmt s).
+  Proof.
+    (* Wihtout the clear, firstorder becomes very slow COQBUG https://github.com/coq/coq/issues/11352.
+       Not using firstorder though because there's something higher order here: *)
+    clear mem locals localsOk env ext_spec.
+    assert (forall vars, Forall (fun x : Z => 5 < x < 32) vars -> Forall (fun x : Z => 2 < x < 32) vars). {
+      intros. eapply Forall_impl. 2: eassumption. simpl. blia.
+    }
+    unfold valid_vars_src, valid_vars_tgt.
+    induction s; simpl; intros;
+      repeat match goal with
+             | c: bcond Z |- _ => destr c
+             | |- context[Z.leb ?x ?y] => destr (Z.leb x y)
+             | |- _ => progress simpl
+             | |- _ => progress unfold tmp1, tmp2, sp, fp, res_reg, arg_reg1, arg_reg2, res_reg,
+                         spill_bcond, max_var_bcond, ForallVars_bcond, prepare_bcond,
+                         load_arg_reg1, load_arg_reg2, save_res_reg, stack_loc in *
+             end;
+      try blia;
+      simp;
+      repeat match goal with
+      | IH: _, H: Forall_vars_stmt _ _ _ |- _ =>
+        specialize IH with (2 := H);
+        match type of IH with
+        | ?P -> _ => let A := fresh in assert P as A by blia; specialize (IH A); clear A
+        end
+      end;
+      eauto;
+      intuition try blia.
+  Qed.
+
   Definition related(maxvar: Z)(frame: mem)(done: bool):
     FlatImp.SimState Z -> FlatImp.SimState Z -> Prop :=
     fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
       exists fpval mL mStack,
         t1 = t2 /\
         map.split m2 m1 mL /\ map.split mL mStack frame /\
-        (forall r, r < 5 -> map.get l1 r = None) /\
-        map.get l2 5 = Some fpval /\
-        (forall r v, 6 <= r < 32 -> map.get l1 r = Some v -> map.get l2 r = Some v) /\
+        (forall r, r < fp -> map.get l1 r = None) /\
+        map.get l2 fp = Some fpval /\
+        (forall r, fp < r < 32 -> map.get l1 r = map.get l2 r) /\
         (forall r, 32 <= r < maxvar -> exists v,
               Memory.load Syntax.access_size.word mStack
                           (word.add fpval (word.of_Z ((r - 32) * bytes_per_word))) = Some v /\
@@ -175,9 +221,7 @@ Section Spilling.
   Definition envs_related(e1 e2: env): Prop :=
     forall f argvars resvars body1,
       map.get e1 f = Some (argvars, resvars, body1) ->
-      exists body2,
-        spill_fbody body1 = Some body2 /\
-        map.get e2 f = Some (argvars, resvars, body2).
+      map.get e2 f = Some (argvars, resvars, spill_fbody body1).
 
   Axiom map__split_spec: forall (M A B: mem),
       map.split M A B <-> forall k,
@@ -191,23 +235,52 @@ Section Spilling.
                  (map.get m2 k = Some v \/ (map.get m2 k = None /\ map.get m1 k = Some v))) \/
       (map.get (map.putmany m1 m2) k = None /\ map.get m2 k = None /\ map.get m1 k = None).
 
+  Lemma map__getmany_of_list_preserved: forall (l1 l2: locals) ks,
+      (forall k, In k ks -> map.get l1 k = map.get l2 k) ->
+      map.getmany_of_list l1 ks = map.getmany_of_list l2 ks.
+  Proof.
+    induction ks; intros. 1: reflexivity.
+    unfold map.getmany_of_list in *. simpl.
+    rewrite IHks. 2: {
+      intros. eapply H. simpl. auto.
+    }
+    specialize (H a). simpl in H. rewrite H. 2: auto.
+    reflexivity.
+  Qed.
+
   Lemma spilling_sim(e1 e2: env):
       envs_related e1 e2 ->
-      forall frame s1 s2,
-        spill_stmt s1 = s2 ->
-        simulation (SimExec Z e1 s1) (SimExec Z e2 s2)
-                   (related (max_var s1) frame).
+      forall frame s1 maxvar,
+        valid_vars_src maxvar s1 ->
+        simulation (SimExec Z e1 s1) (SimExec Z e2 (spill_stmt s1))
+                   (related maxvar frame).
   Proof.
     unfold simulation, SimExec.
-    intros Ev frame s1 s2 E (((t1 & m1) & l1) & mc1) (((t2 & m2) & l2) & mc2) post1 R Exec.
-    revert frame s2 E t2 m2 l2 mc2 R.
+    intros Ev frame s1 maxvar V (((t1 & m1) & l1) & mc1) (((t2 & m2) & l2) & mc2) post1 R Exec.
+    revert frame maxvar V t2 m2 l2 mc2 R.
     unfold compile_inv, related.
     induction Exec; simpl; intros; simp; subst.
     - (* exec.interact *)
       eapply @exec.interact with (mGive := mGive) (mKeep := map.putmany mKeep mL).
       + eapply split_interact; eassumption.
+      + erewrite map__getmany_of_list_preserved. 1: eassumption.
+        intros. eapply Forall_forall in Vr. 2: eassumption. symmetry. eauto.
+      + eassumption.
+      + intros.
+        match goal with
+        | H: context[outcome], A: context[outcome] |- _ =>
+          specialize H with (1 := A)
+        end.
+        simp.
 
-(*
+        repeat match goal with
+               | |- exists (_: FlatImp.SimState _), _ => refine (ex_intro _ (_, _, _, _) _)
+               | |- exists _, _ => eexists
+               | |- _ /\ _ => split
+               end.
+        * (* TODO we need a "locals frame" or to say map.only_differ
+
+
     - (* exec.call *)
     - (* exec.load *)
     - (* exec.store *)
@@ -221,6 +294,7 @@ Section Spilling.
     - (* exec.seq *)
     - (* exec.skip *)
 *)
+
   Abort.
 
 End Spilling.
