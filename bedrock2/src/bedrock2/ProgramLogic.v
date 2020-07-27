@@ -129,6 +129,48 @@ Ltac straightline_cleanup :=
 Import WeakestPrecondition.
 Import coqutil.Map.Interface.
 
+Ltac straightline_stackalloc :=
+  match goal with Hanybytes: Memory.anybytes ?a ?n ?mStack |- _ =>
+    let m := match goal with H : map.split ?mCobined ?m mStack |- _ => m end in
+    let mCombined := match goal with H : map.split ?mCobined ?m mStack |- _ => mCobined end in
+    let Hsplit := match goal with H : map.split ?mCobined ?m mStack |- _ => H end in
+    let Hm := multimatch goal with H : _ m |- _ => H end in
+    let Hm' := fresh Hm in
+    rename Hm into Hm';
+    let stack := fresh "stack" in
+    let stack_length := fresh "length_" stack in (* MUST remain in context for deallocation *)
+    let Htmp := fresh in
+    destruct (Array.anybytes_to_array_1 mStack a n Hanybytes) as (stack&Htmp&stack_length);
+    epose proof (ex_intro _ m (ex_intro _ mStack (conj Hsplit (conj Hm' Htmp)))
+                : Separation.sep _ (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a _) mCombined) as Hm;
+    clear Htmp Hsplit Hanybytes mStack;
+    try (let m' := fresh m in rename m into m'); rename mCombined into m;
+    ( assert (BinInt.Z.of_nat (Datatypes.length stack) = n)
+        by (rewrite stack_length; apply (ZifyInst.of_nat_to_nat_eq n))
+     || fail 2 "negative stackalloc of size" n )
+  end.
+  
+Ltac straightline_stackdealloc :=
+  lazymatch goal with |- exists _ _, Memory.anybytes ?a ?n _ /\ map.split ?m _ _ /\ _ =>
+    let Hm := multimatch goal with Hm : _ m |- _ => Hm end in
+    let stack := match type of Hm with context [Array.array Separation.ptsto _ a ?stack] => stack end in
+    let length_stack := match goal with H : Datatypes.length stack = _ |- _ => H end in
+    let Hm' := fresh Hm in
+    pose proof Hm as Hm';
+    let Psep := match type of Hm with ?P _ => P end in
+    let Htmp := fresh "Htmp" in
+    eassert (Lift1Prop.iff1 Psep (Separation.sep _ (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a stack))) as Htmp
+      by ecancel || fail "failed to find stack frame in" Psep "using ecancel";
+    eapply (fun m => proj1 (Htmp m)) in Hm;
+    let m' := fresh m in
+    rename m into m';
+    destruct Hm as (m&mStack&Hsplit&Hm&Harray1); move Hm at bottom;
+    pose proof Array.array_1_to_anybytes _ _ _ Harray1 as Hanybytes;
+    rewrite length_stack in Hanybytes;
+    refine (ex_intro _ m (ex_intro _ mStack (conj Hanybytes (conj Hsplit _))));
+    clear Htmp Hsplit mStack Harray1 Hanybytes
+  end.
+
 Ltac straightline :=
   match goal with
   | _ => straightline_cleanup
@@ -222,6 +264,12 @@ Ltac straightline :=
   | |- True => exact I
   | |- False \/ _ => right
   | |- _ \/ False => left
+  | |- BinInt.Z.modulo ?z (Memory.bytes_per_word Semantics.width) = BinInt.Z0 /\ _ =>
+      lazymatch Coq.setoid_ring.InitialRing.isZcst z with
+      | true => split; [exact eq_refl|]
+      end
+  | |- _ => straightline_stackalloc
+  | |- _ => straightline_stackdealloc
   end.
 
 (* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
