@@ -7,6 +7,9 @@ Local Definition bedrock_func : Type := String.string * (list String.string * li
 Local Coercion name_of_func (f : bedrock_func) := fst f.
 Local Coercion expr.literal : Z >-> expr.
 
+Definition stacktrivial : bedrock_func := let t := "t" in
+  ("stacktrivial", ([]:list String.string, [], bedrock_func_body:(stackalloc 4 as t { /*skip*/ }))).
+
 Definition stacknondet : bedrock_func := let a := "a" in let b := "b" in let t := "t" in
   ("stacknondet", ([]:list String.string, [a; b], bedrock_func_body:(stackalloc 4 as t {
   a = (load4(t) >> constr:(8));
@@ -32,6 +35,60 @@ Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
 
+  Instance spec_of_stacktrivial : spec_of "stacktrivial" := fun functions => forall m t,
+      WeakestPrecondition.call (p:=@semantics_parameters p) functions
+        "stacktrivial" t m [] (fun t' m' rets => rets = [] /\ m'=m /\ t'=t).
+
+  
+  Lemma stacktrivial_ok : program_logic_goal_for_function! stacktrivial.
+  Proof.
+    repeat straightline.
+    set (R := eq m).
+    pose proof (eq_refl : R m) as Hm.
+    split; trivial; [].
+    repeat straightline.
+
+    match goal with
+      Hsplit: map.split ?mCobined ?m ?mStack,
+      Hanybytes: anybytes ?a ?n ?mStack |- _ =>
+      let Hm' := fresh Hm in
+      rename Hm into Hm';
+      let stack := fresh "stack" in
+      let stack_length := fresh "length_" stack in (* MUST remain in context for deallocation *)
+      let Htmp := fresh in
+      destruct (Array.anybytes_to_array_1 mStack a n Hanybytes) as (stack&Htmp&stack_length);
+      pose proof (ex_intro _ m (ex_intro _ mStack (conj Hsplit (conj Hm' Htmp)))
+                  : sep R (Array.array ptsto (Interface.word.of_Z 1) a _) mCombined) as Hm;
+      clear Htmp Hsplit Hanybytes mStack;
+      try (let m' := fresh m in rename m into m'); rename mCombined into m
+    end.
+
+    (* to be incorporated in previous match / maybe refactor lemma in previous match *)
+    assert (Z.of_nat (Datatypes.length stack) = 4) as H_length_stack.
+    1:rewrite length_stack, Znat.Z2Nat.id; try apply Zbool.Zle_bool_imp_le; exact eq_refl.
+    clear length_stack.
+    
+    let m := match goal with |- exists _ _, _ /\ map.split ?m _ _ /\ _ => m end in
+    let Hm := match goal with Hm : _ m |- _ => Hm end in
+    let Hm' := fresh Hm in
+    pose proof Hm as Hm';
+    let Psep := match type of Hm with ?P _ => P end in
+    let Htmp := fresh "Htmp" in
+    eassert (Lift1Prop.iff1 Psep (sep _ (Array.array ptsto (Interface.word.of_Z 1) a stack))) as Htmp
+      by ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel";
+    eapply (fun m => proj1 (Htmp m)) in Hm;
+    let m' := fresh m in
+    rename m into m';
+    destruct Hm as (m&mStack&Hsplit&Hm&Harray1); move Hm at bottom;
+    pose proof Array.array_1_to_anybytes _ _ _ Harray1 as Hanybytes;
+    rewrite H_length_stack in Hanybytes;
+    refine (ex_intro _ m (ex_intro _ mStack (conj Hanybytes (conj Hsplit _))));
+    clear Htmp Hsplit mStack Harray1 Hanybytes.
+
+    repeat straightline.
+    intuition idtac.
+  Qed.
+
   Instance spec_of_stacknondet : spec_of "stacknondet" := fun functions => forall m t,
       WeakestPrecondition.call (p:=@semantics_parameters p) functions
         "stacknondet" t m [] (fun t' m' rets => exists a b, rets = [a;b] /\ a = b /\ m'=m/\t'=t).
@@ -41,6 +98,8 @@ Section WithParameters.
   Lemma stacknondet_ok : program_logic_goal_for_function! stacknondet.
   Proof.
     repeat straightline.
+    set (R := eq m).
+    pose proof (eq_refl : R m) as Hm.
     split; trivial; [].
     repeat straightline.
   Abort.
