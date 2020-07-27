@@ -5,8 +5,12 @@ default_target: all
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
+
+# these are only needed if you want to run the "hammer" tactic, which should not be left in source files being committed/running on CI, but since CI does not compile the plugin, it doesn't hurt to always include these in the _CoqProject
+HAMMER_DEPS_HAMMER_NL=-Q $(DEPS_DIR)/coqhammer/src/plugin Hammer.Plugin\n-I $(DEPS_DIR)/coqhammer/src/plugin\n-Q $(DEPS_DIR)/coqhammer/theories/Plugin Hammer.Plugin
+
 HAMMER_DEPS_NL=-Q $(DEPS_DIR)/coqhammer/theories/Tactics Hammer.Tactics\n-Q $(DEPS_DIR)/coqhammer/src/lib Hammer.Tactics\n-Q $(DEPS_DIR)/coqhammer/src/tactics Hammer.Tactics\n-I $(DEPS_DIR)/coqhammer/src/lib\n-I $(DEPS_DIR)/coqhammer/src/tactics
-DEPFLAGS_NL=-Q ../bedrock2/src/bedrock2 bedrock2\n-Q ../bedrock2/src/bedrock2Examples bedrock2Examples\n-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n$(HAMMER_DEPS_NL)\n-Q $(DEPS_DIR)/riscv-coq/src/riscv riscv\n
+DEPFLAGS_NL=-Q ../bedrock2/src/bedrock2 bedrock2\n-Q ../bedrock2/src/bedrock2Examples bedrock2Examples\n-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n$(HAMMER_DEPS_NL)\n$(HAMMER_DEPS_HAMMER_NL)\n-Q $(DEPS_DIR)/riscv-coq/src/riscv riscv\n
 CURFLAGS_NL=-Q ./src/compiler compiler\n-Q ./src/compilerExamples compilerExamples\n
 
 EXTERNAL_DEPENDENCIES?=

@@ -3,6 +3,7 @@ Require Import compiler.FlatImp.
 Require Import coqutil.Decidable.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.simpl_rewrite.
+From Hammer Require Import Tactics.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import riscv.Utility.Utility.
 Require Import coqutil.Z.Lia.
@@ -12,6 +13,9 @@ Require Import compiler.Simp.
 Require Import compiler.Simulation.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SpillingMapGoals.
+
+(* should not be committed usually *)
+From Hammer Require Import Hammer.
 
 Open Scope Z_scope.
 
@@ -262,7 +266,22 @@ Section Spilling.
     induction Exec; simpl; intros; simp; subst.
     - (* exec.interact *)
       eapply @exec.interact with (mGive := mGive) (mKeep := map.putmany mKeep mL).
-      + eapply split_interact; eassumption.
+      +
+
+        rewrite map__split_spec in *.
+
+        Set Hammer ReconstrLimit 20.
+        Set Hammer ATPLimit 60.
+
+        pose proof map__putmany_spec.
+
+        (* hammer. Hammer failed: ATPs failed to find a proof. *)
+
+        clear H3.
+        (* Time hecrush use: map__putmany_spec. does not return for several minutes *)
+
+
+        eapply split_interact; eassumption.
       + erewrite map__getmany_of_list_preserved. 1: eassumption.
         intros. eapply Forall_forall in Vr. 2: eassumption. symmetry. eauto.
       + eassumption.
