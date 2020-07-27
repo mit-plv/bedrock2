@@ -295,40 +295,6 @@ Section ptstos.
     destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
   Qed.
 
-  Arguments Z.of_nat: simpl never.
-
-  Lemma array_1_to_of_disjoint_list_zip: forall bs m (addr: word),
-      array ptsto (word.of_Z 1) addr bs m ->
-      map.of_disjoint_list_zip (Memory.ftprint addr (Z.of_nat (List.length bs))) bs = Some m.
-  Proof.
-    unfold map.of_disjoint_list_zip.
-    induction bs; intros.
-    - simpl in *. unfold emp in *. intuition congruence.
-    - simpl in *. unfold sep in *. simp.
-      specialize IHbs with (1 := Hrr). subst.
-      unfold map.split in *. unfold ptsto in Hrl. simp. subst mp.
-      unfold Memory.ftprint in *. rewrite Nat2Z.id in *. simpl.
-      rewrite IHbs.
-      destr (map.get mq addr).
-      + unfold map.disjoint in *. specialize (Hlr addr).
-        rewrite map.get_put_same in Hlr.
-        specialize Hlr with (2 := E).
-        exfalso. eapply Hlr. reflexivity.
-      + f_equal.
-        rewrite map.putmany_comm by assumption.
-        rewrite <- map.put_putmany_commute.
-        f_equal.
-        symmetry. apply map.putmany_empty_r.
-  Qed.
-
-  Lemma array_1_to_anybytes: forall bs m (addr: word),
-      array ptsto (word.of_Z 1) addr bs m ->
-      Memory.anybytes addr (Z.of_nat (List.length bs)) m.
-  Proof.
-    unfold Memory.anybytes.
-    intros. eauto using array_1_to_of_disjoint_list_zip.
-  Qed.
-
   Lemma ll_mem_to_hl_mem: forall mH mL (addr: word) bs R,
       (eq mH * array ptsto (word.of_Z 1) addr bs * R)%sep mL ->
       exists mTraded,
@@ -339,46 +305,9 @@ Section ptstos.
     unfold sep, map.split.
     intros.
     simp.
-    eauto 10 using array_1_to_anybytes.
-  Qed.
-
-  Lemma of_disjoint_list_zip_to_array_1: forall n (addr: word) bs m,
-      map.of_disjoint_list_zip (Memory.ftprint addr (Z.of_nat n)) bs = Some m ->
-      array ptsto (word.of_Z 1) addr bs m.
-  Proof.
-    induction n; intros.
-    - change (Z.of_nat 0) with 0 in *. unfold Memory.ftprint, map.of_disjoint_list_zip in *. simpl in *.
-      simp. simpl. unfold emp. auto.
-    - unfold Memory.ftprint, map.of_disjoint_list_zip in H.
-      rewrite Nat2Z.id in H.
-      simpl in H. simp. simpl.
-      eapply sep_on_undef_put. 1: assumption. apply IHn. unfold map.of_disjoint_list_zip, Memory.ftprint.
-      rewrite Nat2Z.id.
-      exact E.
-  Qed.
-
-  Lemma anybytes_to_array_1: forall m (addr: word) n,
-      Memory.anybytes addr n m ->
-      exists bs, array ptsto (word.of_Z 1) addr bs m /\ List.length bs = Z.to_nat n.
-  Proof.
-    unfold Memory.anybytes.
-    intros.
-    simp.
-    assert (n < 0 \/ 0 <= n) as C by blia. destruct C as [C | C]. {
-      destruct n; try blia.
-      unfold Memory.ftprint in H.
-      rewrite Z2Nat.inj_neg in H.
-      simpl in *.
-      unfold map.of_disjoint_list_zip in H. simpl in H. simp.
-      exists nil. simpl. unfold emp. auto.
-    }
-    exists bytes.
-    pose proof of_disjoint_list_zip_to_array_1 (Z.to_nat n) addr bytes m as P.
-    rewrite Z2Nat.id in P by assumption. split; auto.
-    unfold Memory.ftprint in H.
-    apply map.of_disjoint_list_zip_length in H.
-    rewrite List.length_unfoldn in H.
-    blia.
+    epose proof array_1_to_anybytes.
+    eauto 10.
+    Unshelve. all : exact _.
   Qed.
 
   Lemma hl_mem_to_ll_mem: forall mH mHSmall mTraded mL (addr: word) n R,
