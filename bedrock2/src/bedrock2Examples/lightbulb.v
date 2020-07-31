@@ -54,7 +54,7 @@ Section WithParameters.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
   Local Coercion literal (z : Z) : expr := expr.literal z.
   Local Coercion var (x : String.string) : expr := expr.var x.
-  Local Coercion name_of_func (f : BasicCSyntax.function) := fst f.
+  Local Coercion name_of_func (f : func) := fst f.
 
   Definition lightbulb_loop :=
       let p_addr : String.string := "p_addr" in
@@ -731,7 +731,7 @@ Section WithParameters.
 
   From bedrock2 Require Import ToCString.
   Goal True.
-    let c_code := eval cbv in ((* of_string *) (@c_module BasicCSyntax.to_c_parameters function_impls)) in
+    let c_code := eval cbv in ((* of_string *) (c_module function_impls)) in
     pose c_code.
   Abort.
 
@@ -740,7 +740,7 @@ Section WithParameters.
   Local Open Scope bytedump_scope.
   Set Printing Width 999999.
   Goal True.
-    let c_code := eval cbv in (of_string (@c_module BasicCSyntax.to_c_parameters [lan9250_init; lan9250_wait_for_boot; lightbulb_loop; lightbulb_handle; recvEthernet; lan9250_mac_write; lan9250_writeword; lan9250_readword; SPI.spi_xchg; SPI.spi_read; SPI.spi_write])) in
+    let c_code := eval cbv in (of_string (c_module [lan9250_init; lan9250_wait_for_boot; lightbulb_loop; lightbulb_handle; recvEthernet; lan9250_mac_write; lan9250_writeword; lan9250_readword; SPI.spi_xchg; SPI.spi_read; SPI.spi_write])) in
     idtac c_code.
   Abort.
   *)

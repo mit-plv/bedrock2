@@ -8,8 +8,8 @@ Section WithParameters.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
   Local Coercion literal (z : Z) : expr := expr.literal z.
   Local Coercion var (x : String.string) : expr := expr.var x.
-  Local Definition bedrock_func : Type := BasicCSyntax.function.
-  Local Coercion name_of_func (f : BasicCSyntax.function) : String.string := fst f.
+  Local Definition bedrock_func : Type := function.
+  Local Coercion name_of_func (f : function) : String.string := fst f.
 
 Definition arp : bedrock_func :=
     let ethbuf : String.string := "ethbuf" in
@@ -102,7 +102,7 @@ Definition ethernet : bedrock_func :=
 Require Import bedrock2.Bytedump bedrock2.Byte bedrock2.ToCString.
 Local Open Scope bytedump_scope.
 Goal True.
-  let c_code := eval cbv in (of_string (@c_module BasicCSyntax.to_c_parameters (ethernet::arp::ipv4::nil))) in
+  let c_code := eval cbv in (of_string (c_module (ethernet::arp::ipv4::nil))) in
       idtac
         (* c_code *)
   .

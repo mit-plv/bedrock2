@@ -1,7 +1,6 @@
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 Require bedrock2.NotationsInConstr.
-Require bedrock2.BasicCSyntax.
 Require Import coqutil.sanity.
 
 Import BinInt String.
@@ -89,11 +88,9 @@ Section Demos.
   Local Coercion var(x : String.string): expr.expr := expr.var x.
   Local Coercion literal (z : Z) : expr := expr.literal z.
 
-  Definition Prog: Type := string * (list String.string * list String.string * cmd).
-
   Import bedrock2.NotationsInConstr.
   Import BinarySearch.
-  Definition bsearch: Prog := ("bsearch", ([left; right; target], [left], bedrock_func_body:(
+  Definition bsearch: func := ("bsearch", ([left; right; target], [left], bedrock_func_body:(
     while (right - left) {{
       mid = left + (((right-left) >> 4) << 3);;
       if ((expr.load access_size.word mid) < target) {{
@@ -107,7 +104,7 @@ Section Demos.
 
   Import ListSum.
   (* input_base is an address fixed at compile time *)
-  Definition listsum(input_base: Z): Prog := ("listsum", ([], [sumreg], bedrock_func_body:(
+  Definition listsum(input_base: Z): func := ("listsum", ([], [sumreg], bedrock_func_body:(
     sumreg = 0;;
     n = *(uint32_t*) input_base;;
     i = 0;;
@@ -120,7 +117,7 @@ Section Demos.
 
   Import Fibonacci.
   (* input_base is an address fixed at compile time *)
-  Definition fibonacci(n: Z): Prog := ("fibonacci", ([], [b], bedrock_func_body:(
+  Definition fibonacci(n: Z): func := ("fibonacci", ([], [b], bedrock_func_body:(
     a = 0;;
     b = 1;;
     i = 0;;
@@ -133,7 +130,7 @@ Section Demos.
   ))).
 
   Import FibonacciServer.
-  Definition fibonacciServer (n_load_addr n_store_addr: Z): Prog := ("fibonacciserver", ([], [b], bedrock_func_body:(
+  Definition fibonacciServer (n_load_addr n_store_addr: Z): func := ("fibonacciserver", ([], [b], bedrock_func_body:(
     n = *(uint32_t*) n_load_addr;;
     a = 0;;
     b = 1;;
@@ -151,15 +148,15 @@ Section Demos.
     *(uint32_t*) n_store_addr = b
   ))).
 
-  Definition dummy: Prog := ("dummy", ([], [], cmd.skip)).
+  Definition dummy: func := ("dummy", ([], [], cmd.skip)).
 
-  Definition allProgs: list Prog :=
+  Definition allProgs: list func :=
     Eval unfold bsearch, listsum, fibonacci in
       [bsearch; listsum 1024; fibonacci 6].
 
   (*Print allProgs.*)
 
-  Definition prog(name: string): Prog :=
+  Definition prog(name: string): func :=
     match find (fun '(n, _) => if string_dec n name then true else false) allProgs with
     | Some p => p
     | None => dummy
@@ -170,10 +167,13 @@ End Demos.
 (* let's print them again in AST form: *)
 (* Print allProgs. *)
 
-Definition allProgsAsCStrings: list string :=
-  Eval cbv in (map BasicCSyntax.c_func allProgs).
+Require Import bedrock2.ToCString.
+Definition allProgsAsCString: string :=
+  Eval cbv in c_module allProgs.
 
-(* Print allProgsAsCStrings. *)
+(*
+Print allProgsAsCString.
+*)
 
 Definition allProgsE :=
   Eval cbv in allProgs.

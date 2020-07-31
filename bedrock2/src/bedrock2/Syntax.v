@@ -34,3 +34,16 @@ Module cmd.
   | call (binds : list String.string) (function : String.string) (args: list expr)
   | interact (binds : list String.string) (action : String.string) (args: list expr).
 End cmd. Notation cmd := cmd.cmd.
+
+Definition func : Type := String.string * (list String.string * list String.string * cmd).
+#[deprecated(note="Use bedrock2.Syntax.func instead.")]
+Notation function := func.
+#[deprecated(note="Use bedrock2.Syntax.func instead.")]
+Notation bedrock_func := func.
+
+Module Coercions.
+  Import String.
+  Coercion expr.var : string >-> expr.
+  Coercion expr.literal : Z >-> expr.
+  Coercion name_of_func (f : func) := fst f.
+End Coercions.

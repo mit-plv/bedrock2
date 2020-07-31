@@ -1,12 +1,11 @@
-Require Import bedrock2.BasicCSyntax bedrock2.NotationsCustomEntry.
+Require Import bedrock2.NotationsCustomEntry.
 
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
-Local Definition bedrock_func : Type := String.string * (list String.string * list String.string * cmd).
-Local Coercion name_of_func (f : bedrock_func) := fst f.
+Local Coercion name_of_func (f : function) := fst f.
 
-Definition swap : bedrock_func := let a := "a" in let b := "b" in let t := "t" in
+Definition swap : function := let a := "a" in let b := "b" in let t := "t" in
   ("swap", ([a; b], ([]:list String.string), bedrock_func_body:(
   t = (load(b)) ;
   store(b, load(a));
@@ -69,7 +68,7 @@ Section WithParameters.
   From bedrock2 Require Import ToCString Bytedump.
   Local Open Scope bytedump_scope.
   Goal True.
-    let c_code := eval cbv in (byte_list_of_string (@c_module to_c_parameters (swap_swap::swap::nil))) in
+    let c_code := eval cbv in (byte_list_of_string (c_module (swap_swap::swap::nil))) in
     idtac c_code.
   Abort.
 End WithParameters.

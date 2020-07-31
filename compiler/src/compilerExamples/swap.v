@@ -68,7 +68,7 @@ Definition main_stackalloc :=
   ("main", ([]: list String.string, []: list String.string,
      cmd.stackalloc "x" 4 (cmd.stackalloc "y" 4 (cmd.call [] "swap_swap" [expr.var "x"; expr.var "y"])))).
 
-Definition allFuns: list swap.bedrock_func := [swap; swap_swap; main_stackalloc; stacknondet; stackdisj].
+Definition allFuns: list Syntax.func := [swap; swap_swap; main_stackalloc; stacknondet; stackdisj].
 
 Definition e := map.putmany_of_list allFuns map.empty.
 

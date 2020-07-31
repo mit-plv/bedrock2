@@ -26,12 +26,10 @@ Section MultipleReturnValues.
   ))).
 End MultipleReturnValues.
 
-Require bedrock2.BasicCSyntax.
+Require Import bedrock2.ToCString.
 
-Example addsub_c_string := Eval compute in
-  BasicCSyntax.c_func (addsub).
-Example addsub_test_c_string := Eval compute in
-  BasicCSyntax.c_func (addsub_test).
+Example addsub_c_string := Eval compute in c_func addsub.
+Example addsub_test_c_string := Eval compute in c_func addsub_test.
 
 (*
 Print addsub_c_string.
