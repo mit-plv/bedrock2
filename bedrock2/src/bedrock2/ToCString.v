@@ -3,15 +3,23 @@ Require Import bedrock2.Syntax bedrock2.Variables. Import bopname.
 Require Import Coq.ZArith.BinIntDef Coq.Numbers.BinNums Coq.Numbers.DecimalString.
 Require Import Coq.Strings.String. Local Open Scope string_scope.
 
-Definition LF : string := String (Coq.Strings.Ascii.Ascii false true false true false false false false) "".
+Definition prelude := "#include <stdint.h>
+#include <memory.h>
 
-Definition c_size (s : access_size) : string :=
-  match s with
-  | access_size.one => "uint8_t"
-  | access_size.two => "uint16_t"
-  | access_size.four => "uint32_t"
-  | access_size.word => "uintptr_t"
-  end%Z.
+// LITTLE-ENDIAN memory access is REQUIRED
+// the following two functions are required to work around -fstrict-aliasing
+static inline uintptr_t _br2_load(uintptr_t a, size_t sz) {
+  uintptr_t r = 0;
+  memcpy(&r, (void*)a, sz);
+  return r;
+}
+
+static inline void _br2_store(uintptr_t a, uintptr_t v, size_t sz) {
+  memcpy((void*)a, &v, sz);
+}
+".
+
+Definition LF : string := String (Coq.Strings.Ascii.Ascii false true false true false false false false) "".
 
 Definition c_var := @id string.
 Definition c_fun := @id string.
@@ -37,11 +45,19 @@ Definition c_bop e1 op e2 :=
   | eq => e1++"=="++e2
   end%string.
 
+Definition c_size (s : access_size) : string :=
+  match s with
+  | access_size.one => "1"
+  | access_size.two => "2"
+  | access_size.four => "4"
+  | access_size.word => "sizeof(uintptr_t)"
+  end.
+
 Fixpoint c_expr (e : expr) : string :=
   match e with
   | expr.literal v => c_lit v
   | expr.var x => c_var x
-  | expr.load s ea => "*(" ++ c_size s ++ "*)(" ++ c_expr ea ++ ")"
+  | expr.load s ea => "_br2_load(" ++ c_expr ea ++ ", " ++ c_size s++ ")"
   | expr.op op e1 e2 => c_bop ("(" ++ c_expr e1 ++ ")") op ("(" ++ c_expr e2 ++ ")")
   end.
 
@@ -69,7 +85,7 @@ Definition c_act := c_call.
 Fixpoint c_cmd (indent : string) (c : cmd) : string :=
   match c with
   | cmd.store s ea ev
-    => indent ++ "*("++c_size s++"*)(" ++ c_expr ea ++ ") = " ++ c_expr ev ++ ";" ++ LF
+    => indent ++ "_br2_store(" ++ c_expr ea ++ ", " ++ c_expr ev ++ ", " ++ c_size s ++ ");" ++ LF
   | cmd.stackalloc x n body =>
     indent ++ c_var x ++ " = alloca(" ++ c_lit n ++ "); // TODO untested" ++ LF ++
     c_cmd indent body
@@ -155,7 +171,7 @@ Definition c_module (fs : list (String.string * (list String.string * list Strin
   match fs with
   | nil => "#error ""c_module nil"" "
   | cons main fs =>
-    concat LF (List.map (fun f => "static " ++ c_decl f) fs) ++ LF ++ LF ++
+    concat LF (prelude :: List.map (fun f => "static " ++ c_decl f) fs) ++ LF ++ LF ++
     c_func main ++ LF ++
     concat LF (List.map (fun f => "static " ++ c_func f) fs)
   end.
