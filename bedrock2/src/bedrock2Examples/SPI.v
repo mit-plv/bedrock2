@@ -1,5 +1,4 @@
-Require Import bedrock2.Syntax bedrock2.BasicCSyntax.
-Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Byte.
 

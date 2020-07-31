@@ -1,7 +1,6 @@
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 Require bedrock2.NotationsInConstr.
-Require bedrock2.BasicCSyntax.
 Require Import coqutil.sanity.
 
 Import BinInt String.
@@ -170,8 +169,9 @@ End Demos.
 (* let's print them again in AST form: *)
 (* Print allProgs. *)
 
+Require Import bedrock2.ToCString.
 Definition allProgsAsCStrings: list string :=
-  Eval cbv in (map BasicCSyntax.c_func allProgs).
+  Eval cbv in (map c_func allProgs).
 
 (* Print allProgsAsCStrings. *)
 

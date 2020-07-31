@@ -1,5 +1,5 @@
-Require Import coqutil.Z.div_mod_to_equations.
-Require Import bedrock2.BasicCSyntax bedrock2.NotationsInConstr.
+Require Import ZArith coqutil.Z.div_mod_to_equations.
+Require Import bedrock2.NotationsInConstr.
 Import Syntax BinInt String List.ListNotations ZArith.
 Require Import coqutil.Z.Lia.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.

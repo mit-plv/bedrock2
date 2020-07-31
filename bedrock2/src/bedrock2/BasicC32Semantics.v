@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import bedrock2.Syntax bedrock2.BasicCSyntax bedrock2.Semantics.
+Require Import bedrock2.Syntax bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Import coqutil.Word.Interface coqutil.Map.SortedListWord.
 Require coqutil.Word.Naive.
