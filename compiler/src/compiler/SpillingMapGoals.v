@@ -19,6 +19,36 @@ Section LEMMAS.
                  (map.get m2 k = Some v \/ (map.get m2 k = None /\ map.get m1 k = Some v))) \/
       (map.get (map.putmany m1 m2) k = None /\ map.get m2 k = None /\ map.get m1 k = None).
 
+  Lemma split_stackalloc_1: forall (m2 mSmall mL mCombined mStack0: map),
+      map.split m2 mSmall mL ->
+      map.split mCombined m2 mStack0 ->
+      map.split (map.putmany mSmall mStack0) mSmall mStack0.
+  Proof.
+    intros.
+    rewrite map__split_spec in *.
+    pose proof map__putmany_spec mSmall mStack0.
+    intro k.
+    repeat match goal with
+           | H: forall _, _ |- _ => specialize (H k)
+           end.
+    firstorder congruence.
+  Qed.
+
+  Lemma split_stackalloc_2: forall (m2 mSmall mL mCombined mStack0: map),
+      map.split m2 mSmall mL ->
+      map.split mCombined m2 mStack0 ->
+      map.split mCombined (map.putmany mSmall mStack0) mL.
+  Proof.
+    intros.
+    rewrite map__split_spec in *.
+    pose proof map__putmany_spec mSmall mStack0.
+    intro k.
+    repeat match goal with
+           | H: forall _, _ |- _ => specialize (H k)
+           end.
+    firstorder congruence.
+  Qed.
+
   Lemma split_interact:
     forall (m mKeep mGive : map) (frame m2 mL mStack : map),
       map.split m mKeep mGive ->

@@ -25,6 +25,7 @@ Section Spilling.
   Definition tmp1 := 3.
   Definition tmp2 := 4.
   Definition fp := 5. (* returned by stackalloc, always a constant away from sp: a wasted register *)
+  Definition regvar0 := 6.
 
   (* TODO: storing value returned by stackalloc into a register is always a wasted register,
      because it's constant away from the stackpointer
@@ -87,8 +88,7 @@ Section Spilling.
       load_arg_reg1 x;; load_arg_reg2 y;;
       SStore sz (arg_reg1 x) (arg_reg2 y) o
     | SStackalloc x n body =>
-      SStackalloc (res_reg x) n (spill_stmt body);;
-      save_res_reg x
+      SStackalloc (res_reg x) n (save_res_reg x;; spill_stmt body)
     | SLit x n =>
       SLit (res_reg x) n;;
       save_res_reg x
@@ -204,7 +204,7 @@ Section Spilling.
       intuition try blia.
   Qed.
 
-  Definition related(maxvar: Z)(frame: mem)(done: bool):
+  Definition related_old(maxvar: Z)(frame: mem)(done: bool):
     FlatImp.SimState Z -> FlatImp.SimState Z -> Prop :=
     fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
       exists fpval mL mStack,
@@ -217,6 +217,46 @@ Section Spilling.
               Memory.load Syntax.access_size.word mStack
                           (word.add fpval (word.of_Z ((r - 32) * bytes_per_word))) = Some v /\
               forall v', map.get l1 r = Some v' -> v' = v).
+
+  (* could be treated as a separation logic assertion *)
+  Definition spilled_vars(fpval: word)(maxvar: Z)(lStack: locals)(mStack: mem): Prop :=
+    forall r, 32 <= r <= maxvar -> exists v,
+        Memory.load Syntax.access_size.word mStack
+                    (word.add fpval (word.of_Z ((r - 32) * bytes_per_word))) = Some v /\
+        forall v', map.get lStack r = Some v' -> v' = v.
+
+  Definition split_at(l: locals)(l1: locals)(b: Z)(l2: locals): Prop :=
+    map.split l l1 l2 /\
+    (forall r v, map.get l1 r = Some v -> r < b) /\
+    (forall r v, map.get l2 r = Some v -> b <= r).
+
+  Definition related_old1(maxvar: Z)(frame: mem)(done: bool):
+    FlatImp.SimState Z -> FlatImp.SimState Z -> Prop :=
+    fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
+      exists fpval tmp1val tmp2val mL mStack lStack lRegs,
+        t1 = t2 /\
+        map.split m2 m1 mL /\ map.split mL mStack frame /\
+        split_at l1 lRegs 32 lStack /\
+        split_at l2 (map.of_list [(tmp1, tmp1val); (tmp2, tmp2val); (fp, fpval)]) regvar0 lRegs.
+
+  Definition map__dom_in(l: locals)(P: Z -> Prop): Prop := forall v r, map.get l r = Some v -> P r.
+
+  Axiom map__dom_in_put: forall (l: locals) k v P,
+      map__dom_in l P ->
+      P k ->
+      map__dom_in (map.put l k v) P.
+
+  Definition related(maxvar: Z)(frame: mem)(done: bool):
+    FlatImp.SimState Z -> FlatImp.SimState Z -> Prop :=
+    fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
+      exists fpval tmp1val tmp2val mL mStack lStack lRegs,
+        t1 = t2 /\
+        map.split m2 m1 mL /\ map.split mL mStack frame /\
+        map__dom_in lRegs (fun x => fp < x < 32) /\
+        map__dom_in lStack (fun x => 32 <= x <= maxvar) /\
+        map.split l1 lRegs lStack /\
+        map.split l2 lRegs (map.of_list [(tmp1, tmp1val); (tmp2, tmp2val); (fp, fpval)]) /\
+        spilled_vars fpval maxvar lStack mStack.
 
   Definition envs_related(e1 e2: env): Prop :=
     forall f argvars resvars body1,
@@ -235,6 +275,23 @@ Section Spilling.
                  (map.get m2 k = Some v \/ (map.get m2 k = None /\ map.get m1 k = Some v))) \/
       (map.get (map.putmany m1 m2) k = None /\ map.get m2 k = None /\ map.get m1 k = None).
 
+  Axiom map__getmany_of_list_shrink: forall (l l1 l2: locals) keys,
+      map.split l l1 l2 ->
+      Forall (fun k => map.get l2 k = None) keys ->
+      map.getmany_of_list l keys = map.getmany_of_list l1 keys.
+
+  Axiom map__putmany_of_list_zip_split: forall (l l' l1 l2: locals) keys values,
+      map.putmany_of_list_zip keys values l = Some l' ->
+      map.split l l1 l2 ->
+      Forall (fun k => map.get l2 k = None) keys ->
+      exists l1', map.split l' l1' l2 /\ map.putmany_of_list_zip keys values l1 = Some l1'.
+
+  Axiom map__putmany_of_list_zip_grow: forall (l l1 l1' l2: locals) keys values,
+      map.putmany_of_list_zip keys values l1 = Some l1' ->
+      map.split l l1 l2 ->
+      Forall (fun k => map.get l2 k = None) keys ->
+      exists l', map.split l' l1' l2 /\ map.putmany_of_list_zip keys values l = Some l'.
+
   Lemma map__getmany_of_list_preserved: forall (l1 l2: locals) ks,
       (forall k, In k ks -> map.get l1 k = map.get l2 k) ->
       map.getmany_of_list l1 ks = map.getmany_of_list l2 ks.
@@ -248,6 +305,23 @@ Section Spilling.
     reflexivity.
   Qed.
 
+  Lemma seq_cps: forall e s1 s2 t m l mc post,
+      exec e s1 t m l mc (fun t' m' l' mc' => exec e s2 t' m' l' mc' post) ->
+      exec e (SSeq s1 s2) t m l mc post.
+  Proof.
+    intros. eapply exec.seq. 1: eassumption. simpl. clear. auto.
+  Qed.
+
+  (* cps style
+  Lemma load_arg_reg1_correct: forall e a t m l mc post,
+      post ... ->
+      exec e (load_arg_reg1 a) t m l mc post. *)
+
+  (* seq style
+  Lemma load_arg_reg1_correct: forall e s a t m l mc post,
+      exec e s t
+      exec e (SSeq (load_arg_reg1 a) s) t m l mc post. *)
+
   Lemma spilling_sim(e1 e2: env):
       envs_related e1 e2 ->
       forall frame s1 maxvar,
@@ -259,12 +333,30 @@ Section Spilling.
     intros Ev frame s1 maxvar V (((t1 & m1) & l1) & mc1) (((t2 & m2) & l2) & mc2) post1 R Exec.
     revert frame maxvar V t2 m2 l2 mc2 R.
     unfold compile_inv, related.
+    match type of Exec with
+    | exec _ _ _ _ _ _ ?P => remember P as post
+    end.
+    revert post1 Heqpost.
     induction Exec; simpl; intros; simp; subst.
     - (* exec.interact *)
       eapply @exec.interact with (mGive := mGive) (mKeep := map.putmany mKeep mL).
       + eapply split_interact; eassumption.
-      + erewrite map__getmany_of_list_preserved. 1: eassumption.
-        intros. eapply Forall_forall in Vr. 2: eassumption. symmetry. eauto.
+      + erewrite map__getmany_of_list_shrink. 2: eassumption. 2: {
+          eapply Forall_impl. 2: eassumption.
+          clear -localsOk. unfold fp, tmp1, tmp2. intros.
+          rewrite ?map.get_put_dec.
+          rewrite ?(proj2 (Z.eqb_neq _ _ )) by blia.
+          apply map.get_empty.
+        }
+        erewrite <- map__getmany_of_list_shrink; [eassumption..|].
+        eapply Forall_impl. 2: eassumption.
+        simpl.
+        intros. unfold map__dom_in in *.
+        destr (map.get lStack a). 2: reflexivity.
+        match goal with
+        | H: forall _, _ |- _ => specialize H with (1 := E)
+        end.
+        blia.
       + eassumption.
       + intros.
         match goal with
@@ -272,19 +364,177 @@ Section Spilling.
           specialize H with (1 := A)
         end.
         simp.
-
+        pose proof H2l as P.
+        eapply map__putmany_of_list_zip_split in P. 2: eassumption. 2: {
+          eapply Forall_impl. 2: eassumption.
+          simpl.
+          intros. unfold map__dom_in in *.
+          destr (map.get lStack a). 2: reflexivity.
+          match goal with
+          | H: forall _, _ |- _ => specialize H with (1 := E)
+          end.
+          blia.
+        }
+        simp.
+        eapply map__putmany_of_list_zip_grow with (l := l2) in Pr. 2: eassumption. 2: {
+          eapply Forall_impl. 2: eassumption.
+          clear -localsOk. unfold fp, tmp1, tmp2. intros.
+          rewrite ?map.get_put_dec.
+          rewrite ?(proj2 (Z.eqb_neq _ _ )) by blia.
+          apply map.get_empty.
+        }
+        destruct Pr as (l2' & ? & ?).
         repeat match goal with
                | |- exists (_: FlatImp.SimState _), _ => refine (ex_intro _ (_, _, _, _) _)
                | |- exists _, _ => eexists
                | |- _ /\ _ => split
                end.
-        * (* TODO we need a "locals frame" or to say map.only_differ
+        11,9,1: eassumption.
+        * move H2rl at bottom.
 
+          (* DMA questions:
+             how can I know that mReceive is disjoint from the low-level memory introduced by this phase?
+             should also be needed in FlatToRiscv, but there, ext calls are compiled rather than
+             preserved
 
+             stackalloc must not return memory that clashes with memory returned by ext calls.
+             But I could pass some stack memory to an extcall and get it back later.
+
+             Designate some area as the area of memory that ext calls could return, plus keep track
+             of what has been given away in the trace, because that can be returned back as well. *)
+          admit.
+        * reflexivity.
+        * admit.
+        * admit.
+        * Search l'.
+          (* l1' <= l'  hmmm?? *)
+          admit.
+        * admit.
+        * eassumption.
+        * eassumption.
     - (* exec.call *)
+      admit.
     - (* exec.load *)
+      eapply seq_cps.
+      unfold load_arg_reg1, arg_reg1, save_res_reg, res_reg, stack_loc.
+      destr (Z.leb 32 a).
+      + match goal with
+        | H: spilled_vars _ _ _ _ |- _ => pose proof H as A
+        end.
+        unfold spilled_vars in A.
+        assert (32 <= a <= maxvar) as B by blia. specialize A with (1 := B); clear B. simp.
+        eapply exec.load with (addr0 := fpval) (v1 := v0).
+        * admit. (* ok *)
+        * admit. (* growing from mStack to m2 preserves Memory.load *)
+        * eapply seq_cps. eapply exec.load. {
+            rewrite map.get_put_same. reflexivity.
+          } {
+            match goal with
+            | |- _ = ?opt => unify opt (Some v)
+            end.
+            assert (map.get lStack a = Some addr) as B by admit.
+            specialize Ar with (1 := B). subst v0.
+            (* growing from m to m2 preserves Memory.load *)
+            admit.
+          } {
+            destr (Z.leb 32 x).
+            - eapply exec.store.
+              + rewrite ?map.get_put_diff by (cbv; discriminate).
+                match goal with
+                | |- _ = ?opt => unify opt (Some fpval)
+                end.
+                admit. (* ok *)
+              + rewrite map.get_put_same. reflexivity.
+              + admit. (* memory stuff... *)
+              + repeat match goal with
+                       | |- exists (_: FlatImp.SimState _), _ => refine (ex_intro _ (_, _, _, _) _)
+                       | |- exists _, _ => eexists
+                       | |- _ /\ _ => split
+                       end.
+                1: reflexivity.
+                8: eassumption.
+                * admit.
+                * admit.
+                * admit.
+                * admit.
+                * admit.
+                * rewrite map.put_put_same. admit.
+                * admit.
+            - admit.
+          }
+      + admit.
     - (* exec.store *)
+      admit.
     - (* exec.stackalloc *)
+      rename H1 into IH.
+      unfold save_res_reg, res_reg, stack_loc.
+      destr (Z.leb 32 x).
+      + eapply exec.stackalloc. 1: assumption.
+        intros. eapply seq_cps. eapply exec.store.
+        * rewrite map.get_put_diff by discriminate.
+          match goal with
+          | |- _ = ?opt => unify opt (Some fpval)
+          end.
+          admit. (* ok *)
+        * rewrite map.get_put_same. reflexivity.
+        * unfold Memory.store, Memory.store_Z, Memory.store_bytes.
+          destruct_one_match. 2: admit. (* shouldn't happen *)
+          reflexivity.
+        * eapply exec.weaken. {
+            pose (fun m => (Memory.unchecked_store_bytes (Memory.bytes_per Syntax.access_size.word) m
+                      (word.add fpval (word.of_Z ((x - 32) * bytes_per_word)))
+            (LittleEndian.split (@Memory.bytes_per width Syntax.access_size.word) (word.unsigned a)))) as upd.
+            match goal with
+            | |- exec _ _ _ ?M _ _ _ => change M with (upd mCombined)
+            end.
+            rename mStack0 into mStackHL.
+            (* mStack is our stack memory used for spilling, while mStackHL is allocated by this
+               SStackalloc and exposed as memory to the source program *)
+            eapply IH with (mCombined := map.putmany mSmall mStackHL) (frame := frame)
+                           (post2 := fun '(t', m', l', mc') =>
+                                       exists mSmall' mStack',
+                                         Memory.anybytes a n mStack' /\ map.split m' mSmall' mStack' /\
+                                         post1 (t', mSmall', l', mc')).
+            1: eassumption.
+            1: eapply split_stackalloc_1; eassumption.
+            1: reflexivity.
+            1: eassumption.
+            (* existentials to pick to satisfy relation before invoking IH *)
+            eexists fpval, a, tmp2val, (upd mL), (upd mStack), (map.put lStack x a), lRegs.
+            ssplit.
+            1: reflexivity.
+            1: {
+              eapply split_stackalloc_2 with (m3 := upd m2). 1,2: admit. (* ok *)
+            }
+            1: admit. (* ok *)
+            1: eassumption.
+            1: eapply map__dom_in_put; [assumption|blia].
+            1: admit. (* ok *)
+            1: admit. (* ok *)
+            1: admit. (* ok *)
+          }
+          simpl. intros. simp.
+          exists (map.putmany mSmall' mL0), mStack'.
+          repeat match goal with
+                 | |- exists (_: FlatImp.SimState _), _ => refine (ex_intro _ (_, _, _, _) _)
+                 | |- exists _, _ => eexists
+                 | |- _ /\ _ => split
+                 end.
+          11: eassumption.
+          1: eassumption.
+          1: eapply split_stackalloc_2; eassumption.
+          1: reflexivity.
+          1: {
+            match goal with
+            | |- map.split _ _ ?M => unify M mL0
+            end.
+            eapply split_stackalloc_1; eassumption.
+          }
+          1: eassumption.
+          5: eassumption.
+          all: try eassumption.
+      + admit. (* same but without spilling *)
+(*
     - (* exec.lit *)
     - (* exec.op *)
     - (* exec.set *)
@@ -294,7 +544,6 @@ Section Spilling.
     - (* exec.seq *)
     - (* exec.skip *)
 *)
-
   Abort.
 
 End Spilling.
