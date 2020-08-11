@@ -9,3 +9,4 @@ Makefile.coq.conf
 *.glob
 *.aux
 *.cache
+*.timing
