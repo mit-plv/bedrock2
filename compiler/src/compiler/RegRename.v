@@ -241,6 +241,25 @@ Section RegAlloc.
       edestruct IHsrcnames; eauto using states_compat_put_raw.
   Qed.
 
+  Lemma putmany_of_list_states_compat_bw: forall r: src2imp,
+      map.injective r ->
+      forall srcnames impnames lH lL lL' vals,
+      map.getmany_of_list r srcnames = Some impnames ->
+      map.putmany_of_list_zip impnames vals lL = Some lL' ->
+      states_compat lH r lL ->
+      exists lH', map.putmany_of_list_zip srcnames vals lH = Some lH' /\
+                  states_compat lH' r lL'.
+  Proof.
+    intros r Inj.
+    induction srcnames; intros; simpl in *; simp.
+    - exists lH. unfold map.getmany_of_list in H. simpl in H. simp.
+      cbv in H0. destr vals; simp. 1: auto. discriminate.
+    - unfold map.getmany_of_list in H. simpl in H. simp.
+      destr vals. 1: discriminate H0.
+      simpl in H0.
+      edestruct IHsrcnames; eauto using states_compat_put_raw.
+  Qed.
+
   Definition envs_related(e1: srcEnv)(e2: impEnv): Prop :=
     forall f impl1,
       map.get e1 f = Some impl1 ->
@@ -733,15 +752,13 @@ Section RegAlloc.
       rename l into lH.
       eapply @exec.interact; try eassumption.
       + eapply getmany_of_list_states_compat; eassumption.
-      + intros. specialize (H3 _ _ H6). simp.
-        pose proof putmany_of_list_states_compat as P.
+      + intros. specialize (H3 _ _ H6).
+        pose proof putmany_of_list_states_compat_bw as P.
         specialize P with (1 := E0_uacl).
         pose proof states_compat_extends as Q.
         specialize Q with (1 := E0_uacrl) (2 := H7).
         specialize P with (3 := Q); clear Q.
-        specialize P with (1 := H3l).
-        specialize P with (1 := E0_uacrrrrrr).
-        simp.
+        edestruct P as (lL' & A & B); try eassumption.
         eauto 10.
     - (* @exec.call *)
       rename l into lH.

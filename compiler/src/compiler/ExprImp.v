@@ -414,11 +414,6 @@ Section ExprImp2.
       intros.
       edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
       eauto 10.
-    - eapply @exec.interact; try eassumption.
-      intros.
-      edestruct H2 as (? & ? & ?); [eassumption|].
-      destruct H6 as (? & ? & ?).
-      eauto 10.
   Qed.
 
   Lemma intersect_exec: forall env t l m mc s post1,
@@ -485,15 +480,6 @@ Section ExprImp2.
       eapply exec.interact. 1,2: eassumption.
       + eapply ext_spec.intersect; [ exact H1 | exact H14 ].
       + simpl. intros *. intros [? ?].
-        edestruct H2 as (? & ? & ?); [eassumption|].
-        edestruct H15 as (? & ? & ?); [eassumption|].
-        repeat match goal with
-               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
-                 replace v2 with v1 in * by congruence; clear H2
-               end.
-        destruct H6 as (m'1 & S1 & P1).
-        destruct H8 as (m'2 & S2 & P2).
-        pose proof (map.split_det S1 S2) as Q. subst m'2. rename m'1 into m'.
         eauto 10.
   Qed.
 
@@ -548,10 +534,6 @@ Section ExprImp2.
       eapply map.only_differ_putmany. eassumption.
     - eapply exec.interact; try eassumption.
       intros.
-      edestruct H2 as (? & ? & ?); try eassumption.
-      destruct H5 as (? & ? & ?).
-      eexists; split; [eassumption|].
-      eexists; split; [eassumption|].
       eapply map.only_differ_putmany. eassumption.
   Qed.
 
@@ -588,12 +570,7 @@ Section ExprImp2.
       repeat (eexists || split || eassumption).
       eapply map.only_differ_putmany. eassumption.
     - eapply exec.interact; try eassumption.
-      intros.
-      edestruct H2 as (? & ? & ?); try eassumption.
-      destruct H5 as (? & ? & ?).
-      eexists; split; [eassumption|].
-      eexists; split; [eassumption|].
-      repeat (eexists || split || eassumption).
+      intros. split. 2: eauto 10.
       eapply map.only_differ_putmany. eassumption.
   Qed.
 

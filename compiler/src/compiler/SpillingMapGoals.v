@@ -49,6 +49,38 @@ Section LEMMAS.
     firstorder congruence.
   Qed.
 
+  Lemma split_interact_assoc: forall m mKeep mGive m2 mL mReceive m',
+      map.split m mKeep mGive ->
+      map.split m2 m mL ->
+      map.split m' (map.putmany mKeep mL) mReceive ->
+      map.split m' (map.putmany mKeep mReceive) mL.
+  Proof.
+    intros.
+    rewrite map__split_spec in *.
+    pose proof map__putmany_spec mKeep mL.
+    pose proof map__putmany_spec mKeep mReceive.
+    intro k.
+    repeat match goal with
+           | H: forall _, _ |- _ => specialize (H k)
+           end.
+    firstorder congruence.
+  Qed.
+
+  Lemma split_interact_shrink: forall mKeep mL m' mReceive,
+      map.split m' (map.putmany mKeep mL) mReceive ->
+      map.split (map.putmany mKeep mReceive) mKeep mReceive.
+  Proof.
+    intros.
+    rewrite map__split_spec in *.
+    pose proof map__putmany_spec mKeep mL.
+    pose proof map__putmany_spec mKeep mReceive.
+    intro k.
+    repeat match goal with
+           | H: forall _, _ |- _ => specialize (H k)
+           end.
+    firstorder congruence.
+  Qed.
+
   Lemma split_interact:
     forall (m mKeep mGive : map) (frame m2 mL mStack : map),
       map.split m mKeep mGive ->

@@ -241,10 +241,37 @@ Section Spilling.
 
   Definition map__dom_in(l: locals)(P: Z -> Prop): Prop := forall v r, map.get l r = Some v -> P r.
 
+  Definition map__covers_dom(l: locals)(P: Z -> Prop): Prop := forall r, P r -> exists v, map.get l r = Some v.
+
   Axiom map__dom_in_put: forall (l: locals) k v P,
       map__dom_in l P ->
       P k ->
       map__dom_in (map.put l k v) P.
+
+  Lemma map__split_dom_in: forall (l l1 l2: locals) P1 P2,
+      map.split l l1 l2 ->
+      map__dom_in l1 P1 ->
+      map__dom_in l2 P2 ->
+      map__dom_in l (fun x => P1 x \/ P2 x).
+  Proof.
+    unfold map.split, map__dom_in, map.disjoint. intros. simp.
+    rewrite map.get_putmany_dec in H2.
+    destr (map.get l2 r); simp; intuition eauto.
+  Qed.
+
+  Lemma map__putmany_of_list_zip_dom_in: forall (l l': locals) ks vs P,
+      map.putmany_of_list_zip ks vs l = Some l' ->
+      map__dom_in l P ->
+      map__dom_in l' (fun x => P x \/ List.In x ks).
+  Admitted.
+
+(*
+  Lemma map__dom_in_split_l: forall (l l1 l2: locals) P,
+      map.split l l1 l2 ->
+      map__dom_in l2 P ->
+      map__dom_in l1 (fun x => ~ P x).
+  Proof.
+*)
 
   Definition related(maxvar: Z)(frame: mem)(done: bool):
     FlatImp.SimState Z -> FlatImp.SimState Z -> Prop :=
@@ -361,27 +388,23 @@ Section Spilling.
       + intros.
         match goal with
         | H: context[outcome], A: context[outcome] |- _ =>
-          specialize H with (1 := A)
+          specialize H with (1 := A); move H at bottom
         end.
-        simp.
-        pose proof H2l as P.
+        pose proof H4 as P.
         eapply map__putmany_of_list_zip_split in P. 2: eassumption. 2: {
           eapply Forall_impl. 2: eassumption.
           simpl.
-          intros. unfold map__dom_in in *.
-          destr (map.get lStack a). 2: reflexivity.
-          match goal with
-          | H: forall _, _ |- _ => specialize H with (1 := E)
-          end.
-          blia.
-        }
-        simp.
-        eapply map__putmany_of_list_zip_grow with (l := l2) in Pr. 2: eassumption. 2: {
-          eapply Forall_impl. 2: eassumption.
           clear -localsOk. unfold fp, tmp1, tmp2. intros.
           rewrite ?map.get_put_dec.
           rewrite ?(proj2 (Z.eqb_neq _ _ )) by blia.
           apply map.get_empty.
+        }
+        simp.
+        eapply map__putmany_of_list_zip_grow with (l := l) in Pr. 2: eassumption. 2: {
+          eapply Forall_impl. 2: eassumption.
+          unfold map__dom_in in *. intros a B.
+          destr (map.get lStack a). 2: reflexivity. exfalso.
+          assert (32 <= a <= maxvar) by eauto. blia.
         }
         destruct Pr as (l2' & ? & ?).
         repeat match goal with
@@ -389,29 +412,29 @@ Section Spilling.
                | |- exists _, _ => eexists
                | |- _ /\ _ => split
                end.
-        11,9,1: eassumption.
-        * move H2rl at bottom.
+        9: eapply H2.
+        1: reflexivity.
+        9: eapply split_interact_shrink; eassumption.
+        1: eapply split_interact_assoc; eassumption.
+        1: eassumption.
+        5: eassumption.
+        5: eassumption.
+        3: eassumption.
+        2: eassumption.
+        2: eassumption.
 
-          (* DMA questions:
-             how can I know that mReceive is disjoint from the low-level memory introduced by this phase?
-             should also be needed in FlatToRiscv, but there, ext calls are compiled rather than
-             preserved
+        assert (map__dom_in (map.put (map.put (map.put map.empty fp fpval) tmp2 tmp2val) tmp1 tmp1val)
+                            (fun x => x = fp \/ x = tmp2 \/ x = tmp1)) as A. {
+          unfold map__dom_in. clear -localsOk. intros. rewrite ?map.get_put_dec in H.
+          repeat destruct_one_match_hyp; subst; auto.
+          rewrite map.get_empty in H. discriminate.
+        }
+        pose proof map__split_dom_in _ _ _ _ _ Rrrrrrrl Rrrrl A as B. simpl in B.
+        pose proof map__putmany_of_list_zip_dom_in as C.
+        specialize C with (1 := H4) (2 := B). simpl in C.
+        move Pl at bottom.
+        admit. (* ok, but TODO use map.domain instead of dom_in and dom_covers *)
 
-             stackalloc must not return memory that clashes with memory returned by ext calls.
-             But I could pass some stack memory to an extcall and get it back later.
-
-             Designate some area as the area of memory that ext calls could return, plus keep track
-             of what has been given away in the trace, because that can be returned back as well. *)
-          admit.
-        * reflexivity.
-        * admit.
-        * admit.
-        * Search l'.
-          (* l1' <= l'  hmmm?? *)
-          admit.
-        * admit.
-        * eassumption.
-        * eassumption.
     - (* exec.call *)
       admit.
     - (* exec.load *)

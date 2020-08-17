@@ -438,12 +438,12 @@ Module exec.
         ext_spec t mGive action argvals outcome ->
         (forall mReceive resvals,
             outcome mReceive resvals ->
-            exists l', map.putmany_of_list_zip resvars resvals l = Some l' /\
-                       exists m', map.split m' mKeep mReceive /\
-                                  post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l'
-                                       (addMetricInstructions 1
-                                       (addMetricStores 1
-                                       (addMetricLoads 2 mc)))) ->
+            forall l', map.putmany_of_list_zip resvars resvals l = Some l' ->
+            forall m', map.split m' mKeep mReceive ->
+            post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l'
+                 (addMetricInstructions 1
+                 (addMetricStores 1
+                 (addMetricLoads 2 mc)))) ->
         exec (SInteract resvars action argvars) t m l mc post
     | call: forall t m l mc binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
@@ -569,10 +569,6 @@ Module exec.
           exec s t m l mc post2.
     Proof.
       induction 1; intros; try solve [econstructor; eauto].
-      - eapply interact; try eassumption.
-        intros; simp.
-        edestruct H2; [eassumption|].
-        simp. eauto 10.
       - eapply call.
         4: eapply IHexec.
         all: eauto.
@@ -615,15 +611,6 @@ Module exec.
         + eassumption.
         + eapply ext_spec.intersect; [exact H1|exact H14].
         + simpl. intros. simp.
-          edestruct H2 as (? & ? & ?); [eassumption|].
-          edestruct H15 as (? & ? & ?); [eassumption|].
-          simp.
-          equalities.
-          match goal with
-          | A: map.split _ ?m1 ?m2, B: map.split _ ?m1 ?m2 |- _ =>
-            pose proof (map.split_det A B)
-          end.
-          subst.
           eauto 10.
 
       - (* SCall *)
@@ -779,10 +766,6 @@ Section FlatImp2.
       try solve [ econstructor; [eassumption..|simpl; map_solver locals_ok] ].
     - eapply exec.interact; try eassumption.
       intros; simp.
-      edestruct H2; try eassumption. simp.
-      eexists; split; [eassumption|].
-      simpl. try split; eauto.
-      eexists; split; [eassumption|].
       eapply map.only_differ_putmany. eassumption.
     - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
       intros; simpl in *; simp.

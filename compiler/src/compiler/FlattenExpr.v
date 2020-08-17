@@ -810,17 +810,36 @@ Section FlattenExpr1.
       + simpl in *. intros. simp.
         rename l into lH, l' into lL'. rename l0 into argValNames.
         eapply @FlatImp.exec.interact; [eassumption..|].
-        intros. edestruct H3 as (lH' & P & Q). 1: eassumption.
-        pose proof (map.putmany_of_list_zip_extends_exists binds resvals) as R.
-        assert (map.extends lL' lH) as A by maps. specialize R with (1 := P) (2 := A).
-        destruct R as (lL'' & R1 & R2).
+        intros.
+
+        (* TODO move to coqutil *)
+        assert (map__putmany_of_list_zip_extends_exists_bw :
+                  forall (key value : Type) (map : map.map key value),
+                    map.ok map ->
+                    forall key_eqb : key -> key -> bool,
+                    EqDecider key_eqb ->
+                    forall (ks : list key) (vs : list value) (m1 m2 m2' : map),
+                    map.putmany_of_list_zip ks vs m2 = Some m2' ->
+                    map.extends m2 m1 ->
+                    exists m1' : map, map.putmany_of_list_zip ks vs m1 = Some m1' /\ map.extends m2' m1'). {
+          clear.
+          induction ks; intros.
+          - destruct vs; simpl in H; [|discriminate].
+            inversion H1. subst m2'. exists m1. simpl. auto.
+          - simpl in *. destruct vs; try discriminate.
+            specialize IHks with (1 := H1).
+            edestruct IHks as (m1' & IH1 & IH2); cycle 1.
+            + rewrite IH1. eexists; split; [reflexivity|assumption].
+            + auto using map.put_extends.
+        }
+
+        pose proof (map__putmany_of_list_zip_extends_exists_bw _ _ _ _ _ _ binds resvals) as R.
+        assert (map.extends lL' lH) as A by maps. specialize R with (1 := H5) (2 := A).
+        edestruct R as (lL'' & R1 & R2).
         simp.
-        simple eapply ex_intro.
-        simple apply conj; [exact R1|].
-        simple eapply ex_intro.
-        simple apply conj; [eassumption|].
-        eapply ex_intro. eapply ex_intro.
-        simple apply conj; [eassumption|].
+        do 2 eexists.
+        split. 1: eapply H3.
+        all: try eassumption.
         simple apply conj; [exact R2|].
         split; [simple eapply map.only_differ_putmany; eassumption|].
         solve_MetricLog.
