@@ -54,6 +54,34 @@ Section with_semantics.
     eassumption.
   Qed.
 
+  Lemma compile_Z_constant :
+    forall (locals: Semantics.locals) (mem: Semantics.mem)
+           (locals_ok : Semantics.locals -> Prop)
+           tr retvars R functions T (pred: T -> _ -> _ -> Prop)
+           (z : Z) k k_impl,
+    forall var,
+      let v := z in
+      (let head := v in
+       find k_impl
+       implementing (pred (k head))
+       and-returning retvars
+       and-locals-post locals_ok
+       with-locals (map.put locals var (word.of_Z head))
+       and-memory mem and-trace tr and-rest R
+       and-functions functions) ->
+      (let head := v in
+       find (cmd.seq (cmd.set var (expr.literal z)) k_impl)
+       implementing (pred (dlet head k))
+       and-returning retvars
+       and-locals-post locals_ok
+       with-locals locals and-memory mem and-trace tr and-rest R
+       and-functions functions).
+  Proof.
+    intros.
+    repeat straightline.
+    eassumption.
+  Qed.
+
   Lemma compile_nat_constant :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
            (locals_ok : Semantics.locals -> Prop)
@@ -557,6 +585,7 @@ Ltac compile_basics :=
   first [simple eapply compile_constant with (var := name) |
          simple eapply compile_false with (var := name) |
          simple eapply compile_true with (var := name) |
+         simple eapply compile_Z_constant with (var := name) |
          simple eapply compile_nat_constant with (var := name) |
          simple eapply compile_xorb with (var := name) |
          simple eapply compile_add with (var := name) |
