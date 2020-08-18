@@ -282,7 +282,9 @@ Section MMIO1.
   Ltac simpl_paramrecords :=
     change (@FlatToRiscvDef.W (@FlatToRiscvCommon.def_params FlatToRiscv_params)) with Words32 in *;
     change (@FlatToRiscvCommon.locals FlatToRiscv_params) with (@locals p) in *;
-    change (@FlatToRiscvCommon.mem FlatToRiscv_params) with (@mem p) in *.
+    change (@FlatToRiscvCommon.mem FlatToRiscv_params) with (@mem p) in *;
+    change (@width Words32) with 32 in *;
+    change (@Utility.word Words32) with (@word p) in *.
 
   Lemma compile_ext_call_correct: forall resvars extcall argvars,
       FlatToRiscvCommon.compiles_FlatToRiscv_correctly
@@ -296,11 +298,9 @@ Section MMIO1.
     simp.
     destruct_RiscvMachine initialL.
     unfold compile_ext_call, FlatToRiscvCommon.goodMachine in *.
-    (*
     match goal with
     | H: forall _ _, outcome _ _ -> _ |- _ => specialize H with (mReceive := map.empty)
     end.
-    *)
     destruct (String.eqb "MMIOWRITE" action) eqn: E;
       cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics getXAddrs] in *.
     + (* MMOutput *)
@@ -310,21 +310,6 @@ Section MMIO1.
       end.
       cbv [ext_spec FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec FE310CSemantics.ext_spec] in Ex.
       simpl in *|-.
-
-      (* Note: The caller must prove "I picked a strong enough outcome set to derive from it that
-         the number of return values matches the number of return variables", therefore
-         `map.putmany_of_list_zip resvars resvals initialRegsH = Some l'` must be proven, not
-         assumed, by the caller.
-         Does that apply for `map.split m' mKeep mReceive` as well?
-         As in, caller must prove "I picked a strong enough outcome set do derive from it that
-         mReceive is disjoint from mKeep"?
-         No, difference: outcome does not take resvars (only resvals), and ext_spec can pick an mReceive
-         that it passes to outcome, and ext_spec can make sure this mReceive is disjoint (by using a
-         hardcoded memory layout that is also used by valid_machine), whereas ext_spec annot ensure that
-         the length of resvars is correct, because they're not passed to it.
-
-         Other idea: compile_ext_call could return None? No, main compiler doesn't do that, but uses
-         semantics to make sure number of args match. *)
       rewrite E in *.
       destruct Ex as (?&?&?&(?&?&?)&?). subst mGive argvals.
       repeat match goal with
@@ -353,15 +338,12 @@ Section MMIO1.
         end.
       }
       cbn in *|-.
-      simp.
       match goal with
       | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
       end.
       match goal with
-      | HO: outcome _ _, H: _ |- _ => specialize (H _ HO); move H at bottom
+      | HO: outcome _ _, H: _ |- _ => specialize (H _ HO); rename H into HP
       end.
-      progress cbn in *.
-
       destruct g. cbn [
            FlatToRiscvCommon.p_sp
            FlatToRiscvCommon.rem_stackwords
@@ -373,131 +355,113 @@ Section MMIO1.
            FlatToRiscvCommon.e_impl
            FlatToRiscvCommon.dframe
            FlatToRiscvCommon.xframe ] in *.
+      simp.
       subst.
-
-      destruct resvars. 2: {
-
-      idtac.
-
+      cbn in *.
+      simp.
       eapply runsToNonDet.runsToStep_cps.
-      cbv [mcomp_sat Primitives.mcomp_sat MetricMinimalMMIOPrimitivesParams FlatToRiscvCommon.PRParams].
-
-      repeat fwd.
-
-      destruct resvars. 2: {
-
-
-
-      split. {
+      split; simpl_MetricRiscvMachine_get_set. {
         intros _.
         eapply ptsto_instr_subset_to_isXAddr4.
         eapply shrink_footpr_subset. 1: eassumption.
-
-wwcancel.
+        cbn in *. wwcancel.
       }
+
       erewrite ptsto_bytes.load_bytes_of_sep; cycle 1.
       { cbv [program ptsto_instr Scalars.truncated_scalar Scalars.littleendian] in *.
         cbn [array bytes_per] in *.
         simpl_MetricRiscvMachine_get_set.
-        ecancel_assumption. }
+        wcancel_assumption. }
 
-        repeat fwd.
+      change (@Bind (@FlatToRiscvCommon.M FlatToRiscv_params) (@FlatToRiscvCommon.MM FlatToRiscv_params))
+        with (@free.bind MetricMinimalMMIO.action result) in *.
+      unfold free.bind at 1.
 
-        rewrite LittleEndian.combine_split.
-        rewrite Z.mod_small by (eapply EncodeBound.encode_range).
-        rewrite DecodeEncode.decode_encode; cycle 1. {
-          unfold valid_instructions, iset in *. cbn in *. eauto.
-        }
-        repeat fwd.
+      rewrite LittleEndian.combine_split.
+      rewrite Z.mod_small by eapply EncodeBound.encode_range.
+      rewrite DecodeEncode.decode_encode; cycle 1. {
+        unfold valid_instructions, iset in *. cbn in *. eauto.
+      }
+      repeat fwd.
 
-        destruct (Z.eq_dec z 0); cbv [Register0 valid_FlatImp_var] in *; try ((* WHY *) exfalso; blia).
+      destruct (Z.eq_dec z 0); cbv [Register0 valid_FlatImp_var] in *; [exfalso; blia|].
+      destruct (Z.eq_dec z0 0); cbv [Register0 valid_FlatImp_var] in *; [exfalso; blia|].
+      simpl_paramrecords.
+      replace (map.get initialL_regs z) with (Some x) by (symmetry; unfold map.extends in *; eauto).
+      replace (map.get initialL_regs z0) with (Some x0) by (symmetry; unfold map.extends in *; eauto).
 
-        unshelve erewrite (_ : _ = @Some word _); [ | eassumption | ].
+      cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
+      unshelve erewrite (_ : _ = None); [eapply storeWord_in_MMIO_is_None; eauto|].
 
-        repeat fwd.
+      cbv [MinimalMMIO.nonmem_store FE310_mmio].
+      split; [trivial|].
+      split; [red; auto|].
 
-        cbv [Register0 valid_register] in *.
-        destruct (Z.eq_dec z0 0); try ((* WHY *) exfalso; blia).
+      repeat fwd.
 
-        unshelve erewrite (_ : _ = @Some word _); [ | eassumption | ].
-        destruct (Z.eq_dec z 0); try blia.
-
-        repeat fwd.
-
-        cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
-
-        unshelve erewrite (_ : _ = None); [eapply storeWord_in_MMIO_is_None; eauto|].
-
-        cbv [MinimalMMIO.nonmem_store FE310_mmio].
-        split; [trivial|].
-        split; [red; auto|].
-
-        repeat fwd.
-
-        eapply runsToNonDet.runsToDone.
-        simpl_MetricRiscvMachine_get_set.
-        exists finalRegsH. exists []. eexists.
-        simp. simpl_word_exprs word_ok.
-        unfold mmioStoreEvent, signedByteTupleToReg in *.
-        unfold regToInt32.
-        rewrite LittleEndian.combine_split.
-        rewrite sextend_width_nop by reflexivity.
-        rewrite Z.mod_small by apply word.unsigned_range.
-        rewrite word.of_Z_unsigned.
-        apply eqb_eq in E. subst action.
-        cbn -[invalidateWrittenXAddrs] in *.
-        eexists.
-        split; eauto.
-        split; eauto.
-        split; eauto.
-        split; eauto.
-        split; [subst; eauto|].
-        split; [subst; eauto|].
-        split. {
-          lazymatch goal with
-          | H: map.undef_on initialL_mem ?A |- _ =>
-            rename H into U; change (map.undef_on initialL_mem isMMIOAddr) in U; move U at bottom
-          end.
-          lazymatch goal with
-          | H: disjoint (of_list initialL_xaddrs) ?A |- _ =>
-            rename H into D; change (disjoint (of_list initialL_xaddrs) isMMIOAddr) in D;
-            move D at bottom
-          end.
-          lazymatch goal with
-          | H: FE310CSemantics.isMMIOAddr x |- _ =>
-            rename H into M0; change (isMMIOAddr x) in M0; move M0 at bottom
-          end.
-          lazymatch goal with
-          | H: word.unsigned x mod 4 = 0 |- _ => rename H into D4; move D4 at bottom
-          end.
-          assert (forall {T: Type} (a b c: set T), subset a b -> subset b c -> subset a c)
-            as subset_trans. {
-            clear. unfold subset, PropSet.elem_of. intros. firstorder idtac.
-          }
-          eapply subset_trans. 1: eassumption.
-          clear -D4 M0 D.
-          unfold invalidateWrittenXAddrs.
-          change removeXAddr with (@List.removeb word word.eqb _).
-          rewrite ?ListSet.of_list_removeb.
-          unfold map.undef_on, map.agree_on, disjoint in *.
-          unfold subset, diff, singleton_set, of_list, PropSet.elem_of in *.
-          intros y HIn.
-          specialize (D y). destruct D; [contradiction|].
-          rewrite ?and_assoc.
-          split; [exact HIn|clear HIn].
-          eapply disjoint_MMIO_goal; assumption.
-        }
-        match goal with
-        | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
+      eapply runsToNonDet.runsToDone.
+      simpl_MetricRiscvMachine_get_set.
+      simpl_word_exprs word_ok.
+      unfold mmioStoreEvent, signedByteTupleToReg in *.
+      unfold regToInt32.
+      rewrite LittleEndian.combine_split.
+      rewrite sextend_width_nop by reflexivity.
+      rewrite Z.mod_small by apply word.unsigned_range.
+      rewrite word.of_Z_unsigned.
+      apply eqb_eq in E. subst action.
+      cbn -[invalidateWrittenXAddrs] in *.
+      specialize (HPr mKeep). rewrite map.split_empty_r in HPr. specialize (HPr eq_refl).
+      do 4 eexists.
+      split; eauto.
+      split; eauto.
+      split; [unfold map.only_differ; eauto|].
+      split; eauto.
+      split; eauto.
+      split; eauto.
+      split; eauto.
+      split; eauto.
+      split. {
+        lazymatch goal with
+        | H: map.undef_on initialL_mem ?A |- _ =>
+          rename H into U; change (map.undef_on initialL_mem isMMIOAddr) in U; move U at bottom
         end.
-        ssplit; eauto.
+        lazymatch goal with
+        | H: disjoint (of_list initialL_xaddrs) ?A |- _ =>
+          rename H into D; change (disjoint (of_list initialL_xaddrs) isMMIOAddr) in D;
+            move D at bottom
+        end.
+        lazymatch goal with
+        | H: FE310CSemantics.isMMIOAddr x |- _ =>
+          rename H into M0; change (isMMIOAddr x) in M0; move M0 at bottom
+        end.
+        lazymatch goal with
+        | H: word.unsigned x mod 4 = 0 |- _ => rename H into D4; move D4 at bottom
+        end.
+        assert (forall {T: Type} (a b c: set T), subset a b -> subset b c -> subset a c)
+          as subset_trans. {
+          clear. unfold subset, PropSet.elem_of. intros. firstorder idtac.
+        }
+        eapply subset_trans. 1: eassumption.
+        clear -D4 M0 D.
         unfold invalidateWrittenXAddrs.
         change removeXAddr with (@List.removeb word word.eqb _).
         rewrite ?ListSet.of_list_removeb.
-        repeat apply disjoint_diff_l.
-        assumption.
+        unfold map.undef_on, map.agree_on, disjoint in *.
+        unfold subset, diff, singleton_set, of_list, PropSet.elem_of in *.
+        intros y HIn.
+        specialize (D y). destruct D; [contradiction|].
+        rewrite ?and_assoc.
+        split; [exact HIn|clear HIn].
+        eapply disjoint_MMIO_goal; assumption.
+      }
+      ssplit; eauto.
+      unfold invalidateWrittenXAddrs.
+      change removeXAddr with (@List.removeb word word.eqb _).
+      rewrite ?ListSet.of_list_removeb.
+      repeat apply disjoint_diff_l.
+      assumption.
 
-      + (* MMInput *)
+    + (* MMInput *)
         simpl in *|-.
         simp.
         match goal with
