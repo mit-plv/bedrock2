@@ -462,125 +462,125 @@ Section MMIO1.
       assumption.
 
     + (* MMInput *)
-        simpl in *|-.
-        simp.
-        match goal with
-        | H: FE310CSemantics.ext_spec _ _ _ _ _ |- _ => rename H into Ex
-        end.
-        cbv [ext_spec FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec FE310CSemantics.ext_spec] in Ex.
-        simpl in *|-.
+      simpl in *|-.
+      simp.
+      match goal with
+      | H: FE310CSemantics.ext_spec _ _ _ _ _ |- _ => rename H into Ex
+      end.
+      cbv [ext_spec FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec FE310CSemantics.ext_spec] in Ex.
+      simpl in *|-.
 
-        rewrite E in *.
-        destruct ("MMIOREAD" =? action)%string eqn:EE in Ex; try contradiction.
-        destruct Ex as (?&?&(?&?&?)&?). subst mGive argvals.
-        repeat match goal with
-               | l: list _ |- _ => destruct l;
-                                     try (exfalso; (contrad || (cheap_saturate; contrad))); []
-               end.
+      rewrite E in *.
+      destruct ("MMIOREAD" =? action)%string eqn:EE in Ex; try contradiction.
+      destruct Ex as (?&?&(?&?&?)&?). subst mGive argvals.
+      repeat match goal with
+             | l: list _ |- _ => destruct l;
+                                   try (exfalso; (contrad || (cheap_saturate; contrad))); []
+             end.
+      match goal with
+      | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
+      end.
+      simp.
+      destruct argvars; cycle 1. {
+        exfalso.
+        match goal with
+        | A: map.getmany_of_list _ ?L1 = Some ?L2 |- _ =>
+          clear -A; cbn in *; simp; destruct_one_match_hyp; congruence
+        end.
+      }
+      cbn in *|-.
+      simp.
+      cbn in *.
+      eapply runsToNonDet.runsToStep_cps.
+      cbv [mcomp_sat Primitives.mcomp_sat MetricMinimalMMIOPrimitivesParams FlatToRiscvCommon.PRParams].
+
+      repeat fwd.
+
+      split. {
+        intros _.
+        eapply ptsto_instr_subset_to_isXAddr4.
+        eapply shrink_footpr_subset. 1: eassumption. wwcancel.
+      }
+      erewrite ptsto_bytes.load_bytes_of_sep; cycle 1.
+      { cbv [program ptsto_instr Scalars.truncated_scalar Scalars.littleendian] in *.
+        cbn [array bytes_per] in *.
+        ecancel_assumption. }
+
+      repeat fwd.
+
+      rewrite LittleEndian.combine_split.
+      rewrite Z.mod_small by (eapply EncodeBound.encode_range).
+      rewrite DecodeEncode.decode_encode; cycle 1. {
+        unfold valid_instructions, iset in *. cbn in *. eauto.
+      }
+
+      repeat fwd.
+
+      cbv [Register0 valid_FlatImp_var] in *.
+      destruct (Z.eq_dec z 0); try ((* WHY *) exfalso; blia).
+
+      unshelve erewrite (_ : _ = @Some word _); [ | eassumption | ].
+
+      repeat fwd.
+
+      split; try discriminate.
+      cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
+      unshelve erewrite (_ : _ = None); [eapply loadWord_in_MMIO_is_None|]; eauto.
+
+      cbv [MinimalMMIO.nonmem_load FE310_mmio].
+      split; [trivial|].
+      split; [red; auto|].
+      intros.
+
+      repeat fwd.
+
+      cbv [Register0 valid_register] in *.
+      destruct (Z.eq_dec z0 0); try ((* WHY *) exfalso; blia).
+
+      repeat fwd.
+
+      eapply runsToNonDet.runsToDone.
+      simpl_MetricRiscvMachine_get_set.
+      destruct (Z.eq_dec z 0); try contradiction.
+
+      unfold mmioLoadEvent, signedByteTupleToReg.
+      match goal with
+      | A: forall _, outcome _ _ -> _, OC: forall _, outcome _ _ |- _ =>
+         epose proof (A (cons _ nil) (OC _)) as P; clear A
+      end.
+      cbn in P.
+      simp.
+      apply eqb_eq in EE. subst action.
+      cbn in *.
+      eexists. refine (ex_intro _ [_] _). do 2 eexists.
+      split. {
+        eapply map.put_extends. eassumption.
+      }
+      split. 1: reflexivity.
+      split. {
+        rewrite map.get_put_diff; eauto. unfold RegisterNames.sp. blia.
+      }
+      split. 1: exact Prr.
+      split; [subst; eauto|].
+      split; [subst; eauto|].
+      split; eauto.
+      split. {
         match goal with
         | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
         end.
-        simp.
-        destruct argvars; cycle 1. {
-          exfalso.
-          match goal with
-          | A: map.getmany_of_list _ ?L1 = Some ?L2 |- _ =>
-            clear -A; cbn in *; simp; destruct_one_match_hyp; congruence
-          end.
-        }
-        cbn in *|-.
-        simp.
-        cbn in *.
-        eapply runsToNonDet.runsToStep_cps.
-        cbv [mcomp_sat Primitives.mcomp_sat MetricMinimalMMIOPrimitivesParams FlatToRiscvCommon.PRParams].
-
-        repeat fwd.
-
-        split. {
-          intros _.
-          eapply ptsto_instr_subset_to_isXAddr4.
-          eapply shrink_footpr_subset. 1: eassumption. wwcancel.
-        }
-        erewrite ptsto_bytes.load_bytes_of_sep; cycle 1.
-        { cbv [program ptsto_instr Scalars.truncated_scalar Scalars.littleendian] in *.
-          cbn [array bytes_per] in *.
-          ecancel_assumption. }
-
-        repeat fwd.
-
-        rewrite LittleEndian.combine_split.
-        rewrite Z.mod_small by (eapply EncodeBound.encode_range).
-        rewrite DecodeEncode.decode_encode; cycle 1. {
-          unfold valid_instructions, iset in *. cbn in *. eauto.
-        }
-
-        repeat fwd.
-
-        cbv [Register0 valid_FlatImp_var] in *.
-        destruct (Z.eq_dec z 0); try ((* WHY *) exfalso; blia).
-
-        unshelve erewrite (_ : _ = @Some word _); [ | eassumption | ].
-
-        repeat fwd.
-
-        split; try discriminate.
-        cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
-        unshelve erewrite (_ : _ = None); [eapply loadWord_in_MMIO_is_None|]; eauto.
-
-        cbv [MinimalMMIO.nonmem_load FE310_mmio].
-        split; [trivial|].
-        split; [red; auto|].
+        assumption.
+      }
+      split. {
         intros.
-
-        repeat fwd.
-
-        cbv [Register0 valid_register] in *.
-        destruct (Z.eq_dec z0 0); try ((* WHY *) exfalso; blia).
-
-        repeat fwd.
-
-        eapply runsToNonDet.runsToDone.
-        simpl_MetricRiscvMachine_get_set.
-        destruct (Z.eq_dec z 0); try contradiction.
-
-        unfold mmioLoadEvent, signedByteTupleToReg.
-        match goal with
-        | A: forall _, outcome _ _ -> _, OC: forall _, outcome _ _ |- _ =>
-           epose proof (A (cons _ nil) (OC _)) as P; clear A
-        end.
-        cbn in P.
-        simp.
-        apply eqb_eq in EE. subst action.
-        cbn in *.
-        eexists. refine (ex_intro _ [_] _). do 2 eexists.
-        split. {
-          eapply map.put_extends. eassumption.
-        }
-        split. 1: reflexivity.
-        split. {
-          rewrite map.get_put_diff; eauto. unfold RegisterNames.sp. blia.
-        }
-        split. 1: exact Prr.
-        split; [subst; eauto|].
-        split; [subst; eauto|].
-        split; eauto.
-        split. {
-          match goal with
-          | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
-          end.
-          assumption.
-        }
-        split. {
-          intros.
-          rewrite map.get_put_dec in H.
-          destruct_one_match_hyp. 1: blia. eauto.
-        }
-        split. {
-          eapply @FlatToRiscvCommon.preserve_regs_initialized_after_put.
-          2: eassumption.
-          typeclasses eauto.
-        }
-        eauto.
+        rewrite map.get_put_dec in H.
+        destruct_one_match_hyp. 1: blia. eauto.
+      }
+      split. {
+        eapply @FlatToRiscvCommon.preserve_regs_initialized_after_put.
+        2: eassumption.
+        typeclasses eauto.
+      }
+      eauto.
   Time Qed. (* takes more than 3min! *)
 
 End MMIO1.
