@@ -238,8 +238,6 @@ Section WeakestPrecondition.
       exists retvs, map.getmany_of_list st1 rets = Some retvs /\
       post t' m' retvs)).
 
-  Local Axiom TODO_andres: False.
-
   Local Hint Constructors Semantics.exec : core.
   Lemma sound_cmd' e c t m l mc post
         (H:WeakestPrecondition.cmd (semantics_call e) c t m l post)
@@ -257,8 +255,7 @@ Section WeakestPrecondition.
         { eapply Semantics.exec.while_false; t. }
         { eapply Semantics.exec.while_true; t. t. } } }
     { eapply sound_args in H; t. }
-    { eapply sound_args in H; t. case TODO_andres. }
-    Unshelve. eassumption.
+    { eapply sound_args in H; t. }
   Qed.
 
 
@@ -322,11 +319,8 @@ Section WeakestPrecondition.
     exists map.empty.
     split; [eapply Properties.map.split_empty_r; exact eq_refl|].
     eapply ext_spec.weaken; [|eapply Hext]; intros ? ? [? [? []]]. subst a; subst.
-    (*
-    eexists; split; [eassumption|].
-    eexists; split; [eapply Properties.map.split_empty_r; exact eq_refl|].
-    assumption.
-    *)
-    case TODO_andres.
+    intros.
+    eapply Properties.map.split_empty_r in H2; subst.
+    congruence.
 Qed.
 End WeakestPrecondition.
