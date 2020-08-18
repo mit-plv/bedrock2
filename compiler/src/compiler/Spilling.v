@@ -390,39 +390,43 @@ Section Spilling.
         | H: context[outcome], A: context[outcome] |- _ =>
           specialize H with (1 := A); move H at bottom
         end.
-        pose proof H4 as P.
+        simp.
+        pose proof H2l as P.
         eapply map__putmany_of_list_zip_split in P. 2: eassumption. 2: {
           eapply Forall_impl. 2: eassumption.
           simpl.
+          intros. unfold map__dom_in in *.
+          destr (map.get lStack a). 2: reflexivity.
+          match goal with
+          | H: forall _, _ |- _ => specialize H with (1 := E)
+          end.
+          blia.
+        }
+        simp.
+        eapply map__putmany_of_list_zip_grow with (l := l2) in Pr. 2: eassumption. 2: {
+          eapply Forall_impl. 2: eassumption.
           clear -localsOk. unfold fp, tmp1, tmp2. intros.
           rewrite ?map.get_put_dec.
           rewrite ?(proj2 (Z.eqb_neq _ _ )) by blia.
           apply map.get_empty.
         }
-        simp.
-        eapply map__putmany_of_list_zip_grow with (l := l) in Pr. 2: eassumption. 2: {
-          eapply Forall_impl. 2: eassumption.
-          unfold map__dom_in in *. intros a B.
-          destr (map.get lStack a). 2: reflexivity. exfalso.
-          assert (32 <= a <= maxvar) by eauto. blia.
-        }
         destruct Pr as (l2' & ? & ?).
+        eexists. split. 1: eassumption.
+        intros.
         repeat match goal with
                | |- exists (_: FlatImp.SimState _), _ => refine (ex_intro _ (_, _, _, _) _)
                | |- exists _, _ => eexists
                | |- _ /\ _ => split
                end.
-        9: eapply H2.
+        9: eapply H2r.
         1: reflexivity.
-        9: eapply split_interact_shrink; eassumption.
+        8: eapply split_interact_shrink; eassumption.
         1: eapply split_interact_assoc; eassumption.
         1: eassumption.
         5: eassumption.
-        5: eassumption.
+        4: eassumption.
         3: eassumption.
         2: eassumption.
-        2: eassumption.
-
         assert (map__dom_in (map.put (map.put (map.put map.empty fp fpval) tmp2 tmp2val) tmp1 tmp1val)
                             (fun x => x = fp \/ x = tmp2 \/ x = tmp1)) as A. {
           unfold map__dom_in. clear -localsOk. intros. rewrite ?map.get_put_dec in H.

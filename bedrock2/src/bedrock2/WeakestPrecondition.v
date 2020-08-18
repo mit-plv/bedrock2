@@ -73,7 +73,7 @@ Section WeakestPrecondition.
           anybytes a n mStack -> map.split mCombined m mStack ->
           dlet! l := map.put l x a in
           rec c t mCombined l (fun t' mCombined' l' =>
-          exists m' mStack',
+          exists m' mStack', 
           anybytes a n mStack' /\ map.split mCombined' m' mStack' /\
           post t' m' l')
       | cmd.cond br ct cf =>
@@ -100,7 +100,7 @@ Section WeakestPrecondition.
         bind_ex args <- dexprs m l arges;
         exists mKeep mGive, map.split m mKeep mGive /\
         ext_spec t mGive action args (fun mReceive rets =>
-          forall l', map.putmany_of_list_zip binds rets l = Some l' ->
+          bind_ex_Some l' <- map.putmany_of_list_zip binds rets l;
           forall m', map.split m' mKeep mReceive ->
           post (cons ((mGive, action, args), (mReceive, rets)) t) m' l')
       end.

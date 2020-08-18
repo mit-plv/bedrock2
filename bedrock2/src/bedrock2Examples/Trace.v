@@ -288,15 +288,15 @@ Module Syscalls.
       + intros.
         destruct_products.
         subst.
-        split.
-        * symmetry. apply map.split_empty_r. assumption.
-        * do 2 eexists. repeat split.
+        eexists. split.
+        * reflexivity.
+        * intros. apply map.split_empty_r in H0. subst m'. split; [reflexivity|]. do 2 eexists. split.
           { (* TODO direction doesn't match *)
             case TODO. }
           { (* TODO need to specify that some ignored1, ignored2 are updated too *)
             case TODO. }
     - case TODO.
-      Grab Existential Variables. all: apply (word.of_Z 42) || apply map.empty.
+      Grab Existential Variables. all: apply (word.of_Z 42) || apply map.empty || apply nil.
     Defined.
 
   End WithMem.

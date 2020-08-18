@@ -244,7 +244,7 @@ Module exec. Section WithEnv.
       args mc' (_ :  evaluate_call_args_log m l arges mc = Some (args, mc'))
       mid (_ : ext_spec t mGive action args mid)
       (_ : forall mReceive resvals, mid mReceive resvals ->
-          forall l', map.putmany_of_list_zip binds resvals l = Some l' ->
+          exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
           forall m', map.split m' mKeep mReceive ->
           post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l'
             (addMetricInstructions 1

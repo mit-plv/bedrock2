@@ -113,9 +113,8 @@ Section WeakestPrecondition.
       { destruct H2 as (mKeep & mGive & ? & ?).
         exists mKeep. exists mGive.
         split; [assumption|].
-        Locate weaken.
         eapply Semantics.ext_spec.weaken; [|solve[eassumption]].
-        intros ? ? ? ? ? ? ? . eauto 10. } }
+        intros ? ? (?&?&?); eauto 10. } }
   Qed.
 
   Global Instance Proper_func :
@@ -319,8 +318,7 @@ Section WeakestPrecondition.
     exists map.empty.
     split; [eapply Properties.map.split_empty_r; exact eq_refl|].
     eapply ext_spec.weaken; [|eapply Hext]; intros ? ? [? [? []]]. subst a; subst.
-    intros.
-    eapply Properties.map.split_empty_r in H2; subst.
-    congruence.
+    eexists; split; [eassumption|].
+    intros. eapply Properties.map.split_empty_r in H. subst. assumption.
 Qed.
 End WeakestPrecondition.
