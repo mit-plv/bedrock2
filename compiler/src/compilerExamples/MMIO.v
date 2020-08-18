@@ -279,83 +279,127 @@ Section MMIO1.
     - eapply MetricMinimalMMIOSatisfiesPrimitives; cbn; intuition eauto.
   Qed.
 
+  Ltac simpl_paramrecords :=
+    change (@FlatToRiscvDef.W (@FlatToRiscvCommon.def_params FlatToRiscv_params)) with Words32 in *;
+    change (@FlatToRiscvCommon.locals FlatToRiscv_params) with (@locals p) in *;
+    change (@FlatToRiscvCommon.mem FlatToRiscv_params) with (@mem p) in *.
+
   Lemma compile_ext_call_correct: forall resvars extcall argvars,
       FlatToRiscvCommon.compiles_FlatToRiscv_correctly
         (@FlatToRiscvDef.compile_ext_call compilation_params)
         (FlatImp.SInteract resvars extcall argvars).
   Proof.
-    intros.
-    eapply @FlatToRiscvCommon.compile_ext_call_correct_compatibility.
-    - simpl. typeclasses eauto.
-    - simpl. typeclasses eauto.
-    - (* compile_ext_call_correct *)
-      unfold FlatToRiscvCommon.compile_ext_call_correct_alt.
-      intros *. intros ? ? ? V_argvars V_resvars. intros. rename extcall into action.
-      pose proof (compile_ext_call_emits_valid SeparationLogic.iset _ action _ V_resvars V_argvars).
-      destruct_RiscvMachine initialL.
-      unfold FlatToRiscvDef.compile_ext_call, FlatToRiscvCommon.def_params,
-             FlatToRiscv_params, compilation_params, compile_ext_call in *.
+    unfold FlatToRiscvCommon.compiles_FlatToRiscv_correctly. simpl. intros.
+    destruct H5 as [V_resvars V_argvars].
+    rename extcall into action.
+    pose proof (compile_ext_call_emits_valid SeparationLogic.iset _ action _ V_resvars V_argvars).
+    simp.
+    destruct_RiscvMachine initialL.
+    unfold compile_ext_call, FlatToRiscvCommon.goodMachine in *.
+    (*
+    match goal with
+    | H: forall _ _, outcome _ _ -> _ |- _ => specialize H with (mReceive := map.empty)
+    end.
+    *)
+    destruct (String.eqb "MMIOWRITE" action) eqn: E;
+      cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics getXAddrs] in *.
+    + (* MMOutput *)
+      progress simpl in *|-.
       match goal with
-        | H: forall _ _, outcome _ _ -> _ |- _ => specialize H with (mReceive := map.empty)
+      | H: FE310CSemantics.ext_spec _ _ _ _ _ |- _ => rename H into Ex
       end.
-      destruct (String.eqb _ action) eqn: E;
-        cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics] in *.
-      + (* MMOutput *)
-        simpl in *|-.
-        simp.
+      cbv [ext_spec FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec FE310CSemantics.ext_spec] in Ex.
+      simpl in *|-.
+
+      (* Note: The caller must prove "I picked a strong enough outcome set to derive from it that
+         the number of return values matches the number of return variables", therefore
+         `map.putmany_of_list_zip resvars resvals initialRegsH = Some l'` must be proven, not
+         assumed, by the caller.
+         Does that apply for `map.split m' mKeep mReceive` as well?
+         As in, caller must prove "I picked a strong enough outcome set do derive from it that
+         mReceive is disjoint from mKeep"?
+         No, difference: outcome does not take resvars (only resvals), and ext_spec can pick an mReceive
+         that it passes to outcome, and ext_spec can make sure this mReceive is disjoint (by using a
+         hardcoded memory layout that is also used by valid_machine), whereas ext_spec annot ensure that
+         the length of resvars is correct, because they're not passed to it.
+
+         Other idea: compile_ext_call could return None? No, main compiler doesn't do that, but uses
+         semantics to make sure number of args match. *)
+      rewrite E in *.
+      destruct Ex as (?&?&?&(?&?&?)&?). subst mGive argvals.
+      repeat match goal with
+             | H: _ /\ _ |- _ => destruct H
+             | H: exists x, _ |- _ => let x' := fresh x in destruct H as [x' H]
+             end.
+      destruct argvars. {
+        exfalso.
         match goal with
-        | H: FE310CSemantics.ext_spec _ _ _ _ _ |- _ => rename H into Ex
+        | A: map.getmany_of_list _ ?L1 = Some ?L2 |- _ =>
+          clear -A; cbn in *; congruence
         end.
-        cbv [ext_spec FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec FE310CSemantics.ext_spec] in Ex.
-        simpl in *|-.
-
-        rewrite E in *.
-        destruct Ex as (?&?&?&(?&?&?)&?). subst mGive argvals.
-        repeat match goal with
-               | l: list _ |- _ => destruct l;
-                                     try (exfalso; (contrad || (cheap_saturate; contrad))); []
-               end.
-        simp.
-        destruct argvars. {
-          exfalso.
-          match goal with
-          | A: map.getmany_of_list _ ?L1 = Some ?L2 |- _ =>
-            clear -A; cbn in *; destruct_one_match_hyp; congruence
-          end.
-        }
-        destruct argvars; cycle 1. {
-          exfalso.
-          match goal with
-          | A: map.getmany_of_list _ ?L1 = Some ?L2 |- _ =>
-            clear -A; cbn in *; simp; destruct_one_match_hyp; congruence
-          end.
-        }
-        cbn in *|-.
+      }
+      destruct argvars. {
+        exfalso.
         match goal with
-        | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
+        | A: map.getmany_of_list _ ?L1 = Some ?L2 |- _ =>
+          clear -A; cbn in *; destruct_one_match_hyp; congruence
         end.
+      }
+      destruct argvars; cycle 1. {
+        exfalso.
         match goal with
-        | HO: outcome _ _, H: _ |- _ => specialize (H _ HO); move H at bottom; destruct H as (finalRegsH&finalMetricsH&finalMH&?)
+        | A: map.getmany_of_list _ ?L1 = Some ?L2 |- _ =>
+          clear -A; cbn in *; simp; destruct_one_match_hyp; congruence
         end.
-        simp.
-        cbn in *.
-        simp.
+      }
+      cbn in *|-.
+      simp.
+      match goal with
+      | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
+      end.
+      match goal with
+      | HO: outcome _ _, H: _ |- _ => specialize (H _ HO); move H at bottom
+      end.
+      progress cbn in *.
 
-        eapply runsToNonDet.runsToStep_cps.
-        cbv [mcomp_sat Primitives.mcomp_sat MetricMinimalMMIOPrimitivesParams FlatToRiscvCommon.PRParams].
+      destruct g. cbn [
+           FlatToRiscvCommon.p_sp
+           FlatToRiscvCommon.rem_stackwords
+           FlatToRiscvCommon.rem_framewords
+           FlatToRiscvCommon.p_insts
+           FlatToRiscvCommon.insts
+           FlatToRiscvCommon.program_base
+           FlatToRiscvCommon.e_pos
+           FlatToRiscvCommon.e_impl
+           FlatToRiscvCommon.dframe
+           FlatToRiscvCommon.xframe ] in *.
+      subst.
 
-        repeat fwd.
+      destruct resvars. 2: {
 
-        split. {
-          intros _.
-          eapply ptsto_instr_subset_to_isXAddr4.
-          eapply shrink_footpr_subset. 1: eassumption. wwcancel.
-        }
-        erewrite ptsto_bytes.load_bytes_of_sep; cycle 1.
-        { cbv [program ptsto_instr Scalars.truncated_scalar Scalars.littleendian] in *.
-          cbn [array bytes_per] in *.
-          simpl_MetricRiscvMachine_get_set.
-          ecancel_assumption. }
+      idtac.
+
+      eapply runsToNonDet.runsToStep_cps.
+      cbv [mcomp_sat Primitives.mcomp_sat MetricMinimalMMIOPrimitivesParams FlatToRiscvCommon.PRParams].
+
+      repeat fwd.
+
+      destruct resvars. 2: {
+
+
+
+      split. {
+        intros _.
+        eapply ptsto_instr_subset_to_isXAddr4.
+        eapply shrink_footpr_subset. 1: eassumption.
+
+wwcancel.
+      }
+      erewrite ptsto_bytes.load_bytes_of_sep; cycle 1.
+      { cbv [program ptsto_instr Scalars.truncated_scalar Scalars.littleendian] in *.
+        cbn [array bytes_per] in *.
+        simpl_MetricRiscvMachine_get_set.
+        ecancel_assumption. }
 
         repeat fwd.
 
