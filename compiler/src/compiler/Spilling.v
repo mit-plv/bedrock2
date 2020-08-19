@@ -1,8 +1,10 @@
 Require Import Coq.ZArith.ZArith.
+Require Import bedrock2.Map.SeparationLogic.
 Require Import compiler.FlatImp.
 Require Import coqutil.Decidable.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.simpl_rewrite.
+Require Import coqutil.Datatypes.PropSet.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import riscv.Utility.Utility.
 Require Import coqutil.Z.Lia.
@@ -241,7 +243,7 @@ Section Spilling.
 
   Definition map__dom_in(l: locals)(P: Z -> Prop): Prop := forall v r, map.get l r = Some v -> P r.
 
-  Definition map__covers_dom(l: locals)(P: Z -> Prop): Prop := forall r, P r -> exists v, map.get l r = Some v.
+  Definition map__dom(l: locals): Z -> Prop := fun x => exists v, map.get l x = Some v.
 
   Axiom map__dom_in_put: forall (l: locals) k v P,
       map__dom_in l P ->
@@ -264,6 +266,45 @@ Section Spilling.
       map__dom_in l P ->
       map__dom_in l' (fun x => P x \/ List.In x ks).
   Admitted.
+
+  Lemma map__split_dom_disjoint: forall l l1 l2,
+      map.split l l1 l2 ->
+      disjoint (map__dom l1) (map__dom l2).
+  Proof.
+    clear.
+    unfold map.split, map.disjoint, map__dom, disjoint, elem_of. intros *. intros [_ ?] ?.
+    specialize (H x).
+    destruct (map.get l1 x); destruct (map.get l2 x); try firstorder congruence.
+    exfalso. eauto.
+  Qed.
+
+  Lemma map__split_dom_spec: forall l l1 l2,
+      map.split l l1 l2 ->
+      disjoint (map__dom l1) (map__dom l2) /\
+      sameset (union (map__dom l1) (map__dom l2)) (map__dom l).
+  Proof.
+    clear -localsOk. split. 1: eauto using map__split_dom_disjoint.
+    unfold map.split, union, map__dom, sameset, subset, elem_of in *.
+    destruct H. subst. split; intros.
+    - rewrite map.get_putmany_dec. destruct H as [[? ?] | [? ?]]; rewrite H.
+      2: eauto. destruct (map.get l2 x); eauto.
+    - rewrite map.get_putmany_dec in H. destruct H as [? ?].
+      clear localsOk. destruct (map.get l2 x); firstorder congruence.
+  Qed.
+
+  Lemma map__split_dom_spec': forall l l1 l2,
+      map.split l l1 l2 ->
+      disjoint (map__dom l1) (map__dom l2) /\
+      union (map__dom l1) (map__dom l2) = map__dom l.
+  Proof.
+    clear -localsOk. split. 1: eauto using map__split_dom_disjoint.
+    unfold map.split, union, map__dom, elem_of in *.
+    apply iff1ToEq. destruct H. subst. split; intros.
+    - rewrite map.get_putmany_dec. destruct H as [[? ?] | [? ?]]; rewrite H.
+      2: eauto. destruct (map.get l2 x); eauto.
+    - rewrite map.get_putmany_dec in H. destruct H as [? ?].
+      clear localsOk. destruct (map.get l2 x); firstorder congruence.
+  Qed.
 
 (*
   Lemma map__dom_in_split_l: forall (l l1 l2: locals) P,
@@ -436,8 +477,19 @@ Section Spilling.
         pose proof map__split_dom_in _ _ _ _ _ Rrrrrrrl Rrrrl A as B. simpl in B.
         pose proof map__putmany_of_list_zip_dom_in as C.
         specialize C with (1 := H4) (2 := B). simpl in C.
-        move Pl at bottom.
-        admit. (* ok, but TODO use map.domain instead of dom_in and dom_covers *)
+        apply map__split_dom_spec in H2. simp.
+        assert (subset (of_list resvars) (fun x : Z => fp < x < 32)) as Vl' by admit.
+        assert (subset (of_list argvars) (fun x : Z => fp < x < 32)) as Vr' by admit.
+        change (map__dom_in l2' (union (fun x : Z => (fp < x < 32 \/ x = fp \/ x = tmp2 \/ x = tmp1)) (of_list resvars))) in C.
+        assert (subset (map__dom l2') (union (fun x : Z => (fp < x < 32 \/ x = fp \/ x = tmp2 \/ x = tmp1)) (of_list resvars))) as C' by admit.
+        clear - H2l0 H2r0 Vl' C'.
+        unfold fp, tmp1, tmp2 in *.
+        replace (map__dom (map.put (map.put (map.put map.empty 5 fpval) 4 tmp2val) 3 tmp1val)) with
+            (fun x => x = 5 \/ x = 4 \/ x = 3) in * by admit.
+        assert (subset (map__dom l1') (fun x : Z => fp < x < 32)). {
+          set_solver_generic Z; try blia.
+        }
+        admit. (* ok, but TODO use map__dom instead of map__dom_in *)
 
     - (* exec.call *)
       admit.
