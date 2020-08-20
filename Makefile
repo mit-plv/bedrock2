@@ -8,8 +8,8 @@ LIBDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/Rupicola/Lib
 ALLDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/Rupicola
 
 # absolute paths so that emacs compile mode knows where to find error
-VS_LIB:=$(shell git ls-files $(LIBDIR) | xargs readlink -f | grep "\.v")
-VS_ALL:=$(shell git ls-files $(ALLDIR) | xargs readlink -f | grep "\.v")
+VS_LIB:=$(shell git ls-files "$(LIBDIR)/*.v" | xargs readlink -f)
+VS_ALL:=$(shell git ls-files "$(ALLDIR)/*.v" | xargs readlink -f)
 
 all: deps Makefile.coq $(VS_ALL)
 	rm -f .coqdeps.d
