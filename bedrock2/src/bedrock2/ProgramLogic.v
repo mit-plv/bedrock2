@@ -24,7 +24,7 @@ End bindcmd.
 Fixpoint callees (c : Syntax.cmd) : list String.string :=
   match c with
   | cmd.cond _ c1 c2 | cmd.seq c1 c2 => callees c1 ++ callees c2
-  | cmd.while _ c => callees c
+  | cmd.while _ c | cmd.stackalloc _ _ c => callees c
   | cmd.call _ f _ => cons f nil
   | _ => nil
   end.
