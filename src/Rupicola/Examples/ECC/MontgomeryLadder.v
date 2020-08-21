@@ -1,9 +1,9 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.SepLocals.
+Require Import Rupicola.Lib.ControlFlow.DownTo.
+Require Import Rupicola.Lib.ControlFlow.CondSwap.
 Require Import Rupicola.Examples.ECC.Field.
 Require Import Rupicola.Examples.ECC.Point.
-Require Import Rupicola.Examples.ECC.DownTo.
-Require Import Rupicola.Examples.ECC.CondSwap.
 Require Import Rupicola.Examples.ECC.LadderStep.
 Require Import Rupicola.Examples.ECC.ScalarField.
 Local Open Scope Z_scope.

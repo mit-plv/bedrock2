@@ -1,6 +1,6 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.SepLocals.
-Require Import Rupicola.Examples.ECC.DownTo.
+Require Import Rupicola.Lib.ControlFlow.DownTo.
 Require Import Rupicola.Examples.LinkedList.LinkedList.
 
 Section Gallina.
