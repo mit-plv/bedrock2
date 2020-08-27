@@ -67,8 +67,8 @@ Section Scalars.
     repeat ((rewrite ?bitblast.Z.testbit_mod_pow2, ?bitblast.Z.testbit_ones, ?Z.lor_spec, ?Z.shiftl_spec, ?Z.shiftr_spec, ?Z.land_spec by blia) || unfold word.wrap).
     destruct (Z.ltb_spec0 i width); cbn [andb]; trivial; [].
     destruct (Z.testbit (word.unsigned value) i); cbn [andb]; trivial; [].
-    destruct (Z.leb_spec0 0 i); try blia; cbn [andb]; [].
-    eapply Z.ltb_lt.
+    destruct (Z.leb_spec0 0 i); try blia; cbn [andb];
+    eapply Z.ltb_lt;
     rewrite Z2Nat.id; Z.div_mod_to_equations; Lia.nia.
   Qed.
 

@@ -474,8 +474,8 @@ Section WithParameters.
       repeat (
       cbv [word.wrap byte.wrap];
       rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by Lia.lia;
-      change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
-      rewrite Z.mod_small; rewrite Z.mod_small; trivial; Lia.lia. }
+      change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8));
+      rewrite ?Z.mod_small; rewrite ?Z.mod_small; trivial; Lia.lia. }
       left; split; eauto.
       eexists nil, x0; repeat split; cbv [any choice lightbulb_spec.spi_timeout]; eauto.
       rewrite app_nil_r; trivial. }

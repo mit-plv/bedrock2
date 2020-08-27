@@ -170,8 +170,7 @@ Section ptstos.
         apply Z.add_mod.
         destruct width_cases as [E | E]; rewrite E; cbv; discriminate.
       }
-      eapply IHn; try blia.
-      assumption.
+      eapply IHn; try blia; assumption.
   Qed.
 
   Lemma putmany_of_footprint_None'': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
