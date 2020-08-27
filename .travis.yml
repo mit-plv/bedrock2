@@ -3,7 +3,6 @@ sudo: required
 dist: focal
 
 before_install:
-  - sudo add-apt-repository "ppa:avsm/ppa" -y
   - travis_retry ./etc/ci/sudo-apt-get-update.sh -q
   - travis_retry sudo apt install opam -y --allow-unauthenticated
   - opam switch create MyOCaml4.08.1 ocaml-base-compiler.4.08.1
