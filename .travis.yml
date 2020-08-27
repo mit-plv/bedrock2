@@ -1,24 +1,19 @@
 language: generic
 sudo: required
-dist: trusty
-
-# branch "tested" is only commits which were already tested on master, no need to test again
-branches:
-  except:
-  - tested
-
-matrix:
-  fast_finish: true
-  include:
-    - env: COQ_VERSION="master" COQ_PACKAGE="coq libcoq-ocaml-dev" PPA="ppa:jgross-h/coq-master-daily"
-    - env: COQ_VERSION="v8.12"  COQ_PACKAGE="coq"                  PPA="ppa:jgross-h/coq-8.12-daily"
-    - env: COQ_VERSION="8.12.0" COQ_PACKAGE="coq-8.12.0"           PPA="ppa:jgross-h/many-coq-versions-ocaml-4-05"
+dist: focal
 
 before_install:
-  - if [ ! -z "$PPA" ]; then sudo add-apt-repository "$PPA" -y; fi
+  - sudo add-apt-repository "ppa:avsm/ppa" -y
   - travis_retry ./etc/ci/sudo-apt-get-update.sh -q
-  - travis_retry sudo apt-get install $COQ_PACKAGE -y --allow-unauthenticated
+  - travis_retry sudo apt install opam -y --allow-unauthenticated
+  - opam switch create MyOCaml4.08.1 ocaml-base-compiler.4.08.1
+  - eval $(opam env)
+  - opam install num ocamlfind ocamlbuild --yes
+  - cd deps/coq && ./configure -local && make && cd ../..
+  - export PATH=`pwd`/deps/coq/bin:$PATH
+  - coqc -v
+  - cd deps/itauto && make && make install && cd ../..
 
-# script: TIMED=1 TRY_MANGLE_NAMES=1 make -j2 && ./manglenames-stats.sh
-
-script: TIMED=1 make
+script:
+  - TIMED=1 make 2>&1 | tee log.txt | grep -v -e ' ran for ' -e 'Tactic call'
+  - python etc/analyze_tactic_comparison.py log.txt
