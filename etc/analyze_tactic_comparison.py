@@ -18,7 +18,6 @@
 import sys
 import os
 import re
-import matplotlib.pyplot as plt
 
 filepath = sys.argv[1]
 
@@ -37,7 +36,7 @@ with open(filepath) as fp:
    tacATime = "N/A"
    lineNo = 1
    for line in fp:
-      tacAMatch = re.search(f'Tactic call {tacAName} ran for ([0-9.]*) secs.*\((success|failure)\)', line)
+      tacAMatch = re.search(f'{tacAName} ran for ([0-9.]*) secs.*\((success|failure)\)', line)
       if tacAMatch:
          tacATime = tacAMatch.group(1)
          lastWasTacA = True
@@ -45,7 +44,7 @@ with open(filepath) as fp:
          tacATime = -10000000
          lastWasTacA = True
       else:
-         tacBMatch = re.search(f'Tactic call {tacBName} ran for ([0-9.]*) secs.*\((success|failure)\)', line)
+         tacBMatch = re.search(f'{tacBName} ran for ([0-9.]*) secs.*\((success|failure)\)', line)
          if tacBMatch:
             tacBTime = tacBMatch.group(1)
             if lastWasTacA:
@@ -108,6 +107,12 @@ print(f"Total {tacAName} time: {totalTacA:.1f}s")
 print(f"Total {tacBName} time: {totalTacB:.1f}s")
 
 print(f"{tacAName} is {totalTacB/totalTacA:.2f} times faster than {tacBName}")
+
+try:
+   import matplotlib.pyplot as plt
+except ImportError:
+   print("Not creating graphics because matplotlib not installed")
+   sys.exit(0)
 
 if filepath[-4:] != ".txt":
    print(f"{filepath} does not end in '.txt'")
