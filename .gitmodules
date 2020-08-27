@@ -7,3 +7,9 @@
 [submodule "deps/kami"]
 	path = deps/kami
 	url = https://github.com/mit-plv/kami.git
+[submodule "deps/coq"]
+	path = deps/coq
+	url = https://github.com/fajb/coq.git
+[submodule "deps/itauto"]
+	path = deps/itauto
+	url = https://gitlab.inria.fr/fbesson/itauto.git
