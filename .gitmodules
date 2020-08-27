@@ -10,3 +10,9 @@
 [submodule "deps/coq-record-update"]
 	path = deps/coq-record-update
 	url = https://github.com/tchajed/coq-record-update.git
+[submodule "deps/coq"]
+	path = deps/coq
+	url = https://github.com/fajb/coq.git
+[submodule "deps/itauto"]
+	path = deps/itauto
+	url = https://gitlab.inria.fr/fbesson/itauto.git
