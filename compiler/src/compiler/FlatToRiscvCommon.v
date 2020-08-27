@@ -230,6 +230,34 @@ Section WithParameters.
          stack_needed act <= N *)
       fits_stack M N e (SInteract binds act args).
 
+  Lemma stackalloc_words_nonneg: forall s,
+      0 <= stackalloc_words s.
+  Proof.
+    assert (bytes_per_word = 4 \/ bytes_per_word = 8). {
+      unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+    }
+    induction s; simpl; Z.div_mod_to_equations; blia.
+  Qed.
+
+  Lemma framesize_nonneg: forall argvars resvars body,
+      0 <= framelength (argvars, resvars, body).
+  Proof.
+    intros. unfold framelength.
+    pose proof (stackalloc_words_nonneg body).
+    assert (bytes_per_word = 4 \/ bytes_per_word = 8). {
+      unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+    }
+    Z.div_mod_to_equations.
+    blia.
+  Qed.
+
+  Lemma fits_stack_nonneg: forall M N e s,
+      fits_stack M N e s ->
+      0 <= M /\ 0 <= N.
+  Proof.
+    induction 1; try blia. pose proof (@framesize_nonneg argnames retnames body). blia.
+  Qed.
+
   (* Ghost state used to describe low-level state introduced by the compiler.
      Called "ghost constants" because after executing a piece of code emitted by
      the compiler, these values should still be the same.

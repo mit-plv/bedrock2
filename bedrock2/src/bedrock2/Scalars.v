@@ -37,6 +37,7 @@ Section Scalars.
     (Hsep : sep (truncated_scalar sz addr value) R m)
     : Memory.load_Z sz m addr = Some (Z.land value (Z.ones (Z.of_nat (bytes_per (width:=width) sz)*8))).
   Proof.
+    clear - word_ok mem mem_ok Hsep.
     cbv [load scalar littleendian load_Z] in *.
     erewrite load_bytes_of_sep by exact Hsep; apply f_equal.
     rewrite LittleEndian.combine_split.
@@ -56,6 +57,7 @@ Section Scalars.
     (Hsep : sep (scalar addr value) R m)
     : Memory.load Syntax.access_size.word m addr = Some value.
   Proof.
+    clear - word_ok mem mem_ok Hsep.
     cbv [load].
     erewrite load_Z_of_sep by exact Hsep; f_equal.
     cbv [bytes_per bytes_per_word].
@@ -87,6 +89,7 @@ Section Scalars.
     (Hsep : sep (scalar16 addr value) R m)
     : Memory.load Syntax.access_size.two m addr = Some (word.of_Z (word.unsigned value)).
   Proof.
+    clear - word_ok word16_ok mem mem_ok Hsep.
     cbv [load].
     erewrite load_Z_of_sep by exact Hsep; f_equal.
     cbv [bytes_per].
@@ -99,6 +102,7 @@ Section Scalars.
     (Hsep : sep (scalar32 addr value) R m)
     : Memory.load Syntax.access_size.four m addr = Some (word.of_Z (word.unsigned value)).
   Proof.
+    clear - word_ok word32_ok mem mem_ok Hsep.
     cbv [load].
     erewrite load_Z_of_sep by exact Hsep; f_equal.
     cbv [bytes_per].
@@ -143,6 +147,7 @@ Section Scalars.
     (Hpost : forall m, sep (scalar16 addr (word.of_Z (word.unsigned value))) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.two m addr value = Some m1 /\ post m1.
   Proof.
+    clear - word_ok word16_ok mem mem_ok Hsep Hpost.
     cbv [scalar16 truncated_scalar littleendian ptsto_bytes bytes_per tuple.to_list LittleEndian.split PrimitivePair.pair._1 PrimitivePair.pair._2 array] in Hsep, Hpost.
     eapply (store_bytes_of_sep _ 2 (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ tt))); cbn; [ecancel_assumption|].
     cbv [LittleEndian.split].
@@ -161,6 +166,7 @@ Section Scalars.
     (Hpost : forall m, sep (scalar32 addr (word.of_Z (word.unsigned value))) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.four m addr value = Some m1 /\ post m1.
   Proof.
+    clear - word_ok word32_ok mem mem_ok Hsep Hpost.
     cbv [scalar32 truncated_scalar littleendian ptsto_bytes bytes_per tuple.to_list LittleEndian.split PrimitivePair.pair._1 PrimitivePair.pair._2 array] in Hsep, Hpost.
     eapply (store_bytes_of_sep _ 4 (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ tt))))); cbn; [ecancel_assumption|].
     cbv [LittleEndian.split].
@@ -184,6 +190,7 @@ Section Scalars.
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar16 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
   Proof.
+    clear - word_ok word16_ok mem mem_ok H.
     do 2 (destruct l as [|?x l]; [discriminate|]). destruct l; [|discriminate].
     cbv [scalar16 truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
     eapply Morphisms.eq_subrelation; [exact _|].
@@ -200,6 +207,7 @@ Section Scalars.
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar32 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
   Proof.
+    clear - word_ok word32_ok mem mem_ok H.
     do 4 (destruct l as [|?x l]; [discriminate|]). destruct l; [|discriminate].
     cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
     eapply Morphisms.eq_subrelation; [exact _|].
@@ -215,6 +223,7 @@ Section Scalars.
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
   Proof.
+    clear - word_ok mem mem_ok H.
     cbv [scalar truncated_scalar littleendian ptsto_bytes]. subst width.
     replace (bytes_per Syntax.access_size.word) with (length l). 2: {
       unfold bytes_per, bytes_per_word. clear.
