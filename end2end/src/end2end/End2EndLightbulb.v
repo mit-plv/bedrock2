@@ -281,8 +281,9 @@ Proof.
       }
       SeparationLogic.seprewrite_in @Array.bytearray_append Hr.
       SeparationLogic.seprewrite_in @SeparationLogic.sep_emp_True_r Hr0.
-      eexists _, _; split;
-        [exact Hr1|rewrite List.length_firstn_inbounds; blia]. }
+      eexists _, _; split; [exact Hr1|].
+      clear -Hl.
+      rewrite List.length_firstn_inbounds; blia. }
     subst a; rewrite app_nil_r.
     eexists; split; eauto.
     change x0 with (List.app nil x0).
