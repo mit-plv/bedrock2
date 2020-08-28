@@ -14,5 +14,5 @@ before_install:
   - cd deps/itauto && make -j2 && make install && cd ../..
 
 script:
-  - TIMED=1 make 2>&1 | tee log.txt | grep -v -e ' ran for ' -e 'Tactic call'
+  - TIMED=1 make 2>&1 | tee log.txt | grep -v -e ' ran for 0' -e '^Tactic call *$'
   - python etc/analyze_tactic_comparison.py log.txt
