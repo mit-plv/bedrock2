@@ -116,7 +116,7 @@ Section FibCompiled.
       apply Nat.lt_le_pred in H.
       simpl in H.
       specialize (Hinc H).
-      Lia.lia.
+      bomega.
   Qed.
 
   Local Notation instructionsH := (bedrock2.MetricLogging.instructions).
