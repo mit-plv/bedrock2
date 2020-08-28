@@ -29,7 +29,7 @@ if not os.path.isfile(filepath):
 tuples = []
 
 tacAName = "original_lia"
-tacBName = "itauto___lia"
+tacBName = "enhanced_lia"
 
 with open(filepath) as fp:
    lastWasTacA = False
