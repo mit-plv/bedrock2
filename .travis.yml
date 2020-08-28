@@ -3,6 +3,7 @@ sudo: required
 dist: focal
 
 before_install:
+  - travis_retry ./etc/ci/sudo-apt-get-update.sh -q
   - travis_retry sudo apt install opam -y --allow-unauthenticated
   - opam init --compiler=ocaml-base-compiler.4.08.1 --no-setup --yes
   - eval $(opam env)
