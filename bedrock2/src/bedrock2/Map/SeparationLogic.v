@@ -132,7 +132,7 @@ Section SepProperties.
   Lemma impl1_r_sep_emp a b c : (b /\ impl1 a c) -> impl1 a (emp b * c).
   Proof. cbv [impl1 emp sep split]; t; eauto 10 using putmany_empty_l, disjoint_empty_l. Qed.
 
-  (* shallow reflection from a list of predicates *)
+(** shallow reflection from a list of predicates for faster cancellation proofs *)
   Fixpoint seps' (xs : list (rep -> Prop)) : rep -> Prop :=
     match xs with
     | cons x xs => sep x (seps' xs)

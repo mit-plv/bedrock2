@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith.
-Require Import bedrock2.Syntax bedrock2.BasicCSyntax bedrock2.Semantics.
+Require Import bedrock2.Syntax bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Import coqutil.Word.Interface.
 Require coqutil.Word.Naive.
@@ -40,14 +40,12 @@ Section WithParameters.
     n = 4%nat /\ word.unsigned addr mod 4 = 0.
 
   Definition ext_spec (t : bedrock2_trace) (mGive : parameters.mem) a (args: list parameters.word) (post:parameters.mem -> list parameters.word -> Prop) :=
-    if String.eqb "MMIOWRITE" a
-    then
+    if String.eqb "MMIOWRITE" a then
       exists addr val,
         args = [addr; val] /\
         (mGive = Interface.map.empty /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0) /\
         post Interface.map.empty nil
-    else if String.eqb "MMIOREAD" a
-    then
+    else if String.eqb "MMIOREAD" a then
       exists addr,
         args = [addr] /\
         (mGive = Interface.map.empty /\ isMMIOAddr addr /\ word.unsigned addr mod 4 = 0) /\

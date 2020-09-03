@@ -46,36 +46,7 @@ Require Import compiler.ExprImpEventLoopSpec.
 
 Local Open Scope Z_scope.
 
-(* TODO move to coqutil *)
-Module List. Section WithA.
-  Context {A : Type}.
-
-  Lemma firstn_map{B: Type}: forall (f: A -> B) (n: nat) (l: list A),
-      firstn n (map f l) = map f (firstn n l).
-  Proof.
-    induction n; intros.
-    - reflexivity.
-    - simpl. destruct l; simpl; congruence.
-  Qed.
-
-  Lemma firstn_seq: forall (n from len: nat),
-      firstn n (seq from len) = seq from (min n len).
-  Proof.
-    induction n; intros.
-    - reflexivity.
-    - simpl. destruct len; simpl; f_equal; auto.
-  Qed.
-
-End WithA. End List.
-
 Require Import Coq.Classes.Morphisms.
-
-Instance FlatToRiscvDefParams: FlatToRiscvDef.parameters :=
-  { FlatToRiscvDef.W := @KamiWord.WordsKami KamiProc.width KamiProc.width_cases;
-    FlatToRiscvDef.compile_ext_call := compile_ext_call;
-    FlatToRiscvDef.compile_ext_call_length := compile_ext_call_length';
-    FlatToRiscvDef.compile_ext_call_emits_valid := compile_ext_call_emits_valid;
-  }.
 
 Instance word_riscv_ok: @RiscvWordProperties.word.riscv_ok 32 KamiWord.wordW.
 refine (@KamiRiscvWordProperties.kami_word_riscv_ok 5 _ _).
@@ -90,13 +61,24 @@ Definition get_kamiMemInit{memSizeLg: Z}
   byte.of_Z (Kami.Lib.Word.uwordToZ
                (Kami.Semantics.evalConstT (kamiMemInit _ memInit) (Kami.Lib.Word.natToWord _ n))).
 
-Definition kami_mem_contains_bytes(bs: list Coq.Init.Byte.byte){memSizeLg}(from: Utility.word)
+Definition kami_mem_contains_bytes(bs: list Coq.Init.Byte.byte){memSizeLg}(from: KamiWord.word 32)
            (mem: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg)): Prop :=
   List.map (get_kamiMemInit mem) (seq 0 (List.length bs)) = bs.
 
 Section Connect.
 
   Context (instrMemSizeLg memSizeLg stack_size_in_bytes: Z).
+
+  Context {Registers: map.map Register (KamiWord.word 32)}
+          {Registers_ok: map.ok Registers}
+          {mem: map.map (KamiWord.word 32) byte}
+          {mem_ok: map.ok mem}.
+
+  Instance mmio_params: MMIO.parameters.
+    econstructor; try typeclasses eauto.
+    - exact (@KamiWord.wordWok _ (or_introl eq_refl)).
+    - exact SortedListString.ok.
+  Defined.
 
   Let instrMemSizeBytes: Z := 2 ^ (2 + instrMemSizeLg).
 
@@ -122,17 +104,6 @@ Section Connect.
                    (proj2 instrMemSizeLg_bounds)
                    memInit.
 
-  Context {Registers: map.map Register Utility.word}
-          {Registers_ok: map.ok Registers}
-          {mem: map.map Utility.word byte}
-          {mem_ok: map.ok mem}.
-
-  Instance mmio_params: MMIO.parameters.
-    econstructor; try typeclasses eauto.
-    - exact (@KamiWord.wordWok _ (or_introl eq_refl)).
-    - exact SortedListString.ok.
-  Defined.
-
   Add Ring wring : (word.ring_theory (word := Utility.word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := Utility.word)),
@@ -144,8 +115,8 @@ Section Connect.
   Abort.
 
   Instance pipeline_params: PipelineWithRename.Pipeline.parameters := {|
-    Pipeline.FlatToRiscvDef_params := compilation_params;
     Pipeline.ext_spec := FE310CSemantics.ext_spec;
+    Pipeline.compile_ext_call := FlatToRiscvDef.compile_ext_call;
   |}.
 
   Existing Instance MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives.
@@ -162,6 +133,8 @@ Section Connect.
   - pose proof FE310CSemantics.ext_spec_ok.
     cbv [FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec Pipeline.ext_spec pipeline_params].
     abstract (destruct H; split; eauto).
+  - eapply @compile_ext_call_correct.
+  - intros. reflexivity.
   Defined.
 
   Definition states_related :=
@@ -240,7 +213,7 @@ Section Connect.
         apply Z.pow_lt_mono_r; blia.
       }
       rewrite ?Z.mod_small; try split; try apply Z.pow_nonneg; try blia.
-    Qed.
+  Qed.
 
   Hypothesis funimplsList_NoDup: NoDup (List.map fst funimplsList).
 
@@ -278,6 +251,8 @@ Section Connect.
     - cbv. auto.
     - unfold PipelineWithRename.ptsto_bytes, riscvMemInit_values in *.
       cbn [seq map array map.of_list].
+      (* PARAMRECORDS *)
+      change (KamiWord.word 32) with (@Utility.word Words32).
       match goal with
       | |- context [map.put ?m ?k ?v] => pose proof map.put_putmany_commute k v m map.empty as P
       end.
@@ -289,6 +264,8 @@ Section Connect.
       ssplit; cycle 1.
       + specialize (IHlen (S from)).
         replace (Z.of_nat (S from)) with (Z.of_nat from + 1) in IHlen by blia.
+        (* PARAMRECORDS *)
+        change (KamiWord.word 32) with (@Utility.word Words32) in IHlen.
         rewrite word.ring_morph_add in IHlen.
         apply IHlen. blia.
       + unfold ptsto. reflexivity.
@@ -353,7 +330,7 @@ Section Connect.
     (forall t m l, bedrock2Inv t m l ->
                    WeakestPrecondition.cmd funspecs loop_body t m l bedrock2Inv) ->
     (* Assumptions on the compiler level: *)
-    forall (instrs: list Instruction) (positions: FlatToRiscvCommon.funname_env Z),
+    forall (instrs: list Instruction) (positions: FlatToRiscvDef.funname_env Z),
     compile_prog ml (map.of_list funimplsList) = Some (instrs, positions) ->
     word.unsigned (code_start ml) + Z.of_nat (Datatypes.length (instrencode instrs)) <=
       word.unsigned (code_pastend ml) ->
@@ -605,8 +582,3 @@ Section Connect.
   Qed.
 
 End Connect.
-
-(*
-About end2end.
-Print Assumptions end2end.
-*)

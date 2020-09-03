@@ -13,7 +13,6 @@ Require Import compiler.SeparationLogic.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.DivisibleBy4.
-Require Import compiler.EmitsValid.
 Require Import compiler.MetricsToRiscv.
 Require Import compiler.FlatImp.
 Require Import compiler.RiscvWordProperties.
@@ -73,11 +72,17 @@ Section Proofs.
   Hypothesis no_ext_calls: forall t mGive action argvals outcome,
       ext_spec t mGive action argvals outcome -> False.
 
+  Hypothesis stackalloc_always_0: forall x n body t m l mc post,
+      FlatImp.exec map.empty (SStackalloc x n body) t m l mc post -> n = 0.
+
+  Hypothesis sp_always_set: forall l: locals,
+      map.get l RegisterNames.sp = Some (word.of_Z 42).
+
   Lemma compile_stmt_correct:
     forall (s: stmt Z) t initialMH initialRegsH postH initialMetricsH,
     FlatImp.exec map.empty s t initialMH initialRegsH initialMetricsH postH ->
     forall R Rexec (initialL: RiscvMachineL) insts pos,
-    @compile_stmt def_params _ map.empty pos s = insts ->
+    @compile_stmt def_params map.empty pos 12345678 s = insts ->
     stmt_not_too_big s ->
     valid_FlatImp_vars s ->
     divisibleBy4 initialL.(getPc) ->
@@ -99,7 +104,6 @@ Section Proofs.
            lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\
           valid_machine finalL).
   Proof.
-    pose proof compile_stmt_emits_valid.
     induction 1; intros;
       repeat match goal with
              | m: _ |- _ => destruct_RiscvMachine m; simpl_MetricRiscvMachine_get_set
@@ -125,16 +129,53 @@ Section Proofs.
 
     - (* SStore *)
       simpl_MetricRiscvMachine_get_set.
-      assert ((eq m * (program initialL_pc [[compile_store sz a v 0]] * Rexec * R))%sep
+      assert ((eq m * (program initialL_pc [[compile_store sz a v o]] * Rexec * R))%sep
         initialL_mem) as A by ecancel_assumption.
-      pose proof (store_bytes_frame H2 A) as P.
+      match goal with
+      | H: _ |- _ => pose proof (store_bytes_frame H A) as P; move H at bottom;
+                       unfold Memory.store, Memory.store_Z, Memory.store_bytes in H
+      end.
       destruct P as (finalML & P1 & P2).
-      move H2 at bottom.
-      unfold Memory.store, Memory.store_Z, Memory.store_bytes in H2. simp.
+      simp.
       subst_load_bytes_for_eq.
       run1det. run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.
       ecancel_assumption.
+
+    - (* SStackalloc *)
+      assert (valid_register RegisterNames.sp) by (cbv; auto).
+      specialize (stackalloc_always_0 x n body t mSmall l mc post). move stackalloc_always_0 at bottom.
+      assert (n = 0). {
+        eapply stackalloc_always_0. econstructor; eauto.
+      }
+      subst n.
+      run1det.
+      eapply runsTo_weaken. {
+        eapply H1 with (mStack := map.empty) (mCombined := mSmall).
+        { unfold Memory.anybytes. exists nil. reflexivity. }
+        { rewrite map.split_empty_r. reflexivity. }
+        all: IH_sidecondition.
+      }
+      simpl.
+      intros.
+      unfold Memory.anybytes, Memory.ftprint, map.of_disjoint_list_zip in *. simpl in *.
+      simp.
+      rewrite map.split_empty_r in H6lrl. subst mSmall'.
+      repeat match goal with
+             | m: _ |- _ => destruct_RiscvMachine m; simpl_MetricRiscvMachine_get_set
+             end.
+      eexists. eexists.
+      split; [eassumption|].
+      split; [solve [sidecondition]|].
+      split; [solve [sidecondition]|].
+      split. {
+        subst. solve_word_eq word_ok.
+      }
+      split; [solve [sidecondition]|].
+      split. {
+        solve_MetricLog.
+      }
+      assumption.
 
     - (* SLit *)
       get_run1valid_for_free.
@@ -245,7 +286,8 @@ Section Proofs.
           { intro V. simpl in *. run1done. }
 
     - (* SSeq *)
-      rename IHexec into IH1, H2 into IH2.
+      on hyp[(stmt_not_too_big s1); runsTo] do (fun H => rename H into IH1).
+      on hyp[(stmt_not_too_big s2); runsTo] do (fun H => rename H into IH2).
       eapply runsTo_trans.
       + eapply IH1; IH_sidecondition.
       + simpl. intros. destruct_RiscvMachine middle. simp. subst.

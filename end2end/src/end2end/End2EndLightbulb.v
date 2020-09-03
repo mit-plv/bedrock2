@@ -15,6 +15,7 @@ Require Import end2end.End2EndPipeline.
 Require Import end2end.Bedrock2SemanticsForKami. (* TODO why is the ok instance in that file not needed? *)
 Require        riscv.Utility.InstructionNotations.
 Require        bedrock2.Hexdump.
+Require Import coqutil.Map.Z_keyed_SortedListMap.
 
 Open Scope Z_scope.
 Open Scope string_scope.
@@ -28,7 +29,9 @@ Proof. cbv. intuition discriminate. Qed.
 
 Definition stack_size_in_bytes: Z := 2 ^ 11.
 
-Definition ml: MemoryLayout := End2EndPipeline.ml instrMemSizeLg memSizeLg stack_size_in_bytes.
+Definition ml: MemoryLayout :=
+  End2EndPipeline.ml (mem_ok := @SortedListWord.ok 32 word word_ok Init.Byte.byte)
+                     instrMemSizeLg memSizeLg stack_size_in_bytes.
 
 Remark this_is_the_value_of_ml: ml = {|
   MemoryLayout.code_start    := word.of_Z 0;
@@ -41,8 +44,6 @@ Remark this_is_the_value_of_ml: ml = {|
 Proof. reflexivity. Qed.
 
 Definition buffer_addr: Z := word.unsigned ml.(heap_start).
-
-Local Instance parameters : FE310CSemantics.parameters := ltac:(esplit; exact _).
 
 Definition spec: ProgramSpec := {|
   datamem_start := ml.(heap_start);
@@ -62,8 +63,6 @@ Qed.
 Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
                                      (Z.to_nat memSizeLg)): Kami.Syntax.Modules :=
   p4mm instrMemSizeLg _ memInit instrMemSizeLg_bounds.
-
-From coqutil Require Import Z_keyed_SortedListMap.
 
 Local Existing Instance SortedListString.map.
 Local Existing Instance SortedListString.ok.
@@ -104,7 +103,8 @@ Definition loop :=
 Definition funimplsList := init :: loop :: lightbulb.function_impls.
 Definition prog := map.of_list funimplsList.
 
-Definition lightbulb_insts_unevaluated: option (list Decode.Instruction * FlatToRiscvCommon.funname_env Z) :=
+Definition lightbulb_insts_unevaluated:
+  option (list Decode.Instruction * FlatToRiscvDef.FlatToRiscvDef.funname_env Z) :=
   ToplevelLoop.compile_prog ml prog.
 
 (* Before running this command, it might be a good idea to do
@@ -117,7 +117,7 @@ Definition lightbulb_insts: list Decode.Instruction.
   end.
 Defined.
 
-Definition function_positions: FlatToRiscvCommon.funname_env Z.
+Definition function_positions: FlatToRiscvDef.FlatToRiscvDef.funname_env Z.
   let r := eval cbv in lightbulb_insts_unevaluated in set (res := r).
   match goal with
   | res := Some (_, ?x) |- _ => exact x
@@ -179,18 +179,35 @@ Proof.
       * simpl. right. eapply IHl. exact H.
 Qed.
 
-Lemma end2end_lightbulb:
-  forall (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte))
-                              (Z.to_nat memSizeLg))
-         (t: Kami.Semantics.LabelSeqT) (mFinal: KamiRiscv.KamiImplMachine),
-    kami_mem_contains_bytes (instrencode lightbulb_insts) (code_start ml) memInit ->
-    Semantics.Behavior (p4mm memInit) mFinal t ->
-    exists t': list KamiRiscvStep.Event,
-      KamiRiscv.KamiLabelSeqR t t' /\
-      (exists (suffix : list KamiRiscvStep.Event) (bedrockTrace : list RiscvMachine.LogItem),
-          KamiRiscvStep.traces_related (suffix ++ t') bedrockTrace /\
-          (exists ioh : list (lightbulb_spec.OP _),
-              SPI.mmio_trace_abstraction_relation(p:=parameters) ioh bedrockTrace /\ goodHlTrace _ ioh)).
+Arguments goodHlTrace {_}.
+
+Lemma kami_and_lightbulb_abstract_bedrockTrace_the_same_way:
+  forall bedrockTrace (kamiTrace lightbulbTrace : list (string * Utility.word * Utility.word)),
+    SPI.mmio_trace_abstraction_relation lightbulbTrace bedrockTrace ->
+    KamiRiscvStep.traces_related kamiTrace bedrockTrace ->
+    kamiTrace = lightbulbTrace.
+Proof.
+  intro l. unfold SPI.mmio_trace_abstraction_relation. induction l; intros.
+  - simp. reflexivity.
+  - simp. f_equal. 2: eauto.
+    inversion H4; inversion H3; simp; reflexivity || discriminate.
+Qed.
+
+Definition bytes_at(bs: list Init.Byte.byte)(addr: Z)
+           (m: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg)): Prop :=
+  @kami_mem_contains_bytes bs 13 (word.of_Z addr) m.
+
+(* it's a prefix in the temporal sense -- since traces grow on the left,
+   this definition looks more like a suffix *)
+Definition prefix_of{A: Type}(l: list A)(P: list A -> Prop): Prop :=
+  exists completion, P (completion ++ l)%list.
+
+Theorem end2end_lightbulb: forall mem0 t state,
+  bytes_at (instrencode lightbulb_insts) 0 mem0 ->
+  Semantics.Behavior (p4mm mem0) state t ->
+  exists t': list (string * word * word),
+    KamiRiscv.KamiLabelSeqR t t' /\
+    prefix_of t' goodHlTrace.
 Proof.
   (* Fail eapply @end2end. unification only works after some specialization *)
   pose proof @end2end as Q.
@@ -198,7 +215,7 @@ Proof.
   specialize_first Q instrMemSizeLg_bounds.
   intros *. intro KB.
   specialize Q with (stack_size_in_bytes := stack_size_in_bytes).
-  specialize_first Q memInit.
+  specialize_first Q mem0.
   specialize_first Q funimplsList.
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
@@ -209,11 +226,30 @@ Proof.
   specialize_first Q compilation_result.
 
   unfold bedrock2Inv, goodTraceE, isReady, goodTrace, spec in *.
+  enough (Semantics.Behavior (p4mm mem0) state t ->
+          exists t': list KamiRiscvStep.Event,
+            KamiRiscv.KamiLabelSeqR t t' /\
+            (exists (suffix : list KamiRiscvStep.Event) (bedrockTrace : list RiscvMachine.LogItem),
+                KamiRiscvStep.traces_related (suffix ++ t') bedrockTrace /\
+                (exists ioh : list (lightbulb_spec.OP _),
+                    SPI.mmio_trace_abstraction_relation(p:=FE310CSemanticsParameters) ioh bedrockTrace /\
+                    goodHlTrace ioh)))
+    as A. {
+    clear -A.
+    intro B. specialize (A B); clear B.
+    clear mem0.
+    change (OP FE310CSemantics.parameters.word) with KamiRiscvStep.Event in *.
+    unfold KamiRiscvStep.Event, prefix_of in *.
+    simp.
+    eexists. split. 1: exact Al.
+    exists suffix.
+    erewrite kami_and_lightbulb_abstract_bedrockTrace_the_same_way; eassumption.
+  }
   eapply Q; clear Q.
   - cbv. intuition discriminate.
   - clear. cbv.
     repeat econstructor; intro; repeat match goal with H: In _ _|-_=> destruct H end; discriminate.
-  - intros. clear KB memInit. simp.
+  - intros. clear KB mem0. simp.
     unfold SPI.mmio_trace_abstraction_relation in *.
     unfold id in *.
     eauto using iohi_to_iolo.
@@ -256,7 +292,7 @@ Proof.
   - (* preserve invariant *)
     intros.
     specialize (H ltac:(repeat constructor)).
-    unfold hl_inv, isReady, goodTrace, goodHlTrace, traceOfOneInteraction in *.
+    unfold hl_inv, isReady, goodTrace, goodHlTrace in *.
     Simp.simp.
     repeat ProgramLogic.straightline.
     pose proof link_lightbulb_loop as P.
@@ -271,17 +307,18 @@ Proof.
     Simp.simp.
     repeat ProgramLogic.straightline.
     split; eauto.
+    unfold existsl, Recv, LightbulbCmd in *.
     destruct Hrr0rr; Simp.simp;
       (eexists; split; [eapply Forall2_app; eauto|]).
     1,2: apply concat_kleene_r_app; eauto; Simp.simp.
-    { left. left. left. left. eauto. }
+    { unfold "+++" in Hl|-*. left. left. Simp.simp. eauto 10. }
     destruct H; Simp.simp.
-    { left. left. left. right. eauto. }
+    { left. right. left. left. eauto. }
     destruct H; Simp.simp.
-    { left. left. right. eauto. }
+    { right. unfold PollNone. eauto. }
     destruct H; Simp.simp.
-    { left. right. eauto. }
-    right. eauto.
+    { left. right. left. right. eauto. }
+    left. right. right. eauto.
 
   - vm_compute. intros. discriminate.
   - (* Here we prove that all > 700 instructions are valid, using Ltac.

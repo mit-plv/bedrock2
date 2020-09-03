@@ -54,7 +54,7 @@ Section WithParameters.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
   Local Coercion literal (z : Z) : expr := expr.literal z.
   Local Coercion var (x : String.string) : expr := expr.var x.
-  Local Coercion name_of_func (f : BasicCSyntax.function) := fst f.
+  Local Coercion name_of_func (f : func) := fst f.
 
   Definition lightbulb_loop :=
       let p_addr : String.string := "p_addr" in
@@ -222,7 +222,7 @@ Section WithParameters.
         (fun t' m' rets => rets = [] /\ m' = m /\
           exists iol, t' = iol ++ t /\
           exists ioh, mmio_trace_abstraction_relation ioh iol /\
-          traceOfBoot _ ioh
+          BootSeq _ ioh
         ).
 
   Require Import bedrock2.AbsintWordToZ.
@@ -262,7 +262,7 @@ Section WithParameters.
         (left+right); eexists _, _; split; exact eq_refl
     end.
 
-    cbv [traceOfBoot].
+    cbv [BootSeq].
     eapply concat_app.
     { eapply (concat_app _ _ [_] [_]); exact eq_refl. }
 
@@ -429,20 +429,16 @@ Section WithParameters.
       (HList.polymorphic_list.cons (list byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
       ["buf";"num_bytes";"i";"read";"err"]
       (fun v scratch R t m buf num_bytes_loop i read err => PrimitivePair.pair.mk (
-        word.unsigned err = 0 /\
-        word.unsigned i <= word.unsigned num_bytes /\
-        v = word.unsigned i /\
-        (bytes (word.add buf i) scratch * R) m /\
+        word.unsigned err = 0 /\ word.unsigned i <= word.unsigned num_bytes /\
+        v = word.unsigned i /\ (bytes (word.add buf i) scratch * R) m /\
         Z.of_nat (List.length scratch) = word.unsigned (word.sub num_bytes i) /\
         word.unsigned i mod 4 = word.unsigned num_bytes mod 4 /\
         num_bytes_loop = num_bytes)
       (fun T M BUF NUM_BYTES I READ ERR =>
          NUM_BYTES = num_bytes_loop /\
-         exists RECV,
-         (bytes (word.add buf i) RECV * R) M /\
+         exists RECV, (bytes (word.add buf i) RECV * R) M /\
          List.length RECV = List.length scratch /\
-         exists iol, T = iol ++ t /\
-         exists ioh, mmio_trace_abstraction_relation ioh iol /\
+         exists iol, T = iol ++ t /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\
          (word.unsigned ERR = 0 /\ lan9250_readpacket _ RECV ioh \/
           word.unsigned ERR = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout word) ioh ) )
       )
@@ -735,7 +731,7 @@ Section WithParameters.
 
   From bedrock2 Require Import ToCString.
   Goal True.
-    let c_code := eval cbv in ((* of_string *) (@c_module BasicCSyntax.to_c_parameters function_impls)) in
+    let c_code := eval cbv in ((* of_string *) (c_module function_impls)) in
     pose c_code.
   Abort.
 
@@ -744,7 +740,7 @@ Section WithParameters.
   Local Open Scope bytedump_scope.
   Set Printing Width 999999.
   Goal True.
-    let c_code := eval cbv in (of_string (@c_module BasicCSyntax.to_c_parameters [lan9250_init; lan9250_wait_for_boot; lightbulb_loop; lightbulb_handle; recvEthernet; lan9250_mac_write; lan9250_writeword; lan9250_readword; SPI.spi_xchg; SPI.spi_read; SPI.spi_write])) in
+    let c_code := eval cbv in (of_string (c_module [lan9250_init; lan9250_wait_for_boot; lightbulb_loop; lightbulb_handle; recvEthernet; lan9250_mac_write; lan9250_writeword; lan9250_readword; SPI.spi_xchg; SPI.spi_read; SPI.spi_write])) in
     idtac c_code.
   Abort.
   *)

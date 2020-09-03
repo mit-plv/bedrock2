@@ -67,7 +67,6 @@ Definition compile_ext_call(results: list var)(a: act)(args: list var): list Ins
     end
   end.
 
-
 (*
 def test(addr, inp1, inp2):
     s = *addr // might take a long time to load
@@ -90,19 +89,22 @@ Definition _garbage: var := 31.
 Definition _s: var := 9.
 
 Definition test: stmt var :=
-  (SSeq (SLoad Syntax.access_size.four _s _addr)
+  (SSeq (SLoad Syntax.access_size.four _s _addr 0)
   (SSeq (SOp _a Syntax.bopname.or _inp1 _inp2)
   (SSeq (SOp _b Syntax.bopname.add _inp1 _inp2)
   (SSeq (SOp _c Syntax.bopname.sub _inp1 _inp2)
         (SInteract [_r; _garbage] "Select"%string [_s; _a; _b; _c]))))).
 
 Instance compilation_params: FlatToRiscvDef.parameters. refine ({|
-  FlatToRiscvDef.compile_ext_call := compile_ext_call;
+  FlatToRiscvDef.compile_ext_call _ _ _ s :=
+    match s with
+    | SInteract results a args => compile_ext_call results a args
+    | _ => []
+    end;
 |}). all: case TODO. Defined.
 
 Definition compiled0: list Instruction.
-  refine (@compile_stmt compilation_params _ map.empty 0 test).
-  case TODO.
+  refine (@compile_stmt compilation_params map.empty 0 0 test).
 Defined.
 
 Goal False. Proof. let r := eval cbv in compiled0 in set (compiled := r). Abort.

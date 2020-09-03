@@ -73,11 +73,8 @@ Section Scalars.
       clear -B2 mem_ok word_ok D. destruct vs as [v vs]. simpl in *.
       assert (0 < 1) as Y by blia.
       assert (1 + Z.of_nat n <= 2 ^ width)%Z as X by blia. clear D.
-      revert Y X B2.
-      generalize 1%Z as d.
-      clear v.
-      revert a vs.
-      induction n; intros a vs d Y X B2; simpl in *.
+      revert Y X B2. generalize 1%Z as d. clear v. revert a vs. induction n;
+      intros a vs d Y X B2; simpl in *.
       + destruct vs. reflexivity.
       + apply map.invert_getmany_of_tuple_Some in B2. simpl in B2. destruct B2 as [A B].
         destruct vs as [v vs]. simpl in *.
@@ -139,9 +136,7 @@ Section Scalars.
       end.
 
       Fail (* TODO ecancel_assumption why does it fail? *)
-      match goal with
-      | IHn: _ |- _ => edestruct IHn as [R IH]; [..|exists R; ecancel_assumption]
-      end.
+      edestruct IHn as [R IH]; [..|exists R; ecancel_assumption].
 
       Ltac ecancel_assumption_fix_just_for_here :=
         seplog;
@@ -150,9 +145,7 @@ Section Scalars.
         [exact (RelationClasses.reflexivity _)|];
         ecancel.
 
-      match goal with
-      | IHn: _ |- _ => edestruct IHn as [R IH]; [..|exists R; ecancel_assumption_fix_just_for_here]
-      end.
+      edestruct IHn as [R IH]; [..|exists R; ecancel_assumption_fix_just_for_here].
       + blia.
       + match goal with
         | |- sep ?BS (sep ?P ?Q) ?m => assert (sep (sep P BS) Q m); [|ecancel_assumption]
@@ -167,19 +160,17 @@ Section Scalars.
       Memory.load_bytes n m a = Some bs ->
       exists R, sep (ptsto_bytes n a bs) R m.
   Proof.
-    intros.
-    edestruct sep_of_load_bytes_aux as [R P].
+    intros. edestruct sep_of_load_bytes_aux as [R P].
     - eassumption.
     - apply sep_comm. apply sep_emp_l. split; [apply I|eassumption].
-    - exists R. ecancel_assumption.
+    - eexists; ecancel_assumption.
   Qed.
 
   Lemma unchecked_store_bytes_of_sep(a: word)(n: nat)(oldbs bs: tuple byte n)(R: mem -> Prop)(m: mem)
     (Hsep : sep (ptsto_bytes n a oldbs) R m)
     : sep (ptsto_bytes n a bs) R (Memory.unchecked_store_bytes n m a bs).
   Proof.
-    revert oldbs bs m R a Hsep.
-    induction n; [solve[cbn; intros []; trivial]|].
+    revert oldbs bs m R a Hsep; induction n; [solve[cbn; intros []; trivial]|].
     intros [oldb0 oldbs] [b0 bs] m R a Hsep.
     cbn in *.
     apply sep_assoc.
@@ -199,13 +190,7 @@ Section Scalars.
       iff1 R1 (sep (ptsto_bytes n a bs1) F) ->
       iff1 R2 (sep (ptsto_bytes n a bs2) F) ->
       R2 (Memory.unchecked_store_bytes n m a bs2).
-  Proof.
-    intros A B C.
-    apply C.
-    eapply unchecked_store_bytes_of_sep.
-    apply B.
-    assumption.
-  Qed.
+  Proof. intros A B C. eapply C, unchecked_store_bytes_of_sep, B, A. Qed.
 
   Lemma store_bytes_of_sep(a: word)(n: nat)(oldbs bs: tuple byte n)(R post: mem -> Prop)(m: mem)
     (Hsep : sep (ptsto_bytes n a oldbs) R m)

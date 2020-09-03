@@ -20,6 +20,8 @@ Section WeakestPrecondition.
     match goal with x : X |- _ => induction x end;
     intros.
 
+  (* we prove weakening lemmas for all WP definitions in a syntax-directed fashion,
+   * moving from postcondition towards precondition one logical connective at a time. *)
   Global Instance Proper_literal : Proper (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)) WeakestPrecondition.literal.
   Proof. cbv [WeakestPrecondition.literal]; cbv [Proper respectful pointwise_relation Basics.impl]; firstorder idtac. Qed.
 
@@ -74,6 +76,8 @@ Section WeakestPrecondition.
           { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
           { eauto. } }
         { eapply Proper_store; eauto; cbv [pointwise_relation Basics.impl]; eauto. } } }
+    { eapply H1; [ | | eapply H3; eassumption ].
+      2 : intros ? ? ? (?&?&?&?&?). all : eauto 7. }
     { destruct H1 as (?&?&?). eexists. split.
       { eapply Proper_expr.
         { cbv [pointwise_relation Basics.impl]; intuition eauto 2. }
@@ -204,8 +208,7 @@ Section WeakestPrecondition.
 
   Lemma sound_args : forall m l args mc P,
       WeakestPrecondition.list_map (WeakestPrecondition.expr m l) args P ->
-      exists x mc',
-        Semantics.evaluate_call_args_log m l args mc = Some (x, mc') /\ P x.
+      exists x mc', Semantics.evaluate_call_args_log m l args mc = Some (x, mc') /\ P x.
   Proof.
     induction args; cbn; repeat (subst; t).
     unfold Semantics.eval_expr in *.

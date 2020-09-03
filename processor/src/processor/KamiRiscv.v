@@ -12,6 +12,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.rdelta.
 Require Import processor.KamiWord.
 Require Import riscv.Utility.Utility.
+Require Import riscv.Utility.runsToNonDet.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.
 Require Import riscv.Spec.Machine.
@@ -33,7 +34,7 @@ Require Import Kami.Syntax Kami.Semantics Kami.Tactics.
 Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
 
 Require Export processor.KamiProc.
-Require Import processor.FetchOk processor.DecExecOk.
+Require Import processor.Consistency.
 Require Import processor.KamiRiscvStep.
 
 Lemma get_of_list_not_In:
@@ -89,7 +90,7 @@ Section Equiv.
              (Hkmem1: 2 + instrMemSizeLg < memSizeLg)
              (Hkmem2: memSizeLg <= width)
              (* 16 used to be disjoint to MMIO addresses.
-              * [Hkmem2] is meaningless assuming this [Hkmemdisj] 
+              * [Hkmem2] is meaningless assuming this [Hkmemdisj]
               * but still having that in context ease some proofs. *)
              (Hkmemdisj: memSizeLg <= 16).
   Local Notation Hinstr := (conj Hinstr1 Hinstr2).
@@ -97,7 +98,8 @@ Section Equiv.
   Variable (memInit: Vec (ConstT (Bit BitsPerByte)) (Z.to_nat memSizeLg)).
   Definition kamiMemInit := ConstVector memInit.
   Local Definition kamiProc :=
-    @KamiProc.proc instrMemSizeLg memSizeLg Hinstr kamiMemInit kami_FE310_AbsMMIO.
+    @KamiProc.proc instrMemSizeLg memSizeLg Hinstr kamiMemInit
+                   (kami_AbsMMIO (Z.to_N memSizeLg)).
 
   (* redefine mcomp_sat to simplify for the case where no answer is returned *)
   Local Notation mcomp_sat_unit m initialL post :=
@@ -110,10 +112,28 @@ Section Equiv.
     (@states_related Registers mem instrMemSizeLg memSizeLg Hinstr1 Hinstr2).
   Local Notation kamiStep :=
     (@kamiStep _ _ Hinstr1 Hinstr2 memInit).
-  
-  (** * Multistep and Behavior soundness *)
-  
-  Inductive KamiLabelSeqR: Kami.Semantics.LabelSeqT -> list Event -> Prop :=
+
+  Arguments Z.add: simpl never.
+
+  Lemma KamiLabelR_unique: forall {klbl t t'},
+      KamiLabelR klbl t ->
+      KamiLabelR klbl t' ->
+      t = t'.
+  Proof.
+    intros. inversion H; inversion H0; clear H H0; subst.
+    + reflexivity.
+    + rewrite H4 in H1. exfalso. eapply FMap.M.add_empty_neq. eassumption.
+    + rewrite H1 in H5. exfalso. eapply FMap.M.add_empty_neq. eassumption.
+    + simpl in *. rewrite H1 in H5.
+      apply (f_equal (FMap.M.find "mmioExec"%string)) in H5.
+      do 2 rewrite FMap.M.find_add_1 in H5.
+      apply Option.eq_of_eq_Some in H5.
+      apply Eqdep.EqdepTheory.inj_pair2 in H5.
+      inversion H5; subst; clear H5.
+      reflexivity.
+  Qed.
+
+  Inductive KamiLabelSeqR: list LabelT -> list Event -> Prop :=
   | KamiSeqNil: KamiLabelSeqR nil nil
   | KamiSeqCons:
       forall klseq t,
@@ -122,51 +142,91 @@ Section Equiv.
           KamiLabelR klbl nt ->
           KamiLabelSeqR (klbl :: klseq) (nt ++ t).
 
-  Lemma kamiMultiStep_sound:
-    forall
-      (* inv could (and probably has to) be something like "runs to a safe state" *)
-      (inv: RiscvMachine -> Prop)
-      (* could be instantiated with compiler.ForeverSafe.runsTo_safe1_inv *)
-      (inv_preserved: forall st, inv st -> mcomp_sat_unit (run1 iset) st inv)
-      (m1 m2: KamiMachine) (klseq: Kami.Semantics.LabelSeqT)
-      (m1': RiscvMachine) (t0: list Event)
-      (Hkreach: Kami.Semantics.reachable m1 kamiProc),
-      Multistep kamiProc m1 m2 klseq ->
-      states_related (m1, t0) m1' ->
-      inv m1' ->
-      exists m2' t,
-        KamiLabelSeqR klseq t /\
-        states_related (m2, t ++ t0) m2' /\ inv m2'.
+  (** * Rephrasing single step soundness in a more readable way *)
+
+  Definition KState: Type := KamiMachine * list LabelT.
+
+  Inductive kstep1: KState -> KState -> Prop :=
+  | KStep: forall (m1: KamiMachine) (t1: list LabelT) kupd klbl,
+      Step kamiProc m1 kupd klbl ->
+      kstep1 (m1, t1) (FMap.M.union kupd m1, klbl :: t1).
+
+  Definition CState: Type := RiscvMachine.
+
+  Definition cstep1(m1: CState)(P: CState -> Prop): Prop := mcomp_sat_unit (run1 iset) m1 P.
+
+  Inductive related: KState -> CState -> Prop :=
+  | Related: forall km kt eventTrace rm,
+      Kami.Semantics.reachable km kamiProc ->
+      states_related (km, eventTrace) rm ->
+      KamiLabelSeqR kt eventTrace ->
+      related (km, kt) rm.
+
+  Theorem kstep1_sound: forall ks1 ks2 rs1 P,
+      related ks1 rs1 ->
+      kstep1 ks1 ks2 ->
+      cstep1 rs1 P ->
+      related ks2 rs1 \/
+      exists rs2, related ks2 rs2 /\ P rs2.
   Proof.
-    intros ? ?.
-    induction 2; intros.
-    - exists m1', nil.
-      repeat split.
-      + constructor.
-      + subst; simpl; assumption.
-      + assumption.
-    - specialize (IHMultistep Hkreach H0 H1).
-      destruct IHMultistep as (im2' & it & ? & ? & ?).
-      pose proof kamiStep_sound as P.
-      assert (kamiStep n (FMap.M.union u n) l) by (eexists; split; eauto).
-      assert (mcomp_sat_unit (run1 iset) im2' inv) by (eapply inv_preserved; assumption).
-      pose proof (Kami.SemFacts.reachable_multistep Hkreach H).
-      specialize P with (1 := Hkmem1) (2 := Hkmem2) (3 := Hkmemdisj)
-                        (4 := Registers_ok) (5 := mem_ok).
-      specialize P with (1 := H7) (2 := H5) (3 := H3) (4 := H6).
-      destruct P as [[? ?]|].
-      + exists im2', it.
-        repeat split.
-        * change it with ([] ++ it).
-          eapply KamiSeqCons; eauto.
-          constructor; assumption.
-        * assumption.
-        * assumption.
-      + destruct H8 as (m2' & t & ? & ? & ?).
-        exists m2', (t ++ it).
-        rewrite <- List.app_assoc.
-        repeat split; [|assumption|assumption].
-        constructor; assumption.
+    intros.
+    pose proof (KamiRiscvStep.kamiStep_sound instrMemSizeLg memSizeLg Hinstr1 Hinstr2
+      Hkmem1 Hkmem2 Hkmemdisj memInit Registers_ok mem_ok) as Q.
+    unfold cstep1, kamiStep in *.
+    inversion H. inversion H0. subst. inversion H8. subst. clear H H0 H8.
+    specialize Q with (1 := H2) (3 := H3) (4 := H1).
+    edestruct Q as [A | A]; clear Q.
+    - eauto.
+    - left. destruct A as [Q1 Q2]. econstructor.
+      + unfold reachable in *.
+        destruct H2 as [sigma H2]. inversion H2. subst; clear H2.
+        eexists. constructor. eapply Multi; eassumption.
+      + eassumption.
+      + inversion H4; subst; clear H4.
+        * change (KamiLabelSeqR [klbl] ([] ++ [])).
+          eapply KamiSeqCons. 1: exact KamiSeqNil.
+          eapply KamiSilent. assumption.
+        * inversion Q1. clear Q1. subst.
+          change (nt ++ t) with ([] ++ nt ++ t).
+          repeat eapply KamiSeqCons; try assumption. constructor. assumption.
+    - right. destruct A as [rs2 [tNew' [A [B C]]]].
+      exists rs2. split. 2: exact C.
+      econstructor. 2: exact B.
+      + unfold reachable in *.
+        destruct H2 as [sigma H2]. inversion H2. subst; clear H2.
+        eexists. constructor. eapply Multi; eassumption.
+      + eapply KamiSeqCons; eassumption.
+  Qed.
+
+  (** * Multistep and Behavior soundness *)
+
+  Inductive ksteps: KState -> KState -> Prop :=
+  | KSteps: forall m1 t1 m2 tNew,
+      Multistep kamiProc m1 m2 tNew ->
+      ksteps (m1, t1) (m2, tNew ++ t1).
+
+  (* Can't use this one here because we're not doing a simulation from Kami to compiler *)
+  Definition csteps: CState -> (CState -> Prop) -> Prop := runsTo cstep1.
+
+  Theorem ksteps_sound: forall (inv: CState -> Prop),
+      (forall rs, inv rs -> cstep1 rs inv) ->
+      forall ks1 ks2 rs1,
+      related ks1 rs1 ->
+      ksteps ks1 ks2 ->
+      inv rs1 ->
+      exists rs2, related ks2 rs2 /\ inv rs2.
+  Proof.
+    intros. inversion H1. subst. clear H1. revert H3 rs1 t1 H0 H2.
+    induction 1; intros.
+    - subst. exists rs1. split; assumption.
+    - specialize IHMultistep with (1 := H0) (2 := H2).
+      destruct IHMultistep as [rs2 [A B]].
+      edestruct kstep1_sound.
+      + exact A.
+      + econstructor. eassumption.
+      + eapply H. exact B.
+      + eauto.
+      + eauto.
   Qed.
 
   Definition KamiImplMachine: Type := RegsT.
@@ -198,15 +258,15 @@ Section Equiv.
 
   Definition mm: Modules := Kami.Ex.SC.mm
                               (existT _ rv32DataBytes eq_refl)
-                              kamiMemInit kami_FE310_AbsMMIO.
-  Definition p4mm: Modules := p4mm Hinstr kamiMemInit kami_FE310_AbsMMIO.
+                              kamiMemInit (kami_AbsMMIO (Z.to_N memSizeLg)).
+  Definition p4mm: Modules := p4mm Hinstr kamiMemInit (kami_AbsMMIO (Z.to_N memSizeLg)).
 
   Fixpoint setRegsInit (kinits: kword 5 -> kword width) (n: nat): Registers :=
     match n with
     | O => map.put map.empty 0 $0
     | S n' => map.put (setRegsInit kinits n') (Z.of_nat n) (kinits $n)
     end.
-  
+
   Definition riscvRegsInit: Registers :=
     setRegsInit (evalConstT (rfInit procInit)) 31.
   Lemma regs_related_riscvRegsInit:
@@ -308,15 +368,20 @@ Section Equiv.
           apply Z.pow_le_mono_r; Lia.lia).
     Lia.lia.
   Qed.
-        
+
   Lemma mem_related_riscvMemInit : mem_related _ (evalConstT kamiMemInit) riscvMemInit.
   Proof.
     cbv [mem_related riscvMemInit].
     intros addr.
     case (kunsigned addr <? 2 ^ memSizeLg) eqn:H.
     2: { apply riscvMemInit_get_None; assumption. }
-    assert (#addr < 2 ^ Z.to_nat memSizeLg)%nat
-        by (revert H; case KamiRiscvStep.TODO_word).
+    assert (#addr < 2 ^ Z.to_nat memSizeLg)%nat.
+    { rewrite <-wordToN_to_nat.
+      apply Nat2Z.inj_lt.
+      rewrite N_nat_Z, N_Z_nat_conversions.Nat2Z.inj_pow.
+      rewrite Z2Nat.id by Lia.lia.
+      apply Z.ltb_lt; assumption.
+    }
     erewrite Properties.map.get_of_list_In_NoDup; trivial.
     1: eapply NoDup_nth_error; intros i j ?.
     2: eapply (nth_error_In _ (wordToNat addr)).
@@ -342,32 +407,35 @@ Section Equiv.
          blia. }
       { rewrite (proj2 (nth_error_None _ _)); try congruence.
         rewrite map_length, seq_length; blia. } }
-    { (* erewrite map_nth_error. *)
-      replace (evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) addr)
-         with (natToWord (Z.to_nat memSizeLg) (wordToNat addr))
-           by (revert H; case KamiRiscvStep.TODO_word).
+    { replace (evalZeroExtendTrunc (BinInt.Z.to_nat memSizeLg) addr)
+        with (natToWord (Z.to_nat memSizeLg) (wordToNat addr)).
+      2: {
+        cbv [evalZeroExtendTrunc].
+        destruct (lt_dec _ _); [exfalso; apply Z2Nat.inj_lt in l; Lia.lia|].
+        apply wordToNat_inj.
+        rewrite wordToNat_natToWord_eqn.
+        rewrite wordToNat_split1.
+        cbv [eq_rec_r eq_rec]; rewrite wordToNat_eq_rect.
+        reflexivity.
+      }
       rewrite (@map_nth_error _ _ _ _ _ (wordToNat addr)).
       2: {
         etransitivity; [eapply nth_error_nth'|].
         all : rewrite ?seq_length, ?seq_nth; trivial.
       }
-      f_equal.
-      f_equal.
-      (* word... *)
+      do 2 f_equal.
       eapply word.unsigned_inj.
       rewrite word.unsigned_of_Z.
       cbv [word.wrap]; rewrite <-word.wrap_unsigned; f_equal.
-      generalize addr as w.
       unfold word.unsigned, word, WordsKami, wordW, KamiWord.word, kword, kunsigned.
-      generalize (BinInt.Z.to_nat width) as sz.
-      case KamiRiscvStep.TODO_word.
+      rewrite wordToN_nat, nat_N_Z; reflexivity.
     }
     Unshelve. all: exact O.
   Qed.
 
   Lemma states_related_init:
     states_related
-      (initRegs (getRegInits (proc Hinstr kamiMemInit kami_FE310_AbsMMIO)), [])
+      (initRegs (getRegInits (proc Hinstr kamiMemInit (kami_AbsMMIO (Z.to_N memSizeLg)))), [])
       {| getMachine :=
            {| RiscvMachine.getRegs := riscvRegsInit;
               RiscvMachine.getPc := word.of_Z 0;
@@ -413,7 +481,7 @@ Section Equiv.
     constructor; auto.
     eapply equivalentLabel_preserves_KamiLabelR; eauto.
   Qed.
-  
+
   Lemma riscv_init_memory_undef_on_MMIO:
     map.undef_on riscvMemInit isMMIOAddr.
   Proof.
@@ -465,7 +533,7 @@ Section Equiv.
                 RvInv m -> exists t, traces_related t m.(getLog) /\
                                      traceProp t),
     (* --- final end to end theorem will start here --- *)
-    forall (t: LabelSeqT) (mFinal: KamiImplMachine),
+    forall (t: list LabelT) (mFinal: KamiImplMachine),
       Behavior p4mm mFinal t ->
       (* --- conclusion ---
          The trace produced by the kami implementation can be mapped to an MMIO trace
@@ -479,15 +547,13 @@ Section Equiv.
     specialize P with (1 := H).
     destruct P as (mFinal' & t' & B & E).
     inversion_clear B.
-    pose proof kamiMultiStep_sound as P.
-    specialize P with (1 := preserveRvInv).
-    unfold kamiProc in P.
-
-    specialize P with (1 := Kami.SemFacts.reachable_init _).
-    specialize P with (1 := HMultistepBeh).
-    specialize P with (t0 := nil).
-    specialize (P _ states_related_init).
-    destruct P as (mF & t'' & R & Rel & Inv).
+    edestruct ksteps_sound as (rs2 & Rel & Inv).
+    - exact preserveRvInv.
+    - econstructor.
+      + eapply Kami.SemFacts.reachable_init.
+      + eapply states_related_init.
+      + eapply KamiSeqNil.
+    - econstructor. exact HMultistepBeh.
     - eapply establishRvInv; try reflexivity.
       all: cbv [getXAddrs getMachine]; intros.
       + apply alignedXAddrsRange_zero_bound_in.
@@ -504,10 +570,11 @@ Section Equiv.
       simpl in useRvInv.
       destruct useRvInv as (t''' & R' & p).
       eexists. split; [|exact p].
+      rewrite app_nil_r in H5.
+      inversion H3. subst. clear H3.
       eapply equivalentLabelSeq_preserves_KamiLabelSeqR.
       1: eassumption.
-      pose proof (traces_related_unique R' H2). subst t'''.
-      rewrite app_nil_r.
+      pose proof (traces_related_unique R' H4). subst t'''.
       assumption.
   Qed.
 

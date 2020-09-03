@@ -12,8 +12,16 @@ Require Import coqutil.Byte.
 
 Open Scope Z_scope.
 
+Definition bytes_per_word(width: Z): Z := (width + 7) / 8.
+
 Section Memory.
   Context {width: Z} {word: word width} {mem: map.map word byte}.
+
+  Definition ftprint(a: word)(n: Z): list word :=
+    List.unfoldn (fun w => word.add w (word.of_Z 1)) (Z.to_nat n) a.
+
+  Definition anybytes(a: word)(n: Z)(m: mem): Prop :=
+    exists bytes: list byte, map.of_disjoint_list_zip (ftprint a n) bytes = Some m.
 
   Definition footprint(a: word)(sz: nat): tuple word sz :=
     tuple.unfoldn (fun w => word.add w (word.of_Z 1)) sz a.
@@ -33,7 +41,7 @@ Section Memory.
   Definition bytes_per sz :=
     match sz with
       | access_size.one => 1 | access_size.two => 2 | access_size.four => 4
-      | access_size.word => Z.to_nat (Z.div (Z.add width 7) 8)
+      | access_size.word => Z.to_nat (bytes_per_word width)
     end%nat.
 
   Definition load_Z(sz: access_size)(m: mem)(a: word): option Z :=
@@ -55,17 +63,12 @@ Section Memory.
     store_Z sz m a (word.unsigned v).
 
   Lemma load_None: forall sz m a,
-      8 <= width ->
+      8 <= width -> (* note: [0 < width] is sufficient *)
       map.get m a = None ->
       load sz m a = None.
   Proof.
-    intros.
-    destruct sz;
-      try solve [
-            cbv [load load_Z load_bytes map.getmany_of_tuple footprint
-                 tuple.option_all tuple.map tuple.unfoldn bytes_per];
-            rewrite H0; reflexivity].
-    cbv [load load_Z load_bytes map.getmany_of_tuple footprint bytes_per].
+    intros. destruct sz; cbv [load load_Z load_bytes map.getmany_of_tuple footprint bytes_per bytes_per_word tuple.option_all tuple.map tuple.unfoldn];
+    try solve [ rewrite H0; reflexivity].
     destruct (Z.to_nat ((width + 7) / 8)) eqn: E.
     - exfalso.
       assert (0 < (width + 7) / 8) as A. {
@@ -82,8 +85,7 @@ Section Memory.
   Context {word_ok: word.ok word}.
 
   Lemma store_preserves_domain: forall sz m a v m',
-      store sz m a v = Some m' ->
-      map.same_domain m m'.
+      store sz m a v = Some m' -> map.same_domain m m'.
   Proof.
     destruct sz;
       cbv [store store_Z store_bytes bytes_per load_bytes unchecked_store_bytes];
@@ -93,6 +95,16 @@ Section Memory.
       subst;
       eapply map.putmany_of_tuple_preserves_domain;
       eassumption.
+  Qed.
+
+  Lemma anybytes_unique_domain: forall a n m1 m2,
+      anybytes a n m1 ->
+      anybytes a n m2 ->
+      map.same_domain m1 m2.
+  Proof.
+    unfold anybytes. intros.
+    destruct H as [vs1 ?]. destruct H0 as [vs2 ?].
+    eapply map.of_disjoint_list_zip_same_domain; eassumption.
   Qed.
 
 End Memory.

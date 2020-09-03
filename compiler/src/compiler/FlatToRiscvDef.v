@@ -39,15 +39,8 @@ Module Import FlatToRiscvDef.
     (* the words implementations are not needed, but we need width,
        and EmitsValid needs width_cases *)
     W :> Utility.Words;
-    compile_ext_call: list Z -> String.string -> list Z -> list Instruction;
-    compile_ext_call_length: forall binds f args,
-        Z.of_nat (length (compile_ext_call binds f args)) <= 7;
-    (* TODO requiring corrrectness for all isets is too strong, and this hyp should probably
-       be elsewhere *)
-    compile_ext_call_emits_valid: forall iset binds a args,
-      Forall valid_FlatImp_var binds ->
-      Forall valid_FlatImp_var args ->
-      valid_instructions iset (compile_ext_call binds a args)
+    funname_env :> forall T: Type, map.map String.string T; (* abstract T for better reusability *)
+    compile_ext_call: funname_env Z -> Z -> Z -> stmt Z -> list Instruction;
   }.
 
 End FlatToRiscvDef.
@@ -210,42 +203,56 @@ Section FlatToRiscv1.
                    :: (load_regs regs (offset + bytes_per_word))
     end.
 
+  (* number of words of stack allocation space needed within current frame *)
+  Fixpoint stackalloc_words(s: stmt Z): Z :=
+    match s with
+    | SLoad _ _ _ _ | SStore _ _ _ _ | SLit _ _ | SOp _ _ _ _ | SSet _ _
+    | SSkip | SCall _ _ _ | SInteract _ _ _ => 0
+    | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 => Z.max (stackalloc_words s1) (stackalloc_words s2)
+    (* ignore negative values, and round up values that are not divisible by bytes_per_word *)
+    | SStackalloc x n body => (Z.max 0 n + bytes_per_word - 1) / bytes_per_word
+                              + stackalloc_words body
+    end.
+
   (* All positions are relative to the beginning of the progam, so we get completely
      position independent code. *)
 
-  Context {fun_pos_env: map.map String.string Z}.
   Context {env: map.map String.string (list Z * list Z * stmt Z)}.
 
   Section WithEnv.
-    Variable e: fun_pos_env.
+    Variable e: funname_env Z.
 
-    Definition compile_stmt: Z -> stmt Z -> list Instruction :=
-      fix compile_stmt(mypos: Z)(s: stmt Z) :=
+    (* mypos: position of the code relative to the positions in e
+       stackoffset: $sp + stackoffset is the (last) highest used stack address (for SStackalloc)
+       s: statement to be compiled *)
+    Fixpoint compile_stmt(mypos: Z)(stackoffset: Z)(s: stmt Z): list Instruction :=
       match s with
-      | SLoad  sz x y => [[compile_load  sz x y 0]]
-      | SStore sz x y => [[compile_store sz x y 0]]
+      | SLoad  sz x y ofs => [[compile_load  sz x y ofs]]
+      | SStore sz x y ofs => [[compile_store sz x y ofs]]
+      | SStackalloc x n body =>
+          [[Addi x sp (stackoffset-n)]] ++ compile_stmt (mypos + 4) (stackoffset-n) body
       | SLit x v => compile_lit x v
       | SOp x op y z => compile_op x op y z
       | SSet x y => [[Add x Register0 y]]
       | SIf cond bThen bElse =>
-          let bThen' := compile_stmt (mypos + 4) bThen in
-          let bElse' := compile_stmt (mypos + 4 + 4 * Z.of_nat (length bThen') + 4) bElse in
+          let bThen' := compile_stmt (mypos + 4) stackoffset bThen in
+          let bElse' := compile_stmt (mypos + 4 + 4 * Z.of_nat (length bThen') + 4) stackoffset bElse in
           (* only works if branch lengths are < 2^12 *)
           [[compile_bcond_by_inverting cond ((Z.of_nat (length bThen') + 2) * 4)]] ++
           bThen' ++
           [[Jal Register0 ((Z.of_nat (length bElse') + 1) * 4)]] ++
           bElse'
       | SLoop body1 cond body2 =>
-          let body1' := compile_stmt mypos body1 in
-          let body2' := compile_stmt (mypos + (Z.of_nat (length body1') + 1) * 4) body2 in
+          let body1' := compile_stmt mypos stackoffset body1 in
+          let body2' := compile_stmt (mypos + (Z.of_nat (length body1') + 1) * 4) stackoffset body2 in
           (* only works if branch lengths are < 2^12 *)
           body1' ++
           [[compile_bcond_by_inverting cond ((Z.of_nat (length body2') + 2) * 4)]] ++
           body2' ++
           [[Jal Register0 (- Z.of_nat (length body1' + 1 + length body2') * 4)]]
       | SSeq s1 s2 =>
-          let s1' := compile_stmt mypos s1 in
-          let s2' := compile_stmt (mypos + 4 * Z.of_nat (length s1')) s2 in
+          let s1' := compile_stmt mypos stackoffset s1 in
+          let s2' := compile_stmt (mypos + 4 * Z.of_nat (length s1')) stackoffset s2 in
           s1' ++ s2'
       | SSkip => nil
       | SCall resvars f argvars =>
@@ -257,14 +264,14 @@ Section FlatToRiscv1.
         save_regs argvars (- bytes_per_word * Z.of_nat (length argvars)) ++
         [[ Jal ra (fpos - (mypos + 4 * Z.of_nat (length argvars))) ]] ++
         load_regs resvars (- bytes_per_word * Z.of_nat (length argvars + length resvars))
-      | SInteract resvars action argvars => compile_ext_call resvars action argvars
+      | SInteract _ _ _ => compile_ext_call e mypos stackoffset s
       end.
 
     (*
      Stack layout:
 
      high addresses              ...
-                      old sp --> mod_var_0 of previous function call arg0
+                      old sp --> begin of stack scratch space of previous function
                                  argn
                                  ...
                                  arg0
@@ -274,7 +281,10 @@ Section FlatToRiscv1.
                                  ra
                                  mod_var_n
                                  ...
-                      new sp --> mod_var_0
+                                 mod_var_0
+                                 end of stack scratch space of current function
+                                 ...  (stack scratch space also grows downwards, from "end" to "begin")
+                      new sp --> begin of stack scratch space of current function
      low addresses               ...
 
      Expected stack layout at beginning of function call: like above, but only filled up to arg0.
@@ -284,34 +294,36 @@ Section FlatToRiscv1.
       (list Z * list Z * stmt Z) -> list Instruction :=
       fun '(argvars, resvars, body) =>
         let mod_vars := list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
-        let framelength := Z.of_nat (length argvars + length resvars + 1 + length mod_vars) in
-        let framesize := bytes_per_word * framelength in
+        let scratchwords := stackalloc_words body in
+        let framesize := bytes_per_word *
+                         (Z.of_nat (length argvars + length resvars + 1 + length mod_vars) + scratchwords) in
         [[ Addi sp sp (-framesize) ]] ++
         [[ compile_store access_size.word sp ra
-                         (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
-        save_regs mod_vars 0 ++
-        load_regs argvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars))) ++
-        compile_stmt (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars))) body ++
-        save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1))) ++
-        load_regs mod_vars 0 ++
+                         (bytes_per_word * (Z.of_nat (length mod_vars) + scratchwords)) ]] ++
+        save_regs mod_vars (bytes_per_word * scratchwords) ++
+        load_regs argvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars) + scratchwords)) ++
+        compile_stmt (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars)))
+                     (bytes_per_word * scratchwords) body ++
+        save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1) + scratchwords)) ++
+        load_regs mod_vars (bytes_per_word * scratchwords) ++
         [[ compile_load access_size.word ra sp
-                        (bytes_per_word * (Z.of_nat (length mod_vars))) ]] ++
+                        (bytes_per_word * (Z.of_nat (length mod_vars) + scratchwords)) ]] ++
         [[ Addi sp sp framesize ]] ++
         [[ Jalr zero ra 0 ]].
 
-    Definition add_compiled_function(state: list Instruction * fun_pos_env)(fname: String.string)
-               (fimpl: list Z * list Z * stmt Z): list Instruction * fun_pos_env :=
+    Definition add_compiled_function(state: list Instruction * funname_env Z)(fname: String.string)
+               (fimpl: list Z * list Z * stmt Z): list Instruction * funname_env Z :=
       let '(old_insts, posmap) := state in
       let pos := 4 * Z.of_nat (length (old_insts)) in
       let new_insts := compile_function pos fimpl in
       (old_insts ++ new_insts, map.put posmap fname pos).
 
-    Definition compile_funs: env -> list Instruction * fun_pos_env :=
+    Definition compile_funs: env -> list Instruction * funname_env Z :=
       map.fold add_compiled_function (nil, map.empty).
   End WithEnv.
 
   (* compiles all functions just to obtain their code size *)
-  Definition build_fun_pos_env(e_impl: env): fun_pos_env :=
+  Definition build_fun_pos_env(e_impl: env): funname_env Z :=
     (* since we pass map.empty as the fun_pos_env into compile_funs, the instrs
        returned don't jump to the right positions yet (they all jump to 42),
        but the instructions have the right size, so the posmap we return is correct *)

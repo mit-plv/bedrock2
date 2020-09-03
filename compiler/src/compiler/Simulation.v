@@ -34,13 +34,7 @@ Lemma compile_inv_is_inv{State1 State2: Type}
       (inv1: State1 -> Prop)
       (inv1_is_inv: forall s1, inv1 s1 -> exec1 s1 inv1):
   forall s2, compile_inv (related false) inv1 s2 -> exec2 s2 (compile_inv (related true) inv1).
-Proof.
-  unfold compile_inv, simulation in *.
-  intros s2 (s1 & R & I1).
-  eapply Sim.
-  - exact R.
-  - eapply inv1_is_inv. exact I1.
-Qed.
+Proof. firstorder eauto. (* works fine as long as there's not too much to unfold *) Qed.
 
 Definition compose_relation{State1 State2 State3: Type}
            (R12: bool -> State1 -> State2 -> Prop)(R23: bool -> State2 -> State3 -> Prop):

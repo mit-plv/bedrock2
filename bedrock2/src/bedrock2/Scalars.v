@@ -58,7 +58,7 @@ Section Scalars.
   Proof.
     cbv [load].
     erewrite load_Z_of_sep by exact Hsep; f_equal.
-    cbv [bytes_per].
+    cbv [bytes_per bytes_per_word].
     eapply Properties.word.unsigned_inj.
     rewrite !word.unsigned_of_Z.
     rewrite <-Properties.word.wrap_unsigned at 2.
@@ -67,8 +67,8 @@ Section Scalars.
     repeat ((rewrite ?bitblast.Z.testbit_mod_pow2, ?bitblast.Z.testbit_ones, ?Z.lor_spec, ?Z.shiftl_spec, ?Z.shiftr_spec, ?Z.land_spec by blia) || unfold word.wrap).
     destruct (Z.ltb_spec0 i width); cbn [andb]; trivial; [].
     destruct (Z.testbit (word.unsigned value) i); cbn [andb]; trivial; [].
-    destruct (Z.leb_spec0 0 i); try blia; cbn [andb]; [].
-    eapply Z.ltb_lt.
+    destruct (Z.leb_spec0 0 i); try blia; cbn [andb];
+    eapply Z.ltb_lt;
     rewrite Z2Nat.id; Z.div_mod_to_equations; Lia.nia.
   Qed.
 
@@ -82,6 +82,7 @@ Section Scalars.
     eapply Z.lor_0_r.
   Qed.
 
+  (*essentially duplicates of the previous lemma...*)
   Lemma load_two_of_sep addr value R m
     (Hsep : sep (scalar16 addr value) R m)
     : Memory.load Syntax.access_size.two m addr = Some (word.of_Z (word.unsigned value)).
@@ -183,7 +184,7 @@ Section Scalars.
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar16 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
   Proof.
-    do 2 (destruct l as [?|?x l]; [discriminate|]). destruct l; [|discriminate].
+    do 2 (destruct l as [|?x l]; [discriminate|]). destruct l; [|discriminate].
     cbv [scalar16 truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
     eapply Morphisms.eq_subrelation; [exact _|].
     f_equal.
@@ -193,11 +194,13 @@ Section Scalars.
     erewrite LittleEndian.combine_split.
     eapply Z.mod_pos_bound; reflexivity.
   Qed.
+
+  (*essentially duplicates of the previous lemma...*)
   Lemma scalar32_of_bytes a l (H : List.length l = 4%nat) :
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
                    (scalar32 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
   Proof.
-    do 4 (destruct l as [?|?x l]; [discriminate|]). destruct l; [|discriminate].
+    do 4 (destruct l as [|?x l]; [discriminate|]). destruct l; [|discriminate].
     cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
     eapply Morphisms.eq_subrelation; [exact _|].
     f_equal.
@@ -208,6 +211,22 @@ Section Scalars.
     eapply Z.mod_pos_bound; reflexivity.
   Qed.
 
+  Lemma scalar_of_bytes a l (H : width = 8 * Z.of_nat (length l)) :
+    Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
+                   (scalar a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
+  Proof.
+    cbv [scalar truncated_scalar littleendian ptsto_bytes]. subst width.
+    replace (bytes_per Syntax.access_size.word) with (length l). 2: {
+      unfold bytes_per, bytes_per_word. clear.
+      Z.div_mod_to_equations. blia.
+    }
+    rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
+    { erewrite LittleEndian.split_combine.
+      rewrite tuple.to_list_of_list. reflexivity. }
+    apply LittleEndian.combine_bound.
+  Qed.
+
 End Scalars.
 
 Notation scalar8 := ptsto (only parsing).
+Notation ptsto_word := scalar (only parsing).

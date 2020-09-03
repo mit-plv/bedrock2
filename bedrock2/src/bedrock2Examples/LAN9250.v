@@ -1,5 +1,4 @@
-Require Import bedrock2.Syntax bedrock2.BasicCSyntax.
-Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import bedrock2Examples.SPI.
 
@@ -316,7 +315,6 @@ Section WithParameters.
     eexists.
     repeat eapply concat_app; eauto.
   Qed.
-  Print Assumptions lan9250_init_ok.
 
   Lemma lan9250_writeword_ok : program_logic_goal_for_function! lan9250_writeword.
   Proof.
@@ -440,8 +438,6 @@ Section WithParameters.
 
     do 6 letexists.
     cbv [spi_begin spi_xchg_deaf spi_end one].
-    Local Arguments st {_}.
-    Local Arguments ld {_}.
     Local Arguments spi_xchg {_ _}.
 
     (* aligning regex and mmiotrace, not sure how to do it in a principled way *)
@@ -554,9 +550,7 @@ Section WithParameters.
   Proof.
     repeat straightline.
     refine ((atleastonce ["err"; "i"; "byteorder"] (fun v T M ERR I BUSY =>
-       v = word.unsigned I /\
-       word.unsigned I <> 0 /\
-       M = m /\
+       v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        exists n, (multiple (lan9250_boot_attempt _) n) th /\

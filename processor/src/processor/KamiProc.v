@@ -9,16 +9,11 @@ Require Import Kami.Ex.MemTypes Kami.Ex.SC Kami.Ex.IsaRv32.
 Require Import Kami.Ex.SCMMInl Kami.Ex.SCMMInv.
 Require Import Kami.Ex.ProcMemCorrect.
 
+Require Import processor.KamiWord.
+
 Local Open Scope Z_scope.
 
 Set Implicit Arguments.
-
-Lemma wnot_idempotent:
-  forall {sz} (w: word sz),
-    wnot (wnot w) = w.
-Proof.
-  induction w; cbn; rewrite ?IHw, ?negb_involutive; eauto.
-Qed.
 
 Section Parametrized.
   Variables (addrSize maddrSize iaddrSize fifoSize instBytes dataBytes rfIdx: nat)
@@ -39,11 +34,11 @@ Section Parametrized.
    * without knowing much about Kami states.
    *)
   Record pst :=
-    mk { pc: word addrSize;
-         rf: word rfIdx -> word (dataBytes * BitsPerByte);
+    mk { pc: Word.word addrSize;
+         rf: Word.word rfIdx -> Word.word (dataBytes * BitsPerByte);
          pinit: bool;
-         pgm: word iaddrSize -> word (instBytes * BitsPerByte);
-         mem: word maddrSize -> word BitsPerByte
+         pgm: Word.word iaddrSize -> Word.word (instBytes * BitsPerByte);
+         mem: Word.word maddrSize -> Word.word BitsPerByte
        }.
 
   Definition pRegsToT (r: Kami.Semantics.RegsT): option pst :=
@@ -54,23 +49,6 @@ Section Parametrized.
     mlet memv: (Vector (Bit BitsPerByte) maddrSize) <- r |> "mem" <| None;
     (Some {| pc := pcv; rf := rfv;
              pinit := pinitv; pgm := pgmv; mem := memv |}))%mapping.
-
-  (** * Deriving facts from [scmm_inv] *)
-
-  Lemma scmm_inv_derive_rf_zero:
-    forall st,
-      scmm_inv maddrSize rfIdx fetch st ->
-      forall pcv rfv pinitv pgmv memv,
-        pRegsToT st = Some (mk pcv rfv pinitv pgmv memv) ->
-        forall idx, idx = $0 -> rfv idx = $0.
-  Proof.
-    intros; subst.
-    inversion_clear H.
-    unfold pRegsToT in H0.
-    kregmap_red.
-    inversion H0; subst; clear H0.
-    assumption.
-  Qed.
 
   (** * Inverting Kami rules for instruction executions *)
 
@@ -153,8 +131,8 @@ Section Parametrized.
   Qed.
 
   Definition KamiPgmInitFull
-             (pgm: word iaddrSize -> word (instBytes * BitsPerByte))
-             (mem: word maddrSize -> word BitsPerByte) :=
+             (pgm: Word.word iaddrSize -> Word.word (instBytes * BitsPerByte))
+             (mem: Word.word maddrSize -> Word.word BitsPerByte) :=
     forall iaddr,
       pgm iaddr =
       evalExpr (alignInst type (combineBytes dataBytes (evalExpr (toAddr type iaddr)) mem)).
@@ -315,19 +293,7 @@ Section PerInstAddr.
 
 End PerInstAddr.
 
-Require Import coqutil.Z.HexNotation.
-
-(* NOTE: this definition should be consistent to the one in
- * [riscv-coq/src/riscv/Platform/FE310ExtSpec.v]. *)
-Definition Kx n := NToWord nwidth (Z.to_N (Ox n)).
-Instance kami_FE310_AbsMMIO: AbsMMIO (Z.to_nat width) :=
+Instance kami_AbsMMIO (memSizeLg: N): AbsMMIO (Z.to_nat width) :=
   {| isMMIO :=
-       fun _ addr =>
-         ((UniBit (Trunc 2 30) # (addr) == $$(WO~0~0))
-            && (($$(Kx"00020000") <= #addr) && (#addr < $$(Kx"00022000"))
-                || ($$(Kx"10008000") <= #addr) && (#addr < $$(Kx"10010000"))
-                || ($$(Kx"10012000") <= #addr) && (#addr < $$(Kx"10013000"))
-                || ($$(Kx"10013000") <= #addr) && (#addr < $$(Kx"10014000"))
-                || ($$(Kx"10024000") <= #addr) && (#addr < $$(Kx"10025000"))))%kami_expr
+       fun _ addr => ($$(NToWord _ (2 ^ memSizeLg)) <= #addr)%kami_expr
   |}.
-

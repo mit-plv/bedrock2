@@ -8,7 +8,6 @@ Require Import compiler.Simp.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
-Require Import compiler.EmitsValid.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Import Utility.
@@ -27,7 +26,6 @@ Section Proofs.
   Lemma save_regs_correct: forall vars offset R Rexec (initial: RiscvMachineL) p_sp oldvalues
                                   newvalues,
       Forall valid_register vars ->
-      - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
       map.getmany_of_list initial.(getRegs) vars = Some newvalues ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length oldvalues = List.length vars ->
@@ -55,16 +53,6 @@ Section Proofs.
       apply runsToNonDet.runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
     - simpl in *. simp.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
-      assert (valid_instructions SeparationLogic.iset
-                [(compile_store Syntax.access_size.word RegisterNames.sp a offset)]). {
-        eapply compile_store_emits_valid; try eassumption.
-        assert (bytes_per_word * Z.of_nat (S (List.length vars)) > 0). {
-          unfold Z.of_nat.
-          unfold bytes_per_word, Memory.bytes_per in *.
-          destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
-        }
-        simpl. bomega.
-      }
       destruct oldvalues as [|oldvalue oldvalues]; simpl in *; [discriminate|].
       eapply runsToNonDet.runsToStep. {
         eapply run_store_word with (Rexec0 := (program (word.add (getPc initial) (word.of_Z 4))
@@ -87,14 +75,6 @@ Section Proofs.
           solve_word_eq word_ok.
       }
       all: try eassumption.
-      + rewrite Znat.Nat2Z.inj_succ in *. rewrite <- Z.add_1_r in *.
-        rewrite Z.mul_add_distr_l in *.
-        remember (bytes_per_word * BinInt.Z.of_nat (List.length vars)) as K.
-        assert (bytes_per_word > 0). {
-          unfold bytes_per_word, Memory.bytes_per in *.
-          destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
-        }
-        bomega.
       + simpl in *. eapply shrink_footpr_subset. 1: eassumption. wcancel.
       + simpl. use_sep_assumption. wcancel.
       + reflexivity.
@@ -108,7 +88,6 @@ Section Proofs.
 
   Lemma load_regs_correct: forall p_sp vars offset R Rexec (initial: RiscvMachineL) values,
       Forall valid_FlatImp_var vars ->
-      - 2 ^ 11 <= offset < 2 ^ 11 - bytes_per_word * Z.of_nat (List.length vars) ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length values = List.length vars ->
       subset (footpr (program initial.(getPc) (load_regs vars offset) * Rexec)%sep)
@@ -135,16 +114,6 @@ Section Proofs.
       assert (valid_register a). {
         unfold valid_register, valid_FlatImp_var in *. blia.
       }
-      assert (valid_instructions SeparationLogic.iset
-                [(compile_load Syntax.access_size.word a RegisterNames.sp offset)]). {
-        eapply compile_load_emits_valid; try eassumption.
-        assert (bytes_per_word * Z.of_nat (S (List.length vars)) > 0). {
-          unfold Z.of_nat.
-          unfold bytes_per_word, Memory.bytes_per in *.
-          destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
-        }
-        simpl. bomega.
-      }
       destruct values as [|value values]; simpl in *; [discriminate|].
       eapply runsToNonDet.runsToStep. {
         eapply run_load_word; cycle -3; try solve [sidecondition]; sidecondition.
@@ -168,14 +137,6 @@ Section Proofs.
           end.
           { rewrite <- word.add_assoc. rewrite <- word.ring_morph_add. reflexivity. }
           ecancel.
-        * unfold bytes_per_word, Memory.bytes_per in *.
-          rewrite Znat.Nat2Z.inj_succ in *. rewrite <- Z.add_1_r in *.
-          rewrite Z.mul_add_distr_l in *.
-          assert (bytes_per_word > 0). {
-            unfold bytes_per_word, Memory.bytes_per in *.
-            destruct width_cases as [E1 | E1]; rewrite E1; reflexivity.
-          }
-          bomega.
         * rewrite map.get_put_diff. 1: assumption.
           unfold RegisterNames.sp, valid_FlatImp_var in *. blia.
         * blia.

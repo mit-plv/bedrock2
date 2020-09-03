@@ -46,6 +46,7 @@ Section ExprImp1.
   Section WithEnv.
     Context (e: env).
 
+    (* Fixoint semantics are not used at the moment, but could be useful to run a source program *)
     Fixpoint eval_cmd(f: nat)(st: locals)(m: mem)(s: cmd): option (locals * mem) :=
       match f with
       | O => None (* out of fuel *)
@@ -55,6 +56,7 @@ Section ExprImp1.
             'Some v <- eval_expr_old m st v;
             'Some m <- store aSize m a v;
             Some (st, m)
+        | cmd.stackalloc x n body => None (* unsupported *)
         | cmd.set x e =>
             'Some v <- eval_expr_old m st e;
             Some (map.put st x v, m)
@@ -102,6 +104,7 @@ Section ExprImp1.
     Fixpoint cmd_size(s: cmd): Z :=
       match s with
       | cmd.store _ a v => expr_size a + expr_size v + 1
+      | cmd.stackalloc x n body => cmd_size body + 1
       | cmd.set x e => expr_size e
       | cmd.cond cond bThen bElse => expr_size cond + cmd_size bThen + cmd_size bElse + 2
       | cmd.while cond body => expr_size cond + cmd_size body + 2
@@ -148,6 +151,11 @@ Section ExprImp1.
                            store aSize initialM av vv = Some finalM /\
                            final = (initialSt, finalM).
     Proof. inversion_lemma. Qed.
+
+    Lemma invert_eval_stackalloc : forall f st m1 x n body final,
+      eval_cmd (S f) st m1 (cmd.stackalloc x n body) = Some final ->
+      False.
+    Proof. inversion_lemma. discriminate. Qed.
 
     Lemma invert_eval_set: forall f st1 m1 p2 x e,
       eval_cmd (S f) st1 m1 (cmd.set x e) = Some p2 ->
@@ -205,7 +213,8 @@ Section ExprImp1.
 
   End WithEnv.
 
-  (* Returns a list to make it obvious that it's a finite set. *)
+  (* Returns a list to make it obvious that it's a finite set.
+     Needed by the fresh name generator. *)
   Fixpoint allVars_expr_as_list(e: expr): list var :=
     match e with
     | expr.literal v => []
@@ -220,6 +229,7 @@ Section ExprImp1.
   Fixpoint allVars_cmd_as_list(s: cmd): list var :=
     match s with
     | cmd.store _ a e => (allVars_expr_as_list a) ++ (allVars_expr_as_list e)
+    | cmd.stackalloc x n body => x :: (allVars_cmd_as_list body)
     | cmd.set v e => v :: allVars_expr_as_list e
     | cmd.unset v => v :: nil
     | cmd.cond c s1 s2 => (allVars_expr_as_list c) ++ (allVars_cmd_as_list s1) ++ (allVars_cmd_as_list s2)
@@ -244,6 +254,7 @@ Section ExprImp1.
   Fixpoint allVars_cmd(s: cmd): set var :=
     match s with
     | cmd.store _ a e => union (allVars_expr a) (allVars_expr e)
+    | cmd.stackalloc x n body => add (allVars_cmd body) x
     | cmd.set v e => add (allVars_expr e) v
     | cmd.unset v => singleton_set v
     | cmd.cond c s1 s2 => union (allVars_expr c) (union (allVars_cmd s1) (allVars_cmd s2))
@@ -257,7 +268,8 @@ Section ExprImp1.
   Lemma allVars_expr_allVars_expr_as_list: forall e x,
       x \in allVars_expr e <-> In x (allVars_expr_as_list e).
   Proof.
-    induction e; intros; simpl in *; set_solver; try apply in_or_app; set_solver.
+    induction e;
+      intros; simpl in *; set_solver; try apply in_or_app; set_solver.
     apply in_app_or in H3.
     destruct H3; eauto.
   Qed.
@@ -277,7 +289,8 @@ Section ExprImp1.
   Lemma allVars_cmd_allVars_cmd_as_list: forall s x,
       x \in allVars_cmd s <-> In x (allVars_cmd_as_list s).
   Proof.
-    induction s; intros; simpl in *;
+    induction s;
+      intros; simpl in *;
       repeat match goal with
              | e: expr |- _ => unique pose proof (allVars_expr_allVars_expr_as_list e x)
              | es: list expr |- _ => unique pose proof (allVars_exprs_allVars_exprs_as_list es x)
@@ -294,6 +307,7 @@ Section ExprImp1.
   Fixpoint modVars(s: cmd): vars :=
     match s with
     | cmd.store _ _ _ => empty_set
+    | cmd.stackalloc x n body => union (singleton_set x) (modVars body)
     | cmd.set v _ | cmd.unset v => singleton_set v
     | cmd.cond _ s1 s2 => union (modVars s1) (modVars s2)
     | cmd.while _ body => modVars body
@@ -317,7 +331,6 @@ Section ExprImp1.
 
 End ExprImp1.
 
-
 Ltac invert_eval_cmd :=
   lazymatch goal with
   | E: eval_cmd _ (S ?fuel) _ _ ?s = Some _ |- _ =>
@@ -326,6 +339,7 @@ Ltac invert_eval_cmd :=
     | apply invert_eval_set in E
     | apply invert_eval_unset in E
     | apply invert_eval_store in E
+    | apply invert_eval_stackalloc in E
     | apply invert_eval_cond in E
     | apply invert_eval_seq in E
     | apply invert_eval_while in E
@@ -336,6 +350,7 @@ Ltac invert_eval_cmd :=
     | let x := fresh "Case_set" in pose proof tt as x; move x at top
     | let x := fresh "Case_unset" in pose proof tt as x; move x at top
     | let x := fresh "Case_store" in pose proof tt as x; move x at top
+    | let x := fresh "Case_stackalloc" in pose proof tt as x; move x at top
     | let x := fresh "Case_cond_Then" in pose proof tt as x; move x at top
     | let x := fresh "Case_cond_Else" in pose proof tt as x; move x at top
     | let x := fresh "Case_seq" in pose proof tt as x; move x at top
@@ -345,7 +360,6 @@ Ltac invert_eval_cmd :=
     | let x := fresh "Case_interact" in pose proof tt as x; move x at top
     ]
   end.
-
 
 Section ExprImp2.
 
@@ -382,13 +396,39 @@ Section ExprImp2.
       try solve [state_calc | refine (map.only_differ_putmany _ _ _ _ _); eassumption].
   Qed.
 
+  Lemma weaken_exec: forall env t l m mc s post1,
+      exec env s t m l mc post1 ->
+      forall post2: _ -> _ -> _ -> _ -> Prop,
+        (forall t' m' l' mc', post1 t' m' l' mc' -> post2 t' m' l' mc') ->
+        exec env s t m l mc post2.
+  Proof.
+    induction 1; intros; try solve [econstructor; eauto].
+    - eapply @exec.stackalloc. 1: assumption.
+      intros.
+      eapply H1; eauto.
+      intros. simp. eauto 10.
+    - (* firstorder eauto 10 using @exec.call. doesn't return within 1 minute *)
+      eapply @exec.call.
+      4: eapply IHexec.
+      all: eauto.
+      intros.
+      edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
+      eauto 10.
+    - eapply @exec.interact; try eassumption.
+      intros.
+      edestruct H2 as (? & ? & ?); [eassumption|].
+      destruct H6 as (? & ? & ?).
+      eauto 10.
+  Qed.
+
   Lemma intersect_exec: forall env t l m mc s post1,
       exec env s t m l mc post1 ->
       forall post2,
         exec env s t m l mc post2 ->
         exec env s t m l mc (fun t' m' l' mc' => post1 t' m' l' mc' /\ post2 t' m' l' mc').
   Proof.
-    induction 1; intros;
+    induction 1;
+      intros;
       match goal with
       | H: exec _ _ _ _ _ _ _ |- _ => inversion H; subst; clear H
       end;
@@ -410,6 +450,19 @@ Section ExprImp2.
              end;
       try solve [econstructor; eauto | exfalso; congruence].
 
+    - econstructor. 1: eassumption.
+      intros.
+      rename H0 into Ex1, H12 into Ex2.
+      eapply weaken_exec. 1: eapply H1. 1,2: eassumption.
+      1: eapply Ex2. 1,2: eassumption.
+      cbv beta. clear -ok.
+      intros. simp.
+      lazymatch goal with
+      | A: map.split _ _ _, B: map.split _ _ _ |- _ =>
+        specialize @map.split_diff with (4 := A) (5 := B) as P
+      end.
+      edestruct P; try typeclasses eauto. 2: subst; eauto 10.
+      eapply anybytes_unique_domain; eassumption.
     - econstructor.
       + eapply IHexec. exact H5. (* not H *)
       + simpl. intros *. intros [? ?]. eauto.
@@ -444,26 +497,6 @@ Section ExprImp2.
         eauto 10.
   Qed.
 
-  Lemma weaken_exec: forall env t l m mc s post1,
-      exec env s t m l mc post1 ->
-      forall post2: _ -> _ -> _ -> _ -> Prop,
-        (forall t' m' l' mc', post1 t' m' l' mc' -> post2 t' m' l' mc') ->
-        exec env s t m l mc post2.
-  Proof.
-    induction 1; intros; try solve [econstructor; eauto].
-    - eapply @exec.call.
-      4: eapply IHexec.
-      all: eauto.
-      intros.
-      edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
-      eauto 10.
-    - eapply @exec.interact; try eassumption.
-      intros.
-      edestruct H2 as (? & ? & ?); [eassumption|].
-      destruct H6 as (? & ? & ?).
-      eauto 10.
-  Qed.
-
   (* As we see, one can prove this lemma as is, but the proof is a bit cumbersome because
      the seq and while case have to instantiate mid with the intersection, and use
      intersect_exec to prove it.
@@ -479,6 +512,13 @@ Section ExprImp2.
   Proof.
     induction 1;
       try solve [ econstructor; [eassumption..|simpl; map_solver locals_ok] ].
+    - eapply exec.stackalloc. 1: assumption. intros.
+      eapply weaken_exec.
+      + eapply intersect_exec.
+        * eapply H0; eassumption.
+        * eapply H1; eassumption.
+      + simpl. intros. simp.
+        do 2 eexists. split; [eassumption|]. split; [eassumption|]. map_solver locals_ok.
     - eapply exec.if_true; try eassumption.
       eapply weaken_exec; [eassumption|].
       simpl; intros. map_solver locals_ok.
@@ -521,6 +561,11 @@ Section ExprImp2.
   Proof.
     induction 1;
       try solve [econstructor; repeat split; try eassumption; simpl; map_solver locals_ok].
+    - eapply exec.stackalloc. 1: assumption.
+      intros. eapply weaken_exec. 1: eapply H1; eassumption.
+      simpl. intros. simp.
+      eexists. eexists. split; [eassumption|]. split; [eassumption|].
+      split; [|eassumption]. map_solver locals_ok.
     - eapply exec.if_true; try eassumption.
       eapply weaken_exec; [eassumption|].
       simpl; intros. intuition idtac. map_solver locals_ok.

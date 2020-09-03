@@ -14,8 +14,7 @@ Require Import coqutil.Datatypes.PropSet.
 Require Import compiler.Simp.
 Require Import coqutil.Datatypes.String.
 Require Import compiler.FlattenExprDef.
-
-Local Set Ltac Profiling.
+Require Import compiler.SimplWordExpr.
 
 Open Scope Z_scope.
 
@@ -38,6 +37,7 @@ Section FlattenExpr1.
     | _ => idtac
     end.
 
+  (* We don't currently track code size, we just validate at the end that no immediates grew too big *)
   Lemma flattenExpr_size: forall e s oResVar resVar ngs ngs',
     flattenExpr ngs oResVar e = (s, resVar, ngs') ->
     0 <= FlatImp.stmt_size s <= ExprImp.expr_size e.
@@ -363,7 +363,7 @@ Section FlattenExpr1.
       eapply @FlatImp.exec.seq.
       + eapply IHe; try eassumption. maps.
       + intros. simpl in *. simp.
-        eapply @FlatImp.exec.load; t_safe; try eassumption. solve_MetricLog.
+        eapply @FlatImp.exec.load; t_safe; rewrite ?add_0_r; try eassumption; solve_MetricLog.
 
     - (* expr.op *)
       eapply seq_with_modVars.
@@ -633,9 +633,17 @@ Section FlattenExpr1.
         eapply @FlatImp.exec.seq.
         * eapply flattenExpr_correct_with_modVars; try eassumption; maps.
         * intros. simpl in *. simp.
-          eapply @FlatImp.exec.store; try eassumption.
+          eapply @FlatImp.exec.store; rewrite ?add_0_r; try eassumption.
           { eapply flattenExpr_valid_resVar in E; maps. }
           { repeat eexists; repeat (split || eassumption || solve_MetricLog); maps. }
+
+    - (* exec.stackalloc *)
+      eapply @FlatImp.exec.stackalloc. 1: eassumption.
+      intros. rename H2 into IHexec.
+      eapply @FlatImp.exec.weaken.
+      { eapply IHexec; try reflexivity; try eassumption; maps. }
+      { intros. simpl in *. simp. do 2 eexists. ssplit; try eassumption.
+        do 2 eexists. ssplit; try eassumption; try solve_MetricLog. maps. }
 
     - (* if_true *)
       eapply @FlatImp.exec.seq.

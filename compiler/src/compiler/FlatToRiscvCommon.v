@@ -4,6 +4,7 @@ Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Require Import Coq.ZArith.ZArith.
+Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Machine.
 Require Import riscv.Spec.PseudoInstructions.
 Require Import riscv.Platform.RiscvMachine.
@@ -29,7 +30,6 @@ Require Import riscv.Utility.MkMachineWidth.
 Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
-Require Import compiler.EmitsValid.
 Require Import compiler.SeparationLogic.
 Require Import bedrock2.Scalars.
 Require Import compiler.Simp.
@@ -58,7 +58,6 @@ Class parameters := {
 
   locals :> map.map Z word;
   mem :> map.map word byte;
-  funname_env :> forall T: Type, map.map string T; (* abstract T for better reusability *)
 
   M: Type -> Type;
   MM :> Monad M;
@@ -68,6 +67,18 @@ Class parameters := {
   ext_spec : list (mem * String.string * list word * (mem * list word)) ->
              mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop;
 }.
+
+Arguments Z.mul: simpl never.
+Arguments Z.add: simpl never.
+Arguments Z.of_nat: simpl never.
+Arguments Z.modulo : simpl never.
+Arguments Z.pow: simpl never.
+Arguments Z.sub: simpl never.
+
+Arguments run1: simpl never.
+
+Arguments compile_store: simpl never.
+Arguments compile_load: simpl never.
 
 Section WithParameters.
   Context {p: parameters}.
@@ -121,18 +132,206 @@ Section WithParameters.
   Definition runsTo: MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
 
+  Definition function(base: word)(rel_positions: funname_env Z)
+             (fname: String.string)(impl : list Z * list Z * stmt Z): mem -> Prop :=
+    match map.get rel_positions fname with
+    | Some pos => program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl)
+    | _ => emp False
+    end.
+
+  (* Note: This definition would not be usable in the same way if we wanted to support
+     recursive functions, because separation logic would prevent us from mentioning
+     the snippet of code being run twice (once in [program initialL.(getPc) insts] and
+     a second time inside [functions]).
+     To avoid this double mentioning, we will remove the function being called from the
+     list of functions before entering the body of the function. *)
+  Definition functions(base: word)(rel_positions: funname_env Z): env -> mem -> Prop :=
+    map.fold (fun P fname fbody => (function base rel_positions fname fbody * P)%sep) (emp True).
+
+  (*
+     high addresses!             ...
+                      p_sp   --> mod_var_0 of previous function call arg0
+                                 stack scratch space last byte
+                                 ...
+        new_sp + stackoffset --> stack scratch space first byte
+                                 argn
+                                 ...
+                                 arg0
+                                 retn
+                                 ...
+                                 ret0
+                                 ra
+                                 mod_var_n
+                                 ...
+                      new_sp --> mod_var_0
+     low addresses               ...
+  *)
+
+  (* measured in words, needs to be multiplied by 4 or 8 *)
+  Definition framelength: list Z * list Z * stmt Z -> Z :=
+    fun '(argvars, resvars, body) =>
+      stackalloc_words body +
+      let mod_vars := ListSet.list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
+      Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
+
+  (* "fits_stack M N env s" means that statement s will not run out of stack space
+     if there are M words available before the stack pointer (in current frame),
+     and there are N words available after the stack pointer (for the frames of the
+     callees). Note:
+     - This predicate cannot be proved for recursive functions
+     - Measured in words, needs to be multiplied by 4 or 8 *)
+  Inductive fits_stack: Z -> Z -> env -> stmt Z -> Prop :=
+  | fits_stack_load: forall M N e sz x y o,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SLoad sz x y o)
+  | fits_stack_store: forall M N e sz x y o,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SStore sz x y o)
+  | fits_stack_stackalloc: forall M N e x n body,
+      0 <= M ->
+      0 <= n ->
+      n mod bytes_per_word = 0 ->
+      fits_stack (M - n / bytes_per_word) N e body ->
+      fits_stack M N e (SStackalloc x n body)
+  | fits_stack_lit: forall M N e x v,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SLit x v)
+  | fits_stack_op: forall M N e op x y z,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SOp x op y z)
+  | fits_stack_set: forall M N e x y,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SSet x y)
+  | fits_stack_if: forall M N e c s1 s2,
+      fits_stack M N e s1 ->
+      fits_stack M N e s2 ->
+      fits_stack M N e (SIf c s1 s2)
+  | fits_stack_loop: forall M N e c s1 s2,
+      fits_stack M N e s1 ->
+      fits_stack M N e s2 ->
+      fits_stack M N e (SLoop s1 c s2)
+  | fits_stack_seq: forall M N e s1 s2,
+      fits_stack M N e s1 ->
+      fits_stack M N e s2 ->
+      fits_stack M N e (SSeq s1 s2)
+  | fits_stack_skip: forall M N e,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e SSkip
+  | fits_stack_call: forall M N e binds fname args argnames retnames body,
+      0 <= M ->
+      map.get e fname = Some (argnames, retnames, body) ->
+      fits_stack (stackalloc_words body)
+                 (N - framelength (argnames, retnames, body))
+                 (map.remove e fname) body ->
+      fits_stack M N e (SCall binds fname args)
+  | fits_stack_interact: forall M N e binds act args,
+      0 <= M -> 0 <= N ->
+      (* TODO it would be nice to allow external functions to use the stack too by requiring
+         stack_needed act <= N *)
+      fits_stack M N e (SInteract binds act args).
+
+  (* Ghost state used to describe low-level state introduced by the compiler.
+     Called "ghost constants" because after executing a piece of code emitted by
+     the compiler, these values should still be the same.
+     Note, though, that when focusing on a sub-statement (i.e. when invoking the IH)
+     the ghost constants will change: instructions are shoveled from insts into the frame,
+     the amount of available stack shrinks, the stack pointer decreases, and if we're
+     in a function call, the function being called is removed from funnames so that
+     it can't be recursively called again. *)
+  Record GhostConsts := {
+    p_sp: word;
+    rem_stackwords: Z; (* remaining number of available stack words (not including those in current frame) *)
+    rem_framewords: Z; (* remaining number of available stack words inside the current frame *)
+    p_insts: word;
+    insts: list Instruction;
+    program_base: word;
+    e_pos: funname_env Z;
+    e_impl: env;
+    dframe: mem -> Prop; (* data frame *)
+    xframe: mem -> Prop; (* executable frame *)
+  }.
+
+  Definition goodMachine
+      (* high-level state ... *)
+      (t: list LogItem)(m: mem)(l: locals)
+      (* ... plus ghost constants ... *)
+      (g: GhostConsts)
+      (* ... equals low-level state *)
+      (lo: MetricRiscvMachine): Prop :=
+    (* registers: *)
+    map.extends lo.(getRegs) l /\
+    (forall x v, map.get l x = Some v -> valid_FlatImp_var x) /\
+    map.get lo.(getRegs) RegisterNames.sp = Some g.(p_sp) /\
+    regs_initialized lo.(getRegs) /\
+    (* pc: *)
+    lo.(getNextPc) = word.add lo.(getPc) (word.of_Z 4) /\
+    (* memory: *)
+    subset (footpr (g.(xframe) *
+                    program g.(p_insts) g.(insts) *
+                    functions g.(program_base) g.(e_pos) g.(e_impl))%sep)
+           (of_list lo.(getXAddrs)) /\
+    (exists stack_trash,
+        g.(rem_stackwords) = Z.of_nat (List.length stack_trash) - g.(rem_framewords) /\
+        (g.(dframe) * g.(xframe) * eq m *
+         word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(rem_stackwords)))) stack_trash *
+         program g.(p_insts) g.(insts) *
+         functions g.(program_base) g.(e_pos) g.(e_impl))%sep lo.(getMem)) /\
+    (* trace: *)
+    lo.(getLog) = t /\
+    (* misc: *)
+    valid_machine lo.
+
+  Definition good_e_impl(e_impl: env)(e_pos: funname_env Z) :=
+    forall f (fun_impl: list Z * list Z * stmt Z),
+      map.get e_impl f = Some fun_impl ->
+      valid_FlatImp_fun fun_impl /\
+      exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0.
+
+  Local Notation stmt := (stmt Z).
+
+  (* note: [e_impl_reduced] and [funnames] will shrink one function at a time each time
+     we enter a new function body, to make sure functions cannot call themselves, while
+     [e_impl] and [e_pos] remain the same throughout because that's mandated by
+     [FlatImp.exec] and [compile_stmt], respectively *)
+  Definition compiles_FlatToRiscv_correctly
+    (f: funname_env Z -> Z -> Z -> stmt -> list Instruction)
+    (s: stmt): Prop :=
+    forall e_impl_full initialTrace initialMH initialRegsH initialMetricsH postH,
+    exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
+    forall (g: GhostConsts) (initialL: MetricRiscvMachine) (pos: Z),
+    map.extends e_impl_full g.(e_impl) ->
+    good_e_impl g.(e_impl) g.(e_pos) ->
+    fits_stack g.(rem_framewords) g.(rem_stackwords) g.(e_impl) s ->
+    f g.(e_pos) pos (bytes_per_word * g.(rem_framewords)) s = g.(insts) ->
+    stmt_not_too_big s ->
+    valid_FlatImp_vars s ->
+    pos mod 4 = 0 ->
+    (word.unsigned g.(program_base)) mod 4 = 0 ->
+    initialL.(getPc) = word.add g.(program_base) (word.of_Z pos) ->
+    g.(p_insts)      = word.add g.(program_base) (word.of_Z pos) ->
+    goodMachine initialTrace initialMH initialRegsH g initialL ->
+    runsTo initialL (fun finalL => exists finalTrace finalMH finalRegsH finalMetricsH,
+         postH finalTrace finalMH finalRegsH finalMetricsH /\
+         finalL.(getPc) = word.add initialL.(getPc)
+                                   (word.of_Z (4 * Z.of_nat (List.length g.(insts)))) /\
+         map.only_differ initialL.(getRegs)
+                 (union (of_list (modVars_as_list Z.eqb s)) (singleton_set RegisterNames.ra))
+                 finalL.(getRegs) /\
+         goodMachine finalTrace finalMH finalRegsH g finalL).
+
   Class assumptions: Prop := {
     word_riscv_ok :> word.riscv_ok (@word W);
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
     funname_env_ok :> forall T, map.ok (funname_env T);
-
     PR :> MetricPrimitives PRParams;
+  }.
 
-    compile_ext_call_correct: forall (initialL: MetricRiscvMachine)
-        action postH newPc insts (argvars resvars: list Z) initialMH R Rexec initialRegsH
-        argvals mKeep mGive outcome p_sp,
-      insts = compile_ext_call resvars action argvars ->
+  (* previously used definition: *)
+  Definition compile_ext_call_correct_alt resvars action argvars := forall (initialL: MetricRiscvMachine)
+        postH newPc insts initialMH R Rexec initialRegsH
+        argvals mKeep mGive outcome p_sp e mypos stackoffset,
+      insts = compile_ext_call e mypos stackoffset (SInteract resvars action argvars) ->
       newPc = word.add initialL.(getPc) (word.of_Z (4 * (Z.of_nat (List.length insts)))) ->
       map.extends initialL.(getRegs) initialRegsH ->
       Forall valid_FlatImp_var argvars ->
@@ -145,7 +344,6 @@ Section WithParameters.
       (forall x v, map.get initialRegsH x = Some v -> valid_FlatImp_var x) ->
       regs_initialized initialL.(getRegs) ->
       valid_machine initialL ->
-      (* from FlatImp.exec/case interact, but for the case where no memory is exchanged *)
       map.getmany_of_list initialL.(getRegs) argvars = Some argvals ->
       map.split initialMH mKeep mGive ->
       ext_spec initialL.(getLog) mGive action argvals outcome ->
@@ -163,7 +361,6 @@ Section WithParameters.
                   map.extends finalL.(getRegs) finalRegsH /\
                   map.putmany_of_list_zip resvars rvs initialL.(getRegs) = Some finalL.(getRegs) /\
                   map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
-                  (* external calls can't modify the memory for now *)
                   postH finalL.(getLog) finalMH finalRegsH finalMetricsH /\
                   finalL.(getPc) = newPc /\
                   finalL.(getNextPc) = add newPc (word.of_Z 4) /\
@@ -172,24 +369,65 @@ Section WithParameters.
                   (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
                   (forall x v, map.get finalRegsH x = Some v -> valid_FlatImp_var x) /\
                   regs_initialized finalL.(getRegs) /\
-                  valid_machine finalL);
-  }.
+                  valid_machine finalL).
+
+  Lemma compile_ext_call_correct_compatibility{mem_ok: map.ok mem}{locals_ok: map.ok locals}:
+    forall resvars action argvars,
+      compile_ext_call_correct_alt resvars action argvars ->
+      compiles_FlatToRiscv_correctly compile_ext_call (SInteract resvars action argvars).
+  Proof.
+    unfold compile_ext_call_correct_alt, compiles_FlatToRiscv_correctly, goodMachine.
+    intros. destruct_RiscvMachine initialL. destruct g. simpl in *. simp. subst.
+    eapply runsTo_weaken. 1: eapply H. all: clear H; simpl_MetricRiscvMachine_get_set; simpl.
+    - reflexivity.
+    - reflexivity.
+    - eassumption.
+    - eassumption.
+    - eassumption.
+    - eapply rearrange_footpr_subset; [ eassumption | ecancel ].
+    - ecancel_assumption.
+    - reflexivity.
+    - eassumption.
+    - eassumption.
+    - eassumption.
+    - eassumption.
+    - eapply map.getmany_of_list_extends; try eassumption.
+    - eassumption.
+    - eassumption.
+    - intros resvals mReceive ?.
+      match goal with
+      | H: forall _ _, _ |- _ =>
+        specialize H with mReceive resvals;
+          move H at bottom;
+          destruct H as (finalRegsH & ? & finalMH & ? & ?)
+      end; [assumption|].
+      exists finalRegsH. eexists. exists finalMH.
+      ssplit; [assumption| | ];
+        edestruct (map.putmany_of_list_zip_extends_exists (ok := locals_ok))
+        as (finalRegsL & ? & ?); eassumption.
+    - intros. destruct_RiscvMachine final. simpl in *. simp. subst.
+      do 4 eexists; ssplit; try (eassumption || reflexivity).
+      + match goal with
+        | H: map.putmany_of_list_zip _ _ _ = Some _ |- _ => rename H into P; clear -P mem_ok locals_ok
+        end.
+        apply map.only_differ_putmany in P.
+        unfold map.only_differ in *.
+        intro x. specialize (P x).
+        destruct P; auto.
+        left. unfold PropSet.union, PropSet.elem_of, PropSet.of_list in *.
+        left. apply ListSet.In_list_union_l. assumption.
+      + eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
+      + eexists. split; [reflexivity|].
+        ecancel_assumption.
+  Qed.
 
 End WithParameters.
 
 Existing Instance Semantics_params.
 
-Arguments Z.mul: simpl never.
-Arguments Z.add: simpl never.
-Arguments Z.of_nat: simpl never.
-Arguments Z.modulo : simpl never.
-Arguments Z.pow: simpl never.
-Arguments Z.sub: simpl never.
-
-Arguments run1: simpl never.
-
-Arguments compile_store: simpl never.
-Arguments compile_load: simpl never.
+Ltac simpl_g_get :=
+  cbn [p_sp rem_framewords rem_stackwords p_insts insts program_base e_pos e_impl
+            dframe xframe] in *.
 
 Ltac solve_stmt_not_too_big :=
   lazymatch goal with
@@ -225,7 +463,6 @@ Ltac simpl_bools :=
            assert (x = true) as H' by (eapply negb_false_iff; eauto);
            clear H
          end.
-
 
 Section FlatToRiscv1.
   Context {p: unique! parameters}.
@@ -286,16 +523,16 @@ Section FlatToRiscv1.
 
   Ltac simulate'' := repeat simulate''_step.
 
-  Lemma go_load: forall sz (x a: Z) (addr v: word) (initialL: RiscvMachineL) post f,
+  Lemma go_load: forall sz (x a ofs: Z) (addr v: word) (initialL: RiscvMachineL) post f,
       valid_register x ->
       valid_register a ->
       map.get initialL.(getRegs) a = Some addr ->
-      Memory.load sz (getMem initialL) addr = Some v ->
+      Memory.load sz (getMem initialL) (word.add addr (word.of_Z ofs)) = Some v ->
       mcomp_sat (f tt)
                 (withRegs (map.put initialL.(getRegs) x v) (updateMetrics (addMetricLoads 1) initialL)) post ->
-      mcomp_sat (Bind (execute (compile_load sz x a 0)) f) initialL post.
+      mcomp_sat (Bind (execute (compile_load sz x a ofs)) f) initialL post.
   Proof.
-    unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per.
+    unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per, Memory.bytes_per_word.
     destruct width_cases as [E | E];
       (* note: "rewrite E" does not work because "width" also appears in the type of "word",
          but we don't need to rewrite in the type of word, only in the type of the tuple,
@@ -316,18 +553,19 @@ Section FlatToRiscv1.
 
   Arguments invalidateWrittenXAddrs: simpl never.
 
-  Lemma go_store: forall sz (x a: Z) (addr v: word) (initialL: RiscvMachineL) m' post f,
+  Lemma go_store: forall sz (x a ofs: Z) (addr v: word) (initialL: RiscvMachineL) m' post f,
       valid_register x ->
       valid_register a ->
       map.get initialL.(getRegs) x = Some v ->
       map.get initialL.(getRegs) a = Some addr ->
-      Memory.store sz (getMem initialL) addr v = Some m' ->
-      mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs (@Memory.bytes_per width sz) addr
-                                                            (getXAddrs initialL))
+      Memory.store sz (getMem initialL) (word.add addr (word.of_Z ofs)) v = Some m' ->
+      mcomp_sat (f tt) (withXAddrs (invalidateWrittenXAddrs
+                                      (@Memory.bytes_per width sz) (word.add addr (word.of_Z ofs))
+                                      (getXAddrs initialL))
                        (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
-      mcomp_sat (Bind (execute (compile_store sz a x 0)) f) initialL post.
+      mcomp_sat (Bind (execute (compile_store sz a x ofs)) f) initialL post.
   Proof.
-    unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per;
+    unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per, Memory.bytes_per_word;
     destruct width_cases as [E | E];
       (* note: "rewrite E" does not work because "width" also appears in the type of "word",
          but we don't need to rewrite in the type of word, only in the type of the tuple,
@@ -494,11 +732,6 @@ Section FlatToRiscv1.
   Proof.
     intros. unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
     eauto using map.putmany_of_tuple_preserves_domain.
-  Qed.
-
-  Lemma iset_is_supported: supported_iset iset.
-  Proof.
-    unfold iset. destruct_one_match; constructor.
   Qed.
 
   Lemma seplog_subst_eq{A B R: mem -> Prop} {mL mH: mem}

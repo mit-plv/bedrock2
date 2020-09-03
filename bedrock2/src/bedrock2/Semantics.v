@@ -95,6 +95,7 @@ Section semantics.
 
   Local Notation metrics := MetricLog.
 
+  (* this is the expr evaluator that is used to verify execution time, the just-correctness-oriented version is below *)
   Section WithMemAndLocals.
     Context (m : mem) (l : locals).
     Fixpoint eval_expr (e : expr) (mc : metrics) : option (word * metrics) :=
@@ -175,6 +176,19 @@ Module exec. Section WithEnv.
                      (addMetricLoads 1
                      (addMetricStores 1 mc''))))
     : exec (cmd.store sz ea ev) t m l mc post
+  | stackalloc x n body
+    t mSmall l mc post
+    (_ : Z.modulo n (bytes_per_word width) = 0)
+    (_ : forall a mStack mCombined,
+        anybytes a n mStack ->
+        map.split mCombined mSmall mStack ->
+        exec body t mCombined (map.put l x a) (addMetricInstructions 1 (addMetricLoads 1 mc))
+          (fun t' mCombined' l' mc' =>
+            exists mSmall' mStack',
+              anybytes a n mStack' /\
+              map.split mCombined' mSmall' mStack' /\
+              post t' mSmall' l' mc'))
+     : exec (cmd.stackalloc x n body) t mSmall l mc post
   | if_true t m l mc e c1 c2 post
     v mc' (_ : eval_expr m l e mc = Some (v, mc'))
     (_ : word.unsigned v <> 0)

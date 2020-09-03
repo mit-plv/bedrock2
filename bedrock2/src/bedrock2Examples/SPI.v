@@ -1,5 +1,4 @@
-Require Import bedrock2.Syntax bedrock2.BasicCSyntax.
-Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Byte.
 
@@ -77,8 +76,8 @@ Section WithParameters.
     (h : lightbulb_spec.OP parameters.word)
     (l : parameters.mem * string * list parameters.word * (parameters.mem * list parameters.word)) :=
     Logic.or
-      (exists a v, h = lightbulb_spec.st _ a v /\ l = (map.empty, "MMIOWRITE", [a; v], (map.empty, [])))
-      (exists a v, h = lightbulb_spec.ld _ a v /\ l = (map.empty, "MMIOREAD", [a], (map.empty, [v]))).
+      (exists a v, h = ("st", a, v) /\ l = (map.empty, "MMIOWRITE", [a; v], (map.empty, [])))
+      (exists a v, h = ("ld", a, v) /\ l = (map.empty, "MMIOREAD", [a], (map.empty, [v]))).
   Definition mmio_trace_abstraction_relation := List.Forall2 mmio_event_abstraction_relation.
 
   Global Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall t m b,
@@ -119,10 +118,7 @@ Section WithParameters.
 
     (* WHY do theese parentheses matter? *)
     refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
-       b = B /\
-       v = word.unsigned I /\
-       word.unsigned I <> 0 /\
-       M = m /\
+       b = B /\ v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        lightbulb_spec.spi_write_full _ ^* th /\
@@ -272,9 +268,7 @@ Section WithParameters.
   Lemma spi_read_ok : program_logic_goal_for_function! spi_read.
     repeat straightline.
     refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
-       v = word.unsigned I /\
-       word.unsigned I <> 0 /\
-       M = m /\
+       v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
        B = word.of_Z (byte.unsigned (byte.of_Z (word.unsigned B))) /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
@@ -402,6 +396,7 @@ Section WithParameters.
         { econstructor; try eassumption; right; eauto. }
         eexists (byte.of_Z (word.unsigned b)), _; split.
         { subst b; f_equal.
+          (* tag:bitwise *)
           (* automatable: multi-word bitwise *)
           change (255) with (Z.ones 8).
           pose proof Properties.word.unsigned_range v0.
@@ -417,12 +412,14 @@ Section WithParameters.
           change Semantics.width with 32.
           change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
           clear. Z.div_mod_to_equations. Lia.lia. }
+        (* tag:symex *)
         { right; split.
           { subst busy. rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent; exact eq_refl. }
           eexists x3, (cons _ nil); split; cbn [app]; eauto.
           split; eauto.
           eexists; split; cbv [one]; trivial.
           split.
+          (* tag:bitwise *)
           { subst v0. rewrite Properties.word.unsigned_sru_nowrap in H
              by (rewrite word.unsigned_of_Z; exact eq_refl);
              rewrite word.unsigned_of_Z in H; exact H. }
@@ -477,8 +474,8 @@ Section WithParameters.
       repeat (
       cbv [word.wrap byte.wrap];
       rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by Lia.lia;
-      change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
-      rewrite Z.mod_small; rewrite Z.mod_small; trivial; Lia.lia. }
+      change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8));
+      rewrite ?Z.mod_small; rewrite ?Z.mod_small; trivial; Lia.lia. }
       left; split; eauto.
       eexists nil, x0; repeat split; cbv [any choice lightbulb_spec.spi_timeout]; eauto.
       rewrite app_nil_r; trivial. }

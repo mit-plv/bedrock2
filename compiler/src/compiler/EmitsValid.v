@@ -1,3 +1,4 @@
+(* Not needed at the moment because we validate the concrete expressions output by the compiler *)
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Z.Lia.
 Require Import Coq.ZArith.ZArith.
@@ -513,15 +514,8 @@ Section EmitsValid.
       repeat (rewrite List.app_length || simpl in * ); try blia.
     pose proof (compile_ext_call_length binds a args). blia.
   Qed.
-  *)
 
   Context {fun_pos_env: coqutil.Map.Interface.map.map String.string Z}.
-
-  Axiom compile_stmt_emits_valid: forall s e pos,
-      supported_iset iset ->
-      valid_FlatImp_vars s ->
-      stmt_not_too_big s ->
-      valid_instructions iset (compile_stmt e pos s).
 
   Axiom compile_function_emits_valid: forall e pos argnames resnames body,
       supported_iset iset ->
@@ -531,7 +525,6 @@ Section EmitsValid.
       stmt_not_too_big body ->
       valid_instructions iset (compile_function e pos (argnames, resnames, body)).
 
-  (*
   Lemma compile_stmt_emits_valid: forall s,
       supported_iset iset ->
       valid_FlatImp_vars s ->

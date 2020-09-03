@@ -14,9 +14,12 @@ Section TailRecrsion.
     {functions : list (String.string * (list String.string * list String.string * Syntax.cmd))}.
   Let call := WeakestPrecondition.call functions.
 
+  (* marking logical connectives with the source file they were used in for limiting unfolding *)
   Local Notation "A /\ B" := (Markers.split (A /\ B)).
   Local Notation "A /\ B" := (Markers.split (A /\ B)) : type_scope.
 
+  (* shallow reflection for resolving map accesses during symbolic execution *)
+  (* each lemma below is duplicated for various levels of use of this trick *)
   Definition reconstruct (variables:list String.string) (values:tuple word (length variables)) : locals :=
     map.putmany_of_tuple (tuple.of_list variables) values map.empty.
   Fixpoint gather (variables : list String.string) (l : locals) : option (locals *  tuple word (length variables)) :=
@@ -360,6 +363,7 @@ Section TailRecrsion.
   Qed.
 
 
+  (* Bedrock-style loop rule *)
   Context {mem_ok : map.ok mem}.
   Local Infix "*" := Separation.sep.
   Local Infix "*" := Separation.sep : type_scope.

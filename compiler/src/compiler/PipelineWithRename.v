@@ -8,7 +8,7 @@ Require Export compiler.FlattenExpr.
 Require        compiler.FlatImp.
 Require Export riscv.Spec.Machine.
 Require Export riscv.Platform.Run.
-Require Export riscv.Platform.Minimal.
+Require Export riscv.Platform.RiscvMachine.
 Require Export riscv.Platform.MetricLogging.
 Require Export riscv.Utility.Monads.
 Require Import riscv.Utility.runsToNonDet.
@@ -26,7 +26,6 @@ Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.MkMachineWidth.
 Require Export riscv.Proofs.DecodeEncode.
 Require Export riscv.Proofs.EncodeBound.
-Require Export compiler.EmitsValid.
 Require Import riscv.Utility.Utility.
 Require Export riscv.Platform.Memory.
 Require Export riscv.Utility.InstructionCoercions.
@@ -50,10 +49,6 @@ Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Import Utility.
 
-  (* TODO: move *)
-  Lemma HList__tuple__length_to_list {A n} xs : length (@HList.tuple.to_list A n xs) = n.
-  Proof. revert xs; induction n; cbn; eauto. Qed.
-
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
@@ -73,25 +68,23 @@ End WithWordAndMem.
 Module Import Pipeline.
 
   Class parameters := {
-    FlatToRiscvDef_params :> FlatToRiscvDef.FlatToRiscvDef.parameters;
-
+    W :> Words;
     mem :> map.map word byte;
     Registers :> map.map Z word;
     string_keyed_map :> forall T: Type, map.map string T; (* abstract T for better reusability *)
     trace := list (mem * string * list word * (mem * list word));
     ExtSpec := trace -> mem -> string -> list word -> (mem -> list word -> Prop) -> Prop;
     ext_spec : ExtSpec;
-
-    (* Note: this one is not needed because it's subsumed by funname_env,
-       and if we do add it, type class inference will infer funname_env in one place
-       and src2imp in another and then terms which should be convertible arent'
-    src2imp :> map.map string Z; *)
-
+    compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z -> list Instruction;
     M: Type -> Type;
     MM :> Monad M;
     RVM :> RiscvProgram M word;
     PRParams :> PrimitivesParams M MetricRiscvMachine;
   }.
+
+  Instance FlatToRiscvDef_parameters{p: parameters}: FlatToRiscvDef.FlatToRiscvDef.parameters := {|
+    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call := compile_ext_call;
+  |}.
 
   Instance FlattenExpr_parameters{p: parameters}: FlattenExpr.parameters := {
     FlattenExpr.W := _;
@@ -112,6 +105,12 @@ Module Import Pipeline.
     PR :> MetricPrimitives PRParams;
     FlatToRiscv_hyps :> FlatToRiscvCommon.assumptions;
     ext_spec_ok :> Semantics.ext_spec.ok (FlattenExpr.mk_Semantics_params FlattenExpr_parameters);
+    compile_ext_call_correct: forall resvars extcall argvars,
+        compiles_FlatToRiscv_correctly
+          compile_ext_call (FlatImp.SInteract resvars extcall argvars);
+    compile_ext_call_length_ignores_positions: forall stackoffset posmap1 posmap2 c pos1 pos2,
+      List.length (compile_ext_call posmap1 pos1 stackoffset c) =
+      List.length (compile_ext_call posmap2 pos2 stackoffset c);
   }.
 
 End Pipeline.
@@ -146,22 +145,13 @@ Section Pipeline1.
     - apply mk_FlatImp_ext_spec_ok.
   Qed.
 
-  Definition available_registers: list Z :=
-    Eval cbv in List.unfoldn Z.succ 29 3.
-
-  Lemma NoDup_available_registers: NoDup available_registers.
-  Proof. cbv. repeat constructor; cbv; intros; intuition congruence. Qed.
-
-  Lemma valid_FlatImp_vars_available_registers: Forall FlatToRiscvDef.valid_FlatImp_var available_registers.
-  Proof. repeat constructor; cbv; intros; discriminate. Qed.
-
   Local Notation source_env := (@string_keyed_map p (list string * list string * Syntax.cmd)).
   Local Notation flat_env := (@string_keyed_map p (list string * list string * FlatImp.stmt string)).
   Local Notation renamed_env := (@string_keyed_map p (list Z * list Z * FlatImp.stmt Z)).
 
   Definition flattenPhase(prog: source_env): option flat_env := flatten_functions (2^10) prog.
   Definition renamePhase(prog: flat_env): option renamed_env :=
-    rename_functions available_registers prog.
+    rename_functions prog.
 
   (* Note: we could also track code size from the source program all the way to the target
      program, and a lot of infrastructure is already there, will do once/if we want to get
@@ -203,33 +193,33 @@ Section Pipeline1.
             (Hf: flatten_functions (2 ^ 10) e1 = Some e2).
     Let c2 := (@FlatImp.SSeq String.string FlatImp.SSkip (FlatImp.SCall [] funname [])).
     Let c3 := (@FlatImp.SSeq Z FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])).
-    Context (av' : list Z) (r' : string_keyed_map Z)
-            (ER: envs_related available_registers e2 prog)
-            (Ren: rename map.empty c2 available_registers = Some (r', c3, av'))
+    Context (av' : Z) (r' : string_keyed_map Z)
+            (ER: envs_related e2 prog)
+            (Ren: rename map.empty c2 lowest_available_impvar = Some (r', c3, av'))
             (H_p_call: word.unsigned p_call mod 4 = 0)
             (H_p_functions: word.unsigned p_functions mod 4 = 0)
             (G: map.get (FlatToRiscvDef.build_fun_pos_env prog) f_entry_name = Some f_entry_rel_pos)
-            (F: fits_stack (word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word) prog
+            (F: fits_stack 0 (word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word) prog
                            (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])))
             (GEI: good_e_impl prog (FlatToRiscvDef.build_fun_pos_env prog)).
 
     Definition flattenSim: simulation _ _ _ :=
       FlattenExprSimulation.flattenExprSim (2^10) e1 e2 funname Hf.
     Definition regAllocSim: simulation _ _ _ :=
-      renameSim available_registers (@ext_spec p) NoDup_available_registers
+      renameSim (@ext_spec p)
                 e2 prog c2 c3 av' r' ER Ren.
     Definition flatToRiscvSim: simulation _ _ _ :=
       FlatToRiscvSimulation.flatToRiscvSim
         f_entry_rel_pos f_entry_name p_call Rdata Rexec
         p_functions ml.(stack_start) ml.(stack_pastend)
-        prog H_p_call H_p_functions G F GEI.
+        prog compile_ext_call_correct H_p_call H_p_functions G F GEI.
 
     Definition sim: simulation _ _ _ :=
       (compose_sim flattenSim (compose_sim regAllocSim flatToRiscvSim)).
   End Sim.
 
   Lemma rename_fun_valid: forall argnames retnames body impl',
-      rename_fun available_registers (argnames, retnames, body) = Some impl' ->
+      rename_fun (argnames, retnames, body) = Some impl' ->
       NoDup argnames ->
       NoDup retnames ->
       FlatImp.stmt_size body < 2 ^ 10 ->
@@ -240,23 +230,16 @@ Section Pipeline1.
     simp.
     eapply rename_binds_props in E; cycle 1.
     { eapply map.empty_injective. }
-    { eapply map.not_in_range_empty. }
-    { apply NoDup_available_registers. }
+    { eapply dom_bound_empty. }
     simp.
     eapply rename_binds_props in E0; cycle 1.
     { assumption. }
     { assumption. }
-    { pose proof NoDup_available_registers as P.
-      replace available_registers with (used ++ l) in P by assumption.
-      apply invert_NoDup_app in P. tauto. }
     simp.
     pose proof E1 as E1'.
     eapply rename_props in E1; cycle 1.
     { assumption. }
     { assumption. }
-    { pose proof NoDup_available_registers as P.
-      replace available_registers with (used ++ used0 ++ l1) in P by assumption.
-      apply invert_NoDup_app in P. simp. apply invert_NoDup_app in Prl. simp. assumption. }
     simp.
     ssplit.
     - eapply Forall_impl. 2: {
@@ -268,10 +251,9 @@ Section Pipeline1.
       | X: _ |- _ => specialize X with (1 := H); rename X into A
       end.
       destruct A as [A | A].
-      + pose proof valid_FlatImp_vars_available_registers as V.
-        eapply (proj1 (Forall_forall _ _) V).
-        replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
-        rewrite ?in_app_iff. auto.
+      + apply Zle_bool_imp_le in E2.
+        unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
+        blia.
       + rewrite map.get_empty in A. discriminate A.
     - eapply Forall_impl. 2: {
         eapply map.getmany_of_list_in_map. eassumption.
@@ -282,18 +264,16 @@ Section Pipeline1.
       | X: _ |- _ => specialize X with (1 := H); rename X into A
       end.
       destruct A as [A | A].
-      + pose proof valid_FlatImp_vars_available_registers as V.
-        eapply (proj1 (Forall_forall _ _) V).
-        replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
-        rewrite ?in_app_iff. auto.
+      + apply Zle_bool_imp_le in E2.
+        unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
+        blia.
       + match goal with
         | X: _ |- _ => specialize X with (1 := A); rename X into B
         end.
         destruct B as [B | B].
-        * pose proof valid_FlatImp_vars_available_registers as V.
-          eapply (proj1 (Forall_forall _ _) V).
-          replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
-          rewrite ?in_app_iff. auto.
+        * apply Zle_bool_imp_le in E2.
+          unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
+          blia.
         * rewrite map.get_empty in B. discriminate B.
     - eapply FlatImp.ForallVars_stmt_impl; [|eassumption].
       simpl. intros. simp.
@@ -301,26 +281,23 @@ Section Pipeline1.
       | X: _ |- _ => specialize X with (1 := H); rename X into A
       end.
       destruct A as [A | A].
-      + pose proof valid_FlatImp_vars_available_registers as V.
-        eapply (proj1 (Forall_forall _ _) V).
-        replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
-        rewrite ?in_app_iff. auto.
+      + apply Zle_bool_imp_le in E2.
+        unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
+        blia.
       + match goal with
         | X: _ |- _ => specialize X with (1 := A); rename X into B
         end.
         destruct B as [B | B].
-        * pose proof valid_FlatImp_vars_available_registers as V.
-          eapply (proj1 (Forall_forall _ _) V).
-          replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
-          rewrite ?in_app_iff. auto.
+        * apply Zle_bool_imp_le in E2.
+          unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
+          blia.
         * match goal with
           | X: _ |- _ => specialize X with (1 := B); rename X into C
           end.
           destruct C as [C | C].
-          -- pose proof valid_FlatImp_vars_available_registers as V.
-             eapply (proj1 (Forall_forall _ _) V).
-             replace available_registers with (used ++ used0 ++ used1 ++ l3) by assumption.
-             rewrite ?in_app_iff. auto.
+          -- apply Zle_bool_imp_le in E2.
+             unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
+             blia.
           -- rewrite map.get_empty in C. discriminate C.
     - eapply map.getmany_of_list_injective_NoDup. 3: eassumption. all: eassumption.
     - eapply map.getmany_of_list_injective_NoDup. 3: eassumption. all: eassumption.
@@ -330,7 +307,7 @@ Section Pipeline1.
       assumption.
   Qed.
 
-  Local Instance map_ok': @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p) := mem_ok.
+  Local Instance map_ok': @map.ok (@word (@W p)) Init.Byte.byte (@mem p) := mem_ok.
 
   Lemma get_build_fun_pos_env: forall e f,
       map.get e f <> None ->
@@ -350,7 +327,7 @@ Section Pipeline1.
   Local Instance  EqDecider_FlatImp__word_eq : EqDecider FlatImp__word_eq.
   Proof. eapply word.eqb_spec. Unshelve. exact word_ok. Qed.
 
-  Definition mem_available_to_exists: forall start pastend m P,
+  Lemma mem_available_to_exists: forall start pastend m P,
       (mem_available start pastend * P)%sep m ->
       exists anybytes,
         Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
@@ -370,108 +347,6 @@ Section Pipeline1.
   Proof.
     unfold mem_available. intros * H Hsep.
     eapply sep_ex1_l. eexists. eapply sep_assoc. eapply sep_emp_l. eauto.
-  Qed.
-
-  Lemma cast_word_array_to_bytes bs addr : iff1
-    (array ptsto_word (word.of_Z bytes_per_word) addr bs)
-    (ptsto_bytes addr (flat_map (fun x =>
-       HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x)))
-          bs)).
-  Proof.
-    revert addr; induction bs; intros; [reflexivity|].
-    cbn [array flat_map].
-    assert (CC: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p))
-      by exact mem_ok.
-    etransitivity. 1:eapply Proper_sep_iff1; [reflexivity|]. 1:eapply IHbs.
-    etransitivity. 2:symmetry; eapply bytearray_append.
-    eapply Proper_sep_iff1.
-    { cbv [ptsto_word ptsto_bytes.ptsto_bytes Memory.bytes_per bytes_per_word].
-      rewrite Z2Nat.id by (destruct width_cases as [E | E]; rewrite E; cbv; discriminate); reflexivity. }
-    assert (0 < bytes_per_word). { (* TODO: deduplicate *)
-      unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
-    }
-    Morphisms.f_equiv.
-    Morphisms.f_equiv.
-    Morphisms.f_equiv.
-    rewrite HList__tuple__length_to_list.
-    rewrite Z2Nat.id; blia.
-  Qed.
-
-  Lemma byte_list_to_word_list_array: forall bytes,
-    Z.of_nat (length bytes) mod bytes_per_word = 0 ->
-    exists word_list,
-      Z.of_nat (Datatypes.length word_list) =
-      Z.of_nat (Datatypes.length bytes) / bytes_per_word /\
-    forall p,
-      iff1 (array ptsto (word.of_Z 1) p bytes)
-           (array ptsto_word (word.of_Z bytes_per_word) p word_list).
-  Proof.
-    assert (AA: 0 < bytes_per_word). {
-      unfold bytes_per_word.
-      simpl.
-      destruct width_cases as [E | E]; rewrite E; cbv; reflexivity.
-    }
-    assert (BB: @word.ok (@width (@W (@FlatToRiscvDef_params p)))(@word (@W (@FlatToRiscvDef_params p))))
-      by exact word_ok.
-    assert (CC: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p))
-      by exact mem_ok.
-    intros.
-    Z.div_mod_to_equations.
-    subst r.
-    specialize (H0 ltac:(Lia.lia)); clear H1.
-    ring_simplify in H0.
-    assert (0 <= q) by Lia.nia.
-    revert dependent bytes.
-    pattern q.
-    refine (natlike_ind _ _ _ q H); clear -AA BB CC; intros.
-    { case bytes in *; cbn in *; ring_simplify in H0; try discriminate.
-      exists nil; split; reflexivity. }
-    rewrite Z.mul_succ_r in *.
-    specialize (H0 (List.skipn (Z.to_nat bytes_per_word) bytes)).
-    rewrite List.length_skipn in H0.
-    specialize (H0 ltac:(Lia.nia)).
-    case H0 as [words' [Hlen Hsep] ].
-    eexists (cons _ words').
-    split; [cbn; blia|].
-    intros p0; specialize (Hsep (word.add p0 (word.of_Z bytes_per_word))).
-    rewrite array_cons.
-    etransitivity.
-    2:eapply Proper_sep_iff1; [reflexivity|].
-    2:eapply Hsep.
-    clear Hsep.
-
-    rewrite <-(List.firstn_skipn (Z.to_nat bytes_per_word) bytes) at 1.
-    unfold ptsto_word.
-    rewrite <-bytearray_index_merge.
-    1: eapply Proper_sep_iff1; [|reflexivity].
-    2: rewrite word.unsigned_of_Z; setoid_rewrite Z.mod_small.
-    3: {
-      unfold bytes_per_word.
-      simpl.
-      destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
-    }
-    2: rewrite List.length_firstn_inbounds; Lia.nia.
-    cbv [ptsto_bytes.ptsto_bytes].
-    Morphisms.f_equiv.
-    setoid_rewrite word.unsigned_of_Z.
-    setoid_rewrite Z.mod_small.
-    1: unshelve setoid_rewrite LittleEndian.split_combine.
-    1: {
-      eapply eq_rect; [exact (HList.tuple.of_list (List.firstn (Z.to_nat bytes_per_word) bytes))|].
-      abstract (
-      rewrite List.length_firstn_inbounds; try Lia.nia;
-      unfold bytes_per_word; apply Nat2Z.id). }
-    1:rewrite HList.tuple.to_list_eq_rect.
-    1:rewrite HList.tuple.to_list_of_list; trivial.
-    match goal with |- context[LittleEndian.combine _ ?xs] => generalize xs end.
-    intros.
-    pose proof (LittleEndian.combine_bound t).
-    split; [blia|].
-    destruct H0.
-    eapply Z.lt_le_trans. 1: eassumption.
-    eapply Z.pow_le_mono_r. 1: reflexivity.
-    simpl.
-    destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
   Qed.
 
   Lemma get_compile_funs_pos: forall e,
@@ -501,13 +376,8 @@ Section Pipeline1.
     - destruct width_cases as [E | E]; rewrite E; reflexivity.
     - unfold Z.divide.
       exists (2 ^ width / bytes_per_word).
-      unfold bytes_per_word.
-      destruct width_cases as [E | E]; rewrite E; simpl.
-      1: change (Z.of_nat (Pos.to_nat 4)) with (2 ^ 2).
-      2: change (Z.of_nat (Pos.to_nat 8)) with (2 ^ 3).
-      all: rewrite <- Z.pow_sub_r by blia;
-           rewrite <- Z.pow_add_r by blia;
-           reflexivity.
+      unfold bytes_per_word, Memory.bytes_per_word.
+      destruct width_cases as [E | E]; rewrite E; reflexivity.
   Qed.
 
   Lemma stack_length_divisible: forall (ml: MemoryLayout) {mlOk: MemoryLayoutOk ml},
@@ -574,11 +444,12 @@ Section Pipeline1.
            | |- (_ + _)%nat = (_ + _)%nat => f_equal
            end.
 
-  Lemma compile_stmt_length_ignores_positions: forall posmap1 posmap2 c pos1 pos2,
-      List.length (FlatToRiscvDef.compile_stmt posmap1 pos1 c) =
-      List.length (FlatToRiscvDef.compile_stmt posmap2 pos2 c).
+  Lemma compile_stmt_length_ignores_positions: forall posmap1 posmap2 c stackoffset pos1 pos2,
+      List.length (FlatToRiscvDef.compile_stmt posmap1 pos1 stackoffset c) =
+      List.length (FlatToRiscvDef.compile_stmt posmap2 pos2 stackoffset c).
   Proof.
     induction c; intros; ignore_positions.
+    apply compile_ext_call_length_ignores_positions.
   Qed.
 
   Lemma compile_function_length_ignores_positions: forall posmap1 posmap2 pos1 pos2 impl,
@@ -635,7 +506,7 @@ Section Pipeline1.
   Lemma functions_to_program: forall ml functions_start e instrs pos_map,
       riscvPhase ml e = Some (instrs, pos_map) ->
       iff1 (program functions_start instrs)
-           (FlatToRiscvFunctions.functions functions_start (FlatToRiscvDef.build_fun_pos_env e) e).
+           (FlatToRiscvCommon.functions functions_start (FlatToRiscvDef.build_fun_pos_env e) e).
   Proof.
     (* PARAMRECORDS *)
     assert (map.ok FlatImp.env). { unfold FlatImp.env. simpl. typeclasses eauto. }
@@ -802,7 +673,7 @@ Section Pipeline1.
       { unfold riscvPhase in *. simp. exact GetPos. }
       { simpl. unfold riscvPhase in *. simpl in *. simp.
         move E1 at bottom.
-        eapply fits_stack_seq. 1: eapply fits_stack_skip. {
+        eapply fits_stack_seq. 1: eapply fits_stack_skip. 1: reflexivity. {
           eapply Z.div_pos.
           - eapply proj1. eapply word.unsigned_range.
           - clear. unfold bytes_per_word, Memory.bytes_per.
@@ -818,17 +689,14 @@ Section Pipeline1.
         repeat match goal with
                | H: _ |- _ => autoforward with typeclass_instances in H
                end.
-        econstructor. 1: eassumption.
-        eapply fits_stack_monotone. 2: {
-          apply Z.sub_le_mono_r.
-          eassumption.
-        }
-        eapply stack_usage_correct; eassumption. }
+        econstructor. 1: reflexivity. 1: eassumption.
+        eapply fits_stack_monotone.
+        1: eapply stack_usage_correct; eassumption. 1: reflexivity. blia. }
       { unfold good_e_impl.
         intros.
         simpl in *.
         match goal with
-        | H: rename_functions _ _ = _ |- _ => rename H into RenameEq
+        | H: rename_functions _ = _ |- _ => rename H into RenameEq
         end.
         unfold rename_functions in RenameEq.
         match goal with
@@ -884,13 +752,13 @@ Section Pipeline1.
       { unfold machine_ok in *. simp. simpl.
         eapply rearrange_footpr_subset. 1: eassumption.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
-        pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
+        pose proof (mem_ok: @map.ok (@word (@W p)) Init.Byte.byte (@mem p)).
         wwcancel.
         eapply functions_to_program.
         eassumption. }
       { simpl.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
-        pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
+        pose proof (mem_ok: @map.ok (@word (@W p)) Init.Byte.byte (@mem p)).
         unfold machine_ok in *. simp.
         edestruct mem_available_to_exists as [ stack_trash [? ?] ]. 1: simpl; ecancel_assumption.
         destruct (byte_list_to_word_list_array stack_trash)
@@ -934,6 +802,7 @@ Section Pipeline1.
         match goal with
         | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
         end.
+        rewrite Z.sub_0_r. symmetry.
         apply Hlength_stack_trash_words. }
       { reflexivity. }
       { unfold machine_ok in *. simp. assumption. }
@@ -959,7 +828,7 @@ Section Pipeline1.
       eexists. split. 1: eassumption.
       unfold machine_ok. ssplit; try assumption.
       + assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
-        cbv [num_stackwords ghostConsts] in H2lrrrrrrrrrll.
+        cbv [rem_stackwords rem_framewords ghostConsts] in H2lrrrrrrrrrll.
         cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).
         exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x))) stack_trash).
@@ -970,12 +839,12 @@ Section Pipeline1.
             unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
           }
           rewrite (length_flat_map _ (Z.to_nat bytes_per_word)).
-          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia.
-            rewrite H2lrrrrrrrrrll, <-Z_div_exact_2; try trivial.
+          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H2lrrrrrrrrrll.
+            rewrite <-H2lrrrrrrrrrll, <-Z_div_exact_2; try trivial.
             { eapply Z.lt_gt; assumption. }
             { eapply stack_length_divisible; trivial. } }
           intros w.
-          rewrite HList__tuple__length_to_list; trivial. }
+          rewrite HList.tuple.length_to_list; trivial. }
         use_sep_assumption.
         cbn [dframe xframe ghostConsts program_base ghostConsts e_pos e_impl p_insts insts].
         progress simpl (@FlatToRiscvCommon.mem (@FlatToRiscv_params p)).
@@ -984,7 +853,7 @@ Section Pipeline1.
           reflexivity.
         }
         cancel_seps_at_indices 0%nat 2%nat. {
-          cbn [num_stackwords ghostConsts p_sp].
+          cbn [rem_stackwords rem_framewords ghostConsts p_sp].
           replace (word.sub (stack_pastend ml) (word.of_Z (bytes_per_word *
                       (word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word))))
             with (stack_start ml). 2: {
@@ -1015,7 +884,7 @@ Section Pipeline1.
       + unfold machine_ok in *. simp. simpl.
         eapply rearrange_footpr_subset. 1: eassumption.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
-        pose proof (mem_ok: @map.ok (@word (@W (@FlatToRiscvDef_params p))) Init.Byte.byte (@mem p)).
+        pose proof (mem_ok: @map.ok (@word (@W p)) Init.Byte.byte (@mem p)).
         (* TODO remove duplication *)
         lazymatch goal with
         | H: riscvPhase _ _ = _ |- _ => specialize functions_to_program with (1 := H) as P

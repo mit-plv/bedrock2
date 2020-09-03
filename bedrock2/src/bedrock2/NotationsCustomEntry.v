@@ -97,6 +97,11 @@ Notation "'while' e { c }" := (while e c%bedrock_nontail)
   (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c at level 0,
   format "'[v' 'while'  e  {  '/  ' c '/' } ']'").
 
+(* DRAFT: *)
+Notation "'stackalloc' z 'as' x { c }" := (stackalloc x z c)
+  (in custom bedrock_cmd at level 0, no associativity, z constr, x global, c at level 0,
+  format "'[v' 'stackalloc'  z  as  x  {  '/  ' c '/' } ']'").
+
 (* COQBUG(9517) *)
 Notation "x = ( e )" := (set x e) (in custom bedrock_cmd at level 0, x global, e custom bedrock_expr).
 (* DRAFT: *)
@@ -261,7 +266,10 @@ Module test.
   )) in
   assert (lhs = rhs) by exact eq_refl.
 
-  epose (fun W a b e x y f read write => bedrock_func_body:(
+  epose (fun x => bedrock_func_body:(stackalloc 64 as x { /*skip*/ })).
+  epose (fun n x => bedrock_func_body:(stackalloc n as x { /*skip*/ })).
+
+  epose (fun W a b e x y f read write => bedrock_func_body:( stackalloc 64 as b {
     require (load(1) ^ constr:(expr.literal 231321) ) else { constr:(_) };
     require (1 ^ load4(1+1+1+load(1))) else { constr:(_) };
     { a = (1+1 == 1) } ;
@@ -274,7 +282,7 @@ Module test.
     if (W+1<<(1+1)-(1+1) ^ (1+1+1)) {
       a = (constr:(expr.var x))
     } else {
-      while (W+1<<(1+1)-(1+1) ^ (1+1+1)) {
+      while (W+1<<(1+1)-(1+1) ^ (1+1+1)) { stackalloc 64 as b {
         a = (1);
         x = (constr:(expr.var a));
         unpack! x = f(1,W,1, 1,1,1);
@@ -283,9 +291,9 @@ Module test.
         io! a = read(1, 1);
         output! write(1,W,1, 1,1,1);
         store(1,1)
-      }
+      }}
     }
-  )).
+  })).
 
   Abort.
 End test.

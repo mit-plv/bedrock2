@@ -5,6 +5,7 @@ Require Import coqutil.Byte.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Kami.Lib.Word.
 Require Import Kami.Syntax Kami.Semantics.
+Require Import Kami.Ex.IsaRv32.
 Require Import coqutil.Word.LittleEndian.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Properties.
@@ -12,78 +13,15 @@ Require Import coqutil.Map.Properties.
 (* In order to just use [word] as a typeclass [processor.KamiWord] should
  * be imported before importing [riscv.Utility.Utility]. *)
 Require Import processor.KamiWord.
-Require Import riscv.Utility.Utility.
 
+Require Import riscv.Utility.Utility.
 Require riscv.Platform.Memory.
 Require Import riscv.Platform.RiscvMachine.
+Require Import riscv.Spec.Decode.
 
 Require Import processor.KamiProc.
 
 Local Open Scope Z_scope.
-
-Lemma wordToN_eq_rect:
-  forall sz (w: Word.word sz) nsz Hsz,
-    wordToN (eq_rect _ Word.word w nsz Hsz) = wordToN w.
-Proof.
-  intros; subst; simpl; reflexivity.
-Qed.
-
-Lemma Z_pow_add_lor:
-  forall n m p: Z,
-    0 <= n < 2 ^ p -> 0 <= m -> 0 <= p ->
-    (n + 2 ^ p * m)%Z = Z.lor n (2 ^ p * m).
-Proof.
-  intros.
-  apply eq_sym, or_to_plus.
-  rewrite Z.mul_comm, <-Z.shiftl_mul_pow2 by assumption.
-  replace n with (Z.land n (Z.ones p)).
-  - bitblast.Z.bitblast.
-    rewrite Z.testbit_neg_r with (n:= l) by blia.
-    apply Bool.andb_false_r.
-  - destruct (Z.eq_dec n 0); [subst; apply Z.land_0_l|].
-    assert (0 < n) by blia.
-    rewrite Z.land_ones_low; [reflexivity|blia|].
-    apply Z.log2_lt_pow2; blia.
-Qed.
-
-Lemma Z_of_wordToN_combine_alt:
-  forall sz1 (w1: Word.word sz1) sz2 (w2: Word.word sz2),
-    Z.of_N (wordToN (Word.combine w1 w2)) =
-    Z.lor (Z.of_N (wordToN w1)) (Z.shiftl (Z.of_N (wordToN w2)) (Z.of_N (N.of_nat sz1))).
-Proof.
-  intros.
-  rewrite wordToN_combine, N2Z.inj_add, N2Z.inj_mul.
-  assert (0 <= Z.of_N (wordToN w1) < 2 ^ (Z.of_N (N.of_nat sz1))).
-  { split; [apply N2Z.is_nonneg|].
-    clear.
-    induction w1; [simpl; blia|].
-    unfold wordToN; fold wordToN.
-    destruct b.
-    { rewrite N2Z.inj_succ, N2Z.inj_mul, Nnat.Nat2N.inj_succ.
-      rewrite N2Z.inj_succ.
-      rewrite Z.pow_succ_r by blia; blia.
-    }
-    { rewrite N2Z.inj_mul, Nnat.Nat2N.inj_succ.
-      rewrite N2Z.inj_succ.
-      rewrite Z.pow_succ_r by blia; blia.
-    }
-  }
-  assert (0 <= Z.of_N (wordToN w2)) by blia.
-  assert (0 <= Z.of_N (N.of_nat sz1)) by blia.
-
-  replace (Z.of_N (NatLib.Npow2 sz1)) with (Z.pow 2 (Z.of_N (N.of_nat sz1))).
-  - generalize dependent (Z.of_N (wordToN w1)).
-    generalize dependent (Z.of_N (wordToN w2)).
-    generalize dependent (Z.of_N (N.of_nat sz1)).
-    intros p ? z1 ? z2 ?.
-    rewrite Z.shiftl_mul_pow2 by assumption.
-    rewrite Z.mul_comm with (n:= z1).
-    apply Z_pow_add_lor; assumption.
-  - clear; induction sz1; [reflexivity|].
-    rewrite Nnat.Nat2N.inj_succ, N2Z.inj_succ.
-    unfold NatLib.Npow2; fold NatLib.Npow2.
-    rewrite Z.pow_succ_r by blia; blia.
-Qed.
 
 Lemma evalExpr_bit_eq_rect:
   forall n1 n2 (Hn: n1 = n2) e,
@@ -95,72 +33,7 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma Z_lor_of_N:
-  forall n m,
-    Z.lor (Z.of_N n) (Z.of_N m) = Z.of_N (N.lor n m).
-Proof.
-  intros.
-  cbv [Z.lor N.lor].
-  destruct n, m; reflexivity.
-Qed.
-
-Lemma Z_shiftl_of_N:
-  forall n sh,
-    Z.shiftl (Z.of_N n) (Z.of_N sh) = Z.of_N (N.shiftl n sh).
-Proof.
-  intros.
-  destruct n; [simpl; apply Z.shiftl_0_l|].
-  simpl.
-  cbv [Z.shiftl Pos.shiftl].
-  destruct sh; simpl; [reflexivity|].
-  revert p.
-  induction p0; intros; auto.
-  - simpl; do 2 rewrite IHp0; reflexivity.
-  - simpl; do 2 rewrite IHp0; reflexivity.
-Qed.
-
-Lemma ZToWord_zero:
-  forall n, ZToWord n 0 = wzero n.
-Proof.
-  destruct n; intros; [shatterer|].
-  apply wordToZ_inj.
-  rewrite wordToZ_ZToWord.
-  - rewrite wordToZ_wzero; reflexivity.
-  - split.
-    + blia.
-    + change 0 with (Z.of_nat 0).
-      apply Nat2Z.inj_lt.
-      apply NatLib.zero_lt_pow2.
-Qed.
-
-Lemma combine_wplus_wzero:
-  forall sz1 (wb: Word.word sz1) sz2 (w1 w2: Word.word sz2),
-    Word.combine wb w1 ^+ Word.combine (wzero sz1) w2 =
-    Word.combine wb (w1 ^+ w2).
-Proof.
-  induction wb; intros; [reflexivity|].
-  simpl; rewrite <-wplus_WS_0.
-  rewrite IHwb; reflexivity.
-Qed.
-
-Lemma split1_wplus_silent:
-  forall sz1 sz2 (w1 w2: Word.word (sz1 + sz2)),
-    split1 sz1 sz2 w2 = wzero _ ->
-    split1 sz1 sz2 (w1 ^+ w2) = split1 sz1 sz2 w1.
-Proof.
-  intros.
-  pose proof (word_combinable _ _ w1).
-  destruct H0 as [w11 [w12 ?]].
-  pose proof (word_combinable _ _ w2).
-  destruct H1 as [w21 [w22 ?]].
-  subst; rewrite split1_combine in H; subst.
-  rewrite combine_wplus_wzero.
-  do 2 rewrite split1_combine.
-  reflexivity.
-Qed.
-
 Section FetchOk.
-
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
   Context {mem: map.map word byte}.
 
@@ -267,22 +140,6 @@ Section FetchOk.
          Kami.Ex.SC.combineBytes 4%nat rpc kmemd =
          kmemi (evalExpr (IsaRv32.rv32ToIAddr _ _ width_inst_valid _ kpc))).
 
-  Lemma wordToN_split1 a b w :
-    wordToN (@split1 a b w) = BinNat.N.modulo (wordToN w) (NatLib.Npow2 a).
-  Proof.
-    pose proof wordToNat_split1 a b w as HH.
-    eapply Nnat.Nat2N.inj_iff in HH.
-    rewrite wordToN_nat, HH; f_equal; clear HH.
-    rewrite wordToN_nat, NatLib.pow2_N.
-    generalize (#w); intro.
-    remember (NatLib.pow2 a) as pa eqn:Ha.
-    pose proof NatLib.pow2_zero a.
-    pose proof mod_Zmod n pa ltac:(Lia.lia).
-    pose proof Znat.N2Z.inj_mod (BinNat.N.of_nat n) (BinNat.N.of_nat pa) ltac:(blia).
-    rewrite Znat.nat_N_Z in *.
-    Lia.lia.
-  Qed.
-
   Lemma rv32ToAddr_rv32ToIAddr_consistent:
     forall rpc,
       (wordToN rpc < NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))%N ->
@@ -317,7 +174,7 @@ Section FetchOk.
     change (BinInt.Z.to_nat width) with (2 + (BinInt.Z.to_nat width - 2))%nat.
 
     rewrite wordToN_combine.
-    rewrite wordToN_wzero.    
+    rewrite wordToN_wzero.
     rewrite N.add_0_l.
     rewrite N.mul_comm at 2.
     rewrite N.div_mul by discriminate.
@@ -392,14 +249,14 @@ Section FetchOk.
       cbv [kunsigned] in H1.
       Lia.lia.
     }
-    
+
     cbv [Memory.footprint HList.tuple.unfoldn].
     eexists; split.
     - pose proof (H rpc); rewrite Hrpc0 in H1.
       pose proof (H (rpc ^+ ZToWord _ 1)); rewrite Hrpc1 in H2.
       pose proof (H (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1)); rewrite Hrpc2 in H3.
       pose proof (H (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1 ^+ ZToWord _ 1)); rewrite Hrpc3 in H4.
-      
+
       instantiate (1:= {| PrimitivePair.pair._1 := _;
                           PrimitivePair.pair._2 := _ |}).
       erewrite map.build_getmany_of_tuple_Some; [reflexivity|apply H1|].
@@ -458,3 +315,67 @@ Section FetchOk.
   Qed.
 
 End FetchOk.
+
+Section DecExecOk.
+  Instance W: Utility.Words := @KamiWord.WordsKami width width_cases.
+
+  Variables (instrMemSizeLg: Z).
+  Hypothesis (HinstrMemBound: 3 <= instrMemSizeLg <= width - 2).
+
+  Local Definition kamiProc := @KamiProc.proc instrMemSizeLg.
+  Local Definition KamiSt := @KamiProc.st instrMemSizeLg.
+
+  (** * Register file mapping *)
+
+  Context {Registers: map.map Register word}
+          (Registers_ok : map.ok Registers).
+
+  Definition regs_related (krf: kword 5 -> kword width)
+             (rrf: Registers): Prop :=
+    forall w, w <> $0 -> map.get rrf (Z.of_N (wordToN w)) = Some (krf w).
+
+  Lemma regs_related_get:
+    forall krf (Hkrf0: krf $0 = $0) rrf,
+      regs_related krf rrf ->
+      forall w z,
+        Z.of_N (wordToN w) = z ->
+        krf w =
+        (if Z.eq_dec z 0 then word.of_Z 0
+         else
+           match map.get rrf z with
+           | Some x => x
+           | None => word.of_Z 0
+           end).
+  Proof.
+    intros.
+    destruct (Z.eq_dec _ _).
+    - subst; destruct (weq w $0); subst; [assumption|].
+      exfalso.
+      rewrite <-N2Z.inj_0 in e.
+      apply N2Z.inj in e.
+      rewrite <-wordToN_wzero with (sz:= 5%nat) in e.
+      apply wordToN_inj in e; auto.
+    - subst; rewrite H; [reflexivity|].
+      intro; subst; auto.
+  Qed.
+
+  Lemma regs_related_put krf rrf kv rv kk rk
+        (Hrf: regs_related krf rrf)
+        (Hk: Z.of_N (wordToN kk) = rk)
+        (Hv: kv = rv):
+    regs_related
+      (fun w : Word.word rv32RfIdx => if weq w kk then kv else krf w)
+      (map.put rrf rk rv).
+  Proof.
+    rewrite <-Hv.
+    cbv [regs_related].
+    intros i Hi.
+    destruct (weq (sz:= rv32RfIdx) i kk).
+    - subst; apply map.get_put_same.
+    - rewrite map.get_put_diff.
+      + apply Hrf; auto.
+      + subst; intro.
+        apply N2Z.inj, wordToN_inj in H; auto.
+  Qed.
+
+End DecExecOk.

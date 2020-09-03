@@ -1,7 +1,6 @@
 Require Import Coq.Lists.List.
 Require Import coqutil.Datatypes.PropSet.
 
-
 Class NameGen(var st: Type) := mkNameGen {
   (* Return a state which generates vars not contained in the given list.
      We use list instead of set to guarantee that it's finite. *)
