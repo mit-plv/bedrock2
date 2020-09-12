@@ -2,14 +2,15 @@ Require Import Coq.ZArith.BinIntDef.
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 
 (** Grammar for expressions *)
+(* COQBUG(13018) without level 999 printing uses constr instead *)
 
 Import bopname.
 Declare Custom Entry bedrock_expr.
-Notation "bedrock_expr:( e )"   := e   (e custom bedrock_expr,
+Notation "bedrock_expr:( e )"   := e   (e custom bedrock_expr at level 999,
                                         format "'bedrock_expr:(' e ')'").
 Notation "constr:( e )"         := e   (in custom bedrock_expr, e constr,
                                         format "'constr:(' e ')'").
-Notation  "( e )" := e                 (in custom bedrock_expr at level 0).
+Notation  "( e )" := e                 (in custom bedrock_expr at level 0, e custom bedrock_expr at level 999).
 Notation "x" := x (in custom bedrock_expr at level 0, x global).
 
 Infix  "<<" := (expr.op slu)  (in custom bedrock_expr at level 3, left associativity). (* DRAFT level *)
@@ -36,13 +37,17 @@ Infix "=="  := (expr.op  eq)  (in custom bedrock_expr at level 10, no associativ
 
 (* DRAFT *)
 Notation "load1( a )" := (expr.load access_size.one a)
-                              (in custom bedrock_expr at level 0, a custom bedrock_expr).
+                              (in custom bedrock_expr at level 0, a custom bedrock_expr at level 999,
+  format "load1( a )").
 Notation "load2( a )" := (expr.load access_size.two a)
-                              (in custom bedrock_expr at level 0, a custom bedrock_expr).
+                              (in custom bedrock_expr at level 0, a custom bedrock_expr at level 999,
+  format "load2( a )").
 Notation "load4( a )" := (expr.load access_size.four a)
-                              (in custom bedrock_expr at level 0, a custom bedrock_expr).
+                              (in custom bedrock_expr at level 0, a custom bedrock_expr at level 999,
+  format "load4( a )").
 Notation  "load( a )" := (expr.load access_size.word a)
-                              (in custom bedrock_expr at level 0, a custom bedrock_expr).
+                              (in custom bedrock_expr at level 0, a custom bedrock_expr at level 999,
+  format "load( a )").
 
 (** Grammar for commands *)
 
@@ -54,7 +59,7 @@ Notation "bedrock_cmd:( c )"   := c   (c custom bedrock_cmd at level 0,
                                        format "'bedrock_cmd:(' c ')'").
 Notation "constr:( c )"        := c   (in custom bedrock_cmd, c constr,
                                        format "'constr:(' c ')'").
-Notation  "{ c }" := c                 (in custom bedrock_cmd at level 0).
+Notation  "{ c }" := c                 (in custom bedrock_cmd at level 0, c custom bedrock_cmd at level 9999).
 Notation "x" := x (in custom bedrock_cmd at level 0, x global).
 
 Declare Custom Entry bedrock_else.
@@ -66,35 +71,35 @@ Notation  "{ c }" := c                 (in custom bedrock_else at level 0, c cus
                                        format "{  '/  ' c '/' }").
 Notation "x" := x (in custom bedrock_else at level 0, x global).
 
-Notation "'if' e { c1 }" := (cond e c1 skip)
-  (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0,
-  format "'[v' 'if'  e  {  '/  ' c1 '/' } ']'").
-Notation "'if' '!' e { c1 }" := (cond e skip c1)
-  (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0,
-      format "'[v' 'if'  '!' e   {  '/  ' c1 '/' } ']'").
 Notation "'if' e { c1 } 'else' c2" := (cond e c1 c2)
-  (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
+  (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr at level 999, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
   format "'[v' 'if'  e  {  '/  ' c1 '/' }  'else'  c2 ']'").
 Notation "'if' '!' e { c1 } 'else' c2" := (cond e c2 c1)
-  (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
+  (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr at level 1, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
   format "'[v' 'if'  '!' e  {  '/  ' c1 '/' }  'else'  c2 ']'").
+Notation "'if' e { c1 }" := (cond e c1 skip)
+  (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr at level 999, c1 custom bedrock_cmd at level 0,
+  format "'[v' 'if'  e  {  '/  ' c1 '/' } ']'").
+Notation "'if' '!' e { c1 }" := (cond e skip c1)
+  (in custom bedrock_else at level 0, no associativity, e custom bedrock_expr at level 1, c1 custom bedrock_cmd at level 0,
+      format "'[v' 'if'  '!' e   {  '/  ' c1 '/' } ']'").
 
 Notation "c1 ; c2" := (seq c1%bedrock_nontail c2) (in custom bedrock_cmd at level 0, right associativity,
                                    format "'[v' c1 ; '/' c2 ']'").
 Notation "'if' e { c1 } 'else' c2" := (cond e c1 c2)
-  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
+  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr at level 999, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
   format "'[v' 'if'  e  {  '/  ' c1 '/' }  'else'  c2 ']'").
 Notation "'if' '!' e { c1 } 'else' c2" := (cond e c2 c1)
-  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
+  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr at level 1, c1 custom bedrock_cmd at level 0, c2 custom bedrock_else at level 0,
   format "'[v' 'if'  '!' e  {  '/  ' c1 '/' }  'else'  c2 ']'").
 Notation "'if' e { c }" := (cond e c skip)
-  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c at level 0,
+  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr at level 999, c at level 0,
   format "'[v' 'if'  e  {  '/  ' c '/' } ']'").
 Notation "'if' '!' e { c }" := (cond e skip c)
-  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c at level 0,
+  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr at level 1, c at level 0,
   format "'[v' 'if'  '!' e  {  '/  ' c '/' } ']'").
 Notation "'while' e { c }" := (while e c%bedrock_nontail)
-  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr, c at level 0,
+  (in custom bedrock_cmd at level 0, no associativity, e custom bedrock_expr at level 999, c at level 0,
   format "'[v' 'while'  e  {  '/  ' c '/' } ']'").
 
 (* DRAFT: *)
@@ -102,20 +107,24 @@ Notation "'stackalloc' z 'as' x { c }" := (stackalloc x z c)
   (in custom bedrock_cmd at level 0, no associativity, z constr, x global, c at level 0,
   format "'[v' 'stackalloc'  z  as  x  {  '/  ' c '/' } ']'").
 
-Notation "x = e" := (set x e) (in custom bedrock_cmd at level 0, x global, e custom bedrock_expr).
+Notation "x = e" := (set x e) (in custom bedrock_cmd at level 0, x global, e custom bedrock_expr at level 999).
 (* DRAFT: *)
 Notation "/*skip*/" := skip (in custom bedrock_cmd).
 Notation "store1( a , v )" := (store access_size.one a v)
-                              (in custom bedrock_cmd at level 0, a custom bedrock_expr, v custom bedrock_expr).
+                              (in custom bedrock_cmd at level 0, a custom bedrock_expr at level 999, v custom bedrock_expr at level 999,
+  format "store1( a ,  v )").
 Notation "store2( a , v )" := (store access_size.two a v)
-                              (in custom bedrock_cmd at level 0, a custom bedrock_expr, v custom bedrock_expr).
+                              (in custom bedrock_cmd at level 0, a custom bedrock_expr at level 999, v custom bedrock_expr at level 999,
+  format "store2( a ,  v )").
 Notation "store4( a , v )" := (store access_size.four a v)
-                              (in custom bedrock_cmd at level 0, a custom bedrock_expr, v custom bedrock_expr).
+                              (in custom bedrock_cmd at level 0, a custom bedrock_expr at level 999, v custom bedrock_expr at level 999,
+  format "store4( a ,  v )").
 Notation  "store( a , v )" := (store access_size.word a v)
-                              (in custom bedrock_cmd at level 0, a custom bedrock_expr, v custom bedrock_expr).
+                              (in custom bedrock_cmd at level 0, a custom bedrock_expr at level 999, v custom bedrock_expr at level 999,
+  format "store( a ,  v )").
 
 Declare Custom Entry bedrock_call_lhs.
-Notation "bedrock_call_lhs:( e )"   := e   (e custom bedrock_call_lhs,
+Notation "bedrock_call_lhs:( e )"   := e   (e custom bedrock_call_lhs at level 999,
                                             format "'bedrock_call_lhs:(' e ')'").
 Notation "constr:( e )"         := e   (in custom bedrock_call_lhs, e constr,
                                         format "'constr:(' e ')'").
@@ -124,21 +133,23 @@ Notation "x , y , .. , z" := (@cons String.string x (@cons String.string y .. (@
   (in custom bedrock_call_lhs at level 0, x global, y constr at level 0, z constr at level 0).
 
 Declare Custom Entry bedrock_args.
-Notation "bedrock_args:( e )"   := e   (e custom bedrock_args,
+Notation "bedrock_args:( e )"   := e   (e custom bedrock_args at level 999,
                                          format "'bedrock_args:(' e ')'").
 Notation "constr:( e )"         := e   (in custom bedrock_args, e constr,
                                         format "'constr:(' e ')'").
-Notation "()" := (@nil expr) (in custom bedrock_args at level 0).
 Notation "( )" := (@nil expr) (in custom bedrock_args at level 0).
-Notation "( x )" := (@cons expr x (@nil expr)) (in custom bedrock_args at level 0, x custom bedrock_expr).
+Notation "()" := (@nil expr) (in custom bedrock_args at level 0).
+Notation "( x )" := (@cons expr x (@nil expr)) (in custom bedrock_args at level 0, x custom bedrock_expr at level 999).
 Notation "( x , y , .. , z )" := (@cons expr x (@cons expr y .. (@cons expr z (@nil expr)) ..))
-  (in custom bedrock_args at level 0, x custom bedrock_expr, y custom bedrock_expr, z custom bedrock_expr).
+  (in custom bedrock_args at level 0, x custom bedrock_expr at level 999, y custom bedrock_expr at level 999, z custom bedrock_expr at level 999).
 
-Notation "f args" :=  (call nil f args) (in custom bedrock_cmd at level 0, f global, args custom bedrock_args).
-Notation "( lhs ) = f args" :=  (call lhs f args) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f global, args custom bedrock_args).
-Notation "unpack! lhs = f args" :=  (call lhs f args) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f global, args custom bedrock_args).
-Notation "output! f args" :=  (interact nil f args) (in custom bedrock_cmd at level 0, f global, args custom bedrock_args).
-Notation "io! lhs = f args" :=  (interact lhs f args) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs, f global, args custom bedrock_args).
+Notation "io! lhs = f args" :=  (interact lhs f args) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs at level 999, f global, args custom bedrock_args at level 999).
+Notation "output! f args" :=  (interact nil f args) (in custom bedrock_cmd at level 0, f global, args custom bedrock_args at level 999).
+Notation "unpack! lhs = f args" :=  (call lhs f args) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs at level 999, f global, args custom bedrock_args at level 999).
+Notation "( lhs ) = f args" :=  (call lhs f args) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs at level 999, f global, args custom bedrock_args at level 999,
+  format "'(' lhs ')'  =  f args").
+Notation "f args" :=  (call nil f args) (in custom bedrock_cmd at level 0, f global, args custom bedrock_args at level 999,
+  format "f args").
 
 Declare Scope bedrock_tail.
 Delimit Scope bedrock_tail with bedrock_tail.
@@ -146,22 +157,22 @@ Notation "bedrock_func_body:( c )"   := (c%bedrock_tail) (c custom bedrock_cmd a
                                                           format "'bedrock_func_body:(' c ')'").
 Definition require_is_not_available_inside_conditionals_and_loops := I.
 Notation "'require' e ; c2" := (cond e c2 skip)
-  (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c2 at level 0,
+  (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr at level 999, c2 at level 0,
   format "'[v' 'require'  e ; '//' c2 ']'") : bedrock_tail.
 Notation "'require' '!' e ; c2" := (cond e skip c2)
-  (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c2 at level 0,
+  (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr at level 1, c2 at level 0,
   format "'[v' 'require' '!'  e ; '//' c2 ']'") : bedrock_tail.
 Notation "'require' e 'else' { c1 } ; c2" := (cond e c2 c1)
-  (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c1 at level 0, c2 at level 0,
+  (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr at level 999, c1 at level 0, c2 at level 0,
   format "'[v' 'require'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_tail.
 Notation "'require' '!' e 'else' { c1 } ; c2" := (cond e c1 c2)
-  (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c1 at level 0, c2 at level 0,
+  (in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr at level 1, c1 at level 0, c2 at level 0,
   format "'[v' 'require' '!'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_tail.
 Notation "'require' e 'else' { c1 } ; c2" := (require_is_not_available_inside_conditionals_and_loops)
-  (only parsing, in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c1 at level 0, c2 at level 0,
+  (only parsing, in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr at level 999, c1 at level 0, c2 at level 0,
   format "'[v' 'require'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_nontail.
 Notation "'require' '!' e 'else' { c1 } ; c2" := (require_is_not_available_inside_conditionals_and_loops)
-  (only parsing, in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr, c1 at level 0, c2 at level 0,
+  (only parsing, in custom bedrock_cmd at level 1, no associativity, e custom bedrock_expr at level 1, c1 at level 0, c2 at level 0,
   format "'[v' 'require' '!'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_nontail.
 Undelimit Scope bedrock_tail.
 Undelimit Scope bedrock_nontail.
@@ -193,6 +204,14 @@ Module test.
            bedrock_cmd:( (a) = f ( 1 + 1 , 1 + 1 ) )).
   epose (fun (a b:String.string) (f:String.string) => bedrock_cmd:( unpack! a = f ( 1 + 1 , 1 + 1 ) ; a = (1) )).
   epose (fun (a b:String.string) (f:String.string) => bedrock_cmd:( if constr:(_) { constr:(_) } else if constr:(_) { constr:(_) } )).
+
+  epose (fun a => bedrock_else:(if 1 { a = 1 + 1 } )).
+  epose (fun a => bedrock_else:(if !1 { a = 1 + 1 } )).
+
+  epose (fun a => bedrock_cmd:(
+    if 1 { a = 1 } else if   1 { a = 1 + 1 } )).
+  epose (fun a => bedrock_cmd:(
+    if 1 { a = 1 } else if ! 1 { a = 1 + 1 } )).
 
   epose (bedrock_cmd:(
       if constr:(_) { constr:(_) }
