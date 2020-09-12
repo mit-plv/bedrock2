@@ -286,21 +286,17 @@ Module Syscalls.
       + simpl. reflexivity.
       + simpl. eauto.
       + intros.
-        (* destruct_products. Error: Anomaly "Universe Top.2435 undefined." Please report at http://coq.inria.fr/bugs/. *)
-        destruct H0 as (? & ? & ? & ? & ?).
+        destruct_products.
         subst.
-        eexists. repeat split.
-        exists m.
-        repeat split.
-        * apply map.split_empty_r. reflexivity.
-        * apply map.disjoint_empty_r.
-        * do 2 eexists. repeat split.
+        eexists. split.
+        * reflexivity.
+        * intros. apply map.split_empty_r in H0. subst m'. split; [reflexivity|]. do 2 eexists. split.
           { (* TODO direction doesn't match *)
             case TODO. }
           { (* TODO need to specify that some ignored1, ignored2 are updated too *)
             case TODO. }
     - case TODO.
-      Grab Existential Variables. all: apply (word.of_Z 42) || apply map.empty.
+      Grab Existential Variables. all: apply (word.of_Z 42) || apply map.empty || apply nil.
     Defined.
 
   End WithMem.

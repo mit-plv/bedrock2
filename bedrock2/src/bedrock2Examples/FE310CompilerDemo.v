@@ -317,6 +317,7 @@ Proof.
   { match goal with |- if ?D then _ else _ => destruct D end; cbn [Z.eq_dec echo_server_spec ].
     all: try rewrite e, ?Bool.andb_true_r.
     all: repeat match goal with |- if _ then ?A else ?B => change A end.
+   (*
     { split; auto. destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; trivial.
       exfalso; revert H1 e0; clear. subst b v3. admit. }
     { rewrite (proj2 (Z.eqb_neq _ 0)), Bool.andb_false_r by eassumption.
@@ -334,4 +335,5 @@ Proof.
     destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; (trivial||contradiction). }
   { admit. }
   { admit. }
+  *)
 Abort.

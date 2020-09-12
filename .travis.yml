@@ -11,8 +11,8 @@ matrix:
   fast_finish: true
   include:
     - env: COQ_VERSION="master" COQ_PACKAGE="coq"        PPA="ppa:jgross-h/coq-master-daily"
-    - env: COQ_VERSION="v8.11"  COQ_PACKAGE="coq"        PPA="ppa:jgross-h/coq-8.11-daily"
-    - env: COQ_VERSION="8.11.0" COQ_PACKAGE="coq-8.11.0" PPA="ppa:jgross-h/many-coq-versions-ocaml-4-05"
+    - env: COQ_VERSION="v8.12"  COQ_PACKAGE="coq"        PPA="ppa:jgross-h/coq-8.12-daily"
+    - env: COQ_VERSION="8.12.0" COQ_PACKAGE="coq-8.12.0" PPA="ppa:jgross-h/many-coq-versions-ocaml-4-05"
 
 before_install:
   - if [ ! -z "$PPA" ]; then sudo add-apt-repository "$PPA" -y; fi

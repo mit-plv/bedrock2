@@ -817,11 +817,10 @@ Section FlattenExpr1.
         simp.
         simple eapply ex_intro.
         simple apply conj; [exact R1|].
-        simple eapply ex_intro.
+        intros.
+        do 2 eexists.
+        split; eauto.
         simple apply conj; [eassumption|].
-        eapply ex_intro. eapply ex_intro.
-        simple apply conj; [eassumption|].
-        simple apply conj; [exact R2|].
         split; [simple eapply map.only_differ_putmany; eassumption|].
         solve_MetricLog.
   Qed.

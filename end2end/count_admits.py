@@ -64,7 +64,8 @@ def main():
         line = fp.readline()
         assert line.rstrip() == "Axioms:"
         for line in fp:
-            m = re.match("^    .*", line)
+            line = line.rstrip()
+            m = re.match("^  ( |:) .*", line)
             if m:
                 assert not is_first
             else:
@@ -73,7 +74,7 @@ def main():
                     assert not is_first
                     used_count += 1
                 else:
-                    m = re.match("^[^ :]*?([^ .:]+) :", line)
+                    m = re.match("^([^ :]+)", line)
                     if m:
                         if not is_first:
                             finish_one()

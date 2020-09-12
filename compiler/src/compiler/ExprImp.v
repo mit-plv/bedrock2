@@ -417,7 +417,6 @@ Section ExprImp2.
     - eapply @exec.interact; try eassumption.
       intros.
       edestruct H2 as (? & ? & ?); [eassumption|].
-      destruct H6 as (? & ? & ?).
       eauto 10.
   Qed.
 
@@ -491,9 +490,6 @@ Section ExprImp2.
                | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
                  replace v2 with v1 in * by congruence; clear H2
                end.
-        destruct H6 as (m'1 & S1 & P1).
-        destruct H8 as (m'2 & S2 & P2).
-        pose proof (map.split_det S1 S2) as Q. subst m'2. rename m'1 into m'.
         eauto 10.
   Qed.
 
@@ -549,9 +545,8 @@ Section ExprImp2.
     - eapply exec.interact; try eassumption.
       intros.
       edestruct H2 as (? & ? & ?); try eassumption.
-      destruct H5 as (? & ? & ?).
       eexists; split; [eassumption|].
-      eexists; split; [eassumption|].
+      intros.
       eapply map.only_differ_putmany. eassumption.
   Qed.
 
@@ -590,10 +585,9 @@ Section ExprImp2.
     - eapply exec.interact; try eassumption.
       intros.
       edestruct H2 as (? & ? & ?); try eassumption.
-      destruct H5 as (? & ? & ?).
       eexists; split; [eassumption|].
-      eexists; split; [eassumption|].
-      repeat (eexists || split || eassumption).
+      intros.
+      repeat (eexists || split || eauto).
       eapply map.only_differ_putmany. eassumption.
   Qed.
 

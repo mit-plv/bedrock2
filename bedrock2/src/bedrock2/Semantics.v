@@ -245,11 +245,11 @@ Module exec. Section WithEnv.
       mid (_ : ext_spec t mGive action args mid)
       (_ : forall mReceive resvals, mid mReceive resvals ->
           exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
-          exists m', map.split m' mKeep mReceive /\
-                     post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l'
-                       (addMetricInstructions 1
-                       (addMetricStores 1
-                       (addMetricLoads 2 mc'))))
+          forall m', map.split m' mKeep mReceive ->
+          post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l'
+            (addMetricInstructions 1
+            (addMetricStores 1
+            (addMetricLoads 2 mc'))))
     : exec (cmd.interact binds action arges) t m l mc post
   .
   End WithEnv.
