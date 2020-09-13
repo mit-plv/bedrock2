@@ -8,8 +8,8 @@ Import bopname.
 Declare Custom Entry bedrock_expr.
 Notation "bedrock_expr:( e )"   := e   (e custom bedrock_expr at level 999,
                                         format "'bedrock_expr:(' e ')'").
-Notation "constr:( e )"         := e   (in custom bedrock_expr, e constr,
-                                        format "'constr:(' e ')'").
+Notation "'constr' : ( e )"         := e   (in custom bedrock_expr, e constr,
+                                        format "'constr' ':' '(' e ')'").
 Notation  "( e )" := e                 (in custom bedrock_expr at level 0, e custom bedrock_expr at level 999).
 Notation "x" := x (in custom bedrock_expr at level 0, x global).
 
@@ -57,16 +57,16 @@ Declare Scope bedrock_nontail.
 Delimit Scope bedrock_nontail with bedrock_nontail.
 Notation "bedrock_cmd:( c )"   := c   (c custom bedrock_cmd at level 0,
                                        format "'bedrock_cmd:(' c ')'").
-Notation "constr:( c )"        := c   (in custom bedrock_cmd, c constr,
-                                       format "'constr:(' c ')'").
+Notation "'constr' : ( c )"        := c   (in custom bedrock_cmd, c constr,
+                                       format "'constr' ':' '(' c ')'").
 Notation  "{ c }" := c                 (in custom bedrock_cmd at level 0, c custom bedrock_cmd at level 9999).
 Notation "x" := x (in custom bedrock_cmd at level 0, x global).
 
 Declare Custom Entry bedrock_else.
 Notation "bedrock_else:( c )"   := c   (c custom bedrock_else at level 0,
                                        format "'bedrock_else:(' c ')'").
-Notation "constr:( c )"        := c   (in custom bedrock_else, c constr,
-                                       format "'constr:(' c ')'").
+Notation "'constr' : ( c )"        := c   (in custom bedrock_else, c constr,
+                                       format "'constr' ':' '(' c ')'").
 Notation  "{ c }" := c                 (in custom bedrock_else at level 0, c custom bedrock_cmd at level 0,
                                        format "{  '/  ' c '/' }").
 Notation "x" := x (in custom bedrock_else at level 0, x global).
@@ -126,8 +126,8 @@ Notation  "store( a , v )" := (store access_size.word a v)
 Declare Custom Entry bedrock_call_lhs.
 Notation "bedrock_call_lhs:( e )"   := e   (e custom bedrock_call_lhs at level 999,
                                             format "'bedrock_call_lhs:(' e ')'").
-Notation "constr:( e )"         := e   (in custom bedrock_call_lhs, e constr,
-                                        format "'constr:(' e ')'").
+Notation "'constr' : ( e )"         := e   (in custom bedrock_call_lhs, e constr,
+                                        format "'constr' ':' '(' e ')'").
 Notation "x" := (@cons String.string x nil) (in custom bedrock_call_lhs at level 0, x global).
 Notation "x , y , .. , z" := (@cons String.string x (@cons String.string y .. (@cons String.string z (@nil String.string)) ..))
   (in custom bedrock_call_lhs at level 0, x global, y constr at level 0, z constr at level 0).
@@ -135,8 +135,8 @@ Notation "x , y , .. , z" := (@cons String.string x (@cons String.string y .. (@
 Declare Custom Entry bedrock_args.
 Notation "bedrock_args:( e )"   := e   (e custom bedrock_args at level 999,
                                          format "'bedrock_args:(' e ')'").
-Notation "constr:( e )"         := e   (in custom bedrock_args, e constr,
-                                        format "'constr:(' e ')'").
+Notation "'constr' : ( e )"         := e   (in custom bedrock_args, e constr,
+                                        format "'constr' ':' '(' e ')'").
 Notation "( )" := (@nil expr) (in custom bedrock_args at level 0).
 Notation "()" := (@nil expr) (in custom bedrock_args at level 0).
 Notation "( x )" := (@cons expr x (@nil expr)) (in custom bedrock_args at level 0, x custom bedrock_expr at level 999).
@@ -304,6 +304,8 @@ Module test.
       }}
     }
   })).
+
+  let x := constr:(1+1) in pose x.
 
   Abort.
 End test.
