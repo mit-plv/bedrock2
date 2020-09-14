@@ -110,7 +110,7 @@ Section Connect.
        constants [word_cst]).
 
   Goal True.
-  epose (_ : PrimitivesParams (MinimalMMIO.free MetricMinimalMMIO.action MetricMinimalMMIO.result)
+  epose (_ : PrimitivesParams (FreeMonad.free MetricMinimalMMIO.action MetricMinimalMMIO.result)
                               MetricRiscvMachine).
   Abort.
 

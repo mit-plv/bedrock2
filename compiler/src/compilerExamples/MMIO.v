@@ -220,7 +220,7 @@ Section MMIO1.
       let p' := eval hnf in p in
       change (free.interp interp_action p' s post);
       rewrite free.interp_act;
-      cbn [interp_action MinimalMMIO.interp_action snd fst];
+      cbn [interp_action MinimalMMIO.interpret_action snd fst];
         simpl_MetricRiscvMachine_get_set
     | |- load ?n ?ctx ?a ?s ?k =>
         let g' := eval cbv beta delta [load] in (load n ctx a s k) in

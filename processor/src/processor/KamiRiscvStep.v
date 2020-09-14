@@ -1106,7 +1106,7 @@ Section Equiv.
             this might be because interp_fix needs to be unfolded once,
             but unfolding it as many times as possible would create a huge term
           *)
-         let interp_action := eval cbv delta [interp_action MinimalMMIO.interp_action] in
+         let interp_action := eval cbv delta [interp_action MinimalMMIO.interpret_action] in
          interp_action in
          let TR := eval cbn iota beta delta [
                      fst snd
