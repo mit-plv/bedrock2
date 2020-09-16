@@ -7,7 +7,6 @@ Require Import bedrock2Examples.ARPResponder.
 
 Import Datatypes List ListNotations.
 Local Open Scope string_scope. Local Open Scope list_scope. Local Open Scope Z_scope.
-Require Import bedrock2.NotationsInConstr.
 From coqutil.Word Require Import Interface.
 
 From bedrock2 Require Import Array Scalars Separation.

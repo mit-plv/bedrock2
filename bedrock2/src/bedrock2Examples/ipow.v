@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith coqutil.Z.div_mod_to_equations.
-Require Import bedrock2.NotationsInConstr.
+Require Import bedrock2.NotationsCustomEntry.
 Import Syntax BinInt String List.ListNotations ZArith.
 Require Import coqutil.Z.Lia.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
@@ -7,16 +7,14 @@ Local Coercion literal (z : Z) : Syntax.expr := Syntax.expr.literal z.
 Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
 
 Definition ipow :=
-  let x := "x" in
-  let e := "e" in
-  let ret := "ret" in
+  let x := "x" in   let e := "e" in   let ret := "ret" in
   ("ipow", ([x;e], ([ret]:list String.string), bedrock_func_body:(
-  ret = 1;;
-  while (e) {{
-    if (e .& 1) {{ ret = ret * x }};;
-    e = e >> 1;;
+  ret = constr:(1);
+  while (e) {
+    if (e & constr:(1)) { ret = ret * x };
+    e = e >> constr:(1);
     x = x * x
-  }}
+  }
 ))).
 
 From bedrock2 Require Import Semantics BasicC64Semantics WeakestPrecondition ProgramLogic.

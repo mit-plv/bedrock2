@@ -14,40 +14,6 @@ From bedrock2.Map Require Import Separation SeparationLogic.
 Import ZArith.
 Local Open Scope Z_scope.
 
-(* indicates that if we were to replace blia by omega, we'd run out of heap, stack, or time *)
-Ltac omega_safe ::= fail.
-
-(* TODO: refactor *)
-Lemma word__unsigned_of_Z_nowrap {width} {word: word.word width} {ok : word.ok word} x : 0 <= x < 2 ^ width -> word.unsigned (word.of_Z x) = x.
-Proof.
-  intros. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Z.mod_small; trivial.
-Qed.
-Local Ltac seplog_use_array_load1 H i :=
-  let iNat := eval cbv in (Z.to_nat i) in
-  let H0 := fresh in pose proof H as H0;
-  unshelve SeparationLogic.seprewrite_in @array_index_nat_inbounds H0;
-    [exact iNat|exact Byte.x00|blia|];
-  replace ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in * by (rewrite word.unsigned_of_Z; exact eq_refl).
-Local Ltac trans_ltu :=
-  match goal with
-  | H : word.unsigned ?v <> 0 |- _ =>
-      let v := rdelta.rdelta v in
-      let __ := lazymatch v with if word.ltu _ _ then word.of_Z 1 else word.of_Z 0 => I end in
-      eapply Properties.word.if_nonzero in H; rewrite word.unsigned_ltu in H; eapply Z.ltb_lt in H
-  | H : word.unsigned ?v = 0 |- _ =>
-      let v := rdelta.rdelta v in
-      let __ := lazymatch v with if word.ltu _ _ then word.of_Z 1 else word.of_Z 0 => I end in
-      eapply Word.Properties.word.if_zero in H; rewrite word.unsigned_ltu in H; eapply Z.ltb_nlt in H
-end.
-Local Ltac split_if :=
-  lazymatch goal with
-    |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
-    let c := eval hnf in c in
-        lazymatch c with
-        | cmd.cond _ _ _ => letexists; split; [solve[repeat straightline]|split]
-        end
-  end.
-
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
   Import Syntax BinInt String List.ListNotations ZArith.
@@ -57,103 +23,77 @@ Section WithParameters.
   Local Coercion name_of_func (f : func) := fst f.
 
   Definition lightbulb_loop :=
-      let p_addr : String.string := "p_addr" in
-      let bytesWritten : String.string := "bytesWritten" in
-      let recvEthernet : String.string := "recvEthernet" in
-      let lightbulb_handle : String.string := "lightbulb_handle" in
-      let err : String.string := "err" in
-
-    ("lightbulb_loop", ((p_addr::nil), (err::nil), bedrock_func_body:(
+    let p_addr := "p_addr" in let bytesWritten := "bytesWritten" in let recvEthernet := "recvEthernet" in let lightbulb_handle := "lightbulb_handle" in let err := "err" in
+    ("lightbulb_loop", ([p_addr], [err], bedrock_func_body:(
       unpack! bytesWritten, err = recvEthernet(p_addr);
       if !err { (* success, packet *)
         unpack! err = lightbulb_handle(p_addr, bytesWritten);
-        err = (constr:(0)) (* bad packet continue anyway *)
+        err = constr:(0) (* bad packet continue anyway *)
       } else if !(err ^ constr:(1)) { (* success, no packet *)
-        err = (constr:(0))
+        err = constr:(0)
       }
     ))).
 
   Definition recvEthernet :=
-      let buf : String.string := "buf" in
-      let num_bytes : String.string := "num_bytes" in
-      let i : String.string := "i" in
-      let err : String.string := "err" in
-      let read : String.string := "read" in
+    let buf := "buf" in let num_bytes := "num_bytes" in let i := "i" in let err := "err" in let read := "read" in
+    ("recvEthernet", ([buf], [num_bytes;err], bedrock_func_body:(
+      num_bytes = constr:(0);
+      unpack! read, err = lan9250_readword(constr:(Ox"7C")); (* RX_FIFO_INF *)
+      require !err else { err = constr:(-1) };
+      require (read & constr:((2^8-1)*2^16)) else { err = constr:(1) }; (* nonempty *)
+      unpack! read, err = lan9250_readword(constr:(Ox"40")); (* RX_STATUS_FIFO_PORT *)
+      require !err else { err = constr:(-1) };
 
-      ("recvEthernet", ((buf::nil), (num_bytes::err::nil), bedrock_func_body:(
-          num_bytes = (constr:(0));
-          unpack! read, err = lan9250_readword(constr:(Ox"7C")); (* RX_FIFO_INF *)
-          require !err else { err = (constr:(-1)) };
-          require (read & constr:((2^8-1)*2^16)) else { err = (constr:(1)) }; (* nonempty *)
-          unpack! read, err = lan9250_readword(constr:(Ox"40")); (* RX_STATUS_FIFO_PORT *)
-          require !err else { err = (constr:(-1)) };
+      num_bytes = read >> constr:(16) & constr:(2^14-1);
+      (* round up to next word *)
+      num_bytes = (num_bytes + constr:(4-1)) >> constr:(2);
+      num_bytes = num_bytes + num_bytes;
+      num_bytes = num_bytes + num_bytes;
 
-          num_bytes = (read >> constr:(16) & constr:(2^14-1));
-          (* round up to next word *)
-          num_bytes = ((num_bytes + constr:(4-1)) >> constr:(2));
-          num_bytes = (num_bytes + num_bytes);
-          num_bytes = (num_bytes + num_bytes);
+      require (num_bytes < constr:(1520 + 1)) else { err = constr:(2) };
 
-          require (num_bytes < constr:(1520 + 1)) else { err = (constr:(2)) };
-
-          i = (constr:(0)); while (i < num_bytes) {
-              unpack! read, err = lan9250_readword(constr:(0));
-              if err { err = (constr:(-1)); i = (num_bytes) }
-              else { store4(buf + i, read); i = (i + constr:(4)) }
-          }
+      i = constr:(0); while (i < num_bytes) {
+        unpack! read, err = lan9250_readword(constr:(0));
+        if err { err = constr:(-1); i = num_bytes }
+        else { store4(buf + i, read); i = i + constr:(4) }
+      }
       ))).
 
   Definition lightbulb_handle :=
-      let packet : String.string := "packet" in
-      let len : String.string := "len" in
-      let ethertype : String.string := "ethertype" in
-      let protocol : String.string := "protocol" in
-      let port : String.string := "port" in
-      let mmio_val : String.string := "mmio_val" in
-      let command : String.string := "command" in
-      let Oxff : String.string := "Oxff" in
-      let MMIOREAD : String.string := "MMIOREAD" in
-      let MMIOWRITE : String.string := "MMIOWRITE" in
-      let r : String.string := "r" in
+    let packet := "packet" in let len := "len" in let ethertype := "ethertype" in let protocol := "protocol" in let port := "port" in let mmio_val := "mmio_val" in let command := "command" in let Oxff := "Oxff" in let MMIOREAD := "MMIOREAD" in let MMIOWRITE := "MMIOWRITE" in let r := "r" in
 
-    ("lightbulb_handle", ((packet::len::nil), (r::nil), bedrock_func_body:(
-      r = (constr:(42));
-      require (r < len) else { r = (constr:(-1)) };
+    ("lightbulb_handle", ([packet;len], [r], bedrock_func_body:(
+      r = constr:(42);
+      require (r < len) else { r = constr:(-1) };
 
-      Oxff = (constr:(Ox"ff"));
-      ethertype = ((((load1(packet + constr:(12)))&Oxff) << constr:(8)) | ((load1(packet + constr:(13)))&Oxff));
-      r = (constr:(1536 - 1));
-      require (r < ethertype) else { r = (constr:(-1)) };
+      Oxff = constr:(Ox"ff");
+      ethertype = (((load1(packet + constr:(12)))&Oxff) << constr:(8)) | ((load1(packet + constr:(13)))&Oxff);
+      r = constr:(1536 - 1);
+      require (r < ethertype) else { r = constr:(-1) };
 
-      r = (constr:(23));
-      r = (packet + r);
-      protocol = ((load1(r))&Oxff);
-      r = (constr:(Ox"11"));
-      require (protocol == r) else { r = (constr:(-1)) };
+      r = constr:(23);
+      r = packet + r;
+      protocol = (load1(r))&Oxff;
+      r = constr:(Ox"11");
+      require (protocol == r) else { r = constr:(-1) };
 
-      r = (constr:(42));
-      r = (packet + r);
-      command = ((load1(r))&Oxff);
-      command = (command&constr:(1));
+      r = constr:(42);
+      r = packet + r;
+      command = (load1(r))&Oxff;
+      command = command&constr:(1);
 
-      (* pin output enable -- TODO do this in init
-      io! mmio_val = MMIOREAD(constr:(Ox"10012008"));
-      output! MMIOWRITE(constr:(Ox"10012008"), mmio_val | constr:(2^23));
-      *)
-
-      r = (constr:(Ox"1001200c"));
+      r = constr:(Ox"1001200c");
       io! mmio_val = MMIOREAD(r);
-      mmio_val = (mmio_val & constr:(Z.clearbit (2^32-1) 23));
+      mmio_val = mmio_val & constr:(Z.clearbit (2^32-1) 23);
       output! MMIOWRITE(r, mmio_val | command << constr:(23));
 
-      r = (constr:(0))
+      r = constr:(0)
     ))).
 
-  Definition lightbulb_init :=
-      let err : String.string := "err" in
-      let MMIOWRITE : String.string := "MMIOWRITE" in
-
-    ("lightbulb_init", (@nil String.string, @nil String.string, bedrock_func_body:(
+  Definition lightbulb_init : func :=
+    let err : String.string := "err" in
+    let MMIOWRITE : String.string := "MMIOWRITE" in
+    ("lightbulb_init", ([], [], bedrock_func_body:(
       output! MMIOWRITE(constr:(Ox"10012038"), constr:((Z.shiftl (Ox"f") 2)));
       output! MMIOWRITE(constr:(Ox"10012008"), constr:((Z.shiftl 1 23)));
       unpack! err = lan9250_init()
@@ -227,6 +167,40 @@ Section WithParameters.
 
   Require Import bedrock2.AbsintWordToZ.
   Import WeakestPreconditionProperties.
+
+  (* NOTE: this block probably does not belong here *)
+  (* indicates that if we were to replace blia by omega, we'd run out of heap, stack, or time *)
+  Ltac omega_safe ::= fail.
+  Lemma word__unsigned_of_Z_nowrap {width} {word: word.word width} {ok : word.ok word} x : 0 <= x < 2 ^ width -> word.unsigned (word.of_Z x) = x.
+  Proof.
+    intros. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Z.mod_small; trivial.
+  Qed.
+  Local Ltac seplog_use_array_load1 H i :=
+    let iNat := eval cbv in (Z.to_nat i) in
+    let H0 := fresh in pose proof H as H0;
+    unshelve SeparationLogic.seprewrite_in @array_index_nat_inbounds H0;
+      [exact iNat|exact Byte.x00|blia|];
+    replace ((word.unsigned (word.of_Z 1) * Z.of_nat iNat)%Z) with i in * by (rewrite word.unsigned_of_Z; exact eq_refl).
+  Local Ltac trans_ltu :=
+    match goal with
+    | H : word.unsigned ?v <> 0 |- _ =>
+        let v := rdelta.rdelta v in
+        let __ := lazymatch v with if word.ltu _ _ then word.of_Z 1 else word.of_Z 0 => I end in
+        eapply Properties.word.if_nonzero in H; rewrite word.unsigned_ltu in H; eapply Z.ltb_lt in H
+    | H : word.unsigned ?v = 0 |- _ =>
+        let v := rdelta.rdelta v in
+        let __ := lazymatch v with if word.ltu _ _ then word.of_Z 1 else word.of_Z 0 => I end in
+        eapply Word.Properties.word.if_zero in H; rewrite word.unsigned_ltu in H; eapply Z.ltb_nlt in H
+  end.
+  Local Ltac split_if :=
+    lazymatch goal with
+      |- WeakestPrecondition.cmd _ ?c _ _ _ ?post =>
+      let c := eval hnf in c in
+          lazymatch c with
+          | cmd.cond _ _ _ => letexists; split; [solve[repeat straightline]|split]
+          end
+    end.
+
 
   Lemma lightbulb_init_ok : program_logic_goal_for_function! lightbulb_init.
   Proof.
