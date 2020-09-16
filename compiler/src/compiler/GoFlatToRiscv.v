@@ -252,12 +252,12 @@ Section Go.
       mid' = withNextPc v (updateMetrics (addMetricJumps 1) initialL))).
   Qed.
 
-  Lemma go_step: forall (initialL: RiscvMachineL) (post: RiscvMachineL -> Prop),
+  Lemma go_endCycleNormal: forall (initialL: RiscvMachineL) (post: RiscvMachineL -> Prop),
       post (withPc initialL.(getNextPc)
            (withNextPc (word.add initialL.(getNextPc) (word.of_Z 4))
            (updateMetrics (addMetricInstructions 1) initialL))) ->
-      mcomp_sat step initialL post.
-  Proof. t spec_step. Qed.
+      mcomp_sat endCycleNormal initialL post.
+  Proof. t spec_endCycleNormal. Qed.
 
   Lemma go_done: forall (initialL: RiscvMachineL) (post: RiscvMachineL -> Prop),
       post initialL ->
@@ -434,7 +434,7 @@ Section Go.
       pc0 = initialL.(getPc) ->
       subset (footpr (program pc0 [inst] * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
       (program pc0 [inst] * Rexec * R)%sep initialL.(getMem) ->
-      mcomp_sat (Bind (execute inst) (fun _ => step))
+      mcomp_sat (Bind (execute inst) (fun _ => endCycleNormal))
                 (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (run1 iset) initialL post.
   Proof.
@@ -819,7 +819,7 @@ Ltac simulate_step :=
         *)
         | refine (go_getPC _ _ _ _);               [sidecondition..|]
         | refine (go_setPC _ _ _ _ _);             [sidecondition..|]
-        | refine (go_step _ _ _);                  [sidecondition..|]
+        | refine (go_endCycleNormal _ _ _);        [sidecondition..|]
         (* monad law lemmas: *)
         | refine (go_left_identity _ _ _ _ _);     [sidecondition..|]
         | refine (go_right_identity _ _ _ _);      [sidecondition..|]
