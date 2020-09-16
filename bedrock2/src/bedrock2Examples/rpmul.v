@@ -1,5 +1,5 @@
 Require Import ZArith coqutil.Z.div_mod_to_equations.
-Require Import bedrock2.NotationsInConstr.
+Require Import bedrock2.NotationsCustomEntry.
 Import Syntax BinInt String List.ListNotations ZArith.
 Require Import coqutil.Z.Lia.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
@@ -14,12 +14,12 @@ Definition rpmul :=
   let e := "e" in
   let ret := "ret" in
   ("rpmul", ([x;e], ([ret]:list String.string), bedrock_func_body:(
-  ret = 0;;
-  while (e) {{
-    if (e .& 1) {{ ret = ret + x }};;
-    e = e >> 1;;
+  ret = constr:(0);
+  while (e) {
+    if (e & constr:(1)) { ret = ret + x };
+    e = e >> constr:(1);
     x = x + x
-  }}
+  }
 ))).
 
 From bedrock2 Require Import Semantics BasicC64Semantics WeakestPrecondition ProgramLogic.

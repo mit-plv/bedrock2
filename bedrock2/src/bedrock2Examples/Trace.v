@@ -8,7 +8,7 @@ Require Import coqutil.Z.HexNotation.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import bedrock2.Semantics.
 Require Import bedrock2.Syntax.
-Require Import bedrock2.NotationsInConstr.
+Require Import bedrock2.NotationsCustomEntry.
 
 (* TODO distribute contents of this file into the right places *)
 
@@ -151,11 +151,11 @@ Module SpiEth.
         end;
     |}.
 
-    Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
-(*  Local Coercion var(x: String.string): Syntax.expr := Syntax.expr.var x.*)
-    Local Definition var(x : String.string): expr.expr := expr.var x.
-    (* TODO make coercions work *)
-    (* Set Printing Implicit. Unset Printing Notations. *)
+    Import Syntax BinInt String List.ListNotations ZArith.
+    Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
+    Local Coercion expr.literal : Z >-> expr.
+    Local Coercion expr.var : String.string >-> expr.
+    Local Coercion name_of_func (f : function) : String.string := fst f.
 
     Local Axiom TODO: False.
 
@@ -164,15 +164,15 @@ Module SpiEth.
 
       (* TODO these only read a byte rather than a word *)
       IOMacros.read_word_code(x _: String.string) := bedrock_func_body:(
-        x = -1 ;;
-        while (var x .& (1 << 31)) {{ cmd.interact [x] MMInput [literal spi_rx] }}
+        x = constr:(-1) ;
+        while (x & constr:(Z.shiftl 1 31)) { io! x = MMInput(spi_rx) }
       );
       IOMacros.write_word_code(x tmp: String.string) := bedrock_func_body:(
-        cmd.interact [tmp] MMInput [literal spi_tx_fifo] ;;
-        while (var tmp .& (1 << 31)) {{ (* high order bit set means fifo is full *)
-          cmd.interact [tmp] MMInput [literal spi_tx_fifo]
-        }};;
-        cmd.interact [] MMOutput [literal spi_tx_fifo; var x]
+        io! tmp = MMInput(spi_tx_fifo);
+        while (tmp & constr:(Z.shiftl 1 31)) { (* high order bit set means fifo is full *)
+          io! tmp = MMInput(spi_tx_fifo)
+        };
+        io! constr:(nil) = MMOutput(spi_tx_fifo, x)
       );
 
       IOMacros.read_word_trace := read_byte;

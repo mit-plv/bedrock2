@@ -18,9 +18,9 @@ Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
 
 Definition lan9250_readword : function :=
-  let addr : String.string := "addr" in
-  let ret : String.string := "ret" in
-  let err : String.string := "err" in
+  let addr := "addr" in
+  let ret := "ret" in
+  let err := "err" in
   let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
   ("lan9250_readword", ((addr::nil), (ret::err::nil), bedrock_func_body:(
     SPI_CSMODE_ADDR = (constr:(Ox"10024018"));

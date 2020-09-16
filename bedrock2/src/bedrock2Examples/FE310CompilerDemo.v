@@ -51,8 +51,6 @@ Local Instance parameters : parameters :=
   |}.
 
 
-
-
 Require Import bedrock2.NotationsCustomEntry.
 Local Coercion var (x : String.string) : expr := expr.var x. (* COQBUG(4593) *)
 Local Coercion literal (x : Z) : expr := expr.literal x.
@@ -81,30 +79,30 @@ Definition swap_chars_over_uart: cmd :=
     output! MMIOWRITE(hfrosccfg, constr:(2^30) | (rx & constr:(2^5-1)) << constr:(16));
     constr:(cmd.unset rx);
 
-    one = (constr:(1));
+    one = constr:(1);
     output! MMIOWRITE(constr:(uart0_base + Ox"018"), constr:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
     output! MMIOWRITE(constr:(uart0_base + Ox"008"), one); (* tx enable *)
     output! MMIOWRITE(constr:(uart0_base + Ox"00c"), one); (* rx enable *)
     output! MMIOWRITE(constr:(gpio0_base + Ox"038"), constr:(2^17 + 2^16)); (* pinmux uart tx rx *)
 
-    dot = (constr:(46));
-    prev = (dot);
-    running = (one-dot);
+    dot = constr:(46);
+    prev = dot;
+    running = one-dot;
     while (running) {
-      bit31 = (constr:(2^31));
-      rx = (bit31);
-      polling = (one-dot);
-      while (polling & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); polling = (polling-one) };
+      bit31 = constr:(2^31);
+      rx = bit31;
+      polling = one-dot;
+      while (polling & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); polling = polling-one };
 
-      uart_tx = (constr:(uart0_base + Ox"000"));
-      tx = (bit31);
-      polling = (one-dot);
-      while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = (polling-one) };
+      uart_tx = constr:(uart0_base + Ox"000");
+      tx = bit31;
+      polling = one-dot;
+      while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = polling-one };
       output! MMIOWRITE(uart_tx, prev);
 
-      prev = (rx);
-      running = (running - one);
-      if (prev == dot) { running = (running ^ running) };
+      prev = rx;
+      running = running - one;
+      if (prev == dot) { running = running ^ running };
 
       constr:(cmd.unset uart_tx); constr:(cmd.unset rx); constr:(cmd.unset tx); constr:(cmd.unset bit31); constr:(cmd.unset polling)
     }
@@ -201,20 +199,6 @@ Proof.
 Defined.
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 Import List. Import ListNotations.
 Fixpoint echo_server_spec (t : trace) (output_to_explain : option word) : Prop := let spec := echo_server_spec in
   match t with
@@ -263,26 +247,26 @@ Definition echo_server: cmd :=
     output! MMIOWRITE(hfrosccfg, constr:(2^30) | (rx & constr:(2^5-1)) << constr:(16));
     constr:(cmd.unset rx);
 
-    one = (constr:(1));
+    one = constr:(1);
     output! MMIOWRITE(constr:(uart0_base + Ox"018"), constr:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
     output! MMIOWRITE(constr:(uart0_base + Ox"008"), one); (* tx enable *)
     output! MMIOWRITE(constr:(uart0_base + Ox"00c"), one); (* rx enable *)
     output! MMIOWRITE(constr:(gpio0_base + Ox"038"), constr:(2^17 + 2^16)); (* pinmux uart tx rx *)
 
-    running = (constr:(-1));
+    running = constr:(-1);
     while (running) {
-      bit31 = (constr:(2^31));
-      rx = (bit31);
-      polling = (constr:(-1));
-      while (polling & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); polling = (polling-one) };
+      bit31 = constr:(2^31);
+      rx = bit31;
+      polling = constr:(-1);
+      while (polling & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); polling = polling-one };
       if (rx & bit31) { constr:(cmd.skip) } else {
-        uart_tx = (constr:(uart0_base + Ox"000"));
-        tx = (bit31);
-        polling = (constr:(-1));
-        while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = (polling-one) };
+        uart_tx = constr:(uart0_base + Ox"000");
+        tx = bit31;
+        polling = constr:(-1);
+        while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = polling-one };
         output! MMIOWRITE(uart_tx, tx)
       };
-      running = (running - one);
+      running = running - one;
       constr:(cmd.unset uart_tx); constr:(cmd.unset rx); constr:(cmd.unset tx); constr:(cmd.unset bit31); constr:(cmd.unset polling)
     }
   ).

@@ -307,5 +307,7 @@ Module test.
 
   let x := constr:(1+1) in pose x.
 
+  epose (fun a => bedrock_cmd:( if 1 { x = (1<<a);  x = (a>>1) } )).
+
   Abort.
 End test.

@@ -1,7 +1,7 @@
 Require Import Coq.Strings.String Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.PushPullMod.
-From bedrock2 Require Import NotationsInConstr ProgramLogic Map.Separation Array Scalars TailRecursion.
+From bedrock2 Require Import NotationsCustomEntry ProgramLogic Map.Separation Array Scalars TailRecursion.
 
 Require bedrock2Examples.Demos.
 Definition bsearch := Demos.bsearch.

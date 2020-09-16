@@ -20,25 +20,23 @@ Require Import coqutil.Z.Lia.
 
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
-
-  Import Syntax BinInt String List.ListNotations.
+  Import Syntax BinInt String List.ListNotations ZArith.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-  Local Coercion literal (z : Z) : expr := expr.literal z.
-  Local Coercion var (x : String.string) : expr := expr.var x.
-  Local Definition bedrock_func : Type := String.string * (list String.string * list String.string * cmd).
-  Local Coercion name_of_func (f : bedrock_func) := fst f.
+  Local Coercion expr.literal : Z >-> expr.
+  Local Coercion expr.var : String.string >-> expr.
+  Local Coercion name_of_func (f : function) : String.string := fst f.
 
   Definition tf : bedrock_func :=
-      let buf : String.string := "buf" in
-      let len : String.string := "len" in
-      let i : String.string := "i" in
-      let j : String.string := "j" in
-      let r : String.string := "r" in
+      let buf := "buf" in
+      let len := "len" in
+      let i := "i" in
+      let j := "j" in
+      let r := "r" in
     ("tf", ([buf; len; i; j], [], bedrock_func_body:(
       require ( i < len ) else { /*skip*/ };
       store1(buf + i, constr:(0));
-      require ( j < len ) else { r = (constr:(-1)) };
-      r = (load1(buf + j))
+      require ( j < len ) else { r = constr:(-1) };
+      r = load1(buf + j)
     ))).
 
     Local Infix "*" := sep : type_scope.
