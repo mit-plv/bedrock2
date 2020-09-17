@@ -226,7 +226,6 @@ Section Proofs.
     simpl_MetricRiscvMachine_get_set;
     simpl_g_get;
     rewrite ?@length_save_regs, ?@length_load_regs in *;
-    unfold Register, MachineInt in *;
     simpl_word_exprs (@word_ok (@W (@def_params p)));
     repeat match goal with
            | |- _ /\ _ => split
@@ -263,7 +262,6 @@ Section Proofs.
   Proof.
     generalize (funname_env_ok (list Z * list Z * stmt Z)).
     simpl in *.
-    unfold Register, MachineInt in *.
     intro OK.
     map_solver OK.
   Qed.
@@ -365,7 +363,6 @@ Section Proofs.
                   end.
       all: subst.
       all: simp.
-      all: unfold Register, MachineInt in *.
     (*about this many lines should have been enough to prove this...*)
 
     - idtac "Case compile_stmt_correct/SInteract".
@@ -485,7 +482,7 @@ Section Proofs.
         - sidecondition.
         - eapply map.getmany_of_list_extends; eassumption.
         - sidecondition.
-        - unfold Register, MachineInt in *. blia.
+        - blia.
       }
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
@@ -658,7 +655,6 @@ Section Proofs.
       simpl_MetricRiscvMachine_get_set;
       simpl_g_get;
       rewrite ?@length_save_regs, ?@length_load_regs in *;
-      unfold Register, MachineInt in *;
       simpl_word_exprs (@word_ok (@W (@def_params p)));
       ssplit;
       subst FL.
@@ -752,7 +748,7 @@ Section Proofs.
       eapply save_regs_correct with (vars := retnames); simpl; cycle 1.
       - eapply map.getmany_of_list_extends; try eassumption.
       - eassumption.
-      - instantiate (1 := old_retvals). unfold Register, MachineInt in *. blia.
+      - instantiate (1 := old_retvals). blia.
       - eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
       - subst FL. wcancel_assumption.
       - reflexivity.
@@ -782,7 +778,6 @@ Section Proofs.
                  unique eapply @map.getmany_of_list_length in copy of H
                end.
         instantiate (1 := Z.eqb).
-        unfold Register, MachineInt in *.
         blia.
       - eapply rearrange_footpr_subset; [eassumption|wwcancel].
       - subst FL. wcancel_assumption.
@@ -1009,7 +1004,7 @@ Section Proofs.
         | H: map.putmany_of_list_zip ?S _ middle_regs1 = Some middle_regs2 |- _ =>
           pose proof (map.putmany_of_list_zip_sameLength _ _ _ _ H) as Q
         end.
-        unfold Register, MachineInt in *. rewrite Q in N.
+        rewrite Q in N.
         apply nth_error_Some in N.
         destr (nth_error newvalues i); try congruence.
         specialize D with (1 := eq_refl).
@@ -1113,7 +1108,6 @@ Section Proofs.
         | H: map.putmany_of_list_zip _ _ middle_regs1 = Some middle_regs2 |- _ =>
           specialize D' with (1 := H) (3 := B) (4 := E0)
         end.
-        unfold Register, MachineInt in *.
         rewrite D'; cycle 1. {
           eapply list_union_preserves_NoDup. assumption.
         }
@@ -1127,7 +1121,6 @@ Section Proofs.
           rewrite map.get_put_same.
           f_equal.
           subst FL.
-          unfold Register, MachineInt.
           solve_word_eq word_ok. }
         {
           (* _ to 0 *)
@@ -1141,7 +1134,6 @@ Section Proofs.
             apply In_list_union_spec. right. exact A.
           }
           do 2 rewrite map.get_put_diff in A by assumption.
-          unfold Register, MachineInt in *.
           rewrite A. clear A.
           (* 0 to 1 *)
           lazymatch goal with
@@ -1232,7 +1224,6 @@ Section Proofs.
       end.
       apply map.putmany_of_list_zip_to_putmany in Q.
       destruct Q as [lBR' [Q ?]].
-      unfold Register, MachineInt in *.
       rewrite P in Q. replace lBR' with lBR in * by congruence.
       subst.
       unfold map.extends.
@@ -1350,7 +1341,7 @@ Section Proofs.
       | H: map.putmany_of_list_zip _ _  (map.put (map.put _ _ _) _ ?v) = Some ?m2 |-
         map.get ?m2 _ = Some ?v' =>
         rename H into D; clear -D h A;
-        replace v with v' in D by (unfold Register, MachineInt; solve_word_eq word_ok)
+        replace v with v' in D by (solve_word_eq word_ok)
       end.
       eapply map.putmany_of_list_zip_get_oldval.
       * exact D.
@@ -1387,7 +1378,6 @@ Section Proofs.
         symmetry. eapply map.putmany_of_list_zip_sameLength. eassumption.
       }
       (* PARAMRECORDS *)
-      change Z with Register in *.
       subst FL new_ra. simpl_addrs.
       split. { ring. (* faster than lia *) }
       use_sep_assumption.
@@ -1425,7 +1415,7 @@ Section Proofs.
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
-      run1det. clear H0. (* <-- TODO this should not be needed *) unfold Register, MachineInt in *. run1done.
+      run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
 
     - idtac "Case compile_stmt_correct/SStore".
       simpl_MetricRiscvMachine_get_set.
@@ -1511,7 +1501,6 @@ Section Proofs.
           simpl_MetricRiscvMachine_get_set;
           simpl_g_get;
           rewrite ?@length_save_regs, ?@length_load_regs in *;
-          unfold Register, MachineInt in *;
           simpl_word_exprs (@word_ok (@W (@def_params p)));
           ssplit;
           cycle -5.
@@ -1556,7 +1545,7 @@ Section Proofs.
         { solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]. }
         { map_solver locals_ok. }
         { solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]. }
-      + intros. destruct_RiscvMachine middle. simp. subst. run1done.
+      + intros. destruct_RiscvMachine middle. simp. subst. clear B48. run1done.
         * rewrite ?of_list_list_union in *.
           repeat match goal with
                  | H: (_ * _)%sep _ |- _ => clear H
@@ -1581,7 +1570,6 @@ Section Proofs.
             - apply List.find_some in E. simp. apply Z.eqb_eq in Er. subst z. intuition congruence.
             - simpl. reflexivity.
           }
-          unfold Register, MachineInt in *.
           map_solver locals_ok.
         * edestruct hl_mem_to_ll_mem with (mL := middle_mem) (mTraded := mStack') as (returned_bytes & L & Q).
           1, 2: eassumption.
@@ -1599,7 +1587,9 @@ Section Proofs.
               change FlatImp.width with width in *.
               rewrite <- (word.ring_morph_mul (bytes_per_word) (n / bytes_per_word)).
               rewrite <- Z_div_exact_2.
-              1: reflexivity. all: blia.
+              - reflexivity.
+              - unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+              - blia.
             }
             wcancel_assumption.
             cancel_seps_at_indices 0%nat 0%nat. {
@@ -1633,7 +1623,6 @@ Section Proofs.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
           blia.
         }
-        unfold Register, MachineInt in *.
         run1done.
 
     - idtac "Case compile_stmt_correct/SOp".
@@ -1651,9 +1640,9 @@ Section Proofs.
               ?word.mulhuu_simpl,
               ?word.divu0_simpl,
               ?word.modu0_simpl in *.
-      all: try solve [unfold Register, MachineInt in *; run1done].
+      all: try solve [run1done].
       (* bopname.eq requires two instructions *)
-      run1det. unfold Register, MachineInt in *. run1done.
+      run1det. run1done.
       rewrite reduce_eq_to_sub_and_lt.
       rewrite map.put_put_same.
       map_solver locals_ok.
@@ -1663,7 +1652,7 @@ Section Proofs.
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
-      run1det. unfold Register, MachineInt in *. run1done.
+      run1det. run1done.
 
     - idtac "Case compile_stmt_correct/SIf/Then".
       (* execute branch instruction, which will not jump *)

@@ -31,6 +31,7 @@ Require Import compiler.DivisibleBy4.
 Require Import compiler.ZLemmas.
 Import Utility.
 
+Notation Register0 := 0%Z (only parsing).
 
 Section Run.
 
@@ -67,7 +68,7 @@ Section Run.
   Ltac simulate' := repeat simulate'_step.
 
   Definition run_Jalr0_spec :=
-    forall (rs1: Z) (oimm12: MachineInt) (initialL: RiscvMachineL) (R Rexec: mem -> Prop)
+    forall (rs1: Z) (oimm12: Z) (initialL: RiscvMachineL) (R Rexec: mem -> Prop)
            (dest: word),
       (* [verify] (and decode-encode-id) only enforces divisibility by 2 because there could be
          compressed instructions, but we don't support them so we require divisibility by 4: *)
@@ -93,7 +94,7 @@ Section Run.
         valid_machine finalL).
 
   Definition run_Jal_spec :=
-    forall (rd: Z) (jimm20: MachineInt) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
+    forall (rd: Z) (jimm20: Z) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
       jimm20 mod 4 = 0 ->
       valid_register rd ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
@@ -114,7 +115,7 @@ Section Run.
      enforced by program *)
 
   Definition run_Jal0_spec :=
-    forall (jimm20: MachineInt) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
+    forall (jimm20: Z) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
       - 2^20 <= jimm20 < 2^20 ->
       jimm20 mod 4 = 0 ->
       subset (footpr (program initialL.(getPc) [[Jal Register0 jimm20]] * Rexec)%sep)
@@ -130,7 +131,7 @@ Section Run.
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         valid_machine finalL).
 
-  Definition run_ImmReg_spec(Op: Z -> Z -> MachineInt -> Instruction)
+  Definition run_ImmReg_spec(Op: Z -> Z -> Z -> Instruction)
                             (f: word -> word -> word): Prop :=
     forall (rd rs: Z) rs_val imm (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
       valid_register rd ->
@@ -150,9 +151,9 @@ Section Run.
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         valid_machine finalL).
 
-  Definition run_Load_spec(n: nat)(L: Z -> Z -> MachineInt -> Instruction)
+  Definition run_Load_spec(n: nat)(L: Z -> Z -> Z -> Instruction)
              (opt_sign_extender: Z -> Z): Prop :=
-    forall (base addr: word) (v: HList.tuple byte n) (rd rs: Z) (ofs: MachineInt)
+    forall (base addr: word) (v: HList.tuple byte n) (rd rs: Z) (ofs: Z)
            (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
@@ -175,9 +176,9 @@ Section Run.
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         valid_machine finalL).
 
-  Definition run_Store_spec(n: nat)(S: Z -> Z -> MachineInt -> Instruction): Prop :=
+  Definition run_Store_spec(n: nat)(S: Z -> Z -> Z -> Instruction): Prop :=
     forall (base addr v_new: word) (v_old: HList.tuple byte n) (rs1 rs2: Z)
-           (ofs: MachineInt) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
+           (ofs: Z) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rs1 ->
       valid_register rs2 ->

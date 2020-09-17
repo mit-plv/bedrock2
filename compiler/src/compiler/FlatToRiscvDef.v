@@ -23,6 +23,8 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
+Notation Register0 := 0%Z (only parsing).
+
 Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Prop :=
   forall instr, In instr prog -> verify instr iset.
 

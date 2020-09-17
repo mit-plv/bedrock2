@@ -255,7 +255,7 @@ Section EmitsValid.
     intros. simpl in *. destruct H0; [subst|contradiction].
     split; [|exact I]. simpl.
     autounfold with unf_verify unf_encode_consts.
-    unfold Register0, valid_register in *.
+    unfold valid_register in *.
     pose proof (signExtend_range 12 w eq_refl).
     simpl_pow2.
     blia.
@@ -300,7 +300,7 @@ Section EmitsValid.
     destruct HIn as [ ? | [? | ?] ]; [subst..|contradiction];
       (split; [|exact I]); simpl;
         autounfold with unf_verify unf_encode_consts;
-        unfold Register0, valid_register in *;
+        unfold valid_register in *;
         simpl_pow2;
         blia.
   Qed.
@@ -315,7 +315,6 @@ Section EmitsValid.
     unfold verify, valid_register in *;
     simpl;
     autounfold with unf_encode_consts unf_verify;
-    unfold Register0 in *;
     destruct iset;
     blia.
   Qed.
@@ -347,7 +346,6 @@ Section EmitsValid.
     unfold verify, valid_register in *;
     simpl;
     autounfold with unf_encode_consts unf_verify;
-    unfold Register0 in *;
     destruct iset;
     blia.
   Qed.
@@ -379,7 +377,6 @@ Section EmitsValid.
     unfold verify, valid_register in *;
     simpl;
     autounfold with unf_encode_consts unf_verify;
-    unfold Register0 in *;
     destruct iset;
     blia.
   Qed.
@@ -423,7 +420,6 @@ Section EmitsValid.
     destruct op; simpl in *; (repeat destruct H3; try contradiction);
           inversion H; unfold verify; simpl;
           autounfold with unf_verify unf_encode_consts;
-          unfold Register0;
           repeat match goal with
                  | |- context [ bitSlice ?w ?start ?eend ] =>
                    unique pose proof (@bitSlice_bounds w start eend)
@@ -450,7 +446,6 @@ Section EmitsValid.
     destruct bitwidth;
     simpl;
     autounfold with unf_encode_consts unf_verify;
-    unfold Register0 in *;
     intuition blia.
   Qed.
 
@@ -472,7 +467,6 @@ Section EmitsValid.
       simpl;
       rewrite? E; simpl;
       autounfold with unf_encode_consts unf_verify;
-      unfold Register0 in *;
       rewrite? E; simpl;
       intuition (try blia).
   Qed.
@@ -494,7 +488,6 @@ Section EmitsValid.
       rewrite? E;
       simpl;
       autounfold with unf_encode_consts unf_verify;
-      unfold Register0 in *;
       intuition (try blia).
   Qed.
 

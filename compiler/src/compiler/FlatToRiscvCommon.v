@@ -516,7 +516,7 @@ Section FlatToRiscv1.
 
   (* almost the same as run_compile_load, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
-  Lemma run_load_word: forall (base addr v : word) (rd rs : Z) (ofs : MachineInt)
+  Lemma run_load_word: forall (base addr v : word) (rd rs : Z) (ofs : Z)
                               (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
       valid_register rd ->
       valid_register rs ->
@@ -555,7 +555,7 @@ Section FlatToRiscv1.
   (* almost the same as run_compile_store, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
   Lemma run_store_word: forall (base addr v_new : word) (v_old : word) (rs1 rs2 : Z)
-              (ofs : MachineInt) (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
+              (ofs : Z) (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
       valid_register rs1 ->
       valid_register rs2 ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->

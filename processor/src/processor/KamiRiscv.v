@@ -74,7 +74,7 @@ Qed.
 Section Equiv.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
 
-  Context {Registers: map.map Register word}
+  Context {Registers: map.map Z word}
           {mem: map.map word byte}.
 
   Local Notation M := (free action result).

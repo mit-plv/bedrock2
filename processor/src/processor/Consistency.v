@@ -327,7 +327,7 @@ Section DecExecOk.
 
   (** * Register file mapping *)
 
-  Context {Registers: map.map Register word}
+  Context {Registers: map.map Z word}
           (Registers_ok : map.ok Registers).
 
   Definition regs_related (krf: kword 5 -> kword width)

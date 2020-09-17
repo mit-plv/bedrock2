@@ -384,8 +384,8 @@ Section MMIO1.
       }
       repeat fwd.
 
-      destruct (Z.eq_dec z 0); cbv [Register0 valid_FlatImp_var] in *; [exfalso; blia|].
-      destruct (Z.eq_dec z0 0); cbv [Register0 valid_FlatImp_var] in *; [exfalso; blia|].
+      destruct (Z.eq_dec z 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
+      destruct (Z.eq_dec z0 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
       simpl_paramrecords.
       replace (map.get initialL_regs z) with (Some x) by (symmetry; unfold map.extends in *; eauto).
       replace (map.get initialL_regs z0) with (Some x0) by (symmetry; unfold map.extends in *; eauto).
@@ -527,8 +527,8 @@ Section MMIO1.
 
       repeat fwd.
 
-      destruct (Z.eq_dec z 0); cbv [Register0 valid_FlatImp_var] in *; [exfalso; blia|].
-      destruct (Z.eq_dec z0 0); cbv [Register0 valid_FlatImp_var] in *; [exfalso; blia|].
+      destruct (Z.eq_dec z 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
+      destruct (Z.eq_dec z0 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
       simpl_paramrecords.
       replace (map.get initialL_regs z) with (Some x) by (symmetry; unfold map.extends in *; eauto).
 
@@ -557,7 +557,7 @@ Section MMIO1.
       apply eqb_eq in EE. subst action.
       cbn in *.
       specialize (Pr mKeep). rewrite map.split_empty_r in Pr. specialize (Pr eq_refl).
-      destruct (Z.eq_dec z0 Register0); try contradiction.
+      destruct (Z.eq_dec z0 0); try contradiction.
       do 4 eexists.
       split; eauto.
       split; eauto.
