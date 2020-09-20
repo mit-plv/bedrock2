@@ -127,6 +127,7 @@ Section MMIO1.
     FE310CSemantics.parameters.mem_ok := _ |}.
 
   Instance compilation_params: FlatToRiscvDef.parameters := {|
+    FlatToRiscvDef.iset := RV32I;
     FlatToRiscvDef.compile_ext_call _ _ _ s :=
       match s with
       | SInteract resvars action argvars => compile_ext_call resvars action argvars
@@ -272,6 +273,7 @@ Section MMIO1.
   Instance FlatToRiscv_hyps: FlatToRiscvCommon.assumptions.
   Proof.
     constructor.
+    - reflexivity.
     - typeclasses eauto.
     - typeclasses eauto.
     - typeclasses eauto.
@@ -280,7 +282,7 @@ Section MMIO1.
   Qed.
 
   Ltac simpl_paramrecords :=
-    change (@FlatToRiscvDef.W (@FlatToRiscvCommon.def_params FlatToRiscv_params)) with Words32 in *;
+    change (@FlatToRiscvCommon.W FlatToRiscv_params) with Words32 in *;
     change (@FlatToRiscvCommon.locals FlatToRiscv_params) with (@locals p) in *;
     change (@FlatToRiscvCommon.mem FlatToRiscv_params) with (@mem p) in *;
     change (@width Words32) with 32 in *;
@@ -294,7 +296,7 @@ Section MMIO1.
     unfold FlatToRiscvCommon.compiles_FlatToRiscv_correctly. simpl. intros.
     destruct H5 as [V_resvars V_argvars].
     rename extcall into action.
-    pose proof (compile_ext_call_emits_valid SeparationLogic.iset _ action _ V_resvars V_argvars).
+    pose proof (compile_ext_call_emits_valid FlatToRiscvDef.iset _ action _ V_resvars V_argvars).
     simp.
     destruct_RiscvMachine initialL.
     unfold compile_ext_call, FlatToRiscvCommon.goodMachine in *.
@@ -380,7 +382,7 @@ Section MMIO1.
       rewrite LittleEndian.combine_split.
       rewrite Z.mod_small by eapply EncodeBound.encode_range.
       rewrite DecodeEncode.decode_encode; cycle 1. {
-        unfold valid_instructions, iset in *. cbn in *. eauto.
+        unfold valid_instructions in *. cbn in *. eauto.
       }
       repeat fwd.
 
@@ -522,7 +524,7 @@ Section MMIO1.
       rewrite LittleEndian.combine_split.
       rewrite Z.mod_small by (eapply EncodeBound.encode_range).
       rewrite DecodeEncode.decode_encode; cycle 1. {
-        unfold valid_instructions, iset in *. cbn in *. eauto.
+        unfold valid_instructions, FlatToRiscvDef.iset in *. cbn in *. eauto.
       }
 
       repeat fwd.

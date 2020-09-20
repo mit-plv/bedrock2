@@ -1,6 +1,7 @@
 Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.Lists.List. Import ListNotations.
+Require Import riscv.Utility.MonadNotations.
 Require Import riscv.Utility.FreeMonad.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Machine.
@@ -33,6 +34,18 @@ Section Riscv.
   Definition mcomp_sat(m: M unit)(initial: State)(post: State -> Prop): Prop :=
     free.interpret run_primitive m initial (fun tt => post) (fun _ => False).
 
+(*
+  Lemma spec_fetch: forall initial k post inst,
+
+
+program
+  H : mcomp_sat
+        (pc <- Machine.getPC;
+         i <- Machine.loadWord Fetch pc;
+         k
+         Execute.execute (decode RVIM (LittleEndian.combine 4 inst));; Machine.endCycleNormal) initial post
+*)
+
   Definition RVI : InstructionSet := if Z.eqb Utility.width 32 then RV32I  else RV64I.
   Definition RVIM: InstructionSet := if Z.eqb Utility.width 32 then RV32IM else RV64IM.
 
@@ -46,7 +59,7 @@ Section Riscv.
       map.get r2#"csrs" CSRField.MScratch = Some mscratch /\
       List.length stacktrash = 32%nat /\
       (eq r1#"mem" * word_array (word.of_Z mscratch) stacktrash *
-       program (word.of_Z (mtvec_base * 4)) handler_insts)%sep r2#"mem".
+       program RVI (word.of_Z (mtvec_base * 4)) handler_insts)%sep r2#"mem".
 
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 RVIM)) initialH post ->
@@ -57,8 +70,7 @@ Section Riscv.
     intros *. intros R. revert initialL. induction R; intros. {
       apply runsToDone. eauto.
     }
-    unfold mcomp_sat in H.
-    cbn [run1 Monads.Bind free.Monad_free] in H.
+    unfold run1 in H |- *.
 
   Abort.
 

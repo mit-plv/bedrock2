@@ -67,6 +67,9 @@ Section Run.
 
   Ltac simulate' := repeat simulate'_step.
 
+  Context (iset: InstructionSet)
+          (iset_bitwidth_matches: bitwidth iset = width).
+
   Definition run_Jalr0_spec :=
     forall (rs1: Z) (oimm12: Z) (initialL: RiscvMachineL) (R Rexec: mem -> Prop)
            (dest: word),
@@ -79,9 +82,9 @@ Section Run.
       valid_register rs1 ->
       map.get initialL.(getRegs) rs1 = Some dest ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      subset (footpr (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * Rexec)%sep)
+      subset (footpr (program iset initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * Rexec)%sep)
              (of_list (initialL.(getXAddrs))) ->
-      (program initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * Rexec * R)%sep
+      (program iset initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * Rexec * R)%sep
           initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun (finalL: RiscvMachineL) =>
@@ -98,9 +101,9 @@ Section Run.
       jimm20 mod 4 = 0 ->
       valid_register rd ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      subset (footpr (program initialL.(getPc) [[Jal rd jimm20]] * Rexec)%sep)
+      subset (footpr (program iset initialL.(getPc) [[Jal rd jimm20]] * Rexec)%sep)
              (of_list (initialL.(getXAddrs))) ->
-      (program initialL.(getPc) [[Jal rd jimm20]] * Rexec * R)%sep initialL.(getMem) ->
+      (program iset initialL.(getPc) [[Jal rd jimm20]] * Rexec * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd initialL.(getNextPc) /\
@@ -118,9 +121,9 @@ Section Run.
     forall (jimm20: Z) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
       - 2^20 <= jimm20 < 2^20 ->
       jimm20 mod 4 = 0 ->
-      subset (footpr (program initialL.(getPc) [[Jal Register0 jimm20]] * Rexec)%sep)
+      subset (footpr (program iset initialL.(getPc) [[Jal Register0 jimm20]] * Rexec)%sep)
              (of_list (initialL.(getXAddrs))) ->
-      (program initialL.(getPc) [[Jal Register0 jimm20]] * Rexec * R)%sep initialL.(getMem) ->
+      (program iset initialL.(getPc) [[Jal Register0 jimm20]] * Rexec * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
@@ -138,9 +141,9 @@ Section Run.
       valid_register rs ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some rs_val ->
-      subset (footpr (program initialL.(getPc) [[Op rd rs imm]] * Rexec)%sep)
+      subset (footpr (program iset initialL.(getPc) [[Op rd rs imm]] * Rexec)%sep)
              (of_list (initialL.(getXAddrs))) ->
-      (program initialL.(getPc) [[Op rd rs imm]] * Rexec * R)%sep initialL.(getMem) ->
+      (program iset initialL.(getPc) [[Op rd rs imm]] * Rexec * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd (f rs_val (word.of_Z imm)) /\
@@ -161,9 +164,9 @@ Section Run.
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr (program initialL.(getPc) [[L rd rs ofs]] * Rexec)%sep)
+      subset (footpr (program iset initialL.(getPc) [[L rd rs ofs]] * Rexec)%sep)
              (of_list (initialL.(getXAddrs))) ->
-      (program initialL.(getPc) [[L rd rs ofs]] * Rexec * ptsto_bytes n addr v * R)%sep
+      (program iset initialL.(getPc) [[L rd rs ofs]] * Rexec * ptsto_bytes n addr v * R)%sep
         initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
@@ -186,17 +189,17 @@ Section Run.
       map.get initialL.(getRegs) rs1 = Some base ->
       map.get initialL.(getRegs) rs2 = Some v_new ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr (program initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep)
+      subset (footpr (program iset initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep)
              (of_list (initialL.(getXAddrs))) ->
-      (program initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec * ptsto_bytes n addr v_old * R)%sep
+      (program iset initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec * ptsto_bytes n addr v_old * R)%sep
         initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
-        subset (footpr (program initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep)
+        subset (footpr (program iset initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep)
                (of_list (finalL.(getXAddrs))) /\
-        (program initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec *
+        (program iset initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec *
          ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
             finalL.(getMem) /\
         finalL.(getPc) = initialL.(getNextPc) /\
@@ -255,7 +258,7 @@ Section Run.
     | H: (?P * ?Q * ?R)%sep ?m |- _ =>
       assert ((P * (Q * R))%sep m) as A by ecancel_assumption
     end.
-    destruct (invert_ptsto_program1 A) as (DE & ?). clear A.
+    destruct (invert_ptsto_program1 iset A) as (DE & ?). clear A.
     (* execution of Jalr clears lowest bit *)
     assert (word.and (word.add dest (word.of_Z oimm12))
                      (word.xor (word.of_Z 1) (word.of_Z (2 ^ width - 1))) =
@@ -294,7 +297,7 @@ Section Run.
     | H: (?P * ?Q * ?R)%sep ?m |- _ =>
       assert ((P * (Q * R))%sep m) as A by ecancel_assumption
     end.
-    destruct (invert_ptsto_program1 A) as (DE & ?).
+    destruct (invert_ptsto_program1 iset A) as (DE & ?).
     t0.
   Qed.
 
@@ -309,7 +312,7 @@ Section Run.
     | H: (?P * ?Q * ?R)%sep ?m |- _ =>
       assert ((P * (Q * R))%sep m) as A by ecancel_assumption
     end.
-    destruct (invert_ptsto_program1 A) as (DE & ?).
+    destruct (invert_ptsto_program1 iset A) as (DE & ?).
     t0.
   Qed.
 
@@ -345,10 +348,11 @@ Section Run.
   (* Note: there's no Ldu instruction, because Ld does the same *)
   Lemma run_Ld_unsigned: run_Load_spec 8 Ld id.
   Proof.
-    t. rewrite sextend_width_nop; [reflexivity|]. unfold iset in *.
+    t. rewrite sextend_width_nop; [reflexivity|].
     edestruct @invert_ptsto_instr as (DE & ?); [exact mem_ok|ecancel_assumption|].
-    clear -DE. destruct DE as [_ H]. unfold verify_iset in *. unfold iset in *.
-    destruct width_cases as [E | E]; rewrite E in *; simpl in *; intuition congruence.
+    clear -DE iset_bitwidth_matches. destruct DE as [_ H]. unfold verify_iset in *.
+    rewrite <- iset_bitwidth_matches. unfold bitwidth.
+    destruct H as [ H | [ H | [ H | H ] ] ]; subst; reflexivity.
   Qed.
 
   Lemma iff1_emp: forall P Q,

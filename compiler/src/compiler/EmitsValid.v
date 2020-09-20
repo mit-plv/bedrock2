@@ -305,7 +305,7 @@ Section EmitsValid.
         blia.
   Qed.
 
-  Lemma valid_Slli: forall rd rs shamt iset,
+  Lemma valid_Slli: forall rd rs shamt,
       0 <= shamt < 32 ->
       valid_register rd ->
       valid_register rs ->
@@ -381,7 +381,7 @@ Section EmitsValid.
     blia.
   Qed.
 
-  Lemma compile_lit_64bit_emits_valid: forall r w iset,
+  Lemma compile_lit_64bit_emits_valid: forall r w,
       valid_register r ->
       valid_instructions iset (compile_lit_64bit r w).
   Proof.
@@ -394,7 +394,7 @@ Section EmitsValid.
       (eapply valid_Xori_bitSlice || eapply valid_Slli); try eassumption; try blia.
   Qed.
 
-  Lemma compile_lit_emits_valid: forall r w iset,
+  Lemma compile_lit_emits_valid: forall r w,
       valid_register r ->
       valid_instructions iset (compile_lit r w).
   Proof.
@@ -407,7 +407,7 @@ Section EmitsValid.
   Qed.
 
   Import Syntax.bopname.
-  Lemma compile_op_emits_valid: forall iset x op y z,
+  Lemma compile_op_emits_valid: forall x op y z,
       supported_iset iset ->
       valid_register x ->
       valid_register y ->
@@ -432,7 +432,7 @@ Section EmitsValid.
           destruct iset; auto; intuition try congruence.
   Qed.
 
-  Lemma compile_bcond_by_inverting_emits_valid: forall iset cond amt,
+  Lemma compile_bcond_by_inverting_emits_valid: forall cond amt,
       valid_registers_bcond cond ->
       - 2 ^ 12 <= amt < 2 ^ 12 ->
       amt mod 2 = 0 ->
@@ -449,16 +449,16 @@ Section EmitsValid.
     intuition blia.
   Qed.
 
-  Notation iset := SeparationLogic.iset.
-
   Lemma compile_load_emits_valid: forall x y sz offset,
       valid_register x ->
       valid_register y ->
       - 2 ^ 11 <= offset < 2 ^ 11 ->
       valid_instructions iset [compile_load sz x y offset].
   Proof.
-    intros. unfold iset.
-    destruct Utility.width_cases as [E | E]; rewrite E; simpl;
+    intros. unfold valid_instructions, valid_register, compile_load in *.
+    unfold verify, respects_bounds, verify_iset. simpl.
+    destr (bitwidth iset =? 32); [rewrite E|];
+    unfold bitwidth in *;
     destruct sz eqn: Eqsz; unfold valid_instructions, valid_register in *; simpl;
       intros;
       (destruct H2; [|contradiction]);
@@ -468,8 +468,10 @@ Section EmitsValid.
       rewrite? E; simpl;
       autounfold with unf_encode_consts unf_verify;
       rewrite? E; simpl;
-      intuition (try blia).
-  Qed.
+      intuition (try blia);
+      destruct iset; try intuition congruence.
+    (* TODO verify_iset add F instructions to verify_iset and adapt decode_encode proof *)
+  Abort.
 
   Lemma compile_store_emits_valid: forall x y sz offset,
       valid_register x ->
@@ -477,8 +479,11 @@ Section EmitsValid.
       - 2 ^ 11 <= offset < 2 ^ 11 ->
       valid_instructions iset [compile_store sz x y offset].
   Proof.
-    intros. unfold iset.
-    destruct Utility.width_cases as [E | E]; rewrite E; simpl;
+    intros.
+    intros. unfold valid_instructions, valid_register, compile_store in *.
+    unfold verify, respects_bounds, verify_iset. simpl.
+    destr (bitwidth iset =? 32); [rewrite E|];
+    unfold bitwidth in *;
     destruct sz; inversion H; clear H; unfold valid_instructions, valid_register in *; simpl;
       intros;
       (destruct H; [|contradiction]);
@@ -488,8 +493,10 @@ Section EmitsValid.
       rewrite? E;
       simpl;
       autounfold with unf_encode_consts unf_verify;
-      intuition (try blia).
-  Qed.
+      intuition (try blia);
+      destruct iset; try intuition congruence.
+    (* TODO verify_iset add F instructions to verify_iset and adapt decode_encode proof *)
+  Abort.
 
   Lemma compile_lit_size: forall x v,
       0 <= Z.of_nat (length (compile_lit x v)) <= 8.

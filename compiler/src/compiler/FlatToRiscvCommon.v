@@ -56,6 +56,7 @@ Export FlatToRiscvDef.FlatToRiscvDef.
 Class parameters := {
   def_params :> FlatToRiscvDef.parameters;
 
+  W :> Words;
   locals :> map.map Z word;
   mem :> map.map word byte;
 
@@ -135,7 +136,7 @@ Section WithParameters.
   Definition function(base: word)(rel_positions: funname_env Z)
              (fname: String.string)(impl : list Z * list Z * stmt Z): mem -> Prop :=
     match map.get rel_positions fname with
-    | Some pos => program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl)
+    | Some pos => program iset (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl)
     | _ => emp False
     end.
 
@@ -190,8 +191,8 @@ Section WithParameters.
   | fits_stack_stackalloc: forall M N e x n body,
       0 <= M ->
       0 <= n ->
-      n mod bytes_per_word = 0 ->
-      fits_stack (M - n / bytes_per_word) N e body ->
+      n mod (Memory.bytes_per_word (Decode.bitwidth iset)) = 0 ->
+      fits_stack (M - n / (Memory.bytes_per_word (Decode.bitwidth iset))) N e body ->
       fits_stack M N e (SStackalloc x n body)
   | fits_stack_lit: forall M N e x v,
       0 <= M -> 0 <= N ->
@@ -267,14 +268,14 @@ Section WithParameters.
     lo.(getNextPc) = word.add lo.(getPc) (word.of_Z 4) /\
     (* memory: *)
     subset (footpr (g.(xframe) *
-                    program g.(p_insts) g.(insts) *
+                    program iset g.(p_insts) g.(insts) *
                     functions g.(program_base) g.(e_pos) g.(e_impl))%sep)
            (of_list lo.(getXAddrs)) /\
     (exists stack_trash,
         g.(rem_stackwords) = Z.of_nat (List.length stack_trash) - g.(rem_framewords) /\
         (g.(dframe) * g.(xframe) * eq m *
          word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(rem_stackwords)))) stack_trash *
-         program g.(p_insts) g.(insts) *
+         program iset g.(p_insts) g.(insts) *
          functions g.(program_base) g.(e_pos) g.(e_impl))%sep lo.(getMem)) /\
     (* trace: *)
     lo.(getLog) = t /\
@@ -320,6 +321,7 @@ Section WithParameters.
          goodMachine finalTrace finalMH finalRegsH g finalL).
 
   Class assumptions: Prop := {
+    bitwidth_matches: bitwidth iset = width;
     word_riscv_ok :> word.riscv_ok (@word W);
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
@@ -439,6 +441,7 @@ Section FlatToRiscv1.
       mcomp_sat (Bind (execute (compile_load sz x a ofs)) f) initialL post.
   Proof.
     unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite bitwidth_matches.
     destruct width_cases as [E | E];
       (* note: "rewrite E" does not work because "width" also appears in the type of "word",
          but we don't need to rewrite in the type of word, only in the type of the tuple,
@@ -471,7 +474,8 @@ Section FlatToRiscv1.
                        (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
       mcomp_sat (Bind (execute (compile_store sz a x ofs)) f) initialL post.
   Proof.
-    unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per, Memory.bytes_per_word;
+    unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite bitwidth_matches.
     destruct width_cases as [E | E];
       (* note: "rewrite E" does not work because "width" also appears in the type of "word",
          but we don't need to rewrite in the type of word, only in the type of the tuple,
@@ -489,29 +493,32 @@ Section FlatToRiscv1.
   Qed.
 
   Lemma run_compile_load: forall sz: Syntax.access_size,
-      run_Load_spec (@Memory.bytes_per width sz) (compile_load sz) id.
+      run_Load_spec iset (@Memory.bytes_per width sz) (compile_load sz) id.
   Proof.
     intro sz. destruct sz; unfold compile_load; simpl.
-    - refine run_Lbu.
-    - refine run_Lhu.
-    - destruct width_cases as [E | E]; rewrite E; simpl.
-      + refine (run_Lw_unsigned E).
-      + refine run_Lwu.
-    - destruct width_cases as [E | E]; rewrite E; simpl.
-      + refine (run_Lw_unsigned E).
-      + refine run_Ld_unsigned.
+    - refine (run_Lbu iset).
+    - refine (run_Lhu iset).
+    - rewrite bitwidth_matches.
+      destruct width_cases as [E | E]; rewrite E; simpl.
+      + refine (run_Lw_unsigned iset E).
+      + refine (run_Lwu iset).
+    - rewrite bitwidth_matches.
+      destruct width_cases as [E | E]; rewrite E; simpl.
+      + refine (run_Lw_unsigned iset E).
+      + refine (run_Ld_unsigned iset bitwidth_matches).
   Qed.
 
   Lemma run_compile_store: forall sz: Syntax.access_size,
-      run_Store_spec (@Memory.bytes_per width sz) (compile_store sz).
+      run_Store_spec iset (@Memory.bytes_per width sz) (compile_store sz).
   Proof.
     intro sz. destruct sz; unfold compile_store; simpl.
-    - refine run_Sb.
-    - refine run_Sh.
-    - refine run_Sw.
-    - destruct width_cases as [E | E]; rewrite E; simpl.
-      + refine run_Sw.
-      + refine run_Sd.
+    - refine (run_Sb iset).
+    - refine (run_Sh iset).
+    - refine (run_Sw iset).
+    - rewrite bitwidth_matches.
+      destruct width_cases as [E | E]; rewrite E; simpl.
+      + refine (run_Sw iset).
+      + refine (run_Sd iset).
   Qed.
 
   (* almost the same as run_compile_load, but not using tuples nor ptsto_bytes or
@@ -523,10 +530,10 @@ Section FlatToRiscv1.
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]]
+      subset (footpr (program iset initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]]
                       * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
-      (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] * Rexec *
+      (program iset initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] * Rexec *
        ptsto_word addr v * R)%sep (getMem initialL) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
@@ -562,20 +569,20 @@ Section FlatToRiscv1.
       map.get (getRegs initialL) rs1 = Some base ->
       map.get (getRegs initialL) rs2 = Some v_new ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr ((program initialL.(getPc)
+      subset (footpr ((program iset initialL.(getPc)
                           [[compile_store Syntax.access_size.word rs1 rs2 ofs]]) * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
-      (program initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec
+      (program iset initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec
        * ptsto_word addr v_old * R)%sep (getMem initialL) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
         (fun finalL : RiscvMachineL =>
            getRegs finalL = getRegs initialL /\
            getLog finalL = getLog initialL /\
-           subset (footpr (program initialL.(getPc)
+           subset (footpr (program iset initialL.(getPc)
                               [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec)%sep)
              (of_list finalL.(getXAddrs)) /\
-           (program initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec
+           (program iset initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec
             * ptsto_word addr v_new * R)%sep (getMem finalL) /\
            getPc finalL = getNextPc initialL /\
            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\

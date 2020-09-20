@@ -420,8 +420,10 @@ Section Go.
     apply map.get_put_same.
   Qed.
 
+  Context (iset: Decode.InstructionSet).
+
   Lemma ptsto_instr_subset_to_isXAddr4: forall a i xAddrs,
-      subset (footpr (ptsto_instr a i)) (of_list xAddrs) ->
+      subset (footpr (ptsto_instr iset a i)) (of_list xAddrs) ->
       isXAddr4 a xAddrs.
   Proof.
     unfold isXAddr4, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes, array. simpl.
@@ -432,8 +434,8 @@ Section Go.
 
   Lemma go_fetch_inst{initialL: RiscvMachineL} {inst pc0 R Rexec} (post: RiscvMachineL -> Prop):
       pc0 = initialL.(getPc) ->
-      subset (footpr (program pc0 [inst] * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
-      (program pc0 [inst] * Rexec * R)%sep initialL.(getMem) ->
+      subset (footpr (program iset pc0 [inst] * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
+      (program iset pc0 [inst] * Rexec * R)%sep initialL.(getMem) ->
       mcomp_sat (Bind (execute inst) (fun _ => endCycleNormal))
                 (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (run1 iset) initialL post.
@@ -799,7 +801,7 @@ Ltac sidecondition :=
 
 Ltac simulate_step :=
   first (* lemmas packing multiple primitives need to go first: *)
-        [ refine (go_fetch_inst _ _ _ _ _);        [sidecondition..|]
+        [ refine (go_fetch_inst _ _ _ _ _ _);        [sidecondition..|]
         (* single-primitive lemmas: *)
         (* lemmas about Register0 need to go before lemmas about other Registers *)
         | refine (go_getRegister0 _ _ _ _);        [sidecondition..|]

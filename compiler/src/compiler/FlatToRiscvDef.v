@@ -38,9 +38,7 @@ Proof. unfold valid_FlatImp_var, valid_register. intros. blia. Qed.
 Module Import FlatToRiscvDef.
 
   Class parameters := {
-    (* the words implementations are not needed, but we need width,
-       and EmitsValid needs width_cases *)
-    W :> Utility.Words;
+    iset: InstructionSet;
     funname_env :> forall T: Type, map.map String.string T; (* abstract T for better reusability *)
     compile_ext_call: funname_env Z -> Z -> Z -> stmt Z -> list Instruction;
   }.
@@ -96,8 +94,8 @@ Section FlatToRiscv1.
     match sz with
     | access_size.one => Lbu
     | access_size.two => Lhu
-    | access_size.four => if width =? 32 then Lw else Lwu
-    | access_size.word => if width =? 32 then Lw else Ld
+    | access_size.four => if bitwidth iset =? 32 then Lw else Lwu
+    | access_size.word => if bitwidth iset =? 32 then Lw else Ld
     end.
 
   Definition compile_store(sz: access_size):
@@ -106,7 +104,7 @@ Section FlatToRiscv1.
     | access_size.one => Sb
     | access_size.two => Sh
     | access_size.four => Sw
-    | access_size.word => if width =? 32 then Sw else Sd
+    | access_size.word => if bitwidth iset =? 32 then Sw else Sd
     end.
 
   Definition compile_op(rd: Z)(op: Syntax.bopname)(rs1 rs2: Z): list Instruction :=
@@ -170,7 +168,7 @@ Section FlatToRiscv1.
   Definition compile_lit(rd: Z)(v: Z): list Instruction :=
     if ((-2^11 <=? v)%Z && (v <? 2^11)%Z)%bool then
       compile_lit_12bit rd v
-    else if ((width =? 32)%Z || (- 2 ^ 31 <=? v)%Z && (v <? 2 ^ 31)%Z)%bool then
+    else if ((bitwidth iset =? 32)%Z || (- 2 ^ 31 <=? v)%Z && (v <? 2 ^ 31)%Z)%bool then
       compile_lit_32bit rd v
     else compile_lit_64bit rd v.
 
@@ -190,6 +188,8 @@ Section FlatToRiscv1.
     | CondNez x =>
         Beq x Register0 amt
     end.
+
+  Local Notation bytes_per_word := (Memory.bytes_per_word (bitwidth iset)).
 
   Fixpoint save_regs(regs: list Z)(offset: Z): list Instruction :=
     match regs with

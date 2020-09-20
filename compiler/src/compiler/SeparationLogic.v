@@ -70,13 +70,12 @@ Ltac wclause_unify OK :=
 Section ptstos.
   Context {W: Words}.
   Context {mem : map.map word byte} {mem_ok: map.ok mem}.
+  Context (iset: InstructionSet).
 
   Definition bytes_per_word: Z := Memory.bytes_per_word width.
 
   Definition word_array: word -> list word -> mem -> Prop :=
     array ptsto_word (word.of_Z bytes_per_word).
-
-  Definition iset := if Utility.width =? 32 then RV32I else RV64I.
 
   (* contains all the conditions needed to successfully execute instr, except
      that addr needs to be in the set of executable addresses, which is dealt with elsewhere *)
@@ -353,7 +352,7 @@ Ltac addr P :=
   | ptsto ?A _ => A
   | ptsto_bytes _ ?A _ => A
   | ptsto_word ?A _ => A
-  | ptsto_instr ?A _ => A
+  | ptsto_instr _ ?A _ => A
   | array _ _ ?A _ => A
   | word_array ?A _ => A
   | _ => fail "no recognizable address"

@@ -83,6 +83,7 @@ Module Import Pipeline.
   }.
 
   Instance FlatToRiscvDef_parameters{p: parameters}: FlatToRiscvDef.FlatToRiscvDef.parameters := {|
+    iset := if Utility.width =? 32 then RV32I else RV64I;
     FlatToRiscvDef.FlatToRiscvDef.compile_ext_call := compile_ext_call;
   |}.
 
@@ -396,7 +397,7 @@ Section Pipeline1.
 
   Lemma program_mod_4_0: forall a instrs R m,
       instrs <> [] ->
-      (program a instrs * R)%sep m ->
+      (program iset a instrs * R)%sep m ->
       word.unsigned a mod 4 = 0.
   Proof.
     intros.
@@ -505,7 +506,7 @@ Section Pipeline1.
      if we pass it the same function position map. *)
   Lemma functions_to_program: forall ml functions_start e instrs pos_map,
       riscvPhase ml e = Some (instrs, pos_map) ->
-      iff1 (program functions_start instrs)
+      iff1 (program iset functions_start instrs)
            (FlatToRiscvCommon.functions functions_start (FlatToRiscvDef.build_fun_pos_env e) e).
   Proof.
     (* PARAMRECORDS *)
@@ -586,13 +587,13 @@ Section Pipeline1.
              (p_call pc: word)(mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
       let CallInst := Jal RegisterNames.ra
                           (f_entry_rel_pos + word.signed (word.sub p_functions p_call)) : Instruction in
-      (program p_functions finstrs *
-       program p_call [CallInst] *
+      (program iset p_functions finstrs *
+       program iset p_call [CallInst] *
        mem_available stack_start stack_pastend *
        Rdata * Rexec * eq mH
       )%sep mach.(getMem) /\
-      subset (footpr (program p_functions finstrs *
-                      program p_call [CallInst] *
+      subset (footpr (program iset p_functions finstrs *
+                      program iset p_call [CallInst] *
                       Rexec)%sep)
              (of_list (getXAddrs mach)) /\
       word.unsigned (mach.(getPc)) mod 4 = 0 /\

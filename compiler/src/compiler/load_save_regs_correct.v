@@ -29,17 +29,17 @@ Section Proofs.
       map.getmany_of_list initial.(getRegs) vars = Some newvalues ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length oldvalues = List.length vars ->
-      subset (footpr (program initial.(getPc) (save_regs vars offset) * Rexec)%sep)
+      subset (footpr (program iset initial.(getPc) (save_regs vars offset) * Rexec)%sep)
              (of_list (initial.(getXAddrs))) ->
-      (program initial.(getPc) (save_regs vars offset) * Rexec *
+      (program iset initial.(getPc) (save_regs vars offset) * Rexec *
        word_array (word.add p_sp (word.of_Z offset)) oldvalues * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       valid_machine initial ->
       runsTo initial (fun final =>
           final.(getRegs) = initial.(getRegs) /\
-          subset (footpr (program initial.(getPc) (save_regs vars offset) * Rexec)%sep)
+          subset (footpr (program iset initial.(getPc) (save_regs vars offset) * Rexec)%sep)
                  (of_list (final.(getXAddrs))) /\
-          (program initial.(getPc) (save_regs vars offset) * Rexec *
+          (program iset initial.(getPc) (save_regs vars offset) * Rexec *
            word_array (word.add p_sp (word.of_Z offset)) newvalues * R)%sep final.(getMem) /\
           final.(getPc) = word.add initial.(getPc) (word.mul (word.of_Z 4)
                                                    (word.of_Z (Z.of_nat (List.length vars)))) /\
@@ -54,8 +54,11 @@ Section Proofs.
     - simpl in *. simp.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       destruct oldvalues as [|oldvalue oldvalues]; simpl in *; [discriminate|].
+      replace (Memory.bytes_per_word (Decode.bitwidth iset)) with bytes_per_word in *. 2: {
+        rewrite bitwidth_matches. reflexivity.
+      }
       eapply runsToNonDet.runsToStep. {
-        eapply run_store_word with (Rexec0 := (program (word.add (getPc initial) (word.of_Z 4))
+        eapply run_store_word with (Rexec0 := (program iset (word.add (getPc initial) (word.of_Z 4))
             (save_regs vars (offset + bytes_per_word)) * Rexec)%sep); cycle -3;
           try solve [sidecondition].
       }
@@ -90,9 +93,9 @@ Section Proofs.
       Forall valid_FlatImp_var vars ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length values = List.length vars ->
-      subset (footpr (program initial.(getPc) (load_regs vars offset) * Rexec)%sep)
+      subset (footpr (program iset initial.(getPc) (load_regs vars offset) * Rexec)%sep)
              (of_list initial.(getXAddrs)) ->
-      (program initial.(getPc) (load_regs vars offset) * Rexec *
+      (program iset initial.(getPc) (load_regs vars offset) * Rexec *
        word_array (word.add p_sp (word.of_Z offset)) values * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       valid_machine initial ->
@@ -122,6 +125,9 @@ Section Proofs.
       destruct_RiscvMachine initial.
       destruct_RiscvMachine mid.
       simp. subst.
+      replace (Memory.bytes_per_word (Decode.bitwidth iset)) with bytes_per_word in *. 2: {
+        rewrite bitwidth_matches. reflexivity.
+      }
       eapply runsToNonDet.runsTo_weaken.
       + eapply IHvars; simpl; cycle -3; auto.
         * use_sep_assumption.

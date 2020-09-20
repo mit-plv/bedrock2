@@ -23,9 +23,9 @@ Section FitsStack.
       | SOp _ _ _ _ | SSet _ _ | SSkip | SInteract _ _ _ => Some (0,0)
       | SStackalloc x n body =>
         if Z.leb 0 n then
-          if Z.eqb (n mod SeparationLogic.bytes_per_word) 0 then
+          if Z.eqb (n mod Memory.bytes_per_word (Decode.bitwidth iset)) 0 then
             match inner_rec body with
-            | Some (M, N) => Some (M + n / SeparationLogic.bytes_per_word, N)
+            | Some (M, N) => Some (M + n / Memory.bytes_per_word (Decode.bitwidth iset), N)
             | None => None
             end
           else None
@@ -113,15 +113,15 @@ Section FitsStack.
       try blia.
     subst.
     apply Z.leb_le in E. apply Z.eqb_eq in E0.
-    assert (0 < SeparationLogic.bytes_per_word). {
-      unfold SeparationLogic.bytes_per_word.
-      destruct Utility.width_cases as [F|F]; rewrite F; reflexivity.
+    assert (0 < Memory.bytes_per_word (Decode.bitwidth iset)). {
+      unfold Memory.bytes_per_word.
+      destruct iset; reflexivity.
     }
-    assert (0 <= nbytes / SeparationLogic.bytes_per_word). {
+    assert (0 <= nbytes / Memory.bytes_per_word (Decode.bitwidth iset)). {
       apply Z.div_pos; assumption.
     }
     remember (FlatToRiscvDef.stackalloc_words s) as sw.
-    remember (SeparationLogic.bytes_per_word) as bw.
+    remember (Memory.bytes_per_word (Decode.bitwidth iset)) as bw.
     (* TODO why does "Z.div_mod_to_equations. blia." not work? *)
     replace (BinIntDef.Z.max 0 nbytes) with nbytes by blia.
     apply Zmod_divides in E0. 2: blia.
@@ -147,9 +147,9 @@ Section FitsStack.
         pose proof fits_stack_nonneg as P. specialize P with (1 := IHs).
         apply Z.leb_le in E. apply Z.eqb_eq in E0.
         econstructor.
-        * assert (0 <= nbytes / SeparationLogic.bytes_per_word). {
-            apply Z.div_pos. 1: assumption. unfold SeparationLogic.bytes_per_word.
-            destruct Utility.width_cases as [F|F]; rewrite F; reflexivity.
+        * assert (0 <= nbytes / Memory.bytes_per_word (Decode.bitwidth iset)). {
+            apply Z.div_pos. 1: assumption. unfold Memory.bytes_per_word.
+            destruct iset; reflexivity.
           }
           blia.
         * assumption.

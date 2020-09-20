@@ -55,9 +55,9 @@ Section Pipeline1.
 
   Lemma ptsto_bytes_to_program: forall instrs p_code,
       word.unsigned p_code mod 4 = 0 ->
-      Forall (fun i => verify i iset) instrs ->
+      Forall (fun i => verify i FlatToRiscvDef.FlatToRiscvDef.iset) instrs ->
       iff1 (ptsto_bytes p_code (instrencode instrs))
-           (program p_code instrs).
+           (program FlatToRiscvDef.FlatToRiscvDef.iset p_code instrs).
   Proof.
     induction instrs; intros.
     - reflexivity.
@@ -148,7 +148,7 @@ Section Pipeline1.
       compile_prog ml srcprog = Some (instrs, positions) /\
       word.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
         word.unsigned ml.(code_pastend) /\
-      Forall (fun i : Instruction => verify i iset) instrs /\
+      Forall (fun i : Instruction => verify i FlatToRiscvDef.FlatToRiscvDef.iset) instrs /\
       (imem ml.(code_start) ml.(code_pastend) instrs *
        mem_available ml.(heap_start) ml.(heap_pastend) *
        mem_available ml.(stack_start) ml.(stack_pastend))%sep initial.(getMem) /\
@@ -162,7 +162,8 @@ Section Pipeline1.
 
   Lemma compiler_invariant_proofs:
     (forall initial, initial_conditions initial -> ll_inv ml spec initial) /\
-    (forall st, ll_inv ml spec st -> GoFlatToRiscv.mcomp_sat (run1 iset) st (ll_inv ml spec)) /\
+    (forall st, ll_inv ml spec st ->
+                GoFlatToRiscv.mcomp_sat (run1 FlatToRiscvDef.FlatToRiscvDef.iset) st (ll_inv ml spec)) /\
     (forall st, ll_inv ml spec st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog))).
   Proof.
     assert (map.ok Pipeline.mem) as Okk by exact FlatToRiscvCommon.mem_ok. (* PARAMRECORDS *)

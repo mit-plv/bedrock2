@@ -47,25 +47,25 @@ Section Proofs.
     eexists; (* finalMH *)
     eexists; (* finalMetricsH *)
     repeat split;
-    simpl_word_exprs (@word_ok (@W (@def_params p)));
+    simpl_word_exprs (@word_ok (@W p));
     first
       [ solve [eauto]
       | solve_MetricLog
-      | solve_word_eq (@word_ok (@W (@def_params p)))
+      | solve_word_eq (@word_ok (@W p))
       | solve [wcancel_assumption]
       | eapply rearrange_footpr_subset; [ eassumption | wwcancel ]
-      | solve [solve_valid_machine (@word_ok (@W (@def_params p)))]
+      | solve [solve_valid_machine (@word_ok (@W p))]
       | idtac ].
 
   Ltac IH_sidecondition :=
-    simpl_word_exprs (@word_ok (@W (@def_params p)));
+    simpl_word_exprs (@word_ok (@W p));
     try solve
       [ reflexivity
       | auto
       | solve_stmt_not_too_big
-      | solve_word_eq (@word_ok (@W (@def_params p)))
+      | solve_word_eq (@word_ok (@W p))
       | simpl; solve_divisibleBy4
-      | solve_valid_machine (@word_ok (@W (@def_params p)))
+      | solve_valid_machine (@word_ok (@W p))
       | eapply rearrange_footpr_subset; [ eassumption | wwcancel ]
       | wcancel_assumption ].
 
@@ -87,16 +87,16 @@ Section Proofs.
     valid_FlatImp_vars s ->
     divisibleBy4 initialL.(getPc) ->
     initialL.(getRegs) = initialRegsH ->
-    subset (footpr (program initialL.(getPc) insts * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
-    (program initialL.(getPc) insts * Rexec * eq initialMH * R)%sep initialL.(getMem) ->
+    subset (footpr (program iset initialL.(getPc) insts * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
+    (program iset initialL.(getPc) insts * Rexec * eq initialMH * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
     initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
     valid_machine initialL ->
     runsTo initialL (fun finalL => exists finalMH finalMetricsH,
           postH finalL.(getLog) finalMH finalL.(getRegs) finalMetricsH /\
-          subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
+          subset (footpr (program iset initialL.(getPc) insts * Rexec)%sep)
                  (of_list finalL.(getXAddrs)) /\
-          (program initialL.(getPc) insts * Rexec * eq finalMH * R)%sep finalL.(getMem) /\
+          (program iset initialL.(getPc) insts * Rexec * eq finalMH * R)%sep finalL.(getMem) /\
           finalL.(getPc) = add initialL.(getPc)
                              (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (length insts)))) /\
           finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
@@ -129,7 +129,7 @@ Section Proofs.
 
     - (* SStore *)
       simpl_MetricRiscvMachine_get_set.
-      assert ((eq m * (program initialL_pc [[compile_store sz a v o]] * Rexec * R))%sep
+      assert ((eq m * (program iset initialL_pc [[compile_store sz a v o]] * Rexec * R))%sep
         initialL_mem) as A by ecancel_assumption.
       match goal with
       | H: _ |- _ => pose proof (store_bytes_frame H A) as P; move H at bottom;
