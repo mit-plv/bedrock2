@@ -735,7 +735,7 @@ Section Spilling.
           cancel_at_indices 2%nat 1%nat. 1: reflexivity.
           cbv [map.dus].
           eapply mem_eq_refl.
-          eapply mem_eq_trans. 1: exact H5rl.
+          eapply mem_eq_trans. 1: exact H5p0.
           match goal with
           | |- ?L1 \+/ ?L2 \+/ ?L3 == ?R1 \+/ ?R2 =>
             change (map.dus [L3; L2; L1] == map.dus [R2; R1])

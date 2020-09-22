@@ -93,7 +93,15 @@ Ltac unique_inversion :=
       let h2 := head_of_app RHS in is_constructor h2;
       inversion H; clear H
     | _ * _  => destruct H
-    | _ /\ _ => let Hl := fresh H "l" in let Hr := fresh H "r" in destruct H as [Hl Hr]
+    (* Note: the following two cases reuse the name H, so they will only succeed if H was cleared
+       (which might not be the case if H is a section variable), and enforcing that H is cleared
+       is needed to avoid infinite looping *)
+    | _ /\ _ => (* destruct "H: A0 /\ A1 /\ ... An" into "Hp0: A0, Hp1: A1, .. Hpn: An" *)
+      let Hl := fresh H "p0" in destruct H as [Hl H];
+      lazymatch type of H with
+      | _ /\ _ => idtac (* not done yet *)
+      | _ => let Hr := fresh H "p0" in rename H into Hr (* done, make naming uniform for last clause *)
+      end
     | exists y, _ => let yf := fresh y in destruct H as [yf H]
     | _ => (* By default, we don't want to destruct types with only one constructor
               (in particular, Class and Record are simpler if not destructed).
@@ -109,10 +117,6 @@ Ltac unique_inversion :=
            )
     end;
     [> (* require exactly one goal *)
-     match goal with
-     | H': ?P' |- _ => unify P P'; fail 1 (* inversion didn't do anything except simplifying *)
-     | |- _ => idtac
-     end;
      subst;
      unprotect_equalities]
   end.

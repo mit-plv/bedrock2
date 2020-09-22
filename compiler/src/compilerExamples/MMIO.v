@@ -412,7 +412,7 @@ Section MMIO1.
       rewrite word.of_Z_unsigned.
       apply eqb_eq in E. subst action.
       cbn -[invalidateWrittenXAddrs] in *.
-      specialize (HPr mKeep). rewrite map.split_empty_r in HPr. specialize (HPr eq_refl).
+      specialize (HPp1 mKeep). rewrite map.split_empty_r in HPp1. specialize (HPp1 eq_refl).
       do 4 eexists.
       split; eauto.
       split; eauto.
@@ -558,7 +558,7 @@ Section MMIO1.
       simp.
       apply eqb_eq in EE. subst action.
       cbn in *.
-      specialize (Pr mKeep). rewrite map.split_empty_r in Pr. specialize (Pr eq_refl).
+      specialize (Pp1 mKeep). rewrite map.split_empty_r in Pp1. specialize (Pp1 eq_refl).
       destruct (Z.eq_dec z0 0); try contradiction.
       do 4 eexists.
       split; eauto.

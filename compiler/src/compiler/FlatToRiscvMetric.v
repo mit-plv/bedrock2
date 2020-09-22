@@ -160,7 +160,7 @@ Section Proofs.
       intros.
       unfold Memory.anybytes, Memory.ftprint, map.of_disjoint_list_zip in *. simpl in *.
       simp.
-      rewrite map.split_empty_r in H6lrl. subst mSmall'.
+      rewrite map.split_empty_r in H6p0p1. subst mSmall'.
       repeat match goal with
              | m: _ |- _ => destruct_RiscvMachine m; simpl_MetricRiscvMachine_get_set
              end.

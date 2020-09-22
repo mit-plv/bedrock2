@@ -91,7 +91,7 @@ Section Pipeline1.
     - simpl in *. unfold emp in *. simp. rewrite map.get_empty in H1. discriminate.
     - simpl in *.
       unfold sep in H. simp.
-      specialize IHbs with (1 := Hrr).
+      specialize IHbs with (1 := Hp2).
       destr (Z.eqb (word.unsigned a0) (word.unsigned start)). 1: blia.
       specialize (IHbs pastend a0 v).
       destruct IHbs as [L R].

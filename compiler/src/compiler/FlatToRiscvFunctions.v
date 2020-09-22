@@ -1580,7 +1580,7 @@ Section Proofs.
             apply propositional_extensionality.
             unfold PropSet.elem_of, singleton_set.
             destr (find (Z.eqb x) (modVars_as_list Z.eqb body)).
-            - apply List.find_some in E. simp. apply Z.eqb_eq in Er. subst z. intuition congruence.
+            - apply List.find_some in E. simp. rewrite Z.eqb_eq in *. subst z. intuition congruence.
             - simpl. reflexivity.
           }
           map_solver locals_ok.

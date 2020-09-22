@@ -717,7 +717,7 @@ Section Pipeline1.
         | H: ExprImp.valid_funs _ |- _ => rename H into V
         end.
         unfold ExprImp.valid_funs in V.
-        specialize V with (1 := Pr).
+        specialize V with (1 := Pp1).
         unfold ExprImp.valid_fun in V.
         destruct V.
         ssplit.
@@ -829,7 +829,7 @@ Section Pipeline1.
       eexists. split. 1: eassumption.
       unfold machine_ok. ssplit; try assumption.
       + assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
-        cbv [rem_stackwords rem_framewords ghostConsts] in H2lrrrrrrrrrll.
+        cbv [rem_stackwords rem_framewords ghostConsts] in H2p0p1p8p0.
         cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).
         exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x))) stack_trash).
@@ -840,8 +840,8 @@ Section Pipeline1.
             unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
           }
           rewrite (length_flat_map _ (Z.to_nat bytes_per_word)).
-          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H2lrrrrrrrrrll.
-            rewrite <-H2lrrrrrrrrrll, <-Z_div_exact_2; try trivial.
+          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H2p0p1p8p0.
+            rewrite <-H2p0p1p8p0, <-Z_div_exact_2; try trivial.
             { eapply Z.lt_gt; assumption. }
             { eapply stack_length_divisible; trivial. } }
           intros w.

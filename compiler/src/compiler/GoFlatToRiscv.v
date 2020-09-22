@@ -513,26 +513,26 @@ Section Go.
         unfold sep, map.split in H0.
         simp.
         unfold elem_of, footpr, footprint_underapprox in Hx.
-        specialize (Hx _ H0rr).
+        specialize (Hx _ H0p2).
         destruct Hx as [w Hx].
-        rename H0rlrlrl into B.
+        rename H0p1p1p1 into B.
         unfold ptsto in B.
         subst.
         unfold map.disjoint in *.
-        eapply H0lr. 2: exact Hx.
+        eapply H0p0p1. 2: exact Hx.
         rewrite map.get_putmany_left; cycle 1. {
           destr (map.get mq0 addr); [exfalso|reflexivity].
-          eapply H0rllr. 2: exact E.
+          eapply H0p1p0p1. 2: exact E.
           rewrite map.get_putmany_left; cycle 1. {
             destr (map.get mq1 addr); [exfalso|reflexivity].
-            eapply H0rlrllr. 2: exact E0.
+            eapply H0p1p1p0p1. 2: exact E0.
             rewrite map.get_put_same. reflexivity.
           }
           rewrite map.get_put_same. reflexivity.
         }
         rewrite map.get_putmany_left; cycle 1. {
           destr (map.get mq1 addr); [exfalso|reflexivity].
-          eapply H0rlrllr. 2: exact E.
+          eapply H0p1p1p0p1. 2: exact E.
           rewrite map.get_put_same. reflexivity.
         }
         rewrite map.get_put_same. reflexivity.

@@ -199,7 +199,7 @@ Section RegAlloc.
       eexists. split; [eassumption|].
       rewrite map.get_put_dec.
       destruct_one_match.
-      + subst. specialize H with (1 := H1l) (2 := H0). congruence.
+      + subst. specialize H with (1 := H1p0) (2 := H0). congruence.
       + assumption.
   Qed.
 
@@ -288,7 +288,7 @@ Section RegAlloc.
         destruct_one_match; try congruence.
         subst.
         unfold map.injective in H.
-        specialize H with (1 := E) (2 := H2l). congruence.
+        specialize H with (1 := E) (2 := H2p0). congruence.
     - rewrite map.get_put_dec in H3.
       setoid_rewrite map.get_put_dec.
       unfold dom_bound in *. simp.
@@ -298,7 +298,7 @@ Section RegAlloc.
       + specialize H2 with (1 := H3). simp.
         eexists. split; [eassumption|].
         destruct_one_match; try congruence.
-        specialize H0 with (1 := H2l). exfalso. blia.
+        specialize H0 with (1 := H2p0). exfalso. blia.
   Qed.
 
   Lemma states_compat_put': forall lH lL r x av r' y av' v,
@@ -735,12 +735,12 @@ Section RegAlloc.
       + eapply getmany_of_list_states_compat; eassumption.
       + intros. specialize (H3 _ _ H6). simp.
         pose proof putmany_of_list_states_compat as P.
-        specialize P with (1 := E0_uacl).
+        specialize P with (1 := E0_uacp0).
         pose proof states_compat_extends as Q.
-        specialize Q with (1 := E0_uacrl) (2 := H7).
+        specialize Q with (1 := E0_uacp1) (2 := H7).
         specialize P with (3 := Q); clear Q.
-        specialize P with (1 := H3l).
-        specialize P with (1 := E0_uacrrrrrr).
+        specialize P with (1 := H3p0).
+        specialize P with (1 := E0_uacp6).
         simp.
         eauto 10.
     - (* @exec.call *)
@@ -761,7 +761,7 @@ Section RegAlloc.
       apply_in_hyps @rename_props. simp.
       edestruct putmany_of_list_states_compat as [ lLF' [? ?] ].
       2: exact H2.
-      1: exact E2l.
+      1: exact E2p0.
       1: eapply map.getmany_of_list_extends; cycle 1; eassumption.
       { instantiate (1 := map.empty).
         unfold states_compat. intros *. intro A. rewrite map.get_empty in A. discriminate A.
@@ -772,7 +772,7 @@ Section RegAlloc.
       + eassumption.
       + eauto.
       + cbv beta. intros. simp.
-        specialize H4 with (1 := H10r). move H4 at bottom. simp.
+        specialize H4 with (1 := H10p1). move H4 at bottom. simp.
         edestruct states_compat_putmany_of_list as [ lL' [? ?] ].
         4: exact H8.
         4: eassumption.
@@ -829,9 +829,9 @@ Section RegAlloc.
       specialize (IH1 lL). auto_specialize.
       assert (rename r' (SLoop body1 cond body2) av' = Some (r', (SLoop s b s0), av')) as R. {
         simpl.
-        rewrite H11rl by assumption.
+        rewrite H11p1 by assumption.
         rewrite (proj1 (rename_cond_props E0)) by eassumption.
-        rewrite H12rl by apply extends_refl.
+        rewrite H12p1 by apply extends_refl.
         reflexivity.
       }
       simpl in R.
@@ -845,24 +845,24 @@ Section RegAlloc.
         eexists. split.
         * eapply states_compat_extends; cycle 1; eassumption.
         * move H1 at bottom.
-          specialize H1 with (1 := H4r).
+          specialize H1 with (1 := H4p1).
           match type of H1 with
           | ?E <> None => destruct E eqn: A; [|contradiction]
           end.
           clear H1.
           pose proof @eval_bcond_compat as P.
-          specialize P with (1 := E0) (2 := H4l) (3 := A).
+          specialize P with (1 := E0) (2 := H4p0) (3 := A).
           erewrite P in H6.
           simp. eapply H2; try eassumption.
       + cbv beta. intros. simp.
         eapply IH2; try eassumption.
         pose proof @eval_bcond_compat as P.
-        specialize H1 with (1 := H4r).
+        specialize H1 with (1 := H4p1).
         match type of H1 with
         | ?E <> None => destruct E eqn: A; [|contradiction]
         end.
         clear H1.
-        specialize P with (1 := E0) (2 := H4l) (3 := A).
+        specialize P with (1 := E0) (2 := H4p0) (3 := A).
         erewrite P in H6.
         simp. reflexivity.
       + cbv beta. intros. simp.
@@ -906,20 +906,20 @@ Section RegAlloc.
     pose proof Ren as A.
     apply @rename_props in A;
       [|eapply map.empty_injective|eapply dom_bound_empty].
-    specialize (Rrr eq_refl).
-    simp. try rewrite Arrrll in *.
+    specialize (Rp1 eq_refl).
+    simp.
     apply_in_hyps @invert_NoDup_app. simp.
     eapply exec.weaken.
     - eapply rename_correct.
       1: eassumption.
       1: eassumption.
       3: {
-        eapply Arrl. eapply extends_refl.
+        eapply Ap2. eapply extends_refl.
       }
       1: eassumption.
       1: eassumption.
-      unfold states_compat. intros *. intro A.
-      erewrite map.get_empty in A. discriminate.
+      unfold states_compat. intros *. intro B.
+      erewrite map.get_empty in B. discriminate.
     - simpl. intros. simp.
       eexists; split; [|eassumption].
       simpl.

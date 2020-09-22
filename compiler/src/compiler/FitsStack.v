@@ -205,7 +205,7 @@ Section FitsStack.
             end.
             2: reflexivity.
             exfalso.
-            eapply H3r. 2: exact E.
+            eapply H3p1. 2: exact E.
             rewrite map.get_put_same. reflexivity.
         }
         simpl in Q,E1. rewrite Q in E1. symmetry in E1. simp.
