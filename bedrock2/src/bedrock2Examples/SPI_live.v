@@ -1,5 +1,7 @@
-Require Import bedrock2.Syntax bedrock2.BasicCSyntax.
-Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+(* Note: don't import bedrock2.NotationsCustomEntry as long as
+   https://github.com/mit-plv/bedrock2/issues/165 and https://github.com/coq/coq/issues/9633
+   are not resolved *)
+Require Import bedrock2.Syntax coqutil.Z.HexNotation.
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Byte.
 Require Import coqutil.Tactics.Tactics.
@@ -19,13 +21,10 @@ Local Notation patience := lightbulb_spec.patience.
 Require Import coqutil.dlet.
 
 (*
-
 Definition spi_write : function :=
-  let b : String.string := "b" in
-  let busy : String.string := "busy" in
-  let i : String.string := "i" in
+  let b := "b" in let busy := "busy" in let i := "i" in
   let SPI_WRITE_ADDR := Ox"10024048" in
-  ("spi_write", ((b::nil), (busy::nil), bedrock_func_body:(
+  ("spi_write", ([b], [busy], bedrock_func_body:(
     busy = (constr:(-1));
     i = (patience); while (i) { i = (i - constr:(1));
       io! busy = MMIOREAD(SPI_WRITE_ADDR);
@@ -40,9 +39,7 @@ Definition spi_write : function :=
   ))).
 
 Definition spi_read : function :=
-  let b : String.string := "b" in
-  let busy : String.string := "busy" in
-  let i : String.string := "i" in
+  let b := "b" in  let busy := "busy" in  let i := "i" in
   let SPI_READ_ADDR := Ox"1002404c" in
   ("spi_read", (nil, (b::busy::nil), bedrock_func_body:(
     busy = (constr:(-1));
@@ -58,8 +55,7 @@ Definition spi_read : function :=
   ))).
 
 Definition spi_xchg : function :=
-  let b : String.string := "b" in
-  let busy : String.string := "busy" in
+  let b := "b" in  let busy := "busy" in
   ("spi_xchg", (b::nil, b::busy::nil, bedrock_func_body:(
     unpack! busy = spi_write(b);
     require !busy;
@@ -527,8 +523,7 @@ Section WithParameters.
         rewrite Z.mod_small; Lia.blia.
       }
       { (* CASE b1 = 0: exit loop *)
-
-    (*$*) eapply If with (c := bedrock_expr:(busy >> constr:(31))); intros.
+    (*$*) eapply If with (c := expr.op bopname.sru busy (expr.literal 31)); intros.
 
     {
       (* TODO why doesn't straightline work here? *)
@@ -660,31 +655,13 @@ Section WithParameters.
     }
   Defined.
 
-  Eval unfold spi_write in match spi_write with
-                  | (fname, existT _ (argnames, retnames, body) _) => body
-                  end.
-(*
-     = bedrock_func_body:((busy = (constr:(-1)));
-                          (i = (constr:(patience)));
-                          (constr:(cmd.dowhile
-                                     bedrock_func_body:((i = (i - constr:(1)));
-                                                        (io! constr:([];+busy) = MMIOREAD
-                                                         (constr:(expr.literal SPI_WRITE_ADDR)));
-                                                        (if !busy >> constr:(31) {
-                                                           (i = (i ^ i));
-                                                           /*skip*/
-                                                         });
-                                                        /*skip*/) i));
-                          (if !busy >> constr:(31) {
-                             (io! constr:([]) = MMIOWRITE (constr:(expr.literal SPI_WRITE_ADDR),
-                              constr:(expr.var b)));
-                             (busy = (busy ^ busy));
-                             /*skip*/
-                           });
-                          /*skip*/)
-     : cmd
-*)
+  Goal False.
+    let r := eval unfold spi_write in match spi_write with
+                                      | (fname, existT _ (argnames, retnames, body) _) => body
+                                      end
+      in pose r.
+  Abort.
 
-  Print Assumptions spi_write. (* all the used program logic rules, cmd.dowhile, but no other TODOs *)
+  (* Print Assumptions spi_write. all the used program logic rules, cmd.dowhile, but no other TODOs *)
 
 End WithParameters.
