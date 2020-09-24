@@ -1,4 +1,5 @@
-Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+Require Import bedrock2.Syntax bedrock2.BasicCSyntax.
+Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Byte.
 
@@ -14,10 +15,14 @@ Local Notation MMIOREAD := "MMIOREAD".
 Require bedrock2Examples.lightbulb_spec.
 Local Notation patience := lightbulb_spec.patience.
 
+(*
+
 Definition spi_write : function :=
-  let b := "b" in let busy := "busy" in let i := "i" in 
+  let b : String.string := "b" in
+  let busy : String.string := "busy" in
+  let i : String.string := "i" in
   let SPI_WRITE_ADDR := Ox"10024048" in
-  ("spi_write", ([b], [busy], bedrock_func_body:(
+  ("spi_write", ((b::nil), (busy::nil), bedrock_func_body:(
     busy = (constr:(-1));
     i = (patience); while (i) { i = (i - constr:(1));
       io! busy = MMIOREAD(SPI_WRITE_ADDR);
@@ -32,7 +37,9 @@ Definition spi_write : function :=
   ))).
 
 Definition spi_read : function :=
-  let b := "b" in  let busy := "busy" in  let i := "i" in
+  let b : String.string := "b" in
+  let busy : String.string := "busy" in
+  let i : String.string := "i" in
   let SPI_READ_ADDR := Ox"1002404c" in
   ("spi_read", (nil, (b::busy::nil), bedrock_func_body:(
     busy = (constr:(-1));
@@ -48,12 +55,14 @@ Definition spi_read : function :=
   ))).
 
 Definition spi_xchg : function :=
-  let b := "b" in  let busy := "busy" in
+  let b : String.string := "b" in
+  let busy : String.string := "busy" in
   ("spi_xchg", (b::nil, b::busy::nil, bedrock_func_body:(
     unpack! busy = spi_write(b);
     require !busy;
     unpack! b, busy = spi_read()
   ))).
+*)
 
 Require Import bedrock2.ProgramLogic.
 Require Import bedrock2.FE310CSemantics.
@@ -63,6 +72,9 @@ Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 
 Import coqutil.Map.Interface.
 Import ReversedListNotations.
+
+Import coqutil.Tactics.letexists.
+Import TailRecursion.
 
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
@@ -74,6 +86,291 @@ Section WithParameters.
       (exists a v, h = ("st", a, v) /\ l = (map.empty, "MMIOWRITE", [a; v], (map.empty, [])))
       (exists a v, h = ("ld", a, v) /\ l = (map.empty, "MMIOREAD", [a], (map.empty, [v]))).
   Definition mmio_trace_abstraction_relation := List.Forall2 mmio_event_abstraction_relation.
+
+  Ltac provide_next s :=
+    match goal with
+    | |- WeakestPrecondition.cmd _ ?c _ _ _ _ =>
+      let n := open_constr:(cmd.seq s _) in unify c n
+    end.
+
+  Tactic Notation "$" open_constr(s) :=
+    provide_next s; repeat straightline.
+
+  Tactic Notation "$" "}" "else" "{" :=
+    (* TODO could/should check that we're actually inside an if *)
+    match goal with
+    | |- WeakestPrecondition.cmd _ ?c _ _ _ _ => unify c cmd.skip
+    end; solve [repeat straightline].
+
+  Tactic Notation "$" "}" :=
+    match goal with
+    | |- WeakestPrecondition.cmd _ ?c _ _ _ _ => unify c cmd.skip
+    end.
+
+  (* TODO how can we prevent straightline from deleting them if they're not yet used Lets? *)
+  Definition b : String.string := "b".
+  Definition busy : String.string := "busy".
+  Definition i : String.string := "i".
+  Definition SPI_WRITE_ADDR := Ox"10024048".
+
+  Definition spi_write: (string * (list string * list string * {c: cmd &
+    forall functions t m b,
+      word.unsigned b < 2 ^ 8 ->
+      WeakestPrecondition.call
+        (("spi_write", (["b"], ["err"], c)) :: functions) "spi_write" t m [b] (fun T M RETS =>
+        M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\
+                                                          exists err, RETS = [err] /\ Logic.or
+       (((word.unsigned err <> 0) /\ lightbulb_spec.spi_write_full _ ^* ioh /\ Z.of_nat (length ioh) = patience))
+       (word.unsigned err = 0 /\ lightbulb_spec.spi_write parameters.word (byte.of_Z (word.unsigned b)) ioh))}
+    ))%type.
+    let c := open_constr:(_:cmd) in
+    refine ("spi_write", (["b"], ["err"], existT _ c _)).
+    intros.
+    cbn [WeakestPrecondition.call]. cbv [WeakestPrecondition.call_body].
+    cbn.
+    eexists. refine (conj eq_refl _).
+
+    $ (cmd.set busy (-1)).
+    $ (cmd.set i patience).
+    $ (cmd.while "i" _).
+
+    refine ((atleastonce [b; busy; i] (fun v T M B BUSY I =>
+       b0 = B /\
+       v = word.unsigned I /\
+       word.unsigned I <> 0 /\
+       M = m /\
+       exists tl, T = tl++t /\
+       exists th, mmio_trace_abstraction_relation th tl /\
+       lightbulb_spec.spi_write_full _ ^* th /\
+       Z.of_nat (length th) + word.unsigned I = patience
+       )) _ _ _ _ _ _ _);
+      cbn [reconstruct map.putmany_of_list HList.tuple.to_list
+           HList.hlist.foralls HList.tuple.foralls
+           HList.hlist.existss HList.tuple.existss
+           HList.hlist.apply  HList.tuple.apply
+           HList.hlist
+           List.repeat Datatypes.length
+           HList.polymorphic_list.repeat HList.polymorphic_list.length
+           PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
+    { repeat straightline. (* not actually for straightline code, but for sideconditions *) }
+    { eapply (Z.lt_wf 0). }
+    { (* loop condition non-zero when entering *)
+      eexists; split; repeat straightline.
+      unfold patience in *. subst v0.
+      rewrite word.unsigned_of_Z in H0. cbv in H0. discriminate H0. }
+    { (* invariant holds initially *)
+      repeat (split; trivial; []).
+      subst v0. rewrite word.unsigned_of_Z.
+      split.
+      { discriminate. }
+      split; trivial.
+      eexists; split.
+      { rewrite app_nil_l; trivial. }
+      eexists; split.
+      { constructor. }
+      split.
+      { constructor. }
+      exact eq_refl. }
+
+    repeat straightline.
+
+    (* loop body: *)
+    $ (cmd.set i (expr.op bopname.sub i 1)).
+    $ (cmd.interact [busy] MMIOREAD [expr.literal SPI_WRITE_ADDR]).
+
+    eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
+    letexists; split; [exact eq_refl|]; split; [split; trivial|].
+    {
+      cbv [isMMIOAddr addr].
+      rewrite ?word.unsigned_of_Z.
+      cbv -[Z.lt Z.gt Z.ge Z.le]; clear.
+      Lia.lia. }
+    repeat straightline. split; trivial.
+    letexists. split.
+    { repeat straightline. exact eq_refl. }
+
+
+    (* need helper lemma to join the two if branches, so that we can continue with
+       the commands after the if in just one goal
+
+WeakestPrecondition.cmd currently:
+
+vcgen (if (e) {c1} else {c2}) t m l P :=
+  exists v, vcexpr m l e v /\
+            (v <> 0 -> vcgen c1 t m l P) /\
+            (v = 0 -> vcgen c2 t m l P)
+
+
+vcexpr m l e v
+v <> 0 -> vcgen c1 t m l Q1
+v  = 0 -> vcgen c2 t m l Q2
+forall t' m' l', Q1 t' m' l' \/ Q2 t' m' l' -> vcgen rest t' m' l' P
+--------------------------------------------------------------------
+vcgen ((if (e) {c1} else {c2}); rest) t m l P
+
+
+*)
+
+    $ (cmd.cond (expr.op bopname.sru busy 31) _ _).
+
+    (* evaluate condition then split if *) letexists; split; [solve[repeat straightline]|split].
+    all: repeat straightline. {
+
+      $ }.
+    repeat straightline.
+
+      $ cmd.skip.
+
+eexists; split.
+      { repeat (split; trivial; []). subst t0.
+        eexists (_ ;++ cons _ nil); split; [exact eq_refl|].
+        eexists; split.
+        { refine (List.Forall2_app _ _); try eassumption.
+          econstructor; [|constructor].
+          right; eexists _, _; repeat split. }
+        split.
+        { eapply kleene_app; eauto.
+          refine (kleene_step _ _ nil _ (kleene_empty _)).
+          repeat econstructor.
+          repeat match goal with x:=_|-_=>subst x end.
+          rewrite Properties.word.unsigned_sru_nowrap in H by (rewrite word.unsigned_of_Z; exact eq_refl).
+          rewrite word.unsigned_of_Z in H; eapply H. }
+        { rewrite app_length, Znat.Nat2Z.inj_add; cbn [app Datatypes.length]; subst i.
+          unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
+          rewrite word.unsigned_sub; cbv [word.wrap]; rewrite Z.mod_small; rewrite Properties.word.unsigned_of_Z_1.
+          2: { pose proof Properties.word.unsigned_range x1.
+               change Semantics.width with 32 in *. Lia.lia. }
+          ring. } }
+        { split; try eapply Properties.word.decrement_nonzero_lt;
+          try eapply Properties.word.unsigned_range; eauto. } }
+    { letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
+      split; eauto.
+      subst t0.
+      eexists (_ ;++ cons _ nil); split.
+      { rewrite <-app_assoc; cbn [app]; f_equal. }
+      eexists. split.
+      { eapply Forall2_app; eauto.
+        constructor; [|constructor].
+        right; eauto. }
+      eexists. split; trivial.
+      { left; repeat split; eauto using nonzero_because_high_bit_set.
+        { (* copied from above -- trace element for "fifo full" *)
+          eapply kleene_app; eauto.
+          refine (kleene_step _ _ nil _ (kleene_empty _)).
+          repeat econstructor.
+          repeat match goal with x:=_|-_=>subst x end.
+          rewrite Properties.word.unsigned_sru_nowrap in H by (rewrite word.unsigned_of_Z; exact eq_refl).
+          rewrite word.unsigned_of_Z in H; eapply H. }
+        { rewrite app_length, Znat.Nat2Z.inj_add; cbn [app Datatypes.length]; subst i.
+          unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
+          replace 0 with (word.unsigned (word.of_Z 0)) in H0; cycle 1.
+          { rewrite word.unsigned_of_Z; exact eq_refl. }
+          eapply Properties.word.unsigned_inj in H0.
+          assert (HA: word.add (word.sub x1 (word.of_Z 1)) (word.of_Z 1) = word.of_Z 1). {
+            match goal with H : _ |- _ => rewrite H; ring end. }
+          ring_simplify in HA; subst.
+          ring_simplify.
+          rewrite word.unsigned_of_Z; reflexivity. } } }
+    { subst i.
+      rewrite Properties.word.unsigned_xor_nowrap in *; rewrite Z.lxor_nilpotent in *; contradiction. }
+    (* evaluate condition then split if *) letexists; split; [solve[repeat straightline]|split].
+    1:contradiction.
+    repeat straightline.
+    eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
+    letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
+    { subst addr0. cbv [isMMIOAddr].
+      rewrite !word.unsigned_of_Z; cbv [word.wrap].
+      split; [|exact eq_refl]; clear.
+      cbv -[Z.le Z.lt]. Lia.lia. }
+    repeat straightline. split; trivial.
+    repeat straightline.
+    split; trivial. subst t0.
+    eexists (_ ;++ cons _ (cons _ nil)). split.
+    { rewrite <-app_assoc. cbn [app]. f_equal. }
+    eexists. split.
+    { eapply List.Forall2_app; eauto.
+      { constructor.
+        { left. eexists _, _; repeat split. }
+        { right; [|constructor].
+          right; eexists _, _; repeat split. } } }
+    eexists; split; trivial.
+    right.
+    subst busy.
+    split.
+    { f_equal. rewrite Properties.word.unsigned_xor_nowrap; rewrite Z.lxor_nilpotent; reflexivity. }
+    cbv [lightbulb_spec.spi_write].
+    eexists _, _; split; eauto; []; split; eauto.
+    eexists (cons _ nil), (cons _ nil); split; cbn [app]; eauto.
+    split; repeat econstructor.
+    { repeat match goal with x:=_|-_=>subst x end.
+      rewrite Properties.word.unsigned_sru_nowrap in H by (rewrite word.unsigned_of_Z; exact eq_refl).
+      rewrite word.unsigned_of_Z in H; eapply H. }
+    { cbv [lightbulb_spec.spi_write_enqueue one].
+      repeat f_equal.
+      eapply Properties.word.unsigned_inj.
+      clear -p Hb.
+      pose proof Properties.word.unsigned_range x.
+      change (Semantics.width) with 32 in *.
+      change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
+      rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small by Lia.lia.
+      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small; Lia.lia. }
+
+
+
+Definition spi_write : function :=
+  let b : String.string := "b" in
+  let busy : String.string := "busy" in
+  let i : String.string := "i" in
+  let SPI_WRITE_ADDR := Ox"10024048" in
+  ("spi_write", ((b::nil), (busy::nil), bedrock_func_body:(
+    busy = (constr:(-1));
+    i = (patience); while (i) { i = (i - constr:(1));
+      io! busy = MMIOREAD(SPI_WRITE_ADDR);
+      if !(busy >> constr:(31)) {
+        i = (i^i)
+      }
+    };
+    if !(busy >> constr:(31)) {
+      output! MMIOWRITE(SPI_WRITE_ADDR, b);
+      busy = (busy ^ busy)
+    }
+  ))).
+
+
+straightline.
+
+    simpl ("spi_write" =? "spi_write"). cbn.
+
+straightline.
+
+    cbn.
+
+Definition spi_write: function (b) => (err)
+  requires 0 <= b < 256
+  ensures (err = 0 -> foo) /\ err <> 0 -> whatever).
+$ busy = -1.
+$ i = patience.
+$ while (i)
+  inv (fun state => my_invariant state) {.
+$   i = i - 1.
+$   busy = call MMIOREAD(SPI_WRITE_ADDR).
+$   if (!busy >> 31) {.
+$     i = 0.
+$   }.
+
+
+    i = (patience); while (i) { i = (i - constr:(1));
+      io! busy = MMIOREAD(SPI_WRITE_ADDR);
+      if !(busy >> constr:(31)) {
+        i = (i^i)
+      }
+    };
+    if !(busy >> constr:(31)) {
+      output! MMIOWRITE(SPI_WRITE_ADDR, b);
+      busy = (busy ^ busy)
+    }
+  ))).
+
 
   Global Instance spec_of_spi_write : spec_of "spi_write" := fun functions => forall t m b,
     word.unsigned b < 2 ^ 8 ->
@@ -113,7 +410,10 @@ Section WithParameters.
 
     (* WHY do theese parentheses matter? *)
     refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
-       b = B /\ v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
+       b = B /\
+       v = word.unsigned I /\
+       word.unsigned I <> 0 /\
+       M = m /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
        lightbulb_spec.spi_write_full _ ^* th /\
@@ -155,14 +455,8 @@ Section WithParameters.
     letexists. split.
     { repeat straightline. exact eq_refl. }
     (* evaluate condition then split if *) letexists; split; [solve[repeat straightline]|split].
-    all: intros.
-    { (* CASE if-condition was true (word.unsigned v0 <> 0), i.e. NOP, loop exit depends on whether timeout *)
-    repeat straightline. (* <-- does split on a postcondition of the form
-                        (word.unsigned br <> 0 -> loop invariant still holds) /\
-                        (word.unsigned br =  0 -> code after loop is fine)
-                        which corresponds to case distinction over whether loop was exited *)
-    { (* SUBCASE loop condition was true (do loop again) *)
-      eexists; split.
+    all: repeat straightline.
+    { eexists; split.
       { repeat (split; trivial; []). subst t0.
         eexists (_ ;++ cons _ nil); split; [exact eq_refl|].
         eexists; split.
@@ -184,8 +478,7 @@ Section WithParameters.
           ring. } }
         { split; try eapply Properties.word.decrement_nonzero_lt;
           try eapply Properties.word.unsigned_range; eauto. } }
-    { (* SUBCASE loop condition was false (exit loop because of timeout *)
-      letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
+    { letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
       split; eauto.
       subst t0.
       eexists (_ ;++ cons _ nil); split.
@@ -213,9 +506,6 @@ Section WithParameters.
           ring_simplify in HA; subst.
           ring_simplify.
           rewrite word.unsigned_of_Z; reflexivity. } } }
-    }
-    (* CASE if-condition was false (word.unsigned v0 = 0), i.e. we'll set i=i^i and exit loop *)
-    repeat straightline.
     { subst i.
       rewrite Properties.word.unsigned_xor_nowrap in *; rewrite Z.lxor_nilpotent in *; contradiction. }
     (* evaluate condition then split if *) letexists; split; [solve[repeat straightline]|split].
@@ -273,7 +563,9 @@ Section WithParameters.
   Lemma spi_read_ok : program_logic_goal_for_function! spi_read.
     repeat straightline.
     refine ((atleastonce ["b"; "busy"; "i"] (fun v T M B BUSY I =>
-       v = word.unsigned I /\ word.unsigned I <> 0 /\ M = m /\
+       v = word.unsigned I /\
+       word.unsigned I <> 0 /\
+       M = m /\
        B = word.of_Z (byte.unsigned (byte.of_Z (word.unsigned B))) /\
        exists tl, T = tl++t /\
        exists th, mmio_trace_abstraction_relation th tl /\
@@ -401,7 +693,6 @@ Section WithParameters.
         { econstructor; try eassumption; right; eauto. }
         eexists (byte.of_Z (word.unsigned b)), _; split.
         { subst b; f_equal.
-          (* tag:bitwise *)
           (* automatable: multi-word bitwise *)
           change (255) with (Z.ones 8).
           pose proof Properties.word.unsigned_range v0.
@@ -417,14 +708,12 @@ Section WithParameters.
           change Semantics.width with 32.
           change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
           clear. Z.div_mod_to_equations. Lia.lia. }
-        (* tag:symex *)
         { right; split.
           { subst busy. rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent; exact eq_refl. }
           eexists x3, (cons _ nil); split; cbn [app]; eauto.
           split; eauto.
           eexists; split; cbv [one]; trivial.
           split.
-          (* tag:bitwise *)
           { subst v0. rewrite Properties.word.unsigned_sru_nowrap in H
              by (rewrite word.unsigned_of_Z; exact eq_refl);
              rewrite word.unsigned_of_Z in H; exact H. }
@@ -479,8 +768,8 @@ Section WithParameters.
       repeat (
       cbv [word.wrap byte.wrap];
       rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by Lia.lia;
-      change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8));
-      rewrite ?Z.mod_small; rewrite ?Z.mod_small; trivial; Lia.lia. }
+      change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
+      rewrite Z.mod_small; rewrite Z.mod_small; trivial; Lia.lia. }
       left; split; eauto.
       eexists nil, x0; repeat split; cbv [any choice lightbulb_spec.spi_timeout]; eauto.
       rewrite app_nil_r; trivial. }

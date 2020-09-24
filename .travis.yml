@@ -6,6 +6,7 @@ dist: trusty
 branches:
   except:
   - tested
+  - live_verification
 
 matrix:
   fast_finish: true
