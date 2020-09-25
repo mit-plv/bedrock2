@@ -32,6 +32,8 @@ Module map. Section __.
     rewrite ?map.get_put_dec.
     destr (key_eqb k2 k); destr (key_eqb k1 k); congruence.
   Qed.
+
+  Definition singleton(k: key)(v: value): map := map.put map.empty k v.
 End __. End map.
 
 (* maybe-map *)
@@ -243,6 +245,8 @@ Section SepLog.
     Proof.
     Admitted.
   End cancel_lemmas.
+
+  Definition one_byte(addr: word)(b: byte): option mem := Some (map.singleton addr b).
 
   Definition bytes(addr: word){n: nat}(bs: tuple byte n): option mem :=
     Some (map.of_tuple (Memory.footprint addr n) bs).
