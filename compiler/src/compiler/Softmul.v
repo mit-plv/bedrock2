@@ -25,6 +25,8 @@ Require Import riscv.Platform.MinimalCSRs.
 Require Import riscv.Examples.SoftmulInsts.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 
+Axiom TODO: False.
+
 Module map. Section __.
   Context {key value} {map : map.map key value} {ok: map.ok map}.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
@@ -338,10 +340,19 @@ Section Riscv.
   Definition program(addr: word)(prog: list Instruction): option mem :=
     array instr (word.of_Z 4) addr prog.
 
-  Lemma invert_fetch: forall initial post k,
+  Lemma invert_fetch1: forall initial post k,
       mcomp_sat (pc <- Machine.getPC; i <- Machine.loadWord Fetch pc; k i) initial post ->
       exists w R, R \*/ bytes initial#"pc" w = Some initial#"mem" /\
                   mcomp_sat (k w) initial post.
+  Proof.
+    intros. apply invert_fetch0 in H. simp.
+  Admitted.
+
+  Lemma invert_fetch: forall initial post iset,
+      mcomp_sat (run1 iset) initial post ->
+      exists R i, R \*/ instr initial#"pc" i = Some initial#"mem" /\
+                  verify i iset /\
+                  mcomp_sat (Execute.execute i;; endCycleNormal) initial post.
   Proof.
     intros. apply invert_fetch0 in H. simp.
   Admitted.
@@ -355,13 +366,50 @@ Section Riscv.
     unfold load. simpl in *. rewrite H. assumption.
   Qed.
 
-  Lemma build_fetch: forall (initial: State) post k w R,
+  Lemma build_fetch1: forall (initial: State) post k w R,
       mcomp_sat (k w) initial post ->
       R \*/ bytes initial#"pc" w = Some initial#"mem" ->
       mcomp_sat (pc <- Machine.getPC; i <- Machine.loadWord Fetch pc; k i) initial post.
   Proof.
     intros. eapply build_fetch0. 2: eassumption.
   Admitted.
+
+  Definition store'(n: nat)(ctxid: SourceType)(a: word)(v: tuple byte n)(mach: State)(post: State -> Prop) :=
+    exists (R: option mem) (v_old: tuple byte n),
+      R \*/ bytes a v_old = Some mach#"mem" /\ post mach(#"mem" := mmap.force (R \*/ bytes a v)).
+
+  Definition store_orig(n: nat)(ctxid: SourceType)(a: word) v (mach: State)(post: State -> Prop) :=
+    match Memory.store_bytes n mach#"mem" a v with
+    | Some m => post mach(#"mem" := m)
+    | None => False
+    end.
+
+  Definition load'(n: nat)(ctxid: SourceType)(a: word)(mach: State)(post: tuple byte n -> State -> Prop): Prop :=
+    exists (R: option mem) (v: tuple byte n), R \*/ bytes a v = Some mach#"mem" /\ post v mach.
+
+  Definition load_orig(n: nat)(ctxid: SourceType)(a: word)(mach: State)(post: tuple byte n -> State -> Prop) :=
+    match Memory.load_bytes n mach#"mem" a with
+    | Some v => post v mach
+    | None => False
+    end.
+
+  Lemma build_fetch: forall (initial: State) iset post (i: Instruction) (R: option mem),
+      verify i iset ->
+      R \*/ (instr initial#"pc" i) = Some initial#"mem" ->
+      mcomp_sat (Execute.execute i;; endCycleNormal) initial post ->
+      mcomp_sat (run1 iset) initial post.
+  Proof.
+    intros. unfold run1, mcomp_sat in *. cbn -[HList.tuple load_bytes].
+    assert (load = load') as E by case TODO. rewrite E; clear E.
+    unfold load'. do 2 eexists. split; try eassumption.
+    replace (decode iset
+             (LittleEndian.combine 4
+                (LittleEndian.split (Memory.bytes_per access_size.four) (word.unsigned (word.of_Z (encode i))))))
+      with i. 2: {
+      case TODO. (* decode_encode and split_combine *)
+    }
+    eassumption.
+  Qed.
 
   Lemma decode_verify_iset: forall iset i, verify_iset (decode iset i) iset.
   Proof.
@@ -490,7 +538,12 @@ Section Riscv.
     eassumption.
   Qed.
 
-  Axiom TODO: False.
+(*
+  Lemma go_exception: forall iset initial post R,
+      R \*/
+      runsTo (mcomp_sat (run1 iset)) initial(#"pc" := ini post.
+      runsTo (mcomp_sat (run1 iset)) initial post.
+*)
 
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 RV32IM)) initialH post ->
@@ -507,27 +560,30 @@ Section Riscv.
     eapply invert_fetch in H. simp.
     rename initial into initialH.
     rewrite <- Hp0 in H2p5p3.
-    pose proof (decode_verify_iset RV32IM (LittleEndian.combine 4 w)) as V.
-    destruct (decode RV32IM (LittleEndian.combine 4 w)) as
-        [inst|inst|inst|inst|inst|inst|inst|inst|inst|inst] eqn: E;
-      cbn in V; try (intuition congruence); clear V.
+    pose proof (proj2 Hp1) as V.
+    destruct i as [inst|inst|inst|inst|inst|inst|inst|inst|inst|inst] eqn: E;
+      cbn in V; try (intuition congruence).
     - (* IInstruction *)
+      subst.
       eapply runsToStep with (midset0 := fun midL => exists midH, related midH midL /\ midset midH).
-      + eapply build_fetch with (w := w). 2: {
+      + eapply build_fetch with (i := (IInstruction inst)).
+        { replace RV32I with RV32IM by case TODO. assumption. }
+        {
           etransitivity. 2: exact H2p5p3.
           reify_goal.
           cancel_at 1%nat 1%nat. 1: congruence.
           cbn [mmap.dus].
           reflexivity.
         }
-        apply decode_I_to_IM in E. rewrite E.
         eapply mcomp_sat_preserves_related; eassumption.
       + intros midL. intros. simp. eapply H1; eassumption.
     - (* MInstruction *)
       destruct inst.
       + (* Mul *)
-        cbn in Hp1.
+        cbn in Hp2.
+
         case TODO.
+
       + (* Mulh *)
         case TODO.
       + (* Mulhsu *)
@@ -545,16 +601,17 @@ Section Riscv.
       + (* InvalidM *)
         case TODO.
     - (* CSRInstruction *)
+      subst.
       eapply runsToStep with (midset0 := fun midL => exists midH, related midH midL /\ midset midH).
-      + eapply build_fetch with (w := w). 2: {
+      + eapply build_fetch with (i := (CSRInstruction inst)).
+        { replace RV32I with RV32IM by case TODO. assumption. }
+        {
           etransitivity. 2: exact H2p5p3.
           reify_goal.
           cancel_at 1%nat 1%nat. 1: congruence.
           cbn [mmap.dus].
           reflexivity.
         }
-        apply decode_CSR_to_IM in E. rewrite E.
-        (* lower Hr *)
         eapply mcomp_sat_preserves_related; eassumption.
       + intros midL. intros. simp. eapply H1; eassumption.
   Qed.
