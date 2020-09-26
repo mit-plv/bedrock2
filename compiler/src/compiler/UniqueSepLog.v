@@ -1,9 +1,102 @@
 (* "Unique Separation Logic":
    If all separation logic predicates are either False or only acccept one unique
    heaplet, we can use `option mem` to represent them rather than `mem -> Prop`.
-   The advantage of this representation is that it's easier to go from a separation
-   logic predicate P to a memory: Instead of `forall m: mem, P m -> ... m ...`,
-   which requires quantification, we can just say `defined P /\ ... force P ...` *)
+
+   Comparison table:
+
+   Type of sep log predicates    mem -> Prop                 option mem
+
+   Star operator                 (P * Q) m = exists mp mq,   P \*/ Q = if both non-None,
+                                 split m mp mq /\            put all entries of Q into
+                                 P mp /\ Q mq                P, None if key clash
+
+   pure facts P                  lift1 P := fun _ => P       not supported
+
+   existentials                  exists1 P :=                not supported, need to quantify
+                                   fun m => exists a, P m    outside of sep log formula
+
+   P holds for m                 P m                         P = Some m
+
+   going from a sep log          forall m: mem, P m ->       defined P /\
+   predicate P to a memory       ... m ...                   ... force P ...
+
+   target language memory mL     H1: (P * Q) mH              H1: P \*/ Q = Some mH
+   extending source language     H2: (R * eq mH) mL          H2: R \*/ Some mH = Some mL
+   memory mH
+
+   inlining source language     sep_inline_eq:               rewrite <- H1 in H2
+   memory assertion into        (exists mH, A mH /\
+   target language assertion                (R * eq mH) mL)
+                                <-> (R * A) mL
+
+More notes:
+
+related sH sL = ... /\ (eq sH#mem * L) sL#mem
+
+                ... /\ Some sH#mem \*/ L = Some sL#mem
+
+
+what if the source-level used a predicate `M mH`?
+H1: M mH
+H2: (M * R) mL
+H3: iff1 M (P * Q)
+rewrite H3 in H2
+
+What if I have a separation logic predicate about source memory and a source execution that
+I invert and need to match this inversion to the separation logic predicate?
+From predicate: (R1 * a ~> v_old) m
+From inversion: (R2 * a ~> v_old') m
+With `mem -> Prop`, we can't conclude anything like R1=R2, but with `option mem`, we can.
+But does this case ever occur?
+
+
+Memory.store m a v_new = Some m' ->
+(exists (R: mem -> Prop) v_old, (R * a ~> v_old) m /\ (R * a ~> v_new) m')
+But the other direction does not hold, R could be (fun _ => True)
+
+We could use both kinds of separation logic in the semantics instead of Memory.store/map.put:
+
+  Definition store(n: nat)(ctxid: SourceType)(a: word)(v: tuple byte n)(mach: State)(post: State -> Prop) :=
+    exists (R: option mem) (v_old: tuple byte n),
+      R \*/ bytes a v_old = Some mach#"mem" /\ post mach(#"mem" := mmap.force (R \*/ bytes a v)).
+
+  Definition store(n: nat)(ctxid: SourceType)(a: word)(v: tuple byte n)(mach: State)(post: State -> Prop) :=
+    exists (R: mem -> Prop) (v_old: tuple byte n),
+      (R * bytes a v_old) mach#"mem" /\
+      forall newmem, (R * bytes a v) newmem -> post mach(#"mem" := newmem)
+
+An advantage of unique sep log: If we have two predicates about the same memory, we can invert:
+[But does this advantage ever matter?]
+
+R \*/ P1 = Some m ->
+R \*/ P2 = Some m ->
+P1 = P2
+
+follows from du_inj_r:
+
+R \*/ P1 = R \*/ P2 ->
+R \*/ P1 <> None ->    (*<--needed!*)
+P1 = P2
+
+(R * P1) m /\
+(R * P2) m doesn't imply
+P1 = P2 nor iff1 P1 P2
+
+iff1 P1 P2 ->
+iff1 (R * P1) (R * P2)
+But the opposite direction doesn't hold if R = (fun _ => False),
+or R is not disjoint from P1 and P2
+
+And just requiring that the predicate is not contradictory doesn't suffice:
+iff1 (R * P1) (R * P2) ->
+(exists m, (R * P1) m) ->      (*<--added*)
+iff1 P1 P2                     (*<--might not hold!*)
+Counterexample:
+R = fun _ => True
+P1 = fun m => all keys in m are < 3
+P2 = fun m => all keys in m are < 4
+proving any (R * P1) m is as easy as giving all of m to R and giving map.empty to P1
+*)
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Init.Byte.

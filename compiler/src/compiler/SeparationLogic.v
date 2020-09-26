@@ -322,6 +322,18 @@ Section ptstos.
     simp. repeat eexists; try eassumption.
   Qed.
 
+  Lemma sep_inline_eq: forall (A R: mem -> Prop) m1,
+    (exists m2, (R * eq m2)%sep m1 /\ A m2) <->
+    (R * A)%sep m1.
+  Proof.
+    unfold iff, Separation.sep.
+    repeat match goal with
+           | |- _ => intros || simp || eassumption || reflexivity
+           | |- _ /\ _ => split
+           | |- exists _, _ => eexists
+           end.
+  Qed.
+
 End ptstos.
 
 (* This can be overridden by the user.

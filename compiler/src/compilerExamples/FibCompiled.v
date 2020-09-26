@@ -148,18 +148,6 @@ Section FibCompiled.
     reflexivity.
   Qed.
 
-  Lemma sep_inline_eq: forall (A R: FlatToRiscvCommon.mem -> Prop) m1,
-    (exists m2, (R * eq m2)%sep m1 /\ A m2) <->
-    (R * A)%sep m1.
-  Proof.
-    unfold iff, Separation.sep.
-    repeat match goal with
-           | |- _ => intros || simp || eassumption || reflexivity
-           | |- _ /\ _ => split
-           | |- exists _, _ => eexists
-           end.
-  Qed.
-
   Lemma word_add_of_Z: forall width a b c,
       c < 2 ^ width ->
       0 <= a ->
