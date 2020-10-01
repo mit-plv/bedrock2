@@ -34,4 +34,7 @@ Section with_semantics.
     compile.
   Qed.
 
+  (* Require Import bedrock2.NotationsCustomEntry. *)
+  (* Require Import bedrock2.NotationsInConstr. *)
+  (* Print body. *)
 End with_semantics.
