@@ -2,7 +2,9 @@ Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.IdentParsing.
 
 Notation "'let/d'  x  :=  val  'in'  body" :=
-  (dlet val (fun x => body)) (at level 4).
+  (dlet val (fun x => body))
+    (at level 200, x ident, body at level 200,
+     format "'let/d'  x  :=  val  'in' '//' body").
 
 Definition nlet {A P} (var: string) (val : A) (body : forall a : A, P a) : P val :=
   let x := val in body x.
@@ -28,7 +30,7 @@ Notation
            let x := fst v in
            let y := snd v in
            body))
-    (at level 4, only parsing).
+    (at level 200, only parsing).
 Notation
       "'let/d' '''(' x , y , z ')' := val 'in' body" :=
   (dlet val
@@ -37,7 +39,7 @@ Notation
            let y := snd (fst v) in
            let z := snd v in
            body))
-    (at level 4, only parsing).
+    (at level 200, only parsing).
 
 Infix "~>" := scalar (at level 40, only parsing).
 
