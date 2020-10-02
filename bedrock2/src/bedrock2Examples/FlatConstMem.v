@@ -37,7 +37,7 @@ Section WithParameters.
   Require Import coqutil.Tactics.rdelta.
 
   Ltac ring_simplify_unsigned_goal :=
-    lazymatch goal with
+    match goal with
     |- context [word.unsigned ?x] =>
       let Hrw := fresh in
       eassert (let y := _ in x = y) as Hrw by (
@@ -47,7 +47,7 @@ Section WithParameters.
       rewrite !Hrw; clear Hrw
     end.
   Ltac ring_simplify_unsigned_in H :=
-    lazymatch type of H with context [word.unsigned ?x] =>
+    match type of H with context [word.unsigned ?x] =>
       let Hrw := fresh in
       eassert (let y := _ in x = y) as Hrw by (
         let y := fresh in
@@ -82,7 +82,8 @@ Section WithParameters.
     |- context [?e] =>
         requireZcstExpr e;
         let Hrw := fresh in
-        eassert (e = _) by (vm_compute; reflexivity);
+        time eassert (e = _) by (vm_compute; reflexivity);
+        idtac "simplified" e "in GOAL";
         progress rewrite Hrw; clear Hrw
     end.
 
@@ -91,6 +92,7 @@ Section WithParameters.
         requireZcstExpr e;
         let Hrw := fresh in
         eassert (e = _) by (vm_compute; reflexivity);
+        idtac "simplified" e "in" H;
         progress rewrite Hrw in H; clear Hrw
     end.
 
@@ -235,7 +237,6 @@ Section WithParameters.
     eapply word.unsigned_inj; rewrite word.unsigned_add; cbv [word.wrap]; rewrite word.unsigned_of_Z_0, Z.add_0_r, Z.mod_small; trivial; eapply word.unsigned_range.
   Qed.
     
-  Search fold.
   Import ptsto_bytes Lift1Prop Morphisms.
   Lemma eq_of_list_word_iff_array1 a bs
     (H : length bs <= 2 ^ 32) :
@@ -259,6 +260,16 @@ Section WithParameters.
       cbv [ptsto iff1]; intuition auto. }
   Qed.
 
+  Ltac ring_simplify_address_in H :=
+    match type of H with context [_ $@ ?x] =>
+      let Hrw := fresh in
+      eassert (let y := _ in x = y) as Hrw by (
+        let y := fresh in
+        intros y; ring_simplify;
+        subst y; trivial);
+      rewrite !Hrw in H; clear Hrw
+    end.
+
   Lemma silly1_ok : program_logic_goal_for_function! silly1.
   Proof.
     repeat straightline.
@@ -270,32 +281,27 @@ Section WithParameters.
       assert (word.unsigned (word.sub (word.add a v0) a) <= Z.of_nat 32) by wordcstexpr_tac.
       assert (word.unsigned (word.sub (word.add (word.add a v0) (word.of_Z 4)) a) <= Z.of_nat 32) by wordcstexpr_tac.
 
-      List__splitZ bs 16.
+      Time List__splitZ bs 16.
       seprewrite_in sep_eq_of_list_word_at_app H0;
         try eassumption; try (change_with_Z_literal width; Lia.lia).
 
-      List__splitZ ys 4.
+      Time List__splitZ ys 4.
       seprewrite_in sep_eq_of_list_word_at_app H6;
         try eassumption; try (change_with_Z_literal width; Lia.lia).
-
-      eassert (let rhs := _ in (a+!16+!4)%word = rhs) as Hrw by
-        (intro rhs; ring_simplify; subst rhs; trivial);
-        rewrite Hrw in H8; clear Hrw.
+        
+      ring_simplify_address_in H8.
 
       (* paramrecords... probably resolved by properly generalizing the lemma
       Set Printing Implicit.
       seprewrite_in open_constr:(eq_of_list_word_iff_array1 _ _ _) H8.
       *)
 
-      seprewrite_in list_word_at_app_of_adjacent_eq H8.
-      { ring_simplify_unsigned_goal; rewrite word.unsigned_of_Z; symmetry; eassumption. }
-      { change_with_Z_literal width; Lia.lia. }
+      seprewrite_in_by list_word_at_app_of_adjacent_eq H8 ltac:(
+        rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
 
-      seprewrite_in (list_word_at_app_of_adjacent_eq a) H7.
-      { ring_simplify_unsigned_goal; rewrite word.unsigned_of_Z; symmetry; eassumption. }
-      { rewrite app_length; change_with_Z_literal width; Lia.lia. }
+      seprewrite_in_by (list_word_at_app_of_adjacent_eq a) H7 ltac:(
+        rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
 
-      change (firstn (Z.to_nat 16) bs) with xs in H8.
       rewrite <-H in H8.
 
   Abort.
