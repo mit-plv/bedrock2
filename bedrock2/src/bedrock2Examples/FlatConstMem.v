@@ -272,12 +272,10 @@ Section WithParameters.
 
       List__splitZ bs 16.
       seprewrite_in sep_eq_of_list_word_at_app H0;
-      fold xs ys; repeat match goal with H : _ |- _ => progress fold xs ys in H end; (* seprewrite unification workaround *)
         try eassumption; try (change_with_Z_literal width; Lia.lia).
 
       List__splitZ ys 4.
       seprewrite_in sep_eq_of_list_word_at_app H6;
-       fold xs0 ys0; repeat match goal with H : _ |- _ => progress fold xs0 ys0 in H end; (* seprewrite unification workaround *)
         try eassumption; try (change_with_Z_literal width; Lia.lia).
 
       eassert (let rhs := _ in (a+!16+!4)%word = rhs) as Hrw by
@@ -289,15 +287,13 @@ Section WithParameters.
       seprewrite_in open_constr:(eq_of_list_word_iff_array1 _ _ _) H8.
       *)
 
-      seprewrite_in list_word_at_app_of_adjacent_eq H8;
-       fold xs0 ys0; repeat match goal with H : _ |- _ => progress fold xs0 ys0 in H end. (* seprewrite unification workaround *)
+      seprewrite_in list_word_at_app_of_adjacent_eq H8.
       { ring_simplify_unsigned_goal; rewrite word.unsigned_of_Z; symmetry; eassumption. }
-      { change (length xs0 + length ys0 <= 2 ^ 32); Lia.lia. }
+      { change_with_Z_literal width; Lia.lia. }
 
-      seprewrite_in (list_word_at_app_of_adjacent_eq a) H7;
-       fold xs0 ys0; repeat match goal with H : _ |- _ => progress fold xs0 ys0 in H end. (* seprewrite unification workaround *)
+      seprewrite_in (list_word_at_app_of_adjacent_eq a) H7.
       { ring_simplify_unsigned_goal; rewrite word.unsigned_of_Z; symmetry; eassumption. }
-      { change (length xs + length (xs0 ++ ys0) <= 2 ^ 32); rewrite app_length; Lia.lia. }
+      { rewrite app_length; change_with_Z_literal width; Lia.lia. }
 
       change (firstn (Z.to_nat 16) bs) with xs in H8.
       rewrite <-H in H8.

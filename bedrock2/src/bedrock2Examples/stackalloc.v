@@ -51,7 +51,7 @@ Section WithParameters.
     idtac
     end end end.
 
-    intuition idtac.
+    intuition congruence.
   Qed.
 
   Instance spec_of_stacknondet : spec_of "stacknondet" := fun functions => forall m t,
@@ -79,6 +79,7 @@ Section WithParameters.
     pose proof (eq_refl : R m) as Hm.
     repeat straightline.
     repeat esplit.
+    all : try intuition congruence.
     match goal with |- _ <> _ => idtac end.
   Abort.
 
