@@ -186,9 +186,9 @@ Section WithParameters.
       Local Infix "-" := word.sub : word_scope.
       Local Coercion Z.of_nat : nat >-> Z.
       Local Infix "$+" := putmany (at level 70).
-      Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
+      Local Notation "xs $@ a" := (map.of_list_word_at a%word xs) (at level 10, format "xs $@ a").
       Local Notation "! x" := (word.of_Z x) (at level 10, format "! x").
-      Local Infix "*" := sep : type_scope.
+      Local Notation "a * b" := (sep a%type b%type) : type_scope.
       Local Open Scope word_scope.
 
   Lemma sep_eq_putmany [key value] [map : map.map key value] (a b : map) (H : disjoint a b) : Lift1Prop.iff1 (eq (a $+ b)) (sep (eq a) (eq b)).
@@ -202,11 +202,61 @@ Section WithParameters.
     (a : word) (xs ys : list value)
     lxs (Hlxs : Z.of_nat (length xs) = lxs) (Htotal : length xs + length ys <= 2^width)
     : Lift1Prop.iff1 (eq (map.of_list_word_at a (xs ++ ys)))
-      (sep (eq (map.of_list_word_at (word.add a (word.of_Z lxs)) ys)) (eq (map.of_list_word_at a xs))).
+      (sep (eq (map.of_list_word_at a xs)) (eq (map.of_list_word_at (word.add a (word.of_Z lxs)) ys))).
   Proof.
+    etransitivity.
+    2: eapply sep_comm.
     etransitivity.
     2: eapply sep_eq_putmany, map__adjacent_arrays_disjoint_n; trivial.
     erewrite map__of_list_word_at_app_n by eauto; reflexivity.
+  Qed.
+
+  Lemma list_word_at_app_of_adjacent_eq [value] [map : map.map word value] {ok : map.ok map}
+    (a b : word) (xs ys : list value)
+    (Hl: word.unsigned (word.sub b a) = Z.of_nat (length xs))
+    (Htotal : length xs + length ys <= 2^width)
+    : Lift1Prop.iff1
+        (sep (eq (map.of_list_word_at a xs)) (eq (map.of_list_word_at b ys)) )
+        (eq (map.of_list_word_at a (xs ++ ys))).
+  Proof.
+    etransitivity.
+    2:symmetry; eapply sep_eq_of_list_word_at_app; trivial.
+    do 3 Morphisms.f_equiv. rewrite <-Hl, word.of_Z_unsigned. ring.
+  Qed.
+
+  Lemma of_list_word_nil k : []$@k = empty.
+  Proof. apply Properties.map.fold_empty. Qed.
+  Lemma of_list_word_singleton k v : [v]$@k = put empty k v.
+  Proof.
+    cbv [of_list_word_at of_list_word seq length List.map of_func update].
+    rewrite word.unsigned_of_Z_0, Z2Nat.inj_0; cbv [MapKeys.map.map_keys nth_error].
+    rewrite Properties.map.fold_singleton.
+    f_equal; cbn [Z.of_nat].
+    eapply word.unsigned_inj; rewrite word.unsigned_add; cbv [word.wrap]; rewrite word.unsigned_of_Z_0, Z.add_0_r, Z.mod_small; trivial; eapply word.unsigned_range.
+  Qed.
+    
+  Search fold.
+  Import ptsto_bytes Lift1Prop Morphisms.
+  Lemma eq_of_list_word_iff_array1 a bs
+    (H : length bs <= 2 ^ 32) :
+    iff1 (eq(bs$@a)) (array ptsto (word.of_Z 1) a bs).
+  Proof.
+    revert H; revert a; induction bs; cbn [array]; intros.
+    { rewrite of_list_word_nil; cbv [emp iff1]; intuition auto. }
+    { etransitivity.
+      2: eapply Proper_sep_iff1.
+      3: eapply IHbs.
+      2: reflexivity.
+      2: cbn [length] in H; Lia.lia.
+      change (a::bs) with ([a]++bs).
+      rewrite of_list_word_at_app.
+      etransitivity.
+      1: eapply sep_eq_putmany, adjacent_arrays_disjoint; cbn [length] in *; Lia.lia.
+      etransitivity.
+      2:eapply sep_comm.
+      f_equiv.
+      rewrite of_list_word_singleton.
+      cbv [ptsto iff1]; intuition auto. }
   Qed.
 
   Lemma silly1_ok : program_logic_goal_for_function! silly1.
@@ -226,10 +276,31 @@ Section WithParameters.
         try eassumption; try (change_with_Z_literal width; Lia.lia).
 
       List__splitZ ys 4.
-      seprewrite_in open_constr:(sep_eq_of_list_word_at_app _ _ _ _ _ _) H6;
-        fold xs0 ys0; repeat match goal with H : _ |- _ => progress fold xs0 ys0 in H end; (* seprewrite unification workaround *)
+      seprewrite_in sep_eq_of_list_word_at_app H6;
+       fold xs0 ys0; repeat match goal with H : _ |- _ => progress fold xs0 ys0 in H end; (* seprewrite unification workaround *)
         try eassumption; try (change_with_Z_literal width; Lia.lia).
 
+      eassert (let rhs := _ in (a+!16+!4)%word = rhs) as Hrw by
+        (intro rhs; ring_simplify; subst rhs; trivial);
+        rewrite Hrw in H8; clear Hrw.
+
+      (* paramrecords... probably resolved by properly generalizing the lemma
+      Set Printing Implicit.
+      seprewrite_in open_constr:(eq_of_list_word_iff_array1 _ _ _) H8.
+      *)
+
+      seprewrite_in list_word_at_app_of_adjacent_eq H8;
+       fold xs0 ys0; repeat match goal with H : _ |- _ => progress fold xs0 ys0 in H end. (* seprewrite unification workaround *)
+      { ring_simplify_unsigned_goal; rewrite word.unsigned_of_Z; symmetry; eassumption. }
+      { change (length xs0 + length ys0 <= 2 ^ 32); Lia.lia. }
+
+      seprewrite_in (list_word_at_app_of_adjacent_eq a) H7;
+       fold xs0 ys0; repeat match goal with H : _ |- _ => progress fold xs0 ys0 in H end. (* seprewrite unification workaround *)
+      { ring_simplify_unsigned_goal; rewrite word.unsigned_of_Z; symmetry; eassumption. }
+      { change (length xs + length (xs0 ++ ys0) <= 2 ^ 32); rewrite app_length; Lia.lia. }
+
+      change (firstn (Z.to_nat 16) bs) with xs in H8.
+      rewrite <-H in H8.
 
   Abort.
 End WithParameters.
