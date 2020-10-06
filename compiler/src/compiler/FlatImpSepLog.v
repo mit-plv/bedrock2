@@ -155,6 +155,13 @@ Module exec.
                  (addMetricInstructions 2
                  (addMetricJumps 1 mc''))) post) ->
         exec (SLoop body1 cond body2) t m l mc post
+
+(* Error: Non strictly positive occurrence of "exec"
+    | seq_cps: forall t m l mc s1 s2 post,
+        exec s1 t m l mc (fun t' m' l' mc' => exec s2 t' m' l' mc' post) ->
+        exec (SSeq s1 s2) t m l mc post
+*)
+
     | seq: forall t m l mc s1 s2 mid post,
         exec s1 t m l mc mid ->
         (forall t' m' l' mc', mid t' m' l' mc' -> exec s2 t' m' l' mc' post) ->

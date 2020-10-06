@@ -10,7 +10,7 @@
                                  split m mp mq /\            put all entries of Q into
                                  P mp /\ Q mq                P, None if key clash
 
-   pure facts P                  lift1 P := fun _ => P       not supported
+   pure facts P                  lift1 P := fun _ => P       not supported (unless decidable)
 
    existentials                  exists1 P :=                not supported, need to quantify
                                    fun m => exists a, P m    outside of sep log formula
