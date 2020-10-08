@@ -111,6 +111,14 @@ Section WithParameters.
       rewrite ((@word.unsigned_of_Z w W _ z) : E = z mod 2^w)
     end.
 
+  Ltac rewrite_unsigned_of_Z_in H :=
+    match type of H with context [@word.unsigned ?w ?W ?X] =>
+      let E := constr:(@word.unsigned w W X) in
+      let x := rdelta X in
+      let z := match x with word.of_Z ?z => z end in
+      rewrite ((@word.unsigned_of_Z w W _ z) : E = z mod 2^w) in H
+    end.
+
   Ltac wordcstexpr_tac := (* hacky *)
     repeat first
           [ progress ring_simplify_unsigned
@@ -129,6 +137,15 @@ Section WithParameters.
     split; trivial.
     rewrite length_firstn_inbounds, length_skipn; Lia.lia.
   Qed.
+
+  Ltac lift_head_let_in H :=
+    match type of H with
+    | let x := ?v in ?C =>
+        let X := fresh x in
+        pose v as X;
+        let C := constr:(match X with x => C end) in
+        change C in H
+    end.
 
   Ltac flatten_hyps :=
     repeat match goal with
@@ -167,7 +184,7 @@ Section WithParameters.
                               | _ => constr:(Hrw) end) in *
       end.
 
-  Lemma map__of_list_word_at_app_n  [value] [map : map.map word value] {ok : map.ok map}
+  Lemma map__of_list_word_at_app_n [value] [map : map.map word value] {ok : map.ok map}
     (a : word) (xs ys : list value)
     lxs (Hlxs : Z.of_nat (length xs) = lxs)
     : map.of_list_word_at a (xs ++ ys)
@@ -226,9 +243,13 @@ Section WithParameters.
     do 3 Morphisms.f_equiv. rewrite <-Hl, word.of_Z_unsigned. ring.
   Qed.
 
-  Lemma of_list_word_nil k : []$@k = empty.
+  Lemma of_list_word_nil
+    [value] [map : map.map word value] {ok : map.ok map}
+    k : []$@k = empty.
   Proof. apply Properties.map.fold_empty. Qed.
-  Lemma of_list_word_singleton k v : [v]$@k = put empty k v.
+  Lemma of_list_word_singleton
+    [value] [map : map.map word value] {ok : map.ok map}
+    k v : [v]$@k = put empty k v.
   Proof.
     cbv [of_list_word_at of_list_word seq length List.map of_func update].
     rewrite word.unsigned_of_Z_0, Z2Nat.inj_0; cbv [MapKeys.map.map_keys nth_error].
@@ -238,9 +259,10 @@ Section WithParameters.
   Qed.
     
   Import ptsto_bytes Lift1Prop Morphisms.
-  Lemma eq_of_list_word_iff_array1 a bs
-    (H : length bs <= 2 ^ 32) :
-    iff1 (eq(bs$@a)) (array ptsto (word.of_Z 1) a bs).
+  Lemma eq_of_list_word_iff_array1 [value] [map : map.map word value] {ok : map.ok map}
+    (a : word) (bs : list value)
+    (H : length bs <= 2 ^ width) :
+    iff1 (eq (bs$@a)) (array ptsto (word.of_Z 1) a bs).
   Proof.
     revert H; revert a; induction bs; cbn [array]; intros.
     { rewrite of_list_word_nil; cbv [emp iff1]; intuition auto. }
@@ -256,7 +278,7 @@ Section WithParameters.
       etransitivity.
       2:eapply sep_comm.
       f_equiv.
-      rewrite of_list_word_singleton.
+      rewrite of_list_word_singleton; try exact _.
       cbv [ptsto iff1]; intuition auto. }
   Qed.
 
@@ -269,40 +291,79 @@ Section WithParameters.
         subst y; trivial);
       rewrite !Hrw in H; clear Hrw
     end.
+  Require Import coqutil.Tactics.Tactics.
 
   Lemma silly1_ok : program_logic_goal_for_function! silly1.
   Proof.
     repeat straightline.
-    assert (0 <= 32 < 2^32) by Lia.lia.
 
     letexists. split.
     { repeat straightline.
       eexists; split; trivial.
-      assert (word.unsigned (word.sub (word.add a v0) a) <= Z.of_nat 32) by wordcstexpr_tac.
-      assert (word.unsigned (word.sub (word.add (word.add a v0) (word.of_Z 4)) a) <= Z.of_nat 32) by wordcstexpr_tac.
 
-      Time List__splitZ bs 16.
-      seprewrite_in sep_eq_of_list_word_at_app H0;
-        try eassumption; try (change_with_Z_literal width; Lia.lia).
+      repeat match goal with x := ?v |- _ => assert_fails (is_evar v); subst x end.
 
-      Time List__splitZ ys 4.
-      seprewrite_in sep_eq_of_list_word_at_app H6;
-        try eassumption; try (change_with_Z_literal width; Lia.lia).
-        
-      ring_simplify_address_in H8.
+      let bs := constr:(bs) in
+      let raw_i := constr:(word.unsigned (((a+!16)+!4)-a)%word) in
+      let Hidx := fresh "Hidx" in
+      eassert (raw_i = _) as Hidx by (
+        ring_simplify_unsigned_goal; repeat rewrite_unsigned_of_Z_goal;
+        change_with_Z_literal width; simplify_ZcstExpr; exact eq_refl);
+      let i := match type of Hidx with _ = ?r => r end in
+      let Happ := fresh "Happ" in
+      match goal with H: Z.of_nat (length bs) = _ |- _ =>
+          pose proof List__splitZ_spec_n bs i _ H ltac:(Lia.lia) as Happ;
+          clear H
+      end;
+      repeat lift_head_let_in Happ; case Happ as (Happ&?H1l&?H2l);
+      simplify_ZcstExpr;
+      let eqn := type of Happ in
+      rewr ltac:(fun t => match t with
+                          | eqn => fail 1
+                          | _ => constr:(Happ) end) in *;
+      repeat match goal with Hsep : _ |- _ =>
+        seprewrite_in_by sep_eq_of_list_word_at_app Hsep ltac:(
+          try eassumption; try (change_with_Z_literal width; Lia.lia))
+      end.
 
-      (* paramrecords... probably resolved by properly generalizing the lemma
-      Set Printing Implicit.
-      seprewrite_in open_constr:(eq_of_list_word_iff_array1 _ _ _) H8.
-      *)
+      let bs := constr:(xs) in
+      let raw_i := constr:(word.unsigned (((a+!16))-a)%word) in
+      let Hidx := fresh "Hidx" in
+      eassert (raw_i = _) as Hidx by (
+        ring_simplify_unsigned_goal; repeat rewrite_unsigned_of_Z_goal;
+        change_with_Z_literal width; simplify_ZcstExpr; exact eq_refl);
+      let i := match type of Hidx with _ = ?r => r end in
+      let Happ := fresh "Happ" in
+      match goal with H: Z.of_nat (length bs) = _ |- _ =>
+          pose proof List__splitZ_spec_n bs i _ H ltac:(Lia.lia) as Happ;
+          clear H
+      end;
+      repeat lift_head_let_in Happ; case Happ as (Happ&?H1l&?H2l);
+      simplify_ZcstExpr;
+      let eqn := type of Happ in
+      rewr ltac:(fun t => match t with
+                          | eqn => fail 1
+                          | _ => constr:(Happ) end) in *;
+      repeat match goal with Hsep : _ |- _ =>
+        seprewrite_in_by sep_eq_of_list_word_at_app Hsep ltac:(
+          try eassumption; try (change_with_Z_literal width; Lia.lia))
+      end.
 
-      seprewrite_in_by list_word_at_app_of_adjacent_eq H8 ltac:(
+      (*
+      (* should resolve load here *)
+      seprewrite_in_by (eq_of_list_word_iff_array1 (a+!16)%word) H0 ltac:(
+        change_with_Z_literal width; Lia.lia).
+  *)
+
+      (* should resolve load here *)
+      (* seprewrite_in_by has no reason to rename the hypothesis, right? *)
+      seprewrite_in_by list_word_at_app_of_adjacent_eq H0 ltac:(
         rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
 
-      seprewrite_in_by (list_word_at_app_of_adjacent_eq a) H7 ltac:(
+      seprewrite_in_by (list_word_at_app_of_adjacent_eq a) H1 ltac:(
         rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
 
-      rewrite <-H in H8.
+      rewrite <-Happ in H0.
 
   Abort.
 End WithParameters.
