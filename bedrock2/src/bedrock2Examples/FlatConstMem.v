@@ -350,12 +350,14 @@ Section WithParameters.
       end.
 
       (*
-      (* should resolve load here *)
       seprewrite_in_by (eq_of_list_word_iff_array1 (a+!16)%word) H0 ltac:(
         change_with_Z_literal width; Lia.lia).
-  *)
+      seprewrite_in_by Scalars.scalar32_of_bytes H1 ltac:(Lia.lia).
+      subst v.
+      eapply Scalars.load_four_of_sep.
+      ecancel_assumption.
+      *)
 
-      (* should resolve load here *)
       (* seprewrite_in_by has no reason to rename the hypothesis, right? *)
       seprewrite_in_by list_word_at_app_of_adjacent_eq H0 ltac:(
         rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
