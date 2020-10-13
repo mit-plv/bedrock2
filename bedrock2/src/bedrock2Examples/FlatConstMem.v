@@ -13,7 +13,8 @@ Definition silly1 : func :=
     let c := "c" in
   ("silly1", ([a], [c], bedrock_func_body:(
       b = load4(a + constr:(16));
-      c = load4(a + constr:(14))
+      store4(a + constr:(14), b);
+      c = load4(a + constr:(16))
   ))).
 
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
@@ -82,8 +83,8 @@ Section WithParameters.
     |- context [?e] =>
         requireZcstExpr e;
         let Hrw := fresh in
-        time eassert (e = _) by (vm_compute; reflexivity);
-        idtac "simplified" e "in GOAL";
+        (* time *) eassert (e = _) by (vm_compute; reflexivity);
+        (* idtac "simplified" e "in GOAL"; *)
         progress rewrite Hrw; clear Hrw
     end.
 
@@ -92,7 +93,7 @@ Section WithParameters.
         requireZcstExpr e;
         let Hrw := fresh in
         eassert (e = _) by (vm_compute; reflexivity);
-        idtac "simplified" e "in" H;
+        (* idtac "simplified" e "in" H; *)
         progress rewrite Hrw in H; clear Hrw
     end.
 
@@ -293,79 +294,109 @@ Section WithParameters.
     end.
   Require Import coqutil.Tactics.Tactics.
 
+  Ltac split_bytes_base_addr bs a0 ai :=
+      let raw_i := constr:(word.unsigned (ai-a0)%word) in
+      let Hidx := fresh "Hidx" in
+      eassert (raw_i = _) as Hidx by (
+        ring_simplify_unsigned_goal; repeat rewrite_unsigned_of_Z_goal;
+        change_with_Z_literal constr:(width); simplify_ZcstExpr; exact eq_refl);
+      let i := match type of Hidx with _ = ?r => r end in
+      let Happ := fresh "Happ" in
+      match goal with H: Z.of_nat (length bs) = _ |- _ =>
+          pose proof List__splitZ_spec_n bs i _ H ltac:(Lia.lia) as Happ;
+          clear H
+      end;
+      repeat lift_head_let_in Happ; case Happ as (Happ&?H1l&?H2l);
+      simplify_ZcstExpr;
+      let eqn := type of Happ in
+      rewr ltac:(fun t => match t with
+                          | eqn => fail 1
+                          | _ => constr:(Happ) end) in *;
+      repeat match goal with Hsep : _ |- _ =>
+        seprewrite_in_by sep_eq_of_list_word_at_app Hsep ltac:(
+          try eassumption; try (change_with_Z_literal constr:(width); Lia.lia))
+      end.
+
+  Lemma load_four_bytes_of_sep_at bs a R m (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat) :
+    load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
+  Proof.
+    seprewrite_in (eq_of_list_word_iff_array1) Hsep.
+    { change_with_Z_literal width; Lia.lia. }
+    seprewrite_in open_constr:(Scalars.scalar32_of_bytes _ _ _) Hsep0.
+    erewrite @Scalars.load_four_of_sep; shelve_unifiable; try exact _; eauto.
+    Unshelve. (* where does this evar come from? *)
+    2: eauto.
+    f_equal.
+    f_equal.
+    rewrite word.unsigned_of_Z.
+    cbv [word.wrap]; rewrite Z.mod_small; trivial.
+    pose proof LittleEndian.combine_bound (HList.tuple.of_list bs).
+    rewrite Hl in H at 3.
+    Lia.lia.
+  Qed.
+
+
+  Ltac split_flat_memory_based_on_goal :=
+    lazymatch goal with
+    | |- load ?sz ?m ?a = _ =>
+        let sz := eval cbv in (Z.of_nat (bytes_per (width:=width) sz)) in
+        match goal with H : ?S m |- _ =>
+        match S with context[?bs $@ ?a0] =>
+        let a_r := constr:(word.add a (word.of_Z sz)) in
+        split_bytes_base_addr bs a0 a_r end end;
+        (* note: match again because seprewrite renames the hypothesis, it probably just shouldn't *)
+        match goal with H : ?S m |- _ =>
+        match S with context[?bs $@ ?a0] =>
+        split_bytes_base_addr bs a0 a end end
+    | |- WeakestPrecondition.store ?sz ?m ?a _ _ =>
+        let sz := eval cbv in (Z.of_nat (bytes_per (width:=width) sz)) in
+        match goal with H : ?S m |- _ =>
+        match S with context[?bs $@ ?a0] =>
+        let a_r := constr:(word.add a (word.of_Z sz)) in
+        split_bytes_base_addr bs a0 a_r end end;
+        match goal with H : ?S m |- _ =>
+        match S with context[?bs $@ ?a0] =>
+        split_bytes_base_addr bs a0 a end end
+    end.
+
+
+  Ltac subst_lets :=
+    repeat match goal with x := ?v |- _ => assert_fails (is_evar v); subst x end.
+
   Lemma silly1_ok : program_logic_goal_for_function! silly1.
   Proof.
     repeat straightline.
 
+    (* note: creating this evar here means that context variables introduced by flat memory automation can not appear in the value eventually filled in for the evar. Maybe we should not have dexpr for this reason? *)
     letexists. split.
     { repeat straightline.
       eexists; split; trivial.
+      subst_lets. (* for rewrite and rewr *)
+      split_flat_memory_based_on_goal.
+      eapply load_four_bytes_of_sep_at.
+      { (* note: this goal does not say how many bytes it wants, that's in the next goal *)
+        ecancel_assumption. }
+      { (* ecancel_assumption unification unfolds "too much" because ys0 is not in the context of the evar :/ *)
+        change (skipn (Z.to_nat 16) (firstn (Z.to_nat 20) bs)) with ys0.
+        Lia.lia. } }
+    set (firstn (Z.to_nat 20) bs) as xs in *.
+    set (skipn (Z.to_nat 16) xs) as ys0 in *.
 
-      repeat match goal with x := ?v |- _ => assert_fails (is_evar v); subst x end.
+    repeat straightline.
+    subst_lets. (* for rewrite and rewr *)
+    split_flat_memory_based_on_goal.
 
-      let bs := constr:(bs) in
-      let raw_i := constr:(word.unsigned (((a+!16)+!4)-a)%word) in
-      let Hidx := fresh "Hidx" in
-      eassert (raw_i = _) as Hidx by (
-        ring_simplify_unsigned_goal; repeat rewrite_unsigned_of_Z_goal;
-        change_with_Z_literal width; simplify_ZcstExpr; exact eq_refl);
-      let i := match type of Hidx with _ = ?r => r end in
-      let Happ := fresh "Happ" in
-      match goal with H: Z.of_nat (length bs) = _ |- _ =>
-          pose proof List__splitZ_spec_n bs i _ H ltac:(Lia.lia) as Happ;
-          clear H
-      end;
-      repeat lift_head_let_in Happ; case Happ as (Happ&?H1l&?H2l);
-      simplify_ZcstExpr;
-      let eqn := type of Happ in
-      rewr ltac:(fun t => match t with
-                          | eqn => fail 1
-                          | _ => constr:(Happ) end) in *;
-      repeat match goal with Hsep : _ |- _ =>
-        seprewrite_in_by sep_eq_of_list_word_at_app Hsep ltac:(
-          try eassumption; try (change_with_Z_literal width; Lia.lia))
-      end.
+    (* skipping actual store for now: *)
+    (* pose proof Scalars.store_four_of_sep. *)
 
-      let bs := constr:(xs) in
-      let raw_i := constr:(word.unsigned (((a+!16))-a)%word) in
-      let Hidx := fresh "Hidx" in
-      eassert (raw_i = _) as Hidx by (
-        ring_simplify_unsigned_goal; repeat rewrite_unsigned_of_Z_goal;
-        change_with_Z_literal width; simplify_ZcstExpr; exact eq_refl);
-      let i := match type of Hidx with _ = ?r => r end in
-      let Happ := fresh "Happ" in
-      match goal with H: Z.of_nat (length bs) = _ |- _ =>
-          pose proof List__splitZ_spec_n bs i _ H ltac:(Lia.lia) as Happ;
-          clear H
-      end;
-      repeat lift_head_let_in Happ; case Happ as (Happ&?H1l&?H2l);
-      simplify_ZcstExpr;
-      let eqn := type of Happ in
-      rewr ltac:(fun t => match t with
-                          | eqn => fail 1
-                          | _ => constr:(Happ) end) in *;
-      repeat match goal with Hsep : _ |- _ =>
-        seprewrite_in_by sep_eq_of_list_word_at_app Hsep ltac:(
-          try eassumption; try (change_with_Z_literal width; Lia.lia))
-      end.
+    (* seprewrite_in_by has no reason to rename the hypothesis, right? *)
+    seprewrite_in_by list_word_at_app_of_adjacent_eq H0 ltac:(
+      rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
 
-      (*
-      seprewrite_in_by (eq_of_list_word_iff_array1 (a+!16)%word) H0 ltac:(
-        change_with_Z_literal width; Lia.lia).
-      seprewrite_in_by Scalars.scalar32_of_bytes H1 ltac:(Lia.lia).
-      subst v.
-      eapply Scalars.load_four_of_sep.
-      ecancel_assumption.
-      *)
-
-      (* seprewrite_in_by has no reason to rename the hypothesis, right? *)
-      seprewrite_in_by list_word_at_app_of_adjacent_eq H0 ltac:(
+    seprewrite_in_by (list_word_at_app_of_adjacent_eq a) H1 ltac:(
         rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
 
-      seprewrite_in_by (list_word_at_app_of_adjacent_eq a) H1 ltac:(
-        rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
-
-      rewrite <-Happ in H0.
+    rewrite <-Happ in H0.
 
   Abort.
 End WithParameters.
