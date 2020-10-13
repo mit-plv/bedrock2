@@ -440,7 +440,7 @@ Ltac seprewrite0_in Hrw H :=
       by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
   let H' := fresh H in (* rename H into H' (* COGBUG(9937) *) *)
   epose proof (proj1 (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) (proj1 (pf _) H)) as H';
-  clear H pf.
+  clear H pf; rename H' into H.
 
 
 Ltac seprewrite_in Hrw H :=

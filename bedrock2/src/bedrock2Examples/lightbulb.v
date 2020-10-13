@@ -357,7 +357,7 @@ Section WithParameters.
     1: {
       left.
       eexists; repeat split.
-      all : rewrite ?word.unsigned_of_Z in H2.
+      all : rewrite ?word.unsigned_of_Z in H6.
       all : try eassumption.
       1: blia.
       2: eapply word.unsigned_of_Z.
@@ -378,8 +378,8 @@ Section WithParameters.
     all : right; repeat split; eauto.
     2,4: rewrite word.unsigned_of_Z; intro X; inversion X.
     all : intros (?&?&?&?&?).
-    { rewrite word.unsigned_of_Z in H2; contradiction. }
-    { apply H2. rewrite word.unsigned_of_Z. exact H8. }
+    { rewrite word.unsigned_of_Z in H6; contradiction. }
+    { apply H6. rewrite word.unsigned_of_Z. exact H8. }
 
     Unshelve.
     all : intros; exact True.
@@ -630,7 +630,7 @@ Section WithParameters.
             PreOmega.zify.
             rewrite ?Znat.Z2Nat.id by eapply word.unsigned_range.
             blia. }
-          eapply H15. }
+          eassumption. }
         { 1:rewrite List.app_length, List.length_skipn, H11, List.firstn_length.
           replace (word.sub num_bytes (word.of_Z 0)) with num_bytes by ring.
           enough (Z.to_nat (word.unsigned num_bytes) <= length buf)%nat by blia.

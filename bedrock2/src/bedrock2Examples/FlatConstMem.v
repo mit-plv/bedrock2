@@ -322,7 +322,7 @@ Section WithParameters.
   Proof.
     seprewrite_in (eq_of_list_word_iff_array1) Hsep.
     { change_with_Z_literal width; Lia.lia. }
-    seprewrite_in open_constr:(Scalars.scalar32_of_bytes _ _ _) Hsep0.
+    seprewrite_in open_constr:(Scalars.scalar32_of_bytes _ _ _) Hsep.
     erewrite @Scalars.load_four_of_sep; shelve_unifiable; try exact _; eauto.
     Unshelve. (* where does this evar come from? *)
     2: eauto.
@@ -393,7 +393,7 @@ Section WithParameters.
     seprewrite_in_by list_word_at_app_of_adjacent_eq H0 ltac:(
       rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
 
-    seprewrite_in_by (list_word_at_app_of_adjacent_eq a) H1 ltac:(
+    seprewrite_in_by (list_word_at_app_of_adjacent_eq a) H0 ltac:(
         rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
 
     rewrite <-Happ in H0.

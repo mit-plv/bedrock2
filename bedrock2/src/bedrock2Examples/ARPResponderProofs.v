@@ -62,6 +62,7 @@ Goal program_logic_goal_for_function! arp.
 
   lazymatch goal with |- WeakestPrecondition.store Syntax.access_size.one ?m ?a ?v ?post =>
   lazymatch goal with H: _ m |- _ =>
+      idtac H;
     let av := rdelta a in
     let i := lazymatch av with word.add ?base (word.of_Z ?i) => i end in
     let iNat := eval cbv in (Z.to_nat i) in
@@ -79,7 +80,7 @@ Goal program_logic_goal_for_function! arp.
   straightline.
   straightline.
 
-  unshelve erewrite (_:a = word.add ethbuf (word.of_Z (Z.of_nat (length (firstn 21 packet))))) in H. {
+  unshelve erewrite (_:a = word.add ethbuf (word.of_Z (Z.of_nat (length (firstn 21 packet))))) in H4. {
     rewrite length_firstn_inbounds by bomega.
     trivial. }
 Abort.
