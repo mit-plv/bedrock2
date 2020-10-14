@@ -181,7 +181,9 @@ Section Proofs.
       get_run1valid_for_free.
       eapply compile_lit_correct_full.
       + sidecondition.
-      + sidecondition.
+      + use_sep_assumption. cbn.
+        (* ecancel. (*  The term  "Tree.Leaf (subset (footpr (program iset initialL_pc (compile_lit x v) * Rexec)%sep))" has type "Tree.Tree (set word -> Prop)" while it is expected to have type "Tree.Tree (?map -> Prop)". *) *)
+        eapply RelationClasses.reflexivity.
       + unfold compile_stmt. simpl. ecancel_assumption.
       + sidecondition.
       + assumption.

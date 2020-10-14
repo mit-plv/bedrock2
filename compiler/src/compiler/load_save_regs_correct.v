@@ -60,7 +60,7 @@ Section Proofs.
       eapply runsToNonDet.runsToStep. {
         eapply run_store_word with (Rexec0 := (program iset (word.add (getPc initial) (word.of_Z 4))
             (save_regs vars (offset + bytes_per_word)) * Rexec)%sep); cycle -3;
-          try solve [sidecondition].
+          [> sidecondition | use_sep_assumption; cbn; ecancel | sidecondition.. ].
       }
       simpl. intros.
       destruct_RiscvMachine initial.

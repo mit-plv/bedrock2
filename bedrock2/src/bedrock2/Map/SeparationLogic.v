@@ -388,12 +388,20 @@ Ltac ecancel_done' :=
     (@RelationClasses.reflexivity _ _
        (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _).
 
+Ltac cancel_done :=
+  lazymatch goal with
+  | |- iff1 (seps (cons _ nil)) _ => idtac
+  | |- iff1 _ (seps (cons _ nil )) => idtac
+  | |- ?g => assert_fails (has_evar g)
+  end;
+  ecancel_done.
+
 Ltac cancel :=
   reify_goal;
   repeat cancel_step;
   repeat cancel_emp_l;
   repeat cancel_emp_r;
-  try solve [ ecancel_done ].
+  try solve [ cancel_done ].
 
 Ltac ecancel :=
   cancel;

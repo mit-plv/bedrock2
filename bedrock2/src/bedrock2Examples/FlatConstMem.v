@@ -343,19 +343,16 @@ Section WithParameters.
         match goal with H : ?S m |- _ =>
         match S with context[?bs $@ ?a0] =>
         let a_r := constr:(word.add a (word.of_Z sz)) in
-        split_bytes_base_addr bs a0 a_r end end;
-        (* note: match again because seprewrite renames the hypothesis, it probably just shouldn't *)
-        match goal with H : ?S m |- _ =>
-        match S with context[?bs $@ ?a0] =>
+        split_bytes_base_addr bs a0 a_r end;
+        match type of H with context[?bs $@ ?a0] =>
         split_bytes_base_addr bs a0 a end end
     | |- WeakestPrecondition.store ?sz ?m ?a _ _ =>
         let sz := eval cbv in (Z.of_nat (bytes_per (width:=width) sz)) in
         match goal with H : ?S m |- _ =>
         match S with context[?bs $@ ?a0] =>
         let a_r := constr:(word.add a (word.of_Z sz)) in
-        split_bytes_base_addr bs a0 a_r end end;
-        match goal with H : ?S m |- _ =>
-        match S with context[?bs $@ ?a0] =>
+        split_bytes_base_addr bs a0 a_r end;
+        match type of H with context[?bs $@ ?a0] =>
         split_bytes_base_addr bs a0 a end end
     end.
 
@@ -389,14 +386,7 @@ Section WithParameters.
     (* skipping actual store for now: *)
     (* pose proof Scalars.store_four_of_sep. *)
 
-    (* seprewrite_in_by has no reason to rename the hypothesis, right? *)
-    seprewrite_in_by list_word_at_app_of_adjacent_eq H0 ltac:(
+    repeat seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
       rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
-
-    seprewrite_in_by (list_word_at_app_of_adjacent_eq a) H0 ltac:(
-        rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
-
-    rewrite <-Happ in H0.
-
   Abort.
 End WithParameters.

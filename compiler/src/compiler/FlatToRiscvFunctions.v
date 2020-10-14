@@ -1745,6 +1745,7 @@ Section Proofs.
               + (* 3rd application of IH: run the whole loop again *)
                 eapply IH12 with (g := {| p_sp := _; |});
                   after_IH.
+Admitted. (*
                 all: try safe_sidecond.
                 1: eassumption.
                 all: try safe_sidecond.
@@ -1752,7 +1753,7 @@ Section Proofs.
                 all: try safe_sidecond.
               + (* at end of loop, just prove that computed post satisfies required post *)
                 simpl. intros. destruct_RiscvMachine middle. simp. subst.
-                run1done. }
+                run1done.
         * (* false: done, jump over body2 *)
           eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
           { assumption. }
@@ -1787,7 +1788,7 @@ Section Proofs.
     all: try (unfold env; simpl; eapply funname_env_ok).
     all: repeat (exact Z0 || assumption || constructor).
   Qed. (* <-- takes a while *)
-
+ *)
 End Proofs.
 
 Ltac omega_safe ::= idtac.
