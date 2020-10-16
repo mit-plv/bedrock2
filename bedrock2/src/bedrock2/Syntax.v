@@ -17,6 +17,7 @@ Module expr.
   | literal (v: Z)
   | var (x: String.string)
   | load (_ : access_size) (addr:expr)
+  | inlinetable (_ : access_size) (table: list Byte.byte) (index: expr)
   | op (op: bopname) (e1 e2: expr).
 End expr. Notation expr := expr.expr.
 

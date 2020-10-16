@@ -76,7 +76,7 @@ Section Pipeline1.
       | |- iff1 (emp ?P) (emp ?Q) => apply (RunInstruction.iff1_emp P Q)
       end.
       split; intros _; try exact I.
-      split; [assumption|reflexivity].
+      auto.
   Qed.
 
   Lemma ptsto_bytes_range: forall bs start pastend m a v,

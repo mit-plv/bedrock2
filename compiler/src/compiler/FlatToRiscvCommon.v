@@ -188,6 +188,9 @@ Section WithParameters.
   | fits_stack_store: forall M N e sz x y o,
       0 <= M -> 0 <= N ->
       fits_stack M N e (SStore sz x y o)
+  | fits_stack_inlinetable: forall M N e sz x table i,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SInlinetable sz x table i)
   | fits_stack_stackalloc: forall M N e x n body,
       0 <= M ->
       0 <= n ->

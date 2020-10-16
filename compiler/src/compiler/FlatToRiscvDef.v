@@ -208,12 +208,27 @@ Section FlatToRiscv1.
   (* number of words of stack allocation space needed within current frame *)
   Fixpoint stackalloc_words(s: stmt Z): Z :=
     match s with
-    | SLoad _ _ _ _ | SStore _ _ _ _ | SLit _ _ | SOp _ _ _ _ | SSet _ _
+    | SLoad _ _ _ _ | SStore _ _ _ _ | SInlinetable _ _ _ _ | SLit _ _ | SOp _ _ _ _ | SSet _ _
     | SSkip | SCall _ _ _ | SInteract _ _ _ => 0
     | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 => Z.max (stackalloc_words s1) (stackalloc_words s2)
     (* ignore negative values, and round up values that are not divisible by bytes_per_word *)
     | SStackalloc x n body => (Z.max 0 n + bytes_per_word - 1) / bytes_per_word
                               + stackalloc_words body
+    end.
+
+  Definition compile4bytes(l: list byte): Instruction :=
+    InvalidInstruction (LittleEndian.combine 4 (HList.tuple.of_list [
+      nth 0 l Byte.x00;
+      nth 1 l Byte.x00;
+      nth 2 l Byte.x00;
+      nth 3 l Byte.x00
+    ])).
+
+  Fixpoint compile_byte_list(l: list byte): list Instruction :=
+    match l with
+    | b0 :: b1 :: b2 :: b3 :: rest => compile4bytes l :: compile_byte_list rest
+    | nil => nil
+    | _ => [compile4bytes l]
     end.
 
   (* All positions are relative to the beginning of the progam, so we get completely
@@ -231,6 +246,9 @@ Section FlatToRiscv1.
       match s with
       | SLoad  sz x y ofs => [[compile_load  sz x y ofs]]
       | SStore sz x y ofs => [[compile_store sz x y ofs]]
+      | SInlinetable sz x t i =>
+        let bs := compile_byte_list t in
+        [[ Jal x (4 + Z.of_nat (length bs) * 4) ]] ++ bs ++ [[ Add x x i; compile_load sz x x 0 ]]
       | SStackalloc x n body =>
           [[Addi x sp (stackoffset-n)]] ++ compile_stmt (mypos + 4) (stackoffset-n) body
       | SLit x v => compile_lit x v

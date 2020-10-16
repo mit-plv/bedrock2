@@ -504,8 +504,6 @@ Section Proofs.
     (* jump to function *)
     eapply runsToStep. {
       eapply run_Jal; simpl; try solve [sidecondition]; cycle 2.
-      - eapply rearrange_footpr_subset; [eassumption|wwcancel].
-      - wcancel_assumption.
       - solve_divisibleBy4.
       - assumption.
     }
@@ -556,16 +554,9 @@ Section Proofs.
     eapply runsToStep. {
       eapply run_store_word with (rs1 := RegisterNames.sp) (rs2 := RegisterNames.ra);
         try solve [sidecondition | simpl; solve_divisibleBy4].
-        all: simpl.
-      2: {
-        eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
-      }
-      1: {
         simpl.
         rewrite map.get_put_diff by (clear; cbv; congruence).
         rewrite map.get_put_same. reflexivity.
-      }
-      wcancel_assumption.
     }
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
@@ -1443,6 +1434,23 @@ Section Proofs.
       run1det. run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.
       ecancel_assumption.
+
+    - idtac "Case compile_stmt_correct/SInlinetable".
+      run1det.
+      assert (map.get (map.put initialL_regs x (program_base + !pos + !4)) i = Some index). {
+        rewrite map.get_put_diff by congruence. unfold map.extends in *. eauto.
+      }
+      run1det.
+      assert (Memory.load sz initialL_mem (program_base + !pos + !4 + index + !0) = Some v). {
+        Set Nested Proofs Allowed. Definition TODO: False. Admitted. case TODO.
+      }
+      run1det.
+      rewrite !map.put_put_same in *.
+      assert (x <> RegisterNames.sp). {
+        unfold valid_FlatImp_var, RegisterNames.sp in *.
+        blia.
+      }
+      run1done.
 
     - idtac "Case compile_stmt_correct/SStackalloc".
       rename H1 into IHexec.

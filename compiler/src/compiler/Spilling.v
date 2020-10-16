@@ -262,6 +262,10 @@ Section Spilling.
     | SStore sz x y o =>
       load_arg_reg1 x;; load_arg_reg2 y;;
       SStore sz (arg_reg1 x) (arg_reg2 y) o
+    | SInlinetable sz x t i =>
+      load_arg_reg1 i;;
+      SInlinetable sz (res_reg x) t (arg_reg1 i);;
+      save_res_reg x
     | SStackalloc x n body =>
       SStackalloc (res_reg x) n (save_res_reg x;; spill_stmt body)
     | SLit x n =>
@@ -312,7 +316,7 @@ Section Spilling.
 
   Fixpoint max_var(s: stmt): Z :=
     match s with
-    | SLoad _ x y _ | SStore _ x y _ | SSet x y => Z.max x y
+    | SLoad _ x y _ | SStore _ x y _ | SInlinetable _ x _ y | SSet x y => Z.max x y
     | SStackalloc x n body => Z.max x (max_var body)
     | SLit x _ => x
     | SOp x _ y z => Z.max x (Z.max y z)

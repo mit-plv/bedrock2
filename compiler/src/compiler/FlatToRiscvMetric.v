@@ -142,6 +142,38 @@ Section Proofs.
       eapply preserve_subset_of_xAddrs. 1: assumption.
       ecancel_assumption.
 
+    - (* SInlinetable *)
+      run1det.
+      assert (map.get (map.put l x (word.add initialL_pc (word.of_Z 4))) i = Some index). {
+        rewrite map.get_put_diff by congruence. assumption.
+      }
+      run1det.
+      assert (Memory.load sz initialL_mem
+                          (word.add (word.add (word.add initialL_pc (word.of_Z 4)) index) (word.of_Z 0))
+              = Some v). {
+        clear - h H1 H9.
+
+        Set Nested Proofs Allowed.
+
+  Lemma load_from_compile_byte_list: forall sz table index v R m addr,
+    Memory.load sz (OfListWord.map.of_list_word table) index = Some v ->
+    (program iset addr (compile_byte_list table) * R)%sep m ->
+    Memory.load sz m (word.add addr index) = Some v.
+  Proof using.
+    intros *. intros L M.
+    unfold Memory.load, Memory.load_Z in *. simp.
+    erewrite load_bytes_of_sep. 1: reflexivity.
+    unfold Memory.load_bytes in *.
+  Admitted.
+
+        rewrite add_0_r.
+        eapply load_from_compile_byte_list. 1: eassumption.
+        wcancel_assumption.
+      }
+      run1det.
+      rewrite !map.put_put_same in *.
+      run1done.
+
     - (* SStackalloc *)
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       specialize (stackalloc_always_0 x n body t mSmall l mc post). move stackalloc_always_0 at bottom.
