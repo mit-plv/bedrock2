@@ -1442,7 +1442,9 @@ Section Proofs.
       }
       run1det.
       assert (Memory.load sz initialL_mem (program_base + !pos + !4 + index + !0) = Some v). {
-        Set Nested Proofs Allowed. Definition TODO: False. Admitted. case TODO.
+        rewrite add_0_r.
+        eapply load_from_compile_byte_list. 1: eassumption.
+        wcancel_assumption.
       }
       run1det.
       rewrite !map.put_put_same in *.
