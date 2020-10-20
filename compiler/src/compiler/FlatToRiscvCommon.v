@@ -188,6 +188,9 @@ Section WithParameters.
   | fits_stack_store: forall M N e sz x y o,
       0 <= M -> 0 <= N ->
       fits_stack M N e (SStore sz x y o)
+  | fits_stack_inlinetable: forall M N e sz x table i,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SInlinetable sz x table i)
   | fits_stack_stackalloc: forall M N e x n body,
       0 <= M ->
       0 <= n ->
@@ -696,6 +699,200 @@ Section FlatToRiscv1.
       edestruct Q; eauto.
     - subst m.
       eauto using disjoint_putmany_preserves_store_bytes.
+  Qed.
+
+  Lemma ptsto_instr_compile4bytes: forall l addr,
+      word.unsigned addr mod 4 = 0 ->
+      iff1 (ptsto_instr iset addr (compile4bytes l))
+           (array ptsto (word.of_Z 1) addr
+                  [nth 0 l Byte.x00; nth 1 l Byte.x00; nth 2 l Byte.x00; nth 3 l Byte.x00]).
+  Proof.
+    intros. unfold compile4bytes, ptsto_instr, truncated_scalar, littleendian. simpl.
+    unfold Encode.encode_Invalid.
+    rewrite bitSlice_all_nonneg. 2: cbv; discriminate. 2: apply (@LittleEndian.combine_bound 4).
+    rewrite LittleEndian.split_combine.
+    unfold ptsto_bytes.
+    simpl.
+    wcancel.
+    cbn [seps].
+    rewrite sep_emp_emp.
+    apply RunInstruction.iff1_emp.
+    split. 1: auto.
+    intros _.
+    unfold valid_InvalidInstruction.
+    split. 2: assumption.
+    right.
+    eexists. split. 2: reflexivity.
+    apply (@LittleEndian.combine_bound 4).
+  Qed.
+
+  Lemma program_compile_byte_list_array: forall instrs table addr,
+      instrs = compile_byte_list table ->
+      word.unsigned addr mod 4 = 0 ->
+      exists padding,
+        iff1 (program iset addr instrs)
+             (array ptsto (word.of_Z 1) addr (table ++ padding)).
+  Proof.
+    induction instrs; intros.
+    - exists []. simpl. repeat (destruct table; try discriminate). reflexivity.
+    - rename a into inst0.
+      destruct table as [|b0 table]. 1: discriminate.
+      destruct table as [|b1 table]. {
+        destruct instrs. 2: discriminate. simpl in *. simp.
+        exists [Byte.x00; Byte.x00; Byte.x00].
+        rewrite ptsto_instr_compile4bytes by assumption. simpl.
+        cancel.
+      }
+      destruct table as [|b2 table]. {
+        destruct instrs. 2: discriminate. simpl in *. simp.
+        exists [Byte.x00; Byte.x00].
+        rewrite ptsto_instr_compile4bytes by assumption. simpl.
+        cancel.
+      }
+      destruct table as [|b3 table]. {
+        destruct instrs. 2: discriminate. simpl in *. simp.
+        exists [Byte.x00].
+        rewrite ptsto_instr_compile4bytes by assumption. simpl.
+        cancel.
+      }
+      simpl in *. simp.
+      specialize (IHinstrs _ (word.add addr (word.of_Z 4)) eq_refl).
+      destruct IHinstrs as [padding IH]. 1: solve_divisibleBy4.
+      exists padding.
+      rewrite IH.
+      rewrite ptsto_instr_compile4bytes by assumption.
+      simpl.
+      wcancel.
+  Qed.
+
+  Lemma array_to_of_list_word_at: forall l addr m,
+      array ptsto (word.of_Z 1) addr l m ->
+      m = OfListWord.map.of_list_word_at addr l.
+  Proof.
+    induction l; intros.
+    - unfold OfListWord.map.of_list_word_at, OfListWord.map.of_list_word. simpl in *.
+      unfold emp, MapKeys.map.map_keys in *. simp. rewrite map.fold_empty. reflexivity.
+    - simpl in *. unfold sep in H. simp.
+      specialize (IHl _ _ Hp2). unfold map.split in *. unfold ptsto in Hp1.
+      subst. simp.
+      apply map.map_ext. intro k.
+      rewrite OfListWord.map.get_of_list_word_at.
+      rewrite map.get_putmany_dec.
+      rewrite OfListWord.map.get_of_list_word_at.
+      rewrite map.get_put_dec.
+      rewrite map.get_empty.
+      unfold map.disjoint in *. rename Hp0p1 into D.
+      specialize (D addr). rewrite map.get_put_same in D. specialize D with (1 := eq_refl).
+      destr (word.eqb addr k).
+      + subst k. ring_simplify (word.sub addr addr). rewrite word.unsigned_of_Z. simpl.
+        destruct_one_match. 2: reflexivity.
+        exfalso. eapply D.
+        rewrite OfListWord.map.get_of_list_word_at. exact E.
+      + replace (BinInt.Z.to_nat (word.unsigned (word.sub k addr))) with
+            (S (BinInt.Z.to_nat (word.unsigned (word.sub k (word.add addr (word.of_Z 1)))))).
+        * simpl. destruct_one_match; reflexivity.
+        * destruct (BinInt.Z.to_nat (word.unsigned (word.sub k addr))) eqn: F.
+          -- exfalso. apply E. apply (f_equal Z.of_nat) in F.
+             rewrite Z2Nat.id in F. 2: {
+               pose proof word.unsigned_range (word.sub k addr). blia.
+             }
+             apply (f_equal word.of_Z) in F.
+             simpl in F. (* PARAMRECORDS *)
+             rewrite (word.of_Z_unsigned (word.sub k addr)) in F.
+             rewrite <- add_0_r at 1. change (Z.of_nat 0) with 0 in F. rewrite <- F.
+             ring.
+          -- f_equal.
+             pose proof word.unsigned_range (word.sub k addr).
+             assert (Z.of_nat (S n) < 2 ^ width) by blia.
+             apply (f_equal Z.of_nat) in F.
+             rewrite Z2Nat.id in F by blia.
+             apply (f_equal word.of_Z) in F.
+             simpl in F. (* PARAMRECORDS *)
+             rewrite (word.of_Z_unsigned (word.sub k addr)) in F.
+             ring_simplify (word.sub k (word.add addr (word.of_Z 1))).
+             rewrite F.
+             replace (Z.of_nat (S n)) with (1 + Z.of_nat n) by blia.
+             match goal with
+             | |- Z.to_nat (word.unsigned ?x) = n => ring_simplify x
+             end.
+             rewrite word.unsigned_of_Z. unfold word.wrap.
+             rewrite Z.mod_small by blia.
+             blia.
+  Qed.
+
+  Lemma program_compile_byte_list: forall table addr,
+      exists Padding,
+        impl1 (program iset addr (compile_byte_list table))
+              (Padding * eq (OfListWord.map.of_list_word_at addr table)).
+  Proof.
+    intros. destruct table as [|b0 bs].
+    - simpl. exists (emp True).
+      unfold OfListWord.map.of_list_word_at, OfListWord.map.of_list_word, MapKeys.map.map_keys.
+      simpl. rewrite map.fold_empty.
+      unfold impl1, sep, emp, map.split, map.disjoint. intros m H. simp.
+      exists map.empty, map.empty. ssplit; auto.
+      + rewrite map.putmany_empty_l. reflexivity.
+      + intros. rewrite map.get_empty in H. discriminate.
+    - destr (Z.eqb (word.unsigned addr mod 4) 0).
+      + destruct (program_compile_byte_list_array (b0 :: bs) addr eq_refl E) as [padding P].
+        exists (array ptsto (word.of_Z 1)
+            (word.add addr (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat (length (b0 :: bs))))) padding).
+        rewrite P.
+        rewrite array_append.
+        rewrite sep_comm.
+        unfold impl1.
+        intros m A.
+        unfold sep, map.split in *. simp. do 2 eexists. ssplit. 1: reflexivity. 1,2: assumption.
+        symmetry. apply array_to_of_list_word_at. assumption.
+      + exists (emp True).
+        intros m C.
+        replace (compile_byte_list (b0 :: bs))
+           with (compile4bytes (b0 :: bs) :: compile_byte_list (tl (tl (tl bs)))) in C. 2: {
+          destruct bs as [|b1 table]. 1: reflexivity.
+          simpl in *.
+          destruct table as [|b2 table]. 1: reflexivity.
+          destruct table as [|b3 table]. 1: reflexivity.
+          reflexivity.
+        }
+        simpl in C.
+        apply invert_ptsto_instr in C. apply proj2 in C. congruence.
+  Qed.
+
+  Lemma shift_load_bytes_in_of_list_word: forall l addr n t index,
+      Memory.load_bytes n (OfListWord.map.of_list_word l) index = Some t ->
+      Memory.load_bytes n (OfListWord.map.of_list_word_at addr l) (word.add addr index) = Some t.
+  Proof.
+    induction n; intros.
+    - cbv in t. destruct t. etransitivity. 2: eassumption. reflexivity.
+    - unfold Memory.load_bytes in *.
+      eapply map.invert_getmany_of_tuple_Some in H. simp.
+      eapply map.build_getmany_of_tuple_Some.
+      + simpl in *.
+        rewrite OfListWord.map.get_of_list_word_at.
+        rewrite OfListWord.map.get_of_list_word in Hp0.
+        etransitivity. 2: exact Hp0. do 3 f_equal. solve_word_eq word_ok.
+      + simpl in *. specialize (IHn _ _ Hp1).
+        etransitivity. 2: exact IHn. do 2 f_equal. solve_word_eq word_ok.
+  Qed.
+
+  Lemma load_from_compile_byte_list: forall sz table index v R m addr,
+    Memory.load sz (OfListWord.map.of_list_word table) index = Some v ->
+    (program iset addr (compile_byte_list table) * R)%sep m ->
+    Memory.load sz m (word.add addr index) = Some v.
+  Proof.
+    intros *. intros L M.
+    destruct (program_compile_byte_list table addr) as [Padding P].
+    pose proof Proper_sep_impl1 as A.
+    unfold Morphisms.Proper, Morphisms.respectful in A.
+    specialize A with (1 := P). specialize (A R R). apply A in M. 2: reflexivity.
+    clear A P.
+    unfold Memory.load, Memory.load_Z in *. simp.
+    eapply shift_load_bytes_in_of_list_word in E0.
+    pose proof @subst_load_bytes_for_eq as P. cbv zeta in P.
+    specialize P with (1 := E0) (2 := M).
+    destruct P as [Q P].
+    erewrite load_bytes_of_sep. 1: reflexivity.
+    wcancel_assumption.
   Qed.
 
 End FlatToRiscv1.

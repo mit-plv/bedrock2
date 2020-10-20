@@ -432,10 +432,17 @@ Section Go.
       (eapply shrink_footpr_subset; [eassumption|wcancel]).
   Qed.
 
+  Definition not_InvalidInstruction(inst: Decode.Instruction): Prop :=
+    match inst with
+    | Decode.InvalidInstruction _ => False
+    | _ => True
+    end.
+
   Lemma go_fetch_inst{initialL: RiscvMachineL} {inst pc0 R Rexec} (post: RiscvMachineL -> Prop):
       pc0 = initialL.(getPc) ->
       subset (footpr (program iset pc0 [inst] * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
       (program iset pc0 [inst] * Rexec * R)%sep initialL.(getMem) ->
+      not_InvalidInstruction inst ->
       mcomp_sat (Bind (execute inst) (fun _ => endCycleNormal))
                 (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (run1 iset) initialL post.
@@ -473,7 +480,9 @@ Section Go.
           bomega.
       }
       rewrite Z.mod_small; try assumption; try apply encode_range.
-      rewrite decode_encode; assumption.
+      destruct H1.
+      + rewrite decode_encode; assumption.
+      + exfalso. unfold not_InvalidInstruction, valid_InvalidInstruction in *. simp. contradiction.
   Qed.
 
   (* go_load/storeXxx lemmas phrased in terms of separation logic instead of
@@ -759,6 +768,8 @@ Ltac sidecondition_hook := idtac.
 Ltac sidecondition :=
   simpl; simpl_MetricRiscvMachine_get_set;
   match goal with
+  | |- not_InvalidInstruction _ =>
+    cbv [compile_load compile_store compile_bcond_by_inverting]; repeat destruct_one_match; exact I
   (* these branches are allowed to instantiate evars in a controlled manner: *)
   | H: map.get _ _ = Some _ |- _ => exact H
   | |- map.get _ _ = Some _ =>
@@ -770,12 +781,12 @@ Ltac sidecondition :=
   | |- @sep ?K ?V ?M ?P ?Q ?m => simpl in *;
                                  simpl_MetricRiscvMachine_get_set;
                                  use_sep_assumption;
-                                 wcancel
+                                 wwcancel
   | H: subset (footpr _) _ |- subset (footpr ?F) _ =>
     tryif is_evar F then
       eassumption
     else
-      (simpl in H |- *; eapply rearrange_footpr_subset; [ exact H | solve [wcancel] ])
+      (simpl in H |- *; eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ])
   | |- _ => reflexivity
   | A: map.get ?lH ?x = Some _, E: map.extends ?lL ?lH |- map.get ?lL ?x = Some _ =>
     eapply (map.extends_get A E)
@@ -790,6 +801,7 @@ Ltac sidecondition :=
     unfold Memory.load, Memory.load_Z in *;
     simpl_MetricRiscvMachine_mem;
     erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ]
+  | |- Memory.load ?sz ?m ?addr = Some ?v => eassumption
   | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
   | |- _ => sidecondition_hook
   end.
@@ -801,7 +813,7 @@ Ltac sidecondition :=
 
 Ltac simulate_step :=
   first (* lemmas packing multiple primitives need to go first: *)
-        [ refine (go_fetch_inst _ _ _ _ _ _);        [sidecondition..|]
+        [ refine (go_fetch_inst _ _ _ _ _ _ _);    [sidecondition..|]
         (* single-primitive lemmas: *)
         (* lemmas about Register0 need to go before lemmas about other Registers *)
         | refine (go_getRegister0 _ _ _ _);        [sidecondition..|]

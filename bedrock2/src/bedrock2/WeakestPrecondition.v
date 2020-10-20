@@ -1,4 +1,4 @@
-Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Notations coqutil.Map.Interface.
+Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Notations coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import Coq.ZArith.BinIntDef coqutil.Word.Interface.
 Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 
@@ -29,6 +29,9 @@ Section WeakestPrecondition.
       | expr.load s e =>
         rec e (fun a =>
         load s m a post)
+      | expr.inlinetable s t e =>
+        rec e (fun a =>
+        load s (map.of_list_word t) a post)
     end.
     Fixpoint expr e := expr_body expr e.
   End WithMemAndLocals.
@@ -73,7 +76,7 @@ Section WeakestPrecondition.
           anybytes a n mStack -> map.split mCombined m mStack ->
           dlet! l := map.put l x a in
           rec c t mCombined l (fun t' mCombined' l' =>
-          exists m' mStack', 
+          exists m' mStack',
           anybytes a n mStack' /\ map.split mCombined' m' mStack' /\
           post t' m' l')
       | cmd.cond br ct cf =>

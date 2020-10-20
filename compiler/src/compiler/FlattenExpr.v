@@ -45,6 +45,7 @@ Section FlattenExpr1.
     induction e; intros; destruct oResVar; simpl in *; simp; simpl;
       repeat match goal with
              | IH: _, H: _ |- _ => specialize IH with (1 := H)
+             | |- context [?x / 4] => unique pose proof (Z.div_pos x 4)
              end;
       try bomega.
   Qed.
@@ -57,6 +58,7 @@ Section FlattenExpr1.
       simp; subst; simpl;
       repeat match goal with
       | H : _ |- _ => apply flattenExpr_size in H
+      | |- context [?x / 4] => unique pose proof (Z.div_pos x 4)
       end; try bomega.
   Qed.
 
@@ -179,9 +181,10 @@ Section FlattenExpr1.
   Proof.
     destruct e; intros; destruct oResVar; simp; simpl in *; simp;
       repeat match goal with
-          | H: _ |- _ => apply genFresh_spec in H; simp; assumption
+          | H: _ |- _ => apply genFresh_spec in H; simp
           | H: flattenExpr _ _ _ = _ |- _ => apply flattenExpr_freshVarUsage in H
           end;
+      try assumption;
       try solve [set_solver].
   Qed.
 
@@ -365,6 +368,22 @@ Section FlattenExpr1.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.load; t_safe; rewrite ?add_0_r; try eassumption; solve_MetricLog.
 
+    - (* expr.inlinetable *)
+      repeat match goal with
+             | H: genFresh _ = _ |- _ => unique pose proof (genFresh_spec _ _ _ H)
+             end.
+      simp.
+      eapply @FlatImp.exec.seq.
+      + eapply IHe; try eassumption. 1: maps.
+        set_solver; destr (String.eqb s0 x); subst; tauto. (* TODO improve set_solver? *)
+      + intros. simpl in *. simp.
+        eapply @FlatImp.exec.inlinetable; t_safe; try eassumption. 2: solve_MetricLog.
+        apply_in_hyps flattenExpr_uses_Some_resVar. subst s0.
+        intro C. subst s2.
+        destruct oResVar.
+        * cbn in *. simp. set_solver.
+        * cbn in *. apply_in_hyps genFresh_spec. simp. pose_flatten_var_ineqs. set_solver.
+
     - (* expr.op *)
       eapply seq_with_modVars.
       + eapply IHe1. 1: eassumption. 4: eassumption. 1,2: eassumption.
@@ -497,7 +516,7 @@ Section FlattenExpr1.
   Proof.
     destruct e; intros *; intros F Ex U D Ev; unfold flattenExprAsBoolExpr in F.
 
-    1, 2, 3: solve [simp; default_flattenBooleanExpr].
+    1, 2, 3, 4: solve [simp; default_flattenBooleanExpr].
 
     simp.
     pose proof E  as N1. eapply flattenExpr_valid_resVar in N1; [|maps].

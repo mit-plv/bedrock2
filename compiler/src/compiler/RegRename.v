@@ -46,6 +46,7 @@ Section RegAlloc.
   Definition rename_assignment_rhs(m: src2imp)(s: stmt)(y: impvar): option stmt' :=
     match s with
     | SLoad sz x a ofs => bind_opt a' <- map.get m a; Some (SLoad sz y a' ofs)
+    | SInlinetable sz x t i => bind_opt i' <- map.get m i; Some (SInlinetable sz y t i')
     | SLit x v => Some (SLit y v)
     | SOp x op a b => bind_opt a' <- map.get m a; bind_opt b' <- map.get m b;
                       Some (SOp y op a' b')
@@ -81,7 +82,7 @@ Section RegAlloc.
            {struct s}
     : option (src2imp * stmt' * impvar) :=
     match s with
-    | SLoad _ x _ _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
+    | SLoad _ x _ _ | SInlinetable _ x _ _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
       bind_opt (m', y, a) <- rename_assignment_lhs m x a;
       bind_opt s' <- rename_assignment_rhs m s y;
       Some (m', s', a)
@@ -786,6 +787,22 @@ Section RegAlloc.
           eapply map.getmany_of_list_extends; eassumption.
         * eassumption.
         * eauto.
+    - (* @exec.inlinetable *)
+      econstructor; cycle -1.
+      1: solve [eauto using states_compat_put].
+      all: simpl in *; (* PARAMRECORDS *) eauto; try congruence.
+      assert (z1 = y) by congruence. subst z1.
+      destruct (rename_assignment_lhs_props E); try assumption. simp.
+      intros C. subst z0.
+      match goal with
+      | H: _ <> _ |- _ => apply H; clear H
+      end.
+      match goal with
+      | H: map.injective r' |- _ => eapply H; clear H
+      end.
+      1: eassumption.
+      unfold map.extends in *.
+      eauto.
     - (* @exec.stackalloc *)
       eapply @exec.stackalloc. 1: eassumption.
       rename H2 into IHexec.

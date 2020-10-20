@@ -41,6 +41,7 @@ Section WeakestPrecondition.
     { eapply Proper_literal; eauto. }
     { eapply Proper_get; eauto. }
     { eapply IHa1; eauto; intuition idtac. eapply Proper_load; eauto using Proper_load. }
+    { eapply IHa1; eauto; intuition idtac. eapply Proper_load; eauto using Proper_load. }
   Qed.
 
   Global Instance Proper_list_map {A B} :
@@ -201,6 +202,7 @@ Section WeakestPrecondition.
   Proof.
     ind_on Syntax.expr; t.
     { destruct H. destruct H. eexists. eexists. rewrite H. eauto. }
+    { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe1 in H; t. eapply IHe2 in H0; t. rewrite H, H0; eauto. }
   Qed.

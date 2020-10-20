@@ -77,11 +77,16 @@ Section ptstos.
   Definition word_array: word -> list word -> mem -> Prop :=
     array ptsto_word (word.of_Z bytes_per_word).
 
+  (* we use InvalidInstruction to put data into the instruction memory, so we have
+     to allow them, but make sure that they can be represented with 32 bits *)
+  Definition valid_InvalidInstruction(instr: Instruction): Prop :=
+    exists n, 0 <= n < 2 ^ 32 /\ instr = InvalidInstruction n.
+
   (* contains all the conditions needed to successfully execute instr, except
      that addr needs to be in the set of executable addresses, which is dealt with elsewhere *)
   Definition ptsto_instr(addr: word)(instr: Instruction): mem -> Prop :=
     (truncated_scalar Syntax.access_size.four addr (encode instr) *
-     emp (verify instr iset) *
+     emp (verify instr iset \/ valid_InvalidInstruction instr) *
      emp ((word.unsigned addr) mod 4 = 0))%sep.
 
   Definition program(addr: word)(prog: list Instruction): mem -> Prop :=
@@ -89,7 +94,7 @@ Section ptstos.
 
   Lemma invert_ptsto_instr: forall {addr instr R m},
     (ptsto_instr addr instr * R)%sep m ->
-     verify instr iset /\
+     (verify instr iset \/ valid_InvalidInstruction instr) /\
      (word.unsigned addr) mod 4 = 0.
   Proof.
     intros.
@@ -104,7 +109,7 @@ Section ptstos.
 
   Lemma invert_ptsto_program1: forall {addr instr R m},
     (program addr [instr] * R)%sep m ->
-     verify instr iset /\
+     (verify instr iset \/ valid_InvalidInstruction instr) /\
      (word.unsigned addr) mod 4 = 0.
   Proof.
     unfold program. intros. simpl in *. eapply invert_ptsto_instr.

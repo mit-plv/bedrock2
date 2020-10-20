@@ -58,6 +58,7 @@ Fixpoint c_expr (e : expr) : string :=
   | expr.literal v => c_lit v
   | expr.var x => c_var x
   | expr.load s ea => "_br2_load(" ++ c_expr ea ++ ", " ++ c_size s++ ")"
+  | expr.inlinetable s t index => "TODO_inlinetable"
   | expr.op op e1 e2 => c_bop ("(" ++ c_expr e1 ++ ")") op ("(" ++ c_expr e2 ++ ")")
   end.
 

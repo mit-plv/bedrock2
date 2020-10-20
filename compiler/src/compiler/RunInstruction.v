@@ -350,7 +350,9 @@ Section Run.
   Proof.
     t. rewrite sextend_width_nop; [reflexivity|].
     edestruct @invert_ptsto_instr as (DE & ?); [exact mem_ok|ecancel_assumption|].
-    clear -DE iset_bitwidth_matches. destruct DE as [_ H]. unfold verify_iset in *.
+    clear -DE iset_bitwidth_matches.
+    destruct DE as [DE | DE]. 2: { unfold valid_InvalidInstruction in DE. simp. discriminate. }
+    destruct DE as [_ H]. unfold verify_iset in *.
     rewrite <- iset_bitwidth_matches. unfold bitwidth.
     destruct H as [ H | [ H | [ H | H ] ] ]; subst; reflexivity.
   Qed.

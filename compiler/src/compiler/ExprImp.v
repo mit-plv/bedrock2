@@ -90,6 +90,7 @@ Section ExprImp1.
       match e with
       | expr.literal _ => 15
       | expr.load _ e => expr_size e + 1
+      | expr.inlinetable _ t i => (Z.of_nat (length t) + 3) / 4 + expr_size i + 3
       | expr.var _ => 1
       | expr.op op e1 e2 => expr_size e1 + expr_size e2 + 2
       end.
@@ -97,6 +98,10 @@ Section ExprImp1.
     Lemma expr_size_pos: forall exp, expr_size exp > 0.
     Proof.
       induction exp; simpl; try blia.
+      assert (0 <= (Z.of_nat (Datatypes.length table) + 3) / 4). {
+        apply Z.div_pos; blia.
+      }
+      blia.
     Qed.
 
     Definition exprs_size(es: list expr): Z := fold_right (fun e res => res + expr_size e) 0 es.
@@ -220,6 +225,7 @@ Section ExprImp1.
     | expr.literal v => []
     | expr.var x => [x]
     | expr.load nbytes e => allVars_expr_as_list e
+    | expr.inlinetable sz t i => allVars_expr_as_list i
     | expr.op op e1 e2 => (allVars_expr_as_list e1) ++ (allVars_expr_as_list e2)
     end.
 
@@ -245,6 +251,7 @@ Section ExprImp1.
     | expr.literal v => empty_set
     | expr.var x => singleton_set x
     | expr.load nbytes e => allVars_expr e
+    | expr.inlinetable sz t i => allVars_expr i
     | expr.op op e1 e2 => union (allVars_expr e1) (allVars_expr e2)
     end.
 
