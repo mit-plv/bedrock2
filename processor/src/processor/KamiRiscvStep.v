@@ -56,7 +56,7 @@ Section WordZ.
     Z.of_N (wordToN (split1 a b x)) =
     bitSlice (Z.of_N (wordToN x)) 0 (Z.of_nat a).
   Proof.
-    rewrite bitSlice_alt by Lia.lia.
+    rewrite bitSlice_alt by blia.
     rewrite wordToN_split1.
     rewrite N2Z.inj_mod by apply NatLib.Npow2_not_zero.
     cbv [bitSlice'].
@@ -69,7 +69,7 @@ Section WordZ.
     Z.of_N (wordToN (split2 a b x)) =
     bitSlice (Z.of_N (wordToN x)) (Z.of_nat a) (Z.of_nat a + Z.of_nat b).
   Proof.
-    rewrite bitSlice_alt by Lia.lia.
+    rewrite bitSlice_alt by blia.
     rewrite wordToN_split2.
     rewrite N2Z.inj_div.
     cbv [bitSlice'].
@@ -79,11 +79,11 @@ Section WordZ.
     pose proof (wordToN_bound x); apply N2Z.inj_lt in H.
     rewrite NatLib.Z_of_N_Npow2 in H.
     split.
-    - apply Z.div_pos; [Lia.lia|].
-      apply Z.pow_pos_nonneg; Lia.lia.
+    - apply Z.div_pos; [blia|].
+      apply Z.pow_pos_nonneg; blia.
     - apply Z.div_lt_upper_bound.
-      + apply Z.pow_pos_nonneg; Lia.lia.
-      + rewrite <-Z.pow_add_r by Lia.lia.
+      + apply Z.pow_pos_nonneg; blia.
+      + rewrite <-Z.pow_add_r by blia.
         rewrite <-Nat2Z.inj_add; assumption.
   Qed.
 
@@ -93,28 +93,28 @@ Section WordZ.
   Proof.
     rewrite unsigned_split2_as_bitSlice.
     rewrite unsigned_split1_as_bitSlice.
-    rewrite ?bitSlice_alt by Lia.lia.
+    rewrite ?bitSlice_alt by blia.
     cbv [bitSlice'].
     simpl; rewrite Z.sub_0_r, Z.div_1_r, Z.add_simpl_l.
     rewrite Z.mod_small with (b:= 2 ^ Z.of_nat b).
-    - rewrite Nat2Z.inj_add, Z.pow_add_r by Lia.lia.
+    - rewrite Nat2Z.inj_add, Z.pow_add_r by blia.
       rewrite Z.rem_mul_r;
-        [|apply Z.pow_nonzero; Lia.lia
-         |apply Z.pow_pos_nonneg; Lia.lia].
+        [|apply Z.pow_nonzero; blia
+         |apply Z.pow_pos_nonneg; blia].
       match goal with | |- _ = ?rhs => set (v := rhs); clearbody v end.
-      rewrite Z.mul_comm, Z.div_add by (apply Z.pow_nonzero; Lia.lia).
-      rewrite Z.mod_div by (apply Z.pow_nonzero; Lia.lia).
-      Lia.lia.
+      rewrite Z.mul_comm, Z.div_add by (apply Z.pow_nonzero; blia).
+      rewrite Z.mod_div by (apply Z.pow_nonzero; blia).
+      blia.
     - split.
-      + apply Z.div_pos; [|apply Z.pow_pos_nonneg; Lia.lia].
+      + apply Z.div_pos; [|apply Z.pow_pos_nonneg; blia].
         apply Z.mod_pos_bound.
-        apply Z.pow_pos_nonneg; Lia.lia.
+        apply Z.pow_pos_nonneg; blia.
       + apply Z.div_lt_upper_bound.
-        * apply Z.pow_pos_nonneg; Lia.lia.
-        * rewrite <-Z.pow_add_r by Lia.lia.
+        * apply Z.pow_pos_nonneg; blia.
+        * rewrite <-Z.pow_add_r by blia.
           rewrite <-Nat2Z.inj_add.
           apply Z.mod_pos_bound.
-          apply Z.pow_pos_nonneg; Lia.lia.
+          apply Z.pow_pos_nonneg; blia.
   Qed.
 
   Lemma kami_evalZeroExtendTrunc:
@@ -124,20 +124,20 @@ Section WordZ.
   Proof.
     intros.
     cbv [evalZeroExtendTrunc].
-    destruct (lt_dec _ _); [clear H|Lia.lia].
+    destruct (lt_dec _ _); [clear H|blia].
     apply wordToZ_inj.
     rewrite wordToZ_eq_rect.
-    destruct b as [|b]; [Lia.lia|].
+    destruct b as [|b]; [blia|].
     rewrite wordToZ_ZToWord.
-    - rewrite zext_wordToNat_equal_Z by Lia.lia.
+    - rewrite zext_wordToNat_equal_Z by blia.
       rewrite <-wordToN_to_nat.
       apply N_nat_Z.
     - pose proof (wordToN_bound w); apply N2Z.inj_lt in H.
       rewrite NatLib.Z_of_N_Npow2 in H.
-      split; [Lia.lia|].
+      split; [blia|].
       eapply Z.lt_le_trans; [eassumption|].
       rewrite N_Z_nat_conversions.Nat2Z.inj_pow.
-      apply Z.pow_le_mono_r; Lia.lia.
+      apply Z.pow_le_mono_r; blia.
   Qed.
 
   Section __.
@@ -173,11 +173,11 @@ Section WordZ.
       destruct (lt_dec 0 b).
       - rewrite wzero_eq_rect.
         apply eq_sym, wzero'_def.
-      - assert (b = 0%nat) by Lia.lia; subst.
+      - assert (b = 0%nat) by blia; subst.
         reflexivity.
     }
 
-    pose proof (signExtend_unsigned_signed (Z.of_nat a) ltac:(Lia.lia)).
+    pose proof (signExtend_unsigned_signed (Z.of_nat a) ltac:(blia)).
     cbv [kword] in H1.
     rewrite Nat2Z.id in H1; rewrite H1; clear H1.
 
@@ -185,21 +185,21 @@ Section WordZ.
     destruct (lt_dec _ _).
     - apply wordToZ_inj.
       rewrite wordToZ_eq_rect, sext_wordToZ.
-      destruct b as [|b]; [Lia.lia|].
+      destruct b as [|b]; [blia|].
       apply eq_sym, wordToZ_ZToWord.
       cbv [kword] in w.
-      destruct a as [|a]; [Lia.lia|].
+      destruct a as [|a]; [blia|].
       pose proof (wordToZ_size' w); destruct H1.
       split.
       + etransitivity; [|eassumption].
         rewrite <-Z.opp_le_mono.
         rewrite ?N_Z_nat_conversions.Nat2Z.inj_pow.
-        apply Z.pow_le_mono_r; Lia.lia.
+        apply Z.pow_le_mono_r; blia.
       + etransitivity; [eassumption|].
         rewrite ?N_Z_nat_conversions.Nat2Z.inj_pow.
-        apply Z.pow_lt_mono_r; Lia.lia.
+        apply Z.pow_lt_mono_r; blia.
 
-    - assert (a = b) by Lia.lia; subst a.
+    - assert (a = b) by blia; subst a.
       rewrite ZToWord_wordToZ.
       apply wordToN_inj.
       rewrite wordToN_split1.
@@ -215,17 +215,17 @@ Section WordZ.
   Proof.
     intros.
     rewrite unsigned_split2_as_bitSlice.
-    rewrite bitSlice_alt by Lia.lia.
+    rewrite bitSlice_alt by blia.
     cbv [bitSlice'].
     rewrite Z.mod_small.
-    - apply eq_sym, Z.shiftr_div_pow2; Lia.lia.
+    - apply eq_sym, Z.shiftr_div_pow2; blia.
     - split.
-      + apply Z.div_pos; [|apply Z.pow_pos_nonneg; Lia.lia].
+      + apply Z.div_pos; [|apply Z.pow_pos_nonneg; blia].
         apply N2Z.is_nonneg.
       + rewrite Z.add_simpl_l.
         apply Z.div_lt_upper_bound.
-        * apply Z.pow_pos_nonneg; Lia.lia.
-        * rewrite <-Z.pow_add_r by Lia.lia.
+        * apply Z.pow_pos_nonneg; blia.
+        * rewrite <-Z.pow_add_r by blia.
           rewrite <-Nat2Z.inj_add.
           pose proof (wordToN_bound w); apply N2Z.inj_lt in H.
           rewrite NatLib.Z_of_N_Npow2 in H.
@@ -257,7 +257,7 @@ Section WordZ.
     apply Z.mod_small.
     pose proof (wordToN_bound w); apply N2Z.inj_lt in H.
     change (Z.of_N (NatLib.Npow2 8)) with (2 ^ 8) in H.
-    Lia.lia.
+    blia.
   Qed.
 
   Lemma split1_combine_16:
@@ -279,13 +279,13 @@ Section WordZ.
       bitSlice z m n = bitSlice z m (n + 1).
   Proof.
     intros.
-    rewrite ?bitSlice_alt by Lia.lia.
-    rewrite bitSlice_alt in H0 by Lia.lia.
+    rewrite ?bitSlice_alt by blia.
+    rewrite bitSlice_alt in H0 by blia.
     cbv [bitSlice'] in *.
-    replace (n + 1 - n) with 1 in H0 by Lia.lia.
-    apply Z.testbit_false in H0; [|Lia.lia].
+    replace (n + 1 - n) with 1 in H0 by blia.
+    apply Z.testbit_false in H0; [|blia].
     bitblast.Z.bitblast; cbn.
-    assert (l = n) by Lia.lia.
+    assert (l = n) by blia.
     subst; auto.
   Qed.
 
@@ -303,17 +303,17 @@ Section WordZ.
   Proof.
     cbv [kunsigned]; intros; split; intros.
     - apply N2Z.inj_le.
-      cbv [wlt] in H; Lia.lia.
+      cbv [wlt] in H; blia.
     - intro Hx.
       apply N2Z.inj_le in H.
-      cbv [wlt] in Hx; Lia.lia.
+      cbv [wlt] in Hx; blia.
   Qed.
 
   Lemma kami_evalZeroExtendTrunc_32:
     forall w, evalZeroExtendTrunc 32 w = w.
   Proof.
     intros; cbv [evalZeroExtendTrunc].
-    destruct (lt_dec _ _); [Lia.lia|].
+    destruct (lt_dec _ _); [blia|].
     apply split1_0.
   Qed.
 
@@ -321,7 +321,7 @@ Section WordZ.
     forall w, evalSignExtendTrunc 32 w = w.
   Proof.
     intros; cbv [evalSignExtendTrunc].
-    destruct (lt_dec _ _); [Lia.lia|].
+    destruct (lt_dec _ _); [blia|].
     apply split1_0.
   Qed.
 
@@ -350,7 +350,7 @@ Section WordZ.
            | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
            end.
     Z.div_mod_to_equations.
-    Lia.lia.
+    blia.
   Qed.
 
   Lemma signExtend_combine_split_signed:
@@ -367,7 +367,7 @@ Section WordZ.
            | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
            end.
     Z.div_mod_to_equations.
-    Lia.lia.
+    blia.
   Qed.
 
   Lemma signExtend_combine_split_unsigned:
@@ -385,7 +385,7 @@ Section WordZ.
            | |- context[2 ^ ?x] => let r := eval cbv in (2 ^ x) in change (2 ^ x) with r
            end.
     Z.div_mod_to_equations.
-    Lia.lia.
+    blia.
   Qed.
 
   Lemma Z_lor_comm_four_variant_1:
@@ -418,15 +418,15 @@ Section WordZ.
     intros.
     cbv [sll MachineWidth_XLEN word.slu word WordsKami wordW KamiWord.word].
     cbv [kunsigned word.of_Z kofZ].
-    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; Lia.lia].
+    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; blia].
     rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
-    2: { split; [Lia.lia|].
+    2: { split; [blia|].
          etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
          rewrite NatLib.Z_of_N_Npow2.
-         apply Z.pow_lt_mono_r; try (simpl; Lia.lia).
+         apply Z.pow_lt_mono_r; try (simpl; blia).
     }
     rewrite Z.mod_small.
-    2: { split; [Lia.lia|].
+    2: { split; [blia|].
          change width with (Z.of_N 32).
          apply N2Z.inj_lt, wordToN_bound.
     }
@@ -442,15 +442,15 @@ Section WordZ.
     intros.
     cbv [srl MachineWidth_XLEN word.sru word WordsKami wordW KamiWord.word].
     cbv [kunsigned word.of_Z kofZ].
-    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; Lia.lia].
+    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; blia].
     rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
-    2: { split; [Lia.lia|].
+    2: { split; [blia|].
          etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
          rewrite NatLib.Z_of_N_Npow2.
-         apply Z.pow_lt_mono_r; try (simpl; Lia.lia).
+         apply Z.pow_lt_mono_r; try (simpl; blia).
     }
     rewrite Z.mod_small.
-    2: { split; [Lia.lia|].
+    2: { split; [blia|].
          change width with (Z.of_N 32).
          apply N2Z.inj_lt, wordToN_bound.
     }
@@ -466,15 +466,15 @@ Section WordZ.
     intros.
     cbv [sra MachineWidth_XLEN word.srs word WordsKami wordW KamiWord.word].
     cbv [kunsigned word.of_Z kofZ].
-    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; Lia.lia].
+    setoid_rewrite uwordToZ_ZToWord_full; [|cbv; blia].
     rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
-    2: { split; [Lia.lia|].
+    2: { split; [blia|].
          etransitivity; [apply N2Z.inj_lt, wordToN_bound|].
          rewrite NatLib.Z_of_N_Npow2.
-         apply Z.pow_lt_mono_r; try (simpl; Lia.lia).
+         apply Z.pow_lt_mono_r; try (simpl; blia).
     }
     rewrite Z.mod_small.
-    2: { split; [Lia.lia|].
+    2: { split; [blia|].
          change width with (Z.of_N 32).
          apply N2Z.inj_lt, wordToN_bound.
     }
@@ -729,10 +729,10 @@ Section Equiv.
     cbv [HexNotation.Ox] in H; simpl in H.
     assert (kunsigned addr < 2 ^ 16).
     { eapply Z.lt_le_trans; [eassumption|].
-      apply Z.pow_le_mono_r; [Lia.lia|assumption].
+      apply Z.pow_le_mono_r; [blia|assumption].
     }
     clear H0.
-    destruct H as [|[|[|[|]]]]; destruct H; Lia.lia.
+    destruct H as [|[|[|[|]]]]; destruct H; blia.
   Qed.
 
   Lemma pgm_init_not_mmio:
@@ -760,12 +760,12 @@ Section Equiv.
         replace (NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg))
           with (4 * NatLib.Npow2 (Z.to_nat instrMemSizeLg))%N
           by (simpl; destruct (NatLib.Npow2 _); reflexivity).
-        apply N.mul_lt_mono_pos_l; [Lia.lia|].
+        apply N.mul_lt_mono_pos_l; [blia|].
         apply wordToN_bound.
       + rewrite Nat2Z.inj_add.
-        rewrite Z2Nat.id by Lia.lia.
+        rewrite Z2Nat.id by blia.
         reflexivity.
-    - apply Z.pow_lt_mono_r; Lia.lia.
+    - apply Z.pow_lt_mono_r; blia.
   Qed.
 
   Lemma kamiStep_sound_case_pgmInit:
@@ -941,7 +941,7 @@ Section Equiv.
   Proof.
     cbv [evalZeroExtendTrunc]; intros.
     destruct (lt_dec _ _);
-      [apply Z2Nat.inj_le in Hkmem2; [|Lia.lia..]; Lia.lia|].
+      [apply Z2Nat.inj_le in Hkmem2; [|blia..]; blia|].
 
     apply f_equal with (f:= @wordToN _) in H1.
     rewrite ?wordToN_split1 in H1.
@@ -950,7 +950,7 @@ Section Equiv.
     apply f_equal with (f:= Z.of_N) in H1.
     rewrite ?N2Z.inj_mod in H1 by apply NatLib.Npow2_not_zero.
     rewrite ?NatLib.Z_of_N_Npow2 in H1.
-    rewrite ?Z2Nat.id in H1 by Lia.lia.
+    rewrite ?Z2Nat.id in H1 by blia.
     rewrite ?Z.mod_small in H1 by (split; [apply N2Z.is_nonneg|assumption]).
     apply N2Z.inj in H1.
     apply wordToN_inj in H1.
@@ -971,7 +971,7 @@ Section Equiv.
     cbv [mem_related] in *; intros.
     destruct (weq addr na); [subst|].
     - rewrite map.get_put_same.
-      destruct_one_match; [|Lia.lia].
+      destruct_one_match; [|blia].
       rewrite (rewrite_weq eq_refl).
       reflexivity.
     - rewrite map.get_put_diff by assumption.
@@ -1050,7 +1050,7 @@ Section Equiv.
 
     assert (BinInt.Z.of_N (NatLib.Npow2 (2 + Z.to_nat instrMemSizeLg)) < 2 ^ memSizeLg).
     { rewrite NatLib.Z_of_N_Npow2.
-      apply Z.pow_lt_mono_r; Lia.lia.
+      apply Z.pow_lt_mono_r; blia.
     }
 
     intros.
@@ -1237,7 +1237,7 @@ Section Equiv.
              zcstP z1; zcstP z2;
              let zz := eval cbv in (Z.add z1 z2) in
              change (Z.add z1 z2) with zz
-           | _ => repeat rewrite ?Z.lor_0_r, ?Z.shiftl_lor, ?Z.shiftl_shiftl by Lia.lia
+           | _ => repeat rewrite ?Z.lor_0_r, ?Z.shiftl_lor, ?Z.shiftl_shiftl by blia
            end.
 
   Ltac prove_KamiLabelR_silent :=
@@ -1373,7 +1373,7 @@ Section Equiv.
         | [H: isXAddr4 _ _ |- _] =>
           let Hxaddr := fresh "Hxaddr" in
           pose proof H as Hxaddr;
-          eapply fetch_ok in H; try eassumption; [|Lia.lia];
+          eapply fetch_ok in H; try eassumption; [|blia];
           let rinst := fresh "rinst" in
           destruct H as (rinst & ? & ?)
         end.
@@ -1507,7 +1507,7 @@ Section Equiv.
            end;
     repeat match goal with
            | [H: context [evalSignExtendTrunc _ _] |- _] =>
-             rewrite kami_evalSignExtendTrunc in H by (compute; Lia.lia)
+             rewrite kami_evalSignExtendTrunc in H by (compute; blia)
            end;
     cbv [kunsigned] in *;
     repeat match goal with
@@ -1767,7 +1767,7 @@ Section Equiv.
         constructor; [|assumption].
         apply events_related_mmioLoadEvent.
         { rewrite kami_evalZeroExtendTrunc_32.
-          rewrite kami_evalSignExtendTrunc by (cbv; Lia.lia).
+          rewrite kami_evalSignExtendTrunc by (cbv; blia).
           rewrite unsigned_split2_as_bitSlice.
           reflexivity.
         }
@@ -1946,7 +1946,7 @@ Section Equiv.
       }
 
       { (* lbu *)
-        rewrite kami_evalZeroExtendTrunc by (cbv; Lia.lia).
+        rewrite kami_evalZeroExtendTrunc by (cbv; blia).
         rewrite split1_combine.
         cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2].
         rewrite Z.shiftl_0_l, Z.lor_0_r.
@@ -1957,7 +1957,7 @@ Section Equiv.
       }
 
       { (* lhu *)
-        rewrite kami_evalZeroExtendTrunc by (cbv; Lia.lia).
+        rewrite kami_evalZeroExtendTrunc by (cbv; blia).
         rewrite split1_combine_16.
         cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2].
         rewrite Z.shiftl_0_l, Z.lor_0_r.
@@ -1987,7 +1987,7 @@ Section Equiv.
           set (v:= lw); replace rw with v
         end.
         { clearbody v.
-          setoid_rewrite <-kami_evalSignExtendTrunc; [|cbv; Lia.lia].
+          setoid_rewrite <-kami_evalSignExtendTrunc; [|cbv; blia].
           apply eq_sym, kami_evalSignExtendTrunc_32.
         }
         { subst v.
@@ -2153,7 +2153,7 @@ Section Equiv.
         constructor; [|assumption].
         apply events_related_mmioLoadEvent.
         { rewrite kami_evalZeroExtendTrunc_32.
-          rewrite kami_evalSignExtendTrunc by (cbv; Lia.lia).
+          rewrite kami_evalSignExtendTrunc by (cbv; blia).
           rewrite unsigned_split2_as_bitSlice.
           reflexivity.
         }
@@ -2418,7 +2418,7 @@ Section Equiv.
         apply events_related_mmioStoreEvent.
         { rewrite kami_evalZeroExtendTrunc_32.
           rewrite kami_evalSignExtendTrunc_32.
-          rewrite kami_evalSignExtendTrunc by (cbv; Lia.lia).
+          rewrite kami_evalSignExtendTrunc by (cbv; blia).
           rewrite @kunsigned_combine_shiftl_lor with (sa:= 5%nat) (sb:= 7%nat).
           rewrite unsigned_split2_split1_as_bitSlice.
           rewrite unsigned_split2_as_bitSlice.
@@ -2880,7 +2880,7 @@ Section Equiv.
         replace (bitSlice w a b)
           with (Z.of_N (wordToN (split2 20 5 (split1 (20 + 5) 7 kinst))))
           by (rewrite unsigned_split2_split1_as_bitSlice;
-              apply bitSlice_lsb_0; [Lia.lia|assumption])
+              apply bitSlice_lsb_0; [blia|assumption])
       end.
       rewrite wlshift_sll.
       reflexivity.
@@ -2896,7 +2896,7 @@ Section Equiv.
         replace (bitSlice w a b)
           with (Z.of_N (wordToN (split2 20 5 (split1 (20 + 5) 7 kinst))))
           by (rewrite unsigned_split2_split1_as_bitSlice;
-              apply bitSlice_lsb_0; [Lia.lia|assumption])
+              apply bitSlice_lsb_0; [blia|assumption])
       end.
       rewrite wrshift_srl.
       reflexivity.
@@ -2912,7 +2912,7 @@ Section Equiv.
         replace (bitSlice w a b)
           with (Z.of_N (wordToN (split2 20 5 (split1 (20 + 5) 7 kinst))))
           by (rewrite unsigned_split2_split1_as_bitSlice;
-              apply bitSlice_lsb_0; [Lia.lia|assumption])
+              apply bitSlice_lsb_0; [blia|assumption])
       end.
       rewrite wrshifta_sra.
       reflexivity.

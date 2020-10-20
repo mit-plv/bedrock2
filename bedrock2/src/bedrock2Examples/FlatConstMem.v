@@ -21,6 +21,7 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import bedrock2.Semantics bedrock2.ProgramLogic bedrock2.Array.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import Coq.Lists.List coqutil.Map.OfListWord.
+Require Import coqutil.Z.Lia.
 Import Map.Interface Interface.map OfFunc.map OfListWord.map.
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
@@ -29,7 +30,7 @@ Section WithParameters.
          morphism (Properties.word.ring_morph (word := Semantics.word)),
          constants [Properties.word_cst]).
 
-  Local Instance spec_of_silly1 : spec_of "silly1" := fun functions => 
+  Local Instance spec_of_silly1 : spec_of "silly1" := fun functions =>
       forall t m a bs R, Z.of_nat (length bs) = 32 ->
       (sep (eq (map.of_list_word_at a bs)) R) m ->
       WeakestPrecondition.call functions silly1 t m [a]
@@ -136,7 +137,7 @@ Section WithParameters.
   Proof.
     pose proof eq_sym (firstn_skipn (Z.to_nat i) xsys).
     split; trivial.
-    rewrite length_firstn_inbounds, length_skipn; Lia.lia.
+    rewrite length_firstn_inbounds, length_skipn; blia.
   Qed.
 
   Ltac lift_head_let_in H :=
@@ -169,14 +170,14 @@ Section WithParameters.
   Proof.
     pose proof eq_sym (firstn_skipn (Z.to_nat i) xsys).
     split; trivial.
-    rewrite length_firstn_inbounds, length_skipn; Lia.lia.
+    rewrite length_firstn_inbounds, length_skipn; blia.
   Qed.
 
 
   Require Import coqutil.Tactics.rewr.
   Ltac List__splitZ bs n :=
       match goal with H: Z.of_nat (length bs) = _ |- _ =>
-          pose proof List__splitZ_spec_n bs n _ H ltac:(Lia.lia);
+          pose proof List__splitZ_spec_n bs n _ H ltac:(blia);
           clear H; flatten_hyps; simplify_ZcstExpr;
           let Hrw := lazymatch goal with H : bs = _ ++ _ |- _ => H end in
           let eqn := type of Hrw in
@@ -258,7 +259,7 @@ Section WithParameters.
     f_equal; cbn [Z.of_nat].
     eapply word.unsigned_inj; rewrite word.unsigned_add; cbv [word.wrap]; rewrite word.unsigned_of_Z_0, Z.add_0_r, Z.mod_small; trivial; eapply word.unsigned_range.
   Qed.
-    
+
   Import ptsto_bytes Lift1Prop Morphisms.
   Lemma eq_of_list_word_iff_array1 [value] [map : map.map word value] {ok : map.ok map}
     (a : word) (bs : list value)
@@ -271,11 +272,11 @@ Section WithParameters.
       2: eapply Proper_sep_iff1.
       3: eapply IHbs.
       2: reflexivity.
-      2: cbn [length] in H; Lia.lia.
+      2: cbn [length] in H; blia.
       change (a::bs) with ([a]++bs).
       rewrite of_list_word_at_app.
       etransitivity.
-      1: eapply sep_eq_putmany, adjacent_arrays_disjoint; cbn [length] in *; Lia.lia.
+      1: eapply sep_eq_putmany, adjacent_arrays_disjoint; cbn [length] in *; blia.
       etransitivity.
       2:eapply sep_comm.
       f_equiv.
@@ -303,7 +304,7 @@ Section WithParameters.
       let i := match type of Hidx with _ = ?r => r end in
       let Happ := fresh "Happ" in
       match goal with H: Z.of_nat (length bs) = _ |- _ =>
-          pose proof List__splitZ_spec_n bs i _ H ltac:(Lia.lia) as Happ;
+          pose proof List__splitZ_spec_n bs i _ H ltac:(blia) as Happ;
           clear H
       end;
       repeat lift_head_let_in Happ; case Happ as (Happ&?H1l&?H2l);
@@ -314,14 +315,14 @@ Section WithParameters.
                           | _ => constr:(Happ) end) in *;
       repeat match goal with Hsep : _ |- _ =>
         seprewrite_in_by sep_eq_of_list_word_at_app Hsep ltac:(
-          try eassumption; try (change_with_Z_literal constr:(width); Lia.lia))
+          try eassumption; try (change_with_Z_literal constr:(width); blia))
       end.
 
   Lemma load_four_bytes_of_sep_at bs a R m (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
   Proof.
     seprewrite_in (eq_of_list_word_iff_array1) Hsep.
-    { change_with_Z_literal width; Lia.lia. }
+    { change_with_Z_literal width; blia. }
     seprewrite_in open_constr:(Scalars.scalar32_of_bytes _ _ _) Hsep.
     erewrite @Scalars.load_four_of_sep; shelve_unifiable; try exact _; eauto.
     Unshelve. (* where does this evar come from? *)
@@ -332,7 +333,7 @@ Section WithParameters.
     cbv [word.wrap]; rewrite Z.mod_small; trivial.
     pose proof LittleEndian.combine_bound (HList.tuple.of_list bs).
     rewrite Hl in H at 3.
-    Lia.lia.
+    blia.
   Qed.
 
 
@@ -375,7 +376,7 @@ Section WithParameters.
         ecancel_assumption. }
       { (* ecancel_assumption unification unfolds "too much" because ys0 is not in the context of the evar :/ *)
         change (skipn (Z.to_nat 16) (firstn (Z.to_nat 20) bs)) with ys0.
-        Lia.lia. } }
+        blia. } }
     set (firstn (Z.to_nat 20) bs) as xs in *.
     set (skipn (Z.to_nat 16) xs) as ys0 in *.
 
@@ -387,6 +388,6 @@ Section WithParameters.
     (* pose proof Scalars.store_four_of_sep. *)
 
     repeat seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
-      rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; Lia.lia).
+      rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; blia).
   Abort.
 End WithParameters.

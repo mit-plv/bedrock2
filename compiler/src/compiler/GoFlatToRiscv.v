@@ -330,10 +330,10 @@ Section Go.
       | |- (?A * ?B * ?C)%sep ?m => assert ((A * (B * C))%sep m); [|ecancel_assumption]
       end.
       eapply sep_on_undef_put.
-      + apply putmany_of_footprint_None; try bomega.
+      + apply putmany_of_footprint_None; try blia.
         eapply H1.
         simpl. left. reflexivity.
-      + apply IHn; bomega || assumption || idtac.
+      + apply IHn; blia || assumption || idtac.
         intros. eapply H1.
         simpl. right. assumption.
   Qed.
@@ -348,9 +348,9 @@ Section Go.
       simpl.
       replace (Z.of_nat (S n)) with (1 + Z.of_nat n) in H by blia.
       eapply sep_on_undef_put.
-      + apply putmany_of_footprint_None; try bomega.
+      + apply putmany_of_footprint_None; try blia.
         apply map.get_empty.
-      + apply IHn. bomega.
+      + apply IHn. blia.
   Qed.
 
   Lemma ptsto_bytes_array: forall (l: list byte) (addr: word),
@@ -388,7 +388,7 @@ Section Go.
       (e1 - e2) mod m = 0.
   Proof.
     intros. rewrite !Z.mod_eq in H0 by assumption.
-    replace (e1 - e2) with (m * (e1 / m) - m * (e2 / m)) by bomega.
+    replace (e1 - e2) with (m * (e1 / m) - m * (e2 / m)) by blia.
     rewrite Z.mod_eq by assumption.
     rewrite <- Z.mul_sub_distr_l.
     rewrite (Z.mul_comm m (e1 / m - e2 / m)).
@@ -469,15 +469,7 @@ Section Go.
     - rewrite LittleEndian.combine_split.
       assert (0 <= encode inst < 2 ^ width) as F. {
         pose proof (encode_range inst) as P.
-        destruct width_cases as [E | E]; rewrite E; split.
-        (* TODO if https://github.com/coq/coq/pull/9291 makes it into 8.9.1,
-           bomega can be replaced *)
-        + bomega.
-        + bomega.
-        + bomega.
-        + let r := eval cbv in (2 ^ 32) in change (2 ^ 32) with r in *.
-          let r := eval cbv in (2 ^ 64) in change (2 ^ 64) with r in *.
-          bomega.
+        destruct width_cases as [E | E]; rewrite E; split. all: blia.
       }
       rewrite Z.mod_small; try assumption; try apply encode_range.
       destruct H1.

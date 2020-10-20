@@ -15,7 +15,6 @@ Require Import coqutil.Z.Lia.
     From coqutil.Tactics Require Import syntactic_unify.
     From coqutil.Macros Require Import symmetry.
     Require Import coqutil.Datatypes.List.
-    Require Import Coq.micromega.Lia.
 
 
 Section WithParameters.
@@ -72,7 +71,7 @@ Section WithParameters.
     eapply Properties.word.if_nonzero in H1; rewrite word.unsigned_ltu in H1; eapply Z.ltb_lt in H1.
 
     simple refine (store_one_of_sep _ _ _ _ _ _ (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H) _); shelve_unifiable.
-    1: (etransitivity; [etransitivity|]); cycle -1; [ | | eapply Proper_sep_iff1; [|reflexivity]; eapply bytearray_index_inbounds]; try ecancel; try bomega.
+    1: (etransitivity; [etransitivity|]); cycle -1; [ | | eapply Proper_sep_iff1; [|reflexivity]; eapply bytearray_index_inbounds]; try ecancel; try blia.
 
     repeat straightline.
 
@@ -81,7 +80,7 @@ Section WithParameters.
     seprewrite_in (symmetry! @array_cons) H2.
     seprewrite_in (@bytearray_index_merge) H2. {
       pose proof Properties.word.unsigned_range i.
-      rewrite length_firstn_inbounds; (PreOmega.zify; rewrite ?Znat.Z2Nat.id; bomega).
+      rewrite length_firstn_inbounds; blia.
     }
 
     letexists.
@@ -104,9 +103,7 @@ Section WithParameters.
         pose proof Properties.word.unsigned_range i.
         pose proof Properties.word.unsigned_range j.
         rewrite List.app_length, length_cons, length_firstn_inbounds, length_skipn.
-        all : PreOmega.zify.
-        1: bomega.
-        1: (PreOmega.zify; rewrite ?Znat.Z2Nat.id; bomega).
+        all: blia.
     }
     1: subst v2.
     exact eq_refl.

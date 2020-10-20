@@ -48,7 +48,7 @@ Ltac wclause_unify OK :=
           solve [solve_word_eq OK]
         ) else (
           tryif (unify T Z) then (
-            solve [bomega]
+            solve [blia]
           ) else (
             lazymatch x with
             | ?x1 ?x2 => lazymatch y with
@@ -159,11 +159,11 @@ Section ptstos.
         rewrite word.unsigned_of_Z in C. unfold word.wrap in C.
         pose proof (word.unsigned_range addr) as R.
         remember (word.unsigned addr) as w.
-        rewrite Z.add_mod_idemp_r in C by bomega.
-        rewrite Z.mod_eq in C by bomega.
-        assert (z = 2 ^ width * ((w + z) / 2 ^ width)) by bomega.
+        rewrite Z.add_mod_idemp_r in C by blia.
+        rewrite Z.mod_eq in C by blia.
+        assert (z = 2 ^ width * ((w + z) / 2 ^ width)) by blia.
         remember ((w + z) / 2 ^ width) as k.
-        assert (k < 0 \/ k = 0 \/ 0 < k) as D by bomega. destruct D as [D | [D | D]]; Lia.nia.
+        assert (k < 0 \/ k = 0 \/ 0 < k) as D by blia. destruct D as [D | [D | D]]; Lia.nia.
       }
       rewrite <- word.add_assoc.
       replace ((word.add (word.of_Z (word := @word W) z) (word.of_Z 1)))
@@ -196,7 +196,7 @@ Section ptstos.
     rewrite <- (word.of_Z_unsigned a1) at 1.
     rewrite word.unsigned_of_Z. unfold word.wrap.
     f_equal.
-    bomega.
+    blia.
   Qed.
 
   Lemma putmany_of_footprint_None': forall n (vs: HList.tuple byte n) (a1 a2: word) (m: mem),
@@ -209,7 +209,7 @@ Section ptstos.
     apply putmany_of_footprint_None''; try assumption.
     pose proof (word.unsigned_range (word.sub a1 a2)).
     assert (word.unsigned (word.sub a1 a2) = 0 \/ 0 < word.unsigned (word.sub a1 a2)) as C
-        by bomega. destruct C as [C | C].
+        by blia. destruct C as [C | C].
     - exfalso. apply H.
       rewrite word.unsigned_sub in C.
       apply word.unsigned_inj.
@@ -217,11 +217,11 @@ Section ptstos.
       remember ((word.unsigned a1 - word.unsigned a2) / 2 ^ width) as k.
       pose proof (word.unsigned_range a1).
       pose proof (word.unsigned_range a2).
-      assert (k < 0 \/ k = 0 \/ 0 < k) as D by bomega. destruct D as [D | [D | D]]; try Lia.nia.
+      assert (k < 0 \/ k = 0 \/ 0 < k) as D by blia. destruct D as [D | [D | D]]; try Lia.nia.
       (* LIABUG if primitive projections are on, we need this:
       rewrite D in C.
       rewrite Z.mul_0_r in C.
-      bomega.
+      blia.
       *)
     - assumption.
   Qed.
@@ -243,7 +243,7 @@ Section ptstos.
     intros.
     Z.div_mod_to_equations.
     subst r.
-    specialize (H0 ltac:(Lia.lia)); clear H1.
+    specialize (H0 ltac:(blia)); clear H1.
     ring_simplify in H0.
     assert (0 <= q) by Lia.nia.
     revert dependent bytes.

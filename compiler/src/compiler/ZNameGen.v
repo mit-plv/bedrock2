@@ -1,7 +1,7 @@
 Require Import Coq.Lists.List.
+Require Import coqutil.Z.Lia.
 Require Import compiler.util.Common.
 Require Import compiler.NameGen.
-
 
 Definition listmax(l: list nat): nat := fold_right max 0 l.
 
@@ -39,7 +39,7 @@ Instance ZNameGen: NameGen Z Z. refine ({|
   allFreshVars s := fun x => (s <= x)
 |}).
 - abstract (intros; repeat autounfold with unf_basic_set_defs unf_derived_set_defs;
-            inversion H; subst; clear H; intuition omega).
+            inversion H; subst; clear H; intuition blia).
 - abstract (intros; repeat autounfold with unf_basic_set_defs unf_derived_set_defs;
-            apply listmaxZ_spec in H; omega).
+            apply listmaxZ_spec in H; blia).
 Defined.

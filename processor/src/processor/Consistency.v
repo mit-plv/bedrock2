@@ -194,7 +194,7 @@ Section FetchOk.
     intros.
 
     assert (Z.pow 2 (Z.of_nat (2 + ninstrMemSizeLg)) < Z.pow 2 memSizeLg) as Hkmemp
-        by (apply Z.pow_lt_mono_r; Lia.lia).
+        by (apply Z.pow_lt_mono_r; blia).
 
     assert (Z.ltb (kunsigned rpc) (Z.pow 2 memSizeLg) = true) as Hrpc0.
     { destruct H0 as [? _].
@@ -203,7 +203,7 @@ Section FetchOk.
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2 in H0.
       cbv [kunsigned] in H1.
-      Lia.lia.
+      blia.
     }
 
     assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1)) (Z.pow 2 memSizeLg) = true) as Hrpc1.
@@ -215,7 +215,7 @@ Section FetchOk.
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2 in H0.
       cbv [kunsigned] in H1.
-      Lia.lia.
+      blia.
     }
 
     assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1))
@@ -230,7 +230,7 @@ Section FetchOk.
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2 in H0.
       cbv [kunsigned] in H1.
-      Lia.lia.
+      blia.
     }
 
     assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1 ^+ ZToWord _ 1))
@@ -247,7 +247,7 @@ Section FetchOk.
       apply N2Z.inj_lt in H0.
       rewrite NatLib.Z_of_N_Npow2 in H0.
       cbv [kunsigned] in H1.
-      Lia.lia.
+      blia.
     }
 
     cbv [Memory.footprint HList.tuple.unfoldn].

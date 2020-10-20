@@ -168,9 +168,6 @@ Section WithParameters.
   Require Import bedrock2.AbsintWordToZ.
   Import WeakestPreconditionProperties.
 
-  (* NOTE: this block probably does not belong here *)
-  (* indicates that if we were to replace blia by omega, we'd run out of heap, stack, or time *)
-  Ltac omega_safe ::= fail.
   Lemma word__unsigned_of_Z_nowrap {width} {word: word.word width} {ok : word.ok word} x : 0 <= x < 2 ^ width -> word.unsigned (word.of_Z x) = x.
   Proof.
     intros. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Z.mod_small; trivial.
@@ -210,7 +207,7 @@ Section WithParameters.
     1: letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr val; cbv [isMMIOAddr];
       rewrite !word.unsigned_of_Z; split; trivial.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     1: repeat straightline; split; trivial.
 
     1: repeat (eauto || straightline || split_if || eapply interact_nomem || trans_ltu).
@@ -218,7 +215,7 @@ Section WithParameters.
     1: letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr0 val0; cbv [isMMIOAddr];
       rewrite !word.unsigned_of_Z; split; trivial.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     1: repeat straightline; split; trivial.
 
     1: repeat (eauto || straightline || split_if || eapply interact_nomem || trans_ltu).
@@ -262,7 +259,7 @@ Section WithParameters.
     all : eexists; split; [ eauto | ].
     all : try seprewrite_in @bytearray_index_merge H6; eauto.
     all : try rewrite List.app_length.
-    all : try Lia.lia.
+    all : try blia.
   Qed.
 
   Local Ltac prove_ext_spec :=
@@ -315,13 +312,13 @@ Section WithParameters.
     1: letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr r; cbv [isMMIOAddr];
       rewrite !word.unsigned_of_Z; split; trivial.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     1: repeat straightline; split; trivial.
     1: repeat straightline; eapply interact_nomem; repeat straightline.
     1: letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr r; cbv [isMMIOAddr];
       rewrite !word.unsigned_of_Z; split; trivial.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     1: repeat straightline; split; trivial.
 
     1: repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).
@@ -441,7 +438,7 @@ Section WithParameters.
       | _ => progress zify_unsigned
       | _ => progress rewrite ?Znat.Z2Nat.id by blia
       | H: _ |- _ => progress (rewrite ?Znat.Z2Nat.id in H by blia)
-      | _ => rewrite List.length_firstn_inbounds by (PreOmega.zify; rewrite ?Znat.Z2Nat.id by blia; blia)
+      | _ => rewrite List.length_firstn_inbounds by blia
       | _ => progress rewrite ?Z.sub_0_r
       end; repeat straightline.
       { repeat match goal with x:= _ |- context[?x]  => subst x end. clear. Z.div_mod_to_equations. blia. }
@@ -573,7 +570,7 @@ Section WithParameters.
         eapply Z.ltb_nlt in HJ.
         revert dependent x7; revert dependent num_bytes; revert dependent x11; clear; intros.
         unshelve erewrite (_:x11 = num_bytes) in *.
-        { eapply Properties.word.unsigned_inj. Z.div_mod_to_equations; Lia.lia. }
+        { eapply Properties.word.unsigned_inj. Z.div_mod_to_equations; blia. }
         rewrite word.unsigned_sub, Z.sub_diag; exact eq_refl. }
       repeat straightline.
       repeat letexists. split. { repeat straightline. }
@@ -608,33 +605,28 @@ Section WithParameters.
           rewrite ?Znat.Z2Nat.id by eapply word.unsigned_range.
           transitivity (word.unsigned num_bytes); [blia|exact eq_refl]. } }
         { pose proof word.unsigned_range num_bytes.
-          rewrite length_skipn.
-          PreOmega.zify. rewrite ?Znat.Z2Nat.id in * by blia; blia. }
+          rewrite length_skipn. blia. }
         rewrite H11, length_firstn_inbounds, ?Znat.Z2Nat.id.
-        all : try (zify_unsigned;
-        try Lia.lia;
-        eapply Znat.Nat2Z.inj_le;
-        rewrite ?Znat.Z2Nat.id; Lia.lia).
+        all: try (zify_unsigned; blia).
         }
       { repeat match goal with H : _ |- _ => rewrite H; intro HX; solve[inversion HX] end. }
       { trans_ltu;
         replace (word.unsigned (word.of_Z 1521)) with 1521 in * by
           (rewrite word.unsigned_of_Z; exact eq_refl).
-        eexists _; split; eauto; repeat split; try Lia.lia.
+        eexists _; split; eauto; repeat split; try blia.
         { SeparationLogic.seprewrite_in @bytearray_index_merge H10.
           { rewrite H11.
             1: replace (word.sub num_bytes (word.of_Z 0)) with num_bytes by ring.
             rewrite List.length_firstn_inbounds, ?Znat.Z2Nat.id.
             1:exact eq_refl.
             1:eapply word.unsigned_range.
-            PreOmega.zify.
             rewrite ?Znat.Z2Nat.id by eapply word.unsigned_range.
             blia. }
           eassumption. }
         { 1:rewrite List.app_length, List.length_skipn, H11, List.firstn_length.
           replace (word.sub num_bytes (word.of_Z 0)) with num_bytes by ring.
           enough (Z.to_nat (word.unsigned num_bytes) <= length buf)%nat by blia.
-          PreOmega.zify. rewrite ?Znat.Z2Nat.id by eapply word.unsigned_range; blia. }
+          rewrite ?Znat.Z2Nat.id by eapply word.unsigned_range; blia. }
         right. right. split; eauto using TracePredicate.any_app_more. } }
 
     all: repeat letexists; split; repeat straightline;
@@ -719,5 +711,3 @@ Section WithParameters.
   Abort.
   *)
 End WithParameters.
-
-Ltac omega_safe ::= idtac.

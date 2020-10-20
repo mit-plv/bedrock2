@@ -3,6 +3,7 @@
    are not resolved *)
 Require Import bedrock2.Syntax coqutil.Z.HexNotation.
 Require Import coqutil.Z.div_mod_to_equations.
+Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte.
 Require Import coqutil.Tactics.Tactics.
 
@@ -393,7 +394,7 @@ Section WithParameters.
       split. {
         split; [reflexivity|]. split.
         + cbv -[Z.lt Z.gt Z.ge Z.le]; clear.
-          Lia.lia.
+          blia.
         + reflexivity.
       }
       repeat straightline.
@@ -507,7 +508,7 @@ Section WithParameters.
             }
             rewrite Z.mod_small. 1: ring.
             pose proof (Properties.word.unsigned_range x0).
-            Lia.blia.
+            blia.
           }
         }
         subst b1.
@@ -520,7 +521,7 @@ Section WithParameters.
           cbv. intuition congruence.
         }
         pose proof (Properties.word.unsigned_range x0).
-        rewrite Z.mod_small; Lia.blia.
+        rewrite Z.mod_small; blia.
       }
       { (* CASE b1 = 0: exit loop *)
     (*$*) eapply If with (c := expr.op bopname.sru busy (expr.literal 31)); intros.
@@ -559,7 +560,7 @@ Section WithParameters.
       split. {
         split; [reflexivity|]. split.
         + cbv -[Z.lt Z.gt Z.ge Z.le]; clear.
-          Lia.lia.
+          blia.
         + reflexivity.
       }
       intros.
@@ -649,8 +650,8 @@ Section WithParameters.
       pose proof Properties.word.unsigned_range b0.
       change (Semantics.width) with 32 in *.
       change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
-      rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small by Lia.lia.
-      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small; Lia.lia. }
+      rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small by blia.
+      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small; blia. }
     }
     }
   Defined.

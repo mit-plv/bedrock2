@@ -1,5 +1,6 @@
 Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import coqutil.Z.div_mod_to_equations.
+Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte.
 
 Import BinInt String List.ListNotations ZArith.
@@ -15,7 +16,7 @@ Require bedrock2Examples.lightbulb_spec.
 Local Notation patience := lightbulb_spec.patience.
 
 Definition spi_write : function :=
-  let b := "b" in let busy := "busy" in let i := "i" in 
+  let b := "b" in let busy := "busy" in let i := "i" in
   let SPI_WRITE_ADDR := Ox"10024048" in
   ("spi_write", ([b], [busy], bedrock_func_body:(
     busy = (constr:(-1));
@@ -150,7 +151,7 @@ Section WithParameters.
       cbv [isMMIOAddr addr].
       rewrite ?word.unsigned_of_Z.
       cbv -[Z.lt Z.gt Z.ge Z.le]; clear.
-      Lia.lia. }
+      blia. }
     repeat straightline. split; trivial.
     letexists. split.
     { repeat straightline. exact eq_refl. }
@@ -180,7 +181,7 @@ Section WithParameters.
           unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
           rewrite word.unsigned_sub; cbv [word.wrap]; rewrite Z.mod_small; rewrite Properties.word.unsigned_of_Z_1.
           2: { pose proof Properties.word.unsigned_range x1.
-               change Semantics.width with 32 in *. Lia.lia. }
+               change Semantics.width with 32 in *. blia. }
           ring. } }
         { split; try eapply Properties.word.decrement_nonzero_lt;
           try eapply Properties.word.unsigned_range; eauto. } }
@@ -226,7 +227,7 @@ Section WithParameters.
     { subst addr0. cbv [isMMIOAddr].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     repeat straightline. split; trivial.
     repeat straightline.
     split; trivial. subst t0.
@@ -257,8 +258,8 @@ Section WithParameters.
       pose proof Properties.word.unsigned_range x.
       change (Semantics.width) with 32 in *.
       change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
-      rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small by Lia.lia.
-      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small; Lia.lia. }
+      rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small by blia.
+      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small; blia. }
   Qed.
 
   Local Ltac split_if :=
@@ -306,7 +307,7 @@ Section WithParameters.
     { subst addr. cbv [isMMIOAddr].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
       repeat ((split; trivial; []) || straightline || split_if).
       {
         letexists. split; split.
@@ -330,8 +331,8 @@ Section WithParameters.
             unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
             rewrite word.unsigned_sub; cbv [word.wrap]; rewrite Z.mod_small; rewrite Properties.word.unsigned_of_Z_1.
             2: { pose proof Properties.word.unsigned_range x1.
-                 change Semantics.width with 32 in *. Lia.lia. }
-            Lia.lia. } }
+                 change Semantics.width with 32 in *. blia. }
+            blia. } }
           { eapply Properties.word.unsigned_range. }
           { eapply Properties.word.decrement_nonzero_lt; eassumption. }}
       { letexists; split; repeat straightline.
@@ -356,7 +357,7 @@ Section WithParameters.
           eapply Properties.word.unsigned_inj in H1.
           assert (HA: word.add (word.sub x1 (word.of_Z 1)) (word.of_Z 1) = word.of_Z 1). {
             match goal with H : _ |- _ => rewrite H; ring end. }
-          ring_simplify in HA; subst. rewrite Properties.word.unsigned_of_Z_1; Lia.lia. } }
+          ring_simplify in HA; subst. rewrite Properties.word.unsigned_of_Z_1; blia. } }
       { repeat straightline.
         repeat letexists; split.
         1: split.
@@ -366,7 +367,7 @@ Section WithParameters.
           subst v.
           subst i.
           rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent.
-          pose proof Properties.word.unsigned_range x1. Lia.lia. }
+          pose proof Properties.word.unsigned_range x1. blia. }
         repeat straightline.
         repeat (split; trivial; []).
         split.
@@ -379,13 +380,13 @@ Section WithParameters.
               cbv [byte.wrap word.wrap];
               rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap,
                       ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small
-                by Lia.lia;
+                by blia;
               change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
           symmetry; eapply Z.mod_small.
           pose proof Z.mod_pos_bound (word.unsigned v0) (2^8) eq_refl.
           change Semantics.width with 32.
           change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
-          clear. Z.div_mod_to_equations. Lia.lia. }
+          clear. Z.div_mod_to_equations. blia. }
         { (* copy-paste from above, trace manipulation *)
           eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
           eexists. split.
@@ -410,13 +411,13 @@ Section WithParameters.
               cbv [byte.wrap word.wrap];
               rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap,
                       ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small
-                by Lia.lia;
+                by blia;
               change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
           symmetry; eapply Z.mod_small.
           pose proof Z.mod_pos_bound (word.unsigned v0) (2^8) eq_refl.
           change Semantics.width with 32.
           change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
-          clear. Z.div_mod_to_equations. Lia.lia. }
+          clear. Z.div_mod_to_equations. blia. }
         (* tag:symex *)
         { right; split.
           { subst busy. rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent; exact eq_refl. }
@@ -437,7 +438,7 @@ Section WithParameters.
               cbv [byte.wrap word.wrap];
               rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap,
                       ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small
-                by Lia.lia;
+                by blia;
               change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
           trivial. } } }
   Qed.
@@ -478,9 +479,9 @@ Section WithParameters.
       eapply Properties.word.unsigned_inj;
       repeat (
       cbv [word.wrap byte.wrap];
-      rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by Lia.lia;
+      rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by blia;
       change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8));
-      rewrite ?Z.mod_small; rewrite ?Z.mod_small; trivial; Lia.lia. }
+      rewrite ?Z.mod_small; rewrite ?Z.mod_small; trivial; blia. }
       left; split; eauto.
       eexists nil, x0; repeat split; cbv [any choice lightbulb_spec.spi_timeout]; eauto.
       rewrite app_nil_r; trivial. }

@@ -21,9 +21,9 @@ Section KamiRiscvWord.
 
   Lemma pow_pow_lt: 2 ^ log2width < 2 ^ 2 ^ log2width.
   Proof.
-    apply Z.log2_lt_pow2; [Lia.lia|].
+    apply Z.log2_lt_pow2; [blia|].
     rewrite Z.log2_pow2 by assumption.
-    assert (Hc: log2width = 0 \/ 0 < log2width) by Lia.lia.
+    assert (Hc: log2width = 0 \/ 0 < log2width) by blia.
     destruct Hc; [subst; trivial|].
     apply Z.log2_lt_pow2; [assumption|].
     apply Z.log2_lt_lin; assumption.
@@ -39,14 +39,14 @@ Section KamiRiscvWord.
     - rewrite word.unsigned_of_Z.
       cbv [word.wrap].
       rewrite Z.mod_small; [reflexivity|].
-      split; [apply Z.mod_pos_bound; Lia.lia|].
-      etransitivity; [apply Z.mod_pos_bound; Lia.lia|].
+      split; [apply Z.mod_pos_bound; blia|].
+      etransitivity; [apply Z.mod_pos_bound; blia|].
       apply pow_pow_lt.
     - rewrite word.unsigned_of_Z.
       cbv [word.wrap].
-      rewrite Z.mod_small; [apply Z.mod_pos_bound; Lia.lia|].
-      split; [apply Z.mod_pos_bound; Lia.lia|].
-      etransitivity; [apply Z.mod_pos_bound; Lia.lia|].
+      rewrite Z.mod_small; [apply Z.mod_pos_bound; blia|].
+      split; [apply Z.mod_pos_bound; blia|].
+      etransitivity; [apply Z.mod_pos_bound; blia|].
       apply pow_pow_lt.
   Qed.
 

@@ -57,9 +57,9 @@ Lemma alignedXAddrsRange_zero_bound_in:
   forall n a,
     (wordToN a < N.of_nat n)%N -> In a (alignedXAddrsRange 0 n).
 Proof.
-  induction n; [Lia.lia|].
+  induction n; [blia|].
   intros.
-  assert (wordToN a = N.of_nat n \/ wordToN a < N.of_nat n)%N by Lia.lia.
+  assert (wordToN a = N.of_nat n \/ wordToN a < N.of_nat n)%N by blia.
   clear H; destruct H0.
   - unfold alignedXAddrsRange; fold alignedXAddrsRange.
     left; apply wordToN_inj.
@@ -352,7 +352,7 @@ Section Equiv.
 
     apply Nat2Z.inj_lt in H0.
     rewrite N_Z_nat_conversions.Nat2Z.inj_pow in H0.
-    rewrite Z2Nat.id in H0 by Lia.lia.
+    rewrite Z2Nat.id in H0 by blia.
     simpl in H0.
 
     match type of H with
@@ -363,10 +363,10 @@ Section Equiv.
     rewrite word.unsigned_of_Z in H1.
     cbv [word.wrap] in H1.
     rewrite Z.mod_small in H1
-      by (split; [Lia.lia|];
+      by (split; [blia|];
           eapply Z.lt_le_trans; [eassumption|];
-          apply Z.pow_le_mono_r; Lia.lia).
-    Lia.lia.
+          apply Z.pow_le_mono_r; blia).
+    blia.
   Qed.
 
   Lemma mem_related_riscvMemInit : mem_related _ (evalConstT kamiMemInit) riscvMemInit.
@@ -379,7 +379,7 @@ Section Equiv.
     { rewrite <-wordToN_to_nat.
       apply Nat2Z.inj_lt.
       rewrite N_nat_Z, N_Z_nat_conversions.Nat2Z.inj_pow.
-      rewrite Z2Nat.id by Lia.lia.
+      rewrite Z2Nat.id by blia.
       apply Z.ltb_lt; assumption.
     }
     erewrite Properties.map.get_of_list_In_NoDup; trivial.
@@ -411,7 +411,7 @@ Section Equiv.
         with (natToWord (Z.to_nat memSizeLg) (wordToNat addr)).
       2: {
         cbv [evalZeroExtendTrunc].
-        destruct (lt_dec _ _); [exfalso; apply Z2Nat.inj_lt in l; Lia.lia|].
+        destruct (lt_dec _ _); [exfalso; apply Z2Nat.inj_lt in l; blia|].
         apply wordToNat_inj.
         rewrite wordToNat_natToWord_eqn.
         rewrite wordToNat_split1.
@@ -505,9 +505,9 @@ Section Equiv.
       apply N2Z.inj_lt in Hx.
       rewrite NatLib.Z_of_N_Npow2 in Hx.
       assert (2 ^ BinInt.Z.of_nat (2 + Z.to_nat instrMemSizeLg) < 2 ^ memSizeLg)
-        by (apply Z.pow_lt_mono_r; Lia.lia).
+        by (apply Z.pow_lt_mono_r; blia).
       cbv [kunsigned] in *.
-      Lia.lia.
+      blia.
   Qed.
 
   Lemma riscv_to_kamiImplProcessor:
@@ -561,7 +561,7 @@ Section Equiv.
         rewrite nat_N_Z.
         cbv [instrMemSize].
         rewrite N_Z_nat_conversions.Nat2Z.inj_pow.
-        rewrite Nat2Z.inj_add, Z2Nat.id by Lia.lia.
+        rewrite Nat2Z.inj_add, Z2Nat.id by blia.
         apply H0.
       + apply mmio_init_xaddrs_disjoint.
       + apply riscvRegsInit_sound; assumption.

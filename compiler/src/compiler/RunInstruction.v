@@ -269,7 +269,7 @@ Section Run.
       intros.
       apply word.unsigned_inj.
       rewrite word.unsigned_and, word.unsigned_xor, !word.unsigned_of_Z. unfold word.wrap.
-      assert (0 <= width) by (destruct width_cases as [E | E]; rewrite E; bomega).
+      assert (0 <= width) by (destruct width_cases as [E | E]; rewrite E; blia).
       replace (2 ^ width - 1) with (Z.ones width); cycle 1. {
         rewrite Z.ones_equiv. reflexivity.
       }

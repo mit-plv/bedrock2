@@ -209,7 +209,7 @@ Section Parametrized.
     pose proof (wordToNat_bound iaddr).
     pose proof (NatLib.pow2_zero iaddrSize).
     assert (#iaddr = NatLib.pow2 iaddrSize - 1 \/
-            #iaddr < NatLib.pow2 iaddrSize - 1)%nat by omega.
+            #iaddr < NatLib.pow2 iaddrSize - 1)%nat by blia.
     destruct H1; [|assumption].
     assert (natToWord iaddrSize (#iaddr) =
             natToWord iaddrSize (NatLib.pow2 iaddrSize - 1)) by congruence.

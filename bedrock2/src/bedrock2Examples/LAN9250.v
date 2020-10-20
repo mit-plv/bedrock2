@@ -5,7 +5,7 @@ Require Import bedrock2Examples.SPI.
 From coqutil Require Import letexists.
 Require Import bedrock2.AbsintWordToZ.
 Require Import coqutil.Tactics.rdelta.
-Require Import Coq.omega.PreOmega.
+Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Z.Lia.
 
 Import BinInt String List.ListNotations.
@@ -323,7 +323,7 @@ Section WithParameters.
     { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     repeat straightline; split; trivial.
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
@@ -331,7 +331,7 @@ Section WithParameters.
     { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     repeat straightline; split; trivial.
     repeat straightline.
 
@@ -417,7 +417,7 @@ Section WithParameters.
     { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     t.
     t.
     t.
@@ -433,7 +433,7 @@ Section WithParameters.
     { subst addr addr0. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     repeat t.
 
     do 6 letexists.
@@ -501,16 +501,16 @@ Section WithParameters.
     cbv [word.wrap].
     change Semantics.width with 32.
     repeat match goal with |- context G [?a mod ?b] => let goal := context G [a] in change goal end.
-    rewrite ?Z.shiftl_mul_pow2 by (clear; Lia.lia).
+    rewrite ?Z.shiftl_mul_pow2 by (clear; blia).
 
     change 255 with (Z.ones 8).
-    rewrite <-!Z.shiftl_mul_pow2 by Omega.omega.
+    rewrite <-!Z.shiftl_mul_pow2 by blia.
     pose proof (@word.unsigned_range _ _ Semantics.word_ok v).
     change Semantics.width with 32 in *.
     set (@word.unsigned _ _ v) as X in *.
     rewrite ?Byte.byte.unsigned_of_Z.
     unfold Byte.byte.wrap.
-    rewrite <- ?Z.land_ones by Lia.lia.
+    rewrite <- ?Z.land_ones by blia.
     prove_Zeq_bitwise.
 
     Unshelve.
@@ -706,7 +706,7 @@ Section WithParameters.
     18,19:subst addr3.
     1,2,3,4,16,17,18,19: cbv [isMMIOAddr SPI_CSMODE_ADDR];
       rewrite !word.unsigned_of_Z; cbv [word.wrap];
-      trivial; cbv -[Z.le Z.lt]; Lia.lia.
+      trivial; cbv -[Z.le Z.lt]; blia.
 
     all : try (
       repeat match goal with x := _ ++ _ |- _ => subst x end;
@@ -734,10 +734,10 @@ Section WithParameters.
     { rewrite Properties.word.unsigned_sru_nowrap; cycle 1.
       { rewrite word.unsigned_of_Z; exact eq_refl. }
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
-      rewrite Z.shiftr_div_pow2 by Omega.omega.
+      rewrite Z.shiftr_div_pow2 by blia.
       clear -H8.
       change (Ox "400") with (4*256) in *.
-      Z.div_mod_to_equations. Lia.lia. }
+      Z.div_mod_to_equations. blia. }
     { rewrite Properties.word.unsigned_and_nowrap.
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
       change 255 with (Z.ones 8).
@@ -779,21 +779,21 @@ Section WithParameters.
       end.
     { rewrite Properties.word.unsigned_sru_nowrap by (rewrite word.unsigned_of_Z; exact eq_refl).
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
-      rewrite Z.shiftr_div_pow2 by Omega.omega.
+      rewrite Z.shiftr_div_pow2 by blia.
       revert dependent a; clear; intros.
       change (Ox "400") with (4*256) in *. change (Ox "0") with 0 in *.
-      Z.div_mod_to_equations. Lia.lia. }
+      Z.div_mod_to_equations. blia. }
     { rewrite Properties.word.unsigned_and_nowrap.
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
-      change 255 with (Z.ones 8); rewrite Z.land_ones by Omega.omega.
-      Z.div_mod_to_equations. Lia.lia. }
+      change 255 with (Z.ones 8); rewrite Z.land_ones by blia.
+      Z.div_mod_to_equations. blia. }
     repeat match goal with x := _ |- _ => subst x end.
     cbv [LittleEndian.combine PrimitivePair.pair._1 PrimitivePair.pair._2].
 
     change 32 with Semantics.width.
     repeat rewrite ?Properties.word.unsigned_or_nowrap, <-?Z.lor_assoc by (rewrite ?word.unsigned_of_Z; exact eq_refl).
     change (Z.shiftl 0 8) with 0 in *; rewrite Z.lor_0_r.
-    rewrite !Z.shiftl_lor, !Z.shiftl_shiftl in * by Lia.lia.
+    rewrite !Z.shiftl_lor, !Z.shiftl_shiftl in * by blia.
     repeat f_equal.
 
     (* little-endian word conversion, automatable (bitwise Z and word) *)
@@ -807,7 +807,7 @@ Section WithParameters.
     all : change (8+16) with 24.
     all : cbv [Byte.byte.wrap].
     all : clear.
-    all : rewrite ?Z.shiftl_mul_pow2 by Lia.lia.
-    all : try (Z.div_mod_to_equations; Lia.lia).
+    all : rewrite ?Z.shiftl_mul_pow2 by blia.
+    all : try (Z.div_mod_to_equations; blia).
   Qed.
 End WithParameters.

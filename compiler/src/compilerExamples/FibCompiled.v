@@ -116,7 +116,7 @@ Section FibCompiled.
       apply Nat.lt_le_pred in H.
       simpl in H.
       specialize (Hinc H).
-      bomega.
+      blia.
   Qed.
 
   Local Notation instructionsH := (bedrock2.MetricLogging.instructions).
@@ -219,7 +219,7 @@ Section FibCompiled.
     match goal with
     | |- map.get (map.put _ _ _) _ = Some _ =>
       rewrite map.get_put_diff; [assumption|discriminate] || apply map.get_put_same
-    | |- _ => assumption || simpl; Lia.blia
+    | |- _ => assumption || simpl; blia
     end.
 
   Ltac eval_var_solve :=
@@ -319,7 +319,7 @@ Section FibCompiled.
         * reflexivity.
       + repeat split.
         * assumption.
-        * simpl. Lia.blia.
+        * simpl. blia.
         * replace n with i by blia.
           rewrite Nat.add_1_r.
           etransitivity; [ eassumption | reflexivity ].
