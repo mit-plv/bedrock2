@@ -250,6 +250,88 @@ Proof.
     rename H2 into length_rep. subst br. subst v0.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
+    {
+
+  lazymatch goal with
+  | |- ?G => tryif is_lia G then idtac else fail "this tactic does not solve this kind of goal"
+  end;
+  cleanup_for_ZModArith;
+  simpl_list_length_exprs;
+  wordOps_to_ZModArith.
+  ZModArith_step ltac:(lia4).
+  ZModArith_step ltac:(lia4).
+  ZModArith_step ltac:(lia4). (* same *)
+
+  ZModArith_step ltac:(lia4).
+  ZModArith_step ltac:(lia4). (* same *)
+  ZModArith_step ltac:(lia4). (* same *)
+
+let lia_tac := ltac:(lia4) in
+  match goal with
+  (* TODO delete this first line because it's already on the last line,
+     it's just here to demo how "robust" the heuristics are which decide when
+     it's safe to try lia *)
+  | |- _ => solve [lia_tac]
+  | |- _ => exact eq_refl
+  | |- _ => progress Z.push_pull_mod
+  | |- context[?a mod ?m] =>
+    rewrite (Z.mod_small a m) by
+        first [apply computable_bounds; reflexivity | assumption | lia_tac]
+  | |- _ => mix_eq_into_mod
+  | |- _ => progress Zsimp_goal
+(*  | |- _ => apply Z.mod_mul_l
+  | |- _ => apply Z.mod_mul_r
+  | |- _ => solve [lia_tac]*)
+  end.
+
+
+exfalso. clear.
+assert
+(forall (left right : word) (xs : list word),
+ (\_ right - \_ left) mod 2 ^ width = 8 * Z.of_nat (Datatypes.length xs) ->
+ forall (v : nat) (x : list word) (x1 x2 : word),
+ (\_ x2 - \_ x1) mod 2 ^ width = 8 * Z.of_nat (Datatypes.length x) ->
+ Datatypes.length x = v ->
+ (\_ x2 - \_ x1) mod 2 ^ width <> 0 ->
+ 0 <= 8 * Z.of_nat (Datatypes.length x) < 2 ^ width ->
+ 0 <= \_ x1 + 8 * Z.of_nat (Datatypes.length x) / 2 ^ 4 * 2 ^ 3 - \_ x1 < 2 ^ width).
+{
+
+  PreOmega.zify. rewrite ?Z2Nat.id in *. Z.div_to_equations.
+
+      Require Import coqutil.Tactics.Tactics.
+
+      forget (\_ right) as rb.
+      forget (\_ left) as lb.
+      forget (Datatypes.length xs) as lxs.
+      forget (Datatypes.length x) as lx.
+      clear left right x xs.
+      forget (\_ x2) as X2.
+      forget (\_ x1) as X1.
+      clear x1 x2.
+      Set Printing Implicit. Set Printing Coercions.
+      forget (@width parameters) as W.
+
+
+      repeat match goal with
+             | x: _ |- _ => revert x
+             end.
+
+      match goal with
+      | |- ?G => idtac G
+      end.
+
+      Set Printing All. Set Printing Coercions. Set Printing Universes.
+
+      match goal with
+      | |- ?G => idtac G
+      end.
+
+      Lia.lia.
+
+      (* Error: Anomaly "Uncaught exception Failure("Cannot find hyp or def")."
+         Please report at http://coq.inria.fr/bugs/. *)
+
     { unsigned_sidecond. }
     { unsigned_sidecond. }
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
