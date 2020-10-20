@@ -219,7 +219,6 @@ Ltac unsigned_sidecond :=
   repeat ZModArith_step ltac:(lia4).
 
 
-Local Unset Simplex. (* COQBUG(9615) *)
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
 Proof.
   repeat straightline.
