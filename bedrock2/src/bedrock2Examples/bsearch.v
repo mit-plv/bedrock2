@@ -216,7 +216,8 @@ Ltac unsigned_sidecond :=
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
   wordOps_to_ZModArith;
-  repeat ZModArith_step ltac:(lia4).
+  (* repeat ZModArith_step ltac:(lia4). *)
+  Z.div_mod_to_equations; time "enhanced_lia" enhanced_lia.
 
 
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
