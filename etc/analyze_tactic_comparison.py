@@ -120,20 +120,59 @@ if filepath[-4:] != ".txt":
 
 noext = filepath[:-4]
 
+def sorted_prefix_sums(l):
+   l.sort()
+   sum = 0.0
+   for i in range(len(l)):
+      sum += l[i]
+      l[i] = sum
+   return l
+
+# sorted running time plot
+
+plt.figure()
+
+plt.plot(sorted([tA for tA, tB in tuples]), color='gray', label=tacAName)
+plt.plot(sorted([tB for tA, tB in tuples]), color='red', label=tacBName)
+plt.ylim(0.0, 0.05)
+plt.xlabel("instances sorted by time")
+plt.ylabel("time [s]")
+plt.legend()
+plt.savefig(f"{noext}_ranked_times_linearscale.png", dpi=200)
+plt.ylim(0.0001, 1500)
+plt.yscale("log")
+plt.savefig(f"{noext}_ranked_times_logscale.png", dpi=200)
+
+
+# sorted cumulative running time plot
+plt.figure()
+plt.plot(sorted_prefix_sums([tA for tA, tB in tuples]), color='gray', label=tacAName)
+plt.plot(sorted_prefix_sums([tB for tA, tB in tuples]), color='red', label=tacBName)
+plt.xlabel("instances sorted by time")
+plt.ylabel("cumulative time [s]")
+plt.legend()
+plt.ylim(0, 500)
+plt.savefig(f"{noext}_ranked_times_cumulative_linearscale.png", dpi=200)
+plt.yscale("log")
+plt.ylim(0.0001, 2000)
+plt.savefig(f"{noext}_ranked_times_cumulative_logscale.png", dpi=200)
+
+# tacA time vs tacB time scatter plot
+plt.figure()
+
 X = [0.001 if x == 0 else x for x, y in tuples]
 Y = [0.001 if y == 0 else y for x, y in tuples]
 
-
 plt.xlabel(f"running time of {tacAName}[s]")
 plt.ylabel(f"running time of {tacBName}[s]")
+plt.plot([0.0001, 10000], [0.0001, 10000], color='red', label='same running time')
 plt.scatter(X, Y, marker='.', color='blue', label='measurement point')
-plt.plot([0.001, 7], [0.001, 7], color='red', label='same running time')
 plt.legend()
-
-plt.savefig(f"{noext}_linearscale.png", dpi=200)
-
+plt.xlim(0, 15)
+plt.ylim(0, 15)
+plt.savefig(f"{noext}_scatter_linearscale.png", dpi=200)
+plt.xlim(0.0005, 1500)
+plt.ylim(0.0005, 1500)
 plt.xscale("log")
 plt.yscale("log")
-plt.savefig(f"{noext}_logscale.png", dpi=200)
-
-#plt.show()
+plt.savefig(f"{noext}_scatter_logscale.png", dpi=200)
