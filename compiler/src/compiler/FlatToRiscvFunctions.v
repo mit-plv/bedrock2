@@ -45,37 +45,6 @@ Section Proofs.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
 
-  Lemma stackalloc_words_nonneg: forall s,
-      0 <= stackalloc_words s.
-  Proof.
-    clear h.
-    assert (Memory.bytes_per_word (bitwidth iset) = 4 \/ Memory.bytes_per_word (bitwidth iset) = 8). {
-      unfold Memory.bytes_per_word. destruct iset; cbv; auto.
-    }
-    induction s; simpl; Z.div_mod_to_equations; blia.
-  Qed.
-
-  Lemma framesize_nonneg: forall argvars resvars body,
-      0 <= framelength (argvars, resvars, body).
-  Proof.
-    clear h.
-    intros. unfold framelength.
-    pose proof (stackalloc_words_nonneg body).
-    assert (bytes_per_word = 4 \/ bytes_per_word = 8). {
-      unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
-    }
-    Z.div_mod_to_equations.
-    blia.
-  Qed.
-
-  Lemma fits_stack_nonneg: forall M N e s,
-      fits_stack M N e s ->
-      0 <= M /\ 0 <= N.
-  Proof.
-    clear h.
-    induction 1; try blia. pose proof (@framesize_nonneg argnames retnames body). blia.
-  Qed.
-
   (* high stack addresses     | stackframe of main             \
                               ...                               \
     g|                        ---                                }- stuffed into R

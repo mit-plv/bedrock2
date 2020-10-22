@@ -237,8 +237,8 @@ Section WithParameters.
   Lemma stackalloc_words_nonneg: forall s,
       0 <= stackalloc_words s.
   Proof.
-    assert (bytes_per_word = 4 \/ bytes_per_word = 8). {
-      unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+    assert (Memory.bytes_per_word (bitwidth iset) = 4 \/ Memory.bytes_per_word (bitwidth iset) = 8). {
+      unfold Memory.bytes_per_word. destruct iset; cbv; auto.
     }
     induction s; simpl; Z.div_mod_to_equations; blia.
   Qed.
