@@ -31,11 +31,19 @@ tuples = []
 tacAName = "original_lia"
 tacBName = "enhanced_lia"
 
+tacBTimeThresh = 1.0
+
 with open(filepath) as fp:
    lastWasTacA = False
    tacATime = "N/A"
    lineNo = 1
+   currentFile = "N/A"
+   currentFileWasPrinted = False
    for line in fp:
+      fileMatch = re.search('COQC (.*)', line)
+      if fileMatch:
+         currentFile = fileMatch.group(1)
+         currentFileWasPrinted = False
       tacAMatch = re.search(f'{tacAName} ran for ([0-9.]*) secs.*\((success|failure)\)', line)
       if tacAMatch:
          tacATime = tacAMatch.group(1)
@@ -49,6 +57,11 @@ with open(filepath) as fp:
             tacBTime = tacBMatch.group(1)
             if lastWasTacA:
                tuples.append((float(tacATime), float(tacBTime)))
+               if float(tacBTime) >= tacBTimeThresh:
+                  if not currentFileWasPrinted:
+                     print(f'Cases where {tacBName} is takes more than {tacBTimeThresh:.3f}s in {currentFile}:')
+                     currentFileWasPrinted = True
+                  print(f"{float(tacATime):.3f};{float(tacBTime):.3f}")
             else:
                print(f"weird: {tacBName} time without preceding {tacAName} time at line {lineNo}")
          else:
