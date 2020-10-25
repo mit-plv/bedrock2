@@ -199,8 +199,42 @@ Ltac ZModArith_step lia_tac :=
 Ltac simpl_list_length_exprs :=
   rewrite ?List.length_skipn, ?List.firstn_length.
 
-Hint Rewrite word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu word.unsigned_sru word.signed_srs word.unsigned_eqb word.unsigned_ltu word.signed_lts
-       using solve[reflexivity || trivial]
+(* word laws for shifts where the shift amount is a Z instead of a word *)
+Module word.
+  Section WithWord.
+    Context {width} {word : word.word width} {word_ok : word.ok word}.
+
+    Lemma unsigned_slu_shamtZ: forall (x: word) (a: Z),
+        0 <= a < width ->
+        word.unsigned (word.slu x (word.of_Z a)) = word.wrap (Z.shiftl (word.unsigned x) a).
+    Proof.
+      intros. assert (width <= 2 ^ width) by (apply Zpow_facts.Zpower2_le_lin; blia).
+      rewrite word.unsigned_slu; rewrite word.unsigned_of_Z; unfold word.wrap; rewrite (Z.mod_small a); blia.
+    Qed.
+
+    Lemma unsigned_sru_shamtZ: forall (x: word) (a: Z),
+        0 <= a < width ->
+        word.unsigned (word.sru x (word.of_Z a)) = word.wrap (Z.shiftr (word.unsigned x) a).
+    Proof.
+      intros. assert (width <= 2 ^ width) by (apply Zpow_facts.Zpower2_le_lin; blia).
+      rewrite word.unsigned_sru; rewrite word.unsigned_of_Z; unfold word.wrap; rewrite (Z.mod_small a); blia.
+    Qed.
+
+    Lemma signed_srs_shamtZ: forall (x: word) (a: Z),
+        0 <= a < width ->
+        word.signed (word.srs x (word.of_Z a)) = word.swrap (Z.shiftr (word.signed x) a).
+    Proof.
+      intros. assert (width <= 2 ^ width) by (apply Zpow_facts.Zpower2_le_lin; blia).
+      rewrite word.signed_srs; rewrite word.unsigned_of_Z; unfold word.wrap; rewrite (Z.mod_small a); blia.
+    Qed.
+  End WithWord.
+End word.
+
+(* proves a <= b < c if all of them are constants *)
+Ltac solve_cst_le_lt := clear; split; [discriminate|reflexivity].
+
+Hint Rewrite word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu_shamtZ word.unsigned_sru_shamtZ word.signed_srs_shamtZ word.unsigned_eqb word.unsigned_ltu word.signed_lts
+       using solve[reflexivity || trivial || solve_cst_le_lt]
   : word_laws.
 
 Ltac wordOps_to_ZModArith :=
@@ -209,15 +243,62 @@ Ltac wordOps_to_ZModArith :=
          | rewrite Z.shiftr_div_pow2 by (apply computable_le; reflexivity)
          | rewrite Z.shiftl_mul_pow2 by (apply computable_le; reflexivity) ].
 
-Ltac unsigned_sidecond :=
+Require Import coqutil.Tactics.Tactics.
+Require Import Cdcl.Itauto.
+
+Ltac make_bitwidth_concrete :=
+  match goal with
+  | |- context [@width ?p] =>
+    first [ change (@width p) with 32 in *
+          | change (@width p) with 64 in *
+          | let wc := fresh in pose proof (@width_cases _ _) as wc;
+            let W := fresh "Width" in forget (@width p) as W;
+            destruct wc; subst W ]
+  end.
+
+Ltac dewordify_step :=
+  match goal with
+  | a: @word.rep _ _ |- _ =>
+    let a' := fresh in forget (word.unsigned a) as a'; clear a; rename a' into a
+  | l: list _ |- _ =>
+    let l' := fresh "length_" l in forget (List.length l) as l'; clear l
+  end.
+
+Ltac dewordify :=
+  repeat dewordify_step;
+  make_bitwidth_concrete.
+
+Ltac unsigned_sidecond_pre :=
   lazymatch goal with
   | |- ?G => tryif is_lia G then idtac else fail "this tactic does not solve this kind of goal"
   end;
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
-  wordOps_to_ZModArith;
-  repeat ZModArith_step ltac:(lia4).
+  wordOps_to_ZModArith.
 
+Require Import Lia.
+
+Ltac lia_core := xlia zchecker.
+
+Ltac logging_lia_core :=
+  try (repeat match goal with
+              | x: _ |- _ => revert x
+              end;
+       match goal with
+       | |- ?G => idtac "--- lia goal ---"; idtac G
+       end;
+       fail);
+  time "lia_core" lia_core.
+
+(* Ltac unsigned_sidecond := unsigned_sidecond_pre; repeat ZModArith_step ltac:(lia4). *)
+
+Ltac unsigned_sidecond :=
+  unsigned_sidecond_pre;
+  dewordify;
+  Z.div_mod_to_equations;
+  Zify.zify; time "itauto" itauto lia_core.
+
+Set Printing Depth 100000.
 
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
 Proof.
@@ -257,6 +338,10 @@ Proof.
       2:split.
       { SeparationLogic.ecancel_assumption. }
       { unsigned_sidecond. }
+
+(* fall back to previous version *)
+Ltac unsigned_sidecond ::= unsigned_sidecond_pre; repeat ZModArith_step ltac:(lia4).
+
       { unsigned_sidecond. }
       split; repeat straightline.
       2:split; repeat straightline.
