@@ -59,7 +59,7 @@ with open(filepath) as fp:
                tuples.append((float(tacATime), float(tacBTime)))
                if float(tacBTime) >= tacBTimeThresh:
                   if not currentFileWasPrinted:
-                     print(f'Cases where {tacBName} is takes more than {tacBTimeThresh:.3f}s in {currentFile}:')
+                     print(f'Cases where {tacBName} takes more than {tacBTimeThresh:.3f}s in {currentFile}:')
                      currentFileWasPrinted = True
                   print(f"{float(tacATime):.3f};{float(tacBTime):.3f}")
             else:
