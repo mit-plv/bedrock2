@@ -175,6 +175,9 @@ Ltac cleanup_for_ZModArith :=
   repeat match goal with
          | a := _ |- _ => subst a
          | H: ?T |- _ => tryif is_lia T then fail else clear H
+         (* The one below might throw away useful hyps, but this makes it simpler to remove all non-Z stuff
+            TODO remove and see if itauto lia can still deal with it *)
+         | H: context [match ?x with _ => _ end ] |- _ => clear H
          end.
 
 Ltac ZModArith_step lia_tac :=
@@ -274,29 +277,35 @@ Ltac unsigned_sidecond_pre :=
   end;
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
-  wordOps_to_ZModArith.
+  wordOps_to_ZModArith;
+  dewordify.
 
 Require Import Lia.
 
-Ltac lia_core := xlia zchecker.
+(* Note: zify is called to expose propositional structure to itauto, and leaf-lia
+   will call it again (deliberately) to do more preprocessing enabled by the
+   assumptions added by itauto *)
+Ltac enhanced_lia ::= Zify.zify; itauto lia.
 
-Ltac logging_lia_core :=
+Ltac log_goal :=
   try (repeat match goal with
               | x: _ |- _ => revert x
               end;
        match goal with
-       | |- ?G => idtac "--- lia goal ---"; idtac G
+       | |- ?G => idtac "--- goal ---"; idtac G
        end;
-       fail);
-  time "lia_core" lia_core.
+       fail).
 
 (* Ltac unsigned_sidecond := unsigned_sidecond_pre; repeat ZModArith_step ltac:(lia4). *)
 
-Ltac unsigned_sidecond :=
-  unsigned_sidecond_pre;
-  dewordify;
+Ltac better_lia :=
+(*log_goal;*)
   Z.div_mod_to_equations;
-  Zify.zify; time "itauto" itauto lia_core.
+  blia.
+
+Ltac hacky_lia :=
+  log_goal;
+  repeat ZModArith_step ltac:(Z.div_to_equations; lia).
 
 Set Printing Depth 100000.
 
@@ -330,25 +339,21 @@ Proof.
     rename H2 into length_rep. subst br. subst v0.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
-    { unsigned_sidecond. }
-    { unsigned_sidecond. }
+    { unsigned_sidecond_pre. better_lia. }
+    { unsigned_sidecond_pre. better_lia. }
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split; [repeat straightline|].
       1:split.
       2:split.
       { SeparationLogic.ecancel_assumption. }
-      { unsigned_sidecond. }
-
-(* fall back to previous version *)
-Ltac unsigned_sidecond ::= unsigned_sidecond_pre; repeat ZModArith_step ltac:(lia4).
-
-      { unsigned_sidecond. }
+      { unsigned_sidecond_pre. better_lia. }
+      { cleanup_for_ZModArith. reflexivity. }
       split; repeat straightline.
       2:split; repeat straightline.
       2: SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
-      { unsigned_sidecond. }
-      { unsigned_sidecond. }
-      { unsigned_sidecond. }
+      { unsigned_sidecond_pre. better_lia. }
+      { unsigned_sidecond_pre. better_lia. }
+      { unsigned_sidecond_pre. better_lia. }
       { trivial. }
       { SeparationLogic.ecancel_assumption. } }
     (* second branch of the if, very similar goals... *)
@@ -356,15 +361,15 @@ Ltac unsigned_sidecond ::= unsigned_sidecond_pre; repeat ZModArith_step ltac:(li
       1:split.
       2:split.
       { SeparationLogic.ecancel_assumption. }
-      { unsigned_sidecond. }
-      { unsigned_sidecond. }
+      { unsigned_sidecond_pre. better_lia. }
+      { cleanup_for_ZModArith. reflexivity. }
       split.
-      { unsigned_sidecond. }
+      { unsigned_sidecond_pre. better_lia. }
       repeat straightline; split; trivial.
       subst x5. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
-      { unsigned_sidecond. }
-      { unsigned_sidecond. }
-      { unsigned_sidecond. }
+      { unsigned_sidecond_pre. better_lia. }
+      { unsigned_sidecond_pre. better_lia. }
+      { unsigned_sidecond_pre. better_lia. }
       { SeparationLogic.ecancel_assumption. } } }
   repeat straightline.
   repeat apply conj; auto; []. (* postcondition *)
