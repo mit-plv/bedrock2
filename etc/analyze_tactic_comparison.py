@@ -84,7 +84,7 @@ sameTime = 0
 
 slowTuples = []
 
-thresh = 10.0
+thresh = 100000.0
 
 for tacATime, tacBTime in tuples:
    if tacATime < 0:
