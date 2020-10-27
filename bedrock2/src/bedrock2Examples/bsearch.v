@@ -175,9 +175,6 @@ Ltac cleanup_for_ZModArith :=
   repeat match goal with
          | a := _ |- _ => subst a
          | H: ?T |- _ => tryif is_lia T then fail else clear H
-         (* The one below might throw away useful hyps, but this makes it simpler to remove all non-Z stuff
-            TODO remove and see if itauto lia can still deal with it *)
-         | H: context [match ?x with _ => _ end ] |- _ => clear H
          end.
 
 Ltac ZModArith_step lia_tac :=
@@ -230,21 +227,30 @@ Module word.
       intros. assert (width <= 2 ^ width) by (apply Zpow_facts.Zpower2_le_lin; blia).
       rewrite word.signed_srs; rewrite word.unsigned_of_Z; unfold word.wrap; rewrite (Z.mod_small a); blia.
     Qed.
+
+    Lemma unsigned_if: forall (b: bool) thn els,
+        word.unsigned (if b then thn else els) = if b then word.unsigned thn else word.unsigned els.
+    Proof. intros. destruct b; reflexivity. Qed.
   End WithWord.
 End word.
 
-(* proves a <= b < c if all of them are constants *)
-Ltac solve_cst_le_lt := clear; split; [discriminate|reflexivity].
-
-Hint Rewrite word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu_shamtZ word.unsigned_sru_shamtZ word.signed_srs_shamtZ word.unsigned_eqb word.unsigned_ltu word.signed_lts
-       using solve[reflexivity || trivial || solve_cst_le_lt]
+Hint Rewrite word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu_shamtZ word.unsigned_sru_shamtZ word.signed_srs_shamtZ word.unsigned_eqb word.unsigned_ltu word.signed_lts word.unsigned_if
+       using solve[reflexivity || trivial || apply computable_bounds; reflexivity]
   : word_laws.
 
 Ltac wordOps_to_ZModArith :=
   repeat first
          [ progress (autorewrite with word_laws in *; cbv [word.wrap] in * )
-         | rewrite Z.shiftr_div_pow2 by (apply computable_le; reflexivity)
-         | rewrite Z.shiftl_mul_pow2 by (apply computable_le; reflexivity) ].
+         | rewrite Z.shiftr_div_pow2 in * by (apply computable_le; reflexivity)
+         | rewrite Z.shiftl_mul_pow2 in * by (apply computable_le; reflexivity) ].
+
+Ltac clear_unused_nonProps :=
+        repeat match goal with
+               | x: ?T |- _ => lazymatch type of T with
+                               | Prop => fail
+                               | _ => clear x
+                               end
+               end.
 
 Require Import coqutil.Tactics.Tactics.
 Require Import Cdcl.Itauto.
@@ -260,16 +266,18 @@ Ltac make_bitwidth_concrete :=
   end.
 
 Ltac dewordify_step :=
-  match goal with
-  | a: @word.rep _ _ |- _ =>
-    let a' := fresh in forget (word.unsigned a) as a'; clear a; rename a' into a
-  | l: list _ |- _ =>
-    let l' := fresh "length_" l in forget (List.length l) as l'; clear l
-  end.
+  so fun hyporgoal =>
+       match hyporgoal with
+       | context [@word.unsigned ?w ?i ?x] =>
+         let a := fresh "w0" in forget (@word.unsigned w i x) as a
+       | context [@List.length ?T ?l] =>
+         let a := fresh "len0" in forget (@List.length T l) as a
+       end.
 
 Ltac dewordify :=
   repeat dewordify_step;
-  make_bitwidth_concrete.
+  make_bitwidth_concrete;
+  forget (@word.rep _ _) as word.
 
 Ltac unsigned_sidecond_pre :=
   lazymatch goal with
@@ -278,7 +286,8 @@ Ltac unsigned_sidecond_pre :=
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
   wordOps_to_ZModArith;
-  dewordify.
+  dewordify;
+  clear_unused_nonProps.
 
 Require Import Lia.
 
@@ -295,8 +304,6 @@ Ltac log_goal :=
        | |- ?G => idtac "--- goal ---"; idtac G
        end;
        fail).
-
-(* Ltac unsigned_sidecond := unsigned_sidecond_pre; repeat ZModArith_step ltac:(lia4). *)
 
 Ltac better_lia :=
 (*log_goal;*)
