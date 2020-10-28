@@ -61,6 +61,7 @@ Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Word.Interface.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
+Require Import bedrock2.ZnWords.
 
 Import coqutil.Map.Interface.
 Import ReversedListNotations.
@@ -91,14 +92,7 @@ Section WithParameters.
 
   Lemma nonzero_because_high_bit_set x (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
     : word.unsigned x <> 0.
-  Proof.
-    rewrite Properties.word.unsigned_sru_nowrap in H.
-    2: { rewrite word.unsigned_of_Z; exact eq_refl. }
-    intro HX.
-    rewrite HX in H.
-    rewrite word.unsigned_of_Z in H.
-    exact (H eq_refl).
-  Qed.
+  Proof. ZnWords. Qed.
 
   Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
         (preprocess [autorewrite with rew_word_morphism],
@@ -131,7 +125,7 @@ Section WithParameters.
     { repeat straightline. }
     { eapply (Z.lt_wf 0). }
     { eexists; split; repeat straightline.
-      subst i. rewrite word.unsigned_of_Z in H; inversion H. }
+      exfalso. ZnWords. }
     { repeat (split; trivial; []).
       subst i. rewrite word.unsigned_of_Z.
       split.
@@ -149,9 +143,7 @@ Section WithParameters.
     letexists; split; [exact eq_refl|]; split; [split; trivial|].
     {
       cbv [isMMIOAddr addr].
-      rewrite ?word.unsigned_of_Z.
-      cbv -[Z.lt Z.gt Z.ge Z.le]; clear.
-      blia. }
+      ZnWords. }
     repeat straightline. split; trivial.
     letexists. split.
     { repeat straightline. exact eq_refl. }
@@ -174,17 +166,9 @@ Section WithParameters.
         { eapply kleene_app; eauto.
           refine (kleene_step _ _ nil _ (kleene_empty _)).
           repeat econstructor.
-          repeat match goal with x:=_|-_=>subst x end.
-          rewrite Properties.word.unsigned_sru_nowrap in H by (rewrite word.unsigned_of_Z; exact eq_refl).
-          rewrite word.unsigned_of_Z in H; eapply H. }
-        { rewrite app_length, Znat.Nat2Z.inj_add; cbn [app Datatypes.length]; subst i.
-          unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
-          rewrite word.unsigned_sub; cbv [word.wrap]; rewrite Z.mod_small; rewrite Properties.word.unsigned_of_Z_1.
-          2: { pose proof Properties.word.unsigned_range x1.
-               change Semantics.width with 32 in *. blia. }
-          ring. } }
-        { split; try eapply Properties.word.decrement_nonzero_lt;
-          try eapply Properties.word.unsigned_range; eauto. } }
+          ZnWords. }
+        { ZnWords. } }
+        { ZnWords. } }
     { (* SUBCASE loop condition was false (exit loop because of timeout *)
       letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
       split; eauto.
@@ -201,19 +185,8 @@ Section WithParameters.
           eapply kleene_app; eauto.
           refine (kleene_step _ _ nil _ (kleene_empty _)).
           repeat econstructor.
-          repeat match goal with x:=_|-_=>subst x end.
-          rewrite Properties.word.unsigned_sru_nowrap in H by (rewrite word.unsigned_of_Z; exact eq_refl).
-          rewrite word.unsigned_of_Z in H; eapply H. }
-        { rewrite app_length, Znat.Nat2Z.inj_add; cbn [app Datatypes.length]; subst i.
-          unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
-          replace 0 with (word.unsigned (word.of_Z 0)) in H0; cycle 1.
-          { rewrite word.unsigned_of_Z; exact eq_refl. }
-          eapply Properties.word.unsigned_inj in H0.
-          assert (HA: word.add (word.sub x1 (word.of_Z 1)) (word.of_Z 1) = word.of_Z 1). {
-            match goal with H : _ |- _ => rewrite H; ring end. }
-          ring_simplify in HA; subst.
-          ring_simplify.
-          rewrite word.unsigned_of_Z; reflexivity. } } }
+          ZnWords. }
+        { ZnWords. } } }
     }
     (* CASE if-condition was false (word.unsigned v0 = 0), i.e. we'll set i=i^i and exit loop *)
     repeat straightline.
@@ -224,10 +197,7 @@ Section WithParameters.
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
-    { subst addr0. cbv [isMMIOAddr].
-      rewrite !word.unsigned_of_Z; cbv [word.wrap].
-      split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. blia. }
+    { cbv [isMMIOAddr]. ZnWords. }
     repeat straightline. split; trivial.
     repeat straightline.
     split; trivial. subst t0.
@@ -248,18 +218,11 @@ Section WithParameters.
     eexists _, _; split; eauto; []; split; eauto.
     eexists (cons _ nil), (cons _ nil); split; cbn [app]; eauto.
     split; repeat econstructor.
-    { repeat match goal with x:=_|-_=>subst x end.
-      rewrite Properties.word.unsigned_sru_nowrap in H by (rewrite word.unsigned_of_Z; exact eq_refl).
-      rewrite word.unsigned_of_Z in H; eapply H. }
+    { ZnWords. }
     { cbv [lightbulb_spec.spi_write_enqueue one].
       repeat f_equal.
       eapply Properties.word.unsigned_inj.
-      clear -p Hb.
-      pose proof Properties.word.unsigned_range x.
-      change (Semantics.width) with 32 in *.
-      change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
-      rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small by blia.
-      rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small; blia. }
+      rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small; ZnWords. }
   Qed.
 
   Local Ltac split_if :=
@@ -291,7 +254,7 @@ Section WithParameters.
            HList.polymorphic_list.repeat HList.polymorphic_list.length
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *; repeat straightline.
     { exact (Z.lt_wf 0). }
-    { subst i; rewrite word.unsigned_of_Z in H. inversion H. }
+    { exfalso. ZnWords. }
     { split; trivial.
       subst i. rewrite word.unsigned_of_Z.
       split; [inversion 1|].
@@ -304,10 +267,7 @@ Section WithParameters.
       eexists nil; split; try split; solve [constructor]. }
     { eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
       letexists; split; [exact eq_refl|]; split; [split; trivial|].
-    { subst addr. cbv [isMMIOAddr].
-      rewrite !word.unsigned_of_Z; cbv [word.wrap].
-      split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. blia. }
+    { cbv [isMMIOAddr]. ZnWords. }
       repeat ((split; trivial; []) || straightline || split_if).
       {
         letexists. split; split.
@@ -324,17 +284,10 @@ Section WithParameters.
             refine (kleene_step _ (cons _ nil) nil _ (kleene_empty _)).
             eexists; split.
             { exact eq_refl. }
-            { subst v0.
-              rewrite Properties.word.unsigned_sru_nowrap in H by (rewrite word.unsigned_of_Z; exact eq_refl).
-              rewrite word.unsigned_of_Z in H; exact H. } }
-          { cbn [Datatypes.length]; subst i.
-            unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
-            rewrite word.unsigned_sub; cbv [word.wrap]; rewrite Z.mod_small; rewrite Properties.word.unsigned_of_Z_1.
-            2: { pose proof Properties.word.unsigned_range x1.
-                 change Semantics.width with 32 in *. blia. }
-            blia. } }
-          { eapply Properties.word.unsigned_range. }
-          { eapply Properties.word.decrement_nonzero_lt; eassumption. }}
+            { ZnWords. } }
+          { ZnWords. } }
+          { ZnWords. }
+          { ZnWords. } }
       { letexists; split; repeat straightline.
         split; trivial.
         eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
@@ -347,17 +300,8 @@ Section WithParameters.
           refine (kleene_step _ (cons _ nil) nil _ (kleene_empty _)).
           eexists; split.
           { exact eq_refl. }
-          { subst v0.
-            rewrite Properties.word.unsigned_sru_nowrap, word.unsigned_of_Z in H
-             by (rewrite word.unsigned_of_Z ; exact eq_refl); exact H. } }
-        { cbn [Datatypes.length]; subst i.
-          unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
-          replace 0 with (word.unsigned (word.of_Z 0)) in H1; cycle 1.
-          { rewrite word.unsigned_of_Z; exact eq_refl. }
-          eapply Properties.word.unsigned_inj in H1.
-          assert (HA: word.add (word.sub x1 (word.of_Z 1)) (word.of_Z 1) = word.of_Z 1). {
-            match goal with H : _ |- _ => rewrite H; ring end. }
-          ring_simplify in HA; subst. rewrite Properties.word.unsigned_of_Z_1; blia. } }
+          { ZnWords. } }
+        { ZnWords. } }
       { repeat straightline.
         repeat letexists; split.
         1: split.
@@ -367,7 +311,7 @@ Section WithParameters.
           subst v.
           subst i.
           rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent.
-          pose proof Properties.word.unsigned_range x1. blia. }
+          ZnWords. }
         repeat straightline.
         repeat (split; trivial; []).
         split.
@@ -426,9 +370,7 @@ Section WithParameters.
           eexists; split; cbv [one]; trivial.
           split.
           (* tag:bitwise *)
-          { subst v0. rewrite Properties.word.unsigned_sru_nowrap in H
-             by (rewrite word.unsigned_of_Z; exact eq_refl);
-             rewrite word.unsigned_of_Z in H; exact H. }
+          { ZnWords. }
           subst b.
           (* automatable: multi-word bitwise *)
           change (255) with (Z.ones 8).
