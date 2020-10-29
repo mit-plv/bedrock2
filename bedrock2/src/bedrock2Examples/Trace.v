@@ -164,15 +164,15 @@ Module SpiEth.
 
       (* TODO these only read a byte rather than a word *)
       IOMacros.read_word_code(x _: String.string) := bedrock_func_body:(
-        x = constr:(-1) ;
-        while (x & constr:(Z.shiftl 1 31)) { io! x = MMInput(spi_rx) }
+        x = coq:(-1) ;
+        while (x & coq:(Z.shiftl 1 31)) { io! x = MMInput(spi_rx) }
       );
       IOMacros.write_word_code(x tmp: String.string) := bedrock_func_body:(
         io! tmp = MMInput(spi_tx_fifo);
-        while (tmp & constr:(Z.shiftl 1 31)) { (* high order bit set means fifo is full *)
+        while (tmp & coq:(Z.shiftl 1 31)) { (* high order bit set means fifo is full *)
           io! tmp = MMInput(spi_tx_fifo)
         };
-        io! constr:(nil) = MMOutput(spi_tx_fifo, x)
+        io! coq:(nil) = MMOutput(spi_tx_fifo, x)
       );
 
       IOMacros.read_word_trace := read_byte;

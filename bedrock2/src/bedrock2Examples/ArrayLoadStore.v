@@ -33,8 +33,8 @@ Section WithParameters.
       let r := "r" in
     ("tf", ([buf; len; i; j], [], bedrock_func_body:(
       require ( i < len ) else { /*skip*/ };
-      store1(buf + i, constr:(0));
-      require ( j < len ) else { r = constr:(-1) };
+      store1(buf + i, coq:(0));
+      require ( j < len ) else { r = coq:(-1) };
       r = load1(buf + j)
     ))).
 

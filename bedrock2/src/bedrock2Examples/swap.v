@@ -21,7 +21,7 @@ Definition swap_swap : func := let a := "a" in let b := "b" in
 
 Definition main : func :=
   ("main", ([], [], bedrock_func_body:(
-    swap_swap(constr:(100), constr:(108))))).
+    swap_swap(coq:(100), coq:(108))))).
 
 Require bedrock2.WeakestPrecondition.
 Require Import bedrock2.Semantics bedrock2.FE310CSemantics.

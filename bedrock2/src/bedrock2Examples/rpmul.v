@@ -14,10 +14,10 @@ Definition rpmul :=
   let e := "e" in
   let ret := "ret" in
   ("rpmul", ([x;e], ([ret]:list String.string), bedrock_func_body:(
-  ret = constr:(0);
+  ret = coq:(0);
   while (e) {
-    if (e & constr:(1)) { ret = ret + x };
-    e = e >> constr:(1);
+    if (e & coq:(1)) { ret = ret + x };
+    e = e >> coq:(1);
     x = x + x
   }
 ))).

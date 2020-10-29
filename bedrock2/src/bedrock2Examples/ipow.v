@@ -9,10 +9,10 @@ Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
 Definition ipow :=
   let x := "x" in   let e := "e" in   let ret := "ret" in
   ("ipow", ([x;e], ([ret]:list String.string), bedrock_func_body:(
-  ret = constr:(1);
+  ret = coq:(1);
   while (e) {
-    if (e & constr:(1)) { ret = ret * x };
-    e = e >> constr:(1);
+    if (e & coq:(1)) { ret = ret * x };
+    e = e >> coq:(1);
     x = x * x
   }
 ))).
@@ -113,7 +113,7 @@ Proof.
           rewrite ?Z.pow_twice_r, ?Z.pow_1_r, ?Z.pow_mul_l.
           rewrite Z.mul_mod_idemp_r by discriminate.
           f_equal; ring. } }
-      { 
+      {
         repeat (straightline || (split; trivial; [])).
         all: t.
         { (* measure decreases *)

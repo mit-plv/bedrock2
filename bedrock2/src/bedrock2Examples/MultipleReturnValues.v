@@ -19,8 +19,8 @@ Section MultipleReturnValues.
   Example addsub_test : func :=
     let ret := "ret" in
     ("addsub_test", ([], [ret], bedrock_func_body:(
-    unpack! ret, ret = addsub(constr:(14), constr:(7));
-    ret = ret - constr:(7)
+    unpack! ret, ret = addsub(coq:(14), coq:(7));
+    ret = ret - coq:(7)
   ))).
 End MultipleReturnValues.
 
