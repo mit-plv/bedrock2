@@ -28,34 +28,34 @@ Section WithParameters.
       unpack! bytesWritten, err = recvEthernet(p_addr);
       if !err { (* success, packet *)
         unpack! err = lightbulb_handle(p_addr, bytesWritten);
-        err = constr:(0) (* bad packet continue anyway *)
-      } else if !(err ^ constr:(1)) { (* success, no packet *)
-        err = constr:(0)
+        err = coq:(0) (* bad packet continue anyway *)
+      } else if !(err ^ coq:(1)) { (* success, no packet *)
+        err = coq:(0)
       }
     ))).
 
   Definition recvEthernet :=
     let buf := "buf" in let num_bytes := "num_bytes" in let i := "i" in let err := "err" in let read := "read" in
     ("recvEthernet", ([buf], [num_bytes;err], bedrock_func_body:(
-      num_bytes = constr:(0);
-      unpack! read, err = lan9250_readword(constr:(Ox"7C")); (* RX_FIFO_INF *)
-      require !err else { err = constr:(-1) };
-      require (read & constr:((2^8-1)*2^16)) else { err = constr:(1) }; (* nonempty *)
-      unpack! read, err = lan9250_readword(constr:(Ox"40")); (* RX_STATUS_FIFO_PORT *)
-      require !err else { err = constr:(-1) };
+      num_bytes = coq:(0);
+      unpack! read, err = lan9250_readword(coq:(Ox"7C")); (* RX_FIFO_INF *)
+      require !err else { err = coq:(-1) };
+      require (read & coq:((2^8-1)*2^16)) else { err = coq:(1) }; (* nonempty *)
+      unpack! read, err = lan9250_readword(coq:(Ox"40")); (* RX_STATUS_FIFO_PORT *)
+      require !err else { err = coq:(-1) };
 
-      num_bytes = read >> constr:(16) & constr:(2^14-1);
+      num_bytes = read >> coq:(16) & coq:(2^14-1);
       (* round up to next word *)
-      num_bytes = (num_bytes + constr:(4-1)) >> constr:(2);
+      num_bytes = (num_bytes + coq:(4-1)) >> coq:(2);
       num_bytes = num_bytes + num_bytes;
       num_bytes = num_bytes + num_bytes;
 
-      require (num_bytes < constr:(1520 + 1)) else { err = constr:(2) };
+      require (num_bytes < coq:(1520 + 1)) else { err = coq:(2) };
 
-      i = constr:(0); while (i < num_bytes) {
-        unpack! read, err = lan9250_readword(constr:(0));
-        if err { err = constr:(-1); i = num_bytes }
-        else { store4(buf + i, read); i = i + constr:(4) }
+      i = coq:(0); while (i < num_bytes) {
+        unpack! read, err = lan9250_readword(coq:(0));
+        if err { err = coq:(-1); i = num_bytes }
+        else { store4(buf + i, read); i = i + coq:(4) }
       }
       ))).
 
@@ -63,39 +63,39 @@ Section WithParameters.
     let packet := "packet" in let len := "len" in let ethertype := "ethertype" in let protocol := "protocol" in let port := "port" in let mmio_val := "mmio_val" in let command := "command" in let Oxff := "Oxff" in let MMIOREAD := "MMIOREAD" in let MMIOWRITE := "MMIOWRITE" in let r := "r" in
 
     ("lightbulb_handle", ([packet;len], [r], bedrock_func_body:(
-      r = constr:(42);
-      require (r < len) else { r = constr:(-1) };
+      r = coq:(42);
+      require (r < len) else { r = coq:(-1) };
 
-      Oxff = constr:(Ox"ff");
-      ethertype = (((load1(packet + constr:(12)))&Oxff) << constr:(8)) | ((load1(packet + constr:(13)))&Oxff);
-      r = constr:(1536 - 1);
-      require (r < ethertype) else { r = constr:(-1) };
+      Oxff = coq:(Ox"ff");
+      ethertype = (((load1(packet + coq:(12)))&Oxff) << coq:(8)) | ((load1(packet + coq:(13)))&Oxff);
+      r = coq:(1536 - 1);
+      require (r < ethertype) else { r = coq:(-1) };
 
-      r = constr:(23);
+      r = coq:(23);
       r = packet + r;
       protocol = (load1(r))&Oxff;
-      r = constr:(Ox"11");
-      require (protocol == r) else { r = constr:(-1) };
+      r = coq:(Ox"11");
+      require (protocol == r) else { r = coq:(-1) };
 
-      r = constr:(42);
+      r = coq:(42);
       r = packet + r;
       command = (load1(r))&Oxff;
-      command = command&constr:(1);
+      command = command&coq:(1);
 
-      r = constr:(Ox"1001200c");
+      r = coq:(Ox"1001200c");
       io! mmio_val = MMIOREAD(r);
-      mmio_val = mmio_val & constr:(Z.clearbit (2^32-1) 23);
-      output! MMIOWRITE(r, mmio_val | command << constr:(23));
+      mmio_val = mmio_val & coq:(Z.clearbit (2^32-1) 23);
+      output! MMIOWRITE(r, mmio_val | command << coq:(23));
 
-      r = constr:(0)
+      r = coq:(0)
     ))).
 
   Definition lightbulb_init : func :=
     let err : String.string := "err" in
     let MMIOWRITE : String.string := "MMIOWRITE" in
     ("lightbulb_init", ([], [], bedrock_func_body:(
-      output! MMIOWRITE(constr:(Ox"10012038"), constr:((Z.shiftl (Ox"f") 2)));
-      output! MMIOWRITE(constr:(Ox"10012008"), constr:((Z.shiftl 1 23)));
+      output! MMIOWRITE(coq:(Ox"10012038"), coq:((Z.shiftl (Ox"f") 2)));
+      output! MMIOWRITE(coq:(Ox"10012008"), coq:((Z.shiftl 1 23)));
       unpack! err = lan9250_init()
     ))).
 

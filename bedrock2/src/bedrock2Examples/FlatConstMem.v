@@ -12,9 +12,9 @@ Definition silly1 : func :=
     let b := "b" in
     let c := "c" in
   ("silly1", ([a], [c], bedrock_func_body:(
-      b = load4(a + constr:(16));
-      store4(a + constr:(14), b);
-      c = load4(a + constr:(16))
+      b = load4(a + coq:(16));
+      store4(a + coq:(14), b);
+      c = load4(a + coq:(16))
   ))).
 
 Require Import coqutil.Word.Interface coqutil.Word.Properties.

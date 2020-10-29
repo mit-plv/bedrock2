@@ -13,13 +13,13 @@ Definition bsearch: func :=
   let left := "left" in let right := "right" in let target := "target" in let mid := "mid" in
   ("bsearch", ([left; right; target], [left], bedrock_func_body:(
   while (right - left) {
-    mid = left + (((right-left) >> constr:(4)) << constr:(3));
+    mid = left + (((right-left) >> coq:(4)) << coq:(3));
     if (load(mid) < target) {
-      left = mid + constr:(8)
+      left = mid + coq:(8)
     } else {
       right = mid
     };
-    constr:(cmd.unset mid)
+    coq:(cmd.unset mid)
   }
 ))).
 
@@ -27,13 +27,13 @@ Definition bsearch: func :=
 Definition listsum(input_base: Z): func :=
   let sumreg := "sumreg" in let n := "n" in let i := "i" in let a := "a" in
   ("listsum", ([], [sumreg], bedrock_func_body:(
-  sumreg = constr:(0);
+  sumreg = coq:(0);
   n = load4(input_base);
-  i = constr:(0);
+  i = coq:(0);
   while (i < n) {
-    a = load4(constr:(input_base + 4) + (i << constr:(2)));
+    a = load4(coq:(input_base + 4) + (i << coq:(2)));
     sumreg = sumreg + a;
-    i = i + constr:(1)
+    i = i + coq:(1)
   }
 ))).
 
@@ -41,14 +41,14 @@ Definition listsum(input_base: Z): func :=
 Definition fibonacci(n: Z): func :=
   let a := "a" in let b := "b" in let i := "i" in let n := "n" in let c := "c" in
   ("fibonacci", ([], [b], bedrock_func_body:(
-  a = constr:(0);
-  b = constr:(1);
-  i = constr:(0);
+  a = coq:(0);
+  b = coq:(1);
+  i = coq:(0);
   while (i < n) {
     c = a + b;
     a = b;
     b = c;
-    i = i + constr:(1)
+    i = i + coq:(1)
   }
 ))).
 
@@ -56,18 +56,18 @@ Definition fibonacciServer (n_load_addr n_store_addr: Z): func :=
   let b := "b" in let n := "n" in let a := "a" in let i := "i" in let c := "c" in
   ("fibonacciserver", ([], [b], bedrock_func_body:(
   n = load4(n_load_addr);
-  a = constr:(0);
-  b = constr:(1);
-  i = constr:(0);
-  if (n < constr:(47)) {
+  a = coq:(0);
+  b = coq:(1);
+  i = coq:(0);
+  if (n < coq:(47)) {
     while (i < n) {
       c = a + b;
       a = b;
       b = c;
-      i = i + constr:(1)
+      i = i + coq:(1)
     }
   } else {
-    b = constr:(-1)
+    b = coq:(-1)
   };
   store4(n_store_addr, b)
 ))).

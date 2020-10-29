@@ -19,14 +19,14 @@ Definition spi_write : function :=
   let b := "b" in let busy := "busy" in let i := "i" in
   let SPI_WRITE_ADDR := Ox"10024048" in
   ("spi_write", ([b], [busy], bedrock_func_body:(
-    busy = (constr:(-1));
-    i = (patience); while (i) { i = (i - constr:(1));
+    busy = (coq:(-1));
+    i = (patience); while (i) { i = (i - coq:(1));
       io! busy = MMIOREAD(SPI_WRITE_ADDR);
-      if !(busy >> constr:(31)) {
+      if !(busy >> coq:(31)) {
         i = (i^i)
       }
     };
-    if !(busy >> constr:(31)) {
+    if !(busy >> coq:(31)) {
       output! MMIOWRITE(SPI_WRITE_ADDR, b);
       busy = (busy ^ busy)
     }
@@ -36,12 +36,12 @@ Definition spi_read : function :=
   let b := "b" in  let busy := "busy" in  let i := "i" in
   let SPI_READ_ADDR := Ox"1002404c" in
   ("spi_read", (nil, (b::busy::nil), bedrock_func_body:(
-    busy = (constr:(-1));
-    b = (constr:(Ox"5a"));
-    i = (patience); while (i) { i = (i - constr:(1));
+    busy = (coq:(-1));
+    b = (coq:(Ox"5a"));
+    i = (patience); while (i) { i = (i - coq:(1));
       io! busy = MMIOREAD(SPI_READ_ADDR);
-      if !(busy >> constr:(31)) {
-        b = (busy & constr:(Ox"ff"));
+      if !(busy >> coq:(31)) {
+        b = (busy & coq:(Ox"ff"));
         i = (i^i);
         busy = (busy ^ busy)
       }

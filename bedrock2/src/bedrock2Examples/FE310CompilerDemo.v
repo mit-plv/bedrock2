@@ -75,26 +75,26 @@ Definition swap_chars_over_uart: cmd :=
 
   bedrock_func_body:(
     (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
-    io! rx = MMIOREAD (constr:(Ox"0x00021fec"));
-    output! MMIOWRITE(hfrosccfg, constr:(2^30) | (rx & constr:(2^5-1)) << constr:(16));
-    constr:(cmd.unset rx);
+    io! rx = MMIOREAD (coq:(Ox"0x00021fec"));
+    output! MMIOWRITE(hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << coq:(16));
+    coq:(cmd.unset rx);
 
-    one = constr:(1);
-    output! MMIOWRITE(constr:(uart0_base + Ox"018"), constr:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
-    output! MMIOWRITE(constr:(uart0_base + Ox"008"), one); (* tx enable *)
-    output! MMIOWRITE(constr:(uart0_base + Ox"00c"), one); (* rx enable *)
-    output! MMIOWRITE(constr:(gpio0_base + Ox"038"), constr:(2^17 + 2^16)); (* pinmux uart tx rx *)
+    one = coq:(1);
+    output! MMIOWRITE(coq:(uart0_base + Ox"018"), coq:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
+    output! MMIOWRITE(coq:(uart0_base + Ox"008"), one); (* tx enable *)
+    output! MMIOWRITE(coq:(uart0_base + Ox"00c"), one); (* rx enable *)
+    output! MMIOWRITE(coq:(gpio0_base + Ox"038"), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
 
-    dot = constr:(46);
+    dot = coq:(46);
     prev = dot;
     running = one-dot;
     while (running) {
-      bit31 = constr:(2^31);
+      bit31 = coq:(2^31);
       rx = bit31;
       polling = one-dot;
-      while (polling & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); polling = polling-one };
+      while (polling & rx & bit31) { io! rx = MMIOREAD(coq:(uart0_base + Ox"004")); polling = polling-one };
 
-      uart_tx = constr:(uart0_base + Ox"000");
+      uart_tx = coq:(uart0_base + Ox"000");
       tx = bit31;
       polling = one-dot;
       while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = polling-one };
@@ -104,7 +104,7 @@ Definition swap_chars_over_uart: cmd :=
       running = running - one;
       if (prev == dot) { running = running ^ running };
 
-      constr:(cmd.unset uart_tx); constr:(cmd.unset rx); constr:(cmd.unset tx); constr:(cmd.unset bit31); constr:(cmd.unset polling)
+      coq:(cmd.unset uart_tx); coq:(cmd.unset rx); coq:(cmd.unset tx); coq:(cmd.unset bit31); coq:(cmd.unset polling)
     }
   ).
 
@@ -243,31 +243,31 @@ Definition echo_server: cmd :=
 
   bedrock_func_body:(
     (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
-    io! rx = MMIOREAD (constr:(Ox"0x00021fec"));
-    output! MMIOWRITE(hfrosccfg, constr:(2^30) | (rx & constr:(2^5-1)) << constr:(16));
-    constr:(cmd.unset rx);
+    io! rx = MMIOREAD (coq:(Ox"0x00021fec"));
+    output! MMIOWRITE(hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << coq:(16));
+    coq:(cmd.unset rx);
 
-    one = constr:(1);
-    output! MMIOWRITE(constr:(uart0_base + Ox"018"), constr:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
-    output! MMIOWRITE(constr:(uart0_base + Ox"008"), one); (* tx enable *)
-    output! MMIOWRITE(constr:(uart0_base + Ox"00c"), one); (* rx enable *)
-    output! MMIOWRITE(constr:(gpio0_base + Ox"038"), constr:(2^17 + 2^16)); (* pinmux uart tx rx *)
+    one = coq:(1);
+    output! MMIOWRITE(coq:(uart0_base + Ox"018"), coq:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
+    output! MMIOWRITE(coq:(uart0_base + Ox"008"), one); (* tx enable *)
+    output! MMIOWRITE(coq:(uart0_base + Ox"00c"), one); (* rx enable *)
+    output! MMIOWRITE(coq:(gpio0_base + Ox"038"), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
 
-    running = constr:(-1);
+    running = coq:(-1);
     while (running) {
-      bit31 = constr:(2^31);
+      bit31 = coq:(2^31);
       rx = bit31;
-      polling = constr:(-1);
-      while (polling & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); polling = polling-one };
-      if (rx & bit31) { constr:(cmd.skip) } else {
-        uart_tx = constr:(uart0_base + Ox"000");
+      polling = coq:(-1);
+      while (polling & rx & bit31) { io! rx = MMIOREAD(coq:(uart0_base + Ox"004")); polling = polling-one };
+      if (rx & bit31) { coq:(cmd.skip) } else {
+        uart_tx = coq:(uart0_base + Ox"000");
         tx = bit31;
-        polling = constr:(-1);
+        polling = coq:(-1);
         while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = polling-one };
         output! MMIOWRITE(uart_tx, tx)
       };
       running = running - one;
-      constr:(cmd.unset uart_tx); constr:(cmd.unset rx); constr:(cmd.unset tx); constr:(cmd.unset bit31); constr:(cmd.unset polling)
+      coq:(cmd.unset uart_tx); coq:(cmd.unset rx); coq:(cmd.unset tx); coq:(cmd.unset bit31); coq:(cmd.unset polling)
     }
   ).
 
