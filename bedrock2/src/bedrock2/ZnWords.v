@@ -148,11 +148,13 @@ Ltac is_lia_prop P :=
   end.
 
 Ltac canonicalize_word_width_and_instance :=
-  so fun hyporgoal => match hyporgoal with
-     | context [@word.unsigned ?wi ?inst] => let wi' := eval cbn in wi in change wi with wi' in *;
-                                             let inst' := eval cbn in inst in change inst with inst' in *
-     | context [@word.signed   ?wi ?inst] => let wi' := eval cbn in wi in change wi with wi' in *;
-                                             let inst' := eval cbn in inst in change inst with inst' in *
+  repeat so fun hyporgoal => match hyporgoal with
+     | context [@word.unsigned ?wi ?inst] =>
+       let wi' := eval cbn in wi in let inst' := eval cbn in inst in
+       progress ( change wi with wi' in *; change inst with inst' in * )
+     | context [@word.signed   ?wi ?inst] =>
+       let wi' := eval cbn in wi in let inst' := eval cbn in inst in
+       progress ( change wi with wi' in *; change inst with inst' in * )
      end.
 
 Ltac ZnWords_pre :=

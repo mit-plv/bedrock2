@@ -1,6 +1,8 @@
 Require Import Coq.derive.Derive.
+Require Import coqutil.Z.Lia.
+Require coqutil.Word.BigEndian.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
-Require Import coqutil.Tactics.letexists coqutil.Tactics.Tactics.
+Require Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.rewr.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import bedrock2.Syntax bedrock2.Semantics.
@@ -36,6 +38,8 @@ Section WithParameters.
   Definition IPv4 := tuple byte 4.
 
   Definition encodeIPv4: IPv4 -> list byte := tuple.to_list.
+
+  Definition encodeCRC(crc: Z): list byte := tuple.to_list (BigEndian.split 4 crc).
 
   Record EthernetPacket(Payload: Type) := mkEthernetARPPacket {
     dstMAC: MAC;
@@ -136,7 +140,109 @@ Section WithParameters.
       exec e body t m l mc (fun t' m' l' mc' =>
         exists retvs : list word, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
 
+  (* ** ARP-specific helper lemmas *)
+
+  Lemma length_encodeARPOperation: forall op, List.length (encodeARPOperation op) = 1%nat.
+  Proof. intros. destruct op; reflexivity. Qed.
+
+  Lemma length_encodeEtherType: forall et, List.length (encodeEtherType et) = 2%nat.
+  Proof. intros. destruct et; reflexivity. Qed.
+
+  Fixpoint firstn_as_tuple{A: Type}(default: A)(n: nat)(l: list A): tuple A n :=
+    match n as n return tuple A n with
+    | O => tt
+    | S m => PrimitivePair.pair.mk (List.hd default l) (firstn_as_tuple default m (List.tl l))
+    end.
+
+  Lemma to_list_firstn_as_tuple: forall A (default: A) n (l: list A),
+      (n <= List.length l)%nat ->
+      tuple.to_list (firstn_as_tuple default n l) = List.firstn n l.
+  Proof.
+    induction n; intros.
+    - reflexivity.
+    - destruct l. 1: cbv in H; exfalso; blia.
+      simpl in *.
+      f_equal. eapply IHn. blia.
+  Qed.
+
+  Lemma list_eq_cancel_step{A: Type}: forall (xs ys l: list A),
+    List.firstn (List.length xs) l = xs ->
+    List.skipn (List.length xs) l = ys ->
+    l = xs ++ ys.
+  Proof.
+    intros. remember (List.length xs) as n. subst xs ys. symmetry. apply List.firstn_skipn.
+  Qed.
+
+  Lemma list_eq_cancel_firstn: forall A (l rest: list A) n,
+      (n <= List.length l)%nat ->
+      List.skipn n l = rest ->
+      l = List.firstn n l ++ rest.
+  Proof. intros. subst rest. symmetry. apply List.firstn_skipn. Qed.
+
+  Ltac list_eq_cancel_step :=
+    apply list_eq_cancel_step;
+    rewrite ?tuple.length_to_list, ?List.length_cons, ?List.length_nil, ?List.skipn_skipn,
+            ?length_encodeEtherType, ?length_encodeARPOperation.
+
   Definition TODO{T: Type}: T. Admitted.
+
+  Lemma interpretEthernetARPPacket: forall bs,
+      Z.of_nat (List.length bs) = 64 ->
+      (* conditions collected while trying to prove the lemma: *)
+      List.firstn 2 (List.skipn 12 bs) = [Byte.x08; Byte.x06] ->
+      List.firstn 6 (List.skipn 14 bs) = [Byte.x00; Byte.x01; Byte.x80; Byte.x00; Byte.x06; Byte.x04] ->
+      List.firstn 1 (List.skipn 20 bs) = [Byte.x01] -> (* we only interpret requests at the moment, no replies *)
+      exists packet: EthernetPacket ARPPacket, isEthernetARPPacket packet bs.
+  Proof.
+    intros.
+    unfold isEthernetARPPacket, isEthernetPacket, encodeARPPacket, encodeMAC, encodeIPv4.
+    eexists ({| payload := {| oper := _ |} |}).
+    cbn [dstMAC srcMAC etherType payload oper sha spa tha tpa].
+    repeat eexists.
+    (* can't use normal rewrite because COQBUG https://github.com/coq/coq/issues/10848 *)
+    all: rewr (fun t => match t with
+           | context [ List.length (?xs ++ ?ys) ] => constr:(List.app_length xs ys)
+           | context [ List.length (encodeARPOperation ?op) ] => constr:(length_encodeARPOperation op)
+           | context [ List.length (?h :: ?t) ] => constr:(List.length_cons h t)
+           | context [ (?xs ++ ?ys) ++ ?zs ] => constr:(eq_sym (List.app_assoc xs ys zs))
+           end) in |-*.
+    {
+      list_eq_cancel_step. {
+        symmetry. apply to_list_firstn_as_tuple. ZnWords.
+      }
+      list_eq_cancel_step. {
+        symmetry. apply to_list_firstn_as_tuple. ZnWords.
+      }
+      list_eq_cancel_step. {
+        instantiate (1 := EtherTypeARP).
+        assumption.
+      }
+      list_eq_cancel_step. {
+        assumption.
+      }
+      list_eq_cancel_step. {
+        instantiate (1 := ARPOperationRequest).
+        assumption.
+      }
+      list_eq_cancel_step. {
+        symmetry. apply to_list_firstn_as_tuple. ZnWords.
+      }
+      list_eq_cancel_step. {
+        symmetry. apply to_list_firstn_as_tuple. ZnWords.
+      }
+      list_eq_cancel_step. {
+        symmetry. apply to_list_firstn_as_tuple. ZnWords.
+      }
+      list_eq_cancel_step. {
+        symmetry. apply to_list_firstn_as_tuple. ZnWords.
+      }
+      case (@TODO False).
+    }
+    all: case (@TODO False).
+    Unshelve.
+    all: try exact Byte.x00.
+    all: try exact nil.
+  Qed.
 
   Definition arp: (string * {f: list string * list string * cmd &
     forall e t m ethbufAddr ethBufData len R,
@@ -171,6 +277,8 @@ Section WithParameters.
     all: intros D.
     { (* then (len == 64) *)
       destr (word.eqb len (word.of_Z 64)). 2: exfalso; ZnWords.
+
+
       instantiate (1 := TODO).
       exact TODO.
     }
