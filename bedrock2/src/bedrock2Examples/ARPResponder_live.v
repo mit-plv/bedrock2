@@ -53,10 +53,10 @@ Section WithParameters.
   Definition isEthernetPacket{P: Type}(payloadOk: P -> list byte -> Prop)(p: EthernetPacket P)(bs: list byte) :=
     exists data padding crc,
       bs = encodeMAC p.(srcMAC) ++ encodeMAC p.(dstMAC) ++ encodeEtherType p.(etherType)
-           ++ data ++ padding ++ crc /\
+           ++ data ++ padding ++ encodeCRC crc /\
       payloadOk p.(payload) data /\
-      46 <= Z.of_nat (List.length (data ++ padding)) <= 1500 /\
-      Z.of_nat (List.length crc) = 4. (* TODO could/should also verify CRC *)
+      46 <= Z.of_nat (List.length (data ++ padding)) <= 1500.
+      (* TODO could/should also verify CRC *)
 
   Inductive ARPOperation := ARPOperationRequest | ARPOperationReply.
 
@@ -140,8 +140,6 @@ Section WithParameters.
       exec e body t m l mc (fun t' m' l' mc' =>
         exists retvs : list word, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
 
-  (* ** ARP-specific helper lemmas *)
-
   Lemma length_encodeARPOperation: forall op, List.length (encodeARPOperation op) = 1%nat.
   Proof. intros. destruct op; reflexivity. Qed.
 
@@ -165,6 +163,15 @@ Section WithParameters.
       f_equal. eapply IHn. blia.
   Qed.
 
+  Lemma to_list_BigEndian_split: forall n (l: list byte),
+      (n <= List.length l)%nat ->
+      tuple.to_list (BigEndian.split n (BigEndian.combine n (firstn_as_tuple Byte.x00 n l))) = List.firstn n l.
+  Proof.
+    intros. rewrite BigEndian.split_combine.
+    apply to_list_firstn_as_tuple.
+    assumption.
+  Qed.
+
   Lemma list_eq_cancel_step{A: Type}: forall (xs ys l: list A),
     List.firstn (List.length xs) l = xs ->
     List.skipn (List.length xs) l = ys ->
@@ -179,10 +186,64 @@ Section WithParameters.
       l = List.firstn n l ++ rest.
   Proof. intros. subst rest. symmetry. apply List.firstn_skipn. Qed.
 
+  Ltac length_getEq t :=
+    match t with
+    | context[List.length (tuple.to_list ?xs)] => constr:(tuple.length_to_list xs)
+    | context[List.length (?xs ++ ?ys)] => constr:(List.app_length xs ys)
+    | context[List.length (?x :: ?xs)] => constr:(List.length_cons x xs)
+    | context[List.length (@nil ?A)] => constr:(@List.length_nil A)
+    | context[List.skipn ?n (List.skipn ?m ?xs)] => constr:(List.skipn_skipn n m xs)
+    | context[List.length (encodeEtherType ?et)] => constr:(length_encodeEtherType et)
+    | context[List.length (encodeARPOperation ?op)] => constr:(length_encodeARPOperation op)
+    | context[List.length (List.skipn ?n ?l)] => constr:(List.skipn_length n l)
+    end.
+
+  Lemma list_instantiate_evar{A: Type}: forall l1 l2 l3 (xs1 xs3 evar lhs rhs: list A),
+      (* reshape rhs: *)
+      rhs = xs1 ++ evar ++ xs3 ->
+      (* equations for lengths l1, l2, l3 *)
+      l1 = List.length xs1 ->
+      l2 = (List.length lhs - l1 - l3)%nat ->
+      l3 = List.length xs3 ->
+      (* sidecondition on lengths *)
+      (l1 + l3 <= List.length lhs)%nat ->
+      (* equations for lists xs1, evar, xs3 *)
+      xs1 = List.firstn l1 lhs ->
+      evar = List.firstn (List.length lhs - l1 - l3) (List.skipn l1 lhs) ->
+      xs3 = List.skipn (List.length lhs - l3) lhs ->
+      lhs = rhs.
+  Proof.
+    intros. subst xs1 xs3 evar. subst rhs.
+    apply list_eq_cancel_step. {
+      f_equal. symmetry. assumption.
+    }
+    apply list_eq_cancel_step. {
+      rewrite <- H0. f_equal. rewrite List.length_firstn_inbounds. 1: reflexivity.
+      rewrite List.length_skipn.
+      blia.
+    }
+    rewr length_getEq in |-*.
+    f_equal.
+    rewrite List.length_firstn_inbounds.
+    1: blia.
+    rewrite List.length_skipn.
+    blia.
+  Qed.
+
+  Lemma instantiate_tuple_from_list{A: Type}: forall (n: nat) (evar: tuple A n) (l: list A) (default: A),
+      n = Datatypes.length l ->
+      evar = firstn_as_tuple default n l ->
+      tuple.to_list evar = l.
+  Proof.
+    intros. subst.
+    rewrite to_list_firstn_as_tuple. 2: reflexivity.
+    apply List.firstn_all2. reflexivity.
+  Qed.
+
   Ltac list_eq_cancel_step :=
     apply list_eq_cancel_step;
-    rewrite ?tuple.length_to_list, ?List.length_cons, ?List.length_nil, ?List.skipn_skipn,
-            ?length_encodeEtherType, ?length_encodeARPOperation.
+    (* can't use normal rewrite because COQBUG https://github.com/coq/coq/issues/10848 *)
+    rewr length_getEq in |-*.
 
   Definition TODO{T: Type}: T. Admitted.
 
@@ -195,7 +256,7 @@ Section WithParameters.
       exists packet: EthernetPacket ARPPacket, isEthernetARPPacket packet bs.
   Proof.
     intros.
-    unfold isEthernetARPPacket, isEthernetPacket, encodeARPPacket, encodeMAC, encodeIPv4.
+    unfold isEthernetARPPacket, isEthernetPacket, encodeARPPacket, encodeMAC, encodeIPv4, encodeCRC.
     eexists ({| payload := {| oper := _ |} |}).
     cbn [dstMAC srcMAC etherType payload oper sha spa tha tpa].
     repeat eexists.
@@ -208,10 +269,10 @@ Section WithParameters.
            end) in |-*.
     {
       list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple. ZnWords.
+        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
       }
       list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple. ZnWords.
+        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
       }
       list_eq_cancel_step. {
         instantiate (1 := EtherTypeARP).
@@ -225,23 +286,52 @@ Section WithParameters.
         assumption.
       }
       list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple. ZnWords.
+        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
       }
       list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple. ZnWords.
+        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
       }
       list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple. ZnWords.
+        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
       }
       list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple. ZnWords.
+        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
       }
-      case (@TODO False).
+      cbn -[List.skipn tuple.to_list].
+      eapply list_instantiate_evar with (xs1 := nil). {
+        cbn [List.app].
+        f_equal.
+      }
+      { cbn [List.length]. reflexivity. }
+      { reflexivity. }
+      { reflexivity. }
+      { rewrite tuple.length_to_list. rewrite List.length_skipn. blia. }
+      { reflexivity. }
+      { (* finally, we can "automatically" instantiate the evar ?padding *)
+        reflexivity.  }
+      rewr length_getEq in |-*.
+      rewrite BigEndian.split_combine.
+      etransitivity. 2: apply tuple.to_list_of_list.
+      match goal with
+      | |- @tuple.to_list _ ?n1 _ = @tuple.to_list _ ?n2 _ =>
+        replace n2 with n1 by (rewr length_getEq in |-*; blia)
+      end.
+      eapply instantiate_tuple_from_list with (default := Byte.x00). 2: reflexivity.
+      rewr length_getEq in |-*.
+      blia.
     }
-    all: case (@TODO False).
-    Unshelve.
-    all: try exact Byte.x00.
-    all: try exact nil.
+    {
+      rewr length_getEq in |-*.
+      rewrite List.firstn_length.
+      rewr length_getEq in |-*.
+      blia.
+    }
+    {
+      rewr length_getEq in |-*.
+      rewrite List.firstn_length.
+      rewr length_getEq in |-*.
+      blia.
+    }
   Qed.
 
   Definition arp: (string * {f: list string * list string * cmd &
