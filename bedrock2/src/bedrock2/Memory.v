@@ -9,10 +9,78 @@ Require Import coqutil.Tactics.Tactics coqutil.Datatypes.Option.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndian.
 Require Import bedrock2.Notations bedrock2.Syntax.
 Require Import coqutil.Byte.
+Require Import coqutil.Map.OfListWord.
 
 Open Scope Z_scope.
 
 Definition bytes_per_word(width: Z): Z := (width + 7) / 8.
+
+Module WithoutTuples. Section Memory.
+  Context {width: Z} {word: word width} {mem: map.map word byte}.
+  Definition footprint (a : word) (n : nat) : list word :=
+    List.map (fun i => word.add a (word.of_Z (Z.of_nat i))) (List.seq 0 n).
+  Definition load_bytes (m : mem) (a : word) (n : nat) : option (list byte) :=
+    option_all (List.map (map.get m) (footprint a n)).
+  Definition unchecked_store_bytes (m : mem) (a : word) (bs : list byte) :=
+    map.putmany m (map.of_list_word_at a bs).
+  Definition store_bytes (m : mem)(a : word) (bs : list byte): option mem :=
+    match load_bytes m a (length bs) with
+    | Some _ => Some (unchecked_store_bytes m a bs)
+    | None => None (* some addresses were invalid *)
+    end.
+
+  Local Notation "a [ i ]" := (List.nth_error a i) (at level 9, format "a [ i ]").
+
+  Lemma length_footprint a n : length (footprint a n) = n.
+  Proof. cbv [footprint]. rewrite List.map_length, List.seq_length; trivial. Qed.
+  Lemma nth_error_footprint_inbounds a n i (H : lt i n)
+    : (footprint a n)[i] = Some (word.add a (word.of_Z (Z.of_nat i))).
+  Proof.
+    cbv [footprint].
+    erewrite List.map_nth_error; trivial.
+    rewrite List.nth_error_nth' with (d:=O); rewrite ?List.seq_length; trivial; [].
+    rewrite List.seq_nth; trivial.
+  Qed.
+
+  Lemma length_load_bytes m a n bs (H : load_bytes m a n = Some bs)
+    : length bs = n.
+  Proof.
+    eapply length_option_all in H.
+    pose proof length_footprint a n.
+    pose proof List.map_length (map.get m) (footprint a n).
+    congruence.
+  Qed.
+  Lemma nth_error_load_bytes m a n bs (H : load_bytes m a n = Some bs) i (Hi : lt i n)
+    : List.nth_error bs i = map.get m (word.add a (word.of_Z (Z.of_nat i))).
+  Proof.
+    cbv [load_bytes] in *.
+    epose proof @nth_error_option_all _ _ _ _ H as Hii.
+    rewrite List.map_length, length_footprint in Hii.
+    case (Hii Hi) as (b&Hbl&Hbr); clear Hii; rewrite Hbr; clear Hbr.
+    erewrite List.map_nth_error in Hbl by eauto using nth_error_footprint_inbounds.
+    injection Hbl; congruence.
+  Qed.
+
+  Lemma load_bytes_None m a n (H : load_bytes m a n = None)
+    : exists i, lt i n /\ map.get m (word.add a (word.of_Z (Z.of_nat i))) = None.
+  Proof.
+    eapply option_all_None in H; case H as (i&Hi); exists i.
+    eapply nth_error_map_Some in Hi; case Hi as (x&Hfx&Hmx).
+    pose proof proj1 (List.nth_error_Some (footprint a n) i) ltac:(congruence).
+    rewrite length_footprint in H; split; trivial.
+    eapply nth_error_footprint_inbounds with (a:=a) in H.
+    congruence.
+  Qed.
+
+  Lemma load_bytes_all m a n
+    (H : forall i, lt i n -> exists b, map.get m (word.add a (word.of_Z (Z.of_nat i))) = Some b)
+    : exists bs, load_bytes m a n = Some bs.
+  Proof.
+    destruct (load_bytes m a n) eqn:HX; eauto.
+    eapply load_bytes_None in HX; destruct HX as (?&?&?). firstorder congruence.
+    exact nil.
+  Qed.
+End Memory. End WithoutTuples.
 
 Section Memory.
   Context {width: Z} {word: word width} {mem: map.map word byte}.

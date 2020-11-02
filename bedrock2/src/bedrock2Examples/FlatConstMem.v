@@ -318,6 +318,40 @@ Section WithParameters.
           try eassumption; try (change_with_Z_literal constr:(width); blia))
       end.
 
+  Section __.
+    Import WithoutTuples.
+    Lemma load_bytes_of_putmany_bytes_at bs a mR n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
+      : load_bytes (mR $+ bs$@a) a n = Some bs.
+    Proof.
+      destruct (load_bytes (mR $+ bs$@a) a n) eqn:HN in *; cycle 1.
+      { exfalso; eapply load_bytes_None in HN; case HN as (i&?&?).
+        case (Properties.map.putmany_spec mR (bs$@a) (a+!(BinIntDef.Z.of_nat i))%word) as [(?&?&?)| (?&?) ]; try congruence.
+        rewrite get_of_list_word_at in H1; eapply nth_error_None in H1.
+        revert H1.
+        rewrite word.word_sub_add_l_same_l, word.unsigned_of_Z.
+        cbv [word.wrap]; rewrite Z.mod_small, Nat2Z.id; eauto; blia. }
+      transitivity (Some l); try congruence; f_equal; subst n.
+      symmetry; eapply nth_error_ext_samelength.
+      { symmetry; eauto using length_load_bytes. }
+      intros.
+      pose proof nth_error_load_bytes _ a _ _ HN i ltac:(trivial) as HH.
+      epose proof H; eapply nth_error_nth' with (d:=Byte.x00) in H.
+      erewrite Properties.map.get_putmany_right in HH; cycle 1.
+      { rewrite get_of_list_word_at.
+        rewrite word.word_sub_add_l_same_l, word.unsigned_of_Z.
+        cbv [word.wrap]; rewrite Z.mod_small, Nat2Z.id; eauto; blia. }
+      congruence.
+    Qed.
+
+    Lemma load_bytes_of_sep_bytes_at bs a R m (Hsep: (eq(bs$@a)*R) m) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
+      : load_bytes m a n = Some bs.
+    Proof.
+      eapply sep_comm in Hsep.
+      destruct Hsep as (mR&?&(?&?)&?&?); subst.
+      eapply load_bytes_of_putmany_bytes_at; eauto.
+    Qed.
+  End __.
+
   Lemma load_four_bytes_of_sep_at bs a R m (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
   Proof.
@@ -336,6 +370,23 @@ Section WithParameters.
     blia.
   Qed.
 
+  Lemma uncurried_load_four_bytes_of_sep_at bs a R m
+    (H: (eq(bs$@a)*R) m /\ length bs = 4%nat) :
+    load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
+  Proof. eapply load_four_bytes_of_sep_at; eapply H. Qed.
+
+  Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R m
+    (H: (eq(bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
+    load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
+  Proof. eapply load_four_bytes_of_sep_at; try eapply H; blia. Qed.
+
+  (*
+  Lemma store_four_of_sep addr (oldvalue : word32) (value : word) R m (post:_->Prop)
+    (Hsep : sep (scalar32 addr oldvalue) R m)
+    (Hpost : forall m, sep (scalar32 addr (word.of_Z (word.unsigned value))) R m -> post m)
+    : exists m1, Memory.store Syntax.access_size.four m addr value = Some m1 /\ post m1.
+  Proof.
+  *)
 
   Ltac split_flat_memory_based_on_goal :=
     lazymatch goal with
@@ -357,9 +408,18 @@ Section WithParameters.
         split_bytes_base_addr bs a0 a end end
     end.
 
-
   Ltac subst_lets :=
     repeat match goal with x := ?v |- _ => assert_fails (is_evar v); subst x end.
+
+  Ltac set_evars :=
+    repeat match goal with
+           | |- context [?e] => is_evar e; set e in *
+           | H: context [?e] |- _ => is_evar e; set e in *
+           end.
+  Ltac subst_evars :=
+    repeat match goal with 
+    x := ?e |- _ => is_evar e; subst x
+           end.
 
   Lemma silly1_ok : program_logic_goal_for_function! silly1.
   Proof.
@@ -370,19 +430,33 @@ Section WithParameters.
     { repeat straightline.
       eexists; split; trivial.
       subst_lets. (* for rewrite and rewr *)
-      split_flat_memory_based_on_goal.
-      eapply load_four_bytes_of_sep_at.
-      { (* note: this goal does not say how many bytes it wants, that's in the next goal *)
-        ecancel_assumption. }
-      { (* ecancel_assumption unification unfolds "too much" because ys0 is not in the context of the evar :/ *)
-        change (skipn (Z.to_nat 16) (firstn (Z.to_nat 20) bs)) with ys0.
-        blia. } }
+      eapply Z_uncurried_load_four_bytes_of_sep_at.
+
+      set_evars.
+      match goal with |- context[?P m] =>
+      match P with context[?e$@?a] => idtac e a;
+      match goal with | |- context[Z.of_nat (length e) = ?n] =>
+      match goal with H : ?S m |- _ =>
+      match S with context[?bs $@ ?a0] =>
+      let a_r := constr:(word.add a (word.of_Z n)) in
+      split_bytes_base_addr bs a0 a_r end;
+      match type of H with context[?bs $@ ?a0] =>
+      split_bytes_base_addr bs a0 a end end
+      end end end.
+      subst_evars.
+
+      split; eauto. (* eauto resolves an evar whose context does not contain ys0 *)
+      progress match goal with |- context[?e$@?a] => change e with ys0 end.
+      ecancel_assumption. }
+
     set (firstn (Z.to_nat 20) bs) as xs in *.
     set (skipn (Z.to_nat 16) xs) as ys0 in *.
 
     repeat straightline.
     subst_lets. (* for rewrite and rewr *)
     split_flat_memory_based_on_goal.
+
+    cbv [WeakestPrecondition.store].
 
     (* skipping actual store for now: *)
     (* pose proof Scalars.store_four_of_sep. *)
