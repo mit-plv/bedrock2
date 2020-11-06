@@ -5,7 +5,7 @@ Require Import coqutil.Byte.
 Require Import bedrock2.Array.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import compiler.SeparationLogic.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import compiler.FlatToRiscvFunctions.
 Require Import compiler.PipelineWithRename.
 Require Import compiler.ExprImpEventLoopSpec.

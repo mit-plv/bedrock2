@@ -17,7 +17,7 @@ Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Tactics.Tactics.
 Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.SeparationLogic.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import bedrock2.Syntax.
 Require Import riscv.Platform.Run.
 Require Import riscv.Utility.Encode.

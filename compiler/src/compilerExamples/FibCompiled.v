@@ -5,7 +5,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Word.Properties.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import bedrock2.MetricLogging.
 Require Import riscv.Platform.MinimalLogging.
 Require Import riscv.Platform.MetricMinimal.

@@ -7,7 +7,7 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import compiler.util.Common.
 Require Import compiler.SeparationLogic.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.

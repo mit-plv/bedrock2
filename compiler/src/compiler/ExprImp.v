@@ -10,7 +10,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Platform.MetricLogging.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Import Semantics.
 
 (*Local Set Ltac Profiling.*)

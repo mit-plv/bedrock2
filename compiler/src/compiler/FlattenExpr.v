@@ -11,10 +11,10 @@ Require Import bedrock2.Semantics.
 Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import coqutil.Datatypes.String.
 Require Import compiler.FlattenExprDef.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 
 Open Scope Z_scope.
 

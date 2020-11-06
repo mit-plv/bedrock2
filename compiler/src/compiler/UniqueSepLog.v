@@ -105,7 +105,7 @@ Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Tactics.Tactics.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import bedrock2.Memory.
 Require Import bedrock2.Syntax.
 Require Import riscv.Spec.Decode.

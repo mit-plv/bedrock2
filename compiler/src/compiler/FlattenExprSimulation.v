@@ -6,7 +6,7 @@ Require Import compiler.FlattenExprDef.
 Require Import compiler.FlattenExpr.
 Require Import compiler.NameGen.
 Require Import compiler.Simulation.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 
 
 Section Sim.

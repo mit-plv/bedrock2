@@ -32,7 +32,7 @@ Require Import riscv.Utility.Utility.
 Require Export riscv.Platform.Memory.
 Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import compiler.FlattenExprSimulation.
 Require Import compiler.RegRename.
 Require Import compiler.FlatToRiscvSimulation.
@@ -42,7 +42,7 @@ Require Import bedrock2.MetricLogging.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
 Require Import compiler.DivisibleBy4.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.ForeverSafe.
 Require Export compiler.MemoryLayout.
 Require Import FunctionalExtensionality.

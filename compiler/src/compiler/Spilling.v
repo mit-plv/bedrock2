@@ -10,7 +10,7 @@ Require Import riscv.Utility.Utility.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import compiler.Simulation.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SpillingMapGoals.

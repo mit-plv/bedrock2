@@ -10,7 +10,6 @@ Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Byte.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Z.Lia.
-Require Import compiler.Simp.
 Require Import compiler.SeparationLogic.
 Require Import bedrock2.Semantics.
 Require Import compiler.FlatImp.

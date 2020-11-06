@@ -18,7 +18,7 @@ Require Import riscv.Platform.Run.
 Require Import riscv.Spec.Execute.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.SeparationLogic.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.DivisibleBy4.
 Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
@@ -28,7 +28,7 @@ Require Import riscv.Proofs.DecodeEncode.
 Require Import riscv.Platform.MetricSane.
 Require Import coqutil.Decidable.
 Require Import compiler.FlatToRiscvDef.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Datatypes.ListSet.
 Import Utility.

@@ -10,7 +10,7 @@ Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Byte.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Z.Lia.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Map.OfListWord.

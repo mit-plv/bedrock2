@@ -8,7 +8,7 @@ Require Import bedrock2.Syntax.
 Require Import compiler.PipelineWithRename.
 Require Import bedrock2Examples.lightbulb bedrock2Examples.lightbulb_spec.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import compiler.ExprImpEventLoopSpec.
 Require Import compiler.MemoryLayout.
 Require Import end2end.End2EndPipeline.

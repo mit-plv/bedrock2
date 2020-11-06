@@ -7,10 +7,10 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import compiler.util.Common.
 Require Import compiler.eqexact.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import compiler.on_hyp_containing.
 Require Import compiler.SeparationLogic.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.MetricsToRiscv.

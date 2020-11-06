@@ -6,9 +6,9 @@ Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.util.Common.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import compiler.SeparationLogic.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.EmitsValid.

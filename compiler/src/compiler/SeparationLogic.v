@@ -12,8 +12,8 @@ Require Export bedrock2.Map.SeparationLogic.
 Require Export bedrock2.Array.
 Require Export bedrock2.Scalars.
 Require Export bedrock2.ptsto_bytes.
-Require Export compiler.SimplWordExpr.
-Require Import compiler.Simp.
+Require Export coqutil.Word.SimplWordExpr.
+Require Import coqutil.Tactics.Simp.
 Require Export riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Spec.Decode.

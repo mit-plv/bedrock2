@@ -27,7 +27,7 @@ Require Import compiler.RunInstruction.
 Require Import compiler.RiscvEventLoop.
 Require Import compiler.ForeverSafe.
 Require Import compiler.GoFlatToRiscv.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import processor.KamiWord.
 Require Import processor.KamiRiscvStep.
 Require Import processor.KamiRiscv.

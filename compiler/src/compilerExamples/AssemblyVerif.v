@@ -19,11 +19,11 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.SeparationLogic.
 Require Import compiler.FlatToRiscvDef.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import bedrock2.ptsto_bytes.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Import Utility Decode.
 
 Open Scope Z_scope.

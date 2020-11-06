@@ -14,7 +14,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Map.TestLemmas.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Datatypes.ListSet.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import compiler.Simulation.
 
 Open Scope Z_scope.

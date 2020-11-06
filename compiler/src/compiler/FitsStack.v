@@ -5,7 +5,7 @@ Require Import coqutil.Z.Lia.
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 
 Local Open Scope Z_scope.
 

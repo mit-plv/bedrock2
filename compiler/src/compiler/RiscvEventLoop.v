@@ -29,7 +29,7 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import compiler.ForeverSafe.
 Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Import Utility.
 
 Section EventLoop.
