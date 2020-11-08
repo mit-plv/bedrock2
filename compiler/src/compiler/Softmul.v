@@ -240,6 +240,7 @@ Section Riscv.
     - simp. rewrite Hp4 in E. rewrite map.get_empty in E. discriminate E.
     - eauto 10.
     - simp. eauto 10.
+    - simp. eauto 10.
     - exists initialH.
       intuition (congruence || eauto 10).
     - eexists. ssplit; cycle -1. 1: eassumption. all: record.simp; try congruence. eauto 10.
