@@ -117,6 +117,7 @@ Ltac straightline_cleanup :=
   | H: ?x = ?y |- _ => is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [y] in y in idtac); subst y
   | H: ?x = ?v |- _ =>
     is_var x;
+    assert_fails (idtac; let __ := eval cbv delta [x] in x in idtac);
     lazymatch v with context[x] => fail | _ => idtac end;
     let x' := fresh x in
     rename x into x';
