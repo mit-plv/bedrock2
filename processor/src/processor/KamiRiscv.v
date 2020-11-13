@@ -208,23 +208,32 @@ Section Equiv.
   (* Can't use this one here because we're not doing a simulation from Kami to compiler *)
   Definition csteps: CState -> (CState -> Prop) -> Prop := runsTo cstep1.
 
-  Theorem ksteps_sound: forall (inv: CState -> Prop),
-      (forall rs, inv rs -> cstep1 rs inv) ->
-      forall ks1 ks2 rs1,
+  Definition calways{State: Type}(Step: State -> (State -> Prop) -> Prop)(s: State)(P: State -> Prop): Prop :=
+    P s /\ forall s', P s' -> Step s' P.
+
+  (* Can't use this one here because we don't really have a `kstep: KState -> KState -> Prop` that
+     we lift with *, but Kami requires its own ksteps (its own "star") *)
+  Definition kalways0{State: Type}(Step: State -> State -> Prop)(s: State)(P: State -> Prop): Prop :=
+    P s /\ forall s1 s2, P s1 -> Step s1 s2 -> P s2.
+
+  Definition kalways{State: Type}(Stepstar: State -> State -> Prop)(s: State)(P: State -> Prop): Prop :=
+    forall s', Stepstar s s' -> P s'.
+
+  Theorem ksteps_sound: forall (inv: CState -> Prop) ks1 rs1,
       related ks1 rs1 ->
-      ksteps ks1 ks2 ->
-      inv rs1 ->
-      exists rs2, related ks2 rs2 /\ inv rs2.
+      calways cstep1 rs1 inv ->
+      kalways ksteps ks1 (fun ks2 => exists rs2, related ks2 rs2 /\ inv rs2).
   Proof.
-    intros. inversion H1. subst. clear H1. revert H3 rs1 t1 H0 H2.
+    unfold calways, kalways.
+    intros. destruct H0. inversion H1. subst. clear H1. revert H3 rs1 t1 H0 H.
     induction 1; intros.
     - subst. exists rs1. split; assumption.
-    - specialize IHMultistep with (1 := H0) (2 := H2).
+    - specialize IHMultistep with (1 := H0) (2 := H).
       destruct IHMultistep as [rs2 [A B]].
       edestruct kstep1_sound.
       + exact A.
       + econstructor. eassumption.
-      + eapply H. exact B.
+      + eapply H2. exact B.
       + eauto.
       + eauto.
   Qed.
@@ -547,13 +556,11 @@ Section Equiv.
     specialize P with (1 := H).
     destruct P as (mFinal' & t' & B & E).
     inversion_clear B.
-    edestruct ksteps_sound as (rs2 & Rel & Inv).
-    - exact preserveRvInv.
+    edestruct ksteps_sound as (rs2 & Rel & Inv). 2: unfold calways; split.
     - econstructor.
       + eapply Kami.SemFacts.reachable_init.
       + eapply states_related_init.
       + eapply KamiSeqNil.
-    - econstructor. exact HMultistepBeh.
     - eapply establishRvInv; try reflexivity.
       all: cbv [getXAddrs getMachine]; intros.
       + apply alignedXAddrsRange_zero_bound_in.
@@ -565,6 +572,8 @@ Section Equiv.
         apply H0.
       + apply mmio_init_xaddrs_disjoint.
       + apply riscvRegsInit_sound; assumption.
+    - exact preserveRvInv.
+    - econstructor. exact HMultistepBeh.
     - specialize (useRvInv _ Inv).
       inversion Rel. subst. clear Rel.
       simpl in useRvInv.
