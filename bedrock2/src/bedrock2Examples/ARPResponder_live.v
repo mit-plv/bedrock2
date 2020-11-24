@@ -334,11 +334,51 @@ Section WithParameters.
     }
   Qed.
 
+Inductive snippet :=
+| SSet(x: string)(e: expr)
+| SIf(cond: expr)(merge: bool)
+| SEnd
+| SElse.
+
+Inductive note_wrapper: string -> Type := mkNote(s: string): note_wrapper s.
+Notation "s" := (note_wrapper s) (at level 200, only printing).
+Ltac add_note s := let n := fresh "Note" in pose proof (mkNote s) as n; move n at top.
+
+Ltac add_snippet s :=
+  lazymatch s with
+  | SSet ?y ?e => eapply assignment with (x := y) (a := e)
+  | SIf ?cond false => eapply if_split with (c := cond); [| |add_note "'else' expected"]
+  | SEnd => eapply exec.skip
+  | SElse => lazymatch goal with
+             | H: note_wrapper "'else' expected" |- _ => clear H
+             end
+  end.
+
+Ltac after_snippet := repeat straightline.
+(* For debugging, this can be useful:
+Ltac after_snippet ::= idtac.
+*)
+
+Tactic Notation "$" constr(s) "$" := add_snippet s; after_snippet.
+
+Notation "/*number*/ e" := e (in custom bedrock_expr at level 0, e constr at level 0).
+
+Declare Custom Entry snippet.
+
+Notation "*/ s /*" := s (s custom snippet at level 100).
+Notation "x = e ;" := (SSet x e) (in custom snippet at level 0, x ident, e custom bedrock_expr).
+Notation "'if' ( e ) '/*merge*/' {" := (SIf e true) (in custom snippet at level 0, e custom bedrock_expr).
+Notation "'if' ( e ) '/*split*/' {" := (SIf e false) (in custom snippet at level 0, e custom bedrock_expr).
+Notation "}" := SEnd (in custom snippet at level 0).
+Notation "'else' {" := SElse (in custom snippet at level 0).
+
+Set Default Goal Selector "1".
+
   Definition arp: (string * {f: list string * list string * cmd &
-    forall e t m ethbufAddr ethBufData len R,
+    forall e t m ethbufAddr ethBufData L R,
       (array ptsto (word.of_Z 1) ethbufAddr ethBufData \* R) m ->
-      word.unsigned len = Z.of_nat (List.length ethBufData) ->
-      vc_func e f t m [ethbufAddr; len] (fun t' m' retvs =>
+      word.unsigned L = Z.of_nat (List.length ethBufData) ->
+      vc_func e f t m [ethbufAddr; L] (fun t' m' retvs =>
         t' = t /\ (
         (* Success: *)
         (retvs = [word.of_Z 1] /\ exists request response ethBufData',
@@ -348,41 +388,32 @@ Section WithParameters.
            ARPReqResp request response) \/
         (* Failure: *)
         (retvs = [word.of_Z 0] /\ (array ptsto (word.of_Z 1) ethbufAddr ethBufData \* R) m' /\ (
-           len <> word.of_Z 64 \/
+           L <> word.of_Z 64 \/
            (* malformed request *)
            (~ exists request, isEthernetARPPacket request ethBufData) \/
            (* request needs no reply because it's not for us *)
            (forall request, isEthernetARPPacket request ethBufData -> request.(payload).(tpa) <> cfg.(myIPv4))))
       ))}).
-    refine ("arp", existT _ (["ethbuf"; "len"], ["doReply"], _) _).
+    pose "ethbuf" as ethbuf. pose "len" as len. pose "doReply" as doReply.
+    refine ("arp", existT _ ([ethbuf; len], [doReply], _) _).
     intros. cbv [vc_func]. letexists. split. 1: subst l; reflexivity. intros.
 
-    (* doReply = 0 // by default *)
-    eapply assignment with (x := "doReply") (a := 0).
-    1: repeat straightline. intros.
-
-    (* if (len == 64) *)
-    eapply if_split with (c := expr.op bopname.eq "len" 64).
-    1: repeat straightline.
-    all: intros D.
-    { (* then (len == 64) *)
-      destr (word.eqb len (word.of_Z 64)). 2: exfalso; ZnWords.
-
-
-      instantiate (1 := TODO).
-      exact TODO.
-    }
-    { (* else (len <> 64) *)
-      destr (word.eqb len (word.of_Z 64)). 1: exfalso; ZnWords.
-      (* nop *)
-      eapply exec.skip.
+    $*/
+    doReply = /*number*/0; /*$. $*/
+    if (len == /*number*/64) /*split*/ { /*$.
+      destr (word.eqb L (word.of_Z 64)). 2: exfalso; ZnWords.
+      (* TODO *) $*/
+    } /*$.
+      exact TODO. $*/
+    else { /*$. (* nothing to do *) $*/
+    } /*$.
+      destr (word.eqb L (word.of_Z 64)). 1: exfalso; ZnWords.
       eexists.
       split. 1: reflexivity.
       split. 1: reflexivity.
       right.
       split. 1: reflexivity.
       auto.
-    }
   Defined.
 
   Goal False.
