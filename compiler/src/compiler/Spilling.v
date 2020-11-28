@@ -903,6 +903,42 @@ Section Spilling.
       all: try eassumption.
   Qed.
 
+  Lemma exec_seq_assoc: forall e s1 s2 s3 t m l mc post,
+      exec e (s1;; s2;; s3) t m l mc post ->
+      exec e ((s1;; s2);; s3) t m l mc post.
+  Proof.
+    intros. simp.
+    eapply seq_cps.
+    eapply seq_cps.
+    eapply exec.weaken. 1: eassumption. intros.
+    specialize H8 with (1 := H). simp.
+    eapply exec.weaken. 1: eassumption. intros.
+    eauto.
+  Qed.
+
+  Lemma exec_seq_assoc_bw: forall e s1 s2 s3 t m l mc post,
+      exec e ((s1;; s2);; s3) t m l mc post ->
+      exec e (s1;; (s2;; s3)) t m l mc post.
+  Proof. intros. simp. eauto 10 using exec.seq. Qed.
+
+  Lemma get_arg_reg_1: forall l l2 y y' z z',
+      fp < y ->
+      fp < z ->
+      map.get l y = Some y' ->
+      map.get l z = Some z' ->
+      map.get (map.put (map.put l2 (arg_reg 1 y) y') (arg_reg 2 z) z') (arg_reg 1 y) = Some y'.
+  Proof.
+    intros.
+    destr (y =? z).
+    - subst z. replace z' with y' in * by congruence.
+      unfold arg_reg. destruct_one_match.
+      + rewrite map.get_put_diff by blia. rewrite map.get_put_same. reflexivity.
+      + rewrite map.get_put_same. reflexivity.
+    - rewrite map.get_put_diff.
+      + rewrite map.get_put_same. reflexivity.
+      + unfold arg_reg. unfold fp in *. repeat destruct_one_match; blia.
+  Qed.
+
   Lemma spilling_correct (e1 e2 : env) (Ev : envs_related e1 e2)
         (s1 : stmt)
   (t1 : trace)
@@ -913,8 +949,8 @@ Section Spilling.
   exec e1 s1 t1 m1 l1 mc1 post ->
   forall (frame : mem -> Prop) (maxvar : Z),
   valid_vars_src maxvar s1 ->
-  forall (t2 : trace) (m2 : mem) (l2 : locals) (mc2 : MetricLog),
-  related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
+  forall (t2 : trace) (m2 : mem) (l2 : locals) (mc1b mc2 mc2b : MetricLog),
+  related maxvar frame false t1 m1 l1 mc1b t2 m2 l2 mc2b ->
   exec e2 (spill_stmt s1) t2 m2 l2 mc2
     (fun (t2' : trace) (m2' : mem) (l2' : locals) (mc2' : MetricLog) =>
        exists t1' m1' l1' mc1',
@@ -944,30 +980,70 @@ Section Spilling.
       eapply go_load_arg_reg; (blia || eassumption || idtac).
       clear mc2 H2. intros.
       eapply seq_cps.
-      eapply exec.op with (y'0 := y') (z'0 := z'). {
-        destr (y =? z).
-        - subst z. replace z' with y' in * by congruence.
-          unfold arg_reg. destruct_one_match.
-          + rewrite map.get_put_diff by blia. rewrite map.get_put_same. reflexivity.
-          + rewrite map.get_put_same. reflexivity.
-        - rewrite map.get_put_diff.
-          + rewrite map.get_put_same. reflexivity.
-          + unfold arg_reg. unfold fp in *. repeat destruct_one_match; blia.
-      } {
-        rewrite map.get_put_same. reflexivity.
-      }
+      eapply exec.op.
+      1: eapply get_arg_reg_1; eassumption.
+      1: apply map.get_put_same.
       eapply save_res_reg_correct.
       + eassumption.
       + eassumption.
       + blia.
     - (* exec.set *)
-      admit.
+      eapply go_load_arg_reg; (blia || eassumption || idtac).
+      clear mc2 H2. intros.
+      eapply seq_cps.
+      eapply exec.set. 1: apply map.get_put_same.
+      eapply save_res_reg_correct.
+      + eassumption.
+      + eassumption.
+      + blia.
     - (* exec.if_true *)
-      admit.
+      unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; simp.
+      + eapply exec_seq_assoc.
+        eapply go_load_arg_reg; (blia || eassumption || idtac).
+        clear mc2 H2. intros.
+        eapply go_load_arg_reg; (blia || eassumption || idtac).
+        clear mc2 H. intros.
+        eapply exec.if_true. {
+          cbn. erewrite get_arg_reg_1 by eassumption. rewrite map.get_put_same. congruence.
+        }
+        eapply IHexec; eassumption.
+      + eapply go_load_arg_reg; (blia || eassumption || idtac).
+        clear mc2 H2. intros.
+        eapply exec.if_true. {
+          cbn. rewrite map.get_put_same. congruence.
+        }
+        eapply IHexec; eassumption.
     - (* exec.if_false *)
-      admit.
+      unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; simp.
+      + eapply exec_seq_assoc.
+        eapply go_load_arg_reg; (blia || eassumption || idtac).
+        clear mc2 H2. intros.
+        eapply go_load_arg_reg; (blia || eassumption || idtac).
+        clear mc2 H. intros.
+        eapply exec.if_false. {
+          cbn. erewrite get_arg_reg_1 by eassumption. rewrite map.get_put_same. congruence.
+        }
+        eapply IHexec; eassumption.
+      + eapply go_load_arg_reg; (blia || eassumption || idtac).
+        clear mc2 H2. intros.
+        eapply exec.if_false. {
+          cbn. rewrite map.get_put_same. congruence.
+        }
+        eapply IHexec; eassumption.
     - (* exec.loop *)
-      admit.
+      rename IHexec into IH1, H3 into IH2, H5 into IH12.
+      unfold prepare_bcond. destr cond; cbn [ForallVars_bcond] in *; simp.
+      + eapply exec.loop.
+        * eapply exec.seq.
+          -- eapply IH1; eassumption.
+          -- cbv beta. intros. simp.
+             (* would be better to have load_arg_reg_correct without continuation *)
+             admit.
+        * admit.
+        * admit.
+        * admit.
+        * admit.
+      + admit.
     - (* exec.seq *)
       cbn in *. simp.
       rename H1 into IH2, IHexec into IH1.
