@@ -518,19 +518,18 @@ Section Spilling.
 
   Implicit Types post : trace -> mem -> locals -> MetricLog -> Prop.
 
-  Lemma go_load_arg_reg(i: Z): forall r (s: stmt) e2 t1 t2 m1 m2 l1 l2 mc1 mc2 post frame maxvar v,
+  Lemma load_arg_reg_correct(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 post frame maxvar v,
       i = 1 \/ i = 2 ->
       related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
       fp < r <= maxvar ->
       map.get l1 r = Some v ->
       (forall mc2,
           related maxvar frame false t1 m1 l1 mc1 t2 m2 (map.put l2 (arg_reg i r) v) mc2 ->
-          exec e2 s t2 m2 (map.put l2 (arg_reg i r) v) mc2 post) ->
-      exec e2 (load_arg_reg i r;; s) t2 m2 l2 mc2 post.
+          post t2 m2 (map.put l2 (arg_reg i r) v) mc2) ->
+      exec e2 (load_arg_reg i r) t2 m2 l2 mc2 post.
   Proof.
     intros.
     unfold load_arg_reg, stack_loc, arg_reg, related in *. simp.
-    eapply seq_cps.
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. (* PARAMRECORDS *) simpl. ecancel_assumption.
@@ -576,6 +575,141 @@ Section Spilling.
              | |- _ /\ _ => split
              | |- _ => eassumption || reflexivity
              end.
+  Qed.
+
+  Lemma load_arg_reg_correct'(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 post frame maxvar v,
+      i = 1 \/ i = 2 ->
+      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
+      fp < r <= maxvar ->
+      map.get l1 r = Some v ->
+      post t1 m1 l1 mc1 ->
+      exec e2 (load_arg_reg i r) t2 m2 l2 mc2
+           (fun t2' m2' l2' mc2' => exists t1' m1' l1' mc1',
+                related maxvar frame false t1' m1' l1' mc1' t2' m2' l2' mc2' /\ post t1' m1' l1' mc1').
+  Proof.
+    intros.
+    unfold load_arg_reg, stack_loc, arg_reg, related in *. simp.
+    destr (32 <=? r).
+    - eapply exec.load.
+      + eapply get_sep. (* PARAMRECORDS *) simpl. ecancel_assumption.
+      + eapply load_from_word_array. 1: ecancel_assumption.
+        eapply H0p5. 1: blia.
+        unfold sep in H0p3. simp.
+        eapply map.get_split_r. 1,3: eassumption.
+        destr (map.get mp r); [exfalso|reflexivity].
+        specialize H0p1 with (1 := E0). blia.
+      + unfold tmp1, tmp2 in *.
+        destruct H; subst i;
+          repeat match goal with
+                 | |- exists _, _ => eexists
+                 | |- _ /\ _ => split
+                 | |- _ => eassumption || reflexivity
+                 end.
+        * change (2 + 1) with 3.
+          match goal with
+          | |- ?A _ => eapply sep_put_iff with (P := A)
+          end.
+          (* PARAMRECORDS *) 1: simpl; ecancel_assumption.
+          ecancel.
+        *  change (2 + 2) with 4.
+           match goal with
+           | |- ?A _ => eapply sep_put_iff with (P := A)
+           end.
+           (* PARAMRECORDS *) 1: simpl; ecancel_assumption.
+           ecancel.
+    - eapply exec.skip.
+      replace l2 with (map.put l2 r v) in H0p4|-*. 2: {
+        apply map.put_idemp.
+        edestruct (eq_sep_to_split l2) as (l2Rest & S22 & SP22). 1: ecancel_assumption.
+        eapply map.get_split_grow_r. 1: eassumption.
+        unfold sep in H0p3. destruct H0p3 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
+        eapply map.get_split_l. 1: exact S2. 2: assumption.
+        destr (map.get lStack r); [exfalso|reflexivity].
+        specialize H0p2 with (1 := E0). blia.
+      }
+      repeat match goal with
+             | |- exists _, _ => eexists
+             | |- _ /\ _ => split
+             | |- _ => eassumption || reflexivity
+             end.
+  Qed.
+
+  (* Note: if we wanted to use this lemma in subgoals created by exec.loop,
+     new postcondition must not mention the original t2, m2, l2, mc2, (even though
+     it would be handy to just say t2'=t2, m2=m2', l2' = map.put l2 (arg_reg i r) v), because
+     when the new postcondition is used as a "mid1" in exec.loop, and body1 is a seq
+     in which this lemma was used, t2, m2, l2, mc2 are introduced after the evar "?mid1"
+     is created (i.e. after exec.loop is applied), so they are not in the scope of "?mid1". *)
+  Lemma load_arg_reg_correct''(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 frame maxvar v,
+      i = 1 \/ i = 2 ->
+      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
+      fp < r <= maxvar ->
+      map.get l1 r = Some v ->
+      exec e2 (load_arg_reg i r) t2 m2 l2 mc2 (fun t2' m2' l2' mc2' =>
+        t2' = t2 /\ m2' = m2 /\ l2' = map.put l2 (arg_reg i r) v /\
+        related maxvar frame false t1 m1 l1 mc1 t2' m2' l2' mc2').
+  Proof.
+    intros.
+    unfold load_arg_reg, stack_loc, arg_reg, related in *. simp.
+    destr (32 <=? r).
+    - eapply exec.load.
+      + eapply get_sep. (* PARAMRECORDS *) simpl. ecancel_assumption.
+      + eapply load_from_word_array. 1: ecancel_assumption.
+        eapply H0p5. 1: blia.
+        unfold sep in H0p3. simp.
+        eapply map.get_split_r. 1,3: eassumption.
+        destr (map.get mp r); [exfalso|reflexivity].
+        specialize H0p1 with (1 := E0). blia.
+      + unfold tmp1, tmp2 in *.
+        destruct H; subst i;
+          repeat match goal with
+                 | |- exists _, _ => eexists
+                 | |- _ /\ _ => split
+                 | |- _ => eassumption || reflexivity
+                 end.
+        * change (2 + 1) with 3.
+          match goal with
+          | |- ?A _ => eapply sep_put_iff with (P := A)
+          end.
+          (* PARAMRECORDS *) 1: simpl; ecancel_assumption.
+          ecancel.
+        *  change (2 + 2) with 4.
+           match goal with
+           | |- ?A _ => eapply sep_put_iff with (P := A)
+           end.
+           (* PARAMRECORDS *) 1: simpl; ecancel_assumption.
+           ecancel.
+    - eapply exec.skip.
+      assert (l2 = map.put l2 r v) as F. {
+        symmetry. apply map.put_idemp.
+        edestruct (eq_sep_to_split l2) as (l2Rest & S22 & SP22). 1: ecancel_assumption.
+        eapply map.get_split_grow_r. 1: eassumption.
+        unfold sep in H0p3. destruct H0p3 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
+        eapply map.get_split_l. 1: exact S2. 2: assumption.
+        destr (map.get lStack r); [exfalso|reflexivity].
+        specialize H0p2 with (1 := E0). blia.
+      }
+      repeat match goal with
+             | |- exists _, _ => eexists
+             | |- _ /\ _ => split
+             | |- _ => eassumption || reflexivity
+             end.
+  Qed.
+
+  Lemma loop_cps: forall e body1 cond body2 t m l mc post,
+    exec e body1 t m l mc (fun t m l mc => exists b,
+      eval_bcond l cond = Some b /\
+      (b = false -> post t m l (addMetricLoads 1 (addMetricInstructions 1 (addMetricJumps 1 mc)))) /\
+      (b = true -> exec e body2 t m l mc (fun t m l mc =>
+         exec e (SLoop body1 cond body2) t m l
+              (addMetricLoads 2 (addMetricInstructions 2 (addMetricJumps 1 mc))) post))) ->
+    exec e (SLoop body1 cond body2) t m l mc post.
+  Proof.
+    intros. eapply exec.loop. 1: eapply H. all: cbv beta; intros; simp.
+    - congruence.
+    - replace b with false in * by congruence. clear b. eauto.
+    - replace b with true in * by congruence. clear b. eauto.
+    - assumption.
   Qed.
 
   (* SOp does not create an up-to-date `related` before we invoke this one, because after SOp,
@@ -718,6 +852,17 @@ Section Spilling.
       + unfold arg_reg. unfold fp in *. repeat destruct_one_match; blia.
   Qed.
 
+(*
+  Lemma spill_bcond_correct: forall maxvar frame t1 m1 l1 mc1 t2 m2 l2 mc2 c,
+      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
+      eval_bcond l1 c = eval_bcond l2 (spill_bcond c).
+  Proof.
+    unfold related. intros. destruct c; cbn; simp.
+    - destr (map.get l1 x).
+
+ destr (map.get l1 y).
+*)
+
   Lemma spilling_correct (e1 e2 : env) (Ev : envs_related e1 e2)
         (s1 : stmt)
   (t1 : trace)
@@ -742,7 +887,8 @@ Section Spilling.
     - (* exec.call *)
       admit.
     - (* exec.load *)
-      eapply go_load_arg_reg; (blia || eassumption || idtac).
+      eapply seq_cps.
+      eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H3. intros.
       admit.
     - (* exec.store *)
@@ -754,9 +900,9 @@ Section Spilling.
     - (* exec.lit *)
       admit.
     - (* exec.op *)
-      eapply go_load_arg_reg; (blia || eassumption || idtac).
+      eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H3. intros.
-      eapply go_load_arg_reg; (blia || eassumption || idtac).
+      eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H2. intros.
       eapply seq_cps.
       eapply exec.op.
@@ -767,7 +913,7 @@ Section Spilling.
       + eassumption.
       + blia.
     - (* exec.set *)
-      eapply go_load_arg_reg; (blia || eassumption || idtac).
+      eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H2. intros.
       eapply seq_cps.
       eapply exec.set. 1: apply map.get_put_same.
@@ -778,15 +924,15 @@ Section Spilling.
     - (* exec.if_true *)
       unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; simp.
       + eapply exec_seq_assoc.
-        eapply go_load_arg_reg; (blia || eassumption || idtac).
+        eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H2. intros.
-        eapply go_load_arg_reg; (blia || eassumption || idtac).
+        eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H. intros.
         eapply exec.if_true. {
           cbn. erewrite get_arg_reg_1 by eassumption. rewrite map.get_put_same. congruence.
         }
         eapply IHexec; eassumption.
-      + eapply go_load_arg_reg; (blia || eassumption || idtac).
+      + eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H2. intros.
         eapply exec.if_true. {
           cbn. rewrite map.get_put_same. congruence.
@@ -795,34 +941,64 @@ Section Spilling.
     - (* exec.if_false *)
       unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; simp.
       + eapply exec_seq_assoc.
-        eapply go_load_arg_reg; (blia || eassumption || idtac).
+        eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H2. intros.
-        eapply go_load_arg_reg; (blia || eassumption || idtac).
+        eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H. intros.
         eapply exec.if_false. {
           cbn. erewrite get_arg_reg_1 by eassumption. rewrite map.get_put_same. congruence.
         }
         eapply IHexec; eassumption.
-      + eapply go_load_arg_reg; (blia || eassumption || idtac).
+      + eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H2. intros.
         eapply exec.if_false. {
           cbn. rewrite map.get_put_same. congruence.
         }
         eapply IHexec; eassumption.
+
     - (* exec.loop *)
       rename IHexec into IH1, H3 into IH2, H5 into IH12.
+      eapply loop_cps.
+      eapply exec.seq.
+      1: eapply IH1; eassumption.
+      cbv beta. intros. simp.
       unfold prepare_bcond. destr cond; cbn [ForallVars_bcond] in *; simp.
-      + eapply exec.loop.
-        * eapply exec.seq.
-          -- eapply IH1; eassumption.
-          -- cbv beta. intros. simp.
-             (* would be better to have load_arg_reg_correct without continuation *)
-             admit.
-        * admit.
-        * admit.
-        * admit.
-        * admit.
-      + admit.
+      + specialize H0 with (1 := H3p1). cbn in H0. simp.
+        eapply exec.seq. {
+          eapply load_arg_reg_correct''; (blia || eassumption || idtac).
+        }
+        cbv beta. intros. simp.
+        eapply exec.weaken. {
+          eapply load_arg_reg_correct''; (blia || eassumption || idtac).
+        }
+        cbv beta. intros. simp. cbn [eval_bcond spill_bcond].
+        erewrite get_arg_reg_1 by eassumption. rewrite map.get_put_same. eexists. split; [reflexivity|].
+        split; intros.
+        * do 4 eexists. split.
+          -- exact H3p4.
+          -- eapply H1. 1: eassumption. cbn. rewrite E, E0. congruence.
+        * eapply exec.weaken. 1: eapply IH2.
+          -- eassumption.
+          -- cbn. rewrite E, E0. congruence.
+          -- eassumption.
+          -- eassumption.
+          -- cbv beta. intros. simp. eauto 10. (* IH12 *)
+      + specialize H0 with (1 := H3p1). cbn in H0. simp.
+        eapply exec.weaken. {
+          eapply load_arg_reg_correct''; (blia || eassumption || idtac).
+        }
+        cbv beta. intros. simp. cbn [eval_bcond spill_bcond].
+        rewrite map.get_put_same. eexists. split; [reflexivity|].
+        split; intros.
+        * do 4 eexists. split.
+          -- exact H3p3.
+          -- eapply H1. 1: eassumption. cbn. rewrite E. (* PARAMRECORDS *) simpl in *. congruence.
+        * eapply exec.weaken. 1: eapply IH2.
+          -- eassumption.
+          -- cbn. rewrite E. (* PARAMRECORDS *) simpl in *. congruence.
+          -- eassumption.
+          -- eassumption.
+          -- cbv beta. intros. simp. eauto 10. (* IH12 *)
     - (* exec.seq *)
       cbn in *. simp.
       rename H1 into IH2, IHexec into IH1.
