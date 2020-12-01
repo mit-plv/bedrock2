@@ -45,6 +45,14 @@ Module map.
     Context {key value} {map : map.map key value}.
     Context {ok : map.ok map} {key_eqb: key -> key -> bool} {key_eq_dec : EqDecider key_eqb}.
 
+    (* Note: there's already one in coqutil that requires disjointness *)
+    Lemma putmany_assoc x y z : map.putmany x (map.putmany y z) = map.putmany (map.putmany x y) z.
+    Proof.
+      intros; eapply map.map_ext; intros.
+      rewrite ?map.get_putmany_dec.
+      destruct (map.get x k); destruct (map.get y k); destruct (map.get z k); reflexivity.
+    Qed.
+
     Lemma put_idemp: forall (m: map) k v,
         map.get m k = Some v ->
         map.put m k v = m.
@@ -348,8 +356,8 @@ Section Spilling.
       load_arg_reg 1 x;; load_arg_reg 2 y;;
       SStore sz (arg_reg 1 x) (arg_reg 2 y) o
     | SInlinetable sz x t i =>
-      load_arg_reg 1 i;;
-      SInlinetable sz (res_reg x) t (arg_reg 1 i);;
+      load_arg_reg 2 i;;
+      SInlinetable sz (res_reg x) t (arg_reg 2 i);;
       save_res_reg x
     | SStackalloc x n body =>
       SStackalloc (res_reg x) n (save_res_reg x;; spill_stmt body)
@@ -498,6 +506,25 @@ Section Spilling.
         (forall j w, j <> Z.to_nat i -> nth_error oldwords j = Some w -> nth_error newwords j = Some w) /\
         length newwords = length oldwords.
   Admitted.
+
+  Lemma store_bytes_sep_hi2lo: forall mH mL R a n v_old v,
+      Memory.load_bytes n mH a = Some v_old ->
+      (eq mH * R)%sep mL ->
+      (eq (Memory.unchecked_store_bytes n mH a v) * R)%sep (Memory.unchecked_store_bytes n mL a v).
+  Proof.
+    intros. simpl in H0|-*. (* PARAMRECORDS *) apply sep_comm. apply sep_comm in H0.
+    unfold Memory.load_bytes, Memory.unchecked_store_bytes, sep, map.split in *.
+    simp. do 2 eexists. ssplit. 3: eassumption. 3: reflexivity.
+    - rewrite map.putmany_of_tuple_to_putmany.
+      rewrite (map.putmany_of_tuple_to_putmany _ mq).
+      symmetry. apply map.putmany_assoc.
+    - unfold map.disjoint in *.
+      intros.
+      pose proof (map.putmany_of_tuple_preserves_domain (ok := mem_ok) _ _ v_old v _ H) as A.
+      unfold map.same_domain, map.sub_domain in A. apply proj2 in A.
+      edestruct A as [v3 B]. 1: eassumption.
+      eauto.
+  Qed.
 
   Definition envs_related(e1 e2: env): Prop :=
     forall f argvars resvars body1,
@@ -890,15 +917,63 @@ Section Spilling.
       eapply seq_cps.
       eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H3. intros.
-      admit.
+      eapply seq_cps.
+      pose proof H2 as A. unfold related in A. simp.
+      unfold Memory.load, Memory.load_Z, Memory.load_bytes in *. simp.
+      eapply exec.load. {
+        rewrite map.get_put_same. reflexivity. }
+      { edestruct (@sep_def m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
+        1: (*PARAMRECORDS *) simpl; ecancel_assumption. unfold map.split in Sp. simp. subst m'.
+        unfold Memory.load, Memory.load_Z, Memory.load_bytes.
+        erewrite map.getmany_of_tuple_in_disjoint_putmany; eauto. }
+      eapply save_res_reg_correct.
+      + eassumption.
+      + eassumption.
+      + blia.
     - (* exec.store *)
-      admit.
+      eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      clear mc2 H4. intros.
+      eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      clear mc2 H3. intros.
+      pose proof H3 as A. unfold related in A. simp.
+      unfold Memory.store, Memory.store_Z, Memory.store_bytes in *. simp.
+      edestruct (@sep_def m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
+      1: (*PARAMRECORDS *) simpl; ecancel_assumption. unfold map.split in Sp. simp. subst m'.
+      eapply exec.store.
+      1: eapply get_arg_reg_1; eassumption.
+      1: apply map.get_put_same.
+      { unfold Memory.store, Memory.store_Z, Memory.store_bytes.
+        unfold Memory.load_bytes in *.
+        erewrite map.getmany_of_tuple_in_disjoint_putmany; eauto. }
+      do 4 eexists. split. 2: eassumption.
+      unfold related.
+      repeat match goal with
+             | |- exists _, _ => eexists
+             | |- _ /\ _ => split
+             end.
+      all: try eassumption || reflexivity.
+      spec store_bytes_sep_hi2lo as A. 1: eassumption. 1: (* PARAMRECORDS *) simpl; ecancel_assumption.
+      (* PARAMRECORDS *) simpl in *. ecancel_assumption.
     - (* exec.inlinetable *)
-      admit.
+      eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      clear mc2b mc2 H4. intros.
+      eapply seq_cps.
+      eapply exec.inlinetable.
+      { unfold res_reg, arg_reg, tmp1, fp in *. destr (32 <=? x); destr (32 <=? i); try blia. }
+      { rewrite map.get_put_same. reflexivity. }
+      { eassumption. }
+      eapply save_res_reg_correct.
+      + eassumption.
+      + eassumption.
+      + blia.
     - (* exec.stackalloc *)
       admit.
     - (* exec.lit *)
-      admit.
+      eapply seq_cps. eapply exec.lit.
+      eapply save_res_reg_correct.
+      + eassumption.
+      + eassumption.
+      + blia.
     - (* exec.op *)
       eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H3. intros.
