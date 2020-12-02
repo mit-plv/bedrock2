@@ -775,6 +775,21 @@ Section Spilling.
              end.
   Qed.
 
+  Lemma call_cps: forall e fname params rets binds args fbody argvs t l m mc st post,
+      map.get e fname = Some (params, rets, fbody) ->
+      map.getmany_of_list l args = Some argvs ->
+      map.putmany_of_list_zip params argvs map.empty = Some st ->
+      exec e fbody t m st mc (fun t' m' st' mc' =>
+        exists retvs l',
+          map.getmany_of_list st' rets = Some retvs /\
+          map.putmany_of_list_zip binds retvs l = Some l' /\
+          post t' m' l' mc') ->
+    exec e (SCall binds fname args) t m l mc post.
+  Proof.
+    intros. eapply exec.call; try eassumption.
+    cbv beta. intros *. exact id.
+  Qed.
+
   Lemma loop_cps: forall e body1 cond body2 t m l mc post,
     exec e body1 t m l mc (fun t m l mc => exists b,
       eval_bcond l cond = Some b /\
@@ -1201,7 +1216,7 @@ Section Spilling.
           unfold map.split in H5. simp.
           eapply map.shrink_disjoint_l; eassumption. }
     - (* exec.call *)
-      unfold related, envs_related in *. specialize Ev with (1 := H). simp.
+      unfold envs_related in *. specialize Ev with (1 := H). unfold related in H5. simp.
       rename H4p0 into FR, H4p1 into FA.
       unfold sep in H5p3. destruct H5p3 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
       spec (map.getmany_of_list_zip_shrink l) as R. 1,2: eassumption. {
@@ -1234,6 +1249,8 @@ Section Spilling.
         eapply F in Pt.
         eapply exec.weaken. {
           eapply IHexec; try eassumption.
+          (* after running stackalloc on a state whose locals only contain the function args,
+             `related` required to call the IH holds: *)
           eexists a, map.empty, st0, words. ssplit.
           { reflexivity. }
           { eapply join_sep. 1: exact Sp. 1: exact H5p0. 1: exact Pt.
@@ -1266,8 +1283,17 @@ Section Spilling.
             }
             Z.div_mod_to_equations. blia. }
         }
-        cbv beta. intros. simp. admit.
-      + unfold related. intros. simp. admit.
+        cbv beta. intros. simp.
+        (* according to the IH, executing the spilled function body results in a state that
+           is related to a high-level state that satisfies the `outcome` postcondition,
+           and now we have to use this information to prove the obligation of exec.stackalloc
+           that requires that "related to high-level state that satisfies `outcome`" still
+           holds when we remove the additional memory provided by stackalloc (which was used
+           to spill variables of the function body, and is not used any more now) *)
+        admit.
+      + (* obligation of exec.call: when taking the result vars and storing them back into
+           the caller's var map, states are still related and postcondition holds *)
+        unfold related. intros. simp. admit.
     - (* exec.load *)
       eapply seq_cps.
       eapply load_arg_reg_correct; (blia || eassumption || idtac).
