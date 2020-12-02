@@ -1225,9 +1225,7 @@ Section Spilling.
         eapply Forall_forall in FA. 2: exact HI. clear -H5p2 FA. blia.
       }
       edestruct (eq_sep_to_split l2) as (l2Rest & S22 & SP22). 1: ecancel_assumption.
-      eapply exec.call with (outcome0 :=
-         fun t2 m2 l2 mc2 => exists t1 m1 l1 mc1, outcome t1 m1 l1 mc1 /\
-                                                  related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2).
+      eapply call_cps.
       + eauto.
       + eapply map.getmany_of_list_zip_grow. 2: exact R. 1: exact S22.
       + eassumption.
@@ -1286,14 +1284,72 @@ Section Spilling.
         cbv beta. intros. simp.
         (* according to the IH, executing the spilled function body results in a state that
            is related to a high-level state that satisfies the `outcome` postcondition,
-           and now we have to use this information to prove the obligation of exec.stackalloc
-           that requires that "related to high-level state that satisfies `outcome`" still
-           holds when we remove the additional memory provided by stackalloc (which was used
-           to spill variables of the function body, and is not used any more now) *)
-        admit.
-      + (* obligation of exec.call: when taking the result vars and storing them back into
-           the caller's var map, states are still related and postcondition holds *)
-        unfold related. intros. simp. admit.
+           and now we have to use this information to prove that if we remove the additional
+           stack provided by exec.stackalloc and store the result vars back into the caller's
+           var map, states are still related and postcondition holds *)
+        rename t' into t2', m' into m2', st0 into st2, l' into st2', mc' into mc2', l into l1, l1' into st1'.
+        match goal with
+        | H: context[outcome], A: context[outcome] |- _ =>
+          specialize H with (1 := A); move H at bottom; rename H into Q
+        end.
+        simp. rename l' into l1'.
+        pose proof Qp1 as P.
+        eapply map.putmany_of_list_zip_split in P. 2: eassumption. 2: {
+          eapply Forall_impl. 2: eassumption.
+          simpl.
+          intros.
+          destr (map.get lStack a0). 2: reflexivity.
+          match goal with
+          | H: forall _, _ |- _ => specialize H with (1 := E)
+          end.
+          blia.
+        }
+        destruct P as (lRegs' & Spl1' & P).
+        pose proof P as P0.
+        eapply map.putmany_of_list_zip_grow with (l := l2) in P. 2: eassumption. 2: {
+          eapply Forall_impl. 2: eassumption.
+          clear -localsOk SP22. unfold fp, tmps, tmp1, tmp2 in *. intros.
+          unfold sep, ptsto, map.split in *. simp.
+          rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty.
+          repeat destruct_one_match; try congruence; repeat destruct_one_match_hyp; try congruence; try blia.
+          destr (map.get mp a). 2: reflexivity.
+          specialize SP22p1 with (1 := E1). blia.
+        }
+        destruct P as (l2' & ? & ?).
+        clear IHexec. unfold related in *. simp.
+        unfold sep in H4p0p3. destruct H4p0p3 as (lRegs0' & lStack0' & S2' & ? & ?). subst lRegs0' lStack0'.
+        spec (map.getmany_of_list_zip_shrink st1') as GM. 1,2: eassumption. {
+          intros k HI. destr (map.get lStack0 k); [exfalso|reflexivity].
+          specialize H4p0p2 with (1 := E).
+          move Evp2 at bottom.
+          eapply Forall_forall in Evp2. 2: exact HI. clear -H4p0p2 Evp2. blia.
+        }
+        edestruct (eq_sep_to_split st2') as (st2Rest' & S22' & SP22').
+        1: (* PARAMRECORDS *) simpl; ecancel_assumption.
+        assert (((eq m1' * word_array fpval stackwords * frame) * word_array fpval0 stackwords0)%sep m2') as M
+            by ecancel_assumption.
+        unfold sep at 1 in M. destruct M as (m2Small' & mStack' & Sp' & M1 & M2).
+        (* TODO add fpval as arg to related, and remove mc1, mc2, done *)
+        assert (a = fpval0) by admit. subst.
+        repeat match goal with
+               | |- exists _, _ => eexists
+               | |- _ /\ _ => split
+               end.
+        13: eassumption.
+        4: eassumption.
+        3: { eapply map.getmany_of_list_zip_grow. 2: exact GM. 1: exact S22'. }
+        4: exact M1.
+        2: exact Sp'.
+        1: {
+          eapply cast_word_array_to_bytes in M2.
+          eapply array_1_to_anybytes in M2.
+          match goal with
+          | H: Memory.anybytes fpval0 ?LEN1 mStack' |-
+               Memory.anybytes fpval0 ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
+          end.
+          admit. }
+        1: reflexivity.
+        all: admit.
     - (* exec.load *)
       eapply seq_cps.
       eapply load_arg_reg_correct; (blia || eassumption || idtac).
