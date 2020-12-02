@@ -528,10 +528,10 @@ Section Spilling.
   Definition tmps(l: locals): Prop :=
     forall k v, map.get l k = Some v -> k = tmp1 \/ k = tmp2.
 
-  Definition related(maxvar: Z)(frame: mem -> Prop)(done: bool)
-             (t1: trace)(m1: mem)(l1: locals)(mc1: MetricLog)
-             (t2: trace)(m2: mem)(l2: locals)(mc2: MetricLog): Prop :=
-      exists fpval lStack lRegs stackwords,
+  Definition related(maxvar: Z)(frame: mem -> Prop)(fpval: word)
+             (t1: trace)(m1: mem)(l1: locals)
+             (t2: trace)(m2: mem)(l2: locals): Prop :=
+      exists lStack lRegs stackwords,
         t1 = t2 /\
         (eq m1 * word_array fpval stackwords * frame)%sep m2 /\
         (forall x v, map.get lRegs x = Some v -> fp < x < 32) /\
@@ -636,13 +636,13 @@ Section Spilling.
       + eauto.
   Qed.
 
-  Lemma load_arg_reg_correct(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 post frame maxvar v,
+  Lemma load_arg_reg_correct(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc2 fpval post frame maxvar v,
       i = 1 \/ i = 2 ->
-      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < r <= maxvar ->
       map.get l1 r = Some v ->
       (forall mc2,
-          related maxvar frame false t1 m1 l1 mc1 t2 m2 (map.put l2 (arg_reg i r) v) mc2 ->
+          related maxvar frame fpval t1 m1 l1 t2 m2 (map.put l2 (arg_reg i r) v) ->
           post t2 m2 (map.put l2 (arg_reg i r) v) mc2) ->
       exec e2 (load_arg_reg i r) t2 m2 l2 mc2 post.
   Proof.
@@ -682,15 +682,15 @@ Section Spilling.
              end.
   Qed.
 
-  Lemma load_arg_reg_correct'(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 post frame maxvar v,
+  Lemma load_arg_reg_correct'(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 post frame maxvar v fpval,
       i = 1 \/ i = 2 ->
-      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < r <= maxvar ->
       map.get l1 r = Some v ->
       post t1 m1 l1 mc1 ->
       exec e2 (load_arg_reg i r) t2 m2 l2 mc2
            (fun t2' m2' l2' mc2' => exists t1' m1' l1' mc1',
-                related maxvar frame false t1' m1' l1' mc1' t2' m2' l2' mc2' /\ post t1' m1' l1' mc1').
+                related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\ post t1' m1' l1' mc1').
   Proof.
     intros.
     unfold load_arg_reg, stack_loc, arg_reg, related in *. simp.
@@ -732,14 +732,14 @@ Section Spilling.
      when the new postcondition is used as a "mid1" in exec.loop, and body1 is a seq
      in which this lemma was used, t2, m2, l2, mc2 are introduced after the evar "?mid1"
      is created (i.e. after exec.loop is applied), so they are not in the scope of "?mid1". *)
-  Lemma load_arg_reg_correct''(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 frame maxvar v,
+  Lemma load_arg_reg_correct''(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc2 frame maxvar v fpval,
       i = 1 \/ i = 2 ->
-      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < r <= maxvar ->
       map.get l1 r = Some v ->
       exec e2 (load_arg_reg i r) t2 m2 l2 mc2 (fun t2' m2' l2' mc2' =>
         t2' = t2 /\ m2' = m2 /\ l2' = map.put l2 (arg_reg i r) v /\
-        related maxvar frame false t1 m1 l1 mc1 t2' m2' l2' mc2').
+        related maxvar frame fpval t1 m1 l1 t2' m2' l2').
   Proof.
     intros.
     unfold load_arg_reg, stack_loc, arg_reg, related in *. simp.
@@ -810,13 +810,13 @@ Section Spilling.
      `related` does not hold: the result is already in l1 and lStack, but not yet in stackwords.
      So we request the `related` that held *before* SOp, i.e. the one where the result is not
      yet in l1 and l2. *)
-  Lemma save_res_reg_correct: forall e t1 t2 m1 m2 l1 l2 mc1 mc1b mc2 mc2b x v maxvar frame post,
+  Lemma save_res_reg_correct: forall e t1 t2 m1 m2 l1 l2 mc1 mc2 x v maxvar frame post fpval,
       post t1 m1 (map.put l1 x v) mc1 ->
-      related maxvar frame false t1 m1 l1 mc1b t2 m2 l2 mc2b ->
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < x <= maxvar ->
       exec e (save_res_reg x) t2 m2 (map.put l2 (res_reg x) v) mc2
            (fun t2' m2' l2' mc2' => exists t1' m1' l1' mc1',
-                related maxvar frame false t1' m1' l1' mc1' t2' m2' l2' mc2' /\ post t1' m1' l1' mc1').
+                related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\ post t1' m1' l1' mc1').
   Proof.
     intros.
     unfold save_res_reg, stack_loc, res_reg, related in *. simp.
@@ -909,11 +909,11 @@ Section Spilling.
      `related` does not hold: the result is already in l1 and lStack, but not yet in stackwords.
      So we request the `related` that held *before* SOp, i.e. the one where the result is not
      yet in l1 and l2. *)
-  Lemma save_res_reg_correct'': forall e t1 t2 m1 m2 l1 l2 mc1 mc1b mc2 mc2b x v maxvar frame post,
-      related maxvar frame false t1 m1 l1 mc1b t2 m2 l2 mc2b ->
+  Lemma save_res_reg_correct'': forall e t1 t2 m1 m2 l1 l2 mc2 x v maxvar frame post fpval,
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < x <= maxvar ->
       (forall t2' m2' l2' mc2',
-          related maxvar frame false t1 m1 (map.put l1 x v) mc1 t2' m2' l2' mc2' ->
+          related maxvar frame fpval t1 m1 (map.put l1 x v) t2' m2' l2' ->
           post t2' m2' l2' mc2') ->
       exec e (save_res_reg x) t2 m2 (map.put l2 (res_reg x) v) mc2 post.
   Proof.
@@ -1051,19 +1051,19 @@ Section Spilling.
  destr (map.get l1 y).
 *)
 
-  Lemma grow_related_mem: forall maxvar frame t1 mSmall1 l1 mc1 t2 mSmall2 l2 mc2 mStack mCombined2,
-      related maxvar frame false t1 mSmall1 l1 mc1 t2 mSmall2 l2 mc2 ->
+  Lemma grow_related_mem: forall maxvar frame t1 mSmall1 l1 t2 mSmall2 l2 mStack mCombined2 fpval,
+      related maxvar frame fpval t1 mSmall1 l1 t2 mSmall2 l2 ->
       map.split mCombined2 mSmall2 mStack ->
       exists mCombined1, map.split mCombined1 mSmall1 mStack /\
-                         related maxvar frame false t1 mCombined1 l1 mc1 t2 mCombined2 l2 mc2.
+                         related maxvar frame fpval t1 mCombined1 l1 t2 mCombined2 l2.
   Proof.
   Admitted.
 
-  Lemma shrink_related_mem: forall maxvar frame t1 m1 l1 mc1 t2 m2 l2 mc2 mRemove m1Small,
-      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
+  Lemma shrink_related_mem: forall maxvar frame t1 m1 l1 t2 m2 l2 mRemove m1Small fpval,
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       map.split m1 m1Small mRemove ->
       exists m2Small, map.split m2 m2Small mRemove /\
-                      related maxvar frame false t1 m1Small l1 mc1 t2 m2Small l2 mc2.
+                      related maxvar frame fpval t1 m1Small l1 t2 m2Small l2.
   Proof.
   Admitted.
 
@@ -1128,12 +1128,12 @@ Section Spilling.
   exec e1 s1 t1 m1 l1 mc1 post ->
   forall (frame : mem -> Prop) (maxvar : Z),
   valid_vars_src maxvar s1 ->
-  forall (t2 : trace) (m2 : mem) (l2 : locals) (mc1b mc2 mc2b : MetricLog),
-  related maxvar frame false t1 m1 l1 mc1b t2 m2 l2 mc2b ->
+  forall (t2 : trace) (m2 : mem) (l2 : locals) (mc2 : MetricLog) (fpval : word),
+  related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
   exec e2 (spill_stmt s1) t2 m2 l2 mc2
     (fun (t2' : trace) (m2' : mem) (l2' : locals) (mc2' : MetricLog) =>
        exists t1' m1' l1' mc1',
-         related maxvar frame false t1' m1' l1' mc1' t2' m2' l2' mc2' /\
+         related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
          post t1' m1' l1' mc1').
   Proof.
     induction 1; intros; cbn [spill_stmt valid_vars_src Forall_vars_stmt] in *; simp.
@@ -1249,7 +1249,8 @@ Section Spilling.
           eapply IHexec; try eassumption.
           (* after running stackalloc on a state whose locals only contain the function args,
              `related` required to call the IH holds: *)
-          eexists a, map.empty, st0, words. ssplit.
+          unfold related.
+          eexists map.empty, st0, words. ssplit.
           { reflexivity. }
           { eapply join_sep. 1: exact Sp. 1: exact H5p0. 1: exact Pt.
             unfold word_array at 2. ecancel. }
@@ -1326,11 +1327,9 @@ Section Spilling.
         }
         edestruct (eq_sep_to_split st2') as (st2Rest' & S22' & SP22').
         1: (* PARAMRECORDS *) simpl; ecancel_assumption.
-        assert (((eq m1' * word_array fpval stackwords * frame) * word_array fpval0 stackwords0)%sep m2') as M
+        assert (((eq m1' * word_array fpval stackwords * frame) * word_array a stackwords0)%sep m2') as M
             by ecancel_assumption.
         unfold sep at 1 in M. destruct M as (m2Small' & mStack' & Sp' & M1 & M2).
-        (* TODO add fpval as arg to related, and remove mc1, mc2, done *)
-        assert (a = fpval0) by admit. subst.
         repeat match goal with
                | |- exists _, _ => eexists
                | |- _ /\ _ => split
@@ -1344,8 +1343,8 @@ Section Spilling.
           eapply cast_word_array_to_bytes in M2.
           eapply array_1_to_anybytes in M2.
           match goal with
-          | H: Memory.anybytes fpval0 ?LEN1 mStack' |-
-               Memory.anybytes fpval0 ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
+          | H: Memory.anybytes a ?LEN1 mStack' |-
+               Memory.anybytes a ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
           end.
           admit. }
         1: reflexivity.
@@ -1393,7 +1392,7 @@ Section Spilling.
       (* PARAMRECORDS *) simpl in *. ecancel_assumption.
     - (* exec.inlinetable *)
       eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
-      clear mc2b mc2 H4. intros.
+      clear mc2 H4. intros.
       eapply seq_cps.
       eapply exec.inlinetable.
       { unfold res_reg, arg_reg, tmp1, fp in *. destr (32 <=? x); destr (32 <=? i); try blia. }
