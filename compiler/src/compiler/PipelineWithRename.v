@@ -219,6 +219,8 @@ Section Pipeline1.
       (compose_sim flattenSim (compose_sim regAllocSim flatToRiscvSim)).
   End Sim.
 
+  Axiom TODO: False.
+
   Lemma rename_fun_valid: forall argnames retnames body impl',
       rename_fun (argnames, retnames, body) = Some impl' ->
       NoDup argnames ->
@@ -242,6 +244,8 @@ Section Pipeline1.
     { assumption. }
     { assumption. }
     simp.
+    set (lowest_nonregister := 32).
+    assert (Z.leb z1 lowest_nonregister = true) as E2 by case TODO.
     ssplit.
     - eapply Forall_impl. 2: {
         eapply map.getmany_of_list_in_map. eassumption.

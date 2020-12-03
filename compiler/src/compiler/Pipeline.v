@@ -32,6 +32,7 @@ Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.Simp.
 Require Import compiler.FlattenExprSimulation.
+Require Import compiler.Spilling.
 Require Import compiler.RegRename.
 Require Import compiler.FlatToRiscvSimulation.
 Require Import compiler.Simulation.
@@ -153,6 +154,7 @@ Section Pipeline1.
   Definition flattenPhase(prog: source_env): option flat_env := flatten_functions (2^10) prog.
   Definition renamePhase(prog: flat_env): option renamed_env :=
     rename_functions prog.
+  Definition spillingPhase(prog: renamed_env): option renamed_env := Some (spill_functions prog).
 
   (* Note: we could also track code size from the source program all the way to the target
      program, and a lot of infrastructure is already there, will do once/if we want to get
@@ -177,7 +179,8 @@ Section Pipeline1.
     source_env -> option (list Instruction * funname_env Z) :=
     (composePhases flattenPhase
     (composePhases renamePhase
-                   (riscvPhase ml))).
+    (composePhases spillingPhase
+                   (riscvPhase ml)))).
 
   Section Sim.
     Context (ml: MemoryLayout)
@@ -209,6 +212,7 @@ Section Pipeline1.
     Definition regAllocSim: simulation _ _ _ :=
       renameSim (@ext_spec p)
                 e2 prog c2 c3 av' r' ER Ren.
+    (* Definition spillingSim: simulation _ _ _ *)
     Definition flatToRiscvSim: simulation _ _ _ :=
       FlatToRiscvSimulation.flatToRiscvSim
         f_entry_rel_pos f_entry_name p_call Rdata Rexec
@@ -219,6 +223,7 @@ Section Pipeline1.
       (compose_sim flattenSim (compose_sim regAllocSim flatToRiscvSim)).
   End Sim.
 
+(*
   Lemma rename_fun_valid: forall argnames retnames body impl',
       rename_fun (argnames, retnames, body) = Some impl' ->
       NoDup argnames ->
@@ -906,6 +911,7 @@ Section Pipeline1.
     all: try exact map.empty.
     all: try exact mem_ok.
   Qed.
+*)
 
   Definition instrencode(p: list Instruction): list byte :=
     List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.

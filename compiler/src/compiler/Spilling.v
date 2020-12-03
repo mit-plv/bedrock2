@@ -245,6 +245,16 @@ Module map.
     Qed.
 
   End MAP.
+
+  Section WithTwoMaps.
+    Context {K V1 V2: Type}{M1: map.map K V1}{M2: map.map K V2}
+            (keqb: K -> K -> bool) {keqb_spec: EqDecider keqb}
+            {OK1: map.ok M1} {OK2: map.ok M2}.
+
+    Definition map_values(f: V1 -> V2): M1 -> M2 :=
+      map.fold (fun acc k v1 => map.put acc k (f v1)) map.empty.
+  End WithTwoMaps.
+
 End map.
 
 Section MoreSepLog.
@@ -470,7 +480,11 @@ Section Spilling.
     end.
 
   Definition spill_fbody(s: stmt): stmt :=
-    SStackalloc fp (bytes_per_word * (max_var s - 31)) (spill_stmt s).
+    let maxvar := max_var s in
+    if 32 <=? maxvar then SStackalloc fp (bytes_per_word * (maxvar - 31)) (spill_stmt s) else s.
+
+  Definition spill_fun: list Z * list Z * stmt -> list Z * list Z * stmt :=
+    fun '(argnames, resnames, body) => (argnames, resnames, spill_fbody body).
 
   Context {locals: map.map Z word}.
   Context {localsOk: map.ok locals}.
@@ -484,6 +498,9 @@ Section Spilling.
     FlatImp.ext_spec := ext_spec;
   |}).
   Defined.
+
+  Definition spill_functions: env -> env :=
+    map.map_values spill_fun.
 
   Definition valid_vars_src(maxvar: Z): stmt -> Prop :=
     Forall_vars_stmt (fun x => fp < x <= maxvar) (fun x => fp < x < 32).
@@ -1230,6 +1247,9 @@ Section Spilling.
       + eapply map.getmany_of_list_zip_grow. 2: exact R. 1: exact S22.
       + eassumption.
       + unfold spill_fbody.
+        destruct_one_match. 2: {
+          admit. (* TODO case where no spilling is needed *)
+        }
         eapply exec.stackalloc. {
           rewrite Z.mul_comm.
           apply Z_mod_mult.
@@ -1301,7 +1321,7 @@ Section Spilling.
           intros.
           destr (map.get lStack a0). 2: reflexivity.
           match goal with
-          | H: forall _, _ |- _ => specialize H with (1 := E)
+          | H: forall _, _ |- _ => specialize H with (1 := E0)
           end.
           blia.
         }
@@ -1321,7 +1341,7 @@ Section Spilling.
         unfold sep in H4p0p3. destruct H4p0p3 as (lRegs0' & lStack0' & S2' & ? & ?). subst lRegs0' lStack0'.
         spec (map.getmany_of_list_zip_shrink st1') as GM. 1,2: eassumption. {
           intros k HI. destr (map.get lStack0 k); [exfalso|reflexivity].
-          specialize H4p0p2 with (1 := E).
+          specialize H4p0p2 with (1 := E0).
           move Evp2 at bottom.
           eapply Forall_forall in Evp2. 2: exact HI. clear -H4p0p2 Evp2. blia.
         }
@@ -1533,6 +1553,24 @@ Section Spilling.
     - (* exec.skip *)
       eapply exec.skip. eauto 20.
     all: fail.
-  Abort.
+  Admitted.
+
+  Definition spilling_related(maxvar: Z)(done: bool)(s1 s2: SimState Z): Prop :=
+    let '(t1, m1, l1, mc1) := s1 in let '(t2, m2, l2, mc2) := s2 in
+    exists fpval, related maxvar (emp True) fpval t1 m1 l1 t2 m2 l2.
+
+  Lemma spilling_sim: forall (maxvar: Z) (e1 e2: env) (s1: stmt),
+      envs_related e1 e2 ->
+      valid_vars_src maxvar s1 ->
+      simulation (SimExec Z e1 s1) (SimExec Z e2 (spill_stmt s1)) (spilling_related maxvar).
+  Proof.
+    unfold simulation, SimExec, spilling_related, compile_inv.
+    intros maxvar e1 e2 s1 ER V.
+    intros (((t1 & m1) & l1) & mc1) (((t2 & m2) & l2) & mc2) post1 (fpval & R) Ex1.
+    eapply exec.weaken.
+    - eapply spilling_correct; eassumption.
+    - cbv beta. intros. simp. eexists (_, _, _, _). split. 2: eassumption.
+      eauto.
+  Qed.
 
 End Spilling.
