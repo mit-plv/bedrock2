@@ -48,7 +48,7 @@ Require Export compiler.MemoryLayout.
 Require Import FunctionalExtensionality.
 Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
-Require Import compiler.PipelineWithRename.
+Require Import compiler.Pipeline.
 Require Import compiler.ExprImpEventLoopSpec.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.

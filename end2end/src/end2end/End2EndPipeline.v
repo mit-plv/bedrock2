@@ -32,7 +32,7 @@ Require Import processor.KamiWord.
 Require Import processor.KamiRiscvStep.
 Require Import processor.KamiRiscv.
 Require Import bedrock2.Syntax bedrock2.Semantics.
-Require Import compiler.PipelineWithRename.
+Require Import compiler.Pipeline.
 Require Import compilerExamples.MMIO.
 Require Import riscv.Platform.FE310ExtSpec.
 Require Import compiler.FlatToRiscvDef.
@@ -114,14 +114,14 @@ Section Connect.
                               MetricRiscvMachine).
   Abort.
 
-  Instance pipeline_params: PipelineWithRename.Pipeline.parameters := {|
+  Instance pipeline_params: Pipeline.Pipeline.parameters := {|
     Pipeline.ext_spec := FE310CSemantics.ext_spec;
     Pipeline.compile_ext_call := FlatToRiscvDef.compile_ext_call;
   |}.
 
   Existing Instance MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives.
 
-  Instance pipeline_assumptions: @PipelineWithRename.Pipeline.assumptions pipeline_params.
+  Instance pipeline_assumptions: @Pipeline.Pipeline.assumptions pipeline_params.
     refine ({|
       Pipeline.PR := _ ; (*MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives;*)
       Pipeline.FlatToRiscv_hyps := _; (*MMIO.FlatToRiscv_hyps*)
@@ -238,7 +238,7 @@ Section Connect.
 
   Lemma riscvMemInit_to_seplog_aux: forall len from,
       Z.of_nat from + Z.of_nat len <= 2 ^ memSizeLg ->
-      PipelineWithRename.ptsto_bytes
+      Pipeline.ptsto_bytes
         (word.of_Z (Z.of_nat from))
         (map (get_kamiMemInit memInit) (seq from len))
         (map.of_list (map
@@ -249,7 +249,7 @@ Section Connect.
   Proof.
     induction len; intros.
     - cbv. auto.
-    - unfold PipelineWithRename.ptsto_bytes, riscvMemInit_values in *.
+    - unfold Pipeline.ptsto_bytes, riscvMemInit_values in *.
       cbn [seq map array map.of_list].
       (* PARAMRECORDS *)
       change (KamiWord.word 32) with (@Utility.word Words32).
@@ -304,7 +304,7 @@ Section Connect.
   Qed.
 
   Lemma riscvMemInit_to_seplog:
-    (PipelineWithRename.ptsto_bytes (word.of_Z 0) riscvMemInit_all_values)
+    (Pipeline.ptsto_bytes (word.of_Z 0) riscvMemInit_all_values)
     (riscvMemInit memSizeLg memInit).
   Proof.
     intros.
@@ -453,7 +453,7 @@ Section Connect.
         all : cycle 3.
         Unshelve. {
           pose proof riscvMemInit_to_seplog as P.
-          unfold PipelineWithRename.ptsto_bytes in *.
+          unfold Pipeline.ptsto_bytes in *.
           remember riscvMemInit_all_values as l. symmetry in Heql. pose proof Heql as E.
           (* 1) chop off instructions *)
           rewrite <- (firstn_skipn (Datatypes.length (instrencode instrs)) l) in E. subst l.

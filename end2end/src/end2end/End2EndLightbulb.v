@@ -5,7 +5,7 @@ Require Import coqutil.Word.Interface.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.forward.
 Require Import bedrock2.Syntax.
-Require Import compiler.PipelineWithRename.
+Require Import compiler.Pipeline.
 Require Import bedrock2Examples.lightbulb bedrock2Examples.lightbulb_spec.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import coqutil.Tactics.Simp.
@@ -67,7 +67,7 @@ Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPer
 Local Existing Instance SortedListString.map.
 Local Existing Instance SortedListString.ok.
 
-Instance pipeline_params: PipelineWithRename.Pipeline.parameters :=
+Instance pipeline_params: Pipeline.Pipeline.parameters :=
   @End2EndPipeline.pipeline_params
     (Zkeyed_map FE310CSemantics.parameters.word)
     (Zkeyed_map_ok FE310CSemantics.parameters.word)
@@ -76,16 +76,16 @@ Instance pipeline_params: PipelineWithRename.Pipeline.parameters :=
 
 Instance semantics_parameters_ok : Semantics.parameters_ok
   (FlattenExprDef.FlattenExpr.mk_Semantics_params
-     PipelineWithRename.Pipeline.FlattenExpr_parameters).
+     Pipeline.Pipeline.FlattenExpr_parameters).
 Proof.
   eapply @FlattenExprDef.FlattenExpr.mk_Semantics_params_ok.
-  eapply @PipelineWithRename.FlattenExpr_hyps.
+  eapply @Pipeline.FlattenExpr_hyps.
   eapply @pipeline_assumptions; try exact _.
 Qed.
 
 Local Definition parameters_match :
   (FlattenExprDef.FlattenExpr.mk_Semantics_params
-    PipelineWithRename.Pipeline.FlattenExpr_parameters)
+    Pipeline.Pipeline.FlattenExpr_parameters)
   = FE310CSemantics.semantics_parameters := eq_refl.
 
 Open Scope string_scope.
