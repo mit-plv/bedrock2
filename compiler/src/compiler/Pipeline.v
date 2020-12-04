@@ -118,6 +118,57 @@ Module Import Pipeline.
 End Pipeline.
 
 
+Section SIM.
+  Context {Frame1 State1: Type}.
+  Context (exec1: State1 -> (State1 -> Prop) -> Prop).
+  Context {Frame2 State2: Type}.
+  Context (exec2: State2 -> (State2 -> Prop) -> Prop).
+  Context (related: Frame1 -> State1 -> Frame2 -> State2 -> Prop).
+
+  Definition simulation := forall f1 f2 (P1: State1 -> Prop) (P2: State2 -> Prop),
+      (forall s1 s2, related f1 s1 f2 s2 -> P1 s1 -> P2 s2) ->
+      forall s1 s2, related f1 s1 f2 s2 -> exec1 s1 P1 -> exec2 s2 P2.
+
+  (* Note: The above could be simplified like this, but then P2 cannot be weakened and we need
+     to carry around a separate hypothesis requiring weakening for language 2. *)
+  Definition simulation_without_weakening := forall (P1: State1 -> Prop) f1 f2 s1 s2,
+      related f1 s1 f2 s2 ->
+      exec1 s1 P1 ->
+      exec2 s2 (fun s2' => exists s1', related f1 s1' f2 s2' /\ P1 s1').
+
+  Definition simulation_alt: simulation -> simulation_without_weakening.
+  Proof. unfold simulation, simulation_without_weakening. eauto 10. Qed.
+
+End SIM.
+
+Section COMPOSE.
+  Context {Frame1 State1: Type}.
+  Context (exec1: State1 -> (State1 -> Prop) -> Prop).
+  Context {Frame2 State2: Type}.
+  Context (exec2: State2 -> (State2 -> Prop) -> Prop).
+  Context {Frame3 State3: Type}.
+  Context (exec3: State3 -> (State3 -> Prop) -> Prop).
+  Context (related12: Frame1 -> State1 -> Frame2 -> State2 -> Prop).
+  Context (related23: Frame2 -> State2 -> Frame3 -> State3 -> Prop).
+
+  Definition compose_related: Frame1 -> State1 -> Frame3 -> State3 -> Prop :=
+    fun f1 s1 f3 s3 => exists f2 s2, related12 f1 s1 f2 s2 /\ related23 f2 s2 f3 s3.
+
+  Lemma compose_simulation(S12: simulation exec1 exec2 related12)(S23: simulation exec2 exec3 related23):
+    simulation exec1 exec3 compose_related.
+  Proof.
+    unfold simulation, compose_related in *.
+    intros f1 f3 P1 P3 P13 s1 s3 (f2 & s2 & HR12 & HR23) Ex1.
+    eapply S23. 2: exact HR23. 2: {
+      eapply S12 with (P2 := (fun s2' => exists s1', related12 f1 s1' f2 s2' /\ P1 s1')).
+      2: exact HR12. 2: exact Ex1. eauto. }
+    intros s2' s3' HR23' (s1' & HR12' & p1). eauto.
+  Qed.
+
+End COMPOSE.
+
+Arguments compose_simulation {_} {_} {_} {_} {_} {_} {_} {_} {_} {_} {_}.
+
 Section Pipeline1.
 
   Context {p: parameters}.
@@ -182,48 +233,191 @@ Section Pipeline1.
     (composePhases spillingPhase
                    (riscvPhase ml)))).
 
-  Section Sim.
-    Context (ml: MemoryLayout)
-            (mlOk: MemoryLayoutOk ml)
-            (f_entry_rel_pos : Z)
-            (f_entry_name : string)
-            (p_call: word) (* address where the call to the entry function is stored *)
-            (p_functions: word) (* address where the compiled functions are stored *)
-            (Rdata Rexec : FlatToRiscvCommon.mem -> Prop)
-            (prog: renamed_env)
-            (e1 : FlattenExpr.ExprImp_env)
-            (e2 : FlattenExpr.FlatImp_env)
-            (funname : string)
-            (Hf: flatten_functions (2 ^ 10) e1 = Some e2).
-    Let c2 := (@FlatImp.SSeq String.string FlatImp.SSkip (FlatImp.SCall [] funname [])).
-    Let c3 := (@FlatImp.SSeq Z FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])).
-    Context (av' : Z) (r' : string_keyed_map Z)
-            (ER: envs_related e2 prog)
-            (Ren: rename map.empty c2 lowest_available_impvar = Some (r', c3, av'))
-            (H_p_call: word.unsigned p_call mod 4 = 0)
-            (H_p_functions: word.unsigned p_functions mod 4 = 0)
-            (G: map.get (FlatToRiscvDef.build_fun_pos_env prog) f_entry_name = Some f_entry_rel_pos)
-            (F: fits_stack 0 (word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word) prog
-                           (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])))
-            (GEI: good_e_impl prog (FlatToRiscvDef.build_fun_pos_env prog)).
+  Definition FlatState(varname: Type){pp : FlatImp.parameters varname}: Type :=
+    FlatImp.env * FlatImp.stmt varname * bool * FlatImp.trace * FlatImp.mem * FlatImp.locals * MetricLog.
 
-    Definition flattenSim: simulation _ _ _ :=
-      FlattenExprSimulation.flattenExprSim (2^10) e1 e2 funname Hf.
-    Definition regAllocSim: simulation _ _ _ :=
-      renameSim (@ext_spec p)
-                e2 prog c2 c3 av' r' ER Ren.
-    (* Definition spillingSim: simulation _ _ _ *)
-    Definition flatToRiscvSim: simulation _ _ _ :=
-      FlatToRiscvSimulation.flatToRiscvSim
-        f_entry_rel_pos f_entry_name p_call Rdata Rexec
-        p_functions ml.(stack_start) ml.(stack_pastend)
-        prog compile_ext_call_correct H_p_call H_p_functions G F GEI.
+  Definition flatExec{varname: Type}{pp : FlatImp.parameters varname}:
+    FlatState varname -> (FlatState varname -> Prop) -> Prop :=
+    fun '(e, s, done, t, m, l, mc) post =>
+      done = false /\
+      FlatImp.exec e s t m l mc (fun t' m' l' mc' => post (e, s, true, t', m', l', mc')).
 
-    Definition sim: simulation _ _ _ :=
-      (compose_sim flattenSim (compose_sim regAllocSim flatToRiscvSim)).
-  End Sim.
+  Definition flat_related_to_riscv
+             (frame1: @FlatImp.env Z _ * FlatImp.stmt Z)(s1: FlatState Z)
+             (g: GhostConsts)(s2: MetricRiscvMachine): Prop :=
+    let '(e, c, done, t, m, l, mc) := s1 in
+    frame1 = (e, c) /\
+    s2.(getPc) = (if done then word.add g.(p_insts) (word.of_Z (4 * Z.of_nat (length g.(insts))))
+                  else g.(p_insts)) /\
+    e = g.(e_impl) /\
+    good_e_impl g.(e_impl) g.(e_pos) /\
+    fits_stack g.(rem_framewords) g.(rem_stackwords) g.(e_impl) c /\
+    FlatToRiscvDef.stmt_not_too_big c /\
+    FlatToRiscvDef.valid_FlatImp_vars c /\
+    let relpos := (word.unsigned (word.sub g.(p_insts) g.(program_base))) in
+    let stackoffset := (bytes_per_word * g.(rem_framewords)) in
+    FlatToRiscvDef.compile_stmt g.(e_pos) relpos stackoffset c = g.(insts) /\
+    goodMachine t m l g s2.
 
-(*
+  Lemma flatToRiscvSim: simulation flatExec FlatToRiscvCommon.runsTo flat_related_to_riscv.
+  Proof.
+    unfold simulation, flatExec, FlatState, FlatImp.SimExec, flat_related_to_riscv.
+    intros.
+    destruct s1 as ((((((e & c) & done) & t) & m) & l) & mc).
+    destruct_RiscvMachine s2.
+    simp.
+    eapply runsTo_weaken.
+    - specialize compile_stmt_correct with (1 := @compile_ext_call_correct _ h).
+      unfold compiles_FlatToRiscv_correctly. intros compile_stmt_correct.
+      eapply compile_stmt_correct with (g := f2); clear compile_stmt_correct; simpl.
+      + eassumption.
+      + clear. intros k v ?. eassumption.
+      + assumption.
+      + eauto using fits_stack_call.
+      + eassumption.
+      + eassumption.
+      + eassumption.
+      + assert (word.ok word) by exact Utility.word_ok.
+        solve_divisibleBy4.
+        admit.
+      + assert (word.ok word) by exact Utility.word_ok.
+        solve_divisibleBy4.
+        admit.
+      + (* TODO why are these manual steps needed? *)
+        admit.
+      + assert (word.ok word) by exact Utility.word_ok.
+        admit.
+      + assumption.
+    - simpl. intros. simp.
+      eapply H. 2: eassumption.
+      cbv beta iota.
+      repeat match goal with
+             | |- _ /\ _ => split
+             | _ => eassumption
+             | _ => reflexivity
+             end.
+      all: fail.
+  Admitted.
+
+  Definition spilling_related
+             (frame1: @FlatImp.env Z _ * FlatImp.stmt Z)(s1: FlatState Z)
+             (frame2: @FlatImp.env Z _ * FlatImp.stmt Z)(s2: FlatState Z) :=
+    let '(e1, c1, done1, t1, m1, l1, mc1) := s1 in
+    let '(e2, c2, done2, t2, m2, l2, mc2) := s2 in
+    frame1 = (e1, c1) /\
+    frame2 = (e2, c2) /\
+    done1 = done2 /\
+    c2 = spill_stmt c1 /\
+    exists maxvar (fpval: word),
+      Spilling.envs_related e1 e2 /\
+      Spilling.valid_vars_src maxvar c1 /\
+      Spilling.related ext_spec maxvar (emp True) fpval t1 m1 l1 t2 m2 l2.
+
+  Lemma spilling_sim: simulation flatExec flatExec spilling_related.
+  Proof.
+    unfold simulation, flatExec, spilling_related. intros f1 f2 P1 P2 R.
+    intros ((((((e1 & c1) & done1) & t1) & m1) & l1) & mc1) ((((((e2 & c2) & done2) & t2) & m2) & l2) & mc2).
+    intros. simp. split; [reflexivity|].
+    eapply FlatImp.exec.weaken.
+    - eapply spilling_correct; eassumption.
+    - cbv beta. intros. simp. eapply R. 2: eassumption. simpl.
+      eauto 10.
+  Qed.
+
+  Definition renaming_related
+             (frame1: @FlatImp.env string _ * FlatImp.stmt string)(s1: FlatState string)
+             (frame2: @FlatImp.env Z _ * FlatImp.stmt Z)(s2: FlatState Z) :=
+    let '(e1, c1, done1, t1, m1, l1, mc1) := s1 in
+    let '(e2, c2, done2, t2, m2, l2, mc2) := s2 in
+    frame1 = (e1, c1) /\
+    frame2 = (e2, c2) /\
+    done1 = done2 /\
+    RegRename.envs_related e1 e2 /\
+    (exists r' av', RegRename.rename map.empty c1 lowest_available_impvar = Some (r', c2, av')) /\
+    t1 = t2 /\
+    m1 = m2 /\
+    (done1 = false -> l1 = map.empty /\ l2 = map.empty /\ mc1 = mc2).
+
+  Lemma renaming_sim: simulation flatExec flatExec renaming_related.
+  Proof.
+    unfold simulation, flatExec, renaming_related. intros f1 f2 P1 P2 R.
+    intros ((((((e1 & c1) & done1) & t1) & m1) & l1) & mc1) ((((((e2 & c2) & done2) & t2) & m2) & l2) & mc2).
+    intros. simp. split; [reflexivity|]. specialize (Hp3 eq_refl). simp.
+    pose proof Hp1 as A.
+    apply rename_props in A;
+      [|eapply map.empty_injective|eapply dom_bound_empty].
+    simp.
+    eapply FlatImp.exec.weaken.
+    - eapply rename_correct.
+      1: eassumption.
+      1: eassumption.
+      3: {
+        eapply Ap2. eapply TestLemmas.extends_refl.
+      }
+      1: eassumption.
+      1: eassumption.
+      unfold states_compat. intros *. intro B.
+      erewrite map.get_empty in B. discriminate.
+    - simpl. intros. simp.
+      eapply R. 2: eassumption. simpl. clear R. intuition (discriminate || eauto).
+  Qed.
+
+  Definition SrcState: Type :=
+    Semantics.env * Syntax.cmd * bool * Semantics.trace * Semantics.mem * Semantics.locals * MetricLog.
+
+  Definition srcExec: SrcState -> (SrcState -> Prop) -> Prop :=
+    fun '(e, c, done, t, m, l, mc) post =>
+      done = false /\
+      Semantics.exec e c t m l mc (fun t' m' l' mc' => post (e, c, true, t', m', l', mc')).
+
+  Definition flattening_related
+             (frame1: Semantics.env * Syntax.cmd)(s1: SrcState)
+             (frame2: @FlatImp.env string _ * FlatImp.stmt string)(s2: FlatState string) :=
+    let '(e1, c1, done1, t1, m1, l1, mc1) := s1 in
+    let '(e2, c2, done2, t2, m2, l2, mc2) := s2 in
+    frame1 = (e1, c1) /\
+    frame2 = (e2, c2) /\
+    done1 = done2 /\
+    (exists ngs', flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list c1)) c1 = (c2, ngs')) /\
+    flatten_functions (2^10) e1 = Some e2 /\
+    t1 = t2 /\
+    m1 = m2 /\
+    (done1 = false -> l1 = map.empty /\ l2 = map.empty /\ mc1 = mc2).
+
+  Lemma flattening_sim: simulation srcExec flatExec flattening_related.
+  Proof.
+    unfold simulation, srcExec, flatExec, flattening_related. intros f1 f2 P1 P2 R.
+    intros ((((((e1 & c1) & done1) & t1) & m1) & l1) & mc1) ((((((e2 & c2) & done2) & t2) & m2) & l2) & mc2).
+    intros. simp. split; [reflexivity|]. specialize (Hp3 eq_refl). simp.
+    eapply FlatImp.exec.weaken.
+    - eapply @flattenStmt_correct_aux with (eH := e1).
+      + typeclasses eauto.
+      + eassumption.
+      + eassumption.
+      + reflexivity.
+      + eassumption.
+      + intros x k A. rewrite map.get_empty in A. discriminate.
+      + unfold map.undef_on, map.agree_on. intros. reflexivity.
+      + eapply freshNameGenState_disjoint.
+    - simpl. intros. simp. eapply R. 2: eassumption. simpl. intuition (discriminate || eauto).
+  Qed.
+
+  Definition related: Semantics.env * Syntax.cmd -> SrcState -> GhostConsts -> MetricRiscvMachine -> Prop :=
+    (compose_related flattening_related
+    (compose_related renaming_related
+    (compose_related spilling_related
+                     flat_related_to_riscv))).
+
+  Lemma sim: simulation srcExec FlatToRiscvCommon.runsTo related.
+  Proof.
+    exact (compose_simulation flattening_sim
+          (compose_simulation renaming_sim
+          (compose_simulation spilling_sim
+                              flatToRiscvSim))).
+  Qed.
+
+  Axiom TODO: False.
+
   Lemma rename_fun_valid: forall argnames retnames body impl',
       rename_fun (argnames, retnames, body) = Some impl' ->
       NoDup argnames ->
@@ -247,6 +441,8 @@ Section Pipeline1.
     { assumption. }
     { assumption. }
     simp.
+    set (lowest_nonregister := 32).
+    assert (Z.leb z1 lowest_nonregister = true) as E2 by case TODO.
     ssplit.
     - eapply Forall_impl. 2: {
         eapply map.getmany_of_list_in_map. eassumption.
@@ -609,6 +805,50 @@ Section Pipeline1.
       (* configured by PrimitivesParams, can contain invariants needed for external calls *)
       valid_machine mach.
 
+  Lemma establish_undone_related: forall
+      (ml: MemoryLayout)
+      (mlOk: MemoryLayoutOk ml)
+      (f_entry_name : string) (fbody: Syntax.cmd.cmd) (f_entry_rel_pos: Z)
+      (p_call p_functions: word)
+      (Rdata Rexec : mem -> Prop)
+      (functions: source_env)
+      (instrs: list Instruction)
+      (pos_map: funname_env Z)
+      (mH: mem) (mc: MetricLog)
+      (initial: MetricRiscvMachine),
+      ExprImp.valid_funs functions ->
+      compile ml functions = Some (instrs, pos_map) ->
+      map.get functions f_entry_name = Some (nil, nil, fbody) ->
+      map.get pos_map f_entry_name = Some f_entry_rel_pos ->
+      machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
+                 p_call p_call mH Rdata Rexec initial ->
+      exists riscv_frame,
+        related (functions, fbody) (functions, fbody, false, getLog initial, mH, map.empty, mc)
+                riscv_frame initial.
+  Proof.
+
+  Admitted.
+
+  Lemma done_related_to_machine_ok: forall
+      (ml: MemoryLayout)
+      (mlOk: MemoryLayoutOk ml)
+      (fbody: Syntax.cmd.cmd) (f_entry_rel_pos: Z)
+      (p_call p_functions: word)
+      (Rdata Rexec : mem -> Prop)
+      (functions: source_env)
+      (instrs: list Instruction)
+      (t: Semantics.trace) (lH: Semantics.locals) (mH: mem) (mc: MetricLog)
+      (mach: MetricRiscvMachine)
+      (riscv_frame: GhostConsts),
+      related (functions, fbody) (functions, fbody, true, t, mH, lH, mc)
+              riscv_frame mach ->
+      machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
+                 p_call (word.add p_call (word.of_Z 4)) mH Rdata Rexec mach /\
+      t = mach.(getLog).
+  Proof.
+
+  Admitted.
+
   (* This lemma translates "sim", which depends on the large definition "related", into something
      more understandable and usable. *)
   Lemma compiler_correct: forall
@@ -636,27 +876,107 @@ Section Pipeline1.
                      p_call (word.add p_call (word.of_Z 4)) mH' Rdata Rexec final).
   Proof.
     intros.
+    edestruct establish_undone_related as (g & R); [eassumption..|].
+    eapply runsTo_weaken.
+    - pose proof sim as P. eapply simulation_alt in P.
+      unfold simulation_without_weakening, SrcState, srcExec in P.
+      let x := open_constr:((_, _, _, _, _, _, _):
+        Semantics.env * Syntax.cmd.cmd * bool * Semantics.trace * Semantics.mem * Semantics.locals * MetricLog)
+      in specialize P with (s1 := x).
+      let x := open_constr:((_, _): Semantics.env * Syntax.cmd.cmd)
+      in specialize P with (f1 := x).
+      specialize P with (P1 := fun '(e', c', done', t', m', l', mc') =>
+                                 e' = functions /\ c' = fbody /\ done' = true /\ postH t' m').
+      simpl in P.
+      eapply P; clear P. 1: exact R.
+      split; [reflexivity|]. eapply ExprImp.weaken_exec. 1: eassumption.
+      cbv beta. eauto.
+    - cbv beta. intros final A. simp.
+      edestruct done_related_to_machine_ok as (A & ?). 1: exact mlOk. 1: exact Ap0. subst t.
+      eauto.
+  Qed.
+
+  (* Old proof: *)
+  Goal forall
+      (ml: MemoryLayout)
+      (mlOk: MemoryLayoutOk ml)
+      (f_entry_name : string) (fbody: Syntax.cmd.cmd) (f_entry_rel_pos: Z)
+      (p_call p_functions: word)
+      (Rdata Rexec : mem -> Prop)
+      (functions: source_env)
+      (instrs: list Instruction)
+      (pos_map: funname_env Z)
+      (mH: mem) (mc: MetricLog)
+      (postH: Semantics.trace -> Semantics.mem -> Prop)
+      (initial: MetricRiscvMachine),
+      ExprImp.valid_funs functions ->
+      compile ml functions = Some (instrs, pos_map) ->
+      map.get functions f_entry_name = Some (nil, nil, fbody) ->
+      map.get pos_map f_entry_name = Some f_entry_rel_pos ->
+      Semantics.exec functions fbody initial.(getLog) mH map.empty mc (fun t' m' l' mc' => postH t' m') ->
+      machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
+                 p_call p_call mH Rdata Rexec initial ->
+      runsTo initial (fun final => exists mH',
+          postH final.(getLog) mH' /\
+          machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
+                     p_call (word.add p_call (word.of_Z 4)) mH' Rdata Rexec final).
+  Proof.
+    intros.
     match goal with
     | H: map.get pos_map _ = Some _ |- _ => rename H into GetPos
     end.
-    unfold compile, composePhases, renamePhase, flattenPhase in *. simp.
+    unfold compile, composePhases, flattenPhase, renamePhase, spillingPhase in *. simp.
+
+    match goal with
+    | H: flatten_functions _ _ = _ |- _ => rename H into FlattenEq
+    end.
+    unfold flatten_functions in FlattenEq.
+    match goal with
+    | H: _ |- _ => unshelve epose proof (map.map_all_values_fw _ _ _ _ FlattenEq _ _ H)
+    end.
+    simp.
+    match goal with
+    | H: rename_functions _ = _ |- _ => rename H into RenameEq
+    end.
+    unfold rename_functions in RenameEq.
+    match goal with
+    | H: _ |- _ => unshelve epose proof (map.map_all_values_fw _ _ _ _ RenameEq _ _ H)
+    end.
+    simp.
+    match goal with
+    | H: flatten_function _ _ = _ |- _ => rename H into FF
+    end.
+    unfold flatten_function in FF. simp.
+
     eapply runsTo_weaken.
-    - pose proof sim as P. unfold simulation, ExprImp.SimState, ExprImp.SimExec in P.
-      specialize (P ml f_entry_rel_pos f_entry_name p_call p_functions Rdata Rexec).
-      specialize P with (e1 := functions) (s1 := (initial.(getLog), mH, map.empty, mc)).
-      specialize P with (post1 := fun '(t', m', l', mc') => postH t' m').
+    - pose proof sim as P. eapply simulation_alt in P.
+      unfold simulation_without_weakening, SrcState, srcExec in P.
+      let x := open_constr:((_, _, _, _, _, _, _):
+        Semantics.env * Syntax.cmd.cmd * bool * Semantics.trace * Semantics.mem * Semantics.locals * MetricLog)
+      in specialize P with (s1 := x).
+      let x := open_constr:((_, _): Semantics.env * Syntax.cmd.cmd)
+      in specialize P with (f1 := x).
+      specialize P with (P1 := fun '(e', c', done', t', m', l', mc') =>
+                                 e' = functions /\ c' = fbody /\ done' = true /\ postH t' m').
       simpl in P.
-      eapply P; clear P; cycle -1. {
-        econstructor.
-        + eassumption.
-        + reflexivity.
-        + unfold map.of_list_zip, map.putmany_of_list_zip. reflexivity.
-        + eassumption.
-        + intros. exists nil. split; [reflexivity|].
-          exists map.empty. split; [reflexivity|].
-          eassumption.
+      eapply P; clear P. 2: {
+        split; [reflexivity|]. eapply ExprImp.weaken_exec. 1: eassumption.
+        cbv beta. eauto.
       }
-      { eassumption. }
+      unfold related, flattening_related, renaming_related, spilling_related, flat_related_to_riscv,
+             compose_related.
+      eexists (_, _), (_, _, _, _, _, _, _).
+      ssplit; try reflexivity; eauto.
+      { eexists.
+        match goal with
+        | |- ?x = (?evar1, ?evar2) => transitivity (fst x, snd x)
+        end.
+        2: reflexivity.
+        match goal with
+        | |- ?x = (_, _) => destruct x; reflexivity
+        end. }
+      eexists (_, _), (_, _, _, _, _, _, _).
+      ssplit; try reflexivity; eauto.
       { unfold envs_related.
         intros f [ [argnames resnames] body1 ] G.
         unfold rename_functions in *.
@@ -664,85 +984,10 @@ Section Pipeline1.
         5: exact G. 4: eassumption.
         - eapply String.eqb_spec.
         - typeclasses eauto.
-        - typeclasses eauto.
+        - simpl. typeclasses eauto.
       }
-      { reflexivity. }
-      { unfold machine_ok in *. simp. solve_divisibleBy4. }
-      { unfold riscvPhase, machine_ok in *. simp.
-        eapply program_mod_4_0. 2: ecancel_assumption.
-        destruct (map.map_all_values_fw _ _ _ _ E _ _ H1) as [ [ [args' rets'] fbody' ] [ F G ] ].
-        unfold flatten_function in F. simp.
-        epose proof (map.map_all_values_fw _ _ _ _ E0 _ _ G) as [ [ [args' rets'] fbody' ] [ F G' ] ].
-        unfold rename_fun in F. simp.
-        eapply compile_funs_nonnil; eassumption.
-      }
-      { unfold riscvPhase in *. simp. exact GetPos. }
-      { simpl. unfold riscvPhase in *. simpl in *. simp.
-        move E1 at bottom.
-        eapply fits_stack_seq. 1: eapply fits_stack_skip. 1: reflexivity. {
-          eapply Z.div_pos.
-          - eapply proj1. eapply word.unsigned_range.
-          - clear. unfold bytes_per_word, Memory.bytes_per.
-            destruct width_cases as [E | E]; rewrite E; reflexivity.
-        }
-        destruct (map.map_all_values_fw _ _ _ _ E _ _ H1) as [ [ [args' rets'] fbody' ] [ F G ] ].
-        unfold flatten_function in F. simp.
-        epose proof (map.map_all_values_fw _ _ _ _ E0 _ _ G) as [ [ [args' rets'] fbody' ] [ F G' ] ].
-        unfold rename_fun in F. simp.
-        apply_in_hyps rename_binds_preserves_length.
-        destruct rets'; [|discriminate].
-        destruct args'; [|discriminate].
-        repeat match goal with
-               | H: _ |- _ => autoforward with typeclass_instances in H
-               end.
-        econstructor. 1: reflexivity. 1: eassumption.
-        eapply fits_stack_monotone.
-        1: eapply stack_usage_correct; eassumption. 1: reflexivity. blia. }
-      { unfold good_e_impl.
-        intros.
-        simpl in *.
-        match goal with
-        | H: rename_functions _ = _ |- _ => rename H into RenameEq
-        end.
-        unfold rename_functions in RenameEq.
-        match goal with
-        | H: _ |- _ => unshelve epose proof (map.map_all_values_bw _ _ _ _ RenameEq _ _ H)
-        end.
-        simp. destruct v1 as [ [argnames' retnames'] body' ].
-        match goal with
-        | H: flatten_functions _ _ = _ |- _ => rename H into FlattenEq
-        end.
-        unfold flatten_functions in FlattenEq.
-        match goal with
-        | H: _ |- _ => unshelve epose proof (map.map_all_values_bw _ _ _ _ FlattenEq _ _ H) as P
-        end.
-        unfold flatten_function in P.
-        simp.
-        match goal with
-        | H: ExprImp.valid_funs _ |- _ => rename H into V
-        end.
-        unfold ExprImp.valid_funs in V.
-        specialize V with (1 := Pp1).
-        unfold ExprImp.valid_fun in V.
-        destruct V.
-        ssplit.
-        - eapply rename_fun_valid; try eassumption.
-          unfold ExprImp2FlatImp in *.
-          simp.
-          repeat match goal with
-                 | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
-                 end.
-          assumption.
-        - unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.build_fun_pos_env.
-          pose proof (get_compile_funs_pos r0) as P.
-          destruct (FlatToRiscvDef.compile_funs map.empty r0) as [ insts posmap ] eqn: F.
-          eapply P.
-          eassumption.
-      }
-      unfold related, compose_relation.
-      unfold FlatToRiscvSimulation.related, FlattenExprSimulation.related, RegRename.related.
-      refine (ex_intro _ (_, _, _, _) _).
-      ssplit; try reflexivity.
+      all: admit.
+      (*
       refine (ex_intro _ (_, _, _, _) _).
       ssplit; try reflexivity.
       { intros. ssplit; reflexivity. }
@@ -812,7 +1057,8 @@ Section Pipeline1.
         apply Hlength_stack_trash_words. }
       { reflexivity. }
       { unfold machine_ok in *. simp. assumption. }
-    - intros. unfold compile_inv, related, compose_relation in *.
+      *)
+    - intros. unfold compile_inv, related, compose_related in *.
       match goal with
       | H: context[machine_ok] |- _ =>
         unfold machine_ok in H;
@@ -829,7 +1075,10 @@ Section Pipeline1.
       repeat match goal with
              | H: context[Semantics.exec] |- _ => clear H
              end.
+      unfold flattening_related, renaming_related, spilling_related, flat_related_to_riscv in *.
       unfold FlatToRiscvSimulation.related, FlattenExprSimulation.related, RegRename.related, goodMachine in *.
+      admit.
+      (*
       simp.
       eexists. split. 1: eassumption.
       unfold machine_ok. ssplit; try assumption.
@@ -903,6 +1152,7 @@ Section Pipeline1.
         simpl.
         wwcancel.
       + destr_RiscvMachine final. subst. solve_divisibleBy4.
+      *)
     Unshelve.
     all: try exact (bedrock2.MetricLogging.mkMetricLog 0 0 0 0).
     all: try (simpl; typeclasses eauto).
@@ -910,8 +1160,7 @@ Section Pipeline1.
     all: try exact nil.
     all: try exact map.empty.
     all: try exact mem_ok.
-  Qed.
-*)
+  Abort.
 
   Definition instrencode(p: list Instruction): list byte :=
     List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
