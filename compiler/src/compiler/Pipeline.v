@@ -202,7 +202,7 @@ Section Pipeline1.
   Local Notation flat_env := (@string_keyed_map p (list string * list string * FlatImp.stmt string)).
   Local Notation renamed_env := (@string_keyed_map p (list Z * list Z * FlatImp.stmt Z)).
 
-  Definition flattenPhase(prog: source_env): option flat_env := flatten_functions (2^10) prog.
+  Definition flattenPhase(prog: source_env): option flat_env := flatten_functions prog.
   Definition renamePhase(prog: flat_env): option renamed_env :=
     rename_functions prog.
   Definition spillingPhase(prog: renamed_env): option renamed_env := Some (spill_functions prog).
@@ -379,7 +379,7 @@ Section Pipeline1.
     frame2 = (e2, c2) /\
     done1 = done2 /\
     (exists ngs', flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list c1)) c1 = (c2, ngs')) /\
-    flatten_functions (2^10) e1 = Some e2 /\
+    flatten_functions e1 = Some e2 /\
     t1 = t2 /\
     m1 = m2 /\
     (done1 = false -> l1 = map.empty /\ l2 = map.empty /\ mc1 = mc2).
@@ -928,7 +928,7 @@ Section Pipeline1.
     unfold compile, composePhases, flattenPhase, renamePhase, spillingPhase in *. simp.
 
     match goal with
-    | H: flatten_functions _ _ = _ |- _ => rename H into FlattenEq
+    | H: flatten_functions _ = _ |- _ => rename H into FlattenEq
     end.
     unfold flatten_functions in FlattenEq.
     match goal with
@@ -944,7 +944,7 @@ Section Pipeline1.
     end.
     simp.
     match goal with
-    | H: flatten_function _ _ = _ |- _ => rename H into FF
+    | H: flatten_function _ = _ |- _ => rename H into FF
     end.
     unfold flatten_function in FF. simp.
 

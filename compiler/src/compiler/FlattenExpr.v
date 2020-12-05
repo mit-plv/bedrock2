@@ -596,8 +596,8 @@ Section FlattenExpr1.
       apply H.
   Qed.
 
-  Lemma flattenStmt_correct_aux: forall max_size eH eL,
-      flatten_functions max_size eH = Some eL ->
+  Lemma flattenStmt_correct_aux: forall eH eL,
+      flatten_functions eH = Some eL ->
       forall eH0 sH t m mcH lH post,
       Semantics.exec eH0 sH t m lH mcH post ->
       eH0 = eH ->
@@ -789,7 +789,7 @@ Section FlattenExpr1.
         simp.
         eapply @FlatImp.exec.call.
         1,2,3: eassumption.
-        * unfold ExprImp2FlatImp0 in *.
+        * unfold ExprImp2FlatImp in *.
           match goal with
           | |- context [fst ?x] => destruct x as [fbody' ngs0] eqn: EF
           end.
@@ -845,9 +845,9 @@ Section FlattenExpr1.
   Qed.
   Goal True. idtac "FlattenExpr: flattenStmt_correct_aux done". Abort.
 
-  Lemma flattenStmt_correct0: forall max_size eH eL sH sL lL t m mc post,
-      flatten_functions max_size eH = Some eL ->
-      ExprImp2FlatImp0 sH = sL ->
+  Lemma flattenStmt_correct: forall eH eL sH sL lL t m mc post,
+      flatten_functions eH = Some eL ->
+      ExprImp2FlatImp sH = sL ->
       Semantics.exec eH sH t m map.empty mc post ->
       FlatImp.exec eL sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
         post t' m' lH' mcH' /\
@@ -855,7 +855,7 @@ Section FlattenExpr1.
         (mcL' - mc <= mcH' - mc)%metricsH).
   Proof.
     intros.
-    unfold ExprImp2FlatImp0 in *.
+    unfold ExprImp2FlatImp in *.
     match goal with
     | H: fst ?x = _ |- _ => destruct x as [sL' ngs'] eqn: E
     end.
@@ -864,20 +864,6 @@ Section FlattenExpr1.
     - eapply flattenStmt_correct_aux; try solve [eassumption | reflexivity | maps].
       eapply freshNameGenState_disjoint.
     - simpl. intros. simp. eauto.
-  Qed.
-
-  Lemma flattenStmt_correct: forall max_size eH eL sH sL sz lL t m mc post,
-      flatten_functions max_size eH = Some eL ->
-      ExprImp2FlatImp sz sH = Some sL ->
-      Semantics.exec eH sH t m map.empty mc post ->
-      FlatImp.exec eL sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
-        post t' m' lH' mcH' /\
-        map.extends lL' lH' /\
-        (mcL' - mc <= mcH' - mc)%metricsH).
-  Proof.
-    unfold ExprImp2FlatImp.
-    intros. eapply flattenStmt_correct0; try eassumption.
-    destruct_one_match_hyp; congruence.
   Qed.
 
 End FlattenExpr1.

@@ -12,18 +12,18 @@ Require Import coqutil.Tactics.Simp.
 Section Sim.
   Context {p: FlattenExpr.parameters}.
 
-  Definition related(max_size: Z)(done: bool): ExprImp.SimState -> FlatImp.SimState String.string -> Prop :=
+  Definition related(done: bool): ExprImp.SimState -> FlatImp.SimState String.string -> Prop :=
     fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
       t1 = t2 /\
       m1 = m2 /\
       l1 = map.empty.
 
-  Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}(max_size: Z)
+  Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}
         (e1: FlattenExpr.ExprImp_env)(e2: FlattenExpr.FlatImp_env)(funname: String.string):
-    flatten_functions max_size e1 = Some e2 ->
+    flatten_functions e1 = Some e2 ->
     simulation (ExprImp.SimExec e1 (Syntax.cmd.call nil funname nil))
                (FlatImp.SimExec String.string e2 (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall nil funname nil)))
-               (related max_size).
+               related.
   Proof.
     unfold simulation, related, ExprImp.SimExec, FlatImp.SimExec.
     intros H.
