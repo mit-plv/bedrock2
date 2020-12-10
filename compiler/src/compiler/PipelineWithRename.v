@@ -326,7 +326,7 @@ Section Pipeline1.
 
   Local Definition FlatImp__word_eq : FlatImp.word -> FlatImp.word -> bool := word.eqb.
   Local Instance  EqDecider_FlatImp__word_eq : EqDecider FlatImp__word_eq.
-  Proof. eapply word.eqb_spec. Unshelve. exact word_ok. Qed.
+  Proof. eapply word.eqb_spec. Unshelve. all: exact word_ok. Qed.
 
   Lemma mem_available_to_exists: forall start pastend m P,
       (mem_available start pastend * P)%sep m ->
