@@ -370,12 +370,12 @@ Section WithParameters.
     blia.
   Qed.
 
-  Lemma uncurried_load_four_bytes_of_sep_at bs a R m
+  Lemma uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: (eq(bs$@a)*R) m /\ length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
   Proof. eapply load_four_bytes_of_sep_at; eapply H. Qed.
 
-  Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R m
+  Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: (eq(bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
     load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
   Proof. eapply load_four_bytes_of_sep_at; try eapply H; blia. Qed.
