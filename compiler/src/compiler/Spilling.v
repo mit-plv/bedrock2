@@ -145,6 +145,24 @@ Module map.
         + eapply split_remove_put; assumption.
     Qed.
 
+    Lemma putmany_of_list_zip_to_In: forall ks vs m k v,
+        map.putmany_of_list_zip ks vs map.empty = Some m ->
+        map.get m k = Some v ->
+        In k ks.
+    Proof.
+      induction ks; intros.
+      - destruct vs as [|v' vs]. 2: discriminate H.
+        simpl in H. apply Option.eq_of_eq_Some in H. subst m. rewrite map.get_empty in H0. discriminate.
+      - destruct vs as [|v' vs]. 1: discriminate H.
+        cbn in H. edestruct map.putmany_of_list_zip_to_putmany as (s & A & ?). 1: exact H.
+        subst m.
+        rewrite map.get_putmany_dec in H0.
+        rewrite map.get_put_dec in H0.
+        destr (key_eqb a k).
+        + subst a. simpl. auto.
+        + right. rewrite map.get_empty in H0. simp. eauto.
+    Qed.
+
     Lemma two_way_split: forall (m mA mB m1 m2: map),
         map.split m mA mB ->
         map.split m m1 m2 ->
@@ -481,7 +499,11 @@ Section Spilling.
 
   Definition spill_fbody(s: stmt): stmt :=
     let maxvar := max_var s in
-    if 32 <=? maxvar then SStackalloc fp (bytes_per_word * (maxvar - 31)) (spill_stmt s) else s.
+    SStackalloc fp (bytes_per_word * Z.of_nat (Z.to_nat (maxvar - 31))) (spill_stmt s).
+  (* `Z.of_nat (Z.to_nat _)` is to to make sure it's not negative.
+     We might stackalloc 0 bytes, but that still writes fp, which is required to be
+     set by `related`, and we don't want to complicate `related` to accommodate for a
+     potentially uninitialized `fp` after a function call happens in a fresh locals env *)
 
   Definition spill_fun: list Z * list Z * stmt -> list Z * list Z * stmt :=
     fun '(argnames, resnames, body) => (argnames, resnames, spill_fbody body).
@@ -1084,6 +1106,15 @@ Section Spilling.
   Proof.
   Admitted.
 
+  Lemma List__flat_map_const_length{A B: Type}: forall (f: A -> list B) (n: nat) (l: list A),
+      (forall a, length (f a) = n) ->
+      length (flat_map f l) = (n * length l)%nat.
+  Proof.
+    intros. induction l.
+    - simpl. blia.
+    - simpl. rewrite app_length. rewrite IHl. rewrite H. blia.
+  Qed.
+
   (* TODO share with FlatToRiscvDef.compile4bytes? *)
   Fixpoint tuple__firstn{A: Type}(n: nat)(l: list A)(default: A){struct n}: HList.tuple A n :=
     match n with
@@ -1241,15 +1272,15 @@ Section Spilling.
         specialize H5p2 with (1 := E).
         eapply Forall_forall in FA. 2: exact HI. clear -H5p2 FA. blia.
       }
+      assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
+        unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+      }
       edestruct (eq_sep_to_split l2) as (l2Rest & S22 & SP22). 1: ecancel_assumption.
       eapply call_cps.
       + eauto.
       + eapply map.getmany_of_list_zip_grow. 2: exact R. 1: exact S22.
       + eassumption.
       + unfold spill_fbody.
-        destruct_one_match. 2: {
-          admit. (* TODO case where no spilling is needed *)
-        }
         eapply exec.stackalloc. {
           rewrite Z.mul_comm.
           apply Z_mod_mult.
@@ -1259,9 +1290,11 @@ Section Spilling.
         edestruct (byte_list_to_word_list_array bytes) as (words & L' & F). {
           rewrite L.
           unfold Memory.ftprint.
-          destr (0 <=? (bytes_per_word * (max_var fbody - 31))).
+          rewrite Z2Nat.id by blia.
+          destr (0 <=? (max_var fbody - 31)).
           - rewrite Z2Nat.id by assumption. rewrite Z.mul_comm. apply Z_mod_mult.
-          - replace (Z.of_nat (Z.to_nat (bytes_per_word * (max_var fbody - 31)))) with 0 by blia.
+          - replace (Z.of_nat (Z.to_nat (max_var fbody - 31))) with 0 by blia.
+            rewrite Z.mul_0_r.
             apply Zmod_0_l.
         }
         eapply F in Pt.
@@ -1296,10 +1329,7 @@ Section Spilling.
             - intros k v G. rewrite map.get_empty in G. discriminate. }
           { intros. rewrite map.get_empty in H5. discriminate. }
           { apply (f_equal Z.to_nat) in L'. rewrite Nat2Z.id in L'. rewrite L'. rewrite L.
-            clear. (* <- LIA performance *)
-            assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
-              unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
-            }
+            clear -B48. (* <- LIA performance *)
             Z.div_mod_to_equations. blia. }
         }
         cbv beta. intros. simp.
@@ -1319,9 +1349,9 @@ Section Spilling.
           eapply Forall_impl. 2: eassumption.
           simpl.
           intros.
-          destr (map.get lStack a0). 2: reflexivity.
+          destruct (map.get lStack a0) eqn: EG. 2: reflexivity.
           match goal with
-          | H: forall _, _ |- _ => specialize H with (1 := E0)
+          | H: forall _, _ |- _ => specialize H with (1 := EG)
           end.
           blia.
         }
@@ -1341,7 +1371,7 @@ Section Spilling.
         unfold sep in H4p0p3. destruct H4p0p3 as (lRegs0' & lStack0' & S2' & ? & ?). subst lRegs0' lStack0'.
         spec (map.getmany_of_list_zip_shrink st1') as GM. 1,2: eassumption. {
           intros k HI. destr (map.get lStack0 k); [exfalso|reflexivity].
-          specialize H4p0p2 with (1 := E0).
+          specialize H4p0p2 with (1 := E).
           move Evp2 at bottom.
           eapply Forall_forall in Evp2. 2: exact HI. clear -H4p0p2 Evp2. blia.
         }
@@ -1366,9 +1396,24 @@ Section Spilling.
           | H: Memory.anybytes a ?LEN1 mStack' |-
                Memory.anybytes a ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
           end.
-          admit. }
+          erewrite List__flat_map_const_length. 2: {
+            intros w. rewrite HList.tuple.length_to_list. reflexivity.
+          }
+          blia. }
         1: reflexivity.
-        all: admit.
+        3: {
+          unfold sep. eauto.
+        }
+        3: {
+          eapply join_sep. 1: eassumption. 2: exact SP22. 2: ecancel. reflexivity.
+        }
+        { intros x v G.
+          destr (map.get lRegs x). 1: solve[eauto].
+          eapply map.putmany_of_list_zip_to_putmany in P0. destruct P0 as (retmap & P0 & ?). subst lRegs'.
+          rewrite map.get_putmany_dec in G. rewrite E in G. simp.
+          eapply Forall_forall in FR. 1: exact FR.
+          eapply map.putmany_of_list_zip_to_In; eassumption. }
+        all: assumption.
     - (* exec.load *)
       eapply seq_cps.
       eapply load_arg_reg_correct; (blia || eassumption || idtac).
@@ -1552,8 +1597,12 @@ Section Spilling.
       + cbn. intros. simp. eapply IH2. 1,2: eassumption. eauto 15.
     - (* exec.skip *)
       eapply exec.skip. eauto 20.
-    all: fail.
-  Admitted.
+    Unshelve.
+    all: try exact word.eqb.
+    all: try unshelve eapply word.eqb_spec.
+    all: simpl.
+    all: try typeclasses eauto.
+  Qed.
 
   Definition spilling_related(maxvar: Z)(done: bool)(s1 s2: SimState Z): Prop :=
     let '(t1, m1, l1, mc1) := s1 in let '(t2, m2, l2, mc2) := s2 in
