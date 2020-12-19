@@ -354,7 +354,14 @@ Ltac add_snippet s :=
              end
   end.
 
-Ltac after_snippet := repeat straightline.
+(* random simplifications *)
+Ltac simpli :=
+  repeat so fun hyporgoal =>
+              match hyporgoal with
+              | context[match ?x with _ => _ end] => destr x; try (exfalso; ZnWords); []
+              end.
+
+Ltac after_snippet := repeat straightline; simpli.
 (* For debugging, this can be useful:
 Ltac after_snippet ::= idtac.
 *)
@@ -401,13 +408,12 @@ Set Default Goal Selector "1".
     $*/
     doReply = /*number*/0; /*$. $*/
     if (len == /*number*/64) /*split*/ { /*$.
-      destr (word.eqb L (word.of_Z 64)). 2: exfalso; ZnWords.
+
       (* TODO *) $*/
     } /*$.
       exact TODO. $*/
     else { /*$. (* nothing to do *) $*/
     } /*$.
-      destr (word.eqb L (word.of_Z 64)). 1: exfalso; ZnWords.
       eexists.
       split. 1: reflexivity.
       split. 1: reflexivity.
