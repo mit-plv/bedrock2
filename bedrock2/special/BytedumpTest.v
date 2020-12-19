@@ -1,6 +1,7 @@
 Require Import Coq.ZArith.BinInt Coq.Lists.List. Import Z.
 Require Import bedrock2.Bytedump.
-Local Open Scope bytedump_scope.
+Local Open Scope bytedumplist_scope.
+
 Goal False.
   let cc := eval cbv in allBytes in idtac cc.
 Abort.
