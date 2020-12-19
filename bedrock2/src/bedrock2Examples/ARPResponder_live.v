@@ -94,18 +94,28 @@ Section WithParameters.
   Context (cfg: ARPConfig).
 
   (* high-level protocol definition (does not mention lists of bytes) *)
-  Definition ARPReqResp(req resp: EthernetPacket ARPPacket): Prop :=
+
+  Definition needsARPReply(req: EthernetPacket ARPPacket): Prop :=
     req.(etherType) = EtherTypeARP /\
     req.(payload).(oper) = ARPOperationRequest /\
-    req.(payload).(tpa) = cfg.(myIPv4) /\ (* <-- we only reply to requests asking for our own MAC *)
-    resp.(dstMAC) = req.(payload).(sha) /\
-    resp.(srcMAC) = cfg.(myMAC) /\
-    resp.(etherType) = EtherTypeARP /\
-    resp.(payload).(oper) = ARPOperationReply /\
-    resp.(payload).(sha) = cfg.(myMAC) /\ (* <-- the actual reply *)
-    resp.(payload).(spa) = cfg.(myIPv4) /\
-    resp.(payload).(tha) = req.(payload).(sha) /\
-    resp.(payload).(tpa) = req.(payload).(spa).
+    req.(payload).(tpa) = cfg.(myIPv4). (* <-- we only reply to requests asking for our own MAC *)
+
+  Definition ARPReply(req: EthernetPacket ARPPacket): EthernetPacket ARPPacket :=
+    {| dstMAC := req.(payload).(sha);
+       srcMAC := cfg.(myMAC);
+       etherType := EtherTypeARP;
+       payload := {|
+         oper := ARPOperationReply;
+         sha := cfg.(myMAC); (* <-- the actual reply *)
+         spa := cfg.(myIPv4);
+         tha := req.(payload).(sha);
+         tpa := req.(payload).(spa)
+       |}
+    |}.
+
+  (* not sure if we need this definition, or just inline it *)
+  Definition ARPReqResp(req resp: EthernetPacket ARPPacket): Prop :=
+    needsARPReply req /\ resp = ARPReply req.
 
   (* ** Program logic rules *)
 
@@ -132,6 +142,33 @@ Section WithParameters.
       dexpr m l a v ->
       (forall mc, exec e rest t m (map.put l x v) mc post) ->
       exec e (cmd.seq (cmd.set x a) rest) t m l mc post.
+  Admitted.
+
+  Notation "bs @ a" := (array ptsto (word.of_Z 1) a bs)
+    (at level 40, no associativity).
+
+  Definition addr_in_range(a start: word)(len: Z): Prop :=
+    word.unsigned (word.sub a start) <= len.
+
+  Definition subrange(start1: word)(len1: Z)(start2: word)(len2: Z): Prop :=
+    0 <= len1 <= len2 /\ addr_in_range start1 start2 (len2-len1).
+
+  Notation "'len' l" := (Z.of_nat (List.length l)) (at level 10).
+  Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per width sz)) (at level 10).
+
+  Implicit Type post: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop.
+
+  (* later, we might also support loads in expressions, maybe under the restriction that
+     expressig the loaded value does not require splitting lists *)
+  Lemma load_stmt: forall e sz x a a' b bs R t m l mc rest post,
+      dexpr m l a a' ->
+      (* conjunction because these two will have to be solved together: *)
+      (bs @ b \* R) m /\ subrange a' (Z.of_nat (@Memory.bytes_per width sz)) b (len bs) ->
+      (forall bs_l (v: bytetuple sz) bs_r mc,
+          bs = bs_l ++ tuple.to_list v ++ bs_r ->
+          len bs_l = word.unsigned (word.sub a' b) ->
+          exec e rest t m (map.put l x (word.of_Z (LittleEndian.combine _ v))) mc post) ->
+      exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
   Admitted.
 
   Definition vc_func e '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
@@ -346,6 +383,7 @@ Ltac add_note s := let n := fresh "Note" in pose proof (mkNote s) as n; move n a
 
 Ltac add_snippet s :=
   lazymatch s with
+  | SSet ?y (expr.load ?SZ ?A) => eapply load_stmt with (x := y) (a := A) (sz := SZ)
   | SSet ?y ?e => eapply assignment with (x := y) (a := e)
   | SIf ?cond false => eapply if_split with (c := cond); [| |add_note "'else' expected"]
   | SEnd => eapply exec.skip
@@ -383,31 +421,35 @@ Set Default Goal Selector "1".
 
   Definition arp: (string * {f: list string * list string * cmd &
     forall e t m ethbufAddr ethBufData L R,
-      (array ptsto (word.of_Z 1) ethbufAddr ethBufData \* R) m ->
+      (ethBufData @ ethbufAddr \* R) m ->
       word.unsigned L = Z.of_nat (List.length ethBufData) ->
       vc_func e f t m [ethbufAddr; L] (fun t' m' retvs =>
         t' = t /\ (
         (* Success: *)
         (retvs = [word.of_Z 1] /\ exists request response ethBufData',
-           (array ptsto (word.of_Z 1) ethbufAddr ethBufData' \* R) m' /\
+           (ethBufData' @ ethbufAddr \* R) m' /\
            isEthernetARPPacket request  ethBufData  /\
            isEthernetARPPacket response ethBufData' /\
            ARPReqResp request response) \/
         (* Failure: *)
-        (retvs = [word.of_Z 0] /\ (array ptsto (word.of_Z 1) ethbufAddr ethBufData \* R) m' /\ (
+        (retvs = [word.of_Z 0] /\ (ethBufData @ ethbufAddr \* R) m' /\ (
            L <> word.of_Z 64 \/
            (* malformed request *)
            (~ exists request, isEthernetARPPacket request ethBufData) \/
            (* request needs no reply because it's not for us *)
            (forall request, isEthernetARPPacket request ethBufData -> request.(payload).(tpa) <> cfg.(myIPv4))))
       ))}).
-    pose "ethbuf" as ethbuf. pose "len" as len. pose "doReply" as doReply.
-    refine ("arp", existT _ ([ethbuf; len], [doReply], _) _).
+    pose "ethbuf" as ethbuf. pose "ln" as ln. pose "doReply" as doReply. pose "tmp" as tmp.
+    refine ("arp", existT _ ([ethbuf; ln], [doReply], _) _).
     intros. cbv [vc_func]. letexists. split. 1: subst l; reflexivity. intros.
 
     $*/
     doReply = /*number*/0; /*$. $*/
-    if (len == /*number*/64) /*split*/ { /*$.
+    if (ln == /*number*/64) /*split*/ { /*$. $*/
+      tmp = load2(ethbuf + /*number*/12); /*$.
+      (* Goal of the form
+         (?bs @ ?b \* ?R) m /\ word_Z_lists_expr ?b ?bs *)
+      exact TODO.
 
       (* TODO *) $*/
     } /*$.
@@ -420,6 +462,11 @@ Set Default Goal Selector "1".
       right.
       split. 1: reflexivity.
       auto.
+
+    Unshelve.
+    all: try exact (word.of_Z 0).
+    all: try exact nil.
+    all: try (exact (fun _ => False)).
   Defined.
 
   Goal False.
