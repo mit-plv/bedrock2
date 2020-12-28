@@ -2597,6 +2597,7 @@ Section Equiv.
       (* -- prove preservation of [mem_related] for {sb, sh, sw} *)
       all: apply mem_related_put; [|assumption
                                    |cbv [word.unsigned];
+                                    unfold KamiWord.word;
                                     setoid_rewrite <-kunsigned_byte_split1;
                                     reflexivity].
 
@@ -2615,6 +2616,7 @@ Section Equiv.
           assumption.
         }
         { cbv [word.unsigned].
+          unfold KamiWord.word.
           setoid_rewrite <-kunsigned_byte_split1.
           rewrite ?kunsigned_split2_shiftr.
           reflexivity.
@@ -2623,6 +2625,7 @@ Section Equiv.
       { (* sw *)
         repeat (apply mem_related_put;
                 [| |cbv [word.unsigned];
+                    unfold KamiWord.word;
                     setoid_rewrite <-kunsigned_byte_split1;
                     rewrite ?kunsigned_split2_shiftr;
                     reflexivity]).
