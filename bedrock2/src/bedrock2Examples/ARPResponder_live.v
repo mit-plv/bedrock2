@@ -11,6 +11,18 @@ Require Import bedrock2.FE310CSemantics.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic.
+Require Import bedrock2.ZnWords.
+
+(* TODO put into coqutil and also use in lightbulb.v *)
+Module word.
+  Import ZArith.
+  Local Open Scope Z_scope.
+  Lemma unsigned_of_Z_nowrap {width} {word: word.word width} {ok : word.ok word} x :
+    0 <= x < 2 ^ width -> word.unsigned (word.of_Z x) = x.
+  Proof.
+    intros. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Z.mod_small; trivial.
+  Qed.
+End word.
 
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
@@ -153,8 +165,23 @@ Section WithParameters.
   Definition subrange(start1: word)(len1: Z)(start2: word)(len2: Z): Prop :=
     0 <= len1 <= len2 /\ addr_in_range start1 start2 (len2-len1).
 
-  Notation "'len' l" := (Z.of_nat (List.length l)) (at level 10).
+  Notation "a ,+ m 'c=' b ,+ n" := (subrange a m b n)
+    (no associativity, at level 10, m at level 1, b at level 1, n at level 1,
+     format "a ,+ m  'c='  b ,+ n").
+
+  Coercion Z.of_nat : nat >-> Z.
+  Notation len := List.length.
   Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per width sz)) (at level 10).
+
+Infix "^+" := word.add  (at level 50, left associativity).
+Infix "^-" := word.sub  (at level 50, left associativity).
+Infix "^*" := word.mul  (at level 40, left associativity).
+Infix "^<<" := word.slu  (at level 37, left associativity).
+Infix "^>>" := word.sru  (at level 37, left associativity).
+Notation "/[ x ]" := (word.of_Z x)       (* squeeze a Z into a word (beat it with a / to make it smaller) *)
+  (format "/[ x ]").
+Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the modulo box imposed by words, *)
+  (format "\[ x ]").                     (* let a word fly into the large Z space *)
 
   Implicit Type post: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop.
 
@@ -163,11 +190,29 @@ Section WithParameters.
   Lemma load_stmt: forall e sz x a a' b bs R t m l mc rest post,
       dexpr m l a a' ->
       (* conjunction because these two will have to be solved together: *)
-      (bs @ b \* R) m /\ subrange a' (Z.of_nat (@Memory.bytes_per width sz)) b (len bs) ->
+      (bs @ b \* R) m /\ a',+(Z.of_nat (@Memory.bytes_per width sz)) c= b,+(len bs) ->
       (forall bs_l (v: bytetuple sz) bs_r mc,
           bs = bs_l ++ tuple.to_list v ++ bs_r ->
-          len bs_l = word.unsigned (word.sub a' b) ->
+          word.unsigned (word.sub a' b) = len bs_l ->
           exec e rest t m (map.put l x (word.of_Z (LittleEndian.combine _ v))) mc post) ->
+      exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
+  Abort.
+
+  (* Definition satisfies(m: mem)(l: list (mem -> Prop)): Prop := seps l m. superfluous *)
+
+  (* later, we might also support loads in expressions, maybe under the restriction that
+     expressig the loaded value does not require splitting lists *)
+  Lemma load_stmt: forall e sz x a a'  t m l mc rest post,
+      dexpr m l a a' ->
+      (exists R,
+          seps R m /\
+          exists i b bs,
+            List.nth_error R i = Some (bs @ b) /\
+            a',+(Z.of_nat (@Memory.bytes_per width sz)) c= b,+(len bs) /\
+            (forall bs_l (v: bytetuple sz) bs_r mc,
+                bs = bs_l ++ tuple.to_list v ++ bs_r ->
+                \[a' ^- b] = len bs_l ->
+                exec e rest t m (map.put l x (word.of_Z (LittleEndian.combine _ v))) mc post)) ->
       exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
   Admitted.
 
@@ -381,9 +426,28 @@ Inductive note_wrapper: string -> Type := mkNote(s: string): note_wrapper s.
 Notation "s" := (note_wrapper s) (at level 200, only printing).
 Ltac add_note s := let n := fresh "Note" in pose proof (mkNote s) as n; move n at top.
 
+(* backtrackingly tries all nats strictly smaller than n *)
+Ltac pick_nat n :=
+  multimatch n with
+  | S ?m => constr:(m)
+  | S ?m => pick_nat m
+  end.
+
 Ltac add_snippet s :=
   lazymatch s with
-  | SSet ?y (expr.load ?SZ ?A) => eapply load_stmt with (x := y) (a := A) (sz := SZ)
+  | SSet ?y (expr.load ?SZ ?A) =>
+    eapply load_stmt with (x := y) (a := A) (sz := SZ);
+    [ solve [repeat straightline]
+    | once (match goal with
+            (* backtrack over choice of Hm in case there are several *)
+            | Hm: seps ?lm ?m |- exists l, seps l ?m /\ _ =>
+              exists lm; split; [exact Hm|];
+              let n := eval cbv [List.length] in (List.length lm) in
+              (* backtrack over choice of i *)
+              let i := pick_nat n in
+              eexists i, _, _; split; [cbv [List.nth_error]; reflexivity|];
+              split; [unfold bytes_per, subrange, addr_in_range; ZnWords|]
+            end) ]
   | SSet ?y ?e => eapply assignment with (x := y) (a := e)
   | SIf ?cond false => eapply if_split with (c := cond); [| |add_note "'else' expected"]
   | SEnd => eapply exec.skip
@@ -392,12 +456,29 @@ Ltac add_snippet s :=
              end
   end.
 
+
+Ltac ring_simplify_hyp_rec t H :=
+  lazymatch t with
+  | ?a = ?b => ring_simplify_hyp_rec a H || ring_simplify_hyp_rec b H
+  | word.unsigned ?a => ring_simplify_hyp_rec a H
+  | word.of_Z ?a => ring_simplify_hyp_rec a H
+  | _ => progress ring_simplify t in H
+  end.
+
+Ltac ring_simplify_hyp H :=
+  let t := type of H in ring_simplify_hyp_rec t H.
+
 (* random simplifications *)
 Ltac simpli :=
-  repeat so fun hyporgoal =>
-              match hyporgoal with
-              | context[match ?x with _ => _ end] => destr x; try (exfalso; ZnWords); []
-              end.
+  repeat (so fun hyporgoal =>
+               match hyporgoal with
+               | context[match ?x with _ => _ end] => destr x; try (exfalso; ZnWords); []
+               end);
+  repeat match goal with
+         | H: _ |- _ => rewrite word.unsigned_of_Z_nowrap in H by ZnWords
+         | H: _ |- _ => rewrite word.of_Z_unsigned in H
+         | H: _ |- _ => ring_simplify_hyp H
+         end.
 
 Ltac after_snippet := repeat straightline; simpli.
 (* For debugging, this can be useful:
@@ -417,22 +498,77 @@ Notation "'if' ( e ) '/*split*/' {" := (SIf e false) (in custom snippet at level
 Notation "}" := SEnd (in custom snippet at level 0).
 Notation "'else' {" := SElse (in custom snippet at level 0).
 
+  Let nth n xs := hd (emp True) (skipn n xs).
+  Let remove_nth n (xs : list (mem -> Prop)) :=
+    (firstn n xs ++ tl (skipn n xs)).
+
+  (* TODO also needs to produce equivalence proof *)
+  Ltac move_evar_to_head l :=
+    match l with
+    | ?h :: ?t =>
+      let __ := match constr:(Set) with _ => is_evar h end in
+      constr:(l)
+    | ?h :: ?t =>
+      let r := move_evar_to_head t in
+      match r with
+      | ?h' :: ?t' => constr:(h' :: h :: t)
+      end
+    end.
+
+  Goal forall (a b c d: nat),
+      exists e1 e2, [a; b; e1; c; d; e2] = nil.
+  Proof.
+    intros. eexists. eexists.
+    match goal with
+    | |- ?LHS = _ => let r := move_evar_to_head LHS in idtac r
+    end.
+  Abort.
+
+  (* `Cancelable ?R LHS RHS P` means that if `P` holds, then `?R * LHS <-> RHS` *)
+  Inductive Cancelable: (mem -> Prop) -> list (mem -> Prop) -> list (mem -> Prop) -> Prop -> Prop :=
+  | cancel_done: forall R R' (P: Prop),
+      R = seps R' -> P -> Cancelable R nil R' P
+  | cancel_at_indices: forall i j R LHS RHS P,
+      Cancelable R (remove_nth i LHS) (remove_nth j RHS) (nth i LHS = nth j RHS /\ P) ->
+      Cancelable R LHS RHS P.
+
+  Lemma Cancelable_to_iff1: forall R LHS RHS P,
+      Cancelable R LHS RHS P ->
+      Lift1Prop.iff1 (R \* seps LHS) R /\ P.
+  Abort.
+
+  Lemma cancel_array_at_indices{T}: forall i j xs ys P elem sz addr1 addr2 (content: list T),
+      (* these two equalities are provable right now, where we still have evars, whereas the
+         equation that we push into the conjunction needs to be deferred until all the canceling
+         is done and the evars are instantiated [not sure if that's true...] *)
+      nth i xs = array elem sz addr1 content ->
+      nth j ys = array elem sz addr2 content ->
+      Lift1Prop.iff1 (seps (remove_nth i xs)) (seps (remove_nth j ys)) /\
+      (addr1 = addr2 /\ P) ->
+      Lift1Prop.iff1 (seps xs) (seps ys) /\ P.
+  Abort.
+
+  Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
+        (preprocess [autorewrite with rew_word_morphism],
+         morphism (Properties.word.ring_morph (word := Semantics.word)),
+         constants [Properties.word_cst]).
+
 Set Default Goal Selector "1".
 
   Definition arp: (string * {f: list string * list string * cmd &
     forall e t m ethbufAddr ethBufData L R,
-      (ethBufData @ ethbufAddr \* R) m ->
+      seps [ethBufData @ ethbufAddr; R] m ->
       word.unsigned L = Z.of_nat (List.length ethBufData) ->
       vc_func e f t m [ethbufAddr; L] (fun t' m' retvs =>
         t' = t /\ (
         (* Success: *)
         (retvs = [word.of_Z 1] /\ exists request response ethBufData',
-           (ethBufData' @ ethbufAddr \* R) m' /\
+           seps [ethBufData' @ ethbufAddr; R] m' /\
            isEthernetARPPacket request  ethBufData  /\
            isEthernetARPPacket response ethBufData' /\
            ARPReqResp request response) \/
         (* Failure: *)
-        (retvs = [word.of_Z 0] /\ (ethBufData @ ethbufAddr \* R) m' /\ (
+        (retvs = [word.of_Z 0] /\ seps [ethBufData @ ethbufAddr; R] m' /\ (
            L <> word.of_Z 64 \/
            (* malformed request *)
            (~ exists request, isEthernetARPPacket request ethBufData) \/
@@ -447,13 +583,10 @@ Set Default Goal Selector "1".
     doReply = /*number*/0; /*$. $*/
     if (ln == /*number*/64) /*split*/ { /*$. $*/
       tmp = load2(ethbuf + /*number*/12); /*$.
-      (* Goal of the form
-         (?bs @ ?b \* ?R) m /\ word_Z_lists_expr ?b ?bs *)
+
       exact TODO.
 
       (* TODO *) $*/
-    } /*$.
-      exact TODO. $*/
     else { /*$. (* nothing to do *) $*/
     } /*$.
       eexists.
@@ -467,6 +600,7 @@ Set Default Goal Selector "1".
     all: try exact (word.of_Z 0).
     all: try exact nil.
     all: try (exact (fun _ => False)).
+    all: try exact TODO.
   Defined.
 
   Goal False.
