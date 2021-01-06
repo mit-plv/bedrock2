@@ -14,7 +14,7 @@ Require Import coqutil.Datatypes.PropSet.
 Require Import compiler.Simp.
 Require Import coqutil.Datatypes.String.
 Require Import compiler.FlattenExprDef.
-Require Import compiler.SimplWordExpr.
+Require Import bedrock2.SimplWordExpr.
 
 Open Scope Z_scope.
 

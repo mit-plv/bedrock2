@@ -6,7 +6,7 @@ Require Import riscv.Platform.MetricRiscvMachine.
 Require Import riscv.Utility.Utility.
 Require Import compiler.Simp.
 Require Import compiler.SeparationLogic.
-Require Import compiler.SimplWordExpr.
+Require Import bedrock2.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.

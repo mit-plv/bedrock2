@@ -33,7 +33,7 @@ Require Import compiler.GoFlatToRiscv.
 Require Import compiler.SeparationLogic.
 Require Import bedrock2.Scalars.
 Require Import compiler.Simp.
-Require Import compiler.SimplWordExpr.
+Require Import bedrock2.SimplWordExpr.
 Require Import bedrock2.ptsto_bytes.
 Require Import compiler.RiscvWordProperties.
 Require Import compiler.eqexact.

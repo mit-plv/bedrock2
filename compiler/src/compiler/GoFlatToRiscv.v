@@ -18,7 +18,7 @@ Require Import riscv.Platform.Run.
 Require Import riscv.Spec.Execute.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.SeparationLogic.
-Require Import compiler.SimplWordExpr.
+Require Import bedrock2.SimplWordExpr.
 Require Import compiler.DivisibleBy4.
 Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.

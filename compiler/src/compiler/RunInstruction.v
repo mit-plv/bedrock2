@@ -25,7 +25,7 @@ Require Import riscv.Proofs.EncodeBound.
 Require Import coqutil.Decidable.
 Require Import compiler.GoFlatToRiscv.
 Require Import riscv.Utility.InstructionCoercions. Local Open Scope ilist_scope.
-Require Import compiler.SimplWordExpr.
+Require Import bedrock2.SimplWordExpr.
 Require Import compiler.Simp.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.ZLemmas.

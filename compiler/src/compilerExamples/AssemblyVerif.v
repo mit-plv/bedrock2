@@ -19,7 +19,7 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.SeparationLogic.
 Require Import compiler.FlatToRiscvDef.
-Require Import compiler.SimplWordExpr.
+Require Import bedrock2.SimplWordExpr.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import bedrock2.ptsto_bytes.

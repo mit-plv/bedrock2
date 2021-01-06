@@ -10,7 +10,7 @@ Require Import compiler.eqexact.
 Require Import compiler.Simp.
 Require Import compiler.on_hyp_containing.
 Require Import compiler.SeparationLogic.
-Require Import compiler.SimplWordExpr.
+Require Import bedrock2.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.MetricsToRiscv.

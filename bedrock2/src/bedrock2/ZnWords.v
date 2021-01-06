@@ -1,4 +1,5 @@
 Require Import Coq.ZArith.ZArith.
+Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.HexNotation.
 Require Import coqutil.Datatypes.List.
@@ -133,11 +134,22 @@ Ltac dewordify :=
   | context [@word.rep ?w ?inst] => let n := fresh "word" in forget (@word.rep w inst) as n
   end).
 
-Ltac simpl_Ox :=
-  repeat so fun hyporgoal =>
-    match hyporgoal with
-    | context[Ox ?s] => let r := eval cbv in (Ox s) in change (Ox s) with r in *
-    end.
+Ltac unfold_Z_nat_consts :=
+  repeat so fun hyporgoal => match hyporgoal with
+         | context[?x] =>
+           let r := rdelta_const x in
+           lazymatch r with
+           | Ox ?s => let r' := eval cbv in r in change x with r' in *
+           | _ =>
+             lazymatch isZcst r with
+             | true => progress change x with r in *
+             | false =>
+               lazymatch isnatcst r with
+               | true => progress change x with r in *
+               end
+             end
+           end
+         end.
 
 Ltac is_lia_prop P :=
   lazymatch P with
@@ -164,7 +176,7 @@ Ltac ZnWords_pre :=
   end;
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
-  simpl_Ox;
+  unfold_Z_nat_consts;
   canonicalize_word_width_and_instance;
   repeat wordOps_to_ZModArith_step;
   dewordify;

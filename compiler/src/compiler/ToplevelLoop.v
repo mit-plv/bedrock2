@@ -42,7 +42,7 @@ Require Import bedrock2.MetricLogging.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
 Require Import compiler.DivisibleBy4.
-Require Import compiler.SimplWordExpr.
+Require Import bedrock2.SimplWordExpr.
 Require Import compiler.ForeverSafe.
 Require Export compiler.MemoryLayout.
 Require Import FunctionalExtensionality.

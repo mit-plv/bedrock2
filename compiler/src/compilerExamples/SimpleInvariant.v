@@ -8,7 +8,7 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.util.Common.
 Require Import compiler.Simp.
 Require Import compiler.SeparationLogic.
-Require Import compiler.SimplWordExpr.
+Require Import bedrock2.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.EmitsValid.

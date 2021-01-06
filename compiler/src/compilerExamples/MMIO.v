@@ -27,7 +27,7 @@ Require Import coqutil.Datatypes.Option.
 Require Import coqutil.Z.HexNotation.
 Require Import compiler.Simp.
 Require Import compiler.util.Learning.
-Require Import compiler.SimplWordExpr.
+Require Import bedrock2.SimplWordExpr.
 Require Import compiler.RiscvWordProperties.
 Require Import riscv.Platform.FE310ExtSpec.
 Require Import coqutil.Z.div_mod_to_equations.

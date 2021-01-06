@@ -12,17 +12,25 @@ Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Arr
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic.
 Require Import bedrock2.ZnWords.
+Require Import bedrock2.SimplWordExpr.
 
 (* TODO put into coqutil and also use in lightbulb.v *)
-Module word.
+Module word. Section WithWord.
   Import ZArith.
   Local Open Scope Z_scope.
-  Lemma unsigned_of_Z_nowrap {width} {word: word.word width} {ok : word.ok word} x :
+  Context {width} {word: word.word width} {ok : word.ok word}.
+  Lemma unsigned_of_Z_nowrap x:
     0 <= x < 2 ^ width -> word.unsigned (word.of_Z x) = x.
   Proof.
     intros. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Z.mod_small; trivial.
   Qed.
-End word.
+  Lemma of_Z_inj_small{x y}:
+    word.of_Z x = word.of_Z y -> 0 <= x < 2 ^ width -> 0 <= y < 2 ^ width -> x = y.
+  Proof.
+    intros. apply (f_equal word.unsigned) in H. rewrite ?word.unsigned_of_Z in H.
+    unfold word.wrap in H. rewrite ?Z.mod_small in H by assumption. assumption.
+  Qed.
+End WithWord. End word.
 
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
@@ -42,6 +50,12 @@ Section WithParameters.
     | EtherTypeARP => [Byte.x08; Byte.x06]
     | EtherTypeIPv4 => [Byte.x08; Byte.x00]
     end.
+
+  Definition ETHERTYPE_IPV4_LE: Z :=
+    Eval compute in (LittleEndian.combine 2 (tuple.of_list (encodeEtherType EtherTypeIPv4))).
+
+  Definition ETHERTYPE_ARP_LE: Z :=
+    Eval compute in (LittleEndian.combine 2 (tuple.of_list (encodeEtherType EtherTypeARP))).
 
   Definition MAC := tuple byte 6.
 
@@ -187,32 +201,18 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
 
   (* later, we might also support loads in expressions, maybe under the restriction that
      expressig the loaded value does not require splitting lists *)
-  Lemma load_stmt: forall e sz x a a' b bs R t m l mc rest post,
-      dexpr m l a a' ->
-      (* conjunction because these two will have to be solved together: *)
-      (bs @ b \* R) m /\ a',+(Z.of_nat (@Memory.bytes_per width sz)) c= b,+(len bs) ->
-      (forall bs_l (v: bytetuple sz) bs_r mc,
-          bs = bs_l ++ tuple.to_list v ++ bs_r ->
-          word.unsigned (word.sub a' b) = len bs_l ->
-          exec e rest t m (map.put l x (word.of_Z (LittleEndian.combine _ v))) mc post) ->
-      exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
-  Abort.
-
-  (* Definition satisfies(m: mem)(l: list (mem -> Prop)): Prop := seps l m. superfluous *)
-
-  (* later, we might also support loads in expressions, maybe under the restriction that
-     expressig the loaded value does not require splitting lists *)
-  Lemma load_stmt: forall e sz x a a'  t m l mc rest post,
+  Lemma load_stmt: forall e sz x a a' t m l mc rest post,
       dexpr m l a a' ->
       (exists R,
           seps R m /\
           exists i b bs,
             List.nth_error R i = Some (bs @ b) /\
             a',+(Z.of_nat (@Memory.bytes_per width sz)) c= b,+(len bs) /\
-            (forall bs_l (v: bytetuple sz) bs_r mc,
-                bs = bs_l ++ tuple.to_list v ++ bs_r ->
+            (forall bs_l (v: Z) bs_r mc,
+                bs = bs_l ++ tuple.to_list (LittleEndian.split (@Memory.bytes_per width sz) v) ++ bs_r ->
+                0 <= v < 2 ^ (8 * Z.of_nat (@Memory.bytes_per width sz)) ->
                 \[a' ^- b] = len bs_l ->
-                exec e rest t m (map.put l x (word.of_Z (LittleEndian.combine _ v))) mc post)) ->
+                exec e rest t m (map.put l x (word.of_Z v)) mc post)) ->
       exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
   Admitted.
 
@@ -477,8 +477,71 @@ Ltac simpli :=
   repeat match goal with
          | H: _ |- _ => rewrite word.unsigned_of_Z_nowrap in H by ZnWords
          | H: _ |- _ => rewrite word.of_Z_unsigned in H
+         | H: word.of_Z ?x = word.of_Z ?y |- _ =>
+           assert (x = y) by (apply (word.of_Z_inj_small H); ZnWords); clear H
          | H: _ |- _ => ring_simplify_hyp H
-         end.
+         | H: ?T |- _ => clear H; assert_succeeds (assert T by ZnWords)
+         end;
+  simpl (bytes_per _) in *;
+  simpl_Z_nat.
+
+Ltac straightline_cleanup ::=
+  match goal with
+  | x : Word.Interface.word.rep _ |- _ => clear x
+  | x : Semantics.word |- _ => clear x
+  | x : Init.Byte.byte |- _ => clear x
+  | x : Semantics.locals |- _ => clear x
+  | x : Semantics.trace |- _ => clear x
+  | x : Syntax.cmd |- _ => clear x
+  | x : Syntax.expr |- _ => clear x
+  | x : coqutil.Map.Interface.map.rep |- _ => clear x
+  | x : BinNums.Z |- _ => clear x
+  | x : unit |- _ => clear x
+  | x : bool |- _ => clear x
+  | x : list _ |- _ => clear x
+  | x : nat |- _ => clear x
+  | x := _ : Word.Interface.word.rep _ |- _ => clear x
+  | x := _ : Semantics.word |- _ => clear x
+  | x := _ : Init.Byte.byte |- _ => clear x
+  | x := _ : Semantics.locals |- _ => clear x
+  | x := _ : Semantics.trace |- _ => clear x
+  | x := _ : Syntax.cmd |- _ => clear x
+  | x := _ : Syntax.expr |- _ => clear x
+  | x := _ : coqutil.Map.Interface.map.rep |- _ => clear x
+  | x := _ : BinNums.Z |- _ => clear x
+  | x := _ : unit |- _ => clear x
+  | x := _ : bool |- _ => clear x
+  | x := _ : list _ |- _ => clear x
+  | x := _ : nat |- _ => clear x
+  | |- forall _, _ => intros
+  | |- let _ := _ in _ => intros
+  | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
+  | _ => progress (cbn [Semantics.interp_binop] in * )
+  | H: exists _, _ |- _ => destruct H
+(*| H: _ /\ _ |- _ => destruct H *)
+  | H: _ /\ _ |- _ => lazymatch type of H with
+                      | _ <  _ <  _ => fail
+                      | _ <  _ <= _ => fail
+                      | _ <= _ <  _ => fail
+                      | _ <= _ <= _ => fail
+                      | _ => destruct H
+                      end
+  | x := ?y |- ?G => is_var y; subst x
+  | H: ?x = ?y |- _ => constr_eq x y; clear H
+  (*
+  | H: ?x = ?y |- _ => is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [x] in x in idtac); subst x
+  | H: ?x = ?y |- _ => is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [y] in y in idtac); subst y
+  | H: ?x = ?v |- _ =>
+    is_var x;
+    lazymatch v with context[x] => fail | _ => idtac end;
+    let x' := fresh x in
+    rename x into x';
+    simple refine (let x := v in _);
+    change (x' = x) in H;
+    symmetry in H;
+    destruct H
+  *)
+  end.
 
 Ltac after_snippet := repeat straightline; simpli.
 (* For debugging, this can be useful:
@@ -555,6 +618,8 @@ Notation "'else' {" := SElse (in custom snippet at level 0).
 
 Set Default Goal Selector "1".
 
+Definition foo: Z := Ox"123".
+
   Definition arp: (string * {f: list string * list string * cmd &
     forall e t m ethbufAddr ethBufData L R,
       seps [ethBufData @ ethbufAddr; R] m ->
@@ -582,7 +647,10 @@ Set Default Goal Selector "1".
     $*/
     doReply = /*number*/0; /*$. $*/
     if (ln == /*number*/64) /*split*/ { /*$. $*/
-      tmp = load2(ethbuf + /*number*/12); /*$.
+      tmp = load2(ethbuf + /*number*/12); /*$. (* ethertype in little endian order *) $*/
+      if (tmp == ETHERTYPE_ARP_LE) /*split*/ { /*$.
+
+      idtac.
 
       exact TODO.
 
