@@ -10,6 +10,7 @@ Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
 Require Import bedrock2.ZnWords.
+Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.SimplWordExpr.
@@ -109,6 +110,13 @@ Section WithParameters.
     ] ++ encodeARPOperation p.(oper)
     ++ encodeMAC p.(sha) ++ encodeIPv4 p.(spa) ++ encodeMAC p.(tha) ++ encodeIPv4 p.(tpa).
 
+  Definition HTYPE_LE := Ox"0100".
+  Definition PTYPE_LE := Ox"0080".
+  Definition HLEN := Ox"06".
+  Definition PLEN := Ox"04".
+  Definition OPER_REQUEST := Ox"01".
+  Definition OPER_REPLY := Ox"02".
+
   Definition isEthernetARPPacket: EthernetPacket ARPPacket -> list byte -> Prop :=
     isEthernetPacket (fun arpP => eq (encodeARPPacket arpP)).
 
@@ -142,6 +150,113 @@ Section WithParameters.
   (* not sure if we need this definition, or just inline it *)
   Definition ARPReqResp(req resp: EthernetPacket ARPPacket): Prop :=
     needsARPReply req /\ resp = ARPReply req.
+
+  Inductive FieldEncoder(R: Type): Type :=
+    fieldEncoder(F: Type)(accessor: R -> F)(offset: (*R -> word*) Z)(pred: word -> F -> mem -> Prop).
+
+  Definition fieldAt{R: Type}(e: FieldEncoder R): word -> R -> mem -> Prop :=
+    match e with
+    | fieldEncoder accessor offset pred =>
+      fun base r => pred (word.add base (word.of_Z offset)) (accessor r)
+    end.
+
+  Definition Encoder(R: Type) := list (FieldEncoder R).
+
+  Fixpoint structAt{R: Type}(e: Encoder R): word -> R -> mem -> Prop :=
+    match e with
+    | nil => fun a r => emp True
+    | cons h t => fun a r => sep (fieldAt h a r) (structAt t a r)
+    end.
+
+  Definition indexEncoder(E: Type)(sz i: Z)(pred: word -> E -> mem -> Prop): FieldEncoder (list E) :=
+    fieldEncoder (fun l => List.nth_error l (Z.to_nat i))
+                 (i * sz)
+                 (fun a o => match o with
+                             | Some e => pred a e
+                             | None => fun _ => False
+                             end).
+
+  Definition arrayAt{E: Type}(pred: word -> E -> mem -> Prop)(sz: Z)(addr: word)(l: list E): mem -> Prop :=
+    structAt (List.map (fun i => indexEncoder sz (Z.of_nat i) pred) (List.seq 0 (List.length l))) addr l.
+
+  Record dummy_packet := {
+    dummy_src: tuple byte 4;
+    dummy_dst: tuple byte 4;
+    dummy_len: Z;
+    dummy_data: list byte;
+    (* dummy_padding: list byte; not supported (yet?) because non-constant offset *)
+  }.
+
+  Definition dummy_encoder: Encoder dummy_packet := [
+    fieldEncoder dummy_src 0 (ptsto_bytes 4);
+    fieldEncoder dummy_dst 4 (ptsto_bytes 4);
+    fieldEncoder dummy_len 8 (truncated_scalar access_size.two);
+    fieldEncoder dummy_data 10 (array ptsto (word.of_Z 1))
+    (*; offset depending on the value of the record
+    fieldEncoder dummy_padding
+                   (fun r => word.of_Z (10 + Z.of_nat (List.length (dummy_data r))))
+                   (array ptsto (word.of_Z 1)) *)
+  ].
+
+  Record foo := {
+    foo_count: Z;
+    foo_packets: list dummy_packet;
+  }.
+
+  Definition foo_encoder: Encoder foo := [
+    fieldEncoder foo_count 0 (truncated_scalar access_size.four);
+    fieldEncoder foo_packets 4 (arrayAt (structAt dummy_encoder) 256)
+  ].
+
+  (* path digging into a record of type R *)
+  Inductive path{Index: Type}: Type -> Type :=
+  | PNil{R: Type}: path R
+  | PField{R F: Type}(accessor: R -> F)(tail: path F): path R
+  | PIndex{E: Type}(i: Index)(tail: path E): path (list E).
+
+  Arguments path: clear implicits.
+
+  Definition semantic_path := path Z.
+  Definition syntactic_path := path expr.
+
+  Fixpoint path_type{Index R: Type}(p: path Index R): Type :=
+    match p with
+    | PNil => R
+    | PField _ tail => path_type tail
+    | PIndex _ tail => path_type tail
+    end.
+
+  Fixpoint lookup_path{R: Type}(pth: semantic_path R){struct pth}: R -> option (path_type pth) :=
+    match pth as p in (path _ T) return (T -> option (path_type p)) with
+    | PNil => Some
+    | PField accessor tail => fun r => lookup_path tail (accessor r)
+    | PIndex i tail => fun l => match List.nth_error l (Z.to_nat i) with
+                                 | Some e => lookup_path tail e
+                                 | None => None
+                                 end
+    end.
+
+  (* Not using a Fixpoint because in IPField, we would have to ensure that the two accessors
+     return the same field type and use this equality to typecheck the recursive call *)
+  Inductive interp_path(m: mem)(l: locals): forall R, syntactic_path R -> semantic_path R -> Prop :=
+  | IPNil: forall R,
+      interp_path m l (@PNil expr R) (@PNil Z R)
+  | IPField: forall R F (acc: R -> F) tail tail',
+      interp_path m l tail tail' ->
+      interp_path m l (PField acc tail) (PField acc tail')
+  | IPIndex: forall E i i' (tail: syntactic_path E) (tail': semantic_path E),
+      dexpr m l i i' ->
+      interp_path m l tail tail' ->
+      interp_path m l (PIndex i tail) (PIndex (word.unsigned i') tail').
+
+  Inductive construct_offset: forall R, syntactic_path R -> expr -> Prop :=
+  | CONil: forall R,
+      construct_offset (@PNil expr R) (expr.literal 0)
+  | COFieldOrIndex: forall R F (acc: R -> F) pred (i: nat) (e: Encoder R) tail ofs1 ofs2,
+      List.nth_error e i = Some (fieldEncoder acc ofs1 pred) ->
+      construct_offset tail ofs2 ->
+      (* TODO (expr.literal ofs1) only works for constant indices *)
+      construct_offset (PField acc tail) (expr.op bopname.add (expr.literal ofs1) ofs2).
 
   (* ** Program logic rules *)
 
@@ -212,6 +327,19 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
                 bs = bs_l ++ tuple.to_list (LittleEndian.split (@Memory.bytes_per width sz) v) ++ bs_r ->
                 0 <= v < 2 ^ (8 * Z.of_nat (@Memory.bytes_per width sz)) ->
                 \[a' ^- b] = len bs_l ->
+                exec e rest t m (map.put l x (word.of_Z v)) mc post)) ->
+      exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
+  Admitted.
+
+  (* later, we might also support loads in expressions, maybe under the restriction that
+     expressig the loaded value does not require splitting lists *)
+  Lemma load_field_stmt: forall e sz x a a' t m l mc rest post,
+      dexpr m l a a' ->
+      (exists M,
+          seps M m /\
+          exists i R enc (r: R),
+            List.nth_error M i = Some (structAt enc a' r) /\
+            (forall bs_l (v: Z) bs_r mc,
                 exec e rest t m (map.put l x (word.of_Z v)) mc post)) ->
       exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
   Admitted.
@@ -648,7 +776,18 @@ Definition foo: Z := Ox"123".
     doReply = /*number*/0; /*$. $*/
     if (ln == /*number*/64) /*split*/ { /*$. $*/
       tmp = load2(ethbuf + /*number*/12); /*$. (* ethertype in little endian order *) $*/
-      if (tmp == ETHERTYPE_ARP_LE) /*split*/ { /*$.
+      if (tmp == ETHERTYPE_ARP_LE) /*split*/ { /*$. $*/
+        tmp = load2(ethbuf + /*number*/14); /*$. $*/
+        if (tmp == HTYPE_LE) /*split*/ { /*$.
+
+
+(*
+  Definition HTYPE_LE := Ox"0100".
+  Definition PTYPE_LE := Ox"0080".
+  Definition HLEN := Ox"06".
+  Definition PLEN := Ox"04".
+  Definition OPER_REQUEST := Ox"01".
+*)
 
       idtac.
 
