@@ -9,6 +9,63 @@ Require Import Coq.ZArith.ZArith.
 
 Open Scope Z_scope.
 
+Require Import coqutil.Map.OfListWord.
+Require Import Ring_tac.
+Section WithWord.
+  Local Coercion Z.of_nat : nat >-> Z.
+  Local Infix "$+" := map.putmany (at level 70).
+  Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
+  Local Infix "*" := sep : type_scope.
+  Local Infix "*" := sep.
+  Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
+  Context [value] [map : map.map word value] {ok : map.ok map}.
+  Add Ring __wring: (@word.ring_theory width word word_ok).
+  Lemma sep_eq_of_list_word_at_app (a : word) (xs ys : list value)
+    lxs (Hlxs : Z.of_nat (length xs) = lxs) (Htotal : length xs + length ys <= 2^width)
+    : Lift1Prop.iff1 (eq ((xs ++ ys)$@a))
+      (sep (eq (xs$@a)) (eq (ys$@(word.add a (word.of_Z lxs))))).
+  Proof.
+    etransitivity.
+    2: eapply sep_comm.
+    etransitivity.
+    2: eapply sep_eq_putmany, map.adjacent_arrays_disjoint_n; trivial.
+    erewrite map.of_list_word_at_app_n by eauto; reflexivity.
+  Qed.
+
+  Lemma list_word_at_app_of_adjacent_eq (a b : word) (xs ys : list value)
+    (Hl: word.unsigned (word.sub b a) = Z.of_nat (length xs))
+    (Htotal : length xs + length ys <= 2^width)
+    : Lift1Prop.iff1 (eq(xs$@a)*eq(ys$@b)) (eq((xs++ys)$@a)).
+  Proof.
+    etransitivity.
+    2:symmetry; eapply sep_eq_of_list_word_at_app; trivial.
+    do 3 Morphisms.f_equiv. rewrite <-Hl, word.of_Z_unsigned. ring.
+  Qed.
+
+  Lemma array1_iff_eq_of_list_word_at (a : word) (bs : list value)
+    (H : length bs <= 2 ^ width) :
+    iff1 (array ptsto (word.of_Z 1) a bs) (eq(bs$@a)).
+  Proof.
+    symmetry.
+    revert H; revert a; induction bs; cbn [array]; intros.
+    { rewrite map.of_list_word_nil; cbv [emp iff1]; intuition auto. }
+    { etransitivity.
+      2: eapply Proper_sep_iff1.
+      3: eapply IHbs.
+      2: reflexivity.
+      2: cbn [length] in H; blia.
+      change (a::bs) with (cons a nil++bs).
+      rewrite map.of_list_word_at_app.
+      etransitivity.
+      1: eapply sep_eq_putmany, map.adjacent_arrays_disjoint; cbn [length] in *; blia.
+      etransitivity.
+      2:eapply sep_comm.
+      Morphisms.f_equiv.
+      rewrite map.of_list_word_singleton; try exact _.
+      cbv [ptsto iff1]; intuition auto. }
+  Qed.
+End WithWord.
+
 Section Scalars.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
 
@@ -16,6 +73,12 @@ Section Scalars.
 
   Definition ptsto_bytes (n : nat) (addr : word) (value : tuple byte n) : mem -> Prop :=
     array ptsto (word.of_Z 1) addr (tuple.to_list value).
+
+  Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
+  Lemma ptsto_bytes_iff_eq_of_list_word_at (n : nat) (addr : word) (value : tuple byte n)
+    (H : (Z.of_nat n <= 2 ^ width)%Z) :
+    iff1 (ptsto_bytes n addr value) (eq(tuple.to_list value$@addr)).
+  Proof. eapply array1_iff_eq_of_list_word_at; rewrite ?tuple.length_to_list; trivial. Qed.
 
   Lemma load_bytes_of_sep a n bs R m
     (Hsep : sep (ptsto_bytes n a bs) R m)
@@ -199,5 +262,4 @@ Section Scalars.
   Proof.
     cbv [store_bytes]. erewrite load_bytes_of_sep; eauto using unchecked_store_bytes_of_sep.
   Qed.
-
 End Scalars.

@@ -6,6 +6,8 @@ Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Z.bitblast.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte.
+Require Import coqutil.Map.OfListWord.
+Require Import coqutil.Macros.symmetry.
 Require Import bedrock2.ptsto_bytes.
 Import HList List.
 
@@ -226,6 +228,45 @@ Section Scalars.
     apply LittleEndian.combine_bound.
   Qed.
 
+  Context (Hw : 2 <= width).
+  Local Infix "$+" := map.putmany (at level 70).
+  Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
+  Local Infix "*" := sep : type_scope.
+  Local Infix "*" := sep.
+  Import Syntax.
+  Lemma load_four_bytes_of_sep_at bs a R m (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat):
+    load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
+  Proof.
+    seprewrite_in (symmetry! (array1_iff_eq_of_list_word_at(map:=mem))) Hsep.
+    { rewrite Hl. etransitivity. 2:eapply Z.pow_le_mono_r; try eassumption. 2:blia. reflexivity. }
+    unshelve seprewrite_in open_constr:(Scalars.scalar32_of_bytes _ _ _) Hsep; shelve_unifiable; trivial.
+    erewrite @Scalars.load_four_of_sep; shelve_unifiable; try exact _; eauto.
+    f_equal.
+    f_equal.
+    rewrite word.unsigned_of_Z.
+    cbv [word.wrap]; rewrite Z.mod_small; trivial.
+    pose proof LittleEndian.combine_bound (HList.tuple.of_list bs).
+    rewrite Hl in H at 3.
+    blia.
+  Qed.
+
+  Lemma uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
+    (H: (eq(bs$@a)*R) m /\ length bs = 4%nat) :
+    load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
+  Proof. eapply load_four_bytes_of_sep_at; eapply H. Qed.
+
+  Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
+    (H: (eq(bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
+    load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
+  Proof. eapply load_four_bytes_of_sep_at; try eapply H; blia. Qed.
+
+  (*
+  Lemma store_four_of_sep addr (oldvalue : word32) (value : word) R m (post:_->Prop)
+    (Hsep : sep (scalar32 addr oldvalue) R m)
+    (Hpost : forall m, sep (scalar32 addr (word.of_Z (word.unsigned value))) R m -> post m)
+    : exists m1, Memory.store Syntax.access_size.four m addr value = Some m1 /\ post m1.
+  Proof.
+  *)
 End Scalars.
 
 Notation scalar8 := ptsto (only parsing).

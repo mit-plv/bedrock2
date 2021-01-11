@@ -80,6 +80,33 @@ Module WithoutTuples. Section Memory.
     eapply load_bytes_None in HX; destruct HX as (?&?&?). firstorder congruence.
     exact nil.
   Qed.
+
+  Import Word.Properties.
+  Context {mem_ok: map.ok mem} {word_ok: word.ok word}.
+  Local Infix "$+" := map.putmany (at level 70).
+  Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
+  Lemma load_bytes_of_putmany_bytes_at bs a mR n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
+    : load_bytes (mR $+ bs$@a) a n = Some bs.
+  Proof.
+    destruct (load_bytes (mR $+ bs$@a) a n) eqn:HN in *; cycle 1.
+    { exfalso; eapply load_bytes_None in HN; case HN as (i&?&?).
+      case (Properties.map.putmany_spec mR (bs$@a) (word.add a (word.of_Z (BinIntDef.Z.of_nat i)))) as [(?&?&?)| (?&?) ]; try congruence.
+      rewrite map.get_of_list_word_at in H1; eapply List.nth_error_None in H1.
+      revert H1.
+      rewrite word.word_sub_add_l_same_l, word.unsigned_of_Z.
+      cbv [word.wrap]; rewrite Z.mod_small, Znat.Nat2Z.id; eauto; blia. }
+    transitivity (Some l); try congruence; f_equal; subst n.
+    symmetry; eapply List.nth_error_ext_samelength.
+    { symmetry; eauto using length_load_bytes. }
+    intros.
+    pose proof nth_error_load_bytes _ a _ _ HN i ltac:(trivial) as HH.
+    epose proof H; eapply List.nth_error_nth' with (d:=Byte.x00) in H.
+    erewrite Properties.map.get_putmany_right in HH; cycle 1.
+    { rewrite map.get_of_list_word_at.
+      rewrite word.word_sub_add_l_same_l, word.unsigned_of_Z.
+      cbv [word.wrap]; rewrite Z.mod_small, Znat.Nat2Z.id; eauto; blia. }
+    congruence.
+  Qed.
 End Memory. End WithoutTuples.
 
 Section Memory.
