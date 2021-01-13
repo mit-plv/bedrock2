@@ -2,6 +2,7 @@ Require Import Coq.derive.Derive.
 Require Import coqutil.Z.Lia.
 Require coqutil.Word.BigEndian.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
+Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.rewr.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
@@ -14,6 +15,7 @@ Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.SimplWordExpr.
+Require Import bedrock2.footpr.
 
 (* TODO put into coqutil and also use in lightbulb.v *)
 Module word. Section WithWord.
@@ -151,61 +153,97 @@ Section WithParameters.
   Definition ARPReqResp(req resp: EthernetPacket ARPPacket): Prop :=
     needsARPReply req /\ resp = ARPReply req.
 
-  Inductive FieldEncoder(R: Type): Type :=
-    fieldEncoder(F: Type)(accessor: R -> F)(offset: (*R -> word*) Z)(pred: word -> F -> mem -> Prop).
+  Coercion Z.of_nat : nat >-> Z.
+  Notation len := List.length.
+  Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per width sz)) (at level 10).
 
-  Definition fieldAt{R: Type}(e: FieldEncoder R): word -> R -> mem -> Prop :=
-    match e with
-    | fieldEncoder accessor offset pred =>
-      fun base r => pred (word.add base (word.of_Z offset)) (accessor r)
+Infix "^+" := word.add  (at level 50, left associativity).
+Infix "^-" := word.sub  (at level 50, left associativity).
+Infix "^*" := word.mul  (at level 40, left associativity).
+Infix "^<<" := word.slu  (at level 37, left associativity).
+Infix "^>>" := word.sru  (at level 37, left associativity).
+Notation "/[ x ]" := (word.of_Z x)       (* squeeze a Z into a word (beat it with a / to make it smaller) *)
+  (format "/[ x ]").
+Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the modulo box imposed by words, *)
+  (format "\[ x ]").                     (* let a word fly into the large Z space *)
+
+  Inductive TypeSpec: Type -> Type :=
+  | TBase{R: Type}(clause: word -> R -> mem -> Prop): TypeSpec R
+  | TStruct{R: Type}(fields: list (FieldSpec R)): TypeSpec R
+  | TArray{E: Type}(elemSize: Z)(elemSpec: TypeSpec E): TypeSpec (list E)
+  with FieldSpec: Type -> Type :=
+  | FField{R: Type}(F: Type)(getter: R -> F)(setter: F -> R -> R)(len: F -> Z)(fieldSpec: TypeSpec F)
+    : FieldSpec R.
+
+  Fixpoint dataAt{R: Type}(sp: TypeSpec R){struct sp}: word -> R -> mem -> Prop :=
+    match sp with
+    | TBase clause => clause
+    | @TStruct R fields =>
+      let fieldsAt := fix rec{R: Type}(fields: list (FieldSpec R)): word -> R -> list (mem -> Prop) :=
+        match fields with
+        | nil => fun start r => nil
+        | cons head tail =>
+          match head in FieldSpec R return list (FieldSpec R) -> word -> R -> list (mem -> Prop) with
+          | FField getter setter len fieldSpec => fun tail start r =>
+              cons (dataAt fieldSpec start (getter r)) (rec tail (start ^+ /[len (getter r)]) r)
+          end tail
+        end in
+      fun base r => seps (fieldsAt fields base r)
+    | @TArray E elemSize elem =>
+      let arrayAt := fix rec(start: word)(l: list E): list (mem -> Prop) :=
+        match l with
+        | nil => nil
+        | cons e es => cons (dataAt elem start e) (rec (start ^+ /[elemSize]) es)
+        end in
+      fun base l => seps (arrayAt base l)
     end.
-
-  Definition Encoder(R: Type) := list (FieldEncoder R).
-
-  Fixpoint structAt{R: Type}(e: Encoder R): word -> R -> mem -> Prop :=
-    match e with
-    | nil => fun a r => emp True
-    | cons h t => fun a r => sep (fieldAt h a r) (structAt t a r)
-    end.
-
-  Definition indexEncoder(E: Type)(sz i: Z)(pred: word -> E -> mem -> Prop): FieldEncoder (list E) :=
-    fieldEncoder (fun l => List.nth_error l (Z.to_nat i))
-                 (i * sz)
-                 (fun a o => match o with
-                             | Some e => pred a e
-                             | None => fun _ => False
-                             end).
-
-  Definition arrayAt{E: Type}(pred: word -> E -> mem -> Prop)(sz: Z)(addr: word)(l: list E): mem -> Prop :=
-    structAt (List.map (fun i => indexEncoder sz (Z.of_nat i) pred) (List.seq 0 (List.length l))) addr l.
 
   Record dummy_packet := {
     dummy_src: tuple byte 4;
     dummy_dst: tuple byte 4;
     dummy_len: Z;
     dummy_data: list byte;
-    (* dummy_padding: list byte; not supported (yet?) because non-constant offset *)
+    dummy_padding: list byte (* non-constant offset *)
   }.
 
-  Definition dummy_encoder: Encoder dummy_packet := [
-    fieldEncoder dummy_src 0 (ptsto_bytes 4);
-    fieldEncoder dummy_dst 4 (ptsto_bytes 4);
-    fieldEncoder dummy_len 8 (truncated_scalar access_size.two);
-    fieldEncoder dummy_data 10 (array ptsto (word.of_Z 1))
-    (*; offset depending on the value of the record
-    fieldEncoder dummy_padding
-                   (fun r => word.of_Z (10 + Z.of_nat (List.length (dummy_data r))))
-                   (array ptsto (word.of_Z 1)) *)
+  Definition with_dummy_src x d :=
+    Build_dummy_packet x (dummy_dst d) (dummy_len d) (dummy_data d) (dummy_padding d).
+  Definition with_dummy_dst x d :=
+    Build_dummy_packet (dummy_src d) x (dummy_len d) (dummy_data d) (dummy_padding d).
+  Definition with_dummy_len x d :=
+    Build_dummy_packet (dummy_src d) (dummy_dst d) x (dummy_data d) (dummy_padding d).
+  Definition with_dummy_data x d :=
+    Build_dummy_packet (dummy_src d) (dummy_dst d) (dummy_len d) x (dummy_padding d).
+  Definition with_dummy_padding x d :=
+    Build_dummy_packet (dummy_src d) (dummy_dst d) (dummy_len d) (dummy_data d) x.
+
+  Definition dummy_spec: TypeSpec dummy_packet := TStruct [
+    FField dummy_src with_dummy_src (fun _ => 4) (TBase (ptsto_bytes 4));
+    FField dummy_dst with_dummy_dst (fun _ => 4) (TBase (ptsto_bytes 4));
+    FField dummy_len with_dummy_len (fun _ => 2) (TBase (truncated_scalar access_size.two));
+    FField dummy_data with_dummy_data (fun l => List.length l) (TArray 1 (TBase ptsto));
+    FField dummy_padding with_dummy_padding (fun l => List.length l) (TArray 1 (TBase ptsto))
   ].
 
   Record foo := {
     foo_count: Z;
+    foo_packet: dummy_packet;
     foo_packets: list dummy_packet;
   }.
+  Definition with_foo_count x f :=
+    Build_foo x (foo_packet f) (foo_packets f).
+  Definition with_foo_packet x f :=
+    Build_foo (foo_count f) x (foo_packets f).
+  Definition with_foo_packets x f :=
+    Build_foo (foo_count f) (foo_packet f) x.
 
-  Definition foo_encoder: Encoder foo := [
-    fieldEncoder foo_count 0 (truncated_scalar access_size.four);
-    fieldEncoder foo_packets 4 (arrayAt (structAt dummy_encoder) 256)
+  Definition foo_spec: TypeSpec foo := TStruct [
+    FField foo_count with_foo_count (fun _ => 4)
+           (TBase (truncated_scalar access_size.four));
+    FField foo_packet with_foo_packet (fun _ => 256)
+           dummy_spec;
+    FField foo_packets with_foo_packets (fun l => List.length l * 256)
+           (TArray 256 dummy_spec)
   ].
 
   (* path digging into a record of type R *)
@@ -226,37 +264,222 @@ Section WithParameters.
     | PIndex _ tail => path_type tail
     end.
 
-  Fixpoint lookup_path{R: Type}(pth: semantic_path R){struct pth}: R -> option (path_type pth) :=
+  Fixpoint path_value{R: Type}(pth: semantic_path R){struct pth}: R -> option (path_type pth) :=
     match pth as p in (path _ T) return (T -> option (path_type p)) with
     | PNil => Some
-    | PField accessor tail => fun r => lookup_path tail (accessor r)
+    | PField accessor tail => fun r => path_value tail (accessor r)
     | PIndex i tail => fun l => match List.nth_error l (Z.to_nat i) with
-                                 | Some e => lookup_path tail e
+                                 | Some e => path_value tail e
                                  | None => None
                                  end
     end.
 
-  (* Not using a Fixpoint because in IPField, we would have to ensure that the two accessors
-     return the same field type and use this equality to typecheck the recursive call *)
-  Inductive interp_path(m: mem)(l: locals): forall R, syntactic_path R -> semantic_path R -> Prop :=
-  | IPNil: forall R,
-      interp_path m l (@PNil expr R) (@PNil Z R)
-  | IPField: forall R F (acc: R -> F) tail tail',
-      interp_path m l tail tail' ->
-      interp_path m l (PField acc tail) (PField acc tail')
-  | IPIndex: forall E i i' (tail: syntactic_path E) (tail': semantic_path E),
-      dexpr m l i i' ->
-      interp_path m l tail tail' ->
-      interp_path m l (PIndex i tail) (PIndex (word.unsigned i') tail').
+(*
+  Fixpoint path_type_spec{R: Type}(pth: semantic_path R){struct pth}:
+    TypeSpec R -> option (TypeSpec (path_type pth)).
+    destruct pth; simpl.
+    - exact Some.
+    - intro sp. destruct sp.
+      + exact None.
+      + (* here we'd have to match the accessor type in  the fields list to the one already given...*)
+*)
 
-  Inductive construct_offset: forall R, syntactic_path R -> expr -> Prop :=
-  | CONil: forall R,
-      construct_offset (@PNil expr R) (expr.literal 0)
-  | COFieldOrIndex: forall R F (acc: R -> F) pred (i: nat) (e: Encoder R) tail ofs1 ofs2,
-      List.nth_error e i = Some (fieldEncoder acc ofs1 pred) ->
-      construct_offset tail ofs2 ->
-      (* TODO (expr.literal ofs1) only works for constant indices *)
-      construct_offset (PField acc tail) (expr.op bopname.add (expr.literal ofs1) ofs2).
+  Inductive path_TypeSpec:
+    forall {R: Type} (pth: semantic_path R), TypeSpec R -> TypeSpec (path_type pth) -> Prop :=
+  | path_TypeSpec_Nil: forall R (sp: TypeSpec R),
+      path_TypeSpec PNil sp sp
+  | path_TypeSpec_Field: forall R F (getter: R -> F) setter len fields tail i sp sp',
+      List.nth_error fields i = Some (FField getter setter len sp) ->
+      path_TypeSpec tail sp sp' ->
+      path_TypeSpec (PField getter tail) (TStruct fields) sp'
+  | path_TypeSpec_Index: forall E (sp: TypeSpec E) len tail i sp',
+      path_TypeSpec tail sp sp' ->
+      (* note: no bounds check here yet... *)
+      path_TypeSpec (PIndex i tail) (TArray len sp) sp'.
+
+  Definition fieldAt{R: Type}(sp: TypeSpec R)(pth: semantic_path R)(base: word)(v: path_type pth)(m: mem) :=
+    exists sp', path_TypeSpec pth sp sp' /\ dataAt sp' base v m.
+
+(* plan:
+get predicate from path, then apply footpr to it to test if it's the right path, use predicate to satisfy precondition of load or function call
+*)
+
+  Goal forall base f R m,
+      seps [dataAt foo_spec base f; R] m ->
+      False.
+  Proof.
+    intros.
+
+    Eval simpl in (path_value (PField foo_packet (PField dummy_len PNil)) f).
+
+    (* t = load2(base ^+ /[4] ^+ /[8])
+
+
+Given: footprint, eg `(base ^+ /[4] ^+ /[8]) ,+ 2`
+Find: longest path whose footprint is a superset
+
+
+       store2(base ^+ /[4] ^+ /[8], t)
+
+       f(base ^+ /[4] ^+ /[8], otherargs)
+*)
+  Abort.
+
+  (* mappings between expr for offset and semantic offset (word/Z)?
+
+fieldEncoder providing both?
+
+node:
+leftPtr: word
+value: word
+rightPtr: word
+
+additional accessors:
+leftChild: dereferences leftPtr, = load(offset of leftPtr)
+
+padding: = offset of previous field + load(offset of length field)
+
+but what if I already loaded the length before? Don't load again
+weird mix between high-level and low-level
+
+access to fields should also be possible by constructing the offset expression manually,
+and have lia figure out where it lands inside the record
+
+Given:
+Gallina datatype, its getters, its setters, and its layout in memory
+A load to some address => Find its symbolic value in the Gallina datatype
+A store at some address => update the Gallina datatype in the sep clause
+
+"some address" might be constructed manually (eg using a for loop that increases a pointer instead of a[i], or a+previously_loaded_dynamic_offset) or using some syntactic sugar to denote offsets for record field access, sugar to be defined later.
+
+What about unions/sum types/Gallina inductives with more than one constructor?
+getters/setters returning option?
+But how to know which case?
+
+
+VST: fieldAt t addr path value
+     dataAt t addr value := fieldAt t addr nil value
+
+address <--> accessor   mappings bidirectional
+
+address --> accessor                        (invert by testing for each accessor if address matches??)
+accessor --> expr --denote-->address        (only needed for syntactic sugar)
+
+given address & access size, look at address range covered by sep clauses and drill down
+
+can we even do many dereferences, eg l->tail->tail->head?
+
+given a sep clause, get its footprint and its subparts
+if not in footprint, try next sep clause, else try each subpart
+
+footprint = union of ranges
+
+allow abstract footprints, eg if we don't know whether l->tail is cons or nil, we don't know a range for it
+
+
+ll a v := match v with
+          | nil => a = null
+          | cons h t => exists a', a |-> h /\ a+4 |-> a' /\ ll a' t
+          end
+
+footprint (ll a v) := match v with
+                      | nil => {}
+                      | cons h t => a,+8 \u footprint (ll *(a+4) t)
+                      end
+
+Will be hard to say for sure that something is *not* in the footprint of a clause, but that's fine,
+we only need to say that something *is* in the footprint
+
+Not only need 1,2,4,8 byte access, but also access to whole structs to pass them to other functions
+
+range tree with increasing subdivision granularity?
+*)
+
+  Inductive footpr :=
+  | FPRange(start len: Z)
+  | FPUnion(l r: footpr).
+
+
+(* or reuse compiler.SeparationLogic.footpr ?
+   "very semantic"
+
+
+a \in (footpr P) -> "load a" can be resolved by looking only at P
+
+how to obtain `a \in (footpr P)` from lia hypotheses?
+Using helper lemmas for each separation logic predicate, eg:
+
+addr <= a < addr + sz * length l ->
+a \in (footpr (array elem sz addr l))
+
+addr <= a < addr + 4 or 8 ->
+a \in (footpr (ptsto_word addr v))
+
+addr <= a < addr + 8 \/ a in footpr of tail ->
+a \in (footpr (ll addr l))
+
+Or rather: subsets of footpr because we load/store/pass to function more than just 1 byte
+
+subrange a,+sz1 addr,+(sz2*length l) ->
+subset a,+sz1 (footpr (array elem sz2 addr l))
+
+
+can we not derive this from the basic ptsto?
+tricky as soon as recursion appears
+human insight helpful to merge adjacent blocks
+
+
+(getter, setter, predicate)
+
+
+use
+{p |-> {| foo := a; bar := b |} * R}
+f(p.bar)
+{p |-> {| foo := a; bar := symbolic_f(b) |} * R}
+
+def
+{p |-> x * R}
+f(p)
+{p |-> symbolic_f(x) * R}
+
+or allow non-det functions:
+
+use
+{p |-> {| foo := a; bar := b |} * R}
+f(p.bar)
+{p |-> {| foo := a; bar := b' |} * R} /\ rel b b'
+
+def
+{p |-> x * R}
+f(p)
+exists x', {p |-> x' * R} /\ rel x x'
+
+
+myRecordAt p {| foo := a; bar := b |} := p |-> a * (p+12) |-> b
+[
+  (foo, with_foo, fun r base => base |-> foo r);
+  (bar; with_bar, fun r base => (base+12) |- bar r)
+]
+
+frame rule for function call where frame refers to a nested record with a hole?
+C[x] built from setters?
+
+C[x] := with_dummy (with_bar (dummy original) x) original
+
+back to just loading:
+
+{base |-> {| f1 := x; f2 := y; dummy := {| foo := a; bar := b |} |} * R /\ p = base + 12}
+t = load4(p)
+{... /\ t = b}
+
+*)
+
+  Definition addr_in_range(a start: word)(len: Z): Prop :=
+    word.unsigned (word.sub a start) <= len.
+
+  Definition subrange(start1: word)(len1: Z)(start2: word)(len2: Z): Prop :=
+    0 <= len1 <= len2 /\ addr_in_range start1 start2 (len2-len1).
+
 
   (* ** Program logic rules *)
 
@@ -288,29 +511,9 @@ Section WithParameters.
   Notation "bs @ a" := (array ptsto (word.of_Z 1) a bs)
     (at level 40, no associativity).
 
-  Definition addr_in_range(a start: word)(len: Z): Prop :=
-    word.unsigned (word.sub a start) <= len.
-
-  Definition subrange(start1: word)(len1: Z)(start2: word)(len2: Z): Prop :=
-    0 <= len1 <= len2 /\ addr_in_range start1 start2 (len2-len1).
-
   Notation "a ,+ m 'c=' b ,+ n" := (subrange a m b n)
     (no associativity, at level 10, m at level 1, b at level 1, n at level 1,
      format "a ,+ m  'c='  b ,+ n").
-
-  Coercion Z.of_nat : nat >-> Z.
-  Notation len := List.length.
-  Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per width sz)) (at level 10).
-
-Infix "^+" := word.add  (at level 50, left associativity).
-Infix "^-" := word.sub  (at level 50, left associativity).
-Infix "^*" := word.mul  (at level 40, left associativity).
-Infix "^<<" := word.slu  (at level 37, left associativity).
-Infix "^>>" := word.sru  (at level 37, left associativity).
-Notation "/[ x ]" := (word.of_Z x)       (* squeeze a Z into a word (beat it with a / to make it smaller) *)
-  (format "/[ x ]").
-Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the modulo box imposed by words, *)
-  (format "\[ x ]").                     (* let a word fly into the large Z space *)
 
   Implicit Type post: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop.
 
@@ -332,17 +535,17 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
   Admitted.
 
   (* later, we might also support loads in expressions, maybe under the restriction that
-     expressig the loaded value does not require splitting lists *)
+     expressig the loaded value does not require splitting lists
   Lemma load_field_stmt: forall e sz x a a' t m l mc rest post,
       dexpr m l a a' ->
       (exists M,
           seps M m /\
           exists i R enc (r: R),
-            List.nth_error M i = Some (structAt enc a' r) /\
+            List.nth_error M i = Some (dataAt enc a' r) /\
             (forall bs_l (v: Z) bs_r mc,
                 exec e rest t m (map.put l x (word.of_Z v)) mc post)) ->
       exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
-  Admitted.
+  Admitted. *)
 
   Definition vc_func e '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
                      (post : trace -> mem -> list word -> Prop) :=
@@ -745,8 +948,6 @@ Notation "'else' {" := SElse (in custom snippet at level 0).
          constants [Properties.word_cst]).
 
 Set Default Goal Selector "1".
-
-Definition foo: Z := Ox"123".
 
   Definition arp: (string * {f: list string * list string * cmd &
     forall e t m ethbufAddr ethBufData L R,
