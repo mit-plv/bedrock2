@@ -168,24 +168,36 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
   (format "\[ x ]").                     (* let a word fly into the large Z space *)
 
   Inductive TypeSpec: Type -> Type :=
-  | TBase{R: Type}(clause: word -> R -> mem -> Prop): TypeSpec R
+  | TBase{R: Type}(len: R -> Z)(clause: word -> R -> mem -> Prop): TypeSpec R
   | TStruct{R: Type}(fields: list (FieldSpec R)): TypeSpec R
   | TArray{E: Type}(elemSize: Z)(elemSpec: TypeSpec E): TypeSpec (list E)
   with FieldSpec: Type -> Type :=
-  | FField{R: Type}(F: Type)(getter: R -> F)(setter: F -> R -> R)(len: F -> Z)(fieldSpec: TypeSpec F)
+  | FField{R: Type}(F: Type)(getter: R -> F)(setter: F -> R -> R)(fieldSpec: TypeSpec F)
     : FieldSpec R.
+
+  Fixpoint TypeSpec_size{R: Type}(sp: TypeSpec R): R -> Z :=
+    match sp with
+    | TBase len _ => len
+    | TStruct fields => fun r => List.fold_right (fun f res => FieldSpec_size f r + res) 0 fields
+    | TArray elemSize _ => fun l => List.length l * elemSize
+    end
+  with FieldSpec_size{R: Type}(f: FieldSpec R): R -> Z :=
+    match f with
+    | FField getter setter sp => fun r => TypeSpec_size sp (getter r)
+    end.
 
   Fixpoint dataAt{R: Type}(sp: TypeSpec R){struct sp}: word -> R -> mem -> Prop :=
     match sp with
-    | TBase clause => clause
+    | TBase _ clause => clause
     | @TStruct R fields =>
       let fieldsAt := fix rec{R: Type}(fields: list (FieldSpec R)): word -> R -> list (mem -> Prop) :=
         match fields with
         | nil => fun start r => nil
         | cons head tail =>
           match head in FieldSpec R return list (FieldSpec R) -> word -> R -> list (mem -> Prop) with
-          | FField getter setter len fieldSpec => fun tail start r =>
-              cons (dataAt fieldSpec start (getter r)) (rec tail (start ^+ /[len (getter r)]) r)
+          | FField getter setter fieldSpec => fun tail start r =>
+              cons (dataAt fieldSpec start (getter r))
+                   (rec tail (start ^+ /[TypeSpec_size fieldSpec (getter r)]) r)
           end tail
         end in
       fun base r => seps (fieldsAt fields base r)
@@ -218,11 +230,11 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
     Build_dummy_packet (dummy_src d) (dummy_dst d) (dummy_len d) (dummy_data d) x.
 
   Definition dummy_spec: TypeSpec dummy_packet := TStruct [
-    FField dummy_src with_dummy_src (fun _ => 4) (TBase (ptsto_bytes 4));
-    FField dummy_dst with_dummy_dst (fun _ => 4) (TBase (ptsto_bytes 4));
-    FField dummy_len with_dummy_len (fun _ => 2) (TBase (truncated_scalar access_size.two));
-    FField dummy_data with_dummy_data (fun l => List.length l) (TArray 1 (TBase ptsto));
-    FField dummy_padding with_dummy_padding (fun l => List.length l) (TArray 1 (TBase ptsto))
+    FField dummy_src with_dummy_src (TBase (fun _ => 4) (ptsto_bytes 4));
+    FField dummy_dst with_dummy_dst (TBase (fun _ => 4) (ptsto_bytes 4));
+    FField dummy_len with_dummy_len (TBase (fun _ => 2) (truncated_scalar access_size.two));
+    FField dummy_data with_dummy_data (TArray 1 (TBase (fun _ => 1) ptsto));
+    FField dummy_padding with_dummy_padding (TArray 1 (TBase (fun _ => 1) ptsto))
   ].
 
   Record foo := {
@@ -238,11 +250,11 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
     Build_foo (foo_count f) (foo_packet f) x.
 
   Definition foo_spec: TypeSpec foo := TStruct [
-    FField foo_count with_foo_count (fun _ => 4)
-           (TBase (truncated_scalar access_size.four));
-    FField foo_packet with_foo_packet (fun _ => 256)
+    FField foo_count with_foo_count
+           (TBase (fun _ => 4) (truncated_scalar access_size.four));
+    FField foo_packet with_foo_packet
            dummy_spec;
-    FField foo_packets with_foo_packets (fun l => List.length l * 256)
+    FField foo_packets with_foo_packets
            (TArray 256 dummy_spec)
   ].
 
@@ -288,8 +300,8 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
     forall {R: Type} (pth: semantic_path R), TypeSpec R -> TypeSpec (path_type pth) -> Prop :=
   | path_TypeSpec_Nil: forall R (sp: TypeSpec R),
       path_TypeSpec PNil sp sp
-  | path_TypeSpec_Field: forall R F (getter: R -> F) setter len fields tail i sp sp',
-      List.nth_error fields i = Some (FField getter setter len sp) ->
+  | path_TypeSpec_Field: forall R F (getter: R -> F) setter fields tail i sp sp',
+      List.nth_error fields i = Some (FField getter setter sp) ->
       path_TypeSpec tail sp sp' ->
       path_TypeSpec (PField getter tail) (TStruct fields) sp'
   | path_TypeSpec_Index: forall E (sp: TypeSpec E) len tail i sp',
@@ -299,6 +311,11 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
 
   Definition fieldAt{R: Type}(sp: TypeSpec R)(pth: semantic_path R)(base: word)(v: path_type pth)(m: mem) :=
     exists sp', path_TypeSpec pth sp sp' /\ dataAt sp' base v m.
+
+(*
+  Inductive range_in_path: word -> Z -> forall R, semantic_path R -> TypeSpec R -> word -> R -> Prop :=
+  |
+*)
 
 (* plan:
 get predicate from path, then apply footpr to it to test if it's the right path, use predicate to satisfy precondition of load or function call
@@ -311,6 +328,12 @@ get predicate from path, then apply footpr to it to test if it's the right path,
     intros.
 
     Eval simpl in (path_value (PField foo_packet (PField dummy_len PNil)) f).
+
+    set (range_size := (TypeSpec_size foo_spec f)).
+    cbn -[Z.add] in range_size.
+
+    (* by looking at `dataAt foo_spec base f` we know that it covers (at least)
+       the range `base ,+ range_size` *)
 
     (* t = load2(base ^+ /[4] ^+ /[8])
 
