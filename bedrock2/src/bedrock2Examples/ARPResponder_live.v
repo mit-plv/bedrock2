@@ -167,6 +167,16 @@ Notation "/[ x ]" := (word.of_Z x)       (* squeeze a Z into a word (beat it wit
 Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the modulo box imposed by words, *)
   (format "\[ x ]").                     (* let a word fly into the large Z space *)
 
+  Definition addr_in_range(a start: word)(len: Z): Prop :=
+    word.unsigned (word.sub a start) <= len.
+
+  Definition subrange(start1: word)(len1: Z)(start2: word)(len2: Z): Prop :=
+    0 <= len1 <= len2 /\ addr_in_range start1 start2 (len2-len1).
+
+  Notation "a ,+ m 'c=' b ,+ n" := (subrange a m b n)
+    (no associativity, at level 10, m at level 1, b at level 1, n at level 1,
+     format "a ,+ m  'c='  b ,+ n").
+
   Inductive TypeSpec: Type -> Type :=
   | TBase{R: Type}(len: R -> Z)(clause: word -> R -> mem -> Prop): TypeSpec R
   | TStruct{R: Type}(fields: list (FieldSpec R)): TypeSpec R
@@ -186,28 +196,31 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
     | FField getter setter sp => fun r => TypeSpec_size sp (getter r)
     end.
 
+  Section dataAt_recursion_helpers.
+    Context (dataAt: forall {R: Type}, TypeSpec R -> word -> R -> mem -> Prop).
+    Fixpoint fieldsAt{R: Type}(fields: list (FieldSpec R)): word -> R -> list (mem -> Prop) :=
+      match fields with
+      | nil => fun start r => nil
+      | cons head tail =>
+        match head in FieldSpec R return list (FieldSpec R) -> word -> R -> list (mem -> Prop) with
+        | FField getter setter fieldSpec => fun tail start r =>
+            cons (dataAt fieldSpec start (getter r))
+                 (fieldsAt tail (start ^+ /[TypeSpec_size fieldSpec (getter r)]) r)
+        end tail
+      end.
+    Context {E: Type}(elemSize: Z)(elem: TypeSpec E).
+    Fixpoint arrayAt(start: word)(l: list E): list (mem -> Prop) :=
+      match l with
+      | nil => nil
+      | cons e es => cons (dataAt elem start e) (arrayAt (start ^+ /[elemSize]) es)
+      end.
+  End dataAt_recursion_helpers.
+
   Fixpoint dataAt{R: Type}(sp: TypeSpec R){struct sp}: word -> R -> mem -> Prop :=
     match sp with
     | TBase _ clause => clause
-    | @TStruct R fields =>
-      let fieldsAt := fix rec{R: Type}(fields: list (FieldSpec R)): word -> R -> list (mem -> Prop) :=
-        match fields with
-        | nil => fun start r => nil
-        | cons head tail =>
-          match head in FieldSpec R return list (FieldSpec R) -> word -> R -> list (mem -> Prop) with
-          | FField getter setter fieldSpec => fun tail start r =>
-              cons (dataAt fieldSpec start (getter r))
-                   (rec tail (start ^+ /[TypeSpec_size fieldSpec (getter r)]) r)
-          end tail
-        end in
-      fun base r => seps (fieldsAt fields base r)
-    | @TArray E elemSize elem =>
-      let arrayAt := fix rec(start: word)(l: list E): list (mem -> Prop) :=
-        match l with
-        | nil => nil
-        | cons e es => cons (dataAt elem start e) (rec (start ^+ /[elemSize]) es)
-        end in
-      fun base l => seps (arrayAt base l)
+    | @TStruct R fields => fun base r => seps (fieldsAt (@dataAt) fields base r)
+    | @TArray E elemSize elem => fun base l => seps (arrayAt (@dataAt) elemSize elem base l)
     end.
 
   Record dummy_packet := {
@@ -258,68 +271,77 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
            (TArray 256 dummy_spec)
   ].
 
-  (* path digging into a record of type R *)
-  Inductive path{Index: Type}: Type -> Type :=
-  | PNil{R: Type}: path R
-  | PField{R F: Type}(accessor: R -> F)(tail: path F): path R
-  | PIndex{E: Type}(i: Index)(tail: path E): path (list E).
+  (* `path R F` is a path digging into a record of type R, leading to a field of type F.
+  Note: "reversed" (snoc direction rather than cons) so that we can append easily to the right to dig deeper. *)
+  Inductive path: Type -> Type -> Type :=
+  | PNil(R: Type): path R R
+  | PField{R S F: Type}(prefix: path R S)(getter: S -> F): path R F
+  | PIndex{R E: Type}(prefix: path R (list E))(i: Z): path R E.
 
-  Arguments path: clear implicits.
-
-  Definition semantic_path := path Z.
-  Definition syntactic_path := path expr.
-
-  Fixpoint path_type{Index R: Type}(p: path Index R): Type :=
-    match p with
-    | PNil => R
-    | PField _ tail => path_type tail
-    | PIndex _ tail => path_type tail
-    end.
-
-  Fixpoint path_value{R: Type}(pth: semantic_path R){struct pth}: R -> option (path_type pth) :=
-    match pth as p in (path _ T) return (T -> option (path_type p)) with
-    | PNil => Some
-    | PField accessor tail => fun r => path_value tail (accessor r)
-    | PIndex i tail => fun l => match List.nth_error l (Z.to_nat i) with
-                                 | Some e => path_value tail e
-                                 | None => None
+  Fixpoint path_value{R F: Type}(pth: path R F){struct pth}: R -> option F :=
+    match pth as p in (path R F) return (R -> option F) with
+    | PNil R => Some
+    | PField prefix getter => fun r => match path_value prefix r with
+                                       | Some x => Some (getter x)
+                                       | None => None
+                                       end
+    | PIndex prefix i => fun r => match path_value prefix r with
+                                  | Some l => List.nth_error l (Z.to_nat i)
+                                  | None => None
                                  end
     end.
 
-(*
-  Fixpoint path_type_spec{R: Type}(pth: semantic_path R){struct pth}:
-    TypeSpec R -> option (TypeSpec (path_type pth)).
-    destruct pth; simpl.
-    - exact Some.
-    - intro sp. destruct sp.
-      + exact None.
-      + (* here we'd have to match the accessor type in  the fields list to the one already given...*)
-*)
-
-  Inductive path_TypeSpec:
-    forall {R: Type} (pth: semantic_path R), TypeSpec R -> TypeSpec (path_type pth) -> Prop :=
+  Inductive path_TypeSpec: forall {R F: Type}, TypeSpec R -> path R F -> TypeSpec F -> Prop :=
   | path_TypeSpec_Nil: forall R (sp: TypeSpec R),
-      path_TypeSpec PNil sp sp
-  | path_TypeSpec_Field: forall R F (getter: R -> F) setter fields tail i sp sp',
-      List.nth_error fields i = Some (FField getter setter sp) ->
-      path_TypeSpec tail sp sp' ->
-      path_TypeSpec (PField getter tail) (TStruct fields) sp'
-  | path_TypeSpec_Index: forall E (sp: TypeSpec E) len tail i sp',
-      path_TypeSpec tail sp sp' ->
+      path_TypeSpec sp (PNil R) sp
+  | path_TypeSpec_Field: forall R S F (prefix: path R S) (getter: S -> F) setter fields i sp sp',
+      path_TypeSpec sp prefix (TStruct fields) ->
+      List.nth_error fields i = Some (FField getter setter sp') ->
+      path_TypeSpec sp (PField prefix getter) sp'
+  | path_TypeSpec_Index: forall R E (sp: TypeSpec R) len prefix i (sp': TypeSpec E),
+      path_TypeSpec sp prefix (TArray len sp') ->
       (* note: no bounds check here yet... *)
-      path_TypeSpec (PIndex i tail) (TArray len sp) sp'.
+      path_TypeSpec sp (PIndex prefix i) sp'.
 
-  Definition fieldAt{R: Type}(sp: TypeSpec R)(pth: semantic_path R)(base: word)(v: path_type pth)(m: mem) :=
-    exists sp', path_TypeSpec pth sp sp' /\ dataAt sp' base v m.
+  (* sum of the sizes of the first i fields *)
+  Fixpoint offset{R: Type}(r: R)(fields: list (FieldSpec R))(i: Z): Z :=
+    if i =? 0 then 0 else
+      match fields with
+      | nil => -1 (* error *)
+      | cons head tail =>
+        match head in FieldSpec R return R -> list (FieldSpec R) -> Z with
+        | FField getter setter sp => fun r tail =>
+          TypeSpec_size sp (getter r) + offset r tail (i-1)
+        end r tail
+      end.
 
-(*
-  Inductive range_in_path: word -> Z -> forall R, semantic_path R -> TypeSpec R -> word -> R -> Prop :=
-  |
-*)
-
-(* plan:
-get predicate from path, then apply footpr to it to test if it's the right path, use predicate to satisfy precondition of load or function call
-*)
+  Inductive lookup_path:
+    (* input: start type, end type, path, *)
+    forall {R F: Type}, path R F ->
+    (* type spec, base address, and whole value found at empty path *)
+    TypeSpec R -> word -> R ->
+    (* output: type spec, address and value found at given path *)
+    TypeSpec F -> word -> F -> Prop :=
+  | lookup_path_Nil: forall R (sp: TypeSpec R) addr r,
+      lookup_path (PNil R)
+                  sp addr r
+                  sp addr r
+  | lookup_path_Field: forall R S F (prefix: path R S) (getter: S -> F) setter fields i sp sp' addr addr' r r',
+      lookup_path prefix
+                  sp addr r
+                  (TStruct fields) addr' r' ->
+      List.nth_error fields i = Some (FField getter setter sp') ->
+      lookup_path (PField prefix getter)
+                  sp addr r
+                  sp' (addr' ^+ /[offset r' fields i]) (getter r')
+  | lookup_path_Index: forall R E (sp: TypeSpec R) r len prefix i (sp': TypeSpec E) l e addr addr',
+      lookup_path prefix
+                  sp addr r
+                  (TArray len sp') addr' l ->
+      List.nth_error l i = Some e ->
+      lookup_path (PIndex prefix i)
+                  sp addr r
+                  sp' (addr' ^+ /[i * len]) e.
 
   Goal forall base f R m,
       seps [dataAt foo_spec base f; R] m ->
@@ -327,21 +349,26 @@ get predicate from path, then apply footpr to it to test if it's the right path,
   Proof.
     intros.
 
-    Eval simpl in (path_value (PField foo_packet (PField dummy_len PNil)) f).
+    Check f.(foo_packet).(dummy_len).
+
+    Eval simpl in (path_value (PField (PField (PNil _) foo_packet) dummy_len) f).
 
     set (range_size := (TypeSpec_size foo_spec f)).
     cbn -[Z.add] in range_size.
 
-    (* by looking at `dataAt foo_spec base f` we know that it covers (at least)
-       the range `base ,+ range_size` *)
-
     (* t = load2(base ^+ /[4] ^+ /[8])
+       The range `(base+12),+2` corresponds to the field `f.(foo_packet).(dummy_len)`.
+       Goal: use lia to find this path. *)
+
+    (* forward reasoning: *)
+    pose proof (lookup_path_Nil foo_spec base f) as P.
+    let H := fresh "P" in rename P into H; pose proof (lookup_path_Field 1 H eq_refl) as P.
+    cbn in P.
+    let H := fresh "P" in rename P into H; pose proof (lookup_path_Field 2 H eq_refl) as P.
+    cbn in P.
 
 
-Given: footprint, eg `(base ^+ /[4] ^+ /[8]) ,+ 2`
-Find: longest path whose footprint is a superset
-
-
+(*
        store2(base ^+ /[4] ^+ /[8], t)
 
        f(base ^+ /[4] ^+ /[8], otherargs)
@@ -497,12 +524,6 @@ t = load4(p)
 
 *)
 
-  Definition addr_in_range(a start: word)(len: Z): Prop :=
-    word.unsigned (word.sub a start) <= len.
-
-  Definition subrange(start1: word)(len1: Z)(start2: word)(len2: Z): Prop :=
-    0 <= len1 <= len2 /\ addr_in_range start1 start2 (len2-len1).
-
 
   (* ** Program logic rules *)
 
@@ -534,10 +555,6 @@ t = load4(p)
   Notation "bs @ a" := (array ptsto (word.of_Z 1) a bs)
     (at level 40, no associativity).
 
-  Notation "a ,+ m 'c=' b ,+ n" := (subrange a m b n)
-    (no associativity, at level 10, m at level 1, b at level 1, n at level 1,
-     format "a ,+ m  'c='  b ,+ n").
-
   Implicit Type post: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop.
 
   (* later, we might also support loads in expressions, maybe under the restriction that
@@ -558,17 +575,18 @@ t = load4(p)
   Admitted.
 
   (* later, we might also support loads in expressions, maybe under the restriction that
-     expressig the loaded value does not require splitting lists
+     expressig the loaded value does not require splitting lists *)
   Lemma load_field_stmt: forall e sz x a a' t m l mc rest post,
       dexpr m l a a' ->
       (exists M,
           seps M m /\
-          exists i R enc (r: R),
-            List.nth_error M i = Some (dataAt enc a' r) /\
-            (forall bs_l (v: Z) bs_r mc,
+          exists i R sp (r: R),
+            List.nth_error M i = Some (dataAt sp a' r) /\
+
+            (forall (v: Z) mc,
                 exec e rest t m (map.put l x (word.of_Z v)) mc post)) ->
       exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
-  Admitted. *)
+  Admitted.
 
   Definition vc_func e '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
                      (post : trace -> mem -> list word -> Prop) :=
