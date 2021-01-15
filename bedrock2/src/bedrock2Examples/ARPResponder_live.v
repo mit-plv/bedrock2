@@ -9,6 +9,7 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics.
+Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
@@ -34,6 +35,78 @@ Module word. Section WithWord.
     unfold word.wrap in H. rewrite ?Z.mod_small in H by assumption. assumption.
   Qed.
 End WithWord. End word.
+
+Module List.
+  Import List.ListNotations. Open Scope list_scope.
+  Section MapWithIndex.
+    Context {A B: Type} (f: A -> nat -> B).
+    Fixpoint map_with_start_index(start: nat)(l: list A): list B :=
+      match l with
+      | nil => nil
+      | h :: t => f h start :: map_with_start_index (S start) t
+      end.
+    Definition map_with_index: list A -> list B := map_with_start_index O.
+
+    Lemma map_with_start_index_app: forall l l' start,
+        map_with_start_index start (l ++ l') =
+        map_with_start_index start l ++ map_with_start_index (start + List.length l) l'.
+    Proof.
+      induction l; intros.
+      - simpl. rewrite PeanoNat.Nat.add_0_r. reflexivity.
+      - simpl. f_equal. rewrite IHl. f_equal. f_equal. Lia.lia.
+    Qed.
+
+    Lemma map_with_index_app: forall l l',
+        map_with_index (l ++ l') = map_with_index l ++ map_with_start_index (List.length l) l'.
+    Proof. intros. apply map_with_start_index_app. Qed.
+
+    Lemma map_with_start_index_cons: forall a l start,
+        map_with_start_index start (a :: l) = f a start :: map_with_start_index (S start) l.
+    Proof. intros. reflexivity. Qed.
+
+    Lemma map_with_index_cons: forall a l,
+        map_with_index (a :: l) = f a 0 :: map_with_start_index 1 l.
+    Proof. intros. reflexivity. Qed.
+
+    Lemma skipn_map_with_start_index: forall i start l,
+        skipn i (map_with_start_index start l) = map_with_start_index (start + i) (skipn i l).
+    Proof.
+      induction i; intros.
+      - simpl. rewrite PeanoNat.Nat.add_0_r. reflexivity.
+      - destruct l; simpl. 1: reflexivity. rewrite IHi. f_equal. Lia.lia.
+    Qed.
+
+    Lemma map_with_start_index_nth_error: forall (n start: nat) (l: list A) d,
+        List.nth_error l n = Some d ->
+        List.nth_error (map_with_start_index start l) n = Some (f d (start + n)).
+    Proof.
+      induction n; intros.
+      - destruct l; simpl in *. 1: discriminate. rewrite PeanoNat.Nat.add_0_r. congruence.
+      - destruct l; simpl in *. 1: discriminate. erewrite IHn. 2: eassumption. f_equal. f_equal. Lia.lia.
+    Qed.
+
+    Lemma map_with_index_nth_error: forall (n: nat) (l : list A) d,
+        List.nth_error l n = Some d ->
+        List.nth_error (map_with_index l) n = Some (f d n).
+    Proof. intros. eapply map_with_start_index_nth_error. assumption. Qed.
+
+  End MapWithIndex.
+
+  Section WithA.
+    Context {A: Type}.
+
+    Lemma nth_error_to_hd_skipn: forall n (l: list A) a d,
+        List.nth_error l n = Some a ->
+        hd d (skipn n l) = a.
+    Proof.
+      induction n; intros.
+      - destruct l; simpl in *. 1: discriminate. congruence.
+      - destruct l; simpl in *. 1: discriminate. eauto.
+    Qed.
+
+    Definition generate(len: nat)(f: nat -> A): list A := List.map f (List.seq 0 len).
+  End WithA.
+End List.
 
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
@@ -196,24 +269,23 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
     | FField getter setter sp => fun r => TypeSpec_size sp (getter r)
     end.
 
+  (* sum of the sizes of the first i fields *)
+  Definition offset{R: Type}(r: R)(fields: list (FieldSpec R))(i: Z): Z :=
+    List.fold_right (fun f res => FieldSpec_size f r + res) 0 (List.firstn (Z.to_nat i) fields).
+
   Section dataAt_recursion_helpers.
     Context (dataAt: forall {R: Type}, TypeSpec R -> word -> R -> mem -> Prop).
-    Fixpoint fieldsAt{R: Type}(fields: list (FieldSpec R)): word -> R -> list (mem -> Prop) :=
-      match fields with
-      | nil => fun start r => nil
-      | cons head tail =>
-        match head in FieldSpec R return list (FieldSpec R) -> word -> R -> list (mem -> Prop) with
-        | FField getter setter fieldSpec => fun tail start r =>
-            cons (dataAt fieldSpec start (getter r))
-                 (fieldsAt tail (start ^+ /[TypeSpec_size fieldSpec (getter r)]) r)
-        end tail
+
+    Definition fieldAt{R: Type}(f: FieldSpec R)(i: nat): list (FieldSpec R) -> word -> R -> mem -> Prop :=
+      match f with
+      | FField getter setter sp => fun fields base r => dataAt sp (base ^+ /[offset r fields i]) (getter r)
       end.
-    Context {E: Type}(elemSize: Z)(elem: TypeSpec E).
-    Fixpoint arrayAt(start: word)(l: list E): list (mem -> Prop) :=
-      match l with
-      | nil => nil
-      | cons e es => cons (dataAt elem start e) (arrayAt (start ^+ /[elemSize]) es)
-      end.
+
+    Definition fieldsAt{R: Type}(fields: list (FieldSpec R))(start: word)(r: R): list (mem -> Prop) :=
+      List.map_with_index (fun f i => fieldAt f i fields start r) fields.
+
+    Definition arrayAt{E: Type}(elemSize: Z)(elem: TypeSpec E)(start: word): list E -> list (mem -> Prop) :=
+      List.map_with_index (fun e i => dataAt elem (start ^+ /[i * elemSize]) e).
   End dataAt_recursion_helpers.
 
   Fixpoint dataAt{R: Type}(sp: TypeSpec R){struct sp}: word -> R -> mem -> Prop :=
@@ -302,18 +374,6 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
       path_TypeSpec sp prefix (TArray len sp') ->
       (* note: no bounds check here yet... *)
       path_TypeSpec sp (PIndex prefix i) sp'.
-
-  (* sum of the sizes of the first i fields *)
-  Fixpoint offset{R: Type}(r: R)(fields: list (FieldSpec R))(i: Z): Z :=
-    if i =? 0 then 0 else
-      match fields with
-      | nil => -1 (* error *)
-      | cons head tail =>
-        match head in FieldSpec R return R -> list (FieldSpec R) -> Z with
-        | FField getter setter sp => fun r tail =>
-          TypeSpec_size sp (getter r) + offset r tail (i-1)
-        end r tail
-      end.
 
   Inductive lookup_path:
     (* input: start type, end type, path, *)
@@ -574,18 +634,201 @@ t = load4(p)
       exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
   Admitted.
 
+  Definition wand(P Q: mem -> Prop)(m: mem): Prop :=
+    forall m1 m2, map.split m2 m m1 -> P m1 -> Q m2.
+
+  (* an "existential" version of wand, also called the dual of wand, or septraction [Bannister et al, ITP'18].
+     Roughly, P is a subheap of Q, and 'Q without P' holds on m *)
+  Definition dwand(P Q: mem -> Prop)(m: mem): Prop :=
+    exists m1 m2, map.split m2 m m1 /\ P m1 /\ Q m2.
+
+  Lemma wand_adjoint: forall P Q R,
+      impl1 (sep P Q) R <-> impl1 P (wand Q R).
+  Proof.
+    unfold impl1, wand, sep. firstorder eauto.
+  Qed.
+
+  Lemma wand_self_impl: forall (P: mem -> Prop),
+      unique_footprint P ->
+      non_contrad P ->
+      iff1 (emp True) (wand P P).
+  Proof.
+    intros P U N.
+    unfold emp, wand, iff1. intros. split; intros.
+    - destruct H. destruct H0. subst. rewrite map.putmany_empty_l. assumption.
+    - split; [|trivial]. unfold unique_footprint, non_contrad in *.
+      destruct N as [mn N].
+      assert (P x \/ ~ P x) as EM by admit . destruct EM as [A | A].
+      + (*
+
+      assert (P map.empty \/ ~ P map.empty) as EM by admit . destruct EM as [A | A].
+      + specialize (U m1 map.empty N A). assert (m1 = map.empty) by admit.
+      *)
+  Abort.
+
+  Lemma wand_self_impl: forall (P: mem -> Prop),
+      iff1 (fun _ => True) (wand P P).
+  Proof.
+    unfold emp, wand, iff1, map.split. intros. split; intros.
+    - destruct H. destruct H0. subst.
+  Abort.
+
+(*
+It seems that in linear SL, `P -* P` is *not* equivalent to `fun m => True`:
+When trying to prove `P -* P`, I need to show that if `P` holds on some heap `m`, no matter what disjoint heap `m1` I add, `P` will still hold on the combined heap, but if `P` restricts the domain of the heap to one fixed set, that won't hold.
+So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only follows if `P` is required to have a unique footprint.
+
+
+*)
+
+  Lemma dwand_self_impl: forall (P: mem -> Prop),
+      iff1 P (dwand P P).
+  Proof.
+    intros.
+    unfold emp, dwand, iff1. split; intros.
+    - exists map.empty, x.
+  Abort.
+
+  Lemma dwand_self_impl: forall (P: mem -> Prop),
+      unique_footprint P ->
+      non_contrad P ->
+      iff1 (emp True) (dwand P P).
+  Proof.
+    intros P U N.
+    unfold emp, dwand, iff1. split; intros.
+    - destruct H. subst. unfold non_contrad in N. destruct N as (mn & N).
+      exists mn, mn. rewrite map.split_empty_l. auto.
+    - destruct H as (m1 & m2 & H & p1 & p2).
+      split; [|trivial].
+      unfold unique_footprint in U.
+      specialize U with (1 := p1) (2 := p2).
+      apply map.map_ext.
+      intro k. destruct (map.get x k) eqn: E. 2: {
+        rewrite map.get_empty. reflexivity.
+      }
+      exfalso.
+      unfold map.split, map.disjoint in H. destruct H as [? H]. subst m2.
+      destruct (map.get m1 k) eqn: F. 1: solve[eauto].
+      destruct U as [U1 U2]. unfold map.sub_domain in *.
+      specialize (U2 k b). rewrite map.get_putmany_dec in U2. rewrite F in U2.
+      specialize (U2 E). destruct U2. discriminate.
+  Qed.
+
+  Lemma sep_dwand_self_impl: forall (R P: mem -> Prop) m,
+      R m ->
+      sep R (dwand P P) m.
+  Proof.
+    intros. unfold sep, dwand.
+    exists m, map.empty. rewrite map.split_empty_r. repeat split; auto.
+  Abort.
+
+  Goal forall P Q,
+      iff1 Q (sep P (dwand P Q)).
+  Proof.
+  Abort.
+  (* Note: this one only holds if P "is part of" Q and satisfiable,
+     and we will use lookup_path below to assert that *)
+  Goal forall P Q, iff1 Q (sep P (wand P Q)).
+  Abort.
+
+  Lemma seps_nth_error_to_head: forall i Ps P,
+      List.nth_error Ps i = Some P ->
+      iff1 (seps Ps) (sep P (seps (app (firstn i Ps) (tl (skipn i Ps))))).
+  Proof.
+    intros.
+    etransitivity.
+    - symmetry. eapply seps_nth_to_head.
+    - eapply List.nth_error_to_hd_skipn in H. rewrite H. reflexivity.
+  Qed.
+
+  Lemma expose_lookup_path: forall R F (pth: path R F) sp base (r: R) sp' addr (v: F),
+      lookup_path pth sp base r sp' addr v ->
+      exists Frame, iff1 (dataAt sp base r) (sep (dataAt sp' addr v) Frame).
+  Proof.
+    induction 1.
+    - exists (emp True). cancel.
+    - destruct IHlookup_path as [Frame IH]. simpl in IH.
+      eexists.
+      etransitivity; [exact IH|clear IH].
+      unfold fieldsAt at 1.
+      eapply List.map_with_index_nth_error in H0.
+      rewrite seps_nth_error_to_head. 2: exact H0.
+      unfold fieldAt at 1. ecancel.
+    - destruct IHlookup_path as [Frame IH]. simpl in IH.
+      eexists.
+      etransitivity; [exact IH|clear IH].
+      unfold arrayAt at 1.
+      eapply List.map_with_index_nth_error in H0.
+      rewrite seps_nth_error_to_head. 2: exact H0.
+      ecancel.
+  Qed.
+
+  (* TODO move (to Scalars.v?) *)
+  Lemma load_bounded_Z_of_sep: forall sz addr (value: Z) R m,
+      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
+      sep (truncated_scalar sz addr value) R m ->
+      Memory.load_Z sz m addr = Some value.
+  Proof.
+    intros.
+    cbv [load scalar littleendian load_Z] in *.
+    erewrite load_bytes_of_sep. 2: exact H0.
+    apply f_equal.
+    rewrite LittleEndian.combine_split.
+    apply Z.mod_small.
+    assumption.
+  Qed.
+
+  Lemma load_of_sep: forall sz addr (value: Z) R m,
+      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
+      sep (truncated_scalar sz addr value) R m ->
+      Memory.load sz m addr = Some (word.of_Z value).
+  Proof.
+    intros. unfold Memory.load.
+    erewrite load_bounded_Z_of_sep by eassumption.
+    reflexivity.
+  Qed.
+
+(*
+can the program logic automation for load1/2/4/8 support any (potentially not-yet-defined)
+separation logic predicate to load from?
+
+eg load4 should work for
+(ptsto_bytes 4 addr myByte4Tuple)
+(truncated_scalar access_size.four addr myZ)
+(scalar addr v)
+(array ptsto (word.of_Z 1) addr my4ByteList)
+(myCustomPred addr myCustomValue)
+
+Using eauto HintDbs?
+*)
+
   (* later, we might also support loads in expressions, maybe under the restriction that
      expressig the loaded value does not require splitting lists *)
-  Lemma load_field_stmt: forall e sz x a a' t m l mc rest post,
+  Lemma load_byte_field_stmt: forall e sz x a a' t m l mc rest post,
       dexpr m l a a' ->
       (exists M,
           seps M m /\
-          exists i R sp (r: R),
-            List.nth_error M i = Some (dataAt sp a' r) /\
-
-            (forall (v: Z) mc,
-                exec e rest t m (map.put l x (word.of_Z v)) mc post)) ->
+          exists i R sp (r: R) base,
+            List.nth_error M i = Some (dataAt sp base r) /\
+            exists (pth: path R (bytetuple sz)) v,
+              lookup_path pth sp base r
+                 (TBase (fun _ => (@Memory.bytes_per width sz)) (ptsto_bytes (@Memory.bytes_per width sz)))
+                 a' v /\
+              (forall mc,
+                  exec e rest t m (map.put l x /[LittleEndian.combine _ v]) mc post)) ->
       exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
+  Proof.
+    intros.
+    repeat match goal with
+           | H: exists x, _ |- _ => destruct H as [x H]
+           | H: _ /\ _ |- _ => destruct H
+           end.
+    destruct (expose_lookup_path H2) as (Frame & P).
+    simpl in P.
+    eapply seps_nth_error_to_head in H1.
+    eapply H1 in H0.
+    seprewrite_in P H0.
+
   Admitted.
 
   Definition vc_func e '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
