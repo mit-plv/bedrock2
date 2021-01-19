@@ -250,17 +250,94 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
     (no associativity, at level 10, m at level 1, b at level 1, n at level 1,
      format "a ,+ m  'c='  b ,+ n").
 
+  (* TODO move (to Scalars.v?) *)
+  Lemma load_bounded_Z_of_sep: forall sz addr (value: Z) R m,
+      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
+      sep (truncated_scalar sz addr value) R m ->
+      Memory.load_Z sz m addr = Some value.
+  Proof.
+    intros.
+    cbv [load scalar littleendian load_Z] in *.
+    erewrite load_bytes_of_sep. 2: exact H0.
+    apply f_equal.
+    rewrite LittleEndian.combine_split.
+    apply Z.mod_small.
+    assumption.
+  Qed.
+
+  Lemma load_of_sep_truncated_scalar: forall sz addr (value: Z) R m,
+      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
+      sep (truncated_scalar sz addr value) R m ->
+      Memory.load sz m addr = Some (word.of_Z value).
+  Proof.
+    intros. unfold Memory.load.
+    erewrite load_bounded_Z_of_sep by eassumption.
+    reflexivity.
+  Qed.
+
+  Definition BEBytesToWord{n: nat}(bs: tuple byte n): word := word.of_Z (BigEndian.combine n bs).
+
+  Definition byteToWord(b: byte): word := word.of_Z (byte.unsigned b).
+(*
+can the program logic automation for load1/2/4/8 support any (potentially not-yet-defined)
+separation logic predicate to load from?
+
+eg load4 should work for
+(ptsto_bytes 4 addr myByte4Tuple)
+(truncated_scalar access_size.four addr myZ)
+(scalar addr v)
+(array ptsto (word.of_Z 1) addr my4ByteList)
+(myCustomPred addr myCustomValue)
+
+Maybe, but note that the common datatype being stored in local variables is word anyways,
+so we can also use that one datatype in the sep clauses:
+
+word.unsigned (customThingyToWord v) <= 2^sz
+sep (truncated_word sz addr (customThingyToWord v)) R m
+  x = load2(addr)
+(map.put l x (customThingyToWord v))
+*)
+
+  (* An n-byte unsigned little-endian number v at address a.
+     Enforces that v fits into n bytes. *)
+  Definition LEUnsigned(n: nat)(addr: word)(v: Z)(m: mem): Prop :=
+    exists bs: tuple byte n, ptsto_bytes n addr bs m /\ v = LittleEndian.combine n bs.
+
+  (* enforces that v fits into (bytes_per sz) bytes *)
+  Definition value(sz: access_size)(addr v: word): mem -> Prop :=
+    LEUnsigned (bytes_per (width:=width) sz) addr (word.unsigned v).
+
+  Lemma load_of_sep_value: forall sz addr v R m,
+      sep (value sz addr v) R m ->
+      Memory.load sz m addr = Some v.
+  Proof.
+    unfold value, Memory.load, Memory.load_Z, LEUnsigned. intros.
+    assert (exists bs : tuple Init.Byte.byte (bytes_per sz),
+               sep (ptsto_bytes (bytes_per sz) addr bs) R m /\
+               word.unsigned v = LittleEndian.combine (bytes_per (width:=width) sz) bs) as A. {
+      unfold sep in *.
+      destruct H as (mp & mq & A & B & C).
+      destruct B as (bs & B & E).
+      eauto 10.
+    }
+    clear H. destruct A as (bs & A & E).
+    erewrite load_bytes_of_sep by eassumption.
+    rewrite <- E.
+    rewrite word.of_Z_unsigned.
+    reflexivity.
+  Qed.
+
   Inductive TypeSpec: Type -> Type :=
-  | TBase{R: Type}(len: R -> Z)(clause: word -> R -> mem -> Prop): TypeSpec R
+  | TValue{R: Type}(sz: access_size)(encode: R -> word): TypeSpec R
   | TStruct{R: Type}(fields: list (FieldSpec R)): TypeSpec R
   | TArray{E: Type}(elemSize: Z)(elemSpec: TypeSpec E): TypeSpec (list E)
   with FieldSpec: Type -> Type :=
-  | FField{R: Type}(F: Type)(getter: R -> F)(setter: F -> R -> R)(fieldSpec: TypeSpec F)
+  | FField{R F: Type}(getter: R -> F)(setter: R -> F -> R)(fieldSpec: TypeSpec F)
     : FieldSpec R.
 
   Fixpoint TypeSpec_size{R: Type}(sp: TypeSpec R): R -> Z :=
     match sp with
-    | TBase len _ => len
+    | TValue sz _ => fun r => bytes_per (width:=width) sz
     | TStruct fields => fun r => List.fold_right (fun f res => FieldSpec_size f r + res) 0 fields
     | TArray elemSize _ => fun l => List.length l * elemSize
     end
@@ -290,36 +367,41 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
 
   Fixpoint dataAt{R: Type}(sp: TypeSpec R){struct sp}: word -> R -> mem -> Prop :=
     match sp with
-    | TBase _ clause => clause
+    | TValue sz encoder => fun addr r => value sz addr (encoder r)
     | @TStruct R fields => fun base r => seps (fieldsAt (@dataAt) fields base r)
     | @TArray E elemSize elem => fun base l => seps (arrayAt (@dataAt) elemSize elem base l)
     end.
 
   Record dummy_packet := {
     dummy_src: tuple byte 4;
+ (* if we want dependent field types (instead of just dependent field lengths), we also need
+    to figure out how to set/update such fields...
+    dummy_dst_kind: bool;
+    dummy_dst: if dummy_dst_kind then tuple byte 4 else tuple byte 6;
+    *)
     dummy_dst: tuple byte 4;
     dummy_len: Z;
     dummy_data: list byte;
     dummy_padding: list byte (* non-constant offset *)
   }.
 
-  Definition with_dummy_src x d :=
+  Definition set_dummy_src d x :=
     Build_dummy_packet x (dummy_dst d) (dummy_len d) (dummy_data d) (dummy_padding d).
-  Definition with_dummy_dst x d :=
+  Definition set_dummy_dst d x :=
     Build_dummy_packet (dummy_src d) x (dummy_len d) (dummy_data d) (dummy_padding d).
-  Definition with_dummy_len x d :=
+  Definition set_dummy_len d x :=
     Build_dummy_packet (dummy_src d) (dummy_dst d) x (dummy_data d) (dummy_padding d).
-  Definition with_dummy_data x d :=
+  Definition set_dummy_data d x :=
     Build_dummy_packet (dummy_src d) (dummy_dst d) (dummy_len d) x (dummy_padding d).
-  Definition with_dummy_padding x d :=
+  Definition set_dummy_padding d x :=
     Build_dummy_packet (dummy_src d) (dummy_dst d) (dummy_len d) (dummy_data d) x.
 
   Definition dummy_spec: TypeSpec dummy_packet := TStruct [
-    FField dummy_src with_dummy_src (TBase (fun _ => 4) (ptsto_bytes 4));
-    FField dummy_dst with_dummy_dst (TBase (fun _ => 4) (ptsto_bytes 4));
-    FField dummy_len with_dummy_len (TBase (fun _ => 2) (truncated_scalar access_size.two));
-    FField dummy_data with_dummy_data (TArray 1 (TBase (fun _ => 1) ptsto));
-    FField dummy_padding with_dummy_padding (TArray 1 (TBase (fun _ => 1) ptsto))
+    FField dummy_src set_dummy_src (TValue access_size.four (@BEBytesToWord 4));
+    FField dummy_dst set_dummy_dst (TValue access_size.four (@BEBytesToWord 4));
+    FField dummy_len set_dummy_len (TValue access_size.two word.of_Z);
+    FField dummy_data set_dummy_data (TArray 1 (TValue access_size.one byteToWord));
+    FField dummy_padding set_dummy_padding (TArray 1 (TValue access_size.one byteToWord))
   ].
 
   Record foo := {
@@ -327,20 +409,17 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
     foo_packet: dummy_packet;
     foo_packets: list dummy_packet;
   }.
-  Definition with_foo_count x f :=
+  Definition set_foo_count f x :=
     Build_foo x (foo_packet f) (foo_packets f).
-  Definition with_foo_packet x f :=
+  Definition set_foo_packet f x :=
     Build_foo (foo_count f) x (foo_packets f).
-  Definition with_foo_packets x f :=
+  Definition set_foo_packets f x :=
     Build_foo (foo_count f) (foo_packet f) x.
 
   Definition foo_spec: TypeSpec foo := TStruct [
-    FField foo_count with_foo_count
-           (TBase (fun _ => 4) (truncated_scalar access_size.four));
-    FField foo_packet with_foo_packet
-           dummy_spec;
-    FField foo_packets with_foo_packets
-           (TArray 256 dummy_spec)
+    FField foo_count set_foo_count (TValue access_size.two word.of_Z);
+    FField foo_packet set_foo_packet dummy_spec;
+    FField foo_packets set_foo_packets (TArray 256 dummy_spec)
   ].
 
   (* `path R F` is a path digging into a record of type R, leading to a field of type F.
@@ -606,9 +685,9 @@ t = load4(p)
       exec e (cmd.seq (cmd.cond c thn els) rest) t m l mc post.
   Admitted.
 
-  Lemma assignment: forall e x a v t m l mc rest post,
-      dexpr m l a v ->
-      (forall mc, exec e rest t m (map.put l x v) mc post) ->
+  Lemma assignment: forall e x a t m l mc rest post,
+      WeakestPrecondition.expr m l a
+        (fun v => forall mc, exec e rest t m (map.put l x v) mc post) ->
       exec e (cmd.seq (cmd.set x a) rest) t m l mc post.
   Admitted.
 
@@ -763,56 +842,32 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
       ecancel.
   Qed.
 
-  (* TODO move (to Scalars.v?) *)
-  Lemma load_bounded_Z_of_sep: forall sz addr (value: Z) R m,
-      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
-      sep (truncated_scalar sz addr value) R m ->
-      Memory.load_Z sz m addr = Some value.
+  Lemma load_field: forall sz m addr M i R sp (r: R) base (F: Type) (pth: path R F) encoder v,
+      seps M m ->
+      List.nth_error M i = Some (dataAt sp base r) ->
+      lookup_path pth sp base r (TValue sz encoder) addr v ->
+      Memory.load sz m addr = Some (encoder v).
   Proof.
     intros.
-    cbv [load scalar littleendian load_Z] in *.
-    erewrite load_bytes_of_sep. 2: exact H0.
-    apply f_equal.
-    rewrite LittleEndian.combine_split.
-    apply Z.mod_small.
-    assumption.
+    destruct (expose_lookup_path H1) as (Frame & P).
+    simpl in P.
+    eapply seps_nth_error_to_head in H0.
+    eapply H0 in H.
+    seprewrite_in P H.
+    eapply load_of_sep_value.
+    ecancel_assumption.
   Qed.
-
-  Lemma load_of_sep: forall sz addr (value: Z) R m,
-      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
-      sep (truncated_scalar sz addr value) R m ->
-      Memory.load sz m addr = Some (word.of_Z value).
-  Proof.
-    intros. unfold Memory.load.
-    erewrite load_bounded_Z_of_sep by eassumption.
-    reflexivity.
-  Qed.
-
-(*
-can the program logic automation for load1/2/4/8 support any (potentially not-yet-defined)
-separation logic predicate to load from?
-
-eg load4 should work for
-(ptsto_bytes 4 addr myByte4Tuple)
-(truncated_scalar access_size.four addr myZ)
-(scalar addr v)
-(array ptsto (word.of_Z 1) addr my4ByteList)
-(myCustomPred addr myCustomValue)
-
-Using eauto HintDbs?
-*)
 
   (* later, we might also support loads in expressions, maybe under the restriction that
      expressig the loaded value does not require splitting lists *)
-  Lemma load_byte_field_stmt: forall e sz x a a' t m l mc rest post,
+  Lemma load_byte_field_stmt: forall e sz x a a' t m l mc encoder rest post,
       dexpr m l a a' ->
       (exists M,
           seps M m /\
           exists i R sp (r: R) base,
             List.nth_error M i = Some (dataAt sp base r) /\
             exists (pth: path R (bytetuple sz)) v,
-              lookup_path pth sp base r
-                 (TBase (fun _ => (@Memory.bytes_per width sz)) (ptsto_bytes (@Memory.bytes_per width sz)))
+              lookup_path pth sp base r (TValue sz encoder)
                  a' v /\
               (forall mc,
                   exec e rest t m (map.put l x /[LittleEndian.combine _ v]) mc post)) ->
@@ -1050,6 +1105,7 @@ Ltac pick_nat n :=
 
 Ltac add_snippet s :=
   lazymatch s with
+(*
   | SSet ?y (expr.load ?SZ ?A) =>
     eapply load_stmt with (x := y) (a := A) (sz := SZ);
     [ solve [repeat straightline]
@@ -1063,6 +1119,7 @@ Ltac add_snippet s :=
               eexists i, _, _; split; [cbv [List.nth_error]; reflexivity|];
               split; [unfold bytes_per, subrange, addr_in_range; ZnWords|]
             end) ]
+*)
   | SSet ?y ?e => eapply assignment with (x := y) (a := e)
   | SIf ?cond false => eapply if_split with (c := cond); [| |add_note "'else' expected"]
   | SEnd => eapply exec.skip
@@ -1260,7 +1317,18 @@ Set Default Goal Selector "1".
     $*/
     doReply = /*number*/0; /*$. $*/
     if (ln == /*number*/64) /*split*/ { /*$. $*/
-      tmp = load2(ethbuf + /*number*/12); /*$. (* ethertype in little endian order *) $*/
+      tmp = load2(ethbuf + /*number*/12); /*$. (* ethertype in little endian order *)
+
+{
+  eexists. split. {
+    eapply load_field.
+    - eassumption.
+    - apply TODO.
+    - apply TODO.
+}
+
+Abort. (*
+$*/
       if (tmp == ETHERTYPE_ARP_LE) /*split*/ { /*$. $*/
         tmp = load2(ethbuf + /*number*/14); /*$. $*/
         if (tmp == HTYPE_LE) /*split*/ { /*$.
@@ -1301,5 +1369,6 @@ Set Default Goal Selector "1".
                                 end
       in pose r.
   Abort.
+*)
 
 End WithParameters.
