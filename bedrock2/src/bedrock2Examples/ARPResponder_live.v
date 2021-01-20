@@ -418,6 +418,7 @@ Section WithParameters.
     FField foo_packets set_foo_packets (TArray 256 dummy_spec)
   ].
 
+  (*
   (* `path R F` is a path digging into a record of type R, leading to a field of type F.
   Note: "reversed" (snoc direction rather than cons) so that we can append easily to the right to dig deeper. *)
   Inductive path: Type -> Type -> Type :=
@@ -449,33 +450,29 @@ Section WithParameters.
       path_TypeSpec sp prefix (TArray len sp') ->
       (* note: no bounds check here yet... *)
       path_TypeSpec sp (PIndex prefix i) sp'.
+  *)
 
   Inductive lookup_path:
-    (* input: start type, end type, path, *)
-    forall {R F: Type}, path R F ->
+    (* input: start type, end type, *)
+    forall {R F: Type},
     (* type spec, base address, and whole value found at empty path *)
     TypeSpec R -> word -> R ->
     (* output: type spec, address and value found at given path *)
     TypeSpec F -> word -> F -> Prop :=
   | lookup_path_Nil: forall R (sp: TypeSpec R) addr r,
-      lookup_path (PNil R)
+      lookup_path sp addr r
                   sp addr r
-                  sp addr r
-  | lookup_path_Field: forall R S F (prefix: path R S) (getter: S -> F) setter fields i sp sp' addr addr' r r',
-      lookup_path prefix
-                  sp addr r
+  | lookup_path_Field: forall R S F (getter: S -> F) setter fields i sp sp' addr addr' (r: R) r',
+      lookup_path sp addr r
                   (TStruct fields) addr' r' ->
       List.nth_error fields i = Some (FField getter setter sp') ->
-      lookup_path (PField prefix getter)
-                  sp addr r
+      lookup_path sp addr r
                   sp' (addr' ^+ /[offset r' fields i]) (getter r')
-  | lookup_path_Index: forall R E (sp: TypeSpec R) r len prefix i (sp': TypeSpec E) l e addr addr',
-      lookup_path prefix
-                  sp addr r
+  | lookup_path_Index: forall R E (sp: TypeSpec R) r len i (sp': TypeSpec E) l e addr addr',
+      lookup_path sp addr r
                   (TArray len sp') addr' l ->
       List.nth_error l i = Some e ->
-      lookup_path (PIndex prefix i)
-                  sp addr r
+      lookup_path sp addr r
                   sp' (addr' ^+ /[i * len]) e.
 
   Goal forall base f R m,
@@ -486,7 +483,7 @@ Section WithParameters.
 
     Check f.(foo_packet).(dummy_len).
 
-    Eval simpl in (path_value (PField (PField (PNil _) foo_packet) dummy_len) f).
+    (*Eval simpl in (path_value (PField (PField (PNil _) foo_packet) dummy_len) f).*)
 
 
     (* t = load2(base ^+ /[4] ^+ /[8])
@@ -500,7 +497,7 @@ Section WithParameters.
 
     (* check that path is still good *)
     match type of P with
-    | lookup_path _ _ _ _ ?sp ?addr ?v =>
+    | lookup_path _ _ _ ?sp ?addr ?v =>
       set (range_start := addr); cbn -[Z.add] in range_start;
       set (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
     end.
@@ -514,7 +511,7 @@ Section WithParameters.
 
     (* check that path is still good *)
     match type of P with
-    | lookup_path _ _ _ _ ?sp ?addr ?v =>
+    | lookup_path _ _ _ ?sp ?addr ?v =>
       set (range_start := addr); cbn -[Z.add] in range_start;
       set (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
     end.
@@ -528,7 +525,7 @@ Section WithParameters.
 
     (* check that path is still good *)
     match type of P with
-    | lookup_path _ _ _ _ ?sp ?addr ?v =>
+    | lookup_path _ _ _ ?sp ?addr ?v =>
       set (range_start := addr); cbn -[Z.add] in range_start;
       set (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
     end.
@@ -831,8 +828,8 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
     - eapply List.nth_error_to_hd_skipn in H. rewrite H. reflexivity.
   Qed.
 
-  Lemma expose_lookup_path: forall R F (pth: path R F) sp base (r: R) sp' addr (v: F),
-      lookup_path pth sp base r sp' addr v ->
+  Lemma expose_lookup_path: forall R F sp base (r: R) sp' addr (v: F),
+      lookup_path sp base r sp' addr v ->
       exists Frame, iff1 (dataAt sp base r) (sep (dataAt sp' addr v) Frame).
   Proof.
     induction 1.
@@ -853,10 +850,10 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
       ecancel.
   Qed.
 
-  Lemma load_field: forall sz m addr M i R sp (r: R) base (F: Type) (pth: path R F) encoder v,
+  Lemma load_field: forall sz m addr M i R sp (r: R) base (F: Type) encoder (v: F),
       seps M m ->
       List.nth_error M i = Some (dataAt sp base r) ->
-      lookup_path pth sp base r (TValue sz encoder) addr v ->
+      lookup_path sp base r (TValue sz encoder) addr v ->
       Memory.load sz m addr = Some (encoder v).
   Proof.
     intros.
@@ -870,11 +867,11 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
   Qed.
 
   (* optimized for easy backtracking *)
-  Lemma load_field': forall sz m addr M R sp (r: R) base (F: Type) (pth: path R F) encoder v,
+  Lemma load_field': forall sz m addr M R sp (r: R) base (F: Type) encoder (v: F),
       seps M m ->
       (exists i,
           List.nth_error M i = Some (dataAt sp base r) /\
-          lookup_path pth sp base r (TValue sz encoder) addr v) ->
+          lookup_path sp base r (TValue sz encoder) addr v) ->
       Memory.load sz m addr = Some (encoder v).
   Proof.
     intros. destruct H0 as (i & ? & ?). eauto using load_field.
@@ -890,34 +887,6 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
               lookup_path pth sp base r (TValue sz encoder) addr v) ->
       Memory.load sz m addr = Some (encoder v).
 *)
-
-  (* later, we might also support loads in expressions, maybe under the restriction that
-     expressig the loaded value does not require splitting lists *)
-  Lemma load_byte_field_stmt: forall e sz x a a' t m l mc encoder rest post,
-      dexpr m l a a' ->
-      (exists M,
-          seps M m /\
-          exists i R sp (r: R) base,
-            List.nth_error M i = Some (dataAt sp base r) /\
-            exists (pth: path R (bytetuple sz)) v,
-              lookup_path pth sp base r (TValue sz encoder)
-                 a' v /\
-              (forall mc,
-                  exec e rest t m (map.put l x /[LittleEndian.combine _ v]) mc post)) ->
-      exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
-  Proof.
-    intros.
-    repeat match goal with
-           | H: exists x, _ |- _ => destruct H as [x H]
-           | H: _ /\ _ |- _ => destruct H
-           end.
-    destruct (expose_lookup_path H2) as (Frame & P).
-    simpl in P.
-    eapply seps_nth_error_to_head in H1.
-    eapply H1 in H0.
-    seprewrite_in P H0.
-
-  Admitted.
 
   Definition vc_func e '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
                      (post : trace -> mem -> list word -> Prop) :=
@@ -1365,8 +1334,6 @@ Set Default Goal Selector "1".
     - eassumption.
     - exists 0%nat. split; [reflexivity|].
 
-
-}
 
 Abort. (*
 $*/
