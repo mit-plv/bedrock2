@@ -108,6 +108,18 @@ Module List.
   End WithA.
 End List.
 
+Definition TODO{T: Type}: T. Admitted.
+
+Infix "^+" := word.add  (at level 50, left associativity).
+Infix "^-" := word.sub  (at level 50, left associativity).
+Infix "^*" := word.mul  (at level 40, left associativity).
+Infix "^<<" := word.slu  (at level 37, left associativity).
+Infix "^>>" := word.sru  (at level 37, left associativity).
+Notation "/[ x ]" := (word.of_Z x)       (* squeeze a Z into a word (beat it with a / to make it smaller) *)
+  (format "/[ x ]").
+Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the modulo box imposed by words, *)
+  (format "\[ x ]").                     (* let a word fly into the large Z space *)
+
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
   Import Syntax BinInt String List.ListNotations ZArith.
@@ -115,23 +127,131 @@ Section WithParameters.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
   Local Coercion expr.literal : Z >-> expr.
   Local Coercion expr.var : String.string >-> expr.
-  Infix "\*" := sep (at level 45, right associativity).
+  Coercion Z.of_nat : nat >-> Z.
+  Notation len := List.length.
+  Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per width sz)) (at level 10).
+
+  (* TODO move (to Scalars.v?) *)
+  Lemma load_bounded_Z_of_sep: forall sz addr (value: Z) R m,
+      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
+      sep (truncated_scalar sz addr value) R m ->
+      Memory.load_Z sz m addr = Some value.
+  Proof.
+    intros.
+    cbv [load scalar littleendian load_Z] in *.
+    erewrite load_bytes_of_sep. 2: exact H0.
+    apply f_equal.
+    rewrite LittleEndian.combine_split.
+    apply Z.mod_small.
+    assumption.
+  Qed.
+
+  Lemma load_of_sep_truncated_scalar: forall sz addr (value: Z) R m,
+      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
+      sep (truncated_scalar sz addr value) R m ->
+      Memory.load sz m addr = Some (word.of_Z value).
+  Proof.
+    intros. unfold Memory.load.
+    erewrite load_bounded_Z_of_sep by eassumption.
+    reflexivity.
+  Qed.
+
+  Definition BEBytesToWord{n: nat}(bs: tuple byte n): word := word.of_Z (BigEndian.combine n bs).
+
+  Definition byteToWord(b: byte): word := word.of_Z (byte.unsigned b).
+
+  (* An n-byte unsigned little-endian number v at address a.
+     Enforces that v fits into n bytes. *)
+  Definition LEUnsigned(n: nat)(addr: word)(v: Z)(m: mem): Prop :=
+    exists bs: tuple byte n, ptsto_bytes n addr bs m /\ v = LittleEndian.combine n bs.
+
+  (* Enforces that v fits into (bytes_per sz) bytes.
+     To be used as the one and only base-case separation logic assertion, because using
+     load1/2/4/8 will convert the value it puts into the dst register to word anyways,
+     so it makes sense to hardcode the type of v to be word. *)
+  Definition value(sz: access_size)(addr v: word): mem -> Prop :=
+    LEUnsigned (bytes_per (width:=width) sz) addr (word.unsigned v).
+
+  Lemma load_of_sep_value: forall sz addr v R m,
+      sep (value sz addr v) R m ->
+      Memory.load sz m addr = Some v.
+  Proof.
+    unfold value, Memory.load, Memory.load_Z, LEUnsigned. intros.
+    assert (exists bs : tuple Init.Byte.byte (bytes_per sz),
+               sep (ptsto_bytes (bytes_per sz) addr bs) R m /\
+               word.unsigned v = LittleEndian.combine (bytes_per (width:=width) sz) bs) as A. {
+      unfold sep in *.
+      destruct H as (mp & mq & A & B & C).
+      destruct B as (bs & B & E).
+      eauto 10.
+    }
+    clear H. destruct A as (bs & A & E).
+    erewrite load_bytes_of_sep by eassumption.
+    rewrite <- E.
+    rewrite word.of_Z_unsigned.
+    reflexivity.
+  Qed.
+
+  Inductive TypeSpec: Type -> Type :=
+  | TValue{R: Type}(sz: access_size)(encode: R -> word): TypeSpec R
+  | TStruct{R: Type}(fields: list (FieldSpec R)): TypeSpec R
+  (* dynamic number of elements: *)
+  | TArray{E: Type}(elemSize: Z)(elemSpec: TypeSpec E): TypeSpec (list E)
+  (* number of elements statically known: *)
+  | TTuple{E: Type}(count: nat)(elemSize: Z)(elemSpec: TypeSpec E): TypeSpec (tuple E count)
+  with FieldSpec: Type -> Type :=
+  | FField{R F: Type}(getter: R -> F)(setter: R -> F -> R)(fieldSpec: TypeSpec F)
+    : FieldSpec R.
+
+  Fixpoint TypeSpec_size{R: Type}(sp: TypeSpec R): R -> Z :=
+    match sp with
+    | TValue sz _ => fun r => bytes_per (width:=width) sz
+    | TStruct fields => fun r => List.fold_right (fun f res => FieldSpec_size f r + res) 0 fields
+    | TArray elemSize _ => fun l => List.length l * elemSize
+    | TTuple n elemSize _ => fun t => n * elemSize
+    end
+  with FieldSpec_size{R: Type}(f: FieldSpec R): R -> Z :=
+    match f with
+    | FField getter setter sp => fun r => TypeSpec_size sp (getter r)
+    end.
+
+  (* sum of the sizes of the first i fields *)
+  Definition offset{R: Type}(r: R)(fields: list (FieldSpec R))(i: Z): Z :=
+    List.fold_right (fun f res => FieldSpec_size f r + res) 0 (List.firstn (Z.to_nat i) fields).
+
+  Section dataAt_recursion_helpers.
+    Context (dataAt: forall {R: Type}, TypeSpec R -> word -> R -> mem -> Prop).
+
+    Definition fieldAt{R: Type}(f: FieldSpec R)(i: nat): list (FieldSpec R) -> word -> R -> mem -> Prop :=
+      match f with
+      | FField getter setter sp => fun fields base r => dataAt sp (base ^+ /[offset r fields i]) (getter r)
+      end.
+
+    Definition fieldsAt{R: Type}(fields: list (FieldSpec R))(start: word)(r: R): list (mem -> Prop) :=
+      List.map_with_index (fun f i => fieldAt f i fields start r) fields.
+
+    Definition arrayAt{E: Type}(elemSize: Z)(elem: TypeSpec E)(start: word): list E -> list (mem -> Prop) :=
+      List.map_with_index (fun e i => dataAt elem (start ^+ /[i * elemSize]) e).
+  End dataAt_recursion_helpers.
+
+  Fixpoint dataAt{R: Type}(sp: TypeSpec R){struct sp}: word -> R -> mem -> Prop :=
+    match sp with
+    | TValue sz encoder => fun addr r => value sz addr (encoder r)
+    | @TStruct R fields => fun base r => seps (fieldsAt (@dataAt) fields base r)
+    | @TArray E elemSize elem => fun base l => seps (arrayAt (@dataAt) elemSize elem base l)
+    | @TTuple E n elemSize elem => fun base t => seps (arrayAt (@dataAt) elemSize elem base (tuple.to_list t))
+    end.
 
   (* ** Packet Formats *)
 
-  Inductive EtherType := EtherTypeARP | EtherTypeIPv4.
-
-  Definition encodeEtherType(t: EtherType): list byte :=
-    match t with
-    | EtherTypeARP => [Byte.x08; Byte.x06]
-    | EtherTypeIPv4 => [Byte.x08; Byte.x00]
-    end.
+  Definition EtherTypeARP := tuple.of_list [Byte.x08; Byte.x06].
+  Definition EtherTypeIPv4 := tuple.of_list [Byte.x08; Byte.x00].
 
   Definition ETHERTYPE_IPV4_LE: Z :=
-    Eval compute in (LittleEndian.combine 2 (tuple.of_list (encodeEtherType EtherTypeIPv4))).
+    Eval compute in (LittleEndian.combine 2 EtherTypeIPv4).
 
   Definition ETHERTYPE_ARP_LE: Z :=
-    Eval compute in (LittleEndian.combine 2 (tuple.of_list (encodeEtherType EtherTypeARP))).
+    Eval compute in (LittleEndian.combine 2 EtherTypeARP).
 
   Definition MAC := tuple byte 6.
 
@@ -146,35 +266,47 @@ Section WithParameters.
   Record EthernetPacket(Payload: Type) := mkEthernetARPPacket {
     dstMAC: MAC;
     srcMAC: MAC;
-    etherType: EtherType;
+    etherType: tuple byte 2; (* <-- must initially accept all possible two-byte values *)
     payload: Payload;
   }.
+
+  Definition byte_spec: TypeSpec byte := TValue access_size.one byteToWord.
+
+  Definition EthernetPacket_spec{Payload: Type}(Payload_spec: TypeSpec Payload) := TStruct [
+    FField (@dstMAC Payload) TODO (TTuple 6 1 byte_spec);
+    FField (@srcMAC Payload) TODO (TTuple 6 1 byte_spec);
+    FField (@etherType Payload) TODO (TValue access_size.two (@BEBytesToWord 2));
+    FField (@payload Payload) TODO Payload_spec
+  ].
 
   (* Note: At the moment we want to allow any padding and crc, so we use an isXxx predicate rather
      than an encodeXxx function *)
   Definition isEthernetPacket{P: Type}(payloadOk: P -> list byte -> Prop)(p: EthernetPacket P)(bs: list byte) :=
     exists data padding crc,
-      bs = encodeMAC p.(srcMAC) ++ encodeMAC p.(dstMAC) ++ encodeEtherType p.(etherType)
+      bs = encodeMAC p.(srcMAC) ++ encodeMAC p.(dstMAC) ++ tuple.to_list p.(etherType)
            ++ data ++ padding ++ encodeCRC crc /\
       payloadOk p.(payload) data /\
       46 <= Z.of_nat (List.length (data ++ padding)) <= 1500.
       (* TODO could/should also verify CRC *)
 
-  Inductive ARPOperation := ARPOperationRequest | ARPOperationReply.
-
-  Definition encodeARPOperation(oper: ARPOperation): list byte :=
-    match oper with
-    | ARPOperationRequest => [Byte.x01]
-    | ARPOperationReply => [Byte.x02]
-    end.
+  Definition ARPOperationRequest := Byte.x01.
+  Definition ARPOperationReply := Byte.x02.
 
   Record ARPPacket := mkARPPacket {
-    oper: ARPOperation;
+    oper: byte;
     sha: MAC;  (* sender hardware address *)
     spa: IPv4; (* sender protocol address *)
     tha: MAC;  (* target hardware address *)
     tpa: IPv4; (* target protocol address *)
   }.
+
+  Definition ARPPacket_spec: TypeSpec ARPPacket := TStruct [
+    FField oper TODO byte_spec;
+    FField sha TODO (TTuple 6 1 byte_spec);
+    FField spa TODO (TTuple 4 1 byte_spec);
+    FField tha TODO (TTuple 6 1 byte_spec);
+    FField tpa TODO (TTuple 4 1 byte_spec)
+  ].
 
   Definition encodeARPPacket(p: ARPPacket): list byte :=
     [
@@ -182,7 +314,7 @@ Section WithParameters.
       Byte.x80; Byte.x00; (* protocol type *)
       Byte.x06;           (* hardware address length (6 for MAC addresses) *)
       Byte.x04            (* protocol address length (4 for IPv4 addresses) *)
-    ] ++ encodeARPOperation p.(oper)
+    ] ++ [p.(oper)]
     ++ encodeMAC p.(sha) ++ encodeIPv4 p.(spa) ++ encodeMAC p.(tha) ++ encodeIPv4 p.(tpa).
 
   Definition HTYPE_LE := Ox"0100".
@@ -226,20 +358,6 @@ Section WithParameters.
   Definition ARPReqResp(req resp: EthernetPacket ARPPacket): Prop :=
     needsARPReply req /\ resp = ARPReply req.
 
-  Coercion Z.of_nat : nat >-> Z.
-  Notation len := List.length.
-  Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per width sz)) (at level 10).
-
-Infix "^+" := word.add  (at level 50, left associativity).
-Infix "^-" := word.sub  (at level 50, left associativity).
-Infix "^*" := word.mul  (at level 40, left associativity).
-Infix "^<<" := word.slu  (at level 37, left associativity).
-Infix "^>>" := word.sru  (at level 37, left associativity).
-Notation "/[ x ]" := (word.of_Z x)       (* squeeze a Z into a word (beat it with a / to make it smaller) *)
-  (format "/[ x ]").
-Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the modulo box imposed by words, *)
-  (format "\[ x ]").                     (* let a word fly into the large Z space *)
-
   Definition addr_in_range(a start: word)(len: Z): Prop :=
     word.unsigned (word.sub a start) <= len.
 
@@ -249,128 +367,6 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
   Notation "a ,+ m 'c=' b ,+ n" := (subrange a m b n)
     (no associativity, at level 10, m at level 1, b at level 1, n at level 1,
      format "a ,+ m  'c='  b ,+ n").
-
-  (* TODO move (to Scalars.v?) *)
-  Lemma load_bounded_Z_of_sep: forall sz addr (value: Z) R m,
-      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
-      sep (truncated_scalar sz addr value) R m ->
-      Memory.load_Z sz m addr = Some value.
-  Proof.
-    intros.
-    cbv [load scalar littleendian load_Z] in *.
-    erewrite load_bytes_of_sep. 2: exact H0.
-    apply f_equal.
-    rewrite LittleEndian.combine_split.
-    apply Z.mod_small.
-    assumption.
-  Qed.
-
-  Lemma load_of_sep_truncated_scalar: forall sz addr (value: Z) R m,
-      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
-      sep (truncated_scalar sz addr value) R m ->
-      Memory.load sz m addr = Some (word.of_Z value).
-  Proof.
-    intros. unfold Memory.load.
-    erewrite load_bounded_Z_of_sep by eassumption.
-    reflexivity.
-  Qed.
-
-  Definition BEBytesToWord{n: nat}(bs: tuple byte n): word := word.of_Z (BigEndian.combine n bs).
-
-  Definition byteToWord(b: byte): word := word.of_Z (byte.unsigned b).
-(*
-can the program logic automation for load1/2/4/8 support any (potentially not-yet-defined)
-separation logic predicate to load from?
-
-eg load4 should work for
-(ptsto_bytes 4 addr myByte4Tuple)
-(truncated_scalar access_size.four addr myZ)
-(scalar addr v)
-(array ptsto (word.of_Z 1) addr my4ByteList)
-(myCustomPred addr myCustomValue)
-
-Maybe, but note that the common datatype being stored in local variables is word anyways,
-so we can also use that one datatype in the sep clauses:
-
-word.unsigned (customThingyToWord v) <= 2^sz
-sep (truncated_word sz addr (customThingyToWord v)) R m
-  x = load2(addr)
-(map.put l x (customThingyToWord v))
-*)
-
-  (* An n-byte unsigned little-endian number v at address a.
-     Enforces that v fits into n bytes. *)
-  Definition LEUnsigned(n: nat)(addr: word)(v: Z)(m: mem): Prop :=
-    exists bs: tuple byte n, ptsto_bytes n addr bs m /\ v = LittleEndian.combine n bs.
-
-  (* enforces that v fits into (bytes_per sz) bytes *)
-  Definition value(sz: access_size)(addr v: word): mem -> Prop :=
-    LEUnsigned (bytes_per (width:=width) sz) addr (word.unsigned v).
-
-  Lemma load_of_sep_value: forall sz addr v R m,
-      sep (value sz addr v) R m ->
-      Memory.load sz m addr = Some v.
-  Proof.
-    unfold value, Memory.load, Memory.load_Z, LEUnsigned. intros.
-    assert (exists bs : tuple Init.Byte.byte (bytes_per sz),
-               sep (ptsto_bytes (bytes_per sz) addr bs) R m /\
-               word.unsigned v = LittleEndian.combine (bytes_per (width:=width) sz) bs) as A. {
-      unfold sep in *.
-      destruct H as (mp & mq & A & B & C).
-      destruct B as (bs & B & E).
-      eauto 10.
-    }
-    clear H. destruct A as (bs & A & E).
-    erewrite load_bytes_of_sep by eassumption.
-    rewrite <- E.
-    rewrite word.of_Z_unsigned.
-    reflexivity.
-  Qed.
-
-  Inductive TypeSpec: Type -> Type :=
-  | TValue{R: Type}(sz: access_size)(encode: R -> word): TypeSpec R
-  | TStruct{R: Type}(fields: list (FieldSpec R)): TypeSpec R
-  | TArray{E: Type}(elemSize: Z)(elemSpec: TypeSpec E): TypeSpec (list E)
-  with FieldSpec: Type -> Type :=
-  | FField{R F: Type}(getter: R -> F)(setter: R -> F -> R)(fieldSpec: TypeSpec F)
-    : FieldSpec R.
-
-  Fixpoint TypeSpec_size{R: Type}(sp: TypeSpec R): R -> Z :=
-    match sp with
-    | TValue sz _ => fun r => bytes_per (width:=width) sz
-    | TStruct fields => fun r => List.fold_right (fun f res => FieldSpec_size f r + res) 0 fields
-    | TArray elemSize _ => fun l => List.length l * elemSize
-    end
-  with FieldSpec_size{R: Type}(f: FieldSpec R): R -> Z :=
-    match f with
-    | FField getter setter sp => fun r => TypeSpec_size sp (getter r)
-    end.
-
-  (* sum of the sizes of the first i fields *)
-  Definition offset{R: Type}(r: R)(fields: list (FieldSpec R))(i: Z): Z :=
-    List.fold_right (fun f res => FieldSpec_size f r + res) 0 (List.firstn (Z.to_nat i) fields).
-
-  Section dataAt_recursion_helpers.
-    Context (dataAt: forall {R: Type}, TypeSpec R -> word -> R -> mem -> Prop).
-
-    Definition fieldAt{R: Type}(f: FieldSpec R)(i: nat): list (FieldSpec R) -> word -> R -> mem -> Prop :=
-      match f with
-      | FField getter setter sp => fun fields base r => dataAt sp (base ^+ /[offset r fields i]) (getter r)
-      end.
-
-    Definition fieldsAt{R: Type}(fields: list (FieldSpec R))(start: word)(r: R): list (mem -> Prop) :=
-      List.map_with_index (fun f i => fieldAt f i fields start r) fields.
-
-    Definition arrayAt{E: Type}(elemSize: Z)(elem: TypeSpec E)(start: word): list E -> list (mem -> Prop) :=
-      List.map_with_index (fun e i => dataAt elem (start ^+ /[i * elemSize]) e).
-  End dataAt_recursion_helpers.
-
-  Fixpoint dataAt{R: Type}(sp: TypeSpec R){struct sp}: word -> R -> mem -> Prop :=
-    match sp with
-    | TValue sz encoder => fun addr r => value sz addr (encoder r)
-    | @TStruct R fields => fun base r => seps (fieldsAt (@dataAt) fields base r)
-    | @TArray E elemSize elem => fun base l => seps (arrayAt (@dataAt) elemSize elem base l)
-    end.
 
   Record dummy_packet := {
     dummy_src: tuple byte 4;
@@ -417,7 +413,7 @@ sep (truncated_word sz addr (customThingyToWord v)) R m
     Build_foo (foo_count f) (foo_packet f) x.
 
   Definition foo_spec: TypeSpec foo := TStruct [
-    FField foo_count set_foo_count (TValue access_size.two word.of_Z);
+    FField foo_count set_foo_count (TValue access_size.four word.of_Z);
     FField foo_packet set_foo_packet dummy_spec;
     FField foo_packets set_foo_packets (TArray 256 dummy_spec)
   ].
@@ -492,19 +488,54 @@ sep (truncated_word sz addr (customThingyToWord v)) R m
 
     Eval simpl in (path_value (PField (PField (PNil _) foo_packet) dummy_len) f).
 
-    set (range_size := (TypeSpec_size foo_spec f)).
-    cbn -[Z.add] in range_size.
 
     (* t = load2(base ^+ /[4] ^+ /[8])
        The range `(base+12),+2` corresponds to the field `f.(foo_packet).(dummy_len)`.
        Goal: use lia to find this path. *)
+    set (target_start := (base ^+ /[12])).
+    set (target_size := 2%Z).
 
     (* forward reasoning: *)
     pose proof (lookup_path_Nil foo_spec base f) as P.
+
+    (* check that path is still good *)
+    match type of P with
+    | lookup_path _ _ _ _ ?sp ?addr ?v =>
+      set (range_start := addr); cbn -[Z.add] in range_start;
+      set (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
+    end.
+    assert (target_start,+target_size c= range_start,+range_size) as T. {
+      unfold subrange, addr_in_range. ZnWords.
+    }
+    clear range_start range_size T.
+
     let H := fresh "P" in rename P into H; pose proof (lookup_path_Field 1 H eq_refl) as P.
-    cbn in P.
+    cbn in P. change (Pos.to_nat 1) with 1%nat in *. cbn in P.
+
+    (* check that path is still good *)
+    match type of P with
+    | lookup_path _ _ _ _ ?sp ?addr ?v =>
+      set (range_start := addr); cbn -[Z.add] in range_start;
+      set (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
+    end.
+    assert (target_start,+target_size c= range_start,+range_size) as T. {
+      unfold subrange, addr_in_range. ZnWords.
+    }
+    clear range_start range_size T.
+
     let H := fresh "P" in rename P into H; pose proof (lookup_path_Field 2 H eq_refl) as P.
-    cbn in P.
+    cbn in P. change (Pos.to_nat 2) with 2%nat in *. cbn in P.
+
+    (* check that path is still good *)
+    match type of P with
+    | lookup_path _ _ _ _ ?sp ?addr ?v =>
+      set (range_start := addr); cbn -[Z.add] in range_start;
+      set (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
+    end.
+    assert (target_start,+target_size c= range_start,+range_size) as T. {
+      unfold subrange, addr_in_range. ZnWords.
+    }
+    clear range_start range_size T.
 
 
 (*
@@ -691,27 +722,7 @@ t = load4(p)
       exec e (cmd.seq (cmd.set x a) rest) t m l mc post.
   Admitted.
 
-  Notation "bs @ a" := (array ptsto (word.of_Z 1) a bs)
-    (at level 40, no associativity).
-
   Implicit Type post: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop.
-
-  (* later, we might also support loads in expressions, maybe under the restriction that
-     expressig the loaded value does not require splitting lists *)
-  Lemma load_stmt: forall e sz x a a' t m l mc rest post,
-      dexpr m l a a' ->
-      (exists R,
-          seps R m /\
-          exists i b bs,
-            List.nth_error R i = Some (bs @ b) /\
-            a',+(Z.of_nat (@Memory.bytes_per width sz)) c= b,+(len bs) /\
-            (forall bs_l (v: Z) bs_r mc,
-                bs = bs_l ++ tuple.to_list (LittleEndian.split (@Memory.bytes_per width sz) v) ++ bs_r ->
-                0 <= v < 2 ^ (8 * Z.of_nat (@Memory.bytes_per width sz)) ->
-                \[a' ^- b] = len bs_l ->
-                exec e rest t m (map.put l x (word.of_Z v)) mc post)) ->
-      exec e (cmd.seq (cmd.set x (expr.load sz a)) rest) t m l mc post.
-  Admitted.
 
   Definition wand(P Q: mem -> Prop)(m: mem): Prop :=
     forall m1 m2, map.split m2 m m1 -> P m1 -> Q m2.
@@ -858,6 +869,28 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
     ecancel_assumption.
   Qed.
 
+  (* optimized for easy backtracking *)
+  Lemma load_field': forall sz m addr M R sp (r: R) base (F: Type) (pth: path R F) encoder v,
+      seps M m ->
+      (exists i,
+          List.nth_error M i = Some (dataAt sp base r) /\
+          lookup_path pth sp base r (TValue sz encoder) addr v) ->
+      Memory.load sz m addr = Some (encoder v).
+  Proof.
+    intros. destruct H0 as (i & ? & ?). eauto using load_field.
+  Qed.
+
+  (* optimized for easy backtracking
+  Lemma load_field': forall sz m addr,
+      (exists M,
+          seps M m /\
+          exists i R sp (r: R) base,
+            List.nth_error M i = Some (dataAt sp base r) /\
+            exists (F: Type) (pth: path R F) encoder v,
+              lookup_path pth sp base r (TValue sz encoder) addr v) ->
+      Memory.load sz m addr = Some (encoder v).
+*)
+
   (* later, we might also support loads in expressions, maybe under the restriction that
      expressig the loaded value does not require splitting lists *)
   Lemma load_byte_field_stmt: forall e sz x a a' t m l mc encoder rest post,
@@ -891,12 +924,6 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
     exists l, map.of_list_zip innames argvs = Some l /\ forall mc,
       exec e body t m l mc (fun t' m' l' mc' =>
         exists retvs : list word, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
-
-  Lemma length_encodeARPOperation: forall op, List.length (encodeARPOperation op) = 1%nat.
-  Proof. intros. destruct op; reflexivity. Qed.
-
-  Lemma length_encodeEtherType: forall et, List.length (encodeEtherType et) = 2%nat.
-  Proof. intros. destruct et; reflexivity. Qed.
 
   Fixpoint firstn_as_tuple{A: Type}(default: A)(n: nat)(l: list A): tuple A n :=
     match n as n return tuple A n with
@@ -945,8 +972,6 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
     | context[List.length (?x :: ?xs)] => constr:(List.length_cons x xs)
     | context[List.length (@nil ?A)] => constr:(@List.length_nil A)
     | context[List.skipn ?n (List.skipn ?m ?xs)] => constr:(List.skipn_skipn n m xs)
-    | context[List.length (encodeEtherType ?et)] => constr:(length_encodeEtherType et)
-    | context[List.length (encodeARPOperation ?op)] => constr:(length_encodeARPOperation op)
     | context[List.length (List.skipn ?n ?l)] => constr:(List.skipn_length n l)
     end.
 
@@ -997,8 +1022,6 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
     (* can't use normal rewrite because COQBUG https://github.com/coq/coq/issues/10848 *)
     rewr length_getEq in |-*.
 
-  Definition TODO{T: Type}: T. Admitted.
-
   Lemma interpretEthernetARPPacket: forall bs,
       Z.of_nat (List.length bs) = 64 ->
       (* conditions collected while trying to prove the lemma: *)
@@ -1015,7 +1038,6 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
     (* can't use normal rewrite because COQBUG https://github.com/coq/coq/issues/10848 *)
     all: rewr (fun t => match t with
            | context [ List.length (?xs ++ ?ys) ] => constr:(List.app_length xs ys)
-           | context [ List.length (encodeARPOperation ?op) ] => constr:(length_encodeARPOperation op)
            | context [ List.length (?h :: ?t) ] => constr:(List.length_cons h t)
            | context [ (?xs ++ ?ys) ++ ?zs ] => constr:(eq_sym (List.app_assoc xs ys zs))
            end) in |-*.
@@ -1086,6 +1108,16 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
     }
   Qed.
 
+  Lemma bytesToEthernetARPPacket: forall a bs,
+      64 = len bs ->
+      exists p: EthernetPacket ARPPacket,
+        iff1 (array ptsto /[1] a bs) (dataAt (EthernetPacket_spec ARPPacket_spec) a p).
+  Proof.
+    intros.
+    eexists {| payload := {| oper := _ |} |}. cbn.
+    (* TODO messy *)
+  Admitted.
+
 Inductive snippet :=
 | SSet(x: string)(e: expr)
 | SIf(cond: expr)(merge: bool)
@@ -1149,6 +1181,12 @@ Ltac simpli :=
   repeat match goal with
          | H: _ |- _ => rewrite word.unsigned_of_Z_nowrap in H by ZnWords
          | H: _ |- _ => rewrite word.of_Z_unsigned in H
+         | H: ?x = word.of_Z ?y |- _ => match isZcst y with
+                                        | true => subst x
+                                        end
+         | x := word.of_Z ?y |- _ => match isZcst y with
+                                     | true => subst x
+                                     end
          | H: word.of_Z ?x = word.of_Z ?y |- _ =>
            assert (x = y) by (apply (word.of_Z_inj_small H); ZnWords); clear H
          | H: _ |- _ => ring_simplify_hyp H
@@ -1269,7 +1307,7 @@ Notation "'else' {" := SElse (in custom snippet at level 0).
 
   Lemma Cancelable_to_iff1: forall R LHS RHS P,
       Cancelable R LHS RHS P ->
-      Lift1Prop.iff1 (R \* seps LHS) R /\ P.
+      Lift1Prop.iff1 (sep R (seps LHS)) R /\ P.
   Abort.
 
   Lemma cancel_array_at_indices{T}: forall i j xs ys P elem sz addr1 addr2 (content: list T),
@@ -1292,18 +1330,18 @@ Set Default Goal Selector "1".
 
   Definition arp: (string * {f: list string * list string * cmd &
     forall e t m ethbufAddr ethBufData L R,
-      seps [ethBufData @ ethbufAddr; R] m ->
+      seps [array ptsto (word.of_Z 1) ethbufAddr ethBufData; R] m ->
       word.unsigned L = Z.of_nat (List.length ethBufData) ->
       vc_func e f t m [ethbufAddr; L] (fun t' m' retvs =>
         t' = t /\ (
         (* Success: *)
         (retvs = [word.of_Z 1] /\ exists request response ethBufData',
-           seps [ethBufData' @ ethbufAddr; R] m' /\
+           seps [array ptsto (word.of_Z 1) ethbufAddr ethBufData'; R] m' /\
            isEthernetARPPacket request  ethBufData  /\
            isEthernetARPPacket response ethBufData' /\
            ARPReqResp request response) \/
         (* Failure: *)
-        (retvs = [word.of_Z 0] /\ seps [ethBufData @ ethbufAddr; R] m' /\ (
+        (retvs = [word.of_Z 0] /\ seps [array ptsto (word.of_Z 1) ethbufAddr ethBufData; R] m' /\ (
            L <> word.of_Z 64 \/
            (* malformed request *)
            (~ exists request, isEthernetARPPacket request ethBufData) \/
@@ -1316,15 +1354,18 @@ Set Default Goal Selector "1".
 
     $*/
     doReply = /*number*/0; /*$. $*/
-    if (ln == /*number*/64) /*split*/ { /*$. $*/
+    if (ln == /*number*/64) /*split*/ {
+      /*$. edestruct (bytesToEthernetARPPacket ethbufAddr _ H0) as (pk & A). seprewrite_in A H.
+           change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H. $*/
       tmp = load2(ethbuf + /*number*/12); /*$. (* ethertype in little endian order *)
 
 {
   eexists. split. {
-    eapply load_field.
+    eapply load_field'.
     - eassumption.
-    - apply TODO.
-    - apply TODO.
+    - exists 0%nat. split; [reflexivity|].
+
+
 }
 
 Abort. (*
