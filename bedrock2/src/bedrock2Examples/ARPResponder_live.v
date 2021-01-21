@@ -3,7 +3,8 @@ Require Import coqutil.Z.Lia.
 Require coqutil.Word.BigEndian.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
 Require Import coqutil.Datatypes.PropSet.
-Require Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.rewr.
+Require Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.rewr coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.rewr.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import bedrock2.Syntax bedrock2.Semantics.
@@ -920,16 +921,17 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
     intros. destruct H0 as (i & ? & ?). eauto using load_field.
   Qed.
 
-  (* optimized for easy backtracking
-  Lemma load_field': forall sz m addr,
+  Lemma load_field'': forall sz m addr R sp (r: R) base (F: Type) encoder (v: F) (post: word -> Prop),
       (exists M,
-          seps M m /\
-          exists i R sp (r: R) base,
-            List.nth_error M i = Some (dataAt sp base r) /\
-            exists (F: Type) (pth: path R F) encoder v,
-              lookup_path pth sp base r (TValue sz encoder) addr v) ->
-      Memory.load sz m addr = Some (encoder v).
-*)
+        seps M m /\
+        exists i,
+          List.nth_error M i = Some (dataAt sp base r) /\
+          lookup_path sp base r (TValue sz encoder) addr v /\
+          post (encoder v)) ->
+      WeakestPrecondition.load sz m addr post.
+  Proof.
+    intros. unfold WeakestPrecondition.load. firstorder eauto using load_field.
+  Qed.
 
   Definition vc_func e '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
                      (post : trace -> mem -> list word -> Prop) :=
@@ -1334,7 +1336,79 @@ Notation "'else' {" := SElse (in custom snippet at level 0).
       Lift1Prop.iff1 (seps xs) (seps ys) /\ P.
   Abort.
 
+Import WeakestPrecondition.
+Ltac straightline ::=
+  match goal with
+  | _ => straightline_cleanup
+  | |- @list_map _ _ (@get _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @list_map _ _ (@expr _ _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @list_map _ _ _ nil _ => cbv beta match fix delta [list_map list_map_body]
+  | |- @expr _ _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
+  | |- @dexpr _ _ _ _ _ => cbv beta delta [dexpr]
+  | |- @dexprs _ _ _ _ _ => cbv beta delta [dexprs]
+  | |- @literal _ _ _ => cbv beta delta [literal]
+  | |- @get _ _ _ _ => cbv beta delta [get]
+  | |- @load _ _ _ _ _ => eapply load_field'';
+       once (match goal with
+             (* backtrack over choice of Hm in case there are several *)
+             | Hm: seps ?lm ?m |- exists l, seps l ?m /\ _ =>
+               exists lm; split; [exact Hm|];
+               let n := eval cbv [List.length] in (List.length lm) in
+                   (* backtrack over choice of i *)
+                   let i := pick_nat n in
+                   eexists i; split; [cbv [List.nth_error]; reflexivity|];
+                   split; [|]
+             end)
+  | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
+    eapply SortedList.eq_value; exact eq_refl
+  | |- map.get _ _ = Some ?e' =>
+    let e := rdelta e' in
+    is_evar e;
+    let M := lazymatch goal with |- @map.get _ _ ?M _ _ = _ => M end in
+    let __ := match M with @Semantics.locals _ => idtac end in
+    let k := lazymatch goal with |- map.get _ ?k = _ => k end in
+    once (let v := multimatch goal with x := context[@map.put _ _ M _ k ?v] |- _ => v end in
+          (* cbv is slower than this, cbv with whitelist would have an enormous whitelist, cbv delta for map is slower than this, generalize unrelated then cbv is slower than this, generalize then vm_compute is slower than this, lazy is as slow as this: *)
+          unify e v; exact (eq_refl (Some v)))
+  | |- @coqutil.Map.Interface.map.get _ _ (@Semantics.locals _) _ _ = Some ?v =>
+    let v' := rdelta v in is_evar v'; (change v with v'); exact eq_refl
+  | |- ?x = ?y =>
+    let y := rdelta y in is_evar y; change (x=y); exact eq_refl
+  | |- ?x = ?y =>
+    let x := rdelta x in is_evar x; change (x=y); exact eq_refl
+  | |- ?x = ?y =>
+    let x := rdelta x in let y := rdelta y in constr_eq x y; exact eq_refl
+  | |- exists l', Interface.map.of_list_zip ?ks ?vs = Some l' /\ _ =>
+    letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
+  | |- exists l', Interface.map.putmany_of_list_zip ?ks ?vs ?l = Some l' /\ _ =>
+    letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
+  | |- exists x, ?P /\ ?Q =>
+    let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
+                        split; [solve [repeat straightline]|]
+(*
+  | |- exists x, Markers.split (?P /\ ?Q) =>
+    let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
+                        split; [solve [repeat straightline]|]
+  | |- Markers.unique (exists x, Markers.split (?P /\ ?Q)) =>
+    let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
+                        split; [solve [repeat straightline]|]
+  | |- Markers.split ?G => change G; split
+*)
+  | |- True => exact I
+  | |- False \/ _ => right
+  | |- _ \/ False => left
+(*
+  | |- BinInt.Z.modulo ?z (Memory.bytes_per_word Semantics.width) = BinInt.Z0 /\ _ =>
+      lazymatch Coq.setoid_ring.InitialRing.isZcst z with
+      | true => split; [exact eq_refl|]
+      end
+  | |- _ => straightline_stackalloc
+  | |- _ => straightline_stackdealloc
+*)
+  end.
+
 Set Default Goal Selector "1".
+Import Syntax.
 
   Definition arp: (string * {f: list string * list string * cmd &
     forall e t m ethbufAddr ethBufData L R,
@@ -1367,29 +1441,20 @@ Set Default Goal Selector "1".
            change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H. $*/
       tmp = load2(ethbuf + /*number*/12); /*$. (* ethertype in little endian order *)
 
-
-  eexists. split. {
-    eapply load_field'.
-    - eassumption.
-    - exists 0%nat. split; [reflexivity|].
+  {
       eapply lookup_path_Field with (i := 2%nat); [reflexivity|]. cbn.
       eapply lookup_path_Nil. ZnWords.
   }
-  intros.
 
 $*/
       if (tmp == ETHERTYPE_ARP_LE) /*split*/ { /*$. $*/
         tmp = load2(ethbuf + /*number*/14); /*$.
 
-  eexists. split. {
-    eapply load_field'.
-    - eassumption.
-    - exists 0%nat. split; [reflexivity|].
+  {
       eapply lookup_path_Field with (i := 3%nat); [reflexivity|]. cbn.
       eapply lookup_path_Field with (i := 0%nat); [reflexivity|]. cbn.
       eapply lookup_path_Nil. ZnWords.
   }
-  intros.
 
 $*/
         if (tmp == HTYPE_LE) /*split*/ { /*$.

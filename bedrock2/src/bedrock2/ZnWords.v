@@ -1,5 +1,6 @@
 Require Import Coq.ZArith.ZArith.
-Require Import coqutil.Tactics.rdelta.
+Require Import Coq.ZArith.Zpow_facts.
+Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.HexNotation.
 Require Import coqutil.Datatypes.List.
@@ -30,6 +31,7 @@ Ltac cleanup_for_ZModArith :=
 (* TODO improve *)
 Ltac simpl_list_length_exprs :=
   rewrite ?List.length_skipn, ?List.firstn_length, ?List.app_length, ?List.length_cons, ?List.length_nil in *.
+
 
 (* word laws for shifts where the shift amount is a Z instead of a word *)
 Module word.
@@ -68,43 +70,51 @@ Module word.
   End WithWord.
 End word.
 
+Ltac wordOps_to_ZModArith_getEq t :=
+  match t with
+  | context[@word.unsigned ?wi ?wo (word.of_Z ?z)] => constr:(@word.unsigned_of_Z wi wo _ z)
+  | context[@word.signed ?wi ?wo (word.of_Z ?z)] => constr:(@word.signed_of_Z wi wo _ z)
+  | context[@word.of_Z ?wi ?wo (word.unsigned ?z)] => constr:(@word.of_Z_unsigned wi wo _ z)
+  | context[@word.unsigned ?wi ?wo (word.add ?x ?y)] => constr:(@word.unsigned_add wi wo _ x y)
+  | context[@word.unsigned ?wi ?wo (word.sub ?x ?y)] => constr:(@word.unsigned_sub wi wo _ x y)
+  | context[@word.unsigned ?wi ?wo (word.opp ?x)] => constr:(@word.unsigned_opp wi wo _ x)
+  | context[@word.unsigned ?wi ?wo (word.or ?x ?y)] => constr:(@word.unsigned_or wi wo _ x y)
+  | context[@word.unsigned ?wi ?wo (word.and ?x ?y)] => constr:(@word.unsigned_and wi wo _ x y)
+  | context[@word.unsigned ?wi ?wo (word.xor ?x ?y)] => constr:(@word.unsigned_xor wi wo _ x y)
+  | context[@word.unsigned ?wi ?wo (word.not ?x)] => constr:(@word.unsigned_not wi wo _ x)
+  | context[@word.unsigned ?wi ?wo (word.ndn ?x ?y)] => constr:(@word.unsigned_ndn wi wo _ x y)
+  | context[@word.unsigned ?wi ?wo (word.mul ?x ?y)] => constr:(@word.unsigned_mul wi wo _ x y)
+  | context[@word.signed ?wi ?wo (word.mulhss ?x ?y)] => constr:(@word.signed_mulhss wi wo _ x y)
+  | context[@word.signed ?wi ?wo (word.mulhsu ?x ?y)] => constr:(@word.signed_mulhsu wi wo _ x y)
+  | context[@word.unsigned ?wi ?wo (word.mulhuu ?x ?y)] => constr:(@word.unsigned_mulhuu wi wo _ x y)
+  | context[@word.unsigned ?wi ?wo (word.divu ?x ?y)] => constr:(@word.unsigned_divu wi wo _ x y)
+  | context[@word.signed ?wi ?wo (word.divs ?x ?y)] => constr:(@word.signed_divs wi wo _ x y)
+  | context[@word.unsigned ?wi ?wo (word.modu ?x ?y)] => constr:(@word.unsigned_modu wi wo _ x y)
+  | context[@word.signed ?wi ?wo (word.mods ?x ?y)] => constr:(@word.signed_mods wi wo _ x y)
+  | context[@word.unsigned ?wi ?wo (word.slu ?x (word.of_Z ?a))] => constr:(@word.unsigned_slu_shamtZ wi wo _ x a)
+  | context[@word.unsigned ?wi ?wo (word.sru ?x (word.of_Z ?a))] => constr:(@word.unsigned_sru_shamtZ wi wo _ x a)
+  | context[@word.signed ?wi ?wo (word.srs ?x (word.of_Z ?a))] => constr:(@word.signed_srs_shamtZ wi wo _ x a)
+  | context[@word.eqb ?wi ?wo ?x ?y] => constr:(@word.unsigned_eqb wi wo _ x y)
+  | context[@word.ltu ?wi ?wo ?x ?y] => constr:(@word.unsigned_ltu wi wo _ x y)
+  | context[@word.lts ?wi ?wo ?x ?y] => constr:(@word.signed_lts wi wo _ x y)
+  | context[@word.unsigned ?wi ?wo (if ?b then ?thn else ?els)] => constr:(@word.unsigned_if wi wo _ b thn els)
+  | context[Z.shiftr ?a ?n] => constr:(Z.shiftr_div_pow2 a n)
+  | context[Z.shiftl ?a ?n] => constr:(Z.shiftl_mul_pow2 a n)
+  end.
+
 Ltac wordOps_to_ZModArith_step :=
-  (* Note: duplication because `rewrite in *` doesn't work as expected,
+  (* Note: `rewrite in *` doesn't work as expected,
      COQBUG https://github.com/coq/coq/issues/3051,
-     and also because autorewrite doesn't infer the typeclasses either *)
-  match goal with
-  | H: _ |- _ => progress
-  rewrite ?word.unsigned_of_Z, ?word.signed_of_Z, ?word.of_Z_unsigned,
-          ?word.unsigned_add, ?word.unsigned_sub, ?word.unsigned_opp,
-          ?word.unsigned_or, ?word.unsigned_and, ?word.unsigned_xor,
-          ?word.unsigned_not, ?word.unsigned_ndn,
-          ?word.unsigned_mul, ?word.signed_mulhss, ?word.signed_mulhsu, ?word.unsigned_mulhuu,
-          ?word.unsigned_divu, ?word.signed_divs, ?word.unsigned_modu, ?word.signed_mods,
-          ?word.unsigned_slu_shamtZ, ?word.unsigned_sru_shamtZ, ?word.signed_srs_shamtZ,
-          ?word.unsigned_eqb, ?word.unsigned_ltu, ?word.signed_lts,
-          ?word.unsigned_if,
-          ?Z.shiftr_div_pow2, ?Z.shiftl_mul_pow2
-  in H by solve [ reflexivity
-                | trivial
-                | apply computable_bounds; reflexivity
-                | apply computable_le; reflexivity]
-  | |- _ => progress
-  rewrite ?word.unsigned_of_Z, ?word.signed_of_Z, ?word.of_Z_unsigned,
-          ?word.unsigned_add, ?word.unsigned_sub, ?word.unsigned_opp,
-          ?word.unsigned_or, ?word.unsigned_and, ?word.unsigned_xor,
-          ?word.unsigned_not, ?word.unsigned_ndn,
-          ?word.unsigned_mul, ?word.signed_mulhss, ?word.signed_mulhsu, ?word.unsigned_mulhuu,
-          ?word.unsigned_divu, ?word.signed_divs, ?word.unsigned_modu, ?word.signed_mods,
-          ?word.unsigned_slu_shamtZ, ?word.unsigned_sru_shamtZ, ?word.signed_srs_shamtZ,
-          ?word.unsigned_eqb, ?word.unsigned_ltu, ?word.signed_lts,
-          ?word.unsigned_if,
-          ?Z.shiftr_div_pow2, ?Z.shiftl_mul_pow2
-  in |-* by solve [ reflexivity
-                | trivial
-                | apply computable_bounds; reflexivity
-                | apply computable_le; reflexivity]
-  end;
-  cbv [word.wrap] in *.
+     and autorewrite doesn't infer the typeclasses either,
+     COQBUG https://github.com/coq/coq/issues/10848, and
+     we don't want rewrite to replace evars with the LHS
+     of the rewrite lemmas, COQBUG https://github.com/coq/coq/issues/10848 *)
+  (rewr wordOps_to_ZModArith_getEq in * by
+      solve [ reflexivity
+            | trivial
+            | apply computable_bounds; reflexivity
+            | apply computable_le; reflexivity]);
+  cbv [word.wrap word.swrap] in *.
 
 Ltac clear_unused_nonProps :=
         repeat match goal with
