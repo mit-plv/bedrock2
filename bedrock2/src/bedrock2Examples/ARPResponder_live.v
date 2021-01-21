@@ -131,6 +131,11 @@ Section WithParameters.
   Notation len := List.length.
   Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per width sz)) (at level 10).
 
+  Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
+        (preprocess [autorewrite with rew_word_morphism],
+         morphism (Properties.word.ring_morph (word := Semantics.word)),
+         constants [Properties.word_cst]).
+
   (* TODO move (to Scalars.v?) *)
   Lemma load_bounded_Z_of_sep: forall sz addr (value: Z) R m,
       0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
@@ -216,8 +221,8 @@ Section WithParameters.
     end.
 
   (* sum of the sizes of the first i fields *)
-  Definition offset{R: Type}(r: R)(fields: list (FieldSpec R))(i: Z): Z :=
-    List.fold_right (fun f res => FieldSpec_size f r + res) 0 (List.firstn (Z.to_nat i) fields).
+  Definition offset{R: Type}(r: R)(fields: list (FieldSpec R))(i: nat): Z :=
+    List.fold_right (fun f res => FieldSpec_size f r + res) 0 (List.firstn i fields).
 
   Section dataAt_recursion_helpers.
     Context (dataAt: forall {R: Type}, TypeSpec R -> word -> R -> mem -> Prop).
@@ -293,6 +298,10 @@ Section WithParameters.
   Definition ARPOperationReply := Byte.x02.
 
   Record ARPPacket := mkARPPacket {
+    htype: tuple byte 2; (* hardware type *)
+    ptype: tuple byte 2; (* protocol type *)
+    hlen: byte;          (* hardware address length (6 for MAC addresses) *)
+    plen: byte;          (* protocol address length (4 for IPv4 addresses) *)
     oper: byte;
     sha: MAC;  (* sender hardware address *)
     spa: IPv4; (* sender protocol address *)
@@ -301,6 +310,10 @@ Section WithParameters.
   }.
 
   Definition ARPPacket_spec: TypeSpec ARPPacket := TStruct [
+    FField htype TODO (TValue access_size.two (@BEBytesToWord 2));
+    FField ptype TODO (TValue access_size.two (@BEBytesToWord 2));
+    FField hlen TODO byte_spec;
+    FField plen TODO byte_spec;
     FField oper TODO byte_spec;
     FField sha TODO (TTuple 6 1 byte_spec);
     FField spa TODO (TTuple 4 1 byte_spec);
@@ -309,20 +322,20 @@ Section WithParameters.
   ].
 
   Definition encodeARPPacket(p: ARPPacket): list byte :=
-    [
-      Byte.x00; Byte.x01; (* hardware type: Ethernet *)
-      Byte.x80; Byte.x00; (* protocol type *)
-      Byte.x06;           (* hardware address length (6 for MAC addresses) *)
-      Byte.x04            (* protocol address length (4 for IPv4 addresses) *)
-    ] ++ [p.(oper)]
-    ++ encodeMAC p.(sha) ++ encodeIPv4 p.(spa) ++ encodeMAC p.(tha) ++ encodeIPv4 p.(tpa).
+    tuple.to_list p.(htype) ++
+    tuple.to_list p.(ptype) ++
+    [p.(hlen)] ++ [p.(plen)] ++ [p.(oper)] ++
+    encodeMAC p.(sha) ++ encodeIPv4 p.(spa) ++ encodeMAC p.(tha) ++ encodeIPv4 p.(tpa).
+
+  Definition HTYPE := tuple.of_list [Byte.x00; Byte.x01].
+  Definition PTYPE := tuple.of_list [Byte.x80; Byte.x00].
+  Definition HLEN := Byte.x06.
+  Definition PLEN := Byte.x04.
+  Definition OPER_REQUEST := Byte.x01.
+  Definition OPER_REPLY := Byte.x02.
 
   Definition HTYPE_LE := Ox"0100".
   Definition PTYPE_LE := Ox"0080".
-  Definition HLEN := Ox"06".
-  Definition PLEN := Ox"04".
-  Definition OPER_REQUEST := Ox"01".
-  Definition OPER_REPLY := Ox"02".
 
   Definition isEthernetARPPacket: EthernetPacket ARPPacket -> list byte -> Prop :=
     isEthernetPacket (fun arpP => eq (encodeARPPacket arpP)).
@@ -346,6 +359,10 @@ Section WithParameters.
        srcMAC := cfg.(myMAC);
        etherType := EtherTypeARP;
        payload := {|
+         htype := HTYPE;
+         ptype := PTYPE;
+         hlen := HLEN;
+         plen := PLEN;
          oper := ARPOperationReply;
          sha := cfg.(myMAC); (* <-- the actual reply *)
          spa := cfg.(myIPv4);
@@ -452,6 +469,32 @@ Section WithParameters.
       path_TypeSpec sp (PIndex prefix i) sp'.
   *)
 
+  (* append-at-front direction (for constructing a path using backwards reasoning) *)
+  Inductive lookup_path:
+    (* input: start type, end type, *)
+    forall {R F: Type},
+    (* type spec, base address, and whole value found at empty path *)
+    TypeSpec R -> word -> R ->
+    (* output: type spec, address and value found at given path *)
+    TypeSpec F -> word -> F -> Prop :=
+  | lookup_path_Nil: forall R (sp: TypeSpec R) addr addr' r,
+      addr = addr' ->
+      lookup_path sp addr r
+                  sp addr' r
+  | lookup_path_Field: forall R F R' (getter: R -> F) setter fields i sp sp' addr addr' (r: R) (r': R'),
+      List.nth_error fields i = Some (FField getter setter sp) ->
+      lookup_path sp (addr ^+ /[offset r fields i]) (getter r)
+                  sp' addr' r' ->
+      lookup_path (TStruct fields) addr r
+                  sp' addr' r'
+  | lookup_path_Index: forall R E (sp: TypeSpec R) r' len i (sp': TypeSpec E) l e addr addr',
+      List.nth_error l i = Some e ->
+      lookup_path sp (addr ^+ /[i * len]) e
+                  sp' addr' r' ->
+      lookup_path (TArray len sp) addr l
+                  sp' addr' r'.
+
+  (* append-at-end alternative (for constructing a path using forward reasoning)
   Inductive lookup_path:
     (* input: start type, end type, *)
     forall {R F: Type},
@@ -473,18 +516,20 @@ Section WithParameters.
                   (TArray len sp') addr' l ->
       List.nth_error l i = Some e ->
       lookup_path sp addr r
-                  sp' (addr' ^+ /[i * len]) e.
+                  sp' (addr' ^+ /[i * len]) e. *)
 
   Goal forall base f R m,
       seps [dataAt foo_spec base f; R] m ->
-      False.
+      exists V (v: V) encoder,
+        lookup_path foo_spec base f
+                    (TValue access_size.two encoder) (base ^+ /[12]) v.
   Proof.
     intros.
 
     Check f.(foo_packet).(dummy_len).
+    do 3 eexists.
 
     (*Eval simpl in (path_value (PField (PField (PNil _) foo_packet) dummy_len) f).*)
-
 
     (* t = load2(base ^+ /[4] ^+ /[8])
        The range `(base+12),+2` corresponds to the field `f.(foo_packet).(dummy_len)`.
@@ -492,55 +537,50 @@ Section WithParameters.
     set (target_start := (base ^+ /[12])).
     set (target_size := 2%Z).
 
-    (* forward reasoning: *)
-    pose proof (lookup_path_Nil foo_spec base f) as P.
+    (* backward reasoning: *)
 
     (* check that path is still good *)
-    match type of P with
-    | lookup_path _ _ _ ?sp ?addr ?v =>
-      set (range_start := addr); cbn -[Z.add] in range_start;
-      set (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
+    match goal with
+    | |- lookup_path ?sp ?addr ?v _ _ _ =>
+      pose (range_start := addr); cbn -[Z.add] in range_start;
+      pose (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
     end.
     assert (target_start,+target_size c= range_start,+range_size) as T. {
       unfold subrange, addr_in_range. ZnWords.
     }
     clear range_start range_size T.
 
-    let H := fresh "P" in rename P into H; pose proof (lookup_path_Field 1 H eq_refl) as P.
-    cbn in P. change (Pos.to_nat 1) with 1%nat in *. cbn in P.
+    eapply lookup_path_Field with (i := 1%nat); [reflexivity|]. (* <-- i picked by backtracking *)
+    cbn.
 
     (* check that path is still good *)
-    match type of P with
-    | lookup_path _ _ _ ?sp ?addr ?v =>
-      set (range_start := addr); cbn -[Z.add] in range_start;
-      set (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
+    match goal with
+    | |- lookup_path ?sp ?addr ?v _ _ _ =>
+      pose (range_start := addr); cbn -[Z.add] in range_start;
+      pose (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
     end.
     assert (target_start,+target_size c= range_start,+range_size) as T. {
       unfold subrange, addr_in_range. ZnWords.
     }
     clear range_start range_size T.
 
-    let H := fresh "P" in rename P into H; pose proof (lookup_path_Field 2 H eq_refl) as P.
-    cbn in P. change (Pos.to_nat 2) with 2%nat in *. cbn in P.
+    eapply lookup_path_Field with (i := 2%nat); [reflexivity|]. (* <-- i picked by backtracking *)
+    cbn.
 
     (* check that path is still good *)
-    match type of P with
-    | lookup_path _ _ _ ?sp ?addr ?v =>
-      set (range_start := addr); cbn -[Z.add] in range_start;
-      set (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
+    match goal with
+    | |- lookup_path ?sp ?addr ?v _ _ _ =>
+      pose (range_start := addr); cbn -[Z.add] in range_start;
+      pose (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
     end.
     assert (target_start,+target_size c= range_start,+range_size) as T. {
       unfold subrange, addr_in_range. ZnWords.
     }
     clear range_start range_size T.
 
-
-(*
-       store2(base ^+ /[4] ^+ /[8], t)
-
-       f(base ^+ /[4] ^+ /[8], otherargs)
-*)
-  Abort.
+    eapply lookup_path_Nil.
+    ZnWords.
+  Qed.
 
   (* mappings between expr for offset and semantic offset (word/Z)?
 
@@ -833,20 +873,23 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
       exists Frame, iff1 (dataAt sp base r) (sep (dataAt sp' addr v) Frame).
   Proof.
     induction 1.
-    - exists (emp True). cancel.
+    - subst. exists (emp True). cancel.
     - destruct IHlookup_path as [Frame IH]. simpl in IH.
       eexists.
-      etransitivity; [exact IH|clear IH].
+      cbn.
       unfold fieldsAt at 1.
-      eapply List.map_with_index_nth_error in H0.
-      rewrite seps_nth_error_to_head. 2: exact H0.
-      unfold fieldAt at 1. ecancel.
+      eapply List.map_with_index_nth_error in H.
+      rewrite seps_nth_error_to_head. 2: exact H.
+      unfold fieldAt at 1.
+      rewrite IH.
+      ecancel.
     - destruct IHlookup_path as [Frame IH]. simpl in IH.
       eexists.
-      etransitivity; [exact IH|clear IH].
+      cbn.
       unfold arrayAt at 1.
-      eapply List.map_with_index_nth_error in H0.
-      rewrite seps_nth_error_to_head. 2: exact H0.
+      eapply List.map_with_index_nth_error in H.
+      rewrite seps_nth_error_to_head. 2: exact H.
+      rewrite IH.
       ecancel.
   Qed.
 
@@ -1002,7 +1045,7 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
     intros.
     unfold isEthernetARPPacket, isEthernetPacket, encodeARPPacket, encodeMAC, encodeIPv4, encodeCRC.
     eexists ({| payload := {| oper := _ |} |}).
-    cbn [dstMAC srcMAC etherType payload oper sha spa tha tpa].
+    cbn [dstMAC srcMAC etherType payload htype ptype hlen plen oper sha spa tha tpa].
     repeat eexists.
     (* can't use normal rewrite because COQBUG https://github.com/coq/coq/issues/10848 *)
     all: rewr (fun t => match t with
@@ -1021,6 +1064,7 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
         instantiate (1 := EtherTypeARP).
         assumption.
       }
+  Abort. (*
       list_eq_cancel_step. {
         assumption.
       }
@@ -1075,7 +1119,7 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
       rewr length_getEq in |-*.
       blia.
     }
-  Qed.
+  Qed. *)
 
   Lemma bytesToEthernetARPPacket: forall a bs,
       64 = len bs ->
@@ -1290,11 +1334,6 @@ Notation "'else' {" := SElse (in custom snippet at level 0).
       Lift1Prop.iff1 (seps xs) (seps ys) /\ P.
   Abort.
 
-  Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
-        (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := Semantics.word)),
-         constants [Properties.word_cst]).
-
 Set Default Goal Selector "1".
 
   Definition arp: (string * {f: list string * list string * cmd &
@@ -1328,20 +1367,32 @@ Set Default Goal Selector "1".
            change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H. $*/
       tmp = load2(ethbuf + /*number*/12); /*$. (* ethertype in little endian order *)
 
-{
+
   eexists. split. {
     eapply load_field'.
     - eassumption.
     - exists 0%nat. split; [reflexivity|].
+      eapply lookup_path_Field with (i := 2%nat); [reflexivity|]. cbn.
+      eapply lookup_path_Nil. ZnWords.
+  }
+  intros.
 
-
-Abort. (*
 $*/
       if (tmp == ETHERTYPE_ARP_LE) /*split*/ { /*$. $*/
-        tmp = load2(ethbuf + /*number*/14); /*$. $*/
+        tmp = load2(ethbuf + /*number*/14); /*$.
+
+  eexists. split. {
+    eapply load_field'.
+    - eassumption.
+    - exists 0%nat. split; [reflexivity|].
+      eapply lookup_path_Field with (i := 3%nat); [reflexivity|]. cbn.
+      eapply lookup_path_Field with (i := 0%nat); [reflexivity|]. cbn.
+      eapply lookup_path_Nil. ZnWords.
+  }
+  intros.
+
+$*/
         if (tmp == HTYPE_LE) /*split*/ { /*$.
-
-
 (*
   Definition HTYPE_LE := Ox"0100".
   Definition PTYPE_LE := Ox"0080".
@@ -1362,7 +1413,7 @@ $*/
       split. 1: reflexivity.
       right.
       split. 1: reflexivity.
-      auto.
+      exact TODO.
 
     Unshelve.
     all: try exact (word.of_Z 0).
@@ -1377,6 +1428,5 @@ $*/
                                 end
       in pose r.
   Abort.
-*)
 
 End WithParameters.

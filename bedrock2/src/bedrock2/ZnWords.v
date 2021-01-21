@@ -171,6 +171,7 @@ Ltac canonicalize_word_width_and_instance :=
      end.
 
 Ltac ZnWords_pre :=
+  try eapply word.unsigned_inj;
   lazymatch goal with
   | |- ?G => is_lia_prop G
   end;
