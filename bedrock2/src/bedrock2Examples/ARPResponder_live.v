@@ -519,6 +519,19 @@ Section WithParameters.
       lookup_path sp addr r
                   sp' (addr' ^+ /[i * len]) e. *)
 
+  Ltac check_lookup_range_feasible :=
+    match goal with
+    | |- lookup_path ?sp ?addr ?v ?sp' ?addr' ?v' =>
+      let range_start := eval cbn -[Z.add] in addr in
+      let range_size := eval cbn -[Z.add] in (TypeSpec_size sp v) in
+      let target_start := addr' in
+      let target_size := eval cbn -[Z.add] in (TypeSpec_size sp' v') in
+      assert_succeeds (
+        let T := fresh in
+        assert (target_start,+target_size c= range_start,+range_size) as T
+            by (unfold subrange, addr_in_range; ZnWords))
+    end.
+
   Goal forall base f R m,
       seps [dataAt foo_spec base f; R] m ->
       exists V (v: V) encoder,
@@ -555,29 +568,13 @@ Section WithParameters.
     cbn.
 
     (* check that path is still good *)
-    match goal with
-    | |- lookup_path ?sp ?addr ?v _ _ _ =>
-      pose (range_start := addr); cbn -[Z.add] in range_start;
-      pose (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
-    end.
-    assert (target_start,+target_size c= range_start,+range_size) as T. {
-      unfold subrange, addr_in_range. ZnWords.
-    }
-    clear range_start range_size T.
+    check_lookup_range_feasible.
 
     eapply lookup_path_Field with (i := 2%nat); [reflexivity|]. (* <-- i picked by backtracking *)
     cbn.
 
     (* check that path is still good *)
-    match goal with
-    | |- lookup_path ?sp ?addr ?v _ _ _ =>
-      pose (range_start := addr); cbn -[Z.add] in range_start;
-      pose (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
-    end.
-    assert (target_start,+target_size c= range_start,+range_size) as T. {
-      unfold subrange, addr_in_range. ZnWords.
-    }
-    clear range_start range_size T.
+    check_lookup_range_feasible.
 
     eapply lookup_path_Nil.
     ZnWords.
@@ -1336,6 +1333,27 @@ Notation "'else' {" := SElse (in custom snippet at level 0).
       Lift1Prop.iff1 (seps xs) (seps ys) /\ P.
   Abort.
 
+  Definition nFields{A: Type}(sp: TypeSpec A): option nat :=
+    match sp with
+    | TStruct fields => Some (List.length fields)
+    | _ => None
+    end.
+
+  Ltac lookup_field_step := once (
+    let n := lazymatch goal with
+    | |- lookup_path ?sp ?base ?r _ _ _ =>
+      let l := eval cbv in (nFields sp) in
+      lazymatch l with
+      | Some ?n => n
+      end
+    end in
+    let j := pick_nat n in
+    eapply lookup_path_Field with (i := j); [reflexivity|]; cbn;
+    check_lookup_range_feasible).
+
+  Ltac lookup_done :=
+    eapply lookup_path_Nil; ZnWords.
+
 Import WeakestPrecondition.
 Ltac straightline ::=
   match goal with
@@ -1357,7 +1375,7 @@ Ltac straightline ::=
                    (* backtrack over choice of i *)
                    let i := pick_nat n in
                    eexists i; split; [cbv [List.nth_error]; reflexivity|];
-                   split; [|]
+                   split; [ repeat (lookup_done || lookup_field_step) |]
              end)
   | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
     eapply SortedList.eq_value; exact eq_refl
@@ -1439,24 +1457,9 @@ Import Syntax.
     if (ln == /*number*/64) /*split*/ {
       /*$. edestruct (bytesToEthernetARPPacket ethbufAddr _ H0) as (pk & A). seprewrite_in A H.
            change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H. $*/
-      tmp = load2(ethbuf + /*number*/12); /*$. (* ethertype in little endian order *)
-
-  {
-      eapply lookup_path_Field with (i := 2%nat); [reflexivity|]. cbn.
-      eapply lookup_path_Nil. ZnWords.
-  }
-
-$*/
+      tmp = load2(ethbuf + /*number*/12); /*$. (* ethertype in little endian order *) $*/
       if (tmp == ETHERTYPE_ARP_LE) /*split*/ { /*$. $*/
-        tmp = load2(ethbuf + /*number*/14); /*$.
-
-  {
-      eapply lookup_path_Field with (i := 3%nat); [reflexivity|]. cbn.
-      eapply lookup_path_Field with (i := 0%nat); [reflexivity|]. cbn.
-      eapply lookup_path_Nil. ZnWords.
-  }
-
-$*/
+        tmp = load2(ethbuf + /*number*/14); /*$. $*/
         if (tmp == HTYPE_LE) /*split*/ { /*$.
 (*
   Definition HTYPE_LE := Ox"0100".
