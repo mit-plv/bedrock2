@@ -129,6 +129,7 @@ Section WithParameters.
   Local Coercion expr.literal : Z >-> expr.
   Local Coercion expr.var : String.string >-> expr.
   Coercion Z.of_nat : nat >-> Z.
+  Coercion byte.unsigned : byte >-> Z.
   Notation len := List.length.
   Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per width sz)) (at level 10).
 
@@ -1270,9 +1271,49 @@ Ltac after_snippet := repeat straightline; simpli.
 Ltac after_snippet ::= idtac.
 *)
 
+
+  Hint Resolve EthernetPacket_spec: TypeSpec_instances.
+  Hint Resolve ARPPacket_spec: TypeSpec_instances.
+
+  Goal TypeSpec (EthernetPacket ARPPacket). eauto 2 with TypeSpec_instances. all: fail. Abort.
+
+  Ltac index_of_getter getter fields :=
+    lazymatch fields with
+    | FField getter _ _ :: _ => constr:(O)
+    | FField _ _ _ :: ?tail => let r := index_of_getter getter tail in constr:(S r)
+    end.
+
+  Ltac offset_of_getter getter :=
+    lazymatch type of getter with
+    | ?R -> ?F =>
+      let sp := constr:(ltac:(eauto 2 with TypeSpec_instances) : TypeSpec R) in
+      lazymatch eval hnf in sp with
+      | TStruct ?fields =>
+        let i := index_of_getter getter fields in
+        lazymatch eval cbn in (fun r: R => offset r fields i) with
+        (* value-dependent offsets are not supported here *)
+        | fun _ => ?x => x
+        end
+      end
+    end.
+
+  Goal False.
+    let ofs := offset_of_getter (@dstMAC ARPPacket) in idtac ofs.
+    let ofs := offset_of_getter (@srcMAC ARPPacket) in idtac ofs.
+    let ofs := offset_of_getter (@etherType ARPPacket) in idtac ofs.
+    let ofs := offset_of_getter (@payload ARPPacket) in idtac ofs.
+    let ofs := offset_of_getter plen in idtac ofs.
+    let ofs := offset_of_getter spa in idtac ofs.
+  Abort.
+
 Tactic Notation "$" constr(s) "$" := add_snippet s; after_snippet.
 
 Notation "/*number*/ e" := e (in custom bedrock_expr at level 0, e constr at level 0).
+
+Notation "base @ getter" :=
+  (expr.op bopname.add base (expr.literal ltac:(let ofs := offset_of_getter getter in exact ofs)))
+  (in custom bedrock_expr at level 6, left associativity, only parsing,
+   base custom bedrock_expr, getter constr).
 
 Declare Custom Entry snippet.
 
@@ -1457,10 +1498,12 @@ Import Syntax.
     if (ln == /*number*/64) /*split*/ {
       /*$. edestruct (bytesToEthernetARPPacket ethbufAddr _ H0) as (pk & A). seprewrite_in A H.
            change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H. $*/
-      tmp = load2(ethbuf + /*number*/12); /*$. (* ethertype in little endian order *) $*/
-      if (tmp == ETHERTYPE_ARP_LE) /*split*/ { /*$. $*/
-        tmp = load2(ethbuf + /*number*/14); /*$. $*/
-        if (tmp == HTYPE_LE) /*split*/ { /*$.
+      if (load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP_LE) /*split*/ { /*$. $*/
+        if (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE_LE) /*split*/ { /*$. $*/
+          if (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE_LE) /*split*/ { /*$. $*/
+            if (load2(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) /*split*/ { /*$. (*$*/
+              if (load2(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) /*split*/ { /*$. $*/
+
 (*
   Definition HTYPE_LE := Ox"0100".
   Definition PTYPE_LE := Ox"0080".
@@ -1482,7 +1525,7 @@ Import Syntax.
       right.
       split. 1: reflexivity.
       exact TODO.
-
+*)
     Unshelve.
     all: try exact (word.of_Z 0).
     all: try exact nil.
