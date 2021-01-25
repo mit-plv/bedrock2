@@ -1200,6 +1200,16 @@ Ltac ring_simplify_hyp_rec t H :=
 Ltac ring_simplify_hyp H :=
   let t := type of H in ring_simplify_hyp_rec t H.
 
+Lemma if_then_1_else_0_eq_0: forall (b: bool),
+    word.unsigned (if b then word.of_Z 1 else word.of_Z 0) = 0 ->
+    b = false.
+Proof. intros; destruct b; [exfalso|reflexivity]. ZnWords. Qed.
+
+Lemma if_then_1_else_0_neq_0: forall (b: bool),
+    word.unsigned (if b then word.of_Z 1 else word.of_Z 0) <> 0 ->
+    b = true.
+Proof. intros; destruct b; [reflexivity|exfalso]. ZnWords. Qed.
+
 Ltac simpli_getEq t :=
   match t with
   | context[@word.and ?wi ?wo (if ?b1 then _ else _) (if ?b2 then _ else _)] =>
@@ -1210,12 +1220,10 @@ Ltac simpli_getEq t :=
 
 (* random simplifications *)
 Ltac simpli :=
-  repeat (so fun hyporgoal =>
-               match hyporgoal with
-               | context[match ?x with _ => _ end] => destr x; try (exfalso; ZnWords); []
-               end);
   repeat ((rewr simpli_getEq in *  by ZnWords) ||
          match goal with
+         | H: word.unsigned (if ?b then _ else _) = 0 |- _ => apply if_then_1_else_0_eq_0 in H
+         | H: word.unsigned (if ?b then _ else _) <> 0 |- _ => apply if_then_1_else_0_neq_0 in H
          | H: word.eqb ?x ?y = true  |- _ => apply (word.eqb_true  x y) in H
          | H: word.eqb ?x ?y = false |- _ => apply (word.eqb_false x y) in H
          | H: andb ?b1 ?b2 = true |- _ => apply (Bool.andb_true_iff b1 b2) in H
