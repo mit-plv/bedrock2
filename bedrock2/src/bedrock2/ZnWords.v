@@ -175,9 +175,12 @@ Ltac canonicalize_word_width_and_instance :=
      | context [@word.unsigned ?wi ?inst] =>
        let wi' := eval cbn in wi in let inst' := eval cbn in inst in
        progress ( change wi with wi' in *; change inst with inst' in * )
-     | context [@word.signed   ?wi ?inst] =>
+     | context [@word.signed ?wi ?inst] =>
        let wi' := eval cbn in wi in let inst' := eval cbn in inst in
        progress ( change wi with wi' in *; change inst with inst' in * )
+     | context[2 ^ ?wi] =>
+       let wi' := eval cbn in wi in (* <-- will blow up as soon as we have 2^bigExpression... *)
+       progress ( change wi with wi' in * )
      end.
 
 Ltac ZnWords_pre :=

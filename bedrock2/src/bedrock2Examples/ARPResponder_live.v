@@ -35,6 +35,21 @@ Module word. Section WithWord.
     intros. apply (f_equal word.unsigned) in H. rewrite ?word.unsigned_of_Z in H.
     unfold word.wrap in H. rewrite ?Z.mod_small in H by assumption. assumption.
   Qed.
+
+  Lemma and_bool_to_word: forall (b1 b2: bool),
+    word.and (if b1 then word.of_Z 1 else word.of_Z 0)
+             (if b2 then word.of_Z 1 else word.of_Z 0) =
+    if (andb b1 b2) then word.of_Z 1 else word.of_Z 0.
+  Proof.
+    assert (1 < 2 ^ width). {
+      pose proof word.width_pos.
+      change 1 with (2 ^ 0). apply Z.pow_lt_mono_r; blia.
+    }
+    destruct b1; destruct b2; simpl; apply word.unsigned_inj; rewrite word.unsigned_and;
+      unfold word.wrap; rewrite ?unsigned_of_Z_nowrap by blia;
+        rewrite ?Z.land_diag, ?Z.land_0_r, ?Z.land_0_l;
+        apply Z.mod_small; blia.
+  Qed.
 End WithWord. End word.
 
 Module List.
@@ -520,18 +535,18 @@ Section WithParameters.
       lookup_path sp addr r
                   sp' (addr' ^+ /[i * len]) e. *)
 
-  Ltac check_lookup_range_feasible :=
+  Ltac assert_lookup_range_feasible :=
     match goal with
     | |- lookup_path ?sp ?addr ?v ?sp' ?addr' ?v' =>
       let range_start := eval cbn -[Z.add] in addr in
       let range_size := eval cbn -[Z.add] in (TypeSpec_size sp v) in
       let target_start := addr' in
       let target_size := eval cbn -[Z.add] in (TypeSpec_size sp' v') in
-      assert_succeeds (
-        let T := fresh in
-        assert (target_start,+target_size c= range_start,+range_size) as T
-            by (unfold subrange, addr_in_range; ZnWords))
+      assert (target_start,+target_size c= range_start,+range_size)
     end.
+
+  Ltac check_lookup_range_feasible :=
+    assert_succeeds (assert_lookup_range_feasible; [solve [unfold subrange, addr_in_range; ZnWords]|]).
 
   Goal forall base f R m,
       seps [dataAt foo_spec base f; R] m ->
@@ -1185,15 +1200,28 @@ Ltac ring_simplify_hyp_rec t H :=
 Ltac ring_simplify_hyp H :=
   let t := type of H in ring_simplify_hyp_rec t H.
 
+Ltac simpli_getEq t :=
+  match t with
+  | context[@word.and ?wi ?wo (if ?b1 then _ else _) (if ?b2 then _ else _)] =>
+    constr:(@word.and_bool_to_word wi wo _ b1 b2)
+  | context[@word.unsigned ?wi ?wo (word.of_Z ?x)] => constr:(@word.unsigned_of_Z_nowrap wi wo _ x)
+  | context[@word.of_Z ?wi ?wo (word.unsigned ?x)] => constr:(@word.of_Z_unsigned wi wo _ x)
+  end.
+
 (* random simplifications *)
 Ltac simpli :=
   repeat (so fun hyporgoal =>
                match hyporgoal with
                | context[match ?x with _ => _ end] => destr x; try (exfalso; ZnWords); []
                end);
-  repeat match goal with
-         | H: _ |- _ => rewrite word.unsigned_of_Z_nowrap in H by ZnWords
-         | H: _ |- _ => rewrite word.of_Z_unsigned in H
+  repeat ((rewr simpli_getEq in *  by ZnWords) ||
+         match goal with
+         | H: word.eqb ?x ?y = true  |- _ => apply (word.eqb_true  x y) in H
+         | H: word.eqb ?x ?y = false |- _ => apply (word.eqb_false x y) in H
+         | H: andb ?b1 ?b2 = true |- _ => apply (Bool.andb_true_iff b1 b2) in H
+         | H: andb ?b1 ?b2 = false |- _ => apply (Bool.andb_false_iff b1 b2) in H
+         | H: orb ?b1 ?b2 = true |- _ => apply (Bool.orb_true_iff b1 b2) in H
+         | H: orb ?b1 ?b2 = false |- _ => apply (Bool.orb_false_iff b1 b2) in H
          | H: ?x = word.of_Z ?y |- _ => match isZcst y with
                                         | true => subst x
                                         end
@@ -1204,7 +1232,7 @@ Ltac simpli :=
            assert (x = y) by (apply (word.of_Z_inj_small H); ZnWords); clear H
          | H: _ |- _ => ring_simplify_hyp H
          | H: ?T |- _ => clear H; assert_succeeds (assert T by ZnWords)
-         end;
+         end);
   simpl (bytes_per _) in *;
   simpl_Z_nat.
 
@@ -1266,7 +1294,7 @@ Ltac straightline_cleanup ::=
   *)
   end.
 
-Ltac after_snippet := repeat straightline; simpli.
+Ltac after_snippet := repeat (straightline || simpli).
 (* For debugging, this can be useful:
 Ltac after_snippet ::= idtac.
 *)
@@ -1498,19 +1526,12 @@ Import Syntax.
     if (ln == /*number*/64) /*split*/ {
       /*$. edestruct (bytesToEthernetARPPacket ethbufAddr _ H0) as (pk & A). seprewrite_in A H.
            change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H. $*/
-      if (load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP_LE) /*split*/ { /*$. $*/
-        if (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE_LE) /*split*/ { /*$. $*/
-          if (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE_LE) /*split*/ { /*$. $*/
-            if (load2(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) /*split*/ { /*$. (*$*/
-              if (load2(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) /*split*/ { /*$. $*/
-
-(*
-  Definition HTYPE_LE := Ox"0100".
-  Definition PTYPE_LE := Ox"0080".
-  Definition HLEN := Ox"06".
-  Definition PLEN := Ox"04".
-  Definition OPER_REQUEST := Ox"01".
-*)
+      if ((load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP_LE) &
+          (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE_LE) &
+          (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE_LE) &
+          (load1(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) &
+          (load1(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) &
+          (load1(ethbuf @ (@payload ARPPacket) @ oper) == OPER_REQUEST)) /*split*/ { /*$.
 
       idtac.
 
@@ -1525,7 +1546,6 @@ Import Syntax.
       right.
       split. 1: reflexivity.
       exact TODO.
-*)
     Unshelve.
     all: try exact (word.of_Z 0).
     all: try exact nil.
