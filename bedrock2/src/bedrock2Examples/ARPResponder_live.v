@@ -330,6 +330,14 @@ Section WithParameters.
   Definition HTYPE_LE := Ox"0100".
   Definition PTYPE_LE := Ox"0080".
 
+  Definition validPacket(pk: EthernetPacket ARPPacket): Prop :=
+    pk.(etherType) = EtherTypeARP \/ pk.(etherType) = EtherTypeIPv4 /\
+    pk.(payload).(htype) = HTYPE /\
+    pk.(payload).(ptype) = PTYPE /\
+    pk.(payload).(hlen) = HLEN /\
+    pk.(payload).(plen) = PLEN /\
+    pk.(payload).(oper) = OPER_REPLY.
+
   Record ARPConfig := mkARPConfig {
     myMAC: MAC;
     myIPv4: IPv4;
@@ -338,7 +346,6 @@ Section WithParameters.
   Context (cfg: ARPConfig).
 
   Definition needsARPReply(req: EthernetPacket ARPPacket): Prop :=
-    (* TODO also check constant fields *)
     req.(etherType) = EtherTypeARP /\
     req.(payload).(oper) = OPER_REQUEST /\
     req.(payload).(tpa) = cfg.(myIPv4). (* <-- we only reply to requests asking for our own MAC *)
@@ -941,15 +948,17 @@ Import Syntax.
       vc_func e f t m [ethbufAddr; L] (fun t' m' retvs =>
         t' = t /\ (
         (* Success: *)
-        (retvs = [word.of_Z 1] /\ exists request response,
-            seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr request; R] m /\
-            seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr response; R] m' /\
+        (retvs = [/[1]] /\ exists request,
+            validPacket request /\
             needsARPReply request /\
-            response = ARPReply request) \/
+            seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr request; R] m /\
+            seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr (ARPReply request); R] m') \/
         (* Failure: *)
-        (retvs = [word.of_Z 0] /\ seps [array ptsto (word.of_Z 1) ethbufAddr ethBufData; R] m' /\
-            ~ exists request, seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr request; R] m /\
-                              needsARPReply request)
+        (retvs = [/[0]] /\ (~ exists request,
+            validPacket request /\
+            needsARPReply request /\
+            seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr request; R] m) /\
+            seps [array ptsto /[1] ethbufAddr ethBufData; R] m')
       ))}).
     pose "ethbuf" as ethbuf. pose "ln" as ln. pose "doReply" as doReply. pose "tmp" as tmp.
     refine ("arp", existT _ ([ethbuf; ln], [doReply], _) _).
