@@ -331,12 +331,12 @@ Section WithParameters.
   Definition PTYPE_LE := Ox"0080".
 
   Definition validPacket(pk: EthernetPacket ARPPacket): Prop :=
-    pk.(etherType) = EtherTypeARP \/ pk.(etherType) = EtherTypeIPv4 /\
+    (pk.(etherType) = EtherTypeARP \/ pk.(etherType) = EtherTypeIPv4) /\
     pk.(payload).(htype) = HTYPE /\
     pk.(payload).(ptype) = PTYPE /\
     pk.(payload).(hlen) = HLEN /\
     pk.(payload).(plen) = PLEN /\
-    pk.(payload).(oper) = OPER_REPLY.
+    (pk.(payload).(oper) = OPER_REQUEST \/ pk.(payload).(oper) = OPER_REPLY).
 
   Record ARPConfig := mkARPConfig {
     myMAC: MAC;
@@ -366,6 +366,16 @@ Section WithParameters.
          tpa := req.(payload).(spa)
        |}
     |}.
+
+  Lemma bytesToEthernetARPPacket: forall a bs,
+      64 = len bs ->
+      exists p: EthernetPacket ARPPacket,
+        iff1 (array ptsto /[1] a bs) (dataAt (EthernetPacket_spec ARPPacket_spec) a p).
+  Proof.
+    intros.
+    eexists {| payload := {| oper := _ |} |}. cbn.
+    (* TODO messy *)
+  Admitted.
 
   Definition addr_in_range(a start: word)(len: Z): Prop :=
     word.unsigned (word.sub a start) <= len.
@@ -620,17 +630,150 @@ Section WithParameters.
                      (post : trace -> mem -> list word -> Prop) :=
     exists l, map.of_list_zip innames argvs = Some l /\ forall mc,
       exec e body t m l mc (fun t' m' l' mc' =>
-        exists retvs : list word, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
+        list_map (WeakestPrecondition.get l') outnames (fun retvs => post t' m' retvs)).
 
-  Lemma bytesToEthernetARPPacket: forall a bs,
-      64 = len bs ->
-      exists p: EthernetPacket ARPPacket,
-        iff1 (array ptsto /[1] a bs) (dataAt (EthernetPacket_spec ARPPacket_spec) a p).
-  Proof.
-    intros.
-    eexists {| payload := {| oper := _ |} |}. cbn.
-    (* TODO messy *)
-  Admitted.
+(* backtrackingly tries all nats strictly smaller than n *)
+Ltac pick_nat n :=
+  multimatch n with
+  | S ?m => constr:(m)
+  | S ?m => pick_nat m
+  end.
+
+  Definition nFields{A: Type}(sp: TypeSpec A): option nat :=
+    match sp with
+    | TStruct fields => Some (List.length fields)
+    | _ => None
+    end.
+
+  Ltac lookup_field_step := once (
+    let n := lazymatch goal with
+    | |- lookup_path ?sp ?base ?r _ _ _ =>
+      let l := eval cbv in (nFields sp) in
+      lazymatch l with
+      | Some ?n => n
+      end
+    end in
+    let j := pick_nat n in
+    eapply lookup_path_Field with (i := j); [reflexivity|]; cbn;
+    check_lookup_range_feasible).
+
+  Ltac lookup_done :=
+    eapply lookup_path_Nil; ZnWords.
+
+Ltac cleanup_step :=
+  match goal with
+  | x : Word.Interface.word.rep _ |- _ => clear x
+  | x : Semantics.word |- _ => clear x
+  | x : Init.Byte.byte |- _ => clear x
+  | x : Semantics.locals |- _ => clear x
+  | x : Semantics.trace |- _ => clear x
+  | x : Syntax.cmd |- _ => clear x
+  | x : Syntax.expr |- _ => clear x
+  | x : coqutil.Map.Interface.map.rep |- _ => clear x
+  | x : BinNums.Z |- _ => clear x
+  | x : unit |- _ => clear x
+  | x : bool |- _ => clear x
+  | x : list _ |- _ => clear x
+  | x : nat |- _ => clear x
+  | x := _ : Word.Interface.word.rep _ |- _ => clear x
+  | x := _ : Semantics.word |- _ => clear x
+  | x := _ : Init.Byte.byte |- _ => clear x
+  | x := _ : Semantics.locals |- _ => clear x
+  | x := _ : Semantics.trace |- _ => clear x
+  | x := _ : Syntax.cmd |- _ => clear x
+  | x := _ : Syntax.expr |- _ => clear x
+  | x := _ : coqutil.Map.Interface.map.rep |- _ => clear x
+  | x := _ : BinNums.Z |- _ => clear x
+  | x := _ : unit |- _ => clear x
+  | x := _ : bool |- _ => clear x
+  | x := _ : list _ |- _ => clear x
+  | x := _ : nat |- _ => clear x
+  | |- forall _, _ => intros
+  | |- let _ := _ in _ => intros
+  | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
+  | _ => progress (cbn [Semantics.interp_binop] in * )
+  | H: exists x, _ |- _ => destruct H as [x H]
+  | H: _ /\ _ |- _ => lazymatch type of H with
+                      | _ <  _ <  _ => fail
+                      | _ <  _ <= _ => fail
+                      | _ <= _ <  _ => fail
+                      | _ <= _ <= _ => fail
+                      | _ => destruct H
+                      end
+  | x := ?y |- ?G => is_var y; subst x
+  | H: ?x = word.of_Z ?y |- _ => match isZcst y with
+                                 | true => subst x
+                                 end
+  | x := word.of_Z ?y |- _ => match isZcst y with
+                              | true => subst x
+                              end
+  | H: ?x = ?y |- _ => constr_eq x y; clear H
+  | |- ~ _ => intro
+  | H: _ :: _ = _ :: _ |- _ => injection H as
+  | H: Some _ = Some _ |- _ => injection H as
+  end.
+
+Import WeakestPrecondition.
+
+Ltac locals_step :=
+  match goal with
+  | _ => cleanup_step
+  | |- @list_map _ _ (@get _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @list_map _ _ _ nil _ => cbv beta match fix delta [list_map list_map_body]
+  | |- @get _ _ _ _ => cbv beta delta [get]
+  | |- map.get _ _ = Some ?e' =>
+    let e := rdelta e' in
+    is_evar e;
+    let M := lazymatch goal with |- @map.get _ _ ?M _ _ = _ => M end in
+    let __ := match M with @Semantics.locals _ => idtac end in
+    let k := lazymatch goal with |- map.get _ ?k = _ => k end in
+    once (let v := multimatch goal with x := context[@map.put _ _ M _ k ?v] |- _ => v end in
+          (* cbv is slower than this, cbv with whitelist would have an enormous whitelist, cbv delta for map is slower than this, generalize unrelated then cbv is slower than this, generalize then vm_compute is slower than this, lazy is as slow as this: *)
+          unify e v; exact (eq_refl (Some v)))
+  | |- @coqutil.Map.Interface.map.get _ _ (@Semantics.locals _) _ _ = Some ?v =>
+    let v' := rdelta v in is_evar v'; (change v with v'); exact eq_refl
+  | |- ?x = ?y =>
+    let y := rdelta y in is_evar y; change (x=y); exact eq_refl
+  | |- ?x = ?y =>
+    let x := rdelta x in is_evar x; change (x=y); exact eq_refl
+  | |- ?x = ?y =>
+    let x := rdelta x in let y := rdelta y in constr_eq x y; exact eq_refl
+  | |- exists l', Interface.map.of_list_zip ?ks ?vs = Some l' /\ _ =>
+    letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
+  | |- exists l', Interface.map.putmany_of_list_zip ?ks ?vs ?l = Some l' /\ _ =>
+    letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
+  | |- exists x, ?P /\ ?Q =>
+    let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
+                        split; [solve [repeat locals_step]|]
+  end.
+
+Ltac expr_step :=
+  match goal with
+  | _ => locals_step
+  | |- @list_map _ _ (@expr _ _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @expr _ _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
+  | |- @dexpr _ _ _ _ _ => cbv beta delta [dexpr]
+  | |- @dexprs _ _ _ _ _ => cbv beta delta [dexprs]
+  | |- @literal _ _ _ => cbv beta delta [literal]
+  | |- @load _ _ _ _ _ => eapply load_field'';
+       once (match goal with
+             (* backtrack over choice of Hm in case there are several *)
+             | Hm: seps ?lm ?m |- exists l, seps l ?m /\ _ =>
+               exists lm; split; [exact Hm|];
+               let n := eval cbv [List.length] in (List.length lm) in
+                   (* backtrack over choice of i *)
+                   let i := pick_nat n in
+                   eexists i; split; [cbv [List.nth_error]; reflexivity|];
+                   split; [ repeat (lookup_done || lookup_field_step) |]
+             end)
+  | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
+    eapply SortedList.eq_value; exact eq_refl
+  | |- True => exact I
+  | |- False \/ _ => right
+  | |- _ \/ False => left
+  end.
+
+Import Syntax.
 
 Inductive snippet :=
 | SSet(x: string)(e: expr)
@@ -642,32 +785,13 @@ Inductive note_wrapper: string -> Type := mkNote(s: string): note_wrapper s.
 Notation "s" := (note_wrapper s) (at level 200, only printing).
 Ltac add_note s := let n := fresh "Note" in pose proof (mkNote s) as n; move n at top.
 
-(* backtrackingly tries all nats strictly smaller than n *)
-Ltac pick_nat n :=
-  multimatch n with
-  | S ?m => constr:(m)
-  | S ?m => pick_nat m
-  end.
-
 Ltac add_snippet s :=
   lazymatch s with
-(*
-  | SSet ?y (expr.load ?SZ ?A) =>
-    eapply load_stmt with (x := y) (a := A) (sz := SZ);
-    [ solve [repeat straightline]
-    | once (match goal with
-            (* backtrack over choice of Hm in case there are several *)
-            | Hm: seps ?lm ?m |- exists l, seps l ?m /\ _ =>
-              exists lm; split; [exact Hm|];
-              let n := eval cbv [List.length] in (List.length lm) in
-              (* backtrack over choice of i *)
-              let i := pick_nat n in
-              eexists i, _, _; split; [cbv [List.nth_error]; reflexivity|];
-              split; [unfold bytes_per, subrange, addr_in_range; ZnWords|]
-            end) ]
-*)
-  | SSet ?y ?e => eapply assignment with (x := y) (a := e)
-  | SIf ?cond false => eapply if_split with (c := cond); [| |add_note "'else' expected"]
+  | SSet ?y ?e => eapply assignment with (x := y) (a := e); repeat expr_step
+  | SIf ?cond false => eapply if_split with (c := cond);
+                       [ repeat expr_step
+                       | intros
+                       | intros; add_note "'else' expected" ]
   | SEnd => eapply exec.skip
   | SElse => lazymatch goal with
              | H: note_wrapper "'else' expected" |- _ => clear H
@@ -704,95 +828,61 @@ Ltac simpli_getEq t :=
   | context[@word.of_Z ?wi ?wo (word.unsigned ?x)] => constr:(@word.of_Z_unsigned wi wo _ x)
   end.
 
-(* random simplifications *)
-Ltac simpli :=
-  repeat ((rewr simpli_getEq in *  by ZnWords) ||
-         match goal with
-         | H: word.unsigned (if ?b then _ else _) = 0 |- _ => apply if_then_1_else_0_eq_0 in H
-         | H: word.unsigned (if ?b then _ else _) <> 0 |- _ => apply if_then_1_else_0_neq_0 in H
-         | H: word.eqb ?x ?y = true  |- _ => apply (word.eqb_true  x y) in H
-         | H: word.eqb ?x ?y = false |- _ => apply (word.eqb_false x y) in H
-         | H: andb ?b1 ?b2 = true |- _ => apply (Bool.andb_true_iff b1 b2) in H
-         | H: andb ?b1 ?b2 = false |- _ => apply (Bool.andb_false_iff b1 b2) in H
-         | H: orb ?b1 ?b2 = true |- _ => apply (Bool.orb_true_iff b1 b2) in H
-         | H: orb ?b1 ?b2 = false |- _ => apply (Bool.orb_false_iff b1 b2) in H
-         | H: ?x = word.of_Z ?y |- _ => match isZcst y with
-                                        | true => subst x
-                                        end
-         | x := word.of_Z ?y |- _ => match isZcst y with
-                                     | true => subst x
-                                     end
-         | H: word.of_Z ?x = word.of_Z ?y |- _ =>
-           assert (x = y) by (apply (word.of_Z_inj_small H); ZnWords); clear H
-         | H: _ |- _ => ring_simplify_hyp H
-         | H: ?T |- _ => clear H; assert_succeeds (assert T by ZnWords)
-         end);
-  simpl (bytes_per _) in *;
-  simpl_Z_nat.
-
-Ltac straightline_cleanup ::=
+(* random simplifications that make the goal easier to prove *)
+Ltac simpli_step :=
   match goal with
-  | x : Word.Interface.word.rep _ |- _ => clear x
-  | x : Semantics.word |- _ => clear x
-  | x : Init.Byte.byte |- _ => clear x
-  | x : Semantics.locals |- _ => clear x
-  | x : Semantics.trace |- _ => clear x
-  | x : Syntax.cmd |- _ => clear x
-  | x : Syntax.expr |- _ => clear x
-  | x : coqutil.Map.Interface.map.rep |- _ => clear x
-  | x : BinNums.Z |- _ => clear x
-  | x : unit |- _ => clear x
-  | x : bool |- _ => clear x
-  | x : list _ |- _ => clear x
-  | x : nat |- _ => clear x
-  | x := _ : Word.Interface.word.rep _ |- _ => clear x
-  | x := _ : Semantics.word |- _ => clear x
-  | x := _ : Init.Byte.byte |- _ => clear x
-  | x := _ : Semantics.locals |- _ => clear x
-  | x := _ : Semantics.trace |- _ => clear x
-  | x := _ : Syntax.cmd |- _ => clear x
-  | x := _ : Syntax.expr |- _ => clear x
-  | x := _ : coqutil.Map.Interface.map.rep |- _ => clear x
-  | x := _ : BinNums.Z |- _ => clear x
-  | x := _ : unit |- _ => clear x
-  | x := _ : bool |- _ => clear x
-  | x := _ : list _ |- _ => clear x
-  | x := _ : nat |- _ => clear x
-  | |- forall _, _ => intros
-  | |- let _ := _ in _ => intros
-  | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
-  | _ => progress (cbn [Semantics.interp_binop] in * )
-  | H: exists _, _ |- _ => destruct H
-(*| H: _ /\ _ |- _ => destruct H *)
-  | H: _ /\ _ |- _ => lazymatch type of H with
-                      | _ <  _ <  _ => fail
-                      | _ <  _ <= _ => fail
-                      | _ <= _ <  _ => fail
-                      | _ <= _ <= _ => fail
-                      | _ => destruct H
-                      end
-  | x := ?y |- ?G => is_var y; subst x
-  | H: ?x = ?y |- _ => constr_eq x y; clear H
-  (*
-  | H: ?x = ?y |- _ => is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [x] in x in idtac); subst x
-  | H: ?x = ?y |- _ => is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [y] in y in idtac); subst y
-  | H: ?x = ?v |- _ =>
-    is_var x;
-    lazymatch v with context[x] => fail | _ => idtac end;
-    let x' := fresh x in
-    rename x into x';
-    simple refine (let x := v in _);
-    change (x' = x) in H;
-    symmetry in H;
-    destruct H
-  *)
+  | |- _ => cleanup_step
+  | |- _ => progress (rewr simpli_getEq in * by ZnWords)
+  | H: word.unsigned (if ?b then _ else _) = 0 |- _ => apply if_then_1_else_0_eq_0 in H
+  | H: word.unsigned (if ?b then _ else _) <> 0 |- _ => apply if_then_1_else_0_neq_0 in H
+  | H: word.eqb ?x ?y = true  |- _ => apply (word.eqb_true  x y) in H
+  | H: word.eqb ?x ?y = false |- _ => apply (word.eqb_false x y) in H
+  | H: andb ?b1 ?b2 = true |- _ => apply (Bool.andb_true_iff b1 b2) in H
+  | H: andb ?b1 ?b2 = false |- _ => apply (Bool.andb_false_iff b1 b2) in H
+  | H: orb ?b1 ?b2 = true |- _ => apply (Bool.orb_true_iff b1 b2) in H
+  | H: orb ?b1 ?b2 = false |- _ => apply (Bool.orb_false_iff b1 b2) in H
+  | H: word.of_Z ?x = word.of_Z ?y |- _ =>
+    assert (x = y) by (apply (word.of_Z_inj_small H); ZnWords); clear H
+  | |- _ => progress simpl (bytes_per _) in *
   end.
 
-Ltac after_snippet := repeat (straightline || simpli).
+(* random simplifications that make the goal more readable and might be expensive *)
+Ltac pretty_step :=
+  match goal with
+  | H: _ |- _ => ring_simplify_hyp H
+  | H: ?T |- _ => clear H; assert_succeeds (assert T by ZnWords)
+  end ||
+  simpl_Z_nat.
+
+Hint Unfold validPacket needsARPReply : prover_unfold_hints.
+
+(* partially proves postconditions, trying to keep the goal readable *)
+Ltac prover_step :=
+  match goal with
+  | |- _ => progress locals_step
+  | |- _ => progress simpli_step
+  | |- ?P /\ ?Q => assert_fails (is_lia_prop P; is_lia_prop Q); split
+  | |- _ => ZnWords
+  | |- ?P \/ ?Q =>
+    let t := (repeat prover_step; ZnWords) in
+    tryif (assert_succeeds (assert (P -> False) by t)) then
+      tryif (assert_succeeds (assert (Q -> False) by t)) then
+        fail 1 "you are trying to prove False"
+      else
+        right
+    else
+      tryif (assert_succeeds (assert (Q -> False) by t)) then
+        left
+      else
+        fail "not sure whether to try left or right side of \/"
+  | |- _ => solve [auto]
+  | |- _ => progress autounfold with prover_unfold_hints in *
+  end.
+
+Ltac after_snippet := repeat simpli_step; repeat simpli_step.
 (* For debugging, this can be useful:
 Ltac after_snippet ::= idtac.
 *)
-
 
   Hint Resolve EthernetPacket_spec: TypeSpec_instances.
   Hint Resolve ARPPacket_spec: TypeSpec_instances.
@@ -846,100 +936,57 @@ Notation "'if' ( e ) '/*split*/' {" := (SIf e false) (in custom snippet at level
 Notation "}" := SEnd (in custom snippet at level 0).
 Notation "'else' {" := SElse (in custom snippet at level 0).
 
-  Definition nFields{A: Type}(sp: TypeSpec A): option nat :=
-    match sp with
-    | TStruct fields => Some (List.length fields)
-    | _ => None
+  Let nth n xs := hd (emp True) (skipn n xs).
+  Let remove_nth n (xs : list (mem -> Prop)) :=
+    (firstn n xs ++ tl (skipn n xs)).
+
+  (* TODO also needs to produce equivalence proof *)
+  Ltac move_evar_to_head l :=
+    match l with
+    | ?h :: ?t =>
+      let __ := match constr:(Set) with _ => is_evar h end in
+      constr:(l)
+    | ?h :: ?t =>
+      let r := move_evar_to_head t in
+      match r with
+      | ?h' :: ?t' => constr:(h' :: h :: t)
+      end
     end.
 
-  Ltac lookup_field_step := once (
-    let n := lazymatch goal with
-    | |- lookup_path ?sp ?base ?r _ _ _ =>
-      let l := eval cbv in (nFields sp) in
-      lazymatch l with
-      | Some ?n => n
-      end
-    end in
-    let j := pick_nat n in
-    eapply lookup_path_Field with (i := j); [reflexivity|]; cbn;
-    check_lookup_range_feasible).
+  Goal forall (a b c d: nat),
+      exists e1 e2, [a; b; e1; c; d; e2] = nil.
+  Proof.
+    intros. eexists. eexists.
+    match goal with
+    | |- ?LHS = _ => let r := move_evar_to_head LHS in idtac r
+    end.
+  Abort.
 
-  Ltac lookup_done :=
-    eapply lookup_path_Nil; ZnWords.
+  (* `Cancelable ?R LHS RHS P` means that if `P` holds, then `?R * LHS <-> RHS` *)
+  Inductive Cancelable: (mem -> Prop) -> list (mem -> Prop) -> list (mem -> Prop) -> Prop -> Prop :=
+  | cancel_done: forall R R' (P: Prop),
+      R = seps R' -> P -> Cancelable R nil R' P
+  | cancel_at_indices: forall i j R LHS RHS P,
+      Cancelable R (remove_nth i LHS) (remove_nth j RHS) (nth i LHS = nth j RHS /\ P) ->
+      Cancelable R LHS RHS P.
 
-Import WeakestPrecondition.
-Ltac straightline ::=
-  match goal with
-  | _ => straightline_cleanup
-  | |- @list_map _ _ (@get _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
-  | |- @list_map _ _ (@expr _ _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
-  | |- @list_map _ _ _ nil _ => cbv beta match fix delta [list_map list_map_body]
-  | |- @expr _ _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
-  | |- @dexpr _ _ _ _ _ => cbv beta delta [dexpr]
-  | |- @dexprs _ _ _ _ _ => cbv beta delta [dexprs]
-  | |- @literal _ _ _ => cbv beta delta [literal]
-  | |- @get _ _ _ _ => cbv beta delta [get]
-  | |- @load _ _ _ _ _ => eapply load_field'';
-       once (match goal with
-             (* backtrack over choice of Hm in case there are several *)
-             | Hm: seps ?lm ?m |- exists l, seps l ?m /\ _ =>
-               exists lm; split; [exact Hm|];
-               let n := eval cbv [List.length] in (List.length lm) in
-                   (* backtrack over choice of i *)
-                   let i := pick_nat n in
-                   eexists i; split; [cbv [List.nth_error]; reflexivity|];
-                   split; [ repeat (lookup_done || lookup_field_step) |]
-             end)
-  | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
-    eapply SortedList.eq_value; exact eq_refl
-  | |- map.get _ _ = Some ?e' =>
-    let e := rdelta e' in
-    is_evar e;
-    let M := lazymatch goal with |- @map.get _ _ ?M _ _ = _ => M end in
-    let __ := match M with @Semantics.locals _ => idtac end in
-    let k := lazymatch goal with |- map.get _ ?k = _ => k end in
-    once (let v := multimatch goal with x := context[@map.put _ _ M _ k ?v] |- _ => v end in
-          (* cbv is slower than this, cbv with whitelist would have an enormous whitelist, cbv delta for map is slower than this, generalize unrelated then cbv is slower than this, generalize then vm_compute is slower than this, lazy is as slow as this: *)
-          unify e v; exact (eq_refl (Some v)))
-  | |- @coqutil.Map.Interface.map.get _ _ (@Semantics.locals _) _ _ = Some ?v =>
-    let v' := rdelta v in is_evar v'; (change v with v'); exact eq_refl
-  | |- ?x = ?y =>
-    let y := rdelta y in is_evar y; change (x=y); exact eq_refl
-  | |- ?x = ?y =>
-    let x := rdelta x in is_evar x; change (x=y); exact eq_refl
-  | |- ?x = ?y =>
-    let x := rdelta x in let y := rdelta y in constr_eq x y; exact eq_refl
-  | |- exists l', Interface.map.of_list_zip ?ks ?vs = Some l' /\ _ =>
-    letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
-  | |- exists l', Interface.map.putmany_of_list_zip ?ks ?vs ?l = Some l' /\ _ =>
-    letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
-  | |- exists x, ?P /\ ?Q =>
-    let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
-                        split; [solve [repeat straightline]|]
-(*
-  | |- exists x, Markers.split (?P /\ ?Q) =>
-    let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
-                        split; [solve [repeat straightline]|]
-  | |- Markers.unique (exists x, Markers.split (?P /\ ?Q)) =>
-    let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
-                        split; [solve [repeat straightline]|]
-  | |- Markers.split ?G => change G; split
-*)
-  | |- True => exact I
-  | |- False \/ _ => right
-  | |- _ \/ False => left
-(*
-  | |- BinInt.Z.modulo ?z (Memory.bytes_per_word Semantics.width) = BinInt.Z0 /\ _ =>
-      lazymatch Coq.setoid_ring.InitialRing.isZcst z with
-      | true => split; [exact eq_refl|]
-      end
-  | |- _ => straightline_stackalloc
-  | |- _ => straightline_stackdealloc
-*)
-  end.
+  Lemma Cancelable_to_iff1: forall R LHS RHS P,
+      Cancelable R LHS RHS P ->
+      Lift1Prop.iff1 (sep R (seps LHS)) R /\ P.
+  Abort.
+
+  Lemma cancel_array_at_indices{T}: forall i j xs ys P elem sz addr1 addr2 (content: list T),
+      (* these two equalities are provable right now, where we still have evars, whereas the
+         equation that we push into the conjunction needs to be deferred until all the canceling
+         is done and the evars are instantiated [not sure if that's true...] *)
+      nth i xs = array elem sz addr1 content ->
+      nth j ys = array elem sz addr2 content ->
+      Lift1Prop.iff1 (seps (remove_nth i xs)) (seps (remove_nth j ys)) /\
+      (addr1 = addr2 /\ P) ->
+      Lift1Prop.iff1 (seps xs) (seps ys) /\ P.
+  Abort.
 
 Set Default Goal Selector "1".
-Import Syntax.
 
   Definition arp: (string * {f: list string * list string * cmd &
     forall e t m ethbufAddr ethBufData L R,
@@ -976,11 +1023,29 @@ Import Syntax.
           (load1(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) &
           (load2(ethbuf @ (@payload ARPPacket) @ oper) == OPER_REQUEST)) /*split*/ { /*$.
 
-      idtac.
+        $*/
+        doReply = /*number*/1; /*$.
+        (* TODO *) $*/
+      } /*$ .
 
-      exact TODO.
+{
 
-      (* TODO *) $*/
+repeat prover_step.
+
+exists pk.
+
+repeat prover_step.
+
+{ clear -H1.
+  left.
+  unfold BEBytesToWord in *.
+  (* TODO unify encoders, maybe use decoders instead? *)
+  exfalso. ZnWords_pre.
+  exact TODO.
+}
+all: exact TODO.
+}
+$*/
     else { /*$. (* nothing to do *) $*/
     } /*$.
       eexists.
