@@ -180,6 +180,8 @@ Section WithParameters.
 
   Definition BEBytesToWord{n: nat}(bs: tuple byte n): word := word.of_Z (BigEndian.combine n bs).
 
+  Definition ZToBEWord(n: nat)(x: Z): word := BEBytesToWord (BigEndian.split n x).
+
   Definition byteToWord(b: byte): word := word.of_Z (byte.unsigned b).
 
   (* An n-byte unsigned little-endian number v at address a.
@@ -203,8 +205,7 @@ Section WithParameters.
                sep (ptsto_bytes (bytes_per sz) addr bs) R m /\
                word.unsigned v = LittleEndian.combine (bytes_per (width:=width) sz) bs) as A. {
       unfold sep in *.
-      destruct H as (mp & mq & A & B & C).
-      destruct B as (bs & B & E).
+      decompose [ex and] H.
       eauto 10.
     }
     clear H. destruct A as (bs & A & E).
@@ -301,25 +302,12 @@ Section WithParameters.
     FField (@payload Payload) TODO Payload_spec
   ].
 
-  (* Note: At the moment we want to allow any padding and crc, so we use an isXxx predicate rather
-     than an encodeXxx function *)
-  Definition isEthernetPacket{P: Type}(payloadOk: P -> list byte -> Prop)(p: EthernetPacket P)(bs: list byte) :=
-    exists data padding crc,
-      bs = encodeMAC p.(srcMAC) ++ encodeMAC p.(dstMAC) ++ tuple.to_list p.(etherType)
-           ++ data ++ padding ++ encodeCRC crc /\
-      payloadOk p.(payload) data /\
-      46 <= Z.of_nat (List.length (data ++ padding)) <= 1500.
-      (* TODO could/should also verify CRC *)
-
-  Definition ARPOperationRequest := Byte.x01.
-  Definition ARPOperationReply := Byte.x02.
-
   Record ARPPacket := mkARPPacket {
     htype: tuple byte 2; (* hardware type *)
     ptype: tuple byte 2; (* protocol type *)
     hlen: byte;          (* hardware address length (6 for MAC addresses) *)
     plen: byte;          (* protocol address length (4 for IPv4 addresses) *)
-    oper: byte;
+    oper: Z;
     sha: MAC;  (* sender hardware address *)
     spa: IPv4; (* sender protocol address *)
     tha: MAC;  (* target hardware address *)
@@ -331,31 +319,22 @@ Section WithParameters.
     FField ptype TODO (TValue access_size.two (@BEBytesToWord 2));
     FField hlen TODO byte_spec;
     FField plen TODO byte_spec;
-    FField oper TODO byte_spec;
+    FField oper TODO (TValue access_size.two (ZToBEWord 2));
     FField sha TODO (TTuple 6 1 byte_spec);
     FField spa TODO (TTuple 4 1 byte_spec);
     FField tha TODO (TTuple 6 1 byte_spec);
     FField tpa TODO (TTuple 4 1 byte_spec)
   ].
 
-  Definition encodeARPPacket(p: ARPPacket): list byte :=
-    tuple.to_list p.(htype) ++
-    tuple.to_list p.(ptype) ++
-    [p.(hlen)] ++ [p.(plen)] ++ [p.(oper)] ++
-    encodeMAC p.(sha) ++ encodeIPv4 p.(spa) ++ encodeMAC p.(tha) ++ encodeIPv4 p.(tpa).
-
   Definition HTYPE := tuple.of_list [Byte.x00; Byte.x01].
   Definition PTYPE := tuple.of_list [Byte.x80; Byte.x00].
   Definition HLEN := Byte.x06.
   Definition PLEN := Byte.x04.
-  Definition OPER_REQUEST := Byte.x01.
-  Definition OPER_REPLY := Byte.x02.
+  Definition OPER_REQUEST := 1.
+  Definition OPER_REPLY := 2.
 
   Definition HTYPE_LE := Ox"0100".
   Definition PTYPE_LE := Ox"0080".
-
-  Definition isEthernetARPPacket: EthernetPacket ARPPacket -> list byte -> Prop :=
-    isEthernetPacket (fun arpP => eq (encodeARPPacket arpP)).
 
   Record ARPConfig := mkARPConfig {
     myMAC: MAC;
@@ -364,11 +343,10 @@ Section WithParameters.
 
   Context (cfg: ARPConfig).
 
-  (* high-level protocol definition (does not mention lists of bytes) *)
-
   Definition needsARPReply(req: EthernetPacket ARPPacket): Prop :=
+    (* TODO also check constant fields *)
     req.(etherType) = EtherTypeARP /\
-    req.(payload).(oper) = ARPOperationRequest /\
+    req.(payload).(oper) = OPER_REQUEST /\
     req.(payload).(tpa) = cfg.(myIPv4). (* <-- we only reply to requests asking for our own MAC *)
 
   Definition ARPReply(req: EthernetPacket ARPPacket): EthernetPacket ARPPacket :=
@@ -380,7 +358,7 @@ Section WithParameters.
          ptype := PTYPE;
          hlen := HLEN;
          plen := PLEN;
-         oper := ARPOperationReply;
+         oper := OPER_REPLY;
          sha := cfg.(myMAC); (* <-- the actual reply *)
          spa := cfg.(myIPv4);
          tha := req.(payload).(sha);
@@ -952,190 +930,6 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
       exec e body t m l mc (fun t' m' l' mc' =>
         exists retvs : list word, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
 
-  Fixpoint firstn_as_tuple{A: Type}(default: A)(n: nat)(l: list A): tuple A n :=
-    match n as n return tuple A n with
-    | O => tt
-    | S m => PrimitivePair.pair.mk (List.hd default l) (firstn_as_tuple default m (List.tl l))
-    end.
-
-  Lemma to_list_firstn_as_tuple: forall A (default: A) n (l: list A),
-      (n <= List.length l)%nat ->
-      tuple.to_list (firstn_as_tuple default n l) = List.firstn n l.
-  Proof.
-    induction n; intros.
-    - reflexivity.
-    - destruct l. 1: cbv in H; exfalso; blia.
-      simpl in *.
-      f_equal. eapply IHn. blia.
-  Qed.
-
-  Lemma to_list_BigEndian_split: forall n (l: list byte),
-      (n <= List.length l)%nat ->
-      tuple.to_list (BigEndian.split n (BigEndian.combine n (firstn_as_tuple Byte.x00 n l))) = List.firstn n l.
-  Proof.
-    intros. rewrite BigEndian.split_combine.
-    apply to_list_firstn_as_tuple.
-    assumption.
-  Qed.
-
-  Lemma list_eq_cancel_step{A: Type}: forall (xs ys l: list A),
-    List.firstn (List.length xs) l = xs ->
-    List.skipn (List.length xs) l = ys ->
-    l = xs ++ ys.
-  Proof.
-    intros. remember (List.length xs) as n. subst xs ys. symmetry. apply List.firstn_skipn.
-  Qed.
-
-  Lemma list_eq_cancel_firstn: forall A (l rest: list A) n,
-      (n <= List.length l)%nat ->
-      List.skipn n l = rest ->
-      l = List.firstn n l ++ rest.
-  Proof. intros. subst rest. symmetry. apply List.firstn_skipn. Qed.
-
-  Ltac length_getEq t :=
-    match t with
-    | context[List.length (tuple.to_list ?xs)] => constr:(tuple.length_to_list xs)
-    | context[List.length (?xs ++ ?ys)] => constr:(List.app_length xs ys)
-    | context[List.length (?x :: ?xs)] => constr:(List.length_cons x xs)
-    | context[List.length (@nil ?A)] => constr:(@List.length_nil A)
-    | context[List.skipn ?n (List.skipn ?m ?xs)] => constr:(List.skipn_skipn n m xs)
-    | context[List.length (List.skipn ?n ?l)] => constr:(List.skipn_length n l)
-    end.
-
-  Lemma list_instantiate_evar{A: Type}: forall l1 l2 l3 (xs1 xs3 evar lhs rhs: list A),
-      (* reshape rhs: *)
-      rhs = xs1 ++ evar ++ xs3 ->
-      (* equations for lengths l1, l2, l3 *)
-      l1 = List.length xs1 ->
-      l2 = (List.length lhs - l1 - l3)%nat ->
-      l3 = List.length xs3 ->
-      (* sidecondition on lengths *)
-      (l1 + l3 <= List.length lhs)%nat ->
-      (* equations for lists xs1, evar, xs3 *)
-      xs1 = List.firstn l1 lhs ->
-      evar = List.firstn (List.length lhs - l1 - l3) (List.skipn l1 lhs) ->
-      xs3 = List.skipn (List.length lhs - l3) lhs ->
-      lhs = rhs.
-  Proof.
-    intros. subst xs1 xs3 evar. subst rhs.
-    apply list_eq_cancel_step. {
-      f_equal. symmetry. assumption.
-    }
-    apply list_eq_cancel_step. {
-      rewrite <- H0. f_equal. rewrite List.length_firstn_inbounds. 1: reflexivity.
-      rewrite List.length_skipn.
-      blia.
-    }
-    rewr length_getEq in |-*.
-    f_equal.
-    rewrite List.length_firstn_inbounds.
-    1: blia.
-    rewrite List.length_skipn.
-    blia.
-  Qed.
-
-  Lemma instantiate_tuple_from_list{A: Type}: forall (n: nat) (evar: tuple A n) (l: list A) (default: A),
-      n = Datatypes.length l ->
-      evar = firstn_as_tuple default n l ->
-      tuple.to_list evar = l.
-  Proof.
-    intros. subst.
-    rewrite to_list_firstn_as_tuple. 2: reflexivity.
-    apply List.firstn_all2. reflexivity.
-  Qed.
-
-  Ltac list_eq_cancel_step :=
-    apply list_eq_cancel_step;
-    (* can't use normal rewrite because COQBUG https://github.com/coq/coq/issues/10848 *)
-    rewr length_getEq in |-*.
-
-  Lemma interpretEthernetARPPacket: forall bs,
-      Z.of_nat (List.length bs) = 64 ->
-      (* conditions collected while trying to prove the lemma: *)
-      List.firstn 2 (List.skipn 12 bs) = [Byte.x08; Byte.x06] ->
-      List.firstn 6 (List.skipn 14 bs) = [Byte.x00; Byte.x01; Byte.x80; Byte.x00; Byte.x06; Byte.x04] ->
-      List.firstn 1 (List.skipn 20 bs) = [Byte.x01] -> (* we only interpret requests at the moment, no replies *)
-      exists packet: EthernetPacket ARPPacket, isEthernetARPPacket packet bs.
-  Proof.
-    intros.
-    unfold isEthernetARPPacket, isEthernetPacket, encodeARPPacket, encodeMAC, encodeIPv4, encodeCRC.
-    eexists ({| payload := {| oper := _ |} |}).
-    cbn [dstMAC srcMAC etherType payload htype ptype hlen plen oper sha spa tha tpa].
-    repeat eexists.
-    (* can't use normal rewrite because COQBUG https://github.com/coq/coq/issues/10848 *)
-    all: rewr (fun t => match t with
-           | context [ List.length (?xs ++ ?ys) ] => constr:(List.app_length xs ys)
-           | context [ List.length (?h :: ?t) ] => constr:(List.length_cons h t)
-           | context [ (?xs ++ ?ys) ++ ?zs ] => constr:(eq_sym (List.app_assoc xs ys zs))
-           end) in |-*.
-    {
-      list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
-      }
-      list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
-      }
-      list_eq_cancel_step. {
-        instantiate (1 := EtherTypeARP).
-        assumption.
-      }
-  Abort. (*
-      list_eq_cancel_step. {
-        assumption.
-      }
-      list_eq_cancel_step. {
-        instantiate (1 := ARPOperationRequest).
-        assumption.
-      }
-      list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
-      }
-      list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
-      }
-      list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
-      }
-      list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
-      }
-      cbn -[List.skipn tuple.to_list].
-      eapply list_instantiate_evar with (xs1 := nil). {
-        cbn [List.app].
-        f_equal.
-      }
-      { cbn [List.length]. reflexivity. }
-      { reflexivity. }
-      { reflexivity. }
-      { rewrite tuple.length_to_list. rewrite List.length_skipn. blia. }
-      { reflexivity. }
-      { (* finally, we can "automatically" instantiate the evar ?padding *)
-        reflexivity.  }
-      rewr length_getEq in |-*.
-      rewrite BigEndian.split_combine.
-      etransitivity. 2: apply tuple.to_list_of_list.
-      match goal with
-      | |- @tuple.to_list _ ?n1 _ = @tuple.to_list _ ?n2 _ =>
-        replace n2 with n1 by (rewr length_getEq in |-*; blia)
-      end.
-      eapply instantiate_tuple_from_list with (default := Byte.x00). 2: reflexivity.
-      rewr length_getEq in |-*.
-      blia.
-    }
-    {
-      rewr length_getEq in |-*.
-      rewrite List.firstn_length.
-      rewr length_getEq in |-*.
-      blia.
-    }
-    {
-      rewr length_getEq in |-*.
-      rewrite List.firstn_length.
-      rewr length_getEq in |-*.
-      blia.
-    }
-  Qed. *)
-
   Lemma bytesToEthernetARPPacket: forall a bs,
       64 = len bs ->
       exists p: EthernetPacket ARPPacket,
@@ -1507,23 +1301,23 @@ Import Syntax.
 
   Definition arp: (string * {f: list string * list string * cmd &
     forall e t m ethbufAddr ethBufData L R,
-      seps [array ptsto (word.of_Z 1) ethbufAddr ethBufData; R] m ->
-      word.unsigned L = Z.of_nat (List.length ethBufData) ->
+      seps [array ptsto /[1] ethbufAddr ethBufData; R] m ->
+      \[L] = len ethBufData ->
       vc_func e f t m [ethbufAddr; L] (fun t' m' retvs =>
         t' = t /\ (
         (* Success: *)
-        (retvs = [word.of_Z 1] /\ exists request response ethBufData',
-           seps [array ptsto (word.of_Z 1) ethbufAddr ethBufData'; R] m' /\
-           isEthernetARPPacket request  ethBufData  /\
-           isEthernetARPPacket response ethBufData' /\
+        (retvs = [/[1]] /\ exists request response ethBufData',
+           seps [array ptsto /[1] ethbufAddr ethBufData'; R] m' /\
+           (*isEthernetARPPacket request  ethBufData  /\
+           isEthernetARPPacket response ethBufData' /\*)
            ARPReqResp request response) \/
         (* Failure: *)
-        (retvs = [word.of_Z 0] /\ seps [array ptsto (word.of_Z 1) ethbufAddr ethBufData; R] m' /\ (
-           L <> word.of_Z 64 \/
+        (retvs = [/[0]] /\ seps [array ptsto /[1] ethbufAddr ethBufData; R] m' /\ (
+           L <> /[64] (*\/
            (* malformed request *)
            (~ exists request, isEthernetARPPacket request ethBufData) \/
            (* request needs no reply because it's not for us *)
-           (forall request, isEthernetARPPacket request ethBufData -> request.(payload).(tpa) <> cfg.(myIPv4))))
+           (forall request, isEthernetARPPacket request ethBufData -> request.(payload).(tpa) <> cfg.(myIPv4))*)))
       ))}).
     pose "ethbuf" as ethbuf. pose "ln" as ln. pose "doReply" as doReply. pose "tmp" as tmp.
     refine ("arp", existT _ ([ethbuf; ln], [doReply], _) _).
@@ -1539,7 +1333,7 @@ Import Syntax.
           (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE_LE) &
           (load1(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) &
           (load1(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) &
-          (load1(ethbuf @ (@payload ARPPacket) @ oper) == OPER_REQUEST)) /*split*/ { /*$.
+          (load2(ethbuf @ (@payload ARPPacket) @ oper) == OPER_REQUEST)) /*split*/ { /*$.
 
       idtac.
 
