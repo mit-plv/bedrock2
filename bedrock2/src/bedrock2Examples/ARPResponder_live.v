@@ -180,6 +180,8 @@ Section WithParameters.
 
   Definition BEBytesToWord{n: nat}(bs: tuple byte n): word := word.of_Z (BigEndian.combine n bs).
 
+  Definition ZToBEWord(n: nat)(x: Z): word := BEBytesToWord (BigEndian.split n x).
+
   Definition byteToWord(b: byte): word := word.of_Z (byte.unsigned b).
 
   (* An n-byte unsigned little-endian number v at address a.
@@ -203,8 +205,7 @@ Section WithParameters.
                sep (ptsto_bytes (bytes_per sz) addr bs) R m /\
                word.unsigned v = LittleEndian.combine (bytes_per (width:=width) sz) bs) as A. {
       unfold sep in *.
-      destruct H as (mp & mq & A & B & C).
-      destruct B as (bs & B & E).
+      decompose [ex and] H.
       eauto 10.
     }
     clear H. destruct A as (bs & A & E).
@@ -295,15 +296,12 @@ Section WithParameters.
     FField (@payload Payload) TODO Payload_spec
   ].
 
-  Definition ARPOperationRequest := Byte.x01.
-  Definition ARPOperationReply := Byte.x02.
-
   Record ARPPacket := mkARPPacket {
     htype: tuple byte 2; (* hardware type *)
     ptype: tuple byte 2; (* protocol type *)
     hlen: byte;          (* hardware address length (6 for MAC addresses) *)
     plen: byte;          (* protocol address length (4 for IPv4 addresses) *)
-    oper: byte;
+    oper: Z;
     sha: MAC;  (* sender hardware address *)
     spa: IPv4; (* sender protocol address *)
     tha: MAC;  (* target hardware address *)
@@ -315,7 +313,7 @@ Section WithParameters.
     FField ptype TODO (TValue access_size.two (@BEBytesToWord 2));
     FField hlen TODO byte_spec;
     FField plen TODO byte_spec;
-    FField oper TODO byte_spec;
+    FField oper TODO (TValue access_size.two (ZToBEWord 2));
     FField sha TODO (TTuple 6 1 byte_spec);
     FField spa TODO (TTuple 4 1 byte_spec);
     FField tha TODO (TTuple 6 1 byte_spec);
@@ -326,8 +324,8 @@ Section WithParameters.
   Definition PTYPE := tuple.of_list [Byte.x80; Byte.x00].
   Definition HLEN := Byte.x06.
   Definition PLEN := Byte.x04.
-  Definition OPER_REQUEST := Byte.x01.
-  Definition OPER_REPLY := Byte.x02.
+  Definition OPER_REQUEST := 1.
+  Definition OPER_REPLY := 2.
 
   Definition HTYPE_LE := Ox"0100".
   Definition PTYPE_LE := Ox"0080".
@@ -339,11 +337,10 @@ Section WithParameters.
 
   Context (cfg: ARPConfig).
 
-  (* high-level protocol definition (does not mention lists of bytes) *)
-
   Definition needsARPReply(req: EthernetPacket ARPPacket): Prop :=
+    (* TODO also check constant fields *)
     req.(etherType) = EtherTypeARP /\
-    req.(payload).(oper) = ARPOperationRequest /\
+    req.(payload).(oper) = OPER_REQUEST /\
     req.(payload).(tpa) = cfg.(myIPv4). (* <-- we only reply to requests asking for our own MAC *)
 
   Definition ARPReply(req: EthernetPacket ARPPacket): EthernetPacket ARPPacket :=
@@ -355,7 +352,7 @@ Section WithParameters.
          ptype := PTYPE;
          hlen := HLEN;
          plen := PLEN;
-         oper := ARPOperationReply;
+         oper := OPER_REPLY;
          sha := cfg.(myMAC); (* <-- the actual reply *)
          spa := cfg.(myIPv4);
          tha := req.(payload).(sha);
@@ -939,8 +936,8 @@ Import Syntax.
 
   Definition arp: (string * {f: list string * list string * cmd &
     forall e t m ethbufAddr ethBufData L R,
-      seps [array ptsto (word.of_Z 1) ethbufAddr ethBufData; R] m ->
-      word.unsigned L = Z.of_nat (List.length ethBufData) ->
+      seps [array ptsto /[1] ethbufAddr ethBufData; R] m ->
+      \[L] = len ethBufData ->
       vc_func e f t m [ethbufAddr; L] (fun t' m' retvs =>
         t' = t /\ (
         (* Success: *)
@@ -968,7 +965,7 @@ Import Syntax.
           (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE_LE) &
           (load1(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) &
           (load1(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) &
-          (load1(ethbuf @ (@payload ARPPacket) @ oper) == OPER_REQUEST)) /*split*/ { /*$.
+          (load2(ethbuf @ (@payload ARPPacket) @ oper) == OPER_REQUEST)) /*split*/ { /*$.
 
       idtac.
 
