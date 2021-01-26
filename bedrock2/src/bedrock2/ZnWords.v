@@ -131,7 +131,7 @@ Ltac dewordify_step :=
   so fun hyporgoal =>
        match hyporgoal with
        | context [@word.unsigned ?w ?i ?x] =>
-         pose proof word.unsigned_range x;
+         pose proof (word.unsigned_range x : 0 <= @word.unsigned w i x < 2 ^ w);
          let a := fresh "w0" in forget (@word.unsigned w i x) as a
        | context [@List.length ?T ?l] =>
          let a := fresh "len0" in forget (@List.length T l) as a
@@ -203,7 +203,7 @@ Ltac log_goal :=
               | x: _ |- _ => revert x
               end;
        match goal with
-       | |- ?G => idtac "--- goal ---"; idtac G
+       | |- ?G => idtac "Goal"; idtac G; idtac ". Proof. t. Abort."
        end;
        fail).
 
