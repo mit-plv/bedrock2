@@ -940,52 +940,6 @@ Notation "'else' {" := SElse (in custom snippet at level 0).
   Let remove_nth n (xs : list (mem -> Prop)) :=
     (firstn n xs ++ tl (skipn n xs)).
 
-  (* TODO also needs to produce equivalence proof *)
-  Ltac move_evar_to_head l :=
-    match l with
-    | ?h :: ?t =>
-      let __ := match constr:(Set) with _ => is_evar h end in
-      constr:(l)
-    | ?h :: ?t =>
-      let r := move_evar_to_head t in
-      match r with
-      | ?h' :: ?t' => constr:(h' :: h :: t)
-      end
-    end.
-
-  Goal forall (a b c d: nat),
-      exists e1 e2, [a; b; e1; c; d; e2] = nil.
-  Proof.
-    intros. eexists. eexists.
-    match goal with
-    | |- ?LHS = _ => let r := move_evar_to_head LHS in idtac r
-    end.
-  Abort.
-
-  (* `Cancelable ?R LHS RHS P` means that if `P` holds, then `?R * LHS <-> RHS` *)
-  Inductive Cancelable: (mem -> Prop) -> list (mem -> Prop) -> list (mem -> Prop) -> Prop -> Prop :=
-  | cancel_done: forall R R' (P: Prop),
-      R = seps R' -> P -> Cancelable R nil R' P
-  | cancel_at_indices: forall i j R LHS RHS P,
-      Cancelable R (remove_nth i LHS) (remove_nth j RHS) (nth i LHS = nth j RHS /\ P) ->
-      Cancelable R LHS RHS P.
-
-  Lemma Cancelable_to_iff1: forall R LHS RHS P,
-      Cancelable R LHS RHS P ->
-      Lift1Prop.iff1 (sep R (seps LHS)) R /\ P.
-  Abort.
-
-  Lemma cancel_array_at_indices{T}: forall i j xs ys P elem sz addr1 addr2 (content: list T),
-      (* these two equalities are provable right now, where we still have evars, whereas the
-         equation that we push into the conjunction needs to be deferred until all the canceling
-         is done and the evars are instantiated [not sure if that's true...] *)
-      nth i xs = array elem sz addr1 content ->
-      nth j ys = array elem sz addr2 content ->
-      Lift1Prop.iff1 (seps (remove_nth i xs)) (seps (remove_nth j ys)) /\
-      (addr1 = addr2 /\ P) ->
-      Lift1Prop.iff1 (seps xs) (seps ys) /\ P.
-  Abort.
-
 Set Default Goal Selector "1".
 
   Definition arp: (string * {f: list string * list string * cmd &
