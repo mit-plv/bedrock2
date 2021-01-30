@@ -168,10 +168,6 @@ Section WithParameters.
   Require Import bedrock2.AbsintWordToZ.
   Import WeakestPreconditionProperties.
 
-  Lemma word__unsigned_of_Z_nowrap {width} {word: word.word width} {ok : word.ok word} x : 0 <= x < 2 ^ width -> word.unsigned (word.of_Z x) = x.
-  Proof.
-    intros. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Z.mod_small; trivial.
-  Qed.
   Local Ltac seplog_use_array_load1 H i :=
     let iNat := eval cbv in (Z.to_nat i) in
     let H0 := fresh in pose proof H as H0;

@@ -124,18 +124,6 @@ Module Z.
   Qed.
 End Z.
 
-Module word.
-  Lemma well_founded_lt_unsigned : well_founded (fun a b : word => word.unsigned a < word.unsigned b).
-  Proof.
-    simple refine (Wf_nat.well_founded_lt_compat _ (fun x => Z.to_nat (word.unsigned x)) _ _).
-    cbv beta; intros a b H.
-    epose proof proj1 (Properties.word.unsigned_range a); epose proof proj1 (Properties.word.unsigned_range b).
-    eapply Znat.Z2Nat.inj_lt; trivial.
-    Unshelve.
-    all: unfold word; typeclasses eauto.
-  Qed.
-End word.
-
 From coqutil Require Import Z.div_mod_to_equations.
 
 Ltac t :=
@@ -149,7 +137,7 @@ Ltac t :=
   | |- map.putmany_of_list_zip _ _ _ = Some _ => exact eq_refl
   | |- exists _, _ => eexists
   | |- _ /\ _ => split
-  | |- well_founded _ => eapply word.well_founded_lt_unsigned
+  | |- well_founded _ => eapply Properties.word.well_founded_lt_unsigned
   | |- ext_spec _ _ _ _ _ => refine (conj eq_refl (conj I (conj eq_refl _)))
   | |- _ < _ => solve[
     repeat match goal with
