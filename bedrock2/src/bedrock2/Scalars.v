@@ -106,8 +106,8 @@ Section Scalars.
     destruct (Z.ltb_spec0 i 32); cbn [andb]; trivial; [].
     destruct (Z.testbit (word.unsigned value) i); cbn [andb]; trivial; [].
     cbn.
-    destruct (Z.leb_spec0 0 i); try blia. cbn [andb].
-    eapply Z.ltb_lt. blia.
+    destruct (Z.leb_spec0 0 i); try blia; cbn [andb];
+    eapply Z.ltb_lt; blia.
   Qed.
 
   Lemma load_four_of_sep_32bit(W32: width = 32) addr value R m
