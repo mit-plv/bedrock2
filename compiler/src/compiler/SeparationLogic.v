@@ -229,7 +229,7 @@ Section ptstos.
     clear Hsep.
 
     rewrite <-(List.firstn_skipn (Z.to_nat bytes_per_word) bytes) at 1.
-    unfold ptsto_word, truncated_scalar, littleendian.
+    unfold ptsto_word, truncated_word, truncated_scalar, littleendian.
 
     rewrite <-bytearray_index_merge.
     1: eapply Proper_sep_iff1; [|reflexivity].
