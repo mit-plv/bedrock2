@@ -1098,7 +1098,7 @@ Section Spilling.
       iff1 (scalar addr (word.of_Z (head_to_Z (Z.to_nat bytes_per_word) l)))
            (array ptsto (word.of_Z 1) addr (List__firstn_default (Z.to_nat bytes_per_word) l Byte.x00)).
   Proof.
-    unfold scalar, truncated_scalar. intros. rewrite word.unsigned_of_Z. unfold word.wrap.
+    unfold scalar, truncated_word, truncated_scalar. intros. rewrite word.unsigned_of_Z. unfold word.wrap.
   Abort.
 
   (* byte_list_to_word_list_array already exists, TODO reconcile *)

@@ -355,30 +355,18 @@ Section WithParameters.
   Lemma load_four_bytes_of_sep_at bs a R m (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
   Proof.
-    seprewrite_in (eq_of_list_word_iff_array1) Hsep.
-    { change_with_Z_literal width; blia. }
-    seprewrite_in open_constr:(Scalars.scalar32_of_bytes _ _ _) Hsep.
-    erewrite @Scalars.load_four_of_sep; shelve_unifiable; try exact _; eauto.
-    Unshelve. (* where does this evar come from? *)
-    2: eauto.
-    f_equal.
-    f_equal.
-    rewrite word.unsigned_of_Z.
-    cbv [word.wrap]; rewrite Z.mod_small; trivial.
-    pose proof LittleEndian.combine_bound (HList.tuple.of_list bs).
-    rewrite Hl in H at 3.
-    blia.
+    eapply Scalars.load_four_bytes_of_sep_at; try eassumption. reflexivity.
   Qed.
 
   Lemma uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: (eq(bs$@a)*R) m /\ length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
-  Proof. eapply load_four_bytes_of_sep_at; eapply H. Qed.
+  Proof. eapply Scalars.uncurried_load_four_bytes_of_sep_at; try eassumption. reflexivity. Qed.
 
   Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: (eq(bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
     load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
-  Proof. eapply load_four_bytes_of_sep_at; try eapply H; blia. Qed.
+  Proof. eapply Scalars.Z_uncurried_load_four_bytes_of_sep_at; try eassumption. reflexivity. Qed.
 
   (*
   Lemma store_four_of_sep addr (oldvalue : word32) (value : word) R m (post:_->Prop)
@@ -417,7 +405,7 @@ Section WithParameters.
            | H: context [?e] |- _ => is_evar e; set e in *
            end.
   Ltac subst_evars :=
-    repeat match goal with 
+    repeat match goal with
     x := ?e |- _ => is_evar e; subst x
            end.
 

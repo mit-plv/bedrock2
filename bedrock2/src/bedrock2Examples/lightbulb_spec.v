@@ -95,7 +95,7 @@ Section LightbulbSpec.
     spi_end) t /\
     byte.unsigned a1 = word.unsigned (word.sru a (word.of_Z 8)) /\
     byte.unsigned a0 = word.unsigned (word.and a (word.of_Z 255)) /\
-    word.unsigned v = LittleEndian.combine 4 ltac:(repeat split; [exact v0|exact v1|exact v2|exact v3]).
+    word.unsigned v = LittleEndian.combine 4 (HList.tuple.of_list (cons v0 (cons v1 (cons v2 (cons v3 nil))))).
 
   Definition LAN9250_WRITE : byte := Byte.x02.
   Definition HW_CFG : Z := Ox"074".
@@ -113,7 +113,7 @@ Section LightbulbSpec.
     spi_end) t /\
     byte.unsigned a1 = word.unsigned (word.sru a (word.of_Z 8)) /\
     byte.unsigned a0 = word.unsigned (word.and a (word.of_Z 255)) /\
-    word.unsigned v = LittleEndian.combine 4 ltac:(repeat split; [exact v0|exact v1|exact v2|exact v3]).
+    word.unsigned v = LittleEndian.combine 4 (HList.tuple.of_list (cons v0 (cons v1 (cons v2 (cons v3 nil))))).
 
   (* NOTE: we could do this without rounding up to the nearest word, and this
   * might be necessary for other stacks than IP-TCP and IP-UDP *)
@@ -127,7 +127,7 @@ Section LightbulbSpec.
     match bs with
     | nil => eq nil
     | cons v0 (cons v1 (cons v2 (cons v3 bs))) =>
-      lan9250_fastread4 (word.of_Z 0) (word.of_Z (LittleEndian.combine 4 ltac:(repeat split; [exact v0|exact v1|exact v2|exact v3]))) +++
+      lan9250_fastread4 (word.of_Z 0) (word.of_Z (LittleEndian.combine 4 (HList.tuple.of_list (cons v0 (cons v1 (cons v2 (cons v3 nil))))))) +++
       lan9250_readpacket bs
     | _ => constraint False (* TODO: padding? *)
     end.

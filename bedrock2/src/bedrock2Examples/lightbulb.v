@@ -480,12 +480,12 @@ Section WithParameters.
         { instantiate (1:= word.of_Z 4).
           rewrite word.unsigned_of_Z.
           rewrite List.length_firstn_inbounds; [exact eq_refl|]. Z.div_mod_to_equations. blia. }
-        eapply store_four_of_sep.
-        { match goal with H8:_|-_ => seprewrite_in @scalar32_of_bytes H8; [..|ecancel_assumption]; try exact _; [] end.
-          eapply List.length_firstn_inbounds; Z.div_mod_to_equations; blia. }
-
+        do 2 straightline.
+        match goal with H12:_|-_ => seprewrite_in @scalar32_of_bytes H12 end. 1: reflexivity.
+        { eapply List.length_firstn_inbounds; Z.div_mod_to_equations; blia. }
+        straightline.
         (* after store *)
-        do 5 straightline.
+        do 3 straightline.
         (* TODO straightline hangs in TailRecursion.enforce *)
         do 5 letexists. split. { repeat straightline. }
         right. do 3 letexists.
@@ -531,7 +531,7 @@ Section WithParameters.
 
         { letexists; repeat split.
           { repeat match goal with x := _ |- _ => is_var x; subst x end; subst.
-            cbv [scalar32 truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in *.
+            cbv [scalar32 truncated_word truncate_word truncate_Z truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in *.
             progress replace (word.add x9 (word.add x11 (word.of_Z 4))) with
                     (word.add (word.add x9 x11) (word.of_Z 4)) in * by ring.
             SeparationLogic.seprewrite_in (@bytearray_index_merge) H25.
@@ -541,6 +541,7 @@ Section WithParameters.
             unshelve erewrite (_ : length (HList.tuple.to_list _) = 4%nat); [exact eq_refl|].
             enough ((4 <= length x7)%nat) by blia.
             Z.div_mod_to_equations; blia. }
+          cbv [truncate_word truncate_Z] in *.
           repeat match goal with x := _ |- _ => is_var x; subst x end; subst.
           eexists; split.
           { rewrite List.app_assoc; eauto. }
@@ -548,10 +549,11 @@ Section WithParameters.
           { eapply List.Forall2_app; eauto.  }
           destruct H29; [left|right]; repeat (straightline || split || eauto using TracePredicate.any_app_more).
           eapply TracePredicate.concat_app; eauto.
-          unshelve erewrite (_ : LittleEndian.combine _ _ = word.unsigned x10); rewrite !word.of_Z_unsigned; try solve [intuition idtac].
-          1: replace (word.unsigned x10) with (word.unsigned x10 mod 2^(Z.of_nat (bytes_per (width:=32) access_size.four)*8)).
-          1:rewrite <-LittleEndian.combine_split; f_equal.
-          eapply Properties.word.wrap_unsigned. } }
+          unshelve erewrite (_ : LittleEndian.combine _ _ = word.unsigned x10); rewrite ?word.of_Z_unsigned; try solve [intuition idtac].
+          { cbn[HList.tuple.of_list].
+            etransitivity.
+            1: eapply (LittleEndian.combine_split 4).
+            eapply Properties.word.wrap_unsigned. } } }
 
       { split; eauto. eexists; split; eauto. split; eauto. exists nil; split; eauto.
         eexists; split; [constructor|].
