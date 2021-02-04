@@ -18,7 +18,7 @@ Require Import riscv.Platform.Run.
 Require Import riscv.Spec.Execute.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.SeparationLogic.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.DivisibleBy4.
 Require Import bedrock2.ptsto_bytes.
 Require Import bedrock2.Scalars.
@@ -28,7 +28,7 @@ Require Import riscv.Proofs.DecodeEncode.
 Require Import riscv.Platform.MetricSane.
 Require Import coqutil.Decidable.
 Require Import compiler.FlatToRiscvDef.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Datatypes.ListSet.
 Import Utility.
@@ -252,12 +252,12 @@ Section Go.
       mid' = withNextPc v (updateMetrics (addMetricJumps 1) initialL))).
   Qed.
 
-  Lemma go_step: forall (initialL: RiscvMachineL) (post: RiscvMachineL -> Prop),
+  Lemma go_endCycleNormal: forall (initialL: RiscvMachineL) (post: RiscvMachineL -> Prop),
       post (withPc initialL.(getNextPc)
            (withNextPc (word.add initialL.(getNextPc) (word.of_Z 4))
            (updateMetrics (addMetricInstructions 1) initialL))) ->
-      mcomp_sat step initialL post.
-  Proof. t spec_step. Qed.
+      mcomp_sat endCycleNormal initialL post.
+  Proof. t spec_endCycleNormal. Qed.
 
   Lemma go_done: forall (initialL: RiscvMachineL) (post: RiscvMachineL -> Prop),
       post initialL ->
@@ -330,10 +330,10 @@ Section Go.
       | |- (?A * ?B * ?C)%sep ?m => assert ((A * (B * C))%sep m); [|ecancel_assumption]
       end.
       eapply sep_on_undef_put.
-      + apply putmany_of_footprint_None; try bomega.
+      + apply putmany_of_footprint_None; try blia.
         eapply H1.
         simpl. left. reflexivity.
-      + apply IHn; bomega || assumption || idtac.
+      + apply IHn; blia || assumption || idtac.
         intros. eapply H1.
         simpl. right. assumption.
   Qed.
@@ -348,9 +348,9 @@ Section Go.
       simpl.
       replace (Z.of_nat (S n)) with (1 + Z.of_nat n) in H by blia.
       eapply sep_on_undef_put.
-      + apply putmany_of_footprint_None; try bomega.
+      + apply putmany_of_footprint_None; try blia.
         apply map.get_empty.
-      + apply IHn. bomega.
+      + apply IHn. blia.
   Qed.
 
   Lemma ptsto_bytes_array: forall (l: list byte) (addr: word),
@@ -388,7 +388,7 @@ Section Go.
       (e1 - e2) mod m = 0.
   Proof.
     intros. rewrite !Z.mod_eq in H0 by assumption.
-    replace (e1 - e2) with (m * (e1 / m) - m * (e2 / m)) by bomega.
+    replace (e1 - e2) with (m * (e1 / m) - m * (e2 / m)) by blia.
     rewrite Z.mod_eq by assumption.
     rewrite <- Z.mul_sub_distr_l.
     rewrite (Z.mul_comm m (e1 / m - e2 / m)).
@@ -420,8 +420,10 @@ Section Go.
     apply map.get_put_same.
   Qed.
 
+  Context (iset: Decode.InstructionSet).
+
   Lemma ptsto_instr_subset_to_isXAddr4: forall a i xAddrs,
-      subset (footpr (ptsto_instr a i)) (of_list xAddrs) ->
+      subset (footpr (ptsto_instr iset a i)) (of_list xAddrs) ->
       isXAddr4 a xAddrs.
   Proof.
     unfold isXAddr4, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes, array. simpl.
@@ -430,11 +432,18 @@ Section Go.
       (eapply shrink_footpr_subset; [eassumption|wcancel]).
   Qed.
 
+  Definition not_InvalidInstruction(inst: Decode.Instruction): Prop :=
+    match inst with
+    | Decode.InvalidInstruction _ => False
+    | _ => True
+    end.
+
   Lemma go_fetch_inst{initialL: RiscvMachineL} {inst pc0 R Rexec} (post: RiscvMachineL -> Prop):
       pc0 = initialL.(getPc) ->
-      subset (footpr (program pc0 [inst] * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
-      (program pc0 [inst] * Rexec * R)%sep initialL.(getMem) ->
-      mcomp_sat (Bind (execute inst) (fun _ => step))
+      subset (footpr (program iset pc0 [inst] * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
+      (program iset pc0 [inst] * Rexec * R)%sep initialL.(getMem) ->
+      not_InvalidInstruction inst ->
+      mcomp_sat (Bind (execute inst) (fun _ => endCycleNormal))
                 (updateMetrics (addMetricLoads 1) initialL) post ->
       mcomp_sat (run1 iset) initialL post.
   Proof.
@@ -460,18 +469,12 @@ Section Go.
     - rewrite LittleEndian.combine_split.
       assert (0 <= encode inst < 2 ^ width) as F. {
         pose proof (encode_range inst) as P.
-        destruct width_cases as [E | E]; rewrite E; split.
-        (* TODO if https://github.com/coq/coq/pull/9291 makes it into 8.9.1,
-           bomega can be replaced *)
-        + bomega.
-        + bomega.
-        + bomega.
-        + let r := eval cbv in (2 ^ 32) in change (2 ^ 32) with r in *.
-          let r := eval cbv in (2 ^ 64) in change (2 ^ 64) with r in *.
-          bomega.
+        destruct width_cases as [E | E]; rewrite E; split. all: blia.
       }
       rewrite Z.mod_small; try assumption; try apply encode_range.
-      rewrite decode_encode; assumption.
+      destruct H1.
+      + rewrite decode_encode; assumption.
+      + exfalso. unfold not_InvalidInstruction, valid_InvalidInstruction in *. simp. contradiction.
   Qed.
 
   (* go_load/storeXxx lemmas phrased in terms of separation logic instead of
@@ -511,26 +514,26 @@ Section Go.
         unfold sep, map.split in H0.
         simp.
         unfold elem_of, footpr, footprint_underapprox in Hx.
-        specialize (Hx _ H0rr).
+        specialize (Hx _ H0p2).
         destruct Hx as [w Hx].
-        rename H0rlrlrl into B.
+        rename H0p1p1p1 into B.
         unfold ptsto in B.
         subst.
         unfold map.disjoint in *.
-        eapply H0lr. 2: exact Hx.
+        eapply H0p0p1. 2: exact Hx.
         rewrite map.get_putmany_left; cycle 1. {
           destr (map.get mq0 addr); [exfalso|reflexivity].
-          eapply H0rllr. 2: exact E.
+          eapply H0p1p0p1. 2: exact E.
           rewrite map.get_putmany_left; cycle 1. {
             destr (map.get mq1 addr); [exfalso|reflexivity].
-            eapply H0rlrllr. 2: exact E0.
+            eapply H0p1p1p0p1. 2: exact E0.
             rewrite map.get_put_same. reflexivity.
           }
           rewrite map.get_put_same. reflexivity.
         }
         rewrite map.get_putmany_left; cycle 1. {
           destr (map.get mq1 addr); [exfalso|reflexivity].
-          eapply H0rlrllr. 2: exact E.
+          eapply H0p1p1p0p1. 2: exact E.
           rewrite map.get_put_same. reflexivity.
         }
         rewrite map.get_put_same. reflexivity.
@@ -757,6 +760,8 @@ Ltac sidecondition_hook := idtac.
 Ltac sidecondition :=
   simpl; simpl_MetricRiscvMachine_get_set;
   match goal with
+  | |- not_InvalidInstruction _ =>
+    cbv [compile_load compile_store compile_bcond_by_inverting]; repeat destruct_one_match; exact I
   (* these branches are allowed to instantiate evars in a controlled manner: *)
   | H: map.get _ _ = Some _ |- _ => exact H
   | |- map.get _ _ = Some _ =>
@@ -768,12 +773,12 @@ Ltac sidecondition :=
   | |- @sep ?K ?V ?M ?P ?Q ?m => simpl in *;
                                  simpl_MetricRiscvMachine_get_set;
                                  use_sep_assumption;
-                                 wcancel
+                                 wwcancel
   | H: subset (footpr _) _ |- subset (footpr ?F) _ =>
     tryif is_evar F then
       eassumption
     else
-      (simpl in H |- *; eapply rearrange_footpr_subset; [ exact H | solve [wcancel] ])
+      (simpl in H |- *; eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ])
   | |- _ => reflexivity
   | A: map.get ?lH ?x = Some _, E: map.extends ?lL ?lH |- map.get ?lL ?x = Some _ =>
     eapply (map.extends_get A E)
@@ -788,6 +793,7 @@ Ltac sidecondition :=
     unfold Memory.load, Memory.load_Z in *;
     simpl_MetricRiscvMachine_mem;
     erewrite load_bytes_of_sep; [ reflexivity | ecancel_assumption ]
+  | |- Memory.load ?sz ?m ?addr = Some ?v => eassumption
   | |- Memory.store ?sz ?m ?addr ?val = Some ?m' => eassumption
   | |- _ => sidecondition_hook
   end.
@@ -799,7 +805,7 @@ Ltac sidecondition :=
 
 Ltac simulate_step :=
   first (* lemmas packing multiple primitives need to go first: *)
-        [ refine (go_fetch_inst _ _ _ _ _);        [sidecondition..|]
+        [ refine (go_fetch_inst _ _ _ _ _ _ _);    [sidecondition..|]
         (* single-primitive lemmas: *)
         (* lemmas about Register0 need to go before lemmas about other Registers *)
         | refine (go_getRegister0 _ _ _ _);        [sidecondition..|]
@@ -819,7 +825,7 @@ Ltac simulate_step :=
         *)
         | refine (go_getPC _ _ _ _);               [sidecondition..|]
         | refine (go_setPC _ _ _ _ _);             [sidecondition..|]
-        | refine (go_step _ _ _);                  [sidecondition..|]
+        | refine (go_endCycleNormal _ _ _);        [sidecondition..|]
         (* monad law lemmas: *)
         | refine (go_left_identity _ _ _ _ _);     [sidecondition..|]
         | refine (go_right_identity _ _ _ _);      [sidecondition..|]

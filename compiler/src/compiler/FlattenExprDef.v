@@ -11,7 +11,7 @@ Require Import bedrock2.Semantics.
 Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import coqutil.Datatypes.String.
 
 Open Scope Z_scope.
@@ -112,6 +112,11 @@ Section FlattenExpr1.
         let '(s1, r1, ngs') := flattenExpr ngs None e in
         let '(x, ngs'') := genFresh_if_needed resVar ngs' in
         (FlatImp.SSeq s1 (FlatImp.SLoad sz x r1 0), x, ngs'')
+    | Syntax.expr.inlinetable sz t index =>
+        let '(r1, ngs') := genFresh ngs in (* by picking r1 fresh, we guarantee r1 <> x *)
+        let '(s1, r1, ngs'') := flattenExpr ngs' (Some r1) index in
+        let '(x, ngs''') := genFresh_if_needed resVar ngs'' in
+        (FlatImp.SSeq s1 (FlatImp.SInlinetable sz x t r1), x, ngs''')
     | Syntax.expr.op op e1 e2 =>
         let '(s1, r1, ngs') := flattenExpr ngs None e1 in
         let '(s2, r2, ngs'') := flattenExpr ngs' None e2 in

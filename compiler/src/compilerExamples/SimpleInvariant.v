@@ -6,9 +6,9 @@ Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.util.Common.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import compiler.SeparationLogic.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.EmitsValid.
@@ -50,13 +50,13 @@ Section Proofs.
            (p_insts: word) (p_data: word),
       pc_in_range m p_insts (4 * len insts) /\
       (* begin ignore *)
-      subset (footpr (program p_insts insts *
-                      ptsto_instr (word.add p_insts [/4 * len insts])
+      subset (footpr (program iset p_insts insts *
+                      ptsto_instr iset (word.add p_insts [/4 * len insts])
                                   (Jal RegisterNames.zero (-4 * len insts)))%sep)
              (of_list m.(getXAddrs)) /\
       (* end ignore *)
-      (program p_insts insts *
-       ptsto_instr (word.add p_insts [/4 * len insts]) (Jal RegisterNames.zero (-4 * len insts)) *
+      (program iset p_insts insts *
+       ptsto_instr iset (word.add p_insts [/4 * len insts]) (Jal RegisterNames.zero (-4 * len insts)) *
        array ptsto [/1] p_data data)%sep m.(getMem) /\
       (* TODO we would also have to say that Sb and Lb only touch memory within data *)
       (forall inst, In inst insts -> (exists r1 r2 ofs, inst = Sb r1 r2 ofs) \/

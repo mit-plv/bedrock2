@@ -10,9 +10,10 @@ Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Byte.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Z.Lia.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Datatypes.ListSet.
+Require Import coqutil.Map.OfListWord.
 
 Inductive bbinop: Type :=
 | BEq
@@ -33,6 +34,7 @@ Section Syntax.
   Inductive stmt: Type :=
     | SLoad(sz: Syntax.access_size)(x: varname)(a: varname)(offset: Z)
     | SStore(sz: Syntax.access_size)(a: varname)(v: varname)(offset: Z)
+    | SInlinetable(sz: Syntax.access_size)(x: varname)(t: list Byte.byte)(i: varname)
     | SStackalloc(x : varname)(nbytes: Z)(body: stmt)
     | SLit(x: varname)(v: Z)
     | SOp(x: varname)(op: bopname)(y z: varname)
@@ -48,6 +50,7 @@ Section Syntax.
     match s with
     | SLoad sz x a o => 1
     | SStore sz a v o => 1
+    | SInlinetable sz x t i => 1 + (Z.of_nat (length t) + 3) / 4 + 2
     | SStackalloc x a body => 1 + rec body
     | SLit x v => 8
     | SOp x op y z => 2
@@ -71,13 +74,17 @@ Section Syntax.
   Lemma stmt_size_nonneg: forall s, 0 <= stmt_size s.
   Proof.
     induction s; simpl; try blia.
+    assert (0 <= (Z.of_nat (Datatypes.length t) + 3) / 4). {
+      apply Z.div_pos; blia.
+    }
+    blia.
   Qed.
 
   Fixpoint modVars_as_list(veq: varname -> varname -> bool)(s: stmt): list varname :=
     match s with
     | SSkip | SStore _ _ _ _ => []
     | SStackalloc x n body => list_union veq [x] (modVars_as_list veq body)
-    | SLoad _ x _ _ | SLit x _ | SOp x _ _ _ | SSet x _ => [x]
+    | SLoad _ x _ _ | SLit x _ | SOp x _ _ _ | SSet x _ | SInlinetable _ x _ _ => [x]
     | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 =>
         list_union veq (modVars_as_list veq s1) (modVars_as_list veq s2)
     | SCall binds _ _ | SInteract binds _ _ => list_union veq binds []
@@ -89,11 +96,12 @@ Section Syntax.
     | CondNez x => P x
     end.
 
-  Definition ForallVars_stmt(P: varname -> Prop): stmt -> Prop :=
+  Definition Forall_vars_stmt(P: varname -> Prop)(P_calls: varname -> Prop): stmt -> Prop :=
     fix rec s :=
       match s with
       | SLoad _ x a _ => P x /\ P a
       | SStore _ a x _ => P a /\ P x
+      | SInlinetable _ x _ i => P x /\ P i
       | SStackalloc x n body => P x /\ rec body
       | SLit x _ => P x
       | SOp x _ y z => P x /\ P y /\ P z
@@ -102,9 +110,11 @@ Section Syntax.
       | SLoop s1 c s2 => ForallVars_bcond P c /\ rec s1 /\ rec s2
       | SSeq s1 s2 => rec s1 /\ rec s2
       | SSkip => True
-      | SCall binds _ args => Forall P binds /\ Forall P args
-      | SInteract binds _ args => Forall P binds /\ Forall P args
+      | SCall binds _ args => Forall P_calls binds /\ Forall P_calls args
+      | SInteract binds _ args => Forall P_calls binds /\ Forall P_calls args
       end.
+
+  Definition ForallVars_stmt P := Forall_vars_stmt P P.
 
   Lemma ForallVars_bcond_impl: forall (P Q: varname -> Prop),
       (forall x, P x -> Q x) ->
@@ -113,12 +123,18 @@ Section Syntax.
     intros. destruct s; simpl in *; intuition eauto.
   Qed.
 
-  Lemma ForallVars_stmt_impl: forall (P Q: varname -> Prop),
+  Lemma Forall_vars_stmt_impl: forall (P Q P_calls Q_calls: varname -> Prop),
       (forall x, P x -> Q x) ->
-      forall s, ForallVars_stmt P s -> ForallVars_stmt Q s.
+      (forall x, P_calls x -> Q_calls x) ->
+      forall s, Forall_vars_stmt P P_calls s -> Forall_vars_stmt Q Q_calls s.
   Proof.
     induction s; intros; simpl in *; intuition eauto using ForallVars_bcond_impl, Forall_impl.
   Qed.
+
+  Lemma ForallVars_stmt_impl: forall (P Q: varname -> Prop),
+      (forall x, P x -> Q x) ->
+      forall s, ForallVars_stmt P s -> ForallVars_stmt Q s.
+  Proof. unfold ForallVars_stmt. eauto using Forall_vars_stmt_impl. Qed.
 
 End Syntax.
 
@@ -239,6 +255,10 @@ Section FlatImp1.
             'Some v <- map.get st v;
             'Some m <- store sz m (word.add a (word.of_Z o)) v;
             Some (st, m)
+        | SInlinetable sz x t i =>
+            'Some index <- map.get st i;
+            'Some v <- load sz (map.of_list_word t) index;
+            Some (map.put st x v, m)
         | SStackalloc x n body =>
           (* the deterministic semantics do not support stack alloc, because at
              this level, we don't have a means of obtaining a stack address *)
@@ -303,6 +323,13 @@ Section FlatImp1.
                          map.get initialSt y = Some v /\
                          store sz initialM (word.add a (word.of_Z o)) v = Some finalM /\
                          final = (initialSt, finalM).
+    Proof. inversion_lemma. Qed.
+
+    Lemma invert_eval_SInlinetable: forall fuel initialSt m sz x i t final,
+        eval_stmt (S fuel) initialSt m (SInlinetable sz x t i) = Some final ->
+        exists index v, map.get initialSt i = Some index /\
+                        load sz (map.of_list_word t) index = Some v /\
+                        final = (map.put initialSt x v, m).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_SStackalloc : forall st m1 p2 f x n body,
@@ -381,6 +408,7 @@ Section FlatImp1.
     match s with
     | SLoad sz x y o => singleton_set x
     | SStore sz x y o => empty_set
+    | SInlinetable sz x t i => singleton_set x
     | SStackalloc x n body => union (singleton_set x) (modVars body)
     | SLit x v => singleton_set x
     | SOp x op y z => singleton_set x
@@ -431,11 +459,11 @@ Module exec.
         (forall mReceive resvals,
             outcome mReceive resvals ->
             exists l', map.putmany_of_list_zip resvars resvals l = Some l' /\
-                       exists m', map.split m' mKeep mReceive /\
-                                  post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l'
-                                       (addMetricInstructions 1
-                                       (addMetricStores 1
-                                       (addMetricLoads 2 mc)))) ->
+            forall m', map.split m' mKeep mReceive ->
+            post (((mGive, action, argvals), (mReceive, resvals)) :: t) m' l'
+                 (addMetricInstructions 1
+                 (addMetricStores 1
+                 (addMetricLoads 2 mc)))) ->
         exec (SInteract resvars action argvars) t m l mc post
     | call: forall t m l mc binds fname args params rets fbody argvs st0 post outcome,
         map.get e fname = Some (params, rets, fbody) ->
@@ -465,6 +493,16 @@ Module exec.
              (addMetricInstructions 1
              (addMetricStores 1 mc))) ->
         exec (SStore sz a v o) t m l mc post
+    | inlinetable: forall sz x table i v index t m l mc post,
+        (* compiled riscv code uses x as a tmp register and this shouldn't overwrite i *)
+        x <> i ->
+        map.get l i = Some index ->
+        load sz (map.of_list_word table) index = Some v ->
+        post t m (map.put l x v)
+             (addMetricLoads 4
+             (addMetricInstructions 3
+             (addMetricJumps 1 mc))) ->
+        exec (SInlinetable sz x table i) t m l mc post
     | stackalloc: forall t mSmall l mc x n body post,
         n mod (bytes_per_word width) = 0 ->
         (forall a mStack mCombined,
@@ -611,11 +649,6 @@ Module exec.
           edestruct H15 as (? & ? & ?); [eassumption|].
           simp.
           equalities.
-          match goal with
-          | A: map.split _ ?m1 ?m2, B: map.split _ ?m1 ?m2 |- _ =>
-            pose proof (map.split_det A B)
-          end.
-          subst.
           eauto 10.
 
       - (* SCall *)
@@ -676,6 +709,7 @@ Ltac invert_eval_stmt :=
     destruct s;
     [ apply invert_eval_SLoad in E
     | apply invert_eval_SStore in E
+    | apply invert_eval_SInlinetable in E
     | apply invert_eval_SStackalloc in E
     | apply invert_eval_SLit in E
     | apply invert_eval_SOp in E
@@ -689,6 +723,7 @@ Ltac invert_eval_stmt :=
     deep_destruct E;
     [ let x := fresh "Case_SLoad" in pose proof tt as x; move x at top
     | let x := fresh "Case_SStore" in pose proof tt as x; move x at top
+    | let x := fresh "Case_SInlinetable" in pose proof tt as x; move x at top
     | let x := fresh "Case_SStackalloc" in pose proof tt as x; move x at top
     | let x := fresh "Case_SLit" in pose proof tt as x; move x at top
     | let x := fresh "Case_SOp" in pose proof tt as x; move x at top
@@ -774,7 +809,7 @@ Section FlatImp2.
       edestruct H2; try eassumption. simp.
       eexists; split; [eassumption|].
       simpl. try split; eauto.
-      eexists; split; [eassumption|].
+      intros.
       eapply map.only_differ_putmany. eassumption.
     - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
       intros; simpl in *; simp.

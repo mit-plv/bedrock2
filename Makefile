@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: update_all clone_all coqutil riscv-coq bedrock2_noex bedrock2_ex compiler_noex compiler_ex kami processor end2end all clean_coqutil clean_riscv-coq clean_bedrock2 clean_compiler clean_kami clean_processor clean_end2end clean_manglenames clean install_coqutil install_kami install_riscv-coq install_bedrock2 install_compiler install_processor install_end2end install
+.PHONY: update_all clone_all coqutil coq-record-update riscv-coq bedrock2_noex bedrock2_ex compiler_noex compiler_ex kami processor end2end all clean_coqutil clean_coq-record-update clean_riscv-coq clean_bedrock2 clean_compiler clean_kami clean_processor clean_end2end clean_manglenames clean install_coqutil install_coq-record-update install_kami install_riscv-coq install_bedrock2 install_compiler install_processor install_end2end install
 
 clone_all:
 	git submodule update --init --recursive
@@ -26,13 +26,13 @@ EXTERNAL_DEPENDENCIES?=
 ifneq ($(EXTERNAL_DEPENDENCIES),1)
 
 bedrock2_noex: coqutil
-riscv-coq: coqutil
+riscv-coq: coqutil coq-record-update
 kami: riscv-coq
 compiler_noex: riscv-coq bedrock2_noex
 processor: riscv-coq kami
 end2end: compiler_ex bedrock2_ex processor
 
-install: install_coqutil install_riscv-coq install_kami
+install: install_coqutil install_coq-record-update install_riscv-coq install_kami
 
 endif
 
@@ -48,6 +48,15 @@ clean_coqutil:
 
 install_coqutil:
 	$(MAKE) -C $(DEPS_DIR)/coqutil install
+
+coq-record-update:
+	$(MAKE) -C $(DEPS_DIR)/coq-record-update
+
+clean_coq-record-update:
+	$(MAKE) -C $(DEPS_DIR)/coq-record-update clean
+
+install_coq-record-update:
+	$(MAKE) -C $(DEPS_DIR)/coq-record-update install
 
 kami:
 	$(MAKE) -C $(DEPS_DIR)/kami
@@ -113,7 +122,7 @@ all: bedrock2_ex compiler_ex processor end2end
 
 clean: clean_bedrock2 clean_compiler clean_processor clean_end2end
 
-clean_deps: clean_coqutil clean_kami clean_riscv-coq
+clean_deps: clean_coqutil clean_coq-record-update clean_kami clean_riscv-coq
 
 clean_all: clean_deps clean
 

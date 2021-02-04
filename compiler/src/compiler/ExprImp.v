@@ -10,7 +10,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PropSet.
 Require Import riscv.Platform.MetricLogging.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Import Semantics.
 
 (*Local Set Ltac Profiling.*)
@@ -90,6 +90,7 @@ Section ExprImp1.
       match e with
       | expr.literal _ => 15
       | expr.load _ e => expr_size e + 1
+      | expr.inlinetable _ t i => (Z.of_nat (length t) + 3) / 4 + expr_size i + 3
       | expr.var _ => 1
       | expr.op op e1 e2 => expr_size e1 + expr_size e2 + 2
       end.
@@ -97,6 +98,10 @@ Section ExprImp1.
     Lemma expr_size_pos: forall exp, expr_size exp > 0.
     Proof.
       induction exp; simpl; try blia.
+      assert (0 <= (Z.of_nat (Datatypes.length table) + 3) / 4). {
+        apply Z.div_pos; blia.
+      }
+      blia.
     Qed.
 
     Definition exprs_size(es: list expr): Z := fold_right (fun e res => res + expr_size e) 0 es.
@@ -220,6 +225,7 @@ Section ExprImp1.
     | expr.literal v => []
     | expr.var x => [x]
     | expr.load nbytes e => allVars_expr_as_list e
+    | expr.inlinetable sz t i => allVars_expr_as_list i
     | expr.op op e1 e2 => (allVars_expr_as_list e1) ++ (allVars_expr_as_list e2)
     end.
 
@@ -245,6 +251,7 @@ Section ExprImp1.
     | expr.literal v => empty_set
     | expr.var x => singleton_set x
     | expr.load nbytes e => allVars_expr e
+    | expr.inlinetable sz t i => allVars_expr i
     | expr.op op e1 e2 => union (allVars_expr e1) (allVars_expr e2)
     end.
 
@@ -417,7 +424,6 @@ Section ExprImp2.
     - eapply @exec.interact; try eassumption.
       intros.
       edestruct H2 as (? & ? & ?); [eassumption|].
-      destruct H6 as (? & ? & ?).
       eauto 10.
   Qed.
 
@@ -491,9 +497,6 @@ Section ExprImp2.
                | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
                  replace v2 with v1 in * by congruence; clear H2
                end.
-        destruct H6 as (m'1 & S1 & P1).
-        destruct H8 as (m'2 & S2 & P2).
-        pose proof (map.split_det S1 S2) as Q. subst m'2. rename m'1 into m'.
         eauto 10.
   Qed.
 
@@ -549,9 +552,8 @@ Section ExprImp2.
     - eapply exec.interact; try eassumption.
       intros.
       edestruct H2 as (? & ? & ?); try eassumption.
-      destruct H5 as (? & ? & ?).
       eexists; split; [eassumption|].
-      eexists; split; [eassumption|].
+      intros.
       eapply map.only_differ_putmany. eassumption.
   Qed.
 
@@ -590,10 +592,9 @@ Section ExprImp2.
     - eapply exec.interact; try eassumption.
       intros.
       edestruct H2 as (? & ? & ?); try eassumption.
-      destruct H5 as (? & ? & ?).
       eexists; split; [eassumption|].
-      eexists; split; [eassumption|].
-      repeat (eexists || split || eassumption).
+      intros.
+      repeat (eexists || split || eauto).
       eapply map.only_differ_putmany. eassumption.
   Qed.
 

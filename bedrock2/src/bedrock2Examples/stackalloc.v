@@ -8,9 +8,9 @@ Definition stacktrivial : bedrock_func := let t := "t" in
 
 Definition stacknondet : bedrock_func := let a := "a" in let b := "b" in let t := "t" in
   ("stacknondet", ([]:list String.string, [a; b], bedrock_func_body:(stackalloc 4 as t {
-  a = (load4(t) >> constr:(8));
-  store1(a+constr:(3), constr:(42));
-  b = (load4(t) >> constr:(8))
+  a = (load4(t) >> coq:(8));
+  store1(a+coq:(3), coq:(42));
+  b = (load4(t) >> coq:(8))
 }))).
 
 Definition stackdisj : bedrock_func := let a := "a" in let b := "b" in
@@ -51,7 +51,7 @@ Section WithParameters.
     idtac
     end end end.
 
-    intuition idtac.
+    intuition congruence.
   Qed.
 
   Instance spec_of_stacknondet : spec_of "stacknondet" := fun functions => forall m t,
@@ -66,6 +66,9 @@ Section WithParameters.
     set (R := eq m).
     pose proof (eq_refl : R m) as Hm.
     repeat straightline.
+    assert (sep R (scalar32 a (Interface.word.of_Z (LittleEndian.combine _ (HList.tuple.of_list stack)))) m)
+      by admit.
+    repeat straightline.
   Abort.
 
   Instance spec_of_stackdisj : spec_of "stackdisj" := fun functions => forall m t,
@@ -79,6 +82,7 @@ Section WithParameters.
     pose proof (eq_refl : R m) as Hm.
     repeat straightline.
     repeat esplit.
+    all : try intuition congruence.
     match goal with |- _ <> _ => idtac end.
   Abort.
 

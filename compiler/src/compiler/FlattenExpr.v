@@ -11,10 +11,10 @@ Require Import bedrock2.Semantics.
 Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import coqutil.Datatypes.String.
 Require Import compiler.FlattenExprDef.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 
 Open Scope Z_scope.
 
@@ -45,8 +45,9 @@ Section FlattenExpr1.
     induction e; intros; destruct oResVar; simpl in *; simp; simpl;
       repeat match goal with
              | IH: _, H: _ |- _ => specialize IH with (1 := H)
+             | |- context [?x / 4] => unique pose proof (Z.div_pos x 4)
              end;
-      try bomega.
+      try blia.
   Qed.
 
   Lemma flattenExprAsBoolExpr_size: forall e s bcond ngs ngs',
@@ -57,24 +58,25 @@ Section FlattenExpr1.
       simp; subst; simpl;
       repeat match goal with
       | H : _ |- _ => apply flattenExpr_size in H
-      end; try bomega.
+      | |- context [?x / 4] => unique pose proof (Z.div_pos x 4)
+      end; try blia.
   Qed.
 
   Lemma flattenExprs_size: forall es s resVars ngs ngs',
     flattenExprs ngs es = (s, resVars, ngs') ->
     0 <= FlatImp.stmt_size s <= ExprImp.exprs_size es.
   Proof.
-    induction es; intros; simpl in *; simp; simpl; try bomega.
+    induction es; intros; simpl in *; simp; simpl; try blia.
     specialize IHes with (1 := E0).
     apply flattenExpr_size in E.
-    bomega.
+    blia.
   Qed.
 
   Lemma flattenExprs_resVarsLength: forall es s resVars ngs ngs',
     flattenExprs ngs es = (s, resVars, ngs') ->
     List.length resVars = List.length es.
   Proof.
-    induction es; intros; simpl in *; simp; simpl; try bomega.
+    induction es; intros; simpl in *; simp; simpl; try blia.
     specialize IHes with (1 := E0).
     f_equal.
     assumption.
@@ -91,7 +93,7 @@ Section FlattenExpr1.
     pose proof E as E'.
     apply flattenExprs_size in E.
     apply flattenExprs_resVarsLength in E'.
-    bomega.
+    blia.
   Qed.
 
   Lemma flattenInteract_size: forall f args binds ngs ngs' s,
@@ -103,7 +105,7 @@ Section FlattenExpr1.
     destruct_one_match_hyp.
     simp. simpl.
     apply flattenExprs_size in E.
-    bomega.
+    blia.
   Qed.
 
   Lemma flattenStmt_size: forall s s' ngs ngs',
@@ -121,7 +123,7 @@ Section FlattenExpr1.
     | H: flattenInteract _ _ _ _ = _ |- _ => apply flattenInteract_size in H
     end;
     simpl in *;
-    try bomega.
+    try blia.
   Qed.
 
   Lemma flattenExpr_freshVarUsage: forall e ngs ngs' oResVar s v,
@@ -179,9 +181,10 @@ Section FlattenExpr1.
   Proof.
     destruct e; intros; destruct oResVar; simp; simpl in *; simp;
       repeat match goal with
-          | H: _ |- _ => apply genFresh_spec in H; simp; assumption
+          | H: _ |- _ => apply genFresh_spec in H; simp
           | H: flattenExpr _ _ _ = _ |- _ => apply flattenExpr_freshVarUsage in H
           end;
+      try assumption;
       try solve [set_solver].
   Qed.
 
@@ -365,6 +368,22 @@ Section FlattenExpr1.
       + intros. simpl in *. simp.
         eapply @FlatImp.exec.load; t_safe; rewrite ?add_0_r; try eassumption; solve_MetricLog.
 
+    - (* expr.inlinetable *)
+      repeat match goal with
+             | H: genFresh _ = _ |- _ => unique pose proof (genFresh_spec _ _ _ H)
+             end.
+      simp.
+      eapply @FlatImp.exec.seq.
+      + eapply IHe; try eassumption. 1: maps.
+        set_solver; destr (String.eqb s0 x); subst; tauto. (* TODO improve set_solver? *)
+      + intros. simpl in *. simp.
+        eapply @FlatImp.exec.inlinetable; t_safe; try eassumption. 2: solve_MetricLog.
+        apply_in_hyps flattenExpr_uses_Some_resVar. subst s0.
+        intro C. subst s2.
+        destruct oResVar.
+        * cbn in *. simp. set_solver.
+        * cbn in *. apply_in_hyps genFresh_spec. simp. pose_flatten_var_ineqs. set_solver.
+
     - (* expr.op *)
       eapply seq_with_modVars.
       + eapply IHe1. 1: eassumption. 4: eassumption. 1,2: eassumption.
@@ -452,19 +471,19 @@ Section FlattenExpr1.
     apply unsigned_ne.
     rewrite! word.unsigned_of_Z. unfold word.wrap.
     rewrite! Z.mod_small;
-      [bomega|
+      [blia|
        pose proof word.width_pos as P; pose proof (Z.pow_gt_1 2 Utility.width) as Q ..].
     {
       (* PARAMRECORDS *)
-      Fail bomega.
+      Fail blia.
       simpl in *.
-      bomega.
+      blia.
     }
     {
       (* PARAMRECORDS *)
-      Fail bomega.
+      Fail blia.
       simpl in *.
-      bomega.
+      blia.
     }
   Qed.
 
@@ -497,7 +516,7 @@ Section FlattenExpr1.
   Proof.
     destruct e; intros *; intros F Ex U D Ev; unfold flattenExprAsBoolExpr in F.
 
-    1, 2, 3: solve [simp; default_flattenBooleanExpr].
+    1, 2, 3, 4: solve [simp; default_flattenBooleanExpr].
 
     simp.
     pose proof E  as N1. eapply flattenExpr_valid_resVar in N1; [|maps].
@@ -817,11 +836,10 @@ Section FlattenExpr1.
         simp.
         simple eapply ex_intro.
         simple apply conj; [exact R1|].
-        simple eapply ex_intro.
+        intros.
+        do 2 eexists.
+        split; eauto.
         simple apply conj; [eassumption|].
-        eapply ex_intro. eapply ex_intro.
-        simple apply conj; [eassumption|].
-        simple apply conj; [exact R2|].
         split; [simple eapply map.only_differ_putmany; eassumption|].
         solve_MetricLog.
   Qed.

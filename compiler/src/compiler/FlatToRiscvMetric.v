@@ -7,10 +7,10 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import compiler.util.Common.
 Require Import compiler.eqexact.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import compiler.on_hyp_containing.
 Require Import compiler.SeparationLogic.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.MetricsToRiscv.
@@ -47,25 +47,25 @@ Section Proofs.
     eexists; (* finalMH *)
     eexists; (* finalMetricsH *)
     repeat split;
-    simpl_word_exprs (@word_ok (@W (@def_params p)));
+    simpl_word_exprs (@word_ok (@W p));
     first
       [ solve [eauto]
       | solve_MetricLog
-      | solve_word_eq (@word_ok (@W (@def_params p)))
+      | solve_word_eq (@word_ok (@W p))
       | solve [wcancel_assumption]
       | eapply rearrange_footpr_subset; [ eassumption | wwcancel ]
-      | solve [solve_valid_machine (@word_ok (@W (@def_params p)))]
+      | solve [solve_valid_machine (@word_ok (@W p))]
       | idtac ].
 
   Ltac IH_sidecondition :=
-    simpl_word_exprs (@word_ok (@W (@def_params p)));
+    simpl_word_exprs (@word_ok (@W p));
     try solve
       [ reflexivity
       | auto
       | solve_stmt_not_too_big
-      | solve_word_eq (@word_ok (@W (@def_params p)))
+      | solve_word_eq (@word_ok (@W p))
       | simpl; solve_divisibleBy4
-      | solve_valid_machine (@word_ok (@W (@def_params p)))
+      | solve_valid_machine (@word_ok (@W p))
       | eapply rearrange_footpr_subset; [ eassumption | wwcancel ]
       | wcancel_assumption ].
 
@@ -87,16 +87,16 @@ Section Proofs.
     valid_FlatImp_vars s ->
     divisibleBy4 initialL.(getPc) ->
     initialL.(getRegs) = initialRegsH ->
-    subset (footpr (program initialL.(getPc) insts * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
-    (program initialL.(getPc) insts * Rexec * eq initialMH * R)%sep initialL.(getMem) ->
+    subset (footpr (program iset initialL.(getPc) insts * Rexec)%sep) (of_list initialL.(getXAddrs)) ->
+    (program iset initialL.(getPc) insts * Rexec * eq initialMH * R)%sep initialL.(getMem) ->
     initialL.(getLog) = t ->
     initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
     valid_machine initialL ->
     runsTo initialL (fun finalL => exists finalMH finalMetricsH,
           postH finalL.(getLog) finalMH finalL.(getRegs) finalMetricsH /\
-          subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
+          subset (footpr (program iset initialL.(getPc) insts * Rexec)%sep)
                  (of_list finalL.(getXAddrs)) /\
-          (program initialL.(getPc) insts * Rexec * eq finalMH * R)%sep finalL.(getMem) /\
+          (program iset initialL.(getPc) insts * Rexec * eq finalMH * R)%sep finalL.(getMem) /\
           finalL.(getPc) = add initialL.(getPc)
                              (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat (length insts)))) /\
           finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
@@ -129,7 +129,7 @@ Section Proofs.
 
     - (* SStore *)
       simpl_MetricRiscvMachine_get_set.
-      assert ((eq m * (program initialL_pc [[compile_store sz a v o]] * Rexec * R))%sep
+      assert ((eq m * (program iset initialL_pc [[compile_store sz a v o]] * Rexec * R))%sep
         initialL_mem) as A by ecancel_assumption.
       match goal with
       | H: _ |- _ => pose proof (store_bytes_frame H A) as P; move H at bottom;
@@ -141,6 +141,23 @@ Section Proofs.
       run1det. run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.
       ecancel_assumption.
+
+    - (* SInlinetable *)
+      run1det.
+      assert (map.get (map.put l x (word.add initialL_pc (word.of_Z 4))) i = Some index). {
+        rewrite map.get_put_diff by congruence. assumption.
+      }
+      run1det.
+      assert (Memory.load sz initialL_mem
+                          (word.add (word.add (word.add initialL_pc (word.of_Z 4)) index) (word.of_Z 0))
+              = Some v). {
+        rewrite add_0_r.
+        eapply load_from_compile_byte_list. 1: eassumption.
+        wcancel_assumption.
+      }
+      run1det.
+      rewrite !map.put_put_same in *.
+      run1done.
 
     - (* SStackalloc *)
       assert (valid_register RegisterNames.sp) by (cbv; auto).
@@ -160,7 +177,7 @@ Section Proofs.
       intros.
       unfold Memory.anybytes, Memory.ftprint, map.of_disjoint_list_zip in *. simpl in *.
       simp.
-      rewrite map.split_empty_r in H6lrl. subst mSmall'.
+      rewrite map.split_empty_r in H6p0p1. subst mSmall'.
       repeat match goal with
              | m: _ |- _ => destruct_RiscvMachine m; simpl_MetricRiscvMachine_get_set
              end.
@@ -181,7 +198,9 @@ Section Proofs.
       get_run1valid_for_free.
       eapply compile_lit_correct_full.
       + sidecondition.
-      + sidecondition.
+      + use_sep_assumption. cbn.
+        (* ecancel. (*  The term  "Tree.Leaf (subset (footpr (program iset initialL_pc (compile_lit x v) * Rexec)%sep))" has type "Tree.Tree (set word -> Prop)" while it is expected to have type "Tree.Tree (?map -> Prop)". *) *)
+        eapply RelationClasses.reflexivity.
       + unfold compile_stmt. simpl. ecancel_assumption.
       + sidecondition.
       + assumption.

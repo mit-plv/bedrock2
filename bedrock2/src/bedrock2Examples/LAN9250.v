@@ -5,7 +5,7 @@ Require Import bedrock2Examples.SPI.
 From coqutil Require Import letexists.
 Require Import bedrock2.AbsintWordToZ.
 Require Import coqutil.Tactics.rdelta.
-Require Import Coq.omega.PreOmega.
+Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Z.Lia.
 
 Import BinInt String List.ListNotations.
@@ -18,32 +18,32 @@ Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
 
 Definition lan9250_readword : function :=
-  let addr : String.string := "addr" in
-  let ret : String.string := "ret" in
-  let err : String.string := "err" in
+  let addr := "addr" in
+  let ret := "ret" in
+  let err := "err" in
   let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
   ("lan9250_readword", ((addr::nil), (ret::err::nil), bedrock_func_body:(
-    SPI_CSMODE_ADDR = (constr:(Ox"10024018"));
+    SPI_CSMODE_ADDR = (coq:(Ox"10024018"));
     io! ret = MMIOREAD(SPI_CSMODE_ADDR);
-    ret = (ret | constr:(2));
+    ret = (ret | coq:(2));
     output! MMIOWRITE(SPI_CSMODE_ADDR, ret);
 
     (* manually register-allocated, apologies for variable reuse *)
-    unpack! ret, err = spi_xchg(constr:(Ox"0b"));        require !err; (* FASTREAD *)
-    unpack! ret, err = spi_xchg(addr >> constr:(8));     require !err;
-    unpack! ret, err = spi_xchg(addr & constr:(Ox"ff")); require !err;
+    unpack! ret, err = spi_xchg(coq:(Ox"0b"));        require !err; (* FASTREAD *)
+    unpack! ret, err = spi_xchg(addr >> coq:(8));     require !err;
+    unpack! ret, err = spi_xchg(addr & coq:(Ox"ff")); require !err;
     unpack! ret, err = spi_xchg(err);                    require !err; (* dummy *)
 
     unpack! ret, err = spi_xchg(err);                    require !err; (* read *)
     unpack! addr, err = spi_xchg(err);                   require !err; (* read *)
-    ret = (ret | (addr << constr:(8)));
+    ret = (ret | (addr << coq:(8)));
     unpack! addr, err = spi_xchg(err);                   require !err; (* read *)
-    ret = (ret | (addr << constr:(16)));
+    ret = (ret | (addr << coq:(16)));
     unpack! addr, err = spi_xchg(err);                   require !err; (* read *)
-    ret = (ret | (addr << constr:(24)));
+    ret = (ret | (addr << coq:(24)));
 
     io! addr = MMIOREAD(SPI_CSMODE_ADDR);
-    addr = (addr & constr:(Z.lnot 2));
+    addr = (addr & coq:(Z.lnot 2));
     output! MMIOWRITE(SPI_CSMODE_ADDR, addr)
   ))).
 
@@ -56,15 +56,15 @@ Definition lan9250_writeword : function :=
   let err : String.string := "err" in
   let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
   ("lan9250_writeword", ((addr::data::nil), (err::nil), bedrock_func_body:(
-    SPI_CSMODE_ADDR = (constr:(Ox"10024018"));
+    SPI_CSMODE_ADDR = (coq:(Ox"10024018"));
     io! ret = MMIOREAD(SPI_CSMODE_ADDR);
-    ret = (ret | constr:(2));
+    ret = (ret | coq:(2));
     output! MMIOWRITE(SPI_CSMODE_ADDR, ret);
 
     (* manually register-allocated, apologies for variable reuse *)
-    Oxff = (constr:(Ox"ff"));
-    eight = (constr:(8));
-    unpack! ret, err = spi_xchg(constr:(Ox"02")); require !err; (* FASTREAD *)
+    Oxff = (coq:(Ox"ff"));
+    eight = (coq:(8));
+    unpack! ret, err = spi_xchg(coq:(Ox"02")); require !err; (* FASTREAD *)
     unpack! ret, err = spi_xchg(addr >> eight);   require !err;
     unpack! ret, err = spi_xchg(addr & Oxff);     require !err;
 
@@ -77,7 +77,7 @@ Definition lan9250_writeword : function :=
     unpack! ret, err = spi_xchg(data);     require !err; (* write *)
 
     io! addr = MMIOREAD(SPI_CSMODE_ADDR);
-    addr = (addr & constr:(Z.lnot 2));
+    addr = (addr & coq:(Z.lnot 2));
     output! MMIOWRITE(SPI_CSMODE_ADDR, addr)
   ))).
 
@@ -92,7 +92,7 @@ Definition lan9250_mac_write : function :=
   ("lan9250_mac_write", ((addr::data::nil), (err::nil), bedrock_func_body:(
     unpack! err = lan9250_writeword(MAC_CSR_DATA, data);
     require !err;
-unpack! err = lan9250_writeword(MAC_CSR_CMD, constr:(Z.shiftl 1 31)|addr);
+unpack! err = lan9250_writeword(MAC_CSR_CMD, coq:(Z.shiftl 1 31)|addr);
     require !err;
           unpack! data, err = lan9250_readword(BYTE_TEST)
           (* while (lan9250_readword(0xA4) >> 31) { } // Wait until BUSY (= MAX_CSR_CMD >> 31) goes low *)
@@ -103,13 +103,13 @@ Definition lan9250_wait_for_boot : function :=
   let i : String.string := "i" in
   let byteorder : String.string := "byteorder" in
   ("lan9250_wait_for_boot", (nil, (err::nil), bedrock_func_body:(
-  err = (constr:(0));
-  byteorder = (constr:(0));
-  i = (lightbulb_spec.patience); while (i) { i = (i - constr:(1));
-          unpack! byteorder, err = lan9250_readword(constr:(Ox"64"));
+  err = (coq:(0));
+  byteorder = (coq:(0));
+  i = (lightbulb_spec.patience); while (i) { i = (i - coq:(1));
+          unpack! byteorder, err = lan9250_readword(coq:(Ox"64"));
     if err { i = (i^i) }
-    else if (byteorder == constr:(Ox"87654321")) { i = (i^i) }
-    else { err = (constr:(-1)) }
+    else if (byteorder == coq:(Ox"87654321")) { i = (i^i) }
+    else { err = (coq:(-1)) }
   }
   ))).
 
@@ -121,15 +121,15 @@ Definition lan9250_init : function :=
     require !err;
           unpack! hw_cfg, err = lan9250_readword(lightbulb_spec.HW_CFG);
     require !err;
-    hw_cfg = (hw_cfg | constr:(Z.shiftl 1 20)); (* mustbeone *)
-    hw_cfg = (hw_cfg & constr:(Z.lnot (Z.shiftl 1 21))); (* mustbezero *)
+    hw_cfg = (hw_cfg | coq:(Z.shiftl 1 20)); (* mustbeone *)
+    hw_cfg = (hw_cfg & coq:(Z.lnot (Z.shiftl 1 21))); (* mustbezero *)
     unpack! err = lan9250_writeword(lightbulb_spec.HW_CFG, hw_cfg);
     require !err;
 
     (* 20: full duplex; 18: promiscuous; 2, 3: TXEN/RXEN *)
-        unpack! err = lan9250_mac_write(constr:(1), constr:(Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2)))));
+        unpack! err = lan9250_mac_write(coq:(1), coq:(Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2)))));
     require !err;
-          unpack! err = lan9250_writeword(constr:(Ox"070"), constr:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
+          unpack! err = lan9250_writeword(coq:(Ox"070"), coq:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
   ))).
 
 Require Import bedrock2.ProgramLogic.
@@ -323,7 +323,7 @@ Section WithParameters.
     { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     repeat straightline; split; trivial.
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
@@ -331,7 +331,7 @@ Section WithParameters.
     { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     repeat straightline; split; trivial.
     repeat straightline.
 
@@ -417,7 +417,7 @@ Section WithParameters.
     { subst addr. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     t.
     t.
     t.
@@ -433,7 +433,7 @@ Section WithParameters.
     { subst addr addr0. cbv [isMMIOAddr SPI_CSMODE_ADDR].
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
-      cbv -[Z.le Z.lt]. Lia.lia. }
+      cbv -[Z.le Z.lt]. blia. }
     repeat t.
 
     do 6 letexists.
@@ -491,6 +491,7 @@ Section WithParameters.
       erewrite word.unsigned_of_Z in H11.
       exact H11. }
 
+    cbv [HList.tuple.of_list List.app].
     repeat match goal with x := _ |- _ => subst x end.
     cbv [LittleEndian.combine PrimitivePair.pair._1 PrimitivePair.pair._2].
     all : change 32 with Semantics.width in *.
@@ -501,16 +502,16 @@ Section WithParameters.
     cbv [word.wrap].
     change Semantics.width with 32.
     repeat match goal with |- context G [?a mod ?b] => let goal := context G [a] in change goal end.
-    rewrite ?Z.shiftl_mul_pow2 by (clear; Lia.lia).
+    rewrite ?Z.shiftl_mul_pow2 by (clear; blia).
 
     change 255 with (Z.ones 8).
-    rewrite <-!Z.shiftl_mul_pow2 by Omega.omega.
+    rewrite <-!Z.shiftl_mul_pow2 by blia.
     pose proof (@word.unsigned_range _ _ Semantics.word_ok v).
     change Semantics.width with 32 in *.
     set (@word.unsigned _ _ v) as X in *.
     rewrite ?Byte.byte.unsigned_of_Z.
     unfold Byte.byte.wrap.
-    rewrite <- ?Z.land_ones by Lia.lia.
+    rewrite <- ?Z.land_ones by blia.
     prove_Zeq_bitwise.
 
     Unshelve.
@@ -706,7 +707,7 @@ Section WithParameters.
     18,19:subst addr3.
     1,2,3,4,16,17,18,19: cbv [isMMIOAddr SPI_CSMODE_ADDR];
       rewrite !word.unsigned_of_Z; cbv [word.wrap];
-      trivial; cbv -[Z.le Z.lt]; Lia.lia.
+      trivial; cbv -[Z.le Z.lt]; blia.
 
     all : try (
       repeat match goal with x := _ ++ _ |- _ => subst x end;
@@ -734,10 +735,10 @@ Section WithParameters.
     { rewrite Properties.word.unsigned_sru_nowrap; cycle 1.
       { rewrite word.unsigned_of_Z; exact eq_refl. }
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
-      rewrite Z.shiftr_div_pow2 by Omega.omega.
+      rewrite Z.shiftr_div_pow2 by blia.
       clear -H8.
       change (Ox "400") with (4*256) in *.
-      Z.div_mod_to_equations. Lia.lia. }
+      Z.div_mod_to_equations. blia. }
     { rewrite Properties.word.unsigned_and_nowrap.
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
       change 255 with (Z.ones 8).
@@ -779,21 +780,21 @@ Section WithParameters.
       end.
     { rewrite Properties.word.unsigned_sru_nowrap by (rewrite word.unsigned_of_Z; exact eq_refl).
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
-      rewrite Z.shiftr_div_pow2 by Omega.omega.
+      rewrite Z.shiftr_div_pow2 by blia.
       revert dependent a; clear; intros.
       change (Ox "400") with (4*256) in *. change (Ox "0") with 0 in *.
-      Z.div_mod_to_equations. Lia.lia. }
+      Z.div_mod_to_equations. blia. }
     { rewrite Properties.word.unsigned_and_nowrap.
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
-      change 255 with (Z.ones 8); rewrite Z.land_ones by Omega.omega.
-      Z.div_mod_to_equations. Lia.lia. }
+      change 255 with (Z.ones 8); rewrite Z.land_ones by blia.
+      Z.div_mod_to_equations. blia. }
     repeat match goal with x := _ |- _ => subst x end.
-    cbv [LittleEndian.combine PrimitivePair.pair._1 PrimitivePair.pair._2].
+    cbv [LittleEndian.combine HList.tuple.of_list PrimitivePair.pair._1 PrimitivePair.pair._2].
 
     change 32 with Semantics.width.
     repeat rewrite ?Properties.word.unsigned_or_nowrap, <-?Z.lor_assoc by (rewrite ?word.unsigned_of_Z; exact eq_refl).
     change (Z.shiftl 0 8) with 0 in *; rewrite Z.lor_0_r.
-    rewrite !Z.shiftl_lor, !Z.shiftl_shiftl in * by Lia.lia.
+    rewrite !Z.shiftl_lor, !Z.shiftl_shiftl in * by blia.
     repeat f_equal.
 
     (* little-endian word conversion, automatable (bitwise Z and word) *)
@@ -807,7 +808,7 @@ Section WithParameters.
     all : change (8+16) with 24.
     all : cbv [Byte.byte.wrap].
     all : clear.
-    all : rewrite ?Z.shiftl_mul_pow2 by Lia.lia.
-    all : try (Z.div_mod_to_equations; Lia.lia).
+    all : rewrite ?Z.shiftl_mul_pow2 by blia.
+    all : try (Z.div_mod_to_equations; blia).
   Qed.
 End WithParameters.

@@ -1,7 +1,7 @@
 Require Import Coq.Strings.String Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.PushPullMod.
-From bedrock2 Require Import NotationsInConstr ProgramLogic Map.Separation Array Scalars TailRecursion.
+From bedrock2 Require Import NotationsCustomEntry ProgramLogic Map.Separation Array Scalars TailRecursion.
 
 Require bedrock2Examples.Demos.
 Definition bsearch := Demos.bsearch.
@@ -121,7 +121,7 @@ Ltac mix_eq_into_mod :=
     rewrite E in B (* TODO prevent duplicate *)
   end.
 
-Ltac lia2 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_mod_to_equations; blia.
+Ltac lia2 := Z.div_mod_to_equations; blia.
 
 Ltac lia3 :=
   idtac; (* for evaluation order when passing lia3 as an arg to other tactics *)
@@ -130,7 +130,7 @@ Ltac lia3 :=
   | |- _ => lia2
   end.
 
-Ltac lia4 := PreOmega.zify; rewrite ?Z2Nat.id in *; Z.div_to_equations; blia.
+Ltac lia4 := Z.div_to_equations; blia.
 
 Module Z.
   Lemma mod_mul_l: forall (a b: Z), (b * a) mod b = 0.

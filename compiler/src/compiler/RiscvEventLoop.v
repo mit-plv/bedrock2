@@ -29,7 +29,7 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import compiler.ForeverSafe.
 Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Import Utility.
 
 Section EventLoop.
@@ -79,14 +79,15 @@ Section EventLoop.
       goodReadyState pc m -> valid_machine m.
 
   Variable jump: Z.
+  Variable iset: InstructionSet.
   Hypothesis jump_bound: - 2 ^ 20 <= jump < 2 ^ 20.
   Hypothesis jump_aligned: jump mod 4 = 0.
   Hypothesis pc_end_def: pc_end = word.sub pc_start (word.of_Z jump).
 
   Hypothesis goodReadyState_implies_jump_back_instr: forall m,
       goodReadyState true m ->
-      (exists R, (ptsto_instr pc_end (Jal Register0 jump) * R)%sep m.(getMem)) /\
-      subset (footpr (ptsto_instr pc_end (Jal Register0 jump)))
+      (exists R, (ptsto_instr iset pc_end (Jal Register0 jump) * R)%sep m.(getMem)) /\
+      subset (footpr (ptsto_instr iset pc_end (Jal Register0 jump)))
              (of_list m.(getXAddrs)).
 
   (* loop body: between pc_start and pc_end *)

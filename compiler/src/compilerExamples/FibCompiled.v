@@ -5,7 +5,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Word.Properties.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import bedrock2.MetricLogging.
 Require Import riscv.Platform.MinimalLogging.
 Require Import riscv.Platform.MetricMinimal.
@@ -116,7 +116,7 @@ Section FibCompiled.
       apply Nat.lt_le_pred in H.
       simpl in H.
       specialize (Hinc H).
-      bomega.
+      blia.
   Qed.
 
   Local Notation instructionsH := (bedrock2.MetricLogging.instructions).
@@ -146,18 +146,6 @@ Section FibCompiled.
     rewrite (Naive._unsigned_in_range v).
     rewrite (Naive.of_Z_unsigned).
     reflexivity.
-  Qed.
-
-  Lemma sep_inline_eq: forall (A R: FlatToRiscvCommon.mem -> Prop) m1,
-    (exists m2, (R * eq m2)%sep m1 /\ A m2) <->
-    (R * A)%sep m1.
-  Proof.
-    unfold iff, Separation.sep.
-    repeat match goal with
-           | |- _ => intros || simp || eassumption || reflexivity
-           | |- _ /\ _ => split
-           | |- exists _, _ => eexists
-           end.
   Qed.
 
   Lemma word_add_of_Z: forall width a b c,
@@ -231,7 +219,7 @@ Section FibCompiled.
     match goal with
     | |- map.get (map.put _ _ _) _ = Some _ =>
       rewrite map.get_put_diff; [assumption|discriminate] || apply map.get_put_same
-    | |- _ => assumption || simpl; Lia.blia
+    | |- _ => assumption || simpl; blia
     end.
 
   Ltac eval_var_solve :=
@@ -331,7 +319,7 @@ Section FibCompiled.
         * reflexivity.
       + repeat split.
         * assumption.
-        * simpl. Lia.blia.
+        * simpl. blia.
         * replace n with i by blia.
           rewrite Nat.add_1_r.
           etransitivity; [ eassumption | reflexivity ].

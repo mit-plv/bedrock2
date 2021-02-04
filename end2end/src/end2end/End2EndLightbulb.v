@@ -8,7 +8,7 @@ Require Import bedrock2.Syntax.
 Require Import compiler.PipelineWithRename.
 Require Import bedrock2Examples.lightbulb bedrock2Examples.lightbulb_spec.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import compiler.ExprImpEventLoopSpec.
 Require Import compiler.MemoryLayout.
 Require Import end2end.End2EndPipeline.
@@ -241,7 +241,7 @@ Proof.
     change (OP FE310CSemantics.parameters.word) with KamiRiscvStep.Event in *.
     unfold KamiRiscvStep.Event, prefix_of in *.
     simp.
-    eexists. split. 1: exact Al.
+    eexists. split. 1: exact Ap0.
     exists suffix.
     erewrite kami_and_lightbulb_abstract_bedrockTrace_the_same_way; eassumption.
   }
@@ -274,15 +274,15 @@ Proof.
         let c' := eval cbv in c in change (BinIntDef.Z.of_nat (Datatypes.length anybytes) = c') in A
       end.
       rewrite word.of_Z_unsigned.
-      rewrite <-(firstn_skipn 1520 anybytes) in Hr.
-      unfold ptsto_bytes in Hr.
+      rewrite <-(firstn_skipn 1520 anybytes) in Hp1.
+      unfold ptsto_bytes in Hp1.
       assert (map.ok Semantics.mem). {
         exact FE310CSemantics.parameters.mem_ok.
       }
-      SeparationLogic.seprewrite_in @Array.bytearray_append Hr.
-      SeparationLogic.seprewrite_in @SeparationLogic.sep_emp_True_r Hr0.
+      SeparationLogic.seprewrite_in @Array.bytearray_append Hp1.
+      SeparationLogic.seprewrite_in @SeparationLogic.sep_emp_True_r Hp1.
       eexists _, _; split;
-        [exact Hr1|rewrite List.length_firstn_inbounds; blia]. }
+        [exact Hp1|rewrite List.length_firstn_inbounds; blia]. }
     subst a; rewrite app_nil_r.
     eexists; split; eauto.
     change x0 with (List.app nil x0).
@@ -297,9 +297,9 @@ Proof.
     repeat ProgramLogic.straightline.
     pose proof link_lightbulb_loop as P.
     cbv [spec_of_lightbulb_loop] in P.
-    specialize_first P Hll.
+    specialize_first P Hp0p0.
     specialize_first P t0.
-    specialize_first P Hlr.
+    specialize_first P Hp0p1.
     refine (WeakestPreconditionProperties.Proper_call _ _ _ _ _ _ _ _ _);
       [|exact P]; clear P.
 
@@ -308,10 +308,10 @@ Proof.
     repeat ProgramLogic.straightline.
     split; eauto.
     unfold existsl, Recv, LightbulbCmd in *.
-    destruct Hrr0rr; Simp.simp;
+    destruct Hp1p3p1; Simp.simp;
       (eexists; split; [eapply Forall2_app; eauto|]).
     1,2: apply concat_kleene_r_app; eauto; Simp.simp.
-    { unfold "+++" in Hl|-*. left. left. Simp.simp. eauto 10. }
+    { unfold "+++" in Hp0|-*. left. left. Simp.simp. eauto 10. }
     destruct H; Simp.simp.
     { left. right. left. left. eauto. }
     destruct H; Simp.simp.

@@ -5,8 +5,9 @@ Require Import coqutil.Byte.
 Require coqutil.Word.LittleEndian.
 
 Section LightbulbSpec.
-  Import TracePredicateNotations.
-  Let width := 32%Z.
+  Import BinInt TracePredicateNotations.
+  Local Open Scope Z_scope.
+  Let width := 32.
   Context (word : word width).
 
   Declare Scope word_scope.
@@ -17,9 +18,8 @@ Section LightbulbSpec.
   Infix "*" := word.mul : word_scope.
   Notation "- x" := (word.opp x) : word_scope.
   Delimit Scope word_scope with word.
-  Open Scope word_scope.
-
-  Open Scope string_scope.
+  Local Open Scope word_scope.
+  Local Open Scope string_scope.
 
   (* Common event between bedrock2 and Kami.
      Has to be of the form ("ld", addr, value) or ("st", addr, value).
@@ -45,16 +45,16 @@ Section LightbulbSpec.
   Definition SPI_CSMODE_HOLD : word := word.of_Z 2.
 
   Definition spi_read_empty l :=
-    exists v, one ("ld", SPI_RX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 <> 0%Z.
+    exists v, one ("ld", SPI_RX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 <> 0.
   Definition spi_read_dequeue (b : byte) l :=
-    exists v, one ("ld", SPI_RX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 = 0%Z /\ b = byte.of_Z (word.unsigned v).
+    exists v, one ("ld", SPI_RX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 = 0 /\ b = byte.of_Z (word.unsigned v).
   Definition spi_read b :=
     spi_read_empty^* +++ spi_read_dequeue b.
 
   Definition spi_write_full l :=
-    exists v, one ("ld", SPI_TX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 <> 0%Z.
+    exists v, one ("ld", SPI_TX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 <> 0.
   Definition spi_write_ready l :=
-    exists v, one ("ld", SPI_TX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 = 0%Z.
+    exists v, one ("ld", SPI_TX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 = 0.
   Definition spi_write_enqueue (b : byte) :=
     one ("st", SPI_TX_FIFO_ADDR, (word.of_Z (byte.unsigned b))).
   Definition spi_write b :=
@@ -95,7 +95,7 @@ Section LightbulbSpec.
     spi_end) t /\
     byte.unsigned a1 = word.unsigned (word.sru a (word.of_Z 8)) /\
     byte.unsigned a0 = word.unsigned (word.and a (word.of_Z 255)) /\
-    word.unsigned v = LittleEndian.combine 4 ltac:(repeat split; [exact v0|exact v1|exact v2|exact v3]).
+    word.unsigned v = LittleEndian.combine 4 (HList.tuple.of_list (cons v0 (cons v1 (cons v2 (cons v3 nil))))).
 
   Definition LAN9250_WRITE : byte := Byte.x02.
   Definition HW_CFG : Z := Ox"074".
@@ -113,7 +113,7 @@ Section LightbulbSpec.
     spi_end) t /\
     byte.unsigned a1 = word.unsigned (word.sru a (word.of_Z 8)) /\
     byte.unsigned a0 = word.unsigned (word.and a (word.of_Z 255)) /\
-    word.unsigned v = LittleEndian.combine 4 ltac:(repeat split; [exact v0|exact v1|exact v2|exact v3]).
+    word.unsigned v = LittleEndian.combine 4 (HList.tuple.of_list (cons v0 (cons v1 (cons v2 (cons v3 nil))))).
 
   (* NOTE: we could do this without rounding up to the nearest word, and this
   * might be necessary for other stacks than IP-TCP and IP-UDP *)
@@ -127,24 +127,24 @@ Section LightbulbSpec.
     match bs with
     | nil => eq nil
     | cons v0 (cons v1 (cons v2 (cons v3 bs))) =>
-      lan9250_fastread4 (word.of_Z 0) (word.of_Z (LittleEndian.combine 4 ltac:(repeat split; [exact v0|exact v1|exact v2|exact v3]))) +++
+      lan9250_fastread4 (word.of_Z 0) (word.of_Z (LittleEndian.combine 4 (HList.tuple.of_list (cons v0 (cons v1 (cons v2 (cons v3 nil))))))) +++
       lan9250_readpacket bs
     | _ => constraint False (* TODO: padding? *)
     end.
 
   Definition lan9250_recv_no_packet ioh :=
     exists info, lan9250_fastread4 (word.of_Z 124) info ioh /\
-    word.unsigned (word.and info (word.of_Z ((2^8-1)*2^16))) = 0%Z.
+    word.unsigned (word.and info (word.of_Z ((2^8-1)*2^16))) = 0.
   Definition lan9250_recv_packet_too_long ioh := ((exists (info status:word),
     (lan9250_fastread4 (word.of_Z 124) info +++ lan9250_fastread4 (word.of_Z 64) status) ioh /\
-    Z.land (word.unsigned info) ((2^8-1)*2^16) <> 0%Z /\
-    (word.unsigned (lan9250_decode_length status) > 1520)%Z)).
+    Z.land (word.unsigned info) ((2^8-1)*2^16) <> 0 /\
+    (word.unsigned (lan9250_decode_length status) > 1520))).
   Definition lan9250_recv (recv : list byte) ioh : Prop :=
     exists info status,
     (lan9250_fastread4 (word.of_Z 124) info +++
     lan9250_fastread4 (word.of_Z 64) status +++
     lan9250_readpacket recv) ioh /\
-    Z.land (word.unsigned info) ((2^8-1)*2^16) <> 0%Z /\
+    Z.land (word.unsigned info) ((2^8-1)*2^16) <> 0 /\
     Z.of_nat (List.length recv) = word.unsigned (lan9250_decode_length status).
 
   Definition lan9250_boot_attempt : list OP -> Prop :=
@@ -177,7 +177,7 @@ Section LightbulbSpec.
     42 < Z.of_nat (List.length buf) /\
     1535 < word.unsigned ((word.or (word.slu (idx 12%nat buf) (word.of_Z 8)) (idx 13%nat buf))) /\
     idx 23%nat buf = word.of_Z (Ox"11") /\
-    cmd = Z.testbit (byte.unsigned (List.hd Byte.x00 (List.skipn 42 buf))) 0)%Z.
+    cmd = Z.testbit (byte.unsigned (List.hd Byte.x00 (List.skipn 42 buf))) 0).
 
   Definition iocfg : list OP -> Prop :=
     one ("st", !(Ox"10012038"), !(Z.shiftl (Ox"f") 2)) +++

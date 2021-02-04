@@ -168,7 +168,7 @@ Section ByteArray.
   Proof.
     replace (Z.of_nat (length xs))
        with (Z.mul (word.unsigned (word.of_Z 1 : word)) (Z.of_nat (length xs)));
-      auto using array_append; []; rewrite word.unsigned_of_Z_1; Omega.omega.
+      auto using array_append; []; rewrite word.unsigned_of_Z_1; blia.
   Qed.
 
   Lemma bytearray_index_merge xs ys (start i : word)

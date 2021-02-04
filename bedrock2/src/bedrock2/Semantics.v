@@ -1,7 +1,7 @@
 Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil.Byte.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import coqutil.Decidable.
-Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface.
+Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndian.
 Require Import bedrock2.MetricLogging.
 Require Export bedrock2.Memory.
@@ -107,6 +107,12 @@ Section semantics.
                                            (addMetricLoads 2 mc))
                       | None => None
                       end
+      | expr.inlinetable aSize t index =>
+          'Some (index', mc') <- eval_expr index mc | None;
+          'Some v <- load aSize (map.of_list_word t) index' | None;
+          Some (v, (addMetricInstructions 3
+                   (addMetricLoads 4
+                   (addMetricJumps 1 mc'))))
       | expr.load aSize a =>
           'Some (a', mc') <- eval_expr a mc | None;
           'Some v <- load aSize m a' | None;
@@ -123,6 +129,9 @@ Section semantics.
       match e with
       | expr.literal v => Some (word.of_Z v)
       | expr.var x => map.get l x
+      | expr.inlinetable aSize t index =>
+          'Some index' <- eval_expr_old index | None;
+          load aSize (map.of_list_word t) index'
       | expr.load aSize a =>
           'Some a' <- eval_expr_old a | None;
           load aSize m a'
@@ -245,11 +254,11 @@ Module exec. Section WithEnv.
       mid (_ : ext_spec t mGive action args mid)
       (_ : forall mReceive resvals, mid mReceive resvals ->
           exists l', map.putmany_of_list_zip binds resvals l = Some l' /\
-          exists m', map.split m' mKeep mReceive /\
-                     post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l'
-                       (addMetricInstructions 1
-                       (addMetricStores 1
-                       (addMetricLoads 2 mc'))))
+          forall m', map.split m' mKeep mReceive ->
+          post (cons ((mGive, action, args), (mReceive, resvals)) t) m' l'
+            (addMetricInstructions 1
+            (addMetricStores 1
+            (addMetricLoads 2 mc'))))
     : exec (cmd.interact binds action arges) t m l mc post
   .
   End WithEnv.

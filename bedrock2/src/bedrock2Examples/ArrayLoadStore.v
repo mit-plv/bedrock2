@@ -15,30 +15,27 @@ Require Import coqutil.Z.Lia.
     From coqutil.Tactics Require Import syntactic_unify.
     From coqutil.Macros Require Import symmetry.
     Require Import coqutil.Datatypes.List.
-    Require Import Coq.micromega.Lia.
 
 
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
-
-  Import Syntax BinInt String List.ListNotations.
+  Import Syntax BinInt String List.ListNotations ZArith.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-  Local Coercion literal (z : Z) : expr := expr.literal z.
-  Local Coercion var (x : String.string) : expr := expr.var x.
-  Local Definition bedrock_func : Type := String.string * (list String.string * list String.string * cmd).
-  Local Coercion name_of_func (f : bedrock_func) := fst f.
+  Local Coercion expr.literal : Z >-> expr.
+  Local Coercion expr.var : String.string >-> expr.
+  Local Coercion name_of_func (f : function) : String.string := fst f.
 
   Definition tf : bedrock_func :=
-      let buf : String.string := "buf" in
-      let len : String.string := "len" in
-      let i : String.string := "i" in
-      let j : String.string := "j" in
-      let r : String.string := "r" in
+      let buf := "buf" in
+      let len := "len" in
+      let i := "i" in
+      let j := "j" in
+      let r := "r" in
     ("tf", ([buf; len; i; j], [], bedrock_func_body:(
       require ( i < len ) else { /*skip*/ };
-      store1(buf + i, constr:(0));
-      require ( j < len ) else { r = (constr:(-1)) };
-      r = (load1(buf + j))
+      store1(buf + i, coq:(0));
+      require ( j < len ) else { r = coq:(-1) };
+      r = load1(buf + j)
     ))).
 
     Local Infix "*" := sep : type_scope.
@@ -74,16 +71,16 @@ Section WithParameters.
     eapply Properties.word.if_nonzero in H1; rewrite word.unsigned_ltu in H1; eapply Z.ltb_lt in H1.
 
     simple refine (store_one_of_sep _ _ _ _ _ _ (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H) _); shelve_unifiable.
-    1: (etransitivity; [etransitivity|]); cycle -1; [ | | eapply Proper_sep_iff1; [|reflexivity]; eapply bytearray_index_inbounds]; try ecancel; try bomega.
+    1: (etransitivity; [etransitivity|]); cycle -1; [ | | eapply Proper_sep_iff1; [|reflexivity]; eapply bytearray_index_inbounds]; try ecancel; try blia.
 
     repeat straightline.
 
     intros.
 
     seprewrite_in (symmetry! @array_cons) H2.
-    seprewrite_in (@bytearray_index_merge) H4. {
+    seprewrite_in (@bytearray_index_merge) H2. {
       pose proof Properties.word.unsigned_range i.
-      rewrite length_firstn_inbounds; (PreOmega.zify; rewrite ?Znat.Z2Nat.id; bomega).
+      rewrite length_firstn_inbounds; blia.
     }
 
     letexists.
@@ -91,7 +88,7 @@ Section WithParameters.
     split; [|solve [repeat straightline]].
 
     repeat straightline.
-    eapply Properties.word.if_nonzero in H2; rewrite word.unsigned_ltu in H2; eapply Z.ltb_lt in H2.
+    eapply Properties.word.if_nonzero in H3; rewrite word.unsigned_ltu in H3; eapply Z.ltb_lt in H3.
 
     letexists.
     split. {
@@ -99,16 +96,14 @@ Section WithParameters.
       split; repeat straightline.
       letexists; split. {
         eapply load_one_of_sep.
-        simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H3).
+        simple refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H2).
         (etransitivity; [|etransitivity]); [ | eapply Proper_sep_iff1; [|reflexivity]; eapply bytearray_index_inbounds | ].
         3: ecancel.
         1: ecancel.
         pose proof Properties.word.unsigned_range i.
         pose proof Properties.word.unsigned_range j.
         rewrite List.app_length, length_cons, length_firstn_inbounds, length_skipn.
-        all : PreOmega.zify.
-        1: bomega.
-        1: (PreOmega.zify; rewrite ?Znat.Z2Nat.id; bomega).
+        all: blia.
     }
     1: subst v2.
     exact eq_refl.

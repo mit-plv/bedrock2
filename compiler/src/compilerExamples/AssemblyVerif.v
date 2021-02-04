@@ -19,11 +19,11 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.SeparationLogic.
 Require Import compiler.FlatToRiscvDef.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require Import bedrock2.ptsto_bytes.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Import Utility Decode.
 
 Open Scope Z_scope.
@@ -63,7 +63,7 @@ Section Verif.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
-  Notation iset := SeparationLogic.iset.
+  Definition iset := if Utility.width =? 32 then RV32I else RV64I.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -95,17 +95,17 @@ Section Verif.
       map.get initial.(getRegs) x1 = Some v1 ->
       map.get initial.(getRegs) x2 = Some v2 ->
       newPc = word.add initial.(getPc) (word.of_Z (4 * (Z.of_nat (List.length asm_prog_1)))) ->
-      subset (footpr (program initial.(getPc) asm_prog_1 * Rexec)%sep)
+      subset (footpr (program iset initial.(getPc) asm_prog_1 * Rexec)%sep)
              (of_list initial.(getXAddrs)) ->
-      (program initial.(getPc) asm_prog_1 * Rexec * R)%sep initial.(getMem) ->
+      (program iset initial.(getPc) asm_prog_1 * Rexec * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       runsTo (mcomp_sat (run1 iset)) initial
              (fun final =>
                 final.(getPc) = newPc /\
                 final.(getNextPc) = add newPc (word.of_Z 4) /\
-                subset (footpr (program initial.(getPc) asm_prog_1 * Rexec)%sep)
+                subset (footpr (program iset initial.(getPc) asm_prog_1 * Rexec)%sep)
                        (of_list final.(getXAddrs)) /\
-                (program initial.(getPc) asm_prog_1 * Rexec * R)%sep final.(getMem) /\
+                (program iset initial.(getPc) asm_prog_1 * Rexec * R)%sep final.(getMem) /\
                 map.get final.(getRegs) x2 = Some (gallina_prog_1 v1 v2)).
   Proof.
     intros.
@@ -141,9 +141,9 @@ Section Verif.
   Lemma asm_prog_2_correct: forall (initial: MetricRiscvMachine) newPc
                                   (argvars resvars: list Register) R Rexec (v1 v2 dummy: w32),
       newPc = word.add initial.(getPc) (word.of_Z (4 * Z.of_nat (List.length asm_prog_2))) ->
-      subset (footpr (program initial.(getPc) asm_prog_2 * Rexec)%sep)
+      subset (footpr (program iset initial.(getPc) asm_prog_2 * Rexec)%sep)
              (of_list initial.(getXAddrs)) ->
-      (program initial.(getPc) asm_prog_2 * Rexec *
+      (program iset initial.(getPc) asm_prog_2 * Rexec *
        ptsto_bytes 4 (word.of_Z input_ptr) v1 *
        ptsto_bytes 4 (word.of_Z (input_ptr+4)) v2 *
        ptsto_bytes 4 (word.of_Z output_ptr) dummy * R)%sep initial.(getMem) ->
@@ -152,9 +152,9 @@ Section Verif.
              (fun final =>
                 final.(getPc) = newPc /\
                 final.(getNextPc) = add newPc (word.of_Z 4) /\
-                subset (footpr (program initial.(getPc) asm_prog_2 * Rexec)%sep)
+                subset (footpr (program iset initial.(getPc) asm_prog_2 * Rexec)%sep)
                        (of_list final.(getXAddrs)) /\
-                (program initial.(getPc) asm_prog_2 * Rexec * R)%sep final.(getMem) /\
+                (program iset initial.(getPc) asm_prog_2 * Rexec * R)%sep final.(getMem) /\
                 map.get final.(getRegs) x2 = Some (gallina_prog_2 v1 v2)).
   Proof.
     intros.

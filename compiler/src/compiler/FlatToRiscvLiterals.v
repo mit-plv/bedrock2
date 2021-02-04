@@ -7,7 +7,7 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import compiler.util.Common.
 Require Import compiler.SeparationLogic.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
@@ -82,9 +82,9 @@ Section FlatToRiscvLiterals.
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       let insts := compile_lit x v in
       let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
-      subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
+      subset (footpr (program iset initialL.(getPc) insts * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
-      (program initialL.(getPc) insts * Rexec * R)%sep initialL.(getMem) ->
+      (program iset initialL.(getPc) insts * Rexec * R)%sep initialL.(getMem) ->
       Primitives.valid_register x ->
       Primitives.valid_machine initialL ->
       runsTo (withRegs (map.put initialL.(getRegs) x (word.of_Z v))
@@ -106,6 +106,7 @@ Section FlatToRiscvLiterals.
       match_apply_runsTo.
       erewrite signExtend_nop; eauto; try blia.
     - (* TODO this step should be automatic *)
+      rewrite (@bitwidth_matches _ h) in *.
       assert (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31). {
         clear -E0 h.
         apply Bool.orb_true_iff in E0. destruct E0 as [E0 | E0].
@@ -116,6 +117,7 @@ Section FlatToRiscvLiterals.
       simpl in P.
       run1det. run1det.
       match_apply_runsTo.
+      rewrite E0.
       f_equal; [|solve_MetricLog].
       f_equal.
       + rewrite map.put_put_same. f_equal.
@@ -134,7 +136,7 @@ Section FlatToRiscvLiterals.
         * unfold signExtend_bitwise. Zbitwise.
           (* TODO these should also be solved by Zbitwise *)
           {
-            assert (32 <= i < width) by bomega. (* PARAMRECORDS? blia fails *)
+            assert (32 <= i < width) by blia.
             destruct B.
             assert (31 < i) by blia.
             assert (0 < 31) by reflexivity.
@@ -155,6 +157,7 @@ Section FlatToRiscvLiterals.
     - unfold compile_lit_64bit, compile_lit_32bit in *.
       remember (signExtend 12 (signExtend 32 (bitSlice v 32 64))) as mid.
       remember (signExtend 32 (signExtend 32 (bitSlice v 32 64))) as hi.
+      Simp.protect_equalities.
       cbv [List.app program array] in P.
       simpl in *. (* if you don't remember enough values, this might take forever *)
       repeat match type of X with
@@ -169,9 +172,11 @@ Section FlatToRiscvLiterals.
       run1det. repeat unfold_MetricLog.
       run1det. repeat unfold_MetricLog.
       match_apply_runsTo.
-      f_equal; [|simpl; solve_MetricLog].
+      rewrite (@bitwidth_matches _ h) in *.
+      rewrite E0.
+      f_equal; [|simpl; try solve_MetricLog].
       f_equal.
-      + rewrite! map.put_put_same. f_equal. subst.
+      + rewrite! map.put_put_same. f_equal. Simp.unprotect_equalities. subst.
         apply word.unsigned_inj.
         assert (width = 64) as W64. {
           clear -E0.
@@ -200,9 +205,9 @@ Section FlatToRiscvLiterals.
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       let insts := compile_lit x v in
       let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
-      subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
+      subset (footpr (program iset initialL.(getPc) insts * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
-      (program initialL.(getPc) insts * Rexec * R)%sep initialL.(getMem) ->
+      (program iset initialL.(getPc) insts * Rexec * R)%sep initialL.(getMem) ->
       valid_FlatImp_var x ->
       Primitives.valid_machine initialL ->
       runsTo (withRegs (map.put initialL.(getRegs) x (word.of_Z v))

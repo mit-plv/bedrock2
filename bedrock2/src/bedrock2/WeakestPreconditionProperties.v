@@ -41,6 +41,7 @@ Section WeakestPrecondition.
     { eapply Proper_literal; eauto. }
     { eapply Proper_get; eauto. }
     { eapply IHa1; eauto; intuition idtac. eapply Proper_load; eauto using Proper_load. }
+    { eapply IHa1; eauto; intuition idtac. eapply Proper_load; eauto using Proper_load. }
   Qed.
 
   Global Instance Proper_list_map {A B} :
@@ -113,9 +114,8 @@ Section WeakestPrecondition.
       { destruct H2 as (mKeep & mGive & ? & ?).
         exists mKeep. exists mGive.
         split; [assumption|].
-        Locate weaken.
         eapply Semantics.ext_spec.weaken; [|solve[eassumption]].
-        intros ? ? (?&?&?&?&?); eauto 10. } }
+        intros ? ? (?&?&?); eauto 10. } }
   Qed.
 
   Global Instance Proper_func :
@@ -202,6 +202,7 @@ Section WeakestPrecondition.
   Proof.
     ind_on Syntax.expr; t.
     { destruct H. destruct H. eexists. eexists. rewrite H. eauto. }
+    { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe1 in H; t. eapply IHe2 in H0; t. rewrite H, H0; eauto. }
   Qed.
@@ -320,7 +321,6 @@ Section WeakestPrecondition.
     split; [eapply Properties.map.split_empty_r; exact eq_refl|].
     eapply ext_spec.weaken; [|eapply Hext]; intros ? ? [? [? []]]. subst a; subst.
     eexists; split; [eassumption|].
-    eexists; split; [eapply Properties.map.split_empty_r; exact eq_refl|].
-    assumption.
+    intros. eapply Properties.map.split_empty_r in H. subst. assumption.
 Qed.
 End WeakestPrecondition.

@@ -27,7 +27,7 @@ Require Import compiler.RunInstruction.
 Require Import compiler.RiscvEventLoop.
 Require Import compiler.ForeverSafe.
 Require Import compiler.GoFlatToRiscv.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import processor.KamiWord.
 Require Import processor.KamiRiscvStep.
 Require Import processor.KamiRiscv.
@@ -97,7 +97,7 @@ Section Connect.
   Hypotheses (instrMemSizeLg_bounds: 3 <= instrMemSizeLg <= 30)
              (Hkmem: 2 + instrMemSizeLg < memSizeLg <= 16).
 
-  Lemma memSizeLg_width_trivial: memSizeLg <= 32. Proof. Lia.lia. Qed.
+  Lemma memSizeLg_width_trivial: memSizeLg <= 32. Proof. blia. Qed.
 
   Definition p4mm: Kami.Syntax.Modules :=
     KamiRiscv.p4mm instrMemSizeLg memSizeLg (proj1 instrMemSizeLg_bounds)
@@ -110,7 +110,7 @@ Section Connect.
        constants [word_cst]).
 
   Goal True.
-  epose (_ : PrimitivesParams (MinimalMMIO.free MetricMinimalMMIO.action MetricMinimalMMIO.result)
+  epose (_ : PrimitivesParams (FreeMonad.free MetricMinimalMMIO.action MetricMinimalMMIO.result)
                               MetricRiscvMachine).
   Abort.
 
@@ -545,8 +545,8 @@ Section Connect.
         setoid_rewrite Hend.
         rewrite word.unsigned_of_Z.
         cbv [word.wrap].
-        rewrite Z.mod_small by (split; [apply Z.pow_nonneg; Lia.lia
-                                       |apply Z.pow_lt_mono_r; cbn; Lia.lia]).
+        rewrite Z.mod_small by (split; [apply Z.pow_nonneg; blia
+                                       |apply Z.pow_lt_mono_r; cbn; blia]).
         assumption.
       + reflexivity.
       + reflexivity.
@@ -562,7 +562,7 @@ Section Connect.
         * apply riscv_init_memory_undef_on_MMIO with (instrMemSizeLg0:= instrMemSizeLg).
           { apply instrMemSizeLg_bounds. }
           { apply Hkmem. }
-          { cbv [KamiProc.width]; Lia.lia. }
+          { cbv [KamiProc.width]; blia. }
           { apply Hkmem. }
           { assumption. }
         * assumption.

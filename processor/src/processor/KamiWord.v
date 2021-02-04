@@ -44,14 +44,14 @@ Section KamiWordFacts.
     all: rewrite ?Znat.N2Z.inj_div.
     all: rewrite <-?Znat.N_nat_Z, ?NatLib.Npow2_nat, ?N_Z_nat_conversions.Nat2Z.inj_pow.
     2: setoid_rewrite Z.add_0_r; trivial.
-    rewrite ?Znat.Nat2Z.inj_add, ?Z.pow_add_r by Lia.lia.
+    rewrite ?Znat.Nat2Z.inj_add, ?Z.pow_add_r by blia.
     rewrite Z.mul_comm.
     symmetry.
     rewrite <-Z.add_opp_r, Zopp_mult_distr_l.
     rewrite Zdiv.Z_div_plus.
     1: reflexivity.
     eapply Z.lt_gt.
-    eapply Z.pow_pos_nonneg; Lia.lia.
+    eapply Z.pow_pos_nonneg; blia.
   Qed.
 
   Lemma wordToN_wones_ones:
@@ -201,10 +201,10 @@ Section KamiWordFacts.
     generalize (#w); intro.
     remember (NatLib.pow2 a) as pa eqn:Ha.
     pose proof NatLib.pow2_zero a.
-    pose proof mod_Zmod n pa ltac:(Lia.lia).
+    pose proof mod_Zmod n pa ltac:(blia).
     pose proof Znat.N2Z.inj_mod (BinNat.N.of_nat n) (BinNat.N.of_nat pa) ltac:(blia).
     rewrite Znat.nat_N_Z in *.
-    Lia.lia.
+    blia.
   Qed.
 
   Lemma sumbool_rect_weq {T} a b n x y :
@@ -313,7 +313,7 @@ Section WithWidth.
       wordToN (@WS b n w) = 2*wordToN w + N.b2n b.
     Proof.
       case b; rewrite ?wordToN_WS_0, ?wordToN_WS_1; cbn [N.b2n].
-      all : Lia.lia.
+      all : blia.
     Qed.
 
     Lemma testbit_wordToN_oob n (a : word n) i (H: Logic.not (i < N.of_nat n)) :
@@ -321,26 +321,26 @@ Section WithWidth.
     Proof.
       pose proof wordToN_bound a.
       case (wordToN a) in *; trivial; intros.
-      apply N.bits_above_log2, N.log2_lt_pow2; try Lia.lia.
+      apply N.bits_above_log2, N.log2_lt_pow2; try blia.
       eapply N.lt_le_trans; try apply H0; clear H0.
       eapply Znat.N2Z.inj_le.
       rewrite NatLib.Z_of_N_Npow2, Znat.N2Z.inj_pow; cbn.
-      eapply Z.pow_le_mono_r; Lia.lia.
+      eapply Z.pow_le_mono_r; blia.
     Qed.
 
     Lemma testbit_wordToN_bitwp_inbounds f n (a b : word n) i (H:i < N.of_nat n) :
       N.testbit (wordToN (bitwp f a b)) i = f (N.testbit (wordToN a) i) (N.testbit (wordToN b) i).
     Proof.
       revert dependent i; revert b; revert a; induction n; intros.
-      { Lia.lia. }
+      { blia. }
       case (shatter_word_S a) as (?&?&?) in *; subst a.
       case (shatter_word_S b) as (?&?&?) in *; subst b.
       cbn [bitwp whd].
       rewrite 3wordToN_WS.
       case (N.eq_dec 0 i); intros.
       { subst. rewrite 3N.testbit_0_r; trivial. }
-      { rewrite <-(N.succ_pred i) by Lia.lia.
-        rewrite 3N.testbit_succ_r. eapply IHn. Lia.lia. }
+      { rewrite <-(N.succ_pred i) by blia.
+        rewrite 3N.testbit_succ_r. eapply IHn. blia. }
     Qed.
   End __.
 
@@ -351,19 +351,17 @@ Section WithWidth.
     eapply Z.bits_inj_iff'; intros.
     case (ZArith_dec.Z_lt_dec n (Z.of_nat sz)); intros.
     2: {
-      rewrite Z.mod_pow2_bits_high by Lia.lia.
+      rewrite Z.mod_pow2_bits_high by blia.
       rewrite ?Z.testbit_of_N' by trivial.
       rewrite testbit_wordToN_oob; trivial.
       intro X.
-      eapply Znat.N2Z.inj_lt in X; PreOmega.zify.
-      rewrite ?Znat.Z2N.id in * by Lia.lia; Lia.lia.
+      eapply Znat.N2Z.inj_lt in X; blia.
     }
     rewrite Z.mod_pow2_bits_low by trivial.
     rewrite F_spec.
     rewrite ?Z.testbit_of_N' by trivial.
     rewrite testbit_wordToN_bitwp_inbounds; trivial.
-    eapply Znat.N2Z.inj_lt; PreOmega.zify.
-    rewrite ?Znat.Z2N.id in * by Lia.lia; Lia.lia.
+    eapply Znat.N2Z.inj_lt; blia.
   Qed.
 
   Instance ok : word.ok word.
@@ -430,8 +428,8 @@ Section WithWidth.
       change (Z.of_N (wordToN x)) with (uwordToZ x).
       eapply Z.bits_inj_iff'; intros i Hi.
       case (ZArith_dec.Z_lt_dec i width); intros.
-      2: rewrite !Z.mod_pow2_bits_high by Lia.lia; trivial.
-      rewrite !Z.mod_pow2_bits_low by Lia.lia.
+      2: rewrite !Z.mod_pow2_bits_high by blia; trivial.
+      rewrite !Z.mod_pow2_bits_low by blia.
       rewrite 2Z.lxor_spec.
       rewrite bitblast.Z.testbit_minus1 by trivial.
       enough (Z.testbit (uwordToZ (wones sz)) i = true) by congruence.
@@ -524,8 +522,8 @@ Section WithWidth.
       rewrite Znat.Z2Nat.id; blia. }
 
     { cbv [wrshifta eq_rec_r eq_rec].
-      rewrite Z.mod_small, wordToZ_split2, wordToZ_eq_rect, sext_wordToZ, Znat.Z2Nat.id, Z.shiftr_div_pow2; try Lia.lia.
-      cbv [swrap]; rewrite Z.mod_small; try Lia.lia.
+      rewrite Z.mod_small, wordToZ_split2, wordToZ_eq_rect, sext_wordToZ, Znat.Z2Nat.id, Z.shiftr_div_pow2; try blia.
+      cbv [swrap]; rewrite Z.mod_small; try blia.
       pose proof @wordToZ_size (pred sz).
       rewrite PeanoNat.Nat.succ_pred in H0; [|blia].
       specialize (H0 x).
@@ -564,10 +562,10 @@ Section WithWidth.
         contradiction. } }
     { case (wlt_dec x y) as [H|H]; cbv [wlt] in H;
         case (Z.ltb_spec (Z.of_N (wordToN x)) (Z.of_N (wordToN y)));
-        trivial; Lia.lia. }
+        trivial; blia. }
     { case (wslt_dec x y) as [H|H]; cbv [wslt] in H;
         case (Z.ltb_spec (wordToZ x) (wordToZ y)) as [G|G];
-        trivial; Lia.lia. }
+        trivial; blia. }
   Qed.
 End WithWidth.
 Arguments word : clear implicits.

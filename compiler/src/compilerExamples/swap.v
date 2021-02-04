@@ -39,6 +39,7 @@ Axiom TODO: forall {T: Type}, T.
 
 Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
   funname_env T := TODO;
+  iset := RV32I;
   FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ _ _ s :=
     match s with
     | FlatImp.SInteract _ fname _ =>

@@ -23,6 +23,8 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
+Notation Register0 := 0%Z (only parsing).
+
 Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Prop :=
   forall instr, In instr prog -> verify instr iset.
 
@@ -36,9 +38,7 @@ Proof. unfold valid_FlatImp_var, valid_register. intros. blia. Qed.
 Module Import FlatToRiscvDef.
 
   Class parameters := {
-    (* the words implementations are not needed, but we need width,
-       and EmitsValid needs width_cases *)
-    W :> Utility.Words;
+    iset: InstructionSet;
     funname_env :> forall T: Type, map.map String.string T; (* abstract T for better reusability *)
     compile_ext_call: funname_env Z -> Z -> Z -> stmt Z -> list Instruction;
   }.
@@ -94,8 +94,8 @@ Section FlatToRiscv1.
     match sz with
     | access_size.one => Lbu
     | access_size.two => Lhu
-    | access_size.four => if width =? 32 then Lw else Lwu
-    | access_size.word => if width =? 32 then Lw else Ld
+    | access_size.four => if bitwidth iset =? 32 then Lw else Lwu
+    | access_size.word => if bitwidth iset =? 32 then Lw else Ld
     end.
 
   Definition compile_store(sz: access_size):
@@ -104,7 +104,7 @@ Section FlatToRiscv1.
     | access_size.one => Sb
     | access_size.two => Sh
     | access_size.four => Sw
-    | access_size.word => if width =? 32 then Sw else Sd
+    | access_size.word => if bitwidth iset =? 32 then Sw else Sd
     end.
 
   Definition compile_op(rd: Z)(op: Syntax.bopname)(rs1 rs2: Z): list Instruction :=
@@ -168,7 +168,7 @@ Section FlatToRiscv1.
   Definition compile_lit(rd: Z)(v: Z): list Instruction :=
     if ((-2^11 <=? v)%Z && (v <? 2^11)%Z)%bool then
       compile_lit_12bit rd v
-    else if ((width =? 32)%Z || (- 2 ^ 31 <=? v)%Z && (v <? 2 ^ 31)%Z)%bool then
+    else if ((bitwidth iset =? 32)%Z || (- 2 ^ 31 <=? v)%Z && (v <? 2 ^ 31)%Z)%bool then
       compile_lit_32bit rd v
     else compile_lit_64bit rd v.
 
@@ -189,6 +189,8 @@ Section FlatToRiscv1.
         Beq x Register0 amt
     end.
 
+  Local Notation bytes_per_word := (Memory.bytes_per_word (bitwidth iset)).
+
   Fixpoint save_regs(regs: list Z)(offset: Z): list Instruction :=
     match regs with
     | nil => nil
@@ -206,12 +208,27 @@ Section FlatToRiscv1.
   (* number of words of stack allocation space needed within current frame *)
   Fixpoint stackalloc_words(s: stmt Z): Z :=
     match s with
-    | SLoad _ _ _ _ | SStore _ _ _ _ | SLit _ _ | SOp _ _ _ _ | SSet _ _
+    | SLoad _ _ _ _ | SStore _ _ _ _ | SInlinetable _ _ _ _ | SLit _ _ | SOp _ _ _ _ | SSet _ _
     | SSkip | SCall _ _ _ | SInteract _ _ _ => 0
     | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 => Z.max (stackalloc_words s1) (stackalloc_words s2)
     (* ignore negative values, and round up values that are not divisible by bytes_per_word *)
     | SStackalloc x n body => (Z.max 0 n + bytes_per_word - 1) / bytes_per_word
                               + stackalloc_words body
+    end.
+
+  Definition compile4bytes(l: list byte): Instruction :=
+    InvalidInstruction (LittleEndian.combine 4 (HList.tuple.of_list [
+      nth 0 l Byte.x00;
+      nth 1 l Byte.x00;
+      nth 2 l Byte.x00;
+      nth 3 l Byte.x00
+    ])).
+
+  Fixpoint compile_byte_list(l: list byte): list Instruction :=
+    match l with
+    | b0 :: b1 :: b2 :: b3 :: rest => compile4bytes l :: compile_byte_list rest
+    | nil => nil
+    | _ => [compile4bytes l]
     end.
 
   (* All positions are relative to the beginning of the progam, so we get completely
@@ -229,6 +246,9 @@ Section FlatToRiscv1.
       match s with
       | SLoad  sz x y ofs => [[compile_load  sz x y ofs]]
       | SStore sz x y ofs => [[compile_store sz x y ofs]]
+      | SInlinetable sz x t i =>
+        let bs := compile_byte_list t in
+        [[ Jal x (4 + Z.of_nat (length bs) * 4) ]] ++ bs ++ [[ Add x x i; compile_load sz x x 0 ]]
       | SStackalloc x n body =>
           [[Addi x sp (stackoffset-n)]] ++ compile_stmt (mypos + 4) (stackoffset-n) body
       | SLit x v => compile_lit x v

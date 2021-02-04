@@ -30,7 +30,7 @@ Require Import riscv.Utility.Utility.
 Require Export riscv.Platform.Memory.
 Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import compiler.FlattenExprSimulation.
 Require Import compiler.RegRename.
 Require Import compiler.FlatToRiscvSimulation.
@@ -41,7 +41,7 @@ Require Import bedrock2.MetricLogging.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
 Require Import compiler.DivisibleBy4.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.ForeverSafe.
 Require Export compiler.MemoryLayout.
 Require Import FunctionalExtensionality.
@@ -83,6 +83,7 @@ Module Import Pipeline.
   }.
 
   Instance FlatToRiscvDef_parameters{p: parameters}: FlatToRiscvDef.FlatToRiscvDef.parameters := {|
+    iset := if Utility.width =? 32 then RV32I else RV64I;
     FlatToRiscvDef.FlatToRiscvDef.compile_ext_call := compile_ext_call;
   |}.
 
@@ -325,7 +326,7 @@ Section Pipeline1.
 
   Local Definition FlatImp__word_eq : FlatImp.word -> FlatImp.word -> bool := word.eqb.
   Local Instance  EqDecider_FlatImp__word_eq : EqDecider FlatImp__word_eq.
-  Proof. eapply word.eqb_spec. Unshelve. exact word_ok. Qed.
+  Proof. eapply word.eqb_spec. Unshelve. all: exact word_ok. Qed.
 
   Lemma mem_available_to_exists: forall start pastend m P,
       (mem_available start pastend * P)%sep m ->
@@ -396,7 +397,7 @@ Section Pipeline1.
 
   Lemma program_mod_4_0: forall a instrs R m,
       instrs <> [] ->
-      (program a instrs * R)%sep m ->
+      (program iset a instrs * R)%sep m ->
       word.unsigned a mod 4 = 0.
   Proof.
     intros.
@@ -505,7 +506,7 @@ Section Pipeline1.
      if we pass it the same function position map. *)
   Lemma functions_to_program: forall ml functions_start e instrs pos_map,
       riscvPhase ml e = Some (instrs, pos_map) ->
-      iff1 (program functions_start instrs)
+      iff1 (program iset functions_start instrs)
            (FlatToRiscvCommon.functions functions_start (FlatToRiscvDef.build_fun_pos_env e) e).
   Proof.
     (* PARAMRECORDS *)
@@ -586,13 +587,13 @@ Section Pipeline1.
              (p_call pc: word)(mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
       let CallInst := Jal RegisterNames.ra
                           (f_entry_rel_pos + word.signed (word.sub p_functions p_call)) : Instruction in
-      (program p_functions finstrs *
-       program p_call [CallInst] *
+      (program iset p_functions finstrs *
+       program iset p_call [CallInst] *
        mem_available stack_start stack_pastend *
        Rdata * Rexec * eq mH
       )%sep mach.(getMem) /\
-      subset (footpr (program p_functions finstrs *
-                      program p_call [CallInst] *
+      subset (footpr (program iset p_functions finstrs *
+                      program iset p_call [CallInst] *
                       Rexec)%sep)
              (of_list (getXAddrs mach)) /\
       word.unsigned (mach.(getPc)) mod 4 = 0 /\
@@ -716,7 +717,7 @@ Section Pipeline1.
         | H: ExprImp.valid_funs _ |- _ => rename H into V
         end.
         unfold ExprImp.valid_funs in V.
-        specialize V with (1 := Pr).
+        specialize V with (1 := Pp1).
         unfold ExprImp.valid_fun in V.
         destruct V.
         ssplit.
@@ -828,7 +829,7 @@ Section Pipeline1.
       eexists. split. 1: eassumption.
       unfold machine_ok. ssplit; try assumption.
       + assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
-        cbv [rem_stackwords rem_framewords ghostConsts] in H2lrrrrrrrrrll.
+        cbv [rem_stackwords rem_framewords ghostConsts] in H2p0p1p8p0.
         cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).
         exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x))) stack_trash).
@@ -839,8 +840,8 @@ Section Pipeline1.
             unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
           }
           rewrite (length_flat_map _ (Z.to_nat bytes_per_word)).
-          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H2lrrrrrrrrrll.
-            rewrite <-H2lrrrrrrrrrll, <-Z_div_exact_2; try trivial.
+          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H2p0p1p8p0.
+            rewrite <-H2p0p1p8p0, <-Z_div_exact_2; try trivial.
             { eapply Z.lt_gt; assumption. }
             { eapply stack_length_divisible; trivial. } }
           intros w.

@@ -32,7 +32,7 @@ Require Import riscv.Utility.Utility.
 Require Export riscv.Platform.Memory.
 Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
-Require Import compiler.Simp.
+Require Import coqutil.Tactics.Simp.
 Require Import compiler.FlattenExprSimulation.
 Require Import compiler.RegRename.
 Require Import compiler.FlatToRiscvSimulation.
@@ -42,7 +42,7 @@ Require Import bedrock2.MetricLogging.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
 Require Import compiler.DivisibleBy4.
-Require Import compiler.SimplWordExpr.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.ForeverSafe.
 Require Export compiler.MemoryLayout.
 Require Import FunctionalExtensionality.
@@ -116,12 +116,12 @@ Section Pipeline1.
                    loop_pos (word.add loop_pos (word.of_Z (if done then 4 else 0))) mH R
                    (* all instructions which are not part of the loop body (jump to loop body function)
                       or the compiled functions: *)
-                   (program init_sp_pos init_sp_insts *
-                    program init_pos (init_insts init_fun_pos) *
-                    program backjump_pos backjump_insts)%sep
+                   (program iset init_sp_pos init_sp_insts *
+                    program iset init_pos (init_insts init_fun_pos) *
+                    program iset backjump_pos backjump_insts)%sep
                    mach.
 
-  Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_good.
+  Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_good iset.
 
   Add Ring wring : (word.ring_theory (word := Utility.word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -131,14 +131,14 @@ Section Pipeline1.
   Lemma machine_ok_change_call: forall functions_pos f_entry_rel_pos_1 f_entry_rel_pos_2
                                        p_stack_start p_stack_pastend instrs
                                        p_call_1 p_call_2 pc mH Rdata Rexec Rexec1 mach,
-      iff1 Rexec1 (Rexec * ptsto_instr p_call_2 (Jal RegisterNames.ra
+      iff1 Rexec1 (Rexec * ptsto_instr iset p_call_2 (Jal RegisterNames.ra
                     (f_entry_rel_pos_2 + word.signed (word.sub functions_pos p_call_2))))%sep ->
       machine_ok functions_pos
                  f_entry_rel_pos_2
                  p_stack_start p_stack_pastend instrs
                  p_call_2
                  pc mH Rdata
-                 (Rexec * ptsto_instr p_call_1 (Jal RegisterNames.ra
+                 (Rexec * ptsto_instr iset p_call_1 (Jal RegisterNames.ra
                             (f_entry_rel_pos_1 + word.signed (word.sub functions_pos p_call_1))))%sep
                  mach ->
       machine_ok functions_pos
@@ -166,8 +166,8 @@ Section Pipeline1.
       compile_prog srcprog = Some (instrs, positions) /\
       word.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
         word.unsigned ml.(code_pastend) /\
-      subset (footpr (program ml.(code_start) instrs)) (of_list initial.(getXAddrs)) /\
-      (program ml.(code_start) instrs * R *
+      subset (footpr (program iset ml.(code_start) instrs)) (of_list initial.(getXAddrs)) /\
+      (program iset ml.(code_start) instrs * R *
        mem_available ml.(heap_start) ml.(heap_pastend) *
        mem_available ml.(stack_start) ml.(stack_pastend))%sep initial.(getMem) /\
       initial.(getPc) = ml.(code_start) /\
@@ -275,9 +275,9 @@ Section Pipeline1.
         match goal with
         | |- iff1 ?LL ?RR =>
           match LL with
-          | context[ptsto_instr ?A1 (IInstruction (Jal RegisterNames.ra ?J1))] =>
+          | context[ptsto_instr _ ?A1 (IInstruction (Jal RegisterNames.ra ?J1))] =>
             match RR with
-            | context[ptsto_instr ?A2 (IInstruction (Jal RegisterNames.ra ?J2))] =>
+            | context[ptsto_instr _ ?A2 (IInstruction (Jal RegisterNames.ra ?J2))] =>
               unify A1 A2;
               replace J2 with J1
             end
@@ -315,9 +315,9 @@ Section Pipeline1.
         match goal with
         | |- iff1 ?LL ?RR =>
           match LL with
-          | context[ptsto_instr ?A1 (IInstruction (Jal RegisterNames.ra ?J1))] =>
+          | context[ptsto_instr _ ?A1 (IInstruction (Jal RegisterNames.ra ?J1))] =>
             match RR with
-            | context[ptsto_instr ?A2 (IInstruction (Jal RegisterNames.ra ?J2))] =>
+            | context[ptsto_instr _ ?A2 (IInstruction (Jal RegisterNames.ra ?J2))] =>
               unify A1 A2;
               replace J2 with J1
             end

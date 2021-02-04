@@ -51,8 +51,6 @@ Local Instance parameters : parameters :=
   |}.
 
 
-
-
 Require Import bedrock2.NotationsCustomEntry.
 Local Coercion var (x : String.string) : expr := expr.var x. (* COQBUG(4593) *)
 Local Coercion literal (x : Z) : expr := expr.literal x.
@@ -77,36 +75,36 @@ Definition swap_chars_over_uart: cmd :=
 
   bedrock_func_body:(
     (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
-    io! rx = MMIOREAD (constr:(Ox"0x00021fec"));
-    output! MMIOWRITE(hfrosccfg, constr:(2^30) | (rx & constr:(2^5-1)) << constr:(16));
-    constr:(cmd.unset rx);
+    io! rx = MMIOREAD (coq:(Ox"0x00021fec"));
+    output! MMIOWRITE(hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << coq:(16));
+    coq:(cmd.unset rx);
 
-    one = (constr:(1));
-    output! MMIOWRITE(constr:(uart0_base + Ox"018"), constr:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
-    output! MMIOWRITE(constr:(uart0_base + Ox"008"), one); (* tx enable *)
-    output! MMIOWRITE(constr:(uart0_base + Ox"00c"), one); (* rx enable *)
-    output! MMIOWRITE(constr:(gpio0_base + Ox"038"), constr:(2^17 + 2^16)); (* pinmux uart tx rx *)
+    one = coq:(1);
+    output! MMIOWRITE(coq:(uart0_base + Ox"018"), coq:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
+    output! MMIOWRITE(coq:(uart0_base + Ox"008"), one); (* tx enable *)
+    output! MMIOWRITE(coq:(uart0_base + Ox"00c"), one); (* rx enable *)
+    output! MMIOWRITE(coq:(gpio0_base + Ox"038"), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
 
-    dot = (constr:(46));
-    prev = (dot);
-    running = (one-dot);
+    dot = coq:(46);
+    prev = dot;
+    running = one-dot;
     while (running) {
-      bit31 = (constr:(2^31));
-      rx = (bit31);
-      polling = (one-dot);
-      while (polling & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); polling = (polling-one) };
+      bit31 = coq:(2^31);
+      rx = bit31;
+      polling = one-dot;
+      while (polling & rx & bit31) { io! rx = MMIOREAD(coq:(uart0_base + Ox"004")); polling = polling-one };
 
-      uart_tx = (constr:(uart0_base + Ox"000"));
-      tx = (bit31);
-      polling = (one-dot);
-      while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = (polling-one) };
+      uart_tx = coq:(uart0_base + Ox"000");
+      tx = bit31;
+      polling = one-dot;
+      while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = polling-one };
       output! MMIOWRITE(uart_tx, prev);
 
-      prev = (rx);
-      running = (running - one);
-      if (prev == dot) { running = (running ^ running) };
+      prev = rx;
+      running = running - one;
+      if (prev == dot) { running = running ^ running };
 
-      constr:(cmd.unset uart_tx); constr:(cmd.unset rx); constr:(cmd.unset tx); constr:(cmd.unset bit31); constr:(cmd.unset polling)
+      coq:(cmd.unset uart_tx); coq:(cmd.unset rx); coq:(cmd.unset tx); coq:(cmd.unset bit31); coq:(cmd.unset polling)
     }
   ).
 
@@ -122,21 +120,9 @@ Module Z.
   Lemma land_nonzero a b : Z.land a b <> 0 -> a <> 0 /\ b <> 0.
   Proof.
     destruct (Z.eq_dec a 0), (Z.eq_dec b 0); subst;
-      repeat rewrite ?Z.land_0_r, ?Z.land_0_l; bomega.
+      repeat rewrite ?Z.land_0_r, ?Z.land_0_l; blia.
   Qed.
 End Z.
-
-Module word.
-  Lemma well_founded_lt_unsigned : well_founded (fun a b : word => word.unsigned a < word.unsigned b).
-  Proof.
-    simple refine (Wf_nat.well_founded_lt_compat _ (fun x => Z.to_nat (word.unsigned x)) _ _).
-    cbv beta; intros a b H.
-    epose proof proj1 (Properties.word.unsigned_range a); epose proof proj1 (Properties.word.unsigned_range b).
-    eapply Znat.Z2Nat.inj_lt; trivial.
-    Unshelve.
-    all: unfold word; typeclasses eauto.
-  Qed.
-End word.
 
 From coqutil Require Import Z.div_mod_to_equations.
 
@@ -151,7 +137,7 @@ Ltac t :=
   | |- map.putmany_of_list_zip _ _ _ = Some _ => exact eq_refl
   | |- exists _, _ => eexists
   | |- _ /\ _ => split
-  | |- well_founded _ => eapply word.well_founded_lt_unsigned
+  | |- well_founded _ => eapply Properties.word.well_founded_lt_unsigned
   | |- ext_spec _ _ _ _ _ => refine (conj eq_refl (conj I (conj eq_refl _)))
   | |- _ < _ => solve[
     repeat match goal with
@@ -162,7 +148,7 @@ Ltac t :=
            | |- _ < word.unsigned ?x => pose proof Properties.word.unsigned_range x;
                                           repeat (rewrite ?word.unsigned_sub, ?word.unsigned_of_Z || unfold word.wrap);
                                           repeat rewrite ?Z.mod_small;
-                                            (bomega || clear; cbv; split; congruence)
+                                            (blia || clear; cbv; split; congruence)
            end]
   | _ => solve [trivial]
   end.
@@ -199,20 +185,6 @@ Proof.
   eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list_zip [polling; tx] [v; txv] l0 = Some l); repeat t.
   eexists; split; repeat t.
 Defined.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 Import List. Import ListNotations.
@@ -259,31 +231,31 @@ Definition echo_server: cmd :=
 
   bedrock_func_body:(
     (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
-    io! rx = MMIOREAD (constr:(Ox"0x00021fec"));
-    output! MMIOWRITE(hfrosccfg, constr:(2^30) | (rx & constr:(2^5-1)) << constr:(16));
-    constr:(cmd.unset rx);
+    io! rx = MMIOREAD (coq:(Ox"0x00021fec"));
+    output! MMIOWRITE(hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << coq:(16));
+    coq:(cmd.unset rx);
 
-    one = (constr:(1));
-    output! MMIOWRITE(constr:(uart0_base + Ox"018"), constr:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
-    output! MMIOWRITE(constr:(uart0_base + Ox"008"), one); (* tx enable *)
-    output! MMIOWRITE(constr:(uart0_base + Ox"00c"), one); (* rx enable *)
-    output! MMIOWRITE(constr:(gpio0_base + Ox"038"), constr:(2^17 + 2^16)); (* pinmux uart tx rx *)
+    one = coq:(1);
+    output! MMIOWRITE(coq:(uart0_base + Ox"018"), coq:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
+    output! MMIOWRITE(coq:(uart0_base + Ox"008"), one); (* tx enable *)
+    output! MMIOWRITE(coq:(uart0_base + Ox"00c"), one); (* rx enable *)
+    output! MMIOWRITE(coq:(gpio0_base + Ox"038"), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
 
-    running = (constr:(-1));
+    running = coq:(-1);
     while (running) {
-      bit31 = (constr:(2^31));
-      rx = (bit31);
-      polling = (constr:(-1));
-      while (polling & rx & bit31) { io! rx = MMIOREAD(constr:(uart0_base + Ox"004")); polling = (polling-one) };
-      if (rx & bit31) { constr:(cmd.skip) } else {
-        uart_tx = (constr:(uart0_base + Ox"000"));
-        tx = (bit31);
-        polling = (constr:(-1));
-        while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = (polling-one) };
+      bit31 = coq:(2^31);
+      rx = bit31;
+      polling = coq:(-1);
+      while (polling & rx & bit31) { io! rx = MMIOREAD(coq:(uart0_base + Ox"004")); polling = polling-one };
+      if (rx & bit31) { coq:(cmd.skip) } else {
+        uart_tx = coq:(uart0_base + Ox"000");
+        tx = bit31;
+        polling = coq:(-1);
+        while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = polling-one };
         output! MMIOWRITE(uart_tx, tx)
       };
-      running = (running - one);
-      constr:(cmd.unset uart_tx); constr:(cmd.unset rx); constr:(cmd.unset tx); constr:(cmd.unset bit31); constr:(cmd.unset polling)
+      running = running - one;
+      coq:(cmd.unset uart_tx); coq:(cmd.unset rx); coq:(cmd.unset tx); coq:(cmd.unset bit31); coq:(cmd.unset polling)
     }
   ).
 
@@ -317,6 +289,7 @@ Proof.
   { match goal with |- if ?D then _ else _ => destruct D end; cbn [Z.eq_dec echo_server_spec ].
     all: try rewrite e, ?Bool.andb_true_r.
     all: repeat match goal with |- if _ then ?A else ?B => change A end.
+   (*
     { split; auto. destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; trivial.
       exfalso; revert H1 e0; clear. subst b v3. admit. }
     { rewrite (proj2 (Z.eqb_neq _ 0)), Bool.andb_false_r by eassumption.
@@ -334,4 +307,5 @@ Proof.
     destruct (Z.eq_dec (word.unsigned (word.and x (word.of_Z (2 ^ 31))))) in H2; (trivial||contradiction). }
   { admit. }
   { admit. }
+  *)
 Abort.

@@ -32,8 +32,8 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.SeparationLogic.
 Require Import bedrock2.Scalars.
-Require Import compiler.Simp.
-Require Import compiler.SimplWordExpr.
+Require Import coqutil.Tactics.Simp.
+Require Export coqutil.Word.SimplWordExpr.
 Require Import bedrock2.ptsto_bytes.
 Require Import compiler.RiscvWordProperties.
 Require Import compiler.eqexact.
@@ -56,6 +56,7 @@ Export FlatToRiscvDef.FlatToRiscvDef.
 Class parameters := {
   def_params :> FlatToRiscvDef.parameters;
 
+  W :> Words;
   locals :> map.map Z word;
   mem :> map.map word byte;
 
@@ -135,7 +136,7 @@ Section WithParameters.
   Definition function(base: word)(rel_positions: funname_env Z)
              (fname: String.string)(impl : list Z * list Z * stmt Z): mem -> Prop :=
     match map.get rel_positions fname with
-    | Some pos => program (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl)
+    | Some pos => program iset (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl)
     | _ => emp False
     end.
 
@@ -187,11 +188,14 @@ Section WithParameters.
   | fits_stack_store: forall M N e sz x y o,
       0 <= M -> 0 <= N ->
       fits_stack M N e (SStore sz x y o)
+  | fits_stack_inlinetable: forall M N e sz x table i,
+      0 <= M -> 0 <= N ->
+      fits_stack M N e (SInlinetable sz x table i)
   | fits_stack_stackalloc: forall M N e x n body,
       0 <= M ->
       0 <= n ->
-      n mod bytes_per_word = 0 ->
-      fits_stack (M - n / bytes_per_word) N e body ->
+      n mod (Memory.bytes_per_word (Decode.bitwidth iset)) = 0 ->
+      fits_stack (M - n / (Memory.bytes_per_word (Decode.bitwidth iset))) N e body ->
       fits_stack M N e (SStackalloc x n body)
   | fits_stack_lit: forall M N e x v,
       0 <= M -> 0 <= N ->
@@ -267,14 +271,14 @@ Section WithParameters.
     lo.(getNextPc) = word.add lo.(getPc) (word.of_Z 4) /\
     (* memory: *)
     subset (footpr (g.(xframe) *
-                    program g.(p_insts) g.(insts) *
+                    program iset g.(p_insts) g.(insts) *
                     functions g.(program_base) g.(e_pos) g.(e_impl))%sep)
            (of_list lo.(getXAddrs)) /\
     (exists stack_trash,
         g.(rem_stackwords) = Z.of_nat (List.length stack_trash) - g.(rem_framewords) /\
         (g.(dframe) * g.(xframe) * eq m *
          word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(rem_stackwords)))) stack_trash *
-         program g.(p_insts) g.(insts) *
+         program iset g.(p_insts) g.(insts) *
          functions g.(program_base) g.(e_pos) g.(e_impl))%sep lo.(getMem)) /\
     (* trace: *)
     lo.(getLog) = t /\
@@ -320,106 +324,13 @@ Section WithParameters.
          goodMachine finalTrace finalMH finalRegsH g finalL).
 
   Class assumptions: Prop := {
+    bitwidth_matches: bitwidth iset = width;
     word_riscv_ok :> word.riscv_ok (@word W);
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
     funname_env_ok :> forall T, map.ok (funname_env T);
     PR :> MetricPrimitives PRParams;
   }.
-
-  (* previously used definition: *)
-  Definition compile_ext_call_correct_alt resvars action argvars := forall (initialL: MetricRiscvMachine)
-        postH newPc insts initialMH R Rexec initialRegsH
-        argvals mKeep mGive outcome p_sp e mypos stackoffset,
-      insts = compile_ext_call e mypos stackoffset (SInteract resvars action argvars) ->
-      newPc = word.add initialL.(getPc) (word.of_Z (4 * (Z.of_nat (List.length insts)))) ->
-      map.extends initialL.(getRegs) initialRegsH ->
-      Forall valid_FlatImp_var argvars ->
-      Forall valid_FlatImp_var resvars ->
-      subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
-             (of_list initialL.(getXAddrs)) ->
-      (program initialL.(getPc) insts * eq initialMH * R)%sep initialL.(getMem) ->
-      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      map.get initialL.(getRegs) RegisterNames.sp = Some p_sp ->
-      (forall x v, map.get initialRegsH x = Some v -> valid_FlatImp_var x) ->
-      regs_initialized initialL.(getRegs) ->
-      valid_machine initialL ->
-      map.getmany_of_list initialL.(getRegs) argvars = Some argvals ->
-      map.split initialMH mKeep mGive ->
-      ext_spec initialL.(getLog) mGive action argvals outcome ->
-      (forall (resvals : list word) mReceive,
-          outcome mReceive resvals ->
-          exists (finalRegsH: locals) finalMetricsH finalMH,
-            map.split finalMH mKeep mReceive /\
-            map.putmany_of_list_zip resvars resvals initialRegsH = Some finalRegsH /\
-            postH ((mGive, action, argvals, (mReceive, resvals)) :: initialL.(getLog))
-                  finalMH finalRegsH finalMetricsH) ->
-      runsTo initialL
-             (fun finalL =>
-                exists (finalRegsH: locals) (rvs: list word)
-                       (finalMetricsH : bedrock2.MetricLogging.MetricLog) finalMH,
-                  map.extends finalL.(getRegs) finalRegsH /\
-                  map.putmany_of_list_zip resvars rvs initialL.(getRegs) = Some finalL.(getRegs) /\
-                  map.get finalL.(getRegs) RegisterNames.sp = Some p_sp /\
-                  postH finalL.(getLog) finalMH finalRegsH finalMetricsH /\
-                  finalL.(getPc) = newPc /\
-                  finalL.(getNextPc) = add newPc (word.of_Z 4) /\
-                  subset (footpr (program initialL.(getPc) insts * Rexec)%sep)
-                         (of_list finalL.(getXAddrs)) /\
-                  (program initialL.(getPc) insts * eq finalMH * R)%sep finalL.(getMem) /\
-                  (forall x v, map.get finalRegsH x = Some v -> valid_FlatImp_var x) /\
-                  regs_initialized finalL.(getRegs) /\
-                  valid_machine finalL).
-
-  Lemma compile_ext_call_correct_compatibility{mem_ok: map.ok mem}{locals_ok: map.ok locals}:
-    forall resvars action argvars,
-      compile_ext_call_correct_alt resvars action argvars ->
-      compiles_FlatToRiscv_correctly compile_ext_call (SInteract resvars action argvars).
-  Proof.
-    unfold compile_ext_call_correct_alt, compiles_FlatToRiscv_correctly, goodMachine.
-    intros. destruct_RiscvMachine initialL. destruct g. simpl in *. simp. subst.
-    eapply runsTo_weaken. 1: eapply H. all: clear H; simpl_MetricRiscvMachine_get_set; simpl.
-    - reflexivity.
-    - reflexivity.
-    - eassumption.
-    - eassumption.
-    - eassumption.
-    - eapply rearrange_footpr_subset; [ eassumption | ecancel ].
-    - ecancel_assumption.
-    - reflexivity.
-    - eassumption.
-    - eassumption.
-    - eassumption.
-    - eassumption.
-    - eapply map.getmany_of_list_extends; try eassumption.
-    - eassumption.
-    - eassumption.
-    - intros resvals mReceive ?.
-      match goal with
-      | H: forall _ _, _ |- _ =>
-        specialize H with mReceive resvals;
-          move H at bottom;
-          destruct H as (finalRegsH & ? & finalMH & ? & ?)
-      end; [assumption|].
-      exists finalRegsH. eexists. exists finalMH.
-      ssplit; [assumption| | ];
-        edestruct (map.putmany_of_list_zip_extends_exists (ok := locals_ok))
-        as (finalRegsL & ? & ?); eassumption.
-    - intros. destruct_RiscvMachine final. simpl in *. simp. subst.
-      do 4 eexists; ssplit; try (eassumption || reflexivity).
-      + match goal with
-        | H: map.putmany_of_list_zip _ _ _ = Some _ |- _ => rename H into P; clear -P mem_ok locals_ok
-        end.
-        apply map.only_differ_putmany in P.
-        unfold map.only_differ in *.
-        intro x. specialize (P x).
-        destruct P; auto.
-        left. unfold PropSet.union, PropSet.elem_of, PropSet.of_list in *.
-        left. apply ListSet.In_list_union_l. assumption.
-      + eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
-      + eexists. split; [reflexivity|].
-        ecancel_assumption.
-  Qed.
 
 End WithParameters.
 
@@ -533,6 +444,7 @@ Section FlatToRiscv1.
       mcomp_sat (Bind (execute (compile_load sz x a ofs)) f) initialL post.
   Proof.
     unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite bitwidth_matches.
     destruct width_cases as [E | E];
       (* note: "rewrite E" does not work because "width" also appears in the type of "word",
          but we don't need to rewrite in the type of word, only in the type of the tuple,
@@ -565,7 +477,8 @@ Section FlatToRiscv1.
                        (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
       mcomp_sat (Bind (execute (compile_store sz a x ofs)) f) initialL post.
   Proof.
-    unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per, Memory.bytes_per_word;
+    unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per, Memory.bytes_per_word.
+    rewrite bitwidth_matches.
     destruct width_cases as [E | E];
       (* note: "rewrite E" does not work because "width" also appears in the type of "word",
          but we don't need to rewrite in the type of word, only in the type of the tuple,
@@ -583,44 +496,47 @@ Section FlatToRiscv1.
   Qed.
 
   Lemma run_compile_load: forall sz: Syntax.access_size,
-      run_Load_spec (@Memory.bytes_per width sz) (compile_load sz) id.
+      run_Load_spec iset (@Memory.bytes_per width sz) (compile_load sz) id.
   Proof.
     intro sz. destruct sz; unfold compile_load; simpl.
-    - refine run_Lbu.
-    - refine run_Lhu.
-    - destruct width_cases as [E | E]; rewrite E; simpl.
-      + refine (run_Lw_unsigned E).
-      + refine run_Lwu.
-    - destruct width_cases as [E | E]; rewrite E; simpl.
-      + refine (run_Lw_unsigned E).
-      + refine run_Ld_unsigned.
+    - refine (run_Lbu iset).
+    - refine (run_Lhu iset).
+    - rewrite bitwidth_matches.
+      destruct width_cases as [E | E]; rewrite E; simpl.
+      + refine (run_Lw_unsigned iset E).
+      + refine (run_Lwu iset).
+    - rewrite bitwidth_matches.
+      destruct width_cases as [E | E]; rewrite E; simpl.
+      + refine (run_Lw_unsigned iset E).
+      + refine (run_Ld_unsigned iset bitwidth_matches).
   Qed.
 
   Lemma run_compile_store: forall sz: Syntax.access_size,
-      run_Store_spec (@Memory.bytes_per width sz) (compile_store sz).
+      run_Store_spec iset (@Memory.bytes_per width sz) (compile_store sz).
   Proof.
     intro sz. destruct sz; unfold compile_store; simpl.
-    - refine run_Sb.
-    - refine run_Sh.
-    - refine run_Sw.
-    - destruct width_cases as [E | E]; rewrite E; simpl.
-      + refine run_Sw.
-      + refine run_Sd.
+    - refine (run_Sb iset).
+    - refine (run_Sh iset).
+    - refine (run_Sw iset).
+    - rewrite bitwidth_matches.
+      destruct width_cases as [E | E]; rewrite E; simpl.
+      + refine (run_Sw iset).
+      + refine (run_Sd iset).
   Qed.
 
   (* almost the same as run_compile_load, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
-  Lemma run_load_word: forall (base addr v : word) (rd rs : Z) (ofs : MachineInt)
+  Lemma run_load_word: forall (base addr v : word) (rd rs : Z) (ofs : Z)
                               (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
       valid_register rd ->
       valid_register rs ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]]
+      subset (footpr (program iset initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]]
                       * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
-      (program initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] * Rexec *
+      (program iset initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] * Rexec *
        ptsto_word addr v * R)%sep (getMem initialL) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
@@ -649,27 +565,27 @@ Section FlatToRiscv1.
   (* almost the same as run_compile_store, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
   Lemma run_store_word: forall (base addr v_new : word) (v_old : word) (rs1 rs2 : Z)
-              (ofs : MachineInt) (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
+              (ofs : Z) (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
       valid_register rs1 ->
       valid_register rs2 ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs1 = Some base ->
       map.get (getRegs initialL) rs2 = Some v_new ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr ((program initialL.(getPc)
+      subset (footpr ((program iset initialL.(getPc)
                           [[compile_store Syntax.access_size.word rs1 rs2 ofs]]) * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
-      (program initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec
+      (program iset initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec
        * ptsto_word addr v_old * R)%sep (getMem initialL) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
         (fun finalL : RiscvMachineL =>
            getRegs finalL = getRegs initialL /\
            getLog finalL = getLog initialL /\
-           subset (footpr (program initialL.(getPc)
+           subset (footpr (program iset initialL.(getPc)
                               [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec)%sep)
              (of_list finalL.(getXAddrs)) /\
-           (program initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec
+           (program iset initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec
             * ptsto_word addr v_new * R)%sep (getMem finalL) /\
            getPc finalL = getNextPc initialL /\
            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
@@ -783,6 +699,200 @@ Section FlatToRiscv1.
       edestruct Q; eauto.
     - subst m.
       eauto using disjoint_putmany_preserves_store_bytes.
+  Qed.
+
+  Lemma ptsto_instr_compile4bytes: forall l addr,
+      word.unsigned addr mod 4 = 0 ->
+      iff1 (ptsto_instr iset addr (compile4bytes l))
+           (array ptsto (word.of_Z 1) addr
+                  [nth 0 l Byte.x00; nth 1 l Byte.x00; nth 2 l Byte.x00; nth 3 l Byte.x00]).
+  Proof.
+    intros. unfold compile4bytes, ptsto_instr, truncated_scalar, littleendian. simpl.
+    unfold Encode.encode_Invalid.
+    rewrite bitSlice_all_nonneg. 2: cbv; discriminate. 2: apply (@LittleEndian.combine_bound 4).
+    rewrite LittleEndian.split_combine.
+    unfold ptsto_bytes.
+    simpl.
+    wcancel.
+    cbn [seps].
+    rewrite sep_emp_emp.
+    apply RunInstruction.iff1_emp.
+    split. 1: auto.
+    intros _.
+    unfold valid_InvalidInstruction.
+    split. 2: assumption.
+    right.
+    eexists. split. 2: reflexivity.
+    apply (@LittleEndian.combine_bound 4).
+  Qed.
+
+  Lemma program_compile_byte_list_array: forall instrs table addr,
+      instrs = compile_byte_list table ->
+      word.unsigned addr mod 4 = 0 ->
+      exists padding,
+        iff1 (program iset addr instrs)
+             (array ptsto (word.of_Z 1) addr (table ++ padding)).
+  Proof.
+    induction instrs; intros.
+    - exists []. simpl. repeat (destruct table; try discriminate). reflexivity.
+    - rename a into inst0.
+      destruct table as [|b0 table]. 1: discriminate.
+      destruct table as [|b1 table]. {
+        destruct instrs. 2: discriminate. simpl in *. simp.
+        exists [Byte.x00; Byte.x00; Byte.x00].
+        rewrite ptsto_instr_compile4bytes by assumption. simpl.
+        cancel.
+      }
+      destruct table as [|b2 table]. {
+        destruct instrs. 2: discriminate. simpl in *. simp.
+        exists [Byte.x00; Byte.x00].
+        rewrite ptsto_instr_compile4bytes by assumption. simpl.
+        cancel.
+      }
+      destruct table as [|b3 table]. {
+        destruct instrs. 2: discriminate. simpl in *. simp.
+        exists [Byte.x00].
+        rewrite ptsto_instr_compile4bytes by assumption. simpl.
+        cancel.
+      }
+      simpl in *. simp.
+      specialize (IHinstrs _ (word.add addr (word.of_Z 4)) eq_refl).
+      destruct IHinstrs as [padding IH]. 1: solve_divisibleBy4.
+      exists padding.
+      rewrite IH.
+      rewrite ptsto_instr_compile4bytes by assumption.
+      simpl.
+      wcancel.
+  Qed.
+
+  Lemma array_to_of_list_word_at: forall l addr m,
+      array ptsto (word.of_Z 1) addr l m ->
+      m = OfListWord.map.of_list_word_at addr l.
+  Proof.
+    induction l; intros.
+    - unfold OfListWord.map.of_list_word_at, OfListWord.map.of_list_word. simpl in *.
+      unfold emp, MapKeys.map.map_keys in *. simp. rewrite map.fold_empty. reflexivity.
+    - simpl in *. unfold sep in H. simp.
+      specialize (IHl _ _ Hp2). unfold map.split in *. unfold ptsto in Hp1.
+      subst. simp.
+      apply map.map_ext. intro k.
+      rewrite OfListWord.map.get_of_list_word_at.
+      rewrite map.get_putmany_dec.
+      rewrite OfListWord.map.get_of_list_word_at.
+      rewrite map.get_put_dec.
+      rewrite map.get_empty.
+      unfold map.disjoint in *. rename Hp0p1 into D.
+      specialize (D addr). rewrite map.get_put_same in D. specialize D with (1 := eq_refl).
+      destr (word.eqb addr k).
+      + subst k. ring_simplify (word.sub addr addr). rewrite word.unsigned_of_Z. simpl.
+        destruct_one_match. 2: reflexivity.
+        exfalso. eapply D.
+        rewrite OfListWord.map.get_of_list_word_at. exact E.
+      + replace (BinInt.Z.to_nat (word.unsigned (word.sub k addr))) with
+            (S (BinInt.Z.to_nat (word.unsigned (word.sub k (word.add addr (word.of_Z 1)))))).
+        * simpl. destruct_one_match; reflexivity.
+        * destruct (BinInt.Z.to_nat (word.unsigned (word.sub k addr))) eqn: F.
+          -- exfalso. apply E. apply (f_equal Z.of_nat) in F.
+             rewrite Z2Nat.id in F. 2: {
+               pose proof word.unsigned_range (word.sub k addr). blia.
+             }
+             apply (f_equal word.of_Z) in F.
+             simpl in F. (* PARAMRECORDS *)
+             rewrite (word.of_Z_unsigned (word.sub k addr)) in F.
+             rewrite <- add_0_r at 1. change (Z.of_nat 0) with 0 in F. rewrite <- F.
+             ring.
+          -- f_equal.
+             pose proof word.unsigned_range (word.sub k addr).
+             assert (Z.of_nat (S n) < 2 ^ width) by blia.
+             apply (f_equal Z.of_nat) in F.
+             rewrite Z2Nat.id in F by blia.
+             apply (f_equal word.of_Z) in F.
+             simpl in F. (* PARAMRECORDS *)
+             rewrite (word.of_Z_unsigned (word.sub k addr)) in F.
+             ring_simplify (word.sub k (word.add addr (word.of_Z 1))).
+             rewrite F.
+             replace (Z.of_nat (S n)) with (1 + Z.of_nat n) by blia.
+             match goal with
+             | |- Z.to_nat (word.unsigned ?x) = n => ring_simplify x
+             end.
+             rewrite word.unsigned_of_Z. unfold word.wrap.
+             rewrite Z.mod_small by blia.
+             blia.
+  Qed.
+
+  Lemma program_compile_byte_list: forall table addr,
+      exists Padding,
+        impl1 (program iset addr (compile_byte_list table))
+              (Padding * eq (OfListWord.map.of_list_word_at addr table)).
+  Proof.
+    intros. destruct table as [|b0 bs].
+    - simpl. exists (emp True).
+      unfold OfListWord.map.of_list_word_at, OfListWord.map.of_list_word, MapKeys.map.map_keys.
+      simpl. rewrite map.fold_empty.
+      unfold impl1, sep, emp, map.split, map.disjoint. intros m H. simp.
+      exists map.empty, map.empty. ssplit; auto.
+      + rewrite map.putmany_empty_l. reflexivity.
+      + intros. rewrite map.get_empty in H. discriminate.
+    - destr (Z.eqb (word.unsigned addr mod 4) 0).
+      + destruct (program_compile_byte_list_array (b0 :: bs) addr eq_refl E) as [padding P].
+        exists (array ptsto (word.of_Z 1)
+            (word.add addr (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat (length (b0 :: bs))))) padding).
+        rewrite P.
+        rewrite array_append.
+        rewrite sep_comm.
+        unfold impl1.
+        intros m A.
+        unfold sep, map.split in *. simp. do 2 eexists. ssplit. 1: reflexivity. 1,2: assumption.
+        symmetry. apply array_to_of_list_word_at. assumption.
+      + exists (emp True).
+        intros m C.
+        replace (compile_byte_list (b0 :: bs))
+           with (compile4bytes (b0 :: bs) :: compile_byte_list (tl (tl (tl bs)))) in C. 2: {
+          destruct bs as [|b1 table]. 1: reflexivity.
+          simpl in *.
+          destruct table as [|b2 table]. 1: reflexivity.
+          destruct table as [|b3 table]. 1: reflexivity.
+          reflexivity.
+        }
+        simpl in C.
+        apply invert_ptsto_instr in C. apply proj2 in C. congruence.
+  Qed.
+
+  Lemma shift_load_bytes_in_of_list_word: forall l addr n t index,
+      Memory.load_bytes n (OfListWord.map.of_list_word l) index = Some t ->
+      Memory.load_bytes n (OfListWord.map.of_list_word_at addr l) (word.add addr index) = Some t.
+  Proof.
+    induction n; intros.
+    - cbv in t. destruct t. etransitivity. 2: eassumption. reflexivity.
+    - unfold Memory.load_bytes in *.
+      eapply map.invert_getmany_of_tuple_Some in H. simp.
+      eapply map.build_getmany_of_tuple_Some.
+      + simpl in *.
+        rewrite OfListWord.map.get_of_list_word_at.
+        rewrite OfListWord.map.get_of_list_word in Hp0.
+        etransitivity. 2: exact Hp0. do 3 f_equal. solve_word_eq word_ok.
+      + simpl in *. specialize (IHn _ _ Hp1).
+        etransitivity. 2: exact IHn. do 2 f_equal. solve_word_eq word_ok.
+  Qed.
+
+  Lemma load_from_compile_byte_list: forall sz table index v R m addr,
+    Memory.load sz (OfListWord.map.of_list_word table) index = Some v ->
+    (program iset addr (compile_byte_list table) * R)%sep m ->
+    Memory.load sz m (word.add addr index) = Some v.
+  Proof.
+    intros *. intros L M.
+    destruct (program_compile_byte_list table addr) as [Padding P].
+    pose proof Proper_sep_impl1 as A.
+    unfold Morphisms.Proper, Morphisms.respectful in A.
+    specialize A with (1 := P). specialize (A R R). apply A in M. 2: reflexivity.
+    clear A P.
+    unfold Memory.load, Memory.load_Z in *. simp.
+    eapply shift_load_bytes_in_of_list_word in E0.
+    pose proof @subst_load_bytes_for_eq as P. cbv zeta in P.
+    specialize P with (1 := E0) (2 := M).
+    destruct P as [Q P].
+    erewrite load_bytes_of_sep. 1: reflexivity.
+    wcancel_assumption.
   Qed.
 
 End FlatToRiscv1.

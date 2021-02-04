@@ -7,7 +7,6 @@ Require Import bedrock2Examples.ARPResponder.
 
 Import Datatypes List ListNotations.
 Local Open Scope string_scope. Local Open Scope list_scope. Local Open Scope Z_scope.
-Require Import bedrock2.NotationsInConstr.
 From coqutil.Word Require Import Interface.
 
 From bedrock2 Require Import Array Scalars Separation.
@@ -46,7 +45,7 @@ Goal program_logic_goal_for_function! arp.
   lazymatch goal with H: _ m |- _ =>
     let iNat := eval cbv in (Z.to_nat i) in
     SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
-    [instantiate (1 := iNat); bomega|match goal with H : _ |- _ => instantiate (1 := byte.of_Z 0) in H end];
+    [instantiate (1 := iNat); blia|match goal with H : _ |- _ => instantiate (1 := byte.of_Z 0) in H end];
     eapply load_one_of_sep;
     change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
     SeparationLogic.ecancel_assumption
@@ -63,12 +62,13 @@ Goal program_logic_goal_for_function! arp.
 
   lazymatch goal with |- WeakestPrecondition.store Syntax.access_size.one ?m ?a ?v ?post =>
   lazymatch goal with H: _ m |- _ =>
+      idtac H;
     let av := rdelta a in
     let i := lazymatch av with word.add ?base (word.of_Z ?i) => i end in
     let iNat := eval cbv in (Z.to_nat i) in
     pose i;
     SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
-    [instantiate (1 := iNat); bomega|match goal with H : _ |- _ => instantiate (1 := byte.of_Z 0) in H end];
+    [instantiate (1 := iNat); blia|match goal with H : _ |- _ => instantiate (1 := byte.of_Z 0) in H end];
     eapply store_one_of_sep;
     change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
     [SeparationLogic.ecancel_assumption|]
@@ -80,8 +80,8 @@ Goal program_logic_goal_for_function! arp.
   straightline.
   straightline.
 
-  unshelve erewrite (_:a = word.add ethbuf (word.of_Z (Z.of_nat (length (firstn 21 packet))))) in H. {
-    rewrite length_firstn_inbounds by bomega.
+  unshelve erewrite (_:a = word.add ethbuf (word.of_Z (Z.of_nat (length (firstn 21 packet))))) in H4. {
+    rewrite length_firstn_inbounds by blia.
     trivial. }
 Abort.
 

@@ -86,6 +86,14 @@ Section SepProperties.
     apply split_undef_put. assumption.
   Qed.
 
+  Lemma sep_eq_putmany (a b : map) (H : disjoint a b)
+    : Lift1Prop.iff1 (eq (putmany a b)) (sep (eq a) (eq b)).
+  Proof.
+    split.
+    { intros; subst. eexists _, _; eauto using Properties.map.split_disjoint_putmany. }
+    { intros (?&?&(?&?)&?&?); subst; trivial. }
+  Qed.
+
   Lemma iff1_sep_cancel P Q1 Q2 (H : iff1 Q1 Q2) : iff1 (P * Q1) (P * Q2).
   Proof. exact (Proper_sep_iff1 _ _ (reflexivity _) _ _ H). Qed.
 
@@ -388,12 +396,20 @@ Ltac ecancel_done' :=
     (@RelationClasses.reflexivity _ _
        (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _).
 
+Ltac cancel_done :=
+  lazymatch goal with
+  | |- iff1 (seps (cons _ nil)) _ => idtac
+  | |- iff1 _ (seps (cons _ nil )) => idtac
+  | |- ?g => assert_fails (has_evar g)
+  end;
+  ecancel_done.
+
 Ltac cancel :=
   reify_goal;
   repeat cancel_step;
   repeat cancel_emp_l;
   repeat cancel_emp_r;
-  try solve [ ecancel_done ].
+  try solve [ cancel_done ].
 
 Ltac ecancel :=
   cancel;
@@ -440,7 +456,7 @@ Ltac seprewrite0_in Hrw H :=
       by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
   let H' := fresh H in (* rename H into H' (* COGBUG(9937) *) *)
   epose proof (proj1 (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) (proj1 (pf _) H)) as H';
-  clear H pf.
+  clear H pf; rename H' into H.
 
 
 Ltac seprewrite_in Hrw H :=
