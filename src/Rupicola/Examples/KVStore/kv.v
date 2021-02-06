@@ -165,8 +165,9 @@ Program Fixpoint ranged_for_nat {A}
         (a0: A) {measure (to - from)} :=
   if le_gt_dec to from then a0
   else let (continue, a0) := body from a0 in
-       if continue then a0
-       else ranged_for_nat (from + S (pred step)) to step body a0.
+       if continue then
+         ranged_for_nat (from + S (pred step)) to step body a0
+       else a0.
 Next Obligation.
   omega.
 Defined.
