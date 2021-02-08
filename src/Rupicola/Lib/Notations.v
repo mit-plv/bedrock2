@@ -6,22 +6,6 @@ Notation "'let/d' x := val 'in' body" :=
     (at level 200, x ident, body at level 200,
      format "'let/d'  x  :=  val  'in' '//' body").
 
-Definition nlet {A P} (var: string) (val : A) (body : forall a : A, P a) : P val :=
-  let x := val in body x.
-
-Notation "'let/n' x 'as' nm := val 'in' body" :=
-  (nlet nm val (fun x => body))
-    (at level 200, x ident, body at level 200,
-     format "'let/n' x 'as' nm := val 'in' '//' body",
-     only printing).
-
-Notation "'let/n' x := val 'in' body" :=
-  (nlet (binder_to_string val x) val (fun x => body))
-    (at level 200, x ident, body at level 200,
-     only parsing).
-
-Check (let/n x := 1 in let/n x := x + 1 in x).
-
 (* TODO: figure out recursive notation for this *)
 Notation
       "'let/d' '''(' x , y ')' := val 'in' body" :=
@@ -40,6 +24,49 @@ Notation
            let z := snd v in
            body))
     (at level 200, only parsing).
+
+Definition nlet {A P} (vars: list string) (val : A) (body : forall a : A, P a) : P val :=
+  let x := val in body x.
+
+(* FIXME Error: Anomaly "Uncaught exception Failure("hd")." until 8.13 *)
+(* Notation "'let/n' x := val 'in' body" := *)
+(*   (nlet [_] val (fun x => body)) *)
+(*     (at level 200, x ident, body at level 200, *)
+(*      format "'let/n'  x  :=  val  'in' '//' body", *)
+(*      only printing). *)
+
+Notation "'let/n' x 'as' nm := val 'in' body" :=
+  (nlet (P := fun _ => _) (* Force non-dependent type *)
+        [nm] val (fun x => body))
+    (at level 200, x ident, body at level 200,
+     format "'let/n'  x  'as'  nm  :=  val  'in' '//' body").
+
+Notation "'let/n' x := val 'in' body" :=
+  (nlet (P := fun _ => _) (* Force non-dependent type *)
+        [IdentParsing.TC.ident_to_string x]
+        val (fun x => body))
+    (at level 200, x ident, body at level 200,
+     only parsing).
+
+(* Notation "'let/n' ( x , y ) := val 'in' body" := *)
+(*   (nlet [_; _] val (fun '(x, y) => body)) *)
+(*     (at level 200, x ident, body at level 200, *)
+(*      format "'let/n'  ( x ,  y )  :=  val  'in' '//' body", *)
+(*      only printing). *)
+
+Notation "'let/n' ( x , y ) 'as' ( nx , ny ) := val 'in' body" :=
+  (nlet (P := fun _ => _) (* Force non-dependent type *)
+        [nx; ny] val (fun '(x, y) => body))
+    (at level 200, x ident, body at level 200,
+     format "'let/n'  ( x ,  y )  'as'  ( nx ,  ny )  :=  val  'in' '//' body").
+
+Notation "'let/n' ( x , y ) := val 'in' body" :=
+  (nlet (P := fun _ => _) (* Force non-dependent type *)
+        [IdentParsing.TC.ident_to_string x;
+         IdentParsing.TC.ident_to_string y]
+        val (fun '(x, y) => body))
+    (at level 200, x ident, y ident, body at level 200,
+     only parsing).
 
 Infix "~>" := scalar (at level 40, only parsing).
 
