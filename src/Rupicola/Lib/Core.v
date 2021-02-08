@@ -38,6 +38,9 @@ Definition bedrock_func : Type :=
   string * (list string * list string * cmd).
 Coercion name_of_func (f : bedrock_func) := fst f.
 
+Definition predicate {parameters: Semantics.parameters} :=
+  Semantics.trace -> Semantics.mem -> Semantics.locals -> Prop.
+
 (* TODO: should move upstream to coqutil *)
 Module map.
   Section __.

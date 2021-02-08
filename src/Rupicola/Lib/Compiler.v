@@ -9,187 +9,126 @@ Section with_semantics.
 
   Lemma compile_skip :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : _ -> Prop)
-           tr retvars rets R functions T
-           (pred: T -> list word -> _ -> Prop) head,
-      locals_ok locals ->
-      map.getmany_of_list locals retvars = Some rets ->
-      sep (pred head rets) R mem ->
-      (find cmd.skip
-       implementing (pred head)
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+      tr functions (pred: predicate),
+      pred tr mem locals  ->
+      (<{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       cmd.skip
+       <{ pred }>).
   Proof.
     intros.
     repeat straightline.
-    red; ssplit; eauto.
+    assumption.
   Qed.
 
-  Lemma compile_constant :
+  Lemma compile_word_of_Z_constant :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R functions T (pred: T -> _ -> _ -> Prop) z k k_impl,
+      tr functions T (pred: T -> predicate) (z: Z) k k_impl,
     forall var,
       let v := word.of_Z z in
-      (let head := v in
-       find k_impl
-       implementing (pred (k head))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals (map.put locals var head)
-       and-memory mem and-trace tr and-rest R
-       and-functions functions) ->
-      (let head := v in
-       find (cmd.seq (cmd.set var (expr.literal z)) k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
-  Proof.
-    intros.
-    repeat straightline.
-    eassumption.
-  Qed.
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var v;
+          Functions := functions }>
+       k_impl
+       <{ pred (k v) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set var (expr.literal z)) k_impl
+      <{ pred (nlet [var] v k) }>.
+  Proof. repeat straightline; eassumption. Qed.
 
   Lemma compile_Z_constant :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R functions T (pred: T -> _ -> _ -> Prop)
-           (z : Z) k k_impl,
+      tr functions T (pred: T -> predicate) z k k_impl,
     forall var,
       let v := z in
-      (let head := v in
-       find k_impl
-       implementing (pred (k head))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals (map.put locals var (word.of_Z head))
-       and-memory mem and-trace tr and-rest R
-       and-functions functions) ->
-      (let head := v in
-       find (cmd.seq (cmd.set var (expr.literal z)) k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
-  Proof.
-    intros.
-    repeat straightline.
-    eassumption.
-  Qed.
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var (word.of_Z v);
+          Functions := functions }>
+       k_impl
+       <{ pred (k v) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set var (expr.literal z)) k_impl
+      <{ pred (nlet [var] v k) }>.
+  Proof. repeat straightline; eassumption. Qed.
 
   Lemma compile_nat_constant :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R functions T (pred: T -> _ -> _ -> Prop)
-           (n : nat) (zn : Z) k k_impl,
+      tr functions T (pred: T -> predicate) n k k_impl,
     forall var,
-      zn = Z.of_nat n ->
       let v := n in
-      (let head := v in
-       find k_impl
-       implementing (pred (k head))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals (map.put locals var (word.of_Z zn))
-       and-memory mem and-trace tr and-rest R
-       and-functions functions) ->
-      (let head := v in
-       find (cmd.seq (cmd.set var (expr.literal zn)) k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
-  Proof.
-    intros.
-    repeat straightline.
-    eassumption.
-  Qed.
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var (word.of_Z (Z.of_nat v));
+          Functions := functions }>
+       k_impl
+       <{ pred (k v) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set var (expr.literal (Z.of_nat n))) k_impl
+      <{ pred (nlet [var] v k) }>.
+  Proof. repeat straightline; eassumption. Qed.
 
-  Lemma compile_false :
+  Notation b2w b :=
+    (word.of_Z (Z.b2z b)).
+
+  Lemma compile_bool_constant :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R functions T (pred: T -> _ -> _ -> Prop) k k_impl,
+      tr functions T (pred: T -> predicate) b k k_impl,
     forall var,
-      let v := false in
-      (let head := v in
-       find k_impl
-       implementing (pred (k head))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals (map.put locals var (word.of_Z (Z.b2z head)))
-       and-memory mem and-trace tr and-rest R
-       and-functions functions) ->
-      (let head := v in
-       find (cmd.seq (cmd.set var (expr.literal 0)) k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
-  Proof.
-    intros.
-    repeat straightline.
-    eassumption.
-  Qed.
+      let v := b in
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var (b2w v);
+          Functions := functions }>
+       k_impl
+       <{ pred (k v) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set var (expr.literal (Z.b2z v))) k_impl
+      <{ pred (nlet [var] v k) }>.
+  Proof. repeat straightline; eassumption. Qed.
 
-  Lemma compile_true :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R functions T (pred: T -> _ -> _ -> Prop) k k_impl,
-    forall var,
-      let v := true in
-      (let head := v in
-       find k_impl
-       implementing (pred (k head))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals (map.put locals var (word.of_Z (Z.b2z head)))
-       and-memory mem and-trace tr and-rest R
-       and-functions functions) ->
-      (let head := v in
-       find (cmd.seq (cmd.set var (expr.literal 1)) k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
-  Proof.
-    intros.
-    repeat straightline.
-    eassumption.
-  Qed.
-
+  (* FIXME generalize *)
   Lemma compile_xorb :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R functions T (pred: T -> _ -> _ -> Prop)
-           x x_var y y_var k k_impl,
+      tr functions T (pred: T -> predicate)
+      x x_var y y_var k k_impl,
     forall var,
-      map.get locals x_var = Some (word.of_Z (Z.b2z x)) ->
-      map.get locals y_var = Some (word.of_Z (Z.b2z y)) ->
+      map.get locals x_var = Some (b2w x) ->
+      map.get locals y_var = Some (b2w y) ->
       let v := xorb x y in
-      (let head := v in
-       find k_impl
-       implementing (pred (k head))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals (map.put locals var (word.of_Z (Z.b2z head)))
-       and-memory mem and-trace tr and-rest R
-       and-functions functions) ->
-      (let head := v in
-       find (cmd.seq (cmd.set var (expr.op bopname.xor (expr.var x_var) (expr.var y_var)))
-                     k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var (b2w v);
+          Functions := functions }>
+       k_impl
+       <{ pred (k v) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set var (expr.op bopname.xor (expr.var x_var) (expr.var y_var)))
+              k_impl
+      <{ pred (k v) }>.
   Proof.
     intros.
     repeat straightline.
@@ -200,82 +139,65 @@ Section with_semantics.
       eexists; split; [ eassumption | ].
       reflexivity. }
     red.
-    match goal with
-      H : context [map.put locals var ?v1]
-      |- context [map.put locals var ?v2] =>
-      replace v2 with v1; [ exact H | ]
-    end.
     rewrite <-(word.of_Z_unsigned (word.xor _ _)).
     rewrite word.unsigned_xor_nowrap.
     rewrite !word.unsigned_of_Z_b2z, Z.lxor_xorb.
-    reflexivity.
+    assumption.
   Qed.
 
   Lemma compile_add :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R functions T (pred: T -> _ -> _ -> Prop)
-           x x_var y y_var k k_impl,
+      tr functions T (pred: T -> predicate)
+      x x_var y y_var k k_impl,
     forall var,
       map.get locals x_var = Some x ->
       map.get locals y_var = Some y ->
       let v := word.add x y in
-      (let head := v in
-       find k_impl
-       implementing (pred (k head))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals (map.put locals var head)
-       and-memory mem and-trace tr and-rest R
-       and-functions functions) ->
-      (let head := v in
-       find (cmd.seq (cmd.set var (expr.op bopname.add (expr.var x_var) (expr.var y_var)))
-                     k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var v;
+          Functions := functions }>
+       k_impl
+       <{ pred (k v) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set var (expr.op bopname.add (expr.var x_var) (expr.var y_var)))
+              k_impl
+      <{ pred (nlet [var] v k) }>.
   Proof.
-    intros.
     repeat straightline.
-    eexists; split.
-    { repeat straightline.
-        exists x; split; try eassumption.
-        repeat straightline.
-        exists y; split; try eassumption.
-        reflexivity. }
-    red.
-    eassumption.
+    eexists; split; eauto.
+    repeat straightline.
+    eexists; split; eauto.
+    repeat straightline.
+    eexists; split; eauto.
   Qed.
 
   Lemma compile_eqb :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R functions T (pred: T -> _ -> _ -> Prop)
-           x x_var y y_var k k_impl,
+      tr functions T (pred: T -> predicate)
+      x x_var y y_var k k_impl,
     forall var,
       map.get locals x_var = Some x ->
       map.get locals y_var = Some y ->
       let v := word.eqb x y in
-      (let head := v in
-       find k_impl
-       implementing (pred (k head))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals (map.put locals var (word.of_Z (Z.b2z head)))
-       and-memory mem and-trace tr and-rest R
-       and-functions functions) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.set var (expr.op bopname.eq
-                                     (expr.var x_var) (expr.var y_var)))
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var (b2w v);
+          Functions := functions }>
+       k_impl
+       <{ pred (nlet [var] v k) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set var (expr.op bopname.eq (expr.var x_var) (expr.var y_var)))
+              k_impl
+      <{ pred (nlet [var] v k) }>.
   Proof.
     intros. repeat straightline'.
     subst_lets_in_goal.
@@ -284,121 +206,142 @@ Section with_semantics.
   Qed.
 
   (* TODO: make more types *)
-  (* N.B. this should *not* be added to any compilation tactics, since it will
-     always apply; it needs to be applied manually *)
-  Lemma compile_rename_bool :
+  Lemma compile_copy_local :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-      (locals_ok : Semantics.locals -> Prop)
-      tr retvars R functions T (pred: T -> _ -> _ -> Prop)
-      x x_var var k k_impl,
-      map.get locals x_var = Some (word.of_Z (Z.b2z x)) ->
-      let v := x in
-      (let head := v in
-       find k_impl
-       implementing (pred (k head))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals (map.put locals var (word.of_Z (Z.b2z x)))
-       and-memory mem and-trace tr and-rest R
-       and-functions functions) ->
-      (let head := v in
-       find (cmd.seq (cmd.set var (expr.var x_var)) k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals
-       and-memory mem and-trace tr and-rest R
-       and-functions functions).
+      tr functions T (pred: T -> predicate) v0 k k_impl
+      src_var dst_var,
+      map.get locals src_var = Some v0 ->
+      let v := v0 in
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals dst_var v;
+          Functions := functions }>
+       k_impl
+       <{ pred (k v) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set dst_var (expr.var src_var)) k_impl
+      <{ pred (nlet [dst_var] v k) }>.
   Proof.
-    repeat straightline'. eauto.
+    repeat straightline'; eauto.
   Qed.
+
+  (* FIXME check out what happens when running straightline on a triple with a cmd.seq; could we get rid of the continuation arguments?  Would it require more rewrites? *)
 
   (* N.B. this should *not* be added to any compilation tactics, since it will
      always apply; it needs to be applied manually *)
   Lemma compile_unset :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-      (locals_ok : Semantics.locals -> Prop)
-      tr retvars R functions T (pred: T -> _ -> _ -> Prop)
-      var k k_impl,
-      (find k_impl
-       implementing (pred k)
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals (map.remove locals var)
-       and-memory mem and-trace tr and-rest R
-       and-functions functions) ->
-      (find (cmd.seq (cmd.unset var) k_impl)
-       implementing (pred k)
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals
-       and-memory mem and-trace tr and-rest R
-       and-functions functions).
+      tr functions (pred: predicate)
+      var cmd,
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := map.remove locals var;
+         Functions := functions }>
+      cmd
+      <{ pred }> ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.unset var) cmd
+      <{ pred }>.
   Proof.
-    repeat straightline'. eauto.
+    repeat straightline'; eauto.
+  Qed.
+
+  Definition map_remove_many {K V} {M: map.map K V} m (ks: list K) :=
+    List.fold_left map.remove ks m.
+
+  Lemma compile_unsets :
+    forall vars (locals: Semantics.locals) (mem: Semantics.mem)
+      cmd tr functions (pred: predicate),
+      (<{ Trace := tr;
+          Memory := mem;
+          Locals := map_remove_many locals vars;
+          Functions := functions }>
+       cmd
+       <{ pred }>) ->
+      (<{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       fold_right (fun v c => cmd.seq (cmd.unset v) c) cmd vars
+       <{ pred }>).
+  Proof.
+    induction vars; cbn [fold_right]; intros.
+    - assumption.
+    - apply compile_unset.
+      apply IHvars.
+      assumption.
   Qed.
 
   (* N.B. should only be added to compilation tactics that solve their subgoals,
-  since this applies to any shape of goal *)
-  Lemma compile_pointer :
+     since this applies to any shape of goal *)
+  Lemma compile_copy_pointer :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R' R functions T (pred: T -> _ -> _ -> Prop)
-           {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop)
-           x_var x_ptr (x : data) k k_impl var,
-      (Data x_ptr x * R')%sep mem ->
+      tr functions {T} (pred: T -> predicate)
+      {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop)
+      x_var x_ptr (x : data) k k_impl var R,
+
+      (* This assumption is used to drive the compiler, but it's not used by the proof *)
+      (Data x_ptr x * R)%sep mem ->
       map.get locals x_var = Some x_ptr ->
+
       let v := x in
-      (let head := v in
-       find k_impl
-       implementing (pred (k head))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals (map.put locals var x_ptr)
-       and-memory mem and-trace tr and-rest R
-       and-functions functions) ->
-      (let head := v in
-       find (cmd.seq (cmd.set var (expr.var x_var)) k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var x_ptr;
+          Functions := functions }>
+       k_impl
+       <{ pred (k v) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set var (expr.var x_var)) k_impl
+      <{ pred (nlet [var] v k) }>.
   Proof.
+    unfold postcondition_cmd.
     intros.
     repeat straightline'.
     eassumption.
   Qed.
 
-  Lemma compile_if_word :
+  Lemma compile_if_word : (* FIXME generalize to arbitrary ifs *)
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R functions T (pred: T -> _ -> _ -> Prop)
-           t_var f_var (t f : word) (c : bool) c_var
-           k k_impl var,
-      map.get locals c_var = Some (word.of_Z (Z.b2z c)) ->
+      tr functions T (pred: T -> predicate)
+      t_var f_var (t f : word) (c : bool) c_var
+      k k_impl var,
+
+      map.get locals c_var = Some (b2w c) ->
       map.get locals t_var = Some t ->
       map.get locals f_var = Some f ->
+
       let v := if c then t else f in
-      (let head := v in
-        find k_impl
-        implementing (pred (k head))
-        and-returning retvars
-        and-locals-post locals_ok
-        with-locals (map.put locals var head)
-        and-memory mem and-trace tr and-rest R
-        and-functions functions) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.cond (expr.var c_var)
-                         (cmd.set var (expr.var t_var))
-                         (cmd.set var (expr.var f_var)))
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var v;
+          Functions := functions }>
+       k_impl
+       <{ pred (k v) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.cond (expr.var c_var)
+                  (cmd.set var (expr.var t_var))
+                  (cmd.set var (expr.var f_var)))
+        k_impl
+      <{ pred (let/n x as var := v in
+               k x) }>.
   Proof.
     intros.
     repeat straightline'.
@@ -413,37 +356,40 @@ Section with_semantics.
 
   Lemma compile_if_pointer :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars Rt Rf R functions T (pred: T -> _ -> _ -> Prop)
-           {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop)
-           t_var f_var t_ptr f_ptr (t f : data) (c : bool) c_var
-           k k_impl var,
+      tr functions T (pred: T -> predicate)
+      {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop) Rt Rf
+      t_var f_var t_ptr f_ptr (t f : data) (c : bool) c_var
+      k k_impl var,
+
       (Data t_ptr t * Rt)%sep mem ->
       (Data f_ptr f * Rf)%sep mem ->
-      map.get locals c_var = Some (word.of_Z (Z.b2z c)) ->
+
+      map.get locals c_var = Some (b2w c) ->
       map.get locals t_var = Some t_ptr ->
       map.get locals f_var = Some f_ptr ->
+
       let v := if c then t else f in
-      (let head := v in
-        find k_impl
-        implementing (pred (k head))
-        and-returning retvars
-        and-locals-post locals_ok
-        with-locals (map.put locals var (if c then t_ptr else f_ptr))
-        and-memory mem and-trace tr and-rest R
-        and-functions functions) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.cond (expr.var c_var)
-                         (cmd.set var (expr.var t_var))
-                         (cmd.set var (expr.var f_var)))
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var (if c then t_ptr else f_ptr);
+          Functions := functions }>
+       k_impl
+       <{ pred (k v) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.cond (expr.var c_var)
+                  (cmd.set var (expr.var t_var))
+                  (cmd.set var (expr.var f_var)))
+        k_impl
+      <{ pred (let/n x as var := v in k x) }>.
   Proof.
+    intros.
+    unfold postcondition_cmd.
+
     intros.
     repeat straightline'.
     split_if ltac:(repeat straightline').
@@ -456,17 +402,21 @@ Section with_semantics.
   Qed.
 
   Lemma postcondition_func_norets_postcondition_cmd
-        post k R tr mem locals functions :
-    WeakestPrecondition.cmd
-      (WeakestPrecondition.call functions)
-      k tr mem locals
-      (postcondition_cmd
-         (fun _ => True) post [] R tr) ->
-    WeakestPrecondition.cmd
-      (WeakestPrecondition.call functions)
-      k tr mem locals
-      (fun tr' m' _ =>
-         postcondition_func_norets post R tr tr' m' []).
+        {T} spec (x: T) cmd R tr mem locals functions :
+    (let pred a := postcondition_cmd (fun _ : Semantics.locals => True) (spec a) [] R tr in
+     <{ Trace := tr;
+        Memory := mem;
+        Locals := locals;
+        Functions := functions }>
+     cmd
+     <{ pred x }>) ->
+    <{ Trace := tr;
+       Memory := mem;
+       Locals := locals;
+       Functions := functions }>
+    cmd
+    <{ fun (tr' : Semantics.trace) (m' : Semantics.mem) (_ : Semantics.locals) =>
+         postcondition_func_norets (spec x) R tr tr' m' [] }>.
   Proof.
     cbv [postcondition_func_norets
            postcondition_func postcondition_cmd]; intros.
@@ -505,21 +455,23 @@ Section with_semantics.
   Qed.
 
   Lemma postcondition_func_postcondition_cmd
-        (spec : list word -> Semantics.mem -> Prop)
-        k R tr mem locals retvars functions :
-    (WeakestPrecondition.cmd
-       (WeakestPrecondition.call functions)
-       k tr mem locals
-       (postcondition_cmd
-          (fun _ => True) spec retvars R tr)) ->
-    WeakestPrecondition.cmd
-      (WeakestPrecondition.call functions)
-      k tr mem locals
-      (fun tr' m' l =>
+        {T} spec (x: T) cmd R tr mem locals retvars functions :
+    (let pred a := postcondition_cmd (fun _ : Semantics.locals => True) (spec a) retvars R tr in
+     <{ Trace := tr;
+        Memory := mem;
+        Locals := locals;
+        Functions := functions }>
+     cmd
+     <{ pred x }>) ->
+    <{ Trace := tr;
+       Memory := mem;
+       Locals := locals;
+       Functions := functions }>
+    cmd
+    <{ fun tr' m' l =>
          WeakestPrecondition.list_map
            (WeakestPrecondition.get l) retvars
-           (fun rets : list word =>
-              postcondition_func spec R tr tr' m' rets)).
+           (fun rets => postcondition_func (spec x) R tr tr' m' rets) }>.
   Proof.
     cbv [postcondition_func postcondition_cmd]; intros.
     cleanup.
@@ -546,14 +498,14 @@ Ltac setup :=
   repeat straightline; subst_lets_in_goal; cbn [length];
   first [ apply postcondition_func_norets_postcondition_cmd
         | apply postcondition_func_postcondition_cmd ];
-   match goal with
-   | |- context [ postcondition_cmd _ (?pred ?spec) ] =>
-         let hd := term_head spec in
-         unfold hd
-   | |- context [ postcondition_cmd _ (fun r => ?pred ?spec r) ] =>
-         let hd := term_head spec in
-         unfold hd
-   end.
+  intros;
+  lazymatch goal with
+  | |- context [ WeakestPrecondition.cmd _ _ _ _ _ (?pred ?spec) ] =>
+    let hd := term_head spec in unfold hd
+  | |- context [ postcondition_cmd _ (fun r => ?pred ?spec r) ] => (* FIXME *)
+    let hd := term_head spec in unfold hd
+  | _ => fail "Postcondition not in expected shape (?pred gallina_spec)"
+  end.
 
 Ltac lookup_variable m val :=
   lazymatch m with
@@ -579,19 +531,25 @@ Ltac solve_map_get_goal :=
 
 Create HintDb compiler.
 
+Ltac compile_get_binding :=
+  lazymatch goal with
+  | |- context [ WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet _ ?v _)) ] => v
+  end.
+
+(* Using [simple apply] ensures that Coq doesn't unfold [nlet]s *)
 Ltac compile_basics :=
-  gen_sym_inc;
+  gen_sym_inc;                  (* FIXME remove? *)
   let name := gen_sym_fetch "v" in
-  first [simple eapply compile_constant with (var := name) |
-         simple eapply compile_false with (var := name) |
-         simple eapply compile_true with (var := name) |
-         simple eapply compile_Z_constant with (var := name) |
-         simple eapply compile_nat_constant with (var := name) |
-         simple eapply compile_xorb with (var := name) |
-         simple eapply compile_add with (var := name) |
-         simple eapply compile_eqb with (var := name) |
-         simple eapply compile_if_word with (var := name) |
-         simple eapply compile_if_pointer with (var := name) ].
+  let hd := compile_get_binding in
+  first [simple eapply compile_word_of_Z_constant |
+         simple eapply compile_Z_constant |
+         simple eapply compile_nat_constant |
+         simple eapply compile_bool_constant |
+         simple eapply compile_xorb |
+         simple eapply compile_add |
+         simple eapply compile_eqb |
+         simple eapply compile_if_word |
+         simple eapply compile_if_pointer ].
 
 Ltac compile_custom := fail.
 
