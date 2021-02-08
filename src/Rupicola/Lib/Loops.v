@@ -8,6 +8,9 @@ Require Import AdmitAxiom.
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.Cells.Cells.
 
+Require coqutil.Map.SortedListString.
+Require Import coqutil.Decidable.
+
 (* (* Set Primitive Projections. *) *)
 (* Record p2 {A B} := P2 { pfst: A; psnd: B }. *)
 (* (* Unset Primitive Projections. *) *)
@@ -1073,7 +1076,7 @@ Section with_parameters.
     repeat straightline'. eauto.
   Qed.
 
-  Definition map_remove_many {K V} {M: map.map K V} (ks: list K) m :=
+  Definition map_remove_many {K V} {M: map.map K V} m (ks: list K) :=
     List.fold_left map.remove ks m.
 
   Lemma compile_unsets :
@@ -1081,7 +1084,7 @@ Section with_parameters.
       cmd tr functions (pred: predicate),
       (<{ Trace := tr;
           Memory := mem;
-          Locals := map_remove_many vars locals;
+          Locals := map_remove_many locals vars;
           Functions := functions }>
        cmd
        <{ pred }>) ->
@@ -1437,31 +1440,167 @@ TYPECLASSES:?X101685 ?X101688 ?X101689 ?X101692
          end in
      loop m uconstr:([]).
 
-   Definition map_of_bindings {K V} {M: map.map K V} (bindings: list (K * V)) :=
+   Definition map_of_bindings {K V} {map: map.map K V} (bindings: list (K * V)) :=
      List.fold_left (fun m '(k, v) => map.put m k v) bindings map.empty.
 
-   Lemma map_remove_many_diff {K V} {M: map.map K V} eqb: (* FIXME use maps instead of lists *)
-     forall (b0 b1: list (K * V)) ks,
-       let ks0 := List.map fst b0 in
-       let ks1 := List.map fst b1 in
-       ks = List.filter (fun k0 => negb (List.existsb (eqb k0) ks1)) ks0 ->
-       b1 = List.filter (fun '(k0, b0) => negb (List.existsb (eqb k0) ks)) b0 ->
-       map_remove_many ks (map_of_bindings b0) = map_of_bindings b1.
-   Admitted.
+   Definition map_domains_diff {K V} {map: map.map K V} (m0 m1: map) :=
+     map.keys (map.fold (fun (m0: map) k _ => map.remove m0 k) m0 m1).
+
+   Definition map_eq {K V} {map0 map1: map.map K V}
+              {map_ok0: map.ok map0} {map_ok1: map.ok map1}
+              m0 m1 :=
+     (forall k, map.get (map := map0) m0 k = map.get (map := map1) m1 k).
+
+   Instance map_eq_refl {K V} {map: map.map K V} {map_ok: map.ok map} :
+     RelationClasses.Reflexive (@map_eq K V map map map_ok map_ok).
+   Proof. unfold map_eq; constructor; congruence. Qed.
+
+   Lemma map_eq_trans {K V}
+            {map0 map1 map2: map.map K V}
+            {map_ok0: map.ok map0} {map_ok1: map.ok map1} {map_ok2: map.ok map2} :
+     forall m0 m1 m2,
+       map_eq (map0 := map0) (map1 := map1) m0 m1 ->
+       map_eq (map0 := map1) (map1 := map2) m1 m2 ->
+       map_eq m0 m2.
+   Proof. unfold map_eq; congruence. Qed.
+
+   Lemma map_eq_sym {K V}
+         {map0 map1: map.map K V}
+         {map_ok0: map.ok map0} {map_ok1: map.ok map1} :
+     forall m0 m1,
+       map_eq (map0 := map0) (map1 := map1) m0 m1 ->
+       map_eq (map0 := map1) (map1 := map0) m1 m0.
+   Proof. unfold map_eq; congruence. Qed.
+
+   Lemma map_put_proper {K V}
+         {map0 map1: map.map K V}
+         {map_ok0: map.ok map0} {map_ok1: map.ok map1}
+         {key_eqb: K -> K -> bool}
+         {key_eq_dec : EqDecider key_eqb} :
+     forall k v (m0: map.rep (map := map0)) (m1: map.rep (map := map1)),
+       map_eq m0 m1 ->
+       map_eq (map.put m0 k v) (map.put m1 k v).
+   Proof.
+     intros * Heq k.
+     destruct (key_eqb k0 k) eqn:Hk;
+       [ eapply (Decidable.BoolSpec_true _ _ _ (key_eq_dec _ _)) in Hk |
+         eapply (Decidable.BoolSpec_false _ _ _ (key_eq_dec _ _)) in Hk ];
+       subst; rewrite ?map.get_put_same, ?map.get_put_diff; auto.
+   Qed.
+
+   Lemma map_remove_proper {K V}
+         {map0 map1: map.map K V}
+         {map_ok0: map.ok map0} {map_ok1: map.ok map1}
+         {key_eqb: K -> K -> bool}
+         {key_eq_dec : EqDecider key_eqb} :
+     forall k (m0: map.rep (map := map0)) (m1: map.rep (map := map1)),
+       map_eq m0 m1 ->
+       map_eq (map.remove m0 k) (map.remove m1 k).
+   Proof.
+     intros * Heq k.
+     destruct (key_eqb k0 k) eqn:Hk;
+       [ eapply (Decidable.BoolSpec_true _ _ _ (key_eq_dec _ _)) in Hk |
+         eapply (Decidable.BoolSpec_false _ _ _ (key_eq_dec _ _)) in Hk ];
+       subst; rewrite ?map.get_remove_same, ?map.get_remove_diff; auto.
+   Qed.
+
+   Lemma map_remove_many_proper {K V}
+         {map0 map1: map.map K V}
+         {map_ok0: map.ok map0} {map_ok1: map.ok map1}
+         {key_eqb: K -> K -> bool}
+         {key_eq_dec : EqDecider key_eqb} :
+     forall ks (m0: map.rep (map := map0)) (m1: map.rep (map := map1)),
+       map_eq m0 m1 ->
+       map_eq (map_remove_many m0 ks) (map_remove_many m1 ks).
+   Proof.
+     unfold map_remove_many; induction ks; simpl; intros.
+     - assumption.
+     - apply IHks, map_remove_proper; assumption.
+   Qed.
+
+   Lemma map_ext_rev  {K V} {map: map.map K V} {map_ok: map.ok map} :
+     forall m0 m1, m0 = m1 -> map_eq m0 m1.
+   Proof. intros; subst; reflexivity. Qed.
+
+   Lemma map_remove_many_concretize {K V}
+         {map0 map1: map.map K V}
+         {map_ok0: map.ok map0} {map_ok1: map.ok map1}
+         {key_eqb: K -> K -> bool}
+         {key_eq_dec : EqDecider key_eqb} :
+     forall (m0 m'0: map.rep (map := map0)) (m1 m'1: map.rep (map := map1)) ks,
+       map_eq m0 m1 ->
+       map_eq m'0 m'1 ->
+       map_remove_many m1 ks = m'1 ->
+       map_remove_many m0 ks = m'0.
+   Proof.
+     intros * Heq H'eq H1.
+     apply map_ext_rev in H1.
+     apply map.map_ext; change (map_eq (map_remove_many m0 ks) m'0).
+     eauto using @map_eq_trans, @map_remove_many_proper, @map_eq_sym.
+   Qed.
+
+   Lemma map_of_binding_proper' {K V}
+         {map0 map1: map.map K V}
+         {map_ok0: map.ok map0} {map_ok1: map.ok map1}
+         {key_eqb: K -> K -> bool}
+         {key_eq_dec : EqDecider key_eqb} :
+     forall bs m0 m1,
+       map_eq (map0 := map0) (map1 := map1) m0 m1 ->
+       map_eq (List.fold_left (fun m '(k, v) => map.put m k v) bs m0)
+              (List.fold_left (fun m '(k, v) => map.put m k v) bs m1).
+   Proof.
+     induction bs as [ | (k & v) bs ]; simpl; intros.
+     - assumption.
+     - apply IHbs, map_put_proper; assumption.
+   Qed.
+
+   Lemma map_eq_empty {K V}:
+     forall {map0 map1: map.map K V}
+       {map_ok0: map.ok map0} {map_ok1: map.ok map1},
+       map_eq (map.empty (map := map0)) (map.empty (map := map1)).
+   Proof.
+     red; intros; rewrite !map.get_empty; reflexivity.
+   Qed.
+
+   Lemma map_of_binding_proper {K V}
+         {map0 map1: map.map K V}
+         {map_ok0: map.ok map0} {map_ok1: map.ok map1}
+         {key_eqb: K -> K -> bool}
+         {key_eq_dec : EqDecider key_eqb} :
+     forall bs,
+       map_eq (map_of_bindings (map := map0) bs)
+              (map_of_bindings (map := map1) bs).
+   Proof.
+     intros; apply map_of_binding_proper', map_eq_empty.
+   Qed.
+
+   Lemma map_remove_many_diff {V} {map: map.map string V} {map_ok: map.ok map}:
+     let SM := SortedListString.map V in
+     let SM_ok := SortedListString.ok V in
+     forall (b0 b1: list (string * V)) ks,
+       let sb0 := map_of_bindings (map := SM) b0 in
+       let sb1 := map_of_bindings (map := SM) b1 in
+       ks = map_domains_diff sb0 sb1 -> (* Used for unification *)
+       map_remove_many sb0 ks = sb1 ->
+       map_remove_many (map_of_bindings (map := map) b0) ks = map_of_bindings b1.
+   Proof.
+     intros; eapply (map_remove_many_concretize (map0 := map) (map1 := SM)); eauto;
+       apply map_of_binding_proper.
+   Qed.
 
   Ltac solve_map_remove_many :=
-    lazymatch goal with  (* FIXME this needs to handle overwritten bindings *)
-    | [  |- map_remove_many ?ks ?m0 = ?m1 ] =>
+   lazymatch goal with  (* FIXME this needs to handle overwritten bindings *)
+    | [  |- map_remove_many ?m0 ?ks = ?m1 ] =>
       let b0 := map_get_bindings m0 in
       let b1 := map_get_bindings m1 in
       change m0 with (map_of_bindings b0);
       change m1 with (map_of_bindings b1);
-      apply (map_remove_many_diff String.eqb);
-      [ try (compute; reflexivity) | try reflexivity ]
-    end.
+      apply map_remove_many_diff;
+      [ try (vm_compute; reflexivity) | try reflexivity ]
+   end.
 
    (* FIXME Loop lemma should maybe copy from, to, step into temporaries? *)
-   Program Definition vect_memcpy {n1 n2} (len: word)
+    Program Definition vect_memcpy {n1 n2} (len: word)
            (a1: VectorArray.t word n1)
            (a2: VectorArray.t word n2)
            (pr1: word.unsigned len < Z.of_nat n1)
@@ -1544,8 +1683,7 @@ TYPECLASSES:?X101685 ?X101688 ?X101689 ?X101692
          repeat red.
          repeat apply conj.
          + reflexivity.
-         + cbn.
-           solve_map_remove_many.
+         + simpl; solve_map_remove_many.
          + ecancel_assumption. } }
 
      { intros * Hpred. cleanup_hyp Hpred.
@@ -1733,17 +1871,6 @@ TYPECLASSES:?X101685 ?X101688 ?X101689 ?X101692
        + reflexivity.
        + (* apply extends_eq. *)
          solve_map_remove_many.
-         cbn.
-
-         instantiate (1 := ["v"]).
-         cbn.
-         (* match goal with *)
-         (* | [ H: map.extends locals ?m |- _ ] => replace locals with m by admit *)
-         (* end. *)
-         repeat first [rewrite map.remove_put_diff by congruence |
-                       rewrite map.remove_put_same by congruence |
-                       rewrite map.remove_empty ].
-         admit.
        + eauto. }
 
      { intros * Hpred. cleanup_hyp Hpred.
@@ -1758,7 +1885,7 @@ TYPECLASSES:?X101685 ?X101688 ?X101689 ?X101692
            ecancel_assumption. }
    Qed.
 
-  (* Require Import bedrock2.NotationsCustomEntry. *)
-  (* Require Import bedrock2.NotationsInConstr. *)
-  (* Print body. *)
+  Require Import bedrock2.NotationsCustomEntry.
+  Require Import bedrock2.NotationsInConstr.
+  Eval cbv [sizedlist_memcpy_body vect_memcpy_body fold_right] in sizedlist_memcpy_body.
 End with_semantics.
