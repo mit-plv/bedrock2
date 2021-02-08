@@ -102,6 +102,13 @@ Notation "'find' body 'implementing' spec 'and-returning' retvars 'and-locals-po
      body tr mem locals
      (postcondition_cmd locals_post spec retvars R tr)) (at level 0).
 
+Notation "<{ 'Trace' := tr ; 'Memory' := mem ; 'Locals' := locals ; 'Functions' := functions }> cmd <{ post }>" :=
+  (WeakestPrecondition.cmd
+     (WeakestPrecondition.call functions)
+     cmd tr mem locals post)
+    (at level 0,
+     format "'[v' <{  '[v' 'Trace'  :=  '[hv' tr ']' ; '//' 'Memory'  :=  '[hv' mem ']' ; '//' 'Locals'  :=  '[hv' locals ']' ; '//' 'Functions'  :=  '[hv' functions ']' ']'  }> '//' cmd '//' <{  '[hv' post ']'  }> ']'").
+
 Notation "'liftexists' x .. y ',' P" :=
   (Lift1Prop.ex1
      (fun x =>
