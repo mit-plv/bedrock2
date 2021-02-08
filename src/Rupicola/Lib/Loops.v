@@ -35,6 +35,8 @@ Module ExitToken <: ExitToken_sig.
   Definition new (b: bool) : t := b.
   Definition get (tok: t) : bool := tok.
   Definition set (tok: t) : t := true.
+  Definition branch {A} (tok: t) (set unset: A) :=
+    if tok then set else unset.
 End ExitToken.
 
 Class HasDefault (T: Type) := default: T.
@@ -216,24 +218,34 @@ Section Gallina.
   Context {A}
           (from to step: nat)
           (body: forall (tok: ExitToken.t) (idx: nat) (acc: A),
-              from <= idx < to -> (ExitToken.t * A))
-          (a0: A).
+              from <= idx < to -> (ExitToken.t * A)).
 
   (* FIXME it's an interesting challenge here to decide what API “continue” should have. *)
-  Program Fixpoint ranged_for' idx (_: from <= idx) {measure (to - idx)} : A :=
+  Program Fixpoint ranged_for' (a0: A) idx (_: from <= idx) {measure (to - idx)} : A :=
     if le_gt_dec to idx then a0
-    else let (tok, a0) := body (ExitToken.new true) idx a0 _ in
-         if ExitToken.get tok then
-           ranged_for' (idx + S (pred step)) _
-         else a0.
+    else let (tok, a0) := body (ExitToken.new false) idx a0 _ in
+         if ExitToken.get tok then a0
+         else ranged_for' a0 (idx + S (pred step)) _.
   Next Obligation. lia. Qed.
   Next Obligation. lia. Qed.
 
-  Definition ranged_for :=
-    ranged_for' from ltac:(auto).
+  Definition ranged_for (a0: A) :=
+    ranged_for' a0 from ltac:(auto).
 End Gallina.
 
-Section Compile.
+(* Compute ranged_for 0 16 3 *)
+(*         (fun t idx acc _ => *)
+(*            if Nat.ltb 11 idx then *)
+(*              let t' := ExitToken.set t in *)
+(*              (t', acc) *)
+(*            else *)
+(*              let acc := idx :: acc in *)
+(*              (t, acc)) []. *)
+
+Require Import Extraction.
+Extraction ranged_for'_func.
+
+Section with_parameters.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok semantics}.
 
@@ -1195,7 +1207,7 @@ Section Compile.
       body body_impl
       k k_impl,
       let lp from '(tok, acc) tr mem locals :=
-          loop_pred (if ExitToken.get tok then from else to) acc tr mem locals in
+          loop_pred (ExitToken.branch tok (word.sub to (word.of_Z 1)) from) acc tr mem locals in
       (forall from a0 tr mem locals,
           loop_pred from a0 tr mem locals ->
           map.getmany_of_list locals [from_var; to_var; step_var] =
@@ -1207,7 +1219,7 @@ Section Compile.
         forall tr mem locals from'
           (Hle: word.unsigned from <= word.unsigned from')
           (Hlt: word.unsigned from' < word.unsigned to),
-          let tok := ExitToken.new true in
+          let tok := ExitToken.new false in
           let a := ranged_for_w from from' step
                                (fun tok idx acc pr =>
                                   body tok idx acc (ranged_for_widen_bounds pr Hlt)) a0 in
@@ -1235,11 +1247,11 @@ Section Compile.
         (cmd.while
            (expr.op bopname.ltu (expr.var from_var) (expr.var to_var))
            (cmd.seq
+              body_impl
               (cmd.set from_var
                        (expr.op bopname.add
                                 (expr.var from_var)
-                                (expr.literal 1)))
-              body_impl))
+                                (expr.literal 1)))))
         k_impl
       <{ k_pred (nlet vars v k) }>.
   Proof.
@@ -1734,8 +1746,7 @@ TYPECLASSES:?X101685 ?X101688 ?X101689 ?X101692
          admit.
        + eauto. }
 
-     { intros * Hpred. red in Hpred; cleanup_hyp Hpred.
-       change (if ExitToken.get (ExitToken.new true) then ?x else _) with x.
+     { intros * Hpred. cleanup_hyp Hpred.
        repeat compile_step.
 
        apply compile_skip.
