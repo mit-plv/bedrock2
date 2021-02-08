@@ -267,22 +267,72 @@ End Benchmarking.
 Ltac2 coq_string_of_string := LookupTable.coq_string_of_string.
 Ltac2 coq_string_of_ident x := LookupTable.coq_string_of_string (Ident.to_string x).
 
-Definition __Ltac2_MarkedIdent (A: Type) := A.
-
 Ltac2 Type exn ::= [ NoIdentInContext ].
 
-Ltac serialize_ident_in_context :=
-  ltac2:(match! goal with
-  | [ h: __Ltac2_MarkedIdent _ |- _ ] =>
-    let coq_string := coq_string_of_ident h in
-    exact ($coq_string)
-  | [  |- _ ] => Control.throw NoIdentInContext
-  end).
+Module TacInTerm.
+  (* This is the original implementation, as described in the CoqPL'21 paper. *)
+  Definition __Ltac2_MarkedIdent (A: Type) := A.
 
-Notation binder_to_string body a :=
-  (match (body: __Ltac2_MarkedIdent _) return string with
-   | a => ltac:(serialize_ident_in_context)
-   end) (only parsing).
+  Ltac serialize_ident_in_context :=
+    ltac2:(match! goal with
+           | [ h: __Ltac2_MarkedIdent _ |- _ ] =>
+             let coq_string := coq_string_of_ident h in
+             exact ($coq_string)
+           | [  |- _ ] => Control.throw NoIdentInContext
+           end).
+
+  (* `binder_to_string` is useful when converting an identifier to a string but
+     also using it as an actual binder. *)
+  Notation binder_to_string body a :=
+    (match (body: __Ltac2_MarkedIdent _) return string with
+     | a => ltac:(serialize_ident_in_context)
+     end) (only parsing).
+
+  Notation ident_to_string a :=
+    (binder_to_string true a) (only parsing).
+End TacInTerm.
+
+Module TC.
+  (* This implementation uses typeclasses, which allows it to play better with
+     other Coq mechanisms like `Program Definition`; it also makes
+     `binder_to_string` unnecessary. *)
+
+  (* The following examples fail with TacInTerm, but work with TC::
+
+        Definition nlet {A P} (vars: list string) (val : A) (body : forall a : A, P a) : P val :=
+          let x := val in body x.
+
+        Notation "'Let/n' x := val 'in' body" :=
+          (nlet [IdentParsing.TacInTerm.ident_to_string x] val (fun x => body))
+            (at level 200, x ident, body at level 200,
+             only parsing).
+       Definition x := (Let/n a := 1 in a + 1).
+
+       Notation "'Let/n' x := val 'in' body" :=
+         (nlet [IdentParsing.binder_to_string val x] val (fun x => body))
+           (at level 200, x ident, body at level 200,
+            only parsing).
+       Program Definition x := (Let/n a := _ in a + 1). *)
+
+  Inductive __Ltac2_Marker := __ltac2_marker.
+
+  Ltac serialize_ident_in_context :=
+    ltac2:(match! goal with
+           | [ h: __Ltac2_Marker |- _ ] =>
+             let coq_string := IdentParsing.coq_string_of_ident h in
+             exact ($coq_string)
+           | [  |- _ ] => Control.throw NoIdentInContext
+           end).
+
+  Class __IdentToString := __identToString: string.
+  Hint Extern 1 __IdentToString => serialize_ident_in_context : typeclass_instances.
+
+  Notation ident_to_string a :=
+    (match __ltac2_marker return __IdentToString with a => _ end).
+End TC.
 
 Notation ident_to_string a :=
-  (binder_to_string true a) (only parsing).
+  (TacInTerm.ident_to_string a) (only parsing).
+
+Notation binder_to_string body a :=
+  (TacInTerm.binder_to_string body a) (only parsing).
