@@ -480,14 +480,24 @@ Section with_semantics.
   Qed.
 End with_semantics.
 
+(* FIXME move *)
 Ltac term_head x :=
   match x with
   | ?f _ => term_head f
   | _ => x
   end.
 
-Ltac setup :=
+Ltac compile_setup_unfold_spec :=
+  match goal with
+  | [  |- context[?spec] ] =>
+    match type of spec with
+    | spec_of _ => cbv [spec]
+    end
+  end.
+
+Ltac compile_setup :=
   cbv [program_logic_goal_for];
+  compile_setup_unfold_spec;
   (* modified version of a clause in straightline *)
   (intros; WeakestPrecondition.unfold1_call_goal;
    (cbv beta match delta [WeakestPrecondition.call_body]);
@@ -556,6 +566,7 @@ Ltac compile_custom := fail.
 Ltac compile_step :=
   lazymatch goal with
   | [  |- let _ := _ in _ ] => intros
+  | [  |- forall _, _ ] => intros
   | [  |- WeakestPrecondition.cmd _ _ _ _ _ _ ] =>
     try clear_old_seps;
     first [compile_custom | compile_basics ]
@@ -564,10 +575,10 @@ Ltac compile_step :=
     cbn [fst snd] in *;
     ecancel_assumption
   | [  |- map.get _ _ = _ ] =>
-    first [ solve_map_get_goal
-          | progress subst_lets_in_goal; solve_map_get_goal ]
-  | [  |- map.getmany_of_list _ [] = Some _ ] => reflexivity
-  | _ => eauto with compiler
+    solve [first [ solve_map_get_goal
+                 | progress subst_lets_in_goal; solve_map_get_goal ] ]
+  | [  |- map.getmany_of_list _ [] = Some _ ] => reflexivity (* FIXME remove? *)
+  | _ => solve [eauto with compiler]
   end.
 
 (* only apply compile_step when repeat_compile_step solves all the side
@@ -577,5 +588,8 @@ Ltac safe_compile_step :=
 
 Ltac compile_done := simple eapply compile_skip; repeat compile_step.
 
+(* TODO: Use unshelve + eauto with compile_custom + shelve instead of compile_custom *)
+(* TODO find the way to preserve the name of the binder in ‘k’ instead of renaming everything to ‘v’ *)
+
 Ltac compile :=
-  setup; repeat compile_step; compile_done.
+  compile_setup; repeat compile_step; compile_done.
