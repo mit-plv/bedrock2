@@ -633,11 +633,18 @@ Ltac compile_get_binding :=
   | (_, dlet ?v _) => v
   end.
 
+Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: bool.
+Hint Extern 2 (IsRupicolaBinding (nlet _ _ _)) => exact true : typeclass_instances.
+Hint Extern 2 (IsRupicolaBinding (dlet _ _)) => exact true : typeclass_instances.
+Hint Extern 5 (IsRupicolaBinding _) => exact false : typeclass_instances.
+
+Ltac compile_unifiable_p hd :=
+  constr:(match tt return IsRupicolaBinding hd with _ => _ end).
+
 (* Using [simple apply] ensures that Coq doesn't unfold [nlet]s *)
 Ltac compile_basics :=
   gen_sym_inc;                  (* FIXME remove? *)
   let name := gen_sym_fetch "v" in
-  let hd := compile_get_binding in
   first [simple eapply compile_word_of_Z_constant |
          simple eapply compile_Z_constant |
          simple eapply compile_nat_constant |
@@ -686,27 +693,29 @@ Ltac compile_solve_side_conditions :=
     solve [subst_lets_in_goal; solve_map_get_goal]
   | [  |- map.getmany_of_list _ [] = Some _ ] =>
     reflexivity (* CPC remove? *)
+  | [  |- _ <> _ ] => congruence
   | _ =>
     first [ compile_cleanup
           | solve [eauto with compiler] ]
   end.
 
 Ltac compile_binding :=
-  let _ := compile_get_binding in
   first [ compile_custom | compile_basics ].
 
 Ltac compile_triple :=
-  lazymatch goal with
-  | [  |- WeakestPrecondition.cmd _ _ _ _ _ _ ] =>
+  lazymatch compile_find_post with
+  | (_, ?hd) =>
     try clear_old_seps;
     (* Look for a binding: if there is none, finish compiling *)
-    first [ compile_binding | compile_unify_post ]
+    match compile_unifiable_p hd with
+    | true => compile_binding
+    | false => compile_unify_post
+    end
   end.
 
 Ltac compile_step :=
   first [ compile_cleanup |
           compile_triple |
-          compile_unify_post |
           compile_solve_side_conditions ].
 
 Ltac compile_done :=
