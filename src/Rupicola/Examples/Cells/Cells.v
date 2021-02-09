@@ -21,11 +21,9 @@ Section with_parameters.
   Definition get c := c.(data).
   Definition put v (c: cell) := {| data := v |}.
 
-  Lemma compile_get :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr R functions
-      T (pred: T -> predicate)
-      c c_ptr c_var k k_impl var,
+  Lemma compile_get
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall R c c_ptr c_var k k_impl var,
 
       sep (cell_value c_ptr c) R mem ->
       map.get locals c_var = Some c_ptr ->
@@ -62,14 +60,14 @@ Section with_parameters.
     eassumption.
   Qed.
 
-  Lemma compile_put :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr R functions
-      T (pred: T -> predicate)
-      c c_ptr c_var x x_var k k_impl,
+  Lemma compile_put
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall R c c_ptr c_var x x_var k k_impl,
+
       sep (cell_value c_ptr c) R mem ->
       map.get locals c_var = Some c_ptr ->
       map.get locals x_var = Some x ->
+
       let v := (put x c) in
       (let v := v in
        forall m,

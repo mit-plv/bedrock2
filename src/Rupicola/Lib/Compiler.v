@@ -7,25 +7,19 @@ Section with_semantics.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok _}.
 
-  Lemma compile_skip :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions (pred: predicate),
-      pred tr mem locals  ->
-      (<{ Trace := tr;
-          Memory := mem;
-          Locals := locals;
-          Functions := functions }>
-       cmd.skip
-       <{ pred }>).
-  Proof.
-    intros.
-    repeat straightline.
-    assumption.
-  Qed.
+  Lemma compile_skip {tr mem locals functions} {pred0: predicate} :
+    pred0 tr mem locals ->
+    (<{ Trace := tr;
+        Memory := mem;
+        Locals := locals;
+        Functions := functions }>
+     cmd.skip
+     <{ pred0 }>).
+  Proof. repeat straightline; assumption. Qed.
 
-  Lemma compile_word_of_Z_constant :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions T (pred: T -> predicate) (z: Z) k k_impl,
+  Lemma compile_word_of_Z_constant
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall (z: Z) k k_impl,
     forall var,
       let v := word.of_Z z in
       (let v := v in
@@ -43,9 +37,9 @@ Section with_semantics.
       <{ pred (nlet [var] v k) }>.
   Proof. repeat straightline; eassumption. Qed.
 
-  Lemma compile_Z_constant :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions T (pred: T -> predicate) z k k_impl,
+  Lemma compile_Z_constant
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall z k k_impl,
     forall var,
       let v := z in
       (let v := v in
@@ -63,9 +57,9 @@ Section with_semantics.
       <{ pred (nlet [var] v k) }>.
   Proof. repeat straightline; eassumption. Qed.
 
-  Lemma compile_nat_constant :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions T (pred: T -> predicate) n k k_impl,
+  Lemma compile_nat_constant
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall n k k_impl,
     forall var,
       let v := n in
       (let v := v in
@@ -86,9 +80,9 @@ Section with_semantics.
   Notation b2w b :=
     (word.of_Z (Z.b2z b)).
 
-  Lemma compile_bool_constant :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions T (pred: T -> predicate) b k k_impl,
+  Lemma compile_bool_constant
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall b k k_impl,
     forall var,
       let v := b in
       (let v := v in
@@ -107,10 +101,9 @@ Section with_semantics.
   Proof. repeat straightline; eassumption. Qed.
 
   (* FIXME generalize *)
-  Lemma compile_xorb :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions T (pred: T -> predicate)
-      x x_var y y_var k k_impl,
+  Lemma compile_xorb
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall x x_var y y_var k k_impl,
     forall var,
       map.get locals x_var = Some (b2w x) ->
       map.get locals y_var = Some (b2w y) ->
@@ -145,10 +138,9 @@ Section with_semantics.
     assumption.
   Qed.
 
-  Lemma compile_add :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions T (pred: T -> predicate)
-      x x_var y y_var k k_impl,
+  Lemma compile_add
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall x x_var y y_var k k_impl,
     forall var,
       map.get locals x_var = Some x ->
       map.get locals y_var = Some y ->
@@ -176,10 +168,9 @@ Section with_semantics.
     eexists; split; eauto.
   Qed.
 
-  Lemma compile_eqb :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions T (pred: T -> predicate)
-      x x_var y y_var k k_impl,
+  Lemma compile_eqb
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall x x_var y y_var k k_impl,
     forall var,
       map.get locals x_var = Some x ->
       map.get locals y_var = Some y ->
@@ -206,9 +197,9 @@ Section with_semantics.
   Qed.
 
   (* TODO: make more types *)
-  Lemma compile_copy_local :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions T (pred: T -> predicate) v0 k k_impl
+  Lemma compile_copy_local
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall v0 k k_impl
       src_var dst_var,
       map.get locals src_var = Some v0 ->
       let v := v0 in
@@ -233,22 +224,21 @@ Section with_semantics.
 
   (* N.B. this should *not* be added to any compilation tactics, since it will
      always apply; it needs to be applied manually *)
-  Lemma compile_unset :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions (pred: predicate)
-      var cmd,
+  Lemma compile_unset
+        {tr mem locals functions} {pred0: predicate} :
+    forall var cmd,
       <{ Trace := tr;
          Memory := mem;
          Locals := map.remove locals var;
          Functions := functions }>
       cmd
-      <{ pred }> ->
+      <{ pred0 }> ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.unset var) cmd
-      <{ pred }>.
+      <{ pred0 }>.
   Proof.
     repeat straightline'; eauto.
   Qed.
@@ -256,23 +246,25 @@ Section with_semantics.
   Definition map_remove_many {K V} {M: map.map K V} m (ks: list K) :=
     List.fold_left map.remove ks m.
 
-  Lemma compile_unsets :
-    forall vars (locals: Semantics.locals) (mem: Semantics.mem)
-      cmd tr functions (pred: predicate),
+  Definition DefaultValue (T: Type) (t: T) := T.
+
+  Lemma compile_unsets
+        {tr mem locals functions} {pred0: predicate} :
+    forall (vars: let x := DefaultValue (list string) [] in list string) cmd,
       (<{ Trace := tr;
           Memory := mem;
           Locals := map_remove_many locals vars;
           Functions := functions }>
        cmd
-       <{ pred }>) ->
+       <{ pred0 }>) ->
       (<{ Trace := tr;
           Memory := mem;
           Locals := locals;
           Functions := functions }>
        fold_right (fun v c => cmd.seq (cmd.unset v) c) cmd vars
-       <{ pred }>).
+       <{ pred0 }>).
   Proof.
-    induction vars; cbn [fold_right]; intros.
+    induction vars in locals |- *; cbn [fold_right]; intros.
     - assumption.
     - apply compile_unset.
       apply IHvars.
@@ -281,10 +273,9 @@ Section with_semantics.
 
   (* N.B. should only be added to compilation tactics that solve their subgoals,
      since this applies to any shape of goal *)
-  Lemma compile_copy_pointer :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions {T} (pred: T -> predicate)
-      {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop)
+  Lemma compile_copy_pointer
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop)
       x_var x_ptr (x : data) k k_impl var R,
 
       (* This assumption is used to drive the compiler, but it's not used by the proof *)
@@ -312,10 +303,9 @@ Section with_semantics.
     eassumption.
   Qed.
 
-  Lemma compile_if_word : (* FIXME generalize to arbitrary ifs *)
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions T (pred: T -> predicate)
-      t_var f_var (t f : word) (c : bool) c_var
+  Lemma compile_if_word (* FIXME generalize to arbitrary ifs *)
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall t_var f_var (t f : word) (c : bool) c_var
       k k_impl var,
 
       map.get locals c_var = Some (b2w c) ->
@@ -354,10 +344,9 @@ Section with_semantics.
       intros. repeat straightline'. eauto. }
   Qed.
 
-  Lemma compile_if_pointer :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions T (pred: T -> predicate)
-      {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop) Rt Rf
+  Lemma compile_if_pointer
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop) Rt Rf
       t_var f_var t_ptr f_ptr (t f : data) (c : bool) c_var
       k k_impl var,
 
