@@ -4,7 +4,7 @@ Require Import Rupicola.Lib.IdentParsing.
 Notation "'let/d' x := val 'in' body" :=
   (dlet val (fun x => body))
     (at level 200, x ident, body at level 200,
-     format "'let/d'  x  :=  val  'in' '//' body").
+     format "'[hv' 'let/d'  x  :=  val  'in' '//' body ']'").
 
 (* TODO: figure out recursive notation for this *)
 Notation
@@ -32,14 +32,14 @@ Definition nlet {A P} (vars: list string) (val : A) (body : forall a : A, P a) :
 (* Notation "'let/n' x := val 'in' body" := *)
 (*   (nlet [_] val (fun x => body)) *)
 (*     (at level 200, x ident, body at level 200, *)
-(*      format "'let/n'  x  :=  val  'in' '//' body", *)
+(*      format "'[hv' 'let/n'  x  :=  val  'in' '//' body ']'", *)
 (*      only printing). *)
 
 Notation "'let/n' x 'as' nm := val 'in' body" :=
   (nlet (P := fun _ => _) (* Force non-dependent type *)
         [nm] val (fun x => body))
     (at level 200, x ident, body at level 200,
-     format "'let/n'  x  'as'  nm  :=  val  'in' '//' body").
+     format "'[hv' 'let/n'  x  'as'  nm  :=  val  'in' '//' body ']'").
 
 Notation "'let/n' x := val 'in' body" :=
   (nlet (P := fun _ => _) (* Force non-dependent type *)
@@ -51,14 +51,14 @@ Notation "'let/n' x := val 'in' body" :=
 (* Notation "'let/n' ( x , y ) := val 'in' body" := *)
 (*   (nlet [_; _] val (fun '(x, y) => body)) *)
 (*     (at level 200, x ident, body at level 200, *)
-(*      format "'let/n'  ( x ,  y )  :=  val  'in' '//' body", *)
+(*      format "'[hv' 'let/n'  ( x ,  y )  :=  val  'in' '//' body ']'", *)
 (*      only printing). *)
 
 Notation "'let/n' ( x , y ) 'as' ( nx , ny ) := val 'in' body" :=
   (nlet (P := fun _ => _) (* Force non-dependent type *)
         [nx; ny] val (fun '(x, y) => body))
     (at level 200, x ident, body at level 200,
-     format "'let/n'  ( x ,  y )  'as'  ( nx ,  ny )  :=  val  'in' '//' body").
+     format "'[hv' 'let/n'  ( x ,  y )  'as'  ( nx ,  ny )  :=  val  'in' '//' body ']'").
 
 Notation "'let/n' ( x , y ) := val 'in' body" :=
   (nlet (P := fun _ => _) (* Force non-dependent type *)
