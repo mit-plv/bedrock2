@@ -599,6 +599,7 @@ Ltac compile_setup_unfold_spec :=
     match type of spec with
     | spec_of _ => cbv [spec]
     end
+  | _ => idtac (* Spec inlined *)
   end.
 
 Ltac compile_setup :=
@@ -678,30 +679,75 @@ Ltac compile_basics :=
 
 Ltac compile_custom := fail.
 
-Ltac compile_step :=
-  lazymatch goal with
+Ltac compile_cleanup :=
+  match goal with
   | [  |- let _ := _ in _ ] => intros
   | [  |- forall _, _ ] => intros
-  | [  |- WeakestPrecondition.cmd _ _ _ _ _ _ ] =>
-    try clear_old_seps;
-    first [compile_custom | compile_basics ]
+  end.
+
+Ltac compile_cleanup_post :=
+  match goal with
+  | [  |- True ] => exact I
+  | [  |- _ /\ _ ] => split
+  | [  |- _ = _ ] => reflexivity
+  | [  |- exists _, _ ] => eexists
+  | _ =>
+    first [ progress subst_lets_in_goal
+          | progress autounfold with compiler ]
+  end.
+
+Ltac compile_unify_post :=
+  (* [unshelve] captures the list of variables to unset as a separate goal; if
+     it is not resolved by unification, compile_done will take care of it. *)
+  unshelve refine (compile_unsets _ _ _);  (* coq#13839 *)
+  [ shelve (* cmd *) | intros (* vars *) | ]; cycle 1;
+  [ (* triple *)
+    simple apply compile_skip;
+    repeat compile_cleanup_post | ].
+
+Ltac compile_solve_side_conditions :=
+  match goal with
   | [  |- sep _ _ _ ] =>
     autounfold with compiler in *;
-    cbn [fst snd] in *;
-    ecancel_assumption
+      cbn [fst snd] in *;       (* FIXME generalize this? *)
+      ecancel_assumption
   | [  |- map.get _ _ = _ ] =>
-    solve [first [ solve_map_get_goal
-                 | progress subst_lets_in_goal; solve_map_get_goal ] ]
-  | [  |- map.getmany_of_list _ [] = Some _ ] => reflexivity (* FIXME remove? *)
-  | _ => solve [eauto with compiler]
+    solve [subst_lets_in_goal; solve_map_get_goal]
+  | [  |- map.getmany_of_list _ [] = Some _ ] =>
+    reflexivity (* CPC remove? *)
+  | _ =>
+    first [ compile_cleanup
+          | solve [eauto with compiler] ]
+  end.
+
+Ltac compile_binding :=
+  let _ := compile_get_binding in
+  first [ compile_custom | compile_basics ].
+
+Ltac compile_triple :=
+  lazymatch goal with
+  | [  |- WeakestPrecondition.cmd _ _ _ _ _ _ ] =>
+    try clear_old_seps;
+    (* Look for a binding: if there is none, finish compiling *)
+    first [ compile_binding | compile_unify_post ]
+  end.
+
+Ltac compile_step :=
+  first [ compile_cleanup |
+          compile_triple |
+          compile_unify_post |
+          compile_solve_side_conditions ].
+
+Ltac compile_done :=
+  match goal with
+  | [ _ := DefaultValue ?T ?t |- ?T ] => exact t
+  | _ => idtac
   end.
 
 (* only apply compile_step when repeat_compile_step solves all the side
      conditions but one *)
-Ltac safe_compile_step :=
+Ltac safe_compile_step :=        (* TODO try to change compile_step so that it's always safe? *)
   compile_step; [ solve [repeat compile_step] .. | ].
-
-Ltac compile_done := simple eapply compile_skip; repeat compile_step.
 
 (* TODO: Use unshelve + eauto with compile_custom + shelve instead of compile_custom *)
 (* TODO find the way to preserve the name of the binder in ‘k’ instead of renaming everything to ‘v’ *)
