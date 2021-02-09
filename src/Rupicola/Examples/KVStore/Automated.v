@@ -463,7 +463,9 @@ Section KVSwap.
   Lemma deannotate_annotate:
     forall m : map, m = deannotate (annotate m).
   Proof.
-  Admitted.
+    unfold annotate, deannotate; intros; apply map.map_ext.
+    intros; rewrite !map.get_mapped; destruct map.get; reflexivity.
+  Qed.
 
   Hint Extern 1 (?m = deannotate (annotate ?m)) => simple apply deannotate_annotate : compiler.
 
@@ -483,7 +485,10 @@ Section KVSwap.
       m = map.put (deannotate M) k (snd p) ->
       m = deannotate (map.put M k p).
   Proof.
-  Admitted.
+    intros; subst; unfold deannotate; apply map.map_ext; intros.
+    repeat rewrite map.get_mapped, map.get_put_dec.
+    destruct key_eqb; reflexivity.
+  Qed.
 
   Hint Resolve deannotate_put : compiler.
 

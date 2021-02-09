@@ -26,6 +26,7 @@ Delimit Scope sep_scope with sep.
 Infix "*" := (sep) : sep_scope.
 
 Set Nested Proofs Allowed.
+Set Default Goal Selector "1".
 
 Notation word := Semantics.word.
 
@@ -44,8 +45,11 @@ Definition predicate {parameters: Semantics.parameters} :=
 (* TODO: should move upstream to coqutil *)
 Module map.
   Section __.
-    Context {key value} {map : map.map key value}
+    Context {key value value'}
+            {map : map.map key value}
+            {map' : map.map key value'}
             {map_ok : map.ok map}
+            {map'_ok : map.ok map'}
             {key_eqb}
             {key_eq_dec :
                forall x y : key, BoolSpec (x = y) (x <> y) (key_eqb x y)}.
@@ -131,6 +135,18 @@ Module map.
       cbn [List.map List.option_all].
       destruct_one_match; try congruence; [ ].
       destruct_one_match; congruence.
+    Qed.
+
+    Lemma get_mapped m k (f: value -> value'):
+      map.get (map.fold (fun m' k v => map.put m' k (f v)) map.empty m) k =
+      match map.get m k with
+      | Some v => Some (f v)
+      | None => None
+      end.
+    Proof.
+      apply map.fold_spec.
+      - rewrite !map.get_empty; reflexivity.
+      - intros; rewrite !map.get_put_dec; destruct key_eqb; eauto.
     Qed.
   End __.
 End map.
