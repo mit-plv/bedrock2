@@ -2,11 +2,13 @@ Require Import Rupicola.Lib.Api.
 
 (* Definition packet := *)
 (*   hlist.t ["field1"; …; "ttl"] [Byte.byte; …; Byte.byte]. (* field1, ttl *) *)
+(* FIXME move to VectorArray.t *)
 
-Section with_semantics.
+Section with_parameters.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok semantics}.
-  Context {width_gt_1 : (1 < Semantics.width)%Z}. (* without this, we have no guarantee that index 2 fits in the allowed integer size *)
+
+  Context {width_sufficient : (2 < 2 ^ Semantics.width)%Z}. (* without this, we have no guarantee that index 2 fits in the allowed integer size *)
 
   Definition packet :=
     Vector.t Semantics.word 2. (* field1, ttl *)
@@ -24,10 +26,10 @@ Section with_semantics.
     fun _ => WordVector addr p.
 
   Definition decr_gallina (p: packet) :=
-    let/d ttl := (ttl p) in
-    let/d m1 := word.of_Z (-1) in
-    let/d ttl := word.add ttl m1 in
-    let/d p := Vector.replace p ttl_index ttl in
+    let/n ttl := (ttl p) in
+    let/n m1 := word.of_Z (-1) in
+    let/n ttl := word.add ttl m1 in
+    let/n p := Vector.replace p ttl_index ttl in
     p.
 
   Lemma vector_uncons {A n} (v: Vector.t A n) :
@@ -43,41 +45,40 @@ Section with_semantics.
     Datatypes.length (Vector.to_list v) = n.
   Proof. Admitted.
 
-  Lemma compile_nth :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R R' functions T (pred: T -> _ -> _ -> Prop)
-      {n} (vector: Vector.t Semantics.word n) vector_ptr vector_var
-      offset var k k_impl,
+  Lemma compile_nth {n}
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall (vector: Vector.t Semantics.word n) vector_ptr vector_var
+      R offset var k k_impl,
+
       (Z.of_nat n < 2 ^ Semantics.width)%Z ->
-      sep (WordVector vector_ptr vector) R' mem ->
+
+      sep (WordVector vector_ptr vector) R mem ->
       map.get locals vector_var = Some vector_ptr ->
+
       let v := Vector.nth vector offset in
       let noffset := proj1_sig (Fin.to_nat offset) in
-      (let head := v in
+      (let v := v in
        forall m,
-         sep (WordVector vector_ptr vector) R' m ->
-         (find k_impl
-          implementing (pred (k head))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals (map.put locals var head)
-          and-memory m and-trace tr and-rest R
-          and-functions functions)) ->
-      (let head := v in
-       find (cmd.seq (cmd.set
-                        var
-                        (expr.load
-                           access_size.word
-                           (expr.op bopname.add
-                                    (expr.var vector_var)
-                                    (expr.literal ((word.unsigned (word.of_Z 8) * Z.of_nat noffset))))))
-                     k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+         sep (WordVector vector_ptr vector) R m ->
+         <{ Trace := tr;
+            Memory := m;
+            Locals := map.put locals var v;
+            Functions := functions }>
+         k_impl
+         <{ pred (k v) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      (cmd.seq (cmd.set
+                  var
+                  (expr.load
+                     access_size.word
+                     (expr.op bopname.add
+                              (expr.var vector_var)
+                              (expr.literal ((word.unsigned (word.of_Z 8) * Z.of_nat noffset))))))
+               k_impl)
+      <{ pred (nlet [var] v k) }>.
   Proof.
     intros.
     unfold WordVector in *.
@@ -104,43 +105,43 @@ Section with_semantics.
       eauto. }
     Unshelve.
     apply (word.of_Z 0).
-    Admitted.
+  Admitted.
 
-  Lemma compile_replace :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R R' functions T (pred: T -> _ -> _ -> Prop)
-      {n} (vector: Vector.t Semantics.word n) vector_ptr vector_var
-      value value_var offset
+  Lemma compile_replace {n}
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall (vector: Vector.t Semantics.word n) vector_ptr vector_var
+      R value value_var offset
       k k_impl,
+
       (Z.of_nat n < 2 ^ Semantics.width)%Z ->
-      sep (WordVector vector_ptr vector) R' mem ->
+      sep (WordVector vector_ptr vector) R mem ->
+
       map.get locals vector_var = Some vector_ptr ->
       map.get locals value_var = Some value ->
+
       let v := (Vector.replace vector offset value) in
       let noffset := proj1_sig (Fin.to_nat offset) in
-      (let head := v in
+      (let v := v in
        forall m,
-         sep (WordVector vector_ptr head) R' m ->
-         (find k_impl
-          implementing (pred (k head))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals locals
-          and-memory m and-trace tr and-rest R
-          and-functions functions)) ->
-      (let head := v in
-       find (cmd.seq (cmd.store access_size.word
-                                (expr.op bopname.add
-                                         (expr.var vector_var)
-                                         (expr.literal ((word.unsigned (word.of_Z 8) * Z.of_nat noffset))))
-                                (expr.var value_var))
-                     k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+         sep (WordVector vector_ptr v) R m ->
+         <{ Trace := tr;
+            Memory := m;
+            Locals := locals;
+            Functions := functions }>
+         k_impl
+         <{ pred (k v) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.store access_size.word
+                         (expr.op bopname.add
+                                  (expr.var vector_var)
+                                  (expr.literal ((word.unsigned (word.of_Z 8) *
+                                                  Z.of_nat noffset))))
+                         (expr.var value_var))
+              k_impl
+      <{ pred (nlet [vector_var] v k) }>.
   Proof.
     intros.
     unfold WordVector in *.
@@ -174,11 +175,16 @@ Section with_semantics.
   Admitted.
 
   Hint Unfold Packet : compiler.
-  Opaque dlet.
 
   Instance spec_of_decr : spec_of "decr" :=
     forall! pp p,
       (sep (Packet pp p [])) ===> "decr" @ [pp] ===> Packet pp (decr_gallina p).
+
+  Ltac ttl_compile_step :=
+    first [ simple eapply compile_nth |
+            simple eapply compile_replace ].
+
+  Ltac compile_custom ::= ttl_compile_step.
 
   (* TODO: something like program_logic_goal_for_function! *)
   Derive decr_body SuchThat
@@ -189,16 +195,11 @@ Section with_semantics.
                    exact x)))
     As decr_body_correct.
   Proof.
-    cbv [program_logic_goal_for spec_of_decr].
-    setup.
-    assert (Z.of_nat 2 < 2 ^ Semantics.width)%Z
-      by (change (Z.of_nat 2) with (2 ^ 1)%Z;
-          apply Z.pow_lt_mono_r; lia).
-    eapply compile_nth with (var := "ttl").
-    all:repeat compile_step.
-    eapply compile_replace.
-    all:repeat compile_step.
-    compile_done.
+    compile.
   Qed.
+End with_parameters.
 
-End with_semantics.
+(* Require Import bedrock2.NotationsCustomEntry. *)
+(* Require Import bedrock2.NotationsInConstr. *)
+(* Arguments decr_body /. *)
+(* Eval simpl in decr_body. *)
