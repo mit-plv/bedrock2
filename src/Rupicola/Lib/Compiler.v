@@ -431,80 +431,50 @@ Section with_parameters.
             functions cmd tr mem locals p1 ->
           WeakestPrecondition.program
             functions cmd tr mem locals p2.
-    Proof.
-    Admitted.
+    Proof. intros; eapply Proper_program; eassumption. Qed.
 
-    Lemma noskips_sound:
+    Lemma noskips_correct:
       forall cmd {tr mem locals functions} post,
-        WeakestPrecondition.cmd
-          (WeakestPrecondition.call functions)
-          (noskips cmd) tr mem locals post ->
-        WeakestPrecondition.cmd
-          (WeakestPrecondition.call functions)
+        WeakestPrecondition.program functions
+          (noskips cmd) tr mem locals post <->
+        WeakestPrecondition.program functions
           cmd tr mem locals post.
     Proof.
-      induction cmd;
+      split; revert tr mem locals post.
+      all: induction cmd;
         repeat match goal with
                | _ => eassumption
                | _ => apply IHcmd
                | [ H: _ /\ _ |- _ ] => destruct H
                | [  |- _ /\ _ ] => split
-               | [ H: forall v t m l, ?P v t m l -> _ |- ?P _ _ _ _ -> _ ] =>
+               | [ H: forall v t m l, ?P v t m l -> exists _, _ |- ?P _ _ _ _ -> _ ] =>
                  let h := fresh in intros h; specialize (H _ _ _ _ h)
                | [ H: exists _, _ |- _ ] => destruct H
                | [  |- exists _, _ ] => eexists
                | [ H: context[WeakestPrecondition.cmd] |- context[WeakestPrecondition.cmd] ] => solve [eapply H; eauto]
-               | _ => cbn || intros ? || eauto
-               end.
-      { destruct (is_skip (noskips cmd1)) eqn:H1;
-          [ apply is_skip_sound in H1; rewrite H1 in * |
-            apply is_skip_complete in H1 ].
-        - apply IHcmd1, IHcmd2; eassumption.
-        - destruct (is_skip (noskips cmd2)) eqn:H2;
+               | _ => unfold WeakestPrecondition.program in * || cbn || intros ? || eauto
+               end;
+        (destruct (is_skip (noskips cmd1)) eqn:H1;
+         [ apply is_skip_sound in H1; rewrite H1 in * |
+           apply is_skip_complete in H1;
+           (destruct (is_skip (noskips cmd2)) eqn:H2;
             [ apply is_skip_sound in H2; rewrite H2 in * |
-              apply is_skip_complete in H2 ].
-          + eapply WeakestPrecondition_weaken, IHcmd1; eauto.
-          + eapply WeakestPrecondition_weaken.
-            * intros * H0. eapply IHcmd2. exact H0.
-            * eapply IHcmd1. eassumption.  }
-    Qed.
+              apply is_skip_complete in H2 ]) ]).
 
-    Lemma noskips_complete:
-      forall cmd {tr mem locals functions} post,
-        WeakestPrecondition.cmd
-          (WeakestPrecondition.call functions)
-          cmd tr mem locals post ->
-        WeakestPrecondition.cmd
-          (WeakestPrecondition.call functions)
-          (noskips cmd) tr mem locals post.
-    Proof.
-      induction cmd;
-        repeat match goal with
-               | _ => eassumption
-               | _ => apply IHcmd
-               | [ H: _ /\ _ |- _ ] => destruct H
-               | [  |- _ /\ _ ] => split
-               | [ H: forall v t m l, ?P v t m l -> _ |- ?P _ _ _ _ -> _ ] =>
-                 let h := fresh in intros h; specialize (H _ _ _ _ h)
-               | [ H: exists _, _ |- _ ] => destruct H
-               | [  |- exists _, _ ] => eexists
-               | [ H: context[WeakestPrecondition.cmd] |- context[WeakestPrecondition.cmd] ] => solve [eapply H; eauto]
-               | _ => cbn || intros ? || eauto
-               end.
-      { apply IHcmd1 in H.
-        destruct (is_skip (noskips cmd1)) eqn:H1;
-          [ apply is_skip_sound in H1; rewrite H1 in * |
-            apply is_skip_complete in H1 ].
-        - apply IHcmd2; eassumption.
-        - destruct (is_skip (noskips cmd2)) eqn:H2;
-            [ apply is_skip_sound in H2; rewrite H2 in * |
-              apply is_skip_complete in H2 ].
-          + eapply WeakestPrecondition_weaken in H; [ apply H | ].
-            intros; eapply IHcmd2; eauto.
-          + eapply WeakestPrecondition_weaken in H; [ apply H | ].
-            intros * H0. apply IHcmd2 in H0. apply H0. }
-    Qed.
+      - apply IHcmd1, IHcmd2; eassumption.
+      - eapply WeakestPrecondition_weaken, IHcmd1; eauto.
+      - eapply WeakestPrecondition_weaken.
+        * intros * H0. eapply IHcmd2. exact H0.
+        * eapply IHcmd1. eassumption.
 
+      - eapply IHcmd1 in H. eapply IHcmd2. eassumption.
+      - eapply IHcmd1 in H. eapply WeakestPrecondition_weaken in H.
+        * apply H.
+        * intros; eapply IHcmd2; eauto.
+      - apply IHcmd1 in H. eapply WeakestPrecondition_weaken in H.
+        * apply H.
+        * intros * H0%IHcmd2. apply H0.
+    Qed.
   End NoSkips.
 
   Lemma postcondition_func_norets_postcondition_cmd
@@ -623,7 +593,8 @@ Ltac compile_setup :=
     let hd := term_head spec in unfold hd
   | _ => fail "Postcondition not in expected shape (?pred gallina_spec)"
   end;
-  apply noskips_complete.
+  apply noskips_correct;
+  unfold WeakestPrecondition.program.
 
 Ltac lookup_variable m val :=
   lazymatch m with
