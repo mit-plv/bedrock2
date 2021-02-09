@@ -630,27 +630,35 @@ Ltac lookup_variable m val :=
   | map.put ?m' _ _ => lookup_variable m' val
   end.
 
-Ltac solve_map_get_goal :=
-  match goal with
+Ltac solve_map_get_goal_step :=
+  lazymatch goal with
+  | [ H: map.extends ?m2 ?m1 |- map.get ?m2 ?k = Some ?v ] =>
+    simple apply (fun p => @map.extends_get _ _ _ m1 m2 k v p H)
   | [  |- map.get ?m _ = Some ?val ] =>
-    let var := lookup_variable m val in
-    instantiate (1 := var);
-    rewrite ?map.get_put_diff by congruence;
-    apply map.get_put_same
+    tryif has_evar val then fail 1 val "has evars" else
+      first [ simple apply map.get_put_same |
+              rewrite map.get_put_diff ]
   | [  |- map.get ?m _ = None ] =>
-    rewrite ?map.get_put_diff by congruence;
-    apply map.get_empty
-  | [ H : map.get ?m1 _ = Some ?val |- map.get ?m2 _ = Some ?val ] =>
-    rewrite ?map.get_put_diff; [ apply H | congruence .. ]
-  | [ H : map.get _ ?k = None  |- map.get _ ?k = None ] =>
-    rewrite ?map.get_put_diff; [ apply H | congruence .. ]
+    first [ simple apply map.get_empty |
+            rewrite map.get_put_diff ]
+  | [  |- _ <> _ ] => congruence
   end.
 
+Ltac solve_map_get_goal :=
+  progress repeat solve_map_get_goal_step.
+
 Create HintDb compiler.
+Hint Unfold postcondition_cmd : compiler.
+
+Ltac compile_find_post :=
+  lazymatch goal with
+  | |- context [ WeakestPrecondition.cmd _ _ _ _ _ (?pred ?term) ] => constr:((pred, term))
+  end.
 
 Ltac compile_get_binding :=
-  lazymatch goal with
-  | |- context [ WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet _ ?v _)) ] => v
+  lazymatch compile_find_post with
+  | (_, nlet _ ?v _) => v
+  | (_, dlet ?v _) => v
   end.
 
 (* Using [simple apply] ensures that Coq doesn't unfold [nlet]s *)
