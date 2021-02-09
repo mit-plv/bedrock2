@@ -3,7 +3,7 @@ Require Import Rupicola.Lib.Notations.
 Require Export Rupicola.Lib.Gensym.
 Require Import Rupicola.Lib.Tactics.
 
-Section with_semantics.
+Section with_parameters.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok _}.
 
@@ -390,6 +390,123 @@ Section with_semantics.
       intros. repeat straightline'. eauto. }
   Qed.
 
+  Section NoSkips.
+    Definition is_skip cmd :=
+      match cmd with
+      | cmd.skip => true
+      | _ => false
+      end.
+
+    Lemma is_skip_sound cmd :
+      is_skip cmd = true -> cmd = cmd.skip.
+    Proof. destruct cmd; inversion 1; congruence. Qed.
+
+    Lemma is_skip_complete cmd :
+      is_skip cmd = false -> cmd <> cmd.skip.
+    Proof. destruct cmd; inversion 1; congruence. Qed.
+
+    Fixpoint noskips (c: cmd.cmd) :=
+      match c with
+      | cmd.stackalloc lhs nbytes body =>
+        cmd.stackalloc lhs nbytes (noskips body)
+      | cmd.cond condition nonzero_branch zero_branch =>
+        cmd.cond condition (noskips nonzero_branch) (noskips zero_branch)
+      | cmd.seq s1 s2 =>
+        let s1 := noskips s1 in
+        let s2 := noskips s2 in
+        match is_skip s1, is_skip s2 with
+        | true, _ => s2
+        | _, true => s1
+        | _, _ => cmd.seq s1 s2
+        end
+      | cmd.while test body => cmd.while test (noskips body)
+      | _ => c
+      end.
+
+    Lemma WeakestPrecondition_weaken :
+      forall cmd {functions} (p1 p2: _ -> _ -> _ -> Prop),
+        (forall tr mem locals, p1 tr mem locals -> p2 tr mem locals) ->
+        forall tr mem locals,
+          WeakestPrecondition.program
+            functions cmd tr mem locals p1 ->
+          WeakestPrecondition.program
+            functions cmd tr mem locals p2.
+    Proof.
+    Admitted.
+
+    Lemma noskips_sound:
+      forall cmd {tr mem locals functions} post,
+        WeakestPrecondition.cmd
+          (WeakestPrecondition.call functions)
+          (noskips cmd) tr mem locals post ->
+        WeakestPrecondition.cmd
+          (WeakestPrecondition.call functions)
+          cmd tr mem locals post.
+    Proof.
+      induction cmd;
+        repeat match goal with
+               | _ => eassumption
+               | _ => apply IHcmd
+               | [ H: _ /\ _ |- _ ] => destruct H
+               | [  |- _ /\ _ ] => split
+               | [ H: forall v t m l, ?P v t m l -> _ |- ?P _ _ _ _ -> _ ] =>
+                 let h := fresh in intros h; specialize (H _ _ _ _ h)
+               | [ H: exists _, _ |- _ ] => destruct H
+               | [  |- exists _, _ ] => eexists
+               | [ H: context[WeakestPrecondition.cmd] |- context[WeakestPrecondition.cmd] ] => solve [eapply H; eauto]
+               | _ => cbn || intros ? || eauto
+               end.
+      { destruct (is_skip (noskips cmd1)) eqn:H1;
+          [ apply is_skip_sound in H1; rewrite H1 in * |
+            apply is_skip_complete in H1 ].
+        - apply IHcmd1, IHcmd2; eassumption.
+        - destruct (is_skip (noskips cmd2)) eqn:H2;
+            [ apply is_skip_sound in H2; rewrite H2 in * |
+              apply is_skip_complete in H2 ].
+          + eapply WeakestPrecondition_weaken, IHcmd1; eauto.
+          + eapply WeakestPrecondition_weaken.
+            * intros * H0. eapply IHcmd2. exact H0.
+            * eapply IHcmd1. eassumption.  }
+    Qed.
+
+    Lemma noskips_complete:
+      forall cmd {tr mem locals functions} post,
+        WeakestPrecondition.cmd
+          (WeakestPrecondition.call functions)
+          cmd tr mem locals post ->
+        WeakestPrecondition.cmd
+          (WeakestPrecondition.call functions)
+          (noskips cmd) tr mem locals post.
+    Proof.
+      induction cmd;
+        repeat match goal with
+               | _ => eassumption
+               | _ => apply IHcmd
+               | [ H: _ /\ _ |- _ ] => destruct H
+               | [  |- _ /\ _ ] => split
+               | [ H: forall v t m l, ?P v t m l -> _ |- ?P _ _ _ _ -> _ ] =>
+                 let h := fresh in intros h; specialize (H _ _ _ _ h)
+               | [ H: exists _, _ |- _ ] => destruct H
+               | [  |- exists _, _ ] => eexists
+               | [ H: context[WeakestPrecondition.cmd] |- context[WeakestPrecondition.cmd] ] => solve [eapply H; eauto]
+               | _ => cbn || intros ? || eauto
+               end.
+      { apply IHcmd1 in H.
+        destruct (is_skip (noskips cmd1)) eqn:H1;
+          [ apply is_skip_sound in H1; rewrite H1 in * |
+            apply is_skip_complete in H1 ].
+        - apply IHcmd2; eassumption.
+        - destruct (is_skip (noskips cmd2)) eqn:H2;
+            [ apply is_skip_sound in H2; rewrite H2 in * |
+              apply is_skip_complete in H2 ].
+          + eapply WeakestPrecondition_weaken in H; [ apply H | ].
+            intros; eapply IHcmd2; eauto.
+          + eapply WeakestPrecondition_weaken in H; [ apply H | ].
+            intros * H0. apply IHcmd2 in H0. apply H0. }
+    Qed.
+
+  End NoSkips.
+
   Lemma postcondition_func_norets_postcondition_cmd
         {T} spec (x: T) cmd R tr mem locals functions :
     (let pred a := postcondition_cmd (fun _ : Semantics.locals => True) (spec a) [] R tr in
@@ -467,7 +584,7 @@ Section with_semantics.
     use_hyp_with_matching_cmd; cleanup; subst.
     eapply getmany_list_map; sepsimpl; eauto.
   Qed.
-End with_semantics.
+End with_parameters.
 
 (* FIXME move *)
 Ltac term_head x :=
@@ -504,7 +621,8 @@ Ltac compile_setup :=
   | |- context [ postcondition_cmd _ (fun r => ?pred ?spec r) ] => (* FIXME *)
     let hd := term_head spec in unfold hd
   | _ => fail "Postcondition not in expected shape (?pred gallina_spec)"
-  end.
+  end;
+  apply noskips_complete.
 
 Ltac lookup_variable m val :=
   lazymatch m with
