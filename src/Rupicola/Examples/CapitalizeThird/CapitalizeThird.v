@@ -30,15 +30,15 @@ Module Bedrock2.
     ("capitalize_String",
      ([s_ptr], [ret], bedrock_func_body:(
        len = (load( s_ptr )) ;
-       i = (coq:(0)) ;
+       i = (constr:(0)) ;
        c_ptr = (s_ptr + wordsize) ;
        while (i < len) {{
          unpack! x = toupper (load1( c_ptr )) ;
          store1(c_ptr, x) ;
          c_ptr = (c_ptr + charsize) ;
-         i = (i + coq:(1))
+         i = (i + constr:(1))
        }} ;
-       ret = (coq:(1))))).
+       ret = (constr:(1))))).
 
   Definition capitalize_3rd : bedrock_func :=
     let inp : string := "inp" in
