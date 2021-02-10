@@ -327,53 +327,70 @@ Section with_parameters.
           {semantics_ok : Semantics.parameters_ok semantics}.
 
   Context {A: Type}
-          (from to: word) (step: word)
-          (Hgt: word.unsigned step > 0).
+          (from to step: word).
 
-  Section Unsigned.
+  Section Generic.
+    Context {to_Z: word -> Z}
+            (to_Z_of_Z: forall l h w,
+                to_Z l <= w <= to_Z h ->
+                to_Z (word.of_Z w) = w).
+
+    Context (Hgt: to_Z step > 0).
     Context (body: forall (tok: ExitToken.t) (idx: word) (acc: A),
-              word.unsigned from <= word.unsigned idx < word.unsigned to ->
+              to_Z from <= to_Z idx < to_Z to ->
               (ExitToken.t * A)).
 
-    Program Definition ranged_for_u (a0: A) : A :=
-      ranged_for (word.unsigned from) (word.unsigned to) (word.unsigned step)
+    Program Definition ranged_for_w (a0: A) : A :=
+      ranged_for (to_Z from) (to_Z to) (to_Z step)
                  (fun tok idx acc pr =>
                     body tok (word.of_Z idx) acc _)
                  a0.
     Next Obligation.
-      pose proof (word.unsigned_range from).
-      pose proof (word.unsigned_range to).
-      rewrite word.unsigned_of_Z, word.wrap_small; lia.
+      erewrite (to_Z_of_Z from to); lia.
     Qed.
 
-    Context (P: A -> Prop) (a0: A).
-    Context (H0: P a0).
-    Context (Hbody: forall tok idx a1 Hle, P a1 -> P (snd (body tok idx a1 Hle))).
-    Lemma ranged_for_u_ind : P (ranged_for_u a0).
-    Proof. unfold ranged_for_u; apply ranged_for_ind; auto. Qed.
+    Section Induction.
+      Context (P: A -> Prop) (a0: A).
+      Context (H0: P a0).
+      Context (Hbody: forall tok idx a1 Hle, P a1 -> P (snd (body tok idx a1 Hle))).
+
+      Lemma ranged_for_w_ind : P (ranged_for_w a0).
+      Proof. unfold ranged_for_w; apply ranged_for_ind; auto. Qed.
+    End Induction.
+  End Generic.
+
+  Section Unsigned.
+    Lemma word_unsigned_of_Z_bracketed l h w:
+      word.unsigned l <= w <= word.unsigned h ->
+      word.unsigned (word.of_Z w) = w.
+    Proof.
+      pose proof word.unsigned_range l.
+      pose proof word.unsigned_range h.
+      intros; rewrite word.unsigned_of_Z, word.wrap_small; lia.
+    Qed.
+
+    Definition ranged_for_u :=
+      ranged_for_w word_unsigned_of_Z_bracketed.
+
+    Definition ranged_for_u_ind :=
+      ranged_for_w_ind word_unsigned_of_Z_bracketed.
   End Unsigned.
 
   Section Signed.
-    Context (body: forall (tok: ExitToken.t) (idx: word) (acc: A),
-                word.signed from <= word.signed idx < word.signed to ->
-                (ExitToken.t * A)).
-
-    Program Definition ranged_for_s (a0: A) : A :=
-      ranged_for (word.signed from) (word.signed to) (word.unsigned step)
-                 (fun tok idx acc pr =>
-                    body tok (word.of_Z idx) acc _)
-                 a0.
-    Next Obligation.
-      pose proof (word.signed_range from).
-      pose proof (word.signed_range to).
-      rewrite word.signed_of_Z, word.swrap_inrange; lia.
+    Lemma word_signed_of_Z_bracketed l h w:
+      word.signed l <= w <= word.signed h ->
+      word.signed (word.of_Z w) = w.
+    Proof.
+      pose proof word.signed_range l.
+      pose proof word.signed_range h.
+      intros; rewrite word.signed_of_Z, word.swrap_inrange; lia.
     Qed.
 
-    Context (P: A -> Prop) (a0: A).
-    Context (H0: P a0).
-    Context (Hbody: forall tok idx a1 Hle, P a1 -> P (snd (body tok idx a1 Hle))).
-    Lemma ranged_for_s_ind : P (ranged_for_s a0).
-    Proof. unfold ranged_for_s; apply ranged_for_ind; auto. Qed.
+    Definition ranged_for_s :=
+      ranged_for_w word_signed_of_Z_bracketed.
+
+    Definition ranged_for_s_ind :=
+      ranged_for_w_ind word_signed_of_Z_bracketed.
   End Signed.
 
   Definition wZ_must_pos (a: Z) :
@@ -402,11 +419,7 @@ Section with_parameters.
 
     Notation to_nat idx := (Z.to_nat (word.unsigned (to_word idx))).
 
-    Context (locals : Semantics.locals) (mem : Semantics.mem) (tr : Semantics.trace)
-            (R : Semantics.mem -> Prop)
-            (functions : list (string * (list string * list string * cmd)))
-            (T : Type) (pred : T -> predicate)
-            (a : A) (a_ptr : word) (a_var : string)
+    Context (a : A) (a_ptr : word) (a_var : string)
             (val: word) (val_var: string)
             (idx : K) (idx_var : string).
 
@@ -435,7 +448,10 @@ Section with_parameters.
            (array scalar (word.of_Z (Memory.bytes_per_word Semantics.width))
                   a_ptr (to_list (put a idx val)))).
 
-    Lemma compile_word_array_get (k : word -> T) (k_impl : cmd) (var : string):
+    Lemma compile_word_array_get
+          {tr mem locals functions} {T} {pred: T -> predicate}
+          R (k: nlet_body _ _ T) (k_impl : cmd) (var : string):
+
       (Z.to_nat (word.unsigned (to_word idx)) < Datatypes.length (to_list a))%nat ->
 
       sep (repr a_ptr a) R mem ->
@@ -1107,67 +1123,80 @@ Section with_parameters.
     from <= idx < to.
   Proof. lia. Qed.
 
-  Lemma compile_ranged_for_u {A T}:
-    forall tr mem locals functions
-      (loop_pred: word -> A -> predicate)
-      (k_pred: T -> predicate)
-      (from to step: word)
-      (from_var to_var step_var: string)
-      (a0: A) vars
-      body body_impl
-      k k_impl,
-      let lp from '(tok, acc) tr mem locals :=
-          loop_pred (ExitToken.branch tok (word.sub to (word.of_Z 1)) from) acc tr mem locals in
-      (forall from a0 tr mem locals,
-          loop_pred from a0 tr mem locals ->
-          map.getmany_of_list locals [from_var; to_var; step_var] =
-          Some [from; to; step]) ->
-      loop_pred from a0 tr mem locals ->
-      let v := ranged_for_u from to step body a0 in
-      ((* loop body *)
-        let lp := lp in
-        forall tr mem locals from'
-          (Hle: word.unsigned from <= word.unsigned from')
-          (Hlt: word.unsigned from' < word.unsigned to),
-          let tok := ExitToken.new false in
-          let a := ranged_for_u from from' step
-                               (fun tok idx acc pr =>
-                                  body tok idx acc (ranged_for_widen_bounds pr Hlt)) a0 in
-          loop_pred from' a tr mem locals ->
-          (<{ Trace := tr;
-              Memory := mem;
-              Locals := locals;
-              Functions := functions }>
-           body_impl
-           <{ lp from' (body tok from' a (conj Hle Hlt)) }>)) ->
-      (let v := v in
-       forall tr mem locals,
-         loop_pred to v tr mem locals ->
-         (<{ Trace := tr;
-             Memory := mem;
-             Locals := locals;
-             Functions := functions }>
+  Section Generic.
+    Context {to_Z: word -> Z}
+            (to_Z_of_Z: forall l h w,
+                to_Z l <= w <= to_Z h ->
+                to_Z (word.of_Z w) = w).
+
+    Lemma compile_ranged_for_w {A T}:
+      forall tr mem locals functions
+        (loop_pred: word -> A -> predicate)
+        (k_pred: T -> predicate)
+        (from to step: word)
+        (from_var to_var step_var: string)
+        (a0: A) vars
+        body body_impl
+        k k_impl,
+        let lp from '(tok, acc) tr mem locals :=
+            loop_pred (ExitToken.branch tok (word.sub to (word.of_Z 1)) from) acc tr mem locals in
+        (forall from a0 tr mem locals,
+            loop_pred from a0 tr mem locals ->
+            map.getmany_of_list locals [from_var; to_var; step_var] =
+            Some [from; to; step]) ->
+        loop_pred from a0 tr mem locals ->
+        let v := ranged_for_w from to step to_Z_of_Z body a0 in
+        ((* loop body *)
+          let lp := lp in
+          forall tr mem locals from'
+            (Hle: to_Z from <= to_Z from')
+            (Hlt: to_Z from' < to_Z to),
+            let tok := ExitToken.new false in
+            let a := ranged_for_w from from' step to_Z_of_Z
+                                 (fun tok idx acc pr =>
+                                    body tok idx acc (ranged_for_widen_bounds pr Hlt)) a0 in
+            loop_pred from' a tr mem locals ->
+            (<{ Trace := tr;
+                Memory := mem;
+                Locals := locals;
+                Functions := functions }>
+             body_impl
+             <{ lp from' (body tok from' a (conj Hle Hlt)) }>)) ->
+        (let v := v in
+         forall tr mem locals,
+           loop_pred to v tr mem locals ->
+           (<{ Trace := tr;
+               Memory := mem;
+               Locals := locals;
+               Functions := functions }>
+            k_impl
+            <{ k_pred (k v) }>)) ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd.seq
+          (cmd.while
+             (expr.op bopname.ltu (expr.var from_var) (expr.var to_var))
+             (cmd.seq
+                body_impl
+                (cmd.set from_var
+                         (expr.op bopname.add
+                                  (expr.var from_var)
+                                  (expr.literal 1)))))
           k_impl
-          <{ k_pred (k v) }>)) ->
-      <{ Trace := tr;
-         Memory := mem;
-         Locals := locals;
-         Functions := functions }>
-      cmd.seq
-        (cmd.while
-           (expr.op bopname.ltu (expr.var from_var) (expr.var to_var))
-           (cmd.seq
-              body_impl
-              (cmd.set from_var
-                       (expr.op bopname.add
-                                (expr.var from_var)
-                                (expr.literal 1)))))
-        k_impl
-      <{ k_pred (nlet vars v k) }>.
-  Proof.
-    cbv zeta.
-    repeat straightline'.
-  Admitted.
+        <{ k_pred (nlet vars v k) }>.
+    Proof.
+      cbv zeta.
+      repeat straightline'.
+    Admitted.
+  End Generic.
+
+  Definition compile_ranged_for_u {A T} :=
+    compile_ranged_for_w word_unsigned_of_Z_bracketed (A := A) (T := T).
+
+  Definition compile_ranged_for_s {A T} :=
+    compile_ranged_for_w word_signed_of_Z_bracketed (A := A) (T := T).
 
    Ltac compile_custom ::=
      first [simple eapply compile_get |
@@ -1197,37 +1226,6 @@ Section with_parameters.
      | _ => fail "lookup_variable: no results found"
      end.
 
-   Ltac cleanup_hyp H :=
-     lazymatch type of H with
-     | ?x = _ =>
-       tryif is_var x then subst x else idtac
-     | match ?x with _ => _ end => (* let '(a, b) := … in _ /\ _ *)
-       destruct x eqn:?; cleanup_hyp H
-     | _ /\ _ =>
-       let Hl := fresh "Hl" in
-       let Hr := fresh "Hr" in
-       destruct H as (Hl & Hr);
-       cleanup_hyp Hl; cleanup_hyp Hr
-     | _ => idtac
-     end.
-
-   Class A := a : nat.
-   Fail Definition example := a.
-   (* Weird quotes: ?A : "A" *)
-   (* Error: Unable to satisfy the following constraints:
-UNDEFINED EVARS:
- ?X101685==[semantics semantics_ok len a1 a2 |- Interface.word ?width] (parameter word of
-             @word.of_Z) {?word}
- ?X101688==[semantics semantics_ok len a1 a2 (zero:=word.of_Z 0) |-
-             HasDefault word] (parameter v0 of @VectorArray.get) {?v0}
- ?X101689==[semantics semantics_ok len a1 a2 (zero:=word.of_Z 0) |-
-             Convertible ?word nat] (parameter k2n of @VectorArray.get) {?k2n}
- ?X101692==[semantics semantics_ok len a1 a2 (zero:=word.of_Z 0) (v:=
-             VectorArray.get a1 zero) |- Convertible ?word nat] (parameter k2n of
-             @VectorArray.put) {?k2n0}
-TYPECLASSES:?X101685 ?X101688 ?X101689 ?X101692
- *)
-
    Lemma signed_lt_unsigned w:
      word.signed w <= word.unsigned w.
    Proof.
@@ -1236,7 +1234,6 @@ TYPECLASSES:?X101685 ?X101688 ?X101689 ?X101692
      destruct Z_lt_le_dec; lia.
    Qed.
 
-   (* FIXME Loop lemma should maybe copy from, to, step into temporaries? *)
     Program Definition vect_memcpy {n1 n2} (len: word)
            (a1: VectorArray.t word n1)
            (a2: VectorArray.t word n2)
@@ -1263,23 +1260,6 @@ TYPECLASSES:?X101685 ?X101688 ?X101689 ?X101692
       unfold cast, Convertible_word_Nat.
       lia.
     Qed.
-
-   (*  Next Obligation. *)
-   (*    rewrite word.signed_of_Z, word.swrap_inrange in H by *)
-   (*        (pose proof word.half_modulus_pos as Hok; lia). *)
-   (*    apply Nat2Z.inj_lt; unfold cast, Convertible_word_Nat. *)
-   (*    rewrite word.signed_gz_eq_unsigned by assumption. *)
-   (*    pose proof signed_lt_unsigned len. *)
-   (*    rewrite Z2Nat.id; lia. *)
-   (*  Qed. *)
-   (*  Next Obligation. *)
-   (*    rewrite word.signed_of_Z, word.swrap_inrange in H by *)
-   (*        (pose proof word.half_modulus_pos as Hok; lia). *)
-   (*    apply Nat2Z.inj_lt; unfold cast, Convertible_word_Nat. *)
-   (*    rewrite word.signed_gz_eq_unsigned by assumption. *)
-   (*    pose proof signed_lt_unsigned len. *)
-   (*    rewrite Z2Nat.id; lia. *)
-   (* Qed. *)
 
    Definition TwoVectArrays {n1 n2} a1_ptr a2_ptr :=
      (fun '(a1, a2) (_retvals: list word) =>
@@ -1478,18 +1458,16 @@ TYPECLASSES:?X101685 ?X101688 ?X101689 ?X101692
 
   Print incr_gallina_spec.
 
-  Local Infix "~>" := cell_value.
-
   Instance spec_of_incr : spec_of "incr" :=
     (forall! (c_ptr : address) (c :cell),
-        (sep (c_ptr ~> c))
+        (sep (cell_value c_ptr c))
           ===>
           "incr" @ [c_ptr]
           ===>
           (OneCell c_ptr (incr_gallina_spec c))).
 
-   Derive body SuchThat
-         (let incr := ("incr", (["c"], [], body)) in
+   Derive incr_body SuchThat
+         (let incr := ("incr", (["c"], [], incr_body)) in
           program_logic_goal_for
             incr
             (ltac:(let x := program_logic_goal_for_function
@@ -1508,7 +1486,70 @@ TYPECLASSES:?X101685 ?X101688 ?X101689 ?X101692
          locals' = (∅[["c" ← c_ptr]][["one" ← v]]
                      [["from" ← idx]][["to" ← v1]][["step" ← v2]]
                      [["tick" ← tick]]) /\
-         (c_ptr ~> c * R)%sep mem')).
+         (cell_value c_ptr c * R)%sep mem')).
+
+     all: repeat compile_step; compile_done.
+   Qed.
+
+   Program Definition vect_memcpy_s {n1 n2} (len: word)
+           (a1: VectorArray.t word n1)
+           (a2: VectorArray.t word n2)
+           (pr1: word.signed len < Z.of_nat n1)
+           (pr2: word.signed len < Z.of_nat n2) :=
+     let/n from eq:_ := word.of_Z 0 in
+     let/n step := word.of_Z 1 in
+     let/n a2 := ranged_for_s
+                  from len step
+                  (fun tok idx a2 Hlt =>
+                     let/n v := VectorArray.get a1 idx _ in
+                     let/n a2 := VectorArray.put a2 idx _ v in
+                     (tok, a2)) a2 in
+     (a1, a2).
+   Next Obligation.
+     pose proof word.half_modulus_pos.
+     unfold cast, Convertible_word_Nat.
+     rewrite word.signed_of_Z, word.swrap_inrange in H1 by lia.
+     rewrite word.signed_gz_eq_unsigned; lia.
+   Qed.
+   Next Obligation.
+     pose proof word.half_modulus_pos.
+     unfold cast, Convertible_word_Nat.
+     rewrite word.signed_of_Z, word.swrap_inrange in l by lia.
+     rewrite word.signed_gz_eq_unsigned; lia.
+   Qed.
+
+   Instance spec_of_vect_memcpy_s : spec_of "vect_memcpy_s" :=
+     (forall! (len: word) (a1_ptr a2_ptr : address)
+       {n1} (a1: VectorArray.t word n1)
+       {n2} (a2: VectorArray.t word n2)
+       (pr1: word.signed len < Z.of_nat n1)
+       (pr2: word.signed len < Z.of_nat n2),
+         (fun R mem =>
+            sep (word_vectorarray_value a1_ptr a1 * word_vectorarray_value a2_ptr a2)%sep R mem)
+         ===>
+         "vect_memcpy_s" @ [len; a1_ptr; a2_ptr]
+         ===>
+         (TwoVectArrays a1_ptr a2_ptr (vect_memcpy_s len a1 a2 pr1 pr2))).
+
+   Derive vect_memcpy_s_body SuchThat
+          (let memcpy := ("vect_memcpy_s", (["len"; "a1"; "a2"], [], vect_memcpy_s_body)) in
+           program_logic_goal_for
+             memcpy
+             (ltac:(let x := program_logic_goal_for_function
+                              memcpy (@nil string) in
+                    exact x)))
+          As vect_memcpy_s_correct.
+   Proof.
+     compile_setup.
+
+     repeat compile_step.
+
+     unfold ranged_for_s;
+       simple eapply compile_ranged_for_s with (loop_pred := (fun idx a2 tr' mem' locals' =>
+         tr' = tr /\
+         locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
+                     [["from" ← idx]][["step" ← v0]]) /\
+         (word_vectorarray_value a1_ptr a1 * word_vectorarray_value a2_ptr a2 * R)%sep mem')).
 
      all: repeat compile_step; compile_done.
    Qed.
