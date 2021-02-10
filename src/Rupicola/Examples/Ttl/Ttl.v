@@ -48,7 +48,7 @@ Section with_parameters.
   Lemma compile_nth {n}
         {tr mem locals functions} {T} {pred: T -> predicate} :
     forall (vector: Vector.t Semantics.word n) vector_ptr vector_var
-      R offset var k k_impl,
+      R offset var (k: nlet_body _ _ T) k_impl,
 
       (Z.of_nat n < 2 ^ Semantics.width)%Z ->
 
@@ -65,7 +65,7 @@ Section with_parameters.
             Locals := map.put locals var v;
             Functions := functions }>
          k_impl
-         <{ pred (k v) }>) ->
+         <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -111,7 +111,7 @@ Section with_parameters.
         {tr mem locals functions} {T} {pred: T -> predicate} :
     forall (vector: Vector.t Semantics.word n) vector_ptr vector_var
       R value value_var offset
-      k k_impl,
+      (k: nlet_body _ _ T) k_impl,
 
       (Z.of_nat n < 2 ^ Semantics.width)%Z ->
       sep (WordVector vector_ptr vector) R mem ->
@@ -129,7 +129,7 @@ Section with_parameters.
             Locals := locals;
             Functions := functions }>
          k_impl
-         <{ pred (k v) }>) ->
+         <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;

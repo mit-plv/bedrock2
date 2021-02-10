@@ -25,8 +25,12 @@ Notation
            body))
     (at level 200, only parsing).
 
-Definition nlet {A P} (vars: list string) (val : A) (body : forall a : A, P a) : P val :=
-  let x := val in body x.
+Definition nlet_body A a0 T := forall (a : A) (Heq: a = a0), T.
+Definition nlet_body_dep A a0 P := forall (a : A) (Heq: a = a0), P a.
+
+Definition nlet {A P} (vars: list string) (val : A)
+           (body : nlet_body_dep A val P) : P val :=
+  let x := val in body x eq_refl.
 
 (* FIXME Error: Anomaly "Uncaught exception Failure("hd")." until 8.13 *)
 (* Notation "'let/n' x := val 'in' body" := *)
@@ -37,14 +41,27 @@ Definition nlet {A P} (vars: list string) (val : A) (body : forall a : A, P a) :
 
 Notation "'let/n' x 'as' nm := val 'in' body" :=
   (nlet (P := fun _ => _) (* Force non-dependent type *)
-        [nm] val (fun x => body))
+        [nm] val (fun x _ => body))
     (at level 200, x ident, body at level 200,
      format "'[hv' 'let/n'  x  'as'  nm  :=  val  'in' '//' body ']'").
+
+Notation "'let/n' x 'as' nm 'eq:' Heq := val 'in' body" :=
+  (nlet (P := fun _ => _) (* Force non-dependent type *)
+        [nm] val (fun x Heq => body))
+    (at level 200, x ident, body at level 200,
+     format "'[hv' 'let/n'  x  'as'  nm  'eq:' Heq  :=  val  'in' '//' body ']'").
 
 Notation "'let/n' x := val 'in' body" :=
   (nlet (P := fun _ => _) (* Force non-dependent type *)
         [IdentParsing.TC.ident_to_string x]
-        val (fun x => body))
+        val (fun x _ => body))
+    (at level 200, x ident, body at level 200,
+     only parsing).
+
+Notation "'let/n' x 'eq:' Heq := val 'in' body" :=
+  (nlet (P := fun _ => _) (* Force non-dependent type *)
+        [IdentParsing.TC.ident_to_string x]
+        val (fun x Heq => body))
     (at level 200, x ident, body at level 200,
      only parsing).
 
@@ -56,15 +73,29 @@ Notation "'let/n' x := val 'in' body" :=
 
 Notation "'let/n' ( x , y ) 'as' ( nx , ny ) := val 'in' body" :=
   (nlet (P := fun _ => _) (* Force non-dependent type *)
-        [nx; ny] val (fun '(x, y) => body))
+        [nx; ny] val (fun xy _ => let x := fst xy in let y := snd xy in body))
     (at level 200, x ident, body at level 200,
      format "'[hv' 'let/n'  ( x ,  y )  'as'  ( nx ,  ny )  :=  val  'in' '//' body ']'").
+
+Notation "'let/n' ( x , y ) 'as' ( nx , ny ) 'eq:' Heq := val 'in' body" :=
+  (nlet (P := fun _ => _) (* Force non-dependent type *)
+        [nx; ny] val (fun xy Heq => let x := fst xy in let y := snd xy in body))
+    (at level 200, x ident, body at level 200,
+     format "'[hv' 'let/n'  ( x ,  y )  'as'  ( nx ,  ny )  'eq:' Heq  :=  val  'in' '//' body ']'").
+
+Notation "'let/n' ( x , y ) 'eq:' Heq := val 'in' body" :=
+  (nlet (P := fun _ => _) (* Force non-dependent type *)
+        [IdentParsing.TC.ident_to_string x;
+         IdentParsing.TC.ident_to_string y]
+        val (fun xy Heq => let x := fst xy in let y := snd xy in body))
+    (at level 200, x ident, y ident, body at level 200,
+     only parsing).
 
 Notation "'let/n' ( x , y ) := val 'in' body" :=
   (nlet (P := fun _ => _) (* Force non-dependent type *)
         [IdentParsing.TC.ident_to_string x;
          IdentParsing.TC.ident_to_string y]
-        val (fun '(x, y) => body))
+        val (fun xy _ => let x := fst xy in let y := snd xy in body))
     (at level 200, x ident, y ident, body at level 200,
      only parsing).
 
@@ -96,11 +127,15 @@ Definition postcondition_cmd
          map.getmany_of_list locals retvars = Some rets
          /\ sep (spec rets) R mem').
 
+Declare Scope old.
 Notation "'find' body 'implementing' spec 'and-returning' retvars 'and-locals-post' locals_post 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
   (WeakestPrecondition.cmd
      (WeakestPrecondition.call fns)
      body tr mem locals
-     (postcondition_cmd locals_post spec retvars R tr)) (at level 0).
+     (postcondition_cmd locals_post spec retvars R tr)) (at level 0, only parsing).
+(* Notation "!! x" := *)
+(*   (postcondition_cmd _ x _ _ _) *)
+(*     (at level 0, x at level 200, no associativity, only printing). *)
 
 Notation "<{ 'Trace' := tr ; 'Memory' := mem ; 'Locals' := locals ; 'Functions' := functions }> cmd <{ post }>" :=
   (WeakestPrecondition.cmd

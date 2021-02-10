@@ -23,7 +23,7 @@ Section with_parameters.
 
   Lemma compile_get
         {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall R c c_ptr c_var k k_impl var,
+    forall R c c_ptr c_var (k: nlet_body _ _ T) k_impl var,
 
       sep (cell_value c_ptr c) R mem ->
       map.get locals c_var = Some c_ptr ->
@@ -35,7 +35,7 @@ Section with_parameters.
           Locals := map.put locals var v;
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -62,7 +62,7 @@ Section with_parameters.
 
   Lemma compile_put
         {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall R c c_ptr c_var x x_var k k_impl,
+    forall R c c_ptr c_var x x_var (k: nlet_body _ _ T) k_impl,
 
       sep (cell_value c_ptr c) R mem ->
       map.get locals c_var = Some c_ptr ->
@@ -77,7 +77,7 @@ Section with_parameters.
              Locals := locals;
              Functions := functions }>
           k_impl
-          <{ pred (k v) }>)) ->
+          <{ pred (k v eq_refl) }>)) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;

@@ -465,7 +465,7 @@ Section with_parameters.
           Locals := map.put locals var v;
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -504,7 +504,9 @@ Section with_parameters.
       ecancel_assumption.
     Qed.
 
-    Lemma compile_word_array_put (k: A -> T) (k_impl: cmd) (var: string) :
+    Lemma compile_word_array_put
+          {tr mem locals functions} {T} {pred: T -> predicate}
+          R (k: nlet_body _ _ T) (k_impl: cmd) (var: string) :
       (Z.to_nat (word.unsigned (to_word idx)) < Datatypes.length (to_list a))%nat ->
 
       sep (repr a_ptr a) R mem ->
@@ -521,7 +523,7 @@ Section with_parameters.
             Locals := locals;
             Functions := functions }>
          k_impl
-         <{ pred (k a) }>) ->
+         <{ pred (k a eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -646,11 +648,10 @@ Section with_parameters.
                  addr (to_list a)).
     Proof. reflexivity. Qed.
 
-    Lemma compile_word_vectorarray_get {n} :
-      forall (locals: Semantics.locals) (mem: Semantics.mem)
-        tr R functions
-        T (pred: T -> predicate)
-        (a: VectorArray.t word n) (a_ptr: address) a_var idx idx_var k k_impl var pr,
+    Lemma compile_word_vectorarray_get {n}
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+      forall R (a: VectorArray.t word n) (a_ptr: address) a_var
+        idx idx_var pr (k: nlet_body _ _ T) k_impl var,
         (* (pr: (word.unsigned idx < Z.of_nat n)%Z), FIXME if we want this eqn, then indices need to be Z *)
 
         sep (word_vectorarray_value a_ptr a) R mem ->
@@ -664,7 +665,7 @@ Section with_parameters.
             Locals := map.put locals var v;
             Functions := functions }>
          k_impl
-         <{ pred (k v) }>) ->
+         <{ pred (k v eq_refl) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -692,11 +693,10 @@ Section with_parameters.
         simpl. assumption. }
     Qed.
 
-    Lemma compile_word_vectorarray_put {n}:
-      forall (locals: Semantics.locals) (mem: Semantics.mem)
-        tr R functions
-        T (pred: T -> predicate)
-        (a: VectorArray.t word n) a_ptr a_var idx idx_var val val_var k k_impl var pr,
+    Lemma compile_word_vectorarray_put {n}
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+      forall R (a: VectorArray.t word n) a_ptr a_var
+        idx idx_var val val_var pr (k: nlet_body _ _ T) k_impl var,
 
         sep (word_vectorarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -712,7 +712,7 @@ Section with_parameters.
               Locals := locals;
               Functions := functions }>
            k_impl
-           <{ pred (k a) }>) ->
+           <{ pred (k a eq_refl) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -795,11 +795,10 @@ Section with_parameters.
                  addr (to_list a)).
     Proof. reflexivity. Qed.
 
-    Lemma compile_word_listarray_get :
-      forall (locals: Semantics.locals) (mem: Semantics.mem)
-        tr R functions
-        T (pred: T -> predicate)
-        (a: ListArray.t word) (a_ptr: address) a_var idx idx_var k k_impl var,
+    Lemma compile_word_listarray_get
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+      forall R (a: ListArray.t word) (a_ptr: address) a_var
+        idx idx_var (k: nlet_body _ _ T) k_impl var,
 
         sep (word_listarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -814,7 +813,7 @@ Section with_parameters.
             Locals := map.put locals var v;
             Functions := functions }>
          k_impl
-         <{ pred (k v) }>) ->
+         <{ pred (k v eq_refl) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -839,11 +838,9 @@ Section with_parameters.
       unfold id in *; lia.
     Qed.
 
-    Lemma compile_word_listarray_put :
-      forall (locals: Semantics.locals) (mem: Semantics.mem)
-        tr R functions
-        T (pred: T -> predicate)
-        a a_ptr a_var idx idx_var val val_var k k_impl var,
+    Lemma compile_word_listarray_put
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+      forall R a a_ptr a_var idx idx_var val val_var (k: nlet_body _ _ T) k_impl var,
 
         sep (word_listarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -861,7 +858,7 @@ Section with_parameters.
               Locals := locals;
               Functions := functions }>
            k_impl
-           <{ pred (k a) }>) ->
+           <{ pred (k a eq_refl) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -922,11 +919,10 @@ Section with_parameters.
       ecancel_assumption.
     Qed.
 
-    Lemma compile_word_sizedlistarray_get :
-      forall (locals: Semantics.locals) (mem: Semantics.mem)
-        tr R functions
-        T (pred: T -> predicate)
-        sz (a: ListArray.t word) (a_ptr: address) a_var idx idx_var k k_impl var,
+    Lemma compile_word_sizedlistarray_get {sz}
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+      forall R (a: ListArray.t word) (a_ptr: address) a_var
+        idx idx_var (k: nlet_body _ _ T) k_impl var,
 
         sep (word_sizedlistarray_value a_ptr sz a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -941,7 +937,7 @@ Section with_parameters.
             Locals := map.put locals var v;
             Functions := functions }>
          k_impl
-         <{ pred (k v) }>) ->
+         <{ pred (k v eq_refl) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -970,11 +966,9 @@ Section with_parameters.
         lia.
     Qed.
 
-    Lemma compile_word_sizedlistarray_put :
-      forall (locals: Semantics.locals) (mem: Semantics.mem)
-        tr R functions
-        T (pred: T -> predicate)
-        sz a a_ptr a_var idx idx_var val val_var k k_impl var,
+    Lemma compile_word_sizedlistarray_put {sz}
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+      forall R a a_ptr a_var idx idx_var val val_var (k: nlet_body _ _ T) k_impl var,
 
         sep (word_sizedlistarray_value a_ptr sz a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -992,7 +986,7 @@ Section with_parameters.
               Locals := locals;
               Functions := functions }>
            k_impl
-           <{ pred (k a) }>) ->
+           <{ pred (k a eq_refl) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -1028,7 +1022,7 @@ Section with_parameters.
   Lemma compile_add :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
       tr functions T (pred: T -> predicate)
-      x x_var y y_var k k_impl var,
+      x x_var y y_var (k: nlet_body _ _ T) k_impl var,
       map.get locals x_var = Some x ->
       map.get locals y_var = Some y ->
       let v := word.add x y in
@@ -1069,7 +1063,7 @@ Section with_parameters.
   (*     (from to step: nat) *)
   (*     (from_var to_var step_var: string) *)
   (*     body body_impl *)
-  (*     k k_impl *)
+  (*     (k: nlet_body _ _ T) k_impl *)
   (*     (a0: A), *)
   (*     loop_pred from (true, a0) tr mem locals -> *)
   (*     (* fixme make a shorter alias for this *) *)
@@ -1201,7 +1195,7 @@ Section with_parameters.
    Ltac compile_custom ::=
      first [simple eapply compile_get |
             simple eapply compile_put |
-            simple eapply compile_sig |
+            (* simple eapply compile_sig | *)
             simple eapply compile_word_vectorarray_get |
             simple eapply compile_word_vectorarray_put |
             simple eapply compile_word_sizedlistarray_get |
@@ -1557,7 +1551,7 @@ End with_parameters.
 
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.NotationsInConstr.
-Eval cbv [unsizedlist_memcpy_body vect_memcpy_body fold_right] in sizedlist_memcpy_body.
+Eval cbv [unsizedlist_memcpy_body vect_memcpy_s_body fold_right] in sizedlist_memcpy_body.
 
 Require bedrock2.BasicC64Semantics.
 
