@@ -220,6 +220,25 @@ Section with_parameters.
     repeat straightline'; eauto.
   Qed.
 
+  Lemma compile_sig
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall {A} P (x: A) Px k cmd vars,
+      let v := exist P x Px in
+      (let Px := Px in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+      cmd (* FIXME should move `x` to the context, but how to do so without breaking the next steps? *)
+       <{ pred (nlet vars x (fun _ => k (exist P x Px))) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd
+      <{ pred (nlet vars v k) }>.
+  Proof. eauto. Qed.
+
   (* FIXME check out what happens when running straightline on a triple with a cmd.seq; could we get rid of the continuation arguments?  Would it require more rewrites? *)
 
   (* N.B. this should *not* be added to any compilation tactics, since it will
