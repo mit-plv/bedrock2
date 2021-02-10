@@ -247,7 +247,7 @@ Section with_parameters.
 
   Lemma compile_unsets
         {tr mem locals functions} {pred0: predicate} :
-    forall (vars: let x := DefaultValue (list string) [] in list string) cmd,
+    forall (vars: DefaultValue (list string) []) cmd,
       (<{ Trace := tr;
           Memory := mem;
           Locals := map.remove_many locals vars;
@@ -327,8 +327,7 @@ Section with_parameters.
                   (cmd.set var (expr.var t_var))
                   (cmd.set var (expr.var f_var)))
         k_impl
-      <{ pred (let/n x as var := v in
-               k x) }>.
+      <{ pred (nlet [var] v k) }>.
   Proof.
     intros.
     repeat straightline'.
@@ -371,7 +370,7 @@ Section with_parameters.
                   (cmd.set var (expr.var t_var))
                   (cmd.set var (expr.var f_var)))
         k_impl
-      <{ pred (let/n x as var := v in k x) }>.
+      <{ pred (nlet [var] v k) }>.
   Proof.
     intros.
     unfold postcondition_cmd.
@@ -616,6 +615,31 @@ Ltac solve_map_get_goal_step :=
 Ltac solve_map_get_goal :=
   progress repeat solve_map_get_goal_step.
 
+Ltac map_to_list m :=
+  let rec loop m acc :=
+      match m with
+      | map.put ?m ?k ?v =>
+        loop m uconstr:((k, v) :: acc)
+      | map.empty =>
+        (* Reverse for compatibility with map.of_list *)
+        uconstr:(List.rev acc)
+      end in
+  loop m uconstr:([]).
+
+Ltac solve_map_remove_many_reify  :=
+  lazymatch goal with
+  | [  |- map.remove_many ?m0 _ = ?m1 ] =>
+    let b0 := map_to_list m0 in
+    let b1 := map_to_list m1 in
+    change m0 with (map.of_list b0);
+    change m1 with (map.of_list b1)
+  end.
+
+Ltac solve_map_remove_many :=
+  solve_map_remove_many_reify;
+  apply map.remove_many_diff;
+  [ try (vm_compute; reflexivity) | try reflexivity ].
+
 Create HintDb compiler.
 Hint Unfold postcondition_cmd : compiler.
 
@@ -656,6 +680,9 @@ Ltac compile_custom := fail.
 
 Ltac compile_cleanup :=
   match goal with
+  | [ H: _ /\ _ |- _ ] => destruct H
+  | [ H: ?x = _ |- _ ] => is_var x; subst x
+  | [ H: match ?x with _ => _ end |- _ ] => destruct x; [ idtac ]
   | [  |- let _ := _ in _ ] => intros
   | [  |- forall _, _ ] => intros
   end.
@@ -688,8 +715,10 @@ Ltac compile_solve_side_conditions :=
       ecancel_assumption
   | [  |- map.get _ _ = _ ] =>
     solve [subst_lets_in_goal; solve_map_get_goal]
-  | [  |- map.getmany_of_list _ [] = Some _ ] =>
-    reflexivity (* CPC remove? *)
+  | [  |- map.getmany_of_list _ _ = _ ] =>
+    apply map.getmany_of_list_cons
+  | [  |- map.remove_many _ _ = _ ] =>
+    solve_map_remove_many
   | [  |- _ <> _ ] => congruence
   | _ =>
     first [ compile_cleanup
@@ -717,8 +746,8 @@ Ltac compile_step :=
 
 Ltac compile_done :=
   match goal with
-  | [ _ := DefaultValue ?T ?t |- ?T ] => exact t
-  | _ => idtac
+  | [ |- DefaultValue ?T ?t ] => exact t
+  | _ => idtac "Compilation incomplete"
   end.
 
 (* only apply compile_step when repeat_compile_step solves all the side
