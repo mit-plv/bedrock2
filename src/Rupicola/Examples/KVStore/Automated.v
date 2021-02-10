@@ -1,7 +1,20 @@
+Require Import coqutil.Tactics.autoforward.
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
 Require Import Rupicola.Examples.KVStore.Tactics.
+
+Definition do_or_default {A B}
+           (a : option A) (f : A -> B) (default : B) : B :=
+  match a with
+  | Some a => f a
+  | None => default
+  end.
+
+Notation "'let/o'  x  :=  val  'goto_fail' default 'in'  body" :=
+  (do_or_default val (fun x => body) default) (at level 4).
+
+Hint Extern 2 (IsRupicolaBinding (do_or_default _ _ _)) => exact true : typeclass_instances.
 
 Section KVSwap.
   Context {semantics : Semantics.parameters}
@@ -155,17 +168,6 @@ Section KVSwap.
                   True
                 end).
 
-
-  Definition do_or_default {A B}
-             (a : option A) (f : A -> B) (default : B) : B :=
-    match a with
-    | Some a => f a
-    | None => default
-    end.
-
-  Notation "'let/o'  x  :=  val  'goto_fail' default 'in'  body" :=
-    (do_or_default val (fun x => body) default) (at level 4).
-
   (* look up k1 and k2, add their values and store in k3 *)
   Definition kvswap_gallina (m : map.rep (map:=map))
              (k1 k2 : key) : map.rep (map:=map) * key * key :=
@@ -244,59 +246,54 @@ Section KVSwap.
     - discriminate.
   Qed.
 
-  Lemma compile_map_get :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R R' functions T (pred: T -> _ -> _ -> Prop)
-           m m_ptr m_var M
-           k k_ptr k_var
-           default default_impl
-           K K_impl,
+  Lemma compile_map_get
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall m m_ptr m_var M
+      k k_ptr k_var
+      default default_impl
+      K K_impl err var R,
+
       spec_of_map_get functions ->
       m = deannotate M ->
-    forall err var,
+
       var <> err ->
-      (AnnotatedMap m_ptr M * Key k_ptr k * R')%sep mem ->
+
+      (AnnotatedMap m_ptr M * Key k_ptr k * R)%sep mem ->
       map.get locals m_var = Some m_ptr ->
       map.get locals k_var = Some k_ptr ->
+
       (forall a, map.get M k = Some a -> is_owned a) ->
+
       let v := (map.get m k) in
       (forall garbage mem',
           v = None ->
-          (AnnotatedMap m_ptr M * Key k_ptr k * R')%sep mem' ->
-          find default_impl
-          implementing (pred default)
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals (map.put (map.put locals err (word.of_Z 1))
-                            var garbage)
-          and-memory mem' and-trace tr and-rest R
-          and-functions functions) ->
+          (AnnotatedMap m_ptr M * Key k_ptr k * R)%sep mem' ->
+          <{ Trace := tr;
+             Memory := mem';
+             Locals := map.put (map.put locals err (word.of_Z 1)) var garbage;
+             Functions := functions }>
+          default_impl
+          <{ pred default }>) ->
       (forall head hd_ptr mem',
           v = Some head ->
-          (AnnotatedMap m_ptr
-                        (map.put M k
-                                 (Reserved hd_ptr, head))
-           * Key k_ptr k * R')%sep mem' ->
-          find K_impl
-          implementing (pred (K head))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals (map.put (map.put locals err (word.of_Z 0))
-                            var hd_ptr)
-          and-memory mem' and-trace tr and-rest R
-          and-functions functions) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.call [err; var] (fst (@KVStore.get ops)) [expr.var m_var; expr.var k_var])
-               (cmd.cond (expr.op bopname.eq (expr.var err) (expr.literal 0))
-                         K_impl
-                         default_impl))
-       implementing (pred (do_or_default head K default))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+          (AnnotatedMap m_ptr (map.put M k (Reserved hd_ptr, head))
+           * Key k_ptr k * R)%sep mem' ->
+          <{ Trace := tr;
+             Memory := mem';
+             Locals := map.put (map.put locals err (word.of_Z 0)) var hd_ptr;
+             Functions := functions }>
+          K_impl
+          <{ pred (K head) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.call [err; var] (fst (@KVStore.get ops)) [expr.var m_var; expr.var k_var])
+        (cmd.cond (expr.op bopname.eq (expr.var err) (expr.literal 0))
+                  K_impl
+                  default_impl)
+      <{ pred (do_or_default v K default) }>.
   Proof.
     intros.
     repeat straightline.
@@ -403,44 +400,45 @@ Section KVSwap.
                end).
    *)
 
-  Lemma compile_map_put_replace :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R R' functions T (pred: T -> _ -> _ -> Prop)
-           m m_ptr m_var M
-           k k_ptr k_var
-           v v_ptr v_var
-           K K_impl,
+  Lemma compile_map_put_replace
+        {tr mem locals functions} {T} {pred: T -> predicate} :
+    forall m m_ptr m_var M
+      k k_ptr k_var
+      v v_ptr v_var
+      K K_impl R,
+
       spec_of_map_put functions ->
       m = deannotate M ->
-      (AnnotatedMap m_ptr M * Key k_ptr k * Value v_ptr v * R')%sep mem ->
+
+      (AnnotatedMap m_ptr M * Key k_ptr k * Value v_ptr v * R)%sep mem ->
+
       map.get locals m_var = Some m_ptr ->
       map.get locals k_var = Some k_ptr ->
       map.get locals v_var = Some v_ptr ->
+
       (exists a, map.get M k = Some a /\ is_borrowed a) ->
-      let m := (map.put m k v) in (* FIXME this should say put_replace *)
+
+      let m := map.put m k v in (* FIXME this should say put_replace *)
       (forall mem',
-         let head := m in
+         let m := m in
          (AnnotatedMap m_ptr (map.put M k (Owned, v))
-          * Key k_ptr k * R')%sep mem' ->
-         find K_impl
-         implementing (pred (K head))
-         and-returning retvars
-         and-locals-post locals_ok
-         with-locals locals
-         and-memory mem' and-trace tr and-rest R
-         and-functions functions) ->
-      (let head := m in
-       find (cmd.seq
-               (cmd.call []
-                         (fst (@KVStore.put ops))
-                         [expr.var m_var; expr.var k_var; expr.var v_var])
-               K_impl)
-       implementing (pred (dlet head K))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+          * Key k_ptr k * R)%sep mem' ->
+         <{ Trace := tr;
+            Memory := mem';
+            Locals := locals;
+            Functions := functions }>
+         K_impl
+         <{ pred (K m) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.call []
+                  (fst (@KVStore.put ops))
+                  [expr.var m_var; expr.var k_var; expr.var v_var])
+        K_impl
+      <{ pred (dlet m K) }>.
   Proof.
     intros.
     repeat straightline.
@@ -494,10 +492,6 @@ Section KVSwap.
 
   Hint Extern 1 => simple eapply put_noop' : compiler.
 
-
-  Axiom __magic__ : forall {A}, A.
-  Ltac admitt := exfalso; clear; apply __magic__.
-
   Derive kvswap_body SuchThat
          (let kvswap := ("kvswap", (["m"; "k1"; "k2"], [],
                                     kvswap_body)) in
@@ -518,30 +512,23 @@ Section KVSwap.
                              (kvswap_gallina m k1 k2)) R tr)))
       As kvswap_body_correct.
   Proof.
-    setup.
+    compile_setup.
     (* Is there a systematic way to move from unannotated to annotated? The
     annotated spec is better for composing definitions, but the unannotated
     one is better for reading specs. *)
     add_map_annotations.
-    eapply compile_map_get with (var:="v1") (err:="err") (M:=annotate m).
-    all: repeat compile_step; eauto with compiler.
-    { match goal with
-      | [  |- _ <> _ ] => congruence
-      end. }
-    { intros.               (* FIXME compile_step *)
-      clear_old_seps.
-      compile_done.
-      autounfold with compiler.
-      cbn [fst snd].
+    eapply compile_map_get with (var:="v1") (err:="err") (M:=annotate m);
+      repeat compile_step.
+
+    { cbn [fst snd].
       remove_map_annotations. (* FIXME *)
       compile_step. }
+    { compile_done. }
     { intros.
       clear_old_seps.
-      eapply compile_map_get with (var:="v2") (err:="err"); repeat compile_step.
-      { eauto with compiler. }
-      { match goal with
-        | [  |- _ <> _ ] => congruence
-        end. }
+      eapply compile_map_get with (var:="v2") (err:="err");
+        try solve [repeat compile_step].
+      all: try solve [repeat compile_step].
       { intros.
         Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
              @annotate_get_Some @annotate_get_None
@@ -550,10 +537,10 @@ Section KVSwap.
         autorewrite with mapsimpl_not_too_much in *. (* FIXME is that enough for the other cases? *)
         eauto with compiler. }
       { intros.
-        clear_old_seps.
         repeat compile_step.
-        remove_map_annotations. (* Should be done only in the skip case *)
-        compile_done. }
+        - remove_map_annotations. (* Should be done only in the skip case *)
+          cbn; compile_step.
+        - compile_done. }
       { intros; clear_old_seps.
         eapply compile_map_put_replace;
           lazymatch goal with
@@ -561,15 +548,16 @@ Section KVSwap.
           | _ => idtac
           end.
         3: ecancel_assumption.
-        all: repeat compile_step; eauto with compiler.
+        all: repeat compile_step.
         { simple apply deannotate_put.
           cbn.
           eapply put_noop';
             eauto 10 with compiler.
           autorewrite with mapsimpl_not_too_much.
-          admitt.
+          unfold annotate, deannotate;
+            repeat rewrite ?map.get_mapped, ?map.get_put_diff by congruence.
+          rewrite H2; reflexivity.
         }
-        all: eauto.
         { repeat match goal with
                  | [  |- exists _, _ ] => eexists
                  | [  |- _ /\ _ ] => split
@@ -579,9 +567,6 @@ Section KVSwap.
         intros.
         clear_old_seps.
 
-        (* autorewrite with mapsimpl. *)
-        (* rewrite map.put_put_same in H3. *)
-
         eapply compile_map_put_replace;
           lazymatch goal with
           | [  |- sep _ _ _ ] => try borrow_all
@@ -590,20 +575,31 @@ Section KVSwap.
 
         all: repeat compile_step; eauto with compiler.
 
-        all: subst head1.
-        { apply map.map_ext.
+        (* all: subst head1. *)
+        { subst_lets_in_goal.
+          apply map.map_ext.
           intros; autorewrite with mapsimpl.
-          admitt. }
-          { repeat match goal with
+          unfold annotate, deannotate;
+            repeat rewrite ?map.get_mapped, ?map.get_put_diff, ?map.get_put_dec by congruence.
+          destruct (key_eqb k2 _) eqn:He2; [ reflexivity | ].
+          destruct (key_eqb k1 _) eqn:He1;
+            autoforward with typeclass_instances in He1; subst;
+              [ assumption | ].
+          destruct (map.get _ k); reflexivity. }
+        { repeat match goal with
                  | [  |- exists _, _ ] => eexists
                  | [  |- _ /\ _ ] => split
                  | _ => progress autorewrite with mapsimpl_not_too_much
                  | _ => reflexivity
-                      end. }
-        { intros.
-          clear_old_seps.
-          repeat compile_step.
-          remove_map_annotations. (* Should be done only in the skip case *)
-          compile_done. }
-  Abort.
+                 end. }
+        { remove_map_annotations. (* Should be done only in the skip case *)
+          compile_step. }
+
+        compile_done. } }
+  Qed.
 End KVSwap.
+
+(* Require Import bedrock2.NotationsCustomEntry. *)
+(* Require Import bedrock2.NotationsInConstr. *)
+(* Arguments kvswap_body /. *)
+(* Eval simpl in kvswap_body. *)
