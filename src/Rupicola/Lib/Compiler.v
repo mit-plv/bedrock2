@@ -243,9 +243,6 @@ Section with_parameters.
     repeat straightline'; eauto.
   Qed.
 
-  Definition map_remove_many {K V} {M: map.map K V} m (ks: list K) :=
-    List.fold_left map.remove ks m.
-
   Definition DefaultValue (T: Type) (t: T) := T.
 
   Lemma compile_unsets
@@ -253,7 +250,7 @@ Section with_parameters.
     forall (vars: let x := DefaultValue (list string) [] in list string) cmd,
       (<{ Trace := tr;
           Memory := mem;
-          Locals := map_remove_many locals vars;
+          Locals := map.remove_many locals vars;
           Functions := functions }>
        cmd
        <{ pred0 }>) ->
