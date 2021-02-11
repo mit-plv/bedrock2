@@ -127,6 +127,14 @@ Module map.
         congruence.
     Qed.
 
+    Lemma remove_not_in m k :
+      map.get m k = None ->
+      map.remove m k = m.
+    Proof.
+      intros; apply map.map_ext; intros.
+      rewrite map.get_remove_dec; destruct_one_match; congruence.
+    Qed.
+
     Lemma getmany_of_list_cons m k ks v vs :
       map.get m k = Some v ->
       map.getmany_of_list m ks = Some vs ->

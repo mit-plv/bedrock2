@@ -71,68 +71,60 @@ Section Compile.
   (* In this lemma, state refers to the accumulator type for the Gallina downto
      loop, and ghost_state is any extra information that locals/memory invariants
      need access to. *)
+  (* FIXME Do we actually need ghost state? *)
   (* TODO: consider taking in range of count instead of providing word? *)
-  Lemma compile_downto :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R R' functions
-           T (pred: T -> list word -> Semantics.mem -> Prop)
-      {state} {ghost_state} (init : state) (ginit : ghost_state)
-      count wcount step step_impl k k_impl i_var
+  Lemma compile_downto {tr mem locals functions} {state} (init : state) count step:
+    let v := downto init count step in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl step_impl}
+      wcount {ghost_state} (ginit : ghost_state)
       (ghost_step : state -> ghost_state -> nat -> ghost_state)
-      (Inv : Semantics.locals -> nat -> ghost_state -> state
-             -> list word -> Semantics.mem -> Prop) (* loop invariant *),
-      (Inv (map.remove locals i_var) count ginit init [] * R')%sep mem ->
+      (Inv : nat -> ghost_state -> state -> predicate) (* loop invariant *)
+      i_var vars,
+
+      Inv count ginit init tr mem (map.remove locals i_var) ->
+
       map.get locals i_var = Some wcount ->
       word.unsigned wcount = Z.of_nat count ->
-      0 < count ->
-      let v := downto init count step in
-      (let head := v in
+      0 < count -> (* FIXME unused *)
+
+      (let v := v in
        (* loop iteration case *)
        forall tr l m st gst i wi,
+         let inv' v tr' mem' locals :=
+             map.get locals i_var = Some wi /\
+             Inv i (ghost_step st gst i) v tr' mem' (map.remove locals i_var) in
          let gst' := ghost_step st gst i in
-         (Inv (map.remove l i_var) (S i) gst st [] * R')%sep m ->
+         Inv (S i) gst st tr m (map.remove l i_var) ->
          word.unsigned wi = Z.of_nat i ->
          i < count ->
-         exists new_locals,
-           let l' := new_locals in
-           find step_impl
-           implementing (Inv (map.remove l' i_var) i gst' (step st i))
-           and-returning [] (* TODO: use this? *)
-           and-locals-post (fun l => l = l' /\ map.get l i_var = Some wi)
-           with-locals (map.put l i_var wi)
-           and-memory m and-trace tr and-rest R'
-           and-functions functions) ->
-      (let head := v in
+         <{ Trace := tr;
+            Memory := m;
+            Locals := map.put l i_var wi;
+            Functions := functions }>
+         step_impl
+         <{ inv' (step st i)}>) ->
+      (let v := v in
        (* continuation *)
        forall tr l m gst,
-         (Inv (map.remove l i_var) 0 gst head [] * R')%sep m ->
+         Inv 0 gst v tr m (map.remove l i_var) ->
          map.get l i_var = Some (word.of_Z 0) ->
-         find k_impl
-         implementing (pred (k head))
-         and-returning retvars
-         and-locals-post locals_ok
-         with-locals l and-memory m and-trace tr and-rest R
-         and-functions functions) ->
-      (let head := v in
-       (* while (i = n; 0 < i; pass)
+         <{ Trace := tr;
+            Memory := m;
+            Locals := l;
+            Functions := functions }>
+         k_impl
+         <{ pred (k v eq_refl) }>) ->
+      (* while (i = n; 0 < i; pass)
           { i--; step i } *)
-       find (cmd.seq
-               (cmd.while
-                  (expr.op bopname.ltu
-                           (expr.literal 0) (expr.var i_var))
-                  (cmd.seq
-                     (cmd.set i_var
-                              (expr.op bopname.sub
-                                       (expr.var i_var)
-                                       (expr.literal 1)))
-                     step_impl))
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.while (expr.op bopname.ltu (expr.literal 0) (expr.var i_var))
+                   (cmd.seq (cmd.set i_var (expr.op bopname.sub (expr.var i_var) (expr.literal 1))) step_impl))
+        k_impl
+      <{ pred (nlet_eq vars v k) }>.
   Proof.
     repeat straightline'.
 
@@ -146,9 +138,8 @@ Section Compile.
                                     step ghost_step in
               let st := fst stgst in
               let gst := snd stgst in
-              (Inv (map.remove l i_var) i gst st [] * R')%sep m
+              Inv i gst st t m (map.remove l i_var)
               /\ i <= count
-              /\ tr = t
               /\ (exists wi,
                      word.unsigned wi = Z.of_nat i
                      /\ map.get l i_var = Some wi)).
@@ -156,7 +147,7 @@ Section Compile.
 
     { cbv zeta. subst.
       cbv [downto'_dependent downto'].
-      exists count; ssplit; [ | | | exists wcount];
+      exists count; ssplit; [ | | exists wcount];
         repeat match goal with
                | _ => rewrite skipn_all2 by (rewrite seq_length; lia)
                | _ => progress subst_lets_in_goal
@@ -177,9 +168,9 @@ Section Compile.
         ssplit; try lia; [ | ].
       { repeat straightline'.
         subst_lets_in_goal.
-        match goal with
+        lazymatch goal with
         | Hcmd:context [ WeakestPrecondition.cmd _ ?impl ],
-               Hinv : context [Inv _ _ (snd ?stgst) (fst ?stgst)],
+               Hinv : context [Inv _ (snd ?stgst) (fst ?stgst)],
                       Hi : word.unsigned ?wi = Z.of_nat ?i
           |- WeakestPrecondition.cmd
                _ ?impl ?tr ?mem
@@ -188,14 +179,11 @@ Section Compile.
           specialize (Hcmd tr locals mem (fst stgst) (snd stgst)
                            (i-1) (word.sub wi (word.of_Z 1)));
             replace (S (i-1)) with i in Hcmd by lia;
-            destruct Hcmd
+            unshelve epose proof (Hcmd _ _ _); clear Hcmd
         end;
           [ eauto using word_to_nat_sub_1; lia .. | ].
         use_hyp_with_matching_cmd; [ ].
         cbv [postcondition_cmd] in *; sepsimpl; cleanup; subst.
-        match goal with H : map.getmany_of_list _ [] = Some _ |- _ =>
-                        inversion H; clear H; subst
-        end.
         repeat match goal with
                | |- exists _, _ => eexists; ssplit
                | _ => erewrite <-downto'_dependent_step;
@@ -216,5 +204,4 @@ Section Compile.
         end; subst.
         use_hyp_with_matching_cmd; subst_lets_in_goal; eauto. } }
   Qed.
-
 End Compile.
