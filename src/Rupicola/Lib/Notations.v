@@ -25,90 +25,81 @@ Notation
            body))
     (at level 200, only parsing).
 
-Definition with_name {A} (vars: list string) (expr: A) :=
-  expr.
-Notation nlet vars val body :=
-  (with_name vars (let x := val in body x)).
-Notation nlet_eq vars val body :=
-  (with_name vars (let x := val in body x eq_refl)).
+Notation nlet_eq_k P v :=
+  (forall x, x = v -> P x).
 
-Module BlockedLet.
-  Definition dep_body {A} {a0} P := forall (a : A) (Heq: a = a0), P a.
+Section BlockedLets.
+  Definition nlet_eq {A} {P: forall a: A, Type}
+             (vars: list string) (a0: A)
+             (body : forall (a : A) (Heq: a = a0), P a) : P a0 :=
+    let x := a0 in body x eq_refl.
 
-  Definition nlet {A P} (vars: list string) (val : A)
-             (body : forall a: A, P a) : P val :=
-    nlet vars val body.
+  Definition nlet {A T}
+             (vars: list string) (a0: A)
+             (body : A -> T) : T :=
+    let x := a0 in body x.
 
-  Definition nlet_eq {A P} (vars: list string) (val : A)
-             (body : dep_body P) : P val :=
-    nlet_eq vars val body.
-End BlockedLet.
+  Lemma nlet_as_nlet_eq {A T}
+        (vars: list string) (val: A)
+        (body : A -> T) :
+    nlet vars val body =
+    nlet_eq (P := fun _ => T) vars val (fun v _ => body v).
+  Proof. reflexivity. Qed.
+End BlockedLets.
 
 (* FIXME Error: Anomaly "Uncaught exception Failure("hd")." until 8.13 *)
 (* Notation "'let/n' x := val 'in' body" := *)
-(*   (BlockedLet.nlet [_] val (fun x => body)) *)
+(*   (nlet [_] val (fun x => body)) *)
 (*     (at level 200, x ident, body at level 200, *)
 (*      format "'[hv' 'let/n'  x  :=  val  'in' '//' body ']'", *)
 (*      only printing). *)
 
-(* Instantiating `P` in the notations below forces non-dependent types *)
-
 Notation "'let/n' x 'as' nm := val 'in' body" :=
-  (BlockedLet.nlet (P := fun _ => _)
-        [nm] val (fun x => body))
+  (nlet [nm] val (fun x => body))
     (at level 200, x ident, body at level 200,
      format "'[hv' 'let/n'  x  'as'  nm  :=  val  'in' '//' body ']'").
 
 Notation "'let/n' x 'as' nm 'eq:' Heq := val 'in' body" :=
-  (BlockedLet.nlet_eq (P := fun _ => _) (* Force non-dependent type *)
-        [nm] val (fun x Heq => body))
+  (nlet_eq [nm] val (fun x Heq => body))
     (at level 200, x ident, body at level 200,
      format "'[hv' 'let/n'  x  'as'  nm  'eq:' Heq  :=  val  'in' '//' body ']'").
 
 Notation "'let/n' x := val 'in' body" :=
-  (BlockedLet.nlet (P := fun _ => _) (* Force non-dependent type *)
-        [IdentParsing.TC.ident_to_string x]
-        val (fun x => body))
+  (nlet [IdentParsing.TC.ident_to_string x] val (fun x => body))
     (at level 200, x ident, body at level 200,
      only parsing).
 
 Notation "'let/n' x 'eq:' Heq := val 'in' body" :=
-  (BlockedLet.nlet_eq (P := fun _ => _) (* Force non-dependent type *)
-        [IdentParsing.TC.ident_to_string x]
-        val (fun x Heq => body))
+  (nlet_eq [IdentParsing.TC.ident_to_string x] val (fun x Heq => body))
     (at level 200, x ident, body at level 200,
      only parsing).
 
 (* Notation "'let/n' ( x , y ) := val 'in' body" := *)
-(*   (BlockedLet.nlet [_; _] val (fun '(x, y) => body)) *)
+(*   (nlet [_; _] val (fun '(x, y) => body)) *)
 (*     (at level 200, x ident, body at level 200, *)
 (*      format "'[hv' 'let/n'  ( x ,  y )  :=  val  'in' '//' body ']'", *)
 (*      only printing). *)
 
 Notation "'let/n' ( x , y ) 'as' ( nx , ny ) := val 'in' body" :=
-  (BlockedLet.nlet (P := fun _ => _) (* Force non-dependent type *)
-        [nx; ny] val (fun xy => let x := fst xy in let y := snd xy in body))
+  (nlet [nx; ny] val (fun xy => let x := fst xy in let y := snd xy in body))
     (at level 200, x ident, body at level 200,
      format "'[hv' 'let/n'  ( x ,  y )  'as'  ( nx ,  ny )  :=  val  'in' '//' body ']'").
 
 Notation "'let/n' ( x , y ) 'as' ( nx , ny ) 'eq:' Heq := val 'in' body" :=
-  (BlockedLet.nlet (P := fun _ => _) (* Force non-dependent type *)
-        [nx; ny] val (fun xy Heq => let x := fst xy in let y := snd xy in body))
+  (nlet [nx; ny] val (fun xy Heq => let x := fst xy in let y := snd xy in body))
     (at level 200, x ident, body at level 200,
      format "'[hv' 'let/n'  ( x ,  y )  'as'  ( nx ,  ny )  'eq:' Heq  :=  val  'in' '//' body ']'").
 
 Notation "'let/n' ( x , y ) 'eq:' Heq := val 'in' body" :=
-  (BlockedLet.nlet (P := fun _ => _) (* Force non-dependent type *)
-        [IdentParsing.TC.ident_to_string x;
-         IdentParsing.TC.ident_to_string y]
-        val (fun xy Heq => let x := fst xy in let y := snd xy in body))
+  (nlet_eq [IdentParsing.TC.ident_to_string x;
+           IdentParsing.TC.ident_to_string y]
+           val (fun xy Heq => let x := fst xy in let y := snd xy in body))
     (at level 200, x ident, y ident, body at level 200,
      only parsing).
 
 Notation "'let/n' ( x , y ) := val 'in' body" :=
-  (BlockedLet.nlet (P := fun _ => _) (* Force non-dependent type *)
-        [IdentParsing.TC.ident_to_string x;
-         IdentParsing.TC.ident_to_string y]
+  (nlet [IdentParsing.TC.ident_to_string x;
+        IdentParsing.TC.ident_to_string y]
         val (fun xy => let x := fst xy in let y := snd xy in body))
     (at level 200, x ident, y ident, body at level 200,
      only parsing).

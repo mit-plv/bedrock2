@@ -21,28 +21,28 @@ Section with_parameters.
   Definition get c := c.(data).
   Definition put v (c: cell) := {| data := v |}.
 
-  Lemma compile_get
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall R c c_ptr c_var (k: _ -> T) k_impl var,
+  Lemma compile_get {tr mem locals functions} (c: cell) :
+    let v := get c in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      R c_ptr c_var var,
 
       sep (cell_value c_ptr c) R mem ->
       map.get locals c_var = Some c_ptr ->
 
-      let v := (get c) in
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
           Locals := map.put locals var v;
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.set var (expr.load access_size.word (expr.var c_var)))
               k_impl
-      <{ pred (nlet [var] v k) }>.
+      <{ pred (nlet_eq [var] v k) }>.
   Proof.
     intros.
     repeat straightline.
@@ -60,15 +60,15 @@ Section with_parameters.
     eassumption.
   Qed.
 
-  Lemma compile_put
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall R c c_ptr c_var x x_var (k: _ -> T) k_impl,
+  Lemma compile_put {tr mem locals functions} x c:
+    let v := put x c in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      R c_ptr c_var x_var,
 
       sep (cell_value c_ptr c) R mem ->
       map.get locals c_var = Some c_ptr ->
       map.get locals x_var = Some x ->
 
-      let v := (put x c) in
       (let v := v in
        forall m,
          sep (cell_value c_ptr v) R m ->
@@ -77,14 +77,14 @@ Section with_parameters.
              Locals := locals;
              Functions := functions }>
           k_impl
-          <{ pred (k v) }>)) ->
+          <{ pred (k v eq_refl) }>)) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.store access_size.word (expr.var c_var) (expr.var x_var))
               k_impl
-      <{ pred (nlet [c_var] v k) }>.
+      <{ pred (nlet_eq [c_var] v k) }>.
   Proof.
     intros.
     unfold cell_value in *.
@@ -98,6 +98,7 @@ End with_parameters.
 Hint Unfold OneCell TwoCells : compiler.
 
 Ltac cell_compile_step :=
+  try simple apply compile_nlet_as_nlet_eq;
   first [simple eapply compile_get |
          simple eapply compile_put].
 

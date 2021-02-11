@@ -45,18 +45,18 @@ Section with_parameters.
     Datatypes.length (Vector.to_list v) = n.
   Proof. Admitted.
 
-  Lemma compile_nth {n}
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall (vector: Vector.t Semantics.word n) vector_ptr vector_var
-      R offset var (k: _ -> T) k_impl,
+  Lemma compile_nth {n} {tr mem locals functions}
+        (vector: Vector.t Semantics.word n) offset:
+    let v := Vector.nth vector offset in
+    let noffset := proj1_sig (Fin.to_nat offset) in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      R vector_ptr vector_var var,
 
       (Z.of_nat n < 2 ^ Semantics.width)%Z ->
 
       sep (WordVector vector_ptr vector) R mem ->
       map.get locals vector_var = Some vector_ptr ->
 
-      let v := Vector.nth vector offset in
-      let noffset := proj1_sig (Fin.to_nat offset) in
       (let v := v in
        forall m,
          sep (WordVector vector_ptr vector) R m ->
@@ -65,7 +65,7 @@ Section with_parameters.
             Locals := map.put locals var v;
             Functions := functions }>
          k_impl
-         <{ pred (k v) }>) ->
+         <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -78,7 +78,7 @@ Section with_parameters.
                               (expr.var vector_var)
                               (expr.literal ((word.unsigned (word.of_Z 8) * Z.of_nat noffset))))))
                k_impl)
-      <{ pred (nlet [var] v k) }>.
+      <{ pred (nlet_eq [var] v k) }>.
   Proof.
     intros.
     unfold WordVector in *.
@@ -107,11 +107,12 @@ Section with_parameters.
     apply (word.of_Z 0).
   Admitted.
 
-  Lemma compile_replace {n}
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall (vector: Vector.t Semantics.word n) vector_ptr vector_var
-      R value value_var offset
-      (k: _ -> T) k_impl,
+  Lemma compile_replace {n} {tr mem locals functions}
+        (vector: Vector.t Semantics.word n) offset value:
+    let v := (Vector.replace vector offset value) in
+    let noffset := proj1_sig (Fin.to_nat offset) in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      R vector_ptr vector_var value_var,
 
       (Z.of_nat n < 2 ^ Semantics.width)%Z ->
       sep (WordVector vector_ptr vector) R mem ->
@@ -119,8 +120,6 @@ Section with_parameters.
       map.get locals vector_var = Some vector_ptr ->
       map.get locals value_var = Some value ->
 
-      let v := (Vector.replace vector offset value) in
-      let noffset := proj1_sig (Fin.to_nat offset) in
       (let v := v in
        forall m,
          sep (WordVector vector_ptr v) R m ->
@@ -129,7 +128,7 @@ Section with_parameters.
             Locals := locals;
             Functions := functions }>
          k_impl
-         <{ pred (k v) }>) ->
+         <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -141,7 +140,7 @@ Section with_parameters.
                                                   Z.of_nat noffset))))
                          (expr.var value_var))
               k_impl
-      <{ pred (nlet [vector_var] v k) }>.
+      <{ pred (nlet_eq [vector_var] v k) }>.
   Proof.
     intros.
     unfold WordVector in *.
@@ -181,6 +180,7 @@ Section with_parameters.
       (sep (Packet pp p [])) ===> "decr" @ [pp] ===> Packet pp (decr_gallina p).
 
   Ltac ttl_compile_step :=
+    try simple apply compile_nlet_as_nlet_eq;
     first [ simple eapply compile_nth |
             simple eapply compile_replace ].
 

@@ -520,12 +520,12 @@ Section KVSwap.
     eapply compile_map_get with (var:="v1") (err:="err") (M:=annotate m);
       repeat compile_step.
 
-    { remove_map_annotations. (* FIXME *)
+    { cbn [fst snd].
+      remove_map_annotations. (* FIXME *)
       compile_step. }
     { compile_done. }
     { intros.
       clear_old_seps.
-      compile_unfold_head_binder.
       eapply compile_map_get with (var:="v2") (err:="err");
         try solve [repeat compile_step].
       all: try solve [repeat compile_step].

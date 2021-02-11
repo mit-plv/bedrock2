@@ -7,6 +7,23 @@ Section with_parameters.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok _}.
 
+  Lemma compile_nlet_as_nlet_eq {tr mem locals functions} {A} (v: A):
+    forall {T} {pred: T -> predicate} {k: A -> T}
+      vars cmd,
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd
+      <{ pred (nlet_eq (P := fun _ => T) vars v (fun x _ => k x)) }> ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd
+      <{ pred (nlet vars v k) }>.
+  Proof. intros; assumption. Qed.
+
   Lemma compile_skip {tr mem locals functions} {pred0: predicate} :
     pred0 tr mem locals ->
     (<{ Trace := tr;
@@ -17,111 +34,111 @@ Section with_parameters.
      <{ pred0 }>).
   Proof. repeat straightline; assumption. Qed.
 
-  Lemma compile_word_of_Z_constant
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall (z: Z) k k_impl,
-    forall var,
-      let v := word.of_Z z in
+  Lemma compile_word_of_Z_constant {tr mem locals functions} (z: Z) :
+    let v := word.of_Z z in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
+      var,
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
           Locals := map.put locals var v;
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.set var (expr.literal z)) k_impl
-      <{ pred (nlet [var] v k) }>.
+      <{ pred (nlet_eq [var] v k) }>.
   Proof. repeat straightline; eassumption. Qed.
 
-  Lemma compile_Z_constant
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall z k k_impl,
-    forall var,
-      let v := z in
+  Lemma compile_Z_constant {tr mem locals functions} z :
+    let v := z in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
+      var,
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
           Locals := map.put locals var (word.of_Z v);
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.set var (expr.literal z)) k_impl
-      <{ pred (nlet [var] v k) }>.
+      <{ pred (nlet_eq [var] v k) }>.
   Proof. repeat straightline; eassumption. Qed.
 
-  Lemma compile_nat_constant
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall n k k_impl,
-    forall var,
-      let v := n in
+  Lemma compile_nat_constant {tr mem locals functions} n :
+    let v := n in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
+      var,
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
           Locals := map.put locals var (word.of_Z (Z.of_nat v));
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.set var (expr.literal (Z.of_nat n))) k_impl
-      <{ pred (nlet [var] v k) }>.
+      <{ pred (nlet_eq [var] v k) }>.
   Proof. repeat straightline; eassumption. Qed.
 
   Notation b2w b :=
     (word.of_Z (Z.b2z b)).
 
-  Lemma compile_bool_constant
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall b k k_impl,
-    forall var,
-      let v := b in
+  Lemma compile_bool_constant {tr mem locals functions} b :
+    let v := b in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
+      var,
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
           Locals := map.put locals var (b2w v);
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.set var (expr.literal (Z.b2z v))) k_impl
-      <{ pred (nlet [var] v k) }>.
+      <{ pred (nlet_eq [var] v k) }>.
   Proof. repeat straightline; eassumption. Qed.
 
   (* FIXME generalize *)
-  Lemma compile_xorb
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall x x_var y y_var k k_impl,
-    forall var,
+  Lemma compile_xorb {tr mem locals functions} x y :
+    let v := xorb x y in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
+      x_var y_var var,
       map.get locals x_var = Some (b2w x) ->
       map.get locals y_var = Some (b2w y) ->
-      let v := xorb x y in
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
           Locals := map.put locals var (b2w v);
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.set var (expr.op bopname.xor (expr.var x_var) (expr.var y_var)))
               k_impl
-      <{ pred (k v) }>.
+      <{ pred (k v eq_refl) }>.
   Proof.
     intros.
     repeat straightline.
@@ -138,27 +155,27 @@ Section with_parameters.
     assumption.
   Qed.
 
-  Lemma compile_add
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall x x_var y y_var k k_impl,
-    forall var,
+  Lemma compile_add {tr mem locals functions} x y :
+    let v := word.add x y in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} k_impl
+      x_var y_var var,
       map.get locals x_var = Some x ->
       map.get locals y_var = Some y ->
-      let v := word.add x y in
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
           Locals := map.put locals var v;
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.set var (expr.op bopname.add (expr.var x_var) (expr.var y_var)))
               k_impl
-      <{ pred (nlet [var] v k) }>.
+      <{ pred (nlet_eq [var] v k) }>.
   Proof.
     repeat straightline.
     eexists; split; eauto.
@@ -168,69 +185,72 @@ Section with_parameters.
     eexists; split; eauto.
   Qed.
 
-  Lemma compile_eqb
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall x x_var y y_var k k_impl,
-    forall var,
+  Lemma compile_eqb {tr mem locals functions} x y :
+    let v := word.eqb x y in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} k_impl
+      x_var y_var var,
       map.get locals x_var = Some x ->
       map.get locals y_var = Some y ->
-      let v := word.eqb x y in
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
           Locals := map.put locals var (b2w v);
           Functions := functions }>
        k_impl
-       <{ pred (nlet [var] v k) }>) ->
+       <{ pred (nlet_eq [var] v k) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.set var (expr.op bopname.eq (expr.var x_var) (expr.var y_var)))
               k_impl
-      <{ pred (nlet [var] v k) }>.
+      <{ pred (nlet_eq [var] v k) }>.
   Proof.
     intros. repeat straightline'.
     subst_lets_in_goal.
-    rewrite word.unsigned_eqb in *. cbv [Z.b2z] in *.
-    destruct_one_match; eauto.
+    remember (word.eqb x y) as b in *.
+    rewrite word.unsigned_eqb in Heqb; subst b.
+    cbv [Z.b2z] in *; destruct_one_match; eauto.
   Qed.
 
   (* TODO: make more types *)
-  Lemma compile_copy_local
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall v0 k k_impl
+  Lemma compile_copy_local {tr mem locals functions} v0 :
+    let v := v0 in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
       src_var dst_var,
       map.get locals src_var = Some v0 ->
-      let v := v0 in
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
           Locals := map.put locals dst_var v;
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.set dst_var (expr.var src_var)) k_impl
-      <{ pred (nlet [dst_var] v k) }>.
+      <{ pred (nlet_eq [dst_var] v k) }>.
   Proof.
     repeat straightline'; eauto.
   Qed.
 
-  Lemma compile_sig
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall {A} P (x: A) Px k cmd vars,
-      let v := exist P x Px in
-      (let Px := Px in
+  Lemma compile_sig_as_nlet_eq {tr mem locals functions} {A} P0 (x0: A) Px0:
+    let v := exist P0 x0 Px0 in
+    forall {T} {pred: T -> predicate} {k: {x: A | P0 x} -> T}
+      vars cmd,
+      (let Px := Px0 in
+       let cast {x0'} Heq := eq_rect_r (fun x => P0 x) Px Heq in
        <{ Trace := tr;
           Memory := mem;
           Locals := locals;
           Functions := functions }>
-      cmd (* FIXME should move `x` to the context, but how to do so without breaking the next steps? *)
-       <{ pred (nlet vars x (fun _ => k (exist P x Px))) }>) ->
+       cmd
+       <{ pred (nlet_eq (P := fun _ => T) vars x0
+                        (fun x0' Heq => k (exist P0 x0' (cast Heq)))) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -243,9 +263,9 @@ Section with_parameters.
 
   (* N.B. this should *not* be added to any compilation tactics, since it will
      always apply; it needs to be applied manually *)
-  Lemma compile_unset
-        {tr mem locals functions} {pred0: predicate} :
-    forall var cmd,
+  Lemma compile_unset {tr mem locals functions} :
+    forall {pred0: predicate}
+      var cmd,
       <{ Trace := tr;
          Memory := mem;
          Locals := map.remove locals var;
@@ -264,8 +284,8 @@ Section with_parameters.
 
   Definition DefaultValue (T: Type) (t: T) := T.
 
-  Lemma compile_unsets
-        {tr mem locals functions} {pred0: predicate} :
+  Lemma compile_unsets {tr mem locals functions}
+        {pred0: predicate} :
     forall (vars: DefaultValue (list string) []) cmd,
       (<{ Trace := tr;
           Memory := mem;
@@ -289,29 +309,30 @@ Section with_parameters.
 
   (* N.B. should only be added to compilation tactics that solve their subgoals,
      since this applies to any shape of goal *)
-  Lemma compile_copy_pointer
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop)
-      x_var x_ptr (x : data) k k_impl var R,
+  Lemma compile_copy_pointer {tr mem locals functions} {data} (x: data) :
+    let v := x in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
+      (Data : Semantics.word -> data -> Semantics.mem -> Prop) R
+      x_var x_ptr var,
 
       (* This assumption is used to drive the compiler, but it's not used by the proof *)
       (Data x_ptr x * R)%sep mem ->
       map.get locals x_var = Some x_ptr ->
 
-      let v := x in
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
           Locals := map.put locals var x_ptr;
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.set var (expr.var x_var)) k_impl
-      <{ pred (nlet [var] v k) }>.
+      <{ pred (nlet_eq [var] v k) }>.
   Proof.
     unfold postcondition_cmd.
     intros.
@@ -319,16 +340,16 @@ Section with_parameters.
     eassumption.
   Qed.
 
-  Lemma compile_if_word (* FIXME generalize to arbitrary ifs *)
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall t_var f_var (t f : word) (c : bool) c_var
-      k k_impl var,
+ (* FIXME generalize to arbitrary ifs *)
+  Lemma compile_if_word {tr mem locals functions} (c: bool) (t f : word) :
+    let v := if c then t else f in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
+      t_var f_var c_var var,
 
       map.get locals c_var = Some (b2w c) ->
       map.get locals t_var = Some t ->
       map.get locals f_var = Some f ->
-
-      let v := if c then t else f in
 
       (let v := v in
        <{ Trace := tr;
@@ -336,7 +357,7 @@ Section with_parameters.
           Locals := map.put locals var v;
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -346,7 +367,7 @@ Section with_parameters.
                   (cmd.set var (expr.var t_var))
                   (cmd.set var (expr.var f_var)))
         k_impl
-      <{ pred (nlet [var] v k) }>.
+      <{ pred (nlet_eq [var] v k) }>.
   Proof.
     intros.
     repeat straightline'.
@@ -359,11 +380,12 @@ Section with_parameters.
       intros. repeat straightline'. eauto. }
   Qed.
 
-  Lemma compile_if_pointer
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-    forall {data} (Data : Semantics.word -> data -> Semantics.mem -> Prop) Rt Rf
-      t_var f_var t_ptr f_ptr (t f : data) (c : bool) c_var
-      k k_impl var,
+  Lemma compile_if_pointer {tr mem locals functions} {data} (c: bool) (t f: data) :
+    let v := if c then t else f in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
+      (Data : Semantics.word -> data -> Semantics.mem -> Prop) Rt Rf
+      t_var f_var t_ptr f_ptr c_var var,
 
       (Data t_ptr t * Rt)%sep mem ->
       (Data f_ptr f * Rf)%sep mem ->
@@ -372,14 +394,13 @@ Section with_parameters.
       map.get locals t_var = Some t_ptr ->
       map.get locals f_var = Some f_ptr ->
 
-      let v := if c then t else f in
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
           Locals := map.put locals var (if c then t_ptr else f_ptr);
           Functions := functions }>
        k_impl
-       <{ pred (k v) }>) ->
+       <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -389,7 +410,7 @@ Section with_parameters.
                   (cmd.set var (expr.var t_var))
                   (cmd.set var (expr.var f_var)))
         k_impl
-      <{ pred (nlet [var] v k) }>.
+      <{ pred (nlet_eq [var] v k) }>.
   Proof.
     intros.
     unfold postcondition_cmd.
@@ -571,13 +592,6 @@ Section with_parameters.
   Qed.
 End with_parameters.
 
-(* FIXME move *)
-Ltac term_head x :=
-  match x with
-  | ?f _ => term_head f
-  | _ => x
-  end.
-
 Ltac compile_setup_unfold_spec :=
   match goal with
   | [  |- context[?spec] ] =>
@@ -669,27 +683,13 @@ Ltac compile_find_post :=
   end.
 
 Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: bool.
-Hint Extern 2 (IsRupicolaBinding (BlockedLet.nlet _ _ _)) => exact true : typeclass_instances.
-Hint Extern 2 (IsRupicolaBinding (BlockedLet.nlet_eq _ _ _)) => exact true : typeclass_instances.
+Hint Extern 2 (IsRupicolaBinding (nlet _ _ _)) => exact true : typeclass_instances.
+Hint Extern 2 (IsRupicolaBinding (nlet_eq _ _ _)) => exact true : typeclass_instances.
 Hint Extern 2 (IsRupicolaBinding (dlet _ _)) => exact true : typeclass_instances.
 Hint Extern 5 (IsRupicolaBinding _) => exact false : typeclass_instances.
 
 Ltac is_rupicola_binding term :=
   constr:(match tt return IsRupicolaBinding term with _ => _ end).
-
-Ltac unfold_head term :=
-  (** Unfold the head of `term`.
-      As a(n unfortunate) side-effect, this function also
-      β-reduces the whole term. **)
-  let rec loop t :=
-      lazymatch t with
-      | ?f ?x => let f := unfold_head f in uconstr:(f x)
-      | ?f0 => let f0 := (eval red in f0) in uconstr:(f0)
-      end in
-  let term := loop term in
-  let term := type_term term in
-  let term := (eval cbv beta in term) in
-  term.
 
 Ltac compile_unfold_head_binder' hd :=
   (** Use `compile_unfold_head_binding` for debugging **)
@@ -697,24 +697,12 @@ Ltac compile_unfold_head_binder' hd :=
   | (?pred, ?x0) => (* FIXME should just unfold x in all cases that report isunifiable, but that does too much *)
     lazymatch goal with
     | [  |- context C [pred x0] ] =>
-      lazymatch x0 with
-      | BlockedLet.nlet ?vars ?v ?body =>
-        let C' := context C [pred (nlet vars v body)] in
+      match is_rupicola_binding x0 with
+      | true =>
+        let x0 := unfold_head x0 in
+        let C' := context C [pred x0] in
         change C'
-      | BlockedLet.nlet_eq ?vars ?v ?body =>
-        let C' := context C [pred (nlet_eq vars v body)] in
-        change C'
-      | _ =>
-        (* Technically, this case should also work for nlet; but it does a full
-           beta-reduction on the term, so we use the custom approach above
-           first *)
-        match is_rupicola_binding x0 with
-        | true =>
-          let x0 := unfold_head x0 in
-          let C' := context C [pred x0] in
-          change C'
-        | false => fail 0 x0 "does not look like a let-binding"
-        end
+      | false => fail 0 x0 "does not look like a let-binding"
       end
     end
   end.
@@ -728,6 +716,7 @@ Ltac compile_unfold_head_binder :=
 Ltac compile_basics :=
   gen_sym_inc;                  (* FIXME remove? *)
   let name := gen_sym_fetch "v" in
+  try simple apply compile_nlet_as_nlet_eq;
   first [simple eapply compile_word_of_Z_constant |
          simple eapply compile_Z_constant |
          simple eapply compile_nat_constant |
@@ -738,7 +727,6 @@ Ltac compile_basics :=
          simple eapply compile_if_word |
          simple eapply compile_if_pointer ].
 
-(* Rebound by other tactics *)
 Ltac compile_custom := fail.
 
 Ltac compile_cleanup :=
@@ -793,13 +781,13 @@ Ltac compile_binding :=
 
 Ltac compile_triple :=
   lazymatch compile_find_post with
-  | ?p =>
+  | (_, ?hd) =>
     try clear_old_seps;
     (* Look for a binding: if there is none, finish compiling *)
-    tryif compile_unfold_head_binder' p then
-      compile_binding
-    else
-      compile_unify_post
+    match is_rupicola_binding hd with
+    | true => compile_binding
+    | false => compile_unify_post
+    end
   end.
 
 Ltac compile_step :=

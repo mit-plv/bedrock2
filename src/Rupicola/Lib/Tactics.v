@@ -234,3 +234,23 @@ Ltac push_map_remove :=
   repeat first [ rewrite map.remove_put_diff by congruence
                | rewrite map.remove_put_same ];
   rewrite map.remove_empty.
+
+Ltac term_head x :=
+  match x with
+  | ?f _ => term_head f
+  | _ => x
+  end.
+
+Ltac unfold_head term :=
+  (** Unfold the head of `term`.
+      As a(n unfortunate) side-effect, this function also
+      β-reduces the whole term. **)
+  let rec loop t :=
+      lazymatch t with
+      | ?f ?x => let f := unfold_head f in uconstr:(f x)
+      | ?f0 => let f0 := (eval red in f0) in uconstr:(f0)
+      end in
+  let term := loop term in
+  let term := type_term term in
+  let term := (eval cbv beta in term) in
+  term.

@@ -448,40 +448,40 @@ Section with_parameters.
            (array scalar (word.of_Z (Memory.bytes_per_word Semantics.width))
                   a_ptr (to_list (put a idx val)))).
 
-    Lemma compile_word_array_get
-          {tr mem locals functions} {T} {pred: T -> predicate}
-          R (k: _ -> T) (k_impl : cmd) (var : string):
-
-      (Z.to_nat (word.unsigned (to_word idx)) < Datatypes.length (to_list a))%nat ->
-
-      sep (repr a_ptr a) R mem ->
-      map.get locals a_var = Some a_ptr ->
-      map.get locals idx_var = Some (to_word idx) ->
-
+    Lemma compile_word_array_get {tr mem locals functions}:
       let v := get a idx in
-      (let v := v in
-       <{ Trace := tr;
-          Memory := mem;
-          Locals := map.put locals var v;
-          Functions := functions }>
-       k_impl
-       <{ pred (k v) }>) ->
-      <{ Trace := tr;
-         Memory := mem;
-         Locals := locals;
-         Functions := functions }>
-      cmd.seq
-        (cmd.set
-           var
-           (expr.load
-              access_size.word
-              (expr.op bopname.add
-                       (expr.var a_var)
-                       (expr.op bopname.mul
-                                (expr.literal (Memory.bytes_per_word Semantics.width))
-                                (expr.var idx_var)))))
-        k_impl
-      <{ pred (nlet [var] v k) }>.
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl : cmd}
+        R (var : string),
+
+        (Z.to_nat (word.unsigned (to_word idx)) < Datatypes.length (to_list a))%nat ->
+
+        sep (repr a_ptr a) R mem ->
+        map.get locals a_var = Some a_ptr ->
+        map.get locals idx_var = Some (to_word idx) ->
+
+        (let v := v in
+         <{ Trace := tr;
+            Memory := mem;
+            Locals := map.put locals var v;
+            Functions := functions }>
+         k_impl
+         <{ pred (k v eq_refl) }>) ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd.seq
+          (cmd.set
+             var
+             (expr.load
+                access_size.word
+                (expr.op bopname.add
+                         (expr.var a_var)
+                         (expr.op bopname.mul
+                                  (expr.literal (Memory.bytes_per_word Semantics.width))
+                                  (expr.var idx_var)))))
+          k_impl
+        <{ pred (nlet_eq [var] v k) }>.
     Proof.
       cbn; intros Hlt *.
       pose proof word.unsigned_range (to_word idx) as (Hge & _).
@@ -493,20 +493,22 @@ Section with_parameters.
       eexists; split; [ | reflexivity ].
 
       eapply load_word_of_sep.
-      seprewrite_in Hrw H.        (* FIXME seprewrite shouldn't rename *)
+      seprewrite_in Hrw H0.        (* FIXME seprewrite shouldn't rename *)
       (* FIXME: BEDROCK2: Adding an extra "_" at the end shelves an inequality *)
       once (seprewrite_in open_constr:(array_index_nat_inbounds
-                                         _ _ _ _ (Z.to_nat (word.unsigned (to_word idx)))) H4).
+                                         _ _ _ _ (Z.to_nat (word.unsigned (to_word idx)))) H5).
       { assumption. }
 
-      rewrite word.ring_morph_mul, Z2Nat.id, !word.of_Z_unsigned in H3 by assumption.
+      rewrite word.ring_morph_mul, Z2Nat.id, !word.of_Z_unsigned in H4 by assumption.
       rewrite Hget0.
       ecancel_assumption.
     Qed.
 
-    Lemma compile_word_array_put
-          {tr mem locals functions} {T} {pred: T -> predicate}
-          R (k: _ -> T) (k_impl: cmd) (var: string) :
+    Lemma compile_word_array_put {tr mem locals functions} :
+      let v := put a idx val in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl: cmd}
+        R (var: string),
+
       (Z.to_nat (word.unsigned (to_word idx)) < Datatypes.length (to_list a))%nat ->
 
       sep (repr a_ptr a) R mem ->
@@ -514,16 +516,15 @@ Section with_parameters.
       map.get locals idx_var = Some (to_word idx) ->
       map.get locals val_var = Some val ->
 
-      let a := (put a idx val) in
-      (let a := a in
+      (let v := v in
        forall mem',
-         sep (repr a_ptr a) R mem' ->
+         sep (repr a_ptr v) R mem' ->
          <{ Trace := tr;
             Memory := mem';
             Locals := locals;
             Functions := functions }>
          k_impl
-         <{ pred (k a) }>) ->
+         <{ pred (k v eq_refl) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -538,7 +539,7 @@ Section with_parameters.
                              (expr.var idx_var)))
            (expr.var val_var))
         k_impl
-      <{ pred (nlet [var] a k) }>.
+      <{ pred (nlet_eq [var] v k) }>.
     Proof.
       cbn; intros Hlt *.
       pose proof word.unsigned_range (to_word idx) as (Hge & _).
@@ -550,17 +551,17 @@ Section with_parameters.
 
       { eexists; split; cbn.
         { eexists; split; [ eassumption | reflexivity ]. }
-        { seprewrite_in Hrw H.
+        { seprewrite_in Hrw H0.
           once (seprewrite_in
                   open_constr:(array_index_nat_inbounds
-                                 _ _ (default := default) _ _ (Z.to_nat (word.unsigned (to_word idx)))) H5).
+                                 _ _ (default := default) _ _ (Z.to_nat (word.unsigned (to_word idx)))) H6).
           { assumption. }
 
           eapply store_word_of_sep.
-          { rewrite word.ring_morph_mul, Z2Nat.id, !word.of_Z_unsigned in H4 by assumption.
+          { rewrite word.ring_morph_mul, Z2Nat.id, !word.of_Z_unsigned in H5 by assumption.
             ecancel_assumption. }
           { intros m Hm.
-            apply H3.
+            apply H4.
             seprewrite Hrw_put.
             seprewrite
               open_constr:(array_index_nat_inbounds
@@ -648,24 +649,23 @@ Section with_parameters.
                  addr (to_list a)).
     Proof. reflexivity. Qed.
 
-    Lemma compile_word_vectorarray_get {n}
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-      forall R (a: VectorArray.t word n) (a_ptr: address) a_var
-        idx idx_var pr (k: _ -> T) k_impl var,
-        (* (pr: (word.unsigned idx < Z.of_nat n)%Z), FIXME if we want this eqn, then indices need to be Z *)
+    Lemma compile_word_vectorarray_get {n} {tr mem locals functions}
+          (a: VectorArray.t word n) idx pr:
+      let v := VectorArray.get a idx pr in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+        R (a_ptr: address) a_var idx_var var,
 
         sep (word_vectorarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
         map.get locals idx_var = Some idx ->
 
-        let v := VectorArray.get a idx pr in
         (let v := v in
          <{ Trace := tr;
             Memory := mem;
             Locals := map.put locals var v;
             Functions := functions }>
          k_impl
-         <{ pred (k v) }>) ->
+         <{ pred (k v eq_refl) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -681,7 +681,7 @@ Section with_parameters.
                                   (expr.literal (Memory.bytes_per_word Semantics.width))
                                   (expr.var idx_var)))))
           k_impl
-        <{ pred (nlet [var] v k) }>.
+        <{ pred (nlet_eq [var] v k) }>.
     Proof.
       intros.
       change v with
@@ -693,26 +693,26 @@ Section with_parameters.
         simpl. assumption. }
     Qed.
 
-    Lemma compile_word_vectorarray_put {n}
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-      forall R (a: VectorArray.t word n) a_ptr a_var
-        idx idx_var val val_var pr (k: _ -> T) k_impl var,
+    Lemma compile_word_vectorarray_put {n} {tr mem locals functions}
+          (a: VectorArray.t word n) idx pr val:
+      let v := VectorArray.put a idx pr val in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+        R a_ptr a_var idx_var val_var var,
 
         sep (word_vectorarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
         map.get locals idx_var = Some idx ->
         map.get locals val_var = Some val ->
 
-        let a := (VectorArray.put a idx pr val) in
-        (let a := a in
+        (let v := v in
          forall mem',
-           sep (word_vectorarray_value a_ptr a) R mem' ->
+           sep (word_vectorarray_value a_ptr v) R mem' ->
            <{ Trace := tr;
               Memory := mem';
               Locals := locals;
               Functions := functions }>
            k_impl
-           <{ pred (k a) }>) ->
+           <{ pred (k v eq_refl) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -727,12 +727,12 @@ Section with_parameters.
                                (expr.var idx_var)))
              (expr.var val_var))
           k_impl
-        <{ pred (nlet [var] a k) }>.
+        <{ pred (nlet_eq [var] v k) }>.
     Proof.
       intros.
-      change a0 with
-          ((fun a idx val => VectorArray.put a (proj1_sig idx) (proj2_sig idx) val)
-             a (exist (fun idx => cast idx < n)%nat idx pr) val).
+      change v with
+          ((fun v idx val => VectorArray.put a (proj1_sig idx) (proj2_sig idx) val)
+             v (exist (fun idx => cast idx < n)%nat idx pr) val).
       eapply (compile_word_array_put
                 to_list to_word
                 (fun a idx => get a idx)
@@ -795,10 +795,11 @@ Section with_parameters.
                  addr (to_list a)).
     Proof. reflexivity. Qed.
 
-    Lemma compile_word_listarray_get
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-      forall R (a: ListArray.t word) (a_ptr: address) a_var
-        idx idx_var (k: _ -> T) k_impl var,
+    Lemma compile_word_listarray_get {tr mem locals functions}
+          (a: ListArray.t word) idx:
+      let v := ListArray.get a idx in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+        R (a_ptr: address) a_var idx_var var,
 
         sep (word_listarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -806,14 +807,13 @@ Section with_parameters.
 
         word.unsigned idx < Z.of_nat (Datatypes.length (id a)) ->
 
-        let v := ListArray.get a idx in
         (let v := v in
          <{ Trace := tr;
             Memory := mem;
             Locals := map.put locals var v;
             Functions := functions }>
          k_impl
-         <{ pred (k v) }>) ->
+         <{ pred (k v eq_refl) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -829,7 +829,7 @@ Section with_parameters.
                                   (expr.literal (Memory.bytes_per_word Semantics.width))
                                   (expr.var idx_var)))))
           k_impl
-        <{ pred (nlet [var] v k) }>.
+        <{ pred (nlet_eq [var] v k) }>.
     Proof.
       intros.
       eapply (compile_word_array_get id id);
@@ -838,9 +838,11 @@ Section with_parameters.
       unfold id in *; lia.
     Qed.
 
-    Lemma compile_word_listarray_put
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-      forall R a a_ptr a_var idx idx_var val val_var (k: _ -> T) k_impl var,
+    Lemma compile_word_listarray_put {tr mem locals functions}
+          (a: ListArray.t word) idx val:
+      let v := ListArray.put a idx val in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+        R (a_ptr: address) a_var idx_var val_var var,
 
         sep (word_listarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -849,16 +851,15 @@ Section with_parameters.
 
         (word.unsigned idx < Z.of_nat (List.length a))%Z ->
 
-        let a := (ListArray.put a idx val) in
-        (let a := a in
+        (let v := v in
          forall mem',
-           sep (word_listarray_value a_ptr a) R mem' ->
+           sep (word_listarray_value a_ptr v) R mem' ->
            <{ Trace := tr;
               Memory := mem';
               Locals := locals;
               Functions := functions }>
            k_impl
-           <{ pred (k a) }>) ->
+           <{ pred (k v eq_refl) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -873,7 +874,7 @@ Section with_parameters.
                                (expr.var idx_var)))
              (expr.var val_var))
           k_impl
-        <{ pred (nlet [var] a k) }>.
+        <{ pred (nlet_eq [var] v k) }>.
     Proof.
       intros.
       eapply (compile_word_array_put id id);
@@ -919,10 +920,11 @@ Section with_parameters.
       ecancel_assumption.
     Qed.
 
-    Lemma compile_word_sizedlistarray_get {sz}
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-      forall R (a: ListArray.t word) (a_ptr: address) a_var
-        idx idx_var (k: _ -> T) k_impl var,
+    Lemma compile_word_sizedlistarray_get {sz} {tr mem locals functions}
+          (a: ListArray.t word) idx:
+      let v := ListArray.get a idx in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+        R (a_ptr: address) a_var idx_var var,
 
         sep (word_sizedlistarray_value a_ptr sz a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -930,14 +932,13 @@ Section with_parameters.
 
         word.unsigned idx < Z.of_nat sz ->
 
-        let v := ListArray.get a idx in
         (let v := v in
          <{ Trace := tr;
             Memory := mem;
             Locals := map.put locals var v;
             Functions := functions }>
          k_impl
-         <{ pred (k v) }>) ->
+         <{ pred (k v eq_refl) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -953,7 +954,7 @@ Section with_parameters.
                                   (expr.literal (Memory.bytes_per_word Semantics.width))
                                   (expr.var idx_var)))))
           k_impl
-        <{ pred (nlet [var] v k) }>.
+        <{ pred (nlet_eq [var] v k) }>.
     Proof.
       intros.
       eapply (compile_word_array_get id id _ (fun addr a => repr addr sz a));
@@ -966,9 +967,11 @@ Section with_parameters.
         lia.
     Qed.
 
-    Lemma compile_word_sizedlistarray_put {sz}
-        {tr mem locals functions} {T} {pred: T -> predicate} :
-      forall R a a_ptr a_var idx idx_var val val_var (k: _ -> T) k_impl var,
+    Lemma compile_word_sizedlistarray_put {sz} {tr mem locals functions}
+          (a: ListArray.t word) idx val:
+      let v := ListArray.put a idx val in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+        R (a_ptr: address) a_var idx_var val_var var,
 
         sep (word_sizedlistarray_value a_ptr sz a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -977,16 +980,15 @@ Section with_parameters.
 
         (word.unsigned idx < Z.of_nat sz)%Z ->
 
-        let a := (ListArray.put a idx val) in
-        (let a := a in
+        (let v := v in
          forall mem',
-           sep (word_sizedlistarray_value a_ptr sz a) R mem' ->
+           sep (word_sizedlistarray_value a_ptr sz v) R mem' ->
            <{ Trace := tr;
               Memory := mem';
               Locals := locals;
               Functions := functions }>
            k_impl
-           <{ pred (k a) }>) ->
+           <{ pred (k v eq_refl) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -1001,7 +1003,7 @@ Section with_parameters.
                                (expr.var idx_var)))
              (expr.var val_var))
           k_impl
-        <{ pred (nlet [var] a k) }>.
+        <{ pred (nlet_eq [var] v k) }>.
     Proof.
       intros.
       eapply (compile_word_array_put id id _ _ (fun (addr: word) a => repr addr sz a));
@@ -1019,98 +1021,6 @@ Section with_parameters.
     Qed.
   End WordSizedListArray.
 
-  Lemma compile_add :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-      tr functions T (pred: T -> predicate)
-      x x_var y y_var (k: _ -> T) k_impl var,
-      map.get locals x_var = Some x ->
-      map.get locals y_var = Some y ->
-      let v := word.add x y in
-      (let v := v in
-       <{ Trace := tr;
-          Memory := mem;
-          Locals := map.put locals var v;
-          Functions := functions }>
-       k_impl
-       <{ pred (k v) }>) ->
-      <{ Trace := tr;
-         Memory := mem;
-         Locals := locals;
-         Functions := functions }>
-      cmd.seq (cmd.set var (expr.op bopname.add (expr.var x_var) (expr.var y_var)))
-              k_impl
-      <{ pred (nlet [var] v k) }>.
-  Proof.
-    intros.
-    repeat straightline.
-    eexists; split.
-    { repeat straightline.
-        exists x; split; try eassumption.
-        repeat straightline.
-        exists y; split; try eassumption.
-        reflexivity. }
-    red.
-    eassumption.
-  Qed.
-
-  (* Lemma compile_ranged_for : *)
-  (*   forall (locals: Semantics.locals) (mem: Semantics.mem) *)
-  (*     A T *)
-  (*     (loop_pred: nat -> (bool * A) -> predicate) *)
-  (*     (k_pred: T -> predicate) *)
-  (*     tr functions *)
-  (*     vars *)
-  (*     (from to step: nat) *)
-  (*     (from_var to_var step_var: string) *)
-  (*     body body_impl *)
-  (*     (k: _ -> T) k_impl *)
-  (*     (a0: A), *)
-  (*     loop_pred from (true, a0) tr mem locals -> *)
-  (*     (* fixme make a shorter alias for this *) *)
-  (*     option_map word.unsigned (map.get locals from_var) = Some (Z.of_nat from) -> *)
-  (*     option_map word.unsigned (map.get locals to_var) = Some (Z.of_nat to) -> *)
-  (*     option_map word.unsigned (map.get locals step_var) = Some (Z.of_nat step) -> *)
-  (*     let v := ranged_for from to step body a0 in *)
-  (*     ((* loop body *) *)
-  (*      forall tr mem locals from', *)
-  (*        let a := ranged_for from from' step body a0 in *)
-  (*        loop_pred from' (true, a) tr mem locals -> *)
-  (*        (<{ Trace := tr; *)
-  (*            Memory := mem; *)
-  (*            Locals := locals; *)
-  (*            Functions := functions }> *)
-  (*         body_impl *)
-  (*         <{ loop_pred from' (body from' a) }>)) -> *)
-  (*     (let v := v in *)
-  (*      forall tr mem locals, *)
-  (*        loop_pred to (false, v) tr mem locals -> *)
-  (*        (<{ Trace := tr; *)
-  (*            Memory := mem; *)
-  (*            Locals := locals; *)
-  (*            Functions := functions }> *)
-  (*         k_impl *)
-  (*         <{ k_pred (k v) }>)) -> *)
-  (*     (let v := v in *)
-  (*      <{ Trace := tr; *)
-  (*         Memory := mem; *)
-  (*         Locals := locals; *)
-  (*         Functions := functions }> *)
-  (*      cmd.seq *)
-  (*        (cmd.while *)
-  (*           (expr.op bopname.ltu (expr.var from_var) (expr.var to_var)) *)
-  (*           (cmd.seq *)
-  (*              (cmd.set from_var *)
-  (*                       (expr.op bopname.add *)
-  (*                                (expr.var from_var) *)
-  (*                                (expr.literal 1))) *)
-  (*              body_impl)) *)
-  (*        k_impl *)
-  (*      <{ k_pred (nlet vars v k) }>). *)
-  (* Proof. *)
-  (*   cbv zeta. *)
-  (*   repeat straightline'. *)
-  (* Admitted. *)
-
   Definition ranged_for_widen_bounds {from idx from' to} :
     from <= idx < from' ->
     from' < to ->
@@ -1123,23 +1033,24 @@ Section with_parameters.
                 to_Z l <= w <= to_Z h ->
                 to_Z (word.of_Z w) = w).
 
-    Lemma compile_ranged_for_w {A T}:
-      forall tr mem locals functions
+    Lemma compile_ranged_for_w A {tr mem locals functions}
+          (from to step: word) body (a0: A) :
+      let v := ranged_for_w from to step to_Z_of_Z body a0 in
+      forall {P} {pred: P v -> predicate}
         (loop_pred: word -> A -> predicate)
-        (k_pred: T -> predicate)
-        (from to step: word)
-        (from_var to_var step_var: string)
-        (a0: A) vars
-        body body_impl
-        k k_impl,
+        {k: nlet_eq_k P v} {k_impl} {body_impl}
+        (from_var to_var step_var: string) vars,
+
         let lp from '(tok, acc) tr mem locals :=
             loop_pred (ExitToken.branch tok (word.sub to (word.of_Z 1)) from) acc tr mem locals in
+
         (forall from a0 tr mem locals,
             loop_pred from a0 tr mem locals ->
             map.getmany_of_list locals [from_var; to_var; step_var] =
             Some [from; to; step]) ->
+
         loop_pred from a0 tr mem locals ->
-        let v := ranged_for_w from to step to_Z_of_Z body a0 in
+
         ((* loop body *)
           let lp := lp in
           forall tr mem locals from'
@@ -1164,7 +1075,7 @@ Section with_parameters.
                Locals := locals;
                Functions := functions }>
             k_impl
-            <{ k_pred (k v) }>)) ->
+            <{ pred (k v eq_refl) }>)) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -1179,23 +1090,23 @@ Section with_parameters.
                                   (expr.var from_var)
                                   (expr.literal 1)))))
           k_impl
-        <{ k_pred (nlet vars v k) }>.
+        <{ pred (nlet_eq vars v k) }>.
     Proof.
       cbv zeta.
       repeat straightline'.
     Admitted.
   End Generic.
 
-  Definition compile_ranged_for_u {A T} :=
-    compile_ranged_for_w word_unsigned_of_Z_bracketed (A := A) (T := T).
+  Definition compile_ranged_for_u :=
+    compile_ranged_for_w word_unsigned_of_Z_bracketed.
 
-  Definition compile_ranged_for_s {A T} :=
-    compile_ranged_for_w word_signed_of_Z_bracketed (A := A) (T := T).
+  Definition compile_ranged_for_s :=
+    compile_ranged_for_w word_signed_of_Z_bracketed.
 
    Ltac compile_custom ::=
+  try simple apply compile_nlet_as_nlet_eq;
      first [simple eapply compile_get |
             simple eapply compile_put |
-            (* simple eapply compile_sig | *)
             simple eapply compile_word_vectorarray_get |
             simple eapply compile_word_vectorarray_put |
             simple eapply compile_word_sizedlistarray_get |
@@ -1287,6 +1198,7 @@ Section with_parameters.
 
      repeat compile_step.
 
+     simple apply compile_nlet_as_nlet_eq.
      eapply compile_ranged_for_u with (loop_pred := (fun idx a2 tr' mem' locals' =>
          tr' = tr /\
          locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
@@ -1342,6 +1254,7 @@ Section with_parameters.
 
      repeat compile_step.
 
+     simple apply compile_nlet_as_nlet_eq.
      eapply compile_ranged_for_u with (loop_pred := (fun idx a2 tr' mem' locals' =>
          tr' = tr /\
          locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
@@ -1397,6 +1310,7 @@ Section with_parameters.
 
      repeat compile_step.
 
+     simple apply compile_nlet_as_nlet_eq.
      eapply compile_ranged_for_u with (loop_pred := (fun idx a2 tr' mem' locals' =>
          tr' = tr /\
          locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
@@ -1405,6 +1319,7 @@ Section with_parameters.
           word_listarray_value a2_ptr a2 * R)%sep mem')).
 
      Ltac compile_custom ::=
+       simple apply compile_nlet_as_nlet_eq;
        first [simple eapply compile_get |
               simple eapply compile_put |
               simple eapply compile_word_vectorarray_get |
@@ -1423,12 +1338,12 @@ Section with_parameters.
        subst a.
        apply ranged_for_u_ind.
        - lia.
-       - intros; unfold BlockedLet.nlet, with_name; cbn.
+       - intros; unfold nlet; cbn.
          rewrite ListArray.put_length.
          assumption. }
    Qed.
 
-   Program Definition incr_gallina_spec (c: cell) : cell :=
+  Program Definition incr_gallina_spec (c: cell) : cell :=
       let/n one := word.of_Z 1 in
       let/n from := word.of_Z 3 in
       let/n to := word.of_Z 5 in
@@ -1473,7 +1388,7 @@ Section with_parameters.
 
      repeat compile_step.
 
-     compile_unfold_head_binder;
+     simple apply compile_nlet_as_nlet_eq.
      eapply compile_ranged_for_u with (loop_pred := (fun idx acc tr' mem' locals' =>
          let '(tick, c) := acc in
          tr' = tr /\
@@ -1539,6 +1454,7 @@ Section with_parameters.
 
      repeat compile_step.
 
+     simple apply compile_nlet_as_nlet_eq.
      unfold ranged_for_s;
        simple eapply compile_ranged_for_s with (loop_pred := (fun idx a2 tr' mem' locals' =>
          tr' = tr /\
@@ -1552,7 +1468,7 @@ End with_parameters.
 
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.NotationsInConstr.
-Eval cbv [unsizedlist_memcpy_body vect_memcpy_s_body fold_right] in sizedlist_memcpy_body.
+Eval cbv [sizedlist_memcpy_body unsizedlist_memcpy_body vect_memcpy_s_body fold_right noskips is_skip] in sizedlist_memcpy_body.
 
 Require bedrock2.BasicC64Semantics.
 
