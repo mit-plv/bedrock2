@@ -20,12 +20,12 @@ Section with_parameters.
           ===>
           (OneCell c_ptr (incr_gallina_spec c))).
 
-    Derive body SuchThat
+  Derive body SuchThat
          (let incr := ("incr", (["c"], [], body)) in
           program_logic_goal_for
             incr
             (ltac:(let x := program_logic_goal_for_function
-                              incr (@nil string) in
+                             incr (@nil string) in
                    exact x)))
          As body_correct.
   Proof.

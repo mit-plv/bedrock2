@@ -664,24 +664,67 @@ Hint Unfold postcondition_cmd : compiler.
 
 Ltac compile_find_post :=
   lazymatch goal with
-  | |- context [ WeakestPrecondition.cmd _ _ _ _ _ (?pred ?term) ] => constr:((pred, term))
-  end.
-
-Ltac compile_get_binding :=
-  lazymatch compile_find_post with
-  | (_, nlet _ ?v _) => v
-  | (_, dlet ?v _) => v
+  | |- WeakestPrecondition.cmd _ _ _ _ _ (?pred ?term) =>
+    constr:((pred, term))
   end.
 
 Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: bool.
-Hint Extern 2 (IsRupicolaBinding (nlet _ _ _)) => exact true : typeclass_instances.
+Hint Extern 2 (IsRupicolaBinding (BlockedLet.nlet _ _ _)) => exact true : typeclass_instances.
+Hint Extern 2 (IsRupicolaBinding (BlockedLet.nlet_eq _ _ _)) => exact true : typeclass_instances.
 Hint Extern 2 (IsRupicolaBinding (dlet _ _)) => exact true : typeclass_instances.
 Hint Extern 5 (IsRupicolaBinding _) => exact false : typeclass_instances.
 
-Ltac compile_unifiable_p hd :=
-  constr:(match tt return IsRupicolaBinding hd with _ => _ end).
+Ltac is_rupicola_binding term :=
+  constr:(match tt return IsRupicolaBinding term with _ => _ end).
 
-(* Using [simple apply] ensures that Coq doesn't unfold [nlet]s *)
+Ltac unfold_head term :=
+  (** Unfold the head of `term`.
+      As a(n unfortunate) side-effect, this function also
+      β-reduces the whole term. **)
+  let rec loop t :=
+      lazymatch t with
+      | ?f ?x => let f := unfold_head f in uconstr:(f x)
+      | ?f0 => let f0 := (eval red in f0) in uconstr:(f0)
+      end in
+  let term := loop term in
+  let term := type_term term in
+  let term := (eval cbv beta in term) in
+  term.
+
+Ltac compile_unfold_head_binder' hd :=
+  (** Use `compile_unfold_head_binding` for debugging **)
+  lazymatch compile_find_post with
+  | (?pred, ?x0) => (* FIXME should just unfold x in all cases that report isunifiable, but that does too much *)
+    lazymatch goal with
+    | [  |- context C [pred x0] ] =>
+      lazymatch x0 with
+      | BlockedLet.nlet ?vars ?v ?body =>
+        let C' := context C [pred (nlet vars v body)] in
+        change C'
+      | BlockedLet.nlet_eq ?vars ?v ?body =>
+        let C' := context C [pred (nlet_eq vars v body)] in
+        change C'
+      | _ =>
+        (* Technically, this case should also work for nlet; but it does a full
+           beta-reduction on the term, so we use the custom approach above
+           first *)
+        match is_rupicola_binding x0 with
+        | true =>
+          let x0 := unfold_head x0 in
+          let C' := context C [pred x0] in
+          change C'
+        | false => fail 0 x0 "does not look like a let-binding"
+        end
+      end
+    end
+  end.
+
+(* Useful for debugging *)
+Ltac compile_unfold_head_binder :=
+  let p := compile_find_post in
+  compile_unfold_head_binder' p.
+
+(* Using [simple apply] ensures that Coq doesn't peek past the first binding [nlet]s *)
 Ltac compile_basics :=
   gen_sym_inc;                  (* FIXME remove? *)
   let name := gen_sym_fetch "v" in
@@ -695,6 +738,7 @@ Ltac compile_basics :=
          simple eapply compile_if_word |
          simple eapply compile_if_pointer ].
 
+(* Rebound by other tactics *)
 Ltac compile_custom := fail.
 
 Ltac compile_cleanup :=
@@ -749,13 +793,13 @@ Ltac compile_binding :=
 
 Ltac compile_triple :=
   lazymatch compile_find_post with
-  | (_, ?hd) =>
+  | ?p =>
     try clear_old_seps;
     (* Look for a binding: if there is none, finish compiling *)
-    match compile_unifiable_p hd with
-    | true => compile_binding
-    | false => compile_unify_post
-    end
+    tryif compile_unfold_head_binder' p then
+      compile_binding
+    else
+      compile_unify_post
   end.
 
 Ltac compile_step :=
@@ -766,7 +810,9 @@ Ltac compile_step :=
 Ltac compile_done :=
   match goal with
   | [ |- DefaultValue ?T ?t ] => exact t
-  | _ => idtac "Compilation incomplete"
+  | _ =>
+    idtac "Compilation incomplete.";
+    idtac "You may need to add new compilation lemmas to `compile_custom` or new `Hint Extern`s for `IsRupicolaBinding` to `typeclass_instances`."
   end.
 
 (* only apply compile_step when repeat_compile_step solves all the side

@@ -450,7 +450,7 @@ Section with_parameters.
 
     Lemma compile_word_array_get
           {tr mem locals functions} {T} {pred: T -> predicate}
-          R (k: nlet_body _ _ T) (k_impl : cmd) (var : string):
+          R (k: _ -> T) (k_impl : cmd) (var : string):
 
       (Z.to_nat (word.unsigned (to_word idx)) < Datatypes.length (to_list a))%nat ->
 
@@ -465,7 +465,7 @@ Section with_parameters.
           Locals := map.put locals var v;
           Functions := functions }>
        k_impl
-       <{ pred (k v eq_refl) }>) ->
+       <{ pred (k v) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -506,7 +506,7 @@ Section with_parameters.
 
     Lemma compile_word_array_put
           {tr mem locals functions} {T} {pred: T -> predicate}
-          R (k: nlet_body _ _ T) (k_impl: cmd) (var: string) :
+          R (k: _ -> T) (k_impl: cmd) (var: string) :
       (Z.to_nat (word.unsigned (to_word idx)) < Datatypes.length (to_list a))%nat ->
 
       sep (repr a_ptr a) R mem ->
@@ -523,7 +523,7 @@ Section with_parameters.
             Locals := locals;
             Functions := functions }>
          k_impl
-         <{ pred (k a eq_refl) }>) ->
+         <{ pred (k a) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -651,7 +651,7 @@ Section with_parameters.
     Lemma compile_word_vectorarray_get {n}
         {tr mem locals functions} {T} {pred: T -> predicate} :
       forall R (a: VectorArray.t word n) (a_ptr: address) a_var
-        idx idx_var pr (k: nlet_body _ _ T) k_impl var,
+        idx idx_var pr (k: _ -> T) k_impl var,
         (* (pr: (word.unsigned idx < Z.of_nat n)%Z), FIXME if we want this eqn, then indices need to be Z *)
 
         sep (word_vectorarray_value a_ptr a) R mem ->
@@ -665,7 +665,7 @@ Section with_parameters.
             Locals := map.put locals var v;
             Functions := functions }>
          k_impl
-         <{ pred (k v eq_refl) }>) ->
+         <{ pred (k v) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -696,7 +696,7 @@ Section with_parameters.
     Lemma compile_word_vectorarray_put {n}
         {tr mem locals functions} {T} {pred: T -> predicate} :
       forall R (a: VectorArray.t word n) a_ptr a_var
-        idx idx_var val val_var pr (k: nlet_body _ _ T) k_impl var,
+        idx idx_var val val_var pr (k: _ -> T) k_impl var,
 
         sep (word_vectorarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -712,7 +712,7 @@ Section with_parameters.
               Locals := locals;
               Functions := functions }>
            k_impl
-           <{ pred (k a eq_refl) }>) ->
+           <{ pred (k a) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -798,7 +798,7 @@ Section with_parameters.
     Lemma compile_word_listarray_get
         {tr mem locals functions} {T} {pred: T -> predicate} :
       forall R (a: ListArray.t word) (a_ptr: address) a_var
-        idx idx_var (k: nlet_body _ _ T) k_impl var,
+        idx idx_var (k: _ -> T) k_impl var,
 
         sep (word_listarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -813,7 +813,7 @@ Section with_parameters.
             Locals := map.put locals var v;
             Functions := functions }>
          k_impl
-         <{ pred (k v eq_refl) }>) ->
+         <{ pred (k v) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -840,7 +840,7 @@ Section with_parameters.
 
     Lemma compile_word_listarray_put
         {tr mem locals functions} {T} {pred: T -> predicate} :
-      forall R a a_ptr a_var idx idx_var val val_var (k: nlet_body _ _ T) k_impl var,
+      forall R a a_ptr a_var idx idx_var val val_var (k: _ -> T) k_impl var,
 
         sep (word_listarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -858,7 +858,7 @@ Section with_parameters.
               Locals := locals;
               Functions := functions }>
            k_impl
-           <{ pred (k a eq_refl) }>) ->
+           <{ pred (k a) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -922,7 +922,7 @@ Section with_parameters.
     Lemma compile_word_sizedlistarray_get {sz}
         {tr mem locals functions} {T} {pred: T -> predicate} :
       forall R (a: ListArray.t word) (a_ptr: address) a_var
-        idx idx_var (k: nlet_body _ _ T) k_impl var,
+        idx idx_var (k: _ -> T) k_impl var,
 
         sep (word_sizedlistarray_value a_ptr sz a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -937,7 +937,7 @@ Section with_parameters.
             Locals := map.put locals var v;
             Functions := functions }>
          k_impl
-         <{ pred (k v eq_refl) }>) ->
+         <{ pred (k v) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -968,7 +968,7 @@ Section with_parameters.
 
     Lemma compile_word_sizedlistarray_put {sz}
         {tr mem locals functions} {T} {pred: T -> predicate} :
-      forall R a a_ptr a_var idx idx_var val val_var (k: nlet_body _ _ T) k_impl var,
+      forall R a a_ptr a_var idx idx_var val val_var (k: _ -> T) k_impl var,
 
         sep (word_sizedlistarray_value a_ptr sz a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -986,7 +986,7 @@ Section with_parameters.
               Locals := locals;
               Functions := functions }>
            k_impl
-           <{ pred (k a eq_refl) }>) ->
+           <{ pred (k a) }>) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -1022,7 +1022,7 @@ Section with_parameters.
   Lemma compile_add :
     forall (locals: Semantics.locals) (mem: Semantics.mem)
       tr functions T (pred: T -> predicate)
-      x x_var y y_var (k: nlet_body _ _ T) k_impl var,
+      x x_var y y_var (k: _ -> T) k_impl var,
       map.get locals x_var = Some x ->
       map.get locals y_var = Some y ->
       let v := word.add x y in
@@ -1063,7 +1063,7 @@ Section with_parameters.
   (*     (from to step: nat) *)
   (*     (from_var to_var step_var: string) *)
   (*     body body_impl *)
-  (*     (k: nlet_body _ _ T) k_impl *)
+  (*     (k: _ -> T) k_impl *)
   (*     (a0: A), *)
   (*     loop_pred from (true, a0) tr mem locals -> *)
   (*     (* fixme make a shorter alias for this *) *)
@@ -1420,15 +1420,15 @@ Section with_parameters.
           Using a vector type instead keeps the information in the type and the statement of put specifies that the length is preserved.
           Putting that info in the representation predicates has a similar effect.
           Without this, we need to perform induction explicitly. *)
-       subst a0.
+       subst a.
        apply ranged_for_u_ind.
        - lia.
-       - intros; unfold nlet; cbn.
+       - intros; unfold BlockedLet.nlet, with_name; cbn.
          rewrite ListArray.put_length.
          assumption. }
    Qed.
 
-  Program Definition incr_gallina_spec (c: cell) : cell :=
+   Program Definition incr_gallina_spec (c: cell) : cell :=
       let/n one := word.of_Z 1 in
       let/n from := word.of_Z 3 in
       let/n to := word.of_Z 5 in
@@ -1473,6 +1473,7 @@ Section with_parameters.
 
      repeat compile_step.
 
+     compile_unfold_head_binder;
      eapply compile_ranged_for_u with (loop_pred := (fun idx acc tr' mem' locals' =>
          let '(tick, c) := acc in
          tr' = tr /\
@@ -1502,13 +1503,13 @@ Section with_parameters.
    Next Obligation.
      pose proof word.half_modulus_pos.
      unfold cast, Convertible_word_Nat.
-     rewrite word.signed_of_Z, word.swrap_inrange in H1 by lia.
+     rewrite word.signed_of_Z, word.swrap_inrange in H0 by lia.
      rewrite word.signed_gz_eq_unsigned; lia.
    Qed.
    Next Obligation.
      pose proof word.half_modulus_pos.
      unfold cast, Convertible_word_Nat.
-     rewrite word.signed_of_Z, word.swrap_inrange in l by lia.
+     rewrite word.signed_of_Z, word.swrap_inrange in H0 by lia.
      rewrite word.signed_gz_eq_unsigned; lia.
    Qed.
 
