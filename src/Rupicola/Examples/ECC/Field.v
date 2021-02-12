@@ -166,12 +166,12 @@ Section Compile.
       bounded_by bin_xbounds x ->
       bounded_by bin_ybounds y ->
 
-      (Bignum x_ptr x * Bignum y_ptr y * Rin)%sep mem ->
+      map.get locals out_var = Some out_ptr ->
       (Placeholder out_ptr out * Rout)%sep mem ->
 
+      (Bignum x_ptr x * Bignum y_ptr y * Rin)%sep mem ->
       map.get locals x_var = Some x_ptr ->
       map.get locals y_var = Some y_ptr ->
-      map.get locals out_var = Some out_ptr ->
 
       (let v := v in
        forall out m (Heq: eval out mod M = v),
@@ -208,11 +208,11 @@ Section Compile.
       (_: spec_of name) functions ->
       bounded_by un_xbounds x ->
 
-      (Bignum x_ptr x * Rin)%sep mem ->
+      map.get locals out_var = Some out_ptr ->
       (Placeholder out_ptr out * Rout)%sep mem ->
 
+      (Bignum x_ptr x * Rin)%sep mem ->
       map.get locals x_var = Some x_ptr ->
-      map.get locals out_var = Some out_ptr ->
 
       (let v := v in
        forall out m (Heq: eval out mod M = v),
@@ -281,10 +281,11 @@ Section Compile.
       R (out : bignum) x_ptr x_var out_ptr out_var,
 
       spec_of_bignum_copy functions ->
-      (Bignum x_ptr x * Placeholder out_ptr out * R)%sep mem ->
 
-      map.get locals x_var = Some x_ptr ->
       map.get locals out_var = Some out_ptr ->
+
+      (Bignum x_ptr x * Placeholder out_ptr out * R)%sep mem ->
+      map.get locals x_var = Some x_ptr ->
 
       (let v := v in
        forall m,
@@ -318,8 +319,10 @@ Section Compile.
       R (wx : word) (out : bignum) out_ptr out_var,
 
       spec_of_bignum_literal functions ->
-      (Placeholder out_ptr out * R)%sep mem ->
+
       map.get locals out_var = Some out_ptr ->
+      (Placeholder out_ptr out * R)%sep mem ->
+
       word.unsigned wx = x ->
 
       (let v := v in
@@ -362,8 +365,8 @@ Section Compile.
     let v := ((op2 (op1 x y mod M) z)) mod M in
     forall {T} {pred: T -> predicate} {k: Z -> T} {k_impl}
       Rout out out_ptr out_var,
-      (Placeholder out_ptr out * Rout)%sep mem ->
       map.get locals out_var = Some out_ptr ->
+      (Placeholder out_ptr out * Rout)%sep mem ->
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
@@ -388,8 +391,8 @@ Section Compile.
     let v := ((op2 z (op1 x y mod M))) mod M in
     forall {T} {pred: T -> predicate} {k: Z -> T} {k_impl}
       Rout out out_ptr out_var,
-      (Placeholder out_ptr out * Rout)%sep mem ->
       map.get locals out_var = Some out_ptr ->
+      (Placeholder out_ptr out * Rout)%sep mem ->
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
