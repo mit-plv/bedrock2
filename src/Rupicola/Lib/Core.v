@@ -454,6 +454,68 @@ Module word.
   End __.
 End word.
 
+Section Semantics.
+  Context {semantics : Semantics.parameters}
+          {semantics_ok : Semantics.parameters_ok _}.
+
+  Lemma WeakestPrecondition_weaken :
+    forall cmd {functions} (p1 p2: _ -> _ -> _ -> Prop),
+      (forall tr mem locals, p1 tr mem locals -> p2 tr mem locals) ->
+      forall tr mem locals,
+        WeakestPrecondition.program
+          functions cmd tr mem locals p1 ->
+        WeakestPrecondition.program
+          functions cmd tr mem locals p2.
+  Proof. intros; eapply Proper_program; eassumption. Qed.
+
+  Lemma getmany_list_map l :
+    forall a vs (P :_ -> Prop),
+      P vs ->
+      map.getmany_of_list l a = Some vs ->
+      WeakestPrecondition.list_map (WeakestPrecondition.get l) a P.
+  Proof.
+    unfold map.getmany_of_list;
+      induction a; cbn in *; intros.
+    all: repeat (destruct_one_match_hyp; [|discriminate]).
+    all: match goal with H: Some _ = Some _ |- _ => inversion H; subst end.
+    all: try red; eauto.
+  Qed.
+
+  (* FIXME generalize *)
+  Definition postcondition_func
+             {semantics : Semantics.parameters}
+             (spec : list word -> Semantics.mem -> Prop)
+             R tr :=
+    (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (rets : list word) =>
+       tr = tr'
+       /\ sep (spec rets) R mem').
+
+  Definition postcondition_func_norets
+             {semantics : Semantics.parameters} spec R tr :=
+    postcondition_func (fun r => sep (emp (r = nil)) (spec r)) R tr.
+
+  (* TODO: Remove locals_post *)
+  Definition postcondition_cmd
+             {semantics : Semantics.parameters}
+             locals_post spec retvars R tr :=
+    (fun (tr' : Semantics.trace) (mem' : Semantics.mem)
+       (locals : Semantics.locals) =>
+       tr = tr'
+       /\ locals_post locals
+       /\ exists rets,
+           map.getmany_of_list locals retvars = Some rets
+           /\ sep (spec rets) R mem').
+
+  Lemma predicate_trivial
+        {tr: Semantics.trace}
+        {mem: Semantics.mem}
+        {locals: Semantics.locals} {T} t0:
+    (fun (_: T) tr' mem' locals' =>
+       tr' = tr /\ mem' = mem /\ locals' = locals)
+      t0 tr mem locals.
+  Proof. intuition. Qed.
+End Semantics.
+
 (* TODO: should be upstreamed to coqutil *)
 Module Z.
   Lemma lxor_xorb a b : Z.lxor (Z.b2z a) (Z.b2z b) = Z.b2z (xorb a b).

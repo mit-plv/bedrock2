@@ -6,6 +6,7 @@ Notation "'let/d' x := val 'in' body" :=
     (at level 200, x ident, body at level 200,
      format "'[hv' 'let/d'  x  :=  val  'in' '//' body ']'").
 
+(* FIXME remove let/d? *)
 (* TODO: figure out recursive notation for this *)
 Notation
       "'let/d' '''(' x , y ')' := val 'in' body" :=
@@ -107,30 +108,6 @@ Notation "'let/n' ( x , y ) := val 'in' body" :=
 Infix "~>" := scalar (at level 40, only parsing).
 
 Notation "[[ locals ]]" := ({| value := locals; _value_ok := _ |}) (only printing).
-
-Definition postcondition_func
-           {semantics : Semantics.parameters}
-           (spec : list word -> Semantics.mem -> Prop)
-           R tr :=
-  (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (rets : list word) =>
-     tr = tr'
-     /\ sep (spec rets) R mem').
-
-Definition postcondition_func_norets
-           {semantics : Semantics.parameters} spec R tr :=
-  postcondition_func (fun r => sep (emp (r = nil)) (spec r)) R tr.
-
-(* TODO: see if all uses of locals_post can be rephrased using retvars *)
-Definition postcondition_cmd
-           {semantics : Semantics.parameters}
-           locals_post spec retvars R tr :=
-  (fun (tr' : Semantics.trace) (mem' : Semantics.mem)
-       (locals : Semantics.locals) =>
-     tr = tr'
-     /\ locals_post locals
-     /\ exists rets,
-         map.getmany_of_list locals retvars = Some rets
-         /\ sep (spec rets) R mem').
 
 Declare Scope old.
 Notation "'find' body 'implementing' spec 'and-returning' retvars 'and-locals-post' locals_post 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=

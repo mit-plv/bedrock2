@@ -34,6 +34,30 @@ Section with_parameters.
      <{ pred0 }>).
   Proof. repeat straightline; assumption. Qed.
 
+  Lemma compile_seq {tr mem locals functions} :
+    forall {pred0 pred1: predicate} {c0 c1},
+      (<{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       c0
+       <{ pred0 }>) ->
+      (forall tr mem locals,
+         pred0 tr mem locals ->
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       c1
+       <{ pred1 }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq c0 c1
+      <{ pred1 }>.
+  Proof. intros; eapply WeakestPrecondition_weaken; eauto. Qed.
+
   Lemma compile_word_of_Z_constant {tr mem locals functions} (z: Z) :
     let v := word.of_Z z in
     forall {P} {pred: P v -> predicate}
@@ -307,6 +331,7 @@ Section with_parameters.
       assumption.
   Qed.
 
+  (* FIXME find a way to automate the application of these two lemmas *)
   (* N.B. should only be added to compilation tactics that solve their subgoals,
      since this applies to any shape of goal *)
   Lemma compile_copy_pointer {tr mem locals functions} {data} (x: data) :
@@ -334,27 +359,41 @@ Section with_parameters.
       cmd.seq (cmd.set var (expr.var x_var)) k_impl
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
-    unfold postcondition_cmd.
     intros.
     repeat straightline'.
     eassumption.
   Qed.
 
- (* FIXME generalize to arbitrary ifs *)
-  Lemma compile_if_word {tr mem locals functions} (c: bool) (t f : word) :
+  Lemma compile_if {tr mem locals functions} (c: bool) {A} (t f: A) :
     let v := if c then t else f in
-    forall {P} {pred: P v -> predicate}
-      {k: nlet_eq_k P v} {k_impl}
-      t_var f_var c_var var,
+    forall {P} {pred: P v -> predicate} {val_pred: A -> predicate}
+      {k: nlet_eq_k P v} {k_impl t_impl f_impl}
+      c_var vars,
 
       map.get locals c_var = Some (b2w c) ->
-      map.get locals t_var = Some t ->
-      map.get locals f_var = Some f ->
 
       (let v := v in
+       c = true ->
        <{ Trace := tr;
           Memory := mem;
-          Locals := map.put locals var v;
+          Locals := locals;
+          Functions := functions }>
+       t_impl
+       <{ val_pred t }>) ->
+      (let v := v in
+       c = false ->
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       f_impl
+       <{ val_pred f }>) ->
+      (let v := v in
+       forall tr mem locals,
+         val_pred v tr mem locals ->
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
           Functions := functions }>
        k_impl
        <{ pred (k v eq_refl) }>) ->
@@ -363,67 +402,16 @@ Section with_parameters.
          Locals := locals;
          Functions := functions }>
       cmd.seq
-        (cmd.cond (expr.var c_var)
-                  (cmd.set var (expr.var t_var))
-                  (cmd.set var (expr.var f_var)))
+        (cmd.cond (expr.var c_var) t_impl f_impl)
         k_impl
-      <{ pred (nlet_eq [var] v k) }>.
+      <{ pred (nlet_eq vars v k) }>.
   Proof.
-    intros.
+    intros * Hc Ht Hf Hk.
     repeat straightline'.
-    split_if ltac:(repeat straightline').
-    { subst_lets_in_goal. rewrite word.unsigned_of_Z_b2z.
-      cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
-      intros. repeat straightline'. eauto. }
-    { subst_lets_in_goal. rewrite word.unsigned_of_Z_b2z.
-      cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
-      intros. repeat straightline'. eauto. }
-  Qed.
-
-  Lemma compile_if_pointer {tr mem locals functions} {data} (c: bool) (t f: data) :
-    let v := if c then t else f in
-    forall {P} {pred: P v -> predicate}
-      {k: nlet_eq_k P v} {k_impl}
-      (Data : Semantics.word -> data -> Semantics.mem -> Prop) Rt Rf
-      t_var f_var t_ptr f_ptr c_var var,
-
-      (Data t_ptr t * Rt)%sep mem ->
-      (Data f_ptr f * Rf)%sep mem ->
-
-      map.get locals c_var = Some (b2w c) ->
-      map.get locals t_var = Some t_ptr ->
-      map.get locals f_var = Some f_ptr ->
-
-      (let v := v in
-       <{ Trace := tr;
-          Memory := mem;
-          Locals := map.put locals var (if c then t_ptr else f_ptr);
-          Functions := functions }>
-       k_impl
-       <{ pred (k v eq_refl) }>) ->
-      <{ Trace := tr;
-         Memory := mem;
-         Locals := locals;
-         Functions := functions }>
-      cmd.seq
-        (cmd.cond (expr.var c_var)
-                  (cmd.set var (expr.var t_var))
-                  (cmd.set var (expr.var f_var)))
-        k_impl
-      <{ pred (nlet_eq [var] v k) }>.
-  Proof.
-    intros.
-    unfold postcondition_cmd.
-
-    intros.
-    repeat straightline'.
-    split_if ltac:(repeat straightline').
-    { subst_lets_in_goal. rewrite word.unsigned_of_Z_b2z.
-      cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
-      intros. repeat straightline'. eauto. }
-    { subst_lets_in_goal. rewrite word.unsigned_of_Z_b2z.
-      cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
-      intros. repeat straightline'. eauto. }
+    split_if ltac:(repeat straightline'); subst_lets_in_goal.
+    all: rewrite word.unsigned_of_Z_b2z; cbv [Z.b2z].
+    all: destruct_one_match; try congruence; [ ]; intros.
+    all: eapply compile_seq; eauto.
   Qed.
 
   Section NoSkips.
@@ -459,16 +447,6 @@ Section with_parameters.
       | _ => c
       end.
 
-    Lemma WeakestPrecondition_weaken :
-      forall cmd {functions} (p1 p2: _ -> _ -> _ -> Prop),
-        (forall tr mem locals, p1 tr mem locals -> p2 tr mem locals) ->
-        forall tr mem locals,
-          WeakestPrecondition.program
-            functions cmd tr mem locals p1 ->
-          WeakestPrecondition.program
-            functions cmd tr mem locals p2.
-    Proof. intros; eapply Proper_program; eassumption. Qed.
-
     Lemma noskips_correct:
       forall cmd {tr mem locals functions} post,
         WeakestPrecondition.program functions
@@ -489,27 +467,26 @@ Section with_parameters.
                | [  |- exists _, _ ] => eexists
                | [ H: context[WeakestPrecondition.cmd] |- context[WeakestPrecondition.cmd] ] => solve [eapply H; eauto]
                | _ => unfold WeakestPrecondition.program in * || cbn || intros ? || eauto
-               end;
-        (destruct (is_skip (noskips cmd1)) eqn:H1;
-         [ apply is_skip_sound in H1; rewrite H1 in * |
-           apply is_skip_complete in H1;
+               end.
+
+      all: destruct (is_skip (noskips cmd1)) eqn:H1;
+        [ apply is_skip_sound in H1; rewrite H1 in * |
+          apply is_skip_complete in H1;
            (destruct (is_skip (noskips cmd2)) eqn:H2;
             [ apply is_skip_sound in H2; rewrite H2 in * |
-              apply is_skip_complete in H2 ]) ]).
+              apply is_skip_complete in H2 ]) ].
 
       - apply IHcmd1, IHcmd2; eassumption.
       - eapply WeakestPrecondition_weaken, IHcmd1; eauto.
       - eapply WeakestPrecondition_weaken.
-        * intros * H0. eapply IHcmd2. exact H0.
+        * intros * H0. eapply IHcmd2. apply H0.
         * eapply IHcmd1. eassumption.
 
       - eapply IHcmd1 in H. eapply IHcmd2. eassumption.
-      - eapply IHcmd1 in H. eapply WeakestPrecondition_weaken in H.
-        * apply H.
-        * intros; eapply IHcmd2; eauto.
-      - apply IHcmd1 in H. eapply WeakestPrecondition_weaken in H.
-        * apply H.
-        * intros * H0%IHcmd2. apply H0.
+      - eapply IHcmd1 in H. eapply WeakestPrecondition_weaken in H; [ apply H |].
+        intros; eapply IHcmd2; eauto.
+      - apply IHcmd1 in H. eapply WeakestPrecondition_weaken in H; [ apply H |].
+        intros * H0%IHcmd2. apply H0.
     Qed.
   End NoSkips.
 
@@ -540,30 +517,6 @@ Section with_parameters.
                     inversion H; clear H; subst
     end.
     eauto.
-  Qed.
-
-  Lemma getmany_list_map l :
-    forall a vs (P :_ -> Prop),
-      map.getmany_of_list l a = Some vs ->
-      P vs ->
-      WeakestPrecondition.list_map (WeakestPrecondition.get l) a P.
-  Proof.
-    induction a; cbn [WeakestPrecondition.list_map
-                        WeakestPrecondition.list_map_body]; intros;
-      match goal with
-      | H : map.getmany_of_list _ [] = _ |- _ => cbn in H; congruence
-      | H : map.getmany_of_list _ (_ :: _) = _ |- _ =>
-        pose proof (map.getmany_of_list_exists_elem
-                      _ _ _ _ ltac:(eauto using in_eq) H);
-          cbn in H
-      end.
-      cleanup; eexists; ssplit; [ eassumption | ].
-      repeat destruct_one_match_hyp; try congruence; [ ].
-      repeat match goal with
-             | H : Some _ = Some _ |- _ =>
-               inversion H; clear H; subst
-             end.
-      eapply IHa; eauto.
   Qed.
 
   Lemma postcondition_func_postcondition_cmd
@@ -724,8 +677,7 @@ Ltac compile_basics :=
          simple eapply compile_xorb |
          simple eapply compile_add |
          simple eapply compile_eqb |
-         simple eapply compile_if_word |
-         simple eapply compile_if_pointer ].
+         simple eapply compile_if ].
 
 Ltac compile_custom := fail.
 
