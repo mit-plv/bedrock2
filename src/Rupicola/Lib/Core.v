@@ -188,7 +188,7 @@ Module map.
              m0 m1 :=
     (forall k, map.get (map := map0) m0 k = map.get (map := map1) m1 k).
 
-  Instance map_eq_refl {K V} {map: map.map K V} {map_ok: map.ok map} :
+  Instance eq_refl {K V} {map: map.map K V} {map_ok: map.ok map} :
     RelationClasses.Reflexive (@map_eq K V map map map_ok map_ok).
   Proof. unfold map_eq; constructor; congruence. Qed.
 
@@ -258,26 +258,13 @@ Module map.
     - apply IHks, remove_proper; assumption.
   Qed.
 
-  Lemma ext_rev  {K V} {map: map.map K V} {map_ok: map.ok map} :
+  Lemma ext_eq {K V} {map: map.map K V} {map_ok: map.ok map} :
+    forall m0 m1, map_eq m0 m1 -> m0 = m1.
+  Proof. apply map.map_ext. Qed.
+
+  Lemma ext_rev {K V} {map: map.map K V} {map_ok: map.ok map} :
     forall m0 m1, m0 = m1 -> map_eq m0 m1.
   Proof. intros; subst; reflexivity. Qed.
-
-  Lemma remove_many_concretize {K V}
-        {map0 map1: map.map K V}
-        {map_ok0: map.ok map0} {map_ok1: map.ok map1}
-        {key_eqb: K -> K -> bool}
-        {key_eq_dec : EqDecider key_eqb} :
-    forall (m0 m'0: map.rep (map := map0)) (m1 m'1: map.rep (map := map1)) ks,
-      map_eq m0 m1 ->
-      map_eq m'0 m'1 ->
-      remove_many m1 ks = m'1 ->
-      remove_many m0 ks = m'0.
-  Proof.
-    intros * Heq H'eq H1.
-    apply ext_rev in H1.
-    apply map.map_ext; change (map_eq (remove_many m0 ks) m'0).
-    eauto using @eq_trans, @remove_many_proper, @eq_sym.
-  Qed.
 
   Lemma of_list_proper' {K V}
         {map0 map1: map.map K V}
@@ -325,8 +312,21 @@ Module map.
       remove_many sb0 ks = sb1 ->
       remove_many (map.of_list (map := map) b0) ks = map.of_list b1.
   Proof.
-    intros; eapply (remove_many_concretize (map0 := map) (map1 := SM)); eauto;
-      apply of_list_proper.
+    intros ?? * Hks Hm%ext_rev; apply ext_eq.
+    eapply (eq_trans (map1 := SM)); [ eapply remove_many_proper, of_list_proper | ].
+    eapply (eq_trans (map1 := SM)); [ | eapply of_list_proper ].
+    exact Hm.
+  Qed.
+
+  Lemma get_of_list {V} {map: map.map string V} {map_ok: map.ok map}:
+    let SM := SortedListString.map V in
+    let SM_ok := SortedListString.ok V in
+    forall (b: list (string * V)) k v,
+      let sb := map.of_list (map := SM) b in
+      map.get sb k = v ->
+      map.get (map.of_list (map := map) b) k = v.
+  Proof.
+    intros; rewrite of_list_proper; eassumption.
   Qed.
 End map.
 

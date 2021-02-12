@@ -584,23 +584,6 @@ Ltac lookup_variable m val :=
   | map.put ?m' _ _ => lookup_variable m' val
   end.
 
-Ltac solve_map_get_goal_step :=
-  lazymatch goal with
-  | [ H: map.extends ?m2 ?m1 |- map.get ?m2 ?k = Some ?v ] =>
-    simple apply (fun p => @map.extends_get _ _ _ m1 m2 k v p H)
-  | [  |- map.get ?m _ = Some ?val ] =>
-    tryif has_evar val then fail 1 val "has evars" else
-      first [ simple apply map.get_put_same |
-              rewrite map.get_put_diff ]
-  | [  |- map.get ?m _ = None ] =>
-    first [ simple apply map.get_empty |
-            rewrite map.get_put_diff ]
-  | [  |- _ <> _ ] => congruence
-  end.
-
-Ltac solve_map_get_goal :=
-  progress repeat solve_map_get_goal_step.
-
 Ltac map_to_list m :=
   let rec loop m acc :=
       match m with
@@ -611,6 +594,33 @@ Ltac map_to_list m :=
         uconstr:(List.rev acc)
       end in
   loop m uconstr:([]).
+
+Ltac solve_map_get_goal_refl m :=
+  let b := map_to_list m in
+  change m with (map.of_list b);
+  apply map.get_of_list;
+  reflexivity.
+
+Ltac solve_map_get_goal_step :=
+  lazymatch goal with
+  | [ H: map.extends ?m2 ?m1 |- map.get ?m2 ?k = Some ?v ] =>
+    simple apply (fun p => @map.extends_get _ _ _ m1 m2 k v p H)
+  | [  |- map.get ?m ?k = ?v ] =>
+    tryif first [ has_evar k | has_evar m ] then
+      match v with
+      | Some ?val =>
+        tryif has_evar val then fail 1 val "has evars" else
+          first [ simple apply map.get_put_same | rewrite map.get_put_diff ]
+      | None =>
+        first [ simple apply map.get_empty | rewrite map.get_put_diff ]
+      end
+    else
+      solve_map_get_goal_refl m
+  | [  |- _ <> _ ] => congruence
+  end.
+
+Ltac solve_map_get_goal :=
+  progress repeat solve_map_get_goal_step.
 
 Ltac solve_map_remove_many_reify  :=
   lazymatch goal with
