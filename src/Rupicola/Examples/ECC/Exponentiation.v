@@ -236,20 +236,6 @@ Section S.
       intros; exists [x_ptr; sq_ptr]; split.
       - subst l. tac.
       - subst l. tac.
-        Print spec_of_mul.
-        straightline_call; destruct_lists_of_known_length. 
-        + split.
-          2: { split.
-               2: { admit. }
-               admit.
-          }
-          admit.
-        + admit.
-          Unshelve.
-          { exact x. }
-          { exact x. }
-          { exact R. }
-          exact x.
     Admitted.
 
     Definition exp_result x_ptr q_ptr xq_val : list word -> Semantics.mem -> Prop :=
@@ -259,10 +245,10 @@ Section S.
                                                           (Bignum x_ptr x * Bignum q_ptr q)))%sep)).
 
     Definition exp_by_squaring_6' (x : Z) : (Z * Z) :=
-      let/d x2 := x ^ 2 mod M in
-      let/d x3 := x2 * x mod M in
-      let/d x6 := x3 ^ 2 mod M in
-      (x, x6).
+      let/n out := x ^ 2 mod M in
+      let/n out := out * x mod M in
+      let/n out := out ^ 2 mod M in
+      (x, out).
 
     Lemma Lift1Prop_impl1_ex :
       forall {A B : Type} (q : A -> B -> Prop) (p : A -> Prop),
@@ -292,17 +278,34 @@ Section S.
       - apply H1.
         apply H0.
     Qed.
-    
+
+    Ltac field_cleanup :=
+      Z.push_pull_mod; pull_mod;
+      match goal with
+      | [ H: _ mod _ = ?v |- _ ] => is_var v; rewrite <- H
+      | _ => idtac
+      end.
+
+    Ltac compile_custom ::=
+      progress (field_cleanup;
+                try (try simple eapply compile_dlet_as_nlet_eq;
+                     try simple eapply compile_nlet_as_nlet_eq;
+                     first [ simple eapply compile_square
+                           | simple eapply compile_mul]));
+      (intros; unfold Placeholder in *).  (* FIXME get rid of placeholders? *)
+
+    Hint Unfold exp_result : compiler.
+
     Derive exp_body SuchThat
-           (let exp6 := ("exp6", (["x"; "sq"], [], exp_body)) in
+           (let exp6 := ("exp6", (["x"; "out"], [], exp_body)) in
             program_logic_goal_for exp6
                                    (forall functions,
-                                       spec_of_square functions ->
-                                       spec_of_mul functions ->
+                                       spec_of_UnOp un_square functions ->
+                                       spec_of_BinOp bin_mul functions ->
                                        forall x_ptr x sq_ptr sq_init tr R mem,
                                          bounded_by tight_bounds x ->
                                          bounded_by tight_bounds sq_init ->
-                                         ((Bignum x_ptr x * Placeholder sq_ptr sq_init * R)%sep mem) ->
+                                         ((Bignum x_ptr x * Bignum sq_ptr sq_init * R)%sep mem) ->
                                          WeakestPrecondition.call
                                            (exp6 :: functions)
                                            "exp6"
@@ -312,66 +315,23 @@ Section S.
                                               R tr)))
            As exp_body_correct.
     Proof.
-      cbv[program_logic_goal_for].
-      intros.
-      WeakestPrecondition.unfold1_call_goal.
-      cbv beta match delta [WeakestPrecondition.call_body].
-                     lazymatch goal with
-                     | |- if ?test then ?T else _ => replace test with true by reflexivity; change T
-                     end.
-                     cbv beta match delta [WeakestPrecondition.func].
-                                    repeat straightline.
-                                    subst_lets_in_goal.
-                                    apply postcondition_func_norets_postcondition_cmd.
-                                    unfold exp_by_squaring_6'.
-                                    eapply compile_square; eauto; try compile_step.
-                                    Z.push_mod.
-                                    rewrite Zmod_mod.
-                                    Z.pull_mod.
-                                    eapply compile_mul; eauto; try compile_step.
-                                    rewrite <- Z.pow_mod.
-                                    eapply compile_square; eauto; try compile_step.
-                                    compile_done.
-                                    unfold exp_result.
-                                    unfold fst.
-                                    unfold snd.
-                                    apply sep_comm.
-                                    assert ((R * (Bignum x_ptr x  * Bignum sq_ptr out1))%sep m1) as Hsep by ecancel_assumption.
-                                    revert Hsep.
-                                    eapply Proper_sep_impl1.
-                                    - reflexivity.
-                                    - apply Lift1Prop_impl1_ex. exists x.
-                                      apply Lift1Prop_impl1_ex. exists out1.
-                                      eapply impl1_r_sep_emp.
-                                      split; try reflexivity.
-                                      eapply impl1_r_sep_emp.
-                                      split; try reflexivity.
+      compile.
+      lift_eexists; sepsimpl; eauto || ecancel_assumption.
     Qed.
 
     Definition exp_by_squaring_9' (x : Z) : (Z * Z) :=
-      let/d sq := x ^ 2 mod M in
-      let/d sq := sq ^ 2 mod M in
-      let/d sq := sq ^ 2 mod M in
-      let/d sq := x * sq mod M in
+      let/n sq := x ^ 2 mod M in
+      let/n sq := sq ^ 2 mod M in
+      let/n sq := sq ^ 2 mod M in
+      let/n sq := x * sq mod M in
       (x, sq).
 
-    Ltac compile_custom ::=
-      match goal with
-      | [ |- find _ implementing exp_result _ _ (let/d _ := eval _ ^ 2 mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => eapply compile_square; eauto; try compile_step
-      | [ |- find _ implementing exp_result _ _ (let/d _ := (eval _ * eval _) mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => eapply compile_mul; eauto; try compile_step
-      | [ |- find _ implementing exp_result _ _ (let/d _ := (eval _ mod M) ^ 2 mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite <- Z.pow_mod
-      | [ |- find _ implementing exp_result _ _ (let/d _ := (eval _ mod M *  _) mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite Zmult_mod_idemp_l
-      | [ |- find _ implementing exp_result _ _ (let/d _ := ( _ * (eval _ mod M)) mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite Zmult_mod_idemp_r
-      end.
-
-    Hint Unfold exp_result : compiler.
-    
     Derive exp9_body SuchThat
            (let exp9 := ("exp9", (["x"; "sq"], [], exp9_body)) in
             program_logic_goal_for exp9
                                    (forall functions,
-                                       spec_of_square functions ->
-                                       spec_of_mul functions ->
+                                       spec_of_UnOp un_square functions ->
+                                       spec_of_BinOp bin_mul functions ->
                                        forall x_ptr x sq_ptr sq_init tr R mem,
                                          bounded_by tight_bounds x ->
                                          bounded_by tight_bounds sq_init ->
@@ -386,24 +346,9 @@ Section S.
            As exp9_body_correct.
     Proof.
       compile.
-      autounfold with compiler.
-      cbn.
-      apply sep_comm.
-      match goal with
-      | [ H : (Bignum sq_ptr ?sq * (Bignum x_ptr ?x * ?R))%sep ?m |- _ ?m ] =>
-        assert (((R * (Bignum x_ptr x * Bignum sq_ptr sq)))%sep m) as Hsep by ecancel_assumption
-      end.
-      revert Hsep.
-      eapply Proper_sep_impl1.
-      - reflexivity.
-      - apply Lift1Prop_impl1_ex. eexists.
-        apply Lift1Prop_impl1_ex. eexists.
-        eapply impl1_r_sep_emp.
-        split; try reflexivity.
-        eapply impl1_r_sep_emp.
-        split; try reflexivity.
+      lift_eexists; sepsimpl; eauto || ecancel_assumption.
     Qed.
-    
+
     Lemma compile_square_inplace :
       forall (locals: Semantics.locals) (mem: Semantics.mem)
              (locals_ok : Semantics.locals -> Prop)

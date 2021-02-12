@@ -7,6 +7,23 @@ Section with_parameters.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok _}.
 
+  Lemma compile_dlet_as_nlet_eq {tr mem locals functions} {A} {vars: list string} (v: A):
+    forall {T} {pred: T -> predicate} {k: A -> T}
+      cmd,
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd
+      <{ pred (nlet_eq (P := fun _ => T) vars v (fun x _ => k x)) }> ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd
+      <{ pred (dlet v k) }>.
+  Proof. intros; assumption. Qed.
+
   Lemma compile_nlet_as_nlet_eq {tr mem locals functions} {A} (v: A):
     forall {T} {pred: T -> predicate} {k: A -> T}
       vars cmd,
