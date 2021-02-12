@@ -10,13 +10,13 @@ Section Gallina.
   Definition ll_find
              {A} (d : A) (f : A -> bool) (ls : linkedlist A) (n : nat)
   : linkedlist A :=
-    let/d p := ls in
-    let/d x := downto p n
+    let/n p := ls in
+    let/n x := downto p n
                       (fun st _ =>
-                         let/d x := ll_hd d st in
-                         let/d c := f x in
-                         let/d p := ll_next st in
-                         let/d st' := if c then st else p in
+                         let/n x := ll_hd d st in
+                         let/n c := f x in
+                         let/n p := ll_next st in
+                         let/n st' := if c then st else p in
                          st') in
   x.
 End Gallina.
@@ -49,7 +49,7 @@ Section Compile.
     (forall! (end_ptr pll : address) (ll : linkedlist word)
            (n x dummy : word),
         (sep (emp (word.unsigned n = Z.of_nat (length ll)
-                   /\ 0 < length ll)
+                   /\ 0 < length ll) (* FIXME 0 < length is redundant *)
               * LinkedList end_ptr pll ll)%sep)
           ===>
           "ll_find" @ [pll; n; x] returns rets
@@ -59,22 +59,22 @@ Section Compile.
             (ll_find dummy (word.eqb x) ll (length ll)) rets).
 
   Definition downto_inv
+             R
              (ll : linkedlist word)
              (x end_ptr pll : address)
              (x_var p_var : string)
-             (locals : Semantics.locals)
              (i : nat)
              (gst : linkedlist word)
              (st : linkedlist word)
-             (_ : list word) (* TODO: use this? *)
-    : Semantics.mem -> Prop :=
-    let ll1 := gst in
-    liftexists p,
-    (emp (i <= length st
-          /\ ll = (gst ++ st)%list
-          /\ map.get locals x_var = Some x
-          /\ map.get locals p_var = Some p)
-     * LinkedList p pll ll1 * LinkedList end_ptr p st)%sep.
+    : predicate :=
+    fun tr mem locals =>
+      let ll1 := gst in
+      exists p,
+        i <= length st
+        /\ ll = (gst ++ st)%list
+        /\ map.get locals x_var = Some x
+        /\ map.get locals p_var = Some p
+        /\ (LinkedList p pll ll1 * LinkedList end_ptr p st * R)%sep mem.
 
   Derive ll_find_body SuchThat
          (let args := ["pll"; "n"; "x"] in
@@ -87,44 +87,42 @@ Section Compile.
                    exact x)))
          As ll_find_body_correct.
   Proof.
-    cbv [spec_of_ll_find].
-    setup. sepsimpl.
-    pose (p_var := "p").
-    pose (n_var := "n").
-    pose (x_var := "x").
-    simple eapply compile_pointer with (var:=p_var);
-      [ solve [compile_step] .. | ].
-    compile_step.
+    compile_setup.
+    sepsimpl.
 
-    let x_var := (eval hnf in x_var) in
-    let x := match goal with |- context [map.put _ x_var ?x] => x end in
+    (* pose (p_var := "p"). *)
+    (* pose (n_var := "n"). *)
+    (* pose (x_var := "x"). *)
+    simple eapply compile_nlet_as_nlet_eq.
+    simple eapply compile_copy_pointer;
+      repeat compile_step.
+
+    (* unfold downto_inv in *;  *)
+    Set Default Goal Selector "1".
+
+    simple eapply compile_nlet_as_nlet_eq.
     simple eapply compile_downto
       with
         (ginit := [])
-        (i_var := n_var)
+        (i_var := "n")
         (ghost_step :=
            fun st gst _ =>
              if (word.eqb x (ll_hd dummy st))
              then gst else (gst ++ [ll_hd dummy st])%list)
-        (Inv := downto_inv ll x end_ptr pll x_var p_var).
+        (Inv := downto_inv R ll x end_ptr pll "x" "p").
+    (* 1-5: repeat compile_step. *)
+
     all:lazymatch goal with
-        | |- word.unsigned _ = Z.of_nat _ => solve [eauto]
         | |- context [WeakestPrecondition.cmd] => idtac
-        | |- sep _ _ _ =>
-          cbv [downto_inv];
-            cbn [fst snd List.app LinkedList];
-            lift_eexists; sepsimpl
+        | |- context[@downto_inv] =>
+          eexists;
+            cbn [LinkedList.LinkedList]; sepsimpl;
+              repeat apply conj; subst_lets_in_goal
         | _ => idtac
         end.
     all:lazymatch goal with
+        | |- context [WeakestPrecondition.cmd] => idtac
         | |- sep _ _ _ => ecancel_assumption
-        | _ => idtac
-        end.
-    all:lazymatch goal with
-        | |- context [WeakestPrecondition.cmd] => idtac
-        | |- _ <> [] =>
-          subst_lets_in_goal; rewrite <-length_zero_iff_nil; lia
-        | |- ?x = ?x => reflexivity
         | |- map.get _ _ = Some _ =>
           subst_lets_in_goal; try push_map_remove;
             autorewrite with mapsimpl; try reflexivity
@@ -136,25 +134,29 @@ Section Compile.
       cbv [downto_inv] in *|-.
       sepsimpl_hyps. cleanup; subst.
 
-      repeat match goal with H : map.get (map.remove _ _) _ = _ |- _ =>
-                             rewrite map.get_remove_diff in H
-                               by (subst_lets_in_goal; congruence)
+      repeat match goal with
+             | H : map.get (map.remove _ _) _ = _ |- _ =>
+               rewrite map.get_remove_diff in H
+                 by (subst_lets_in_goal; congruence)
              end.
       match goal with
       | H : _ <= length ?st,
-            Hll : context [LinkedList.LinkedList _ _ ?st] |- _ =>
+        Hll : context [LinkedList.LinkedList _ _ ?st] |- _ =>
         rewrite (ll_hd_next_eq st dummy) in *
           by (destruct st; cbn [length] in H; congruence || lia)
       end.
       cbn [LinkedList] in *|-.
-      sepsimpl_hyps.
+
+      match goal with
+      | H : sep (sep ?p ?q) _ _ |- _ =>
+        (* reverse order and try simplifying again *)
+        eapply (sep_assoc p q) in H
+      end.
+      sepsimpl_hyps. (* FIXME this should not need the explicit sep_assoc above  *)
       cbn beta iota delta [ll_hd hd ll_next tl].
 
-      eexists; intros.
-
-      gen_sym_inc.
-      let v := gen_sym_fetch "v" in
-      simple eapply compile_ll_hd with (var:=v).
+      simple apply compile_nlet_as_nlet_eq.
+      simple eapply compile_ll_hd.
       all:lazymatch goal with
           | |- sep _ _ _ =>
             cbn [ll_hd hd ll_next tl]; ecancel_assumption
