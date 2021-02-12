@@ -749,8 +749,8 @@ Section with_parameters.
       array scalar (word.of_Z (Memory.bytes_per_word Semantics.width)) addr a.
 
     Notation repr := word_listarray_value.
-    Notation to_list x := x.
-    Notation to_word x := x.
+    Notation to_list x := x (only parsing).
+    Notation to_word x := x (only parsing).
     Notation to_nat idx := (Z.to_nat (word.unsigned (to_word idx))).
 
     Notation get a idx := (ListArray.get a idx).
@@ -891,8 +891,8 @@ Section with_parameters.
       sep (emp (List.length a = len)) (array scalar (word.of_Z (Memory.bytes_per_word Semantics.width)) addr a).
 
     Notation repr := word_sizedlistarray_value.
-    Notation to_list x := x.
-    Notation to_word x := x.
+    Notation to_list x := x (only parsing).
+    Notation to_word x := x (only parsing).
     Notation to_nat idx := (Z.to_nat (word.unsigned (to_word idx))).
 
     Notation get a idx := (ListArray.get a idx).
@@ -1104,7 +1104,7 @@ Section with_parameters.
     compile_ranged_for_w word_signed_of_Z_bracketed.
 
    Ltac compile_custom ::=
-  try simple apply compile_nlet_as_nlet_eq;
+     try simple apply compile_nlet_as_nlet_eq;
      first [simple eapply compile_get |
             simple eapply compile_put |
             simple eapply compile_word_vectorarray_get |
