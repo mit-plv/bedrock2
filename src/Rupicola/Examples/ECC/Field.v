@@ -61,58 +61,62 @@ Section Specs.
   Context {field_parameters : FieldParameters}.
   Context {bignum_representaton : BignumRepresentation}.
 
-  Local Notation unop_spec name op xbounds outbounds :=
+  Class UnOp (name: string) :=
+    { un_model: Z -> Z;
+      un_xbounds: bounds;
+      un_outbounds: bounds }.
+
+  Definition unop_spec {name} (op: UnOp name) :=
     (forall! (x : bignum) (px pout : word) (old_out : bignum),
         (fun Rr mem =>
-           bounded_by xbounds x
+           bounded_by un_xbounds x
            /\ (exists Ra, (Bignum px x * Ra)%sep mem)
            /\ (Bignum pout old_out * Rr)%sep mem)
           ===> name @ [px; pout] ===>
           (fun _ =>
            liftexists out,
-           (emp ((eval out mod M = (op (eval x)) mod M)%Z
-                 /\ bounded_by outbounds out)
-            * Bignum pout out)%sep))
-      (only parsing).
+           (emp ((eval out mod M = (un_model (eval x)) mod M)%Z
+                 /\ bounded_by un_outbounds out)
+            * Bignum pout out)%sep)).
 
-  Local Notation binop_spec name op xbounds ybounds outbounds :=
+  Instance spec_of_UnOp {name} (op: UnOp name) : spec_of name :=
+    unop_spec op.
+
+  Class BinOp (name: string) :=
+    { bin_model: Z -> Z -> Z;
+      bin_xbounds: bounds;
+      bin_ybounds: bounds;
+      bin_outbounds: bounds }.
+
+  Definition binop_spec  {name} (op: BinOp name) :=
     (forall! (x y : bignum) (px py pout : word) (old_out : bignum),
         (fun Rr mem =>
-           bounded_by xbounds x
-           /\ bounded_by ybounds y
+           bounded_by bin_xbounds x
+           /\ bounded_by bin_ybounds y
            /\ (exists Ra, (Bignum px x * Bignum py y * Ra)%sep mem)
            /\ (Bignum pout old_out * Rr)%sep mem)
           ===> name @ [px; py; pout] ===>
           (fun _ =>
            liftexists out,
-           (emp ((eval out mod M = (op (eval x) (eval y)) mod M)%Z
-                 /\ bounded_by outbounds out)
-            * Bignum pout out)%sep)) (only parsing).
-
-  Instance spec_of_mul : spec_of mul :=
-    binop_spec mul Z.mul loose_bounds loose_bounds tight_bounds.
-  Instance spec_of_square : spec_of square :=
-    unop_spec square (fun x => Z.mul x x) loose_bounds tight_bounds.
-  Instance spec_of_add : spec_of add :=
-    binop_spec add Z.add tight_bounds tight_bounds loose_bounds.
-  Instance spec_of_sub : spec_of sub :=
-    binop_spec sub Z.sub tight_bounds tight_bounds loose_bounds.
-  Instance spec_of_scmula24 : spec_of scmula24 :=
-    unop_spec scmula24 (Z.mul a24) loose_bounds tight_bounds.
-
-  (* TODO: what are the bounds for inv? *)
-  Instance spec_of_inv : spec_of inv :=
-    (forall! (x : bignum) (px pout : word) (old_out : bignum),
-        (fun Rr mem =>
-           bounded_by tight_bounds x
-           /\ (exists Ra, (Bignum px x * Ra)%sep mem)
-           /\ (Bignum pout old_out * Rr)%sep mem)
-          ===> inv @ [px; pout] ===>
-          (fun _ =>
-           liftexists out,
-           (emp ((eval out mod M = (Finv (eval x mod M)) mod M)%Z
-                 /\ bounded_by loose_bounds out)
+           (emp ((eval out mod M = (bin_model (eval x) (eval y)) mod M)%Z
+                 /\ bounded_by bin_outbounds out)
             * Bignum pout out)%sep)).
+
+  Instance spec_of_BinOp {name} (op: BinOp name) : spec_of name :=
+    binop_spec op.
+
+  Instance bin_mul : BinOp mul :=
+    {| bin_model := Z.mul; bin_xbounds := loose_bounds; bin_ybounds := loose_bounds; bin_outbounds := tight_bounds |}.
+  Instance un_square : UnOp square :=
+    {| un_model := fun x => Z.pow x 2; un_xbounds := loose_bounds; un_outbounds := tight_bounds |}.
+  Instance bin_add : BinOp add :=
+    {| bin_model := Z.add; bin_xbounds := tight_bounds; bin_ybounds := tight_bounds; bin_outbounds := loose_bounds |}.
+  Instance bin_sub : BinOp sub :=
+    {| bin_model := Z.sub; bin_xbounds := tight_bounds; bin_ybounds := tight_bounds; bin_outbounds := loose_bounds |}.
+  Instance un_scmula24 : UnOp scmula24 :=
+    {| un_model := Z.mul a24; un_xbounds := loose_bounds; un_outbounds := tight_bounds |}.
+  Instance un_inv : UnOp inv := (* TODO: what are the bounds for inv? *)
+    {| un_model := fun x => Finv (x mod M); un_xbounds := tight_bounds; un_outbounds := loose_bounds |}.
 
   Instance spec_of_bignum_copy : spec_of bignum_copy :=
     forall! (x : bignum) (px pout : word) (old_out : bignum),
@@ -130,9 +134,9 @@ Section Specs.
                  /\ bounded_by tight_bounds X)
             * Bignum pout X)%sep).
 End Specs.
-Existing Instances spec_of_mul spec_of_square spec_of_add
-         spec_of_sub spec_of_scmula24 spec_of_inv spec_of_bignum_copy
-         spec_of_bignum_literal.
+
+Existing Instances spec_of_UnOp spec_of_BinOp bin_mul un_square bin_add bin_sub
+         un_scmula24 un_inv spec_of_bignum_copy spec_of_bignum_literal.
 
 Section Compile.
   Context {semantics : Semantics.parameters}
@@ -146,314 +150,159 @@ Section Compile.
      which Bignums are overwritable.
 
      TODO: in the future, it would be nice to be able to look through the
-     Gallina code and see which Bignums get used later and which don't. *)
+     Gallina code and see which Bignums get used later and which don't.
+
+     FIXME: we now have explicit names in bindings, which should allow us to get
+     rid of [Placeholder] annotations. *)
   Definition Placeholder := Bignum.
 
-  Lemma compile_mul :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R Rin Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
-      (x y out : bignum) x_ptr x_var y_ptr y_var out_ptr out_var
-      k k_impl,
-      spec_of_mul functions ->
-      bounded_by loose_bounds x ->
-      bounded_by loose_bounds y ->
+  Lemma compile_binop {name} {op: BinOp name}
+        {tr mem locals functions} x y:
+    let v := (bin_model (eval x) (eval y)) mod M in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      Rin Rout (out : bignum) x_ptr x_var y_ptr y_var out_ptr out_var,
+
+      (_: spec_of name) functions ->
+      bounded_by bin_xbounds x ->
+      bounded_by bin_ybounds y ->
+
       (Bignum x_ptr x * Bignum y_ptr y * Rin)%sep mem ->
       (Placeholder out_ptr out * Rout)%sep mem ->
+
       map.get locals x_var = Some x_ptr ->
       map.get locals y_var = Some y_ptr ->
       map.get locals out_var = Some out_ptr ->
-      let v := (eval x * eval y) mod M in
-      (let head := v in
-       forall out m,
-         eval out mod M = head ->
-         bounded_by tight_bounds out ->
+
+      (let v := v in
+       forall out m (Heq: eval out mod M = v),
+         bounded_by bin_outbounds out ->
          sep (Bignum out_ptr out) Rout m ->
-         (find k_impl
-          implementing (pred (k (eval out mod M)))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals locals and-memory m and-trace tr and-rest R
-          and-functions functions)) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.call [] mul [expr.var x_var; expr.var y_var;
-                                   expr.var out_var])
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+         (<{ Trace := tr;
+             Memory := m;
+             Locals := locals;
+             Functions := functions }>
+          k_impl
+          <{ pred (k v eq_refl) }>)) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.call [] name [expr.var x_var; expr.var y_var;
+                          expr.var out_var])
+        k_impl
+      <{ pred (nlet_eq [out_var] v k) }>.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'.
-    handle_call; [ solve [eauto] .. | sepsimpl ].
+    handle_call; [ solve [eauto] .. | progress sepsimpl ].
     repeat straightline'.
-    match goal with H : _ mod M = ?x mod M
-                    |- context [dlet (?x mod M)] =>
-                    rewrite <-H
-    end.
     eauto.
   Qed.
 
-  Lemma compile_add :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R Rin Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
-      (x y out : bignum) x_ptr x_var y_ptr y_var out_ptr out_var
-      k k_impl,
-      spec_of_add functions ->
-      bounded_by tight_bounds x ->
-      bounded_by tight_bounds y ->
-      (Bignum x_ptr x * Bignum y_ptr y * Rin)%sep mem ->
-      (Placeholder out_ptr out * Rout)%sep mem ->
-      map.get locals x_var = Some x_ptr ->
-      map.get locals y_var = Some y_ptr ->
-      map.get locals out_var = Some out_ptr ->
-      let v := (eval x + eval y) mod M in
-      (let head := v in
-       forall out m,
-         eval out mod M = head ->
-         bounded_by loose_bounds out ->
-         sep (Bignum out_ptr out) Rout m ->
-         (find k_impl
-          implementing (pred (k (eval out mod M)))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals locals and-memory m and-trace tr and-rest R
-          and-functions functions)) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.call [] add [expr.var x_var; expr.var y_var;
-                                   expr.var out_var])
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
-  Proof.
-    cbv [Placeholder] in *.
-    repeat straightline'.
-    handle_call; [ solve [eauto] .. | sepsimpl ].
-    repeat straightline'.
-    match goal with H : _ mod M = ?x mod M
-                    |- context [dlet (?x mod M)] =>
-                    rewrite <-H
-    end.
-    eauto.
-  Qed.
+  Lemma compile_unop {name} (op: UnOp name) {tr mem locals functions} x:
+    let v := un_model (eval x) mod M in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      Rin Rout (out : bignum) x_ptr x_var out_ptr out_var,
 
-  Lemma compile_sub :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R Rin Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
-      (x y out : bignum) x_ptr x_var y_ptr y_var out_ptr out_var
-      k k_impl,
-      spec_of_sub functions ->
-      bounded_by tight_bounds x ->
-      bounded_by tight_bounds y ->
-      (Bignum x_ptr x * Bignum y_ptr y * Rin)%sep mem ->
-      (Placeholder out_ptr out * Rout)%sep mem ->
-      map.get locals x_var = Some x_ptr ->
-      map.get locals y_var = Some y_ptr ->
-      map.get locals out_var = Some out_ptr ->
-      let v := (eval x - eval y) mod M in
-      (let head := v in
-       forall out m,
-         eval out mod M = head ->
-         bounded_by loose_bounds out ->
-         sep (Bignum out_ptr out) Rout m ->
-         (find k_impl
-          implementing (pred (k (eval out mod M)))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals locals and-memory m and-trace tr and-rest R
-          and-functions functions)) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.call [] sub [expr.var x_var; expr.var y_var;
-                                   expr.var out_var])
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
-  Proof.
-    cbv [Placeholder] in *.
-    repeat straightline'.
-    handle_call; [ solve [eauto] .. | sepsimpl ].
-    repeat straightline'.
-    match goal with H : _ mod M = ?x mod M
-                    |- context [dlet (?x mod M)] =>
-                    rewrite <-H
-    end.
-    eauto.
-  Qed.
+      (_: spec_of name) functions ->
+      bounded_by un_xbounds x ->
 
-  Lemma compile_square :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R Rin Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
-      (x out : bignum) x_ptr x_var out_ptr out_var k k_impl,
-      spec_of_square functions ->
-      bounded_by loose_bounds x ->
       (Bignum x_ptr x * Rin)%sep mem ->
       (Placeholder out_ptr out * Rout)%sep mem ->
+
       map.get locals x_var = Some x_ptr ->
       map.get locals out_var = Some out_ptr ->
-      let v := (eval x ^ 2) mod M in
-      (let head := v in
-       forall out m,
-         eval out mod M = head ->
-         bounded_by tight_bounds out ->
+
+      (let v := v in
+       forall out m (Heq: eval out mod M = v),
+         bounded_by un_outbounds out ->
          sep (Bignum out_ptr out) Rout m ->
-         (find k_impl
-          implementing (pred (k (eval out mod M)))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals locals and-memory m and-trace tr and-rest R
-          and-functions functions)) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.call [] square [expr.var x_var; expr.var out_var])
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+         (<{ Trace := tr;
+             Memory := m;
+             Locals := locals;
+             Functions := functions }>
+          k_impl
+          (* <{ (rew [fun v => P v -> predicate)] Heq in pred) (k (eval out mod M) Heq) }>)) -> *)
+          <{ pred (k v eq_refl) }>)) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.call [] name [expr.var x_var; expr.var out_var])
+        k_impl
+      <{ pred (nlet_eq [out_var] v k) }>.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'.
     handle_call; [ solve [eauto] .. | sepsimpl ].
     repeat straightline'.
-    rewrite Z.pow_2_r in *.
-    match goal with H : _ mod M = ?x mod M
-                    |- context [dlet (?x mod M)] =>
-                    rewrite <-H
-    end.
     eauto.
   Qed.
 
-  Lemma compile_scmula24 :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R Rin Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
-      (x out : bignum) x_ptr x_var out_ptr out_var k k_impl,
-      spec_of_scmula24 functions ->
-      bounded_by loose_bounds x ->
-      (Bignum x_ptr x * Rin)%sep mem ->
-      (Placeholder out_ptr out * Rout)%sep mem ->
-      map.get locals x_var = Some x_ptr ->
-      map.get locals out_var = Some out_ptr ->
-      let v := (a24 * eval x) mod M in
-      (let head := v in
-       forall out m,
-         eval out mod M = head ->
-         bounded_by tight_bounds out ->
-         sep (Bignum out_ptr out) Rout m ->
-         (find k_impl
-          implementing (pred (k (eval out mod M)))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals locals and-memory m and-trace tr and-rest R
-          and-functions functions)) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.call [] scmula24 [expr.var x_var; expr.var out_var])
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
-  Proof.
-    cbv [Placeholder] in *.
-    repeat straightline'.
-    handle_call; [ solve [eauto] .. | sepsimpl ].
-    repeat straightline'.
-    match goal with H : _ mod M = ?x mod M
-                    |- context [dlet (?x mod M)] =>
-                    rewrite <-H
-    end.
-    eauto.
-  Qed.
+  Ltac cleanup_op_lemma lem := (* This ensures that [simple apply] works *)
+    let lm := fresh in
+    let op := match lem with _ _ ?op => op end in
+    let op_hd := term_head op in
+    let simp proj :=
+        (let hd := term_head proj in
+         let reduced := (eval cbv [op_hd hd] in proj) in
+         change proj with reduced in (type of lm)) in
+    pose lem as lm;
+    first [ simp (bin_model (BinOp := op));
+            simp (bin_xbounds (BinOp := op));
+            simp (bin_ybounds (BinOp := op));
+            simp (bin_outbounds (BinOp := op))
+          | simp (un_model (UnOp := op));
+            simp (un_xbounds (UnOp := op));
+            simp (un_outbounds (UnOp := op)) ];
+    let t := type of lm in
+    let t := (eval cbv beta in t) in
+    exact (lm: t).
 
-  Lemma compile_inv :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R Rin Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
-      (x out : bignum) x_ptr x_var out_ptr out_var k k_impl,
-      spec_of_inv functions ->
-      bounded_by tight_bounds x ->
-      (Bignum x_ptr x * Rin)%sep mem ->
-      (Placeholder out_ptr out * Rout)%sep mem ->
-      map.get locals x_var = Some x_ptr ->
-      map.get locals out_var = Some out_ptr ->
-      let v := (Finv (eval x mod M)) mod M in
-      (let head := v in
-       forall out m,
-         eval out mod M = head ->
-         bounded_by loose_bounds out ->
-         sep (Bignum out_ptr out) Rout m ->
-         (find k_impl
-          implementing (pred (k (eval out mod M)))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals locals and-memory m and-trace tr and-rest R
-          and-functions functions)) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.call [] inv [expr.var x_var; expr.var out_var])
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
-  Proof.
-    cbv [Placeholder] in *.
-    repeat straightline'.
-    handle_call; [ solve [eauto] .. | sepsimpl ].
-    repeat straightline'.
-    match goal with H : _ mod M = ?x mod M
-                    |- context [dlet (?x mod M)] =>
-                    rewrite <-H
-    end.
-    eauto.
-  Qed.
+  Notation make_bin_lemma op :=
+    ltac:(cleanup_op_lemma (@compile_binop _ op)) (only parsing).
 
-  Lemma compile_bignum_copy :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R R' functions T (pred: T -> list word -> Semantics.mem -> Prop)
-      (x out : bignum) x_ptr x_var out_ptr out_var k k_impl,
+  Definition compile_mul := make_bin_lemma bin_mul.
+  Definition compile_add := make_bin_lemma bin_add.
+  Definition compile_sub := make_bin_lemma bin_sub.
+
+  Notation make_un_lemma op :=
+    ltac:(cleanup_op_lemma (@compile_unop _ op)) (only parsing).
+
+  Definition compile_square := make_un_lemma un_square.
+  Definition compile_scmula24 := make_un_lemma un_scmula24.
+  Definition compile_inv := make_un_lemma un_inv.
+
+  Lemma compile_bignum_copy {tr mem locals functions} x :
+    let v := (eval x mod M)%Z in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      R (out : bignum) x_ptr x_var out_ptr out_var,
+
       spec_of_bignum_copy functions ->
-      (Bignum x_ptr x * Placeholder out_ptr out * R')%sep mem ->
+      (Bignum x_ptr x * Placeholder out_ptr out * R)%sep mem ->
+
       map.get locals x_var = Some x_ptr ->
       map.get locals out_var = Some out_ptr ->
-      let v := (eval x mod M)%Z in
-      (let head := v in
+
+      (let v := v in
        forall m,
-         (Bignum x_ptr x * Bignum out_ptr x * R')%sep m ->
-         (find k_impl
-          implementing (pred (k head))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals locals and-memory m and-trace tr and-rest R
-          and-functions functions)) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.call [] bignum_copy [expr.var x_var; expr.var out_var])
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+         (Bignum x_ptr x * Bignum out_ptr x * R)%sep m ->
+         (<{ Trace := tr;
+             Memory := m;
+             Locals := locals;
+             Functions := functions }>
+          k_impl
+          <{ pred (k v eq_refl) }>)) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.call [] bignum_copy [expr.var x_var; expr.var out_var])
+        k_impl
+      <{ pred (nlet_eq [out_var] v k) }>.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'.
@@ -463,44 +312,42 @@ Section Compile.
       ecancel_assumption.
   Qed.
 
-  Lemma compile_bignum_literal :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R R' functions T (pred: T -> list word -> Semantics.mem -> Prop)
-      (wx : word) (x : Z) (out : bignum) out_ptr out_var k k_impl,
+  Lemma compile_bignum_literal {tr mem locals functions} x:
+    let v := (x mod M)%Z in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      R (wx : word) (out : bignum) out_ptr out_var,
+
       spec_of_bignum_literal functions ->
-      (Placeholder out_ptr out * R')%sep mem ->
+      (Placeholder out_ptr out * R)%sep mem ->
       map.get locals out_var = Some out_ptr ->
       word.unsigned wx = x ->
-      let v := (x mod M)%Z in
-      (let head := v in
+
+      (let v := v in
        forall X m,
-         (Bignum out_ptr X * R')%sep m ->
-         eval X mod M = head ->
+         (Bignum out_ptr X * R)%sep m ->
+         eval X mod M = v ->
          bounded_by tight_bounds X ->
-         (find k_impl
-          implementing (pred (k head))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals locals and-memory m and-trace tr and-rest R
-          and-functions functions)) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.call [] bignum_literal
-                         [expr.literal x; expr.var out_var])
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+         (<{ Trace := tr;
+             Memory := m;
+             Locals := locals;
+             Functions := functions }>
+          k_impl
+          <{ pred (k v eq_refl) }>)) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.call [] bignum_literal
+                  [expr.literal x; expr.var out_var])
+        k_impl
+      <{ pred (nlet_eq [out_var] v k) }>.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'. subst.
     handle_call; [ solve [eauto] .. | sepsimpl ].
     repeat straightline'.
-    match goal with H : _ |- _ =>
-                    rewrite word.of_Z_unsigned in H end.
+    rewrite @word.of_Z_unsigned in * by typeclasses eauto.
     eauto.
   Qed.
 
@@ -509,119 +356,111 @@ Section Compile.
   (* noop indicating that the 2nd-to-last argument should store output *)
   Definition overwrite2 {A B C} := @id (A -> B -> C).
 
-  Lemma compile_compose_l :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
-      (op1 op2 : Z -> Z -> Z)
-      x y z out out_ptr out_var k k_impl,
+  (* FIXME remove overwrites; use variable names instead *)
+
+  Lemma compile_compose_l {tr mem locals functions} (op1 op2 : Z -> Z -> Z) x y z:
+    let v := ((op2 (op1 x y mod M) z)) mod M in
+    forall {T} {pred: T -> predicate} {k: Z -> T} {k_impl}
+      Rout out out_ptr out_var,
       (Placeholder out_ptr out * Rout)%sep mem ->
       map.get locals out_var = Some out_ptr ->
-      let v := ((op2 (op1 x y mod M) z)) mod M in
-      (let head := v in
-       (find k_impl
-        implementing (pred (dlet (op1 x y mod M)
-        (fun xy => dlet ((overwrite2 op2) xy z mod M) k)))
-        and-returning retvars
-        and-locals-post locals_ok
-        with-locals locals and-memory mem and-trace tr and-rest R
-        and-functions functions)) ->
-      (let head := v in
-       find k_impl
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       k_impl
+       <{ pred (dlet (op1 x y mod M)
+                     (fun xy => dlet ((overwrite2 op2) xy z mod M) k)) }>) ->
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       k_impl
+       <{ pred (dlet v k) }>).
   Proof.
     cbv [Placeholder overwrite1 overwrite2] in *.
     repeat straightline'. auto.
   Qed.
 
-  Lemma compile_compose_r :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R Rout functions T (pred: T -> list word -> Semantics.mem -> Prop)
-      (op1 op2 : Z -> Z -> Z)
-      x y z out out_ptr out_var k k_impl,
+  Lemma compile_compose_r {tr mem locals functions} (op1 op2 : Z -> Z -> Z) x y z:
+    let v := ((op2 z (op1 x y mod M))) mod M in
+    forall {T} {pred: T -> predicate} {k: Z -> T} {k_impl}
+      Rout out out_ptr out_var,
       (Placeholder out_ptr out * Rout)%sep mem ->
       map.get locals out_var = Some out_ptr ->
-      let v := ((op2 z (op1 x y mod M))) mod M in
-      (let head := v in
-       (find k_impl
-        implementing (pred (dlet (op1 x y mod M)
-        (fun xy => dlet ((overwrite1 op2) z xy mod M) k)))
-        and-returning retvars
-        and-locals-post locals_ok
-        with-locals locals and-memory mem and-trace tr and-rest R
-        and-functions functions)) ->
-      (let head := v in
-       find k_impl
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       k_impl
+       <{ pred (dlet (op1 x y mod M)
+                     (fun xy => dlet ((overwrite1 op2) z xy mod M) k)) }>) ->
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       k_impl
+       <{ pred (dlet v k) }>).
   Proof.
     cbv [Placeholder overwrite1 overwrite2] in *.
     repeat straightline'. auto.
   Qed.
 
-  Lemma compile_overwrite1 :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R Rin functions T (pred: T -> list word -> Semantics.mem -> Prop)
-      (x : Z) (op : Z -> Z -> Z) (y : bignum) y_ptr y_var k k_impl,
+  Lemma compile_overwrite1 {tr mem locals functions} (x : Z) (op : Z -> Z -> Z) (y : bignum):
+    let v := ((overwrite1 op) x (eval y mod M)) mod M in
+    forall {T} {pred: T -> predicate} {k: Z -> T} {k_impl}
+      Rin y_ptr y_var,
       (Bignum y_ptr y * Rin)%sep mem ->
       map.get locals y_var = Some y_ptr ->
-      let v := ((overwrite1 op) x (eval y mod M)) mod M in
       let v' := (op x (eval y mod M)) mod M in
       (let __ := 0 in (* placeholder *)
        forall m,
          sep (Placeholder y_ptr y) Rin m ->
-         (find k_impl
-          implementing (pred (dlet v' k))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals locals and-memory m and-trace tr and-rest R
-          and-functions functions)) ->
-      (let head := v in
-       find k_impl
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+         <{ Trace := tr;
+            Memory := m;
+            Locals := locals;
+            Functions := functions }>
+         k_impl
+         <{ pred (dlet v' k) }>) ->
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       k_impl
+       <{ pred (dlet v k) }>).
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'. auto.
   Qed.
 
-  Lemma compile_overwrite2 :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R Rin functions T (pred: T -> list word -> Semantics.mem -> Prop)
-      (y : Z) (op : Z -> Z -> Z) (x : bignum) x_ptr x_var k k_impl,
+  Lemma compile_overwrite2 {tr mem locals functions} (y : Z) (op : Z -> Z -> Z) (x : bignum):
+    let v := ((overwrite2 op) (eval x mod M) y) mod M in
+    forall {T} {pred: T -> predicate} {k: Z -> T} {k_impl}
+      Rin x_ptr x_var,
       (Bignum x_ptr x * Rin)%sep mem ->
       map.get locals x_var = Some x_ptr ->
-      let v := ((overwrite2 op) (eval x mod M) y) mod M in
       let v' := (op (eval x mod M) y) mod M in
       (let __ := 0 in (* placeholder *)
        forall m,
          sep (Placeholder x_ptr x) Rin m ->
-         (find k_impl
-          implementing (pred (dlet v' k))
-          and-returning retvars
-          and-locals-post locals_ok
-          with-locals locals and-memory m and-trace tr and-rest R
-          and-functions functions)) ->
-      (let head := v in
-       find k_impl
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+         <{ Trace := tr;
+            Memory := m;
+            Locals := locals;
+            Functions := functions }>
+         k_impl
+         <{ pred (dlet v' k) }>) ->
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       k_impl
+       <{ pred (dlet v k) }>).
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'. auto.
