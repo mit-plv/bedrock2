@@ -1,7 +1,7 @@
 Require Import Rupicola.Lib.Api.
 
 Section Gallina.
-  Definition cswap {T} (swap:bool) (a b: T) : T * T :=
+  Definition cswap {T} (swap: bool) (a b: T) : T * T :=
     if swap then (b, a) else (a, b).
 End Gallina.
 
@@ -9,111 +9,94 @@ Section Compile.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok semantics}.
 
+  (* FIXME cswap should be compilable as-is; no need for a lemma. *)
   (* There are two ways cswap could be compiled; you can either swap the local
      variables (the pointers), or you can leave the pointers and copy over the
      data. This version swaps the pointers without doing any copying. *)
-  Lemma compile_cswap_nocopy :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R R' functions
-      T (pred: T -> list word -> _ -> Prop)
-      {data} (x y : data) swap swap_var x_var x_ptr y_var y_ptr k k_impl
-      (Data : word -> data -> Semantics.mem -> Prop) tmp,
-      x_var <> y_var ->
+  Lemma compile_cswap_nocopy {tr mem locals functions} (swap: bool) {A} (x y: A) :
+    let v := cswap swap x y in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
+      R (Data : word -> A -> Semantics.mem -> Prop)
+      swap_var x_var x_ptr y_var y_ptr tmp,
+
       map.get locals swap_var = Some (word.of_Z (Z.b2z swap)) ->
       map.get locals x_var = Some x_ptr ->
       map.get locals y_var = Some y_ptr ->
+
       (* tmp is a strictly temporary variable, confined to one part of the
          if-clause; it gets unset after use *)
       map.get locals tmp = None ->
-      (Data x_ptr x * Data y_ptr y * R')%sep mem ->
-      let v := cswap swap x y in
-      (let head := v in
-       (find k_impl
-        implementing (pred (k head))
-        and-returning retvars
-        and-locals-post locals_ok
-        with-locals
-               (map.put (map.put locals
-                                 x_var (fst (cswap swap x_ptr y_ptr)))
-                        y_var (snd (cswap swap x_ptr y_ptr)))
-        and-memory mem and-trace tr and-rest R
-        and-functions functions)) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.cond
-                  (expr.var swap_var)
-                  (cmd.seq
-                     (cmd.seq
-                        (cmd.seq
-                           (cmd.set tmp (expr.var x_var))
-                           (cmd.set x_var (expr.var y_var)))
-                        (cmd.set y_var (expr.var tmp)))
-                     (cmd.unset tmp))
-                  (cmd.skip))
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+      (Data x_ptr x * Data y_ptr y * R)%sep mem ->
+
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put (map.put locals x_var (fst (cswap swap x_ptr y_ptr))) y_var
+                      (snd (cswap swap x_ptr y_ptr));
+          Functions := functions }>
+       k_impl
+       <{ pred (k v eq_refl) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.cond
+           (expr.var swap_var)
+           (cmd.seq
+              (cmd.seq
+                 (cmd.seq
+                    (cmd.set tmp (expr.var x_var))
+                    (cmd.set x_var (expr.var y_var)))
+                 (cmd.set y_var (expr.var tmp)))
+              (cmd.unset tmp))
+           (cmd.skip))
+        k_impl
+      <{ pred (nlet_eq [x_var; y_var] v k) }>.
   Proof.
-    repeat straightline'.
-    destr (tmp =? x_var); [ congruence | ].
-    destr (tmp =? y_var); [ congruence | ].
-    destruct swap; cbn [Z.b2z cswap fst snd] in *;
-      split_if ltac:(repeat straightline');
-    try (subst_lets_in_goal;
-         rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1;
-         congruence); [ | ].
-    { repeat straightline'.
-      match goal with
-      | H : WeakestPrecondition.cmd _ _ _ _ ?l1 _
-        |- WeakestPrecondition.cmd _ _ _ _ ?l2 _ =>
-        replace l2 with l1; [ exact H | apply map.map_ext ]
-      end.
-      subst_lets_in_goal. intros.
-      rewrite !map.get_remove_dec, !map.get_put_dec.
-      repeat destruct_one_match; congruence. }
-    { repeat straightline'.
-      match goal with
-      | H : WeakestPrecondition.cmd _ _ _ _ ?l1 _
-        |- WeakestPrecondition.cmd _ _ _ _ ?l2 _ =>
-        replace l2 with l1; [ exact H | apply map.map_ext ]
-      end.
-      subst_lets_in_goal. intros.
-      rewrite !map.get_put_dec.
-      repeat destruct_one_match; congruence. }
+    intros; subst v; unfold cswap.
+    simple eapply compile_if with
+        (val_pred := fun _ tr' mem' locals' =>
+                      tr' = tr /\
+                      mem' = mem /\
+                      locals' =
+                      let locals := map.put locals x_var (if swap then y_ptr else x_ptr) in
+                      let locals := map.put locals y_var (if swap then x_ptr else y_ptr) in
+                      locals);
+      repeat compile_step;
+      repeat straightline'; subst_lets_in_goal; cbn; ssplit; eauto.
+    - rewrite !map.remove_put_diff, !map.remove_put_same, map.remove_not_in by congruence.
+      reflexivity.
+    - rewrite (map.put_noop x_var x_ptr), map.put_noop by assumption.
+      reflexivity.
+    - cbv beta in *; repeat compile_step; cbn.
+      destruct swap; eassumption.
   Qed.
 
-  Lemma compile_cswap_pair :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-           tr retvars R functions
-           T (pred: T -> list word -> _ -> Prop)
-      {data} (x y : data * data) swap k k_impl,
-      let v := cswap swap x y in
-      (let __ := 0 in (* placeholder *)
-       (find k_impl
-        implementing (pred (dlet (cswap swap (fst x) (fst y))
-                                 (fun xy1 =>
-                                    dlet (cswap swap (snd x) (snd y))
-                                         (fun xy2 =>
-                                            let x := (fst xy1, fst xy2) in
-                                            let y := (snd xy1, snd xy2) in
-                                            k (x, y)))))
-        and-returning retvars
-        and-locals-post locals_ok
-        with-locals locals
-        and-memory mem and-trace tr and-rest R
-        and-functions functions)) ->
-      (let head := v in
-       find k_impl
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+  Lemma compile_cswap_pair {tr mem locals functions} (swap: bool) {A} (x y: A * A) :
+    let v := cswap swap x y in
+    forall {T} {pred: T -> predicate}
+      {k: (A * A) * (A * A) -> T} {k_impl},
+      (let __ := 0 in (* placeholder FIXME why? *)
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       k_impl
+       <{ pred (dlet (cswap swap (fst x) (fst y))
+                     (fun xy1 =>
+                        dlet (cswap swap (snd x) (snd y))
+                             (fun xy2 =>
+                                let x := (fst xy1, fst xy2) in
+                                let y := (snd xy1, snd xy2) in
+                                k (x, y)))) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      k_impl
+      <{ pred (dlet v k) }>.
   Proof.
     repeat straightline'.
     subst_lets_in_goal. destruct_products.
