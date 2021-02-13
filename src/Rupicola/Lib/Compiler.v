@@ -725,7 +725,7 @@ Ltac compile_cleanup_post :=
   | [  |- exists _, _ ] => eexists
   | _ =>
     first [ progress subst_lets_in_goal
-          | progress autounfold with compiler ]
+          | progress repeat autounfold with compiler ]
   end.
 
 Ltac compile_unify_post :=
@@ -740,7 +740,7 @@ Ltac compile_unify_post :=
 Ltac compile_solve_side_conditions :=
   match goal with
   | [  |- sep _ _ _ ] =>
-    autounfold with compiler in *;
+    repeat autounfold with compiler in *;
       cbn [fst snd] in *;       (* FIXME generalize this? *)
       ecancel_assumption
   | [  |- map.get _ _ = _ ] =>
