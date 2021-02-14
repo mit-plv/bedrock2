@@ -1,5 +1,4 @@
 Require Import Rupicola.Lib.Core.
-Require Import Rupicola.Lib.Notations.
 
 Ltac boolean_cleanup :=
   repeat match goal with
@@ -74,9 +73,14 @@ Ltac clear_old_seps :=
 
 Ltac cleanup :=
   repeat first [ progress cbn beta iota delta [fst snd eq_rect] in *
-               | match goal with H : _ /\ _ |- _ => destruct H end
-               | match goal with H : exists _, _ |- _ => destruct H end
-               | match goal with H : ?x = ?x |- _ => clear H end ].
+               | match goal with
+                 | H : _ /\ _ |- _ => destruct H
+                 | H : exists _, _ |- _ => destruct H
+                 | H : ?x = ?x |- _ => clear H
+                 | H : Some _ = Some _ |- _ =>
+                   injection H; clear H;
+                   let h := fresh H in intros h
+                 end ].
 
 Ltac sepsimpl_step' :=
   match goal with
@@ -254,3 +258,30 @@ Ltac unfold_head term :=
   let term := type_term term in
   let term := (eval cbv beta in term) in
   term.
+
+Ltac find_app term head :=
+  match term with
+  | context[head ?x0 ?x1 ?x2 ?x3 ?x4 ?x5 ?x6 ?x7 ?x8 ?x9] =>
+    constr:(head x0 x1 x2 x3 x4 x5 x6 x7 x8 x9)
+  | context[head ?x0 ?x1 ?x2 ?x3 ?x4 ?x5 ?x6 ?x7 ?x8] =>
+    constr:(head x0 x1 x2 x3 x4 x5 x6 x7 x8)
+  | context[head ?x0 ?x1 ?x2 ?x3 ?x4 ?x5 ?x6 ?x7] =>
+    constr:(head x0 x1 x2 x3 x4 x5 x6 x7)
+  | context[head ?x0 ?x1 ?x2 ?x3 ?x4 ?x5 ?x6] =>
+    constr:(head x0 x1 x2 x3 x4 x5 x6)
+  | context[head ?x0 ?x1 ?x2 ?x3 ?x4 ?x5] =>
+    constr:(head x0 x1 x2 x3 x4 x5)
+  | context[head ?x0 ?x1 ?x2 ?x3 ?x4] =>
+    constr:(head x0 x1 x2 x3 x4)
+  | context[head ?x0 ?x1 ?x2 ?x3] =>
+    constr:(head x0 x1 x2 x3)
+  | context[head ?x0 ?x1 ?x2] =>
+    constr:(head x0 x1 x2)
+  | context[head ?x0 ?x1] =>
+    constr:(head x0 x1)
+  | context[head ?x0] =>
+    constr:(head x0)
+  | context[head] =>
+    constr:(head)
+  | _ => fail "Couldn't find" head "in" term
+  end.

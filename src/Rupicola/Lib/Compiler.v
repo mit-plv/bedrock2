@@ -505,64 +505,94 @@ Section with_parameters.
       - apply IHcmd1 in H. eapply WeakestPrecondition_weaken in H; [ apply H |].
         intros * H0%IHcmd2. apply H0.
     Qed.
+
+    Definition compile_setup_remove_skips := noskips_correct.
   End NoSkips.
 
-  Lemma postcondition_func_norets_postcondition_cmd
-        {T} spec (x: T) cmd R tr mem locals functions :
-    (let pred a := postcondition_cmd (fun _ : Semantics.locals => True) (spec a) [] R tr in
-     <{ Trace := tr;
-        Memory := mem;
-        Locals := locals;
-        Functions := functions }>
-     cmd
-     <{ pred x }>) ->
-    <{ Trace := tr;
-       Memory := mem;
-       Locals := locals;
-       Functions := functions }>
-    cmd
-    <{ fun (tr' : Semantics.trace) (m' : Semantics.mem) (_ : Semantics.locals) =>
-         postcondition_func_norets (spec x) R tr tr' m' [] }>.
-  Proof.
-    cbv [postcondition_func_norets
-           postcondition_func postcondition_cmd]; intros.
-    eapply Proper_cmd;
-      [ solve [apply Proper_call] | repeat intro
-        | eassumption ].
-    sepsimpl; cleanup; eauto; [ ].
-    match goal with H : map.getmany_of_list _ [] = Some _ |- _ =>
-                    inversion H; clear H; subst
-    end.
-    eauto.
-  Qed.
+  Section Setup.
+    Definition wp_bind_retvars retvars (P: list word -> predicate) :=
+      fun tr mem locals =>
+        exists ws, map.getmany_of_list locals retvars = Some ws /\
+              P ws tr mem locals.
 
-  Lemma postcondition_func_postcondition_cmd
-        {T} spec (x: T) cmd R tr mem locals retvars functions :
-    (let pred a := postcondition_cmd (fun _ : Semantics.locals => True) (spec a) retvars R tr in
-     <{ Trace := tr;
-        Memory := mem;
-        Locals := locals;
-        Functions := functions }>
-     cmd
-     <{ pred x }>) ->
-    <{ Trace := tr;
-       Memory := mem;
-       Locals := locals;
-       Functions := functions }>
-    cmd
-    <{ fun tr' m' l =>
-         WeakestPrecondition.list_map
-           (WeakestPrecondition.get l) retvars
-           (fun rets => postcondition_func (spec x) R tr tr' m' rets) }>.
-  Proof.
-    cbv [postcondition_func postcondition_cmd]; intros.
-    cleanup.
-    use_hyp_with_matching_cmd; cleanup; subst.
-    eapply getmany_list_map; sepsimpl; eauto.
-  Qed.
+    Lemma compile_setup_getmany_list_map {tr mem locals functions} :
+      forall P {cmd} retvars,
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd
+        <{ wp_bind_retvars retvars P }> ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd
+        <{ fun tr' mem' locals' =>
+             WeakestPrecondition.list_map
+               (WeakestPrecondition.get locals') retvars
+               (fun ws => P ws tr' mem' locals') }>.
+    Proof.
+      intros; eapply WeakestPrecondition_weaken; try eassumption.
+      cbv beta; intros * (ws & Hmap & HP); eapply getmany_list_map; eauto.
+    Qed.
+
+    Lemma compile_setup_postcondition_func_noret
+          {T} spec (x: T) cmd R tr mem locals functions :
+      (let pred a := postcondition_cmd (fun _ : Semantics.locals => True) (spec a) [] R tr in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       cmd
+       <{ pred x }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd
+      <{ wp_bind_retvars
+           []
+           (fun rets tr' m' _ =>
+              postcondition_func_norets (spec x) R tr tr' m' rets) }>.
+    Proof.
+      cbv [postcondition_func_norets
+             postcondition_func postcondition_cmd]; intros.
+      use_hyp_with_matching_cmd;
+        cbn in *; intros; exists []; sepsimpl; subst; eauto.
+    Qed.
+
+    Lemma compile_setup_postcondition_func
+          {T} spec (x: T) cmd R tr mem locals retvars functions :
+      (let pred a := postcondition_cmd (fun _ : Semantics.locals => True) (spec a) retvars R tr in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       cmd
+       <{ pred x }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd
+      <{ wp_bind_retvars
+           retvars
+           (fun rets tr' m' _ => postcondition_func (spec x) R tr tr' m' rets) }>.
+    Proof.
+      cbv [postcondition_func postcondition_cmd]; intros.
+      use_hyp_with_matching_cmd; red; sepsimpl; subst; eauto.
+    Qed.
+  End Setup.
 End with_parameters.
 
-Ltac compile_setup_unfold_spec :=
+Ltac compile_find_post :=
+  lazymatch goal with
+  | |- WeakestPrecondition.cmd _ _ _ _ _ (?pred ?term) =>
+    constr:((pred, term))
+  end.
+
+Ltac compile_setup_unfold_spec_of :=
   match goal with
   | [  |- context[?spec] ] =>
     match type of spec with
@@ -571,9 +601,41 @@ Ltac compile_setup_unfold_spec :=
   | _ => idtac (* Spec inlined *)
   end.
 
+Ltac compile_setup_find_app term head :=
+  match constr:(Set) with
+  | _ => find_app term head
+  | _ => fail "Gallina program" head "not found in postcondition" term
+  end.
+
+Definition __rupicola_program_marker {A} (a: A) := True.
+
+Ltac compile_setup_isolate_gallina_program :=
+  lazymatch goal with
+  | |- WeakestPrecondition.cmd _ _ _ _ _ (?pred ?spec) => idtac
+  | [ _: __rupicola_program_marker ?prog |-
+      WeakestPrecondition.cmd _ _ _ _ _ ?post ] =>
+    let gallina := compile_setup_find_app post prog in
+    lazymatch (eval pattern gallina in post) with
+    | ?pred ?gallina =>
+      let nm := fresh "pred" in
+      set pred as nm; change post with (nm gallina)
+    end
+  | _ => fail "Not sure which program is being compiled.  Expecting a WeakestPrecondition goal with a postcondition in the form (?pred gallina_spec)."
+  end.
+
+Ltac compile_setup_unfold_gallina_spec :=
+  match compile_find_post with
+  | (_, ?spec) => let hd := term_head spec in unfold hd
+  end.
+
+Create HintDb compiler_setup discriminated.
+Hint Resolve compile_setup_postcondition_func : compiler_setup.
+Hint Resolve compile_setup_postcondition_func_noret : compiler_setup.
+Hint Extern 20 (WeakestPrecondition.cmd _ _ _ _ _ _) => intros; shelve : compiler_setup.
+
 Ltac compile_setup :=
   cbv [program_logic_goal_for];
-  compile_setup_unfold_spec;
+  compile_setup_unfold_spec_of;
   (* modified version of a clause in straightline *)
   (intros; WeakestPrecondition.unfold1_call_goal;
    (cbv beta match delta [WeakestPrecondition.call_body]);
@@ -582,17 +644,11 @@ Ltac compile_setup :=
      replace test with true by reflexivity; change_no_check T
    end; cbv beta match delta [WeakestPrecondition.func]);
   repeat straightline; subst_lets_in_goal; cbn [length];
-  first [ apply postcondition_func_norets_postcondition_cmd
-        | apply postcondition_func_postcondition_cmd ];
-  intros;
-  lazymatch goal with
-  | |- context [ WeakestPrecondition.cmd _ _ _ _ _ (?pred ?spec) ] =>
-    let hd := term_head spec in unfold hd
-  | |- context [ postcondition_cmd _ (fun r => ?pred ?spec r) ] => (* FIXME *)
-    let hd := term_head spec in unfold hd
-  | _ => fail "Postcondition not in expected shape (?pred gallina_spec)"
-  end;
-  apply noskips_correct;
+  apply compile_setup_getmany_list_map;
+  unshelve typeclasses eauto with compiler_setup; intros;
+  compile_setup_isolate_gallina_program;
+  compile_setup_unfold_gallina_spec;
+  apply compile_setup_remove_skips;
   unfold WeakestPrecondition.program.
 
 Ltac lookup_variable m val :=
@@ -622,6 +678,9 @@ Ltac solve_map_get_goal_step :=
   lazymatch goal with
   | [ H: map.extends ?m2 ?m1 |- map.get ?m2 ?k = Some ?v ] =>
     simple apply (fun p => @map.extends_get _ _ _ m1 m2 k v p H)
+  | [  |- context[map.remove_many _ []] ] =>
+    (* This comes from compile_unset with an empty list *)
+    change (map.remove_many ?m []) with m
   | [  |- map.get ?m ?k = ?v ] =>
     tryif first [ has_evar k | has_evar m ] then
       match v with
@@ -654,13 +713,8 @@ Ltac solve_map_remove_many :=
   [ try (vm_compute; reflexivity) | try reflexivity ].
 
 Create HintDb compiler.
+Hint Unfold wp_bind_retvars : compiler.
 Hint Unfold postcondition_cmd : compiler.
-
-Ltac compile_find_post :=
-  lazymatch goal with
-  | |- WeakestPrecondition.cmd _ _ _ _ _ (?pred ?term) =>
-    constr:((pred, term))
-  end.
 
 Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: bool.
 Hint Extern 2 (IsRupicolaBinding (nlet _ _ _)) => exact true : typeclass_instances.
@@ -728,7 +782,7 @@ Ltac compile_cleanup_post :=
           | progress repeat autounfold with compiler ]
   end.
 
-Ltac compile_unify_post :=
+Ltac compile_unset_and_skip :=
   (* [unshelve] captures the list of variables to unset as a separate goal; if
      it is not resolved by unification, compile_done will take care of it. *)
   unshelve refine (compile_unsets _ _ _);  (* coq#13839 *)
@@ -765,7 +819,7 @@ Ltac compile_triple :=
     (* Look for a binding: if there is none, finish compiling *)
     match is_rupicola_binding hd with
     | true => compile_binding
-    | false => compile_unify_post
+    | false => compile_unset_and_skip
     end
   end.
 
