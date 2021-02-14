@@ -791,6 +791,11 @@ Ltac compile_unset_and_skip :=
     simple apply compile_skip;
     repeat compile_cleanup_post | ].
 
+Ltac compile_use_default_value :=
+  lazymatch goal with
+  | [ |- DefaultValue ?T ?t ] => exact t
+  end.
+
 Ltac compile_solve_side_conditions :=
   match goal with
   | [  |- sep _ _ _ ] =>
@@ -806,7 +811,8 @@ Ltac compile_solve_side_conditions :=
   | [  |- _ <> _ ] => congruence
   | _ =>
     first [ compile_cleanup
-          | solve [eauto with compiler] ]
+          | solve [eauto with compiler]
+          | compile_use_default_value ]
   end.
 
 Ltac compile_binding :=
@@ -830,7 +836,6 @@ Ltac compile_step :=
 
 Ltac compile_done :=
   match goal with
-  | [ |- DefaultValue ?T ?t ] => exact t
   | _ =>
     idtac "Compilation incomplete.";
     idtac "You may need to add new compilation lemmas to `compile_custom` or new `Hint Extern`s for `IsRupicolaBinding` to `typeclass_instances`."
@@ -845,4 +850,7 @@ Ltac safe_compile_step :=        (* TODO try to change compile_step so that it's
 (* TODO find the way to preserve the name of the binder in ‘k’ instead of renaming everything to ‘v’ *)
 
 Ltac compile :=
-  compile_setup; repeat compile_step; compile_done.
+  (* There are two repeats here because after compile_unsets we might try to
+     solve some goals, fail, decide to unify the list of variables to unset with
+     [], and at that point we want to try again. *)
+  compile_setup; repeat repeat compile_step; compile_done.

@@ -523,7 +523,6 @@ Section KVSwap.
     { cbn [fst snd].
       remove_map_annotations. (* FIXME *)
       compile_step. }
-    { compile_done. }
     { intros.
       clear_old_seps.
       eapply compile_map_get with (var:="v2") (err:="err");
@@ -539,8 +538,7 @@ Section KVSwap.
       { intros.
         repeat compile_step.
         - remove_map_annotations. (* Should be done only in the skip case *)
-          cbn; compile_step.
-        - compile_done. }
+          cbn; compile_step. }
       { intros; clear_old_seps.
         eapply compile_map_put_replace;
           lazymatch goal with
@@ -593,9 +591,7 @@ Section KVSwap.
                  | _ => reflexivity
                  end. }
         { remove_map_annotations. (* Should be done only in the skip case *)
-          compile_step. }
-
-        compile_done. } }
+          compile_step. } } }
   Qed.
 End KVSwap.
 
