@@ -1,12 +1,17 @@
 Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.IdentParsing.
+Require Import Rupicola.Lib.Tactics.
 
 Notation "'let/d' x := val 'in' body" :=
   (dlet val (fun x => body))
     (at level 200, x ident, body at level 200,
      format "'[hv' 'let/d'  x  :=  val  'in' '//' body ']'").
 
-(* FIXME remove let/d? *)
+Notation "'let/d' f a0 .. an := val 'in' body" :=
+  (dlet (fun a0 => .. (fun an => val) ..) (fun f => body))
+    (at level 200, f ident, a0 binder, an binder, body at level 200,
+     format "'[hv' 'let/d'  f  a0  ..  an  :=  val  'in' '//' body ']'").
+
 (* TODO: figure out recursive notation for this *)
 Notation
       "'let/d' '''(' x , y ')' := val 'in' body" :=
@@ -47,6 +52,8 @@ Section BlockedLets.
     nlet_eq (P := fun _ => T) vars val (fun v _ => body v).
   Proof. reflexivity. Qed.
 End BlockedLets.
+
+(* FIXME use `x binder` or `x name` instead of `x ident`? *)
 
 (* FIXME Error: Anomaly "Uncaught exception Failure("hd")." until 8.13 *)
 (* Notation "'let/n' x := val 'in' body" := *)
