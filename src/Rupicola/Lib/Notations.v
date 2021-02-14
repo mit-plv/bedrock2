@@ -199,3 +199,26 @@ Example spec_example_norets_short {semantics : Semantics.parameters}
 (* unify short and long notations for functions without return values (fails if
    spec_example_norets and spec_example_norets_short are not equivalent) *)
 Compute (let x := ltac:(unify @spec_example_norets @spec_example_norets_short) in x).
+
+Declare Custom Entry defn_spec.
+
+Notation "name '(' a0 , .. , an ')'  '~>'  r0 , .. , rn  {  body  } ,  'implements'  fn" :=
+  (name, (cons a0 .. (cons an []) ..), (cons r0 .. (cons rn []) ..),
+   match body return cmd with body => body end, fn)
+    (in custom defn_spec at level 10,
+        name constr at level 0,
+        a0 constr at level 0, an constr at level 0,
+        r0 constr at level 0, rn constr at level 0,
+        body constr at level 200,
+        fn constr at level 0,
+        no associativity).
+
+Notation "defn! spec" :=
+  ltac:(lazymatch spec with
+        | (?name, ?args, ?rets, ?body, ?gallina) =>
+          let proc := uconstr:((name, (args, rets, body))) in
+          let goal := Rupicola.Lib.Tactics.program_logic_goal_for_function
+                       proc (@List.nil string) in
+          exact (__rupicola_program_marker gallina -> goal)
+        end)
+         (at level 0, spec custom defn_spec at level 200, only parsing).
