@@ -338,6 +338,7 @@ Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
 (* TODO: should move upstream to coqutil *)
 Section Lists.
   Context {A : Type}.
+  Open Scope list_scope.
 
   Lemma skipn_seq_step n start len :
     skipn n (seq start len) = seq (start + n) (len - n).
@@ -377,7 +378,141 @@ Section Lists.
     cbn [fold_left fold_left_dependent fst snd].
     erewrite <-IHcs. reflexivity.
   Qed.
+
+  Fixpoint replace_nth (n: nat) (l: list A) (a: A) {struct l} :=
+    match l, n with
+    | [], _ => []
+    | _ :: t, 0 => a :: t
+    | h :: t, S n => h :: replace_nth n t a
+    end.
+
+  Lemma nth_replace_nth:
+    forall (xs: list A) idx idx' d v,
+      idx' = idx ->
+      idx < List.length xs ->
+      nth idx' (replace_nth idx xs v) d = v.
+  Proof.
+    intros; subst; revert dependent idx; revert dependent xs.
+    induction xs; cbn; intros idx Hlt.
+    - inversion Hlt.
+    - destruct idx; simpl.
+      + reflexivity.
+      + apply IHxs; auto with arith.
+  Qed.
+
+  Lemma replace_nth_length:
+    forall (l: list A) n a,
+      List.length (replace_nth n l a) = List.length l.
+  Proof.
+    induction l; cbn; intros.
+    - reflexivity.
+    - destruct n; simpl; rewrite ?IHl; try reflexivity.
+  Qed.
+
+  Lemma List_firstn_app_l :
+    forall (l1 l2: list A) n,
+      n = List.length l1 ->
+      List.firstn n (l1 ++ l2) = l1.
+  Proof.
+    intros; subst.
+    rewrite List.firstn_app, List.firstn_all, Nat.sub_diag; simpl.
+    rewrite app_nil_r; reflexivity.
+  Qed.
+
+  Lemma List_firstn_app_l2 :
+    forall (l1 l2: list A) n k,
+      n = List.length l1 ->
+      (List.firstn (n + k) (l1 ++ l2) = l1 ++ (List.firstn k l2)).
+  Proof.
+    intros; subst.
+    rewrite List.firstn_app, List.firstn_all2, minus_plus; simpl; (reflexivity || lia).
+  Qed.
+
+  Lemma List_skipn_app_r :
+    forall (l1 l2: list A) n,
+      n = List.length l1 ->
+      List.skipn n (l1 ++ l2) = l2.
+  Proof.
+    intros; subst.
+    rewrite List.skipn_app, List.skipn_all, Nat.sub_diag; simpl; reflexivity.
+  Qed.
+
+  Lemma List_skipn_app_r2 :
+    forall (l1 l2: list A) n k,
+      n = List.length l1 ->
+      List.skipn (n + k) (l1 ++ l2) =
+      List.skipn k l2.
+  Proof.
+    intros; subst.
+    rewrite List.skipn_app, List.skipn_all, minus_plus; simpl; (reflexivity || lia).
+  Qed.
+
+  Lemma replace_nth_eqn :
+    forall (xs: list A) idx x,
+      idx < List.length xs ->
+      replace_nth idx xs x =
+      List.firstn idx xs ++ x :: List.skipn (S idx) xs.
+  Proof.
+    induction xs; cbn; intros idx x Hlt.
+    - inversion Hlt.
+    - destruct idx.
+      + reflexivity.
+      + cbn [List.firstn List.app].
+        f_equal; apply IHxs.
+        auto with arith.
+  Qed.
 End Lists.
+
+Section Vectors.
+  Lemma Vector_to_list_length {T n}:
+    forall (v: Vector.t T n),
+      List.length (Vector.to_list v) = n.
+  Proof.
+    induction v; cbn.
+    - reflexivity.
+    - f_equal; assumption.
+  Qed.
+
+  Lemma Vector_nth_hd_skipn {T n}:
+    forall (f: Fin.t n) idx (v : Vector.t T n) (t0 : T),
+      idx = proj1_sig (Fin.to_nat f) ->
+      Vector.nth v f = List.hd t0 (List.skipn idx (Vector.to_list v)).
+  Proof.
+    induction f; cbn; intros; rewrite (Vector.eta v).
+    - subst; reflexivity.
+    - subst; destruct (Fin.to_nat f); cbn.
+      erewrite IHf; reflexivity.
+  Qed.
+
+  Lemma Vector_to_list_app {A n1 n2} :
+    forall v1 v2,
+      Vector.to_list (@Vector.append A n1 n2 v1 v2) =
+      List.app (Vector.to_list v1) (Vector.to_list v2).
+  Proof.
+    induction v1; cbn; intros.
+    - reflexivity.
+    - f_equal. apply IHv1.
+  Qed.
+
+  Lemma Vector_to_list_replace {A n}:
+    forall (a: Vector.t A n) (idx: nat) (f: Fin.t n) v,
+      idx = proj1_sig (Fin.to_nat f) ->
+      Vector.to_list (Vector.replace a f v) =
+      replace_nth idx (Vector.to_list a) v.
+  Proof.
+    intros; subst; induction f; cbn; intros; rewrite (Vector.eta a).
+    - reflexivity.
+    - destruct (Fin.to_nat f); cbn in *.
+      f_equal; apply IHf.
+  Qed.
+
+  Lemma Vector_nth_replace {T n}:
+    forall (idx: Fin.t n) (v: Vector.t T n) (val: T),
+      Vector.nth (Vector.replace v idx val) idx = val.
+  Proof.
+    induction idx; intros; rewrite (Vector.eta v); cbn; try rewrite IHidx; reflexivity.
+  Qed.
+End Vectors.
 
 (* TODO: should be upstreamed to coqutil *)
 Module word.
