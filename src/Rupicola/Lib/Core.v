@@ -11,6 +11,7 @@ Require Export bedrock2.Scalars.
 Require Export bedrock2.Syntax.
 Require Export bedrock2.WeakestPreconditionProperties.
 Require Export coqutil.dlet.
+Require Export coqutil.Byte.
 Require Import coqutil.Decidable.
 Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.SortedList.
 Require Export coqutil.Z.PushPullMod.
@@ -586,8 +587,27 @@ Module word.
         apply signed_gz_unsigned_bounds in Hgz.
         lia.
     Qed.
+
+    Notation word_of_byte b :=
+      (word.of_Z (Byte.byte.unsigned b)).
+
+    Lemma word_of_byte_range b:
+      0 <= word.unsigned (word_of_byte b) < 256.
+    Proof.
+      pose proof Byte.to_N_bounded b as H256%N2Z.inj_le.
+      pose proof word.unsigned_range (word_of_byte b).
+      unfold Byte.byte.unsigned.
+      rewrite word.unsigned_of_Z; unfold word.wrap.
+      destruct (Z_lt_le_dec 256 (2 ^ width)).
+      - rewrite Z.mod_small; lia.
+      - pose proof Z.mod_pos_bound (Z.of_N (Byte.to_N b)) (2 ^ width) ltac:(lia).
+        lia.
+    Qed.
   End __.
 End word.
+
+Notation word_of_byte b :=
+  (word.of_Z (Byte.byte.unsigned b)).
 
 Section Semantics.
   Context {semantics : Semantics.parameters}
