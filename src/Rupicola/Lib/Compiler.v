@@ -322,6 +322,39 @@ Section with_parameters.
     repeat straightline'; eauto.
   Qed.
 
+  (* FIXME find a way to automate the application of these two lemmas *)
+  (* N.B. should only be added to compilation tactics that solve their subgoals,
+     since this applies to any shape of goal *)
+  Lemma compile_copy_pointer {tr mem locals functions} {data} (x: data) :
+    let v := x in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
+      (Data : Semantics.word -> data -> Semantics.mem -> Prop) R
+      x_var x_ptr var,
+
+      (* This assumption is used to drive the compiler, but it's not used by the proof *)
+      (Data x_ptr x * R)%sep mem ->
+      map.get locals x_var = Some x_ptr ->
+
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var x_ptr;
+          Functions := functions }>
+       k_impl
+       <{ pred (k v eq_refl) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set var (expr.var x_var)) k_impl
+      <{ pred (nlet_eq [var] v k) }>.
+  Proof.
+    intros.
+    repeat straightline'.
+    eassumption.
+  Qed.
+
   Lemma compile_sig_as_nlet_eq {tr mem locals functions} {A} P0 (x0: A) Px0:
     let v := exist P0 x0 Px0 in
     forall {T} {pred: T -> predicate} {k: {x: A | P0 x} -> T}
@@ -342,8 +375,6 @@ Section with_parameters.
       cmd
       <{ pred (nlet vars v k) }>.
   Proof. eauto. Qed.
-
-  (* FIXME check out what happens when running straightline on a triple with a cmd.seq; could we get rid of the continuation arguments?  Would it require more rewrites? *)
 
   (* N.B. this should *not* be added to any compilation tactics, since it will
      always apply; it needs to be applied manually *)
@@ -389,39 +420,6 @@ Section with_parameters.
     - apply compile_unset.
       apply IHvars.
       assumption.
-  Qed.
-
-  (* FIXME find a way to automate the application of these two lemmas *)
-  (* N.B. should only be added to compilation tactics that solve their subgoals,
-     since this applies to any shape of goal *)
-  Lemma compile_copy_pointer {tr mem locals functions} {data} (x: data) :
-    let v := x in
-    forall {P} {pred: P v -> predicate}
-      {k: nlet_eq_k P v} {k_impl}
-      (Data : Semantics.word -> data -> Semantics.mem -> Prop) R
-      x_var x_ptr var,
-
-      (* This assumption is used to drive the compiler, but it's not used by the proof *)
-      (Data x_ptr x * R)%sep mem ->
-      map.get locals x_var = Some x_ptr ->
-
-      (let v := v in
-       <{ Trace := tr;
-          Memory := mem;
-          Locals := map.put locals var x_ptr;
-          Functions := functions }>
-       k_impl
-       <{ pred (k v eq_refl) }>) ->
-      <{ Trace := tr;
-         Memory := mem;
-         Locals := locals;
-         Functions := functions }>
-      cmd.seq (cmd.set var (expr.var x_var)) k_impl
-      <{ pred (nlet_eq [var] v k) }>.
-  Proof.
-    intros.
-    repeat straightline'.
-    eassumption.
   Qed.
 
   Lemma compile_if {tr mem locals functions} (c: bool) {A} (t f: A) :
