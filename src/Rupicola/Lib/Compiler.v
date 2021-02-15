@@ -328,6 +328,8 @@ Section with_parameters.
     cbv_beta_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.xor xorb
                                      ltac:(compile_binop_bbb_t word.unsigned_xor_nowrap)).
 
+  (* TODO: deduplicate and automate *)
+  Lemma compile_copy_word {tr mem locals functions} v0 :
     let v := v0 in
     forall {P} {pred: P v -> predicate}
       {k: nlet_eq_k P v} {k_impl}
@@ -350,7 +352,30 @@ Section with_parameters.
     repeat straightline'; eauto.
   Qed.
 
-  (* FIXME find a way to automate the application of these two lemmas *)
+  Lemma compile_copy_byte {tr mem locals functions} (b: byte) :
+    let v := b in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
+      src_var dst_var,
+      map.get locals src_var = Some (word_of_byte b) ->
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals dst_var (word_of_byte v);
+          Functions := functions }>
+       k_impl
+       <{ pred (k v eq_refl) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set dst_var (expr.var src_var)) k_impl
+      <{ pred (nlet_eq [dst_var] v k) }>.
+  Proof.
+    repeat straightline'; eauto.
+  Qed.
+
+  (* FIXME find a way to automate the application of these copy lemmas *)
   (* N.B. should only be added to compilation tactics that solve their subgoals,
      since this applies to any shape of goal *)
   Lemma compile_copy_pointer {tr mem locals functions} {data} (x: data) :
