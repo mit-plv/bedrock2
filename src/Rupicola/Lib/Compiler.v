@@ -158,14 +158,97 @@ Section with_parameters.
       <{ pred (nlet_eq [var] v k) }>.
   Proof. repeat straightline; eassumption. Qed.
 
-  (* FIXME generalize *)
-  Lemma compile_xorb {tr mem locals functions} x y :
-    let v := xorb x y in
+  Lemma compile_binop_xxx {T} T2w op f
+        (H: forall x y: T, T2w (f x y) = Semantics.interp_binop op (T2w x) (T2w y))
+        {tr mem locals functions} (x y: T) :
+    let v := f x y in
     forall {P} {pred: P v -> predicate}
       {k: nlet_eq_k P v} {k_impl}
       x_var y_var var,
-      map.get locals x_var = Some (b2w x) ->
-      map.get locals y_var = Some (b2w y) ->
+      map.get locals x_var = Some (T2w x) ->
+      map.get locals y_var = Some (T2w y) ->
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var (T2w v);
+          Functions := functions }>
+       k_impl
+       <{ pred (k v eq_refl) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set var (expr.op op (expr.var x_var) (expr.var y_var)))
+              k_impl
+      <{ pred (nlet_eq [var] v k) }>.
+  Proof. repeat (eexists; split; eauto). Qed.
+
+  Notation unfold_id term :=
+    ltac:(let tm := fresh in pose term as tm;
+          change (id ?x) with x in (type of tm);
+          let t := type of tm in
+          exact (tm: t)) (only parsing).
+
+  Definition compile_word_add :=
+    unfold_id (@compile_binop_xxx _ id bopname.add word.add ltac:(reflexivity)).
+  Definition compile_word_sub :=
+    unfold_id (@compile_binop_xxx _ id bopname.sub word.sub ltac:(reflexivity)).
+  Definition compile_word_mul :=
+    unfold_id (@compile_binop_xxx _ id bopname.mul word.mul ltac:(reflexivity)).
+  Definition compile_word_mulhuu :=
+    unfold_id (@compile_binop_xxx _ id bopname.mulhuu word.mulhuu ltac:(reflexivity)).
+  Definition compile_word_divu :=
+    unfold_id (@compile_binop_xxx _ id bopname.divu word.divu ltac:(reflexivity)).
+  Definition compile_word_remu :=
+    unfold_id (@compile_binop_xxx _ id bopname.remu word.modu ltac:(reflexivity)).
+  Definition compile_word_and :=
+    unfold_id (@compile_binop_xxx _ id bopname.and word.and ltac:(reflexivity)).
+  Definition compile_word_or :=
+    unfold_id (@compile_binop_xxx _ id bopname.or word.or ltac:(reflexivity)).
+  Definition compile_word_xor :=
+    unfold_id (@compile_binop_xxx _ id bopname.xor word.xor ltac:(reflexivity)).
+  (* Definition compile_word_ndn :=
+     unfold_id (@compile_binop_xxx _ id bopname.ndn word.xor ltac:(reflexivity)). *)
+  Definition compile_word_sru :=
+    unfold_id (@compile_binop_xxx _ id bopname.sru word.sru ltac:(reflexivity)).
+  Definition compile_word_slu :=
+    unfold_id (@compile_binop_xxx _ id bopname.slu word.slu ltac:(reflexivity)).
+  Definition compile_word_srs :=
+    unfold_id (@compile_binop_xxx _ id bopname.srs word.srs ltac:(reflexivity)).
+
+  Ltac compile_binop_zzw_bitwise lemma :=
+    intros; cbn;
+    apply word.unsigned_inj;
+    rewrite lemma, !word.unsigned_of_Z;
+    bitblast.Z.bitblast;
+    rewrite !word.testbit_wrap;
+    bitblast.Z.bitblast_core.
+
+  Definition compile_Z_add :=
+    @compile_binop_xxx _ word.of_Z bopname.add Z.add word.ring_morph_add.
+  Definition compile_Z_sub :=
+    @compile_binop_xxx _ word.of_Z bopname.sub Z.sub word.ring_morph_sub.
+  Definition compile_Z_mul :=
+    @compile_binop_xxx _ word.of_Z bopname.mul Z.mul word.ring_morph_mul.
+  Definition compile_Z_and :=
+    @compile_binop_xxx _ word.of_Z bopname.and Z.land
+                       ltac:(compile_binop_zzw_bitwise word.unsigned_and_nowrap).
+  Definition compile_Z_or :=
+    @compile_binop_xxx _ word.of_Z bopname.or Z.lor
+                       ltac:(compile_binop_zzw_bitwise word.unsigned_or_nowrap).
+  Definition compile_Z_xor :=
+    @compile_binop_xxx _ word.of_Z bopname.xor Z.lxor
+                       ltac:(compile_binop_zzw_bitwise word.unsigned_xor_nowrap).
+
+  Lemma compile_binop_xxb {T} T2w op (f: T -> T -> bool)
+        (H: forall x y, b2w (f x y) = Semantics.interp_binop op (T2w x) (T2w y))
+        {tr mem locals functions} (x y: T) :
+    let v := f x y in
+    forall {P} {pred: P v -> predicate}
+      {k: nlet_eq_k P v} {k_impl}
+      x_var y_var var,
+      map.get locals x_var = Some (T2w x) ->
+      map.get locals y_var = Some (T2w y) ->
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
@@ -177,83 +260,43 @@ Section with_parameters.
          Memory := mem;
          Locals := locals;
          Functions := functions }>
-      cmd.seq (cmd.set var (expr.op bopname.xor (expr.var x_var) (expr.var y_var)))
-              k_impl
-      <{ pred (k v eq_refl) }>.
-  Proof.
-    intros.
-    repeat straightline.
-    eexists; split.
-    { repeat straightline.
-      eexists; split; [ eassumption | ].
-      repeat straightline.
-      eexists; split; [ eassumption | ].
-      reflexivity. }
-    red.
-    rewrite <-(word.of_Z_unsigned (word.xor _ _)).
-    rewrite word.unsigned_xor_nowrap.
-    rewrite !word.unsigned_of_Z_b2z, Z.lxor_xorb.
-    assumption.
-  Qed.
-
-  Lemma compile_add {tr mem locals functions} x y :
-    let v := word.add x y in
-    forall {P} {pred: P v -> predicate}
-      {k: nlet_eq_k P v} k_impl
-      x_var y_var var,
-      map.get locals x_var = Some x ->
-      map.get locals y_var = Some y ->
-      (let v := v in
-       <{ Trace := tr;
-          Memory := mem;
-          Locals := map.put locals var v;
-          Functions := functions }>
-       k_impl
-       <{ pred (k v eq_refl) }>) ->
-      <{ Trace := tr;
-         Memory := mem;
-         Locals := locals;
-         Functions := functions }>
-      cmd.seq (cmd.set var (expr.op bopname.add (expr.var x_var) (expr.var y_var)))
+      cmd.seq (cmd.set var (expr.op op (expr.var x_var) (expr.var y_var)))
               k_impl
       <{ pred (nlet_eq [var] v k) }>.
-  Proof.
-    repeat straightline.
-    eexists; split; eauto.
-    repeat straightline.
-    eexists; split; eauto.
-    repeat straightline.
-    eexists; split; eauto.
-  Qed.
+  Proof. repeat (eexists; split; eauto). Qed.
 
-  Lemma compile_eqb {tr mem locals functions} x y :
-    let v := word.eqb x y in
-    forall {P} {pred: P v -> predicate}
-      {k: nlet_eq_k P v} k_impl
-      x_var y_var var,
-      map.get locals x_var = Some x ->
-      map.get locals y_var = Some y ->
-      (let v := v in
-       <{ Trace := tr;
-          Memory := mem;
-          Locals := map.put locals var (b2w v);
-          Functions := functions }>
-       k_impl
-       <{ pred (nlet_eq [var] v k) }>) ->
-      <{ Trace := tr;
-         Memory := mem;
-         Locals := locals;
-         Functions := functions }>
-      cmd.seq (cmd.set var (expr.op bopname.eq (expr.var x_var) (expr.var y_var)))
-              k_impl
-      <{ pred (nlet_eq [var] v k) }>.
-  Proof.
-    intros. repeat straightline'.
-    subst_lets_in_goal.
-    remember (word.eqb x y) as b in *.
-    rewrite word.unsigned_eqb in Heqb; subst b.
-    cbv [Z.b2z] in *; destruct_one_match; eauto.
-  Qed.
+  Ltac compile_binop_wwb_t :=
+    unfold id; cbn; intros; destruct_one_match; reflexivity.
+
+  Definition compile_word_lts :=
+    unfold_id (@compile_binop_xxb _ id bopname.lts word.lts ltac:(compile_binop_wwb_t)).
+  Definition compile_word_ltu :=
+    unfold_id (@compile_binop_xxb _ id bopname.ltu word.ltu ltac:(compile_binop_wwb_t)).
+  Definition compile_word_eqb :=
+    unfold_id (@compile_binop_xxb _ id bopname.eq word.eqb ltac:(compile_binop_wwb_t)).
+
+  Ltac compile_binop_bbb_t lemma :=
+    intros x y; cbn;
+    match goal with
+    | [  |- _ = ?w ] =>
+      rewrite <- (word.of_Z_unsigned w);
+      rewrite lemma, !word.unsigned_of_Z_b2z; destruct x, y; reflexivity
+    end.
+
+  Notation cbv_b2w x :=
+    ltac:(pose proof x as x0;
+         change ((fun b => b2w b) ?y) with (b2w y) in (type of x0);
+         let t := type of x0 in exact (x: t)) (only parsing).
+
+  Definition compile_andb :=
+    cbv_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.and andb
+                                ltac:(compile_binop_bbb_t word.unsigned_and_nowrap)).
+  Definition compile_orb :=
+    cbv_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.or orb
+                                ltac:(compile_binop_bbb_t word.unsigned_or_nowrap)).
+  Definition compile_xorb :=
+    cbv_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.xor xorb
+                                ltac:(compile_binop_bbb_t word.unsigned_xor_nowrap)).
 
   (* TODO: make more types *)
   Lemma compile_copy_local {tr mem locals functions} v0 :
