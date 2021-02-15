@@ -207,20 +207,15 @@ Ltac straightline_map_solver :=
 
 Ltac straightline' := straightline_plus ltac:(solve [straightline_map_solver]).
 
-(* Notations for program_logic_goal_for_function *)
-Local Notation function_t :=
-  ((string * (list string * list string * cmd.cmd))%type).
-Local Notation functions_t :=
-  (list function_t).
 
 (* modified version of program_logic_goal_for_function, in which callee names
   are manually inserted *)
 Ltac program_logic_goal_for_function proc callees :=
-  let __ := constr:(proc : function_t) in
+  let __ := constr:(proc : func) in
   let fname := (eval cbv in (fst proc)) in
   let callees := (eval cbv in callees) in
   let spec := lazymatch constr:(_:spec_of fname) with ?s => s end in
-  constr:(forall functions : functions_t,
+  constr:(forall functions : list func,
              ltac:(let s := assuming_correctness_of_in
                               callees functions
                               (spec (cons proc functions)) in
