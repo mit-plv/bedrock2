@@ -138,6 +138,15 @@ Section with_parameters.
   Notation b2w b :=
     (word.of_Z (Z.b2z b)).
 
+  Lemma b2w_inj:
+    forall b1 b2, b2w b1 = b2w b2 -> b1 = b2.
+  Proof.
+    intros [|] [|]; simpl;
+      intros H%(f_equal word.unsigned);
+      rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1 in H;
+      cbn; congruence.
+  Qed.
+
   Lemma compile_bool_constant {tr mem locals functions} b :
     let v := b in
     forall {P} {pred: P v -> predicate}
@@ -275,6 +284,20 @@ Section with_parameters.
   Definition compile_word_eqb :=
     unfold_id (@compile_binop_xxb _ id bopname.eq word.eqb ltac:(compile_binop_wwb_t)).
 
+  Lemma bool_word_eq_compat {T} T2w (eqb: T -> T -> bool)
+        (T2w_inj: forall x y, T2w x = T2w y -> x = y)
+        (eqb_compat: forall x y, eqb x y = true <-> x = y) :
+    forall x y,
+      b2w (eqb x y) = (if word.eqb (T2w x) (T2w y) then word.of_Z 1 else word.of_Z 0).
+  Proof.
+    intros; rewrite word.unsigned_eqb.
+    destruct eqb eqn:Hb; destruct Z.eqb eqn:Hz; try reflexivity.
+    - apply eqb_compat in Hb; subst.
+      apply Z.eqb_neq in Hz; congruence.
+    - apply Z.eqb_eq, word.unsigned_inj, T2w_inj in Hz; subst.
+      rewrite (proj2 (eqb_compat _ _)) in Hb; congruence.
+  Qed.
+
   Ltac compile_binop_bbb_t lemma :=
     intros x y; cbn;
     match goal with
@@ -283,23 +306,28 @@ Section with_parameters.
       rewrite lemma, !word.unsigned_of_Z_b2z; destruct x, y; reflexivity
     end.
 
-  Notation cbv_b2w x :=
+  Notation cbv_beta_b2w x :=
     ltac:(pose proof x as x0;
          change ((fun b => b2w b) ?y) with (b2w y) in (type of x0);
          let t := type of x0 in exact (x: t)) (only parsing).
 
-  Definition compile_andb :=
-    cbv_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.and andb
-                                ltac:(compile_binop_bbb_t word.unsigned_and_nowrap)).
-  Definition compile_orb :=
-    cbv_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.or orb
-                                ltac:(compile_binop_bbb_t word.unsigned_or_nowrap)).
-  Definition compile_xorb :=
-    cbv_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.xor xorb
-                                ltac:(compile_binop_bbb_t word.unsigned_xor_nowrap)).
+  Definition compile_bool_eqb :=
+    cbv_beta_b2w (@compile_binop_xxb
+                    _ (fun x => b2w x) bopname.eq Bool.eqb
+                    (bool_word_eq_compat (fun w => b2w w) _ b2w_inj Bool.eqb_true_iff)).
 
-  (* TODO: make more types *)
-  Lemma compile_copy_local {tr mem locals functions} v0 :
+  (* FIXME add comparisons on bytes *)
+
+  Definition compile_bool_andb :=
+    cbv_beta_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.and andb
+                                     ltac:(compile_binop_bbb_t word.unsigned_and_nowrap)).
+  Definition compile_bool_orb :=
+    cbv_beta_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.or orb
+                                     ltac:(compile_binop_bbb_t word.unsigned_or_nowrap)).
+  Definition compile_bool_xorb :=
+    cbv_beta_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.xor xorb
+                                     ltac:(compile_binop_bbb_t word.unsigned_xor_nowrap)).
+
     let v := v0 in
     forall {P} {pred: P v -> predicate}
       {k: nlet_eq_k P v} {k_impl}
