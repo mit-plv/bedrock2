@@ -28,8 +28,8 @@ Declare Scope sep_scope.
 Delimit Scope sep_scope with sep.
 Infix "*" := (sep) : sep_scope.
 
-Set Nested Proofs Allowed.
-Set Default Goal Selector "1".
+Global Set Nested Proofs Allowed.
+Global Set Default Goal Selector "1".
 
 Notation word := Semantics.word.
 

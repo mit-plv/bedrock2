@@ -147,10 +147,6 @@ Section Sample.
     clear - H0; firstorder.
   Qed.
 
-  Hint Unfold pbind: compiler.
-  Hint Extern 1 (ret _ _) => reflexivity : compiler.
-  Hint Resolve compile_setup_nondet_pbind : compiler_setup.
-  Hint Extern 2 (IsRupicolaBinding (bindn _ _ _)) => exact true : typeclass_instances.
 
   Ltac compile_custom ::=
     simple eapply compile_peek.
@@ -169,3 +165,7 @@ End Sample.
 (* Require Import bedrock2.NotationsInConstr. *)
 (* Arguments nondet_sum_body /. *)
 (* Eval simpl in nondet_sum_body. *)
+Global Hint Unfold pbind: compiler_cleanup.
+Global Hint Extern 1 (ret _ _) => reflexivity : compiler_cleanup.
+Global Hint Resolve compile_setup_nondet_pbind : compiler_setup.
+Global Hint Extern 2 (IsRupicolaBinding (bindn _ _ _)) => exact true : typeclass_instances.

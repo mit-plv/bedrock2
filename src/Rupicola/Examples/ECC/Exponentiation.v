@@ -15,7 +15,7 @@ Section S.
              forall X : bignum,
                bounded_by tight_bounds X ->
                bounded_by loose_bounds X}.
-  Hint Resolve relax_bounds : compiler.
+  Hint Resolve relax_bounds : compiler_cleanup.
 
   Section Gallina.
     Local Notation "0" := (0 mod M).
@@ -294,7 +294,7 @@ Section S.
                            | simple eapply compile_mul]));
       (intros; unfold Placeholder in *).  (* FIXME get rid of placeholders? *)
 
-    Hint Unfold exp_result : compiler.
+    Hint Unfold exp_result : compiler_cleanup.
 
     Derive exp_body SuchThat
            (let exp6 := ("exp6", (["x"; "out"], [], exp_body)) in

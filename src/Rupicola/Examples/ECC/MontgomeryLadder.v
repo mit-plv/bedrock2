@@ -23,7 +23,7 @@ Section __.
              forall X : bignum,
                bounded_by tight_bounds X ->
                bounded_by loose_bounds X}.
-  Hint Resolve relax_bounds : compiler.
+  Hint Resolve relax_bounds : compiler_cleanup.
 
   Context (bound : nat).
   Context (bound_pos : (bound > 0)%nat).
@@ -272,7 +272,7 @@ Section __.
     Proof. exact word.unsigned_of_Z_1. Qed.
     Lemma unsigned_of_Z_0 : word.unsigned (word.of_Z 0) = 0.
     Proof. exact word.unsigned_of_Z_0. Qed.
-    Hint Resolve unsigned_of_Z_0 unsigned_of_Z_1 : compiler.
+    Hint Resolve unsigned_of_Z_0 unsigned_of_Z_1 : compiler_cleanup.
 
     Ltac safe_compile_step :=
       compile_step;

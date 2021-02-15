@@ -95,12 +95,7 @@ Section with_parameters.
   Qed.
 End with_parameters.
 
-Hint Unfold OneCell TwoCells : compiler.
+Hint Unfold OneCell TwoCells : compiler_cleanup.
 
-Ltac cell_compile_step :=
-  try simple apply compile_nlet_as_nlet_eq;
-  first [simple eapply compile_get |
-         simple eapply compile_put].
-
-Ltac compile_custom ::=
-  cell_compile_step.
+Hint Extern 1 => simple eapply compile_get; shelve : compiler.
+Hint Extern 1 => simple eapply compile_put; shelve : compiler.

@@ -968,14 +968,12 @@ Section with_parameters.
   Definition compile_ranged_for_s :=
     compile_ranged_for_w word_signed_of_Z_bracketed.
 
-   Ltac compile_custom ::=
-     try simple apply compile_nlet_as_nlet_eq;
-     first [simple eapply compile_get |
-            simple eapply compile_put |
-            simple eapply compile_word_vectorarray_get |
-            simple eapply compile_word_vectorarray_put |
-            simple eapply compile_word_sizedlistarray_get |
-            simple eapply compile_word_sizedlistarray_put ].
+  Hint Extern 1 => simple eapply compile_get; shelve : compiler.
+  Hint Extern 1 => simple eapply compile_put; shelve : compiler.
+  Hint Extern 1 => simple eapply compile_word_vectorarray_get; shelve : compiler.
+  Hint Extern 1 => simple eapply compile_word_vectorarray_put; shelve : compiler.
+  Hint Extern 1 => simple eapply compile_word_sizedlistarray_get; shelve : compiler.
+  Hint Extern 1 => simple eapply compile_word_sizedlistarray_put; shelve : compiler.
 
    Notation "∅" := map.empty.
    Notation "m [[ k ← v ]]" :=
@@ -1035,7 +1033,7 @@ Section with_parameters.
      (fun '(a1, a2) (_retvals: list word) =>
         (word_vectorarray_value (n := n1) a1_ptr a1 *
          word_vectorarray_value (n := n2) a2_ptr a2)%sep).
-   Hint Unfold TwoVectArrays : compiler.
+   Hint Unfold TwoVectArrays : compiler_cleanup.
 
    Instance spec_of_vect_memcpy : spec_of "vect_memcpy" :=
      (forall! (len: word) (a1_ptr a2_ptr : address)
@@ -1090,7 +1088,7 @@ Section with_parameters.
      (fun '(a1, a2) (_retvals: list word) =>
         (word_sizedlistarray_value a1_ptr n1 a1 *
          word_sizedlistarray_value a2_ptr n2 a2)%sep).
-   Hint Unfold TwoSizedListArrays : compiler.
+   Hint Unfold TwoSizedListArrays : compiler_cleanup.
 
    Instance spec_of_sizedlist_memcpy : spec_of "sizedlist_memcpy" :=
      (forall! (len: word) (a1_ptr a2_ptr : address)
@@ -1147,7 +1145,7 @@ Section with_parameters.
      (fun '(a1, a2) (_retvals: list word) =>
         (word_listarray_value a1_ptr a1 *
          word_listarray_value a2_ptr a2)%sep).
-   Hint Unfold TwoUnsizedListArrays : compiler.
+   Hint Unfold TwoUnsizedListArrays : compiler_cleanup.
 
    Instance spec_of_unsizedlist_memcpy : spec_of "unsizedlist_memcpy" :=
      (forall! (len: word) (a1_ptr a2_ptr : address)
@@ -1183,14 +1181,13 @@ Section with_parameters.
          (word_listarray_value a1_ptr a1 *
           word_listarray_value a2_ptr a2 * R)%sep mem')).
 
-     Ltac compile_custom ::=
-       simple apply compile_nlet_as_nlet_eq;
-       first [simple eapply compile_get |
-              simple eapply compile_put |
-              simple eapply compile_word_vectorarray_get |
-              simple eapply compile_word_vectorarray_put |
-              simple eapply compile_word_listarray_get |
-              simple eapply compile_word_listarray_put ].
+     (*  FIXME remove previous hints *)
+     Hint Extern 1 => simple eapply compile_get; shelve : compiler.
+     Hint Extern 1 => simple eapply compile_put; shelve : compiler.
+     Hint Extern 1 => simple eapply compile_word_vectorarray_get; shelve : compiler.
+     Hint Extern 1 => simple eapply compile_word_vectorarray_put; shelve : compiler.
+     Hint Extern 1 => simple eapply compile_word_listarray_get; shelve : compiler.
+     Hint Extern 1 => simple eapply compile_word_listarray_put; shelve : compiler.
 
      all: repeat compile_step; compile_done; unfold id.
 

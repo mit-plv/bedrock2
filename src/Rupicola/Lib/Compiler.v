@@ -739,7 +739,7 @@ Ltac compile_setup :=
    end; cbv beta match delta [WeakestPrecondition.func]);
   repeat straightline; subst_lets_in_goal; cbn [length];
   apply compile_setup_getmany_list_map;
-  unshelve typeclasses eauto with compiler_setup; intros;
+  progress unshelve (typeclasses eauto with compiler_setup); intros;
   compile_setup_isolate_gallina_program;
   compile_setup_unfold_gallina_spec;
   apply compile_setup_remove_skips;
@@ -806,9 +806,9 @@ Ltac solve_map_remove_many :=
   apply map.remove_many_diff;
   [ try (vm_compute; reflexivity) | try reflexivity ].
 
-Create HintDb compiler.
-Hint Unfold wp_bind_retvars : compiler.
-Hint Unfold postcondition_cmd : compiler.
+Create HintDb compiler_cleanup discriminated.
+Hint Unfold wp_bind_retvars : compiler_cleanup.
+Hint Unfold postcondition_cmd : compiler_cleanup.
 
 Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: bool.
 Hint Extern 2 (IsRupicolaBinding (nlet _ _ _)) => exact true : typeclass_instances.
@@ -840,20 +840,45 @@ Ltac compile_unfold_head_binder :=
   let p := compile_find_post in
   compile_unfold_head_binder' p.
 
-(* Using [simple apply] ensures that Coq doesn't peek past the first binding [nlet]s *)
-Ltac compile_basics :=
-  gen_sym_inc;                  (* FIXME remove? *)
-  let name := gen_sym_fetch "v" in
-  try simple apply compile_nlet_as_nlet_eq;
-  first [simple eapply compile_word_of_Z_constant |
-         simple eapply compile_Z_constant |
-         simple eapply compile_nat_constant |
-         simple eapply compile_bool_constant |
-         simple eapply compile_xorb |
-         simple eapply compile_add |
-         simple eapply compile_eqb |
-         simple eapply compile_if ].
+Create HintDb compiler.
+Hint Extern 1 => simple eapply compile_word_of_Z_constant; shelve : compiler.
+Hint Extern 1 => simple eapply compile_Z_constant; shelve : compiler.
+Hint Extern 1 => simple eapply compile_nat_constant; shelve : compiler.
+Hint Extern 1 => simple eapply compile_bool_constant; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_add; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_sub; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_mul; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_mulhuu; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_divu; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_remu; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_and; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_or; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_xor; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_sru; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_slu; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_srs; shelve : compiler.
+Hint Extern 1 => simple eapply compile_Z_add; shelve : compiler.
+Hint Extern 1 => simple eapply compile_Z_sub; shelve : compiler.
+Hint Extern 1 => simple eapply compile_Z_mul; shelve : compiler.
+Hint Extern 1 => simple eapply compile_Z_and; shelve : compiler.
+Hint Extern 1 => simple eapply compile_Z_or; shelve : compiler.
+Hint Extern 1 => simple eapply compile_Z_xor; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_lts; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_ltu; shelve : compiler.
+Hint Extern 1 => simple eapply compile_word_eqb; shelve : compiler.
+Hint Extern 1 => simple eapply compile_bool_eqb; shelve : compiler.
+Hint Extern 1 => simple eapply compile_bool_andb; shelve : compiler.
+Hint Extern 1 => simple eapply compile_bool_orb; shelve : compiler.
+Hint Extern 1 => simple eapply compile_bool_xorb; shelve : compiler.
 
+Ltac compile_binding :=
+  (* We don't want to show users goals with nlet_eq, so compile_nlet_as_nlet_eq
+     isn't in the ‘compiler’ hint db. *)
+  try simple apply compile_nlet_as_nlet_eq;
+  progress unshelve (typeclasses eauto 3 with compiler); shelve_unifiable.
+
+(* Use [simple eapply] (not eapply) if you add anything here, to ensure that Coq
+   doesn't peek past the first [nlet]. *)
 Ltac compile_custom := fail.
 
 Ltac compile_cleanup :=
@@ -867,18 +892,19 @@ Ltac compile_cleanup :=
 
 Ltac compile_cleanup_post :=
   match goal with
+  | _ => compile_cleanup
   | [  |- True ] => exact I
   | [  |- _ /\ _ ] => split
   | [  |- _ = _ ] => reflexivity
   | [  |- exists _, _ ] => eexists
   | _ =>
     first [ progress subst_lets_in_goal
-          | progress repeat autounfold with compiler ]
+          | progress repeat autounfold with compiler_cleanup ]
   end.
 
 Ltac compile_unset_and_skip :=
-  (* [unshelve] captures the list of variables to unset as a separate goal; if
-     it is not resolved by unification, compile_done will take care of it. *)
+  (* [unshelve] captures the list of variables to unset as a separate goal; it
+     is resolved by unification or by compile_use_default_value. *)
   unshelve refine (compile_unsets _ _ _);  (* coq#13839 *)
   [ shelve (* cmd *) | intros (* vars *) | ]; cycle 1;
   [ (* triple *)
@@ -893,7 +919,7 @@ Ltac compile_use_default_value :=
 Ltac compile_solve_side_conditions :=
   match goal with
   | [  |- sep _ _ _ ] =>
-    repeat autounfold with compiler in *;
+    repeat autounfold with compiler_cleanup in *;
       cbn [fst snd] in *;       (* FIXME generalize this? *)
       ecancel_assumption
   | [  |- map.get _ _ = _ ] =>
@@ -905,12 +931,9 @@ Ltac compile_solve_side_conditions :=
   | [  |- _ <> _ ] => congruence
   | _ =>
     first [ compile_cleanup
-          | solve [eauto with compiler]
+          | solve [eauto with compiler_cleanup]
           | compile_use_default_value ]
   end.
-
-Ltac compile_binding :=
-  first [ compile_custom | compile_basics ].
 
 Ltac compile_triple :=
   lazymatch compile_find_post with
@@ -932,7 +955,7 @@ Ltac compile_done :=
   match goal with
   | _ =>
     idtac "Compilation incomplete.";
-    idtac "You may need to add new compilation lemmas to `compile_custom` or new `Hint Extern`s for `IsRupicolaBinding` to `typeclass_instances`."
+    idtac "You may need to add new compilation lemmas using `Hint Extern 1 => simple eapply … : compiler` or to tell Rupicola about your custom bindings using `Hint Extern 2 (IsRupicolaBinding (xlet _ _ _)) => exact true : typeclass_instances`."
   end.
 
 (* only apply compile_step when repeat_compile_step solves all the side
@@ -940,7 +963,6 @@ Ltac compile_done :=
 Ltac safe_compile_step :=        (* TODO try to change compile_step so that it's always safe? *)
   compile_step; [ solve [repeat compile_step] .. | ].
 
-(* TODO: Use unshelve + eauto with compile_custom + shelve instead of compile_custom *)
 (* TODO find the way to preserve the name of the binder in ‘k’ instead of renaming everything to ‘v’ *)
 
 Ltac compile :=

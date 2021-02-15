@@ -456,7 +456,7 @@ Section KVSwap.
       eassumption. }
   Qed.
 
-  Hint Resolve get_annotate_is_Owned : compiler.
+  Hint Resolve get_annotate_is_Owned : compiler_cleanup.
 
   Lemma deannotate_annotate:
     forall m : map, m = deannotate (annotate m).
@@ -465,7 +465,7 @@ Section KVSwap.
     intros; rewrite !map.get_mapped; destruct map.get; reflexivity.
   Qed.
 
-  Hint Extern 1 (?m = deannotate (annotate ?m)) => simple apply deannotate_annotate : compiler.
+  Hint Extern 1 (?m = deannotate (annotate ?m)) => simple apply deannotate_annotate : compiler_cleanup.
 
   Lemma get_deannotate_annotate:
     forall k v (m : map),
@@ -475,8 +475,8 @@ Section KVSwap.
     intros. rewrite <- deannotate_annotate; eauto.
   Qed.
 
-  Hint Resolve get_deannotate_annotate : compiler.
-  Hint Unfold MapAndTwoKeys : compiler.
+  Hint Resolve get_deannotate_annotate : compiler_cleanup.
+  Hint Unfold MapAndTwoKeys : compiler_cleanup.
 
   Lemma deannotate_put:
     forall (m : map) M (k : key) (p : annotation * value),
@@ -488,9 +488,9 @@ Section KVSwap.
     destruct key_eqb; reflexivity.
   Qed.
 
-  Hint Resolve deannotate_put : compiler.
+  Hint Resolve deannotate_put : compiler_cleanup.
 
-  Hint Extern 1 => simple eapply put_noop' : compiler.
+  Hint Extern 1 => simple eapply put_noop' : compiler_cleanup.
 
   Derive kvswap_body SuchThat
          (let kvswap := ("kvswap", (["m"; "k1"; "k2"], [],
@@ -534,7 +534,7 @@ Section KVSwap.
              using (typeclasses eauto || congruence) : mapsimpl_not_too_much.
 
         autorewrite with mapsimpl_not_too_much in *. (* FIXME is that enough for the other cases? *)
-        eauto with compiler. }
+        eauto with compiler_cleanup. }
       { intros.
         repeat compile_step.
         - remove_map_annotations. (* Should be done only in the skip case *)
@@ -550,7 +550,7 @@ Section KVSwap.
         { simple apply deannotate_put.
           cbn.
           eapply put_noop';
-            eauto 10 with compiler.
+            try typeclasses eauto 10 with compiler_cleanup.
           autorewrite with mapsimpl_not_too_much.
           unfold annotate, deannotate;
             repeat rewrite ?map.get_mapped, ?map.get_put_diff by congruence.
@@ -571,7 +571,7 @@ Section KVSwap.
           | _ => idtac
           end.
 
-        all: repeat compile_step; eauto with compiler.
+        all: repeat compile_step.
 
         (* all: subst head1. *)
         { subst_lets_in_goal.

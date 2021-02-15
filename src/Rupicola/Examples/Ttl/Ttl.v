@@ -173,20 +173,16 @@ Section with_parameters.
             apply (proj2_sig (Fin.to_nat offset)). } }
   Admitted.
 
-  Hint Unfold Packet : compiler.
+  Hint Unfold Packet : compiler_cleanup.
 
   Instance spec_of_decr : spec_of "decr" :=
     forall! pp p,
       (sep (Packet pp p [])) ===> "decr" @ [pp] ===> Packet pp (decr_gallina p).
 
-  Ltac ttl_compile_step :=
-    try simple apply compile_nlet_as_nlet_eq;
-    first [ simple eapply compile_nth |
-            simple eapply compile_replace ].
+  Hint Extern 1 => simple eapply compile_nth; shelve : compiler.
+  Hint Extern 1 => simple eapply compile_replace; shelve : compiler.
 
-  Ltac compile_custom ::= ttl_compile_step.
-
-  (* TODO: something like program_logic_goal_for_function! *)
+  (* TODO: use defn! *)
   Derive decr_body SuchThat
          (let decr := ("decr", (["p"], [], decr_body)) in
           program_logic_goal_for
