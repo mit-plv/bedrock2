@@ -9,15 +9,6 @@ Section with_parameters.
     : Semantics.mem -> Prop :=
     scalar addr c.(data).
 
-  Definition OneCell c_ptr c
-    : list word -> Semantics.mem -> Prop :=
-    fun _ => cell_value c_ptr c.
-
-  Definition TwoCells a_ptr b_ptr ab
-    : list word -> Semantics.mem -> Prop :=
-    fun _ =>
-      sep (cell_value a_ptr (fst ab)) (cell_value b_ptr (snd ab)).
-
   Definition get c := c.(data).
   Definition put v (c: cell) := {| data := v |}.
 
@@ -94,8 +85,6 @@ Section with_parameters.
     - repeat straightline; eauto.
   Qed.
 End with_parameters.
-
-Hint Unfold OneCell TwoCells : compiler_cleanup.
 
 Hint Extern 1 => simple eapply compile_get; shelve : compiler.
 Hint Extern 1 => simple eapply compile_put; shelve : compiler.

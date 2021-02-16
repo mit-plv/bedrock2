@@ -13,16 +13,13 @@ Section with_parameters.
     (c1, c2).
 
   Instance spec_of_swap : spec_of "swap" :=
-    fun functions =>
-      forall c1_ptr c1 c2_ptr c2 tr R mem,
-        sep (TwoCells c1_ptr c2_ptr (c1, c2) []) R mem ->
-        WeakestPrecondition.call
-          functions
-          "swap"
-          tr mem [c1_ptr; c2_ptr]
-          (postcondition_func_norets
-             (TwoCells c1_ptr c2_ptr (swap_gallina c1 c2))
-             R tr).
+    fnspec "swap" c1_ptr c2_ptr / c1 c2 R,
+    { requires tr mem :=
+        (cell_value c1_ptr c1 ⋆ cell_value c2_ptr c2 ⋆ R) mem;
+      ensures tr' mem' :=
+        tr' = tr /\
+        let p := (swap_gallina c1 c2) in
+        (cell_value c1_ptr (fst p) ⋆ cell_value c2_ptr (snd p) ⋆ R) mem' }.
 
   Derive swap_body SuchThat
          (defn! "swap"("c1", "c2") { swap_body },

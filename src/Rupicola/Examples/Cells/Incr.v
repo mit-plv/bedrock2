@@ -13,12 +13,11 @@ Section with_parameters.
     c.
 
   Instance spec_of_incr : spec_of "incr" :=
-    (forall! (c_ptr : address) (c :cell),
-        (sep (cell_value c_ptr c))
-          ===>
-          "incr" @ [c_ptr]
-          ===>
-          (OneCell c_ptr (incr_gallina c))).
+    fnspec "incr" (c_ptr : address) / (c : cell) R,
+    { requires tr mem :=
+        (cell_value c_ptr c ⋆ R) mem;
+      ensures tr' mem' :=
+        tr' = tr /\ (cell_value c_ptr (incr_gallina c) ⋆ R) mem' }.
 
   Derive incr_body SuchThat
          (defn! "incr"("c") { incr_body },
