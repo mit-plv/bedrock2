@@ -729,7 +729,6 @@ Definition __rupicola_program_marker {A} (a: A) := True.
 
 Ltac compile_setup_isolate_gallina_program :=
   lazymatch goal with
-  | |- WeakestPrecondition.cmd _ _ _ _ _ (?pred ?spec) => idtac
   | [ _: __rupicola_program_marker ?prog |-
       WeakestPrecondition.cmd _ _ _ _ _ ?post ] =>
     let gallina := compile_setup_find_app post prog in
@@ -738,6 +737,7 @@ Ltac compile_setup_isolate_gallina_program :=
       let nm := fresh "pred" in
       set pred as nm; change post with (nm gallina)
     end
+  | |- WeakestPrecondition.cmd _ _ _ _ _ (?pred ?spec) => idtac
   | _ => fail "Not sure which program is being compiled.  Expecting a WeakestPrecondition goal with a postcondition in the form (?pred gallina_spec)."
   end.
 
@@ -756,8 +756,8 @@ Ltac compile_setup :=
   compile_setup_unfold_spec_of;
   eapply compile_setup_WeakestPrecondition_call_first;
   [ try reflexivity (* Arity check *)
-  | progress unshelve (typeclasses eauto with compiler_setup); intros;
-    compile_setup_isolate_gallina_program;
+  | first [progress unshelve (typeclasses eauto with compiler_setup) |
+           compile_setup_isolate_gallina_program]; intros;
     compile_setup_unfold_gallina_spec;
     apply compile_setup_remove_skips;
     unfold WeakestPrecondition.program ].
