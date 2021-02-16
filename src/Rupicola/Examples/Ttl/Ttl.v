@@ -182,13 +182,10 @@ Section with_parameters.
   Hint Extern 1 => simple eapply compile_nth; shelve : compiler.
   Hint Extern 1 => simple eapply compile_replace; shelve : compiler.
 
-  (* TODO: use defn! *)
+
   Derive decr_body SuchThat
-         (let decr := ("decr", (["p"], [], decr_body)) in
-          program_logic_goal_for
-            decr
-            (ltac:(let x := program_logic_goal_for_function decr (@nil string) in
-                   exact x)))
+         (defn! "decr"("p") { decr_body },
+          implements decr_gallina)
     As decr_body_correct.
   Proof.
     compile.

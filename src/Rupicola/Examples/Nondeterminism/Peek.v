@@ -13,7 +13,7 @@ Section Peek.
                      array scalar (word.of_Z (Memory.bytes_per_word Semantics.width))
                            addr words)%sep.
 
-  Definition peek (l: Bag) := { x | List.In x l }.
+  Definition peek (l: Bag) := %{ x | List.In x l }.
 
   Lemma compile_peek {tr mem locals functions} (b: Bag) :
     let c := peek b in

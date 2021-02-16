@@ -5,7 +5,7 @@ Section with_parameters.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok semantics}.
 
-  Definition incr_gallina_spec (c: cell) :=
+  Definition incr_gallina (c: cell) :=
     let/n v := get c in
     let/n one := word.of_Z 1 in
     let/n v := word.add v one in
@@ -18,16 +18,12 @@ Section with_parameters.
           ===>
           "incr" @ [c_ptr]
           ===>
-          (OneCell c_ptr (incr_gallina_spec c))).
+          (OneCell c_ptr (incr_gallina c))).
 
-  Derive body SuchThat
-         (let incr := ("incr", (["c"], [], body)) in
-          program_logic_goal_for
-            incr
-            (ltac:(let x := program_logic_goal_for_function
-                             incr (@nil string) in
-                   exact x)))
-         As body_correct.
+  Derive incr_body SuchThat
+         (defn! "incr"("c") { incr_body },
+          implements incr_gallina)
+         As incr_body_correct.
   Proof.
     compile.
   Qed.

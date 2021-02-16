@@ -492,32 +492,33 @@ Section KVSwap.
 
   Hint Extern 1 => simple eapply put_noop' : compiler_cleanup.
 
+  Instance spec_of_kvswap : spec_of "kvswap" :=
+    fun functions =>
+      spec_of_map_get (List.tl functions) -> (* FIXME *)
+      spec_of_map_put (List.tl functions) -> (* FIXME *)
+      forall pm m pk1 k1 pk2 k2 R tr mem,
+        k1 <> k2 -> (* TODO: try removing *)
+        (Map pm m * Key pk1 k1 * Key pk2 k2 * R)%sep mem ->
+        WeakestPrecondition.call
+          functions
+          "kvswap"
+          tr mem [pm; pk1; pk2]
+          (postcondition_func_norets
+             (MapAndTwoKeys
+                pm pk1 pk2
+                (kvswap_gallina m k1 k2)) R tr).
+
   Derive kvswap_body SuchThat
-         (let kvswap := ("kvswap", (["m"; "k1"; "k2"], [],
-                                    kvswap_body)) in
-          program_logic_goal_for kvswap
-          (forall functions,
-              spec_of_map_get functions ->
-              spec_of_map_put functions ->
-              forall pm m pk1 k1 pk2 k2 R tr mem,
-                k1 <> k2 -> (* TODO: try removing *)
-                (Map pm m * Key pk1 k1 * Key pk2 k2 * R)%sep mem ->
-                WeakestPrecondition.call
-                  (kvswap :: functions)
-                  "kvswap"
-                  tr mem [pm; pk1; pk2]
-                  (postcondition_func_norets
-                     (MapAndTwoKeys
-                             pm pk1 pk2
-                             (kvswap_gallina m k1 k2)) R tr)))
-      As kvswap_body_correct.
+         (defn! "kvswap"("m", "k1", "k2") { kvswap_body },
+          implements kvswap_gallina)
+    As decr_body_correct.
   Proof.
     compile_setup.
     (* Is there a systematic way to move from unannotated to annotated? The
     annotated spec is better for composing definitions, but the unannotated
     one is better for reading specs. *)
     add_map_annotations.
-    eapply compile_map_get with (var:="v1") (err:="err") (M:=annotate m);
+    eapply compile_map_get with (var := "var1") (err:="err") (M:=annotate m);
       repeat compile_step.
 
     { cbn [fst snd].
@@ -554,7 +555,7 @@ Section KVSwap.
           autorewrite with mapsimpl_not_too_much.
           unfold annotate, deannotate;
             repeat rewrite ?map.get_mapped, ?map.get_put_diff by congruence.
-          rewrite H2; reflexivity.
+          destruct map.get; cbn; congruence.
         }
         { repeat match goal with
                  | [  |- exists _, _ ] => eexists

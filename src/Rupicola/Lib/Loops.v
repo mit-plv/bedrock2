@@ -1049,12 +1049,8 @@ Section with_parameters.
          (TwoVectArrays a1_ptr a2_ptr (vect_memcpy len a1 a2 pr1 pr2))).
 
    Derive vect_memcpy_body SuchThat
-          (let memcpy := ("vect_memcpy", (["len"; "a1"; "a2"], [], vect_memcpy_body)) in
-           program_logic_goal_for
-             memcpy
-             (ltac:(let x := program_logic_goal_for_function
-                              memcpy (@nil string) in
-                    exact x)))
+          (defn! "vect_memcpy"("len", "a1", "a2") { vect_memcpy_body },
+           implements @vect_memcpy)
           As vect_memcpy_correct.
    Proof.
      compile_setup.
@@ -1105,12 +1101,8 @@ Section with_parameters.
          (TwoSizedListArrays n1 n2 a1_ptr a2_ptr (sizedlist_memcpy len a1 a2))).
 
    Derive sizedlist_memcpy_body SuchThat
-         (let memcpy := ("sizedlist_memcpy", (["len"; "a1"; "a2"], [], sizedlist_memcpy_body)) in
-          program_logic_goal_for
-            memcpy
-            (ltac:(let x := program_logic_goal_for_function
-                              memcpy (@nil string) in
-                   exact x)))
+         (defn! "sizedlist_memcpy"("len", "a1", "a2") { sizedlist_memcpy_body },
+          implements sizedlist_memcpy)
          As sizedlist_memcpy_correct.
    Proof.
      compile_setup.
@@ -1161,12 +1153,8 @@ Section with_parameters.
          (TwoUnsizedListArrays a1_ptr a2_ptr (unsizedlist_memcpy len a1 a2))).
 
    Derive unsizedlist_memcpy_body SuchThat
-         (let memcpy := ("unsizedlist_memcpy", (["len"; "a1"; "a2"], [], unsizedlist_memcpy_body)) in
-          program_logic_goal_for
-            memcpy
-            (ltac:(let x := program_logic_goal_for_function
-                              memcpy (@nil string) in
-                   exact x)))
+         (defn! "unsizedlist_memcpy"("len", "a1", "a2") { unsizedlist_memcpy_body },
+          implements unsizedlist_memcpy)
          As unsizedlist_memcpy_correct.
    Proof.
      compile_setup.
@@ -1182,10 +1170,6 @@ Section with_parameters.
           word_listarray_value a2_ptr a2 * R)%sep mem')).
 
      (*  FIXME remove previous hints *)
-     Hint Extern 1 => simple eapply compile_get; shelve : compiler.
-     Hint Extern 1 => simple eapply compile_put; shelve : compiler.
-     Hint Extern 1 => simple eapply compile_word_vectorarray_get; shelve : compiler.
-     Hint Extern 1 => simple eapply compile_word_vectorarray_put; shelve : compiler.
      Hint Extern 1 => simple eapply compile_word_listarray_get; shelve : compiler.
      Hint Extern 1 => simple eapply compile_word_listarray_put; shelve : compiler.
 
@@ -1205,27 +1189,27 @@ Section with_parameters.
          assumption. }
    Qed.
 
-  Program Definition incr_gallina_spec (c: cell) : cell :=
-      let/n one := word.of_Z 1 in
-      let/n from := word.of_Z 3 in
-      let/n to := word.of_Z 5 in
-      let/n step := word.of_Z 1 in
-      let/n tick := word.of_Z 0 in
-      let/n (tick, c) :=
-         ranged_for_u (A := word * cell)
-                      from to step
-                      (fun tok idx acc bounded =>
-                         let '(tick, c) := acc in
-                         let/n v := get c in
-                         let/n v := word.add v idx in
-                         let/n c := put v c in
-                         let/n tick := word.add tick one in
-                         (tok, (tick, c)))
-                      (tick, c) : word * cell in
-      (let/n v := get c in
-       let/n v := word.add v tick in
-       let/n c := put v c in
-       c).
+   Program Definition incr_gallina_spec (c: cell) : cell :=
+     let/n one := word.of_Z 1 in
+     let/n from := word.of_Z 3 in
+     let/n to := word.of_Z 5 in
+     let/n step := word.of_Z 1 in
+     let/n tick := word.of_Z 0 in
+     let/n (tick, c) :=
+        ranged_for_u (A := word * cell)
+                     from to step
+                     (fun tok idx acc bounded =>
+                        let '(tick, c) := acc in
+                        let/n v := get c in
+                        let/n v := word.add v idx in
+                        let/n c := put v c in
+                        let/n tick := word.add tick one in
+                        (tok, (tick, c)))
+                     (tick, c) : word * cell in
+     (let/n v := get c in
+      let/n v := word.add v tick in
+      let/n c := put v c in
+      c).
 
   Print incr_gallina_spec.
 
@@ -1238,12 +1222,8 @@ Section with_parameters.
           (OneCell c_ptr (incr_gallina_spec c))).
 
    Derive incr_body SuchThat
-         (let incr := ("incr", (["c"], [], incr_body)) in
-          program_logic_goal_for
-            incr
-            (ltac:(let x := program_logic_goal_for_function
-                              incr (@nil string) in
-                   exact x)))
+         (defn! "incr"("c") { incr_body },
+          implements incr_gallina_spec)
          As body_correct.
    Proof.
      compile_setup.
@@ -1304,12 +1284,8 @@ Section with_parameters.
          (TwoVectArrays a1_ptr a2_ptr (vect_memcpy_s len a1 a2 pr1 pr2))).
 
    Derive vect_memcpy_s_body SuchThat
-          (let memcpy := ("vect_memcpy_s", (["len"; "a1"; "a2"], [], vect_memcpy_s_body)) in
-           program_logic_goal_for
-             memcpy
-             (ltac:(let x := program_logic_goal_for_function
-                              memcpy (@nil string) in
-                    exact x)))
+          (defn! "vect_memcpy_s"("len", "a1", "a2") { vect_memcpy_s_body },
+           implements @vect_memcpy_s)
           As vect_memcpy_s_correct.
    Proof.
      compile_setup.
@@ -1328,9 +1304,9 @@ Section with_parameters.
    Qed.
 End with_parameters.
 
-Require Import bedrock2.NotationsCustomEntry.
-Require Import bedrock2.NotationsInConstr.
-Eval cbv [sizedlist_memcpy_body unsizedlist_memcpy_body vect_memcpy_s_body fold_right noskips is_skip] in sizedlist_memcpy_body.
+(* Require Import bedrock2.NotationsCustomEntry. *)
+(* Require Import bedrock2.NotationsInConstr. *)
+(* Eval cbv [sizedlist_memcpy_body unsizedlist_memcpy_body vect_memcpy_s_body fold_right noskips is_skip] in sizedlist_memcpy_body. *)
 
 Require bedrock2.BasicC64Semantics.
 
