@@ -628,7 +628,29 @@ Section with_parameters.
                (fun ws => P ws tr' mem' locals') }>.
     Proof.
       intros; eapply WeakestPrecondition_weaken; try eassumption.
-      cbv beta; intros * (ws & Hmap & HP); eapply getmany_list_map; eauto.
+      clear; firstorder eauto using getmany_list_map.
+    Qed.
+
+    Lemma compile_setup_WeakestPrecondition_call_first {tr mem locals}
+          name argnames retvars body args functions post:
+      map.of_list_zip argnames args = Some locals ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      body
+      <{ wp_bind_retvars
+           retvars
+           (fun rets tr' mem' local' => post tr' mem' rets)  }> ->
+      WeakestPrecondition.call
+        ((name, (argnames, retvars, body)) :: functions)
+        name tr mem args post.
+    Proof.
+      intros; WeakestPrecondition.unfold1_call_goal.
+      red. rewrite String.eqb_refl.
+      red. eexists; split; eauto.
+      eapply WeakestPrecondition_weaken; try eassumption.
+      clear; firstorder eauto using getmany_list_map.
     Qed.
 
     Lemma compile_setup_postcondition_func_noret
@@ -687,10 +709,12 @@ Ltac compile_find_post :=
   end.
 
 Ltac compile_setup_unfold_spec_of :=
+  intros;
   match goal with
-  | [  |- context[?spec] ] =>
-    match type of spec with
-    | spec_of _ => cbv [spec]
+  | [  |- ?g ] =>
+    let hd := term_head g in
+    match type of hd with
+    | spec_of _ => cbv [hd]; intros
     end
   | _ => idtac (* Spec inlined *)
   end.
@@ -730,20 +754,13 @@ Hint Extern 20 (WeakestPrecondition.cmd _ _ _ _ _ _) => intros; shelve : compile
 Ltac compile_setup :=
   cbv [program_logic_goal_for];
   compile_setup_unfold_spec_of;
-  (* modified version of a clause in straightline *)
-  (intros; WeakestPrecondition.unfold1_call_goal;
-   (cbv beta match delta [WeakestPrecondition.call_body]);
-   lazymatch goal with
-   | |- if ?test then ?T else _ =>
-     replace test with true by reflexivity; change_no_check T
-   end; cbv beta match delta [WeakestPrecondition.func]);
-  repeat straightline; subst_lets_in_goal; cbn [length];
-  apply compile_setup_getmany_list_map;
-  progress unshelve (typeclasses eauto with compiler_setup); intros;
-  compile_setup_isolate_gallina_program;
-  compile_setup_unfold_gallina_spec;
-  apply compile_setup_remove_skips;
-  unfold WeakestPrecondition.program.
+  eapply compile_setup_WeakestPrecondition_call_first;
+  [ try reflexivity (* Arity check *)
+  | progress unshelve (typeclasses eauto with compiler_setup); intros;
+    compile_setup_isolate_gallina_program;
+    compile_setup_unfold_gallina_spec;
+    apply compile_setup_remove_skips;
+    unfold WeakestPrecondition.program ].
 
 Ltac lookup_variable m val :=
   lazymatch m with
