@@ -941,7 +941,7 @@ Ltac compile_triple :=
     try clear_old_seps;
     (* Look for a binding: if there is none, finish compiling *)
     match is_rupicola_binding hd with
-    | true => compile_binding
+    | true => first [compile_binding | compile_custom]
     | false => compile_unset_and_skip
     end
   end.
