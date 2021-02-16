@@ -56,6 +56,15 @@ Module map.
             {key_eqb : key -> key -> bool}
             {key_eq_dec : EqDecider key_eqb}.
 
+    Lemma extends_refl m:
+      map.extends m m.
+    Proof. firstorder. Qed.
+
+    Lemma extends_eq m1 m2:
+      m1 = m2 ->
+      map.extends m1 m2.
+    Proof. intros * ->; apply extends_refl. Qed.
+
     Lemma put_put_diff_comm k1 k2 v1 v2 m :
       k1 <> k2 ->
       map.put (map.put m k1 v1) k2 v2 = map.put (map.put m k2 v2) k1 v1.
