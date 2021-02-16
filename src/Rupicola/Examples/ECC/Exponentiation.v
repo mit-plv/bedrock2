@@ -73,50 +73,38 @@ Section S.
     Fixpoint exp_by_squaring (x : Z) (n : positive) : Z :=
       match n with
       | xH => x mod M
-      | xO n' => let/d res := exp_by_squaring x n' in res^2
-      | xI n' => let/d res := exp_by_squaring x n' in
-                 let/d res := res^2 in
+      | xO xH => x^2 mod M
+      | xI xH => let/n res := x^2 in x * res
+      | xO n' => let/n res := exp_by_squaring x n' in res^2
+      | xI n' => let/n res := exp_by_squaring x n' in
+                 let/n res := res^2 in
                  x * res
       end.
 
-    Definition inplace {A : Type} (x : A) : A :=
-      x.
+    Print exp_by_squaring.
     
-    Arguments inplace : simpl never.
-
-    Fixpoint exp_by_squaring' (x : Z) (n : positive) : Z :=
-      match n with
-      | xH => x mod M
-      | xO xH => x^2 mod M
-      | xI xH => let/d res := x^2 in x * res
-      | xO n' => let/d res := exp_by_squaring' x n' in inplace(res^2)
-      | xI n' => let/d res := exp_by_squaring' x n' in
-                 let/d res := inplace(res^2) in
-                 (x * inplace(res))
-      end.
-
     Lemma let_equal :
-      forall A B (val : A) (body_l body_r : A -> B),
+      forall A B (val : A) (body_l body_r : A -> B) (var : string),
         (let x := val in body_l x = body_r x)
-        -> (let/d x := val in body_l x) = (let/d y := val in body_r y).
+        -> (let/n x as var := val in body_l x) = (let/n y as var := val in body_r y).
     Proof.
-      intros. unfold dlet. assumption.
+      intros. unfold nlet. assumption.
     Qed.
 
     Lemma let_nested :
-      forall A B C (a : C) (val1 : A) (body1 : A -> B) (body2 : B -> C),
-        a = (let/d x := val1 in let/d y := body1 x in body2 y)
-        -> a = (let/d y := let/d x := val1 in body1 x in body2 y).
+      forall A B C (a : C) (val1 : A) (body1 : A -> B) (body2 : B -> C) (var var' : string),
+        a = (let/n x as var' := val1 in let/n y as var := body1 x in body2 y)
+        -> a = (let/n y as var := let/n x as var' := val1 in body1 x in body2 y).
     Proof.
       intros. assumption.
     Qed.
     
     Lemma let_paren_equal :
-      forall A B (a : A) (val : A) (body_r : A -> B) left,
-        left = (let/d y:= val in (a, body_r y))
-        -> left = (a, let/d y := val in body_r y).
+      forall A B (a : A) (val : A) (body_r : A -> B) (var : string) left,
+        left = (let/n y as var := val in (a, body_r y))
+        -> left = (a, let/n y as var := val in body_r y).
     Proof.
-      intros. unfold dlet.
+      intros. unfold nlet.
       rewrite H. reflexivity.
     Qed.
 
@@ -124,29 +112,18 @@ Section S.
       match goal with
       | [ |- let _ := _ in _ = _ ] =>
         intros
-      | [ |- _ = let/d _ := let/d _ := _ in _ in _] =>
+      | [ |- _ = let/n _ as _ := let/n _ as _ := _ in _ in _] =>
         eapply let_nested
-      | [ |- _ = let/d _ := _ in _] =>
+      | [ |- _ = let/n _ as _ := _ in _] =>
         eapply let_equal with (body_l := fun _ => _)
-      | [ |- _ = (_, let/d _ := _ in _)] =>
+      | [ |- _ = (_, let/n _ as _ := _ in _)] =>
         eapply let_paren_equal
       end.
 
-    Derive rewritten' SuchThat
-           (forall x, rewritten' x = exp_by_squaring x 11)
-           As rewrite'.
-    cbv beta iota delta [exp_by_squaring].
-    subst rewritten'.
-    intros.
-    repeat tac.
-    reflexivity.
-    Defined.
-    Print rewritten'.
-
     Derive rewritten SuchThat
-           (forall x, rewritten x = (x, let/d res := exp_by_squaring' x 11 in res))
+           (forall x, rewritten x = exp_by_squaring x 11)
            As rewrite.
-    cbv beta iota delta [exp_by_squaring'].
+    cbv beta iota delta [exp_by_squaring].
     subst rewritten.
     intros.
     repeat tac.
@@ -154,10 +131,10 @@ Section S.
     Defined.
     Print rewritten.
 
-    Lemma exp_by_squaring_correct :
+    (*Lemma exp_by_squaring_correct :
       M <> 0 -> forall n x, exp_by_squaring x n = x ^ (Zpos n).
     Proof.
-      induction n; intros; cbn [exp_by_squaring]; unfold dlet.
+      induction n; intros; cbn [exp_by_squaring]; unfold nlet.
       - rewrite IHn.
         rewrite mod_exp by assumption.
         rewrite Z.mul_mod_idemp_r by assumption.
@@ -176,7 +153,7 @@ Section S.
         lia.
       - rewrite Z.pow_1_r.
         reflexivity.
-    Qed.
+    Qed.*)
 
   End Gallina.
 
@@ -315,7 +292,12 @@ Section S.
                                               R tr)))
            As exp_body_correct.
     Proof.
-      compile.
+      compile_setup.
+      compile_custom; repeat compile_step.
+      compile_custom; repeat compile_step.
+      compile_custom; repeat compile_step.
+      compile_custom; repeat compile_step.
+      compile_custom; repeat compile_step.
       lift_eexists; sepsimpl; eauto || ecancel_assumption.
     Qed.
 
@@ -347,185 +329,16 @@ Section S.
     Proof.
       compile.
       lift_eexists; sepsimpl; eauto || ecancel_assumption.
-    Qed.
-
-    Lemma compile_square_inplace :
-      forall (locals: Semantics.locals) (mem: Semantics.mem)
-             (locals_ok : Semantics.locals -> Prop)
-             tr retvars R Rin functions T
-             (pred: T -> list word -> Semantics.mem -> Prop)
-             (x : bignum) x_ptr x_var k k_impl,
-        spec_of_square functions ->
-        bounded_by loose_bounds x ->
-        (Bignum x_ptr x * Rin)%sep mem ->
-        map.get locals x_var = Some x_ptr ->
-        let v := (eval x ^ 2) mod M in
-        (let head := v in
-         forall out m,
-           eval out mod M = head ->
-           bounded_by tight_bounds out ->
-           sep (Bignum x_ptr out) Rin m ->
-           (find k_impl
-                 implementing (pred (k (eval out mod M)))
-                 and-returning retvars
-                               and-locals-post locals_ok
-            with-locals locals and-memory m and-trace tr and-rest R
-                                                                  and-functions functions)) ->
-        (let head := inplace(v) in
-         find (cmd.seq
-                 (cmd.call [] square [expr.var x_var; expr.var x_var])
-                 k_impl)
-              implementing (pred (dlet head k))
-              and-returning retvars
-                            and-locals-post locals_ok
-         with-locals locals and-memory mem and-trace tr and-rest R
-                                                                 and-functions functions).
-    Proof.
-      intros.
-      eapply compile_square; eauto.
-    Qed.
-
-    Lemma compile_square_sep :
-      forall (locals: Semantics.locals) (mem: Semantics.mem)
-             (locals_ok : Semantics.locals -> Prop)
-             tr retvars R Rin functions T
-             (pred: T -> list word -> Semantics.mem -> Prop)
-             (x out1 : bignum) x_ptr x_var out_ptr out_var k k_impl,
-        spec_of_square functions ->
-        bounded_by loose_bounds x ->
-        (Bignum x_ptr x * Bignum out_ptr out1 * Rin)%sep mem ->
-        map.get locals x_var = Some x_ptr ->
-        map.get locals out_var = Some out_ptr ->
-        let v := (eval x ^ 2) mod M in
-        (let head := v in
-         forall out m,
-           eval out mod M = head ->
-           bounded_by tight_bounds out ->
-           (Bignum x_ptr x * Bignum out_ptr out * Rin)%sep m ->
-           (find k_impl
-                 implementing (pred (k (eval out mod M)))
-                 and-returning retvars
-                               and-locals-post locals_ok
-            with-locals locals and-memory m and-trace tr and-rest R
-                                                                  and-functions functions)) ->
-        (let head := v in
-         find (cmd.seq
-                 (cmd.call [] square [expr.var x_var; expr.var out_var])
-                 k_impl)
-              implementing (pred (dlet head k))
-              and-returning retvars
-                            and-locals-post locals_ok
-         with-locals locals and-memory mem and-trace tr and-rest R
-                                                                 and-functions functions).
-    Proof.
-      intros.
-      eapply compile_square; eauto.
-      - ecancel_assumption.
-      - unfold Placeholder. ecancel_assumption.
-      - intros. apply H4; eauto. ecancel_assumption.
-    Qed.
-
-    Lemma compile_mul_inplace_right :
-      forall (locals: Semantics.locals) (mem: Semantics.mem)
-             (locals_ok : Semantics.locals -> Prop)
-             tr retvars R Rin functions T
-             (pred: T -> list word -> Semantics.mem -> Prop)
-             (x y : bignum) x_ptr x_var y_ptr y_var k k_impl,
-        spec_of_mul functions ->
-        bounded_by loose_bounds x ->
-        bounded_by loose_bounds y ->
-        (Bignum x_ptr x * Bignum y_ptr y * Rin)%sep mem ->
-        map.get locals x_var = Some x_ptr ->
-        map.get locals y_var = Some y_ptr ->
-        let v := (eval x * eval y) mod M in
-        (let head := v in
-         forall out m,
-           eval out mod M = head ->
-           bounded_by tight_bounds out ->
-           (Bignum x_ptr x * Bignum y_ptr out * Rin)%sep m ->
-           (find k_impl
-                 implementing (pred (k (eval out mod M)))
-                 and-returning retvars
-                               and-locals-post locals_ok
-            with-locals locals and-memory m and-trace tr and-rest R
-                                                                  and-functions functions)) ->
-        (let head := v in
-         find (cmd.seq
-                 (cmd.call [] mul [expr.var x_var; expr.var y_var;
-                                  expr.var y_var])
-                 k_impl)
-              implementing (pred (dlet head k))
-              and-returning retvars
-                            and-locals-post locals_ok
-         with-locals locals and-memory mem and-trace tr and-rest R
-                                                                 and-functions functions).
-    Proof.
-      intros.
-      eapply compile_mul; eauto; try ecancel_assumption.
-      - unfold Placeholder. ecancel_assumption.
-      - intros. apply H5; eauto. ecancel_assumption.
-    Qed.
-
-    Lemma compile_mul_sep :
-      forall (locals: Semantics.locals) (mem: Semantics.mem)
-             (locals_ok : Semantics.locals -> Prop)
-             tr retvars R Rin functions T
-             (pred: T -> list word -> Semantics.mem -> Prop)
-             (x y out1 : bignum) x_ptr x_var y_ptr y_var out_ptr out_var k k_impl,
-        spec_of_mul functions ->
-        bounded_by loose_bounds x ->
-        bounded_by loose_bounds y ->
-        (Bignum x_ptr x * Bignum y_ptr y * Bignum out_ptr out1 * Rin)%sep mem ->
-        map.get locals x_var = Some x_ptr ->
-        map.get locals y_var = Some y_ptr ->
-        map.get locals out_var = Some out_ptr ->
-        let v := (eval x * eval y) mod M in
-        (let head := v in
-         forall out m,
-           eval out mod M = head ->
-           bounded_by tight_bounds out ->
-           (Bignum x_ptr x * Bignum y_ptr y * Bignum out_ptr out * Rin)%sep m ->
-           (find k_impl
-                 implementing (pred (k (eval out mod M)))
-                 and-returning retvars
-                               and-locals-post locals_ok
-            with-locals locals and-memory m and-trace tr and-rest R
-                                                                  and-functions functions)) ->
-        (let head := v in
-         find (cmd.seq
-                 (cmd.call [] mul [expr.var x_var; expr.var y_var;
-                                  expr.var out_var])
-                 k_impl)
-              implementing (pred (dlet head k))
-              and-returning retvars
-                            and-locals-post locals_ok
-         with-locals locals and-memory mem and-trace tr and-rest R
-                                                                 and-functions functions).
-    Proof.
-      intros.
-      eapply compile_mul; eauto; try ecancel_assumption.
-      - unfold Placeholder. ecancel_assumption.
-      - intros. apply H6; eauto. ecancel_assumption.
-    Qed.
-
-    Lemma Zmult_mod_idemp_r_inplace :
-      forall a b n : Z,
-        (b * inplace (a mod n)) mod n = (b * inplace(a)) mod n.
-      unfold inplace.
-      apply Zmult_mod_idemp_r.
-    Qed.
+    Qed.*)
 
     Ltac compile_custom ::=
       match goal with
-      | [ |- find _ implementing exp_result _ _ (let/d _ := eval _ ^ 2 mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => eapply compile_square_sep; eauto; try compile_step
-      | [ |- find _ implementing exp_result _ _ (let/d _ := inplace (eval _ ^ 2 mod M) in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => eapply compile_square_inplace; eauto; try compile_step
-      | [ |- find _ implementing exp_result _ _ (let/d _ := (eval _ * eval _) mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => eapply compile_mul_sep; eauto; try compile_step
-      | [ |- find _ implementing exp_result _ _ (let/d _ := (eval _ * inplace (eval _) mod M) in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => eapply compile_mul_inplace_right; eauto; try compile_step
+      | [ |- find _ implementing exp_result _ _ (let/d _ := eval _ ^ 2 mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => eapply compile_square; eauto; try compile_step
+      | [ |- find _ implementing exp_result _ _ (let/d _ := (eval _ * eval _) mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => eapply compile_mul; eauto; try compile_step
       | [ |- find _ implementing exp_result _ _ (let/d _ := (eval _ mod M) ^ 2 mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite <- Z.pow_mod
       | [ |- find _ implementing exp_result _ _ (let/d _ := inplace ((eval _ mod M) ^ 2 mod M) in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite <- Z.pow_mod
       | [ |- find _ implementing exp_result _ _ (let/d _ := (eval _ mod M *  _) mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite Zmult_mod_idemp_l
       | [ |- find _ implementing exp_result _ _ (let/d _ := ( _ * (eval _ mod M)) mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite Zmult_mod_idemp_r
-      | [ |- find _ implementing exp_result _ _ (let/d _ := ( _ * inplace (eval _ mod M)) mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite Zmult_mod_idemp_r_inplace
       | [ |- find _ implementing exp_result _ _ (let/d _ := inplace (( _ * (eval _ mod M)) mod M) in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite Zmult_mod_idemp_r
       end.
     
@@ -533,8 +346,8 @@ Section S.
            (let exp11 := ("exp11", (["x"; "sq"], [], exp_11_body)) in
             program_logic_goal_for exp11
                                    (forall functions,
-                                       spec_of_square functions ->
-                                       spec_of_mul functions ->
+                                       spec_of_UnOp un_square functions ->
+                                       spec_of_BinOp bin_mul functions ->
                                        forall x_ptr x sq_ptr sq_init tr R mem,
                                          bounded_by tight_bounds x ->
                                          bounded_by tight_bounds sq_init ->
@@ -549,7 +362,7 @@ Section S.
                                               R tr)))
            As exp_11_body_correct.
     Proof.
-      compile.
+      compile_custom.
       autounfold with compiler.
       cbn.
       apply sep_comm.
@@ -629,8 +442,35 @@ Section S.
         res
       end.
 
+    Fixpoint exp_from_encoding' (x : Z) (n : list (bool * nat)) : Z :=
+      match n with
+      | [] =>
+        1
+      (* can add more cases for small k to be faster *)
+      | (true, 0%nat) :: t =>
+        let/n res := exp_from_encoding x t in
+        let/n res := res^2 mod M in
+        let/n res := x * res mod M in
+        res
+      | (true, k) :: t =>
+        let/n res := exp_from_encoding x t in
+        let/n res := loop res k (exp_square_and_multiply x) in
+        res
+      | (false, 0%nat) :: t =>
+        let/n res := exp_from_encoding x t in
+        let/n res := res^2 mod M in
+        res
+      | (false, k) :: t =>
+        let/n res := exp_from_encoding x t in
+        let/n res := loop res k (exp_square) in
+        res
+      end.
+
     Definition exp_by_squaring_encoded (x : Z) (n : positive) : Z :=
       exp_from_encoding x (run_length_encoding n).
+
+    Definition exp_by_squaring_encoded' (x : Z) (n : positive) : Z :=
+      exp_from_encoding' x (run_length_encoding n).
 
     Compute run_length_encoding 4.
 
