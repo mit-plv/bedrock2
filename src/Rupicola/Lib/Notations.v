@@ -213,12 +213,27 @@ Notation "name '(' a0 , .. , an ')'  '~>'  r0 , .. , rn  {  body  } ,  'implemen
         fn constr at level 0,
         no associativity).
 
+Notation "name '(' a0 , .. , an ')'  {  body  } ,  'implements'  fn" :=
+  (name, (cons a0 .. (cons an []) ..), (@nil string),
+   match body return cmd with body => body end, fn)
+    (in custom defn_spec at level 10,
+        name constr at level 0,
+        a0 constr at level 0, an constr at level 0,
+        body constr at level 200,
+        fn constr at level 0,
+        no associativity).
+
 Notation "defn! spec" :=
-  ltac:(lazymatch spec with
-        | (?name, ?args, ?rets, ?body, ?gallina) =>
-          let proc := uconstr:((name, (args, rets, body))) in
-          let goal := Rupicola.Lib.Tactics.program_logic_goal_for_function
-                       proc (@List.nil string) in
-          exact (__rupicola_program_marker gallina -> goal)
-        end)
-         (at level 0, spec custom defn_spec at level 200, only parsing).
+  (match spec with
+   | spec_constr =>
+     (* This match typechecks `spec` before passing it to Ltac, yielding much
+        better error messages when `spec` isn't a valid term. *)
+     ltac:(lazymatch (eval red in spec_constr) with
+           | (?name, ?args, ?rets, ?body, ?gallina) =>
+             let proc := constr:((name, (args, rets, body))) in
+             let goal := Rupicola.Lib.Tactics.program_logic_goal_for_function
+                           proc (@List.nil string) in
+             exact (__rupicola_program_marker gallina -> goal)
+           end)
+   end)
+    (at level 0, spec custom defn_spec at level 200, only parsing).
