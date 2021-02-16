@@ -117,14 +117,12 @@ Infix "~>" := scalar (at level 40, only parsing).
 Notation "[[ locals ]]" := ({| value := locals; _value_ok := _ |}) (only printing).
 
 Declare Scope old.
+Delimit Scope old with old.
 Notation "'find' body 'implementing' spec 'and-returning' retvars 'and-locals-post' locals_post 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
   (WeakestPrecondition.cmd
      (WeakestPrecondition.call fns)
      body tr mem locals
      (postcondition_cmd locals_post spec retvars R tr)) (at level 0, only parsing).
-(* Notation "!! x" := *)
-(*   (postcondition_cmd _ x _ _ _) *)
-(*     (at level 0, x at level 200, no associativity, only printing). *)
 
 Notation "<{ 'Trace' := tr ; 'Memory' := mem ; 'Locals' := locals ; 'Functions' := functions }> cmd <{ post }>" :=
   (WeakestPrecondition.cmd
@@ -152,7 +150,7 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args 'returns' rets '===>' p
                 WeakestPrecondition.call
                   functions fname tr mem args
                   (postcondition_func (fun rets => post) R tr)) ..))
-     (x binder, y binder, only parsing, at level 199).
+     (x binder, y binder, only parsing, at level 199) : old.
 
 Example spec_example_withrets {semantics : Semantics.parameters}
   : spec_of "example" :=
@@ -161,7 +159,7 @@ Example spec_example_withrets {semantics : Semantics.parameters}
         ===>
         "example" @ [pa; b] returns r
         ===>
-        (liftexists x, emp (r = [x]) * (pa ~> x))%sep).
+        (liftexists x, emp (r = [x]) * (pa ~> x))%sep)%old.
 Example spec_example_norets {semantics : Semantics.parameters}
   : spec_of "example" :=
      (forall! (pa : address) (a b : word),
@@ -169,7 +167,7 @@ Example spec_example_norets {semantics : Semantics.parameters}
            ===>
            "example" @ [pa; b] returns r
            ===>
-           (emp (r = []) * (pa ~> word.add a b))%sep).
+           (emp (r = []) * (pa ~> word.add a b))%sep)%old.
 
 (* shorthand for no return values *)
 Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
@@ -181,7 +179,7 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
                 WeakestPrecondition.call
                   functions fname tr mem args
                   (postcondition_func_norets post R tr)) ..))
-     (x binder, y binder, only parsing, at level 199).
+     (x binder, y binder, only parsing, at level 199) : old.
 
 (* N.B. postconditions with no return values still need to take in an argument
    for return values to make types line up. However, the shorthand notation inserts
@@ -194,11 +192,57 @@ Example spec_example_norets_short {semantics : Semantics.parameters}
         ===>
         "example" @ [pa; b]
         ===>
-        (fun _ => pa ~> word.add a b)%sep).
+        (fun _ => pa ~> word.add a b)%sep)%old.
 
 (* unify short and long notations for functions without return values (fails if
    spec_example_norets and spec_example_norets_short are not equivalent) *)
 Compute (let x := ltac:(unify @spec_example_norets @spec_example_norets_short) in x).
+
+Infix "⋆" := sep (at level 40, left associativity).
+
+Notation "'fnspec' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     (forall a0,
+        .. (forall an,
+              (forall g0,
+                  .. (forall gn,
+                         (forall tr mem,
+                             pre%Z ->
+                             WeakestPrecondition.call
+                               functions name tr mem (cons a0 .. (cons an nil) ..)
+                               (fun tr' mem' rets =>
+                                  (exists r0,
+                                      .. (exists rn,
+                                             rets = (cons r0 .. (cons rn nil) ..) /\
+                                             post%Z) ..)))) ..)) ..))
+    (at level 200,
+     name at level 0,
+     a0 binder, an binder,
+     g0 binder, gn binder,
+     r0 closed binder, rn closed binder,
+     tr ident, tr' ident, mem ident, mem' ident,
+     pre at level 200,
+     post at level 200).
+
+Notation "'fnspec' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     (forall a0,
+        .. (forall an,
+              (forall g0,
+                  .. (forall gn,
+                         (forall tr mem,
+                             pre%Z%sep ->
+                             WeakestPrecondition.call
+                               functions name tr mem (cons a0 .. (cons an nil) ..)
+                               (fun tr' mem' rets =>
+                                  rets = @nil word /\ post%Z%sep))) ..)) ..))
+    (at level 200,
+     name at level 0,
+     a0 binder, an binder,
+     g0 binder, gn binder,
+     tr ident, tr' ident, mem ident, mem' ident,
+     pre at level 200,
+     post at level 200).
 
 Declare Custom Entry defn_spec.
 
