@@ -95,6 +95,24 @@ Section with_parameters.
       <{ pred (nlet_eq [var] v k) }>.
   Proof. repeat straightline; eassumption. Qed.
 
+  Lemma compile_word_constant {tr mem locals functions} (w: word) :
+    forall {P} {pred: P w -> predicate}
+      {k: nlet_eq_k P w} {k_impl}
+      var,
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := map.put locals var w;
+         Functions := functions }>
+      k_impl
+      <{ pred (k w eq_refl) }> ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set var (expr.literal (word.unsigned w))) k_impl
+      <{ pred (nlet_eq [var] w k) }>.
+  Proof. repeat straightline; subst_lets_in_goal; rewrite word.of_Z_unsigned; eauto. Qed.
+
   Lemma compile_Z_constant {tr mem locals functions} z :
     let v := z in
     forall {P} {pred: P v -> predicate}
@@ -858,6 +876,7 @@ Ltac compile_unfold_head_binder :=
   compile_unfold_head_binder' p.
 
 Create HintDb compiler.
+Hint Extern 1 => simple eapply compile_word_constant; shelve : compiler.
 Hint Extern 1 => simple eapply compile_word_of_Z_constant; shelve : compiler.
 Hint Extern 1 => simple eapply compile_Z_constant; shelve : compiler.
 Hint Extern 1 => simple eapply compile_nat_constant; shelve : compiler.
