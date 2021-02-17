@@ -600,6 +600,13 @@ Module word.
     Notation word_of_byte b :=
       (word.of_Z (Byte.byte.unsigned b)).
 
+    Notation byte_of_word w :=
+      (byte.of_Z (word.unsigned w)).
+
+    Lemma byte_of_Z_unsigned b:
+      byte.of_Z (byte.unsigned b) = b.
+    Proof. destruct b; reflexivity. Qed.
+
     Lemma word_of_byte_range b:
       0 <= word.unsigned (word_of_byte b) < 256.
     Proof.
@@ -617,6 +624,8 @@ End word.
 
 Notation word_of_byte b :=
   (word.of_Z (Byte.byte.unsigned b)).
+Notation byte_of_word w :=
+  (byte.of_Z (word.unsigned w)).
 
 Section Semantics.
   Context {semantics : Semantics.parameters}
@@ -678,6 +687,15 @@ Section Semantics.
        tr' = tr /\ mem' = mem /\ locals' = locals)
       t0 tr mem locals.
   Proof. intuition. Qed.
+
+  Lemma to_byte_of_byte_nowrap b:
+    byte_of_word (word_of_byte b) = b.
+  Proof.
+    rewrite word.unsigned_of_Z, word.wrap_small.
+    - apply word.byte_of_Z_unsigned.
+    - pose proof byte.unsigned_range b.
+      destruct Semantics.width_cases as [-> | ->]; lia.
+  Qed.
 End Semantics.
 
 (* TODO: should be upstreamed to coqutil *)

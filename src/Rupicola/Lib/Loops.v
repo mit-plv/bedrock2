@@ -353,13 +353,13 @@ Section Ex.
             (pr2: word.unsigned len < Z.of_nat n2)
             R,
      { requires tr mem :=
-         (word_vectorarray_value a1_ptr a1 ⋆
-          word_vectorarray_value a2_ptr a2 ⋆ R) mem;
+         (vectorarray_value AccessWord a1_ptr a1 ⋆
+          vectorarray_value AccessWord a2_ptr a2 ⋆ R) mem;
        ensures tr' mem' :=
          tr' = tr /\
          let res := vect_memcpy len a1 a2 pr1 pr2 in
-         (word_vectorarray_value a1_ptr (fst res) ⋆
-          word_vectorarray_value a2_ptr (snd res) ⋆ R) mem' }.
+         (vectorarray_value AccessWord a1_ptr (fst res) ⋆
+          vectorarray_value AccessWord a2_ptr (snd res) ⋆ R) mem' }.
 
    Derive vect_memcpy_body SuchThat
           (defn! "vect_memcpy"("len", "a1", "a2") { vect_memcpy_body },
@@ -375,7 +375,8 @@ Section Ex.
          tr' = tr /\
          locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
                      [["from" ← idx]][["step" ← word.of_Z 1]]) /\
-         (word_vectorarray_value a1_ptr a1 * word_vectorarray_value a2_ptr a2 * R)%sep mem')).
+         (vectorarray_value AccessWord a1_ptr a1 *
+          vectorarray_value AccessWord a2_ptr a2 * R)%sep mem')).
 
      all: repeat compile_step; compile_done.
    Qed.
@@ -416,13 +417,13 @@ Section Ex.
             (pr2: word.signed len < Z.of_nat n2)
             R,
      { requires tr mem :=
-         (word_vectorarray_value a1_ptr a1 ⋆
-          word_vectorarray_value a2_ptr a2 ⋆ R) mem;
+         (vectorarray_value AccessWord a1_ptr a1 ⋆
+          vectorarray_value AccessWord a2_ptr a2 ⋆ R) mem;
        ensures tr' mem' :=
          tr' = tr /\
          let res := vect_memcpy_s len a1 a2 pr1 pr2 in
-         (word_vectorarray_value a1_ptr (fst res) ⋆
-          word_vectorarray_value a2_ptr (snd res) ⋆ R) mem' }.
+         (vectorarray_value AccessWord a1_ptr (fst res) ⋆
+          vectorarray_value AccessWord a2_ptr (snd res) ⋆ R) mem' }.
 
    Derive vect_memcpy_s_body SuchThat
           (defn! "vect_memcpy_s"("len", "a1", "a2") { vect_memcpy_s_body },
@@ -439,7 +440,7 @@ Section Ex.
          tr' = tr /\
          locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
                      [["from" ← idx]][["step" ← v0]]) /\
-         (word_vectorarray_value a1_ptr a1 * word_vectorarray_value a2_ptr a2 * R)%sep mem')).
+         (vectorarray_value AccessWord a1_ptr a1 * vectorarray_value AccessWord a2_ptr a2 * R)%sep mem')).
 
      all: repeat compile_step; compile_done.
    Qed.
@@ -465,13 +466,13 @@ Section Ex.
             (pr2: word.unsigned len < Z.of_nat n2)
             R,
      { requires tr mem :=
-         (word_sizedlistarray_value a1_ptr n1 a1 ⋆
-          word_sizedlistarray_value a2_ptr n2 a2 ⋆ R) mem;
+         (sizedlistarray_value AccessWord a1_ptr n1 a1 ⋆
+          sizedlistarray_value AccessWord a2_ptr n2 a2 ⋆ R) mem;
        ensures tr' mem' :=
          tr' = tr /\
          let res := sizedlist_memcpy len a1 a2 in
-         (word_sizedlistarray_value a1_ptr n1 (fst res) ⋆
-          word_sizedlistarray_value a2_ptr n2 (snd res) ⋆ R) mem' }.
+         (sizedlistarray_value AccessWord a1_ptr n1 (fst res) ⋆
+          sizedlistarray_value AccessWord a2_ptr n2 (snd res) ⋆ R) mem' }.
 
    Derive sizedlist_memcpy_body SuchThat
          (defn! "sizedlist_memcpy"("len", "a1", "a2") { sizedlist_memcpy_body },
@@ -487,8 +488,8 @@ Section Ex.
          tr' = tr /\
          locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
                      [["from" ← idx]][["step" ← word.of_Z 1]]) /\
-         (word_sizedlistarray_value a1_ptr n1 a1 *
-          word_sizedlistarray_value a2_ptr n2 a2 * R)%sep mem')).
+         (sizedlistarray_value AccessWord a1_ptr n1 a1 *
+          sizedlistarray_value AccessWord a2_ptr n2 a2 * R)%sep mem')).
 
      all: repeat compile_step; try lia; compile_done.
    Qed.
@@ -513,13 +514,13 @@ Section Ex.
             (pr2: word.unsigned len < Z.of_nat (List.length a2))
             R,
      { requires tr mem :=
-         (word_listarray_value a1_ptr a1 ⋆
-          word_listarray_value a2_ptr a2 ⋆ R) mem;
+         (listarray_value AccessWord a1_ptr a1 ⋆
+          listarray_value AccessWord a2_ptr a2 ⋆ R) mem;
        ensures tr' mem' :=
          tr' = tr /\
          let res := unsizedlist_memcpy len a1 a2 in
-         (word_listarray_value a1_ptr (fst res) ⋆
-          word_listarray_value a2_ptr (snd res) ⋆ R) mem' }.
+         (listarray_value AccessWord a1_ptr (fst res) ⋆
+          listarray_value AccessWord a2_ptr (snd res) ⋆ R) mem' }.
 
    Derive unsizedlist_memcpy_body SuchThat
          (defn! "unsizedlist_memcpy"("len", "a1", "a2") { unsizedlist_memcpy_body },
@@ -535,8 +536,8 @@ Section Ex.
          tr' = tr /\
          locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
                      [["from" ← idx]][["step" ← word.of_Z 1]]) /\
-         (word_listarray_value a1_ptr a1 *
-          word_listarray_value a2_ptr a2 * R)%sep mem')).
+         (listarray_value AccessWord a1_ptr a1 *
+          listarray_value AccessWord a2_ptr a2 * R)%sep mem')).
 
      (*  FIXME remove previous hints *)
      (* Import UnsizedListArrayCompiler. *)
