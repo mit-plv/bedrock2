@@ -121,4 +121,4 @@ End Peek.
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.NotationsInConstr.
 Arguments nondet_xor_body /.
-Eval simpl in nondet_xor_body.
+Eval cbv in nondet_xor_body.

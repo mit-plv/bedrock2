@@ -252,8 +252,6 @@ Section with_parameters.
     unfold_id (@compile_binop_xxx _ id bopname.or word.or ltac:(reflexivity)).
   Definition compile_word_xor :=
     unfold_id (@compile_binop_xxx _ id bopname.xor word.xor ltac:(reflexivity)).
-  (* Definition compile_word_ndn :=
-     unfold_id (@compile_binop_xxx _ id bopname.ndn word.xor ltac:(reflexivity)). *)
   Definition compile_word_sru :=
     unfold_id (@compile_binop_xxx _ id bopname.sru word.sru ltac:(reflexivity)).
   Definition compile_word_slu :=
