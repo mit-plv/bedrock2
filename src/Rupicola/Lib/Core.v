@@ -597,6 +597,20 @@ Module word.
         lia.
     Qed.
 
+    Lemma of_nat_to_nat_unsigned w:
+      Z.of_nat (Z.to_nat (word.unsigned w)) = (word.unsigned w).
+    Proof.
+      pose proof word.unsigned_range w.
+      rewrite Z2Nat.id; intuition.
+    Qed.
+
+    Lemma of_Z_of_nat_to_nat_unsigned w:
+      word.of_Z (Z.of_nat (Z.to_nat (word.unsigned w))) = w.
+    Proof.
+      pose proof word.unsigned_range w.
+      rewrite Z2Nat.id, word.of_Z_unsigned; intuition.
+    Qed.
+
     Notation word_of_byte b :=
       (word.of_Z (Byte.byte.unsigned b)).
 

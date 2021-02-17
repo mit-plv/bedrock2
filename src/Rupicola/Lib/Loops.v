@@ -313,8 +313,6 @@ Section Ex.
      destruct Z_lt_le_dec; lia.
    Qed.
 
-  Instance Convertible_word_Nat : Convertible word nat :=
-    fun w => Z.to_nat (word.unsigned w).
   Instance HasDefault_word : HasDefault word :=
     word.of_Z 0.
 
@@ -335,13 +333,13 @@ Section Ex.
     Next Obligation.
       pose proof word.unsigned_range idx.
       pose proof word.unsigned_range len.
-      unfold cast, Convertible_word_Nat.
+      unfold cast, Convertible_word_nat.
       lia.
     Qed.
     Next Obligation.
       pose proof word.unsigned_range idx.
       pose proof word.unsigned_range len.
-      unfold cast, Convertible_word_Nat.
+      unfold cast, Convertible_word_nat.
       lia.
     Qed.
 
@@ -397,13 +395,13 @@ Section Ex.
      (a1, a2).
    Next Obligation.
      pose proof word.half_modulus_pos.
-     unfold cast, Convertible_word_Nat.
+     unfold cast, Convertible_word_nat.
      rewrite word.signed_of_Z, word.swrap_inrange in H0 by lia.
      rewrite word.signed_gz_eq_unsigned; lia.
    Qed.
    Next Obligation.
      pose proof word.half_modulus_pos.
-     unfold cast, Convertible_word_Nat.
+     unfold cast, Convertible_word_nat.
      rewrite word.signed_of_Z, word.swrap_inrange in H0 by lia.
      rewrite word.signed_gz_eq_unsigned; lia.
    Qed.

@@ -844,6 +844,8 @@ Ltac solve_map_remove_many :=
 Create HintDb compiler_cleanup discriminated.
 Hint Unfold wp_bind_retvars : compiler_cleanup.
 Hint Unfold postcondition_cmd : compiler_cleanup.
+Hint Rewrite @word.of_nat_to_nat_unsigned : compiler_cleanup.
+Hint Rewrite @word.of_Z_of_nat_to_nat_unsigned : compiler_cleanup.
 
 Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: bool.
 Hint Extern 2 (IsRupicolaBinding (nlet _ _ _)) => exact true : typeclass_instances.
@@ -917,6 +919,10 @@ Ltac compile_binding :=
    doesn't peek past the first [nlet]. *)
 Ltac compile_custom := fail.
 
+Ltac compile_autocleanup :=
+  progress (autorewrite with compiler_cleanup in *;
+            repeat autounfold with compiler_cleanup in *).
+
 Ltac compile_cleanup :=
   match goal with
   | [ H: _ /\ _ |- _ ] => destruct H
@@ -929,13 +935,12 @@ Ltac compile_cleanup :=
 Ltac compile_cleanup_post :=
   match goal with
   | _ => compile_cleanup
+  | _ => compile_autocleanup
+  | _ => progress subst_lets_in_goal
   | [  |- True ] => exact I
   | [  |- _ /\ _ ] => split
   | [  |- _ = _ ] => reflexivity
   | [  |- exists _, _ ] => eexists
-  | _ =>
-    first [ progress subst_lets_in_goal
-          | progress repeat autounfold with compiler_cleanup ]
   end.
 
 Ltac compile_unset_and_skip :=
@@ -955,7 +960,6 @@ Ltac compile_use_default_value :=
 Ltac compile_solve_side_conditions :=
   match goal with
   | [  |- sep _ _ _ ] =>
-    repeat autounfold with compiler_cleanup in *;
       cbn [fst snd] in *;       (* FIXME generalize this? *)
       ecancel_assumption
   | [  |- map.get _ _ = _ ] =>
@@ -967,7 +971,9 @@ Ltac compile_solve_side_conditions :=
   | [  |- _ <> _ ] => congruence
   | _ =>
     first [ compile_cleanup
-          | solve [eauto with compiler_cleanup]
+          | compile_autocleanup
+          | solve [ eauto with compiler_cleanup | typeclasses eauto ]
+          | reflexivity
           | compile_use_default_value ]
   end.
 
