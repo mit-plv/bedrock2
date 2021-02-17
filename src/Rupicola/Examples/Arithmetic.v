@@ -37,7 +37,7 @@ Module FNV1A32_params <: FNV1A_params.
   Definition semantics : Semantics.parameters := _.
   Definition semantics_ok : Semantics.parameters_ok semantics := _.
   Definition prime := Eval compute in word.of_Z 16777619.
-  Definition offset := Eval compute in word.of_Z 2166136261%Z.
+  Definition offset := Eval compute in word.of_Z 2166136261.
 End FNV1A32_params.
 
 Module FNV1A32 := FNV1A FNV1A32_params.
@@ -46,8 +46,8 @@ Module FNV1A64_params <: FNV1A_params.
   Import BasicC64Semantics.
   Definition semantics : Semantics.parameters := _.
   Definition semantics_ok : Semantics.parameters_ok semantics := _.
-  Definition prime := Eval compute in word.of_Z 16777619.
-  Definition offset := Eval compute in word.of_Z 2166136261%Z.
+  Definition prime := Eval compute in word.of_Z 1099511628211.
+  Definition offset := Eval compute in word.of_Z 14695981039346656037.
 End FNV1A64_params.
 
 Module FNV1A64 := FNV1A FNV1A64_params.
