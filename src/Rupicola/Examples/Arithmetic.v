@@ -1,4 +1,6 @@
 Require Import Rupicola.Lib.Api.
+Require Import Rupicola.Lib.Arrays.
+Require Import Rupicola.Lib.Loops.
 From bedrock2 Require BasicC32Semantics BasicC64Semantics.
 
 Module Type FNV1A_params.
@@ -11,24 +13,73 @@ End FNV1A_params.
 Module FNV1A (P: FNV1A_params).
   Existing Instances P.semantics P.semantics_ok.
 
-  Definition fnv1a_update (hash data : word) :=
+   Notation "∅" := map.empty.
+   Notation "m [[ k ← v ]]" :=
+     (map.put m k v)
+       (left associativity, at level 11,
+        format "m [[ k  ←  v ]]").
+
+  Definition update (hash data : word) :=
     let/n p := P.prime in
     let/n hash := word.xor hash data in
     let/n hash := word.mul hash p in
     hash.
 
   Implicit Type R : Semantics.mem -> Prop.
-  Instance spec_of_fnv1a_update : spec_of "fnv1a_update" :=
-    fnspec "fnv1a_update" (hash: word) (data: word) / R ~> hash',
-    { requires tr mem := R mem;
-      ensures tr' mem' := R mem' /\ hash' = fnv1a_update hash data }.
+  Instance spec_of_update : spec_of "update" :=
+    fnspec "update" (hash: word) (data: word) ~> hash',
+    { requires tr mem := True;
+      ensures tr' mem' := tr = tr' /\ mem = mem' /\ hash' = update hash data }.
 
-  Derive fnv1a_update_body SuchThat
-         (defn! "fnv1a_update"("hash", "data") ~> "hash" { fnv1a_update_body },
-          implements fnv1a_update)
-         As fnv1a_update_body_correct.
+  Derive update_body SuchThat
+         (defn! "update"("hash", "data") ~> "hash" { update_body },
+          implements update)
+         As update_body_correct.
   Proof.
     compile.
+  Qed.
+
+  Definition fnv1a (data: ListArray.t byte) len :=
+    let/n p := P.prime in
+    let/n hash := P.offset in
+    let/n from := word.of_Z 0 in
+    let/n step := word.of_Z 1 in
+    let/n hash := ranged_for_u
+                   from len step
+                   (fun tok idx hash Hlt =>
+                      let/n b := ListArray.get data idx in
+                      let/n hash := word.xor hash (word_of_byte b) in
+                      let/n hash := word.mul hash p in
+                      (tok, hash)) hash in
+    hash.
+
+  Instance spec_of_fnv1a : spec_of "fnv1a" :=
+    fnspec "fnv1a" data_ptr len /
+           (data: ListArray.t byte) n R
+           (pr: word.unsigned len < Z.of_nat n)
+           ~> hash,
+    { requires tr mem :=
+        (sizedlistarray_value AccessByte data_ptr n data ⋆ R) mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        (sizedlistarray_value AccessByte data_ptr n data ⋆ R) mem' /\
+        hash = fnv1a data len }.
+
+  Derive fnv1a_body SuchThat
+         (defn! "fnv1a"("data", "len") ~> "hash" { fnv1a_body },
+          implements fnv1a)
+         As fnv1a_body_correct.
+  Proof.
+    compile_setup; repeat compile_step.
+
+     simple apply compile_nlet_as_nlet_eq.
+     eapply compile_ranged_for_u with (loop_pred := (fun idx hash tr' mem' locals' =>
+         tr' = tr /\
+         locals' = ∅[["data" ← data_ptr]][["len" ← len]][["p" ← P.prime]]
+                    [["hash" ← hash]][["from" ← idx]][["step" ← v0]] /\
+         (sizedlistarray_value AccessByte data_ptr n data ⋆ R) mem')).
+
+     all: repeat repeat compile_step; try lia; compile_done.
   Qed.
 End FNV1A.
 
@@ -84,4 +135,4 @@ End Murmur3.
 
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.NotationsInConstr.
-Eval cbv in FNV1A32.fnv1a_update_body.
+Eval cbv in FNV1A64.fnv1a_body.
