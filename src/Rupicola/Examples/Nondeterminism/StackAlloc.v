@@ -4,6 +4,8 @@ Require Import Rupicola.Examples.Nondeterminism.NonDeterminism.
 Require Import coqutil.Byte.
 Open Scope Z_scope.
 
+Import NDMonad.
+
 Section Peek.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok _}.
@@ -143,17 +145,13 @@ Section Peek.
      rewrite <- Z.lxor_assoc, Z.lxor_nilpotent, Z.lxor_0_l; reflexivity.
   Qed.
 
+  Implicit Type R : Semantics.mem -> Prop.
   Instance spec_of_nondet_xor : spec_of "nondet_xor" :=
-    let post w0 R tr mem tr' mem' rets :=
-        exists w, (nondet_xor_src w0) w /\ tr' = tr /\ R mem' /\
-             rets = [w] in
-      fun functions =>
-        forall w0 (R: _ -> Prop),
-        forall tr mem,
-          R mem ->
-          WeakestPrecondition.call
-            functions "nondet_xor" tr mem [w0]
-            (post w0 R tr mem).
+    fnspec "nondet_xor" w0 / R,
+    { requires tr mem := R mem;
+      ensures tr' mem' rets :=
+        propbind (nondet_xor_src w0)
+                 (fun w => tr' = tr /\ R mem' /\ rets = [w]) }.
 
   Hint Extern 1 => simple eapply compile_stack_alloc; shelve : compiler.
   Hint Extern 1 => simple eapply compile_nth; shelve : compiler.

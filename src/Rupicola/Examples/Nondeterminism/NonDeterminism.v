@@ -1,16 +1,42 @@
 Require Import Rupicola.Lib.Api.
 
-Section Monad.
-  Definition Comp A := A -> Prop.
+Definition Comp A := A -> Prop.
 
+Module NDMonad.
   Definition ret {A} (a: A) : Comp A := fun a' => a' = a.
   Definition bind {A B} (v: Comp A) (body: A -> Comp B) : Comp B :=
     fun b => exists a, v a /\ body a b.
   Definition bindn {A B} (vars: list string) (v: Comp A) (body: A -> Comp B) : Comp B :=
     bind v body.
 
-  Definition pick {A} (P: Comp A) := P.
-End Monad.
+  Definition equiv {A} (a0 a1: Comp A) :=
+    forall v, a0 v <-> a1 v.
+
+  Definition bind_ret {A} (ca: Comp A) :
+     equiv (bind ca ret) ca.
+  Proof. firstorder congruence. Qed.
+
+  Definition ret_bind {A B} a (k: A -> Comp B) :
+      equiv (bind (ret a) k) (k a).
+  Proof. firstorder congruence. Qed.
+
+  Definition bind_bind {A B C}
+             ca (ka: A -> Comp B) (kb: B -> Comp C) :
+    equiv (bind (bind ca ka) kb)
+          (bind ca (fun a => bind (ka a) kb)).
+  Proof. firstorder congruence. Qed.
+
+  Definition pick {A} (P: A -> Prop) : Comp A := P.
+
+  Definition any {A} (ca: Comp A) := (exists a, ca a).
+  Definition intersection {A} (ca ca': Comp A) :=
+    fun a => ca a /\ ca' a.
+
+  Definition propbind {A} (c: Comp A) (P: A -> Prop) : Prop :=
+    any (intersection c P).
+End NDMonad.
+
+Import NDMonad.
 
 Notation "'let/+' x 'as' nm := val 'in' body" :=
   (bindn [nm] val (fun x => body))

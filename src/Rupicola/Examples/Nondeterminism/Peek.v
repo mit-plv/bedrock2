@@ -1,6 +1,8 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.Nondeterminism.NonDeterminism.
 
+Import NDMonad.
+
 Section Peek.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok _}.
