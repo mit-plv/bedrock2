@@ -27,9 +27,9 @@ It is a design decision to *not* support the following features:
 *    Non-terminating programs (except for the top-level event loop)
 
 
-### Build [![Build Status](https://travis-ci.com/mit-plv/bedrock2.svg?branch=master)](https://travis-ci.com/mit-plv/bedrock2)
+### Build
 
-You'll need [Coq](https://coq.inria.fr/), version 8.11 or master.
+You'll need [Coq](https://coq.inria.fr/). We try to support the latest released version as well as master. If unsure which version to pick, it's best to check the build log of the continuous integration server.
 
 In case you didn't clone with `--recursive`, use `make clone_all` to clone the git submodules.
 
