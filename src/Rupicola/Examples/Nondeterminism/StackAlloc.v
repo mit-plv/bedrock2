@@ -1,4 +1,5 @@
 Require Import Rupicola.Lib.Api.
+Require Import Rupicola.Lib.Arrays.
 Require Import Rupicola.Examples.Nondeterminism.NonDeterminism.
 
 Require Import coqutil.Byte.
@@ -14,7 +15,7 @@ Section Peek.
     %{ ls: list byte | List.length ls = nbytes }.
 
   Definition bytes_at addr data :=
-    array scalar8 (word.of_Z 1) addr data.
+    listarray_value AccessByte addr data.
 
   Lemma compile_stack_alloc {tr mem locals functions} (nbytes: nat):
     let c := stack_alloc nbytes in
@@ -23,12 +24,12 @@ Section Peek.
       (R: _ -> Prop) var,
       R mem ->
       Z.of_nat nbytes mod Memory.bytes_per_word Semantics.width = 0 ->
-      (forall ptr bs mem,
+      (forall ptr (bs: ListArray.t byte) mem,
           List.length bs = nbytes ->
-          (bytes_at ptr bs * R)%sep mem ->
+          (sizedlistarray_value AccessByte ptr nbytes bs * R)%sep mem ->
           let pred g tr' mem' locals' :=
               exists R',
-                (bytes_at ptr bs * R')%sep mem' /\
+                (sizedlistarray_value AccessByte ptr nbytes bs * R')%sep mem' /\
                 forall mem'', R' mem'' -> pred g tr' mem'' locals' in
           <{ Trace := tr;
              Memory := mem;
@@ -49,69 +50,15 @@ Section Peek.
     rewrite Nat2Z.id in Hlen.
     eapply WeakestPrecondition_weaken; cycle 1.
     - apply Hkimpl; eauto.
-      apply sep_comm; exists mem, mStack; eauto.
+      apply sep_comm; exists mem, mStack;
+        eauto using sizedlistarray_value_of_array.
     - intros tr' mem' locals' (b & Hk & (R' & (mR' & mStack' & Hsplit' & HR' & Hbs')%sep_comm & Hpred')).
       eexists; eexists; split; [|split].
       + subst nbytes; apply array_1_to_anybytes.
-        eassumption.
+        eapply array_of_sizedlistarray_value in Hbs'.
+        apply Hbs'.
       + eassumption.
       + unfold pbind, bindn, bind; cbn; eauto 6.
-  Qed.
-
-  (* FIXME deduplicate with Loops.v *)
-  Lemma compile_nth {tr mem locals functions} (a: list byte) (idx: nat):
-    let v := nth idx a Byte.x00 in
-    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl : cmd}
-      R a_var a_ptr idx_var (var : string),
-
-      (idx < Datatypes.length a)%nat ->
-
-      sep (bytes_at a_ptr a) R mem ->
-      map.get locals a_var = Some a_ptr ->
-      map.get locals idx_var = Some (word.of_Z (Z.of_nat idx)) ->
-
-      (let v := v in
-       <{ Trace := tr;
-          Memory := mem;
-          Locals := map.put locals var (word.of_Z (Byte.byte.unsigned v));
-          Functions := functions }>
-       k_impl
-       <{ pred (k v eq_refl) }>) ->
-      <{ Trace := tr;
-         Memory := mem;
-         Locals := locals;
-         Functions := functions }>
-      cmd.seq
-        (cmd.set
-           var
-           (expr.load
-              access_size.one
-              (expr.op bopname.add
-                       (expr.var a_var)
-                       (expr.op bopname.mul
-                                (expr.literal 1)
-                                (expr.var idx_var)))))
-        k_impl
-      <{ pred (nlet_eq [var] v k) }>.
-  Proof.
-    cbn; intros Hlt *.
-    pose proof word.unsigned_range (word.of_Z (Z.of_nat idx)) as (Hge & _).
-
-    eexists; split; cbn; [ | eassumption ].
-    exists a_ptr; split; [ eassumption | ]; cbn.
-    exists (word.of_Z (Z.of_nat idx)); split; [ eassumption | ]; cbn.
-    eexists; split; [ | reflexivity ].
-
-    eapply load_one_of_sep.
-    unfold bytes_at in *.
-    once (seprewrite_in open_constr:(array_index_nat_inbounds
-                                       _ _ _ _ idx) H0).
-    { lia. }
-
-    rewrite word.ring_morph_mul, !word.of_Z_unsigned in H5 by lia.
-    rewrite <- nth_default_eq.
-    rewrite List.hd_skipn_nth_default.
-    ecancel_assumption.
   Qed.
 
   Lemma stackalloc_universal_bound :
@@ -131,7 +78,7 @@ Section Peek.
   Definition nondet_xor_src (w: word) :=
     let/+ bs := stack_alloc 8 in
     let/n idx := 0%nat in
-    let/n undef := nth idx bs Byte.x00 in
+    let/n undef := ListArray.get bs idx in
     let/n out := w in
     let/n out := word.xor (word_of_byte undef) out in
     let/n out := word.xor (word_of_byte undef) out in
@@ -153,12 +100,11 @@ Section Peek.
         propbind (nondet_xor_src w0)
                  (fun w => tr' = tr /\ R mem' /\ rets = [w]) }.
 
+  Import SizedListArrayCompiler.
   Hint Extern 1 => simple eapply compile_stack_alloc; shelve : compiler.
-  Hint Extern 1 => simple eapply compile_nth; shelve : compiler.
   Hint Extern 10 => simple eapply compile_copy_word; shelve : compiler.
 
   Hint Resolve stackalloc_universal_bound : compiler_cleanup.
-  Hint Extern 20 => lia : compiler_cleanup.
 
   Derive nondet_xor_body SuchThat
          (defn! "nondet_xor"("w") ~> "out"
