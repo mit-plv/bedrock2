@@ -8,8 +8,7 @@ Section with_parameters.
           {semantics_ok : Semantics.parameters_ok _}.
 
   Lemma compile_dlet_as_nlet_eq {tr mem locals functions} {A} {vars: list string} (v: A):
-    forall {T} {pred: T -> predicate} {k: A -> T}
-      cmd,
+    forall {T} {pred: T -> predicate} {k: A -> T} {cmd},
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -25,8 +24,8 @@ Section with_parameters.
   Proof. intros; assumption. Qed.
 
   Lemma compile_nlet_as_nlet_eq {tr mem locals functions} {A} (v: A):
-    forall {T} {pred: T -> predicate} {k: A -> T}
-      vars cmd,
+    forall {T} {pred: T -> predicate} {k: A -> T} {cmd}
+      vars,
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -39,6 +38,25 @@ Section with_parameters.
          Functions := functions }>
       cmd
       <{ pred (nlet vars v k) }>.
+  Proof. intros; assumption. Qed.
+
+  Lemma compile_nested_nlet {tr mem locals functions} {A T1} vs1 (v0: A) (k1: A -> T1):
+    let v := nlet vs1 v0 k1 in
+    forall {T2} {pred: T2 -> predicate}
+      {k2: T1 -> T2} {cmd}
+      vs2,
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd
+      <{ pred (nlet vs1 v0 (fun v => nlet vs2 (k1 v) k2)) }> ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd
+      <{ pred (nlet vs2 v k2) }>.
   Proof. intros; assumption. Qed.
 
   Lemma compile_skip {tr mem locals functions} {pred0: predicate} :
@@ -910,6 +928,8 @@ Hint Extern 1 => simple eapply compile_bool_orb; shelve : compiler.
 Hint Extern 1 => simple eapply compile_bool_xorb; shelve : compiler.
 
 Ltac compile_binding :=
+  (* We want to flip nlets before introducing nlet_eq. *)
+  try simple apply compile_nested_nlet;
   (* We don't want to show users goals with nlet_eq, so compile_nlet_as_nlet_eq
      isn't in the ‘compiler’ hint db. *)
   try simple apply compile_nlet_as_nlet_eq;
