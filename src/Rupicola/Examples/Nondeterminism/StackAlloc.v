@@ -28,8 +28,8 @@ Section Peek.
           List.length bs = nbytes ->
           (sizedlistarray_value AccessByte ptr nbytes bs * R)%sep mem ->
           let pred g tr' mem' locals' :=
-              exists R',
-                (sizedlistarray_value AccessByte ptr nbytes bs * R')%sep mem' /\
+              exists R' bs',
+                (sizedlistarray_value AccessByte ptr nbytes bs' * R')%sep mem' /\
                 forall mem'', R' mem'' -> pred g tr' mem'' locals' in
           <{ Trace := tr;
              Memory := mem;
@@ -52,9 +52,11 @@ Section Peek.
     - apply Hkimpl; eauto.
       apply sep_comm; exists mem, mStack;
         eauto using sizedlistarray_value_of_array.
-    - intros tr' mem' locals' (b & Hk & (R' & (mR' & mStack' & Hsplit' & HR' & Hbs')%sep_comm & Hpred')).
+    - intros tr' mem' locals' (b & Hk & (R' & bs' & (mR' & mStack' & Hsplit' & HR' & Hbs')%sep_comm & Hpred')).
       eexists; eexists; split; [|split].
-      + subst nbytes; apply array_1_to_anybytes.
+      + subst nbytes.
+        rewrite <- (length_of_sizedlistarray_value _ _ _ _ _ Hbs').
+        apply array_1_to_anybytes.
         eapply array_of_sizedlistarray_value in Hbs'.
         apply Hbs'.
       + eassumption.
