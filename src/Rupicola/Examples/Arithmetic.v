@@ -84,24 +84,29 @@ Module FNV1A (P: FNV1A_params).
 End FNV1A.
 
 Module FNV1A32_params <: FNV1A_params.
-  Import BasicC32Semantics.
-  Definition semantics : Semantics.parameters := _.
+  Definition semantics : Semantics.parameters := BasicC32Semantics.parameters.
   Definition semantics_ok : Semantics.parameters_ok semantics := _.
-  Definition prime := Eval compute in word.of_Z 16777619.
-  Definition offset := Eval compute in word.of_Z 2166136261.
+  Definition prime : Naive.word32 := Eval compute in word.of_Z 16777619.
+  Definition offset : Naive.word32 := Eval compute in word.of_Z 2166136261.
 End FNV1A32_params.
 
 Module FNV1A32 := FNV1A FNV1A32_params.
 
 Module FNV1A64_params <: FNV1A_params.
-  Import BasicC64Semantics.
-  Definition semantics : Semantics.parameters := _.
+  Definition semantics : Semantics.parameters := BasicC64Semantics.parameters.
   Definition semantics_ok : Semantics.parameters_ok semantics := _.
-  Definition prime := Eval compute in word.of_Z 1099511628211.
-  Definition offset := Eval compute in word.of_Z 14695981039346656037.
+  Definition prime : Naive.word64 := Eval compute in word.of_Z 1099511628211.
+  Definition offset : Naive.word64 := Eval compute in word.of_Z 14695981039346656037.
 End FNV1A64_params.
 
 Module FNV1A64 := FNV1A FNV1A64_params.
+
+Require Import bedrock2.NotationsCustomEntry.
+Require Import bedrock2.NotationsInConstr.
+Unset Printing All.
+
+Eval cbv in FNV1A32.fnv1a_body.
+Eval cbv in FNV1A64.fnv1a_body.
 
 Module Murmur3.
   Import BasicC32Semantics.
