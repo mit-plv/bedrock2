@@ -22,8 +22,8 @@ Section with_parameters.
     array scalar (word.of_Z 8) addr (Vector.to_list v).
 
   Definition Packet (addr: address) (p: packet)
-    : list word -> Semantics.mem -> Prop :=
-    fun _ => WordVector addr p.
+    : Semantics.mem -> Prop :=
+    WordVector addr p.
 
   Definition decr_gallina (p: packet) :=
     let/n ttl := (ttl p) in
@@ -176,12 +176,12 @@ Section with_parameters.
   Hint Unfold Packet : compiler_cleanup.
 
   Instance spec_of_decr : spec_of "decr" :=
-    forall! pp p,
-      (sep (Packet pp p [])) ===> "decr" @ [pp] ===> Packet pp (decr_gallina p).
+    fnspec! "decr" ptr / p R,
+    { requires tr mem := (Packet ptr p ⋆ R) mem;
+      ensures tr' mem' := tr' = tr /\ (Packet ptr (decr_gallina p) ⋆ R) mem' }.
 
   Hint Extern 1 => simple eapply compile_nth; shelve : compiler.
   Hint Extern 1 => simple eapply compile_replace; shelve : compiler.
-
 
   Derive decr_body SuchThat
          (defn! "decr"("p") { decr_body },
@@ -192,7 +192,7 @@ Section with_parameters.
   Qed.
 End with_parameters.
 
-(* Require Import bedrock2.NotationsCustomEntry. *)
-(* Require Import bedrock2.NotationsInConstr. *)
-(* Arguments decr_body /. *)
-(* Eval simpl in decr_body. *)
+Require Import bedrock2.NotationsCustomEntry.
+Require Import bedrock2.NotationsInConstr.
+Arguments decr_body /.
+Eval simpl in decr_body.
