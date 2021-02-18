@@ -82,56 +82,58 @@ Section S.
       end.
 
     Print exp_by_squaring.
-    
-    Lemma let_equal :
+
+    Lemma letn_equal :
       forall A B (val : A) (body_l body_r : A -> B) (var : string),
         (let x := val in body_l x = body_r x)
         -> (let/n x as var := val in body_l x) = (let/n y as var := val in body_r y).
     Proof.
-      intros. unfold nlet. assumption.
+      intros. assumption.
     Qed.
 
-    Lemma let_nested :
+    Lemma letn_nested :
       forall A B C (a : C) (val1 : A) (body1 : A -> B) (body2 : B -> C) (var var' : string),
         a = (let/n x as var' := val1 in let/n y as var := body1 x in body2 y)
         -> a = (let/n y as var := let/n x as var' := val1 in body1 x in body2 y).
     Proof.
       intros. assumption.
     Qed.
-    
-    Lemma let_paren_equal :
+
+    Lemma letn_paren_equal :
       forall A B (a : A) (val : A) (body_r : A -> B) (var : string) left,
         left = (let/n y as var := val in (a, body_r y))
         -> left = (a, let/n y as var := val in body_r y).
     Proof.
-      intros. unfold nlet.
+      intros.
       rewrite H. reflexivity.
     Qed.
 
     Ltac tac :=
-      match goal with
+      lazymatch goal with
       | [ |- let _ := _ in _ = _ ] =>
         intros
-      | [ |- _ = let/n _ as _ := let/n _ as _ := _ in _ in _] =>
-        eapply let_nested
+      | [ |- _ = let/n _ as _ := (let/n _ as _ := _ in _) in _] =>
+        eapply letn_nested
       | [ |- _ = let/n _ as _ := _ in _] =>
-        eapply let_equal with (body_l := fun _ => _)
+        eapply letn_equal with (body_l := fun _ => _)
       | [ |- _ = (_, let/n _ as _ := _ in _)] =>
-        eapply let_paren_equal
+        eapply letn_paren_equal
       end.
 
     Derive rewritten SuchThat
-           (forall x, rewritten x = exp_by_squaring x 11)
+           (forall x, rewritten x = (x, let/n res := exp_by_squaring x 11 in res))
            As rewrite.
-    cbv beta iota delta [exp_by_squaring].
-    subst rewritten.
-    intros.
-    repeat tac.
-    reflexivity.
-    Defined.
+    Proof.
+      cbv beta iota delta [exp_by_squaring].
+      subst rewritten.
+      intros.
+      repeat tac.
+      reflexivity.
+    Qed.
     Print rewritten.
 
-    (*Lemma exp_by_squaring_correct :
+    (*
+    Lemma exp_by_squaring_correct :
       M <> 0 -> forall n x, exp_by_squaring x n = x ^ (Zpos n).
     Proof.
       induction n; intros; cbn [exp_by_squaring]; unfold nlet.
@@ -153,8 +155,8 @@ Section S.
         lia.
       - rewrite Z.pow_1_r.
         reflexivity.
-    Qed.*)
-
+    Qed.
+    *)
   End Gallina.
 
   Section Bedrock.
@@ -205,8 +207,8 @@ Section S.
              | [ |- WeakestPrecondition.call _ _ _ _ _ ] => straightline_call
              | [ H : context[postcondition_func_norets] |- _ ] => destruct H
              end.
-    
-    
+
+
     Lemma exp_6_correct : program_logic_goal_for_function! exp_6.
     Proof.
       repeat straightline.
@@ -240,7 +242,7 @@ Section S.
       apply H.
       apply H0.
     Qed.
-    
+
     Lemma Lift1Prop_impl1_and :
       forall {A : Type} (q1 : Prop) (q2 p : A -> Prop),
         (q1 /\ (Lift1Prop.impl1 p (fun m => q2 m))) ->
@@ -292,24 +294,19 @@ Section S.
                                               R tr)))
            As exp_body_correct.
     Proof.
-      compile_setup.
-      compile_custom; repeat compile_step.
-      compile_custom; repeat compile_step.
-      compile_custom; repeat compile_step.
-      compile_custom; repeat compile_step.
-      compile_custom; repeat compile_step.
+      compile.
       lift_eexists; sepsimpl; eauto || ecancel_assumption.
     Qed.
 
     Definition exp_by_squaring_9' (x : Z) : (Z * Z) :=
-      let/n sq := x ^ 2 mod M in
-      let/n sq := sq ^ 2 mod M in
-      let/n sq := sq ^ 2 mod M in
-      let/n sq := x * sq mod M in
-      (x, sq).
+      let/n out := x ^ 2 mod M in
+      let/n out := out ^ 2 mod M in
+      let/n out := out ^ 2 mod M in
+      let/n out := x * out mod M in
+      (x, out).
 
     Derive exp9_body SuchThat
-           (let exp9 := ("exp9", (["x"; "sq"], [], exp9_body)) in
+           (let exp9 := ("exp9", (["x"; "out"], [], exp9_body)) in
             program_logic_goal_for exp9
                                    (forall functions,
                                        spec_of_UnOp un_square functions ->
@@ -329,21 +326,17 @@ Section S.
     Proof.
       compile.
       lift_eexists; sepsimpl; eauto || ecancel_assumption.
-    Qed.*)
+    Qed.
 
-    Ltac compile_custom ::=
-      match goal with
-      | [ |- find _ implementing exp_result _ _ (let/d _ := eval _ ^ 2 mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => eapply compile_square; eauto; try compile_step
-      | [ |- find _ implementing exp_result _ _ (let/d _ := (eval _ * eval _) mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => eapply compile_mul; eauto; try compile_step
-      | [ |- find _ implementing exp_result _ _ (let/d _ := (eval _ mod M) ^ 2 mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite <- Z.pow_mod
-      | [ |- find _ implementing exp_result _ _ (let/d _ := inplace ((eval _ mod M) ^ 2 mod M) in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite <- Z.pow_mod
-      | [ |- find _ implementing exp_result _ _ (let/d _ := (eval _ mod M *  _) mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite Zmult_mod_idemp_l
-      | [ |- find _ implementing exp_result _ _ (let/d _ := ( _ * (eval _ mod M)) mod M in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite Zmult_mod_idemp_r
-      | [ |- find _ implementing exp_result _ _ (let/d _ := inplace (( _ * (eval _ mod M)) mod M) in _) and-returning _ and-locals-post _ with-locals _ and-memory _ and-trace _ and-rest _ and-functions _] => rewrite Zmult_mod_idemp_r
-      end.
-    
+    (* Lemma Zmult_mod_idemp_r_inplace : *)
+    (*   forall a b n : Z, *)
+    (*     (b * inplace (a mod n)) mod n = (b * inplace(a)) mod n. *)
+    (*   unfold inplace. *)
+    (*   apply Zmult_mod_idemp_r. *)
+    (* Qed. *)
+
     Derive exp_11_body SuchThat
-           (let exp11 := ("exp11", (["x"; "sq"], [], exp_11_body)) in
+           (let exp11 := ("exp11", (["x"; "res"], [], exp_11_body)) in
             program_logic_goal_for exp11
                                    (forall functions,
                                        spec_of_UnOp un_square functions ->
@@ -362,23 +355,8 @@ Section S.
                                               R tr)))
            As exp_11_body_correct.
     Proof.
-      compile_custom.
-      autounfold with compiler.
-      cbn.
-      apply sep_comm.
-      match goal with
-      | [ H : (Bignum x_ptr ?x * Bignum sq_ptr ?sq * ?R)%sep ?m |- _ ?m ] =>
-        assert (((R * (Bignum x_ptr x * Bignum sq_ptr sq)))%sep m) as Hsep by ecancel_assumption
-      end.
-      revert Hsep.
-      eapply Proper_sep_impl1.
-      - reflexivity.
-      - apply Lift1Prop_impl1_ex. eexists.
-        apply Lift1Prop_impl1_ex. eexists.
-        eapply impl1_r_sep_emp.
-        split; try reflexivity.
-        eapply impl1_r_sep_emp.
-        split; try reflexivity.
+      compile.
+      lift_eexists; sepsimpl; eauto || ecancel_assumption.
     Qed.
 
     Fixpoint run_length_encoding (n : positive) : list (bool * nat) :=
@@ -398,14 +376,6 @@ Section S.
 
     Compute run_length_encoding 1.
 
-    (*Fixpoint loop_square (x : Z) (k : nat) : Z :=
-       match k with
-       | 0%nat => x mod M
-       | 1%nat => x^2 mod M
-       | S k' => let/d res := (loop_square x k') in
-                       inplace(res^2)
-       end.*)
-
     Fixpoint loop {A} (x : A) (k : nat) (f : A -> A) : A :=
       match k with
       | 0%nat => f x
@@ -419,30 +389,6 @@ Section S.
       (Z.pow x' 2 mod M).
 
     Fixpoint exp_from_encoding (x : Z) (n : list (bool * nat)) : Z :=
-      match n with
-      | [] =>
-        1
-      (* can add more cases for small k to be faster *)
-      | (true, 0%nat) :: t =>
-        let/d res := exp_from_encoding x t in
-        let/d res := inplace(res^2 mod M) in
-        let/d res := x * inplace(res) mod M in
-        res
-      | (true, k) :: t =>
-        let/d res := exp_from_encoding x t in
-        let/d res := loop res k (exp_square_and_multiply x) in
-        res
-      | (false, 0%nat) :: t =>
-        let/d res := exp_from_encoding x t in
-        let/d res := res^2 mod M in
-        res
-      | (false, k) :: t =>
-        let/d res := exp_from_encoding x t in
-        let/d res := loop res k (exp_square) in
-        res
-      end.
-
-    Fixpoint exp_from_encoding' (x : Z) (n : list (bool * nat)) : Z :=
       match n with
       | [] =>
         1
@@ -469,11 +415,9 @@ Section S.
     Definition exp_by_squaring_encoded (x : Z) (n : positive) : Z :=
       exp_from_encoding x (run_length_encoding n).
 
-    Definition exp_by_squaring_encoded' (x : Z) (n : positive) : Z :=
-      exp_from_encoding' x (run_length_encoding n).
-
     Compute run_length_encoding 4.
 
+    (*
     Lemma exp_by_squaring_encoded_correct :
       M <> 0 -> forall n x, exp_by_squaring_encoded x n = x ^ (Zpos n) mod M.
     Proof.
@@ -485,7 +429,7 @@ Section S.
         + destruct p. destruct b.
           { rewrite <- IHn.
           cbn. replace (n0 + 1)%nat with (S n0).
-          { unfold dlet; unfold inplace; destruct n0.
+          { unfold nlet; destruct n0.
             { cbn.
               repeat eapply mod_equal.
               rewrite <- Z.mul_comm.
@@ -500,19 +444,18 @@ Section S.
           }
           { symmetry. eapply Nat.add_1_r. }
           }
-        rewrite <- IHn. cbn. unfold dlet; unfold inplace. eauto.
+        rewrite <- IHn. cbn. unfold nlet. eauto.
       - rewrite <- IHn.
         cbn.
-        unfold dlet.
         destruct (run_length_encoding n) as [|[[|] n0] t]; eauto.
         rewrite Nat.add_comm.
         destruct n0; eauto.
-      - unfold dlet; unfold inplace; cbn.
+      - unfold nlet; cbn.
         rewrite Zmult_mod_idemp_r.
         eapply mod_equal.
         apply Z.mul_1_r.
     Qed.
-    
+    *)
   End Bedrock.
 
 End S.
