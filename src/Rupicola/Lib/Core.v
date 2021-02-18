@@ -193,6 +193,38 @@ Module map.
   Definition map_domains_diff {K V} {map: map.map K V} (m0 m1: map) :=
     map.keys (map.fold (fun (m0: map) k _ => map.remove m0 k) m0 m1).
 
+  Section MapCompat.
+    Context {K V0 V1}
+            {map0: map.map K V0}
+            {map1: map.map K V1}
+            {map_ok0: map.ok map0}
+            {map_ok1: map.ok map1}
+            {K_eqb : K -> K -> bool}
+            {K_eq_dec : EqDecider K_eqb}
+            (fV: V0 -> V1).
+
+    Definition mapped_compat m0 m1 :=
+      forall k v, map.get m0 k = Some v ->
+             map.get m1 k = Some (fV v).
+
+    Lemma mapped_compat_of_list bs1 bs2:
+      bs2 = List.map (fun pr => (fst pr, fV (snd pr))) bs1 ->
+      mapped_compat (map.of_list (map := map0) bs1)
+                    (map.of_list (map := map1) bs2).
+    Proof.
+      induction bs1 as [| (k1 & v1) bs1] in bs2 |- *;
+        (destruct bs2 as [| (k2 & v2) bs2];
+         cbn - [map.get map.put];
+         intros H k v; inversion H; subst; clear H;
+         try congruence).
+      - rewrite map.get_empty; inversion 1.
+      - rewrite !map.get_put_dec.
+        destruct (K_eq_dec k1 k).
+        + inversion 1; subst; reflexivity.
+        + intros. apply (IHbs1 _ eq_refl). eassumption.
+    Qed.
+  End MapCompat.
+
   Definition map_eq {K V} {map0 map1: map.map K V}
              {map_ok0: map.ok map0} {map_ok1: map.ok map1}
              m0 m1 :=
