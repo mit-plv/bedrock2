@@ -188,25 +188,17 @@ Ltac literal_locals_from_sep :=
 Ltac remove_unused_var :=
   let v :=
       (lazymatch goal with
-       | |- find _ implementing ?pred ?k
-            and-returning ?retvars
-            and-locals-post ?P with-locals ?l
-            and-memory _ and-trace _ and-rest _ and-functions _ =>
-         lazymatch k with
-         | dlet _ _ => fail "compilation not complete!"
+       | |- WeakestPrecondition.cmd _ _ _ _ ?l (?pred ?v) =>
+         lazymatch v with       (* FIXME should use IsRupicolaBinding *)
+         | nlet _ _ => fail "compilation not complete!"
          | _ =>
            match l with
            | context [map.put _ ?n] =>
-             lazymatch P with
+             let pred := (eval red in pred) in
+             (* idtac pred; *)
+             lazymatch pred with
              | context [n] => fail
-             | _ => lazymatch pred with
-                    | context [n] => fail
-                    | _ =>
-                      lazymatch retvars with
-                      | context [n] => fail
-                      | _ => n
-                      end
-                    end
+             | _ => n
              end
            end
          end

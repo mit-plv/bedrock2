@@ -69,41 +69,37 @@ Section Compile.
 
   (* TODO: these should probably use Owned/Reserved/Borrowed annotations *)
 
-  Lemma compile_ll_hd :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R' R functions T (pred: T -> _ -> _ -> Prop)
-      d end_ptr ll ll_var ll_ptr ll'_ptr k k_impl var,
-      map.get locals ll_var = Some ll_ptr ->
+  Lemma compile_ll_hd {tr mem locals functions} d ll:
+    let v := ll_hd d ll in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      R end_ptr ll_var ll_ptr ll'_ptr var,
+
       (scalar ll_ptr (ll_hd d ll)
        * scalar (next_word ll_ptr) ll'_ptr
        * LinkedList end_ptr ll'_ptr (ll_next ll)
-       * R')%sep mem ->
-      let v := ll_hd d ll in
-      (let head := v in
+       * R)%sep mem ->
+
+      map.get locals ll_var = Some ll_ptr ->
+
+      (let v := v in
        forall m,
          let ll' := ll_next ll in
-         (scalar ll_ptr head
+         (scalar ll_ptr v
           * scalar (next_word ll_ptr) ll'_ptr
           * LinkedList end_ptr ll'_ptr ll'
-          * R')%sep m ->
-         find k_impl
-         implementing (pred (k head))
-         and-returning retvars
-         and-locals-post locals_ok
-         with-locals (map.put locals var head)
-         and-memory m and-trace tr and-rest R
-         and-functions functions) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.set var
-                        (expr.load access_size.word (expr.var ll_var)))
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+          * R)%sep m ->
+         <{ Trace := tr;
+            Memory := m;
+            Locals := map.put locals var v;
+            Functions := functions }>
+         k_impl
+         <{ pred (k v eq_refl) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq (cmd.set var (expr.load access_size.word (expr.var ll_var))) k_impl
+      <{ pred (nlet_eq [var] v k) }>.
   Proof.
     cbn [LinkedList ll_hd hd]; intros.
     sepsimpl. repeat straightline'.
@@ -113,41 +109,39 @@ Section Compile.
 
   (* this version assumes you've run hd already, so it doesn't do any
      manipulations of separation logic predicates *)
-  Lemma compile_ll_next :
-    forall (locals: Semantics.locals) (mem: Semantics.mem)
-           (locals_ok : Semantics.locals -> Prop)
-      tr retvars R' R functions T (pred: T -> _ -> _ -> Prop)
-      end_ptr (ll ll' : linkedlist word) ll_var ll_ptr ll'_ptr
-      dummy k k_impl var,
-      map.get locals ll_var = Some ll_ptr ->
+  Lemma compile_ll_next {tr mem locals functions} ll:
+    let v := ll_next ll in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      dummy R end_ptr ll_var ll_ptr ll'_ptr var,
+
       (scalar ll_ptr (ll_hd dummy ll)
        * scalar (next_word ll_ptr) ll'_ptr
        * LinkedList end_ptr ll'_ptr (ll_next ll)
-       * R')%sep mem ->
-      let v := ll_next ll in
-      (let head := v in
-       find k_impl
-       implementing (pred (k head))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals (map.put locals var ll'_ptr)
-       and-memory mem and-trace tr and-rest R
-       and-functions functions) ->
-      (let head := v in
-       find (cmd.seq
-               (cmd.set var
-                        (expr.load
-                           access_size.word
-                           (expr.op bopname.add
-                                    (expr.var ll_var)
-                                    (expr.literal
-                                       (Z.of_nat word_size_in_bytes)))))
-               k_impl)
-       implementing (pred (dlet head k))
-       and-returning retvars
-       and-locals-post locals_ok
-       with-locals locals and-memory mem and-trace tr and-rest R
-       and-functions functions).
+       * R)%sep mem ->
+
+      map.get locals ll_var = Some ll_ptr ->
+
+      (let v := v in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := map.put locals var ll'_ptr;
+          Functions := functions }>
+       k_impl
+       <{ pred (k v eq_refl) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.set var
+                 (expr.load
+                    access_size.word
+                    (expr.op bopname.add
+                             (expr.var ll_var)
+                             (expr.literal
+                                (Z.of_nat word_size_in_bytes)))))
+        k_impl
+      <{ pred (nlet_eq [var] v k) }>.
   Proof.
     repeat straightline'. eauto.
   Qed.
