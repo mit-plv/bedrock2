@@ -860,8 +860,8 @@ Module ExprReflection.
     let reified := expr_reify_word bindings w in
     simple apply compile_expr_w with (e := compile reified);
     [ change locals with (map.of_list bindings);
-      _change_hook w (er_T2w (expr_reifier := expr_word_reifier)
-                             (interp (map.of_list (map := SortedListString.map _) bindings) reified))
+      change w with (er_T2w (expr_reifier := expr_word_reifier)
+                            (interp (map.of_list (map := SortedListString.map _) bindings) reified))
     | ].
 
   Ltac zify_bindings bs :=
@@ -883,12 +883,12 @@ Module ExprReflection.
     let reified := ExprReflection.expr_reify_Z z_bindings z in
     simple apply compile_expr_Z with (e := ExprReflection.compile reified);
     [ change locals with (map.of_list bindings);
-      _change_hook (word.of_Z z)
-                   (ExprReflection.er_T2w
-                      (expr_reifier := expr_Z_reifier)
-                      (ExprReflection.interp (er := expr_Z_reifier)
-                                             (map.of_list (map := SortedListString.map _) z_bindings)
-                                             reified))
+      change (word.of_Z z)
+        with (ExprReflection.er_T2w
+                (expr_reifier := expr_Z_reifier)
+                (ExprReflection.interp (er := expr_Z_reifier)
+                                       (map.of_list (map := SortedListString.map _) z_bindings)
+                                       reified))
     | ].
 
   Ltac compile_prove_expr_reification_premise :=
