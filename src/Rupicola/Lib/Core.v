@@ -633,9 +633,44 @@ Module word.
       - pose proof Z.mod_pos_bound (Z.of_N (Byte.to_N b)) (2 ^ width) ltac:(lia).
         lia.
     Qed.
+
+    Notation b2w b :=
+      (word.of_Z (Z.b2z b)).
+
+    Lemma b2w_inj:
+      forall b1 b2, b2w b1 = b2w b2 -> b1 = b2.
+    Proof.
+      intros [|] [|]; simpl;
+        intros H%(f_equal word.unsigned);
+        rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1 in H;
+        cbn; congruence.
+    Qed.
+
+    Ltac compile_binop_zzw_bitwise lemma :=
+      intros; cbn;
+      apply word.unsigned_inj;
+      rewrite lemma, !word.unsigned_of_Z;
+      bitblast.Z.bitblast;
+      rewrite !word.testbit_wrap;
+      bitblast.Z.bitblast_core.
+
+    Lemma morph_and x y:
+      word.of_Z (Z.land x y) = word.and (word.of_Z x) (word.of_Z y).
+    Proof. compile_binop_zzw_bitwise word.unsigned_and_nowrap. Qed.
+
+    Lemma morph_or x y:
+      word.of_Z (Z.lor x y) = word.or (word.of_Z x) (word.of_Z y).
+    Proof. compile_binop_zzw_bitwise word.unsigned_or_nowrap. Qed.
+
+    Lemma morph_xor x y:
+      word.of_Z (Z.lxor x y) = word.xor (word.of_Z x) (word.of_Z y).
+    Proof. compile_binop_zzw_bitwise word.unsigned_xor_nowrap. Qed.
   End __.
 End word.
 
+
+Notation b2w b :=
+  (word.of_Z (Z.b2z b)).
 Notation word_of_byte b :=
   (word.of_Z (Byte.byte.unsigned b)).
 Notation byte_of_word w :=

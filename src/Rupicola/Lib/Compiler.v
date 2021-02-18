@@ -171,18 +171,6 @@ Section with_parameters.
       <{ pred (nlet_eq [var] v k) }>.
   Proof. repeat straightline; eassumption. Qed.
 
-  Notation b2w b :=
-    (word.of_Z (Z.b2z b)).
-
-  Lemma b2w_inj:
-    forall b1 b2, b2w b1 = b2w b2 -> b1 = b2.
-  Proof.
-    intros [|] [|]; simpl;
-      intros H%(f_equal word.unsigned);
-      rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1 in H;
-      cbn; congruence.
-  Qed.
-
   Lemma compile_bool_constant {tr mem locals functions} b :
     let v := b in
     forall {P} {pred: P v -> predicate}
@@ -259,14 +247,6 @@ Section with_parameters.
   Definition compile_word_srs :=
     unfold_id (@compile_binop_xxx _ id bopname.srs word.srs ltac:(reflexivity)).
 
-  Ltac compile_binop_zzw_bitwise lemma :=
-    intros; cbn;
-    apply word.unsigned_inj;
-    rewrite lemma, !word.unsigned_of_Z;
-    bitblast.Z.bitblast;
-    rewrite !word.testbit_wrap;
-    bitblast.Z.bitblast_core.
-
   Definition compile_Z_add :=
     @compile_binop_xxx _ word.of_Z bopname.add Z.add word.ring_morph_add.
   Definition compile_Z_sub :=
@@ -274,14 +254,11 @@ Section with_parameters.
   Definition compile_Z_mul :=
     @compile_binop_xxx _ word.of_Z bopname.mul Z.mul word.ring_morph_mul.
   Definition compile_Z_and :=
-    @compile_binop_xxx _ word.of_Z bopname.and Z.land
-                       ltac:(compile_binop_zzw_bitwise word.unsigned_and_nowrap).
+    @compile_binop_xxx _ word.of_Z bopname.and Z.land word.morph_and.
   Definition compile_Z_or :=
-    @compile_binop_xxx _ word.of_Z bopname.or Z.lor
-                       ltac:(compile_binop_zzw_bitwise word.unsigned_or_nowrap).
+    @compile_binop_xxx _ word.of_Z bopname.or Z.lor word.morph_or.
   Definition compile_Z_xor :=
-    @compile_binop_xxx _ word.of_Z bopname.xor Z.lxor
-                       ltac:(compile_binop_zzw_bitwise word.unsigned_xor_nowrap).
+    @compile_binop_xxx _ word.of_Z bopname.xor Z.lxor word.morph_xor.
 
   Lemma compile_binop_xxb {T} T2w op (f: T -> T -> bool)
         (H: forall x y, b2w (f x y) = Semantics.interp_binop op (T2w x) (T2w y))
@@ -348,7 +325,7 @@ Section with_parameters.
   Definition compile_bool_eqb :=
     cbv_beta_b2w (@compile_binop_xxb
                     _ (fun x => b2w x) bopname.eq Bool.eqb
-                    (bool_word_eq_compat (fun w => b2w w) _ b2w_inj Bool.eqb_true_iff)).
+                    (bool_word_eq_compat (fun w => b2w w) _ word.b2w_inj Bool.eqb_true_iff)).
 
   (* FIXME add comparisons on bytes *)
 
