@@ -13,7 +13,7 @@ Section with_parameters.
     c.
 
   Instance spec_of_incr : spec_of "incr" :=
-    fnspec "incr" (c_ptr : address) / (c : cell) R,
+    fnspec! "incr" (c_ptr : address) / (c : cell) R,
     { requires tr mem :=
         (cell_value c_ptr c ⋆ R) mem;
       ensures tr' mem' :=

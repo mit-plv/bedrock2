@@ -344,7 +344,7 @@ Section Ex.
     Qed.
 
    Instance spec_of_vect_memcpy : spec_of "vect_memcpy" :=
-     fnspec "vect_memcpy" (len: word) (a1_ptr a2_ptr : address) /
+     fnspec! "vect_memcpy" (len: word) (a1_ptr a2_ptr : address) /
             {n1} (a1: VectorArray.t word n1)
             {n2} (a2: VectorArray.t word n2)
             (pr1: word.unsigned len < Z.of_nat n1)
@@ -408,7 +408,7 @@ Section Ex.
 
 
    Instance spec_of_vect_memcpy_s : spec_of "vect_memcpy_s" :=
-     fnspec "vect_memcpy_s" (len: word) (a1_ptr a2_ptr : address) /
+     fnspec! "vect_memcpy_s" (len: word) (a1_ptr a2_ptr : address) /
             {n1} (a1: VectorArray.t word n1)
             {n2} (a2: VectorArray.t word n2)
             (pr1: word.signed len < Z.of_nat n1)
@@ -457,7 +457,7 @@ Section Ex.
      (a1, a2).
 
    Instance spec_of_sizedlist_memcpy : spec_of "sizedlist_memcpy" :=
-     fnspec "sizedlist_memcpy" (len: word) (a1_ptr a2_ptr : address) /
+     fnspec! "sizedlist_memcpy" (len: word) (a1_ptr a2_ptr : address) /
             {n1} (a1: ListArray.t word)
             {n2} (a2: ListArray.t word)
             (pr1: word.unsigned len < Z.of_nat n1)
@@ -506,7 +506,7 @@ Section Ex.
      (a1, a2).
 
    Instance spec_of_unsizedlist_memcpy : spec_of "unsizedlist_memcpy" :=
-     fnspec "unsizedlist_memcpy" (len: word) (a1_ptr a2_ptr : address) /
+     fnspec! "unsizedlist_memcpy" (len: word) (a1_ptr a2_ptr : address) /
             (a1: ListArray.t word) (a2: ListArray.t word)
             (pr1: word.unsigned len < Z.of_nat (List.length a1))
             (pr2: word.unsigned len < Z.of_nat (List.length a2))
@@ -581,7 +581,7 @@ Section Ex.
       c).
 
    Instance spec_of_incr : spec_of "incr" :=
-     fnspec "incr" c_ptr / (c: cell) R,
+     fnspec! "incr" c_ptr / (c: cell) R,
      { requires tr mem :=
          (cell_value c_ptr c ⋆ R) mem;
        ensures tr' mem' :=
