@@ -67,17 +67,17 @@ Section Specs.
       un_outbounds: bounds }.
 
   Definition unop_spec {name} (op: UnOp name) :=
-    (forall! (x : bignum) (px pout : word) (old_out : bignum),
-        (fun Rr mem =>
-           bounded_by un_xbounds x
-           /\ (exists Ra, (Bignum px x * Ra)%sep mem)
-           /\ (Bignum pout old_out * Rr)%sep mem)
-          ===> name @ [px; pout] ===>
-          (fun _ =>
-           liftexists out,
-           (emp ((eval out mod M = (un_model (eval x)) mod M)%Z
-                 /\ bounded_by un_outbounds out)
-            * Bignum pout out)%sep)).
+    fnspec! name (px pout : word) / (x : bignum) (old_out : bignum) Rr,
+    { requires tr mem :=
+        bounded_by un_xbounds x
+        /\ (exists Ra, (Bignum px x * Ra)%sep mem)
+        /\ (Bignum pout old_out * Rr)%sep mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        exists out,
+          eval out mod M = (un_model (eval x)) mod M
+          /\ bounded_by un_outbounds out
+          /\ (Bignum pout out * Rr)%sep mem' }.
 
   Instance spec_of_UnOp {name} (op: UnOp name) : spec_of name :=
     unop_spec op.
@@ -89,18 +89,18 @@ Section Specs.
       bin_outbounds: bounds }.
 
   Definition binop_spec  {name} (op: BinOp name) :=
-    (forall! (x y : bignum) (px py pout : word) (old_out : bignum),
-        (fun Rr mem =>
-           bounded_by bin_xbounds x
-           /\ bounded_by bin_ybounds y
-           /\ (exists Ra, (Bignum px x * Bignum py y * Ra)%sep mem)
-           /\ (Bignum pout old_out * Rr)%sep mem)
-          ===> name @ [px; py; pout] ===>
-          (fun _ =>
-           liftexists out,
-           (emp ((eval out mod M = (bin_model (eval x) (eval y)) mod M)%Z
-                 /\ bounded_by bin_outbounds out)
-            * Bignum pout out)%sep)).
+    fnspec! name (px py pout : word) / (x y: bignum) (old_out : bignum) Rr,
+    { requires tr mem :=
+        bounded_by bin_xbounds x
+        /\ bounded_by bin_ybounds y
+        /\ (exists Ra, (Bignum px x * Bignum py y * Ra)%sep mem)
+        /\ (Bignum pout old_out * Rr)%sep mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        exists out,
+          eval out mod M = (bin_model (eval x) (eval y)) mod M
+          /\ bounded_by bin_outbounds out
+          /\ (Bignum pout out * Rr)%sep mem' }.
 
   Instance spec_of_BinOp {name} (op: BinOp name) : spec_of name :=
     binop_spec op.
@@ -119,20 +119,22 @@ Section Specs.
     {| un_model := fun x => Finv (x mod M); un_xbounds := tight_bounds; un_outbounds := loose_bounds |}.
 
   Instance spec_of_bignum_copy : spec_of bignum_copy :=
-    forall! (x : bignum) (px pout : word) (old_out : bignum),
-      (sep (Bignum px x * Bignum pout old_out)%sep)
-        ===> bignum_copy @ [px; pout] ===>
-        (fun _ => Bignum px x * Bignum pout x)%sep.
+    fnspec! bignum_copy (px pout : word) / (x : bignum) (old_out : bignum) R,
+    { requires tr mem :=
+        (Bignum px x * Bignum pout old_out * R)%sep mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        (Bignum px x * Bignum pout x * R)%sep mem' }.
 
   Instance spec_of_bignum_literal : spec_of bignum_literal :=
-    forall! (x pout : word) (old_out : bignum),
-      (sep (Bignum pout old_out))
-        ===> bignum_literal @ [x; pout] ===>
-        (fun _ =>
-           liftexists X,
-           (emp (eval X mod M = word.unsigned x mod M
-                 /\ bounded_by tight_bounds X)
-            * Bignum pout X)%sep).
+    fnspec! bignum_literal (x pout : word) / (old_out : bignum) R,
+    { requires tr mem :=
+        (Bignum pout old_out * R)%sep mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        exists X, eval X mod M = word.unsigned x mod M
+             /\ bounded_by tight_bounds X
+             /\ (Bignum pout X * R)%sep mem' }.
 End Specs.
 
 Existing Instances spec_of_UnOp spec_of_BinOp bin_mul un_square bin_add bin_sub
@@ -195,7 +197,7 @@ Section Compile.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'.
-    handle_call; [ solve [eauto] .. | progress sepsimpl ].
+    handle_call; [ solve [eauto] .. | ].
     repeat straightline'.
     eauto.
   Qed.
@@ -241,7 +243,7 @@ Section Compile.
     eauto.
   Qed.
 
-  Ltac cleanup_op_lemma lem := (* This ensures that [simple apply] works *)
+  Ltac cleanup_op_lemma lem := (* This makes [simple apply] work *)
     let lm := fresh in
     let op := match lem with _ _ ?op => op end in
     let op_hd := term_head op in
@@ -348,7 +350,7 @@ Section Compile.
   Proof.
     cbv [Placeholder] in *.
     repeat straightline'. subst.
-    handle_call; [ solve [eauto] .. | sepsimpl ].
+    handle_call; [ solve [eauto] .. | ].
     repeat straightline'.
     rewrite @word.of_Z_unsigned in * by typeclasses eauto.
     eauto.
