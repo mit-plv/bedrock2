@@ -48,8 +48,7 @@ Module FNV1A (P: FNV1A_params).
                    from len step
                    (fun tok idx hash Hlt =>
                       let/n b := ListArray.get data idx in
-                      let/n hash := word.xor hash (word_of_byte b) in
-                      let/n hash := word.mul hash p in
+                      let/n hash := word.mul (word.xor hash (word_of_byte b)) p in
                       (tok, hash)) hash in
     hash.
 
@@ -103,7 +102,6 @@ Module FNV1A64 := FNV1A FNV1A64_params.
 
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.NotationsInConstr.
-Unset Printing All.
 
 Eval cbv in FNV1A32.fnv1a_body.
 Eval cbv in FNV1A64.fnv1a_body.
@@ -112,15 +110,9 @@ Module Murmur3.
   Import BasicC32Semantics.
 
   Definition scramble (k : word) :=
-    let/n m1 := word.of_Z 513432918353 in
-    let/n k := word.mul k m1 in
-    let/n ln := word.of_Z 15 in
-    let/n l := word.slu k ln in
-    let/n lr := word.of_Z 17 in
-    let/n r := word.sru k lr in
-    let/n k := word.or l r in
-    let/n m2 := word.of_Z 461845907 in
-    let/n k := word.mul k m2 in
+    let/n k := word.mul k (word.of_Z 513432918353) in
+    let/n k := word.or (word.slu k (word.of_Z 15)) (word.sru k (word.of_Z 17)) in
+    let/n k := word.mul k (word.of_Z 461845907) in
     k.
 
   Implicit Type R : Semantics.mem -> Prop.
@@ -134,10 +126,10 @@ Module Murmur3.
           implements scramble)
          As scramble_body_correct.
   Proof.
-    compile.
-  Qed.
+    Time compile.                  (* 1.9s, 1.16 on compressed example; 2.02 s previously; but 4s to fail on compressed example *)
+  Time Qed.                          (* 2.3, 0.35 on compressed example; instantaneous previously *)
 End Murmur3.
 
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.NotationsInConstr.
-Eval cbv in FNV1A64.fnv1a_body.
+Eval cbv in Murmur3.scramble_body.
