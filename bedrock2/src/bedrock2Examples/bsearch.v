@@ -41,8 +41,6 @@ From coqutil.Macros Require Import symmetry.
 Import PrimitivePair.
 Require Import bedrock2.ZnWords.
 
-Axiom ZnWords_needs_lia_of_Coq_master: False.
-
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
 Proof.
   repeat straightline.
@@ -73,20 +71,20 @@ Proof.
     rename H2 into length_rep. subst br. subst v0.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
-    { case ZnWords_needs_lia_of_Coq_master. }
+    { ZnWords. }
     { ZnWords. }
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split; [repeat straightline|].
       1:split.
       2:split.
       { SeparationLogic.ecancel_assumption. }
-      { case ZnWords_needs_lia_of_Coq_master. }
+      { ZnWords. }
       { cleanup_for_ZModArith. reflexivity. }
       split; repeat straightline.
       2:split; repeat straightline.
       2: SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       { ZnWords. }
-      { case ZnWords_needs_lia_of_Coq_master. }
+      { ZnWords. }
       { ZnWords. }
       { trivial. }
       { SeparationLogic.ecancel_assumption. } }
@@ -95,13 +93,13 @@ Proof.
       1:split.
       2:split.
       { SeparationLogic.ecancel_assumption. }
-      { case ZnWords_needs_lia_of_Coq_master. }
+      { ZnWords. }
       { cleanup_for_ZModArith. reflexivity. }
       split.
-      { case ZnWords_needs_lia_of_Coq_master. }
+      { ZnWords. }
       repeat straightline; split; trivial.
       subst x5. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
-      { case ZnWords_needs_lia_of_Coq_master. }
+      { ZnWords. }
       { ZnWords. }
       { ZnWords. }
       { SeparationLogic.ecancel_assumption. } } }

@@ -548,8 +548,6 @@ Section WithParameters.
   Ltac check_lookup_range_feasible :=
     assert_succeeds (assert_lookup_range_feasible; [solve [unfold subrange, addr_in_range; ZnWords]|]).
 
-  Axiom ZnWords_needs_lia_of_Coq_master: False.
-
   Goal forall base f R m,
       seps [dataAt foo_spec base f; R] m ->
       exists V (v: V) encoder,
@@ -578,7 +576,7 @@ Section WithParameters.
       pose (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
     end.
     assert (target_start,+target_size c= range_start,+range_size) as T. {
-      unfold subrange, addr_in_range. case ZnWords_needs_lia_of_Coq_master.
+      unfold subrange, addr_in_range. ZnWords.
     }
     clear range_start range_size T.
 
@@ -1535,9 +1533,7 @@ Import Syntax.
     doReply = /*number*/0; /*$. $*/
     if (ln == /*number*/64) /*split*/ {
       /*$. edestruct (bytesToEthernetARPPacket ethbufAddr _ H0) as (pk & A). seprewrite_in A H.
-           change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H.
-           case ZnWords_needs_lia_of_Coq_master. (*
-$*/
+           change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H. $*/
       if ((load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP_LE) &
           (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE_LE) &
           (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE_LE) &
@@ -1548,7 +1544,7 @@ $*/
       idtac.
 
       exact TODO.
-*)
+
       (* TODO *) $*/
     else { /*$. (* nothing to do *) $*/
     } /*$.

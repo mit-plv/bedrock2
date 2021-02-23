@@ -4,6 +4,8 @@ name: Coq
 
 on:
   push:
+    branches-ignore:
+    - lifeVerif
   pull_request:
 
 jobs:
