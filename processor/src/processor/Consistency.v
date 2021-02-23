@@ -35,26 +35,6 @@ Qed.
 
 Section FetchOk.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
-  Context {mem: map.map word byte}.
-
-  (* [instrMemSizeLg] is the log number of instructions in the instruction cache.
-   * If the instruction base address is just 0, then the address range for
-   * the instructions is [0 -- 4 * 2^(instrMemSizeLg)].
-   *)
-  Variables instrMemSizeLg memSizeLg: Z.
-  Hypothesis (HinstrMemBound: 3 <= instrMemSizeLg <= width - 2).
-  Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
-  Local Notation nmemSizeLg := (Z.to_nat memSizeLg).
-  Local Notation nwidth := (Z.to_nat width).
-  Local Notation width_inst_valid := (width_inst_valid HinstrMemBound).
-
-  Definition instrMemSize: nat := NatLib.pow2 (2 + Z.to_nat instrMemSizeLg).
-
-  Definition pc_related (kpc rpc: kword width): Prop :=
-    kpc = rpc.
-
-  Definition AddrAligned (addr: kword width) :=
-    split1 2 (nwidth - 2) addr = WO~0~0.
 
   Fixpoint alignedXAddrsRange (base: nat) (n: nat): XAddrs :=
     match n with
@@ -79,6 +59,27 @@ Section FetchOk.
       apply wordToNat_natToWord_le.
     - etransitivity; [eauto|blia].
   Qed.
+
+  Context {mem: map.map word byte}.
+
+  (* [instrMemSizeLg] is the log number of instructions in the instruction cache.
+   * If the instruction base address is just 0, then the address range for
+   * the instructions is [0 -- 4 * 2^(instrMemSizeLg)].
+   *)
+  Variables instrMemSizeLg memSizeLg: Z.
+  Hypothesis (HinstrMemBound: 3 <= instrMemSizeLg <= width - 2).
+  Local Notation ninstrMemSizeLg := (Z.to_nat instrMemSizeLg).
+  Local Notation nmemSizeLg := (Z.to_nat memSizeLg).
+  Local Notation nwidth := (Z.to_nat width).
+  Local Notation width_inst_valid := (width_inst_valid HinstrMemBound).
+
+  Definition instrMemSize: nat := NatLib.pow2 (2 + Z.to_nat instrMemSizeLg).
+
+  Definition pc_related (kpc rpc: kword width): Prop :=
+    kpc = rpc.
+
+  Definition AddrAligned (addr: kword width) :=
+    split1 2 (nwidth - 2) addr = WO~0~0.
 
   (* set of executable addresses in the kami processor *)
   Definition kamiXAddrs: XAddrs :=
