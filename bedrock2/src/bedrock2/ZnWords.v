@@ -125,7 +125,6 @@ Ltac clear_unused_nonProps :=
                end.
 
 Require Import coqutil.Tactics.Tactics.
-Require Import Cdcl.Itauto.
 
 Ltac dewordify_step :=
   so fun hyporgoal =>
@@ -207,13 +206,9 @@ Ltac log_goal :=
        end;
        fail).
 
-(* Note: zify is called to expose propositional structure to itauto, and leaf-lia
-   will call it again (deliberately) to do more preprocessing enabled by the
-   assumptions added by itauto *)
 Ltac better_lia :=
 (*log_goal;*)
   Z.div_mod_to_equations;
-  Zify.zify;
-  itauto lia.
+  lia.
 
 Ltac ZnWords := ZnWords_pre; better_lia.
