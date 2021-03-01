@@ -130,310 +130,23 @@ Section __.
       crc32.
   End Gallina.
 
-  (*Properties about width; could be moved somewhere more general*)
-  Lemma width_at_least_32 : 32 <= width.
-  Proof using semantics_ok.
-    destruct width_cases; lia.
-  Qed.
-
-   Lemma width_mod_8 : width mod 8 = 0.
-  Proof using semantics_ok.
-    destruct width_cases as [H | H]; rewrite H;
-      reflexivity.
-  Qed.
-  
-  Definition Z_to_bytes (z : Z) : list byte:=
-    HList.tuple.to_list (LittleEndian.split (Z.to_nat (width / 8)) z).
+  (* TODO: check endianness *)
+  Definition Z_to_four_bytes (z : Z) :=
+    List.map (fun offset => byte.of_Z (Z.shiftr z offset)) [24; 16; 8; 0].
              
   (* Turns a table of 32-bit words stored in Zs into
      a table of bytes
    *)
   Definition to_byte_table : list Z -> list byte :=
-    flat_map Z_to_bytes.
+    flat_map Z_to_four_bytes.
   
-  Lemma map_fold_empty_id (f : mem -> Core.word -> Init.Byte.byte -> mem) m
-    : (forall m k v, f m k v = map.put m k v) ->
-      map.fold f map.empty m = m.
-  Proof.
-    intro f_put.
-    apply map.fold_spec; auto.
-    intros; subst; eauto.
-  Qed.
-
-  Lemma of_list_word_at_0 xs
-    : OfListWord.map.of_list_word xs
-      = OfListWord.map.of_list_word_at (word.of_Z 0) xs.
-  Proof.
-    unfold OfListWord.map.of_list_word_at.
-    unfold MapKeys.map.map_keys.
-    unfold OfListWord.map.of_list_word.
-    induction xs; simpl.
-    { rewrite map.fold_empty; auto. }
-    {
-      rewrite <- seq_shift.
-      rewrite map_map.
-      
-      rewrite word.unsigned_of_Z_0.
-      cbn.
-      rewrite map_fold_empty_id; [ reflexivity | ..].
-      {
-        intros.
-        rewrite word.ring_theory.(Radd_0_l).
-        reflexivity.
-      }
-    }
-  Qed.
-  
-  Lemma eq_rect_r_S n m f e eqn
-    : forall eqn',
-      @eq_rect_r nat (S n) f e (S m) eqn
-      = eq_rect_r (fun x => f (S x)) e eqn'.
-  Proof.
-    inversion eqn.
-    subst.
-    intros.
-    rewrite (Eqdep_dec.UIP_refl_nat _ eqn).
-    rewrite (Eqdep_dec.UIP_refl_nat _ eqn').
-    reflexivity.
-  Qed.
-
-    
-  Lemma Htuple_of_list_to_list:
-    forall {A : Type} n (xs : HList.tuple A n) eqn,
-      HList.tuple.of_list (HList.tuple.to_list xs)
-      = eq_rect_r (fun n0 : nat => HList.tuple A n0) xs eqn.
-  Proof.
-    induction n; intro xs; cbn in *.
-    {
-      intro eqn;
-      match goal with
-        [|- tt = ?e] => destruct e; reflexivity
-      end.
-    }
-    {
-      intro eqn;
-      destruct xs.
-      Import PrimitivePair.pair.
-      inversion eqn.
-      rewrite IHn with _2 H0.
-      clear IHn.
-      rewrite (eq_rect_r_S _ _ _ _ _ H0).
-      clear eqn.
-
-      
-      unfold HList.tuple.
-      simpl.
-      generalize H0.
-      generalize (Datatypes.length (HList.tuple.to_list _2)).
-      destruct H1.
-      reflexivity.
-    }
-  Qed.
-
-  
-  Lemma load_of_list_word a b b1 b2 b3 n
-    : Z.of_nat (Datatypes.length (a ++ b)) <= 2 ^ width ->
-      b = (b1 ++ b2 ++ b3)%list ->
-      n = Z.of_nat (length b1) ->
-      width = 8* Z.of_nat (Datatypes.length b2) ->
-      load access_size.word (OfListWord.map.of_list_word (a ++ b)) (word.of_Z (Z.of_nat (length a) + n))
-      = load access_size.word (OfListWord.map.of_list_word b) (word.of_Z n).
-  Proof.
-    intros; subst.
-    assert (Z.of_nat (Datatypes.length (b1 ++ b2 ++ b3)) <= 2 ^ width).
-    {
-      rewrite app_length in H.
-      rewrite Nat2Z.inj_add in H.
-      lia.
-    }
-    rewrite !of_list_word_at_0.
-    erewrite !load_word_of_sep;
-      try reflexivity;
-      match goal with
-        [|- ?P (OfListWord.map.of_list_word_at ?p ?xs)] =>
-         assert (array ptsto (word.of_Z 1) p xs
-                       (OfListWord.map.of_list_word_at p xs)) as H1;
-           [apply ptsto_bytes.array1_iff_eq_of_list_word_at; eauto using mem_ok|
-           generalize dependent (OfListWord.map.of_list_word_at p xs); intros]
-      end.
-    {      
-      pose proof scalar_of_bytes as H4.
-      symmetry in H4.
-      seprewrite H4; eauto using width_at_least_32.
-      clear H4.
-      repeat seprewrite_in (array_append ptsto) H1.
-      rewrite !word.ring_theory.(Radd_0_l) in H1.
-      rewrite !word.ring_morph_mul in H1.
-      rewrite !word.of_Z_unsigned in H1.
-      rewrite !word.ring_theory.(Rmul_1_l) in H1.
-      ecancel_assumption.
-    }    
-    {      
-      pose proof scalar_of_bytes as H4.
-      symmetry in H4.
-      seprewrite H4; eauto using width_at_least_32.
-      clear H4.
-      repeat seprewrite_in (array_append ptsto) H1.
-      rewrite !word.ring_theory.(Radd_0_l) in H1.
-      rewrite !word.ring_morph_mul in H1.
-      rewrite !word.of_Z_unsigned in H1.
-      rewrite !word.ring_theory.(Rmul_1_l) in H1.
-      rewrite word.ring_morph_add.
-      ecancel_assumption.
-    }
-  Qed.
-
-  
-  Lemma length_to_byte_table t
-    : Datatypes.length (to_byte_table t) = (Z.to_nat (width / 8) * Datatypes.length t)%nat.
-  Proof.
-    induction t; simpl; try lia.
-    rewrite app_length.
-    rewrite IHt.
-    unfold Z_to_bytes.
-    rewrite HList.tuple.length_to_list.
-    lia.
-  Qed.
-
-  Lemma length_of_to_bytes a
-    : width = 8 * Z.of_nat (Datatypes.length (Z_to_bytes a)).
-  Proof.
-    unfold Z_to_bytes.
-    rewrite HList.tuple.length_to_list.
-    rewrite Z2Nat.id;
-      destruct width_cases as [H' | H']; rewrite H';
-        cbn; lia.
-  Qed.
-  
-  Lemma load_from_word_table t n
-    : List.Forall (fun z => 0 <= z < 2^width) t ->
-      Z.of_nat (length (to_byte_table t)) <= 2 ^ width ->
-      (n < length t)%nat ->
-      load access_size.word
-           (OfListWord.map.of_list_word (to_byte_table t))
-           (word.of_Z (width/8 * Z.of_nat n))
-      = Some (word.of_Z (nth n t 0)).
-  Proof.
-    intros cell_bounds table_bounds.
-    revert n; induction t; intro n; destruct n; intros; try (simpl in *; lia).
-    {
-      rewrite Z.mul_0_r.
-      rewrite of_list_word_at_0.
-      assert (array ptsto (word.of_Z 1) (word.of_Z 0)
-                    (Z_to_bytes a ++ to_byte_table t)
-                    (OfListWord.map.of_list_word_at
-                       (word.of_Z 0)
-                       (Z_to_bytes a ++ to_byte_table t))).
-      {
-        seprewrite ptsto_bytes.array1_iff_eq_of_list_word_at; auto;
-          sepsimpl; reflexivity.
-      }
-      seprewrite_in @array_append H0.
-      seprewrite_in @scalar_of_bytes H0; auto.
-      apply width_at_least_32.
-      {
-         apply length_of_to_bytes.
-      }
-      eapply load_word_of_sep.
-      assert ((LittleEndian.combine
-                (Datatypes.length (Z_to_bytes a))
-                (HList.tuple.of_list (Z_to_bytes a))) = a).
-      {
-        unfold Z_to_bytes.
-        rewrite (Htuple_of_list_to_list _ _(HList.tuple.length_to_list _)).
-        destruct (HList.tuple.length_to_list _).
-        cbn.
-        rewrite LittleEndian.combine_split.
-        rewrite HList.tuple.length_to_list.
-        rewrite Z2Nat.id.
-        inversion cell_bounds; subst.
-        assert (width mod 8 = width - width / 8 * 8) by (apply Zmod_eq; lia).
-        rewrite width_mod_8 in H1.
-        assert (width/8*8 = width) by lia.
-        apply Zmod_small.
-        rewrite H2.
-        assumption.
-        destruct width_cases as [H' | H']; rewrite H';
-          intro cmp; inversion cmp.
-      }
-      {
-        simpl in *.
-        rewrite <- H1 at 1.
-        ecancel_assumption.
-      }
-    }
-    {
-      cbn [nth].
-      replace (width/8 * Z.of_nat (S n)) with (width/8 + (width/8* Z.of_nat n)) by lia.
-      unfold to_byte_table; simpl; fold to_byte_table.
-      match goal with
-        [|- load _ _ (word.of_Z (?w + _)) = _ ] =>
-        assert (w = Z.of_nat (Datatypes.length (Z_to_bytes a)))
-      end.
-      {
-        unfold Z_to_bytes.
-        rewrite HList.tuple.length_to_list.
-        rewrite Z2Nat.id; try lia.
-        destruct width_cases as [H' | H']; rewrite H';
-          intro cmp; inversion cmp.
-      }
-      rewrite H0 at 1.
-      erewrite load_of_list_word.
-      apply IHt.
-      { inversion cell_bounds; assumption. }
-      {
-        unfold Z_to_bytes in table_bounds;
-        simpl in table_bounds;
-        fold Z_to_bytes in table_bounds.
-        rewrite app_length in table_bounds.
-        lia.
-      }
-      { simpl in H; lia. }
-      { simpl in table_bounds; lia. }
-      { rewrite <- (List.firstn_skipn (Z.to_nat (width/8 * Z.of_nat n)) (to_byte_table t)).
-        f_equal.
-        match goal with
-          [|- ?l = _] =>
-          rewrite <- (List.firstn_skipn (Z.to_nat (width / 8)) l)
-        end.
-        f_equal.
-      }
-      {
-        rewrite firstn_length_le.
-        rewrite Z2Nat.id; try lia.
-        rewrite Z2Nat.inj_mul; try lia.
-        rewrite Nat2Z.id.
-        rewrite length_to_byte_table.
-        simpl in H.
-        nia.
-      }
-      {
-        rewrite firstn_length_le; try lia.
-        {
-          rewrite Z2Nat.id; try lia.
-          pose proof width_mod_8.
-          apply Z_div_exact_2; auto; lia.
-        }
-        {
-          rewrite skipn_length.
-          rewrite Z2Nat.inj_mul; try lia.
-          rewrite Nat2Z.id.
-          rewrite length_to_byte_table.
-          simpl in H.
-          nia.
-        }
-      }
-    }
-  Qed.
-  
-  (* a lemma to compile the call to nth as a static lookup *)
-  Lemma compile_table_nth {n t} {tr mem locals functions}:
-    let v := nth n t 0 in
+  (* Want a lemma to compile the call to nth as a static lookup *)
+  Lemma compile_crc_table_nth {n} {tr mem locals functions}:
+    let v := nth n crc_table 0 in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-           (R : _ -> Prop) var,
-      Forall (fun z : Z => 0 <= z < 2 ^ width) t ->
-      (n < Datatypes.length t)%nat ->
-      (Z.of_nat (Datatypes.length (to_byte_table t)) <= 2 ^ width) ->
+      (R : _ -> Prop) var,
+
+      (Z.of_nat n < 2 ^ Semantics.width)%Z ->
       R mem ->
       
       (let v := v in
@@ -451,25 +164,11 @@ Section __.
          Functions := functions }>
       (cmd.seq (cmd.set
                   var
-                  (expr.inlinetable access_size.word (to_byte_table t)
-                                    (expr.literal (width/8 * Z.of_nat n))))
+                  (expr.inlinetable access_size.word (to_byte_table crc_table)
+                                    (expr.literal (Semantics.width * Z.of_nat n))))
                k_impl)
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
-    intros; repeat straightline.
-    exists (word.of_Z v).
-    split.
-    {
-      repeat straightline.
-      exists (word.of_Z v).
-      split; auto.
-      apply load_from_word_table; auto.
-    }
-    {
-      repeat straightline.
-      apply H3.
-      assumption.
-    }
-  Qed.
-  
+  Admitted.
+
 End __.
