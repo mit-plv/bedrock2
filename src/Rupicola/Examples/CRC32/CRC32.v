@@ -131,22 +131,144 @@ Section __.
   End Gallina.
 
   (* TODO: check endianness *)
-  Definition Z_to_four_bytes (z : Z) :=
-    List.map (fun offset => byte.of_Z (Z.shiftr z offset)) [24; 16; 8; 0].
+  Definition Z_to_bytes (z : Z) : list byte:=
+    HList.tuple.to_list (LittleEndian.split (Z.to_nat (width / 8)) z).
              
   (* Turns a table of 32-bit words stored in Zs into
      a table of bytes
    *)
   Definition to_byte_table : list Z -> list byte :=
-    flat_map Z_to_four_bytes.
+    flat_map Z_to_bytes.
+
+
+  Lemma of_list_word_at_0 xs
+    : OfListWord.map.of_list_word xs
+      = OfListWord.map.of_list_word_at (word.of_Z 0) xs.
+  Proof.
+    unfold OfListWord.map.of_list_word_at.
+    unfold MapKeys.map.map_keys.
+    unfold OfListWord.map.of_list_word.
+    induction xs; simpl.
+    { rewrite map.fold_empty; auto. }
+    {
+      rewrite <- seq_shift.
+      rewrite map_map.
+  Admitted.
+
+  Goal
+    forall {A : Type} n (xs : HList.tuple A n),
+      HList.tuple A (length (HList.tuple.to_list xs)).
+  Proof.
+    intros.
+    rewrite HList.tuple.length_to_list.
+    exact xs.
+    Show Proof.
+
+  Lemma Htuple_of_list_to_list:
+    forall {A : Type} n (xs : HList.tuple A n),
+      HList.tuple.of_list (HList.tuple.to_list xs)
+      = eq_rect_r (fun n0 : nat => HList.tuple A n0) xs (HList.tuple.length_to_list xs).
+  Proof.
+  Admitted.
+
   
-  (* Want a lemma to compile the call to nth as a static lookup *)
-  Lemma compile_crc_table_nth {n} {tr mem locals functions}:
-    let v := nth n crc_table 0 in
+  Lemma load_of_list_word access a b n
+    : load access (OfListWord.map.of_list_word (a ++ b)) (word.of_Z (Z.of_nat (length a) + n))
+      = load access (OfListWord.map.of_list_word b) (word.of_Z n).
+  Proof.
+    induction a; [ simpl; reflexivity|].
+    cbn [Datatypes.app Datatypes.length].
+    replace (Z.of_nat (S (Datatypes.length a0))) with (1 + Z.of_nat (length a0)) by lia.
+    rewrite <-IHa.
+    unfold OfListWord.map.of_list_word at 1.
+    cbn [List.map seq Datatypes.length OfFunc.map.of_func].
+    replace  (Z.of_nat 0) with 0 by lia.
+    rewrite word.unsigned_of_Z_0.
+    cbn -[word.of_Z Z.of_nat Z.add].
+  Admitted.
+  
+  (*TODO: might want to generalize w/ an offset?
+   *)
+  Lemma load_from_word_table t n
+    : 32 <= width -> (*required to use a lemma*)
+      List.Forall (fun z => z < 2^width) t ->
+      Z.of_nat (length (to_byte_table t)) <= 2 ^ width ->
+      (n < length t)%nat ->
+      load access_size.word
+           (OfListWord.map.of_list_word (to_byte_table t))
+           (word.of_Z (width/8 * Z.of_nat n))
+      = Some (word.of_Z (nth n t 0)).
+  Proof.
+    intros width_at_least_32 cell_bounds table_bounds.
+    revert n; induction t; intro n; destruct n; intros; try (simpl in *; lia).
+    {
+      rewrite Z.mul_0_r.
+      rewrite of_list_word_at_0.
+      assert (array ptsto (word.of_Z 1) (word.of_Z 0)
+                    (Z_to_bytes a ++ to_byte_table t)
+                    (OfListWord.map.of_list_word_at
+                       (word.of_Z 0)
+                       (Z_to_bytes a ++ to_byte_table t))).
+      {
+        seprewrite ptsto_bytes.array1_iff_eq_of_list_word_at; auto;
+          sepsimpl; reflexivity.
+      }
+      seprewrite_in @array_append H0.
+      seprewrite_in @scalar_of_bytes H0; auto.
+      admit (*TODO: lemma*).
+      eapply load_word_of_sep.
+      assert ((LittleEndian.combine
+                (Datatypes.length (Z_to_bytes a))
+                (HList.tuple.of_list (Z_to_bytes a))) = a).
+      {
+        clear H0 H table_bounds cell_bounds.
+        unfold Z_to_bytes.
+        admit (*TODO: of_ and to_list are backwards *).
+      }
+      {
+        rewrite H1 in H0; clear H1.
+        simpl in *; ecancel_assumption.
+      }
+    }
+    {
+      cbn [nth].
+      replace (width/8 * Z.of_nat (S n)) with (width/8 + (width/8* Z.of_nat n)) by lia.
+      unfold to_byte_table; simpl; fold to_byte_table.
+      match goal with
+        [|- load _ _ (word.of_Z (?w + _)) = _ ] =>
+        assert (w = Z.of_nat (Datatypes.length (Z_to_bytes a)))
+      end.
+      {
+        unfold Z_to_bytes.
+        rewrite HList.tuple.length_to_list.
+        rewrite Z2Nat.id; try lia.
+        apply Z_div_pos; lia.
+      }
+      rewrite H0 at 1.
+      rewrite load_of_list_word.
+      apply IHt.
+      { inversion cell_bounds; assumption. }
+      {
+        unfold Z_to_bytes in table_bounds;
+        simpl in table_bounds;
+        fold Z_to_bytes in table_bounds.
+        rewrite app_length in table_bounds.
+        lia.
+      }
+      { simpl in H; lia. }
+    }
+Admitted.
+  
+      (* Want a lemma to compile the call to nth as a static lookup *)
+      (*TODO: generalize beyond CRC table; pretty much no extra work*)
+  Lemma compile_table_nth {n t} {tr mem locals functions}:
+    let v := nth n t 0 in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
       (R : _ -> Prop) var,
-
-      (Z.of_nat n < 2 ^ Semantics.width)%Z ->
+      32 <= width (*for a lemma*) ->
+      Forall (fun z : Z => z < 2 ^ width) t ->
+      (n < Datatypes.length t)%nat ->
+      (Z.of_nat (Datatypes.length (to_byte_table t)) <= 2 ^ width) ->
       R mem ->
       
       (let v := v in
@@ -164,11 +286,25 @@ Section __.
          Functions := functions }>
       (cmd.seq (cmd.set
                   var
-                  (expr.inlinetable access_size.word (to_byte_table crc_table)
-                                    (expr.literal (Semantics.width * Z.of_nat n))))
+                  (expr.inlinetable access_size.word (to_byte_table t)
+                                    (expr.literal (width/8 * Z.of_nat n))))
                k_impl)
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
-  Admitted.
-
+    intros; repeat straightline.
+    exists (word.of_Z v).
+    split.
+    {
+      repeat straightline.
+      exists (word.of_Z v).
+      split; auto.
+      apply load_from_word_table; auto.
+    }
+    {
+      repeat straightline.
+      apply H4.
+      assumption.
+    }
+  Qed.
+      
 End __.
