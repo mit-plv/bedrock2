@@ -1,3 +1,31 @@
+### Checking the line number counts
+
+The numbers of Table 4 in the paper (Lines of code), can be reproduced as follows:
+First, note that `etc/all-files.txt` assigns a category to each file.
+To check that we did not miss any file, run
+
+```
+etc/completenesscheck.sh
+```
+
+whose output should be empty (it lists all Coq files that recursive `find` finds, but are not listed in `etc/all-files.txt`).
+Then, run
+
+```
+python etc/allcount.py < etc/all-files.txt
+```
+
+which parses the annotations like eg `(*tag:proof*)` or `(*tag:obvious*)`, and whenever it encounters such a tag, it changes the line counter to be incremented.
+It outputs two `.tex` files, and you can run
+
+```
+cat loc.tex
+cat loc_excluded.tex
+```
+
+to inspect them and compare them to the values reported in the paper.
+
+
 ### Inspecting the Coq-generated RISC-V binary
 
 In your Coq IDE, open the file `end2end/src/end2end/End2EndLightbulb.v`, and process up to the line
