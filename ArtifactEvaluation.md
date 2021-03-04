@@ -1,3 +1,25 @@
+## Getting Started Guide
+
+
+
+
+## Step-by-Step Instructions
+
+
+Overview of claims from the paper supported by the artifact (more details on each see below):
+- The toplevel theorem is fully proven in Coq and only references a small number of definitions
+- Line number counts and classification into implementation/interface/interesting proof/low-insight proof
+- We can use Coq to generate a RISC-V binary
+
+Overview of claims from the paper not supported by the artifact:
+- Running the system on an FPGA cannot be done without the hardware, and we do not have any simulation setup for it, because we do not have an emulator for the network card and its SPI interface.
+
+
+### Tour through the Coq code, trusted code base
+
+TODO Sam
+
+
 ### Checking the line number counts
 
 The numbers of Table 4 in the paper (Lines of code), can be reproduced as follows:
