@@ -22,7 +22,7 @@ TODO Sam
 
 ### Checking the line number counts
 
-The numbers of Table 4 in the paper (Lines of code), can be reproduced as follows:
+The numbers of Table 4 in the paper (Lines of code) can be reproduced as follows.
 First, note that `etc/all-files.txt` assigns a category to each file.
 To check that we did not miss any file, run
 
@@ -30,7 +30,7 @@ To check that we did not miss any file, run
 etc/completenesscheck.sh
 ```
 
-whose output should be empty (it lists all Coq files that recursive `find` finds, but are not listed in `etc/all-files.txt`).
+whose output should be empty (it lists all Coq files that recursive `find` finds but are not listed in `etc/all-files.txt`).
 Then, run
 
 ```
@@ -50,7 +50,7 @@ to inspect them and compare them to the values reported in the paper.
 
 ### Inspecting the Coq-generated RISC-V binary
 
-In your Coq IDE, open the file `end2end/src/end2end/End2EndLightbulb.v`, and process up to the line
+In your Coq IDE, open the file `end2end/src/end2end/End2EndLightbulb.v` and process up to the line
 
 ```
     let x := eval cbv in (instrencode lightbulb_insts) in idtac x.
@@ -58,7 +58,7 @@ In your Coq IDE, open the file `end2end/src/end2end/End2EndLightbulb.v`, and pro
 
 This prints a hexdump of the binary into the response window.
 
-In `end2end/Makefile`, there are commands to turn this hexdump into an object file that the standard riscv gnu objdump can read. You can run them by `cd`ing into `end2end` and running
+In `end2end/Makefile`, there are commands to turn this hexdump into an object file that the standard RISC-V GNU `objdump` can read. You can run them by `cd`ing into `end2end` and running
 
 ```
 make lightbulb.o
@@ -71,7 +71,7 @@ riscv32-unknown-linux-gnu-objdump -D lightbulb.o
 ```
 
 to inspect the generated binary. The Kami processor starts executing at address 0.
-The first few commands should like this:
+The first few commands should look like this:
 
 ```
    0:	00002137                lui	sp,0x2
@@ -101,10 +101,10 @@ The first few commands should like this:
   60:	00008067                ret
 ```
 
-Some explanation of the code, using "line" numbers to refer to the address written at the start of the line:
+Some explanation of the code, using "line" numbers to refer to the addresses written at the starts of lines:
 Lines 0-4 initialize the stackpointer.
 Lines 8-10 correspond to the top-level program structure `init(); while(1) loop()`.
-Note that all code is position-independent, but `objdump` pretty-prints it in a way that makes it look position-dependent: For instance, in `j 0xc`, the target address `0xc` is displayed as an absolute address, but the encoding uses the `jal` instruction with destination register 0 (thus printed as `j`), which stores a relative address. You can compare the objdump output to our own way of displaying assembly, in your CoqIDE at the line quoted above, and you should see the following:
+Note that all code is position-independent, but `objdump` pretty-prints it in a way that makes it look position-dependent: For instance, in `j 0xc`, the target address `0xc` is displayed as an absolute address, but the encoding uses the `jal` instruction with destination register 0 (thus printed as `j`), which stores a relative address. You can compare the `objdump` output to our own way of displaying assembly, in your Coq IDE at the line quoted above, and you should see the following:
 
 ```
            lui     x2, 8192
@@ -144,8 +144,8 @@ Above, you can also see the Coq-generated symbol table:
              ("spi_xchg", 0)] : list (string * Z)
 ```
 
-These are decimal offsets of the function positions in the assembly, relative to the first function after the `init(); while(1) loop()` code (which ends at `0x14`=20), so if you add 20 to the numbers of that table and convert to hex, you can find the corresponding position in the objdump.
-For instance, for `spi_read`, 280+20=300=0x12c, and indeed, at 0x12c, you'll find the start of a new function:
+These are decimal offsets of the function positions in the assembly, relative to the first function after the `init(); while(1) loop()` code (which ends at `0x14`=20), so if you add 20 to the numbers of that table and convert to hex, you can find the corresponding position in the `objdump` output.
+For instance, for `spi_read`, 280+20=300=`0x12c`, and indeed, at `0x12c`, you'll find the start of a new function:
 
 ```
  128:	00008067                ret
@@ -193,7 +193,7 @@ For instance, for `spi_read`, 280+20=300=0x12c, and indeed, at 0x12c, you'll fin
  1d0:	00008067                ret
 ```
 
-It starts by decrementing the stackpointer and saving the modified registers.
+It starts by decrementing the stack pointer and saving the modified registers.
 Note the load-word instruction on line 178: It loads from the hardcoded address `0x10024000 + 76_dec`, which is `Ox1002404c`, which you can find in the source code of `spi_read` in `bedrock2/src/bedrock2Examples/SPI.v`:
 
 ```
