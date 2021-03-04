@@ -5,14 +5,14 @@
 
 ## Step-by-Step Instructions
 
+Overview of claims from the paper supported by the artifact (more details on each below):
+- The top-level theorem is fully proven in Coq, only references a small number of definitions, and looks reasonable as a translation of our high-level intent.
+- The code may be broken into lines in different categories (implementation/interface/interesting proof/low-insight proof), and our process of computing line counts per category is reasonable.
+- Our Coq code base can really generate a reasonable RISC-V binary.
+- Our Coq code base can really generate a reasonable Bluespec hardware design.
 
-Overview of claims from the paper supported by the artifact (more details on each see below):
-- The toplevel theorem is fully proven in Coq and only references a small number of definitions
-- Line number counts and classification into implementation/interface/interesting proof/low-insight proof
-- We can use Coq to generate a RISC-V binary
-
-Overview of claims from the paper not supported by the artifact:
-- Running the system on an FPGA cannot be done without the hardware, and we do not have any simulation setup for it, because we do not have an emulator for the network card and its SPI interface.
+Overview of claims from the paper *not* supported by the artifact:
+- It is too hard for us to help you recreate our physical setup, with a specific model of FPGA, a specific network card, and a GPIO-compatible power strip.  (You could probably find a compatible lightbulb to plug into the power strip, though. `:-P`)  See paper Figure 2 for what it would look like.
 
 
 ### Tour through the Coq code, trusted code base
