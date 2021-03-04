@@ -17,7 +17,7 @@ Overview of claims from the paper *not* supported by the artifact:
 
 ### The toplevel theorem and the trusted code base (TCB) of Coq definitions
 
-The toplevel theorem of our development is `Theorem end2end_lightbulb` in `end2end/src/end2end/End2EndLightbulb.v`. If you process that file in your Coq IDE all the way to the end, and then add and run the command
+The toplevel theorem of our development is `Theorem end2end_lightbulb` in `end2end/src/end2end/End2EndLightbulb.v`. If you process that file in your Coq IDE all the way to the end and then add and run the command
 
 ```
 Print Assumptions end2end_lightbulb.
@@ -35,13 +35,13 @@ Eqdep.Eq_rect_eq.eq_rect_eq
 JMeq.JMeq_eq : forall (A : Type) (x y : A), JMeq.JMeq x y -> x = y
 ```
 
-We encourage you to check that `Theorem end2end_lightbulb` in that file matches what we show in section 5.9, "The end-to-end theorem" (up to renaming of `Semantics.Behavior` into `Trace` and reformulating it with an existential instead of an Inductive), and to locate the definitions referenced in this theorem statement by placing the cursor on top of a definition and running `C-c C-a C-l` (or running `Locate nameOfDefinition.`, or grepping for it) to find the definitions referenced in the theorem. Of interest:
+We encourage you to check that `Theorem end2end_lightbulb` in that file matches what we show in section 5.9, "The end-to-end theorem" (up to renaming of `Semantics.Behavior` into `Trace` and reformulating it with an existential instead of an `Inductive`), and to locate the definitions referenced in this theorem statement by (if you're using Proof General) placing the cursor on top of a definition and running `C-c C-a C-l` (or running `Locate nameOfDefinition.` or grepping for it) to find the definitions referenced in the theorem. Of interest:
 
-- `bytes_at` just above in the same file, asserts that given bytes are at a given memory address
+- `bytes_at`, just above in the same file, asserts that given bytes are at a given memory address.
 - `instrencode lightbulb_insts` are the bytes that we print as a hexdump further up in the same file, on the line `let x := eval cbv in (instrencode lightbulb_insts) in idtac x.`. Note that our theorem is about this concrete list of bytes, which we can compute inside Coq, so the meaning of the theorem does not depend on any high-level language or on any compilation function or compilation specification.
 - `Semantics.Behavior` in `deps/kami/Kami/Semantics.v` defines what it means for a Kami module (here we're looking at the 4-stage pipelined processor `p4mm` whose memory equals `mem0`) to have a behavior, expressed as an MMIO interaction trace.
 - `KamiRiscv.KamiLabelSeqR t t'` converts trace formats
-- `goodHlTrace`, defined in `bedrock2/src/bedrock2Examples/lightbulb_spec.v`, is the specification of the expected behavior, expressed as a regular expression over MMIO events. We recommend reading this file backwards, in order to get a top-down unfolding of each definition, until you see the individual MMIO events in the `spi_...` definitions. The definition `one` is a regular expression over traces that asserts that the trace consists of exactly one given MMIO event, and is the primitive building block to specify the protocol.
+- `goodHlTrace`, defined in `bedrock2/src/bedrock2Examples/lightbulb_spec.v`, is the specification of the expected behavior, expressed as a regular expression over MMIO events. We recommend reading this file backwards, in order to get a top-down unfolding of each definition, until you see the individual MMIO events in the `spi_...` definitions. The definition `one` is a regular expression over traces that asserts that the trace consists of exactly one given MMIO event, and it is the primitive building block to specify the protocol.
 - `bedrock2/src/bedrock2/TracePredicate.v` contains the definitions needed to express regular expressions over traces, which are used to define `goodHlTrace`.
 
 
