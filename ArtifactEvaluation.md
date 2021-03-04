@@ -1,7 +1,38 @@
 ## Getting Started Guide
 
+First, please note that building the Coq development takes over three hours of CPU time and requires 8GB of RAM per CPU.
+You may prefer to do that asynchronously, but you can also inspect the source code as outlined below while it is building.
 
+We provide a disk image in .vdi format that boots into a Linux terminal environment accessible over ssh.
+You can get VirtualBox from your operating system's repositories or virtualbox.org.
+Here are instructions for using VirtualBox:
 
+```sh
+tar -xfa lightbulb.tar.gz
+VBoxManage registervm "$(realpath lightbulb/lightbulb.vbox)"
+VBoxManage startvm lightbulb
+sleep 5
+ssh artifact@localhost -p 8022
+```
+
+You can then kick off the build process in the VM:
+
+```sh
+make -C bedrock2 && make -C bedrock2/processor/integration system.bit
+```
+
+The directory bedrock2-prebuilt contains the results of our execution of that command, so feel free to open up another ssh connection and follow along.
+
+The VM contains emacs+ProofGeneral and vim+coqtail available for stepping through the Coq files.
+In case you haven't used either, pick whichever one sounds better:
+in ProofGeneral, ctrl+enter evaluates until the cursor, in coqtauil, the corresponding shortcut is \ c l.
+
+Try stepping through the following file (it has no dependencies):
+
+```sh
+emacs bedrock2/deps/coqutil/src/coqutil/Word/Interface.v
+vim bedrock2/deps/coqutil/src/coqutil/Word/Interface.v
+```
 
 ## Step-by-Step Instructions
 
@@ -242,3 +273,4 @@ Definition spi_read : function :=
     }
   ))).
 ```
+
