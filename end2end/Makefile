@@ -54,3 +54,25 @@ admitsCount: count_admits.py admits.txt
 	python count_admits.py admits.txt admits_archive
 
 all: all0 admitsCount
+
+
+# build steps below are not needed to build our system, but can be used to inspect
+# the binary using standard gcc riscv objdump
+
+CROSS_COMPILE?=riscv32-unknown-linux-gnu-
+RISCV_OBJCOPY?=$(CROSS_COMPILE)objcopy
+RISCV_AS?=$(CROSS_COMPILE)as
+RISCV_LD?=$(CROSS_COMPILE)ld
+RISCV_GCC?=$(CROSS_COMPILE)gcc
+RISCV_GDB?=$(CROSS_COMPILE)gdb
+
+.PRECIOUS: %.vo %.o %.hex %.s %.bin
+
+lightbulb.hex: src/end2end/End2EndLightbulb.v all0
+	$(COQBIN)coqc $(ALLDEPFLAGS) $< > $@
+
+%.bin : %.hex
+	xxd -r -p < $< > $@
+
+lightbulb.o: wrapper_for_riscv_objdump.s lightbulb.bin
+	$(RISCV_AS) -march=rv32ima -mabi=ilp32 $< -o $@

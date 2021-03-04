@@ -159,7 +159,7 @@ Module PrintProgram.
     pose lightbulb_insts as p.
     unfold lightbulb_insts in p.
 
-    let x := eval cbv in (instrencode lightbulb_insts) in idtac (* x *).
+    let x := eval cbv in (instrencode lightbulb_insts) in idtac x.
   Abort.
   Unset Printing Width.
 End PrintProgram.
@@ -357,4 +357,4 @@ Proof.
   - exact funs_valid.
   Unshelve.
   all: try exact Semantics.mem_ok.
-Time Qed. (* takes more than 25s *)
+Qed. (* takes more than 25s *)
