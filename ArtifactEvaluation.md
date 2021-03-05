@@ -19,7 +19,7 @@ ssh artifact@localhost -p 8022
 You can then kick off the build process in the VM:
 
 ```sh
-make -C bedrock2 && make -C bedrock2/processor/integration system.bit
+make -C bedrock2 && make -C bedrock2/deps/kami proc_ext && make -C bedrock2/processor/integration system.bit
 ```
 
 The directory `bedrock2-prebuilt` contains the results of our execution of that command, so feel free to open up another SSH connection and follow along.
