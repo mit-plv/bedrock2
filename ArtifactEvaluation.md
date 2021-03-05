@@ -11,6 +11,7 @@ Here are instructions for using VirtualBox:
 tar -xfa lightbulb.tar.gz
 VBoxManage registervm "$(realpath lightbulb/lightbulb.vbox)"
 VBoxManage startvm lightbulb
+# hide the window that pops up
 sleep 5
 ssh artifact@localhost -p 8022
 ```
@@ -273,3 +274,61 @@ Definition spi_read : function :=
     }
   ))).
 ```
+
+### How the processor and code end up in the FPGA
+
+First, the CPU design needs to be extracted into a format that the FPGA synthesis tools accept. 
+That happens in `~/bedrock2/deps/kami` .
+Rule `proc_ext` in `Makefile` coordinates the extraction of the Kami processor, culminating in `Proc.bsv` in the directory `kami`.
+
+The the extraction process sadly loses method names, but the file should still be recognizable as a Bluespec implementation of a simple processor.
+Rule `verilog_comp` in Kami/Ext/BluespecFrontEnd/verilog/Makefile` calls the Bluespec compiler `bsc` to generate Verilog code `mkTop.v`.
+We recommend against trying to read the generated Verilog code itself, but the module signature is instructive:
+the processor takes a clock and a reset signal and allows its environment to obtain memory requests and send responses to them.
+This is what the verification boundary of our system looks like after translation from Bluespec to Verilog.
+
+```verilog
+module mkTop(CLK,
+	     RST_N,
+
+	     EN_obtain_rq_get,
+	     obtain_rq_get,
+	     RDY_obtain_rq_get,
+
+	     send_rs_put,
+	     EN_send_rs_put,
+	     RDY_send_rs_put);
+```
+
+Everything comes together in `~/bedrock2/processor/integration` .
+Module `system` in `system.v` contains the Verilog glue that ties together the CPU from `mkTop.v`, the FPGA block ram instantiated in module `ram`, and the RISC-V code from `program.hex`.
+The same `system` module also implements the SPI and GPIO peripherals the code accesses through MMIO.
+The last three rules in `Makefile` take care of compiling `system.v` and its dependencies for the specific FPGA we used;
+the three rules correspond to the traditional steps of synthesis, place & route, and bistream generation.
+
+The interface of the system `module` is at the physical boundary of the FPGA, with one declaration per port between the FPGA and the rest of the circuitry.
+
+```verilog
+module system(
+  input wire clk,
+  input wire spi_miso,
+  output reg [7:0] led = 8'hff,
+  output reg spi_clk = 0,
+  output wire spi_mosi,
+  output reg spi_csn = 1,
+  output reg lightbulb = 0
+);
+```
+
+Finally, `ecp5evn.lpf` describes the mapping between the `system.v` module interface and the physical pins of the FPGA.
+To reproduce our physical experiment using the Lattice ECP5-85k evaluation board and Microchip LAN9250 development board, the header pins on the two would need to be connected with jumper cables according with the same mapping.
+Then `prog.sh` can be used to push the processor design (and code ROM) into the FPGA.
+
+## Software in the VM
+
+Here is an exhaustive list of software included in the VM, excerpted from the script that built it.
+
+Artifact git repository: https://github.com/mit-plv/bedrock2 --branch=lightbulb_artifact 
+Arch Linux packages: base mkinitcpio linux syslinux openssh sudo git make which gcc ocamlbuild ocaml-findlib python iverilog riscv32-elf-binutils vim emacs-nox coq # 8.13.1
+Arch Linux User Repository packages and versions: bluespec-git-r424.88d4eef trellis-git-r992.210a0a7 nextpnr-git-r3205.1aab019f yosys-git-0.9+3981.r10628.375af199e
+Coq frontend git repositories: https://github.com/let-def/vimbufsync.git https://github.com/whonore/coqtail.git https://github.com/ProofGeneral/PG
