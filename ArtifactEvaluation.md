@@ -42,6 +42,7 @@ Overview of claims from the paper supported by the artifact (more details on eac
 - The code may be broken into lines in different categories (implementation/interface/interesting proof/low-insight proof), and our process of computing line counts per category is reasonable.
 - Our Coq code base can really generate a reasonable RISC-V binary.
 - Our Coq code base can really generate a reasonable Bluespec hardware design.
+- Open source tools can really be used to generate a corresponding FPGA bitstream.
 
 Overview of claims from the paper *not* supported by the artifact:
 - It is too hard for us to help you recreate our physical setup, with a specific model of FPGA, a specific network card, and a GPIO-compatible power strip.  (You could probably find a compatible lightbulb to plug into the power strip, though. `:-P`)  See paper Figure 2 for what it would look like.
@@ -281,7 +282,7 @@ First, the CPU design needs to be extracted into a format that the FPGA synthesi
 That happens in `~/bedrock2/deps/kami` .
 Rule `proc_ext` in `Makefile` coordinates the extraction of the Kami processor, culminating in `Proc.bsv` in the directory `kami`.
 
-The the extraction process sadly loses method names, but the file should still be recognizable as a Bluespec implementation of a simple processor.
+The the extraction process sadly loses module names, but the file should still be recognizable as a Bluespec implementation of a simple processor.
 Rule `verilog_comp` in Kami/Ext/BluespecFrontEnd/verilog/Makefile` calls the Bluespec compiler `bsc` to generate Verilog code `mkTop.v`.
 We recommend against trying to read the generated Verilog code itself, but the module signature is instructive:
 the processor takes a clock and a reset signal and allows its environment to obtain memory requests and send responses to them.
@@ -302,7 +303,6 @@ module mkTop(CLK,
 
 Everything comes together in `~/bedrock2/processor/integration` .
 Module `system` in `system.v` contains the Verilog glue that ties together the CPU from `mkTop.v`, the FPGA block ram instantiated in module `ram`, and the RISC-V code from `program.hex`.
-The same `system` module also implements the SPI and GPIO peripherals the code accesses through MMIO.
 The last three rules in `Makefile` take care of compiling `system.v` and its dependencies for the specific FPGA we used;
 the three rules correspond to the traditional steps of synthesis, place & route, and bistream generation.
 
@@ -318,6 +318,19 @@ module system(
   output reg spi_csn = 1,
   output reg lightbulb = 0
 );
+```
+
+The same `system` module also implements the SPI and GPIO peripherals the code accesses through MMIO.
+Here is the read path, featuring the address constant 1002404c written by the code above:
+
+```verilog
+  assign instant_rs =
+          (!instant_rs_en) ? 32'hxxxxxxxx
+          : (mem_rq_addr == 32'h1001200c && !mem_rq_iswrite) ? {8'h00, led, 16'h0000}
+          : (mem_rq_addr == 32'h10024048 && !mem_rq_iswrite) ? {(!spi_tx_rdy), 31'h0}
+          : (mem_rq_addr == 32'h1002404c && !mem_rq_iswrite) ? {(!spi_tx_rdy), 23'h0, spi_rx_buf}
+    : mem_rq_addr == 32'h10012038 ? 0
+          : 32'hxxxxxxxx;
 ```
 
 Finally, `ecp5evn.lpf` describes the mapping between the `system.v` module interface and the physical pins of the FPGA.
