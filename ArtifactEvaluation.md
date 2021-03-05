@@ -290,15 +290,15 @@ This is what the verification boundary of our system looks like after translatio
 
 ```verilog
 module mkTop(CLK,
-	     RST_N,
+             RST_N,
 
-	     EN_obtain_rq_get,
-	     obtain_rq_get,
-	     RDY_obtain_rq_get,
+             EN_obtain_rq_get,
+             obtain_rq_get,
+             RDY_obtain_rq_get,
 
-	     send_rs_put,
-	     EN_send_rs_put,
-	     RDY_send_rs_put);
+             send_rs_put,
+             EN_send_rs_put,
+             RDY_send_rs_put);
 ```
 
 Everything comes together in `~/bedrock2/processor/integration` .
