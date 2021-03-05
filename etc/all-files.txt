@@ -201,11 +201,6 @@
 ./deps/kami/Kami/Ex/SCMMInv.v
 ./deps/kami/Kami/Ex/SC.v
 ./deps/kami/Kami/Ex/SimpleFifoCorrect.v
-./deps/kami/Kami/Ext/BluespecFrontEnd/verilog/build/mkBramInst.v
-./deps/kami/Kami/Ext/BluespecFrontEnd/verilog/build/mkTopB10.v
-./deps/kami/Kami/Ext/BluespecFrontEnd/verilog/FIFO2.v
-./deps/kami/Kami/Ext/BluespecFrontEnd/verilog/RegFileLoad.v
-./deps/kami/Kami/Ext/BluespecFrontEnd/verilog/SizedFIFO.v
 ./deps/kami/Kami/Ext/BSyntax.v
 ./deps/kami/Kami/Ext/Extraction.v
 ./deps/kami/Kami/InlineFacts.v
@@ -224,7 +219,7 @@
 ./deps/kami/Kami/Lib/ListSupport.v
 ./deps/kami/Kami/Lib/Misc.v
 ./deps/kami/Kami/Lib/NatLib.v
-./deps/kami/Kami/Lib/Nomega.v
+./deps/kami/Kami/Lib/Nlia.v
 ./deps/kami/Kami/Lib/N_Z_nat_conversions.v
 ./deps/kami/Kami/Lib/Reflection.v
 ./deps/kami/Kami/Lib/StringAsList.v
@@ -254,8 +249,6 @@
 ./deps/kami/Kami/Tactics.v
 ./deps/kami/Kami/Tutorial.v
 ./deps/kami/Kami/Wf.v
-./deps/kami/riscv-test/mkTop.v
-./deps/kami/riscv-test/system.v
 #=coqutil
 ./deps/coqutil/src/coqutil/Byte.v
 ./deps/coqutil/src/coqutil/Datatypes/HList.v
@@ -359,6 +352,17 @@
 ./deps/riscv-coq/export/extract.v
 ./end2end/PrintAdmits.v
 ./end2end/src/end2end/RelyNotations.v
-# Verilog is counted as unrelated because we only count Coq LOC
-./processor/integration/mkTop.v
-./processor/integration/system.v
+# The following files are Verilog files.
+# Note that Coq and Verilog both have the .v extension.
+# We comment them out because we don't want the linecount script
+# to consider them.
+# They will be reported by the completeness check, though.
+# ./processor/integration/mkTop.v
+# ./processor/integration/system.v
+# ./deps/kami/riscv-test/mkTop.v
+# ./deps/kami/riscv-test/system.v
+# ./deps/kami/Kami/Ext/BluespecFrontEnd/verilog/prebuilt/FIFO2.v
+# ./deps/kami/Kami/Ext/BluespecFrontEnd/verilog/prebuilt/mkBramInst.v
+# ./deps/kami/Kami/Ext/BluespecFrontEnd/verilog/prebuilt/mkTop.v
+# ./deps/kami/Kami/Ext/BluespecFrontEnd/verilog/prebuilt/RegFileLoad.v
+# ./deps/kami/Kami/Ext/BluespecFrontEnd/verilog/prebuilt/SizedFIFO.v

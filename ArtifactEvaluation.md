@@ -86,7 +86,7 @@ To check that we did not miss any file, run
 etc/completenesscheck.sh
 ```
 
-whose output should be empty (it lists all Coq files that recursive `find` finds but are not listed in `etc/all-files.txt`).
+whose output should only contain paths to Verilog files (it lists all .v files that recursive `find` finds but are not listed in `etc/all-files.txt`, and note that unfortunately, Coq and Verilog both use the .v file extension).
 Then, run
 
 ```
@@ -102,7 +102,7 @@ cat loc_excluded.tex
 ```
 
 to inspect them and compare them to the values reported in the paper.
-
+(Note that the number of "unrelated" lines of code changed because previously, we were also counting Verilog files, which also end in .v, and now we don't count them any more).
 
 ### Inspecting the Coq-generated RISC-V binary
 
@@ -273,4 +273,3 @@ Definition spi_read : function :=
     }
   ))).
 ```
-
