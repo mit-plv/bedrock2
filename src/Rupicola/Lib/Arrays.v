@@ -107,23 +107,10 @@ Section with_parameters.
          exists default,
            get a idx =
            List.hd default (List.skipn (K_to_nat idx) (to_list a)))
-      (Hput:
-         (K_to_nat idx < List.length (to_list a))%nat ->
-         to_list (put a idx val) =
-         List.app
-           (List.firstn (K_to_nat idx) (to_list a))
-           (val :: List.skipn (S (K_to_nat idx)) (to_list a)))
-      (Hgetput:
-         (K_to_nat idx < List.length (to_list a))%nat ->
-         get (put a idx val) idx = val)
       (Hrw:
          Lift1Prop.iff1
            (repr a_ptr a)
-           (array_repr a_ptr a))
-      (Hrw_put:
-         Lift1Prop.iff1
-           (repr a_ptr (put a idx val))
-           (array_repr a_ptr (put a idx val))).
+           (array_repr a_ptr a)).
 
     Definition offset base idx width :=
       (expr.op bopname.add base (expr.op bopname.mul width idx)).
@@ -178,11 +165,25 @@ Section with_parameters.
       rewrite word.ring_morph_mul, !word.of_Z_unsigned in H4 by assumption.
       rewrite Hget0.
 
-      clear put Hget Hput Hgetput Hrw Hrw_put.
+      clear put Hget Hrw.
       destruct sz; cbv [_access_info ai_type ai_size ai_repr ai_to_word ai_width] in *.
       - eapply load_one_of_sep; ecancel_assumption.
       - eapply load_word_of_sep; ecancel_assumption.
     Qed.
+
+    Context (Hput:
+               (K_to_nat idx < List.length (to_list a))%nat ->
+               to_list (put a idx val) =
+               List.app
+                 (List.firstn (K_to_nat idx) (to_list a))
+                 (val :: List.skipn (S (K_to_nat idx)) (to_list a)))
+            (Hgetput:
+               (K_to_nat idx < List.length (to_list a))%nat ->
+               get (put a idx val) idx = val)
+            (Hrw_put:
+               Lift1Prop.iff1
+                 (repr a_ptr (put a idx val))
+                 (array_repr a_ptr (put a idx val))).
 
     Local Lemma compile_array_put_length :
       (K_to_nat idx < Datatypes.length (to_list a))%nat ->
@@ -317,8 +318,6 @@ Section with_parameters.
       : Semantics.mem -> Prop :=
       array ai.(ai_repr) (word.of_Z ai.(ai_width)) addr (to_list a).
     Notation repr := vectorarray_value.
-
-    Set Printing Implicit.
 
     Lemma VectorArray_Hget {n}:
       forall (a: VectorArray.t ai.(ai_type) n) idx,
