@@ -123,7 +123,7 @@ make lightbulb.o
 Then, you can use
 
 ```
-riscv32-unknown-linux-gnu-objdump -D lightbulb.o
+riscv32-elf-objdump -D lightbulb.o | less
 ```
 
 to inspect the generated binary. The Kami processor starts executing at address 0.

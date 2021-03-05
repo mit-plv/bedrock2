@@ -59,7 +59,7 @@ all: all0 admitsCount
 # build steps below are not needed to build our system, but can be used to inspect
 # the binary using standard gcc riscv objdump
 
-CROSS_COMPILE?=riscv32-unknown-linux-gnu-
+CROSS_COMPILE?=riscv32-elf-
 RISCV_OBJCOPY?=$(CROSS_COMPILE)objcopy
 RISCV_AS?=$(CROSS_COMPILE)as
 RISCV_LD?=$(CROSS_COMPILE)ld
