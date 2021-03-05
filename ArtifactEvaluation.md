@@ -283,7 +283,7 @@ That happens in `~/bedrock2/deps/kami` .
 Rule `proc_ext` in `Makefile` coordinates the extraction of the Kami processor, culminating in `Proc.bsv` in the directory `kami`.
 
 The the extraction process sadly loses module names, but the file should still be recognizable as a Bluespec implementation of a simple processor.
-Rule `verilog_comp` in Kami/Ext/BluespecFrontEnd/verilog/Makefile` calls the Bluespec compiler `bsc` to generate Verilog code `mkTop.v`.
+Rule `verilog_comp` in `Kami/Ext/BluespecFrontEnd/verilog/Makefile` calls the Bluespec compiler `bsc` to generate Verilog code `mkTop.v`.
 We recommend against trying to read the generated Verilog code itself, but the module signature is instructive:
 the processor takes a clock and a reset signal and allows its environment to obtain memory requests and send responses to them.
 This is what the verification boundary of our system looks like after translation from Bluespec to Verilog.
