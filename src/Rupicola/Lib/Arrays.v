@@ -158,11 +158,19 @@ Section with_parameters.
 
       seprewrite_in Hrw H0.        (* FIXME seprewrite shouldn't rename *)
       (* FIXME: BEDROCK2: Adding an extra "_" at the end shelves an inequality *)
-      unfold array_repr in *.
-      once (seprewrite_in open_constr:(array_index_nat_inbounds
-                                         _ _ _ _ (K_to_nat idx)) H5).
+      match goal with
+      | [ H: (array_repr _ _ ⋆ _) ?mem |- _ ] =>
+        unfold array_repr in *;
+          seprewrite_in open_constr:(array_index_nat_inbounds
+                                       _ _ (default := default) _ _ (K_to_nat idx)) H
+      end.
       { lia. }
-      rewrite word.ring_morph_mul, !word.of_Z_unsigned in H4 by assumption.
+
+      match goal with
+      | [ H: context[word.of_Z (_ * _)] |- _ ] =>
+        rewrite word.ring_morph_mul, !word.of_Z_unsigned in H by assumption
+      end.
+
       rewrite Hget0.
 
       clear put Hget Hrw.
@@ -271,13 +279,19 @@ Section with_parameters.
       { eexists; split; cbn.
         { eexists; split; [ eassumption | reflexivity ]. }
         { seprewrite_in Hrw H0.
-          unfold array_repr in *.
-          once (seprewrite_in
-                  open_constr:(array_index_nat_inbounds
-                                 _ _ (default := default) _ _ (K_to_nat idx)) H6).
+
+          match goal with
+          | [ H: (array_repr _ _ ⋆ _) ?mem |- _ ] =>
+            unfold array_repr in *;
+              seprewrite_in open_constr:(array_index_nat_inbounds
+                                           _ _ (default := default) _ _ (K_to_nat idx)) H
+          end.
           { assumption. }
 
-          rewrite word.ring_morph_mul, !word.of_Z_unsigned in H5 by assumption.
+          match goal with
+          | [ H: context[word.of_Z (_ * _)] |- _ ] =>
+            rewrite word.ring_morph_mul, !word.of_Z_unsigned in H by assumption
+          end.
 
           destruct sz;
             cbv [_access_info ai_type ai_size ai_repr ai_to_word ai_width] in *.

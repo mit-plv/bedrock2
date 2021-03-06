@@ -130,6 +130,4 @@ Module Murmur3.
   Time Qed.                          (* 2.3, 0.35 on compressed example; instantaneous previously *)
 End Murmur3.
 
-Require Import bedrock2.NotationsCustomEntry.
-Require Import bedrock2.NotationsInConstr.
 Eval cbv in Murmur3.scramble_body.
