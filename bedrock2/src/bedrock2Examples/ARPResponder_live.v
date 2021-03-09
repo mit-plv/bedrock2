@@ -277,13 +277,7 @@ Section WithParameters.
 
   Definition MAC := tuple byte 6.
 
-  Definition encodeMAC: MAC -> list byte := tuple.to_list.
-
   Definition IPv4 := tuple byte 4.
-
-  Definition encodeIPv4: IPv4 -> list byte := tuple.to_list.
-
-  Definition encodeCRC(crc: Z): list byte := tuple.to_list (BigEndian.split 4 crc).
 
   Record EthernetPacket(Payload: Type) := mkEthernetARPPacket {
     dstMAC: MAC;
@@ -300,16 +294,6 @@ Section WithParameters.
     FField (@etherType Payload) TODO (TValue access_size.two (@BEBytesToWord 2));
     FField (@payload Payload) TODO Payload_spec
   ].
-
-  (* Note: At the moment we want to allow any padding and crc, so we use an isXxx predicate rather
-     than an encodeXxx function *)
-  Definition isEthernetPacket{P: Type}(payloadOk: P -> list byte -> Prop)(p: EthernetPacket P)(bs: list byte) :=
-    exists data padding crc,
-      bs = encodeMAC p.(srcMAC) ++ encodeMAC p.(dstMAC) ++ tuple.to_list p.(etherType)
-           ++ data ++ padding ++ encodeCRC crc /\
-      payloadOk p.(payload) data /\
-      46 <= Z.of_nat (List.length (data ++ padding)) <= 1500.
-      (* TODO could/should also verify CRC *)
 
   Definition ARPOperationRequest := Byte.x01.
   Definition ARPOperationReply := Byte.x02.
@@ -338,12 +322,6 @@ Section WithParameters.
     FField tpa TODO (TTuple 4 1 byte_spec)
   ].
 
-  Definition encodeARPPacket(p: ARPPacket): list byte :=
-    tuple.to_list p.(htype) ++
-    tuple.to_list p.(ptype) ++
-    [p.(hlen)] ++ [p.(plen)] ++ [p.(oper)] ++
-    encodeMAC p.(sha) ++ encodeIPv4 p.(spa) ++ encodeMAC p.(tha) ++ encodeIPv4 p.(tpa).
-
   Definition HTYPE := tuple.of_list [Byte.x00; Byte.x01].
   Definition PTYPE := tuple.of_list [Byte.x80; Byte.x00].
   Definition HLEN := Byte.x06.
@@ -353,9 +331,6 @@ Section WithParameters.
 
   Definition HTYPE_LE := Ox"0100".
   Definition PTYPE_LE := Ox"0080".
-
-  Definition isEthernetARPPacket: EthernetPacket ARPPacket -> list byte -> Prop :=
-    isEthernetPacket (fun arpP => eq (encodeARPPacket arpP)).
 
   Record ARPConfig := mkARPConfig {
     myMAC: MAC;
@@ -387,10 +362,6 @@ Section WithParameters.
          tpa := req.(payload).(spa)
        |}
     |}.
-
-  (* not sure if we need this definition, or just inline it *)
-  Definition ARPReqResp(req resp: EthernetPacket ARPPacket): Prop :=
-    needsARPReply req /\ resp = ARPReply req.
 
   Definition addr_in_range(a start: word)(len: Z): Prop :=
     word.unsigned (word.sub a start) <= len.
@@ -452,40 +423,6 @@ Section WithParameters.
     FField foo_packets set_foo_packets (TArray 256 dummy_spec)
   ].
 
-  (*
-  (* `path R F` is a path digging into a record of type R, leading to a field of type F.
-  Note: "reversed" (snoc direction rather than cons) so that we can append easily to the right to dig deeper. *)
-  Inductive path: Type -> Type -> Type :=
-  | PNil(R: Type): path R R
-  | PField{R S F: Type}(prefix: path R S)(getter: S -> F): path R F
-  | PIndex{R E: Type}(prefix: path R (list E))(i: Z): path R E.
-
-  Fixpoint path_value{R F: Type}(pth: path R F){struct pth}: R -> option F :=
-    match pth as p in (path R F) return (R -> option F) with
-    | PNil R => Some
-    | PField prefix getter => fun r => match path_value prefix r with
-                                       | Some x => Some (getter x)
-                                       | None => None
-                                       end
-    | PIndex prefix i => fun r => match path_value prefix r with
-                                  | Some l => List.nth_error l (Z.to_nat i)
-                                  | None => None
-                                 end
-    end.
-
-  Inductive path_TypeSpec: forall {R F: Type}, TypeSpec R -> path R F -> TypeSpec F -> Prop :=
-  | path_TypeSpec_Nil: forall R (sp: TypeSpec R),
-      path_TypeSpec sp (PNil R) sp
-  | path_TypeSpec_Field: forall R S F (prefix: path R S) (getter: S -> F) setter fields i sp sp',
-      path_TypeSpec sp prefix (TStruct fields) ->
-      List.nth_error fields i = Some (FField getter setter sp') ->
-      path_TypeSpec sp (PField prefix getter) sp'
-  | path_TypeSpec_Index: forall R E (sp: TypeSpec R) len prefix i (sp': TypeSpec E),
-      path_TypeSpec sp prefix (TArray len sp') ->
-      (* note: no bounds check here yet... *)
-      path_TypeSpec sp (PIndex prefix i) sp'.
-  *)
-
   (* append-at-front direction (for constructing a path using backwards reasoning) *)
   Inductive lookup_path:
     (* input: start type, end type, *)
@@ -510,30 +447,6 @@ Section WithParameters.
                   sp' addr' r' ->
       lookup_path (TArray len sp) addr l
                   sp' addr' r'.
-
-  (* append-at-end alternative (for constructing a path using forward reasoning)
-  Inductive lookup_path:
-    (* input: start type, end type, *)
-    forall {R F: Type},
-    (* type spec, base address, and whole value found at empty path *)
-    TypeSpec R -> word -> R ->
-    (* output: type spec, address and value found at given path *)
-    TypeSpec F -> word -> F -> Prop :=
-  | lookup_path_Nil: forall R (sp: TypeSpec R) addr r,
-      lookup_path sp addr r
-                  sp addr r
-  | lookup_path_Field: forall R S F (getter: S -> F) setter fields i sp sp' addr addr' (r: R) r',
-      lookup_path sp addr r
-                  (TStruct fields) addr' r' ->
-      List.nth_error fields i = Some (FField getter setter sp') ->
-      lookup_path sp addr r
-                  sp' (addr' ^+ /[offset r' fields i]) (getter r')
-  | lookup_path_Index: forall R E (sp: TypeSpec R) r len i (sp': TypeSpec E) l e addr addr',
-      lookup_path sp addr r
-                  (TArray len sp') addr' l ->
-      List.nth_error l i = Some e ->
-      lookup_path sp addr r
-                  sp' (addr' ^+ /[i * len]) e. *)
 
   Ltac assert_lookup_range_feasible :=
     match goal with
@@ -596,156 +509,6 @@ Section WithParameters.
     ZnWords.
   Qed.
 
-  (* mappings between expr for offset and semantic offset (word/Z)?
-
-fieldEncoder providing both?
-
-node:
-leftPtr: word
-value: word
-rightPtr: word
-
-additional accessors:
-leftChild: dereferences leftPtr, = load(offset of leftPtr)
-
-padding: = offset of previous field + load(offset of length field)
-
-but what if I already loaded the length before? Don't load again
-weird mix between high-level and low-level
-
-access to fields should also be possible by constructing the offset expression manually,
-and have lia figure out where it lands inside the record
-
-Given:
-Gallina datatype, its getters, its setters, and its layout in memory
-A load to some address => Find its symbolic value in the Gallina datatype
-A store at some address => update the Gallina datatype in the sep clause
-
-"some address" might be constructed manually (eg using a for loop that increases a pointer instead of a[i], or a+previously_loaded_dynamic_offset) or using some syntactic sugar to denote offsets for record field access, sugar to be defined later.
-
-What about unions/sum types/Gallina inductives with more than one constructor?
-getters/setters returning option?
-But how to know which case?
-
-
-VST: fieldAt t addr path value
-     dataAt t addr value := fieldAt t addr nil value
-
-address <--> accessor   mappings bidirectional
-
-address --> accessor                        (invert by testing for each accessor if address matches??)
-accessor --> expr --denote-->address        (only needed for syntactic sugar)
-
-given address & access size, look at address range covered by sep clauses and drill down
-
-can we even do many dereferences, eg l->tail->tail->head?
-
-given a sep clause, get its footprint and its subparts
-if not in footprint, try next sep clause, else try each subpart
-
-footprint = union of ranges
-
-allow abstract footprints, eg if we don't know whether l->tail is cons or nil, we don't know a range for it
-
-
-ll a v := match v with
-          | nil => a = null
-          | cons h t => exists a', a |-> h /\ a+4 |-> a' /\ ll a' t
-          end
-
-footprint (ll a v) := match v with
-                      | nil => {}
-                      | cons h t => a,+8 \u footprint (ll *(a+4) t)
-                      end
-
-Will be hard to say for sure that something is *not* in the footprint of a clause, but that's fine,
-we only need to say that something *is* in the footprint
-
-Not only need 1,2,4,8 byte access, but also access to whole structs to pass them to other functions
-
-range tree with increasing subdivision granularity?
-*)
-
-  Inductive footpr :=
-  | FPRange(start len: Z)
-  | FPUnion(l r: footpr).
-
-
-(* or reuse compiler.SeparationLogic.footpr ?
-   "very semantic"
-
-
-a \in (footpr P) -> "load a" can be resolved by looking only at P
-
-how to obtain `a \in (footpr P)` from lia hypotheses?
-Using helper lemmas for each separation logic predicate, eg:
-
-addr <= a < addr + sz * length l ->
-a \in (footpr (array elem sz addr l))
-
-addr <= a < addr + 4 or 8 ->
-a \in (footpr (ptsto_word addr v))
-
-addr <= a < addr + 8 \/ a in footpr of tail ->
-a \in (footpr (ll addr l))
-
-Or rather: subsets of footpr because we load/store/pass to function more than just 1 byte
-
-subrange a,+sz1 addr,+(sz2*length l) ->
-subset a,+sz1 (footpr (array elem sz2 addr l))
-
-
-can we not derive this from the basic ptsto?
-tricky as soon as recursion appears
-human insight helpful to merge adjacent blocks
-
-
-(getter, setter, predicate)
-
-
-use
-{p |-> {| foo := a; bar := b |} * R}
-f(p.bar)
-{p |-> {| foo := a; bar := symbolic_f(b) |} * R}
-
-def
-{p |-> x * R}
-f(p)
-{p |-> symbolic_f(x) * R}
-
-or allow non-det functions:
-
-use
-{p |-> {| foo := a; bar := b |} * R}
-f(p.bar)
-{p |-> {| foo := a; bar := b' |} * R} /\ rel b b'
-
-def
-{p |-> x * R}
-f(p)
-exists x', {p |-> x' * R} /\ rel x x'
-
-
-myRecordAt p {| foo := a; bar := b |} := p |-> a * (p+12) |-> b
-[
-  (foo, with_foo, fun r base => base |-> foo r);
-  (bar; with_bar, fun r base => (base+12) |- bar r)
-]
-
-frame rule for function call where frame refers to a nested record with a hole?
-C[x] built from setters?
-
-C[x] := with_dummy (with_bar (dummy original) x) original
-
-back to just loading:
-
-{base |-> {| f1 := x; f2 := y; dummy := {| foo := a; bar := b |} |} * R /\ p = base + 12}
-t = load4(p)
-{... /\ t = b}
-
-*)
-
-
   (* ** Program logic rules *)
 
   (* We have two rules for conditionals depending on whether there are more commands afterwards *)
@@ -774,103 +537,6 @@ t = load4(p)
   Admitted.
 
   Implicit Type post: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop.
-
-  Definition wand(P Q: mem -> Prop)(m: mem): Prop :=
-    forall m1 m2, map.split m2 m m1 -> P m1 -> Q m2.
-
-  (* an "existential" version of wand, also called the dual of wand, or septraction [Bannister et al, ITP'18].
-     Roughly, P is a subheap of Q, and 'Q without P' holds on m *)
-  Definition dwand(P Q: mem -> Prop)(m: mem): Prop :=
-    exists m1 m2, map.split m2 m m1 /\ P m1 /\ Q m2.
-
-  Lemma wand_adjoint: forall P Q R,
-      impl1 (sep P Q) R <-> impl1 P (wand Q R).
-  Proof.
-    unfold impl1, wand, sep. firstorder eauto.
-  Qed.
-
-  Lemma wand_self_impl: forall (P: mem -> Prop),
-      unique_footprint P ->
-      non_contrad P ->
-      iff1 (emp True) (wand P P).
-  Proof.
-    intros P U N.
-    unfold emp, wand, iff1. intros. split; intros.
-    - destruct H. destruct H0. subst. rewrite map.putmany_empty_l. assumption.
-    - split; [|trivial]. unfold unique_footprint, non_contrad in *.
-      destruct N as [mn N].
-      assert (P x \/ ~ P x) as EM by admit . destruct EM as [A | A].
-      + (*
-
-      assert (P map.empty \/ ~ P map.empty) as EM by admit . destruct EM as [A | A].
-      + specialize (U m1 map.empty N A). assert (m1 = map.empty) by admit.
-      *)
-  Abort.
-
-  Lemma wand_self_impl: forall (P: mem -> Prop),
-      iff1 (fun _ => True) (wand P P).
-  Proof.
-    unfold emp, wand, iff1, map.split. intros. split; intros.
-    - destruct H. destruct H0. subst.
-  Abort.
-
-(*
-It seems that in linear SL, `P -* P` is *not* equivalent to `fun m => True`:
-When trying to prove `P -* P`, I need to show that if `P` holds on some heap `m`, no matter what disjoint heap `m1` I add, `P` will still hold on the combined heap, but if `P` restricts the domain of the heap to one fixed set, that won't hold.
-So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only follows if `P` is required to have a unique footprint.
-
-
-*)
-
-  Lemma dwand_self_impl: forall (P: mem -> Prop),
-      iff1 P (dwand P P).
-  Proof.
-    intros.
-    unfold emp, dwand, iff1. split; intros.
-    - exists map.empty, x.
-  Abort.
-
-  Lemma dwand_self_impl: forall (P: mem -> Prop),
-      unique_footprint P ->
-      non_contrad P ->
-      iff1 (emp True) (dwand P P).
-  Proof.
-    intros P U N.
-    unfold emp, dwand, iff1. split; intros.
-    - destruct H. subst. unfold non_contrad in N. destruct N as (mn & N).
-      exists mn, mn. rewrite map.split_empty_l. auto.
-    - destruct H as (m1 & m2 & H & p1 & p2).
-      split; [|trivial].
-      unfold unique_footprint in U.
-      specialize U with (1 := p1) (2 := p2).
-      apply map.map_ext.
-      intro k. destruct (map.get x k) eqn: E. 2: {
-        rewrite map.get_empty. reflexivity.
-      }
-      exfalso.
-      unfold map.split, map.disjoint in H. destruct H as [? H]. subst m2.
-      destruct (map.get m1 k) eqn: F. 1: solve[eauto].
-      destruct U as [U1 U2]. unfold map.sub_domain in *.
-      specialize (U2 k b). rewrite map.get_putmany_dec in U2. rewrite F in U2.
-      specialize (U2 E). destruct U2. discriminate.
-  Qed.
-
-  Lemma sep_dwand_self_impl: forall (R P: mem -> Prop) m,
-      R m ->
-      sep R (dwand P P) m.
-  Proof.
-    intros. unfold sep, dwand.
-    exists m, map.empty. rewrite map.split_empty_r. repeat split; auto.
-  Abort.
-
-  Goal forall P Q,
-      iff1 Q (sep P (dwand P Q)).
-  Proof.
-  Abort.
-  (* Note: this one only holds if P "is part of" Q and satisfiable,
-     and we will use lookup_path below to assert that *)
-  Goal forall P Q, iff1 Q (sep P (wand P Q)).
-  Abort.
 
   Lemma seps_nth_error_to_head: forall i Ps P,
       List.nth_error Ps i = Some P ->
@@ -951,190 +617,6 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
     exists l, map.of_list_zip innames argvs = Some l /\ forall mc,
       exec e body t m l mc (fun t' m' l' mc' =>
         exists retvs : list word, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
-
-  Fixpoint firstn_as_tuple{A: Type}(default: A)(n: nat)(l: list A): tuple A n :=
-    match n as n return tuple A n with
-    | O => tt
-    | S m => PrimitivePair.pair.mk (List.hd default l) (firstn_as_tuple default m (List.tl l))
-    end.
-
-  Lemma to_list_firstn_as_tuple: forall A (default: A) n (l: list A),
-      (n <= List.length l)%nat ->
-      tuple.to_list (firstn_as_tuple default n l) = List.firstn n l.
-  Proof.
-    induction n; intros.
-    - reflexivity.
-    - destruct l. 1: cbv in H; exfalso; blia.
-      simpl in *.
-      f_equal. eapply IHn. blia.
-  Qed.
-
-  Lemma to_list_BigEndian_split: forall n (l: list byte),
-      (n <= List.length l)%nat ->
-      tuple.to_list (BigEndian.split n (BigEndian.combine n (firstn_as_tuple Byte.x00 n l))) = List.firstn n l.
-  Proof.
-    intros. rewrite BigEndian.split_combine.
-    apply to_list_firstn_as_tuple.
-    assumption.
-  Qed.
-
-  Lemma list_eq_cancel_step{A: Type}: forall (xs ys l: list A),
-    List.firstn (List.length xs) l = xs ->
-    List.skipn (List.length xs) l = ys ->
-    l = xs ++ ys.
-  Proof.
-    intros. remember (List.length xs) as n. subst xs ys. symmetry. apply List.firstn_skipn.
-  Qed.
-
-  Lemma list_eq_cancel_firstn: forall A (l rest: list A) n,
-      (n <= List.length l)%nat ->
-      List.skipn n l = rest ->
-      l = List.firstn n l ++ rest.
-  Proof. intros. subst rest. symmetry. apply List.firstn_skipn. Qed.
-
-  Ltac length_getEq t :=
-    match t with
-    | context[List.length (tuple.to_list ?xs)] => constr:(tuple.length_to_list xs)
-    | context[List.length (?xs ++ ?ys)] => constr:(List.app_length xs ys)
-    | context[List.length (?x :: ?xs)] => constr:(List.length_cons x xs)
-    | context[List.length (@nil ?A)] => constr:(@List.length_nil A)
-    | context[List.skipn ?n (List.skipn ?m ?xs)] => constr:(List.skipn_skipn n m xs)
-    | context[List.length (List.skipn ?n ?l)] => constr:(List.skipn_length n l)
-    end.
-
-  Lemma list_instantiate_evar{A: Type}: forall l1 l2 l3 (xs1 xs3 evar lhs rhs: list A),
-      (* reshape rhs: *)
-      rhs = xs1 ++ evar ++ xs3 ->
-      (* equations for lengths l1, l2, l3 *)
-      l1 = List.length xs1 ->
-      l2 = (List.length lhs - l1 - l3)%nat ->
-      l3 = List.length xs3 ->
-      (* sidecondition on lengths *)
-      (l1 + l3 <= List.length lhs)%nat ->
-      (* equations for lists xs1, evar, xs3 *)
-      xs1 = List.firstn l1 lhs ->
-      evar = List.firstn (List.length lhs - l1 - l3) (List.skipn l1 lhs) ->
-      xs3 = List.skipn (List.length lhs - l3) lhs ->
-      lhs = rhs.
-  Proof.
-    intros. subst xs1 xs3 evar. subst rhs.
-    apply list_eq_cancel_step. {
-      f_equal. symmetry. assumption.
-    }
-    apply list_eq_cancel_step. {
-      rewrite <- H0. f_equal. rewrite List.length_firstn_inbounds. 1: reflexivity.
-      rewrite List.length_skipn.
-      blia.
-    }
-    rewr length_getEq in |-*.
-    f_equal.
-    rewrite List.length_firstn_inbounds.
-    1: blia.
-    rewrite List.length_skipn.
-    blia.
-  Qed.
-
-  Lemma instantiate_tuple_from_list{A: Type}: forall (n: nat) (evar: tuple A n) (l: list A) (default: A),
-      n = Datatypes.length l ->
-      evar = firstn_as_tuple default n l ->
-      tuple.to_list evar = l.
-  Proof.
-    intros. subst.
-    rewrite to_list_firstn_as_tuple. 2: reflexivity.
-    apply List.firstn_all2. reflexivity.
-  Qed.
-
-  Ltac list_eq_cancel_step :=
-    apply list_eq_cancel_step;
-    (* can't use normal rewrite because COQBUG https://github.com/coq/coq/issues/10848 *)
-    rewr length_getEq in |-*.
-
-  Lemma interpretEthernetARPPacket: forall bs,
-      Z.of_nat (List.length bs) = 64 ->
-      (* conditions collected while trying to prove the lemma: *)
-      List.firstn 2 (List.skipn 12 bs) = [Byte.x08; Byte.x06] ->
-      List.firstn 6 (List.skipn 14 bs) = [Byte.x00; Byte.x01; Byte.x80; Byte.x00; Byte.x06; Byte.x04] ->
-      List.firstn 1 (List.skipn 20 bs) = [Byte.x01] -> (* we only interpret requests at the moment, no replies *)
-      exists packet: EthernetPacket ARPPacket, isEthernetARPPacket packet bs.
-  Proof.
-    intros.
-    unfold isEthernetARPPacket, isEthernetPacket, encodeARPPacket, encodeMAC, encodeIPv4, encodeCRC.
-    eexists ({| payload := {| oper := _ |} |}).
-    cbn [dstMAC srcMAC etherType payload htype ptype hlen plen oper sha spa tha tpa].
-    repeat eexists.
-    (* can't use normal rewrite because COQBUG https://github.com/coq/coq/issues/10848 *)
-    all: rewr (fun t => match t with
-           | context [ List.length (?xs ++ ?ys) ] => constr:(List.app_length xs ys)
-           | context [ List.length (?h :: ?t) ] => constr:(List.length_cons h t)
-           | context [ (?xs ++ ?ys) ++ ?zs ] => constr:(eq_sym (List.app_assoc xs ys zs))
-           end) in |-*.
-    {
-      list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
-      }
-      list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
-      }
-      list_eq_cancel_step. {
-        instantiate (1 := EtherTypeARP).
-        assumption.
-      }
-  Abort. (*
-      list_eq_cancel_step. {
-        assumption.
-      }
-      list_eq_cancel_step. {
-        instantiate (1 := ARPOperationRequest).
-        assumption.
-      }
-      list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
-      }
-      list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
-      }
-      list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
-      }
-      list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
-      }
-      cbn -[List.skipn tuple.to_list].
-      eapply list_instantiate_evar with (xs1 := nil). {
-        cbn [List.app].
-        f_equal.
-      }
-      { cbn [List.length]. reflexivity. }
-      { reflexivity. }
-      { reflexivity. }
-      { rewrite tuple.length_to_list. rewrite List.length_skipn. blia. }
-      { reflexivity. }
-      { (* finally, we can "automatically" instantiate the evar ?padding *)
-        reflexivity.  }
-      rewr length_getEq in |-*.
-      rewrite BigEndian.split_combine.
-      etransitivity. 2: apply tuple.to_list_of_list.
-      match goal with
-      | |- @tuple.to_list _ ?n1 _ = @tuple.to_list _ ?n2 _ =>
-        replace n2 with n1 by (rewr length_getEq in |-*; blia)
-      end.
-      eapply instantiate_tuple_from_list with (default := Byte.x00). 2: reflexivity.
-      rewr length_getEq in |-*.
-      blia.
-    }
-    {
-      rewr length_getEq in |-*.
-      rewrite List.firstn_length.
-      rewr length_getEq in |-*.
-      blia.
-    }
-    {
-      rewr length_getEq in |-*.
-      rewrite List.firstn_length.
-      rewr length_getEq in |-*.
-      blia.
-    }
-  Qed. *)
 
   Lemma bytesToEthernetARPPacket: forall a bs,
       64 = len bs ->
@@ -1359,56 +841,6 @@ Notation "'if' ( e ) '/*merge*/' {" := (SIf e true) (in custom snippet at level 
 Notation "'if' ( e ) '/*split*/' {" := (SIf e false) (in custom snippet at level 0, e custom bedrock_expr).
 Notation "}" := SEnd (in custom snippet at level 0).
 Notation "'else' {" := SElse (in custom snippet at level 0).
-
-  Let nth n xs := hd (emp True) (skipn n xs).
-  Let remove_nth n (xs : list (mem -> Prop)) :=
-    (firstn n xs ++ tl (skipn n xs)).
-
-  (* TODO also needs to produce equivalence proof *)
-  Ltac move_evar_to_head l :=
-    match l with
-    | ?h :: ?t =>
-      let __ := match constr:(Set) with _ => is_evar h end in
-      constr:(l)
-    | ?h :: ?t =>
-      let r := move_evar_to_head t in
-      match r with
-      | ?h' :: ?t' => constr:(h' :: h :: t)
-      end
-    end.
-
-  Goal forall (a b c d: nat),
-      exists e1 e2, [a; b; e1; c; d; e2] = nil.
-  Proof.
-    intros. eexists. eexists.
-    match goal with
-    | |- ?LHS = _ => let r := move_evar_to_head LHS in idtac r
-    end.
-  Abort.
-
-  (* `Cancelable ?R LHS RHS P` means that if `P` holds, then `?R * LHS <-> RHS` *)
-  Inductive Cancelable: (mem -> Prop) -> list (mem -> Prop) -> list (mem -> Prop) -> Prop -> Prop :=
-  | cancel_done: forall R R' (P: Prop),
-      R = seps R' -> P -> Cancelable R nil R' P
-  | cancel_at_indices: forall i j R LHS RHS P,
-      Cancelable R (remove_nth i LHS) (remove_nth j RHS) (nth i LHS = nth j RHS /\ P) ->
-      Cancelable R LHS RHS P.
-
-  Lemma Cancelable_to_iff1: forall R LHS RHS P,
-      Cancelable R LHS RHS P ->
-      Lift1Prop.iff1 (sep R (seps LHS)) R /\ P.
-  Abort.
-
-  Lemma cancel_array_at_indices{T}: forall i j xs ys P elem sz addr1 addr2 (content: list T),
-      (* these two equalities are provable right now, where we still have evars, whereas the
-         equation that we push into the conjunction needs to be deferred until all the canceling
-         is done and the evars are instantiated [not sure if that's true...] *)
-      nth i xs = array elem sz addr1 content ->
-      nth j ys = array elem sz addr2 content ->
-      Lift1Prop.iff1 (seps (remove_nth i xs)) (seps (remove_nth j ys)) /\
-      (addr1 = addr2 /\ P) ->
-      Lift1Prop.iff1 (seps xs) (seps ys) /\ P.
-  Abort.
 
   Definition nFields{A: Type}(sp: TypeSpec A): option nat :=
     match sp with
