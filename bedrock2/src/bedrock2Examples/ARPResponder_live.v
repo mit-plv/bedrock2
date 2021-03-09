@@ -1512,18 +1512,15 @@ Import Syntax.
       vc_func e f t m [ethbufAddr; L] (fun t' m' retvs =>
         t' = t /\ (
         (* Success: *)
-        (retvs = [word.of_Z 1] /\ exists request response ethBufData',
-           seps [array ptsto (word.of_Z 1) ethbufAddr ethBufData'; R] m' /\
-           isEthernetARPPacket request  ethBufData  /\
-           isEthernetARPPacket response ethBufData' /\
-           ARPReqResp request response) \/
+        (retvs = [word.of_Z 1] /\ exists request response,
+            seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr request; R] m /\
+            seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr response; R] m' /\
+            needsARPReply request /\
+            response = ARPReply request) \/
         (* Failure: *)
-        (retvs = [word.of_Z 0] /\ seps [array ptsto (word.of_Z 1) ethbufAddr ethBufData; R] m' /\ (
-           L <> word.of_Z 64 \/
-           (* malformed request *)
-           (~ exists request, isEthernetARPPacket request ethBufData) \/
-           (* request needs no reply because it's not for us *)
-           (forall request, isEthernetARPPacket request ethBufData -> request.(payload).(tpa) <> cfg.(myIPv4))))
+        (retvs = [word.of_Z 0] /\ seps [array ptsto (word.of_Z 1) ethbufAddr ethBufData; R] m' /\
+            ~ exists request, seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr request; R] m /\
+                              needsARPReply request)
       ))}).
     pose "ethbuf" as ethbuf. pose "ln" as ln. pose "doReply" as doReply. pose "tmp" as tmp.
     refine ("arp", existT _ ([ethbuf; ln], [doReply], _) _).
