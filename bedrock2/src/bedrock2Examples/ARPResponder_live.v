@@ -373,13 +373,24 @@ Section WithParameters.
        |}
     |}.
 
+  Lemma bytesToARPPacket: forall a bs,
+      28 = len bs ->
+      exists p: ARPPacket,
+        iff1 (array ptsto /[1] a bs) (dataAt ARPPacket_spec a p).
+  Proof.
+    intros.
+    eexists {| oper := _ |}. cbn -[tuple.to_list].
+
+  Admitted.
+
   Lemma bytesToEthernetARPPacket: forall a bs,
       64 = len bs ->
       exists p: EthernetPacket ARPPacket,
         iff1 (array ptsto /[1] a bs) (dataAt (EthernetPacket_spec ARPPacket_spec) a p).
   Proof.
     intros.
-    eexists {| payload := {| oper := _ |} |}. cbn.
+    eexists {| payload := _ |}. cbn -[tuple.to_list].
+
     (* TODO messy *)
   Admitted.
 
@@ -1006,6 +1017,16 @@ Notation "'else' {" := SElse (in custom snippet at level 0).
 
 Set Default Goal Selector "1".
 
+  Definition memcpy: (string * {f: list string * list string * cmd &
+    forall e t m dstA srcA L srcData oldDstData R,
+    seps [array ptsto /[1] srcA srcData; array ptsto /[1] dstA oldDstData; R] m ->
+    \[L] = len srcData ->
+    \[L] = len oldDstData ->
+    vc_func e f t m [dstA; srcA; L] (fun t' m' retvs =>
+      retvs = [] /\
+      seps [array ptsto /[1] srcA srcData; array ptsto /[1] dstA srcData; R] m')}).
+  Admitted.
+
   Definition arp: (string * {f: list string * list string * cmd &
     forall e t m ethbufAddr ethBufData L R,
       seps [array ptsto /[1] ethbufAddr ethBufData; R] m ->
@@ -1040,6 +1061,11 @@ Set Default Goal Selector "1".
           (load1(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) &
           (load1(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) &
           (load2(ethbuf @ (@payload ARPPacket) @ oper) == OPER_REQUEST)) /*split*/ { /*$.
+
+        (* TODO check if tpa equals our IP *)
+
+        (* copy sha and spa from the request into tha and tpa for the reply (same buffer), 6+4 bytes *)
+        (* memcpy(ethbuf @ (@payload ARPPacket) @ tha, ethbuf @ (@payload ARPPacket) @ sha, /*number*/10);
 
         $*/
         doReply = /*number*/1; /*$.
