@@ -19,6 +19,13 @@ Require Import bedrock2.ZnWords.
 Require Import coqutil.Word.SimplWordExpr.
 Require Import bedrock2.footpr.
 
+(*
+Notation byte := Init.Byte.byte.
+ Notation byte := (Init.Byte.byte : Type).
+   in coqutil.Byte adds more universes than we want *)
+
+Local Set Universe Polymorphism.
+
 (* TODO put into coqutil and also use in lightbulb.v *)
 Module word. Section WithWord.
   Import ZArith.
@@ -216,7 +223,7 @@ Section WithParameters.
   Qed.
 
   Inductive TypeSpec: Type -> Type :=
-  | TValue{R: Type}(sz: access_size)(encode: R -> word): TypeSpec R
+  | TByte: TypeSpec byte
   | TStruct{R: Type}(fields: list (FieldSpec R)): TypeSpec R
   (* dynamic number of elements: *)
   | TArray{E: Type}(elemSize: Z)(elemSpec: TypeSpec E): TypeSpec (list E)
@@ -228,7 +235,7 @@ Section WithParameters.
 
   Fixpoint TypeSpec_size{R: Type}(sp: TypeSpec R): R -> Z :=
     match sp with
-    | TValue sz _ => fun r => bytes_per (width:=width) sz
+    | TByte => fun r => 1
     | TStruct fields => fun r => List.fold_right (fun f res => FieldSpec_size f r + res) 0 fields
     | TArray elemSize _ => fun l => List.length l * elemSize
     | TTuple n elemSize _ => fun t => n * elemSize
@@ -259,7 +266,7 @@ Section WithParameters.
 
   Fixpoint dataAt{R: Type}(sp: TypeSpec R){struct sp}: word -> R -> mem -> Prop :=
     match sp with
-    | TValue sz encoder => fun addr r => value sz addr (encoder r)
+    | TByte => ptsto
     | @TStruct R fields => fun base r => seps (fieldsAt (@dataAt) fields base r)
     | @TArray E elemSize elem => fun base l => seps (arrayAt (@dataAt) elemSize elem base l)
     | @TTuple E n elemSize elem => fun base t => seps (arrayAt (@dataAt) elemSize elem base (tuple.to_list t))
@@ -276,23 +283,21 @@ Section WithParameters.
   Definition ETHERTYPE_ARP_LE: Z :=
     Eval compute in (LittleEndian.combine 2 EtherTypeARP).
 
-  Definition MAC := tuple byte 6.
+(*  Definition MAC := tuple byte 6.*)
 
   Definition IPv4 := tuple byte 4.
 
   Record EthernetPacket(Payload: Type) := mkEthernetARPPacket {
-    dstMAC: MAC;
-    srcMAC: MAC;
+    dstMAC: tuple byte 6;
+    srcMAC: tuple byte 6;
     etherType: tuple byte 2; (* <-- must initially accept all possible two-byte values *)
     payload: Payload;
   }.
-
-  Definition byte_spec: TypeSpec byte := TValue access_size.one byteToWord.
-
+Set Printing Universes. Print tuple.
   Definition EthernetPacket_spec{Payload: Type}(Payload_spec: TypeSpec Payload) := TStruct [
-    FField (@dstMAC Payload) TODO (TTuple 6 1 byte_spec);
-    FField (@srcMAC Payload) TODO (TTuple 6 1 byte_spec);
-    FField (@etherType Payload) TODO (TValue access_size.two (@BEBytesToWord 2));
+    FField (@dstMAC Payload) TODO (TTuple 6 1 TByte);
+    FField (@srcMAC Payload) TODO (TTuple 6 1 TByte);
+    FField (@etherType Payload) TODO (TTuple 2 1 TByte);
     FField (@payload Payload) TODO Payload_spec
   ].
 
@@ -301,31 +306,31 @@ Section WithParameters.
     ptype: tuple byte 2; (* protocol type *)
     hlen: byte;          (* hardware address length (6 for MAC addresses) *)
     plen: byte;          (* protocol address length (4 for IPv4 addresses) *)
-    oper: Z;
-    sha: MAC;  (* sender hardware address *)
+    oper: tuple byte 2;
+    sha: tuple byte 6;  (* sender hardware address *)
     spa: IPv4; (* sender protocol address *)
-    tha: MAC;  (* target hardware address *)
+    tha: tuple byte 6;  (* target hardware address *)
     tpa: IPv4; (* target protocol address *)
   }.
 
   Definition ARPPacket_spec: TypeSpec ARPPacket := TStruct [
-    FField htype TODO (TValue access_size.two (@BEBytesToWord 2));
-    FField ptype TODO (TValue access_size.two (@BEBytesToWord 2));
-    FField hlen TODO byte_spec;
-    FField plen TODO byte_spec;
-    FField oper TODO (TValue access_size.two (ZToBEWord 2));
-    FField sha TODO (TTuple 6 1 byte_spec);
-    FField spa TODO (TTuple 4 1 byte_spec);
-    FField tha TODO (TTuple 6 1 byte_spec);
-    FField tpa TODO (TTuple 4 1 byte_spec)
+    FField htype TODO (TTuple 2 1 TByte);
+    FField ptype TODO (TTuple 2 1 TByte);
+    FField hlen TODO TByte;
+    FField plen TODO TByte;
+    FField oper TODO (TTuple 2 1 TByte);
+    FField sha TODO (TTuple 6 1 TByte);
+    FField spa TODO (TTuple 4 1 TByte);
+    FField tha TODO (TTuple 6 1 TByte);
+    FField tpa TODO (TTuple 4 1 TByte)
   ].
 
   Definition HTYPE := tuple.of_list [Byte.x00; Byte.x01].
   Definition PTYPE := tuple.of_list [Byte.x80; Byte.x00].
   Definition HLEN := Byte.x06.
   Definition PLEN := Byte.x04.
-  Definition OPER_REQUEST := 1.
-  Definition OPER_REPLY := 2.
+  Definition OPER_REQUEST := tuple.of_list [Byte.x00; Byte.x01].
+  Definition OPER_REPLY := tuple.of_list [Byte.x00; Byte.x02].
 
   Definition HTYPE_LE := Ox"0100".
   Definition PTYPE_LE := Ox"0080".
@@ -339,7 +344,7 @@ Section WithParameters.
     (pk.(payload).(oper) = OPER_REQUEST \/ pk.(payload).(oper) = OPER_REPLY).
 
   Record ARPConfig := mkARPConfig {
-    myMAC: MAC;
+    myMAC: tuple byte 6;
     myIPv4: IPv4;
   }.
 
@@ -406,7 +411,7 @@ Section WithParameters.
     dummy_dst: if dummy_dst_kind then tuple byte 4 else tuple byte 6;
     *)
     dummy_dst: tuple byte 4;
-    dummy_len: Z;
+    dummy_len: tuple byte 2;
     dummy_data: list byte;
     dummy_padding: list byte (* non-constant offset *)
   }.
@@ -423,15 +428,15 @@ Section WithParameters.
     Build_dummy_packet (dummy_src d) (dummy_dst d) (dummy_len d) (dummy_data d) x.
 
   Definition dummy_spec: TypeSpec dummy_packet := TStruct [
-    FField dummy_src set_dummy_src (TValue access_size.four (@BEBytesToWord 4));
-    FField dummy_dst set_dummy_dst (TValue access_size.four (@BEBytesToWord 4));
-    FField dummy_len set_dummy_len (TValue access_size.two word.of_Z);
-    FField dummy_data set_dummy_data (TArray 1 (TValue access_size.one byteToWord));
-    FField dummy_padding set_dummy_padding (TArray 1 (TValue access_size.one byteToWord))
+    FField dummy_src set_dummy_src (TTuple 4 1 TByte);
+    FField dummy_dst set_dummy_dst (TTuple 4 1 TByte);
+    FField dummy_len set_dummy_len (TTuple 2 1 TByte);
+    FField dummy_data set_dummy_data (TArray 1 TByte);
+    FField dummy_padding set_dummy_padding (TArray 1 TByte)
   ].
 
   Record foo := {
-    foo_count: Z;
+    foo_count: tuple byte 4;
     foo_packet: dummy_packet;
     foo_packets: list dummy_packet;
   }.
@@ -443,7 +448,7 @@ Section WithParameters.
     Build_foo (foo_count f) (foo_packet f) x.
 
   Definition foo_spec: TypeSpec foo := TStruct [
-    FField foo_count set_foo_count (TValue access_size.four word.of_Z);
+    FField foo_count set_foo_count (TTuple 4 1 TByte);
     FField foo_packet set_foo_packet dummy_spec;
     FField foo_packets set_foo_packets (TArray 256 dummy_spec)
   ].
@@ -488,14 +493,14 @@ Section WithParameters.
 
   Goal forall base f R m,
       seps [dataAt foo_spec base f; R] m ->
-      exists V (v: V) encoder,
+      exists v,
         lookup_path foo_spec base f
-                    (TValue access_size.two encoder) (base ^+ /[12]) v.
+                    (TTuple 2 1 TByte) (base ^+ /[12]) v.
   Proof.
     intros.
 
     Check f.(foo_packet).(dummy_len).
-    do 3 eexists.
+    eexists.
 
     (*Eval simpl in (path_value (PField (PField (PNil _) foo_packet) dummy_len) f).*)
 
@@ -598,11 +603,53 @@ Section WithParameters.
       ecancel.
   Qed.
 
-  Lemma load_field: forall sz m addr M i R sp (r: R) base (F: Type) encoder (v: F),
+Set Printing Universes.
+Print TypeSpec.
+Print EthernetPacket.
+Print bedrock2.ptsto_bytes.
+Print coqutil.Map.Interface.map.
+
+Check dataAt.
+(* coqutil.Map.Interface.62: level of value in map
+   ptsto_bytes.u0: level of byte
+
+
+TypeSpec.u5              level of tuple element in TTuple
+< EthernetPacket.u1      level of overall tuple of dstMAC in EthernetPacket
+<= TypeSpec.u3           level of types of struct fields of TStruct
+<= TypeSpec.u0           level of overall record type R in TypeSpec R
+<= ptsto_bytes.u0        level of byte ---> why this inequality???
+ = coqutil.Map.Interface.62).
+
+
+(universe inconsistency: Cannot enforce coqutil.Map.Interface.62 = TypeSpec.u5 because
+
+TypeSpec.u5 < EthernetPacket.u1 <= TypeSpec.u3 <= TypeSpec.u0 <= ptsto_bytes.u0 = coqutil.Map.Interface.62).
+
+*)
+  Lemma load_field: forall sz m addr M i R sp (r: R) base (v: bytetuple sz),
       seps M m ->
       List.nth_error M i = Some (dataAt sp base r) ->
-      lookup_path sp base r (TValue sz encoder) addr v ->
-      Memory.load sz m addr = Some (encoder v).
+      lookup_path sp base r (TTuple _ 1 TByte) addr v ->
+      Memory.load_bytes (bytes_per sz) m addr = Some v.
+  Proof.
+    intros.
+    destruct (expose_lookup_path H1) as (Frame & P).
+    simpl in P.
+    eapply seps_nth_error_to_head in H0.
+    eapply H0 in H.
+    seprewrite_in P H.
+    eapply load_of_sep_value.
+    ecancel_assumption.
+  Qed.
+
+load_bytes
+
+  Lemma load_field: forall sz m addr M i R sp (r: R) base v,
+      seps M m ->
+      List.nth_error M i = Some (dataAt sp base r) ->
+      lookup_path sp base r (TTuple _ 1 TByte) addr v ->
+      Memory.load sz m addr = Some v.
   Proof.
     intros.
     destruct (expose_lookup_path H1) as (Frame & P).
@@ -996,8 +1043,13 @@ Set Default Goal Selector "1".
           (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE_LE) &
           (load1(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) &
           (load1(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) &
-          (load2(ethbuf @ (@payload ARPPacket) @ oper) == OPER_REQUEST)) /*split*/ { /*$.
+          (load2(ethbuf @ (@payload ARPPacket) @ oper) == OPER_REQUEST) &
+          (load4(ethbuf @ (@payload ARPPacket) @ tpa) == coq:(LittleEndian.combine 4 cfg.(myIPv4))))
+      /*split*/ { /*$.
 
+        eapply lookup_path_Field.
+
+        idtac.
         (* TODO check if tpa equals our IP *)
 
         (* copy sha and spa from the request into tha and tpa for the reply (same buffer), 6+4 bytes *)
@@ -1046,6 +1098,7 @@ $*/
                                 | (fname, existT _ (argnames, retnames, body) _) => body
                                 end
       in pose r.
+*)
   Abort.
 
 End WithParameters.
