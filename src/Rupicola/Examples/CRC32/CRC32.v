@@ -142,7 +142,6 @@ Section __.
       reflexivity.
   Qed.
   
-  (* TODO: check endianness *)
   Definition Z_to_bytes (z : Z) : list byte:=
     HList.tuple.to_list (LittleEndian.split (Z.to_nat (width / 8)) z).
              
@@ -184,15 +183,6 @@ Section __.
       }
     }
   Qed.
-
- 
-
-  (*
-  Lemma eq_rect_r_over_pair (f : nat -> Type) A B a b m n (eqn : m = n)
-    : (f m = A * (B n))%type ->
-       (f n = A * (B n))%type ->
-        eq_rect_r f (a,b) eqn = (a, eq_rect_r f b eqn). *)
-
   
   Lemma eq_rect_r_S n m f e eqn
     : forall eqn',
@@ -315,8 +305,6 @@ Section __.
         cbn; lia.
   Qed.
   
-  (*TODO: might want to generalize w/ an offset?
-   *)
   Lemma load_from_word_table t n
     : List.Forall (fun z => 0 <= z < 2^width) t ->
       Z.of_nat (length (to_byte_table t)) <= 2 ^ width ->
@@ -436,14 +424,13 @@ Section __.
         }
       }
     }
-Qed.
+  Qed.
   
-  (* Want a lemma to compile the call to nth as a static lookup *)
+  (* a lemma to compile the call to nth as a static lookup *)
   Lemma compile_table_nth {n t} {tr mem locals functions}:
     let v := nth n t 0 in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-      (R : _ -> Prop) var,
-      32 <= width (*for a lemma*) ->
+           (R : _ -> Prop) var,
       Forall (fun z : Z => 0 <= z < 2 ^ width) t ->
       (n < Datatypes.length t)%nat ->
       (Z.of_nat (Datatypes.length (to_byte_table t)) <= 2 ^ width) ->
@@ -480,9 +467,9 @@ Qed.
     }
     {
       repeat straightline.
-      apply H4.
+      apply H3.
       assumption.
     }
   Qed.
-      
+  
 End __.
