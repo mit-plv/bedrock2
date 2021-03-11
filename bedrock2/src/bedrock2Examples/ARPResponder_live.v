@@ -19,13 +19,6 @@ Require Import bedrock2.ZnWords.
 Require Import coqutil.Word.SimplWordExpr.
 Require Import bedrock2.footpr.
 
-(*
-Notation byte := Init.Byte.byte.
- Notation byte := (Init.Byte.byte : Type).
-   in coqutil.Byte adds more universes than we want *)
-
-Local Set Universe Polymorphism.
-
 (* TODO put into coqutil and also use in lightbulb.v *)
 Module word. Section WithWord.
   Import ZArith.
@@ -293,7 +286,7 @@ Section WithParameters.
     etherType: tuple byte 2; (* <-- must initially accept all possible two-byte values *)
     payload: Payload;
   }.
-Set Printing Universes. Print tuple.
+
   Definition EthernetPacket_spec{Payload: Type}(Payload_spec: TypeSpec Payload) := TStruct [
     FField (@dstMAC Payload) TODO (TTuple 6 1 TByte);
     FField (@srcMAC Payload) TODO (TTuple 6 1 TByte);
@@ -461,10 +454,10 @@ Set Printing Universes. Print tuple.
     TypeSpec R -> word -> R ->
     (* output: type spec, address and value found at given path *)
     TypeSpec F -> word -> F -> Prop :=
-  | lookup_path_Nil: forall R (sp: TypeSpec R) addr addr' r,
-      addr = addr' ->
+  | lookup_path_Nil: forall R R' (sp: TypeSpec R) (sp': TypeSpec R') addr addr' r r',
+      dataAt sp addr r = dataAt sp' addr' r' ->
       lookup_path sp addr r
-                  sp addr' r
+                  sp' addr' r'
   | lookup_path_Field: forall R F R' (getter: R -> F) setter fields i sp sp' addr addr' (r: R) (r': R'),
       List.nth_error fields i = Some (FField getter setter sp) ->
       lookup_path sp (addr ^+ /[offset r fields i]) (getter r)
@@ -536,7 +529,22 @@ Set Printing Universes. Print tuple.
     check_lookup_range_feasible.
 
     eapply lookup_path_Nil.
-    ZnWords.
+    f_equal.
+
+  try eapply word.unsigned_inj;
+  lazymatch goal with
+  | |- ?G => is_lia_prop G
+  end.
+  cleanup_for_ZModArith.
+  simpl_list_length_exprs.
+  unfold_Z_nat_consts.
+  (* PARAMRECORDS *)
+  simpl.
+  canonicalize_word_width_and_instance.
+  repeat wordOps_to_ZModArith_step.
+  dewordify;
+  clear_unused_nonProps.
+  better_lia.
   Qed.
 
   (* ** Program logic rules *)
@@ -583,7 +591,7 @@ Set Printing Universes. Print tuple.
       exists Frame, iff1 (dataAt sp base r) (sep (dataAt sp' addr v) Frame).
   Proof.
     induction 1.
-    - subst. exists (emp True). cancel.
+    - subst. exists (emp True). rewrite H. cancel.
     - destruct IHlookup_path as [Frame IH]. simpl in IH.
       eexists.
       cbn.
@@ -603,31 +611,7 @@ Set Printing Universes. Print tuple.
       ecancel.
   Qed.
 
-Set Printing Universes.
-Print TypeSpec.
-Print EthernetPacket.
-Print bedrock2.ptsto_bytes.
-Print coqutil.Map.Interface.map.
-
-Check dataAt.
-(* coqutil.Map.Interface.62: level of value in map
-   ptsto_bytes.u0: level of byte
-
-
-TypeSpec.u5              level of tuple element in TTuple
-< EthernetPacket.u1      level of overall tuple of dstMAC in EthernetPacket
-<= TypeSpec.u3           level of types of struct fields of TStruct
-<= TypeSpec.u0           level of overall record type R in TypeSpec R
-<= ptsto_bytes.u0        level of byte ---> why this inequality???
- = coqutil.Map.Interface.62).
-
-
-(universe inconsistency: Cannot enforce coqutil.Map.Interface.62 = TypeSpec.u5 because
-
-TypeSpec.u5 < EthernetPacket.u1 <= TypeSpec.u3 <= TypeSpec.u0 <= ptsto_bytes.u0 = coqutil.Map.Interface.62).
-
-*)
-  Lemma load_field: forall sz m addr M i R sp (r: R) base (v: bytetuple sz),
+  Lemma load_field0: forall sz m addr M i R sp (r: R) base (v: bytetuple sz),
       seps M m ->
       List.nth_error M i = Some (dataAt sp base r) ->
       lookup_path sp base r (TTuple _ 1 TByte) addr v ->
@@ -635,54 +619,55 @@ TypeSpec.u5 < EthernetPacket.u1 <= TypeSpec.u3 <= TypeSpec.u0 <= ptsto_bytes.u0 
   Proof.
     intros.
     destruct (expose_lookup_path H1) as (Frame & P).
+    cbn in P.
     simpl in P.
     eapply seps_nth_error_to_head in H0.
     eapply H0 in H.
     seprewrite_in P H.
-    eapply load_of_sep_value.
+    eapply load_bytes_of_sep.
+    replace (ptsto_bytes (bytes_per sz) addr v) with (seps (arrayAt (@dataAt) 1 TByte addr (tuple.to_list v)))
+      by exact TODO.
+    simpl. (* PARAMRECORDS *)
     ecancel_assumption.
   Qed.
-
-load_bytes
 
   Lemma load_field: forall sz m addr M i R sp (r: R) base v,
       seps M m ->
       List.nth_error M i = Some (dataAt sp base r) ->
       lookup_path sp base r (TTuple _ 1 TByte) addr v ->
-      Memory.load sz m addr = Some v.
+      Memory.load sz m addr = Some /[LittleEndian.combine (bytes_per (width:=width) sz) v].
   Proof.
     intros.
-    destruct (expose_lookup_path H1) as (Frame & P).
-    simpl in P.
-    eapply seps_nth_error_to_head in H0.
-    eapply H0 in H.
-    seprewrite_in P H.
-    eapply load_of_sep_value.
-    ecancel_assumption.
+    unfold Memory.load, Memory.load_Z.
+    erewrite load_field0; eauto.
   Qed.
 
   (* optimized for easy backtracking *)
-  Lemma load_field': forall sz m addr M R sp (r: R) base (F: Type) encoder (v: F),
+  Lemma load_field': forall sz m addr M R sp (r: R) base v,
       seps M m ->
       (exists i,
           List.nth_error M i = Some (dataAt sp base r) /\
-          lookup_path sp base r (TValue sz encoder) addr v) ->
-      Memory.load sz m addr = Some (encoder v).
+          lookup_path sp base r (TTuple _ 1 TByte) addr v) ->
+      Memory.load sz m addr = Some /[LittleEndian.combine (bytes_per (width:=width) sz) v].
   Proof.
     intros. destruct H0 as (i & ? & ?). eauto using load_field.
   Qed.
 
-  Lemma load_field'': forall sz m addr R sp (r: R) base (F: Type) encoder (v: F) (post: word -> Prop),
+  Lemma load_field'': forall sz m addr R sp (r: R) base v (post: word -> Prop),
       (exists M,
         seps M m /\
         exists i,
           List.nth_error M i = Some (dataAt sp base r) /\
-          lookup_path sp base r (TValue sz encoder) addr v /\
-          post (encoder v)) ->
+          lookup_path sp base r (TTuple _ 1 TByte) addr v /\
+          post /[LittleEndian.combine (bytes_per (width:=width) sz) v]) ->
       WeakestPrecondition.load sz m addr post.
   Proof.
     intros. unfold WeakestPrecondition.load. firstorder eauto using load_field.
   Qed.
+
+  Lemma tuple_byte_1: forall addr v,
+      dataAt TByte addr v = dataAt (TTuple 1 1 TByte) addr (tuple.of_list [v]).
+  Proof. intros. simpl. f_equal. ZnWords. Qed.
 
   Definition vc_func e '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
                      (post : trace -> mem -> list word -> Prop) :=
@@ -716,7 +701,7 @@ Ltac pick_nat n :=
     check_lookup_range_feasible).
 
   Ltac lookup_done :=
-    eapply lookup_path_Nil; ZnWords.
+    eapply lookup_path_Nil; first [ apply tuple_byte_1 | f_equal; ZnWords ].
 
 Ltac cleanup_step :=
   match goal with
@@ -1043,17 +1028,14 @@ Set Default Goal Selector "1".
           (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE_LE) &
           (load1(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) &
           (load1(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) &
-          (load2(ethbuf @ (@payload ARPPacket) @ oper) == OPER_REQUEST) &
+          (load2(ethbuf @ (@payload ARPPacket) @ oper) == coq:(LittleEndian.combine 2 OPER_REQUEST)) &
           (load4(ethbuf @ (@payload ARPPacket) @ tpa) == coq:(LittleEndian.combine 4 cfg.(myIPv4))))
       /*split*/ { /*$.
 
-        eapply lookup_path_Field.
-
-        idtac.
         (* TODO check if tpa equals our IP *)
 
         (* copy sha and spa from the request into tha and tpa for the reply (same buffer), 6+4 bytes *)
-        (* memcpy(ethbuf @ (@payload ARPPacket) @ tha, ethbuf @ (@payload ARPPacket) @ sha, /*number*/10);
+        (* memcpy(ethbuf @ (@payload ARPPacket) @ tha, ethbuf @ (@payload ARPPacket) @ sha, /*number*/10); *)
 
         $*/
         doReply = /*number*/1; /*$.
@@ -1068,13 +1050,6 @@ exists pk.
 
 repeat prover_step.
 
-{ clear -H1.
-  left.
-  unfold BEBytesToWord in *.
-  (* TODO unify encoders, maybe use decoders instead? *)
-  exfalso. ZnWords_pre.
-  exact TODO.
-}
 all: exact TODO.
 }
 $*/
@@ -1091,14 +1066,13 @@ $*/
     all: try exact nil.
     all: try (exact (fun _ => False)).
     all: try exact TODO.
-  Defined.
+  Defined. (* takes ca 50s *)
 
   Goal False.
     let r := eval unfold arp in match arp with
                                 | (fname, existT _ (argnames, retnames, body) _) => body
                                 end
       in pose r.
-*)
   Abort.
 
 End WithParameters.
