@@ -1,4 +1,5 @@
 Require Import coqutil.Macros.unique.
+Require Import coqutil.Tactics.SafeSimpl.
 Require Import coqutil.Decidable.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
@@ -44,6 +45,10 @@ Module Import FlatToRiscvDef.
   }.
 
 End FlatToRiscvDef.
+
+Instance SafeSimpl_iset: SafeSimpl (@iset) 1 := {}.
+Instance SafeSimpl_funname_env: SafeSimpl (@funname_env) 2 := {}.
+Instance SafeSimpl_compile_ext_call: SafeSimpl (@compile_ext_call) 1 := {}.
 
 Section FlatToRiscv1.
   Context {p: unique! FlatToRiscvDef.parameters}.

@@ -2,6 +2,7 @@ Require Export Coq.Lists.List.
 Require Import Coq.ZArith.ZArith.
 Export ListNotations.
 Require Export coqutil.Decidable.
+Require Import coqutil.Tactics.SafeSimpl.
 Require        compiler.ExprImp.
 Require Export compiler.FlattenExprDef.
 Require Export compiler.FlattenExpr.
@@ -116,6 +117,18 @@ Module Import Pipeline.
 
 End Pipeline.
 
+Instance SafeSimpl_W: SafeSimpl (@W) 1 := {}.
+Instance SafeSimpl_mem: SafeSimpl (@mem) 1 := {}.
+Instance SafeSimpl_Registers: SafeSimpl (@Registers) 1 := {}.
+Instance SafeSimpl_string_keyed_map: SafeSimpl (@string_keyed_map) 2 := {}.
+Instance SafeSimpl_ext_spec: SafeSimpl (@ext_spec) 1 := {}.
+Instance SafeSimpl_compile_ext_call: SafeSimpl (@compile_ext_call) 1 := {}.
+Instance SafeSimpl_M: SafeSimpl (@M) 1 := {}.
+Instance SafeSimpl_MM: SafeSimpl (@MM) 1 := {}.
+Instance SafeSimpl_RVM: SafeSimpl (@RVM) 1 := {}.
+Instance SafeSimpl_PRParams: SafeSimpl (@PRParams) 1 := {}.
+
+Instance SafeSimpl_assumptions: SafeSimpl (@assumptions) 1 := {}.
 
 Section Pipeline1.
 
@@ -509,9 +522,7 @@ Section Pipeline1.
       iff1 (program iset functions_start instrs)
            (FlatToRiscvCommon.functions functions_start (FlatToRiscvDef.build_fun_pos_env e) e).
   Proof.
-    (* PARAMRECORDS *)
-    assert (map.ok FlatImp.env). { unfold FlatImp.env. simpl. typeclasses eauto. }
-    assert (map.ok mem) as Ok by exact mem_ok.
+    assert nat as H by exact O. (* preserve names *)
 
     unfold riscvPhase.
     intros.
@@ -742,7 +753,7 @@ Section Pipeline1.
       ssplit; try reflexivity.
       { intros. ssplit; reflexivity. }
       { unfold machine_ok in *. simp.
-        (* PARAMRECORDS *) simpl.
+        (* PARAMRECORDS *) safe_simpl. (* takes about 4s *)
         solve_word_eq word_ok. }
       unfold goodMachine. simpl. ssplit.
       { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }

@@ -1,5 +1,6 @@
 Require Import riscv.Utility.Monads. Require Import riscv.Utility.MonadNotations.
 Require Import coqutil.Macros.unique.
+Require Import coqutil.Tactics.SafeSimpl.
 Require Import compiler.FlatImp.
 Require Import Coq.Lists.List.
 Import ListNotations.
@@ -68,6 +69,16 @@ Class parameters := {
   ext_spec : list (mem * String.string * list word * (mem * list word)) ->
              mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop;
 }.
+
+Instance SafeSimpl_def_params: SafeSimpl (@def_params) 1 := {}.
+Instance SafeSimpl_W: SafeSimpl (@W) 1 := {}.
+Instance SafeSimpl_locals: SafeSimpl (@locals) 1 := {}.
+Instance SafeSimpl_mem: SafeSimpl (@mem) 1 := {}.
+Instance SafeSimpl_M: SafeSimpl (@M) 1 := {}.
+Instance SafeSimpl_MM: SafeSimpl (@MM) 1 := {}.
+Instance SafeSimpl_RVM: SafeSimpl (@RVM) 1 := {}.
+Instance SafeSimpl_PRParams: SafeSimpl (@PRParams) 1 := {}.
+Instance SafeSimpl_ext_spec: SafeSimpl (@ext_spec) 1 := {}.
 
 Arguments Z.mul: simpl never.
 Arguments Z.add: simpl never.
@@ -361,6 +372,8 @@ Section WithParameters.
   }.
 
 End WithParameters.
+
+Instance SafeSimpl_assumptions: SafeSimpl (@assumptions) 1 := {}.
 
 Existing Instance Semantics_params.
 
@@ -825,7 +838,7 @@ Section FlatToRiscv1.
                pose proof word.unsigned_range (word.sub k addr). blia.
              }
              apply (f_equal word.of_Z) in F.
-             simpl in F. (* PARAMRECORDS *)
+             safe_simpl. (* PARAMRECORDS *)
              rewrite (word.of_Z_unsigned (word.sub k addr)) in F.
              rewrite <- add_0_r at 1. change (Z.of_nat 0) with 0 in F. rewrite <- F.
              ring.
@@ -835,7 +848,7 @@ Section FlatToRiscv1.
              apply (f_equal Z.of_nat) in F.
              rewrite Z2Nat.id in F by blia.
              apply (f_equal word.of_Z) in F.
-             simpl in F. (* PARAMRECORDS *)
+             safe_simpl.
              rewrite (word.of_Z_unsigned (word.sub k addr)) in F.
              ring_simplify (word.sub k (word.add addr (word.of_Z 1))).
              rewrite F.

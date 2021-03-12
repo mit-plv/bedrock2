@@ -1,4 +1,5 @@
 Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil.Byte.
+Require Import coqutil.Tactics.SafeSimpl.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import coqutil.Decidable.
 Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
@@ -29,6 +30,13 @@ Class parameters := {
   ext_spec: ExtSpec;
 }.
 
+Instance SafeSimpl_width: SafeSimpl (@width) 1 := {}.
+Instance SafeSimpl_word: SafeSimpl (@word) 1 := {}.
+Instance SafeSimpl_mem: SafeSimpl (@mem) 1 := {}.
+Instance SafeSimpl_locals: SafeSimpl (@locals) 1 := {}.
+Instance SafeSimpl_env: SafeSimpl (@env) 1 := {}.
+Instance SafeSimpl_ext_spec: SafeSimpl (@ext_spec) 1 := {}.
+
 Module ext_spec.
   Class ok{p: parameters}: Prop := {
     (* The action name and arguments uniquely determine the footprint of the given-away memory. *)
@@ -55,6 +63,8 @@ Module ext_spec.
 End ext_spec.
 Arguments ext_spec.ok: clear implicits.
 
+Instance SafeSimpl_ext_spec_ok: SafeSimpl (@ext_spec.ok) 1 := {}.
+
 Class parameters_ok{p: parameters}: Prop := {
   width_cases : width = 32 \/ width = 64;
   word_ok :> word.ok word;
@@ -64,6 +74,8 @@ Class parameters_ok{p: parameters}: Prop := {
   ext_spec_ok :> ext_spec.ok p;
 }.
 Arguments parameters_ok: clear implicits.
+
+Instance SafeSimpl_parameters_ok: SafeSimpl (@parameters_ok) 1 := {}.
 
 Section binops.
   Context {width : Z} {word : Word.Interface.word width}.

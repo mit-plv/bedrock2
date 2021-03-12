@@ -3,6 +3,7 @@ Require Import bedrock2.Map.SeparationLogic.
 Require Import compiler.FlatImp.
 Require Import coqutil.Decidable.
 Require Import coqutil.Tactics.Tactics.
+Require Import coqutil.Tactics.SafeSimpl.
 Require Import coqutil.Tactics.simpl_rewrite.
 Require Import coqutil.Datatypes.PropSet.
 Require Import Coq.Lists.List. Import ListNotations.
@@ -564,7 +565,7 @@ Section Spilling.
       (eq mH * R)%sep mL ->
       (eq (Memory.unchecked_store_bytes n mH a v) * R)%sep (Memory.unchecked_store_bytes n mL a v).
   Proof.
-    intros. simpl in H0|-*. (* PARAMRECORDS *) apply sep_comm. apply sep_comm in H0.
+    intros. safe_simpl. (* PARAMRECORDS *) apply sep_comm. apply sep_comm in H0.
     unfold Memory.load_bytes, Memory.unchecked_store_bytes, sep, map.split in *.
     simp. do 2 eexists. ssplit. 3: eassumption. 3: reflexivity.
     - rewrite map.putmany_of_tuple_to_putmany.
@@ -650,7 +651,7 @@ Section Spilling.
     unfold load_arg_reg, stack_loc, arg_reg, related in *. simp.
     destr (32 <=? r).
     - eapply exec.load.
-      + eapply get_sep. (* PARAMRECORDS *) simpl. ecancel_assumption.
+      + eapply get_sep. (* PARAMRECORDS SLOW_safe_simpl (2s) *) safe_simpl. ecancel_assumption.
       + eapply load_from_word_array. 1: ecancel_assumption.
         eapply H0p5. 1: blia.
         unfold sep in H0p3. simp.
