@@ -801,7 +801,13 @@ Ltac safe_simpl_term t :=
            let a' := safe_simpl_term a in
            let b' := safe_simpl_term b in
            constr:(if x' then a' else b')
-         (* TODO here we should also treat match, fun, fix, and also recurse into the types *)
+         | match ?x with _ => _ end =>
+           lazymatch t with
+           | context C[x] =>
+             let x' := safe_simpl_term x in
+             context C[x']
+           end
+         (* TODO here we should also treat match branches, fun, fix, and also recurse into the types *)
          | _ => t
          end
   | _ => let p := match constr:(Set) with
@@ -823,7 +829,7 @@ Ltac safe_simpl_term t :=
 with safe_simpl_n_args do_simpl_head n t :=
   lazymatch n with
   | O => lazymatch do_simpl_head with
-         | true => let t' := eval simpl in t in t'
+         | true => eval simpl in t
          | false => t
          end
   | S ?m => lazymatch t with
@@ -834,34 +840,25 @@ with safe_simpl_n_args do_simpl_head n t :=
             end
   end.
 
-
-Set Printing All.
-
 Ltac safe_simpl :=
   match goal with
   | |- ?G => let G' := safe_simpl_term G in change G'
   end;
-  repeat match goal with
+  repeat lazymatch goal with
          | H: ?T |- _ => let T' := safe_simpl_term T in change T' in H; revert H
          end;
   intros.
+
+
+let T := type of H3 in
+eassert (match (@eq_refl T _) with eq_refl => 3 end = 3) as Q by reflexivity.
+Set Printing All.
 
 Set Ltac Profiling.
 safe_simpl.
 Show Ltac Profile.
 
-(*
-total time:      0.361s
-
- tactic                                   local  total   calls       max
-────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
-─safe_simpl ----------------------------   0.8% 100.0%       1    0.361s
-└safe_simpl_term -----------------------   1.7%  97.9%       0    0.068s
- ├─safe_simpl_n_args -------------------  92.4%  92.4%       0    0.068s
- ├─simpl_arity -------------------------  28.0%  28.0%       0    0.002s
- ├─app_arity ---------------------------  12.3%  12.3%       0    0.003s
- └─head --------------------------------   7.1%   7.1%       0    0.000s
-*)
+clear Q.
 Unset Printing All.
 
         solve_word_eq word_ok. }
