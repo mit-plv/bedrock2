@@ -753,7 +753,117 @@ Section Pipeline1.
       ssplit; try reflexivity.
       { intros. ssplit; reflexivity. }
       { unfold machine_ok in *. simp.
-        (* PARAMRECORDS *) safe_simpl. (* takes about 4s *)
+
+(* original safe_simpl takes ~7s:
+
+Set Ltac Profiling.
+safe_simpl.
+Show Ltac Profile.
+
+total time:      7.049s
+
+ tactic                                   local  total   calls       max
+────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
+─safe_simpl ----------------------------   0.1% 100.0%       1    7.049s
+└f -------------------------------------  48.3%  99.9%      14    0.166s
+ ├─simpl (h _) in * --------------------  30.0%  30.0%    5927    0.011s
+ └─assert_succeeds ---------------------  12.4%  18.8%   24133    0.013s
+  └assert_fails ------------------------   5.3%   6.4%   34974    0.006s
+*)
+
+(* better safe_simpl (but which does not recurse into match nor under binders: *)
+
+Ltac simpl_arity h :=
+  let c := constr:(_ : SafeSimpl h _) in
+  lazymatch type of c with
+  | SafeSimpl _ ?n => n
+  end.
+
+Ltac head e :=
+  lazymatch e with
+  | ?a _ => head a
+  | _ => e
+  end.
+
+Ltac app_arity e :=
+  lazymatch e with
+  | ?a _ => let r := app_arity a in constr:(S r)
+  | _ => constr:(O)
+  end.
+
+Ltac safe_simpl_term t :=
+  let h := head t in
+  let n := app_arity t in
+  lazymatch n with
+  | O => lazymatch t with
+         | if ?x then ?a else ?b =>
+           let x' := safe_simpl_term x in
+           let a' := safe_simpl_term a in
+           let b' := safe_simpl_term b in
+           constr:(if x' then a' else b')
+         (* TODO here we should also treat match, fun, fix, and also recurse into the types *)
+         | _ => t
+         end
+  | _ => let p := match constr:(Set) with
+                  | _ => let __ := match constr:(Set) with _ => is_const h end in
+                         let a := simpl_arity h in
+                         let b := eval cbv in (Nat.leb a n) in
+                         lazymatch b with
+                         | true => let m := eval cbv in (Nat.sub n a) in constr:((true, m))
+                         | false => constr:((false, n))
+                         end
+                  | _ => constr:((false, n))
+                  end in
+         lazymatch p with
+         | (?b, ?m) => safe_simpl_n_args b m t
+         end
+  end
+(* safe_simpl the n right-most arguments of term t, and then if do_simpl_head,
+   run simpl on the remaining head, or else return the remaining head unchanged *)
+with safe_simpl_n_args do_simpl_head n t :=
+  lazymatch n with
+  | O => lazymatch do_simpl_head with
+         | true => let t' := eval simpl in t in t'
+         | false => t
+         end
+  | S ?m => lazymatch t with
+            | ?a ?b => let b' := safe_simpl_term b in
+                       let a' := safe_simpl_n_args do_simpl_head m a in
+                       constr:(a' b')
+            | _ => fail 10000 "bug: expected application, found" t
+            end
+  end.
+
+
+Set Printing All.
+
+Ltac safe_simpl :=
+  match goal with
+  | |- ?G => let G' := safe_simpl_term G in change G'
+  end;
+  repeat match goal with
+         | H: ?T |- _ => let T' := safe_simpl_term T in change T' in H; revert H
+         end;
+  intros.
+
+Set Ltac Profiling.
+safe_simpl.
+Show Ltac Profile.
+
+(*
+total time:      0.361s
+
+ tactic                                   local  total   calls       max
+────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
+─safe_simpl ----------------------------   0.8% 100.0%       1    0.361s
+└safe_simpl_term -----------------------   1.7%  97.9%       0    0.068s
+ ├─safe_simpl_n_args -------------------  92.4%  92.4%       0    0.068s
+ ├─simpl_arity -------------------------  28.0%  28.0%       0    0.002s
+ ├─app_arity ---------------------------  12.3%  12.3%       0    0.003s
+ └─head --------------------------------   7.1%   7.1%       0    0.000s
+*)
+Unset Printing All.
+
         solve_word_eq word_ok. }
       unfold goodMachine. simpl. ssplit.
       { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
