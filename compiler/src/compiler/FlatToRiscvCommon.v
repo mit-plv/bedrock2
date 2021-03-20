@@ -838,16 +838,7 @@ Section FlatToRiscv1.
                pose proof word.unsigned_range (word.sub k addr). blia.
              }
              apply (f_equal word.of_Z) in F.
-
-Ltac safe_simpl ::=
-  match goal with
-  | |- ?G => let G' := safe_simpl_term G in change G'
-  end;
-  repeat match goal with
-         | H: ?T |- _ => let T' := safe_simpl_term T in progress change T' in H
-         end.
-
-             safe_simpl. (* simpl in *. *) (* PARAMRECORDS *)
+             safe_simpl. (* PARAMRECORDS *)
              rewrite (word.of_Z_unsigned (word.sub k addr)) in F.
              rewrite <- add_0_r at 1. change (Z.of_nat 0) with 0 in F. rewrite <- F.
              ring.
