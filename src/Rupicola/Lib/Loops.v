@@ -946,7 +946,7 @@ Require bedrock2.BasicC64Semantics.
 Module test.
   Import BasicC64Semantics.
 
-  Time Compute (ranged_for 0 15 3
+  Time Compute (ranged_for 0 15
                         (fun t idx acc _ =>
                            if Z.ltb 11 idx then
                              let t' := ExitToken.set t in
@@ -955,7 +955,7 @@ Module test.
                              let acc := idx :: acc in
                              (t, acc)) []).
 
-  Time Compute (ranged_for_u (word.of_Z 0) (word.of_Z 15) (word.of_Z 3)
+  Time Compute (ranged_for_u (word.of_Z 0) (word.of_Z 15)
                           (fun t idx acc _ =>
                              if word.ltu (word.of_Z 11) idx then
                                let t' := ExitToken.set t in

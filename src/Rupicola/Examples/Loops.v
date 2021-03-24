@@ -96,7 +96,6 @@ Section Ex.
           (pr1: word.signed len < Z.of_nat n1)
           (pr2: word.signed len < Z.of_nat n2) :=
     let/n from eq:_ := word.of_Z 0 in
-    let/n := word.of_Z 1 in
     let/n a2 := ranged_for_s
                  from len
                  (fun tok idx a2 Hlt =>
@@ -116,7 +115,6 @@ Section Ex.
     rewrite word.signed_of_Z, word.swrap_inrange in H0 by lia.
     rewrite word.signed_gz_eq_unsigned; lia.
   Qed.
-
 
   Instance spec_of_vect_memcpy_s : spec_of "vect_memcpy_s" :=
     fnspec! "vect_memcpy_s" (len: word) (a1_ptr a2_ptr : address) /
@@ -148,7 +146,7 @@ Section Ex.
       simple eapply compile_ranged_for_s with (loop_pred := (fun idx a2 tr' mem' locals' =>
                                                               tr' = tr /\
                                                               locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
-                                                                          [["from" ← idx]][["step" ← v0]]) /\
+                                                                          [["from" ← idx]]) /\
                                                               (vectorarray_value AccessWord a1_ptr a1 * vectorarray_value AccessWord a2_ptr a2 * R)%sep mem')).
 
     all: repeat compile_step; compile_done.
@@ -158,7 +156,6 @@ Section Ex.
              (a1: ListArray.t word)
              (a2: ListArray.t word) :=
     let/n from := word.of_Z 0 in
-    let/n := word.of_Z 1 in
     let/n a2 := ranged_for_u
                  from len
                  (fun tok idx a2 Hlt =>
@@ -194,11 +191,11 @@ Section Ex.
 
     simple apply compile_nlet_as_nlet_eq.
     eapply compile_ranged_for_u with (loop_pred := (fun idx a2 tr' mem' locals' =>
-                                                      tr' = tr /\
-                                                      locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
-                                                                  [["from" ← idx]][["step" ← word.of_Z 1]]) /\
-                                                      (sizedlistarray_value AccessWord a1_ptr n1 a1 *
-                                                       sizedlistarray_value AccessWord a2_ptr n2 a2 * R)%sep mem')).
+        tr' = tr /\
+        locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
+                    [["from" ← idx]]) /\
+        (sizedlistarray_value AccessWord a1_ptr n1 a1 *
+         sizedlistarray_value AccessWord a2_ptr n2 a2 * R)%sep mem')).
 
     all: repeat compile_step; try lia; compile_done.
   Qed.
@@ -207,7 +204,6 @@ Section Ex.
              (a1: ListArray.t word)
              (a2: ListArray.t word) :=
     let/n from := word.of_Z 0 in
-    let/n := word.of_Z 1 in
     let/n a2 := ranged_for_u
                  from len
                  (fun tok idx a2 Hlt =>
@@ -244,7 +240,7 @@ Section Ex.
     eapply compile_ranged_for_u with (loop_pred := (fun idx a2 tr' mem' locals' =>
                                                      tr' = tr /\
                                                      locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
-                                                                 [["from" ← idx]][["step" ← word.of_Z 1]]) /\
+                                                                 [["from" ← idx]]) /\
                                                      (listarray_value AccessWord a1_ptr a1 *
                                                       listarray_value AccessWord a2_ptr a2 * R)%sep mem')).
 
@@ -273,7 +269,6 @@ Section Ex.
     let/n one := word.of_Z 1 in
     let/n from := word.of_Z 3 in
     let/n to := word.of_Z 5 in
-    let/n := word.of_Z 1 in
     let/n tick := word.of_Z 0 in
     let/n (tick, c) :=
        ranged_for_u (A := word * cell)
@@ -314,7 +309,7 @@ Section Ex.
                                                       tr' = tr /\
                                                       (* locals' = map.put locals "tick" tick /\ *)
                                                       locals' = (∅[["c" ← c_ptr]][["one" ← v]]
-                                                                  [["from" ← idx]][["to" ← v1]][["step" ← v2]]
+                                                                  [["from" ← idx]][["to" ← v1]]
                                                                   [["tick" ← tick]]) /\
                                                       (cell_value c_ptr c * R)%sep mem')).
 
