@@ -339,7 +339,7 @@ Section CompilerBasics.
     cbv_beta_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.xor xorb
                                      ltac:(compile_binop_bbb_t word.unsigned_xor_nowrap)).
 
-  (* TODO: deduplicate and automate *)
+  (* TODO: Remove? The expression reifier handles single variables just fine. *)
   Lemma compile_copy_word {tr mem locals functions} v0 :
     let v := v0 in
     forall {P} {pred: P v -> predicate}

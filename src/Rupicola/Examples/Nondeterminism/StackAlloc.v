@@ -104,7 +104,6 @@ Section Peek.
 
   Import SizedListArrayCompiler.
   Hint Extern 1 => simple eapply compile_stack_alloc; shelve : compiler.
-  Hint Extern 10 => simple eapply compile_copy_word; shelve : compiler.
 
   Hint Resolve stackalloc_universal_bound : compiler_cleanup.
 
