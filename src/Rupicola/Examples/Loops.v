@@ -238,11 +238,11 @@ Section Ex.
 
     simple apply compile_nlet_as_nlet_eq.
     eapply compile_ranged_for_u with (loop_pred := (fun idx a2 tr' mem' locals' =>
-                                                     tr' = tr /\
-                                                     locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
-                                                                 [["from" ← idx]]) /\
-                                                     (listarray_value AccessWord a1_ptr a1 *
-                                                      listarray_value AccessWord a2_ptr a2 * R)%sep mem')).
+        tr' = tr /\
+        locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
+                    [["from" ← idx]]) /\
+        (listarray_value AccessWord a1_ptr a1 *
+         listarray_value AccessWord a2_ptr a2 * R)%sep mem')).
 
     (*  FIXME remove previous hints *)
     (* Import UnsizedListArrayCompiler. *)
@@ -258,8 +258,9 @@ Section Ex.
           Putting that info in the representation predicates has a similar effect.
           Without this, we need to perranged_for induction explicitly. *)
       subst a.
-      apply ranged_for_u_ind.
-      - lia.
+      unfold ranged_for'.
+      apply ranged_for_break_ind.
+      - simpl. lia.
       - intros; unfold nlet; cbn.
         rewrite ListArray.put_length.
         assumption. }
@@ -271,16 +272,15 @@ Section Ex.
     let/n to := word.of_Z 5 in
     let/n tick := word.of_Z 0 in
     let/n (tick, c) :=
-       ranged_for_u (A := word * cell)
+       ranged_for_u (A := P2.prod word cell)
                     from to
-                    (fun tok idx acc bounded =>
-                       let '(tick, c) := acc in
+                    (fun tok idx '\< tick, c \> bounded =>
                        let/n v := get c in
                        let/n v := word.add v idx in
                        let/n c := put v c in
                        let/n tick := word.add tick one in
-                       (tok, (tick, c)))
-                    (tick, c) : word * cell in
+                       (tok, \< tick, c \>))
+                    \< tick, c \> : P2.prod word cell in
     (let/n v := get c in
      let/n v := word.add v tick in
      let/n c := put v c in
@@ -304,14 +304,14 @@ Section Ex.
     repeat compile_step.
 
     simple apply compile_nlet_as_nlet_eq.
-    eapply compile_ranged_for_u with (loop_pred := (fun idx acc tr' mem' locals' =>
-                                                      let '(tick, c) := acc in
-                                                      tr' = tr /\
-                                                      (* locals' = map.put locals "tick" tick /\ *)
-                                                      locals' = (∅[["c" ← c_ptr]][["one" ← v]]
-                                                                  [["from" ← idx]][["to" ← v1]]
-                                                                  [["tick" ← tick]]) /\
-                                                      (cell_value c_ptr c * R)%sep mem')).
+    eapply compile_ranged_for_u with (loop_pred := (fun idx (acc: P2.prod _ _) tr' mem' locals' =>
+        let (tick, c) := acc in
+        tr' = tr /\
+        (* locals' = map.put locals "tick" tick /\ *)
+        locals' = (∅[["c" ← c_ptr]][["one" ← v]]
+                    [["from" ← idx]][["to" ← v1]]
+                    [["tick" ← tick]]) /\
+        (cell_value c_ptr c * R)%sep mem')).
 
     all: repeat compile_step; compile_done.
   Qed.
