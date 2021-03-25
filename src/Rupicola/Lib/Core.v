@@ -45,6 +45,20 @@ Coercion name_of_func (f : bedrock_func) := fst f.
 Definition predicate {parameters: Semantics.parameters} :=
   Semantics.trace -> Semantics.mem -> Semantics.locals -> Prop.
 
+Module P2.
+  Section Primitive.
+    Set Primitive Projections.
+    Record prod {A B} := pair { fst: A; snd: B }.
+  End Primitive.
+  Arguments prod: clear implicits.
+  Arguments pair {A B} fst snd.
+End P2.
+
+Declare Scope p2_scope.
+Delimit Scope p2_scope with p2.
+Notation "\<  x ,  y ,  .. ,  z  \>" := (P2.pair .. (P2.pair x y) .. z) : p2_scope.
+Open Scope p2_scope.
+
 (* TODO: should move upstream to coqutil *)
 Module map.
   Section __.
