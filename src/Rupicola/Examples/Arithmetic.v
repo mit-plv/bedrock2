@@ -16,7 +16,7 @@ Module FNV1A (P: FNV1A_params).
    Notation "∅" := map.empty.
    Notation "m [[ k ← v ]]" :=
      (map.put m k v)
-       (left associativity, at level 11,
+       (left associativity, at level 1,
         format "m [[ k  ←  v ]]").
 
   Definition update (hash data : word) :=

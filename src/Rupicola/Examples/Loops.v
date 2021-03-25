@@ -12,7 +12,7 @@ Section Ex.
   Notation "∅" := map.empty.
   Notation "m [[ k ← v ]]" :=
     (map.put m k v)
-      (left associativity, at level 11,
+      (left associativity, at level 1,
        format "m [[ k  ←  v ]]").
 
   Lemma signed_lt_unsigned w:
