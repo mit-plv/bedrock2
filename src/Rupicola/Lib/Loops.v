@@ -3,18 +3,27 @@ Require Import Rupicola.Lib.Api.
 
 Module Type ExitToken_sig.
   Axiom t : Set.
-  Axiom new : bool -> t.
+  Axiom new : t.
   Axiom get : t -> bool.
-  Axiom set : t -> t.
+  Axiom break : t -> t.
+  Axiom continue : t -> t.
 End ExitToken_sig.
 
 Module ExitToken <: ExitToken_sig.
+  (* TODO figure out a representation that lets us store ExitToken.t in the same
+     variable as the loop counter *)
   Definition t := bool.
-  Definition new (b: bool) : t := b.
+  Definition new : t := false.
   Definition get (tok: t) : bool := tok.
-  Definition set (tok: t) : t := true.
-  Definition branch {A} (tok: t) (set unset: A) :=
-    if tok then set else unset.
+  Definition break (tok: t) : t := true.
+  Definition continue (tok: t) : t := false.
+  Definition branch {T} (tok: t) (break continue: T) :=
+    if tok then break else continue.
+
+  Lemma map_branch {T1 T2} (f: T1 -> T2) tok break continue:
+    f (branch tok break continue) =
+    branch tok (f break) (f continue).
+  Proof. destruct tok; reflexivity. Qed.
 End ExitToken.
 
 Open Scope Z_scope.
@@ -399,7 +408,7 @@ Proof. lia. Qed.
 (* Lemma ranged_for_break_continue_eqn {A} from to step body a0 *)
 (*       (H: forall idx, _) H': *)
 (*   @ranged_for_break A from (to + step) step body a0  = *)
-(*   snd (body (ExitToken.new false) to *)
+(*   snd (body ExitToken.new to *)
 (*             (ranged_for_break from to step *)
 (*                         (fun tok idx acc pr => *)
 (*                            body tok idx acc (H idx pr)) *)
@@ -427,19 +436,27 @@ Section WithTok.
       ranged_for_break
         from to
         (fun idx acc pr =>
-           body (ExitToken.new false) idx (snd acc) pr)
+           body ExitToken.new idx (snd acc) pr)
         (fun tok_acc => ExitToken.get (fst tok_acc))
-        (ExitToken.new false, a0).
+        (ExitToken.new, a0).
 
     Definition ranged_for :=
       snd ranged_for'.
+
+    Lemma ranged_for_exit :
+      from >= to ->
+      ranged_for = a0.
+    Proof.
+      unfold ranged_for, ranged_for'; intros.
+      rewrite ranged_for_break_exit; eauto.
+    Qed.
 
     Definition ranged_for_nobreak :=
       snd (ranged_for_all
              from to
              (fun idx acc pr =>
-                body (ExitToken.new false) idx (snd acc) pr)
-             (ExitToken.new false, a0)).
+                body ExitToken.new idx (snd acc) pr)
+             (ExitToken.new, a0)).
   End Def.
 
   Lemma ranged_for'_Proper :
@@ -460,7 +477,7 @@ Section WithTok.
     ranged_for' from (to + 1) body a0 =
     let butlast := ranged_for' from to wbody a0 in
     if fst butlast then butlast
-    else body (ExitToken.new false) to (snd butlast) H.
+    else body ExitToken.new to (snd butlast) H.
   Proof.
     unfold ranged_for'.
     erewrite ranged_for_break_unfold_r.
@@ -472,7 +489,7 @@ Section WithTok.
     (forall t, body_pointwise (body t) (body' t)) ->
     fst (ranged_for' from to body a0) = false ->
     ranged_for' from (to + 1) body' a0 =
-    body' (ExitToken.new false) to (snd (ranged_for' from to body a0)) H.
+    body' ExitToken.new to (snd (ranged_for' from to body a0)) H.
   Proof.
     unfold ranged_for'; intros Hb Hc.
     erewrite ranged_for_break_unfold_r_nstop; eauto; cbv beta; eauto.
@@ -594,19 +611,53 @@ Section with_parameters.
 
     Context (signed: bool).
 
-    Lemma compile_ranged_for A {tr mem locals functions}
+    Lemma lts_of_Z x y:
+      - 2 ^ (Semantics.width - 1) <= x < 2 ^ (Semantics.width - 1) ->
+      - 2 ^ (Semantics.width - 1) <= y < 2 ^ (Semantics.width - 1) ->
+      word.lts (word.of_Z x) (word.of_Z y) = (x <? y).
+    Proof.
+      intros; rewrite word.signed_lts, !word.signed_of_Z, !word.swrap_inrange; eauto.
+    Qed.
+
+    Lemma ltu_of_Z x y:
+      0 <= x < 2 ^ Semantics.width ->
+      0 <= y < 2 ^ Semantics.width ->
+      word.ltu (word.of_Z x) (word.of_Z y) = (x <? y).
+    Proof.
+      intros; rewrite word.unsigned_ltu, !word.unsigned_of_Z, !word.wrap_small; eauto.
+    Qed.
+
+    Lemma getmany0 l t vt vx vy x y:
+      map.getmany_of_list l (vx :: vy :: vt) = Some (x :: y :: t) ->
+      map.get l vx = Some x.
+    Proof.
+      intros; eapply (map.getmany_of_list_get _ 0); eauto || reflexivity.
+    Qed.
+
+    Lemma getmany1 l t vt vx vy x y:
+      map.getmany_of_list l (vx :: vy :: vt) = Some (x :: y :: t) ->
+      map.get l vy = Some y.
+    Proof.
+      intros; eapply (map.getmany_of_list_get _ 1); eauto || reflexivity.
+    Qed.
+
+    Notation in_signed_bounds x :=
+      (- 2 ^ (Semantics.width - 1) <= x < 2 ^ (Semantics.width - 1)).
+
+    Notation in_unsigned_bounds x :=
+      (0 <= x < 2 ^ Semantics.width).
+
+    Lemma _compile_ranged_for A {tr mem locals functions}
           (from to: Z) body (a0: A) :
       let v := ranged_for from to body a0 in
       forall {P} {pred: P v -> predicate}
-        (loop_pred: Z -> A -> predicate)
+        (loop_pred: forall (idx: Z) (a: A), predicate)
         {k: nlet_eq_k P v} {k_impl} {body_impl}
         (from_var to_var: string) vars,
 
         let lp from tok_acc tr mem locals :=
-            let frm := ExitToken.branch (fst tok_acc) (to - 1) from in
-            map.get locals from_var = Some (word.of_Z frm) /\
-            loop_pred (frm + 1) (snd tok_acc) tr mem
-                      (map.put locals from_var (word.of_Z (frm + 1))) in
+            let from := ExitToken.branch (fst tok_acc) to (from + 1) in
+            loop_pred from (snd tok_acc) tr mem locals in
 
         (forall from a0 tr mem locals,
             loop_pred from a0 tr mem locals ->
@@ -614,11 +665,9 @@ Section with_parameters.
             Some [word.of_Z from; word.of_Z to]) ->
 
         loop_pred from a0 tr mem locals ->
-        from <= to ->
-        (if signed then
-           - 2 ^ (Semantics.width - 1) <=  from /\ to < 2 ^ (Semantics.width - 1)
-         else
-           0 <= from /\ to < 2 ^ Semantics.width) ->
+
+        (if signed then in_signed_bounds from /\ in_signed_bounds to
+         else in_unsigned_bounds from /\ in_unsigned_bounds to) ->
 
         ((* loop body *)
           let lp := lp in
@@ -626,19 +675,20 @@ Section with_parameters.
             (Hl: from - 1 < from')
             (Hr: from' < to)
             (Hr': from' <= to),
-            let tok := ExitToken.new false in
             let a := ranged_for' from from' (wbody body pr Hr') a0 in
-            ExitToken.get (fst a) = false ->
-            loop_pred from' (snd a) tr mem locals ->
+            let prev_tok := fst a in
+            let acc := snd a in  (* FIXME use primitive projections? *)
+            ExitToken.get prev_tok = false ->
+            loop_pred from' acc tr mem locals ->
             (<{ Trace := tr;
                 Memory := mem;
                 Locals := locals;
                 Functions := functions }>
              body_impl
-             <{ lp from' (body tok from' (snd a) (conj Hl Hr)) }>)) ->
+             <{ lp from' (body ExitToken.new from' acc (conj Hl Hr)) }>)) ->
         (let v := v in
-         forall tr mem locals,
-           loop_pred to v tr mem locals ->
+         forall from' tr mem locals,
+           loop_pred from' v tr mem locals ->
            (<{ Trace := tr;
                Memory := mem;
                Locals := locals;
@@ -654,17 +704,28 @@ Section with_parameters.
              (expr.op (if signed then bopname.lts else bopname.ltu)
                       (expr.var from_var)
                       (expr.var to_var))
-             (cmd.seq
-                body_impl
-                (cmd.set from_var
-                         (expr.op bopname.add
-                                  (expr.var from_var)
-                                  (expr.literal 1)))))
+             body_impl)
           k_impl
         <{ pred (nlet_eq vars v k) }>.
     Proof.
-      intros * Hlocals Hinit Hfromto Hbounds Hbody Hk.
+      intros * Hlocals Hinit Hbounds Hbody Hk.
       repeat straightline'.
+
+      destruct (Z_gt_le_dec from to).
+      { (* Loop won't run at all *)
+        eexists nat, lt, (fun n tr mem locals => loop_pred from a0 tr mem locals);
+          repeat apply conj; eauto using lt_wf, 0%nat.
+
+        intros.
+        exists (word.of_Z 0); repeat apply conj.
+        - eexists; split; eauto using getmany0.
+          eexists; split; eauto using getmany1.
+          pose proof Zlt_cases from to.
+          destruct signed; simpl; rewrite ?lts_of_Z, ?ltu_of_Z by tauto;
+            destruct (from <? to); reflexivity || lia.
+        - rewrite word.unsigned_of_Z_0; intros; exfalso; lia.
+        - intros. apply (Hk from).
+          subst v. rewrite ranged_for_exit; eauto || lia. }
 
       pose (inv := (fun n tr mem locals =>
                      exists from' (Hr: from' <= to),
@@ -692,39 +753,30 @@ Section with_parameters.
         destruct Hinv as (from' & Hl & Hr & -> & Hcontinue & Hpred).
         eexists ?[b]; split; [|split].
         { (* loop test can be eval'd *)
-          eexists; split;
-            [ eapply (map.getmany_of_list_get _ 0); eauto || reflexivity | ].
-          eexists; split;
-            [ eapply (map.getmany_of_list_get _ 1); eauto || reflexivity | ].
-          [b]: destruct signed.
-          destruct signed; simpl.
-          - rewrite word.signed_lts, !word.signed_of_Z, !word.swrap_inrange by lia;
-              reflexivity.
-          - rewrite word.unsigned_ltu, !word.unsigned_of_Z, !word.wrap_small by lia;
-              reflexivity. }
-        all: intros Hnz; destruct (from' <? to) eqn:Hnz' in Hnz;
-          try (destruct signed in *; simpl in Hnz;
-               rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1 in Hnz;
-               congruence).
+          eexists; split. eauto using getmany0.
+          eexists; split. eauto using getmany1.
+          destruct signed; simpl;
+            rewrite ?lts_of_Z, ?ltu_of_Z by lia;
+            reflexivity. }
+        all:
+          pose proof Zlt_cases from' to;
+          intros Hnz; destruct (from' <? to);
+            try (rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1 in Hnz;
+                 congruence).
 
-        { (* Loop body analysis *)
-          apply Z.ltb_lt in Hnz'.
-          eapply compile_seq.
+        { eapply WeakestPrecondition_weaken; cycle 1.
           { (* User-supplied loop body *)
             unshelve apply Hbody; cycle -2.
             { unshelve apply Hcontinue; eassumption. }
             { apply Hpred. }
             all: eauto with arith || lia. }
-          { (* Variable increment *)
+          { (* Invariant proof *)
+            subst lp; cbv beta.
             set (body _ _ _ _) as acc_tok in *.
-            set (ExitToken.branch (fst acc_tok) (to - 1) from' + 1) as from'' in *.
+            set (ExitToken.branch (fst acc_tok) to (from' + 1)) as from'' in *.
 
-            subst lp; cbv beta; intros * (Hfromeq & Hlp).
-            eexists; split.
-            eexists; split; [exact Hfromeq|].
-            eexists; red. red.
-            simpl. rewrite <- word.ring_morph_add.
-            eexists; split; unfold inv.
+            intros * Hlp.
+            exists (Z.to_nat (to - from'')); split.
 
             assert (exists h,
                        acc_tok =
@@ -732,7 +784,7 @@ Section with_parameters.
               as [? Hrefold].
             { exists (ltac:(lia): from' + 1 <= to).
               subst acc_tok.
-              erewrite ranged_for'_unfold_r_nstop with (H := ?[H]).
+              erewrite ranged_for'_unfold_r_nstop with (H0 := ?[H]).
               [H]: lia.
               f_equal; f_equal; apply range_unique.
               cbv beta; intros; f_equal; apply range_unique.
@@ -740,7 +792,7 @@ Section with_parameters.
                 intros; cbv beta; f_equal; (congruence || lia || apply range_unique). }
 
             { (* Invariant proof *)
-              eexists from''.
+              exists from''.
 
               unshelve eexists;
                 [subst from''; destruct (fst acc_tok); simpl; lia|].
@@ -760,13 +812,11 @@ Section with_parameters.
                   intros; cbv beta; f_equal; (congruence || lia || apply range_unique). }
 
               { (* Final invariant holds *)
-                set (map.put _ from_var _) as locals' in *.
                 subst from'';
                   destruct (fst acc_tok) eqn:Htok; simpl in *;
                     rewrite Hrefold in Hlp.
                 { (* Loop exited early *)
                   erewrite ranged_for'_monotonic.
-                  replace (to - 1 + 1) with to in * by lia.
                   - eassumption.
                   - lia.
                   - cbv beta; intros; f_equal; apply range_unique.
@@ -780,7 +830,6 @@ Section with_parameters.
               subst from''. destruct (fst acc_tok); simpl; lia. } } }
 
         { (* Loop end analysis *)
-          apply Z.ltb_ge in Hnz'.
           cbv zeta in Hpred.
           assert (from' = to) as Hend by lia; destruct Hend.
           eapply Hk.
@@ -791,6 +840,97 @@ Section with_parameters.
             intros; cbv beta; f_equal; (congruence || lia || apply range_unique). } }
     Qed.
 
+    (* TODO Use a section? *)
+
+    Lemma compile_ranged_for_with_auto_increment A {tr mem locals functions}
+          (from to: Z) body (a0: A) :
+      let v := ranged_for from to body a0 in
+      forall {P} {pred: P v -> predicate}
+        (loop_pred: forall (idx: Z) (a: A), predicate)
+        {k: nlet_eq_k P v} {k_impl} {body_impl}
+        (from_var to_var: string) vars,
+
+        let lp from tok_acc tr mem locals :=
+            let from := ExitToken.branch (fst tok_acc) (to - 1) from in
+            loop_pred from (snd tok_acc) tr mem locals in
+
+        (forall from a0 tr mem locals,
+            loop_pred from a0 tr mem locals ->
+            map.getmany_of_list locals [from_var; to_var] =
+            Some [word.of_Z from; word.of_Z to]) ->
+
+        (forall from from' acc tr mem locals,
+            loop_pred from acc tr mem locals ->
+            loop_pred from' acc tr mem (map.put locals from_var (word.of_Z from'))) ->
+
+        loop_pred from a0 tr mem locals ->
+
+        (if signed then in_signed_bounds from /\ in_signed_bounds to
+         else in_unsigned_bounds from /\ in_unsigned_bounds to) ->
+
+        ((* loop body *)
+          let lp := lp in
+          forall tr mem locals from'
+            (Hl: from - 1 < from')
+            (Hr: from' < to)
+            (Hr': from' <= to),
+            let a := ranged_for' from from' (wbody body pr Hr') a0 in
+            let prev_tok := fst a in
+            let acc := snd a in  (* FIXME use primitive projections? *)
+            ExitToken.get prev_tok = false ->
+            loop_pred from' acc tr mem locals ->
+            (<{ Trace := tr;
+                Memory := mem;
+                Locals := locals;
+                Functions := functions }>
+             body_impl
+             <{ lp from' (body ExitToken.new from' acc (conj Hl Hr)) }>)) ->
+        (let v := v in
+         forall from' tr mem locals,
+           loop_pred from' v tr mem locals ->
+           (<{ Trace := tr;
+               Memory := mem;
+               Locals := locals;
+               Functions := functions }>
+            k_impl
+            <{ pred (k v eq_refl) }>)) ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd.seq
+          (cmd.while
+             (expr.op (if signed then bopname.lts else bopname.ltu)
+                      (expr.var from_var)
+                      (expr.var to_var))
+             (cmd.seq body_impl
+                      (cmd.set from_var
+                               (expr.op bopname.add
+                                        (expr.var from_var)
+                                        (expr.literal 1)))))
+          k_impl
+        <{ pred (nlet_eq vars v k) }>.
+    Proof.
+      intros; eapply _compile_ranged_for; try eassumption.
+      (* Goal: (body; from := from + 1) does the right thing *)
+      intros; eapply compile_seq; eauto.
+      (* Goal: (from := from + 1) does the right thing *)
+
+      subst lp acc a; cbv beta; intros * Hlp.
+
+      eexists; split.
+      eexists; split.
+      eauto using getmany0.
+
+      simpl. red. red. rewrite <- word.ring_morph_add.
+      rewrite (ExitToken.map_branch (fun z => word.of_Z (z + 1))).
+      ring_simplify (to - 1 + 1).
+      rewrite <- ExitToken.map_branch.
+      reflexivity.
+
+      red. red. eauto.
+    Qed.
+
     Context {to_Z: word -> Z}
             (of_Z_to_Z: forall w, word.of_Z (to_Z w) = w)
             (to_Z_of_Z: forall l h w,
@@ -799,10 +939,8 @@ Section with_parameters.
 
     Lemma compile_ranged_for_w A {tr mem locals functions}
           (from to: word)
-          (H: if signed then
-                - 2 ^ (Semantics.width - 1) <=  to_Z from /\ to_Z to < 2 ^ (Semantics.width - 1)
-              else
-                0 <= to_Z from /\ to_Z to < 2 ^ Semantics.width)
+          (H: if signed then in_signed_bounds (to_Z from) /\ in_signed_bounds (to_Z to)
+              else in_unsigned_bounds (to_Z from) /\ in_unsigned_bounds (to_Z to))
           body (a0: A) :
       let v := ranged_for_w from to to_Z_of_Z body a0 in
       forall {P} {pred: P v -> predicate}
@@ -811,18 +949,19 @@ Section with_parameters.
         (from_var to_var: string) vars,
 
         let lp from tok_acc tr mem locals :=
-            let frm := ExitToken.branch (fst tok_acc) (word.sub to (word.of_Z 1)) from in
-            map.get locals from_var = Some frm /\
-            loop_pred (word.add frm (word.of_Z 1)) (snd tok_acc) tr mem
-                      (map.put locals from_var (word.add frm (word.of_Z 1))) in
+            let from := ExitToken.branch (fst tok_acc) (word.sub to (word.of_Z 1)) from in
+            loop_pred from (snd tok_acc) tr mem locals in
 
         (forall from a0 tr mem locals,
             loop_pred from a0 tr mem locals ->
             map.getmany_of_list locals [from_var; to_var] =
             Some [from; to]) ->
 
+        (forall from from' acc tr mem locals,
+            loop_pred from acc tr mem locals ->
+            loop_pred from' acc tr mem (map.put locals from_var from')) ->
+
         loop_pred from a0 tr mem locals ->
-        to_Z from <= to_Z to ->
 
         ((* loop body *)
           let lp := lp in
@@ -830,7 +969,7 @@ Section with_parameters.
             (Hl: to_Z from - 1 < to_Z from')
             (Hr: to_Z from' < to_Z to)
             (Hr': to_Z from' <= to_Z to),
-            let tok := ExitToken.new false in
+            let tok := ExitToken.new in
             let a := ranged_for' (to_Z from) (to_Z from')
                                 (w_body _ _ to_Z_of_Z
                                         (wbody body pr Hr')) a0 in
@@ -844,8 +983,8 @@ Section with_parameters.
              body_impl
              <{ lp from' (body tok from' (snd a) (conj Hl Hr)) }>)) ->
         (let v := v in
-         forall tr mem locals,
-           loop_pred to v tr mem locals ->
+         forall from' tr mem locals,
+           loop_pred from' v tr mem locals ->
            (<{ Trace := tr;
                Memory := mem;
                Locals := locals;
@@ -870,15 +1009,16 @@ Section with_parameters.
           k_impl
         <{ pred (nlet_eq vars v k) }>.
     Proof.
-      intros * Hlocals Hinit Hfromto Hbody Hk.
-      apply compile_ranged_for
-        with (loop_pred := fun z => loop_pred (word.of_Z z)); intros.
+      intros * Hlocals Hfromindep Hinit Hbody Hk.
+      apply compile_ranged_for_with_auto_increment
+        with (loop_pred := fun z => loop_pred (word.of_Z z)).
 
-      - rewrite of_Z_to_Z. eauto.
+      - rewrite of_Z_to_Z; eauto.
+      - eauto.
       - rewrite of_Z_to_Z; eassumption.
       - eassumption.
-      - eassumption.
-      - assert (exists h, a = ranged_for' (to_Z from) (to_Z (word.of_Z from')) (w_body from (word.of_Z from') to_Z_of_Z (wbody body pr h)) a0) as [h eqn].
+      - intros.
+        assert (exists h, a = ranged_for' (to_Z from) (to_Z (word.of_Z from')) (w_body from (word.of_Z from') to_Z_of_Z (wbody body pr h)) a0) as [h eqn].
         { unshelve eexists; subst a.
           { rewrite (to_Z_of_Z from to); lia. }
           unshelve apply ranged_for'_Proper; reflexivity || eauto.
@@ -897,12 +1037,11 @@ Section with_parameters.
           { subst b0 b1. f_equal. apply range_unique. }
           clearbody b0; subst.
 
-          intros * (Hm & Hlp).
+          intros * Hlp.
           * destruct (fst b1); simpl in *;
               repeat rewrite ?word.ring_morph_add, ?word.ring_morph_sub, ?of_Z_to_Z;
               eauto.
-      - eapply Hk.
-        rewrite of_Z_to_Z in H0.
+      - intros; eapply Hk.
         eassumption.
     Qed.
   End Generic.
@@ -914,31 +1053,15 @@ Section with_parameters.
           {functions : list (string * (list string * list string * cmd))}
           (from to : word).
 
-  Let unsigned_bounds:
-    0 <= word.unsigned from /\
-    word.unsigned to < 2 ^ Semantics.width.
-  Proof.
-    pose proof word.unsigned_range from;
-      pose proof word.unsigned_range to.
-    lia.
-  Qed.
-
-  Let signed_bounds:
-    - 2 ^ (Semantics.width - 1) <= word.signed from /\
-    word.signed to < 2 ^ (Semantics.width - 1).
-  Proof.
-    pose proof word.signed_range from;
-      pose proof word.signed_range to.
-    lia.
-  Qed.
-
   Definition compile_ranged_for_u :=
     @compile_ranged_for_w false _ word.of_Z_unsigned word_unsigned_of_Z_bracketed
-                          A tr mem locals functions from to unsigned_bounds.
+                          A tr mem locals functions from to
+                          (conj (word.unsigned_range _) (word.unsigned_range _)).
 
   Definition compile_ranged_for_s :=
     @compile_ranged_for_w true _ word.of_Z_signed word_signed_of_Z_bracketed
-                          A tr mem locals functions from to signed_bounds.
+                          A tr mem locals functions from to
+                          (conj (word.signed_range _) (word.signed_range _)).
 End with_parameters.
 
 Require bedrock2.BasicC64Semantics.
@@ -949,7 +1072,7 @@ Module test.
   Time Compute (ranged_for 0 15
                         (fun t idx acc _ =>
                            if Z.ltb 11 idx then
-                             let t' := ExitToken.set t in
+                             let t' := ExitToken.break t in
                              (t', acc)
                            else
                              let acc := idx :: acc in
@@ -958,7 +1081,7 @@ Module test.
   Time Compute (ranged_for_u (word.of_Z 0) (word.of_Z 15)
                           (fun t idx acc _ =>
                              if word.ltu (word.of_Z 11) idx then
-                               let t' := ExitToken.set t in
+                               let t' := ExitToken.break t in
                                (t', acc)
                              else
                                let acc := idx :: acc in
