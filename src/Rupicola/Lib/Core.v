@@ -358,7 +358,22 @@ Module map.
       apply of_list_proper', eq_empty.
   Qed.
 
-  Lemma remove_many_diff {V} {map: map.map string V} {map_ok: map.ok map}:
+  Lemma eq_of_list {K V}
+        {map0 map1: map.map K V}
+        {map_ok0: map.ok map0} {map_ok1: map.ok map1}
+        {key_eqb: K -> K -> bool}
+        {key_eq_dec : EqDecider key_eqb} :
+    forall b1 b2,
+      map_eq (map.of_list (map := map0) b1) (map.of_list (map := map0) b2) ->
+      map_eq (map.of_list (map := map1) b1) (map.of_list (map := map1) b2).
+  Proof.
+    intros.
+    eapply (eq_trans (map1 := map0));
+      [ eapply (eq_trans (map1 := map0)) | ].
+    all: eauto using @of_list_proper.
+  Qed.
+
+  Lemma remove_many_diff_of_str_list {V} {map: map.map string V} {map_ok: map.ok map}:
     let SM := SortedListString.map V in
     let SM_ok := SortedListString.ok V in
     forall (b0 b1: list (string * V)) ks,
@@ -374,7 +389,7 @@ Module map.
     exact Hm.
   Qed.
 
-  Lemma get_of_list {V} {map: map.map string V} {map_ok: map.ok map}:
+  Lemma get_of_str_list {V} {map: map.map string V} {map_ok: map.ok map}:
     let SM := SortedListString.map V in
     let SM_ok := SortedListString.ok V in
     forall (b: list (string * V)) k v,
@@ -383,6 +398,17 @@ Module map.
       map.get (map.of_list (map := map) b) k = v.
   Proof.
     intros; rewrite of_list_proper; eassumption.
+  Qed.
+
+  Lemma eq_of_str_list {V} {map: map.map string V} {map_ok: map.ok map}:
+    let SM := SortedListString.map V in
+    let SM_ok := SortedListString.ok V in
+    forall (b1 b2: list (string * V)),
+      map.of_list (map := SM) b1 = map.of_list (map := SM) b2 ->
+      map.of_list (map := map) b1 = map.of_list (map := map) b2.
+  Proof.
+    intros SM SM_ok b1 b2 H%ext_rev; apply ext_eq.
+    apply eq_of_list; assumption.
   Qed.
 End map.
 

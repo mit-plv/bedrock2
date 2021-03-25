@@ -553,6 +553,19 @@ Ltac map_to_list m :=
   let l := (eval cbv [List.rev_acc List.app] in l) in
   l.
 
+Tactic Notation "set_change" uconstr(x) "with" uconstr(y) :=
+  (* This tactic uses ‘set’ because ‘change’ sometimes fails to find ‘m’.
+     (See the last example of Loops.v for an example). Why? *)
+  (let sx := fresh in
+   set x as sx; change sx with y; clear sx).
+
+Ltac reify_map m :=
+  match type of m with
+  | @map.rep _ _ ?M =>
+    let b := map_to_list m in
+    set_change m with (@map.of_list _ _ M b)
+  end.
+
 Ltac _change x y :=
   change x with y.
   (* let Heq := constr:(eq_refl x: x = y) in *)
@@ -859,7 +872,7 @@ Module ExprReflection.
     let bindings := map_to_list locals in
     let reified := expr_reify_word bindings w in
     simple apply compile_expr_w with (e := compile reified);
-    [ change locals with (map.of_list bindings);
+    [ set_change locals with (map.of_list bindings);
       change w with (er_T2w (expr_reifier := expr_word_reifier)
                             (interp (map.of_list (map := SortedListString.map _) bindings) reified))
     | ].
@@ -882,7 +895,7 @@ Module ExprReflection.
     let z_bindings := type_term z_bindings in
     let reified := ExprReflection.expr_reify_Z z_bindings z in
     simple apply compile_expr_Z with (e := ExprReflection.compile reified);
-    [ change locals with (map.of_list bindings);
+    [ set_change locals with (map.of_list bindings);
       change (word.of_Z z)
         with (ExprReflection.er_T2w
                 (expr_reifier := expr_Z_reifier)
@@ -1170,9 +1183,8 @@ Ltac lookup_variable m val :=
   end.
 
 Ltac solve_map_get_goal_refl m :=
-  let b := map_to_list m in
-  change m with (map.of_list b);
-  apply map.get_of_list;
+  reify_map m;
+  apply map.get_of_str_list;
   reflexivity.
 
 Ltac solve_map_get_goal_step :=
@@ -1199,19 +1211,28 @@ Ltac solve_map_get_goal_step :=
 Ltac solve_map_get_goal :=
   progress repeat solve_map_get_goal_step.
 
-Ltac solve_map_remove_many_reify  :=
+Ltac solve_map_remove_many_reify :=
   lazymatch goal with
   | [  |- map.remove_many ?m0 _ = ?m1 ] =>
-    let b0 := map_to_list m0 in
-    let b1 := map_to_list m1 in
-    change m0 with (map.of_list b0);
-    change m1 with (map.of_list b1)
+    reify_map m0; reify_map m1
   end.
 
 Ltac solve_map_remove_many :=
   solve_map_remove_many_reify;
-  apply map.remove_many_diff;
+  apply map.remove_many_diff_of_str_list;
+  (* FIXME should this really run vm_compute? *)
   [ try (vm_compute; reflexivity) | try reflexivity ].
+
+Ltac solve_map_eq_reify :=
+  lazymatch goal with
+  | [  |- ?m0 = ?m1 ] =>
+    reify_map m0; reify_map m1
+  end.
+
+Ltac solve_map_eq :=
+  solve_map_eq_reify;
+  apply map.eq_of_str_list;
+  reflexivity.
 
 Create HintDb compiler_cleanup discriminated.
 Hint Unfold wp_bind_retvars : compiler_cleanup.
@@ -1343,7 +1364,10 @@ Ltac compile_solve_side_conditions :=
     apply map.getmany_of_list_cons
   | [  |- map.remove_many _ _ = _ ] =>
     solve_map_remove_many
+  | [  |- eq (A := map.rep) _ _ ] =>
+    solve_map_eq (* FIXME can this be unified with the previous case? *)
   | [  |- _ <> _ ] => congruence
+  | [  |- _ /\ _ ] => split
   | _ =>
     first [ compile_cleanup
           | compile_autocleanup
