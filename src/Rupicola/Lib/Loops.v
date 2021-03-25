@@ -1,5 +1,5 @@
-From Coq Require Recdef.
-Require Import Rupicola.Lib.Api.
+Require Import Rupicola.Lib.Core.
+Require Import Rupicola.Lib.Notations.
 
 Module Type ExitToken_sig.
   Axiom t : Set.
@@ -29,7 +29,7 @@ End ExitToken.
 Open Scope Z_scope.
 Open Scope list.
 
-Section Gallina.
+Section ZRange.
   Fixpoint z_range' z0 len :=
     match len with
     | O => []
@@ -135,43 +135,19 @@ Section Gallina.
     replace (from + Z.of_nat (Z.to_nat (to - 1 - from))) with (to - 1) by lia.
     reflexivity.
   Qed.
+End ZRange.
 
+Section Loops.
   Context {A: Type}.
+  Context (from to: Z).
+  Context (body: forall (idx: Z) (acc: A), from - 1 < idx < to -> A).
 
-  Section NoBreak.
-    Context (from to: Z).
-    Context (body: forall (idx: Z) (acc: A), from - 1 < idx < to -> A).
-
-    Lemma iter'0 {idx tl P}:
-      (forall z : Z, In z (idx :: tl) -> P z) ->
-      (forall z : Z, In z tl -> P z).
-    Proof. simpl; eauto. Qed.
-
-    Fixpoint ranged_for_all' indexes :=
-      match indexes return (forall z, List.In z indexes -> from - 1 < z < to) -> A -> A with
-      | [] => fun _ acc => acc
-      | idx :: tl =>
-        fun pr acc =>
-          let acc := body idx acc (pr _ (or_introl eq_refl)) in
-          ranged_for_all' tl (iter'0 pr) acc
-      end.
-
-    Definition ranged_for_all :=
-      ranged_for_all' (z_range from to) (z_range_sound from to).
-
-    Lemma ranged_for_all_exit a0:
-      from >= to -> ranged_for_all a0 = a0.
-    Proof.
-      unfold ranged_for_all; intros.
-      generalize (z_range_sound from to).
-      rewrite (z_range_nil from to H).
-      reflexivity.
-    Qed.
-  End NoBreak.
+  Lemma iter'0 {idx tl P}:
+    (forall z : Z, In z (idx :: tl) -> P z) ->
+    (forall z : Z, In z tl -> P z).
+  Proof. simpl; eauto. Qed.
 
   Section WithBreak.
-    Context from to
-            (body: forall (idx: Z) (acc: A), from - 1 < idx < to -> A).
     Context (stop: A -> bool).
 
     Fixpoint ranged_for_break' indexes :=
@@ -184,13 +160,44 @@ Section Gallina.
                ranged_for_break' tl (iter'0 pr) acc
       end.
 
+    Definition ranged_for_break :=
+      ranged_for_break' (z_range from to) (z_range_sound from to).
+
     Lemma ranged_for_break'_stop_idempotent zs H a0:
       stop a0 = true ->
       ranged_for_break' zs H a0 = a0.
     Proof.
       destruct zs; simpl; intros h; try rewrite h; reflexivity.
     Qed.
+
+    Lemma ranged_for_break_exit a0:
+      from >= to -> ranged_for_break a0 = a0.
+    Proof.
+      unfold ranged_for_break; intros.
+      generalize (z_range_sound from to).
+      rewrite (z_range_nil from to H).
+      reflexivity.
+    Qed.
   End WithBreak.
+
+  Section NoBreak.
+    Definition ranged_for_all :=
+      ranged_for_break (fun _ => false).
+
+    Lemma ranged_for_all_exit a0:
+      from >= to -> ranged_for_all a0 = a0.
+    Proof.
+      intros; apply ranged_for_break_exit; assumption.
+    Qed.
+  End NoBreak.
+End Loops.
+
+Notation body_pointwise b b' :=
+  (forall idx acc pr pr', b idx acc pr = b' idx acc pr').
+
+Section Properties.
+  Context {A: Type}.
+  Implicit Type stop : A -> bool.
 
   Lemma ranged_for_break'_Proper :
     forall from from' to to' body body' stop stop' zs zs' a0 a0' H H',
@@ -222,18 +229,6 @@ Section Gallina.
         apply range_unique.
   Qed.
 
-  Definition ranged_for_break from to body stop :=
-    ranged_for_break' from to body stop (z_range from to) (z_range_sound from to).
-
-  Lemma ranged_for_break_exit from to body stop a0:
-    from >= to -> ranged_for_break from to body stop a0 = a0.
-  Proof.
-    unfold ranged_for_break; intros.
-    generalize (z_range_sound from to).
-    rewrite (z_range_nil from to H).
-    reflexivity.
-  Qed.
-
   Lemma ranged_for_break_Proper :
     forall from from' to to' body body' stop stop' a0 a0',
       a0 = a0' ->
@@ -247,186 +242,185 @@ Section Gallina.
       apply ranged_for_break'_Proper; eauto.
   Qed.
 
+  Lemma ranged_for_all_Proper :
+    forall from from' to to' body body' (a0 a0': A),
+      a0 = a0' ->
+      from = from' -> to = to' ->
+      (forall z a h h', body z a h = body' z a h') ->
+      ranged_for_all from to body a0 =
+      ranged_for_all from' to' body' a0'.
+  Proof.
+    intros; apply ranged_for_break_Proper; eauto.
+  Qed.
+
   Section Induction.
     Context (P: A -> Prop) (a0: A).
 
     Context (from to: Z).
     Context (body: forall (idx: Z) (acc: A), from - 1 < idx < to -> A).
-    Context (stop: A -> bool).
 
     Context (H0: P a0).
     Context (Hbody: forall idx a1 Hle, P a1 -> P (body idx a1 Hle)).
 
-    Lemma ranged_for_break'_ind' :
-      forall zs H,
-        P (ranged_for_break' from to body stop zs H a0).
-    Proof.
-      intros.
-      revert zs H a0 H0.
-      induction zs; cbn; eauto; [].
-      intros; destruct (stop _); eauto.
-    Qed.
+    Section WithBreak.
+      Context (stop: A -> bool).
 
-    Lemma ranged_for_break_ind :
-      P (ranged_for_break from to body stop a0).
-    Proof. eapply ranged_for_break'_ind'. Qed.
+      Lemma ranged_for_break'_ind' :
+        forall zs H,
+          P (ranged_for_break' from to body stop zs H a0).
+      Proof.
+        intros.
+        revert zs H a0 H0.
+        induction zs; cbn; eauto; [].
+        intros; destruct (stop _); eauto.
+      Qed.
+
+      Lemma ranged_for_break_ind :
+        P (ranged_for_break from to body stop a0).
+      Proof. eapply ranged_for_break'_ind'. Qed.
+    End WithBreak.
+
+    Section NoBreak.
+      Lemma ranged_for_all_ind :
+        P (ranged_for_all from to body a0).
+      Proof. eapply ranged_for_break_ind; eauto. Qed.
+    End NoBreak.
   End Induction.
-End Gallina.
 
-Lemma ranged_for_break_unfold_l1 {from to}:
-  from < to -> from - 1 < from < to.
-Proof. lia. Qed.
+  Lemma ranged_for_break_unfold_l1 {from to}:
+    from < to -> from - 1 < from < to.
+  Proof. lia. Qed.
 
-Lemma ranged_for_break_unfold_l2 {from to z}:
-  from + 1 - 1 < z < to -> from - 1 < z < to.
-Proof. lia. Qed.
+  Lemma ranged_for_break_unfold_l2 {from to z}:
+    from + 1 - 1 < z < to -> from - 1 < z < to.
+  Proof. lia. Qed.
 
-Lemma ranged_for_break_unfold_l {A} from to body stop (a0: A):
-  ranged_for_break from to body stop a0 =
-  match Z_lt_dec from to with
-  | left Hlt =>
-    if stop a0 then a0
-    else let a0 := body from a0 (ranged_for_break_unfold_l1 Hlt) in
-         ranged_for_break
-           (from + 1) to
-           (fun idx acc pr => body idx acc (ranged_for_break_unfold_l2 pr))
-           stop a0
-  | right _ => a0
-  end.
-Proof.
-  destruct Z_lt_dec.
-  - unfold ranged_for_break.
-    generalize (z_range_sound from to) as Hrn.
-    generalize (z_range_sound (from + 1) to) as Hrn1.
-    rewrite (z_range_cons from to) by assumption.
-    intros; simpl; destruct stop.
-    + reflexivity.
-    + apply ranged_for_break'_Proper;
-        intros; f_equal; reflexivity || apply range_unique.
-  - apply ranged_for_break_exit; lia.
-Qed.
+  Lemma ranged_for_break_unfold_l from to body stop (a0: A):
+    ranged_for_break from to body stop a0 =
+    match Z_lt_dec from to with
+    | left Hlt =>
+      if stop a0 then a0
+      else let a0 := body from a0 (ranged_for_break_unfold_l1 Hlt) in
+           ranged_for_break
+             (from + 1) to
+             (fun idx acc pr => body idx acc (ranged_for_break_unfold_l2 pr))
+             stop a0
+    | right _ => a0
+    end.
+  Proof.
+    destruct Z_lt_dec.
+    - unfold ranged_for_break.
+      generalize (z_range_sound from to) as Hrn.
+      generalize (z_range_sound (from + 1) to) as Hrn1.
+      rewrite (z_range_cons from to) by assumption.
+      intros; simpl; destruct stop.
+      + reflexivity.
+      + apply ranged_for_break'_Proper;
+          intros; f_equal; reflexivity || apply range_unique.
+    - apply ranged_for_break_exit; lia.
+  Qed.
 
-Lemma ranged_for_break_extend1 {from to}:
-  forall idx, (from - 1 < idx < to)%Z -> (from - 1 < idx < to + 1)%Z.
-Proof. lia. Qed.
+  Lemma ranged_for_break_extend1 {from to}:
+    forall idx, (from - 1 < idx < to)%Z -> (from - 1 < idx < to + 1)%Z.
+  Proof. lia. Qed.
 
-Lemma ranged_for_break_unfold_r1 {from}:
-  forall idx, (from - 1 < idx)%Z -> (from - 1 < idx < idx + 1)%Z.
-Proof. lia. Qed.
+  Lemma ranged_for_break_unfold_r1 {from}:
+    forall idx, (from - 1 < idx)%Z -> (from - 1 < idx < idx + 1)%Z.
+  Proof. lia. Qed.
 
-Lemma ranged_for_break_unfold_r {A} from to body stop (a0: A) H:
-  ranged_for_break from (to + 1) body stop a0 =
-  let butlast :=
-      ranged_for_break
-        from to
-        (fun (idx : Z) (acc : A) (pr : (from - 1 < idx < to)%Z) =>
-           body idx acc (ranged_for_break_extend1 idx pr))
-        stop a0 in
-  if stop butlast then butlast
-  else body to butlast H.
-Proof.
-  unfold ranged_for_break.
-  generalize (z_range_sound from to) as Hin.
-  generalize (z_range_sound from (to + 1)) as Hin1.
+  Lemma ranged_for_break_unfold_r from to body stop (a0: A) H:
+    ranged_for_break from (to + 1) body stop a0 =
+    let butlast :=
+        ranged_for_break
+          from to
+          (fun (idx : Z) (acc : A) (pr : (from - 1 < idx < to)%Z) =>
+             body idx acc (ranged_for_break_extend1 idx pr))
+          stop a0 in
+    if stop butlast then butlast
+    else body to butlast H.
+  Proof.
+    unfold ranged_for_break.
+    generalize (z_range_sound from to) as Hin.
+    generalize (z_range_sound from (to + 1)) as Hin1.
 
-  rewrite z_range_snoc by lia. intros.
-  erewrite ranged_for_break'_app; simpl.
-  set (ranged_for_break' _ _ _ _ _ _ _) as fr.
-  set (ranged_for_break' _ _ _ _ _ _ _) as fr1.
-  assert (fr = fr1) as Hr.
-  { subst fr fr1.
-    apply ranged_for_break'_Proper;
-      intros; f_equal; (lia || reflexivity || apply range_unique). }
-  { rewrite Hr; destruct stop; try reflexivity.
-    instantiate (1 := ?[h]).
-    generalize (?h (to + 1 - 1) (or_introl eq_refl));
-      replace (to + 1 - 1) with to by lia; intros.
-    f_equal; apply range_unique. }
-  Unshelve.
-  { replace (to + 1 - 1) with to by lia.
-    intros z ?%Hin; lia. }
-  { simpl; destruct 1; lia. }
-Qed.
+    rewrite z_range_snoc by lia. intros.
+    erewrite ranged_for_break'_app; simpl.
+    set (ranged_for_break' _ _ _ _ _ _ _) as fr.
+    set (ranged_for_break' _ _ _ _ _ _ _) as fr1.
+    assert (fr = fr1) as Hr.
+    { subst fr fr1.
+      apply ranged_for_break'_Proper;
+        intros; f_equal; (lia || reflexivity || apply range_unique). }
+    { rewrite Hr; destruct stop; try reflexivity.
+      instantiate (1 := ?[h]).
+      generalize (?h (to + 1 - 1) (or_introl eq_refl));
+        replace (to + 1 - 1) with to by lia; intros.
+      f_equal; apply range_unique. }
+    Unshelve.
+    { replace (to + 1 - 1) with to by lia.
+      intros z ?%Hin; lia. }
+    { simpl; destruct 1; lia. }
+  Qed.
 
-Notation body_pointwise b b' :=
-  (forall idx acc pr pr', b idx acc pr = b' idx acc pr').
+  Lemma ranged_for_break_unfold_r_nstop from to body body1 stop (a0: A) H:
+    body_pointwise body body1 ->
+    stop (ranged_for_break from to body stop a0) = false ->
+    ranged_for_break from (to + 1) body1 stop a0 =
+    body1 to (ranged_for_break from to body stop a0) H.
+  Proof.
+    intros Hb Hs.
+    unshelve erewrite ranged_for_break_unfold_r; try lia.
+    erewrite (ranged_for_break_Proper _ from _ to _ body _ stop _ a0); intros; eauto.
+    cbv zeta; unshelve erewrite Hs by lia; f_equal; apply range_unique.
+  Qed.
 
-Lemma ranged_for_break_unfold_r_nstop {A} from to body body1 stop (a0: A) H:
-  body_pointwise body body1 ->
-  stop (ranged_for_break from to body stop a0) = false ->
-  ranged_for_break from (to + 1) body1 stop a0 =
-  body1 to (ranged_for_break from to body stop a0) H.
-Proof.
-  intros Hb Hs.
-  unshelve erewrite ranged_for_break_unfold_r; try lia.
-  erewrite (ranged_for_break_Proper _ from _ to _ body _ stop _ a0); intros; eauto.
-  cbv zeta; unshelve erewrite Hs by lia; f_equal; apply range_unique.
-Qed.
+  Lemma ranged_for_break_monotonic from to body to1 body1 stop (a0: A):
+    to1 >= to ->
+    body_pointwise body body1 ->
+    stop (ranged_for_break from to body stop a0) = true ->
+    ranged_for_break from to1 body1 stop a0 =
+    ranged_for_break from to body stop a0.
+  Proof.
+    intros Hgt Hb Hs.
+    generalize (z_range_sound from to) as Hin.
+    generalize (z_range_sound from to1) as Hin1.
 
-Lemma ranged_for_break_monotonic {A} from to body to1 body1 stop (a0: A):
-  to1 >= to ->
-  body_pointwise body body1 ->
-  stop (ranged_for_break from to body stop a0) = true ->
-  ranged_for_break from to1 body1 stop a0 =
-  ranged_for_break from to body stop a0.
-Proof.
-  intros Hgt Hb Hs.
-  generalize (z_range_sound from to) as Hin.
-  generalize (z_range_sound from to1) as Hin1.
+    destruct (Z_le_gt_dec to1 from) as [?|Hgt'].
+    { intros; rewrite !ranged_for_break_exit by lia; reflexivity. }
 
-  destruct (Z_le_gt_dec to1 from) as [?|Hgt'].
-  { intros; rewrite !ranged_for_break_exit by lia; reflexivity. }
+    revert body1 Hb;
+      replace to1 with (to + Z.of_nat (Z.to_nat (to1 - to))) in * by lia;
+      generalize (Z.to_nat (to1 - to)) as n;
+      intros.
 
-  revert body1 Hb;
-    replace to1 with (to + Z.of_nat (Z.to_nat (to1 - to))) in * by lia;
-    generalize (Z.to_nat (to1 - to)) as n;
-    intros.
+    induction n; cbn -[Z.of_nat].
+    - (* split; [rewrite <- Hs; f_equal|]; *)
+      apply ranged_for_break_Proper;
+        rewrite ?Z.add_0_r; reflexivity || eauto.
+    - revert body1 Hin1 Hb; rewrite Nat2Z.inj_succ;
+        unfold Z.succ; rewrite Z.add_assoc; intros.
 
-  induction n; cbn -[Z.of_nat].
-  - (* split; [rewrite <- Hs; f_equal|]; *)
-    apply ranged_for_break_Proper;
-      rewrite ?Z.add_0_r; reflexivity || eauto.
-  - revert body1 Hin1 Hb; rewrite Nat2Z.inj_succ;
-      unfold Z.succ; rewrite Z.add_assoc; intros.
+      destruct (Z_lt_le_dec (from - 1) (to + Z.of_nat n)).
 
-    destruct (Z_lt_le_dec (from - 1) (to + Z.of_nat n)).
+      + unshelve erewrite ranged_for_break_unfold_r; try lia.
+        erewrite IHn; cbv zeta; eauto; try rewrite Hs.
+        * reflexivity.
+        * auto using z_range_sound.
+      + rewrite !ranged_for_break_exit;
+          reflexivity || lia.
+  Qed.
 
-    + unshelve erewrite ranged_for_break_unfold_r; try lia.
-      erewrite IHn; cbv zeta; eauto; try rewrite Hs.
-      * reflexivity.
-      * auto using z_range_sound.
-    + rewrite !ranged_for_break_exit;
-        reflexivity || lia.
-Qed.
-
-Definition ranged_for_widen_bounds {from idx from' to} :
-  from - 1 < idx < from' ->
-  from' <= to ->
-  from - 1 < idx < to.
-Proof. lia. Qed.
-
-(* Lemma ranged_for_break_continue_eqn {A} from to step body a0 *)
-(*       (H: forall idx, _) H': *)
-(*   @ranged_for_break A from (to + step) step body a0  = *)
-(*   snd (body ExitToken.new to *)
-(*             (ranged_for_break from to step *)
-(*                         (fun tok idx acc pr => *)
-(*                            body tok idx acc (H idx pr)) *)
-(*                         a0) *)
-(*             H'). (* (ranged_for_widen_bounds _ _) *) *)
-(* Proof. *)
-(*   ' *)
-(*     unfold ranged_for_break'. apply ranged_for_break'_ind. _ind. *)
-(*   intros; unfold ranged_for_break. *)
-(*   rewrite ranged_for_break'_equation with (to0 := to). *)
-(*   rewrite ranged_for_break'_equation. *)
-(*   destruct Z_lt_dec; (reflexivity || lia). *)
-(* Qed. *)
+  Definition ranged_for_widen_bounds {from idx from' to} :
+    from - 1 < idx < from' ->
+    from' <= to ->
+    from - 1 < idx < to.
+  Proof. lia. Qed.
+End Properties.
 
 Section WithTok.
   Context {A: Type}.
 
-  Section Def.
+  Section Loops.
     Context from to
             (body: forall (tok: ExitToken.t) (idx: Z) (acc: A),
                 from - 1 < idx < to -> (ExitToken.t * A))
@@ -450,14 +444,7 @@ Section WithTok.
       unfold ranged_for, ranged_for'; intros.
       rewrite ranged_for_break_exit; eauto.
     Qed.
-
-    Definition ranged_for_nobreak :=
-      snd (ranged_for_all
-             from to
-             (fun idx acc pr =>
-                body ExitToken.new idx (snd acc) pr)
-             (ExitToken.new, a0)).
-  End Def.
+  End Loops.
 
   Lemma ranged_for'_Proper :
     forall from from' to to' body body' a0 a0',
@@ -514,44 +501,78 @@ Section with_parameters.
   Context {A: Type}
           (from to: word).
 
-  Section Generic.
+  Section Loops.
     Context {to_Z: word -> Z}
             (to_Z_of_Z: forall l h w,
                 to_Z l <= w <= to_Z h ->
                 to_Z (word.of_Z w) = w).
-
-    Context (body: forall (tok: ExitToken.t) (idx: word) (acc: A),
-                to_Z from - 1 < to_Z idx < to_Z to ->
-                (ExitToken.t * A)).
 
     Lemma ranged_for_w1 {idx}:
       to_Z from - 1 < idx < to_Z to ->
       to_Z from - 1 < to_Z (word.of_Z idx) < to_Z to.
     Proof. intros; erewrite (to_Z_of_Z from to); lia. Qed.
 
-    Definition w_body tok idx acc pr :=
-      body tok (word.of_Z idx) acc (ranged_for_w1 pr).
+    Section WithTok.
+      Context (body: forall (tok: ExitToken.t) (idx: word) (acc: A),
+                  to_Z from - 1 < to_Z idx < to_Z to ->
+                  (ExitToken.t * A)).
 
-    Definition ranged_for_w (a0: A) : A :=
-      ranged_for (to_Z from) (to_Z to) w_body a0.
+      Definition w_body_tok tok idx acc pr :=
+        body tok (word.of_Z idx) acc (ranged_for_w1 pr).
 
-    Lemma ranged_for_w_exit a0:
-      to_Z from >= to_Z to -> ranged_for_w a0 = a0.
-    Proof.
-      intros; unfold ranged_for_w, ranged_for, ranged_for'.
-      rewrite ranged_for_break_exit; eauto.
-    Qed.
+      Definition ranged_for_w (a0: A) : A :=
+        ranged_for (to_Z from) (to_Z to) w_body_tok a0.
 
-    Section Induction.
-      Context (P: A -> Prop) (a0: A).
-      Context (H0: P a0).
-      Context (Hbody: forall tok idx a1 Hle, P a1 -> P (snd (body tok idx a1 Hle))).
+      Lemma ranged_for_w_exit a0:
+        to_Z from >= to_Z to -> ranged_for_w a0 = a0.
+      Proof.
+        intros; unfold ranged_for_w, ranged_for, ranged_for'.
+        rewrite ranged_for_break_exit; eauto.
+      Qed.
 
-      Lemma ranged_for_w_ind : P (ranged_for_w a0).
-      Proof. unfold ranged_for_w, ranged_for, ranged_for'.
-         apply ranged_for_break_ind; simpl; eauto. Qed.
-    End Induction.
-  End Generic.
+      Section Induction.
+        Context (P: A -> Prop) (a0: A).
+        Context (H0: P a0).
+        Context (Hbody: forall tok idx a1 Hle, P a1 -> P (snd (body tok idx a1 Hle))).
+
+        Lemma ranged_for_w_ind : P (ranged_for_w a0).
+        Proof.
+          unfold ranged_for_w, ranged_for, ranged_for'.
+          apply ranged_for_break_ind; simpl; eauto.
+        Qed.
+      End Induction.
+    End WithTok.
+
+    Section NoBreak.
+      Context (body: forall (idx: word) (acc: A),
+                  to_Z from - 1 < to_Z idx < to_Z to ->
+                  A).
+
+      Definition w_body idx acc pr :=
+        body (word.of_Z idx) acc (ranged_for_w1 pr).
+
+      Definition ranged_for_all_w (a0: A) : A :=
+        ranged_for_all (to_Z from) (to_Z to) w_body a0.
+
+      Lemma ranged_for_all_w_exit a0:
+        to_Z from >= to_Z to -> ranged_for_all_w a0 = a0.
+      Proof.
+        intros; apply ranged_for_all_exit; eauto.
+      Qed.
+
+      Section Induction.
+        Context (P: A -> Prop) (a0: A).
+        Context (H0: P a0).
+        Context (Hbody: forall idx a1 Hle, P a1 -> P (body idx a1 Hle)).
+
+        Lemma ranged_for_all_w_ind : P (ranged_for_all_w a0).
+        Proof.
+          unfold ranged_for_all_w.
+          apply ranged_for_all_ind; simpl; eauto.
+        Qed.
+      End Induction.
+    End NoBreak.
+  End Loops.
 
   Section Unsigned.
     Lemma word_unsigned_of_Z_bracketed l h w:
@@ -568,6 +589,12 @@ Section with_parameters.
 
     Definition ranged_for_u_ind :=
       ranged_for_w_ind word_unsigned_of_Z_bracketed.
+
+    Definition ranged_for_all_u :=
+      ranged_for_all_w word_unsigned_of_Z_bracketed.
+
+    Definition ranged_for_all_u_ind :=
+      ranged_for_all_w_ind word_unsigned_of_Z_bracketed.
   End Unsigned.
 
   Section Signed.
@@ -585,6 +612,12 @@ Section with_parameters.
 
     Definition ranged_for_s_ind :=
       ranged_for_w_ind word_signed_of_Z_bracketed.
+
+    Definition ranged_for_all_s :=
+      ranged_for_all_w word_signed_of_Z_bracketed.
+
+    Definition ranged_for_all_s_ind :=
+      ranged_for_all_w_ind word_signed_of_Z_bracketed.
   End Signed.
 
   Definition wZ_must_pos (a: Z) :
@@ -709,7 +742,7 @@ Section with_parameters.
         <{ pred (nlet_eq vars v k) }>.
     Proof.
       intros * Hlocals Hinit Hbounds Hbody Hk.
-      repeat straightline'.
+      repeat straightline.
 
       destruct (Z_gt_le_dec from to).
       { (* Loop won't run at all *)
@@ -913,7 +946,9 @@ Section with_parameters.
     Proof.
       intros; eapply _compile_ranged_for; try eassumption.
       (* Goal: (body; from := from + 1) does the right thing *)
-      intros; eapply compile_seq; eauto.
+      intros. simpl.
+      eapply WeakestPrecondition_weaken; cycle 1.
+      red; eauto.
       (* Goal: (from := from + 1) does the right thing *)
 
       subst lp acc a; cbv beta; intros * Hlp.
@@ -971,8 +1006,8 @@ Section with_parameters.
             (Hr': to_Z from' <= to_Z to),
             let tok := ExitToken.new in
             let a := ranged_for' (to_Z from) (to_Z from')
-                                (w_body _ _ to_Z_of_Z
-                                        (wbody body pr Hr')) a0 in
+                                (w_body_tok _ _ to_Z_of_Z
+                                            (wbody body pr Hr')) a0 in
             ExitToken.get (fst a) = false ->
 
             loop_pred from' (snd a) tr mem locals ->
@@ -1018,15 +1053,15 @@ Section with_parameters.
       - rewrite of_Z_to_Z; eassumption.
       - eassumption.
       - intros.
-        assert (exists h, a = ranged_for' (to_Z from) (to_Z (word.of_Z from')) (w_body from (word.of_Z from') to_Z_of_Z (wbody body pr h)) a0) as [h eqn].
+        assert (exists h, a = ranged_for' (to_Z from) (to_Z (word.of_Z from')) (w_body_tok from (word.of_Z from') to_Z_of_Z (wbody body pr h)) a0) as [h eqn].
         { unshelve eexists; subst a.
           { rewrite (to_Z_of_Z from to); lia. }
           unshelve apply ranged_for'_Proper; reflexivity || eauto.
           { rewrite (to_Z_of_Z from to); try reflexivity; lia. }
-          { unfold w_body; intros; f_equal.
+          { unfold w_body_tok; intros; f_equal.
             apply range_unique. } }
 
-        clearbody a; subst a; unfold w_body at 1; cbv beta.
+        clearbody a; subst a; unfold w_body_tok at 1; cbv beta.
         eapply WeakestPrecondition_weaken; cycle 1.
         + unshelve (apply Hbody; eassumption);
             rewrite (to_Z_of_Z from to); lia.
