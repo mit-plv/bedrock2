@@ -1,7 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
-Require Import coqutil.Tactics.SafeSimpl.
 Require Import coqutil.Word.Interface.
 Require coqutil.Word.Naive.
 Require Import coqutil.Z.HexNotation.
@@ -22,11 +21,6 @@ Module parameters.
     mem_ok :> Interface.map.ok mem; (* for impl of mem below *)
   }.
 End parameters. Notation parameters := parameters.parameters.
-
-Instance SafeSimpl_word: SafeSimpl (@word) 1 := {}.
-Instance SafeSimpl_word_ok: SafeSimpl (@word_ok) 1 := {}.
-Instance SafeSimpl_mem: SafeSimpl (@mem) 1 := {}.
-Instance SafeSimpl_mem_ok: SafeSimpl (@mem_ok) 1 := {}.
 
 Section WithParameters.
   Context {p : parameters}.

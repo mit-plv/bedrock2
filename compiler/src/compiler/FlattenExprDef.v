@@ -1,5 +1,4 @@
 Require Import coqutil.Word.Properties.
-Require Import coqutil.Tactics.SafeSimpl.
 Require Import compiler.util.Common.
 Require compiler.ExprImp.
 Require compiler.FlatImp.
@@ -81,17 +80,6 @@ Module Import FlattenExpr.
   }.
 
 End FlattenExpr.
-
-Instance SafeSimpl_W: SafeSimpl (@W) 1 := {}.
-Instance SafeSimpl_locals: SafeSimpl (@locals) 1 := {}.
-Instance SafeSimpl_mem: SafeSimpl (@mem) 1 := {}.
-Instance SafeSimpl_ExprImp_env: SafeSimpl (@ExprImp_env) 1 := {}.
-Instance SafeSimpl_FlatImp_env: SafeSimpl (@FlatImp_env) 1 := {}.
-Instance SafeSimpl_trace: SafeSimpl (@trace) 1 := {}.
-Instance SafeSimpl_NGstate: SafeSimpl (@NGstate) 1 := {}.
-Instance SafeSimpl_NG: SafeSimpl (@NG) 1 := {}.
-
-Instance SafeSimpl_assumptions: SafeSimpl (@assumptions) 1 := {}.
 
 Section FlattenExpr1.
 

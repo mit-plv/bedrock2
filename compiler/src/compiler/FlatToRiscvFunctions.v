@@ -1362,13 +1362,9 @@ Section Proofs.
            | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
              constr:(iff1ToEq (array_cons PT SZ x xs start))
            end) in |-*.
-      (* PARAMRECORDS *)
-      repeat match goal with
-             | |- context [@array ?Wi ?Wo ?V ?M ?T ?E ?SZ ?A nil] =>
-               change (@array Wi Wo V M T E SZ A nil) with (emp True)
-             end.
+      change (array _ _ _ nil) with (emp True).
       rewrite! length_save_regs. rewrite! length_load_regs. (* <- needs to be before simpl_addrs *)
-      simpl_addrs. simpl. (* PARAMRECORDS *)
+      simpl_addrs. ParamRecords.simpl_param_projections. (* PARAMRECORDS *)
       wcancel.
     + reflexivity.
     + assumption.

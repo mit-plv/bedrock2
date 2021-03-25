@@ -1,6 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.ZArith.Zpow_facts.
-Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr coqutil.Tactics.SafeSimpl.
+Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr coqutil.Tactics.ParamRecords.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.HexNotation.
 Require Import coqutil.Datatypes.List.
@@ -170,7 +170,7 @@ Ltac is_lia_prop P :=
   end.
 
 Ltac canonicalize_word_width_and_instance :=
-  safe_simpl; (* <-- should take care of width *)
+  simpl_param_projections; (* <-- should take care of width (if it's a member of a record called `parameters`) *)
   repeat so fun hyporgoal => match hyporgoal with
      | context [@word.unsigned ?wi ?inst] =>
        let inst' := eval cbn in inst in progress ( change inst with inst' in * )

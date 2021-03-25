@@ -1,7 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Macros.unique.
-Require Import coqutil.Tactics.SafeSimpl.
 Require Import compiler.util.Common.
 Require Import bedrock2.Semantics.
 Require Import riscv.Utility.Monads.
@@ -107,16 +106,6 @@ Module Import MMIO.
     funname_env_ok :> forall T, map.ok (funname_env T);
   }.
 End MMIO.
-
-Instance SafeSimpl_word: SafeSimpl (@word) 1 := {}.
-Instance SafeSimpl_word_ok: SafeSimpl (@word_ok) 1 := {}.
-Instance SafeSimpl_word_riscv_ok: SafeSimpl (@word_riscv_ok) 1 := {}.
-Instance SafeSimpl_mem: SafeSimpl (@mem) 1 := {}.
-Instance SafeSimpl_mem_ok: SafeSimpl (@mem_ok) 1 := {}.
-Instance SafeSimpl_locals: SafeSimpl (@locals) 1 := {}.
-Instance SafeSimpl_locals_ok: SafeSimpl (@locals_ok) 1 := {}.
-Instance SafeSimpl_funname_env: SafeSimpl (@funname_env) 2 := {}.
-Instance SafeSimpl_funname_env_ok: SafeSimpl (@funname_env_ok) 2 := {}.
 
 Section MMIO1.
   Context {p: unique! MMIO.parameters}.

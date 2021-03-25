@@ -3,7 +3,6 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.MetricLogging.
 Require Import coqutil.Macros.unique.
-Require Import coqutil.Tactics.SafeSimpl.
 Require Import bedrock2.Memory.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
@@ -174,14 +173,6 @@ Class parameters(varname: Type) := {
   ext_spec: ExtSpec;
 }.
 
-Instance SafeSimpl_varname_eqb: SafeSimpl (@varname_eqb) 2 := {}.
-Instance SafeSimpl_width: SafeSimpl (@width) 2 := {}.
-Instance SafeSimpl_word: SafeSimpl (@word) 2 := {}.
-Instance SafeSimpl_mem: SafeSimpl (@mem) 2 := {}.
-Instance SafeSimpl_locals: SafeSimpl (@locals) 2 := {}.
-Instance SafeSimpl_env: SafeSimpl (@env) 2 := {}.
-Instance SafeSimpl_ext_spec: SafeSimpl (@ext_spec) 2 := {}.
-
 Module ext_spec.
   Class ok(varname: Type){p: parameters varname}: Prop := {
     (* The action name and arguments uniquely determine the footprint of the given-away memory. *)
@@ -208,8 +199,6 @@ Module ext_spec.
 End ext_spec.
 Arguments ext_spec.ok: clear implicits.
 
-Instance SafeSimpl_ext_spec_ok: SafeSimpl (@ext_spec.ok) 2 := {}.
-
 Class parameters_ok(varname: Type){p: parameters varname}: Prop := {
   varname_eq_spec :> EqDecider varname_eqb;
   width_cases : width = 32 \/ width = 64;
@@ -220,8 +209,6 @@ Class parameters_ok(varname: Type){p: parameters varname}: Prop := {
   ext_spec_ok :> ext_spec.ok _ _;
 }.
 Arguments parameters_ok: clear implicits.
-
-Instance SafeSimpl_parameters_ok: SafeSimpl (@parameters_ok) 2 := {}.
 
 Section FlatImp1.
   Context {varname: Type}.
