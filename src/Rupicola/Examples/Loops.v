@@ -34,7 +34,7 @@ Section Ex.
     let/n from := word.of_Z 0 in
     let/n a2 := ranged_for_u
                  from len
-                 (fun tok idx a2 Hlt =>
+                 (fun a2 tok idx Hlt =>
                     let/n v := VectorArray.get a1 idx _ in
                     let/n a2 := VectorArray.put a2 idx _ v in
                     (tok, a2)) a2 in
@@ -98,7 +98,7 @@ Section Ex.
     let/n from eq:_ := word.of_Z 0 in
     let/n a2 := ranged_for_s
                  from len
-                 (fun tok idx a2 Hlt =>
+                 (fun a2 tok idx Hlt =>
                     let/n v := VectorArray.get a1 idx _ in
                     let/n a2 := VectorArray.put a2 idx _ v in
                     (tok, a2)) a2 in
@@ -158,7 +158,7 @@ Section Ex.
     let/n from := word.of_Z 0 in
     let/n a2 := ranged_for_u
                  from len
-                 (fun tok idx a2 Hlt =>
+                 (fun a2 tok idx Hlt =>
                     let/n v := ListArray.get a1 idx in
                     let/n a2 := ListArray.put a2 idx v in
                     (tok, a2)) a2 in
@@ -206,7 +206,7 @@ Section Ex.
     let/n from := word.of_Z 0 in
     let/n a2 := ranged_for_u
                  from len
-                 (fun tok idx a2 Hlt =>
+                 (fun a2 tok idx Hlt =>
                     let/n v := ListArray.get a1 idx in
                     let/n a2 := ListArray.put a2 idx v in
                     (tok, a2)) a2 in
@@ -274,7 +274,7 @@ Section Ex.
     let/n (tick, c) :=
        ranged_for_u (A := P2.prod word cell)
                     from to
-                    (fun tok idx '\< tick, c \> bounded =>
+                    (fun '\< tick, c \> tok idx bounded =>
                        let/n v := get c in
                        let/n v := word.add v idx in
                        let/n c := put v c in
