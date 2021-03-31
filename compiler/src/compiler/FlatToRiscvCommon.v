@@ -826,7 +826,7 @@ Section FlatToRiscv1.
                pose proof word.unsigned_range (word.sub k addr). blia.
              }
              apply (f_equal word.of_Z) in F.
-             simpl_param_projections. (* PARAMRECORDS *)
+             simpl_param_projections.
              rewrite (word.of_Z_unsigned (word.sub k addr)) in F.
              rewrite <- add_0_r at 1. change (Z.of_nat 0) with 0 in F. rewrite <- F.
              ring.
@@ -836,7 +836,7 @@ Section FlatToRiscv1.
              apply (f_equal Z.of_nat) in F.
              rewrite Z2Nat.id in F by blia.
              apply (f_equal word.of_Z) in F.
-             simpl_param_projections. (* PARAMRECORDS *)
+             simpl_param_projections.
              rewrite (word.of_Z_unsigned (word.sub k addr)) in F.
              ring_simplify (word.sub k (word.add addr (word.of_Z 1))).
              rewrite F.

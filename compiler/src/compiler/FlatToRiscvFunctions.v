@@ -1342,10 +1342,7 @@ Section Proofs.
       assert (Datatypes.length retvs = Datatypes.length binds). {
         symmetry. eapply map.putmany_of_list_zip_sameLength. eassumption.
       }
-      (* PARAMRECORDS *)
-      subst FL new_ra. simpl_addrs.
-      split. { ring. (* faster than lia *) }
-      use_sep_assumption.
+      simpl_addrs. split; [blia|].
       wseplog_pre.
       pose proof functions_expose as P.
       match goal with
@@ -1356,16 +1353,8 @@ Section Proofs.
       apply iff1ToEq in P.
       rewrite P. clear P.
       unfold program, compile_function.
-      rewr (fun t => match t with
-           | context [ array ?PT ?SZ ?start (?xs ++ ?ys) ] =>
-             constr:(iff1ToEq (array_append' PT SZ xs ys start))
-           | context [ array ?PT ?SZ ?start (?x :: ?xs) ] =>
-             constr:(iff1ToEq (array_cons PT SZ x xs start))
-           end) in |-*.
-      change (array _ _ _ nil) with (emp True).
-      rewrite! length_save_regs. rewrite! length_load_regs. (* <- needs to be before simpl_addrs *)
-      simpl_addrs. ParamRecords.simpl_param_projections. (* PARAMRECORDS *)
-      wcancel.
+      subst FL new_ra. ParamRecords.simpl_param_projections.
+      wcancel_assumption.
     + reflexivity.
     + assumption.
 
@@ -1438,6 +1427,7 @@ Section Proofs.
         blia.
       }
       assert (0 <= n / bytes_per_word) as Nonneg. {
+        assert (0 <= n) as K by assumption. clear -B48 enough_stack_space K.
         Z.div_mod_to_equations. blia.
       }
       split_from_right stack_trash remaining_stack allocated_stack (Z.to_nat (n / bytes_per_word)).
@@ -1451,7 +1441,6 @@ Section Proofs.
         wseplog_pre.
         rewrite (cast_word_array_to_bytes allocated_stack).
         simpl_addrs.
-        simpl. (* <-- PARAMRECORDS *)
         wcancel.
         cancel_seps_at_indices 3%nat 0%nat. {
           f_equal.
@@ -1497,12 +1486,7 @@ Section Proofs.
           wwcancel.
         }
         { exists remaining_stack. split. 1: reflexivity.
-          (* PARAMRECORDS *)
-          change FlatImp.word with word in *.
-          change FlatImp.mem with mem in *.
-          change FlatImp.width with width in *.
-          wcancel_assumption.
-        }
+          wcancel_assumption. }
         { reflexivity. }
         { assumption. }
         { match goal with
@@ -1566,10 +1550,7 @@ Section Proofs.
             seprewrite_in QQ Q.
             replace (Datatypes.length remaining_stack) with (Datatypes.length stack_trash) by blia.
             assert (!bytes_per_word * !(n / bytes_per_word) = !n) as DivExact. {
-              (* PARAMRECORDS *)
-              change FlatImp.word with word in *.
-              change FlatImp.mem with mem in *.
-              change FlatImp.width with width in *.
+              ParamRecords.simpl_param_projections.
               rewrite <- (word.ring_morph_mul (bytes_per_word) (n / bytes_per_word)).
               rewrite <- Z_div_exact_2.
               - reflexivity.
@@ -1583,10 +1564,7 @@ Section Proofs.
               match goal with
               | |- ?LHS = _ => ring_simplify LHS
               end.
-              (* PARAMRECORDS *)
-              change FlatImp.word with word in *.
-              change FlatImp.mem with mem in *.
-              change FlatImp.width with width in *.
+              ParamRecords.simpl_param_projections.
               rewrite DivExact.
               ring.
             }

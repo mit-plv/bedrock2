@@ -2,6 +2,7 @@ Require Export Coq.Lists.List.
 Require Import Coq.ZArith.ZArith.
 Export ListNotations.
 Require Export coqutil.Decidable.
+Require Import Coq.Program.Tactics.
 Require Import coqutil.Tactics.rewr.
 Require        compiler.ExprImp.
 Require Export compiler.FlattenExprDef.
@@ -128,6 +129,8 @@ Section Pipeline1.
        morphism (word.ring_morph (word := Utility.word)),
        constants [word_cst]).
 
+  Hint Extern 1 (map.ok _) => refine mem_ok : typeclass_instances.
+
   Lemma machine_ok_change_call: forall functions_pos f_entry_rel_pos_1 f_entry_rel_pos_2
                                        p_stack_start p_stack_pastend instrs
                                        p_call_1 p_call_2 pc mH Rdata Rexec Rexec1 mach,
@@ -148,8 +151,7 @@ Section Pipeline1.
                  pc mH Rdata Rexec1
                  mach.
   Proof.
-    (* PARAMRECORDS *)
-    assert (Ok: map.ok Pipeline.mem) by exact mem_ok.
+    (* PARAMRECORDS: only works because of Hint Extern refine for compiler.FlatToRiscvCommon.mem_ok *)
     unfold machine_ok, program.
     intros. simp; ssplit; eauto.
     - seprewrite H. wcancel_assumption.
@@ -343,8 +345,7 @@ Section Pipeline1.
       }
       + destruct mlOk. solve_divisibleBy4.
       + solve_word_eq word_ok.
-      + eapply @regs_initialized_put; try typeclasses eauto. (* PARAMRECORDS? *)
-        eassumption.
+      + rapply regs_initialized_put. eassumption.
       + rewrite map.get_put_same. unfold init_sp. rewrite word.of_Z_unsigned. reflexivity.
     - cbv beta. unfold ll_good. intros. simp.
       rename z0 into f_loop_rel_pos.
@@ -408,15 +409,14 @@ Section Pipeline1.
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
       ll_inv st -> GoFlatToRiscv.mcomp_sat (run1 iset) st ll_inv.
   Proof.
-    (* PARAMRECORDS *)
-    assert (Ok: map.ok Pipeline.mem) by exact mem_ok.
+    (* PARAMRECORDS: only works because of Hint Extern refine for compiler.FlatToRiscvCommon.mem_ok *)
     intros st. unfold ll_inv.
     eapply runsToGood_is_Invariant with (jump := - 4) (pc_start := loop_pos)
                                         (pc_end := word.add loop_pos (word.of_Z 4)).
     - intro D.
       apply (f_equal word.unsigned) in D.
       rewrite word.unsigned_add in D.
-      unshelve erewrite @word.unsigned_of_Z in D. 1: exact word_ok. (* PARAMRECORDS? *)
+      rewrite word.unsigned_of_Z in D.
       unfold word.wrap in D.
       rewrite (Z.mod_small 4) in D; cycle 1. {
         simpl. pose proof four_fits. blia.
@@ -474,10 +474,7 @@ Section Pipeline1.
       | H: context[@word.add ?w ?wo ?x (word.of_Z 0)] |- _ =>
         replace (@word.add w wo x (word.of_Z 0)) with x in H
       end.
-      2: {
-        (* PARAMRECORDS *)
-        symmetry. unshelve eapply SimplWordExpr.add_0_r.
-      }
+      2: solve_word_eq word_ok.
       subst.
       eapply runsTo_weaken.
       + pose proof compiler_correct as P. unfold runsTo in P.

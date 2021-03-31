@@ -15,6 +15,7 @@ Require Import coqutil.Map.TestLemmas.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Tactics.Simp.
+Require Import coqutil.Tactics.ParamRecords.
 Require Import compiler.Simulation.
 
 Open Scope Z_scope.
@@ -340,7 +341,7 @@ Section RegAlloc.
              | C: states_compat _ _ _, D: _ |- _ => unique pose proof (C _ _ D)
              end;
       simp;
-      simpl in *; (* PARAMRECORDS *)
+      simpl_param_projections;
       srew_h; simp; srew_g; reflexivity.
   Qed.
 
@@ -370,7 +371,7 @@ Section RegAlloc.
       repeat match goal with
              | C: states_compat' _ _ _, D: _ |- _ => unique pose proof (C _ _ D)
              end;
-      simpl in *; (* PARAMRECORDS *)
+      simpl_param_projections;
       srew_h; simp; srew_g; reflexivity.
   Qed.
 
@@ -725,7 +726,7 @@ Section RegAlloc.
       simp;
       try solve [
             econstructor; cycle -1; [solve [eauto using states_compat_put]|..];
-            simpl in *; (* PARAMRECORDS *)
+            simpl_param_projections;
             eauto;
             congruence].
 
@@ -790,7 +791,7 @@ Section RegAlloc.
     - (* @exec.inlinetable *)
       econstructor; cycle -1.
       1: solve [eauto using states_compat_put].
-      all: simpl in *; (* PARAMRECORDS *) eauto; try congruence.
+      all: simpl_param_projections; eauto; try congruence.
       assert (z1 = y) by congruence. subst z1.
       destruct (rename_assignment_lhs_props E); try assumption. simp.
       intros C. subst z0.

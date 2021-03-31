@@ -777,7 +777,6 @@ Section Pipeline1.
           symmetry in P.
           simpl in P|-*. unfold program in P.
           seprewrite P. clear P.
-          assert (word.ok FlatImp.word) by exact word_ok.
           rewrite <- Z_div_exact_2; cycle 1. {
             unfold bytes_per_word. clear -h.
             destruct width_cases as [E | E]; rewrite E; reflexivity.
@@ -789,13 +788,13 @@ Section Pipeline1.
             apply stack_length_divisible.
             assumption.
           }
-          wcancel_assumption.
-          rewrite word.of_Z_unsigned.
-          cancel_seps_at_indices O O. {
-            (* PARAMRECORDS *) simpl.
-            sepclause_eq word_ok.
-          }
-          cbn [seps]. reflexivity.
+          ParamRecords.simpl_param_projections.
+          use_sep_assumption.
+          unfold ptsto_bytes.
+          wseplog_pre.
+          simpl_addrs.
+          rewrite !word.of_Z_unsigned.
+          wcancel.
         }
         match goal with
         | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
@@ -825,8 +824,7 @@ Section Pipeline1.
       simp.
       eexists. split. 1: eassumption.
       unfold machine_ok. ssplit; try assumption.
-      + assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
-        cbv [rem_stackwords rem_framewords ghostConsts] in H2p0p1p8p0.
+      + cbv [rem_stackwords rem_framewords ghostConsts] in H2p0p1p8p0.
         cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).
         exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x))) stack_trash).
@@ -872,7 +870,6 @@ Section Pipeline1.
         simpl.
         unfold ptsto_bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
         simpl.
-        assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
         wwcancel.
         epose proof (functions_to_program ml _ r0 instrs) as P.
         cbn [seps].

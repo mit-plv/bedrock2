@@ -565,7 +565,7 @@ Section Spilling.
       (eq mH * R)%sep mL ->
       (eq (Memory.unchecked_store_bytes n mH a v) * R)%sep (Memory.unchecked_store_bytes n mL a v).
   Proof.
-    intros. simpl_param_projections. (* PARAMRECORDS *) apply sep_comm. apply sep_comm in H0.
+    intros. simpl_param_projections. apply sep_comm. apply sep_comm in H0.
     unfold Memory.load_bytes, Memory.unchecked_store_bytes, sep, map.split in *.
     simp. do 2 eexists. ssplit. 3: eassumption. 3: reflexivity.
     - rewrite map.putmany_of_tuple_to_putmany.
@@ -651,7 +651,7 @@ Section Spilling.
     unfold load_arg_reg, stack_loc, arg_reg, related in *. simp.
     destr (32 <=? r).
     - eapply exec.load.
-      + eapply get_sep. (* PARAMRECORDS *) simpl_param_projections. ecancel_assumption.
+      + eapply get_sep. simpl_param_projections. ecancel_assumption.
       + eapply load_from_word_array. 1: ecancel_assumption.
         eapply H0p5. 1: blia.
         unfold sep in H0p3. simp.
@@ -697,7 +697,7 @@ Section Spilling.
     unfold load_arg_reg, stack_loc, arg_reg, related in *. simp.
     destr (32 <=? r).
     - eapply exec.load.
-      + eapply get_sep. (* PARAMRECORDS *) simpl. ecancel_assumption.
+      + eapply get_sep. simpl_param_projections. ecancel_assumption.
       + eapply load_from_word_array. 1: ecancel_assumption.
         eapply H0p5. 1: blia.
         unfold sep in H0p3. simp.
@@ -746,7 +746,7 @@ Section Spilling.
     unfold load_arg_reg, stack_loc, arg_reg, related in *. simp.
     destr (32 <=? r).
     - eapply exec.load.
-      + eapply get_sep. (* PARAMRECORDS *) simpl. ecancel_assumption.
+      + eapply get_sep. simpl_param_projections. ecancel_assumption.
       + eapply load_from_word_array. 1: ecancel_assumption.
         eapply H0p5. 1: blia.
         unfold sep in H0p3. simp.
@@ -812,7 +812,7 @@ Section Spilling.
       2: {
         eapply exec.store.
         - rewrite map.get_put_diff by (cbv; congruence).
-          eapply get_sep. (* PARAMRECORDS *) simpl. ecancel_assumption.
+          eapply get_sep. simpl_param_projections. ecancel_assumption.
         - rewrite map.get_put_same. reflexivity.
         - exact St.
         - repeat match goal with
@@ -911,7 +911,7 @@ Section Spilling.
       2: {
         eapply exec.store.
         - rewrite map.get_put_diff by (cbv; congruence).
-          eapply get_sep. (* PARAMRECORDS *) simpl. ecancel_assumption.
+          eapply get_sep. simpl_param_projections. ecancel_assumption.
         - rewrite map.get_put_same. reflexivity.
         - exact St.
         - eapply H1.
@@ -1127,13 +1127,13 @@ Section Spilling.
       unfold related in *. simp.
       spec (subst_split (ok := mem_ok) m) as A.
       1: eassumption. 1: ecancel_assumption.
-      edestruct (@sep_def m2 (eq mGive)) as (mGive' & mKeepL & B & ? & C).
-      1: simpl. (* PARAMRECORDS *) 1: ecancel_assumption.
+      edestruct (@sep_def m2 (eq mGive)) as (mGive' & mKeepL & B & ? & C); simpl_param_projections.
+      1: ecancel_assumption.
       subst mGive'.
       rename H3p0 into FR, H3p1 into FA.
       unfold sep in H4p3. destruct H4p3 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
       spec (map.getmany_of_list_zip_shrink l) as R. 1,2: eassumption. {
-        intros k HI. destr (map.get lStack k); [exfalso|assumption].
+        intros k HI. destr (map.get lStack k); [exfalso|reflexivity].
         specialize H4p2 with (1 := E).
         eapply Forall_forall in FA. 2: exact HI. clear -H4p2 FA. blia.
       }
@@ -1184,8 +1184,7 @@ Section Spilling.
         6: eassumption.
         4: solve [unfold sep; eauto].
         4: {
-          enough ((eq lRegs' * (tmps * ptsto fp fpval))%sep l2') as En.
-          1: (* PARAMRECORDS *) simpl in En; ecancel_assumption.
+          enough ((eq lRegs' * (tmps * ptsto fp fpval))%sep l2') as En. 1: ecancel_assumption.
           unfold sep at 1. eauto. }
         { eenough ((eq _ * (word_array fpval stackwords * frame))%sep m') as En.
           1: ecancel_assumption.
@@ -1279,7 +1278,7 @@ Section Spilling.
       eapply exec.load. {
         rewrite map.get_put_same. reflexivity. }
       { edestruct (@sep_def m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
-        1: (*PARAMRECORDS *) simpl; ecancel_assumption. unfold map.split in Sp. simp. subst m'.
+        1: simpl_param_projections; ecancel_assumption. unfold map.split in Sp. simp. subst m'.
         unfold Memory.load, Memory.load_Z, Memory.load_bytes.
         erewrite map.getmany_of_tuple_in_disjoint_putmany; eauto. }
       eapply save_res_reg_correct.
@@ -1294,7 +1293,7 @@ Section Spilling.
       pose proof H3 as A. unfold related in A. simp.
       unfold Memory.store, Memory.store_Z, Memory.store_bytes in *. simp.
       edestruct (@sep_def m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
-      1: (*PARAMRECORDS *) simpl; ecancel_assumption. unfold map.split in Sp. simp. subst m'.
+      1: simpl_param_projections; ecancel_assumption. unfold map.split in Sp. simp. subst m'.
       eapply exec.store.
       1: eapply get_arg_reg_1; eassumption.
       1: apply map.get_put_same.
@@ -1308,8 +1307,8 @@ Section Spilling.
              | |- _ /\ _ => split
              end.
       all: try eassumption || reflexivity.
-      spec store_bytes_sep_hi2lo as A. 1: eassumption. 1: (* PARAMRECORDS *) simpl; ecancel_assumption.
-      (* PARAMRECORDS *) simpl in *. ecancel_assumption.
+      spec store_bytes_sep_hi2lo as A. 1: eassumption.
+      all: simpl_param_projections; ecancel_assumption.
     - (* exec.inlinetable *)
       eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2b mc2 H4. intros.
@@ -1437,10 +1436,10 @@ Section Spilling.
         split; intros.
         * do 4 eexists. split.
           -- exact H3p3.
-          -- eapply H1. 1: eassumption. cbn. rewrite E. (* PARAMRECORDS *) simpl in *. congruence.
+          -- eapply H1. 1: eassumption. cbn. rewrite E. simpl_param_projections; congruence.
         * eapply exec.weaken. 1: eapply IH2.
           -- eassumption.
-          -- cbn. rewrite E. (* PARAMRECORDS *) simpl in *. congruence.
+          -- cbn. rewrite E. simpl_param_projections; congruence.
           -- eassumption.
           -- eassumption.
           -- cbv beta. intros. simp. eauto 10. (* IH12 *)
