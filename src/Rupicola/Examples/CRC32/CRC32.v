@@ -1,7 +1,9 @@
 Require Import Rupicola.Lib.Api.
+Require Import Rupicola.Lib.Loops.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Word.Interface coqutil.Byte.
 Local Open Scope Z_scope.
+Require Import Rupicola.Lib.Arrays.
 
 Section __.
   
@@ -128,7 +130,37 @@ Section __.
                crc32 data in
       let/n crc32 := Z.lxor crc32 0xFFFFFFFF in
       crc32.
+
+    
+    Definition crc32' (data : list byte) : Z (*32bit*) :=
+      let/n crc32 := 0xFFFFFFFF in
+      let/n idx := (word.of_Z 0) in
+      let/n crc32 :=
+         ranged_for_u idx
+                      (word.of_Z (Z.of_nat (length data)))
+                      (fun crc32 tok idx _ => let/n b := (ListArray.get (data : ListArray.t byte) idx) in
+                                            let/n nLookupIndex :=
+                                               Z.land (Z.lxor crc32 (byte.unsigned b)) (byte.unsigned Byte.xff) in
+                                            let/n nLookupRes := (nth (Z.to_nat nLookupIndex) crc_table 0) in
+                                            (tok, Z.lxor (Z.shiftr crc32 8) nLookupRes))
+                      crc32 in
+      let/n crc32 := Z.lxor crc32 0xFFFFFFFF in
+      crc32.
+           
   End Gallina.
+
+  (*TODO: better idea than never-used default?
+    could probably use idx bounds proof to exclude that case
+   *)
+  Lemma fold_right_to_ranged A B (f : A -> B -> B) base lst default
+    : List.fold_right f base lst = ranged_for_all 0 (Z.of_nat (length lst)) (fun acc idx _ => f (nth (Z.to_nat idx) lst default) acc) base.
+  Proof.
+    (*induction lst; cbn; auto.*)
+  Admitted.
+
+  Lemma crc32_to_ranged : crc32 = crc32'.
+  Proof.
+  Admitted.
 
   (*Properties about width; could be moved somewhere more general*)
   Lemma width_at_least_32 : 32 <= width.
@@ -213,7 +245,6 @@ Section __.
     {
       intro eqn;
       destruct xs.
-      Import PrimitivePair.pair.
       inversion eqn.
       rewrite IHn with _2 H0.
       clear IHn.
@@ -471,5 +502,186 @@ Section __.
       assumption.
     }
   Qed.
+  
+  Hint Extern 1 => simple eapply @compile_table_nth; shelve : compiler.
+
+
+  Definition set_local_nat locals var n :=
+    (map.put locals var (word.of_Z (Z.of_nat n))).
+
+  
+  (*TODO: generalize from bytes and Z?*)
+  (*TODO: missing a couple size assumptions on data*)
+  Lemma compile_fold_right_bytes {tr mem locals functions}
+        (data: list byte) body (a0: Z) :
+    let v := List.fold_right body a0 data in
+    forall {P} {pred: P v -> predicate} {R}
+           {k: nlet_eq_k P v} {k_impl} {body_impl}
+           data_ptr l
+           (counter_var out_var len_var: string) vars,
+      let lp n acc tr' mem' locals' :=
+          (array ptsto (word.of_Z 1) data_ptr data * R)%sep mem'
+          /\ tr' = tr
+          /\ locals' = map.put
+                         (map.put locals counter_var (word.of_Z (Z.of_nat n)))
+                         out_var (word.of_Z acc) in
+
+      (array ptsto (word.of_Z 1) data_ptr data * R)%sep mem ->
+      map.get locals out_var = Some (word.of_Z a0) ->
+      word.unsigned l = Z.of_nat (length data) ->
+      map.get locals len_var = Some l ->
+
+      ((* loop body *)
+        let lp := lp in
+        forall tr mem locals n,
+          let a := List.fold_right body a0 (List.firstn n data) in
+          (n < length data)%nat ->
+          (<{ Trace := tr;
+              Memory := mem;
+              Locals := set_local_nat locals counter_var n;
+              Functions := functions }>
+           body_impl
+           <{ lp n (body (nth n data Byte.xff) a) }>)) ->
+      (let v := v in
+       forall tr mem locals,
+         (array ptsto (word.of_Z 1) data_ptr data * R)%sep mem ->
+         map.get locals out_var = Some (word.of_Z v) ->
+         (<{ Trace := tr;
+             Memory := mem;
+             Locals := locals;
+             Functions := functions }>
+          k_impl
+          <{ pred (k v eq_refl) }>)) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.set counter_var (expr.literal 0))
+        (cmd.seq
+           (cmd.while
+              (expr.op bopname.ltu (expr.var counter_var) (expr.var len_var))
+              (cmd.seq
+                 body_impl
+                 (cmd.set counter_var
+                          (expr.op bopname.add
+                                   (expr.var counter_var)
+                                   (expr.literal 1)))))
+           k_impl)
+      <{ pred (nlet_eq vars v k) }>.
+  Proof.
+    cbv zeta.
+    repeat straightline.
+    revert dependent data; induction data;
+      repeat straightline.
+    {
+      clear H1.
+      cbn [Datatypes.length fold_right List.firstn] in *.
+  Admitted.
+
+  
+  Hint Extern 1 => simple eapply compile_table_nth; shelve : compiler.
+  Hint Extern 1 => simple eapply compile_fold_right_bytes; shelve : compiler.
+
+  Locate "defn!".
+
+
+  Ltac solve_get_put :=
+    repeat(
+        (rewrite map.get_put_same; auto;easy)
+        ||  rewrite map.get_put_diff); easy.
+
+      
+  Hint Extern 1 => simple eapply @compile_byte_unsizedlistarray_get; shelve : compiler.
+  
+  Instance spec_of_crc32 : spec_of "crc32" :=
+    fnspec! "crc32" data_ptr len out_ptr / (data : list byte) s R,
+    { requires tr mem :=
+        (word.unsigned len = Z.of_nat (length data) /\
+        (listarray_value AccessByte data_ptr data * Scalars.scalar out_ptr s * R)%sep mem);
+      ensures tr' mem' :=
+        tr' = tr /\
+        (listarray_value AccessByte  data_ptr data * Scalars.scalar out_ptr (word.of_Z (crc32' data)) * R)%sep mem' }.
+
+  
+  Derive crc32_body SuchThat
+         (defn! "crc32" ("data", "len", "out") { crc32_body },
+          implements crc32')
+         As body_correct.
+  Proof.
+    compile_setup.    
+    repeat (repeat compile_step).
+    
+    simple apply compile_nlet_as_nlet_eq.
+    apply compile_ranged_for_w
+      with (signed := false)
+           (loop_pred := (fun idx acc tr' mem' locals' =>
+                            (exists s,
+          (listarray_value AccessByte data_ptr data * Scalars.scalar out_ptr s * R)%sep mem')
+          /\ tr' = tr
+          /\ locals' = map.put
+                         (map.put 
+                            (map.put (map.put (map.put map.empty "out" out_ptr) "data" data_ptr) "idx" idx)
+                            "len" (word.of_Z (Z.of_nat (Datatypes.length data))))
+                         "crc32" (word.of_Z acc))).
+    exact word.of_Z_unsigned.
+    repeat compile_step; apply word.unsigned_range.
+    repeat compile_step.
+    repeat compile_step.
+    {
+      rewrite <- H0.
+      rewrite word.of_Z_unsigned.
+      repeat (repeat compile_step).
+    }
+    {
+      compile_step.
+      compile_step.
+      destruct H3.
+      repeat compile_step.
+      {
+        rewrite <-H0 in Hr.
+        rewrite word.of_Z_unsigned in Hr.
+        rewrite H0 in Hr.
+        assumption.
+      }
+      TODO: convert lookup lemma to listarray
+                    or convert listarray to array
+      destruct H3.
+      ecancel_assumption.
+      simpl in a.
+      TODO: get idx into LHS somehow
+      intuition; subst.
+      exists s; assumption.
+      rewrite map.put_put_diff_comm;[|easy].
+      f_equal.
+      rewrite map.put_put_diff_comm;[|easy].
+      f_equal.
+      rewrite map.put_put_same.
+      reflexivity.
+    }
+      easy.
+      maps_equal.
+      erewrite map.getmany_of_list_cons;
+        [eauto | solve_get_put|..].
+      erewrite map.getmany_of_list_cons;
+        [eauto | solve_get_put|..].
+      reflexivity.
+      simpl.
+      erewrite map.getmany_of_list_nil.
+      eauto.
+      erewrite map.getmany_of_list_cons.
+      eauto.
+      rewrite map.get_put_diff.
+      rewrite  map.get_put_same; auto.
+      easy.
+      eauto.
+      simpl.
+    eapply compile_ranged_for_w.
+    repeat compile_step.
+
+    
+     simple apply compile_nlet_as_nlet_eq.
+
+    compile.*)
   
 End __.
