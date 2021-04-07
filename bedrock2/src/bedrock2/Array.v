@@ -14,7 +14,7 @@ Section Array.
     | cons x xs => sep (element start x) (array (word.add start size) xs)
     end.
 
-  Local Infix "*" := sep.
+  Local Open Scope sep_scope.
 
   Lemma array_cons x xs start:
     iff1 (array start (x :: xs)) (sep (element start x) (array (word.add start size) xs)).

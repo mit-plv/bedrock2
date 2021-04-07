@@ -318,7 +318,6 @@ Ltac show_program :=
     change (@cmd D E (fst (c, c')) F G H I)
   end.
 
-
 Module ProofPrintingNotations.
   Notation "'need!' y 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
     (let x := v in ex_intro (fun y => Px /\ _) x (conj pfPx pfP))

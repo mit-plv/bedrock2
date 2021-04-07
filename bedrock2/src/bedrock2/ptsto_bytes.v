@@ -16,7 +16,7 @@ Section WithWord.
   Local Infix "$+" := map.putmany (at level 70).
   Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
   Local Infix "*" := sep : type_scope.
-  Local Infix "*" := sep.
+  Local Open Scope sep_scope.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
   Context [value] [map : map.map word value] {ok : map.ok map}.
   Add Ring __wring: (@word.ring_theory width word word_ok).

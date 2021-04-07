@@ -25,13 +25,10 @@ Definition rpmul :=
 From bedrock2 Require Import Semantics BasicC64Semantics WeakestPrecondition ProgramLogic.
 From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
 
-Instance spec_of_rpmul : spec_of "rpmul" := fun functions =>
-  forall x e t m,
-    WeakestPrecondition.call functions
-      "rpmul" t m [x; e]
-      (fun t' m' rets => t=t'/\ m=m' /\ exists v, rets = [v] /\ (
-        word.unsigned v = word.unsigned x * word.unsigned e mod 2^width)).
-
+Instance spec_of_rpmul : spec_of "rpmul" := fnspec! "rpmul" x e ~> v,
+  { requires t m := True;
+    ensures t' m' := t=t' /\ m=m' /\
+      word.unsigned v = word.unsigned x * word.unsigned e mod 2^width }.
 
 Module Z.
   Lemma mod2_nonzero x : x mod 2 <> 0 -> x mod 2 = 1.
@@ -52,6 +49,7 @@ Ltac t :=
 Lemma rpmul_ok : program_logic_goal_for_function! rpmul.
 Proof.
   repeat straightline.
+  repeat match goal with H : True |- _ => clear H end.
 
   refine ((TailRecursion.tailrec
     (* types of ghost variables*) HList.polymorphic_list.nil
