@@ -1,6 +1,6 @@
 Require Import Coq.derive.Derive.
 Require Import coqutil.Z.Lia.
-Require coqutil.Word.BigEndian.
+Require coqutil.Word.BigEndian coqutil.Word.ZifyLittleEndian.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
 Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.rewr coqutil.Tactics.rdelta.
@@ -18,6 +18,8 @@ Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic.
 Require Import bedrock2.ZnWords.
 Require Import coqutil.Word.SimplWordExpr.
 Require Import bedrock2.footpr.
+
+Local Set Nested Proofs Allowed.
 
 (* TODO put into coqutil and also use in lightbulb.v *)
 Module word. Section WithWord.
@@ -124,6 +126,159 @@ Module List.
   End WithA.
 End List.
 
+Require Import Ltac2.Ltac2.
+Set Default Proof Mode "Classic".
+
+(* TODO 8.14 replace by Constr.is_evar *)
+Ltac2 is_evar(c: constr) :=
+  match Constr.Unsafe.kind c with
+  | Constr.Unsafe.Evar _ _ => true
+  | _ => false
+  end.
+
+(* TODO 8.14 replace by Constr.is_ind *)
+Ltac2 is_ind(c: constr) :=
+  match Constr.Unsafe.kind c with
+  | Constr.Unsafe.Ind _ _ => true
+  | _ => false
+  end.
+
+(* TODO 8.14 replace by Constr.is_constructor *)
+Ltac2 is_constructor(c: constr) :=
+  match Constr.Unsafe.kind c with
+  | Constr.Unsafe.Constructor _ _ => true
+  | _ => false
+  end.
+
+Ltac2 sfail(s: string) := Control.zero (Tactic_failure (Some (Message.of_string s))).
+Ltac2 ufail () := Control.zero (Tactic_failure None).
+
+Ltac2 head(c: constr) :=
+  match Constr.Unsafe.kind c with
+  | Constr.Unsafe.App h _ => h
+  | _ => c
+  end.
+
+Ltac2 splitApp(c: constr) :=
+  match Constr.Unsafe.kind c with
+  | Constr.Unsafe.App f args => (f, args)
+  | _ => (c, Array.empty ())
+  end.
+
+Ltac2 mkApp(c: constr)(args: constr array) :=
+  Constr.Unsafe.make (Constr.Unsafe.App c args).
+
+Ltac2 rec strip_foralls(t: constr) :=
+  match Constr.Unsafe.kind t with
+  | Constr.Unsafe.Prod _ u => strip_foralls u
+  | _ => t
+  end.
+
+Ltac2 rec strip_lambdas(t: constr) :=
+  match Constr.Unsafe.kind t with
+  | Constr.Unsafe.Lambda _ u => strip_lambdas u
+  | _ => t
+  end.
+
+Ltac2 rec count_lambdas(t: constr) :=
+  match Constr.Unsafe.kind t with
+  | Constr.Unsafe.Lambda _ u => Int.add 1 (count_lambdas u)
+  | _ => 0
+  end.
+
+Ltac2 unfold_if_getter(g: constr) :=
+  let (h, args) := splitApp g in
+  match Constr.Unsafe.kind h with
+  | Constr.Unsafe.Constant r _ =>
+    let getter_lambda := Std.eval_unfold [(Std.ConstRef r, Std.AllOccurrences)] h in
+    match Constr.Unsafe.kind (strip_lambdas getter_lambda) with
+    | Constr.Unsafe.Proj _ v =>
+      match Constr.Unsafe.kind v with
+      | Constr.Unsafe.Rel i => if Int.equal i 1 then () else sfail "not a getter because not proj from Rel 1"
+      | _ => sfail "not a getter because not proj from Rel"
+      end
+    | Constr.Unsafe.Case _ _ _ _ branches =>
+      if Int.equal (Array.length branches) 1 then
+        let b := Array.get branches 0 in
+        match Constr.Unsafe.kind (strip_lambdas b) with
+        | Constr.Unsafe.Rel i => (* note: de Brujin indices are 1-based *)
+          if Int.le i (count_lambdas b) then ()
+          else sfail "not a getter because branch returns a variable bound further out than in branch pattern"
+        | _ => sfail "not a getter because branch does not return a variable"
+        end
+      else sfail "not a getter because not exactly 1 branch in match"
+    | _ => sfail "not a getter because unfolding did not yield a primitive projection or match"
+    end;
+    mkApp getter_lambda args
+  | _ => sfail "not a getter because head is not a constant"
+  end.
+
+Ltac is_getter :=
+  ltac2:(g |- let _ := unfold_if_getter (Option.get (Ltac1.to_constr g)) in ()).
+
+Definition TestIsAGetter(p: nat * nat) :=
+  match p with
+  | pair a b => a
+  end.
+Definition TestIsntAGetter(p: nat * nat) :=
+  match p with
+  | pair a b => a + 1
+  end.
+Goal False.
+  assert_succeeds (is_getter TestIsAGetter).
+  assert_fails (is_getter TestIsntAGetter).
+Abort.
+
+(* ltac1 needed because of COQBUG https://github.com/coq/coq/issues/11641 *)
+Ltac2 change_x_with_y(x : constr)(y : constr) :=
+  ltac1:(a b |- change a with b) (Ltac1.of_constr x) (Ltac1.of_constr y).
+
+Ltac2 simpl_getter_applied_to_constructor(a: constr) :=
+  lazy_match! a with
+  | ?g ?v =>
+    if is_constructor (head v) then
+      if is_ind (head (Constr.type v)) then
+        let ug := unfold_if_getter g in
+        let r := eval cbv beta iota in ($ug $v) in
+        (* Note: if `change` has no effect, it might be due to COQBUG https://github.com/coq/coq/issues/14084 *)
+        change_x_with_y a r
+      else
+        sfail "constructor is not fully applied"
+    else
+      sfail "not a construction"
+  end.
+
+Ltac simpl_getter_applied_to_constructor :=
+  ltac2:(a0 |- Control.enter (fun () => simpl_getter_applied_to_constructor (Option.get (Ltac1.to_constr a0)))).
+
+Ltac simpl_getters_applied_to_constructors :=
+  repeat match goal with
+         | |- context[?a] => simpl_getter_applied_to_constructor a
+         end.
+
+Record TestRecord{A: Type}{n: nat} := {
+  OtherTestRecordField: unit;
+  TestRecordField: tuple nat n;
+}.
+Arguments TestRecord: clear implicits.
+
+Goal forall (x y: nat),
+    PrimitivePair.pair._1 (PrimitivePair.pair.mk (B := fun _ => nat) x y) = x /\
+    fst (x, y) = x /\
+    TestRecordField (Build_TestRecord unit 0 tt tt) = tt.
+Proof.
+  intros. simpl_getters_applied_to_constructors.
+  match goal with
+  | |- ?G => constr_eq G constr:(x = x /\ x = x /\ (@eq (tuple nat O) tt tt))
+  end.
+Abort.
+
+Ltac instantiate_evar_with_econstructor e :=
+  let T := type of e in
+  let y := fresh in
+  unshelve refine (let y: T := _ in _);
+  [econstructor; shelve| unify e y; subst y].
+
 Definition TODO{T: Type}: T. Admitted.
 
 Infix "^+" := word.add  (at level 50, left associativity).
@@ -141,10 +296,23 @@ Section WithParameters.
   Import Syntax BinInt String List.ListNotations ZArith.
   Local Set Implicit Arguments.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-  Local Coercion expr.literal : Z >-> expr.
-  Local Coercion expr.var : String.string >-> expr.
+
   Coercion Z.of_nat : nat >-> Z.
   Coercion byte.unsigned : byte >-> Z.
+
+  (* see COQBUG https://github.com/coq/coq/issues/4593 for why these aliases are needed to make coercions work *)
+  Definition two_bytes := tuple byte 2.
+  Definition four_bytes := tuple byte 4.
+
+  (* These definitions and coercions are only needed to write source code, as soon as
+     interpreted, they will go away because expr.literal will be removed by the interpreter. *)
+  Coercion byte_to_expr(b: byte): expr := expr.literal (byte.unsigned b).
+  Coercion two_bytes_to_expr(b: two_bytes): expr := expr.literal (LittleEndian.combine 2 b).
+  Coercion four_bytes_to_expr(b: four_bytes): expr := expr.literal (LittleEndian.combine 4 b).
+
+  Coercion expr.literal : Z >-> expr.
+  Coercion expr.var : String.string >-> expr.
+
   Notation len := List.length.
   Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per width sz)) (at level 10).
 
@@ -267,22 +435,16 @@ Section WithParameters.
 
   (* ** Packet Formats *)
 
-  Definition EtherTypeARP := tuple.of_list [Byte.x08; Byte.x06].
-  Definition EtherTypeIPv4 := tuple.of_list [Byte.x08; Byte.x00].
+  Definition ETHERTYPE_ARP: two_bytes := tuple.of_list [Byte.x08; Byte.x06].
+  Definition ETHERTYPE_IPV4: two_bytes := tuple.of_list [Byte.x08; Byte.x00].
 
-  Definition ETHERTYPE_IPV4_LE: Z :=
-    Eval compute in (LittleEndian.combine 2 EtherTypeIPv4).
-
-  Definition ETHERTYPE_ARP_LE: Z :=
-    Eval compute in (LittleEndian.combine 2 EtherTypeARP).
-
-(*  Definition MAC := tuple byte 6.*)
+  Definition MAC := tuple byte 6.
 
   Definition IPv4 := tuple byte 4.
 
   Record EthernetPacket(Payload: Type) := mkEthernetARPPacket {
-    dstMAC: tuple byte 6;
-    srcMAC: tuple byte 6;
+    dstMAC: MAC;
+    srcMAC: MAC;
     etherType: tuple byte 2; (* <-- must initially accept all possible two-byte values *)
     payload: Payload;
   }.
@@ -300,9 +462,9 @@ Section WithParameters.
     hlen: byte;          (* hardware address length (6 for MAC addresses) *)
     plen: byte;          (* protocol address length (4 for IPv4 addresses) *)
     oper: tuple byte 2;
-    sha: tuple byte 6;  (* sender hardware address *)
+    sha: MAC;  (* sender hardware address *)
     spa: IPv4; (* sender protocol address *)
-    tha: tuple byte 6;  (* target hardware address *)
+    tha: MAC;  (* target hardware address *)
     tpa: IPv4; (* target protocol address *)
   }.
 
@@ -318,18 +480,15 @@ Section WithParameters.
     FField tpa TODO (TTuple 4 1 TByte)
   ].
 
-  Definition HTYPE := tuple.of_list [Byte.x00; Byte.x01].
-  Definition PTYPE := tuple.of_list [Byte.x80; Byte.x00].
-  Definition HLEN := Byte.x06.
-  Definition PLEN := Byte.x04.
-  Definition OPER_REQUEST := tuple.of_list [Byte.x00; Byte.x01].
-  Definition OPER_REPLY := tuple.of_list [Byte.x00; Byte.x02].
-
-  Definition HTYPE_LE := Ox"0100".
-  Definition PTYPE_LE := Ox"0080".
+  Definition HTYPE: two_bytes := tuple.of_list [Byte.x00; Byte.x01].
+  Definition PTYPE: two_bytes := tuple.of_list [Byte.x80; Byte.x00].
+  Definition HLEN: byte := Byte.x06.
+  Definition PLEN: byte := Byte.x04.
+  Definition OPER_REQUEST: two_bytes := tuple.of_list [Byte.x00; Byte.x01].
+  Definition OPER_REPLY: two_bytes := tuple.of_list [Byte.x00; Byte.x02].
 
   Definition validPacket(pk: EthernetPacket ARPPacket): Prop :=
-    (pk.(etherType) = EtherTypeARP \/ pk.(etherType) = EtherTypeIPv4) /\
+    (pk.(etherType) = ETHERTYPE_ARP \/ pk.(etherType) = ETHERTYPE_IPV4) /\
     pk.(payload).(htype) = HTYPE /\
     pk.(payload).(ptype) = PTYPE /\
     pk.(payload).(hlen) = HLEN /\
@@ -337,21 +496,21 @@ Section WithParameters.
     (pk.(payload).(oper) = OPER_REQUEST \/ pk.(payload).(oper) = OPER_REPLY).
 
   Record ARPConfig := mkARPConfig {
-    myMAC: tuple byte 6;
+    myMAC: MAC;
     myIPv4: IPv4;
   }.
 
   Context (cfg: ARPConfig).
 
   Definition needsARPReply(req: EthernetPacket ARPPacket): Prop :=
-    req.(etherType) = EtherTypeARP /\
+    req.(etherType) = ETHERTYPE_ARP /\
     req.(payload).(oper) = OPER_REQUEST /\
     req.(payload).(tpa) = cfg.(myIPv4). (* <-- we only reply to requests asking for our own MAC *)
 
   Definition ARPReply(req: EthernetPacket ARPPacket): EthernetPacket ARPPacket :=
     {| dstMAC := req.(payload).(sha);
        srcMAC := cfg.(myMAC);
-       etherType := EtherTypeARP;
+       etherType := ETHERTYPE_ARP;
        payload := {|
          htype := HTYPE;
          ptype := PTYPE;
@@ -869,6 +1028,7 @@ Ltac simpli_getEq t :=
     constr:(@word.and_bool_to_word wi wo _ b1 b2)
   | context[@word.unsigned ?wi ?wo (word.of_Z ?x)] => constr:(@word.unsigned_of_Z_nowrap wi wo _ x)
   | context[@word.of_Z ?wi ?wo (word.unsigned ?x)] => constr:(@word.of_Z_unsigned wi wo _ x)
+  | context[LittleEndian.combine 1 (tuple.of_list [?b])] => constr:(LittleEndian.combine_1_of_list b)
   end.
 
 (* random simplifications that make the goal easier to prove *)
@@ -884,6 +1044,8 @@ Ltac simpli_step :=
   | H: andb ?b1 ?b2 = false |- _ => apply (Bool.andb_false_iff b1 b2) in H
   | H: orb ?b1 ?b2 = true |- _ => apply (Bool.orb_true_iff b1 b2) in H
   | H: orb ?b1 ?b2 = false |- _ => apply (Bool.orb_false_iff b1 b2) in H
+  | H: byte.unsigned _ = byte.unsigned _ |- _ => apply byte.unsigned_inj in H
+  | H: LittleEndian.combine _ _ = LittleEndian.combine _ _  |- _ => apply LittleEndian.combine_inj in H
   | H: word.of_Z ?x = word.of_Z ?y |- _ =>
     assert (x = y) by (apply (word.of_Z_inj_small H); ZnWords); clear H
   | |- _ => progress simpl (bytes_per _) in *
@@ -1023,9 +1185,9 @@ Set Default Goal Selector "1".
     if (ln == /*number*/64) /*split*/ {
       /*$. edestruct (bytesToEthernetARPPacket ethbufAddr _ H0) as (pk & A). seprewrite_in A H.
            change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H. $*/
-      if ((load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP_LE) &
-          (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE_LE) &
-          (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE_LE) &
+      if ((load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP) &
+          (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE) &
+          (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE) &
           (load1(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) &
           (load1(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) &
           (load2(ethbuf @ (@payload ARPPacket) @ oper) == coq:(LittleEndian.combine 2 OPER_REQUEST)) &
@@ -1043,10 +1205,26 @@ Set Default Goal Selector "1".
       } /*$ .
 
 {
-
 repeat prover_step.
 
+
+eexists.
+
+(* TODO: in this example, it would be better to not instantiate with econstructor, but with pk,
+   but what heuristic to choose to decide?
+   Maybe first try no econstructor, see if it's solvable, then try econstructor, see if it's solvable,
+   else stop and let user decide? *)
+match goal with
+| |- context[?g ?e] => is_evar e; is_getter g; instantiate_evar_with_econstructor e
+end.
+
+repeat match goal with
+       | |- context[?a] => simpl_getter_applied_to_constructor a
+       end.
+
+(*
 exists pk.
+*)
 
 repeat prover_step.
 
