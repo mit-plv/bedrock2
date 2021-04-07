@@ -1,6 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.ZArith.Zpow_facts.
-Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr.
+Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr coqutil.Tactics.ParamRecords.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.HexNotation.
 Require Import coqutil.Datatypes.List.
@@ -170,16 +170,12 @@ Ltac is_lia_prop P :=
   end.
 
 Ltac canonicalize_word_width_and_instance :=
+  simpl_param_projections; (* <-- should take care of width (if it's a member of a record called `parameters`) *)
   repeat so fun hyporgoal => match hyporgoal with
      | context [@word.unsigned ?wi ?inst] =>
-       let wi' := eval cbn in wi in let inst' := eval cbn in inst in
-       progress ( change wi with wi' in *; change inst with inst' in * )
+       let inst' := eval cbn in inst in progress ( change inst with inst' in * )
      | context [@word.signed ?wi ?inst] =>
-       let wi' := eval cbn in wi in let inst' := eval cbn in inst in
-       progress ( change wi with wi' in *; change inst with inst' in * )
-     | context[2 ^ ?wi] =>
-       let wi' := eval cbn in wi in (* <-- will blow up as soon as we have 2^bigExpression... *)
-       progress ( change wi with wi' in * )
+       let inst' := eval cbn in inst in progress ( change inst with inst' in * )
      end.
 
 Ltac ZnWords_pre :=

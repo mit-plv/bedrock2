@@ -36,4 +36,7 @@ __pycache__
 #
 # ((nil . ((compile-command . "if git rev-parse --is-inside-work-tree ; then nice -n 10 make all -C `git rev-parse --show-superproject-working-tree --show-toplevel | head -1` -k ; else echo 'not sure what to do' ; fi"))))
 #
+# Or using `nice` instead of `cgexec`:
+# ((nil . ((compile-command . "if git rev-parse --is-inside-work-tree ; then nice -n 10 make all -C `git rev-parse --show-superproject-working-tree --show-toplevel | head -1` -j4 -k ; SAVED_EXIT_CODE=$? ; if test $SAVED_EXIT_CODE = 0 ; then notify-send 'make' 'compilation succeeded'; else notify-send 'make' 'compilation failed' ; exit $SAVED_EXIT_CODE ; fi ; else echo 'not sure what to do' ; fi"))))
+#
 .dir-locals.el

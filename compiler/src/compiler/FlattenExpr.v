@@ -12,6 +12,8 @@ Require Import coqutil.Macros.unique.
 Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Tactics.Simp.
+Require Import Coq.Program.Tactics.
+Require Import coqutil.Tactics.ParamRecords.
 Require Import coqutil.Datatypes.String.
 Require Import compiler.FlattenExprDef.
 Require Export coqutil.Word.SimplWordExpr.
@@ -322,7 +324,8 @@ Section FlattenExpr1.
 
   Ltac maps :=
     pose_flatten_var_ineqs;
-    simpl in *; (* PARAMRECORDS simplifies implicit arguments to a (hopefully) canoncical form *)
+    simpl_param_projections;
+    simpl (disjoint _ _) in *;
     map_solver (@locals_ok p hyps).
 
   Lemma seq_with_modVars: forall env t m l mc s1 s2 mid post,
@@ -413,9 +416,7 @@ Section FlattenExpr1.
     epose proof (flattenExpr_correct_aux _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ F Ex U D Ev) as P.
     eapply FlatImp.exec.intersect; cycle 1.
     - exact P.
-    - (* PARAMRECORDS why can't this just be "eapply FlatImp.modVarsSound" ? *)
-      eapply @FlatImp.modVarsSound; try typeclasses eauto.
-      exact P.
+    - rapply FlatImp.modVarsSound. exact P.
   Qed.
 
   Lemma flattenExprs_correct: forall es fenv ngs1 ngs2 resVars s t m lH lL initialMcH initialMcL finalMcH resVals,
@@ -470,21 +471,8 @@ Section FlattenExpr1.
   Proof.
     apply unsigned_ne.
     rewrite! word.unsigned_of_Z. unfold word.wrap.
-    rewrite! Z.mod_small;
-      [blia|
-       pose proof word.width_pos as P; pose proof (Z.pow_gt_1 2 Utility.width) as Q ..].
-    {
-      (* PARAMRECORDS *)
-      Fail blia.
-      simpl in *.
-      blia.
-    }
-    {
-      (* PARAMRECORDS *)
-      Fail blia.
-      simpl in *.
-      blia.
-    }
+    pose proof word.width_pos as P; pose proof (Z.pow_gt_1 2 Utility.width) as Q.
+    rewrite! Z.mod_small; simpl_param_projections; blia.
   Qed.
 
   Lemma bool_to_word_to_bool_id: forall (b: bool),
@@ -554,8 +542,7 @@ Section FlattenExpr1.
   Proof.
     intros. eapply FlatImp.exec.intersect.
     - eapply flattenBooleanExpr_correct_aux; eassumption.
-    - (* PARAMRECORDS why not just "eapply @FlatImp.modVarsSound" ? *)
-      eapply @FlatImp.modVarsSound; [typeclasses eauto..|].
+    - rapply FlatImp.modVarsSound.
       eapply flattenBooleanExpr_correct_aux; eassumption.
   Qed.
 

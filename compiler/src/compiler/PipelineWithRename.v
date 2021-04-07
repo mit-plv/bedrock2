@@ -2,6 +2,7 @@ Require Export Coq.Lists.List.
 Require Import Coq.ZArith.ZArith.
 Export ListNotations.
 Require Export coqutil.Decidable.
+Require Import coqutil.Tactics.ParamRecords.
 Require        compiler.ExprImp.
 Require Export compiler.FlattenExprDef.
 Require Export compiler.FlattenExpr.
@@ -115,7 +116,6 @@ Module Import Pipeline.
   }.
 
 End Pipeline.
-
 
 Section Pipeline1.
 
@@ -509,9 +509,7 @@ Section Pipeline1.
       iff1 (program iset functions_start instrs)
            (FlatToRiscvCommon.functions functions_start (FlatToRiscvDef.build_fun_pos_env e) e).
   Proof.
-    (* PARAMRECORDS *)
-    assert (map.ok FlatImp.env). { unfold FlatImp.env. simpl. typeclasses eauto. }
-    assert (map.ok mem) as Ok by exact mem_ok.
+    assert nat as H by exact O. (* preserve names *)
 
     unfold riscvPhase.
     intros.
@@ -603,6 +601,7 @@ Section Pipeline1.
       map.get mach.(getRegs) RegisterNames.sp = Some stack_pastend /\
       (* configured by PrimitivesParams, can contain invariants needed for external calls *)
       valid_machine mach.
+
 
   (* This lemma translates "sim", which depends on the large definition "related", into something
      more understandable and usable. *)
@@ -741,9 +740,7 @@ Section Pipeline1.
       refine (ex_intro _ (_, _, _, _) _).
       ssplit; try reflexivity.
       { intros. ssplit; reflexivity. }
-      { unfold machine_ok in *. simp.
-        (* PARAMRECORDS *) simpl.
-        solve_word_eq word_ok. }
+      { unfold machine_ok in *. simp. simpl_param_projections. solve_word_eq word_ok. }
       unfold goodMachine. simpl. ssplit.
       { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
       { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
@@ -780,7 +777,6 @@ Section Pipeline1.
           symmetry in P.
           simpl in P|-*. unfold program in P.
           seprewrite P. clear P.
-          assert (word.ok FlatImp.word) by exact word_ok.
           rewrite <- Z_div_exact_2; cycle 1. {
             unfold bytes_per_word. clear -h.
             destruct width_cases as [E | E]; rewrite E; reflexivity.
@@ -792,13 +788,13 @@ Section Pipeline1.
             apply stack_length_divisible.
             assumption.
           }
-          wcancel_assumption.
-          rewrite word.of_Z_unsigned.
-          cancel_seps_at_indices O O. {
-            (* PARAMRECORDS *) simpl.
-            sepclause_eq word_ok.
-          }
-          cbn [seps]. reflexivity.
+          ParamRecords.simpl_param_projections.
+          use_sep_assumption.
+          unfold ptsto_bytes.
+          wseplog_pre.
+          simpl_addrs.
+          rewrite !word.of_Z_unsigned.
+          wcancel.
         }
         match goal with
         | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
@@ -828,8 +824,7 @@ Section Pipeline1.
       simp.
       eexists. split. 1: eassumption.
       unfold machine_ok. ssplit; try assumption.
-      + assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
-        cbv [rem_stackwords rem_framewords ghostConsts] in H2p0p1p8p0.
+      + cbv [rem_stackwords rem_framewords ghostConsts] in H2p0p1p8p0.
         cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).
         exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x))) stack_trash).
@@ -875,7 +870,6 @@ Section Pipeline1.
         simpl.
         unfold ptsto_bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
         simpl.
-        assert (map.ok mem). { exact mem_ok. } (* PARAMRECORDS *)
         wwcancel.
         epose proof (functions_to_program ml _ r0 instrs) as P.
         cbn [seps].

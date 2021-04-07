@@ -603,8 +603,8 @@ Section WithParameters.
           rewrite ?Znat.Z2Nat.id by eapply word.unsigned_range.
           transitivity (word.unsigned num_bytes); [blia|exact eq_refl]. } }
         { pose proof word.unsigned_range num_bytes.
-          rewrite length_skipn. blia. }
-        rewrite H11, length_firstn_inbounds, ?Znat.Z2Nat.id.
+          rewrite List.length_skipn. blia. }
+        rewrite H11, List.length_firstn_inbounds, ?Znat.Z2Nat.id.
         all: try (zify_unsigned; blia).
         }
       { repeat match goal with H : _ |- _ => rewrite H; intro HX; solve[inversion HX] end. }

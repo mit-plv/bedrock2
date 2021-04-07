@@ -74,7 +74,7 @@ Section Riscv.
 
   Lemma invert_fetch1: forall initial post k,
       mcomp_sat (pc <- Machine.getPC; i <- Machine.loadWord Fetch pc; k i) initial post ->
-      exists w R, R \*/ bytes initial#"pc" w = Some initial#"mem" /\
+      exists (w: w32) R, R \*/ bytes (n:=4) initial#"pc" w = Some initial#"mem" /\
                   mcomp_sat (k w) initial post.
   Proof.
     intros. apply invert_fetch0 in H. simp.
@@ -100,7 +100,7 @@ Section Riscv.
 
   Lemma build_fetch1: forall (initial: State) post k w R,
       mcomp_sat (k w) initial post ->
-      R \*/ bytes initial#"pc" w = Some initial#"mem" ->
+      R \*/ bytes (n:=4) initial#"pc" w = Some initial#"mem" ->
       mcomp_sat (pc <- Machine.getPC; i <- Machine.loadWord Fetch pc; k i) initial post.
   Proof.
     intros. eapply build_fetch0. 2: eassumption.

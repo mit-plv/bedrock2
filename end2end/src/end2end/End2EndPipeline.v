@@ -251,7 +251,7 @@ Section Connect.
     - cbv. auto.
     - unfold PipelineWithRename.ptsto_bytes, riscvMemInit_values in *.
       cbn [seq map array map.of_list].
-      (* PARAMRECORDS *)
+      (* PARAMRECORDS-instance *)
       change (KamiWord.word 32) with (@Utility.word Words32).
       match goal with
       | |- context [map.put ?m ?k ?v] => pose proof map.put_putmany_commute k v m map.empty as P
@@ -264,7 +264,7 @@ Section Connect.
       ssplit; cycle 1.
       + specialize (IHlen (S from)).
         replace (Z.of_nat (S from)) with (Z.of_nat from + 1) in IHlen by blia.
-        (* PARAMRECORDS *)
+        (* PARAMRECORDS-instance *)
         change (KamiWord.word 32) with (@Utility.word Words32) in IHlen.
         rewrite word.ring_morph_add in IHlen.
         apply IHlen. blia.

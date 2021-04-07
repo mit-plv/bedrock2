@@ -20,7 +20,7 @@ Module cmd. Import Syntax.cmd.
     | set x e => x::expr.vars e
     | unset x => x::nil
     | store _ ea ev => expr.vars ea ++ expr.vars ev
-    | stackalloc x n body => x::nil
+    | stackalloc x n body => x :: vars body
     | cond eb ct cf => expr.vars eb ++ (vars ct ++ vars cf)
     | seq c1 c2 => vars c1 ++ vars c2
     | while e c => expr.vars e ++ vars c
