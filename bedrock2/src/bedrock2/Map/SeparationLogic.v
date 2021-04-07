@@ -1,5 +1,7 @@
+Require Export bedrock2.Map.Separation.
+
 Require Import Coq.Classes.Morphisms.
-Require Import bedrock2.Lift1Prop bedrock2.Map.Separation.
+Require Import bedrock2.Lift1Prop.
 Require Coq.Lists.List.
 Require Import coqutil.sanity coqutil.Decidable coqutil.Tactics.destr.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
@@ -8,7 +10,7 @@ Import Map.Interface.map Map.Properties.map.
 Section SepProperties.
   Context {key value} {map : map key value} {ok : ok map}.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
-  Local Infix "*" := sep.
+  Local Open Scope sep_scope.
 
   Global Instance Proper_sep_iff1 : Proper (iff1 ==> iff1 ==> iff1) sep. firstorder idtac. Qed.
   Global Instance Proper_sep_impl1 : Proper (impl1 ==> impl1 ==> impl1) sep. firstorder idtac. Qed.

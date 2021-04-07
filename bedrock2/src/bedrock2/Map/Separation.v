@@ -15,3 +15,8 @@ Section Sep.
     | nil => emp True
     end.
 End Sep.
+
+Declare Scope sep_scope.
+Delimit Scope sep_scope with sep.
+Infix "*" := sep (at level 40, left associativity) : sep_scope.
+Infix "⋆" := sep (at level 40, left associativity) : sep_scope.

@@ -39,7 +39,7 @@ Section WithParameters.
     ))).
 
     Local Infix "*" := sep : type_scope.
-    Local Infix "*" := sep.
+    Local Open Scope sep_scope.
     Local Notation "a [ i ]" := (List.hd _ (List.skipn i a)) (at level 10, left associativity, format "a [ i ]").
     Local Notation "a [: i ]" := (List.firstn i a) (at level 10, left associativity, format "a [: i ]").
     Local Notation "a [ i :]" := (List.skipn i a) (at level 10, left associativity, format "a [ i :]").
