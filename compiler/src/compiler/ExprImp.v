@@ -419,7 +419,7 @@ Section ExprImp2.
       4: eapply IHexec.
       all: eauto.
       intros.
-      edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
+      edestruct H4 as (? & ? & ? & ? & ?).
       eauto 10.
     - eapply @exec.interact; try eassumption.
       intros.
@@ -476,10 +476,11 @@ Section ExprImp2.
       + eapply IHexec. exact H9. (* not H1 *)
       + simpl. intros *. intros [? ?]. eauto.
     - eapply exec.call. 1, 2, 3: eassumption.
-      + eapply IHexec. exact H16. (* not H2 *)
+      eapply weaken_exec.
+      + eapply IHexec. exact H15. (* not H2 *)
       + simpl. intros *. intros [? ?].
-        edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
-        edestruct H17 as (? & ? & ? & ? & ?); [eassumption|].
+        edestruct H3 as (? & ? & ? & ? & ?).
+        edestruct H4 as (? & ? & ? & ? & ?).
         repeat match goal with
                | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
                  replace v2 with v1 in * by congruence; clear H2
@@ -543,7 +544,8 @@ Section ExprImp2.
         eapply weaken_exec.
         * eapply H3; eassumption.
         * simpl. intros. map_solver locals_ok.
-    - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
+    - eapply exec.call. all: try eassumption.
+      eapply weaken_exec. 1: exact H2. (* don't pick IHexec! *)
       simpl. intros.
       edestruct H3 as (? & ? & ? & ? & ?); try eassumption.
       eexists; split; [eassumption|].
@@ -584,7 +586,8 @@ Section ExprImp2.
       eapply weaken_exec.
       + eapply H3; eassumption.
       + simpl. intros. intuition idtac. map_solver locals_ok.
-    - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
+    - eapply exec.call. all: try eassumption.
+      eapply weaken_exec. 1: exact H2.
       simpl. intros.
       edestruct H3 as (? & ? & ? & ? & ?); try eassumption.
       repeat (eexists || split || eassumption).
