@@ -10,6 +10,14 @@ Section Subseq.
   Definition subseq l l' :=
     forall x, In x l -> In x l'.
 
+  Lemma subseq_refl {l} :
+    subseq l l.
+  Proof. firstorder. Qed.
+
+  Lemma subseq_nil {l} :
+    subseq [] l.
+  Proof. firstorder. Qed.
+
   Lemma subseq_singleton x l :
     In x l -> subseq [x] l.
   Proof. firstorder (subst; eauto). Qed.
@@ -22,19 +30,19 @@ Section Subseq.
     subseq l l' -> subseq l (x :: l').
   Proof. firstorder. Qed.
 
-  Lemma subseq_app_r1 l l':
+  Lemma subseq_app_r1 {l l'}:
     subseq l (l ++ l').
   Proof. firstorder eauto using in_or_app. Qed.
 
-  Lemma subseq_app_r2 l l':
+  Lemma subseq_app_r2 {l l'}:
     subseq l' (l ++ l').
   Proof. firstorder eauto using in_or_app. Qed.
 
-  Lemma subseq_app_l1 l l' l'':
+  Lemma subseq_app_l1 {l l' l''}:
     subseq (l ++ l') l'' -> subseq l l''.
   Proof. firstorder eauto using in_or_app. Qed.
 
-  Lemma subseq_app_l2 l l' l'':
+  Lemma subseq_app_l2 {l l' l''}:
     subseq (l ++ l') l'' -> subseq l' l''.
   Proof. firstorder eauto using in_or_app. Qed.
 End Subseq.
@@ -55,7 +63,7 @@ Notation body_ext b b' :=
 Section Folds.
   Context {A T: Type}.
   Context (xs: list T).
-  Context (f: forall (acc: A) (x: T) , List.In x xs -> A).
+  Context (f: forall (acc: A) (x: T), List.In x xs -> A).
   Context (stop: A -> bool).
 
   Lemma foldl_dep'0 {x0 suffix}:
@@ -75,13 +83,10 @@ Section Folds.
                   else let a := f a x (foldl_dep'0 pr) in
                        foldl_dep' xxs (foldl_dep'1 pr) a
     end.
-
-  Definition foldl_dep0 x: In x xs -> In x xs :=
-    id.
 End Folds.
 
 Notation foldl_dep xs f stop a0 :=
-  (foldl_dep' xs f stop xs (foldl_dep0 xs) a0).
+  (foldl_dep' xs f stop xs subseq_refl a0).
 
 Section Props.
   Context {A T: Type}.
@@ -109,7 +114,7 @@ Section Props.
      make it clear that the proof's structure is irrelevant (it doesn't
      necessarily encode the element's index), but it requires additional axioms.
      Alternatively, we could track indices and pass them around, and then the
-     proof would just be `nth_error ` since we'd again be giving the "wrong"
+     proof would just be `nth_error` since we'd again be giving the "wrong"
      proof *)
 
   Lemma foldl_dep_Proper:
@@ -177,21 +182,60 @@ Section Props.
     intros; unshelve erewrite foldl_dep_app; eauto with loops.
     eauto using foldl_dep_stop.
   Qed.
+
+  Lemma foldl_dep_Proper_strong':
+    forall xs xs'
+      f f' stop stop'
+      xxs xxs1 (Hs: subseq (xxs1 ++ xxs) xs) Hs0 Hs0' Hs1 a0,
+      body_ext_irrel f f ->
+      (forall xxs1 Hs1 x h h',
+          let a := foldl_dep' xs f stop xxs1 Hs1 a0 in
+          f a x h = f' a x h') ->
+      (forall xxs1 Hs1,
+          let a := foldl_dep' xs f stop xxs1 Hs1 a0 in
+          stop a = stop' a) ->
+      foldl_dep' xs f stop xxs Hs0
+                 (foldl_dep' xs f stop xxs1 Hs1 a0) =
+      foldl_dep' xs' f' stop' xxs Hs0'
+                 (foldl_dep' xs f stop xxs1 Hs1 a0).
+  Proof.
+    induction xxs; intros * ????? Hf Hb Hs; subst; simpl in *.
+    - reflexivity.
+    - rewrite <- Hs; destruct stop eqn:?; try reflexivity.
+      pose proof Hs0 as H.
+      replace (xxs1 ++ a :: xxs) with ((xxs1 ++ [a]) ++ xxs) in H
+        by (rewrite <- app_assoc; reflexivity).
+      replace (f (foldl_dep' xs f stop xxs1 Hs2 a0) a (foldl_dep'0 xs Hs1))
+        with (foldl_dep' xs f stop (xxs1 ++ [a]) (subseq_app_l1 H) a0).
+      replace (f' (foldl_dep' xs f stop xxs1 Hs2 a0) a (foldl_dep'0 xs' Hs0'))
+        with (foldl_dep' xs f stop (xxs1 ++ [a]) (subseq_app_l1 H) a0).
+      apply IHxxs; f_equal; eauto.
+      + unshelve erewrite foldl_dep_snoc_nstop; eauto with loops.
+      + unshelve erewrite foldl_dep_snoc_nstop; eauto with loops.
+  Qed.
+
+  Lemma foldl_dep_Proper_strong:
+    forall xs xs'
+      f f' stop stop'
+      xxs xxs' Hs Hs' a0 a0',
+      xxs = xxs' -> a0 = a0' ->
+      body_ext_irrel f f ->
+      (forall xxs1 Hs1 x h h',
+          let a := foldl_dep' xs f stop xxs1 Hs1 a0 in
+          f a x h = f' a x h') ->
+      (forall xxs1 Hs1,
+          let a := foldl_dep' xs f stop xxs1 Hs1 a0 in
+          stop a = stop' a) ->
+      foldl_dep' xs f stop xxs Hs a0 =
+      foldl_dep' xs' f' stop' xxs' Hs' a0'.
+  Proof.
+    intros; subst.
+    eapply (foldl_dep_Proper_strong') with (xxs1 := []) (Hs1 := subseq_nil);
+      eauto.
+  Qed.
 End Props.
 
 Global Hint Resolve foldl_dep_Proper : loops.
-
-(* Section FoldProperties. *)
-(*   Context {A T: Type}. *)
-
-(*   Context (xs: list T). *)
-(*   Context (stop: A -> bool). *)
-
-  (* Lemma foldl_dep'_cons (xs: list T) f x (xxs: list T) pr a: *)
-  (*   foldl_dep' xs f stop (x :: xxs) pr a = *)
-  (*   foldl_dep' xs f stop xxs (foldl_dep1 pr) (f a x (foldl_dep0 pr)). *)
-  (* Proof. reflexivity. Qed. *)
-
 
 Section Induction.
   Context {A T: Type}.
@@ -199,15 +243,6 @@ Section Induction.
   Context (f: forall (acc: A) (x: T), List.In x xs -> A).
   Context (stop: A -> bool).
   Context (P: A -> Prop) (a0: A).
-
-  (* Context (P: list T -> A -> Prop) (a0: A). *)
-  (* Context (Hbody: forall x xs a Hin, *)
-  (*             P xs a -> P (xs ++ [x]) (f a x Hin)). *)
-
-  (* Lemma foldl_dep'_ind : *)
-  (*   forall xxs x0 pr (H0: P x0 a0), *)
-  (*     P (x0 ++ xxs) (foldl_dep' xs f stop xxs pr a0). *)
-  (* Proof. *)
 
   Context (H0: P a0).
   Context (Hbody: forall x a1 Hin, P a1 -> P (f a1 x Hin)).
@@ -225,19 +260,40 @@ Arguments foldl_dep' {A T} xs f stop !xxs _ _ / : assert.
 (* Arguments foldl_dep {A T} !xs f stop a0 / : assert. *)
 
 Section SimpleFolds.
-  Context {A T} (f: A -> T -> A).
+  Context {A B T: Type}.
 
-  Lemma foldl_as_foldl_dep xs xxs Hs:
+  Lemma foldl_as_foldl_dep' (f: A -> T -> A) xs xxs Hs:
     forall a0,
       fold_left f xxs a0 =
       foldl_dep' xs (fun a x _ => f a x) (fun _ => false) xxs Hs a0.
   Proof. induction xxs; simpl; eauto. Qed.
 
-  (* Lemma foldl_as_foldl_dep xs: *)
-  (*   forall a0, *)
-  (*     fold_left f xs a0 = *)
-  (*     foldl_dep xs (fun a x _ => f a x) (fun _ => false) a0. *)
-  (* Proof. intros; apply foldl_as_foldl_dep'. Qed. *)
+  Lemma foldl_as_foldl_dep (f: A -> T -> A) xs a0:
+    fold_left f xs a0 =
+    foldl_dep' xs (fun a x _ => f a x) (fun _ => false) xs subseq_refl a0.
+  Proof. eauto using foldl_as_foldl_dep'. Qed.
+
+  Lemma map_as_fold_left' (f: A -> B) :
+    forall xs xs', xs' ++ List.map f xs =
+              List.fold_left (fun a x => a ++ [f x]) xs xs'.
+  Proof.
+    induction xs; simpl; intros;
+      rewrite ?app_nil_r, <- ?IHxs, <- ?app_assoc; eauto.
+  Qed.
+
+  Lemma map_as_fold_left (f: A -> B) xs:
+    List.map f xs =
+    List.fold_left (fun a x => a ++ [f x]) xs [].
+  Proof.
+    rewrite <- map_as_fold_left'; reflexivity.
+  Qed.
+
+  Lemma map_as_fold_right (f: A -> B) :
+    forall xs, List.map f xs =
+          List.fold_right (fun x a => f x :: a) [] xs.
+  Proof.
+    induction xs; simpl; intros; try rewrite <- IHxs; eauto.
+  Qed.
 End SimpleFolds.
 
 Open Scope Z_scope.
@@ -251,7 +307,7 @@ Section ZRange.
 
   Lemma z_range'_snoc' z0 len :
     forall xxs, z_range' z0 (S len) ++ xxs =
-          z_range' z0 len ++ [z0 + Z.of_nat len] ++ xxs.
+           z_range' z0 len ++ [z0 + Z.of_nat len] ++ xxs.
   Proof.
     induction len in z0 |- *.
     - rewrite Z.add_0_r; reflexivity.
@@ -592,6 +648,123 @@ Section Properties.
     from - 1 < idx < to.
   Proof. lia. Qed.
 End Properties.
+
+Arguments Z.of_nat : simpl never.
+
+Lemma replace_nth_app1 {A}:
+  forall (xs xs': list A) idx x,
+    (idx < List.length xs)%nat ->
+    replace_nth idx (xs ++ xs') x =
+    replace_nth idx xs x ++ xs'.
+Proof.
+  induction xs; simpl; intros.
+  - lia.
+  - destruct idx; simpl; rewrite ?IHxs by lia; reflexivity.
+Qed.
+
+Lemma replace_nth_app2 {A}:
+  forall (xs xs': list A) idx x,
+    (idx >= List.length xs)%nat ->
+    replace_nth idx (xs ++ xs') x =
+    xs ++ replace_nth (idx - List.length xs) xs' x.
+Proof.
+  induction xs; simpl; intros.
+  - repeat f_equal; lia.
+  - destruct idx; simpl; rewrite ?IHxs; lia || reflexivity.
+Qed.
+
+Lemma replace_nth_app_skip {A}:
+  forall (xs xs': list A) x x',
+    replace_nth (List.length xs) (xs ++ x :: xs') x' =
+    xs ++ x' :: xs'.
+Proof.
+  intros; rewrite replace_nth_app2 by lia.
+  rewrite Nat.sub_diag; reflexivity.
+Qed.
+
+Lemma nth_error_lt_some {A} (xs: list A):
+  forall idx,
+    (idx < List.length xs)%nat ->
+    exists x, List.nth_error xs idx = Some x.
+Proof.
+  induction xs; simpl; intros; try lia.
+  destruct idx; simpl; eauto; [].
+  apply IHxs; lia.
+Qed.
+
+Section FoldsAsLoops.
+  Context {A B T: Type}.
+
+  Lemma map_as_mutating_rw_fold' xs:
+    forall (xs0: list A) (f: A -> A),
+      List.fold_left
+        (fun acc x => acc ++ [f x])
+        xs xs0 =
+      List.fold_left
+        (fun acc idx =>
+           match List.nth_error acc (Z.to_nat idx) with
+           | Some x => replace_nth (Z.to_nat idx) acc (f x)
+           | None => acc
+           end)
+        (z_range' (Z.of_nat (List.length xs0))
+                  (List.length xs))
+        (xs0 ++ xs).
+  Proof.
+    induction xs; simpl; intros.
+    - rewrite ?app_nil_r; congruence.
+    - rewrite Nat2Z.id, nth_error_app2, Nat.sub_diag by eauto; simpl.
+      rewrite IHxs by eauto; repeat f_equal.
+      + rewrite app_length; simpl; lia.
+      + rewrite replace_nth_app_skip, <- app_assoc; reflexivity.
+  Qed.
+
+  Lemma map_as_mutating_rw_fold xs:
+    forall (f: A -> A),
+      List.map f xs =
+      List.fold_left
+        (fun acc idx =>
+           match List.nth_error acc (Z.to_nat idx) with
+           | Some x => replace_nth (Z.to_nat idx) acc (f x)
+           | None => acc
+           end)
+        (z_range 0 (Z.of_nat (List.length xs)))
+        xs.
+  Proof.
+    unfold z_range; intros.
+    rewrite map_as_fold_left, map_as_mutating_rw_fold'.
+    repeat f_equal.
+    rewrite Z.sub_0_r, Nat2Z.id; reflexivity.
+  Qed.
+
+  (** The way this lemma is phrased allows it to be used for all sorts of list
+      representations and get/put interfaces (using default values, dependent
+      types, etc.). **)
+
+  Lemma map_as_ranged_for xs:
+    forall (f: A -> A) f',
+      (forall xs n x Hin,
+          List.nth_error xs n = Some x ->
+          f' xs (Z.of_nat n) Hin = replace_nth n xs (f x)) ->
+      List.map f xs =
+      ranged_for_all 0 (Z.of_nat (List.length xs)) f' xs.
+  Proof.
+    intros * Hf'.
+    rewrite map_as_mutating_rw_fold, foldl_as_foldl_dep.
+    unfold ranged_for_all, ranged_for_break.
+    apply foldl_dep_Proper_strong; eauto.
+    intros ?? idx ?? xs'.
+    set (z_range_sound _ _ _ _) as Hin; clearbody Hin.
+    assert (List.length xs' = List.length xs) as Hlen.
+    { apply foldl_dep_ind; eauto; [].
+      intros; destruct nth_error; eauto; [].
+      rewrite replace_nth_length; eauto. }
+    destruct (nth_error_lt_some xs' (Z.to_nat idx)) as (? & Hnth).
+    { rewrite Hlen; lia. }
+    specialize (Hf' xs' (Z.to_nat idx) x).
+    rewrite Z2Nat.id in Hf' by lia.
+    rewrite Hf' by eauto. rewrite Hnth; reflexivity.
+  Qed.
+End FoldsAsLoops.
 
 Module Type ExitToken_sig.
   Axiom t : Set.
