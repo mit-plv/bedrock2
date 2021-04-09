@@ -152,7 +152,7 @@ Section Ex.
     all: repeat compile_step; compile_done.
   Qed.
 
-  Definition sizedlist_memcpy (len: word)
+  Definition list_memcpy (len: word)
              (a1: ListArray.t word)
              (a2: ListArray.t word) :=
     let/n from := word.of_Z 0 in
@@ -176,13 +176,13 @@ Section Ex.
                               sizedlistarray_value AccessWord a2_ptr n2 a2 ⋆ R) mem;
       ensures tr' mem' :=
         tr' = tr /\
-        let res := sizedlist_memcpy len a1 a2 in
+        let res := list_memcpy len a1 a2 in
         (sizedlistarray_value AccessWord a1_ptr n1 (fst res) ⋆
                               sizedlistarray_value AccessWord a2_ptr n2 (snd res) ⋆ R) mem' }.
 
   Derive sizedlist_memcpy_body SuchThat
          (defn! "sizedlist_memcpy"("len", "a1", "a2") { sizedlist_memcpy_body },
-          implements sizedlist_memcpy)
+          implements list_memcpy)
          As sizedlist_memcpy_correct.
   Proof.
     compile_setup.
@@ -200,18 +200,6 @@ Section Ex.
     all: repeat compile_step; try lia; compile_done.
   Qed.
 
-  Definition unsizedlist_memcpy (len: word)
-             (a1: ListArray.t word)
-             (a2: ListArray.t word) :=
-    let/n from := word.of_Z 0 in
-    let/n a2 := ranged_for_u
-                 from len
-                 (fun a2 tok idx Hlt =>
-                    let/n v := ListArray.get a1 idx in
-                    let/n a2 := ListArray.put a2 idx v in
-                    (tok, a2)) a2 in
-    (a1, a2).
-
   Instance spec_of_unsizedlist_memcpy : spec_of "unsizedlist_memcpy" :=
     fnspec! "unsizedlist_memcpy" (len: word) (a1_ptr a2_ptr : address) /
           (a1: ListArray.t word) (a2: ListArray.t word)
@@ -223,13 +211,13 @@ Section Ex.
                          listarray_value AccessWord a2_ptr a2 ⋆ R) mem;
       ensures tr' mem' :=
         tr' = tr /\
-        let res := unsizedlist_memcpy len a1 a2 in
+        let res := list_memcpy len a1 a2 in
         (listarray_value AccessWord a1_ptr (fst res) ⋆
                          listarray_value AccessWord a2_ptr (snd res) ⋆ R) mem' }.
 
   Derive unsizedlist_memcpy_body SuchThat
          (defn! "unsizedlist_memcpy"("len", "a1", "a2") { unsizedlist_memcpy_body },
-          implements unsizedlist_memcpy)
+          implements list_memcpy)
          As unsizedlist_memcpy_correct.
   Proof.
     compile_setup.
