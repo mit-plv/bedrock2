@@ -9,6 +9,10 @@ Local Open Scope Z_scope.
 
 Section KamiWordFacts.
 
+  (* compatibility code for Coq 8.14 *)
+  Fact Znat_N2Z_inj_mod : forall n m : N, m <> 0%N -> Z.of_N (n mod m) = Z.of_N n mod Z.of_N m.
+  Proof. intros. now apply Znat.N2Z.inj_mod. Qed.
+
   Lemma wordToN_split2 a b w :
     wordToN (@split2 a b w) = BinNat.N.div (wordToN w) (NatLib.Npow2 a).
   Proof.
@@ -75,8 +79,8 @@ Section KamiWordFacts.
   Proof.
     intros.
     cbv [wplus wordBin].
-    rewrite wordToN_NToWord_eqn, Znat.N2Z.inj_mod, Znat.N2Z.inj_add, NatLib.Z_of_N_Npow2.
-    2:apply NatLib.Npow2_not_zero.
+    rewrite wordToN_NToWord_eqn, Znat_N2Z_inj_mod, Znat.N2Z.inj_add, NatLib.Z_of_N_Npow2.
+    2: apply NatLib.Npow2_not_zero.
     f_equal; f_equal; blia.
   Qed.
 
@@ -202,7 +206,7 @@ Section KamiWordFacts.
     remember (NatLib.pow2 a) as pa eqn:Ha.
     pose proof NatLib.pow2_zero a.
     pose proof mod_Zmod n pa ltac:(blia).
-    pose proof Znat.N2Z.inj_mod (BinNat.N.of_nat n) (BinNat.N.of_nat pa) ltac:(blia).
+    pose proof Znat_N2Z_inj_mod (BinNat.N.of_nat n) (BinNat.N.of_nat pa) ltac:(blia).
     rewrite Znat.nat_N_Z in *.
     blia.
   Qed.
@@ -442,7 +446,7 @@ Section WithWidth.
 
     { setoid_rewrite uwordToZ_ZToWord_full; f_equal; trivial; congruence. }
     { cbv [wmult wordBin].
-      rewrite wordToN_NToWord_eqn, Znat.N2Z.inj_mod, Znat.N2Z.inj_mul, NatLib.Z_of_N_Npow2.
+      rewrite wordToN_NToWord_eqn, Znat_N2Z_inj_mod, Znat.N2Z.inj_mul, NatLib.Z_of_N_Npow2.
       2: apply NatLib.Npow2_not_zero.
       f_equal; f_equal; blia. }
 
@@ -485,7 +489,7 @@ Section WithWidth.
       f_equal; f_equal; blia. }
     { rewrite wlshift_mul_Zpow2 by (Z.div_mod_to_equations; blia).
       cbv [wmult wordBin].
-      rewrite wordToN_NToWord_eqn, Znat.N2Z.inj_mod, Znat.N2Z.inj_mul, NatLib.Z_of_N_Npow2.
+      rewrite wordToN_NToWord_eqn, Znat_N2Z_inj_mod, Znat.N2Z.inj_mul, NatLib.Z_of_N_Npow2.
       2:apply NatLib.Npow2_not_zero.
       repeat setoid_rewrite uwordToZ_ZToWord_full; try blia.
       rewrite Zdiv.Zmult_mod_idemp_r.
