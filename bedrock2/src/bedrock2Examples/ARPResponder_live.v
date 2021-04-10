@@ -643,6 +643,51 @@ Section WithParameters.
   Ltac check_lookup_range_feasible :=
     assert_succeeds (assert_lookup_range_feasible; [solve [unfold subrange, addr_in_range; ZnWords]|]).
 
+  Axiom admit_implication: forall (P Q: Prop), P -> Q.
+  Arguments admit_implication: clear implicits.
+
+  Lemma record_simplification: forall (P Q: Prop), P = Q -> P -> Q. Proof. intros. subst P. assumption. Qed.
+  Arguments record_simplification: clear implicits.
+
+Ltac2 Type exn ::= [ Succeeds ].
+
+Ltac2 without_effects(t: unit -> 'a) :=
+  let r := { contents := t (* <- dummy default *) } in
+  match Control.case (fun () =>
+         match Control.case t with
+         | Val p => match p with
+                    | (x, _) => r.(contents) := (fun () => x); Control.zero Succeeds
+                    end
+         | Err e => Control.zero e
+         end) with
+  | Val _ => Control.throw (Tactic_failure (Some (Message.of_string "anomaly")))
+  | Err e =>
+    match e with
+    | Succeeds => r.(contents) ()
+    | _ => Control.zero e
+    end
+  end.
+
+  Ltac admit_cbn_old :=
+    match goal with
+    | |- ?G => let G' := eval cbn in G in apply (admit_implication G' G)
+    end.
+
+  Ltac2 admit_transform(t: unit -> unit) :=
+    let g' := without_effects (fun () => t (); Control.goal ()) in apply (admit_implication $g').
+
+  Ltac2 record_transform(t: unit -> unit) :=
+    let g' := without_effects (fun () => t (); Control.goal ()) in apply (record_simplification $g' _ eq_refl).
+
+  Ltac2 admit_cbn () := admit_transform (fun () => cbn).
+
+  Ltac admit_cbn := ltac2:(Control.enter admit_cbn).
+
+  Ltac admit_reflexivity :=
+    match goal with
+    | |- ?lhs = ?rhs => unify lhs rhs; exact TODO
+    end.
+
   Goal forall base f R m,
       seps [dataAt foo_spec base f; R] m ->
       exists v,
@@ -676,13 +721,13 @@ Section WithParameters.
     clear range_start range_size T.
 
     eapply lookup_path_Field with (i := 1%nat); [reflexivity|]. (* <-- i picked by backtracking *)
-    cbn.
+    admit_cbn.
 
     (* check that path is still good *)
     check_lookup_range_feasible.
 
-    eapply lookup_path_Field with (i := 2%nat); [reflexivity|]. (* <-- i picked by backtracking *)
-    cbn.
+    eapply lookup_path_Field with (i := 2%nat). { admit_reflexivity. } (* <-- i picked by backtracking *)
+    admit_cbn.
 
     (* check that path is still good *)
     check_lookup_range_feasible.
@@ -856,7 +901,7 @@ Ltac pick_nat n :=
       end
     end in
     let j := pick_nat n in
-    eapply lookup_path_Field with (i := j); [reflexivity|]; cbn;
+    eapply lookup_path_Field with (i := j); [admit_reflexivity|]; admit_cbn;
     check_lookup_range_feasible).
 
   Ltac lookup_done :=
@@ -949,14 +994,23 @@ Ltac locals_step :=
                         split; [solve [repeat locals_step]|]
   end.
 
-Ltac expr_step :=
+Ltac expr_step1 :=
   match goal with
-  | _ => locals_step
   | |- @list_map _ _ (@expr _ _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
   | |- @expr _ _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
   | |- @dexpr _ _ _ _ _ => cbv beta delta [dexpr]
   | |- @dexprs _ _ _ _ _ => cbv beta delta [dexprs]
   | |- @literal _ _ _ => cbv beta delta [literal]
+  end.
+
+Ltac expr_step2 :=
+  match goal with
+  | _ => locals_step
+  | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
+    eapply SortedList.eq_value; exact eq_refl
+  | |- True => exact I
+  | |- False \/ _ => right
+  | |- _ \/ False => left
   | |- @load _ _ _ _ _ => eapply load_field'';
        once (match goal with
              (* backtrack over choice of Hm in case there are several *)
@@ -968,12 +1022,9 @@ Ltac expr_step :=
                    eexists i; split; [cbv [List.nth_error]; reflexivity|];
                    split; [ repeat (lookup_done || lookup_field_step) |]
              end)
-  | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
-    eapply SortedList.eq_value; exact eq_refl
-  | |- True => exact I
-  | |- False \/ _ => right
-  | |- _ \/ False => left
   end.
+
+Ltac expr_step := first [expr_step1 | expr_step2].
 
 Import Syntax.
 
@@ -987,11 +1038,21 @@ Inductive note_wrapper: string -> Type := mkNote(s: string): note_wrapper s.
 Notation "s" := (note_wrapper s) (at level 200, only printing).
 Ltac add_note s := let n := fresh "Note" in pose proof (mkNote s) as n; move n at top.
 
+Ltac admit_repeat_expr_step1 :=
+  ltac2:(Control.enter (fun () => admit_transform (fun () => (Control.enter (fun () => ltac1:(repeat expr_step1)))))).
+
+Ltac record_repeat_expr_step1 :=
+  ltac2:(Control.enter (fun () => record_transform (fun () => (Control.enter (fun () => ltac1:(repeat expr_step1)))))).
+
+
 Ltac add_snippet s :=
   lazymatch s with
   | SSet ?y ?e => eapply assignment with (x := y) (a := e); repeat expr_step
   | SIf ?cond false => eapply if_split with (c := cond);
-                       [ repeat expr_step
+                       [ (*repeat (repeat expr_step1; try expr_step2)*)
+                         (*repeat (admit_repeat_expr_step1; try expr_step2)*)
+                         repeat (record_repeat_expr_step1; try expr_step2)
+                         (*repeat expr_step*)
                        | intros
                        | intros; add_note "'else' expected" ]
   | SEnd => eapply exec.skip
@@ -1179,20 +1240,38 @@ Set Default Goal Selector "1".
     pose "ethbuf" as ethbuf. pose "ln" as ln. pose "doReply" as doReply. pose "tmp" as tmp.
     refine ("arp", existT _ ([ethbuf; ln], [doReply], _) _).
     intros. cbv [vc_func]. letexists. split. 1: subst l; reflexivity. intros.
-
+Set Ltac2 Backtrace.
     $*/
     doReply = /*number*/0; /*$. $*/
     if (ln == /*number*/64) /*split*/ {
       /*$. edestruct (bytesToEthernetARPPacket ethbufAddr _ H0) as (pk & A). seprewrite_in A H.
-           change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H. $*/
+           change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H.
+
+Ltac after_snippet ::= idtac.
+
+ $*/
       if ((load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP) &
           (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE) &
           (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE) &
           (load1(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) &
           (load1(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) &
           (load2(ethbuf @ (@payload ARPPacket) @ oper) == coq:(LittleEndian.combine 2 OPER_REQUEST)) &
-          (load4(ethbuf @ (@payload ARPPacket) @ tpa) == coq:(LittleEndian.combine 4 cfg.(myIPv4))))
+          (load4(ethbuf @ (@payload ARPPacket) @ tpa) == coq:(LittleEndian.combine 4 cfg.(myIPv4)))  )
       /*split*/ { /*$.
+
+Unshelve.
+
+all: exact TODO.
+Time Defined.
+
+(*
+with Ltac after_snippet ::= idtac.: 39.703 secs
++with admit_cbn after lookup_path_Field : even slightly slower, 40.174 secs
++with admit_reflexivity after lookup_path_Field : 39.805 secs
++with generalized admit_cbn: 49.923 secs, 54.636 secs, 56.49 secs
++with admit_repeat_expr_step1: 0.594 secs, 0.804 secs
++with repeat expr_step1 again but rest factored the same: 570.677 secs
++with record_repeat_expr_step1: 1.674 secs
 
         (* TODO check if tpa equals our IP *)
 
@@ -1244,8 +1323,8 @@ $*/
     all: try exact nil.
     all: try (exact (fun _ => False)).
     all: try exact TODO.
-  Defined. (* takes ca 50s *)
-
+  Time Defined. (* 40.252 secs *)
+*)
   Goal False.
     let r := eval unfold arp in match arp with
                                 | (fname, existT _ (argnames, retnames, body) _) => body
