@@ -4,6 +4,7 @@ Require Import bedrock2.Semantics.
 Require Import coqutil.Word.Interface coqutil.Byte.
 Local Open Scope Z_scope.
 Require Import Rupicola.Lib.Arrays.
+Require Import Rupicola.Examples.Cells.Cells.
 
 Section __.
   
@@ -45,11 +46,11 @@ Section __.
       let c := Z.of_nat n in
       gen_crc_table' c 8.
 
-    Definition crc_table' : list Z :=
+    Definition crc_table_Z' : list Z :=
       Eval compute in
         List.map gen_crc_table_entry (seq 0 256).
     
-    Definition crc_table : list Z :=
+    Definition crc_table_Z : list Z :=
          [0x00000000; 0x77073096; 0xee0e612c; 0x990951ba;
     0x076dc419; 0x706af48f; 0xe963a535; 0x9e6495a3;
     0x0edb8832; 0x79dcb8a4; 0xe0d5e91e; 0x97d2d988;
@@ -115,9 +116,14 @@ Section __.
     0xb3667a2e; 0xc4614ab8; 0x5d681b02; 0x2a6f2b94;
          0xb40bbe37; 0xc30c8ea1; 0x5a05df1b; 0x2d02ef8d].
 
+    Definition crc_table := (List.map word.of_Z crc_table_Z).
+    Definition crc_table' := (List.map word.of_Z crc_table_Z').
+      
     Goal crc_table = crc_table'.
       reflexivity.
     Qed.
+    (*TODO: use word instead of Z*)
+    (*
     Definition crc32 (data : list byte) : Z (*32bit*) :=
       let/n crc32 := 0xFFFFFFFF in
       let/n crc32 :=
@@ -130,22 +136,29 @@ Section __.
                crc32 data in
       let/n crc32 := Z.lxor crc32 0xFFFFFFFF in
       crc32.
+     *)
 
     
-    Definition crc32' (data : list byte) : Z (*32bit*) :=
-      let/n crc32 := 0xFFFFFFFF in
+    Definition crc32' (data : list byte) : word.rep (*32bit or larger*) :=
+      let/n crc32 := word.of_Z 0xFFFFFFFF in
       let/n idx := (word.of_Z 0) in
       let/n crc32 :=
          ranged_for_u idx
                       (word.of_Z (Z.of_nat (length data)))
                       (fun crc32 tok idx _ => let/n b := (ListArray.get (data : ListArray.t byte) idx) in
-                                            let/n nLookupIndex :=
-                                               Z.land (Z.lxor crc32 (byte.unsigned b)) (byte.unsigned Byte.xff) in
-                                            let/n nLookupRes := (nth (Z.to_nat nLookupIndex) crc_table 0) in
-                                            (tok, Z.lxor (Z.shiftr crc32 8) nLookupRes))
+                                              let/n nLookupIndex :=
+                                                 (*TODO: idiomatic way to get byte to word*)
+                                                 word.and (word.xor crc32 (word.of_Z (byte.unsigned b)))
+                                                          (word.of_Z 0xFF) in
+                                              let/n nLookupRes := nth (Z.to_nat (word.unsigned nLookupIndex))
+                                                                      crc_table (word.of_Z 0) in
+                                            let/n crc32 := word.sru crc32 (word.of_Z 8) in
+                                            let/n crc32 := word.xor crc32 nLookupRes in 
+                                            (tok, crc32))
                       crc32 in
-      let/n crc32 := Z.lxor crc32 0xFFFFFFFF in
-      crc32.
+      let/n crc32 := word.xor crc32 (word.of_Z 0xFFFFFFFF) in
+      let/n out := Build_cell crc32 in
+      get out.
            
   End Gallina.
 
@@ -156,11 +169,13 @@ Section __.
     : List.fold_right f base lst = ranged_for_all 0 (Z.of_nat (length lst)) (fun acc idx _ => f (nth (Z.to_nat idx) lst default) acc) base.
   Proof.
     (*induction lst; cbn; auto.*)
-  Admitted.
+  Abort.
 
+  (*
   Lemma crc32_to_ranged : crc32 = crc32'.
   Proof.
   Admitted.
+   *)
 
   (*Properties about width; could be moved somewhere more general*)
   Lemma width_at_least_32 : 32 <= width.
@@ -173,15 +188,16 @@ Section __.
     destruct width_cases as [H | H]; rewrite H;
       reflexivity.
   Qed.
-  
-  Definition Z_to_bytes (z : Z) : list byte:=
-    HList.tuple.to_list (LittleEndian.split (Z.to_nat (width / 8)) z).
+
+  (*TODO: is there a batter way to write this?*)
+  Definition word_to_bytes (z : word.rep) : list byte:=
+    HList.tuple.to_list (LittleEndian.split (Z.to_nat (width / 8)) (word.unsigned z)).
              
   (* Turns a table of 32-bit words stored in Zs into
      a table of bytes
    *)
-  Definition to_byte_table : list Z -> list byte :=
-    flat_map Z_to_bytes.
+  Definition to_byte_table : list word.rep -> list byte :=
+    flat_map word_to_bytes.
   
   Lemma map_fold_empty_id (f : mem -> Core.word -> Init.Byte.byte -> mem) m
     : (forall m k v, f m k v = map.put m k v) ->
@@ -321,15 +337,15 @@ Section __.
     induction t; simpl; try lia.
     rewrite app_length.
     rewrite IHt.
-    unfold Z_to_bytes.
+    unfold word_to_bytes.
     rewrite HList.tuple.length_to_list.
     lia.
   Qed.
 
   Lemma length_of_to_bytes a
-    : width = 8 * Z.of_nat (Datatypes.length (Z_to_bytes a)).
+    : width = 8 * Z.of_nat (Datatypes.length (word_to_bytes a)).
   Proof.
-    unfold Z_to_bytes.
+    unfold word_to_bytes.
     rewrite HList.tuple.length_to_list.
     rewrite Z2Nat.id;
       destruct width_cases as [H' | H']; rewrite H';
@@ -337,24 +353,23 @@ Section __.
   Qed.
   
   Lemma load_from_word_table t n
-    : List.Forall (fun z => 0 <= z < 2^width) t ->
-      Z.of_nat (length (to_byte_table t)) <= 2 ^ width ->
+    : Z.of_nat (length (to_byte_table t)) <= 2 ^ width ->
       (n < length t)%nat ->
       load access_size.word
            (OfListWord.map.of_list_word (to_byte_table t))
            (word.of_Z (width/8 * Z.of_nat n))
-      = Some (word.of_Z (nth n t 0)).
+      = Some (nth n t (word.of_Z 0)).
   Proof.
-    intros cell_bounds table_bounds.
+    intros table_bounds.
     revert n; induction t; intro n; destruct n; intros; try (simpl in *; lia).
     {
       rewrite Z.mul_0_r.
       rewrite of_list_word_at_0.
       assert (array ptsto (word.of_Z 1) (word.of_Z 0)
-                    (Z_to_bytes a ++ to_byte_table t)
+                    (word_to_bytes a ++ to_byte_table t)
                     (OfListWord.map.of_list_word_at
                        (word.of_Z 0)
-                       (Z_to_bytes a ++ to_byte_table t))).
+                       (word_to_bytes a ++ to_byte_table t))).
       {
         seprewrite ptsto_bytes.array1_iff_eq_of_list_word_at; auto;
           sepsimpl; reflexivity.
@@ -367,29 +382,39 @@ Section __.
       }
       eapply load_word_of_sep.
       assert ((LittleEndian.combine
-                (Datatypes.length (Z_to_bytes a))
-                (HList.tuple.of_list (Z_to_bytes a))) = a).
+                (Datatypes.length (word_to_bytes a))
+                (HList.tuple.of_list (word_to_bytes a))) = word.unsigned a).
       {
-        unfold Z_to_bytes.
+        unfold word_to_bytes.
         rewrite (Htuple_of_list_to_list _ _(HList.tuple.length_to_list _)).
         destruct (HList.tuple.length_to_list _).
         cbn.
         rewrite LittleEndian.combine_split.
         rewrite HList.tuple.length_to_list.
         rewrite Z2Nat.id.
-        inversion cell_bounds; subst.
-        assert (width mod 8 = width - width / 8 * 8) by (apply Zmod_eq; lia).
-        rewrite width_mod_8 in H1.
-        assert (width/8*8 = width) by lia.
-        apply Zmod_small.
-        rewrite H2.
-        assumption.
-        destruct width_cases as [H' | H']; rewrite H';
-          intro cmp; inversion cmp.
+        {
+          replace (width/8 *8) with width.
+          rewrite word.wrap_unsigned; auto.
+          pose proof width_mod_8.
+          destruct width_cases as [H' | H']; rewrite H'; compute; auto.          
+        }
+        {
+          pose proof width_at_least_32.
+          apply Z.div_pos; lia.
+        }
       }
       {
         simpl in *.
-        rewrite <- H1 at 1.
+        match type of H0 with
+        | context [scalar _ ?e] =>
+          assert (e = a)
+        end.
+        {
+          rewrite <- word.of_Z_unsigned.
+          f_equal.
+          exact H1.
+        }
+        rewrite H2 in H0.
         ecancel_assumption.
       }
     }
@@ -399,10 +424,10 @@ Section __.
       unfold to_byte_table; simpl; fold to_byte_table.
       match goal with
         [|- load _ _ (word.of_Z (?w + _)) = _ ] =>
-        assert (w = Z.of_nat (Datatypes.length (Z_to_bytes a)))
+        assert (w = Z.of_nat (Datatypes.length (word_to_bytes a)))
       end.
       {
-        unfold Z_to_bytes.
+        unfold word_to_bytes.
         rewrite HList.tuple.length_to_list.
         rewrite Z2Nat.id; try lia.
         destruct width_cases as [H' | H']; rewrite H';
@@ -411,11 +436,11 @@ Section __.
       rewrite H0 at 1.
       erewrite load_of_list_word.
       apply IHt.
-      { inversion cell_bounds; assumption. }
+      (*{ inversion cell_bounds; assumption. }*)
       {
-        unfold Z_to_bytes in table_bounds;
+        unfold word_to_bytes in table_bounds;
         simpl in table_bounds;
-        fold Z_to_bytes in table_bounds.
+        fold word_to_bytes in table_bounds.
         rewrite app_length in table_bounds.
         lia.
       }
@@ -459,20 +484,20 @@ Section __.
   
   (* a lemma to compile the call to nth as a static lookup *)
   Lemma compile_table_nth {n t} {tr mem locals functions}:
-    let v := nth n t 0 in
+    let v := nth n t (word.of_Z 0) in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-           (R : _ -> Prop) var,
-      Forall (fun z : Z => 0 <= z < 2 ^ width) t ->
+           (R : _ -> Prop) var idx_var,
       (n < Datatypes.length t)%nat ->
       (Z.of_nat (Datatypes.length (to_byte_table t)) <= 2 ^ width) ->
       R mem ->
+      map.get locals idx_var = Some (word.of_Z (Z.of_nat n)) ->
       
       (let v := v in
        forall m,
          R m ->
          <{ Trace := tr;
             Memory := m;
-            Locals := map.put locals var (word.of_Z v);
+            Locals := map.put locals var v;
             Functions := functions }>
          k_impl
          <{ pred (k v eq_refl) }>) ->
@@ -483,23 +508,26 @@ Section __.
       (cmd.seq (cmd.set
                   var
                   (expr.inlinetable access_size.word (to_byte_table t)
-                                    (expr.literal (width/8 * Z.of_nat n))))
+                                    (expr.op bopname.mul (expr.literal (width/8)) (expr.var idx_var))))
                k_impl)
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
     intros; repeat straightline.
-    exists (word.of_Z v).
+    exists v.
     split.
     {
       repeat straightline.
-      exists (word.of_Z v).
+      exists (word.of_Z (Z.of_nat n)).
       split; auto.
+      exists v.
+      split; auto.
+      unfold v0.
+      rewrite <- word.ring_morph_mul.
       apply load_from_word_table; auto.
     }
     {
       repeat straightline.
-      apply H3.
-      assumption.
+      eauto.
     }
   Qed.
   
@@ -509,81 +537,7 @@ Section __.
   Definition set_local_nat locals var n :=
     (map.put locals var (word.of_Z (Z.of_nat n))).
 
-  
-  (*TODO: generalize from bytes and Z?*)
-  (*TODO: missing a couple size assumptions on data*)
-  Lemma compile_fold_right_bytes {tr mem locals functions}
-        (data: list byte) body (a0: Z) :
-    let v := List.fold_right body a0 data in
-    forall {P} {pred: P v -> predicate} {R}
-           {k: nlet_eq_k P v} {k_impl} {body_impl}
-           data_ptr l
-           (counter_var out_var len_var: string) vars,
-      let lp n acc tr' mem' locals' :=
-          (array ptsto (word.of_Z 1) data_ptr data * R)%sep mem'
-          /\ tr' = tr
-          /\ locals' = map.put
-                         (map.put locals counter_var (word.of_Z (Z.of_nat n)))
-                         out_var (word.of_Z acc) in
-
-      (array ptsto (word.of_Z 1) data_ptr data * R)%sep mem ->
-      map.get locals out_var = Some (word.of_Z a0) ->
-      word.unsigned l = Z.of_nat (length data) ->
-      map.get locals len_var = Some l ->
-
-      ((* loop body *)
-        let lp := lp in
-        forall tr mem locals n,
-          let a := List.fold_right body a0 (List.firstn n data) in
-          (n < length data)%nat ->
-          (<{ Trace := tr;
-              Memory := mem;
-              Locals := set_local_nat locals counter_var n;
-              Functions := functions }>
-           body_impl
-           <{ lp n (body (nth n data Byte.xff) a) }>)) ->
-      (let v := v in
-       forall tr mem locals,
-         (array ptsto (word.of_Z 1) data_ptr data * R)%sep mem ->
-         map.get locals out_var = Some (word.of_Z v) ->
-         (<{ Trace := tr;
-             Memory := mem;
-             Locals := locals;
-             Functions := functions }>
-          k_impl
-          <{ pred (k v eq_refl) }>)) ->
-      <{ Trace := tr;
-         Memory := mem;
-         Locals := locals;
-         Functions := functions }>
-      cmd.seq
-        (cmd.set counter_var (expr.literal 0))
-        (cmd.seq
-           (cmd.while
-              (expr.op bopname.ltu (expr.var counter_var) (expr.var len_var))
-              (cmd.seq
-                 body_impl
-                 (cmd.set counter_var
-                          (expr.op bopname.add
-                                   (expr.var counter_var)
-                                   (expr.literal 1)))))
-           k_impl)
-      <{ pred (nlet_eq vars v k) }>.
-  Proof.
-    cbv zeta.
-    repeat straightline.
-    revert dependent data; induction data;
-      repeat straightline.
-    {
-      clear H1.
-      cbn [Datatypes.length fold_right List.firstn] in *.
-  Admitted.
-
-  
   Hint Extern 1 => simple eapply compile_table_nth; shelve : compiler.
-  Hint Extern 1 => simple eapply compile_fold_right_bytes; shelve : compiler.
-
-  Locate "defn!".
 
 
   Ltac solve_get_put :=
@@ -593,15 +547,26 @@ Section __.
 
       
   Hint Extern 1 => simple eapply @compile_byte_unsizedlistarray_get; shelve : compiler.
+
+  
+  Lemma word_and_leq_right a b
+    : (word.unsigned (word.and a b)) <= (word.unsigned b).
+  Proof.
+    rewrite <-(word.of_Z_unsigned a).
+    rewrite <-(word.of_Z_unsigned b).
+    rewrite <- word.morph_and.
+    rewrite word.unsigned_of_Z.
+  Admitted.
+    
   
   Instance spec_of_crc32 : spec_of "crc32" :=
-    fnspec! "crc32" data_ptr len out_ptr / (data : list byte) s R,
+    fnspec! "crc32" data_ptr len out_ptr / (data : list byte) c R,
     { requires tr mem :=
         (word.unsigned len = Z.of_nat (length data) /\
-        (listarray_value AccessByte data_ptr data * Scalars.scalar out_ptr s * R)%sep mem);
+        (listarray_value AccessByte data_ptr data * cell_value out_ptr c * R)%sep mem);
       ensures tr' mem' :=
         tr' = tr /\
-        (listarray_value AccessByte  data_ptr data * Scalars.scalar out_ptr (word.of_Z (crc32' data)) * R)%sep mem' }.
+        (listarray_value AccessByte  data_ptr data * cell_value out_ptr (Build_cell (crc32' data)) * R)%sep mem' }.
 
   
   Derive crc32_body SuchThat
@@ -616,14 +581,14 @@ Section __.
     apply compile_ranged_for_w
       with (signed := false)
            (loop_pred := (fun idx acc tr' mem' locals' =>
-                            (exists s,
-          (listarray_value AccessByte data_ptr data * Scalars.scalar out_ptr s * R)%sep mem')
+                            (*TODO: existential is bad; need partial computation?*)
+          (listarray_value AccessByte data_ptr data * cell_value out_ptr c * R)%sep mem'
           /\ tr' = tr
           /\ locals' = map.put
                          (map.put 
                             (map.put (map.put (map.put map.empty "out" out_ptr) "data" data_ptr) "idx" idx)
                             "len" (word.of_Z (Z.of_nat (Datatypes.length data))))
-                         "crc32" (word.of_Z acc))).
+                         "crc32" acc)).
     exact word.of_Z_unsigned.
     repeat compile_step; apply word.unsigned_range.
     repeat compile_step.
@@ -634,9 +599,6 @@ Section __.
       repeat (repeat compile_step).
     }
     {
-      compile_step.
-      compile_step.
-      destruct H3.
       repeat compile_step.
       {
         rewrite <-H0 in Hr.
@@ -644,44 +606,34 @@ Section __.
         rewrite H0 in Hr.
         assumption.
       }
-      TODO: convert lookup lemma to listarray
-                    or convert listarray to array
-      destruct H3.
-      ecancel_assumption.
-      simpl in a.
-      TODO: get idx into LHS somehow
-      intuition; subst.
-      exists s; assumption.
-      rewrite map.put_put_diff_comm;[|easy].
-      f_equal.
-      rewrite map.put_put_diff_comm;[|easy].
-      f_equal.
-      rewrite map.put_put_same.
-      reflexivity.
+      {
+        assert (word.unsigned v2 <= 255).
+        {
+          replace 255 with (word.unsigned (word.of_Z 255)).
+          apply word_and_leq_right.
+          rewrite word.unsigned_of_Z.
+          rewrite word.wrap_small; try lia.
+          destruct width_cases as [H' | H']; rewrite H'; lia.
+        }
+        change (Datatypes.length crc_table) with 256%nat.
+        lia.
+      }
+      {
+        rewrite length_to_byte_table.
+        change (Datatypes.length crc_table) with 256%nat.
+        destruct width_cases as [H' | H']; rewrite H'; try lia.
+        compute; inversion 1.
+        compute; inversion 1.
+      }
     }
-      easy.
-      maps_equal.
-      erewrite map.getmany_of_list_cons;
-        [eauto | solve_get_put|..].
-      erewrite map.getmany_of_list_cons;
-        [eauto | solve_get_put|..].
-      reflexivity.
-      simpl.
-      erewrite map.getmany_of_list_nil.
-      eauto.
-      erewrite map.getmany_of_list_cons.
-      eauto.
-      rewrite map.get_put_diff.
-      rewrite  map.get_put_same; auto.
-      easy.
-      eauto.
-      simpl.
-    eapply compile_ranged_for_w.
-    repeat compile_step.
-
-    
-     simple apply compile_nlet_as_nlet_eq.
-
-    compile.*)
+    {
+      repeat compile_step.
+      change {| data := v2 |} with (put v2 c).
+      repeat compile_step.
+      change {| data := ?v |} with (put v c).
+      change (put (get ?c) _) with c.
+      ecancel_assumption.
+    }
+  Qed.
   
 End __.
