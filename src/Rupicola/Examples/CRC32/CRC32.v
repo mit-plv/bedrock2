@@ -674,81 +674,7 @@ Section __.
   Definition set_local_nat locals var n :=
     (map.put locals var (word.of_Z (Z.of_nat n))).
 
-  
-  (*TODO: generalize from bytes and Z?*)
-  (*TODO: missing a couple size assumptions on data*)
-  Lemma compile_fold_right_bytes {tr mem locals functions}
-        (data: list byte) body (a0: Z) :
-    let v := List.fold_right body a0 data in
-    forall {P} {pred: P v -> predicate} {R}
-           {k: nlet_eq_k P v} {k_impl} {body_impl}
-           data_ptr l
-           (counter_var out_var len_var: string) vars,
-      let lp n acc tr' mem' locals' :=
-          (array ptsto (word.of_Z 1) data_ptr data * R)%sep mem'
-          /\ tr' = tr
-          /\ locals' = map.put
-                         (map.put locals counter_var (word.of_Z (Z.of_nat n)))
-                         out_var (word.of_Z acc) in
-
-      (array ptsto (word.of_Z 1) data_ptr data * R)%sep mem ->
-      map.get locals out_var = Some (word.of_Z a0) ->
-      word.unsigned l = Z.of_nat (length data) ->
-      map.get locals len_var = Some l ->
-
-      ((* loop body *)
-        let lp := lp in
-        forall tr mem locals n,
-          let a := List.fold_right body a0 (List.firstn n data) in
-          (n < length data)%nat ->
-          (<{ Trace := tr;
-              Memory := mem;
-              Locals := set_local_nat locals counter_var n;
-              Functions := functions }>
-           body_impl
-           <{ lp n (body (nth n data Byte.xff) a) }>)) ->
-      (let v := v in
-       forall tr mem locals,
-         (array ptsto (word.of_Z 1) data_ptr data * R)%sep mem ->
-         map.get locals out_var = Some (word.of_Z v) ->
-         (<{ Trace := tr;
-             Memory := mem;
-             Locals := locals;
-             Functions := functions }>
-          k_impl
-          <{ pred (k v eq_refl) }>)) ->
-      <{ Trace := tr;
-         Memory := mem;
-         Locals := locals;
-         Functions := functions }>
-      cmd.seq
-        (cmd.set counter_var (expr.literal 0))
-        (cmd.seq
-           (cmd.while
-              (expr.op bopname.ltu (expr.var counter_var) (expr.var len_var))
-              (cmd.seq
-                 body_impl
-                 (cmd.set counter_var
-                          (expr.op bopname.add
-                                   (expr.var counter_var)
-                                   (expr.literal 1)))))
-           k_impl)
-      <{ pred (nlet_eq vars v k) }>.
-  Proof.
-    cbv zeta.
-    repeat straightline.
-    revert dependent data; induction data;
-      repeat straightline.
-    {
-      clear H1.
-      cbn [Datatypes.length fold_right List.firstn] in *.
-  Admitted.
-
-  
   Hint Extern 1 => simple eapply compile_table_nth; shelve : compiler.
-  Hint Extern 1 => simple eapply compile_fold_right_bytes; shelve : compiler.
-
-  Locate "defn!".
 
 
   Ltac solve_get_put :=
@@ -758,15 +684,26 @@ Section __.
 
       
   Hint Extern 1 => simple eapply @compile_byte_unsizedlistarray_get; shelve : compiler.
+
+  
+  Lemma word_and_leq_right a b
+    : (word.unsigned (word.and a b)) <= (word.unsigned b).
+  Proof.
+    rewrite <-(word.of_Z_unsigned a).
+    rewrite <-(word.of_Z_unsigned b).
+    rewrite <- word.morph_and.
+    rewrite word.unsigned_of_Z.
+  Admitted.
+    
   
   Instance spec_of_crc32 : spec_of "crc32" :=
-    fnspec! "crc32" data_ptr len out_ptr / (data : list byte) s R,
+    fnspec! "crc32" data_ptr len out_ptr / (data : list byte) c R,
     { requires tr mem :=
         (word.unsigned len = Z.of_nat (length data) /\
-        (listarray_value AccessByte data_ptr data * Scalars.scalar out_ptr s * R)%sep mem);
+        (listarray_value AccessByte data_ptr data * cell_value out_ptr c * R)%sep mem);
       ensures tr' mem' :=
         tr' = tr /\
-        (listarray_value AccessByte  data_ptr data * Scalars.scalar out_ptr (word.of_Z (crc32' data)) * R)%sep mem' }.
+        (listarray_value AccessByte  data_ptr data * cell_value out_ptr (Build_cell (crc32' data)) * R)%sep mem' }.
 
   
   Derive crc32_body SuchThat
@@ -781,14 +718,14 @@ Section __.
     apply compile_ranged_for_w
       with (signed := false)
            (loop_pred := (fun idx acc tr' mem' locals' =>
-                            (exists s,
-          (listarray_value AccessByte data_ptr data * Scalars.scalar out_ptr s * R)%sep mem')
+                            (*TODO: existential is bad; need partial computation?*)
+          (listarray_value AccessByte data_ptr data * cell_value out_ptr c * R)%sep mem'
           /\ tr' = tr
           /\ locals' = map.put
                          (map.put 
                             (map.put (map.put (map.put map.empty "out" out_ptr) "data" data_ptr) "idx" idx)
                             "len" (word.of_Z (Z.of_nat (Datatypes.length data))))
-                         "crc32" (word.of_Z acc))).
+                         "crc32" acc)).
     exact word.of_Z_unsigned.
     repeat compile_step; apply word.unsigned_range.
     repeat compile_step.
@@ -799,9 +736,6 @@ Section __.
       repeat (repeat compile_step).
     }
     {
-      compile_step.
-      compile_step.
-      destruct H3.
       repeat compile_step.
       {
         rewrite <-H0 in Hr.
@@ -809,44 +743,34 @@ Section __.
         rewrite H0 in Hr.
         assumption.
       }
-      TODO: convert lookup lemma to listarray
-                    or convert listarray to array
-      destruct H3.
-      ecancel_assumption.
-      simpl in a.
-      TODO: get idx into LHS somehow
-      intuition; subst.
-      exists s; assumption.
-      rewrite map.put_put_diff_comm;[|easy].
-      f_equal.
-      rewrite map.put_put_diff_comm;[|easy].
-      f_equal.
-      rewrite map.put_put_same.
-      reflexivity.
+      {
+        assert (word.unsigned v2 <= 255).
+        {
+          replace 255 with (word.unsigned (word.of_Z 255)).
+          apply word_and_leq_right.
+          rewrite word.unsigned_of_Z.
+          rewrite word.wrap_small; try lia.
+          destruct width_cases as [H' | H']; rewrite H'; lia.
+        }
+        change (Datatypes.length crc_table) with 256%nat.
+        lia.
+      }
+      {
+        rewrite length_to_byte_table.
+        change (Datatypes.length crc_table) with 256%nat.
+        destruct width_cases as [H' | H']; rewrite H'; try lia.
+        compute; inversion 1.
+        compute; inversion 1.
+      }
     }
-      easy.
-      maps_equal.
-      erewrite map.getmany_of_list_cons;
-        [eauto | solve_get_put|..].
-      erewrite map.getmany_of_list_cons;
-        [eauto | solve_get_put|..].
-      reflexivity.
-      simpl.
-      erewrite map.getmany_of_list_nil.
-      eauto.
-      erewrite map.getmany_of_list_cons.
-      eauto.
-      rewrite map.get_put_diff.
-      rewrite  map.get_put_same; auto.
-      easy.
-      eauto.
-      simpl.
-    eapply compile_ranged_for_w.
-    repeat compile_step.
-
-    
-     simple apply compile_nlet_as_nlet_eq.
-
-    compile.*)
+    {
+      repeat compile_step.
+      change {| data := v2 |} with (put v2 c).
+      repeat compile_step.
+      change {| data := ?v |} with (put v c).
+      change (put (get ?c) _) with c.
+      ecancel_assumption.
+    }
+  Qed.
   
 End __.
