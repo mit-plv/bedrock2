@@ -549,14 +549,46 @@ Section __.
   Hint Extern 1 => simple eapply @compile_byte_unsizedlistarray_get; shelve : compiler.
 
   
+  Lemma Nsucc_double_preserves_leq n p
+    : Z.of_N n <= Z.pos p -> Z.of_N (Pos.Nsucc_double n) <= Z.pos p~1.
+  Proof.
+    revert p.
+    induction n;intros; simpl in *; lia.
+  Qed.
+
+  Lemma Ndouble_preserves_leq_0 n p
+    : Z.of_N n <= Z.pos p -> Z.of_N (Pos.Ndouble n) <= Z.pos p~0.
+  Proof.
+    revert p.
+    induction n;intros; simpl in *; lia.
+  Qed.
+  
+  Lemma Ndouble_preserves_leq_1 n p
+    : Z.of_N n <= Z.pos p -> Z.of_N (Pos.Ndouble n) <= Z.pos p~1.
+  Proof.
+    revert p.
+    induction n;intros; simpl in *; lia.
+  Qed.
+  
+  Lemma Z_and_leq_right a b
+    : 0 <= a -> 0 <= b -> Z.land a b <= b.
+  Proof.
+    case a; rewrite ?Z.land_0_l; try solve [lia].
+    intro p_a.
+    case b; rewrite ?Z.land_0_r; try solve [lia].
+    intros p_b _ _.
+    simpl.
+    revert p_b; induction p_a; destruct p_b; simpl; intros; try lia.
+    all: eauto using Nsucc_double_preserves_leq, Ndouble_preserves_leq_0,Ndouble_preserves_leq_1.
+  Qed.
+  
   Lemma word_and_leq_right a b
     : (word.unsigned (word.and a b)) <= (word.unsigned b).
   Proof.
-    rewrite <-(word.of_Z_unsigned a).
-    rewrite <-(word.of_Z_unsigned b).
-    rewrite <- word.morph_and.
-    rewrite word.unsigned_of_Z.
-  Admitted.
+    rewrite word.unsigned_and_nowrap.
+    apply Z_and_leq_right.
+    all: apply word.unsigned_range.
+  Qed.
     
   
   Instance spec_of_crc32 : spec_of "crc32" :=
