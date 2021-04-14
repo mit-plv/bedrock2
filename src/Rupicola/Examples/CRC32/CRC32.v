@@ -4,7 +4,6 @@ Require Import bedrock2.Semantics.
 Require Import coqutil.Word.Interface coqutil.Byte.
 Local Open Scope Z_scope.
 Require Import Rupicola.Lib.Arrays.
-Require Import Rupicola.Examples.Cells.Cells.
 
 Section __.
   
@@ -139,7 +138,7 @@ Section __.
      *)
 
     
-    Definition crc32' (data : list byte) : word.rep (*32bit or larger*) :=
+    Definition crc32' (data : list byte) (*32bit or larger*) :=
       let/n crc32 := word.of_Z 0xFFFFFFFF in
       let/n idx := (word.of_Z 0) in
       let/n crc32 :=
@@ -157,8 +156,7 @@ Section __.
                                             (tok, crc32))
                       crc32 in
       let/n crc32 := word.xor crc32 (word.of_Z 0xFFFFFFFF) in
-      let/n out := Build_cell crc32 in
-      get out.
+      crc32.
            
   End Gallina.
 
@@ -592,17 +590,18 @@ Section __.
     
   
   Instance spec_of_crc32 : spec_of "crc32" :=
-    fnspec! "crc32" data_ptr len out_ptr / (data : list byte) c R,
+    fnspec! "crc32" data_ptr len / (data : list byte) R ~> r,
     { requires tr mem :=
         (word.unsigned len = Z.of_nat (length data) /\
-        (listarray_value AccessByte data_ptr data * cell_value out_ptr c * R)%sep mem);
+        (listarray_value AccessByte data_ptr data * R)%sep mem);
       ensures tr' mem' :=
         tr' = tr /\
-        (listarray_value AccessByte  data_ptr data * cell_value out_ptr (Build_cell (crc32' data)) * R)%sep mem' }.
+        r = crc32' data /\
+        (listarray_value AccessByte  data_ptr data * R)%sep mem' }.
 
   
   Derive crc32_body SuchThat
-         (defn! "crc32" ("data", "len", "out") { crc32_body },
+         (defn! "crc32" ("data", "len") ~> "crc32" { crc32_body },
           implements crc32')
          As body_correct.
   Proof.
@@ -614,11 +613,11 @@ Section __.
       with (signed := false)
            (loop_pred := (fun idx acc tr' mem' locals' =>
                             (*TODO: existential is bad; need partial computation?*)
-          (listarray_value AccessByte data_ptr data * cell_value out_ptr c * R)%sep mem'
+          (listarray_value AccessByte data_ptr data * R)%sep mem'
           /\ tr' = tr
           /\ locals' = map.put
                          (map.put 
-                            (map.put (map.put (map.put map.empty "out" out_ptr) "data" data_ptr) "idx" idx)
+                            (map.put (map.put map.empty "data" data_ptr) "idx" idx)
                             "len" (word.of_Z (Z.of_nat (Datatypes.length data))))
                          "crc32" acc)).
     exact word.of_Z_unsigned.
@@ -639,16 +638,18 @@ Section __.
         assumption.
       }
       {
-        assert (word.unsigned v2 <= 255).
-        {
-          replace 255 with (word.unsigned (word.of_Z 255)).
-          apply word_and_leq_right.
-          rewrite word.unsigned_of_Z.
-          rewrite word.wrap_small; try lia.
-          destruct width_cases as [H' | H']; rewrite H'; lia.
-        }
-        change (Datatypes.length crc_table) with 256%nat.
-        lia.
+        unfold v2.
+        simpl.
+        zify.
+        intuition try lia.
+        subst z4.
+        lazymatch goal with
+          [|- word.unsigned (word.and ?l ?r) < _] =>
+          pose proof (@word_and_leq_right l r)
+        end.
+        rewrite word.unsigned_of_Z in H1.
+        rewrite word.wrap_small in H1; try lia.
+        destruct width_cases as [H' | H']; rewrite H'; lia.
       }
       {
         rewrite length_to_byte_table.
@@ -660,11 +661,8 @@ Section __.
     }
     {
       repeat compile_step.
-      change {| data := v2 |} with (put v2 c).
+      cbn -[crc_table].
       repeat compile_step.
-      change {| data := ?v |} with (put v c).
-      change (put (get ?c) _) with c.
-      ecancel_assumption.
     }
   Qed.
   
