@@ -689,11 +689,10 @@ Section __.
   Lemma word_and_leq_right a b
     : (word.unsigned (word.and a b)) <= (word.unsigned b).
   Proof.
-    rewrite <-(word.of_Z_unsigned a).
-    rewrite <-(word.of_Z_unsigned b).
-    rewrite <- word.morph_and.
-    rewrite word.unsigned_of_Z.
-  Admitted.
+    rewrite word.unsigned_and_nowrap.
+    apply Z_and_leq_right.
+    all: apply word.unsigned_range.
+  Qed.
     
   
   Instance spec_of_crc32 : spec_of "crc32" :=
