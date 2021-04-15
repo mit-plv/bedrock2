@@ -753,32 +753,81 @@ Ltac2 without_effects(t: unit -> 'a) :=
 
   (* ** Program logic rules *)
 
+
+Section WithWordPostAndMemAndLocals.
+
+  Implicit Type post: word -> Prop.
+  Context (m: mem) (l: locals).
+
+  Inductive wp_expr: expr.expr -> (word -> Prop) -> Prop :=
+  | wp_expr_literal: forall v post,
+      post (word.of_Z v) ->
+      wp_expr (expr.literal v) post
+  | wp_expr_var: forall x v post,
+      map.get l x = Some v ->
+      post v ->
+      wp_expr (expr.var x) post
+  | wp_expr_op_raw: forall op e1 e2 mid post,
+      wp_expr e1 mid ->
+      (forall v1, mid v1 -> wp_expr e2 (fun v2 => post (interp_binop op v1 v2))) ->
+      wp_expr (expr.op op e1 e2) post
+  | wp_expr_load: forall s e post,
+      wp_expr e (fun a => load s m a post) ->
+      wp_expr (expr.load s e) post
+  | wp_expr_inlinetable: forall s t e post,
+      wp_expr e (fun a => load s (OfListWord.map.of_list_word t) a post) ->
+      wp_expr (expr.inlinetable s t e) post.
+
+  Lemma wp_expr_op: forall op e1 e2 post,
+      wp_expr e1 (fun v1 => wp_expr e2 (fun v2 => post (interp_binop op v1 v2))) ->
+      wp_expr (expr.op op e1 e2) post.
+  Proof. intros. eauto using wp_expr_op_raw. Qed.
+
+  Lemma wp_expr_sound: forall e post,
+      wp_expr e post ->
+      forall mc, exists v mc', eval_expr m l e mc = Some (v, mc') /\ post v.
+  Proof. (* automation test case *)
+    induction 1; intros; cbn -[map.get]; ParamRecords.simpl_param_projections.
+    - eauto.
+    - rewrite_match. eauto.
+    - edestruct IHwp_expr. decompose [and ex] H2. rewrite H4. edestruct H1. 1: eassumption.
+      decompose [and ex] H3. rewrite H7. eauto.
+    - edestruct IHwp_expr. decompose [and ex] H0. rewrite H2.
+      unfold load in *. decompose [and ex] H3. ParamRecords.simpl_param_projections. rewrite H4. eauto.
+    - edestruct IHwp_expr. decompose [and ex] H0. rewrite H2.
+      unfold load in *. decompose [and ex] H3. ParamRecords.simpl_param_projections. rewrite H4. eauto.
+  Qed.
+
+End WithWordPostAndMemAndLocals.
+
   (* We have two rules for conditionals depending on whether there are more commands afterwards *)
 
-  Lemma if_split: forall e c b thn els t m l mc post,
-      dexpr m l c b ->
-      (word.unsigned b <> 0 -> exec e thn t m l mc post) ->
-      (word.unsigned b =  0 -> exec e els t m l mc post) ->
+  Lemma if_split: forall e c thn els t m l mc post,
+      wp_expr m l c (fun b =>
+                       (word.unsigned b <> 0 -> exec e thn t m l mc post) /\
+                       (word.unsigned b =  0 -> exec e els t m l mc post)) ->
     exec e (cmd.cond c thn els) t m l mc post.
   Admitted.
 
-  Lemma if_merge: forall e t m l mc c thn els rest b Q1 Q2 post,
-      dexpr m l c b ->
-      (word.unsigned b <> 0 -> exec e thn t m l mc Q1) ->
-      (word.unsigned b = 0  -> exec e els t m l mc Q2) ->
-      (forall t' m' l' mc', word.unsigned b <> 0 /\ Q1 t' m' l' mc' \/
-                            word.unsigned b = 0  /\ Q2 t' m' l' mc' ->
-                            exec e rest t' m' l' mc' post) ->
+  Lemma if_merge: forall e t m l mc c thn els rest post,
+      wp_expr m l c (fun b => exists Q1 Q2,
+                         (word.unsigned b <> 0 -> exec e thn t m l mc Q1) /\
+                         (word.unsigned b = 0  -> exec e els t m l mc Q2) /\
+                         (forall t' m' l' mc', word.unsigned b <> 0 /\ Q1 t' m' l' mc' \/
+                                               word.unsigned b = 0  /\ Q2 t' m' l' mc' ->
+                                               exec e rest t' m' l' mc' post)) ->
       exec e (cmd.seq (cmd.cond c thn els) rest) t m l mc post.
   Admitted.
 
   Lemma assignment: forall e x a t m l mc rest post,
-      WeakestPrecondition.expr m l a
+      wp_expr m l a
         (fun v => forall mc, exec e rest t m (map.put l x v) mc post) ->
       exec e (cmd.seq (cmd.set x a) rest) t m l mc post.
   Admitted.
 
+(*
   Implicit Type post: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop.
+*)
 
   Lemma seps_nth_error_to_head: forall i Ps P,
       List.nth_error Ps i = Some P ->
@@ -994,24 +1043,18 @@ Ltac locals_step :=
                         split; [solve [repeat locals_step]|]
   end.
 
-Ltac expr_step1 :=
-  match goal with
-  | |- @list_map _ _ (@expr _ _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
-  | |- @expr _ _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
-  | |- @dexpr _ _ _ _ _ => cbv beta delta [dexpr]
-  | |- @dexprs _ _ _ _ _ => cbv beta delta [dexprs]
-  | |- @literal _ _ _ => cbv beta delta [literal]
-  end.
-
-Ltac expr_step2 :=
+Ltac expr_step :=
   match goal with
   | _ => locals_step
-  | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
-    eapply SortedList.eq_value; exact eq_refl
-  | |- True => exact I
-  | |- False \/ _ => right
-  | |- _ \/ False => left
-  | |- @load _ _ _ _ _ => eapply load_field'';
+  | |- wp_expr _ _ _ _ => first [ eapply wp_expr_literal
+                                | eapply wp_expr_var
+                                | eapply wp_expr_op
+                                | eapply wp_expr_load
+                                | eapply wp_expr_inlinetable ]
+  | |- @list_map _ _ (@expr _ _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @dexpr _ _ _ _ _ => cbv beta delta [dexpr]
+  | |- @dexprs _ _ _ _ _ => cbv beta delta [dexprs]
+  | |- @WeakestPrecondition.load _ _ _ _ _ => eapply load_field'';
        once (match goal with
              (* backtrack over choice of Hm in case there are several *)
              | Hm: seps ?lm ?m |- exists l, seps l ?m /\ _ =>
@@ -1022,9 +1065,12 @@ Ltac expr_step2 :=
                    eexists i; split; [cbv [List.nth_error]; reflexivity|];
                    split; [ repeat (lookup_done || lookup_field_step) |]
              end)
+  | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
+    eapply SortedList.eq_value; exact eq_refl
+  | |- True => exact I
+  | |- False \/ _ => right
+  | |- _ \/ False => left
   end.
-
-Ltac expr_step := first [expr_step1 | expr_step2].
 
 Import Syntax.
 
@@ -1038,23 +1084,10 @@ Inductive note_wrapper: string -> Type := mkNote(s: string): note_wrapper s.
 Notation "s" := (note_wrapper s) (at level 200, only printing).
 Ltac add_note s := let n := fresh "Note" in pose proof (mkNote s) as n; move n at top.
 
-Ltac admit_repeat_expr_step1 :=
-  ltac2:(Control.enter (fun () => admit_transform (fun () => (Control.enter (fun () => ltac1:(repeat expr_step1)))))).
-
-Ltac record_repeat_expr_step1 :=
-  ltac2:(Control.enter (fun () => record_transform (fun () => (Control.enter (fun () => ltac1:(repeat expr_step1)))))).
-
-
 Ltac add_snippet s :=
   lazymatch s with
   | SSet ?y ?e => eapply assignment with (x := y) (a := e); repeat expr_step
-  | SIf ?cond false => eapply if_split with (c := cond);
-                       [ (*repeat (repeat expr_step1; try expr_step2)*)
-                         (*repeat (admit_repeat_expr_step1; try expr_step2)*)
-                         repeat (record_repeat_expr_step1; try expr_step2)
-                         (*repeat expr_step*)
-                       | intros
-                       | intros; add_note "'else' expected" ]
+  | SIf ?cond false => eapply if_split with (c := cond); repeat expr_step; split
   | SEnd => eapply exec.skip
   | SElse => lazymatch goal with
              | H: note_wrapper "'else' expected" |- _ => clear H
@@ -1240,16 +1273,14 @@ Set Default Goal Selector "1".
     pose "ethbuf" as ethbuf. pose "ln" as ln. pose "doReply" as doReply. pose "tmp" as tmp.
     refine ("arp", existT _ ([ethbuf; ln], [doReply], _) _).
     intros. cbv [vc_func]. letexists. split. 1: subst l; reflexivity. intros.
-Set Ltac2 Backtrace.
+
     $*/
     doReply = /*number*/0; /*$. $*/
     if (ln == /*number*/64) /*split*/ {
       /*$. edestruct (bytesToEthernetARPPacket ethbufAddr _ H0) as (pk & A). seprewrite_in A H.
            change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H.
-
-Ltac after_snippet ::= idtac.
-
- $*/
+           (* Ltac after_snippet ::= idtac.*)
+     $*/
       if ((load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP) &
           (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE) &
           (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE) &
@@ -1262,7 +1293,12 @@ Ltac after_snippet ::= idtac.
 Unshelve.
 
 all: exact TODO.
-Time Defined.
+Time Defined. (* 0.655 secs *)
+
+(*
+Set Printing Depth 1000000.
+Print arp.
+*)
 
 (*
 with Ltac after_snippet ::= idtac.: 39.703 secs
