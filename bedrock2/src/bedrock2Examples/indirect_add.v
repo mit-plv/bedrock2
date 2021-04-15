@@ -64,4 +64,28 @@ Section WithParameters.
     let c_code := eval cbv in (byte_list_of_string (c_module (indirect_add_twice::indirect_add::nil))) in
     idtac c_code.
   Abort.
+
+  Definition indirect_add_three : Syntax.func := let a := "a" in let b := "b" in let c := "c" in
+    ("indirect_add_three", ([a;b;c], [], bedrock_func_body:(
+    indirect_add(a, a, b);
+    indirect_add(a, a, c)
+  ))).
+
+  Definition g a b c := word.add (word.add a b) c.
+  Instance spec_of_indirect_add_three : spec_of "indirect_add_three" :=
+    fnspec! "indirect_add_three" a b c / va vb vc Rb R,
+    { requires t m := m =* scalar a va * scalar c vc * R /\ m =* scalar b vb * Rb;
+      ensures t' m' := t=t' /\ m' =* scalar a (g va vb vc) * scalar c vc * R }.
+
+  Lemma indirect_add_three_ok : program_logic_goal_for_function! indirect_add_three.
+  Proof.
+    repeat straightline.
+    straightline_call.
+    { split; [ecancel_assumption|]. split; ecancel_assumption. }
+    repeat straightline.
+    straightline_call.
+    { split; [ecancel_assumption|]. split; ecancel_assumption. }
+    repeat straightline.
+    { split; trivial. split; trivial. cbv [g]. ecancel_assumption. }
+  Qed.
 End WithParameters.
