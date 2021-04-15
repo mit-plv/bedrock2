@@ -4,6 +4,7 @@ Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 
 Section WeakestPrecondition.
   Context {p : unique! Semantics.parameters}.
+  Implicit Types (t : trace) (m : mem) (l : locals).
 
   Definition literal v (post : word -> Prop) : Prop :=
     dlet! v := word.of_Z v in post v.

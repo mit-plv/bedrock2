@@ -79,7 +79,7 @@ Section Pipeline1.
       auto.
   Qed.
 
-  Lemma ptsto_bytes_range: forall bs start pastend m a v,
+  Lemma ptsto_bytes_range: forall bs (start pastend : FlatImp.word) m a v,
       ptsto_bytes start bs m ->
       word.unsigned start + Z.of_nat (List.length bs) <= word.unsigned pastend ->
       map.get m a = Some v ->
@@ -108,7 +108,7 @@ Section Pipeline1.
           -- destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
          * rewrite word.unsigned_of_Z.
            unfold word.wrap.
-           replace (1 mod 2 ^ FlatImp.width) with 1. 1: blia.
+           replace (1 mod 2 ^ width) with 1. 1: blia.
            simpl.
            destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
       + unfold map.split in *. simp.

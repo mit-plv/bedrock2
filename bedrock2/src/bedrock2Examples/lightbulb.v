@@ -407,7 +407,7 @@ Section WithParameters.
          List.length RECV = List.length scratch /\
          exists iol, T = iol ++ t /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\
          (word.unsigned ERR = 0 /\ lan9250_readpacket _ RECV ioh \/
-          word.unsigned ERR = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout word) ioh ) )
+          word.unsigned ERR = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout _) ioh ) )
       )
       _ _ _ _ _ _ _ _);
     (* TODO wrap this into a tactic with the previous refine? *)

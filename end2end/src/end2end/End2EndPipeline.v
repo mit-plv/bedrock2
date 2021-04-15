@@ -238,7 +238,7 @@ Section Connect.
 
   Lemma riscvMemInit_to_seplog_aux: forall len from,
       Z.of_nat from + Z.of_nat len <= 2 ^ memSizeLg ->
-      PipelineWithRename.ptsto_bytes
+      PipelineWithRename.ptsto_bytes (width:=width)
         (word.of_Z (Z.of_nat from))
         (map (get_kamiMemInit memInit) (seq from len))
         (map.of_list (map

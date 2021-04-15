@@ -120,7 +120,7 @@ Section Array.
       repeat (rewrite ?word.unsigned_sub, ?Zdiv.Zminus_mod_idemp_r, ?Zdiv.Zminus_mod_idemp_l, ?Zdiv.Zplus_mod_idemp_r, ?Zdiv.Zplus_mod_idemp_l || unfold word.wrap).
       replace (word.unsigned start + (word.unsigned a - word.unsigned start)) with (word.unsigned a) by blia.
       rewrite Z.mod_small by assumption; trivial. }
-    replace (word.mul (word.of_Z (Z.of_nat n)) size) with (word.of_Z (word.unsigned size * Z.of_nat n)); cycle 1.
+    replace (word.mul (word.of_Z (Z.of_nat n)) size) with (word.of_Z (width:=width) (word.unsigned size * Z.of_nat n)); cycle 1.
     { eapply word.unsigned_inj.
       repeat (rewrite ?word.unsigned_of_Z, ?word.unsigned_mul, ?Zdiv.Zmult_mod_idemp_r, ?Zdiv.Zmult_mod_idemp_l || unfold word.wrap).
       f_equal. blia. }

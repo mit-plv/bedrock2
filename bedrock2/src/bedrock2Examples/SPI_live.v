@@ -98,7 +98,7 @@ Section WithParameters.
          morphism (Properties.word.ring_morph (word := Semantics.word)),
          constants [Properties.word_cst]).
 
-  Lemma nonzero_because_high_bit_set x (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
+  Lemma nonzero_because_high_bit_set (x : word) (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
     : word.unsigned x <> 0.
   Proof.
     rewrite Properties.word.unsigned_sru_nowrap in H.
@@ -605,7 +605,7 @@ Section WithParameters.
           rewrite word.unsigned_of_Z in H1; eapply H1. }
         { rewrite app_length, Znat.Nat2Z.inj_add; cbn [app Datatypes.length]. subst v3.
           unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
-          replace 0 with (word.unsigned (word.of_Z 0)) in H0; cycle 1.
+          replace 0 with (word.unsigned (word.of_Z(width:=width) 0)) in H0; cycle 1.
           { rewrite word.unsigned_of_Z; exact eq_refl. }
           eapply Properties.word.unsigned_inj in H0.
           subst b1. destruct_one_match_hyp. {

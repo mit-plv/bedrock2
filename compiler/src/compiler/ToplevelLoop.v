@@ -180,7 +180,7 @@ Section Pipeline1.
 
   Lemma signed_of_Z_small: forall c,
       - 2 ^ 31 <= c < 2 ^ 31 ->
-      word.signed (word.of_Z c) = c.
+      word.signed (word.of_Z (width:=FlatImp.width) c) = c.
   Proof.
     clear -h.
     simpl.

@@ -40,6 +40,7 @@ Local Open Scope Z_scope.
 (** Consistency between the Kami word and the Z-based word *)
 Section WordZ.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
+  Local Hint Mode word.word - : typeclass_instances.
 
   Lemma bitSlice_range_ex:
     forall z n m,
@@ -487,6 +488,7 @@ End WordZ.
 
 Section Equiv.
   Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
+  Local Hint Mode word.word - : typeclass_instances.
 
   Context {Registers: map.map Z word}
           {mem: map.map word byte}.

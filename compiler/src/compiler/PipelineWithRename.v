@@ -328,7 +328,7 @@ Section Pipeline1.
   Local Instance  EqDecider_FlatImp__word_eq : EqDecider FlatImp__word_eq.
   Proof. eapply word.eqb_spec. Unshelve. all: exact word_ok. Qed.
 
-  Lemma mem_available_to_exists: forall start pastend m P,
+  Lemma mem_available_to_exists: forall start pastend (m: mem) P,
       (mem_available start pastend * P)%sep m ->
       exists anybytes,
         Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
@@ -341,7 +341,7 @@ Section Pipeline1.
     eauto.
   Qed.
 
-  Definition mem_to_available: forall start pastend m P anybytes,
+  Definition mem_to_available: forall start pastend (m: mem) P anybytes,
      Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) ->
      (ptsto_bytes start anybytes * P)%sep m ->
      (mem_available start pastend * P)%sep m.

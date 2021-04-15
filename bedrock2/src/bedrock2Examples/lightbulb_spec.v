@@ -9,9 +9,10 @@ Section LightbulbSpec.
   Local Open Scope Z_scope.
   Let width := 32.
   Context (word : word width).
+  Implicit Types v : word.
 
   Declare Scope word_scope.
-  Notation "! n" := (word.of_Z n) (at level 0, n at level 0, format "! n") : word_scope.
+  Notation "! n" := (word.of_Z (width:=width) n) (at level 0, n at level 0, format "! n") : word_scope.
   Notation "# n" := (Z.of_nat n) (at level 0, n at level 0, format "# n") : word_scope.
   Infix "+" := word.add : word_scope.
   Infix "-" := word.sub : word_scope.
@@ -28,7 +29,7 @@ Section LightbulbSpec.
   Definition OP: Type := (string * word * word).
 
   (** FE310 GPIO *)
-  Definition GPIO_DATA_ADDR := word.of_Z (Ox"1001200c").
+  Definition GPIO_DATA_ADDR := ! (Ox"1001200c").
   (* i < 32, only some GPIOs are connected to external pins *)
   Definition gpio_set (i:Z) value :=
     existsl (fun v =>
@@ -56,7 +57,7 @@ Section LightbulbSpec.
   Definition spi_write_ready l :=
     exists v, one ("ld", SPI_TX_FIFO_ADDR, v) l /\ Z.shiftr (word.unsigned v) 31 = 0.
   Definition spi_write_enqueue (b : byte) :=
-    one ("st", SPI_TX_FIFO_ADDR, (word.of_Z (byte.unsigned b))).
+    one ("st", SPI_TX_FIFO_ADDR, (word.of_Z (width:=width) (byte.unsigned b))).
   Definition spi_write b :=
     spi_write_full^* +++ (spi_write_ready +++ spi_write_enqueue b).
 
@@ -82,38 +83,38 @@ Section LightbulbSpec.
   Definition LAN9250_FASTREAD : byte := Byte.x0b.
 
   Definition lan9250_fastread4 (a v : word) t :=
-    exists a0 a1 v0 v1 v2 v3, (
+    exists a0 a1 b0 b1 b2 b3, (
     spi_begin +++
     spi_xchg_deaf LAN9250_FASTREAD +++
     spi_xchg_deaf a1 +++
     spi_xchg_deaf a0 +++
     spi_xchg_dummy +++
-    spi_xchg_mute v0 +++
-    spi_xchg_mute v1 +++
-    spi_xchg_mute v2 +++
-    spi_xchg_mute v3 +++
+    spi_xchg_mute b0 +++
+    spi_xchg_mute b1 +++
+    spi_xchg_mute b2 +++
+    spi_xchg_mute b3 +++
     spi_end) t /\
     byte.unsigned a1 = word.unsigned (word.sru a (word.of_Z 8)) /\
     byte.unsigned a0 = word.unsigned (word.and a (word.of_Z 255)) /\
-    word.unsigned v = LittleEndian.combine 4 (HList.tuple.of_list (cons v0 (cons v1 (cons v2 (cons v3 nil))))).
+    word.unsigned v = LittleEndian.combine 4 (HList.tuple.of_list (cons b0 (cons b1 (cons b2 (cons b3 nil))))).
 
   Definition LAN9250_WRITE : byte := Byte.x02.
   Definition HW_CFG : Z := Ox"074".
 
   Definition lan9250_write4 (a v : word) t :=
-    exists a0 a1 v0 v1 v2 v3, (
+    exists a0 a1 b0 b1 b2 b3, (
     spi_begin +++
     spi_xchg_deaf LAN9250_WRITE +++
     spi_xchg_deaf a1 +++
     spi_xchg_deaf a0 +++
-    spi_xchg_deaf v0 +++
-    spi_xchg_deaf v1 +++
-    spi_xchg_deaf v2 +++
-    spi_xchg_deaf v3 +++
+    spi_xchg_deaf b0 +++
+    spi_xchg_deaf b1 +++
+    spi_xchg_deaf b2 +++
+    spi_xchg_deaf b3 +++
     spi_end) t /\
     byte.unsigned a1 = word.unsigned (word.sru a (word.of_Z 8)) /\
     byte.unsigned a0 = word.unsigned (word.and a (word.of_Z 255)) /\
-    word.unsigned v = LittleEndian.combine 4 (HList.tuple.of_list (cons v0 (cons v1 (cons v2 (cons v3 nil))))).
+    word.unsigned v = LittleEndian.combine 4 (HList.tuple.of_list (cons b0 (cons b1 (cons b2 (cons b3 nil))))).
 
   (* NOTE: we could do this without rounding up to the nearest word, and this
   * might be necessary for other stacks than IP-TCP and IP-UDP *)
@@ -173,7 +174,7 @@ Section LightbulbSpec.
 
   (** lightbulb *)
   Definition lightbulb_packet_rep cmd (buf : list byte) := (
-    let idx i buf := word.of_Z (byte.unsigned (List.hd Byte.x00 (List.skipn i buf))) in
+    let idx i buf := word.of_Z (width:=width) (byte.unsigned (List.hd Byte.x00 (List.skipn i buf))) in
     42 < Z.of_nat (List.length buf) /\
     1535 < word.unsigned ((word.or (word.slu (idx 12%nat buf) (word.of_Z 8)) (idx 13%nat buf))) /\
     idx 23%nat buf = word.of_Z (Ox"11") /\

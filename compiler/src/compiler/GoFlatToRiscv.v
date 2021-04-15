@@ -338,7 +338,7 @@ Section Go.
         simpl. right. assumption.
   Qed.
 
-  Lemma ptsto_bytes_putmany_of_tuple_empty: forall n addr vs,
+  Lemma ptsto_bytes_putmany_of_tuple_empty: forall n (addr: word) vs,
       Z.of_nat n < 2 ^ width ->
       ptsto_bytes n addr vs (map.putmany_of_tuple (footprint addr n) vs map.empty).
   Proof.
@@ -407,7 +407,7 @@ Section Go.
     destruct width_cases as [E | E]; rewrite E; cbv; discriminate.
   Qed.
 
-  Lemma ptsto_subset_to_isXAddr1: forall a v xAddrs,
+  Lemma ptsto_subset_to_isXAddr1: forall (a : word) (v : Init.Byte.byte) xAddrs,
       subset (footpr (ptsto a v)) (of_list xAddrs) ->
       isXAddr1 a xAddrs.
   Proof.

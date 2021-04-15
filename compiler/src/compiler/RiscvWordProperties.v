@@ -6,6 +6,7 @@ Module word.
 
   Section RiscvWord.
     Context {width: Z} {word: word.word width}.
+    Implicit Types x y z : word.
 
     (* TODO maybe we can put more fundamental axioms here, and turn the axioms below into lemmas *)
     Class riscv_ok: Prop := {

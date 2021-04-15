@@ -12,8 +12,8 @@ Section SepProperties.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
   Local Open Scope sep_scope.
 
-  Global Instance Proper_sep_iff1 : Proper (iff1 ==> iff1 ==> iff1) sep. firstorder idtac. Qed.
-  Global Instance Proper_sep_impl1 : Proper (impl1 ==> impl1 ==> impl1) sep. firstorder idtac. Qed.
+  Global Instance Proper_sep_iff1 : Proper (@iff1 map ==> iff1 ==> iff1) sep. firstorder idtac. Qed.
+  Global Instance Proper_sep_impl1 : Proper (@impl1 map ==> impl1 ==> impl1) sep. firstorder idtac. Qed.
 
   Ltac t :=
     repeat match goal with
@@ -24,6 +24,8 @@ Section SepProperties.
     | H:disjoint _ (putmany _ _) |- _ => eapply disjoint_putmany_r in H; destruct H
     | _ => progress intuition idtac
     end.
+
+  Implicit Types (p q r : map -> Prop) (k : key) (v : value) (m : map).
 
   (* sep and sep *)
   Lemma sep_comm p q : iff1 (p*q) (q*p).
@@ -96,20 +98,20 @@ Section SepProperties.
     { intros (?&?&(?&?)&?&?); subst; trivial. }
   Qed.
 
-  Lemma iff1_sep_cancel P Q1 Q2 (H : iff1 Q1 Q2) : iff1 (P * Q1) (P * Q2).
+  Lemma iff1_sep_cancel p q1 q2 (H : iff1 q1 q2) : iff1 (p * q1) (p * q2).
   Proof. exact (Proper_sep_iff1 _ _ (reflexivity _) _ _ H). Qed.
 
   (* More Conntectives *)
-  Global Instance Proper_emp_iff : Proper (iff ==> iff1) emp. firstorder idtac. Qed.
-  Global Instance Proper_emp_impl : Proper (Basics.impl ==> impl1) emp. firstorder idtac. Qed.
+  Global Instance Proper_emp_iff : Proper (iff ==> @iff1 map) emp. firstorder idtac. Qed.
+  Global Instance Proper_emp_impl : Proper (Basics.impl ==> @impl1 map) emp. firstorder idtac. Qed.
 
   (* sep and emp *)
-  Lemma sep_emp_emp p q : iff1 (sep (emp p) (emp q)) (emp (p /\ q)).
+  Lemma sep_emp_emp P Q : @iff1 map (sep (emp P) (emp Q)) (emp (P /\ Q)).
   Proof. cbv [iff1 sep emp split]; t; intuition eauto 20 using putmany_empty_l, disjoint_empty_l. Qed.
-  Lemma sep_comm_emp_r a b : iff1 (a * emp b) (emp b * a). eapply sep_comm. Qed.
-  Lemma sep_emp_2 a b c : iff1 (a * (emp b * c)) (emp b * (a * c)).
-  Proof. rewrite <-sep_assoc. rewrite (sep_comm a). rewrite sep_assoc. reflexivity. Qed.
-  Lemma sep_emp_12 a b c : iff1 (emp a * (emp b * c)) (emp (a /\ b) * c).
+  Lemma sep_comm_emp_r p Q : iff1 (p * emp Q) (emp Q * p). eapply sep_comm. Qed.
+  Lemma sep_emp_2 p Q r : iff1 (p * (emp Q * r)) (emp Q * (p * r)).
+  Proof. rewrite <-sep_assoc. rewrite (sep_comm p). rewrite sep_assoc. reflexivity. Qed.
+  Lemma sep_emp_12 P Q r : iff1 (emp P * (emp Q * r)) (emp (P /\ Q) * r).
   Proof. rewrite <-sep_assoc. rewrite sep_emp_emp. reflexivity. Qed.
 
   Lemma sep_emp_l a b m : sep (emp a) b m <-> a /\ b m.
@@ -137,13 +139,13 @@ Section SepProperties.
   Proof. rewrite sep_comm. rewrite sep_ex1_r. setoid_rewrite (sep_comm p). reflexivity. Qed.
 
   (* impl1 and emp *)
-  Lemma impl1_l_sep_emp (a:Prop) b c : impl1 (emp a * b) c <-> (a -> impl1 b c).
+  Lemma impl1_l_sep_emp (a:Prop) r c : impl1 (emp a * r) c <-> (a -> impl1 r c).
   Proof. cbv [impl1 emp sep split]; t; rewrite ?putmany_empty_l; eauto 10 using putmany_empty_l, disjoint_empty_l. Qed.
-  Lemma impl1_r_sep_emp a b c : (b /\ impl1 a c) -> impl1 a (emp b * c).
+  Lemma impl1_r_sep_emp p b c : (b /\ impl1 p c) -> impl1 p (emp b * c).
   Proof. cbv [impl1 emp sep split]; t; eauto 10 using putmany_empty_l, disjoint_empty_l. Qed.
 
 (** shallow reflection from a list of predicates for faster cancellation proofs *)
-  Fixpoint seps' (xs : list (rep -> Prop)) : rep -> Prop :=
+  Fixpoint seps' (xs : list (map -> Prop)) : map -> Prop :=
     match xs with
     | cons x xs => sep x (seps' xs)
     | nil => emp True
@@ -155,10 +157,10 @@ Section SepProperties.
     eapply Proper_sep_iff1, IHxs.
     exact (reflexivity _).
   Qed.
-  Lemma seps_cons(P: rep -> Prop)(Ps: list (rep -> Prop)):
+  Lemma seps_cons(P: map -> Prop)(Ps: list (map -> Prop)):
     iff1 (seps (P :: Ps)) (sep P (seps Ps)).
   Proof. rewrite <-! seps'_iff1_seps. reflexivity. Qed.
-  Lemma seps_app(Ps Qs: list (rep -> Prop)):
+  Lemma seps_app(Ps Qs: list (map -> Prop)):
     iff1 (seps (Ps ++ Qs)) (sep (seps Ps) (seps Qs)).
   Proof.
     induction Ps.
@@ -174,8 +176,8 @@ Section SepProperties.
   Definition app {T} := Eval cbv delta in @List.app T.
 
   Local Infix "++" := app. Local Infix "++" := app : list_scope.
-  Let nth n xs := hd (emp True) (skipn n xs).
-  Let remove_nth n (xs : list (rep -> Prop)) :=
+  Let nth n xs := hd (emp(map:=map) True) (skipn n xs).
+  Let remove_nth n (xs : list (map -> Prop)) :=
     (firstn n xs ++ tl (skipn n xs)).
 
   Lemma seps_nth_to_head n xs : iff1 (sep (nth n xs) (seps (remove_nth n xs))) (seps xs).

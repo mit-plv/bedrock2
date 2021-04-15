@@ -25,12 +25,12 @@ Module word. Section WithWord.
   Local Open Scope Z_scope.
   Context {width} {word: word.word width} {ok : word.ok word}.
   Lemma unsigned_of_Z_nowrap x:
-    0 <= x < 2 ^ width -> word.unsigned (word.of_Z x) = x.
+    0 <= x < 2 ^ width -> word.unsigned (word.of_Z (width:=width) x) = x.
   Proof.
     intros. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Z.mod_small; trivial.
   Qed.
   Lemma of_Z_inj_small{x y}:
-    word.of_Z x = word.of_Z y -> 0 <= x < 2 ^ width -> 0 <= y < 2 ^ width -> x = y.
+    word.of_Z x = word.of_Z y :> word -> 0 <= x < 2 ^ width -> 0 <= y < 2 ^ width -> x = y.
   Proof.
     intros. apply (f_equal word.unsigned) in H. rewrite ?word.unsigned_of_Z in H.
     unfold word.wrap in H. rewrite ?Z.mod_small in H by assumption. assumption.
@@ -39,7 +39,7 @@ Module word. Section WithWord.
   Lemma and_bool_to_word: forall (b1 b2: bool),
     word.and (if b1 then word.of_Z 1 else word.of_Z 0)
              (if b2 then word.of_Z 1 else word.of_Z 0) =
-    if (andb b1 b2) then word.of_Z 1 else word.of_Z 0.
+    (if (andb b1 b2) then word.of_Z 1 else word.of_Z 0) :> word.
   Proof.
     assert (1 < 2 ^ width). {
       pose proof word.width_pos.
@@ -152,6 +152,8 @@ Section WithParameters.
         (preprocess [autorewrite with rew_word_morphism],
          morphism (Properties.word.ring_morph (word := Semantics.word)),
          constants [Properties.word_cst]).
+
+  Implicit Types m : mem.
 
   (* TODO move (to Scalars.v?) *)
   Lemma load_bounded_Z_of_sep: forall sz addr (value: Z) R m,
@@ -874,7 +876,7 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
   Goal forall P Q, iff1 Q (sep P (wand P Q)).
   Abort.
 
-  Lemma seps_nth_error_to_head: forall i Ps P,
+  Lemma seps_nth_error_to_head: forall i Ps (P : mem -> Prop),
       List.nth_error Ps i = Some P ->
       iff1 (seps Ps) (sep P (seps (app (firstn i Ps) (tl (skipn i Ps))))).
   Proof.
@@ -1203,12 +1205,12 @@ Ltac ring_simplify_hyp H :=
   let t := type of H in ring_simplify_hyp_rec t H.
 
 Lemma if_then_1_else_0_eq_0: forall (b: bool),
-    word.unsigned (if b then word.of_Z 1 else word.of_Z 0) = 0 ->
+    word.unsigned (if b then word.of_Z 1 else word.of_Z (width:=width) 0) = 0 ->
     b = false.
 Proof. intros; destruct b; [exfalso|reflexivity]. ZnWords. Qed.
 
 Lemma if_then_1_else_0_neq_0: forall (b: bool),
-    word.unsigned (if b then word.of_Z 1 else word.of_Z 0) <> 0 ->
+    word.unsigned (if b then word.of_Z 1 else word.of_Z (width:=width) 0) <> 0 ->
     b = true.
 Proof. intros; destruct b; [reflexivity|exfalso]. ZnWords. Qed.
 
@@ -1362,7 +1364,7 @@ Notation "'if' ( e ) '/*split*/' {" := (SIf e false) (in custom snippet at level
 Notation "}" := SEnd (in custom snippet at level 0).
 Notation "'else' {" := SElse (in custom snippet at level 0).
 
-  Let nth n xs := hd (emp True) (skipn n xs).
+  Let nth n xs := hd (emp (map:=mem) True) (skipn n xs).
   Let remove_nth n (xs : list (mem -> Prop)) :=
     (firstn n xs ++ tl (skipn n xs)).
 

@@ -47,7 +47,7 @@ Goal program_logic_goal_for_function! arp.
     SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
     [instantiate (1 := iNat); blia|match goal with H : _ |- _ => instantiate (1 := byte.of_Z 0) in H end];
     eapply load_one_of_sep;
-    change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
+    change (word.of_Z (word.unsigned (word.of_Z(width:=?w) 1) * Z.of_nat iNat)) with (word.of_Z(width:=w) i) in *;
     SeparationLogic.ecancel_assumption
   end end.
 
@@ -70,7 +70,7 @@ Goal program_logic_goal_for_function! arp.
     SeparationLogic.seprewrite_in @array_index_nat_inbounds H;
     [instantiate (1 := iNat); blia|match goal with H : _ |- _ => instantiate (1 := byte.of_Z 0) in H end];
     eapply store_one_of_sep;
-    change (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat iNat)) with (word.of_Z i) in *;
+    change (word.of_Z (word.unsigned (word.of_Z(width:=?w) 1) * Z.of_nat iNat)) with (word.of_Z(width:=w) i) in *;
     [SeparationLogic.ecancel_assumption|]
   end end.
 
