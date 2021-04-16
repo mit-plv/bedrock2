@@ -102,14 +102,16 @@ Section Pipeline1.
           with (m := word.unsigned start + word.unsigned (word.of_Z 1) + Z.of_nat (Datatypes.length bs)).
         * apply Z.add_le_mono_r.
           apply Z.mod_le.
-          -- repeat match goal with
+          -- assert (word.ok Semantics.word) by exact word_ok.
+             repeat match goal with
                     | |- context [word.unsigned ?w] => unique pose proof (word.unsigned_range w)
                     end.
              blia.
           -- destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
-         * rewrite word.unsigned_of_Z.
+         * assert (word.ok Semantics.word) by exact word_ok.
+           rewrite word.unsigned_of_Z.
            unfold word.wrap.
-           replace (1 mod 2 ^ width) with 1. 1: blia.
+           replace (1 mod 2 ^ FlatImp.width) with 1. 1: blia.
            simpl.
            destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
       + unfold map.split in *. simp.
