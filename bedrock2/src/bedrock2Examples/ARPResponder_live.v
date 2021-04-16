@@ -318,6 +318,52 @@ Section WithParameters.
 
   Fixpoint dataAt{R: Type}(sp: TypeSpec R){struct sp}: word -> R -> mem -> Prop := dataAt_body (@dataAt) sp.
 
+  Section UpdateHelpers.
+    Context (update_at_offset: forall {R: Type}, TypeSpec R -> R -> Z -> list byte -> R).
+
+    Fixpoint update_fields_at_offset{R: Type}(fields: list (FieldSpec R)): R -> Z -> list byte -> R.
+      destruct fields.
+      - refine (fun r ofs bs => r).
+      - refine (fun r ofs bs =>
+                  let s := FieldSpec_size f r in
+                  let r' := if Z.ltb ofs s then _ else r in
+                  update_fields_at_offset R fields r' (ofs + s) bs).
+        destruct f.
+        exact (setter r (update_at_offset fieldSpec (getter r) ofs bs)).
+    Defined.
+
+    Section WithTypeSpec.
+      Context {E: Type}(elemSize: Z)(sp: TypeSpec E).
+      Fixpoint update_array_at_offset(l: list E)(ofs: Z)(bs: list byte): list E.
+        destruct l.
+        - exact nil.
+        - refine (let e' := if Z.ltb ofs elemSize then _ else e in
+                  e' :: update_array_at_offset l (ofs + elemSize) bs).
+          refine (update_at_offset sp e ofs bs).
+      Defined.
+
+      Fixpoint update_tuple_at_offset{n: nat}(l: tuple E n)(ofs: Z)(bs: list byte): tuple E n.
+        destruct n.
+        - exact l.
+        - destruct l as [e l].
+          refine (let e' := if Z.ltb ofs elemSize then _ else e in
+                  PrimitivePair.pair.mk e' (update_tuple_at_offset n l (ofs + elemSize) bs)).
+          refine (update_at_offset sp e ofs bs).
+      Defined.
+    End WithTypeSpec.
+
+    Definition update_at_offset_body{R: Type}(sp: TypeSpec R): R -> Z -> list byte -> R :=
+      match sp in (TypeSpec T) return (T -> Z -> list Init.Byte.byte -> T) with
+      | TByte => fun b ofs bs => if ofs =? 0 then b else List.nth 0 bs Byte.x00
+      | TStruct fields => update_fields_at_offset fields
+      | TArray elemSize elemSpec => update_array_at_offset elemSize elemSpec
+      | TTuple count elemSize elemSpec => update_tuple_at_offset elemSize elemSpec
+      end.
+  End UpdateHelpers.
+
+  Fixpoint update_at_offset{R: Type}(sp: TypeSpec R): R -> Z -> list byte -> R :=
+    update_at_offset_body (@update_at_offset) sp.
+
   (* ** Packet Formats *)
 
   Definition ETHERTYPE_ARP: two_bytes := tuple.of_list [Byte.x08; Byte.x06].
@@ -461,6 +507,18 @@ Section WithParameters.
     eexists {| oper := _ |}. cbn -[tuple.to_list].
 
   Admitted.
+
+  Lemma bytesToEthernetARPPacket: forall a bs,
+      64 = len bs ->
+      exists p: EthernetPacket ARPPacket,
+        iff1 (array ptsto /[1] a bs) (dataAt (EthernetPacket_spec ARPPacket_spec) a p).
+  Proof.
+    intros.
+    eexists (update_at_offset (EthernetPacket_spec ARPPacket_spec) _ 0 bs).
+    change (@update_at_offset ?R ?sp) with (update_at_offset_body (@update_at_offset) sp).
+    cbv beta iota delta [update_at_offset_body].
+    unfold EthernetPacket_spec.
+  Abort.
 
   Lemma bytesToEthernetARPPacket: forall a bs,
       64 = len bs ->
