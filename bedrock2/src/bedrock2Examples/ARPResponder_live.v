@@ -19,39 +19,6 @@ Require Import bedrock2.ZnWords.
 Require Import coqutil.Word.SimplWordExpr.
 Require Import bedrock2.footpr.
 
-(* TODO put into coqutil and also use in lightbulb.v *)
-Module word. Section WithWord.
-  Import ZArith.
-  Local Open Scope Z_scope.
-  Context {width} {word: word.word width} {ok : word.ok word}.
-  Lemma unsigned_of_Z_nowrap x:
-    0 <= x < 2 ^ width -> word.unsigned (word.of_Z (width:=width) x) = x.
-  Proof.
-    intros. rewrite word.unsigned_of_Z. unfold word.wrap. rewrite Z.mod_small; trivial.
-  Qed.
-  Lemma of_Z_inj_small{x y}:
-    word.of_Z x = word.of_Z y :> word -> 0 <= x < 2 ^ width -> 0 <= y < 2 ^ width -> x = y.
-  Proof.
-    intros. apply (f_equal word.unsigned) in H. rewrite ?word.unsigned_of_Z in H.
-    unfold word.wrap in H. rewrite ?Z.mod_small in H by assumption. assumption.
-  Qed.
-
-  Lemma and_bool_to_word: forall (b1 b2: bool),
-    word.and (if b1 then word.of_Z 1 else word.of_Z 0)
-             (if b2 then word.of_Z 1 else word.of_Z 0) =
-    (if (andb b1 b2) then word.of_Z 1 else word.of_Z 0) :> word.
-  Proof.
-    assert (1 < 2 ^ width). {
-      pose proof word.width_pos.
-      change 1 with (2 ^ 0). apply Z.pow_lt_mono_r; blia.
-    }
-    destruct b1; destruct b2; simpl; apply word.unsigned_inj; rewrite word.unsigned_and;
-      unfold word.wrap; rewrite ?unsigned_of_Z_nowrap by blia;
-        rewrite ?Z.land_diag, ?Z.land_0_r, ?Z.land_0_l;
-        apply Z.mod_small; blia.
-  Qed.
-End WithWord. End word.
-
 Module List.
   Import List.ListNotations. Open Scope list_scope.
   Section MapWithIndex.
@@ -1204,16 +1171,6 @@ Ltac ring_simplify_hyp_rec t H :=
 Ltac ring_simplify_hyp H :=
   let t := type of H in ring_simplify_hyp_rec t H.
 
-Lemma if_then_1_else_0_eq_0: forall (b: bool),
-    word.unsigned (if b then word.of_Z 1 else word.of_Z (width:=width) 0) = 0 ->
-    b = false.
-Proof. intros; destruct b; [exfalso|reflexivity]. ZnWords. Qed.
-
-Lemma if_then_1_else_0_neq_0: forall (b: bool),
-    word.unsigned (if b then word.of_Z 1 else word.of_Z (width:=width) 0) <> 0 ->
-    b = true.
-Proof. intros; destruct b; [reflexivity|exfalso]. ZnWords. Qed.
-
 Ltac simpli_getEq t :=
   match t with
   | context[@word.and ?wi ?wo (if ?b1 then _ else _) (if ?b2 then _ else _)] =>
@@ -1226,8 +1183,8 @@ Ltac simpli_getEq t :=
 Ltac simpli :=
   repeat ((rewr simpli_getEq in *  by ZnWords) ||
          match goal with
-         | H: word.unsigned (if ?b then _ else _) = 0 |- _ => apply if_then_1_else_0_eq_0 in H
-         | H: word.unsigned (if ?b then _ else _) <> 0 |- _ => apply if_then_1_else_0_neq_0 in H
+         | H: word.unsigned (if ?b then _ else _) = 0 |- _ => apply word.if_zero in H
+         | H: word.unsigned (if ?b then _ else _) <> 0 |- _ => apply word.if_nonzero in H
          | H: word.eqb ?x ?y = true  |- _ => apply (word.eqb_true  x y) in H
          | H: word.eqb ?x ?y = false |- _ => apply (word.eqb_false x y) in H
          | H: andb ?b1 ?b2 = true |- _ => apply (Bool.andb_true_iff b1 b2) in H

@@ -463,9 +463,7 @@ Section WithParameters.
         eexists. split.
         { eexists. eexists. split. {
             subst l'.
-            cbv -[v1 v2 v3 parameters.word(*<--otherwise different implicits won't be recognized by destruct*)
-                     word.eqb word.xor word.sru word.of_Z].
-            reflexivity. (* takes some time, but whatever *)
+            reflexivity.
           }
           split; [reflexivity|].
           subst b1.
@@ -605,7 +603,7 @@ Section WithParameters.
           rewrite word.unsigned_of_Z in H1; eapply H1. }
         { rewrite app_length, Znat.Nat2Z.inj_add; cbn [app Datatypes.length]. subst v3.
           unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
-          replace 0 with (word.unsigned (word.of_Z(width:=width) 0)) in H0; cycle 1.
+          replace 0 with (word.unsigned (word.of_Z 0)) in H0; cycle 1.
           { rewrite word.unsigned_of_Z; exact eq_refl. }
           eapply Properties.word.unsigned_inj in H0.
           subst b1. destruct_one_match_hyp. {

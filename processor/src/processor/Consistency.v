@@ -86,11 +86,10 @@ Section FetchOk.
     alignedXAddrsRange 0 instrMemSize.
 
   Lemma AddrAligned_plus4:
-    forall rpc,
+    forall rpc: KamiWord.word _,
       AddrAligned rpc ->
-      AddrAligned (word.add (width:=width) rpc (word.of_Z 4)).
+      AddrAligned (word.add rpc (word.of_Z 4)).
   Proof.
-    Set Printing Implicit.
     cbv [AddrAligned word.add word WordsKami wordW KamiWord.word].
     intros.
     rewrite <-H.
@@ -191,7 +190,7 @@ Section FetchOk.
       isXAddr4 rpc kamiXAddrs ->
       exists rinst : HList.tuple byte 4,
         map.getmany_of_tuple rmem (Memory.footprint rpc 4) = Some rinst /\
-        combine 4 rinst = kunsigned (width:= 32) (SC.combineBytes 4 rpc kmem).
+        combine 4 rinst = kunsigned (SC.combineBytes 4 rpc kmem : kword 32).
   Proof.
     intros.
 
@@ -342,11 +341,11 @@ Section DecExecOk.
       forall w z,
         Z.of_N (wordToN w) = z ->
         krf w =
-        (if Z.eq_dec z 0 then word.of_Z (width:=width) 0
+        (if Z.eq_dec z 0 then kofZ 0
          else
            match map.get rrf z with
            | Some x => x
-           | None => word.of_Z (width:=width) 0
+           | None => kofZ 0
            end).
   Proof.
     intros.

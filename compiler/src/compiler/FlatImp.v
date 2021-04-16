@@ -172,6 +172,9 @@ Class parameters(varname: Type) := {
 
   ext_spec: ExtSpec;
 }.
+Module word.
+  Notation of_Z := (Word.Interface.word.of_Z(word:=word)).
+End word.
 
 Module ext_spec.
   Class ok(varname: Type){p: parameters varname}: Prop := {

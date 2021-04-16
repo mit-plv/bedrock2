@@ -12,7 +12,7 @@ Section LightbulbSpec.
   Implicit Types v : word.
 
   Declare Scope word_scope.
-  Notation "! n" := (word.of_Z (width:=width) n) (at level 0, n at level 0, format "! n") : word_scope.
+  Notation "! n" := (word.of_Z n) (at level 0, n at level 0, format "! n") : word_scope.
   Notation "# n" := (Z.of_nat n) (at level 0, n at level 0, format "# n") : word_scope.
   Infix "+" := word.add : word_scope.
   Infix "-" := word.sub : word_scope.
@@ -29,7 +29,7 @@ Section LightbulbSpec.
   Definition OP: Type := (string * word * word).
 
   (** FE310 GPIO *)
-  Definition GPIO_DATA_ADDR := ! (Ox"1001200c").
+  Definition GPIO_DATA_ADDR : word := word.of_Z (Ox"1001200c").
   (* i < 32, only some GPIOs are connected to external pins *)
   Definition gpio_set (i:Z) value :=
     existsl (fun v =>
@@ -174,7 +174,7 @@ Section LightbulbSpec.
 
   (** lightbulb *)
   Definition lightbulb_packet_rep cmd (buf : list byte) := (
-    let idx i buf := word.of_Z (width:=width) (byte.unsigned (List.hd Byte.x00 (List.skipn i buf))) in
+    let idx i buf : word := word.of_Z (byte.unsigned (List.hd Byte.x00 (List.skipn i buf))) in
     42 < Z.of_nat (List.length buf) /\
     1535 < word.unsigned ((word.or (word.slu (idx 12%nat buf) (word.of_Z 8)) (idx 13%nat buf))) /\
     idx 23%nat buf = word.of_Z (Ox"11") /\

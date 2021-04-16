@@ -476,7 +476,7 @@ Section FlattenExpr1.
   Qed.
 
   Lemma bool_to_word_to_bool_id: forall (b: bool),
-      negb (word.eqb (if b then word.of_Z 1 else word.of_Z (width:=width) 0) (word.of_Z 0)) = b.
+      negb (word.eqb (if b then word.of_Z 1 else word.of_Z 0) (word.of_Z 0)) = b.
   Proof.
     intro b. unfold negb.
     destruct_one_match; destruct_one_match_hyp; try reflexivity.

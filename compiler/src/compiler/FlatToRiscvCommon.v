@@ -70,6 +70,10 @@ Class parameters := {
              mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop;
 }.
 
+Module word.
+  Notation of_Z := (Word.Interface.word.of_Z(word:=word)).
+End word.
+
 Arguments Z.mul: simpl never.
 Arguments Z.add: simpl never.
 Arguments Z.of_nat: simpl never.
@@ -824,7 +828,7 @@ Section FlatToRiscv1.
              rewrite Z2Nat.id in F. 2: {
                pose proof word.unsigned_range (word.sub k addr). blia.
              }
-             apply (f_equal (word.of_Z(word:=word))) in F.
+             apply (f_equal word.of_Z) in F.
              simpl_param_projections.
              rewrite (word.of_Z_unsigned (word.sub k addr)) in F.
              rewrite <- add_0_r at 1. change (Z.of_nat 0) with 0 in F. rewrite <- F.
@@ -834,7 +838,7 @@ Section FlatToRiscv1.
              assert (Z.of_nat (S n) < 2 ^ width) by blia.
              apply (f_equal Z.of_nat) in F.
              rewrite Z2Nat.id in F by blia.
-             apply (f_equal (word.of_Z(word:=word))) in F.
+             apply (f_equal word.of_Z) in F.
              simpl_param_projections.
              rewrite (word.of_Z_unsigned (word.sub k addr)) in F.
              ring_simplify (word.sub k (word.add addr (word.of_Z 1))).
@@ -864,7 +868,7 @@ Section FlatToRiscv1.
     - destr (Z.eqb (word.unsigned addr mod 4) 0).
       + destruct (program_compile_byte_list_array (b0 :: bs) addr eq_refl E) as [padding P].
         exists (array ptsto (word.of_Z 1)
-            (word.add addr (word.of_Z (word.unsigned (word.of_Z(word:=word) 1) * Z.of_nat (length (b0 :: bs))))) padding).
+            (word.add addr (word.of_Z (word.unsigned (word.of_Z 1) * Z.of_nat (length (b0 :: bs))))) padding).
         rewrite P.
         rewrite array_append.
         rewrite sep_comm.

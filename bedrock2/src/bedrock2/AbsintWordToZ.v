@@ -160,8 +160,6 @@ Module unsigned.
             match reverse goal with H : ?e |- ?G => is_evar e; unify e G; exact H end).. ]
       )) (at level 10, only parsing).
 
-    Lemma absint_of_Z (x : Z) (Hrange : 0 <= x < 2^width) : word.unsigned (word.of_Z (width:=width) x) = x.
-    Proof. rewrite word.unsigned_of_Z; unfold word.wrap; rewrite Z.mod_small; trivial. Qed.
     Definition absint_add (x y : word.rep) ux Hx uy Hy Hbounds : _ =~> _ :=
       absint_lemma! (word.unsigned_add x y).
     Definition absint_sub (x y : word.rep) ux Hx uy Hy Hbounds : word.unsigned _ =~> _ :=
@@ -224,7 +222,7 @@ Module unsigned.
       | _ => match goal with H: word.unsigned e =~> _ |- _ => H end
       | word.of_Z ?a =>
         let Ba := rbounded a in
-        named_pose_proof (absint_of_Z a (boundscheck (X0:=0) (X1:=2^width) Ba (eq_refl true)) : @absint_eq Z (@word.unsigned _ word_parameters e) a)
+        named_pose_proof (word.unsigned_of_Z_nowrap a (boundscheck (X0:=0) (X1:=2^width) Ba (eq_refl true)) : @absint_eq Z (@word.unsigned _ word_parameters e) a)
       | word.and ?a ?b =>
         let Ha := zify_expr a in let Ra := lazymatch type of Ha with _ =~> ?x => x end in
         let Hb := zify_expr b in let Rb := lazymatch type of Hb with _ =~> ?x => x end in

@@ -115,7 +115,7 @@ Compute swap_chars_over_uart.
 Require Import bedrock2.ProgramLogic coqutil.Map.Interface.
 Import Coq.Lists.List. Import ListNotations.
 
-Local Opaque word.of_Z.
+Local Opaque Word.Interface.word.of_Z.
 Module Z.
   Lemma land_nonzero a b : Z.land a b <> 0 -> a <> 0 /\ b <> 0.
   Proof.

@@ -238,8 +238,8 @@ Section Connect.
 
   Lemma riscvMemInit_to_seplog_aux: forall len from,
       Z.of_nat from + Z.of_nat len <= 2 ^ memSizeLg ->
-      PipelineWithRename.ptsto_bytes (width:=width)
-        (word.of_Z (Z.of_nat from))
+      PipelineWithRename.ptsto_bytes
+        (word.of_Z (word:=Utility.word) (Z.of_nat from))
         (map (get_kamiMemInit memInit) (seq from len))
         (map.of_list (map
           (fun i => (word.of_Z (BinIntDef.Z.of_nat i),
@@ -251,8 +251,6 @@ Section Connect.
     - cbv. auto.
     - unfold PipelineWithRename.ptsto_bytes, riscvMemInit_values in *.
       cbn [seq map array map.of_list].
-      (* PARAMRECORDS-instance *)
-      change (KamiWord.word 32) with (@Utility.word Words32).
       match goal with
       | |- context [map.put ?m ?k ?v] => pose proof map.put_putmany_commute k v m map.empty as P
       end.
@@ -264,8 +262,6 @@ Section Connect.
       ssplit; cycle 1.
       + specialize (IHlen (S from)).
         replace (Z.of_nat (S from)) with (Z.of_nat from + 1) in IHlen by blia.
-        (* PARAMRECORDS-instance *)
-        change (KamiWord.word 32) with (@Utility.word Words32) in IHlen.
         rewrite word.ring_morph_add in IHlen.
         apply IHlen. blia.
       + unfold ptsto. reflexivity.
