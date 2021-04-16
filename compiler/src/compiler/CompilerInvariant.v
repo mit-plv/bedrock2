@@ -49,6 +49,7 @@ Section Pipeline1.
       apply IHinstrs1.
   Qed.
 
+  (* PARAMRECORDS: "unfold imem" below relies on the syntactic form of this definition. *)
   Definition imem(code_start code_pastend: Semantics.word)(instrs: list Instruction): Semantics.mem -> Prop :=
     (ptsto_bytes (word:=word)(mem:=(@Pipeline.mem p)) code_start (instrencode instrs) *
      mem_available (word.add code_start (word.of_Z (Z.of_nat (List.length (instrencode instrs)))))
