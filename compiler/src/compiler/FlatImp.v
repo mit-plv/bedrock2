@@ -15,6 +15,9 @@ Require Import bedrock2.Semantics.
 Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Map.OfListWord.
 
+Require Import coqutil.Word.Interface.
+Local Hint Mode Word.Interface.word - : typeclass_instances.
+
 Inductive bbinop: Type :=
 | BEq
 | BNe
@@ -172,9 +175,6 @@ Class parameters(varname: Type) := {
 
   ext_spec: ExtSpec;
 }.
-Module word.
-  Notation of_Z := (Word.Interface.word.of_Z(word:=word)).
-End word.
 
 Module ext_spec.
   Class ok(varname: Type){p: parameters varname}: Prop := {

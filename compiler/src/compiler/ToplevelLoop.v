@@ -54,6 +54,8 @@ Require Import compiler.ExprImpEventLoopSpec.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
+Local Hint Mode word.word - : typeclass_instances.
+
 Open Scope Z_scope.
 
 Local Open Scope ilist_scope.
@@ -180,7 +182,7 @@ Section Pipeline1.
 
   Lemma signed_of_Z_small: forall c,
       - 2 ^ 31 <= c < 2 ^ 31 ->
-      word.signed (word.of_Z (width:=FlatImp.width) c) = c.
+      word.signed (word.of_Z c) = c.
   Proof.
     clear -h.
     simpl.

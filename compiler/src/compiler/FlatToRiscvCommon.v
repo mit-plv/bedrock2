@@ -45,6 +45,9 @@ Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.MetricsToRiscv.
 
+Require Import coqutil.Word.Interface.
+Local Hint Mode Word.Interface.word - : typeclass_instances.
+
 Import Utility.
 
 Local Open Scope ilist_scope.
@@ -69,10 +72,6 @@ Class parameters := {
   ext_spec : list (mem * String.string * list word * (mem * list word)) ->
              mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop;
 }.
-
-Module word.
-  Notation of_Z := (Word.Interface.word.of_Z(word:=word)).
-End word.
 
 Arguments Z.mul: simpl never.
 Arguments Z.add: simpl never.
