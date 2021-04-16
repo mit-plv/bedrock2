@@ -264,7 +264,3 @@ Module exec. Section WithEnv.
   End WithEnv.
   Arguments exec {_} _.
 End exec. Notation exec := exec.exec.
-
-Module word.
-  Notation of_Z := (word.of_Z (word:=word)).
-End word.

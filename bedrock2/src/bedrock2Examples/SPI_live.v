@@ -6,6 +6,7 @@ Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte.
 Require Import coqutil.Tactics.Tactics.
+Require Import bedrock2.ZnWords.
 
 Import BinInt String List.ListNotations ZArith.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
@@ -603,19 +604,12 @@ Section WithParameters.
           rewrite word.unsigned_of_Z in H1; eapply H1. }
         { rewrite app_length, Znat.Nat2Z.inj_add; cbn [app Datatypes.length]. subst v3.
           unshelve erewrite (_ : patience = _); [|symmetry; eassumption|].
-          replace 0 with (word.unsigned (word.of_Z 0)) in H0; cycle 1.
-          { rewrite word.unsigned_of_Z; exact eq_refl. }
-          eapply Properties.word.unsigned_inj in H0.
-          subst b1. destruct_one_match_hyp. {
+          subst b1; rewrite Properties.word.unsigned_if in H0.
+          destruct_one_match_hyp. {
             exfalso. apply H1. apply (f_equal word.unsigned) in E. etransitivity.
             1: exact E. rewrite word.unsigned_of_Z. reflexivity.
           }
-          ring_simplify.
-          subst v2.
-          assert (HA: word.add (word.sub x0 (word.of_Z 1)) (word.of_Z 1) = word.of_Z 1). {
-            match goal with H : _ |- _ => rewrite H; ring end. }
-          ring_simplify in HA; subst.
-          rewrite word.unsigned_of_Z; reflexivity. } } }
+          ring_simplify; f_equal. ZnWords. } } }
     { (* case 2: success *)
       repeat straightline.
       eexists. split. {

@@ -29,6 +29,8 @@ Local Instance spec_of_arp : spec_of "arp" := fun functions =>
 Section WithParameters.
   Context {p : FE310CSemantics.parameters.parameters}.
 
+  Local Hint Mode Word.Interface.word - : typeclass_instances.
+
 Goal program_logic_goal_for_function! arp.
   eexists; split; repeat straightline.
   1: exact eq_refl.

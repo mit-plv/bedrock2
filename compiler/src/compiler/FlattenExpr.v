@@ -475,6 +475,8 @@ Section FlattenExpr1.
     rewrite! Z.mod_small; simpl_param_projections; blia.
   Qed.
 
+  Local Hint Mode Word.Interface.word - : typeclass_instances.
+
   Lemma bool_to_word_to_bool_id: forall (b: bool),
       negb (word.eqb (if b then word.of_Z 1 else word.of_Z 0) (word.of_Z 0)) = b.
   Proof.
