@@ -359,7 +359,8 @@ Section WithParameters.
       eapply word.unsigned_inj.
       rewrite ?byte_mask_byte.
       rewrite ?word.unsigned_and_nowrap.
-      progress replace (word.unsigned (Word.Interface.word.of_Z 1)) with (Z.ones 1) by (rewrite word.unsigned_of_Z; exact eq_refl). (* PARAMRECORDS*)
+      rewrite word.unsigned_of_Z_1.
+      change 1 with (Z.ones 1).
       rewrite Z.land_ones, Z.bit0_mod by blia.
       rewrite !word.unsigned_of_Z.
       cbv [word.wrap]; change width with 32 in *.
