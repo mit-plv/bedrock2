@@ -336,9 +336,9 @@ Section Equiv.
     all: discriminate.
   Qed.
 
-  Definition riscvMemInit := map.of_list (List.map
+  Definition riscvMemInit : mem := map.of_list (List.map
     (fun i : nat =>
-      (word.of_Z (width:=width) (Z.of_nat i),
+      (word.of_Z (Z.of_nat i),
        byte.of_Z (uwordToZ (evalConstT kamiMemInit $i))))
     (seq 0 (2 ^ Z.to_nat memSizeLg))).
 
