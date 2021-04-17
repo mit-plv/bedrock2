@@ -9,20 +9,12 @@ Require Import coqutil.Word.Interface coqutil.Map.Interface bedrock2.Map.Separat
 (*Require Import bedrock2.ptsto_bytes.*)
 Require Import coqutil.Map.OfListWord.
 Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
+Local Notation "m =* P" := ((P%sep) m) (at level 70, only parsing) (* experiment*).
 
 Section WithParameters.
   Context {p : Semantics.parameters}.
-  Local Coercion Z.of_nat : nat >-> Z.
-  Local Coercion word.unsigned : word.rep >-> Z.
+  Import ProgramLogic.Coercions.
 
-  Local Hint Mode map.map + + : typeclass_instances.
-  Let sepclause {key value} {map : map.map key value} := map -> Prop.
-  Local Coercion map_eq {key value map} (m : @map.rep key value map)
-    : sepclause := Logic.eq m.
-  Local Definition sep {key value} {map : map.map key value}
-    : sepclause -> sepclause -> sepclause := sep (map:=map).
-  Local Infix "*" := sep : sep_scope.
-  Local Notation "m =* P" := ((P%sep:sepclause) m) (at level 70, only parsing).
 
   Instance spec_of_memmove : spec_of "memmove" :=
     fnspec! "memmove" dst src (n : Semantics.word) / d s R Rs,
