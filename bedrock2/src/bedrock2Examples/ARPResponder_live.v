@@ -319,50 +319,57 @@ Section WithParameters.
   Fixpoint dataAt{R: Type}(sp: TypeSpec R){struct sp}: word -> R -> mem -> Prop := dataAt_body (@dataAt) sp.
 
   Section UpdateHelpers.
-    Context (update_at_offset: forall {R: Type}, TypeSpec R -> R -> Z -> list byte -> R).
+    Context (update: forall {R: Type}, TypeSpec R -> list byte -> R -> R).
 
-    Fixpoint update_fields_at_offset{R: Type}(fields: list (FieldSpec R)): R -> Z -> list byte -> R.
-      destruct fields.
-      - refine (fun r ofs bs => r).
-      - refine (fun r ofs bs =>
-                  let s := FieldSpec_size f r in
-                  let r' := if Z.ltb ofs s then _ else r in
-                  update_fields_at_offset R fields r' (ofs + s) bs).
-        destruct f.
-        exact (setter r (update_at_offset fieldSpec (getter r) ofs bs)).
-    Defined.
+    Definition update_field{R: Type}(sp: FieldSpec R)(bs: list byte): R -> R :=
+      match sp in (FieldSpec T) return (T -> T) with
+      | FField getter setter fieldSpec => fun r => setter r (update fieldSpec bs (getter r))
+      end.
+
+    Fixpoint update_fields{R: Type}(fields: list (FieldSpec R))(bs: list byte)(r: R): R :=
+      match fields with
+      | [] => r
+      | f :: fs => update_field f bs (update_fields fs (List.skipn (Z.to_nat (FieldSpec_size f r)) bs) r)
+      end.
 
     Section WithTypeSpec.
       Context {E: Type}(elemSize: Z)(sp: TypeSpec E).
-      Fixpoint update_array_at_offset(l: list E)(ofs: Z)(bs: list byte): list E.
+      Fixpoint update_array(bs: list byte)(l: list E): list E.
+        refine (match bs with
+                | nil => l
+                | b :: bs' => _
+                end).
         destruct l.
         - exact nil.
-        - refine (let e' := if Z.ltb ofs elemSize then _ else e in
-                  e' :: update_array_at_offset l (ofs + elemSize) bs).
-          refine (update_at_offset sp e ofs bs).
+        - refine (let e' := _ in
+                  e' :: update_array (List.skipn (Z.to_nat elemSize) bs) l).
+          refine (update sp bs e).
       Defined.
 
-      Fixpoint update_tuple_at_offset{n: nat}(l: tuple E n)(ofs: Z)(bs: list byte): tuple E n.
+      Fixpoint update_tuple{n: nat}(bs: list byte)(l: tuple E n){struct n}: tuple E n.
+        refine (match bs with
+                | nil => l
+                | b :: bs' => _
+                end).
         destruct n.
         - exact l.
         - destruct l as [e l].
-          refine (let e' := if Z.ltb ofs elemSize then _ else e in
-                  PrimitivePair.pair.mk e' (update_tuple_at_offset n l (ofs + elemSize) bs)).
-          refine (update_at_offset sp e ofs bs).
+          refine (let e' := update sp bs e in
+                  PrimitivePair.pair.mk e' (update_tuple n (List.skipn (Z.to_nat elemSize) bs) l)).
       Defined.
     End WithTypeSpec.
 
-    Definition update_at_offset_body{R: Type}(sp: TypeSpec R): R -> Z -> list byte -> R :=
-      match sp in (TypeSpec T) return (T -> Z -> list Init.Byte.byte -> T) with
-      | TByte => fun b ofs bs => if ofs =? 0 then b else List.nth 0 bs Byte.x00
-      | TStruct fields => update_fields_at_offset fields
-      | TArray elemSize elemSpec => update_array_at_offset elemSize elemSpec
-      | TTuple count elemSize elemSpec => update_tuple_at_offset elemSize elemSpec
+    Definition update_body{R: Type}(sp: TypeSpec R)(bs: list byte): R -> R :=
+      match sp in (TypeSpec T) return (T -> T) with
+      | TByte => fun b => List.hd b bs
+      | TStruct fields => update_fields fields bs
+      | TArray elemSize elemSpec => update_array elemSize elemSpec bs
+      | TTuple count elemSize elemSpec => update_tuple elemSize elemSpec bs
       end.
   End UpdateHelpers.
 
-  Fixpoint update_at_offset{R: Type}(sp: TypeSpec R): R -> Z -> list byte -> R :=
-    update_at_offset_body (@update_at_offset) sp.
+  Fixpoint update{R: Type}(sp: TypeSpec R)(bs: list byte): R -> R :=
+    update_body (@update) sp bs.
 
   (* ** Packet Formats *)
 
@@ -498,6 +505,48 @@ Section WithParameters.
       intros. simpl. f_equal. ZnWords.
   Qed.
 
+  Lemma fill_dummy_with_bytes: forall {R: Type} (sp: TypeSpec R) (dummy: R) a bs,
+      TypeSpec_size sp dummy = len bs ->
+      iff1 (array ptsto /[1] a bs) (dataAt sp a (update sp bs dummy)).
+  Proof.
+    induction sp; intros.
+    - simpl in *. destruct bs. 1: discriminate. destruct bs. 2: {
+        cbn in H. exfalso. blia.
+      }
+      simpl.
+      cancel.
+    - simpl in *.
+      revert a bs H.
+      induction fields; intros.
+      + simpl in *. destruct bs. 2: discriminate.
+        simpl. cancel.
+      + change (@update_fields (@update) ?R (?f :: ?fs) ?bs ?r) with
+               (update_field (@update) f bs
+                             (update_fields (@update) fs (List.skipn (Z.to_nat (FieldSpec_size f r)) bs) r)).
+        unfold fieldsAt.
+        rewrite List.map_with_index_cons.
+        rewrite <- seps'_iff1_seps. cbn [seps']. rewrite seps'_iff1_seps.
+        change (List.fold_right ?f ?x (?h :: ?t)) with (f h (List.fold_right f x t)) in H.
+        cbv beta in H.
+        assert (0 <= List.fold_right (fun f res => FieldSpec_size f dummy + res) 0 fields). {
+          exact TODO.
+        }
+        assert (0 <= FieldSpec_size a dummy). {
+          exact TODO.
+        }
+        rewrite (bytearray_index_split a0 bs /[(FieldSpec_size a dummy)]) by ZnWords.
+        cancel.
+        cancel_seps_at_indices O O. {
+          eapply iff1ToEq. etransitivity.
+          - eapply IHfields.
+            replace (List.fold_right (fun (f : FieldSpec R) (res : Z) => FieldSpec_size f dummy + res) 0 fields)
+              with (len bs - FieldSpec_size a dummy) by blia.
+            assert (len bs >= 0) by admit.
+            rewrite List.firstn_length.
+
+            (* needs IH for sp, ie needs mutual induction principle for TypeSpec *)
+  Admitted.
+
   Lemma bytesToARPPacket: forall a bs,
       28 = len bs ->
       exists p: ARPPacket,
@@ -514,9 +563,9 @@ Section WithParameters.
         iff1 (array ptsto /[1] a bs) (dataAt (EthernetPacket_spec ARPPacket_spec) a p).
   Proof.
     intros.
-    eexists (update_at_offset (EthernetPacket_spec ARPPacket_spec) _ 0 bs).
-    change (@update_at_offset ?R ?sp) with (update_at_offset_body (@update_at_offset) sp).
-    cbv beta iota delta [update_at_offset_body].
+    eexists (update (EthernetPacket_spec ARPPacket_spec) bs _).
+    change (@update ?R ?sp) with (update_body (@update) sp).
+    cbv beta iota delta [update_body].
     unfold EthernetPacket_spec.
   Abort.
 
