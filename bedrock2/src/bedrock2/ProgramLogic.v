@@ -9,6 +9,20 @@ Require bedrock2.string2ident.
 Definition spec_of (procname:String.string) := list (String.string * (list String.string * list String.string * Syntax.cmd.cmd)) -> Prop.
 Existing Class spec_of.
 
+Module Import Coercions.
+  Import Map.Interface Word.Interface BinInt.
+  Coercion Z.of_nat : nat >-> Z.
+  Coercion word.unsigned : word.rep >-> Z.
+
+  Definition sepclause_of_map {key value map} (m : @map.rep key value map)
+    : map.rep -> Prop := Logic.eq m.
+  Coercion sepclause_of_map : Interface.map.rep >-> Funclass.
+End Coercions.
+
+Goal True.
+  assert_succeeds epose (fun k v M (m : @Interface.map.rep k v M) => m _).
+Abort.
+
 Section bindcmd.
   Context {T : Type}.
   Fixpoint bindcmd (c : Syntax.cmd) (k : Syntax.cmd -> T) {struct c} : T :=
