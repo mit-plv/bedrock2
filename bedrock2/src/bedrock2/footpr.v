@@ -129,7 +129,7 @@ Section Footprint.
     eapply footpr_sep_subset_l. eassumption.
   Qed.
 
-  Lemma same_domain_split: forall m1 m2 m1l m1r m2l m2r,
+  Lemma same_domain_split: forall (m1 m2 m1l m1r m2l m2r : map),
       map.same_domain m1l m2l ->
       map.same_domain m1r m2r ->
       map.split m1 m1l m1r ->

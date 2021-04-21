@@ -15,8 +15,8 @@ Definition indirect_add_twice : func := let a := "a" in let b := "b" in
 ))).
 
 Require Import bedrock2.WeakestPrecondition.
-Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 Require Import coqutil.Word.Interface coqutil.Map.Interface bedrock2.Map.SeparationLogic.
+Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 
 Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
@@ -25,7 +25,7 @@ Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
 
-  Definition f a b := word.add (word.add a b) b.
+  Definition f (a b : word) := word.add (word.add a b) b.
 
   Local Notation "m =* P" := (P%sep m) (at level 70, only parsing). (* experiment *)
   Instance spec_of_indirect_add : spec_of "indirect_add" :=
@@ -71,7 +71,7 @@ Section WithParameters.
     indirect_add(a, a, c)
   ))).
 
-  Definition g a b c := word.add (word.add a b) c.
+  Definition g (a b c : word) := word.add (word.add a b) c.
   Instance spec_of_indirect_add_three : spec_of "indirect_add_three" :=
     fnspec! "indirect_add_three" a b c / va vb vc Rb R,
     { requires t m := m =* scalar a va * scalar c vc * R /\ m =* scalar b vb * Rb;

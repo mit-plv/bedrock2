@@ -54,6 +54,8 @@ Require Import compiler.ExprImpEventLoopSpec.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
+Local Hint Mode word.word - : typeclass_instances.
+
 Open Scope Z_scope.
 
 Local Open Scope ilist_scope.
@@ -185,13 +187,8 @@ Section Pipeline1.
     clear -h.
     simpl.
     intros.
-    rewrite word.signed_of_Z.
-    unfold word.swrap.
-    destruct width_cases as [E | E]; rewrite E; change (32 - 1) with 31; change (64 - 1) with 63;
-      repeat match goal with
-             | |- context[2 ^ ?x] => let x' := eval cbv in (2 ^ x) in change (2 ^ x) with x' in *
-             end;
-      clear E; Z.div_mod_to_equations; blia.
+    eapply word.signed_of_Z_nowrap.
+    case width_cases as [E | E]; rewrite E; Lia.lia.
   Qed.
 
   Lemma establish_ll_inv: forall (initial: MetricRiscvMachine),

@@ -64,7 +64,7 @@ Module word.
         unfold word.wrap; rewrite (Z.mod_small a); blia.
     Qed.
 
-    Lemma unsigned_if: forall (b: bool) thn els,
+    Lemma unsigned_if: forall (b: bool) (thn els : word),
         word.unsigned (if b then thn else els) = if b then word.unsigned thn else word.unsigned els.
     Proof. intros. destruct b; reflexivity. Qed.
   End WithWord.

@@ -359,7 +359,7 @@ Section Run.
 
   Lemma iff1_emp: forall P Q,
       (P <-> Q) ->
-      iff1 (emp P) (emp Q).
+      @iff1 mem (emp P) (emp Q).
   Proof. unfold iff1, emp. clear. firstorder idtac. Qed.
 
   Lemma removeXAddr_diff: forall a1 a2 xaddrs,
@@ -385,7 +385,7 @@ Section Run.
     eassumption.
   Qed.
 
-  Lemma sep_ptsto_to_addr_neq: forall a1 v1 a2 v2 m R,
+  Lemma sep_ptsto_to_addr_neq: forall a1 v1 a2 v2 (m : mem) R,
       (ptsto a1 v1 * ptsto a2 v2 * R)%sep m ->
       a1 <> a2.
   Proof.

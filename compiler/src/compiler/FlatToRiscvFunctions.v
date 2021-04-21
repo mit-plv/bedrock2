@@ -1370,7 +1370,7 @@ Section Proofs.
     - idtac "Case compile_stmt_correct/SStore".
       simpl_MetricRiscvMachine_get_set.
       unfold Memory.store, Memory.store_Z in *.
-      change Memory.store_bytes with Platform.Memory.store_bytes in *.
+      change Memory.store_bytes with (Platform.Memory.store_bytes(word:=word)) in *.
       match goal with
       | H: Platform.Memory.store_bytes _ _ _ _ = _ |- _ =>
         unshelve epose proof (@store_bytes_frame _ _ _ _ _ _ _ _ _ H _) as P; cycle 2
@@ -1549,7 +1549,7 @@ Section Proofs.
           eexists (stack_trash ++ returned_words). split. 2: {
             seprewrite_in QQ Q.
             replace (Datatypes.length remaining_stack) with (Datatypes.length stack_trash) by blia.
-            assert (!bytes_per_word * !(n / bytes_per_word) = !n) as DivExact. {
+            assert (!bytes_per_word * !(n / bytes_per_word) = !n :> word) as DivExact. {
               ParamRecords.simpl_param_projections.
               rewrite <- (word.ring_morph_mul (bytes_per_word) (n / bytes_per_word)).
               rewrite <- Z_div_exact_2.

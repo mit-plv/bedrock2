@@ -15,6 +15,7 @@ Section Scalars.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
 
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
+  Implicit Types (m : mem).
 
   Definition littleendian (n : nat) (addr : word) (value : Z) : mem -> Prop :=
     ptsto_bytes n addr (LittleEndian.split n value).

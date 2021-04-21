@@ -22,6 +22,7 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Monads.
 Require Import riscv.Spec.Machine.
+Import Utility.
 
 Arguments Jal (_)%Z (_)%Z. (* needed when inside a (_)%sep *)
 

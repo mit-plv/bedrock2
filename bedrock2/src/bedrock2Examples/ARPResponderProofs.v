@@ -1,5 +1,6 @@
 From Coq Require Import Strings.String Lists.List ZArith.BinInt.
-From bedrock2 Require Import BasicC32Semantics ProgramLogic.
+From coqutil.Word Require Import Interface.
+From bedrock2 Require Import Semantics BasicC32Semantics ProgramLogic.
 Require Import coqutil.Byte.
 Require Import coqutil.Z.Lia.
 
@@ -7,7 +8,6 @@ Require Import bedrock2Examples.ARPResponder.
 
 Import Datatypes List ListNotations.
 Local Open Scope string_scope. Local Open Scope list_scope. Local Open Scope Z_scope.
-From coqutil.Word Require Import Interface.
 
 From bedrock2 Require Import Array Scalars Separation.
 From coqutil.Tactics Require Import letexists rdelta.
@@ -28,6 +28,8 @@ Local Instance spec_of_arp : spec_of "arp" := fun functions =>
 
 Section WithParameters.
   Context {p : FE310CSemantics.parameters.parameters}.
+
+  Local Hint Mode Word.Interface.word - : typeclass_instances.
 
 Goal program_logic_goal_for_function! arp.
   eexists; split; repeat straightline.

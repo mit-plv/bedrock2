@@ -45,6 +45,7 @@ Module map.
   Section MAP.
     Context {key value} {map : map.map key value}.
     Context {ok : map.ok map} {key_eqb: key -> key -> bool} {key_eq_dec : EqDecider key_eqb}.
+    Implicit Types (k : key) (v : value) (x y z m : map).
 
     (* Note: there's already one in coqutil that requires disjointness *)
     Lemma putmany_assoc x y z : map.putmany x (map.putmany y z) = map.putmany (map.putmany x y) z.
@@ -560,7 +561,7 @@ Section Spilling.
         length newwords = length oldwords.
   Admitted.
 
-  Lemma store_bytes_sep_hi2lo: forall mH mL R a n v_old v,
+  Lemma store_bytes_sep_hi2lo: forall (mH mL : mem) R a n v_old v,
       Memory.load_bytes n mH a = Some v_old ->
       (eq mH * R)%sep mL ->
       (eq (Memory.unchecked_store_bytes n mH a v) * R)%sep (Memory.unchecked_store_bytes n mL a v).
@@ -1008,7 +1009,7 @@ Section Spilling.
       exec e (s1;; (s2;; s3)) t m l mc post.
   Proof. intros. simp. eauto 10 using exec.seq. Qed.
 
-  Lemma get_arg_reg_1: forall l l2 y y' z z',
+  Lemma get_arg_reg_1: forall l l2 y y' (z : Z) (z' : word),
       fp < y ->
       fp < z ->
       map.get l y = Some y' ->
@@ -1086,7 +1087,7 @@ Section Spilling.
     let sz := Z.to_nat (@Memory.bytes_per_word width) in
     List.map word.of_Z (byte_list_to_Z_list sz (length bs / sz)%nat bs).
 
-  Lemma littleendian_head_to_Z: forall n l addr,
+  Lemma littleendian_head_to_Z: forall n l (addr : word),
       iff1 (littleendian n addr (head_to_Z n l))
            (array ptsto (word.of_Z 1) addr (List__firstn_default n l Byte.x00)).
   Proof.
@@ -1095,7 +1096,7 @@ Section Spilling.
     reflexivity.
   Qed.
 
-  Lemma scalar_head_to_Z: forall l addr,
+  Lemma scalar_head_to_Z: forall l (addr : word),
       iff1 (scalar addr (word.of_Z (head_to_Z (Z.to_nat bytes_per_word) l)))
            (array ptsto (word.of_Z 1) addr (List__firstn_default (Z.to_nat bytes_per_word) l Byte.x00)).
   Proof.

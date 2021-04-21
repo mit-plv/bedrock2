@@ -15,6 +15,9 @@ Require Import bedrock2.Semantics.
 Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Map.OfListWord.
 
+Require Import coqutil.Word.Interface.
+Local Hint Mode Word.Interface.word - : typeclass_instances.
+
 Inductive bbinop: Type :=
 | BEq
 | BNe

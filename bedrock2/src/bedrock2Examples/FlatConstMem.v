@@ -247,11 +247,11 @@ Section WithParameters.
 
   Lemma of_list_word_nil
     [value] [map : map.map word value] {ok : map.ok map}
-    k : []$@k = empty.
+    k : []$@k = empty(map:=map).
   Proof. apply Properties.map.fold_empty. Qed.
   Lemma of_list_word_singleton
     [value] [map : map.map word value] {ok : map.ok map}
-    k v : [v]$@k = put empty k v.
+    (k : word) (v : value) : [v]$@k = put empty k v.
   Proof.
     cbv [of_list_word_at of_list_word seq length List.map of_func update].
     rewrite word.unsigned_of_Z_0, Z2Nat.inj_0; cbv [MapKeys.map.map_keys nth_error].
@@ -320,7 +320,7 @@ Section WithParameters.
 
   Section __.
     Import WithoutTuples.
-    Lemma load_bytes_of_putmany_bytes_at bs a mR n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
+    Lemma load_bytes_of_putmany_bytes_at bs a (mR:mem) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
       : load_bytes (mR $+ bs$@a) a n = Some bs.
     Proof.
       destruct (load_bytes (mR $+ bs$@a) a n) eqn:HN in *; cycle 1.
@@ -343,7 +343,7 @@ Section WithParameters.
       congruence.
     Qed.
 
-    Lemma load_bytes_of_sep_bytes_at bs a R m (Hsep: (eq(bs$@a)*R) m) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
+    Lemma load_bytes_of_sep_bytes_at bs a R (m:mem) (Hsep: (eq(bs$@a)*R) m) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
       : load_bytes m a n = Some bs.
     Proof.
       eapply sep_comm in Hsep.
@@ -352,7 +352,7 @@ Section WithParameters.
     Qed.
   End __.
 
-  Lemma load_four_bytes_of_sep_at bs a R m (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat) :
+  Lemma load_four_bytes_of_sep_at bs a R (m:mem) (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
   Proof.
     eapply Scalars.load_four_bytes_of_sep_at; try eassumption. reflexivity.

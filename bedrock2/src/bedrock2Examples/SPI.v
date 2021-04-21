@@ -1,6 +1,7 @@
 Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Z.Lia.
+Require Import coqutil.Word.Interface.
 Require Import coqutil.Byte.
 
 Import BinInt String List.ListNotations ZArith.
@@ -57,8 +58,7 @@ Definition spi_xchg : function :=
   ))).
 
 Require Import bedrock2.ProgramLogic.
-Require Import bedrock2.FE310CSemantics.
-Require Import coqutil.Word.Interface.
+Require Import bedrock2.FE310CSemantics bedrock2.Semantics.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import bedrock2.ZnWords.
@@ -90,7 +90,7 @@ Section WithParameters.
         (word.unsigned err <> 0 /\ lightbulb_spec.spi_read_empty _ ^* ioh /\ Z.of_nat (length ioh) = patience)
         (word.unsigned err = 0 /\ lightbulb_spec.spi_read parameters.word b ioh)).
 
-  Lemma nonzero_because_high_bit_set x (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
+  Lemma nonzero_because_high_bit_set (x : word) (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
     : word.unsigned x <> 0.
   Proof. ZnWords. Qed.
 
