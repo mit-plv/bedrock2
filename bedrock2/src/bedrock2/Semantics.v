@@ -1,4 +1,4 @@
-Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil.Byte.
+Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil.Byte coqutil.Tactics.Simp.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import coqutil.Decidable.
 Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
@@ -261,6 +261,120 @@ Module exec. Section WithEnv.
             (addMetricLoads 2 mc'))))
     : exec (cmd.interact binds action arges) t m l mc post
   .
+
+  Lemma seq_cps: forall c1 c2 t m l mc post,
+      exec c1 t m l mc (fun t' m' l' mc' => exec c2 t' m' l' mc' post) ->
+      exec (cmd.seq c1 c2) t m l mc post.
+  Proof. intros. eapply seq; eauto. Qed.
+
+  Lemma weaken: forall t l m mc s post1,
+      exec s t m l mc post1 ->
+      forall post2: _ -> _ -> _ -> _ -> Prop,
+        (forall t' m' l' mc', post1 t' m' l' mc' -> post2 t' m' l' mc') ->
+        exec s t m l mc post2.
+  Proof.
+    induction 1; intros; try solve [econstructor; eauto].
+    - eapply stackalloc. 1: assumption.
+      intros.
+      eapply H1; eauto.
+      intros. simp. eauto 10.
+    - (* firstorder eauto 10 using @exec.call. doesn't return within 1 minute *)
+      eapply call.
+      4: eapply IHexec.
+      all: eauto.
+      intros.
+      edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
+      eauto 10.
+    - eapply interact; try eassumption.
+      intros.
+      edestruct H2 as (? & ? & ?); [eassumption|].
+      eauto 10.
+  Qed.
+
+  Lemma seq_assoc: forall c1 c2 c3 t m l mc post,
+      exec (cmd.seq c1 (cmd.seq c2 c3)) t m l mc post <->
+      exec (cmd.seq (cmd.seq c1 c2) c3) t m l mc post.
+  Proof.
+    split; intros.
+    - invert_hyp H. eapply seq_cps. eapply seq. 1: eassumption.
+      intros. specialize H8 with (1 := H). invert_hyp H8.
+      eapply weaken; eassumption.
+    - invert_hyp H. invert_hyp H2. eauto using seq.
+  Qed.
+
+  Lemma intersect{ok: parameters_ok pp}: forall t l m mc s post1,
+      exec s t m l mc post1 ->
+      forall post2,
+        exec s t m l mc post2 ->
+        exec s t m l mc (fun t' m' l' mc' => post1 t' m' l' mc' /\ post2 t' m' l' mc').
+  Proof.
+    induction 1;
+      intros;
+      match goal with
+      | H: exec _ _ _ _ _ _ |- _ => inversion H; subst; clear H
+      end;
+      try match goal with
+      | H1: ?e = Some (?x1, ?y1, ?z1), H2: ?e = Some (?x2, ?y2, ?z2) |- _ =>
+        replace x2 with x1 in * by congruence;
+          replace y2 with y1 in * by congruence;
+          replace z2 with z1 in * by congruence;
+          clear x2 y2 z2 H2
+      end;
+      repeat match goal with
+             | H1: ?e = Some (?v1, ?mc1), H2: ?e = Some (?v2, ?mc2) |- _ =>
+               replace v2 with v1 in * by congruence;
+               replace mc2 with mc1 in * by congruence; clear H2
+             end;
+      repeat match goal with
+             | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+               replace v2 with v1 in * by congruence; clear H2
+             end;
+      try solve [econstructor; eauto | exfalso; congruence].
+
+    - econstructor. 1: eassumption.
+      intros.
+      rename H0 into Ex1, H12 into Ex2.
+      eapply weaken. 1: eapply H1. 1,2: eassumption.
+      1: eapply Ex2. 1,2: eassumption.
+      cbv beta. clear -ok.
+      intros. simp.
+      lazymatch goal with
+      | A: map.split _ _ _, B: map.split _ _ _ |- _ =>
+        specialize @Map.Properties.map.split_diff with (4 := A) (5 := B) as P
+      end.
+      edestruct P; try typeclasses eauto. 2: subst; eauto 10.
+      eapply anybytes_unique_domain; eassumption.
+    - econstructor.
+      + eapply IHexec. exact H5. (* not H *)
+      + simpl. intros *. intros [? ?]. eauto.
+    - eapply while_true. 1, 2: eassumption.
+      + eapply IHexec. exact H9. (* not H1 *)
+      + simpl. intros *. intros [? ?]. eauto.
+    - eapply call. 1, 2, 3: eassumption.
+      + eapply IHexec. exact H16. (* not H2 *)
+      + simpl. intros *. intros [? ?].
+        edestruct H3 as (? & ? & ? & ? & ?); [eassumption|].
+        edestruct H17 as (? & ? & ? & ? & ?); [eassumption|].
+        repeat match goal with
+               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+                 replace v2 with v1 in * by congruence; clear H2
+               end.
+        eauto 10.
+    - pose proof ext_spec.unique_mGive_footprint as P.
+      specialize P with (1 := H1) (2 := H14).
+      destruct (Map.Properties.map.split_diff P H H7). subst mKeep0 mGive0. clear H7.
+      eapply interact. 1,2: eassumption.
+      + eapply ext_spec.intersect; [ exact H1 | exact H14 ].
+      + simpl. intros *. intros [? ?].
+        edestruct H2 as (? & ? & ?); [eassumption|].
+        edestruct H15 as (? & ? & ?); [eassumption|].
+        repeat match goal with
+               | H1: ?e = Some ?v1, H2: ?e = Some ?v2 |- _ =>
+                 replace v2 with v1 in * by congruence; clear H2
+               end.
+        eauto 10.
+  Qed.
+
   End WithEnv.
   Arguments exec {_} _.
 End exec. Notation exec := exec.exec.

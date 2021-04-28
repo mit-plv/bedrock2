@@ -389,14 +389,14 @@ Section Connect.
         * exact V.
         * exact GetInit.
         * intros.
-          eapply ExprImp.weaken_exec.
+          eapply exec.weaken.
           -- rewrite ?heap_start_agree, ?heap_pastend_agree in *.
              refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
                eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
           -- simpl. clear. intros. unfold bedrock2Inv in *. eauto.
         * exact GetLoop.
         * intros. unfold bedrock2Inv in *.
-          eapply ExprImp.weaken_exec.
+          eapply exec.weaken.
           -- refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
                eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
           -- simpl. clear. intros. eauto.
