@@ -1,11 +1,12 @@
 Require Import Coq.derive.Derive.
 Require Import coqutil.Z.Lia.
 Require coqutil.Word.BigEndian coqutil.Word.ZifyLittleEndian.
+Require Import coqutil.Word.LittleEndianList.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
 Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.rewr coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.rewr.
-Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
@@ -18,6 +19,8 @@ Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic.
 Require Import bedrock2.ZnWords.
 Require Import coqutil.Word.SimplWordExpr.
 Require Import coqutil.Tactics.Records.
+Require Import coqutil.Tactics.Simp.
+Require Import bedrock2.MetricLogging.
 Require Import bedrock2.footpr.
 
 Local Set Nested Proofs Allowed.
@@ -229,6 +232,16 @@ Section WithParameters.
           (array ptsto /[1] (a ^+ n) (List.skipn (Z.to_nat (word.unsigned n)) l)).
   Proof. intros. eapply iff1ToEq. eapply bytearray_index_split_iff1. assumption. Qed.
 
+  Definition bytesAt(addr: word)(bs: list byte): mem -> Prop :=
+    eq (map.of_list_word_at addr bs).
+
+  Definition bytesAtWithLen(addr: word)(l: Z)(bs: list byte): mem -> Prop :=
+    sep (emp (l = len bs)) (eq (map.of_list_word_at addr bs)).
+
+  Notation "a |-> bs" := (bytesAt a bs) (at level 12).
+  Notation "a ,+ l |-> bs" := (bytesAtWithLen a l bs)
+    (at level 12, l at level 0, format "a ,+ l  |->  bs").
+
   Definition BEBytesToWord{n: nat}(bs: tuple byte n): word := word.of_Z (BigEndian.combine n bs).
 
   Definition ZToBEWord(n: nat)(x: Z): word := BEBytesToWord (BigEndian.split n x).
@@ -371,6 +384,8 @@ Section WithParameters.
   Fixpoint update{R: Type}(sp: TypeSpec R)(bs: list byte): R -> R :=
     update_body (@update) sp bs.
 
+  Class Flatten(R: Type) := flatten: R -> list byte.
+
   (* ** Packet Formats *)
 
   Definition ETHERTYPE_ARP: two_bytes := tuple.of_list [Byte.x08; Byte.x06].
@@ -386,6 +401,14 @@ Section WithParameters.
     etherType: tuple byte 2; (* <-- must initially accept all possible two-byte values *)
     payload: Payload;
   }.
+
+  Instance flatten_byte: Flatten byte := fun b => [b].
+
+  Instance flatten_byte_tuple(n: nat): Flatten (tuple byte n) := tuple.to_list.
+
+  (* TODO some typeclass search + Ltac hackery could infer these typeclass instances *)
+  Instance flatten_EthernetPacket(Payload: Type){flPld: Flatten Payload}: Flatten (EthernetPacket Payload) :=
+    fun r => flatten r.(dstMAC) ++ flatten r.(srcMAC) ++ flatten r.(etherType) ++ flatten r.(payload).
 
   Definition EthernetPacket_spec{Payload: Type}(Payload_spec: TypeSpec Payload) := TStruct [
     FField (@dstMAC Payload) TODO (TTuple 6 1 TByte);
@@ -405,6 +428,10 @@ Section WithParameters.
     tha: MAC;  (* target hardware address *)
     tpa: IPv4; (* target protocol address *)
   }.
+
+  Instance flatten_ARPPacket: Flatten ARPPacket :=
+    fun r => flatten r.(htype) ++ flatten r.(ptype) ++ flatten r.(hlen) ++ flatten r.(plen) ++
+             flatten r.(oper) ++ flatten r.(sha) ++ flatten r.(spa) ++ flatten r.(tha) ++ flatten r.(tpa).
 
   Definition ARPPacket_spec: TypeSpec ARPPacket := TStruct [
     FField htype TODO (TTuple 2 1 TByte);
@@ -569,7 +596,7 @@ Section WithParameters.
     unfold EthernetPacket_spec.
   Abort.
 
-  Lemma bytesToEthernetARPPacket: forall a bs,
+  Lemma bytesToEthernetARPPacket0: forall a bs,
       64 = len bs ->
       exists p: EthernetPacket ARPPacket,
         iff1 (array ptsto /[1] a bs) (dataAt (EthernetPacket_spec ARPPacket_spec) a p).
@@ -648,15 +675,41 @@ Section WithParameters.
     (* TODO messy *)
   Admitted.
 
+  Lemma bytesToEthernetARPPacket: forall bs,
+      42 = len bs ->
+      exists p: EthernetPacket ARPPacket,
+        bs = flatten p.
+  Proof.
+    intros.
+    repeat (destruct bs as [|? bs]; [discriminate H|]).
+    destruct bs. 2: {
+      exfalso. cbn [List.length] in H. blia.
+    }
+    clear H.
+    eexists.
+    repeat match goal with
+           | |- context[?e] => is_evar e;
+                                 let t := type of e in
+                                 lazymatch t with
+                                 | byte => fail
+                                 | _ => instantiate_evar_with_econstructor e
+                                 end
+           end.
+    cbn.
+    reflexivity.
+  Qed.
+
   Definition addr_in_range(a start: word)(len: Z): Prop :=
     word.unsigned (word.sub a start) <= len.
 
   Definition subrange(start1: word)(len1: Z)(start2: word)(len2: Z): Prop :=
     0 <= len1 <= len2 /\ addr_in_range start1 start2 (len2-len1).
 
+(*
   Notation "a ,+ m 'c=' b ,+ n" := (subrange a m b n)
     (no associativity, at level 10, m at level 1, b at level 1, n at level 1,
      format "a ,+ m  'c='  b ,+ n").
+*)
 
   Record dummy_packet := {
     dummy_src: tuple byte 4;
@@ -740,7 +793,8 @@ Section WithParameters.
       let range_size := eval cbn -[Z.add] in (TypeSpec_size sp v) in
       let target_start := addr' in
       let target_size := eval cbn -[Z.add] in (TypeSpec_size sp' v') in
-      assert (target_start,+target_size c= range_start,+range_size)
+      assert (subrange target_start target_size range_start range_size)
+(*    assert (target_start,+target_size c= range_start,+range_size)*)
     end.
 
   Ltac check_lookup_range_feasible :=
@@ -822,7 +876,7 @@ Ltac2 without_effects(t: unit -> 'a) :=
       pose (range_start := addr); cbn -[Z.add] in range_start;
       pose (range_size := (TypeSpec_size sp v)); cbn -[Z.add] in range_size
     end.
-    assert (target_start,+target_size c= range_start,+range_size) as T. {
+    assert (subrange target_start target_size range_start range_size) as T. {
       unfold subrange, addr_in_range. ZnWords.
     }
     clear range_start range_size T.
@@ -860,12 +914,13 @@ Ltac2 without_effects(t: unit -> 'a) :=
 
   (* ** Program logic rules *)
 
-
 Section WithWordPostAndMemAndLocals.
 
   Implicit Type post: word -> Prop.
   Context (m: mem) (l: locals).
 
+(* firstn_as_tuple,
+   or load precondition with builtin sublist *)
   Inductive wp_expr: expr.expr -> (word -> Prop) -> Prop :=
   | wp_expr_literal: forall v post,
       post (word.of_Z v) ->
@@ -878,11 +933,13 @@ Section WithWordPostAndMemAndLocals.
       wp_expr e1 mid ->
       (forall v1, mid v1 -> wp_expr e2 (fun v2 => post (interp_binop op v1 v2))) ->
       wp_expr (expr.op op e1 e2) post
-  | wp_expr_load: forall s e post,
-      wp_expr e (fun a => load s m a post) ->
-      wp_expr (expr.load s e) post
+  | wp_expr_load: forall sz e post,
+      wp_expr e (fun a => exists bs R,
+        seps [a,+(bytes_per (width:=width) sz) |-> bs; R] m /\
+        post /[le_combine bs]) ->
+      wp_expr (expr.load sz e) post
   | wp_expr_inlinetable: forall s t e post,
-      wp_expr e (fun a => load s (OfListWord.map.of_list_word t) a post) ->
+      wp_expr e (fun a => load s (map.of_list_word t) a post) ->
       wp_expr (expr.inlinetable s t e) post.
 
   Lemma wp_expr_op: forall op e1 e2 post,
@@ -900,7 +957,7 @@ Section WithWordPostAndMemAndLocals.
     - edestruct IHwp_expr. decompose [and ex] H2. rewrite H4. edestruct H1. 1: eassumption.
       decompose [and ex] H3. rewrite H7. eauto.
     - edestruct IHwp_expr. decompose [and ex] H0. rewrite H2.
-      unfold load in *. decompose [and ex] H3. ParamRecords.simpl_param_projections. rewrite H4. eauto.
+      exact TODO.
     - edestruct IHwp_expr. decompose [and ex] H0. rewrite H2.
       unfold load in *. decompose [and ex] H3. ParamRecords.simpl_param_projections. rewrite H4. eauto.
   Qed.
@@ -931,6 +988,106 @@ End WithWordPostAndMemAndLocals.
         (fun v => forall mc, exec e rest t m (map.put l x v) mc post) ->
       exec e (cmd.seq (cmd.set x a) rest) t m l mc post.
   Admitted.
+
+  Lemma loop: forall e cond body rest t m l mc (inv: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop) post,
+      inv t m l mc ->
+      (forall ti mi li mci, inv ti mi li mci ->
+         wp_expr mi li cond (fun b =>
+           (word.unsigned b <> 0 -> exec e body ti mi li mci inv) /\
+           (word.unsigned b =  0 -> exec e rest ti mi li mci post))) ->
+      exec e (cmd.seq (cmd.while cond body) rest) t m l mc post.
+  Abort. (* TODO needs a termination measure, maybe using metrics? *)
+
+  (* for (i = lo; i < hi; i += d) body *)
+  Definition for_up(i: string)(lo hi: expr)(d: Z)(body: cmd): cmd :=
+    cmd.seq (cmd.set i lo) (cmd.while (expr.op bopname.ltu i hi)
+                                      (cmd.seq body (cmd.set i (expr.op bopname.add i d)))).
+
+  (* TODO PARAMRECORDS where is the correct location to put this? *)
+  Existing Instance SortedListString.ok.
+
+(*
+  Lemma strong_Z_ind: forall (P: Z -> Prop),
+      (forall start, (forall x, start <= x <
+      forall fuel, P fuel.
+*)
+
+  Lemma while_cps: forall e cond body t m l mc0 mc post b,
+      eval_expr m l cond mc0 = Some (b, mc) ->
+      (word.unsigned b <> 0 -> exec e body t m l mc (fun t' m' l' mc' =>
+        exec e (cmd.while cond body) t' m' l'
+             (addMetricInstructions 2 (addMetricLoads 2 (addMetricJumps 1 mc'))) post)) ->
+      (word.unsigned b = 0 -> post t m l (addMetricInstructions 1 (addMetricLoads 1 (addMetricJumps 1 mc)))) ->
+      exec e (cmd.while cond body) t m l mc0 post.
+  Proof.
+    intros. destruct (Z.eqb_spec (word.unsigned b) 0) as [Eq | Neq].
+    - eauto using exec.while_false.
+    - eauto using exec.while_true.
+  Qed.
+
+  Lemma for_loop_up: forall e i lo hi d body t m l mc v_hi
+      (inv post: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop),
+      0 < d ->
+      v_hi + d <= 2^width ->
+      wp_expr m l lo (fun v_lo =>
+        let l0 := map.put l i v_lo in
+        inv t m l0 mc /\
+        (forall ti mi li mci v_i, inv ti mi li mci -> map.get li i = Some v_i ->
+           wp_expr mi li hi (fun v_hi' =>
+               word.unsigned v_hi' = v_hi /\ (* <-- upper bound needs to evaluate to same value each time *)
+               (word.unsigned v_i < v_hi ->
+                forall mc'', exec e body ti mi li mc'' (fun t' m' l' mc' =>
+                  map.get l' i = Some v_i /\ (* <-- value of i unchanged during loop body *)
+                  let l2 := map.put l' i (word.add v_i (word.of_Z d)) in
+                  inv t' m' l2 mc')) /\
+               (v_hi <= word.unsigned v_i -> forall mc'', post ti mi li mc'')))) ->
+      exec e (for_up i lo hi d body) t m l mc post.
+  Proof.
+    intros *. intros dLB hiUB Evlo. eapply wp_expr_sound in Evlo.
+    destruct Evlo as (v_lo & mc' & Evlo & I0 & B).
+    unfold for_up.
+    eapply exec.seq_cps.
+    eapply exec.set. 1: exact Evlo. clear Evlo.
+    pose proof (well_founded_ind (Z.lt_wf (- 2 ^ width))) as Ind.
+    cbv beta in Ind.
+    remember (v_hi - word.unsigned v_lo) as fuel.
+    revert dependent v_lo. forget (addMetricInstructions 1 (addMetricLoads 1 mc')) as mc''.
+    revert t m l mc mc''.
+    induction fuel using Ind. clear Ind.
+    intros. subst.
+    specialize B with (1 := I0). rewrite map.get_put_same in B. specialize B with (1 := eq_refl).
+    eapply wp_expr_sound in B. destruct B as (v_hi' & mc''' & Evhi & E1 & Again & Done).
+    subst.
+    eapply while_cps.
+    - cbn [eval_expr].
+      rewrite map.get_put_same. rewrite Evhi. reflexivity.
+    - intros Neq. cbn in Neq. rewrite word.unsigned_ltu in Neq. destruct_one_match_hyp. 2: exfalso; ZnWords.
+      eapply exec.seq.
+      + eapply Again. assumption.
+      + cbv zeta beta. intros *. intros (Eq1 & Ii).
+        eapply exec.set. {
+          cbn [eval_expr]. rewrite Eq1. reflexivity.
+        }
+        eapply H. 3: reflexivity.
+        * cbn [interp_binop]. ZnWords.
+        * cbn [interp_binop]. exact Ii.
+    - intros Eq. cbn in Eq. eapply Done.
+      rewrite word.unsigned_ltu in Eq. destruct_one_match_hyp. 1: exfalso; ZnWords. exact E.
+  Qed.
+
+(*
+  Lemma call:
+
+list_map
+spec_of
+
+        bind_ex args <- dexprs m l arges;
+        call fname t m args (fun t m rets =>
+          bind_ex_Some l <- map.putmany_of_list_zip binds rets l;
+          post t m l)
+
+exec.call
+*)
 
 (*
   Implicit Type post: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop.
@@ -1029,10 +1186,22 @@ End WithWordPostAndMemAndLocals.
       dataAt TByte addr v = dataAt (TTuple 1 1 TByte) addr (tuple.of_list [v]).
   Proof. intros. simpl. f_equal. ZnWords. Qed.
 
-  Definition vc_func e '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
+
+  Local Notation function_t :=
+    ((String.string * (list String.string * list String.string * Syntax.cmd.cmd))%type).
+  Local Notation functions_t := (list function_t).
+
+  Definition callees_correct(callee_specs: list (functions_t -> Prop))(functions: functions_t): Prop :=
+    List.Forall (fun P => P functions) callee_specs.
+
+  Definition vc_func (f: list (functions_t -> Prop) * function_t)
+                     (t: trace) (m: mem) (argvs: list word)
                      (post : trace -> mem -> list word -> Prop) :=
+    let '(callee_specs, (fname, (innames, outnames, body))) := f in
+    forall functions: functions_t,
+    callees_correct callee_specs functions ->
     exists l, map.of_list_zip innames argvs = Some l /\ forall mc,
-      exec e body t m l mc (fun t' m' l' mc' =>
+      exec (map.of_list functions) body t m l mc (fun t' m' l' mc' =>
         list_map (WeakestPrecondition.get l') outnames (fun retvs => post t' m' retvs)).
 
 (* backtrackingly tries all nats strictly smaller than n *)
@@ -1193,12 +1362,10 @@ Ltac add_note s := let n := fresh "Note" in pose proof (mkNote s) as n; move n a
 
 Ltac add_snippet s :=
   lazymatch s with
-  | SSet ?y ?e => eapply assignment with (x := y) (a := e); repeat expr_step
-  | SIf ?cond false => eapply if_split with (c := cond); repeat expr_step; split
+  | SSet ?y ?e => eapply assignment with (x := y) (a := e)
+  | SIf ?cond false => eapply if_split with (c := cond)
   | SEnd => eapply exec.skip
-  | SElse => lazymatch goal with
-             | H: note_wrapper "'else' expected" |- _ => clear H
-             end
+  | SElse => idtac
   end.
 
 
@@ -1285,7 +1452,17 @@ Ltac prover_step :=
   | |- _ => progress autounfold with prover_unfold_hints in *
   end.
 
-Ltac after_snippet := repeat simpli_step; repeat simpli_step.
+Ltac after_snippet s :=
+  lazymatch s with
+  | SSet ?y ?e => repeat expr_step
+  | SIf ?cond false => repeat expr_step; split
+  | SEnd => idtac
+  | SElse => lazymatch goal with
+             | H: note_wrapper "'else' expected" |- _ => clear H
+             end
+  end;
+  repeat simpli_step; repeat simpli_step.
+
 (* For debugging, this can be useful:
 Ltac after_snippet ::= idtac.
 *)
@@ -1324,7 +1501,7 @@ Ltac after_snippet ::= idtac.
     let ofs := offset_of_getter spa in idtac ofs.
   Abort.
 
-Tactic Notation "$" constr(s) "$" := add_snippet s; after_snippet.
+Tactic Notation "$" constr(s) "$" := add_snippet s; after_snippet s.
 
 Notation "/*number*/ e" := e (in custom bedrock_expr at level 0, e constr at level 0).
 
@@ -1342,81 +1519,98 @@ Notation "'if' ( e ) '/*split*/' {" := (SIf e false) (in custom snippet at level
 Notation "}" := SEnd (in custom snippet at level 0).
 Notation "'else' {" := SElse (in custom snippet at level 0).
 
-  Let nth n xs := hd (emp True) (skipn n xs).
-  Let remove_nth n (xs : list (mem -> Prop)) :=
-    (firstn n xs ++ tl (skipn n xs)).
-
 Set Default Goal Selector "1".
 
-  Definition memcpy: (string * {f: list string * list string * cmd &
-    forall e t m dstA srcA L srcData oldDstData R,
-    seps [array ptsto /[1] srcA srcData; array ptsto /[1] dstA oldDstData; R] m ->
-    \[L] = len srcData ->
-    \[L] = len oldDstData ->
-    vc_func e f t m [dstA; srcA; L] (fun t' m' retvs =>
+  (* void *memcpy(void *dest, const void *src, size_t n);   *)
+  Definition memcpy: {f: list (functions_t -> Prop) * (string * (list string * list string * cmd)) &
+    forall t m dst src n srcData oldDstData R,
+    seps [dst,+\[n] |-> oldDstData; src,+\[n] |-> srcData; R] m ->
+    vc_func f t m [dst; src; n] (fun t' m' retvs =>
       retvs = [] /\
-      seps [array ptsto /[1] srcA srcData; array ptsto /[1] dstA srcData; R] m')}).
+      seps [dst,+\[n] |-> srcData; src,+\[n] |-> srcData; R] m)}.
+  Proof.
+    refine (existT _ (?[callee_specs], ("memcpy", (["dst"; "src"; "n"], [], ?[body]))) _).
+    intros. cbv [vc_func]. intros functions CC. letexists. split. 1: subst l; reflexivity. intros.
+
+
+
   Admitted.
 
-  Definition arp: (string * {f: list string * list string * cmd &
-    forall e t m ethbufAddr ethBufData L R,
-      seps [array ptsto /[1] ethbufAddr ethBufData; R] m ->
+(* need precondition that for all used functions, map.get e f = Some (same as referenced during proof)
+
+if assumptions of each function's correctness lemma is: "function map contains the following impl",
+we need to transitively collect callees, not good
+
+if assumptions of each function's correctness lemma is: "spec_of_func1 functionlist -> ..."
+we only need non-transitive dependencies in hyps of each lemma
+
+
+  program_logic_goal_for swap_swap
+    (forall functions : list (prod string (prod (prod (list string) (list string)) cmd)),
+     spec_of_swap functions -> spec_of_swap functions -> spec_of_swap_swap (swap_swap :: functions))
+
+ *)
+
+  Definition arp: {f: list (functions_t -> Prop) * (string * (list string * list string * cmd)) &
+    forall t m ethbufAddr ethBufData L R,
+      seps [ethbufAddr |-> ethBufData; R] m ->
       \[L] = len ethBufData ->
-      vc_func e f t m [ethbufAddr; L] (fun t' m' retvs =>
+      vc_func f t m [ethbufAddr; L] (fun t' m' retvs =>
         t' = t /\ (
         (* Success: *)
         (retvs = [/[1]] /\ exists request,
             validPacket request /\
             needsARPReply request /\
-            seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr request; R] m /\
-            seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr (ARPReply request); R] m') \/
+            seps [ethbufAddr |-> flatten request; R] m /\
+            seps [ethbufAddr |-> flatten (ARPReply request); R] m') \/
         (* Failure: *)
         (retvs = [/[0]] /\ (~ exists request,
             validPacket request /\
             needsARPReply request /\
-            seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr request; R] m) /\
-            seps [array ptsto /[1] ethbufAddr ethBufData; R] m')
-      ))}).
+            seps [ethbufAddr |-> flatten request; R] m)
+         /\ seps [ethbufAddr |-> ethBufData; R] m')
+      ))}.
     pose "ethbuf" as ethbuf. pose "ln" as ln. pose "doReply" as doReply. pose "tmp" as tmp.
-    refine ("arp", existT _ ([ethbuf; ln], [doReply], _) _).
-    intros. cbv [vc_func]. letexists. split. 1: subst l; reflexivity. intros.
+    refine (existT _ (?[callee_specs], ("arp", ([ethbuf; ln], [doReply], ?[body]))) _).
+    intros. cbv [vc_func]. intros functions CC. letexists. split. 1: subst l; reflexivity. intros.
+
+(*
+instantiate (callee_specs := _ :: _).
+unfold callees_correct in CC.
+pose proof (List.Forall_inv CC).
+eapply List.Forall_inv_tail in CC.
+*)
 
     $*/
     doReply = /*number*/0; /*$. $*/
-    if (ln == /*number*/64) /*split*/ {
-      /*$. edestruct (bytesToEthernetARPPacket ethbufAddr _ H0) as (pk & A). seprewrite_in A H.
-           change (seps [dataAt (EthernetPacket_spec ARPPacket_spec) ethbufAddr pk; R] m) in H.
-           (* Ltac after_snippet ::= idtac.*)
+    if (ln == /*number*/42) /*split*/ {
+      /*$. edestruct (bytesToEthernetARPPacket _ H0) as (pk & A). subst ethBufData.
+            Ltac after_snippet s ::= idtac.
      $*/
-      if ((load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP) &
+      if ((load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP) (* &
           (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE) &
           (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE) &
           (load1(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) &
           (load1(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) &
           (load2(ethbuf @ (@payload ARPPacket) @ oper) == coq:(LittleEndian.combine 2 OPER_REQUEST)) &
-          (load4(ethbuf @ (@payload ARPPacket) @ tpa) == coq:(LittleEndian.combine 4 cfg.(myIPv4)))  )
+          (load4(ethbuf @ (@payload ARPPacket) @ tpa) == coq:(LittleEndian.combine 4 cfg.(myIPv4))) *) )
       /*split*/ { /*$.
 
-Unshelve.
+repeat expr_step.
 
-all: exact TODO.
-Time Defined. (* 0.655 secs *)
+do 2 eexists.
+split. {
+  use_sep_assumption.
+  instantiate (2 := List.firstn 2 (List.skipn 12 (flatten pk))).
+  exact TODO.
+}
+repeat expr_step.
+split. {
+repeat simpli_step.
 
-(*
-Set Printing Depth 1000000.
-Print arp.
-*)
+(* TODO more simplifications *)
 
-(*
-with Ltac after_snippet ::= idtac.: 39.703 secs
-+with admit_cbn after lookup_path_Field : even slightly slower, 40.174 secs
-+with admit_reflexivity after lookup_path_Field : 39.805 secs
-+with generalized admit_cbn: 49.923 secs, 54.636 secs, 56.49 secs
-+with admit_repeat_expr_step1: 0.594 secs, 0.804 secs
-+with repeat expr_step1 again but rest factored the same: 570.677 secs
-+with record_repeat_expr_step1: 1.674 secs
-
-        (* TODO check if tpa equals our IP *)
+(* call: memcpy
 
         (* copy sha and spa from the request into tha and tpa for the reply (same buffer), 6+4 bytes *)
         (* memcpy(ethbuf @ (@payload ARPPacket) @ tha, ethbuf @ (@payload ARPPacket) @ sha, /*number*/10); *)
@@ -1436,22 +1630,10 @@ eexists.
    but what heuristic to choose to decide?
    Maybe first try no econstructor, see if it's solvable, then try econstructor, see if it's solvable,
    else stop and let user decide? *)
-match goal with
-| |- context[?g ?e] => is_evar e; is_getter g; instantiate_evar_with_econstructor e
-end.
-
-repeat match goal with
-       | |- context[?a] => simpl_getter_applied_to_constructor a
-       end.
-
-(*
-exists pk.
 *)
-
-repeat prover_step.
-
 all: exact TODO.
 }
+(*
 $*/
     else { /*$. (* nothing to do *) $*/
     } /*$.
@@ -1461,16 +1643,17 @@ $*/
       right.
       split. 1: reflexivity.
       exact TODO.
+*)
     Unshelve.
     all: try exact (word.of_Z 0).
     all: try exact nil.
     all: try (exact (fun _ => False)).
     all: try exact TODO.
-  Time Defined. (* 40.252 secs *)
-*)
+  Time Defined.
+
   Goal False.
     let r := eval unfold arp in match arp with
-                                | (fname, existT _ (argnames, retnames, body) _) => body
+                                | (existT _ (callee_specs, (fname, (argmanes, retnames, body))) _) => body
                                 end
       in pose r.
   Abort.
