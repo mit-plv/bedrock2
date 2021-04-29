@@ -106,7 +106,7 @@ Section WithParameters.
         m =* scalar a va * Ra /\
         m =* scalar b vb * Rb /\
         m =* scalar c vc * Rc;
-      ensures t' m' := t=t' /\ m' =* scalar a (g va vb vc) * R }.
+      ensures t' m' := t=t' /\ m' =* scalar out (g va vb vc) * R }.
 
   Lemma indirect_add_three'_ok : program_logic_goal_for_function! indirect_add_three'.
   Proof.
@@ -198,19 +198,16 @@ H9 : (scalar a0 (word.add va vb)
 
     straightline_call.
     { split; [>|split]; try ecancel_assumption. }
-
     repeat straightline.
-    (*
-H16 : (scalar out (word.add (word.add va vb) vc)
-       ⋆ (scalar a0 (word.add va vb) ⋆ R))%sep a3
 
-========================= (1 / 1)
-
-exists m'0 mStack' : mem,
-     *)
-    (* unrelated: stack deallocation proof, would need scalar-to-bytes lemma *)
-
-  Abort.
+    (* casting scalar to bytes for stack deallocation *)
+    cbv [scalar truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in *.
+    set (HList.tuple.to_list 
+               (LittleEndian.split (bytes_per access_size.word)
+               (word.unsigned (word.add va vb)))) as stackbytes in *.
+    assert (Datatypes.length stackbytes = 4%nat) by exact eq_refl.
+    repeat straightline; eauto.
+  Qed.
 
   (* let's see how this would look like with an alternate spec of [indirect_add] *)
 
@@ -237,7 +234,7 @@ exists m'0 mStack' : mem,
      but for now, let's prototype with changed spec:
   *)
 
-  Lemma indirect_add_three'_ok : program_logic_goal_for_function! indirect_add_three'.
+  Lemma indirect_add_three'_ok' : program_logic_goal_for_function! indirect_add_three'.
   Proof.
     repeat straightline.
     (* note: we want to introduce only one variable for stack contents 
