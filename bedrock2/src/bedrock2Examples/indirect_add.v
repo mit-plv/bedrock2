@@ -142,6 +142,74 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
        but we really wanted to carry over H2,H3, and H4 as well *)
   Abort.
 
+  (* trying again with non-separating conjunction; seems plausible. *)
+  Lemma indirect_add_three'_ok : program_logic_goal_for_function! indirect_add_three'.
+  Proof.
+    do 12 straightline.
+
+    assert (
+      id (fun m => (scalar out vout ⋆ R)%sep m /\ (scalar a va ⋆ Ra)%sep m /\  (scalar b vb ⋆ Rb)%sep m /\  (scalar c vc ⋆ Rc)%sep m) m) by (cbv [id]; eauto); clear H1 H2 H3 H4.
+
+
+    repeat straightline.
+    (* note: we want to introduce only one variable for stack contents 
+     * and use it in a all separation-logic facts in the symbolic state *)
+
+    repeat match goal with
+           | H : _ |- _ =>
+               (* WHY do I need @ in front of the lemma? PARAMRECORDS? *)
+               seprewrite_in_by @scalar_of_bytes H
+                 ltac:(change width with 32; Lia.lia);
+                 let x := fresh "x" in
+                 set (word.of_Z _) as x in H; clearbody x; move x at top
+           end.
+    clear dependent mStack.
+
+    cbv [id] in *.
+    (*
+H7 : (scalar a0 x
+      ⋆ (fun m : mem =>
+         (scalar out vout ⋆ R) m /\
+         (scalar a va ⋆ Ra) m /\ (scalar b vb ⋆ Rb) m /\ (scalar c vc ⋆ Rc) m))%sep
+       m
+     *)
+
+    straightline_call.
+    { split.
+      { ecancel_assumption. }
+      
+      assert (m =* scalar a0 x * (scalar out vout ⋆ R)) by admit.
+      assert (m =* scalar a0 x * (scalar a va ⋆ Ra)) by admit.
+      assert (m =* scalar a0 x * (scalar b vb ⋆ Rb)) by admit.
+      assert (m =* scalar a0 x * (scalar c vc ⋆ Rc)) by admit.
+      clear H7.
+      split; ecancel_assumption. }
+
+    repeat straightline.
+
+    (*
+H5 : (scalar a0 (word.add va vb)
+      ⋆ (fun m : mem =>
+         (scalar out vout ⋆ R) m /\
+         (scalar a va ⋆ Ra) m /\ (scalar b vb ⋆ Rb) m /\ (scalar c vc ⋆ Rc) m))%sep
+       a2
+     *)
+    rename m into m'.
+    rename a2 into m.
+    assert (m =* scalar a0 (word.add va vb) * (scalar out vout ⋆ R)) by admit.
+    assert (m =* scalar a0 (word.add va vb) * (scalar a va ⋆ Ra)) by admit.
+    assert (m =* scalar a0 (word.add va vb) * (scalar b vb ⋆ Rb)) by admit.
+    assert (m =* scalar a0 (word.add va vb) * (scalar c vc ⋆ Rc)) by admit.
+    clear H5.
+
+    straightline_call.
+    { split; [>|split]; try ecancel_assumption. }
+
+    repeat straightline.
+    (* unrelated: stack deallocation proof, would need scalar-to-bytes lemma *)
+
+  Abort.
+
   (* let's see how this would look like with an alternate spec of [indirect_add] *)
 
   Remove Hints spec_of_indirect_add : typeclass_instances.
