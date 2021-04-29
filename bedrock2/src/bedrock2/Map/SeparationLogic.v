@@ -105,6 +105,13 @@ Section SepProperties.
   Global Instance Proper_emp_iff : Proper (iff ==> @iff1 map) emp. firstorder idtac. Qed.
   Global Instance Proper_emp_impl : Proper (Basics.impl ==> @impl1 map) emp. firstorder idtac. Qed.
 
+  (* sep and and *)
+
+  Lemma sep_and_l_fwd P Q R m : sep (fun m => P m /\ Q m) R m -> sep P R m /\ sep Q R m.
+  Proof. cbv [sep]. intros (?&?&?&(?&?)&?); eauto 10. Qed.
+  Lemma sep_and_r_fwd P Q R m : sep R (fun m => P m /\ Q m) m -> sep R P m /\ sep R Q m.
+  Proof. cbv [sep]. intros (?&?&?&?&(?&?)); eauto 10. Qed.
+
   (* sep and emp *)
   Lemma sep_emp_emp P Q : @iff1 map (sep (emp P) (emp Q)) (emp (P /\ Q)).
   Proof. cbv [iff1 sep emp split]; t; intuition eauto 20 using putmany_empty_l, disjoint_empty_l. Qed.

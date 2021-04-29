@@ -142,7 +142,7 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
        but we really wanted to carry over H2,H3, and H4 as well *)
   Abort.
 
-  (* trying again with non-separating conjunction; seems plausible. *)
+  (* trying again with non-separating conjunction *)
   Lemma indirect_add_three'_ok : program_logic_goal_for_function! indirect_add_three'.
   Proof.
     do 12 straightline.
@@ -173,22 +173,18 @@ H7 : (scalar a0 x
          (scalar a va ⋆ Ra) m /\ (scalar b vb ⋆ Rb) m /\ (scalar c vc ⋆ Rc) m))%sep
        m
      *)
+    pose proof H7 as H7'.
+    eapply sep_and_r_fwd in H7; destruct H7 as [? H7].
+    eapply sep_and_r_fwd in H7; destruct H7 as [? H7].
+    eapply sep_and_r_fwd in H7; destruct H7 as [? H7].
 
     straightline_call.
-    { split.
-      { ecancel_assumption. }
-      
-      assert (m =* scalar a0 x * (scalar out vout ⋆ R)) by admit.
-      assert (m =* scalar a0 x * (scalar a va ⋆ Ra)) by admit.
-      assert (m =* scalar a0 x * (scalar b vb ⋆ Rb)) by admit.
-      assert (m =* scalar a0 x * (scalar c vc ⋆ Rc)) by admit.
-      clear H7.
-      split; ecancel_assumption. }
+    { split; [>|split]; ecancel_assumption. }
 
     repeat straightline.
 
     (*
-H5 : (scalar a0 (word.add va vb)
+H9 : (scalar a0 (word.add va vb)
       ⋆ (fun m : mem =>
          (scalar out vout ⋆ R) m /\
          (scalar a va ⋆ Ra) m /\ (scalar b vb ⋆ Rb) m /\ (scalar c vc ⋆ Rc) m))%sep
@@ -196,16 +192,22 @@ H5 : (scalar a0 (word.add va vb)
      *)
     rename m into m'.
     rename a2 into m.
-    assert (m =* scalar a0 (word.add va vb) * (scalar out vout ⋆ R)) by admit.
-    assert (m =* scalar a0 (word.add va vb) * (scalar a va ⋆ Ra)) by admit.
-    assert (m =* scalar a0 (word.add va vb) * (scalar b vb ⋆ Rb)) by admit.
-    assert (m =* scalar a0 (word.add va vb) * (scalar c vc ⋆ Rc)) by admit.
-    clear H5.
+    eapply sep_and_r_fwd in H9; destruct H9 as [? H9].
+    eapply sep_and_r_fwd in H9; destruct H9 as [? H9].
+    eapply sep_and_r_fwd in H9; destruct H9 as [? H9].
 
     straightline_call.
     { split; [>|split]; try ecancel_assumption. }
 
     repeat straightline.
+    (*
+H16 : (scalar out (word.add (word.add va vb) vc)
+       ⋆ (scalar a0 (word.add va vb) ⋆ R))%sep a3
+
+========================= (1 / 1)
+
+exists m'0 mStack' : mem,
+     *)
     (* unrelated: stack deallocation proof, would need scalar-to-bytes lemma *)
 
   Abort.
