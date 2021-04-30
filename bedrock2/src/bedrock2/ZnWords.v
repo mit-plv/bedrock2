@@ -1,3 +1,4 @@
+Require Import Coq.Program.Tactics.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.ZArith.Zpow_facts.
 Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr coqutil.Tactics.ParamRecords.
@@ -22,7 +23,7 @@ Lemma computable_lt{lo v: Z}(H: Z.ltb lo v = true): lo < v.
 Proof. apply Z.ltb_lt. assumption. Qed.
 
 Ltac cleanup_for_ZModArith :=
-  subst; (* <-- substituting `@eq word _ _` might create opportunities for wordOps_to_ZModArith_step *)
+  subst*; (* <-- substituting `@eq word _ _` might create opportunities for wordOps_to_ZModArith_step *)
   repeat match goal with
          | a := _ |- _ => subst a
          | H: ?T |- _ => tryif is_lia T then fail else clear H
