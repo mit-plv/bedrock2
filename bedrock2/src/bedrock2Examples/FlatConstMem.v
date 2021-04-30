@@ -463,20 +463,28 @@ Section WithParameters.
     subst_evars.
 
     on_left ecancel_assumption. (*  this inlines definition of ys0, makes length proof annoying *)
+    match goal with |- context[?x] => change x with ys0 end.
 
-    on_left (rewrite length_skipn, firstn_length, Happ, 2app_length; Lia.lia).
+    split.
+    { subst ys0 xs. rewrite length_skipn, firstn_length, Happ, 2app_length; Lia.lia. }
 
     repeat straightline. (* this inlines too many lets *)
 
-    subst_lets. (* for rewrite and rewr *)
-    split_flat_memory_based_on_goal.
-
     cbv [WeakestPrecondition.store].
-
-    (* skipping actual store for now: *)
-    (* pose proof Scalars.store_four_of_sep. *)
 
     repeat seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
       rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; blia).
+
+    Tactics.rapply (fun addr oldvalue value R m post H => Scalars.store_four_of_sep addr oldvalue value R m post (proj1 H) (proj2 H)).
+
+    From coqutil.Macros Require Import symmetry.
+    (* note: it would be nice to have a generalization of this /\-goal logic in on_left *)
+    unshelve (
+    let x := open_constr:(_ : _ /\ (_ /\ _)) in 
+    once (on_left (idtac; seprewrite (symmetry! @Scalars.scalar32_of_bytes))); [exact (proj1 (proj2 x)) | exact (proj1 x) | exact (proj2 (proj2 x))]); shelve_unifiable.
+    2: reflexivity.
+    on_left (idtac; seprewrite @array1_iff_eq_of_list_word_at; cycle 1); cycle 1.
+
+    (* frame calculation again, unclear what to subst before split_bytes_base_addr *)
   Abort.
 End WithParameters.
