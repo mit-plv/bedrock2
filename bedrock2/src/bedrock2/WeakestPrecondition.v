@@ -4,6 +4,7 @@ Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 
 Section WeakestPrecondition.
   Context {p : unique! Semantics.parameters}.
+  Implicit Types (t : trace) (m : mem) (l : locals).
 
   Definition literal v (post : word -> Prop) : Prop :=
     dlet! v := word.of_Z v in post v.
@@ -174,3 +175,144 @@ Ltac unfold1_call_goal :=
   let G := lazymatch goal with |- ?G => G end in
   let G := unfold1_call G in
   change G.
+
+Import Coq.ZArith.ZArith.
+
+Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     (forall a0,
+        .. (forall an,
+              (forall g0,
+                  .. (forall gn,
+                         (forall tr mem,
+                             pre%Z ->
+                             WeakestPrecondition.call
+                               functions name tr mem (cons a0 .. (cons an nil) ..)
+                               (fun tr' mem' rets =>
+                                  (exists r0,
+                                      .. (exists rn,
+                                             rets = (cons r0 .. (cons rn nil) ..) /\
+                                             post%Z) ..)))) ..)) ..))
+    (at level 200,
+     name at level 0,
+     a0 binder, an binder,
+     g0 binder, gn binder,
+     r0 closed binder, rn closed binder,
+     tr ident, tr' ident, mem ident, mem' ident,
+     pre at level 200,
+     post at level 200).
+
+Require Import bedrock2.Map.Separation.
+Local Notation word := (Interface.word.rep (word:=bedrock2.Semantics.word)).
+
+Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     (forall a0,
+        .. (forall an,
+              (forall g0,
+                  .. (forall gn,
+                         (forall tr mem,
+                             pre%Z%sep ->
+                             WeakestPrecondition.call
+                               functions name tr mem (cons a0 .. (cons an nil) ..)
+                               (fun tr' mem' rets =>
+                                  rets = @nil word /\ post%Z%sep))) ..)) ..))
+    (at level 200,
+     name at level 0,
+     a0 binder, an binder,
+     g0 binder, gn binder,
+     tr ident, tr' ident, mem ident, mem' ident,
+     pre at level 200,
+     post at level 200).
+
+Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     (forall a0,
+        .. (forall an,
+               (forall tr mem,
+                   pre%Z ->
+                   WeakestPrecondition.call
+                     functions name tr mem (cons a0 .. (cons an nil) ..)
+                     (fun tr' mem' rets =>
+                        (exists r0,
+                            .. (exists rn,
+                                   rets = (cons r0 .. (cons rn nil) ..) /\
+                                   post%Z) ..)))) ..))
+    (at level 200,
+     name at level 0,
+     a0 binder, an binder,
+     r0 closed binder, rn closed binder,
+     tr ident, tr' ident, mem ident, mem' ident,
+     pre at level 200,
+     post at level 200).
+
+Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     (forall a0,
+        .. (forall an,
+               (forall tr mem,
+                   pre%Z%sep ->
+                   WeakestPrecondition.call
+                     functions name tr mem (cons a0 .. (cons an nil) ..)
+                     (fun tr' mem' rets =>
+                        rets = @nil word /\ post%Z%sep))) ..))
+    (at level 200,
+     name at level 0,
+     a0 binder, an binder,
+     tr ident, tr' ident, mem ident, mem' ident,
+     pre at level 200,
+     post at level 200).
+
+Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' rets ':=' post '}'" :=
+  (fun functions =>
+     (forall a0,
+        .. (forall an,
+              (forall g0,
+                  .. (forall gn,
+                         (forall tr mem,
+                             pre%Z ->
+                             WeakestPrecondition.call
+                               functions name tr mem (cons a0 .. (cons an nil) ..)
+                               (fun tr' mem' rets => post%Z))) ..)) ..))
+    (at level 200,
+     name at level 0,
+     a0 binder, an binder,
+     g0 binder, gn binder,
+     tr ident, tr' ident, mem ident, mem' ident,
+     pre at level 200,
+     post at level 200).
+
+Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' rets ':=' post '}'" :=
+  (fun functions =>
+     (forall a0,
+        .. (forall an,
+               (forall tr mem,
+                   pre%Z ->
+                   WeakestPrecondition.call
+                     functions name tr mem (cons a0 .. (cons an nil) ..)
+                     (fun tr' mem' rets => post%Z))) ..))
+    (at level 200,
+     name at level 0,
+     a0 binder, an binder,
+     tr ident, tr' ident, mem ident, mem' ident,
+     pre at level 200,
+     post at level 200).
+
+Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{ 'ensures' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     (forall a0,
+        .. (forall an,
+              (forall g0,
+                  .. (forall gn,
+                         (forall tr mem,
+                             WeakestPrecondition.call
+                               functions name tr mem (cons a0 .. (cons an nil) ..)
+                               (fun tr' mem' rets =>
+                                  rets = @nil word /\ post%Z%sep))) ..)) ..))
+    (at level 200,
+     name at level 0,
+     a0 binder, an binder,
+     g0 binder, gn binder,
+     tr' ident, mem' ident,
+     post at level 200).
+

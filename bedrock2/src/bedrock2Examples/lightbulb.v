@@ -359,7 +359,8 @@ Section WithParameters.
       eapply word.unsigned_inj.
       rewrite ?byte_mask_byte.
       rewrite ?word.unsigned_and_nowrap.
-      replace (word.unsigned (word.of_Z 1)) with (Z.ones 1) by (rewrite word.unsigned_of_Z; exact eq_refl).
+      rewrite word.unsigned_of_Z_1.
+      change 1 with (Z.ones 1).
       rewrite Z.land_ones, Z.bit0_mod by blia.
       rewrite !word.unsigned_of_Z.
       cbv [word.wrap]; change width with 32 in *.
@@ -407,7 +408,7 @@ Section WithParameters.
          List.length RECV = List.length scratch /\
          exists iol, T = iol ++ t /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\
          (word.unsigned ERR = 0 /\ lan9250_readpacket _ RECV ioh \/
-          word.unsigned ERR = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout word) ioh ) )
+          word.unsigned ERR = 2^32-1 /\ TracePredicate.concat TracePredicate.any (spi_timeout _) ioh ) )
       )
       _ _ _ _ _ _ _ _);
     (* TODO wrap this into a tactic with the previous refine? *)

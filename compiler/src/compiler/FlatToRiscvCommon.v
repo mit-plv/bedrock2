@@ -45,6 +45,9 @@ Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.MetricsToRiscv.
 
+Require Import coqutil.Word.Interface.
+Local Hint Mode Word.Interface.word - : typeclass_instances.
+
 Import Utility.
 
 Local Open Scope ilist_scope.
@@ -663,8 +666,7 @@ Section FlatToRiscv1.
     rewrite map.putmany_of_tuple_to_putmany.
     rewrite (map.putmany_of_tuple_to_putmany n m1 ks vs).
     apply map.disjoint_putmany_commutes.
-    pose proof map.getmany_of_tuple_to_sub_domain as P.
-    specialize P with (1 := E).
+    pose proof map.getmany_of_tuple_to_sub_domain _ _ _ _ E as P.
     apply map.sub_domain_value_indep with (vs2 := vs) in P.
     set (mp := (map.putmany_of_tuple ks vs map.empty)) in *.
     apply map.disjoint_comm.
@@ -676,7 +678,7 @@ Section FlatToRiscv1.
       map.same_domain m m'.
   Proof.
     intros. unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
-    eauto using map.putmany_of_tuple_preserves_domain.
+    eapply map.putmany_of_tuple_preserves_domain; eauto.
   Qed.
 
   Lemma seplog_subst_eq{A B R: mem -> Prop} {mL mH: mem}
@@ -794,7 +796,7 @@ Section FlatToRiscv1.
       wcancel.
   Qed.
 
-  Lemma array_to_of_list_word_at: forall l addr m,
+  Lemma array_to_of_list_word_at: forall l addr (m: mem),
       array ptsto (word.of_Z 1) addr l m ->
       m = OfListWord.map.of_list_word_at addr l.
   Proof.
@@ -887,7 +889,7 @@ Section FlatToRiscv1.
         apply invert_ptsto_instr in C. apply proj2 in C. congruence.
   Qed.
 
-  Lemma shift_load_bytes_in_of_list_word: forall l addr n t index,
+  Lemma shift_load_bytes_in_of_list_word: forall l (addr: word) n t index,
       Memory.load_bytes n (OfListWord.map.of_list_word l) index = Some t ->
       Memory.load_bytes n (OfListWord.map.of_list_word_at addr l) (word.add addr index) = Some t.
   Proof.
@@ -911,10 +913,7 @@ Section FlatToRiscv1.
   Proof.
     intros *. intros L M.
     destruct (program_compile_byte_list table addr) as [Padding P].
-    pose proof Proper_sep_impl1 as A.
-    unfold Morphisms.Proper, Morphisms.respectful in A.
-    specialize A with (1 := P). specialize (A R R). apply A in M. 2: reflexivity.
-    clear A P.
+    apply (Proper_sep_impl1 _ _ P R R) in M; [|reflexivity]; clear P.
     unfold Memory.load, Memory.load_Z in *. simp.
     eapply shift_load_bytes_in_of_list_word in E0.
     pose proof @subst_load_bytes_for_eq as P. cbv zeta in P.

@@ -23,7 +23,8 @@ Section Pipeline1.
   Context {p: Pipeline.parameters}.
   Context {h: Pipeline.assumptions}.
 
-  Add Ring wring : (word.ring_theory (word := (@Utility.word (@Pipeline.W p))))
+  Local Notation word := (@Utility.word (@Pipeline.W p)).
+  Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := (@Utility.word (@Pipeline.W p)))),
        constants [word_cst]).
@@ -48,8 +49,9 @@ Section Pipeline1.
       apply IHinstrs1.
   Qed.
 
+  (* PARAMRECORDS: "unfold imem" below relies on the syntactic form of this definition. *)
   Definition imem(code_start code_pastend: Semantics.word)(instrs: list Instruction): Semantics.mem -> Prop :=
-    (ptsto_bytes code_start (instrencode instrs) *
+    (ptsto_bytes (word:=word)(mem:=(@Pipeline.mem p)) code_start (instrencode instrs) *
      mem_available (word.add code_start (word.of_Z (Z.of_nat (List.length (instrencode instrs)))))
                    code_pastend)%sep.
 
@@ -79,14 +81,13 @@ Section Pipeline1.
       auto.
   Qed.
 
-  Lemma ptsto_bytes_range: forall bs start pastend m a v,
+  Lemma ptsto_bytes_range: forall bs (start pastend : FlatImp.word) m a v,
       ptsto_bytes start bs m ->
       word.unsigned start + Z.of_nat (List.length bs) <= word.unsigned pastend ->
       map.get m a = Some v ->
       word.unsigned start <= word.unsigned a < word.unsigned pastend.
   Proof.
     assert (map.ok Pipeline.mem) as Ok by exact FlatToRiscvCommon.mem_ok.
-    assert (word.ok FlatImp.word) as Okk by exact word_ok. (* PARAMRECORDS *)
     induction bs; intros.
     - simpl in *. unfold emp in *. simp. rewrite map.get_empty in H1. discriminate.
     - simpl in *.
@@ -108,7 +109,7 @@ Section Pipeline1.
           -- destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
          * rewrite word.unsigned_of_Z.
            unfold word.wrap.
-           replace (1 mod 2 ^ FlatImp.width) with 1. 1: blia.
+           replace (1 mod 2 ^ width) with 1. 1: blia.
            simpl.
            destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
       + unfold map.split in *. simp.
@@ -167,17 +168,12 @@ Section Pipeline1.
     (forall st, ll_inv ml spec st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog))).
   Proof.
     assert (map.ok Pipeline.mem) as Okk by exact FlatToRiscvCommon.mem_ok. (* PARAMRECORDS *)
+    assert (word.ok Semantics.word) by exact word_ok.
     ssplit; intros.
     - eapply establish_ll_inv. 1: assumption.
       unfold initial_conditions, ToplevelLoop.initial_conditions in *.
       simp.
-      eassert ((ptsto_bytes (code_start ml) (instrencode instrs) * _)%sep initial.(getMem)) as SplitImem. {
-        unfold imem in *.
-        (* PARAMRECORDS *)
-        simpl in *.
-        assert (word.ok Semantics.word) by exact word_ok.
-        ecancel_assumption.
-      }
+      eassert ((ptsto_bytes (code_start ml) (instrencode instrs) * _)%sep initial.(getMem)) as SplitImem by (unfold imem in *; ecancel_assumption).
       destruct SplitImem as [i_mem [non_imem [SplitImem [Imem NonImem] ] ] ].
       do 4 eexists.
       ssplit; try eassumption.
@@ -192,9 +188,7 @@ Section Pipeline1.
         * apply ptsto_bytes_to_program; assumption.
         * unfold ptsto_bytes in Imem.
           eapply ptsto_bytes_range; try eassumption.
-      + assert (word.ok Semantics.word) as Ok by exact word_ok.
-        simpl in *.
-        unfold imem in *.
+      + unfold imem in *.
         wcancel_assumption.
         unfold ptsto_bytes.
         cancel_seps_at_indices 0%nat 0%nat. 2: reflexivity.

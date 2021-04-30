@@ -492,7 +492,7 @@ Section Spilling.
     intros. eapply exec.seq. 1: eassumption. simpl. clear. auto.
   Qed.
 
-  Lemma load_putmany_l: forall m1 m2 sz a v,
+  Lemma load_putmany_l: forall m1 m2 sz a (v : word),
       Memory.load sz m1 a = Some v ->
       disjoint (map.dom m1) (map.dom m2) ->
       Memory.load sz (map.putmany m1 m2) a = Some v.

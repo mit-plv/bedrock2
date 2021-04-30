@@ -74,7 +74,7 @@ Lemma mod4_0_mod_pow2: forall (x p: Z),
 Proof.
   intros.
   assert (p < 0 \/ p = 0 \/ p = 1 \/ 2 <= p) as C by blia. destruct C as [C | [C | [C | C]]].
-  - rewrite Z.pow_neg_r by assumption. rewrite Zmod_0_r. reflexivity.
+  - rewrite Z.pow_neg_r by assumption. now rewrite Zmod_0_r.
   - subst p. simpl. rewrite Z.mod_1_r. reflexivity.
   - subst p. change (2 ^ 1) with 2.
     rewrite Z.mod_eq in H by blia.

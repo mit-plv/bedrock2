@@ -365,7 +365,7 @@ Section TailRecrsion.
 
   (* Bedrock-style loop rule *)
   Context {mem_ok : map.ok mem}.
-  Local Infix "*" := Separation.sep.
+  Local Open Scope sep_scope.
   Local Infix "*" := Separation.sep : type_scope.
   Local Infix "==>" := Lift1Prop.impl1.
 

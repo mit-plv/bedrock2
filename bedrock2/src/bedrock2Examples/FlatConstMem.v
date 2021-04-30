@@ -247,11 +247,11 @@ Section WithParameters.
 
   Lemma of_list_word_nil
     [value] [map : map.map word value] {ok : map.ok map}
-    k : []$@k = empty.
+    k : []$@k = empty(map:=map).
   Proof. apply Properties.map.fold_empty. Qed.
   Lemma of_list_word_singleton
     [value] [map : map.map word value] {ok : map.ok map}
-    k v : [v]$@k = put empty k v.
+    (k : word) (v : value) : [v]$@k = put empty k v.
   Proof.
     cbv [of_list_word_at of_list_word seq length List.map of_func update].
     rewrite word.unsigned_of_Z_0, Z2Nat.inj_0; cbv [MapKeys.map.map_keys nth_error].
@@ -320,7 +320,7 @@ Section WithParameters.
 
   Section __.
     Import WithoutTuples.
-    Lemma load_bytes_of_putmany_bytes_at bs a mR n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
+    Lemma load_bytes_of_putmany_bytes_at bs a (mR:mem) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
       : load_bytes (mR $+ bs$@a) a n = Some bs.
     Proof.
       destruct (load_bytes (mR $+ bs$@a) a n) eqn:HN in *; cycle 1.
@@ -343,7 +343,7 @@ Section WithParameters.
       congruence.
     Qed.
 
-    Lemma load_bytes_of_sep_bytes_at bs a R m (Hsep: (eq(bs$@a)*R) m) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
+    Lemma load_bytes_of_sep_bytes_at bs a R (m:mem) (Hsep: (eq(bs$@a)*R) m) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
       : load_bytes m a n = Some bs.
     Proof.
       eapply sep_comm in Hsep.
@@ -352,7 +352,7 @@ Section WithParameters.
     Qed.
   End __.
 
-  Lemma load_four_bytes_of_sep_at bs a R m (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat) :
+  Lemma load_four_bytes_of_sep_at bs a R (m:mem) (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
   Proof.
     eapply Scalars.load_four_bytes_of_sep_at; try eassumption. reflexivity.
@@ -409,38 +409,65 @@ Section WithParameters.
     x := ?e |- _ => is_evar e; subst x
            end.
 
+  Lemma and_weaken_left (A A' B : Prop) : A -> A' -> A /\ B -> A' /\ B.
+  Proof. tauto. Qed.
+
+  Ltac on_left tac := 
+      let A := open_constr:(_:Prop) in
+      let k := open_constr:(_:A) in
+      unshelve simple notypeclasses refine (and_weaken_left A _ _ k _ _);
+        [> tac; try [> exact k ] | ];
+      cbv delta [and_weaken_left] (* drop cast *);
+      (* did tac solve the goal? *)
+      tryif let A := match A with (?A:_) => A | _ => A end in is_evar A
+      then simple notypeclasses refine (conj I _)
+      else idtac.
+  Tactic Notation "on_left" tactic3(tac) := on_left tac.
+
+  Import ProgramLogic.Coercions.
+
+  (* note: do we want an Ltac coding rule that tactics must not start with a match? *)
+  Local Ltac ecancel_assumption := idtac; SeparationLogic.ecancel_assumption.
+
   Lemma silly1_ok : program_logic_goal_for_function! silly1.
   Proof.
     repeat straightline.
 
-    (* note: creating this evar here means that context variables introduced by flat memory automation can not appear in the value eventually filled in for the evar. Maybe we should not have dexpr for this reason? *)
-    letexists. split.
-    { repeat straightline.
-      eexists; split; trivial.
-      subst_lets. (* for rewrite and rewr *)
-      eapply Z_uncurried_load_four_bytes_of_sep_at.
+    cbv [WeakestPrecondition.dexpr].
 
-      set_evars.
-      match goal with |- context[?P m] =>
-      match P with context[?e$@?a] => idtac e a;
-      match goal with | |- context[Z.of_nat (length e) = ?n] =>
-      match goal with H : ?S m |- _ =>
-      match S with context[?bs $@ ?a0] =>
-      let a_r := constr:(word.add a (word.of_Z n)) in
-      split_bytes_base_addr bs a0 a_r end;
-      match type of H with context[?bs $@ ?a0] =>
-      split_bytes_base_addr bs a0 a end end
-      end end end.
-      subst_evars.
+    match goal with
+    |- exists v (* Why does this annotation make the case not match? : word *),
+        WeakestPrecondition.expr ?m ?l ?e (eq v) /\ @?k v 
+        => enough (WeakestPrecondition.expr m l e k) by admit
+    end.
 
-      split; eauto. (* eauto resolves an evar whose context does not contain ys0 *)
-      progress match goal with |- context[?e$@?a] => change e with ys0 end.
-      ecancel_assumption. }
-
-    set (firstn (Z.to_nat 20) bs) as xs in *.
-    set (skipn (Z.to_nat 16) xs) as ys0 in *.
-
+    
     repeat straightline.
+    eexists.
+
+    on_left eapply Z_uncurried_load_four_bytes_of_sep_at.
+    (*repeat syntactic_*)eapply and_assoc.
+
+    subst_lets. (* for rewrite and rewr *)
+    set_evars.
+    match goal with |- context[?P m] =>
+    match P with context[?e$@?a] =>
+    match goal with | |- context[Z.of_nat (length e) = ?n] =>
+    match goal with H : ?S m |- _ =>
+    match S with context[?bs $@ ?a0] =>
+    let a_r := constr:(word.add a (word.of_Z n)) in
+    split_bytes_base_addr bs a0 a_r end;
+    match type of H with context[?bs $@ ?a0] =>
+    split_bytes_base_addr bs a0 a end end
+    end end end.
+    subst_evars.
+
+    on_left ecancel_assumption. (*  this inlines definition of ys0, makes length proof annoying *)
+
+    on_left (rewrite length_skipn, firstn_length, Happ, 2app_length; Lia.lia).
+
+    repeat straightline. (* this inlines too many lets *)
+
     subst_lets. (* for rewrite and rewr *)
     split_flat_memory_based_on_goal.
 

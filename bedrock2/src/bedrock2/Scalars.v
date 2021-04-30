@@ -15,6 +15,7 @@ Section Scalars.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
 
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
+  Implicit Types (m : mem).
 
   Definition littleendian (n : nat) (addr : word) (value : Z) : mem -> Prop :=
     ptsto_bytes n addr (LittleEndian.split n value).
@@ -276,7 +277,7 @@ Section Scalars.
   Local Infix "$+" := map.putmany (at level 70).
   Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
   Local Infix "*" := sep : type_scope.
-  Local Infix "*" := sep.
+  Local Open Scope sep_scope.
   Import Syntax.
   Lemma load_four_bytes_of_sep_at bs a R m (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat):
     load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).

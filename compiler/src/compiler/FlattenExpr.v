@@ -467,13 +467,15 @@ Section FlattenExpr1.
     reflexivity.
   Qed.
 
-  Lemma one_ne_zero: word.of_Z 1 <> word.of_Z 0.
+  Lemma one_ne_zero: word.of_Z 1 <> word.of_Z 0 :> word.
   Proof.
     apply unsigned_ne.
     rewrite! word.unsigned_of_Z. unfold word.wrap.
     pose proof word.width_pos as P; pose proof (Z.pow_gt_1 2 Utility.width) as Q.
     rewrite! Z.mod_small; simpl_param_projections; blia.
   Qed.
+
+  Local Hint Mode Word.Interface.word - : typeclass_instances.
 
   Lemma bool_to_word_to_bool_id: forall (b: bool),
       negb (word.eqb (if b then word.of_Z 1 else word.of_Z 0) (word.of_Z 0)) = b.

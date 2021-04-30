@@ -116,6 +116,7 @@ Axiom TODO: False.
 Module map. Section __.
   Context {key value} {map : map.map key value} {ok: map.ok map}.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
+  Implicit Types (k : key) (v : value) (m : map).
 
   Lemma put_comm: forall k1 k2 v1 v2 m,
       k1 <> k2 ->

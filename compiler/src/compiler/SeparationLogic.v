@@ -79,7 +79,7 @@ Section ptstos.
     ecancel_assumption.
   Qed.
 
-  Lemma cast_word_array_to_bytes bs addr : iff1
+  Lemma cast_word_array_to_bytes bs (addr : word) : iff1
     (array ptsto_word (word.of_Z bytes_per_word) addr bs)
     (array ptsto (word.of_Z 1) addr (flat_map (fun x =>
        HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x)))
@@ -191,7 +191,7 @@ Section ptstos.
 
   Lemma byte_list_to_word_list_array {word_ok: word.ok word}: forall bytes,
     Z.of_nat (length bytes) mod bytes_per_word = 0 ->
-    exists word_list,
+    exists word_list : list word,
       Z.of_nat (Datatypes.length word_list) =
       Z.of_nat (Datatypes.length bytes) / bytes_per_word /\
     forall p,

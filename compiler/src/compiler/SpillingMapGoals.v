@@ -6,6 +6,7 @@ Require Import coqutil.Map.Interface coqutil.Map.Properties.
 
 Section LEMMAS.
   Context {K V: Type} {map: map.map K V} {ok: map.ok map}.
+  Implicit Types (k : K) (v : V) (m : map).
 
   Axiom map__split_spec: forall (M A B: map),
       map.split M A B <-> forall k,
