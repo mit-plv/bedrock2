@@ -22,6 +22,7 @@ Require Import coqutil.Tactics.Records.
 Require Import coqutil.Tactics.Simp.
 Require Import bedrock2.MetricLogging.
 Require Import bedrock2.footpr.
+Require Import bedrock2.StringIdentConversion.
 
 Local Set Nested Proofs Allowed.
 
@@ -691,7 +692,7 @@ Section WithParameters.
            | |- context[?e] => is_evar e;
                                  let t := type of e in
                                  lazymatch t with
-                                 | byte => fail
+                                 | Coq.Init.Byte.byte => fail
                                  | _ => instantiate_evar_with_econstructor e
                                  end
            end.
@@ -983,11 +984,17 @@ End WithWordPostAndMemAndLocals.
       exec e (cmd.seq (cmd.cond c thn els) rest) t m l mc post.
   Admitted.
 
-  Lemma assignment: forall e x a t m l mc rest post,
+  Lemma assignment: forall e x_name a t m l mc rest post,
       wp_expr m l a
-        (fun v => forall mc, exec e rest t m (map.put l x v) mc post) ->
-      exec e (cmd.seq (cmd.set x a) rest) t m l mc post.
-  Admitted.
+        (fun x_val => forall mc x_var, x_var = x_val -> exec e rest t m (map.put l x_name x_var) mc post) ->
+      exec e (cmd.seq (cmd.set x_name a) rest) t m l mc post.
+  Proof.
+    intros. eapply wp_expr_sound in H. simp.
+    eapply exec.seq_cps.
+    eapply exec.set. 1: eassumption.
+    eapply Hp1.
+    reflexivity.
+  Qed.
 
   Lemma loop: forall e cond body rest t m l mc (inv: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop) post,
       inv t m l mc ->
@@ -998,19 +1005,16 @@ End WithWordPostAndMemAndLocals.
       exec e (cmd.seq (cmd.while cond body) rest) t m l mc post.
   Abort. (* TODO needs a termination measure, maybe using metrics? *)
 
-  (* for (i = lo; i < hi; i += d) body *)
-  Definition for_up(i: string)(lo hi: expr)(d: Z)(body: cmd): cmd :=
-    cmd.seq (cmd.set i lo) (cmd.while (expr.op bopname.ltu i hi)
-                                      (cmd.seq body (cmd.set i (expr.op bopname.add i d)))).
+  (* no init clause included because after init we need to reshape symbolic
+     state into loop invariant
+     for (;i < hi; i += d) body
+   *)
+  Definition for_up(i: string)(hi: expr)(d: Z)(body: cmd): cmd :=
+    (cmd.while (expr.op bopname.ltu i hi)
+               (cmd.seq body (cmd.set i (expr.op bopname.add i d)))).
 
   (* TODO PARAMRECORDS where is the correct location to put this? *)
   Existing Instance SortedListString.ok.
-
-(*
-  Lemma strong_Z_ind: forall (P: Z -> Prop),
-      (forall start, (forall x, start <= x <
-      forall fuel, P fuel.
-*)
 
   Lemma while_cps: forall e cond body t m l mc0 mc post b,
       eval_expr m l cond mc0 = Some (b, mc) ->
@@ -1025,42 +1029,37 @@ End WithWordPostAndMemAndLocals.
     - eauto using exec.while_true.
   Qed.
 
-  Lemma for_loop_up: forall e i lo hi d body t m l mc v_hi
-      (inv post: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop),
+  Lemma for_loop_up: forall i hi d (inv: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop) v_lo v_hi
+      e body t m l mc (post: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop),
       0 < d ->
+      map.get l i = Some v_lo ->
+      inv t m l mc ->
+      (forall ti mi li mci v_i, inv ti mi li mci -> map.get li i = Some v_i ->
+         wp_expr mi li hi (fun v_hi' =>
+             word.unsigned v_hi' = v_hi /\ (* <-- upper bound needs to evaluate to same value each time *)
+             (word.unsigned v_i < v_hi ->
+              forall mc', exec e body ti mi li mc' (fun t' m' l' mc' =>
+                map.get l' i = Some v_i /\ (* <-- value of i unchanged during loop body *)
+                forall mc'', inv t' m' (map.put l' i (word.add v_i (word.of_Z d))) mc'')) /\
+             (v_hi <= word.unsigned v_i -> forall mc'', post ti mi li mc''))) ->
       v_hi + d <= 2^width ->
-      wp_expr m l lo (fun v_lo =>
-        let l0 := map.put l i v_lo in
-        inv t m l0 mc /\
-        (forall ti mi li mci v_i, inv ti mi li mci -> map.get li i = Some v_i ->
-           wp_expr mi li hi (fun v_hi' =>
-               word.unsigned v_hi' = v_hi /\ (* <-- upper bound needs to evaluate to same value each time *)
-               (word.unsigned v_i < v_hi ->
-                forall mc'', exec e body ti mi li mc'' (fun t' m' l' mc' =>
-                  map.get l' i = Some v_i /\ (* <-- value of i unchanged during loop body *)
-                  let l2 := map.put l' i (word.add v_i (word.of_Z d)) in
-                  inv t' m' l2 mc')) /\
-               (v_hi <= word.unsigned v_i -> forall mc'', post ti mi li mc'')))) ->
-      exec e (for_up i lo hi d body) t m l mc post.
+      exec e (for_up i hi d body) t m l mc post.
   Proof.
-    intros *. intros dLB hiUB Evlo. eapply wp_expr_sound in Evlo.
-    destruct Evlo as (v_lo & mc' & Evlo & I0 & B).
+    intros *. intros dLB Glo I0 B hiUB.
     unfold for_up.
-    eapply exec.seq_cps.
-    eapply exec.set. 1: exact Evlo. clear Evlo.
     pose proof (well_founded_ind (Z.lt_wf (- 2 ^ width))) as Ind.
     cbv beta in Ind.
     remember (v_hi - word.unsigned v_lo) as fuel.
-    revert dependent v_lo. forget (addMetricInstructions 1 (addMetricLoads 1 mc')) as mc''.
-    revert t m l mc mc''.
+    revert I0.
+    revert dependent v_lo.
+    revert t m l mc.
     induction fuel using Ind. clear Ind.
     intros. subst.
-    specialize B with (1 := I0). rewrite map.get_put_same in B. specialize B with (1 := eq_refl).
+    specialize B with (1 := I0). specialize B with (1 := Glo).
     eapply wp_expr_sound in B. destruct B as (v_hi' & mc''' & Evhi & E1 & Again & Done).
     subst.
     eapply while_cps.
-    - cbn [eval_expr].
-      rewrite map.get_put_same. rewrite Evhi. reflexivity.
+    - cbn [eval_expr]. rewrite Glo. rewrite Evhi. reflexivity.
     - intros Neq. cbn in Neq. rewrite word.unsigned_ltu in Neq. destruct_one_match_hyp. 2: exfalso; ZnWords.
       eapply exec.seq.
       + eapply Again. assumption.
@@ -1068,9 +1067,11 @@ End WithWordPostAndMemAndLocals.
         eapply exec.set. {
           cbn [eval_expr]. rewrite Eq1. reflexivity.
         }
-        eapply H. 3: reflexivity.
-        * cbn [interp_binop]. ZnWords.
-        * cbn [interp_binop]. exact Ii.
+        eapply H. 3: reflexivity. 2: {
+          rewrite map.get_put_same. reflexivity.
+        }
+        { cbn [interp_binop]. ZnWords. }
+        { cbn [interp_binop]. apply Ii. }
     - intros Eq. cbn in Eq. eapply Done.
       rewrite word.unsigned_ltu in Eq. destruct_one_match_hyp. 1: exfalso; ZnWords. exact E.
   Qed.
@@ -1232,6 +1233,28 @@ Ltac pick_nat n :=
   Ltac lookup_done :=
     eapply lookup_path_Nil; first [ apply tuple_byte_1 | f_equal; ZnWords ].
 
+Ltac2 constr_to_ident(x: constr) :=
+  match Constr.Unsafe.kind x with
+  | Constr.Unsafe.Var i => i
+  | _ => Control.throw (Invalid_argument (Some (Message.concat (Message.of_constr x)
+                                                               (Message.of_string " is not an ident"))))
+  end.
+
+Ltac2 hyp_exists(x: ident) :=
+  match Control.case (fun () => Control.hyp x) with
+  | Val _ => true
+  | Err _ => false
+  end.
+
+Ltac2 rename_with_stringname(x: ident)(name: constr) :=
+  let x' := string_to_ident name in
+  if hyp_exists x' then let x'' := Fresh.in_goal x' in Std.rename [(x', x'')] else ();
+  Std.rename [(x, x')].
+
+Ltac rename_with_stringname :=
+  ltac2:(x name |- rename_with_stringname (constr_to_ident (Option.get (Ltac1.to_constr x)))
+                                          (Option.get (Ltac1.to_constr name))).
+
 Ltac cleanup_step :=
   match goal with
   | x : Word.Interface.word.rep _ |- _ => clear x
@@ -1241,6 +1264,7 @@ Ltac cleanup_step :=
   | x : Semantics.trace |- _ => clear x
   | x : Syntax.cmd |- _ => clear x
   | x : Syntax.expr |- _ => clear x
+  | x : MetricLog |- _ => clear x
   | x : coqutil.Map.Interface.map.rep |- _ => clear x
   | x : BinNums.Z |- _ => clear x
   | x : unit |- _ => clear x
@@ -1254,15 +1278,25 @@ Ltac cleanup_step :=
   | x := _ : Semantics.trace |- _ => clear x
   | x := _ : Syntax.cmd |- _ => clear x
   | x := _ : Syntax.expr |- _ => clear x
+  | x := _ : MetricLog |- _ => clear x
   | x := _ : coqutil.Map.Interface.map.rep |- _ => clear x
   | x := _ : BinNums.Z |- _ => clear x
   | x := _ : unit |- _ => clear x
   | x := _ : bool |- _ => clear x
   | x := _ : list _ |- _ => clear x
   | x := _ : nat |- _ => clear x
-  | |- forall _, _ => intros
-  | |- let _ := _ in _ => intros
-  | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
+  | |- _ -> ?DoesNotDepend => intro
+  | |- forall var, _ =>
+    let var' := fresh var in
+    intro var';
+    match goal with
+    | |- context[@map.put string (@word.rep _ _) _ _ ?name ?var'] =>
+      let name' := rdelta_var name in
+      rename_with_stringname var' name'
+    | |- _ => idtac
+    end
+  | |- let _ := _ in _ => intro
+  | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intro
   | _ => progress (cbn [Semantics.interp_binop] in * )
   | H: exists x, _ |- _ => destruct H as [x H]
   | H: _ /\ _ |- _ => lazymatch type of H with
@@ -1273,9 +1307,6 @@ Ltac cleanup_step :=
                       | _ => destruct H
                       end
   | x := ?y |- ?G => is_var y; subst x
-  | H: ?x = word.of_Z ?y |- _ => match isZcst y with
-                                 | true => subst x
-                                 end
   | x := word.of_Z ?y |- _ => match isZcst y with
                               | true => subst x
                               end
@@ -1347,27 +1378,6 @@ Ltac expr_step :=
   | |- False \/ _ => right
   | |- _ \/ False => left
   end.
-
-Import Syntax.
-
-Inductive snippet :=
-| SSet(x: string)(e: expr)
-| SIf(cond: expr)(merge: bool)
-| SEnd
-| SElse.
-
-Inductive note_wrapper: string -> Type := mkNote(s: string): note_wrapper s.
-Notation "s" := (note_wrapper s) (at level 200, only printing).
-Ltac add_note s := let n := fresh "Note" in pose proof (mkNote s) as n; move n at top.
-
-Ltac add_snippet s :=
-  lazymatch s with
-  | SSet ?y ?e => eapply assignment with (x := y) (a := e)
-  | SIf ?cond false => eapply if_split with (c := cond)
-  | SEnd => eapply exec.skip
-  | SElse => idtac
-  end.
-
 
 Ltac ring_simplify_hyp_rec t H :=
   lazymatch t with
@@ -1452,20 +1462,61 @@ Ltac prover_step :=
   | |- _ => progress autounfold with prover_unfold_hints in *
   end.
 
-Ltac after_snippet s :=
-  lazymatch s with
-  | SSet ?y ?e => repeat expr_step
-  | SIf ?cond false => repeat expr_step; split
-  | SEnd => idtac
-  | SElse => lazymatch goal with
-             | H: note_wrapper "'else' expected" |- _ => clear H
-             end
-  end;
-  repeat simpli_step; repeat simpli_step.
+Import Syntax.
 
-(* For debugging, this can be useful:
-Ltac after_snippet ::= idtac.
+Inductive snippet :=
+| SSet(x: string)(e: expr)
+| SIf(cond: expr)(merge: bool)
+| SForUp(i0: string)(lo: expr)(i1: string)(hi: expr)(i2: string)(d: Z)
+        (inv: trace -> mem -> locals -> MetricLogging.MetricLog -> Prop)
+| SEnd
+| SElse.
+
+Inductive note_wrapper: string -> Type := mkNote(s: string): note_wrapper s.
+Notation "s" := (note_wrapper s) (at level 200, only printing).
+Ltac add_note s := let n := fresh "Note" in pose proof (mkNote s) as n; move n at top.
+
+Ltac raw_add_snippet := constr:(false).
+(* to disable all automatic steps after adding a snippet:
+Ltac raw_add_snippet ::= constr:(true).
 *)
+
+Tactic Notation "suppress_if_raw" tactic(t) :=
+  lazymatch raw_add_snippet with
+  | true => idtac
+  | false => t
+  end.
+
+Ltac add_snippet s :=
+  lazymatch s with
+  | SSet ?y ?e =>
+    eapply assignment with (x_name := y) (a := e); suppress_if_raw (idtac; repeat expr_step)
+  | SIf ?cond false =>
+    eapply if_split with (c := cond); suppress_if_raw (idtac; repeat expr_step; split)
+(*
+  | SForUp ?i0 ?lo ?i1 ?hi ?i2 ?d ?inv =>
+    tryif constr_eq i0 i1 then
+      (tryif constr_eq i1 i2 then
+          (eapply (@for_loop_up i0 lo hi d inv);
+           [ suppress_if_raw (idtac;
+               lazymatch goal with
+               | |- 0 < ?step => lazymatch isZcst step with
+                                 | true => reflexivity
+                                 | _ => fail 1000 "increment" step "must be constant"
+                                 end
+               end)
+           | suppress_if_raw (idtac; repeat expr_step)
+           | ])
+        else fail 1000 "must increment" i1 ", not" i2)
+       else fail 1000 "must test" i0 ", not" i1
+*)
+  | SEnd => eapply exec.skip
+  | SElse => suppress_if_raw (idtac;
+               lazymatch goal with
+               | H: note_wrapper "'else' expected" |- _ => clear H
+               end)
+  end;
+  suppress_if_raw (idtac; repeat simpli_step; repeat simpli_step).
 
   Hint Resolve EthernetPacket_spec: TypeSpec_instances.
   Hint Resolve ARPPacket_spec: TypeSpec_instances.
@@ -1501,7 +1552,7 @@ Ltac after_snippet ::= idtac.
     let ofs := offset_of_getter spa in idtac ofs.
   Abort.
 
-Tactic Notation "$" constr(s) "$" := add_snippet s; after_snippet s.
+Tactic Notation "$" constr(s) "$" := add_snippet s.
 
 Notation "/*number*/ e" := e (in custom bedrock_expr at level 0, e constr at level 0).
 
@@ -1518,6 +1569,9 @@ Notation "'if' ( e ) '/*merge*/' {" := (SIf e true) (in custom snippet at level 
 Notation "'if' ( e ) '/*split*/' {" := (SIf e false) (in custom snippet at level 0, e custom bedrock_expr).
 Notation "}" := SEnd (in custom snippet at level 0).
 Notation "'else' {" := SElse (in custom snippet at level 0).
+Notation "'for' ( i0 = lo ; '/*invariant' inv '*/' i1 < hi ; i2 += d ) {" := (SForUp i0 lo i1 hi i2 d inv)
+  (in custom snippet at level 0, i0 name, i1 name, i2 name,
+   lo custom bedrock_expr, hi custom bedrock_expr, d constr, inv constr at level 0).
 
 Set Default Goal Selector "1".
 
@@ -1527,12 +1581,60 @@ Set Default Goal Selector "1".
     seps [dst,+\[n] |-> oldDstData; src,+\[n] |-> srcData; R] m ->
     vc_func f t m [dst; src; n] (fun t' m' retvs =>
       retvs = [] /\
-      seps [dst,+\[n] |-> srcData; src,+\[n] |-> srcData; R] m)}.
+      seps [dst,+\[n] |-> srcData; src,+\[n] |-> srcData; R] m')}.
   Proof.
     refine (existT _ (?[callee_specs], ("memcpy", (["dst"; "src"; "n"], [], ?[body]))) _).
-    intros. cbv [vc_func]. intros functions CC. letexists. split. 1: subst l; reflexivity. intros.
+    intros. cbv [vc_func]. intros functions CC.
+    exists (map.of_list [("dst", dst); ("src", src); ("n", n)]). split. 1: reflexivity. intros.
+    pose (_i := "i"). pose (_n := "n").
 
+(*
+Ltac raw_add_snippet ::= constr:(true).
+*)
 
+    $*/
+    _i = /*number*/0;
+    /*$. replace oldDstData
+         with (List.firstn (Z.to_nat \[i]) srcData ++ List.skipn (Z.to_nat \[i]) oldDstData) in H. 2: {
+           (* TODO automate *)
+           subst i. replace (Z.to_nat \[/[0]]) with O by ZnWords. reflexivity.
+         }
+         assert (0 <= \[i] <= \[n]) by ZnWords. clear H0.
+         move H at bottom.
+
+         lazymatch goal with
+         | |- exec _ _ ?t ?m ?l0 ?mc _ =>
+           (* TODO should be remember_if_not_var *)
+           is_var t; is_var m; remember l0 as l; is_var mc
+         end.
+
+         pose proof (conj Heql (conj H1 H)) as I0.
+         (* don't "clear Heql H1 H", will be needed for sideconditions *)
+         pattern i in I0.
+         eapply ex_intro in I0.
+         pattern t, m, l, mc in I0.
+         eapply (@for_loop_up _i (expr.literal 0) 1). 3: exact I0.
+         1: reflexivity.
+         subst l. reflexivity.
+         cbv beta.
+
+         expr_step.
+         expr_step.
+         expr_step.
+         expr_step.
+         expr_step.
+
+(*
+    $*/
+    for (_i = /*number*/0;
+         /*invariant (fun t' m' l' mc' => exists dst src n i,
+           l' = map.of_list [("dst", dst); ("src", src); ("n", n); ("i", i)] /\
+           t' = t' /\
+           seps [dst,+\[n] |-> (List.firstn (Z.to_nat \[i]) srcData ++ List.skipn (Z.to_nat \[i]) oldDstData);
+                 src,+\[n] |-> srcData; R] m')
+         */
+         _i < _n; _i += 1) { /*$.
+*)
 
   Admitted.
 
@@ -1584,8 +1686,10 @@ eapply List.Forall_inv_tail in CC.
     $*/
     doReply = /*number*/0; /*$. $*/
     if (ln == /*number*/42) /*split*/ {
-      /*$. edestruct (bytesToEthernetARPPacket _ H0) as (pk & A). subst ethBufData.
-            Ltac after_snippet s ::= idtac.
+      /*$. assert (42 = len ethBufData) as HL by ZnWords.
+           edestruct (bytesToEthernetARPPacket _ HL) as (pk & A). subst ethBufData.
+
+(*
      $*/
       if ((load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP) (* &
           (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE) &
@@ -1610,7 +1714,7 @@ repeat simpli_step.
 
 (* TODO more simplifications *)
 
-(* call: memcpy
+call: memcpy
 
         (* copy sha and spa from the request into tha and tpa for the reply (same buffer), 6+4 bytes *)
         (* memcpy(ethbuf @ (@payload ARPPacket) @ tha, ethbuf @ (@payload ARPPacket) @ sha, /*number*/10); *)
@@ -1632,7 +1736,7 @@ eexists.
    else stop and let user decide? *)
 *)
 all: exact TODO.
-}
+
 (*
 $*/
     else { /*$. (* nothing to do *) $*/
