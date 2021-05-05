@@ -53,7 +53,7 @@ Section WithParameters.
     match l with
     | nil => True
     | x :: tl1 => match tl1 with
-                  | y :: tl2 => word.ltu y x = false /\ Sorted tl1
+                  | y :: tl2 => word.ltu y x = false /\ Sorted0 tl1
                   | nil => True
                   end
     end.
@@ -66,7 +66,23 @@ Section WithParameters.
       (forall k, (k < List.length l)%nat -> word.ltu a (nth l k) = false) ->
       Sorted (l ++ [a]).
   Proof.
-  Admitted.
+    unfold Sorted. intros. rewrite List.app_length in *. cbn in *.
+    assert (j < List.length l \/ j = List.length l)%nat as C by Lia.lia.
+    unfold nth.
+    destruct C as [C | C].
+    - rewrite ?List.app_nth1 by Lia.lia. apply H. Lia.lia.
+    - subst j. rewrite List.nth_middle. rewrite ?List.app_nth1 by Lia.lia.
+      apply H0. Lia.lia.
+  Qed.
+
+  (* TODO define word.leu and move to coqutil *)
+  Lemma word__leu_trans: forall (a b c: word),
+      word.ltu b a = false ->
+      word.ltu c b = false ->
+      word.ltu c a = false.
+  Proof.
+    intros *. rewrite ?word.unsigned_ltu, ?Z.ltb_ge. Lia.lia.
+  Qed.
 
   Lemma Sorted_insert: forall left a1 a2 right,
       Sorted (left ++ a2 :: right) ->
@@ -74,9 +90,134 @@ Section WithParameters.
       word.ltu a2 a1 = false ->
       Sorted (left ++ [a1; a2] ++ right).
   Proof.
-  Admitted.
+    unfold Sorted, nth in *.
+    intros. rewrite ?List.app_length in *. cbn in *.
+    assert (j < List.length left \/ j = List.length left \/ j = List.length left + 1 \/
+            List.length left + 1 < j < List.length left + 2 + List.length right)%nat as C by Lia.lia.
+    destruct C as [C | [C | [C | C]]].
+    - rewrite ?List.app_nth1 by Lia.lia.
+      assert (i < j < Datatypes.length left + S (Datatypes.length right))%nat as A by Lia.lia.
+      specialize H with (1 := A). clear A.
+      rewrite ?List.app_nth1 in H by Lia.lia. exact H.
+    - subst j.
+      rewrite List.nth_middle.
+      rewrite ?List.app_nth1 by Lia.lia.
+      apply H0. Lia.lia.
+    - subst j.
+      change (left ++ a1 :: a2 :: right) with (left ++ [a1] ++ a2 :: right).
+      rewrite List.app_assoc.
+      replace (Datatypes.length left + 1)%nat with (List.length (left ++ [a1])). 2: {
+        rewrite List.app_length. cbn. reflexivity.
+      }
+      rewrite List.nth_middle.
+      rewrite <- List.app_assoc.
+      assert (i < List.length left \/ i = List.length left)%nat as C by Lia.lia. destruct C as [C | C].
+      + rewrite List.app_nth1 by Lia.lia.
+        eapply word__leu_trans. 2: eassumption. apply H0. assumption.
+      + subst i. change (left ++ [a1] ++ a2 :: right) with (left ++ a1 :: a2 :: right).
+        rewrite List.nth_middle. assumption.
+    - rename j into j0. destruct j0 as [|j]. 1: exfalso; Lia.lia.
+      replace (List.nth (S j) (left ++ a1 :: a2 :: right) (word.of_Z 0))
+        with (List.nth j (left ++ a2 :: right) (word.of_Z 0)). 2: {
+        change (left ++ a2 :: right) with (left ++ [a2] ++ right).
+        rewrite List.app_assoc.
+        rewrite List.app_nth2; rewrite List.app_length; cbn. 2: Lia.lia.
+        change (left ++ a1 :: a2 :: right) with (left ++ [a1] ++ a2 :: right).
+        rewrite List.app_assoc.
+        rewrite List.app_nth2; rewrite List.app_length. 2: cbn; Lia.lia.
+        change (Datatypes.length [a1]) with 1%nat.
+        replace (S j - (Datatypes.length left + 1))%nat with (S (j - (Datatypes.length left + 1))) by Lia.lia.
+        reflexivity.
+      }
+      assert (i < List.length left \/ i = List.length left \/ i = List.length left + 1 \/
+              List.length left + 1 < i <= j)%nat as D by Lia.lia.
+      destruct D as [D | [D | [D | D]]].
+      + rewrite (List.app_nth1 left (a1 :: a2 :: right)) by assumption.
+        assert (i < j < Datatypes.length left + S (Datatypes.length right))%nat as A by Lia.lia.
+        specialize H with (1 := A). clear A.
+        rewrite (@List.app_nth1 _ left (a2 :: right) _ i) in H by assumption. exact H.
+      + assert (i < j < Datatypes.length left + S (Datatypes.length right))%nat as A by Lia.lia.
+        specialize H with (1 := A). clear A.
+        subst i. rewrite List.nth_middle. rewrite List.nth_middle in H.
+        eapply word__leu_trans; eassumption.
+      + subst i. change (left ++ a1 :: a2 :: right) with (left ++ [a1] ++ a2 :: right).
+        rewrite List.app_assoc.
+        replace (Datatypes.length left + 1)%nat with (List.length (left ++ [a1])). 2: {
+          rewrite List.app_length. reflexivity.
+        }
+        rewrite List.nth_middle.
+        replace a2 with (List.nth (List.length left) (left ++ a2 :: right) (word.of_Z 0)) at 2. 2: {
+          apply List.nth_middle.
+        }
+        apply H. Lia.lia.
+      + change (left ++ a2 :: right) with (left ++ [a2] ++ right).
+        rewrite List.app_assoc.
+        rewrite List.app_nth2; rewrite List.app_length; cbn. 2: Lia.lia.
+        replace (left ++ a1 :: a2 :: right) with ((left ++ [a1; a2]) ++ right). 2: {
+          rewrite <- List.app_assoc. reflexivity.
+        }
+        rewrite List.app_nth2; rewrite List.app_length; cbn. 2: Lia.lia.
+        replace (List.nth (j - (Datatypes.length left + 1)) right (word.of_Z 0)) with
+            (List.nth j (left ++ a2 :: right) (word.of_Z 0)). 2: {
+          rewrite List.app_nth2 by Lia.lia.
+          replace (j - Datatypes.length left)%nat with (S (j - (Datatypes.length left + 1))) by Lia.lia.
+          reflexivity.
+        }
+        replace (List.nth (i - (Datatypes.length left + 2)) right (word.of_Z 0)) with
+            (List.nth (i - 1) (left ++ a2 :: right) (word.of_Z 0)). 2: {
+          rewrite List.app_nth2 by Lia.lia.
+          replace (i - 1 - Datatypes.length left)%nat with (S (i - (Datatypes.length left + 2))) by Lia.lia.
+          reflexivity.
+        }
+        apply H. Lia.lia.
+  Qed.
 
-  Axiom TODO: False.
+  Lemma ptsto_nonaliasing: forall addr b1 b2 m (R: mem -> Prop),
+      (ptsto addr b1 * ptsto addr b2 * R)%sep m ->
+      False.
+  Proof.
+    intros. unfold ptsto, sep, map.split, map.disjoint in *.
+    repeat match goal with
+           | H: exists _, _ |- _ => destruct H
+           | H: _ /\ _ |- _ => destruct H
+           end.
+    subst.
+    specialize (H4 addr b1 b2). rewrite ?map.get_put_same in H4. auto.
+  Qed.
+
+  (* TODO generalize *)
+  Lemma array_scalar32_max_size: forall addr xs (R: mem -> Prop) m,
+      (array scalar32 (word.of_Z 4) addr xs * R)%sep m ->
+      4 * Z.of_nat (Datatypes.length xs) <= 2 ^ width.
+  Proof.
+    intros.
+    assert (4 * Z.of_nat (Datatypes.length xs) <= 2 ^ width \/ 2 ^ width < 4 * Z.of_nat (Datatypes.length xs))
+      as C by Lia.lia. destruct C as [C | C]; [exact C | exfalso].
+    pose proof (List.firstn_skipn (Z.to_nat (2 ^ width / 4)) xs) as E.
+    pose proof @List.firstn_length_le _ xs (Z.to_nat (2 ^ width / 4)) as A.
+    assert (Z.to_nat (2 ^ width / 4) <= Datatypes.length xs)%nat as B by ZnWords.
+    specialize (A B). clear B.
+    destruct (List.firstn (Z.to_nat (2 ^ width / 4)) xs) as [|h1 t1] eqn: E1. {
+      ZnWords.
+    }
+    destruct (List.skipn (Z.to_nat (2 ^ width / 4)) xs) as [|h2 t2] eqn: E2. {
+      pose proof @List.skipn_length _ (Z.to_nat (2 ^ width / 4)) xs as B.
+      rewrite E2 in B. cbn [List.length] in B. ZnWords.
+    }
+    rewrite <- E in H.
+    SeparationLogic.seprewrite_in @array_append H.
+    SeparationLogic.seprewrite_in @array_cons H.
+    SeparationLogic.seprewrite_in @array_cons H.
+    replace (word.add addr (word.of_Z (word.unsigned (word.of_Z 4) * Z.of_nat (Datatypes.length (h1 :: t1)))))
+      with addr in H by ZnWords.
+    unfold scalar32 at 1 3 in H.
+    unfold truncated_word, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes in H.
+    cbn in H.
+    eapply (ptsto_nonaliasing addr (PrimitivePair.pair._1 (LittleEndian.split 4 (word.unsigned h2)))
+                              (PrimitivePair.pair._1 (LittleEndian.split 4 (word.unsigned h1))) m).
+    ParamRecords.simpl_param_projections.
+    ecancel_assumption.
+  Qed.
 
   Local Infix "*" := sep. Local Infix "*" := sep : type_scope.
 
@@ -97,7 +238,7 @@ Section WithParameters.
     repeat straightline.
 
     assert (4 * Z.of_nat (List.length xs) <= 2 ^ 32). {
-      case TODO. (* because we have an array of that size, otherwise it would wrap & alias *)
+      eapply array_scalar32_max_size. eassumption.
     }
 
     refine (tailrec HList.polymorphic_list.nil
