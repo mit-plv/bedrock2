@@ -29,9 +29,10 @@ Ltac cleanup_for_ZModArith :=
          | H: ?T |- _ => tryif is_lia T then fail else clear H
          end.
 
-(* TODO improve *)
+(* TODO improve
+   @ needed because of COQBUG https://github.com/coq/coq/issues/3051 *)
 Ltac simpl_list_length_exprs :=
-  rewrite ?List.length_skipn, ?List.firstn_length, ?List.app_length, ?List.length_cons, ?List.length_nil in *.
+  rewrite ?@List.length_skipn, ?@List.firstn_length, ?@List.app_length, ?@List.length_cons, ?@List.length_nil in *.
 
 
 (* word laws for shifts where the shift amount is a Z instead of a word *)
