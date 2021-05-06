@@ -123,9 +123,9 @@ Section RegAlloc.
   Definition rename_stmt(m: src2imp)(s: stmt)(av: impvar): option stmt' :=
     bind_opt (_, s', _) <- rename m s av; Some s'.
 
-  (* 0 is the constant 0, 1 is the return address register, 2 is the stack pointer, 3 onward is available *)
-  Definition lowest_available_impvar := 3.
-  Definition lowest_nonregister := 32.
+  (* 0 is the constant 0, 1 is the return address register, 2 is the stack pointer,
+     3 and 4 are temps for spilling, 5 is a framepointer for the spillling frame, 6 onward is available *)
+  Definition lowest_available_impvar := 6.
 
   Definition rename_fun(F: list srcvar * list srcvar * stmt):
     option (list impvar * list impvar * stmt') :=
@@ -133,7 +133,7 @@ Section RegAlloc.
     bind_opt (m, argnames', av) <- rename_binds map.empty argnames lowest_available_impvar;
     bind_opt (m, retnames', av) <- rename_binds m retnames av;
     bind_opt (_, body', av) <- rename m body av;
-    if Z.leb av lowest_nonregister then Some (argnames', retnames', body') else None.
+    Some (argnames', retnames', body').
 
   Context {W: Utility.Words} {mem: map.map word byte}.
   Context {srcLocals: map.map srcvar word}.

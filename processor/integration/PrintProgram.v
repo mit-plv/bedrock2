@@ -14,7 +14,7 @@ Set Printing Width 108.
 Goal True.
   pose lightbulb_insts as p.
   unfold lightbulb_insts in p.
-  let x := eval cbv in (PipelineWithRename.instrencode lightbulb_insts) in idtac x.
+  let x := eval cbv in (Pipeline.instrencode lightbulb_insts) in idtac x.
 
   (* pose ((IInstruction (Jal 0 8)) *)
   (*         :: (IInstruction (Jal 0 0)) (* When a test gets failed.. *) *)
@@ -40,7 +40,7 @@ Goal True.
   (*         :: (IInstruction (Jal 0 0)) *)
   (*         :: nil) *)
   (*   as p. *)
-  (* let x := eval cbv in (PipelineWithRename.instrencode p) in idtac x. *)
+  (* let x := eval cbv in (Pipeline.instrencode p) in idtac x. *)
 
 Abort.
 Unset Printing Width.

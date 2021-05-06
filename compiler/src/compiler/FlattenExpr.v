@@ -568,8 +568,8 @@ Section FlattenExpr1.
   Lemma freshNameGenState_disjoint_fbody: forall (fbody: cmd) (params rets: list String.string),
     disjoint (ExprImp.allVars_cmd fbody)
              (allFreshVars (@freshNameGenState _ (@NGstate p) (@NG p)
-                  (ListSet.list_union String.eqb (ExprImp.allVars_cmd_as_list fbody)
-                                                  (ListSet.list_union String.eqb params rets)))).
+                  (ListSet.list_union String.eqb (ListSet.list_union String.eqb params rets)
+                                                 (ExprImp.allVars_cmd_as_list fbody)))).
   Proof.
     unfold disjoint. intros.
     epose proof (freshNameGenState_spec _ x) as P.
@@ -579,14 +579,12 @@ Section FlattenExpr1.
     + right. apply P. assumption.
     + left. clear -Ino hyps.
       intro. apply Ino.
-      unshelve eapply ListSet.In_list_union_spec. left.
       epose proof (ExprImp.allVars_cmd_allVars_cmd_as_list _ _) as P. destruct P as [P _].
-      apply P.
-      apply H.
+      eauto using ListSet.In_list_union_l, ListSet.In_list_union_r, nth_error_In.
   Qed.
 
-  Lemma flattenStmt_correct_aux: forall max_size eH eL,
-      flatten_functions max_size eH = Some eL ->
+  Lemma flattenStmt_correct_aux: forall eH eL,
+      flatten_functions eH = Some eL ->
       forall eH0 sH t m mcH lH post,
       Semantics.exec eH0 sH t m lH mcH post ->
       eH0 = eH ->
@@ -778,7 +776,7 @@ Section FlattenExpr1.
         simp.
         eapply @FlatImp.exec.call.
         1,2,3: eassumption.
-        * unfold ExprImp2FlatImp0 in *.
+        * unfold ExprImp2FlatImp in *.
           match goal with
           | |- context [fst ?x] => destruct x as [fbody' ngs0] eqn: EF
           end.
@@ -793,10 +791,7 @@ Section FlattenExpr1.
              unfold map.of_list_zip in G.
              eapply map.putmany_of_list_zip_find_index in G. 2: eassumption.
              rewrite map.get_empty in G. destruct G as [G | G]; [|discriminate G]. simp.
-             apply ListSet.In_list_union_spec. right.
-             apply ListSet.In_list_union_spec.
-             left.
-             eapply nth_error_In. eassumption.
+             eauto using ListSet.In_list_union_l, ListSet.In_list_union_r, nth_error_In.
           -- eapply freshNameGenState_disjoint_fbody.
         * cbv beta. intros. simp.
           edestruct H4 as [resvals ?]. 1: eassumption. simp.
@@ -834,9 +829,9 @@ Section FlattenExpr1.
   Qed.
   Goal True. idtac "FlattenExpr: flattenStmt_correct_aux done". Abort.
 
-  Lemma flattenStmt_correct0: forall max_size eH eL sH sL lL t m mc post,
-      flatten_functions max_size eH = Some eL ->
-      ExprImp2FlatImp0 sH = sL ->
+  Lemma flattenStmt_correct: forall eH eL sH sL lL t m mc post,
+      flatten_functions eH = Some eL ->
+      ExprImp2FlatImp sH = sL ->
       Semantics.exec eH sH t m map.empty mc post ->
       FlatImp.exec eL sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
         post t' m' lH' mcH' /\
@@ -844,7 +839,7 @@ Section FlattenExpr1.
         (mcL' - mc <= mcH' - mc)%metricsH).
   Proof.
     intros.
-    unfold ExprImp2FlatImp0 in *.
+    unfold ExprImp2FlatImp in *.
     match goal with
     | H: fst ?x = _ |- _ => destruct x as [sL' ngs'] eqn: E
     end.
@@ -853,20 +848,6 @@ Section FlattenExpr1.
     - eapply flattenStmt_correct_aux; try solve [eassumption | reflexivity | maps].
       eapply freshNameGenState_disjoint.
     - simpl. intros. simp. eauto.
-  Qed.
-
-  Lemma flattenStmt_correct: forall max_size eH eL sH sL sz lL t m mc post,
-      flatten_functions max_size eH = Some eL ->
-      ExprImp2FlatImp sz sH = Some sL ->
-      Semantics.exec eH sH t m map.empty mc post ->
-      FlatImp.exec eL sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
-        post t' m' lH' mcH' /\
-        map.extends lL' lH' /\
-        (mcL' - mc <= mcH' - mc)%metricsH).
-  Proof.
-    unfold ExprImp2FlatImp.
-    intros. eapply flattenStmt_correct0; try eassumption.
-    destruct_one_match_hyp; congruence.
   Qed.
 
 End FlattenExpr1.
