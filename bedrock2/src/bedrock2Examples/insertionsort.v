@@ -499,7 +499,7 @@ Section WithParameters.
       remember (List.firstn (Z.to_nat (word.unsigned j)) sorted) as smaller.
       remember (List.skipn (Z.to_nat (word.unsigned j)) sorted) as toShift.
       assert (sorted = smaller ++ toShift). {
-        subst smaller toShift. Search List.firstn List.skipn. symmetry. apply List.firstn_skipn.
+        subst smaller toShift. symmetry. apply List.firstn_skipn.
       }
       assert (word.unsigned j = Z.of_nat (List.length smaller)) as Ej. {
         subst smaller. ZnWords.
