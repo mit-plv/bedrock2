@@ -949,9 +949,9 @@ Section with_parameters.
   End Loops.
 
   Section Unsigned.
-    Lemma word_unsigned_of_Z_bracketed l h w:
+    Lemma word_unsigned_of_Z_bracketed (l h : Semantics.word) w:
       word.unsigned l <= w <= word.unsigned h ->
-      word.unsigned (word.of_Z w) = w.
+      @word.unsigned _ Semantics.word (word.of_Z w) = w.
     Proof.
       pose proof word.unsigned_range l.
       pose proof word.unsigned_range h.
@@ -972,9 +972,9 @@ Section with_parameters.
   End Unsigned.
 
   Section Signed.
-    Lemma word_signed_of_Z_bracketed l h w:
+    Lemma word_signed_of_Z_bracketed (l h : Semantics.word) w:
       word.signed l <= w <= word.signed h ->
-      word.signed (word.of_Z w) = w.
+      @word.signed _ Semantics.word (word.of_Z w) = w.
     Proof.
       pose proof word.signed_range l.
       pose proof word.signed_range h.
@@ -996,7 +996,7 @@ Section with_parameters.
 
   Definition wZ_must_pos (a: Z) :
     match Z_gt_dec a 0, Z_le_dec a (2 ^ 32 - 1) with
-    | left _, left _ => word.unsigned (word.of_Z a) > 0
+    | left _, left _ => @word.unsigned _ Semantics.word (word.of_Z a) > 0
     | _, _ => True
     end.
   Proof.
@@ -1021,7 +1021,7 @@ Section with_parameters.
     Lemma lts_of_Z x y:
       - 2 ^ (Semantics.width - 1) <= x < 2 ^ (Semantics.width - 1) ->
       - 2 ^ (Semantics.width - 1) <= y < 2 ^ (Semantics.width - 1) ->
-      word.lts (word.of_Z x) (word.of_Z y) = (x <? y).
+      @word.lts _ Semantics.word (word.of_Z x) (word.of_Z y) = (x <? y).
     Proof.
       intros; rewrite word.signed_lts, !word.signed_of_Z, !word.swrap_inrange; eauto.
     Qed.
@@ -1029,19 +1029,19 @@ Section with_parameters.
     Lemma ltu_of_Z x y:
       0 <= x < 2 ^ Semantics.width ->
       0 <= y < 2 ^ Semantics.width ->
-      word.ltu (word.of_Z x) (word.of_Z y) = (x <? y).
+      @word.ltu _ Semantics.word (word.of_Z x) (word.of_Z y) = (x <? y).
     Proof.
       intros; rewrite word.unsigned_ltu, !word.unsigned_of_Z, !word.wrap_small; eauto.
     Qed.
 
-    Lemma getmany0 l t vt vx vy x y:
+    Lemma getmany0 (l : Semantics.locals) t vt vx vy x y:
       map.getmany_of_list l (vx :: vy :: vt) = Some (x :: y :: t) ->
       map.get l vx = Some x.
     Proof.
       intros; eapply (map.getmany_of_list_get _ 0); eauto || reflexivity.
     Qed.
 
-    Lemma getmany1 l t vt vx vy x y:
+    Lemma getmany1 (l : Semantics.locals) t vt vx vy x y:
       map.getmany_of_list l (vx :: vy :: vt) = Some (x :: y :: t) ->
       map.get l vy = Some y.
     Proof.

@@ -15,7 +15,7 @@ Section Ex.
       (left associativity, at level 1,
        format "m [[ k  ←  v ]]").
 
-  Lemma signed_lt_unsigned w:
+  Lemma signed_lt_unsigned (w : Semantics.word):
     word.signed w <= word.unsigned w.
   Proof.
     pose proof word.unsigned_range w.
@@ -104,13 +104,13 @@ Section Ex.
                     (tok, a2)) a2 in
     (a1, a2).
   Next Obligation.
-    pose proof word.half_modulus_pos.
+    pose proof word.half_modulus_pos (word:=word).
     unfold cast, Convertible_word_nat.
     rewrite word.signed_of_Z, word.swrap_inrange in H0 by lia.
     rewrite word.signed_gz_eq_unsigned; lia.
   Qed.
   Next Obligation.
-    pose proof word.half_modulus_pos.
+    pose proof word.half_modulus_pos (word:=word).
     unfold cast, Convertible_word_nat.
     rewrite word.signed_of_Z, word.swrap_inrange in H0 by lia.
     rewrite word.signed_gz_eq_unsigned; lia.

@@ -353,7 +353,7 @@ Section KVSwap.
                  WeakestPrecondition.expr_body
                  WeakestPrecondition.literal
                  Semantics.interp_binop dlet.dlet].
-          destr (word.eqb (word.of_Z 1) (word.of_Z 0)); congruence. } }
+          destr (@word.eqb _ word (word.of_Z 1) (word.of_Z 0)); congruence. } }
       { rewrite word.unsigned_of_Z_0.
         split; try congruence; [ ]. intros.
         cbn [fst snd].

@@ -12,6 +12,7 @@ End Gallina.
 Section Compile.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok semantics}.
+  Implicit Types (x : Semantics.word).
 
   Lemma downto'_step {A} i count (step :A -> _) init :
     0 < i <= count ->

@@ -295,11 +295,11 @@ Section CompilerBasics.
   Definition compile_word_eqb :=
     unfold_id (@compile_binop_xxb _ id bopname.eq word.eqb ltac:(compile_binop_wwb_t)).
 
-  Lemma bool_word_eq_compat {T} T2w (eqb: T -> T -> bool)
+  Lemma bool_word_eq_compat {T} (T2w: T -> word) (eqb: T -> T -> bool)
         (T2w_inj: forall x y, T2w x = T2w y -> x = y)
         (eqb_compat: forall x y, eqb x y = true <-> x = y) :
     forall x y,
-      b2w (eqb x y) = (if word.eqb (T2w x) (T2w y) then word.of_Z 1 else word.of_Z 0).
+      b2w (eqb x y) = (if word.eqb (T2w x) (T2w y) then word.of_Z 1 else word.of_Z 0) :> word.
   Proof.
     intros; rewrite word.unsigned_eqb.
     destruct eqb eqn:Hb; destruct Z.eqb eqn:Hz; try reflexivity.
@@ -319,7 +319,7 @@ Section CompilerBasics.
 
   Notation cbv_beta_b2w x :=
     ltac:(pose proof x as x0;
-         change ((fun b => b2w b) ?y) with (b2w y) in (type of x0);
+         change ((fun b => b2w b) ?y) with (b2w y : word) in (type of x0);
          let t := type of x0 in exact (x: t)) (only parsing).
 
   Definition compile_bool_eqb :=

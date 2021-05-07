@@ -76,7 +76,7 @@ Section with_parameters.
                      access_size.word
                      (expr.op bopname.add
                               (expr.var vector_var)
-                              (expr.literal ((word.unsigned (word.of_Z 8) * Z.of_nat noffset))))))
+                              (expr.literal ((@word.unsigned _ Semantics.word (word.of_Z 8) * Z.of_nat noffset))))))
                k_impl)
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
@@ -136,7 +136,7 @@ Section with_parameters.
       cmd.seq (cmd.store access_size.word
                          (expr.op bopname.add
                                   (expr.var vector_var)
-                                  (expr.literal ((word.unsigned (word.of_Z 8) *
+                                  (expr.literal ((@word.unsigned _ Semantics.word (word.of_Z 8) *
                                                   Z.of_nat noffset))))
                          (expr.var value_var))
               k_impl
@@ -146,7 +146,7 @@ Section with_parameters.
     unfold WordVector in *.
     repeat straightline.
     exists (word.add vector_ptr
-                     (word.of_Z (word.unsigned (word.of_Z 8) * Z.of_nat noffset))).
+                     (word.of_Z (@word.unsigned _ Semantics.word (word.of_Z 8) * Z.of_nat noffset))).
     split.
     { repeat straightline; eauto.
       exists vector_ptr; intuition.
