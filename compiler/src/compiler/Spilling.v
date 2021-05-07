@@ -489,6 +489,26 @@ Section Spilling.
     | SCall argvars f resvars | SInteract argvars f resvars => 0
     end.
 
+  Hint Extern 1 => blia : max_var_sound.
+  Hint Extern 1 => cbv beta : max_var_sound.
+  Hint Extern 1 => eapply Forall_vars_stmt_impl; cycle -1 : max_var_sound.
+  Hint Extern 1 => match goal with
+                   | IH: forall _, _ -> Forall_vars_stmt _ _ _ |- Forall_vars_stmt _ _ _ => eapply IH
+                   end : max_var_sound.
+
+  Lemma max_var_sound: forall s P,
+      Forall_vars_stmt (fun x => fp < x) P s ->
+      Forall_vars_stmt (fun x => fp < x <= max_var s) P s.
+  Proof.
+    induction s; simpl; intros; unfold ForallVars_bcond in *; simpl;
+      repeat match goal with
+             | H: _ /\ _ |- _ => destruct H
+             | c: bcond _ |- _ => destruct c; simpl
+             | |- _ /\ _ => split
+             end;
+      eauto with max_var_sound.
+  Qed.
+
   Definition spill_fbody(s: stmt): stmt :=
     let maxvar := max_var s in
     SStackalloc fp (bytes_per_word * Z.of_nat (Z.to_nat (maxvar - 31))) (spill_stmt s).
@@ -497,8 +517,23 @@ Section Spilling.
      set by `related`, and we don't want to complicate `related` to accommodate for a
      potentially uninitialized `fp` after a function call happens in a fresh locals env *)
 
-  Definition spill_fun: list Z * list Z * stmt -> list Z * list Z * stmt :=
-    fun '(argnames, resnames, body) => (argnames, resnames, spill_fbody body).
+  Open Scope bool_scope.
+
+  Definition spill_fun: list Z * list Z * stmt -> option (list Z * list Z * stmt) :=
+    fun '(argnames, resnames, body) =>
+      (* The first two lines of this test are very likely to succeed,
+         because it suffices that 5 + len argnames + len resnames < 32,
+         because reg rename assigns the lowest argnames and resnames and
+         only then continues with the function body.
+         The last test only succeeds if there are no function calls that
+         use variables introduced too late. *)
+      if List.forallb (fun x => Z.ltb fp x && Z.ltb x 32) argnames &&
+         List.forallb (fun x => Z.ltb fp x && Z.ltb x 32) resnames &&
+         forallb_vars_stmt (fun x => Z.ltb fp x) (* allowing >= 32 here is the whole point of spilling *)
+                           (fun x => Z.ltb fp x && Z.ltb x 32) body (* allowing >=32 here (for calls) is not
+                                                                       implemented yet *)
+      then Some (argnames, resnames, spill_fbody body)
+      else None.
 
   Context {locals: map.map Z word}.
   Context {localsOk: map.ok locals}.
@@ -513,8 +548,8 @@ Section Spilling.
   |}).
   Defined.
 
-  Definition spill_functions: env -> env :=
-    map.map_values spill_fun.
+  Definition spill_functions: env -> option env :=
+    map.map_all_values spill_fun.
 
   Definition valid_vars_src(maxvar: Z): stmt -> Prop :=
     Forall_vars_stmt (fun x => fp < x <= maxvar) (fun x => fp < x < 32).

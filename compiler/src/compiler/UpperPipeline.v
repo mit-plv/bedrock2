@@ -138,7 +138,7 @@ Section WithWordAndMem.
     Definition renamePhase(prog: FlatLangStr.(Env)): option FlatLangZ.(Env) :=
       rename_functions prog.
     Definition spillingPhase(prog: FlatLangZ.(Env)): option FlatLangZ.(Env) :=
-      Some (spill_functions prog).
+      spill_functions prog.
 
     Definition composePhases{A B C: Type}(phase1: A -> option B)(phase2: B -> option C)(a: A) :=
       match phase1 a with
@@ -263,6 +263,15 @@ Section WithWordAndMem.
       unfold composedCompileEnv, composePhases in *. simp.
       rename r into functionsF, r0 into functionsR.
 
+      assert (BW48: bytes_per_word = 4 \/ bytes_per_word = 8). {
+        unfold bytes_per_word.
+        (* PARAMRECORDS doesn't work because the record "Words" is not called "parameters" *)
+        simpl (@Utility.width _).
+        destruct width_cases as [C | C]; rewrite C.
+        + change (Memory.bytes_per_word 32) with 4. auto.
+        + change (Memory.bytes_per_word 64) with 8. auto.
+      }
+
       pose proof E as GF.
       unfold flattenPhase, flatten_functions in GF.
       eapply map.map_all_values_fw in GF. 5: eassumption. 2-4: typeclasses eauto.
@@ -279,10 +288,21 @@ Section WithWordAndMem.
       simp. unfold rename_fun, rename_binds in GRp0. simp.
 
       pose proof H0 as GL.
-      unfold spillingPhase in GL. apply Option.eq_of_eq_Some in GL.
+      unfold spillingPhase in GL.
       unfold spill_functions in GL.
-      eapply map.map_values_fw in GL. 5: eassumption. 2-4: typeclasses eauto.
-      simp. unfold spill_fun in GLp1.
+      eapply map.map_all_values_fw in GL. 5: eassumption. 2-4: typeclasses eauto.
+      unfold spill_fun in GL. simp. eapply Bool.andb_true_iff in E2.
+      destruct E2 as [_ Fs].
+      eapply forallb_vars_stmt_correct in Fs. 2: {
+        intros x. split; intros F.
+        - rewrite ?Z.ltb_lt in F. exact F.
+        - apply Z.ltb_lt. assumption.
+      }
+      2: {
+        intros x. split; intros F.
+        - rewrite Bool.andb_true_iff in F. rewrite ?Z.ltb_lt in F. exact F.
+        - apply  Bool.andb_true_iff. rewrite ?Z.ltb_lt. assumption.
+      }
 
       eexists. split. 1: exact GLp1.
 
@@ -293,11 +313,11 @@ Section WithWordAndMem.
       }
       intros *. intros Ab Sp.
 
-      pose proof sim as Sim. unfold simulation, upper_related, Exec, SrcLang, FlatLangZ in Sim.
+      pose proof sim as Sim. unfold simulation, Exec, SrcLang, FlatLangZ in Sim.
       cbn in Sim. eapply Sim; clear Sim. 3: eassumption.
 
       2: { (* upper_related holds initially: *)
-        unfold compose_related, flattening_related, renaming_related, spilling_related. cbn.
+        unfold upper_related, compose_related, flattening_related, renaming_related, spilling_related. cbn.
         do 6 eexists. ssplit. all: eauto 3.
         do 6 eexists. ssplit. all: eauto 3.
         { unfold envs_related. intros.
@@ -305,14 +325,81 @@ Section WithWordAndMem.
         do 2 eexists. ssplit.
         { unfold Spilling.envs_related. intros *. intro G.
           pose proof H0 as GL'.
-          unfold spillingPhase in GL'. apply Option.eq_of_eq_Some in GL'.
-          unfold spill_functions in GL'.
-          eapply map.map_values_fw in GL'. 5: exact G. 2-4: typeclasses eauto.
-          simp. ssplit.
-          - assumption.
-          - (* need that argvars/resvars in (argvars, resvars, body1) are < 32,
-               which should almost always be the case because reg rename assigns the lowest
-               vars to these and only then continues with the function body *)
+          unfold spillingPhase, spill_functions in GL'.
+          eapply map.map_all_values_fw in GL'. 5: exact G. 2-4: typeclasses eauto.
+          unfold spill_fun in GL'. simp.
+          eapply Bool.andb_true_iff in E2. destruct E2 as (B1 & B3).
+          eapply Bool.andb_true_iff in B1. destruct B1 as (B1 & B2).
+          eapply List.forallb_to_Forall in B1. 2: {
+            intros x F. rewrite Bool.andb_true_iff in F. rewrite ?Z.ltb_lt in F. exact F.
+          }
+          eapply List.forallb_to_Forall in B2. 2: {
+            intros x F. rewrite Bool.andb_true_iff in F. rewrite ?Z.ltb_lt in F. exact F.
+          }
+          eapply forallb_vars_stmt_correct in B3. 2: {
+            intros x. split; intros F.
+            - rewrite ?Z.ltb_lt in F. exact F.
+            - apply Z.ltb_lt. assumption.
+          }
+          2: {
+            intros x. split; intros F.
+            - rewrite Bool.andb_true_iff in F. rewrite ?Z.ltb_lt in F. exact F.
+            - apply  Bool.andb_true_iff. rewrite ?Z.ltb_lt. assumption.
+          }
+          ssplit; try assumption.
+          unfold valid_vars_src.
+          eapply max_var_sound. exact B3.
+        }
+        { unfold valid_vars_src.
+          eapply max_var_sound. exact Fs. }
+        { unfold Spilling.related.
+          edestruct hl_mem_to_ll_mem with (mL := mCombined) (mTraded := mStack) (R := emp (map := mem) True)
+            as (returned_bytes & L & Q).
+          1, 2: eassumption.
+          { rewrite sep_emp_r. clear. auto. }
+          edestruct (byte_list_to_word_list_array returned_bytes) as (returned_words & LL & QQ). {
+            rewrite L. rewrite Z2Nat.id.
+            - rewrite Z.mul_comm. apply Z_mod_mult.
+            - blia.
+          }
+          seprewrite_in QQ Q. unfold word_array.
+          exists map.empty, map.empty, returned_words.
+          ssplit.
+          - reflexivity.
+          - ecancel_assumption.
+          - intros *. rewrite map.get_empty. discriminate.
+          - intros *. rewrite map.get_empty. discriminate.
+          - unfold sep, map.split. exists map.empty, map.empty.
+            rewrite ?map.putmany_empty_r. eauto using map.disjoint_empty_l.
+          - unfold sep, map.split, ptsto. eexists map.empty, _. ssplit.
+            4: reflexivity.
+            + rewrite map.putmany_empty_l. reflexivity.
+            + apply map.disjoint_empty_l.
+            + exists map.empty, map.empty. unfold tmps. setoid_rewrite map.get_empty.
+              rewrite map.putmany_empty_l.
+              intuition (eauto using map.disjoint_empty_l || discriminate).
+          - intros ? ? ? C. rewrite map.get_empty in C. discriminate C.
+          - eapply Nat2Z.inj. rewrite LL. rewrite L. rewrite Z2Nat.id by blia.
+            rewrite Z.mul_comm. rewrite Z_div_mult by blia. reflexivity.
+        }
+      }
+
+      (* low-level post holds at the end: *)
+      cbv beta.
+      unfold upper_related, compose_related, flattening_related, renaming_related, spilling_related,
+             Spilling.related. cbn.
+      intros. simp.
+      match goal with
+      | H: (_ * _)%sep m2 |- _ => rename H into HM2
+      end.
+      unfold word_array in HM2.
+      seprewrite_in @cast_word_array_to_bytes HM2.
+      edestruct ll_mem_to_hl_mem with (mL := m2) as (mStack' & HM2' & D & Ab'). {
+        simpl in *. (* PARAMRECORDS *) ecancel_assumption.
+      }
+      eexists _, _. ssplit.
+      - Search fpval. (* can't prove fpval = a because fpval is existentially quantified in
+                         spilling_related before calling Spilling.related *)
 
     Abort.
 
