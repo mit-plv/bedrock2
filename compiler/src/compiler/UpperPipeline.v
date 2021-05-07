@@ -286,6 +286,13 @@ Section WithWordAndMem.
 
       eexists. split. 1: exact GLp1.
 
+      unfold spill_fbody.
+      eapply FlatImp.exec.stackalloc. {
+        rewrite Z.mul_comm.
+        apply Z_mod_mult.
+      }
+      intros *. intros Ab Sp.
+
       pose proof sim as Sim. unfold simulation, upper_related, Exec, SrcLang, FlatLangZ in Sim.
       cbn in Sim. eapply Sim; clear Sim. 3: eassumption.
 
@@ -295,7 +302,17 @@ Section WithWordAndMem.
         do 6 eexists. ssplit. all: eauto 3.
         { unfold envs_related. intros.
           eapply map.map_all_values_fw. 5: eassumption. 4: eassumption. all: typeclasses eauto. }
-        { unfold spill_fbody. (* oops *)
+        do 2 eexists. ssplit.
+        { unfold Spilling.envs_related. intros *. intro G.
+          pose proof H0 as GL'.
+          unfold spillingPhase in GL'. apply Option.eq_of_eq_Some in GL'.
+          unfold spill_functions in GL'.
+          eapply map.map_values_fw in GL'. 5: exact G. 2-4: typeclasses eauto.
+          simp. ssplit.
+          - assumption.
+          - (* need that argvars/resvars in (argvars, resvars, body1) are < 32,
+               which should almost always be the case because reg rename assigns the lowest
+               vars to these and only then continues with the function body *)
 
     Abort.
 
