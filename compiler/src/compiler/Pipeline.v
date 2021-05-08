@@ -150,7 +150,7 @@ Section Pipeline1.
   Local Notation flat_env := (@string_keyed_map p (list string * list string * FlatImp.stmt string)).
   Local Notation renamed_env := (@string_keyed_map p (list Z * list Z * FlatImp.stmt Z)).
 
-  Definition flattenPhase(prog: source_env): option flat_env := flatten_functions prog.
+  Definition flattenPhase(prog: source_env): option flat_env := flatten_functions (2^10) prog.
   Definition renamePhase(prog: flat_env): option renamed_env :=
     rename_functions_old prog.
 
