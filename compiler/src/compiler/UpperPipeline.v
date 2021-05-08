@@ -161,14 +161,14 @@ Section WithWordAndMem.
       - simpl. intros. simp. assumption.
     Qed.
 
-    Lemma renaming_correct: @phase_correct FlatLangStr FlatLangZ rename_functions.
+    Lemma renaming_correct: @phase_correct FlatLangStr FlatLangZ rename_functions_new.
     Proof.
       unfold phase_correct. intros.
 
       pose proof H as GR.
-      unfold rename_functions in GR.
+      unfold rename_functions_new in GR.
       eapply map.map_all_values_fw in GR. 5: eassumption. 2-4: typeclasses eauto.
-      simp. unfold rename_fun, rename_binds in GRp0. simp.
+      simp. unfold rename_fun_new, rename_binds in GRp0. simp.
 
       pose proof E as A.
       apply rename_props in A;
@@ -176,9 +176,9 @@ Section WithWordAndMem.
       simp.
       eexists. split. 1: eassumption. intros.
       eapply FlatImp.exec.weaken.
-      - eapply rename_correct with (ext_spec0 := ext_spec).
+      - eapply rename_correct_new with (ext_spec0 := ext_spec).
         2: eassumption.
-        { unfold envs_related. intros *. intro G.
+        { unfold envs_related_new. intros *. intro G.
           eapply map.map_all_values_fw. 5: exact G. 4: eassumption. all: typeclasses eauto. }
         1: eassumption.
         2: {
@@ -313,7 +313,7 @@ Section WithWordAndMem.
     Qed.
 
     Definition upper_compiler :=
-      compose_phases flatten_functions (compose_phases rename_functions spill_functions).
+      compose_phases flatten_functions (compose_phases rename_functions_new spill_functions).
 
     Lemma upper_compiler_correct: @phase_correct SrcLang FlatLangZ upper_compiler.
     Proof.
