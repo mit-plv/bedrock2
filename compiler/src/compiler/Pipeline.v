@@ -150,7 +150,7 @@ Section Pipeline1.
   Local Notation flat_env := (@string_keyed_map p (list string * list string * FlatImp.stmt string)).
   Local Notation renamed_env := (@string_keyed_map p (list Z * list Z * FlatImp.stmt Z)).
 
-  Definition flattenPhase(prog: source_env): option flat_env := flatten_functions (2^10) prog.
+  Definition flattenPhase(prog: source_env): option flat_env := flatten_functions prog.
   Definition renamePhase(prog: flat_env): option renamed_env :=
     rename_functions prog.
 
@@ -191,7 +191,7 @@ Section Pipeline1.
             (e1 : FlattenExpr.ExprImp_env)
             (e2 : FlattenExpr.FlatImp_env)
             (funname : string)
-            (Hf: flatten_functions (2 ^ 10) e1 = Some e2).
+            (Hf: flatten_functions e1 = Some e2).
     Let c2 := (@FlatImp.SSeq String.string FlatImp.SSkip (FlatImp.SCall [] funname [])).
     Let c3 := (@FlatImp.SSeq Z FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])).
     Context (av' : Z) (r' : string_keyed_map Z)
@@ -205,7 +205,7 @@ Section Pipeline1.
             (GEI: good_e_impl prog (FlatToRiscvDef.build_fun_pos_env prog)).
 
     Definition flattenSim: simulation _ _ _ :=
-      FlattenExprSimulation.flattenExprSim (2^10) e1 e2 funname Hf.
+      FlattenExprSimulation.flattenExprSim e1 e2 funname Hf.
     Definition regAllocSim: simulation _ _ _ :=
       renameSim (@ext_spec p)
                 e2 prog c2 c3 av' r' ER Ren.
@@ -218,6 +218,8 @@ Section Pipeline1.
     Definition sim: simulation _ _ _ :=
       (compose_sim flattenSim (compose_sim regAllocSim flatToRiscvSim)).
   End Sim.
+
+  Axiom TODO: False.
 
   Lemma rename_fun_valid: forall argnames retnames body impl',
       rename_fun (argnames, retnames, body) = Some impl' ->
@@ -252,9 +254,8 @@ Section Pipeline1.
       | X: _ |- _ => specialize X with (1 := H); rename X into A
       end.
       destruct A as [A | A].
-      + apply Zle_bool_imp_le in E2.
-        unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
-        blia.
+      + unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar in *.
+        case TODO.
       + rewrite map.get_empty in A. discriminate A.
     - eapply Forall_impl. 2: {
         eapply map.getmany_of_list_in_map. eassumption.
@@ -265,16 +266,14 @@ Section Pipeline1.
       | X: _ |- _ => specialize X with (1 := H); rename X into A
       end.
       destruct A as [A | A].
-      + apply Zle_bool_imp_le in E2.
-        unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
-        blia.
+      + unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar in *.
+        case TODO.
       + match goal with
         | X: _ |- _ => specialize X with (1 := A); rename X into B
         end.
         destruct B as [B | B].
-        * apply Zle_bool_imp_le in E2.
-          unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
-          blia.
+        * unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar in *.
+          case TODO.
         * rewrite map.get_empty in B. discriminate B.
     - eapply FlatImp.ForallVars_stmt_impl; [|eassumption].
       simpl. intros. simp.
@@ -282,23 +281,20 @@ Section Pipeline1.
       | X: _ |- _ => specialize X with (1 := H); rename X into A
       end.
       destruct A as [A | A].
-      + apply Zle_bool_imp_le in E2.
-        unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
-        blia.
+      + unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar in *.
+        case TODO.
       + match goal with
         | X: _ |- _ => specialize X with (1 := A); rename X into B
         end.
         destruct B as [B | B].
-        * apply Zle_bool_imp_le in E2.
-          unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
-          blia.
+        * unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar in *.
+          case TODO.
         * match goal with
           | X: _ |- _ => specialize X with (1 := B); rename X into C
           end.
           destruct C as [C | C].
-          -- apply Zle_bool_imp_le in E2.
-             unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar, lowest_nonregister in *.
-             blia.
+          -- unfold FlatToRiscvDef.valid_FlatImp_var, lowest_available_impvar in *.
+             case TODO.
           -- rewrite map.get_empty in C. discriminate C.
     - eapply map.getmany_of_list_injective_NoDup. 3: eassumption. all: eassumption.
     - eapply map.getmany_of_list_injective_NoDup. 3: eassumption. all: eassumption.
@@ -704,7 +700,7 @@ Section Pipeline1.
         end.
         simp. destruct v1 as [ [argnames' retnames'] body' ].
         match goal with
-        | H: flatten_functions _ _ = _ |- _ => rename H into FlattenEq
+        | H: flatten_functions _ = _ |- _ => rename H into FlattenEq
         end.
         unfold flatten_functions in FlattenEq.
         match goal with
@@ -721,12 +717,7 @@ Section Pipeline1.
         destruct V.
         ssplit.
         - eapply rename_fun_valid; try eassumption.
-          unfold ExprImp2FlatImp in *.
-          simp.
-          repeat match goal with
-                 | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
-                 end.
-          assumption.
+          case TODO.
         - unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.build_fun_pos_env.
           pose proof (get_compile_funs_pos r0) as P.
           destruct (FlatToRiscvDef.compile_funs map.empty r0) as [ insts posmap ] eqn: F.
@@ -834,7 +825,7 @@ Section Pipeline1.
         { assert (0 < bytes_per_word). { (* TODO: deduplicate *)
             unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
           }
-          rewrite (length_flat_map _ (Z.to_nat bytes_per_word)).
+          rewrite (List.length_flat_map _ (Z.to_nat bytes_per_word)).
           { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H2p0p1p8p0.
             rewrite <-H2p0p1p8p0, <-Z_div_exact_2; try trivial.
             { eapply Z.lt_gt; assumption. }
