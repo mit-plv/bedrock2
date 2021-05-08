@@ -373,15 +373,6 @@ Section Go.
     apply ptsto_bytes_putmany_of_tuple; assumption.
   Qed.
 
-  Lemma length_flat_map: forall {A B: Type} (f: A -> list B) n (l: list A),
-      (forall (a: A), length (f a) = n) ->
-      length (flat_map f l) = (n * length l)%nat.
-  Proof.
-    induction l; intros.
-    - simpl. blia.
-    - simpl. rewrite app_length. rewrite H. rewrite IHl; assumption || blia.
-  Qed.
-
   Lemma mod_eq_to_diff: forall e1 e2 m,
       m <> 0 ->
       e1 mod m = e2 mod m ->

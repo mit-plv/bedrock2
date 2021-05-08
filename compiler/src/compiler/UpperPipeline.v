@@ -32,38 +32,34 @@ Section WithWordAndMem.
           (trace -> mem -> Locals -> MetricLog -> Prop) -> Prop
   }.
 
-  Definition relation(L1 L2: Lang): Type := bool ->
-    L1.(Env) -> L1.(Cmd) -> trace -> mem -> L1.(Locals) -> MetricLog ->
-    L2.(Env) -> L2.(Cmd) -> trace -> mem -> L2.(Locals) -> MetricLog -> Prop.
+  Definition phase_correct{L1 L2: Lang}(compile: L1.(Env) -> option L2.(Env)): Prop :=
+    forall functions1 functions2 f_entry_name fbody1,
+      compile functions1 = Some functions2 ->
+      map.get functions1 f_entry_name = Some (nil, nil, fbody1) ->
+      exists fbody2,
+        map.get functions2 f_entry_name = Some (nil, nil, fbody2) /\
+        forall t m mc post, L1.(Exec) functions1 fbody1 t m map.empty mc (fun t' m' l' mc' => post t' m') ->
+                            L2.(Exec) functions2 fbody2 t m map.empty mc (fun t' m' l' mc' => post t' m').
 
-  Definition simulation{L1 L2: Lang}(R: relation L1 L2) :=
-    forall (e1: L1.(Env)) (e2: L2.(Env)) (c1: L1.(Cmd)) (c2: L2.(Cmd))
-           (P1: trace -> mem -> L1.(Locals) -> MetricLog -> Prop)
-           (P2: trace -> mem -> L2.(Locals) -> MetricLog -> Prop),
-      (forall t1 m1 l1 mc1 t2 m2 l2 mc2, R true e1 c1 t1 m1 l1 mc1 e2 c2 t2 m2 l2 mc2 ->
-                                         P1 t1 m1 l1 mc1 -> P2 t2 m2 l2 mc2) ->
-      (forall t1 m1 l1 mc1 t2 m2 l2 mc2, R false e1 c1 t1 m1 l1 mc1 e2 c2 t2 m2 l2 mc2 ->
-                                         L1.(Exec) e1 c1 t1 m1 l1 mc1 P1 ->
-                                         L2.(Exec) e2 c2 t2 m2 l2 mc2 P2).
+  Definition compose_phases{A B C: Type}(phase1: A -> option B)(phase2: B -> option C)(a: A) :=
+    match phase1 a with
+    | Some b => phase2 b
+    | None => None
+    end.
 
-  Definition compose_related{L1 L2 L3: Lang}(R12: relation L1 L2)(R23: relation L2 L3): relation L1 L3 :=
-    fun done e1 c1 t1 m1 l1 mc1 e3 c3 t3 m3 l3 mc3 =>
-      exists e2 c2 t2 m2 l2 mc2, R12 done e1 c1 t1 m1 l1 mc1 e2 c2 t2 m2 l2 mc2 /\
-                                 R23 done e2 c2 t2 m2 l2 mc2 e3 c3 t3 m3 l3 mc3.
-
-  Lemma compose_simulation{L1 L2 L3: Lang}{R12: relation L1 L2}{R23: relation L2 L3}
-        (S12: simulation R12)(S23: simulation R23): simulation (compose_related R12 R23).
+  Lemma compose_phases_correct{L1 L2 L3: Lang}
+        (compile12: L1.(Env) -> option L2.(Env))
+        (compile23: L2.(Env) -> option L3.(Env)):
+    phase_correct compile12 -> phase_correct compile23 -> phase_correct (compose_phases compile12 compile23).
   Proof.
-    unfold simulation, compose_related in *.
-    intros e1 e3 c1 c3 P1 P3 W t1 m1 l1 mc1 t3 m3 l3 mc3 R13 Ex1.
-    simp.
-    eapply S23. 2: eassumption. 2: {
-      eapply S12 with (P2 := (fun t2' m2' l2' mc2' => exists t1' m1' l1' mc1',
-                                  R12 true e1 c1 t1' m1' l1' mc1' e2 c2 t2' m2' l2' mc2' /\
-                                  P1 t1' m1' l1' mc1')).
-      3: eassumption. 2: eassumption. clear. eauto 10.
-    }
-    cbv beta. clear -W. intros. simp. eauto 10.
+    unfold phase_correct, compose_phases. intros C12 C23. intros *. intros ? G1. simp.
+    specialize C12 with (1 := E) (2 := G1). simp.
+    specialize C23 with (1 := H) (2 := C12p0). simp.
+    eexists. split. 1: eassumption.
+    intros *. intro Ex1.
+    specialize C12p1 with (1 := Ex1).
+    specialize C23p1 with (1 := C12p1).
+    exact C23p1.
   Qed.
 
   Section WithMoreParams.
@@ -133,38 +129,24 @@ Section WithWordAndMem.
       eapply intersect; eassumption.
     Qed.
 
-    Definition flattenPhase(prog: SrcLang.(Env)): option FlatLangStr.(Env) :=
-      flatten_functions prog.
-    Definition renamePhase(prog: FlatLangStr.(Env)): option FlatLangZ.(Env) :=
-      rename_functions prog.
-    Definition spillingPhase(prog: FlatLangZ.(Env)): option FlatLangZ.(Env) :=
-      spill_functions prog.
-
-    Definition composePhases{A B C: Type}(phase1: A -> option B)(phase2: B -> option C)(a: A) :=
-      match phase1 a with
-      | Some b => phase2 b
-      | None => None
-      end.
-
-    Definition composedCompileEnv: SrcLang.(Env) -> option FlatLangZ.(Env) :=
-      (composePhases flattenPhase
-      (composePhases renamePhase
-                     spillingPhase)).
-
-    Definition flattening_related: relation SrcLang FlatLangStr :=
-      fun done e1 c1 t1 m1 l1 mc1 e2 c2 t2 m2 l2 mc2 =>
-        ExprImp2FlatImp c1 = c2 /\
-        flatten_functions e1 = Some e2 /\
-        t1 = t2 /\
-        m1 = m2 /\
-        (done = false -> l1 = map.empty /\ l2 = map.empty /\ mc1 = mc2).
-
-    Lemma flattening_sim: simulation flattening_related.
+    Lemma flattening_correct: @phase_correct SrcLang FlatLangStr flatten_functions.
     Proof.
-      unfold simulation, flattening_related, ExprImp2FlatImp. intros.
-      simp. specialize (H0p2 eq_refl). simp.
+      unfold phase_correct. intros.
+
+      pose proof H as GF.
+      unfold flatten_functions in GF.
+      eapply map.map_all_values_fw in GF. 5: eassumption. 2-4: typeclasses eauto.
+      simp. unfold flatten_function in GFp0.
+      (* simp would also unfold freshNameGenState *)
+      apply Option.eq_of_eq_Some in GFp0. destruct v2 as ((? & ?) & ?).
+      eapply pair_equal_spec in GFp0. destruct GFp0 as (GFp0 & ?).
+      eapply pair_equal_spec in GFp0. destruct GFp0 as (GFp0 & ?).
+      subst.
+
+      eexists. split. 1: eassumption.
+      intros.
       eapply FlatImp.exec.weaken.
-      - eapply @flattenStmt_correct_aux with (eH := e1).
+      - eapply @flattenStmt_correct_aux.
         + econstructor; try typeclasses eauto.
         + eassumption.
         + eassumption.
@@ -176,123 +158,47 @@ Section WithWordAndMem.
         + intros x k A. rewrite map.get_empty in A. discriminate.
         + unfold map.undef_on, map.agree_on. intros. reflexivity.
         + eapply freshNameGenState_disjoint.
-      - simpl. intros. simp. eapply H. 2: eassumption. simpl. intuition (discriminate || eauto).
+      - simpl. intros. simp. assumption.
     Qed.
 
-    Definition renaming_related: relation FlatLangStr FlatLangZ :=
-      fun done e1 c1 t1 m1 l1 mc1 e2 c2 t2 m2 l2 mc2 =>
-      RegRename.envs_related e1 e2 /\
-      (exists r' av', RegRename.rename map.empty c1 lowest_available_impvar = Some (r', c2, av')) /\
-      t1 = t2 /\
-      m1 = m2 /\
-      (done = false -> l1 = map.empty /\ l2 = map.empty /\ mc1 = mc2).
-
-    Lemma renaming_sim: simulation renaming_related.
+    Lemma renaming_correct: @phase_correct FlatLangStr FlatLangZ rename_functions.
     Proof.
-      unfold simulation, renaming_related. intros.
-      simp. specialize (H0p3 eq_refl). simp.
-      pose proof H0p1 as A.
-      apply rename_props in A;
-        [|eapply map.empty_injective|eapply dom_bound_empty].
-      simp.
-      eapply FlatImp.exec.weaken.
-      - eapply rename_correct with (ext_spec0 := ext_spec).
-        1: eassumption.
-        1: eassumption.
-        3: {
-          eapply Ap2. eapply TestLemmas.extends_refl.
-        }
-        1: eassumption.
-        1: eassumption.
-        unfold states_compat. intros *. intro B.
-        erewrite map.get_empty in B. discriminate.
-      - simpl. intros. simp.
-        eapply H. 2: eassumption. simpl. clear H. intuition (discriminate || eauto).
-    Qed.
+      unfold phase_correct. intros.
 
-    Axiom TODO: False.
-
-    Definition spilling_related: relation FlatLangZ FlatLangZ :=
-      fun done e1 c1 t1 m1 l1 mc1 e2 c2 t2 m2 l2 mc2 =>
-      c2 = spill_stmt c1 /\
-      exists maxvar (fpval: word),
-        Spilling.envs_related e1 e2 /\
-        Spilling.valid_vars_src maxvar c1 /\
-        Spilling.related ext_spec maxvar (emp True) fpval t1 m1 l1 t2 m2 l2.
-
-    Lemma spilling_sim: simulation spilling_related.
-    Proof.
-      unfold simulation, spilling_related.
-      intros. simp.
-      eapply FlatImp.exec.weaken.
-      - eapply spilling_correct with (ext_spec0 := ext_spec); eassumption.
-      - cbv beta. intros. simp. eapply H. 2: eassumption. simpl.
-        eauto 10.
-    Qed.
-
-    Definition upper_related: relation SrcLang FlatLangZ :=
-      (compose_related flattening_related
-      (compose_related renaming_related
-                       spilling_related)).
-
-    Lemma sim: simulation upper_related.
-    Proof.
-      exact (compose_simulation flattening_sim
-            (compose_simulation renaming_sim
-                                spilling_sim)).
-    Qed.
-
-    (* Note: spilling uses stackalloc to store spilled vars in the memory, so there are some points
-       in execution where the low-level memory differs from the high-level memory, but before and
-       after calling the top-level function the memories are equal, so we can simplify the correctness
-       theorem to this case *)
-
-    Lemma upper_compiler_correct: forall
-        (f_entry_name : string) (fbodyH: Syntax.cmd.cmd)
-        (functionsH: SrcLang.(Env)) (functionsL: FlatLangZ.(Env))
-        t (m: mem) (mc: MetricLog)
-        (post: Semantics.trace -> Semantics.mem -> Prop),
-        ExprImp.valid_funs functionsH ->
-        composedCompileEnv functionsH = Some functionsL ->
-        map.get functionsH f_entry_name = Some (nil, nil, fbodyH) ->
-        Semantics.exec functionsH fbodyH t m map.empty mc (fun t' m' l' mc' => post t' m') ->
-        exists fbodyL, map.get functionsL f_entry_name = Some (nil, nil, fbodyL) /\
-                       FlatImp.exec functionsL fbodyL t m map.empty mc (fun t' m' l' mc' => post t' m').
-    Proof.
-      intros.
-      unfold composedCompileEnv, composePhases in *. simp.
-      rename r into functionsF, r0 into functionsR.
-
-      assert (BW48: bytes_per_word = 4 \/ bytes_per_word = 8). {
-        unfold bytes_per_word.
-        (* PARAMRECORDS doesn't work because the record "Words" is not called "parameters" *)
-        simpl (@Utility.width _).
-        destruct width_cases as [C | C]; rewrite C.
-        + change (Memory.bytes_per_word 32) with 4. auto.
-        + change (Memory.bytes_per_word 64) with 8. auto.
-      }
-
-      pose proof E as GF.
-      unfold flattenPhase, flatten_functions in GF.
-      eapply map.map_all_values_fw in GF. 5: eassumption. 2-4: typeclasses eauto.
-      simp. unfold flatten_function in GFp0.
-      (* simp would also unfold freshNameGenState *)
-      apply Option.eq_of_eq_Some in GFp0. destruct v2 as ((? & ?) & ?).
-      eapply pair_equal_spec in GFp0. destruct GFp0 as (GFp0 & ?).
-      eapply pair_equal_spec in GFp0. destruct GFp0 as (GFp0 & ?).
-      subst.
-
-      pose proof E0 as GR.
-      unfold renamePhase, rename_functions in GR.
+      pose proof H as GR.
+      unfold rename_functions in GR.
       eapply map.map_all_values_fw in GR. 5: eassumption. 2-4: typeclasses eauto.
       simp. unfold rename_fun, rename_binds in GRp0. simp.
 
-      pose proof H0 as GL.
-      unfold spillingPhase in GL.
+      pose proof E as A.
+      apply rename_props in A;
+        [|eapply map.empty_injective|eapply dom_bound_empty].
+      simp.
+      eexists. split. 1: eassumption. intros.
+      eapply FlatImp.exec.weaken.
+      - eapply rename_correct with (ext_spec0 := ext_spec).
+        2: eassumption.
+        { unfold envs_related. intros *. intro G.
+          eapply map.map_all_values_fw. 5: exact G. 4: eassumption. all: typeclasses eauto. }
+        1: eassumption.
+        2: {
+          eapply Ap2. eapply TestLemmas.extends_refl.
+        }
+        1: eassumption.
+        unfold states_compat. intros *. intro B.
+        erewrite map.get_empty in B. discriminate.
+      - simpl. intros. simp. assumption.
+    Qed.
+
+    Lemma spilling_correct: @phase_correct FlatLangZ FlatLangZ spill_functions.
+    Proof.
+      unfold phase_correct. intros.
+
+      pose proof H as GL.
       unfold spill_functions in GL.
       eapply map.map_all_values_fw in GL. 5: eassumption. 2-4: typeclasses eauto.
-      unfold spill_fun in GL. simp. eapply Bool.andb_true_iff in E2.
-      destruct E2 as [_ Fs].
+      unfold spill_fun in GL. simp. eapply Bool.andb_true_iff in E.
+      destruct E as [_ Fs].
       eapply forallb_vars_stmt_correct in Fs. 2: {
         intros x. split; intros F.
         - rewrite ?Z.ltb_lt in F. exact F.
@@ -304,7 +210,7 @@ Section WithWordAndMem.
         - apply  Bool.andb_true_iff. rewrite ?Z.ltb_lt. assumption.
       }
 
-      eexists. split. 1: exact GLp1.
+      eexists. split. 1: eassumption. intros.
 
       unfold spill_fbody.
       eapply FlatImp.exec.stackalloc. {
@@ -313,22 +219,23 @@ Section WithWordAndMem.
       }
       intros *. intros Ab Sp.
 
-      pose proof sim as Sim. unfold simulation, Exec, SrcLang, FlatLangZ in Sim.
-      cbn in Sim. eapply Sim; clear Sim. 3: eassumption.
+      assert (BW48: bytes_per_word = 4 \/ bytes_per_word = 8). {
+        unfold bytes_per_word.
+        (* PARAMRECORDS doesn't work because the record "Words" is not called "parameters" *)
+        simpl (@Utility.width _).
+        destruct width_cases as [C | C]; rewrite C.
+        + change (Memory.bytes_per_word 32) with 4. auto.
+        + change (Memory.bytes_per_word 64) with 8. auto.
+      }
 
-      2: { (* upper_related holds initially: *)
-        unfold upper_related, compose_related, flattening_related, renaming_related, spilling_related. cbn.
-        do 6 eexists. ssplit. all: eauto 3.
-        do 6 eexists. ssplit. all: eauto 3.
-        { unfold envs_related. intros.
-          eapply map.map_all_values_fw. 5: eassumption. 4: eassumption. all: typeclasses eauto. }
-        do 2 eexists. ssplit.
+      eapply FlatImp.exec.weaken.
+      - eapply spilling_correct with (ext_spec0 := ext_spec). 2: eassumption.
         { unfold Spilling.envs_related. intros *. intro G.
-          pose proof H0 as GL'.
-          unfold spillingPhase, spill_functions in GL'.
+          pose proof H as GL'.
+          unfold spill_functions in GL'.
           eapply map.map_all_values_fw in GL'. 5: exact G. 2-4: typeclasses eauto.
           unfold spill_fun in GL'. simp.
-          eapply Bool.andb_true_iff in E2. destruct E2 as (B1 & B3).
+          eapply Bool.andb_true_iff in E. destruct E as (B1 & B3).
           eapply Bool.andb_true_iff in B1. destruct B1 as (B1 & B2).
           eapply List.forallb_to_Forall in B1. 2: {
             intros x F. rewrite Bool.andb_true_iff in F. rewrite ?Z.ltb_lt in F. exact F.
@@ -382,31 +289,39 @@ Section WithWordAndMem.
           - eapply Nat2Z.inj. rewrite LL. rewrite L. rewrite Z2Nat.id by blia.
             rewrite Z.mul_comm. rewrite Z_div_mult by blia. reflexivity.
         }
-      }
+      - cbv beta. intros. simp.
+        unfold Spilling.related in *. simp.
+        match goal with
+        | H: (_ * _)%sep m' |- _ => rename H into HM
+        end.
+        unfold word_array in HM.
+        seprewrite_in @cast_word_array_to_bytes HM.
+        edestruct ll_mem_to_hl_mem with (mL := m') as (mStack' & HM' & D & Ab'). {
+          simpl in *. (* PARAMRECORDS *) ecancel_assumption.
+        }
+        eexists _, _. ssplit.
+        + match goal with
+          | |- ?G => let T := type of Ab' in replace G with T; [exact Ab'|clear Ab']
+          end.
+          f_equal.
+          rewrite List.length_flat_map with (n := Z.to_nat bytes_per_word).
+          * simpl_addrs. rewrite !Z2Nat.id by blia. simpl in *. (* PARAMRECORDS *) blia.
+          * clear. intros. rewrite HList.tuple.length_to_list. reflexivity.
+        + rewrite sep_emp_r in HM'. apply proj1 in HM'. subst m'. unfold map.split.
+          split. 1: reflexivity. exact D.
+        + assumption.
+    Qed.
 
-      (* low-level post holds at the end: *)
-      cbv beta.
-      unfold upper_related, compose_related, flattening_related, renaming_related, spilling_related,
-             Spilling.related. cbn.
-      intros. simp.
-      match goal with
-      | H: (_ * _)%sep m2 |- _ => rename H into HM2
-      end.
-      unfold word_array in HM2.
-      seprewrite_in @cast_word_array_to_bytes HM2.
-      edestruct ll_mem_to_hl_mem with (mL := m2) as (mStack' & HM2' & D & Ab'). {
-        simpl in *. (* PARAMRECORDS *) ecancel_assumption.
-      }
-      eexists _, _. ssplit.
-      - Search fpval. (* can't prove fpval = a because fpval is existentially quantified in
-                         spilling_related before calling Spilling.related *)
+    Definition upper_compiler :=
+      compose_phases flatten_functions (compose_phases rename_functions spill_functions).
 
-    Abort.
-
-    (* Note: Spilling.related has an "exists stackwords", because after spilling, all commands are
-       always wrapped inside a stackalloc block, but if we make the command just an argument-less
-       function call, we can set stackwords to the empty list and simplify "upper_related" *)
-
+    Lemma upper_compiler_correct: @phase_correct SrcLang FlatLangZ upper_compiler.
+    Proof.
+      unfold upper_compiler.
+      eapply (@compose_phases_correct SrcLang FlatLangStr FlatLangZ). 1: exact flattening_correct.
+      eapply (@compose_phases_correct FlatLangStr FlatLangZ FlatLangZ). 1: exact renaming_correct.
+      exact spilling_correct.
+    Qed.
 
   End WithMoreParams.
 End WithWordAndMem.
