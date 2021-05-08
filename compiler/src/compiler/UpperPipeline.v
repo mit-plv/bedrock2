@@ -129,19 +129,14 @@ Section WithWordAndMem.
       eapply intersect; eassumption.
     Qed.
 
-    Lemma flattening_correct: @phase_correct SrcLang FlatLangStr flatten_functions.
+    Lemma flattening_correct: @phase_correct SrcLang FlatLangStr (flatten_functions (2^10)).
     Proof.
       unfold phase_correct. intros.
 
       pose proof H as GF.
       unfold flatten_functions in GF.
       eapply map.map_all_values_fw in GF. 5: eassumption. 2-4: typeclasses eauto.
-      simp. unfold flatten_function in GFp0.
-      (* simp would also unfold freshNameGenState *)
-      apply Option.eq_of_eq_Some in GFp0. destruct v2 as ((? & ?) & ?).
-      eapply pair_equal_spec in GFp0. destruct GFp0 as (GFp0 & ?).
-      eapply pair_equal_spec in GFp0. destruct GFp0 as (GFp0 & ?).
-      subst.
+      unfold flatten_function in GF. simp.
 
       eexists. split. 1: eassumption.
       intros.
@@ -157,7 +152,7 @@ Section WithWordAndMem.
           reflexivity.
         + intros x k A. rewrite map.get_empty in A. discriminate.
         + unfold map.undef_on, map.agree_on. intros. reflexivity.
-        + eapply freshNameGenState_disjoint.
+        + eapply @freshNameGenState_disjoint.
       - simpl. intros. simp. assumption.
     Qed.
 
@@ -313,7 +308,7 @@ Section WithWordAndMem.
     Qed.
 
     Definition upper_compiler :=
-      compose_phases flatten_functions (compose_phases rename_functions_new spill_functions).
+      compose_phases (flatten_functions (2^10)) (compose_phases rename_functions_new spill_functions).
 
     Lemma upper_compiler_correct: @phase_correct SrcLang FlatLangZ upper_compiler.
     Proof.

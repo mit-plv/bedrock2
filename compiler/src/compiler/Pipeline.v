@@ -191,7 +191,7 @@ Section Pipeline1.
             (e1 : FlattenExpr.ExprImp_env)
             (e2 : FlattenExpr.FlatImp_env)
             (funname : string)
-            (Hf: flatten_functions e1 = Some e2).
+            (Hf: flatten_functions (2^10) e1 = Some e2).
     Let c2 := (@FlatImp.SSeq String.string FlatImp.SSkip (FlatImp.SCall [] funname [])).
     Let c3 := (@FlatImp.SSeq Z FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])).
     Context (av' : Z) (r' : string_keyed_map Z)
@@ -205,7 +205,7 @@ Section Pipeline1.
             (GEI: good_e_impl prog (FlatToRiscvDef.build_fun_pos_env prog)).
 
     Definition flattenSim: simulation _ _ _ :=
-      FlattenExprSimulation.flattenExprSim e1 e2 funname Hf.
+      FlattenExprSimulation.flattenExprSim (2^10) e1 e2 funname Hf.
     Definition regAllocSim: simulation _ _ _ :=
       renameSim (@ext_spec p)
                 e2 prog c2 c3 av' r' ER Ren.
@@ -704,7 +704,7 @@ Section Pipeline1.
         end.
         simp. destruct v1 as [ [argnames' retnames'] body' ].
         match goal with
-        | H: flatten_functions _ = _ |- _ => rename H into FlattenEq
+        | H: flatten_functions _ _ = _ |- _ => rename H into FlattenEq
         end.
         unfold flatten_functions in FlattenEq.
         match goal with
