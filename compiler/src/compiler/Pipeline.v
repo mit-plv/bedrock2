@@ -152,7 +152,7 @@ Section Pipeline1.
 
   Definition flattenPhase(prog: source_env): option flat_env := flatten_functions (2^10) prog.
   Definition renamePhase(prog: flat_env): option renamed_env :=
-    rename_functions prog.
+    rename_functions_old prog.
 
   (* Note: we could also track code size from the source program all the way to the target
      program, and a lot of infrastructure is already there, will do once/if we want to get
@@ -191,11 +191,11 @@ Section Pipeline1.
             (e1 : FlattenExpr.ExprImp_env)
             (e2 : FlattenExpr.FlatImp_env)
             (funname : string)
-            (Hf: flatten_functions (2 ^ 10) e1 = Some e2).
+            (Hf: flatten_functions (2^10) e1 = Some e2).
     Let c2 := (@FlatImp.SSeq String.string FlatImp.SSkip (FlatImp.SCall [] funname [])).
     Let c3 := (@FlatImp.SSeq Z FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])).
     Context (av' : Z) (r' : string_keyed_map Z)
-            (ER: envs_related e2 prog)
+            (ER: envs_related_old e2 prog)
             (Ren: rename map.empty c2 lowest_available_impvar = Some (r', c3, av'))
             (H_p_call: word.unsigned p_call mod 4 = 0)
             (H_p_functions: word.unsigned p_functions mod 4 = 0)
@@ -220,13 +220,13 @@ Section Pipeline1.
   End Sim.
 
   Lemma rename_fun_valid: forall argnames retnames body impl',
-      rename_fun (argnames, retnames, body) = Some impl' ->
+      rename_fun_old (argnames, retnames, body) = Some impl' ->
       NoDup argnames ->
       NoDup retnames ->
       FlatImp.stmt_size body < 2 ^ 10 ->
       FlatToRiscvDef.valid_FlatImp_fun impl'.
   Proof.
-    unfold rename_fun, FlatToRiscvDef.valid_FlatImp_fun.
+    unfold rename_fun_old, FlatToRiscvDef.valid_FlatImp_fun.
     intros.
     simp.
     eapply rename_binds_props in E; cycle 1.
@@ -651,9 +651,9 @@ Section Pipeline1.
           eassumption.
       }
       { eassumption. }
-      { unfold envs_related.
+      { unfold envs_related_old.
         intros f [ [argnames resnames] body1 ] G.
-        unfold rename_functions in *.
+        unfold rename_functions_old in *.
         eapply map.map_all_values_fw.
         5: exact G. 4: eassumption.
         - eapply String.eqb_spec.
@@ -667,7 +667,7 @@ Section Pipeline1.
         destruct (map.map_all_values_fw _ _ _ _ E _ _ H1) as [ [ [args' rets'] fbody' ] [ F G ] ].
         unfold flatten_function in F. simp.
         epose proof (map.map_all_values_fw _ _ _ _ E0 _ _ G) as [ [ [args' rets'] fbody' ] [ F G' ] ].
-        unfold rename_fun in F. simp.
+        unfold rename_fun_old in F. simp.
         eapply compile_funs_nonnil; eassumption.
       }
       { unfold riscvPhase in *. simp. exact GetPos. }
@@ -682,7 +682,7 @@ Section Pipeline1.
         destruct (map.map_all_values_fw _ _ _ _ E _ _ H1) as [ [ [args' rets'] fbody' ] [ F G ] ].
         unfold flatten_function in F. simp.
         epose proof (map.map_all_values_fw _ _ _ _ E0 _ _ G) as [ [ [args' rets'] fbody' ] [ F G' ] ].
-        unfold rename_fun in F. simp.
+        unfold rename_fun_old in F. simp.
         apply_in_hyps rename_binds_preserves_length.
         destruct rets'; [|discriminate].
         destruct args'; [|discriminate].
@@ -696,9 +696,9 @@ Section Pipeline1.
         intros.
         simpl in *.
         match goal with
-        | H: rename_functions _ = _ |- _ => rename H into RenameEq
+        | H: rename_functions_old _ = _ |- _ => rename H into RenameEq
         end.
-        unfold rename_functions in RenameEq.
+        unfold rename_functions_old in RenameEq.
         match goal with
         | H: _ |- _ => unshelve epose proof (map.map_all_values_bw _ _ _ _ RenameEq _ _ H)
         end.
@@ -721,7 +721,7 @@ Section Pipeline1.
         destruct V.
         ssplit.
         - eapply rename_fun_valid; try eassumption.
-          unfold ExprImp2FlatImp in *.
+          unfold rename_fun_old in *.
           simp.
           repeat match goal with
                  | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
@@ -834,7 +834,7 @@ Section Pipeline1.
         { assert (0 < bytes_per_word). { (* TODO: deduplicate *)
             unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
           }
-          rewrite (length_flat_map _ (Z.to_nat bytes_per_word)).
+          rewrite (List.length_flat_map _ (Z.to_nat bytes_per_word)).
           { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H2p0p1p8p0.
             rewrite <-H2p0p1p8p0, <-Z_div_exact_2; try trivial.
             { eapply Z.lt_gt; assumption. }

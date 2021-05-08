@@ -65,11 +65,11 @@ def main():
         assert line.rstrip() == "Axioms:"
         for line in fp:
             line = line.rstrip()
-            m = re.match("^  ( |:) .*", line)
+            m = re.match("^ .*", line)
             if m:
                 assert not is_first
             else:
-                m = re.match("^ used in .*", line)
+                m = re.match("^used in .*", line)
                 if m:
                     assert not is_first
                     used_count += 1

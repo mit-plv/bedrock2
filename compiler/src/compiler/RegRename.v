@@ -123,11 +123,21 @@ Section RegAlloc.
   Definition rename_stmt(m: src2imp)(s: stmt)(av: impvar): option stmt' :=
     bind_opt (_, s', _) <- rename m s av; Some s'.
 
-  (* 0 is the constant 0, 1 is the return address register, 2 is the stack pointer, 3 onward is available *)
-  Definition lowest_available_impvar := 3.
+  (* 0 is the constant 0, 1 is the return address register, 2 is the stack pointer,
+     3 and 4 are temps for spilling, 5 is a framepointer for the spillling frame, 6 onward is available *)
+  Definition lowest_available_impvar := 6.
+
+  Definition rename_fun_new(F: list srcvar * list srcvar * stmt):
+    option (list impvar * list impvar * stmt') :=
+    let '(argnames, retnames, body) := F in
+    bind_opt (m, argnames', av) <- rename_binds map.empty argnames lowest_available_impvar;
+    bind_opt (m, retnames', av) <- rename_binds m retnames av;
+    bind_opt (_, body', av) <- rename m body av;
+    Some (argnames', retnames', body').
+
   Definition lowest_nonregister := 32.
 
-  Definition rename_fun(F: list srcvar * list srcvar * stmt):
+  Definition rename_fun_old(F: list srcvar * list srcvar * stmt):
     option (list impvar * list impvar * stmt') :=
     let '(argnames, retnames, body) := F in
     bind_opt (m, argnames', av) <- rename_binds map.empty argnames lowest_available_impvar;
@@ -159,8 +169,11 @@ Section RegAlloc.
   |}).
   Defined.
 
-  Definition rename_functions: srcEnv -> option impEnv :=
-    map.map_all_values rename_fun.
+  Definition rename_functions_old: srcEnv -> option impEnv :=
+    map.map_all_values rename_fun_old.
+
+  Definition rename_functions_new: srcEnv -> option impEnv :=
+    map.map_all_values rename_fun_new.
 
   (* Should lH and m have the same domain?
      - lH could have fewer vars in domain because we didn't pass through one branch of the if
@@ -243,11 +256,18 @@ Section RegAlloc.
       edestruct IHsrcnames; eauto using states_compat_put_raw.
   Qed.
 
-  Definition envs_related(e1: srcEnv)(e2: impEnv): Prop :=
+  Definition envs_related_old(e1: srcEnv)(e2: impEnv): Prop :=
     forall f impl1,
       map.get e1 f = Some impl1 ->
       exists impl2,
-        rename_fun impl1 = Some impl2 /\
+        rename_fun_old impl1 = Some impl2 /\
+        map.get e2 f = Some impl2.
+
+  Definition envs_related_new(e1: srcEnv)(e2: impEnv): Prop :=
+    forall f impl1,
+      map.get e1 f = Some impl1 ->
+      exists impl2,
+        rename_fun_new impl1 = Some impl2 /\
         map.get e2 f = Some impl2.
 
   Lemma rename_assignment_lhs_get{r x av r' i av'}:
@@ -704,8 +724,8 @@ Section RegAlloc.
     congruence.
   Qed.
 
-  Lemma rename_correct: forall eH eL,
-      envs_related eH eL ->
+  Lemma rename_correct_new: forall eH eL,
+      envs_related_new eH eL ->
       forall sH t m lH mc post,
       @exec _ srcSemanticsParams eH sH t m lH mc post ->
       forall lL r r' av av' sL,
@@ -747,10 +767,10 @@ Section RegAlloc.
         eauto 10.
     - (* @exec.call *)
       rename l into lH.
-      unfold envs_related in *.
+      unfold envs_related_new in *.
       edestruct H as [p R]; [eassumption|].
       destruct p as [[params' rets'] body'].
-      unfold rename_fun in R.
+      unfold rename_fun_new in R.
       simp.
       apply_in_hyps @rename_binds_props.
       pose proof E1 as E1'.
@@ -898,6 +918,25 @@ Section RegAlloc.
         eapply IH2; try eassumption.
   Qed.
 
+  Lemma rename_correct_old: forall eH eL,
+      envs_related_old eH eL ->
+      forall sH t m lH mc post,
+      @exec _ srcSemanticsParams eH sH t m lH mc post ->
+      forall lL r r' av av' sL,
+      map.injective r ->
+      dom_bound r av ->
+      rename r sH av = Some (r', sL, av') ->
+      states_compat lH r lL ->
+      @exec _ impSemanticsParams eL sL t m lL mc (fun t' m' lL' mc' =>
+        exists lH', states_compat lH' r' lL' /\
+                    post t' m' lH' mc').
+  Proof.
+    intros. eapply rename_correct_new; try eassumption.
+    unfold envs_related_new, envs_related_old in *.
+    intros. specialize H with (1 := H5). unfold rename_fun_new, rename_fun_old in *. simp.
+    eauto.
+  Qed.
+
   Definition related(done: bool):
     @FlatImp.SimState _ srcSemanticsParams -> @FlatImp.SimState _ impSemanticsParams -> Prop :=
     fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
@@ -909,7 +948,7 @@ Section RegAlloc.
   Lemma renameSim
         (e1: srcEnv)(e2: impEnv)(c1: stmt)(c2: stmt'):
     forall av' r',
-      envs_related e1 e2 ->
+      envs_related_old e1 e2 ->
       rename map.empty c1 lowest_available_impvar = Some (r', c2, av') ->
       simulation (@FlatImp.SimExec _ srcSemanticsParams e1 c1)
                  (@FlatImp.SimExec _ impSemanticsParams e2 c2) related.
@@ -928,7 +967,7 @@ Section RegAlloc.
     simp.
     apply_in_hyps @invert_NoDup_app. simp.
     eapply exec.weaken.
-    - eapply rename_correct.
+    - eapply rename_correct_old.
       1: eassumption.
       1: eassumption.
       3: {

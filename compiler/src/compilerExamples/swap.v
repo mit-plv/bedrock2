@@ -4,7 +4,7 @@ Require bedrock2Examples.Demos.
 Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
-Require Import compiler.PipelineWithRename.
+Require Import compiler.Pipeline.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Words32Naive.
 Require Import riscv.Utility.DefaultMemImpl32.
@@ -24,6 +24,7 @@ Require Import riscv.Platform.MetricRiscvMachine.
 Require bedrock2.Hexdump.
 Require Import bedrock2Examples.swap.
 Require Import bedrock2Examples.stackalloc.
+Require Import compilerExamples.SpillingTests.
 
 Open Scope Z_scope.
 Open Scope string_scope.
@@ -69,7 +70,7 @@ Definition main_stackalloc :=
   ("main", ([]: list String.string, []: list String.string,
      cmd.stackalloc "x" 4 (cmd.stackalloc "y" 4 (cmd.call [] "swap_swap" [expr.var "x"; expr.var "y"])))).
 
-Definition allFuns: list Syntax.func := [swap; swap_swap; main_stackalloc; stacknondet; stackdisj].
+Definition allFuns: list Syntax.func := [swap; swap_swap; main_stackalloc; stacknondet; stackdisj(*; long1*)].
 
 Definition e := map.putmany_of_list allFuns map.empty.
 

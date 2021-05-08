@@ -215,8 +215,9 @@ Section FlattenExpr1.
     Definition flatten_function:
       list String.string * list String.string * Syntax.cmd -> option (list String.string * list String.string * FlatImp.stmt string) :=
       fun '(argnames, retnames, body) =>
-        let avoid := ListSet.list_union String.eqb (ExprImp.allVars_cmd_as_list body)
-                                                    (ListSet.list_union String.eqb argnames retnames) in
+        let avoid := ListSet.list_union String.eqb
+                                        (ListSet.list_union String.eqb argnames retnames)
+                                        (ExprImp.allVars_cmd_as_list body) in
         let body' := fst (flattenStmt (freshNameGenState avoid) body) in
         if FlatImp.stmt_size body' <? max_size then Some (argnames, retnames, body') else None.
 

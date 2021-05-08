@@ -7,7 +7,7 @@ Require Import bedrock2.Map.SeparationLogic.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.Simp.
 Require Import compiler.FlatToRiscvFunctions.
-Require Import compiler.PipelineWithRename.
+Require Import compiler.Pipeline.
 Require Import compiler.ExprImpEventLoopSpec.
 Require Import compiler.ToplevelLoop.
 
