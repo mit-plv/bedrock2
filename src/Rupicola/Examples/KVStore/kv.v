@@ -169,7 +169,7 @@ Program Fixpoint ranged_for_nat {A}
          ranged_for_nat (from + S (pred step)) to step body a0
        else a0.
 Next Obligation.
-  omega.
+  lia.
 Defined.
 
 Definition ranged_for {A}
