@@ -1750,7 +1750,9 @@ Section Equiv.
       all: match goal with
            | [H: nonmem_load _ _ _ _ _ |- _] =>
              let Hpost := fresh "H" in
-             destruct H as [? [? Hpost]]; specialize (Hpost (split _ (wordToZ ldVal)))
+             destruct H as [? [? [[? ?] Hpost]]];
+               cbv [MMIOReadOK FE310_mmio] in Hpost;
+               specialize (Hpost (split _ (wordToZ ldVal)) ltac:(trivial))
            end.
       all: try match goal with
                | [H: isMMIOAligned _ _ |- _] =>
@@ -2135,13 +2137,14 @@ Section Equiv.
 
       all: match goal with
            | [H: nonmem_load _ _ _ _ _ |- _] =>
-             let Hpost := fresh "H" in destruct H as [? [? Hpost]]
+             let Hpost := fresh "H" in destruct H as [? [? [[? ?] Hpost]]];
+               cbv [MMIOReadOK FE310_mmio] in Hpost;
+               specialize (Hpost (split _ (wordToZ (x9 Fin.F1))) ltac:(trivial))
            end.
       all: try match goal with
                | [H: isMMIOAligned _ _ |- _] =>
                  exfalso; clear -H; destruct H as [? ?]; discriminate
                end.
-      specialize (H14 (split 4 (wordToZ (x9 Fin.F1)))).
 
       rt.
       eexists _, _.
