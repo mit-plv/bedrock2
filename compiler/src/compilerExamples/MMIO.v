@@ -541,6 +541,8 @@ Section MMIO1.
       cbv [MinimalMMIO.nonmem_load FE310_mmio].
       split; [trivial|].
       split; [red; auto|].
+      split; [ cbv [MMIOReadOK];
+               exists (LittleEndian.split 4 0); trivial |].
       intros.
 
       repeat fwd.
@@ -573,7 +575,10 @@ Section MMIO1.
       }
       split. {
         intros.
-        rewrite map.get_put_dec in H.
+        lazymatch goal with
+        | H : context [map.get _ ?x] |- _ <= ?x < _ =>
+          rewrite map.get_put_dec in H
+        end.
         destruct_one_match_hyp. 1: blia. eauto.
       }
       split. {
