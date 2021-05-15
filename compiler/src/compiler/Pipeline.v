@@ -150,7 +150,7 @@ Section Pipeline1.
   Local Notation flat_env := (@string_keyed_map p (list string * list string * FlatImp.stmt string)).
   Local Notation renamed_env := (@string_keyed_map p (list Z * list Z * FlatImp.stmt Z)).
 
-  Definition flattenPhase(prog: source_env): option flat_env := flatten_functions (2^10) prog.
+  Definition flattenPhase(prog: source_env): option flat_env := flatten_functions prog.
   Definition renamePhase(prog: flat_env): option renamed_env :=
     rename_functions_old prog.
 
@@ -191,7 +191,7 @@ Section Pipeline1.
             (e1 : FlattenExpr.ExprImp_env)
             (e2 : FlattenExpr.FlatImp_env)
             (funname : string)
-            (Hf: flatten_functions (2^10) e1 = Some e2).
+            (Hf: flatten_functions e1 = Some e2).
     Let c2 := (@FlatImp.SSeq String.string FlatImp.SSkip (FlatImp.SCall [] funname [])).
     Let c3 := (@FlatImp.SSeq Z FlatImp.SSkip (FlatImp.SCall [] f_entry_name [])).
     Context (av' : Z) (r' : string_keyed_map Z)
@@ -205,7 +205,7 @@ Section Pipeline1.
             (GEI: good_e_impl prog (FlatToRiscvDef.build_fun_pos_env prog)).
 
     Definition flattenSim: simulation _ _ _ :=
-      FlattenExprSimulation.flattenExprSim (2^10) e1 e2 funname Hf.
+      FlattenExprSimulation.flattenExprSim e1 e2 funname Hf.
     Definition regAllocSim: simulation _ _ _ :=
       renameSim (@ext_spec p)
                 e2 prog c2 c3 av' r' ER Ren.
@@ -223,7 +223,6 @@ Section Pipeline1.
       rename_fun_old (argnames, retnames, body) = Some impl' ->
       NoDup argnames ->
       NoDup retnames ->
-      FlatImp.stmt_size body < 2 ^ 10 ->
       FlatToRiscvDef.valid_FlatImp_fun impl'.
   Proof.
     unfold rename_fun_old, FlatToRiscvDef.valid_FlatImp_fun.
@@ -701,7 +700,7 @@ Section Pipeline1.
         end.
         simp. destruct v1 as [ [argnames' retnames'] body' ].
         match goal with
-        | H: flatten_functions _ _ = _ |- _ => rename H into FlattenEq
+        | H: flatten_functions _ = _ |- _ => rename H into FlattenEq
         end.
         unfold flatten_functions in FlattenEq.
         match goal with
@@ -718,12 +717,6 @@ Section Pipeline1.
         destruct V.
         ssplit.
         - eapply rename_fun_valid; try eassumption.
-          unfold rename_fun_old in *.
-          simp.
-          repeat match goal with
-                 | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
-                 end.
-          assumption.
         - unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.build_fun_pos_env.
           pose proof (get_compile_funs_pos r0) as P.
           destruct (FlatToRiscvDef.compile_funs map.empty r0) as [ insts posmap ] eqn: F.

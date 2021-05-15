@@ -129,7 +129,7 @@ Section WithWordAndMem.
       eapply intersect; eassumption.
     Qed.
 
-    Lemma flattening_correct: @phase_correct SrcLang FlatLangStr (flatten_functions (2^10)).
+    Lemma flattening_correct: @phase_correct SrcLang FlatLangStr flatten_functions.
     Proof.
       unfold phase_correct. intros.
 
@@ -308,7 +308,7 @@ Section WithWordAndMem.
     Qed.
 
     Definition upper_compiler :=
-      compose_phases (flatten_functions (2^10)) (compose_phases rename_functions_new spill_functions).
+      compose_phases flatten_functions (compose_phases rename_functions_new spill_functions).
 
     Lemma upper_compiler_correct: @phase_correct SrcLang FlatLangZ upper_compiler.
     Proof.

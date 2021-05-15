@@ -202,28 +202,19 @@ Section FlattenExpr1.
     | Syntax.cmd.interact binds a args => flattenInteract ngs binds a args
     end.
 
-  Definition ExprImp2FlatImp0(s: Syntax.cmd): FlatImp.stmt string :=
+  Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt string :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
 
-  Section WithMaxSize.
-    Context (max_size: Z).
+  Definition flatten_function:
+    list String.string * list String.string * Syntax.cmd -> option (list String.string * list String.string * FlatImp.stmt string) :=
+    fun '(argnames, retnames, body) =>
+      let avoid := ListSet.list_union String.eqb
+                                      (ListSet.list_union String.eqb argnames retnames)
+                                      (ExprImp.allVars_cmd_as_list body) in
+      let body' := fst (flattenStmt (freshNameGenState avoid) body) in
+      Some (argnames, retnames, body').
 
-    Definition ExprImp2FlatImp(s: Syntax.cmd): option (FlatImp.stmt string) :=
-      let res := ExprImp2FlatImp0 s in
-      if FlatImp.stmt_size res <? max_size then Some res else None.
-
-    Definition flatten_function:
-      list String.string * list String.string * Syntax.cmd -> option (list String.string * list String.string * FlatImp.stmt string) :=
-      fun '(argnames, retnames, body) =>
-        let avoid := ListSet.list_union String.eqb
-                                        (ListSet.list_union String.eqb argnames retnames)
-                                        (ExprImp.allVars_cmd_as_list body) in
-        let body' := fst (flattenStmt (freshNameGenState avoid) body) in
-        if FlatImp.stmt_size body' <? max_size then Some (argnames, retnames, body') else None.
-
-    Definition flatten_functions: ExprImp_env -> option FlatImp_env :=
-      map.map_all_values flatten_function.
-
-  End WithMaxSize.
+  Definition flatten_functions: ExprImp_env -> option FlatImp_env :=
+    map.map_all_values flatten_function.
 
 End FlattenExpr1.
