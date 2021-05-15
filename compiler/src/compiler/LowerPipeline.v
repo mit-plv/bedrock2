@@ -357,8 +357,6 @@ Section LowerPipeline.
 
   Open Scope ilist_scope.
 
-  Axiom TODO: False.
-
   Definition machine_ok(p_functions: word)(f_entry_rel_pos: Z)(stack_start stack_pastend: word)
              (finstrs: list Instruction)
              (p_call pc: word)(mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
@@ -569,16 +567,18 @@ Section LowerPipeline.
         cbn [dframe xframe program_base e_pos e_impl p_insts insts].
         change (if width =? 32 then RV32I else RV64I) with iset.
         wwcancel.
-        case TODO.
-        (*
         cancel_seps_at_indices 0%nat 1%nat. {
-          cbn [rem_stackwords rem_framewords ghostConsts p_sp].
-          replace (word.sub (stack_pastend ml) (word.of_Z (bytes_per_word *
-                      (word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word))))
-            with (stack_start ml). 2: {
+          unfold ptsto_bytes.
+          match goal with
+          | |- array _ _ ?a _ = array _ _ ?a' _ => replace a with a'
+          end.
+          2: {
+            match goal with
+            | H: context[stack_trash] |- _ => rewrite <- H
+            end.
             rewrite <- Z_div_exact_2; cycle 1. {
-              unfold bytes_per_word. clear -h. simpl.
-              destruct width_cases as [E | E]; rewrite E; reflexivity.
+              unfold bytes_per_word. simpl.
+              destruct width_cases as [Ew | Ew]; rewrite Ew; reflexivity.
             }
             {
               apply stack_length_divisible.
@@ -594,12 +594,10 @@ Section LowerPipeline.
         unfold ptsto_bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
         simpl.
         wwcancel.
-        epose proof (functions_to_program ml _ r0 instrs) as P.
+        pose proof functions_to_program as P. specialize P with (1 := RP).
         cbn [seps].
         rewrite <- P; clear P.
-        * wwcancel. reflexivity.
-        * eassumption.
-        *)
+        wwcancel.
       + unfold machine_ok in *. simp. simpl.
         eapply rearrange_footpr_subset. 1: eassumption.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
