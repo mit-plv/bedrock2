@@ -372,22 +372,7 @@ Ltac simpl_g_get :=
   cbn [p_sp rem_framewords rem_stackwords p_insts insts program_base e_pos e_impl
             dframe xframe] in *.
 
-Ltac solve_stmt_not_too_big :=
-  lazymatch goal with
-  | H: stmt_not_too_big _ |- stmt_not_too_big _ =>
-    clear -H;
-    unfold stmt_not_too_big in *;
-    change (2 ^ 9)%Z with 512%Z in *;
-    simpl stmt_size in H;
-    repeat match goal with
-           | s: stmt ?varname |- _ => unique pose proof (stmt_size_nonneg s)
-           end;
-    match goal with
-    | |- ?SZ _ _ < _ => (* COQBUG https://github.com/coq/coq/issues/9268 *)
-      change @stmt_size with SZ in *
-    end;
-    blia
-  end.
+Ltac solve_stmt_not_too_big := exact I.
 
 Ltac simpl_bools :=
   repeat match goal with

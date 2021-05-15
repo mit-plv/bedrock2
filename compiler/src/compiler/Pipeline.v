@@ -302,10 +302,7 @@ Section Pipeline1.
           -- rewrite map.get_empty in C. discriminate C.
     - eapply map.getmany_of_list_injective_NoDup. 3: eassumption. all: eassumption.
     - eapply map.getmany_of_list_injective_NoDup. 3: eassumption. all: eassumption.
-    - unfold FlatToRiscvDef.stmt_not_too_big.
-      pose proof (rename_preserves_stmt_size _ _ _ _ _ _ E1') as M.
-      rewrite <- M.
-      assumption.
+    - exact I.
   Qed.
 
   Local Instance map_ok': @map.ok (@word (@W p)) Init.Byte.byte (@mem p) := mem_ok.

@@ -55,8 +55,10 @@ Section FlatToRiscv1.
      relative jump length. One of them is used for the sign, and the other
      11 encode the jump length as a multiple of 2, so jump lengths have to
      be < 2^12 bytes, i.e. < 2^10 instructions, so this bound is tight,
-     unless we start using multi-instruction jumps. *)
-  Definition stmt_not_too_big(s: stmt Z): Prop := stmt_size s < 2 ^ 10.
+     unless we start using multi-instruction jumps.
+     But now we don't need this anymore because we just validate after compiling
+     that the immediates didn't get too big. *)
+  Definition stmt_not_too_big(s: stmt Z): Prop := True.
 
   Definition valid_registers_bcond: bcond Z -> Prop := ForallVars_bcond valid_register.
   Definition valid_FlatImp_vars_bcond: bcond Z -> Prop := ForallVars_bcond valid_FlatImp_var.
