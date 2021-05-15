@@ -1,4 +1,5 @@
-Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Semantics bedrock2.Array coqutil.Word.LittleEndian.
+Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Array coqutil.Word.LittleEndian.
+Require Import bedrock2.Memory.
 Require Import Coq.Lists.List Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface coqutil.Map.Interface. (* coercions word and rep *)
 Require Import coqutil.Word.Properties.
