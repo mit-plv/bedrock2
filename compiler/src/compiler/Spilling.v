@@ -521,7 +521,6 @@ Section Spilling.
 
   Definition spill_fun: list Z * list Z * stmt -> option (list Z * list Z * stmt) :=
     fun '(argnames, resnames, body) =>
-      let body' := spill_fbody body in
       (* The first two lines of this test are very likely to succeed,
          because it suffices that 5 + len argnames + len resnames < 32,
          because reg rename assigns the lowest argnames and resnames and
@@ -530,9 +529,10 @@ Section Spilling.
          use variables introduced too late. *)
       if List.forallb (fun x => Z.ltb fp x && Z.ltb x 32) argnames &&
          List.forallb (fun x => Z.ltb fp x && Z.ltb x 32) resnames &&
-         forallb_vars_stmt (fun x => Z.ltb 2 x && Z.ltb x 32) (* upper bound should hold by construction *)
-                           (fun x => Z.ltb 2 x && Z.ltb x 32) body' (* upper bound might not hold *)
-      then Some (argnames, resnames, body')
+         forallb_vars_stmt (fun x => Z.ltb fp x) (* allowing >= 32 here is the whole point of spilling *)
+                           (fun x => Z.ltb fp x && Z.ltb x 32) body (* allowing >=32 here (for calls) is not
+                                                                       implemented yet *)
+      then Some (argnames, resnames, spill_fbody body)
       else None.
 
   Context {locals: map.map Z word}.
