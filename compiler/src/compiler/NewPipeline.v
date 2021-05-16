@@ -150,6 +150,37 @@ Section Pipeline1.
 
   Axiom TODO: False.
 
+  Ltac debool :=
+    repeat match goal with
+           | H: (_ && _)%bool = true |- _ => apply Bool.andb_true_iff in H
+           | H: _ /\ _ |- _ => destruct H as [? H]
+           | H: _ <? _ = true |- _ => eapply Z.ltb_lt in H
+           end.
+
+  Lemma spill_functions_valid_FlatImp_fun: forall funs funs',
+      spill_functions funs = Some funs' ->
+      (forall f argnames retnames body,
+          map.get funs f = Some (argnames, retnames, body) ->
+          NoDup argnames /\ NoDup retnames (* other conditions are checked computationally *)) ->
+      forall f fun_impl,
+      map.get funs' f = Some fun_impl ->
+      FlatToRiscvDef.valid_FlatImp_fun fun_impl.
+  Proof.
+    intros. unfold spill_functions in *.
+    eapply map.map_all_values_bw in H. 5: eassumption. all: try typeclasses eauto.
+    unfold spill_fun in H. simp.
+    unfold FlatToRiscvDef.valid_FlatImp_fun, FlatToRiscvDef.valid_FlatImp_var,
+       FlatToRiscvDef.valid_FlatImp_vars, FlatToRiscvDef.stmt_not_too_big,
+       FlatToRiscvDef.valid_FlatImp_var, FlatImp.ForallVars_stmt, fp in *.
+    debool.
+    ssplit.
+    - eapply List.forallb_to_Forall. 2: eassumption. cbv beta.
+      intros. debool. blia.
+    - eapply List.forallb_to_Forall. 2: eassumption. cbv beta.
+      intros. debool. blia.
+    - eapply FlatImp.forallb_vars_stmt_correct. 3: eassumption.
+  Abort.
+
   Lemma compiler_correct: forall
       (ml: MemoryLayout)
       (mlOk: MemoryLayoutOk ml)
@@ -184,7 +215,11 @@ Section Pipeline1.
     eapply @flat_to_riscv_correct; try typeclasses eauto; try eassumption.
     { exact compile_ext_call_length_ignores_positions. }
     { exact compile_ext_call_correct. }
-    { case TODO. (* something rename_fun_valid *) }
+    { unfold upper_compiler, compose_phases in *. simp.
+      (* spill_stmt_valid_vars
+         valid_vars_src m s -> valid_vars_tgt
+         not eapply rename_fun_valid. *)
+      case TODO. }
     eapply Sim; clear Sim. eassumption.
   Qed.
 
