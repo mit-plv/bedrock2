@@ -196,13 +196,13 @@ Section WithWordAndMem.
       destruct E as [_ Fs].
       eapply forallb_vars_stmt_correct in Fs. 2: {
         intros x. split; intros F.
-        - rewrite ?Z.ltb_lt in F. exact F.
-        - apply Z.ltb_lt. assumption.
+        - apply Bool.andb_true_iff in F. rewrite ?Z.ltb_lt in F. exact F.
+        - cbv beta in F. apply Bool.andb_true_iff. rewrite ?Z.ltb_lt. assumption.
       }
       2: {
         intros x. split; intros F.
         - rewrite Bool.andb_true_iff in F. rewrite ?Z.ltb_lt in F. exact F.
-        - apply  Bool.andb_true_iff. rewrite ?Z.ltb_lt. assumption.
+        - apply Bool.andb_true_iff. rewrite ?Z.ltb_lt. assumption.
       }
 
       eexists. split. 1: eassumption. intros.
@@ -240,8 +240,8 @@ Section WithWordAndMem.
           }
           eapply forallb_vars_stmt_correct in B3. 2: {
             intros x. split; intros F.
-            - rewrite ?Z.ltb_lt in F. exact F.
-            - apply Z.ltb_lt. assumption.
+            - rewrite Bool.andb_true_iff in F. rewrite ?Z.ltb_lt in F. exact F.
+            - apply  Bool.andb_true_iff. rewrite ?Z.ltb_lt. assumption.
           }
           2: {
             intros x. split; intros F.
