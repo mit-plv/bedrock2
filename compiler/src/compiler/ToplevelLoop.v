@@ -50,6 +50,7 @@ Require Import FunctionalExtensionality.
 Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Require Import compiler.Pipeline.
+Require Import compiler.LowerPipeline.
 Require Import compiler.ExprImpEventLoopSpec.
 
 Existing Instance riscv.Spec.Machine.DefaultRiscvState.
@@ -96,20 +97,22 @@ Section Pipeline1.
   (* 5) Code of the compiled functions *)
   Let functions_pos := word.add backjump_pos (word.of_Z 4).
 
-  Definition compile_prog(prog: source_env): option (list Instruction * funname_env Z) :=
-    'Some (functions_insts, positions) <- @compile p ml prog;
+  Definition compile_prog(prog: source_env): option (list Instruction * funname_env Z * Z) :=
+    'Some (functions_insts, positions, required_stack_space) <- @compile p prog;
     'Some init_fun_pos <- map.get positions "init"%string;
     'Some loop_fun_pos <- map.get positions "loop"%string;
     let to_prepend := init_sp_insts ++ init_insts init_fun_pos ++ loop_insts loop_fun_pos ++ backjump_insts in
-    Some (to_prepend ++ functions_insts, positions).
+    Some (to_prepend ++ functions_insts, positions, required_stack_space).
 
   Context (spec: @ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
   (* Holds each time before executing the loop body *)
   Definition ll_good(done: bool)(mach: MetricRiscvMachine): Prop :=
-    exists (prog: source_env) (functions_instrs: list Instruction) (positions: funname_env Z)
+    exists (prog: source_env)
+           (functions_instrs: list Instruction) (positions: funname_env Z) (required_stack_space: Z)
            (init_fun_pos loop_fun_pos: Z) (R: mem -> Prop),
-      compile ml prog = Some (functions_instrs, positions) /\
+      compile prog = Some (functions_instrs, positions, required_stack_space) /\
+      required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
       map.get positions "init"%string = Some init_fun_pos /\
       map.get positions "loop"%string = Some loop_fun_pos /\
@@ -156,18 +159,20 @@ Section Pipeline1.
     (* PARAMRECORDS: only works because of Hint Extern refine for compiler.FlatToRiscvCommon.mem_ok *)
     unfold machine_ok, program.
     intros. simp; ssplit; eauto.
-    - seprewrite H. wcancel_assumption.
+    - seprewrite H. ParamRecords.simpl_param_projections. wcancel_assumption.
     - eapply shrink_footpr_subset. 1: eassumption.
       rewrite H.
       wwcancel.
   Qed.
 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
-    exists (srcprog: source_env) (instrs: list Instruction) (positions: funname_env Z) (R: mem -> Prop),
+    exists (srcprog: source_env)
+           (instrs: list Instruction) (positions: funname_env Z) (required_stack_space: Z) (R: mem -> Prop),
       ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
       spec.(datamem_start) = ml.(heap_start) /\
       spec.(datamem_pastend) = ml.(heap_pastend) /\
-      compile_prog srcprog = Some (instrs, positions) /\
+      compile_prog srcprog = Some (instrs, positions, required_stack_space) /\
+      required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       word.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
         word.unsigned ml.(code_pastend) /\
       subset (footpr (program iset ml.(code_start) instrs)) (of_list initial.(getXAddrs)) /\
@@ -246,7 +251,7 @@ Section Pipeline1.
       specialize P with (p_functions := word.add loop_pos (word.of_Z 8)) (Rdata := R).
       unfold ll_good.
       eapply P; clear P.
-      6: {
+      7: {
         unfold hl_inv in init_code_correct.
         simpl.
         move init_code_correct at bottom.
@@ -283,6 +288,7 @@ Section Pipeline1.
           end
         end.
         2: {
+          ParamRecords.simpl_param_projections.
           match goal with
           | |- context[word.signed ?x] => ring_simplify x
           end.
@@ -290,6 +296,7 @@ Section Pipeline1.
           - ring.
           - clear. cbv. intuition discriminate.
         }
+        ParamRecords.simpl_param_projections.
         wcancel.
         cancel_seps_at_indices 3%nat 0%nat. {
           f_equal.
@@ -323,6 +330,7 @@ Section Pipeline1.
           end
         end.
         2: {
+          ParamRecords.simpl_param_projections.
           match goal with
           | |- context[word.signed ?x] => ring_simplify x
           end.
@@ -330,6 +338,7 @@ Section Pipeline1.
           - ring.
           - clear. cbv. intuition discriminate.
         }
+        ParamRecords.simpl_param_projections.
         wcancel.
         cancel_seps_at_indices 0%nat 0%nat. {
           f_equal.
@@ -345,7 +354,9 @@ Section Pipeline1.
       + rapply regs_initialized_put. eassumption.
       + rewrite map.get_put_same. unfold init_sp. rewrite word.of_Z_unsigned. reflexivity.
     - cbv beta. unfold ll_good. intros. simp.
-      rename z0 into f_loop_rel_pos.
+      match goal with
+      | _: map.get positions "loop"%string = Some ?z |- _ => rename z into f_loop_rel_pos
+      end.
       repeat match goal with
              | |- exists _, _  => eexists
              | |- _ /\ _ => split
@@ -361,6 +372,7 @@ Section Pipeline1.
                                            (f_entry_rel_pos_2 := f_entry_rel_pos).
         { unfold init_insts, functions_pos, backjump_pos, loop_pos, init_pos.
           wseplog_pre.
+          ParamRecords.simpl_param_projections.
           cancel.
           cancel_seps_at_indices 1%nat 1%nat. {
             f_equal. f_equal. f_equal.
@@ -382,6 +394,7 @@ Section Pipeline1.
         * unfold init_pos. solve_word_eq word_ok.
         * unfold loop_pos, init_pos. solve_word_eq word_ok.
         * eapply iff1ToEq.
+          ParamRecords.simpl_param_projections.
           wwcancel.
           cancel_seps_at_indices 1%nat 0%nat. {
             f_equal. unfold init_sp_insts.
@@ -447,7 +460,7 @@ Section Pipeline1.
              | |- _ => reflexivity
              end.
       + destruct mlOk. subst. simpl in *. subst loop_pos init_pos. solve_divisibleBy4.
-      + solve_word_eq word_ok.
+      + ParamRecords.simpl_param_projections. solve_word_eq word_ok.
     - unfold ll_good, machine_ok.
       intros. simp. assumption.
     - cbv. intuition discriminate.
@@ -475,12 +488,12 @@ Section Pipeline1.
       subst.
       eapply runsTo_weaken.
       + pose proof compiler_correct as P. unfold runsTo in P.
-        eapply P; clear P. 6: {
+        eapply P; clear P. 7: {
           eapply loop_body_correct; eauto.
         }
         all: try eassumption.
       + cbv beta.
-        intros. simp. eauto 15.
+        intros. simp. eauto 17.
   Qed.
 
   Lemma ll_inv_implies_prefix_of_good: forall st,

@@ -3,7 +3,8 @@ Require Coq.Strings.String.
 Require Import coqutil.Map.Interface coqutil.Word.Interface.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.SeparationLogic.
-Require Import compiler.Pipeline.
+Require Import compiler.LowerPipeline.
+Require Import compiler.UpperPipeline.
 
 Section Params1.
   Context {p: Semantics.parameters}.

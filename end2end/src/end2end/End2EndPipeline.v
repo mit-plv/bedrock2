@@ -182,7 +182,8 @@ Section Connect.
     - reflexivity.
     - rewrite word.unsigned_of_Z.
       unfold word.wrap.
-      etransitivity. 1: exact (mod_2width_mod_bytes_per_word (2 ^ memSizeLg - stack_size_in_bytes)).
+      etransitivity.
+      1: exact (LowerPipeline.mod_2width_mod_bytes_per_word (2 ^ memSizeLg - stack_size_in_bytes)).
       change bytes_per_word with 4.
       apply mod4_0.mod4_0_sub.
       + replace memSizeLg with (memSizeLg - 2 + 2) by blia.
@@ -191,7 +192,8 @@ Section Connect.
       + exact stack_size_div.
     - rewrite word.unsigned_of_Z.
       unfold word.wrap.
-      etransitivity. 1: exact (mod_2width_mod_bytes_per_word (2 ^ memSizeLg)).
+      etransitivity.
+      1: exact (LowerPipeline.mod_2width_mod_bytes_per_word (2 ^ memSizeLg)).
       replace memSizeLg with (memSizeLg - 2 + 2) by blia.
       rewrite Z.pow_add_r by blia.
       apply mod4_0.mod4_mul4_r.
@@ -238,7 +240,7 @@ Section Connect.
 
   Lemma riscvMemInit_to_seplog_aux: forall len from,
       Z.of_nat from + Z.of_nat len <= 2 ^ memSizeLg ->
-      Pipeline.ptsto_bytes
+      LowerPipeline.ptsto_bytes
         (word.of_Z (word:=Utility.word) (Z.of_nat from))
         (map (get_kamiMemInit memInit) (seq from len))
         (map.of_list (map
@@ -249,7 +251,7 @@ Section Connect.
   Proof.
     induction len; intros.
     - cbv. auto.
-    - unfold Pipeline.ptsto_bytes, riscvMemInit_values in *.
+    - unfold LowerPipeline.ptsto_bytes, riscvMemInit_values in *.
       cbn [seq map array map.of_list].
       match goal with
       | |- context [map.put ?m ?k ?v] => pose proof map.put_putmany_commute k v m map.empty as P
@@ -300,7 +302,7 @@ Section Connect.
   Qed.
 
   Lemma riscvMemInit_to_seplog:
-    (Pipeline.ptsto_bytes (word.of_Z 0) riscvMemInit_all_values)
+    (LowerPipeline.ptsto_bytes (word.of_Z 0) riscvMemInit_all_values)
     (riscvMemInit memSizeLg memInit).
   Proof.
     intros.
@@ -320,14 +322,15 @@ Section Connect.
     (* Assumptions on the program logic level: *)
     forall init_code loop_body,
     map.get (map.of_list funimplsList) "init"%string = Some ([], [], init_code) ->
-    (forall m, mem_available ml.(heap_start) ml.(heap_pastend) m ->
+    (forall m, LowerPipeline.mem_available ml.(heap_start) ml.(heap_pastend) m ->
                WeakestPrecondition.cmd funspecs init_code [] m map.empty bedrock2Inv) ->
     map.get (map.of_list funimplsList) "loop"%string = Some ([], [], loop_body) ->
     (forall t m l, bedrock2Inv t m l ->
                    WeakestPrecondition.cmd funspecs loop_body t m l bedrock2Inv) ->
     (* Assumptions on the compiler level: *)
-    forall (instrs: list Instruction) (positions: FlatToRiscvDef.funname_env Z),
-    compile_prog ml (map.of_list funimplsList) = Some (instrs, positions) ->
+    forall (instrs: list Instruction) (positions: FlatToRiscvDef.funname_env Z) (required_stack_space: Z),
+    compile_prog ml (map.of_list funimplsList) = Some (instrs, positions, required_stack_space) ->
+    required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word ->
     word.unsigned (code_start ml) + Z.of_nat (Datatypes.length (instrencode instrs)) <=
       word.unsigned (code_pastend ml) ->
     Forall (fun i : Instruction => verify i iset) instrs ->
@@ -344,7 +347,7 @@ Section Connect.
       exists (t': list Event), KamiLabelSeqR t t' /\
                                exists (suffix: list Event), goodTraceE (suffix ++ t').
   Proof.
-    intros *. intros GetInit Establish GetLoop Preserve. intros *. intros C L F V M. intros *. intros B.
+    intros *. intros GetInit Establish GetLoop Preserve. intros *. intros C RS L F V M. intros *. intros B.
 
     set (traceProp := fun (t: list Event) =>
                         exists (suffix: list Event), goodTraceE (suffix ++ t)).
@@ -376,7 +379,7 @@ Section Connect.
       intros.
       eapply P2establish.
       unfold initial_conditions.
-      exists (map.of_list funimplsList), instrs, positions.
+      exists (map.of_list funimplsList), instrs, positions, required_stack_space.
       destr_RiscvMachine m0RV.
       subst.
       ssplit.
@@ -401,9 +404,10 @@ Section Connect.
       + assumption.
       + assumption.
       + assumption.
+      + assumption.
       + pose proof (mem_ok : @map.ok (@Semantics.word strname_sem) byte (@Semantics.mem strname_sem)).
         pose proof word.eqb_spec.
-        cbv [imem mem_available].
+        cbv [imem LowerPipeline.mem_available].
         unfold code_start, code_pastend, heap_start, heap_pastend, stack_start, stack_pastend, ml in *.
         assert (Bounds_instrs: 0 <= Z.of_nat (Datatypes.length (instrencode instrs))) by blia.
         assert (Bounds_unused_imem: Z.of_nat (Datatypes.length (instrencode instrs)) <= instrMemSizeBytes). {
@@ -449,7 +453,7 @@ Section Connect.
         all : cycle 3.
         Unshelve. {
           pose proof riscvMemInit_to_seplog as P.
-          unfold Pipeline.ptsto_bytes in *.
+          unfold LowerPipeline.ptsto_bytes in *.
           remember riscvMemInit_all_values as l. symmetry in Heql. pose proof Heql as E.
           (* 1) chop off instructions *)
           rewrite <- (firstn_skipn (Datatypes.length (instrencode instrs)) l) in E. subst l.
