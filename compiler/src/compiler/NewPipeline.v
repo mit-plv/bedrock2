@@ -148,8 +148,6 @@ Section Pipeline1.
 
   Local Instance map_ok': @map.ok (@word (@W p)) Init.Byte.byte (@mem p) := mem_ok.
 
-  Axiom TODO: False.
-
   Ltac debool :=
     repeat match goal with
            | H: (_ && _)%bool = true |- _ => apply Bool.andb_true_iff in H
@@ -178,8 +176,51 @@ Section Pipeline1.
       intros. debool. blia.
     - eapply List.forallb_to_Forall. 2: eassumption. cbv beta.
       intros. debool. blia.
-    - eapply FlatImp.forallb_vars_stmt_correct. 3: eassumption.
-  Abort.
+    - pose proof spill_stmt_valid_vars as P.
+      unfold valid_vars_src, valid_vars_tgt, sp in P.
+      unfold spill_fbody. cbn. split. 1: unfold fp; blia.
+      eapply P; clear P. 1: reflexivity.
+      eapply max_var_sound.
+      eapply FlatImp.forallb_vars_stmt_correct.
+      3: eassumption.
+      all: cbv beta; intros; rewrite ?Bool.andb_true_iff, ?Z.ltb_lt; unfold fp; blia.
+    - specialize H0 with (1 := Hp1). eapply H0.
+    - specialize H0 with (1 := Hp1). eapply H0.
+    - exact I.
+  Qed.
+
+  Lemma rename_functions_NoDup: forall funs funs',
+      (forall f argnames retnames body,
+          map.get funs f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames) ->
+      rename_functions_new funs = Some funs' ->
+      forall f argnames retnames body,
+        map.get funs' f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames.
+  Proof.
+    unfold rename_functions_new. intros.
+    eapply map.map_all_values_bw in H0. 5: eassumption. 2-4: typeclasses eauto.
+    unfold rename_fun_new in *. simp.
+    specialize H with (1 := H0p1).
+    eapply rename_binds_props in E.
+    2: eapply map.empty_injective.
+    2: eapply dom_bound_empty.
+    simp.
+    eapply rename_binds_props in E0. 2-3: eassumption.
+    simp.
+    eauto using map.getmany_of_list_injective_NoDup.
+  Qed.
+
+  Lemma flatten_functions_NoDup: forall funs funs',
+      (forall f argnames retnames body,
+          map.get funs f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames) ->
+      flatten_functions funs = Some funs' ->
+      forall f argnames retnames body,
+        map.get funs' f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames.
+  Proof.
+    unfold flatten_functions. intros.
+    eapply map.map_all_values_bw in H0. 5: eassumption. 2-4: typeclasses eauto.
+    unfold flatten_function in *. simp.
+    eapply H. eassumption.
+  Qed.
 
   Lemma compiler_correct: forall
       (ml: MemoryLayout)
@@ -216,10 +257,11 @@ Section Pipeline1.
     { exact compile_ext_call_length_ignores_positions. }
     { exact compile_ext_call_correct. }
     { unfold upper_compiler, compose_phases in *. simp.
-      (* spill_stmt_valid_vars
-         valid_vars_src m s -> valid_vars_tgt
-         not eapply rename_fun_valid. *)
-      case TODO. }
+      eapply spill_functions_valid_FlatImp_fun. 1: eassumption.
+      eapply rename_functions_NoDup. 2: eassumption.
+      eapply flatten_functions_NoDup. 2: eassumption.
+      unfold ExprImp.valid_funs, ExprImp.valid_fun in *.
+      intros *. intro G. specialize H with (1 := G). apply H. }
     eapply Sim; clear Sim. eassumption.
   Qed.
 

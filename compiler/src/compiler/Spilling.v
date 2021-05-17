@@ -555,7 +555,7 @@ Section Spilling.
     Forall_vars_stmt (fun x => fp < x <= maxvar) (fun x => fp < x < 32).
 
   Definition valid_vars_tgt: stmt -> Prop :=
-    Forall_vars_stmt (fun x => sp < x <= 32) (fun x => sp < x < 32).
+    Forall_vars_stmt (fun x => 3 <= x < 32) (fun x => 3 <= x < 32).
 
   Lemma spill_stmt_valid_vars: forall s m,
       max_var s <= m ->
@@ -565,7 +565,7 @@ Section Spilling.
     (* Without the clear, firstorder becomes very slow COQBUG https://github.com/coq/coq/issues/11352.
        Not using firstorder though because there's something higher order here: *)
     clear mem mem_ok locals localsOk env ext_spec.
-    assert (forall vars, Forall (fun x : Z => 5 < x < 32) vars -> Forall (fun x : Z => 2 < x < 32) vars). {
+    assert (forall vars, Forall (fun x : Z => 5 < x < 32) vars -> Forall (fun x : Z => 3 <= x < 32) vars). {
       intros. eapply Forall_impl. 2: eassumption. simpl. blia.
     }
     unfold valid_vars_src, valid_vars_tgt.
