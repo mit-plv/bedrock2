@@ -180,25 +180,86 @@ Module map.
         map.getmany_of_list m ks = Some vs ->
         (forall k, In k ks -> map.get m2 k = None) ->
         map.getmany_of_list m1 ks = Some vs.
-    Admitted.
+    Proof.
+      unfold map.split, map.disjoint, map.getmany_of_list. intros. simp.
+      rewrite <- H0.
+      f_equal.
+      eapply List.map_ext_in. intros.
+      rewrite map.get_putmany_dec. rewrite H1; auto.
+    Qed.
 
     Lemma getmany_of_list_zip_grow: forall (m m1 m2: map) (ks: list key) (vs: list value),
         map.split m m1 m2 ->
         map.getmany_of_list m1 ks = Some vs ->
         map.getmany_of_list m ks = Some vs.
-    Admitted.
+    Proof.
+      unfold map.split, map.disjoint, map.getmany_of_list. intros. simp.
+      rewrite <- H0.
+      f_equal.
+      eapply List.map_ext_in. intros.
+      rewrite map.get_putmany_dec.
+      destruct_one_match. 2: reflexivity.
+      exfalso.
+      eapply List.In_option_all in H0. 2: {
+        eapply List.in_map. eassumption.
+      }
+      simp. eauto.
+    Qed.
 
-    Axiom putmany_of_list_zip_split: forall (l l' l1 l2: map) keys values,
+    Lemma putmany_of_list_zip_split: forall (l l' l1 l2: map) keys values,
         map.putmany_of_list_zip keys values l = Some l' ->
         map.split l l1 l2 ->
         Forall (fun k => map.get l2 k = None) keys ->
         exists l1', map.split l' l1' l2 /\ map.putmany_of_list_zip keys values l1 = Some l1'.
+    Proof.
+      intros.
+      eapply map.putmany_of_list_zip_to_putmany in H. destruct H as (kv & Mkkv & ?). subst.
+      unfold map.split in *. simp.
+      setoid_rewrite <- putmany_assoc.
+      assert (map.disjoint l2 kv) as D. {
+        unfold map.disjoint. intros *. intros G1 G2.
+        eapply putmany_of_list_zip_to_In in Mkkv. 2: eassumption.
+        eapply Forall_forall in H1. 2: exact Mkkv.
+        congruence.
+      }
+      rewrite (map.putmany_comm l2 kv) by exact D.
+      setoid_rewrite putmany_assoc.
+      exists (map.putmany l1 kv). ssplit.
+      - reflexivity.
+      - eapply map.disjoint_putmany_l. split. 1: assumption. apply map.disjoint_comm. assumption.
+      - pose proof @map.putmany_of_list_zip_sameLength as L.
+        specialize L with (1 := Mkkv).
+        eapply map.sameLength_putmany_of_list in L. destruct L as [st' L]. rewrite L.
+        eapply map.putmany_of_list_zip_to_putmany in L. destruct L as (kv' & Mkkv' & ?). subst.
+        congruence.
+    Qed.
 
-    Axiom putmany_of_list_zip_grow: forall (l l1 l1' l2: map) keys values,
+    Lemma putmany_of_list_zip_grow: forall (l l1 l1' l2: map) keys values,
         map.putmany_of_list_zip keys values l1 = Some l1' ->
         map.split l l1 l2 ->
         Forall (fun k => map.get l2 k = None) keys ->
         exists l', map.split l' l1' l2 /\ map.putmany_of_list_zip keys values l = Some l'.
+    Proof.
+      intros.
+      eapply map.putmany_of_list_zip_to_putmany in H. destruct H as (kv & Mkkv & ?). subst.
+      assert (map.disjoint l2 kv) as D. {
+        unfold map.disjoint. intros *. intros G1 G2.
+        eapply putmany_of_list_zip_to_In in Mkkv. 2: eassumption.
+        eapply Forall_forall in H1. 2: exact Mkkv.
+        congruence.
+      }
+      unfold map.split in *. simp. eexists. ssplit.
+      - reflexivity.
+      - eapply map.disjoint_putmany_l. split. 1: assumption. apply map.disjoint_comm. assumption.
+      - pose proof @map.putmany_of_list_zip_sameLength as L.
+        specialize L with (1 := Mkkv).
+        eapply map.sameLength_putmany_of_list in L. destruct L as [st' L]. rewrite L.
+        eapply map.putmany_of_list_zip_to_putmany in L. destruct L as (kv' & Mkkv' & ?). subst.
+        replace kv' with kv by congruence. clear Mkkv'.
+        f_equal.
+        rewrite <- putmany_assoc. rewrite (map.putmany_comm l2 kv) by exact D.
+        apply putmany_assoc.
+    Qed.
 
     Lemma get_split_l: forall m m1 m2 k v,
         map.split m m1 m2 ->
@@ -611,19 +672,74 @@ Section Spilling.
   Lemma load_from_word_array: forall p words frame m i v,
       (word_array p words * frame)%sep m ->
       nth_error words (Z.to_nat i) = Some v ->
+      0 <= i ->
       Memory.load Syntax.access_size.word m (word.add p (word.of_Z (i * bytes_per_word))) = Some v.
-  Admitted.
+  Proof.
+    unfold word_array.
+    intros.
+    eapply nth_error_split in H0. simp.
+    seprewrite_in @array_append H.
+    seprewrite_in @array_cons H.
+    eapply load_word_of_sep.
+    use_sep_assumption.
+    cancel.
+    cancel_seps_at_indices 0%nat 0%nat. {
+      f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: blia.
+      apply word.unsigned_of_Z_nowrap.
+      unfold bytes_per_word.
+      destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
+    }
+    ecancel_done.
+  Qed.
 
   Lemma store_to_word_array: forall p oldwords frame m i v,
       (word_array p oldwords * frame)%sep m ->
       0 <= i < Z.of_nat (List.length oldwords) ->
-      exists m' newwords,
+      exists newwords m',
         Memory.store Syntax.access_size.word m (word.add p (word.of_Z (i * bytes_per_word))) v = Some m' /\
         (word_array p newwords * frame)%sep m' /\
         nth_error newwords (Z.to_nat i) = Some v /\
         (forall j w, j <> Z.to_nat i -> nth_error oldwords j = Some w -> nth_error newwords j = Some w) /\
         length newwords = length oldwords.
-  Admitted.
+  Proof.
+    unfold word_array.
+    intros.
+    destruct (List.nth_error oldwords (Z.to_nat i)) eqn: E. 2: {
+      exfalso. eapply nth_error_Some. 2: eassumption. blia.
+    }
+    eapply nth_error_split in E. simp.
+    seprewrite_in @array_append H.
+    seprewrite_in @array_cons H.
+    eexists (l1 ++ v :: l2).
+    eapply store_word_of_sep. {
+      use_sep_assumption. cancel. cancel_seps_at_indices 0%nat 0%nat. {
+        f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: blia.
+        apply word.unsigned_of_Z_nowrap.
+        unfold bytes_per_word.
+        destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
+      }
+      ecancel_done.
+    }
+    clear H.
+    intros. ssplit.
+    - seprewrite @array_append. seprewrite @array_cons.
+      use_sep_assumption.
+      cancel.
+      cancel_seps_at_indices 0%nat 0%nat. {
+        f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 2: blia.
+        symmetry. apply word.unsigned_of_Z_nowrap.
+        unfold bytes_per_word.
+        destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
+      }
+      ecancel_done.
+    - rewrite nth_error_app2 by blia. replace (Z.to_nat i - length l1)%nat with O by blia. reflexivity.
+    - intros. assert (j < Z.to_nat i \/ Z.to_nat i < j)%nat as C by blia. destruct C as [C | C].
+      + rewrite nth_error_app1 by blia. rewrite nth_error_app1 in H1 by blia. assumption.
+      + rewrite nth_error_app2 by blia. rewrite nth_error_app2 in H1 by blia.
+        replace (j - length l1)%nat with (S (j - length l1 - 1)) in * by blia.
+        assumption.
+    - rewrite ?List.app_length. reflexivity.
+  Qed.
 
   Lemma store_bytes_sep_hi2lo: forall (mH mL : mem) R a n v_old v,
       Memory.load_bytes n mH a = Some v_old ->
@@ -717,7 +833,7 @@ Section Spilling.
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. simpl_param_projections. ecancel_assumption.
-      + eapply load_from_word_array. 1: ecancel_assumption.
+      + eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
         eapply H0p5. 1: blia.
         unfold sep in H0p3. simp.
         eapply map.get_split_r. 1,3: eassumption.
@@ -763,7 +879,7 @@ Section Spilling.
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. simpl_param_projections. ecancel_assumption.
-      + eapply load_from_word_array. 1: ecancel_assumption.
+      + eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
         eapply H0p5. 1: blia.
         unfold sep in H0p3. simp.
         eapply map.get_split_r. 1,3: eassumption.
@@ -812,7 +928,7 @@ Section Spilling.
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. simpl_param_projections. ecancel_assumption.
-      + eapply load_from_word_array. 1: ecancel_assumption.
+      + eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
         eapply H0p5. 1: blia.
         unfold sep in H0p3. simp.
         eapply map.get_split_r. 1,3: eassumption.
@@ -1106,24 +1222,38 @@ Section Spilling.
       + unfold arg_reg. unfold fp in *. repeat destruct_one_match; blia.
   Qed.
 
-(*
-  Lemma spill_bcond_correct: forall maxvar frame t1 m1 l1 mc1 t2 m2 l2 mc2 c,
-      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
-      eval_bcond l1 c = eval_bcond l2 (spill_bcond c).
-  Proof.
-    unfold related. intros. destruct c; cbn; simp.
-    - destr (map.get l1 x).
-
- destr (map.get l1 y).
-*)
-
   Lemma grow_related_mem: forall maxvar frame t1 mSmall1 l1 t2 mSmall2 l2 mStack mCombined2 fpval,
       related maxvar frame fpval t1 mSmall1 l1 t2 mSmall2 l2 ->
       map.split mCombined2 mSmall2 mStack ->
       exists mCombined1, map.split mCombined1 mSmall1 mStack /\
                          related maxvar frame fpval t1 mCombined1 l1 t2 mCombined2 l2.
   Proof.
-  Admitted.
+    unfold related, map.split. intros. simp.
+    eexists. ssplit. 1: reflexivity.
+    { unfold sep, map.split in Hp0. simp.
+      eapply map.disjoint_putmany_l in H0p1. apply proj1 in H0p1.
+      eapply map.disjoint_putmany_l in H0p1. apply proj1 in H0p1.
+      assumption. }
+    do 3 eexists. ssplit; try eassumption || reflexivity.
+    replace (eq (map.putmany mSmall1 mStack) * word_array fpval stackwords * frame)%sep
+      with (eq (map.putmany mSmall1 mStack) * (word_array fpval stackwords * frame))%sep. 2: {
+      symmetry. eapply iff1ToEq. apply sep_assoc.
+    }
+    replace (eq mSmall1 * word_array fpval stackwords * frame)%sep with
+        (eq mSmall1 * (word_array fpval stackwords * frame))%sep in Hp0. 2: {
+     symmetry. eapply iff1ToEq. apply sep_assoc.
+    }
+    forget (word_array fpval stackwords * frame)%sep as R.
+    unfold sep, map.split in Hp0|-*. simp.
+    assert (map.disjoint mStack mq) as D. {
+      apply map.disjoint_putmany_l in H0p1. apply proj2 in H0p1. apply map.disjoint_comm. exact H0p1.
+    }
+    do 2 eexists. ssplit. 4: eassumption.
+    3: reflexivity.
+    - rewrite <- (map.putmany_assoc mp mStack). rewrite (map.putmany_comm mStack mq) by exact D.
+      rewrite map.putmany_assoc. reflexivity.
+    - apply map.disjoint_putmany_l. auto.
+  Qed.
 
   Lemma shrink_related_mem: forall maxvar frame t1 m1 l1 t2 m2 l2 mRemove m1Small fpval,
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
@@ -1131,7 +1261,28 @@ Section Spilling.
       exists m2Small, map.split m2 m2Small mRemove /\
                       related maxvar frame fpval t1 m1Small l1 t2 m2Small l2.
   Proof.
-  Admitted.
+    unfold related, map.split. intros. simp.
+    replace (eq (map.putmany m1Small mRemove) * word_array fpval stackwords * frame)%sep
+      with (eq (map.putmany m1Small mRemove) * (word_array fpval stackwords * frame))%sep in Hp0. 2: {
+      symmetry. eapply iff1ToEq. apply sep_assoc.
+    }
+    remember (word_array fpval stackwords * frame)%sep as R.
+    unfold sep, map.split in Hp0. simp.
+    apply map.disjoint_putmany_l in Hp0p0p1. destruct Hp0p0p1 as (D' & D).
+    eexists. ssplit.
+    { rewrite <- map.putmany_assoc. rewrite (map.putmany_comm mRemove mq) by exact D.
+      rewrite map.putmany_assoc. reflexivity. }
+    { apply map.disjoint_putmany_l. split. 1: assumption. apply map.disjoint_comm. assumption. }
+    do 3 eexists. ssplit; try eassumption || reflexivity.
+    replace (eq m1Small * word_array fpval stackwords * frame)%sep
+      with (eq m1Small * (word_array fpval stackwords * frame))%sep. 2: {
+      symmetry. eapply iff1ToEq. apply sep_assoc.
+    }
+    rewrite <- HeqR.
+    unfold sep, map.split.
+    do 2 eexists. ssplit. 4: eassumption.
+    1,3: reflexivity. assumption.
+  Qed.
 
   Lemma List__flat_map_const_length{A B: Type}: forall (f: A -> list B) (n: nat) (l: list A),
       (forall a, length (f a) = n) ->
