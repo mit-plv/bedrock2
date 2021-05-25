@@ -123,7 +123,14 @@ Section __.
     change (-1) with (-(1)).
     rewrite Z.lnot_m1; reflexivity.
     destruct width_cases as [H|H]; rewrite !H; lia.
-  Admitted.
+    {
+      rewrite word.swrap_inrange.
+      let x := eval compute in ( Z.lnot (-1)) in
+          change ( Z.lnot (-1)) with x.
+      destruct width_cases as [H|H]; rewrite !H; lia.
+      destruct width_cases as [H|H]; rewrite !H; lia.
+    }
+  Qed.    
 
   Lemma zero_and (x : Semantics.word)
     : word.and (word.of_Z 0) x = word.of_Z 0.
