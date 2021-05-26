@@ -15,7 +15,7 @@ Section Ex.
       (left associativity, at level 1,
        format "m [[ k  ←  v ]]").
 
-  Lemma signed_lt_unsigned w:
+  Lemma signed_lt_unsigned (w : Semantics.word):
     word.signed w <= word.unsigned w.
   Proof.
     pose proof word.unsigned_range w.
@@ -34,7 +34,7 @@ Section Ex.
     let/n from := word.of_Z 0 in
     let/n a2 := ranged_for_u
                  from len
-                 (fun tok idx a2 Hlt =>
+                 (fun a2 tok idx Hlt =>
                     let/n v := VectorArray.get a1 idx _ in
                     let/n a2 := VectorArray.put a2 idx _ v in
                     (tok, a2)) a2 in
@@ -98,19 +98,19 @@ Section Ex.
     let/n from eq:_ := word.of_Z 0 in
     let/n a2 := ranged_for_s
                  from len
-                 (fun tok idx a2 Hlt =>
+                 (fun a2 tok idx Hlt =>
                     let/n v := VectorArray.get a1 idx _ in
                     let/n a2 := VectorArray.put a2 idx _ v in
                     (tok, a2)) a2 in
     (a1, a2).
   Next Obligation.
-    pose proof word.half_modulus_pos.
+    pose proof word.half_modulus_pos (word:=word).
     unfold cast, Convertible_word_nat.
     rewrite word.signed_of_Z, word.swrap_inrange in H0 by lia.
     rewrite word.signed_gz_eq_unsigned; lia.
   Qed.
   Next Obligation.
-    pose proof word.half_modulus_pos.
+    pose proof word.half_modulus_pos (word:=word).
     unfold cast, Convertible_word_nat.
     rewrite word.signed_of_Z, word.swrap_inrange in H0 by lia.
     rewrite word.signed_gz_eq_unsigned; lia.
@@ -152,13 +152,13 @@ Section Ex.
     all: repeat compile_step; compile_done.
   Qed.
 
-  Definition sizedlist_memcpy (len: word)
+  Definition list_memcpy (len: word)
              (a1: ListArray.t word)
              (a2: ListArray.t word) :=
     let/n from := word.of_Z 0 in
     let/n a2 := ranged_for_u
                  from len
-                 (fun tok idx a2 Hlt =>
+                 (fun a2 tok idx Hlt =>
                     let/n v := ListArray.get a1 idx in
                     let/n a2 := ListArray.put a2 idx v in
                     (tok, a2)) a2 in
@@ -176,13 +176,13 @@ Section Ex.
                               sizedlistarray_value AccessWord a2_ptr n2 a2 ⋆ R) mem;
       ensures tr' mem' :=
         tr' = tr /\
-        let res := sizedlist_memcpy len a1 a2 in
+        let res := list_memcpy len a1 a2 in
         (sizedlistarray_value AccessWord a1_ptr n1 (fst res) ⋆
                               sizedlistarray_value AccessWord a2_ptr n2 (snd res) ⋆ R) mem' }.
 
   Derive sizedlist_memcpy_body SuchThat
          (defn! "sizedlist_memcpy"("len", "a1", "a2") { sizedlist_memcpy_body },
-          implements sizedlist_memcpy)
+          implements list_memcpy)
          As sizedlist_memcpy_correct.
   Proof.
     compile_setup.
@@ -200,18 +200,6 @@ Section Ex.
     all: repeat compile_step; try lia; compile_done.
   Qed.
 
-  Definition unsizedlist_memcpy (len: word)
-             (a1: ListArray.t word)
-             (a2: ListArray.t word) :=
-    let/n from := word.of_Z 0 in
-    let/n a2 := ranged_for_u
-                 from len
-                 (fun tok idx a2 Hlt =>
-                    let/n v := ListArray.get a1 idx in
-                    let/n a2 := ListArray.put a2 idx v in
-                    (tok, a2)) a2 in
-    (a1, a2).
-
   Instance spec_of_unsizedlist_memcpy : spec_of "unsizedlist_memcpy" :=
     fnspec! "unsizedlist_memcpy" (len: word) (a1_ptr a2_ptr : address) /
           (a1: ListArray.t word) (a2: ListArray.t word)
@@ -223,13 +211,13 @@ Section Ex.
                          listarray_value AccessWord a2_ptr a2 ⋆ R) mem;
       ensures tr' mem' :=
         tr' = tr /\
-        let res := unsizedlist_memcpy len a1 a2 in
+        let res := list_memcpy len a1 a2 in
         (listarray_value AccessWord a1_ptr (fst res) ⋆
                          listarray_value AccessWord a2_ptr (snd res) ⋆ R) mem' }.
 
   Derive unsizedlist_memcpy_body SuchThat
          (defn! "unsizedlist_memcpy"("len", "a1", "a2") { unsizedlist_memcpy_body },
-          implements unsizedlist_memcpy)
+          implements list_memcpy)
          As unsizedlist_memcpy_correct.
   Proof.
     compile_setup.
@@ -274,7 +262,7 @@ Section Ex.
     let/n (tick, c) :=
        ranged_for_u (A := P2.prod word cell)
                     from to
-                    (fun tok idx '\< tick, c \> bounded =>
+                    (fun '\< tick, c \> tok idx bounded =>
                        let/n v := get c in
                        let/n v := word.add v idx in
                        let/n c := put v c in

@@ -125,7 +125,7 @@ Section Maps.
           {key_eq_dec :
              forall x y : key, BoolSpec (x = y) (x <> y) (key_eqb x y)}.
 
-  Lemma put_noop' k v m m':
+  Lemma put_noop' k v (m m' : map):
     m = m' ->
     map.get m' k = Some v ->
     m = map.put m' k v.

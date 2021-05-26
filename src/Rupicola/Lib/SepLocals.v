@@ -37,12 +37,12 @@ Section Var.
     ssplit; [ | reflexivity | eassumption ].
     cbv [map.split] in *; cleanup; subst.
     ssplit; [ | eapply map.disjoint_put_l;
-                eauto using map.disjoint_empty_l ].
+                eauto using @map.disjoint_empty_l with typeclass_instances ].
     subst. rewrite map.putmany_comm by auto.
     rewrite map.put_putmany_commute.
     rewrite map.put_put_same.
     apply map.putmany_comm.
-    eapply map.disjoint_put_r; eauto using map.disjoint_empty_r.
+    eapply map.disjoint_put_r; eauto using @map.disjoint_empty_r with typeclass_instances.
   Qed.
 
   Lemma Var_put_remove l n v (R : _ -> Prop) :
@@ -54,10 +54,10 @@ Section Var.
     ssplit; [ | reflexivity | eassumption ].
     cbv [map.split] in *; cleanup; subst.
     ssplit; [ | eapply map.disjoint_put_l;
-                eauto using map.disjoint_empty_l, map.get_remove_same ].
+                eauto using @map.disjoint_empty_l, @map.get_remove_same with typeclass_instances].
     rewrite map.putmany_comm
       by (apply map.disjoint_put_l;
-          eauto using map.disjoint_empty_l, map.get_remove_same).
+          eauto using @map.disjoint_empty_l, @map.get_remove_same with typeclass_instances).
     rewrite <-map.put_putmany_commute.
     rewrite map.putmany_empty_r.
     eapply map.map_ext; intros.
@@ -72,7 +72,7 @@ Section Var.
   Proof.
     cbv [Var]; intros. do 2 eexists.
     ssplit; [ | reflexivity | eassumption ].
-    eauto using map.split_undef_put.
+    eauto using @map.split_undef_put with typeclass_instances.
   Qed.
 
   Lemma Var_exact n v :

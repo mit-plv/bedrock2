@@ -95,13 +95,6 @@ Section Generalizable.
     apply IHxs; auto.
   Qed.
 
-  Lemma word_to_nat_to_word w :
-    w = word.of_Z (Z.of_nat (Z.to_nat (word.unsigned w))).
-  Proof.
-    rewrite Z2Nat.id by apply word.unsigned_range.
-    rewrite word.of_Z_unsigned; reflexivity.
-  Qed.
-
   Lemma In_hd {A} (d : A) (xs : list A) :
     (0 < length xs)%nat -> In (hd d xs) xs.
   Proof.
@@ -420,7 +413,8 @@ Section Proofs.
 
       (* could do reflexivity here, but it helps later if we simplify the
            expression for len *)
-      rewrite Z.land_ones, Z.mod_small; [ reflexivity |  | lia ].
+      setoid_rewrite Z.land_ones; [|lia].
+      rewrite Z.mod_small; [ reflexivity |].
       match goal with |- ?x <= ?y < ?z =>
                       change (x <= y < 2 ^ Semantics.width)
       end.

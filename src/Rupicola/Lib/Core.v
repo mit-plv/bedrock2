@@ -70,6 +70,7 @@ Module map.
             {key_eqb : key -> key -> bool}
             {key_eq_dec : EqDecider key_eqb}.
 
+    Implicit Types (m : map).
     Lemma extends_refl m:
       map.extends m m.
     Proof. firstorder. Qed.
@@ -171,7 +172,7 @@ Module map.
     Qed.
 
     Lemma get_mapped m k (f: value -> value'):
-      map.get (map.fold (fun m' k v => map.put m' k (f v)) map.empty m) k =
+      map.get (map.fold (fun (m' : map') k v => map.put m' k (f v)) map.empty m) k =
       match map.get m k with
       | Some v => Some (f v)
       | None => None
@@ -201,7 +202,7 @@ Module map.
   Qed.
 
   Lemma of_list_is_fold_right {K V} {map: map.map K V}:
-    forall bs, map.of_list bs = map_of_list' bs map.empty.
+    forall bs, map.of_list bs = map_of_list' bs map.empty :> map.
   Proof. intros; apply of_list_is_fold_right'. Qed.
 
   Definition map_domains_diff {K V} {map: map.map K V} (m0 m1: map) :=
@@ -217,7 +218,7 @@ Module map.
             {K_eq_dec : EqDecider K_eqb}
             (fV: V0 -> V1).
 
-    Definition mapped_compat m0 m1 :=
+    Definition mapped_compat (m0 : map0) (m1 : map1) :=
       forall k v, map.get m0 k = Some v ->
              map.get m1 k = Some (fV v).
 
@@ -297,7 +298,7 @@ Module map.
       subst; rewrite ?map.get_remove_same, ?map.get_remove_diff; auto.
   Qed.
 
-  Definition remove_many {K V} {M: map.map K V} m (ks: list K) :=
+  Definition remove_many {K V} {M: map.map K V} (m : M) (ks: list K) :=
     List.fold_left map.remove ks m.
 
   Lemma remove_many_proper {K V}
@@ -609,14 +610,21 @@ Module word.
     Proof. apply Z.mod_small. Qed.
 
     Lemma unsigned_of_Z_b2z b :
-      word.unsigned (word.of_Z (Z.b2z b)) = Z.b2z b.
+      @word.unsigned _ word (word.of_Z (Z.b2z b)) = Z.b2z b.
     Proof.
       destruct b; cbn [Z.b2z];
         auto using word.unsigned_of_Z_0, word.unsigned_of_Z_1.
     Qed.
 
+    Lemma word_to_nat_to_word (w : word) :
+      w = word.of_Z (Z.of_nat (Z.to_nat (word.unsigned w))).
+    Proof.
+      rewrite Z2Nat.id by apply word.unsigned_range.
+      rewrite word.of_Z_unsigned; reflexivity.
+    Qed.
+
     Lemma swrap_eq z :
-      word.swrap z = z ->
+      @word.swrap width _ z = z ->
       - 2 ^ (width - 1) <= z < 2 ^ (width - 1).
     Proof.
       unfold word.swrap; intros H.
@@ -627,6 +635,8 @@ Module word.
       + destruct H as [ H | H ]; rewrite (word.pow2_width_minus1 (word := word)) in H; lia.
       + rewrite word.pow2_width_minus1; lia.
     Qed.
+
+    Implicit Types w : word.
 
     Lemma signed_unsigned_dec w :
       word.signed w =
@@ -694,7 +704,7 @@ Module word.
     Proof. destruct b; reflexivity. Qed.
 
     Lemma word_of_byte_range b:
-      0 <= word.unsigned (word_of_byte b) < 256.
+      0 <= @word.unsigned _ word (word_of_byte b) < 256.
     Proof.
       pose proof Byte.to_N_bounded b as H256%N2Z.inj_le.
       pose proof word.unsigned_range (word_of_byte b).
@@ -706,8 +716,8 @@ Module word.
         lia.
     Qed.
 
-    Notation b2w b :=
-      (word.of_Z (Z.b2z b)).
+    Local Notation b2w b :=
+      (@word.of_Z _ word (Z.b2z b)).
 
     Lemma b2w_inj:
       forall b1 b2, b2w b1 = b2w b2 -> b1 = b2.
@@ -727,15 +737,15 @@ Module word.
       bitblast.Z.bitblast_core.
 
     Lemma morph_and x y:
-      word.of_Z (Z.land x y) = word.and (word.of_Z x) (word.of_Z y).
+      word.of_Z (Z.land x y) = word.and (word.of_Z x) (word.of_Z y) :> word.
     Proof. compile_binop_zzw_bitwise word.unsigned_and_nowrap. Qed.
 
     Lemma morph_or x y:
-      word.of_Z (Z.lor x y) = word.or (word.of_Z x) (word.of_Z y).
+      word.of_Z (Z.lor x y) = word.or (word.of_Z x) (word.of_Z y) :> word.
     Proof. compile_binop_zzw_bitwise word.unsigned_or_nowrap. Qed.
 
     Lemma morph_xor x y:
-      word.of_Z (Z.lxor x y) = word.xor (word.of_Z x) (word.of_Z y).
+      word.of_Z (Z.lxor x y) = word.xor (word.of_Z x) (word.of_Z y) :> word.
     Proof. compile_binop_zzw_bitwise word.unsigned_xor_nowrap. Qed.
   End __.
 End word.
@@ -810,7 +820,7 @@ Section Semantics.
   Proof. intuition. Qed.
 
   Lemma to_byte_of_byte_nowrap b:
-    byte_of_word (word_of_byte b) = b.
+    byte_of_word (word_of_byte b : word) = b.
   Proof.
     rewrite word.unsigned_of_Z, word.wrap_small.
     - apply word.byte_of_Z_unsigned.
