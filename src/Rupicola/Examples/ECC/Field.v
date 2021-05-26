@@ -75,12 +75,29 @@ Section Specs.
       ensures tr' mem' :=
         tr = tr' /\
         exists out,
-          eval out mod M = (un_model (eval x)) mod M
+          eval out mod M = (un_model (eval x mod M)) mod M
           /\ bounded_by un_outbounds out
           /\ (Bignum pout out * Rr)%sep mem' }.
 
+  Definition Znum (ptr : word) (z : Z) (mem : Semantics.mem) :=
+      (exists b : bignum, (z = eval b mod M) /\
+                             Bignum ptr b mem).
+
+   Definition unop_Z_spec {name} (op: UnOp name) :=
+    fnspec! name (pz pout : word) / (z : Z) (old_out : Z) Rr,
+    { requires tr mem :=
+        (* bounded_by un_xbounds x *)
+        (exists Ra, (Znum pz z * Ra)%sep mem)
+        /\ (Znum pout old_out * Rr)%sep mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+          (Znum pout ((un_model z) mod M) * Rr)%sep mem' }.
+
   Instance spec_of_UnOp {name} (op: UnOp name) : spec_of name :=
     unop_spec op.
+
+  Instance spec_of_Z_UnOp {name} (op: UnOp name) : spec_of name :=
+    unop_Z_spec op.
 
   Class BinOp (name: string) :=
     { bin_model: Z -> Z -> Z;
@@ -98,12 +115,26 @@ Section Specs.
       ensures tr' mem' :=
         tr = tr' /\
         exists out,
-          eval out mod M = (bin_model (eval x) (eval y)) mod M
+          eval out mod M = (bin_model (eval x mod M) (eval y mod M)) mod M
           /\ bounded_by bin_outbounds out
           /\ (Bignum pout out * Rr)%sep mem' }.
 
+   Definition binop_Z_spec  {name} (op: BinOp name) :=
+    fnspec! name (px py pout : word) / (x y: Z) (old_out : Z) Rr,
+    { requires tr mem :=
+       (* bounded_by bin_xbounds x
+        /\ bounded_by bin_ybounds y *)
+        (exists Ra, (Znum px x * Znum py y * Ra)%sep mem)
+        /\ (Znum pout old_out * Rr)%sep mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        (Znum pout ((bin_model x y) mod M) * Rr)%sep mem' }.
+
   Instance spec_of_BinOp {name} (op: BinOp name) : spec_of name :=
     binop_spec op.
+
+  Instance spec_of_Z_BinOp {name} (op: BinOp name) : spec_of name :=
+    binop_Z_spec op.
 
   Instance bin_mul : BinOp mul :=
     {| bin_model := Z.mul; bin_xbounds := loose_bounds; bin_ybounds := loose_bounds; bin_outbounds := tight_bounds |}.
@@ -137,7 +168,7 @@ Section Specs.
              /\ (Bignum pout X * R)%sep mem' }.
 End Specs.
 
-Existing Instances spec_of_UnOp spec_of_BinOp bin_mul un_square bin_add bin_sub
+Existing Instances spec_of_BinOp bin_mul un_square bin_add bin_sub
          un_scmula24 un_inv spec_of_bignum_copy spec_of_bignum_literal.
 
 Section Compile.
@@ -160,7 +191,7 @@ Section Compile.
 
   Lemma compile_binop {name} {op: BinOp name}
         {tr mem locals functions} x y:
-    let v := (bin_model (eval x) (eval y)) mod M in
+    let v := (bin_model (eval x mod M) (eval y mod M)) mod M in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
       Rin Rout (out : bignum) x_ptr x_var y_ptr y_var out_ptr out_var,
 
@@ -202,12 +233,55 @@ Section Compile.
     eauto.
   Qed.
 
+  Lemma compile_Z_binop {name} {op: BinOp name}
+        {tr mem locals functions} x y:
+    let v := (bin_model x y) mod M in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      Rin Rout (out : Z) x_ptr x_var y_ptr y_var out_ptr out_var,
+
+      let spec := (spec_of_Z_BinOp _: spec_of name) in spec functions ->
+      (* bounded_by bin_xbounds x ->
+      bounded_by bin_ybounds y -> *)
+
+      map.get locals out_var = Some out_ptr ->
+      (Znum out_ptr out * Rout)%sep mem ->
+
+      (Znum x_ptr x * Znum y_ptr y * Rin)%sep mem ->
+      map.get locals x_var = Some x_ptr ->
+      map.get locals y_var = Some y_ptr ->
+
+     (let v := v in
+       forall m,
+         (* bounded_by bin_outbounds out -> *)
+         sep (Znum out_ptr v) Rout m ->
+         (<{ Trace := tr;
+             Memory := m;
+             Locals := locals;
+             Functions := functions }>
+          k_impl
+          <{ pred (k v eq_refl) }>)) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.call [] name [expr.var x_var; expr.var y_var;
+                          expr.var out_var])
+        k_impl
+      <{ pred (nlet_eq [out_var] v k) }>.
+  Proof.
+    repeat straightline'.
+    handle_call; [ solve [eauto] .. | ].
+    repeat straightline'.
+    eauto.
+  Qed.
+
   Lemma compile_unop {name} (op: UnOp name) {tr mem locals functions} x:
-    let v := un_model (eval x) mod M in
+    let v := un_model (eval x mod M) mod M in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
       Rin Rout (out : bignum) x_ptr x_var out_ptr out_var,
 
-      (_: spec_of name) functions ->
+      let spec := (spec_of_UnOp _: spec_of name) in spec functions ->
       bounded_by un_xbounds x ->
 
       map.get locals out_var = Some out_ptr ->
@@ -236,7 +310,49 @@ Section Compile.
         k_impl
       <{ pred (nlet_eq [out_var] v k) }>.
   Proof.
+    intros.
     cbv [Placeholder] in *.
+    repeat straightline'.
+    Print Ltac straightline_call.
+    handle_call; [ solve [eauto] .. | sepsimpl ].
+    repeat straightline'.
+    eauto.
+  Qed.
+
+  Lemma compile_Z_unop {name} (op: UnOp name) {tr mem locals functions} x:
+    let v := un_model x mod M in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      Rin Rout (out : Z) x_ptr x_var out_ptr out_var,
+
+      let spec := (spec_of_Z_UnOp _: spec_of name) in spec functions ->
+      (* bounded_by un_xbounds x -> *)
+
+      map.get locals out_var = Some out_ptr ->
+      (Znum out_ptr out * Rout)%sep mem ->
+
+      (Znum x_ptr x * Rin)%sep mem ->
+      map.get locals x_var = Some x_ptr ->
+
+      (let v := v in
+       forall m,
+         (* bounded_by un_outbounds out -> *)
+         sep (Znum out_ptr v) Rout m ->
+         (<{ Trace := tr;
+             Memory := m;
+             Locals := locals;
+             Functions := functions }>
+          k_impl
+          (* <{ (rew [fun v => P v -> predicate)] Heq in pred) (k (eval out mod M) Heq) }>)) -> *)
+          <{ pred (k v eq_refl) }>)) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (cmd.call [] name [expr.var x_var; expr.var out_var])
+        k_impl
+      <{ pred (nlet_eq [out_var] v k) }>.
+  Proof.
     repeat straightline'.
     handle_call; [ solve [eauto] .. | sepsimpl ].
     repeat straightline'.
@@ -266,16 +382,31 @@ Section Compile.
   Notation make_bin_lemma op :=
     ltac:(cleanup_op_lemma (@compile_binop _ op)) (only parsing).
 
+  Notation make_Z_bin_lemma op :=
+    ltac:(cleanup_op_lemma (@compile_Z_binop _ op)) (only parsing).
+
   Definition compile_mul := make_bin_lemma bin_mul.
   Definition compile_add := make_bin_lemma bin_add.
   Definition compile_sub := make_bin_lemma bin_sub.
 
+  Definition compile_Z_mul := make_Z_bin_lemma bin_mul.
+  Definition compile_Z_add := make_Z_bin_lemma bin_add.
+  Definition compile_Z_sub := make_Z_bin_lemma bin_sub.
+
   Notation make_un_lemma op :=
     ltac:(cleanup_op_lemma (@compile_unop _ op)) (only parsing).
+
+  Notation make_Z_un_lemma op :=
+    ltac:(cleanup_op_lemma (@compile_Z_unop _ op)) (only parsing).
 
   Definition compile_square := make_un_lemma un_square.
   Definition compile_scmula24 := make_un_lemma un_scmula24.
   Definition compile_inv := make_un_lemma un_inv.
+
+  Definition compile_Z_square := make_Z_un_lemma un_square.
+  Definition compile_Z_scmula24 := make_Z_un_lemma un_scmula24.
+  Definition compile_Z_inv := make_Z_un_lemma un_inv.
+
 
   Lemma compile_bignum_copy {tr mem locals functions} x :
     let v := (eval x mod M)%Z in
