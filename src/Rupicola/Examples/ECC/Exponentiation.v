@@ -82,8 +82,6 @@ Section S.
                  x * res
       end.
 
-    Print exp_by_squaring.
-
     Lemma letn_equal :
       forall A B (val : A) (body_l body_r : A -> B) (var : string),
         (let x := val in body_l x = body_r x)
@@ -131,7 +129,6 @@ Section S.
       repeat tac.
       reflexivity.
     Qed.
-    Print rewritten.
 
     Lemma exp_by_squaring_correct :
       M <> 0 -> forall n x, exp_by_squaring x n = x ^ (Zpos n).
@@ -354,7 +351,7 @@ Section S.
       lift_eexists; sepsimpl; eauto || ecancel_assumption. 
     Qed.
 
-    Compute exp9_body.
+    (* Compute exp9_body. *)
 
 (*
     Derive exp_11_body SuchThat
@@ -396,8 +393,6 @@ Section S.
         end
       end%nat.
 
-    Compute run_length_encoding 1.
-
     Fixpoint loop {A} (x : A) (k : nat) (f : A -> A) : A :=
       match k with
       | 0%nat => x
@@ -436,8 +431,6 @@ Section S.
 
     Definition exp_by_squaring_encoded (x : Z) (n : positive) : Z :=
       exp_from_encoding x (run_length_encoding n).
-
-    Compute run_length_encoding 4.
 
     Lemma run_length_encoding_nonempty:
       forall n, run_length_encoding n <> [].
@@ -597,11 +590,17 @@ Section S.
       let/n out := loop out 7 (fun out => let/n out := exp_square out in out) in
       (x, out).
 
+    Lemma clean_width :
+      forall x, x < 2 ^ 32 -> x < 2 ^ Semantics.width.
+    Proof.
+     intros; destruct Semantics.width_cases as [ -> | -> ]; lia.
+    Qed.
+
     Lemma loop_equals':
       forall {A} f (x : A) k,
         (ExitToken.new, loop x k f) =
       (ranged_for' 0 (Z.of_nat k)
-       (fun (tok : ExitToken.t) (idx : Z) (acc : A) _ =>
+       (fun (acc : A) (tok : ExitToken.t) (idx : Z)  _ =>
           (tok, f acc)) x).
     Proof.
       induction k.
@@ -614,7 +613,6 @@ Section S.
         erewrite ranged_for'_unfold_r_nstop; try lia; try easy.
         all: rewrite <- IHk; reflexivity.
     Qed.
-    
         
     Lemma loop_equals :
       forall {A} f (x : A) k,
@@ -623,7 +621,7 @@ Section S.
         let/n from := 0 in
         let/n to := word.of_Z (Z.of_nat k) in
         ranged_for_u (word.of_Z from) to
-                     (fun t _ acc _ =>
+                     (fun acc t _ _ =>
                         let/n out := f acc in (t, out)) x.
     Proof.
       intros.
@@ -631,9 +629,8 @@ Section S.
       unfold ranged_for_u in *.
       unfold ranged_for_w in *.
       unfold ranged_for in *.
-      unfold w_body.
+      unfold w_body_tok.
       pose proof Nat2Z.is_nonneg k.
-      pose proof Nat2Z.is_nonneg (S k).
       repeat rewrite word.unsigned_of_Z_0.
       repeat rewrite word.unsigned_of_Z.
       repeat rewrite word.wrap_small by lia.
@@ -706,12 +703,6 @@ Section S.
                            | simple eapply compile_mul
                            | compile_try_copy_pointer]));
      intros.
-
-   Lemma clean_width :
-     forall x, x < 2 ^ 32 -> x < 2 ^ Semantics.width.
-   Proof.
-     intros; destruct Semantics.width_cases as [ -> | -> ]; lia.
-   Qed.
 
    Hint Extern 1 => simple eapply clean_width; reflexivity : compiler_cleanup.
      
