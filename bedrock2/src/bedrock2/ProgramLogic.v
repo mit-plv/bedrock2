@@ -251,8 +251,6 @@ Ltac straightline :=
   | |- @store _ Syntax.access_size.two _ _ _ _ =>
     eapply Scalars.store_two_of_sep; [solve[ecancel_assumption]|]
   | |- @store _ Syntax.access_size.four _ _ _ _ =>
-    eapply Scalars.store_four_of_sep_32bit; [reflexivity|solve[ecancel_assumption]|]
-  | |- @store _ Syntax.access_size.four _ _ _ _ =>
     eapply Scalars.store_four_of_sep; [solve[ecancel_assumption]|]
   | |- @store _ Syntax.access_size.word _ _ _ _ =>
     eapply Scalars.store_word_of_sep; [solve[ecancel_assumption]|]

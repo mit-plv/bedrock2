@@ -485,24 +485,7 @@ Section WithParameters.
     repeat seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
       rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; blia).
 
-    Set Nested Proofs Allowed.
-
-Lemma Scalars__store_four_of_sep :
-forall {width : Z} {word : Interface.word width},
-word.ok word ->
-forall mem : map word (Init.Byte.byte : Type),
-ok mem ->
-forall (addr oldvalue value : word) (R : mem -> Prop) (m : mem) (post : mem -> Prop),
-(Scalars.scalar32 addr oldvalue * R) m ->
-(forall m0 : mem, (Scalars.scalar32 addr value * R) m0 -> post m0) ->
-exists m1 : mem, store access_size.four m addr value = Some m1 /\ post m1.
-Proof.
-  intros.
-  eapply Scalars.store_four_of_sep. 1: eassumption.
-  intros. eapply H2. unfold Scalars.scalar32, Scalars.truncated_word, Scalars.truncated_scalar, Scalars.littleendian in *.
-Admitted.
-
-    Tactics.rapply (fun addr oldvalue value R m post H => Scalars__store_four_of_sep _ _ _ addr oldvalue value R m post (proj1 H) (proj2 H)).
+    Tactics.rapply (fun addr oldvalue value R m post H => Scalars.store_four_of_sep addr oldvalue value R m post (proj1 H) (proj2 H)).
 
     (* note: it would be nice to have a generalization of this /\-goal logic in on_left *)
     unshelve (
@@ -550,7 +533,12 @@ end end
 
     (* last line *)
 
-  Abort.
+    case TODO.
+    }
+    Unshelve.
+    all: case TODO.
+  Time Qed.
+
 End WithParameters.
 
 (* think of mempcpy/memmove within a packet rather than load and store, which are just "special cases" of memmove
