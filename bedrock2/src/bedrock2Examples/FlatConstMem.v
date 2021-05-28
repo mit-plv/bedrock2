@@ -485,6 +485,41 @@ Section WithParameters.
     2: reflexivity.
     on_left (idtac; seprewrite @array1_iff_eq_of_list_word_at; cycle 1); cycle 1.
 
-    (* frame calculation again, unclear what to subst before split_bytes_base_addr *)
+    {
+    repeat match goal with x := _ : word.rep |- _ => subst x end.
+    set_evars.
+    match goal with |- context[?P m] =>
+    match P with context[?e$@?a] =>
+    match goal with | |- context[length e = ?n :> nat] =>
+    let n := constr:(Z.of_nat n) in
+    match goal with H : ?S m |- _ =>
+    match S with context[?bs $@ ?a0] =>
+    let ai := constr:(word.add a (word.of_Z n)) in
+      let raw_i := constr:(word.unsigned (ai-a0)%word) in
+      let Hidx := fresh "Hidx" in
+      eassert (raw_i = _) as Hidx by (
+        ring_simplify_unsigned_goal; repeat rewrite_unsigned_of_Z_goal;
+        change_with_Z_literal constr:(width); simplify_ZcstExpr; exact eq_refl);
+      let i := match type of Hidx with _ = ?r => r end in
+      let Happ := fresh "Happ" in
+          pose proof List__splitZ_spec_n bs i as Happ
+
+    end
+    end
+    end end end.
+
+    rewrite !app_length, !Nat2Z.inj_add in Happ.
+    repeat match goal with H : Z.of_nat (length _) = _ |- _ => rewrite H in Happ end.
+    specialize (Happ _ eq_refl ltac:(Lia.lia)).
+
+    repeat lift_head_let_in Happ; case Happ as (Happ&?H1l&?H2l).
+    time simplify_ZcstExpr. (* Tactic call ran for 4.71 secs (4.685u,0.003s) (success) *)
+    let eqn := type of Happ in
+    rewr ltac:(fun t => match t with
+                        | eqn => fail 1
+                        | _ => constr:(Happ) end) in *.
+    (* WHY do I need the @ here? *)
+    seprewrite_in_by @sep_eq_of_list_word_at_app H0 ltac:(
+      try eassumption; try (change_with_Z_literal constr:(width); blia)).
   Abort.
 End WithParameters.
