@@ -17,12 +17,21 @@ Definition silly1 : func :=
       c = load4(a + coq:(16))
   ))).
 
+Require Import coqutil.Macros.symmetry.
+Require Import coqutil.Tactics.ParamRecords.
+
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import bedrock2.Semantics bedrock2.ProgramLogic bedrock2.Array.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import Coq.Lists.List coqutil.Map.OfListWord.
 Require Import coqutil.Z.Lia.
+Require Import coqutil.Tactics.Tactics.
+Require Import coqutil.Tactics.letexists.
+Require Import coqutil.Tactics.rdelta.
 Import Map.Interface Interface.map OfFunc.map OfListWord.map.
+Require Import bedrock2.AbsintWordToZ.
+Require Import coqutil.Tactics.rewr.
+
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
   Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
@@ -35,8 +44,6 @@ Section WithParameters.
       (sep (eq (map.of_list_word_at a bs)) R) m ->
       WeakestPrecondition.call functions silly1 t m [a]
       (fun T M rets => True).
-  Require Import coqutil.Tactics.letexists.
-  Require Import coqutil.Tactics.rdelta.
 
   Ltac ring_simplify_unsigned_goal :=
     match goal with
@@ -67,8 +74,6 @@ Section WithParameters.
     let rhs := match rhs with ?x => x end in
     let __ := constr:(eq_refl : lhs = rhs) in
     change lhs with rhs in *.
-
-  Require Import bedrock2.AbsintWordToZ.
 
   Ltac change_with_Z_literal W :=
     first [ let e := open_constr:(BinInt.Zpos _) in
@@ -175,8 +180,6 @@ Section WithParameters.
     rewrite length_firstn_inbounds, length_skipn; blia.
   Qed.
 
-
-  Require Import coqutil.Tactics.rewr.
   Ltac List__splitZ bs n :=
       match goal with H: Z.of_nat (length bs) = _ |- _ =>
           pose proof List__splitZ_spec_n bs n _ H ltac:(blia);
@@ -295,7 +298,6 @@ Section WithParameters.
         subst y; trivial);
       rewrite !Hrw in H; clear Hrw
     end.
-  Require Import coqutil.Tactics.Tactics.
 
   Ltac split_bytes_base_addr bs a0 ai :=
       let raw_i := constr:(word.unsigned (ai-a0)%word) in
@@ -502,7 +504,6 @@ Admitted.
 
     Tactics.rapply (fun addr oldvalue value R m post H => Scalars__store_four_of_sep _ _ _ addr oldvalue value R m post (proj1 H) (proj2 H)).
 
-    From coqutil.Macros Require Import symmetry.
     (* note: it would be nice to have a generalization of this /\-goal logic in on_left *)
     unshelve (
     let x := open_constr:(_ : _ /\ (_ /\ _)) in
@@ -540,7 +541,6 @@ Admitted.
 end end
     end end end.
 
-    Require Import coqutil.Tactics.ParamRecords.
     simpl_param_projections.
     on_left ecancel_assumption.
     split; [trivial|].
