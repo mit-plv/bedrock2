@@ -116,10 +116,15 @@ Fixpoint c_cmd (indent : string) (c : cmd) : string :=
   end.
 
 Definition fmt_c_decl (rett : string) (args : list String.string) (name : String.string) (retptrs : list String.string) : string :=
-  (rett ++ " " ++ c_fun name ++ "(" ++ concat ", " (
-                  List.map (fun a => "uintptr_t "++c_var a) args ++
-                  List.map (fun r => "uintptr_t* "++c_var r) retptrs) ++
-                ")").
+  let argstring : String.string :=
+    (match args, retptrs with
+    | nil, nil => "void"
+    | _, _ => concat ", " (
+        List.map (fun a => "uintptr_t "++c_var a) args ++
+        List.map (fun r => "uintptr_t* "++c_var r) retptrs)
+    end)
+  in
+  (rett ++ " " ++ c_fun name ++ "(" ++ argstring ++ ")").
 
 Definition c_decl (f : String.string * (list String.string * list String.string * cmd)) :=
   let '(name, (args, rets, body)) := f in
