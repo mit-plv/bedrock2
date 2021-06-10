@@ -67,8 +67,13 @@ Notation "program_logic_goal_for_function! proc" := (program_logic_goal_for proc
    let x := program_logic_goal_for_function proc in exact x))
   (at level 10, only parsing).
 
+(* Users might want to override this with
+     Ltac normalize_body_of_function f ::= Tactics.rdelta.rdelta f.
+   in case cbv does more simplification than desired. *)
+Ltac normalize_body_of_function f := eval cbv in f.
+
 Ltac bind_body_of_function f_ :=
-  let f := eval cbv in f_ in
+  let f := normalize_body_of_function f_ in
   let fname := open_constr:(_) in
   let fargs := open_constr:(_) in
   let frets := open_constr:(_) in
