@@ -85,10 +85,18 @@ Ltac bind_body_of_function f_ :=
   change (bindcmd fbody (fun c : Syntax.cmd => P (fname, (fargs, frets, c))));
   cbv beta iota delta [bindcmd]; intros.
 
+Ltac app_head e :=
+  match e with
+  | ?f ?a => app_head f
+  | _ => e
+  end.
+
+(* note: f might have some implicit parameters (eg a record of constants) *)
 Ltac enter f :=
   cbv beta delta [program_logic_goal_for]; intros;
   bind_body_of_function f;
-  let fdefn := eval cbv delta [f] in f in
+  let fname := app_head f in
+  let fdefn := eval cbv beta delta [fname] in f in
   let ctx := string2ident.learn fdefn in
   let H := fresh "_string_to_ident" in
   pose ctx as H;
