@@ -193,11 +193,24 @@ Ltac canonicalize_word_width_and_instance :=
        progress ( change wi with wi' in * )
      end.
 
+Ltac pose_word_ok :=
+  lazymatch goal with
+  | |- context [@word.unsigned ?wi ?inst]      => pose proof (_ : word.ok inst)
+  | |- context [@word.signed ?wi ?inst]        => pose proof (_ : word.ok inst)
+  | H: context [@word.unsigned ?wi ?inst] |- _ => pose proof (_ : word.ok inst)
+  | H: context [@word.signed ?wi ?inst]   |- _ => pose proof (_ : word.ok inst)
+  | _ => idtac (* could/should fail here, but some goals don't use words, and still
+                  benefit from the list lemmas and consts unfolding *)
+  end.
+
 Ltac ZnWords_pre :=
   try eapply word.unsigned_inj;
   lazymatch goal with
   | |- ?G => is_lia G
   end;
+  (* if the word.ok lives in another ok record, that one will get cleared,
+     so we first pose a word.ok, which will be recognized and not get cleared *)
+  pose_word_ok;
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
   unfold_Z_nat_consts;
