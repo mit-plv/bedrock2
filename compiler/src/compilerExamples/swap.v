@@ -18,6 +18,7 @@ Require Import riscv.Platform.MetricMinimal.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.
 Require Import coqutil.Map.SortedList.
+Require Import compiler.MemoryLayout.
 Require Import compiler.StringNameGen.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MetricRiscvMachine.

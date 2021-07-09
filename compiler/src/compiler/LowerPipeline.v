@@ -20,7 +20,6 @@ Require Import compiler.RunInstruction.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
-Require Import compiler.MemoryLayout.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.FitsStack.
 Require Import riscv.Utility.InstructionCoercions.
@@ -137,34 +136,6 @@ Section LowerPipeline.
       destruct_one_match; eauto.
       eexists. split; [reflexivity|].
       solve_divisibleBy4.
-  Qed.
-
-  Lemma mod_2width_mod_bytes_per_word: forall x,
-      (x mod 2 ^ width) mod bytes_per_word = x mod bytes_per_word.
-  Proof.
-    intros.
-    rewrite <- Znumtheory.Zmod_div_mod.
-    - reflexivity.
-    - unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; reflexivity.
-    - destruct width_cases as [E | E]; rewrite E; reflexivity.
-    - unfold Z.divide.
-      exists (2 ^ width / bytes_per_word).
-      unfold bytes_per_word, Memory.bytes_per_word.
-      destruct width_cases as [E | E]; rewrite E; reflexivity.
-  Qed.
-
-  Lemma stack_length_divisible: forall (ml: MemoryLayout) {mlOk: MemoryLayoutOk ml},
-    word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) mod bytes_per_word = 0.
-  Proof.
-    intros.
-    destruct mlOk.
-    rewrite word.unsigned_sub. unfold word.wrap.
-    rewrite mod_2width_mod_bytes_per_word.
-    rewrite Zminus_mod.
-    rewrite stack_start_aligned.
-    rewrite stack_pastend_aligned.
-    rewrite Z.sub_diag.
-    apply Zmod_0_l.
   Qed.
 
   Lemma program_mod_4_0: forall a instrs R m,
@@ -383,8 +354,7 @@ Section LowerPipeline.
       compiles_FlatToRiscv_correctly compile_ext_call (FlatImp.SInteract resvars extcall argvars).
 
   Lemma flat_to_riscv_correct: forall
-      (ml: MemoryLayout)
-      (mlOk: MemoryLayoutOk ml)
+      (stack_start stack_pastend: word)
       (f_entry_name : string) fbody (f_entry_rel_pos req_stack_size: Z)
       (p_call p_functions: word)
       (Rdata Rexec : mem -> Prop)
@@ -398,13 +368,14 @@ Section LowerPipeline.
       riscvPhase functions = Some (instrs, pos_map, req_stack_size) ->
       map.get functions f_entry_name = Some (nil, nil, fbody) ->
       map.get pos_map f_entry_name = Some f_entry_rel_pos ->
-      req_stack_size <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word ->
+      req_stack_size <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->
+      word.unsigned (word.sub stack_pastend stack_start) mod bytes_per_word = 0 ->
       FlatImp.exec functions fbody initial.(getLog) mH map.empty mc (fun t' m' l' mc' => postH t' m') ->
-      machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
+      machine_ok p_functions f_entry_rel_pos stack_start stack_pastend instrs
                  p_call p_call mH Rdata Rexec initial ->
       runsTo initial (fun final => exists mH',
           postH final.(getLog) mH' /\
-          machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
+          machine_ok p_functions f_entry_rel_pos stack_start stack_pastend instrs
                      p_call (word.add p_call (word.of_Z 4)) mH' Rdata Rexec final).
   Proof.
     intros.
@@ -433,7 +404,7 @@ Section LowerPipeline.
         e_pos := FlatToRiscvDef.build_fun_pos_env functions;
         program_base := p_functions;
         e_impl := functions;
-        rem_stackwords := word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word;
+        rem_stackwords := word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
         rem_framewords := 0;
         p_insts := p_call;
         insts := [[Jal RegisterNames.ra
@@ -502,8 +473,9 @@ Section LowerPipeline.
         edestruct mem_available_to_exists as [ stack_trash [? ?] ]. 1: simpl; ecancel_assumption.
         destruct (byte_list_to_word_list_array stack_trash)
           as (stack_trash_words&Hlength_stack_trash_words&Hstack_trash_words).
-        { rewrite H5.
-          apply stack_length_divisible.
+        { match goal with
+          | H: ?x = ?y |- _ => rewrite H
+          end.
           assumption. }
         exists stack_trash_words.
         split. 2: {
@@ -526,7 +498,6 @@ Section LowerPipeline.
             match goal with
             | H: ?x = ?y |- _ => rewrite H
             end.
-            apply stack_length_divisible.
             assumption.
           }
           ParamRecords.simpl_param_projections.
@@ -557,10 +528,9 @@ Section LowerPipeline.
             unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
           }
           rewrite (List.length_flat_map _ (Z.to_nat bytes_per_word)).
-          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H6p9p0.
-            rewrite <-H6p9p0, <-Z_div_exact_2; try trivial.
-            { eapply Z.lt_gt; assumption. }
-            { eapply stack_length_divisible; trivial. } }
+          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H7p9p0.
+            rewrite <-H7p9p0, <-Z_div_exact_2; try trivial.
+            eapply Z.lt_gt; assumption. }
           intros w.
           rewrite HList.tuple.length_to_list; trivial. }
         use_sep_assumption.
@@ -580,10 +550,7 @@ Section LowerPipeline.
               unfold bytes_per_word. simpl.
               destruct width_cases as [Ew | Ew]; rewrite Ew; reflexivity.
             }
-            {
-              apply stack_length_divisible.
-              assumption.
-            }
+            1: assumption.
             rewrite word.of_Z_unsigned.
             solve_word_eq word_ok.
           }

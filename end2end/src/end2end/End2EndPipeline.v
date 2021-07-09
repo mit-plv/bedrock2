@@ -183,7 +183,7 @@ Section Connect.
     - rewrite word.unsigned_of_Z.
       unfold word.wrap.
       etransitivity.
-      1: exact (LowerPipeline.mod_2width_mod_bytes_per_word (2 ^ memSizeLg - stack_size_in_bytes)).
+      1: exact (ToplevelLoop.mod_2width_mod_bytes_per_word (2 ^ memSizeLg - stack_size_in_bytes)).
       change bytes_per_word with 4.
       apply mod4_0.mod4_0_sub.
       + replace memSizeLg with (memSizeLg - 2 + 2) by blia.
@@ -193,7 +193,7 @@ Section Connect.
     - rewrite word.unsigned_of_Z.
       unfold word.wrap.
       etransitivity.
-      1: exact (LowerPipeline.mod_2width_mod_bytes_per_word (2 ^ memSizeLg)).
+      1: exact (ToplevelLoop.mod_2width_mod_bytes_per_word (2 ^ memSizeLg)).
       replace memSizeLg with (memSizeLg - 2 + 2) by blia.
       rewrite Z.pow_add_r by blia.
       apply mod4_0.mod4_mul4_r.

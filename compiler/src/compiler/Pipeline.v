@@ -44,7 +44,6 @@ Require Import compiler.FlatToRiscvFunctions.
 Require Import compiler.DivisibleBy4.
 Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.ForeverSafe.
-Require Export compiler.MemoryLayout.
 Require Import FunctionalExtensionality.
 Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
@@ -223,8 +222,7 @@ Section Pipeline1.
   Qed.
 
   Lemma compiler_correct: forall
-      (ml: MemoryLayout)
-      (mlOk: MemoryLayoutOk ml)
+      (stack_start stack_pastend: word)
       (f_entry_name : string) (fbody: Syntax.cmd.cmd) (f_entry_rel_pos: Z)
       (p_call p_functions: word)
       (Rdata Rexec : mem -> Prop)
@@ -239,13 +237,14 @@ Section Pipeline1.
       compile functions = Some (instrs, pos_map, required_stack_space) ->
       map.get functions f_entry_name = Some (nil, nil, fbody) ->
       map.get pos_map f_entry_name = Some f_entry_rel_pos ->
-      required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word ->
+      required_stack_space <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->
+      word.unsigned (word.sub stack_pastend stack_start) mod bytes_per_word = 0 ->
       Semantics.exec functions fbody initial.(getLog) mH map.empty mc (fun t' m' l' mc' => postH t' m') ->
-      machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
+      machine_ok p_functions f_entry_rel_pos stack_start stack_pastend instrs
                  p_call p_call mH Rdata Rexec initial ->
       runsTo initial (fun final => exists mH',
           postH final.(getLog) mH' /\
-          machine_ok p_functions f_entry_rel_pos ml.(stack_start) ml.(stack_pastend) instrs
+          machine_ok p_functions f_entry_rel_pos stack_start stack_pastend instrs
                      p_call (word.add p_call (word.of_Z 4)) mH' Rdata Rexec final).
   Proof.
     intros. unfold compile in *. simp.

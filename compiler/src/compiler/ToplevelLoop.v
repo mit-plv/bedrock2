@@ -196,6 +196,34 @@ Section Pipeline1.
     case width_cases as [E | E]; rewrite E; Lia.lia.
   Qed.
 
+  Lemma mod_2width_mod_bytes_per_word: forall x,
+      (x mod 2 ^ width) mod bytes_per_word = x mod bytes_per_word.
+  Proof.
+    intros.
+    rewrite <- Znumtheory.Zmod_div_mod.
+    - reflexivity.
+    - unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; reflexivity.
+    - destruct width_cases as [E | E]; rewrite E; reflexivity.
+    - unfold Z.divide.
+      exists (2 ^ width / bytes_per_word).
+      unfold bytes_per_word, Memory.bytes_per_word.
+      destruct width_cases as [E | E]; rewrite E; reflexivity.
+  Qed.
+
+  Lemma stack_length_divisible:
+    word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) mod bytes_per_word = 0.
+  Proof.
+    intros.
+    destruct mlOk.
+    rewrite word.unsigned_sub. unfold word.wrap.
+    rewrite mod_2width_mod_bytes_per_word.
+    rewrite Zminus_mod.
+    rewrite stack_start_aligned.
+    rewrite stack_pastend_aligned.
+    rewrite Z.sub_diag.
+    apply Zmod_0_l.
+  Qed.
+
   Lemma establish_ll_inv: forall (initial: MetricRiscvMachine),
       initial_conditions initial ->
       ll_inv initial.
@@ -262,6 +290,7 @@ Section Pipeline1.
         exact HMem.
       }
       all: try eassumption.
+      1: apply stack_length_divisible.
       unfold machine_ok.
       unfold_RiscvMachine_get_set.
       repeat match goal with
@@ -492,6 +521,7 @@ Section Pipeline1.
           eapply loop_body_correct; eauto.
         }
         all: try eassumption.
+        1: apply stack_length_divisible.
       + cbv beta.
         intros. simp. eauto 17.
   Qed.
