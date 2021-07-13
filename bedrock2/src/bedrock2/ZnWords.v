@@ -197,11 +197,18 @@ Ltac pose_word_ok :=
   lazymatch goal with
   | |- context [@word.unsigned ?wi ?inst]      => pose proof (_ : word.ok inst)
   | |- context [@word.signed ?wi ?inst]        => pose proof (_ : word.ok inst)
+  | |- context [@word.of_Z ?wi ?inst]          => pose proof (_ : word.ok inst)
   | H: context [@word.unsigned ?wi ?inst] |- _ => pose proof (_ : word.ok inst)
   | H: context [@word.signed ?wi ?inst]   |- _ => pose proof (_ : word.ok inst)
+  | H: context [@word.of_Z ?wi ?inst]     |- _ => pose proof (_ : word.ok inst)
   | _ => idtac (* could/should fail here, but some goals don't use words, and still
                   benefit from the list lemmas and consts unfolding *)
   end.
+
+Ltac word_eqs_to_Z_eqs :=
+  repeat  match goal with
+          | H: @eq (@word.rep ?wi ?inst) _ _ |- _ => apply (f_equal (@word.unsigned wi inst)) in H
+          end.
 
 Ltac ZnWords_pre :=
   try eapply word.unsigned_inj;
@@ -211,6 +218,7 @@ Ltac ZnWords_pre :=
   (* if the word.ok lives in another ok record, that one will get cleared,
      so we first pose a word.ok, which will be recognized and not get cleared *)
   pose_word_ok;
+  word_eqs_to_Z_eqs;
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
   unfold_Z_nat_consts;
