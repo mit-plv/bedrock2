@@ -93,31 +93,75 @@ Section Syntax.
     | SCall binds _ _ | SInteract binds _ _ => list_union veq binds []
     end.
 
-  Definition ForallVars_bcond(P: varname -> Prop)(cond: bcond) : Prop :=
+  Definition ForallVars_bcond_gen{R: Type}(and: R -> R -> R)(P: varname -> R)(cond: bcond): R :=
     match cond with
-    | CondBinary _ x y => P x /\ P y
+    | CondBinary _ x y => and (P x) (P y)
     | CondNez x => P x
     end.
 
-  Definition Forall_vars_stmt(P: varname -> Prop)(P_calls: varname -> Prop): stmt -> Prop :=
+  Definition Forall_vars_stmt_gen{R: Type}(T: R)(and: R -> R -> R)(all: (varname -> R) -> list varname -> R)
+             (C: (varname -> R) -> bcond -> R)(P: varname -> R)(P_calls: varname -> R): stmt -> R :=
     fix rec s :=
       match s with
-      | SLoad _ x a _ => P x /\ P a
-      | SStore _ a x _ => P a /\ P x
-      | SInlinetable _ x _ i => P x /\ P i
-      | SStackalloc x n body => P x /\ rec body
+      | SLoad _ x a _ => and (P x) (P a)
+      | SStore _ a x _ => and (P a) (P x)
+      | SInlinetable _ x _ i => and (P x) (P i)
+      | SStackalloc x n body => and (P x) (rec body)
       | SLit x _ => P x
-      | SOp x _ y z => P x /\ P y /\ P z
-      | SSet x y => P x /\ P y
-      | SIf c s1 s2 => ForallVars_bcond P c /\ rec s1 /\ rec s2
-      | SLoop s1 c s2 => ForallVars_bcond P c /\ rec s1 /\ rec s2
-      | SSeq s1 s2 => rec s1 /\ rec s2
-      | SSkip => True
-      | SCall binds _ args => Forall P_calls binds /\ Forall P_calls args
-      | SInteract binds _ args => Forall P_calls binds /\ Forall P_calls args
+      | SOp x _ y z => and (P x) (and (P y) (P z))
+      | SSet x y => and (P x) (P y)
+      | SIf c s1 s2 => and (C P c) (and (rec s1) (rec s2))
+      | SLoop s1 c s2 => and (C P c) (and (rec s1) (rec s2))
+      | SSeq s1 s2 => and (rec s1) (rec s2)
+      | SSkip => T
+      | SCall binds _ args => and (all P_calls binds) (all P_calls args)
+      | SInteract binds _ args => and (all P_calls binds) (all P_calls args)
       end.
 
-  Definition ForallVars_stmt P := Forall_vars_stmt P P.
+  Definition ForallVars_bcond(P: varname -> Prop)(cond: bcond): Prop :=
+    Eval unfold ForallVars_bcond_gen in ForallVars_bcond_gen and P cond.
+
+  Definition Forall_vars_stmt(P: varname -> Prop)(P_calls: varname -> Prop): stmt -> Prop :=
+    Eval unfold Forall_vars_stmt_gen in
+      Forall_vars_stmt_gen True and (@Forall varname) ForallVars_bcond P P_calls.
+
+  Definition forallbVars_bcond(P: varname -> bool)(cond: bcond): bool :=
+    Eval unfold ForallVars_bcond_gen in ForallVars_bcond_gen andb P cond.
+
+  Definition forallb_vars_stmt(P: varname -> bool)(P_calls: varname -> bool): stmt -> bool :=
+    Eval unfold Forall_vars_stmt_gen in
+      Forall_vars_stmt_gen true andb (@forallb varname) forallbVars_bcond P P_calls.
+
+  Lemma forallb_vars_stmt_correct
+        (P: varname -> Prop)(p: varname -> bool)(P_calls: varname -> Prop)(p_calls: varname -> bool)
+        (p_correct: forall x, p x = true <-> P x)
+        (p_calls_correct: forall x, p_calls x = true <-> P_calls x):
+    forall s, forallb_vars_stmt p p_calls s = true <-> Forall_vars_stmt P P_calls s.
+  Proof.
+    assert (p_correct_fw: forall x, p x = true -> P x). {
+      intros. eapply p_correct. assumption.
+    }
+    assert (p_correct_bw: forall x, P x -> p x = true). {
+      intros. eapply p_correct. assumption.
+    }
+    assert (p_calls_correct_fw: forall x, p_calls x = true -> P_calls x). {
+      intros. eapply p_calls_correct. assumption.
+    }
+    assert (p_calls_correct_bw: forall x, P_calls x -> p_calls x = true). {
+      intros. eapply p_calls_correct. assumption.
+    }
+    clear p_correct p_calls_correct.
+    induction s; split; simpl; intros; unfold ForallVars_bcond, forallbVars_bcond in *;
+      repeat match goal with
+             | c: bcond |- _ => destruct c
+             | H: andb _ _ = true |- _ => eapply Bool.andb_true_iff in H
+             | H: _ /\ _ |- _ => destruct H
+             | H: _ <-> _ |- _ => destruct H
+             | |- andb _ _ = true => apply Bool.andb_true_iff
+             | |- _ /\ _ => split
+             end;
+      eauto using List.Forall_to_forallb, List.forallb_to_Forall.
+  Qed.
 
   Lemma ForallVars_bcond_impl: forall (P Q: varname -> Prop),
       (forall x, P x -> Q x) ->
@@ -133,6 +177,8 @@ Section Syntax.
   Proof.
     induction s; intros; simpl in *; intuition eauto using ForallVars_bcond_impl, Forall_impl.
   Qed.
+
+  Definition ForallVars_stmt P := Forall_vars_stmt P P.
 
   Lemma ForallVars_stmt_impl: forall (P Q: varname -> Prop),
       (forall x, P x -> Q x) ->

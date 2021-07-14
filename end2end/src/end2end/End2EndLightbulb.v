@@ -5,7 +5,7 @@ Require Import coqutil.Word.Interface.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.forward.
 Require Import bedrock2.Syntax.
-Require Import compiler.PipelineWithRename.
+Require Import compiler.Pipeline.
 Require Import bedrock2Examples.lightbulb bedrock2Examples.lightbulb_spec.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import coqutil.Tactics.Simp.
@@ -69,7 +69,7 @@ Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPer
 Local Existing Instance SortedListString.map.
 Local Existing Instance SortedListString.ok.
 
-Instance pipeline_params: PipelineWithRename.Pipeline.parameters :=
+Instance pipeline_params: Pipeline.Pipeline.parameters :=
   @End2EndPipeline.pipeline_params
     (Zkeyed_map FE310CSemantics.parameters.word)
     (Zkeyed_map_ok FE310CSemantics.parameters.word)
@@ -78,16 +78,16 @@ Instance pipeline_params: PipelineWithRename.Pipeline.parameters :=
 
 Instance semantics_parameters_ok : Semantics.parameters_ok
   (FlattenExprDef.FlattenExpr.mk_Semantics_params
-     PipelineWithRename.Pipeline.FlattenExpr_parameters).
+     Pipeline.Pipeline.FlattenExpr_parameters).
 Proof.
   eapply @FlattenExprDef.FlattenExpr.mk_Semantics_params_ok.
-  eapply @PipelineWithRename.FlattenExpr_hyps.
+  eapply @Pipeline.FlattenExpr_hyps.
   eapply @pipeline_assumptions; try exact _.
 Qed.
 
 Local Definition parameters_match :
   (FlattenExprDef.FlattenExpr.mk_Semantics_params
-    PipelineWithRename.Pipeline.FlattenExpr_parameters)
+    Pipeline.Pipeline.FlattenExpr_parameters)
   = FE310CSemantics.semantics_parameters := eq_refl.
 
 Open Scope string_scope.
@@ -105,29 +105,39 @@ Definition loop :=
 Definition funimplsList := init :: loop :: lightbulb.function_impls.
 Definition prog := map.of_list funimplsList.
 
-Definition lightbulb_insts_unevaluated:
-  option (list Decode.Instruction * FlatToRiscvDef.FlatToRiscvDef.funname_env Z) :=
-  ToplevelLoop.compile_prog ml prog.
-
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
    and to check if there are any axioms which could block the computation. *)
+Definition lightbulb_compiled: list Decode.Instruction * FlatToRiscvDef.FlatToRiscvDef.funname_env Z * Z.
+  let r := eval cbv in (ToplevelLoop.compile_prog ml prog) in
+  lazymatch r with
+  | Some ?x => exact x
+  end.
+Defined.
+
 Definition lightbulb_insts: list Decode.Instruction.
-  let r := eval cbv in lightbulb_insts_unevaluated in set (res := r).
-  match goal with
-  | res := Some (?x, _) |- _ => exact x
+  let r := eval cbv delta [lightbulb_compiled] in lightbulb_compiled in
+  lazymatch r with
+  | (?x, _, _) => exact x
   end.
 Defined.
 
 Definition function_positions: FlatToRiscvDef.FlatToRiscvDef.funname_env Z.
-  let r := eval cbv in lightbulb_insts_unevaluated in set (res := r).
-  match goal with
-  | res := Some (_, ?x) |- _ => exact x
+  let r := eval cbv delta [lightbulb_compiled] in lightbulb_compiled in
+  lazymatch r with
+  | (_, ?x, _) => exact x
+  end.
+Defined.
+
+Definition required_stack_space: Z.
+  let r := eval cbv delta [lightbulb_compiled] in lightbulb_compiled in
+  lazymatch r with
+  | (_, _, ?x) => exact x
   end.
 Defined.
 
 Definition compilation_result:
-  ToplevelLoop.compile_prog ml prog = Some (lightbulb_insts, function_positions).
+  ToplevelLoop.compile_prog ml prog = Some (lightbulb_insts, function_positions, required_stack_space).
 Proof. reflexivity. Qed.
 
 Module PrintProgram.
@@ -217,6 +227,7 @@ Proof.
   Set Printing Implicit.
   Unshelve. all: try eapply mmio_params. all: try apply (SortedListString.Build_parameters Z).
   Time simpl_param_projections. (* 0.134 secs *)
+  Unset Printing Implicit.
 Abort.
 
 Definition bytes_at(bs: list Init.Byte.byte)(addr: Z)
@@ -247,7 +258,7 @@ Proof.
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q memSizeLg_valid.
-  specialize Q with (12 := KB). (* TODO add bigger numbers to coqutil.Tactics.forward.specialize_first *)
+  specialize Q with (13 := KB). (* TODO add bigger numbers to coqutil.Tactics.forward.specialize_first *)
   (* specialize_first Q KB. *)
   specialize_first Q compilation_result.
 
@@ -287,7 +298,7 @@ Proof.
 
     intros ? ? ? ?.
     repeat ProgramLogic.straightline.
-    unfold mem_available, hl_inv, isReady, goodTrace, goodHlTrace, buffer_addr, ml, End2EndPipeline.ml, code_start, heap_start, heap_pastend, Lift1Prop.ex1 in *; Simp.simp.
+    unfold LowerPipeline.mem_available, hl_inv, isReady, goodTrace, goodHlTrace, buffer_addr, ml, End2EndPipeline.ml, code_start, heap_start, heap_pastend, Lift1Prop.ex1 in *; Simp.simp.
     eapply SeparationLogic.sep_emp_l in H.
     (* TODO why does Simp.simp not destruct H if I end the above line by semicolon instead of dot? *)
     Simp.simp.
@@ -301,7 +312,7 @@ Proof.
       end.
       rewrite word.of_Z_unsigned.
       rewrite <-(firstn_skipn 1520 anybytes) in Hp1.
-      unfold ptsto_bytes in Hp1.
+      unfold LowerPipeline.ptsto_bytes in Hp1.
       assert (map.ok Semantics.mem). {
         exact FE310CSemantics.parameters.mem_ok.
       }
@@ -346,6 +357,7 @@ Proof.
     { left. right. left. right. eauto. }
     left. right. right. eauto.
 
+  - vm_compute. intros. discriminate.
   - vm_compute. intros. discriminate.
   - (* Here we prove that all > 700 instructions are valid, using Ltac.
        If this becomes a bottleneck, we'll have to do this in Gallina in the compile function. *)

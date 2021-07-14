@@ -147,6 +147,24 @@ Module map.
         + eapply split_remove_put; assumption.
     Qed.
 
+    Lemma putmany_of_list_zip_to_In: forall ks vs m k v,
+        map.putmany_of_list_zip ks vs map.empty = Some m ->
+        map.get m k = Some v ->
+        In k ks.
+    Proof.
+      induction ks; intros.
+      - destruct vs as [|v' vs]. 2: discriminate H.
+        simpl in H. apply Option.eq_of_eq_Some in H. subst m. rewrite map.get_empty in H0. discriminate.
+      - destruct vs as [|v' vs]. 1: discriminate H.
+        cbn in H. edestruct map.putmany_of_list_zip_to_putmany as (s & A & ?). 1: exact H.
+        subst m.
+        rewrite map.get_putmany_dec in H0.
+        rewrite map.get_put_dec in H0.
+        destr (key_eqb a k).
+        + subst a. simpl. auto.
+        + right. rewrite map.get_empty in H0. simp. eauto.
+    Qed.
+
     Lemma two_way_split: forall (m mA mB m1 m2: map),
         map.split m mA mB ->
         map.split m m1 m2 ->
@@ -162,25 +180,86 @@ Module map.
         map.getmany_of_list m ks = Some vs ->
         (forall k, In k ks -> map.get m2 k = None) ->
         map.getmany_of_list m1 ks = Some vs.
-    Admitted.
+    Proof.
+      unfold map.split, map.disjoint, map.getmany_of_list. intros. simp.
+      rewrite <- H0.
+      f_equal.
+      eapply List.map_ext_in. intros.
+      rewrite map.get_putmany_dec. rewrite H1; auto.
+    Qed.
 
     Lemma getmany_of_list_zip_grow: forall (m m1 m2: map) (ks: list key) (vs: list value),
         map.split m m1 m2 ->
         map.getmany_of_list m1 ks = Some vs ->
         map.getmany_of_list m ks = Some vs.
-    Admitted.
+    Proof.
+      unfold map.split, map.disjoint, map.getmany_of_list. intros. simp.
+      rewrite <- H0.
+      f_equal.
+      eapply List.map_ext_in. intros.
+      rewrite map.get_putmany_dec.
+      destruct_one_match. 2: reflexivity.
+      exfalso.
+      eapply List.In_option_all in H0. 2: {
+        eapply List.in_map. eassumption.
+      }
+      simp. eauto.
+    Qed.
 
-    Axiom putmany_of_list_zip_split: forall (l l' l1 l2: map) keys values,
+    Lemma putmany_of_list_zip_split: forall (l l' l1 l2: map) keys values,
         map.putmany_of_list_zip keys values l = Some l' ->
         map.split l l1 l2 ->
         Forall (fun k => map.get l2 k = None) keys ->
         exists l1', map.split l' l1' l2 /\ map.putmany_of_list_zip keys values l1 = Some l1'.
+    Proof.
+      intros.
+      eapply map.putmany_of_list_zip_to_putmany in H. destruct H as (kv & Mkkv & ?). subst.
+      unfold map.split in *. simp.
+      setoid_rewrite <- putmany_assoc.
+      assert (map.disjoint l2 kv) as D. {
+        unfold map.disjoint. intros *. intros G1 G2.
+        eapply putmany_of_list_zip_to_In in Mkkv. 2: eassumption.
+        eapply Forall_forall in H1. 2: exact Mkkv.
+        congruence.
+      }
+      rewrite (map.putmany_comm l2 kv) by exact D.
+      setoid_rewrite putmany_assoc.
+      exists (map.putmany l1 kv). ssplit.
+      - reflexivity.
+      - eapply map.disjoint_putmany_l. split. 1: assumption. apply map.disjoint_comm. assumption.
+      - pose proof @map.putmany_of_list_zip_sameLength as L.
+        specialize L with (1 := Mkkv).
+        eapply map.sameLength_putmany_of_list in L. destruct L as [st' L]. rewrite L.
+        eapply map.putmany_of_list_zip_to_putmany in L. destruct L as (kv' & Mkkv' & ?). subst.
+        congruence.
+    Qed.
 
-    Axiom putmany_of_list_zip_grow: forall (l l1 l1' l2: map) keys values,
+    Lemma putmany_of_list_zip_grow: forall (l l1 l1' l2: map) keys values,
         map.putmany_of_list_zip keys values l1 = Some l1' ->
         map.split l l1 l2 ->
         Forall (fun k => map.get l2 k = None) keys ->
         exists l', map.split l' l1' l2 /\ map.putmany_of_list_zip keys values l = Some l'.
+    Proof.
+      intros.
+      eapply map.putmany_of_list_zip_to_putmany in H. destruct H as (kv & Mkkv & ?). subst.
+      assert (map.disjoint l2 kv) as D. {
+        unfold map.disjoint. intros *. intros G1 G2.
+        eapply putmany_of_list_zip_to_In in Mkkv. 2: eassumption.
+        eapply Forall_forall in H1. 2: exact Mkkv.
+        congruence.
+      }
+      unfold map.split in *. simp. eexists. ssplit.
+      - reflexivity.
+      - eapply map.disjoint_putmany_l. split. 1: assumption. apply map.disjoint_comm. assumption.
+      - pose proof @map.putmany_of_list_zip_sameLength as L.
+        specialize L with (1 := Mkkv).
+        eapply map.sameLength_putmany_of_list in L. destruct L as [st' L]. rewrite L.
+        eapply map.putmany_of_list_zip_to_putmany in L. destruct L as (kv' & Mkkv' & ?). subst.
+        replace kv' with kv by congruence. clear Mkkv'.
+        f_equal.
+        rewrite <- putmany_assoc. rewrite (map.putmany_comm l2 kv) by exact D.
+        apply putmany_assoc.
+    Qed.
 
     Lemma get_split_l: forall m m1 m2 k v,
         map.split m m1 m2 ->
@@ -471,8 +550,51 @@ Section Spilling.
     | SCall argvars f resvars | SInteract argvars f resvars => 0
     end.
 
+  Hint Extern 1 => blia : max_var_sound.
+  Hint Extern 1 => cbv beta : max_var_sound.
+  Hint Extern 1 => eapply Forall_vars_stmt_impl; cycle -1 : max_var_sound.
+  Hint Extern 1 => match goal with
+                   | IH: forall _, _ -> Forall_vars_stmt _ _ _ |- Forall_vars_stmt _ _ _ => eapply IH
+                   end : max_var_sound.
+
+  Lemma max_var_sound: forall s P,
+      Forall_vars_stmt (fun x => fp < x) P s ->
+      Forall_vars_stmt (fun x => fp < x <= max_var s) P s.
+  Proof.
+    induction s; simpl; intros; unfold ForallVars_bcond in *; simpl;
+      repeat match goal with
+             | H: _ /\ _ |- _ => destruct H
+             | c: bcond _ |- _ => destruct c; simpl
+             | |- _ /\ _ => split
+             end;
+      eauto with max_var_sound.
+  Qed.
+
   Definition spill_fbody(s: stmt): stmt :=
-    SStackalloc fp (bytes_per_word * (max_var s - 31)) (spill_stmt s).
+    let maxvar := max_var s in
+    SStackalloc fp (bytes_per_word * Z.of_nat (Z.to_nat (maxvar - 31))) (spill_stmt s).
+  (* `Z.of_nat (Z.to_nat _)` is to to make sure it's not negative.
+     We might stackalloc 0 bytes, but that still writes fp, which is required to be
+     set by `related`, and we don't want to complicate `related` to accommodate for a
+     potentially uninitialized `fp` after a function call happens in a fresh locals env *)
+
+  Open Scope bool_scope.
+
+  Definition spill_fun: list Z * list Z * stmt -> option (list Z * list Z * stmt) :=
+    fun '(argnames, resnames, body) =>
+      (* The first two lines of this test are very likely to succeed,
+         because it suffices that 5 + len argnames + len resnames < 32,
+         because reg rename assigns the lowest argnames and resnames and
+         only then continues with the function body.
+         The last test only succeeds if there are no function calls that
+         use variables introduced too late. *)
+      if List.forallb (fun x => Z.ltb fp x && Z.ltb x 32) argnames &&
+         List.forallb (fun x => Z.ltb fp x && Z.ltb x 32) resnames &&
+         forallb_vars_stmt (fun x => Z.ltb fp x) (* allowing >= 32 here is the whole point of spilling *)
+                           (fun x => Z.ltb fp x && Z.ltb x 32) body (* allowing >=32 here (for calls) is not
+                                                                       implemented yet *)
+      then Some (argnames, resnames, spill_fbody body)
+      else None.
 
   Context {locals: map.map Z word}.
   Context {localsOk: map.ok locals}.
@@ -487,11 +609,14 @@ Section Spilling.
   |}).
   Defined.
 
+  Definition spill_functions: env -> option env :=
+    map.map_all_values spill_fun.
+
   Definition valid_vars_src(maxvar: Z): stmt -> Prop :=
     Forall_vars_stmt (fun x => fp < x <= maxvar) (fun x => fp < x < 32).
 
   Definition valid_vars_tgt: stmt -> Prop :=
-    Forall_vars_stmt (fun x => sp < x <= 32) (fun x => sp < x < 32).
+    Forall_vars_stmt (fun x => 3 <= x < 32) (fun x => 3 <= x < 32).
 
   Lemma spill_stmt_valid_vars: forall s m,
       max_var s <= m ->
@@ -501,7 +626,7 @@ Section Spilling.
     (* Without the clear, firstorder becomes very slow COQBUG https://github.com/coq/coq/issues/11352.
        Not using firstorder though because there's something higher order here: *)
     clear mem mem_ok locals localsOk env ext_spec.
-    assert (forall vars, Forall (fun x : Z => 5 < x < 32) vars -> Forall (fun x : Z => 2 < x < 32) vars). {
+    assert (forall vars, Forall (fun x : Z => 5 < x < 32) vars -> Forall (fun x : Z => 3 <= x < 32) vars). {
       intros. eapply Forall_impl. 2: eassumption. simpl. blia.
     }
     unfold valid_vars_src, valid_vars_tgt.
@@ -530,10 +655,10 @@ Section Spilling.
   Definition tmps(l: locals): Prop :=
     forall k v, map.get l k = Some v -> k = tmp1 \/ k = tmp2.
 
-  Definition related(maxvar: Z)(frame: mem -> Prop)(done: bool)
-             (t1: trace)(m1: mem)(l1: locals)(mc1: MetricLog)
-             (t2: trace)(m2: mem)(l2: locals)(mc2: MetricLog): Prop :=
-      exists fpval lStack lRegs stackwords,
+  Definition related(maxvar: Z)(frame: mem -> Prop)(fpval: word)
+             (t1: trace)(m1: mem)(l1: locals)
+             (t2: trace)(m2: mem)(l2: locals): Prop :=
+      exists lStack lRegs stackwords,
         t1 = t2 /\
         (eq m1 * word_array fpval stackwords * frame)%sep m2 /\
         (forall x v, map.get lRegs x = Some v -> fp < x < 32) /\
@@ -547,19 +672,74 @@ Section Spilling.
   Lemma load_from_word_array: forall p words frame m i v,
       (word_array p words * frame)%sep m ->
       nth_error words (Z.to_nat i) = Some v ->
+      0 <= i ->
       Memory.load Syntax.access_size.word m (word.add p (word.of_Z (i * bytes_per_word))) = Some v.
-  Admitted.
+  Proof.
+    unfold word_array.
+    intros.
+    eapply nth_error_split in H0. simp.
+    seprewrite_in @array_append H.
+    seprewrite_in @array_cons H.
+    eapply load_word_of_sep.
+    use_sep_assumption.
+    cancel.
+    cancel_seps_at_indices 0%nat 0%nat. {
+      f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: blia.
+      apply word.unsigned_of_Z_nowrap.
+      unfold bytes_per_word.
+      destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
+    }
+    ecancel_done.
+  Qed.
 
   Lemma store_to_word_array: forall p oldwords frame m i v,
       (word_array p oldwords * frame)%sep m ->
       0 <= i < Z.of_nat (List.length oldwords) ->
-      exists m' newwords,
+      exists newwords m',
         Memory.store Syntax.access_size.word m (word.add p (word.of_Z (i * bytes_per_word))) v = Some m' /\
         (word_array p newwords * frame)%sep m' /\
         nth_error newwords (Z.to_nat i) = Some v /\
         (forall j w, j <> Z.to_nat i -> nth_error oldwords j = Some w -> nth_error newwords j = Some w) /\
         length newwords = length oldwords.
-  Admitted.
+  Proof.
+    unfold word_array.
+    intros.
+    destruct (List.nth_error oldwords (Z.to_nat i)) eqn: E. 2: {
+      exfalso. eapply nth_error_Some. 2: eassumption. blia.
+    }
+    eapply nth_error_split in E. simp.
+    seprewrite_in @array_append H.
+    seprewrite_in @array_cons H.
+    eexists (l1 ++ v :: l2).
+    eapply store_word_of_sep. {
+      use_sep_assumption. cancel. cancel_seps_at_indices 0%nat 0%nat. {
+        f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: blia.
+        apply word.unsigned_of_Z_nowrap.
+        unfold bytes_per_word.
+        destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
+      }
+      ecancel_done.
+    }
+    clear H.
+    intros. ssplit.
+    - seprewrite @array_append. seprewrite @array_cons.
+      use_sep_assumption.
+      cancel.
+      cancel_seps_at_indices 0%nat 0%nat. {
+        f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 2: blia.
+        symmetry. apply word.unsigned_of_Z_nowrap.
+        unfold bytes_per_word.
+        destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
+      }
+      ecancel_done.
+    - rewrite nth_error_app2 by blia. replace (Z.to_nat i - length l1)%nat with O by blia. reflexivity.
+    - intros. assert (j < Z.to_nat i \/ Z.to_nat i < j)%nat as C by blia. destruct C as [C | C].
+      + rewrite nth_error_app1 by blia. rewrite nth_error_app1 in H1 by blia. assumption.
+      + rewrite nth_error_app2 by blia. rewrite nth_error_app2 in H1 by blia.
+        replace (j - length l1)%nat with (S (j - length l1 - 1)) in * by blia.
+        assumption.
+    - rewrite ?List.app_length. reflexivity.
+  Qed.
 
   Lemma store_bytes_sep_hi2lo: forall (mH mL : mem) R a n v_old v,
       Memory.load_bytes n mH a = Some v_old ->
@@ -638,13 +818,13 @@ Section Spilling.
       + eauto.
   Qed.
 
-  Lemma load_arg_reg_correct(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 post frame maxvar v,
+  Lemma load_arg_reg_correct(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc2 fpval post frame maxvar v,
       i = 1 \/ i = 2 ->
-      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < r <= maxvar ->
       map.get l1 r = Some v ->
       (forall mc2,
-          related maxvar frame false t1 m1 l1 mc1 t2 m2 (map.put l2 (arg_reg i r) v) mc2 ->
+          related maxvar frame fpval t1 m1 l1 t2 m2 (map.put l2 (arg_reg i r) v) ->
           post t2 m2 (map.put l2 (arg_reg i r) v) mc2) ->
       exec e2 (load_arg_reg i r) t2 m2 l2 mc2 post.
   Proof.
@@ -653,7 +833,7 @@ Section Spilling.
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. simpl_param_projections. ecancel_assumption.
-      + eapply load_from_word_array. 1: ecancel_assumption.
+      + eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
         eapply H0p5. 1: blia.
         unfold sep in H0p3. simp.
         eapply map.get_split_r. 1,3: eassumption.
@@ -684,22 +864,22 @@ Section Spilling.
              end.
   Qed.
 
-  Lemma load_arg_reg_correct'(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 post frame maxvar v,
+  Lemma load_arg_reg_correct'(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 post frame maxvar v fpval,
       i = 1 \/ i = 2 ->
-      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < r <= maxvar ->
       map.get l1 r = Some v ->
       post t1 m1 l1 mc1 ->
       exec e2 (load_arg_reg i r) t2 m2 l2 mc2
            (fun t2' m2' l2' mc2' => exists t1' m1' l1' mc1',
-                related maxvar frame false t1' m1' l1' mc1' t2' m2' l2' mc2' /\ post t1' m1' l1' mc1').
+                related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\ post t1' m1' l1' mc1').
   Proof.
     intros.
     unfold load_arg_reg, stack_loc, arg_reg, related in *. simp.
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. simpl_param_projections. ecancel_assumption.
-      + eapply load_from_word_array. 1: ecancel_assumption.
+      + eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
         eapply H0p5. 1: blia.
         unfold sep in H0p3. simp.
         eapply map.get_split_r. 1,3: eassumption.
@@ -734,21 +914,21 @@ Section Spilling.
      when the new postcondition is used as a "mid1" in exec.loop, and body1 is a seq
      in which this lemma was used, t2, m2, l2, mc2 are introduced after the evar "?mid1"
      is created (i.e. after exec.loop is applied), so they are not in the scope of "?mid1". *)
-  Lemma load_arg_reg_correct''(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 frame maxvar v,
+  Lemma load_arg_reg_correct''(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc2 frame maxvar v fpval,
       i = 1 \/ i = 2 ->
-      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < r <= maxvar ->
       map.get l1 r = Some v ->
       exec e2 (load_arg_reg i r) t2 m2 l2 mc2 (fun t2' m2' l2' mc2' =>
         t2' = t2 /\ m2' = m2 /\ l2' = map.put l2 (arg_reg i r) v /\
-        related maxvar frame false t1 m1 l1 mc1 t2' m2' l2' mc2').
+        related maxvar frame fpval t1 m1 l1 t2' m2' l2').
   Proof.
     intros.
     unfold load_arg_reg, stack_loc, arg_reg, related in *. simp.
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. simpl_param_projections. ecancel_assumption.
-      + eapply load_from_word_array. 1: ecancel_assumption.
+      + eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
         eapply H0p5. 1: blia.
         unfold sep in H0p3. simp.
         eapply map.get_split_r. 1,3: eassumption.
@@ -777,6 +957,21 @@ Section Spilling.
              end.
   Qed.
 
+  Lemma call_cps: forall e fname params rets binds args fbody argvs t l m mc st post,
+      map.get e fname = Some (params, rets, fbody) ->
+      map.getmany_of_list l args = Some argvs ->
+      map.putmany_of_list_zip params argvs map.empty = Some st ->
+      exec e fbody t m st mc (fun t' m' st' mc' =>
+        exists retvs l',
+          map.getmany_of_list st' rets = Some retvs /\
+          map.putmany_of_list_zip binds retvs l = Some l' /\
+          post t' m' l' mc') ->
+    exec e (SCall binds fname args) t m l mc post.
+  Proof.
+    intros. eapply exec.call; try eassumption.
+    cbv beta. intros *. exact id.
+  Qed.
+
   Lemma loop_cps: forall e body1 cond body2 t m l mc post,
     exec e body1 t m l mc (fun t m l mc => exists b,
       eval_bcond l cond = Some b /\
@@ -797,13 +992,13 @@ Section Spilling.
      `related` does not hold: the result is already in l1 and lStack, but not yet in stackwords.
      So we request the `related` that held *before* SOp, i.e. the one where the result is not
      yet in l1 and l2. *)
-  Lemma save_res_reg_correct: forall e t1 t2 m1 m2 l1 l2 mc1 mc1b mc2 mc2b x v maxvar frame post,
+  Lemma save_res_reg_correct: forall e t1 t2 m1 m2 l1 l2 mc1 mc2 x v maxvar frame post fpval,
       post t1 m1 (map.put l1 x v) mc1 ->
-      related maxvar frame false t1 m1 l1 mc1b t2 m2 l2 mc2b ->
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < x <= maxvar ->
       exec e (save_res_reg x) t2 m2 (map.put l2 (res_reg x) v) mc2
            (fun t2' m2' l2' mc2' => exists t1' m1' l1' mc1',
-                related maxvar frame false t1' m1' l1' mc1' t2' m2' l2' mc2' /\ post t1' m1' l1' mc1').
+                related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\ post t1' m1' l1' mc1').
   Proof.
     intros.
     unfold save_res_reg, stack_loc, res_reg, related in *. simp.
@@ -896,11 +1091,11 @@ Section Spilling.
      `related` does not hold: the result is already in l1 and lStack, but not yet in stackwords.
      So we request the `related` that held *before* SOp, i.e. the one where the result is not
      yet in l1 and l2. *)
-  Lemma save_res_reg_correct'': forall e t1 t2 m1 m2 l1 l2 mc1 mc1b mc2 mc2b x v maxvar frame post,
-      related maxvar frame false t1 m1 l1 mc1b t2 m2 l2 mc2b ->
+  Lemma save_res_reg_correct'': forall e t1 t2 m1 m2 l1 l2 mc2 x v maxvar frame post fpval,
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < x <= maxvar ->
       (forall t2' m2' l2' mc2',
-          related maxvar frame false t1 m1 (map.put l1 x v) mc1 t2' m2' l2' mc2' ->
+          related maxvar frame fpval t1 m1 (map.put l1 x v) t2' m2' l2' ->
           post t2' m2' l2' mc2') ->
       exec e (save_res_reg x) t2 m2 (map.put l2 (res_reg x) v) mc2 post.
   Proof.
@@ -1027,32 +1222,76 @@ Section Spilling.
       + unfold arg_reg. unfold fp in *. repeat destruct_one_match; blia.
   Qed.
 
-(*
-  Lemma spill_bcond_correct: forall maxvar frame t1 m1 l1 mc1 t2 m2 l2 mc2 c,
-      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
-      eval_bcond l1 c = eval_bcond l2 (spill_bcond c).
-  Proof.
-    unfold related. intros. destruct c; cbn; simp.
-    - destr (map.get l1 x).
-
- destr (map.get l1 y).
-*)
-
-  Lemma grow_related_mem: forall maxvar frame t1 mSmall1 l1 mc1 t2 mSmall2 l2 mc2 mStack mCombined2,
-      related maxvar frame false t1 mSmall1 l1 mc1 t2 mSmall2 l2 mc2 ->
+  Lemma grow_related_mem: forall maxvar frame t1 mSmall1 l1 t2 mSmall2 l2 mStack mCombined2 fpval,
+      related maxvar frame fpval t1 mSmall1 l1 t2 mSmall2 l2 ->
       map.split mCombined2 mSmall2 mStack ->
       exists mCombined1, map.split mCombined1 mSmall1 mStack /\
-                         related maxvar frame false t1 mCombined1 l1 mc1 t2 mCombined2 l2 mc2.
+                         related maxvar frame fpval t1 mCombined1 l1 t2 mCombined2 l2.
   Proof.
-  Admitted.
+    unfold related, map.split. intros. simp.
+    eexists. ssplit. 1: reflexivity.
+    { unfold sep, map.split in Hp0. simp.
+      eapply map.disjoint_putmany_l in H0p1. apply proj1 in H0p1.
+      eapply map.disjoint_putmany_l in H0p1. apply proj1 in H0p1.
+      assumption. }
+    do 3 eexists. ssplit; try eassumption || reflexivity.
+    replace (eq (map.putmany mSmall1 mStack) * word_array fpval stackwords * frame)%sep
+      with (eq (map.putmany mSmall1 mStack) * (word_array fpval stackwords * frame))%sep. 2: {
+      symmetry. eapply iff1ToEq. apply sep_assoc.
+    }
+    replace (eq mSmall1 * word_array fpval stackwords * frame)%sep with
+        (eq mSmall1 * (word_array fpval stackwords * frame))%sep in Hp0. 2: {
+     symmetry. eapply iff1ToEq. apply sep_assoc.
+    }
+    forget (word_array fpval stackwords * frame)%sep as R.
+    unfold sep, map.split in Hp0|-*. simp.
+    assert (map.disjoint mStack mq) as D. {
+      apply map.disjoint_putmany_l in H0p1. apply proj2 in H0p1. apply map.disjoint_comm. exact H0p1.
+    }
+    do 2 eexists. ssplit. 4: eassumption.
+    3: reflexivity.
+    - rewrite <- (map.putmany_assoc mp mStack). rewrite (map.putmany_comm mStack mq) by exact D.
+      rewrite map.putmany_assoc. reflexivity.
+    - apply map.disjoint_putmany_l. auto.
+  Qed.
 
-  Lemma shrink_related_mem: forall maxvar frame t1 m1 l1 mc1 t2 m2 l2 mc2 mRemove m1Small,
-      related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
+  Lemma shrink_related_mem: forall maxvar frame t1 m1 l1 t2 m2 l2 mRemove m1Small fpval,
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       map.split m1 m1Small mRemove ->
       exists m2Small, map.split m2 m2Small mRemove /\
-                      related maxvar frame false t1 m1Small l1 mc1 t2 m2Small l2 mc2.
+                      related maxvar frame fpval t1 m1Small l1 t2 m2Small l2.
   Proof.
-  Admitted.
+    unfold related, map.split. intros. simp.
+    replace (eq (map.putmany m1Small mRemove) * word_array fpval stackwords * frame)%sep
+      with (eq (map.putmany m1Small mRemove) * (word_array fpval stackwords * frame))%sep in Hp0. 2: {
+      symmetry. eapply iff1ToEq. apply sep_assoc.
+    }
+    remember (word_array fpval stackwords * frame)%sep as R.
+    unfold sep, map.split in Hp0. simp.
+    apply map.disjoint_putmany_l in Hp0p0p1. destruct Hp0p0p1 as (D' & D).
+    eexists. ssplit.
+    { rewrite <- map.putmany_assoc. rewrite (map.putmany_comm mRemove mq) by exact D.
+      rewrite map.putmany_assoc. reflexivity. }
+    { apply map.disjoint_putmany_l. split. 1: assumption. apply map.disjoint_comm. assumption. }
+    do 3 eexists. ssplit; try eassumption || reflexivity.
+    replace (eq m1Small * word_array fpval stackwords * frame)%sep
+      with (eq m1Small * (word_array fpval stackwords * frame))%sep. 2: {
+      symmetry. eapply iff1ToEq. apply sep_assoc.
+    }
+    rewrite <- HeqR.
+    unfold sep, map.split.
+    do 2 eexists. ssplit. 4: eassumption.
+    1,3: reflexivity. assumption.
+  Qed.
+
+  Lemma List__flat_map_const_length{A B: Type}: forall (f: A -> list B) (n: nat) (l: list A),
+      (forall a, length (f a) = n) ->
+      length (flat_map f l) = (n * length l)%nat.
+  Proof.
+    intros. induction l.
+    - simpl. blia.
+    - simpl. rewrite app_length. rewrite IHl. rewrite H. blia.
+  Qed.
 
   (* TODO share with FlatToRiscvDef.compile4bytes? *)
   Fixpoint tuple__firstn{A: Type}(n: nat)(l: list A)(default: A){struct n}: HList.tuple A n :=
@@ -1096,13 +1335,6 @@ Section Spilling.
     reflexivity.
   Qed.
 
-  Lemma scalar_head_to_Z: forall l (addr : word),
-      iff1 (scalar addr (word.of_Z (head_to_Z (Z.to_nat bytes_per_word) l)))
-           (array ptsto (word.of_Z 1) addr (List__firstn_default (Z.to_nat bytes_per_word) l Byte.x00)).
-  Proof.
-    unfold scalar, truncated_word, truncated_scalar. intros. rewrite word.unsigned_of_Z. unfold word.wrap.
-  Abort.
-
   (* byte_list_to_word_list_array already exists, TODO reconcile *)
 
   Lemma spilling_correct (e1 e2 : env) (Ev : envs_related e1 e2)
@@ -1115,12 +1347,12 @@ Section Spilling.
   exec e1 s1 t1 m1 l1 mc1 post ->
   forall (frame : mem -> Prop) (maxvar : Z),
   valid_vars_src maxvar s1 ->
-  forall (t2 : trace) (m2 : mem) (l2 : locals) (mc1b mc2 mc2b : MetricLog),
-  related maxvar frame false t1 m1 l1 mc1b t2 m2 l2 mc2b ->
+  forall (t2 : trace) (m2 : mem) (l2 : locals) (mc2 : MetricLog) (fpval : word),
+  related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
   exec e2 (spill_stmt s1) t2 m2 l2 mc2
     (fun (t2' : trace) (m2' : mem) (l2' : locals) (mc2' : MetricLog) =>
        exists t1' m1' l1' mc1',
-         related maxvar frame false t1' m1' l1' mc1' t2' m2' l2' mc2' /\
+         related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
          post t1' m1' l1' mc1').
   Proof.
     induction 1; intros; cbn [spill_stmt valid_vars_src Forall_vars_stmt] in *; simp.
@@ -1202,7 +1434,7 @@ Section Spilling.
           unfold map.split in H5. simp.
           eapply map.shrink_disjoint_l; eassumption. }
     - (* exec.call *)
-      unfold related, envs_related in *. specialize Ev with (1 := H). simp.
+      unfold envs_related in *. specialize Ev with (1 := H). unfold related in H5. simp.
       rename H4p0 into FR, H4p1 into FA.
       unfold sep in H5p3. destruct H5p3 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
       spec (map.getmany_of_list_zip_shrink l) as R. 1,2: eassumption. {
@@ -1210,10 +1442,11 @@ Section Spilling.
         specialize H5p2 with (1 := E).
         eapply Forall_forall in FA. 2: exact HI. clear -H5p2 FA. blia.
       }
+      assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
+        unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+      }
       edestruct (eq_sep_to_split l2) as (l2Rest & S22 & SP22). 1: ecancel_assumption.
-      eapply exec.call with (outcome0 :=
-         fun t2 m2 l2 mc2 => exists t1 m1 l1 mc1, outcome t1 m1 l1 mc1 /\
-                                                  related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2).
+      eapply call_cps.
       + eauto.
       + eapply map.getmany_of_list_zip_grow. 2: exact R. 1: exact S22.
       + eassumption.
@@ -1227,15 +1460,20 @@ Section Spilling.
         edestruct (byte_list_to_word_list_array bytes) as (words & L' & F). {
           rewrite L.
           unfold Memory.ftprint.
-          destr (0 <=? (bytes_per_word * (max_var fbody - 31))).
+          rewrite Z2Nat.id by blia.
+          destr (0 <=? (max_var fbody - 31)).
           - rewrite Z2Nat.id by assumption. rewrite Z.mul_comm. apply Z_mod_mult.
-          - replace (Z.of_nat (Z.to_nat (bytes_per_word * (max_var fbody - 31)))) with 0 by blia.
+          - replace (Z.of_nat (Z.to_nat (max_var fbody - 31))) with 0 by blia.
+            rewrite Z.mul_0_r.
             apply Zmod_0_l.
         }
         eapply F in Pt.
         eapply exec.weaken. {
           eapply IHexec; try eassumption.
-          eexists a, map.empty, st0, words. ssplit.
+          (* after running stackalloc on a state whose locals only contain the function args,
+             `related` required to call the IH holds: *)
+          unfold related.
+          eexists map.empty, st0, words. ssplit.
           { reflexivity. }
           { eapply join_sep. 1: exact Sp. 1: exact H5p0. 1: exact Pt.
             unfold word_array at 2. ecancel. }
@@ -1261,14 +1499,91 @@ Section Spilling.
             - intros k v G. rewrite map.get_empty in G. discriminate. }
           { intros. rewrite map.get_empty in H5. discriminate. }
           { apply (f_equal Z.to_nat) in L'. rewrite Nat2Z.id in L'. rewrite L'. rewrite L.
-            clear. (* <- LIA performance *)
-            assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
-              unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
-            }
+            clear -B48. (* <- LIA performance *)
             Z.div_mod_to_equations. blia. }
         }
-        cbv beta. intros. simp. admit.
-      + unfold related. intros. simp. admit.
+        cbv beta. intros. simp.
+        (* according to the IH, executing the spilled function body results in a state that
+           is related to a high-level state that satisfies the `outcome` postcondition,
+           and now we have to use this information to prove that if we remove the additional
+           stack provided by exec.stackalloc and store the result vars back into the caller's
+           var map, states are still related and postcondition holds *)
+        rename t' into t2', m' into m2', st0 into st2, l' into st2', mc' into mc2', l into l1, l1' into st1'.
+        match goal with
+        | H: context[outcome], A: context[outcome] |- _ =>
+          specialize H with (1 := A); move H at bottom; rename H into Q
+        end.
+        simp. rename l' into l1'.
+        pose proof Qp1 as P.
+        eapply map.putmany_of_list_zip_split in P. 2: eassumption. 2: {
+          eapply Forall_impl. 2: eassumption.
+          simpl.
+          intros.
+          destruct (map.get lStack a0) eqn: EG. 2: reflexivity.
+          match goal with
+          | H: forall _, _ |- _ => specialize H with (1 := EG)
+          end.
+          blia.
+        }
+        destruct P as (lRegs' & Spl1' & P).
+        pose proof P as P0.
+        eapply map.putmany_of_list_zip_grow with (l := l2) in P. 2: eassumption. 2: {
+          eapply Forall_impl. 2: eassumption.
+          clear -localsOk SP22. unfold fp, tmps, tmp1, tmp2 in *. intros.
+          unfold sep, ptsto, map.split in *. simp.
+          rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty.
+          repeat destruct_one_match; try congruence; repeat destruct_one_match_hyp; try congruence; try blia.
+          destr (map.get mp a). 2: reflexivity.
+          specialize SP22p1 with (1 := E1). blia.
+        }
+        destruct P as (l2' & ? & ?).
+        clear IHexec. unfold related in *. simp.
+        unfold sep in H4p0p3. destruct H4p0p3 as (lRegs0' & lStack0' & S2' & ? & ?). subst lRegs0' lStack0'.
+        spec (map.getmany_of_list_zip_shrink st1') as GM. 1,2: eassumption. {
+          intros k HI. destr (map.get lStack0 k); [exfalso|reflexivity].
+          specialize H4p0p2 with (1 := E).
+          move Evp2 at bottom.
+          eapply Forall_forall in Evp2. 2: exact HI. clear -H4p0p2 Evp2. blia.
+        }
+        edestruct (eq_sep_to_split st2') as (st2Rest' & S22' & SP22').
+        1: (* PARAMRECORDS *) simpl; ecancel_assumption.
+        assert (((eq m1' * word_array fpval stackwords * frame) * word_array a stackwords0)%sep m2') as M
+            by ecancel_assumption.
+        unfold sep at 1 in M. destruct M as (m2Small' & mStack' & Sp' & M1 & M2).
+        repeat match goal with
+               | |- exists _, _ => eexists
+               | |- _ /\ _ => split
+               end.
+        13: eassumption.
+        4: eassumption.
+        3: { eapply map.getmany_of_list_zip_grow. 2: exact GM. 1: exact S22'. }
+        4: exact M1.
+        2: exact Sp'.
+        1: {
+          eapply cast_word_array_to_bytes in M2.
+          eapply array_1_to_anybytes in M2.
+          match goal with
+          | H: Memory.anybytes a ?LEN1 mStack' |-
+               Memory.anybytes a ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
+          end.
+          erewrite List__flat_map_const_length. 2: {
+            intros w. rewrite HList.tuple.length_to_list. reflexivity.
+          }
+          blia. }
+        1: reflexivity.
+        3: {
+          unfold sep. eauto.
+        }
+        3: {
+          eapply join_sep. 1: eassumption. 2: exact SP22. 2: ecancel. reflexivity.
+        }
+        { intros x v G.
+          destr (map.get lRegs x). 1: solve[eauto].
+          eapply map.putmany_of_list_zip_to_putmany in P0. destruct P0 as (retmap & P0 & ?). subst lRegs'.
+          rewrite map.get_putmany_dec in G. rewrite E in G. simp.
+          eapply Forall_forall in FR. 1: exact FR.
+          eapply map.putmany_of_list_zip_to_In; eassumption. }
+        all: assumption.
     - (* exec.load *)
       eapply seq_cps.
       eapply load_arg_reg_correct; (blia || eassumption || idtac).
@@ -1312,7 +1627,7 @@ Section Spilling.
       all: simpl_param_projections; ecancel_assumption.
     - (* exec.inlinetable *)
       eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
-      clear mc2b mc2 H4. intros.
+      clear mc2 H4. intros.
       eapply seq_cps.
       eapply exec.inlinetable.
       { unfold res_reg, arg_reg, tmp1, fp in *. destr (32 <=? x); destr (32 <=? i); try blia. }
@@ -1452,7 +1767,29 @@ Section Spilling.
       + cbn. intros. simp. eapply IH2. 1,2: eassumption. eauto 15.
     - (* exec.skip *)
       eapply exec.skip. eauto 20.
-    all: fail.
-  Abort.
+    Unshelve.
+    all: try exact word.eqb.
+    all: try unshelve eapply word.eqb_spec.
+    all: simpl.
+    all: try typeclasses eauto.
+  Qed.
+
+  Definition spilling_related(maxvar: Z)(done: bool)(s1 s2: SimState Z): Prop :=
+    let '(t1, m1, l1, mc1) := s1 in let '(t2, m2, l2, mc2) := s2 in
+    exists fpval, related maxvar (emp True) fpval t1 m1 l1 t2 m2 l2.
+
+  Lemma spilling_sim: forall (maxvar: Z) (e1 e2: env) (s1: stmt),
+      envs_related e1 e2 ->
+      valid_vars_src maxvar s1 ->
+      simulation (SimExec Z e1 s1) (SimExec Z e2 (spill_stmt s1)) (spilling_related maxvar).
+  Proof.
+    unfold simulation, SimExec, spilling_related, compile_inv.
+    intros maxvar e1 e2 s1 ER V.
+    intros (((t1 & m1) & l1) & mc1) (((t2 & m2) & l2) & mc2) post1 (fpval & R) Ex1.
+    eapply exec.weaken.
+    - eapply spilling_correct; eassumption.
+    - cbv beta. intros. simp. eexists (_, _, _, _). split. 2: eassumption.
+      eauto.
+  Qed.
 
 End Spilling.

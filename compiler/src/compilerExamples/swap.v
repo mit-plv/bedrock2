@@ -4,7 +4,7 @@ Require bedrock2Examples.Demos.
 Require Import coqutil.Decidable.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
-Require Import compiler.PipelineWithRename.
+Require Import compiler.Pipeline.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Words32Naive.
 Require Import riscv.Utility.DefaultMemImpl32.
@@ -18,12 +18,14 @@ Require Import riscv.Platform.MetricMinimal.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.
 Require Import coqutil.Map.SortedList.
+Require Import compiler.MemoryLayout.
 Require Import compiler.StringNameGen.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MetricRiscvMachine.
 Require bedrock2.Hexdump.
 Require Import bedrock2Examples.swap.
 Require Import bedrock2Examples.stackalloc.
+Require Import compilerExamples.SpillingTests.
 
 Open Scope Z_scope.
 Open Scope string_scope.
@@ -69,7 +71,7 @@ Definition main_stackalloc :=
   ("main", ([]: list String.string, []: list String.string,
      cmd.stackalloc "x" 4 (cmd.stackalloc "y" 4 (cmd.call [] "swap_swap" [expr.var "x"; expr.var "y"])))).
 
-Definition allFuns: list Syntax.func := [swap; swap_swap; main_stackalloc; stacknondet; stackdisj].
+Definition allFuns: list Syntax.func := [swap; swap_swap; main_stackalloc; stacknondet; stackdisj; long1].
 
 Definition e := map.putmany_of_list allFuns map.empty.
 
@@ -99,9 +101,9 @@ Lemma f_equal3_dep: forall {A B C: Type} {f1 f2: A -> B -> C} {a1 a2: A} {b1 b2:
 Proof. intros. congruence. Qed.
 
 Definition swap_asm: list Instruction.
-  let r := eval cbv in (compile ml e) in set (res := r).
+  let r := eval cbv in (compile e) in set (res := r).
   match goal with
-  | res := Some (?x, _) |- _ => exact x
+  | res := Some (?x, _, _) |- _ => exact x
   end.
 Defined.
 

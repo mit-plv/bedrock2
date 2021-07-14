@@ -15,13 +15,17 @@ Require Import coqutil.Z.Lia.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Tactics.Tactics.
+Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.Simp.
 Require Import bedrock2.Syntax.
 Require Import riscv.Platform.Run.
 Require Import riscv.Utility.Encode.
+Require Import riscv.Proofs.EncodeBound.
 Require Import riscv.Platform.MinimalCSRs.
+Require Import riscv.Proofs.InstructionSetOrder.
+Require Import riscv.Proofs.DecodeEncodeProver.
 Require Import riscv.Examples.SoftmulInsts.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import compiler.UniqueSepLog.
@@ -59,6 +63,13 @@ Section Riscv.
     unfold mcomp_sat. intros.
     eapply free.interpret_weaken_post with (postA1 := fun _ => False); eauto; simpl;
       eauto using weaken_run_primitive.
+  Qed.
+
+  Lemma mcomp_sat_bind: forall initial A (a: M A) (rest: A -> M unit) (post: State -> Prop),
+      free.interpret run_primitive a initial (fun r mid => mcomp_sat (rest r) mid post) (fun _ => False) ->
+      mcomp_sat (Monads.Bind a rest) initial post.
+  Proof.
+    intros. unfold mcomp_sat. eapply free.interpret_bind. 2: exact H. apply weaken_run_primitive.
   Qed.
 
   Lemma invert_fetch0: forall initial post k,
@@ -145,23 +156,112 @@ Section Riscv.
 
   Lemma decode_verify_iset: forall iset i, verify_iset (decode iset i) iset.
   Proof.
-  Admitted.
+  Abort.
 
   Lemma decode_I_to_IM: forall i inst,
       decode RV32IM i = IInstruction inst ->
       decode RV32I  i = IInstruction inst.
   Proof.
-  Admitted.
+  Abort.
 
   Lemma decode_CSR_to_IM: forall i inst,
       decode RV32IM i = CSRInstruction inst ->
       decode RV32I  i = CSRInstruction inst.
   Proof.
-  Admitted.
+  Abort.
 
   Lemma decode_verify: forall iset i, verify (decode iset i) iset.
   Proof.
   Abort. (* maybe not needed *)
+
+  Lemma opcode_M_is_OP: forall inst,
+      isValidM inst = true ->
+      bitSlice (encode (MInstruction inst)) 0 7 = opcode_OP.
+  Proof.
+    intros.
+    assert (0 <= opcode_OP < 2 ^ 7). {
+      cbv. intuition congruence.
+    }
+    destruct inst; try discriminate; cbn; unfold encode_R. all: try solve [prove_Zeq_bitwise].
+  Qed.
+
+  Lemma decode_M_on_RV32I_Invalid: forall inst,
+      isValidM inst = true ->
+      decode RV32I (encode (MInstruction inst)) = InvalidInstruction (encode (MInstruction inst)).
+  Proof.
+    intros.
+    pose proof opcode_M_is_OP _ H as A.
+    let Henc := fresh "Henc" in
+    match goal with
+    | |- ?D ?I (encode ?x) = _ =>
+      remember (encode x) as encoded eqn:Henc; symmetry in Henc
+    end;
+    cbv [ encode Encoder Verifier apply_InstructionMapper map_Fence map_FenceI map_I map_I_shift_57
+          map_I_shift_66 map_I_system map_Invalid map_R map_R_atomic map_S map_SB map_U map_UJ] in Henc;
+    match goal with
+    | |- ?D ?I _ = _ => cbv beta delta [D]
+    end.
+    lets_to_eqs.
+    match goal with
+    | H: opcode = _ |- _ => rename H into HO
+    end.
+    assert (opcode = opcode_OP) by congruence. clear HO. subst opcode.
+    match goal with
+    | H: results = _ |- _ => cbn in H
+    end.
+    subst results.
+    clear dependent decodeM. clear dependent decodeA. clear dependent decodeF.
+    clear dependent decodeI64. clear dependent decodeM64. clear dependent decodeA64. clear dependent decodeF64.
+    match goal with
+    | H: decodeCSR = _ |- _ => rename H into HCSR
+    end.
+    repeat match type of HCSR with
+           | ?d = (if ?b then ?x else ?y) => change (d = y) in HCSR
+           end.
+    subst decodeCSR.
+    match goal with
+    | H: decodeI = _ |- _ => rename H into HI
+    end.
+    match goal with
+    | H: funct3 = _ |- _ => rename H into HF3
+    end.
+    match goal with
+    | H: funct7 = _ |- _ => rename H into HF7
+    end.
+    destruct inst;
+      try match goal with
+          | H : isValidM InvalidM = true |- _ => discriminate H
+          end;
+      rewrite <-Henc in HF3, HF7;
+      match type of HF3 with
+      | funct3 = bitSlice (encode_R _ _ _ _ ?f _) _ _ =>
+        assert (funct3 = f) as EF3
+            by (rewrite HF3; clear;
+                assert (0 <= f < 2 ^ 3) by (cbv; intuition congruence);
+                unfold encode_R; prove_Zeq_bitwise)
+      end;
+      match type of HF7 with
+      | funct7 = bitSlice (encode_R _ _ _ _ _ ?f) _ _ =>
+        assert (funct7 = f) as EF7
+            by (rewrite HF7; clear;
+                assert (0 <= f < 2 ^ 7) by (cbv; intuition congruence);
+                unfold encode_R; prove_Zeq_bitwise)
+        end;
+      rewrite ?EF3, ?EF7 in HI;
+      repeat match type of HI with
+             | ?d = (if ?b then ?x else ?y) => change (d = y) in HI
+             end;
+      subst decodeI resultI resultCSR;
+      cbn;
+      reflexivity.
+  Qed.
+
+  Definition basic_CSRFields_supported(r: State): Prop :=
+    map.get r#"csrs" CSRField.MTVal <> None /\
+    map.get r#"csrs" CSRField.MPP <> None /\
+    map.get r#"csrs" CSRField.MPIE <> None /\
+    map.get r#"csrs" CSRField.MEPC <> None /\
+    map.get r#"csrs" CSRField.MCauseCode <> None.
 
   Definition related(r1 r2: State): Prop :=
     r1#"regs" = r2#"regs" /\
@@ -169,6 +269,7 @@ Section Riscv.
     r1#"nextPc" = r2#"nextPc" /\
     r1#"log" = r2#"log" /\
     r1#"csrs" = map.empty /\
+    basic_CSRFields_supported r2 /\
     exists mtvec_base mscratch stacktrash,
       map.get r2#"csrs" CSRField.MTVecBase = Some mtvec_base /\
       map.get r2#"csrs" CSRField.MScratch = Some mscratch /\
@@ -220,7 +321,7 @@ Section Riscv.
                     (fun _ => False).
   Proof.
     intros. pose proof H as R.
-    unfold related in H|-*.
+    unfold related, basic_CSRFields_supported in H|-*.
     simp.
     destruct a; cbn [run_primitive] in *.
     - exists initialH. intuition (congruence || eauto 10).
@@ -278,6 +379,49 @@ Section Riscv.
       runsTo (mcomp_sat (run1 iset)) initial post.
 *)
 
+  Lemma interpret_getPC: forall (initial: State) (postF : Utility.word -> State -> Prop) (postA : State -> Prop),
+      postF initial#"pc" initial ->
+      free.interpret run_primitive getPC initial postF postA.
+  Proof. intros *. exact id. Qed.
+
+  Lemma interpret_setPC: forall (m: State) (postF : unit -> State -> Prop) (postA : State -> Prop) v,
+      postF tt m(#"nextPc" := v) ->
+      free.interpret run_primitive (setPC v) m postF postA.
+  Proof. intros *. exact id. Qed.
+
+  Lemma interpret_endCycleEarly: forall (m: State) (postF : unit -> State -> Prop) (postA : State -> Prop),
+      postA (updatePc m) ->
+      free.interpret run_primitive (endCycleEarly _) m postF postA.
+  Proof. intros *. exact id. Qed.
+
+  Lemma interpret_getCSRField: forall (m: State) (postF : Z -> State -> Prop) (postA : State -> Prop) fld z,
+      map.get m#"csrs" fld = Some z ->
+      postF z m ->
+      free.interpret run_primitive (getCSRField fld) m postF postA.
+  Proof. intros. cbn -[map.get]. paramrecords. rewrite H. assumption. Qed.
+
+  Lemma interpret_setCSRField: forall (m: State) (postF : _->_->Prop) (postA : State -> Prop) fld z,
+      map.get m#"csrs" fld <> None ->
+      postF tt m(#"csrs" := map.put m#"csrs" fld z) ->
+      free.interpret run_primitive (setCSRField fld z) m postF postA.
+  Proof.
+    intros. cbn -[map.get]. destruct_one_match. 1: assumption. paramrecords. congruence.
+  Qed.
+
+  Ltac simpl_get_set :=
+    match goal with
+    | |- context[?getset] => lazymatch getset with
+                             | ?R(#?n := ?v)#?n => change getset with v
+                             end
+    end.
+
+  Ltac simpl_set_set :=
+    match goal with
+    | |- context[?setset] => lazymatch setset with
+                             | ?R(#?n := ?v)(#?n := ?v') => change setset with R(#n := v')
+                             end
+    end.
+
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 RV32IM)) initialH post ->
       related initialH initialL ->
@@ -289,10 +433,10 @@ Section Riscv.
     }
     unfold run1 in H |- *.
     pose proof H2 as Rel.
-    unfold related in H2.
+    unfold related, basic_CSRFields_supported in H2.
     eapply invert_fetch in H. simp.
     rename initial into initialH.
-    rewrite <- Hp0 in H2p5p3.
+    rewrite <- Hp0 in H2p6p3.
     pose proof (proj2 Hp1) as V.
     destruct i as [inst|inst|inst|inst|inst|inst|inst|inst|inst|inst] eqn: E;
       cbn in V; try (intuition congruence).
@@ -300,9 +444,9 @@ Section Riscv.
       subst.
       eapply runsToStep with (midset0 := fun midL => exists midH, related midH midL /\ midset midH).
       + eapply build_fetch with (i := (IInstruction inst)).
-        { replace RV32I with RV32IM by case TODO. assumption. }
+        { eapply verify_I_swap_extensions; try eassumption; reflexivity. }
         {
-          etransitivity. 2: exact H2p5p3.
+          etransitivity. 2: exact H2p6p3.
           reify_goal.
           cancel_at 1%nat 1%nat. 1: congruence.
           cbn [mmap.dus].
@@ -311,6 +455,54 @@ Section Riscv.
         eapply mcomp_sat_preserves_related; eassumption.
       + intros midL. intros. simp. eapply H1; eassumption.
     - (* MInstruction *)
+      (* fetch M instruction (considered invalid by RV32I machine) *)
+      eapply runsToStep_cps.
+      eapply build_fetch1. 2: {
+          etransitivity. 2: exact H2p6p3.
+          reify_goal.
+          cancel_at 1%nat 1%nat. {
+            unfold instr, one. rewrite H2p1. reflexivity.
+          }
+          cbn [mmap.dus].
+          reflexivity.
+      }
+      rewrite LittleEndian.combine_split. rewrite word.unsigned_of_Z_nowrap. 2: apply encode_range.
+      rewrite Z.mod_small. 2: apply encode_range.
+      destruct (isValidM inst) eqn: EVM. 2: {
+        exfalso. clear -Hp1 EVM. destruct inst; cbn in *; try discriminate EVM.
+        unfold verify in *. apply proj1 in Hp1. exact Hp1.
+      }
+      rewrite decode_M_on_RV32I_Invalid by exact EVM.
+      unfold Execute.execute at 1.
+      unfold raiseExceptionWithInfo.
+      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_getPC.
+      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_getCSRField. 1: eassumption.
+      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setCSRField. 1: eassumption.
+      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setCSRField; simpl_get_set. {
+        rewrite map.get_put_diff by congruence. assumption.
+      }
+      simpl_set_set.
+      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setCSRField; simpl_get_set. {
+        rewrite ?map.get_put_diff by congruence. assumption.
+      }
+      simpl_set_set.
+      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setCSRField; simpl_get_set. {
+        rewrite ?map.get_put_diff by congruence. assumption.
+      }
+      simpl_set_set.
+      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setCSRField; simpl_get_set. {
+        rewrite ?map.get_put_diff by congruence. assumption.
+      }
+      simpl_set_set.
+      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setPC.
+      eapply mcomp_sat_bind. eapply interpret_endCycleEarly.
+      (* oops, can't set early-exit postcondition to False! *)
+
+
+      (* step through handler code *)
+
+
+      (* instruction-specific handler code *)
       destruct inst.
       + (* Mul *)
         cbn in Hp2.
@@ -337,9 +529,10 @@ Section Riscv.
       subst.
       eapply runsToStep with (midset0 := fun midL => exists midH, related midH midL /\ midset midH).
       + eapply build_fetch with (i := (CSRInstruction inst)).
-        { replace RV32I with RV32IM by case TODO. assumption. }
+        { eapply verify_CSR_swap_extensions. eassumption.
+          (* "assumption" and relying on conversion would work too *) }
         {
-          etransitivity. 2: exact H2p5p3.
+          etransitivity. 2: exact H2p6p3.
           reify_goal.
           cancel_at 1%nat 1%nat. 1: congruence.
           cbn [mmap.dus].

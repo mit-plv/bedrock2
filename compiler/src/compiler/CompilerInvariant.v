@@ -7,7 +7,8 @@ Require Import bedrock2.Map.SeparationLogic.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.Simp.
 Require Import compiler.FlatToRiscvFunctions.
-Require Import compiler.PipelineWithRename.
+Require Import compiler.LowerPipeline.
+Require Import compiler.Pipeline.
 Require Import compiler.ExprImpEventLoopSpec.
 Require Import compiler.ToplevelLoop.
 
@@ -142,11 +143,12 @@ Section Pipeline1.
   Context (spec: @ProgramSpec (FlattenExpr.mk_Semantics_params _)).
 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
-    exists (srcprog: Semantics.env) (instrs: list Instruction) positions,
+    exists (srcprog: Semantics.env) (instrs: list Instruction) positions required_stack_space,
       ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
       spec.(datamem_start) = ml.(heap_start) /\
       spec.(datamem_pastend) = ml.(heap_pastend) /\
-      compile_prog ml srcprog = Some (instrs, positions) /\
+      compile_prog ml srcprog = Some (instrs, positions, required_stack_space) /\
+      required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       word.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
         word.unsigned ml.(code_pastend) /\
       Forall (fun i : Instruction => verify i FlatToRiscvDef.FlatToRiscvDef.iset) instrs /\
@@ -175,7 +177,7 @@ Section Pipeline1.
       simp.
       eassert ((ptsto_bytes (code_start ml) (instrencode instrs) * _)%sep initial.(getMem)) as SplitImem by (unfold imem in *; ecancel_assumption).
       destruct SplitImem as [i_mem [non_imem [SplitImem [Imem NonImem] ] ] ].
-      do 4 eexists.
+      do 5 eexists.
       ssplit; try eassumption.
       + unfold subset, footpr, footprint_underapprox, of_list, elem_of, program.
         intros a M.

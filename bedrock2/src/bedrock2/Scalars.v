@@ -1,4 +1,5 @@
-Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Semantics bedrock2.Array coqutil.Word.LittleEndian.
+Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Array coqutil.Word.LittleEndian.
+Require Import bedrock2.Memory.
 Require Import Coq.Lists.List Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface coqutil.Map.Interface. (* coercions word and rep *)
 Require Import coqutil.Word.Properties.
@@ -162,57 +163,15 @@ Section Scalars.
 
   Lemma store_two_of_sep addr (oldvalue : word) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar16 addr oldvalue) R m)
-    (Hpost : forall m, sep (scalar16 addr (truncate_word Syntax.access_size.two value)) R m -> post m)
+    (Hpost : forall m, sep (scalar16 addr value) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.two m addr value = Some m1 /\ post m1.
-  Proof.
-    cbv [scalar16 truncate_Z truncated_word truncate_word truncated_scalar littleendian ptsto_bytes bytes_per tuple.to_list LittleEndian.split PrimitivePair.pair._1 PrimitivePair.pair._2 array] in Hsep, Hpost.
-    eapply (store_bytes_of_sep _ 2 (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ tt))); cbn; [ecancel_assumption|].
-    cbv [LittleEndian.split].
-    intros; eapply Hpost.
-    assert (word.unsigned value = word.unsigned value mod 2 ^ width) as E. {
-      symmetry. apply Z.mod_small. apply word.unsigned_range.
-    }
-    rewrite E in *.
-    pose proof word.width_pos.
-    use_sep_assumption.
-    cancel.
-    cancel_seps_at_indices 0%nat 0%nat; [f_equal; byte_bitblast|].
-    cancel_seps_at_indices 0%nat 0%nat; [f_equal; byte_bitblast|].
-    reflexivity.
-  Qed.
+  Proof. eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost]. Qed.
 
   Lemma store_four_of_sep addr (oldvalue : word) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar32 addr oldvalue) R m)
-    (Hpost : forall m, sep (scalar32 addr (truncate_word Syntax.access_size.four value)) R m -> post m)
-    : exists m1, Memory.store Syntax.access_size.four m addr value = Some m1 /\ post m1.
-  Proof.
-    cbv [scalar32 truncate_Z truncated_word truncate_word truncated_scalar littleendian ptsto_bytes bytes_per tuple.to_list LittleEndian.split PrimitivePair.pair._1 PrimitivePair.pair._2 array] in Hsep, Hpost.
-    eapply (store_bytes_of_sep _ 4 (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ (PrimitivePair.pair.mk _ tt))))); cbn; [ecancel_assumption|].
-    cbv [LittleEndian.split].
-    intros; eapply Hpost.
-    rewrite word.unsigned_of_Z.
-    assert (word.unsigned value = word.unsigned value mod 2 ^ width) as E. {
-      symmetry. apply Z.mod_small. apply word.unsigned_range.
-    }
-    rewrite E in *.
-    pose proof word.width_pos.
-    use_sep_assumption.
-    cancel.
-    cancel_seps_at_indices 0%nat 0%nat; [f_equal; byte_bitblast|].
-    cancel_seps_at_indices 0%nat 0%nat; [f_equal; byte_bitblast|].
-    cancel_seps_at_indices 0%nat 0%nat; [f_equal; byte_bitblast|].
-    cancel_seps_at_indices 0%nat 0%nat; [f_equal; byte_bitblast|].
-    reflexivity.
-  Qed.
-
-  Lemma store_four_of_sep_32bit(W32: width = 32) addr (oldvalue : word) (value : word) R m (post:_->Prop)
-    (Hsep : sep (scalar32 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar32 addr value) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.four m addr value = Some m1 /\ post m1.
-  Proof.
-    eapply store_four_of_sep. 1: exact Hsep. intros. eapply Hpost.
-    rewrite truncate_word_nop_32bit in H; assumption.
-  Qed.
+  Proof. eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost]. Qed.
 
   Lemma store_word_of_sep addr (oldvalue value: word) R m (post:_->Prop)
     (Hsep : sep (scalar addr oldvalue) R m)

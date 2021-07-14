@@ -67,8 +67,13 @@ Notation "program_logic_goal_for_function! proc" := (program_logic_goal_for proc
    let x := program_logic_goal_for_function proc in exact x))
   (at level 10, only parsing).
 
+(* Users might want to override this with
+     Ltac normalize_body_of_function f ::= Tactics.rdelta.rdelta f.
+   in case cbv does more simplification than desired. *)
+Ltac normalize_body_of_function f := eval cbv in f.
+
 Ltac bind_body_of_function f_ :=
-  let f := eval cbv in f_ in
+  let f := normalize_body_of_function f_ in
   let fname := open_constr:(_) in
   let fargs := open_constr:(_) in
   let frets := open_constr:(_) in
@@ -80,10 +85,18 @@ Ltac bind_body_of_function f_ :=
   change (bindcmd fbody (fun c : Syntax.cmd => P (fname, (fargs, frets, c))));
   cbv beta iota delta [bindcmd]; intros.
 
+Ltac app_head e :=
+  match e with
+  | ?f ?a => app_head f
+  | _ => e
+  end.
+
+(* note: f might have some implicit parameters (eg a record of constants) *)
 Ltac enter f :=
   cbv beta delta [program_logic_goal_for]; intros;
   bind_body_of_function f;
-  let fdefn := eval cbv delta [f] in f in
+  let fname := app_head f in
+  let fdefn := eval cbv beta delta [fname] in f in
   let ctx := string2ident.learn fdefn in
   let H := fresh "_string_to_ident" in
   pose ctx as H;
@@ -250,8 +263,6 @@ Ltac straightline :=
     eapply Scalars.store_one_of_sep; [solve[ecancel_assumption]|]
   | |- @store _ Syntax.access_size.two _ _ _ _ =>
     eapply Scalars.store_two_of_sep; [solve[ecancel_assumption]|]
-  | |- @store _ Syntax.access_size.four _ _ _ _ =>
-    eapply Scalars.store_four_of_sep_32bit; [reflexivity|solve[ecancel_assumption]|]
   | |- @store _ Syntax.access_size.four _ _ _ _ =>
     eapply Scalars.store_four_of_sep; [solve[ecancel_assumption]|]
   | |- @store _ Syntax.access_size.word _ _ _ _ =>

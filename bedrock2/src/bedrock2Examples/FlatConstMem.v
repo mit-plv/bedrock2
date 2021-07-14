@@ -17,12 +17,21 @@ Definition silly1 : func :=
       c = load4(a + coq:(16))
   ))).
 
+Require Import coqutil.Macros.symmetry.
+Require Import coqutil.Tactics.ParamRecords.
+
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import bedrock2.Semantics bedrock2.ProgramLogic bedrock2.Array.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import Coq.Lists.List coqutil.Map.OfListWord.
 Require Import coqutil.Z.Lia.
+Require Import coqutil.Tactics.Tactics.
+Require Import coqutil.Tactics.letexists.
+Require Import coqutil.Tactics.rdelta.
 Import Map.Interface Interface.map OfFunc.map OfListWord.map.
+Require Import bedrock2.AbsintWordToZ.
+Require Import coqutil.Tactics.rewr.
+
 Section WithParameters.
   Context {p : FE310CSemantics.parameters}.
   Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
@@ -35,8 +44,6 @@ Section WithParameters.
       (sep (eq (map.of_list_word_at a bs)) R) m ->
       WeakestPrecondition.call functions silly1 t m [a]
       (fun T M rets => True).
-  Require Import coqutil.Tactics.letexists.
-  Require Import coqutil.Tactics.rdelta.
 
   Ltac ring_simplify_unsigned_goal :=
     match goal with
@@ -68,8 +75,6 @@ Section WithParameters.
     let __ := constr:(eq_refl : lhs = rhs) in
     change lhs with rhs in *.
 
-  Require Import bedrock2.AbsintWordToZ.
-
   Ltac change_with_Z_literal W :=
     first [ let e := open_constr:(BinInt.Zpos _) in
             unify_and_change W e;
@@ -83,8 +88,9 @@ Section WithParameters.
     match goal with
     |- context [?e] =>
         requireZcstExpr e;
+        let e' := eval vm_compute in e in
         let Hrw := fresh in
-        (* time *) eassert (e = _) by (vm_compute; reflexivity);
+        assert (e = e') as Hrw by (vm_cast_no_check (eq_refl e'));
         (* idtac "simplified" e "in GOAL"; *)
         progress rewrite Hrw; clear Hrw
     end.
@@ -92,8 +98,9 @@ Section WithParameters.
   Ltac simplify_ZcstExpr_in H :=
     match type of H with context [?e] =>
         requireZcstExpr e;
+        let e' := eval vm_compute in e in
         let Hrw := fresh in
-        eassert (e = _) by (vm_compute; reflexivity);
+        assert (e = e') as Hrw by (vm_cast_no_check (eq_refl e'));
         (* idtac "simplified" e "in" H; *)
         progress rewrite Hrw in H; clear Hrw
     end.
@@ -173,8 +180,6 @@ Section WithParameters.
     rewrite length_firstn_inbounds, length_skipn; blia.
   Qed.
 
-
-  Require Import coqutil.Tactics.rewr.
   Ltac List__splitZ bs n :=
       match goal with H: Z.of_nat (length bs) = _ |- _ =>
           pose proof List__splitZ_spec_n bs n _ H ltac:(blia);
@@ -293,7 +298,6 @@ Section WithParameters.
         subst y; trivial);
       rewrite !Hrw in H; clear Hrw
     end.
-  Require Import coqutil.Tactics.Tactics.
 
   Ltac split_bytes_base_addr bs a0 ai :=
       let raw_i := constr:(word.unsigned (ai-a0)%word) in
@@ -412,7 +416,7 @@ Section WithParameters.
   Lemma and_weaken_left (A A' B : Prop) : A -> A' -> A /\ B -> A' /\ B.
   Proof. tauto. Qed.
 
-  Ltac on_left tac := 
+  Ltac on_left tac :=
       let A := open_constr:(_:Prop) in
       let k := open_constr:(_:A) in
       unshelve simple notypeclasses refine (and_weaken_left A _ _ k _ _);
@@ -429,25 +433,29 @@ Section WithParameters.
   (* note: do we want an Ltac coding rule that tactics must not start with a match? *)
   Local Ltac ecancel_assumption := idtac; SeparationLogic.ecancel_assumption.
 
+  Axiom TODO: False.
+
   Lemma silly1_ok : program_logic_goal_for_function! silly1.
   Proof.
     repeat straightline.
 
+    (* b = load4(a + coq:(16)); *)
     cbv [WeakestPrecondition.dexpr].
 
     match goal with
     |- exists v (* Why does this annotation make the case not match? : word *),
-        WeakestPrecondition.expr ?m ?l ?e (eq v) /\ @?k v 
-        => enough (WeakestPrecondition.expr m l e k) by admit
+        WeakestPrecondition.expr ?m ?l ?e (eq v) /\ @?k v
+        => enough (WeakestPrecondition.expr m l e k) by case TODO
     end.
 
-    
+
     repeat straightline.
     eexists.
 
     on_left eapply Z_uncurried_load_four_bytes_of_sep_at.
     (*repeat syntactic_*)eapply and_assoc.
 
+    (* frame calculation for first load *)
     subst_lets. (* for rewrite and rewr *)
     set_evars.
     match goal with |- context[?P m] =>
@@ -463,20 +471,80 @@ Section WithParameters.
     subst_evars.
 
     on_left ecancel_assumption. (*  this inlines definition of ys0, makes length proof annoying *)
+    match goal with |- context[?x] => change x with ys0 end.
 
-    on_left (rewrite length_skipn, firstn_length, Happ, 2app_length; Lia.lia).
+    split; [ trivial | ].
 
     repeat straightline. (* this inlines too many lets *)
 
-    subst_lets. (* for rewrite and rewr *)
-    split_flat_memory_based_on_goal.
+    (* store4(a + coq:(14), b); *)
 
     cbv [WeakestPrecondition.store].
 
-    (* skipping actual store for now: *)
-    (* pose proof Scalars.store_four_of_sep. *)
-
+    (* remerge *)
     repeat seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
       rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; blia).
-  Abort.
+
+    Tactics.rapply (fun addr oldvalue value R m post H => Scalars.store_four_of_sep addr oldvalue value R m post (proj1 H) (proj2 H)).
+
+    (* note: it would be nice to have a generalization of this /\-goal logic in on_left *)
+    unshelve (
+    let x := open_constr:(_ : _ /\ (_ /\ _)) in
+    once (on_left (idtac; seprewrite (symmetry! @Scalars.scalar32_of_bytes))); [exact (proj1 (proj2 x)) | exact (proj1 x) | exact (proj2 (proj2 x))]); shelve_unifiable.
+    2: reflexivity. (* already in goal 1, but should only be there and not a second subgoal *)
+    on_left (idtac; seprewrite @array1_iff_eq_of_list_word_at; cycle 1); cycle 1.
+
+    (* frame calculation again, unclear what to subst before split_bytes_base_addr *)
+    (* maybe make a rewrite that follows lets *)
+
+
+    {
+    eassert (Z.of_nat (length ((xs0 ++ ys0) ++ ys)) = _). {
+      rewrite ?app_length.
+      rewrite ?Nat2Z.inj_add.
+      repeat match goal with
+             | H: Z.of_nat (length ?x) = ?y |- context[length ?x] => rewrite H
+             end.
+      simplify_ZcstExpr.
+      reflexivity.
+    }
+
+    repeat match goal with x := _ : word.rep |- _ => subst x end.
+    set_evars.
+    replace (length l0 = 4%nat) with (Z.of_nat (length l0) = 4) by case TODO.
+    match goal with |- context[?P m] =>
+    match P with context[?e$@?a] =>
+    match goal with | |- context[Z.of_nat (length e) = ?n] =>
+    match goal with H : ?S m |- _ =>
+    match S with context[?bs $@ ?a0] =>
+    let a_r := constr:(word.add a (word.of_Z n)) in
+    split_bytes_base_addr bs a0 a_r end;
+    match type of H with context[?bs $@ ?a0] =>
+    split_bytes_base_addr bs a0 a
+end end
+    end end end.
+
+    simpl_param_projections.
+    on_left ecancel_assumption.
+    split; [trivial|].
+    split; [reflexivity|].
+
+    repeat straightline.
+
+    (* last line *)
+
+    case TODO.
+    }
+    Unshelve.
+    all: case TODO.
+  Time Qed.
+
 End WithParameters.
+
+(* think of mempcpy/memmove within a packet rather than load and store, which are just "special cases" of memmove
+
+operations on bytes
+
+extend to other access_size?
+
+ *)

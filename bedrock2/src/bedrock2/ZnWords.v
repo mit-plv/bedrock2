@@ -1,3 +1,14 @@
+(*
+This file provides a tactic `ZnWords`, intended to solve goals containing a mix of
+`word` and `Z` arithmetic.
+It works by reducing all `word` operations to `Z` operations modulo `2^width`, eliminating
+the modulo operations using Euclidean equations (`Z.div_mod_to_equations`), and then
+calling `lia`.
+The `word` instance can be abstract (more tested) or concrete (less tested), but the
+`width` has to be concrete, because otherwise the Euclidean equations become non-linear
+and thus are not understood by `lia`.
+*)
+Require Import Coq.Program.Tactics.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.ZArith.Zpow_facts.
 Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr coqutil.Tactics.ParamRecords.
@@ -22,15 +33,19 @@ Lemma computable_lt{lo v: Z}(H: Z.ltb lo v = true): lo < v.
 Proof. apply Z.ltb_lt. assumption. Qed.
 
 Ltac cleanup_for_ZModArith :=
-  subst; (* <-- substituting `@eq word _ _` might create opportunities for wordOps_to_ZModArith_step *)
+  subst*; (* <-- substituting `@eq word _ _` might create opportunities for wordOps_to_ZModArith_step *)
   repeat match goal with
          | a := _ |- _ => subst a
-         | H: ?T |- _ => tryif is_lia T then fail else clear H
+         | H: ?T |- _ => lazymatch T with
+                         | @word.ok _ _ => fail
+                         | _ => tryif is_lia T then fail else clear H
+                         end
          end.
 
-(* TODO improve *)
+(* TODO improve
+   @ needed because of COQBUG https://github.com/coq/coq/issues/3051 *)
 Ltac simpl_list_length_exprs :=
-  rewrite ?List.length_skipn, ?List.firstn_length, ?List.app_length, ?List.length_cons, ?List.length_nil in *.
+  rewrite ?@List.length_skipn, ?@List.firstn_length, ?@List.app_length, ?@List.length_cons, ?@List.length_nil in *.
 
 
 (* word laws for shifts where the shift amount is a Z instead of a word *)
@@ -160,29 +175,50 @@ Ltac unfold_Z_nat_consts :=
            end
          end.
 
-Ltac is_lia_prop P :=
-  lazymatch P with
-  | ?A \/ ?B => is_lia_prop A; is_lia_prop B
-  | ?A /\ ?B => is_lia_prop A; is_lia_prop B
-  | False => idtac
-  | True => idtac
-  | ?A => is_lia A
-  end.
-
 Ltac canonicalize_word_width_and_instance :=
-  simpl_param_projections; (* <-- should take care of width (if it's a member of a record called `parameters`) *)
+  simpl_param_projections;
+  (* `simpl_param_projections` only simplifies projections, but not instances passed
+     as a whole to other functions, and also, if we have a `width` projection on
+     a record whose name is not `parameters` (eg `riscv.Utility.Utility.Words`),
+     it won't get canonicalized, so we still need the following: *)
   repeat so fun hyporgoal => match hyporgoal with
      | context [@word.unsigned ?wi ?inst] =>
-       let inst' := eval cbn in inst in progress ( change inst with inst' in * )
+       let wi' := eval cbn in wi in let inst' := eval cbn in inst in
+       progress ( change wi with wi' in *; change inst with inst' in * )
      | context [@word.signed ?wi ?inst] =>
-       let inst' := eval cbn in inst in progress ( change inst with inst' in * )
+       let wi' := eval cbn in wi in let inst' := eval cbn in inst in
+       progress ( change wi with wi' in *; change inst with inst' in * )
+     | context[2 ^ ?wi] =>
+       let wi' := eval cbn in wi in (* <-- will blow up as soon as we have 2^bigExpression... *)
+       progress ( change wi with wi' in * )
      end.
+
+Ltac pose_word_ok :=
+  lazymatch goal with
+  | |- context [@word.unsigned ?wi ?inst]      => pose proof (_ : word.ok inst)
+  | |- context [@word.signed ?wi ?inst]        => pose proof (_ : word.ok inst)
+  | |- context [@word.of_Z ?wi ?inst]          => pose proof (_ : word.ok inst)
+  | H: context [@word.unsigned ?wi ?inst] |- _ => pose proof (_ : word.ok inst)
+  | H: context [@word.signed ?wi ?inst]   |- _ => pose proof (_ : word.ok inst)
+  | H: context [@word.of_Z ?wi ?inst]     |- _ => pose proof (_ : word.ok inst)
+  | _ => idtac (* could/should fail here, but some goals don't use words, and still
+                  benefit from the list lemmas and consts unfolding *)
+  end.
+
+Ltac word_eqs_to_Z_eqs :=
+  repeat  match goal with
+          | H: @eq (@word.rep ?wi ?inst) _ _ |- _ => apply (f_equal (@word.unsigned wi inst)) in H
+          end.
 
 Ltac ZnWords_pre :=
   try eapply word.unsigned_inj;
   lazymatch goal with
-  | |- ?G => is_lia_prop G
+  | |- ?G => is_lia G
   end;
+  (* if the word.ok lives in another ok record, that one will get cleared,
+     so we first pose a word.ok, which will be recognized and not get cleared *)
+  pose_word_ok;
+  word_eqs_to_Z_eqs;
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
   unfold_Z_nat_consts;

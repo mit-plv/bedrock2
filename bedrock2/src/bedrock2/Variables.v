@@ -26,4 +26,15 @@ Module cmd. Import Syntax.cmd.
     | while e c => expr.vars e ++ vars c
     | call binds _ args | interact binds _ args => binds ++ (List.flat_map expr.vars args)
     end.
+
+  Fixpoint mod_vars(c : cmd): list String.string :=
+    match c with
+    | set v _ | unset v => v :: nil
+    | stackalloc x _ body => x :: mod_vars body
+    | cond _ s1 s2 | seq s1 s2 => mod_vars s1 ++ mod_vars s2
+    | while _ body => mod_vars body
+    | call binds _ _ | interact binds _ _ => binds
+    | skip | store _ _ _ => nil
+    end.
+
 End cmd.
