@@ -12,12 +12,13 @@ End FNV1A_params.
 
 Module FNV1A (P: FNV1A_params).
   Existing Instances P.semantics P.semantics_ok.
+  Import SizedListArrayCompiler.
 
-   Notation "∅" := map.empty.
-   Notation "m [[ k ← v ]]" :=
-     (map.put m k v)
-       (left associativity, at level 1,
-        format "m [[ k  ←  v ]]").
+  Notation "∅" := map.empty.
+  Notation "m [[ k ← v ]]" :=
+    (map.put m k v)
+      (left associativity, at level 1,
+       format "m [[ k  ←  v ]]").
 
   Definition update (hash data : word) :=
     let/n p := P.prime in

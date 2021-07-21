@@ -318,7 +318,7 @@ Section __.
    
     solve[repeat compile_step; try lia; compile_done].
 
-      
+      Import SizedListArrayCompiler.
       all:solve[repeat compile_step; try lia; compile_done].
   Qed.
 

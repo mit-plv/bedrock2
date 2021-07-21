@@ -820,24 +820,24 @@ Hint Unfold cast : compiler_cleanup.
 Hint Unfold Convertible_word_nat : compiler_cleanup.
 
 Module VectorArrayCompiler.
-  Hint Extern 1 => simple eapply (@compile_byte_vectorarray_get); shelve : compiler.
-  Hint Extern 1 => simple eapply (@compile_word_vectorarray_get); shelve : compiler.
-  Hint Extern 1 => simple eapply (@compile_byte_vectorarray_put); shelve : compiler.
-  Hint Extern 1 => simple eapply (@compile_word_vectorarray_put); shelve : compiler.
+  #[export] Hint Extern 1 => simple eapply (@compile_byte_vectorarray_get); shelve : compiler.
+  #[export] Hint Extern 1 => simple eapply (@compile_word_vectorarray_get); shelve : compiler.
+  #[export] Hint Extern 1 => simple eapply (@compile_byte_vectorarray_put); shelve : compiler.
+  #[export] Hint Extern 1 => simple eapply (@compile_word_vectorarray_put); shelve : compiler.
 End VectorArrayCompiler.
 
 Module UnsizedListArrayCompiler.
-  Hint Extern 1 => simple eapply (@compile_byte_unsizedlistarray_get); shelve : compiler.
-  Hint Extern 1 => simple eapply (@compile_word_unsizedlistarray_get); shelve : compiler.
-  Hint Extern 1 => simple eapply (@compile_byte_unsizedlistarray_put); shelve : compiler.
-  Hint Extern 1 => simple eapply (@compile_word_unsizedlistarray_put); shelve : compiler.
+  #[export] Hint Extern 1 => simple eapply (@compile_byte_unsizedlistarray_get); shelve : compiler.
+  #[export] Hint Extern 1 => simple eapply (@compile_word_unsizedlistarray_get); shelve : compiler.
+  #[export] Hint Extern 1 => simple eapply (@compile_byte_unsizedlistarray_put); shelve : compiler.
+  #[export] Hint Extern 1 => simple eapply (@compile_word_unsizedlistarray_put); shelve : compiler.
 End UnsizedListArrayCompiler.
 
 Module SizedListArrayCompiler.
-  Hint Extern 1 => simple eapply (@compile_byte_sizedlistarray_get); shelve : compiler.
-  Hint Extern 1 => simple eapply (@compile_word_sizedlistarray_get); shelve : compiler.
-  Hint Extern 1 => simple eapply (@compile_byte_sizedlistarray_put); shelve : compiler.
-  Hint Extern 1 => simple eapply (@compile_word_sizedlistarray_put); shelve : compiler.
+  #[export] Hint Extern 1 => simple eapply (@compile_byte_sizedlistarray_get); shelve : compiler.
+  #[export] Hint Extern 1 => simple eapply (@compile_word_sizedlistarray_get); shelve : compiler.
+  #[export] Hint Extern 1 => simple eapply (@compile_byte_sizedlistarray_put); shelve : compiler.
+  #[export] Hint Extern 1 => simple eapply (@compile_word_sizedlistarray_put); shelve : compiler.
 End SizedListArrayCompiler.
 
 Export VectorArrayCompiler.
