@@ -1473,6 +1473,83 @@ Section with_parameters.
                           (conj (word.signed_range _) (word.signed_range _)).
 End with_parameters.
 
+Ltac pattern_pair_references needle haystack :=
+  lazymatch needle with
+  | \< ?fst, ?snd \> =>
+    let hfn := pattern_pair_references snd haystack in
+    match (eval pattern fst in hfn) with
+    | ?hf _ => hf
+    end
+  | _ =>
+    match (eval pattern needle in haystack) with
+    | ?hf _ => hf
+    end
+  end.
+
+Ltac apply_pair_references needle acc haystack_fn :=
+  lazymatch needle with
+  | \< _, ?snd \> =>
+    let haystack_fn := constr:(haystack_fn (P2.fst acc)) in
+    let haystack_fn := apply_pair_references snd (P2.snd acc) haystack_fn in
+    haystack_fn
+  | _ =>
+    constr:(haystack_fn acc)
+  end.
+
+Ltac change_pair_references needle haystack :=
+  (* This two-step process avoids recursive replacements *)
+  let fn := pattern_pair_references needle haystack in
+  let haystack := apply_pair_references needle needle fn in
+  let haystack := (eval cbv beta in haystack) in
+  haystack.
+
+Ltac pattern_head needle haystack :=
+  let haystack := change_pair_references needle haystack in
+  lazymatch (eval pattern needle in haystack) with
+  | ?hd _ => match hd with
+            (* | (fun _ => ?body) => *)
+            (*   let _ := constr:(body) in *)
+            (*   fail 1 "Pattern" needle "not found in" haystack *)
+            | _ => constr:(hd)
+            end
+  end.
+
+Ltac infer_loop_predicate :=
+  lazymatch goal with
+  | [ |- WeakestPrecondition.cmd
+          _ _ ?tr ?mem ?locals
+          (_ (nlet_eq _ (_ ?from ?to ?body ?init) _)) ] =>
+    lazymatch goal with
+    | [ H: ?pred mem |- _ ] =>
+      let f_pred := pattern_head init pred in
+      let f_pred := pattern_head from f_pred in
+      let f_locals := pattern_head init locals in
+      let f_locals := pattern_head from f_locals in
+      let loop_pred := constr:(fun idx a2 tr' mem' locals' =>
+                                tr' = tr /\
+                                locals' = f_locals idx a2 /\
+                                (f_pred idx a2) mem') in
+      eval cbv beta in loop_pred
+    end
+  end.
+
+Ltac compile_ranged_for :=
+  (* FIXME why doesn't simple eapply work for these lemmas? *)
+  lazymatch goal with
+  | [ |- WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ ?v _)) ] =>
+    lazymatch v with
+    | ranged_for_u _ _ _ _ =>
+      let lp := infer_loop_predicate in
+      eapply compile_ranged_for_u with (loop_pred := lp)
+    | ranged_for_s _ _ _ _ =>
+      let lp := infer_loop_predicate in
+      eapply compile_ranged_for_s with (loop_pred := lp)
+    end
+  end.
+
+(* FIXME find a way to make compile_ranged_for apply only when applicable *)
+(* Hint Extern 1 => compile_ranged_for; shelve : compiler. *)
+
 Require bedrock2.BasicC64Semantics.
 
 Module test.
