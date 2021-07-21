@@ -1,0 +1,95 @@
+* Why not represent loop bodies as function calls and inline them?
+  This proposal would make it easier to deal with scoping of temporaries in loops, but it would also require passing to the function all local variables that it may need access to, even if it only reads them.  Such a static analysis isn't completely trivial given that our terms are shallowly embedded.
+* Why not use traditional Hoare triples (pre and post of type `state → Prop`) instead of the current form?
+  Instead of `{{ pre }} prog {{ post }}` we use `forall s, pre s → {{ s }} prog {{ post }}`.  This is because we're doing an interactive strongest-postcondition derivation, with the precondition changing at each step and the `post` remaining unchanged.
+  For reasoning, it's more convenient to accumulate facts into Coq's context than inside `pre`.
+  Additionally, we save on rewriting: when an operation doesn't touch the memory or the trace, for example, we don't need to have a precondition that says (fun tr' mem' locals' ⇒ mem' = mem /\ tr' = tr /\ locals = …); instead we quantify only on the part that changes (`locals` in this example)
+* Why do most lemmas include continuation arguments?
+  Most lemmas are of the form `{{ pre' }} y {{ post }} → {{ pre }} x; y {{ post }}` (“one-step style”).
+  Alternatively, we could have written these lemmas as `{{ pre }} x {{ p }} -> (∀ s, p s -> {{ s }} y {{ post }}) → {{ pre }} x; y {{ post }}` (“two-steps” style).
+  In general, in two-steps style, `p` will have the form `λ s ⇒ s = pre'`: for example if `x` is an `a := b`, `p` will say `s = { pre with locals = pre.locals[a ← b] }`.
+  The two-steps lemma could either make `p` explicit or leave it as an existential variable.
+  If it is made explicit, then there's one two-steps lemma per language construct, and at this point it's just as simple to use a one-step lemma.
+  If it is left implicit, then we need a new mechanism to infer `p` (probably Ltac?), because the postcondition will be an existential in the first premise.  This makes derivations even less predictable, and increases the amount of Ltac smarts in the extensibility story.
+* Why does it say `let v := v in …` everywhere?
+  This behaves better when `apply`ing.  Consider this:
+  #+begin_src coq
+    Lemma xyz : let v := … complex expression … in
+                P v -> Q v.
+  #+end_src
+  If we apply this lemma to `Q (… expr …)`, we'll get `P (… expr …)`.
+  In contrast, if we use this lemma:
+  #+begin_src coq
+    Lemma xyz : let v := … complex expression … in
+                (let v := v in P v) -> Q v.
+  #+end_src
+  then we'll get `let v := … expr … in P v` as the new goal.
+  But note that the conclusion (`Q v`) should not have a `let`; if a lemma contains one, it's an oversight.
+* Why is it safe to apply ~compile_…_constant~ without checking whether the Boolean we're compiling is a constant?
+  The worry is that on a program like ~let x := some_complex_expr y z in …~ we might apply ~compile_…_constant~, which claims to support all programs of the form ~let x := … in …~.  The lemma does match; what will fail is the unification step that instantiates the low-level program being derived: if ~some_complex_expr y z~ isn't a closed term, if won't be valid in the context of the evar that it needs to unify with.
+* Why does it say ~simple apply @…~ instead of just ~apply …~?
+  When unifying the goal with a lemma's conclusion, ~apply~ is free to unfold terms.
+  Hence, if we have a compilation lemma for ~let z := g y in …~, then it will also apply to ~let y := f x in let z := g y in …~ (by inlining ~y~).
+  ~simple apply~ is more conservative, so we use that; although in extreme cases we just use ~simple refine~ with the right number of ~_~ placeholders (coq#13839).
+  FIXME: we should say apply and make nlet_eq opaque
+* Why do we use Hint Extern 1 => simple apply …; shelve instead of Hint Resolve?
+  We do not want typeclasses eauto to do any proof search; we just want it to apply a lemma from a database.  If we wrote `Hint Resolve …`, then typeclasses eauto would be allowed to solve subgoals using local hypotheses, which is an issue if multiple hypotheses apply to the same goal but lead to different evar instantiations.
+  Another issue with `Hint Resolve` is that we then need a separate hint to shelve subgoals, but if we use a plain ~Hint Extern 10 => shelve : compiler~ then `intuition` stops working, becauses it uses `eauto with *`. So we need something like this:
+  #+begin_src coq
+    Inductive __may_shelve := __May_shelve.
+    Hint Extern 10 => match goal with H: __may_shelve |- _ => shelve end; shelve : compiler.
+    Ltac apply_one :=
+      let h := fresh in
+      pose proof __May_shelve as h;
+      progress unshelve (typeclasses eauto 3 with compiler);
+      try clear h (* old evars don't have h *); shelve_unifiable.
+  #+end_src
+* In the case of `if` the predicate doesn't even need to be synthesized, it can be unified at the end
+  Not really: there are two predicates that get generated (two strongest post-conditions).  Somewhow we need to do some unification on them, or else we'll constantly be reasoning through ifs.
+  We need to push the conditions down to the individual variables and objects:
+  From ~if cond then a → u else a → v~ to ~a → if cond then u else v~
+  There is a specific issue with pointers.  We'd like the predicate to be in the shape ()
+* How do I write a lemma?
+  Put the ~k_impl~ last
+  Respect usual argument order
+  Write with nlet_eq
+  Register the lemma with eauto
+* In the case of assignments, the alternative to having continuations would be existentially quantifying in the post-condition.
+  And then destructing after applying.
+* How does Rupicola deal with non-determinism?
+  It depends on the amount of nondeterminism.
+  - Some datastructures expose a deterministic interface while relying on nondeterminism internally.
+    A fixed-size stack, for example, contains a data section and some uninitialized space to grow into.  Methods of the stack do not provide access to the unitialized section, so the stack exposes a deterministic interface.
+    Other structures operate deterministically, but we may prefer to abstract certain details of their implementation.
+    For example, a binary search tree used to implement a set datastructure with `insert`, `remove`, and `contains` methods will answer `contains` queries deterministically, even if its exact layout is unknown (e.g. we may not know which element is at the root).
+    In these cases, it is possible to work with deterministic models of the data structure and to capture the nondeterminism at the separation-logic predicate level.  Specifically, we can model both the stack and the tree as the list of elements that they contain, and hide the nondeterminism using existential quantification within our representation predicates.  For stacks, we might write ~stack_at addr n model := exists l, pure (length l = n) * pure (model `isPrefixOf` l) * array_at addr l~.  For sets, we might write: ~set_at (addr: pointer) (model: list A) := exists t: tree A, pure (is_bst t) * pure (is_permutation model (tree_elements t)) * tree_at addr t~.
+  - Other datastructures expose non-determinism to their callers.
+    This may be because the structure actually implements nondeterministic operations (maybe because one of its operations uses concurrent programming under the hood), or it may be because the model that we chose omits details of the implementation (perhaps to allow changes in the implementation).
+    For example, if we were to add a `peek` operation to our binary search tree returning the root of the tree, we would get different results depending on the layout of the tree, which did not matter for `contains` tests.
+    Such underspecification is common, but not excessively so: indeed, if we want to be able to verify a low-level program that implements the operation, we need a sufficiently precise representation invariant: an invariant that abstracts away the hash function used to build a hash table, for example, would not permit us to prove the correctness of the `lookup` operation.
+    When nondeterminism or underspecification is present, we write Rupicola programs in the non-determinism monad, and we adjust representation predicates and function postconditions accordingly.  For separation logic predicates, we can generalize any deterministic predicate over a family of possible objects using ~nondet_at {A} (sep_predicate: A -> mem -> Prop) (val: A -> Prop) mem := exists a, val a /\ sep_predicate a mem~.  For function postconditions, where we would have previously asserted that the output of a Bedrock2 function should equal a given Gallina value, we assert instead that the value returned by the Bedrock2 program should belong to the set of values allowed by the nondeterministic Gallina program.
+  Having support for nondeterministic programs is not just useful to absorb nondeterminism forced onto us by lower levels of the stack: sometimes, introducing nondeterminism in our programs is a way to give ourselves flexibility and performance.  For example, if we do not care about the specific
+
+  We do not currently have support for specifying that an operation is deterministic but underspecified.  That is, if we model an uninitialized read as returning any value, then we cannot prove yet that xoring two such reads at the same location will return 0. Of course, if we have a single nondeterministic operation, then further computations on the result of that are deterministic, so we /can/ prove that `x <- init_array (len := 5); ret (x[0] xor x[0])` returns 0.
+
+  FIXME: if we have (exists bs, array ptr bs), ie an uninitialized array, then we can apply compilation lemmas and then destruct, in which case we won't be able to prove that two reads return the same thing; or we can destruct and then apply compilation lemmas, and in that case we'll see that the two reads returned the same thing.
+* Why are loop lemmas phrased this way?
+  A loop lemma connects an interaction function (which repeats a computation n times) to a while loop in Bedrock2.  This loops has an continuation condition, typically ~index < bound~, as well as an invariant (which is used to constrain the derivation of the loop body), typically some formula giving exactly the state of the memory and of the locals after a certain number of iterations.
+  - Note: in reality the invariant is keyed by the iteration counter ~index~, so it's not strictly an “invariant”.  An alternative style would read the value of the index from the local map of variables (and that would still be fine because we could derive after the loop that ~index = bound~), but passing in the expected value of the index makes invariants marginally easier to phrase.
+  For the equivalence between the Gallina and the Bedrock2 versions to hold, we need to know that the loop body preserves the invariant and that the loop runs the right number of times.  In particular, we need the loop body to increment the index.  There are a number of ways to design this, with the difficulty being deciding which part of the code is responsible for incrementing the counter, and hence how that increment reflects in the invariant:
+  1. Include the +1 in the postcondition that the body needs to satisfy, and just let the compiler derive the corresponding Bedrock2 code.
+     This isn't convenient, because the Gallina code doesn't increment a counter, so there's no Gallina code to drive the derivation of that bit of code.
+  2. Change the Gallina code so that each iteration of the loop returns the next value of the counter
+     It's hard to do this in a way that guarantees termination.
+  3. Put all loops in the nondeterminism monad, so that loops are really an arbitrary repeat() of a given Gallina function, until a given predicate holds
+     Bedrock2 requires termination, so these loops couldn't be straightforwardly compiled.
+  4. Force the inclusion of an increment into the loop body
+     That is, use ~?body; index := index + 1~ as the bit of bedrock2 code that needs to satisfy a triple.
+     The problem is that the compiler isn't prepared to deal with already-compiled code (the increment following the ~?body~ evar), and there's still no Gallina matching the increment
+  5. Append the increment to the synthesized bedrock2 loop body; use the invariant specialized to a map containing an updated index as the postcondition of the synthesized body.
+     Remember that the issue is to know which post-condition to give the synthesized loop body.  Here, the idea is to say that the loop body's postcondition is exactly the loop invariant, but applied to a locals map in which the loop index is incremented.  In other words, the code will be ~?body; index := index + 1~, but we only reason about ~?body~ (so no problem like in (4.)), and we give the ~?body~ a postcondition that says ~fun locals => invariant index (map.put locals "index" (index + 1))~: if we know that this holds after the body, the in particular ~invariant~ will hold after the body + the increment.
+     The annoying bit here is the final step of unification when we finish compiling the body.  The body will have done all sorts of things to the locals, and adding a layer of ~map.put~ throws a wrench into the automation: for example if the body unsets local variables we'll find ourselves with a ~map.put~ applied to a ~map.remove_many ?keys~, where ~?keys~ is yet-undetermined.
+  6. Same as 5, but don't specialize the postcondition; instead, add conditions on the invariant.
+     Specifically, make sure that the only thing the invariant does with the counter is to store it in the right place int he map; hence ~invariant index locals -> invariant index' (map.put locals "index" index')~.
+     This seems restrictive, but in fact it has to be true even for solution 5 to work, otherwise the increment wouldn't set the index to the right value.
+  In the current implementation solution (1.) is used to phrase and prove a single loop lemma, and then specialized variants in the shape of solution (6.) are derived from it.
