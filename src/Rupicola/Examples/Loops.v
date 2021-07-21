@@ -7,6 +7,11 @@ Section Ex.
   Context {semantics : Semantics.parameters}
           {semantics_ok : Semantics.parameters_ok semantics}.
 
+  Ltac compile_loopy :=
+    compile_setup;
+    repeat compile_step || (apply compile_nlet_as_nlet_eq; compile_ranged_for);
+    compile_done.
+
   Open Scope Z_scope.
 
   Notation "∅" := map.empty.
@@ -73,21 +78,7 @@ Section Ex.
           implements @vect_memcpy)
          As vect_memcpy_correct.
   Proof.
-    compile_setup.
-
-    repeat compile_step.
-
-    simple apply compile_nlet_as_nlet_eq.
-    eapply compile_ranged_for_u
-      with (loop_pred := (fun idx a2 tr' mem' locals' =>
-                           tr' = tr /\
-                           locals' = (∅[["len" ← len]]
-                                       [["a1" ← a1_ptr]][["a2" ← a2_ptr]]
-                                       [["from" ← idx]]) /\
-                           (vectorarray_value AccessWord a1_ptr a1 *
-                            vectorarray_value AccessWord a2_ptr a2 * R)%sep mem')).
-
-    all: repeat compile_step; compile_done.
+    compile_loopy.
   Qed.
 
   Program Definition vect_memcpy_s {n1 n2} (len: word)
@@ -137,19 +128,7 @@ Section Ex.
           implements @vect_memcpy_s)
          As vect_memcpy_s_correct.
   Proof.
-    compile_setup.
-
-    repeat compile_step.
-
-    simple apply compile_nlet_as_nlet_eq.
-    unfold ranged_for_s;
-      simple eapply compile_ranged_for_s with (loop_pred := (fun idx a2 tr' mem' locals' =>
-                                                              tr' = tr /\
-                                                              locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
-                                                                          [["from" ← idx]]) /\
-                                                              (vectorarray_value AccessWord a1_ptr a1 * vectorarray_value AccessWord a2_ptr a2 * R)%sep mem')).
-
-    all: repeat compile_step; compile_done.
+    compile_loopy.
   Qed.
 
   Definition list_memcpy (len: word)
@@ -180,25 +159,17 @@ Section Ex.
         (sizedlistarray_value AccessWord a1_ptr n1 (fst res) ⋆
                               sizedlistarray_value AccessWord a2_ptr n2 (snd res) ⋆ R) mem' }.
 
-  Derive sizedlist_memcpy_body SuchThat
-         (defn! "sizedlist_memcpy"("len", "a1", "a2") { sizedlist_memcpy_body },
-          implements list_memcpy)
-         As sizedlist_memcpy_correct.
-  Proof.
-    compile_setup.
-
-    repeat compile_step.
-
-    simple apply compile_nlet_as_nlet_eq.
-    eapply compile_ranged_for_u with (loop_pred := (fun idx a2 tr' mem' locals' =>
-        tr' = tr /\
-        locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
-                    [["from" ← idx]]) /\
-        (sizedlistarray_value AccessWord a1_ptr n1 a1 *
-         sizedlistarray_value AccessWord a2_ptr n2 a2 * R)%sep mem')).
-
-    all: repeat compile_step; try lia; compile_done.
-  Qed.
+  Section Sz.
+    Import SizedListArrayCompiler.
+    Derive sizedlist_memcpy_body SuchThat
+           (defn! "sizedlist_memcpy"("len", "a1", "a2") { sizedlist_memcpy_body },
+            implements list_memcpy)
+           As sizedlist_memcpy_correct.
+    Proof.
+      Hint Extern 1 => lia : compiler_cleanup.
+      Time compile_loopy.
+    Qed.
+  End Sz.
 
   Instance spec_of_unsizedlist_memcpy : spec_of "unsizedlist_memcpy" :=
     fnspec! "unsizedlist_memcpy" (len: word) (a1_ptr a2_ptr : address) /
@@ -215,44 +186,32 @@ Section Ex.
         (listarray_value AccessWord a1_ptr (fst res) ⋆
                          listarray_value AccessWord a2_ptr (snd res) ⋆ R) mem' }.
 
-  Derive unsizedlist_memcpy_body SuchThat
-         (defn! "unsizedlist_memcpy"("len", "a1", "a2") { unsizedlist_memcpy_body },
-          implements list_memcpy)
-         As unsizedlist_memcpy_correct.
-  Proof.
-    compile_setup.
+  Section Unsz.
+    Import UnsizedListArrayCompiler.
 
-    repeat compile_step.
+    Derive unsizedlist_memcpy_body SuchThat
+           (defn! "unsizedlist_memcpy"("len", "a1", "a2") {
+                  unsizedlist_memcpy_body },
+            implements list_memcpy)
+           As unsizedlist_memcpy_correct.
+    Proof.
+      compile_loopy.
 
-    simple apply compile_nlet_as_nlet_eq.
-    eapply compile_ranged_for_u with (loop_pred := (fun idx a2 tr' mem' locals' =>
-        tr' = tr /\
-        locals' = (∅[["len" ← len]][["a1" ← a1_ptr]][["a2" ← a2_ptr]]
-                    [["from" ← idx]]) /\
-        (listarray_value AccessWord a1_ptr a1 *
-         listarray_value AccessWord a2_ptr a2 * R)%sep mem')).
-
-    (*  FIXME remove previous hints *)
-    (* Import UnsizedListArrayCompiler. *)
-    Hint Extern 1 => simple eapply @compile_word_unsizedlistarray_get; shelve : compiler.
-    Hint Extern 1 => simple eapply @compile_word_unsizedlistarray_put; shelve : compiler.
-
-    all: repeat compile_step; compile_done; unfold id.
-
-    { lia. (* loop index in bounds + function precondition *) }
-    { (* Note the call to induction.
-          Without vectors or the sizedlist predicate, we need to check that the index is in bounds but we modified the array.
-          Using a vector type instead keeps the inranged_for in the type and the statement of put specifies that the length is preserved.
-          Putting that info in the representation predicates has a similar effect.
-          Without this, we need to perranged_for induction explicitly. *)
-      subst a.
-      unfold ranged_for'.
-      apply ranged_for_break_ind.
-      - simpl. lia.
-      - intros; unfold nlet; cbn.
-        rewrite ListArray.put_length.
-        assumption. }
-  Qed.
+      { lia. (* loop index in bounds + function precondition *) }
+      { (* Note the call to induction.
+           Without vectors or the sizedlist predicate, we need to check that the index is in bounds but we modified the array.
+           Using a vector type instead keeps the inranged_for in the type and the statement of put specifies that the length is preserved.
+           Putting that info in the representation predicates has a similar effect.
+           Without this, we need to perform induction explicitly. *)
+        subst a.
+        unfold ranged_for'.
+        apply ranged_for_break_ind.
+        - simpl. lia.
+        - intros; unfold nlet; cbn.
+          rewrite ListArray.put_length.
+          assumption. }
+    Qed.
+  End Unsz.
 
   Program Definition incr_gallina (c: cell) : cell :=
     let/n one := word.of_Z 1 in
@@ -287,21 +246,7 @@ Section Ex.
           implements incr_gallina)
          As body_correct.
   Proof.
-    compile_setup.
-
-    repeat compile_step.
-
-    simple apply compile_nlet_as_nlet_eq.
-    eapply compile_ranged_for_u with (loop_pred := (fun idx (acc: P2.prod _ _) tr' mem' locals' =>
-        let (tick, c) := acc in
-        tr' = tr /\
-        (* locals' = map.put locals "tick" tick /\ *)
-        locals' = (∅[["c" ← c_ptr]][["one" ← v]]
-                    [["from" ← idx]][["to" ← v1]]
-                    [["tick" ← tick]]) /\
-        (cell_value c_ptr c * R)%sep mem')).
-
-    all: repeat compile_step; compile_done.
+    compile_loopy.
   Qed.
 End Ex.
 
