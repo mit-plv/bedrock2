@@ -1371,9 +1371,9 @@ Ltac compile_solve_side_conditions :=
   | _ =>
     first [ compile_cleanup
           | compile_autocleanup
-          | solve [ eauto with compiler_cleanup | typeclasses eauto ]
           | reflexivity
-          | compile_use_default_value ]
+          | compile_use_default_value
+          | solve [ typeclasses eauto | eauto with compiler_cleanup ] ]
   end.
 
 Ltac compile_triple :=
