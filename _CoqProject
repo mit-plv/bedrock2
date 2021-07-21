@@ -1,3 +1,5 @@
 -R src/Rupicola Rupicola
 -Q bedrock2/bedrock2/src/bedrock2 bedrock2
 -Q bedrock2/deps/coqutil/src/coqutil coqutil
+-arg -w
+-arg -unexpected-implicit-declaration
