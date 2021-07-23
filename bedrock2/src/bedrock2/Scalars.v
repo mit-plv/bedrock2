@@ -279,6 +279,89 @@ Section Scalars.
     : exists m1, Memory.store Syntax.access_size.four m addr value = Some m1 /\ post m1.
   Proof.
   *)
+
+  Add Ring wring : Properties.word.ring_theory.
+
+  Lemma array_store_of_sep (addr addr' : word) n (oldvalues : list word) (value : word) size sz R m (post:_->Prop)
+    (_ : addr' = word.add addr (word.of_Z ((word.unsigned size) * (Z.of_nat n))))
+    (Hsep : sep (array (truncated_word sz) size addr oldvalues) R m)
+    (_ : (n < length oldvalues)%nat)
+    (Hpost : forall m, sep (array (truncated_word sz) size addr (upd oldvalues n value)) R m -> post m)
+    : exists m1, Memory.store sz m addr' value = Some m1 /\ post m1.
+  Proof.
+    rewrite <-(firstn_nth_skipn _ _ oldvalues (word.of_Z 0) H0) in Hsep.
+    do 2 seprewrite_in (array_append (truncated_word sz) size) Hsep.
+    seprewrite_in (array_cons (truncated_word sz) size) Hsep.
+    seprewrite_in (array_nil (truncated_word sz) size) Hsep.
+    rewrite firstn_length, min_l, <- H in Hsep by blia.
+    eapply store_bytes_of_sep.
+    { unfold truncated_word, truncated_scalar, littleendian in Hsep.
+      ecancel_assumption. }
+    intros.
+    apply Hpost.
+    unfold upd, upds.
+    rewrite (firstn_all2 (n := length oldvalues - n)) by (simpl; blia).
+    do 2 seprewrite (array_append (truncated_word sz) size).
+    seprewrite (array_cons (truncated_word sz) size).
+    seprewrite (array_nil (truncated_word sz) size).
+    rewrite firstn_length, min_l, <- H by blia.
+    cbn[length Nat.add] in *.
+    unfold truncated_word, truncated_scalar, littleendian.
+    ecancel_assumption.
+  Qed.
+
+  Lemma array_store_of_sep' (addr addr' : word) (oldvalues : list word) (value : word) size sz R m (post:_->Prop)
+    (Hsep : sep (array (truncated_word sz) size addr oldvalues) R m)
+    (_ : 0 < word.unsigned size)
+    (_ : let offset := word.unsigned (word.sub addr' addr) in
+         (Z.modulo offset (word.unsigned size) = 0) /\
+         (let n := Z.to_nat (offset / word.unsigned size) in (n < List.length oldvalues)%nat /\
+    (forall m, sep (array (truncated_word sz) size addr (upd oldvalues n value)) R m -> post m)))
+    : exists m1, Memory.store sz m addr' value = Some m1 /\ post m1.
+  Proof.
+    destruct H0.
+    destruct H1.
+    eapply array_store_of_sep; eauto.
+    rewrite Z2Nat.id by (apply Z.div_pos; [apply word.unsigned_range | blia]).
+    rewrite <- Z_div_exact_2; [| blia| auto].
+    rewrite word.of_Z_unsigned.
+    ring.
+  Qed.
+
+  Lemma array_load_of_sep addr addr' n (values : list word) size sz R m
+    (Hsep : (sep (array (truncated_word sz) size addr values) R m))
+    (_ : addr' = (word.add addr (word.of_Z (word.unsigned size * Z.of_nat n))))
+    (_ : (n < length values)%nat) :
+    Memory.load sz m addr' =
+    Some (truncate_word sz (nth n values (word.of_Z 0))).
+  Proof.
+    rewrite <-(firstn_nth_skipn _ _ values (word.of_Z 0) H0) in Hsep.
+    do 2 seprewrite_in (array_append (truncated_word sz) size) Hsep.
+    seprewrite_in (array_cons (truncated_word sz) size) Hsep.
+    seprewrite_in (array_nil (truncated_word sz) size) Hsep.
+    rewrite firstn_length, min_l, <-H in Hsep by blia.
+    eapply load_of_sep.
+    ecancel_assumption.
+  Qed.
+
+  Lemma array_load_of_sep' (addr addr': word) (values : list word) size sz R m
+    (Hsep : sep (array (truncated_word sz) size addr values) R m)
+    (_ : 0 < word.unsigned size)
+    : let offset := word.unsigned (word.sub addr' addr) in
+      (Z.modulo offset (word.unsigned size) = 0) ->
+      (let n := Z.to_nat (offset / word.unsigned size) in (n < List.length values)%nat ->
+      Memory.load sz m addr' =
+      Some (truncate_word sz (nth n values (word.of_Z 0)))).
+  Proof.
+    intros.
+    eapply array_load_of_sep; eauto.
+    subst offset n.
+    rewrite Z2Nat.id by (apply Z.div_pos; [apply word.unsigned_range | blia]).
+    rewrite <- Z_div_exact_2; [| blia| auto].
+    rewrite word.of_Z_unsigned.
+    ring.
+  Qed.
+  
 End Scalars.
 
 Notation scalar8 := ptsto (only parsing).
