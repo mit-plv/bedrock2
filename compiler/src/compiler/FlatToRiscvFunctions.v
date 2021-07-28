@@ -390,7 +390,7 @@ Section Proofs.
       }
 
       assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
-        unfold bytes_per_word. destruct Bitwidth.width_cases as [E | E]; rewrite E; cbv; auto.
+        unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
       }
       pose proof (stackalloc_words_nonneg body) as ScratchNonneg.
       assert (exists remaining_stack old_scratch old_modvarvals old_ra old_retvals old_argvals unused_scratch,
@@ -1414,7 +1414,7 @@ Section Proofs.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       run1det.
       assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
-        unfold bytes_per_word. destruct Bitwidth.width_cases as [E | E]; rewrite E; cbv; auto.
+        unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
       }
       assert (Memory.bytes_per_word (bitwidth iset) = bytes_per_word) as BPW. {
         rewrite bitwidth_matches. reflexivity.
@@ -1554,7 +1554,7 @@ Section Proofs.
               rewrite <- (word.ring_morph_mul (bytes_per_word) (n / bytes_per_word)).
               rewrite <- Z_div_exact_2.
               - reflexivity.
-              - unfold bytes_per_word. destruct Bitwidth.width_cases as [E | E]; rewrite E; cbv; auto.
+              - unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
               - blia.
             }
             wcancel_assumption.

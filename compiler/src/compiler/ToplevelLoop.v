@@ -203,11 +203,11 @@ Section Pipeline1.
     rewrite <- Znumtheory.Zmod_div_mod.
     - reflexivity.
     - unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; reflexivity.
-    - destruct Bitwidth.width_cases as [E | E]; simpl in *; rewrite E; reflexivity.
+    - destruct width_cases as [E | E]; simpl in *; rewrite E; reflexivity.
     - unfold Z.divide.
       exists (2 ^ width / bytes_per_word).
       unfold bytes_per_word, Memory.bytes_per_word.
-      destruct Bitwidth.width_cases as [E | E]; simpl; rewrite E; reflexivity.
+      destruct width_cases as [E | E]; simpl; rewrite E; reflexivity.
   Qed.
 
   Lemma stack_length_divisible:

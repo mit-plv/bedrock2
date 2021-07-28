@@ -491,7 +491,7 @@ Section LowerPipeline.
           seprewrite P. clear P.
           rewrite <- Z_div_exact_2; cycle 1. {
             unfold bytes_per_word. clear.
-            destruct Bitwidth.width_cases as [E | E]; rewrite E; reflexivity.
+            destruct width_cases as [E | E]; rewrite E; reflexivity.
           }
           {
             match goal with
@@ -524,7 +524,7 @@ Section LowerPipeline.
         rewrite !(iff1ToEq (sep_assoc _ _ _)).
         eapply (sep_emp_l _ _); split.
         { assert (0 < bytes_per_word). { (* TODO: deduplicate *)
-            unfold bytes_per_word; simpl; destruct Bitwidth.width_cases as [EE | EE]; rewrite EE; cbv; trivial.
+            unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
           }
           rewrite (List.length_flat_map _ (Z.to_nat bytes_per_word)).
           { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H7p9p0.
@@ -547,7 +547,7 @@ Section LowerPipeline.
             end.
             rewrite <- Z_div_exact_2; cycle 1. {
               unfold bytes_per_word. simpl.
-              destruct Bitwidth.width_cases as [Ew | Ew]; rewrite Ew; reflexivity.
+              destruct width_cases as [Ew | Ew]; rewrite Ew; reflexivity.
             }
             1: assumption.
             rewrite word.of_Z_unsigned.
