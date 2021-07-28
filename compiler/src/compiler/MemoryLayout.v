@@ -6,7 +6,7 @@ Require Import compiler.SeparationLogic.
 Open Scope Z_scope.
 
 Section Params1.
-  Context {W: Words}.
+  Context {width} {word: word.word width}.
 
   Record MemoryLayout: Type := {
     code_start: word;
@@ -18,7 +18,7 @@ Section Params1.
   }.
 
   (* Could also just require disjointness but <= is simpler to state *)
-  Record MemoryLayoutOk(ml: MemoryLayout): Prop := {
+  Record MemoryLayoutOk{BW: Bitwidth width}(ml: MemoryLayout): Prop := {
     code_start_aligned: (word.unsigned ml.(code_start)) mod 4 = 0;
     stack_start_aligned: (word.unsigned ml.(stack_start)) mod bytes_per_word = 0;
     stack_pastend_aligned: (word.unsigned ml.(stack_pastend)) mod bytes_per_word = 0;

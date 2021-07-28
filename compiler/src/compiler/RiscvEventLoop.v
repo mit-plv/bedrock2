@@ -34,7 +34,7 @@ Import Utility.
 
 Section EventLoop.
 
-  Context {W: Words}.
+  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
   Context {Registers: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.

@@ -23,7 +23,6 @@ Require Import compiler.FlatToRiscvFunctions.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.FitsStack.
 Require Import riscv.Utility.InstructionCoercions.
-Require Import riscv.Utility.Utility.
 
 
 Section WithWordAndMem.
@@ -43,9 +42,9 @@ Section LowerPipeline.
 
   Local Open Scope ilist_scope.
 
-  Add Ring wring : (word.ring_theory (word := Utility.word))
+  Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := Utility.word)),
+       morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
   (* Note: we could also track code size from the source program all the way to the target
@@ -138,7 +137,7 @@ Section LowerPipeline.
       solve_divisibleBy4.
   Qed.
 
-  Lemma program_mod_4_0: forall a instrs R m,
+  Lemma program_mod_4_0: forall (a: word) instrs R m,
       instrs <> [] ->
       (program iset a instrs * R)%sep m ->
       word.unsigned a mod 4 = 0.
@@ -448,11 +447,11 @@ Section LowerPipeline.
         (* TODO why are these manual steps needed? *)
         rewrite word.ring_morph_opp.
         rewrite word.of_Z_signed.
-        solve_word_eq Utility.word_ok. }
+        solve_word_eq word_ok. }
       { (* TODO why are these manual steps needed? *)
         rewrite word.ring_morph_opp.
         rewrite word.of_Z_signed.
-        solve_word_eq Utility.word_ok. }
+        solve_word_eq word_ok. }
       unfold goodMachine. simpl. ssplit.
       { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
       { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
@@ -462,13 +461,13 @@ Section LowerPipeline.
       { unfold machine_ok in *. simp. simpl.
         eapply rearrange_footpr_subset. 1: eassumption.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
-        pose proof (mem_ok: @map.ok (@word (@W p)) Init.Byte.byte (@mem p)).
+        pose proof (mem_ok: @map.ok (@word p) Init.Byte.byte (@mem p)).
         wwcancel.
         eapply functions_to_program.
         idtac. eassumption. }
       { simpl.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
-        pose proof (mem_ok: @map.ok (@word (@W p)) Init.Byte.byte (@mem p)).
+        pose proof (mem_ok: @map.ok (@word p) Init.Byte.byte (@mem p)).
         unfold machine_ok in *. simp.
         edestruct mem_available_to_exists as [ stack_trash [? ?] ]. 1: simpl; ecancel_assumption.
         destruct (byte_list_to_word_list_array stack_trash)
@@ -492,7 +491,7 @@ Section LowerPipeline.
           seprewrite P. clear P.
           rewrite <- Z_div_exact_2; cycle 1. {
             unfold bytes_per_word. clear.
-            destruct width_cases as [E | E]; rewrite E; reflexivity.
+            destruct Bitwidth.width_cases as [E | E]; rewrite E; reflexivity.
           }
           {
             match goal with
@@ -525,7 +524,7 @@ Section LowerPipeline.
         rewrite !(iff1ToEq (sep_assoc _ _ _)).
         eapply (sep_emp_l _ _); split.
         { assert (0 < bytes_per_word). { (* TODO: deduplicate *)
-            unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
+            unfold bytes_per_word; simpl; destruct Bitwidth.width_cases as [EE | EE]; rewrite EE; cbv; trivial.
           }
           rewrite (List.length_flat_map _ (Z.to_nat bytes_per_word)).
           { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H7p9p0.
@@ -548,7 +547,7 @@ Section LowerPipeline.
             end.
             rewrite <- Z_div_exact_2; cycle 1. {
               unfold bytes_per_word. simpl.
-              destruct width_cases as [Ew | Ew]; rewrite Ew; reflexivity.
+              destruct Bitwidth.width_cases as [Ew | Ew]; rewrite Ew; reflexivity.
             }
             1: assumption.
             rewrite word.of_Z_unsigned.
@@ -568,7 +567,7 @@ Section LowerPipeline.
       + unfold machine_ok in *. simp. simpl.
         eapply rearrange_footpr_subset. 1: eassumption.
         (* COQBUG https://github.com/coq/coq/issues/11649 *)
-        pose proof (mem_ok: @map.ok (@word (@W p)) Init.Byte.byte (@mem p)).
+        pose proof (mem_ok: @map.ok (@word p) Init.Byte.byte (@mem p)).
         (* TODO remove duplication *)
         lazymatch goal with
         | H: riscvPhase _ = _ |- _ => specialize functions_to_program with (1 := H) as P

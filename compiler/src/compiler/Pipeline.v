@@ -58,7 +58,10 @@ Open Scope Z_scope.
 Module Import Pipeline.
 
   Class parameters := {
-    W :> Words;
+    width: Z;
+    BW :> Bitwidth width;
+    word :> word.word width;
+    word_ok :> word.ok word;
     mem :> map.map word byte;
     Registers :> map.map Z word;
     string_keyed_map :> forall T: Type, map.map string T; (* abstract T for better reusability *)
@@ -73,12 +76,11 @@ Module Import Pipeline.
   }.
 
   Instance FlatToRiscvDef_parameters{p: parameters}: FlatToRiscvDef.FlatToRiscvDef.parameters := {|
-    iset := if Utility.width =? 32 then RV32I else RV64I;
+    iset := if width =? 32 then RV32I else RV64I;
     FlatToRiscvDef.FlatToRiscvDef.compile_ext_call := compile_ext_call;
   |}.
 
   Instance FlattenExpr_parameters{p: parameters}: FlattenExpr.parameters := {
-    FlattenExpr.W := _;
     FlattenExpr.locals := _;
     FlattenExpr.mem := mem;
     FlattenExpr.ext_spec := ext_spec;
@@ -128,7 +130,7 @@ Section Pipeline1.
   Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters.
   Proof.
     constructor.
-    - apply (string_keyed_map_ok (p := p) (@word (@FlattenExpr.W (@FlattenExpr_parameters p)))).
+    - apply (string_keyed_map_ok (p := p)).
     - exact mem_ok.
     - apply (string_keyed_map_ok (p := p) (list string * list string * Syntax.cmd.cmd)).
     - apply (string_keyed_map_ok (p := p) (list string * list string * FlatImp.stmt string)).
@@ -140,12 +142,10 @@ Section Pipeline1.
   Local Notation renamed_env := (@string_keyed_map p (list Z * list Z * FlatImp.stmt Z)).
 
   Definition compile(functions: source_env): option (list Instruction * funname_env Z * Z) :=
-    match upper_compiler ext_spec width_cases functions with
+    match upper_compiler ext_spec functions with
     | Some functions' => riscvPhase functions'
     | None => None
     end.
-
-  Local Instance map_ok': @map.ok (@word (@W p)) Init.Byte.byte (@mem p) := mem_ok.
 
   Ltac debool :=
     repeat match goal with
@@ -251,7 +251,6 @@ Section Pipeline1.
     pose proof @upper_compiler_correct as U. unfold phase_correct in U.
     specialize U with (Zlocals := locals) (5 := E) (6 := H1).
     edestruct U as (fbody' & G' & Sim); clear U; try typeclasses eauto.
-    1: exact ext_spec_ok.
     eapply @flat_to_riscv_correct; try typeclasses eauto; try eassumption.
     { exact compile_ext_call_length_ignores_positions. }
     { exact compile_ext_call_correct. }

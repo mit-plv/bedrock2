@@ -29,9 +29,9 @@ Section Sim.
 
   Local Open Scope ilist_scope.
 
-  Add Ring wring : (word.ring_theory (word := Utility.word))
+  Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := Utility.word)),
+       morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
   Context (f_entry_rel_pos: Z)
@@ -102,17 +102,17 @@ Section Sim.
         rewrite_match. f_equal. f_equal. f_equal. ring.
       + unfold stmt_not_too_big. simpl. cbv. reflexivity.
       + simpl. auto using Forall_nil.
-      + assert (word.ok word) by exact Utility.word_ok.
+      + assert (word.ok word) by exact word_ok.
         solve_divisibleBy4.
       + assumption.
       + (* TODO why are these manual steps needed? *)
         rewrite word.ring_morph_opp.
         rewrite word.of_Z_signed.
-        solve_word_eq Utility.word_ok.
+        solve_word_eq word_ok.
       + (* TODO why are these manual steps needed? *)
         rewrite word.ring_morph_opp.
         rewrite word.of_Z_signed.
-        solve_word_eq Utility.word_ok.
+        solve_word_eq word_ok.
       + assumption.
     - simpl. intros. simp.
       eexists; split; [|eassumption].
@@ -126,7 +126,7 @@ Section Sim.
         match goal with
         | H: getPc _ = _ |- getPc _ = _ => rewrite H
         end.
-        solve_word_eq Utility.word_ok. (* TODO make sure solve_word complains if no ring found *)
+        solve_word_eq word_ok. (* TODO make sure solve_word complains if no ring found *)
   Qed.
 
 End Sim.

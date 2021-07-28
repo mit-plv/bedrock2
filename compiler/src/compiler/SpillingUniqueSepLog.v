@@ -212,7 +212,8 @@ Section Spilling.
 
   (* Definition needs_spilling: Z -> bool := Z.leb 32. *)
 
-  Context {W: Utility.Words} {mem: map.map word byte} {mem_ok: map.ok mem}.
+  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+  Context {mem: map.map word byte} {mem_ok: map.ok mem}.
 
   Definition stack_loc(r: Z): option Z :=
     if Z.leb 32 r then Some ((r - 32) * bytes_per_word) else None.

@@ -22,7 +22,6 @@ Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Utility.Monads.
 Require Import riscv.Spec.Machine.
-Import Utility.
 
 Arguments Jal (_)%Z (_)%Z. (* needed when inside a (_)%sep *)
 
@@ -30,9 +29,9 @@ Section Proofs.
   Context {p: FlatToRiscvCommon.parameters}.
   Context {h: FlatToRiscvCommon.assumptions}.
 
-  Add Ring wring : (word.ring_theory (word := Utility.word))
+  Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := Utility.word)),
+       morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
   Notation RiscvMachine := MetricRiscvMachine.

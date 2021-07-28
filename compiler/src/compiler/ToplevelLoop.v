@@ -129,9 +129,9 @@ Section Pipeline1.
 
   Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_good iset.
 
-  Add Ring wring : (word.ring_theory (word := Utility.word))
+  Add Ring wring : (word.ring_theory (word := Pipeline.word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := Utility.word)),
+       morphism (word.ring_morph (word := Pipeline.word)),
        constants [word_cst]).
 
   Hint Extern 1 (map.ok _) => refine mem_ok : typeclass_instances.
@@ -203,11 +203,11 @@ Section Pipeline1.
     rewrite <- Znumtheory.Zmod_div_mod.
     - reflexivity.
     - unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; reflexivity.
-    - destruct width_cases as [E | E]; rewrite E; reflexivity.
+    - destruct Bitwidth.width_cases as [E | E]; simpl in *; rewrite E; reflexivity.
     - unfold Z.divide.
       exists (2 ^ width / bytes_per_word).
       unfold bytes_per_word, Memory.bytes_per_word.
-      destruct width_cases as [E | E]; rewrite E; reflexivity.
+      destruct Bitwidth.width_cases as [E | E]; simpl; rewrite E; reflexivity.
   Qed.
 
   Lemma stack_length_divisible:

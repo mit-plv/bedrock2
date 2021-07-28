@@ -33,10 +33,11 @@ Proof.
   reflexivity.
 Qed.
 
-Section FetchOk.
-  Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
+Instance word: word 32 := @KamiWord.wordW width.
+Instance word_ok: word.ok word := @KamiWord.wordWok width width_cases.
 
-  Fixpoint alignedXAddrsRange (base: nat) (n: nat): XAddrs :=
+Section FetchOk.
+  Fixpoint alignedXAddrsRange (base: nat) (n: nat): XAddrs (width := width) :=
     match n with
     | O => nil
     | S n' => $(base + n') :: alignedXAddrsRange base n'
@@ -90,7 +91,7 @@ Section FetchOk.
       AddrAligned rpc ->
       AddrAligned (word.add rpc (word.of_Z 4)).
   Proof.
-    cbv [AddrAligned word.add word WordsKami wordW KamiWord.word].
+    cbv [AddrAligned word.add wordW KamiWord.word].
     intros.
     rewrite <-H.
     apply split1_wplus_silent.
@@ -209,7 +210,7 @@ Section FetchOk.
 
     assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1)) (Z.pow 2 memSizeLg) = true) as Hrpc1.
     { destruct H0 as [_ [? _]].
-      cbv [word.add word WordsKami wordW KamiWord.word] in H0.
+      cbv [word.add word wordW KamiWord.word] in H0.
       cbv [word.of_Z kofZ] in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
       destruct (Z.ltb_spec (kunsigned (rpc ^+ ZToWord _ 1)) (Z.pow 2 memSizeLg)); [reflexivity|].
@@ -222,7 +223,7 @@ Section FetchOk.
     assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1))
                   (Z.pow 2 memSizeLg) = true) as Hrpc2.
     { destruct H0 as [_ [_ [? _]]].
-      cbv [word.add word WordsKami wordW KamiWord.word] in H0.
+      cbv [word.add word wordW KamiWord.word] in H0.
       cbv [word.of_Z kofZ] in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
       rewrite <-wplus_assoc.
@@ -237,7 +238,7 @@ Section FetchOk.
     assert (Z.ltb (kunsigned (rpc ^+ ZToWord _ 1 ^+ ZToWord _ 1 ^+ ZToWord _ 1))
                   (Z.pow 2 memSizeLg) = true) as Hrpc3.
     { destruct H0 as [_ [_ [_ ?]]].
-      cbv [word.add word WordsKami wordW KamiWord.word] in H0.
+      cbv [word.add word wordW KamiWord.word] in H0.
       cbv [word.of_Z kofZ] in H0.
       apply kamiXAddrs_isXAddr1_bound in H0.
       rewrite <-wplus_assoc.
@@ -277,7 +278,7 @@ Section FetchOk.
       reflexivity.
 
     - cbv [combine PrimitivePair.pair._1 PrimitivePair.pair._2
-                   word.unsigned WordsKami KamiWord.word kunsigned
+                   word.unsigned KamiWord.word kunsigned
                    SC.combineBytes].
       rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 24%nat).
       rewrite Z_of_wordToN_combine_alt with (sz1:= 8%nat) (sz2:= 16%nat).
@@ -298,7 +299,7 @@ Section FetchOk.
            (Hxs: RiscvXAddrsSafe kmemi kmemd xaddrs)
            (rmemd: mem)
            (rpc: kword width),
-      isXAddr4 rpc xaddrs ->
+      isXAddr4 (width := width) rpc xaddrs ->
       AddrAligned rpc ->
       pc_related kpc rpc ->
       mem_related kmemd rmemd ->
@@ -318,8 +319,6 @@ Section FetchOk.
 End FetchOk.
 
 Section DecExecOk.
-  Instance W: Utility.Words := @KamiWord.WordsKami width width_cases.
-
   Variables (instrMemSizeLg: Z).
   Hypothesis (HinstrMemBound: 3 <= instrMemSizeLg <= width - 2).
 

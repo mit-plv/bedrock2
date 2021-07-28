@@ -12,7 +12,6 @@ Require Import compiler.GoFlatToRiscv.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Require Import coqutil.Tactics.autoforward.
-Import Utility.
 
 Section FlatToRiscvLiterals.
   Context {p: FlatToRiscvCommon.parameters}.

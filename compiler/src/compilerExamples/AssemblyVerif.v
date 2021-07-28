@@ -52,7 +52,7 @@ asm_prog_1 ++ [[
 
 Section Verif.
 
-  Context {W: Words}.
+  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
   Context {Registers: map.map Register word}.
   Context {Registers_ok: map.ok Registers}.
   Context {mem: map.map word byte}.
@@ -63,7 +63,7 @@ Section Verif.
   Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
   Context {PR: MetricPrimitives PRParams}.
 
-  Definition iset := if Utility.width =? 32 then RV32I else RV64I.
+  Definition iset := if width =? 32 then RV32I else RV64I.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -71,8 +71,8 @@ Section Verif.
        constants [word_cst]).
 
   Ltac simulate'_step :=
-    first [ eapply go_loadWord_sep ; simpl in *; simpl_word_exprs (@word_ok W); [sidecondition..|]
-          | eapply go_storeWord_sep; simpl in *; simpl_word_exprs (@word_ok W); [sidecondition..|intros]
+    first [ eapply go_loadWord_sep ; simpl in *; simpl_word_exprs word_ok; [sidecondition..|]
+          | eapply go_storeWord_sep; simpl in *; simpl_word_exprs word_ok; [sidecondition..|intros]
           | simulate_step ].
 
   Ltac simulate' := repeat simulate'_step.
@@ -215,20 +215,20 @@ Ltac sidecondition ::=
     subst. simp.
 
     (* TODO matching up addresses should work automatically *)
-    replace (@word.add _ (@word W)
-              (@word.add _ (@word W)
-                 (@word.add _ (@word W) initial_pc (@word.of_Z _ (@word W) 4))
-                 (@word.of_Z _ (@word W) 4))
-              (@word.of_Z _ (@word W)
-                 (@word.unsigned _ (@word W) (@word.of_Z _ (@word W) 4) *
+    replace (@word.add _ word
+              (@word.add _ word
+                 (@word.add _ word initial_pc (@word.of_Z _ word 4))
+                 (@word.of_Z _ word 4))
+              (@word.of_Z _ word
+                 (@word.unsigned _ word (@word.of_Z _ word 4) *
                   BinInt.Z.of_nat (@Datatypes.length Instruction asm_prog_1))))
-      with (@word.add _ (@word W)
-        (@word.add _ (@word W) (@word.add _ (@word W) initial_pc (@word.of_Z _ (@word W) 4))
-           (@word.of_Z _ (@word W) 4))
-        (@word.mul _ (@word W) (@word.of_Z _ (@word W) 4)
-           (@word.of_Z _ (@word W) (Z.of_nat (@Datatypes.length Instruction asm_prog_1)))))
+      with (@word.add _ word
+        (@word.add _ word (@word.add _ word initial_pc (@word.of_Z _ word 4))
+           (@word.of_Z _ word 4))
+        (@word.mul _ word (@word.of_Z _ word 4)
+           (@word.of_Z _ word (Z.of_nat (@Datatypes.length Instruction asm_prog_1)))))
       in H1; cycle 1. {
-      clear.
+      clear -word_ok.
       change BinInt.Z.of_nat with Z.of_nat in *.
       f_equal.
       apply word.unsigned_inj.

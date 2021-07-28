@@ -19,7 +19,6 @@ Require Import compiler.RiscvWordProperties.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvLiterals.
-Import Utility.
 
 Open Scope ilist_scope.
 
@@ -32,7 +31,7 @@ Section Proofs.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Local Notation RiscvMachineL := MetricRiscvMachine.
+  Local Notation RiscvMachineL := (MetricRiscvMachine (width := width)).
 
   Ltac run1done :=
     apply runsToDone;
@@ -47,25 +46,25 @@ Section Proofs.
     eexists; (* finalMH *)
     eexists; (* finalMetricsH *)
     repeat split;
-    simpl_word_exprs (@word_ok (@W p));
+    simpl_word_exprs (@word_ok p);
     first
       [ solve [eauto]
       | solve_MetricLog
-      | solve_word_eq (@word_ok (@W p))
+      | solve_word_eq (@word_ok p)
       | solve [wcancel_assumption]
       | eapply rearrange_footpr_subset; [ eassumption | wwcancel ]
-      | solve [solve_valid_machine (@word_ok (@W p))]
+      | solve [solve_valid_machine (@word_ok p)]
       | idtac ].
 
   Ltac IH_sidecondition :=
-    simpl_word_exprs (@word_ok (@W p));
+    simpl_word_exprs (@word_ok p);
     try solve
       [ reflexivity
       | auto
       | solve_stmt_not_too_big
-      | solve_word_eq (@word_ok (@W p))
+      | solve_word_eq (@word_ok p)
       | simpl; solve_divisibleBy4
-      | solve_valid_machine (@word_ok (@W p))
+      | solve_valid_machine (@word_ok p)
       | eapply rearrange_footpr_subset; [ eassumption | wwcancel ]
       | wcancel_assumption ].
 

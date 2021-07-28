@@ -34,8 +34,7 @@ Require Import coqutil.Datatypes.ListSet.
 Import Utility.
 
 Section Go.
-
-  Context {W: Words}.
+  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
   Context {Registers: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
@@ -146,7 +145,7 @@ Section Go.
     apply H0. assumption.
   Qed.
 
-  Lemma ExecuteFetchP: forall addr xAddrs, Execute = Fetch -> isXAddr4 addr xAddrs.
+  Lemma ExecuteFetchP: forall (addr: word) xAddrs, Execute = Fetch -> isXAddr4 addr xAddrs.
   Proof. intros. discriminate. Qed.
 
   Ltac t lem :=
@@ -413,7 +412,7 @@ Section Go.
 
   Context (iset: Decode.InstructionSet).
 
-  Lemma ptsto_instr_subset_to_isXAddr4: forall a i xAddrs,
+  Lemma ptsto_instr_subset_to_isXAddr4: forall (a: word) i xAddrs,
       subset (footpr (ptsto_instr iset a i)) (of_list xAddrs) ->
       isXAddr4 a xAddrs.
   Proof.

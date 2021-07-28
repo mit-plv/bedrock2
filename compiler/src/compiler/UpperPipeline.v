@@ -66,16 +66,13 @@ Section WithWordAndMem.
     Context {Zlocals: map.map Z word}
             {string_keyed_map: forall T: Type, map.map string T} (* abstract T for better reusability *)
             (ext_spec: ExtSpec)
-            (width_cases : width = 32 \/ width = 64)
+            {BW: Bitwidth width}
             {word_ok : word.ok word}
             {mem_ok: map.ok mem}
             {string_keyed_map_ok: forall T, map.ok (string_keyed_map T)}
             {Zlocals_ok: map.ok Zlocals}.
 
-    Instance W: Words := {| Utility.width_cases := width_cases |}.
-
     Instance FlattenExpr_parameters: FlattenExpr.parameters := {
-      FlattenExpr.W := _;
       FlattenExpr.locals := _;
       FlattenExpr.mem := mem;
       FlattenExpr.ext_spec := ext_spec;
@@ -216,8 +213,6 @@ Section WithWordAndMem.
 
       assert (BW48: bytes_per_word = 4 \/ bytes_per_word = 8). {
         unfold bytes_per_word.
-        (* PARAMRECORDS doesn't work because the record "Words" is not called "parameters" *)
-        simpl (@Utility.width _).
         destruct width_cases as [C | C]; rewrite C.
         + change (Memory.bytes_per_word 32) with 4. auto.
         + change (Memory.bytes_per_word 64) with 8. auto.

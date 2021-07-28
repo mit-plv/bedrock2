@@ -145,7 +145,8 @@ Section RegAlloc.
     bind_opt (_, body', av) <- rename m body av;
     if Z.leb av lowest_nonregister then Some (argnames', retnames', body') else None.
 
-  Context {W: Utility.Words} {mem: map.map word byte}.
+  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+  Context {mem: map.map word byte}.
   Context {srcLocals: map.map srcvar word}.
   Context {impLocals: map.map impvar word}.
   Context {srcLocalsOk: map.ok srcLocals}.

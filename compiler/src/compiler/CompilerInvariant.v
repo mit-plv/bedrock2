@@ -24,11 +24,13 @@ Section Pipeline1.
   Context {p: Pipeline.parameters}.
   Context {h: Pipeline.assumptions}.
 
-  Local Notation word := (@Utility.word (@Pipeline.W p)).
+  Local Notation word := Pipeline.word.
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := (@Utility.word (@Pipeline.W p)))),
+       morphism (word.ring_morph (word := word)),
        constants [word_cst]).
+
+  Local Hint Mode word.word - : typeclass_instances.
 
   Context (ml: MemoryLayout)
           (mlOk: MemoryLayoutOk ml).
@@ -110,7 +112,7 @@ Section Pipeline1.
           -- destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
          * rewrite word.unsigned_of_Z.
            unfold word.wrap.
-           replace (1 mod 2 ^ width) with 1. 1: blia.
+           replace (1 mod 2 ^ Pipeline.width) with 1. 1: blia.
            simpl.
            destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
       + unfold map.split in *. simp.
@@ -135,7 +137,7 @@ Section Pipeline1.
         eapply Z.le_trans. 2: eassumption.
         rewrite word.unsigned_of_Z.
         unfold word.wrap.
-        replace (1 mod 2 ^ width) with 1. 1: blia.
+        replace (1 mod 2 ^ Pipeline.width) with 1. 1: blia.
         simpl.
         destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
   Qed.
@@ -170,7 +172,7 @@ Section Pipeline1.
     (forall st, ll_inv ml spec st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog))).
   Proof.
     assert (map.ok Pipeline.mem) as Okk by exact FlatToRiscvCommon.mem_ok. (* PARAMRECORDS *)
-    assert (word.ok Semantics.word) by exact word_ok.
+    assert (word.ok Semantics.word) by exact Pipeline.word_ok.
     ssplit; intros.
     - eapply establish_ll_inv. 1: assumption.
       unfold initial_conditions, ToplevelLoop.initial_conditions in *.

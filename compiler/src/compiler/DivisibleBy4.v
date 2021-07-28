@@ -1,13 +1,15 @@
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Tactics.Tactics.
 Require Import riscv.Utility.Utility.
 Require Import compiler.mod4_0.
 
 Local Open Scope Z_scope.
 
 
-Lemma divisibleBy4Signed{W: Words}: forall (w: word),
+Lemma divisibleBy4Signed{width}{BW: Bitwidth width}{word: word.word width}{ok: word.ok word}:
+  forall (w: word),
     (word.unsigned w) mod 4 = 0 ->
     (word.signed w) mod 4 = 0.
 Proof.
@@ -16,11 +18,11 @@ Proof.
   unfold word.swrap.
   pose proof (word.unsigned_range w).
   remember (word.unsigned w) as x. clear Heqx.
-  destruct Utility.width_cases as [E | E]; simpl in *; rewrite E;
+  destruct width_cases as [E | E]; simpl in *; rewrite E;
     Z.div_mod_to_equations; blia.
 Qed.
 
-Definition divisibleBy4{W: Words}(x: word): Prop := (word.unsigned x) mod 4 = 0.
+Definition divisibleBy4{width}{word: word.word width}(x: word): Prop := (word.unsigned x) mod 4 = 0.
 
 Ltac divisibleBy4_pre :=
   lazymatch goal with
@@ -34,22 +36,33 @@ Ltac divisibleBy4_pre :=
   repeat match goal with
          | H: _ mod 4 = 0 |- _ => revert H
          end;
-  clear;
+  repeat match goal with
+         (* TODO might fail to find Words instance *)
+         | H: word.unsigned _ mod 4 = 0 |- _ => unique pose proof (divisibleBy4Signed _ H)
+         end;
+  repeat match goal with
+         | H: ?T |- _ => lazymatch T with
+                         | word.ok _ => fail
+                         | Bitwidth _ => fail
+                         | _ => clear H
+                         end
+         end;
   repeat match goal with
          | |- _ mod 4 = 0 -> _ => intro
          end;
   try apply mod4_0_opp;
   try apply divisibleBy4Signed;
-  repeat (rewrite ?word.unsigned_add,
-                  ?word.unsigned_sub,
-                  ?word.unsigned_mul,
-                  ?word.unsigned_of_Z
-          || unfold word.wrap).
+  repeat (rewrite ?word.unsigned_add, ?word.signed_add,
+                  ?word.unsigned_sub, ?word.signed_sub,
+                  ?word.unsigned_mul, ?word.signed_mul,
+                  ?word.unsigned_of_Z, ?word.signed_of_Z
+          || unfold word.wrap, word.swrap).
 
 Ltac solve_divisibleBy4 := divisibleBy4_pre; solve_mod4_0.
 
 (* tests from FlatToRiscv *)
-Goal forall {W: Words} (pc: word) (l n m: Z), divisibleBy4 pc -> False.
+Goal forall {width}{BW: Bitwidth width}{word: word.word width}{ok: word.ok word} (pc: word) (l n m: Z),
+    divisibleBy4 pc -> False.
   intros.
   assert (divisibleBy4 (word.add pc (word.of_Z (l * 4)))) as A by solve_divisibleBy4. clear A.
   assert (divisibleBy4 (word.add pc (word.of_Z 4))) as A by solve_divisibleBy4. clear A.
@@ -84,7 +97,7 @@ Abort.
 
 
 Section Modu.
-  Context {W: Words}.
+  Context {width} {BW: Bitwidth width} {word: word.word width} {ok: word.ok word}.
 
   Definition divisibleBy4'(x: word): Prop := word.modu x (word.of_Z 4) = word.of_Z 0.
 
