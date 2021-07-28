@@ -67,14 +67,14 @@ Module Import FlattenExpr.
     Semantics.word_ok := word_ok;
     Semantics.mem_ok := mem_ok;
     Semantics.env_ok := ExprImp_env_ok;
-    Semantics.width_cases := @Bitwidth.width_cases _ BW;
+    Semantics.BW := BW;
     Semantics.ext_spec_ok := _
   }.
 
   Instance mk_FlatImp_params_ok{p: parameters}(hyps: @assumptions p):
     FlatImp.parameters_ok string (mk_FlatImp_params p) := {
     FlatImp.varname_eq_spec := String.eqb_spec;
-    FlatImp.width_cases := width_cases;
+    FlatImp.BW := BW;
     FlatImp.word_ok := word_ok;
     FlatImp.mem_ok := mem_ok;
     FlatImp.locals_ok := locals_ok;

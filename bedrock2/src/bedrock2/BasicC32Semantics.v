@@ -1,7 +1,7 @@
 Require Import Coq.ZArith.ZArith.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
-Require Import coqutil.Word.Interface coqutil.Map.SortedListWord.
+Require Import coqutil.Word.Interface coqutil.Word.Bitwidth32 coqutil.Map.SortedListWord.
 Require coqutil.Word.Naive.
 
 Instance parameters : parameters :=
@@ -50,7 +50,6 @@ Qed.
 
 Instance parameters_ok : parameters_ok parameters.
   constructor; intros; try typeclasses eauto.
-  - cbv. left. reflexivity.
   - unfold env, parameters. exact (SortedListString.ok _).
   - constructor.
     all: try typeclasses eauto; intros; cbn in *; contradiction.
