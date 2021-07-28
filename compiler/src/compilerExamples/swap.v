@@ -79,7 +79,7 @@ Definition e := map.putmany_of_list allFuns map.empty.
    (stack_pastend-8), next stack word to (stack_pastend-16) etc *)
 Definition stack_pastend: Z := 2048.
 
-Definition ml: MemoryLayout := {|
+Definition ml: MemoryLayout (width := 32) := {|
   MemoryLayout.code_start    := word.of_Z 0;
   MemoryLayout.code_pastend  := word.of_Z (4*2^10);
   MemoryLayout.heap_start    := word.of_Z (4*2^10);

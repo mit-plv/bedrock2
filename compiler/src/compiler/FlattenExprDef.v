@@ -18,20 +18,23 @@ Open Scope Z_scope.
 
 Module Import FlattenExpr.
   Class parameters := {
-    W :> Words;
-    locals :> map.map String.string Utility.word;
-    mem :> map.map Utility.word byte;
+    width: Z;
+    BW :> Bitwidth width;
+    word :> word.word width;
+    word_ok :> word.ok word;
+    locals :> map.map String.string word;
+    mem :> map.map word byte;
     ExprImp_env :> map.map string (list string * list string * cmd);
     FlatImp_env :> map.map string (list string * list string * FlatImp.stmt string);
-    trace := list (mem * string * list Utility.word * (mem * list Utility.word));
+    trace := list (mem * string * list word * (mem * list word));
     ext_spec : trace ->
-               mem -> string -> list Utility.word -> (mem -> list Utility.word -> Prop) -> Prop;
+               mem -> string -> list word -> (mem -> list word -> Prop) -> Prop;
     NGstate: Type;
     NG :> NameGen String.string NGstate;
   }.
 
   Instance mk_Semantics_params(p: parameters) : Semantics.parameters := {|
-    Semantics.word := Utility.word;
+    Semantics.word := word;
     Semantics.env := ExprImp_env;
     Semantics.ext_spec:= ext_spec;
   |}.
@@ -61,10 +64,10 @@ Module Import FlattenExpr.
   Instance mk_Semantics_params_ok(p: parameters)(hyps: assumptions p):
     Semantics.parameters_ok (mk_Semantics_params p) := {
     Semantics.locals_ok := locals_ok;
-    Semantics.word_ok := Utility.word_ok;
+    Semantics.word_ok := word_ok;
     Semantics.mem_ok := mem_ok;
     Semantics.env_ok := ExprImp_env_ok;
-    Semantics.width_cases := Utility.width_cases;
+    Semantics.width_cases := @Bitwidth.width_cases _ BW;
     Semantics.ext_spec_ok := _
   }.
 

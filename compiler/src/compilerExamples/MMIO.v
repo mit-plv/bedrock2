@@ -115,11 +115,6 @@ Section MMIO1.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Local Instance Words32: Utility.Words := {
-    Utility.word := word;
-    Utility.width_cases := or_introl eq_refl;
-  }.
-
   Instance semantics_params : FE310CSemantics.parameters := {|
     FE310CSemantics.parameters.word := word;
     FE310CSemantics.parameters.word_ok := _;
@@ -282,11 +277,9 @@ Section MMIO1.
   Qed.
 
   Ltac simpl_paramrecords :=
-    change (@FlatToRiscvCommon.W FlatToRiscv_params) with Words32 in *;
     change (@FlatToRiscvCommon.locals FlatToRiscv_params) with (@locals p) in *;
     change (@FlatToRiscvCommon.mem FlatToRiscv_params) with (@mem p) in *;
-    change (@width Words32) with 32 in *;
-    change (@Utility.word Words32) with (@word p) in *.
+    change (@FlatImp.width _) with 32 in *.
 
   Lemma compile_ext_call_correct: forall resvars extcall argvars,
       FlatToRiscvCommon.compiles_FlatToRiscv_correctly
@@ -594,7 +587,6 @@ Section MMIO1.
 
 End MMIO1.
 
-Existing Instance Words32.
 Existing Instance semantics_params.
 Existing Instance compilation_params.
 Existing Instance FlatToRiscv_params.

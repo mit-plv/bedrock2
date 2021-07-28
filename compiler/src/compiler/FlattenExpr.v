@@ -5,7 +5,6 @@ Require compiler.FlatImp.
 Require Import compiler.NameGen.
 Require Import coqutil.Decidable.
 Require Import bedrock2.Syntax.
-Require Import riscv.Utility.Utility.
 Require Import bedrock2.MetricLogging.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Macros.unique.
@@ -471,7 +470,7 @@ Section FlattenExpr1.
   Proof.
     apply unsigned_ne.
     rewrite! word.unsigned_of_Z. unfold word.wrap.
-    pose proof word.width_pos as P; pose proof (Z.pow_gt_1 2 Utility.width) as Q.
+    pose proof word.width_pos as P; pose proof (Z.pow_gt_1 2 width) as Q.
     rewrite! Z.mod_small; simpl_param_projections; blia.
   Qed.
 

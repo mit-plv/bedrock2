@@ -30,12 +30,12 @@ Arguments iff1 {T} (_)%sep (_)%sep.
 (* TODO does not get rid of %sep in printing as intended *)
 Arguments sep {key} {value} {map} (_)%sep (_)%sep.
 
+Definition bytes_per_word{width}{BW: Bitwidth width}: Z := Memory.bytes_per_word width.
+
 Section ptstos.
-  Context {W: Words}.
+  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
   Context {mem : map.map word byte} {mem_ok: map.ok mem}.
   Context (iset: InstructionSet).
-
-  Definition bytes_per_word: Z := Memory.bytes_per_word width.
 
   Definition word_array: word -> list word -> mem -> Prop :=
     array ptsto_word (word.of_Z bytes_per_word).
@@ -116,7 +116,7 @@ Section ptstos.
         destruct width_cases as [E | E]; rewrite E; reflexivity.
       }
       rewrite map.get_put_diff; cycle 1. {
-        clear -H H0 Gz. intro C.
+        intro C.
         apply (f_equal word.unsigned) in C.
         rewrite word.unsigned_add in C. unfold word.wrap in C.
         rewrite word.unsigned_of_Z in C. unfold word.wrap in C.
@@ -129,8 +129,8 @@ Section ptstos.
         assert (k < 0 \/ k = 0 \/ 0 < k) as D by blia. destruct D as [D | [D | D]]; Lia.nia.
       }
       rewrite <- word.add_assoc.
-      replace ((word.add (word.of_Z (word := @word W) z) (word.of_Z 1)))
-        with (word.of_Z (word := @word W) (z + 1)); cycle 1. {
+      replace ((word.add (word.of_Z (word := word) z) (word.of_Z 1)))
+        with (word.of_Z (word := word) (z + 1)); cycle 1. {
         apply word.unsigned_inj.
         rewrite word.unsigned_add.
         rewrite! word.unsigned_of_Z.
@@ -189,7 +189,7 @@ Section ptstos.
     - assumption.
   Qed.
 
-  Lemma byte_list_to_word_list_array {word_ok: word.ok word}: forall bytes,
+  Lemma byte_list_to_word_list_array: forall bytes,
     Z.of_nat (length bytes) mod bytes_per_word = 0 ->
     exists word_list : list word,
       Z.of_nat (Datatypes.length word_list) =
@@ -211,7 +211,7 @@ Section ptstos.
     assert (0 <= q) by Lia.nia.
     revert dependent bytes.
     pattern q.
-    refine (natlike_ind _ _ _ q H); clear -word_ok mem_ok; intros.
+    refine (natlike_ind _ _ _ q H); clear -BW word_ok mem_ok; intros.
     { case bytes in *; cbn in *; ring_simplify in H0; try discriminate.
       exists nil; split; reflexivity. }
     rewrite Z.mul_succ_r in *.

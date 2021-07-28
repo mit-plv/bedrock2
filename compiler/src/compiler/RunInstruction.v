@@ -35,7 +35,7 @@ Notation Register0 := 0%Z (only parsing).
 
 Section Run.
 
-  Context {W: Words}.
+  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
   Context {Registers: map.map Z word}.
   Context {mem: map.map word byte}.
   Context {mem_ok: map.ok mem}.
@@ -68,7 +68,7 @@ Section Run.
   Ltac simulate' := repeat simulate'_step.
 
   Context (iset: InstructionSet)
-          (iset_bitwidth_matches: bitwidth iset = width).
+          (iset_bitwidth_matches: bitwidth iset = id width). (* id prevents "subst width" *)
 
   Definition run_Jalr0_spec :=
     forall (rs1: Z) (oimm12: Z) (initialL: RiscvMachineL) (R Rexec: mem -> Prop)
@@ -265,7 +265,7 @@ Section Run.
             word.add dest (word.of_Z oimm12)) as A. {
       assert (word.unsigned (word.add dest (word.of_Z oimm12)) mod 4 = 0) as C by
             solve_divisibleBy4.
-      generalize dependent (word.add dest (word.of_Z oimm12)). clear.
+      generalize dependent (word.add dest (word.of_Z oimm12)). clear -BW word_ok.
       intros.
       apply word.unsigned_inj.
       rewrite word.unsigned_and, word.unsigned_xor, !word.unsigned_of_Z. unfold word.wrap.
@@ -334,7 +334,7 @@ Section Run.
   Lemma run_Lw: run_Load_spec 4 Lw (signExtend 32).
   Proof. t. Qed.
 
-  Lemma run_Lw_unsigned: width = 32 -> run_Load_spec 4 Lw id.
+  Lemma run_Lw_unsigned: id width = 32 -> run_Load_spec 4 Lw id.
   Proof.
     t. rewrite sextend_width_nop; [reflexivity|symmetry;assumption].
   Qed.
@@ -349,10 +349,11 @@ Section Run.
   Lemma run_Ld_unsigned: run_Load_spec 8 Ld id.
   Proof.
     t. rewrite sextend_width_nop; [reflexivity|].
-    edestruct @invert_ptsto_instr as (DE & ?); [exact mem_ok|ecancel_assumption|].
+    edestruct @invert_ptsto_instr as (DE & ?); [exact word_ok|exact mem_ok|ecancel_assumption|].
     clear -DE iset_bitwidth_matches.
     destruct DE as [DE | DE]. 2: { unfold valid_InvalidInstruction in DE. simp. discriminate. }
     destruct DE as [_ H]. unfold verify_iset in *.
+    unfold id in *.
     rewrite <- iset_bitwidth_matches. unfold bitwidth.
     destruct H as [ H | [ H | [ H | H ] ] ]; subst; reflexivity.
   Qed.
@@ -362,7 +363,7 @@ Section Run.
       @iff1 mem (emp P) (emp Q).
   Proof. unfold iff1, emp. clear. firstorder idtac. Qed.
 
-  Lemma removeXAddr_diff: forall a1 a2 xaddrs,
+  Lemma removeXAddr_diff: forall (a1 a2: word) xaddrs,
       a1 <> a2 ->
       isXAddr1 a1 xaddrs ->
       isXAddr1 a1 (removeXAddr a2 xaddrs).
@@ -375,7 +376,7 @@ Section Run.
     reflexivity.
   Qed.
 
-  Lemma removeXAddr_bw: forall a1 a2 xaddrs,
+  Lemma removeXAddr_bw: forall (a1 a2: word) xaddrs,
       isXAddr1 a1 (removeXAddr a2 xaddrs) ->
       isXAddr1 a1 xaddrs.
   Proof.

@@ -60,7 +60,10 @@ Export FlatToRiscvDef.FlatToRiscvDef.
 Class parameters := {
   def_params :> FlatToRiscvDef.parameters;
 
-  W :> Words;
+  width: Z;
+  BW :> Bitwidth width;
+  word :> word.word width;
+  word_ok :> word.ok word;
   locals :> map.map Z word;
   mem :> map.map word byte;
 
@@ -357,7 +360,7 @@ Section WithParameters.
 
   Class assumptions: Prop := {
     bitwidth_matches: bitwidth iset = width;
-    word_riscv_ok :> word.riscv_ok (@word W);
+    word_riscv_ok :> word.riscv_ok word;
     locals_ok :> map.ok locals;
     mem_ok :> map.ok mem;
     funname_env_ok :> forall T, map.ok (funname_env T);
@@ -519,11 +522,11 @@ Section FlatToRiscv1.
     - refine (run_Lbu iset).
     - refine (run_Lhu iset).
     - rewrite bitwidth_matches.
-      destruct width_cases as [E | E]; rewrite E; simpl.
+      destruct width_cases as [E | E]; rewrite E at 2; simpl.
       + refine (run_Lw_unsigned iset E).
       + refine (run_Lwu iset).
     - rewrite bitwidth_matches.
-      destruct width_cases as [E | E]; rewrite E; simpl.
+      destruct width_cases as [E | E]; rewrite E at 2 3; simpl.
       + refine (run_Lw_unsigned iset E).
       + refine (run_Ld_unsigned iset bitwidth_matches).
   Qed.
@@ -536,7 +539,7 @@ Section FlatToRiscv1.
     - refine (run_Sh iset).
     - refine (run_Sw iset).
     - rewrite bitwidth_matches.
-      destruct width_cases as [E | E]; rewrite E; simpl.
+      destruct width_cases as [E | E]; rewrite E at 2 3; simpl.
       + refine (run_Sw iset).
       + refine (run_Sd iset).
   Qed.

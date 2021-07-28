@@ -7,6 +7,7 @@ Require Import Kami.Ex.IsaRv32 riscv.Spec.Decode.
 Require Import riscv.Utility.Encode.
 Require Import coqutil.Word.LittleEndian.
 Require Import coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth32.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.rdelta.
@@ -39,7 +40,6 @@ Local Open Scope Z_scope.
 
 (** Consistency between the Kami word and the Z-based word *)
 Section WordZ.
-  Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
   Local Hint Mode word.word - : typeclass_instances.
 
   Lemma bitSlice_range_ex:
@@ -337,9 +337,6 @@ Section WordZ.
     reflexivity.
   Qed.
 
-  Instance kword32: coqutil.Word.Interface.word 32 := KamiWord.word 32.
-  Instance kword32_ok: word.ok kword32. eapply KamiWord.ok. reflexivity. Qed.
-
   Lemma signExtend_word_of_Z_nop:
     forall z, word.of_Z (width:= 32) (signExtend 32 z) = word.of_Z (width:= 32) z.
   Proof.
@@ -413,11 +410,11 @@ Section WordZ.
   Qed.
 
   Lemma wlshift_sll:
-    forall w (n: Word.word 5),
+    forall (w: word) (n: Word.word 5),
       wlshift w #n = sll (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
   Proof.
     intros.
-    cbv [sll MachineWidth_XLEN word.slu word WordsKami wordW KamiWord.word].
+    cbv [sll MachineWidth_XLEN word.slu word wordW KamiWord.word].
     cbv [kunsigned word.of_Z kofZ].
     setoid_rewrite uwordToZ_ZToWord_full; [|cbv; blia].
     rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
@@ -437,11 +434,11 @@ Section WordZ.
   Qed.
 
   Lemma wrshift_srl:
-    forall w (n: Word.word 5),
+    forall (w: word) (n: Word.word 5),
       wrshift w #n = srl (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
   Proof.
     intros.
-    cbv [srl MachineWidth_XLEN word.sru word WordsKami wordW KamiWord.word].
+    cbv [srl MachineWidth_XLEN word.sru word wordW KamiWord.word].
     cbv [kunsigned word.of_Z kofZ].
     setoid_rewrite uwordToZ_ZToWord_full; [|cbv; blia].
     rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
@@ -465,7 +462,7 @@ Section WordZ.
       wrshifta w #n = sra (MachineWidth:= MachineWidth_XLEN) w (Z.of_N (wordToN n)).
   Proof.
     intros.
-    cbv [sra MachineWidth_XLEN word.srs word WordsKami wordW KamiWord.word].
+    cbv [sra MachineWidth_XLEN word.srs word wordW KamiWord.word].
     cbv [kunsigned word.of_Z kofZ].
     setoid_rewrite uwordToZ_ZToWord_full; [|cbv; blia].
     rewrite Z.mod_small with (a:= Z.of_N (wordToN n)).
@@ -487,7 +484,6 @@ Section WordZ.
 End WordZ.
 
 Section Equiv.
-  Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
   Local Hint Mode word.word - : typeclass_instances.
 
   Context {Registers: map.map Z word}
@@ -626,7 +622,7 @@ Section Equiv.
     cbv [MinimalMMIO.mmioLoadEvent].
     cbv [MinimalMMIO.signedByteTupleToReg].
     change (8 * Z.of_nat 4) with 32; rewrite H0.
-    cbv [word.of_Z word WordsKami wordW KamiWord.word kofZ].
+    cbv [word.of_Z word wordW KamiWord.word kofZ].
     rewrite ZToWord_wordToZ.
     econstructor.
   Qed.
@@ -641,7 +637,7 @@ Section Equiv.
     cbv [MinimalMMIO.mmioStoreEvent].
     cbv [MinimalMMIO.signedByteTupleToReg].
     change (8 * Z.of_nat 4) with 32; rewrite H0.
-    cbv [word.of_Z word WordsKami wordW KamiWord.word kofZ].
+    cbv [word.of_Z word wordW KamiWord.word kofZ].
     rewrite ZToWord_wordToZ.
     econstructor.
   Qed.
@@ -876,7 +872,7 @@ Section Equiv.
   Proof.
     intros.
     apply Bool.negb_false_iff in H.
-    cbv [reg_eqb MachineWidth_XLEN word.eqb word WordsKami wordW KamiWord.word] in H.
+    cbv [reg_eqb MachineWidth_XLEN word.eqb word wordW KamiWord.word] in H.
     apply weqb_sound in H.
     cbv [remu word.modu riscvZmodu kofZ kunsigned] in H.
     simpl in H; cbn in H.
@@ -964,7 +960,7 @@ Section Equiv.
       mem_related memSizeLg kmem rmem ->
       forall (na: word) kval rval,
         kunsigned na < 2 ^ memSizeLg ->
-        rval = byte.of_Z (word.unsigned kval) ->
+        rval = byte.of_Z (word.unsigned (width := 8) kval) ->
         mem_related memSizeLg
                     (fun w => if weq w (evalZeroExtendTrunc _ na) then kval
                               else kmem w)
@@ -1741,7 +1737,7 @@ Section Equiv.
                   clear -Heqic Hlv;
                   cbv [Utility.add
                          ZToReg MachineWidth_XLEN
-                         word.add word WordsKami wordW KamiWord.word
+                         word.add word wordW KamiWord.word
                          word.of_Z kofZ] in Hlv;
                   try change (BinInt.Z.to_nat width) with (Pos.to_nat 32) in Hlv;
                   blia
@@ -1779,7 +1775,7 @@ Section Equiv.
       }
       { subst ldVal.
         cbv [int32ToReg
-               MachineWidth_XLEN word.of_Z word WordsKami wordW KamiWord.word kofZ].
+               MachineWidth_XLEN word.of_Z word wordW KamiWord.word kofZ].
         setoid_rewrite signExtend_combine_split_signed.
         apply eq_sym, ZToWord_wordToZ.
       }
@@ -1901,12 +1897,12 @@ Section Equiv.
 
       all: regs_get_red_goal.
       all: cbv [int8ToReg int16ToReg uInt8ToReg uInt16ToReg int32ToReg
-                          MachineWidth_XLEN word.of_Z word WordsKami wordW KamiWord.word kofZ].
+                          MachineWidth_XLEN word.of_Z word wordW KamiWord.word kofZ].
       all: subst v oimm12 rs1.
       all: regs_get_red Hlv.
       all: cbv [Utility.add
                   ZToReg MachineWidth_XLEN
-                  word.add word WordsKami wordW KamiWord.word
+                  word.add word wordW KamiWord.word
                   word.of_Z kofZ] in Hlv;
         cbv [Memory.load_bytes] in Hlv;
         cbv [map.getmany_of_tuple
@@ -2129,7 +2125,7 @@ Section Equiv.
                   clear -Heqic Hlv;
                   cbv [Utility.add
                          ZToReg MachineWidth_XLEN
-                         word.add word WordsKami wordW KamiWord.word
+                         word.add word wordW KamiWord.word
                          word.of_Z kofZ] in Hlv;
                   try change (BinInt.Z.to_nat width) with (Pos.to_nat 32) in Hlv;
                   blia
@@ -2431,7 +2427,7 @@ Section Equiv.
         }
         { subst v0; regs_get_red_goal.
           cbv [regToInt32
-                 MachineWidth_XLEN word.unsigned word WordsKami wordW KamiWord.word kofZ].
+                 MachineWidth_XLEN word.unsigned word wordW KamiWord.word kofZ].
           setoid_rewrite signExtend_combine_split_unsigned.
           reflexivity.
         }
@@ -2635,7 +2631,7 @@ Section Equiv.
                     rewrite ?kunsigned_split2_shiftr;
                     reflexivity]).
         1: assumption.
-        all: cbv [word.add word WordsKami wordW KamiWord.word word.of_Z kofZ].
+        all: cbv [word.add word wordW KamiWord.word word.of_Z kofZ].
         all: match goal with
              | [Hmr: mem_related _ _ _ |- _] => clear -Hlv Hmr
              end.
@@ -2791,7 +2787,7 @@ Section Equiv.
       clear; red.
       cbv [Utility.add
              ZToReg MachineWidth_XLEN
-             word.add word WordsKami wordW KamiWord.word
+             word.add word wordW KamiWord.word
              word.of_Z kofZ].
       repeat f_equal.
       simpl_bit_combine_Z.
@@ -2803,7 +2799,7 @@ Section Equiv.
       split; [apply AddrAligned_consistent; assumption|red].
       cbv [MachineWidth_XLEN
              ZToReg Utility.add and
-             word.add word.and word WordsKami wordW KamiWord.word
+             word.add word.and word wordW KamiWord.word
              word.of_Z kofZ].
       regs_get_red_goal.
       reflexivity.
@@ -2814,9 +2810,9 @@ Section Equiv.
              | [H: _ {| getMachine := _ |} |- _] => clear H
              end.
     all: try subst val; cbv [ZToReg MachineWidth_XLEN]; cbn [evalBinBitBool].
-    all: eapply (@word.unsigned_inj _ (@word (@WordsKami width width_cases)) _).
+    all: eapply (word.unsigned_inj (word := word)).
     all: rewrite <-?ZToWord_Z_of_N.
-    all: change (ZToWord 32) with (@word.of_Z 32 (@word (@WordsKami width width_cases))).
+    all: change (ZToWord 32) with (@word.of_Z 32 word).
     all: rewrite ?word.unsigned_of_Z.
 
     { (* lui *)
@@ -2840,7 +2836,6 @@ Section Equiv.
       change (12 + 20)%nat with 32%nat.
       change (Z.to_nat 32) with 32%nat.
       set (x := bitSlice (Z.of_N (@wordToN 32 kinst)) 12 32).
-      change Utility.width with 32.
       cbv [signExtend].
       change (2 ^ (32 - 1)) with (2^31).
       rewrite Zminus_mod_idemp_l.
@@ -2857,7 +2852,7 @@ Section Equiv.
       eapply f_equal.
       rewrite wplus_comm; eapply f_equal2; [|reflexivity].
       rewrite signExtend_word_of_Z_nop.
-      eapply (@word.unsigned_inj _ (@word (@WordsKami width width_cases)) _).
+      eapply (word.unsigned_inj (word := word)).
       match goal with
       | |- context[@word.unsigned ?a ?b ?x] =>
         change (@word.unsigned a b x) with (Z.of_N (wordToN x))
@@ -2872,7 +2867,6 @@ Section Equiv.
       rewrite word.unsigned_of_Z; cbv [word.wrap]; symmetry; eapply Z.mod_small.
       pose proof bitSlice_range_ex (Z.of_N (@wordToN 32 kinst)) 12 32 ltac:(blia).
       rewrite Z.shiftl_mul_pow2 by blia.
-      change Utility.width with 32.
       change (12 + 20)%nat with 32%nat.
       change (2^32) with (2^(32-12) * 2^12).
       blia.
@@ -3105,7 +3099,7 @@ Section Equiv.
       clear; red.
       cbv [Utility.add
              ZToReg MachineWidth_XLEN
-             word.add word WordsKami wordW KamiWord.word
+             word.add word wordW KamiWord.word
              word.of_Z kofZ].
       repeat f_equal.
       simpl_bit_combine_Z.
@@ -3117,7 +3111,7 @@ Section Equiv.
       split; [apply AddrAligned_consistent; assumption|red].
       cbv [MachineWidth_XLEN
              ZToReg Utility.add and
-             word.add word.and word WordsKami wordW KamiWord.word
+             word.add word.and word wordW KamiWord.word
              word.of_Z kofZ].
       regs_get_red_goal.
       reflexivity.
@@ -3129,7 +3123,7 @@ Section Equiv.
       clear; red.
       cbv [Utility.add
              ZToReg MachineWidth_XLEN
-             word.add word WordsKami wordW KamiWord.word
+             word.add word wordW KamiWord.word
              word.of_Z kofZ].
       repeat f_equal.
       simpl_bit_combine_Z.
@@ -3153,7 +3147,7 @@ Section Equiv.
       end.
       { exfalso; subst v v0 rs1 rs2.
         regs_get_red E.
-        cbv [reg_eqb MachineWidth_XLEN word.eqb word WordsKami wordW KamiWord.word] in E.
+        cbv [reg_eqb MachineWidth_XLEN word.eqb word wordW KamiWord.word] in E.
         apply weqb_false in E.
         apply N2Z.inj, wordToN_inj in e1; auto.
       }
@@ -3163,7 +3157,7 @@ Section Equiv.
         clear; red.
         cbv [Utility.add
                ZToReg MachineWidth_XLEN
-               word.add word WordsKami wordW KamiWord.word
+               word.add word wordW KamiWord.word
                word.of_Z kofZ].
         repeat f_equal.
         simpl_bit_combine_Z.
@@ -3178,7 +3172,7 @@ Section Equiv.
       { apply pc_related_plus4; red; eauto. }
       { exfalso; subst v v0 rs1 rs2.
         regs_get_red E.
-        cbv [reg_eqb MachineWidth_XLEN word.eqb word WordsKami wordW KamiWord.word] in E.
+        cbv [reg_eqb MachineWidth_XLEN word.eqb word wordW KamiWord.word] in E.
         apply Bool.negb_false_iff in E; apply weqb_sound in E.
         congruence.
       }
@@ -3188,7 +3182,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       cbv [signed_less_than
              MachineWidth_XLEN
-             word.lts word WordsKami wordW KamiWord.word] in E.
+             word.lts word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
       destruct (wslt_dec _ _); [|discriminate].
@@ -3197,7 +3191,7 @@ Section Equiv.
       clear; red.
       cbv [Utility.add
              ZToReg MachineWidth_XLEN
-             word.add word WordsKami wordW KamiWord.word
+             word.add word wordW KamiWord.word
              word.of_Z kofZ].
       repeat f_equal.
       simpl_bit_combine_Z.
@@ -3208,7 +3202,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       cbv [signed_less_than
              MachineWidth_XLEN
-             word.lts word WordsKami wordW KamiWord.word] in E.
+             word.lts word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
       destruct (wslt_dec _ _); [discriminate|].
@@ -3219,7 +3213,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       cbv [signed_less_than
              MachineWidth_XLEN
-             word.lts word WordsKami wordW KamiWord.word] in E.
+             word.lts word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
       destruct (wslt_dec _ _); [discriminate|].
@@ -3228,7 +3222,7 @@ Section Equiv.
       clear; red.
       cbv [negb Utility.add
                 ZToReg MachineWidth_XLEN
-                word.add word WordsKami wordW KamiWord.word
+                word.add word wordW KamiWord.word
                 word.of_Z kofZ].
       repeat f_equal.
       simpl_bit_combine_Z.
@@ -3239,7 +3233,7 @@ Section Equiv.
       cbv [evalBinBitBool].
       cbv [signed_less_than
              MachineWidth_XLEN
-             word.lts word WordsKami wordW KamiWord.word] in E.
+             word.lts word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
       destruct (wslt_dec _ _); [|discriminate].
@@ -3249,7 +3243,7 @@ Section Equiv.
     { (* bltu(ltu) *)
       cbv [evalBinBitBool].
       cbv [ltu MachineWidth_XLEN
-               word.ltu word WordsKami wordW KamiWord.word] in E.
+               word.ltu word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
       destruct (wlt_dec _ _); [|discriminate].
@@ -3258,7 +3252,7 @@ Section Equiv.
       clear; red.
       cbv [Utility.add
              ZToReg MachineWidth_XLEN
-             word.add word WordsKami wordW KamiWord.word
+             word.add word wordW KamiWord.word
              word.of_Z kofZ].
       repeat f_equal.
       simpl_bit_combine_Z.
@@ -3268,7 +3262,7 @@ Section Equiv.
     { (* bltu(not ltu) *)
       cbv [evalBinBitBool].
       cbv [ltu MachineWidth_XLEN
-               word.ltu word WordsKami wordW KamiWord.word] in E.
+               word.ltu word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
       destruct (wlt_dec _ _); [discriminate|].
@@ -3278,7 +3272,7 @@ Section Equiv.
     { (* bgeu(geu) *)
       cbv [evalBinBitBool].
       cbv [ltu MachineWidth_XLEN
-               word.ltu word WordsKami wordW KamiWord.word] in E.
+               word.ltu word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
       destruct (wlt_dec _ _); [discriminate|].
@@ -3287,7 +3281,7 @@ Section Equiv.
       clear; red.
       cbv [negb Utility.add
                 ZToReg MachineWidth_XLEN
-                word.add word WordsKami wordW KamiWord.word
+                word.add word wordW KamiWord.word
                 word.of_Z kofZ].
       repeat f_equal.
       simpl_bit_combine_Z.
@@ -3297,7 +3291,7 @@ Section Equiv.
     { (* bgeu(not geu) *)
       cbv [evalBinBitBool].
       cbv [ltu MachineWidth_XLEN
-               word.ltu word WordsKami wordW KamiWord.word] in E.
+               word.ltu word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
       destruct (wlt_dec _ _); [|discriminate].

@@ -72,8 +72,6 @@ Proof.
 Qed.
 
 Section Equiv.
-  Local Hint Resolve (@KamiWord.WordsKami width width_cases): typeclass_instances.
-
   Context {Registers: map.map Z word}
           {mem: map.map word byte}.
 
@@ -436,7 +434,7 @@ Section Equiv.
       eapply word.unsigned_inj.
       rewrite word.unsigned_of_Z.
       cbv [word.wrap]; rewrite <-word.wrap_unsigned; f_equal.
-      unfold word.unsigned, word, WordsKami, wordW, KamiWord.word, kword, kunsigned.
+      unfold word.unsigned, word, wordW, KamiWord.word, kword, kunsigned.
       rewrite wordToN_nat, nat_N_Z; reflexivity.
     }
     Unshelve. all: exact O.
@@ -528,7 +526,7 @@ Section Equiv.
                 m0RV.(RiscvMachine.getMem) = riscvMemInit ->
                 m0RV.(RiscvMachine.getPc) = word.of_Z 0 ->
                 m0RV.(RiscvMachine.getNextPc) = word.of_Z 4 ->
-                (forall a: Utility.word,
+                (forall a: word,
                     0 <= word.unsigned a < 2 ^ (2 + instrMemSizeLg) ->
                     In a m0RV.(RiscvMachine.getXAddrs)) ->
                 disjoint (of_list m0RV.(RiscvMachine.getXAddrs)) isMMIOAddr ->

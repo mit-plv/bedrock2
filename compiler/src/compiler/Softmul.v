@@ -1,6 +1,7 @@
 Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.Lists.List. Import ListNotations.
+Require Import coqutil.Word.Bitwidth32.
 Require Import riscv.Utility.MonadNotations.
 Require Import riscv.Utility.FreeMonad.
 Require Import riscv.Spec.Decode.
@@ -43,15 +44,13 @@ Section Riscv.
   (* RISC-V Monad *)
   Local Notation M := (free riscv_primitive primitive_result).
 
-  Local Instance Words32: Utility.Words := {
-    Utility.word := word;
-    Utility.width_cases := or_introl eq_refl;
-  }.
-
   (*
   Definition mcomp_sat{A: Type}(m: M A)(initial: State)(post: A -> State -> Prop): Prop :=
       free.interpret run_primitive m initial post (fun _ => False).
    *)
+
+  Local Hint Mode map.map - - : typeclass_instances.
+
   Definition mcomp_sat(m: M unit)(initial: State)(post: State -> Prop): Prop :=
     free.interpret run_primitive m initial (fun tt => post) (fun _ => False).
 
@@ -278,9 +277,7 @@ Section Riscv.
       program (word.of_Z (mtvec_base * 4)) handler_insts = Some r2#"mem".
 
   Ltac paramrecords :=
-    change (@Utility.word Words32) with word in *;
-    change (@SortedList.rep CSRFile_map_params) with (@map.rep CSRField.CSRField Z CSRFile) in *;
-    change (@width Words32) with 32 in *.
+    change (@SortedList.rep CSRFile_map_params) with (@map.rep CSRField.CSRField Z CSRFile) in *.
 
   Lemma related_preserves_load_bytes: forall n sH sL a w,
       related sH sL ->
@@ -379,7 +376,7 @@ Section Riscv.
       runsTo (mcomp_sat (run1 iset)) initial post.
 *)
 
-  Lemma interpret_getPC: forall (initial: State) (postF : Utility.word -> State -> Prop) (postA : State -> Prop),
+  Lemma interpret_getPC: forall (initial: State) (postF : word -> State -> Prop) (postA : State -> Prop),
       postF initial#"pc" initial ->
       free.interpret run_primitive getPC initial postF postA.
   Proof. intros *. exact id. Qed.

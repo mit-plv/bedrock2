@@ -10,7 +10,6 @@ Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
-Import Utility.
 
 Section Proofs.
   Context {p: FlatToRiscvCommon.parameters}.

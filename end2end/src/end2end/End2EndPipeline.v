@@ -76,13 +76,12 @@ Section Connect.
 
   Instance mmio_params: MMIO.parameters.
     econstructor; try typeclasses eauto.
-    - exact (@KamiWord.wordWok _ (or_introl eq_refl)).
-    - exact SortedListString.ok.
+    exact SortedListString.ok.
   Defined.
 
   Let instrMemSizeBytes: Z := 2 ^ (2 + instrMemSizeLg).
 
-  Definition ml: MemoryLayout := {|
+  Definition ml: MemoryLayout (width := 32) := {|
     code_start := word.of_Z 0;
     code_pastend := word.of_Z instrMemSizeBytes;
     heap_start := word.of_Z instrMemSizeBytes;
@@ -104,9 +103,9 @@ Section Connect.
                    (proj2 instrMemSizeLg_bounds)
                    memInit.
 
-  Add Ring wring : (word.ring_theory (word := Utility.word))
+  Add Ring wring : (word.ring_theory (word := Consistency.word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := Utility.word)),
+       morphism (word.ring_morph (word := Consistency.word)),
        constants [word_cst]).
 
   Goal True.
@@ -133,7 +132,7 @@ Section Connect.
   - pose proof FE310CSemantics.ext_spec_ok.
     cbv [FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec Pipeline.ext_spec pipeline_params].
     abstract (destruct H; split; eauto).
-  - eapply @compile_ext_call_correct.
+  - exact compile_ext_call_correct.
   - intros. reflexivity.
   Defined.
 
@@ -241,7 +240,7 @@ Section Connect.
   Lemma riscvMemInit_to_seplog_aux: forall len from,
       Z.of_nat from + Z.of_nat len <= 2 ^ memSizeLg ->
       LowerPipeline.ptsto_bytes
-        (word.of_Z (word:=Utility.word) (Z.of_nat from))
+        (word.of_Z (width := width) (Z.of_nat from))
         (map (get_kamiMemInit memInit) (seq from len))
         (map.of_list (map
           (fun i => (word.of_Z (BinIntDef.Z.of_nat i),
@@ -492,35 +491,32 @@ Section Connect.
           cancel_seps_at_indices 0%nat 0%nat. {
             f_equal.
             repeat match goal with
-                   | |- context [?x] => progress change x with (@width (@Words32 mmio_params))
-                   | |- context [?x] => progress change x with (@Utility.word (@Words32 mmio_params))
-                   | |- context [?x] => progress change x with (@MMIO.word_ok mmio_params)
+                   | |- context [?x] => progress change x with 32
+                   | |- context [?x] => progress change x with Consistency.word
                    end.
             ring.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
             f_equal.
             repeat match goal with
-                   | |- context [?x] => progress change x with (@width (@Words32 mmio_params))
-                   | |- context [?x] => progress change x with (@Utility.word (@Words32 mmio_params))
-                   | |- context [?x] => progress change x with (@MMIO.word_ok mmio_params)
+                   | |- context [?x] => progress change x with 32
+                   | |- context [?x] => progress change x with Consistency.word
                    end.
             rewrite firstn_length.
             rewrite skipn_length.
-            simpl_word_exprs (@Utility.word_ok (@Words32 mmio_params)).
+            simpl_word_exprs word_ok.
             f_equal.
             blia.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
             f_equal.
             repeat match goal with
-                   | |- context [?x] => progress change x with (@width (@Words32 mmio_params))
-                   | |- context [?x] => progress change x with (@Utility.word (@Words32 mmio_params))
-                   | |- context [?x] => progress change x with (@MMIO.word_ok mmio_params)
+                   | |- context [?x] => progress change x with 32
+                   | |- context [?x] => progress change x with Consistency.word
                    end.
             rewrite ?firstn_length.
             rewrite ?skipn_length.
-            simpl_word_exprs (@Utility.word_ok (@Words32 mmio_params)).
+            simpl_word_exprs word_ok.
             f_equal.
             blia.
           }
@@ -530,7 +526,8 @@ Section Connect.
                             ?firstn_length, ?skipn_length, ?word.unsigned_of_Z;
              unfold word.wrap;
              change width with 32 in *;
-             change Semantics.width with 32 in *.
+             change Semantics.width with 32 in *;
+             change Pipeline.width with 32 in *.
         all: try (
           Z.div_mod_to_equations;
           (* COQBUG (performance) https://github.com/coq/coq/issues/10743#issuecomment-530673037

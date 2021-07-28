@@ -595,10 +595,4 @@ Section MkWords.
 
   Instance word8: word.word 8 := word 8.
   Instance word8ok: word.ok word8 := ok 8 eq_refl.
-
-  Instance WordsKami: Utility.Words := {|
-    Utility.word := wordW;
-    Utility.width_cases := width_cases;
-  |}.
-
 End MkWords.

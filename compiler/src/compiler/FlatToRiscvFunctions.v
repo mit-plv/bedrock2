@@ -32,7 +32,7 @@ Require Import coqutil.Word.DebugWordEq.
 Require Import compiler.MemoryLayout.
 Require Import coqutil.Map.TestLemmas.
 
-Import Utility MetricLogging.
+Import MetricLogging.
 
 Section Proofs.
   Context {p: FlatToRiscvCommon.parameters}.
@@ -126,12 +126,12 @@ Section Proofs.
     | H: fits_stack _ _ _ ?Code |- fits_stack _ _ _ ?Code => exact H
     | H: map.get ?R RegisterNames.sp = Some _ |- map.get ?R RegisterNames.sp = Some _ => exact H
     | |- ?G => assert_fails (has_evar G);
-               solve [ simpl_addrs; solve_word_eq (@word_ok (@W p))
+               solve [ simpl_addrs; solve_word_eq (@word_ok p)
                      | solve_stmt_not_too_big
                      | reflexivity
                      | assumption
                      | solve_divisibleBy4
-                     | solve_valid_machine (@word_ok (@W p)) ]
+                     | solve_valid_machine (@word_ok p) ]
     | H: subset (footpr _) _ |- subset (footpr _) _ =>
       eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ]
     | |- _ => solve [wcancel_assumption]
@@ -174,9 +174,9 @@ Section Proofs.
     | |- exists (_: _), _ => eexists
     end;
     ssplit;
-    simpl_word_exprs (@word_ok (@W p));
+    simpl_word_exprs (@word_ok p);
     match goal with
-    | |- _ => solve_word_eq (@word_ok (@W p))
+    | |- _ => solve_word_eq (@word_ok p)
     | |- exists _, _ = _ /\ (_ * _)%sep _ =>
       eexists; split; cycle 1; [ wcancel_assumption | blia ]
     | |- _ => solve [rewrite ?of_list_list_union in *;
@@ -184,7 +184,7 @@ Section Proofs.
                         and slow everything down
                         change Z with Register in *; *)
                      map_solver (@locals_ok p h)]
-    | |- _ => solve [solve_valid_machine (@word_ok (@W p))]
+    | |- _ => solve [solve_valid_machine (@word_ok p)]
     | |- _ => solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]
     | H: subset (footpr _) _ |- subset (footpr _) _ =>
       eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ]
@@ -195,7 +195,7 @@ Section Proofs.
     simpl_MetricRiscvMachine_get_set;
     simpl_g_get;
     rewrite ?@length_save_regs, ?@length_load_regs in *;
-    simpl_word_exprs (@word_ok (@W p));
+    simpl_word_exprs (@word_ok p);
     repeat match goal with
            | |- _ /\ _ => split
            | |- exists _, _ => eexists
@@ -390,7 +390,7 @@ Section Proofs.
       }
 
       assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
-        unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+        unfold bytes_per_word. destruct Bitwidth.width_cases as [E | E]; rewrite E; cbv; auto.
       }
       pose proof (stackalloc_words_nonneg body) as ScratchNonneg.
       assert (exists remaining_stack old_scratch old_modvarvals old_ra old_retvals old_argvals unused_scratch,
@@ -618,7 +618,7 @@ Section Proofs.
       simpl_MetricRiscvMachine_get_set;
       simpl_g_get;
       rewrite ?@length_save_regs, ?@length_load_regs in *;
-      simpl_word_exprs (@word_ok (@W p));
+      simpl_word_exprs (@word_ok p);
       ssplit;
       subst FL.
       all: try safe_sidecond.
@@ -1414,7 +1414,7 @@ Section Proofs.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       run1det.
       assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
-        unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+        unfold bytes_per_word. destruct Bitwidth.width_cases as [E | E]; rewrite E; cbv; auto.
       }
       assert (Memory.bytes_per_word (bitwidth iset) = bytes_per_word) as BPW. {
         rewrite bitwidth_matches. reflexivity.
@@ -1474,7 +1474,7 @@ Section Proofs.
           simpl_MetricRiscvMachine_get_set;
           simpl_g_get;
           rewrite ?@length_save_regs, ?@length_load_regs in *;
-          simpl_word_exprs (@word_ok (@W p));
+          simpl_word_exprs (@word_ok p);
           ssplit;
           cycle -5.
         { reflexivity. }
@@ -1554,7 +1554,7 @@ Section Proofs.
               rewrite <- (word.ring_morph_mul (bytes_per_word) (n / bytes_per_word)).
               rewrite <- Z_div_exact_2.
               - reflexivity.
-              - unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+              - unfold bytes_per_word. destruct Bitwidth.width_cases as [E | E]; rewrite E; cbv; auto.
               - blia.
             }
             wcancel_assumption.

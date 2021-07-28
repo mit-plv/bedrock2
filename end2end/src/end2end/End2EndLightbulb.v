@@ -32,8 +32,7 @@ Proof. cbv. intuition discriminate. Qed.
 Definition stack_size_in_bytes: Z := 2 ^ 11.
 
 Definition ml: MemoryLayout :=
-  End2EndPipeline.ml (mem_ok := @SortedListWord.ok 32 word word_ok Init.Byte.byte)
-                     instrMemSizeLg memSizeLg stack_size_in_bytes.
+  End2EndPipeline.ml instrMemSizeLg memSizeLg stack_size_in_bytes.
 
 Remark this_is_the_value_of_ml: ml = {|
   MemoryLayout.code_start    := word.of_Z 0;
@@ -159,7 +158,7 @@ Module PrintProgram.
   Unset Printing Width.
 End PrintProgram.
 
-Lemma iohi_to_iolo: forall ioh (iomid: list RiscvMachine.LogItem),
+Lemma iohi_to_iolo: forall ioh (iomid: list (RiscvMachine.LogItem (Mem := Pipeline.mem))),
     Forall2 SPI.mmio_event_abstraction_relation ioh iomid ->
     exists iolo : list KamiRiscvStep.Event, KamiRiscvStep.traces_related iolo iomid.
 Proof.
@@ -194,7 +193,7 @@ Qed.
 Arguments goodHlTrace {_}.
 
 Lemma kami_and_lightbulb_abstract_bedrockTrace_the_same_way:
-  forall bedrockTrace (kamiTrace lightbulbTrace : list (string * Utility.word * Utility.word)),
+  forall bedrockTrace (kamiTrace lightbulbTrace : list (string * word * word)),
     SPI.mmio_trace_abstraction_relation lightbulbTrace bedrockTrace ->
     KamiRiscvStep.traces_related kamiTrace bedrockTrace ->
     kamiTrace = lightbulbTrace.

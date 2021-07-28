@@ -441,7 +441,8 @@ Section Spilling.
 
   (* Definition needs_spilling: Z -> bool := Z.leb 32. *)
 
-  Context {W: Utility.Words} {mem: map.map word byte} {mem_ok: map.ok mem}.
+  Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+  Context {mem: map.map word byte} {mem_ok: map.ok mem}.
 
   Definition stack_loc(r: Z): option Z :=
     if Z.leb 32 r then Some ((r - 32) * bytes_per_word) else None.
@@ -1548,7 +1549,7 @@ Section Spilling.
         edestruct (eq_sep_to_split st2') as (st2Rest' & S22' & SP22').
         1: (* PARAMRECORDS *) simpl; ecancel_assumption.
         assert (((eq m1' * word_array fpval stackwords * frame) * word_array a stackwords0)%sep m2') as M
-            by ecancel_assumption.
+            by (simpl; ecancel_assumption).
         unfold sep at 1 in M. destruct M as (m2Small' & mStack' & Sp' & M1 & M2).
         repeat match goal with
                | |- exists _, _ => eexists
@@ -1569,7 +1570,7 @@ Section Spilling.
           erewrite List__flat_map_const_length. 2: {
             intros w. rewrite HList.tuple.length_to_list. reflexivity.
           }
-          blia. }
+          simpl. blia. }
         1: reflexivity.
         3: {
           unfold sep. eauto.
