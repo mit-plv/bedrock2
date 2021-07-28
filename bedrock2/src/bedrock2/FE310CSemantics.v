@@ -3,7 +3,6 @@ Require Import bedrock2.Syntax bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Word.Bitwidth32.
-Require coqutil.Word.Naive.
 Require Import coqutil.Z.HexNotation.
 
 Import String List.ListNotations.
@@ -82,7 +81,6 @@ Section WithParameters.
   Global Instance ok : Semantics.parameters_ok semantics_parameters.
   Proof.
     split; cbv [env locals mem semantics_parameters]; try exact _.
-    { cbv; auto. }
     { exact (SortedListString.ok _). }
     { exact (SortedListString.ok _). }
   Qed.

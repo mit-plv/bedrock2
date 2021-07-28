@@ -14,7 +14,7 @@ Require Import coqutil.Tactics.Simp.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Map.OfListWord.
-
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Word.Interface.
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
@@ -250,7 +250,7 @@ Arguments ext_spec.ok: clear implicits.
 
 Class parameters_ok(varname: Type){p: parameters varname}: Prop := {
   varname_eq_spec :> EqDecider varname_eqb;
-  width_cases : width = 32 \/ width = 64;
+  BW :> Bitwidth width;
   word_ok :> word.ok word;
   mem_ok :> map.ok mem;
   locals_ok :> map.ok locals;

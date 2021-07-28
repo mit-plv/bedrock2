@@ -21,7 +21,7 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
-Hint Unfold
+#[export] Hint Unfold
   funct12_EBREAK
   funct12_ECALL
   funct12_MRET
@@ -166,7 +166,7 @@ Hint Unfold
   opcode_SYSTEM
  : unf_encode_consts.
 
-Hint Unfold
+#[export] Hint Unfold
   verify
   verify_Invalid
   verify_R

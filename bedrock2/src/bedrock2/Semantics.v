@@ -2,7 +2,7 @@ Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import coqutil.Decidable.
 Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
-Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndian.
+Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndian coqutil.Word.Bitwidth.
 Require Import bedrock2.MetricLogging.
 Require Export bedrock2.Memory.
 
@@ -56,7 +56,7 @@ End ext_spec.
 Arguments ext_spec.ok: clear implicits.
 
 Class parameters_ok{p: parameters}: Prop := {
-  width_cases : width = 32 \/ width = 64;
+  BW :> Bitwidth width;
   word_ok :> word.ok word;
   mem_ok :> map.ok mem;
   locals_ok :> map.ok locals;
