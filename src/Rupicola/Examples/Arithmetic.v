@@ -29,7 +29,7 @@ Module FNV1A (P: FNV1A_params).
   Implicit Type R : Semantics.mem -> Prop.
   Instance spec_of_update : spec_of "update" :=
     fnspec! "update" (hash: word) (data: word) ~> hash',
-    { requires tr mem := True;
+    { requires fns tr mem := True;
       ensures tr' mem' := tr = tr' /\ mem = mem' /\ hash' = update hash data }.
 
   Derive update_body SuchThat
@@ -57,7 +57,7 @@ Module FNV1A (P: FNV1A_params).
            (data: ListArray.t byte) n R
            (pr: word.unsigned len < Z.of_nat n)
            ~> hash,
-    { requires tr mem :=
+    { requires fns tr mem :=
         (sizedlistarray_value AccessByte data_ptr n data ⋆ R) mem;
       ensures tr' mem' :=
         tr = tr' /\
@@ -118,7 +118,7 @@ Module Murmur3.
   Implicit Type R : Semantics.mem -> Prop.
   Instance spec_of_scramble : spec_of "scramble" :=
     fnspec! "scramble" (k: word) ~> k',
-    { requires tr mem := True;
+    { requires fns tr mem := True;
       ensures tr' mem' := tr = tr' /\ mem = mem' /\ k' = scramble k }.
 
   Derive scramble_body SuchThat

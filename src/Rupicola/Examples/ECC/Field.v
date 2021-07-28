@@ -68,7 +68,7 @@ Section Specs.
 
   Definition unop_spec {name} (op: UnOp name) :=
     fnspec! name (px pout : word) / (x : bignum) (old_out : bignum) Rr,
-    { requires tr mem :=
+    { requires fns tr mem :=
         bounded_by un_xbounds x
         /\ (exists Ra, (Bignum px x * Ra)%sep mem)
         /\ (Bignum pout old_out * Rr)%sep mem;
@@ -85,7 +85,7 @@ Section Specs.
 
    Definition unop_Z_spec {name} (op: UnOp name) :=
     fnspec! name (pz pout : word) / (z : Z) (old_out : Z) Rr,
-    { requires tr mem :=
+    { requires fns tr mem :=
         (* bounded_by un_xbounds x *)
         (exists Ra, (Znum pz z * Ra)%sep mem)
         /\ (Znum pout old_out * Rr)%sep mem;
@@ -107,7 +107,7 @@ Section Specs.
 
   Definition binop_spec  {name} (op: BinOp name) :=
     fnspec! name (px py pout : word) / (x y: bignum) (old_out : bignum) Rr,
-    { requires tr mem :=
+    { requires fns tr mem :=
         bounded_by bin_xbounds x
         /\ bounded_by bin_ybounds y
         /\ (exists Ra, (Bignum px x * Bignum py y * Ra)%sep mem)
@@ -121,7 +121,7 @@ Section Specs.
 
    Definition binop_Z_spec  {name} (op: BinOp name) :=
     fnspec! name (px py pout : word) / (x y: Z) (old_out : Z) Rr,
-    { requires tr mem :=
+    { requires fns tr mem :=
        (* bounded_by bin_xbounds x
         /\ bounded_by bin_ybounds y *)
         (exists Ra, (Znum px x * Znum py y * Ra)%sep mem)
@@ -151,7 +151,7 @@ Section Specs.
 
   Instance spec_of_bignum_copy : spec_of bignum_copy :=
     fnspec! bignum_copy (px pout : word) / (x : bignum) (old_out : bignum) R,
-    { requires tr mem :=
+    { requires fns tr mem :=
         (Bignum px x * Bignum pout old_out * R)%sep mem;
       ensures tr' mem' :=
         tr = tr' /\
@@ -159,7 +159,7 @@ Section Specs.
 
   Instance spec_of_bignum_literal : spec_of bignum_literal :=
     fnspec! bignum_literal (x pout : word) / (old_out : bignum) R,
-    { requires tr mem :=
+    { requires fns tr mem :=
         (Bignum pout old_out * R)%sep mem;
       ensures tr' mem' :=
         tr = tr' /\

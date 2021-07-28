@@ -202,7 +202,7 @@ Compute (let x := ltac:(unify @spec_example_norets @spec_example_norets_short) i
 
 Infix "⋆" := sep (at level 40, left associativity).
 
-Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' functions tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
@@ -219,6 +219,7 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' 
                                              post%Z) ..)))) ..)) ..))
     (at level 200,
      name at level 0,
+     functions binder,
      a0 binder, an binder,
      g0 binder, gn binder,
      r0 closed binder, rn closed binder,
@@ -226,7 +227,7 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' 
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' functions tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
@@ -240,13 +241,14 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre 
                                   rets = @nil word /\ post%Z%sep))) ..)) ..))
     (at level 200,
      name at level 0,
+     functions binder,
      a0 binder, an binder,
      g0 binder, gn binder,
      tr ident, tr' ident, mem ident, mem' ident,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' functions tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
@@ -261,13 +263,14 @@ Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' tr mem := pre
                                    post%Z) ..)))) ..))
     (at level 200,
      name at level 0,
+     functions binder,
      a0 binder, an binder,
      r0 closed binder, rn closed binder,
      tr ident, tr' ident, mem ident, mem' ident,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an ',' '{' 'requires' functions tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
@@ -279,12 +282,13 @@ Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures'
                         rets = @nil word /\ post%Z%sep))) ..))
     (at level 200,
      name at level 0,
+     functions binder,
      a0 binder, an binder,
      tr ident, tr' ident, mem ident, mem' ident,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' rets ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' functions tr mem := pre ';' 'ensures' tr' mem' rets ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
@@ -297,13 +301,14 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre 
                                (fun tr' mem' rets => post%Z))) ..)) ..))
     (at level 200,
      name at level 0,
+     functions binder,
      a0 binder, an binder,
      g0 binder, gn binder,
      tr ident, tr' ident, mem ident, mem' ident,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' rets ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an ',' '{' 'requires' functions tr mem := pre ';' 'ensures' tr' mem' rets ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
@@ -314,6 +319,7 @@ Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures'
                      (fun tr' mem' rets => post%Z))) ..))
     (at level 200,
      name at level 0,
+     functions binder,
      a0 binder, an binder,
      tr ident, tr' ident, mem ident, mem' ident,
      pre at level 200,

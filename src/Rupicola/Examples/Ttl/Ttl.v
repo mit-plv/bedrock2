@@ -177,7 +177,7 @@ Section with_parameters.
 
   Instance spec_of_decr : spec_of "decr" :=
     fnspec! "decr" ptr / p R,
-    { requires tr mem := (Packet ptr p ⋆ R) mem;
+    { requires fns tr mem := (Packet ptr p ⋆ R) mem;
       ensures tr' mem' := tr' = tr /\ (Packet ptr (decr_gallina p) ⋆ R) mem' }.
 
   Hint Extern 1 => simple eapply compile_nth; shelve : compiler.

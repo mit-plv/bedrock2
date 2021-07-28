@@ -12,7 +12,7 @@ Section with_parameters.
   Implicit Type R : Semantics.mem -> Prop.
   Instance spec_of_example : spec_of "example" :=
     fnspec! "example" (x y: word) ~> z,
-    { requires tr mem := True;
+    { requires fns tr mem := True;
       ensures tr' mem' :=
         tr = tr' /\
         mem = mem' /\
@@ -46,7 +46,7 @@ Section with_parameters.
 
   Instance spec_of_exZ : spec_of "exZ" :=
     fnspec! "exZ" (x y: word) ~> z,
-    { requires tr mem := True;
+    { requires fns tr mem := True;
       ensures tr' mem' :=
         tr = tr' /\
         mem = mem' /\
