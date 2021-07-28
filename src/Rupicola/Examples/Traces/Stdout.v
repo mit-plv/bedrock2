@@ -12,13 +12,6 @@ Section Stdout.
 
   Notation Writeful A := (Eventful string A).
 
-  Compute (let/! x := {| val := "A"; trace := [1] |} in
-           let/! y := {| val := "B"; trace := [2] |} in
-           let/! z := (let/! x := {| val := "C"; trace := [3] |} in
-                      let/! y := {| val := "D"; trace := [4] |} in
-                      ret (x ++ y)) in
-           ret (x ++ y ++ z))%string.
-
   Notation trace_entry := ((fun (A: Type) (_: list A) => A) _ ([]: Semantics.trace)).
 
   Definition words_of_const_string (s: string) : list (Semantics.word) :=
@@ -30,18 +23,42 @@ Section Stdout.
     List.map (fun b => expr.literal (byte.unsigned b)) chars.
 
   Definition trace_entry_of_write (s: string) : trace_entry := (* FIXME *)
-    (map.empty, "print", words_of_const_string s, (map.empty, [])).
+    (map.empty, "putchars", words_of_const_string s, (map.empty, [])).
 
-  Definition tbind {Evt A}
-             (tr0: list Evt) (pred: Eventful Evt A -> predicate)
-             (k: Eventful Evt A) :=
-    pred {| val := k.(val); trace := k.(trace) ++ tr0 |}.
 
-  Lemma compile_print {tr mem locals functions} (s: string) :
-    let c := write s in
+  Lemma wp_literals_of_const_string:
+    forall (mem : Semantics.mem) (locals : Semantics.locals) (s : string),
+      WeakestPrecondition.dexprs
+        mem locals (literals_of_const_string s) (words_of_const_string s).
+  Proof.
+    unfold literals_of_const_string, words_of_const_string.
+    intros; induction (list_byte_of_string s); red; simpl.
+    - reflexivity.
+    - repeat straightline.
+      eapply Proper_list_map; try apply IHl.
+      eapply Proper_expr; eassumption.
+      repeat (red; intros).
+      subst v. congruence.
+  Qed.
+
+  Instance spec_of_putchars : spec_of "putchars" :=
+    (fun functions =>
+       forall args tr mem,
+         True ->
+         WeakestPrecondition.call
+           functions "putchars" tr mem args
+           (fun tr' mem' rets =>
+              mem' = mem /\
+              rets = [word.of_Z 0] /\
+              tr' = (map.empty, "putchars", args, (map.empty, [])) :: tr)).
+
+  Lemma compile_putchars {tr mem locals functions} (s: string) :
+    let evf := write s in
     forall {B} {pred: Writeful B -> predicate}
       {k: unit -> Writeful B} {k_impl}
       tr0 var,
+
+      spec_of_putchars functions ->
 
       (<{ Trace := (trace_entry_of_write s) :: tr;
           Memory := mem;
@@ -54,11 +71,17 @@ Section Stdout.
          Locals := locals;
          Functions := functions }>
       cmd.seq
-        (cmd.interact [var] "stdout.write" (literals_of_const_string s))
+        (* (cmd.interact [var] "stdout.write" (literals_of_const_string s)) *)
+        (cmd.call [var] "putchars" (literals_of_const_string s))
         k_impl
-      <{ tbind tr0 pred (bindn [var] c k) }>.
+      <{ tbind tr0 pred (bindn [var] evf k) }>.
   Proof.
-  Admitted.
+    repeat straightline.
+    eexists; (intuition eauto using wp_literals_of_const_string); [].
+    straightline_call; eauto; [].
+    repeat straightline; subst_lets_in_goal.
+    rewrite tbind_bindn; eassumption.
+  Qed.
 
   Definition hello_world_src (y: Semantics.word) : Eventful string Semantics.word :=
     let/n x := word.of_Z 1 in
@@ -66,62 +89,16 @@ Section Stdout.
     let/n out := word.add x y in
     ret out.
 
-  Definition tracebind {Evt A}
-             (trace_entry_of_event: Evt -> trace_entry)
-             (prog: Eventful Evt A)
-             (k: A -> Semantics.trace -> Prop) : Prop :=
-    k prog.(val) (List.map trace_entry_of_event prog.(trace)).
-
   Instance spec_of_hello_word : spec_of "hello_world" :=
     fnspec! "hello_world" y / (R: Semantics.mem -> Prop),
-    { requires tr mem := R mem;
+    { requires fns tr mem :=
+        spec_of_putchars fns /\ R mem;
       ensures tr' mem' rets :=
         tracebind trace_entry_of_write
                   (hello_world_src y)
                   (fun val tr0 => tr' = tr0 ++ tr /\ (R mem' /\ rets = [val])) }.
 
-  Hint Extern 1 => simple eapply compile_print; shelve : compiler.
-
-  Lemma compile_setup_trace_tbind {tr mem locals functions} :
-    forall {Evt A} {pred: A -> _ -> predicate}
-      {spec: Eventful Evt A} {cmd}
-      (trace_entry_of_event: Evt -> trace_entry)
-      retvars,
-
-      (let pred a :=
-           wp_bind_retvars
-             retvars
-             (fun rets tr' mem' locals' =>
-                tracebind
-                  trace_entry_of_event spec
-                  (fun val tr1 =>
-                     tr' = tr1 ++ tr /\ pred val rets tr' mem' locals')) in
-       <{ Trace := tr;
-          Memory := mem;
-          Locals := locals;
-          Functions := functions }>
-       cmd
-       <{ tbind [] pred spec }>) ->
-      <{ Trace := tr;
-         Memory := mem;
-         Locals := locals;
-         Functions := functions }>
-      cmd
-      <{ (fun spec =>
-            wp_bind_retvars
-              retvars
-              (fun rets tr' mem' locals' =>
-                 tracebind
-                   trace_entry_of_event spec
-                   (fun val tr1 =>
-                      tr' = tr1 ++ tr /\ pred val rets tr' mem' locals')))
-           spec }>.
-  Admitted.
-
-  Hint Resolve compile_setup_trace_tbind : compiler_setup.
-  Hint Unfold tracebind: compiler_cleanup.
-  Hint Unfold tbind: compiler_cleanup.
-  Hint Unfold ret: compiler_cleanup.
+  Hint Extern 1 => simple eapply compile_putchars; shelve : compiler.
 
   Derive hello_world_body SuchThat
          (defn! "hello_world"("y") ~> "out"

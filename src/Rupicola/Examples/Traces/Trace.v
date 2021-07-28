@@ -65,9 +65,70 @@ Section with_parameters.
   Context {Evt: Type}.
   Notation Eventful := (Eventful Evt).
 
+  Definition tbind {A}
+             (tr0: list Evt) (pred: Eventful A -> predicate)
+             (k: Eventful A) :=
+    pred {| val := k.(val); trace := k.(trace) ++ tr0 |}.
+
+  Lemma tbind_bindn {A B} tr0 pred var evf (k: A -> Eventful B) :
+    tbind tr0 pred (bindn var evf k) =
+    tbind (evf.(trace) ++ tr0) pred (k (evf.(val))).
+  Proof.
+    unfold bindn, tbind, bind; simpl.
+    rewrite app_assoc; reflexivity.
+  Qed.
+
+  Notation trace_entry := ((fun (A: Type) (_: list A) => A) _ ([]: Semantics.trace)).
+
+  Definition tracebind {A}
+             (trace_entry_of_event: Evt -> trace_entry)
+             (prog: Eventful A)
+             (k: A -> Semantics.trace -> Prop) : Prop :=
+    k prog.(val) (List.map trace_entry_of_event prog.(trace)).
+
+  Lemma compile_setup_trace_tbind {tr mem locals functions} :
+    forall {A} {pred: A -> _ -> predicate}
+      {spec: Eventful A} {cmd}
+      (trace_entry_of_event: Evt -> trace_entry)
+      retvars,
+
+      (let pred a :=
+           wp_bind_retvars
+             retvars
+             (fun rets tr' mem' locals' =>
+                tracebind
+                  trace_entry_of_event spec
+                  (fun val tr1 =>
+                     tr' = tr1 ++ tr /\ pred val rets tr' mem' locals')) in
+       <{ Trace := tr;
+          Memory := mem;
+          Locals := locals;
+          Functions := functions }>
+       cmd
+       <{ tbind [] pred spec }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd
+      <{ (fun spec =>
+            wp_bind_retvars
+              retvars
+              (fun rets tr' mem' locals' =>
+                 tracebind
+                   trace_entry_of_event spec
+                   (fun val tr1 =>
+                      tr' = tr1 ++ tr /\ pred val rets tr' mem' locals')))
+           spec }>.
+  Proof.
+    intros; unfold tbind, tracebind, wp_bind_retvars in *.
+    use_hyp_with_matching_cmd; cbv beta in *.
+    eassumption.
+  Qed.
 End with_parameters.
 
-(* Global Hint Unfold pbind: compiler_cleanup. *)
+Global Hint Unfold tbind: compiler_cleanup.
+Global Hint Unfold tracebind: compiler_cleanup.
 Global Hint Extern 1 (ret _ _) => reflexivity : compiler_cleanup.
-(* Global Hint Resolve compile_setup_nondet_pbind : compiler_setup. *)
+Global Hint Resolve compile_setup_trace_tbind : compiler_setup.
 Global Hint Extern 2 (IsRupicolaBinding (bindn _ _ _)) => exact true : typeclass_instances.
