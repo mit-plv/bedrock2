@@ -69,25 +69,7 @@ Local Existing Instance SortedListString.map.
 Local Existing Instance SortedListString.ok.
 
 Instance pipeline_params: Pipeline.Pipeline.parameters :=
-  @End2EndPipeline.pipeline_params
-    (Zkeyed_map FE310CSemantics.parameters.word)
-    (Zkeyed_map_ok FE310CSemantics.parameters.word)
-    FE310CSemantics.parameters.mem
-    FE310CSemantics.parameters.mem_ok.
-
-Instance semantics_parameters_ok : Semantics.parameters_ok
-  (FlattenExprDef.FlattenExpr.mk_Semantics_params
-     Pipeline.Pipeline.FlattenExpr_parameters).
-Proof.
-  eapply @FlattenExprDef.FlattenExpr.mk_Semantics_params_ok.
-  eapply @Pipeline.FlattenExpr_hyps.
-  eapply @pipeline_assumptions; try exact _.
-Qed.
-
-Local Definition parameters_match :
-  (FlattenExprDef.FlattenExpr.mk_Semantics_params
-    Pipeline.Pipeline.FlattenExpr_parameters)
-  = FE310CSemantics.semantics_parameters := eq_refl.
+  @End2EndPipeline.pipeline_params (Zkeyed_map word) (Zkeyed_map_ok word) mem mem_ok.
 
 Open Scope string_scope.
 
@@ -268,13 +250,13 @@ Proof.
             (exists (suffix : list KamiRiscvStep.Event) (bedrockTrace : list RiscvMachine.LogItem),
                 KamiRiscvStep.traces_related (suffix ++ t') bedrockTrace /\
                 (exists ioh : list (lightbulb_spec.OP _),
-                    SPI.mmio_trace_abstraction_relation(p:=FE310CSemanticsParameters) ioh bedrockTrace /\
+                    SPI.mmio_trace_abstraction_relation ioh bedrockTrace /\
                     goodHlTrace ioh)))
     as A. {
     clear -A.
     intro B. specialize (A B); clear B.
     clear mem0.
-    change (OP FE310CSemantics.parameters.word) with KamiRiscvStep.Event in *.
+    change (OP Consistency.word) with KamiRiscvStep.Event in *.
     unfold KamiRiscvStep.Event, prefix_of in *.
     simp.
     eexists. split. 1: exact Ap0.
@@ -312,9 +294,6 @@ Proof.
       rewrite word.of_Z_unsigned.
       rewrite <-(firstn_skipn 1520 anybytes) in Hp1.
       unfold LowerPipeline.ptsto_bytes in Hp1.
-      assert (map.ok Semantics.mem). {
-        exact FE310CSemantics.parameters.mem_ok.
-      }
       SeparationLogic.seprewrite_in @Array.bytearray_append Hp1.
       SeparationLogic.seprewrite_in @SeparationLogic.sep_emp_True_r Hp1.
       eexists _, _; split;
@@ -363,6 +342,4 @@ Proof.
     unfold lightbulb_insts. repeat (apply Forall_cons || apply Forall_nil).
     all: vm_compute; try intuition discriminate.
   - exact funs_valid.
-  Unshelve.
-  all: try exact Semantics.mem_ok.
 Time Qed. (* takes more than 25s *)

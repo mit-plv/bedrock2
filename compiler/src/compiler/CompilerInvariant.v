@@ -53,7 +53,7 @@ Section Pipeline1.
   Qed.
 
   (* PARAMRECORDS: "unfold imem" below relies on the syntactic form of this definition. *)
-  Definition imem(code_start code_pastend: Semantics.word)(instrs: list Instruction): Semantics.mem -> Prop :=
+  Definition imem(code_start code_pastend: word)(instrs: list Instruction): Pipeline.mem -> Prop :=
     (ptsto_bytes (word:=word)(mem:=(@Pipeline.mem p)) code_start (instrencode instrs) *
      mem_available (word.add code_start (word.of_Z (Z.of_nat (List.length (instrencode instrs)))))
                    code_pastend)%sep.
@@ -142,10 +142,10 @@ Section Pipeline1.
         destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
   Qed.
 
-  Context (spec: @ProgramSpec (FlattenExpr.mk_Semantics_params _)).
+  Context (spec: ProgramSpec).
 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
-    exists (srcprog: Semantics.env) (instrs: list Instruction) positions required_stack_space,
+    exists srcprog (instrs: list Instruction) positions required_stack_space,
       ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
       spec.(datamem_start) = ml.(heap_start) /\
       spec.(datamem_pastend) = ml.(heap_pastend) /\
@@ -172,7 +172,6 @@ Section Pipeline1.
     (forall st, ll_inv ml spec st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog))).
   Proof.
     assert (map.ok Pipeline.mem) as Okk by exact FlatToRiscvCommon.mem_ok. (* PARAMRECORDS *)
-    assert (word.ok Semantics.word) by exact Pipeline.word_ok.
     ssplit; intros.
     - eapply establish_ll_inv. 1: assumption.
       unfold initial_conditions, ToplevelLoop.initial_conditions in *.

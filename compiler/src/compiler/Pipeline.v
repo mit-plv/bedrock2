@@ -65,9 +65,7 @@ Module Import Pipeline.
     mem :> map.map word byte;
     Registers :> map.map Z word;
     string_keyed_map :> forall T: Type, map.map string T; (* abstract T for better reusability *)
-    trace := list (mem * string * list word * (mem * list word));
-    ExtSpec := trace -> mem -> string -> list word -> (mem -> list word -> Prop) -> Prop;
-    ext_spec : ExtSpec;
+    ext_spec :> Semantics.ExtSpec;
     compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z -> list Instruction;
     M: Type -> Type;
     MM :> Monad M;
@@ -97,7 +95,7 @@ Module Import Pipeline.
     Registers_ok :> map.ok Registers;
     PR :> MetricPrimitives PRParams;
     FlatToRiscv_hyps :> FlatToRiscvCommon.assumptions;
-    ext_spec_ok :> Semantics.ext_spec.ok (FlattenExpr.mk_Semantics_params FlattenExpr_parameters);
+    ext_spec_ok :> Semantics.ext_spec.ok ext_spec;
     compile_ext_call_correct: forall resvars extcall argvars,
         compiles_FlatToRiscv_correctly
           compile_ext_call (FlatImp.SInteract resvars extcall argvars);
@@ -230,7 +228,7 @@ Section Pipeline1.
       (instrs: list Instruction)
       (pos_map: funname_env Z)
       (mH: mem) (mc: MetricLog)
-      (postH: Semantics.trace -> Semantics.mem -> Prop)
+      (postH: Semantics.trace -> mem -> Prop)
       (required_stack_space: Z)
       (initial: MetricRiscvMachine),
       ExprImp.valid_funs functions ->

@@ -104,7 +104,7 @@ Section Pipeline1.
     let to_prepend := init_sp_insts ++ init_insts init_fun_pos ++ loop_insts loop_fun_pos ++ backjump_insts in
     Some (to_prepend ++ functions_insts, positions, required_stack_space).
 
-  Context (spec: @ProgramSpec (FlattenExpr.mk_Semantics_params _)).
+  Context (spec: ProgramSpec).
 
   (* Holds each time before executing the loop body *)
   Definition ll_good(done: bool)(mach: MetricRiscvMachine): Prop :=
@@ -167,7 +167,7 @@ Section Pipeline1.
 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
     exists (srcprog: source_env)
-           (instrs: list Instruction) (positions: funname_env Z) (required_stack_space: Z) (R: mem -> Prop),
+           (instrs: list Instruction) (positions: funname_env Z) (required_stack_space: Z) (R: Pipeline.mem -> Prop),
       ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
       spec.(datamem_start) = ml.(heap_start) /\
       spec.(datamem_pastend) = ml.(heap_pastend) /\
@@ -242,8 +242,6 @@ Section Pipeline1.
     end.
     remember instrs as instrs0.
     simp.
-    assert (map.ok mem) by exact mem_ok.
-    assert (word.ok Semantics.word) by exact word_ok.
     eassert ((mem_available ml.(heap_start) ml.(heap_pastend) * _)%sep initial_mem) as SplitImem. {
       ecancel_assumption.
     }

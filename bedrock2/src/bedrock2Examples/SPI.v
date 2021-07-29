@@ -67,11 +67,12 @@ Import coqutil.Map.Interface.
 Import ReversedListNotations.
 
 Section WithParameters.
-  Context {p : FE310CSemantics.parameters}.
+  Context {word: word.word 32} {mem: map.map word Byte.byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Definition mmio_event_abstraction_relation
-    (h : lightbulb_spec.OP parameters.word)
-    (l : parameters.mem * string * list parameters.word * (parameters.mem * list parameters.word)) :=
+    (h : lightbulb_spec.OP word)
+    (l : mem * string * list word * (mem * list word)) :=
     Logic.or
       (exists a v, h = ("st", a, v) /\ l = (map.empty, "MMIOWRITE", [a; v], (map.empty, [])))
       (exists a v, h = ("ld", a, v) /\ l = (map.empty, "MMIOREAD", [a], (map.empty, [v]))).
@@ -82,21 +83,21 @@ Section WithParameters.
     WeakestPrecondition.call functions "spi_write" t m [b] (fun T M RETS =>
       M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists err, RETS = [err] /\ Logic.or
         (((word.unsigned err <> 0) /\ lightbulb_spec.spi_write_full _ ^* ioh /\ Z.of_nat (length ioh) = patience))
-        (word.unsigned err = 0 /\ lightbulb_spec.spi_write parameters.word (byte.of_Z (word.unsigned b)) ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.spi_write word (byte.of_Z (word.unsigned b)) ioh)).
 
   Global Instance spec_of_spi_read : spec_of "spi_read" := fun functions => forall t m,
     WeakestPrecondition.call functions "spi_read" t m [] (fun T M RETS =>
-      M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b: byte) (err : parameters.word), RETS = [word.of_Z (byte.unsigned b); err] /\ Logic.or
+      M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b: byte) (err : word), RETS = [word.of_Z (byte.unsigned b); err] /\ Logic.or
         (word.unsigned err <> 0 /\ lightbulb_spec.spi_read_empty _ ^* ioh /\ Z.of_nat (length ioh) = patience)
-        (word.unsigned err = 0 /\ lightbulb_spec.spi_read parameters.word b ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.spi_read word b ioh)).
 
   Lemma nonzero_because_high_bit_set (x : word) (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
     : word.unsigned x <> 0.
   Proof. ZnWords. Qed.
 
-  Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
+  Add Ring wring : (Properties.word.ring_theory (word := word))
         (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := Semantics.word)),
+         morphism (Properties.word.ring_morph (word := word)),
          constants [Properties.word_cst]).
 
   Import coqutil.Tactics.letexists.
@@ -325,11 +326,9 @@ Section WithParameters.
               rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap,
                       ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small
                 by blia;
-              change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
+              change (Z.ones 8 mod 2 ^ 32) with (Z.ones 8)).
           symmetry; eapply Z.mod_small.
           pose proof Z.mod_pos_bound (word.unsigned v0) (2^8) eq_refl.
-          change Semantics.width with 32.
-          change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
           clear. Z.div_mod_to_equations. blia. }
         { (* copy-paste from above, trace manipulation *)
           eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
@@ -356,11 +355,9 @@ Section WithParameters.
               rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap,
                       ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small
                 by blia;
-              change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
+              change (Z.ones 8 mod 2 ^ 32) with (Z.ones 8)).
           symmetry; eapply Z.mod_small.
           pose proof Z.mod_pos_bound (word.unsigned v0) (2^8) eq_refl.
-          change Semantics.width with 32.
-          change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
           clear. Z.div_mod_to_equations. blia. }
         (* tag:symex *)
         { right; split.
@@ -381,16 +378,16 @@ Section WithParameters.
               rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap,
                       ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small
                 by blia;
-              change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8)).
+              change (Z.ones 8 mod 2 ^ 32) with (Z.ones 8)).
           trivial. } } }
   Qed.
 
   Global Instance spec_of_spi_xchg : spec_of "spi_xchg" := fun functions => forall t m b_out,
     word.unsigned b_out < 2 ^ 8 ->
     WeakestPrecondition.call functions "spi_xchg" t m [b_out] (fun T M RETS =>
-      M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b_in:byte) (err : Semantics.word), RETS = [word.of_Z (byte.unsigned b_in); err] /\ Logic.or
+      M = m /\ exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\ exists (b_in:byte) (err : word), RETS = [word.of_Z (byte.unsigned b_in); err] /\ Logic.or
         (word.unsigned err <> 0 /\ (any +++ lightbulb_spec.spi_timeout _) ioh)
-        (word.unsigned err = 0 /\ lightbulb_spec.spi_xchg Semantics.word (byte.of_Z (word.unsigned b_out)) b_in ioh)).
+        (word.unsigned err = 0 /\ lightbulb_spec.spi_xchg word (byte.of_Z (word.unsigned b_out)) b_in ioh)).
 
   Lemma spi_xchg_ok : program_logic_goal_for_function! spi_xchg.
   Proof.
@@ -422,7 +419,7 @@ Section WithParameters.
       repeat (
       cbv [word.wrap byte.wrap];
       rewrite ?byte.unsigned_of_Z, ?word.unsigned_of_Z, ?Properties.word.unsigned_and_nowrap, ?Z.land_ones, ?Z.mod_mod, ?Z.mod_small by blia;
-      change (Z.ones 8 mod 2 ^ Semantics.width) with (Z.ones 8));
+      change (Z.ones 8 mod 2 ^ 32) with (Z.ones 8));
       rewrite ?Z.mod_small; rewrite ?Z.mod_small; trivial; blia. }
       left; split; eauto.
       eexists nil, x0; repeat split; cbv [any choice lightbulb_spec.spi_timeout]; eauto.

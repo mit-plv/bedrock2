@@ -28,15 +28,17 @@ Require Import coqutil.Z.Lia.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.letexists.
 Require Import coqutil.Tactics.rdelta.
+Require Import coqutil.Word.Bitwidth32.
 Import Map.Interface Interface.map OfFunc.map OfListWord.map.
 Require Import bedrock2.AbsintWordToZ.
 Require Import coqutil.Tactics.rewr.
 
 Section WithParameters.
-  Context {p : FE310CSemantics.parameters}.
-  Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
+  Context {word: word.word 32} {mem: map.map word Byte.byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Add Ring wring : (Properties.word.ring_theory (word := word))
         (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := Semantics.word)),
+         morphism (Properties.word.ring_morph (word := word)),
          constants [Properties.word_cst]).
 
   Local Instance spec_of_silly1 : spec_of "silly1" := fun functions =>
@@ -133,7 +135,7 @@ Section WithParameters.
           [ progress ring_simplify_unsigned
           | rewrite !word.unsigned_add; cbv [word.wrap]
           | rewrite_unsigned_of_Z_goal ];
-    try change_with_Z_literal width; repeat simplify_ZcstExpr_goal; trivial.
+    repeat simplify_ZcstExpr_goal; trivial.
 
   Lemma List__splitZ_spec [A] (xsys : list A) i (H : 0 <= i < Z.of_nat (length xsys)) :
     let xs := firstn (Z.to_nat i) xsys in
@@ -201,7 +203,7 @@ Section WithParameters.
   Lemma map__adjacent_arrays_disjoint_n [value] [map : map.map word value] {ok : map.ok map}
     (a : word) (xs ys : list value)
     lxs (Hlxs : Z.of_nat (length xs) = lxs)
-    (H :Z.of_nat (length xs) + Z.of_nat (length ys) <= 2 ^ width)
+    (H :Z.of_nat (length xs) + Z.of_nat (length ys) <= 2 ^ 32)
     : disjoint (map.of_list_word_at (word.add a (word.of_Z lxs)) ys) (map.of_list_word_at a xs).
   Proof. subst lxs. auto using map.adjacent_arrays_disjoint. Qed.
 
@@ -226,7 +228,7 @@ Section WithParameters.
 
   Lemma sep_eq_of_list_word_at_app [value] [map : map.map word value] {ok : map.ok map}
     (a : word) (xs ys : list value)
-    lxs (Hlxs : Z.of_nat (length xs) = lxs) (Htotal : length xs + length ys <= 2^width)
+    lxs (Hlxs : Z.of_nat (length xs) = lxs) (Htotal : length xs + length ys <= 2^32)
     : Lift1Prop.iff1 (eq (map.of_list_word_at a (xs ++ ys)))
       (sep (eq (map.of_list_word_at a xs)) (eq (map.of_list_word_at (word.add a (word.of_Z lxs)) ys))).
   Proof.
@@ -240,7 +242,7 @@ Section WithParameters.
   Lemma list_word_at_app_of_adjacent_eq [value] [map : map.map word value] {ok : map.ok map}
     (a b : word) (xs ys : list value)
     (Hl: word.unsigned (word.sub b a) = Z.of_nat (length xs))
-    (Htotal : length xs + length ys <= 2^width)
+    (Htotal : length xs + length ys <= 2^32)
     : Lift1Prop.iff1
         (sep (eq (map.of_list_word_at a xs)) (eq (map.of_list_word_at b ys)) )
         (eq (map.of_list_word_at a (xs ++ ys))).
@@ -268,7 +270,7 @@ Section WithParameters.
   Import ptsto_bytes Lift1Prop Morphisms.
   Lemma eq_of_list_word_iff_array1 [value] [map : map.map word value] {ok : map.ok map}
     (a : word) (bs : list value)
-    (H : length bs <= 2 ^ width) :
+    (H : length bs <= 2 ^ 32) :
     iff1 (eq (bs$@a)) (array ptsto (word.of_Z 1) a bs).
   Proof.
     revert H; revert a; induction bs; cbn [array]; intros.
@@ -304,7 +306,7 @@ Section WithParameters.
       let Hidx := fresh "Hidx" in
       eassert (raw_i = _) as Hidx by (
         ring_simplify_unsigned_goal; repeat rewrite_unsigned_of_Z_goal;
-        change_with_Z_literal constr:(width); simplify_ZcstExpr; exact eq_refl);
+        simplify_ZcstExpr; exact eq_refl);
       let i := match type of Hidx with _ = ?r => r end in
       let Happ := fresh "Happ" in
       match goal with H: Z.of_nat (length bs) = _ |- _ =>
@@ -319,12 +321,12 @@ Section WithParameters.
                           | _ => constr:(Happ) end) in *;
       repeat match goal with Hsep : _ |- _ =>
         seprewrite_in_by sep_eq_of_list_word_at_app Hsep ltac:(
-          try eassumption; try (change_with_Z_literal constr:(width); blia))
+          try eassumption; try blia)
       end.
 
   Section __.
     Import WithoutTuples.
-    Lemma load_bytes_of_putmany_bytes_at bs a (mR:mem) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
+    Lemma load_bytes_of_putmany_bytes_at bs a (mR:mem) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^32)
       : load_bytes (mR $+ bs$@a) a n = Some bs.
     Proof.
       destruct (load_bytes (mR $+ bs$@a) a n) eqn:HN in *; cycle 1.
@@ -347,7 +349,7 @@ Section WithParameters.
       congruence.
     Qed.
 
-    Lemma load_bytes_of_sep_bytes_at bs a R (m:mem) (Hsep: (eq(bs$@a)*R) m) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
+    Lemma load_bytes_of_sep_bytes_at bs a R (m:mem) (Hsep: (eq(bs$@a)*R) m) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^32)
       : load_bytes m a n = Some bs.
     Proof.
       eapply sep_comm in Hsep.
@@ -383,7 +385,7 @@ Section WithParameters.
   Ltac split_flat_memory_based_on_goal :=
     lazymatch goal with
     | |- load ?sz ?m ?a = _ =>
-        let sz := eval cbv in (Z.of_nat (bytes_per (width:=width) sz)) in
+        let sz := eval cbv in (Z.of_nat (bytes_per (width:=32) sz)) in
         match goal with H : ?S m |- _ =>
         match S with context[?bs $@ ?a0] =>
         let a_r := constr:(word.add a (word.of_Z sz)) in
@@ -391,7 +393,7 @@ Section WithParameters.
         match type of H with context[?bs $@ ?a0] =>
         split_bytes_base_addr bs a0 a end end
     | |- WeakestPrecondition.store ?sz ?m ?a _ _ =>
-        let sz := eval cbv in (Z.of_nat (bytes_per (width:=width) sz)) in
+        let sz := eval cbv in (Z.of_nat (bytes_per (width:=32) sz)) in
         match goal with H : ?S m |- _ =>
         match S with context[?bs $@ ?a0] =>
         let a_r := constr:(word.add a (word.of_Z sz)) in
@@ -483,7 +485,7 @@ Section WithParameters.
 
     (* remerge *)
     repeat seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
-      rewrite ?app_length; wordcstexpr_tac; change_with_Z_literal width; simplify_ZcstExpr; blia).
+      rewrite ?app_length; wordcstexpr_tac; simplify_ZcstExpr; blia).
 
     Tactics.rapply (fun addr oldvalue value R m post H => Scalars.store_four_of_sep addr oldvalue value R m post (proj1 H) (proj2 H)).
 

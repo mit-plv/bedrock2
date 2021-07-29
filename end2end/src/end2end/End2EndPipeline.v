@@ -126,12 +126,6 @@ Section Connect.
       Pipeline.FlatToRiscv_hyps := _; (*MMIO.FlatToRiscv_hyps*)
       Pipeline.Registers_ok := _;
     |}).
-  - exact SortedListString.ok.
-  - refine (MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives).
-  - refine (@MMIO.FlatToRiscv_hyps _).
-  - pose proof FE310CSemantics.ext_spec_ok.
-    cbv [FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec Pipeline.ext_spec pipeline_params].
-    abstract (destruct H; split; eauto).
   - exact compile_ext_call_correct.
   - intros. reflexivity.
   Defined.
@@ -162,11 +156,7 @@ Section Connect.
       f a = f' a'.
   Proof. intros. congruence. Qed.
 
-  (* to tell that we want string names Semantics.params, because there's also
-     Z names Semantics.params lingering around *)
-  Notation strname_sem := (FlattenExpr.mk_Semantics_params
-                             (@Pipeline.FlattenExpr_parameters pipeline_params)).
-  Context (spec: @ProgramSpec strname_sem)
+  Context (spec: ProgramSpec)
           (funimplsList: list (string * (list string * list string * cmd))).
 
   Hypothesis heap_start_agree: spec.(datamem_start) = ml.(heap_start).
@@ -226,7 +216,7 @@ Section Connect.
 
   Definition bedrock2Inv := (fun t m l => forall mc, hl_inv spec t m l mc).
 
-  Let funspecs := WeakestPrecondition.call (p := strname_sem) funimplsList.
+  Let funspecs := WeakestPrecondition.call funimplsList.
 
   Hypothesis goodTrace_implies_related_to_Events: forall (t: list LogItem),
       spec.(goodTrace) t -> exists t': list Event, traces_related t' t.
@@ -388,15 +378,18 @@ Section Connect.
         * exact GetInit.
         * intros.
           eapply ExprImp.weaken_exec.
-          -- rewrite ?heap_start_agree, ?heap_pastend_agree in *.
-             refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
-               eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
+          -- match goal with
+             | H: LowerPipeline.mem_available ?from ?to _ |- _ =>
+               (* PARAMRECORDS *)
+               rewrite (heap_start_agree: from = _) in H;
+               rewrite (heap_pastend_agree: to = _) in H
+             end.
+             refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _); eauto.
           -- simpl. clear. intros. unfold bedrock2Inv in *. eauto.
         * exact GetLoop.
         * intros. unfold bedrock2Inv in *.
           eapply ExprImp.weaken_exec.
-          -- refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _);
-               eauto using FlattenExpr.mk_Semantics_params_ok, FlattenExpr_hyps.
+          -- refine (WeakestPreconditionProperties.sound_cmd _ _ _ _ _ _ _ _ _); eauto.
           -- simpl. clear. intros. eauto.
       + assumption.
       + assumption.
@@ -404,8 +397,7 @@ Section Connect.
       + assumption.
       + assumption.
       + assumption.
-      + pose proof (mem_ok : @map.ok (@Semantics.word strname_sem) byte (@Semantics.mem strname_sem)).
-        pose proof word.eqb_spec.
+      + pose proof word.eqb_spec.
         cbv [imem LowerPipeline.mem_available].
         unfold code_start, code_pastend, heap_start, heap_pastend, stack_start, stack_pastend, ml in *.
         assert (Bounds_instrs: 0 <= Z.of_nat (Datatypes.length (instrencode instrs))) by blia.
@@ -430,7 +422,6 @@ Section Connect.
           rewrite map_length. rewrite seq_length.
           blia.
         }
-        assert (word.ok Semantics.word) by exact word_ok.
         clear P2establish P2preserve P2use.
         eapply Proper_iff1_iff1; [|reflexivity..|].
         { progress repeat rewrite ?sep_ex1_r, ?sep_ex1_l; reflexivity. }
@@ -504,7 +495,7 @@ Section Connect.
                    end.
             rewrite firstn_length.
             rewrite skipn_length.
-            simpl_word_exprs word_ok.
+            let word_ok := constr:(_ : word.ok _) in simpl_word_exprs word_ok.
             f_equal.
             blia.
           }
@@ -516,7 +507,7 @@ Section Connect.
                    end.
             rewrite ?firstn_length.
             rewrite ?skipn_length.
-            simpl_word_exprs word_ok.
+            let word_ok := constr:(_ : word.ok _) in simpl_word_exprs word_ok.
             f_equal.
             blia.
           }
@@ -526,7 +517,6 @@ Section Connect.
                             ?firstn_length, ?skipn_length, ?word.unsigned_of_Z;
              unfold word.wrap;
              change width with 32 in *;
-             change Semantics.width with 32 in *;
              change Pipeline.width with 32 in *.
         all: try (
           Z.div_mod_to_equations;

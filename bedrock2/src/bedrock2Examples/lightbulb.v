@@ -15,8 +15,9 @@ Import ZArith.
 Local Open Scope Z_scope.
 
 Section WithParameters.
-  Context {p : FE310CSemantics.parameters}.
   Import Syntax BinInt String List.ListNotations ZArith.
+  Context {word: word.word 32} {mem: map.map word Byte.byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
   Local Coercion literal (z : Z) : expr := expr.literal z.
   Local Coercion var (x : String.string) : expr := expr.var x.
@@ -194,6 +195,7 @@ Section WithParameters.
           end
     end.
 
+  Local Hint Mode map.map - - : typeclass_instances. (* COQBUG https://github.com/coq/coq/issues/14707 *)
 
   Lemma lightbulb_init_ok : program_logic_goal_for_function! lightbulb_init.
   Proof.
@@ -271,16 +273,15 @@ Section WithParameters.
     repeat match goal with H:absint_eq ?x ?x |- _ => clear H end;
     repeat match goal with H:?A |- _ => clear H; match goal with G:A |- _ => idtac end end.
 
-  Lemma byte_mask_byte (b : byte) : word.and (word.of_Z (byte.unsigned b)) (word.of_Z 255) = word.of_Z (byte.unsigned b) :> Semantics.word.
+  Lemma byte_mask_byte (b : byte) : word.and (word.of_Z (byte.unsigned b)) (word.of_Z 255) = word.of_Z (byte.unsigned b) :> word.
   Proof.
     eapply word.unsigned_inj; rewrite word.unsigned_and_nowrap.
     rewrite !word.unsigned_of_Z.
     pose proof byte.unsigned_range b.
     cbv [word.wrap].
-    rewrite <-!(Z.land_ones _ width) by (cbv; congruence).
+    rewrite <-!(Z.land_ones _ 32) by (cbv; congruence).
     rewrite <-byte.wrap_unsigned at 2. cbv [byte.wrap].
-    change (Z.land 255 (Z.ones width)) with (Z.ones 8).
-    change (Z.ones width) with (Z.ones 32).
+    change (Z.land 255 (Z.ones 32)) with (Z.ones 8).
     rewrite <-Z.land_ones by blia.
     Z.bitwise. Btauto.btauto.
   Qed.
@@ -363,7 +364,7 @@ Section WithParameters.
       change 1 with (Z.ones 1).
       rewrite Z.land_ones, Z.bit0_mod by blia.
       rewrite !word.unsigned_of_Z.
-      cbv [word.wrap]; change width with 32 in *.
+      cbv [word.wrap].
       rewrite 2(Z.mod_small _ (2^32)); try exact eq_refl.
       1: match goal with |- 0 <= byte.unsigned ?x < _ => pose proof byte.unsigned_range x end; blia.
       clear; Z.div_mod_to_equations; blia. }
@@ -379,9 +380,9 @@ Section WithParameters.
     all : intros; exact True.
   Qed.
 
-  Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
+  Add Ring wring : (Properties.word.ring_theory (word := word))
         (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := Semantics.word)),
+         morphism (Properties.word.ring_morph (word := word)),
          constants [Properties.word_cst]).
 
   Lemma recvEthernet_ok : program_logic_goal_for_function! recvEthernet.
@@ -511,8 +512,8 @@ Section WithParameters.
             all : Z.div_mod_to_equations; blia. }
           Z.div_mod_to_equations; blia. }
         { subst i.
-          rewrite word.unsigned_add. unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width)).
-          { revert dependent x11. clear.
+          rewrite word.unsigned_add. unfold word.wrap. rewrite (Z.mod_small _ (2 ^ 32)).
+          { revert dependent x11. clear -word_ok.
             replace (word.unsigned (word.of_Z 4)) with 4 by (rewrite word.unsigned_of_Z; exact eq_refl).
             intros.
             Z.div_mod_to_equations. blia. }
@@ -527,8 +528,7 @@ Section WithParameters.
         { subst v'. subst i.
           rewrite word.unsigned_add.
           replace (word.unsigned (word.of_Z 4)) with 4 by (rewrite word.unsigned_of_Z; exact eq_refl).
-          unfold word.wrap. rewrite (Z.mod_small _ (2 ^ width));
-            change (2^width) with (2^32) in *; Z.div_mod_to_equations; blia. }
+          unfold word.wrap. rewrite (Z.mod_small _ (2 ^ 32)); Z.div_mod_to_equations; blia. }
 
         { letexists; repeat split.
           { repeat match goal with x := _ |- _ => is_var x; subst x end; subst.
@@ -567,7 +567,7 @@ Section WithParameters.
         destruct (word.unsigned x11 <? word.unsigned num_bytes) eqn:HJ.
         { rewrite word.unsigned_of_Z in H11. inversion H11. }
         eapply Z.ltb_nlt in HJ.
-        revert dependent x7; revert dependent num_bytes; revert dependent x11; clear; intros.
+        revert dependent x7; revert dependent num_bytes; revert dependent x11; clear -word_ok; intros.
         unshelve erewrite (_:x11 = num_bytes) in *.
         { eapply Properties.word.unsigned_inj. Z.div_mod_to_equations; blia. }
         rewrite word.unsigned_sub, Z.sub_diag; exact eq_refl. }

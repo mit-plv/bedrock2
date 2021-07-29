@@ -84,19 +84,20 @@ Module cmd.
 End cmd.
 
 Section WithParameters.
-  Context {p : FE310CSemantics.parameters}.
+  Context {word: word.word 32} {mem: map.map word Byte.byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Definition mmio_event_abstraction_relation
-    (h : lightbulb_spec.OP parameters.word)
-    (l : parameters.mem * string * list parameters.word * (parameters.mem * list parameters.word)) :=
+    (h : lightbulb_spec.OP word)
+    (l : mem * string * list word * (mem * list word)) :=
     Logic.or
       (exists a v, h = ("st", a, v) /\ l = (map.empty, "MMIOWRITE", [a; v], (map.empty, [])))
       (exists a v, h = ("ld", a, v) /\ l = (map.empty, "MMIOREAD", [a], (map.empty, [v]))).
   Definition mmio_trace_abstraction_relation := List.Forall2 mmio_event_abstraction_relation.
 
-  Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
+  Add Ring wring : (Properties.word.ring_theory (word := word))
         (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := Semantics.word)),
+         morphism (Properties.word.ring_morph (word := word)),
          constants [Properties.word_cst]).
 
   Lemma nonzero_because_high_bit_set (x : word) (H : word.unsigned (word.sru x (word.of_Z 31)) <> 0)
@@ -332,7 +333,7 @@ Section WithParameters.
         exists iol, T = t ;++ iol /\ exists ioh, mmio_trace_abstraction_relation ioh iol /\
           exists err, RETS = [err] /\ Logic.or
        (((word.unsigned err <> 0) /\ lightbulb_spec.spi_write_full _ ^* ioh /\ Z.of_nat (length ioh) = patience))
-       (word.unsigned err = 0 /\ lightbulb_spec.spi_write parameters.word (byte.of_Z (word.unsigned b)) ioh))}).
+       (word.unsigned err = 0 /\ lightbulb_spec.spi_write word (byte.of_Z (word.unsigned b)) ioh))}).
 
     refine ("spi_write", existT _ (["b"], ["busy"], _) _).
     intros. cbv [call]. straightline. intros.
@@ -640,8 +641,6 @@ Section WithParameters.
       eapply Properties.word.unsigned_inj.
       pose proof Properties.word.unsigned_range x.
       pose proof Properties.word.unsigned_range b0.
-      change (Semantics.width) with 32 in *.
-      change (@Semantics.word (@semantics_parameters p)) with parameters.word in *.
       rewrite byte.unsigned_of_Z; cbv [byte.wrap]; rewrite Z.mod_small by blia.
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small; blia. }
     }

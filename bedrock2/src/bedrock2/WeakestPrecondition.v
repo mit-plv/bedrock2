@@ -1,9 +1,12 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Notations coqutil.Map.Interface coqutil.Map.OfListWord.
-Require Import Coq.ZArith.BinIntDef coqutil.Word.Interface.
+Require Import Coq.ZArith.BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import coqutil.dlet bedrock2.Syntax bedrock2.Semantics.
 
 Section WeakestPrecondition.
-  Context {p : unique! Semantics.parameters}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
+  Context {ext_spec: ExtSpec}.
   Implicit Types (t : trace) (m : mem) (l : locals).
 
   Definition literal v (post : word -> Prop) : Prop :=
@@ -134,9 +137,10 @@ End WeakestPrecondition.
 
 Ltac unfold1_cmd e :=
   lazymatch e with
-    @cmd ?params ?CA ?c ?t ?m ?l ?post =>
+    @cmd ?width ?BW ?word ?mem ?locals ?ext_spec ?CA ?c ?t ?m ?l ?post =>
     let c := eval hnf in c in
-    constr:(@cmd_body params CA (@cmd params CA) c t m l post)
+    constr:(@cmd_body width BW word mem locals ext_spec CA
+                      (@cmd width BW word mem locals ext_spec CA) c t m l post)
   end.
 Ltac unfold1_cmd_goal :=
   let G := lazymatch goal with |- ?G => G end in
@@ -145,9 +149,9 @@ Ltac unfold1_cmd_goal :=
 
 Ltac unfold1_expr e :=
   lazymatch e with
-    @expr ?params ?m ?l ?arg ?post =>
+    @expr ?width ?word ?mem ?locals ?m ?l ?arg ?post =>
     let arg := eval hnf in arg in
-    constr:(@expr_body params m l (@expr params m l) arg post)
+    constr:(@expr_body width word mem locals m l (@expr width word mem locals m l) arg post)
   end.
 Ltac unfold1_expr_goal :=
   let G := lazymatch goal with |- ?G => G end in
@@ -167,9 +171,10 @@ Ltac unfold1_list_map_goal :=
 
 Ltac unfold1_call e :=
   lazymatch e with
-    @call ?params ?fs ?fname ?t ?m ?l ?post =>
+    @call ?width ?BW ?word ?mem ?locals ?ext_spec ?fs ?fname ?t ?m ?l ?post =>
     let fs := eval hnf in fs in
-    constr:(@call_body params (@call params) fs fname t m l post)
+    constr:(@call_body width BW word mem locals ext_spec
+                       (@call width BW word mem locals ext_spec) fs fname t m l post)
   end.
 Ltac unfold1_call_goal :=
   let G := lazymatch goal with |- ?G => G end in
@@ -198,12 +203,11 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' 
      a0 binder, an binder,
      g0 binder, gn binder,
      r0 closed binder, rn closed binder,
-     tr ident, tr' ident, mem ident, mem' ident,
+     tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
 
 Require Import bedrock2.Map.Separation.
-Local Notation word := (Interface.word.rep (word:=bedrock2.Semantics.word)).
 
 Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>
@@ -216,12 +220,12 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre 
                              WeakestPrecondition.call
                                functions name tr mem (cons a0 .. (cons an nil) ..)
                                (fun tr' mem' rets =>
-                                  rets = @nil word /\ post%Z%sep))) ..)) ..))
+                                  rets = nil /\ post%Z%sep))) ..)) ..))
     (at level 200,
      name at level 0,
      a0 binder, an binder,
      g0 binder, gn binder,
-     tr ident, tr' ident, mem ident, mem' ident,
+     tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
 
@@ -242,7 +246,7 @@ Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' tr mem := pre
      name at level 0,
      a0 binder, an binder,
      r0 closed binder, rn closed binder,
-     tr ident, tr' ident, mem ident, mem' ident,
+     tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
 
@@ -255,11 +259,11 @@ Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures'
                    WeakestPrecondition.call
                      functions name tr mem (cons a0 .. (cons an nil) ..)
                      (fun tr' mem' rets =>
-                        rets = @nil word /\ post%Z%sep))) ..))
+                        rets = nil /\ post%Z%sep))) ..))
     (at level 200,
      name at level 0,
      a0 binder, an binder,
-     tr ident, tr' ident, mem ident, mem' ident,
+     tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
 
@@ -278,7 +282,7 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre 
      name at level 0,
      a0 binder, an binder,
      g0 binder, gn binder,
-     tr ident, tr' ident, mem ident, mem' ident,
+     tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
 
@@ -294,7 +298,7 @@ Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures'
     (at level 200,
      name at level 0,
      a0 binder, an binder,
-     tr ident, tr' ident, mem ident, mem' ident,
+     tr name, tr' name, mem name, mem' name,
      pre at level 200,
      post at level 200).
 
@@ -308,11 +312,10 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{ 'ensures' tr' mem' ':=' po
                              WeakestPrecondition.call
                                functions name tr mem (cons a0 .. (cons an nil) ..)
                                (fun tr' mem' rets =>
-                                  rets = @nil word /\ post%Z%sep))) ..)) ..))
+                                  rets = nil /\ post%Z%sep))) ..)) ..))
     (at level 200,
      name at level 0,
      a0 binder, an binder,
      g0 binder, gn binder,
-     tr' ident, mem' ident,
+     tr' name, mem' name,
      post at level 200).
-

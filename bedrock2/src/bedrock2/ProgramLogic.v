@@ -106,10 +106,10 @@ Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
 Ltac straightline_cleanup :=
   match goal with
+  (* TODO remove superfluous _ after .rep, but that will break some proofs that rely on
+     x not being cleared to instantiate evars with terms depending on x *)
   | x : Word.Interface.word.rep _ |- _ => clear x
-  | x : Semantics.word |- _ => clear x
   | x : Init.Byte.byte |- _ => clear x
-  | x : Semantics.locals |- _ => clear x
   | x : Semantics.trace |- _ => clear x
   | x : Syntax.cmd |- _ => clear x
   | x : Syntax.expr |- _ => clear x
@@ -119,10 +119,9 @@ Ltac straightline_cleanup :=
   | x : bool |- _ => clear x
   | x : list _ |- _ => clear x
   | x : nat |- _ => clear x
+  (* same TODO as above *)
   | x := _ : Word.Interface.word.rep _ |- _ => clear x
-  | x := _ : Semantics.word |- _ => clear x
   | x := _ : Init.Byte.byte |- _ => clear x
-  | x := _ : Semantics.locals |- _ => clear x
   | x := _ : Semantics.trace |- _ => clear x
   | x := _ : Syntax.cmd |- _ => clear x
   | x := _ : Syntax.expr |- _ => clear x
@@ -212,14 +211,14 @@ Ltac straightline :=
       replace test with true by reflexivity; change T end;
     cbv match beta delta [WeakestPrecondition.func]
   | names := _ : string2ident.Context.list
-             |- @WeakestPrecondition.cmd _ _ (cmd.set ?s ?e) _ _ _ ?post =>
+    |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
     unfold1_cmd_goal; cbv beta match delta [cmd_body];
     let names := eval cbv [names] in names in
     let x := string2ident.lookup s names in
     string2ident.ensure_free x;
     (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
     letexists _ as x; split; [solve [repeat straightline]|]
-  | |- @cmd _ _ ?c _ _ _ ?post =>
+  | |- cmd _ ?c _ _ _ ?post =>
     let c := eval hnf in c in
     lazymatch c with
     | cmd.while _ _ => fail
@@ -227,31 +226,28 @@ Ltac straightline :=
     | cmd.interact _ _ _ => fail
     | _ => unfold1_cmd_goal; cbv beta match delta [cmd_body]
     end
-  | |- @list_map _ _ (@get _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
-  | |- @list_map _ _ (@expr _ _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @list_map _ _ (get _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @list_map _ _ (expr _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
   | |- @list_map _ _ _ nil _ => cbv beta match fix delta [list_map list_map_body]
-  | |- @expr _ _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
-  | |- @dexpr _ _ _ _ _ => cbv beta delta [dexpr]
-  | |- @dexprs _ _ _ _ _ => cbv beta delta [dexprs]
-  | |- @literal _ _ _ => cbv beta delta [literal]
-  | |- @get _ _ _ _ => cbv beta delta [get]
-  | |- @load _ _ _ _ _ => cbv beta delta [load]
-  | |- TailRecursion.enforce ?names ?values ?map =>
+  | |- expr _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
+  | |- dexpr _ _ _ _ => cbv beta delta [dexpr]
+  | |- dexprs _ _ _ _ => cbv beta delta [dexprs]
+  | |- literal _ _ => cbv beta delta [literal]
+  | |- get _ _ _ => cbv beta delta [get]
+  | |- load _ _ _ _ => cbv beta delta [load]
+  | |- @TailRecursion.enforce ?width ?word ?locals ?names ?values ?map =>
     let values := eval cbv in values in
-    change (TailRecursion.enforce names values map);
+    change (@TailRecursion.enforce width word locals names values map);
     exact (conj (eq_refl values) eq_refl)
-  | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
+  | |- @eq (@coqutil.Map.Interface.map.rep String.string Interface.word.rep _) _ _ =>
     eapply SortedList.eq_value; exact eq_refl
-  | |- map.get _ _ = Some ?e' =>
+  | |- @map.get String.string Interface.word.rep ?M ?m ?k = Some ?e' =>
     let e := rdelta e' in
     is_evar e;
-    let M := lazymatch goal with |- @map.get _ _ ?M _ _ = _ => M end in
-    let __ := match M with @Semantics.locals _ => idtac end in
-    let k := lazymatch goal with |- map.get _ ?k = _ => k end in
     once (let v := multimatch goal with x := context[@map.put _ _ M _ k ?v] |- _ => v end in
           (* cbv is slower than this, cbv with whitelist would have an enormous whitelist, cbv delta for map is slower than this, generalize unrelated then cbv is slower than this, generalize then vm_compute is slower than this, lazy is as slow as this: *)
           unify e v; exact (eq_refl (Some v)))
-  | |- @coqutil.Map.Interface.map.get _ _ (@Semantics.locals _) _ _ = Some ?v =>
+  | |- @coqutil.Map.Interface.map.get String.string Interface.word.rep _ _ _ = Some ?v =>
     let v' := rdelta v in is_evar v'; (change v with v'); exact eq_refl
   | |- ?x = ?y =>
     let y := rdelta y in is_evar y; change (x=y); exact eq_refl
@@ -259,13 +255,13 @@ Ltac straightline :=
     let x := rdelta x in is_evar x; change (x=y); exact eq_refl
   | |- ?x = ?y =>
     let x := rdelta x in let y := rdelta y in constr_eq x y; exact eq_refl
-  | |- @store _ Syntax.access_size.one _ _ _ _ =>
+  | |- store Syntax.access_size.one _ _ _ _ =>
     eapply Scalars.store_one_of_sep; [solve[ecancel_assumption]|]
-  | |- @store _ Syntax.access_size.two _ _ _ _ =>
+  | |- store Syntax.access_size.two _ _ _ _ =>
     eapply Scalars.store_two_of_sep; [solve[ecancel_assumption]|]
-  | |- @store _ Syntax.access_size.four _ _ _ _ =>
+  | |- store Syntax.access_size.four _ _ _ _ =>
     eapply Scalars.store_four_of_sep; [solve[ecancel_assumption]|]
-  | |- @store _ Syntax.access_size.word _ _ _ _ =>
+  | |- store Syntax.access_size.word _ _ _ _ =>
     eapply Scalars.store_word_of_sep; [solve[ecancel_assumption]|]
   | |- bedrock2.Memory.load Syntax.access_size.one ?m ?a = Some ?ev =>
     try subst ev; refine (@Scalars.load_one_of_sep _ _ _ _ _ _ _ _ _ _); ecancel_assumption
@@ -301,7 +297,7 @@ Ltac straightline :=
   | |- True => exact I
   | |- False \/ _ => right
   | |- _ \/ False => left
-  | |- BinInt.Z.modulo ?z (Memory.bytes_per_word Semantics.width) = BinInt.Z0 /\ _ =>
+  | |- BinInt.Z.modulo ?z (Memory.bytes_per_word _) = BinInt.Z0 /\ _ =>
       lazymatch Coq.setoid_ring.InitialRing.isZcst z with
       | true => split; [exact eq_refl|]
       end
@@ -312,7 +308,7 @@ Ltac straightline :=
 (* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
 Ltac straightline_call :=
   lazymatch goal with
-  | |- @WeakestPrecondition.call _ ?functions ?callee _ _ _ _ =>
+  | |- WeakestPrecondition.call ?functions ?callee _ _ _ _ =>
     let callee_spec := lazymatch constr:(_:spec_of callee) with ?s => s end in
     let Hcall := lazymatch goal with H: callee_spec functions |- _ => H end in
     eapply WeakestPreconditionProperties.Proper_call; cycle -1;
@@ -338,9 +334,9 @@ Ltac seprewrite_by Hrw tac :=
 
 Ltac show_program :=
   lazymatch goal with
-  | |- @cmd ?D ?E ?c ?F ?G ?H ?I =>
+  | |- @cmd ?width ?BW ?word ?mem ?locals ?ext_spec ?E ?c ?F ?G ?H ?I =>
     let c' := eval cbv in c in
-    change (@cmd D E (fst (c, c')) F G H I)
+    change (@cmd width BW word mem locals ext_spec E (fst (c, c')) F G H I)
   end.
 
 Module ProofPrintingNotations.

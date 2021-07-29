@@ -11,6 +11,7 @@ Notation MMOutput := "MMOutput"%string.
 
 From coqutil.Map Require SortedListWord SortedListString Z_keyed_SortedListMap Empty_set_keyed_map.
 From coqutil Require Import Word.Interface Word.Naive Z.HexNotation String.
+Require Import coqutil.Word.Bitwidth32.
 Require Import bedrock2.Semantics.
 Import List.ListNotations.
 
@@ -20,14 +21,14 @@ Definition gpio0_base := Ox"0x10012000". Definition gpio0_pastend := Ox"0x100130
 Definition uart0_base := Ox"0x10013000". Definition uart0_pastend := Ox"0x10014000".
 Definition uart0_rxdata := Ox"10013004". Definition uart0_txdata  := Ox"10013000".
 
-Local Instance parameters : parameters :=
-  let word := Naive.word32 in
-  {|
-  width := 32;
-  mem := SortedListWord.map _ _;
-  locals := SortedListString.map _;
-  env := SortedListString.map _;
-  ext_spec t mGive action args post :=
+Instance word: word.word 32 := Naive.word32.
+Instance mem: Interface.map.map word Byte.byte := SortedListWord.map _ _.
+Instance locals: Interface.map.map String.string word := SortedListString.map _.
+Instance env: Interface.map.map String.string (list String.string * list String.string * cmd) :=
+  SortedListString.map _.
+
+Instance ext_spec: ExtSpec :=
+  fun t mGive action args post =>
     mGive = Map.Interface.map.empty /\
     match action, List.map word.unsigned args with
     | MMInput, [addr] => (
@@ -47,8 +48,7 @@ Local Instance parameters : parameters :=
       /\ post Map.Interface.map.empty []
     | _, _ =>
       False
-    end%list%bool;
-  |}.
+    end%list%bool.
 
 
 Require Import bedrock2.NotationsCustomEntry.

@@ -42,7 +42,8 @@ Require Import bedrock2.ZnWords.
 Require Import Coq.Sorting.Permutation.
 
 Section WithParameters.
-  Context {p : FE310CSemantics.parameters}.
+  Context {word: word.word 32} {mem: map.map word Byte.byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Definition nth(l: list word)(n: nat): word := List.nth n l (word.of_Z 0).
 
@@ -188,20 +189,20 @@ Section WithParameters.
   (* TODO generalize *)
   Lemma array_scalar32_max_size: forall addr xs (R: mem -> Prop) m,
       (array scalar32 (word.of_Z 4) addr xs * R)%sep m ->
-      4 * Z.of_nat (Datatypes.length xs) <= 2 ^ width.
+      4 * Z.of_nat (Datatypes.length xs) <= 2 ^ 32.
   Proof.
     intros.
-    assert (4 * Z.of_nat (Datatypes.length xs) <= 2 ^ width \/ 2 ^ width < 4 * Z.of_nat (Datatypes.length xs))
+    assert (4 * Z.of_nat (Datatypes.length xs) <= 2 ^ 32 \/ 2 ^ 32 < 4 * Z.of_nat (Datatypes.length xs))
       as C by Lia.lia. destruct C as [C | C]; [exact C | exfalso].
-    pose proof (List.firstn_skipn (Z.to_nat (2 ^ width / 4)) xs) as E.
-    pose proof @List.firstn_length_le _ xs (Z.to_nat (2 ^ width / 4)) as A.
-    assert (Z.to_nat (2 ^ width / 4) <= Datatypes.length xs)%nat as B by ZnWords.
+    pose proof (List.firstn_skipn (Z.to_nat (2 ^ 32 / 4)) xs) as E.
+    pose proof @List.firstn_length_le _ xs (Z.to_nat (2 ^ 32 / 4)) as A.
+    assert (Z.to_nat (2 ^ 32 / 4) <= Datatypes.length xs)%nat as B by ZnWords.
     specialize (A B). clear B.
-    destruct (List.firstn (Z.to_nat (2 ^ width / 4)) xs) as [|h1 t1] eqn: E1. {
+    destruct (List.firstn (Z.to_nat (2 ^ 32 / 4)) xs) as [|h1 t1] eqn: E1. {
       ZnWords.
     }
-    destruct (List.skipn (Z.to_nat (2 ^ width / 4)) xs) as [|h2 t2] eqn: E2. {
-      pose proof @List.skipn_length _ (Z.to_nat (2 ^ width / 4)) xs as B.
+    destruct (List.skipn (Z.to_nat (2 ^ 32 / 4)) xs) as [|h2 t2] eqn: E2. {
+      pose proof @List.skipn_length _ (Z.to_nat (2 ^ 32 / 4)) xs as B.
       rewrite E2 in B. cbn [List.length] in B. ZnWords.
     }
     rewrite <- E in H.
@@ -304,8 +305,6 @@ Section WithParameters.
       ParamRecords.simpl_param_projections.
       eexists. split. {
         repeat straightline.
-        ParamRecords.simpl_param_projections.
-        repeat straightline.
       }
       repeat straightline.
 
@@ -359,23 +358,13 @@ Section WithParameters.
           assert (0 = remSortedLen)%nat by assumption. subst remSortedLen.
           assert (j = i) by ZnWords. subst j.
           eexists. split. {
-            repeat straightline. eexists. split. {
-              lazymatch goal with
-              | |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
-                try subst ev; refine (@Scalars.load_four_of_sep _ word _ mem _ a _ _ m _)
-              end.
-              subst v0.
-              ParamRecords.simpl_param_projections.
-              ecancel_assumption.
-            }
             repeat straightline.
           }
           split; intro C. {
-            exfalso. rewrite truncate_word_nop_32bit in C by reflexivity.
+            exfalso.
             rewrite word.unsigned_ltu in C. rewrite Z.ltb_irrefl in C. rewrite word.unsigned_of_Z_0 in C.
             apply C. reflexivity.
           }
-          rewrite truncate_word_nop_32bit in C by reflexivity.
           destruct_one_match_hyp. {
             rewrite word.unsigned_of_Z_1 in C. discriminate C.
           }
@@ -405,20 +394,10 @@ Section WithParameters.
         end.
         seprewrite_in @array_cons HM1.
         eexists. split. {
-          repeat straightline. eexists. split. {
-            lazymatch goal with
-            | |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
-              try subst ev; refine (@Scalars.load_four_of_sep _ word _ mem _ a _ _ m _)
-            end.
-            subst v0.
-            ParamRecords.simpl_param_projections.
-            ecancel_assumption.
-          }
           repeat straightline.
         }
         split; intro C. 2: {
           (* exiting loop because e' >= e found, so we know where to insert e *)
-          rewrite truncate_word_nop_32bit in C by reflexivity.
           destruct_one_match_hyp. {
             rewrite word.unsigned_of_Z_1 in C. discriminate C.
           }
@@ -445,7 +424,6 @@ Section WithParameters.
           reflexivity.
         }
         (* running loop body (just increment j) *)
-        rewrite truncate_word_nop_32bit in C by reflexivity.
         rewrite word.unsigned_ltu in C. destruct_one_match_hyp. 2: {
           exfalso. rewrite word.unsigned_of_Z_0 in C. apply C. reflexivity.
         }
@@ -506,7 +484,7 @@ Section WithParameters.
       }
       rewrite Ej in *.
       (* WHY do I need width:=width even with   Local Hint Mode word - : typeclass_instances. ? *)
-      replace j with (word.of_Z (width := width) (Z.of_nat (Datatypes.length smaller))) by ZnWords.
+      replace j with (word.of_Z (width := 32) (Z.of_nat (Datatypes.length smaller))) by ZnWords.
       clear j Ej Heqsmaller HeqtoShift.
       rewrite List.app_nil_l in *.
       subst sorted.
@@ -553,13 +531,12 @@ Section WithParameters.
         SeparationLogic.seprewrite @array_nil.
         use_sep_assumption.
         cancel.
-        cancel_seps_at_indices 1%nat 2%nat. {
-          f_equal. ZnWords.
-        }
         cancel_seps_at_indices 1%nat 1%nat. {
           f_equal. ZnWords.
         }
-        ParamRecords.simpl_param_projections.
+        cancel_seps_at_indices 1%nat 0%nat. {
+          f_equal. ZnWords.
+        }
         cbn [seps].
         cancel.
       }
@@ -678,9 +655,6 @@ Section WithParameters.
           use_sep_assumption. cancel.
           cancel_seps_at_indices 0%nat 0%nat. {
             f_equal. ZnWords.
-          }
-          cancel_seps_at_indices 1%nat 0%nat. {
-            reflexivity.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
             f_equal. ZnWords.

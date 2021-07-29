@@ -1,13 +1,18 @@
-Require Import  coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Properties.
+Require Import coqutil.Macros.subst coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth.
 Require bedrock2.WeakestPrecondition.
 
 Require Import Coq.Classes.Morphisms.
 
 Section WeakestPrecondition.
-  Context {p : unique! Semantics.parameters}.
+  Context {width} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: Semantics.ExtSpec}.
 
   Ltac ind_on X :=
     intros;
+    (* Note: Comment below dates from when we were using a parameter record p *)
     (* Note: "before p" means actually "after p" when reading from top to bottom, because,
        as the manual points out, "before" and "after" are with respect to the direction of
        the move, and we're moving hypotheses upwards here.
@@ -16,9 +21,11 @@ Section WeakestPrecondition.
        "Error: Proper_load depends on the variable p which is not declared in the context."
        when trying to use Proper_load, or, due to COQBUG https://github.com/coq/coq/issues/11487,
        we'd get a typechecking failure at Qed time. *)
-    repeat match goal with x : ?T |- _ => first [ constr_eq T X; move x before p | revert x ] end;
+    repeat match goal with x : ?T |- _ => first [ constr_eq T X; move x before ext_spec | revert x ] end;
     match goal with x : X |- _ => induction x end;
     intros.
+
+  Local Hint Mode word.word - : typeclass_instances.
 
   (* we prove weakening lemmas for all WP definitions in a syntax-directed fashion,
    * moving from postcondition towards precondition one logical connective at a time. *)
@@ -51,7 +58,11 @@ Section WeakestPrecondition.
       cbn in *; intuition (try typeclasses eauto with core).
   Qed.
 
-  Context {p_ok : Semantics.parameters_ok p}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
+
   Global Instance Proper_cmd :
     Proper (
      (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ (pointwise_relation _ Basics.impl))) ==> Basics.impl)))) ==>
@@ -129,7 +140,7 @@ Section WeakestPrecondition.
      Basics.impl)))))) WeakestPrecondition.func.
   Proof.
     cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  WeakestPrecondition.func]; intros.
-    destruct a. destruct p0.
+    destruct a. destruct p.
     destruct H1; intuition idtac.
     eexists.
     split; [eauto|].
@@ -261,7 +272,7 @@ Section WeakestPrecondition.
 
 
   Section WithE.
-    Context fs (E: Semantics.env) (HE: List.Forall (fun '(k, v) => map.get E k = Some v) fs).
+    Context fs (E: env) (HE: List.Forall (fun '(k, v) => map.get E k = Some v) fs).
     Import coqutil.Tactics.Tactics.
     Lemma sound_call' n t m args post
       (H : WeakestPrecondition.call fs n t m args post)
@@ -306,10 +317,10 @@ Section WeakestPrecondition.
 
   (** Ad-hoc lemmas here? *)
 
-  Import bedrock2.Syntax bedrock2.Semantics bedrock2.WeakestPrecondition coqutil.Word.Interface.
+  Import bedrock2.Syntax bedrock2.Semantics bedrock2.WeakestPrecondition.
   Lemma interact_nomem call action binds arges t m l post
         args (Hargs : dexprs m l arges args)
-        (Hext : ext_spec t map.empty binds args (fun mReceive (rets : list Semantics.word) =>
+        (Hext : ext_spec t map.empty binds args (fun mReceive (rets : list word) =>
            mReceive = map.empty /\
            exists l0 : locals, map.putmany_of_list_zip action rets l = Some l0 /\
            post (cons (map.empty, binds, args, (map.empty, rets)) t) m l0))

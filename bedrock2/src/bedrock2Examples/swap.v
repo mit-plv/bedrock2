@@ -30,22 +30,24 @@ Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.Separa
 Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
+Require Import coqutil.Word.Interface.
 
 Section WithParameters.
-  Context {p : FE310CSemantics.parameters}.
+  Context {word: word.word 32} {mem: map.map word Byte.byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Local Infix "*" := sep. Local Infix "*" := sep : type_scope.
   Instance spec_of_swap : spec_of "swap" := fun functions =>
     forall a_addr a b_addr b m R t,
       (scalar a_addr a * (scalar b_addr b * R)) m ->
-      WeakestPrecondition.call (p:=@semantics_parameters p) functions
+      WeakestPrecondition.call functions
         "swap" t m [a_addr; b_addr]
         (fun t' m' rets => t=t'/\ (scalar a_addr b * (scalar b_addr a * R)) m' /\ rets = nil).
 
   Instance spec_of_swap_swap : spec_of "swap_swap" := fun functions =>
     forall a_addr a b_addr b m R t,
       (scalar a_addr a * (scalar b_addr b * R)) m ->
-      WeakestPrecondition.call (p:=@semantics_parameters p) functions
+      WeakestPrecondition.call functions
         "swap_swap" t m [a_addr; b_addr]
         (fun t' m' rets => t=t' /\ (scalar a_addr a * (scalar b_addr b * R)) m' /\ rets = nil).
 

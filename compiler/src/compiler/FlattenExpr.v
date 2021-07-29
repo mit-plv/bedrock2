@@ -349,7 +349,7 @@ Section FlattenExpr1.
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
     disjoint (union (ExprImp.allVars_expr e) (of_option oResVar)) (allFreshVars ngs1) ->
-    @eval_expr (mk_Semantics_params p) initialM initialH e initialMcH = Some (res, finalMcH) ->
+    eval_expr initialM initialH e initialMcH = Some (res, finalMcH) ->
     FlatImp.exec fenv s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       t' = t /\ finalM = initialM /\ map.get finalL resVar = Some res /\
       (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
@@ -405,7 +405,7 @@ Section FlattenExpr1.
     map.extends lL lH ->
     map.undef_on lH (allFreshVars ngs1) ->
     disjoint (union (ExprImp.allVars_expr e) (of_option oResVar)) (allFreshVars ngs1) ->
-    @eval_expr (mk_Semantics_params p) m lH e initialMcH = Some (res, finalMcH) ->
+    eval_expr m lH e initialMcH = Some (res, finalMcH) ->
     FlatImp.exec fenv s t m lL initialMcL (fun t' m' lL' finalMcL =>
       map.only_differ lL (FlatImp.modVars s) lL' /\
       t' = t /\ m' = m /\ map.get lL' resVar = Some res /\
@@ -424,7 +424,7 @@ Section FlattenExpr1.
     map.undef_on lH (allFreshVars ngs1) ->
     disjoint (ExprImp.allVars_exprs es) (allFreshVars ngs1) ->
     evaluate_call_args_log m lH es initialMcH = Some (resVals, finalMcH) ->
-    (* List.option_all (List.map (@eval_expr (mk_Semantics_params p) m lH) es) = Some resVals -> *)
+    (* List.option_all (List.map (eval_expr m lH) es) = Some resVals -> *)
     FlatImp.exec fenv s t m lL initialMcL (fun t' m' lL' finalMcL =>
       t' = t /\ m' = m /\
       map.getmany_of_list lL' resVars = Some resVals /\
@@ -497,7 +497,7 @@ Section FlattenExpr1.
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
     disjoint (ExprImp.allVars_expr e) (allFreshVars ngs1) ->
-    @eval_expr (mk_Semantics_params p) initialM initialH e initialMcH = Some (res, finalMcH) ->
+    eval_expr initialM initialH e initialMcH = Some (res, finalMcH) ->
     FlatImp.exec fenv s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       t' = t /\ finalM = initialM /\
       FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))) /\
@@ -534,7 +534,7 @@ Section FlattenExpr1.
     map.extends initialL initialH ->
     map.undef_on initialH (allFreshVars ngs1) ->
     disjoint (ExprImp.allVars_expr e) (allFreshVars ngs1) ->
-    @eval_expr (mk_Semantics_params p) initialM initialH e initialMcH = Some (res, finalMcH) ->
+    eval_expr initialM initialH e initialMcH = Some (res, finalMcH) ->
     FlatImp.exec fenv s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       (t' = t /\ finalM = initialM /\
        FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))) /\

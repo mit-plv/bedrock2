@@ -1,7 +1,7 @@
 Require Import coqutil.Z.Lia.
 Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Import Coq.Lists.List. Import ListNotations.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth32.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Z.HexNotation.
@@ -12,10 +12,16 @@ Require Import bedrock2.NotationsCustomEntry.
 
 (* TODO distribute contents of this file into the right places *)
 
-Module IOMacros.
+Module Import IOMacros.
 
   Class Interface := {
-    semantics_params :> Semantics.parameters;
+    width : Z;
+    BW :> Bitwidth width;
+    word :> Word.Interface.word width;
+    mem :> map.map word Byte.byte;
+    locals :> map.map String.string word;
+    env :> map.map String.string (list String.string * list String.string * cmd);
+    ext_spec :> ExtSpec;
 
     (* macros to be inlined to read or write a word
        TODO it's not so nice that we need to foresee the number of temp vars
@@ -135,11 +141,8 @@ Module SpiEth.
     Context {locals: map.map String.string word}.
     Context {funname_env: forall T, map.map String.string T}.
 
-    Instance semantics_params: Semantics.parameters := {|
-      Semantics.width := 32;
-      Semantics.word := word;
-      Semantics.mem := mem;
-      Semantics.ext_spec t mGive action (argvals: list word) (post: (mem -> list word -> Prop)) :=
+    Instance ext_spec: ExtSpec :=
+      fun t mGive action (argvals: list word) (post: (mem -> list word -> Prop)) =>
         match argvals with
         | addr :: _ =>
           isMMIOAddr addr /\
@@ -149,8 +152,7 @@ Module SpiEth.
                  exists val, argvals = [addr; val] /\ post map.empty nil
           else False
         | nil => False
-        end;
-    |}.
+        end.
 
     Import Syntax BinInt String List.ListNotations ZArith.
     Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
@@ -161,7 +163,6 @@ Module SpiEth.
     Local Axiom TODO: False.
 
     Instance MMIOMacros: IOMacros.Interface. refine ({|
-      IOMacros.semantics_params := semantics_params;
 
       (* TODO these only read a byte rather than a word *)
       IOMacros.read_word_code(x _: String.string) := bedrock_func_body:(
@@ -242,17 +243,13 @@ Module Syscalls.
     Context {locals: map.map String.string word}.
     Context {funname_env: forall T, map.map String.string T}.
 
-    Instance semantics_params: Semantics.parameters := {|
-      Semantics.width := 32;
-      Semantics.word := word;
-      Semantics.mem := mem;
-      Semantics.ext_spec t m action (argvals: list word) (post: (mem -> list word -> Prop)) :=
+    Instance ext_spec: ExtSpec :=
+      fun t m action (argvals: list word) (post: (mem -> list word -> Prop)) =>
         (* TODO needs to be more precise *)
         match argvals with
         | [trap; a1; a2; a3] => forall r1 r2 err, post m [r1; r2; err]
         | _ => False
-        end;
-    |}.
+        end.
 
     Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
 (*  Local Coercion var(x: String.string): Syntax.expr := Syntax.expr.var x.*)
@@ -263,7 +260,6 @@ Module Syscalls.
     Local Axiom TODO: False.
 
     Instance SyscallIOMacros: IOMacros.Interface. refine ({|
-      IOMacros.semantics_params := semantics_params;
 
       IOMacros.read_word_code(x tmp: String.string) :=
         cmd.interact [x; tmp; tmp] "Syscall"%string [literal magicValue; literal magicValue;

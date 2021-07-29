@@ -25,8 +25,10 @@ Local Notation "' x <- a ; f" :=
   (right associativity, at level 70, x pattern).
 
 Section ExprImp1.
-
-  Context {p : unique! Semantics.parameters}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
+  Context {ext_spec: ExtSpec}.
 
   Notation var := String.string (only parsing).
   Notation func := String.string (only parsing).
@@ -41,7 +43,7 @@ Section ExprImp1.
   Local Notation varname := String.string.
 
   Ltac set_solver := set_solver_generic String.string.
-  Context {word_ok: word.ok word}. (* TODO which param record? *)
+  Context {word_ok: word.ok word}.
 
   Section WithEnv.
     Context (e: env).
@@ -369,9 +371,10 @@ Ltac invert_eval_cmd :=
   end.
 
 Section ExprImp2.
-
-  Context {p : unique! Semantics.parameters}.
-  Context {ok : Semantics.parameters_ok p}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
+  Context {ext_spec: ExtSpec}.
 
   Notation var := String.string (only parsing).
   Notation func := String.string (only parsing).
@@ -380,13 +383,15 @@ Section ExprImp2.
   (*Hypothesis String.string_empty: String.string = Empty_set.*)
   Local Notation varname := String.string.
 
-  Context {word_ok: word.ok word}. (* TODO which param record? *)
+  Context {word_ok: word.ok word}.
   Context {locals_ok: map.ok locals}.
+  Context {mem_ok: map.ok mem}.
+  Context {ext_spec_ok: ext_spec.ok ext_spec}.
 
   Ltac state_calc := map_solver locals_ok.
   Ltac set_solver := set_solver_generic String.string.
 
-  Lemma modVarsSound_fixpointsemantics: forall (e: env) fuel s initialS initialM finalS finalM,
+  Lemma modVarsSound_fixpointsemantics: forall (e: env) fuel s (initialS: locals) initialM finalS finalM,
     eval_cmd e fuel initialS initialM s = Some (finalS, finalM) ->
     map.only_differ initialS (modVars s) finalS.
   Proof.
@@ -461,7 +466,7 @@ Section ExprImp2.
       rename H0 into Ex1, H12 into Ex2.
       eapply weaken_exec. 1: eapply H1. 1,2: eassumption.
       1: eapply Ex2. 1,2: eassumption.
-      cbv beta. clear -ok.
+      cbv beta.
       intros. simp.
       lazymatch goal with
       | A: map.split _ _ _, B: map.split _ _ _ |- _ =>
