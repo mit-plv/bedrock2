@@ -12,7 +12,7 @@ From coqutil.Tactics Require Import syntactic_unify.
 From coqutil.Tactics Require Import rdelta.
 
 Require Import bedrock2.AbsintWordToZ.
-Strategy -1000 [word parameters]. (* TODO where should this go? *)
+Strategy -1000 [word]. (* TODO where should this go? *)
 
 Local Infix "^+" := word.add  (at level 50, left associativity).
 Local Infix "^-" := word.sub  (at level 50, left associativity).

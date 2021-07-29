@@ -18,7 +18,6 @@ Require Import coqutil.Z.Lia.
 
 
 Section WithParameters.
-  Context {p : FE310CSemantics.parameters}.
   Import Syntax BinInt String List.ListNotations ZArith.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
   Local Coercion expr.literal : Z >-> expr.
@@ -105,7 +104,7 @@ Section WithParameters.
         rewrite List.app_length, length_cons, length_firstn_inbounds, length_skipn.
         all: blia.
     }
-    1: subst v2.
+    1: subst v1.
     exact eq_refl.
     }
 
@@ -139,4 +138,4 @@ Section WithParameters.
        - condition when to apply this hint (is needle actually inside pattern?) this might be a judgementally trivial but syntactically informative precondition
        - hint rhs
        on match, only the hint rhs (plus original frame) would be searched for further matches *)
- End WithParameters.
+End WithParameters.

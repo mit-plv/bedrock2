@@ -657,8 +657,8 @@ Section Spilling.
     forall k v, map.get l k = Some v -> k = tmp1 \/ k = tmp2.
 
   Definition related(maxvar: Z)(frame: mem -> Prop)(fpval: word)
-             (t1: trace)(m1: mem)(l1: locals)
-             (t2: trace)(m2: mem)(l2: locals): Prop :=
+             (t1: Semantics.trace)(m1: mem)(l1: locals)
+             (t2: Semantics.trace)(m2: mem)(l2: locals): Prop :=
       exists lStack lRegs stackwords,
         t1 = t2 /\
         (eq m1 * word_array fpval stackwords * frame)%sep m2 /\
@@ -782,7 +782,7 @@ Section Spilling.
       exists m1 m2, map.split m m1 m2 /\ P m1 /\ Q m2.
   Proof. unfold sep. intros *. apply id. Qed.
 
-  Implicit Types post : trace -> mem -> locals -> MetricLog -> Prop.
+  Implicit Types post : Semantics.trace -> mem -> locals -> MetricLog -> Prop.
 
   Lemma put_tmp: forall l i v fpval lRegs,
       (eq lRegs * tmps * ptsto fp fpval)%sep l ->
@@ -958,7 +958,7 @@ Section Spilling.
              end.
   Qed.
 
-  Lemma call_cps: forall e fname params rets binds args fbody argvs t l m mc st post,
+  Lemma call_cps: forall e fname params rets binds args fbody argvs t (l: locals) m mc st post,
       map.get e fname = Some (params, rets, fbody) ->
       map.getmany_of_list l args = Some argvs ->
       map.putmany_of_list_zip params argvs map.empty = Some st ->
@@ -1340,18 +1340,18 @@ Section Spilling.
 
   Lemma spilling_correct (e1 e2 : env) (Ev : envs_related e1 e2)
         (s1 : stmt)
-  (t1 : trace)
+  (t1 : Semantics.trace)
   (m1 : mem)
   (l1 : locals)
   (mc1 : MetricLog)
-  (post : trace -> mem -> locals -> MetricLog -> Prop):
+  (post : Semantics.trace -> mem -> locals -> MetricLog -> Prop):
   exec e1 s1 t1 m1 l1 mc1 post ->
   forall (frame : mem -> Prop) (maxvar : Z),
   valid_vars_src maxvar s1 ->
-  forall (t2 : trace) (m2 : mem) (l2 : locals) (mc2 : MetricLog) (fpval : word),
+  forall (t2 : Semantics.trace) (m2 : mem) (l2 : locals) (mc2 : MetricLog) (fpval : word),
   related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
   exec e2 (spill_stmt s1) t2 m2 l2 mc2
-    (fun (t2' : trace) (m2' : mem) (l2' : locals) (mc2' : MetricLog) =>
+    (fun (t2' : Semantics.trace) (m2' : mem) (l2' : locals) (mc2' : MetricLog) =>
        exists t1' m1' l1' mc1',
          related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
          post t1' m1' l1' mc1').

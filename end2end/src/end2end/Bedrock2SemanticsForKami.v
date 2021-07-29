@@ -17,25 +17,15 @@ Definition MMIOWRITE : string := "MMIOWRITE".
 Instance word: word.word 32 := KamiWord.word 32.
 Instance word_ok: word.ok word := KamiWord.ok 32 eq_refl.
 
-Local Existing Instance SortedListString.ok.
-
 Instance word_riscv_ok: word.riscv_ok word.
 refine (@kami_word_riscv_ok 5 _ _).
 all: cbv; congruence.
 Qed.
 
-Instance FE310CSemanticsParameters : FE310CSemantics.parameters.parameters := {|
-  FE310CSemantics.parameters.word := word;
-  FE310CSemantics.parameters.mem := SortedListWord.map _ _;
-  (* FIXME: we shouldn't need the next line *)
-  FE310CSemantics.parameters.mem_ok := SortedListWord.ok _ _;
-|}.
+Instance mem: Interface.map.map word Byte.byte := SortedListWord.map _ _.
+Instance mem_ok: Interface.map.ok mem := SortedListWord.ok _ _.
 
-Goal True.
-  pose (_: Semantics.parameters).
-Abort.
-
-Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
+Add Ring wring : (Properties.word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (Properties.word.ring_morph (word := Semantics.word)),
+       morphism (Properties.word.ring_morph (word := word)),
        constants [Properties.word_cst]).

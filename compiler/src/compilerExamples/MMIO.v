@@ -115,12 +115,6 @@ Section MMIO1.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Instance semantics_params : FE310CSemantics.parameters := {|
-    FE310CSemantics.parameters.word := word;
-    FE310CSemantics.parameters.word_ok := _;
-    FE310CSemantics.parameters.mem := mem;
-    FE310CSemantics.parameters.mem_ok := _ |}.
-
   Instance compilation_params: FlatToRiscvDef.parameters := {|
     FlatToRiscvDef.iset := RV32I;
     FlatToRiscvDef.compile_ext_call _ _ _ s :=
@@ -587,7 +581,6 @@ Section MMIO1.
 
 End MMIO1.
 
-Existing Instance semantics_params.
 Existing Instance compilation_params.
 Existing Instance FlatToRiscv_params.
 Existing Instance FlatToRiscv_hyps.

@@ -1,6 +1,7 @@
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.dlet.
 Require Import Coq.Classes.Morphisms BinIntDef.
 Require Import coqutil.Macros.unique coqutil.Map.Interface coqutil.Word.Interface. Import map.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Properties.
 Require Import coqutil.Tactics.destr.
 From bedrock2 Require Import Map.Separation Map.SeparationLogic.
@@ -8,10 +9,16 @@ From bedrock2 Require Import Syntax Semantics Markers.
 From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
 
 Section TailRecrsion.
-  Context
-    {p : unique! Semantics.parameters}
-    {p_ok : Semantics.parameters_ok p}
-    {functions : list (String.string * (list String.string * list String.string * Syntax.cmd))}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
+
+  Context {functions : list (String.string * (list String.string * list String.string * Syntax.cmd))}.
   Let call := WeakestPrecondition.call functions.
 
   (* marking logical connectives with the source file they were used in for limiting unfolding *)
@@ -36,7 +43,7 @@ Section TailRecrsion.
       end
     end.
 
-  Lemma putmany_gather{params_ok : Semantics.parameters_ok p} ks vs m me (H : gather ks m = Some (me, vs)) :
+  Lemma putmany_gather ks vs m me (H : gather ks m = Some (me, vs)) :
     map.putmany_of_tuple (tuple.of_list ks) vs me = m.
   Proof.
     revert H; revert me; revert m; revert vs; induction ks; cbn [gather map.putmany_of_list]; intros.
@@ -46,7 +53,6 @@ Section TailRecrsion.
     cbn [map.putmany_of_tuple tuple.of_list length].
     match goal with H : _ |- _ => rewrite H; clear H end.
     assert (map.get m a = Some r -> put (remove m a) a r = m). {
-      clear -params_ok.
       intro A.
       apply map_ext.
       intro k.
@@ -62,7 +68,7 @@ Section TailRecrsion.
     | None => False
     | Some (remaining, r) => values = r /\ remaining = map.empty
     end.
-  Lemma reconstruct_enforce{params_ok : Semantics.parameters_ok p} variables ll lm (H : enforce variables ll lm) : lm = reconstruct variables ll.
+  Lemma reconstruct_enforce variables ll lm (H : enforce variables ll lm) : lm = reconstruct variables ll.
     progress cbv [enforce] in H.
     repeat match type of H with context[match ?x with _ => _ end] => destruct x eqn:? end;
       destruct H; subst.
@@ -74,7 +80,6 @@ Section TailRecrsion.
 
   Import pair.
   Lemma tailrec
-    {params_ok : Semantics.parameters_ok p}
     {e c t localsmap} {m : mem}
     (ghosttypes : polymorphic_list.list Type)
     (variables : list String.string)
@@ -87,7 +92,7 @@ Section TailRecrsion.
     : hlist.foralls (fun (g0 : hlist ghosttypes) => forall
     (Hpre : (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(1))
     (Hbody : forall v, hlist.foralls (fun g => forall t m, tuple.foralls (fun l =>
-      @dlet _ (fun _ => Prop) (reconstruct variables l) (fun localsmap : Semantics.locals =>
+      @dlet _ (fun _ => Prop) (reconstruct variables l) (fun localsmap : locals =>
       match tuple.apply (hlist.apply (spec v) g t m) l with S_ =>
       S_.(1) ->
       Markers.unique (Markers.left (exists br, expr m localsmap e (eq br) /\ Markers.right (
@@ -266,7 +271,6 @@ Section TailRecrsion.
   Qed.
 
   Lemma tailrec_earlyout
-    {params_ok : Semantics.parameters_ok p}
     {e c t localsmap} {m : mem}
     (ghosttypes : polymorphic_list.list Type)
     (variables : list String.string)
@@ -279,7 +283,7 @@ Section TailRecrsion.
     : hlist.foralls (fun (g0 : hlist ghosttypes) => forall
     (Hpre : (tuple.apply (hlist.apply (spec v0) g0 t m) l0).(1))
     (Hbody : forall v, hlist.foralls (fun g => forall t m, tuple.foralls (fun l =>
-      @dlet _ (fun _ => Prop) (reconstruct variables l) (fun localsmap : Semantics.locals =>
+      @dlet _ (fun _ => Prop) (reconstruct variables l) (fun localsmap : locals =>
       match tuple.apply (hlist.apply (spec v) g t m) l with S_ =>
       S_.(1) ->
       Markers.unique (Markers.left (exists br, expr m localsmap e (eq br) /\ Markers.right (
@@ -329,7 +333,6 @@ Section TailRecrsion.
 
 
   Lemma atleastonce
-    {params_ok : Semantics.parameters_ok p}
     {e c t l} {m : mem}
     (variables : list String.string)
     {localstuple : tuple word (length variables)}
@@ -364,7 +367,6 @@ Section TailRecrsion.
 
 
   (* Bedrock-style loop rule *)
-  Context {mem_ok : map.ok mem}.
   Local Open Scope sep_scope.
   Local Infix "*" := Separation.sep : type_scope.
   Local Infix "==>" := Lift1Prop.impl1.

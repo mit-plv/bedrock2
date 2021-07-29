@@ -361,7 +361,7 @@ Section LowerPipeline.
       (instrs: list Instruction)
       (pos_map: funname_env Z)
       (mH: mem) (mc: MetricLog)
-      (postH: trace -> mem -> Prop)
+      (postH: Semantics.trace -> mem -> Prop)
       (initial: MetricRiscvMachine),
       (forall f fun_impl, map.get functions f = Some fun_impl -> FlatToRiscvDef.valid_FlatImp_fun fun_impl) ->
       riscvPhase functions = Some (instrs, pos_map, req_stack_size) ->

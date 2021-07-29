@@ -8,29 +8,25 @@ Require Export bedrock2.Memory.
 
 Require Import Coq.Lists.List.
 
-Class parameters := {
-  width : Z;
-  word :> Word.Interface.word width;
-  mem :> map.map word byte;
-  locals :> map.map String.string word;
-  env :> map.map String.string (list String.string * list String.string * cmd);
+(* BW is not needed on the rhs, but helps infer width *)
+Definition trace{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
+  list ((mem * String.string * list word) * (mem * list word)).
 
-  trace := list ((mem * String.string * list word) * (mem * list word));
+Definition ExtSpec{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte} :=
+  (* Given a trace of what happened so far,
+     the given-away memory, an action label and a list of function call arguments, *)
+  trace -> mem -> String.string -> list word ->
+  (* and a postcondition on the received memory and function call results, *)
+  (mem -> list word -> Prop) ->
+  (* tells if this postcondition will hold *)
+  Prop.
 
-  ExtSpec :=
-    (* Given a trace of what happened so far,
-       the given-away memory, an action label and a list of function call arguments, *)
-    trace -> mem -> String.string -> list word ->
-    (* and a postcondition on the received memory and function call results, *)
-    (mem -> list word -> Prop) ->
-    (* tells if this postcondition will hold *)
-    Prop;
-
-  ext_spec: ExtSpec;
-}.
+Existing Class ExtSpec.
 
 Module ext_spec.
-  Class ok{p: parameters}: Prop := {
+  Class ok{width: Z}{BW: Bitwidth width}{word: word.word width}{mem: map.map word byte}
+          {ext_spec: ExtSpec}: Prop :=
+  {
     (* The action name and arguments uniquely determine the footprint of the given-away memory. *)
     unique_mGive_footprint: forall t1 t2 mGive1 mGive2 a args
                                             (post1 post2: mem -> list word -> Prop),
@@ -53,17 +49,7 @@ Module ext_spec.
                                    post1 mReceive resvals /\ post2 mReceive resvals);
   }.
 End ext_spec.
-Arguments ext_spec.ok: clear implicits.
-
-Class parameters_ok{p: parameters}: Prop := {
-  BW :> Bitwidth width;
-  word_ok :> word.ok word;
-  mem_ok :> map.ok mem;
-  locals_ok :> map.ok locals;
-  env_ok :> map.ok env;
-  ext_spec_ok :> ext_spec.ok p;
-}.
-Arguments parameters_ok: clear implicits.
+Arguments ext_spec.ok {_ _ _ _} _.
 
 Section binops.
   Context {width : Z} {word : Word.Interface.word width}.
@@ -91,7 +77,10 @@ Section binops.
 End binops.
 
 Section semantics.
-  Context {pp : unique! parameters}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
+  Context {ext_spec: ExtSpec}.
 
   Local Notation metrics := MetricLog.
 
@@ -154,7 +143,11 @@ Section semantics.
 End semantics.
 
 Module exec. Section WithEnv.
-  Context {pp : unique! parameters} {e: env}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
+  Context {ext_spec: ExtSpec}.
+  Context (e: env).
 
   Local Notation metrics := MetricLog.
 
@@ -262,5 +255,4 @@ Module exec. Section WithEnv.
     : exec (cmd.interact binds action arges) t m l mc post
   .
   End WithEnv.
-  Arguments exec {_} _.
 End exec. Notation exec := exec.exec.

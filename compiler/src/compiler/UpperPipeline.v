@@ -17,11 +17,7 @@ Require Import compiler.Spilling.
 Require Import compiler.RegRename.
 
 Section WithWordAndMem.
-  Context {width: Z} {word: Interface.word width} {mem : map.map word byte}.
-
-  (* TODO put into common file *)
-  Definition trace: Type := list (mem * string * list word * (mem * list word)).
-  Definition ExtSpec: Type := trace -> mem -> string -> list word -> (mem -> list word -> Prop) -> Prop.
+  Context {width: Z} {BW: Bitwidth width} {word: Interface.word width} {mem : map.map word byte}.
 
   Record Lang: Type := {
     Var: Type;
@@ -66,7 +62,6 @@ Section WithWordAndMem.
     Context {Zlocals: map.map Z word}
             {string_keyed_map: forall T: Type, map.map string T} (* abstract T for better reusability *)
             (ext_spec: ExtSpec)
-            {BW: Bitwidth width}
             {word_ok : word.ok word}
             {mem_ok: map.ok mem}
             {string_keyed_map_ok: forall T, map.ok (string_keyed_map T)}
@@ -79,7 +74,7 @@ Section WithWordAndMem.
       FlattenExpr.NGstate := N;
     }.
 
-    Context {ext_spec_ok : Semantics.ext_spec.ok (FlattenExpr.mk_Semantics_params FlattenExpr_parameters)}.
+    Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
     Definition SrcLang := {|
       Var := string;

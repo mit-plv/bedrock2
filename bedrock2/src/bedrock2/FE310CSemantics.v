@@ -3,7 +3,6 @@ Require Import bedrock2.Syntax bedrock2.Semantics.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Word.Bitwidth32.
-Require Import coqutil.Z.HexNotation.
 
 Import String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
@@ -13,33 +12,23 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 Definition MMIOREAD : string := "MMIOREAD".
 Definition MMIOWRITE : string := "MMIOWRITE".
 
-Module parameters.
-  Class parameters := {
-    word :> Word.Interface.word 32;
-    word_ok :> word.ok word; (* for impl of mem below *)
-    mem :> Interface.map.map word Byte.byte;
-    mem_ok :> Interface.map.ok mem; (* for impl of mem below *)
-  }.
-End parameters. Notation parameters := parameters.parameters.
-
 Section WithParameters.
-  Context {p : parameters}.
+  Context {word: word.word 32} {mem: Interface.map.map word Byte.byte}.
   Import Interface.map.
 
-  Local Notation bedrock2_trace := (list (parameters.mem * String.string * list parameters.word * (parameters.mem * list parameters.word))).
-
   (* FIXME: this is a copypaste from [riscv.Platform.FE310ExtSpec.FE310_mmio] *)
-  Definition isMMIOAddr (addr:parameters.word) :=
-    Ox "00020000" <= word.unsigned addr < Ox "00022000" \/
-    Ox "10008000" <= word.unsigned addr < Ox "10010000" \/
-    Ox "10012000" <= word.unsigned addr < Ox "10013000" \/
-    Ox "10013000" <= word.unsigned addr < Ox "10014000" \/
-    Ox "10024000" <= word.unsigned addr < Ox"10025000".
+  Definition isMMIOAddr (addr : word) :=
+    0x00020000 <= word.unsigned addr < 0x00022000 \/
+    0x10008000 <= word.unsigned addr < 0x10010000 \/
+    0x10012000 <= word.unsigned addr < 0x10013000 \/
+    0x10013000 <= word.unsigned addr < 0x10014000 \/
+    0x10024000 <= word.unsigned addr < 0x10025000.
   (* FIXME: this is a copypaste from [riscv.Platform.FE310ExtSpec.FE310_mmio] *)
-  Definition isMMIOAligned (n : nat) (addr : parameters.word) :=
+  Definition isMMIOAligned (n : nat) (addr : word) :=
     n = 4%nat /\ word.unsigned addr mod 4 = 0.
 
-  Definition ext_spec (t : bedrock2_trace) (mGive : parameters.mem) a (args: list parameters.word) (post:parameters.mem -> list parameters.word -> Prop) :=
+  Global Instance ext_spec: ExtSpec :=
+    fun (t : trace) (mGive : mem) a (args: list word) (post: mem -> list word -> Prop) =>
     if String.eqb "MMIOWRITE" a then
       exists addr val,
         args = [addr; val] /\
@@ -52,21 +41,10 @@ Section WithParameters.
         forall val, post Interface.map.empty [val]
     else False.
 
-  Global Instance semantics_parameters  : Semantics.parameters :=
-    {|
-    Semantics.word := parameters.word;
-    mem := parameters.mem;
-    locals := SortedListString.map _;
-    env := SortedListString.map _;
-    Semantics.ext_spec := ext_spec;
-  |}.
-
-  Global Instance ext_spec_ok : ext_spec.ok _.
+  Global Instance ext_spec_ok : ext_spec.ok ext_spec.
   Proof.
     split;
-    cbv [ext_spec Semantics.ext_spec semantics_parameters
-    Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl
-    ];
+    cbv [ext_spec Morphisms.Proper Morphisms.respectful Morphisms.pointwise_relation Basics.impl];
     intros.
     all :
     repeat match goal with
@@ -78,16 +56,20 @@ Section WithParameters.
     end; subst; eauto 8 using Properties.map.same_domain_refl.
   Qed.
 
-  Global Instance ok : Semantics.parameters_ok semantics_parameters.
-  Proof.
-    split; cbv [env locals mem semantics_parameters]; try exact _.
-    { exact (SortedListString.ok _). }
-    { exact (SortedListString.ok _). }
-  Qed.
+  Global Instance locals: Interface.map.map String.string word := SortedListString.map _.
+  Global Instance env: Interface.map.map String.string (list String.string * list String.string * cmd) :=
+    SortedListString.map _.
 
-  (* COPY-PASTE this *)
-  Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
+  Global Instance locals_ok: Interface.map.ok locals := SortedListString.ok _.
+  Global Instance env_ok: Interface.map.ok env := SortedListString.ok _.
+
+  Context {word_ok: word.ok word}.
+  (* COPY-PASTE this at the beginning of any section in which you need `ring` for words *)
+  Add Ring wring : (Properties.word.ring_theory (word := word))
         (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := Semantics.word)),
+         morphism (Properties.word.ring_morph (word := word)),
          constants [Properties.word_cst]).
 End WithParameters.
+
+Arguments locals: simpl never.
+Arguments env: simpl never.

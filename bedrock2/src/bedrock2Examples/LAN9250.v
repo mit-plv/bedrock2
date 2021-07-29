@@ -144,7 +144,8 @@ Import lightbulb_spec.
 Import TailRecursion.
 
 Section WithParameters.
-  Context {p : FE310CSemantics.parameters}.
+  Context {word: word.word 32} {mem: map.map word Byte.byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Global Instance spec_of_lan9250_readword : ProgramLogic.spec_of "lan9250_readword" := fun functions => forall t m a,
     (Ox"0" <= Word.Interface.word.unsigned a < Ox"400") ->
@@ -279,7 +280,6 @@ Section WithParameters.
     | _ => straightline_call; [  solve[repeat t].. | ]
     | _ => split_if; [  solve[repeat t].. | ]
     | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ => eapply WeakestPreconditionProperties.interact_nomem; [  solve[repeat t].. | ]
-    | |- Semantics.ext_spec _ _ _ _ _ => progress cbn [semantics_parameters Semantics.ext_spec]
     end.
 
   Import Word.Properties.
@@ -290,22 +290,22 @@ Section WithParameters.
     split_if; repeat t.
     { rewrite ?app_nil_r; intuition idtac. }
     straightline_call.
-    { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
+    { clear -word_ok; rewrite word.unsigned_of_Z; cbv; split; congruence. }
     repeat t.
     split_if; repeat t.
     { rewrite ?app_nil_r; intuition eauto using TracePredicate.any_app_more. }
     straightline_call.
-    { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
+    { clear -word_ok; rewrite word.unsigned_of_Z; cbv; split; congruence. }
     repeat t.
     split_if; repeat t.
     { rewrite ?app_nil_r; intuition eauto using TracePredicate.any_app_more. }
     straightline_call.
-    { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
+    { clear -word_ok; rewrite word.unsigned_of_Z; cbv; split; congruence. }
     repeat t.
     split_if; repeat t.
     { rewrite ?app_nil_r; intuition eauto using TracePredicate.any_app_more. }
           straightline_call.
-    { clear; rewrite word.unsigned_of_Z; cbv; split; congruence. }
+    { clear -word_ok; rewrite word.unsigned_of_Z; cbv; split; congruence. }
     repeat t.
     rewrite ?app_nil_r; intuition eauto using TracePredicate.any_app_more.
 
@@ -315,6 +315,8 @@ Section WithParameters.
     eexists.
     repeat eapply concat_app; eauto.
   Qed.
+
+  Local Hint Mode map.map - - : typeclass_instances. (* COQBUG https://github.com/coq/coq/issues/14707 *)
 
   Lemma lan9250_writeword_ok : program_logic_goal_for_function! lan9250_writeword.
   Proof.
@@ -384,11 +386,9 @@ Section WithParameters.
       match goal with |- word.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
       subst data4 data3 data2 data1.
       pose proof word.unsigned_range v.
-      change Semantics.width with 32 in *.
       Z.div_mod_to_equations. blia.
     }
 
-    t.
     t.
     t.
     t.
@@ -418,7 +418,6 @@ Section WithParameters.
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
       cbv -[Z.le Z.lt]. blia. }
-    t.
     t.
     t.
     t.
@@ -472,11 +471,9 @@ Section WithParameters.
 
     all : try (rewrite Byte.byte.unsigned_of_Z; eapply Z.mod_small).
 
-    all : change 32 with Semantics.width in *.
     all : pose proof word.unsigned_range a.
     all : rewrite ?word.unsigned_and_nowrap, ?word.unsigned_sru_nowrap, ?word.unsigned_of_Z; rewrite ?word.unsigned_of_Z.
     all : repeat match goal with |- context G[word.wrap ?x] => let g := context G [x] in change g end.
-    all : change Semantics.width with 32 in *.
     all : change 255 with (Z.ones 8).
     all : rewrite ?Z.shiftr_div_pow2, ?Z.land_ones by blia.
     all : let y := eval cbv in (Ox "400") in change (Ox "400") with y in *.
@@ -494,28 +491,21 @@ Section WithParameters.
     cbv [HList.tuple.of_list List.app].
     repeat match goal with x := _ |- _ => subst x end.
     cbv [LittleEndian.combine PrimitivePair.pair._1 PrimitivePair.pair._2].
-    all : change 32 with Semantics.width in *.
     repeat rewrite ?word.unsigned_of_Z, word.unsigned_sru_nowrap by (rewrite word.unsigned_of_Z; exact eq_refl).
-    all : change Semantics.width with 32 in *.
 
     try erewrite ?word.unsigned_of_Z.
     cbv [word.wrap].
-    change Semantics.width with 32.
     repeat match goal with |- context G [?a mod ?b] => let goal := context G [a] in change goal end.
     rewrite ?Z.shiftl_mul_pow2 by (clear; blia).
 
     change 255 with (Z.ones 8).
     rewrite <-!Z.shiftl_mul_pow2 by blia.
-    pose proof (@word.unsigned_range _ _ Semantics.word_ok v).
-    change Semantics.width with 32 in *.
+    pose proof (@word.unsigned_range _ _ word_ok v).
     set (@word.unsigned _ _ v) as X in *.
     rewrite ?Byte.byte.unsigned_of_Z.
     unfold Byte.byte.wrap.
     rewrite <- ?Z.land_ones by blia.
     prove_Zeq_bitwise.
-
-    Unshelve.
-    all: try exact Init.Byte.x00; try exact Semantics.word_ok.
   Qed.
 
   Lemma lan9250_mac_write_ok : program_logic_goal_for_function! lan9250_mac_write.
@@ -614,7 +604,6 @@ Section WithParameters.
           subst v. subst i.
           rewrite word.unsigned_sub, word.unsigned_of_Z.
           change (word.wrap 1) with 1.
-          change Semantics.width with 32 in *.
           cbv [word.wrap]; rewrite Z.mod_small; blia. }
         repeat t.
         rewrite app_nil_r.
@@ -635,7 +624,6 @@ Section WithParameters.
         rewrite word.unsigned_sub, word.unsigned_of_Z.
         pose proof word.unsigned_range x0.
         change (word.wrap 1) with 1.
-        change Semantics.width with 32 in *.
         cbv [word.wrap]; rewrite Z.mod_small; try blia. }
       { left. right.
         split. { intro X. subst err. rewrite word.unsigned_of_Z in X. inversion X. }
@@ -647,7 +635,6 @@ Section WithParameters.
           pose proof word.unsigned_range x0.
           rewrite word.unsigned_sub, word.unsigned_of_Z in H9.
           change (word.wrap 1) with 1 in H9.
-          change Semantics.width with 32 in *.
           cbv [word.wrap] in H9; rewrite Z.mod_small in H9; try blia. }
         rewrite Z.add_1_r.
         rewrite Znat.Z2Nat.inj_succ by (clear; blia).
@@ -684,9 +671,9 @@ Section WithParameters.
           unshelve erewrite (_ : string_dec x y = right _); [ | exact eq_refl | ]
       | _ => straightline_cleanup
       | |- WeakestPrecondition.cmd _ (cmd.interact _ _ _) _ _ _ _ => eapply WeakestPreconditionProperties.interact_nomem
-      | |- Semantics.ext_spec _ _ _ _ _ =>
+      | |- ext_spec _ _ _ _ _ =>
     letexists; split; [exact eq_refl|]; split; [split; trivial|]
-      | |- Semantics.ext_spec _ _ _ _ _ =>
+      | |- ext_spec _ _ _ _ _ =>
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|]
 
       | H: ?x = 0 |-  _ => rewrite H
@@ -769,7 +756,7 @@ Section WithParameters.
     end.
 
     1 : rewrite <-app_assoc.
-    1 : change 32 with Semantics.width; cbv [SPI_CSMODE_HOLD] ; rewrite word.unsigned_of_Z; exact eq_refl.
+    1 : cbv [SPI_CSMODE_HOLD] ; rewrite word.unsigned_of_Z; exact eq_refl.
     all : rewrite word.unsigned_of_Z in H12; try eassumption.
     1,2:
       repeat match goal with
@@ -791,7 +778,6 @@ Section WithParameters.
     repeat match goal with x := _ |- _ => subst x end.
     cbv [LittleEndian.combine HList.tuple.of_list PrimitivePair.pair._1 PrimitivePair.pair._2].
 
-    change 32 with Semantics.width.
     repeat rewrite ?Properties.word.unsigned_or_nowrap, <-?Z.lor_assoc by (rewrite ?word.unsigned_of_Z; exact eq_refl).
     change (Z.shiftl 0 8) with 0 in *; rewrite Z.lor_0_r.
     rewrite !Z.shiftl_lor, !Z.shiftl_shiftl in * by blia.
@@ -802,7 +788,6 @@ Section WithParameters.
     all : rewrite ?word.unsigned_of_Z.
     all : cbv [word.wrap].
     all : repeat match goal with |- context G [?a mod ?b] => let goal := context G [a] in change goal end.
-    all : change Semantics.width with 32.
     all : repeat match goal with |- context[Byte.byte.unsigned ?x] => is_var x; replace (Byte.byte.unsigned x) with (Byte.byte.wrap (Byte.byte.unsigned x)) by eapply Byte.byte.wrap_unsigned; set (Byte.byte.unsigned x) as X; clearbody X end.
     all : change (8+8) with 16.
     all : change (8+16) with 24.

@@ -27,17 +27,10 @@ Module Import FlattenExpr.
     ExprImp_env :> map.map string (list string * list string * cmd);
     FlatImp_env :> map.map string (list string * list string * FlatImp.stmt string);
     trace := list (mem * string * list word * (mem * list word));
-    ext_spec : trace ->
-               mem -> string -> list word -> (mem -> list word -> Prop) -> Prop;
+    ext_spec :> ExtSpec;
     NGstate: Type;
     NG :> NameGen String.string NGstate;
   }.
-
-  Instance mk_Semantics_params(p: parameters) : Semantics.parameters := {|
-    Semantics.word := word;
-    Semantics.env := ExprImp_env;
-    Semantics.ext_spec:= ext_spec;
-  |}.
 
   Instance mk_FlatImp_params(p: parameters): FlatImp.parameters string := {
     FlatImp.varname_eqb := String.eqb;
@@ -53,7 +46,7 @@ Module Import FlattenExpr.
   }.
   Arguments assumptions: clear implicits.
 
-  Instance mk_ExprImp_ext_spec_ok(p: parameters)(hyps: assumptions p): ext_spec.ok (mk_Semantics_params p).
+  Instance mk_ExprImp_ext_spec_ok(p: parameters)(hyps: assumptions p): ext_spec.ok ext_spec.
   Proof.
     destruct hyps. destruct ext_spec_ok0.
     constructor.
@@ -61,20 +54,9 @@ Module Import FlattenExpr.
     eapply intersect; eassumption.
   Qed.
 
-  Instance mk_Semantics_params_ok(p: parameters)(hyps: assumptions p):
-    Semantics.parameters_ok (mk_Semantics_params p) := {
-    Semantics.locals_ok := locals_ok;
-    Semantics.word_ok := word_ok;
-    Semantics.mem_ok := mem_ok;
-    Semantics.env_ok := ExprImp_env_ok;
-    Semantics.BW := BW;
-    Semantics.ext_spec_ok := _
-  }.
-
   Instance mk_FlatImp_params_ok{p: parameters}(hyps: @assumptions p):
     FlatImp.parameters_ok string (mk_FlatImp_params p) := {
     FlatImp.varname_eq_spec := String.eqb_spec;
-    FlatImp.BW := BW;
     FlatImp.word_ok := word_ok;
     FlatImp.mem_ok := mem_ok;
     FlatImp.locals_ok := locals_ok;

@@ -203,23 +203,12 @@ Local Open Scope Z_scope.
 Class parameters(varname: Type) := {
   varname_eqb: varname -> varname -> bool;
   width : Z;
+  BW :> Bitwidth width;
   word :> Word.Interface.word width;
   mem :> map.map word byte;
   locals :> map.map varname word;
   env :> map.map String.string (list varname * list varname * stmt varname);
-
-  trace := list ((mem * String.string * list word) * (mem * list word));
-
-  ExtSpec :=
-    (* Given a trace of what happened so far,
-       the given-away memory, an action label and a list of function call arguments, *)
-    trace -> mem -> String.string -> list word ->
-    (* and a postcondition on the received memory and function call results, *)
-    (mem -> list word -> Prop) ->
-    (* tells if this postcondition will hold *)
-    Prop;
-
-  ext_spec: ExtSpec;
+  ext_spec :> ExtSpec;
 }.
 
 Module ext_spec.
@@ -250,7 +239,6 @@ Arguments ext_spec.ok: clear implicits.
 
 Class parameters_ok(varname: Type){p: parameters varname}: Prop := {
   varname_eq_spec :> EqDecider varname_eqb;
-  BW :> Bitwidth width;
   word_ok :> word.ok word;
   mem_ok :> map.ok mem;
   locals_ok :> map.ok locals;

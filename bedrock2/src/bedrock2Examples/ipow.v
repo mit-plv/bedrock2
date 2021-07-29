@@ -25,7 +25,7 @@ Instance spec_of_ipow : spec_of "ipow" := fun functions =>
     WeakestPrecondition.call functions
       "ipow" t m [x; e]
       (fun t' m' rets => t=t'/\ m=m' /\ exists v, rets = [v] /\ (
-        word.unsigned v = word.unsigned x ^ word.unsigned e mod 2^width)).
+        word.unsigned v = word.unsigned x ^ word.unsigned e mod 2^64)).
 
 
 Module Z.
@@ -73,7 +73,7 @@ Proof.
     (* program variables *) (["e";"ret";"x"] : list String.string))
     (fun v t m e ret x => PrimitivePair.pair.mk (v = word.unsigned e) (* precondition *)
     (fun   T M E RET X => T = t /\ M = m /\ (* postcondition *)
-        word.unsigned RET = word.unsigned ret * word.unsigned x ^ word.unsigned e mod 2^width))
+        word.unsigned RET = word.unsigned ret * word.unsigned x ^ word.unsigned e mod 2^64))
     (fun n m => 0 <= n < m) (* well_founded relation *)
     _ _ _ _ _);
     (* TODO wrap this into a tactic with the previous refine *)

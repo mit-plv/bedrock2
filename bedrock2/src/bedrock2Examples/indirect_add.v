@@ -23,7 +23,8 @@ From coqutil.Tactics Require Import letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 
 Section WithParameters.
-  Context {p : FE310CSemantics.parameters}.
+  Context {word: word.word 32} {mem: map.map word Byte.byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Definition f (a b : word) := word.add (word.add a b) b.
 
@@ -111,14 +112,14 @@ Section WithParameters.
   Lemma indirect_add_three'_ok : program_logic_goal_for_function! indirect_add_three'.
   Proof.
     repeat straightline.
-    (* note: we want to introduce only one variable for stack contents 
+    (* note: we want to introduce only one variable for stack contents
      * and use it in a all separation-logic facts in the symbolic state *)
 
     repeat match goal with
            | H : _ |- _ =>
                (* WHY do I need @ in front of the lemma? PARAMRECORDS? *)
                seprewrite_in_by @scalar_of_bytes H
-                 ltac:(change width with 32; Lia.lia);
+                 ltac:(Lia.lia);
                  let x := fresh "x" in
                  set (word.of_Z _) as x in H; clearbody x; move x at top
            end.
@@ -152,14 +153,14 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
 
 
     repeat straightline.
-    (* note: we want to introduce only one variable for stack contents 
+    (* note: we want to introduce only one variable for stack contents
      * and use it in a all separation-logic facts in the symbolic state *)
 
     repeat match goal with
            | H : _ |- _ =>
                (* WHY do I need @ in front of the lemma? PARAMRECORDS? *)
                seprewrite_in_by @scalar_of_bytes H
-                 ltac:(change width with 32; Lia.lia);
+                 ltac:(Lia.lia);
                  let x := fresh "x" in
                  set (word.of_Z _) as x in H; clearbody x; move x at top
            end.
@@ -202,7 +203,7 @@ H9 : (scalar a0 (word.add va vb)
 
     (* casting scalar to bytes for stack deallocation *)
     cbv [scalar truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in *.
-    set (HList.tuple.to_list 
+    set (HList.tuple.to_list
                (LittleEndian.split (bytes_per access_size.word)
                (word.unsigned (word.add va vb)))) as stackbytes in *.
     assert (Datatypes.length stackbytes = 4%nat) by exact eq_refl.
@@ -237,7 +238,7 @@ H9 : (scalar a0 (word.add va vb)
   Lemma indirect_add_three'_ok' : program_logic_goal_for_function! indirect_add_three'.
   Proof.
     repeat straightline.
-    (* note: we want to introduce only one variable for stack contents 
+    (* note: we want to introduce only one variable for stack contents
      * and use it in a all separation-logic facts in the symbolic state.
      * here we get away with doing it wrong anyway. *)
 
@@ -245,7 +246,7 @@ H9 : (scalar a0 (word.add va vb)
            | H : _ |- _ =>
                (* WHY do I need @ in front of the lemma? PARAMRECORDS? *)
                seprewrite_in_by @scalar_of_bytes H
-                 ltac:(change width with 32; Lia.lia);
+                 ltac:(Lia.lia);
                  let x := fresh "x" in
                  set (word.of_Z _) as x in H; clearbody x; move x at top
            end.

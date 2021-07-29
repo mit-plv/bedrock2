@@ -409,8 +409,8 @@ Section Spilling.
     array (one Syntax.access_size.word) (word.of_Z bytes_per_word).
 
   Definition related(maxvar: Z)(frame: option mem)(done: bool)
-             (t1: trace)(m1: option mem)(l1: option locals)(mc1: MetricLog)
-             (t2: trace)(m2: option mem)(l2: option locals)(mc2: MetricLog): Prop :=
+             (t1: Semantics.trace)(m1: option mem)(l1: option locals)(mc1: MetricLog)
+             (t2: Semantics.trace)(m2: option mem)(l2: option locals)(mc2: MetricLog): Prop :=
       exists fpval tmp1val tmp2val lStack lRegs stackwords,
         t1 = t2 /\
         m2 == m1 \+/ word_array fpval stackwords \+/ frame /\
@@ -512,7 +512,7 @@ Section Spilling.
 
   Arguments map.disj_putmany : simpl never.
 
-  Implicit Types post : trace -> option mem -> option locals -> MetricLog -> Prop.
+  Implicit Types post : Semantics.trace -> option mem -> option locals -> MetricLog -> Prop.
 
   Section WithE.
     Variable (e: env).
@@ -534,8 +534,8 @@ Section Spilling.
 
     Inductive exec:
       stmt ->
-      trace -> option mem -> option locals -> MetricLog ->
-      (trace -> option mem -> option locals -> MetricLog -> Prop)
+      Semantics.trace -> option mem -> option locals -> MetricLog ->
+      (Semantics.trace -> option mem -> option locals -> MetricLog -> Prop)
     -> Prop :=
     | interact: forall t m mKeep mGive l l_not_read l_not_written oldresvals mc action argvars
                        argvals resvars outcome post,
@@ -711,18 +711,18 @@ Section Spilling.
 
   Lemma spilling_correct (e e1 e2 : env) (Ev : envs_related e1 e2)
         (s1 : stmt)
-  (t1 : trace)
+  (t1 : Semantics.trace)
   (m1 : option mem)
   (l1 : option locals)
   (mc1 : MetricLog)
-  (post : trace -> option mem -> option locals -> MetricLog -> Prop):
+  (post : Semantics.trace -> option mem -> option locals -> MetricLog -> Prop):
   exec e1 s1 t1 m1 l1 mc1 post ->
   forall (frame : option mem) (maxvar : Z),
   valid_vars_src maxvar s1 ->
-  forall (t2 : trace) (m2 : option mem) (l2 : option locals) (mc2 : MetricLog),
+  forall (t2 : Semantics.trace) (m2 : option mem) (l2 : option locals) (mc2 : MetricLog),
   related maxvar frame false t1 m1 l1 mc1 t2 m2 l2 mc2 ->
   exec e2 (spill_stmt s1) t2 m2 l2 mc2
-    (fun (t2' : trace) (m2' : option mem) (l2' : option locals) (mc2' : MetricLog) =>
+    (fun (t2' : Semantics.trace) (m2' : option mem) (l2' : option locals) (mc2' : MetricLog) =>
        exists t1' m1' l1' mc1',
          related maxvar frame false t1' m1' l1' mc1' t2' m2' l2' mc2' /\
          post t1' m1' l1' mc1').

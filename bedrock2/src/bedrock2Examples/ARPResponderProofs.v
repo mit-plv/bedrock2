@@ -26,10 +26,7 @@ Local Instance spec_of_arp : spec_of "arp" := fun functions =>
     word.unsigned len = Z.of_nat (length packet) ->
   WeakestPrecondition.call functions "arp" t m [ethbuf; len] (fun T M rets => True).
 
-Section WithParameters.
-  Context {p : FE310CSemantics.parameters.parameters}.
-
-  Local Hint Mode Word.Interface.word - : typeclass_instances.
+Local Hint Mode Word.Interface.word - : typeclass_instances.
 
 Goal program_logic_goal_for_function! arp.
   eexists; split; repeat straightline.
@@ -86,5 +83,3 @@ Goal program_logic_goal_for_function! arp.
     rewrite length_firstn_inbounds by blia.
     trivial. }
 Abort.
-
-End WithParameters.

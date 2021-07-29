@@ -7,29 +7,32 @@ Require Import compiler.LowerPipeline.
 Require Import compiler.UpperPipeline.
 
 Section Params1.
-  Context {p: Semantics.parameters}.
+  Context {width} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: Semantics.ExtSpec}.
 
   Set Implicit Arguments.
 
   Record ProgramSpec: Type := {
-    datamem_start: Semantics.word;
-    datamem_pastend: Semantics.word;
+    datamem_start: word;
+    datamem_pastend: word;
     (* trace invariant which holds at the beginning (and end) of each loop iteration,
        but might not hold in the middle of the loop because more needs to be appended *)
     goodTrace: Semantics.trace -> Prop;
     (* state invariant which holds at the beginning (and end) of each loop iteration *)
-    isReady: Semantics.trace -> Semantics.mem -> Prop;
+    isReady: Semantics.trace -> mem -> Prop;
   }.
 
-  Definition hl_inv(spec: ProgramSpec)(t: Semantics.trace)(m: Semantics.mem)
-             (l: Semantics.locals)(mc: bedrock2.MetricLogging.MetricLog)
+  Definition hl_inv(spec: ProgramSpec)(t: Semantics.trace)(m: mem)
+             (l: locals)(mc: bedrock2.MetricLogging.MetricLog)
     : Prop := (* Restriction: no locals can be shared between loop iterations *)
     spec.(isReady) t m /\ spec.(goodTrace) t.
 
   Local Set Warnings "-cannot-define-projection".
 
   Record ProgramSatisfiesSpec(init_f loop_f: String.string)
-         (e: Semantics.env)
+         (e: env)
          (spec: ProgramSpec): Prop :=
   {
     funs_valid: ExprImp.valid_funs e;

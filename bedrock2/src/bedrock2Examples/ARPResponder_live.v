@@ -104,8 +104,9 @@ Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the m
   (format "\[ x ]").                     (* let a word fly into the large Z space *)
 
 Section WithParameters.
-  Context {p : FE310CSemantics.parameters}.
   Import Syntax BinInt String List.ListNotations ZArith.
+  Context {word: word.word 32} {mem: map.map word byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Local Set Implicit Arguments.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
   Local Coercion expr.literal : Z >-> expr.
@@ -113,18 +114,18 @@ Section WithParameters.
   Coercion Z.of_nat : nat >-> Z.
   Coercion byte.unsigned : byte >-> Z.
   Notation len := List.length.
-  Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per width sz)) (at level 10).
+  Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per 32 sz)) (at level 10).
 
-  Add Ring wring : (Properties.word.ring_theory (word := Semantics.word))
+  Add Ring wring : (Properties.word.ring_theory (word := word))
         (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := Semantics.word)),
+         morphism (Properties.word.ring_morph (word := word)),
          constants [Properties.word_cst]).
 
   Implicit Types m : mem.
 
   (* TODO move (to Scalars.v?) *)
   Lemma load_bounded_Z_of_sep: forall sz addr (value: Z) R m,
-      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
+      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=32) sz) * 8) ->
       sep (truncated_scalar sz addr value) R m ->
       Memory.load_Z sz m addr = Some value.
   Proof.
@@ -138,7 +139,7 @@ Section WithParameters.
   Qed.
 
   Lemma load_of_sep_truncated_scalar: forall sz addr (value: Z) R m,
-      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=width) sz) * 8) ->
+      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=32) sz) * 8) ->
       sep (truncated_scalar sz addr value) R m ->
       Memory.load sz m addr = Some (word.of_Z value).
   Proof.
@@ -161,7 +162,7 @@ Section WithParameters.
      load1/2/4/8 will convert the value it puts into the dst register to word anyways,
      so it makes sense to hardcode the type of v to be word. *)
   Definition value(sz: access_size)(addr v: word): mem -> Prop :=
-    LEUnsigned (bytes_per (width:=width) sz) addr (word.unsigned v).
+    LEUnsigned (bytes_per (width:=32) sz) addr (word.unsigned v).
 
   Lemma load_of_sep_value: forall sz addr v R m,
       sep (value sz addr v) R m ->
@@ -170,7 +171,7 @@ Section WithParameters.
     unfold value, Memory.load, Memory.load_Z, LEUnsigned. intros.
     assert (exists bs : tuple Init.Byte.byte (bytes_per sz),
                sep (ptsto_bytes (bytes_per sz) addr bs) R m /\
-               word.unsigned v = LittleEndian.combine (bytes_per (width:=width) sz) bs) as A. {
+               word.unsigned v = LittleEndian.combine (bytes_per (width:=32) sz) bs) as A. {
       unfold sep in *.
       destruct H as (mp & mq & A & B & C).
       destruct B as (bs & B & E).
@@ -196,7 +197,7 @@ Section WithParameters.
 
   Fixpoint TypeSpec_size{R: Type}(sp: TypeSpec R): R -> Z :=
     match sp with
-    | TValue sz _ => fun r => bytes_per (width:=width) sz
+    | TValue sz _ => fun r => bytes_per (width:=32) sz
     | TStruct fields => fun r => List.fold_right (fun f res => FieldSpec_size f r + res) 0 fields
     | TArray elemSize _ => fun l => List.length l * elemSize
     | TTuple n elemSize _ => fun t => n * elemSize
@@ -719,6 +720,7 @@ t = load4(p)
 
   (* ** Program logic rules *)
 
+  Context {ext_spec: ExtSpec}.
   (* We have two rules for conditionals depending on whether there are more commands afterwards *)
 
   Lemma if_split: forall e c b thn els t m l mc post,
@@ -757,7 +759,7 @@ t = load4(p)
   Lemma wand_adjoint: forall P Q R,
       impl1 (sep P Q) R <-> impl1 P (wand Q R).
   Proof.
-    unfold impl1, wand, sep. firstorder eauto.
+    unfold impl1, wand, sep. clear. firstorder eauto.
   Qed.
 
   Lemma wand_self_impl: forall (P: mem -> Prop),
@@ -914,7 +916,7 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
           post (encoder v)) ->
       WeakestPrecondition.load sz m addr post.
   Proof.
-    intros. unfold WeakestPrecondition.load. firstorder eauto using load_field.
+    intros. unfold WeakestPrecondition.load. decompose [ex and] H. eauto using load_field.
   Qed.
 
   Definition vc_func e '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
@@ -1207,10 +1209,8 @@ Ltac simpli :=
 
 Ltac straightline_cleanup ::=
   match goal with
-  | x : Word.Interface.word.rep _ |- _ => clear x
-  | x : Semantics.word |- _ => clear x
+  | x : @Word.Interface.word.rep _ _ |- _ => clear x
   | x : Init.Byte.byte |- _ => clear x
-  | x : Semantics.locals |- _ => clear x
   | x : Semantics.trace |- _ => clear x
   | x : Syntax.cmd |- _ => clear x
   | x : Syntax.expr |- _ => clear x
@@ -1220,10 +1220,8 @@ Ltac straightline_cleanup ::=
   | x : bool |- _ => clear x
   | x : list _ |- _ => clear x
   | x : nat |- _ => clear x
-  | x := _ : Word.Interface.word.rep _ |- _ => clear x
-  | x := _ : Semantics.word |- _ => clear x
+  | x := _ : @Word.Interface.word.rep _ _ |- _ => clear x
   | x := _ : Init.Byte.byte |- _ => clear x
-  | x := _ : Semantics.locals |- _ => clear x
   | x := _ : Semantics.trace |- _ => clear x
   | x := _ : Syntax.cmd |- _ => clear x
   | x := _ : Syntax.expr |- _ => clear x
@@ -1396,15 +1394,15 @@ Import WeakestPrecondition.
 Ltac straightline ::=
   match goal with
   | _ => straightline_cleanup
-  | |- @list_map _ _ (@get _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
-  | |- @list_map _ _ (@expr _ _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @list_map _ _ (get _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | |- @list_map _ _ (expr _ _) _ _ => unfold1_list_map_goal; cbv beta match delta [list_map_body]
   | |- @list_map _ _ _ nil _ => cbv beta match fix delta [list_map list_map_body]
-  | |- @expr _ _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
-  | |- @dexpr _ _ _ _ _ => cbv beta delta [dexpr]
-  | |- @dexprs _ _ _ _ _ => cbv beta delta [dexprs]
-  | |- @literal _ _ _ => cbv beta delta [literal]
-  | |- @get _ _ _ _ => cbv beta delta [get]
-  | |- @load _ _ _ _ _ => eapply load_field'';
+  | |- expr _ _ _ _ => unfold1_expr_goal; cbv beta match delta [expr_body]
+  | |- dexpr _ _ _ _ => cbv beta delta [dexpr]
+  | |- dexprs _ _ _ _ => cbv beta delta [dexprs]
+  | |- literal _ _ => cbv beta delta [literal]
+  | |- get _ _ _ => cbv beta delta [get]
+  | |- load _ _ _ _ => eapply load_field'';
        once (match goal with
              (* backtrack over choice of Hm in case there are several *)
              | Hm: seps ?lm ?m |- exists l, seps l ?m /\ _ =>
@@ -1415,18 +1413,15 @@ Ltac straightline ::=
                    eexists i; split; [cbv [List.nth_error]; reflexivity|];
                    split; [ repeat (lookup_done || lookup_field_step) |]
              end)
-  | |- @eq (@coqutil.Map.Interface.map.rep _ _ (@Semantics.locals _)) _ _ =>
+  | |- @eq (@coqutil.Map.Interface.map.rep String.string Interface.word.rep _) _ _ =>
     eapply SortedList.eq_value; exact eq_refl
-  | |- map.get _ _ = Some ?e' =>
+  | |- @map.get String.string Interface.word.rep ?M ?m ?k = Some ?e' =>
     let e := rdelta e' in
     is_evar e;
-    let M := lazymatch goal with |- @map.get _ _ ?M _ _ = _ => M end in
-    let __ := match M with @Semantics.locals _ => idtac end in
-    let k := lazymatch goal with |- map.get _ ?k = _ => k end in
     once (let v := multimatch goal with x := context[@map.put _ _ M _ k ?v] |- _ => v end in
           (* cbv is slower than this, cbv with whitelist would have an enormous whitelist, cbv delta for map is slower than this, generalize unrelated then cbv is slower than this, generalize then vm_compute is slower than this, lazy is as slow as this: *)
           unify e v; exact (eq_refl (Some v)))
-  | |- @coqutil.Map.Interface.map.get _ _ (@Semantics.locals _) _ _ = Some ?v =>
+  | |- @coqutil.Map.Interface.map.get String.string Interface.word.rep _ _ _ = Some ?v =>
     let v' := rdelta v in is_evar v'; (change v with v'); exact eq_refl
   | |- ?x = ?y =>
     let y := rdelta y in is_evar y; change (x=y); exact eq_refl

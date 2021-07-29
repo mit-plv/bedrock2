@@ -27,12 +27,14 @@ Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.Separa
 Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
+Require Import coqutil.Word.Interface.
 
 Section WithParameters.
-  Context {p : FE310CSemantics.parameters}.
+  Context {word: word.word 32} {mem: map.map word Byte.byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Instance spec_of_stacktrivial : spec_of "stacktrivial" := fun functions => forall m t,
-      WeakestPrecondition.call (p:=@semantics_parameters p) functions
+      WeakestPrecondition.call functions
         "stacktrivial" t m [] (fun t' m' rets => rets = [] /\ m'=m /\ t'=t).
 
   Lemma stacktrivial_ok : program_logic_goal_for_function! stacktrivial.
@@ -55,7 +57,7 @@ Section WithParameters.
   Qed.
 
   Instance spec_of_stacknondet : spec_of "stacknondet" := fun functions => forall m t,
-      WeakestPrecondition.call (p:=@semantics_parameters p) functions
+      WeakestPrecondition.call functions
         "stacknondet" t m [] (fun t' m' rets => exists a b, rets = [a;b] /\ a = b /\ m'=m/\t'=t).
 
   Require Import bedrock2.string2ident.
@@ -72,7 +74,7 @@ Section WithParameters.
   Abort.
 
   Instance spec_of_stackdisj : spec_of "stackdisj" := fun functions => forall m t,
-      WeakestPrecondition.call (p:=@semantics_parameters p) functions
+      WeakestPrecondition.call functions
         "stackdisj" t m [] (fun t' m' rets => exists a b, rets = [a;b] /\ a <> b /\ m'=m/\t'=t).
 
   Lemma stackdisj_ok : program_logic_goal_for_function! stackdisj.
