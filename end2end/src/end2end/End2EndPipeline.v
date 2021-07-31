@@ -53,6 +53,9 @@ refine (@KamiRiscvWordProperties.kami_word_riscv_ok 5 _ _).
 all: cbv; congruence.
 Qed.
 
+Existing Instance SortedListString.map.
+Existing Instance SortedListString.ok.
+
 (* TODO these definitions should be in KamiRiscv.v: *)
 
 Definition get_kamiMemInit{memSizeLg: Z}
@@ -73,11 +76,6 @@ Section Connect.
           {Registers_ok: map.ok Registers}
           {mem: map.map (KamiWord.word 32) byte}
           {mem_ok: map.ok mem}.
-
-  Instance mmio_params: MMIO.parameters.
-    econstructor; try typeclasses eauto.
-    exact SortedListString.ok.
-  Defined.
 
   Let instrMemSizeBytes: Z := 2 ^ (2 + instrMemSizeLg).
 
@@ -113,26 +111,10 @@ Section Connect.
                               MetricRiscvMachine).
   Abort.
 
-  Instance pipeline_params: Pipeline.Pipeline.parameters := {|
-    Pipeline.ext_spec := FE310CSemantics.ext_spec;
-    Pipeline.compile_ext_call := FlatToRiscvDef.compile_ext_call;
-  |}.
-
   Existing Instance MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives.
 
-  Instance pipeline_assumptions: @Pipeline.Pipeline.assumptions pipeline_params.
-    refine ({|
-      Pipeline.PR := _ ; (*MetricMinimalMMIO.MetricMinimalMMIOSatisfiesPrimitives;*)
-      Pipeline.FlatToRiscv_hyps := _; (*MMIO.FlatToRiscv_hyps*)
-      Pipeline.Registers_ok := _;
-    |}).
-  - exact compile_ext_call_correct.
-  - intros. reflexivity.
-  Defined.
-
   Definition states_related :=
-    @states_related Pipeline.Registers mem instrMemSizeLg memSizeLg
-                    (proj1 instrMemSizeLg_bounds) (proj2 instrMemSizeLg_bounds).
+    states_related instrMemSizeLg memSizeLg (proj1 instrMemSizeLg_bounds) (proj2 instrMemSizeLg_bounds).
 
   Lemma split_ll_trace: forall {t2' t1' t},
       traces_related t (t2' ++ t1') ->
@@ -317,8 +299,8 @@ Section Connect.
     (forall t m l, bedrock2Inv t m l ->
                    WeakestPrecondition.cmd funspecs loop_body t m l bedrock2Inv) ->
     (* Assumptions on the compiler level: *)
-    forall (instrs: list Instruction) (positions: FlatToRiscvDef.funname_env Z) (required_stack_space: Z),
-    compile_prog ml (map.of_list funimplsList) = Some (instrs, positions, required_stack_space) ->
+    forall (instrs: list Instruction) positions (required_stack_space: Z),
+    compile_prog compile_ext_call ml (map.of_list funimplsList) = Some (instrs, positions, required_stack_space) ->
     required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word ->
     word.unsigned (code_start ml) + Z.of_nat (Datatypes.length (instrencode instrs)) <=
       word.unsigned (code_pastend ml) ->
@@ -348,7 +330,7 @@ Section Connect.
     (* 1) Kami pipelined processor to riscv-coq *)
     pose proof @riscv_to_kamiImplProcessor as P1.
     specialize_first P1 traceProp.
-    specialize_first P1 (ll_inv ml spec).
+    specialize_first P1 (ll_inv compile_ext_call ml spec).
     specialize_first P1 B.
     specialize_first P1 (proj1 Hkmem).
     specialize_first P1 memSizeLg_width_trivial.
@@ -356,11 +338,13 @@ Section Connect.
     (* destruct spec. TODO why "Error: sat is already used." ?? *)
 
     (* 2) riscv-coq to bedrock2 semantics *)
-    pose proof compiler_invariant_proofs as P2.
+    pose proof compiler_invariant_proofs compile_ext_call compile_ext_call_correct as P2.
     specialize_first P2 spec.
     specialize_first P2 ml.
     specialize_first P2 mlOk.
-    destruct P2 as [ P2establish [P2preserve P2use] ].
+    destruct P2 as [ P2establish [P2preserve P2use] ]. {
+      intros. reflexivity.
+    }
     eapply P1; clear P1.
     - assumption.
     - assumption.
@@ -477,22 +461,11 @@ Section Connect.
           }
           cancel.
           cancel_seps_at_indices 0%nat 0%nat. {
-            reflexivity.
-          }
-          cancel_seps_at_indices 0%nat 0%nat. {
             f_equal.
-            repeat match goal with
-                   | |- context [?x] => progress change x with 32
-                   | |- context [?x] => progress change x with Consistency.word
-                   end.
             ring.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
             f_equal.
-            repeat match goal with
-                   | |- context [?x] => progress change x with 32
-                   | |- context [?x] => progress change x with Consistency.word
-                   end.
             rewrite firstn_length.
             rewrite skipn_length.
             let word_ok := constr:(_ : word.ok _) in simpl_word_exprs word_ok.
@@ -501,10 +474,6 @@ Section Connect.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
             f_equal.
-            repeat match goal with
-                   | |- context [?x] => progress change x with 32
-                   | |- context [?x] => progress change x with Consistency.word
-                   end.
             rewrite ?firstn_length.
             rewrite ?skipn_length.
             let word_ok := constr:(_ : word.ok _) in simpl_word_exprs word_ok.
@@ -516,8 +485,7 @@ Section Connect.
         all: repeat rewrite ?word.unsigned_sub, ?word.unsigned_add,
                             ?firstn_length, ?skipn_length, ?word.unsigned_of_Z;
              unfold word.wrap;
-             change width with 32 in *;
-             change Pipeline.width with 32 in *.
+             change width with 32 in *.
         all: try (
           Z.div_mod_to_equations;
           (* COQBUG (performance) https://github.com/coq/coq/issues/10743#issuecomment-530673037

@@ -32,4 +32,4 @@ Ltac cheap_saturate :=
       end
     | H1: _, H2: _ -> _ |- _ => let H3 := fresh H1 "_" H2 in learn (H2 H1) as H3
   end);
-  [eauto..|].
+  [(eauto || exact unit)..|].

@@ -6,6 +6,7 @@ Require Import coqutil.Macros.unique.
 Require Import bedrock2.Memory.
 Require Import compiler.util.Common.
 Require Import coqutil.Decidable.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Byte.
 Require Import bedrock2.Syntax.
@@ -21,9 +22,17 @@ Local Hint Mode Word.Interface.word - : typeclass_instances.
 
 Module exec.
   Section FlatImpExec.
-    Context {varname: Type}.
-    Context {pp : unique! parameters varname}.
-    Context {ok : parameters_ok varname pp}.
+    Context {varname: Type} {varname_eqb: varname -> varname -> bool}.
+    Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+    Context {mem: map.map word byte} {locals: map.map varname word}
+            {env: map.map String.string (list varname * list varname * stmt varname)}.
+    Context {ext_spec: ExtSpec}.
+    Context {varname_eq_spec: EqDecider varname_eqb}
+            {word_ok: word.ok word}
+            {mem_ok: map.ok mem}
+            {locals_ok: map.ok locals}
+            {env_ok: map.ok env}
+            {ext_spec_ok: ext_spec.ok ext_spec}.
     Variable (e: env).
 
     Local Notation metrics := MetricLog.

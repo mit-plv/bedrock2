@@ -200,56 +200,12 @@ Local Notation "' x <- a ; f" :=
 
 Local Open Scope Z_scope.
 
-Class parameters(varname: Type) := {
-  varname_eqb: varname -> varname -> bool;
-  width : Z;
-  BW :> Bitwidth width;
-  word :> Word.Interface.word width;
-  mem :> map.map word byte;
-  locals :> map.map varname word;
-  env :> map.map String.string (list varname * list varname * stmt varname);
-  ext_spec :> ExtSpec;
-}.
-
-Module ext_spec.
-  Class ok(varname: Type){p: parameters varname}: Prop := {
-    (* The action name and arguments uniquely determine the footprint of the given-away memory. *)
-    unique_mGive_footprint: forall t1 t2 mGive1 mGive2 a args
-                                            (post1 post2: mem -> list word -> Prop),
-        ext_spec t1 mGive1 a args post1 ->
-        ext_spec t2 mGive2 a args post2 ->
-        map.same_domain mGive1 mGive2;
-
-    weaken :> forall t mGive act args,
-        Morphisms.Proper
-          (Morphisms.respectful
-             (Morphisms.pointwise_relation Interface.map.rep
-               (Morphisms.pointwise_relation (list word) Basics.impl)) Basics.impl)
-          (ext_spec t mGive act args);
-
-    intersect: forall t mGive a args
-                      (post1 post2: mem -> list word -> Prop),
-        ext_spec t mGive a args post1 ->
-        ext_spec t mGive a args post2 ->
-        ext_spec t mGive a args (fun mReceive resvals =>
-                                   post1 mReceive resvals /\ post2 mReceive resvals);
-  }.
-End ext_spec.
-Arguments ext_spec.ok: clear implicits.
-
-Class parameters_ok(varname: Type){p: parameters varname}: Prop := {
-  varname_eq_spec :> EqDecider varname_eqb;
-  word_ok :> word.ok word;
-  mem_ok :> map.ok mem;
-  locals_ok :> map.ok locals;
-  env_ok :> map.ok env;
-  ext_spec_ok :> ext_spec.ok _ _;
-}.
-Arguments parameters_ok: clear implicits.
-
 Section FlatImp1.
-  Context {varname: Type}.
-  Context {pp : unique! (parameters varname)}.
+  Context {varname: Type} {varname_eqb: varname -> varname -> bool}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {mem: map.map word byte} {locals: map.map varname word}
+          {env: map.map String.string (list varname * list varname * stmt varname)}.
+  Context {ext_spec: ExtSpec}.
 
   Section WithEnv.
     Variable (e: env).
@@ -473,9 +429,18 @@ End FlatImp1.
 
 Module exec.
   Section FlatImpExec.
-    Context {varname: Type}.
-    Context {pp : unique! parameters varname}.
-    Context {ok : parameters_ok varname pp}.
+    Context {varname: Type} {varname_eqb: varname -> varname -> bool}.
+    Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+    Context {mem: map.map word byte} {locals: map.map varname word}
+            {env: map.map String.string (list varname * list varname * stmt varname)}.
+    Context {ext_spec: ExtSpec}.
+    Context {varname_eq_spec: EqDecider varname_eqb}
+            {word_ok: word.ok word}
+            {mem_ok: map.ok mem}
+            {locals_ok: map.ok locals}
+            {env_ok: map.ok env}
+            {ext_spec_ok: ext_spec.ok ext_spec}.
+
     Variable (e: env).
 
     Local Notation metrics := MetricLog.
@@ -708,7 +673,7 @@ Module exec.
         rename H0 into Ex1, H12 into Ex2.
         eapply weaken. 1: eapply H1. 1,2: eassumption.
         1: eapply Ex2. 1,2: eassumption.
-        cbv beta. clear -ok.
+        cbv beta.
         intros. simp.
         lazymatch goal with
           | A: map.split _ _ _, B: map.split _ _ _ |- _ =>
@@ -778,15 +743,24 @@ Ltac invert_eval_stmt :=
 
 Section FlatImp2.
   Context (varname: Type).
-  Context {pp : unique! parameters varname}.
-  Context {ok : parameters_ok varname pp}.
+  Context {varname_eqb: varname -> varname -> bool}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {mem: map.map word byte} {locals: map.map varname word}
+          {env: map.map String.string (list varname * list varname * stmt varname)}.
+  Context {ext_spec: ExtSpec}.
+  Context {varname_eq_spec: EqDecider varname_eqb}
+          {word_ok: word.ok word}
+          {mem_ok: map.ok mem}
+          {locals_ok: map.ok locals}
+          {env_ok: map.ok env}
+          {ext_spec_ok: ext_spec.ok ext_spec}.
 
   Definition SimState: Type := trace * mem * locals * MetricLog.
   Definition SimExec(e: env)(c: stmt varname): SimState -> (SimState -> Prop) -> Prop :=
     fun '(t, m, l, mc) post =>
       exec e c t m l mc (fun t' m' l' mc' => post (t', m', l', mc')).
 
-  Lemma increase_fuel_still_Success: forall fuel1 fuel2 e initialSt initialM s final,
+  Lemma increase_fuel_still_Success: forall fuel1 fuel2 e (initialSt: locals) initialM s final,
     (fuel1 <= fuel2)%nat ->
     eval_stmt e fuel1 initialSt initialM s = Some final ->
     eval_stmt e fuel2 initialSt initialM s = Some final.
@@ -817,7 +791,7 @@ Section FlatImp2.
       all: contradiction.
   Qed.
 
-  Lemma modVarsSound_fixpoint: forall fuel e s initialSt initialM finalSt finalM,
+  Lemma modVarsSound_fixpoint: forall fuel e s (initialSt: locals) initialM finalSt finalM,
     eval_stmt e fuel initialSt initialM s = Some (finalSt, finalM) ->
     map.only_differ initialSt (modVars s) finalSt.
   Proof.

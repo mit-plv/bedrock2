@@ -6,6 +6,7 @@ Require Import bedrock2.Array.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.Simp.
+Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
 Require Import compiler.LowerPipeline.
 Require Import compiler.Pipeline.
@@ -20,11 +21,34 @@ Open Scope Z_scope.
 Local Open Scope ilist_scope.
 
 Section Pipeline1.
+  Context {width: Z}.
+  Context {BW: Bitwidth width}.
+  Context {word: word.word width}.
+  Context {word_ok: word.ok word}.
+  Context {mem: map.map word byte}.
+  Context {Registers: map.map Z word}.
+  Context {string_keyed_map: forall T: Type, map.map string T}. (* abstract T for better reusability *)
+  Context {ext_spec: Semantics.ExtSpec}.
+  Context {M: Type -> Type}.
+  Context {MM: Monad M}.
+  Context {RVM: RiscvProgram M word}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
+  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
+  Context {string_keyed_map_ok: forall T, map.ok (string_keyed_map T)}.
+  Context {Registers_ok: map.ok Registers}.
+  Context {PR: MetricPrimitives PRParams}.
+  Context {iset: InstructionSet}.
+  Context {BWM: bitwidth_iset width iset}.
+  Context {mem_ok: map.ok mem}.
+  Context {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
+  Context (compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z -> list Instruction).
+  Context (compile_ext_call_correct: forall resvars extcall argvars,
+              compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
+                                             (FlatImp.SInteract resvars extcall argvars)).
+  Context (compile_ext_call_length_ignores_positions: forall stackoffset posmap1 posmap2 c pos1 pos2,
+              List.length (compile_ext_call posmap1 pos1 stackoffset c) =
+              List.length (compile_ext_call posmap2 pos2 stackoffset c)).
 
-  Context {p: Pipeline.parameters}.
-  Context {h: Pipeline.assumptions}.
-
-  Local Notation word := Pipeline.word.
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := word)),
@@ -52,17 +76,16 @@ Section Pipeline1.
       apply IHinstrs1.
   Qed.
 
-  (* PARAMRECORDS: "unfold imem" below relies on the syntactic form of this definition. *)
-  Definition imem(code_start code_pastend: word)(instrs: list Instruction): Pipeline.mem -> Prop :=
-    (ptsto_bytes (word:=word)(mem:=(@Pipeline.mem p)) code_start (instrencode instrs) *
+  Definition imem(code_start code_pastend: word)(instrs: list Instruction): mem -> Prop :=
+    (ptsto_bytes code_start (instrencode instrs) *
      mem_available (word.add code_start (word.of_Z (Z.of_nat (List.length (instrencode instrs)))))
                    code_pastend)%sep.
 
   Lemma ptsto_bytes_to_program: forall instrs p_code,
       word.unsigned p_code mod 4 = 0 ->
-      Forall (fun i => verify i FlatToRiscvDef.FlatToRiscvDef.iset) instrs ->
+      Forall (fun i => verify i iset) instrs ->
       iff1 (ptsto_bytes p_code (instrencode instrs))
-           (program FlatToRiscvDef.FlatToRiscvDef.iset p_code instrs).
+           (program iset p_code instrs).
   Proof.
     induction instrs; intros.
     - reflexivity.
@@ -71,7 +94,6 @@ Section Pipeline1.
       unfold ptsto_instr at 1.
       unfold truncated_scalar, littleendian, ptsto_bytes, ptsto_bytes.ptsto_bytes.
       simpl.
-      assert (map.ok Pipeline.mem) as Ok by exact FlatToRiscvCommon.mem_ok. (* PARAMRECORDS *)
       simpl.
       rewrite <- IHinstrs; [|DivisibleBy4.solve_divisibleBy4|assumption].
       wwcancel.
@@ -84,13 +106,12 @@ Section Pipeline1.
       auto.
   Qed.
 
-  Lemma ptsto_bytes_range: forall bs (start pastend : FlatImp.word) m a v,
+  Lemma ptsto_bytes_range: forall bs (start pastend : word) m a v,
       ptsto_bytes start bs m ->
       word.unsigned start + Z.of_nat (List.length bs) <= word.unsigned pastend ->
       map.get m a = Some v ->
       word.unsigned start <= word.unsigned a < word.unsigned pastend.
   Proof.
-    assert (map.ok Pipeline.mem) as Ok by exact FlatToRiscvCommon.mem_ok.
     induction bs; intros.
     - simpl in *. unfold emp in *. simp. rewrite map.get_empty in H1. discriminate.
     - simpl in *.
@@ -112,7 +133,7 @@ Section Pipeline1.
           -- destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
          * rewrite word.unsigned_of_Z.
            unfold word.wrap.
-           replace (1 mod 2 ^ Pipeline.width) with 1. 1: blia.
+           replace (1 mod 2 ^ width) with 1. 1: blia.
            simpl.
            destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
       + unfold map.split in *. simp.
@@ -137,7 +158,7 @@ Section Pipeline1.
         eapply Z.le_trans. 2: eassumption.
         rewrite word.unsigned_of_Z.
         unfold word.wrap.
-        replace (1 mod 2 ^ Pipeline.width) with 1. 1: blia.
+        replace (1 mod 2 ^ width) with 1. 1: blia.
         simpl.
         destruct width_cases as [F|F]; simpl in *; rewrite F; reflexivity.
   Qed.
@@ -149,11 +170,11 @@ Section Pipeline1.
       ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
       spec.(datamem_start) = ml.(heap_start) /\
       spec.(datamem_pastend) = ml.(heap_pastend) /\
-      compile_prog ml srcprog = Some (instrs, positions, required_stack_space) /\
+      compile_prog compile_ext_call ml srcprog = Some (instrs, positions, required_stack_space) /\
       required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       word.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
         word.unsigned ml.(code_pastend) /\
-      Forall (fun i : Instruction => verify i FlatToRiscvDef.FlatToRiscvDef.iset) instrs /\
+      Forall (fun i : Instruction => verify i iset) instrs /\
       (imem ml.(code_start) ml.(code_pastend) instrs *
        mem_available ml.(heap_start) ml.(heap_pastend) *
        mem_available ml.(stack_start) ml.(stack_pastend))%sep initial.(getMem) /\
@@ -166,14 +187,15 @@ Section Pipeline1.
       valid_machine initial.
 
   Lemma compiler_invariant_proofs:
-    (forall initial, initial_conditions initial -> ll_inv ml spec initial) /\
-    (forall st, ll_inv ml spec st ->
-                GoFlatToRiscv.mcomp_sat (run1 FlatToRiscvDef.FlatToRiscvDef.iset) st (ll_inv ml spec)) /\
-    (forall st, ll_inv ml spec st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog))).
+    (forall initial, initial_conditions initial -> ll_inv compile_ext_call ml spec initial) /\
+    (forall st, ll_inv compile_ext_call ml spec st ->
+                GoFlatToRiscv.mcomp_sat (run1 iset) st (ll_inv compile_ext_call ml spec)) /\
+    (forall st, ll_inv compile_ext_call ml spec st ->
+                exists suff, spec.(goodTrace) (suff ++ st.(getLog))).
   Proof.
-    assert (map.ok Pipeline.mem) as Okk by exact FlatToRiscvCommon.mem_ok. (* PARAMRECORDS *)
     ssplit; intros.
-    - eapply establish_ll_inv. 1: assumption.
+    - eapply (establish_ll_inv _ compile_ext_call_correct compile_ext_call_length_ignores_positions).
+      1: assumption.
       unfold initial_conditions, ToplevelLoop.initial_conditions in *.
       simp.
       eassert ((ptsto_bytes (code_start ml) (instrencode instrs) * _)%sep initial.(getMem)) as SplitImem by (unfold imem in *; ecancel_assumption).
@@ -181,13 +203,13 @@ Section Pipeline1.
       do 5 eexists.
       ssplit; try eassumption.
       + unfold subset, footpr, footprint_underapprox, of_list, elem_of, program.
-        intros a M.
+        intros a M0.
         match goal with
         | H: _ |- _ => eapply H
         end.
-        specialize (M i_mem).
+        specialize (M0 i_mem).
         destruct mlOk.
-        destruct M as [v M].
+        destruct M0 as [v M0].
         * apply ptsto_bytes_to_program; assumption.
         * unfold ptsto_bytes in Imem.
           eapply ptsto_bytes_range; try eassumption.

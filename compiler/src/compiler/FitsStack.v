@@ -10,7 +10,11 @@ Require Import coqutil.Tactics.Simp.
 Local Open Scope Z_scope.
 
 Section FitsStack.
-  Context {p: FlatToRiscvCommon.parameters}.
+  Context {iset: Decode.InstructionSet}.
+  Context {funpos_env: map.map String.string Z}.
+  Context {compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Decode.Instruction}.
+  Context {env: map.map String.string (list Z * list Z * stmt Z)}.
+  Context {width: Z} {BW: Bitwidth.Bitwidth width} {BWM: bitwidth_iset width iset}.
 
   (* returns two numbers:
      - number of stack words needed by current statement
@@ -102,7 +106,7 @@ Section FitsStack.
 
   Lemma stack_usage_rec_equals_stackalloc_words: forall n s e M N,
       stack_usage_rec n e s = Some (M, N) ->
-      M = FlatToRiscvDef.stackalloc_words s.
+      M = FlatToRiscvDef.stackalloc_words iset s.
   Proof.
     induction n; intros; simpl in *. 1: discriminate.
     revert M N H.
@@ -115,12 +119,12 @@ Section FitsStack.
     apply Z.leb_le in E. apply Z.eqb_eq in E0.
     assert (0 < Memory.bytes_per_word (Decode.bitwidth iset)). {
       unfold Memory.bytes_per_word.
-      destruct iset; reflexivity.
+      clear. destruct iset; reflexivity.
     }
     assert (0 <= nbytes / Memory.bytes_per_word (Decode.bitwidth iset)). {
       apply Z.div_pos; assumption.
     }
-    remember (FlatToRiscvDef.stackalloc_words s) as sw.
+    remember (FlatToRiscvDef.stackalloc_words iset s) as sw.
     remember (Memory.bytes_per_word (Decode.bitwidth iset)) as bw.
     (* TODO why does "Z.div_mod_to_equations. blia." not work? *)
     replace (BinIntDef.Z.max 0 nbytes) with nbytes by blia.
@@ -149,7 +153,7 @@ Section FitsStack.
         econstructor.
         * assert (0 <= nbytes / Memory.bytes_per_word (Decode.bitwidth iset)). {
             apply Z.div_pos. 1: assumption. unfold Memory.bytes_per_word.
-            destruct iset; reflexivity.
+            clear. destruct iset; reflexivity.
           }
           blia.
         * assumption.
@@ -174,7 +178,7 @@ Section FitsStack.
       r = Some z ->
       map.get e_done f = Some (nil, nil, fbody) ->
       map.split e_glob e_done e_rest ->
-      fits_stack (FlatToRiscvDef.stackalloc_words fbody)
+      fits_stack (FlatToRiscvDef.stackalloc_words iset fbody)
                  (z - framelength (nil, nil, fbody)) (map.remove e_glob f) fbody.
 
   Lemma stack_usage_correct_aux: forall e_glob e_done,
@@ -232,7 +236,7 @@ Section FitsStack.
   Lemma stack_usage_correct: forall e z f fbody,
       map.get e f = Some (nil, nil, fbody) ->
       stack_usage e = Some z ->
-      fits_stack (FlatToRiscvDef.stackalloc_words fbody)
+      fits_stack (FlatToRiscvDef.stackalloc_words iset fbody)
                  (z - framelength (nil, nil, fbody)) (map.remove e f) fbody.
   Proof.
     intros. unfold stack_usage in *.

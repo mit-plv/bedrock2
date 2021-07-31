@@ -39,33 +39,22 @@ Existing Instance DefaultRiscvState.
 
 Axiom TODO: forall {T: Type}, T.
 
-Instance flatToRiscvDef_params: FlatToRiscvDef.FlatToRiscvDef.parameters := {
-  funname_env T := TODO;
-  iset := RV32I;
-  FlatToRiscvDef.FlatToRiscvDef.compile_ext_call _ _ _ s :=
-    match s with
-    | FlatImp.SInteract _ fname _ =>
-      if string_dec fname "nop" then
-        [[Addi Register0 Register0 0]]
-      else
-        nil
-    | _ => []
-    end;
-}.
+Instance funpos_env: map.map string Z := SortedListString.map _.
+
+Definition compile_ext_call(posenv: funpos_env)(mypos stackoffset: Z)(s: FlatImp.stmt Z) :=
+  match s with
+  | FlatImp.SInteract _ fname _ =>
+    if string_dec fname "nop" then
+      [[Addi Register0 Register0 0]]
+    else
+      nil
+  | _ => []
+  end.
 
 Notation RiscvMachine := MetricRiscvMachine.
 
 Existing Instance coqutil.Map.SortedListString.map.
 Existing Instance coqutil.Map.SortedListString.ok.
-
-Instance pipeline_params : Pipeline.parameters. simple refine {|
-  Pipeline.string_keyed_map := _;
-  Pipeline.Registers := _;
-  Pipeline.ext_spec _ _ := TODO;
-  Pipeline.PRParams := TODO;
-|}; unshelve (try exact _); apply TODO. Defined.
-
-Instance pipeline_assumptions: @Pipeline.assumptions pipeline_params. Admitted.
 
 Definition main_stackalloc :=
   ("main", ([]: list String.string, []: list String.string,
@@ -79,15 +68,6 @@ Definition e := map.putmany_of_list allFuns map.empty.
    (stack_pastend-8), next stack word to (stack_pastend-16) etc *)
 Definition stack_pastend: Z := 2048.
 
-Definition ml: MemoryLayout (width := 32) := {|
-  MemoryLayout.code_start    := word.of_Z 0;
-  MemoryLayout.code_pastend  := word.of_Z (4*2^10);
-  MemoryLayout.heap_start    := word.of_Z (4*2^10);
-  MemoryLayout.heap_pastend  := word.of_Z (8*2^10);
-  MemoryLayout.stack_start   := word.of_Z (8*2^10);
-  MemoryLayout.stack_pastend := word.of_Z (16*2^10);
-|}.
-
 Lemma f_equal2: forall {A B: Type} {f1 f2: A -> B} {a1 a2: A},
     f1 = f2 -> a1 = a2 -> f1 a1 = f2 a2.
 Proof. intros. congruence. Qed.
@@ -100,8 +80,12 @@ Lemma f_equal3_dep: forall {A B C: Type} {f1 f2: A -> B -> C} {a1 a2: A} {b1 b2:
     f1 = f2 -> a1 = a2 -> b1 = b2 -> f1 a1 b1 = f2 a2 b2.
 Proof. intros. congruence. Qed.
 
+
+Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.
+Proof. reflexivity. Qed.
+
 Definition swap_asm: list Instruction.
-  let r := eval cbv in (compile e) in set (res := r).
+  let r := eval cbv in (compile compile_ext_call e) in set (res := r).
   match goal with
   | res := Some (?x, _, _) |- _ => exact x
   end.

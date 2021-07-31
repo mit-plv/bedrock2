@@ -16,6 +16,7 @@ Require Import coqutil.Word.Naive riscv.Utility.Words32Naive.
 Require Import riscv.Utility.DefaultMemImpl32.
 Require Import coqutil.Map.Empty_set_keyed_map.
 Require Import coqutil.Map.Z_keyed_SortedListMap.
+Require Import coqutil.Map.SortedListString.
 Import ListNotations.
 
 Open Scope ilist_scope.
@@ -38,12 +39,6 @@ Inductive ext_spec: act -> list Empty_set -> list word32 ->
                 exists garbageWord,
                   results = [nth (Z.to_nat i) args (word.of_Z 0); garbageWord]).
 
-(*
-Instance myFlatImpParams: FlatImp.parameters := {|
-  FlatImp.bopname_params := myparams;
-  FlatImp.ext_spec := ext_spec;
-|}.
-*)
 
 Definition map_with_index{A B: Type}(f: A -> Z -> B)(l: list A): list B :=
   fst (List.fold_right (fun elem '(acc, i) => (f elem i :: acc, i-1)) (nil, Z.of_nat (List.length l) - 1) l).
@@ -51,7 +46,7 @@ Definition map_with_index{A B: Type}(f: A -> Z -> B)(l: list A): list B :=
 
 (* later, we'll modify the compiler to receive the absolute position of the code
    as an argument, which would allow us to use JALR here and get rid of the helpervar *)
-Definition compile_ext_call(results: list var)(a: act)(args: list var): list Instruction :=
+Definition compile_interact(results: list var)(a: act)(args: list var): list Instruction :=
   match a with
   | Select =>
     match results, args with
@@ -65,6 +60,14 @@ Definition compile_ext_call(results: list var)(a: act)(args: list var): list Ins
            argvars)
     | _, _ => [[ ]] (* invalid *)
     end
+  end.
+
+Instance funpos_env: map.map string Z := SortedListString.map _.
+
+Definition compile_ext_call(posenv: funpos_env)(mypos stackoffset: Z)(s: stmt Z) :=
+  match s with
+  | SInteract results a args => compile_interact results a args
+  | _ => []
   end.
 
 (*
@@ -95,16 +98,8 @@ Definition test: stmt var :=
   (SSeq (SOp _c Syntax.bopname.sub _inp1 _inp2)
         (SInteract [_r; _garbage] "Select"%string [_s; _a; _b; _c]))))).
 
-Instance compilation_params: FlatToRiscvDef.parameters. refine ({|
-  FlatToRiscvDef.compile_ext_call _ _ _ s :=
-    match s with
-    | SInteract results a args => compile_ext_call results a args
-    | _ => []
-    end;
-|}). all: case TODO. Defined.
-
 Definition compiled0: list Instruction.
-  refine (@compile_stmt compilation_params map.empty 0 0 test).
+  refine (compile_stmt RV32I compile_ext_call map.empty 0 0 test).
 Defined.
 
 Goal False. Proof. let r := eval cbv in compiled0 in set (compiled := r). Abort.

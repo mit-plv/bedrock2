@@ -55,93 +55,47 @@ Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
 
-Module Import Pipeline.
-
-  Class parameters := {
-    width: Z;
-    BW :> Bitwidth width;
-    word :> word.word width;
-    word_ok :> word.ok word;
-    mem :> map.map word byte;
-    Registers :> map.map Z word;
-    string_keyed_map :> forall T: Type, map.map string T; (* abstract T for better reusability *)
-    ext_spec :> Semantics.ExtSpec;
-    compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z -> list Instruction;
-    M: Type -> Type;
-    MM :> Monad M;
-    RVM :> RiscvProgram M word;
-    PRParams :> PrimitivesParams M MetricRiscvMachine;
-  }.
-
-  Instance FlatToRiscvDef_parameters{p: parameters}: FlatToRiscvDef.FlatToRiscvDef.parameters := {|
-    iset := if width =? 32 then RV32I else RV64I;
-    FlatToRiscvDef.FlatToRiscvDef.compile_ext_call := compile_ext_call;
-  |}.
-
-  Instance FlattenExpr_parameters{p: parameters}: FlattenExpr.parameters := {
-    FlattenExpr.locals := _;
-    FlattenExpr.mem := mem;
-    FlattenExpr.ext_spec := ext_spec;
-    FlattenExpr.NGstate := N;
-  }.
-
-  Instance FlatToRiscv_params{p: parameters}: FlatToRiscvCommon.parameters := {|
-    FlatToRiscvCommon.ext_spec := ext_spec;
-  |}.
-
-  Class assumptions{p: parameters}: Prop := {
-    word_riscv_ok :> RiscvWordProperties.word.riscv_ok word;
-    string_keyed_map_ok :> forall T, map.ok (string_keyed_map T);
-    Registers_ok :> map.ok Registers;
-    PR :> MetricPrimitives PRParams;
-    FlatToRiscv_hyps :> FlatToRiscvCommon.assumptions;
-    ext_spec_ok :> Semantics.ext_spec.ok ext_spec;
-    compile_ext_call_correct: forall resvars extcall argvars,
-        compiles_FlatToRiscv_correctly
-          compile_ext_call (FlatImp.SInteract resvars extcall argvars);
-    compile_ext_call_length_ignores_positions: forall stackoffset posmap1 posmap2 c pos1 pos2,
-      List.length (compile_ext_call posmap1 pos1 stackoffset c) =
-      List.length (compile_ext_call posmap2 pos2 stackoffset c);
-  }.
-
-End Pipeline.
-
 Section Pipeline1.
-
-  Context {p: parameters}.
-  Context {h: assumptions}.
+  Context {width: Z}.
+  Context {BW: Bitwidth width}.
+  Context {word: word.word width}.
+  Context {word_ok: word.ok word}.
+  Context {mem: map.map word byte}.
+  Context {Registers: map.map Z word}.
+  Context {string_keyed_map: forall T: Type, map.map string T}. (* abstract T for better reusability *)
+  Context {ext_spec: Semantics.ExtSpec}.
+  Context {M: Type -> Type}.
+  Context {MM: Monad M}.
+  Context {RVM: RiscvProgram M word}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
+  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
+  Context {string_keyed_map_ok: forall T, map.ok (string_keyed_map T)}.
+  Context {Registers_ok: map.ok Registers}.
+  Context {PR: MetricPrimitives PRParams}.
+  Context {iset: InstructionSet}.
+  Context {BWM: bitwidth_iset width iset}.
+  Context {mem_ok: map.ok mem}.
+  Context {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
+  Context (compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z -> list Instruction).
+  Context (compile_ext_call_correct: forall resvars extcall argvars,
+              compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
+                                             (FlatImp.SInteract resvars extcall argvars)).
+  Context (compile_ext_call_length_ignores_positions: forall stackoffset posmap1 posmap2 c pos1 pos2,
+              List.length (compile_ext_call posmap1 pos1 stackoffset c) =
+              List.length (compile_ext_call posmap2 pos2 stackoffset c)).
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Instance mk_FlatImp_ext_spec_ok:
-    FlatImp.ext_spec.ok  string (FlattenExpr.mk_FlatImp_params FlattenExpr_parameters).
-  Proof.
-    destruct h. destruct ext_spec_ok0.
-    constructor.
-    all: intros; eauto.
-    eapply intersect; eassumption.
-  Qed.
+  Local Notation source_env := (string_keyed_map (list string * list string * Syntax.cmd)).
+  Local Notation flat_env := (string_keyed_map (list string * list string * FlatImp.stmt string)).
+  Local Notation renamed_env := (string_keyed_map (list Z * list Z * FlatImp.stmt Z)).
 
-  Instance FlattenExpr_hyps: FlattenExpr.assumptions FlattenExpr_parameters.
-  Proof.
-    constructor.
-    - apply (string_keyed_map_ok (p := p)).
-    - exact mem_ok.
-    - apply (string_keyed_map_ok (p := p) (list string * list string * Syntax.cmd.cmd)).
-    - apply (string_keyed_map_ok (p := p) (list string * list string * FlatImp.stmt string)).
-    - apply mk_FlatImp_ext_spec_ok.
-  Qed.
-
-  Local Notation source_env := (@string_keyed_map p (list string * list string * Syntax.cmd)).
-  Local Notation flat_env := (@string_keyed_map p (list string * list string * FlatImp.stmt string)).
-  Local Notation renamed_env := (@string_keyed_map p (list Z * list Z * FlatImp.stmt Z)).
-
-  Definition compile(functions: source_env): option (list Instruction * funname_env Z * Z) :=
-    match upper_compiler ext_spec functions with
-    | Some functions' => riscvPhase functions'
+  Definition compile(functions: source_env): option (list Instruction * string_keyed_map Z * Z) :=
+    match upper_compiler functions with
+    | Some functions' => riscvPhase compile_ext_call functions'
     | None => None
     end.
 
@@ -226,7 +180,7 @@ Section Pipeline1.
       (Rdata Rexec : mem -> Prop)
       (functions: source_env)
       (instrs: list Instruction)
-      (pos_map: funname_env Z)
+      (pos_map: string_keyed_map Z)
       (mH: mem) (mc: MetricLog)
       (postH: Semantics.trace -> mem -> Prop)
       (required_stack_space: Z)
@@ -246,12 +200,9 @@ Section Pipeline1.
                      p_call (word.add p_call (word.of_Z 4)) mH' Rdata Rexec final).
   Proof.
     intros. unfold compile in *. simp.
-    pose proof @upper_compiler_correct as U. unfold phase_correct in U.
-    specialize U with (Zlocals := locals) (5 := E) (6 := H1).
-    edestruct U as (fbody' & G' & Sim); clear U; try typeclasses eauto.
-    eapply @flat_to_riscv_correct; try typeclasses eauto; try eassumption.
-    { exact compile_ext_call_length_ignores_positions. }
-    { exact compile_ext_call_correct. }
+    pose proof upper_compiler_correct as U. unfold phase_correct in U.
+    edestruct U as (fbody' & G' & Sim); clear U. 1,2: eassumption.
+    eapply flat_to_riscv_correct; try typeclasses eauto; try eassumption.
     { unfold upper_compiler, compose_phases in *. simp.
       eapply spill_functions_valid_FlatImp_fun. 1: eassumption.
       eapply rename_functions_NoDup. 2: eassumption.

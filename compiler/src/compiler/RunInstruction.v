@@ -67,8 +67,7 @@ Section Run.
 
   Ltac simulate' := repeat simulate'_step.
 
-  Context (iset: InstructionSet)
-          (iset_bitwidth_matches: bitwidth iset = id width). (* id prevents "subst width" *)
+  Context (iset: InstructionSet).
 
   Definition run_Jalr0_spec :=
     forall (rs1: Z) (oimm12: Z) (initialL: RiscvMachineL) (R Rexec: mem -> Prop)
@@ -334,8 +333,9 @@ Section Run.
   Lemma run_Lw: run_Load_spec 4 Lw (signExtend 32).
   Proof. t. Qed.
 
-  Lemma run_Lw_unsigned: id width = 32 -> run_Load_spec 4 Lw id.
+  Lemma run_Lw_unsigned: width = 32 -> run_Load_spec 4 Lw id.
   Proof.
+    change width with (id width).
     t. rewrite sextend_width_nop; [reflexivity|symmetry;assumption].
   Qed.
 
@@ -346,16 +346,10 @@ Section Run.
   Proof. t. Qed.
 
   (* Note: there's no Ldu instruction, because Ld does the same *)
-  Lemma run_Ld_unsigned: run_Load_spec 8 Ld id.
+  Lemma run_Ld_unsigned: width = 64 -> run_Load_spec 8 Ld id.
   Proof.
-    t. rewrite sextend_width_nop; [reflexivity|].
-    edestruct @invert_ptsto_instr as (DE & ?); [exact word_ok|exact mem_ok|ecancel_assumption|].
-    clear -DE iset_bitwidth_matches.
-    destruct DE as [DE | DE]. 2: { unfold valid_InvalidInstruction in DE. simp. discriminate. }
-    destruct DE as [_ H]. unfold verify_iset in *.
-    unfold id in *.
-    rewrite <- iset_bitwidth_matches. unfold bitwidth.
-    destruct H as [ H | [ H | [ H | H ] ] ]; subst; reflexivity.
+    change width with (id width).
+    t. rewrite sextend_width_nop; [reflexivity|symmetry;assumption].
   Qed.
 
   Lemma iff1_emp: forall P Q,

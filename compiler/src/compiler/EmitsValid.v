@@ -240,7 +240,7 @@ Inductive supported_iset: InstructionSet -> Prop :=
 
 Section EmitsValid.
 
-  Context {compilation_params: FlatToRiscvDef.parameters}.
+  Context {iset: InstructionSet}.
 
   Arguments Z.of_nat: simpl never.
   Arguments Z.mul: simpl never.
@@ -396,7 +396,7 @@ Section EmitsValid.
 
   Lemma compile_lit_emits_valid: forall r w,
       valid_register r ->
-      valid_instructions iset (compile_lit r w).
+      valid_instructions iset (compile_lit iset r w).
   Proof.
     intros.
     unfold compile_lit.
@@ -453,7 +453,7 @@ Section EmitsValid.
       valid_register x ->
       valid_register y ->
       - 2 ^ 11 <= offset < 2 ^ 11 ->
-      valid_instructions iset [compile_load sz x y offset].
+      valid_instructions iset [compile_load iset sz x y offset].
   Proof.
     intros. unfold valid_instructions, valid_register, compile_load in *.
     unfold verify, respects_bounds, verify_iset. simpl.
@@ -477,7 +477,7 @@ Section EmitsValid.
       valid_register x ->
       valid_register y ->
       - 2 ^ 11 <= offset < 2 ^ 11 ->
-      valid_instructions iset [compile_store sz x y offset].
+      valid_instructions iset [compile_store iset sz x y offset].
   Proof.
     intros.
     intros. unfold valid_instructions, valid_register, compile_store in *.
@@ -499,7 +499,7 @@ Section EmitsValid.
   Abort.
 
   Lemma compile_lit_size: forall x v,
-      0 <= Z.of_nat (length (compile_lit x v)) <= 8.
+      0 <= Z.of_nat (length (compile_lit iset x v)) <= 8.
   Proof.
     intros. unfold compile_lit, compile_lit_64bit, compile_lit_32bit, compile_lit_12bit.
     repeat destruct_one_match; cbv; split; discriminate.

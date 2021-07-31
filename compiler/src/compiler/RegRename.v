@@ -153,22 +153,7 @@ Section RegAlloc.
   Context {impLocalsOk: map.ok impLocals}.
   Context {srcEnv: map.map String.string (list srcvar * list srcvar * stmt)}.
   Context {impEnv: map.map String.string (list impvar * list impvar * stmt')}.
-  Context (ext_spec:  list (mem * String.string * list word * (mem * list word)) ->
-                      mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop).
-
-  Instance srcSemanticsParams: FlatImp.parameters srcvar. refine ({|
-    FlatImp.varname_eqb := String.eqb;
-    FlatImp.locals := srcLocals;
-    FlatImp.ext_spec := ext_spec;
-  |}).
-  Defined.
-
-  Instance impSemanticsParams: FlatImp.parameters impvar. refine ({|
-    FlatImp.varname_eqb := Z.eqb;
-    FlatImp.locals := impLocals;
-    FlatImp.ext_spec := ext_spec;
-  |}).
-  Defined.
+  Context {ext_spec: Semantics.ExtSpec}.
 
   Definition rename_functions_old: srcEnv -> option impEnv :=
     map.map_all_values rename_fun_old.
@@ -352,8 +337,8 @@ Section RegAlloc.
   Lemma eval_bcond_compat: forall (lH : srcLocals) r (lL: impLocals) condH condL b,
       rename_cond r condH = Some condL ->
       states_compat lH r lL ->
-      @eval_bcond _ srcSemanticsParams lH condH = Some b ->
-      @eval_bcond _ impSemanticsParams lL condL = Some b.
+      eval_bcond lH condH = Some b ->
+      eval_bcond lL condL = Some b.
   Proof.
     intros.
     unfold rename_cond, eval_bcond in *.
@@ -369,8 +354,8 @@ Section RegAlloc.
   Lemma eval_bcond_compat_None: forall (lH : srcLocals) r (lL: impLocals) condH condL,
       rename_cond r condH = Some condL ->
       states_compat lH r lL ->
-      @eval_bcond _ srcSemanticsParams lH condH <> None ->
-      @eval_bcond _ impSemanticsParams lL condL <> None.
+      eval_bcond lH condH <> None ->
+      eval_bcond lL condL <> None.
   Proof.
     intros.
     match goal with
@@ -383,8 +368,8 @@ Section RegAlloc.
   Lemma eval_bcond_compat': forall (lH : srcLocals) r (lL: impLocals) condH condL b,
       rename_cond r condH = Some condL ->
       states_compat' lH r lL ->
-      @eval_bcond _ srcSemanticsParams lH condH = Some b ->
-      @eval_bcond _ impSemanticsParams lL condL = Some b.
+      eval_bcond lH condH = Some b ->
+      eval_bcond lL condL = Some b.
   Proof.
     intros.
     unfold rename_cond, eval_bcond in *.
@@ -728,13 +713,13 @@ Section RegAlloc.
   Lemma rename_correct_new: forall eH eL,
       envs_related_new eH eL ->
       forall sH t m lH mc post,
-      @exec _ srcSemanticsParams eH sH t m lH mc post ->
+      exec eH sH t m lH mc post ->
       forall lL r r' av av' sL,
       map.injective r ->
       dom_bound r av ->
       rename r sH av = Some (r', sL, av') ->
       states_compat lH r lL ->
-      @exec _ impSemanticsParams eL sL t m lL mc (fun t' m' lL' mc' =>
+      exec eL sL t m lL mc (fun t' m' lL' mc' =>
         exists lH', states_compat lH' r' lL' /\
                     post t' m' lH' mc').
   Proof.
@@ -922,13 +907,13 @@ Section RegAlloc.
   Lemma rename_correct_old: forall eH eL,
       envs_related_old eH eL ->
       forall sH t m lH mc post,
-      @exec _ srcSemanticsParams eH sH t m lH mc post ->
+      exec eH sH t m lH mc post ->
       forall lL r r' av av' sL,
       map.injective r ->
       dom_bound r av ->
       rename r sH av = Some (r', sL, av') ->
       states_compat lH r lL ->
-      @exec _ impSemanticsParams eL sL t m lL mc (fun t' m' lL' mc' =>
+      exec eL sL t m lL mc (fun t' m' lL' mc' =>
         exists lH', states_compat lH' r' lL' /\
                     post t' m' lH' mc').
   Proof.
@@ -939,7 +924,7 @@ Section RegAlloc.
   Qed.
 
   Definition related(done: bool):
-    @FlatImp.SimState _ srcSemanticsParams -> @FlatImp.SimState _ impSemanticsParams -> Prop :=
+    FlatImp.SimState srcvar -> FlatImp.SimState impvar -> Prop :=
     fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
       t1 = t2 /\
       m1 = m2 /\
@@ -951,8 +936,8 @@ Section RegAlloc.
     forall av' r',
       envs_related_old e1 e2 ->
       rename map.empty c1 lowest_available_impvar = Some (r', c2, av') ->
-      simulation (@FlatImp.SimExec _ srcSemanticsParams e1 c1)
-                 (@FlatImp.SimExec _ impSemanticsParams e2 c2) related.
+      simulation (FlatImp.SimExec srcvar e1 c1)
+                 (FlatImp.SimExec impvar e2 c2) related.
   Proof.
     unfold simulation.
     intros *. intros ER Ren.

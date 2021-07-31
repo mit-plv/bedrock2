@@ -26,8 +26,26 @@ Require Import riscv.Spec.Machine.
 Arguments Jal (_)%Z (_)%Z. (* needed when inside a (_)%sep *)
 
 Section Proofs.
-  Context {p: FlatToRiscvCommon.parameters}.
-  Context {h: FlatToRiscvCommon.assumptions}.
+  Context {iset: Decode.InstructionSet}.
+  Context {fun_pos_env: map.map String.string Z}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {word_ok: word.ok word}.
+  Context {locals: map.map Z word}.
+  Context {mem: map.map word byte}.
+  Context {env: map.map String.string (list Z * list Z * FlatImp.stmt Z)}.
+  Context {M: Type -> Type}.
+  Context {MM: Monads.Monad M}.
+  Context {RVM: Machine.RiscvProgram M word}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
+  Context {ext_spec: Semantics.ExtSpec}.
+  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
+  Context {locals_ok: map.ok locals}.
+  Context {mem_ok: map.ok mem}.
+  Context {fun_pos_env_ok: map.ok fun_pos_env}.
+  Context {env_ok: map.ok env}.
+  Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
+  Context {BWM: bitwidth_iset width iset}.
+  Context (compile_ext_call: fun_pos_env -> Z -> Z -> stmt Z -> list Instruction).
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -93,8 +111,26 @@ Require compilerExamples.MMIO.
 Require Import riscv.Platform.FE310ExtSpec.
 
 Section PrintExamples.
-  Context {p: FlatToRiscvCommon.parameters}.
-  Context {h: FlatToRiscvCommon.assumptions}.
+  Context {iset: Decode.InstructionSet}.
+  Context {fun_pos_env: map.map String.string Z}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {word_ok: word.ok word}.
+  Context {locals: map.map Z word}.
+  Context {mem: map.map word byte}.
+  Context {env: map.map String.string (list Z * list Z * FlatImp.stmt Z)}.
+  Context {M: Type -> Type}.
+  Context {MM: Monads.Monad M}.
+  Context {RVM: Machine.RiscvProgram M word}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
+  Context {ext_spec: Semantics.ExtSpec}.
+  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
+  Context {locals_ok: map.ok locals}.
+  Context {mem_ok: map.ok mem}.
+  Context {fun_pos_env_ok: map.ok fun_pos_env}.
+  Context {env_ok: map.ok env}.
+  Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
+  Context {BWM: bitwidth_iset width iset}.
+  Context (compile_ext_call: fun_pos_env -> Z -> Z -> stmt Z -> list Instruction).
 
   Import MonadNotations.
   Import HexNotation.

@@ -25,7 +25,26 @@ Require Import riscv.Utility.InstructionCoercions.
 
 
 Section Sim.
-  Context {p: FlatToRiscvCommon.parameters}.
+  Context {iset: InstructionSet}.
+  Context {funpos_env: map.map String.string Z}.
+  Context (compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Instruction).
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {word_ok: word.ok word}.
+  Context {locals: map.map Z word}.
+  Context {mem: map.map word byte}.
+  Context {env: map.map String.string (list Z * list Z * stmt Z)}.
+  Context {BWM: bitwidth_iset width iset}.
+  Context {M: Type -> Type}.
+  Context {MM: Monads.Monad M}.
+  Context {RVM: Machine.RiscvProgram M word}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
+  Context {ext_spec: Semantics.ExtSpec}.
+  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
+  Context {locals_ok: map.ok locals}.
+  Context {mem_ok: map.ok mem}.
+  Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
+  Context {funpos_env_ok: map.ok funpos_env}.
+  Context {env_ok: map.ok env}.
 
   Local Open Scope ilist_scope.
 
@@ -48,7 +67,7 @@ Section Sim.
     p_insts := p_call;
     insts := [[Jal RegisterNames.ra (f_entry_rel_pos + word.signed (word.sub functions_start p_call))]];
     program_base := functions_start;
-    e_pos := FlatToRiscvDef.build_fun_pos_env prog;
+    e_pos := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call prog;
     e_impl := prog;
     dframe := Rdata;
     xframe := Rexec;
@@ -58,16 +77,16 @@ Section Sim.
     FlatImp.SimState Z -> MetricRiscvMachine -> Prop :=
     fun '(t, m, l, mc) st =>
         st.(getPc) = word.add p_call (word.of_Z (if done then 4 else 0)) /\
-        goodMachine t m l ghostConsts st.
+        goodMachine compile_ext_call t m l ghostConsts st.
 
-  Lemma flatToRiscvSim{hyps: @FlatToRiscvCommon.assumptions p}:
+  Lemma flatToRiscvSim:
     (forall resvars extcall argvars,
         compiles_FlatToRiscv_correctly
-          compile_ext_call (SInteract resvars extcall argvars)) ->
+          compile_ext_call compile_ext_call (SInteract resvars extcall argvars)) ->
     let c := SSeq SSkip (SCall nil f_entry_name nil) in
     (word.unsigned p_call) mod 4 = 0 ->
     (word.unsigned functions_start) mod 4 = 0 ->
-    map.get (build_fun_pos_env prog) f_entry_name = Some f_entry_rel_pos ->
+    map.get (build_fun_pos_env iset compile_ext_call prog) f_entry_name = Some f_entry_rel_pos ->
     fits_stack ghostConsts.(rem_framewords) ghostConsts.(rem_stackwords) prog c ->
     good_e_impl prog ghostConsts.(e_pos) ->
     simulation (FlatImp.SimExec Z prog c) FlatToRiscvCommon.runsTo related.
@@ -89,7 +108,7 @@ Section Sim.
     eapply runsTo_weaken.
     - eapply compile_stmt_correct with (g := ghostConsts)
                                        (pos := - word.signed (word.sub functions_start p_call)); simpl.
-      + assumption.
+      + eassumption.
       + eapply exec.call; cycle -1; try eassumption.
         Fail eassumption. (* TODO why?? *)
         match goal with

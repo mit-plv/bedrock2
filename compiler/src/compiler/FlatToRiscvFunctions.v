@@ -35,8 +35,26 @@ Require Import coqutil.Map.TestLemmas.
 Import MetricLogging.
 
 Section Proofs.
-  Context {p: FlatToRiscvCommon.parameters}.
-  Context {h: FlatToRiscvCommon.assumptions}.
+  Context {iset: Decode.InstructionSet}.
+  Context {fun_pos_env: map.map String.string Z}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {word_ok: word.ok word}.
+  Context {locals: map.map Z word}.
+  Context {mem: map.map word byte}.
+  Context {env: map.map String.string (list Z * list Z * FlatImp.stmt Z)}.
+  Context {M: Type -> Type}.
+  Context {MM: Monads.Monad M}.
+  Context {RVM: Machine.RiscvProgram M word}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
+  Context {ext_spec: Semantics.ExtSpec}.
+  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
+  Context {locals_ok: map.ok locals}.
+  Context {mem_ok: map.ok mem}.
+  Context {fun_pos_env_ok: map.ok fun_pos_env}.
+  Context {env_ok: map.ok env}.
+  Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
+  Context {BWM: bitwidth_iset width iset}.
+  Context (compile_ext_call: fun_pos_env -> Z -> Z -> stmt Z -> list Instruction).
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -58,9 +76,10 @@ Section Proofs.
 
      low stack addresses *)
 
-  Notation fun_pos_env := (@funname_env p Z).
+  Notation functions := (functions (iset := iset) compile_ext_call).
+  Notation compile_function := (compile_function iset compile_ext_call).
 
-  Lemma functions_expose: forall base rel_positions impls f pos impl,
+  Lemma functions_expose: forall (base: word) rel_positions impls f pos impl,
       map.get rel_positions f = Some pos ->
       map.get impls f = Some impl ->
       iff1 (functions base rel_positions impls)
@@ -74,7 +93,7 @@ Section Proofs.
     simpl in P.
     specialize P with (2 := H0).
     rewrite P.
-    - unfold function at 1. rewrite H. cancel. reflexivity.
+    - unfold function at 1. rewrite H. cancel.
     - intros. apply iff1ToEq. cancel.
   Qed.
 
@@ -93,7 +112,7 @@ Section Proofs.
               | _ => fail 10000 P "is not a sep clause"
               end in
     lazymatch P with
-    | array (ptsto_instr _) _ _ (compile_stmt _ _ _ ?Code) => Code
+    | array (ptsto_instr _) _ _ (compile_stmt _ _ _ _ _ ?Code) => Code
     | ptsto_instr _ _ ?Instr => Instr
     | array ptsto_word _ _ ?Words => Words
     | functions _ _ ?E_Impl => E_Impl
@@ -121,17 +140,16 @@ Section Proofs.
     | |- _ = ?R => is_evar R; reflexivity
       However, for some equalities, it's ok to prove them with eq_refl:
     *)
-    | |- @eq ?T _ _ => first [ unify T (list Instruction) | unify T (@env (@Semantics_params p)) ];
-                       reflexivity
+    | |- @eq (list Instruction) _ _ => reflexivity
     | H: fits_stack _ _ _ ?Code |- fits_stack _ _ _ ?Code => exact H
     | H: map.get ?R RegisterNames.sp = Some _ |- map.get ?R RegisterNames.sp = Some _ => exact H
     | |- ?G => assert_fails (has_evar G);
-               solve [ simpl_addrs; solve_word_eq (@word_ok p)
+               solve [ simpl_addrs; solve_word_eq word_ok
                      | solve_stmt_not_too_big
                      | reflexivity
                      | assumption
                      | solve_divisibleBy4
-                     | solve_valid_machine (@word_ok p) ]
+                     | solve_valid_machine word_ok ]
     | H: subset (footpr _) _ |- subset (footpr _) _ =>
       eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ]
     | |- _ => solve [wcancel_assumption]
@@ -174,17 +192,17 @@ Section Proofs.
     | |- exists (_: _), _ => eexists
     end;
     ssplit;
-    simpl_word_exprs (@word_ok p);
+    simpl_word_exprs word_ok;
     match goal with
-    | |- _ => solve_word_eq (@word_ok p)
+    | |- _ => solve_word_eq word_ok
     | |- exists _, _ = _ /\ (_ * _)%sep _ =>
       eexists; split; cycle 1; [ wcancel_assumption | blia ]
     | |- _ => solve [rewrite ?of_list_list_union in *;
                      (* Don't do that, because it will consider all Zs as variables
                         and slow everything down
                         change Z with Register in *; *)
-                     map_solver (@locals_ok p h)]
-    | |- _ => solve [solve_valid_machine (@word_ok p)]
+                     map_solver locals_ok]
+    | |- _ => solve [solve_valid_machine word_ok]
     | |- _ => solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]
     | H: subset (footpr _) _ |- subset (footpr _) _ =>
       eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ]
@@ -195,14 +213,14 @@ Section Proofs.
     simpl_MetricRiscvMachine_get_set;
     simpl_g_get;
     rewrite ?@length_save_regs, ?@length_load_regs in *;
-    simpl_word_exprs (@word_ok p);
+    simpl_word_exprs word_ok;
     repeat match goal with
            | |- _ /\ _ => split
            | |- exists _, _ => eexists
            end.
 
   Ltac sidecondition_hook ::=
-    try solve [ map_solver (@locals_ok p h)
+    try solve [ map_solver locals_ok
               | wcancel_assumption ].
 
   Lemma split_from_right{A: Type}: forall (l: list A) (len: nat),
@@ -225,23 +243,15 @@ Section Proofs.
     | subst nameOrig;
       rename nL into nameL, nR into nameR ].
 
-  Lemma map_extends_remove: forall (m1 m2: funname_env (list Z * list Z * stmt Z)) k,
+  Lemma map_extends_remove: forall (m1 m2: env) k,
       map.extends m1 m2 ->
       map.extends m1 (map.remove m2 k).
-  Proof.
-    generalize (funname_env_ok (list Z * list Z * stmt Z)).
-    simpl in *.
-    intro OK.
-    map_solver OK.
-  Qed.
+  Proof. map_solver env_ok. Qed.
 
-  Lemma map_get_Some_remove: forall (m: funname_env (list Z * list Z * stmt Z)) k1 k2 v,
+  Lemma map_get_Some_remove: forall (m: env) k1 k2 v,
       map.get (map.remove m k1) k2 = Some v ->
       map.get m k2 = Some v.
-  Proof.
-    generalize (funname_env_ok (list Z * list Z * stmt Z)).
-    intro OK. intros. map_solver OK.
-  Qed.
+  Proof. map_solver env_ok. Qed.
 
   Lemma pigeonhole{A: Type}{aeqb: A -> A -> bool}{aeqb_sepc: EqDecider aeqb}: forall (l s: list A),
       (* no pigeonhole contains more than one pigeon: *)
@@ -302,9 +312,9 @@ Section Proofs.
 
   Ltac getEq_length_load_save_regs t :=
     match t with
-    | context [ Datatypes.length (save_regs ?vars ?offset) ] =>
+    | context [ Datatypes.length (save_regs ?iset ?vars ?offset) ] =>
       constr:(length_save_regs vars offset)
-    | context [ Datatypes.length (load_regs ?vars ?offset) ] =>
+    | context [ Datatypes.length (load_regs ?iset ?vars ?offset) ] =>
       constr:(length_load_regs vars offset)
     end.
 
@@ -314,11 +324,11 @@ Section Proofs.
 
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
-        compiles_FlatToRiscv_correctly
+        compiles_FlatToRiscv_correctly compile_ext_call
           compile_ext_call (SInteract resvars extcall argvars)) ->
     (forall s,
-        compiles_FlatToRiscv_correctly
-          compile_stmt s).
+        compiles_FlatToRiscv_correctly compile_ext_call
+          (compile_stmt iset compile_ext_call) s).
   Proof. (* by induction on the FlatImp execution, symbolically executing through concrete
      RISC-V instructions, and using the IH for lists of abstract instructions (eg a then or else branch),
      using cancellation, bitvector reasoning, lia, and firstorder for the sideconditions. *)
@@ -396,7 +406,7 @@ Section Proofs.
       assert (exists remaining_stack old_scratch old_modvarvals old_ra old_retvals old_argvals unused_scratch,
                  old_stackvals = remaining_stack ++ old_scratch ++ old_modvarvals ++ [old_ra] ++
                                                  old_retvals ++ old_argvals ++ unused_scratch /\
-                 List.length old_scratch = Z.to_nat (stackalloc_words body) /\
+                 List.length old_scratch = Z.to_nat (stackalloc_words iset body) /\
                  List.length old_modvarvals =
                     List.length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames) /\
                  List.length old_retvals = List.length retnames /\
@@ -411,7 +421,7 @@ Section Proofs.
         split_from_right ToSplit ToSplit old_ras 1%nat.
         split_from_right ToSplit ToSplit old_modvarvals
                 (Datatypes.length (list_union Z.eqb (modVars_as_list Z.eqb body) argnames)).
-        split_from_right ToSplit ToSplit old_scratch (Z.to_nat (stackalloc_words body)).
+        split_from_right ToSplit ToSplit old_scratch (Z.to_nat (stackalloc_words iset body)).
         destruct old_ras as [|old_ra rest]; try discriminate.
         destruct rest; try discriminate.
         repeat match goal with
@@ -618,7 +628,7 @@ Section Proofs.
       simpl_MetricRiscvMachine_get_set;
       simpl_g_get;
       rewrite ?@length_save_regs, ?@length_load_regs in *;
-      simpl_word_exprs (@word_ok p);
+      simpl_word_exprs word_ok;
       ssplit;
       subst FL.
       all: try safe_sidecond.
@@ -633,11 +643,11 @@ Section Proofs.
         repeat split; eauto.
       }
       { eapply map.putmany_of_list_zip_extends; [eassumption..|].
-        clear -h. unfold map.extends. intros. rewrite map.get_empty in H. discriminate H. }
+        clear -locals_ok. unfold map.extends. intros. rewrite map.get_empty in H. discriminate H. }
       { match goal with
         | H: map.putmany_of_list_zip _ _ map.empty = Some st0,
           V: Forall valid_FlatImp_var argnames |- _ =>
-          rename H into P; rename V into N; clear -P N h
+          rename H into P; rename V into N; clear -P N locals_ok
         end.
         intros.
         pose proof (map.putmany_of_list_zip_find_index _ _ _ _ _ _ P H) as Q.
@@ -655,7 +665,8 @@ Section Proofs.
         repeat match goal with
                | H: ?T |- _ => lazymatch T with
                                | map.putmany_of_list_zip _ _ _ = Some middle_regs0 => revert H
-                               | assumptions => fail
+                               | map.ok _ => fail
+                               | word.ok _ => fail
                                | _ = bytes_per_word => fail
                                | _ => clear H
                                end
@@ -776,11 +787,14 @@ Section Proofs.
         subst FL.
         repeat match goal with
                | H: ?T |- _ => lazymatch T with
-                               | assumptions => fail
                                | map.putmany_of_list_zip _ _ _ = Some middle_regs2 => revert H
                                | map.get middle_regs1 RegisterNames.sp = Some _ => revert H
+                               | map.ok _ => revert H
                                | _ => clear H
                                end
+               end.
+        repeat match goal with
+               | |- forall (_: map.ok _), _ => intro
                end.
         intros G PM F.
         eapply map.putmany_of_list_zip_get_oldval. 3: exact G. 1: exact PM.
@@ -811,13 +825,16 @@ Section Proofs.
         rewrite map.get_put_diff by (clear; cbv; congruence).
         repeat match goal with
                | H: ?T |- _ => lazymatch T with
-                               | assumptions => fail
                                | map.putmany_of_list_zip _ _ _ = Some middle_regs2 => revert H
                                | map.get middle_regs1 RegisterNames.sp = Some _ => revert H
                                | valid_FlatImp_vars body => revert H
                                | Forall valid_FlatImp_var argnames => revert H
+                               | map.ok _ => revert H
                                | _ => clear H
                                end
+               end.
+        repeat match goal with
+               | |- forall (_: map.ok _), _ => intro
                end.
         intros F1 F2 G PM.
         eapply map.putmany_of_list_zip_get_oldval. 1: exact PM. 2: exact G.
@@ -1283,7 +1300,7 @@ Section Proofs.
         clear -V. unfold valid_FlatImp_var, RegisterNames.ra in *. blia.
       }
       match goal with
-      | H: map.extends lL lH |- _ => clear -H G h
+      | H: map.extends lL lH |- _ => clear -H G locals_ok
       end.
       map_solver locals_ok.
 
@@ -1305,7 +1322,7 @@ Section Proofs.
       match goal with
       | H: map.putmany_of_list_zip _ _  (map.put (map.put _ _ _) _ ?v) = Some ?m2 |-
         map.get ?m2 _ = Some ?v' =>
-        rename H into D; clear -D h A BPW;
+        rename H into D; clear -D locals_ok word_ok A BPW;
         replace v with v' in D by (simpl_addrs; solve_word_eq word_ok)
       end.
       eapply map.putmany_of_list_zip_get_oldval.
@@ -1373,7 +1390,7 @@ Section Proofs.
       change Memory.store_bytes with (Platform.Memory.store_bytes(word:=word)) in *.
       match goal with
       | H: Platform.Memory.store_bytes _ _ _ _ = _ |- _ =>
-        unshelve epose proof (@store_bytes_frame _ _ _ _ _ _ _ _ _ H _) as P; cycle 2
+        unshelve epose proof (store_bytes_frame H _) as P; cycle 2
       end.
       1: ecancel_assumption.
       destruct P as (finalML & P1 & P2).
@@ -1474,7 +1491,7 @@ Section Proofs.
           simpl_MetricRiscvMachine_get_set;
           simpl_g_get;
           rewrite ?@length_save_regs, ?@length_load_regs in *;
-          simpl_word_exprs (@word_ok p);
+          simpl_word_exprs word_ok;
           ssplit;
           cycle -5.
         { reflexivity. }
@@ -1667,7 +1684,7 @@ Section Proofs.
         | H: exists _ _ _ _, _ |- _ => destruct H as [ tH' [ mH' [ lH' [ mcH' H ] ] ] ]
         end.
         simp. subst.
-        destruct (@eval_bcond Z (@Semantics_params p) lH' cond) as [condB|] eqn: E.
+        destruct (eval_bcond lH' cond) as [condB|] eqn: E.
         2: exfalso;
            match goal with
            | H: context [_ <> None] |- _ => solve [eapply H; eauto]

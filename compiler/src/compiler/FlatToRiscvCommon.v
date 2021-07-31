@@ -55,27 +55,6 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
-Export FlatToRiscvDef.FlatToRiscvDef.
-
-Class parameters := {
-  def_params :> FlatToRiscvDef.parameters;
-
-  width: Z;
-  BW :> Bitwidth width;
-  word :> word.word width;
-  word_ok :> word.ok word;
-  locals :> map.map Z word;
-  mem :> map.map word byte;
-
-  M: Type -> Type;
-  MM :> Monad M;
-  RVM :> RiscvProgram M word;
-  PRParams :> PrimitivesParams M MetricRiscvMachine;
-
-  ext_spec : list (mem * String.string * list word * (mem * list word)) ->
-             mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop;
-}.
-
 Arguments Z.mul: simpl never.
 Arguments Z.add: simpl never.
 Arguments Z.of_nat: simpl never.
@@ -88,13 +67,13 @@ Arguments run1: simpl never.
 Arguments compile_store: simpl never.
 Arguments compile_load: simpl never.
 
-Section WithParameters.
-  Context {p: parameters}.
+Class bitwidth_iset(width: Z)(iset: InstructionSet): Prop :=
+  bitwidth_matches: bitwidth iset = width.
 
-  Instance Semantics_params: FlatImp.parameters Z := {|
-    FlatImp.varname_eqb := Z.eqb;
-    FlatImp.ext_spec := ext_spec;
-  |}.
+Section WithParameters.
+  Context {iset: InstructionSet}.
+  Context {width} {BW: Bitwidth width} {word: word.word width}.
+  Context {locals: map.map Z word}.
 
   Definition regs_initialized(regs: locals): Prop :=
     forall r : Z, 0 < r < 32 -> exists v : word, map.get regs r = Some v.
@@ -137,13 +116,26 @@ Section WithParameters.
 
   End WithLocalsOk.
 
-  Definition runsTo: MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
+  Context {funpos_env: map.map String.string Z}.
+  Context (compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Instruction).
+  Context {word_ok: word.ok word}.
+  Context {mem: map.map word byte}.
+  Context {env: map.map String.string (list Z * list Z * stmt Z)}.
+  Context {M: Type -> Type}.
+  Context {MM: Monad M}.
+  Context {RVM: RiscvProgram M word}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
+  Context {ext_spec: Semantics.ExtSpec}.
+
+  Definition runsTo{BWM: bitwidth_iset width iset}: (* BWM is unused, but makes iset inferrable *)
+    MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
 
-  Definition function(base: word)(rel_positions: funname_env Z)
+  Definition function{BWM: bitwidth_iset width iset}(base: word)(rel_positions: funpos_env)
              (fname: String.string)(impl : list Z * list Z * stmt Z): mem -> Prop :=
     match map.get rel_positions fname with
-    | Some pos => program iset (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl)
+    | Some pos => program iset (word.add base (word.of_Z pos))
+                          (compile_function iset compile_ext_call rel_positions pos impl)
     | _ => emp False
     end.
 
@@ -153,7 +145,8 @@ Section WithParameters.
      a second time inside [functions]).
      To avoid this double mentioning, we will remove the function being called from the
      list of functions before entering the body of the function. *)
-  Definition functions(base: word)(rel_positions: funname_env Z): env -> mem -> Prop :=
+  Definition functions{BWM: bitwidth_iset width iset}(base: word)(rel_positions: funpos_env):
+    env -> mem -> Prop :=
     map.fold (fun P fname fbody => (function base rel_positions fname fbody * P)%sep) (emp True).
 
   (*
@@ -176,9 +169,9 @@ Section WithParameters.
   *)
 
   (* measured in words, needs to be multiplied by 4 or 8 *)
-  Definition framelength: list Z * list Z * stmt Z -> Z :=
+  Definition framelength{BWM: bitwidth_iset width iset}: list Z * list Z * stmt Z -> Z :=
     fun '(argvars, resvars, body) =>
-      stackalloc_words body +
+      stackalloc_words iset body +
       let mod_vars := ListSet.list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
       Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
 
@@ -188,7 +181,7 @@ Section WithParameters.
      callees). Note:
      - This predicate cannot be proved for recursive functions
      - Measured in words, needs to be multiplied by 4 or 8 *)
-  Inductive fits_stack: Z -> Z -> env -> stmt Z -> Prop :=
+  Inductive fits_stack{BWM: bitwidth_iset width iset}: Z -> Z -> env -> stmt Z -> Prop :=
   | fits_stack_load: forall M N e sz x y o,
       0 <= M -> 0 <= N ->
       fits_stack M N e (SLoad sz x y o)
@@ -231,7 +224,7 @@ Section WithParameters.
   | fits_stack_call: forall M N e binds fname args argnames retnames body,
       0 <= M ->
       map.get e fname = Some (argnames, retnames, body) ->
-      fits_stack (stackalloc_words body)
+      fits_stack (stackalloc_words iset body)
                  (N - framelength (argnames, retnames, body))
                  (map.remove e fname) body ->
       fits_stack M N e (SCall binds fname args)
@@ -241,18 +234,20 @@ Section WithParameters.
          stack_needed act <= N *)
       fits_stack M N e (SInteract binds act args).
 
-  Lemma stackalloc_words_nonneg: forall s,
-      0 <= stackalloc_words s.
-  Proof.
+  Lemma stackalloc_words_nonneg{BWM: bitwidth_iset width iset}: forall s,
+      0 <= stackalloc_words iset s.
+  Proof using .
+    clear.
     assert (Memory.bytes_per_word (bitwidth iset) = 4 \/ Memory.bytes_per_word (bitwidth iset) = 8). {
       unfold Memory.bytes_per_word. destruct iset; cbv; auto.
     }
     induction s; simpl; Z.div_mod_to_equations; blia.
   Qed.
 
-  Lemma framesize_nonneg: forall argvars resvars body,
+  Lemma framesize_nonneg{BWM: bitwidth_iset width iset}: forall argvars resvars body,
       0 <= framelength (argvars, resvars, body).
-  Proof.
+  Proof using BW.
+    clear -BW.
     intros. unfold framelength.
     pose proof (stackalloc_words_nonneg body).
     assert (bytes_per_word = 4 \/ bytes_per_word = 8). {
@@ -262,11 +257,11 @@ Section WithParameters.
     blia.
   Qed.
 
-  Lemma fits_stack_nonneg: forall M N e s,
+  Lemma fits_stack_nonneg{BWM: bitwidth_iset width iset}: forall M N e s,
       fits_stack M N e s ->
       0 <= M /\ 0 <= N.
-  Proof.
-    induction 1; try blia. pose proof (@framesize_nonneg argnames retnames body). blia.
+  Proof using BW.
+    induction 1; try blia. pose proof (framesize_nonneg argnames retnames body). blia.
   Qed.
 
   (* Ghost state used to describe low-level state introduced by the compiler.
@@ -284,13 +279,13 @@ Section WithParameters.
     p_insts: word;
     insts: list Instruction;
     program_base: word;
-    e_pos: funname_env Z;
+    e_pos: funpos_env;
     e_impl: env;
     dframe: mem -> Prop; (* data frame *)
     xframe: mem -> Prop; (* executable frame *)
   }.
 
-  Definition goodMachine
+  Definition goodMachine{BWM: bitwidth_iset width iset}
       (* high-level state ... *)
       (t: list LogItem)(m: mem)(l: locals)
       (* ... plus ghost constants ... *)
@@ -320,7 +315,7 @@ Section WithParameters.
     (* misc: *)
     valid_machine lo.
 
-  Definition good_e_impl(e_impl: env)(e_pos: funname_env Z) :=
+  Definition good_e_impl(e_impl: env)(e_pos: funpos_env) :=
     forall f (fun_impl: list Z * list Z * stmt Z),
       map.get e_impl f = Some fun_impl ->
       valid_FlatImp_fun fun_impl /\
@@ -332,8 +327,8 @@ Section WithParameters.
      we enter a new function body, to make sure functions cannot call themselves, while
      [e_impl] and [e_pos] remain the same throughout because that's mandated by
      [FlatImp.exec] and [compile_stmt], respectively *)
-  Definition compiles_FlatToRiscv_correctly
-    (f: funname_env Z -> Z -> Z -> stmt -> list Instruction)
+  Definition compiles_FlatToRiscv_correctly{BWM: bitwidth_iset width iset}
+    (f: funpos_env -> Z -> Z -> stmt -> list Instruction)
     (s: stmt): Prop :=
     forall e_impl_full initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
@@ -358,18 +353,7 @@ Section WithParameters.
                  finalL.(getRegs) /\
          goodMachine finalTrace finalMH finalRegsH g finalL).
 
-  Class assumptions: Prop := {
-    bitwidth_matches: bitwidth iset = width;
-    word_riscv_ok :> word.riscv_ok word;
-    locals_ok :> map.ok locals;
-    mem_ok :> map.ok mem;
-    funname_env_ok :> forall T, map.ok (funname_env T);
-    PR :> MetricPrimitives PRParams;
-  }.
-
 End WithParameters.
-
-Existing Instance Semantics_params.
 
 Ltac simpl_g_get :=
   cbn [p_sp rem_framewords rem_stackwords p_insts insts program_base e_pos e_impl
@@ -396,8 +380,23 @@ Ltac simpl_bools :=
          end.
 
 Section FlatToRiscv1.
-  Context {p: unique! parameters}.
-  Context {h: unique! assumptions}.
+  Context {iset: InstructionSet}.
+  Context {funpos_env: map.map String.string Z}.
+  Context (compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Instruction).
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {word_ok: word.ok word}.
+  Context {locals: map.map Z word}.
+  Context {mem: map.map word byte}.
+  Context {env: map.map String.string (list Z * list Z * stmt Z)}.
+  Context {M: Type -> Type}.
+  Context {MM: Monad M}.
+  Context {RVM: RiscvProgram M word}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
+  Context {ext_spec: Semantics.ExtSpec}.
+  Context {word_riscv_ok: word.riscv_ok word}.
+  Context {locals_ok: map.ok locals}.
+  Context {mem_ok: map.ok mem}.
+  Context {PR: MetricPrimitives PRParams}.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
 
@@ -408,7 +407,7 @@ Section FlatToRiscv1.
 
   Lemma reduce_eq_to_sub_and_lt: forall (y z: word),
       word.eqb y z = word.ltu (word.sub y z) (word.of_Z 1).
-  Proof.
+  Proof using BW word_ok.
     intros.
     rewrite word.unsigned_eqb.
     rewrite word.unsigned_ltu.
@@ -454,6 +453,8 @@ Section FlatToRiscv1.
 
   Ltac simulate'' := repeat simulate''_step.
 
+  Context {BWM: bitwidth_iset width iset}.
+
   Lemma go_load: forall sz (x a ofs: Z) (addr v: word) (initialL: RiscvMachineL) post f,
       valid_register x ->
       valid_register a ->
@@ -461,8 +462,8 @@ Section FlatToRiscv1.
       Memory.load sz (getMem initialL) (word.add addr (word.of_Z ofs)) = Some v ->
       mcomp_sat (f tt)
                 (withRegs (map.put initialL.(getRegs) x v) (updateMetrics (addMetricLoads 1) initialL)) post ->
-      mcomp_sat (Bind (execute (compile_load sz x a ofs)) f) initialL post.
-  Proof.
+      mcomp_sat (Bind (execute (compile_load iset sz x a ofs)) f) initialL post.
+  Proof using word_ok PR BWM.
     unfold compile_load, Memory.load, Memory.load_Z, Memory.bytes_per, Memory.bytes_per_word.
     rewrite bitwidth_matches.
     destruct width_cases as [E | E];
@@ -495,8 +496,8 @@ Section FlatToRiscv1.
                                       (@Memory.bytes_per width sz) (word.add addr (word.of_Z ofs))
                                       (getXAddrs initialL))
                        (withMem m' (updateMetrics (addMetricStores 1) initialL))) post ->
-      mcomp_sat (Bind (execute (compile_store sz a x ofs)) f) initialL post.
-  Proof.
+      mcomp_sat (Bind (execute (compile_store iset sz a x ofs)) f) initialL post.
+  Proof using PR BWM.
     unfold compile_store, Memory.store, Memory.store_Z, Memory.bytes_per, Memory.bytes_per_word.
     rewrite bitwidth_matches.
     destruct width_cases as [E | E];
@@ -516,8 +517,8 @@ Section FlatToRiscv1.
   Qed.
 
   Lemma run_compile_load: forall sz: Syntax.access_size,
-      run_Load_spec iset (@Memory.bytes_per width sz) (compile_load sz) id.
-  Proof.
+      run_Load_spec iset (@Memory.bytes_per width sz) (compile_load iset sz) id.
+  Proof using word_ok mem_ok PR BWM.
     intro sz. destruct sz; unfold compile_load; simpl.
     - refine (run_Lbu iset).
     - refine (run_Lhu iset).
@@ -528,12 +529,12 @@ Section FlatToRiscv1.
     - rewrite bitwidth_matches.
       destruct width_cases as [E | E]; rewrite E at 2 3; simpl.
       + refine (run_Lw_unsigned iset E).
-      + refine (run_Ld_unsigned iset bitwidth_matches).
+      + refine (run_Ld_unsigned iset E).
   Qed.
 
   Lemma run_compile_store: forall sz: Syntax.access_size,
-      run_Store_spec iset (@Memory.bytes_per width sz) (compile_store sz).
-  Proof.
+      run_Store_spec iset (@Memory.bytes_per width sz) (compile_store iset sz).
+  Proof using word_ok mem_ok PR BWM.
     intro sz. destruct sz; unfold compile_store; simpl.
     - refine (run_Sb iset).
     - refine (run_Sh iset).
@@ -553,10 +554,10 @@ Section FlatToRiscv1.
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr (program iset initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]]
+      subset (footpr (program iset initialL.(getPc) [[compile_load iset Syntax.access_size.word rd rs ofs]]
                       * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
-      (program iset initialL.(getPc) [[compile_load Syntax.access_size.word rd rs ofs]] * Rexec *
+      (program iset initialL.(getPc) [[compile_load iset Syntax.access_size.word rd rs ofs]] * Rexec *
        ptsto_word addr v * R)%sep (getMem initialL) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
@@ -568,7 +569,7 @@ Section FlatToRiscv1.
             getPc finalL = getNextPc initialL /\
             getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
             valid_machine finalL).
-  Proof.
+  Proof using word_ok mem_ok PR BWM.
     intros.
     eapply mcomp_sat_weaken; cycle 1.
     - eapply (run_compile_load Syntax.access_size.word); cycle -2; try eassumption.
@@ -579,7 +580,7 @@ Section FlatToRiscv1.
       rewrite LittleEndian.combine_split.
       replace (BinInt.Z.of_nat (Memory.bytes_per Syntax.access_size.word) * 8) with width.
       + rewrite word.wrap_unsigned. rewrite word.of_Z_unsigned. reflexivity.
-      + clear. destruct width_cases as [E | E]; rewrite E; reflexivity.
+      + clear -BW. destruct width_cases as [E | E]; rewrite E; reflexivity.
   Qed.
 
   (* almost the same as run_compile_store, but not using tuples nor ptsto_bytes or
@@ -593,9 +594,9 @@ Section FlatToRiscv1.
       map.get (getRegs initialL) rs2 = Some v_new ->
       addr = word.add base (word.of_Z ofs) ->
       subset (footpr ((program iset initialL.(getPc)
-                          [[compile_store Syntax.access_size.word rs1 rs2 ofs]]) * Rexec)%sep)
+                          [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]]) * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
-      (program iset initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec
+      (program iset initialL.(getPc) [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]] * Rexec
        * ptsto_word addr v_old * R)%sep (getMem initialL) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
@@ -603,14 +604,14 @@ Section FlatToRiscv1.
            getRegs finalL = getRegs initialL /\
            getLog finalL = getLog initialL /\
            subset (footpr (program iset initialL.(getPc)
-                              [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec)%sep)
+                              [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]] * Rexec)%sep)
              (of_list finalL.(getXAddrs)) /\
-           (program iset initialL.(getPc) [[compile_store Syntax.access_size.word rs1 rs2 ofs]] * Rexec
+           (program iset initialL.(getPc) [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]] * Rexec
             * ptsto_word addr v_new * R)%sep (getMem finalL) /\
            getPc finalL = getNextPc initialL /\
            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
            valid_machine finalL).
-  Proof.
+  Proof using word_ok mem_ok PR BWM.
     intros.
     eapply mcomp_sat_weaken; cycle 1.
     - eapply (run_compile_store Syntax.access_size.word); cycle -2; try eassumption.
@@ -620,7 +621,7 @@ Section FlatToRiscv1.
   Lemma one_step: forall initialL P,
       mcomp_sat (run1 iset) initialL P ->
       runsTo initialL P.
-  Proof.
+  Proof using .
     intros.
     eapply runsToStep; [eassumption|].
     intros.
@@ -632,8 +633,8 @@ Section FlatToRiscv1.
       mcomp_sat (Run.run1 iset) initialL (eq midL) ->
       (valid_machine midL -> runsTo midL P) ->
       runsTo initialL P.
-  Proof.
-    intros.
+  Proof using PR.
+ intros.
     eapply runsToStep with (midset := fun m' => m' = midL /\ valid_machine m').
     - eapply run1_get_sane; try eassumption.
       intros. subst. auto.
@@ -644,7 +645,7 @@ Section FlatToRiscv1.
       store_bytes n m1 a vs = Some m1' ->
       map.disjoint m1 mq ->
       store_bytes n (map.putmany m1 mq) a vs = Some (map.putmany m1' mq).
-  Proof.
+  Proof using word_ok mem_ok.
     intros.
     unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
     erewrite map.getmany_of_tuple_in_disjoint_putmany by eassumption.
@@ -664,7 +665,7 @@ Section FlatToRiscv1.
   Lemma store_bytes_preserves_footprint: forall n a v (m m': mem),
       Memory.store_bytes n m a v = Some m' ->
       map.same_domain m m'.
-  Proof.
+  Proof using word_ok mem_ok.
     intros. unfold store_bytes, load_bytes, unchecked_store_bytes in *. simp.
     eapply map.putmany_of_tuple_preserves_domain; eauto.
   Qed.
@@ -674,7 +675,7 @@ Section FlatToRiscv1.
       (H0: iff1 A (R * eq mH)%sep)
       (H1: B mH):
       (B * R)%sep mL.
-  Proof.
+  Proof using word_ok mem_ok.
     unfold iff1 in *.
     destruct (H0 mL) as [P1 P2]. specialize (P1 H).
     apply sep_comm.
@@ -687,10 +688,10 @@ Section FlatToRiscv1.
       bedrock2.Memory.load_bytes n mH addr = Some bs ->
       (P * eq mH * R)%sep mL ->
       exists Q, (P * ptsto_bytes n addr bs * Q * R)%sep mL.
-  Proof.
+  Proof using word_ok mem_ok BW.
     intros n H H0.
     apply sep_of_load_bytes in H; cycle 1. {
-      subst n. clear. destruct sz; destruct width_cases as [C | C]; rewrite C; cbv; discriminate.
+      subst n. clear -BW. destruct sz; destruct width_cases as [C | C]; rewrite C; cbv; discriminate.
     }
     destruct H as [Q A]. exists Q.
     assert (((ptsto_bytes n addr bs * Q) * (P * R))%sep mL); [|ecancel_assumption].
@@ -701,7 +702,7 @@ Section FlatToRiscv1.
       Memory.store_bytes n m1 a v = Some m1' ->
       (eq m1 * F)%sep m ->
       exists m', (eq m1' * F)%sep m' /\ Memory.store_bytes n m a v = Some m'.
-  Proof.
+  Proof using word_ok mem_ok.
     intros.
     unfold sep in H0.
     destruct H0 as (mp & mq & A & B & C).
@@ -725,7 +726,7 @@ Section FlatToRiscv1.
       iff1 (ptsto_instr iset addr (compile4bytes l))
            (array ptsto (word.of_Z 1) addr
                   [nth 0 l Byte.x00; nth 1 l Byte.x00; nth 2 l Byte.x00; nth 3 l Byte.x00]).
-  Proof.
+  Proof using word_ok mem_ok.
     intros. unfold compile4bytes, ptsto_instr, truncated_scalar, littleendian. simpl.
     unfold Encode.encode_Invalid.
     rewrite bitSlice_all_nonneg. 2: cbv; discriminate. 2: apply (@LittleEndian.combine_bound 4).
@@ -751,7 +752,7 @@ Section FlatToRiscv1.
       exists padding,
         iff1 (program iset addr instrs)
              (array ptsto (word.of_Z 1) addr (table ++ padding)).
-  Proof.
+  Proof using word_ok mem_ok.
     induction instrs; intros.
     - exists []. simpl. repeat (destruct table; try discriminate). reflexivity.
     - rename a into inst0.
@@ -787,7 +788,7 @@ Section FlatToRiscv1.
   Lemma array_to_of_list_word_at: forall l addr (m: mem),
       array ptsto (word.of_Z 1) addr l m ->
       m = OfListWord.map.of_list_word_at addr l.
-  Proof.
+  Proof using word_ok mem_ok.
     induction l; intros.
     - unfold OfListWord.map.of_list_word_at, OfListWord.map.of_list_word. simpl in *.
       unfold emp, MapKeys.map.map_keys in *. simp. rewrite map.fold_empty. reflexivity.
@@ -843,7 +844,7 @@ Section FlatToRiscv1.
       exists Padding,
         impl1 (program iset addr (compile_byte_list table))
               (Padding * eq (OfListWord.map.of_list_word_at addr table)).
-  Proof.
+  Proof using word_ok mem_ok.
     intros. destruct table as [|b0 bs].
     - simpl. exists (emp True).
       unfold OfListWord.map.of_list_word_at, OfListWord.map.of_list_word, MapKeys.map.map_keys.
@@ -880,7 +881,7 @@ Section FlatToRiscv1.
   Lemma shift_load_bytes_in_of_list_word: forall l (addr: word) n t index,
       Memory.load_bytes n (OfListWord.map.of_list_word l) index = Some t ->
       Memory.load_bytes n (OfListWord.map.of_list_word_at addr l) (word.add addr index) = Some t.
-  Proof.
+  Proof using word_ok mem_ok.
     induction n; intros.
     - cbv in t. destruct t. etransitivity. 2: eassumption. reflexivity.
     - unfold Memory.load_bytes in *.
@@ -898,14 +899,14 @@ Section FlatToRiscv1.
     Memory.load sz (OfListWord.map.of_list_word table) index = Some v ->
     (program iset addr (compile_byte_list table) * R)%sep m ->
     Memory.load sz m (word.add addr index) = Some v.
-  Proof.
-    intros *. intros L M.
+  Proof using word_ok mem_ok BW.
+    intros *. intros L M0.
     destruct (program_compile_byte_list table addr) as [Padding P].
-    apply (Proper_sep_impl1 _ _ P R R) in M; [|reflexivity]; clear P.
+    apply (Proper_sep_impl1 _ _ P R R) in M0; [|reflexivity]; clear P.
     unfold Memory.load, Memory.load_Z in *. simp.
     eapply shift_load_bytes_in_of_list_word in E0.
     pose proof @subst_load_bytes_for_eq as P. cbv zeta in P.
-    specialize P with (1 := E0) (2 := M).
+    specialize P with (1 := E0) (2 := M0).
     destruct P as [Q P].
     erewrite load_bytes_of_sep. 1: reflexivity.
     wcancel_assumption.
@@ -957,7 +958,7 @@ Ltac subst_load_bytes_for_eq :=
   | Load: ?LB _ _ _ _ ?m _ = _ |- _ =>
     unify LB @Memory.load_bytes;
     let P := fresh "P" in
-    epose proof (@subst_load_bytes_for_eq _ _ _ _ _ _ _ _ _ Load) as P;
+    epose proof (subst_load_bytes_for_eq Load) as P;
     let Q := fresh "Q" in
     edestruct P as [Q ?]; clear P; [ecancel_assumption|]
   end.
@@ -965,9 +966,9 @@ Ltac subst_load_bytes_for_eq :=
 Ltac simulate'_step :=
   match goal with
   (* lemmas introduced only in this file: *)
-  | |- mcomp_sat (Monads.Bind (Execute.execute (compile_load _ _ _ _)) _) _ _ =>
+  | |- mcomp_sat (Monads.Bind (Execute.execute (compile_load _ _ _ _ _)) _) _ _ =>
        eapply go_load; [ sidecondition.. | idtac ]
-  | |- mcomp_sat (Monads.Bind (Execute.execute (compile_store _ _ _ _)) _) _ _ =>
+  | |- mcomp_sat (Monads.Bind (Execute.execute (compile_store _ _ _ _ _)) _) _ _ =>
        eapply go_store; [ sidecondition.. | idtac ]
   (* simulate_step from GoFlatToRiscv: *)
   | |- _ => simulate_step

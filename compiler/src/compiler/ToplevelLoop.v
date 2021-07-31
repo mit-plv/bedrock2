@@ -69,25 +69,48 @@ Local Notation "' x <- a ; f" :=
   (right associativity, at level 70, x pattern).
 
 Section Pipeline1.
-
-  Context {p: Pipeline.parameters}.
-  Context {h: Pipeline.assumptions}.
-
+  Context {width: Z}.
+  Context {BW: Bitwidth width}.
+  Context {word: word.word width}.
+  Context {word_ok: word.ok word}.
+  Context {mem: map.map word byte}.
+  Context {Registers: map.map Z word}.
+  Context {string_keyed_map: forall T: Type, map.map string T}. (* abstract T for better reusability *)
+  Context {ext_spec: Semantics.ExtSpec}.
+  Context {M: Type -> Type}.
+  Context {MM: Monad M}.
+  Context {RVM: RiscvProgram M word}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
+  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
+  Context {string_keyed_map_ok: forall T, map.ok (string_keyed_map T)}.
+  Context {Registers_ok: map.ok Registers}.
+  Context {PR: MetricPrimitives PRParams}.
+  Context {iset: InstructionSet}.
+  Context {BWM: bitwidth_iset width iset}.
+  Context {mem_ok: map.ok mem}.
+  Context {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
+  Context (compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z -> list Instruction).
+  Context (compile_ext_call_correct: forall resvars extcall argvars,
+              compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
+                                             (FlatImp.SInteract resvars extcall argvars)).
+  Context (compile_ext_call_length_ignores_positions: forall stackoffset posmap1 posmap2 c pos1 pos2,
+              List.length (compile_ext_call posmap1 pos1 stackoffset c) =
+              List.length (compile_ext_call posmap2 pos2 stackoffset c)).
   Context (ml: MemoryLayout)
           (mlOk: MemoryLayoutOk ml).
 
   Let init_sp := word.unsigned ml.(stack_pastend).
 
-  Local Notation source_env := (@Pipeline.string_keyed_map p (list string * list string * Syntax.cmd)).
+  Local Notation source_env := (string_keyed_map (list string * list string * Syntax.cmd)).
 
   (* All riscv machine code, layed out from low to high addresses: *)
   (* 1) Initialize stack pointer *)
-  Let init_sp_insts := FlatToRiscvDef.compile_lit RegisterNames.sp init_sp.
+  Let init_sp_insts := FlatToRiscvDef.compile_lit iset RegisterNames.sp init_sp.
   Let init_sp_pos := ml.(code_start).
   (* 2) Call init function *)
   Let init_insts init_fun_pos := [[Jal RegisterNames.ra (3 * 4 + init_fun_pos)]].
   Let init_pos := word.add ml.(code_start)
-         (word.of_Z (4 * (Z.of_nat (List.length (FlatToRiscvDef.compile_lit RegisterNames.sp init_sp))))).
+         (word.of_Z (4 * (Z.of_nat (List.length (FlatToRiscvDef.compile_lit iset RegisterNames.sp init_sp))))).
   (* 3) Call loop function *)
   Let loop_insts loop_fun_pos := [[Jal RegisterNames.ra (2 * 4 + loop_fun_pos)]].
   Let loop_pos := word.add init_pos (word.of_Z 4).
@@ -97,8 +120,8 @@ Section Pipeline1.
   (* 5) Code of the compiled functions *)
   Let functions_pos := word.add backjump_pos (word.of_Z 4).
 
-  Definition compile_prog(prog: source_env): option (list Instruction * funname_env Z * Z) :=
-    'Some (functions_insts, positions, required_stack_space) <- @compile p prog;
+  Definition compile_prog(prog: source_env): option (list Instruction * string_keyed_map Z * Z) :=
+    'Some (functions_insts, positions, required_stack_space) <- compile compile_ext_call prog;
     'Some init_fun_pos <- map.get positions "init"%string;
     'Some loop_fun_pos <- map.get positions "loop"%string;
     let to_prepend := init_sp_insts ++ init_insts init_fun_pos ++ loop_insts loop_fun_pos ++ backjump_insts in
@@ -109,9 +132,9 @@ Section Pipeline1.
   (* Holds each time before executing the loop body *)
   Definition ll_good(done: bool)(mach: MetricRiscvMachine): Prop :=
     exists (prog: source_env)
-           (functions_instrs: list Instruction) (positions: funname_env Z) (required_stack_space: Z)
+           (functions_instrs: list Instruction) (positions: string_keyed_map Z) (required_stack_space: Z)
            (init_fun_pos loop_fun_pos: Z) (R: mem -> Prop),
-      compile prog = Some (functions_instrs, positions, required_stack_space) /\
+      compile compile_ext_call prog = Some (functions_instrs, positions, required_stack_space) /\
       required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
       map.get positions "init"%string = Some init_fun_pos /\
@@ -129,9 +152,9 @@ Section Pipeline1.
 
   Definition ll_inv: MetricRiscvMachine -> Prop := runsToGood_Invariant ll_good iset.
 
-  Add Ring wring : (word.ring_theory (word := Pipeline.word))
+  Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := Pipeline.word)),
+       morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
   Hint Extern 1 (map.ok _) => refine mem_ok : typeclass_instances.
@@ -167,7 +190,7 @@ Section Pipeline1.
 
   Definition initial_conditions(initial: MetricRiscvMachine): Prop :=
     exists (srcprog: source_env)
-           (instrs: list Instruction) (positions: funname_env Z) (required_stack_space: Z) (R: Pipeline.mem -> Prop),
+           (instrs: list Instruction) positions (required_stack_space: Z) (R: mem -> Prop),
       ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
       spec.(datamem_start) = ml.(heap_start) /\
       spec.(datamem_pastend) = ml.(heap_pastend) /\
@@ -189,7 +212,7 @@ Section Pipeline1.
       - 2 ^ 31 <= c < 2 ^ 31 ->
       word.signed (word.of_Z c) = c.
   Proof.
-    clear -h.
+    clear -word_ok BW.
     simpl.
     intros.
     eapply word.signed_of_Z_nowrap.
@@ -273,7 +296,9 @@ Section Pipeline1.
     intros. simp.
     (* then, run init_code (using compiler simulation and correctness of init_code) *)
     eapply runsTo_weaken.
-    - pose proof compiler_correct as P. unfold runsTo in P.
+    - pose proof compiler_correct compile_ext_call compile_ext_call_correct
+                                  compile_ext_call_length_ignores_positions as P.
+      unfold runsTo in P.
       specialize P with (p_functions := word.add loop_pos (word.of_Z 8)) (Rdata := R).
       unfold ll_good.
       eapply P; clear P.
@@ -514,7 +539,9 @@ Section Pipeline1.
       2: solve_word_eq word_ok.
       subst.
       eapply runsTo_weaken.
-      + pose proof compiler_correct as P. unfold runsTo in P.
+      + pose proof compiler_correct compile_ext_call compile_ext_call_correct
+                                    compile_ext_call_length_ignores_positions as P.
+        unfold runsTo in P.
         eapply P; clear P. 7: {
           eapply loop_body_correct; eauto.
         }
