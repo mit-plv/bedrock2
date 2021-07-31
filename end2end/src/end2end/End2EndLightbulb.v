@@ -65,12 +65,6 @@ Definition p4mm (memInit: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPer
                                      (Z.to_nat memSizeLg)): Kami.Syntax.Modules :=
   p4mm instrMemSizeLg _ memInit instrMemSizeLg_bounds.
 
-Local Existing Instance SortedListString.map.
-Local Existing Instance SortedListString.ok.
-
-Instance pipeline_params: Pipeline.Pipeline.parameters :=
-  @End2EndPipeline.pipeline_params (Zkeyed_map word) (Zkeyed_map_ok word) mem mem_ok.
-
 Open Scope string_scope.
 
 (* note: this function is totally redundant now *)
@@ -89,8 +83,8 @@ Definition prog := map.of_list funimplsList.
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
    and to check if there are any axioms which could block the computation. *)
-Definition lightbulb_compiled: list Decode.Instruction * FlatToRiscvDef.FlatToRiscvDef.funname_env Z * Z.
-  let r := eval cbv in (ToplevelLoop.compile_prog ml prog) in
+Definition lightbulb_compiled: list Decode.Instruction * SortedListString.map Z * Z.
+  let r := eval cbv in (ToplevelLoop.compile_prog MMIO.compile_ext_call ml prog) in
   lazymatch r with
   | Some ?x => exact x
   end.
@@ -103,7 +97,7 @@ Definition lightbulb_insts: list Decode.Instruction.
   end.
 Defined.
 
-Definition function_positions: FlatToRiscvDef.FlatToRiscvDef.funname_env Z.
+Definition function_positions: SortedListString.map Z.
   let r := eval cbv delta [lightbulb_compiled] in lightbulb_compiled in
   lazymatch r with
   | (_, ?x, _) => exact x
@@ -118,7 +112,8 @@ Definition required_stack_space: Z.
 Defined.
 
 Definition compilation_result:
-  ToplevelLoop.compile_prog ml prog = Some (lightbulb_insts, function_positions, required_stack_space).
+  ToplevelLoop.compile_prog MMIO.compile_ext_call ml prog =
+  Some (lightbulb_insts, function_positions, required_stack_space).
 Proof. reflexivity. Qed.
 
 Module PrintProgram.
@@ -140,7 +135,7 @@ Module PrintProgram.
   Unset Printing Width.
 End PrintProgram.
 
-Lemma iohi_to_iolo: forall ioh (iomid: list (RiscvMachine.LogItem (Mem := Pipeline.mem))),
+Lemma iohi_to_iolo: forall ioh (iomid: list (RiscvMachine.LogItem (Mem := mem))),
     Forall2 SPI.mmio_event_abstraction_relation ioh iomid ->
     exists iolo : list KamiRiscvStep.Event, KamiRiscvStep.traces_related iolo iomid.
 Proof.
@@ -239,6 +234,9 @@ Proof.
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q memSizeLg_valid.
+  specialize_first Q (Zkeyed_map (KamiWord.word 32)).
+  specialize_first Q (Zkeyed_map_ok (KamiWord.word 32)).
+  specialize_first Q mem_ok.
   specialize Q with (13 := KB). (* TODO add bigger numbers to coqutil.Tactics.forward.specialize_first *)
   (* specialize_first Q KB. *)
   specialize_first Q compilation_result.

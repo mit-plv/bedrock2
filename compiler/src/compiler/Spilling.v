@@ -600,15 +600,7 @@ Section Spilling.
   Context {locals: map.map Z word}.
   Context {localsOk: map.ok locals}.
   Context {env: map.map String.string (list Z * list Z * stmt)}.
-  Context (ext_spec:  list (mem * String.string * list word * (mem * list word)) ->
-                      mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop).
-
-  Instance semanticsParams: FlatImp.parameters Z. refine ({|
-    FlatImp.varname_eqb := Z.eqb;
-    FlatImp.locals := locals;
-    FlatImp.ext_spec := ext_spec;
-  |}).
-  Defined.
+  Context {ext_spec: Semantics.ExtSpec}.
 
   Definition spill_functions: env -> option env :=
     map.map_all_values spill_fun.
@@ -770,7 +762,7 @@ Section Spilling.
       (* upper bound always holds, but we still need to check lower bound: *)
       valid_vars_src (max_var body1) body1.
 
-  Lemma seq_cps: forall e s1 s2 t m l mc post,
+  Lemma seq_cps: forall e s1 s2 t m (l: locals) mc post,
       exec e s1 t m l mc (fun t' m' l' mc' => exec e s2 t' m' l' mc' post) ->
       exec e (SSeq s1 s2) t m l mc post.
   Proof.
@@ -1439,7 +1431,8 @@ Section Spilling.
       rename H4p0 into FR, H4p1 into FA.
       unfold sep in H5p3. destruct H5p3 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
       spec (map.getmany_of_list_zip_shrink l) as R. 1,2: eassumption. {
-        intros k HI. destr (map.get lStack k); [exfalso|assumption].
+        intros k HI.
+        destr (map.get lStack k); [exfalso|reflexivity].
         specialize H5p2 with (1 := E).
         eapply Forall_forall in FA. 2: exact HI. clear -H5p2 FA. blia.
       }

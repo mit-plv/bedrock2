@@ -334,15 +334,7 @@ Section Spilling.
   Context {locals: map.map Z word}.
   Context {localsOk: map.ok locals}.
   Context {env: map.map String.string (list Z * list Z * stmt)}.
-  Context (ext_spec:  list (mem * String.string * list word * (mem * list word)) ->
-                      mem -> String.string -> list word -> (mem -> list word -> Prop) -> Prop).
-
-  Instance semanticsParams: FlatImp.parameters Z. refine ({|
-    FlatImp.varname_eqb := Z.eqb;
-    FlatImp.locals := locals;
-    FlatImp.ext_spec := ext_spec;
-  |}).
-  Defined.
+  Context {ext_spec: Semantics.ExtSpec}.
 
   Definition valid_vars_src(maxvar: Z): stmt -> Prop :=
     Forall_vars_stmt (fun x => fp < x <= maxvar) (fun x => fp < x < 32).
@@ -486,7 +478,7 @@ Section Spilling.
       map.get e1 f = Some (argvars, resvars, body1) ->
       map.get e2 f = Some (argvars, resvars, spill_fbody body1).
 
-  Lemma seq_cps: forall e s1 s2 t m l mc post,
+  Lemma seq_cps: forall e s1 s2 t m (l: locals) mc post,
       exec e s1 t m l mc (fun t' m' l' mc' => exec e s2 t' m' l' mc' post) ->
       exec e (SSeq s1 s2) t m l mc post.
   Proof.

@@ -12,8 +12,21 @@ Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 
 Section Proofs.
-  Context {p: FlatToRiscvCommon.parameters}.
-  Context {h: FlatToRiscvCommon.assumptions}.
+  Context {iset: Decode.InstructionSet}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {word_ok: word.ok word}.
+  Context {locals: map.map Z word}.
+  Context {mem: map.map word byte}.
+  Context {M: Type -> Type}.
+  Context {MM: Monads.Monad M}.
+  Context {RVM: Machine.RiscvProgram M word}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
+  Context {ext_spec: Semantics.ExtSpec}.
+  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
+  Context {locals_ok: map.ok locals}.
+  Context {mem_ok: map.ok mem}.
+  Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
+  Context {BWM: bitwidth_iset width iset}.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -28,17 +41,17 @@ Section Proofs.
       map.getmany_of_list initial.(getRegs) vars = Some newvalues ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length oldvalues = List.length vars ->
-      subset (footpr (program iset initial.(getPc) (save_regs vars offset) * Rexec)%sep)
+      subset (footpr (program iset initial.(getPc) (save_regs iset vars offset) * Rexec)%sep)
              (of_list (initial.(getXAddrs))) ->
-      (program iset initial.(getPc) (save_regs vars offset) * Rexec *
+      (program iset initial.(getPc) (save_regs iset vars offset) * Rexec *
        word_array (word.add p_sp (word.of_Z offset)) oldvalues * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       valid_machine initial ->
       runsTo initial (fun final =>
           final.(getRegs) = initial.(getRegs) /\
-          subset (footpr (program iset initial.(getPc) (save_regs vars offset) * Rexec)%sep)
+          subset (footpr (program iset initial.(getPc) (save_regs iset vars offset) * Rexec)%sep)
                  (of_list (final.(getXAddrs))) /\
-          (program iset initial.(getPc) (save_regs vars offset) * Rexec *
+          (program iset initial.(getPc) (save_regs iset vars offset) * Rexec *
            word_array (word.add p_sp (word.of_Z offset)) newvalues * R)%sep final.(getMem) /\
           final.(getPc) = word.add initial.(getPc) (word.mul (word.of_Z 4)
                                                    (word.of_Z (Z.of_nat (List.length vars)))) /\
@@ -58,7 +71,7 @@ Section Proofs.
       }
       eapply runsToNonDet.runsToStep. {
         eapply run_store_word with (Rexec0 := (program iset (word.add (getPc initial) (word.of_Z 4))
-            (save_regs vars (offset + bytes_per_word)) * Rexec)%sep); cycle -3;
+            (save_regs iset vars (offset + bytes_per_word)) * Rexec)%sep); cycle -3;
           [> sidecondition | use_sep_assumption; cbn; ecancel | sidecondition.. ].
       }
       simpl. intros.
@@ -83,8 +96,8 @@ Section Proofs.
   Qed.
 
   Lemma length_save_regs: forall vars offset,
-      List.length (save_regs vars offset) = List.length vars.
-  Proof.
+      List.length (save_regs iset vars offset) = List.length vars.
+  Proof using BWM.
     induction vars; intros; simpl; rewrite? IHvars; reflexivity.
   Qed.
 
@@ -92,9 +105,9 @@ Section Proofs.
       Forall valid_FlatImp_var vars ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length values = List.length vars ->
-      subset (footpr (program iset initial.(getPc) (load_regs vars offset) * Rexec)%sep)
+      subset (footpr (program iset initial.(getPc) (load_regs iset vars offset) * Rexec)%sep)
              (of_list initial.(getXAddrs)) ->
-      (program iset initial.(getPc) (load_regs vars offset) * Rexec *
+      (program iset initial.(getPc) (load_regs iset vars offset) * Rexec *
        word_array (word.add p_sp (word.of_Z offset)) values * R)%sep initial.(getMem) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       valid_machine initial ->
@@ -123,10 +136,10 @@ Section Proofs.
       simpl. intros.
       destruct_RiscvMachine initial.
       destruct_RiscvMachine mid.
-      simp. subst.
       replace (Memory.bytes_per_word (Decode.bitwidth iset)) with bytes_per_word in *. 2: {
         rewrite bitwidth_matches. reflexivity.
       }
+      simp. subst.
       eapply runsToNonDet.runsTo_weaken.
       + eapply IHvars; simpl; cycle -3; auto.
         * use_sep_assumption.
@@ -155,8 +168,8 @@ Section Proofs.
   Qed.
 
   Lemma length_load_regs: forall vars offset,
-      List.length (load_regs vars offset) = List.length vars.
-  Proof.
+      List.length (load_regs iset vars offset) = List.length vars.
+  Proof using BWM.
     induction vars; intros; simpl; rewrite? IHvars; reflexivity.
   Qed.
 

@@ -4,6 +4,7 @@ Require compiler.ExprImp.
 Require compiler.FlatImp.
 Require Import compiler.NameGen.
 Require Import coqutil.Decidable.
+Require Import coqutil.Word.Bitwidth.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.MetricLogging.
 Require Import bedrock2.Semantics.
@@ -19,11 +20,21 @@ Require Export coqutil.Word.SimplWordExpr.
 
 Open Scope Z_scope.
 
-Import FlattenExpr.
-
 Section FlattenExpr1.
-
-  Context {p : unique! parameters} {hyps: assumptions p}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}
+          {word_ok: word.ok word}
+          {locals: map.map String.string word}
+          {mem: map.map word Byte.byte}
+          {ExprImp_env: map.map string (list string * list string * cmd)}
+          {FlatImp_env: map.map string (list string * list string * FlatImp.stmt string)}
+          {ext_spec: ExtSpec}
+          {NGstate: Type}
+          {NG: NameGen String.string NGstate}
+          {locals_ok: map.ok locals}
+          {mem_ok: map.ok mem}
+          {ExprImp_env_ok: map.ok ExprImp_env}
+          {FlatImp_env_ok: map.ok FlatImp_env}
+          {ext_spec_ok: ext_spec.ok ext_spec}.
 
   Ltac set_solver := set_solver_generic String.string.
 
@@ -325,9 +336,9 @@ Section FlattenExpr1.
     pose_flatten_var_ineqs;
     simpl_param_projections;
     simpl (disjoint _ _) in *;
-    map_solver (@locals_ok p hyps).
+    map_solver locals_ok.
 
-  Lemma seq_with_modVars: forall env t m l mc s1 s2 mid post,
+  Lemma seq_with_modVars: forall env t m (l: locals) mc s1 s2 mid post,
     FlatImp.exec env s1 t m l mc mid ->
     (forall t' m' l' mc',
         mid t' m' l' mc' ->
@@ -338,7 +349,7 @@ Section FlattenExpr1.
     intros *. intros E1 E2. eapply @FlatImp.exec.seq.
     - eapply FlatImp.exec.intersect.
       + exact E1.
-      + eapply FlatImp.modVarsSound. 1: typeclasses eauto. exact E1.
+      + eapply FlatImp.modVarsSound; try typeclasses eauto. exact E1.
     - simpl. intros. simp. eauto.
   Qed.
 
@@ -549,7 +560,7 @@ Section FlattenExpr1.
 
   Lemma freshNameGenState_disjoint: forall (sH: cmd),
     disjoint (ExprImp.allVars_cmd sH)
-             (allFreshVars (@freshNameGenState _ (@NGstate p) (@NG p) (ExprImp.allVars_cmd_as_list sH))).
+             (allFreshVars (@freshNameGenState _ NGstate NG (ExprImp.allVars_cmd_as_list sH))).
   Proof.
     unfold disjoint. intros.
     pose proof (freshNameGenState_spec (ExprImp.allVars_cmd_as_list sH) x) as P.
@@ -566,7 +577,7 @@ Section FlattenExpr1.
 
   Lemma freshNameGenState_disjoint_fbody: forall (fbody: cmd) (params rets: list String.string),
     disjoint (ExprImp.allVars_cmd fbody)
-             (allFreshVars (@freshNameGenState _ (@NGstate p) (@NG p)
+             (allFreshVars (@freshNameGenState _ NGstate NG
                   (ListSet.list_union String.eqb (ListSet.list_union String.eqb params rets)
                                                  (ExprImp.allVars_cmd_as_list fbody)))).
   Proof.
@@ -576,7 +587,7 @@ Section FlattenExpr1.
     | In ?x ?l -> _ => edestruct (in_dec String.string_dec x l) as [Iyes | Ino]
     end.
     + right. apply P. assumption.
-    + left. clear -Ino hyps.
+    + left. clear P.
       intro. apply Ino.
       epose proof (ExprImp.allVars_cmd_allVars_cmd_as_list _ _) as P. destruct P as [P _].
       eauto using ListSet.In_list_union_l, ListSet.In_list_union_r, nth_error_In.
@@ -781,7 +792,7 @@ Section FlattenExpr1.
           end.
           eapply (IHexec eq_refl).
           -- eassumption.
-          -- clear -hyps. maps.
+          -- clear -locals_ok. maps.
           -- unfold map.undef_on, map.agree_on.
              intros. rewrite map.get_empty.
              destr (map.get lf k); [exfalso|reflexivity].

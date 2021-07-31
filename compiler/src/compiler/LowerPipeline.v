@@ -38,57 +38,56 @@ Section WithWordAndMem.
 End WithWordAndMem.
 
 Section LowerPipeline.
-  Context {p: FlatToRiscvCommon.parameters}.
+  Context {iset: Decode.InstructionSet}.
+  Context {width: Z} {BW: Bitwidth width} {BWM: bitwidth_iset width iset}.
+  Context {fun_pos_env: map.map String.string Z}.
+  Context {fun_pos_env_ok: map.ok fun_pos_env}.
+  Context {env: map.map String.string (list Z * list Z * FlatImp.stmt Z)}.
+  Context {env_ok: map.ok env}.
+  Context (compile_ext_call: fun_pos_env -> Z -> Z -> stmt Z -> list Instruction).
 
   Local Open Scope ilist_scope.
-
-  Add Ring wring : (word.ring_theory (word := word))
-      (preprocess [autorewrite with rew_word_morphism],
-       morphism (word.ring_morph (word := word)),
-       constants [word_cst]).
 
   (* Note: we could also track code size from the source program all the way to the target
      program, and a lot of infrastructure is already there, will do once/if we want to get
      a total compiler.
      Returns the fun_pos_env so that users know where to jump to call the compiled functions. *)
-  Definition riscvPhase(prog: env): option (list Instruction * funname_env Z * Z) :=
+  Definition riscvPhase (prog: env): option (list Instruction * fun_pos_env * Z) :=
     match stack_usage prog with
     | Some stack_words_needed =>
-      let positions := FlatToRiscvDef.build_fun_pos_env prog in
-      let '(i, _) := FlatToRiscvDef.compile_funs positions prog in
+      let positions := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call prog in
+      let '(i, _) := FlatToRiscvDef.compile_funs iset compile_ext_call positions prog in
       Some (i, positions, stack_words_needed)
     | None => None
     end.
 
-  Context {hyps: @FlatToRiscvCommon.assumptions p}.
-
   Lemma get_build_fun_pos_env: forall e f,
       map.get e f <> None ->
-      exists pos, map.get (FlatToRiscvDef.build_fun_pos_env e) f = Some pos.
+      exists pos, map.get (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e) f = Some pos.
   Proof.
     intros pos0 e.
     unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.compile_funs.
     eapply map.fold_spec.
     - intros. rewrite map.get_empty in H. congruence.
-    - intros. destruct r as [ insts env]. simpl.
+    - intros. destruct r as [insts en]. simpl.
       rewrite map.get_put_dec in H1.
       rewrite map.get_put_dec.
       destruct_one_match; eauto.
   Qed.
 
   Lemma fun_pos_div4: forall functions f p,
-      map.get (FlatToRiscvDef.build_fun_pos_env functions) f = Some p ->
+      map.get (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call functions) f = Some p ->
       p mod 4 = 0.
   Proof.
     unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.compile_funs.
     intros *.
     eapply map.fold_spec; intros.
     - rewrite map.get_empty in H. discriminate.
-    - intros. destruct r as [ insts env].
+    - intros. destruct r as [insts en].
       unfold FlatToRiscvDef.add_compiled_function in *.
       rewrite map.get_put_dec in H1.
       destruct_one_match_hyp.
-      + apply Option.eq_of_eq_Some in H1. subst p0. rewrite Z.mul_comm. apply Z_mod_mult.
+      + apply Option.eq_of_eq_Some in H1. subst p. rewrite Z.mul_comm. apply Z_mod_mult.
       + auto.
   Qed.
 
@@ -98,12 +97,21 @@ Section LowerPipeline.
   Proof. eapply word.eqb_spec. Unshelve. all: exact word_ok. Qed.
 *)
 
+  Context {word: word.word width} {word_ok: word.ok word}.
+  Context {locals: map.map Z word} {locals_ok: map.ok locals}.
+  Context {mem: map.map word byte} {mem_ok: map.ok mem}.
+
+  Add Ring wring : (word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (word.ring_morph (word := word)),
+       constants [word_cst]).
+
   Lemma mem_available_to_exists: forall start pastend (m: mem) P,
       (mem_available start pastend * P)%sep m ->
       exists anybytes,
         Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
         (ptsto_bytes start anybytes * P)%sep m.
-  Proof.
+  Proof using word_ok mem_ok.
     unfold mem_available. intros * H.
     eapply sep_ex1_l in H. (* semicolon here fails *) destruct H.
     eapply sep_assoc in H.
@@ -115,20 +123,20 @@ Section LowerPipeline.
      Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) ->
      (ptsto_bytes start anybytes * P)%sep m ->
      (mem_available start pastend * P)%sep m.
-  Proof.
+  Proof using word_ok mem_ok.
     unfold mem_available. intros * H Hsep.
     eapply sep_ex1_l. eexists. eapply sep_assoc. eapply sep_emp_l. eauto.
   Qed.
 
   Lemma get_compile_funs_pos: forall e,
-      let '(insts, posmap) := FlatToRiscvDef.compile_funs map.empty e in
+      let '(insts, posmap) := FlatToRiscvDef.compile_funs iset compile_ext_call map.empty e in
       forall f impl, map.get e f = Some impl -> exists pos2, map.get posmap f = Some pos2 /\ pos2 mod 4 = 0.
-  Proof.
+  Proof using fun_pos_env_ok env_ok.
     intros e.
     unfold FlatToRiscvDef.compile_funs.
     eapply map.fold_spec.
     - intros. rewrite map.get_empty in H. congruence.
-    - intros. destruct r as [ insts env]. simpl.
+    - intros. destruct r as [insts en]. simpl.
       intros.
       rewrite map.get_put_dec in H1.
       rewrite map.get_put_dec.
@@ -141,7 +149,7 @@ Section LowerPipeline.
       instrs <> [] ->
       (program iset a instrs * R)%sep m ->
       word.unsigned a mod 4 = 0.
-  Proof.
+  Proof using .
     intros.
     destruct instrs as [|instr instrs]. 1: congruence.
     simpl in *.
@@ -152,9 +160,9 @@ Section LowerPipeline.
 
   Lemma compile_funs_nonnil: forall e positions positions' f impl instrs,
       map.get e f = Some impl ->
-      FlatToRiscvDef.compile_funs positions e = (instrs, positions') ->
+      FlatToRiscvDef.compile_funs iset compile_ext_call positions e = (instrs, positions') ->
       instrs <> [].
-  Proof.
+  Proof using env_ok.
     intros e positions.
     unfold FlatToRiscvDef.compile_funs.
     eapply map.fold_spec; intros.
@@ -192,28 +200,30 @@ Section LowerPipeline.
       List.length (compile_ext_call posmap2 pos2 stackoffset c).
 
   Lemma compile_stmt_length_ignores_positions: forall posmap1 posmap2 c stackoffset pos1 pos2,
-      List.length (FlatToRiscvDef.compile_stmt posmap1 pos1 stackoffset c) =
-      List.length (FlatToRiscvDef.compile_stmt posmap2 pos2 stackoffset c).
-  Proof.
+      List.length (FlatToRiscvDef.compile_stmt iset compile_ext_call posmap1 pos1 stackoffset c) =
+      List.length (FlatToRiscvDef.compile_stmt iset compile_ext_call posmap2 pos2 stackoffset c).
+  Proof using compile_ext_call_length_ignores_positions.
     induction c; intros; ignore_positions.
   Qed.
 
   Lemma compile_function_length_ignores_positions: forall posmap1 posmap2 pos1 pos2 impl,
-      List.length (FlatToRiscvDef.compile_function posmap1 pos1 impl) =
-      List.length (FlatToRiscvDef.compile_function posmap2 pos2 impl).
-  Proof.
+      List.length (FlatToRiscvDef.compile_function iset compile_ext_call posmap1 pos1 impl) =
+      List.length (FlatToRiscvDef.compile_function iset compile_ext_call posmap2 pos2 impl).
+  Proof using compile_ext_call_length_ignores_positions.
     intros. destruct impl as [ [args rets] body ]. ignore_positions.
     apply compile_stmt_length_ignores_positions.
   Qed.
 
   Lemma build_fun_pos_env_ignores_posmap_aux: forall posmap1 posmap2 e i1 m1 i2 m2,
-      map.fold (FlatToRiscvDef.add_compiled_function posmap1) ([], map.empty) e = (i1, m1) ->
-      map.fold (FlatToRiscvDef.add_compiled_function posmap2) ([], map.empty) e = (i2, m2) ->
+      map.fold (FlatToRiscvDef.add_compiled_function iset compile_ext_call posmap1)
+               ([], map.empty) e = (i1, m1) ->
+      map.fold (FlatToRiscvDef.add_compiled_function iset compile_ext_call posmap2)
+               ([], map.empty) e = (i2, m2) ->
       m1 = m2 /\ List.length i1 = List.length i2.
-  Proof.
+  Proof using env_ok compile_ext_call_length_ignores_positions.
     intros until e.
-    eapply map.fold_parametricity with (fa := (FlatToRiscvDef.add_compiled_function posmap1))
-                                       (fb := (FlatToRiscvDef.add_compiled_function posmap2));
+    eapply map.fold_parametricity with (fa := (FlatToRiscvDef.add_compiled_function _ _ posmap1))
+                                       (fb := (FlatToRiscvDef.add_compiled_function _ _ posmap2));
       intros.
     - destruct a as [insts1 map1]. destruct b as [insts2 map2].
       unfold FlatToRiscvDef.add_compiled_function in *.
@@ -227,12 +237,16 @@ Section LowerPipeline.
   Qed.
 
   Lemma build_fun_pos_env_ignores_posmap: forall posmap1 posmap2 e,
-      snd (map.fold (FlatToRiscvDef.add_compiled_function posmap1) ([], map.empty) e) =
-      snd (map.fold (FlatToRiscvDef.add_compiled_function posmap2) ([], map.empty) e).
-  Proof.
+      snd (map.fold (FlatToRiscvDef.add_compiled_function iset compile_ext_call posmap1)
+                    ([], map.empty) e) =
+      snd (map.fold (FlatToRiscvDef.add_compiled_function iset compile_ext_call posmap2)
+                    ([], map.empty) e).
+  Proof using env_ok compile_ext_call_length_ignores_positions.
     intros.
-    destr (map.fold (FlatToRiscvDef.add_compiled_function posmap1) ([], map.empty) e).
-    destr (map.fold (FlatToRiscvDef.add_compiled_function posmap2) ([], map.empty) e).
+    destr (map.fold (FlatToRiscvDef.add_compiled_function iset compile_ext_call posmap1)
+                    ([], map.empty) e).
+    destr (map.fold (FlatToRiscvDef.add_compiled_function iset compile_ext_call posmap2)
+                    ([], map.empty) e).
     simpl.
     edestruct build_fun_pos_env_ignores_posmap_aux.
     - exact E.
@@ -249,18 +263,19 @@ Section LowerPipeline.
      is layed out in memory), while 2) should be commutative because the "function"
      separation logic predicate it seps onto the separation logic formula is the same
      if we pass it the same function position map. *)
-  Lemma functions_to_program: forall functions_start e instrs pos_map stack_size,
+  Lemma functions_to_program: forall (functions_start: word) e instrs pos_map stack_size,
       riscvPhase e = Some (instrs, pos_map, stack_size) ->
       iff1 (program iset functions_start instrs)
-           (FlatToRiscvCommon.functions functions_start (FlatToRiscvDef.build_fun_pos_env e) e).
-  Proof.
+           (FlatToRiscvCommon.functions compile_ext_call functions_start
+                                        (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e) e).
+  Proof using word_ok mem_ok fun_pos_env_ok env_ok compile_ext_call_length_ignores_positions.
     assert nat as H by exact O. (* preserve names *)
 
     unfold riscvPhase.
     intros.
     simp.
     unfold FlatToRiscvDef.compile_funs, functions in *.
-    remember (FlatToRiscvDef.build_fun_pos_env e) as positions.
+    remember (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e) as positions.
     (* choose your IH carefully! *)
     lazymatch goal with
     | |- ?G => enough ((forall f, map.get r f <> None <-> map.get e f <> None) /\
@@ -271,7 +286,7 @@ Section LowerPipeline.
       intros. rewrite <- H1. f_equal.
       subst.
       apply (f_equal snd) in E0. simpl in E0. rewrite <- E0.
-      transitivity (snd (map.fold (FlatToRiscvDef.add_compiled_function map.empty) ([], map.empty) e)).
+      transitivity (snd (map.fold (FlatToRiscvDef.add_compiled_function iset compile_ext_call map.empty) ([], map.empty) e)).
       - unfold FlatToRiscvDef.build_fun_pos_env, snd. reflexivity.
       - apply build_fun_pos_env_ignores_posmap.
     }
@@ -321,13 +336,20 @@ Section LowerPipeline.
     f_equal.
     f_equal.
     solve_word_eq word_ok.
-    Unshelve.
-    all: (simpl; typeclasses eauto).
   Qed.
 
   Open Scope ilist_scope.
 
-  Definition machine_ok(p_functions: word)(f_entry_rel_pos: Z)(stack_start stack_pastend: word)
+  Context {M: Type -> Type}.
+  Context {MM: Monads.Monad M}.
+  Context {RVM: Machine.RiscvProgram M word}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
+  Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
+  Context {ext_spec: Semantics.ExtSpec}.
+  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
+
+  Definition machine_ok{BWM: bitwidth_iset width iset}
+             (p_functions: word)(f_entry_rel_pos: Z)(stack_start stack_pastend: word)
              (finstrs: list Instruction)
              (p_call pc: word)(mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
       let CallInst := Jal RegisterNames.ra
@@ -350,7 +372,8 @@ Section LowerPipeline.
       valid_machine mach.
 
   Hypothesis compile_ext_call_correct: forall resvars extcall argvars,
-      compiles_FlatToRiscv_correctly compile_ext_call (FlatImp.SInteract resvars extcall argvars).
+      compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
+                                     (FlatImp.SInteract resvars extcall argvars).
 
   Lemma flat_to_riscv_correct: forall
       (stack_start stack_pastend: word)
@@ -359,7 +382,7 @@ Section LowerPipeline.
       (Rdata Rexec : mem -> Prop)
       (functions: env)
       (instrs: list Instruction)
-      (pos_map: funname_env Z)
+      (pos_map: fun_pos_env)
       (mH: mem) (mc: MetricLog)
       (postH: Semantics.trace -> mem -> Prop)
       (initial: MetricRiscvMachine),
@@ -385,7 +408,7 @@ Section LowerPipeline.
     | H: riscvPhase _ = _ |- _ => pose proof H as RP; unfold riscvPhase in H
     end.
     simp.
-    pose proof GetPos as M. eapply fun_pos_div4 in M.
+    pose proof GetPos as M0. eapply fun_pos_div4 in M0.
     assert (word.unsigned p_functions mod 4 = 0). {
       unfold machine_ok in *. simp.
       eapply program_mod_4_0. 2: ecancel_assumption.
@@ -400,7 +423,7 @@ Section LowerPipeline.
     - specialize compile_stmt_correct with (1 := compile_ext_call_correct).
       unfold compiles_FlatToRiscv_correctly. intros compile_stmt_correct.
       eapply compile_stmt_correct with (g := {|
-        e_pos := FlatToRiscvDef.build_fun_pos_env functions;
+        e_pos := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call functions;
         program_base := p_functions;
         e_impl := functions;
         rem_stackwords := word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
@@ -429,7 +452,7 @@ Section LowerPipeline.
         - unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.build_fun_pos_env.
           pose proof (get_compile_funs_pos functions) as P.
           ParamRecords.simpl_param_projections.
-          destruct (compile_funs map.empty functions) as [ insts posmap ] eqn: F.
+          destruct (compile_funs iset _ map.empty functions) as [ insts posmap ] eqn: F.
           eapply P.
           eassumption. }
       { eapply fits_stack_call. 2: eassumption. 1: reflexivity.
@@ -460,14 +483,10 @@ Section LowerPipeline.
       { unfold machine_ok in *. simp. assumption. }
       { unfold machine_ok in *. simp. simpl.
         eapply rearrange_footpr_subset. 1: eassumption.
-        (* COQBUG https://github.com/coq/coq/issues/11649 *)
-        pose proof (mem_ok: @map.ok (@word p) Init.Byte.byte (@mem p)).
         wwcancel.
         eapply functions_to_program.
         idtac. eassumption. }
       { simpl.
-        (* COQBUG https://github.com/coq/coq/issues/11649 *)
-        pose proof (mem_ok: @map.ok (@word p) Init.Byte.byte (@mem p)).
         unfold machine_ok in *. simp.
         edestruct mem_available_to_exists as [ stack_trash [? ?] ]. 1: simpl; ecancel_assumption.
         destruct (byte_list_to_word_list_array stack_trash)
@@ -490,7 +509,7 @@ Section LowerPipeline.
           simpl in P|-*. unfold program in P.
           seprewrite P. clear P.
           rewrite <- Z_div_exact_2; cycle 1. {
-            unfold bytes_per_word. clear.
+            unfold bytes_per_word. clear -BW.
             destruct width_cases as [E | E]; rewrite E; reflexivity.
           }
           {
@@ -566,8 +585,6 @@ Section LowerPipeline.
         wwcancel.
       + unfold machine_ok in *. simp. simpl.
         eapply rearrange_footpr_subset. 1: eassumption.
-        (* COQBUG https://github.com/coq/coq/issues/11649 *)
-        pose proof (mem_ok: @map.ok (@word p) Init.Byte.byte (@mem p)).
         (* TODO remove duplication *)
         lazymatch goal with
         | H: riscvPhase _ = _ |- _ => specialize functions_to_program with (1 := H) as P
@@ -580,8 +597,6 @@ Section LowerPipeline.
         simpl.
         wwcancel.
       + destr_RiscvMachine final. subst. solve_divisibleBy4.
-    Unshelve.
-    all: try (simpl; typeclasses eauto).
   Qed.
 
 End LowerPipeline.

@@ -61,18 +61,11 @@ Section WithWordAndMem.
   Section WithMoreParams.
     Context {Zlocals: map.map Z word}
             {string_keyed_map: forall T: Type, map.map string T} (* abstract T for better reusability *)
-            (ext_spec: ExtSpec)
+            {ext_spec: ExtSpec}
             {word_ok : word.ok word}
             {mem_ok: map.ok mem}
             {string_keyed_map_ok: forall T, map.ok (string_keyed_map T)}
             {Zlocals_ok: map.ok Zlocals}.
-
-    Instance FlattenExpr_parameters: FlattenExpr.parameters := {
-      FlattenExpr.locals := _;
-      FlattenExpr.mem := mem;
-      FlattenExpr.ext_spec := ext_spec;
-      FlattenExpr.NGstate := N;
-    }.
 
     Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
@@ -90,11 +83,6 @@ Section WithWordAndMem.
       Exec := FlatImp.exec
     |}.
 
-    Instance FlatImp_params: FlatImp.parameters Z := {|
-      FlatImp.varname_eqb := Z.eqb;
-      FlatImp.ext_spec := ext_spec;
-    |}.
-
     Definition FlatLangZ := {|
       Var := Z;
       Cmd := FlatImp.stmt Z;
@@ -102,24 +90,6 @@ Section WithWordAndMem.
       Env := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
       Exec := FlatImp.exec
     |}.
-
-    Instance mk_FlatImp_string_ext_spec_ok:
-      FlatImp.ext_spec.ok string (FlattenExpr.mk_FlatImp_params FlattenExpr_parameters).
-    Proof.
-      destruct ext_spec_ok.
-      constructor.
-      all: intros; eauto.
-      eapply intersect; eassumption.
-    Qed.
-
-    Instance mk_FlatImp_Z_ext_spec_ok:
-      FlatImp.ext_spec.ok Z FlatImp_params.
-    Proof.
-      destruct ext_spec_ok.
-      constructor.
-      all: intros; eauto.
-      eapply intersect; eassumption.
-    Qed.
 
     Lemma flattening_correct: @phase_correct SrcLang FlatLangStr flatten_functions.
     Proof.
@@ -133,8 +103,7 @@ Section WithWordAndMem.
       eexists. split. 1: eassumption.
       intros.
       eapply FlatImp.exec.weaken.
-      - eapply @flattenStmt_correct_aux.
-        + econstructor; try typeclasses eauto.
+      - eapply flattenStmt_correct_aux.
         + eassumption.
         + eassumption.
         + reflexivity.
@@ -163,7 +132,7 @@ Section WithWordAndMem.
       simp.
       eexists. split. 1: eassumption. intros.
       eapply FlatImp.exec.weaken.
-      - eapply rename_correct_new with (ext_spec0 := ext_spec).
+      - eapply rename_correct_new.
         2: eassumption.
         { unfold envs_related_new. intros *. intro G.
           eapply map.map_all_values_fw. 5: exact G. 4: eassumption. all: typeclasses eauto. }
@@ -214,7 +183,7 @@ Section WithWordAndMem.
       }
 
       eapply FlatImp.exec.weaken.
-      - eapply spilling_correct with (ext_spec0 := ext_spec). 2: eassumption.
+      - eapply spilling_correct. 2: eassumption.
         { unfold Spilling.envs_related. intros *. intro G.
           pose proof H as GL'.
           unfold spill_functions in GL'.

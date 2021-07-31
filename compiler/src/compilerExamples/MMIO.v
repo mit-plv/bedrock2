@@ -37,7 +37,7 @@ Import ListNotations.
 
 Open Scope ilist_scope.
 
-Definition compile_ext_call(results: list Z) a (args: list Z):
+Definition compile_interact(results: list Z) a (args: list Z):
   list Instruction :=
   if String.eqb "MMIOWRITE" a then
     match results, args with
@@ -50,26 +50,26 @@ Definition compile_ext_call(results: list Z) a (args: list Z):
     | _, _ => [[]] (* invalid, excluded by ext_spec *)
     end.
 
-Lemma compile_ext_call_length: forall binds f args,
-    Z.of_nat (List.length (compile_ext_call binds f args)) <= 1.
+Lemma compile_interact_length: forall binds f args,
+    Z.of_nat (List.length (compile_interact binds f args)) <= 1.
 Proof.
-  intros. unfold compile_ext_call.
+  intros. unfold compile_interact.
   destruct (String.eqb _ _); destruct binds; try destruct binds;
   try destruct args; try destruct args; try destruct args;
   cbv; intros; discriminate.
 Qed.
 
-Lemma compile_ext_call_length': forall binds f args,
-    Z.of_nat (List.length (compile_ext_call binds f args)) <= 7.
-Proof. intros. rewrite compile_ext_call_length. blia. Qed.
+Lemma compile_interact_length': forall binds f args,
+    Z.of_nat (List.length (compile_interact binds f args)) <= 7.
+Proof. intros. rewrite compile_interact_length. blia. Qed.
 
-Lemma compile_ext_call_emits_valid: forall iset binds a args,
+Lemma compile_interact_emits_valid: forall iset binds a args,
     Forall valid_FlatImp_var binds ->
     Forall valid_FlatImp_var args ->
-    valid_instructions iset (compile_ext_call binds a args).
+    valid_instructions iset (compile_interact binds a args).
 Proof.
   intros.
-  unfold compile_ext_call.
+  unfold compile_interact.
   destruct (String.eqb _ _); destruct args; try destruct args; try destruct args;
     destruct binds; try destruct binds;
     intros instr HIn; cbn -[String.eqb] in *; intuition idtac; try contradiction.
@@ -93,46 +93,30 @@ Proof.
     repeat split; (blia || assumption).
 Qed.
 
-Module Import MMIO.
-  Class parameters := {
-    word :> Word.Interface.word 32;
-    word_ok :> word.ok word;
-    word_riscv_ok :> word.riscv_ok word;
-    mem :> map.map word byte;
-    mem_ok :> map.ok mem;
-    locals :> map.map Z word;
-    locals_ok :> map.ok locals;
-    funname_env :> forall T, map.map String.string T;
-    funname_env_ok :> forall T, map.ok (funname_env T);
-  }.
-End MMIO.
+Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.
+Proof. reflexivity. Qed.
 
 Section MMIO1.
-  Context {p: unique! MMIO.parameters}.
+  Context {word: Word.Interface.word 32}.
+  Context {word_ok: word.ok word}.
+  Context {word_riscv_ok: word.riscv_ok word}.
+  Context {mem: map.map word byte}.
+  Context {mem_ok: map.ok mem}.
+  Context {locals: map.map Z word}.
+  Context {locals_ok: map.ok locals}.
+  Context {funname_env: forall T, map.map String.string T}.
+  Context {funname_env_ok: forall T, map.ok (funname_env T)}.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Instance compilation_params: FlatToRiscvDef.parameters := {|
-    FlatToRiscvDef.iset := RV32I;
-    FlatToRiscvDef.compile_ext_call _ _ _ s :=
+  Definition compile_ext_call(_: funname_env Z)(_ _: Z)(s: stmt Z) :=
       match s with
-      | SInteract resvars action argvars => compile_ext_call resvars action argvars
+      | SInteract resvars action argvars => compile_interact resvars action argvars
       | _ => []
-      end;
-  |}.
-
-  Instance FlatToRiscv_params: FlatToRiscvCommon.parameters := {
-    FlatToRiscvCommon.def_params := compilation_params;
-    FlatToRiscvCommon.locals := locals;
-    FlatToRiscvCommon.mem := (@mem p);
-    FlatToRiscvCommon.MM := free.Monad_free;
-    FlatToRiscvCommon.RVM := MetricMinimalMMIO.IsRiscvMachine;
-    FlatToRiscvCommon.PRParams := MetricMinimalMMIOPrimitivesParams;
-    FlatToRiscvCommon.ext_spec := FE310CSemantics.ext_spec;
-  }.
+      end.
 
   Section CompilationTest.
     Definition magicMMIOAddrLit: Z := Ox"10024000".
@@ -156,7 +140,8 @@ Section MMIO1.
                    (SSeq (SOp s Syntax.bopname.add i i)
                          (SStore Syntax.access_size.four addr s 0)))).
 
-    Definition compiled: list Instruction := Eval cbv in compile_stmt map.empty 0 0 doubler.
+    Definition compiled: list Instruction :=
+      Eval cbv in compile_stmt RV32I compile_ext_call map.empty 0 0 doubler.
     Goal True.
       let c := eval cbv in compiled in pose c.
     Abort.
@@ -199,10 +184,6 @@ Section MMIO1.
   Arguments mcomp_sat: simpl never.
   Arguments LittleEndian.split: simpl never.
   Local Arguments String.eqb: simpl never.
-  (* give it priority over FlatToRiscvCommon.FlatToRiscv.PRParams to make eapply work better *)
-  Existing Instance MetricMinimalMMIOPrimitivesParams.
-  Existing Instance MetricMinimalMMIOSatisfiesPrimitives.
-  Local Existing Instance MetricMinimalMMIOSatisfiesPrimitives.
 
   Ltac fwd :=
     match goal with
@@ -247,7 +228,7 @@ Section MMIO1.
       rewrite ?word.unsigned_sub, ?word.unsigned_of_Z in H, H1;
       unfold word.wrap in *;
       pose proof (word.unsigned_range y);
-      forget (word.unsigned y) as Y; clear x y p;
+      forget (word.unsigned y) as Y; clear x y;
       let r := eval cbv in (2 ^ 32) in change (2 ^ 32) with r in *;
       Z.div_mod_to_equations;
       (* COQBUG (performance) https://github.com/coq/coq/issues/10743,
@@ -259,34 +240,17 @@ Section MMIO1.
     all: time blia.
   Time Qed.
 
-  Instance FlatToRiscv_hyps: FlatToRiscvCommon.assumptions.
-  Proof.
-    constructor.
-    - reflexivity.
-    - typeclasses eauto.
-    - typeclasses eauto.
-    - typeclasses eauto.
-    - typeclasses eauto.
-    - eapply MetricMinimalMMIOSatisfiesPrimitives; cbn; intuition eauto.
-  Qed.
-
-  Ltac simpl_paramrecords :=
-    change (@FlatToRiscvCommon.locals FlatToRiscv_params) with (@locals p) in *;
-    change (@FlatToRiscvCommon.mem FlatToRiscv_params) with (@mem p) in *;
-    change (@FlatImp.width _) with 32 in *.
-
   Lemma compile_ext_call_correct: forall resvars extcall argvars,
-      FlatToRiscvCommon.compiles_FlatToRiscv_correctly
-        (@FlatToRiscvDef.compile_ext_call compilation_params)
+      FlatToRiscvCommon.compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
         (FlatImp.SInteract resvars extcall argvars).
   Proof.
     unfold FlatToRiscvCommon.compiles_FlatToRiscv_correctly. simpl. intros.
     destruct H5 as [V_resvars V_argvars].
     rename extcall into action.
-    pose proof (compile_ext_call_emits_valid FlatToRiscvDef.iset _ action _ V_resvars V_argvars).
+    pose proof (compile_interact_emits_valid RV32I _ action _ V_resvars V_argvars).
     simp.
     destruct_RiscvMachine initialL.
-    unfold compile_ext_call, FlatToRiscvCommon.goodMachine in *.
+    unfold FlatToRiscvCommon.goodMachine in *.
     match goal with
     | H: forall _ _, outcome _ _ -> _ |- _ => specialize H with (mReceive := map.empty)
     end.
@@ -297,8 +261,8 @@ Section MMIO1.
       match goal with
       | H: FE310CSemantics.ext_spec _ _ _ _ _ |- _ => rename H into Ex
       end.
-      cbv [ext_spec FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec FE310CSemantics.ext_spec] in Ex.
-      simpl in *|-.
+      unfold compile_interact in *.
+      cbv [FE310CSemantics.ext_spec] in Ex.
       rewrite E in *.
       destruct Ex as (?&?&?&(?&?&?)&?). subst mGive argvals.
       repeat match goal with
@@ -361,9 +325,7 @@ Section MMIO1.
         cbn [array bytes_per] in *.
         simpl_MetricRiscvMachine_get_set.
         wcancel_assumption. }
-
-      change (@Bind (@FlatToRiscvCommon.M FlatToRiscv_params) (@FlatToRiscvCommon.MM FlatToRiscv_params))
-        with (@free.bind MetricMinimalMMIO.action result) in *.
+      change (@Bind _ _) with (@free.bind MetricMinimalMMIO.action result) in *.
       unfold free.bind at 1.
 
       rewrite LittleEndian.combine_split.
@@ -375,7 +337,6 @@ Section MMIO1.
 
       destruct (Z.eq_dec z 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
       destruct (Z.eq_dec z0 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
-      simpl_paramrecords.
       replace (map.get initialL_regs z) with (Some x) by (symmetry; unfold map.extends in *; eauto).
       replace (map.get initialL_regs z0) with (Some x0) by (symmetry; unfold map.extends in *; eauto).
 
@@ -431,7 +392,7 @@ Section MMIO1.
           clear. unfold subset, PropSet.elem_of. intros. firstorder idtac.
         }
         eapply subset_trans. 1: eassumption.
-        clear -D4 M0 D.
+        clear -D4 M0 D word_ok.
         unfold invalidateWrittenXAddrs.
         change removeXAddr with (@List.removeb word word.eqb _).
         rewrite ?ListSet.of_list_removeb.
@@ -455,7 +416,8 @@ Section MMIO1.
       match goal with
       | H: FE310CSemantics.ext_spec _ _ _ _ _ |- _ => rename H into Ex
       end.
-      cbv [ext_spec FlatToRiscvCommon.Semantics_params FlatToRiscvCommon.ext_spec FE310CSemantics.ext_spec] in Ex.
+      unfold compile_interact in *.
+      cbv [FE310CSemantics.ext_spec] in Ex.
       simpl in *|-.
 
       rewrite E in *.
@@ -504,21 +466,19 @@ Section MMIO1.
         simpl_MetricRiscvMachine_get_set.
         wcancel_assumption. }
 
-      change (@Bind (@FlatToRiscvCommon.M FlatToRiscv_params) (@FlatToRiscvCommon.MM FlatToRiscv_params))
-        with (@free.bind MetricMinimalMMIO.action result) in *.
+      change (@Bind _ _) with (@free.bind MetricMinimalMMIO.action result) in *.
       unfold free.bind at 1.
 
       rewrite LittleEndian.combine_split.
       rewrite Z.mod_small by (eapply EncodeBound.encode_range).
       rewrite DecodeEncode.decode_encode; cycle 1. {
-        unfold valid_instructions, FlatToRiscvDef.iset in *. cbn in *. eauto.
+        unfold valid_instructions in *. cbn in *. eauto.
       }
 
       repeat fwd.
 
       destruct (Z.eq_dec z 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
       destruct (Z.eq_dec z0 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
-      simpl_paramrecords.
       replace (map.get initialL_regs z) with (Some x) by (symmetry; unfold map.extends in *; eauto).
 
       split; try discriminate.
@@ -580,7 +540,3 @@ Section MMIO1.
   Time Qed. (* takes ~30s *)
 
 End MMIO1.
-
-Existing Instance compilation_params.
-Existing Instance FlatToRiscv_params.
-Existing Instance FlatToRiscv_hyps.

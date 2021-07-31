@@ -23,8 +23,21 @@ Require Import compiler.FlatToRiscvLiterals.
 Open Scope ilist_scope.
 
 Section Proofs.
-  Context {p: FlatToRiscvCommon.parameters}.
-  Context {h: FlatToRiscvCommon.assumptions}.
+  Context {iset: Decode.InstructionSet}.
+  Context {funpos_env: map.map String.string Z}.
+  Context (compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Decode.Instruction).
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
+  Context {locals: map.map Z word} {locals_ok: map.ok locals}.
+  Context {mem: map.map word byte} {mem_ok: map.ok mem}.
+  Context {env: map.map String.string (list Z * list Z * stmt Z)} {env_ok: map.ok env}.
+  Context {M: Type -> Type}.
+  Context {MM: Monads.Monad M}.
+  Context {RVM: Machine.RiscvProgram M word}.
+  Context {PRParams: PrimitivesParams M MetricRiscvMachine}.
+  Context {ext_spec: Semantics.ExtSpec} {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
+  Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
+  Context {BWM: bitwidth_iset width iset}.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -46,32 +59,32 @@ Section Proofs.
     eexists; (* finalMH *)
     eexists; (* finalMetricsH *)
     repeat split;
-    simpl_word_exprs (@word_ok p);
+    simpl_word_exprs word_ok;
     first
       [ solve [eauto]
       | solve_MetricLog
-      | solve_word_eq (@word_ok p)
+      | solve_word_eq word_ok
       | solve [wcancel_assumption]
       | eapply rearrange_footpr_subset; [ eassumption | wwcancel ]
-      | solve [solve_valid_machine (@word_ok p)]
+      | solve [solve_valid_machine word_ok]
       | idtac ].
 
   Ltac IH_sidecondition :=
-    simpl_word_exprs (@word_ok p);
+    simpl_word_exprs word_ok;
     try solve
       [ reflexivity
       | auto
       | solve_stmt_not_too_big
-      | solve_word_eq (@word_ok p)
+      | solve_word_eq word_ok
       | simpl; solve_divisibleBy4
-      | solve_valid_machine (@word_ok p)
+      | solve_valid_machine word_ok
       | eapply rearrange_footpr_subset; [ eassumption | wwcancel ]
       | wcancel_assumption ].
 
   Hypothesis no_ext_calls: forall t mGive action argvals outcome,
       ext_spec t mGive action argvals outcome -> False.
 
-  Hypothesis stackalloc_always_0: forall x n body t m l mc post,
+  Hypothesis stackalloc_always_0: forall x n body t m (l: locals) mc post,
       FlatImp.exec map.empty (SStackalloc x n body) t m l mc post -> n = 0.
 
   Hypothesis sp_always_set: forall l: locals,
@@ -81,7 +94,7 @@ Section Proofs.
     forall (s: stmt Z) t initialMH initialRegsH postH initialMetricsH,
     FlatImp.exec map.empty s t initialMH initialRegsH initialMetricsH postH ->
     forall R Rexec (initialL: RiscvMachineL) insts pos,
-    @compile_stmt def_params map.empty pos 12345678 s = insts ->
+    compile_stmt iset compile_ext_call map.empty pos 12345678 s = insts ->
     stmt_not_too_big s ->
     valid_FlatImp_vars s ->
     divisibleBy4 initialL.(getPc) ->
@@ -128,7 +141,7 @@ Section Proofs.
 
     - (* SStore *)
       simpl_MetricRiscvMachine_get_set.
-      assert ((eq m * (program iset initialL_pc [[compile_store sz a v o]] * Rexec * R))%sep
+      assert ((eq m * (program iset initialL_pc [[compile_store iset sz a v o]] * Rexec * R))%sep
         initialL_mem) as A by ecancel_assumption.
       match goal with
       | H: _ |- _ => pose proof (store_bytes_frame H A) as P; move H at bottom;
@@ -206,7 +219,7 @@ Section Proofs.
       + simpl. run1done;
         remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;
         symmetry in HeqfinalMetrics;
-        pose proof update_metrics_for_literal_bounded as Hlit;
+        pose proof update_metrics_for_literal_bounded (width := width) as Hlit;
         specialize Hlit with (1 := HeqfinalMetrics);
         solve_MetricLog.
 
@@ -269,7 +282,7 @@ Section Proofs.
       + (* 1st application of IH: part 1 of loop body *)
         eapply IH1; IH_sidecondition.
       + simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
-        destruct (@eval_bcond Z (@Semantics_params p) middle_regs cond) as [condB|] eqn: E.
+        destruct (eval_bcond middle_regs cond) as [condB|] eqn: E.
         2: exfalso;
            match goal with
            | H: context [_ <> None] |- _ => solve [eapply H; eauto]

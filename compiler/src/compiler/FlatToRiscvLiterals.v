@@ -14,8 +14,21 @@ Require Import compiler.FlatToRiscvCommon.
 Require Import coqutil.Tactics.autoforward.
 
 Section FlatToRiscvLiterals.
-  Context {p: FlatToRiscvCommon.parameters}.
-  Context {h: FlatToRiscvCommon.assumptions}.
+  Context {iset: Decode.InstructionSet}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {word_ok: word.ok word}.
+  Context {locals: map.map Z word}.
+  Context {mem: map.map word byte}.
+  Context {M: Type -> Type}.
+  Context {MM: Monads.Monad M}.
+  Context {RVM: Machine.RiscvProgram M word}.
+  Context {PRParams: Primitives.PrimitivesParams M MetricRiscvMachine}.
+  Context {ext_spec: Semantics.ExtSpec}.
+  Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
+  Context {locals_ok: map.ok locals}.
+  Context {mem_ok: map.ok mem}.
+  Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
+  Context {BWM: bitwidth_iset width iset}.
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -40,7 +53,7 @@ Section FlatToRiscvLiterals.
       finalMetrics.(loads) <= initialMetrics.(loads) + 8 /\
       finalMetrics.(stores) <= initialMetrics.(stores) /\
       finalMetrics.(jumps) <= initialMetrics.(jumps).
-  Proof.
+  Proof using .
     intros. subst.
     unfold updateMetricsForLiteral.
     destruct initialMetrics.
@@ -73,13 +86,13 @@ Section FlatToRiscvLiterals.
   (* mark as Instance? *)
   Lemma andb_spec: forall b1 b2,
       BoolSpec (b1 = true /\ b2 = true) (b1 = false \/ b2 = false) (b1 && b2)%bool.
-  Proof.
+  Proof using .
     intros. destruct b1; destruct b2; constructor; auto.
   Qed.
 
   Lemma compile_lit_correct_full_raw: forall (initialL: RiscvMachineL) post x v R Rexec,
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
-      let insts := compile_lit x v in
+      let insts := compile_lit iset x v in
       let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
       subset (footpr (program iset initialL.(getPc) insts * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->
@@ -96,7 +109,7 @@ Section FlatToRiscvLiterals.
     intros *. intros E1 insts d F P V Vm N.
     simpl in *.
     destruct_RiscvMachine initialL.
-    subst d insts. subst.
+    subst d insts initialL_npc.
     unfold compile_lit, updateMetricsForLiteral in *.
     destruct_one_match_hyp; [|destruct_one_match_hyp]; post_destr typeclass_instances.
     - unfold compile_lit_12bit in *.
@@ -105,9 +118,8 @@ Section FlatToRiscvLiterals.
       match_apply_runsTo.
       erewrite signExtend_nop; eauto; try blia.
     - (* TODO this step should be automatic *)
-      rewrite (@bitwidth_matches _ h) in *.
+      rewrite bitwidth_matches in E0.
       assert (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31). {
-        clear -E0 h.
         apply Bool.orb_true_iff in E0. destruct E0 as [E0 | E0].
         - autoforward_in typeclass_instances E0. auto.
         - post_destr typeclass_instances. auto.
@@ -126,7 +138,7 @@ Section FlatToRiscvLiterals.
         rewrite! word.signed_of_Z.
         change word.swrap with (signExtend width).
         assert (0 < width) as Wpos. {
-          clear. destruct width_cases; rewrite H; reflexivity.
+          clear -BW. destruct width_cases; rewrite H; reflexivity.
         }
         rewrite! signExtend_alt_bitwise by (reflexivity || assumption).
         clear -Wpos H.
@@ -171,14 +183,14 @@ Section FlatToRiscvLiterals.
       run1det. repeat unfold_MetricLog.
       run1det. repeat unfold_MetricLog.
       match_apply_runsTo.
-      rewrite (@bitwidth_matches _ h) in *.
+      rewrite bitwidth_matches in E0.
       rewrite E0.
       f_equal; [|simpl; try solve_MetricLog].
       f_equal.
-      + rewrite! map.put_put_same. f_equal. Simp.unprotect_equalities. subst.
+      + rewrite! map.put_put_same. f_equal. Simp.unprotect_equalities. subst mid hi.
         apply word.unsigned_inj.
         assert (width = 64) as W64. {
-          clear -E0.
+          clear -E0 BW.
           destruct width_cases as [E | E]; rewrite E in *; try reflexivity.
           exfalso. simpl in E0. discriminate E0.
         }
@@ -202,7 +214,7 @@ Section FlatToRiscvLiterals.
 
   Lemma compile_lit_correct_full: forall (initialL: RiscvMachineL) post x v R Rexec,
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
-      let insts := compile_lit x v in
+      let insts := compile_lit iset x v in
       let d := mul (word.of_Z 4) (word.of_Z (Z.of_nat (List.length insts))) in
       subset (footpr (program iset initialL.(getPc) insts * Rexec)%sep)
              (of_list initialL.(getXAddrs)) ->

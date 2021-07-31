@@ -16,62 +16,16 @@ Require Import coqutil.Datatypes.String.
 
 Open Scope Z_scope.
 
-Module Import FlattenExpr.
-  Class parameters := {
-    width: Z;
-    BW :> Bitwidth width;
-    word :> word.word width;
-    word_ok :> word.ok word;
-    locals :> map.map String.string word;
-    mem :> map.map word byte;
-    ExprImp_env :> map.map string (list string * list string * cmd);
-    FlatImp_env :> map.map string (list string * list string * FlatImp.stmt string);
-    trace := list (mem * string * list word * (mem * list word));
-    ext_spec :> ExtSpec;
-    NGstate: Type;
-    NG :> NameGen String.string NGstate;
-  }.
-
-  Instance mk_FlatImp_params(p: parameters): FlatImp.parameters string := {
-    FlatImp.varname_eqb := String.eqb;
-    FlatImp.ext_spec := ext_spec;
-  }.
-
-  Class assumptions{p: parameters}: Prop := {
-    locals_ok :> map.ok locals;
-    mem_ok :> map.ok mem;
-    ExprImp_env_ok :> map.ok ExprImp_env;
-    FlatImp_env_ok :> map.ok FlatImp_env;
-    ext_spec_ok: FlatImp.ext_spec.ok _ _;
-  }.
-  Arguments assumptions: clear implicits.
-
-  Instance mk_ExprImp_ext_spec_ok(p: parameters)(hyps: assumptions p): ext_spec.ok ext_spec.
-  Proof.
-    destruct hyps. destruct ext_spec_ok0.
-    constructor.
-    all: intros; eauto.
-    eapply intersect; eassumption.
-  Qed.
-
-  Instance mk_FlatImp_params_ok{p: parameters}(hyps: @assumptions p):
-    FlatImp.parameters_ok string (mk_FlatImp_params p) := {
-    FlatImp.varname_eq_spec := String.eqb_spec;
-    FlatImp.word_ok := word_ok;
-    FlatImp.mem_ok := mem_ok;
-    FlatImp.locals_ok := locals_ok;
-    FlatImp.env_ok := FlatImp_env_ok;
-    FlatImp.ext_spec_ok := ext_spec_ok;
-  }.
-
-End FlattenExpr.
-
 Section FlattenExpr1.
-
-  Context {p : unique! parameters}.
-
-  Ltac set_solver :=
-    set_solver_generic (@String.string p).
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}
+          {word_ok: word.ok word}
+          {locals: map.map String.string word}
+          {mem: map.map word byte}
+          {ExprImp_env: map.map string (list string * list string * cmd)}
+          {FlatImp_env: map.map string (list string * list string * FlatImp.stmt string)}
+          {ext_spec: ExtSpec}
+          {NGstate: Type}
+          {NG: NameGen String.string NGstate}.
 
   Definition genFresh_if_needed(resVar: option String.string)(ngs: NGstate): (String.string * NGstate) :=
     match resVar with

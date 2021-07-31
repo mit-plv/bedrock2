@@ -1,5 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import coqutil.Map.Interface.
+Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Tactics.Tactics.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.FlattenExprDef.
@@ -10,7 +11,20 @@ Require Import coqutil.Tactics.Simp.
 
 
 Section Sim.
-  Context {p: FlattenExpr.parameters}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}
+          {word_ok: word.ok word}
+          {locals: map.map String.string word}
+          {mem: map.map word Byte.byte}
+          {ExprImp_env: map.map String.string (list String.string * list String.string * Syntax.cmd)}
+          {FlatImp_env: map.map String.string (list String.string * list String.string * FlatImp.stmt String.string)}
+          {ext_spec: Semantics.ExtSpec}
+          {NGstate: Type}
+          {NG: NameGen String.string NGstate}
+          {locals_ok: map.ok locals}
+          {mem_ok: map.ok mem}
+          {ExprImp_env_ok: map.ok ExprImp_env}
+          {FlatImp_env_ok: map.ok FlatImp_env}
+          {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
 
   Definition related(done: bool): ExprImp.SimState -> FlatImp.SimState String.string -> Prop :=
     fun '(t1, m1, l1, mc1) '(t2, m2, l2, mc2) =>
@@ -18,8 +32,7 @@ Section Sim.
       m1 = m2 /\
       l1 = map.empty.
 
-  Lemma flattenExprSim{hyps: FlattenExpr.assumptions p}
-        (e1: FlattenExpr.ExprImp_env)(e2: FlattenExpr.FlatImp_env)(funname: String.string):
+  Lemma flattenExprSim(e1: ExprImp_env)(e2: FlatImp_env)(funname: String.string):
     flatten_functions e1 = Some e2 ->
     simulation (ExprImp.SimExec e1 (Syntax.cmd.call nil funname nil))
                (FlatImp.SimExec String.string e2 (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall nil funname nil)))
@@ -32,8 +45,7 @@ Section Sim.
     simp.
     simpl.
     eapply FlatImp.exec.weaken.
-    - eapply @flattenStmt_correct_aux with (eH := e1) (ngs := freshNameGenState nil).
-      + typeclasses eauto.
+    - eapply flattenStmt_correct_aux with (eH := e1) (ngs := freshNameGenState nil).
       + eassumption.
       + eapply Semantics.exec.call; try eassumption.
         (* "eassumption" fails, but "exact" succeeds ?? *)
