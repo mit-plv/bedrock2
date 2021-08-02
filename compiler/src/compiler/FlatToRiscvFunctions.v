@@ -1370,7 +1370,7 @@ Section Proofs.
       apply iff1ToEq in P.
       rewrite P. clear P.
       unfold program, compile_function.
-      subst FL new_ra. ParamRecords.simpl_param_projections.
+      subst FL new_ra.
       wcancel_assumption.
     + reflexivity.
     + assumption.
@@ -1567,7 +1567,6 @@ Section Proofs.
             seprewrite_in QQ Q.
             replace (Datatypes.length remaining_stack) with (Datatypes.length stack_trash) by blia.
             assert (!bytes_per_word * !(n / bytes_per_word) = !n :> word) as DivExact. {
-              ParamRecords.simpl_param_projections.
               rewrite <- (word.ring_morph_mul (bytes_per_word) (n / bytes_per_word)).
               rewrite <- Z_div_exact_2.
               - reflexivity.
@@ -1581,7 +1580,6 @@ Section Proofs.
               match goal with
               | |- ?LHS = _ => ring_simplify LHS
               end.
-              ParamRecords.simpl_param_projections.
               rewrite DivExact.
               ring.
             }

@@ -251,7 +251,7 @@ Section WithWordAndMem.
         unfold word_array in HM.
         seprewrite_in @cast_word_array_to_bytes HM.
         edestruct ll_mem_to_hl_mem with (mL := m') as (mStack' & HM' & D & Ab'). {
-          simpl in *. (* PARAMRECORDS *) ecancel_assumption.
+          ecancel_assumption.
         }
         eexists _, _. ssplit.
         + match goal with
@@ -259,7 +259,7 @@ Section WithWordAndMem.
           end.
           f_equal.
           rewrite List.length_flat_map with (n := Z.to_nat bytes_per_word).
-          * simpl_addrs. rewrite !Z2Nat.id by blia. simpl in *. (* PARAMRECORDS *) blia.
+          * simpl_addrs. rewrite !Z2Nat.id by blia. blia.
           * clear. intros. rewrite HList.tuple.length_to_list. reflexivity.
         + rewrite sep_emp_r in HM'. apply proj1 in HM'. subst m'. unfold map.split.
           split. 1: reflexivity. exact D.

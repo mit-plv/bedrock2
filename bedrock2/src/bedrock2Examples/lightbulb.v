@@ -692,7 +692,6 @@ Section WithParameters.
 
 
   (* Print Assumptions link_lightbulb. *)
-  (* parameters_ok FE310CSemantics.parameters, SortedList.TODO, TailRecursion.putmany_gather, SortedListString.string_strict_order *)
 
   From bedrock2 Require Import ToCString.
   Goal True.

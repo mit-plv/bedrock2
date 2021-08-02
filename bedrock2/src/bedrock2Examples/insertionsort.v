@@ -216,7 +216,6 @@ Section WithParameters.
     cbn in H.
     eapply (ptsto_nonaliasing addr (PrimitivePair.pair._1 (LittleEndian.split 4 (word.unsigned h2)))
                               (PrimitivePair.pair._1 (LittleEndian.split 4 (word.unsigned h1))) m).
-    ParamRecords.simpl_param_projections.
     ecancel_assumption.
   Qed.
 
@@ -270,7 +269,8 @@ Section WithParameters.
         clear i n. (* TODO straightline_cleanup should clear these *)
         rename x0 into i, x1 into n.
         replace 0%nat with v. 1: auto. subst br.
-        rewrite @word.unsigned_ltu in * by typeclasses eauto. (* PARAMRECORDS? *)
+        (* COQBUG https://github.com/coq/coq/issues/3051 *)
+        let x := constr:(word.unsigned_ltu) in rewrite x in *.
         destruct_one_match_hyp; ZnWords.
       }
       (* if again, execute loop body: *)
@@ -302,7 +302,6 @@ Section WithParameters.
       match type of HM with
       | context[word.add _ (word.mul _ ?x)] => replace x with i in HM by ZnWords
       end.
-      ParamRecords.simpl_param_projections.
       eexists. split. {
         repeat straightline.
       }
@@ -348,7 +347,6 @@ Section WithParameters.
         match goal with
         | |- context[array _ _ ?a] => replace a with addr by ZnWords
         end.
-        ParamRecords.simpl_param_projections.
         ecancel_assumption. }
       { repeat straightline.
         clear j. subst sorted.

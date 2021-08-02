@@ -157,8 +157,6 @@ Section Pipeline1.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Hint Extern 1 (map.ok _) => refine mem_ok : typeclass_instances.
-
   Lemma machine_ok_change_call: forall functions_pos f_entry_rel_pos_1 f_entry_rel_pos_2
                                        p_stack_start p_stack_pastend instrs
                                        p_call_1 p_call_2 pc mH Rdata Rexec Rexec1 mach,
@@ -179,10 +177,9 @@ Section Pipeline1.
                  pc mH Rdata Rexec1
                  mach.
   Proof.
-    (* PARAMRECORDS: only works because of Hint Extern refine for compiler.FlatToRiscvCommon.mem_ok *)
     unfold machine_ok, program.
     intros. simp; ssplit; eauto.
-    - seprewrite H. ParamRecords.simpl_param_projections. wcancel_assumption.
+    - seprewrite H. wcancel_assumption.
     - eapply shrink_footpr_subset. 1: eassumption.
       rewrite H.
       wwcancel.
@@ -340,7 +337,6 @@ Section Pipeline1.
           end
         end.
         2: {
-          ParamRecords.simpl_param_projections.
           match goal with
           | |- context[word.signed ?x] => ring_simplify x
           end.
@@ -348,7 +344,6 @@ Section Pipeline1.
           - ring.
           - clear. cbv. intuition discriminate.
         }
-        ParamRecords.simpl_param_projections.
         wcancel.
         cancel_seps_at_indices 3%nat 0%nat. {
           f_equal.
@@ -382,7 +377,6 @@ Section Pipeline1.
           end
         end.
         2: {
-          ParamRecords.simpl_param_projections.
           match goal with
           | |- context[word.signed ?x] => ring_simplify x
           end.
@@ -390,7 +384,6 @@ Section Pipeline1.
           - ring.
           - clear. cbv. intuition discriminate.
         }
-        ParamRecords.simpl_param_projections.
         wcancel.
         cancel_seps_at_indices 0%nat 0%nat. {
           f_equal.
@@ -424,7 +417,6 @@ Section Pipeline1.
                                            (f_entry_rel_pos_2 := f_entry_rel_pos).
         { unfold init_insts, functions_pos, backjump_pos, loop_pos, init_pos.
           wseplog_pre.
-          ParamRecords.simpl_param_projections.
           cancel.
           cancel_seps_at_indices 1%nat 1%nat. {
             f_equal. f_equal. f_equal.
@@ -446,7 +438,6 @@ Section Pipeline1.
         * unfold init_pos. solve_word_eq word_ok.
         * unfold loop_pos, init_pos. solve_word_eq word_ok.
         * eapply iff1ToEq.
-          ParamRecords.simpl_param_projections.
           wwcancel.
           cancel_seps_at_indices 1%nat 0%nat. {
             f_equal. unfold init_sp_insts.
@@ -471,7 +462,6 @@ Section Pipeline1.
   Lemma ll_inv_is_invariant: forall (st: MetricRiscvMachine),
       ll_inv st -> GoFlatToRiscv.mcomp_sat (run1 iset) st ll_inv.
   Proof.
-    (* PARAMRECORDS: only works because of Hint Extern refine for compiler.FlatToRiscvCommon.mem_ok *)
     intros st. unfold ll_inv.
     eapply runsToGood_is_Invariant with (jump := - 4) (pc_start := loop_pos)
                                         (pc_end := word.add loop_pos (word.of_Z 4)).
@@ -512,7 +502,7 @@ Section Pipeline1.
              | |- _ => reflexivity
              end.
       + destruct mlOk. subst. simpl in *. subst loop_pos init_pos. solve_divisibleBy4.
-      + ParamRecords.simpl_param_projections. solve_word_eq word_ok.
+      + solve_word_eq word_ok.
     - unfold ll_good, machine_ok.
       intros. simp. assumption.
     - cbv. intuition discriminate.
