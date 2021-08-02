@@ -11,7 +11,7 @@ and thus are not understood by `lia`.
 Require Import Coq.Program.Tactics.
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.ZArith.Zpow_facts.
-Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr coqutil.Tactics.ParamRecords.
+Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.HexNotation.
 Require Import coqutil.Datatypes.List.
@@ -175,24 +175,6 @@ Ltac unfold_Z_nat_consts :=
            end
          end.
 
-Ltac canonicalize_word_width_and_instance :=
-  simpl_param_projections;
-  (* `simpl_param_projections` only simplifies projections, but not instances passed
-     as a whole to other functions, and also, if we have a `width` projection on
-     a record whose name is not `parameters` (eg `riscv.Utility.Utility.Words`),
-     it won't get canonicalized, so we still need the following: *)
-  repeat so fun hyporgoal => match hyporgoal with
-     | context [@word.unsigned ?wi ?inst] =>
-       let wi' := eval cbn in wi in let inst' := eval cbn in inst in
-       progress ( change wi with wi' in *; change inst with inst' in * )
-     | context [@word.signed ?wi ?inst] =>
-       let wi' := eval cbn in wi in let inst' := eval cbn in inst in
-       progress ( change wi with wi' in *; change inst with inst' in * )
-     | context[2 ^ ?wi] =>
-       let wi' := eval cbn in wi in (* <-- will blow up as soon as we have 2^bigExpression... *)
-       progress ( change wi with wi' in * )
-     end.
-
 Ltac pose_word_ok :=
   lazymatch goal with
   | |- context [@word.unsigned ?wi ?inst]      => pose proof (_ : word.ok inst)
@@ -222,7 +204,6 @@ Ltac ZnWords_pre :=
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
   unfold_Z_nat_consts;
-  canonicalize_word_width_and_instance;
   repeat wordOps_to_ZModArith_step;
   dewordify;
   clear_unused_nonProps.

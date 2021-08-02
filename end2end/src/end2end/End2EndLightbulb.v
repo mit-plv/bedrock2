@@ -17,7 +17,6 @@ Require        riscv.Utility.InstructionNotations.
 Require        bedrock2.Hexdump.
 Require Import coqutil.Map.Z_keyed_SortedListMap.
 Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
-Require Import coqutil.Tactics.ParamRecords.
 
 Open Scope Z_scope.
 Open Scope string_scope.
@@ -180,31 +179,6 @@ Proof.
   - simp. f_equal. 2: eauto.
     inversion H4; inversion H3; simp; reflexivity || discriminate.
 Qed.
-
-(* Testing that it's safe to call `simpl` on all projections of all concrete parameter record instantiations *)
-Goal True.
-Proof.
-  ltac2:(
-    List.iter (fun r =>
-      match constructor_of_record r with
-      | Some ctor => List.iter (fun getterRef =>
-          let getter := Ltac1.of_constr (Env.instantiate getterRef) in
-          let n := count_params_of_record r in
-          if Int.equal n 0 then ltac1:(g |- epose (g _)) getter
-          else if Int.equal n 1 then ltac1:(g |- epose (g _ _)) getter
-          else if Int.equal n 2 then ltac1:(g |- epose (g _ _ _)) getter
-          else Control.throw (Invalid_argument (Some (Msg.concat
-                   [Message.of_string "Records with ";
-                    Message.of_int n;
-                    Message.of_string " parameters are not supported"])))
-        ) (field_names ctor)
-      | None => ()
-      end) (Env.expand [@parameters])).
-  Set Printing Implicit.
-  Unshelve. all: try eapply mmio_params. all: try apply (SortedListString.Build_parameters Z).
-  Time simpl_param_projections. (* 0.134 secs *)
-  Unset Printing Implicit.
-Abort.
 
 Definition bytes_at(bs: list Init.Byte.byte)(addr: Z)
            (m: Syntax.Vec (Syntax.ConstT (Syntax.Bit MemTypes.BitsPerByte)) (Z.to_nat memSizeLg)): Prop :=

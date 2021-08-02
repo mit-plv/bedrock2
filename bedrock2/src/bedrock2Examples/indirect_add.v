@@ -117,8 +117,7 @@ Section WithParameters.
 
     repeat match goal with
            | H : _ |- _ =>
-               (* WHY do I need @ in front of the lemma? PARAMRECORDS? *)
-               seprewrite_in_by @scalar_of_bytes H
+               seprewrite_in_by scalar_of_bytes H
                  ltac:(Lia.lia);
                  let x := fresh "x" in
                  set (word.of_Z _) as x in H; clearbody x; move x at top
@@ -158,8 +157,7 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
 
     repeat match goal with
            | H : _ |- _ =>
-               (* WHY do I need @ in front of the lemma? PARAMRECORDS? *)
-               seprewrite_in_by @scalar_of_bytes H
+               seprewrite_in_by scalar_of_bytes H
                  ltac:(Lia.lia);
                  let x := fresh "x" in
                  set (word.of_Z _) as x in H; clearbody x; move x at top
@@ -244,8 +242,7 @@ H9 : (scalar a0 (word.add va vb)
 
     repeat match goal with
            | H : _ |- _ =>
-               (* WHY do I need @ in front of the lemma? PARAMRECORDS? *)
-               seprewrite_in_by @scalar_of_bytes H
+               seprewrite_in_by scalar_of_bytes H
                  ltac:(Lia.lia);
                  let x := fresh "x" in
                  set (word.of_Z _) as x in H; clearbody x; move x at top

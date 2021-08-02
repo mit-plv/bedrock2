@@ -18,7 +18,6 @@ Definition silly1 : func :=
   ))).
 
 Require Import coqutil.Macros.symmetry.
-Require Import coqutil.Tactics.ParamRecords.
 
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import bedrock2.Semantics bedrock2.ProgramLogic bedrock2.Array.
@@ -526,7 +525,6 @@ Section WithParameters.
 end end
     end end end.
 
-    simpl_param_projections.
     on_left ecancel_assumption.
     split; [trivial|].
     split; [reflexivity|].

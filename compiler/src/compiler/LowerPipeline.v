@@ -451,7 +451,6 @@ Section LowerPipeline.
         - eapply H. eassumption.
         - unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.build_fun_pos_env.
           pose proof (get_compile_funs_pos functions) as P.
-          ParamRecords.simpl_param_projections.
           destruct (compile_funs iset _ map.empty functions) as [ insts posmap ] eqn: F.
           eapply P.
           eassumption. }
@@ -518,7 +517,6 @@ Section LowerPipeline.
             end.
             assumption.
           }
-          ParamRecords.simpl_param_projections.
           use_sep_assumption.
           unfold ptsto_bytes.
           wseplog_pre.

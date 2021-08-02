@@ -13,7 +13,6 @@ Require Import Coq.Bool.Bool.
 Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Tactics.Simp.
 Require Import Coq.Program.Tactics.
-Require Import coqutil.Tactics.ParamRecords.
 Require Import coqutil.Datatypes.String.
 Require Import compiler.FlattenExprDef.
 Require Export coqutil.Word.SimplWordExpr.
@@ -334,7 +333,6 @@ Section FlattenExpr1.
 
   Ltac maps :=
     pose_flatten_var_ineqs;
-    simpl_param_projections;
     simpl (disjoint _ _) in *;
     map_solver locals_ok.
 
@@ -482,7 +480,7 @@ Section FlattenExpr1.
     apply unsigned_ne.
     rewrite! word.unsigned_of_Z. unfold word.wrap.
     pose proof word.width_pos as P; pose proof (Z.pow_gt_1 2 width) as Q.
-    rewrite! Z.mod_small; simpl_param_projections; blia.
+    rewrite! Z.mod_small; blia.
   Qed.
 
   Local Hint Mode Word.Interface.word - : typeclass_instances.

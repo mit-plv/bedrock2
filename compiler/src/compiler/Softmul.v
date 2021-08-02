@@ -276,9 +276,6 @@ Section Riscv.
       Some r1#"mem" \*/ word_array (word.of_Z mscratch) stacktrash \*/
       program (word.of_Z (mtvec_base * 4)) handler_insts = Some r2#"mem".
 
-  Ltac paramrecords :=
-    change (@SortedList.rep CSRFile_map_params) with (@map.rep CSRField.CSRField Z CSRFile) in *.
-
   Lemma related_preserves_load_bytes: forall n sH sL a w,
       related sH sL ->
       load_bytes n sH#"mem" a = Some w ->
@@ -395,14 +392,14 @@ Section Riscv.
       map.get m#"csrs" fld = Some z ->
       postF z m ->
       free.interpret run_primitive (getCSRField fld) m postF postA.
-  Proof. intros. cbn -[map.get]. paramrecords. rewrite H. assumption. Qed.
+  Proof. intros. cbn -[map.get map.rep]. rewrite H. assumption. Qed.
 
   Lemma interpret_setCSRField: forall (m: State) (postF : _->_->Prop) (postA : State -> Prop) fld z,
       map.get m#"csrs" fld <> None ->
       postF tt m(#"csrs" := map.put m#"csrs" fld z) ->
       free.interpret run_primitive (setCSRField fld z) m postF postA.
   Proof.
-    intros. cbn -[map.get]. destruct_one_match. 1: assumption. paramrecords. congruence.
+    intros. cbn -[map.get map.rep]. destruct_one_match. 1: assumption. congruence.
   Qed.
 
   Ltac simpl_get_set :=
