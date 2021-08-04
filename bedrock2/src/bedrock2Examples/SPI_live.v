@@ -75,7 +75,7 @@ Import coqutil.Map.Interface.
 Import ReversedListNotations.
 
 Import coqutil.Tactics.letexists.
-Import TailRecursion.
+Import Loops.
 
 Require Import bedrock2.Semantics.
 

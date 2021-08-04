@@ -2,7 +2,7 @@ Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
 From coqutil.Tactics Require Import letexists eabstract rdelta.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
-Require Import bedrock2.TailRecursion.
+Require Import bedrock2.Loops.
 Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
 Require bedrock2.string2ident.
 
@@ -235,9 +235,9 @@ Ltac straightline :=
   | |- literal _ _ => cbv beta delta [literal]
   | |- get _ _ _ => cbv beta delta [get]
   | |- load _ _ _ _ => cbv beta delta [load]
-  | |- @TailRecursion.enforce ?width ?word ?locals ?names ?values ?map =>
+  | |- @Loops.enforce ?width ?word ?locals ?names ?values ?map =>
     let values := eval cbv in values in
-    change (@TailRecursion.enforce width word locals names values map);
+    change (@Loops.enforce width word locals names values map);
     exact (conj (eq_refl values) eq_refl)
   | |- @eq (@coqutil.Map.Interface.map.rep String.string Interface.word.rep _) _ _ =>
     eapply SortedList.eq_value; exact eq_refl

@@ -37,7 +37,7 @@ Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.Separa
 
 Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
-Require Import bedrock2.ProgramLogic bedrock2.Scalars bedrock2.Array bedrock2.TailRecursion.
+Require Import bedrock2.ProgramLogic bedrock2.Scalars bedrock2.Array bedrock2.Loops.
 Require Import bedrock2.ZnWords.
 Require Import Coq.Sorting.Permutation.
 

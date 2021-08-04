@@ -101,7 +101,7 @@ Section WithParameters.
          constants [Properties.word_cst]).
 
   Import coqutil.Tactics.letexists.
-  Import TailRecursion.
+  Import Loops.
   Lemma spi_write_ok : program_logic_goal_for_function! spi_write.
   Proof.
     repeat straightline.

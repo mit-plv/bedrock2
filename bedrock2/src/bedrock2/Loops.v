@@ -8,7 +8,7 @@ From bedrock2 Require Import Map.Separation Map.SeparationLogic.
 From bedrock2 Require Import Syntax Semantics Markers.
 From bedrock2 Require Import WeakestPrecondition WeakestPreconditionProperties.
 
-Section TailRecrsion.
+Section Loops.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
@@ -183,7 +183,6 @@ Section TailRecrsion.
   Qed.
 
 
-  (* TODO: move (this is not tailrecursion) *)
   Lemma atleastonce_localsmap
     {e c t} {m : mem} {l} {post : _->_->_-> Prop}
     {measure : Type} (invariant:_->_->_->_->Prop) lt
@@ -400,4 +399,4 @@ Section TailRecrsion.
       intros. rewrite (sep_comm _ dR), <-(sep_assoc _ dR), dQ; trivial. }
     { eapply Hpost, Qi, Hpc. }
   Qed.
-End TailRecrsion.
+End Loops.

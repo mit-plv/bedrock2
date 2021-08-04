@@ -141,7 +141,7 @@ Require bedrock2Examples.lightbulb_spec.
 
 Import coqutil.Map.Interface.
 Import lightbulb_spec.
-Import TailRecursion.
+Import Loops.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.

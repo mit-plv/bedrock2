@@ -394,7 +394,7 @@ Section WithParameters.
 
     3: {
 
-    refine (TailRecursion.tailrec_earlyout
+    refine (Loops.tailrec_earlyout
       (HList.polymorphic_list.cons (list byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
       ["buf";"num_bytes";"i";"read";"err"]
       (fun v scratch R t m buf num_bytes_loop i read err => PrimitivePair.pair.mk (
@@ -488,7 +488,7 @@ Section WithParameters.
         straightline.
         (* after store *)
         do 3 straightline.
-        (* TODO straightline hangs in TailRecursion.enforce *)
+        (* TODO straightline hangs in Loops.enforce *)
         do 5 letexists. split. { repeat straightline. }
         right. do 3 letexists.
         repeat split; repeat straightline; repeat split.

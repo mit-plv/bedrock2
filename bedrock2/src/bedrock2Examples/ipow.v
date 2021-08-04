@@ -68,7 +68,7 @@ Lemma ipow_ok : program_logic_goal_for_function! ipow.
 Proof.
   repeat straightline.
 
-  refine ((TailRecursion.tailrec
+  refine ((Loops.tailrec
     (* types of ghost variables*) HList.polymorphic_list.nil
     (* program variables *) (["e";"ret";"x"] : list String.string))
     (fun v t m e ret x => PrimitivePair.pair.mk (v = word.unsigned e) (* precondition *)
