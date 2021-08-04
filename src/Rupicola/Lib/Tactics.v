@@ -213,7 +213,8 @@ Ltac straightline' := straightline_plus ltac:(solve [straightline_map_solver]).
 Ltac program_logic_goal_for_function proc callees :=
   let __ := constr:(proc : func) in
   let fname := (eval cbv in (fst proc)) in
-  let callees := (eval cbv in callees) in
+  (* We do not evaluate callees since in this version they are typically already a value
+     and it adds a noticeable performance overhead at declaration and Qed. *)
   let spec := lazymatch constr:(_:spec_of fname) with ?s => s end in
   constr:(forall functions : list func,
              ltac:(let s := assuming_correctness_of_in

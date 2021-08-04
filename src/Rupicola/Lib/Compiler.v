@@ -1010,6 +1010,13 @@ Section with_parameters.
     Qed.
 
     Definition compile_setup_remove_skips := noskips_correct.
+
+    (*Important for Qed performance on certain derivations,
+      since it stops noskips from being unfolded.
+      Originally added for fiat-crypto/src/Bedrock/Group/ScalarMult/Ladderstep.v.
+     *)
+    Strategy 1 [noskips is_skip].
+    
   End NoSkips.
 End with_parameters.
 
