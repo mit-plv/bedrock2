@@ -188,7 +188,7 @@ Section TailRecrsion.
     {e c t} {m : mem} {l} {post : _->_->_-> Prop}
     {measure : Type} (invariant:_->_->_->_->Prop) lt
     (Hwf : well_founded lt)
-    (Henter : exists br, expr m l e (eq br) /\ (word.unsigned br = 0%Z -> False \/ post t m l))
+    (Henter : exists br, expr m l e (eq br) /\ (word.unsigned br = 0%Z -> post t m l))
     (v0 : measure) (Hpre : invariant v0 t m l)
     (Hbody : forall v t m l, invariant v t m l ->
        cmd call c t m l (fun t m l =>
@@ -205,7 +205,6 @@ Section TailRecrsion.
     { destruct Henter as [br [He Henter]].
       destruct (BinInt.Z.eq_dec (word.unsigned br) 0).
       { exists None, br; split; trivial.
-        destruct Henter; try contradiction; eauto.
         split; intros; try contradiction; split; eauto. }
       { exists (Some v0), br.
         split; trivial; []; split; try contradiction.
@@ -340,7 +339,7 @@ Section TailRecrsion.
     {measure : Type} (invariant:_->_->_->ufunc word (length variables) Prop)
     lt (Hwf : well_founded lt)
     {post : _->_->_-> Prop}
-    (Henter : exists br, expr m l e (eq br) /\ (word.unsigned br = 0%Z -> False \/ post t m l))
+    (Henter : exists br, expr m l e (eq br) /\ (word.unsigned br = 0%Z -> post t m l))
     (v0 : measure) (Hpre : tuple.apply (invariant v0 t m) localstuple)
     (Hbody : forall v t m, tuple.foralls (fun localstuple =>
       tuple.apply (invariant v t m) localstuple ->
