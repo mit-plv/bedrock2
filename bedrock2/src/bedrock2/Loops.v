@@ -79,6 +79,68 @@ Section Loops.
   Proof. induction argts; cbn; auto. Qed.
 
   Import pair.
+
+  Lemma while_localsmap
+    {e c t l} {m : mem}
+    {measure : Type} (invariant:_->_->_->_->Prop)
+    {lt} (Hwf : well_founded lt) (v0 : measure)
+    {post : _->_->_-> Prop}
+    (Hpre : invariant v0 t m l)
+    (Hbody : forall v t m l,
+      invariant v t m l ->
+      exists br, expr m l e (eq br) /\
+         (word.unsigned br <> 0 ->
+          cmd call c t m l (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
+         (word.unsigned br = 0 -> post t m l))
+    : cmd call (cmd.while e c) t m l post.
+  Proof.
+    eexists measure, lt, invariant.
+    split. 1: exact Hwf.
+    split. 1: eauto.
+    exact Hbody.
+  Qed.
+
+  Lemma while
+    {e c t l} {m : mem}
+    (variables : list String.string)
+    {localstuple : tuple word (length variables)}
+    {measure : Type} (invariant:_->_->_->ufunc word (length variables) Prop)
+    {lt} (Hwf : well_founded lt) (v0 : measure)
+    {post : _->_->_-> Prop}
+    (Pl : enforce variables localstuple l)
+    (Hpre : tuple.apply (invariant v0 t m) localstuple)
+    (Hbody : forall v t m, tuple.foralls (fun localstuple =>
+      tuple.apply (invariant v t m) localstuple ->
+      let l := reconstruct variables localstuple in
+      exists br, expr m l e (eq br) /\
+         (word.unsigned br <> 0 ->
+          cmd call c t m l (fun t m l =>
+            Markers.unique (Markers.left (tuple.existss (fun localstuple =>
+              enforce variables localstuple l /\
+              Markers.right (Markers.unique (exists v',
+                tuple.apply (invariant v' t m) localstuple /\ lt v' v))))))) /\
+         (word.unsigned br = 0 -> post t m l)))
+    : cmd call (cmd.while e c) t m l post.
+  Proof.
+    eapply (while_localsmap (fun v t m l =>
+      exists localstuple, enforce variables localstuple l /\
+                          tuple.apply (invariant v t m) localstuple));
+      unfold Markers.split; eauto.
+    intros vi ti mi li (?&X&Y).
+    specialize (Hbody vi ti mi).
+    eapply hlist.foralls_forall in Hbody.
+    specialize (Hbody Y).
+    rewrite <-(reconstruct_enforce _ _ _ X) in Hbody.
+    destruct Hbody as (br & Cond & Again & Done).
+    exists br. split; [exact Cond|]. split; [|exact Done].
+    intro NE. specialize (Again NE).
+    eapply Proper_cmd; [eapply Proper_call| |eapply Again].
+    cbv [Morphisms.pointwise_relation Basics.impl Markers.right Markers.unique Markers.left] in *.
+    intros t' m' l' Ex.
+    eapply hlist.existss_exists in Ex. cbv beta in Ex. destruct Ex as (ls & E & v' & Inv' & LT).
+    eauto.
+  Qed.
+
   Lemma tailrec
     {e c t localsmap} {m : mem}
     (ghosttypes : polymorphic_list.list Type)
@@ -400,3 +462,12 @@ Section Loops.
     { eapply Hpost, Qi, Hpc. }
   Qed.
 End Loops.
+
+Ltac loop_simpl :=
+  cbn [reconstruct map.putmany_of_list HList.tuple.to_list
+       HList.hlist.foralls HList.tuple.foralls
+       HList.hlist.existss HList.tuple.existss
+       HList.hlist.apply HList.tuple.apply HList.hlist
+       List.repeat Datatypes.length
+       HList.polymorphic_list.repeat HList.polymorphic_list.length
+       PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
