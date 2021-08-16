@@ -425,6 +425,18 @@ Section Loops.
     eexists; split; eauto.
   Qed.
 
+  Lemma while_zero_iterations {e c t l} {m : mem} {post : _->_->_-> Prop}
+    (HCond: expr m l e (eq (word.of_Z 0)))
+    (HPost: post t m l)
+    : cmd call (cmd.while e c) t m l post.
+  Proof.
+    eapply (while_localsmap (fun n t' m' l' => t' = t /\ m' = m /\ l' = l) (PeanoNat.Nat.lt_wf 0) 0%nat).
+    1: unfold split; auto. intros *. intros (? & ? & ?). subst.
+    eexists. split. 1: exact HCond.
+    rewrite Properties.word.unsigned_of_Z_0.
+    split; intros; congruence.
+  Qed.
+
 
   (* Bedrock-style loop rule *)
   Local Open Scope sep_scope.
