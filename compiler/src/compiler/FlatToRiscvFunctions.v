@@ -1747,9 +1747,9 @@ Section Proofs.
     - idtac "Case compile_stmt_correct/SSkip".
       run1done.
 
-    Grab Existential Variables.
-    all: try (apply list_union_preserves_NoDup; assumption).
-    all: try (unfold env; simpl; eapply funname_env_ok).
+    Unshelve.
     all: repeat (exact Z0 || assumption || constructor).
+    all: try (unfold env; simpl; eapply funname_env_ok).
+    all: try (apply list_union_preserves_NoDup; assumption).
   Qed. (* <-- takes a while *)
 End Proofs.
