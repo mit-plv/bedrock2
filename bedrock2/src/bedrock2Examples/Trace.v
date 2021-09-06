@@ -202,7 +202,7 @@ Module SpiEth.
         - case TODO.
       }
       case TODO.
-      Grab Existential Variables. all: intros; apply True.
+      Unshelve. all: intros; apply True.
     Defined.
 
   End WithMem.
@@ -294,7 +294,7 @@ Module Syscalls.
           { (* TODO need to specify that some ignored1, ignored2 are updated too *)
             case TODO. }
     - case TODO.
-      Grab Existential Variables. all: apply (word.of_Z 42) || apply map.empty || apply nil.
+      Unshelve. all: apply (word.of_Z 42) || apply map.empty || apply nil.
     Defined.
 
   End WithMem.
