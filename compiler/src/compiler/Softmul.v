@@ -21,6 +21,7 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.Simp.
 Require Import bedrock2.Syntax.
+Require Import bedrock2.ZnWords.
 Require Import riscv.Platform.Run.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Proofs.EncodeBound.
@@ -41,6 +42,11 @@ Section Riscv.
   Context {mem_ok: map.ok mem}.
   Context {registers: map.map Z word}.
   Context {registers_ok: map.ok registers}.
+
+  Add Ring wring : (word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (word.ring_morph (word := word)),
+       constants [word_cst]).
 
   (* RISC-V Monad *)
   Local Notation M := (free riscv_primitive primitive_result).
@@ -85,14 +91,6 @@ Section Riscv.
     simp. eauto.
   Qed.
 
-  Lemma invert_fetch1: forall initial post k,
-      mcomp_sat (pc <- Machine.getPC; i <- Machine.loadWord Fetch pc; k i) initial post ->
-      exists (w: w32) R, R \*/ bytes (n:=4) initial#"pc" w = Some initial#"mem" /\
-                  mcomp_sat (k w) initial post.
-  Proof.
-    intros. apply invert_fetch0 in H. simp.
-  Admitted.
-
   Lemma invert_fetch: forall initial post iset,
       mcomp_sat (run1 iset) initial post ->
       exists R i, R \*/ instr initial#"pc" i = Some initial#"mem" /\
@@ -121,7 +119,7 @@ Section Riscv.
     | None => False
     end.
 
-  Lemma build_fetch: forall (initial: State) iset post (instr1 instr2: Instruction) (R: option mem),
+  Lemma build_fetch_one_instr: forall (initial: State) iset post (instr1 instr2: Instruction) (R: option mem),
       R \*/ (instr initial#"pc" instr1) = Some initial#"mem" ->
       decode iset (encode instr1) = instr2 ->
       mcomp_sat (Execute.execute instr2;; endCycleNormal) initial post ->
@@ -133,6 +131,45 @@ Section Riscv.
     rewrite LittleEndian.combine_split. rewrite word.unsigned_of_Z_nowrap. 2: apply encode_range.
     rewrite Z.mod_small. 2: apply encode_range.
     eassumption.
+  Qed.
+
+  Lemma array_split{T: Type}: forall elem size (l1 l2: list T) addr,
+      array elem size addr (l1 ++ l2) =
+      array elem size addr l1 \*/
+      array elem size (word.add addr (word.mul size (word.of_Z (Z.of_nat (List.length l1))))) l2.
+  Proof.
+    induction l1; intros.
+    - cbn [List.app array List.length Z.of_nat]. rewrite mmap.du_empty_l.
+      replace (word.add addr (word.mul size (word.of_Z 0))) with addr by ring.
+      reflexivity.
+    - cbn [List.app array List.length]. rewrite IHl1. reify_goal.
+      cancel_at 0%nat 0%nat. 1: reflexivity.
+      cancel_at 0%nat 0%nat. 1: reflexivity.
+      cancel_at 0%nat 0%nat. 2: reflexivity.
+      f_equal.
+      rewrite Nat2Z.inj_succ. (* <-- without this, lia checker fails, but it's already fixed on Coq master *)
+      ZnWords.
+  Qed.
+
+  Lemma build_fetch: forall (initial: State) iset post addr p (instr1 instr2: Instruction) (R: option mem),
+      R \*/ (program addr p) = Some initial#"mem" ->
+      let offset := word.unsigned (word.sub initial#"pc" addr) in
+      offset mod 4 = 0 ->
+      nth_error p (Z.to_nat (offset / 4)) = Some instr1 ->
+      decode iset (encode instr1) = instr2 ->
+      mcomp_sat (Execute.execute instr2;; endCycleNormal) initial post ->
+      mcomp_sat (run1 iset) initial post.
+  Proof.
+    intros.
+    edestruct nth_error_split as (p0 & p1 & ? & E). 1: eassumption.
+    subst p.
+    unfold program in *.
+    rewrite array_split in H. cbn [array] in H.
+    eapply build_fetch_one_instr; [|eassumption..].
+    etransitivity. 2: eassumption.
+    reify_goal.
+    cancel_at 1%nat 2%nat. 2: reflexivity.
+    rewrite E. f_equal. subst offset. ZnWords.
   Qed.
 
   Lemma decode_verify_iset: forall iset i, verify_iset (decode iset i) iset.
@@ -433,6 +470,36 @@ Section Riscv.
                              end
     end.
 
+  Ltac program_index l :=
+    lazymatch l with
+    | program _ _ :: _ => constr:(0%nat)
+    | _ :: ?rest => let i := program_index rest in constr:(S i)
+    end.
+
+  Ltac cancel_program :=
+    match goal with
+    | |- mmap.dus ?LHS = mmap.dus ?RHS =>
+      let i := program_index LHS in
+      let j := program_index RHS in
+      cancel_at i j; [reflexivity|]
+    end.
+
+  Ltac instr_lookup :=
+    lazymatch goal with
+    | |- nth_error ?insts ?index = Some ?inst =>
+      repeat match goal with
+             | |- context[word.unsigned ?x] => progress ring_simplify x
+             end;
+      rewrite ?word.unsigned_of_Z_nowrap by
+          match goal with
+          | |- 0 <= ?x < 2 ^ 32 =>
+            lazymatch isZcst x with
+            | true => vm_compute; intuition congruence
+            end
+          end;
+      reflexivity
+    end.
+
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 RV32IM)) initialH post ->
       related initialH initialL ->
@@ -442,7 +509,7 @@ Section Riscv.
     intros *. intros R. revert initialL. induction R; intros. {
       apply runsToDone. eauto.
     }
-    unfold run1 in H |- *.
+    unfold run1 in H.
     pose proof H2 as Rel.
     unfold related, basic_CSRFields_supported in H2.
     eapply invert_fetch in H. simp.
@@ -454,7 +521,7 @@ Section Riscv.
     - (* IInstruction *)
       subst.
       eapply runsToStep with (midset0 := fun midL => exists midH, related midH midL /\ midset midH).
-      + eapply build_fetch.
+      + eapply build_fetch_one_instr.
         { etransitivity. 2: exact H2p6p3.
           reify_goal.
           cancel_at 1%nat 1%nat. { rewrite H2p1. reflexivity. }
@@ -467,7 +534,7 @@ Section Riscv.
     - (* MInstruction *)
       (* fetch M instruction (considered invalid by RV32I machine) *)
       eapply runsToStep_cps.
-      eapply build_fetch. {
+      eapply build_fetch_one_instr. {
           etransitivity. 2: exact H2p6p3.
           reify_goal.
           cancel_at 1%nat 1%nat. {
@@ -480,82 +547,51 @@ Section Riscv.
         exfalso. clear -Hp1 EVM. destruct inst; cbn in *; try discriminate EVM.
         unfold verify in *. apply proj1 in Hp1. exact Hp1.
       }
-      unfold Execute.execute at 1.
-      unfold raiseExceptionWithInfo.
-      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_getPC.
-      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_getCSRField. 1: eassumption.
-      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setCSRField. 1: eassumption.
-      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setCSRField; simpl_get_set. {
-        rewrite map.get_put_diff by congruence. assumption.
-      }
-      simpl_set_set.
-      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setCSRField; simpl_get_set. {
-        rewrite ?map.get_put_diff by congruence. assumption.
-      }
-      simpl_set_set.
-      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setCSRField; simpl_get_set. {
-        rewrite ?map.get_put_diff by congruence. assumption.
-      }
-      simpl_set_set.
-      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setCSRField; simpl_get_set. {
-        rewrite ?map.get_put_diff by congruence. assumption.
-      }
-      simpl_set_set.
-      rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setPC.
-      eapply mcomp_sat_bind. eapply interpret_endCycleEarly.
-      unfold updatePc.
-      simpl_get_set.
+
+  Ltac step :=
+    match goal with
+    | |- _ => rewrite !Monads.associativity
+    | |- _ => rewrite !Monads.left_identity
+    | |- _ => progress cbn [Execute.execute ExecuteCSR.execute ExecuteCSR.checkPermissions
+                            CSRGetSet.getCSR CSRGetSet.setCSR]
+    | |- _ => progress unfold ExecuteCSR.checkPermissions, CSRSpec.getCSR, CSRSpec.setCSR,
+                              raiseExceptionWithInfo, updatePc
+    | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with (@Monads.Return M MM _ tt)
+    | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with B
+    | |- _ => progress record.simp
+    | |- _ => progress change (CSR.lookupCSR MScratch) with CSR.MScratch
+    | |- _ => rewrite !map.get_put_diff by congruence
+    | |- mcomp_sat (Monads.Bind _ _) _ _ => eapply mcomp_sat_bind
+    | |- free.interpret run_primitive getPC _ _ _ => eapply interpret_getPC
+    | |- free.interpret run_primitive (setPC _) _ _ _ => eapply interpret_setPC
+    | |- free.interpret run_primitive (getRegister _) _ _ _ => eapply interpret_getRegister
+    | |- free.interpret run_primitive (setRegister _ _) _ _ _ => eapply interpret_setRegister
+    | |- free.interpret run_primitive (endCycleEarly _) _ _ _ => eapply interpret_endCycleEarly
+    | |- free.interpret run_primitive (getCSRField _) _ _ _ => eapply interpret_getCSRField
+    | |- free.interpret run_primitive (setCSRField _ _) _ _ _ => eapply interpret_setCSRField
+    | |- free.interpret run_primitive getPrivMode _ _ _ => eapply interpret_getPrivMode
+    | |- RegisterNames.sp <> 0 => cbv; congruence
+    | |- map.get _ _ = Some _ => eassumption
+    | |- map.get _ _ <> None => congruence
+    | |- mcomp_sat endCycleNormal _ _ => eapply mcomp_sat_endCycleNormal
+    | |- mcomp_sat (run1 RV32I) _ _ =>
+      eapply build_fetch; record.simp; cbn [ZToReg MkMachineWidth.MachineWidth_XLEN];
+        [ etransitivity; [|eassumption]; reify_goal; cancel_program; reflexivity
+        | ZnWords
+        | instr_lookup
+        | apply decode_encode; vm_compute; intuition congruence
+        | ]
+    end.
+
+      repeat step.
 
       (* step through handler code *)
 
       (* Csrrw sp sp MScratch *)
-      eapply runsToStep_cps.
-      eapply build_fetch. {
-        etransitivity. 2: exact H2p6p3.
-        cbn [program array handler_insts List.app].
-        reify_goal.
-        cancel_at 1%nat 3%nat. {
-          unfold instr, one. reflexivity.
-        }
-        reflexivity.
-      }
-      { apply decode_encode. vm_compute. intuition congruence. }
-      unfold Execute.execute at 1. unfold ExecuteCSR.execute, ExecuteCSR.checkPermissions.
-      rewrite ?Monads.associativity. eapply mcomp_sat_bind.
-      eapply interpret_getPrivMode.
-      match goal with
-      | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with (@Monads.Return M MM _ tt)
-      end.
-      rewrite Monads.left_identity.
-      eapply mcomp_sat_bind.
-      eapply interpret_getRegister.
-      { cbv. congruence. }
-      { eassumption. }
-      record.simp.
-      rewrite ?Monads.associativity.
-      unfold CSRSpec.getCSR.
-      change (CSR.lookupCSR MScratch) with CSR.MScratch.
-      unfold CSRGetSet.getCSR.
-      rewrite Monads.associativity.
-      eapply mcomp_sat_bind.
-      eapply interpret_getCSRField.
-      { record.simp. rewrite ?map.get_put_diff by congruence. eassumption. }
-      rewrite Monads.left_identity.
-      rewrite ?Monads.associativity.
-      unfold CSRSpec.setCSR, CSRGetSet.setCSR.
-      eapply mcomp_sat_bind.
-      eapply interpret_setCSRField.
-      { record.simp. rewrite ?map.get_put_diff by congruence. congruence. }
-      match goal with
-      | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with B
-      end.
-      eapply mcomp_sat_bind.
-      eapply interpret_setRegister.
-      { cbv. congruence. }
-      eapply mcomp_sat_endCycleNormal.
-      record.simp.
+      eapply runsToStep_cps. repeat step.
 
       (* Sw sp zero 0        (needed if the instruction to be emulated reads register 0) *)
+      eapply runsToStep_cps. repeat step.
 
       (* Sw sp ra 4 *)
       (* Csrr ra MScratch *)
@@ -608,7 +644,7 @@ Section Riscv.
     - (* CSRInstruction *)
       subst.
       eapply runsToStep with (midset0 := fun midL => exists midH, related midH midL /\ midset midH).
-      + eapply build_fetch.
+      + eapply build_fetch_one_instr.
         { etransitivity. 2: exact H2p6p3.
           reify_goal.
           cancel_at 1%nat 1%nat. { rewrite H2p1. reflexivity. }
