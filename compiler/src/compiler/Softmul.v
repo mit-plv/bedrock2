@@ -102,23 +102,6 @@ Section Riscv.
     intros. apply invert_fetch0 in H. simp.
   Admitted.
 
-  Lemma build_fetch0: forall (initial: State) post k w,
-      load_bytes 4 initial#"mem" initial#"pc" = Some w ->
-      mcomp_sat (k w) initial post ->
-      mcomp_sat (pc <- Machine.getPC; i <- Machine.loadWord Fetch pc; k i) initial post.
-  Proof.
-    intros. unfold mcomp_sat in *. cbn -[HList.tuple load_bytes].
-    unfold load. simpl in *. rewrite H. assumption.
-  Qed.
-
-  Lemma build_fetch1: forall (initial: State) post k w R,
-      mcomp_sat (k w) initial post ->
-      R \*/ bytes (n:=4) initial#"pc" w = Some initial#"mem" ->
-      mcomp_sat (pc <- Machine.getPC; i <- Machine.loadWord Fetch pc; k i) initial post.
-  Proof.
-    intros. eapply build_fetch0. 2: eassumption.
-  Admitted.
-
   Definition store'(n: nat)(ctxid: SourceType)(a: word)(v: tuple byte n)(mach: State)(post: State -> Prop) :=
     exists (R: option mem) (v_old: tuple byte n),
       R \*/ bytes a v_old = Some mach#"mem" /\ post mach(#"mem" := mmap.force (R \*/ bytes a v)).
@@ -138,21 +121,17 @@ Section Riscv.
     | None => False
     end.
 
-  Lemma build_fetch: forall (initial: State) iset post (i: Instruction) (R: option mem),
-      verify i iset ->
-      R \*/ (instr initial#"pc" i) = Some initial#"mem" ->
-      mcomp_sat (Execute.execute i;; endCycleNormal) initial post ->
+  Lemma build_fetch: forall (initial: State) iset post (instr1 instr2: Instruction) (R: option mem),
+      R \*/ (instr initial#"pc" instr1) = Some initial#"mem" ->
+      decode iset (encode instr1) = instr2 ->
+      mcomp_sat (Execute.execute instr2;; endCycleNormal) initial post ->
       mcomp_sat (run1 iset) initial post.
   Proof.
-    intros. unfold run1, mcomp_sat in *. cbn -[HList.tuple load_bytes].
+    intros. subst instr2. unfold run1, mcomp_sat in *. cbn -[HList.tuple load_bytes].
     assert (load = load') as E by case TODO. rewrite E; clear E.
     unfold load'. do 2 eexists. split; try eassumption.
-    replace (decode iset
-             (LittleEndian.combine 4
-                (LittleEndian.split (Memory.bytes_per access_size.four) (word.unsigned (word.of_Z (encode i))))))
-      with i. 2: {
-      case TODO. (* decode_encode and split_combine *)
-    }
+    rewrite LittleEndian.combine_split. rewrite word.unsigned_of_Z_nowrap. 2: apply encode_range.
+    rewrite Z.mod_small. 2: apply encode_range.
     eassumption.
   Qed.
 
@@ -475,36 +454,32 @@ Section Riscv.
     - (* IInstruction *)
       subst.
       eapply runsToStep with (midset0 := fun midL => exists midH, related midH midL /\ midset midH).
-      + eapply build_fetch with (i := (IInstruction inst)).
-        { eapply verify_I_swap_extensions; try eassumption; reflexivity. }
-        {
-          etransitivity. 2: exact H2p6p3.
+      + eapply build_fetch.
+        { etransitivity. 2: exact H2p6p3.
           reify_goal.
-          cancel_at 1%nat 1%nat. 1: congruence.
-          cbn [mmap.dus].
+          cancel_at 1%nat 1%nat. { rewrite H2p1. reflexivity. }
           reflexivity.
         }
+        { apply decode_encode.
+          eapply verify_I_swap_extensions; try eassumption; reflexivity. }
         eapply mcomp_sat_preserves_related; eassumption.
       + intros midL. intros. simp. eapply H1; eassumption.
     - (* MInstruction *)
       (* fetch M instruction (considered invalid by RV32I machine) *)
       eapply runsToStep_cps.
-      eapply build_fetch1. 2: {
+      eapply build_fetch. {
           etransitivity. 2: exact H2p6p3.
           reify_goal.
           cancel_at 1%nat 1%nat. {
             unfold instr, one. rewrite H2p1. reflexivity.
           }
-          cbn [mmap.dus].
           reflexivity.
       }
-      rewrite LittleEndian.combine_split. rewrite word.unsigned_of_Z_nowrap. 2: apply encode_range.
-      rewrite Z.mod_small. 2: apply encode_range.
-      destruct (isValidM inst) eqn: EVM. 2: {
+      { rewrite decode_M_on_RV32I_Invalid. 1: reflexivity.
+        destruct (isValidM inst) eqn: EVM. 1: reflexivity.
         exfalso. clear -Hp1 EVM. destruct inst; cbn in *; try discriminate EVM.
         unfold verify in *. apply proj1 in Hp1. exact Hp1.
       }
-      rewrite decode_M_on_RV32I_Invalid by exact EVM.
       unfold Execute.execute at 1.
       unfold raiseExceptionWithInfo.
       rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_getPC.
@@ -535,20 +510,16 @@ Section Riscv.
 
       (* Csrrw sp sp MScratch *)
       eapply runsToStep_cps.
-      eapply build_fetch1. 2: {
-          etransitivity. 2: exact H2p6p3.
-          cbn [program array handler_insts List.app].
-          reify_goal.
-          cancel_at 1%nat 3%nat. {
-            unfold instr, one. reflexivity.
-          }
-          reflexivity.
+      eapply build_fetch. {
+        etransitivity. 2: exact H2p6p3.
+        cbn [program array handler_insts List.app].
+        reify_goal.
+        cancel_at 1%nat 3%nat. {
+          unfold instr, one. reflexivity.
+        }
+        reflexivity.
       }
-      rewrite LittleEndian.combine_split. rewrite word.unsigned_of_Z_nowrap. 2: apply encode_range.
-      rewrite Z.mod_small. 2: apply encode_range.
-      rewrite decode_encode. 2: {
-        vm_compute. intuition congruence.
-      }
+      { apply decode_encode. vm_compute. intuition congruence. }
       unfold Execute.execute at 1. unfold ExecuteCSR.execute, ExecuteCSR.checkPermissions.
       rewrite ?Monads.associativity. eapply mcomp_sat_bind.
       eapply interpret_getPrivMode.
@@ -637,16 +608,14 @@ Section Riscv.
     - (* CSRInstruction *)
       subst.
       eapply runsToStep with (midset0 := fun midL => exists midH, related midH midL /\ midset midH).
-      + eapply build_fetch with (i := (CSRInstruction inst)).
-        { eapply verify_CSR_swap_extensions. eassumption.
-          (* "assumption" and relying on conversion would work too *) }
-        {
-          etransitivity. 2: exact H2p6p3.
+      + eapply build_fetch.
+        { etransitivity. 2: exact H2p6p3.
           reify_goal.
-          cancel_at 1%nat 1%nat. 1: congruence.
-          cbn [mmap.dus].
+          cancel_at 1%nat 1%nat. { rewrite H2p1. reflexivity. }
           reflexivity.
         }
+        { apply decode_encode. eapply verify_CSR_swap_extensions. eassumption.
+          (* "assumption" and relying on conversion would work too *) }
         eapply mcomp_sat_preserves_related; eassumption.
       + intros midL. intros. simp. eapply H1; eassumption.
   Qed.
