@@ -27,6 +27,7 @@ Require Import riscv.Proofs.EncodeBound.
 Require Import riscv.Platform.MinimalCSRs.
 Require Import riscv.Proofs.InstructionSetOrder.
 Require Import riscv.Proofs.DecodeEncodeProver.
+Require Import riscv.Proofs.DecodeEncode.
 Require Import riscv.Examples.SoftmulInsts.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import compiler.UniqueSepLog.
@@ -51,8 +52,10 @@ Section Riscv.
 
   Local Hint Mode map.map - - : typeclass_instances.
 
+  (* both the finish-postcondition and the abort-postcondition are set to `post`
+     to make sure `post` holds in all cases: *)
   Definition mcomp_sat(m: M unit)(initial: State)(post: State -> Prop): Prop :=
-    free.interpret run_primitive m initial (fun tt => post) (fun _ => False).
+    free.interpret run_primitive m initial (fun tt => post) post.
 
   Lemma weaken_mcomp_sat: forall m initial (post1 post2: State -> Prop),
       (forall s, post1 s -> post2 s) ->
@@ -60,12 +63,12 @@ Section Riscv.
       mcomp_sat m initial post2.
   Proof.
     unfold mcomp_sat. intros.
-    eapply free.interpret_weaken_post with (postA1 := fun _ => False); eauto; simpl;
+    eapply free.interpret_weaken_post with (postA1 := post1); eauto; simpl;
       eauto using weaken_run_primitive.
   Qed.
 
   Lemma mcomp_sat_bind: forall initial A (a: M A) (rest: A -> M unit) (post: State -> Prop),
-      free.interpret run_primitive a initial (fun r mid => mcomp_sat (rest r) mid post) (fun _ => False) ->
+      free.interpret run_primitive a initial (fun r mid => mcomp_sat (rest r) mid post) post ->
       mcomp_sat (Monads.Bind a rest) initial post.
   Proof.
     intros. unfold mcomp_sat. eapply free.interpret_bind. 2: exact H. apply weaken_run_primitive.
@@ -269,12 +272,13 @@ Section Riscv.
     r1#"log" = r2#"log" /\
     r1#"csrs" = map.empty /\
     basic_CSRFields_supported r2 /\
-    exists mtvec_base mscratch stacktrash,
+    exists mtvec_base mscratch stacktrash spval,
       map.get r2#"csrs" CSRField.MTVecBase = Some mtvec_base /\
       map.get r2#"csrs" CSRField.MScratch = Some mscratch /\
       List.length stacktrash = 32%nat /\
       Some r1#"mem" \*/ word_array (word.of_Z mscratch) stacktrash \*/
-      program (word.of_Z (mtvec_base * 4)) handler_insts = Some r2#"mem".
+      program (word.of_Z (mtvec_base * 4)) handler_insts = Some r2#"mem" /\
+      map.get r2#"regs" RegisterNames.sp = Some spval.
 
   Lemma related_preserves_load_bytes: forall n sH sL a w,
       related sH sL ->
@@ -307,19 +311,21 @@ Section Riscv.
     (* TODO separation logic/memory stuff *)
   Admitted.
 
-  Lemma run_primitive_preserves_related: forall a initialH initialL postH,
+  Lemma run_primitive_preserves_related: forall a initialH initialL postF postA,
       related initialH initialL ->
-      run_primitive a initialH postH (fun _ => False) ->
+      run_primitive a initialH postF postA ->
       run_primitive a initialL
-                    (fun res finalL => exists finalH, related finalH finalL /\ postH res finalH)
-                    (fun _ => False).
+                    (fun res finalL => exists finalH, related finalH finalL /\ postF res finalH)
+                    (fun finalL => exists finalH, related finalH finalL /\ postA finalH).
   Proof.
     intros. pose proof H as R.
     unfold related, basic_CSRFields_supported in H|-*.
     simp.
     destruct a; cbn [run_primitive] in *.
     - exists initialH. intuition (congruence || eauto 10).
-    - exists initialH(#"regs" := setReg initialH#"regs" z r). record.simp. intuition (congruence || eauto 10).
+    - exists initialH(#"regs" := setReg initialH#"regs" z r). record.simp.
+      unfold setReg in *. destr (Z.eq_dec z 0). 1: intuition (congruence || eauto 10).
+      rewrite map.get_put_dec. destr (z =? RegisterNames.sp); intuition (congruence || eauto 10).
     - eapply load_preserves_related; eauto.
     - eapply load_preserves_related; eauto.
     - eapply load_preserves_related; eauto.
@@ -341,7 +347,8 @@ Section Riscv.
     - eexists. ssplit; cycle -1. 1: eassumption. all: record.simp; try congruence. eauto 10.
     - eexists. unfold updatePc in *. ssplit; cycle -1. 1: eassumption.
       all: record.simp; try congruence. eauto 10.
-    - contradiction.
+    - eexists. unfold updatePc in *. ssplit; cycle -1. 1: eassumption.
+      all: record.simp; try congruence. eauto 10.
   Qed.
 
   (* If we're running the same primitives on two related states, they remain related.
@@ -356,7 +363,7 @@ Section Riscv.
     }
     unfold mcomp_sat in *.
     cbn in *.
-    eapply weaken_run_primitive with (postA1 := fun _ => False). 3: {
+    eapply weaken_run_primitive. 3: {
       eapply run_primitive_preserves_related; eassumption.
     }
     2: auto.
@@ -373,6 +380,11 @@ Section Riscv.
       runsTo (mcomp_sat (run1 iset)) initial post.
 *)
 
+  Lemma mcomp_sat_endCycleNormal: forall (mach: State) (post: State -> Prop),
+      post mach(#"pc" := mach#"nextPc")(#"nextPc" := word.add mach#"nextPc" (word.of_Z 4)) ->
+      mcomp_sat endCycleNormal mach post.
+  Proof. intros. assumption. Qed.
+
   Lemma interpret_getPC: forall (initial: State) (postF : word -> State -> Prop) (postA : State -> Prop),
       postF initial#"pc" initial ->
       free.interpret run_primitive getPC initial postF postA.
@@ -382,6 +394,27 @@ Section Riscv.
       postF tt m(#"nextPc" := v) ->
       free.interpret run_primitive (setPC v) m postF postA.
   Proof. intros *. exact id. Qed.
+
+  (* Otherwise `@map.rep CSRField.CSRField Z CSRFile` gets simplified into `@SortedList.rep CSRFile_map_params`
+     and `rewrite` stops working because of implicit argument mismatches. *)
+  Arguments map.rep : simpl never.
+
+  Lemma interpret_getRegister: forall (initial: State) (postF: word -> State -> Prop) (postA: State -> Prop) r v,
+      r <> 0 ->
+      map.get initial#"regs" r = Some v ->
+      postF v initial ->
+      free.interpret run_primitive (getRegister r) initial postF postA.
+  Proof.
+    intros. simpl. unfold getReg. destr (Z.eq_dec r 0). 1: exfalso; congruence. rewrite H0. assumption.
+  Qed.
+
+  Lemma interpret_setRegister: forall (initial: State) (postF: unit -> State -> Prop) (postA: State -> Prop) r v,
+      r <> 0 ->
+      postF tt initial(#"regs" := map.put initial#"regs" r v) ->
+      free.interpret run_primitive (setRegister r v) initial postF postA.
+  Proof.
+    intros. simpl. unfold setReg. destr (Z.eq_dec r 0). 1: exfalso; congruence. assumption.
+  Qed.
 
   Lemma interpret_endCycleEarly: forall (m: State) (postF : unit -> State -> Prop) (postA : State -> Prop),
       postA (updatePc m) ->
@@ -401,6 +434,11 @@ Section Riscv.
   Proof.
     intros. cbn -[map.get map.rep]. destruct_one_match. 1: assumption. congruence.
   Qed.
+
+  Lemma interpret_getPrivMode: forall (m: State) (postF: PrivMode -> State -> Prop) (postA: State -> Prop),
+      postF Machine m -> (* we're always in machine mode *)
+      free.interpret run_primitive getPrivMode m postF postA.
+  Proof. intros. cbn -[map.get map.rep]. assumption. Qed.
 
   Ltac simpl_get_set :=
     match goal with
@@ -490,19 +528,96 @@ Section Riscv.
       simpl_set_set.
       rewrite Monads.associativity. eapply mcomp_sat_bind. eapply interpret_setPC.
       eapply mcomp_sat_bind. eapply interpret_endCycleEarly.
-      (* oops, can't set early-exit postcondition to False! *)
-
+      unfold updatePc.
+      simpl_get_set.
 
       (* step through handler code *)
 
+      (* Csrrw sp sp MScratch *)
+      eapply runsToStep_cps.
+      eapply build_fetch1. 2: {
+          etransitivity. 2: exact H2p6p3.
+          cbn [program array handler_insts List.app].
+          reify_goal.
+          cancel_at 1%nat 3%nat. {
+            unfold instr, one. reflexivity.
+          }
+          reflexivity.
+      }
+      rewrite LittleEndian.combine_split. rewrite word.unsigned_of_Z_nowrap. 2: apply encode_range.
+      rewrite Z.mod_small. 2: apply encode_range.
+      rewrite decode_encode. 2: {
+        vm_compute. intuition congruence.
+      }
+      unfold Execute.execute at 1. unfold ExecuteCSR.execute, ExecuteCSR.checkPermissions.
+      rewrite ?Monads.associativity. eapply mcomp_sat_bind.
+      eapply interpret_getPrivMode.
+      match goal with
+      | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with (@Monads.Return M MM _ tt)
+      end.
+      rewrite Monads.left_identity.
+      eapply mcomp_sat_bind.
+      eapply interpret_getRegister.
+      { cbv. congruence. }
+      { eassumption. }
+      record.simp.
+      rewrite ?Monads.associativity.
+      unfold CSRSpec.getCSR.
+      change (CSR.lookupCSR MScratch) with CSR.MScratch.
+      unfold CSRGetSet.getCSR.
+      rewrite Monads.associativity.
+      eapply mcomp_sat_bind.
+      eapply interpret_getCSRField.
+      { record.simp. rewrite ?map.get_put_diff by congruence. eassumption. }
+      rewrite Monads.left_identity.
+      rewrite ?Monads.associativity.
+      unfold CSRSpec.setCSR, CSRGetSet.setCSR.
+      eapply mcomp_sat_bind.
+      eapply interpret_setCSRField.
+      { record.simp. rewrite ?map.get_put_diff by congruence. congruence. }
+      match goal with
+      | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with B
+      end.
+      eapply mcomp_sat_bind.
+      eapply interpret_setRegister.
+      { cbv. congruence. }
+      eapply mcomp_sat_endCycleNormal.
+      record.simp.
+
+      (* Sw sp zero 0        (needed if the instruction to be emulated reads register 0) *)
+
+      (* Sw sp ra 4 *)
+      (* Csrr ra MScratch *)
+      (* Sw sp ra 8 *)
+      (* save_regs3to31 *)
+      (* Csrr t1 MTVal                     t1 := the invalid instruction i that caused the exception *)
+      (* Srli t1 t1 5                      t1 := t1 >> 5                                             *)
+      (* Andi s3 t1 (31*4)                 s3 := i[7:12]<<2   // (rd of the MUL)*4                   *)
+      (* Srli t1 t1 8                      t1 := t1 >> 8                                             *)
+      (* Andi s1 t1 (31*4)                 s1 := i[15:20]<<2  // (rs1 of the MUL)*4                  *)
+      (* Srli t1 t1 5                      t1 := t1 >> 5                                             *)
+      (* Andi s2 t1 (31*4)                 s2 := i[20:25]<<2  // (rs2 of the MUL)*4                  *)
+      (* Add s1 s1 sp                      s1 := s1 + stack_start                                    *)
+      (* Add s2 s2 sp                      s2 := s2 + stack_start                                    *)
+      (* Add s3 s3 sp                      s3 := s3 + stack_start                                    *)
+      (* Lw a1 s1 0                        a1 := stack[s1]                                           *)
+      (* Lw a2 s2 0                        a2 := stack[s2]                                           *)
+      (* softmul_insts                     a3 := softmul(a1, a2)                                     *)
+      (* Sw s3 a3 0                        stack[s3] := a3                                           *)
+      (* Csrr t1 MEPC *)
+      (* Addi t1 t1 4 *)
+      (* Csrw t1 MEPC                      MEPC := MEPC + 4                                          *)
+      (* restore_regs3to31 *)
+      (* Lw ra sp 4 *)
+      (* Csrr sp MScratch *)
+      (* Mret *)
+
+      (* ExecuteCSR.execute run_primitive *)
 
       (* instruction-specific handler code *)
       destruct inst.
       + (* Mul *)
-        cbn in Hp2.
-
         case TODO.
-
       + (* Mulh *)
         case TODO.
       + (* Mulhsu *)
