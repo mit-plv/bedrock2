@@ -89,7 +89,7 @@ Section RegAlloc.
     | ASInteract(binds: list (srcvar * impvar))(f: String.string)(args: list srcvar).
 
   Inductive Update :=
-  | Add(y: srcvar)
+  | Add(y: srcvar)(forSure: bool)
   | Remove.
   (* Third case: In "option Update", "None" means unchanged. *)
 
@@ -99,102 +99,103 @@ Section RegAlloc.
   (* If we know that one of the two updates was applied, how can we represent that as a single update? *)
   Definition Either1(u1: option Update)(u2: option Update): option Update :=
     match u1, u2 with
-    | Some (Add y1), Some (Add y2) =>
-      if String.eqb y1 y2 then Some (Add y1) else Some Remove
+    | Some (Add y1 forSure1), Some (Add y2 forSure2) =>
+      if String.eqb y1 y2 then Some (Add y1 (andb forSure1 forSure2)) else Some Remove
+    | Some (Add y1 forSure1), None => Some (Add y1 false)
+    | None, Some (Add y2 forSure2) => Some (Add y2 false)
     | None, None => None
     | _, _ => Some Remove
     end.
 
-  Lemma Either1_sym: forall u1 u2,
-      Either1 u1 u2 = Either1 u2 u1.
-  Proof.
-    intros. destruct u1 as [[? |]|]; destruct u2 as [[? |]|]; try reflexivity.
-    simpl. destr (String.eqb y y0); destr (String.eqb y0 y); congruence.
-  Qed.
-
   Definition Seq1(u1: option Update)(u2: option Update): option Update :=
     match u2 with
-    | Some x => Some x
+    | Some (Add _ true) => u2
+    | Some (Add y2 false) =>
+      match u1 with
+      | Some (Add y1 forSure1) => if String.eqb y1 y2 then u1 else Some Remove
+      | Some Remove => Some Remove
+      | None => u2
+      end
+    | Some Remove => u2
     | None => u1
     end.
 
   Definition Either: Corresp -> Corresp -> Corresp := map.lift2 Either1.
   Definition Seq: Corresp -> Corresp -> Corresp := map.lift2 Seq1.
 
-  Remark Seq_putmany: forall us1 us2, Seq us1 us2 = map.putmany us1 us2.
-  Proof.
-    intros. unfold Seq. apply map.map_ext. intros.
-    rewrite map.lift2_spec by reflexivity. unfold Seq1.
-    rewrite map.get_putmany_dec.
-    reflexivity.
-  Qed.
+  Ltac t :=
+    match goal with
+    | |- _ => progress intros
+    | |- _ => progress simpl
+    | |- _ => congruence
+    | o: option Update |- _ => destruct o
+    | u: Update |- _ => destruct u
+    | b: bool |- _ => destruct b
+    | |- context[String.eqb ?x ?y] => destr (String.eqb x y)
+    end.
+
+  Lemma Seq1_None_l: forall a, Seq1 None a = a. Proof. repeat t. Qed.
+  Lemma Seq1_None_r: forall a, Seq1 a None = a. Proof. repeat t. Qed.
 
   Lemma Seq_empty_l: forall a, Seq map.empty a = a.
-  Proof. intros. rewrite Seq_putmany. apply map.putmany_empty_l. Qed.
+  Proof.
+    intros. unfold Seq. apply map.map_ext. intros. rewrite map.lift2_spec by reflexivity.
+    rewrite map.get_empty. apply Seq1_None_l.
+  Qed.
 
   Lemma Seq_empty_r: forall a, Seq a map.empty = a.
-  Proof. intros. rewrite Seq_putmany. apply map.putmany_empty_r. Qed.
+  Proof.
+    intros. unfold Seq. apply map.map_ext. intros. rewrite map.lift2_spec by reflexivity.
+    rewrite map.get_empty. apply Seq1_None_r.
+  Qed.
 
   Lemma Seq1_assoc: forall a b c: option Update, Seq1 a (Seq1 b c) = Seq1 (Seq1 a b) c.
-  Proof. destruct a; destruct b; destruct c; reflexivity. Qed.
+  Proof. repeat t. Qed.
 
   Lemma Seq_assoc: forall a b c: Corresp, Seq a (Seq b c) = Seq (Seq a b) c.
   Proof. apply map.lift2_assoc. 1: reflexivity. apply Seq1_assoc. Qed.
 
   Lemma Seq1_idemp: forall a: option Update, Seq1 a a = a.
-  Proof. intros. destruct a; reflexivity. Qed.
+  Proof. repeat t. Qed.
 
   Lemma Seq_idemp: forall a: Corresp, Seq a a = a.
   Proof. apply map.lift2_idemp. apply Seq1_idemp. Qed.
+
+  Lemma Either1_sym: forall u1 u2,
+      Either1 u1 u2 = Either1 u2 u1.
+  Proof. repeat t. Qed.
+
+  Lemma Either_sym: forall A B, Either A B = Either B A.
+  Proof.
+    intros. apply map.map_ext. intros. unfold Either. rewrite ?map.lift2_spec by reflexivity.
+    apply Either1_sym.
+  Qed.
 
   Lemma Either_empty_l: forall a, Either map.empty a = a. Abort. (* doesn't hold *)
   Lemma Either_empty_r: forall a, Either a map.empty = a. Abort. (* doesn't hold *)
 
   Lemma Either1_assoc: forall a b c: option Update, Either1 a (Either1 b c) = Either1 (Either1 a b) c.
-  Proof.
-    intros. unfold Either1.
-    repeat match goal with
-           | |- _ => congruence
-           | o: option Update |- _ => destruct o
-           | u: Update |- _ => destruct u
-           | |- context[String.eqb ?x ?y] => destr (String.eqb x y)
-           end.
-  Qed.
+  Proof. repeat t. Qed.
 
   Lemma Either_assoc: forall a b c: Corresp, Either a (Either b c) = Either (Either a b) c.
   Proof. apply map.lift2_assoc. 1: reflexivity. apply Either1_assoc. Qed.
 
-  (* Doesn't hold: if a and b are the same Add, and c is None, LHS is Remove, but RHS is Add.
-     Idea: if needed, introduce a `MaybeAdd` to the abstract domain `Update`? *)
   Lemma Seq1_Either1_distrib: forall a b c,
       Seq1 a (Either1 b c) = Either1 (Seq1 a b) (Seq1 a c).
-  Proof. Abort.
+  Proof. repeat t. Qed.
 
-  (* The fact that Seq_Either_distrib does not hold means that the checker will reject the
-     following annotated program:
-       a(x) = 1
-       if (c) {
-         a(x) = 2
-       } else {
-         skip
-       }
-       b(y) = a+1
-     When translating a+1, it won't know that impvar x certainly contains srcvar a, because
-     the update resulting from the if-then-else is to remove the bindings for x.
-     On the other hand, a checker that threads the correspondence mapping through the program
-     would have [x=>a] before the if, and then at the end of each branch still [x=>a], and
-     intersecting the two would still result in [x=>a], so it would accept this program. *)
   Lemma Seq_Either_distrib: forall A B C,
       Seq A (Either B C) = Either (Seq A B) (Seq A C).
   Proof.
     unfold Seq, Either. intros. apply map.map_ext. intros. rewrite ?map.lift2_spec by reflexivity.
-  Abort.
+    apply Seq1_Either1_distrib.
+  Qed.
 
   Definition updates: astmt -> Corresp :=
     fix rec s :=
       match s with
       | ASLoad _ x x' _ _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
-           map.put map.empty x' (Add x)
+           map.put map.empty x' (Add x true)
       | ASStore _ _ _ _ => map.empty
       | ASIf cond s1 s2 => Either (rec s1) (rec s2)
       | ASLoop s1 cond s2 =>
@@ -208,12 +209,13 @@ Section RegAlloc.
         Either r1 (Seq r1 (Seq r2 r1))
       | ASSeq s1 s2 => Seq (rec s1) (rec s2)
       | ASSkip => map.empty
-      | ASInteract binds _ _ | ASCall binds _ _ => map.of_list (List.map (fun '(x, x') => (x', Add x)) binds)
+      | ASInteract binds _ _ | ASCall binds _ _ =>
+          map.of_list (List.map (fun '(x, x') => (x', Add x true)) binds)
       end.
 
   Definition update(corresp: Corresp)(s: astmt): Corresp := Seq corresp (updates s).
 
-  Definition get_impvar(corresp: Corresp)(x: srcvar): option impvar := map.reverse_get corresp (Add x).
+  Definition get_impvar(corresp: Corresp)(x: srcvar): option impvar := map.reverse_get corresp (Add x true).
 
   Definition cond_checker(corresp: Corresp)(cond: bcond): option bcond' :=
     match cond with
@@ -584,7 +586,7 @@ Section RegAlloc.
             argnames = map fst args /\
             retnames = map fst binds /\
             erase annotated = body /\
-            checker (map.of_list (List.map (fun '(x, x') => (x', Add x)) binds)) annotated = Some body') ->
+            checker (map.of_list (List.map (fun '(x, x') => (x', Add x true)) binds)) annotated = Some body') ->
       exec e s t m lH mc post ->
       forall lL corresp annotated s',
       erase annotated = s ->
