@@ -40,6 +40,10 @@ Module map. Section WithParams.
     lift2_spec: forall f m1 m2 k,
       f None None = None ->
       map.get (lift2 f m1 m2) k = f (map.get m1 k) (map.get m2 k);
+
+    (* note: the other direction does not hold *)
+    reverse_get_to_get: forall m k v,
+        reverse_get m v = Some k -> map.get m k = Some v;
   }.
 
   Context {mok: map.ok M}{o: ops M}{ook: ops_ok o}.
@@ -126,12 +130,14 @@ Section RegAlloc.
   Ltac t :=
     match goal with
     | |- _ => progress intros
-    | |- _ => progress simpl
+    | |- _ => progress simpl in *
     | |- _ => congruence
     | o: option Update |- _ => destruct o
     | u: Update |- _ => destruct u
     | b: bool |- _ => destruct b
     | |- context[String.eqb ?x ?y] => destr (String.eqb x y)
+    | H: context[String.eqb ?x ?y] |- _ => destr (String.eqb x y)
+    | |- _ /\ _ => split
     end.
 
   Lemma Seq1_None_l: forall a, Seq1 None a = a. Proof. repeat t. Qed.
@@ -171,6 +177,14 @@ Section RegAlloc.
     apply Either1_sym.
   Qed.
 
+  Lemma Either1_idemp: forall a, Either1 a a = a. Proof. repeat t. Qed.
+
+  Lemma Either_idemp: forall A, Either A A = A.
+  Proof.
+    intros. apply map.map_ext. intros. unfold Either. rewrite ?map.lift2_spec by reflexivity.
+    apply Either1_idemp.
+  Qed.
+
   Lemma Either_empty_l: forall a, Either map.empty a = a. Abort. (* doesn't hold *)
   Lemma Either_empty_r: forall a, Either a map.empty = a. Abort. (* doesn't hold *)
 
@@ -180,15 +194,26 @@ Section RegAlloc.
   Lemma Either_assoc: forall a b c: Corresp, Either a (Either b c) = Either (Either a b) c.
   Proof. apply map.lift2_assoc. 1: reflexivity. apply Either1_assoc. Qed.
 
-  Lemma Seq1_Either1_distrib: forall a b c,
+  Lemma Seq1_Either1_l_distrib: forall a b c,
+      Seq1 (Either1 a b) c = Either1 (Seq1 a c) (Seq1 b c).
+  Proof. repeat t. Qed.
+
+  Lemma Seq_Either_l_distrib: forall A B C,
+      Seq (Either A B) C = Either (Seq A C) (Seq B C).
+  Proof.
+    unfold Seq, Either. intros. apply map.map_ext. intros. rewrite ?map.lift2_spec by reflexivity.
+    apply Seq1_Either1_l_distrib.
+  Qed.
+
+  Lemma Seq1_Either1_r_distrib: forall a b c,
       Seq1 a (Either1 b c) = Either1 (Seq1 a b) (Seq1 a c).
   Proof. repeat t. Qed.
 
-  Lemma Seq_Either_distrib: forall A B C,
+  Lemma Seq_Either_r_distrib: forall A B C,
       Seq A (Either B C) = Either (Seq A B) (Seq A C).
   Proof.
     unfold Seq, Either. intros. apply map.map_ext. intros. rewrite ?map.lift2_spec by reflexivity.
-    apply Seq1_Either1_distrib.
+    apply Seq1_Either1_r_distrib.
   Qed.
 
   Definition updates: astmt -> Corresp :=
@@ -476,7 +501,7 @@ Section RegAlloc.
 
   Definition states_compat(st: srcLocals)(corresp: Corresp)(st': impLocals) :=
     forall (x: srcvar) (x': impvar),
-      get_impvar corresp x = Some x' ->
+      map.get corresp x' = Some (Add x true) ->
       forall w,
         map.get st x = Some w ->
         map.get st' x' = Some w.
@@ -553,8 +578,8 @@ Section RegAlloc.
       eval_bcond lL c' = Some b.
   Proof.
     intros. rename H1 into C. unfold states_compat in C.
-    destruct c; cbn in *; simp; cbn;
-      erewrite ?C by eassumption; reflexivity.
+    destruct c; cbn in *; simp; cbn; unfold get_impvar in *;
+      erewrite ?C by eauto using map.reverse_get_to_get; reflexivity.
   Qed.
 
   Lemma states_compat_eval_bcond_None: forall lH lL c c' corresp,
@@ -577,6 +602,73 @@ Section RegAlloc.
     intros. destr (eval_bcond lH c). 2: congruence.
     symmetry. rewrite <- H0. eapply states_compat_eval_bcond; eassumption.
   Qed.
+
+  Lemma invert_Either1_Add_true: forall u1 u2 x,
+      Either1 u1 u2 = Some (Add x true) ->
+      u1 = Some (Add x true) /\ u2 = Some (Add x true).
+  Proof. repeat t. Qed.
+
+  Lemma states_compat_Either_l: forall lH m1 m2 lL,
+      states_compat lH m2 lL ->
+      states_compat lH (Either m1 m2) lL.
+  Proof.
+    unfold states_compat. intros. eapply H. 2: eassumption.
+    unfold Either in *.
+    rewrite map.lift2_spec in H0 by reflexivity.
+    eapply invert_Either1_Add_true in H0. destruct H0. assumption.
+  Qed.
+  Hint Resolve states_compat_Either_l : states_compat.
+
+  Lemma states_compat_Either_r: forall lH m1 m2 lL,
+      states_compat lH m1 lL ->
+      states_compat lH (Either m1 m2) lL.
+  Proof. intros. rewrite Either_sym. apply states_compat_Either_l. assumption. Qed.
+  Hint Resolve states_compat_Either_r : states_compat.
+
+  Lemma states_compat_precond: forall lH corresp lL s,
+      states_compat lH corresp lL ->
+      states_compat lH (precond corresp s) lL.
+  Proof.
+    intros. destruct s; cbn; try assumption.
+    unfold update, loop_inv in *.
+    eapply states_compat_Either_r. assumption.
+  Qed.
+  Hint Resolve states_compat_precond : states_compat.
+
+  Lemma states_compat_put: forall lH corresp lL x x' y',
+      states_compat lH corresp lL ->
+      states_compat (map.put lH x y') (Seq corresp (map.put map.empty x' (Add x true))) (map.put lL x' y').
+  Proof.
+    unfold states_compat. intros. rewrite map.get_put_dec. rewrite map.get_put_dec in H1.
+    unfold Seq in H0. rewrite map.lift2_spec in H0 by reflexivity.
+
+  Admitted.
+
+  Lemma Seq2_idemp: forall corresp u0 u1,
+      Seq corresp (Seq u0 (Seq u1 (Seq u0 u1))) = Seq corresp (Seq u0 u1).
+  Proof.
+    intros. rewrite <- (Seq_idemp (Seq u0 u1)) at 2.
+    rewrite <-?Seq_assoc. reflexivity.
+  Qed.
+
+  Hint Rewrite <- Seq_assoc : corresp.
+  Hint Rewrite Seq_Either_l_distrib Seq_Either_r_distrib Seq2_idemp Either_idemp : corresp.
+
+  Ltac solve_states_compat :=
+    let C := fresh "C" in
+    match goal with
+    | H: states_compat ?lH _ ?lL |- states_compat ?lH _ ?lL =>
+      clear -H CorrespOk CorrespOpsOk; rename H into C
+    end;
+    cbn [precond] in *;
+    unfold update, loop_inv in *;
+    cbn [updates] in *;
+    repeat match goal with
+           | |- context[updates ?s] => let u := fresh "u0" in forget (updates s) as u
+           | H: context[updates ?s] |- _ => let u := fresh "u0" in forget (updates s) as u
+           end;
+    autorewrite with corresp in *;
+    eauto with states_compat.
 
   Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s t m lH mc post,
       (forall f argnames retnames body,
@@ -631,35 +723,36 @@ Section RegAlloc.
     - (* Case exec.op *)
       case TODO_sam.
     - (* Case exec.set *)
-      case TODO_sam.
+      eapply exec.set.
+      + unfold states_compat, get_impvar in *. eapply H4.
+        * eapply map.reverse_get_to_get. eassumption.
+        * eassumption.
+      + eexists. split. 2: eassumption. eapply states_compat_put. assumption.
     - (* Case exec.if_true *)
       eapply exec.if_true. 1: eauto using states_compat_eval_bcond.
       eapply exec.weaken.
-      + eapply IHexec. 1: reflexivity. 1: eassumption.
-        case TODO_sam.
-      + cbv beta. intros. simp. eexists. split. 2: eassumption.
-        case TODO_sam.
+      + eapply IHexec. 1: reflexivity. 1: eassumption. solve_states_compat.
+      + cbv beta. intros. simp. eexists. split. 2: eassumption. solve_states_compat.
     - (* Case exec.if_false *)
-      case TODO_sam.
+      eapply exec.if_false. 1: eauto using states_compat_eval_bcond.
+      eapply exec.weaken.
+      + eapply IHexec. 1: reflexivity. 1: eassumption. solve_states_compat.
+      + cbv beta. intros. simp. eexists. split. 2: eassumption. solve_states_compat.
     - (* Case exec.loop *)
       rename H4 into IH2, IHexec into IH1, H6 into IH12.
       eapply exec.loop.
-      + eapply IH1. 1: reflexivity. 1: eassumption.
-        case TODO_sam.
+      + eapply IH1. 1: reflexivity. 1: eassumption. solve_states_compat.
       + cbv beta. intros. simp. eauto using states_compat_eval_bcond_None.
-      + cbv beta. intros. simp. eexists. split. 2: eauto using states_compat_eval_bcond_bw.
-        case TODO_sam.
-      + cbv beta. intros. simp. eapply IH2; eauto using states_compat_eval_bcond_bw.
-        case TODO_sam.
-      + cbv beta. intros. simp. subst AS. eapply IH12; eauto.
-        cbn [precond]. case TODO_sam.
+      + cbv beta. intros. simp. eexists. split. 2: eauto using states_compat_eval_bcond_bw. solve_states_compat.
+      + cbv beta. intros. simp. eapply IH2; eauto using states_compat_eval_bcond_bw. solve_states_compat.
+      + cbv beta. intros. simp. subst AS. eapply IH12; eauto. solve_states_compat.
     - (* Case exec.seq *)
       rename H2 into IH2, IHexec into IH1.
       eapply exec.seq.
-      + eapply IH1. 2: eassumption. 1: reflexivity. case TODO_sam.
+      + eapply IH1. 2: eassumption. 1: reflexivity. solve_states_compat.
       + cbv beta. intros. simp.
         unfold update. cbn. rewrite Seq_assoc.
-        eapply IH2. 1: eassumption. 1: reflexivity. 1: eassumption. unfold update in *. case TODO_sam.
+        eapply IH2. 1: eassumption. 1: reflexivity. 1: eassumption. unfold update in *. solve_states_compat.
     - (* Case exec.skip *)
       unfold update. cbn. rewrite Seq_empty_r. eapply exec.skip. eauto.
   Qed.
