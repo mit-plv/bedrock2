@@ -93,7 +93,7 @@ Section RegAlloc.
   | Remove.
   (* Third case: In "option Update", "None" means unchanged. *)
 
-  Context {Updates: map.map impvar Update} {UpdatesOps: map.ops Updates}.
+  Context {Updates: map.map impvar Update} {UpdatesOps: map.ops Updates} {UpdatesOk: map.ok Updates}.
 
   (* If we know that one of the two updates was applied, how can we represent that as a single update? *)
   Definition Either1(u1: option Update)(u2: option Update): option Update :=
@@ -146,7 +146,13 @@ Section RegAlloc.
   Proof.
     intros. unfold update. cbn. unfold Seq.
     (* Search map.fold. map.putmany. *)
-  Abort.
+    (* does not hold because of different orders *)
+  Admitted.
+
+  Lemma update_Skip: forall corresp, update corresp ASSkip = corresp.
+  Proof.
+    intros. unfold update. cbn. apply map.fold_empty.
+  Qed.
 
   Definition get_impvar(l: list (srcvar * impvar))(x: srcvar): option impvar :=
     match List.find (fun '(y, y') => String.eqb x y) l with
@@ -190,6 +196,9 @@ Section RegAlloc.
           bind_opt s2' <- rec corresp s2;
           Some (SIf cond' s1' s2')
       | ASLoop s1 cond s2 =>
+          (* TODO need to intersect with corresp because mappings made only in s1 should not be in inv,
+             using Either, but Either expects Updates, not `list (srcvar * impvar)`, so
+             TODO use Updates (or better-named type) instead of `list (srcvar * impvar)` *)
           let inv := update corresp s in
           let corresp' := update inv s1 in
           bind_opt cond' <- cond_checker corresp' cond;
@@ -406,13 +415,11 @@ Section RegAlloc.
         map.get st x = Some w ->
         map.get st' x' = Some w.
 
-  (*
-  Definition precond(m: src2imp)(s: astmt): src2imp :=
+  Definition precond(corresp: list (srcvar * impvar))(s: astmt): list (srcvar * impvar) :=
     match s with
-    | ASLoop s1 cond s2 => loop_inv update m s1 s2
-    | _ => m
+    | ASLoop _ _ _ => update corresp s
+    | _ => corresp
     end.
-  *)
 
   (*
   Lemma precond_weakens: forall m s,
@@ -473,6 +480,38 @@ Section RegAlloc.
 *)
   *)
 
+  Lemma states_compat_eval_bcond: forall lH lL c c' b corresp,
+      cond_checker corresp c = Some c' ->
+      eval_bcond lH c = Some b ->
+      states_compat lH corresp lL ->
+      eval_bcond lL c' = Some b.
+  Proof.
+    intros. rename H1 into C. unfold states_compat in C.
+    destruct c; cbn in *; simp; cbn;
+      erewrite ?C by eassumption; reflexivity.
+  Qed.
+
+  Lemma states_compat_eval_bcond_None: forall lH lL c c' corresp,
+      cond_checker corresp c = Some c' ->
+      eval_bcond lH c <> None ->
+      states_compat lH corresp lL ->
+      eval_bcond lL c' <> None.
+  Proof.
+    intros. destr (eval_bcond lH c). 2: congruence.
+    erewrite states_compat_eval_bcond; eassumption.
+  Qed.
+
+  Lemma states_compat_eval_bcond_bw: forall lH lL c c' b corresp,
+      cond_checker corresp c = Some c' ->
+      eval_bcond lL c' = Some b ->
+      states_compat lH corresp lL ->
+      eval_bcond lH c <> None ->
+      eval_bcond lH c = Some b.
+  Proof.
+    intros. destr (eval_bcond lH c). 2: congruence.
+    symmetry. rewrite <- H0. eapply states_compat_eval_bcond; eassumption.
+  Qed.
+
   Lemma checker_correct: forall e e' s t m lH mc post,
       (forall f argnames retnames body,
           map.get e f = Some (argnames, retnames, body) ->
@@ -486,7 +525,7 @@ Section RegAlloc.
       forall lL corresp annotated s',
       erase annotated = s ->
       checker corresp annotated = Some s' ->
-      states_compat lH corresp lL ->
+      states_compat lH (precond corresp annotated) lL ->
       exec e' s' t m lL mc (fun t' m' lL' mc' =>
         exists lH', states_compat lH' (update corresp annotated) lL' /\ post t' m' lH' mc').
   Proof.
@@ -528,26 +567,35 @@ Section RegAlloc.
     - (* Case exec.set *)
       case TODO_sam.
     - (* Case exec.if_true *)
-      case TODO_sam.
+      eapply exec.if_true. 1: eauto using states_compat_eval_bcond.
+      eapply exec.weaken.
+      + eapply IHexec. 1: reflexivity. 1: eassumption.
+        case TODO_sam.
+      + cbv beta. intros. simp. eexists. split. 2: eassumption.
+        case TODO_sam.
     - (* Case exec.if_false *)
       case TODO_sam.
     - (* Case exec.loop *)
-      case TODO_sam.
+      rename H4 into IH2, IHexec into IH1, H6 into IH12.
+      eapply exec.loop.
+      + eapply IH1. 1: reflexivity. 1: eassumption.
+        case TODO_sam.
+      + cbv beta. intros. simp. eauto using states_compat_eval_bcond_None.
+      + cbv beta. intros. simp. eexists. split. 2: eauto using states_compat_eval_bcond_bw.
+        case TODO_sam.
+      + cbv beta. intros. simp. eapply IH2; eauto using states_compat_eval_bcond_bw.
+        case TODO_sam.
+      + cbv beta. intros. simp. subst AS. eapply IH12; eauto.
+        cbn [precond]. case TODO_sam.
     - (* Case exec.seq *)
       rename H2 into IH2, IHexec into IH1.
       eapply exec.seq.
-      + eapply IH1. 2: eassumption. 1: reflexivity. assumption.
+      + eapply IH1. 2: eassumption. 1: reflexivity. case TODO_sam.
       + cbv beta. intros. simp.
-        eapply exec.weaken.
-        * eapply IH2. 1: eassumption. 1: reflexivity. 1: eassumption. 1: eassumption.
-        * cbv beta. intros. simp. eexists. split. 2: eassumption.
-          unfold update. cbn. unfold Seq.
-
-
-
-      case TODO_sam.
+        rewrite update_Seq.
+        eapply IH2. 1: eassumption. 1: reflexivity. 1: eassumption. case TODO_sam.
     - (* Case exec.skip *)
-      case TODO_sam.
+      rewrite update_Skip. eapply exec.skip. eauto.
   Qed.
 
   (* code1  <----erase----  annotated  ----checker---->  code2 *)
