@@ -608,6 +608,12 @@ Section RegAlloc.
       u1 = Some (Add x true) /\ u2 = Some (Add x true).
   Proof. repeat t. Qed.
 
+  Lemma invert_Seq1_Add_true: forall u1 u2 x,
+      Seq1 u1 u2 = Some (Add x true) ->
+      u1 = Some (Add x true) /\ (u2 = None \/ u2 = Some (Add x false)) \/
+      u2 = Some (Add x true).
+  Proof. repeat t; auto. inversion H. subst. auto. Qed.
+
   Lemma states_compat_Either_l: forall lH m1 m2 lL,
       states_compat lH m2 lL ->
       states_compat lH (Either m1 m2) lL.
@@ -635,14 +641,73 @@ Section RegAlloc.
   Qed.
   Hint Resolve states_compat_precond : states_compat.
 
-  Lemma states_compat_put: forall lH corresp lL x x' y',
+  Lemma states_compat_get: forall corresp lL lH y y' v,
       states_compat lH corresp lL ->
-      states_compat (map.put lH x y') (Seq corresp (map.put map.empty x' (Add x true))) (map.put lL x' y').
-  Proof.
-    unfold states_compat. intros. rewrite map.get_put_dec. rewrite map.get_put_dec in H1.
-    unfold Seq in H0. rewrite map.lift2_spec in H0 by reflexivity.
+      get_impvar corresp y = Some y' ->
+      map.get lH y = Some v ->
+      map.get lL y' = Some v.
+  Proof. eauto using map.reverse_get_to_get. Qed.
 
-  Admitted.
+(* Counterexample (happens if two impvars store the same srcvar):
+
+  [a<--x;       a->1         x->1
+   a<--y;       b->2         y->1
+   b<--z]                    z->2
+
+   a(x) = b     --->   x = z
+
+  [b<--x;       a->2         x->2
+   a<--y;       b->2         y->1             a<--y binding requires y->2 !!
+   b<--z]                    z->2
+
+   adding the b<--x binding invalidates the a<--x binding (because impvars equal),
+   but also invalidates the a<--y binding!! (because a gets a new value, so y
+   now contains the value of the old a) [SSA would solve this because a couldn't be reassigned]
+
+  Updates: key for removal: srcvar
+           key for addition: impvar
+
+  a(x) = b
+  if (...) {
+    a(x) = c
+  } else
+    skip
+  }
+
+  then branch: Rem(a, <>x); Add(a, x)
+  whole if: ??
+
+  or: semantics ("apply updates") of Add(a,x) is to remove all bindings with srcvar=x and then add a<--x
+
+  then branch: Add(a,x)
+  whole if: MaybeAdd(a,x)
+
+  or: "value of a may change" event: Mod(a)
+  Mod does not commute with Add, so it's hard to aggregate updates without knowing current state
+
+  then branch: Mod(a); Add(a, x)
+  whole if: Mod(a); MaybeAdd(a, x)
+*)
+
+  Lemma states_compat_put: forall lH corresp lL x x' v,
+      states_compat lH corresp lL ->
+      states_compat (map.put lH x v) (Seq corresp (map.put map.empty x' (Add x true))) (map.put lL x' v).
+  Proof using .
+    intros. unfold states_compat in *. intros k k'. intros.
+    rewrite map.get_put_dec. rewrite map.get_put_dec in H1.
+    unfold Seq in H0. rewrite map.lift2_spec in H0 by reflexivity.
+    eapply invert_Seq1_Add_true in H0. rewrite map.get_put_dec in H0.
+    destr (Z.eqb x' k').
+    - subst k'. destruct H0.
+      + destruct H0. destruct H2; inversion H2.
+      + inversion H0. subst k. rewrite String.eqb_refl in H1. exact H1.
+    - rewrite map.get_empty in H0. destruct H0. 2: discriminate.
+      apply proj1 in H0.
+      eapply H. 1: eassumption.
+      destr (String.eqb x k).
+      + subst k. admit. (* doesn't hold!! *)
+      + assumption.
+  Admitted. (* doesn't hold!! *)
 
   Lemma Seq2_idemp: forall corresp u0 u1,
       Seq corresp (Seq u0 (Seq u1 (Seq u0 u1))) = Seq corresp (Seq u0 u1).
@@ -669,6 +734,10 @@ Section RegAlloc.
            end;
     autorewrite with corresp in *;
     eauto with states_compat.
+
+  Hint Constructors exec.exec : checker_hints.
+  Hint Resolve states_compat_get : checker_hints.
+  Hint Resolve states_compat_put : checker_hints.
 
   Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s t m lH mc post,
       (forall f argnames retnames body,
@@ -722,12 +791,10 @@ Section RegAlloc.
       case TODO_sam.
     - (* Case exec.op *)
       case TODO_sam.
+
+
     - (* Case exec.set *)
-      eapply exec.set.
-      + unfold states_compat, get_impvar in *. eapply H4.
-        * eapply map.reverse_get_to_get. eassumption.
-        * eassumption.
-      + eexists. split. 2: eassumption. eapply states_compat_put. assumption.
+      unfold update. cbn. eauto 10 with checker_hints.
     - (* Case exec.if_true *)
       eapply exec.if_true. 1: eauto using states_compat_eval_bcond.
       eapply exec.weaken.
