@@ -687,6 +687,7 @@ Section RegAlloc.
 
   then branch: Mod(a); Add(a, x)
   whole if: Mod(a); MaybeAdd(a, x)
+  whole snippet: Mod(a); Add(a, x); Mod(a); MaybeAdd(a, x) === Mod(a); MaybeAdd(a, x)   so we lose a<--x
 *)
 
   Lemma states_compat_put: forall lH corresp lL x x' v,
