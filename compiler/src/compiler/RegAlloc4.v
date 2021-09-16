@@ -29,6 +29,15 @@ Local Notation bcond' := (@FlatImp.bcond impvar).
 
 Axiom TODO_sam: False.
 
+Module map.
+  Section WithParams.
+    Context {K V: Type} {M: map.map K V}.
+
+    Definition forallb(f: K -> V -> bool): M -> bool :=
+      map.fold (fun res k v => andb res (f k v)) true.
+  End WithParams.
+End map.
+
 Definition accessed_vars_bcond(c: bcond): list srcvar :=
   match c with
   | CondBinary _ x y => list_union String.eqb [x] [y]
@@ -283,6 +292,28 @@ Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: option 
     assignments m binds binds'
   | _, _ => None
   end.
+
+Definition check_func: list srcvar * list srcvar * stmt -> list impvar * list impvar * stmt' -> option unit :=
+  fun '(args, rets, body) '(args', rets', body') =>
+    (* TODO add such nodup checks if needed
+    assert (List.list_eqb Z.eqb (List.dedup Z.eqb args') args') *)
+    assert (Nat.eqb (List.length args) (List.length args'));;
+    m <- check (List.combine args args') body body';;
+    assert_ins rets rets' m.
+
+Section WithEnv.
+  Context {srcEnv: map.map String.string (list srcvar * list srcvar * stmt)}.
+  Context {impEnv: map.map String.string (list impvar * list impvar * stmt')}.
+
+  Definition lookup_and_check_func(e': impEnv)(fname: String.string)(impl: list srcvar * list srcvar * stmt) :=
+    match map.get e' fname with
+    | Some impl' => if check_func impl impl' then true else false
+    | None => false
+    end.
+
+  Definition check_funcs(e: srcEnv)(e': impEnv): bool :=
+    map.forallb (lookup_and_check_func e') e.
+End WithEnv.
 
 Definition loop_inv(corresp: list (srcvar * impvar))(s1 s2: stmt)(s1' s2': stmt'): list (srcvar * impvar) :=
   match loop_inv' check s1 s2 s1' s2' (S (List.length corresp)) corresp with
@@ -577,14 +608,7 @@ Section RegAlloc.
   Hint Resolve states_compat_put : checker_hints.
 
   Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s t m lH mc post,
-      (forall f argnames retnames body,
-          map.get e f = Some (argnames, retnames, body) ->
-          exists args binds body' corresp,
-            map.get e' f = Some (map snd args, map snd binds, body') /\
-            argnames = map fst args /\
-            retnames = map fst binds /\
-            check args body body' = Some corresp /\
-            extends corresp binds (* TODO maybe just invoke check_fun instead? *)) ->
+      check_funcs e e' = true ->
       exec e s t m lH mc post ->
       forall lL corresp corresp' s',
       check corresp s s' = Some corresp' ->
@@ -617,6 +641,18 @@ Section RegAlloc.
       eexists. split. 1: eassumption. intros. eauto.
     - (* Case exec.call *)
       rename binds0 into binds'.
+
+      (*
+      edestruct putmany_of_list_states_compat as [ lLF' [? ?] ].
+      2: exact H2.
+      1: exact E2p0.
+      1: eapply map.getmany_of_list_extends; cycle 1; eassumption.
+      { instantiate (1 := map.empty).
+        unfold states_compat. intros *. intro A. rewrite map.get_empty in A. discriminate A.
+      }
+      eapply @exec.call.
+      *)
+
       (*
       pose proof @map.putmany_of_list_zip_sameLength as L1. specialize L1 with (1 := H2).
       pose proof @map.getmany_of_list_length as L2. specialize L2 with (1 := H1).
