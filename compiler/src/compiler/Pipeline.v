@@ -143,19 +143,20 @@ Section Pipeline1.
   Lemma rename_functions_NoDup: forall funs funs',
       (forall f argnames retnames body,
           map.get funs f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames) ->
-      rename_functions_new funs = Some funs' ->
+      rename_functions funs = Some funs' ->
       forall f argnames retnames body,
         map.get funs' f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames.
   Proof.
-    unfold rename_functions_new. intros.
-    eapply map.map_all_values_bw in H0. 5: eassumption. 2-4: typeclasses eauto.
+    unfold rename_functions. intros.
+    simp.
+    eapply map.map_all_values_bw in E. 5: eassumption. 2-4: typeclasses eauto.
     unfold rename_fun_new in *. simp.
-    specialize H with (1 := H0p1).
+    specialize H with (1 := Ep1).
     eapply rename_binds_props in E.
     2: eapply map.empty_injective.
     2: eapply dom_bound_empty.
     simp.
-    eapply rename_binds_props in E0. 2-3: eassumption.
+    eapply rename_binds_props in E1. 2-3: eassumption.
     simp.
     eauto using map.getmany_of_list_injective_NoDup.
   Qed.

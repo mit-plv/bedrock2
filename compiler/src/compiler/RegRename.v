@@ -1,5 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import compiler.FlatImp.
+Require Import compiler.RegAlloc4.
 Require Import coqutil.Decidable.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.simpl_rewrite.
@@ -154,11 +155,9 @@ Section RegAlloc.
   Context {impEnv: map.map String.string (list impvar * list impvar * stmt')}.
   Context {ext_spec: Semantics.ExtSpec}.
 
-  Definition rename_functions_old: srcEnv -> option impEnv :=
-    map.map_all_values rename_fun_old.
-
-  Definition rename_functions_new: srcEnv -> option impEnv :=
-    map.map_all_values rename_fun_new.
+  Definition rename_functions(e: srcEnv): option impEnv :=
+    bind_opt e' <- map.map_all_values rename_fun_new e;
+    if check_funcs e e' then Some e' else None.
 
   (* Should lH and m have the same domain?
      - lH could have fewer vars in domain because we didn't pass through one branch of the if

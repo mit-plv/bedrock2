@@ -309,8 +309,8 @@ Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: option 
 
 Definition check_func: list srcvar * list srcvar * stmt -> list impvar * list impvar * stmt' -> option unit :=
   fun '(args, rets, body) '(args', rets', body') =>
-    (* TODO add such nodup checks if needed
-    assert (List.list_eqb Z.eqb (List.dedup Z.eqb args') args') *)
+    assert (List.list_eqb Z.eqb (List.dedup Z.eqb args') args');;
+    assert (List.list_eqb Z.eqb (List.dedup Z.eqb rets') rets');;
     m0 <- assignments [] args args';;
     m1 <- check m0 body body';;
     assert_ins rets rets' m1.
@@ -687,7 +687,7 @@ Section RegAlloc.
       eapply @exec.call. 1: eassumption. 1: eauto using states_compat_getmany. 1: exact L3.
       + eapply IHexec. 1: eassumption. eapply states_compat_precond.
         edestruct putmany_of_list_zip_states_compat as [ lLF0 [L SC] ].
-        2: exact E2. 2: eapply states_compat_empty. 1: eassumption.
+        2: exact E4. 2: eapply states_compat_empty. 1: eassumption.
         rewrite L3 in L. apply Option.eq_of_eq_Some in L. subst lLF0. exact SC.
       + cbv beta. intros. simp. edestruct H4 as (retvs & lHF' & G & P & Hpost). 1: eassumption.
         edestruct putmany_of_list_zip_states_compat as (lL' & L4 & SC).

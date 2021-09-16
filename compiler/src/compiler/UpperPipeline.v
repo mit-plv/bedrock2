@@ -117,32 +117,26 @@ Section WithWordAndMem.
       - simpl. intros. simp. assumption.
     Qed.
 
-    Lemma renaming_correct: @phase_correct FlatLangStr FlatLangZ rename_functions_new.
+    Lemma renaming_correct: @phase_correct FlatLangStr FlatLangZ rename_functions.
     Proof.
       unfold phase_correct. intros.
 
       pose proof H as GR.
-      unfold rename_functions_new in GR.
+      unfold rename_functions in GR.
+      simp. rename E into GR.
       eapply map.map_all_values_fw in GR. 5: eassumption. 2-4: typeclasses eauto.
-      simp. unfold rename_fun_new, rename_binds in GRp0. simp.
+      simp. clear GRp0.
+      pose proof E0 as C.
+      unfold RegAlloc4.check_funcs in E0.
+      eapply RegAlloc4.map.get_forallb in E0. 2: eassumption.
+      unfold RegAlloc4.lookup_and_check_func, RegAlloc4.check_func in E0. simp.
+      eapply RegAlloc4.assert_ins_same_length in E1. destruct l0. 2: discriminate. clear E1 u.
+      apply_in_hyps RegAlloc4.assignments_same_length. destruct l. 2: discriminate.
 
-      pose proof E as A.
-      apply rename_props in A;
-        [|eapply map.empty_injective|eapply dom_bound_empty].
-      simp.
       eexists. split. 1: eassumption. intros.
       eapply FlatImp.exec.weaken.
-      - eapply rename_correct_new.
-        2: eassumption.
-        { unfold envs_related_new. intros *. intro G.
-          eapply map.map_all_values_fw. 5: exact G. 4: eassumption. all: typeclasses eauto. }
-        1: eassumption.
-        2: {
-          eapply Ap2. eapply TestLemmas.extends_refl.
-        }
-        1: eassumption.
-        unfold states_compat. intros *. intro B.
-        erewrite map.get_empty in B. discriminate.
+      - eapply RegAlloc4.checker_correct; try eassumption.
+        eapply RegAlloc4.states_compat_empty.
       - simpl. intros. simp. assumption.
     Qed.
 
@@ -267,7 +261,7 @@ Section WithWordAndMem.
     Qed.
 
     Definition upper_compiler :=
-      compose_phases flatten_functions (compose_phases rename_functions_new spill_functions).
+      compose_phases flatten_functions (compose_phases rename_functions spill_functions).
 
     Lemma upper_compiler_correct: @phase_correct SrcLang FlatLangZ upper_compiler.
     Proof.
