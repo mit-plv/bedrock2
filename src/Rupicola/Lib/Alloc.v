@@ -8,15 +8,22 @@ Section with_parameters.
           {semantics_ok : Semantics.parameters_ok semantics}.
 
   (* To enable allocation of A terms via the predicate P, implement this class *)
-  Class Allocable A (P : word.rep -> A -> Semantics.mem -> Prop) :=
+  (* I is a type if indices to use if P can take additional arguments *)
+  Class Allocable {I A} (P : I -> word.rep -> A -> Semantics.mem -> Prop) :=
     {
     size_in_bytes : Z;
     size_in_bytes_mod
     : size_in_bytes mod Memory.bytes_per_word Semantics.width = 0;
+    P_to_bytes
+    : forall px i x,
+        Lift1Prop.impl1 (P i px x) (Memory.anybytes px size_in_bytes);
     P_from_bytes
-    : forall px : word.rep,
-        Lift1Prop.iff1 (Memory.anybytes px size_in_bytes) (Lift1Prop.ex1 (P px))
+    : forall px,
+        Lift1Prop.impl1 (Memory.anybytes px size_in_bytes)
+                        (Lift1Prop.ex1 (fun i => Lift1Prop.ex1 (P i px)))
     }.
+  Arguments size_in_bytes : simpl never.
+
 
   Definition pred_sep {A} R (pred : A -> predicate) (v : A) tr' mem' locals':=
     (R * (fun mem => pred v tr' mem locals'))%sep mem'.
@@ -31,14 +38,14 @@ Section with_parameters.
         {tr mem locals functions A} (v : A):
     let v := alloc v in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-           {AP : word.rep -> A -> map.rep -> Prop} `{Allocable A AP}
+           {I} {AP : I -> word.rep -> A -> map.rep -> Prop} `{Allocable I A AP}
            (R: _ -> Prop) out_var,
 
       R mem ->
 
       (let v := v in
-       forall out_ptr uninit m,
-         sep (AP out_ptr uninit) R m ->
+       forall i out_ptr uninit m,
+         sep (AP i out_ptr uninit) R m ->
          (<{ Trace := tr;
              Memory := m;
              Locals := map.put locals out_var out_ptr;
@@ -55,9 +62,9 @@ Section with_parameters.
     repeat straightline.
     split; eauto using size_in_bytes_mod.
     intros out_ptr mStack mCombined Hplace%P_from_bytes.
-    destruct Hplace as [out Hout].
+    destruct Hplace as [i [out Hout]].
     repeat straightline.
-    specialize (H1 out_ptr out mCombined).     
+    specialize (H1 i out_ptr out mCombined).     
     eapply WeakestPrecondition_weaken
       with (p1 := pred_sep (Memory.anybytes out_ptr size_in_bytes)
                            pred (let/n x as out_var eq:Heq := v in
@@ -85,3 +92,6 @@ Section with_parameters.
   (* TODO: augment Rupicola tactics to handle this *)
   
 End with_parameters.
+
+
+Hint Extern 10 => simple eapply compile_alloc; shelve : compiler.
