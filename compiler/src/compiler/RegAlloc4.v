@@ -35,6 +35,20 @@ Module map.
 
     Definition forallb(f: K -> V -> bool): M -> bool :=
       map.fold (fun res k v => andb res (f k v)) true.
+
+    Context {ok: map.ok M} {keqb: K -> K -> bool} {keq_spec: EqDecider keqb}.
+
+    Lemma get_forallb: forall f m,
+        forallb f m = true -> forall k v, map.get m k = Some v -> f k v = true.
+    Proof.
+      unfold forallb. intros f m.
+      eapply map.fold_spec; intros.
+      - rewrite map.get_empty in H0. discriminate.
+      - eapply Bool.andb_true_iff in H1. destruct H1.
+        rewrite map.get_put_dec in H2. destruct_one_match_hyp.
+        + inversion H2. subst. eauto.
+        + eauto.
+    Qed.
   End WithParams.
 End map.
 
@@ -297,9 +311,9 @@ Definition check_func: list srcvar * list srcvar * stmt -> list impvar * list im
   fun '(args, rets, body) '(args', rets', body') =>
     (* TODO add such nodup checks if needed
     assert (List.list_eqb Z.eqb (List.dedup Z.eqb args') args') *)
-    assert (Nat.eqb (List.length args) (List.length args'));;
-    m <- check (List.combine args args') body body';;
-    assert_ins rets rets' m.
+    m0 <- assignments [] args args';;
+    m1 <- check m0 body body';;
+    assert_ins rets rets' m1.
 
 Section WithEnv.
   Context {srcEnv: map.map String.string (list srcvar * list srcvar * stmt)}.
@@ -447,8 +461,8 @@ Section RegAlloc.
   Context {impLocals: map.map impvar word}.
   Context {srcLocalsOk: map.ok srcLocals}.
   Context {impLocalsOk: map.ok impLocals}.
-  Context {srcEnv: map.map String.string (list srcvar * list srcvar * stmt)}.
-  Context {impEnv: map.map String.string (list impvar * list impvar * stmt')}.
+  Context {srcEnv: map.map String.string (list srcvar * list srcvar * stmt)} {srcEnvOk: map.ok srcEnv}.
+  Context {impEnv: map.map String.string (list impvar * list impvar * stmt')} {impEnvOk: map.ok impEnv}.
   Context {ext_spec: Semantics.ExtSpec}.
 
   Definition states_compat(st: srcLocals)(corresp: list (srcvar * impvar))(st': impLocals) :=
@@ -504,6 +518,10 @@ Section RegAlloc.
     intros. destr (eval_bcond lH c). 2: congruence.
     symmetry. rewrite <- H0. eapply states_compat_eval_bcond; eassumption.
   Qed.
+
+  Lemma states_compat_empty: forall corresp lL,
+      states_compat map.empty corresp lL.
+  Proof. unfold states_compat. intros. rewrite map.get_empty in H0. discriminate. Qed.
 
   Lemma states_compat_extends: forall lH m1 m2 lL,
       extends m1 m2 ->
@@ -603,6 +621,20 @@ Section RegAlloc.
       simpl. rewrite P. eauto.
   Qed.
 
+  Lemma assignments_same_length: forall xs xs' m1 m2,
+      assignments m1 xs xs' = Some m2 -> List.length xs = List.length xs'.
+  Proof.
+    induction xs; intros; destruct xs'; try discriminate.
+    - reflexivity.
+    - simpl in *. f_equal. eapply IHxs. eassumption.
+  Qed.
+
+  Lemma assert_ins_same_length: forall xs xs' m u,
+      assert_ins xs xs' m = Some u -> List.length xs = List.length xs'.
+  Proof.
+    unfold assert_ins, assert. intros. simp. apply Nat.eqb_eq. assumption.
+  Qed.
+
   Hint Constructors exec.exec : checker_hints.
   Hint Resolve states_compat_get : checker_hints.
   Hint Resolve states_compat_put : checker_hints.
@@ -640,41 +672,31 @@ Section RegAlloc.
       eapply putmany_of_list_zip_states_compat in P. 2-3: eassumption. destruct P as (lL' & P & SC).
       eexists. split. 1: eassumption. intros. eauto.
     - (* Case exec.call *)
-      rename binds0 into binds'.
-
-      (*
-      edestruct putmany_of_list_states_compat as [ lLF' [? ?] ].
-      2: exact H2.
-      1: exact E2p0.
-      1: eapply map.getmany_of_list_extends; cycle 1; eassumption.
-      { instantiate (1 := map.empty).
-        unfold states_compat. intros *. intro A. rewrite map.get_empty in A. discriminate A.
-      }
-      eapply @exec.call.
-      *)
-
-      (*
-      pose proof @map.putmany_of_list_zip_sameLength as L1. specialize L1 with (1 := H2).
-      pose proof @map.getmany_of_list_length as L2. specialize L2 with (1 := H1).
-      pose proof E0 as A.
-      unfold assert_ins, assert in A. simp. autoforward with typeclass_instances in E2.
-      rewrite E2 in L2.
-      eapply map.sameLength_putmany_of_list in L2.
-      destruct L2 as (lL' & P).
-      pose proof H2 as Q.
-      eapply putmany_of_list_zip_states_compat in Q. 2-3: case TODO_sam. destruct Q as (st' & Q & SC).
-      eapply exec.call.
-      + case TODO_sam.
-      + eauto using states_compat_getmany.
-      + exact Q.
-      + eapply IHexec. 2: exact SC. case TODO_sam.
-      + cbv beta. intros. simp. edestruct H4. 1: eassumption. simp.
+      rename binds0 into binds', args0 into args'.
+      unfold check_funcs in H.
+      eapply map.get_forallb in H. 2: eassumption.
+      unfold lookup_and_check_func in *. simp.
+      destruct p as ((params' & rets') & fbody').
+      unfold check_func in *. simp.
+      apply_in_hyps @map.getmany_of_list_length.
+      apply_in_hyps assert_ins_same_length.
+      apply_in_hyps assignments_same_length.
+      apply_in_hyps @map.putmany_of_list_zip_sameLength.
+      assert (length params' = length argvs) as L3 by congruence.
+      eapply map.sameLength_putmany_of_list in L3. destruct L3 as [lLF' L3].
+      eapply @exec.call. 1: eassumption. 1: eauto using states_compat_getmany. 1: exact L3.
+      + eapply IHexec. 1: eassumption. eapply states_compat_precond.
+        edestruct putmany_of_list_zip_states_compat as [ lLF0 [L SC] ].
+        2: exact E2. 2: eapply states_compat_empty. 1: eassumption.
+        rewrite L3 in L. apply Option.eq_of_eq_Some in L. subst lLF0. exact SC.
+      + cbv beta. intros. simp. edestruct H4 as (retvs & lHF' & G & P & Hpost). 1: eassumption.
+        edestruct putmany_of_list_zip_states_compat as (lL' & L4 & SC).
+        1: exact P. 1: exact H5. 1: eassumption.
+        destruct u.
         do 2 eexists. ssplit.
-        * eapply states_compat_getmany. 1: eassumption. 2: eassumption. case TODO_sam.
-        * case TODO_sam.
-        * eexists. split. 2: eassumption. case TODO_sam.
-      *)
-      case TODO_sam.
+        * eapply states_compat_getmany; eassumption.
+        * exact L4.
+        * eexists. split. 2: eassumption. exact SC.
     - (* Case exec.load *)
       eauto 10 with checker_hints.
     - (* Case exec.store *)
@@ -746,5 +768,3 @@ Section RegAlloc.
   Qed.
 
 End RegAlloc.
-
-(* Print Assumptions checker_correct. *)
