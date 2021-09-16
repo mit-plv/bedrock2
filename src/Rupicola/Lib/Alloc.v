@@ -22,7 +22,6 @@ Section with_parameters.
         Lift1Prop.impl1 (Memory.anybytes px size_in_bytes)
                         (Lift1Prop.ex1 (fun i => Lift1Prop.ex1 (P i px)))
     }.
-  Arguments size_in_bytes : simpl never.
 
 
   Definition pred_sep {A} R (pred : A -> predicate) (v : A) tr' mem' locals':=
@@ -32,7 +31,6 @@ Section with_parameters.
   (*TODO: should this require finding the instance? probably not
    Definition alloc {p : Semantics.parameters} {A} {P : A -> @Semantics.mem p -> Prop} `{@Allocable p A P} (a : A) := a. *)
   Definition alloc {A} (a : A) := a. 
-  Arguments alloc : simpl never.
 
   Lemma compile_alloc
         {tr mem locals functions A} (v : A):
@@ -94,4 +92,6 @@ Section with_parameters.
 End with_parameters.
 
 
+Arguments alloc : simpl never.
+Arguments size_in_bytes : simpl never.
 Hint Extern 10 => simple eapply compile_alloc; shelve : compiler.
