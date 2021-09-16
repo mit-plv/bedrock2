@@ -87,16 +87,26 @@ Scheme Equality for Syntax.access_size. (* to create access_size_beq *)
 Scheme Equality for bopname. (* to create bopname_beq *)
 Scheme Equality for bbinop. (* to create bbinop_beq *)
 
+Instance access_size_beq_spec: EqDecider access_size_beq.
+Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
+
+Instance bopname_beq_spec: EqDecider bopname_beq.
+Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
+
+Instance bbinop_beq_spec: EqDecider bbinop_beq.
+Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
+
 (* TODO List.list_eqb should not require an EqDecider instance *)
 (* TODO move *)
 Module Byte.
-  Lemma eqb_spec: EqDecider Byte.eqb.
+  Instance eqb_spec: EqDecider Byte.eqb.
   Proof.
     intros. destruct (Byte.eqb x y) eqn: E; constructor.
     - apply Byte.byte_dec_bl. assumption.
     - apply Byte.eqb_false. assumption.
   Qed.
 End Byte.
+Existing Instance List.list_eqb_spec.
 
 Section PairList.
   Context {A B: Type}.
@@ -168,6 +178,11 @@ Definition mapping_eqb: srcvar * impvar -> srcvar * impvar -> bool :=
 Definition assert_in(y: srcvar)(y': impvar)(m: list (srcvar * impvar)): option unit :=
   _ <- List.find (mapping_eqb (y, y')) m;; Some tt.
 
+Definition assert_ins(args: list srcvar)(args': list impvar)(m: list (srcvar * impvar)): option unit :=
+  assert (Nat.eqb (List.length args) (List.length args'));;
+  assert (List.forallb (fun p => if List.find (mapping_eqb p) m then true else false)
+                       (List.combine args args')).
+
 Definition check_bcond(m: list (srcvar * impvar))(c: bcond)(c': bcond'): option unit :=
   match c, c' with
   | CondBinary op y z, CondBinary op' y' z' =>
@@ -179,6 +194,14 @@ Definition check_bcond(m: list (srcvar * impvar))(c: bcond)(c': bcond'): option 
 
 Definition assignment(m: list (srcvar * impvar))(x: srcvar)(x': impvar): list (srcvar * impvar) :=
   (x, x') :: (remove_by_snd Z.eqb x' (remove_by_fst String.eqb x m)).
+
+Fixpoint assignments(m: list (srcvar * impvar))(xs: list srcvar)(xs': list impvar):
+  option (list (srcvar * impvar)) :=
+  match xs, xs' with
+  | x :: xs0, x' :: xs0' => assignments (assignment m x x') xs0 xs0'
+  | nil, nil => Some m
+  | _, _ => None
+  end.
 
 Section LoopInv.
   Context (check: list (srcvar * impvar) -> stmt -> stmt' -> option (list (srcvar * impvar)))
@@ -219,11 +242,14 @@ Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: option 
     Some m
   | SInlinetable sz x bs y, SInlinetable sz' x' bs' y' =>
     assert_in y y' m;;
+    (* FlatToRiscv uses x' as a tmp register, and that should not overwrite y' *)
+    assert (negb (Z.eqb x' y'));;
     assert (access_size_beq sz sz');;
     assert (List.list_eqb Byte.eqb bs bs');;
     Some (assignment m x x')
   | SStackalloc x n body, SStackalloc x' n' body' =>
-    None (* TODO *)
+    assert (Z.eqb n n');;
+    check (assignment m x x') body body'
   | SLit x z, SLit x' z' =>
     assert (Z.eqb z z');;
     Some (assignment m x x')
@@ -240,7 +266,7 @@ Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: option 
     m2 <- check m s2 s2';;
     Some (list_intersect mapping_eqb m1 m2)
   | SLoop s1 c s2, SLoop s1' c' s2' =>
-    inv <- loop_inv' check s1 s2 s1' s2' (List.length m) m;;
+    inv <- loop_inv' check s1 s2 s1' s2' (S (List.length m)) m;;
     m1 <- check inv s1 s1';;
     check_bcond m1 c c';;
     m2 <- check m1 s2 s2';;
@@ -250,15 +276,16 @@ Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: option 
     check m1 s2 s2'
   | SSkip, SSkip =>
     Some m
-  | SCall binds f args, SCall binds' f' args' =>
-    None (* TODO *)
+  | SCall binds f args, SCall binds' f' args'
   | SInteract binds f args, SInteract binds' f' args' =>
-    None (* TODO *)
+    assert (String.eqb f f');;
+    assert_ins args args' m;;
+    assignments m binds binds'
   | _, _ => None
   end.
 
 Definition loop_inv(corresp: list (srcvar * impvar))(s1 s2: stmt)(s1' s2': stmt'): list (srcvar * impvar) :=
-  match loop_inv' check s1 s2 s1' s2' (List.length corresp) corresp with
+  match loop_inv' check s1 s2 s1' s2' (S (List.length corresp)) corresp with
   | Some inv => inv
   | None => []
   end.
@@ -413,15 +440,18 @@ Section RegAlloc.
       eval_bcond lL c' = Some b.
   Proof.
     intros. rename H1 into C. unfold states_compat in C.
-    destruct c; cbn in *; simp; cbn.
-  Admitted.
-  (*
-    {
-      erewrite C. 1: eassumption.
-
-      erewrite ?C by eauto using map.reverse_get_to_get; reflexivity.
+    destruct c; cbn in *; simp;
+      repeat match goal with
+             | u: unit |- _ => destruct u
+             end;
+      unfold assert in *;
+      cbn; simp;
+      repeat match goal with
+             | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
+             end;
+      subst;
+      erewrite ?C by eauto; reflexivity.
   Qed.
-  *)
 
   Lemma states_compat_eval_bcond_None: forall lH lL c c' corresp,
       check_bcond corresp c c' = Some tt ->
@@ -471,6 +501,27 @@ Section RegAlloc.
       map.get lL y' = Some v.
   Proof. unfold states_compat. eauto. Qed.
 
+  Lemma states_compat_getmany: forall corresp lL lH ys ys' vs,
+      states_compat lH corresp lL ->
+      assert_ins ys ys' corresp = Some tt ->
+      map.getmany_of_list lH ys = Some vs ->
+      map.getmany_of_list lL ys' = Some vs.
+  Proof.
+    induction ys; intros.
+    - unfold assert_ins in *. cbn in *. simp. destruct ys'. 2: discriminate. reflexivity.
+    - cbn in *. unfold assert_ins, assert in H0. simp.
+      autoforward with typeclass_instances in E3. destruct ys' as [|a' ys']. 1: discriminate.
+      inversion E3. clear E3.
+      cbn in *. simp. simpl in E2.
+      erewrite states_compat_get; try eassumption. 2: {
+        unfold assert_in. unfold mapping_eqb. rewrite E1. reflexivity.
+      }
+      unfold map.getmany_of_list in *.
+      erewrite IHys; eauto.
+      unfold assert_ins. rewrite H1. rewrite Nat.eqb_refl. simpl.
+      unfold assert. rewrite E2. reflexivity.
+  Qed.
+
   Lemma states_compat_put: forall lH corresp lL x x' v,
       states_compat lH corresp lL ->
       states_compat (map.put lH x v) (assignment corresp x x') (map.put lL x' v).
@@ -503,6 +554,24 @@ Section RegAlloc.
         simpl in E1. rewrite String.eqb_refl, Z.eqb_refl in E1. discriminate.
   Qed.
 
+  Lemma putmany_of_list_zip_states_compat: forall binds binds' resvals lL lH l' corresp corresp',
+      map.putmany_of_list_zip binds resvals lH = Some l' ->
+      assignments corresp binds binds' = Some corresp' ->
+      states_compat lH corresp lL ->
+      exists lL',
+        map.putmany_of_list_zip binds' resvals lL = Some lL' /\
+        states_compat l' corresp' lL'.
+  Proof.
+    induction binds; intros.
+    - simpl in H. simp. destruct binds'. 2: discriminate.
+      simpl in *. simp. eauto.
+    - simpl in *. simp.
+      specialize IHbinds with (1 := H).
+      rename l' into lH'.
+      edestruct IHbinds as (lL' & P & C). 1: eassumption. 1: eapply states_compat_put. 1: eassumption.
+      simpl. rewrite P. eauto.
+  Qed.
+
   Hint Constructors exec.exec : checker_hints.
   Hint Resolve states_compat_get : checker_hints.
   Hint Resolve states_compat_put : checker_hints.
@@ -530,38 +599,76 @@ Section RegAlloc.
       simp;
       repeat match goal with
              | u: unit |- _ => destruct u
-             end.
+             end;
+      unfold assert in *;
+      simp;
+      repeat match goal with
+             | H: negb _ = false |- _ => apply Bool.negb_false_iff in H
+             | H: negb _ = true  |- _ => apply Bool.negb_true_iff in H
+             | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
+             end;
+      subst;
+      cbn [precond] in *.
 
     - (* Case exec.interact *)
-      case TODO_sam.
+      eapply exec.interact; eauto using states_compat_getmany.
+      intros. edestruct H3 as (l' & P & F). 1: eassumption.
+      eapply putmany_of_list_zip_states_compat in P. 2-3: eassumption. destruct P as (lL' & P & SC).
+      eexists. split. 1: eassumption. intros. eauto.
     - (* Case exec.call *)
+      rename binds0 into binds'.
+      (*
+      pose proof @map.putmany_of_list_zip_sameLength as L1. specialize L1 with (1 := H2).
+      pose proof @map.getmany_of_list_length as L2. specialize L2 with (1 := H1).
+      pose proof E0 as A.
+      unfold assert_ins, assert in A. simp. autoforward with typeclass_instances in E2.
+      rewrite E2 in L2.
+      eapply map.sameLength_putmany_of_list in L2.
+      destruct L2 as (lL' & P).
+      pose proof H2 as Q.
+      eapply putmany_of_list_zip_states_compat in Q. 2-3: case TODO_sam. destruct Q as (st' & Q & SC).
+      eapply exec.call.
+      + case TODO_sam.
+      + eauto using states_compat_getmany.
+      + exact Q.
+      + eapply IHexec. 2: exact SC. case TODO_sam.
+      + cbv beta. intros. simp. edestruct H4. 1: eassumption. simp.
+        do 2 eexists. ssplit.
+        * eapply states_compat_getmany. 1: eassumption. 2: eassumption. case TODO_sam.
+        * case TODO_sam.
+        * eexists. split. 2: eassumption. case TODO_sam.
+      *)
       case TODO_sam.
     - (* Case exec.load *)
-      case TODO_sam.
+      eauto 10 with checker_hints.
     - (* Case exec.store *)
-      case TODO_sam.
+      eauto 10 with checker_hints.
     - (* Case exec.inlinetable *)
-      case TODO_sam.
+      eauto 10 with checker_hints.
     - (* Case exec.stackalloc *)
-      case TODO_sam.
+      eapply exec.stackalloc. 1: assumption.
+      intros. eapply exec.weaken.
+      + eapply H2; try eassumption.
+        eapply states_compat_precond. eapply states_compat_put. assumption.
+      + cbv beta. intros. simp. eauto 10 with checker_hints.
     - (* Case exec.lit *)
-      case TODO_sam.
+      eauto 10 with checker_hints.
     - (* Case exec.op *)
-      case TODO_sam.
+      eauto 10 with checker_hints.
     - (* Case exec.set *)
       eauto 10 with checker_hints.
     - (* Case exec.if_true *)
       eapply exec.if_true. 1: eauto using states_compat_eval_bcond.
       eapply exec.weaken.
       + eapply IHexec. 1: eassumption.
-        cbn [precond] in *. eapply states_compat_precond. eassumption.
+        eapply states_compat_precond. eassumption.
       + cbv beta. intros. simp. eexists. split. 2: eassumption.
         eapply states_compat_extends. 2: eassumption. eapply extends_intersect_l.
     - (* Case exec.if_false *)
       eapply exec.if_false. 1: eauto using states_compat_eval_bcond.
       eapply exec.weaken.
       + eapply IHexec. 1: eassumption.
-        cbn [precond] in *. eapply states_compat_precond. eassumption.
+        eapply states_compat_precond. eassumption.
       + cbv beta. intros. simp. eexists. split. 2: eassumption.
         eapply states_compat_extends. 2: eassumption. eapply extends_intersect_r.
     - (* Case exec.loop *)
@@ -569,7 +676,6 @@ Section RegAlloc.
       match goal with
       | H: states_compat _ _ _ |- _ => rename H into SC
       end.
-      cbn [precond] in SC.
       pose proof SC as SC0.
       unfold loop_inv in SC.
       rewrite E in SC.
@@ -580,7 +686,7 @@ Section RegAlloc.
       + cbv beta. intros. simp. eapply IH2; eauto using states_compat_eval_bcond_bw.
         eapply states_compat_precond. assumption.
       + cbv beta. intros. simp. eapply IH12. 1: eassumption. 1: eassumption.
-        rename l0 into inv. cbn [precond].
+        rename l0 into inv.
         eapply states_compat_extends. 2: eassumption.
         pose proof defuel_loop_inv as P.
         specialize P with (2 := E0).
@@ -595,7 +701,7 @@ Section RegAlloc.
       rename H2 into IH2, IHexec into IH1.
       eapply exec.seq.
       + eapply IH1. 1: eassumption.
-        cbn [precond] in *. eapply states_compat_precond. assumption.
+        eapply states_compat_precond. assumption.
       + cbv beta. intros. simp.
         eapply IH2. 1: eassumption. 1: eassumption.
         eapply states_compat_precond. assumption.
