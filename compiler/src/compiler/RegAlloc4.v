@@ -106,6 +106,107 @@ Notation "c1 ;; c2" :=
    end)
   (at level 61, right associativity) : option_monad_scope.
 
+(* RISC-V Calling Convention from
+   https://raw.githubusercontent.com/riscv-non-isa/riscv-elf-psabi-doc/a855ba3ef4/riscv-cc.adoc
+
+| Name    | ABI Mnemonic | Meaning                | Preserved across calls?
+
+| x0      | zero         | Zero                   | -- (Immutable)
+| x1      | ra           | Return address         | No
+| x2      | sp           | Stack pointer          | Yes
+| x3      | gp           | Global pointer         | -- (Unallocatable)
+| x4      | tp           | Thread pointer         | -- (Unallocatable)
+| x5-x7   | t0-t2        | Temporary registers    | No
+| x8-x9   | s0-s1        | Callee-saved registers | Yes
+| x10-x17 | a0-a7        | Argument registers     | No
+| x18-x27 | s2-s11       | Callee-saved registers | Yes
+| x28-x31 | t3-t6        | Temporary registers    | No
+*)
+
+Module reg_class.
+  Inductive t := neg | zero | ra | sp | gp | tp | temp | saved | arg | stack_slot.
+  Scheme Equality for t.
+  Definition eqb := t_beq.
+  Local Open Scope bool_scope.
+
+  Definition get(r: Z): t :=
+    if r <? 0 then neg else
+    if r =? 0 then zero else
+    if r =? 1 then ra else
+    if r =? 2 then sp else
+    if r =? 3 then gp else
+    if r =? 4 then tp else
+    if (5 <=? r) && (r <=? 7) then temp else
+    if (8 <=? r) && (r <=? 9) then saved else
+    if (10 <=? r) && (r <=? 17) then arg else
+    if (18 <=? r) && (r <=? 27) then saved else
+    if (28 <=? r) && (r <=? 31) then temp else
+    stack_slot.
+
+  Definition all(class: t): list Z :=
+    List.filter (fun r => eqb (get r) class) (List.unfoldn (Z.add 1) 32 0).
+End reg_class.
+
+Definition temp_regs : list impvar := Eval compute in reg_class.all reg_class.temp.
+Definition saved_regs: list impvar := Eval compute in reg_class.all reg_class.saved.
+Definition arg_regs  : list impvar := Eval compute in reg_class.all reg_class.arg.
+
+(* Register availability, split by how preferable they are.
+   For simplicity, we use the argument registers *only* for argument passing and as spilling temporaries. *)
+Record av_regs := mk_av_regs {
+  av_saved_regs: list impvar;
+  av_temp_regs: list impvar;
+  av_stack_slots: list impvar;
+  first_fresh_stack_slot: impvar;
+}.
+
+Definition acquire_reg(av: av_regs): impvar * av_regs :=
+  match av with
+  | mk_av_regs av_saved_regs av_temp_regs av_stack_slots ff =>
+    match av_saved_regs with
+    | x :: xs => (x, mk_av_regs xs av_temp_regs av_stack_slots ff)
+    | nil =>
+      match av_temp_regs with
+      | x :: xs => (x, mk_av_regs nil xs av_stack_slots ff)
+      | nil =>
+        match av_stack_slots with
+        | x :: xs => (x, mk_av_regs nil nil xs ff)
+        | nil => (ff, mk_av_regs nil nil nil (ff+1))
+        end
+      end
+    end
+  end.
+
+Definition yield_reg(r: impvar)(av: av_regs): av_regs :=
+  match av with
+  | mk_av_regs av_saved_regs av_temp_regs av_stack_slots ff =>
+    match reg_class.get r with
+    | reg_class.saved => mk_av_regs (r :: av_saved_regs) av_temp_regs av_stack_slots ff
+    | reg_class.temp => mk_av_regs av_saved_regs (r :: av_temp_regs) av_stack_slots ff
+    | reg_class.stack_slot => mk_av_regs av_saved_regs av_temp_regs (r :: av_stack_slots) ff
+    | _ => av
+    end
+  end.
+
+(*
+Fixpoint regalloc(corresp: list (srcvar * impvar))(av: av_regs)(s: stmt): av_regs * stmt' :=
+  match s with
+  | SLoad sz x y ofs =>
+  | SStore sz x y ofs =>
+  | SInlinetable sz x bs y =>
+  | SStackalloc x n body =>
+  | SLit x z =>
+  | SOp x op y z =>
+  | SSet x y =>
+  | SIf c s1 s2 =>
+  | SLoop s1 c s2 =>
+  | SSeq s1 s2 =>
+  | SSkip =>
+  | SCall binds f args =>
+  | SInteract binds f args =>
+  end.
+*)
+
 Scheme Equality for Syntax.access_size. (* to create access_size_beq *)
 Scheme Equality for bopname. (* to create bopname_beq *)
 Scheme Equality for bbinop. (* to create bbinop_beq *)
