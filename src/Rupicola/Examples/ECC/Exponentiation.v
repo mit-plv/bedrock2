@@ -179,6 +179,7 @@ Section S.
     Qed.
   End Gallina.
 
+  (* TODO: Is this still used? *)
   Section Bedrock.
     Definition exp_6 : bedrock_func :=
       ("exp_by_squaring_6",
@@ -192,6 +193,8 @@ Section S.
           )
        )
       ).
+
+    (* TODO: Investigate Bignum / Znum versus “FElem” *)
 
     Instance spec_of_exp_6 : spec_of exp_6 :=
       fun functions =>
@@ -208,6 +211,7 @@ Section S.
                tr = tr' /\ rets = nil
                /\ (Bignum x_ptr x * Bignum sq_ptr ret * R)%sep mem').
 
+    (* TODO: is this still used? *)
     Ltac tac :=
       repeat match goal with
              | [ |- WeakestPrecondition.dexprs _ _ _ _ ] => eexists
@@ -228,15 +232,7 @@ Section S.
              | [ H : context[postcondition_func_norets] |- _ ] => destruct H
              end.
 
-(*
-    Lemma exp_6_correct : program_logic_goal_for_function! exp_6.
-    Proof.
-      repeat straightline.
-      intros; exists [x_ptr; sq_ptr]; split.
-      - subst l. tac.
-      - subst l. tac.
-    Admitted.*)
-
+    (* FIXME replace with exp_result' and update derivations below *)
     Definition exp_result x_ptr q_ptr xq_val : list word -> Semantics.mem -> Prop :=
       fun _ => Lift1Prop.ex1 (fun x => Lift1Prop.ex1 (fun q =>
                                                         (emp(eval x = fst xq_val) *
@@ -291,10 +287,11 @@ Section S.
                      try simple eapply compile_nlet_as_nlet_eq;
                      first [ simple eapply compile_square
                            | simple eapply compile_mul]));
-      (intros; unfold Placeholder in *).  (* FIXME get rid of placeholders? *)
+      (intros; unfold Placeholder in * ).  (* FIXME get rid of placeholders? *)
 
-       Hint Unfold exp_result : compiler_cleanup.
-       
+    Hint Unfold exp_result : compiler_cleanup.
+
+    (* FIXME use ‘fnspec!’ + ‘defn!’, after patch adding fns argument to require is merged. *)
     Derive exp_body SuchThat
            (let exp6 := ("exp6", (["x"; "out"], [], exp_body)) in
             program_logic_goal_for exp6
@@ -310,12 +307,14 @@ Section S.
                                            "exp6"
                                            tr mem [x_ptr; sq_ptr]
                                            (postcondition_func_norets
+                                              (* FIXME exp_result' *)
                                               (exp_result x_ptr sq_ptr (exp_by_squaring_6' (eval x)))
                                               R tr)))
            As exp_body_correct.
     Proof.
       compile_setup.
       repeat compile_step.
+      (* TODO: lift_eexists should go once we have exp_result' *)
       lift_eexists; sepsimpl. eauto || ecancel_assumption.
       eapply Heq1.
       ecancel_assumption.
@@ -328,6 +327,7 @@ Section S.
       let/n out := x mod M * out mod M in
       (x, out).
 
+    (* Same here *)
     Derive exp9_body SuchThat
            (let exp9 := ("exp9", (["x"; "out"], [], exp9_body)) in
             program_logic_goal_for exp9
@@ -638,10 +638,13 @@ Section S.
       reflexivity.
     Qed.
 
+    (* TODO: Define a variant of compile_ranged_for_u specialized to *loop*, update the proof below. *)
+
     Lemma Znum_to_Bignum :
       forall R mem x_ptr x, (Znum x_ptr x * R)%sep mem ->
                             exists b : bignum, (x = eval b mod M) /\
-                                               (Bignum x_ptr b * R)%sep mem.
+                                          (Bignum x_ptr b * R)%sep mem.
+    Proof.
       intros.
       unfold Znum in *.
       destruct H as (? & ? & ? & ? & ?).
@@ -654,7 +657,7 @@ Section S.
         + split.
           apply H2.
           apply H1.
-      Qed.
+    Qed.
 
 
   
@@ -666,19 +669,7 @@ Section S.
 
    Hint Extern 1 => simple eapply compile_Z_square; shelve : compiler.
 
-       (*
-   Ltac compile_copy :=
-      match goal with
-      | [ H: (Znum ?ptr ?v * ?R)%sep ?m |- ?l ] =>
-        match l with
-        | context [map.put _ ?x ptr] =>
-          match l with
-            | context [let/n _ as x eq:_ := v in _] =>
-            apply compile_copy_pointer with (var := x) (x_ptr0 := ptr) (Data := Znum) (R0 := R)
-          end
-        end
-      end.*)
-
+    (* TODO: Move to Compiler.v in Rupicola.Lib after creating a small, self-contained example / unit test.  (Maybe with Cell.v?) *)
    Ltac compile_try_copy_pointer :=
      lazymatch goal with
      | [ H : ?pred ?m |- WeakestPrecondition.cmd _ _ _ ?m ?l (_ ?term) ] =>
@@ -694,8 +685,15 @@ Section S.
        end
      end.
 
+   (* TODO: How much of compile_custom can be integrated as eauto hints?
+
+    Hint Extern 1 => rewrite loop_equals; shelve : compiler.
+   (* Hopefully we have custom compile_loop lemma and we don't need the rewrite *)
+    Hint Extern 1 => simple eapply compile_square; shelve : compiler.
+    Hint Extern 1 => simple eapply compile_mul; shelve : compiler.
+    *)
    Ltac compile_custom ::=
-     progress ( field_cleanup;
+     progress ( field_cleanup;  (* TODO: Still needed? *)
                 try rewrite loop_equals;
                 try (try simple eapply compile_dlet_as_nlet_eq;
                      try simple eapply compile_nlet_as_nlet_eq;
