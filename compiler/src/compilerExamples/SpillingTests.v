@@ -35,6 +35,12 @@ Definition long1 : func :=
   let a18 := "a18" in let b18 := "b18" in
   let a19 := "a19" in let b19 := "b19" in
   ("long1", ([a0; b0], [a19;b19], bedrock_func_body:(
+
+  (* TODO once spilling is improved, test that it still works if these two lines are removed
+     (currently the test that all resnames are <32 fails if these two lines are removed) *)
+  a19 = coq:(0);
+  b19 = coq:(0);
+
   swap(a0, b0);
   a1 = a0 + b0 * b0;
   swap(a1, b0);
@@ -80,6 +86,56 @@ Definition long1 : func :=
   b12 = a15 + a8 * b16;
   a12 = a1 - a0 - b3;
   b12 = a1 + a12 * b0;
+
   a19 = a1 - a0 - b0;
-  b19 = a9 + a7 * b0
+  b19 = a9 + a7 * b0;
+
+  b0 = b0 + a1;
+  b0 = b0 + a12;
+  b0 = b0 + b12;
+  b0 = b0 + a5;
+  b0 = b0 + a9;
+  b0 = b0 + a4;
+  b0 = b0 + b3;
+  b0 = b0 + b4;
+  b0 = b0 + a10;
+  b0 = b0 + b12;
+  b0 = b0 + a3;
+  b0 = b0 + a6;
+  b0 = b0 + a15;
+  b0 = b0 + a2;
+  b0 = b0 + b12;
+  b0 = b0 + a11;
+  b0 = b0 + b5;
+  b0 = b0 + b4;
+  b0 = b0 + a2;
+  b0 = b0 + b12;
+  b0 = b0 + a16;
+  b0 = b0 + a7;
+  b0 = b0 + b14;
+  b0 = b0 + a13;
+  b0 = b0 + a17;
+  b0 = b0 + b6;
+  b0 = b0 + a12;
+  b0 = b0 + b12;
+  b0 = b0 + a18;
+  b0 = b0 + b19;
+  b0 = b0 + a17;
+  b0 = b0 + b12;
+  b0 = b0 + a14;
+  b0 = b0 + a12;
+  b0 = b0 + a8;
+  b0 = b0 + b13;
+  b0 = b0 + a12;
+  b0 = b0 + b2;
+  b0 = b0 + a18;
+  b0 = b0 + b16;
+  b0 = b0 + b12;
+  b0 = b0 + a12;
+  b0 = b0 + b12;
+  b0 = b0 + a19;
+  b0 = b0 + b19;
+
+  a19 = b0;
+  b19 = b0
 ))).
