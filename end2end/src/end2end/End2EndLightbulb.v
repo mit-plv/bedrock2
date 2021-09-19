@@ -79,6 +79,84 @@ Definition loop :=
 Definition funimplsList := init :: loop :: lightbulb.function_impls.
 Definition prog := map.of_list funimplsList.
 
+Definition flattened := Eval vm_compute in
+  match flatten_functions prog with
+  | Some m => map.tuples m
+  | None => []
+  end.
+
+Definition flatten_nth n :=
+  match nth_error flattened n with
+  | Some (_, f) => RegAlloc4.regalloc_function f
+  | None => None
+  end.
+
+Definition body1 :=
+(FlatImp.SSeq (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall ["err"] "lan9250_wait_for_boot" []))
+         (FlatImp.SSeq FlatImp.SSkip
+            (FlatImp.SIf (FlatImp.CondNez "err") FlatImp.SSkip
+               (FlatImp.SSeq
+                  (FlatImp.SSeq (FlatImp.SSeq (FlatImp.SLit "x0000001" 116) FlatImp.SSkip)
+                     (FlatImp.SCall ["hw_cfg"; "err"] "lan9250_readword" ["x0000001"]))
+                  (FlatImp.SSeq FlatImp.SSkip
+                     (FlatImp.SIf (FlatImp.CondNez "err") FlatImp.SSkip
+                        (FlatImp.SSeq
+                           (FlatImp.SSeq FlatImp.SSkip
+                              (FlatImp.SSeq (FlatImp.SLit "x1000001" 1048576)
+                                 (FlatImp.SOp "hw_cfg" bopname.or "hw_cfg" "x1000001")))
+                           (FlatImp.SSeq
+                              (FlatImp.SSeq FlatImp.SSkip
+                                 (FlatImp.SSeq (FlatImp.SLit "x0100001" (-2097153))
+                                    (FlatImp.SOp "hw_cfg" bopname.and "hw_cfg" "x0100001")))
+                              (FlatImp.SSeq
+                                 (FlatImp.SSeq
+                                    (FlatImp.SSeq (FlatImp.SLit "x1100001" 116)
+                                       (FlatImp.SSeq FlatImp.SSkip FlatImp.SSkip))
+                                    (FlatImp.SCall ["err"] "lan9250_writeword" ["x1100001"; "hw_cfg"]))
+                                 (FlatImp.SSeq FlatImp.SSkip
+                                    (FlatImp.SIf (FlatImp.CondNez "err") FlatImp.SSkip
+                                       (FlatImp.SSeq
+                                          (FlatImp.SSeq
+                                             (FlatImp.SSeq (FlatImp.SLit "x0010001" 1)
+                                                (FlatImp.SSeq (FlatImp.SLit "x1010001" 1310732) FlatImp.SSkip))
+                                             (FlatImp.SCall ["err"] "lan9250_mac_write"
+                                                ["x0010001"; "x1010001"]))
+                                          (FlatImp.SSeq FlatImp.SSkip
+                                             (FlatImp.SIf (FlatImp.CondNez "err") FlatImp.SSkip
+                                                (FlatImp.SSeq
+                                                   (FlatImp.SSeq (FlatImp.SLit "x0110001" 112)
+                                                      (FlatImp.SSeq (FlatImp.SLit "x1110001" 6) FlatImp.SSkip))
+                                                   (FlatImp.SCall ["err"] "lan9250_writeword"
+                                                      ["x0110001"; "x1110001"])))))))))))))))).
+
+Import FlatImp.
+Notation "s1 ;; s2" := (SSeq s1 s2) (right associativity, at level 100).
+
+Definition body2 :=
+(SCall ["err"] "lan9250_wait_for_boot" []);;
+SIf (CondNez "err") SSkip
+  (((SLit "x0000001" 116);; SCall ["hw_cfg"; "err"] "lan9250_readword" ["x0000001"]);;
+   SIf (CondNez "err") SSkip
+     ((SLit "x1000001" 1048576;; SOp "hw_cfg" bopname.or "hw_cfg" "x1000001") (*;;
+      (SLit "x0100001" (-2097153);; SOp "hw_cfg" bopname.and "hw_cfg" "x0100001");;
+      ((SLit "x1100001" 116);; SCall ["err"] "lan9250_writeword" ["x1100001"; "hw_cfg"])
+*)
+)). (*
+;;
+      SIf (CondNez "err") SSkip
+        (((SLit "x0010001" 1;; SLit "x1010001" 1310732);;
+          SCall ["err"] "lan9250_mac_write" ["x0010001"; "x1010001"]);;
+         SIf (CondNez "err") SSkip
+           ((SLit "x0110001" 112;; SLit "x1110001" 6);;
+            SCall ["err"] "lan9250_writeword" ["x0110001"; "x1110001"])))).
+*)
+
+Goal RegAlloc4.regalloc [] RegAlloc4.initial_av_regs body2 ["err"] = None.
+(*
+bug: then-branch of regalloc code prunes corresp too much for it to work in else-branch!
+*)
+Abort.
+
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
    and to check if there are any axioms which could block the computation. *)

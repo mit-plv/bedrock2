@@ -35,7 +35,6 @@ Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.Simp.
 Require Import compiler.FlattenExprSimulation.
-Require Import compiler.RegRename.
 Require Import compiler.FlatToRiscvSimulation.
 Require Import compiler.Simulation.
 Require Import compiler.RiscvEventLoop.
@@ -548,7 +547,7 @@ Section Pipeline1.
     eapply extend_runsTo_to_good_trace. 2,3: eassumption.
     simpl. unfold ll_good, compile_inv, related, hl_inv,
            compose_relation, FlattenExprSimulation.related,
-           RegRename.related, FlatToRiscvSimulation.related, FlatToRiscvCommon.goodMachine.
+           FlatToRiscvSimulation.related, FlatToRiscvCommon.goodMachine.
     intros. simp. eassumption.
   Qed.
 

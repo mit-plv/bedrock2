@@ -14,7 +14,7 @@ Require Import compiler.StringNameGen.
 Require Import compiler.util.Common.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Spilling.
-Require Import compiler.RegRename.
+Require Import compiler.RegAlloc4.
 
 Section WithWordAndMem.
   Context {width: Z} {BW: Bitwidth width} {word: Interface.word width} {mem : map.map word byte}.
@@ -117,26 +117,26 @@ Section WithWordAndMem.
       - simpl. intros. simp. assumption.
     Qed.
 
-    Lemma renaming_correct: @phase_correct FlatLangStr FlatLangZ rename_functions.
+    Lemma regalloc_correct: @phase_correct FlatLangStr FlatLangZ regalloc_functions.
     Proof.
       unfold phase_correct. intros.
 
       pose proof H as GR.
-      unfold rename_functions in GR.
+      unfold regalloc_functions in GR.
       simp. rename E into GR.
       eapply map.map_all_values_fw in GR. 5: eassumption. 2-4: typeclasses eauto.
       simp. clear GRp0.
       pose proof E0 as C.
-      unfold RegAlloc4.check_funcs in E0.
-      eapply RegAlloc4.map.get_forallb in E0. 2: eassumption.
-      unfold RegAlloc4.lookup_and_check_func, RegAlloc4.check_func in E0. simp.
-      eapply RegAlloc4.assert_ins_same_length in E1. destruct l0. 2: discriminate. clear E1 u.
-      apply_in_hyps RegAlloc4.assignments_same_length. destruct l. 2: discriminate.
+      unfold check_funcs in E0.
+      eapply map.get_forallb in E0. 2: eassumption.
+      unfold lookup_and_check_func, check_func in E0. simp.
+      eapply assert_ins_same_length in E1. destruct l0. 2: discriminate. clear E1 u.
+      apply_in_hyps assignments_same_length. destruct l. 2: discriminate.
 
       eexists. split. 1: eassumption. intros.
       eapply FlatImp.exec.weaken.
-      - eapply RegAlloc4.checker_correct; try eassumption.
-        eapply RegAlloc4.states_compat_empty.
+      - eapply checker_correct; try eassumption.
+        eapply states_compat_empty.
       - simpl. intros. simp. assumption.
     Qed.
 
@@ -261,13 +261,13 @@ Section WithWordAndMem.
     Qed.
 
     Definition upper_compiler :=
-      compose_phases flatten_functions (compose_phases rename_functions spill_functions).
+      compose_phases flatten_functions (compose_phases regalloc_functions spill_functions).
 
     Lemma upper_compiler_correct: @phase_correct SrcLang FlatLangZ upper_compiler.
     Proof.
       unfold upper_compiler.
       eapply (@compose_phases_correct SrcLang FlatLangStr FlatLangZ). 1: exact flattening_correct.
-      eapply (@compose_phases_correct FlatLangStr FlatLangZ FlatLangZ). 1: exact renaming_correct.
+      eapply (@compose_phases_correct FlatLangStr FlatLangZ FlatLangZ). 1: exact regalloc_correct.
       exact spilling_correct.
     Qed.
 

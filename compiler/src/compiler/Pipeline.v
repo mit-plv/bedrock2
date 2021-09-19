@@ -33,7 +33,7 @@ Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.Simp.
 Require Import compiler.FlattenExprSimulation.
 Require Import compiler.Spilling.
-Require Import compiler.RegRename.
+Require Import compiler.RegAlloc4.
 Require Import compiler.FlatToRiscvSimulation.
 Require Import compiler.Simulation.
 Require Import compiler.RiscvEventLoop.
@@ -140,25 +140,20 @@ Section Pipeline1.
     - exact I.
   Qed.
 
-  Lemma rename_functions_NoDup: forall funs funs',
-      (forall f argnames retnames body,
-          map.get funs f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames) ->
-      rename_functions funs = Some funs' ->
+  Lemma regalloc_functions_NoDup: forall funs funs',
+      regalloc_functions funs = Some funs' ->
       forall f argnames retnames body,
         map.get funs' f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames.
   Proof.
-    unfold rename_functions. intros.
+    unfold regalloc_functions, check_funcs. intros.
     simp.
     eapply map.map_all_values_bw in E. 5: eassumption. 2-4: typeclasses eauto.
-    unfold rename_fun_new in *. simp.
-    specialize H with (1 := Ep1).
-    eapply rename_binds_props in E.
-    2: eapply map.empty_injective.
-    2: eapply dom_bound_empty.
     simp.
-    eapply rename_binds_props in E1. 2-3: eassumption.
-    simp.
-    eauto using map.getmany_of_list_injective_NoDup.
+    eapply map.get_forallb in E0. 2: eassumption.
+    unfold lookup_and_check_func, check_func, assert in *. simp.
+    autoforward with typeclass_instances in E7. rewrite <- E7.
+    autoforward with typeclass_instances in E6. rewrite <- E6.
+    split; apply List.NoDup_dedup.
   Qed.
 
   Lemma flatten_functions_NoDup: forall funs funs',
@@ -206,10 +201,7 @@ Section Pipeline1.
     eapply flat_to_riscv_correct; try typeclasses eauto; try eassumption.
     { unfold upper_compiler, compose_phases in *. simp.
       eapply spill_functions_valid_FlatImp_fun. 1: eassumption.
-      eapply rename_functions_NoDup. 2: eassumption.
-      eapply flatten_functions_NoDup. 2: eassumption.
-      unfold ExprImp.valid_funs, ExprImp.valid_fun in *.
-      intros *. intro G. specialize H with (1 := G). apply H. }
+      eapply regalloc_functions_NoDup. eassumption. }
     eapply Sim; clear Sim. eassumption.
   Qed.
 

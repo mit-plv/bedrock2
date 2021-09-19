@@ -67,7 +67,7 @@ Fixpoint live(s: stmt)(used_after: list srcvar): list srcvar :=
   | SStore _ a x _ => list_union String.eqb [a; x] used_after
   | SStackalloc x _ body => list_diff String.eqb (live body used_after) [x]
   | SLit x _ => list_diff String.eqb used_after [x]
-  | SOp x _ y z => list_diff String.eqb (list_union String.eqb [y; z] used_after) [x]
+  | SOp x _ y z => list_union String.eqb [y; z] (list_diff String.eqb used_after [x])
   | SIf c s1 s2 => list_union String.eqb
                               (list_union String.eqb (live s1 used_after) (live s2 used_after))
                               (accessed_vars_bcond c)
@@ -160,6 +160,13 @@ Record av_regs := mk_av_regs {
   first_fresh_stack_slot: impvar;
 }.
 
+Definition initial_av_regs := {|
+  av_saved_regs := saved_regs;
+  av_temp_regs := temp_regs;
+  av_stack_slots := [];
+  first_fresh_stack_slot := 32;
+|}.
+
 Definition acquire_reg(av: av_regs): impvar * av_regs :=
   match av with
   | mk_av_regs av_saved_regs av_temp_regs av_stack_slots ff =>
@@ -188,24 +195,116 @@ Definition yield_reg(r: impvar)(av: av_regs): av_regs :=
     end
   end.
 
-(*
-Fixpoint regalloc(corresp: list (srcvar * impvar))(av: av_regs)(s: stmt): av_regs * stmt' :=
+Definition lookup(x: srcvar)(corresp: list (srcvar * impvar)): option impvar :=
+  match List.find (fun p => String.eqb x (fst p)) corresp with
+  | Some (_, x') => Some x'
+  | None => None
+  end.
+
+Definition lookups(xs: list srcvar)(corresp: list (srcvar * impvar)): option (list impvar) :=
+  List.option_all (List.map (fun arg => lookup arg corresp) xs).
+
+Definition assign_lhs(x: srcvar)(corresp: list (srcvar * impvar))(av: av_regs) :=
+  match lookup x corresp with
+  | Some x' => (x', corresp, av)
+  | None => let '(x', av) := acquire_reg av in (x', (x, x') :: corresp, av)
+  end.
+
+Fixpoint assign_lhss(xs: list srcvar)(corresp: list (srcvar * impvar))(av: av_regs):
+  (list impvar * list (srcvar * impvar) * av_regs) :=
+  match xs with
+  | nil => (nil, corresp, av)
+  | h :: t => let '(y, corresp, av) := assign_lhs h corresp av in
+              let '(ys, corresp, av) := assign_lhss t corresp av in
+              (y :: ys, corresp, av)
+  end.
+
+Definition rename_bcond(corresp: list (srcvar * impvar))(c: bcond): option bcond' :=
+  match c with
+  | CondBinary op y z =>
+    y' <- lookup y corresp;;
+    z' <- lookup z corresp;;
+    Some (CondBinary op y' z')
+  | CondNez y =>
+    y' <- lookup y corresp;;
+    Some (CondNez y')
+  end.
+
+Fixpoint regalloc
+         (corresp: list (srcvar * impvar))  (* current mapping *)
+         (av: av_regs)                      (* available registers *)
+         (s: stmt)                          (* statement to be register allocated *)
+         (l_after: list srcvar):            (* variables that are live after s *)
+  option (list (srcvar * impvar) * av_regs * stmt') := (* should aways return Some *)
+  let l_before := live s l_after in
+  let av := List.fold_right
+              (fun p av => if List.find (String.eqb (fst p)) l_before then av else yield_reg (snd p) av)
+              av corresp in
+  let corresp := List.filter
+                   (fun p => if List.find (String.eqb (fst p)) l_before then true else false) corresp in
   match s with
   | SLoad sz x y ofs =>
+    y' <- lookup y corresp;;
+    let '(x', corresp, av) := assign_lhs x corresp av in
+    Some (corresp, av, SLoad sz x' y' ofs)
   | SStore sz x y ofs =>
+    x' <- lookup x corresp;;
+    y' <- lookup y corresp;;
+    Some (corresp, av, SStore sz x' y' ofs)
   | SInlinetable sz x bs y =>
+    (* Note: We expect that x<>y and that the srcvar->impvar mapping in corresp is injective,
+       so we get x'<>y', which is required by exec.inlinetable *)
+    y' <- lookup y corresp;;
+    let '(x', corresp, av) := assign_lhs x corresp av in
+    Some (corresp, av, SInlinetable sz x' bs y')
   | SStackalloc x n body =>
+    let '(x', corresp, av) := assign_lhs x corresp av in
+    '(corresp, av, body') <- regalloc corresp av body l_after;;
+    Some (corresp, av, SStackalloc x' n body')
   | SLit x z =>
+    let '(x', corresp, av) := assign_lhs x corresp av in
+    Some (corresp, av, SLit x' z)
   | SOp x op y z =>
+    y' <- lookup y corresp;;
+    z' <- lookup z corresp;;
+    let '(x', corresp, av) := assign_lhs x corresp av in
+    Some (corresp, av, SOp x' op y' z')
   | SSet x y =>
+    y' <- lookup y corresp;;
+    let '(x', corresp, av) := assign_lhs x corresp av in
+    Some (corresp, av, SSet x' y')
   | SIf c s1 s2 =>
+    c' <- rename_bcond corresp c;;
+    '(corresp, av, s1') <- regalloc corresp av s1 l_after;;
+    '(corresp, av, s2') <- regalloc corresp av s2 l_after;;
+    Some (corresp, av, SIf c' s1' s2')
   | SLoop s1 c s2 =>
+    '(corresp, av, s1') <- regalloc corresp av s1 (live s2 l_before);;
+    c' <- rename_bcond corresp c;;
+    '(corresp, av, s2') <- regalloc corresp av s2 l_before;;
+    Some (corresp, av, SLoop s1' c' s2')
   | SSeq s1 s2 =>
+    '(corresp, av, s1') <- regalloc corresp av s1 (live s2 l_after);;
+    '(corresp, av, s2') <- regalloc corresp av s2 l_after;;
+    Some (corresp, av, SSeq s1' s2')
   | SSkip =>
+    Some (corresp, av, SSkip)
   | SCall binds f args =>
+    args' <- lookups args corresp;;
+    let '(binds', corresp, av) := assign_lhss binds corresp av in
+    Some (corresp, av, SCall binds' f args')
   | SInteract binds f args =>
+    args' <- lookups args corresp;;
+    let '(binds', corresp, av) := assign_lhss binds corresp av in
+    Some (corresp, av, SInteract binds' f args')
   end.
-*)
+
+Definition regalloc_function: list srcvar * list srcvar * stmt -> option (list impvar * list impvar * stmt') :=
+  fun '(args, rets, fbody) =>
+    let '(args', corresp, av) := assign_lhss args [] initial_av_regs in
+    '(corresp, av, fbody') <- regalloc corresp av fbody rets;;
+    rets' <- lookups rets corresp;;
+    Some (args', rets', fbody').
 
 Scheme Equality for Syntax.access_size. (* to create access_size_beq *)
 Scheme Equality for bopname. (* to create bopname_beq *)
@@ -428,6 +527,10 @@ Section WithEnv.
 
   Definition check_funcs(e: srcEnv)(e': impEnv): bool :=
     map.forallb (lookup_and_check_func e') e.
+
+  Definition regalloc_functions(e: srcEnv): option impEnv :=
+    e' <- map.map_all_values regalloc_function e;;
+    if check_funcs e e' then Some e' else None.
 End WithEnv.
 
 Definition loop_inv(corresp: list (srcvar * impvar))(s1 s2: stmt)(s1' s2': stmt'): list (srcvar * impvar) :=
