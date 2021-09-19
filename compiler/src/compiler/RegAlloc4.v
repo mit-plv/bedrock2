@@ -83,6 +83,85 @@ Fixpoint live(s: stmt)(used_after: list srcvar): list srcvar :=
 https://github.com/mit-plv/bedrock2/tree/7cbae1a1caf7d19270d0fb37199f86eb8ea5ce4f/compiler/src/compiler
 *)
 
+(* Simplification: For each source variable, we only create one live interval, and extend it
+   far enough to cover all actual live intervals (keeping several live intervals per srcvar
+   would be tricky because an interval could have two different start points (one in a
+   then-branch, the other in an else-branch of an if), but a common end point after the if),
+   in the simplified version, we just say that the live interval starts in the then branch,
+   which appears first according to the chosen linearization order). *)
+
+Definition event: Type := srcvar * bool. (* bool stands for is_start *)
+
+(* start_event inserts a start event directly followed by an end event.
+   The end event is needed because we don't do dead code elimination, and we need
+   to avoid that an assignment to a variable that's never read after the assignment
+   does not invalidate another register, so we extend the live interval of each
+   variable all the way to that unused assignment, so that the register assigned to x
+   is not reused too early. *)
+Definition start_event(x: srcvar): list event := [(x, true); (x, false)].
+Definition end_event(x: srcvar): list event := [(x, false)].
+
+Definition bcond_events(c: bcond)(after: list event): list event :=
+  match c with
+  | CondBinary _ x y => end_event x ++ end_event y ++ after
+  | CondNez x => end_event x ++ after
+  end.
+
+(* incorrect without filtering (assumes that each read event is the last read of that variable) *)
+Fixpoint events(s: stmt)(after: list event): list event :=
+  match s with
+  | SSet x y
+  | SLoad _ x y _ => end_event y ++ start_event x ++ after
+  (* Note: we deliberately flip the order of (start_event x) and (end_event y) for SInlinetable
+     to make sure they are considered live at the same time, so that they don't get assigned to
+     the same register, so that the x<>y sidecondition of exec.inlinetable is preserved *)
+  | SInlinetable _ x _ y => start_event x ++ end_event y ++ after
+  | SStore _ a x _ => end_event a ++ end_event x ++ after
+  | SStackalloc x _ body => start_event x ++ events body after
+  | SLit x _ => start_event x ++ after
+  | SOp x _ y z => end_event y ++ end_event z ++ start_event x ++ after
+  | SIf c s1 s2 => bcond_events c (events s1 (events s2 after))
+  | SSeq s1 s2 => events s1 (events s2 after)
+  | SLoop s1 c s2 =>
+    (* unroll loop twice so that it becomes apparent how (i+1)-th iteration depends on i-th iteration *)
+    events s1 (bcond_events c (events s2 (
+    events s1 (bcond_events c (events s2 (
+    events s1 (bcond_events c after)))))))
+  | SSkip => after
+  | SCall binds _ args
+  | SInteract binds _ args => List.flat_map end_event args ++ List.flat_map start_event binds ++ after
+  end.
+
+Fixpoint remove_nonfirst_starts(started: list srcvar)(l: list event): list event :=
+  match l with
+  | (x, is_start) :: rest =>
+    if is_start then
+      if List.find (String.eqb x) started then
+        remove_nonfirst_starts started rest
+      else
+        (x, true) :: remove_nonfirst_starts (x :: started) rest
+    else
+      (x, false) :: remove_nonfirst_starts started rest
+  | nil => nil
+  end.
+
+Fixpoint remove_nonlast_ends(l: list event): list event :=
+  match l with
+  | (x, is_start) :: rest =>
+    if is_start then
+      (x, true) :: remove_nonlast_ends rest
+    else
+      if List.find (fun '(y, y_is_start) => andb (negb y_is_start) (String.eqb x y)) rest then
+        remove_nonlast_ends rest
+      else
+        (x, false) :: remove_nonlast_ends rest
+  | nil => nil
+  end.
+
+Definition intervals(input_vars: list srcvar)(s: stmt)(output_vars: list srcvar): list event :=
+  let unfiltered := List.flat_map start_event input_vars ++ (events s (List.flat_map end_event output_vars)) in
+  remove_nonfirst_starts [] (remove_nonlast_ends unfiltered).
+
 Declare Scope option_monad_scope. Local Open Scope option_monad_scope.
 
 Notation "' pat <- c1 ;; c2" :=
@@ -147,9 +226,12 @@ Module reg_class.
     List.filter (fun r => eqb (get r) class) (List.unfoldn (Z.add 1) 32 0).
 End reg_class.
 
-Definition temp_regs : list impvar := Eval compute in reg_class.all reg_class.temp.
-Definition saved_regs: list impvar := Eval compute in reg_class.all reg_class.saved.
-Definition arg_regs  : list impvar := Eval compute in reg_class.all reg_class.arg.
+(* TODO: once spilling is changed, this will change too *)
+Definition not_reserved(x: Z): bool := 5 <? x.
+
+Definition temp_regs : list impvar := Eval compute in List.filter not_reserved (reg_class.all reg_class.temp).
+Definition saved_regs: list impvar := Eval compute in List.filter not_reserved (reg_class.all reg_class.saved).
+Definition arg_regs  : list impvar := Eval compute in List.filter not_reserved (reg_class.all reg_class.arg).
 
 (* Register availability, split by how preferable they are.
    For simplicity, we use the argument registers *only* for argument passing and as spilling temporaries. *)
@@ -204,6 +286,89 @@ Definition lookup(x: srcvar)(corresp: list (srcvar * impvar)): option impvar :=
 Definition lookups(xs: list srcvar)(corresp: list (srcvar * impvar)): option (list impvar) :=
   List.option_all (List.map (fun arg => lookup arg corresp) xs).
 
+Fixpoint process_intervals(corresp: list (srcvar * impvar))(av: av_regs)(l: list event):
+  list (srcvar * impvar) :=
+  match l with
+  | (x, is_start) :: rest =>
+    if is_start then
+      let (y, av) := acquire_reg av in process_intervals ((x, y) :: corresp) av rest
+    else
+      let av := match lookup x corresp with
+                | Some y => yield_reg y av
+                | None => av (* unexpected: end_event without start_event *)
+                end in
+      process_intervals corresp av rest
+  | nil => corresp
+  end.
+
+Definition rename_bcond(corresp: list (srcvar * impvar))(c: bcond): option bcond' :=
+  match c with
+  | CondBinary op y z =>
+    y' <- lookup y corresp;;
+    z' <- lookup z corresp;;
+    Some (CondBinary op y' z')
+  | CondNez y =>
+    y' <- lookup y corresp;;
+    Some (CondNez y')
+  end.
+
+Fixpoint rename(corresp: list (srcvar * impvar))(s: stmt): option stmt' :=
+  match s with
+  | SLoad sz x y ofs =>
+    x' <- lookup x corresp;;
+    y' <- lookup y corresp;;
+    Some (SLoad sz x' y' ofs)
+  | SStore sz x y ofs =>
+    x' <- lookup x corresp;;
+    y' <- lookup y corresp;;
+    Some (SStore sz x' y' ofs)
+  | SInlinetable sz x bs y =>
+    x' <- lookup x corresp;;
+    y' <- lookup y corresp;;
+    Some (SInlinetable sz x' bs y')
+  | SStackalloc x n body =>
+    x' <- lookup x corresp;;
+    body' <- rename corresp body;;
+    Some (SStackalloc x' n body')
+  | SLit x z =>
+    x' <- lookup x corresp;;
+    Some (SLit x' z)
+  | SOp x op y z =>
+    x' <- lookup x corresp;;
+    y' <- lookup y corresp;;
+    z' <- lookup z corresp;;
+    Some (SOp x' op y' z')
+  | SSet x y =>
+    x' <- lookup x corresp;;
+    y' <- lookup y corresp;;
+    Some (SSet x' y')
+  | SIf c s1 s2 =>
+    c' <- rename_bcond corresp c;;
+    s1' <- rename corresp s1;;
+    s2' <- rename corresp s2;;
+    Some (SIf c' s1' s2')
+  | SLoop s1 c s2 =>
+    s1' <- rename corresp s1;;
+    c' <- rename_bcond corresp c;;
+    s2' <- rename corresp s2;;
+    Some (SLoop s1' c' s2')
+  | SSeq s1 s2 =>
+    s1' <- rename corresp s1;;
+    s2' <- rename corresp s2;;
+    Some (SSeq s1' s2')
+  | SSkip =>
+    Some SSkip
+  | SCall binds f args =>
+    args' <- lookups args corresp;;
+    binds' <- lookups binds corresp;;
+    Some (SCall binds' f args')
+  | SInteract binds f args =>
+    args' <- lookups args corresp;;
+    binds' <- lookups binds corresp;;
+    Some (SInteract binds' f args')
+  end.
+
+Module WithBugs.
 Definition assign_lhs(x: srcvar)(corresp: list (srcvar * impvar))(av: av_regs) :=
   match lookup x corresp with
   | Some x' => (x', corresp, av)
@@ -217,17 +382,6 @@ Fixpoint assign_lhss(xs: list srcvar)(corresp: list (srcvar * impvar))(av: av_re
   | h :: t => let '(y, corresp, av) := assign_lhs h corresp av in
               let '(ys, corresp, av) := assign_lhss t corresp av in
               (y :: ys, corresp, av)
-  end.
-
-Definition rename_bcond(corresp: list (srcvar * impvar))(c: bcond): option bcond' :=
-  match c with
-  | CondBinary op y z =>
-    y' <- lookup y corresp;;
-    z' <- lookup z corresp;;
-    Some (CondBinary op y' z')
-  | CondNez y =>
-    y' <- lookup y corresp;;
-    Some (CondNez y')
   end.
 
 Fixpoint regalloc
@@ -275,6 +429,11 @@ Fixpoint regalloc
     Some (corresp, av, SSet x' y')
   | SIf c s1 s2 =>
     c' <- rename_bcond corresp c;;
+    (* BUG: if s1 is SSkip, the recursive call for s1 might yield registers back into av that
+       are still needed in s2, so the recursive call for s2 will have the wrong corresp/av.
+       On the other hand, if we made both recursive calls with the same corresp/av,
+       we would have to insert phi functions at the end for vars that were assigned (to potentially
+       different registers) in both branches and are used after the if *)
     '(corresp, av, s1') <- regalloc corresp av s1 l_after;;
     '(corresp, av, s2') <- regalloc corresp av s2 l_after;;
     Some (corresp, av, SIf c' s1' s2')
@@ -298,11 +457,13 @@ Fixpoint regalloc
     let '(binds', corresp, av) := assign_lhss binds corresp av in
     Some (corresp, av, SInteract binds' f args')
   end.
+End WithBugs.
 
 Definition regalloc_function: list srcvar * list srcvar * stmt -> option (list impvar * list impvar * stmt') :=
   fun '(args, rets, fbody) =>
-    let '(args', corresp, av) := assign_lhss args [] initial_av_regs in
-    '(corresp, av, fbody') <- regalloc corresp av fbody rets;;
+    let corresp := process_intervals [] initial_av_regs (intervals args fbody rets) in
+    fbody' <- rename corresp fbody;;
+    args' <- lookups args corresp;;
     rets' <- lookups rets corresp;;
     Some (args', rets', fbody').
 
