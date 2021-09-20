@@ -18,406 +18,6 @@ Require Import bedrock2.MetricLogging.
 
 Open Scope Z_scope.
 
-Ltac specialize_rec H :=
-  lazymatch type of H with
-  | ?P -> ?Q => let F := fresh in assert P as F; [clear H|specialize (H F); clear F; specialize_rec H]
-  | forall (x: ?T), _ => let n := fresh x in evar (n: T); specialize (H n); subst n; specialize_rec H
-  | _ => idtac
-  end.
-
-Tactic Notation "spec" constr(t) "as" ident(H) := pose proof t as H; specialize_rec H.
-
-Lemma sumbool_of_BoolSpec: forall {P Q: Prop} {b: bool},
-    BoolSpec P Q b -> {P} + {Q}.
-Proof.
-  intros. destruct b.
-  - left. inversion H. assumption.
-  - right. inversion H. assumption.
-Defined.
-
-Lemma sumbool_of_EqDecider{T: Type}{d: T -> T -> bool}:
-  EqDecider d ->
-  forall x y: T, {x = y} + {x <> y}.
-Proof. intros. eapply sumbool_of_BoolSpec. apply H. Qed.
-
-Module map.
-  Section MAP.
-    Context {key value} {map : map.map key value}.
-    Context {ok : map.ok map} {key_eqb: key -> key -> bool} {key_eq_dec : EqDecider key_eqb}.
-    Implicit Types (k : key) (v : value) (x y z m : map).
-
-    (* Note: there's already one in coqutil that requires disjointness *)
-    Lemma putmany_assoc x y z : map.putmany x (map.putmany y z) = map.putmany (map.putmany x y) z.
-    Proof.
-      intros; eapply map.map_ext; intros.
-      rewrite ?map.get_putmany_dec.
-      destruct (map.get x k); destruct (map.get y k); destruct (map.get z k); reflexivity.
-    Qed.
-
-    Lemma put_idemp: forall (m: map) k v,
-        map.get m k = Some v ->
-        map.put m k v = m.
-    Proof.
-      intros. apply map.map_ext. intros. rewrite map.get_put_dec. destr (key_eqb k k0); congruence.
-    Qed.
-
-    (* to get stronger guarantees such as indexing into vs, we'd need NoDup *)
-    Lemma putmany_of_list_zip_get: forall (ks: list key) (vs: list value) m0 m k,
-        map.putmany_of_list_zip ks vs m0 = Some m ->
-        In k ks ->
-        map.get m k <> None.
-    Proof.
-      induction ks as [|k ks]; intros.
-      - simpl in H0. destruct H0.
-      - simpl in H0. destruct H0.
-        + subst k0. cbn in H. simp. intro C.
-          eapply map.putmany_of_list_zip_to_putmany in H.
-          destruct H as (M & A & B). subst m.
-          rewrite map.get_putmany_dec in C. rewrite map.get_put_same in C.
-          destruct_one_match_hyp; discriminate.
-        + cbn in H. simp. eapply IHks; eauto.
-    Qed.
-
-    Lemma split_remove_put: forall m m1 m2 k v,
-        map.split m m1 m2 ->
-        map.get m k = Some v ->
-        map.split m (map.remove m1 k) (map.put m2 k v).
-    Proof.
-      intros.
-      destruct (map.get_split k _ _ _ H) as [(A & B) | (A & B)].
-      - eapply map.split_put_l2r.
-        + apply map.get_remove_same.
-        + replace (map.put (map.remove m1 k) k v) with m1. 1: assumption.
-          apply map.map_ext.
-          intro x.
-          rewrite map.get_put_dec.
-          destruct_one_match.
-          * subst x. congruence.
-          * rewrite map.get_remove_diff by congruence. reflexivity.
-      - replace (map.remove m1 k) with m1. 2: {
-          eapply map.map_ext. intro x. rewrite map.get_remove_dec.
-          destruct_one_match.
-          - subst x. assumption.
-          - reflexivity.
-        }
-        replace (map.put m2 k v) with m2. 2: {
-          apply map.map_ext. intro x. rewrite map.get_put_dec.
-          destruct_one_match.
-          - subst x. congruence.
-          - reflexivity.
-        }
-        assumption.
-    Qed.
-
-    Lemma getmany_of_list_to_split: forall m (ks: list key) (vs: list value),
-        map.getmany_of_list m ks = Some vs ->
-        exists mrest mks, map.of_list_zip ks vs = Some mks /\ map.split m mrest mks.
-    Proof.
-      induction ks as [|k ks]; intros; destruct vs as [|v vs].
-      - do 2 eexists. split. 1: reflexivity. unfold map.split. rewrite map.putmany_empty_r.
-        split. 1: reflexivity. apply map.disjoint_empty_r.
-      - discriminate.
-      - cbn in H. simp. destruct_one_match_hyp; discriminate.
-      - cbn in H. simp. specialize (IHks _ E0). simp. cbn.
-        unfold map.of_list_zip in *.
-        exists (map.remove mrest k), (map.put mks k v). split.
-        + destr (map.putmany_of_list_zip ks vs (map.put map.empty k v)). 2: {
-            pose proof map.putmany_of_list_zip_sameLength _ _ _ _ IHksp0 as C.
-            eapply map.sameLength_putmany_of_list in C. destruct C as [a C].
-            rewrite E1 in C. discriminate.
-          }
-          f_equal.
-          eapply map.map_ext.
-          intro x.
-          eapply map.putmany_of_list_zip_to_putmany in E1.
-          destruct E1 as (mks' & F & G).
-          subst r.
-          rewrite IHksp0 in F. apply Option.eq_of_eq_Some in F. subst mks'.
-          rewrite map.get_putmany_dec.
-          rewrite !map.get_put_dec.
-          rewrite map.get_empty.
-          destr (key_eqb k x). 2: destruct_one_match; reflexivity.
-          subst x.
-          destruct_one_match. 2: reflexivity.
-          unfold map.split in IHksp1. simp.
-          rewrite map.get_putmany_dec in E.
-          rewrite E1 in E.
-          assumption.
-        + eapply split_remove_put; assumption.
-    Qed.
-
-    Lemma putmany_of_list_zip_to_In: forall ks vs m k v,
-        map.putmany_of_list_zip ks vs map.empty = Some m ->
-        map.get m k = Some v ->
-        In k ks.
-    Proof.
-      induction ks; intros.
-      - destruct vs as [|v' vs]. 2: discriminate H.
-        simpl in H. apply Option.eq_of_eq_Some in H. subst m. rewrite map.get_empty in H0. discriminate.
-      - destruct vs as [|v' vs]. 1: discriminate H.
-        cbn in H. edestruct map.putmany_of_list_zip_to_putmany as (s & A & ?). 1: exact H.
-        subst m.
-        rewrite map.get_putmany_dec in H0.
-        rewrite map.get_put_dec in H0.
-        destr (key_eqb a k).
-        + subst a. simpl. auto.
-        + right. rewrite map.get_empty in H0. simp. eauto.
-    Qed.
-
-    Lemma two_way_split: forall (m mA mB m1 m2: map),
-        map.split m mA mB ->
-        map.split m m1 m2 ->
-        exists mA1 mA2 mB1 mB2,
-          map.split mA mA1 mA2 /\
-          map.split mB mB1 mB2 /\
-          map.split m1 mA1 mB1 /\
-          map.split m2 mA2 mB2.
-    Abort.
-
-    Lemma getmany_of_list_zip_shrink: forall (m m1 m2: map) (ks: list key) (vs: list value),
-        map.split m m1 m2 ->
-        map.getmany_of_list m ks = Some vs ->
-        (forall k, In k ks -> map.get m2 k = None) ->
-        map.getmany_of_list m1 ks = Some vs.
-    Proof.
-      unfold map.split, map.disjoint, map.getmany_of_list. intros. simp.
-      rewrite <- H0.
-      f_equal.
-      eapply List.map_ext_in. intros.
-      rewrite map.get_putmany_dec. rewrite H1; auto.
-    Qed.
-
-    Lemma getmany_of_list_zip_grow: forall (m m1 m2: map) (ks: list key) (vs: list value),
-        map.split m m1 m2 ->
-        map.getmany_of_list m1 ks = Some vs ->
-        map.getmany_of_list m ks = Some vs.
-    Proof.
-      unfold map.split, map.disjoint, map.getmany_of_list. intros. simp.
-      rewrite <- H0.
-      f_equal.
-      eapply List.map_ext_in. intros.
-      rewrite map.get_putmany_dec.
-      destruct_one_match. 2: reflexivity.
-      exfalso.
-      eapply List.In_option_all in H0. 2: {
-        eapply List.in_map. eassumption.
-      }
-      simp. eauto.
-    Qed.
-
-    Lemma putmany_of_list_zip_split: forall (l l' l1 l2: map) keys values,
-        map.putmany_of_list_zip keys values l = Some l' ->
-        map.split l l1 l2 ->
-        Forall (fun k => map.get l2 k = None) keys ->
-        exists l1', map.split l' l1' l2 /\ map.putmany_of_list_zip keys values l1 = Some l1'.
-    Proof.
-      intros.
-      eapply map.putmany_of_list_zip_to_putmany in H. destruct H as (kv & Mkkv & ?). subst.
-      unfold map.split in *. simp.
-      setoid_rewrite <- putmany_assoc.
-      assert (map.disjoint l2 kv) as D. {
-        unfold map.disjoint. intros *. intros G1 G2.
-        eapply putmany_of_list_zip_to_In in Mkkv. 2: eassumption.
-        eapply Forall_forall in H1. 2: exact Mkkv.
-        congruence.
-      }
-      rewrite (map.putmany_comm l2 kv) by exact D.
-      setoid_rewrite putmany_assoc.
-      exists (map.putmany l1 kv). ssplit.
-      - reflexivity.
-      - eapply map.disjoint_putmany_l. split. 1: assumption. apply map.disjoint_comm. assumption.
-      - pose proof @map.putmany_of_list_zip_sameLength as L.
-        specialize L with (1 := Mkkv).
-        eapply map.sameLength_putmany_of_list in L. destruct L as [st' L]. rewrite L.
-        eapply map.putmany_of_list_zip_to_putmany in L. destruct L as (kv' & Mkkv' & ?). subst.
-        congruence.
-    Qed.
-
-    Lemma putmany_of_list_zip_grow: forall (l l1 l1' l2: map) keys values,
-        map.putmany_of_list_zip keys values l1 = Some l1' ->
-        map.split l l1 l2 ->
-        Forall (fun k => map.get l2 k = None) keys ->
-        exists l', map.split l' l1' l2 /\ map.putmany_of_list_zip keys values l = Some l'.
-    Proof.
-      intros.
-      eapply map.putmany_of_list_zip_to_putmany in H. destruct H as (kv & Mkkv & ?). subst.
-      assert (map.disjoint l2 kv) as D. {
-        unfold map.disjoint. intros *. intros G1 G2.
-        eapply putmany_of_list_zip_to_In in Mkkv. 2: eassumption.
-        eapply Forall_forall in H1. 2: exact Mkkv.
-        congruence.
-      }
-      unfold map.split in *. simp. eexists. ssplit.
-      - reflexivity.
-      - eapply map.disjoint_putmany_l. split. 1: assumption. apply map.disjoint_comm. assumption.
-      - pose proof @map.putmany_of_list_zip_sameLength as L.
-        specialize L with (1 := Mkkv).
-        eapply map.sameLength_putmany_of_list in L. destruct L as [st' L]. rewrite L.
-        eapply map.putmany_of_list_zip_to_putmany in L. destruct L as (kv' & Mkkv' & ?). subst.
-        replace kv' with kv by congruence. clear Mkkv'.
-        f_equal.
-        rewrite <- putmany_assoc. rewrite (map.putmany_comm l2 kv) by exact D.
-        apply putmany_assoc.
-    Qed.
-
-    Lemma get_split_l: forall m m1 m2 k v,
-        map.split m m1 m2 ->
-        map.get m2 k = None ->
-        map.get m k = Some v ->
-        map.get m1 k = Some v.
-    Proof.
-      intros. unfold map.split, map.disjoint in *. simp.
-      rewrite map.get_putmany_dec in H1.
-      destruct_one_match_hyp; congruence.
-    Qed.
-
-    Lemma get_split_r: forall m m1 m2 k v,
-        map.split m m1 m2 ->
-        map.get m1 k = None ->
-        map.get m k = Some v ->
-        map.get m2 k = Some v.
-    Proof.
-      intros. unfold map.split, map.disjoint in *. simp.
-      rewrite map.get_putmany_dec in H1.
-      destruct_one_match_hyp; congruence.
-    Qed.
-
-    Lemma get_split_grow_l: forall m m1 m2 k v,
-        map.split m m1 m2 ->
-        map.get m2 k = Some v ->
-        map.get m k = Some v.
-    Proof.
-      intros. unfold map.split, map.disjoint in *. simp.
-      rewrite map.get_putmany_dec.
-      destruct_one_match; firstorder congruence.
-    Qed.
-
-    Lemma get_split_grow_r: forall m m1 m2 k v,
-        map.split m m1 m2 ->
-        map.get m1 k = Some v ->
-        map.get m k = Some v.
-    Proof.
-      intros. unfold map.split, map.disjoint in *. simp.
-      rewrite map.get_putmany_dec.
-      destruct_one_match; firstorder congruence.
-    Qed.
-
-    Lemma shrink_disjoint_l: forall m1 m2 m1' mRest,
-        map.disjoint m1 m2 ->
-        map.split m1 m1' mRest ->
-        map.disjoint m1' m2.
-    Proof.
-      unfold map.split, map.disjoint. intros. destruct H0. subst.
-      specialize H with (2 := H2). specialize H3 with (1 := H1).
-      rewrite map.get_putmany_dec in H.
-      destruct (map.get mRest k); eauto.
-    Qed.
-
-    Lemma shrink_disjoint_r: forall m1 m2 m2' mRest,
-        map.disjoint m1 m2 ->
-        map.split m2 m2' mRest ->
-        map.disjoint m1 m2'.
-    Proof.
-      unfold map.split, map.disjoint. intros. destruct H0. subst.
-      specialize H with (1 := H1). specialize H3 with (1 := H2).
-      rewrite map.get_putmany_dec in H.
-      destruct (map.get mRest k); eauto.
-    Qed.
-
-  End MAP.
-End map.
-
-Section MoreSepLog.
-  Context {key value} {map : map.map key value}.
-  Context {ok : map.ok map} {key_eqb: key -> key -> bool} {key_eq_dec : EqDecider key_eqb}.
-
-  Lemma subst_split: forall (m m1 m2 M: map) (R: map -> Prop),
-      map.split m m1 m2 ->
-      (eq m * R)%sep M ->
-      (eq m1 * eq m2 * R)%sep M.
-  Proof.
-    (* FIRSTORDER? *)
-    intros.
-    unfold map.split in H. simp.
-    use_sep_assumption.
-    cancel.
-    cbn [seps].
-    intro m. unfold sep, map.split. split; intros.
-    - subst. eauto 10.
-    - simp. reflexivity.
-  Qed.
-
-  Lemma eq_sep_to_split: forall (m m1: map) P,
-      (eq m1 * P)%sep m ->
-      exists m2, map.split m m1 m2 /\ P m2.
-  Proof. unfold sep. intros. simp. eauto. Qed.
-
-  Lemma sep_put_iff: forall (m: map) P R k v_old v_new,
-      (ptsto k v_old * R)%sep m ->
-      iff1 P (ptsto k v_new * R)%sep ->
-      P (map.put m k v_new).
-  Proof.
-    intros.
-    eapply sep_put in H.
-    seprewrite H0.
-    ecancel_assumption.
-  Qed.
-
-  Lemma sep_eq_put: forall (m1 m: map) P x v,
-      (eq m1 * P)%sep m ->
-      (forall m' w, P m' -> map.get m' x = Some w -> False) ->
-      (eq (map.put m1 x v) * P)%sep (map.put m x v).
-  Proof.
-    intros. unfold sep, map.split in *. simp.
-    exists (map.put mp x v), mq.
-    specialize H0 with (1 := Hp2).
-    repeat split; trivial.
-    - apply map.map_ext.
-      intro y.
-      rewrite map.get_put_dec.
-      rewrite ?map.get_putmany_dec.
-      destr (map.get mq y).
-      + destruct_one_match.
-        * subst. exfalso. eauto.
-        * reflexivity.
-      + destruct_one_match.
-        * subst. rewrite map.get_put_same. reflexivity.
-        * rewrite map.get_put_diff by congruence. reflexivity.
-    - unfold map.disjoint in *. intros.
-      rewrite map.get_put_dec in H. destruct_one_match_hyp.
-      + subst. eauto.
-      + eauto.
-  Qed.
-
-  Lemma grow_eq_sep: forall (M M' m mAdd: map) (R: map -> Prop),
-      (eq m * R)%sep M ->
-      map.split M' M mAdd ->
-      (eq (map.putmany m mAdd) * R)%sep M'.
-  Proof.
-    intros. apply sep_comm. apply sep_comm in H.
-    unfold sep, map.split in *. simp.
-    do 2 eexists. ssplit. 4: reflexivity. 3: eassumption.
-    - symmetry. apply map.putmany_assoc.
-    - unfold map.disjoint in *. intros. rewrite map.get_putmany_dec in H0.
-      destruct_one_match_hyp.
-      + simp. eapply H0p1. 2: eassumption. rewrite map.get_putmany_dec.
-        rewrite H. instantiate (1 := ltac:(destruct(map.get mq k))).
-        destruct (map.get mq k); reflexivity.
-      + eauto.
-  Qed.
-
-  Lemma join_sep: forall (m m1 m2: map) (P P1 P2: map -> Prop),
-      map.split m m1 m2 ->
-      P1 m1->
-      P2 m2 ->
-      iff1 (P1 * P2)%sep P ->
-      P m.
-  Proof.
-    unfold sep, map.split. intros. simp. eapply H2. eauto 10.
-  Qed.
-
-End MoreSepLog.
-
 Section Spilling.
 
   Notation stmt := (stmt Z).
@@ -661,97 +261,6 @@ Section Spilling.
            nth_error stackwords (Z.to_nat (r - 32)) = Some v) /\
         length stackwords = Z.to_nat (maxvar - 31).
 
-  Lemma load_from_word_array: forall p words frame m i v,
-      (word_array p words * frame)%sep m ->
-      nth_error words (Z.to_nat i) = Some v ->
-      0 <= i ->
-      Memory.load Syntax.access_size.word m (word.add p (word.of_Z (i * bytes_per_word))) = Some v.
-  Proof.
-    unfold word_array.
-    intros.
-    eapply nth_error_split in H0. simp.
-    seprewrite_in @array_append H.
-    seprewrite_in @array_cons H.
-    eapply load_word_of_sep.
-    use_sep_assumption.
-    cancel.
-    cancel_seps_at_indices 0%nat 0%nat. {
-      f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: blia.
-      apply word.unsigned_of_Z_nowrap.
-      unfold bytes_per_word.
-      destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
-    }
-    ecancel_done.
-  Qed.
-
-  Lemma store_to_word_array: forall p oldwords frame m i v,
-      (word_array p oldwords * frame)%sep m ->
-      0 <= i < Z.of_nat (List.length oldwords) ->
-      exists newwords m',
-        Memory.store Syntax.access_size.word m (word.add p (word.of_Z (i * bytes_per_word))) v = Some m' /\
-        (word_array p newwords * frame)%sep m' /\
-        nth_error newwords (Z.to_nat i) = Some v /\
-        (forall j w, j <> Z.to_nat i -> nth_error oldwords j = Some w -> nth_error newwords j = Some w) /\
-        length newwords = length oldwords.
-  Proof.
-    unfold word_array.
-    intros.
-    destruct (List.nth_error oldwords (Z.to_nat i)) eqn: E. 2: {
-      exfalso. eapply nth_error_Some. 2: eassumption. blia.
-    }
-    eapply nth_error_split in E. simp.
-    seprewrite_in @array_append H.
-    seprewrite_in @array_cons H.
-    eexists (l1 ++ v :: l2).
-    eapply store_word_of_sep. {
-      use_sep_assumption. cancel. cancel_seps_at_indices 0%nat 0%nat. {
-        f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: blia.
-        apply word.unsigned_of_Z_nowrap.
-        unfold bytes_per_word.
-        destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
-      }
-      ecancel_done.
-    }
-    clear H.
-    intros. ssplit.
-    - seprewrite @array_append. seprewrite @array_cons.
-      use_sep_assumption.
-      cancel.
-      cancel_seps_at_indices 0%nat 0%nat. {
-        f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 2: blia.
-        symmetry. apply word.unsigned_of_Z_nowrap.
-        unfold bytes_per_word.
-        destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
-      }
-      ecancel_done.
-    - rewrite nth_error_app2 by blia. replace (Z.to_nat i - length l1)%nat with O by blia. reflexivity.
-    - intros. assert (j < Z.to_nat i \/ Z.to_nat i < j)%nat as C by blia. destruct C as [C | C].
-      + rewrite nth_error_app1 by blia. rewrite nth_error_app1 in H1 by blia. assumption.
-      + rewrite nth_error_app2 by blia. rewrite nth_error_app2 in H1 by blia.
-        replace (j - length l1)%nat with (S (j - length l1 - 1)) in * by blia.
-        assumption.
-    - rewrite ?List.app_length. reflexivity.
-  Qed.
-
-  Lemma store_bytes_sep_hi2lo: forall (mH mL : mem) R a n v_old v,
-      Memory.load_bytes n mH a = Some v_old ->
-      (eq mH * R)%sep mL ->
-      (eq (Memory.unchecked_store_bytes n mH a v) * R)%sep (Memory.unchecked_store_bytes n mL a v).
-  Proof.
-    intros. apply sep_comm. apply sep_comm in H0.
-    unfold Memory.load_bytes, Memory.unchecked_store_bytes, sep, map.split in *.
-    simp. do 2 eexists. ssplit. 3: eassumption. 3: reflexivity.
-    - rewrite map.putmany_of_tuple_to_putmany.
-      rewrite (map.putmany_of_tuple_to_putmany _ mq).
-      symmetry. apply map.putmany_assoc.
-    - unfold map.disjoint in *.
-      intros.
-      pose proof (map.putmany_of_tuple_preserves_domain (ok := mem_ok) _ _ v_old v _ H) as A.
-      unfold map.same_domain, map.sub_domain in A. apply proj2 in A.
-      edestruct A as [v3 B]. 1: eassumption.
-      eauto.
-  Qed.
-
   Definition envs_related(e1 e2: env): Prop :=
     forall f argvars resvars body1,
       map.get e1 f = Some (argvars, resvars, body1) ->
@@ -760,18 +269,6 @@ Section Spilling.
       Forall (fun x => fp < x < 32) resvars /\
       (* upper bound always holds, but we still need to check lower bound: *)
       valid_vars_src (max_var body1) body1.
-
-  Lemma seq_cps: forall e s1 s2 t m (l: locals) mc post,
-      exec e s1 t m l mc (fun t' m' l' mc' => exec e s2 t' m' l' mc' post) ->
-      exec e (SSeq s1 s2) t m l mc post.
-  Proof.
-    intros. eapply exec.seq. 1: eassumption. simpl. clear. auto.
-  Qed.
-
-  Lemma sep_def: forall {m: mem} {P Q: mem -> Prop},
-      (P * Q)%sep m ->
-      exists m1 m2, map.split m m1 m2 /\ P m1 /\ Q m2.
-  Proof. unfold sep. intros *. apply id. Qed.
 
   Implicit Types post : Semantics.trace -> mem -> locals -> MetricLog -> Prop.
 
@@ -947,37 +444,6 @@ Section Spilling.
              | |- _ /\ _ => split
              | |- _ => eassumption || reflexivity
              end.
-  Qed.
-
-  Lemma call_cps: forall e fname params rets binds args fbody argvs t (l: locals) m mc st post,
-      map.get e fname = Some (params, rets, fbody) ->
-      map.getmany_of_list l args = Some argvs ->
-      map.putmany_of_list_zip params argvs map.empty = Some st ->
-      exec e fbody t m st mc (fun t' m' st' mc' =>
-        exists retvs l',
-          map.getmany_of_list st' rets = Some retvs /\
-          map.putmany_of_list_zip binds retvs l = Some l' /\
-          post t' m' l' mc') ->
-    exec e (SCall binds fname args) t m l mc post.
-  Proof.
-    intros. eapply exec.call; try eassumption.
-    cbv beta. intros *. exact id.
-  Qed.
-
-  Lemma loop_cps: forall e body1 cond body2 t m l mc post,
-    exec e body1 t m l mc (fun t m l mc => exists b,
-      eval_bcond l cond = Some b /\
-      (b = false -> post t m l (addMetricLoads 1 (addMetricInstructions 1 (addMetricJumps 1 mc)))) /\
-      (b = true -> exec e body2 t m l mc (fun t m l mc =>
-         exec e (SLoop body1 cond body2) t m l
-              (addMetricLoads 2 (addMetricInstructions 2 (addMetricJumps 1 mc))) post))) ->
-    exec e (SLoop body1 cond body2) t m l mc post.
-  Proof.
-    intros. eapply exec.loop. 1: eapply H. all: cbv beta; intros; simp.
-    - congruence.
-    - replace b with false in * by congruence. clear b. eauto.
-    - replace b with true in * by congruence. clear b. eauto.
-    - assumption.
   Qed.
 
   (* SOp does not create an up-to-date `related` before we invoke this one, because after SOp,
@@ -1178,24 +644,6 @@ Section Spilling.
       all: try eassumption.
   Qed.
 
-  Lemma exec_seq_assoc: forall e s1 s2 s3 t m l mc post,
-      exec e (s1;; s2;; s3) t m l mc post ->
-      exec e ((s1;; s2);; s3) t m l mc post.
-  Proof.
-    intros. simp.
-    eapply seq_cps.
-    eapply seq_cps.
-    eapply exec.weaken. 1: eassumption. intros.
-    specialize H8 with (1 := H). simp.
-    eapply exec.weaken. 1: eassumption. intros.
-    eauto.
-  Qed.
-
-  Lemma exec_seq_assoc_bw: forall e s1 s2 s3 t m l mc post,
-      exec e ((s1;; s2);; s3) t m l mc post ->
-      exec e (s1;; (s2;; s3)) t m l mc post.
-  Proof. intros. simp. eauto 10 using exec.seq. Qed.
-
   Lemma get_arg_reg_1: forall l l2 y y' (z : Z) (z' : word),
       fp < y ->
       fp < z ->
@@ -1276,59 +724,6 @@ Section Spilling.
     1,3: reflexivity. assumption.
   Qed.
 
-  Lemma List__flat_map_const_length{A B: Type}: forall (f: A -> list B) (n: nat) (l: list A),
-      (forall a, length (f a) = n) ->
-      length (flat_map f l) = (n * length l)%nat.
-  Proof.
-    intros. induction l.
-    - simpl. blia.
-    - simpl. rewrite app_length. rewrite IHl. rewrite H. blia.
-  Qed.
-
-  (* TODO share with FlatToRiscvDef.compile4bytes? *)
-  Fixpoint tuple__firstn{A: Type}(n: nat)(l: list A)(default: A){struct n}: HList.tuple A n :=
-    match n with
-    | O => tt
-    | S m => PrimitivePair.pair.mk (hd default l) (tuple__firstn m (tl l) default)
-    end.
-
-  Fixpoint List__firstn_default{A: Type}(n: nat)(l: list A)(default: A): list A :=
-    match n with
-    | O => nil
-    | S m => hd default l :: List__firstn_default m (tl l) default
-    end.
-
-  Lemma tuple__firstn_to_list{A: Type}: forall n (l: list A) default,
-      HList.tuple.to_list (tuple__firstn n l default) = List__firstn_default n l default.
-  Proof.
-    induction n; intros.
-    - reflexivity.
-    - cbn. f_equal. eapply IHn.
-  Qed.
-
-  Definition head_to_Z(sz: nat)(l: list byte): Z := LittleEndian.combine sz (tuple__firstn sz l Byte.x00).
-
-  Fixpoint byte_list_to_Z_list(sz nWords: nat)(bs: list byte): list Z :=
-    match nWords with
-    | S m => head_to_Z sz bs :: byte_list_to_Z_list sz m (skipn sz bs)
-    | O => nil
-    end.
-
-  Definition byte_list_to_word_list(bs: list byte): list word :=
-    let sz := Z.to_nat (@Memory.bytes_per_word width) in
-    List.map word.of_Z (byte_list_to_Z_list sz (length bs / sz)%nat bs).
-
-  Lemma littleendian_head_to_Z: forall n l (addr : word),
-      iff1 (littleendian n addr (head_to_Z n l))
-           (array ptsto (word.of_Z 1) addr (List__firstn_default n l Byte.x00)).
-  Proof.
-    intros. unfold littleendian, ptsto_bytes, head_to_Z.
-    rewrite LittleEndian.split_combine. rewrite tuple__firstn_to_list.
-    reflexivity.
-  Qed.
-
-  (* byte_list_to_word_list_array already exists, TODO reconcile *)
-
   Lemma spilling_correct (e1 e2 : env) (Ev : envs_related e1 e2)
         (s1 : stmt)
   (t1 : Semantics.trace)
@@ -1352,7 +747,7 @@ Section Spilling.
       unfold related in *. simp.
       spec (subst_split (ok := mem_ok) m) as A.
       1: eassumption. 1: ecancel_assumption.
-      edestruct (@sep_def m2 (eq mGive)) as (mGive' & mKeepL & B & ? & C).
+      edestruct (@sep_def _ _ _ m2 (eq mGive)) as (mGive' & mKeepL & B & ? & C).
       1: ecancel_assumption.
       subst mGive'.
       rename H3p0 into FR, H3p1 into FA.
@@ -1439,7 +834,7 @@ Section Spilling.
         unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
       }
       edestruct (eq_sep_to_split l2) as (l2Rest & S22 & SP22). 1: ecancel_assumption.
-      eapply call_cps.
+      eapply exec.call_cps.
       + eauto.
       + eapply map.getmany_of_list_zip_grow. 2: exact R. 1: exact S22.
       + eassumption.
@@ -1559,7 +954,7 @@ Section Spilling.
           | H: Memory.anybytes a ?LEN1 mStack' |-
                Memory.anybytes a ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
           end.
-          erewrite List__flat_map_const_length. 2: {
+          erewrite List.flat_map_const_length. 2: {
             intros w. rewrite HList.tuple.length_to_list. reflexivity.
           }
           simpl. blia. }
@@ -1578,15 +973,15 @@ Section Spilling.
           eapply map.putmany_of_list_zip_to_In; eassumption. }
         all: assumption.
     - (* exec.load *)
-      eapply seq_cps.
+      eapply exec.seq_cps.
       eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H3. intros.
-      eapply seq_cps.
+      eapply exec.seq_cps.
       pose proof H2 as A. unfold related in A. simp.
       unfold Memory.load, Memory.load_Z, Memory.load_bytes in *. simp.
       eapply exec.load. {
         rewrite map.get_put_same. reflexivity. }
-      { edestruct (@sep_def m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
+      { edestruct (@sep_def _ _ _ m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
         1: ecancel_assumption. unfold map.split in Sp. simp. subst m'.
         unfold Memory.load, Memory.load_Z, Memory.load_bytes.
         erewrite map.getmany_of_tuple_in_disjoint_putmany; eauto. }
@@ -1595,13 +990,13 @@ Section Spilling.
       + eassumption.
       + blia.
     - (* exec.store *)
-      eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      eapply exec.seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H4. intros.
-      eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      eapply exec.seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H3. intros.
       pose proof H3 as A. unfold related in A. simp.
       unfold Memory.store, Memory.store_Z, Memory.store_bytes in *. simp.
-      edestruct (@sep_def m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
+      edestruct (@sep_def _ _ _ m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
       1: ecancel_assumption. unfold map.split in Sp. simp. subst m'.
       eapply exec.store.
       1: eapply get_arg_reg_1; eassumption.
@@ -1619,9 +1014,9 @@ Section Spilling.
       spec store_bytes_sep_hi2lo as A. 1: eassumption.
       all: ecancel_assumption.
     - (* exec.inlinetable *)
-      eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      eapply exec.seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H4. intros.
-      eapply seq_cps.
+      eapply exec.seq_cps.
       eapply exec.inlinetable.
       { unfold res_reg, arg_reg, tmp1, fp in *. destr (32 <=? x); destr (32 <=? i); try blia. }
       { rewrite map.get_put_same. reflexivity. }
@@ -1634,7 +1029,7 @@ Section Spilling.
       rename H1 into IH.
       eapply exec.stackalloc. 1: assumption.
       intros.
-      eapply seq_cps.
+      eapply exec.seq_cps.
       edestruct grow_related_mem as (mCombined1 & ? & ?). 1,2: eassumption.
       eapply save_res_reg_correct''. 1: eassumption. 1: blia.
       intros.
@@ -1648,17 +1043,17 @@ Section Spilling.
              end.
       1,4,3,2: eassumption.
     - (* exec.lit *)
-      eapply seq_cps. eapply exec.lit.
+      eapply exec.seq_cps. eapply exec.lit.
       eapply save_res_reg_correct.
       + eassumption.
       + eassumption.
       + blia.
     - (* exec.op *)
-      eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      eapply exec.seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H3. intros.
-      eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      eapply exec.seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H2. intros.
-      eapply seq_cps.
+      eapply exec.seq_cps.
       eapply exec.op.
       1: eapply get_arg_reg_1; eassumption.
       1: apply map.get_put_same.
@@ -1667,9 +1062,9 @@ Section Spilling.
       + eassumption.
       + blia.
     - (* exec.set *)
-      eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      eapply exec.seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H2. intros.
-      eapply seq_cps.
+      eapply exec.seq_cps.
       eapply exec.set. 1: apply map.get_put_same.
       eapply save_res_reg_correct.
       + eassumption.
@@ -1677,16 +1072,16 @@ Section Spilling.
       + blia.
     - (* exec.if_true *)
       unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; simp.
-      + eapply exec_seq_assoc.
-        eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      + eapply exec.seq_assoc.
+        eapply exec.seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H2. intros.
-        eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+        eapply exec.seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H. intros.
         eapply exec.if_true. {
           cbn. erewrite get_arg_reg_1 by eassumption. rewrite map.get_put_same. congruence.
         }
         eapply IHexec; eassumption.
-      + eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      + eapply exec.seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H2. intros.
         eapply exec.if_true. {
           cbn. rewrite map.get_put_same. congruence.
@@ -1694,16 +1089,16 @@ Section Spilling.
         eapply IHexec; eassumption.
     - (* exec.if_false *)
       unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; simp.
-      + eapply exec_seq_assoc.
-        eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      + eapply exec.seq_assoc.
+        eapply exec.seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H2. intros.
-        eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+        eapply exec.seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H. intros.
         eapply exec.if_false. {
           cbn. erewrite get_arg_reg_1 by eassumption. rewrite map.get_put_same. congruence.
         }
         eapply IHexec; eassumption.
-      + eapply seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
+      + eapply exec.seq_cps. eapply load_arg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H2. intros.
         eapply exec.if_false. {
           cbn. rewrite map.get_put_same. congruence.
@@ -1711,7 +1106,7 @@ Section Spilling.
         eapply IHexec; eassumption.
     - (* exec.loop *)
       rename IHexec into IH1, H3 into IH2, H5 into IH12.
-      eapply loop_cps.
+      eapply exec.loop_cps.
       eapply exec.seq.
       1: eapply IH1; eassumption.
       cbv beta. intros. simp.
@@ -1765,24 +1160,6 @@ Section Spilling.
     all: try unshelve eapply word.eqb_spec.
     all: simpl.
     all: try typeclasses eauto.
-  Qed.
-
-  Definition spilling_related(maxvar: Z)(done: bool)(s1 s2: SimState Z): Prop :=
-    let '(t1, m1, l1, mc1) := s1 in let '(t2, m2, l2, mc2) := s2 in
-    exists fpval, related maxvar (emp True) fpval t1 m1 l1 t2 m2 l2.
-
-  Lemma spilling_sim: forall (maxvar: Z) (e1 e2: env) (s1: stmt),
-      envs_related e1 e2 ->
-      valid_vars_src maxvar s1 ->
-      simulation (SimExec Z e1 s1) (SimExec Z e2 (spill_stmt s1)) (spilling_related maxvar).
-  Proof.
-    unfold simulation, SimExec, spilling_related, compile_inv.
-    intros maxvar e1 e2 s1 ER V.
-    intros (((t1 & m1) & l1) & mc1) (((t2 & m2) & l2) & mc2) post1 (fpval & R) Ex1.
-    eapply exec.weaken.
-    - eapply spilling_correct; eassumption.
-    - cbv beta. intros. simp. eexists (_, _, _, _). split. 2: eassumption.
-      eauto.
   Qed.
 
 End Spilling.

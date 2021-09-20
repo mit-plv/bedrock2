@@ -290,7 +290,104 @@ Section ptstos.
     simp. repeat eexists; try eassumption.
   Qed.
 
-  Lemma sep_inline_eq: forall (A R: mem -> Prop) m1,
+  Lemma load_from_word_array: forall p words frame m i v,
+      (word_array p words * frame)%sep m ->
+      nth_error words (Z.to_nat i) = Some v ->
+      0 <= i ->
+      Memory.load Syntax.access_size.word m (word.add p (word.of_Z (i * bytes_per_word))) = Some v.
+  Proof.
+    unfold word_array.
+    intros.
+    eapply nth_error_split in H0. simp.
+    seprewrite_in @array_append H.
+    seprewrite_in @array_cons H.
+    eapply load_word_of_sep.
+    use_sep_assumption.
+    cancel.
+    cancel_seps_at_indices 0%nat 0%nat. {
+      f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: blia.
+      apply word.unsigned_of_Z_nowrap.
+      unfold bytes_per_word.
+      destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
+    }
+    ecancel_done.
+  Qed.
+
+  Lemma store_to_word_array: forall p oldwords frame m i v,
+      (word_array p oldwords * frame)%sep m ->
+      0 <= i < Z.of_nat (List.length oldwords) ->
+      exists newwords m',
+        Memory.store Syntax.access_size.word m (word.add p (word.of_Z (i * bytes_per_word))) v = Some m' /\
+        (word_array p newwords * frame)%sep m' /\
+        nth_error newwords (Z.to_nat i) = Some v /\
+        (forall j w, j <> Z.to_nat i -> nth_error oldwords j = Some w -> nth_error newwords j = Some w) /\
+        length newwords = length oldwords.
+  Proof.
+    unfold word_array.
+    intros.
+    destruct (List.nth_error oldwords (Z.to_nat i)) eqn: E. 2: {
+      exfalso. eapply nth_error_Some. 2: eassumption. blia.
+    }
+    eapply nth_error_split in E. simp.
+    seprewrite_in @array_append H.
+    seprewrite_in @array_cons H.
+    eexists (l1 ++ v :: l2).
+    eapply store_word_of_sep. {
+      use_sep_assumption. cancel. cancel_seps_at_indices 0%nat 0%nat. {
+        f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 1: blia.
+        apply word.unsigned_of_Z_nowrap.
+        unfold bytes_per_word.
+        destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
+      }
+      ecancel_done.
+    }
+    clear H.
+    intros. ssplit.
+    - seprewrite @array_append. seprewrite @array_cons.
+      use_sep_assumption.
+      cancel.
+      cancel_seps_at_indices 0%nat 0%nat. {
+        f_equal. f_equal. f_equal. rewrite Z.mul_comm. f_equal. 2: blia.
+        symmetry. apply word.unsigned_of_Z_nowrap.
+        unfold bytes_per_word.
+        destruct width_cases as [E | E]; rewrite E; cbv; intuition congruence.
+      }
+      ecancel_done.
+    - rewrite nth_error_app2 by blia. replace (Z.to_nat i - length l1)%nat with O by blia. reflexivity.
+    - intros. assert (j < Z.to_nat i \/ Z.to_nat i < j)%nat as C by blia. destruct C as [C | C].
+      + rewrite nth_error_app1 by blia. rewrite nth_error_app1 in H1 by blia. assumption.
+      + rewrite nth_error_app2 by blia. rewrite nth_error_app2 in H1 by blia.
+        replace (j - length l1)%nat with (S (j - length l1 - 1)) in * by blia.
+        assumption.
+    - rewrite ?List.app_length. reflexivity.
+  Qed.
+
+  Lemma store_bytes_sep_hi2lo: forall (mH mL : mem) R a n v_old v,
+      Memory.load_bytes n mH a = Some v_old ->
+      (eq mH * R)%sep mL ->
+      (eq (Memory.unchecked_store_bytes n mH a v) * R)%sep (Memory.unchecked_store_bytes n mL a v).
+  Proof.
+    intros. apply sep_comm. apply sep_comm in H0.
+    unfold Memory.load_bytes, Memory.unchecked_store_bytes, sep, map.split in *.
+    simp. do 2 eexists. ssplit. 3: eassumption. 3: reflexivity.
+    - rewrite map.putmany_of_tuple_to_putmany.
+      rewrite (map.putmany_of_tuple_to_putmany _ mq).
+      symmetry. apply map.putmany_assoc.
+    - unfold map.disjoint in *.
+      intros.
+      pose proof (map.putmany_of_tuple_preserves_domain (ok := mem_ok) _ _ v_old v _ H) as A.
+      unfold map.same_domain, map.sub_domain in A. apply proj2 in A.
+      edestruct A as [v3 B]. 1: eassumption.
+      eauto.
+  Qed.
+End ptstos.
+
+(* These lemmas are for any kind of map, so that they can also be used to describe locals *)
+Section MoreSepLog.
+  Context {key value} {map : map.map key value}.
+  Context {ok : map.ok map} {key_eqb: key -> key -> bool} {key_eq_dec : EqDecider key_eqb}.
+
+  Lemma sep_inline_eq: forall (A R: map -> Prop) m1,
     (exists m2, (R * eq m2)%sep m1 /\ A m2) <->
     (R * A)%sep m1.
   Proof.
@@ -302,7 +399,95 @@ Section ptstos.
            end.
   Qed.
 
-End ptstos.
+  Lemma subst_split: forall (m m1 m2 M: map) (R: map -> Prop),
+      map.split m m1 m2 ->
+      (eq m * R)%sep M ->
+      (eq m1 * eq m2 * R)%sep M.
+  Proof.
+    intros.
+    unfold map.split in H. destruct H. subst.
+    use_sep_assumption.
+    cancel.
+    cbn [seps].
+    intro m. unfold sep, map.split. split; intros.
+    - subst. eauto 10.
+    - simp. reflexivity.
+  Qed.
+
+  Lemma eq_sep_to_split: forall (m m1: map) P,
+      (eq m1 * P)%sep m ->
+      exists m2, map.split m m1 m2 /\ P m2.
+  Proof. unfold sep. intros. simp. eauto. Qed.
+
+  Lemma sep_put_iff: forall (m: map) P R k v_old v_new,
+      (ptsto k v_old * R)%sep m ->
+      iff1 P (ptsto k v_new * R)%sep ->
+      P (map.put m k v_new).
+  Proof.
+    intros.
+    eapply sep_put in H.
+    seprewrite H0.
+    ecancel_assumption.
+  Qed.
+
+  Lemma sep_eq_put: forall (m1 m: map) P x v,
+      (eq m1 * P)%sep m ->
+      (forall m' w, P m' -> map.get m' x = Some w -> False) ->
+      (eq (map.put m1 x v) * P)%sep (map.put m x v).
+  Proof.
+    intros. unfold sep, map.split in *. simp.
+    exists (map.put mp x v), mq.
+    specialize H0 with (1 := Hp2).
+    repeat split; trivial.
+    - apply map.map_ext.
+      intro y.
+      rewrite map.get_put_dec.
+      rewrite ?map.get_putmany_dec.
+      destr (map.get mq y).
+      + destruct_one_match.
+        * subst. exfalso. eauto.
+        * reflexivity.
+      + destruct_one_match.
+        * subst. rewrite map.get_put_same. reflexivity.
+        * rewrite map.get_put_diff by congruence. reflexivity.
+    - unfold map.disjoint in *. intros.
+      rewrite map.get_put_dec in H. destruct_one_match_hyp.
+      + subst. eauto.
+      + eauto.
+  Qed.
+
+  Lemma grow_eq_sep: forall (M M' m mAdd: map) (R: map -> Prop),
+      (eq m * R)%sep M ->
+      map.split M' M mAdd ->
+      (eq (map.putmany m mAdd) * R)%sep M'.
+  Proof.
+    intros. apply sep_comm. apply sep_comm in H.
+    unfold sep, map.split in *. simp.
+    do 2 eexists. ssplit. 4: reflexivity. 3: eassumption.
+    - symmetry. apply map.putmany_assoc.
+    - unfold map.disjoint in *. intros. rewrite map.get_putmany_dec in H0.
+      destruct_one_match_hyp.
+      + simp. eapply H0p1. 2: eassumption. rewrite map.get_putmany_dec.
+        rewrite H. instantiate (1 := ltac:(destruct(map.get mq k))).
+        destruct (map.get mq k); reflexivity.
+      + eauto.
+  Qed.
+
+  Lemma join_sep: forall (m m1 m2: map) (P P1 P2: map -> Prop),
+      map.split m m1 m2 ->
+      P1 m1->
+      P2 m2 ->
+      iff1 (P1 * P2)%sep P ->
+      P m.
+  Proof.
+    unfold sep, map.split. intros. simp. eapply H2. eauto 10.
+  Qed.
+
+  Lemma sep_def: forall {m: map} {P Q: map -> Prop},
+      (P * Q)%sep m ->
+      exists m1 m2, map.split m m1 m2 /\ P m1 /\ Q m2.
+  Proof. unfold sep. intros *. apply id. Qed.
+End MoreSepLog.
 
 (* This can be overridden by the user.
    The idea of "addr" is that if the addresses of two sepclauses are the same,
@@ -324,6 +509,6 @@ Ltac addr P ::=
   | _ => fail "no recognizable address"
   end.
 
-Hint Unfold program word_array: unf_to_array.
+#[export] Hint Unfold program word_array: unf_to_array.
 
 Require Export bedrock2.footpr.

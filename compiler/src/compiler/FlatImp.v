@@ -594,6 +594,44 @@ Module exec.
       assumption.
     Qed.
 
+    Lemma seq_cps: forall s1 s2 t m (l: locals) mc post,
+        exec s1 t m l mc (fun t' m' l' mc' => exec s2 t' m' l' mc' post) ->
+        exec (SSeq s1 s2) t m l mc post.
+    Proof.
+      intros. eapply seq. 1: eassumption. simpl. clear. auto.
+    Qed.
+
+    Lemma call_cps: forall fname params rets binds args fbody argvs t (l: locals) m mc st post,
+        map.get e fname = Some (params, rets, fbody) ->
+        map.getmany_of_list l args = Some argvs ->
+        map.putmany_of_list_zip params argvs map.empty = Some st ->
+        exec fbody t m st mc (fun t' m' st' mc' =>
+          exists retvs l',
+            map.getmany_of_list st' rets = Some retvs /\
+            map.putmany_of_list_zip binds retvs l = Some l' /\
+            post t' m' l' mc') ->
+      exec (SCall binds fname args) t m l mc post.
+    Proof.
+      intros. eapply call; try eassumption.
+      cbv beta. intros *. exact id.
+    Qed.
+
+    Lemma loop_cps: forall body1 cond body2 t m l mc post,
+      exec body1 t m l mc (fun t m l mc => exists b,
+        eval_bcond l cond = Some b /\
+        (b = false -> post t m l (addMetricLoads 1 (addMetricInstructions 1 (addMetricJumps 1 mc)))) /\
+        (b = true -> exec body2 t m l mc (fun t m l mc =>
+           exec (SLoop body1 cond body2) t m l
+                (addMetricLoads 2 (addMetricInstructions 2 (addMetricJumps 1 mc))) post))) ->
+      exec (SLoop body1 cond body2) t m l mc post.
+    Proof.
+      intros. eapply loop. 1: eapply H. all: cbv beta; intros; simp.
+      - congruence.
+      - replace b with false in * by congruence. clear b. eauto.
+      - replace b with true in * by congruence. clear b. eauto.
+      - assumption.
+    Qed.
+
     Lemma weaken: forall t l m mc s post1,
         exec s t m l mc post1 ->
         forall post2,
@@ -616,6 +654,24 @@ Module exec.
         eapply H1; eauto.
         intros. simp. eauto 10.
     Qed.
+
+    Lemma seq_assoc: forall s1 s2 s3 t m l mc post,
+        exec (SSeq s1 (SSeq s2 s3)) t m l mc post ->
+        exec (SSeq (SSeq s1 s2) s3) t m l mc post.
+    Proof.
+      intros. simp.
+      eapply seq_cps.
+      eapply seq_cps.
+      eapply weaken. 1: eassumption. intros.
+      specialize H8 with (1 := H). simp.
+      eapply weaken. 1: eassumption. intros.
+      eauto.
+    Qed.
+
+    Lemma seq_assoc_bw: forall s1 s2 s3 t m l mc post,
+        exec (SSeq (SSeq s1 s2) s3) t m l mc post ->
+        exec (SSeq s1 (SSeq s2 s3)) t m l mc post.
+    Proof. intros. simp. eauto 10 using seq. Qed.
 
     Ltac equalities :=
       repeat match goal with
