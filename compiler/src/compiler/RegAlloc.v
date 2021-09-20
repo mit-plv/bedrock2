@@ -1,8 +1,11 @@
 Require Import Coq.ZArith.ZArith.
 Require Import compiler.FlatImp.
 Require Import coqutil.Decidable.
+Require Import coqutil.Tactics.Tactics.
+Require Import coqutil.Tactics.simpl_rewrite.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import riscv.Utility.Utility.
+Require Import coqutil.Z.Lia.
 Require Import coqutil.Macros.unique.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Properties.
@@ -10,60 +13,12 @@ Require Import coqutil.Map.Solver.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Map.TestLemmas.
 Require Import bedrock2.Syntax.
-Require Import coqutil.Datatypes.List.
+Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Tactics.Simp.
+Require Import coqutil.Tactics.autoforward.
 Require Import compiler.Simulation.
 
-
-Local Notation "'bind_opt' x <- a ; f" :=
-  (match a with
-   | Some x => f
-   | None => None
-   end)
-  (right associativity, at level 70, x pattern).
-
-Axiom TODO_sam: False.
-
-Module map. Section WithParams.
-  Context {K V: Type}.
-
-  Class ops(M: map.map K V) := {
-    (* Collects the result of `f (get m1 k) (get m2 k)` for all k in (union (dom m1) (dom m2)).
-       Or, in other words: Lifts f key-wise from `option V` to `M`. *)
-    lift2(f: option V -> option V -> option V)(m1 m2: M): M;
-    reverse_get: M -> V -> option K;
-  }.
-
-  Context {M: map.map K V}.
-
-  Class ops_ok(o: ops M) := {
-    lift2_spec: forall f m1 m2 k,
-      f None None = None ->
-      map.get (lift2 f m1 m2) k = f (map.get m1 k) (map.get m2 k);
-
-    (* note: the other direction does not hold *)
-    reverse_get_to_get: forall m k v,
-        reverse_get m v = Some k -> map.get m k = Some v;
-  }.
-
-  Context {mok: map.ok M}{o: ops M}{ook: ops_ok o}.
-
-  Lemma lift2_assoc: forall f,
-      f None None = None ->
-      (forall a b c, f a (f b c) = f (f a b) c) ->
-      forall A B C, lift2 f A (lift2 f B C) = lift2 f (lift2 f A B) C.
-  Proof.
-    intros. apply map.map_ext. intros. rewrite ?lift2_spec by assumption. apply H0.
-  Qed.
-
-  Lemma lift2_idemp: forall f,
-      (forall a, f a a = a) ->
-      forall A, lift2 f A A = A.
-  Proof.
-    intros. apply map.map_ext. intros. rewrite lift2_spec; auto.
-  Qed.
-End WithParams. End map.
-
+Open Scope Z_scope.
 
 Local Notation srcvar := String.string (only parsing).
 Local Notation impvar := Z (only parsing).
@@ -72,402 +27,798 @@ Local Notation stmt' := (@FlatImp.stmt impvar). (* output type *)
 Local Notation bcond  := (@FlatImp.bcond srcvar).
 Local Notation bcond' := (@FlatImp.bcond impvar).
 
-Section RegAlloc.
+Axiom TODO_sam: False.
 
-  Context {src2imp: map.map srcvar impvar}.
-  Context {src2impOk: map.ok src2imp}.
-  Context {src2imp_ops: map.ops src2imp}.
+Module map.
+  Section WithParams.
+    Context {K V: Type} {M: map.map K V}.
 
-  (* annotated statement: each assignment is annotated with impvar which it assigns *)
-  Inductive astmt: Type :=
-    | ASLoad(sz: Syntax.access_size.access_size)(x: srcvar)(x': impvar)(a: srcvar)(ofs: Z)
-    | ASStore(sz: Syntax.access_size.access_size)(a: srcvar)(v: srcvar)(ofs: Z)
-    | ASLit(x: srcvar)(x': impvar)(v: Z)
-    | ASOp(x: srcvar)(x': impvar)(op: Syntax.bopname.bopname)(y z: srcvar)
-    | ASSet(x: srcvar)(x': impvar)(y: srcvar)
-    | ASIf(cond: bcond)(bThen bElse: astmt)
-    | ASLoop(body1: astmt)(cond: bcond)(body2: astmt)
-    | ASSeq(s1 s2: astmt)
-    | ASSkip
-    | ASCall(binds: list (srcvar * impvar))(f: String.string)(args: list srcvar)
-    | ASInteract(binds: list (srcvar * impvar))(f: String.string)(args: list srcvar).
+    Definition forallb(f: K -> V -> bool): M -> bool :=
+      map.fold (fun res k v => andb res (f k v)) true.
 
-  Inductive Update :=
-  | Add(y: srcvar)(forSure: bool)
-  | Remove.
-  (* Third case: In "option Update", "None" means unchanged. *)
+    Context {ok: map.ok M} {keqb: K -> K -> bool} {keq_spec: EqDecider keqb}.
 
-  Context {Corresp: map.map impvar Update} {CorrespOps: map.ops Corresp}
-          {CorrespOk: map.ok Corresp} {CorrespOpsOk: map.ops_ok CorrespOps}.
+    Lemma get_forallb: forall f m,
+        forallb f m = true -> forall k v, map.get m k = Some v -> f k v = true.
+    Proof.
+      unfold forallb. intros f m.
+      eapply map.fold_spec; intros.
+      - rewrite map.get_empty in H0. discriminate.
+      - eapply Bool.andb_true_iff in H1. destruct H1.
+        rewrite map.get_put_dec in H2. destruct_one_match_hyp.
+        + inversion H2. subst. eauto.
+        + eauto.
+    Qed.
+  End WithParams.
+End map.
 
-  (* If we know that one of the two updates was applied, how can we represent that as a single update? *)
-  Definition Either1(u1: option Update)(u2: option Update): option Update :=
-    match u1, u2 with
-    | Some (Add y1 forSure1), Some (Add y2 forSure2) =>
-      if String.eqb y1 y2 then Some (Add y1 (andb forSure1 forSure2)) else Some Remove
-    | Some (Add y1 forSure1), None => Some (Add y1 false)
-    | None, Some (Add y2 forSure2) => Some (Add y2 false)
-    | None, None => None
-    | _, _ => Some Remove
-    end.
+Definition accessed_vars_bcond(c: bcond): list srcvar :=
+  match c with
+  | CondBinary _ x y => list_union String.eqb [x] [y]
+  | CondNez x => [x]
+  end.
 
-  Definition Seq1(u1: option Update)(u2: option Update): option Update :=
-    match u2 with
-    | Some (Add _ true) => u2
-    | Some (Add y2 false) =>
-      match u1 with
-      | Some (Add y1 forSure1) => if String.eqb y1 y2 then u1 else Some Remove
-      | Some Remove => Some Remove
-      | None => u2
-      end
-    | Some Remove => u2
-    | None => u1
-    end.
+Fixpoint live(s: stmt)(used_after: list srcvar): list srcvar :=
+  match s with
+  | SSet x y
+  | SLoad _ x y _
+  | SInlinetable _ x _ y =>
+    list_union String.eqb [y] (list_diff String.eqb used_after [x])
+  | SStore _ a x _ => list_union String.eqb [a; x] used_after
+  | SStackalloc x _ body => list_diff String.eqb (live body used_after) [x]
+  | SLit x _ => list_diff String.eqb used_after [x]
+  | SOp x _ y z => list_union String.eqb [y; z] (list_diff String.eqb used_after [x])
+  | SIf c s1 s2 => list_union String.eqb
+                              (list_union String.eqb (live s1 used_after) (live s2 used_after))
+                              (accessed_vars_bcond c)
+  | SSeq s1 s2 => live s1 (live s2 used_after)
+  | SLoop s1 c s2 =>
+    live s1 (list_union String.eqb (accessed_vars_bcond c) (list_union String.eqb used_after (live s2 [])))
+  | SSkip => used_after
+  | SCall binds _ args
+  | SInteract binds _ args => list_union String.eqb args (list_diff String.eqb used_after binds)
+  end.
 
-  Definition Either: Corresp -> Corresp -> Corresp := map.lift2 Either1.
-  Definition Seq: Corresp -> Corresp -> Corresp := map.lift2 Seq1.
-
-  Ltac t :=
-    match goal with
-    | |- _ => progress intros
-    | |- _ => progress simpl in *
-    | |- _ => congruence
-    | o: option Update |- _ => destruct o
-    | u: Update |- _ => destruct u
-    | b: bool |- _ => destruct b
-    | |- context[String.eqb ?x ?y] => destr (String.eqb x y)
-    | H: context[String.eqb ?x ?y] |- _ => destr (String.eqb x y)
-    | |- _ /\ _ => split
-    end.
-
-  Lemma Seq1_None_l: forall a, Seq1 None a = a. Proof. repeat t. Qed.
-  Lemma Seq1_None_r: forall a, Seq1 a None = a. Proof. repeat t. Qed.
-
-  Lemma Seq_empty_l: forall a, Seq map.empty a = a.
-  Proof.
-    intros. unfold Seq. apply map.map_ext. intros. rewrite map.lift2_spec by reflexivity.
-    rewrite map.get_empty. apply Seq1_None_l.
-  Qed.
-
-  Lemma Seq_empty_r: forall a, Seq a map.empty = a.
-  Proof.
-    intros. unfold Seq. apply map.map_ext. intros. rewrite map.lift2_spec by reflexivity.
-    rewrite map.get_empty. apply Seq1_None_r.
-  Qed.
-
-  Lemma Seq1_assoc: forall a b c: option Update, Seq1 a (Seq1 b c) = Seq1 (Seq1 a b) c.
-  Proof. repeat t. Qed.
-
-  Lemma Seq_assoc: forall a b c: Corresp, Seq a (Seq b c) = Seq (Seq a b) c.
-  Proof. apply map.lift2_assoc. 1: reflexivity. apply Seq1_assoc. Qed.
-
-  Lemma Seq1_idemp: forall a: option Update, Seq1 a a = a.
-  Proof. repeat t. Qed.
-
-  Lemma Seq_idemp: forall a: Corresp, Seq a a = a.
-  Proof. apply map.lift2_idemp. apply Seq1_idemp. Qed.
-
-  Lemma Either1_sym: forall u1 u2,
-      Either1 u1 u2 = Either1 u2 u1.
-  Proof. repeat t. Qed.
-
-  Lemma Either_sym: forall A B, Either A B = Either B A.
-  Proof.
-    intros. apply map.map_ext. intros. unfold Either. rewrite ?map.lift2_spec by reflexivity.
-    apply Either1_sym.
-  Qed.
-
-  Lemma Either1_idemp: forall a, Either1 a a = a. Proof. repeat t. Qed.
-
-  Lemma Either_idemp: forall A, Either A A = A.
-  Proof.
-    intros. apply map.map_ext. intros. unfold Either. rewrite ?map.lift2_spec by reflexivity.
-    apply Either1_idemp.
-  Qed.
-
-  Lemma Either_empty_l: forall a, Either map.empty a = a. Abort. (* doesn't hold *)
-  Lemma Either_empty_r: forall a, Either a map.empty = a. Abort. (* doesn't hold *)
-
-  Lemma Either1_assoc: forall a b c: option Update, Either1 a (Either1 b c) = Either1 (Either1 a b) c.
-  Proof. repeat t. Qed.
-
-  Lemma Either_assoc: forall a b c: Corresp, Either a (Either b c) = Either (Either a b) c.
-  Proof. apply map.lift2_assoc. 1: reflexivity. apply Either1_assoc. Qed.
-
-  Lemma Seq1_Either1_l_distrib: forall a b c,
-      Seq1 (Either1 a b) c = Either1 (Seq1 a c) (Seq1 b c).
-  Proof. repeat t. Qed.
-
-  Lemma Seq_Either_l_distrib: forall A B C,
-      Seq (Either A B) C = Either (Seq A C) (Seq B C).
-  Proof.
-    unfold Seq, Either. intros. apply map.map_ext. intros. rewrite ?map.lift2_spec by reflexivity.
-    apply Seq1_Either1_l_distrib.
-  Qed.
-
-  Lemma Seq1_Either1_r_distrib: forall a b c,
-      Seq1 a (Either1 b c) = Either1 (Seq1 a b) (Seq1 a c).
-  Proof. repeat t. Qed.
-
-  Lemma Seq_Either_r_distrib: forall A B C,
-      Seq A (Either B C) = Either (Seq A B) (Seq A C).
-  Proof.
-    unfold Seq, Either. intros. apply map.map_ext. intros. rewrite ?map.lift2_spec by reflexivity.
-    apply Seq1_Either1_r_distrib.
-  Qed.
-
-  Definition updates: astmt -> Corresp :=
-    fix rec s :=
-      match s with
-      | ASLoad _ x x' _ _ | ASLit x x' _ | ASOp x x' _ _ _ | ASSet x x' _ =>
-           map.put map.empty x' (Add x true)
-      | ASStore _ _ _ _ => map.empty
-      | ASIf cond s1 s2 => Either (rec s1) (rec s2)
-      | ASLoop s1 cond s2 =>
-        (* We need to compute the infinite Either
-           Either r1 (r1;r2;r1) (r1;r2;r1;r2;r1) ...
-           But thanks to Seq_assoc and Seq_idemp, all longer seqs equal (r1;r2;r1),
-           so using Either_assoc and Either_idemp, we can conclude that the infinite Either equals
-           Either r1 (r1;r2;r1) *)
-        let r1 := rec s1 in
-        let r2 := rec s2 in
-        Either r1 (Seq r1 (Seq r2 r1))
-      | ASSeq s1 s2 => Seq (rec s1) (rec s2)
-      | ASSkip => map.empty
-      | ASInteract binds _ _ | ASCall binds _ _ =>
-          map.of_list (List.map (fun '(x, x') => (x', Add x true)) binds)
-      end.
-
-  Definition update(corresp: Corresp)(s: astmt): Corresp := Seq corresp (updates s).
-
-  Definition get_impvar(corresp: Corresp)(x: srcvar): option impvar := map.reverse_get corresp (Add x true).
-
-  Definition cond_checker(corresp: Corresp)(cond: bcond): option bcond' :=
-    match cond with
-    | CondBinary op x y =>
-        bind_opt x' <- get_impvar corresp x;
-        bind_opt y' <- get_impvar corresp y;
-        Some (CondBinary op x' y')
-    | CondNez x =>
-        bind_opt x' <- get_impvar corresp x;
-        Some (CondNez x')
-    end.
-
-  (* invariant for `(ASLoop s1 _ s2)` which we enter the first time with `corresp` *)
-  Definition loop_inv(corresp: Corresp)(s1 s2: astmt): Corresp :=
-    (* The invariant should be the infinite Either
-         Either corresp
-                corresp;s1;s2
-                corresp;s1;s2;s1;s2
-                ...
-       But thanks to Seq_assoc and Seq_idemp, all longer seqs equal `corresp;s1;s2`,
-       so using Either_assoc and Either_idemp, we can conclude that the infinite Either equals
-         Either corresp (corresp;s1;s2) *)
-    Either corresp (Seq corresp (Seq (updates s1) (updates s2))).
-
-  Definition checker: Corresp -> astmt -> option stmt' :=
-    fix rec corresp s :=
-      match s with
-      | ASLoad sz x x' a ofs =>
-          bind_opt a' <- get_impvar corresp a;
-          Some (SLoad sz x' a' ofs)
-      | ASStore sz a v ofs =>
-          bind_opt a' <- get_impvar corresp a;
-          bind_opt v' <- get_impvar corresp v;
-          Some (SStore sz a' v' ofs)
-      | ASLit x x' v =>
-          Some (SLit x' v)
-      | ASOp x x' op y z =>
-          bind_opt y' <- get_impvar corresp y;
-          bind_opt z' <- get_impvar corresp z;
-          Some (SOp x' op y' z')
-      | ASSet x x' y =>
-          bind_opt y' <- get_impvar corresp y;
-          Some (SSet x' y')
-      | ASIf cond s1 s2 =>
-          bind_opt cond' <- cond_checker corresp cond;
-          bind_opt s1' <- rec corresp s1;
-          bind_opt s2' <- rec corresp s2;
-          Some (SIf cond' s1' s2')
-      | ASLoop s1 cond s2 =>
-          let inv := loop_inv corresp s1 s2 in
-          let corresp' := update inv s1 in
-          bind_opt cond' <- cond_checker corresp' cond;
-          bind_opt s1' <- rec inv s1;
-          bind_opt s2' <- rec corresp' s2;
-          Some (SLoop s1' cond' s2')
-      | ASSeq s1 s2 =>
-          bind_opt s1' <- rec corresp s1;
-          bind_opt s2' <- rec (Seq corresp (updates s1)) s2;
-          Some (SSeq s1' s2')
-      | ASSkip => Some SSkip
-      | ASCall binds f args =>
-          bind_opt args' <- List.option_all (List.map (get_impvar corresp) args);
-          Some (SCall (List.map snd binds) f args')
-      | ASInteract binds f args =>
-          bind_opt args' <- List.option_all (List.map (get_impvar corresp) args);
-          Some (SInteract (List.map snd binds) f args')
-      end.
-
-  Definition erase :=
-    fix rec(s: astmt): stmt :=
-      match s with
-      | ASLoad sz x x' a ofs => SLoad sz x a ofs
-      | ASStore sz a v ofs => SStore sz a v ofs
-      | ASLit x x' v => SLit x v
-      | ASOp x x' op y z => SOp x op y z
-      | ASSet x x' y => SSet x y
-      | ASIf cond s1 s2 => SIf cond (rec s1) (rec s2)
-      | ASLoop s1 cond s2 => SLoop (rec s1) cond (rec s2)
-      | ASSeq s1 s2 => SSeq (rec s1) (rec s2)
-      | ASSkip => SSkip
-      | ASCall binds f args => SCall (List.map fst binds) f args
-      | ASInteract binds f args => SInteract (List.map fst binds) f args
-      end.
-
-(*
-  Definition annotate_assignment(s: stmt)(y: impvar): astmt :=
-    match s with
-    | SLoad sz x a => ASLoad sz x y a
-    | SLit x v => ASLit x y v
-    | SOp x op a b => ASOp x y op a b
-    | SSet x a => ASSet x y a
-    | _ => ASSkip (* not an assignment *)
-    end.
-
-  Definition rename_assignment_lhs(m: src2imp)(x: srcvar)(a: list impvar):
-    src2imp * impvar * list impvar :=
-    match map.get m x with
-    | Some y => (m, y, a)
-    | None   => match a with
-                | y :: rest => (map.put m x y, y, rest)
-                | nil => (* error: ran out of registers *)
-                  let y := map.default_value in (map.put m x y, y, a)
-                end
-    end.
-
-  Fixpoint rename_binds(m: src2imp)(binds: list srcvar)(a: list impvar):
-    (src2imp * Corresp * list impvar) :=
-    match binds with
-    | nil => (m, nil, a)
-    | x :: binds =>
-      let '(m, y, a) := rename_assignment_lhs m x a in
-      let '(m, res, a) := rename_binds m binds a in
-      (m, (x, y) :: res, a)
-    end.
-
-  (* the simplest dumbest possible "register allocator" *)
-  Fixpoint rename
-           (m: src2imp)              (* current mapping, growing *)
-           (s: stmt)                 (* current sub-statement *)
-           (a: list impvar)          (* available registers, shrinking *)
-           {struct s}
-    : src2imp * astmt * list impvar :=
-    match s with
-    | SLoad _ x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
-        let '(m, y, a) := rename_assignment_lhs m x a in (m, annotate_assignment s y, a)
-    | SStore sz x y => (m, ASStore sz x y, a)
-    | SIf cond s1 s2 =>
-      let '(m', s1', a') := rename m s1 a in
-      let '(m'', s2', a'') := rename m' s2 a' in
-      (m'', ASIf cond s1' s2', a'')
-    | SSeq s1 s2 =>
-      let '(m', s1', a') := rename m s1 a in
-      let '(m'', s2', a'') := rename m' s2 a' in
-      (m'', ASSeq s1' s2', a'')
-    | SLoop s1 cond s2 =>
-      let '(m', s1', a') := rename m s1 a in
-      let '(m'', s2', a'') := rename m' s2 a' in
-      (m'', ASLoop s1' cond s2', a'')
-    | SCall binds f args =>
-      let '(m, tuples, a) := rename_binds m binds a in
-      (map.putmany_of_list m tuples, ASCall tuples f args, a)
-    | SInteract binds f args =>
-      let '(m, tuples, a) := rename_binds m binds a in
-      (map.putmany_of_list m tuples, ASInteract tuples f args, a)
-    | SSkip => (m, ASSkip, a)
-    end.
-
-  Variable available_impvars: list impvar.
-  Variable dummy_impvar: impvar.
-
-  Fixpoint regalloc
-           (m: src2imp)              (* current mapping *)
-           (s: stmt)                 (* current sub-statement *)
-           (usedlater: list srcvar)  (* variables which have a life after statement s *)
-           {struct s}
-    : astmt :=                       (* annotated statement *)
-    match s with
-    | SLoad _ x _ | SLit x _ | SOp x _ _ _ | SSet x _ =>
-        match map.get m x with
-        | Some y => (* nothing to do because no new interval starts *)
-                    annotate_assignment s y
-        | None   => (* new interval starts *)
-                    match map.getmany_of_list m usedlater with
-                    | Some used_impvars =>
-                      let av := list_diff impvar_eqb available_impvars used_impvars in
-                      match av with
-                      | y :: _ => annotate_assignment s y
-                      | nil => ASSkip (* error: ran out of vars *)
-                      end
-                    | None => ASSkip (* error: an uninitialized var is used later *)
-                    end
-        end
-    | SStore sz x y => ASStore sz x y
-    | SIf cond s1 s2 =>
-      let s1' := regalloc m s1 usedlater in
-      let s2' := regalloc m s2 usedlater in
-      ASIf cond s1' s2'
-    | SSeq s1 s2 =>
-      let s1' := regalloc m s1 (@live srcparams srcvar_eqb s2 usedlater) in
-      let s2' := regalloc (update m s1') s2 usedlater in
-      ASSeq s1' s2'
-    | SLoop s1 cond s2 =>
-      ASSkip (* TODO *)
-      (*
-      let s1' := regalloc (loop_inv update m s1 s2) s1 (live s2 (live s1 usedlater)) in
-      let s2' := regalloc (update m s1') s2 (live s usedlater) in
-      ASLoop s1' cond s2'
-      *)
-    | _ => ASSkip
-    end.
-
-(*
-  Definition start_interval(current: srcvars * impvars * map impvar srcvar)(x: srcvar)
-    : srcvars * impvars * map impvar srcvar :=
-    let '(o, a, m) := current in
-    let o := union o (singleton_set x) in
-    let '(r, a) := pick_or_else a dummy_impvar in
-    let m := put m r x in
-    (o, a, m).
+(* old RegAlloc files:
+https://github.com/mit-plv/bedrock2/tree/7cbae1a1caf7d19270d0fb37199f86eb8ea5ce4f/compiler/src/compiler
 *)
 
-  Definition rename_stmt(m: src2imp)(s: stmt)(av: list impvar): option stmt' :=
-    let '(_, annotated, _) := rename m s av in checker m annotated.
+(* Simplification: For each source variable, we only create one live interval, and extend it
+   far enough to cover all actual live intervals (keeping several live intervals per srcvar
+   would be tricky because an interval could have two different start points (one in a
+   then-branch, the other in an else-branch of an if), but a common end point after the if),
+   in the simplified version, we just say that the live interval starts in the then branch,
+   which appears first according to the chosen linearization order). *)
 
-  Definition rename_fun(F: list srcvar * list srcvar * stmt):
-    option (list impvar * list impvar * stmt') :=
-    let '(argnames, retnames, body) := F in
-    let '(m, argtuples, av) := rename_binds map.empty argnames available_impvars in
-    let '(m, rettuples, av) := rename_binds m retnames av in
-    match rename_stmt m body av with
-    | Some body' => Some (List.map snd argtuples, List.map snd rettuples, body')
-    | None => None
+Definition event: Type := srcvar * bool. (* bool stands for is_start *)
+
+(* start_event inserts a start event directly followed by an end event.
+   The end event is needed because we don't do dead code elimination, and we need
+   to avoid that an assignment to a variable that's never read after the assignment
+   does not invalidate another register, so we extend the live interval of each
+   variable all the way to that unused assignment, so that the register assigned to x
+   is not reused too early. *)
+Definition start_event(x: srcvar): list event := [(x, true); (x, false)].
+Definition end_event(x: srcvar): list event := [(x, false)].
+
+Definition bcond_events(c: bcond)(after: list event): list event :=
+  match c with
+  | CondBinary _ x y => end_event x ++ end_event y ++ after
+  | CondNez x => end_event x ++ after
+  end.
+
+(* incorrect without filtering (assumes that each read event is the last read of that variable) *)
+Fixpoint events(s: stmt)(after: list event): list event :=
+  match s with
+  | SSet x y
+  | SLoad _ x y _ => end_event y ++ start_event x ++ after
+  (* Note: we deliberately flip the order of (start_event x) and (end_event y) for SInlinetable
+     to make sure they are considered live at the same time, so that they don't get assigned to
+     the same register, so that the x<>y sidecondition of exec.inlinetable is preserved *)
+  | SInlinetable _ x _ y => start_event x ++ end_event y ++ after
+  | SStore _ a x _ => end_event a ++ end_event x ++ after
+  | SStackalloc x _ body => start_event x ++ events body after
+  | SLit x _ => start_event x ++ after
+  | SOp x _ y z => end_event y ++ end_event z ++ start_event x ++ after
+  | SIf c s1 s2 => bcond_events c (events s1 (events s2 after))
+  | SSeq s1 s2 => events s1 (events s2 after)
+  | SLoop s1 c s2 =>
+    (* unroll loop twice so that it becomes apparent how (i+1)-th iteration depends on i-th iteration *)
+    events s1 (bcond_events c (events s2 (
+    events s1 (bcond_events c (events s2 (
+    events s1 (bcond_events c after)))))))
+  | SSkip => after
+  | SCall binds _ args
+  | SInteract binds _ args => List.flat_map end_event args ++ List.flat_map start_event binds ++ after
+  end.
+
+Fixpoint remove_nonfirst_starts(started: list srcvar)(l: list event): list event :=
+  match l with
+  | (x, is_start) :: rest =>
+    if is_start then
+      if List.find (String.eqb x) started then
+        remove_nonfirst_starts started rest
+      else
+        (x, true) :: remove_nonfirst_starts (x :: started) rest
+    else
+      (x, false) :: remove_nonfirst_starts started rest
+  | nil => nil
+  end.
+
+Fixpoint remove_nonlast_ends(l: list event): list event :=
+  match l with
+  | (x, is_start) :: rest =>
+    if is_start then
+      (x, true) :: remove_nonlast_ends rest
+    else
+      if List.find (fun '(y, y_is_start) => andb (negb y_is_start) (String.eqb x y)) rest then
+        remove_nonlast_ends rest
+      else
+        (x, false) :: remove_nonlast_ends rest
+  | nil => nil
+  end.
+
+Definition intervals(input_vars: list srcvar)(s: stmt)(output_vars: list srcvar): list event :=
+  let unfiltered := List.flat_map start_event input_vars ++ (events s (List.flat_map end_event output_vars)) in
+  remove_nonfirst_starts [] (remove_nonlast_ends unfiltered).
+
+Declare Scope option_monad_scope. Local Open Scope option_monad_scope.
+
+Notation "' pat <- c1 ;; c2" :=
+  (match c1 with
+   | Some pat => c2
+   | None => None
+   end)
+  (at level 61, pat pattern, c1 at next level, right associativity) : option_monad_scope.
+
+Notation "x <- c1 ;; c2" :=
+  (match c1 with
+   | Some x => c2
+   | None => None
+   end)
+  (at level 61, c1 at next level, right associativity) : option_monad_scope.
+
+Notation "c1 ;; c2" :=
+  (match c1 with
+   | Some _ => c2
+   | None => None
+   end)
+  (at level 61, right associativity) : option_monad_scope.
+
+(* RISC-V Calling Convention from
+   https://raw.githubusercontent.com/riscv-non-isa/riscv-elf-psabi-doc/a855ba3ef4/riscv-cc.adoc
+
+| Name    | ABI Mnemonic | Meaning                | Preserved across calls?
+
+| x0      | zero         | Zero                   | -- (Immutable)
+| x1      | ra           | Return address         | No
+| x2      | sp           | Stack pointer          | Yes
+| x3      | gp           | Global pointer         | -- (Unallocatable)
+| x4      | tp           | Thread pointer         | -- (Unallocatable)
+| x5-x7   | t0-t2        | Temporary registers    | No
+| x8-x9   | s0-s1        | Callee-saved registers | Yes
+| x10-x17 | a0-a7        | Argument registers     | No
+| x18-x27 | s2-s11       | Callee-saved registers | Yes
+| x28-x31 | t3-t6        | Temporary registers    | No
+*)
+
+Module reg_class.
+  Inductive t := neg | zero | ra | sp | gp | tp | temp | saved | arg | stack_slot.
+  Scheme Equality for t.
+  Definition eqb := t_beq.
+  Local Open Scope bool_scope.
+
+  Definition get(r: Z): t :=
+    if r <? 0 then neg else
+    if r =? 0 then zero else
+    if r =? 1 then ra else
+    if r =? 2 then sp else
+    if r =? 3 then gp else
+    if r =? 4 then tp else
+    if (5 <=? r) && (r <=? 7) then temp else
+    if (8 <=? r) && (r <=? 9) then saved else
+    if (10 <=? r) && (r <=? 17) then arg else
+    if (18 <=? r) && (r <=? 27) then saved else
+    if (28 <=? r) && (r <=? 31) then temp else
+    stack_slot.
+
+  Definition all(class: t): list Z :=
+    List.filter (fun r => eqb (get r) class) (List.unfoldn (Z.add 1) 32 0).
+End reg_class.
+
+(* TODO: once spilling is changed, this will change too *)
+Definition not_reserved(x: Z): bool := 5 <? x.
+
+Definition temp_regs : list impvar := Eval compute in List.filter not_reserved (reg_class.all reg_class.temp).
+Definition saved_regs: list impvar := Eval compute in List.filter not_reserved (reg_class.all reg_class.saved).
+Definition arg_regs  : list impvar := Eval compute in List.filter not_reserved (reg_class.all reg_class.arg).
+
+(* Register availability, split by how preferable they are.
+   For simplicity, we use the argument registers *only* for argument passing and as spilling temporaries. *)
+Record av_regs := mk_av_regs {
+  av_saved_regs: list impvar;
+  av_temp_regs: list impvar;
+  av_stack_slots: list impvar;
+  first_fresh_stack_slot: impvar;
+}.
+
+Definition initial_av_regs := {|
+  av_saved_regs := saved_regs;
+  av_temp_regs := temp_regs;
+  av_stack_slots := [];
+  first_fresh_stack_slot := 32;
+|}.
+
+Definition acquire_reg(av: av_regs): impvar * av_regs :=
+  match av with
+  | mk_av_regs av_saved_regs av_temp_regs av_stack_slots ff =>
+    match av_saved_regs with
+    | x :: xs => (x, mk_av_regs xs av_temp_regs av_stack_slots ff)
+    | nil =>
+      match av_temp_regs with
+      | x :: xs => (x, mk_av_regs nil xs av_stack_slots ff)
+      | nil =>
+        match av_stack_slots with
+        | x :: xs => (x, mk_av_regs nil nil xs ff)
+        | nil => (ff, mk_av_regs nil nil nil (ff+1))
+        end
+      end
+    end
+  end.
+
+Definition yield_reg(r: impvar)(av: av_regs): av_regs :=
+  match av with
+  | mk_av_regs av_saved_regs av_temp_regs av_stack_slots ff =>
+    match reg_class.get r with
+    | reg_class.saved => mk_av_regs (r :: av_saved_regs) av_temp_regs av_stack_slots ff
+    | reg_class.temp => mk_av_regs av_saved_regs (r :: av_temp_regs) av_stack_slots ff
+    | reg_class.stack_slot => mk_av_regs av_saved_regs av_temp_regs (r :: av_stack_slots) ff
+    | _ => av
+    end
+  end.
+
+Definition lookup(x: srcvar)(corresp: list (srcvar * impvar)): option impvar :=
+  match List.find (fun p => String.eqb x (fst p)) corresp with
+  | Some (_, x') => Some x'
+  | None => None
+  end.
+
+Definition lookups(xs: list srcvar)(corresp: list (srcvar * impvar)): option (list impvar) :=
+  List.option_all (List.map (fun arg => lookup arg corresp) xs).
+
+Fixpoint process_intervals(corresp: list (srcvar * impvar))(av: av_regs)(l: list event):
+  list (srcvar * impvar) :=
+  match l with
+  | (x, is_start) :: rest =>
+    if is_start then
+      let (y, av) := acquire_reg av in process_intervals ((x, y) :: corresp) av rest
+    else
+      let av := match lookup x corresp with
+                | Some y => yield_reg y av
+                | None => av (* unexpected: end_event without start_event *)
+                end in
+      process_intervals corresp av rest
+  | nil => corresp
+  end.
+
+Definition rename_bcond(corresp: list (srcvar * impvar))(c: bcond): option bcond' :=
+  match c with
+  | CondBinary op y z =>
+    y' <- lookup y corresp;;
+    z' <- lookup z corresp;;
+    Some (CondBinary op y' z')
+  | CondNez y =>
+    y' <- lookup y corresp;;
+    Some (CondNez y')
+  end.
+
+Fixpoint rename(corresp: list (srcvar * impvar))(s: stmt): option stmt' :=
+  match s with
+  | SLoad sz x y ofs =>
+    x' <- lookup x corresp;;
+    y' <- lookup y corresp;;
+    Some (SLoad sz x' y' ofs)
+  | SStore sz x y ofs =>
+    x' <- lookup x corresp;;
+    y' <- lookup y corresp;;
+    Some (SStore sz x' y' ofs)
+  | SInlinetable sz x bs y =>
+    x' <- lookup x corresp;;
+    y' <- lookup y corresp;;
+    Some (SInlinetable sz x' bs y')
+  | SStackalloc x n body =>
+    x' <- lookup x corresp;;
+    body' <- rename corresp body;;
+    Some (SStackalloc x' n body')
+  | SLit x z =>
+    x' <- lookup x corresp;;
+    Some (SLit x' z)
+  | SOp x op y z =>
+    x' <- lookup x corresp;;
+    y' <- lookup y corresp;;
+    z' <- lookup z corresp;;
+    Some (SOp x' op y' z')
+  | SSet x y =>
+    x' <- lookup x corresp;;
+    y' <- lookup y corresp;;
+    Some (SSet x' y')
+  | SIf c s1 s2 =>
+    c' <- rename_bcond corresp c;;
+    s1' <- rename corresp s1;;
+    s2' <- rename corresp s2;;
+    Some (SIf c' s1' s2')
+  | SLoop s1 c s2 =>
+    s1' <- rename corresp s1;;
+    c' <- rename_bcond corresp c;;
+    s2' <- rename corresp s2;;
+    Some (SLoop s1' c' s2')
+  | SSeq s1 s2 =>
+    s1' <- rename corresp s1;;
+    s2' <- rename corresp s2;;
+    Some (SSeq s1' s2')
+  | SSkip =>
+    Some SSkip
+  | SCall binds f args =>
+    args' <- lookups args corresp;;
+    binds' <- lookups binds corresp;;
+    Some (SCall binds' f args')
+  | SInteract binds f args =>
+    args' <- lookups args corresp;;
+    binds' <- lookups binds corresp;;
+    Some (SInteract binds' f args')
+  end.
+
+Module WithBugs.
+Definition assign_lhs(x: srcvar)(corresp: list (srcvar * impvar))(av: av_regs) :=
+  match lookup x corresp with
+  | Some x' => (x', corresp, av)
+  | None => let '(x', av) := acquire_reg av in (x', (x, x') :: corresp, av)
+  end.
+
+Fixpoint assign_lhss(xs: list srcvar)(corresp: list (srcvar * impvar))(av: av_regs):
+  (list impvar * list (srcvar * impvar) * av_regs) :=
+  match xs with
+  | nil => (nil, corresp, av)
+  | h :: t => let '(y, corresp, av) := assign_lhs h corresp av in
+              let '(ys, corresp, av) := assign_lhss t corresp av in
+              (y :: ys, corresp, av)
+  end.
+
+Fixpoint regalloc
+         (corresp: list (srcvar * impvar))  (* current mapping *)
+         (av: av_regs)                      (* available registers *)
+         (s: stmt)                          (* statement to be register allocated *)
+         (l_after: list srcvar):            (* variables that are live after s *)
+  option (list (srcvar * impvar) * av_regs * stmt') := (* should aways return Some *)
+  let l_before := live s l_after in
+  let av := List.fold_right
+              (fun p av => if List.find (String.eqb (fst p)) l_before then av else yield_reg (snd p) av)
+              av corresp in
+  let corresp := List.filter
+                   (fun p => if List.find (String.eqb (fst p)) l_before then true else false) corresp in
+  match s with
+  | SLoad sz x y ofs =>
+    y' <- lookup y corresp;;
+    let '(x', corresp, av) := assign_lhs x corresp av in
+    Some (corresp, av, SLoad sz x' y' ofs)
+  | SStore sz x y ofs =>
+    x' <- lookup x corresp;;
+    y' <- lookup y corresp;;
+    Some (corresp, av, SStore sz x' y' ofs)
+  | SInlinetable sz x bs y =>
+    (* Note: We expect that x<>y and that the srcvar->impvar mapping in corresp is injective,
+       so we get x'<>y', which is required by exec.inlinetable *)
+    y' <- lookup y corresp;;
+    let '(x', corresp, av) := assign_lhs x corresp av in
+    Some (corresp, av, SInlinetable sz x' bs y')
+  | SStackalloc x n body =>
+    let '(x', corresp, av) := assign_lhs x corresp av in
+    '(corresp, av, body') <- regalloc corresp av body l_after;;
+    Some (corresp, av, SStackalloc x' n body')
+  | SLit x z =>
+    let '(x', corresp, av) := assign_lhs x corresp av in
+    Some (corresp, av, SLit x' z)
+  | SOp x op y z =>
+    y' <- lookup y corresp;;
+    z' <- lookup z corresp;;
+    let '(x', corresp, av) := assign_lhs x corresp av in
+    Some (corresp, av, SOp x' op y' z')
+  | SSet x y =>
+    y' <- lookup y corresp;;
+    let '(x', corresp, av) := assign_lhs x corresp av in
+    Some (corresp, av, SSet x' y')
+  | SIf c s1 s2 =>
+    c' <- rename_bcond corresp c;;
+    (* BUG: if s1 is SSkip, the recursive call for s1 might yield registers back into av that
+       are still needed in s2, so the recursive call for s2 will have the wrong corresp/av.
+       On the other hand, if we made both recursive calls with the same corresp/av,
+       we would have to insert phi functions at the end for vars that were assigned (to potentially
+       different registers) in both branches and are used after the if *)
+    '(corresp, av, s1') <- regalloc corresp av s1 l_after;;
+    '(corresp, av, s2') <- regalloc corresp av s2 l_after;;
+    Some (corresp, av, SIf c' s1' s2')
+  | SLoop s1 c s2 =>
+    '(corresp, av, s1') <- regalloc corresp av s1 (live s2 l_before);;
+    c' <- rename_bcond corresp c;;
+    '(corresp, av, s2') <- regalloc corresp av s2 l_before;;
+    Some (corresp, av, SLoop s1' c' s2')
+  | SSeq s1 s2 =>
+    '(corresp, av, s1') <- regalloc corresp av s1 (live s2 l_after);;
+    '(corresp, av, s2') <- regalloc corresp av s2 l_after;;
+    Some (corresp, av, SSeq s1' s2')
+  | SSkip =>
+    Some (corresp, av, SSkip)
+  | SCall binds f args =>
+    args' <- lookups args corresp;;
+    let '(binds', corresp, av) := assign_lhss binds corresp av in
+    Some (corresp, av, SCall binds' f args')
+  | SInteract binds f args =>
+    args' <- lookups args corresp;;
+    let '(binds', corresp, av) := assign_lhss binds corresp av in
+    Some (corresp, av, SInteract binds' f args')
+  end.
+End WithBugs.
+
+Definition regalloc_function: list srcvar * list srcvar * stmt -> option (list impvar * list impvar * stmt') :=
+  fun '(args, rets, fbody) =>
+    let corresp := process_intervals [] initial_av_regs (intervals args fbody rets) in
+    fbody' <- rename corresp fbody;;
+    args' <- lookups args corresp;;
+    rets' <- lookups rets corresp;;
+    Some (args', rets', fbody').
+
+Scheme Equality for Syntax.access_size. (* to create access_size_beq *)
+Scheme Equality for bopname. (* to create bopname_beq *)
+Scheme Equality for bbinop. (* to create bbinop_beq *)
+
+Instance access_size_beq_spec: EqDecider access_size_beq.
+Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
+
+Instance bopname_beq_spec: EqDecider bopname_beq.
+Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
+
+Instance bbinop_beq_spec: EqDecider bbinop_beq.
+Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
+
+(* TODO List.list_eqb should not require an EqDecider instance *)
+(* TODO move *)
+Module Byte.
+  Instance eqb_spec: EqDecider Byte.eqb.
+  Proof.
+    intros. destruct (Byte.eqb x y) eqn: E; constructor.
+    - apply Byte.byte_dec_bl. assumption.
+    - apply Byte.eqb_false. assumption.
+  Qed.
+End Byte.
+Existing Instance List.list_eqb_spec.
+
+Section PairList.
+  Context {A B: Type}.
+
+  Definition remove_by_fst(aeqb: A -> A -> bool)(key: A): list (A * B) -> list (A * B) :=
+    List.filter (fun '(a, b) => negb (aeqb a key)).
+
+  Definition remove_by_snd(beqb: B -> B -> bool)(key: B): list (A * B) -> list (A * B) :=
+    List.filter (fun '(a, b) => negb (beqb b key)).
+
+  Lemma In_remove_by_fst{aeqb: A -> A -> bool}{aeqb_spec: EqDecider aeqb}: forall a a' b l,
+      In (a, b) (remove_by_fst aeqb a' l) ->
+      In (a, b) l /\ a <> a'.
+  Proof.
+    unfold remove_by_fst. intros. eapply filter_In in H. destruct H.
+    destr (aeqb a a'). 1: discriminate. auto.
+  Qed.
+
+  Lemma not_In_remove_by_snd{beqb: B -> B -> bool}{beqb_spec: EqDecider beqb}: forall a b l,
+      ~ In (a, b) (remove_by_snd beqb b l).
+  Proof.
+    unfold remove_by_snd, not. intros. eapply filter_In in H. apply proj2 in H.
+    destr (beqb b b). 1: discriminate. apply E. reflexivity.
+  Qed.
+
+  Lemma In_remove_by_snd{beqb: B -> B -> bool}{beqb_spec: EqDecider beqb}: forall a b b' l,
+      In (a, b) (remove_by_snd beqb b' l) ->
+      In (a, b) l /\ b <> b'.
+  Proof.
+    unfold remove_by_snd. intros. eapply filter_In in H. destruct H.
+    destr (beqb b b'). 1: discriminate. auto.
+  Qed.
+End PairList.
+
+Section IntersectLemmas.
+  Context {A: Type}(aeqb: A -> A -> bool){aeqb_spec: EqDecider aeqb}.
+
+  Lemma intersect_max_length_l: forall l1 l2,
+      (length (list_intersect aeqb l1 l2) <= length l1)%nat.
+  Proof.
+    intros.
+    induction l1; intros.
+    - simpl. reflexivity.
+    - unfold list_intersect in *. cbn [fold_right]. destruct_one_match.
+      + cbn [length]. eapply Peano.le_n_S. apply IHl1.
+      + cbn [length]. eapply Nat.le_trans. 1: apply IHl1. constructor. reflexivity.
+  Qed.
+
+  Lemma intersect_same_length: forall l1 l2,
+      length (list_intersect aeqb l1 l2) = length l1 ->
+      list_intersect aeqb l1 l2 = l1.
+  Proof.
+    induction l1; intros.
+    - reflexivity.
+    - simpl in *. destruct_one_match; simpl in *.
+      + f_equal. eapply IHl1. congruence.
+      + pose proof (intersect_max_length_l l1 l2) as P.
+        rewrite H in P. exfalso. eapply Nat.nle_succ_diag_l. exact P.
+  Qed.
+End IntersectLemmas.
+
+#[export] Hint Resolve Byte.eqb_spec : typeclass_instances.
+
+Definition assert(b: bool): option unit := if b then Some tt else None.
+
+Definition mapping_eqb: srcvar * impvar -> srcvar * impvar -> bool :=
+  fun '(x, x') '(y, y') => andb (String.eqb x y) (Z.eqb x' y').
+
+Definition assert_in(y: srcvar)(y': impvar)(m: list (srcvar * impvar)): option unit :=
+  _ <- List.find (mapping_eqb (y, y')) m;; Some tt.
+
+Definition assert_ins(args: list srcvar)(args': list impvar)(m: list (srcvar * impvar)): option unit :=
+  assert (Nat.eqb (List.length args) (List.length args'));;
+  assert (List.forallb (fun p => if List.find (mapping_eqb p) m then true else false)
+                       (List.combine args args')).
+
+Definition check_bcond(m: list (srcvar * impvar))(c: bcond)(c': bcond'): option unit :=
+  match c, c' with
+  | CondBinary op y z, CondBinary op' y' z' =>
+    assert_in y y' m;; assert_in z z' m;; assert (bbinop_beq op op')
+  | CondNez y, CondNez y' =>
+    assert_in y y' m
+  | _, _ => None
+  end.
+
+Definition assignment(m: list (srcvar * impvar))(x: srcvar)(x': impvar): list (srcvar * impvar) :=
+  (x, x') :: (remove_by_snd Z.eqb x' (remove_by_fst String.eqb x m)).
+
+Fixpoint assignments(m: list (srcvar * impvar))(xs: list srcvar)(xs': list impvar):
+  option (list (srcvar * impvar)) :=
+  match xs, xs' with
+  | x :: xs0, x' :: xs0' => assignments (assignment m x x') xs0 xs0'
+  | nil, nil => Some m
+  | _, _ => None
+  end.
+
+Section LoopInv.
+  Context (check: list (srcvar * impvar) -> stmt -> stmt' -> option (list (srcvar * impvar)))
+          (s1 s2: stmt)(s1' s2': stmt').
+
+  (* Probably one iteration to compute the invariant, and another one to check that it
+     doesn't change any more, ie 2 iterations, is enough, but that might be hard to prove.
+     `List.length m` is enough fuel because the size can decrease at most that many times
+     before we get to an empty invariant. *)
+  Fixpoint loop_inv'(fuel: nat)(m: list (srcvar * impvar)): option (list (srcvar * impvar)) :=
+    match fuel with
+    | O => None
+    | S fuel' =>
+      m1 <- check m s1 s1';;
+      m2 <- check m1 s2 s2';;
+      let cand := list_intersect mapping_eqb m m2 in
+      if Nat.eqb (List.length m) (List.length cand)
+      then Some cand
+      else loop_inv' fuel' cand
+    end.
+End LoopInv.
+
+(* does 2 things at once: checks that the correct variables are read and computes the bindings
+   that hold after executing the statement *)
+(* m: conservative underapproximation of which impvar stores which srcvar *)
+Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: option (list (srcvar * impvar)) :=
+  match s, s' with
+  | SLoad sz x y ofs, SLoad sz' x' y' ofs' =>
+    assert_in y y' m;;
+    assert (Z.eqb ofs ofs');;
+    assert (access_size_beq sz sz');;
+    Some (assignment m x x')
+  | SStore sz x y ofs, SStore sz' x' y' ofs' =>
+    assert_in x x' m;;
+    assert_in y y' m;;
+    assert (Z.eqb ofs ofs');;
+    assert (access_size_beq sz sz');;
+    Some m
+  | SInlinetable sz x bs y, SInlinetable sz' x' bs' y' =>
+    assert_in y y' m;;
+    (* FlatToRiscv uses x' as a tmp register, and that should not overwrite y' *)
+    assert (negb (Z.eqb x' y'));;
+    assert (access_size_beq sz sz');;
+    assert (List.list_eqb Byte.eqb bs bs');;
+    Some (assignment m x x')
+  | SStackalloc x n body, SStackalloc x' n' body' =>
+    assert (Z.eqb n n');;
+    check (assignment m x x') body body'
+  | SLit x z, SLit x' z' =>
+    assert (Z.eqb z z');;
+    Some (assignment m x x')
+  | SOp x op y z, SOp x' op' y' z' =>
+    assert_in y y' m;;
+    assert_in z z' m;;
+    assert (bopname_beq op op');;
+    Some (assignment m x x')
+  | SSet x y, SSet x' y' =>
+    assert_in y y' m;; Some (assignment m x x')
+  | SIf c s1 s2, SIf c' s1' s2' =>
+    check_bcond m c c';;
+    m1 <- check m s1 s1';;
+    m2 <- check m s2 s2';;
+    Some (list_intersect mapping_eqb m1 m2)
+  | SLoop s1 c s2, SLoop s1' c' s2' =>
+    inv <- loop_inv' check s1 s2 s1' s2' (S (List.length m)) m;;
+    m1 <- check inv s1 s1';;
+    check_bcond m1 c c';;
+    m2 <- check m1 s2 s2';;
+    Some m1
+  | SSeq s1 s2, SSeq s1' s2' =>
+    m1 <- check m s1 s1';;
+    check m1 s2 s2'
+  | SSkip, SSkip =>
+    Some m
+  | SCall binds f args, SCall binds' f' args'
+  | SInteract binds f args, SInteract binds' f' args' =>
+    assert (String.eqb f f');;
+    assert_ins args args' m;;
+    assignments m binds binds'
+  | _, _ => None
+  end.
+
+Definition check_func: list srcvar * list srcvar * stmt -> list impvar * list impvar * stmt' -> option unit :=
+  fun '(args, rets, body) '(args', rets', body') =>
+    assert (List.list_eqb Z.eqb (List.dedup Z.eqb args') args');;
+    assert (List.list_eqb Z.eqb (List.dedup Z.eqb rets') rets');;
+    m0 <- assignments [] args args';;
+    m1 <- check m0 body body';;
+    assert_ins rets rets' m1.
+
+Section WithEnv.
+  Context {srcEnv: map.map String.string (list srcvar * list srcvar * stmt)}.
+  Context {impEnv: map.map String.string (list impvar * list impvar * stmt')}.
+
+  Definition lookup_and_check_func(e': impEnv)(fname: String.string)(impl: list srcvar * list srcvar * stmt) :=
+    match map.get e' fname with
+    | Some impl' => if check_func impl impl' then true else false
+    | None => false
     end.
 
-  Definition register_allocation(s: stmt)(usedlater: list srcvar): option (stmt' * list impvar) :=
-    let annotated := regalloc map.empty s usedlater in
-    match checker map.empty annotated with
-    | Some res => match map.getmany_of_list (update map.empty annotated) usedlater with
-                  | Some imp_vars => Some (res, imp_vars)
-                  | None => None
-                  end
-    | None => None
-    end.
-  *)
+  Definition check_funcs(e: srcEnv)(e': impEnv): bool :=
+    map.forallb (lookup_and_check_func e') e.
 
-  (* claim: for all astmt a, if checker succeeds and returns s', then
-     (erase a) behaves the same as s' *)
+  Definition regalloc_functions(e: srcEnv): option impEnv :=
+    e' <- map.map_all_values regalloc_function e;;
+    if check_funcs e e' then Some e' else None.
+End WithEnv.
+
+Definition loop_inv(corresp: list (srcvar * impvar))(s1 s2: stmt)(s1' s2': stmt'): list (srcvar * impvar) :=
+  match loop_inv' check s1 s2 s1' s2' (S (List.length corresp)) corresp with
+  | Some inv => inv
+  | None => []
+  end.
+
+Definition extends(m1 m2: list (srcvar * impvar)): Prop :=
+  forall x x', assert_in x x' m2 = Some tt -> assert_in x x' m1 = Some tt.
+
+Lemma extends_refl: forall m, extends m m.
+Proof. unfold extends. eauto. Qed.
+
+Lemma extends_nil: forall m, extends m [].
+Proof. unfold extends, assert_in. simpl. intros. discriminate. Qed.
+
+Lemma extends_trans: forall m1 m2 m3, extends m1 m2 -> extends m2 m3 -> extends m1 m3.
+Proof. unfold extends. eauto. Qed.
+
+Lemma extends_cons: forall a l1 l2,
+    extends l1 l2 ->
+    extends (a :: l1) (a :: l2).
+Proof.
+  unfold extends, assert_in. simpl. intros. simp.
+  destruct_one_match_hyp. 1: reflexivity.
+  eapply H. rewrite E. reflexivity.
+Qed.
+
+Lemma extends_cons_l: forall a l,
+    extends (a :: l) l.
+Proof.
+  unfold extends, assert_in. simpl. intros. simp.
+  destruct_one_match. 1: reflexivity.
+  destruct_one_match_hyp; discriminate.
+Qed.
+
+Lemma extends_cons_r: forall a l1 l2,
+    In a l1 ->
+    extends l1 l2 ->
+    extends l1 (a :: l2).
+Proof.
+  unfold extends, assert_in. simpl. intros. simp.
+  destruct_one_match_hyp. 2: {
+    eapply H0. rewrite E. reflexivity.
+  }
+  destruct_one_match. 1: reflexivity.
+  eapply find_none in E1. 2: eassumption.
+  simpl in E1. exfalso. congruence.
+Qed.
+
+Lemma extends_intersect_l: forall l1 l2,
+    extends l1 (list_intersect mapping_eqb l1 l2).
+Proof.
+  intros. induction l1; simpl.
+  - apply extends_refl.
+  - destruct_one_match.
+    + eapply extends_cons. apply IHl1.
+    + eapply extends_trans. 2: apply IHl1. apply extends_cons_l.
+Qed.
+
+Lemma extends_intersect_r: forall l1 l2,
+    extends l2 (list_intersect mapping_eqb l1 l2).
+Proof.
+  induction l1; intros.
+  - simpl. apply extends_nil.
+  - simpl. unfold mapping_eqb. destruct a as [x x']. destruct_one_match.
+    + destruct p as [z z']. eapply find_some in E. destruct E as [E1 E2].
+      apply Bool.andb_true_iff in E2. destruct E2 as [E2 E3].
+      autoforward with typeclass_instances in E2.
+      autoforward with typeclass_instances in E3.
+      subst z z'.
+      eapply extends_cons_r. 1: assumption. apply IHl1.
+    + apply IHl1.
+Qed.
+
+Lemma extends_loop_inv': forall s1 s2 s1' s2' fuel corresp1 corresp2,
+    loop_inv' check s1 s2 s1' s2' fuel corresp1 = Some corresp2 ->
+    extends corresp1 corresp2.
+Proof.
+  induction fuel; simpl; intros.
+  - discriminate.
+  - simp. destruct_one_match_hyp.
+    + simp. symmetry in E1. eapply intersect_same_length in E1.
+      rewrite E1. eapply extends_refl.
+    + eapply IHfuel in H. eapply extends_trans.
+      2: exact H. apply extends_intersect_l.
+Qed.
+
+Lemma extends_loop_inv: forall corresp s1 s2 s1' s2',
+    extends corresp (loop_inv corresp s1 s2 s1' s2').
+Proof.
+  intros. unfold loop_inv. destruct_one_match. 2: {
+    unfold extends. unfold assert_in. simpl. intros. discriminate.
+  }
+  eapply extends_loop_inv'. eassumption.
+Qed.
+
+Lemma defuel_loop_inv': forall fuel corresp inv m1 m2 s1 s2 s1' s2',
+    loop_inv' check s1 s2 s1' s2' fuel corresp = Some inv ->
+    check inv s1 s1' = Some m1 ->
+    check m1 s2 s2' = Some m2 ->
+    inv = list_intersect mapping_eqb inv m2.
+Proof.
+  induction fuel; intros; simpl in *.
+  - discriminate.
+  - simp. destruct_one_match_hyp.
+    + simp. symmetry in E1. eapply intersect_same_length in E1. rewrite E1 in H0.
+      rewrite E in H0. simp.
+      rewrite E0 in H1. simp.
+      rewrite <- E1 at 1. reflexivity.
+    + eapply IHfuel; eassumption.
+Qed.
+
+(* Similar effect as unfolding loop_inv where loop_inv's definition does not involve fuel,
+   ie this lemma allows us to prove `inv = intersect inv (update inv loop_body)` *)
+Lemma defuel_loop_inv: forall corresp inv m1 m2 s1 s2 s1' s2',
+    inv = loop_inv corresp s1 s2 s1' s2' ->
+    check inv s1 s1' = Some m1 ->
+    check m1 s2 s2' = Some m2 ->
+    inv = list_intersect mapping_eqb inv m2.
+Proof.
+  unfold loop_inv. intros. subst. destruct_one_match. 2: reflexivity.
+  eapply defuel_loop_inv'; eassumption.
+Qed.
+
+Section RegAlloc.
 
   Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
   Context {mem: map.map word byte}.
@@ -475,115 +826,45 @@ Section RegAlloc.
   Context {impLocals: map.map impvar word}.
   Context {srcLocalsOk: map.ok srcLocals}.
   Context {impLocalsOk: map.ok impLocals}.
-  Context {srcEnv: map.map String.string (list srcvar * list srcvar * stmt)}.
-  Context {impEnv: map.map String.string (list impvar * list impvar * stmt')}.
+  Context {srcEnv: map.map String.string (list srcvar * list srcvar * stmt)} {srcEnvOk: map.ok srcEnv}.
+  Context {impEnv: map.map String.string (list impvar * list impvar * stmt')} {impEnvOk: map.ok impEnv}.
   Context {ext_spec: Semantics.ExtSpec}.
 
-(*
-  Definition rename_function(e: @FlatImp.env srcSemanticsParams)(f: funname):
-    (list impvar * list impvar * stmt') :=
-    match map.get e f with
-    | Some F => match rename_fun F with
-                | Some res => res
-                | None => (nil, nil, FlatImp.SSkip)
-                end
-    | None => (nil, nil, FlatImp.SSkip)
-    end.
-
-  Definition rename_functions(e: @FlatImp.env srcSemanticsParams):
-    list funname -> @FlatImp.env impSemanticsParams :=
-    fix rec funs :=
-      match funs with
-      | f :: rest => map.put (rec rest) f (rename_function e f)
-      | nil => map.empty
-      end.
-*)
-
-  Definition states_compat(st: srcLocals)(corresp: Corresp)(st': impLocals) :=
+  Definition states_compat(st: srcLocals)(corresp: list (srcvar * impvar))(st': impLocals) :=
     forall (x: srcvar) (x': impvar),
-      map.get corresp x' = Some (Add x true) ->
+      assert_in x x' corresp = Some tt ->
       forall w,
         map.get st x = Some w ->
         map.get st' x' = Some w.
 
-  Definition precond(corresp: Corresp)(s: astmt): Corresp :=
-    match s with
-    | ASLoop s1 c s2 => loop_inv corresp s1 s2
-    | _ => corresp
+  Definition precond(corresp: list (srcvar * impvar))(s: stmt)(s': stmt'): list (srcvar * impvar) :=
+    match s, s' with
+    | SLoop s1 c s2, SLoop s1' c' s2' => loop_inv corresp s1 s2 s1' s2'
+    | _, _ => corresp
     end.
 
-  (*
-  Lemma precond_weakens: forall m s,
-      extends m (precond m s).
-  Proof.
-    intros. destruct s; try apply extends_refl.
-    unfold precond, loop_inv.
-    apply extends_intersect_map_l.
-  Qed.
-
-  Hint Resolve precond_weakens : checker_hints.
-   *)
-
-(*
-  Lemma getmany_of_list_states_compat: forall srcnames impnames corresp lH lL argvals,
-      map.getmany_of_list lH srcnames = Some argvals ->
-      (*map.getmany_of_list corresp srcnames = Some impnames ->*)
-      states_compat lH corresp lL ->
-      map.getmany_of_list lL impnames = Some argvals.
-  Proof.
-    induction srcnames; intros;
-      destruct argvals as [|argval argvals];
-      destruct impnames as [|impname impnames];
-      try reflexivity;
-      try discriminate;
-      unfold map.getmany_of_list, List.option_all in *; simpl in *;
-        repeat (destruct_one_match_hyp; try discriminate).
-    simp.
-    replace (map.get lL impname) with (Some argval); cycle 1. {
-      symmetry. unfold states_compat in *; eauto.
-    }
-    erewrite IHsrcnames; eauto.
-  Qed.
-
-  Lemma putmany_of_list_states_compat: forall binds resvals lL lH l' r,
-      map.putmany_of_list (map fst binds) resvals lH = Some l' ->
-      states_compat lH r lL ->
-      exists lL',
-        map.putmany_of_list (map snd binds) resvals lL = Some lL' /\
-        states_compat l' (map.putmany_of_list r binds) lL'.
-  Proof.
-    induction binds; intros.
-    - simpl in H. simp. simpl. eauto.
-    - simpl in *. simp.
-      specialize IHbinds with (1 := H).
-      destruct a as [sv iv].
-      rename l' into lH'.
-      apply map.putmany_of_list_sameLength in H.
-      rewrite map_length in H. rewrite <- (map_length snd) in H.
-      eapply map.sameLength_putmany_of_list in H.
-      destruct H as (lL' & H).
-      exists lL'. split; [exact H|].
-
-  Admitted.
-  (*edestruct IHbinds as (lL' & P & C); cycle 1.
-      + eexists. split; eauto.
-        unfold map.putmany_of_tuples in C.
-*)
-  *)
-
   Lemma states_compat_eval_bcond: forall lH lL c c' b corresp,
-      cond_checker corresp c = Some c' ->
+      check_bcond corresp c c' = Some tt ->
       eval_bcond lH c = Some b ->
       states_compat lH corresp lL ->
       eval_bcond lL c' = Some b.
   Proof.
     intros. rename H1 into C. unfold states_compat in C.
-    destruct c; cbn in *; simp; cbn; unfold get_impvar in *;
-      erewrite ?C by eauto using map.reverse_get_to_get; reflexivity.
+    destruct c; cbn in *; simp;
+      repeat match goal with
+             | u: unit |- _ => destruct u
+             end;
+      unfold assert in *;
+      cbn; simp;
+      repeat match goal with
+             | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
+             end;
+      subst;
+      erewrite ?C by eauto; reflexivity.
   Qed.
 
   Lemma states_compat_eval_bcond_None: forall lH lL c c' corresp,
-      cond_checker corresp c = Some c' ->
+      check_bcond corresp c c' = Some tt ->
       eval_bcond lH c <> None ->
       states_compat lH corresp lL ->
       eval_bcond lL c' <> None.
@@ -593,7 +874,7 @@ Section RegAlloc.
   Qed.
 
   Lemma states_compat_eval_bcond_bw: forall lH lL c c' b corresp,
-      cond_checker corresp c = Some c' ->
+      check_bcond corresp c c' = Some tt ->
       eval_bcond lL c' = Some b ->
       states_compat lH corresp lL ->
       eval_bcond lH c <> None ->
@@ -603,450 +884,252 @@ Section RegAlloc.
     symmetry. rewrite <- H0. eapply states_compat_eval_bcond; eassumption.
   Qed.
 
-  Lemma invert_Either1_Add_true: forall u1 u2 x,
-      Either1 u1 u2 = Some (Add x true) ->
-      u1 = Some (Add x true) /\ u2 = Some (Add x true).
-  Proof. repeat t. Qed.
+  Lemma states_compat_empty: forall corresp lL,
+      states_compat map.empty corresp lL.
+  Proof. unfold states_compat. intros. rewrite map.get_empty in H0. discriminate. Qed.
 
-  Lemma invert_Seq1_Add_true: forall u1 u2 x,
-      Seq1 u1 u2 = Some (Add x true) ->
-      u1 = Some (Add x true) /\ (u2 = None \/ u2 = Some (Add x false)) \/
-      u2 = Some (Add x true).
-  Proof. repeat t; auto. inversion H. subst. auto. Qed.
-
-  Lemma states_compat_Either_l: forall lH m1 m2 lL,
-      states_compat lH m2 lL ->
-      states_compat lH (Either m1 m2) lL.
-  Proof.
-    unfold states_compat. intros. eapply H. 2: eassumption.
-    unfold Either in *.
-    rewrite map.lift2_spec in H0 by reflexivity.
-    eapply invert_Either1_Add_true in H0. destruct H0. assumption.
-  Qed.
-  Hint Resolve states_compat_Either_l : states_compat.
-
-  Lemma states_compat_Either_r: forall lH m1 m2 lL,
+  Lemma states_compat_extends: forall lH m1 m2 lL,
+      extends m1 m2 ->
       states_compat lH m1 lL ->
-      states_compat lH (Either m1 m2) lL.
-  Proof. intros. rewrite Either_sym. apply states_compat_Either_l. assumption. Qed.
-  Hint Resolve states_compat_Either_r : states_compat.
-
-  Lemma states_compat_precond: forall lH corresp lL s,
-      states_compat lH corresp lL ->
-      states_compat lH (precond corresp s) lL.
+      states_compat lH m2 lL.
   Proof.
-    intros. destruct s; cbn; try assumption.
-    unfold update, loop_inv in *.
-    eapply states_compat_Either_r. assumption.
+    unfold states_compat, extends. intros. eauto.
+  Qed.
+
+  Lemma states_compat_precond: forall lH corresp lL s s',
+      states_compat lH corresp lL ->
+      states_compat lH (precond corresp s s') lL.
+  Proof.
+    intros.
+    destruct s; cbn; try assumption.
+    destruct s'; cbn; try assumption.
+    eapply states_compat_extends. 2: eassumption.
+    eapply extends_loop_inv.
   Qed.
   Hint Resolve states_compat_precond : states_compat.
 
   Lemma states_compat_get: forall corresp lL lH y y' v,
       states_compat lH corresp lL ->
-      get_impvar corresp y = Some y' ->
+      assert_in y y' corresp = Some tt ->
       map.get lH y = Some v ->
       map.get lL y' = Some v.
-  Proof. eauto using map.reverse_get_to_get. Qed.
+  Proof. unfold states_compat. eauto. Qed.
 
-(* Counterexample (happens if two impvars store the same srcvar):
-
-  [a<--x;       a->1         x->1
-   a<--y;       b->2         y->1
-   b<--z]                    z->2
-
-   a(x) = b     --->   x = z
-
-  [b<--x;       a->2         x->2
-   a<--y;       b->2         y->1             a<--y binding requires y->2 !!
-   b<--z]                    z->2
-
-   adding the b<--x binding invalidates the a<--x binding (because impvars equal),
-   but also invalidates the a<--y binding!! (because a gets a new value, so y
-   now contains the value of the old a) [SSA would solve this because a couldn't be reassigned]
-
-  Updates: key for removal: srcvar
-           key for addition: impvar
-
-  a(x) = b
-  if (...) {
-    a(x) = c
-  } else
-    skip
-  }
-
-  then branch: Rem(a, <>x); Add(a, x)
-  whole if: ??
-
-  or: semantics ("apply updates") of Add(a,x) is to remove all bindings with srcvar=x and then add a<--x
-
-  then branch: Add(a,x)
-  whole if: MaybeAdd(a,x)
-
-  or: "value of a may change" event: Mod(a)
-  Mod does not commute with Add, so it's hard to aggregate updates without knowing current state
-
-  then branch: Mod(a); Add(a, x)
-  whole if: Mod(a); MaybeAdd(a, x)
-  whole snippet: Mod(a); Add(a, x); Mod(a); MaybeAdd(a, x) === Mod(a); MaybeAdd(a, x)   so we lose a<--x
-*)
+  Lemma states_compat_getmany: forall corresp lL lH ys ys' vs,
+      states_compat lH corresp lL ->
+      assert_ins ys ys' corresp = Some tt ->
+      map.getmany_of_list lH ys = Some vs ->
+      map.getmany_of_list lL ys' = Some vs.
+  Proof.
+    induction ys; intros.
+    - unfold assert_ins in *. cbn in *. simp. destruct ys'. 2: discriminate. reflexivity.
+    - cbn in *. unfold assert_ins, assert in H0. simp.
+      autoforward with typeclass_instances in E3. destruct ys' as [|a' ys']. 1: discriminate.
+      inversion E3. clear E3.
+      cbn in *. simp. simpl in E2.
+      erewrite states_compat_get; try eassumption. 2: {
+        unfold assert_in. unfold mapping_eqb. rewrite E1. reflexivity.
+      }
+      unfold map.getmany_of_list in *.
+      erewrite IHys; eauto.
+      unfold assert_ins. rewrite H1. rewrite Nat.eqb_refl. simpl.
+      unfold assert. rewrite E2. reflexivity.
+  Qed.
 
   Lemma states_compat_put: forall lH corresp lL x x' v,
       states_compat lH corresp lL ->
-      states_compat (map.put lH x v) (Seq corresp (map.put map.empty x' (Add x true))) (map.put lL x' v).
-  Proof using .
+      states_compat (map.put lH x v) (assignment corresp x x') (map.put lL x' v).
+  Proof.
     intros. unfold states_compat in *. intros k k'. intros.
     rewrite map.get_put_dec. rewrite map.get_put_dec in H1.
-    unfold Seq in H0. rewrite map.lift2_spec in H0 by reflexivity.
-    eapply invert_Seq1_Add_true in H0. rewrite map.get_put_dec in H0.
+    unfold assert_in, assignment in H0. simp. simpl in E.
+    rewrite String.eqb_sym, Z.eqb_sym in E.
     destr (Z.eqb x' k').
-    - subst k'. destruct H0.
-      + destruct H0. destruct H2; inversion H2.
-      + inversion H0. subst k. rewrite String.eqb_refl in H1. exact H1.
-    - rewrite map.get_empty in H0. destruct H0. 2: discriminate.
-      apply proj1 in H0.
-      eapply H. 1: eassumption.
+    - subst k'.
       destr (String.eqb x k).
-      + subst k. admit. (* doesn't hold!! *)
       + assumption.
-  Admitted. (* doesn't hold!! *)
-
-  Lemma Seq2_idemp: forall corresp u0 u1,
-      Seq corresp (Seq u0 (Seq u1 (Seq u0 u1))) = Seq corresp (Seq u0 u1).
-  Proof.
-    intros. rewrite <- (Seq_idemp (Seq u0 u1)) at 2.
-    rewrite <-?Seq_assoc. reflexivity.
+      + simpl in E. eapply find_some in E. destruct E as [E F].
+        destruct p. eapply Bool.andb_true_iff in F. destruct F as [F1 F2].
+        eapply String.eqb_eq in F1. subst s.
+        eapply Z.eqb_eq in F2. subst z.
+        exfalso. eapply not_In_remove_by_snd in E. exact E.
+    - rewrite Bool.andb_false_r in E.
+      eapply find_some in E. destruct E as [E F].
+      destruct p. eapply Bool.andb_true_iff in F. destruct F as [F1 F2].
+      eapply String.eqb_eq in F1. subst s.
+      eapply Z.eqb_eq in F2. subst z.
+      eapply In_remove_by_snd in E. apply proj1 in E.
+      eapply In_remove_by_fst in E. destruct E.
+      destr (String.eqb x k).
+      + exfalso. congruence.
+      + eapply H. 2: eassumption. unfold assert_in.
+        destruct_one_match. 1: reflexivity.
+        eapply find_none in E1. 2: eassumption.
+        simpl in E1. rewrite String.eqb_refl, Z.eqb_refl in E1. discriminate.
   Qed.
 
-  Hint Rewrite <- Seq_assoc : corresp.
-  Hint Rewrite Seq_Either_l_distrib Seq_Either_r_distrib Seq2_idemp Either_idemp : corresp.
+  Lemma putmany_of_list_zip_states_compat: forall binds binds' resvals lL lH l' corresp corresp',
+      map.putmany_of_list_zip binds resvals lH = Some l' ->
+      assignments corresp binds binds' = Some corresp' ->
+      states_compat lH corresp lL ->
+      exists lL',
+        map.putmany_of_list_zip binds' resvals lL = Some lL' /\
+        states_compat l' corresp' lL'.
+  Proof.
+    induction binds; intros.
+    - simpl in H. simp. destruct binds'. 2: discriminate.
+      simpl in *. simp. eauto.
+    - simpl in *. simp.
+      specialize IHbinds with (1 := H).
+      rename l' into lH'.
+      edestruct IHbinds as (lL' & P & C). 1: eassumption. 1: eapply states_compat_put. 1: eassumption.
+      simpl. rewrite P. eauto.
+  Qed.
 
-  Ltac solve_states_compat :=
-    let C := fresh "C" in
-    match goal with
-    | H: states_compat ?lH _ ?lL |- states_compat ?lH _ ?lL =>
-      clear -H CorrespOk CorrespOpsOk; rename H into C
-    end;
-    cbn [precond] in *;
-    unfold update, loop_inv in *;
-    cbn [updates] in *;
-    repeat match goal with
-           | |- context[updates ?s] => let u := fresh "u0" in forget (updates s) as u
-           | H: context[updates ?s] |- _ => let u := fresh "u0" in forget (updates s) as u
-           end;
-    autorewrite with corresp in *;
-    eauto with states_compat.
+  Lemma assignments_same_length: forall xs xs' m1 m2,
+      assignments m1 xs xs' = Some m2 -> List.length xs = List.length xs'.
+  Proof.
+    induction xs; intros; destruct xs'; try discriminate.
+    - reflexivity.
+    - simpl in *. f_equal. eapply IHxs. eassumption.
+  Qed.
+
+  Lemma assert_ins_same_length: forall xs xs' m u,
+      assert_ins xs xs' m = Some u -> List.length xs = List.length xs'.
+  Proof.
+    unfold assert_ins, assert. intros. simp. apply Nat.eqb_eq. assumption.
+  Qed.
 
   Hint Constructors exec.exec : checker_hints.
   Hint Resolve states_compat_get : checker_hints.
   Hint Resolve states_compat_put : checker_hints.
 
   Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s t m lH mc post,
-      (forall f argnames retnames body,
-          map.get e f = Some (argnames, retnames, body) ->
-          exists args body' annotated binds,
-            map.get e' f = Some (map snd args, map snd binds, body') /\
-            argnames = map fst args /\
-            retnames = map fst binds /\
-            erase annotated = body /\
-            checker (map.of_list (List.map (fun '(x, x') => (x', Add x true)) binds)) annotated = Some body') ->
+      check_funcs e e' = true ->
       exec e s t m lH mc post ->
-      forall lL corresp annotated s',
-      erase annotated = s ->
-      checker corresp annotated = Some s' ->
-      states_compat lH (precond corresp annotated) lL ->
+      forall lL corresp corresp' s',
+      check corresp s s' = Some corresp' ->
+      states_compat lH (precond corresp s s') lL ->
       exec e' s' t m lL mc (fun t' m' lL' mc' =>
-        exists lH', states_compat lH' (update corresp annotated) lL' /\ post t' m' lH' mc').
+        exists lH', states_compat lH' corresp' lL' /\ post t' m' lH' mc').
   Proof.
     induction 2; intros;
       match goal with
-      | H: erase ?s = _ |- _ =>
-        destruct s;
-        inversion H;
-        subst;
-        clear H
+      | H: check _ _ _ = Some _ |- _ => pose proof H as C; move C at top; cbn [check] in H
       end;
+      simp;
+      repeat match goal with
+             | u: unit |- _ => destruct u
+             end;
+      unfold assert in *;
+      simp;
+      repeat match goal with
+             | H: negb _ = false |- _ => apply Bool.negb_false_iff in H
+             | H: negb _ = true  |- _ => apply Bool.negb_true_iff in H
+             | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
+             end;
       subst;
-      match goal with
-      | H: checker _ ?x = _ |- _ => pose proof H as C; remember x as AS in C
-      end;
-      simpl in *;
-      simp.
+      cbn [precond] in *.
 
     - (* Case exec.interact *)
-      case TODO_sam.
+      eapply exec.interact; eauto using states_compat_getmany.
+      intros. edestruct H3 as (l' & P & F). 1: eassumption.
+      eapply putmany_of_list_zip_states_compat in P. 2-3: eassumption. destruct P as (lL' & P & SC).
+      eexists. split. 1: eassumption. intros. eauto.
     - (* Case exec.call *)
-      case TODO_sam.
+      rename binds0 into binds', args0 into args'.
+      unfold check_funcs in H.
+      eapply map.get_forallb in H. 2: eassumption.
+      unfold lookup_and_check_func in *. simp.
+      destruct p as ((params' & rets') & fbody').
+      unfold check_func in *. simp.
+      apply_in_hyps @map.getmany_of_list_length.
+      apply_in_hyps assert_ins_same_length.
+      apply_in_hyps assignments_same_length.
+      apply_in_hyps @map.putmany_of_list_zip_sameLength.
+      assert (length params' = length argvs) as L3 by congruence.
+      eapply map.sameLength_putmany_of_list in L3. destruct L3 as [lLF' L3].
+      eapply @exec.call. 1: eassumption. 1: eauto using states_compat_getmany. 1: exact L3.
+      + eapply IHexec. 1: eassumption. eapply states_compat_precond.
+        edestruct putmany_of_list_zip_states_compat as [ lLF0 [L SC] ].
+        2: exact E4. 2: eapply states_compat_empty. 1: eassumption.
+        rewrite L3 in L. apply Option.eq_of_eq_Some in L. subst lLF0. exact SC.
+      + cbv beta. intros. simp. edestruct H4 as (retvs & lHF' & G & P & Hpost). 1: eassumption.
+        edestruct putmany_of_list_zip_states_compat as (lL' & L4 & SC).
+        1: exact P. 1: exact H5. 1: eassumption.
+        destruct u.
+        do 2 eexists. ssplit.
+        * eapply states_compat_getmany; eassumption.
+        * exact L4.
+        * eexists. split. 2: eassumption. exact SC.
     - (* Case exec.load *)
-      case TODO_sam.
+      eauto 10 with checker_hints.
     - (* Case exec.store *)
-      case TODO_sam.
-
-(*
+      eauto 10 with checker_hints.
     - (* Case exec.inlinetable *)
-      case TODO_sam.
+      eauto 10 with checker_hints.
     - (* Case exec.stackalloc *)
-      case TODO_sam.
-*)
-
+      eapply exec.stackalloc. 1: assumption.
+      intros. eapply exec.weaken.
+      + eapply H2; try eassumption.
+        eapply states_compat_precond. eapply states_compat_put. assumption.
+      + cbv beta. intros. simp. eauto 10 with checker_hints.
     - (* Case exec.lit *)
-      case TODO_sam.
+      eauto 10 with checker_hints.
     - (* Case exec.op *)
-      case TODO_sam.
-
-
+      eauto 10 with checker_hints.
     - (* Case exec.set *)
-      unfold update. cbn. eauto 10 with checker_hints.
+      eauto 10 with checker_hints.
     - (* Case exec.if_true *)
       eapply exec.if_true. 1: eauto using states_compat_eval_bcond.
       eapply exec.weaken.
-      + eapply IHexec. 1: reflexivity. 1: eassumption. solve_states_compat.
-      + cbv beta. intros. simp. eexists. split. 2: eassumption. solve_states_compat.
+      + eapply IHexec. 1: eassumption.
+        eapply states_compat_precond. eassumption.
+      + cbv beta. intros. simp. eexists. split. 2: eassumption.
+        eapply states_compat_extends. 2: eassumption. eapply extends_intersect_l.
     - (* Case exec.if_false *)
       eapply exec.if_false. 1: eauto using states_compat_eval_bcond.
       eapply exec.weaken.
-      + eapply IHexec. 1: reflexivity. 1: eassumption. solve_states_compat.
-      + cbv beta. intros. simp. eexists. split. 2: eassumption. solve_states_compat.
+      + eapply IHexec. 1: eassumption.
+        eapply states_compat_precond. eassumption.
+      + cbv beta. intros. simp. eexists. split. 2: eassumption.
+        eapply states_compat_extends. 2: eassumption. eapply extends_intersect_r.
     - (* Case exec.loop *)
       rename H4 into IH2, IHexec into IH1, H6 into IH12.
+      match goal with
+      | H: states_compat _ _ _ |- _ => rename H into SC
+      end.
+      pose proof SC as SC0.
+      unfold loop_inv in SC.
+      rewrite E in SC.
       eapply exec.loop.
-      + eapply IH1. 1: reflexivity. 1: eassumption. solve_states_compat.
+      + eapply IH1. 1: eassumption. eapply states_compat_precond. exact SC.
       + cbv beta. intros. simp. eauto using states_compat_eval_bcond_None.
-      + cbv beta. intros. simp. eexists. split. 2: eauto using states_compat_eval_bcond_bw. solve_states_compat.
-      + cbv beta. intros. simp. eapply IH2; eauto using states_compat_eval_bcond_bw. solve_states_compat.
-      + cbv beta. intros. simp. subst AS. eapply IH12; eauto. solve_states_compat.
+      + cbv beta. intros. simp. eexists. split. 2: eauto using states_compat_eval_bcond_bw. assumption.
+      + cbv beta. intros. simp. eapply IH2; eauto using states_compat_eval_bcond_bw.
+        eapply states_compat_precond. assumption.
+      + cbv beta. intros. simp. eapply IH12. 1: eassumption. 1: eassumption.
+        rename l0 into inv.
+        eapply states_compat_extends. 2: eassumption.
+        pose proof defuel_loop_inv as P.
+        specialize P with (2 := E0).
+        specialize P with (2 := E2).
+        specialize (P corresp).
+        unfold loop_inv in P|-*.
+        rewrite E in P. rewrite E.
+        specialize (P eq_refl).
+        rewrite P.
+        eapply extends_intersect_r.
     - (* Case exec.seq *)
       rename H2 into IH2, IHexec into IH1.
       eapply exec.seq.
-      + eapply IH1. 2: eassumption. 1: reflexivity. solve_states_compat.
+      + eapply IH1. 1: eassumption.
+        eapply states_compat_precond. assumption.
       + cbv beta. intros. simp.
-        unfold update. cbn. rewrite Seq_assoc.
-        eapply IH2. 1: eassumption. 1: reflexivity. 1: eassumption. unfold update in *. solve_states_compat.
+        eapply IH2. 1: eassumption. 1: eassumption.
+        eapply states_compat_precond. assumption.
     - (* Case exec.skip *)
-      unfold update. cbn. rewrite Seq_empty_r. eapply exec.skip. eauto.
+      eapply exec.skip. eauto.
   Qed.
-
-  (* code1  <----erase----  annotated  ----checker---->  code2 *)
-  Definition code_related code1 m code2 := exists annotated,
-      erase annotated = code1 /\ checker m annotated = Some code2.
-
-  (*
-  Definition related: @FlatImp.SimState srcSemanticsParams ->
-                      @FlatImp.SimState impSemanticsParams -> Prop :=
-    fun '(e1, c1, done1, t1, m1, l1) '(e2, c2, done2, t2, m2, l2) =>
-      done1 = done2 /\
-      (forall f argnames retnames body1,
-          map.get e1 f = Some (argnames, retnames, body1) ->
-          exists args body2 binds,
-            map.get e2 f = Some (map snd args, map snd binds, body2) /\
-            argnames = map fst args /\
-            retnames = map fst binds /\
-            code_related body1 (map.putmany_of_list map.empty args) body2) /\
-      t1 = t2 /\
-      m1 = m2 /\
-      code_related c1 map.empty c2.
-  (* TODO could/should also relate l1 and l2 *)
-
-  Lemma checkerSim: simulation (@FlatImp.SimExec srcSemanticsParams)
-                               (@FlatImp.SimExec impSemanticsParams) related.
-  Proof.
-    unfold simulation.
-    intros *. intros R Ex1.
-    unfold FlatImp.SimExec, related in *.
-    destruct s1 as (((((e1 & c1) & done1) & t1) & m1) & l1).
-    destruct s2 as (((((e2 & c2) & done2) & t2) & m2) & l2).
-    destruct R as (F & ? & ? & ? & (annotated & Er & Ch)).
-    destruct Ex1 as (? & Ex1).
-    subst t2 m2 done1 done2. rename t1 into t, m1 into m.
-    split; [reflexivity|intros].
-    eapply exec.weaken.
-    - eapply checker_correct. 2: eapply Ex1. 2,3: eassumption.
-      + case TODO_sam.
-      + assert (precond map.empty annotated = map.empty) as E by case TODO_sam.
-        rewrite E. unfold states_compat. intros.
-        rewrite @map.get_empty in * by typeclasses eauto. discriminate.
-    - simpl. intros.
-      unfold code_related.
-      firstorder idtac.
-  Qed.
-
-  Lemma regalloc_respects_afterlife: forall s m l r,
-      (* TODO say something about r *)
-      subset l (union (range m) (certainly_written s)) ->
-      subset l (range (mappings m (regalloc m s l r))).
-  Proof.
-    induction s; intros;
-      [ set ( case := SLoad )
-      | set ( case := SStore )
-      | set ( case := SLit )
-      | set ( case := SOp )
-      | set ( case := SSet )
-      | set ( case := SIf )
-      | set ( case := SLoop )
-      | set ( case := SSeq )
-      | set ( case := SSkip )
-      | set ( case := SCall )
-      | set ( case := SInteract ) ];
-      move case at top;
-      simpl in *;
-      repeat (destruct_one_match); simpl in *.
-    (*
-    {
-      rename H into AA.
-      pose proof @reverse_get_Some as PP.
-      specialize PP with (1 := E). clear E.
-      revert AA PP.
-
-      Notation "A ⟹ B" := (A -> B)  (at level 99, right associativity,
-                                     format "A  ⟹  '/' B" ).
-      (* Nitpick found no counterexample *)
-      admit.
-    }
-    Focus 11. {
-      remember (union (certainly_written s1) (certainly_written s2)) as c1.
-      remember (union (live s1) (diff (live s2) (certainly_written s1))) as m1.
-      remember (remove_values m (diff (range m) (union m1 (diff l c1)))) as m2.
-      remember (regalloc m2 s1 (union (live s2) l)) as R1.
-      remember (regalloc (mappings m2 R1) s2 l) as R2.
-      specialize (IHs1 m2 (union (live s2) l)). rewrite <- HeqR1 in IHs1.
-      specialize (IHs2 (mappings m2 R1) l). rewrite <-HeqR2 in IHs2.
-
-      match type of IHs2 with
-      | _ -> subset _ ?X => apply subset_trans with (s4 := X)
-      end.
-      admit.
-      admit.
-     *)
-  Admitted.
-
-  Lemma checker_monotone: forall r1 r2 s s',
-      extends r2 r1 ->
-      checker r1 s = Some s' ->
-      checker r2 s = Some s'.
-  Proof using.
-  Admitted.
-
-  Lemma regalloc_succeeds: forall s annotated m l r,
-      (* TODO restrictions on l and r *)
-      subset (live s) (range m) ->
-      regalloc m s l r = annotated ->
-      exists s', checker m annotated = Some s'.
-  Proof.
-    induction s; intros; simpl in *;
-      [ set ( case := ASLoad )
-      | set ( case := ASStore )
-      | set ( case := ASLit )
-      | set ( case := ASOp )
-      | set ( case := ASSet )
-      | set ( case := ASIf )
-      | set ( case := ASLoop )
-      | set ( case := ASSeq )
-      | set ( case := ASSkip )
-      | set ( case := ASCall )
-      | set ( case := ASInteract ) ];
-      move case at top;
-      repeat (subst ||
-              destruct_pair_eqs ||
-              (destruct_one_match_hyp; try discriminate) ||
-              (destruct_one_match; try discriminate));
-      simpl.
-    - (* ASLoad: reverse_get of regalloc Some *)
-      destruct (reverse_get m a) eqn: F.
-      + (* reverse_get of checker Some *)
-        eexists. reflexivity.
-      + (* reverse_get of checker None *)
-        exfalso. map_solver impvar srcvar.
-    - (* ASLoad: reverse_get of regalloc None --> a fresh var will be picked *)
-      destruct (reverse_get m a) eqn: F.
-      + (* reverse_get of checker Some *)
-        eexists. reflexivity.
-      + (* reverse_get of checker None *)
-        exfalso. map_solver impvar srcvar.
-
-    - destruct (reverse_get m a) eqn: F; destruct (reverse_get m v) eqn: G;
-        [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
-    - eauto.
-    - eauto.
-    - destruct (reverse_get m y) eqn: F; destruct (reverse_get m z) eqn: G;
-        [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
-    - destruct (reverse_get m y) eqn: F; destruct (reverse_get m z) eqn: G;
-        [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
-    - destruct (reverse_get m y) eqn: F;
-        [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
-    - destruct (reverse_get m y) eqn: F;
-        [eexists; reflexivity| (exfalso; map_solver impvar srcvar)..].
-    - destruct (reverse_get m cond) eqn: F; [| exfalso; map_solver impvar srcvar].
-      repeat match goal with
-      | IH: _ |- context [ checker _ (regalloc ?m' ?s ?l') ] =>
-        specialize IH with (m := m') (l := l') (2 := eq_refl)
-      end.
-      destruct IHs1 as [s1' IHs1].
-      { clear IHs2. map_solver impvar srcvar. }
-      destruct IHs2 as [s2' IHs2].
-      { clear IHs1. map_solver impvar srcvar. }
-      eapply checker_monotone in IHs1; [ rewrite IHs1 | map_solver impvar srcvar ].
-      eapply checker_monotone in IHs2; [ rewrite IHs2 | map_solver impvar srcvar ].
-      eexists. reflexivity.
-    - (* TODO maybe SLoop case of regalloc is bad! *)
-      admit.
-    - match goal with
-      | |- context [ checker _ (regalloc ?m' ?s ?l') ] =>
-        specialize IHs1 with (m := m') (l := l') (2 := eq_refl)
-      end.
-      destruct IHs1 as [s1' IHs1].
-      { clear IHs2. map_solver impvar srcvar. }
-      eapply checker_monotone in IHs1; [ rewrite IHs1 | map_solver impvar srcvar ].
-      clear IHs1.
-      match goal with
-      | |- context [ checker _ (regalloc ?m' ?s ?l') ] =>
-        specialize IHs2 with (m := m') (l := l') (2 := eq_refl)
-      end.
-      destruct IHs2 as [s2' IHs2].
-      {
-        remember (remove_values m
-             (diff (range m)
-                (union (union (live s1) (diff (live s2) (certainly_written s1)))
-                       (diff l (union (certainly_written s1) (certainly_written s2))))))
-                 as m1.
-        specialize (regalloc_respects_afterlife s1 m1 (union (live s2)
-                                                             (diff l (certainly_written s2)))).
-        intro R.
-        match type of R with
-        | ?A -> _ => assert A; [| solve [map_solver impvar srcvar] ]
-        end.
-        clear R.
-        subst.
-        map_solver impvar srcvar.
-        {
-          destruct (dec (x \in certainly_written s1)); [solve[ auto ] |].
-          left.
-          map_solver impvar srcvar.
-        }
-        {
-          destruct (dec (x \in certainly_written s1)); [solve[ auto ] |].
-          left.
-          destruct Hx as [k Hx].
-          - destruct (dec (x \in live s1)); auto.
-            destruct (dec (x \in live s2)); auto.
-            right.
-            exfalso.
-            map_solver impvar srcvar.
-            admit.
-          - exists k.
-            map_solver impvar srcvar. (* TODO this one should succeed *)
-            exfalso.
-            apply c_r.
-            destruct (dec (s \in live s1)); auto.
-            destruct (dec (s \in live s2)); auto.
-            intuition auto.
-        }
-      }
-      eapply checker_monotone in IHs2; [ rewrite IHs2; eexists; reflexivity |  ].
-      clear IHs2.
-      apply mappings_monotone.
-      map_solver impvar srcvar.
-    - eauto.
-    - eauto.
-  Abort.
-  *)
 
 End RegAlloc.

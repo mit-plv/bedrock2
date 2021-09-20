@@ -14,7 +14,7 @@ Require Import compiler.StringNameGen.
 Require Import compiler.util.Common.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Spilling.
-Require Import compiler.RegAlloc4.
+Require Import compiler.RegAlloc.
 
 Section WithWordAndMem.
   Context {width: Z} {BW: Bitwidth width} {word: Interface.word width} {mem : map.map word byte}.

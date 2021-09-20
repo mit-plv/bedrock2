@@ -33,7 +33,7 @@ Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.Simp.
 Require Import compiler.FlattenExprSimulation.
 Require Import compiler.Spilling.
-Require Import compiler.RegAlloc4.
+Require Import compiler.RegAlloc.
 Require Import compiler.FlatToRiscvSimulation.
 Require Import compiler.Simulation.
 Require Import compiler.RiscvEventLoop.

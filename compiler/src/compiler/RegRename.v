@@ -1,6 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import compiler.FlatImp.
-Require Import compiler.RegAlloc4.
+Require Import compiler.RegAlloc.
 Require Import coqutil.Decidable.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.simpl_rewrite.
