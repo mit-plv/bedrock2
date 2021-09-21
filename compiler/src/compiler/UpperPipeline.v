@@ -34,6 +34,10 @@ Section WithWordAndMem.
       map.get functions1 f_entry_name = Some (argnames1, retnames1, fbody1) ->
       exists argnames2 retnames2 fbody2,
         map.get functions2 f_entry_name = Some (argnames2, retnames2, fbody2) /\
+        (* These length equalities also follow from the map.of_list_zip = Some and from the
+           map.getmany_of_list = Some below, but that's under a L1.(Exec) assumption that we don't always have *)
+        List.length argnames1 = List.length argnames2 /\
+        List.length retnames1 = List.length retnames2 /\
         forall argvals t m l1 mc post,
           map.of_list_zip argnames1 argvals = Some l1 ->
           L1.(Exec) functions1 fbody1 t m l1 mc (fun t' m' l1' mc' =>
@@ -57,10 +61,11 @@ Section WithWordAndMem.
     specialize C12 with (1 := E) (2 := G1). simp.
     specialize C23 with (1 := H) (2 := C12p0). simp.
     eexists _, _, _. split. 1: eassumption.
+    ssplit; try congruence.
     intros *. intros OL1 Ex1.
-    specialize C12p1 with (1 := OL1) (2 := Ex1). simp.
-    specialize C23p1 with (1 := C12p1p0) (2 := C12p1p1).
-    exact C23p1.
+    specialize C12p3 with (1 := OL1) (2 := Ex1). simp.
+    specialize C23p3 with (1 := C12p3p0) (2 := C12p3p1).
+    exact C23p3.
   Qed.
 
   Section WithMoreParams.
@@ -106,7 +111,7 @@ Section WithWordAndMem.
       unfold flatten_function in GF. simp.
 
       eexists _, _, _. split. 1: eassumption.
-      intros. eexists. split. 1: eassumption.
+      intros. ssplit; try reflexivity. eexists. split. 1: eassumption.
       eapply FlatImp.exec.weaken.
       - eapply flattenStmt_correct_aux.
         + eassumption.
@@ -145,11 +150,12 @@ Section WithWordAndMem.
       eapply map.get_forallb in E0. 2: eassumption.
       unfold lookup_and_check_func, check_func in E0. simp.
 
-      eexists _, _, _. split. 1: eassumption. intros.
+      eexists _, _, _. split. 1: eassumption.
       unfold map.of_list_zip in *.
-      apply_in_hyps @map.putmany_of_list_zip_sameLength.
       apply_in_hyps assert_ins_same_length.
       apply_in_hyps assignments_same_length.
+      ssplit; try assumption. intros.
+      apply_in_hyps @map.putmany_of_list_zip_sameLength.
       cbn [Var FlatLangStr] in *. (* PARAMRECORDS *)
       assert (List.length l = List.length argvals) as P by congruence.
       eapply map.sameLength_putmany_of_list in P. destruct P as [st2 P].
@@ -188,6 +194,7 @@ Section WithWordAndMem.
 
       eexists _, _, _. split. 1: eassumption. intros.
       unfold map.of_list_zip in *.
+      ssplit; try reflexivity.
       eexists. split. 1: exact H1.
       unfold spill_fbody.
       eapply FlatImp.exec.stackalloc. {

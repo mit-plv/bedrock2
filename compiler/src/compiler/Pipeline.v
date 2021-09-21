@@ -169,8 +169,6 @@ Section Pipeline1.
     eapply H. eassumption.
   Qed.
 
-  Axiom TODO: False.
-
   Lemma compiler_correct: forall
       (stack_start stack_pastend: word)
       (f_entry_name : string) (fbody: Syntax.cmd.cmd) (f_entry_rel_pos: Z)
@@ -199,9 +197,9 @@ Section Pipeline1.
   Proof.
     intros. unfold compile in *. simp.
     pose proof upper_compiler_correct as U. unfold phase_correct in U.
-    edestruct U as (argnames & retnames & fbody' & G' & Sim); clear U. 1,2: eassumption.
-    replace argnames with (@nil Z) in * by case TODO.
-    replace retnames with (@nil Z) in * by case TODO.
+    edestruct U as (argnames & retnames & fbody' & G' & Largs & Lrets & Sim); clear U. 1,2: eassumption.
+    destruct argnames; [clear Largs| discriminate Largs].
+    destruct retnames; [clear Lrets| discriminate Lrets].
     eapply flat_to_riscv_correct; try typeclasses eauto; try eassumption.
     { unfold upper_compiler, compose_phases in *. simp.
       eapply spill_functions_valid_FlatImp_fun. 1: eassumption.
