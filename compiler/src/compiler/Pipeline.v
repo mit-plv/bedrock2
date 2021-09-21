@@ -169,6 +169,8 @@ Section Pipeline1.
     eapply H. eassumption.
   Qed.
 
+  Axiom TODO: False.
+
   Lemma compiler_correct: forall
       (stack_start stack_pastend: word)
       (f_entry_name : string) (fbody: Syntax.cmd.cmd) (f_entry_rel_pos: Z)
@@ -197,12 +199,20 @@ Section Pipeline1.
   Proof.
     intros. unfold compile in *. simp.
     pose proof upper_compiler_correct as U. unfold phase_correct in U.
-    edestruct U as (fbody' & G' & Sim); clear U. 1,2: eassumption.
+    edestruct U as (argnames & retnames & fbody' & G' & Sim); clear U. 1,2: eassumption.
+    replace argnames with (@nil Z) in * by case TODO.
+    replace retnames with (@nil Z) in * by case TODO.
     eapply flat_to_riscv_correct; try typeclasses eauto; try eassumption.
     { unfold upper_compiler, compose_phases in *. simp.
       eapply spill_functions_valid_FlatImp_fun. 1: eassumption.
       eapply regalloc_functions_NoDup. eassumption. }
-    eapply Sim; clear Sim. eassumption.
+    edestruct Sim with (argvals := @nil word) (post := fun t m (_: list word) => postH t m)
+      as (l2 & P & Ex2); clear Sim.
+    - reflexivity.
+    - eapply ExprImp.weaken_exec. 1: eassumption. cbv beta. intros t' m' l' mc' Hpost. exists [].
+      split. 1: reflexivity. assumption.
+    - cbn in P. apply Option.eq_of_eq_Some in P. subst l2.
+      eapply FlatImp.exec.weaken. 1: exact Ex2. cbv beta. intros. simp. assumption.
   Qed.
 
   Definition instrencode(p: list Instruction): list byte :=

@@ -29,13 +29,18 @@ Section WithWordAndMem.
   }.
 
   Definition phase_correct{L1 L2: Lang}(compile: L1.(Env) -> option L2.(Env)): Prop :=
-    forall functions1 functions2 f_entry_name fbody1,
+    forall functions1 functions2 f_entry_name argnames1 retnames1 fbody1,
       compile functions1 = Some functions2 ->
-      map.get functions1 f_entry_name = Some (nil, nil, fbody1) ->
-      exists fbody2,
-        map.get functions2 f_entry_name = Some (nil, nil, fbody2) /\
-        forall t m mc post, L1.(Exec) functions1 fbody1 t m map.empty mc (fun t' m' l' mc' => post t' m') ->
-                            L2.(Exec) functions2 fbody2 t m map.empty mc (fun t' m' l' mc' => post t' m').
+      map.get functions1 f_entry_name = Some (argnames1, retnames1, fbody1) ->
+      exists argnames2 retnames2 fbody2,
+        map.get functions2 f_entry_name = Some (argnames2, retnames2, fbody2) /\
+        forall argvals t m l1 mc post,
+          map.of_list_zip argnames1 argvals = Some l1 ->
+          L1.(Exec) functions1 fbody1 t m l1 mc (fun t' m' l1' mc' =>
+            exists retvals, map.getmany_of_list l1' retnames1 = Some retvals /\ post t' m' retvals) ->
+          exists l2, map.of_list_zip argnames2 argvals = Some l2 /\
+            L2.(Exec) functions2 fbody2 t m l2 mc (fun t' m' l2' mc' =>
+              exists retvals, map.getmany_of_list l2' retnames2 = Some retvals /\ post t' m' retvals).
 
   Definition compose_phases{A B C: Type}(phase1: A -> option B)(phase2: B -> option C)(a: A) :=
     match phase1 a with
@@ -51,10 +56,10 @@ Section WithWordAndMem.
     unfold phase_correct, compose_phases. intros C12 C23. intros *. intros ? G1. simp.
     specialize C12 with (1 := E) (2 := G1). simp.
     specialize C23 with (1 := H) (2 := C12p0). simp.
-    eexists. split. 1: eassumption.
-    intros *. intro Ex1.
-    specialize C12p1 with (1 := Ex1).
-    specialize C23p1 with (1 := C12p1).
+    eexists _, _, _. split. 1: eassumption.
+    intros *. intros OL1 Ex1.
+    specialize C12p1 with (1 := OL1) (2 := Ex1). simp.
+    specialize C23p1 with (1 := C12p1p0) (2 := C12p1p1).
     exact C23p1.
   Qed.
 
@@ -95,13 +100,13 @@ Section WithWordAndMem.
     Proof.
       unfold phase_correct. intros.
 
-      pose proof H as GF.
+      pose proof H0 as GF.
       unfold flatten_functions in GF.
       eapply map.map_all_values_fw in GF. 5: eassumption. 2-4: typeclasses eauto.
       unfold flatten_function in GF. simp.
 
-      eexists. split. 1: eassumption.
-      intros.
+      eexists _, _, _. split. 1: eassumption.
+      intros. eexists. split. 1: eassumption.
       eapply FlatImp.exec.weaken.
       - eapply flattenStmt_correct_aux.
         + eassumption.
@@ -111,10 +116,19 @@ Section WithWordAndMem.
           | |- ?p = _ => rewrite (surjective_pairing p)
           end.
           reflexivity.
-        + intros x k A. rewrite map.get_empty in A. discriminate.
-        + unfold map.undef_on, map.agree_on. intros. reflexivity.
-        + eapply @freshNameGenState_disjoint.
-      - simpl. intros. simp. assumption.
+        + intros x k A. assumption.
+        + unfold map.undef_on, map.agree_on. cbn. intros k A.
+          rewrite map.get_empty. destr (map.get l1 k). 2: assumption. exfalso.
+          unfold map.of_list_zip in H1.
+          edestruct (map.putmany_of_list_zip_find_index _ _ _ _ _ _ H1 E) as [G | G]. 2: {
+            rewrite map.get_empty in G. discriminate.
+          }
+          destruct G as (i & G1 & G2).
+          eapply nth_error_In in G1.
+          eapply start_state_spec. 2: exact A.
+          eapply ListSet.In_list_union_l. eapply ListSet.In_list_union_l. assumption.
+        + eapply @freshNameGenState_disjoint_fbody.
+      - simpl. intros. simp. eauto using map.getmany_of_list_extends.
     Qed.
 
     Lemma regalloc_correct: @phase_correct FlatLangStr FlatLangZ regalloc_functions.
@@ -130,14 +144,24 @@ Section WithWordAndMem.
       unfold check_funcs in E0.
       eapply map.get_forallb in E0. 2: eassumption.
       unfold lookup_and_check_func, check_func in E0. simp.
-      eapply assert_ins_same_length in E1. destruct l0. 2: discriminate. clear E1 u.
-      apply_in_hyps assignments_same_length. destruct l. 2: discriminate.
 
-      eexists. split. 1: eassumption. intros.
+      eexists _, _, _. split. 1: eassumption. intros.
+      unfold map.of_list_zip in *.
+      apply_in_hyps @map.putmany_of_list_zip_sameLength.
+      apply_in_hyps assert_ins_same_length.
+      apply_in_hyps assignments_same_length.
+      cbn [Var FlatLangStr] in *. (* PARAMRECORDS *)
+      assert (List.length l = List.length argvals) as P by congruence.
+      eapply map.sameLength_putmany_of_list in P. destruct P as [st2 P].
+      eexists. split. 1: exact P.
       eapply FlatImp.exec.weaken.
       - eapply checker_correct; try eassumption.
-        eapply states_compat_empty.
-      - simpl. intros. simp. assumption.
+        eapply states_compat_precond.
+        edestruct putmany_of_list_zip_states_compat as (lL' & P' & Cp); try eassumption.
+        1: eapply states_compat_empty.
+        rewrite P in P'. inversion P'. exact Cp.
+      - simpl. intros. simp. eexists. split. 2: eassumption.
+        destruct u. eauto using states_compat_getmany.
     Qed.
 
     Lemma spilling_correct: @phase_correct FlatLangZ FlatLangZ spill_functions.
@@ -148,7 +172,9 @@ Section WithWordAndMem.
       unfold spill_functions in GL.
       eapply map.map_all_values_fw in GL. 5: eassumption. 2-4: typeclasses eauto.
       unfold spill_fun in GL. simp. eapply Bool.andb_true_iff in E.
-      destruct E as [_ Fs].
+      destruct E as (E & Fs).
+      eapply Bool.andb_true_iff in E.
+      destruct E as (Fargs & Frets).
       eapply forallb_vars_stmt_correct in Fs. 2: {
         intros x. split; intros F.
         - rewrite ?Z.ltb_lt in F. exact F.
@@ -160,8 +186,9 @@ Section WithWordAndMem.
         - apply  Bool.andb_true_iff. rewrite ?Z.ltb_lt. assumption.
       }
 
-      eexists. split. 1: eassumption. intros.
-
+      eexists _, _, _. split. 1: eassumption. intros.
+      unfold map.of_list_zip in *.
+      eexists. split. 1: exact H1.
       unfold spill_fbody.
       eapply FlatImp.exec.stackalloc. {
         rewrite Z.mul_comm.
@@ -218,21 +245,29 @@ Section WithWordAndMem.
             - blia.
           }
           seprewrite_in QQ Q. unfold word_array.
-          exists map.empty, map.empty, returned_words.
+          eexists map.empty, l1, returned_words.
           ssplit.
           - reflexivity.
           - ecancel_assumption.
+          - intros *. intro G.
+            epose proof (proj1 (@forallb_forall _ _ _) Fargs _) as A. cbv beta in A.
+            rewrite Bool.andb_true_iff in A. rewrite !Z.ltb_lt in A. eapply A.
+            eauto using map.putmany_of_list_zip_to_In.
           - intros *. rewrite map.get_empty. discriminate.
-          - intros *. rewrite map.get_empty. discriminate.
-          - unfold sep, map.split. exists map.empty, map.empty.
-            rewrite ?map.putmany_empty_r. eauto using map.disjoint_empty_l.
-          - unfold sep, map.split, ptsto. eexists map.empty, _. ssplit.
+          - unfold sep, map.split. exists l1, map.empty.
+            rewrite ?map.putmany_empty_r. eauto using map.disjoint_empty_r.
+          - unfold sep, map.split, ptsto. eexists l1, _. ssplit.
             4: reflexivity.
-            + rewrite map.putmany_empty_l. reflexivity.
-            + apply map.disjoint_empty_l.
-            + exists map.empty, map.empty. unfold tmps. setoid_rewrite map.get_empty.
-              rewrite map.putmany_empty_l.
-              intuition (eauto using map.disjoint_empty_l || discriminate).
+            + rewrite <- map.put_putmany_commute. rewrite map.putmany_empty_r. reflexivity.
+            + apply map.disjoint_comm. unfold map.disjoint. intros *. intros G1 G2.
+              rewrite map.get_put_dec in G1. rewrite map.get_empty in G1. destr (fp =? k). 2: discriminate.
+              apply Option.eq_of_eq_Some in G1. subst k a.
+              eapply map.putmany_of_list_zip_to_In in H1. 2: exact G2.
+              epose proof (proj1 (@forallb_forall _ _ _) Fargs _ H1) as A. cbv beta in A.
+              rewrite Bool.andb_true_iff in A. rewrite !Z.ltb_lt in A. clear -A. blia.
+            + exists l1, map.empty. unfold tmps. setoid_rewrite map.get_empty.
+              rewrite map.putmany_empty_r.
+              intuition (eauto using map.disjoint_empty_r || discriminate).
           - intros ? ? ? C. rewrite map.get_empty in C. discriminate C.
           - eapply Nat2Z.inj. rewrite LL. rewrite L. rewrite Z2Nat.id by blia.
             rewrite Z.mul_comm. rewrite Z_div_mult by blia. reflexivity.
@@ -257,7 +292,19 @@ Section WithWordAndMem.
           * clear. intros. rewrite HList.tuple.length_to_list. reflexivity.
         + rewrite sep_emp_r in HM'. apply proj1 in HM'. subst m'. unfold map.split.
           split. 1: reflexivity. exact D.
-        + assumption.
+        + eexists. split. 2: eassumption.
+          unfold sep in H3p0p4.
+          destruct H3p0p4 as (regsAndTmp & lfp & ? & A & Pt).
+          destruct A as (lRegs' & tmps' & ? & ? & ?).
+          subst lRegs'.
+          eapply map.getmany_of_list_zip_grow. 1: eassumption.
+          eapply map.getmany_of_list_zip_grow. 1: eassumption.
+          unfold sep in H3p0p3. destruct H3p0p3 as (lRegs' & lStack' & Spl & ? & ?). subst lRegs' lStack'.
+          eapply map.getmany_of_list_zip_shrink. 1: exact Spl. 1: assumption.
+          intros *. intro HI. destr (map.get lStack k). 2: assumption. exfalso.
+          pose proof (H3p0p2 _ _ E) as B.
+          epose proof (proj1 (@forallb_forall _ _ _) Frets _ HI) as A. cbv beta in A.
+          rewrite Bool.andb_true_iff in A. rewrite !Z.ltb_lt in A. clear -A B. blia.
     Qed.
 
     Definition upper_compiler :=
