@@ -11,7 +11,7 @@ Require Import coqutil.Z.Lia.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.Simp.
-Require Import compiler.Simulation.
+Require Import compiler.Registers.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SpillingMapGoals.
 Require Import bedrock2.MetricLogging.
@@ -29,6 +29,7 @@ Section Spilling.
   Definition tp := 4. (* we don't use the thread pointer *)
   Definition fp := 5. (* returned by stackalloc, always a constant away from sp: a wasted register *)
   Definition a0 := 10. (* first argument register *)
+  Definition a7 := 17. (* last argument register *)
 
   (* `i=1 \/ i=2`, we use the argument registers as temporaries for spilling *)
   Definition spill_tmp(i: Z) := 9 + i.
@@ -52,7 +53,7 @@ Section Spilling.
   (* i needs to be 1 or 2, r any register > fp *)
   Definition load_iarg_reg(i r: Z): stmt :=
     match stack_loc r with
-    | Some o => SLoad Syntax.access_size.word (2 + i) fp o
+    | Some o => SLoad Syntax.access_size.word (9 + i) fp o
     | None => SSkip
     end.
 
@@ -64,16 +65,30 @@ Section Spilling.
 
   Notation "s1 ;; s2" := (SSeq s1 s2) (right associativity, at level 100).
 
+  (* dst must be <32, src might be >= 32 *)
+  Definition write_register(dst src: Z): stmt :=
+    match stack_loc src with
+    | Some o => SLoad Syntax.access_size.word dst fp o
+    | None => SSet dst src
+    end.
+
   Fixpoint write_register_range(range_start: Z)(srcs: list Z): stmt :=
     match srcs with
     | nil => SSkip
-    | x :: xs => SSet range_start x;; write_register_range (range_start+1) xs
+    | x :: xs => write_register range_start x;; write_register_range (range_start+1) xs
+    end.
+
+  (* dst might be >=32, src must be < 32 *)
+  Definition read_register(dst src: Z): stmt :=
+    match stack_loc dst with
+    | Some o => SStore Syntax.access_size.word fp src o
+    | None => SSet dst src
     end.
 
   Fixpoint read_register_range(dests: list Z)(range_start: Z): stmt :=
     match dests with
     | nil => SSkip
-    | x :: xs => SSet x range_start;; read_register_range xs (range_start+1)
+    | x :: xs => read_register x range_start;; read_register_range xs (range_start+1)
     end.
 
   Definition prepare_bcond(c: bcond Z): stmt :=
@@ -123,12 +138,10 @@ Section Spilling.
     | SSkip => SSkip
     | SCall resvars f argvars =>
       write_register_range a0 argvars;;
-      (* TODO save/restore callee_saved registers? Or avoid using them across function calls? Or both? *)
       SCall resvars f argvars;;
       read_register_range resvars a0
     | SInteract resvars f argvars =>
       write_register_range a0 argvars;;
-      (* TODO save/restore callee_saved registers? Or avoid using them across function calls? Or both? *)
       SInteract resvars f argvars;;
       read_register_range resvars a0
     end.
@@ -172,7 +185,6 @@ Section Spilling.
       eauto with max_var_sound.
   Qed.
 
-  (* TODO also save caller-saved registers, move args and rets *)
   Definition spill_fbody(s: stmt): stmt :=
     let maxvar := max_var s in
     SStackalloc fp (bytes_per_word * Z.of_nat (Z.to_nat (maxvar - 31))) (spill_stmt s).
@@ -183,20 +195,20 @@ Section Spilling.
 
   Open Scope bool_scope.
 
+  Definition is_valid_src_var(x: Z): bool := Z.ltb fp x && (Z.ltb x a0 || Z.ltb a7 x).
+
   Definition spill_fun: list Z * list Z * stmt -> option (list Z * list Z * stmt) :=
     fun '(argnames, resnames, body) =>
-      (* The first two lines of this test are very likely to succeed,
-         because it suffices that 5 + len argnames + len resnames < 32,
-         because reg rename assigns the lowest argnames and resnames and
-         only then continues with the function body.
-         The last test only succeeds if there are no function calls that
-         use variables introduced too late. *)
-      if List.forallb (fun x => Z.ltb fp x && Z.ltb x 32) argnames &&
-         List.forallb (fun x => Z.ltb fp x && Z.ltb x 32) resnames &&
-         forallb_vars_stmt (fun x => Z.ltb fp x) (* allowing >= 32 here is the whole point of spilling *)
-                           (fun x => Z.ltb fp x && Z.ltb x 32) body (* allowing >=32 here (for calls) is not
-                                                                       implemented yet *)
-      then Some (argnames, resnames, spill_fbody body)
+      if List.forallb is_valid_src_var argnames &&
+         List.forallb is_valid_src_var resnames &&
+         forallb_vars_stmt is_valid_src_var is_valid_src_var body
+      then
+        let argnames' := List.firstn (List.length argnames) (reg_class.all reg_class.arg) in
+        let resnames' := List.firstn (List.length resnames) (reg_class.all reg_class.arg) in
+        Some (argnames', resnames',
+              read_register_range argnames a0;;
+              spill_fbody body;;
+              write_register_range a0 resnames)
       else None.
 
   Context {locals: map.map Z word}.
@@ -208,7 +220,8 @@ Section Spilling.
     map.map_all_values spill_fun.
 
   Definition valid_vars_src(maxvar: Z): stmt -> Prop :=
-    Forall_vars_stmt (fun x => fp < x <= maxvar) (fun x => fp < x < 32).
+    Forall_vars_stmt (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x))
+                     (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)).
 
   Definition valid_vars_tgt: stmt -> Prop :=
     Forall_vars_stmt (fun x => 3 <= x < 32) (fun x => 3 <= x < 32).
@@ -249,8 +262,9 @@ Section Spilling.
   Qed.
 *)
 
-  Definition tmps(l: locals): Prop :=
-    forall k v, map.get l k = Some v -> k = spill_tmp 1 \/ k = spill_tmp 2.
+  (* potentially uninitialized argument registers (used also as spilling temporaries) *)
+  Definition arg_regs(l: locals): Prop :=
+    forall k v, map.get l k = Some v -> 10 <= k < 18.
 
   Definition related(maxvar: Z)(frame: mem -> Prop)(fpval: word)
              (t1: Semantics.trace)(m1: mem)(l1: locals)
@@ -258,10 +272,10 @@ Section Spilling.
       exists lStack lRegs stackwords,
         t1 = t2 /\
         (eq m1 * word_array fpval stackwords * frame)%sep m2 /\
-        (forall x v, map.get lRegs x = Some v -> fp < x < 32) /\
+        (forall x v, map.get lRegs x = Some v -> fp < x < 32 /\ (x < a0 \/ a7 < x)) /\
         (forall x v, map.get lStack x = Some v -> 32 <= x <= maxvar) /\
         (eq lRegs * eq lStack)%sep l1 /\
-        (eq lRegs * tmps * ptsto fp fpval)%sep l2 /\
+        (eq lRegs * arg_regs * ptsto fp fpval)%sep l2 /\
         (forall r, 32 <= r <= maxvar -> forall v, map.get lStack r = Some v ->
            nth_error stackwords (Z.to_nat (r - 32)) = Some v) /\
         length stackwords = Z.to_nat (maxvar - 31).
@@ -269,25 +283,27 @@ Section Spilling.
   Definition envs_related(e1 e2: env): Prop :=
     forall f argvars resvars body1,
       map.get e1 f = Some (argvars, resvars, body1) ->
-      map.get e2 f = Some (argvars, resvars, spill_fbody body1) /\
-      Forall (fun x => fp < x < 32) argvars /\
-      Forall (fun x => fp < x < 32) resvars /\
+      map.get e2 f = Some (List.firstn (List.length argvars) (reg_class.all reg_class.arg),
+                           List.firstn (List.length resvars) (reg_class.all reg_class.arg),
+                           spill_fbody body1) /\
+      Forall (fun x => fp < x /\ (x < a0 \/ a7 < x)) argvars /\
+      Forall (fun x => fp < x /\ (x < a0 \/ a7 < x)) resvars /\
       (* upper bound always holds, but we still need to check lower bound: *)
       valid_vars_src (max_var body1) body1.
 
   Implicit Types post : Semantics.trace -> mem -> locals -> MetricLog -> Prop.
 
   Lemma put_tmp: forall l i v fpval lRegs,
-      (eq lRegs * tmps * ptsto fp fpval)%sep l ->
+      (eq lRegs * arg_regs * ptsto fp fpval)%sep l ->
       i = 1 \/ i = 2 ->
-      (forall x v, map.get lRegs x = Some v -> fp < x < 32) ->
-      (eq lRegs * tmps * ptsto fp fpval)%sep (map.put l (spill_tmp i) v).
+      (forall x v, map.get lRegs x = Some v -> fp < x < 32 /\ (x < a0 \/ a7 < x)) ->
+      (eq lRegs * arg_regs * ptsto fp fpval)%sep (map.put l (spill_tmp i) v).
   Proof.
     intros.
-    assert (((eq lRegs * ptsto fp fpval) * tmps)%sep l) as A by ecancel_assumption. clear H.
-    enough (((eq lRegs * ptsto fp fpval) * tmps)%sep (map.put l (spill_tmp i) v)). 1: ecancel_assumption.
+    assert (((eq lRegs * ptsto fp fpval) * arg_regs)%sep l) as A by ecancel_assumption. clear H.
+    enough (((eq lRegs * ptsto fp fpval) * arg_regs)%sep (map.put l (spill_tmp i) v)). 1: ecancel_assumption.
     unfold sep at 1. unfold sep at 1 in A. simp.
-    unfold tmps in *.
+    unfold arg_regs in *.
     unfold map.split.
     unfold map.split in Ap0. simp.
     exists mp, (map.put mq (spill_tmp i) v). ssplit.
@@ -299,25 +315,24 @@ Section Spilling.
       setoid_rewrite <- map.put_putmany_commute in Ap0p1.
       setoid_rewrite map.putmany_empty_r in Ap0p1.
       setoid_rewrite map.get_put_dec in Ap0p1.
-      rewrite map.get_put_dec in H. rewrite map.get_empty in H. unfold fp, spill_tmp in *.
+      rewrite map.get_put_dec in H. rewrite map.get_empty in H. unfold fp, spill_tmp, a0, a7 in *.
       destruct_one_match_hyp; simp; subst; destruct_one_match_hyp; simp; subst.
       + apply Z.eqb_eq in E0. blia.
-      + specialize H1 with (1 := H). rewrite Z.eqb_neq in E0. (*blia.
+      + specialize H1 with (1 := H). rewrite Z.eqb_neq in E0. blia.
       + eapply Ap0p1. 2: exact H2. rewrite E1. reflexivity.
       + specialize Ap0p1 with (2 := H2). rewrite E1 in Ap0p1. eauto.
     - assumption.
-    - intros. rewrite map.get_put_dec in H. unfold spill_tmp.
+    - intros. rewrite map.get_put_dec in H. unfold spill_tmp, a0, a7 in *.
       destruct_one_match_hyp.
       + blia.
       + eauto.
-  Qed. *)
-  Abort.
+  Qed.
 
 (*
   Lemma load_iarg_reg_correct(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc2 fpval post frame maxvar v,
       i = 1 \/ i = 2 ->
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
-      fp < r <= maxvar ->
+      fp < r <= maxvar /\ (r < a0 \/ a7 < r) ->
       map.get l1 r = Some v ->
       (forall mc2,
           related maxvar frame fpval t1 m1 l1 t2 m2 (map.put l2 (iarg_reg i r) v) ->
@@ -363,7 +378,7 @@ Section Spilling.
   Lemma load_iarg_reg_correct'(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc1 mc2 post frame maxvar v fpval,
       i = 1 \/ i = 2 ->
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
-      fp < r <= maxvar ->
+      fp < r <= maxvar /\ (r < a0 \/ a7 < r) ->
       map.get l1 r = Some v ->
       post t1 m1 l1 mc1 ->
       exec e2 (load_iarg_reg i r) t2 m2 l2 mc2
@@ -413,7 +428,7 @@ Section Spilling.
   Lemma load_iarg_reg_correct''(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc2 frame maxvar v fpval,
       i = 1 \/ i = 2 ->
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
-      fp < r <= maxvar ->
+      fp < r <= maxvar /\ (r < a0 \/ a7 < r) ->
       map.get l1 r = Some v ->
       exec e2 (load_iarg_reg i r) t2 m2 l2 mc2 (fun t2' m2' l2' mc2' =>
         t2' = t2 /\ m2' = m2 /\ l2' = map.put l2 (iarg_reg i r) v /\
@@ -460,7 +475,7 @@ Section Spilling.
   Lemma save_ires_reg_correct: forall e t1 t2 m1 m2 l1 l2 mc1 mc2 x v maxvar frame post fpval,
       post t1 m1 (map.put l1 x v) mc1 ->
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
-      fp < x <= maxvar ->
+      fp < x <= maxvar /\ (r < a0 \/ a7 < r) ->
       exec e (save_ires_reg x) t2 m2 (map.put l2 (ires_reg x) v) mc2
            (fun t2' m2' l2' mc2' => exists t1' m1' l1' mc1',
                 related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\ post t1' m1' l1' mc1').
@@ -542,7 +557,7 @@ Section Spilling.
       2: {
         spec (sep_eq_put lRegs l2) as A. 1,3: ecancel_assumption.
         clear -localsOk H1p0.
-        unfold tmps, sep, map.split, tmp1, tmp2, fp in *.
+        unfold arg_regs, sep, map.split, tmp1, tmp2, fp in *.
         intros. simp.
         unfold ptsto, map.disjoint in *. subst.
         rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty in H0.
@@ -558,7 +573,7 @@ Section Spilling.
      yet in l1 and l2. *)
   Lemma save_ires_reg_correct'': forall e t1 t2 m1 m2 l1 l2 mc2 x v maxvar frame post fpval,
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
-      fp < x <= maxvar ->
+      fp < x <= maxvar /\ (x < a0 \/ a7 < x) ->
       (forall t2' m2' l2' mc2',
           related maxvar frame fpval t1 m1 (map.put l1 x v) t2' m2' l2' ->
           post t2' m2' l2' mc2') ->
@@ -641,7 +656,7 @@ Section Spilling.
       2: {
         spec (sep_eq_put lRegs l2) as A. 1,3: ecancel_assumption.
         clear -localsOk H0p0.
-        unfold tmps, sep, map.split, tmp1, tmp2, fp in *.
+        unfold arg_regs, sep, map.split, tmp1, tmp2, fp in *.
         intros. simp.
         unfold ptsto, map.disjoint in *. subst.
         rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty in H0.
@@ -791,7 +806,7 @@ Section Spilling.
         pose proof P as P0.
         eapply map.putmany_of_list_zip_grow with (l := l2) in P. 2: eassumption. 2: {
           eapply Forall_impl. 2: eassumption.
-          clear -localsOk SP22. unfold fp, tmps, tmp1, tmp2 in *. intros.
+          clear -localsOk SP22. unfold fp, arg_regs, tmp1, tmp2 in *. intros.
           unfold sep, ptsto, map.split in *. simp.
           rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty.
           repeat destruct_one_match; try congruence; repeat destruct_one_match_hyp; try congruence; try blia.
@@ -811,7 +826,7 @@ Section Spilling.
         6: eassumption.
         4: solve [unfold sep; eauto].
         4: {
-          enough ((eq lRegs' * (tmps * ptsto fp fpval))%sep l2') as En. 1: ecancel_assumption.
+          enough ((eq lRegs' * (arg_regs * ptsto fp fpval))%sep l2') as En. 1: ecancel_assumption.
           unfold sep at 1. eauto. }
         { eenough ((eq _ * (word_array fpval stackwords * frame))%sep m') as En.
           1: ecancel_assumption.
@@ -879,7 +894,7 @@ Section Spilling.
             eapply Forall_forall in Evp1; eassumption. }
           { intros x v G. rewrite map.get_empty in G. discriminate. }
           { unfold sep. exists st0, map.empty. ssplit; eauto. apply map.split_empty_r. reflexivity. }
-          { unfold tmps, sep.
+          { unfold arg_regs, sep.
             repeat eexists.
             - rewrite <- map.put_putmany_commute. do 2 rewrite map.putmany_empty_r. reflexivity.
             - rewrite map.putmany_empty_r. unfold map.disjoint. intros *. intros G1 G2.
@@ -924,7 +939,7 @@ Section Spilling.
         pose proof P as P0.
         eapply map.putmany_of_list_zip_grow with (l := l2) in P. 2: eassumption. 2: {
           eapply Forall_impl. 2: eassumption.
-          clear -localsOk SP22. unfold fp, tmps, tmp1, tmp2 in *. intros.
+          clear -localsOk SP22. unfold fp, arg_regs, tmp1, tmp2 in *. intros.
           unfold sep, ptsto, map.split in *. simp.
           rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty.
           repeat destruct_one_match; try congruence; repeat destruct_one_match_hyp; try congruence; try blia.
