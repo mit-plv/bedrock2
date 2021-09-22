@@ -303,11 +303,10 @@ Module exec.
                  (addMetricStores 1
                  (addMetricLoads 2 mc)))) ->
         exec (SInteract resvars action argvars) t m l mc post
-    | call: forall t m l mc binds fname args params rets fbody argvs st0 post outcome,
+    | call: forall t m l mc binds fname args params rets fbody argvs post outcome,
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
-        map.putmany_of_list_zip params argvs map.empty = Some st0 ->
-        exec fbody t m st0 mc outcome ->
+        (forall st0, map.getmany_of_list st0 params = Some argvs -> exec fbody t m st0 mc outcome) ->
         (forall t' m' mc' st1,
             outcome t' m' st1 mc' ->
             exists retvs l',
@@ -437,15 +436,16 @@ Module exec.
       intros. eapply seq. 1: eassumption. simpl. clear. auto.
     Qed.
 
-    Lemma call_cps: forall fname params rets binds args fbody argvs t (l: locals) m mc st post,
+    Lemma call_cps: forall fname params rets binds args fbody argvs t (l: locals) m mc post,
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
-        map.putmany_of_list_zip params argvs map.empty = Some st ->
-        exec fbody t m st mc (fun t' m' st' mc' =>
-          exists retvs l',
-            map.getmany_of_list st' rets = Some retvs /\
-            map.putmany_of_list_zip binds retvs l = Some l' /\
-            post t' m' l' mc') ->
+        (forall st,
+            map.getmany_of_list st params = Some argvs ->
+            exec fbody t m st mc (fun t' m' st' mc' =>
+              exists retvs l',
+                map.getmany_of_list st' rets = Some retvs /\
+                map.putmany_of_list_zip binds retvs l = Some l' /\
+                post t' m' l' mc')) ->
       exec (SCall binds fname args) t m l mc post.
     Proof.
       intros. eapply call; try eassumption.
@@ -480,9 +480,9 @@ Module exec.
         edestruct H2; [eassumption|].
         simp. eauto 10.
       - eapply call.
-        4: eapply IHexec.
+        3: intros; eapply H2.
         all: eauto.
-        intros. simp.
+        intros.
         specialize H3 with (1 := H5).
         simp. eauto 10.
       - eapply stackalloc. 1: assumption.
@@ -546,13 +546,12 @@ Module exec.
           eauto 10.
 
       - (* SCall *)
-        rename IHexec into IH.
-        specialize IH with (1 := H16).
-        eapply @call; [..|exact IH|]; eauto.
+        rename H2 into IH.
+        eapply @call with (outcome := fun t' m' l' mc' => outcome t' m' l' mc' /\ outcome0 t' m' l' mc').
+        3: intros; eapply IH. all: try eassumption. 1: eauto. intros. simp.
         rename H3 into Ex1.
-        rename H17 into Ex2.
+        rename H16 into Ex2.
         move Ex1 before Ex2.
-        intros. simpl in *. simp.
         edestruct Ex1; [eassumption|].
         edestruct Ex2; [eassumption|].
         simp.
@@ -630,7 +629,7 @@ Section FlatImp2.
       simpl. try split; eauto.
       intros.
       eapply map.only_differ_putmany. eassumption.
-    - eapply exec.call. 4: exact H2. (* don't pick IHexec! *) all: try eassumption.
+    - eapply exec.call. 3: exact H1. (* don't pick IHexec! *) all: try eassumption.
       intros; simpl in *; simp.
       edestruct H3; try eassumption. simp.
       do 2 eexists; split; [|split]; try eassumption.

@@ -997,6 +997,69 @@ Section RegAlloc.
       eapply putmany_of_list_zip_states_compat in P. 2-3: eassumption. destruct P as (lL' & P & SC).
       eexists. split. 1: eassumption. intros. eauto.
     - (* Case exec.call *)
+      rename H3 into IHexec.
+      rename binds0 into binds', args0 into args'.
+      unfold check_funcs in H.
+      eapply map.get_forallb in H. 2: eassumption.
+      unfold lookup_and_check_func in *. simp.
+      destruct p as ((params' & rets') & fbody').
+      unfold check_func in *. simp.
+      eapply @exec.call. 1: eassumption. 1: eauto using states_compat_getmany.
+      + intros st' Gst'.
+        apply_in_hyps @map.getmany_of_list_length.
+        apply_in_hyps assert_ins_same_length.
+        apply_in_hyps assignments_same_length.
+        apply_in_hyps @map.putmany_of_list_zip_sameLength.
+        assert (length params = length argvs) as L3 by congruence.
+        eapply map.sameLength_putmany_of_list with (st := map.empty) in L3. destruct L3 as [lLF L3].
+        eapply (IHexec lLF). 2: eassumption.
+        1: admit.
+        eapply states_compat_precond.
+        edestruct putmany_of_list_zip_states_compat as [ lLF0 [L SC] ].
+        2: exact E4. 2: eapply states_compat_empty. 1: eassumption.
+        rewrite L3 in L. apply Option.eq_of_eq_Some in L. subst lLF0. exact SC.
+      + cbv beta. intros. simp. edestruct H4 as (retvs & lHF' & G & P & Hpost). 1: eassumption.
+        edestruct putmany_of_list_zip_states_compat as (lL' & L4 & SC).
+        1: exact P. 1: exact H5. 1: eassumption.
+        destruct u.
+        do 2 eexists. ssplit.
+        * eapply states_compat_getmany; eassumption.
+        * exact L4.
+        * eexists. split. 2: eassumption. exact SC.
+
+
+    - (* Case exec.call *)
+      rename H3 into IHexec.
+      rename binds0 into binds', args0 into args'.
+      unfold check_funcs in H.
+      eapply map.get_forallb in H. 2: eassumption.
+      unfold lookup_and_check_func in *. simp.
+      destruct p as ((params' & rets') & fbody').
+      unfold check_func in *. simp.
+      eapply @exec.call. 1: eassumption. 1: eauto using states_compat_getmany.
+      + intros.
+        apply_in_hyps @map.getmany_of_list_length.
+        apply_in_hyps assert_ins_same_length.
+        apply_in_hyps assignments_same_length.
+        apply_in_hyps @map.putmany_of_list_zip_sameLength.
+        assert (length params = length argvs) as L3 by congruence.
+        eapply map.sameLength_putmany_of_list with (st := map.empty) in L3. destruct L3 as [lLF L3].
+        eapply (IHexec lLF). 2: eassumption.
+        1: admit.
+        eapply states_compat_precond.
+        edestruct putmany_of_list_zip_states_compat as [ lLF0 [L SC] ].
+        2: exact E4. 2: eapply states_compat_empty. 1: eassumption.
+        rewrite L3 in L. apply Option.eq_of_eq_Some in L. subst lLF0. exact SC.
+      + cbv beta. intros. simp. edestruct H4 as (retvs & lHF' & G & P & Hpost). 1: eassumption.
+        edestruct putmany_of_list_zip_states_compat as (lL' & L4 & SC).
+        1: exact P. 1: exact H5. 1: eassumption.
+        destruct u.
+        do 2 eexists. ssplit.
+        * eapply states_compat_getmany; eassumption.
+        * exact L4.
+        * eexists. split. 2: eassumption. exact SC.
+
+    - (* Case exec.call *)
       rename binds0 into binds', args0 into args'.
       unfold check_funcs in H.
       eapply map.get_forallb in H. 2: eassumption.
