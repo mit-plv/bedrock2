@@ -27,7 +27,6 @@ Require Import riscv.Proofs.EncodeBound.
 Require Import riscv.Proofs.DecodeEncode.
 Require Import riscv.Platform.MetricSane.
 Require Import coqutil.Decidable.
-Require Import compiler.FlatToRiscvDef.
 Require Import coqutil.Tactics.Simp.
 Require Import riscv.Utility.runsToNonDet.
 Require Import coqutil.Datatypes.ListSet.
@@ -747,11 +746,11 @@ Ltac simpl_MetricRiscvMachine_mem :=
 
 Ltac sidecondition_hook := idtac.
 
+#[export] Hint Resolve Forall_impl : sidecondition_hints.
+
 Ltac sidecondition :=
   simpl; simpl_MetricRiscvMachine_get_set;
   match goal with
-  | |- not_InvalidInstruction _ =>
-    cbv [compile_load compile_store compile_bcond_by_inverting]; repeat destruct_one_match; exact I
   (* these branches are allowed to instantiate evars in a controlled manner: *)
   | H: map.get _ _ = Some _ |- _ => exact H
   | |- map.get _ _ = Some _ =>
@@ -773,12 +772,8 @@ Ltac sidecondition :=
   | A: map.get ?lH ?x = Some _, E: map.extends ?lL ?lH |- map.get ?lL ?x = Some _ =>
     eapply (map.extends_get A E)
   (* but we don't have a general "eassumption" branch, only "assumption": *)
-  | |- _ => solve [auto using valid_FlatImp_var_implies_valid_register,
-                              valid_FlatImp_vars_bcond_implies_valid_registers_bcond]
-  | |- ?G => assert_fails (has_evar G);
-             solve [eauto using valid_FlatImp_var_implies_valid_register,
-                                valid_FlatImp_vars_bcond_implies_valid_registers_bcond,
-                                Forall_impl]
+  | |- _ => solve [auto with sidecondition_hints]
+  | |- ?G => assert_fails (has_evar G); solve [eauto with sidecondition_hints]
   | |- Memory.load ?sz ?m ?addr = Some ?v =>
     unfold Memory.load, Memory.load_Z in *;
     simpl_MetricRiscvMachine_mem;

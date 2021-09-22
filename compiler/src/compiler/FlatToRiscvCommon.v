@@ -960,8 +960,16 @@ Ltac subst_load_bytes_for_eq :=
     edestruct P as [Q ?]; clear P; [ecancel_assumption|]
   end.
 
+Hint Resolve
+     valid_FlatImp_var_implies_valid_register
+     valid_FlatImp_vars_bcond_implies_valid_registers_bcond
+: sidecondition_hints.
+
 Ltac simulate'_step :=
   match goal with
+  (* mentions definition only introduced in FlatToRiscvDef: *)
+  | |- not_InvalidInstruction _ =>
+    cbv [compile_load compile_store compile_bcond_by_inverting]; repeat destruct_one_match; exact I
   (* lemmas introduced only in this file: *)
   | |- mcomp_sat (Monads.Bind (Execute.execute (compile_load _ _ _ _ _)) _) _ _ =>
        eapply go_load; [ sidecondition.. | idtac ]
