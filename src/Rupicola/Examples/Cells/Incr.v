@@ -2,8 +2,14 @@ Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.Cells.Cells.
 
 Section with_parameters.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Definition incr_gallina (c: cell) :=
     let/n v := get c in
@@ -13,7 +19,7 @@ Section with_parameters.
     c.
 
   Instance spec_of_incr : spec_of "incr" :=
-    fnspec! "incr" (c_ptr : address) / (c : cell) R,
+    fnspec! "incr" (c_ptr : word) / (c : cell) R,
     { requires fns tr mem :=
         (cell_value c_ptr c ⋆ R) mem;
       ensures tr' mem' :=

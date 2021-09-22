@@ -4,20 +4,26 @@ Require Import Rupicola.Examples.Nondeterminism.NonDeterminism.
 Import NDMonad.
 
 Section Peek.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok _}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Definition Bag := list word.
 
   Definition bag_at (addr: word) (b: Bag) :=
     Lift1Prop.ex1 (fun words =>
                      emp (forall x, List.In x words <-> List.In x b) *
-                     array scalar (word.of_Z (Memory.bytes_per_word Semantics.width))
+                     array scalar (word.of_Z (Memory.bytes_per_word width))
                            addr words)%sep.
 
   Definition peek (l: Bag) := %{ x | List.In x l }.
 
-  Lemma compile_peek {tr mem locals functions} (b: Bag) :
+  Lemma compile_peek : forall {tr mem locals functions} (b: Bag),
     let c := peek b in
     forall {B} {pred: B -> predicate}
       {k: word -> Comp B} {k_impl}

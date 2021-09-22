@@ -59,8 +59,14 @@ Notation "%{ x : A | P }" :=
 Require Import Coq.Init.Byte.
 
 Section with_parameters.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok _}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Definition pbind {A} (pred: A -> predicate) (c: Comp A) : predicate :=
     fun tr mem locals => exists a, c a /\ pred a tr mem locals.
@@ -85,7 +91,7 @@ Section with_parameters.
     intros; eapply WeakestPrecondition_unbind; eauto.
   Qed.
 
-  Lemma compile_setup_nondet_pbind {tr mem locals functions} :
+  Lemma compile_setup_nondet_pbind : forall {tr mem locals functions},
     forall {A} {pred: A -> _ -> predicate}
       {spec: Comp A} {cmd}
       retvars,

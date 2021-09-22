@@ -2,11 +2,17 @@ Require Import Rupicola.Lib.Api.
 
 (* TODO: ideally, all compilation lemmas would now use seplogic for locals *)
 Section Var.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Definition Var (name : string) (value : word)
-    : Semantics.locals -> Prop :=
+    : locals -> Prop :=
     eq (map.put map.empty name value).
 
   Lemma Var_get l name value R :
@@ -65,7 +71,7 @@ Section Var.
     destruct_one_match; congruence.
   Qed.
 
-  Lemma Var_put_undef l n v (R : Semantics.locals -> Prop) :
+  Lemma Var_put_undef l n v (R : locals -> Prop) :
     map.get l n = None ->
     R l ->
     (Var n v * R)%sep (map.put l n v).
@@ -102,26 +108,26 @@ Section Var.
   Qed.
 End Var.
 
-Ltac extract_Var H name :=
+Ltac extract_Var locals H name :=
   let l := match type of H with
              sep _ _ ?l => l end in
   let i := match type of H with
              context [Var name ?i] => i end in
   let R := fresh "R" in
   let H' := fresh in
-  evar (R : Semantics.locals -> Prop);
+  evar (R : locals -> Prop);
   assert ((Var name i * R)%sep l) as H' by ecancel_assumption;
   subst R; clear H; rename H' into H.
 
-Ltac straightline_map_solver_locals :=
+Ltac straightline_map_solver_locals locals :=
   match goal with
-  | |- @map.get _ _ Semantics.locals _ _ = Some _ =>
+  | |- @map.get _ _ locals _ _ = Some _ =>
     eapply Var_get; ecancel_assumption
   end.
 
-Ltac straightline' ::=
+Ltac straightline' locals ::=
   straightline_plus
-    ltac:(first [ straightline_map_solver_locals
+    ltac:(first [ straightline_map_solver_locals locals
                 | straightline_map_solver ]).
 
 Ltac locals_sep' l seen_names :=
@@ -163,17 +169,17 @@ Ltac sep_from_literal_locals locals :=
   let R := locals_sep locals in
   assert (R locals) by (try subst locals; repeat cancel_Var).
 
-Ltac literal_locals_from_sep :=
+Ltac literal_locals_from_sep locals :=
   let l := lazymatch goal with
-           | H : @sep _ _ Semantics.locals ?p ?q ?l |- context [?l] =>
+           | H : @sep _ _ locals ?p ?q ?l |- context [?l] =>
              l end in
   match goal with
-  | H : @sep _ _ Semantics.locals ?p ?q ?l |- context [?l] =>
+  | H : @sep _ _ locals ?p ?q ?l |- context [?l] =>
     seprewrite_in Var_exact H
   end;
   repeat
     lazymatch goal with
-    | H : @sep _ _ Semantics.locals ?p ?q ?l |- context [?l] =>
+    | H : @sep _ _ locals ?p ?q ?l |- context [?l] =>
       first [ seprewrite_in Var_put_eq_r H
             | seprewrite_in Var_put_eq_l H];
       [ rewrite ?map.get_put_diff by congruence;

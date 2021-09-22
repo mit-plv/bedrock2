@@ -17,16 +17,23 @@ Notation "'let/o'  x  :=  val  'goto_fail' default 'in'  body" :=
 Hint Extern 2 (IsRupicolaBinding (do_or_default _ _ _)) => exact true : typeclass_instances.
 
 Section KVSwap.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Context {ops} {key value : Type} {Value}
           {dummy_value : value}
           {kvp : kv_parameters}
-          {ok : @kv_parameters_ok semantics ops key value Value kvp}.
+          {ok : @kv_parameters_ok _ BW _ mem ops key value Value kvp}.
 
   Existing Instances ops kvp ok.
   Existing Instances map_ok annotated_map_ok key_eq_dec.
   Existing Instances spec_of_map_get.
+  Local Hint Extern 1 (spec_of (fst get)) => unshelve simple refine (@spec_of_map_get _ _ _ _ _ _ _ _ _ _ _) : typeclass_instances. (* COQBUG(14707) *)
 
   (* MAP LAYOUTS
 
@@ -246,8 +253,8 @@ Section KVSwap.
     - discriminate.
   Qed.
 
-  Lemma compile_map_get
-        {tr mem locals functions} {T} {pred: T -> predicate} :
+  Lemma compile_map_get : forall
+        {tr mem locals functions} {T} {pred: T -> predicate},
     forall m m_ptr m_var M
       k k_ptr k_var
       default default_impl
@@ -400,8 +407,8 @@ Section KVSwap.
                end).
    *)
 
-  Lemma compile_map_put_replace
-        {tr mem locals functions} {T} {pred: T -> predicate} :
+  Lemma compile_map_put_replace : forall
+        {tr mem locals functions} {T} {pred: T -> predicate},
     forall m m_ptr m_var M
       k k_ptr k_var
       v v_ptr v_var

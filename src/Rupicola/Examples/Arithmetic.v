@@ -4,14 +4,20 @@ Require Import Rupicola.Lib.Loops.
 From bedrock2 Require BasicC32Semantics BasicC64Semantics.
 
 Module Type FNV1A_params.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {wordok : word.ok word} {mapok : map.ok mem}.
+  Context {localsok : map.ok locals}.
+  Context {envok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Parameter prime : word.
   Parameter offset : word.
 End FNV1A_params.
 
-Module FNV1A (P: FNV1A_params).
-  Existing Instances P.semantics P.semantics_ok.
+Module FNV1A (Import P: FNV1A_params).
+  Existing Instances BW word locals mem env ext_spec wordok mapok localsok envok ext_spec_ok.
   Import SizedListArrayCompiler.
 
   Notation "∅" := map.empty.
@@ -26,7 +32,7 @@ Module FNV1A (P: FNV1A_params).
     let/n hash := word.mul hash p in
     hash.
 
-  Implicit Type R : Semantics.mem -> Prop.
+  Implicit Type R : mem -> Prop.
   Instance spec_of_update : spec_of "update" :=
     fnspec! "update" (hash: word) (data: word) ~> hash',
     { requires fns tr mem := True;
@@ -83,8 +89,9 @@ Module FNV1A (P: FNV1A_params).
 End FNV1A.
 
 Module FNV1A32_params <: FNV1A_params.
-  Definition semantics : Semantics.parameters := BasicC32Semantics.parameters.
-  Definition semantics_ok : Semantics.parameters_ok semantics := _.
+  Definition width := 32%Z.
+  Definition BW := Bitwidth32.BW32.
+  Include BasicC32Semantics.
   Definition prime : Naive.word32 := Eval compute in word.of_Z 16777619.
   Definition offset : Naive.word32 := Eval compute in word.of_Z 2166136261.
 End FNV1A32_params.
@@ -92,8 +99,9 @@ End FNV1A32_params.
 Module FNV1A32 := FNV1A FNV1A32_params.
 
 Module FNV1A64_params <: FNV1A_params.
-  Definition semantics : Semantics.parameters := BasicC64Semantics.parameters.
-  Definition semantics_ok : Semantics.parameters_ok semantics := _.
+  Definition width := 64%Z.
+  Definition BW := Bitwidth64.BW64.
+  Include BasicC64Semantics.
   Definition prime : Naive.word64 := Eval compute in word.of_Z 1099511628211.
   Definition offset : Naive.word64 := Eval compute in word.of_Z 14695981039346656037.
 End FNV1A64_params.
@@ -115,7 +123,7 @@ Module Murmur3.
     let/n k := word.mul k (word.of_Z 461845907) in
     k.
 
-  Implicit Type R : Semantics.mem -> Prop.
+  Implicit Type R : mem -> Prop.
   Instance spec_of_scramble : spec_of "scramble" :=
     fnspec! "scramble" (k: word) ~> k',
     { requires fns tr mem := True;

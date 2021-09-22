@@ -1,19 +1,27 @@
 Require Import Rupicola.Lib.Api.
 
-Section KVStore.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
 
-  Inductive annotation : Type :=
-  | Reserved : address -> annotation
-  | Borrowed : address -> annotation
-  | Owned : annotation
-  .
+Inductive annotation {width: Z} {BW: Bitwidth width} {word: word.word width} : Type :=
+| Reserved : word -> annotation
+| Borrowed : word -> annotation
+| Owned : annotation
+.
+
+Section KVStore.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
+  Local Notation annotation := (@annotation _ BW word).
 
   Definition AnnotatedValue_gen {value}
-             (Value : Semantics.word -> value -> Semantics.mem -> Prop)
-             (addr : Semantics.word) (av : annotation * value)
-    : Semantics.mem -> Prop :=
+             (Value : word -> value -> mem -> Prop)
+             (addr : word) (av : annotation * value)
+    : mem -> Prop :=
     match (fst av) with
     | Reserved pv => (emp (addr = pv) * Value pv (snd av))%sep
     | Borrowed pv => emp (addr = pv)
@@ -27,18 +35,18 @@ Section KVStore.
 
   Class kv_parameters
         {ops : kv_ops} {key value : Type}
-        {Value : Semantics.word -> value -> Semantics.mem -> Prop} :=
+        {Value : word -> value -> mem -> Prop} :=
     { map_gen : forall value, map.map key value;
       map := map_gen value;
       annotated_map := map_gen (annotation * value);
       init_map_size_in_bytes : nat;
       key_eqb : key -> key -> bool;
-      Key : Semantics.word -> key -> Semantics.mem -> Prop;
+      Key : word -> key -> mem -> Prop;
       Map_gen :
-        forall value (Value : Semantics.word -> value ->
-                              Semantics.mem -> Prop),
-          Semantics.word -> map.rep (map:=map_gen value) ->
-          Semantics.mem -> Prop;
+        forall value (Value : word -> value ->
+                              mem -> Prop),
+          word -> map.rep (map:=map_gen value) ->
+          mem -> Prop;
       Map : _ -> map -> _ -> _ := Map_gen value Value;
       AnnotatedMap : _ -> annotated_map -> _ -> _ :=
         Map_gen (annotation * value)

@@ -178,10 +178,10 @@ Ltac straightline_plus t :=
    where put is not computable) *)
 Ltac straightline_map_solver :=
   match goal with
-  | |- @map.get _ _ ?M _ ?k = Some ?e' =>
+  | |- @map.get ?K ?V ?M _ ?k = Some ?e' =>
     let e := rdelta.rdelta e' in
     is_evar e;
-    (match M with | Semantics.locals => idtac end;
+    (constr_eq K string; match V with word.rep => idtac end;
      once (let v :=
                multimatch goal with
                  x := context[@map.put _ _ M _ k ?v] |- _ => v end in
@@ -190,10 +190,10 @@ Ltac straightline_map_solver :=
               x := context[map.put _ k _] |- _ => subst x
             end;
      autorewrite with mapsimpl; exact eq_refl)
-  | |- @map.get _ _ ?M _ ?k = Some ?e' =>
+  | |- @map.get ?K ?V ?M _ ?k = Some ?e' =>
     let e := rdelta.rdelta e' in
     is_evar e;
-    (match M with | Semantics.locals => idtac end;
+    (constr_eq K string; match V with word.rep => idtac end;
      once (let v :=
                multimatch goal with
                | H : @map.get _ _ M _ k = Some ?v |- _ => v end in

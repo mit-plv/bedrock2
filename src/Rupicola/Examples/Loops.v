@@ -4,8 +4,14 @@ Require Import Rupicola.Lib.Loops.
 Require Import Rupicola.Examples.Cells.Cells.
 
 Section Ex.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Ltac compile_loopy :=
     compile_setup;
@@ -20,7 +26,7 @@ Section Ex.
       (left associativity, at level 1,
        format "m [[ k  ←  v ]]").
 
-  Lemma signed_lt_unsigned (w : Semantics.word):
+  Lemma signed_lt_unsigned (w : word):
     word.signed w <= word.unsigned w.
   Proof.
     pose proof word.unsigned_range w.
@@ -58,7 +64,7 @@ Section Ex.
   Qed.
 
   Instance spec_of_vect_memcpy : spec_of "vect_memcpy" :=
-    fnspec! "vect_memcpy" (len: word) (a1_ptr a2_ptr : address) /
+    fnspec! "vect_memcpy" (len: word) (a1_ptr a2_ptr : word) /
           {n1} (a1: VectorArray.t word n1)
           {n2} (a2: VectorArray.t word n2)
           (pr1: word.unsigned len < Z.of_nat n1)
@@ -108,7 +114,7 @@ Section Ex.
   Qed.
 
   Instance spec_of_vect_memcpy_s : spec_of "vect_memcpy_s" :=
-    fnspec! "vect_memcpy_s" (len: word) (a1_ptr a2_ptr : address) /
+    fnspec! "vect_memcpy_s" (len: word) (a1_ptr a2_ptr : word) /
           {n1} (a1: VectorArray.t word n1)
           {n2} (a2: VectorArray.t word n2)
           (pr1: word.signed len < Z.of_nat n1)
@@ -144,7 +150,7 @@ Section Ex.
     (a1, a2).
 
   Instance spec_of_sizedlist_memcpy : spec_of "sizedlist_memcpy" :=
-    fnspec! "sizedlist_memcpy" (len: word) (a1_ptr a2_ptr : address) /
+    fnspec! "sizedlist_memcpy" (len: word) (a1_ptr a2_ptr : word) /
           {n1} (a1: ListArray.t word)
           {n2} (a2: ListArray.t word)
           (pr1: word.unsigned len < Z.of_nat n1)
@@ -172,7 +178,7 @@ Section Ex.
   End Sz.
 
   Instance spec_of_unsizedlist_memcpy : spec_of "unsizedlist_memcpy" :=
-    fnspec! "unsizedlist_memcpy" (len: word) (a1_ptr a2_ptr : address) /
+    fnspec! "unsizedlist_memcpy" (len: word) (a1_ptr a2_ptr : word) /
           (a1: ListArray.t word) (a2: ListArray.t word)
           (pr1: word.unsigned len < Z.of_nat (List.length a1))
           (pr2: word.unsigned len < Z.of_nat (List.length a2))

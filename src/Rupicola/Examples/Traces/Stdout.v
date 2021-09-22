@@ -4,8 +4,14 @@ Require Import Rupicola.Examples.Traces.Trace.
 Import TrMonad.
 
 Section Stdout.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok _}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Definition write (s: string) : Eventful string unit :=
     {| val := tt; trace := [s] |}.
@@ -14,7 +20,7 @@ Section Stdout.
 
   Notation trace_entry := ((fun (A: Type) (_: list A) => A) _ ([]: Semantics.trace)).
 
-  Definition words_of_const_string (s: string) : list (Semantics.word) :=
+  Definition words_of_const_string (s: string) : list (word) :=
     let chars := String.list_byte_of_string s in
     List.map (fun b => word_of_byte b) chars.
 
@@ -27,7 +33,7 @@ Section Stdout.
 
 
   Lemma wp_literals_of_const_string:
-    forall (mem : Semantics.mem) (locals : Semantics.locals) (s : string),
+    forall (mem : mem) (locals : locals) (s : string),
       WeakestPrecondition.dexprs
         mem locals (literals_of_const_string s) (words_of_const_string s).
   Proof.
@@ -52,7 +58,7 @@ Section Stdout.
               rets = [word.of_Z 0] /\
               tr' = (map.empty, "putchars", args, (map.empty, [])) :: tr)).
 
-  Lemma compile_putchars {tr mem locals functions} (s: string) :
+  Lemma compile_putchars : forall {tr mem locals functions} (s: string),
     let evf := write s in
     forall {B} {pred: Writeful B -> predicate}
       {k: unit -> Writeful B} {k_impl}
@@ -83,14 +89,14 @@ Section Stdout.
     rewrite tbind_bindn; eassumption.
   Qed.
 
-  Definition hello_world_src (y: Semantics.word) : Eventful string Semantics.word :=
+  Definition hello_world_src (y: word) : Eventful string word :=
     let/n x := word.of_Z 1 in
     let/! _ := write "hello, world!" in
     let/n out := word.add x y in
     ret out.
 
   Instance spec_of_hello_word : spec_of "hello_world" :=
-    fnspec! "hello_world" y / (R: Semantics.mem -> Prop),
+    fnspec! "hello_world" y / (R: mem -> Prop),
     { requires fns tr mem :=
         spec_of_putchars fns /\ R mem;
       ensures tr' mem' rets :=

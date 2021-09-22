@@ -8,22 +8,28 @@ Open Scope Z_scope.
 Import NDMonad.
 
 Section Peek.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok _}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Definition stack_alloc (nbytes: nat) : Comp (list byte) :=
     %{ ls: list byte | List.length ls = nbytes }.
 
   Definition bytes_at addr data :=
-    listarray_value AccessByte addr data.
+    listarray_value (word:=word) AccessByte addr data.
 
-  Lemma compile_stack_alloc {tr mem locals functions} (nbytes: nat):
+  Lemma compile_stack_alloc : forall {tr mem locals functions} (nbytes: nat),
     let c := stack_alloc nbytes in
     forall {B} {pred: B -> predicate}
       {k: list byte -> Comp B} {k_impl}
       (R: _ -> Prop) var,
       R mem ->
-      Z.of_nat nbytes mod Memory.bytes_per_word Semantics.width = 0 ->
+      Z.of_nat nbytes mod Memory.bytes_per_word width = 0 ->
       (forall ptr (bs: ListArray.t byte) mem,
           List.length bs = nbytes ->
           (sizedlistarray_value AccessByte ptr nbytes bs * R)%sep mem ->
@@ -50,7 +56,7 @@ Section Peek.
     rewrite Nat2Z.id in Hlen.
     eapply WeakestPrecondition_weaken; cycle 1.
     - apply Hkimpl; eauto.
-      apply sep_comm; exists mem, mStack;
+      apply sep_comm; exists mem0, mStack;
         eauto using sizedlistarray_value_of_array.
     - intros tr' mem' locals' (b & Hk & (R' & bs' & (mR' & mStack' & Hsplit' & HR' & Hbs')%sep_comm & Hpred')).
       eexists; eexists; split; [|split].
@@ -66,10 +72,10 @@ Section Peek.
   Lemma stackalloc_universal_bound :
     forall z,
       Z.modulo z 8 = 0 ->
-      Z.modulo z (Memory.bytes_per_word Semantics.width) = 0.
+      Z.modulo z (Memory.bytes_per_word width) = 0.
   Proof.
     intros z Hmod.
-    destruct Semantics.width_cases as [-> | ->];
+    destruct width_cases as [-> | ->];
       unfold Memory.bytes_per_word, Z.div; simpl.
     2: eauto.
     - apply Z_div_exact_full_2 in Hmod; try congruence; rewrite Hmod.
@@ -94,7 +100,7 @@ Section Peek.
      rewrite <- Z.lxor_assoc, Z.lxor_nilpotent, Z.lxor_0_l; reflexivity.
   Qed.
 
-  Implicit Type R : Semantics.mem -> Prop.
+  Implicit Type R : mem -> Prop.
   Instance spec_of_nondet_xor : spec_of "nondet_xor" :=
     fnspec! "nondet_xor" w0 / R,
     { requires fns tr mem := R mem;

@@ -152,23 +152,6 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args 'returns' rets '===>' p
                   (postcondition_func (fun rets => post) R tr)) ..))
      (x binder, y binder, only parsing, at level 199) : old.
 
-Example spec_example_withrets {semantics : Semantics.parameters}
-  : spec_of "example" :=
-  (forall! (pa : address) (a b : word),
-      (sep (pa ~> a))
-        ===>
-        "example" @ [pa; b] returns r
-        ===>
-        (liftexists x, emp (r = [x]) * (pa ~> x))%sep)%old.
-Example spec_example_norets {semantics : Semantics.parameters}
-  : spec_of "example" :=
-     (forall! (pa : address) (a b : word),
-         (sep (pa ~> a))
-           ===>
-           "example" @ [pa; b] returns r
-           ===>
-           (emp (r = []) * (pa ~> word.add a b))%sep)%old.
-
 (* shorthand for no return values *)
 Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
 (fun functions =>
@@ -181,18 +164,41 @@ Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
                   (postcondition_func_norets post R tr)) ..))
      (x binder, y binder, only parsing, at level 199) : old.
 
-(* N.B. postconditions with no return values still need to take in an argument
-   for return values to make types line up. However, the shorthand notation inserts
-   a clause to the postcondition saying the return values are nil, so the
-   postcondition does not need to ensure this. *)
-Example spec_example_norets_short {semantics : Semantics.parameters}
-  : spec_of "example" :=
-  (forall! (pa : address) (a b : word),
-      (sep (pa ~> a))
-        ===>
-        "example" @ [pa; b]
-        ===>
-        (fun _ => pa ~> word.add a b)%sep)%old.
+Section Examples.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Example spec_example_withrets
+    : spec_of "example" :=
+    (forall! (pa : word) (a b : word),
+        (sep (pa ~> a))
+          ===>
+          "example" @ [pa; b] returns r
+          ===>
+          (liftexists x, emp (r = [x]) * (pa ~> x))%sep)%old.
+  Example spec_example_norets
+    : spec_of "example" :=
+       (forall! (pa : word) (a b : word),
+           (sep (pa ~> a))
+             ===>
+             "example" @ [pa; b] returns r
+             ===>
+             (emp (r = []) * (pa ~> word.add a b))%sep)%old.
+
+  (* N.B. postconditions with no return values still need to take in an argument
+     for return values to make types line up. However, the shorthand notation inserts
+     a clause to the postcondition saying the return values are nil, so the
+     postcondition does not need to ensure this. *)
+  Example spec_example_norets_short
+    : spec_of "example" :=
+    (forall! (pa : word) (a b : word),
+        (sep (pa ~> a))
+          ===>
+          "example" @ [pa; b]
+          ===>
+          (fun _ => pa ~> word.add a b)%sep)%old.
+End Examples.
 
 Global Open Scope old.
 
@@ -238,7 +244,7 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' functions tr m
                              WeakestPrecondition.call
                                functions name tr mem (cons a0 .. (cons an nil) ..)
                                (fun tr' mem' rets =>
-                                  rets = @nil word /\ post%Z%sep))) ..)) ..))
+                                  rets = nil /\ post%Z%sep))) ..)) ..))
     (at level 200,
      name at level 0,
      functions binder,
@@ -279,7 +285,7 @@ Notation "'fnspec!' name a0 .. an ',' '{' 'requires' functions tr mem := pre ';'
                    WeakestPrecondition.call
                      functions name tr mem (cons a0 .. (cons an nil) ..)
                      (fun tr' mem' rets =>
-                        rets = @nil word /\ post%Z%sep))) ..))
+                        rets = nil /\ post%Z%sep))) ..))
     (at level 200,
      name at level 0,
      functions binder,

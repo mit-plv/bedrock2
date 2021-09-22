@@ -3,10 +3,9 @@ Require Import Coq.Strings.String.
 Require Import Coq.Lists.List.
 Require Import Coq.micromega.Lia.
 Require Import bedrock2.Array.
-Require Import bedrock2.BasicC64Semantics.
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.Scalars.
-Require Import bedrock2.Syntax.
+Require Import bedrock2.Syntax. Import Syntax.Coercions.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.Map.Separation.
 Require Import bedrock2.Map.SeparationLogic.
@@ -18,6 +17,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import Rupicola.Examples.CapitalizeThird.CapitalizeThird.
 Require bedrock2.WeakestPrecondition.
 Require bedrock2.Semantics.
+Require Import bedrock2.BasicC64Semantics.
 From coqutil.Tactics Require Import destr.
 Local Open Scope Z_scope. Local Open Scope string_scope.
 Import ListNotations.
@@ -30,10 +30,6 @@ Hint Rewrite @firstn_length @skipn_length @map_length @app_length
 Hint Rewrite @skipn_app @skipn_O @skipn_cons @List.skipn_skipn : push_skipn.
 Hint Rewrite @firstn_app @firstn_O @firstn_cons @firstn_firstn : push_firstn.
 
-
-Local Coercion literal (z : Z) : Syntax.expr := expr.literal z.
-Local Coercion var (x : string) : Syntax.expr := expr.var x.
-Local Coercion name_of_func (f : bedrock_func) := fst f.
 
 (* Helper lemmas that could be moved elsewhere *)
 Section Generalizable.
@@ -48,7 +44,7 @@ Section Generalizable.
     right; congruence.
   Qed.
 
-  Lemma only_differ_get locals vars locals' v post :
+  Lemma only_differ_get (locals : locals) vars locals' v post :
     map.only_differ locals vars locals' ->
     ~ vars v ->
     WeakestPrecondition.get locals v post ->
@@ -177,7 +173,7 @@ Section Proofs.
   Context (functions' : list bedrock_func)
           (toupper_body : Byte.byte -> Byte.byte).
 
-  Local Definition byte_to_word : Byte.byte -> Semantics.word :=
+  Local Definition byte_to_word : Byte.byte -> word :=
     fun b => word.of_Z (byte.unsigned b).
 
   Context
@@ -191,16 +187,14 @@ Section Proofs.
               tr = tr' /\ mem = mem'
               /\ rets = [byte_to_word (toupper_body c)])).
 
-  Local Existing Instance BasicC64Semantics.parameters.
-  Local Existing Instance BasicC64Semantics.parameters_ok.
   Local Notation len := Gallina.len (only parsing).
   Local Notation chars := Gallina.chars (only parsing).
 
   Definition String
-             (addr : Semantics.word) (s : Gallina.String) :
-    map.rep (map:=Semantics.mem) -> Prop :=
+             (addr : word) (s : Gallina.String) :
+    map.rep (map:=mem) -> Prop :=
     sep
-      (emp (Z.of_nat (len s) < 2^Semantics.width))
+      (emp (Z.of_nat (len s) < 2^64))
       (sep
          (scalar addr (word.of_Z (Z.of_nat (len s))))
          (array ptsto
@@ -209,19 +203,19 @@ Section Proofs.
                 (chars s))).
 
   Definition loop_invariant
-             (s : Gallina.String) tr locals s_ptr R
+             (s : Gallina.String) tr l s_ptr R
              (m : nat) (tr' : Semantics.trace)
-             (mem' : Semantics.mem) (locals' : Semantics.locals)
+             (mem' : mem) (l' : locals)
     : Prop :=
     tr = tr'
     /\ map.only_differ
-         locals (PropSet.of_list ["x"; "c_ptr"; "i"]) locals'
+         l (PropSet.of_list ["x"; "c_ptr"; "i"]) l'
     /\ WeakestPrecondition.get
-         locals' "c_ptr"
+         l' "c_ptr"
          (fun _c_ptr =>
             let c_ptr := word.unsigned _c_ptr in
             WeakestPrecondition.get
-              locals' "i"
+              l' "i"
               (fun _i =>
                  let i := Z.to_nat (word.unsigned _i) in
                  let partial : Gallina.String :=
@@ -276,7 +270,7 @@ Section Proofs.
       apply iff1_sep_cancel.
       eapply array_index_nat_inbounds
         with (n0:=n) (default:=byte.of_Z 0);
-        eauto using Semantics.word_ok, Semantics.mem_ok.
+        eauto using wordok, mapok.
       lia. }
     rewrite word.ring_morph_mul, !word.of_Z_unsigned.
     (* annoying separation-logic algebra *)
@@ -301,7 +295,7 @@ Section Proofs.
 
   (* TODO: try to use ProgramLogic *)
   Lemma capitalize_String_correct
-        (addr : Semantics.word) (s : Gallina.String) :
+        (addr : word) (s : Gallina.String) :
     forall tr mem R,
       sep (String addr s) R mem ->
       len s = length (chars s) ->
@@ -369,11 +363,12 @@ Section Proofs.
       split; [ cbn; right; reflexivity | ]. (* only_differ *)
       do 2 (eexists; split; [ reflexivity | ]). (* fetch i and c_ptr *)
       split; [ reflexivity | ]. (* measure = len s - i *)
-      split; [ cbn; lia | ]. (* i <= len s *)
+      split; [ cbn; rewrite word.unsigned_of_Z_0; lia | ]. (* i <= len s *)
 
       (* c_ptr = s_ptr + wordsize + i * charsize *)
       split.
-      { rewrite wordsize_eq. cbn.
+      { rewrite wordsize_eq.
+        cbv [word]; cbn -[Z.pow].
         rewrite Z.add_0_r, Z.mod_mod by lia.
         reflexivity. }
 
@@ -408,7 +403,7 @@ Section Proofs.
 
       (* fetch the value of "len" from the start-of-loop locals *)
       cbv [WeakestPrecondition.get].
-      cbn - [BasicC64Semantics.parameters].
+      cbn.
       eexists; split; [ reflexivity | ].
 
       (* could do reflexivity here, but it helps later if we simplify the
@@ -416,7 +411,7 @@ Section Proofs.
       setoid_rewrite Z.land_ones; [|lia].
       rewrite Z.mod_small; [ reflexivity |].
       match goal with |- ?x <= ?y < ?z =>
-                      change (x <= y < 2 ^ Semantics.width)
+                      change (x <= y < 2 ^ 64)
       end.
       apply word.unsigned_range. }
 
@@ -683,8 +678,8 @@ Section Proofs.
   Qed.
 
   Definition String_ptr
-             (addr : Semantics.word) (s : Gallina.String)
-    : map.rep (map:=Semantics.mem) -> Prop :=
+             (addr : word) (s : Gallina.String)
+    : map.rep (map:=mem) -> Prop :=
     Lift1Prop.ex1
       (fun ptr =>
          sep (scalar addr ptr) (String ptr s)).
@@ -702,7 +697,7 @@ Section Proofs.
 
   (* input to capitalize_3rd is an array of string *pointers* *)
   Lemma capitalize_3rd_correct
-        (inp : Semantics.word)
+        (inp : word)
         (strings : list Gallina.String) :
     forall tr mem R,
       (* pointers in [inp] point to Strings in [strings] *)

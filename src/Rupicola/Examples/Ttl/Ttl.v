@@ -5,24 +5,30 @@ Require Import Rupicola.Lib.Api.
 (* FIXME move to VectorArray.t *)
 
 Section with_parameters.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Context {width_sufficient : (2 < 2 ^ Semantics.width)%Z}. (* without this, we have no guarantee that index 2 fits in the allowed integer size *)
+  Context {width_sufficient : (2 < 2 ^ width)%Z}. (* without this, we have no guarantee that index 2 fits in the allowed integer size *)
 
   Definition packet :=
-    Vector.t Semantics.word 2. (* field1, ttl *)
+    Vector.t word 2. (* field1, ttl *)
 
   Notation field1_index := Fin.F1.
   Notation ttl_index := (Fin.FS Fin.F1).
   Notation field1 p := (Vector.nth p field1_index).
   Notation ttl p := (Vector.nth p ttl_index).
 
-  Definition WordVector {n} (addr: address) (v: Vector.t Semantics.word n) : Semantics.mem -> Prop :=
+  Definition WordVector {n} (addr: word) (v: Vector.t word n) : mem -> Prop :=
     array scalar (word.of_Z 8) addr (Vector.to_list v).
 
-  Definition Packet (addr: address) (p: packet)
-    : Semantics.mem -> Prop :=
+  Definition Packet (addr: word) (p: packet)
+    : mem -> Prop :=
     WordVector addr p.
 
   Definition decr_gallina (p: packet) :=
@@ -45,14 +51,14 @@ Section with_parameters.
     Datatypes.length (Vector.to_list v) = n.
   Proof. Admitted.
 
-  Lemma compile_nth {n} {tr mem locals functions}
-        (vector: Vector.t Semantics.word n) offset:
+  Lemma compile_nth : forall {n} {tr mem locals functions}
+        (vector: Vector.t word n) offset,
     let v := Vector.nth vector offset in
     let noffset := proj1_sig (Fin.to_nat offset) in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
       R vector_ptr vector_var var,
 
-      (Z.of_nat n < 2 ^ Semantics.width)%Z ->
+      (Z.of_nat n < 2 ^ width)%Z ->
 
       sep (WordVector vector_ptr vector) R mem ->
       map.get locals vector_var = Some vector_ptr ->
@@ -76,7 +82,7 @@ Section with_parameters.
                      access_size.word
                      (expr.op bopname.add
                               (expr.var vector_var)
-                              (expr.literal ((@word.unsigned _ Semantics.word (word.of_Z 8) * Z.of_nat noffset))))))
+                              (expr.literal ((@word.unsigned _ word (word.of_Z 8) * Z.of_nat noffset))))))
                k_impl)
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
@@ -107,14 +113,14 @@ Section with_parameters.
     apply (word.of_Z 0).
   Admitted.
 
-  Lemma compile_replace {n} {tr mem locals functions}
-        (vector: Vector.t Semantics.word n) offset value:
+  Lemma compile_replace : forall {n} {tr mem locals functions}
+        (vector: Vector.t word n) offset value,
     let v := (Vector.replace vector offset value) in
     let noffset := proj1_sig (Fin.to_nat offset) in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
       R vector_ptr vector_var value_var,
 
-      (Z.of_nat n < 2 ^ Semantics.width)%Z ->
+      (Z.of_nat n < 2 ^ width)%Z ->
       sep (WordVector vector_ptr vector) R mem ->
 
       map.get locals vector_var = Some vector_ptr ->
@@ -136,7 +142,7 @@ Section with_parameters.
       cmd.seq (cmd.store access_size.word
                          (expr.op bopname.add
                                   (expr.var vector_var)
-                                  (expr.literal ((@word.unsigned _ Semantics.word (word.of_Z 8) *
+                                  (expr.literal ((@word.unsigned _ word (word.of_Z 8) *
                                                   Z.of_nat noffset))))
                          (expr.var value_var))
               k_impl
@@ -146,7 +152,7 @@ Section with_parameters.
     unfold WordVector in *.
     repeat straightline.
     exists (word.add vector_ptr
-                     (word.of_Z (@word.unsigned _ Semantics.word (word.of_Z 8) * Z.of_nat noffset))).
+                     (word.of_Z (@word.unsigned _ word (word.of_Z 8) * Z.of_nat noffset))).
     split.
     { repeat straightline; eauto.
       exists vector_ptr; intuition.

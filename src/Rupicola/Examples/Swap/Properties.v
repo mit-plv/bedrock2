@@ -5,7 +5,7 @@ Require Import bedrock2.BasicC64Semantics.
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.ProgramLogic.
 Require Import bedrock2.Scalars.
-Require Import bedrock2.Syntax.
+Require Import bedrock2.Syntax. Import Syntax.Coercions.
 Require Import bedrock2.Map.Separation.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import Rupicola.Examples.Swap.Swap.
@@ -16,9 +16,6 @@ Import ListNotations.
 Import Swap.Bedrock2.
 
 
-Local Existing Instance BasicC64Semantics.parameters.
-Local Existing Instance BasicC64Semantics.parameters_ok.
-Local Coercion name_of_func (f : bedrock_func) := fst f.
 Local Infix "~>" := scalar (at level 40, only parsing).
 
 Section Proofs.

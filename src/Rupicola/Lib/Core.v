@@ -8,7 +8,7 @@ Require Export bedrock2.Map.Separation.
 Require Export bedrock2.ProgramLogic.
 Require Export bedrock2.Map.SeparationLogic.
 Require Export bedrock2.Scalars.
-Require Export bedrock2.Syntax.
+Require Export bedrock2.Syntax. Export Syntax.Coercions.
 Require Export bedrock2.WeakestPreconditionProperties.
 Require Export coqutil.dlet.
 Require Export coqutil.Byte.
@@ -17,7 +17,7 @@ Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.SortedLi
 Require Export coqutil.Z.PushPullMod.
 Require Export coqutil.Tactics.Tactics.
 Require Export coqutil.Tactics.letexists.
-Require Export coqutil.Word.Interface coqutil.Word.Properties.
+Require Export coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
 Require coqutil.Map.SortedListString.
 Require bedrock2.ProgramLogic.
 
@@ -31,21 +31,13 @@ Infix "*" := (sep) : sep_scope.
 Global Set Nested Proofs Allowed.
 Global Set Default Goal Selector "1".
 
-Notation word := Semantics.word.
-
-(* FIXME instead of cbn [fst snd], use simpl never hints in the sep case *)
-Arguments Semantics.word : simpl never.
-
-Notation address := word (only parsing).
-
-Definition bedrock_func : Type :=
-  string * (list string * list string * cmd).
-Coercion name_of_func (f : bedrock_func) := fst f.
-
-Definition predicate {parameters: Semantics.parameters} :=
-  Semantics.trace -> Semantics.mem -> Semantics.locals -> Prop.
+Definition predicate
+  {width : Z} {_:Bitwidth width} {word : word width} 
+  {mem : map.map word byte} {locals : map.map string word} :=
+  Semantics.trace -> mem -> locals -> Prop.
 
 Module P2.
+  (* NOTE: consider using coqutil.Datatypes.PrimitivePair.Pair. *)
   Section Primitive.
     Set Primitive Projections.
     Record prod {A B} := pair { fst: A; snd: B }.
@@ -759,8 +751,14 @@ Notation byte_of_word w :=
   (byte.of_Z (word.unsigned w)).
 
 Section Semantics.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok _}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Lemma WeakestPrecondition_weaken :
     forall cmd {functions} (p1 p2: _ -> _ -> _ -> Prop),
@@ -772,7 +770,7 @@ Section Semantics.
           functions cmd tr mem locals p2.
   Proof. intros; eapply Proper_program; eassumption. Qed.
 
-  Lemma getmany_list_map l :
+  Lemma getmany_list_map (l : locals) :
     forall a vs (P :_ -> Prop),
       P vs ->
       map.getmany_of_list l a = Some vs ->
@@ -787,37 +785,34 @@ Section Semantics.
 
   (* FIXME generalize *)
   Definition postcondition_func
-             {semantics : Semantics.parameters}
-             (spec : list word -> Semantics.mem -> Prop)
+             (spec : list word -> mem -> Prop)
              R tr :=
-    (fun (tr' : Semantics.trace) (mem' : Semantics.mem) (rets : list word) =>
+    (fun (tr' : Semantics.trace) (mem' : mem) (rets : list word) =>
        tr = tr'
        /\ sep (spec rets) R mem').
 
-  Definition postcondition_func_norets
-             {semantics : Semantics.parameters} spec R tr :=
+  Definition postcondition_func_norets spec R tr :=
     postcondition_func (fun r => sep (emp (r = nil)) (spec r)) R tr.
 
   (* TODO: Remove locals_post *)
   Definition postcondition_cmd
-             {semantics : Semantics.parameters}
              locals_post spec retvars R tr :=
-    (fun (tr' : Semantics.trace) (mem' : Semantics.mem)
-       (locals : Semantics.locals) =>
+    (fun (tr' : Semantics.trace) (mem' : mem)
+       (locals : locals) =>
        tr = tr'
        /\ locals_post locals
        /\ exists rets,
            map.getmany_of_list locals retvars = Some rets
            /\ sep (spec rets) R mem').
 
-  Lemma predicate_trivial
+  Lemma predicate_trivial : forall
         {tr: Semantics.trace}
-        {mem: Semantics.mem}
-        {locals: Semantics.locals} {T} t0:
+        {mem: mem}
+        {locals: locals} {T} t0,
     (fun (_: T) tr' mem' locals' =>
        tr' = tr /\ mem' = mem /\ locals' = locals)
       t0 tr mem locals.
-  Proof. intuition. Qed.
+  Proof. intuition auto with core. Qed.
 
   Lemma to_byte_of_byte_nowrap b:
     byte_of_word (word_of_byte b : word) = b.
@@ -825,7 +820,7 @@ Section Semantics.
     rewrite word.unsigned_of_Z, word.wrap_small.
     - apply word.byte_of_Z_unsigned.
     - pose proof byte.unsigned_range b.
-      destruct Semantics.width_cases as [-> | ->]; lia.
+      destruct width_cases as [-> | ->]; lia.
   Qed.
 End Semantics.
 

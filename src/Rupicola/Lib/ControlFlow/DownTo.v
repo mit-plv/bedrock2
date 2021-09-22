@@ -10,9 +10,15 @@ Section Gallina.
 End Gallina.
 
 Section Compile.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
-  Implicit Types (x : Semantics.word).
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
+  Implicit Types (x : word).
 
   Lemma downto'_step {A} i count (step :A -> _) init :
     0 < i <= count ->
@@ -74,7 +80,7 @@ Section Compile.
      need access to. *)
   (* FIXME Do we actually need ghost state? *)
   (* TODO: consider taking in range of count instead of providing word? *)
-  Lemma compile_downto {tr mem locals functions} {state} (init : state) count step:
+  Lemma compile_downto : forall {tr mem locals functions} {state} (init : state) count step,
     let v := downto init count step in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl step_impl}
       wcount {ghost_state} (ginit : ghost_state)

@@ -4,8 +4,14 @@ Require Export Rupicola.Lib.Gensym.
 Require Import Rupicola.Lib.Tactics.
 
 Section CompilerBasics.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok _}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {memT: map.map word Byte.byte}.
+  Context {localsT: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok memT}.
+  Context {locals_ok : map.ok localsT}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Lemma compile_dlet_as_nlet_eq {tr mem locals functions} {A} {vars: list string} (v: A):
     forall {T} {pred: T -> predicate} {k: A -> T} {cmd},
@@ -393,7 +399,7 @@ Section CompilerBasics.
     let v := x in
     forall {P} {pred: P v -> predicate}
       {k: nlet_eq_k P v} {k_impl}
-      (Data : Semantics.word -> data -> Semantics.mem -> Prop) R
+      (Data : word -> data -> memT -> Prop) R
       x_var x_ptr var,
 
       (* This assumption is used to drive the compiler, but it's not used by the proof *)
@@ -576,8 +582,14 @@ Tactic Notation "_change_hook" open_constr(x) open_constr(y) :=
 
 Module ExprReflection.
   Section with_parameters.
-    Context {semantics : Semantics.parameters}
-            {semantics_ok : Semantics.parameters_ok _}.
+    Context {width: Z} {BW: Bitwidth width} {word: word.word width} {memT: map.map word Byte.byte}.
+    Context {localsT: map.map String.string word}.
+    Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+    Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+    Context {word_ok : word.ok word} {mem_ok : map.ok memT}.
+    Context {locals_ok : map.ok localsT}.
+    Context {env_ok : map.ok env}.
+    Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
     Section Core.
       Class expr_reifier T :=
@@ -597,7 +609,7 @@ Module ExprReflection.
       | EVar (nm: string)
       | EOp (op: er_op) (l r: AST).
 
-      Context (locals: Semantics.locals)
+      Context (locals: localsT)
               (concrete_locals: map.rep (map := SortedListString.map T)).
 
       Fixpoint interp ast :=
@@ -817,11 +829,11 @@ Module ExprReflection.
       end
     end.
 
-  Ltac expr_reify_word bindings w :=
+  Ltac expr_reify_word W bindings w :=
     let expr_reify_op nm l r :=
-        let l := expr_reify_word bindings l in
-        let r := expr_reify_word bindings r in
-        constr:(EOp (er := expr_word_reifier) nm l r) in
+        let l := expr_reify_word W bindings l in
+        let r := expr_reify_word W bindings r in
+        constr:(EOp (word:=W) (er := expr_word_reifier) nm l r) in
     lazymatch w with
     | word.add ?l ?r    => expr_reify_op bopname.add l r
     | word.sub ?l ?r    => expr_reify_op bopname.sub l r
@@ -840,11 +852,11 @@ Module ExprReflection.
     | word.eqb ?l ?r    => expr_reify_op bopname.eq l r
     | _ =>
       lazymatch find_key_by_value bindings w with
-      | Some ?k => constr:(EVar (er := expr_word_reifier) k)
+      | Some ?k => constr:(EVar (word:=W) (er := expr_word_reifier) k)
       | None =>
         lazymatch w with
-        | word.of_Z ?z => constr:(ELit (er := expr_word_reifier) z (word.of_Z z) (Some eq_refl))
-        | _ => constr:(ELit (er := expr_word_reifier) (word.unsigned w) w None)
+        | word.of_Z ?z => constr:(ELit (word:=W) (er := expr_word_reifier) z (word.of_Z z) (Some eq_refl))
+        | _ => constr:(ELit (word:=W) (er := expr_word_reifier) (word.unsigned w) w None)
         end
       end
     end.
@@ -868,9 +880,9 @@ Module ExprReflection.
       end
     end.
 
-  Ltac compile_reified_expr_w locals w :=
+  Ltac compile_reified_expr_w W locals w :=
     let bindings := map_to_list locals in
-    let reified := expr_reify_word bindings w in
+    let reified := expr_reify_word W bindings w in
     simple apply compile_expr_w with (e := compile reified);
     [ set_change locals with (map.of_list bindings);
       change w with (er_T2w (expr_reifier := expr_word_reifier)
@@ -919,7 +931,7 @@ Module ExprReflection.
     lazymatch goal with
     | [ |- WeakestPrecondition.cmd _ _ _ _ ?locals (_ (nlet_eq _ ?v _)) ] =>
       lazymatch type of v with
-      | word.rep => compile_reified_expr_w locals v
+      | @word.rep _ ?W => compile_reified_expr_w W locals v
       | Z => compile_reified_expr_Z locals v
       | ?t => fail "Unrecognized type" t
       end
@@ -931,8 +943,14 @@ Module ExprReflection.
 End ExprReflection.
 
 Section with_parameters.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok _}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {memT: map.map word Byte.byte}.
+  Context {localsT: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok memT}.
+  Context {locals_ok : map.ok localsT}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Section NoSkips.
     Definition is_skip cmd :=
@@ -1021,8 +1039,14 @@ Section with_parameters.
 End with_parameters.
 
 Section with_parameters.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok _}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {memT: map.map word Byte.byte}.
+  Context {localsT: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok memT}.
+  Context {locals_ok : map.ok localsT}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Section Setup.
     Definition wp_bind_retvars retvars (P: list word -> predicate) :=
@@ -1076,7 +1100,7 @@ Section with_parameters.
 
     Lemma compile_setup_postcondition_func_noret
           {T} spec (x: T) cmd R tr mem locals functions :
-      (let pred a := postcondition_cmd (fun _ : Semantics.locals => True) (spec a) [] R tr in
+      (let pred a := postcondition_cmd (fun _ : localsT => True) (spec a) [] R tr in
        <{ Trace := tr;
           Memory := mem;
           Locals := locals;
@@ -1101,7 +1125,7 @@ Section with_parameters.
 
     Lemma compile_setup_postcondition_func
           {T} spec (x: T) cmd R tr mem locals retvars functions :
-      (let pred a := postcondition_cmd (fun _ : Semantics.locals => True) (spec a) retvars R tr in
+      (let pred a := postcondition_cmd (fun _ : localsT => True) (spec a) retvars R tr in
        <{ Trace := tr;
           Memory := mem;
           Locals := locals;

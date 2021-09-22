@@ -1,8 +1,11 @@
 Require Import Rupicola.Lib.Api.
 
 Section Tree.
-  Context {p : Semantics.parameters}.
-  Notation address := Semantics.word.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Notation address := word.
 
   Inductive Annotated {t : Type} :=
   | Borrowed : address -> t -> Annotated
@@ -68,25 +71,25 @@ Section Tree.
       end.
 
     Section sep.
-      Context {Alpha : Semantics.word -> alpha -> Semantics.mem -> Prop}
+      Context {Alpha : word -> alpha -> mem -> Prop}
               {word_size_in_bytes : Z}.
 
       Local Notation word_offset :=
         (word.of_Z word_size_in_bytes).
 
       Definition AnnotatedAlpha
-                 (addr : Semantics.word)
+                 (addr : word)
                  (x : Annotated alpha)
-        : Semantics.mem -> Prop :=
+        : mem -> Prop :=
         match x with
         | Borrowed p _ => emp (addr = p)
         | Owned a => Alpha addr a
         end.
 
       Fixpoint Tree
-               (addr : Semantics.word)
+               (addr : word)
                (t : tree (Annotated alpha))
-        : Semantics.mem -> Prop :=
+        : mem -> Prop :=
         match t with
         | Empty => emp (addr = word.of_Z 0)
         | Node a r l =>
@@ -131,8 +134,11 @@ Section Tree.
 
     Section sep.
       Context
-        {ok : Semantics.parameters_ok p}
-        {Alpha : Semantics.word -> alpha -> Semantics.mem -> Prop}
+        {word_ok : word.ok word} {mem_ok : map.ok mem}
+        {locals_ok : map.ok locals}
+        {env_ok : map.ok env}
+        {ext_spec_ok : Semantics.ext_spec.ok ext_spec}
+        {Alpha : word -> alpha -> mem -> Prop}
         {word_size_in_bytes : Z}.
 
       Local Notation word_offset :=

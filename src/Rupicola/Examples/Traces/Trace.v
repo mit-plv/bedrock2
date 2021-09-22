@@ -59,8 +59,14 @@ Notation "'let/!' x := val 'in' body" :=
 Require Import Coq.Init.Byte.
 
 Section with_parameters.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok _}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {memT: map.map word Byte.byte}.
+  Context {localsT: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok memT}.
+  Context {locals_ok : map.ok localsT}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Context {Evt: Type}.
   Notation Eventful := (Eventful Evt).

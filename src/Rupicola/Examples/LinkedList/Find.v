@@ -22,23 +22,29 @@ Section Gallina.
 End Gallina.
 
 Section Compile.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   (* TODO: generalize *)
   Local Notation LinkedList :=
-    (@LinkedList semantics word access_size.word scalar) (only parsing).
+    (@LinkedList _ _ mem word access_size.word scalar) (only parsing).
   Local Notation word_size_in_bytes :=
-    (@Memory.bytes_per Semantics.width access_size.word).
+    (@Memory.bytes_per width access_size.word).
   Local Notation next_word :=
-    (fun p : address =>
+    (fun p : word =>
        word.add p (word.of_Z (Z.of_nat word_size_in_bytes))).
 
-  Lemma compile_if_pointer {tr mem locals functions} {data} (c: bool) (t f: data) :
+  Lemma compile_if_pointer : forall {tr} {mem:mem} {locals functions} {data} (c: bool) (t f: data),
     let v := if c then t else f in
     forall {P} {pred: P v -> predicate}
       {k: nlet_eq_k P v} {k_impl}
-      (Data : Semantics.word -> data -> Semantics.mem -> Prop) Rt Rf
+      (Data : word -> data -> _ -> Prop) Rt Rf
       t_var f_var t_ptr f_ptr c_var var,
 
       (Data t_ptr t * Rt)%sep mem ->
@@ -70,20 +76,20 @@ Section Compile.
     unfold postcondition_cmd.
 
     intros.
-    repeat straightline'.
-    split_if ltac:(repeat straightline').
+    repeat straightline' locals.
+    split_if ltac:(repeat straightline' locals).
     { subst_lets_in_goal. rewrite word.unsigned_of_Z_b2z.
       cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
-      intros. repeat straightline'. eauto. }
+      intros. repeat straightline' locals. eauto. }
     { subst_lets_in_goal. rewrite word.unsigned_of_Z_b2z.
       cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
-      intros. repeat straightline'. eauto. }
+      intros. repeat straightline' locals. eauto. }
   Qed.
 
   Open Scope list_scope.
   Program Instance spec_of_ll_find : spec_of "ll_find" :=
-    fnspec! "ll_find" (pll n: address) (k: word) /
-          (end_ptr dummy : address) (ll : linkedlist word) R
+    fnspec! "ll_find" (pll n: word) (k: word) /
+          (end_ptr dummy : word) (ll : linkedlist word) R
           ~> px,
        { requires fns tr mem :=
            word.unsigned n = Z.of_nat (length ll) /\
@@ -98,7 +104,7 @@ Section Compile.
              R
              tr0
              (ll : linkedlist word)
-             (x end_ptr pll : address)
+             (x end_ptr pll : word)
              (x_var p_var : string)
              (i : nat)
              (gst : linkedlist word)

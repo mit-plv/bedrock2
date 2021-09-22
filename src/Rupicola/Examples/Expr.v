@@ -1,15 +1,21 @@
 Require Import Rupicola.Lib.Api.
 
 Section with_parameters.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok _}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Definition example (x: word) (y: word) :=
     let/n x := word.and (word.add y (word.of_Z 1))
                        (word.xor (word.add (word.sub x y) x)
                                  (word.of_Z 0)) in
     x.
 
-  Implicit Type R : Semantics.mem -> Prop.
+  Implicit Type R : mem -> Prop.
   Instance spec_of_example : spec_of "example" :=
     fnspec! "example" (x y: word) ~> z,
     { requires fns tr mem := True;

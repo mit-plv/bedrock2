@@ -869,9 +869,8 @@ Section WithTok.
 End WithTok.
 
 Section with_parameters.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
-
+  Context {width: Z} {word: word.word width}.
+  Context {word_ok : word.ok word}.
   Context {A: Type}
           (from to: word).
 
@@ -949,9 +948,9 @@ Section with_parameters.
   End Loops.
 
   Section Unsigned.
-    Lemma word_unsigned_of_Z_bracketed (l h : Semantics.word) w:
+    Lemma word_unsigned_of_Z_bracketed (l h : word) w :
       word.unsigned l <= w <= word.unsigned h ->
-      @word.unsigned _ Semantics.word (word.of_Z w) = w.
+      @word.unsigned _ word (word.of_Z w) = w.
     Proof.
       pose proof word.unsigned_range l.
       pose proof word.unsigned_range h.
@@ -972,9 +971,9 @@ Section with_parameters.
   End Unsigned.
 
   Section Signed.
-    Lemma word_signed_of_Z_bracketed (l h : Semantics.word) w:
+    Lemma word_signed_of_Z_bracketed (l h : word) w:
       word.signed l <= w <= word.signed h ->
-      @word.signed _ Semantics.word (word.of_Z w) = w.
+      @word.signed _ word (word.of_Z w) = w.
     Proof.
       pose proof word.signed_range l.
       pose proof word.signed_range h.
@@ -994,22 +993,61 @@ Section with_parameters.
       ranged_for_all_w_ind word_signed_of_Z_bracketed.
   End Signed.
 
-  Definition wZ_must_pos (a: Z) :
+  Definition wZ_must_pos (a: Z) {_ : Bitwidth width} :
     match Z_gt_dec a 0, Z_le_dec a (2 ^ 32 - 1) with
-    | left _, left _ => @word.unsigned _ Semantics.word (word.of_Z a) > 0
+    | left _, left _ => @word.unsigned _ word (word.of_Z a) > 0
     | _, _ => True
     end.
   Proof.
     destruct Z_le_dec, Z_gt_dec; [ | exact I .. ].
-    assert (2 ^ 32 - 1 <= 2 ^ Semantics.width - 1) by
-        (destruct Semantics.width_cases as [-> | ->]; lia).
+    assert (2 ^ 32 - 1 <= 2 ^ width - 1) by
+        (destruct Bitwidth.width_cases as [-> | ->]; lia).
     rewrite word.unsigned_of_Z, word.wrap_small; lia.
   Qed.
 End with_parameters.
 
 Section with_parameters.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {word: word.word width} {word_ok : word.ok word}.
+
+  Lemma lts_of_Z x y:
+    - 2 ^ (width - 1) <= x < 2 ^ (width - 1) ->
+    - 2 ^ (width - 1) <= y < 2 ^ (width - 1) ->
+    @word.lts _ word (word.of_Z x) (word.of_Z y) = (x <? y).
+  Proof.
+    intros; rewrite word.signed_lts, !word.signed_of_Z, !word.swrap_inrange; eauto.
+  Qed.
+
+  Lemma ltu_of_Z x y:
+    0 <= x < 2 ^ width ->
+    0 <= y < 2 ^ width ->
+    @word.ltu _ word (word.of_Z x) (word.of_Z y) = (x <? y).
+  Proof.
+    intros; rewrite word.unsigned_ltu, !word.unsigned_of_Z, !word.wrap_small; eauto.
+  Qed.
+
+  Context {locals: map.map String.string word}.
+  Lemma getmany0 (l : locals) t vt vx vy x y:
+    map.getmany_of_list l (vx :: vy :: vt) = Some (x :: y :: t) ->
+    map.get l vx = Some x.
+  Proof.
+    intros; eapply (map.getmany_of_list_get _ 0); eauto || reflexivity.
+  Qed.
+
+  Lemma getmany1 (l : locals) t vt vx vy x y:
+    map.getmany_of_list l (vx :: vy :: vt) = Some (x :: y :: t) ->
+    map.get l vy = Some y.
+  Proof.
+    intros; eapply (map.getmany_of_list_get _ 1); eauto || reflexivity.
+  Qed.
+
+  Context {BW: Bitwidth width}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {mem: map.map word Byte.byte}.
+  Context {mem_ok : map.ok mem}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Section Generic.
     Notation wbody body pr Hr :=
@@ -1018,44 +1056,14 @@ Section with_parameters.
 
     Context (signed: bool).
 
-    Lemma lts_of_Z x y:
-      - 2 ^ (Semantics.width - 1) <= x < 2 ^ (Semantics.width - 1) ->
-      - 2 ^ (Semantics.width - 1) <= y < 2 ^ (Semantics.width - 1) ->
-      @word.lts _ Semantics.word (word.of_Z x) (word.of_Z y) = (x <? y).
-    Proof.
-      intros; rewrite word.signed_lts, !word.signed_of_Z, !word.swrap_inrange; eauto.
-    Qed.
-
-    Lemma ltu_of_Z x y:
-      0 <= x < 2 ^ Semantics.width ->
-      0 <= y < 2 ^ Semantics.width ->
-      @word.ltu _ Semantics.word (word.of_Z x) (word.of_Z y) = (x <? y).
-    Proof.
-      intros; rewrite word.unsigned_ltu, !word.unsigned_of_Z, !word.wrap_small; eauto.
-    Qed.
-
-    Lemma getmany0 (l : Semantics.locals) t vt vx vy x y:
-      map.getmany_of_list l (vx :: vy :: vt) = Some (x :: y :: t) ->
-      map.get l vx = Some x.
-    Proof.
-      intros; eapply (map.getmany_of_list_get _ 0); eauto || reflexivity.
-    Qed.
-
-    Lemma getmany1 (l : Semantics.locals) t vt vx vy x y:
-      map.getmany_of_list l (vx :: vy :: vt) = Some (x :: y :: t) ->
-      map.get l vy = Some y.
-    Proof.
-      intros; eapply (map.getmany_of_list_get _ 1); eauto || reflexivity.
-    Qed.
-
     Notation in_signed_bounds x :=
-      (- 2 ^ (Semantics.width - 1) <= x < 2 ^ (Semantics.width - 1)).
+      (- 2 ^ (width - 1) <= x < 2 ^ (width - 1)).
 
     Notation in_unsigned_bounds x :=
-      (0 <= x < 2 ^ Semantics.width).
+      (0 <= x < 2 ^ width).
 
-    Lemma _compile_ranged_for A {tr mem locals functions}
-          (from to: Z) body (a0: A) :
+    Lemma _compile_ranged_for : forall A {tr mem locals functions}
+          (from to: Z) body (a0: A),
       let v := ranged_for from to body a0 in
       forall {P} {pred: P v -> predicate}
         (loop_pred: forall (idx: Z) (a: A), predicate)
@@ -1249,8 +1257,8 @@ Section with_parameters.
 
     (* TODO Use a section? *)
 
-    Lemma compile_ranged_for_with_auto_increment A {tr mem locals functions}
-          (from to: Z) body (a0: A) :
+    Lemma compile_ranged_for_with_auto_increment : forall A {tr mem locals functions}
+          (from to: Z) body (a0: A),
       let v := ranged_for from to body a0 in
       forall {P} {pred: P v -> predicate}
         (loop_pred: forall (idx: Z) (a: A), predicate)
@@ -1346,11 +1354,11 @@ Section with_parameters.
                 to_Z l <= w <= to_Z h ->
                 to_Z (word.of_Z w) = w).
 
-    Lemma compile_ranged_for_w A {tr mem locals functions}
+    Lemma compile_ranged_for_w : forall A {tr mem locals functions}
           (from to: word)
           (H: if signed then in_signed_bounds (to_Z from) /\ in_signed_bounds (to_Z to)
               else in_unsigned_bounds (to_Z from) /\ in_unsigned_bounds (to_Z to))
-          body (a0: A) :
+          body (a0: A),
       let v := ranged_for_w from to to_Z_of_Z body a0 in
       forall {P} {pred: P v -> predicate}
         (loop_pred: word -> A -> predicate)
@@ -1418,7 +1426,8 @@ Section with_parameters.
           k_impl
         <{ pred (nlet_eq vars v k) }>.
     Proof.
-      intros * Hlocals Hfromindep Hinit Hbody Hk.
+      intros ? ? ? ? ? ? ? ?.
+      intros * Hl Hfromindep Hinit Hbody Hk.
       apply compile_ranged_for_with_auto_increment
         with (loop_pred := fun z => loop_pred (word.of_Z z)).
 
@@ -1457,19 +1466,19 @@ Section with_parameters.
 
   Context {A: Type}
           {tr : Semantics.trace}
-          {mem : Semantics.mem}
-          {locals : Semantics.locals}
+          {m : mem}
+          {l : locals}
           {functions : list (string * (list string * list string * cmd))}
           (from to : word).
 
   Definition compile_ranged_for_u :=
     @compile_ranged_for_w false _ word.of_Z_unsigned word_unsigned_of_Z_bracketed
-                          A tr mem locals functions from to
+                          A tr m l functions from to
                           (conj (word.unsigned_range _) (word.unsigned_range _)).
 
   Definition compile_ranged_for_s :=
     @compile_ranged_for_w true _ word.of_Z_signed word_signed_of_Z_bracketed
-                          A tr mem locals functions from to
+                          A tr m l functions from to
                           (conj (word.signed_range _) (word.signed_range _)).
 End with_parameters.
 

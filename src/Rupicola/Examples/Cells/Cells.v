@@ -1,18 +1,25 @@
 Require Import Rupicola.Lib.Api.
 
+Record  cell {width: Z} {BW: Bitwidth width} {word: word.word width} := { data : word }.
 Section with_parameters.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
-  Record cell := { data : Semantics.word }.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {wordok : word.ok word} {mapok : map.ok mem}.
+  Context {localsok : map.ok locals}.
+  Context {envok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
+  Local Notation cell := (@cell width BW word).
 
-  Definition cell_value (addr: address) (c: cell)
-    : Semantics.mem -> Prop :=
+  Definition cell_value (addr: word) (c: cell)
+    : mem -> Prop :=
     scalar addr c.(data).
 
   Definition get c := c.(data).
   Definition put v (c: cell) := {| data := v |}.
 
-  Lemma compile_get {tr mem locals functions} (c: cell) :
+  Lemma compile_get : forall {tr mem locals functions} (c: cell),
     let v := get c in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
       R c_ptr c_var var,
@@ -51,7 +58,7 @@ Section with_parameters.
     eassumption.
   Qed.
 
-  Lemma compile_put {tr mem locals functions} x c:
+  Lemma compile_put : forall {tr mem locals functions} x c,
     let v := put x c in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
       R c_ptr c_var x_var,

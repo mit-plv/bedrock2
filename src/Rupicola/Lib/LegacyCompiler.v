@@ -23,7 +23,10 @@ Ltac lookup_object_in predicates predicate value :=
     | Some ?ptr => constr:(Some ptr)
     | None => lookup_object_in r predicate value
     end
-  | _ => constr:(@None address)
+  | _ => 
+      let width := uconstr:(_) in 
+      let _ := constr:(_ : Bitwidth word) in
+      constr:(@None (@word.rep width _))
   end.
 
 Ltac lookup_object predicate value mem :=
@@ -53,8 +56,8 @@ Ltac expr_of_gallina locals g :=
 
 Axiom cell_value : Type.
 
-Ltac compile_step b2_body mem locals spec ::=
-  lazymatch spec with
+Ltac compile_step b2_body mem locals specification ::=
+  lazymatch specification with
   | (dlet ?value ?continuation) =>
     lazymatch value with
     | get ?c =>

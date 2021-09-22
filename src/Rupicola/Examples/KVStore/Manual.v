@@ -6,21 +6,28 @@ Require Import Rupicola.Examples.KVStore.Tactics.
 Require Import bedrock2.NotationsCustomEntry.
 
 Section examples.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Section put_sum.
     Context {add : bedrock_func}.
-    Definition Int (addr : Semantics.word) (x : Z) : Semantics.mem -> Prop :=
-      sep (emp (0 <= x < 2^Semantics.width)%Z)
+    Definition Int (addr : word) (x : Z) : mem -> Prop :=
+      sep (emp (0 <= x < 2^width)%Z)
           (truncated_scalar access_size.word addr x).
 
     Context {ops} {key : Type}
             {kvp : kv_parameters}
-            {ok : @kv_parameters_ok semantics ops key Z Int kvp}.
+            {ok : @kv_parameters_ok  _ BW _ mem ops key Z Int kvp}.
 
     Existing Instances map_ok annotated_map_ok key_eq_dec.
-    Existing Instances spec_of_map_get spec_of_map_put.
+    Local Hint Extern 1 (spec_of (let (x, _) := let (_, get, _) := ops in get in x)) => unshelve simple refine (@spec_of_map_get _ _ _ _ _ _ _ _ _ _ _) : typeclass_instances.
+    Local Hint Extern 1 (spec_of (let (x, _) := let (_, _, put) := ops in put in x)) => unshelve simple refine (@spec_of_map_put _ _ _ _ _ _ _ _ _ _ _) : typeclass_instances.
 
     Instance spec_of_add : spec_of add :=
       fun functions =>
@@ -41,9 +48,6 @@ Section examples.
       | Some v1, Some v2 => map.put m k3 (word.wrap (v1 + v2)%Z)
       | _, _ => m
       end.
-
-    Local Coercion literal (z : Z) : Syntax.expr := expr.literal z.
-    Local Coercion var (x : string) : Syntax.expr := expr.var x.
 
     (* like put, returns a boolean indicating whether the put was an
          overwrite, and stores the old value in v if the boolean is true *)
@@ -172,10 +176,11 @@ Section examples.
   Section swap.
     Context {ops} {key value : Type} {Value}
             {kvp : kv_parameters}
-            {ok : @kv_parameters_ok semantics ops key value Value kvp}.
+            {ok : @kv_parameters_ok _ BW _ mem ops key value Value kvp}.
 
     Existing Instances map_ok annotated_map_ok key_eq_dec.
-    Existing Instances spec_of_map_get spec_of_map_put.
+    Local Hint Extern 1 (spec_of (let (x, _) := let (_, get, _) := ops in get in x)) => unshelve simple refine (@spec_of_map_get _ _ _ _ _ _ _ _ _ _ _) : typeclass_instances.
+    Local Hint Extern 1 (spec_of (let (x, _) := let (_, _, put) := ops in put in x)) => unshelve simple refine (@spec_of_map_put _ _ _ _ _ _ _ _ _ _ _) : typeclass_instances.
 
     (* look up k1 and k2, add their values and store in k3 *)
     Definition swap_gallina (m : map.rep (map:=map))
@@ -185,9 +190,6 @@ Section examples.
         map.put (map.put m k2 v1) k1 v2
       | _, _ => m
       end.
-
-    Local Coercion literal : Z >-> Syntax.expr.
-    Local Coercion var : string >-> Syntax.expr.
 
     Definition swap : bedrock_func :=
       let m := "m" in

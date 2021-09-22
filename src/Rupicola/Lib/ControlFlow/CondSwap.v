@@ -6,18 +6,24 @@ Section Gallina.
 End Gallina.
 
 Section Compile.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   (* FIXME cswap should be compilable as-is; no need for a lemma. *)
   (* There are two ways cswap could be compiled; you can either swap the local
      variables (the pointers), or you can leave the pointers and copy over the
      data. This version swaps the pointers without doing any copying. *)
-  Lemma compile_cswap_nocopy {tr mem locals functions} (swap: bool) {A} (x y: A) :
+  Lemma compile_cswap_nocopy : forall {tr} {mem:mem} {locals:locals} {functions} (swap: bool) {A} (x y: A),
     let v := cswap swap x y in
     forall {P} {pred: P v -> predicate}
       {k: nlet_eq_k P v} {k_impl}
-      R (Data : word -> A -> Semantics.mem -> Prop)
+      R (Data : word -> A -> _ -> Prop)
       swap_var x_var x_ptr y_var y_ptr tmp,
 
       map.get locals swap_var = Some (word.of_Z (Z.b2z swap)) ->
@@ -59,9 +65,9 @@ Section Compile.
     simple eapply compile_if with
         (val_pred := fun _ tr' mem' locals' =>
                       tr' = tr /\
-                      mem' = mem /\
+                      mem' = mem0 /\
                       locals' =
-                      let locals := map.put locals x_var (if swap then y_ptr else x_ptr) in
+                      let locals := map.put locals0 x_var (if swap then y_ptr else x_ptr) in
                       let locals := map.put locals y_var (if swap then x_ptr else y_ptr) in
                       locals);
       repeat compile_step;
@@ -74,7 +80,7 @@ Section Compile.
       destruct swap; eassumption.
   Qed.
 
-  Lemma compile_cswap_pair {tr mem locals functions} (swap: bool) {A} (x y: A * A) :
+  Lemma compile_cswap_pair : forall {tr mem locals functions} (swap: bool) {A} (x y: A * A),
     let v := cswap swap x y in
     forall {T} {pred: T -> predicate}
       {k: (A * A) * (A * A) -> T} {k_impl},
@@ -106,11 +112,17 @@ Section Compile.
 End Compile.
 
 Section Helpers.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Lemma cswap_iff1
-        {T} (pred : word ->T -> Semantics.mem -> Prop) s pa pb a b :
+        {T} (pred : word ->T -> mem -> Prop) s pa pb a b :
     Lift1Prop.iff1
       ((pred (fst (cswap s pa pb)) (fst (cswap s a b)))
        * pred (snd (cswap s pa pb))

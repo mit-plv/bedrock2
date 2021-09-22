@@ -9,15 +9,21 @@ Section Gallina.
 End Gallina.
 
 Section Separation.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Context {element : Type} {element_size : access_size}
-          {Element : address -> element -> Semantics.mem -> Prop}.
+          {Element : word -> element -> mem -> Prop}.
 
   Local Notation element_size_in_bytes :=
-    (@Memory.bytes_per Semantics.width element_size).
+    (@Memory.bytes_per width element_size).
   Local Notation skip_element :=
-    (fun p : address =>
+    (fun p : word =>
        word.add p (word.of_Z (Z.of_nat element_size_in_bytes))).
 
   (* To have a LinkedList with elements inline, instantiate Element with
@@ -33,8 +39,8 @@ Section Separation.
                   Lift1Prop.ex1
                     (fun px : address =>
                       (scalar p px * scalar px x)%sep)) *)
-  Fixpoint LinkedList (end_ptr pl : address) (l : list element)
-    : Semantics.mem -> Prop :=
+  Fixpoint LinkedList (end_ptr pl : word) (l : list element)
+    : mem -> Prop :=
     match l with
     | [] => emp (pl = end_ptr)
     | e :: l' =>
@@ -47,8 +53,14 @@ Section Separation.
 End Separation.
 
 Section Compile.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   (* TODO: generalize
   Context {element : Type}
           {Element : address -> element -> Semantics.mem -> Prop}.
@@ -60,16 +72,16 @@ Section Compile.
     (@LinkedList semantics element Element).
    *)
   Local Notation LinkedList :=
-    (@LinkedList semantics word access_size.word scalar) (only parsing).
+    (@LinkedList _ word mem word access_size.word scalar) (only parsing).
   Local Notation word_size_in_bytes :=
-    (@Memory.bytes_per Semantics.width access_size.word).
+    (@Memory.bytes_per width access_size.word).
   Local Notation next_word :=
-    (fun p : address =>
+    (fun p : word =>
        word.add p (word.of_Z (Z.of_nat word_size_in_bytes))).
 
   (* TODO: these should probably use Owned/Reserved/Borrowed annotations *)
 
-  Lemma compile_ll_hd {tr mem locals functions} d ll:
+  Lemma compile_ll_hd : forall {tr mem locals functions} d ll,
     let v := ll_hd d ll in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
       R end_ptr ll_var ll_ptr ll'_ptr var,
@@ -109,7 +121,7 @@ Section Compile.
 
   (* this version assumes you've run hd already, so it doesn't do any
      manipulations of separation logic predicates *)
-  Lemma compile_ll_next {tr mem locals functions} ll:
+  Lemma compile_ll_next : forall {tr mem locals functions} ll,
     let v := ll_next ll in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
       dummy R end_ptr ll_var ll_ptr ll'_ptr var,
@@ -148,18 +160,24 @@ Section Compile.
 End Compile.
 
 Section Helpers.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Context {element : Type} {element_size : access_size}
-          {Element : address -> element -> Semantics.mem -> Prop}.
+          {Element : word -> element -> mem -> Prop}.
 
   Local Notation element_size_in_bytes :=
-    (@Memory.bytes_per Semantics.width element_size).
+    (@Memory.bytes_per width element_size).
   Local Notation skip_element :=
-    (fun p : address =>
+    (fun p : word =>
        word.add p (word.of_Z (Z.of_nat element_size_in_bytes))).
   Local Notation LinkedList :=
-    (@LinkedList semantics element element_size Element).
+    (@LinkedList _ word mem element element_size Element).
 
   Lemma LinkedList_snoc_iff1 :
     forall l pl x end_ptr,

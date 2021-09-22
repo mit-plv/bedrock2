@@ -6,9 +6,14 @@ Local Open Scope Z_scope.
 Require Import Rupicola.Lib.Arrays.
 
 Section __.
-  
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Section Gallina.
     (*
       hand-translated from:
@@ -115,8 +120,8 @@ Section __.
     0xb3667a2e; 0xc4614ab8; 0x5d681b02; 0x2a6f2b94;
          0xb40bbe37; 0xc30c8ea1; 0x5a05df1b; 0x2d02ef8d].
 
-    Definition crc_table : list Semantics.word := (List.map word.of_Z crc_table_Z).
-    Definition crc_table' : list Semantics.word := (List.map word.of_Z crc_table_Z').
+    Definition crc_table : list word := (List.map word.of_Z crc_table_Z).
+    Definition crc_table' : list word := (List.map word.of_Z crc_table_Z').
       
     Goal crc_table = crc_table'.
       reflexivity.
@@ -177,27 +182,27 @@ Section __.
 
   (*Properties about width; could be moved somewhere more general*)
   Lemma width_at_least_32 : 32 <= width.
-  Proof using semantics_ok.
+  Proof using BW.
     destruct width_cases; lia.
   Qed.
 
    Lemma width_mod_8 : width mod 8 = 0.
-  Proof using semantics_ok.
+  Proof using BW.
     destruct width_cases as [H | H]; rewrite H;
       reflexivity.
   Qed.
 
   (*TODO: is there a batter way to write this?*)
-  Definition word_to_bytes (z : Semantics.word) : list byte:=
+  Definition word_to_bytes (z : word) : list byte:=
     HList.tuple.to_list (LittleEndian.split (Z.to_nat (width / 8)) (word.unsigned z)).
              
   (* Turns a table of 32-bit words stored in Zs into
      a table of bytes
    *)
-  Definition to_byte_table : list Semantics.word -> list byte :=
+  Definition to_byte_table : list word -> list byte :=
     flat_map word_to_bytes.
   
-  Lemma map_fold_empty_id (f : mem -> Semantics.word -> Init.Byte.byte -> mem) m
+  Lemma map_fold_empty_id (f : mem -> word -> Init.Byte.byte -> mem) m
     : (forall m k v, f m k v = map.put m k v) ->
       map.fold f map.empty m = m.
   Proof.
@@ -208,7 +213,7 @@ Section __.
 
   Lemma of_list_word_at_0 (xs : list byte)
     : OfListWord.map.of_list_word xs
-      = OfListWord.map.of_list_word_at (word.of_Z 0 : Semantics.word) xs.
+      = OfListWord.map.of_list_word_at (word.of_Z 0 : word) xs.
   Proof.
     unfold OfListWord.map.of_list_word_at.
     unfold MapKeys.map.map_keys.
@@ -282,9 +287,9 @@ Section __.
       n = Z.of_nat (length b1) ->
       width = 8* Z.of_nat (Datatypes.length b2) ->
       load access_size.word (OfListWord.map.of_list_word (a ++ b)) (word.of_Z (Z.of_nat (length a) + n))
-      = load access_size.word (OfListWord.map.of_list_word b) (word.of_Z n : Semantics.word).
+      = load access_size.word (OfListWord.map.of_list_word b) (word.of_Z n : word).
   Proof.
-    intros; subst.
+    intros. subst b. subst n.
     assert (Z.of_nat (Datatypes.length (b1 ++ b2 ++ b3)) <= 2 ^ width).
     {
       rewrite app_length in H.
@@ -302,7 +307,7 @@ Section __.
            generalize dependent (OfListWord.map.of_list_word_at p xs); intros]
       end.
     {
-      repeat seprewrite_in (@array_append (@width semantics) (@Semantics.word semantics)) H1.
+      repeat seprewrite_in (@array_append width word) H1.
       rewrite !word.ring_morph_mul in H1.
       rewrite !word.of_Z_unsigned in H1.
       rewrite !word.ring_theory.(Rmul_1_l) in H1.
@@ -313,7 +318,7 @@ Section __.
       ecancel_assumption.
     }
     {
-      repeat seprewrite_in (@array_append (@width semantics) (@Semantics.word semantics)) H1.
+      repeat seprewrite_in @array_append H1.
       rewrite !word.ring_morph_mul in H1.
       rewrite !word.of_Z_unsigned in H1.
       rewrite !word.ring_theory.(Rmul_1_l) in H1.
@@ -362,7 +367,7 @@ Section __.
       assert (array ptsto (word.of_Z 1) (word.of_Z 0)
                     (word_to_bytes a ++ to_byte_table t)
                     (OfListWord.map.of_list_word_at
-                       (word.of_Z 0 : Semantics.word)
+                       (word.of_Z 0 : word)
                        (word_to_bytes a ++ to_byte_table t))).
       {
         eapply ptsto_bytes.array1_iff_eq_of_list_word_at; auto using mem_ok.
@@ -476,7 +481,7 @@ Section __.
   Qed.
          
   (* a lemma to compile the call to nth as a static lookup *)
-  Lemma compile_table_nth {n t} {tr mem locals functions}:
+  Lemma compile_table_nth : forall {n t} {tr mem locals functions},
     let v := nth n t (word.of_Z 0) in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
            (R : _ -> Prop) var idx_var,
@@ -528,7 +533,7 @@ Section __.
 
 (*
   Definition set_local_nat locals var n :=
-    (map.put locals var (word.of_Z (Z.of_nat n) : Semantics.word)).
+    (map.put locals var (word.of_Z (Z.of_nat n) : word)).
 *)
 
   Hint Extern 1 => simple eapply compile_table_nth; shelve : compiler.
@@ -576,7 +581,7 @@ Section __.
     all: eauto using Nsucc_double_preserves_leq, Ndouble_preserves_leq_0,Ndouble_preserves_leq_1.
   Qed.
   
-  Lemma word_and_leq_right (a b : Semantics.word)
+  Lemma word_and_leq_right (a b : word)
     : (word.unsigned (word.and a b)) <= (word.unsigned b).
   Proof.
     rewrite word.unsigned_and_nowrap.

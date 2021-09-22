@@ -47,9 +47,14 @@ Module ListArray.
 End ListArray.
 
 Section with_parameters.
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
-
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {memT: map.map word Byte.byte}.
+  Context {localsT: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok memT}.
+  Context {locals_ok : map.ok localsT}.
+  Context {env_ok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Open Scope Z_scope.
 
   Section GenericArray.
@@ -59,10 +64,10 @@ Section with_parameters.
     Record access_info :=
       { ai_type : Type;
         ai_size : access_size.access_size;
-        ai_repr : word -> ai_type -> Semantics.mem -> Prop;
+        ai_repr : word -> ai_type -> memT -> Prop;
         ai_to_word : ai_type -> word;
         ai_default : HasDefault ai_type;
-        ai_width := Z.of_nat (@Memory.bytes_per Semantics.width ai_size) }.
+        ai_width := Z.of_nat (@Memory.bytes_per width ai_size) }.
 
     Local Definition _access_info asize :=
       match asize with
@@ -91,7 +96,7 @@ Section with_parameters.
       (K_to_nat: Convertible K nat)
       (get: A -> K -> V)
       (put: A -> K -> V -> A)
-      (repr: address -> A -> Semantics.mem -> Prop).
+      (repr: word -> A -> memT -> Prop).
 
     Definition array_repr a_ptr a :=
       (array ai.(ai_repr) (word.of_Z ai.(ai_width)) a_ptr (to_list a)).
@@ -328,8 +333,8 @@ Section with_parameters.
     Notation put a idx v := (VectorArray.put a (proj1_sig idx) (proj2_sig idx) v).
 
     Definition vectorarray_value {n}
-               (addr: address) (a: VectorArray.t ai.(ai_type) n)
-      : Semantics.mem -> Prop :=
+               (addr: word) (a: VectorArray.t ai.(ai_type) n)
+      : memT -> Prop :=
       array ai.(ai_repr) (word.of_Z ai.(ai_width)) addr (to_list a).
     Notation repr := vectorarray_value.
 
@@ -379,7 +384,7 @@ Section with_parameters.
           (a: VectorArray.t ai.(ai_type) n) (idx: K) pr:
       let v := VectorArray.get a idx pr in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-        R (a_ptr: address) a_var idx_var var,
+        R (a_ptr: word) a_var idx_var var,
 
         sep (vectorarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -480,8 +485,8 @@ Section with_parameters.
     Notation put a idx v := (ListArray.put a idx v).
 
     Definition listarray_value
-               (addr: address) (a: ListArray.t ai.(ai_type))
-      : Semantics.mem -> Prop :=
+               (addr: word) (a: ListArray.t ai.(ai_type))
+      : memT -> Prop :=
       array ai.(ai_repr) (word.of_Z ai.(ai_width)) addr a.
     Notation repr := listarray_value.
 
@@ -527,7 +532,7 @@ Section with_parameters.
           (a: ListArray.t ai.(ai_type)) (idx: K):
       let v := ListArray.get a idx in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-        R (a_ptr: address) a_var idx_var var,
+        R (a_ptr: word) a_var idx_var var,
 
         sep (listarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -566,7 +571,7 @@ Section with_parameters.
           (a: ListArray.t ai.(ai_type)) (idx: K) val:
       let v := ListArray.put a idx val in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-        R (a_ptr: address) a_var idx_var val_var var,
+        R (a_ptr: word) a_var idx_var val_var var,
 
         sep (listarray_value a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -623,8 +628,8 @@ Section with_parameters.
     Notation put a idx v := (ListArray.put a idx v).
 
     Definition sizedlistarray_value
-               (addr: address) (len: nat) (a: ListArray.t ai.(ai_type))
-      : Semantics.mem -> Prop :=
+               (addr: word) (len: nat) (a: ListArray.t ai.(ai_type))
+      : memT -> Prop :=
       sep (emp (List.length a = len))
           (listarray_value sz addr a).
 
@@ -670,7 +675,7 @@ Section with_parameters.
           (a: ListArray.t ai.(ai_type)) (idx: K):
       let v := ListArray.get a idx in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-        R (a_ptr: address) a_var idx_var var,
+        R (a_ptr: word) a_var idx_var var,
 
         sep (sizedlistarray_value a_ptr len a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -714,7 +719,7 @@ Section with_parameters.
           (a: ListArray.t ai.(ai_type)) (idx: K) val:
       let v := ListArray.put a idx val in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-        R (a_ptr: address) a_var idx_var val_var var,
+        R (a_ptr: word) a_var idx_var val_var var,
 
         sep (sizedlistarray_value a_ptr len a) R mem ->
         map.get locals a_var = Some a_ptr ->
@@ -813,7 +818,7 @@ Ltac cbn_array :=
   change (Z.of_nat 4%nat) with (4%Z) in *;
   change (Z.of_nat 8%nat) with (8%Z) in *.
 
-Instance Convertible_word_nat {s: Semantics.parameters} : Convertible word nat :=
+Instance Convertible_word_nat {width : Z} {word : word width} : Convertible word nat :=
   fun w => Z.to_nat (word.unsigned w).
 
 Hint Unfold cast : compiler_cleanup.

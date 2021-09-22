@@ -1,7 +1,7 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Strings.String.
 Require Import Coq.Lists.List.
-Require Import bedrock2.Syntax.
+Require Import bedrock2.Syntax. Import Syntax.Coercions.
 Require Import bedrock2.NotationsCustomEntry.
 (* Require bedrock2.WeakestPrecondition. *)
 
@@ -12,10 +12,6 @@ Import ListNotations.
 Module Bedrock2.
   Definition bedrock_func : Type :=
     string * (list string * list string * cmd).
-
-  Local Coercion literal (z : Z) : Syntax.expr := expr.literal z.
-  Local Coercion var (x : string) : Syntax.expr := expr.var x.
-  Local Coercion name_of_func (f : bedrock_func) := fst f.
 
   Axiom word_size : Z.
   Definition pair_size : Z := 4 (* key *) + word_size (* pointer *).

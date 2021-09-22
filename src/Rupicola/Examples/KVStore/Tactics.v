@@ -128,14 +128,14 @@ Ltac kv_hammer :=
          | H : map.get _ _ = Some _ |- _ => rewrite H in *
          | H : context [key_eqb ?k1 ?k2] |- _ =>
            destr (key_eqb k1 k2)
-         | kvp : @kv_parameters _ _ _ ?value _ |- _ =>
+         | kvp : @kv_parameters _ _ _ _ _ _ ?value _ |- _ =>
            (* handles (require !err):
               destruct map get and only allow one remaining subgoal *)
            destruct_one_match_hyp_of_type (option value);
            destruct_products; try clear_old_seps; try congruence;
            split_if ltac:(solve[repeat straightline']);
            intros; boolean_cleanup; [ ]
-         | kvp : @kv_parameters _ _ _ ?value _ |- _ =>
+         | kvp : @kv_parameters _ _ _ _ _ _ ?value _ |- _ =>
            (* handles case analysis of map-get other than require !err:
               destruct map get and allow two remaining subgoals *)
            destruct_one_match_hyp_of_type (option value);

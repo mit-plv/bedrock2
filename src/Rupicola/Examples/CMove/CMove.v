@@ -7,12 +7,17 @@ Require Import Rupicola.Lib.Arrays.
 Require Import Rupicola.Examples.Cells.Cells.
 
 Section __.
-  
-  Context {semantics : Semantics.parameters}
-          {semantics_ok : Semantics.parameters_ok semantics}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
+  Context {locals: map.map String.string word}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
+  Context {wordok : word.ok word} {mapok : map.ok mem}.
+  Context {localsok : map.ok locals}.
+  Context {envok : map.ok env}.
+  Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Section Gallina.
     
-    Definition all_1s : Semantics.word := word.of_Z (-1).
+    Definition all_1s : word := word.of_Z (-1).
 
     Definition is_mask mask : Prop :=
       mask = all_1s \/ mask = word.of_Z 0.
@@ -21,13 +26,13 @@ Section __.
       if b then all_1s else word.of_Z 0.
       
     (*idea: if b then true_val else false_val *)
-    Definition select_word (mask : Semantics.word) true_val false_val :=
+    Definition select_word (mask : word) true_val false_val :=
       let/n nmask := (word.sub (word.of_Z (-1)) mask) in
       let/n r := word.or (word.and mask true_val) (word.and nmask false_val) in
       r.
 
     (*Rupicola doesn't appear to behave well w/ a call to select_word*)
-    Definition cmove_word mask (c1 c2 : cell) :=
+    Definition cmove_word (mask : word) (c1 c2 : cell) :=
       let/n nmask := (word.sub (word.of_Z (-1)) mask) in
       let/n true_val := get c1 in
       let/n false_val := get c2 in
@@ -35,7 +40,7 @@ Section __.
       let/n c1 := put r c1 in
       c1.
 
-    Definition cswap_word mask (c1 c2 : cell) :=
+    Definition cswap_word (mask : word) (c1 c2 : cell) :=
       let/n nmask := (word.sub (word.of_Z (-1)) mask) in
       let/n true_val := get c1 in
       let/n false_val := get c2 in
@@ -46,7 +51,7 @@ Section __.
       (c1,c2).
 
     
-    Instance HasDefault_word : HasDefault Semantics.word :=
+    Instance HasDefault_word : HasDefault word :=
       word.of_Z 0.
 
     Definition cmove_array mask len 
@@ -132,7 +137,7 @@ Section __.
     }
   Qed.    
 
-  Lemma zero_and (x : Semantics.word)
+  Lemma zero_and (x : word)
     : word.and (word.of_Z 0) x = word.of_Z 0.
   Proof.
     rewrite <- (word.of_Z_unsigned x) at 1.
@@ -142,7 +147,7 @@ Section __.
   Qed.
 
   
-  Lemma zero_or (x : Semantics.word)
+  Lemma zero_or (x : word)
     : word.or (word.of_Z 0) x = x.
   Proof.
     rewrite <- (word.of_Z_unsigned x) at 1.
@@ -152,7 +157,7 @@ Section __.
     reflexivity.
   Qed.
 
-  Lemma or_comm (a b : Semantics.word) : word.or a b = word.or b a.
+  Lemma or_comm (a b : word) : word.or a b = word.or b a.
   Proof.
     rewrite <- (word.of_Z_signed a).
     rewrite <- (word.of_Z_signed b).
