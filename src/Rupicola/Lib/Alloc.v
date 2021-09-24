@@ -1,3 +1,4 @@
+Require Import Rupicola.Lib.SeparationLogicImpl.
 Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.Notations.
 
@@ -34,15 +35,13 @@ Section with_parameters.
 
   Lemma compile_alloc
         {tr mem locals functions A} (v : A):
-    let v := alloc v in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
            {I} {AP : I -> word.rep -> A -> map.rep -> Prop} `{Allocable I A AP}
            (R: _ -> Prop) out_var,
 
       R mem ->
 
-      (let v := v in
-       forall i out_ptr uninit m,
+      (forall i out_ptr uninit m,
          sep (AP i out_ptr uninit) R m ->
          (<{ Trace := tr;
              Memory := m;
@@ -55,7 +54,7 @@ Section with_parameters.
          Locals := locals;
          Functions := functions }>      
       cmd.stackalloc out_var size_in_bytes k_impl
-      <{ pred (nlet_eq [out_var] v k) }>.
+      <{ pred (nlet_eq [out_var] (alloc v) k) }>.
   Proof.
     repeat straightline.
     split; eauto using size_in_bytes_mod.
@@ -94,4 +93,14 @@ End with_parameters.
 
 Arguments alloc : simpl never.
 Arguments size_in_bytes : simpl never.
-Hint Extern 10 => simple eapply compile_alloc; shelve : compiler.
+
+
+(*TODO: speed up by combining pred_seps first and using 1 proper/ecancel_assumption?*)
+Ltac clear_pred_seps :=   
+  unfold pred_sep;
+  repeat change (fun x => ?h x) with h;
+  repeat match goal with
+         | [ H : _ ?m |- _ ?m] =>
+           eapply Proper_sep_impl1;
+           [ eapply P_to_bytes | clear H m; intros H m | ecancel_assumption]
+         end.
