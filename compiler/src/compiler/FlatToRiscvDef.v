@@ -276,9 +276,7 @@ Section FlatToRiscv1.
                     (* don't fail so that we can measure the size of the resulting code *)
                     | None => 42
                     end in
-        save_regs argvars (- bytes_per_word * Z.of_nat (length argvars)) ++
-        [[ Jal ra (fpos - (mypos + 4 * Z.of_nat (length argvars))) ]] ++
-        load_regs resvars (- bytes_per_word * Z.of_nat (length argvars + length resvars))
+        [[ Jal ra (fpos - mypos) ]]
       | SInteract _ _ _ => compile_ext_call e mypos stackoffset s
       end.
 
@@ -287,12 +285,6 @@ Section FlatToRiscv1.
 
      high addresses              ...
                       old sp --> begin of stack scratch space of previous function
-                                 argn
-                                 ...
-                                 arg0
-                                 retn
-                                 ...
-                                 ret0
                                  ra
                                  mod_var_n
                                  ...
@@ -308,18 +300,16 @@ Section FlatToRiscv1.
     Definition compile_function(mypos: Z):
       (list Z * list Z * stmt Z) -> list Instruction :=
       fun '(argvars, resvars, body) =>
-        let mod_vars := list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
+        let mod_vars := modVars_as_list Z.eqb body in
         let scratchwords := stackalloc_words body in
         let framesize := bytes_per_word *
-                         (Z.of_nat (length argvars + length resvars + 1 + length mod_vars) + scratchwords) in
+                         (Z.of_nat (1 + length mod_vars) + scratchwords) in
         [[ Addi sp sp (-framesize) ]] ++
         [[ compile_store access_size.word sp ra
                          (bytes_per_word * (Z.of_nat (length mod_vars) + scratchwords)) ]] ++
         save_regs mod_vars (bytes_per_word * scratchwords) ++
-        load_regs argvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars) + scratchwords)) ++
-        compile_stmt (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars)))
+        compile_stmt (mypos + 4 * (2 + Z.of_nat (length mod_vars)))
                      (bytes_per_word * scratchwords) body ++
-        save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1) + scratchwords)) ++
         load_regs mod_vars (bytes_per_word * scratchwords) ++
         [[ compile_load access_size.word ra sp
                         (bytes_per_word * (Z.of_nat (length mod_vars) + scratchwords)) ]] ++
