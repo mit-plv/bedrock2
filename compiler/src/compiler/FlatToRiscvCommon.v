@@ -170,9 +170,7 @@ Section WithParameters.
   (* measured in words, needs to be multiplied by 4 or 8 *)
   Definition framelength{BWM: bitwidth_iset width iset}: list Z * list Z * stmt Z -> Z :=
     fun '(argvars, resvars, body) =>
-      stackalloc_words iset body +
-      let mod_vars := ListSet.list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
-      Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
+      stackalloc_words iset body + Z.of_nat (1 + List.length (modVars_as_list Z.eqb body)).
 
   (* "fits_stack M N env s" means that statement s will not run out of stack space
      if there are M words available before the stack pointer (in current frame),
