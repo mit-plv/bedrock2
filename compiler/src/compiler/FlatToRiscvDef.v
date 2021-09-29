@@ -300,19 +300,19 @@ Section FlatToRiscv1.
     Definition compile_function(mypos: Z):
       (list Z * list Z * stmt Z) -> list Instruction :=
       fun '(argvars, resvars, body) =>
-        let mod_vars := modVars_as_list Z.eqb body in
+        let need_to_save := list_diff Z.eqb (modVars_as_list Z.eqb body) resvars in
         let scratchwords := stackalloc_words body in
         let framesize := bytes_per_word *
-                         (Z.of_nat (1 + length mod_vars) + scratchwords) in
+                         (Z.of_nat (1 + length need_to_save) + scratchwords) in
         [[ Addi sp sp (-framesize) ]] ++
         [[ compile_store access_size.word sp ra
-                         (bytes_per_word * (Z.of_nat (length mod_vars) + scratchwords)) ]] ++
-        save_regs mod_vars (bytes_per_word * scratchwords) ++
-        compile_stmt (mypos + 4 * (2 + Z.of_nat (length mod_vars)))
+                         (bytes_per_word * (Z.of_nat (length need_to_save) + scratchwords)) ]] ++
+        save_regs need_to_save (bytes_per_word * scratchwords) ++
+        compile_stmt (mypos + 4 * (2 + Z.of_nat (length need_to_save)))
                      (bytes_per_word * scratchwords) body ++
-        load_regs mod_vars (bytes_per_word * scratchwords) ++
+        load_regs need_to_save (bytes_per_word * scratchwords) ++
         [[ compile_load access_size.word ra sp
-                        (bytes_per_word * (Z.of_nat (length mod_vars) + scratchwords)) ]] ++
+                        (bytes_per_word * (Z.of_nat (length need_to_save) + scratchwords)) ]] ++
         [[ Addi sp sp framesize ]] ++
         [[ Jalr zero ra 0 ]].
 

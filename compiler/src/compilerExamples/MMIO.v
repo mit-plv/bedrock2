@@ -394,7 +394,7 @@ Section MMIO1.
         eapply subset_trans. 1: eassumption.
         clear -D4 M0 D word_ok.
         unfold invalidateWrittenXAddrs.
-        change removeXAddr with (@List.removeb word word.eqb _).
+        change removeXAddr with (@List.removeb word word.eqb).
         rewrite ?ListSet.of_list_removeb.
         unfold map.undef_on, map.agree_on, disjoint in *.
         unfold subset, diff, singleton_set, of_list, PropSet.elem_of in *.
@@ -406,7 +406,7 @@ Section MMIO1.
       }
       ssplit; eauto.
       unfold invalidateWrittenXAddrs.
-      change removeXAddr with (@List.removeb word word.eqb _).
+      change removeXAddr with (@List.removeb word word.eqb).
       rewrite ?ListSet.of_list_removeb.
       repeat apply disjoint_diff_l.
       assumption.
