@@ -24,6 +24,12 @@ Require Import bedrock2.MetricLogging.
 Require Import compiler.FitsStack.
 Require Import riscv.Utility.InstructionCoercions.
 
+Local Arguments Z.mul: simpl never.
+Local Arguments Z.add: simpl never.
+Local Arguments Z.of_nat: simpl never.
+Local Arguments Z.modulo : simpl never.
+Local Arguments Z.pow: simpl never.
+Local Arguments Z.sub: simpl never.
 
 Section WithWordAndMem.
   Context {width: Z} {word: word.word width} {mem: map.map word byte}.
@@ -461,7 +467,7 @@ Section LowerPipeline.
         blia. }
       { cbn. cbn in GetPos. rewrite GetPos. f_equal. f_equal. f_equal.
         unfold machine_ok in *. simp. blia. }
-      { exact I. }
+      { simpl. auto. }
       { cbn. auto using Forall_nil. }
       { solve_divisibleBy4. }
       { assumption. }

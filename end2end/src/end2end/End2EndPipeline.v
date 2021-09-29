@@ -499,8 +499,11 @@ Section Connect.
         setoid_rewrite Hend.
         rewrite word.unsigned_of_Z.
         cbv [word.wrap].
-        rewrite Z.mod_small by (split; [apply Z.pow_nonneg; blia
-                                       |apply Z.pow_lt_mono_r; cbn; blia]).
+        rewrite Z.mod_small. 2: {
+          split.
+          - apply Z.pow_nonneg; blia.
+          - apply Z.pow_lt_mono_r; blia.
+        }
         assumption.
       + reflexivity.
       + reflexivity.

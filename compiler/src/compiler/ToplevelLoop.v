@@ -56,6 +56,13 @@ Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Local Hint Mode word.word - : typeclass_instances.
 
+Local Arguments Z.mul: simpl never.
+Local Arguments Z.add: simpl never.
+Local Arguments Z.of_nat: simpl never.
+Local Arguments Z.modulo : simpl never.
+Local Arguments Z.pow: simpl never.
+Local Arguments Z.sub: simpl never.
+
 Open Scope Z_scope.
 
 Local Open Scope ilist_scope.

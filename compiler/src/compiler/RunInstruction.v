@@ -301,8 +301,8 @@ Section Run.
     t0.
   Qed.
 
-  Arguments Z.pow: simpl never.
-  Arguments Z.opp: simpl never.
+  Local Arguments Z.pow: simpl never.
+  Local Arguments Z.opp: simpl never.
 
   Lemma run_Jal0: run_Jal0_spec.
   Proof.
@@ -393,7 +393,7 @@ Section Run.
     eapply D; apply map.get_put_same.
   Qed.
 
-  Arguments invalidateWrittenXAddrs: simpl never.
+  Local Arguments invalidateWrittenXAddrs: simpl never.
 
   Lemma run_Sb: run_Store_spec 1 Sb.
   Proof. t. Qed.

@@ -28,6 +28,7 @@ Require Import compiler.util.Common.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.MkMachineWidth.
 Require Import riscv.Utility.runsToNonDet.
+Require Import compiler.FlatImpConstraints.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.SeparationLogic.
@@ -54,12 +55,12 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
-Arguments Z.mul: simpl never.
-Arguments Z.add: simpl never.
-Arguments Z.of_nat: simpl never.
-Arguments Z.modulo : simpl never.
-Arguments Z.pow: simpl never.
-Arguments Z.sub: simpl never.
+Local Arguments Z.mul: simpl never.
+Local Arguments Z.add: simpl never.
+Local Arguments Z.of_nat: simpl never.
+Local Arguments Z.modulo : simpl never.
+Local Arguments Z.pow: simpl never.
+Local Arguments Z.sub: simpl never.
 
 Arguments run1: simpl never.
 
@@ -335,7 +336,7 @@ Section WithParameters.
     good_e_impl g.(e_impl) g.(e_pos) ->
     fits_stack g.(rem_framewords) g.(rem_stackwords) g.(e_impl) s ->
     f g.(e_pos) pos (bytes_per_word * g.(rem_framewords)) s = g.(insts) ->
-    stmt_not_too_big s ->
+    uses_standard_arg_regs s ->
     valid_FlatImp_vars s ->
     pos mod 4 = 0 ->
     (word.unsigned g.(program_base)) mod 4 = 0 ->
@@ -356,8 +357,6 @@ End WithParameters.
 Ltac simpl_g_get :=
   cbn [p_sp rem_framewords rem_stackwords p_insts insts program_base e_pos e_impl
             dframe xframe] in *.
-
-Ltac solve_stmt_not_too_big := exact I.
 
 Ltac simpl_bools :=
   repeat match goal with

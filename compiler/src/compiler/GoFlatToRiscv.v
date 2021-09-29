@@ -287,9 +287,9 @@ Section Go.
     intros. rewrite associativity. assumption.
   Qed.
 
-  Arguments Z.of_nat: simpl never.
-  Arguments Z.mul: simpl never.
-  Arguments Z.add: simpl never.
+  Local Arguments Z.of_nat: simpl never.
+  Local Arguments Z.mul: simpl never.
+  Local Arguments Z.add: simpl never.
 
   Definition unchecked_store_program(addr: word)(p: list Decode.Instruction)(m: mem): mem :=
     unchecked_store_byte_list addr (Z32s_to_bytes (List.map encode p)) m.
