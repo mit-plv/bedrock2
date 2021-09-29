@@ -9,6 +9,7 @@ Section with_parameters.
   Context {locals_ok : map.ok locals}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
+
   Definition example (x: word) (y: word) :=
     let/n x := word.and (word.add y (word.of_Z 1))
                        (word.xor (word.add (word.sub x y) x)

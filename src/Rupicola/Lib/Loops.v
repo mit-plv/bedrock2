@@ -1482,10 +1482,10 @@ Section with_parameters.
                           (conj (word.signed_range _) (word.signed_range _)).
 End with_parameters.
 
-Ltac pattern_pair_references needle haystack :=
+Ltac pattern_tuple_references needle haystack :=
   lazymatch needle with
   | \< ?fst, ?snd \> =>
-    let hfn := pattern_pair_references snd haystack in
+    let hfn := pattern_tuple_references snd haystack in
     match (eval pattern fst in hfn) with
     | ?hf _ => hf
     end
@@ -1495,25 +1495,25 @@ Ltac pattern_pair_references needle haystack :=
     end
   end.
 
-Ltac apply_pair_references needle acc haystack_fn :=
+Ltac apply_tuple_references needle acc haystack_fn :=
   lazymatch needle with
   | \< _, ?snd \> =>
     let haystack_fn := constr:(haystack_fn (P2.fst acc)) in
-    let haystack_fn := apply_pair_references snd (P2.snd acc) haystack_fn in
+    let haystack_fn := apply_tuple_references snd (P2.snd acc) haystack_fn in
     haystack_fn
   | _ =>
     constr:(haystack_fn acc)
   end.
 
-Ltac change_pair_references needle haystack :=
+Ltac change_tuple_references needle haystack :=
   (* This two-step process avoids recursive replacements *)
-  let fn := pattern_pair_references needle haystack in
-  let haystack := apply_pair_references needle needle fn in
+  let fn := pattern_tuple_references needle haystack in
+  let haystack := apply_tuple_references needle needle fn in
   let haystack := (eval cbv beta in haystack) in
   haystack.
 
 Ltac pattern_head needle haystack :=
-  let haystack := change_pair_references needle haystack in
+  let haystack := change_tuple_references needle haystack in
   lazymatch (eval pattern needle in haystack) with
   | ?hd _ => match hd with
             (* | (fun _ => ?body) => *)

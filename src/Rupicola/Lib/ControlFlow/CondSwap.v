@@ -1,4 +1,5 @@
 Require Import Rupicola.Lib.Api.
+Require Import Rupicola.Lib.Conditionals.
 
 Section Gallina.
   Definition cswap {T} (swap: bool) (a b: T) : T * T :=
