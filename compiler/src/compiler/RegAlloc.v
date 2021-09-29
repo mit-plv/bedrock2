@@ -440,18 +440,6 @@ Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
 Instance bbinop_beq_spec: EqDecider bbinop_beq.
 Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
 
-(* TODO List.list_eqb should not require an EqDecider instance *)
-(* TODO move *)
-Module Byte.
-  Instance eqb_spec: EqDecider Byte.eqb.
-  Proof.
-    intros. destruct (Byte.eqb x y) eqn: E; constructor.
-    - apply Byte.byte_dec_bl. assumption.
-    - apply Byte.eqb_false. assumption.
-  Qed.
-End Byte.
-Existing Instance List.list_eqb_spec.
-
 Section PairList.
   Context {A B: Type}.
 

@@ -494,7 +494,7 @@ Section Go.
                   * R' * Rexec)%sep m) as F by (eexists; ecancel_assumption).
       destruct F as [R' F].
       specialize IHn with (2 := F).
-      change removeXAddr with (@List.removeb word word.eqb _).
+      change removeXAddr with (@List.removeb word word.eqb).
       rewrite ListSet.of_list_removeb.
       unfold subset.
       intros x Hx.
