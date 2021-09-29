@@ -31,6 +31,12 @@ Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Pro
 (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
 Definition valid_FlatImp_var(x: Z): Prop := 3 <= x < 32.
 
+Lemma sp_not_valid_FlatImp_var: ~ valid_FlatImp_var RegisterNames.sp.
+Proof. unfold valid_FlatImp_var, RegisterNames.sp. clear. blia. Qed.
+
+Lemma ra_not_valid_FlatImp_var: ~ valid_FlatImp_var RegisterNames.ra.
+Proof. unfold valid_FlatImp_var, RegisterNames.ra. clear. blia. Qed.
+
 Lemma valid_FlatImp_var_implies_valid_register: forall (x: Z),
     valid_FlatImp_var x -> valid_register x.
 Proof. unfold valid_FlatImp_var, valid_register. intros. blia. Qed.
