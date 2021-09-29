@@ -35,6 +35,13 @@ Require Import compiler.Registers.
 
 Import MetricLogging.
 
+Local Arguments Z.mul: simpl never.
+Local Arguments Z.add: simpl never.
+Local Arguments Z.of_nat: simpl never.
+Local Arguments Z.modulo : simpl never.
+Local Arguments Z.pow: simpl never.
+Local Arguments Z.sub: simpl never.
+
 Section Proofs.
   Context {iset: Decode.InstructionSet}.
   Context {fun_pos_env: map.map String.string Z}.
@@ -79,8 +86,6 @@ Section Proofs.
 
   Notation functions := (functions (iset := iset) compile_ext_call).
   Notation compile_function := (compile_function iset compile_ext_call).
-
-  Axiom TODO: False.
 
   Lemma functions_expose: forall (base: word) rel_positions impls f pos impl,
       map.get rel_positions f = Some pos ->
@@ -148,7 +153,6 @@ Section Proofs.
     | H: map.get ?R RegisterNames.sp = Some _ |- map.get ?R RegisterNames.sp = Some _ => exact H
     | |- ?G => assert_fails (has_evar G);
                solve [ simpl_addrs; solve_word_eq word_ok
-                     | solve_stmt_not_too_big
                      | reflexivity
                      | assumption
                      | solve_divisibleBy4
@@ -464,16 +468,14 @@ Section Proofs.
       assert (exists arg_count, (arg_count <= 8)%nat /\
                 argnames = List.firstn arg_count (reg_class.all reg_class.arg) /\
                 args = List.firstn arg_count (reg_class.all reg_class.arg)) as AC. {
-        case TODO.
+        exists (List.length argnames). ssplit. 2,3: congruence.
+        replace argnames with
+            (List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg)) by assumption.
+        rewrite List.firstn_length.
+        change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
+        clear. blia.
       }
       destruct AC as (arg_count & AC & ? & ?). subst argnames args.
-
-      assert (exists ret_count, (ret_count <= 8)%nat /\
-                retnames = List.firstn ret_count (reg_class.all reg_class.arg) /\
-                binds = List.firstn ret_count (reg_class.all reg_class.arg)) as RC. {
-        case TODO.
-      }
-      destruct RC as (ret_count & RC & ? & ?). subst retnames binds.
 
     assert (valid_register RegisterNames.ra) by (cbv; auto).
     assert (valid_register RegisterNames.sp) by (cbv; auto).
@@ -547,7 +549,7 @@ Section Proofs.
     (* save vars modified by callee onto stack *)
     match goal with
     | |- context [ {| getRegs := ?l |} ] =>
-      pose proof (@map.getmany_of_list_exists _ _ _ l valid_register (list_diff Z.eqb (modVars_as_list Z.eqb body) (List.firstn ret_count (reg_class.all reg_class.arg)))) as P
+      pose proof (@map.getmany_of_list_exists _ _ _ l valid_register (list_diff Z.eqb (modVars_as_list Z.eqb body) retnames)) as P
     end.
     edestruct P as [newvalues P2]; clear P.
     { eapply Forall_impl; cycle 1.
@@ -800,6 +802,20 @@ Section Proofs.
            end.
     subst.
 
+    assert (exists ret_count, (ret_count <= 8)%nat /\
+                              retnames = List.firstn ret_count (reg_class.all reg_class.arg) /\
+                              binds = List.firstn ret_count (reg_class.all reg_class.arg)) as RC. {
+      apply_in_hyps @map.putmany_of_list_zip_sameLength.
+      apply_in_hyps @map.getmany_of_list_length.
+      exists (List.length retnames). ssplit. 2,3: congruence.
+      replace retnames with
+          (List.firstn (Datatypes.length retnames) (reg_class.all reg_class.arg)) by assumption.
+      rewrite List.firstn_length.
+      change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
+      clear. blia.
+    }
+    destruct RC as (ret_count & RC & ? & ?). subst retnames binds.
+
     (* increase sp *)
     eapply runsToStep. {
       eapply (run_Addi iset RegisterNames.sp RegisterNames.sp);
@@ -819,7 +835,7 @@ Section Proofs.
         repeat match goal with
                | |- forall (_: map.ok _), _ => intro
                end.
-        intros F1 F2 V F3 F4 G PM.
+        intros V F1 F2 G PM.
         eapply map.putmany_of_list_zip_get_oldval. 1: exact PM. 2: exact G.
         intro C.
         apply_in_hyps modVars_as_list_valid_FlatImp_var.
@@ -1098,10 +1114,10 @@ Section Proofs.
         | H: map.putmany_of_list_zip ?ks ?vs ?orig = Some ?res |- _ =>
           eapply map.putmany_of_list_zip_to_disjoint_putmany in H;
           let m0 := fresh "m0" in let m1 := fresh "m0" in let ksvs := fresh "ksvs" in
-          destruct H as (m0 & m1 & ksvs & H & ? & ? & ? & ?);
+          let SD := fresh "SD0" in
+          destruct H as (m0 & m1 & ksvs & H & ? & ? & ? & ? & SD);
           try subst orig; try subst res
         end.
-        assert (map.sub_domain m1 ksvs) as NEW by case TODO.
 
         (* turn all map.getmany_of_list into splits *)
         repeat match goal with
@@ -1170,10 +1186,8 @@ Section Proofs.
       apply propositional_extensionality. split; intros A.
       - ssplit.
         + left. assumption.
-        + intro C. subst. eapply Forall_forall in F3. 2: eassumption.
-          unfold valid_FlatImp_var, RegisterNames.sp in F3. clear -F3. blia.
-        + intro C. subst. eapply Forall_forall in F3. 2: eassumption.
-          unfold valid_FlatImp_var, RegisterNames.ra in F3. clear -F3. blia.
+        + intro C. subst. eapply sp_not_valid_FlatImp_var. eapply Forall_forall; eassumption.
+        + intro C. subst. eapply ra_not_valid_FlatImp_var. eapply Forall_forall; eassumption.
       - destruct A as [A ?]. destruct A as [A ?]. destruct A as [A | A].
         + assumption.
         + exfalso. congruence.
@@ -1208,9 +1222,8 @@ Section Proofs.
       destr (map.get m0 x). 1: assumption.
       exfalso.
       move GM1 at bottom.
-      pose proof NEW as SD.
-      unfold map.sub_domain in SD.
-      specialize SD with (1 := Ext2). destruct SD as [v2 Gm].
+      unfold map.sub_domain in SD0.
+      specialize SD0 with (1 := Ext2). destruct SD0 as [v2 Gm].
       eapply map.get_of_list_zip in GM1. rewrite Gm in GM1. symmetry in GM1.
       eapply map.zipped_lookup_Some_in in GM1.
       move GM2 at bottom.
@@ -1218,8 +1231,17 @@ Section Proofs.
       eapply map.zipped_lookup_Some_in in GM2.
       eapply invert_In_list_diff in GM1. destruct GM1 as [_ C]. contradiction.
 
-    + (* forall (x : Z) (v : word), map.get finalRegsH' x = Some v -> valid_FlatImp_var x ?? *)
-      case TODO.
+    + match goal with
+      | H: map.putmany_of_list_zip _ _ _ = Some finalRegsH',
+        L: forall _ _, map.get l _ = Some _ -> valid_FlatImp_var _,
+        V: Forall valid_FlatImp_var (List.firstn ret_count (reg_class.all reg_class.arg)) |- _
+        => rename H into P, V into N, L into G; clear -P N G locals_ok
+      end.
+      intros.
+      pose proof (map.putmany_of_list_zip_find_index _ _ _ _ _ _ P H) as Q.
+      destruct Q as [ [ n [A B] ] | C ].
+      * eapply Forall_forall. 1: exact N. eapply nth_error_In. exact A.
+      * eapply G. exact C.
     + subst FL.
       rewrite map.get_put_same. f_equal.
       unfold bytes_per_word. unfold bitwidth_iset in BWM. rewrite BWM.
@@ -1410,7 +1432,7 @@ Section Proofs.
           | H: fits_stack _ ?N _ _ |- fits_stack _ ?N' _ _ => replace N' with N; [exact H|blia]
           end. }
         { f_equal. rewrite BPW in *. clear BPW. Z.div_mod_to_equations. blia. }
-        { solve_stmt_not_too_big. }
+        { assumption. }
         { eassumption. }
         { safe_sidecond. }
         { safe_sidecond. }
@@ -1557,9 +1579,16 @@ Section Proofs.
           simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
     - idtac "Case compile_stmt_correct/SLoop".
-      on hyp[(stmt_not_too_big body1); runsTo] do (fun H => rename H into IH1).
-      on hyp[(stmt_not_too_big body2); runsTo] do (fun H => rename H into IH2).
-      on hyp[(stmt_not_too_big (SLoop body1 cond body2)); runsTo] do (fun H => rename H into IH12).
+      match goal with
+      | H: context[FlatImpConstraints.uses_standard_arg_regs body1 -> _] |- _ => rename H into IH1
+      end.
+      match goal with
+      | H: context[FlatImpConstraints.uses_standard_arg_regs body2 -> _] |- _ => rename H into IH2
+      end.
+      match goal with
+      | H: context[FlatImpConstraints.uses_standard_arg_regs body1 /\
+               FlatImpConstraints.uses_standard_arg_regs body2 -> _] |- _ => rename H into IH12
+      end.
       eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
       + (* 1st application of IH: part 1 of loop body *)
           eapply IH1 with (g := {| p_sp := _; |});
@@ -1616,8 +1645,10 @@ Section Proofs.
           { intro V. simpl in *. run1done. }
 
     - idtac "Case compile_stmt_correct/SSeq".
-      on hyp[(stmt_not_too_big s1); runsTo] do (fun H => rename H into IH1).
-      on hyp[(stmt_not_too_big s2); runsTo] do (fun H => rename H into IH2).
+      on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]
+         do (fun H => rename H into IH1).
+      on hyp[(FlatImpConstraints.uses_standard_arg_regs s2); runsTo]
+         do (fun H => rename H into IH2).
       eapply runsTo_trans.
       + eapply IH1 with (g := {| p_sp := _; |});
           after_IH;

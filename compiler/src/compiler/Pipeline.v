@@ -106,6 +106,8 @@ Section Pipeline1.
            | H: _ <? _ = true |- _ => eapply Z.ltb_lt in H
            end.
 
+  Axiom TODO: False.
+
   Lemma spill_functions_valid_FlatImp_fun: forall funs funs',
       spill_functions funs = Some funs' ->
       (forall f argnames retnames body,
@@ -119,14 +121,12 @@ Section Pipeline1.
     eapply map.map_all_values_bw in H. 5: eassumption. all: try typeclasses eauto.
     unfold spill_fun in H. simp.
     unfold FlatToRiscvDef.valid_FlatImp_fun, FlatToRiscvDef.valid_FlatImp_var,
-       FlatToRiscvDef.valid_FlatImp_vars, FlatToRiscvDef.stmt_not_too_big,
+       FlatToRiscvDef.valid_FlatImp_vars,
        FlatToRiscvDef.valid_FlatImp_var, FlatImp.ForallVars_stmt, fp in *.
     debool.
     ssplit.
-    - eapply List.forallb_to_Forall. 2: eassumption. cbv beta.
-      intros. debool. blia.
-    - eapply List.forallb_to_Forall. 2: eassumption. cbv beta.
-      intros. debool. blia.
+    - case TODO. (* uses_standard_arg_regs *)
+    - case TODO. (* uses_standard_arg_regs *)
     - pose proof spill_stmt_valid_vars as P.
       unfold valid_vars_src, valid_vars_tgt, sp in P.
       unfold spill_fbody. cbn. split. 1: unfold fp; blia.
@@ -137,7 +137,7 @@ Section Pipeline1.
       all: cbv beta; intros; rewrite ?Bool.andb_true_iff, ?Z.ltb_lt; unfold fp; blia.
     - specialize H0 with (1 := Hp1). eapply H0.
     - specialize H0 with (1 := Hp1). eapply H0.
-    - exact I.
+    - case TODO. (* uses_standard_arg_regs *)
   Qed.
 
   Lemma regalloc_functions_NoDup: forall funs funs',

@@ -502,7 +502,7 @@ Section Spilling.
       exec e s t
       exec e (SSeq (load_arg_reg1 a) s) t m l mc post. *)
 
-  Arguments map.disj_putmany : simpl never.
+  Local Arguments map.disj_putmany : simpl never.
 
   Implicit Types post : Semantics.trace -> option mem -> option locals -> MetricLog -> Prop.
 

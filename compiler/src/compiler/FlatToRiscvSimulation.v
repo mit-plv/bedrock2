@@ -118,7 +118,7 @@ Section Sim.
       + assumption.
       + eauto using fits_stack_call.
       + simpl. rewrite_match. f_equal. f_equal. f_equal. ring.
-      + unfold stmt_not_too_big. simpl. cbv. reflexivity.
+      + simpl. auto.
       + simpl. auto using Forall_nil.
       + assert (word.ok word) by exact word_ok.
         solve_divisibleBy4.

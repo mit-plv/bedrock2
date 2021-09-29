@@ -17,6 +17,8 @@ Require Import bedrock2.Syntax.
 Require Import coqutil.Map.Interface.
 Require Import compiler.SeparationLogic.
 Require Import riscv.Spec.Decode.
+Require Import compiler.Registers.
+Require Import compiler.FlatImpConstraints.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -45,16 +47,6 @@ Section FlatToRiscv1.
 
   (* Part 1: Definitions needed to state when compilation outputs valid code *)
 
-  (* If stmt_size is < 2^10, it is compiled to < 2^10 instructions, which is
-     < 2^12 bytes, and the branch instructions have 12 bits to encode the
-     relative jump length. One of them is used for the sign, and the other
-     11 encode the jump length as a multiple of 2, so jump lengths have to
-     be < 2^12 bytes, i.e. < 2^10 instructions, so this bound is tight,
-     unless we start using multi-instruction jumps.
-     But now we don't need this anymore because we just validate after compiling
-     that the immediates didn't get too big. *)
-  Definition stmt_not_too_big(s: stmt Z): Prop := True.
-
   Definition valid_registers_bcond: bcond Z -> Prop := ForallVars_bcond valid_register.
   Definition valid_FlatImp_vars_bcond: bcond Z -> Prop := ForallVars_bcond valid_FlatImp_var.
 
@@ -69,12 +61,12 @@ Section FlatToRiscv1.
 
   Definition valid_FlatImp_fun: list Z * list Z * stmt Z -> Prop :=
     fun '(argnames, retnames, body) =>
-      Forall valid_FlatImp_var argnames /\
-      Forall valid_FlatImp_var retnames /\
+      argnames = List.firstn (List.length argnames) (reg_class.all reg_class.arg) /\
+      retnames = List.firstn (List.length retnames) (reg_class.all reg_class.arg) /\
       valid_FlatImp_vars body /\
       NoDup argnames /\
       NoDup retnames /\
-      stmt_not_too_big body.
+      uses_standard_arg_regs body.
 
 
   Context (iset: InstructionSet).

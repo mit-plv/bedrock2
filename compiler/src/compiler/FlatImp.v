@@ -72,7 +72,7 @@ Section Syntax.
   Lemma stmt_size_unfold : forall s, stmt_size s = stmt_size_body stmt_size s.
   Proof. destruct s; reflexivity. Qed.
 
-  Arguments Z.add _ _ : simpl never.
+  Local Arguments Z.add _ _ : simpl never.
 
   Lemma stmt_size_nonneg: forall s, 0 <= stmt_size s.
   Proof.

@@ -242,10 +242,10 @@ Section EmitsValid.
 
   Context {iset: InstructionSet}.
 
-  Arguments Z.of_nat: simpl never.
-  Arguments Z.mul: simpl never.
-  Arguments Z.pow: simpl never.
-  Arguments Z.add: simpl never.
+  Local Arguments Z.of_nat: simpl never.
+  Local Arguments Z.mul: simpl never.
+  Local Arguments Z.pow: simpl never.
+  Local Arguments Z.add: simpl never.
 
   Lemma compile_lit_12bit_emits_valid: forall r iset w,
       valid_register r ->

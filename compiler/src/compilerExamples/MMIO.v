@@ -96,6 +96,14 @@ Qed.
 Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.
 Proof. reflexivity. Qed.
 
+Local Arguments Z.mul: simpl never.
+Local Arguments Z.add: simpl never.
+Local Arguments Z.of_nat: simpl never.
+Local Arguments Z.modulo : simpl never.
+Local Arguments Z.pow: simpl never.
+Local Arguments Z.sub: simpl never.
+Local Arguments Registers.reg_class.all: simpl never.
+
 Section MMIO1.
   Context {word: Word.Interface.word 32}.
   Context {word_ok: word.ok word}.
@@ -335,10 +343,10 @@ Section MMIO1.
       }
       repeat fwd.
 
-      destruct (Z.eq_dec z 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
-      destruct (Z.eq_dec z0 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
-      replace (map.get initialL_regs z) with (Some x) by (symmetry; unfold map.extends in *; eauto).
-      replace (map.get initialL_regs z0) with (Some x0) by (symmetry; unfold map.extends in *; eauto).
+      destruct (Z.eq_dec z1 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
+      destruct (Z.eq_dec z2 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
+      replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto).
+      replace (map.get initialL_regs z2) with (Some x0) by (symmetry; unfold map.extends in *; eauto).
 
       cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
       unshelve erewrite (_ : _ = None); [eapply storeWord_in_MMIO_is_None; eauto|].
@@ -477,9 +485,8 @@ Section MMIO1.
 
       repeat fwd.
 
-      destruct (Z.eq_dec z 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
-      destruct (Z.eq_dec z0 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
-      replace (map.get initialL_regs z) with (Some x) by (symmetry; unfold map.extends in *; eauto).
+      destruct (Z.eq_dec z1 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
+      replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto).
 
       split; try discriminate.
       cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
@@ -508,7 +515,7 @@ Section MMIO1.
       apply eqb_eq in EE. subst action.
       cbn in *.
       specialize (Pp1 mKeep). rewrite map.split_empty_r in Pp1. specialize (Pp1 eq_refl).
-      destruct (Z.eq_dec z0 0); try contradiction.
+      destruct (Z.eq_dec z1 0); try contradiction.
       do 4 eexists.
       split; eauto.
       split; eauto.

@@ -22,6 +22,13 @@ Require Import compiler.FlatToRiscvLiterals.
 
 Open Scope ilist_scope.
 
+Local Arguments Z.mul: simpl never.
+Local Arguments Z.add: simpl never.
+Local Arguments Z.of_nat: simpl never.
+Local Arguments Z.modulo : simpl never.
+Local Arguments Z.pow: simpl never.
+Local Arguments Z.sub: simpl never.
+
 Section Proofs.
   Context {iset: Decode.InstructionSet}.
   Context {funpos_env: map.map String.string Z}.
@@ -74,7 +81,6 @@ Section Proofs.
     try solve
       [ reflexivity
       | auto
-      | solve_stmt_not_too_big
       | solve_word_eq word_ok
       | simpl; solve_divisibleBy4
       | solve_valid_machine word_ok
@@ -89,6 +95,9 @@ Section Proofs.
 
   Hypothesis sp_always_set: forall l: locals,
       map.get l RegisterNames.sp = Some (word.of_Z 42).
+
+  (* not needed any more *)
+  Definition stmt_not_too_big(s: stmt Z): Prop := True.
 
   Lemma compile_stmt_correct:
     forall (s: stmt Z) t initialMH initialRegsH postH initialMetricsH,

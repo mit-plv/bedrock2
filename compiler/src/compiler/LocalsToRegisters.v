@@ -15,6 +15,7 @@ Require Import compiler.Registers.
 Require Import compiler.SeparationLogic.
 Require Import compiler.SpillingMapGoals.
 Require Import bedrock2.MetricLogging.
+Require Import compiler.FlatImpConstraints.
 
 Open Scope Z_scope.
 
@@ -216,6 +217,21 @@ Section Spilling.
               spill_fbody body;;
               write_register_range a0 resnames)
       else None.
+
+  Lemma firstn_min_absorb_length_r{A: Type}: forall (l: list A) n,
+      List.firstn (Nat.min n (length l)) l = List.firstn n l.
+  Proof.
+    intros. destruct (Nat.min_spec n (length l)) as [[? E] | [? E]]; rewrite E.
+    - reflexivity.
+    - rewrite List.firstn_all. rewrite List.firstn_all2 by assumption. reflexivity.
+  Qed.
+
+  Lemma spill_stmt_uses_standard_arg_regs: forall s, uses_standard_arg_regs (spill_stmt s).
+  Proof.
+    induction s; simpl; unfold prepare_bcond, load_iarg_reg, save_ires_reg;
+      repeat destruct_one_match; simpl; eauto.
+    all: rewrite ?List.firstn_length, ?firstn_min_absorb_length_r.
+  Abort.
 
   Context {locals: map.map Z word}.
   Context {localsOk: map.ok locals}.

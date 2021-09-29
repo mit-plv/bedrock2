@@ -37,8 +37,8 @@ Section FlattenExpr1.
 
   Ltac set_solver := set_solver_generic String.string.
 
-  Arguments Z.add : simpl never.
-  Arguments Z.mul : simpl never.
+  Local Arguments Z.add : simpl never.
+  Local Arguments Z.mul : simpl never.
 
   Ltac specializes H :=
     match type of H with

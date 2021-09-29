@@ -35,6 +35,9 @@ Section Proofs.
 
   Local Notation RiscvMachineL := MetricRiscvMachine.
 
+  Local Arguments Z.add : simpl never.
+  Local Arguments Z.of_nat : simpl never.
+
   Lemma save_regs_correct: forall vars offset R Rexec (initial: RiscvMachineL) p_sp oldvalues
                                   newvalues,
       Forall valid_register vars ->
