@@ -41,3 +41,39 @@ Module reg_class.
   Definition all(class: t): list Z :=
     List.filter (fun r => eqb (get r) class) (List.unfoldn (Z.add 1) 32 0).
 End reg_class.
+
+Require Import riscv.Utility.RegisterNames.
+Require Import coqutil.Tactics.destr coqutil.Tactics.Simp coqutil.Tactics.Tactics.
+Require Import coqutil.Z.Lia.
+
+Lemma arg_range_Forall: List.Forall (fun r => 10 <= r <= 17) (reg_class.all reg_class.arg).
+Proof.
+  unfold reg_class.all.
+  eapply Forall_filter.
+  intros *. intro E. destr (reg_class.get a); try discriminate E.
+  unfold reg_class.get in E0. simp.
+  destruct_one_match_hyp.
+  + rewrite Bool.andb_true_iff in *. rewrite !Z.leb_le in *. assumption.
+  + destruct_one_match_hyp. 1: discriminate.
+    destruct_one_match_hyp; discriminate.
+Qed.
+
+Lemma sp_not_in_arg_regs: forall n,
+    ~ List.In RegisterNames.sp (List.firstn n (reg_class.all reg_class.arg)).
+Proof.
+  intros n C.
+  pose proof arg_range_Forall as P.
+  eapply List.Forall_firstn in P.
+  eapply List.Forall_forall in P. 2: exact C.
+  unfold RegisterNames.sp in P. blia.
+Qed.
+
+Lemma ra_not_in_arg_regs: forall n,
+    ~ List.In RegisterNames.ra (List.firstn n (reg_class.all reg_class.arg)).
+Proof.
+  intros n C.
+  pose proof arg_range_Forall as P.
+  eapply List.Forall_firstn in P.
+  eapply List.Forall_forall in P. 2: exact C.
+  unfold RegisterNames.ra in P. blia.
+Qed.

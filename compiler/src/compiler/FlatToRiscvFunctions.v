@@ -30,7 +30,7 @@ Require Import compiler.RiscvWordProperties.
 Require Import compiler.on_hyp_containing.
 Require Import coqutil.Word.DebugWordEq.
 Require Import compiler.MemoryLayout.
-Require Import coqutil.Map.TestLemmas.
+Require Import coqutil.Map.MapEauto.
 Require Import compiler.Registers.
 
 Import MetricLogging.
@@ -324,6 +324,17 @@ Section Proofs.
   Ltac wseplog_pre ::=
     repeat (autounfold with unf_to_array);
     repeat ( rewr getEq_length_load_save_regs in |-* || rewr get_array_rewr_eq in |-* ).
+
+  Hint Resolve
+       get_putmany_none
+       Decidable.Z.eqb_spec
+       get_None_in_forall_keys
+       sp_not_valid_FlatImp_var
+       ra_not_valid_FlatImp_var
+       map.not_in_of_list_zip_to_get_None
+       sp_not_in_arg_regs
+       ra_not_in_arg_regs
+    : map_hints.
 
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
@@ -768,31 +779,6 @@ Section Proofs.
         intros PM G G' PM' PM'' F.
         eapply map.putmany_of_list_zip_get_oldval. 3: exact G'. 1: eassumption.
         intro C.
-
-Set Nested Proofs Allowed.
-
-Lemma In_removeb_weaken: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq}
-                                    (x y: E) (l: list E),
-           In x (removeb eeq y l) ->
-           In x l.
-Proof.
-  induction l; simpl; intros.
-  - assumption.
-  - destr (eeq y a).
-    + subst. simpl in H. auto.
-    + simpl in H. destruct H; auto.
-Qed.
-
-Lemma In_list_diff_weaken: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq}
-                                    (x: E) (l1 l2: list E),
-           In x (list_diff eeq l1 l2) ->
-           In x l1.
-Proof.
-  intros. revert dependent l1. induction l2; simpl; intros.
-  - assumption.
-  - eapply IHl2 in H. unfold list_diff in H. eapply In_removeb_weaken; eassumption.
-Qed.
-
         eapply In_list_diff_weaken in C.
         specialize (F _ C).
         unfold valid_FlatImp_var, RegisterNames.sp in F. blia.
@@ -992,23 +978,6 @@ Qed.
           specialize D' with (1 := H) (3 := B) (4 := E0)
         end.
         rewrite D'. 1: assumption.
-
-Lemma list_diff_empty_l: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq} (l: list E),
-            list_diff eeq [] l = [].
-Proof.
-  induction l; simpl; intros; auto.
-Qed.
-
-Lemma list_diff_NoDup: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq}
-                              (l1 l2: list E),
-            NoDup l1 ->
-            NoDup (list_diff eeq l1 l2).
-Proof.
-  intros. revert dependent l1. induction l2; simpl; intros.
-  - assumption.
-  - eapply IHl2. eapply NoDup_removeb. assumption.
-Qed.
-
         eapply list_diff_NoDup.
         eauto using NoDup_modVars_as_list.
 
@@ -1034,39 +1003,6 @@ Qed.
             unfold union, elem_of, of_list, singleton_set in A.
             destruct A as [A | A].
             - exfalso. eapply HNI'.
-
-Lemma list_diff_cons: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq}
-                           (l1 l2: list E) (x: E),
-                  list_diff eeq (x :: l1) l2 = if List.find (eeq x) l2
-                                               then list_diff eeq l1 l2
-                                               else x :: list_diff eeq l1 l2.
-Proof.
-  intros. revert dependent l1.
-  induction l2; simpl; intros.
-  - reflexivity.
-  - destr (eeq a x).
-    + subst. simpl. destr (eeq x x). 2: contradiction. reflexivity.
-    + simpl. destr (eeq x a). 1: congruence. apply IHl2.
-Qed.
-
-Lemma In_list_diff: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq}
-                           (l1 l2: list E) (x: E),
-                  In x l1 ->
-                  ~ In x l2 ->
-                  In x (list_diff eeq l1 l2).
-Proof.
-  induction l1; simpl; intros.
-  - contradiction.
-  - rewrite list_diff_cons. destr (find (eeq a) l2).
-    + eapply find_some in E0. destruct E0. destr (eeq a e). 2: congruence. subst.
-      destruct H.
-      * subst. contradiction.
-      * eauto.
-    + simpl. destruct H.
-      * subst. auto.
-      * auto.
-Qed.
-
               eapply In_list_diff; assumption.
             - congruence.
           }
@@ -1157,277 +1093,7 @@ Qed.
                | |- _ = _ -> _ => let Eq := fresh "Eq0" in intros Eq
                end.
 
-Set Nested Proofs Allowed.
-
-    Lemma extends_putmany
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (m1 m2 m3: map),
-        map.extends m1 m2 ->
-        map.extends m1 m3 ->
-        map.extends m1 (map.putmany m2 m3).
-    Proof.
-      unfold map.extends. intros. rewrite map.get_putmany_dec in H1.
-      destr (map.get m3 x).
-      - inversion H1. subst. eauto.
-      - eauto.
-    Qed.
-
-    Lemma putmany_r_extends
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (m1 m2 m3: map),
-        map.extends m2 m3 ->
-        map.extends (map.putmany m1 m2) m3.
-    Proof.
-      unfold map.extends. intros. rewrite map.get_putmany_dec.
-      erewrite H. 2: eassumption. reflexivity.
-    Qed.
-
-    Lemma invert_extends_disjoint_putmany
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (m1 m2 m3: map),
-        map.disjoint m2 m3 ->
-        map.extends m1 (map.putmany m2 m3) ->
-        map.extends m1 m2 /\ map.extends m1 m3.
-    Proof.
-      unfold map.extends, map.disjoint. intros.
-      split; intros; specialize (H0 x); rewrite map.get_putmany_dec in H0.
-      - destr (map.get m3 x). 2: eauto. exfalso. eauto.
-      - destr (map.get m3 x). 1: eauto. discriminate.
-    Qed.
-
-    Lemma put_extends_l
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (m1 m2: map) k v,
-        map.get m2 k = None ->
-        map.extends m1 m2 ->
-        map.extends (map.put m1 k v) m2.
-    Proof using. clear -ok key_eq_dec. map_solver ok. Qed.
-
-    Lemma remove_put_same
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (m: map) k v,
-        map.remove (map.put m k v) k = map.remove m k.
-    Proof.
-      intros. apply map.map_ext. intros. rewrite ?map.get_remove_dec, map.get_put_dec.
-      destr (key_eqb k k0); reflexivity.
-    Qed.
-
-    Lemma remove_comm
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (m: map) k1 k2,
-        map.remove (map.remove m k1) k2 = map.remove (map.remove m k2) k1.
-    Proof.
-      intros. apply map.map_ext. intros. rewrite ?map.get_remove_dec.
-      destr (key_eqb k1 k); destr (key_eqb k2 k); reflexivity.
-    Qed.
-
-    Lemma remove_extends
- {key value} {map : map.map key value} {ok : map.ok map}:
-      forall (m1 m2: map) k,
-        map.extends m1 m2 ->
-        map.get m2 k = None ->
-        map.extends (map.remove m1 k) m2.
-    Proof using.
-      unfold map.extends. intros.
-      rewrite map.get_remove_diff. 2: {
-        intro C. subst. congruence.
-      }
-      eauto.
-    Qed.
-
-    Lemma extends_remove
- {key value} {map : map.map key value} {ok : map.ok map}:
-      forall (m1 m2: map) k,
-        map.extends m1 m2 ->
-        map.extends m1 (map.remove m2 k).
-    Proof using.
-      unfold map.extends. intros.
-      rewrite map.get_remove_diff in H0. 2: {
-        intro C. subst. rewrite map.get_remove_same in H0. discriminate.
-      }
-      eauto.
-    Qed.
-
-    Lemma get_putmany_none
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (m1 m2: map) k,
-        map.get m1 k = None ->
-        map.get m2 k = None ->
-        map.get (map.putmany m1 m2) k = None.
-    Proof.
-      intros. rewrite map.get_putmany_dec. rewrite H0. assumption.
-    Qed.
-
-    Definition Forall_keys {key value} {map : map.map key value} (P : key -> Prop) (m : map): Prop := forall k v, map.get m k = Some v -> P k.
-
-    Lemma not_in_of_list_zip_to_get_None
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (ks: list key) (vs: list value) (ksvs: map) (k: key),
-        map.of_list_zip ks vs = Some ksvs ->
-        ~ In k ks ->
-        map.get ksvs k = None.
-    Proof.
-      intros.
-      eapply map.get_of_list_zip in H. rewrite H.
-      match goal with
-      | |- ?x = _ => destr x; [exfalso|reflexivity]
-      end.
-      eapply map.zipped_lookup_Some_in in E. apply H0. exact E.
-    Qed.
-
-    Lemma weaken_Forall_keys {key value} {map : map.map key value} :
-      forall (P1 P2: key -> Prop) (m: map),
-        (forall k, P1 k -> P2 k) ->
-        Forall_keys P1 m -> Forall_keys P2 m.
-    Proof.
-      unfold Forall_keys. intros. eauto.
-    Qed.
-
-    Lemma get_None_in_Forall_keys {key value} {map : map.map key value} :
-      forall (m: map) (k: key) P,
-        Forall_keys P m ->
-        ~ P k ->
-        map.get m k = None.
-    Proof.
-      unfold Forall_keys. intros. destr (map.get m k). 2: reflexivity.
-      exfalso. eauto.
-    Qed.
-
-    Lemma invert_Forall_keys_putmany
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (m1 m2: map) P,
-        Forall_keys P (map.putmany m1 m2) ->
-        Forall_keys P m1 /\ Forall_keys P m2.
-    Proof.
-      unfold Forall_keys. intros.
-      split; intros;
-        specialize (H k); rewrite map.get_putmany_dec in H;
-        destr (map.get m2 k); eauto; discriminate.
-    Qed.
-
-    Lemma only_differ_remove
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (m1 m2: map) s k,
-        map.only_differ m1 s m2 ->
-        map.only_differ (map.remove m1 k) (diff s (singleton_set k)) (map.remove m2 k).
-    Proof.
-      unfold map.only_differ, diff, elem_of, singleton_set.
-      intros. rewrite ?map.get_remove_dec.
-      destr (key_eqb k x).
-      - subst. right. reflexivity.
-      - specialize (H x). destruct H; auto.
-    Qed.
-
-    Lemma undef_on_disjoint_of_list_zip
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (m ksvs: map) ks vs,
-        map.disjoint m ksvs ->
-        map.of_list_zip ks vs = Some ksvs ->
-        map.undef_on m (of_list ks).
-    Proof.
-      unfold map.disjoint, map.undef_on, of_list, map.agree_on, elem_of.
-      intros. rewrite map.get_empty.
-      pose proof H0 as L. eapply map.putmany_of_list_zip_sameLength in L.
-      eapply map.get_of_list_zip with (k0 := k) in H0.
-      destr (map.get m k). 2: reflexivity. exfalso.
-      match type of H0 with
-      | _ = ?x => destr x
-      end.
-      1: eauto.
-      eapply map.zipped_lookup_None_notin; eassumption.
-    Qed.
-
-(*
-    Lemma split_only_differ
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (m1 m2: map) s,
-        map.only_differ m1 s m2 ->
-        exists m m1' m2', m1 = map.putmany m m1' /\ map.disjoint m m1' /\
-                          m2 = map.putmany m m2' /\ map.disjoint m m2' /\
-                          Forall_keys s m1' /\ Forall_keys s m2'.
-    Proof.
-      unfold map.only_differ, elem_of. intros.
-    Abort.
-
-Search map.extends map.split.
-        assert (exists lUnused old_ra,
-          initialL_regs = map.putmany (map.putmany lH lUnused)
-                                      (map.putmany (map.put map.empty RegisterNames.sp p_sp)
-                                                   (map.put map.empty RegisterNames.ra old_ra)) /\
-          map.disjoint lH lUnused /\
-          map.disjoint lUnused (map.put map.empty RegisterNames.sp p_sp) /\
-          map.disjoint lUnused (map.put map.empty RegisterNames.ra old_ra) /\
-          Forall_keys valid_FlatImp_var lH) as Sp. {
-          unfold regs_initialized in RI. move RI at bottom.
-          destruct (map.get initialL_regs RegisterNames.ra) as [old_ra|] eqn: E. 2: {
-            exfalso. specialize (RI RegisterNames.ra). rewrite E in RI.
-            destruct RI. 1: cbv; auto. discriminate.
-          }
-          exists (map.remove (map.remove initialL_regs RegisterNames.sp) RegisterNames.ra), old_ra.
-          split.
-          - apply map.map_ext. intros.
-            rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty, ?map.get_remove_dec.
-            destr (RegisterNames.ra =? k). 1: subst; assumption.
-            destr (RegisterNames.sp =? k). 1: subst; assumption.
-            reflexivity.
-          - unfold Forall_keys. intros.
-            rewrite ?map.get_remove_dec in H.
-            destr (RegisterNames.ra =? k). 1: discriminate.
-            destr (RegisterNames.sp =? k). 1: discriminate.
-            move Ext0 at bottom. move V0 at bottom.
-            destruct (map.get lH k) as [v'|] eqn: GlH.
-            + eapply V0. exact GlH.
-            +
-
-        assert (exists lRegs old_ra,
-          initialL_regs = map.putmany lRegs
-                                      (map.putmany (map.put map.empty RegisterNames.sp p_sp)
-                                                   (map.put map.empty RegisterNames.ra old_ra)) /\
-          Forall_keys valid_FlatImp_var lRegs) as Sp. {
-          unfold regs_initialized in RI. move RI at bottom.
-          destruct (map.get initialL_regs RegisterNames.ra) as [old_ra|] eqn: E. 2: {
-            exfalso. specialize (RI RegisterNames.ra). rewrite E in RI.
-            destruct RI. 1: cbv; auto. discriminate.
-          }
-          exists (map.remove (map.remove initialL_regs RegisterNames.sp) RegisterNames.ra), old_ra.
-          split.
-          - apply map.map_ext. intros.
-            rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty, ?map.get_remove_dec.
-            destr (RegisterNames.ra =? k). 1: subst; assumption.
-            destr (RegisterNames.sp =? k). 1: subst; assumption.
-            reflexivity.
-          - unfold Forall_keys. intros.
-            rewrite ?map.get_remove_dec in H.
-            destr (RegisterNames.ra =? k). 1: discriminate.
-            destr (RegisterNames.sp =? k). 1: discriminate.
-            move Ext0 at bottom. move V0 at bottom.
-            destruct (map.get lH k) as [v'|] eqn: GlH.
-            + eapply V0. exact GlH.
-            +
-*)
-
         (* turn all map.putmany_of_list_zip into map.putmany *)
-        match goal with
-        | H: map.putmany_of_list_zip ?ks ?vs ?orig = Some ?res |- _ =>
-          eapply map.putmany_of_list_zip_to_disjoint_putmany in H;
-          let m0 := fresh "m0" in let m1 := fresh "m0" in let ksvs := fresh "ksvs" in
-          destruct H as (m0 & m1 & ksvs & H & ? & ? & ? & ?);
-          try subst orig; try subst res
-        end.
-        assert (map.sub_domain m1 ksvs) as NEW by case TODO.
-
         repeat match goal with
         | H: map.putmany_of_list_zip ?ks ?vs ?orig = Some ?res |- _ =>
           eapply map.putmany_of_list_zip_to_disjoint_putmany in H;
@@ -1435,6 +1101,7 @@ Search map.extends map.split.
           destruct H as (m0 & m1 & ksvs & H & ? & ? & ? & ?);
           try subst orig; try subst res
         end.
+        assert (map.sub_domain m1 ksvs) as NEW by case TODO.
 
         (* turn all map.getmany_of_list into splits *)
         repeat match goal with
@@ -1447,11 +1114,11 @@ Search map.extends map.split.
 
     repeat match goal with
            | H: forall _ _, map.get ?m _ = Some _ -> valid_FlatImp_var _ |- _ =>
-             change (Forall_keys valid_FlatImp_var m) in H
+             change (map.forall_keys valid_FlatImp_var m) in H
            end.
     repeat match goal with
-           | H: Forall_keys _ (map.putmany _ _) |- _ =>
-             eapply invert_Forall_keys_putmany in H;
+           | H: map.forall_keys _ (map.putmany _ _) |- _ =>
+             eapply invert_forall_keys_putmany in H;
              let H' := fresh H in destruct H as [H H']
            end.
     repeat match goal with
@@ -1464,55 +1131,6 @@ Search map.extends map.split.
              eapply invert_extends_disjoint_putmany in H; [|eassumption];
              let H' := fresh H in destruct H as [H H']
            end.
-
-Lemma sp_not_valid_FlatImp_var: ~ valid_FlatImp_var RegisterNames.sp.
-Proof. unfold valid_FlatImp_var, RegisterNames.sp. clear. blia. Qed.
-
-Lemma ra_not_valid_FlatImp_var: ~ valid_FlatImp_var RegisterNames.ra.
-Proof. unfold valid_FlatImp_var, RegisterNames.ra. clear. blia. Qed.
-
-Lemma arg_range_Forall: Forall (fun r => 10 <= r <= 17) (reg_class.all reg_class.arg).
-Proof.
-  unfold reg_class.all.
-  eapply Forall_filter.
-  intros *. intro E. destr (reg_class.get a); try discriminate E.
-  unfold reg_class.get in E0. simp.
-  destruct_one_match_hyp.
-  + rewrite Bool.andb_true_iff in *. rewrite !Z.leb_le in *. assumption.
-  + destruct_one_match_hyp. 1: discriminate.
-    destruct_one_match_hyp; discriminate.
-Qed.
-
-Lemma sp_not_in_arg_regs: forall n,
-    ~ In RegisterNames.sp (List.firstn n (reg_class.all reg_class.arg)).
-Proof.
-  intros n C.
-  pose proof arg_range_Forall as P.
-  eapply List.Forall_firstn in P.
-  eapply Forall_forall in P. 2: exact C.
-  unfold RegisterNames.sp in P. blia.
-Qed.
-
-Lemma ra_not_in_arg_regs: forall n,
-    ~ In RegisterNames.ra (List.firstn n (reg_class.all reg_class.arg)).
-Proof.
-  intros n C.
-  pose proof arg_range_Forall as P.
-  eapply List.Forall_firstn in P.
-  eapply Forall_forall in P. 2: exact C.
-  unfold RegisterNames.ra in P. blia.
-Qed.
-
-Hint Resolve
-     get_putmany_none
-     Decidable.Z.eqb_spec
-     get_None_in_Forall_keys
-     sp_not_valid_FlatImp_var
-     ra_not_valid_FlatImp_var
-     not_in_of_list_zip_to_get_None
-     sp_not_in_arg_regs
-     ra_not_in_arg_regs
-: new_hints.
 
     rewrite Eq0 in OD1.
     eapply only_differ_remove with (k := RegisterNames.sp) in OD1.
@@ -1563,8 +1181,8 @@ Hint Resolve
 
     rename ksvs into m_modvars, ksvs0 into m_retvs.
     subst middle_regs0_ra_sp.
-    eapply put_extends_l. 1: eauto with new_hints.
-    eapply put_extends_l. 1: eauto with new_hints.
+    eapply put_extends_l. 1: eauto with map_hints.
+    eapply put_extends_l. 1: eauto with map_hints.
     eapply extends_putmany.
     * eapply extends_trans with (s2 :=
          map.remove (map.remove (map.putmany m0 m_modvars) RegisterNames.ra) RegisterNames.sp).
@@ -1575,27 +1193,11 @@ Hint Resolve
       }
       eapply extends_if_only_differ_in_undef. 3: exact OD1.
       2: {
-        eapply undef_on_disjoint_of_list_zip; eassumption.
+        eapply map.undef_on_disjoint_of_list_zip; eassumption.
       }
-      eapply remove_extends. 2: eauto with new_hints.
-      eapply remove_extends. 2: eauto with new_hints.
+      eapply remove_extends. 2: eauto with map_hints.
+      eapply remove_extends. 2: eauto with map_hints.
       assumption.
-
-    Lemma putmany_l_extends
- {key value} {map : map.map key value} {ok : map.ok map}
- {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
-      forall (m1 m2 m3: map),
-        map.extends m1 m3 ->
-        map.disjoint m1 m2 ->
-        map.extends (map.putmany m1 m2) m3.
-    Proof.
-      unfold map.extends, map.disjoint. intros. rewrite map.get_putmany_dec.
-      specialize (H _ _ H1).
-      destr (map.get m2 x).
-      + exfalso. eauto.
-      + exact H.
-    Qed.
-
     * eapply putmany_l_extends. 2: eassumption.
       unfold map.extends.
       intros *. intro G.
@@ -1614,25 +1216,8 @@ Hint Resolve
       move GM2 at bottom.
       eapply map.get_of_list_zip in GM2. rewrite G in GM2. symmetry in GM2.
       eapply map.zipped_lookup_Some_in in GM2.
-
-
-Lemma invert_In_list_diff: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq}
-                           (l1 l2: list E) (x: E),
-          In x (list_diff eeq l1 l2) ->
-          In x l1 /\ ~ In x l2.
-Proof.
-  induction l1; simpl; intros.
-  - rewrite list_diff_empty_l in H. inversion H.
-  - rewrite list_diff_cons in H. destr (find (eeq a) l2).
-    + eapply find_some in E0. destruct E0. destr (eeq a e). 2: congruence. subst.
-      specialize IHl1 with (1 := H). destruct IHl1. auto.
-    + simpl in *. destruct H.
-      * subst. split; [auto|]. intro C. eapply find_none in E0. 2: eassumption.
-        destr (eeq x x); congruence.
-      * specialize IHl1 with (1 := H). destruct IHl1. auto.
-Qed.
-
       eapply invert_In_list_diff in GM1. destruct GM1 as [_ C]. contradiction.
+
     + (* forall (x : Z) (v : word), map.get finalRegsH' x = Some v -> valid_FlatImp_var x ?? *)
       case TODO.
     + subst FL.

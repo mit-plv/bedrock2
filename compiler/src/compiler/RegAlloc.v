@@ -11,7 +11,7 @@ Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Properties.
 Require Import coqutil.Map.Solver.
 Require Import coqutil.Tactics.Tactics.
-Require Import coqutil.Map.TestLemmas.
+Require Import coqutil.Map.MapEauto.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Tactics.Simp.
