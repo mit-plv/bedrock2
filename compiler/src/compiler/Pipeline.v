@@ -153,6 +153,10 @@ Section Pipeline1.
     unfold lookup_and_check_func, check_func, assert in *. simp.
     autoforward with typeclass_instances in E7. rewrite <- E7.
     autoforward with typeclass_instances in E6. rewrite <- E6.
+
+(* TODO move *)
+Arguments List.NoDup_dedup {_} {_} {_} _.
+
     split; apply List.NoDup_dedup.
   Qed.
 

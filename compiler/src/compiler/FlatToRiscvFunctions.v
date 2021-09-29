@@ -390,8 +390,7 @@ Section Proofs.
 
       rename stack_trash into old_stackvals.
 
-      set (FL := (stackalloc_words iset body + (Z.of_nat (1 + List.length (modVars_as_list Z.eqb body))))%Z).
-
+      set (FL := framelength (argnames, retnames, body)) in *.
       (* We have enough stack space for this call: *)
       (* Note that if we haven't used all stack scratch space of the caller's stack frame yet, we
          skip (waste) it, so we have to add "stackoffset / bytes_per_word" on the left of the inequality. *)
@@ -410,14 +409,16 @@ Section Proofs.
       assert (exists remaining_stack old_scratch old_modvarvals old_ra unused_scratch,
           old_stackvals = remaining_stack ++ old_scratch ++ old_modvarvals ++ [old_ra] ++ unused_scratch /\
           List.length old_scratch = Z.to_nat (stackalloc_words iset body) /\
-          List.length old_modvarvals = List.length (modVars_as_list Z.eqb body) /\
+          List.length old_modvarvals = List.length
+                                         (list_diff Z.eqb (modVars_as_list Z.eqb body) retnames) /\
           List.length unused_scratch = Z.to_nat rem_framewords) as TheSplit. {
         clear IHexec.
-        subst FL.
+        subst FL. unfold framelength in *.
         rename old_stackvals into ToSplit.
         split_from_right ToSplit ToSplit unused_scratch (Z.to_nat rem_framewords).
         split_from_right ToSplit ToSplit old_ras 1%nat.
-        split_from_right ToSplit ToSplit old_modvarvals (Datatypes.length (modVars_as_list Z.eqb body)).
+        split_from_right ToSplit ToSplit old_modvarvals
+                  (Datatypes.length (list_diff Z.eqb (modVars_as_list Z.eqb body) retnames)).
         split_from_right ToSplit ToSplit old_scratch (Z.to_nat (stackalloc_words iset body)).
         destruct old_ras as [|old_ra rest]; try discriminate.
         destruct rest; try discriminate.
@@ -535,11 +536,12 @@ Section Proofs.
     (* save vars modified by callee onto stack *)
     match goal with
     | |- context [ {| getRegs := ?l |} ] =>
-      pose proof (@map.getmany_of_list_exists _ _ _ l valid_register (modVars_as_list Z.eqb body)) as P
+      pose proof (@map.getmany_of_list_exists _ _ _ l valid_register (list_diff Z.eqb (modVars_as_list Z.eqb body) (List.firstn ret_count (reg_class.all reg_class.arg)))) as P
     end.
     edestruct P as [newvalues P2]; clear P.
     { eapply Forall_impl; cycle 1.
-      - eapply modVars_as_list_valid_FlatImp_var. assumption.
+      - eapply list_diff_Forall_weaken.
+        eapply modVars_as_list_valid_FlatImp_var. assumption.
       - apply valid_FlatImp_var_implies_valid_register. }
     {
       intros.
@@ -556,7 +558,8 @@ Section Proofs.
       4: assumption.
       4: {
         eapply Forall_impl; cycle 1.
-        - eapply modVars_as_list_valid_FlatImp_var. assumption.
+        - eapply list_diff_Forall_weaken.
+          eapply modVars_as_list_valid_FlatImp_var. assumption.
         - apply valid_FlatImp_var_implies_valid_register. }
       1: eassumption.
       2: reflexivity.
@@ -715,21 +718,20 @@ Section Proofs.
 
     (* load back the modified vars *)
     eapply runsTo_trans. {
-      eapply load_regs_correct with
-          (vars := (modVars_as_list _ body)) (values := newvalues);
+      eapply load_regs_correct with (values := newvalues);
         simpl; cycle 1.
       - eassumption.
       - repeat match goal with
                | H: map.getmany_of_list _ _ = Some _ |- _ =>
                  unique eapply @map.getmany_of_list_length in copy of H
                end.
-        instantiate (1 := Z.eqb).
-        blia.
+        symmetry.
+        eassumption.
       - eapply rearrange_footpr_subset; [eassumption|wwcancel].
       - subst FL. wcancel_assumption.
       - reflexivity.
       - assumption.
-      - apply modVars_as_list_valid_FlatImp_var. assumption.
+      - eapply list_diff_Forall_weaken. apply modVars_as_list_valid_FlatImp_var. assumption.
     }
 
     simpl.
@@ -765,7 +767,34 @@ Section Proofs.
                end.
         intros PM G G' PM' PM'' F.
         eapply map.putmany_of_list_zip_get_oldval. 3: exact G'. 1: eassumption.
-        intro C. specialize (F _ C).
+        intro C.
+
+Set Nested Proofs Allowed.
+
+Lemma In_removeb_weaken: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq}
+                                    (x y: E) (l: list E),
+           In x (removeb eeq y l) ->
+           In x l.
+Proof.
+  induction l; simpl; intros.
+  - assumption.
+  - destr (eeq y a).
+    + subst. simpl in H. auto.
+    + simpl in H. destruct H; auto.
+Qed.
+
+Lemma In_list_diff_weaken: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq}
+                                    (x: E) (l1 l2: list E),
+           In x (list_diff eeq l1 l2) ->
+           In x l1.
+Proof.
+  intros. revert dependent l1. induction l2; simpl; intros.
+  - assumption.
+  - eapply IHl2 in H. unfold list_diff in H. eapply In_removeb_weaken; eassumption.
+Qed.
+
+        eapply In_list_diff_weaken in C.
+        specialize (F _ C).
         unfold valid_FlatImp_var, RegisterNames.sp in F. blia.
       - reflexivity.
       - simpl. eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
@@ -808,10 +837,11 @@ Section Proofs.
         eapply map.putmany_of_list_zip_get_oldval. 1: exact PM. 2: exact G.
         intro C.
         apply_in_hyps modVars_as_list_valid_FlatImp_var.
-        match goal with
+        lazymatch goal with
         | H: Forall ?P ?L |- _ =>
-          eapply (proj1 (Forall_forall P L)) in H; [rename H into B|eassumption]
+          eapply (proj1 (Forall_forall P L)) in H; [rename H into B|]
         end.
+        2: eapply In_list_diff_weaken; exact C.
         clear -B.
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
@@ -886,7 +916,8 @@ Section Proofs.
       * (* 1) prove that LHS is in newvalues: *)
         pose proof (In_nth_error _ _ HI') as B. destruct B as [i B].
         pose proof @map.getmany_of_list_get as D. specialize D with (1 := P2) (2 := B).
-        pose proof (nth_error_Some (modVars_as_list Z.eqb body) i) as N.
+        pose proof (nth_error_Some (list_diff Z.eqb (modVars_as_list Z.eqb body)
+           (List.firstn ret_count (reg_class.all reg_class.arg))) i) as N.
         apply proj1 in N. specialize_hyp N. 1: congruence.
         lazymatch goal with
         | H: map.putmany_of_list_zip ?S _ middle_regs = Some middle_regs0 |- _ =>
@@ -901,10 +932,11 @@ Section Proofs.
           move HI' at bottom.
           intro C. subst.
           apply_in_hyps modVars_as_list_valid_FlatImp_var.
-          match goal with
+          lazymatch goal with
           | H: Forall ?P ?L |- _ =>
-            eapply (proj1 (Forall_forall P L)) in H; [rename H into BB|eassumption]
+            eapply (proj1 (Forall_forall P L)) in H; [rename H into BB|]
           end.
+          2: eapply In_list_diff_weaken; eassumption.
           clear -BB.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
           blia.
@@ -914,10 +946,11 @@ Section Proofs.
           move HI' at bottom.
           intro C. subst.
           apply_in_hyps modVars_as_list_valid_FlatImp_var.
-          match goal with
+          lazymatch goal with
           | H: Forall ?P ?L |- _ =>
-            eapply (proj1 (Forall_forall P L)) in H; [rename H into BB|eassumption]
+            eapply (proj1 (Forall_forall P L)) in H; [rename H into BB|]
           end.
+          2: eapply In_list_diff_weaken; eassumption.
           clear -BB.
           unfold valid_FlatImp_var, RegisterNames.ra in *.
           blia.
@@ -930,10 +963,11 @@ Section Proofs.
           move HI' at bottom.
           intro C. subst.
           apply_in_hyps modVars_as_list_valid_FlatImp_var.
-          match goal with
+          lazymatch goal with
           | H: Forall ?P ?L |- _ =>
-            eapply (proj1 (Forall_forall P L)) in H; [rename H into BB|eassumption]
+            eapply (proj1 (Forall_forall P L)) in H; [rename H into BB|]
           end.
+          2: eapply In_list_diff_weaken; eassumption.
           clear -BB.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
           blia.
@@ -943,10 +977,11 @@ Section Proofs.
           move HI' at bottom.
           intro C. subst.
           apply_in_hyps modVars_as_list_valid_FlatImp_var.
-          match goal with
+          lazymatch goal with
           | H: Forall ?P ?L |- _ =>
-            eapply (proj1 (Forall_forall P L)) in H; [rename H into BB|eassumption]
+            eapply (proj1 (Forall_forall P L)) in H; [rename H into BB|]
           end.
+          2: eapply In_list_diff_weaken; eassumption.
           clear -BB.
           unfold valid_FlatImp_var, RegisterNames.ra in *.
           blia.
@@ -956,8 +991,26 @@ Section Proofs.
         | H: map.putmany_of_list_zip _ _ middle_regs = Some middle_regs0 |- _ =>
           specialize D' with (1 := H) (3 := B) (4 := E0)
         end.
-        rewrite D' by eauto using NoDup_modVars_as_list.
-        assumption.
+        rewrite D'. 1: assumption.
+
+Lemma list_diff_empty_l: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq} (l: list E),
+            list_diff eeq [] l = [].
+Proof.
+  induction l; simpl; intros; auto.
+Qed.
+
+Lemma list_diff_NoDup: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq}
+                              (l1 l2: list E),
+            NoDup l1 ->
+            NoDup (list_diff eeq l1 l2).
+Proof.
+  intros. revert dependent l1. induction l2; simpl; intros.
+  - assumption.
+  - eapply IHl2. eapply NoDup_removeb. assumption.
+Qed.
+
+        eapply list_diff_NoDup.
+        eauto using NoDup_modVars_as_list.
 
       * (* if not in modvars (HNI'): *)
         destr (Z.eqb x RegisterNames.sp).
@@ -980,7 +1033,41 @@ Section Proofs.
             exfalso. apply HNI'.
             unfold union, elem_of, of_list, singleton_set in A.
             destruct A as [A | A].
-            - exact A.
+            - exfalso. eapply HNI'.
+
+Lemma list_diff_cons: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq}
+                           (l1 l2: list E) (x: E),
+                  list_diff eeq (x :: l1) l2 = if List.find (eeq x) l2
+                                               then list_diff eeq l1 l2
+                                               else x :: list_diff eeq l1 l2.
+Proof.
+  intros. revert dependent l1.
+  induction l2; simpl; intros.
+  - reflexivity.
+  - destr (eeq a x).
+    + subst. simpl. destr (eeq x x). 2: contradiction. reflexivity.
+    + simpl. destr (eeq x a). 1: congruence. apply IHl2.
+Qed.
+
+Lemma In_list_diff: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq}
+                           (l1 l2: list E) (x: E),
+                  In x l1 ->
+                  ~ In x l2 ->
+                  In x (list_diff eeq l1 l2).
+Proof.
+  induction l1; simpl; intros.
+  - contradiction.
+  - rewrite list_diff_cons. destr (find (eeq a) l2).
+    + eapply find_some in E0. destruct E0. destr (eeq a e). 2: congruence. subst.
+      destruct H.
+      * subst. contradiction.
+      * eauto.
+    + simpl. destruct H.
+      * subst. auto.
+      * auto.
+Qed.
+
+              eapply In_list_diff; assumption.
             - congruence.
           }
           rewrite !map.get_put_diff in A by assumption.
@@ -1339,7 +1426,7 @@ Search map.extends map.split.
           destruct H as (m0 & m1 & ksvs & H & ? & ? & ? & ?);
           try subst orig; try subst res
         end.
-        assert (map.sub_domain m1 ksvs) as NEW by admit.
+        assert (map.sub_domain m1 ksvs) as NEW by case TODO.
 
         repeat match goal with
         | H: map.putmany_of_list_zip ?ks ?vs ?orig = Some ?res |- _ =>
@@ -1493,26 +1580,65 @@ Hint Resolve
       eapply remove_extends. 2: eauto with new_hints.
       eapply remove_extends. 2: eauto with new_hints.
       assumption.
-    * unfold map.extends.
-      intros *. intro G. rewrite map.get_putmany_dec.
-      case TODO. (* not sure if it holds?? *)
-      (*destr (map.get m_modvars x).*)
 
-    + match goal with
-      | H: map.putmany_of_list_zip _ _ _ = Some finalRegsH' |- _ =>
-        move H at bottom; rename H into P
-      end.
-      intros x v G.
-      pose proof (map.putmany_of_list_zip_find_index _ _ _ _ _ _ P G) as Q.
-      destruct Q as [ [ n [A B] ] | C ].
-      * eapply Forall_forall; cycle 1.
-        { eapply nth_error_In. eassumption. }
-        { assumption. }
-      * eauto.
+    Lemma putmany_l_extends
+ {key value} {map : map.map key value} {ok : map.ok map}
+ {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb} :
+      forall (m1 m2 m3: map),
+        map.extends m1 m3 ->
+        map.disjoint m1 m2 ->
+        map.extends (map.putmany m1 m2) m3.
+    Proof.
+      unfold map.extends, map.disjoint. intros. rewrite map.get_putmany_dec.
+      specialize (H _ _ H1).
+      destr (map.get m2 x).
+      + exfalso. eauto.
+      + exact H.
+    Qed.
+
+    * eapply putmany_l_extends. 2: eassumption.
+      unfold map.extends.
+      intros *. intro G.
+      move Ext2 at bottom. unfold map.extends in Ext2.
+      rewrite map.putmany_comm in Ext2 by assumption.
+      specialize Ext2 with (1 := G).
+      rewrite map.get_putmany_dec in Ext2.
+      destr (map.get m0 x). 1: assumption.
+      exfalso.
+      move GM1 at bottom.
+      pose proof NEW as SD.
+      unfold map.sub_domain in SD.
+      specialize SD with (1 := Ext2). destruct SD as [v2 Gm].
+      eapply map.get_of_list_zip in GM1. rewrite Gm in GM1. symmetry in GM1.
+      eapply map.zipped_lookup_Some_in in GM1.
+      move GM2 at bottom.
+      eapply map.get_of_list_zip in GM2. rewrite G in GM2. symmetry in GM2.
+      eapply map.zipped_lookup_Some_in in GM2.
+
+
+Lemma invert_In_list_diff: forall {E: Type} {eeq: E -> E -> bool} {eeq_spec: EqDecider eeq}
+                           (l1 l2: list E) (x: E),
+          In x (list_diff eeq l1 l2) ->
+          In x l1 /\ ~ In x l2.
+Proof.
+  induction l1; simpl; intros.
+  - rewrite list_diff_empty_l in H. inversion H.
+  - rewrite list_diff_cons in H. destr (find (eeq a) l2).
+    + eapply find_some in E0. destruct E0. destr (eeq a e). 2: congruence. subst.
+      specialize IHl1 with (1 := H). destruct IHl1. auto.
+    + simpl in *. destruct H.
+      * subst. split; [auto|]. intro C. eapply find_none in E0. 2: eassumption.
+        destr (eeq x x); congruence.
+      * specialize IHl1 with (1 := H). destruct IHl1. auto.
+Qed.
+
+      eapply invert_In_list_diff in GM1. destruct GM1 as [_ C]. contradiction.
+    + (* forall (x : Z) (v : word), map.get finalRegsH' x = Some v -> valid_FlatImp_var x ?? *)
+      case TODO.
     + subst FL.
       rewrite map.get_put_same. f_equal.
       unfold bytes_per_word. unfold bitwidth_iset in BWM. rewrite BWM.
-      eapply reduce_eq_to_diff0. rewrite Nat2Z.inj_succ. rewrite <- Z.add_1_r.
+      eapply reduce_eq_to_diff0.
       ring_simplify. reflexivity.
     + eapply preserve_regs_initialized_after_put.
       eapply preserve_regs_initialized_after_put.
@@ -1532,7 +1658,9 @@ Hint Resolve
       wwcancel.
     + epose (?[new_ra]: word) as new_ra. cbv delta [id] in new_ra.
       exists (stack_trash ++ newvalues ++ [new_ra] ++ unused_scratch).
-      assert (Datatypes.length (modVars_as_list Z.eqb body) = Datatypes.length newvalues). {
+      assert (Datatypes.length (list_diff Z.eqb (modVars_as_list Z.eqb body)
+                                          (List.firstn ret_count (reg_class.all reg_class.arg)))
+              = Datatypes.length newvalues). {
         eapply map.getmany_of_list_length. eassumption.
       }
       simpl_addrs. split; [blia|].

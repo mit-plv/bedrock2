@@ -117,8 +117,7 @@ Section Sim.
       + clear. intros k v ?. eassumption.
       + assumption.
       + eauto using fits_stack_call.
-      + simpl. change (4 * BinIntDef.Z.of_nat 0) with 0. rewrite Z.add_0_r.
-        rewrite_match. f_equal. f_equal. f_equal. ring.
+      + simpl. rewrite_match. f_equal. f_equal. f_equal. ring.
       + unfold stmt_not_too_big. simpl. cbv. reflexivity.
       + simpl. auto using Forall_nil.
       + assert (word.ok word) by exact word_ok.
