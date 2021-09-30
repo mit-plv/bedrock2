@@ -129,7 +129,9 @@ Section Pipeline1.
     - case TODO. (* uses_standard_arg_regs *)
     - pose proof spill_stmt_valid_vars as P.
       unfold valid_vars_src, valid_vars_tgt, sp in P.
-      unfold spill_fbody. cbn. split. 1: unfold fp; blia.
+      unfold spill_fbody. cbn. split.
+      { eapply read_register_range_valid_vars.
+(*
       eapply P; clear P. 1: reflexivity.
       eapply max_var_sound.
       eapply FlatImp.forallb_vars_stmt_correct.
@@ -139,6 +141,8 @@ Section Pipeline1.
     - specialize H0 with (1 := Hp1). eapply H0.
     - case TODO. (* uses_standard_arg_regs *)
   Qed.
+*)
+  Admitted.
 
   Lemma regalloc_functions_NoDup: forall funs funs',
       regalloc_functions funs = Some funs' ->
@@ -196,21 +200,23 @@ Section Pipeline1.
                      p_call (word.add p_call (word.of_Z 4)) mH' Rdata Rexec final).
   Proof.
     intros. unfold compile in *. simp.
-    pose proof upper_compiler_correct as U. unfold phase_correct in U.
-    edestruct U as (argnames & retnames & fbody' & G' & Largs & Lrets & Sim); clear U. 1,2: eassumption.
-    destruct argnames; [clear Largs| discriminate Largs].
-    destruct retnames; [clear Lrets| discriminate Lrets].
+    pose proof upper_compiler_correct as U. unfold phase_correct, SrcLang, FlatLang in U.
+    edestruct U with (argvals := @nil word) (post := fun t m (_: list word) => postH t m)
+      as (argnames & retnames & fbody' & G' & Sim); clear U.
+    { eassumption. }
+    { do 3 eexists. split. 1: eassumption. unfold map.of_list_zip. simpl. intros. simp.
+      eapply ExprImp.weaken_exec. 1: eassumption.
+      cbv beta. intros. exists []. split; [reflexivity|eassumption]. }
+    assert (argnames = []) by case TODO.
+    assert (retnames = []) by case TODO.
+    subst.
     eapply flat_to_riscv_correct; try typeclasses eauto; try eassumption.
     { unfold upper_compiler, compose_phases in *. simp.
       eapply spill_functions_valid_FlatImp_fun. 1: eassumption.
       eapply regalloc_functions_NoDup. eassumption. }
-    edestruct Sim with (argvals := @nil word) (post := fun t m (_: list word) => postH t m)
-      as (l2 & P & Ex2); clear Sim.
-    - reflexivity.
-    - eapply ExprImp.weaken_exec. 1: eassumption. cbv beta. intros t' m' l' mc' Hpost. exists [].
-      split. 1: reflexivity. assumption.
-    - cbn in P. apply Option.eq_of_eq_Some in P. subst l2.
-      eapply FlatImp.exec.weaken. 1: exact Ex2. cbv beta. intros. simp. assumption.
+    eapply FlatImp.exec.weaken.
+    - eapply Sim. reflexivity.
+    - cbv beta. intros. simp. assumption.
   Qed.
 
   Definition instrencode(p: list Instruction): list byte :=
