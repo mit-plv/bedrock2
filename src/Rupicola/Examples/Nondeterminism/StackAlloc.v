@@ -103,7 +103,7 @@ Section Peek.
   Implicit Type R : mem -> Prop.
   Instance spec_of_nondet_xor : spec_of "nondet_xor" :=
     fnspec! "nondet_xor" w0 / R,
-    { requires fns tr mem := R mem;
+    { requires tr mem := R mem;
       ensures tr' mem' rets :=
         propbind (nondet_xor_src w0)
                  (fun w => tr' = tr /\ R mem' /\ rets = [w]) }.

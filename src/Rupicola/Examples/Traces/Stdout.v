@@ -97,8 +97,8 @@ Section Stdout.
 
   Instance spec_of_hello_word : spec_of "hello_world" :=
     fnspec! "hello_world" y / (R: mem -> Prop),
-    { requires fns tr mem :=
-        spec_of_putchars fns /\ R mem;
+    { requires tr mem :=
+        R mem;
       ensures tr' mem' rets :=
         tracebind trace_entry_of_write
                   (hello_world_src y)
@@ -109,7 +109,7 @@ Section Stdout.
   Derive hello_world_body SuchThat
          (defn! "hello_world"("y") ~> "out"
               { hello_world_body },
-          implements hello_world_src)
+          implements hello_world_src using ["putchars"])
   As hello_world_target_correct.
   Proof.
     compile.

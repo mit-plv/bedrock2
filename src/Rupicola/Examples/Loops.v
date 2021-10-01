@@ -70,7 +70,7 @@ Section Ex.
           (pr1: word.unsigned len < Z.of_nat n1)
           (pr2: word.unsigned len < Z.of_nat n2)
           R,
-    { requires fns tr mem :=
+    { requires tr mem :=
         (vectorarray_value AccessWord a1_ptr a1 ⋆
                            vectorarray_value AccessWord a2_ptr a2 ⋆ R) mem;
       ensures tr' mem' :=
@@ -120,7 +120,7 @@ Section Ex.
           (pr1: word.signed len < Z.of_nat n1)
           (pr2: word.signed len < Z.of_nat n2)
           R,
-    { requires fns tr mem :=
+    { requires tr mem :=
         (vectorarray_value AccessWord a1_ptr a1 ⋆
                            vectorarray_value AccessWord a2_ptr a2 ⋆ R) mem;
       ensures tr' mem' :=
@@ -156,7 +156,7 @@ Section Ex.
           (pr1: word.unsigned len < Z.of_nat n1)
           (pr2: word.unsigned len < Z.of_nat n2)
           R,
-    { requires fns tr mem :=
+    { requires tr mem :=
         (sizedlistarray_value AccessWord a1_ptr n1 a1 ⋆
                               sizedlistarray_value AccessWord a2_ptr n2 a2 ⋆ R) mem;
       ensures tr' mem' :=
@@ -183,7 +183,7 @@ Section Ex.
           (pr1: word.unsigned len < Z.of_nat (List.length a1))
           (pr2: word.unsigned len < Z.of_nat (List.length a2))
           R,
-    { requires fns tr mem :=
+    { requires tr mem :=
         (listarray_value AccessWord a1_ptr a1 ⋆
                          listarray_value AccessWord a2_ptr a2 ⋆ R) mem;
       ensures tr' mem' :=
@@ -241,7 +241,7 @@ Section Ex.
 
   Instance spec_of_incr : spec_of "incr" :=
     fnspec! "incr" c_ptr / (c: cell) R,
-    { requires fns tr mem :=
+    { requires tr mem :=
         (cell_value c_ptr c ⋆ R) mem;
       ensures tr' mem' :=
         tr' = tr /\

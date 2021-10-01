@@ -242,7 +242,7 @@ Section __.
 
   Instance spec_of_cmove_word : spec_of "cmove_word" :=
     fnspec! "cmove_word" mask ptr1 ptr2 / c1 c2 R,
-    { requires fns tr mem :=
+    { requires tr mem :=
         is_mask mask /\
         (cell_value ptr1 c1 * cell_value ptr2 c2 * R)%sep mem;
       ensures tr' mem' :=
@@ -260,7 +260,7 @@ Section __.
 
   Instance spec_of_cswap_word : spec_of "cswap_word" :=
     fnspec! "cswap_word" mask ptr1 ptr2 / c1 c2 R,
-    { requires fns tr mem :=
+    { requires tr mem :=
         is_mask mask /\
         (cell_value ptr1 c1 * cell_value ptr2 c2 * R)%sep mem;
       ensures tr' mem' :=
@@ -282,7 +282,7 @@ Section __.
   Instance spec_of_cmove_array : spec_of "cmove_array" :=
     fnspec! "cmove_array" mask len ptr1 ptr2 / n c1 c2 R,
     (*TODO: if b then bw should be all 1s*)
-    { requires fns tr mem :=
+    { requires tr mem :=
         word.unsigned len = Z.of_nat n /\
         is_mask mask /\
         (sizedlistarray_value AccessWord ptr1 n c1
@@ -339,7 +339,7 @@ Section __.
   Instance spec_of_cswap_array : spec_of "cswap_array" :=
     fnspec! "cswap_array" mask len ptr1 ptr2 / n c1 c2 R,
     (*TODO: if b then bw should be all 1s*)
-    { requires fns tr mem :=
+    { requires tr mem :=
         word.unsigned len = Z.of_nat n /\
         is_mask mask /\
         (sizedlistarray_value AccessWord ptr1 n c1

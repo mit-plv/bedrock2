@@ -20,7 +20,7 @@ Section with_parameters.
 
   Instance spec_of_swap : spec_of "swap" :=
     fnspec! "swap" c1_ptr c2_ptr / c1 c2 R,
-    { requires fns tr mem :=
+    { requires tr mem :=
         (cell_value c1_ptr c1 ⋆ cell_value c2_ptr c2 ⋆ R) mem;
       ensures tr' mem' :=
         tr' = tr /\

@@ -23,7 +23,7 @@ Section with_parameters.
 
     Instance spec_of_min : spec_of "min" :=
       fnspec! "min" (x y: word) ~> z,
-      { requires fns tr mem := True;
+      { requires tr mem := True;
         ensures tr' mem' := tr = tr' /\ mem = mem' /\ z = min x y }.
 
     Hint Extern 2 (IsRupicolaBinding (if _ then _ else _)) => exact true : typeclass_instances.
@@ -49,7 +49,7 @@ Section with_parameters.
 
     Instance spec_of_minm : spec_of "minm" :=
       fnspec! "minm" (x y: word) / R ~> z,
-      { requires fns tr mem := R mem;
+      { requires tr mem := R mem;
         ensures tr' mem' := tr = tr' /\ R mem' /\ z = minm x y }. (* TODO explain why not mem; = mem *)
 
     Hint Extern 1 => compile_if; shelve : compiler.

@@ -592,7 +592,7 @@ Section __.
   
   Instance spec_of_crc32 : spec_of "crc32" :=
     fnspec! "crc32" data_ptr len / (data : list byte) R ~> r,
-    { requires fns tr mem :=
+    { requires tr mem :=
         (word.unsigned len = Z.of_nat (length data) /\
         (listarray_value AccessByte data_ptr data * R)%sep mem);
       ensures tr' mem' :=

@@ -20,7 +20,7 @@ Section with_parameters.
 
   Instance spec_of_incr : spec_of "incr" :=
     fnspec! "incr" (c_ptr : word) / (c : cell) R,
-    { requires fns tr mem :=
+    { requires tr mem :=
         (cell_value c_ptr c ⋆ R) mem;
       ensures tr' mem' :=
         tr' = tr /\ (cell_value c_ptr (incr_gallina c) ⋆ R) mem' }.

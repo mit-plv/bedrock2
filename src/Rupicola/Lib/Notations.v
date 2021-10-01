@@ -114,7 +114,7 @@ Notation "'let/n' ( x , y ) := val 'in' body" :=
 
 Infix "~>" := scalar (at level 40, only parsing).
 
-Notation "[[ locals ]]" := ({| value := locals; _value_ok := _ |}) (only printing).
+Notation "[[ locals ]]" := {| value := locals; _value_ok := _ |} (only printing).
 
 Declare Scope old.
 Delimit Scope old with old.
@@ -208,7 +208,7 @@ Compute (let x := ltac:(unify @spec_example_norets @spec_example_norets_short) i
 
 Infix "⋆" := sep (at level 40, left associativity).
 
-Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' functions tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
@@ -225,7 +225,6 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' 
                                              post%Z) ..)))) ..)) ..))
     (at level 200,
      name at level 0,
-     functions binder,
      a0 binder, an binder,
      g0 binder, gn binder,
      r0 closed binder, rn closed binder,
@@ -233,7 +232,7 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' 
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' functions tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
@@ -247,14 +246,13 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' functions tr m
                                   rets = nil /\ post%Z%sep))) ..)) ..))
     (at level 200,
      name at level 0,
-     functions binder,
      a0 binder, an binder,
      g0 binder, gn binder,
      tr ident, tr' ident, mem ident, mem' ident,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' functions tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
@@ -269,14 +267,13 @@ Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' functions tr 
                                    post%Z) ..)))) ..))
     (at level 200,
      name at level 0,
-     functions binder,
      a0 binder, an binder,
      r0 closed binder, rn closed binder,
      tr ident, tr' ident, mem ident, mem' ident,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an ',' '{' 'requires' functions tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
@@ -288,13 +285,12 @@ Notation "'fnspec!' name a0 .. an ',' '{' 'requires' functions tr mem := pre ';'
                         rets = nil /\ post%Z%sep))) ..))
     (at level 200,
      name at level 0,
-     functions binder,
      a0 binder, an binder,
      tr ident, tr' ident, mem ident, mem' ident,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' functions tr mem := pre ';' 'ensures' tr' mem' rets ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' rets ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
@@ -307,14 +303,13 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{' 'requires' functions tr m
                                (fun tr' mem' rets => post%Z))) ..)) ..))
     (at level 200,
      name at level 0,
-     functions binder,
      a0 binder, an binder,
      g0 binder, gn binder,
      tr ident, tr' ident, mem ident, mem' ident,
      pre at level 200,
      post at level 200).
 
-Notation "'fnspec!' name a0 .. an ',' '{' 'requires' functions tr mem := pre ';' 'ensures' tr' mem' rets ':=' post '}'" :=
+Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' rets ':=' post '}'" :=
   (fun functions =>
      (forall a0,
         .. (forall an,
@@ -325,7 +320,6 @@ Notation "'fnspec!' name a0 .. an ',' '{' 'requires' functions tr mem := pre ';'
                      (fun tr' mem' rets => post%Z))) ..))
     (at level 200,
      name at level 0,
-     functions binder,
      a0 binder, an binder,
      tr ident, tr' ident, mem ident, mem' ident,
      pre at level 200,
@@ -333,9 +327,21 @@ Notation "'fnspec!' name a0 .. an ',' '{' 'requires' functions tr mem := pre ';'
 
 Declare Custom Entry defn_spec.
 
+Record _defn_spec {A: Type} :=
+  { _defn_name: string;
+    _defn_args: list string;
+    _defn_rets: list string;
+    _defn_bedrock: cmd;
+    _defn_gallina: A;
+    _defn_calls: list string }.
+
 Notation "name '(' a0 , .. , an ')'  '~>'  r0 , .. , rn  {  body  } ,  'implements'  fn" :=
-  (name, (cons a0 .. (cons an []) ..), (cons r0 .. (cons rn []) ..),
-   match body return cmd with body => body end, fn)
+  {| _defn_name := name;
+     _defn_args := cons a0 .. (cons an []) ..;
+     _defn_rets := cons r0 .. (cons rn []) ..;
+     _defn_bedrock := match body return cmd with body => body end;
+     _defn_gallina := fn;
+     _defn_calls := [] |}
     (in custom defn_spec at level 10,
         name constr at level 0,
         a0 constr at level 0, an constr at level 0,
@@ -344,14 +350,49 @@ Notation "name '(' a0 , .. , an ')'  '~>'  r0 , .. , rn  {  body  } ,  'implemen
         fn constr at level 0,
         no associativity).
 
+Notation "name '(' a0 , .. , an ')'  '~>'  r0 , .. , rn  {  body  } ,  'implements'  fn  'using'  fns" :=
+  {| _defn_name := name;
+     _defn_args := cons a0 .. (cons an []) ..;
+     _defn_rets := cons r0 .. (cons rn []) ..;
+     _defn_bedrock := match body return cmd with body => body end;
+     _defn_gallina := fn;
+     _defn_calls := fns |}
+    (in custom defn_spec at level 10,
+        name constr at level 0,
+        a0 constr at level 0, an constr at level 0,
+        r0 constr at level 0, rn constr at level 0,
+        body constr at level 200,
+        fn constr at level 0,
+        fns constr at level 0,
+        no associativity).
+
 Notation "name '(' a0 , .. , an ')'  {  body  } ,  'implements'  fn" :=
-  (name, (cons a0 .. (cons an []) ..), (@nil string),
-   match body return cmd with body => body end, fn)
+  {| _defn_name := name;
+     _defn_args := cons a0 .. (cons an []) ..;
+     _defn_rets := [];
+     _defn_bedrock := match body return cmd with body => body end;
+     _defn_gallina := fn;
+     _defn_calls := [] |}
     (in custom defn_spec at level 10,
         name constr at level 0,
         a0 constr at level 0, an constr at level 0,
         body constr at level 200,
         fn constr at level 0,
+        no associativity).
+
+Notation "name '(' a0 , .. , an ')'  {  body  } ,  'implements'  fn  'using'  fns" :=
+  {| _defn_name := name;
+     _defn_args := cons a0 .. (cons an []) ..;
+     _defn_rets := [];
+     _defn_bedrock := match body return cmd with body => body end;
+     _defn_gallina := fn;
+     _defn_calls := fns |}
+    (in custom defn_spec at level 10,
+        name constr at level 0,
+        a0 constr at level 0, an constr at level 0,
+        body constr at level 200,
+        fn constr at level 0,
+        fns constr at level 0,
         no associativity).
 
 Notation "defn! spec" :=
@@ -360,10 +401,11 @@ Notation "defn! spec" :=
      (* This match typechecks `spec` before passing it to Ltac, yielding much
         better error messages when `spec` isn't a valid term. *)
      ltac:(lazymatch (eval red in spec_constr) with
-           | (?name, ?args, ?rets, ?body, ?gallina) =>
-             let proc := constr:((name, (args, rets, body))) in
-             let goal := Rupicola.Lib.Tactics.program_logic_goal_for_function
-                           proc (@List.nil string) in
+           | {| _defn_name := ?name; _defn_args := ?args; _defn_rets := ?rets;
+                _defn_bedrock := ?bedrock; _defn_gallina := ?gallina;
+                _defn_calls := ?calls |} =>
+             let proc := constr:((name, (args, rets, bedrock))) in
+             let goal := Rupicola.Lib.Tactics.program_logic_goal_for_function proc calls in
              exact (__rupicola_program_marker gallina -> goal)
            end)
    end)

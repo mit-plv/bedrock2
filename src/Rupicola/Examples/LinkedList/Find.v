@@ -91,7 +91,7 @@ Section Compile.
     fnspec! "ll_find" (pll n: word) (k: word) /
           (end_ptr dummy : word) (ll : linkedlist word) R
           ~> px,
-       { requires fns tr mem :=
+       { requires tr mem :=
            word.unsigned n = Z.of_nat (length ll) /\
            (0 < length ll)%nat /\ (* FIXME 0 < length is redundant *)
            (LinkedList end_ptr pll ll ⋆ R) mem;
