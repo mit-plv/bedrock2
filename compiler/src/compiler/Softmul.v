@@ -520,7 +520,7 @@ Section Riscv.
       cbn in V; try (intuition congruence).
     - (* IInstruction *)
       subst.
-      eapply runsToStep with (midset0 := fun midL => exists midH, related midH midL /\ midset midH).
+      eapply @runsToStep with (midset := fun midL => exists midH, related midH midL /\ midset midH).
       + eapply build_fetch_one_instr.
         { etransitivity. 2: exact H2p6p3.
           reify_goal.
@@ -643,7 +643,7 @@ Section Riscv.
         case TODO.
     - (* CSRInstruction *)
       subst.
-      eapply runsToStep with (midset0 := fun midL => exists midH, related midH midL /\ midset midH).
+      eapply @runsToStep with (midset := fun midL => exists midH, related midH midL /\ midset midH).
       + eapply build_fetch_one_instr.
         { etransitivity. 2: exact H2p6p3.
           reify_goal.

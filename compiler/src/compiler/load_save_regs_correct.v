@@ -70,7 +70,7 @@ Section Proofs.
         rewrite bitwidth_matches. reflexivity.
       }
       eapply runsToNonDet.runsToStep. {
-        eapply run_store_word with (Rexec0 := (program iset (word.add (getPc initial) (word.of_Z 4))
+        eapply @run_store_word with (Rexec := (program iset (word.add (getPc initial) (word.of_Z 4))
             (save_regs iset vars (offset + bytes_per_word)) * Rexec)%sep); cycle -3;
           [> sidecondition | use_sep_assumption; cbn; ecancel | sidecondition.. ].
       }

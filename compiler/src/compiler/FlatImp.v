@@ -649,10 +649,10 @@ Section FlatImp2.
     - eapply exec.if_false; try eassumption.
       eapply exec.weaken; [eassumption|].
       simpl; intros. map_solver locals_ok.
-    - eapply exec.loop with
-          (mid3 := fun t' m' l' mc' => mid1 t' m' l' mc' /\
+    - eapply @exec.loop with
+          (mid1 := fun t' m' l' mc' => mid1 t' m' l' mc' /\
                                    map.only_differ l (modVars body1) l')
-          (mid4 := fun t' m' l' mc' => mid2 t' m' l' mc' /\
+          (mid2 := fun t' m' l' mc' => mid2 t' m' l' mc' /\
                                    map.only_differ l (modVars (SLoop body1 cond body2)) l').
       + eapply exec.intersect; eassumption.
       + intros. simp. eauto.
@@ -666,8 +666,8 @@ Section FlatImp2.
         eapply exec.weaken.
         * eapply H5; eassumption.
         * simpl. intros. map_solver locals_ok.
-    - eapply exec.seq with
-          (mid0 := fun t' m' l' mc' => mid t' m' l' mc' /\ map.only_differ l (modVars s1) l').
+    - eapply @exec.seq with
+          (mid := fun t' m' l' mc' => mid t' m' l' mc' /\ map.only_differ l (modVars s1) l').
       + eapply exec.intersect; eassumption.
       + simpl; intros. simp.
         eapply exec.weaken; [eapply H1; eauto|].

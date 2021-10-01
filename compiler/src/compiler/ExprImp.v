@@ -533,15 +533,15 @@ Section ExprImp2.
     - eapply exec.if_false; try eassumption.
       eapply weaken_exec; [eassumption|].
       simpl; intros. map_solver locals_ok.
-    - eapply exec.seq with
-          (mid0 := fun t' m' l' mc' => mid t' m' l' mc' /\ map.only_differ l (modVars c1) l').
+    - eapply @exec.seq with
+          (mid := fun t' m' l' mc' => mid t' m' l' mc' /\ map.only_differ l (modVars c1) l').
       + eapply intersect_exec; eassumption.
       + simpl. intros *. intros [? ?].
         eapply weaken_exec; [eapply H1; eauto|].
         simpl; intros.
         map_solver locals_ok.
-    - eapply exec.while_true with
-          (mid0 := fun t' m' l' mc' => mid t' m' l' mc' /\ map.only_differ l (modVars c) l');
+    - eapply @exec.while_true with
+          (mid := fun t' m' l' mc' => mid t' m' l' mc' /\ map.only_differ l (modVars c) l');
         try eassumption.
       + eapply intersect_exec; eassumption.
       + intros *. intros [? ?]. simpl in *.

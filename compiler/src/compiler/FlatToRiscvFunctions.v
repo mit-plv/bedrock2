@@ -455,7 +455,8 @@ Section Proofs.
 
       (* put arguments on stack *)
       eapply runsTo_trans. {
-        eapply save_regs_correct with (vars := args) (p_sp0 := p_sp)
+        rename p_sp into p_sp0.
+        eapply save_regs_correct with (vars := args) (p_sp := p_sp0)
          (offset := (- Memory.bytes_per_word (bitwidth iset) * Z.of_nat (List.length args))%Z); simpl; cycle -4.
         - eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
         - wcancel_assumption.
@@ -889,10 +890,10 @@ Section Proofs.
 
     (* load result values from stack *)
     eapply runsTo_trans. {
-      eapply load_regs_correct with
+      eapply @load_regs_correct with
           (vars := binds) (values := retvs)
           (offset := (- bytes_per_word * Z.of_nat (List.length args + List.length binds))%Z)
-          (p_sp0 := p_sp);
+          (p_sp := p_sp);
         simpl; cycle -4; try assumption.
       - safe_sidecond.
       - wcancel_assumption.
@@ -1509,7 +1510,7 @@ Section Proofs.
         { match goal with
           | |- ?G => let t := type of Ab in replace G with t; [exact Ab|f_equal]
           end.
-          rewrite length_flat_map with (n0 := Z.to_nat bytes_per_word).
+          rewrite @length_flat_map with (n := Z.to_nat bytes_per_word).
           - simpl_addrs. rewrite !Z2Nat.id by blia. rewrite <- BPW. rewrite <- Z_div_exact_2; blia.
           - clear. intros. rewrite HList.tuple.length_to_list. reflexivity.
         }

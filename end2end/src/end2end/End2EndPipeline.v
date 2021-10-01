@@ -513,7 +513,7 @@ Section Connect.
         end.
       + reflexivity.
       + simpl. split.
-        * apply riscv_init_memory_undef_on_MMIO with (instrMemSizeLg0:= instrMemSizeLg).
+        * apply @riscv_init_memory_undef_on_MMIO with (instrMemSizeLg:= instrMemSizeLg).
           { apply instrMemSizeLg_bounds. }
           { apply Hkmem. }
           { cbv [KamiProc.width]; blia. }
