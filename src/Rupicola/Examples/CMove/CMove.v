@@ -37,7 +37,7 @@ Section __.
       let/n true_val := get c1 in
       let/n false_val := get c2 in
       let/n r := word.or (word.and mask true_val) (word.and nmask false_val) in
-      let/n c1 := put r c1 in
+      let/n c1 := put r in
       c1.
 
     Definition cswap_word (mask : word) (c1 c2 : cell) :=
@@ -45,9 +45,9 @@ Section __.
       let/n true_val := get c1 in
       let/n false_val := get c2 in
       let/n r := word.or (word.and mask true_val) (word.and nmask false_val) in
-      let/n c1 := put r c1 in
+      let/n c1 := put r in
       let/n r := word.or (word.and mask false_val) (word.and nmask true_val) in
-      let/n c2 := put r c2 in
+      let/n c2 := put r in
       (c1,c2).
 
     

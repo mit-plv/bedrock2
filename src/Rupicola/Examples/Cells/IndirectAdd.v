@@ -13,11 +13,11 @@ Section with_parameters.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Local Notation cell := (@cell width BW word).
 
-  Definition indirect_add (a b c: cell) :=
+  Definition indirect_add (b c: cell) :=
     let/n vb := get b in
     let/n vc := get c in
     let/n r := word.add vb vc in
-    let/n a := put r a in
+    let/n a := put r in
     a.
 
   Local Notation "m =* P" := (P%sep m) (at level 70, only parsing).
@@ -27,7 +27,7 @@ Section with_parameters.
     { requires t m :=
         m =* cell_value pa a * Ra /\ m =* cell_value pb b * Rb /\ m =* cell_value pc c * Rc;
       ensures t' m' :=
-        t = t' /\ m' =* cell_value pa (indirect_add a b c) * Ra }.
+        t = t' /\ m' =* cell_value pa (indirect_add b c) * Ra }.
 
   Derive indirect_add_body SuchThat
          (defn! "indirect_add"("a", "b", "c") { indirect_add_body },
@@ -40,16 +40,17 @@ Section with_parameters.
   (* FIXME auto-generate lemma from pre-post condition pair? *)
 
   Lemma compile_indirect_add : forall {tr mem locals functions} a b c,
-    let v := indirect_add a b c in
+    let v := indirect_add b c in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
       va vb vc pa pb pc Ra Rb Rc,
 
-      (cell_value pa a ⋆ Ra) mem ->
-      (cell_value pb b ⋆ Rb) mem ->
-      (cell_value pc c ⋆ Rc) mem ->
-
       map.get locals va = Some pa ->
+      (cell_value pa a ⋆ Ra) mem ->
+
+      (cell_value pb b ⋆ Rb) mem ->
       map.get locals vb = Some pb ->
+
+      (cell_value pc c ⋆ Rc) mem ->
       map.get locals vc = Some pc ->
 
       (_: spec_of "indirect_add") functions ->
@@ -81,8 +82,8 @@ Section with_parameters.
   Hint Extern 1 => simple eapply compile_indirect_add; shelve : compiler.
 
   Definition indirect_add_twice (a b: cell) :=
-    let/n a := indirect_add a a b in
-    let/n a := indirect_add a a b in
+    let/n a := indirect_add a b in
+    let/n a := indirect_add a b in
     a.
 
   Instance spec_of_indirect_add_twice : spec_of "indirect_add_twice" :=
@@ -101,8 +102,8 @@ Section with_parameters.
   Qed.
 
   Definition indirect_add_three (a b c: cell) :=
-    let/n a := indirect_add a a b in
-    let/n a := indirect_add a a c in
+    let/n a := indirect_add a b in
+    let/n a := indirect_add a c in
     a.
 
   (* The notations unfold into something decently nice: *)
@@ -126,22 +127,29 @@ Section with_parameters.
     compile.
   Qed.
 
-  (* TODO: Import the `indirect_add_three'` example from Bedrock's indirect_add.v
+  Require Import Rupicola.Lib.Alloc.
 
-  Definition indirect_add_three' : Syntax.func := let a := "a" in let b := "b" in let c := "c" in let out := "out" in let v := "v" in
-    ("indirect_add_three'", ([out;a;b;c], [], bedrock_func_body:(
-    stackalloc 4 as v {
-      indirect_add(v, a, b);
-      indirect_add(out, v, c)
-    }
-  ))).
+  Definition indirect_add_three' (a b c: cell) :=
+    let/n v := alloc (indirect_add a b) in
+    let/n out := indirect_add v c in
+    out.
 
   Instance spec_of_indirect_add_three' : spec_of "indirect_add_three'" :=
-    fnspec! "indirect_add_three'" out a b c / vout va vb vc Ra Rb Rc R,
+    fnspec! "indirect_add_three'" pout pa pb pc / out a b c Ra Rb Rc R,
     { requires t m :=
-        m =* cell_value out vout * R /\
-        m =* cell_value a va * Ra /\
-        m =* cell_value b vb * Rb /\
-        m =* cell_value c vc * Rc;
-      ensures t' m' := t = t' /\ m' =* cell_value out (g va vb vc) * R }. *)
+        m =* cell_value pout out * R /\
+        m =* cell_value pa a * Ra /\
+        m =* cell_value pb b * Rb /\
+        m =* cell_value pc c * Rc;
+      ensures t' m' :=
+        t = t' /\ m' =* cell_value pout (indirect_add_three' a b c) * R }.
+
+  (* TODO: plug in alloc derivation
+  Derive indirect_add_three'_body SuchThat
+         (defn! "indirect_add_three'"("out", "a", "b", "c") { indirect_add_three'_body },
+          implements indirect_add_three' using ["indirect_add"])
+         As indirect_add_three'_body_correct.
+  Proof.
+    compile.
+  Qed. *)
 End with_parameters.

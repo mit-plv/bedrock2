@@ -14,8 +14,8 @@ Section with_parameters.
   Definition swap_gallina (c1 c2: cell) :=
     let/n v1 := get c1 in
     let/n v2 := get c2 in
-    let/n c1 := put v2 c1 in
-    let/n c2 := put v1 c2 in
+    let/n c1 := put v2 in
+    let/n c2 := put v1 in
     (c1, c2).
 
   Instance spec_of_swap : spec_of "swap" :=

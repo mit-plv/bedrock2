@@ -230,13 +230,13 @@ Section Ex.
                     (fun '\< tick, c \> tok idx bounded =>
                        let/n v := get c in
                        let/n v := word.add v idx in
-                       let/n c := put v c in
+                       let/n c := put v in
                        let/n tick := word.add tick one in
                        (tok, \< tick, c \>))
                     \< tick, c \> : P2.prod word cell in
     (let/n v := get c in
      let/n v := word.add v tick in
-     let/n c := put v c in
+     let/n c := put v in
      c).
 
   Instance spec_of_incr : spec_of "incr" :=

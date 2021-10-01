@@ -17,7 +17,12 @@ Section with_parameters.
     scalar addr c.(data).
 
   Definition get c := c.(data).
-  Definition put v (c: cell) := {| data := v |}.
+  Definition put v := {| data := v |}.
+  (* No reference to the original cell: Rupicola decides which one to modify
+     based on the target of the call:
+       let/n c := put x in …
+             ^ .......^.... this gets mutated
+                      ^ ... with this value *)
 
   Lemma compile_get : forall {tr mem locals functions} (c: cell),
     let v := get c in
@@ -58,14 +63,14 @@ Section with_parameters.
     eassumption.
   Qed.
 
-  Lemma compile_put : forall {tr mem locals functions} x c,
-    let v := put x c in
+  Lemma compile_put : forall {tr mem locals functions} x,
+    let v := put x in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-      R c_ptr c_var x_var,
+      R c_ptr _c c_var x_var,
 
-      sep (cell_value c_ptr c) R mem ->
-      map.get locals c_var = Some c_ptr ->
       map.get locals x_var = Some x ->
+      map.get locals c_var = Some c_ptr ->
+      sep (cell_value c_ptr _c) R mem -> (* See FAQ on parameter order *)
 
       (let v := v in
        forall m,

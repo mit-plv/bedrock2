@@ -15,7 +15,7 @@ Section with_parameters.
     let/n v := get c in
     let/n one := word.of_Z 1 in
     let/n v := word.add v one in
-    let/n c := put v c in
+    let/n c := put v in
     c.
 
   Instance spec_of_incr : spec_of "incr" :=
