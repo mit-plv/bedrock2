@@ -96,7 +96,21 @@ Section with_parameters.
     - repeat straightline; eexists; split; eauto.
     - repeat straightline; eauto.
   Qed.
+
+  #[global] Program Instance SimpleAllocable_cell : SimpleAllocable cell_value :=
+    {| ssize_in_bytes := Memory.bytes_per_word width;
+       ssize_in_bytes_mod := Z_mod_same_full _;
+       sP_to_bytes := _;
+       sP_from_bytes := _ |}.
+  Next Obligation.
+    apply (sP_to_bytes (SimpleAllocable := SimpleAllocable_scalar)).
+  Qed.
+  Next Obligation.
+    intros m H.
+    edestruct (sP_from_bytes (SimpleAllocable := SimpleAllocable_scalar) _ _ H).
+    exists {| data := x |}. assumption.
+  Qed.
 End with_parameters.
 
-Hint Extern 1 => simple eapply compile_get; shelve : compiler.
-Hint Extern 1 => simple eapply compile_put; shelve : compiler.
+#[export] Hint Extern 1 => simple eapply compile_get; shelve : compiler.
+#[export] Hint Extern 1 => simple eapply compile_put; shelve : compiler.
