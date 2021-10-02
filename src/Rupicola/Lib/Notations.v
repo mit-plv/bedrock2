@@ -207,6 +207,7 @@ Global Open Scope old.
 Compute (let x := ltac:(unify @spec_example_norets @spec_example_norets_short) in x).
 
 Infix "⋆" := sep (at level 40, left associativity).
+Infix "&&&" := unsep (at level 50, left associativity). (* 50 binds less tightly than ⋆ *)
 
 Notation "'fnspec!' name a0 .. an '/' g0 .. gn '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>

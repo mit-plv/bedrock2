@@ -1,25 +1,22 @@
-Require Export Coq.Strings.String.
-Require Export Coq.Numbers.DecimalString.
-Require Export Coq.Lists.List.
-Require Export Coq.ZArith.ZArith.
-Require Export Coq.micromega.Lia.
-Require Export bedrock2.Array.
-Require Export bedrock2.Map.Separation.
-Require Export bedrock2.ProgramLogic.
-Require Export bedrock2.Map.SeparationLogic.
-Require Export bedrock2.Scalars.
-Require Export bedrock2.Syntax. Export Syntax.Coercions.
-Require Export bedrock2.WeakestPreconditionProperties.
-Require Export coqutil.dlet.
-Require Export coqutil.Byte.
-Require Import coqutil.Decidable.
-Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.SortedList.
-Require Export coqutil.Z.PushPullMod.
-Require Export coqutil.Tactics.Tactics.
-Require Export coqutil.Tactics.letexists.
-Require Export coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
-Require coqutil.Map.SortedListString.
-Require bedrock2.ProgramLogic.
+From Coq Require Export
+     Classes.Morphisms Numbers.DecimalString
+     String List ZArith Lia.
+From bedrock2 Require Export
+     Array Map.Separation ProgramLogic
+     Map.SeparationLogic Scalars Syntax WeakestPreconditionProperties.
+From bedrock2 Require
+     ProgramLogic.
+From coqutil Require Export
+     dlet Byte
+     Z.PushPullMod Tactics.Tactics Tactics.letexists
+     Word.Interface Word.Properties Word.Bitwidth
+     Map.Interface Map.Properties Map.SortedList.
+From coqutil Require Import
+     Decidable.
+From coqutil Require
+     Map.SortedListString.
+
+Export Syntax.Coercions.
 
 Open Scope string_scope.
 Export ListNotations.
@@ -412,8 +409,10 @@ Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
 
 (* TODO: should move upstream to coqutil *)
 Section Lists.
-  Context {A : Type}.
   Open Scope list_scope.
+
+  Section Single.
+  Context {A : Type}.
 
   Lemma skipn_seq_step n start len :
     skipn n (seq start len) = seq (start + n) (len - n).
@@ -535,6 +534,39 @@ Section Lists.
       + cbn [List.firstn List.app].
         f_equal; apply IHxs.
         auto with arith.
+  Qed.
+  End Single.
+
+  Definition product {A B} (As: list A) (Bs: list B) : list (A * B) :=
+    flat_map (fun a1 => List.map (pair a1) Bs) As.
+
+  Definition map2 {A B C} (f: A -> B -> C) (ABs: list (A * B)) : list C :=
+    List.map (fun ab => f (fst ab) (snd ab)) ABs.
+
+  Lemma map2_map {A B C D} (f: B -> C -> D) (g: A -> B * C) (As: list A) :
+    map2 f (List.map g As) =
+    List.map (fun a => f (fst (g a)) (snd (g a))) As.
+  Proof. unfold map2; rewrite map_map; reflexivity. Qed.
+
+  Lemma map_map2 {A B C D} (f: A -> B -> C) (g: C -> D) (ABs: list (A * B)) :
+    List.map g (map2 f ABs) =
+    map2 (fun a b => g (f a b)) ABs.
+  Proof. unfold map2; rewrite map_map; reflexivity. Qed.
+
+  Lemma map2_map2 {A1 A2 B1 B2 C}
+        (f: A1 -> A2 -> (B1 * B2))
+        (g: B1 -> B2 -> C) (As: list (A1 * A2)) :
+    map2 g (map2 f As) =
+    map2 (fun a1 a2 => g (fst (f a1 a2)) (snd (f a1 a2))) As.
+  Proof. unfold map2; rewrite map_map; reflexivity. Qed.
+
+  Lemma map2_product {A B C} (f: A -> B -> C) (As: list A) (Bs: list B) :
+    map2 f (product As Bs) =
+    flat_map (fun a1 => List.map (f a1) Bs) As.
+  Proof.
+    unfold map2, product.
+    rewrite !flat_map_concat_map, !concat_map, !map_map.
+    f_equal; apply map_ext; intros; rewrite !map_map; reflexivity.
   Qed.
 End Lists.
 
@@ -742,13 +774,208 @@ Module word.
   End __.
 End word.
 
-
 Notation b2w b :=
   (word.of_Z (Z.b2z b)).
 Notation word_of_byte b :=
   (word.of_Z (Byte.byte.unsigned b)).
 Notation byte_of_word w :=
   (byte.of_Z (word.unsigned w)).
+
+Module SeparationLogic. (* FIXME move to bedrock2? *)
+  Import Lift1Prop.
+  Section SeparationLogic. (* FIXME move to bedrock2? *)
+    Context {key value : Type} {map : map.map key value}.
+
+    Definition pure (P: Prop) := (fun m: map => P).
+
+    (* FIXME shouldn't *this* be the definition of `and1`? *)
+    Definition unsep (p q: map -> Prop) : map -> Prop :=
+      fun m => p m /\ q m.
+
+    Fixpoint unseps (props: list (map -> Prop)) : map -> Prop :=
+      match props with
+      | [] => pure True
+      | [prop] => prop
+      | prop :: props => unsep prop (unseps props)
+      end.
+
+    Global Instance Proper_iff1_unsep :
+      Proper (iff1 ==> iff1 ==> iff1) unsep.
+    Proof. firstorder idtac. Qed.
+
+    Global Instance Proper_impl1_unsep :
+      Proper (impl1 ==> impl1 ==> impl1) unsep.
+    Proof. firstorder idtac. Qed.
+
+    Lemma unsep_assoc (p q r: map -> Prop) :
+      iff1 (unsep (unsep p q) r) (unsep p (unsep q r)).
+    Proof. firstorder idtac. Qed.
+
+    Lemma unsep_pure_True_l P :
+      iff1 (unsep (pure True) P) P.
+    Proof. firstorder idtac. Qed.
+
+    Lemma unsep_pure_True_r P :
+      iff1 (unsep P (pure True)) P.
+    Proof. firstorder idtac. Qed.
+
+    Lemma unsep_pure_False_l P :
+      iff1 (unsep (pure False) P) (pure False).
+    Proof. firstorder idtac. Qed.
+
+    Lemma unsep_pure_False_r P :
+      iff1 (unsep P (pure False)) (pure False).
+    Proof. firstorder idtac. Qed.
+
+    Lemma sep_pure_False_l P :
+      iff1 (sep (pure False) P) (pure False).
+    Proof. firstorder idtac. Qed.
+
+    Lemma sep_pure_False_r P :
+      iff1 (sep P (pure False)) (pure False).
+    Proof. firstorder idtac. Qed.
+
+    Lemma impl1_pure_False_l P :
+      impl1 (pure False) P.
+    Proof. firstorder idtac. Qed.
+
+    Lemma impl1_pure_True_r P :
+      impl1 P (pure True).
+    Proof. firstorder idtac. Qed.
+
+    Lemma unsep_distr_sep_l: (* FIXME: this is sep_and_r_fwd *)
+      forall p1 p2 p3 : map -> Prop,
+        impl1 (sep p1 (unsep p2 p3)) (unsep (sep p1 p2) (sep p1 p3)).
+    Proof. firstorder idtac. Qed.
+
+    Lemma unsep_distr_sep_r: (* FIXME: this is sep_and_l_fwd *)
+      forall p1 p2 p3 : map -> Prop,
+        impl1 (sep (unsep p1 p2) p3) (unsep (sep p1 p3) (sep p2 p3)).
+    Proof. firstorder idtac. Qed.
+
+    Lemma unseps_distr_sep_l :
+      forall p1 ps2,
+        impl1 (sep p1 (unseps ps2))
+              (unseps (List.map (sep p1) ps2)).
+    Proof.
+      induction ps2 as [| p2 [|] IHps2]; simpl in *; intros.
+      - apply impl1_pure_True_r.
+      - reflexivity.
+      - rewrite <- IHps2, unsep_distr_sep_l; reflexivity.
+    Qed.
+
+    Lemma unseps_distr_sep_r :
+      forall ps1 p2,
+        impl1 (sep (unseps ps1) p2) (unseps (List.map (fun p1 => sep p1 p2) ps1)).
+    Proof.
+      induction ps1 as [| p1 [|] IHps1]; simpl in *; intros.
+      - apply impl1_pure_True_r.
+      - reflexivity.
+      - rewrite <- IHps1, unsep_distr_sep_r; reflexivity.
+    Qed.
+
+    Lemma unseps_map_impl1_ext (f g: (map -> Prop) -> (map -> Prop))
+          (H: forall p, impl1 (f p) (g p)) :
+      forall ps, impl1 (unseps (List.map f ps)) (unseps (List.map g ps)).
+    Proof.
+      induction ps as [| p [|] IHps]; simpl in *; intros.
+      - reflexivity.
+      - eauto.
+      - rewrite IHps, H; reflexivity.
+    Qed.
+
+    Lemma unseps_app :
+      forall es1 es2,
+        iff1 (unseps (es1 ++ es2))
+             (unsep (unseps es1) (unseps es2)).
+    Proof.
+      induction es1 as [| e1 [|] IHes1]; simpl in *; intros.
+      - rewrite unsep_pure_True_l; reflexivity.
+      - destruct es2; simpl.
+        + rewrite unsep_pure_True_r; reflexivity.
+        + reflexivity.
+      - rewrite IHes1, unsep_assoc.
+        reflexivity.
+    Qed.
+
+    Lemma unseps_distr_sep:
+      forall ps1 ps2,
+        impl1 (sep (unseps ps1) (unseps ps2))
+              (unseps (map2 sep (product ps1 ps2))).
+    Proof.
+      intros; rewrite map2_product; revert ps2.
+      induction ps1 as [| p1 [|] IHps1]; simpl in *; intros.
+      - apply impl1_pure_True_r.
+      - rewrite app_nil_r.
+        apply unseps_distr_sep_l.
+      - rewrite unsep_distr_sep_r, unseps_app.
+        rewrite <- IHps1.
+        rewrite <- unseps_distr_sep_l.
+        reflexivity.
+    Qed.
+  End SeparationLogic.
+End SeparationLogic.
+
+Export SeparationLogic.
+
+Section Scalar.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+
+  Open Scope Z_scope.
+
+  Lemma bytes_per_width_bytes_per_word : forall width,
+      width >= 0 ->
+      Z.of_nat (Memory.bytes_per (width := width) access_size.word) = Memory.bytes_per_word width.
+  Proof.
+    intros; unfold Memory.bytes_per, Memory.bytes_per_word.
+    rewrite Z2Nat.id; try apply Z.div_pos; lia.
+  Qed.
+
+  Lemma bytes_per_wordwidth_bytes_per_word :
+      Z.of_nat (Memory.bytes_per (width := width) access_size.word) = Memory.bytes_per_word width.
+  Proof.
+    apply bytes_per_width_bytes_per_word.
+    pose proof word.width_pos; lia.
+  Qed.
+
+  Lemma split_bytes_per_word:
+    forall x : word,
+      Z.of_nat
+        (Datatypes.length
+           (HList.tuple.to_list
+              (LittleEndian.split (Memory.bytes_per (width := width) access_size.word)
+                                  (word.unsigned x)))) = Memory.bytes_per_word width.
+  Proof.
+    intros x.
+    rewrite HList.tuple.length_to_list.
+    apply bytes_per_wordwidth_bytes_per_word.
+  Qed.
+
+  Lemma scalar_to_anybytes px x:
+    Lift1Prop.impl1 (T := mem)
+      (scalar px x)
+      (Memory.anybytes px (Memory.bytes_per_word width)).
+  Proof.
+    intros m H; evar (bs: list byte);
+      assert (array ptsto (word.of_Z 1) px bs m) by
+        (subst bs; simple apply H).
+    subst bs; erewrite <- split_bytes_per_word.
+    eapply array_1_to_anybytes; eauto.
+  Qed.
+
+  Lemma anybytes_to_scalar px:
+    Lift1Prop.impl1 (T := mem)
+      (Memory.anybytes px (Memory.bytes_per_word width))
+      (Lift1Prop.ex1 (scalar px)).
+  Proof.
+    intros m (bs & Harray & Hlen)%anybytes_to_array_1.
+    apply scalar_of_bytes in Harray.
+    - eexists; eassumption.
+    - destruct width_cases; lia.
+    - rewrite Hlen. destruct width_cases; subst; reflexivity || lia.
+  Qed.
+End Scalar.
 
 Section Semantics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
