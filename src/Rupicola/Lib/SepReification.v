@@ -161,3 +161,6 @@ Module Tactics.
 End Tactics.
 
 Export Tactics.
+
+#[export] Hint Extern 1 ((sep _ _) _) =>
+  normalize_decompose_relevant_sep; shelve : compiler_side_conditions.

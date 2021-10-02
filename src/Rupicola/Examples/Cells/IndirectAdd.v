@@ -2,9 +2,6 @@
 From Rupicola.Lib Require Import Api Alloc SepReification.
 Require Import Rupicola.Examples.Cells.Cells.
 
-Hint Extern 1 ((sep _ _) _) =>
-  normalize_decompose_relevant_sep; shelve : compiler_side_conditions.
-
 Section with_parameters.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
