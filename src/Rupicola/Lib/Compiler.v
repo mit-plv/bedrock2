@@ -2,7 +2,6 @@ Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.Notations.
 Require Export Rupicola.Lib.Gensym.
 Require Import Rupicola.Lib.Tactics.
-Require Import Rupicola.Lib.Alloc.
 
 Section CompilerBasics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {memT: map.map word Byte.byte}.
@@ -1286,7 +1285,6 @@ Hint Extern 10 => simple eapply compile_bool_eqb; shelve : compiler.
 Hint Extern 10 => simple eapply compile_bool_andb; shelve : compiler.
 Hint Extern 10 => simple eapply compile_bool_orb; shelve : compiler.
 Hint Extern 10 => simple eapply compile_bool_xorb; shelve : compiler.
-Hint Extern 10 => simple eapply compile_alloc;[eassumption| shelve] : compiler.
 Hint Extern 8 => ExprReflection.compile_reified_expr; shelve : compiler. (* Higher priority than individual ops *)
 
 Ltac compile_binding :=
@@ -1318,6 +1316,7 @@ Ltac compile_cleanup_post :=
   match goal with
   | _ => compile_cleanup
   | _ => compile_autocleanup
+  | _ => step_with_db compiler_cleanup_post
   | _ => progress subst_lets_in_goal
   | [  |- True ] => exact I
   | [  |- _ /\ _ ] => split
@@ -1357,7 +1356,6 @@ Ltac compile_solve_side_conditions :=
     solve_map_eq (* FIXME can this be unified with the previous case? *)
   | [  |- _ <> _ ] => congruence
   | [  |- _ /\ _ ] => split
-  | |- pred_sep _ _ _ _ _ _ => clear_pred_seps
   | _ =>
     first [ compile_cleanup
           | compile_autocleanup

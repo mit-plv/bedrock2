@@ -98,7 +98,6 @@ End with_parameters.
 Arguments alloc : simpl never.
 Arguments size_in_bytes : simpl never.
 
-
 (*TODO: speed up by combining pred_seps first and using 1 proper/ecancel_assumption?*)
 Ltac clear_pred_seps :=   
   unfold pred_sep;
@@ -108,3 +107,9 @@ Ltac clear_pred_seps :=
            eapply Proper_sep_impl1;
            [ eapply P_to_bytes | clear H m; intros H m | ecancel_assumption]
          end.
+
+(* FIXME I don't think eassumption is needed, and there might actually be multiple ?R m *)
+#[export] Hint Extern 10 =>
+  simple eapply compile_alloc; [eassumption | shelve] : compiler.
+#[export] Hint Extern 1 (pred_sep _ _ _ _ _ _) =>
+  clear_pred_seps; shelve : compiler_cleanup_post.
