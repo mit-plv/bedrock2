@@ -1,6 +1,304 @@
 (** A Rupicola version of the indirect_add example in Bedrock2. **)
+Require Import Coq.Classes.Morphisms.
+
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.Cells.Cells.
+Require Import Rupicola.Lib.Alloc.
+
+Require Import coqutil.Decidable.
+Require Import bedrock2.Lift1Prop.
+
+Section Unsep.
+  Context {key value : Type} {map : map.map key value}.
+
+  Definition pure (P: Prop) := (fun m: map => P).
+
+  (* FIXME shouldn't *this* be the definition of `and1`? *)
+  Definition unsep (p q: map -> Prop) : map -> Prop :=
+    fun m => p m /\ q m.
+
+  Fixpoint unseps (props: list (map -> Prop)) : map -> Prop :=
+    match props with
+    | [] => pure True
+    | [prop] => prop
+    | prop :: props => unsep prop (unseps props)
+    end.
+
+  Global Instance Proper_iff1_unsep :
+    Proper (iff1 ==> iff1 ==> iff1) unsep.
+  Proof. firstorder idtac. Qed.
+
+  Global Instance Proper_impl1_unsep :
+    Proper (impl1 ==> impl1 ==> impl1) unsep.
+  Proof. firstorder idtac. Qed.
+
+  Lemma unsep_assoc (p q r: map -> Prop) :
+    iff1 (unsep (unsep p q) r) (unsep p (unsep q r)).
+  Proof. firstorder idtac. Qed.
+
+  Lemma unsep_pure_True_l P :
+    iff1 (unsep (pure True) P) P.
+  Proof. firstorder idtac. Qed.
+
+  Lemma unsep_pure_True_r P :
+    iff1 (unsep P (pure True)) P.
+  Proof. firstorder idtac. Qed.
+
+  Lemma unsep_pure_False_l P :
+    iff1 (unsep (pure False) P) (pure False).
+  Proof. firstorder idtac. Qed.
+
+  Lemma unsep_pure_False_r P :
+    iff1 (unsep P (pure False)) (pure False).
+  Proof. firstorder idtac. Qed.
+
+  Lemma sep_pure_False_l P :
+    iff1 (sep (pure False) P) (pure False).
+  Proof. firstorder idtac. Qed.
+
+  Lemma sep_pure_False_r P :
+    iff1 (sep P (pure False)) (pure False).
+  Proof. firstorder idtac. Qed.
+
+  Lemma impl1_pure_False_l P :
+    impl1 (pure False) P.
+  Proof. firstorder idtac. Qed.
+
+  Lemma impl1_pure_True_r P :
+    impl1 P (pure True).
+  Proof. firstorder idtac. Qed.
+
+  Lemma unsep_distr_sep_l: (* FIXME: this is sep_and_r_fwd *)
+    forall p1 p2 p3 : map -> Prop,
+      impl1 (p1 ⋆ unsep p2 p3) (unsep (p1 ⋆ p2) (p1 ⋆ p3)).
+  Proof. firstorder idtac. Qed.
+
+  Lemma unsep_distr_sep_r: (* FIXME: this is sep_and_l_fwd *)
+    forall p1 p2 p3 : map -> Prop,
+      impl1 (unsep p1 p2 ⋆ p3) (unsep (p1 ⋆ p3) (p2 ⋆ p3)).
+  Proof. firstorder idtac. Qed.
+
+  Lemma unseps_distr_sep_l :
+    forall p1 ps2,
+      impl1 (p1 ⋆ unseps ps2) (unseps (List.map (sep p1) ps2)).
+  Proof.
+    induction ps2 as [| p2 [|] IHps2]; simpl in *; intros.
+    - apply impl1_pure_True_r.
+    - reflexivity.
+    - rewrite <- IHps2, unsep_distr_sep_l; reflexivity.
+  Qed.
+
+  Lemma unseps_distr_sep_r :
+    forall ps1 p2,
+      impl1 (unseps ps1 ⋆ p2) (unseps (List.map (fun p1 => sep p1 p2) ps1)).
+  Proof.
+    induction ps1 as [| p1 [|] IHps1]; simpl in *; intros.
+    - apply impl1_pure_True_r.
+    - reflexivity.
+    - rewrite <- IHps1, unsep_distr_sep_r; reflexivity.
+  Qed.
+
+  Lemma unseps_map_impl1_ext (f g: (map -> Prop) -> (map -> Prop))
+        (H: forall p, impl1 (f p) (g p)) :
+    forall ps, impl1 (unseps (List.map f ps)) (unseps (List.map g ps)).
+  Proof.
+    induction ps as [| p [|] IHps]; simpl in *; intros.
+    - reflexivity.
+    - eauto.
+    - rewrite IHps, H; reflexivity.
+  Qed.
+
+  Lemma unseps_app :
+    forall es1 es2,
+      iff1 (unseps (es1 ++ es2))
+           (unsep (unseps es1) (unseps es2)).
+  Proof.
+    induction es1 as [| e1 [|] IHes1]; simpl in *; intros.
+    - rewrite unsep_pure_True_l; reflexivity.
+    - destruct es2; simpl.
+      + rewrite unsep_pure_True_r; reflexivity.
+      + reflexivity.
+    - rewrite IHes1, unsep_assoc.
+      reflexivity.
+  Qed.
+
+  Definition product {A B} (As: list A) (Bs: list B) : list (A * B) :=
+    flat_map (fun a1 => List.map (pair a1) Bs) As.
+
+  Definition map2 {A B C} (f: A -> B -> C) (ABs: list (A * B)) : list C :=
+    List.map (fun ab => f (fst ab) (snd ab)) ABs.
+
+  Lemma map2_map {A B C D} (f: B -> C -> D) (g: A -> B * C) (As: list A) :
+    map2 f (List.map g As) =
+    List.map (fun a => f (fst (g a)) (snd (g a))) As.
+  Proof. unfold map2; rewrite map_map; reflexivity. Qed.
+
+  Lemma map_map2 {A B C D} (f: A -> B -> C) (g: C -> D) (ABs: list (A * B)) :
+    List.map g (map2 f ABs) =
+    map2 (fun a b => g (f a b)) ABs.
+  Proof. unfold map2; rewrite map_map; reflexivity. Qed.
+
+  Lemma map2_map2 {A1 A2 B1 B2 C}
+        (f: A1 -> A2 -> (B1 * B2))
+        (g: B1 -> B2 -> C) (As: list (A1 * A2)) :
+    map2 g (map2 f As) =
+    map2 (fun a1 a2 => g (fst (f a1 a2)) (snd (f a1 a2))) As.
+  Proof. unfold map2; rewrite map_map; reflexivity. Qed.
+
+  Lemma map2_product {A B C} (f: A -> B -> C) (As: list A) (Bs: list B) :
+    map2 f (product As Bs) =
+    flat_map (fun a1 => List.map (f a1) Bs) As.
+  Proof.
+    unfold map2, product.
+    rewrite !flat_map_concat_map, !concat_map, !map_map.
+    f_equal; apply map_ext; intros; rewrite !map_map; reflexivity.
+  Qed.
+
+  Lemma unseps_distr_sep:
+    forall ps1 ps2,
+      impl1 (unseps ps1 ⋆ unseps ps2)
+            (unseps (map2 sep (product ps1 ps2))).
+  Proof.
+    intros; rewrite map2_product; revert ps2.
+    induction ps1 as [| p1 [|] IHps1]; simpl in *; intros.
+    - apply impl1_pure_True_r.
+    - rewrite app_nil_r.
+      apply unseps_distr_sep_l.
+    - rewrite unsep_distr_sep_r, unseps_app.
+      rewrite <- IHps1.
+      rewrite <- unseps_distr_sep_l.
+      reflexivity.
+  Qed.
+End Unsep.
+
+(* FIXME: unsep is just Lift1Prop.and1 *)
+
+Module Reification.
+
+Section Reification.
+  Context {key value} {map : map.map key value} {map_ok : map.ok map}.
+  Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
+
+  Notation unseps := (unseps (map := map)).
+
+  Inductive expr :=
+    | Pred (p: map -> Prop)
+    | Sep (s1 s2: expr)
+    | Unsep (s1 s2: expr).
+
+  Fixpoint denote (e: expr) : map -> Prop :=
+    match e with
+    | Pred p => p
+    | Sep s1 s2 => sep (denote s1) (denote s2)
+    | Unsep s1 s2 => unsep (denote s1) (denote s2)
+    end.
+
+  Fixpoint unsep_normal_form' (e: expr) : list expr :=
+    match e with
+    | Pred p => [Pred p]
+    | Sep s1 s2 =>
+      map2 Sep (product (unsep_normal_form' s1)
+                        (unsep_normal_form' s2))
+    | Unsep s1 s2 =>
+      unsep_normal_form' s1 ++ unsep_normal_form' s2
+    end.
+
+  Fixpoint Unseps (es: list expr) :=
+    match es with
+    | [] => Pred (pure True)
+    | [e] => e
+    | e :: es => Unsep e (Unseps es)
+    end.
+
+  Definition unsep_normal_form (e: expr) :=
+    Unseps (unsep_normal_form' e).
+
+  Lemma denote_Unseps :
+    forall es, denote (Unseps es) = unseps (List.map denote es).
+  Proof.
+    induction es as [| e [|] IHes]; simpl in *; congruence.
+  Qed.
+
+  Lemma product_map {A B A' B'} (fA: A -> A') (fB: B -> B'):
+    forall As Bs,
+      product (List.map fA As) (List.map fB Bs) =
+      map2 (fun a b => (fA a, fB b)) (product As Bs).
+  Proof.
+    unfold map2, product; intros.
+    rewrite !flat_map_concat_map, !concat_map, !map_map.
+    f_equal; apply map_ext; intros; rewrite !map_map.
+    reflexivity.
+  Qed.
+
+  Lemma denote_map2_Sep :
+    forall es1 es2,
+      List.map denote (map2 Sep (product es1 es2)) =
+      map2 sep (product (List.map denote es1)
+                        (List.map denote es2)).
+  Proof.
+    intros.
+    rewrite product_map, map2_map2, map_map2.
+    reflexivity.
+  Qed.
+
+  Lemma unsep_normal_form_sound :
+    forall e, impl1 (denote e) (denote (unsep_normal_form e)).
+  Proof.
+    unfold unsep_normal_form; induction e; simpl; intros;
+      rewrite ?IHe1, ?IHe2, ?denote_Unseps, ?denote_map2_Sep, ?unseps_distr_sep, ?map_app, ?unseps_app in *; reflexivity.
+  Qed.
+End Reification.
+
+  Ltac reify e :=
+    let rec loop e :=
+        match e with
+        | sep ?s1 ?s2 =>
+          let ur1 := loop s1 in let ur2 := loop s2 in uconstr:(Sep ur1 ur2)
+        | unsep ?s1 ?s2 =>
+          let ur1 := loop s1 in let ur2 := loop s2 in uconstr:(Unsep ur1 ur2)
+        | ?p => uconstr:(Pred p)
+        end in
+    let ur := loop e in
+    type_term ur.
+End Reification.
+
+Module Tactics.
+  Ltac decompose_one_unsep H :=
+    unfold unsep in H; cbv beta in H; decompose [and] H; clear H.
+
+  Ltac decompose_all_unsep :=
+    repeat match goal with
+           | [ H: (unsep _ _) ?m |- _ ] => decompose_one_unsep H
+           end.
+
+  Ltac decompose_relevant_unsep :=
+    repeat match goal with
+           | [ H: (unsep _ _) ?m |- (sep _ _) ?m ] => decompose_one_unsep H
+           end.
+
+  Ltac normalize_relevant_sep :=
+    match goal with
+    | [ H: ?P ?m |- (sep _ _) ?m ] =>
+      match P with
+      | context[unsep] => (* FIXME check that progress works here *)
+        let r := Reification.reify P in
+        change P with (Reification.denote r) in H;
+        apply Reification.unsep_normal_form_sound in H;
+        simpl in H (* FIXME *);
+        lazymatch type of H with
+        | P m => fail "No progress"
+        | _ => idtac
+        end
+      end
+    end.
+End Tactics.
+
+Export Tactics.
+
+Infix "&&&" := unsep (at level 50).
+
+Hint Extern 1 ((sep _ _) _) => decompose_relevant_unsep; shelve : compiler_side_conditions.
+Hint Extern 1 ((sep _ _) _) => normalize_relevant_sep; shelve : compiler_side_conditions.
 
 Section with_parameters.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
@@ -20,14 +318,15 @@ Section with_parameters.
     let/n a := put r in
     a.
 
-  Local Notation "m =* P" := (P%sep m) (at level 70, only parsing).
-
   Instance spec_of_indirect_add : spec_of "indirect_add" :=
     fnspec! "indirect_add" pa pb pc / a Ra b Rb c Rc,
     { requires t m :=
-        m =* cell_value pa a * Ra /\ m =* cell_value pb b * Rb /\ m =* cell_value pc c * Rc;
+        (cell_value pa a ⋆ Ra &&&
+         cell_value pb b ⋆ Rb &&&
+         cell_value pc c ⋆ Rc) m;
       ensures t' m' :=
-        t = t' /\ m' =* cell_value pa (indirect_add b c) * Ra }.
+        t = t' /\
+        (cell_value pa (indirect_add b c) ⋆ Ra) m' }.
 
   Derive indirect_add_body SuchThat
          (defn! "indirect_add"("a", "b", "c") { indirect_add_body },
@@ -57,9 +356,6 @@ Section with_parameters.
 
       (let v := v in
        forall m,
-         (* FIXME would like to prove this:
-            (forall Ra, sep (cell_value pa a) Ra m ->
-                        sep (cell_value pa v) Ra m) -> *)
          sep (cell_value pa v) Ra m ->
          (<{ Trace := tr;
              Memory := m;
@@ -75,9 +371,10 @@ Section with_parameters.
               k_impl
       <{ pred (nlet_eq [va] v k) }>.
   Proof.
+    unfold unsep.
     repeat straightline.
     repeat (eexists; split; eauto).
-    straightline_call; eauto.
+    straightline_call; unfold unsep in *; eauto; [].
     intuition subst.
     repeat (eexists; split; eauto).
   Qed.
@@ -92,9 +389,9 @@ Section with_parameters.
   Instance spec_of_indirect_add_twice : spec_of "indirect_add_twice" :=
     fnspec! "indirect_add_twice" pa pb / a b R,
     { requires t m :=
-        m =* cell_value pa a * cell_value pb b * R;
+        (cell_value pa a ⋆ cell_value pb b ⋆ R) m;
       ensures t' m' :=
-        t = t' /\ m' =* cell_value pa (indirect_add_twice a b) * cell_value pb b * R }.
+        t = t' /\ (cell_value pa (indirect_add_twice a b) ⋆ cell_value pb b ⋆ R) m' }.
 
   Derive indirect_add_twice_body SuchThat
          (defn! "indirect_add_twice"("a", "b") { indirect_add_twice_body },
@@ -109,7 +406,8 @@ Section with_parameters.
     let/n a := indirect_add a c in
     a.
 
-  (* The notations unfold into something decently nice: *)
+  (* Quick sanity check that Rupicola's notations unfold into code that's
+     decently nice to work with: *)
   Notation "⟨ v ⟩" := {| data := v |}.
   Goal forall a b c, indirect_add_three ⟨a⟩ ⟨b⟩ ⟨c⟩ = ⟨word.add (word.add a b) c⟩.
     reflexivity.
@@ -118,9 +416,11 @@ Section with_parameters.
   Instance spec_of_indirect_add_three : spec_of "indirect_add_three" :=
     fnspec! "indirect_add_three" pa pb pc / a b c Rb R,
     { requires t m :=
-        m =* cell_value pa a * cell_value pc c * R /\ m =* cell_value pb b * Rb;
+        (cell_value pa a ⋆ cell_value pc c ⋆ R &&&
+         cell_value pb b ⋆ Rb) m;
       ensures t' m' :=
-        t = t' /\ m' =* cell_value pa (indirect_add_three a b c) * cell_value pc c * R }.
+        t = t' /\
+        (cell_value pa (indirect_add_three a b c) ⋆ cell_value pc c ⋆ R) m' }.
 
   Derive indirect_add_three_body SuchThat
          (defn! "indirect_add_three"("a", "b", "c") { indirect_add_three_body },
@@ -130,25 +430,26 @@ Section with_parameters.
     compile.
   Qed.
 
-  Require Import Rupicola.Lib.Alloc.
+  (* FIXME replace original compile_alloc with this?  The difference between the
+     two lemmas is that this one allows learning the impact of stack allocation
+     on more than one predicate: if the context contains `R1 m` and `R2 m`, this
+     lemmas lets you learn both `anybytes ptr * R1` and `anybytes ptr * R2`,
+     whereas the original one only lets you learn one of `anybytes ptr * R1` and
+     `anybytes ptr * R2`.
 
-  Definition indirect_add_three' (a b c: cell) :=
-    let/n v := alloc (indirect_add a b) in
-    let/n out := indirect_add v c in
-    out.
+     The problem is that although we *can* prove this more powerful lemma for
+     this particular case (stack allocation), we can't do the same for other
+     lemmas (try doing it above for `compile_indirect_add`, for example).
 
-  Instance spec_of_indirect_add_three' : spec_of "indirect_add_three'" :=
-    fnspec! "indirect_add_three'" pout pa pb pc / out a b c Ra Rb Rc R,
-    { requires t m :=
-        m =* cell_value pout out * R /\
-        m =* cell_value pa a * Ra /\
-        m =* cell_value pb b * Rb /\
-        m =* cell_value pc c * Rc;
-      ensures t' m' :=
-        t = t' /\ m' =* cell_value pout (indirect_add_three' a b c) * R }.
+     The more robust approach is to package all facts already known together
+     into a single one and *then* call a regular lemma that assumes a single
+     fact.
 
-  (* FIXME replace original compile_alloc with this. *)
-  Lemma compile_alloc
+     For example, here, we'd generate `(fun m => R1 m /\ R2 m) m`, and the usual
+     `compile_alloc` would yield `(anybytes ptr * (fun m => R1 m /\ R2 m)) m`.
+     From that it's then possible to derive the two facts that we wanted:
+     `anybytes ptr * R1` and `anybytes ptr * R2`. *)
+  Lemma compile_alloc'
         {tr m l functions A} (v : A):
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
            {I} {AP : I -> word.rep -> A -> map.rep -> Prop} `{@Allocable _ _ _ I A AP}
@@ -200,7 +501,12 @@ Section with_parameters.
     }
   Qed.
 
-  Ltac cleanup_alloc :=
+  Ltac cleanup_alloc' :=
+    (** Specialize the separation hypothesis created by `cleanup_alloc'`.
+
+        Using the `cleanup_alloc'` lemma generates a hypothesis `H` of the form
+        `forall R, R m -> anybytes ptr * R m`.  This tactic specializes that
+        hypothesis using all `?R m` facts in the context, then clears `H`. **)
     intros;
     repeat match goal with
            | [ H: ?R ?m, H': (forall R, R ?m -> _ ?m') |-
@@ -211,8 +517,6 @@ Section with_parameters.
              | [ H: forall R, R m -> _ m' |- _ ] => clear H
              end
            end.
-
-  Hint Extern 0 => simple eapply compile_alloc; cleanup_alloc; shelve.
 
   Open Scope Z_scope.
 
@@ -306,34 +610,32 @@ Section with_parameters.
     exists {| data := x |}. assumption.
   Qed.
 
+  Definition indirect_add_three' (a b c: cell) :=
+    let/n v := alloc (indirect_add a b) in
+    let/n out := indirect_add v c in
+    out.
+
+  Instance spec_of_indirect_add_three' : spec_of "indirect_add_three'" :=
+    fnspec! "indirect_add_three'" pout pa pb pc / out a b c Ra Rb Rc R,
+    { requires t m :=
+        (cell_value pout out ⋆ R &&&
+         cell_value pa a ⋆ Ra &&&
+         cell_value pb b ⋆ Rb &&&
+         cell_value pc c ⋆ Rc) m;
+      ensures t' m' :=
+        t = t' /\
+        (cell_value pout (indirect_add_three' a b c) ⋆ R) m' }.
+
   Derive indirect_add_three'_body SuchThat
          (defn! "indirect_add_three'"("out", "a", "b", "c") { indirect_add_three'_body },
           implements indirect_add_three' using ["indirect_add"])
     As indirect_add_three'_body_correct.
   Proof.
-    compile_setup.
-    compile_step.
-    compile_step.
-    compile_step.
-    eapply compile_nlet_as_nlet_eq.
-    simple eapply compile_alloc; cleanup_alloc.
+    compile.
     (* FIXME when no instance is defined the typeclass goal is shelved; why? *)
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step.
-    (* FIXME at this point we've lost too much info: we lost most clauses that
-       talked about `m'`.  The problem is that the compilation lemmas assume
-       there's a single relevant clause.  Is this worth a refactoring so that we
-       propagate info about all statements about a given memory? *)
-  Abort.
+    (* FIXME the unit is shelved *)
+    eexists; repeat compile_step.
+    Grab Existential Variables.
+    exact tt.
+  Qed.
 End with_parameters.
