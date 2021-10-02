@@ -468,7 +468,7 @@ Section LowerPipeline.
       { cbn. cbn in GetPos. rewrite GetPos. f_equal. f_equal. f_equal.
         unfold machine_ok in *. simp. blia. }
       { simpl. auto. }
-      { cbn. auto using Forall_nil. }
+      { cbn. auto using Forall_nil, Nat.le_0_l. }
       { solve_divisibleBy4. }
       { assumption. }
       { unfold machine_ok in *. simp.

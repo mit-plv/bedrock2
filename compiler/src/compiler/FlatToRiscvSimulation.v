@@ -119,7 +119,7 @@ Section Sim.
       + eauto using fits_stack_call.
       + simpl. rewrite_match. f_equal. f_equal. f_equal. ring.
       + simpl. auto.
-      + simpl. auto using Forall_nil.
+      + simpl. auto using Forall_nil, Nat.le_0_l.
       + assert (word.ok word) by exact word_ok.
         solve_divisibleBy4.
       + assumption.
