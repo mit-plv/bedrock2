@@ -1147,12 +1147,15 @@ Hint Resolve compile_setup_postcondition_func : compiler_setup.
 Hint Resolve compile_setup_postcondition_func_noret : compiler_setup.
 Hint Extern 20 (WeakestPrecondition.cmd _ _ _ _ _ _) => intros; shelve : compiler_setup.
 
+Tactic Notation "step_with_db" ident(db) :=
+  progress unshelve (typeclasses eauto with db); shelve_unifiable.
+
 Ltac compile_setup :=
   cbv [program_logic_goal_for];
   compile_setup_unfold_spec_of;
   eapply compile_setup_WeakestPrecondition_call_first;
   [ try reflexivity (* Arity check *)
-  | first [progress unshelve (typeclasses eauto with compiler_setup) |
+  | first [step_with_db compiler_setup |
            compile_setup_isolate_gallina_program]; intros;
     compile_setup_unfold_gallina_spec;
     apply compile_setup_remove_skips;
@@ -1292,7 +1295,7 @@ Ltac compile_binding :=
   (* We don't want to show users goals with nlet_eq, so compile_nlet_as_nlet_eq
      isn't in the ‘compiler’ hint db. *)
   try simple apply compile_nlet_as_nlet_eq;
-  progress unshelve (typeclasses eauto with compiler); shelve_unifiable.
+  step_with_db compiler.
 
 (* Use [simple eapply] (not eapply) if you add anything here, to ensure that Coq
    doesn't peek past the first [nlet]. *)
@@ -1336,6 +1339,9 @@ Ltac compile_use_default_value :=
   | [ |- DefaultValue ?T ?t ] => exact t
   end.
 
+Create HintDb compiler_side_conditions discriminated.
+
+(* FIXME most cases below could be folded into the database above *)
 Ltac compile_solve_side_conditions :=
   match goal with
   | [  |- sep _ _ _ ] =>
@@ -1357,6 +1363,7 @@ Ltac compile_solve_side_conditions :=
           | compile_autocleanup
           | reflexivity
           | compile_use_default_value
+          | step_with_db compiler_side_conditions
           | solve [ typeclasses eauto | eauto with compiler_cleanup ] ]
   end.
 
