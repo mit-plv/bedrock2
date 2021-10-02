@@ -30,7 +30,7 @@ Section Tree.
         Node (Owned a) (lift l) (lift r)
       end.
 
-    Fixpoint setRoot (t : tree alpha) (a : alpha)
+    Definition setRoot (t : tree alpha) (a : alpha)
       : tree alpha :=
       match t with
       | Empty => Empty

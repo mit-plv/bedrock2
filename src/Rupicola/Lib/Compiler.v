@@ -1142,9 +1142,9 @@ Ltac compile_setup_unfold_gallina_spec :=
   end.
 
 Create HintDb compiler_setup discriminated.
-Hint Resolve compile_setup_postcondition_func : compiler_setup.
-Hint Resolve compile_setup_postcondition_func_noret : compiler_setup.
-Hint Extern 20 (WeakestPrecondition.cmd _ _ _ _ _ _) => intros; shelve : compiler_setup.
+#[export] Hint Resolve compile_setup_postcondition_func : compiler_setup.
+#[export] Hint Resolve compile_setup_postcondition_func_noret : compiler_setup.
+#[export] Hint Extern 20 (WeakestPrecondition.cmd _ _ _ _ _ _) => intros; shelve : compiler_setup.
 
 Tactic Notation "step_with_db" ident(db) :=
   progress unshelve (typeclasses eauto with db); shelve_unifiable.
@@ -1219,16 +1219,16 @@ Ltac solve_map_eq :=
   reflexivity.
 
 Create HintDb compiler_cleanup discriminated.
-Hint Unfold wp_bind_retvars : compiler_cleanup.
-Hint Unfold postcondition_cmd : compiler_cleanup.
+#[export] Hint Unfold wp_bind_retvars : compiler_cleanup.
+#[export] Hint Unfold postcondition_cmd : compiler_cleanup.
 Hint Rewrite @word.of_nat_to_nat_unsigned : compiler_cleanup.
 Hint Rewrite @word.of_Z_of_nat_to_nat_unsigned : compiler_cleanup.
 
 Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: bool.
-Hint Extern 2 (IsRupicolaBinding (nlet _ _ _)) => exact true : typeclass_instances.
-Hint Extern 2 (IsRupicolaBinding (nlet_eq _ _ _)) => exact true : typeclass_instances.
-Hint Extern 2 (IsRupicolaBinding (dlet _ _)) => exact true : typeclass_instances.
-Hint Extern 5 (IsRupicolaBinding _) => exact false : typeclass_instances.
+#[export] Hint Extern 2 (IsRupicolaBinding (nlet _ _ _)) => exact true : typeclass_instances.
+#[export] Hint Extern 2 (IsRupicolaBinding (nlet_eq _ _ _)) => exact true : typeclass_instances.
+#[export] Hint Extern 2 (IsRupicolaBinding (dlet _ _)) => exact true : typeclass_instances.
+#[export] Hint Extern 5 (IsRupicolaBinding _) => exact false : typeclass_instances.
 
 Ltac is_rupicola_binding term :=
   constr:(match tt return IsRupicolaBinding term with _ => _ end).
@@ -1255,37 +1255,37 @@ Ltac compile_unfold_head_binder :=
   compile_unfold_head_binder' p.
 
 Create HintDb compiler.
-Hint Extern 10 => simple eapply compile_word_constant; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_of_Z_constant; shelve : compiler.
-Hint Extern 10 => simple eapply compile_Z_constant; shelve : compiler.
-Hint Extern 10 => simple eapply compile_nat_constant; shelve : compiler.
-Hint Extern 10 => simple eapply compile_bool_constant; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_add; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_sub; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_mul; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_mulhuu; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_divu; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_remu; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_and; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_or; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_xor; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_sru; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_slu; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_srs; shelve : compiler.
-Hint Extern 10 => simple eapply compile_Z_add; shelve : compiler.
-Hint Extern 10 => simple eapply compile_Z_sub; shelve : compiler.
-Hint Extern 10 => simple eapply compile_Z_mul; shelve : compiler.
-Hint Extern 10 => simple eapply compile_Z_and; shelve : compiler.
-Hint Extern 10 => simple eapply compile_Z_or; shelve : compiler.
-Hint Extern 10 => simple eapply compile_Z_xor; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_lts; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_ltu; shelve : compiler.
-Hint Extern 10 => simple eapply compile_word_eqb; shelve : compiler.
-Hint Extern 10 => simple eapply compile_bool_eqb; shelve : compiler.
-Hint Extern 10 => simple eapply compile_bool_andb; shelve : compiler.
-Hint Extern 10 => simple eapply compile_bool_orb; shelve : compiler.
-Hint Extern 10 => simple eapply compile_bool_xorb; shelve : compiler.
-Hint Extern 8 => ExprReflection.compile_reified_expr; shelve : compiler. (* Higher priority than individual ops *)
+#[export] Hint Extern 10 => simple eapply compile_word_constant; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_of_Z_constant; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_Z_constant; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_nat_constant; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_bool_constant; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_add; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_sub; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_mul; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_mulhuu; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_divu; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_remu; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_and; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_or; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_xor; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_sru; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_slu; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_srs; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_Z_add; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_Z_sub; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_Z_mul; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_Z_and; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_Z_or; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_Z_xor; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_lts; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_ltu; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_word_eqb; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_bool_eqb; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_bool_andb; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_bool_orb; shelve : compiler.
+#[export] Hint Extern 10 => simple eapply compile_bool_xorb; shelve : compiler.
+#[export] Hint Extern 8 => ExprReflection.compile_reified_expr; shelve : compiler. (* Higher priority than individual ops *)
 
 Ltac compile_binding :=
   (* We want to flip nlets before introducing nlet_eq. *)
