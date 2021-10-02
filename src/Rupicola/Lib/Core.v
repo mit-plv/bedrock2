@@ -640,6 +640,16 @@ Module word.
         auto using word.unsigned_of_Z_0, word.unsigned_of_Z_1.
     Qed.
 
+    Lemma unsigned_of_Z_le (z: Z):
+      0 <= z ->
+      word.unsigned (word := word) (word.of_Z z) <= z.
+    Proof.
+      intros; rewrite word.unsigned_of_Z; unfold word.wrap.
+      pose proof word.width_pos.
+      pose proof Z.pow_pos_nonneg 2 width.
+      apply Z.mod_le; lia.
+    Qed.
+
     Lemma word_to_nat_to_word (w : word) :
       w = word.of_Z (Z.of_nat (Z.to_nat (word.unsigned w))).
     Proof.

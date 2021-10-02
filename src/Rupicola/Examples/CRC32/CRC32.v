@@ -600,7 +600,6 @@ Section __.
         r = crc32' data /\
         (listarray_value AccessByte  data_ptr data * R)%sep mem' }.
 
-  
   Derive crc32_body SuchThat
          (defn! "crc32" ("data", "len") ~> "crc32" { crc32_body },
           implements crc32')
@@ -608,65 +607,32 @@ Section __.
   Proof.
     compile_setup.    
     repeat (repeat compile_step).
-    
-    simple apply compile_nlet_as_nlet_eq.
-    apply compile_ranged_for_w
-      with (signed := false)
-           (loop_pred := (fun idx acc tr' mem' locals' =>
-                            (*TODO: existential is bad; need partial computation?*)
-          (listarray_value AccessByte data_ptr data * R)%sep mem'
-          /\ tr' = tr
-          /\ locals' = map.put
-                         (map.put 
-                            (map.put (map.put map.empty "data" data_ptr) "idx" idx)
-                            "len" (word.of_Z (Z.of_nat (Datatypes.length data))))
-                         "crc32" acc)).
-    exact word.of_Z_unsigned.
-    repeat compile_step; apply word.unsigned_range.
-    repeat compile_step.
-    repeat compile_step.
-    {
-      rewrite <- H0.
-      rewrite word.of_Z_unsigned.
-      repeat (repeat compile_step).
+
+    simple apply compile_nlet_as_nlet_eq;
+      compile_ranged_for.
+
+    all: repeat compile_step.
+    all: try replace (Z.of_nat (Datatypes.length data)) in *.
+    all: try rewrite word.of_Z_unsigned in *.
+    all: repeat compile_step.
+    all: rewrite word.of_Z_unsigned in Hr, Hr'.
+    { lia. }
+    { unfold v2.
+      simpl.
+      zify.
+      intuition try lia.
+      subst z8.
+      eapply Z.le_lt_trans; [apply word_and_leq_right|].
+      pose proof word.unsigned_of_Z_le 255; lia.
     }
     {
-      repeat compile_step.
-      {
-        rewrite <-H0 in Hr.
-        rewrite word.of_Z_unsigned in Hr.
-        rewrite H0 in Hr.
-        assumption.
-      }
-      {
-        unfold v2.
-        simpl.
-        zify.
-        intuition try lia.
-        subst z4.
-        lazymatch goal with
-          [|- word.unsigned (word.and ?l ?r) < _] =>
-          pose proof (@word_and_leq_right l r)
-        end.
-        rewrite word.unsigned_of_Z in H1.
-        rewrite word.wrap_small in H1; try lia.
-        destruct width_cases as [H' | H']; rewrite H'; lia.
-      }
-      {
-        rewrite length_to_byte_table.
-        change (Datatypes.length crc_table) with 256%nat.
-        destruct width_cases as [H' | H']; rewrite H'; try lia.
+      rewrite length_to_byte_table.
+      change (Datatypes.length crc_table) with 256%nat.
+      destruct width_cases as [H' | H']; clear -H'; subst;
         compute; inversion 1.
-        compute; inversion 1.
-      }
-    }
-    {
-      repeat compile_step.
-      cbn -[crc_table].
-      repeat compile_step.
     }
   Qed.
-  
+
   Hint Extern 1 => simple eapply @compile_table_nth; shelve : compiler.
 
 
