@@ -224,6 +224,20 @@ Section SepProperties.
     rewrite <-(seps_nth_to_head i xs), <-(seps_nth_to_head j ys), Hij, Hrest.
     exact (reflexivity _).
   Qed.
+
+  (* Analogous to cancel_seps_at_indices, but works with implication rather than eq.
+     TODO: If this lemma's dependencies become general enough, should we deprecate cancel_seps_at_indices?
+   *)
+  Lemma cancel_seps_at_indices_by_implication i j xs ys
+        (Hij : Lift1Prop.impl1 (nth i xs) (nth j ys))
+        (Hrest : Lift1Prop.impl1 (seps (remove_nth i xs)) (seps (remove_nth j ys)))
+    : Lift1Prop.impl1 (seps xs) (seps ys).
+  Proof.
+    rewrite <-(seps_nth_to_head i xs), <-(seps_nth_to_head j ys).
+    rewrite Hij, Hrest.
+    exact (reflexivity _).
+  Qed.
+  
   Lemma cancel_emp_at_index_l i xs ys
         (Hi : nth i xs = emp True)
         (Hrest : iff1 (seps (remove_nth i xs)) (seps ys))
@@ -235,6 +249,15 @@ Section SepProperties.
         (Hj : nth j ys = emp True)
         (Hrest : iff1 (seps xs) (seps (remove_nth j ys)))
     : iff1 (seps xs) (seps ys).
+  Proof.
+    rewrite <-(seps_nth_to_head j ys), Hj, Hrest, sep_emp_True_l.
+    exact (reflexivity _).
+  Qed.
+  
+  Lemma cancel_emp_at_index_impl j xs ys
+        (Hj : nth j ys = emp True)
+        (Hrest : impl1 (seps xs) (seps (remove_nth j ys)))
+    : impl1 (seps xs) (seps ys).
   Proof.
     rewrite <-(seps_nth_to_head j ys), Hj, Hrest, sep_emp_True_l.
     exact (reflexivity _).
@@ -358,6 +381,18 @@ Ltac cancel_emp_r :=
     [syntactic_exact_deltavar (@eq_refl _ _)|]
   end.
 
+(* TODO: should this eventually subsume the one above?*)
+Ltac cancel_emp_impl :=
+  lazymatch goal with
+  | |- Lift1Prop.impl1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
+    let j := find_constr_eq RHS constr:(@emp K V M True) in
+    (*TODO: replace lemma*)
+    simple refine (cancel_emp_at_index_impl j LHS RHS _ _);
+    cbn [firstn skipn app hd tl];
+    (*TODO: use more complicated solver here?*)
+    [syntactic_exact_deltavar (@eq_refl _ _)|]
+  end.
+
 (* leaves two open goals:
    1) equality between left sep clause #i and right sep clause #j
    2) updated main goal *)
@@ -367,6 +402,37 @@ Ltac cancel_seps_at_indices i j :=
     simple refine (cancel_seps_at_indices i j LHS RHS _ _);
     cbn [firstn skipn app hd tl]
   end.
+
+
+(* Analogous to cancel_seps_at_indices, but works with implication rather than eq.
+   TODO: If this tactic's dependencies become general enough, should we deprecate cancel_seps_at_indices?
+ *)
+(* leaves two open goals:
+   1) implication between left sep clause #i and right sep clause #j
+   2) updated main goal *)
+Ltac cancel_seps_at_indices_by_implication i j :=
+  lazymatch goal with
+  | |- Lift1Prop.impl1 (seps ?LHS) (seps ?RHS) =>
+    simple refine (cancel_seps_at_indices_by_implication i j LHS RHS _ _);
+    cbn [firstn skipn app hd tl]
+  end.
+
+
+(*TODO: use hintdb or user-provided tactic?
+  Study performance implications
+*)
+Create HintDb ecancel_impl discriminated.
+Hint Extern 1 => exact (fun m x => x) : ecancel_impl.
+
+(*TODO: performance*)
+Ltac find_implication xs y :=
+  multimatch xs with
+  | cons ?x _ =>
+    let H := fresh in
+    constr:(O)
+  | cons _ ?xs => let i := find_implication xs y in constr:(S i)
+  end.
+
 
 Ltac cancel_step := once (
       let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
@@ -387,6 +453,32 @@ Ltac ecancel_step :=
       let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
       let i := find_syntactic_unify_deltavar LHS y in (* <-- multi-success! *)
       cancel_seps_at_indices i j; [syntactic_exact_deltavar (@eq_refl _ _)|].
+
+
+(* TODO: are these the only cases I care to cover? 
+   In the best case, anything that reduces to an evar should be caught,
+   but that is expensive
+ *)
+Ltac is_evar_or_alias e :=
+  is_evar e || (let e' := eval unfold e in e in is_evar e').
+
+(* TODO: eventually replace ecancel_step? Probably not since implication is too agressive.*)
+(*TODO: performance. I've replaced the deltavar stuff with heavier operations  *)
+Ltac ecancel_step_by_implication :=
+      let RHS := lazymatch goal with |- Lift1Prop.impl1 _ (seps ?RHS) => RHS end in
+      let jy := index_and_element_of RHS in (* <-- multi-success! *)
+      let j := lazymatch jy with (?i, _) => i end in
+      let y := lazymatch jy with (_, ?y) => y end in
+      (* For implication, we don't want to touch RHS evars 
+         until everything else is solved.
+         Makes sure j doesn't point to an evar
+       *)
+      (*TODO: need to check for bound idents too; use above fn*)
+      assert_fails (idtac; is_evar y);      
+      let LHS := lazymatch goal with |- Lift1Prop.impl1 (seps ?LHS) _ => LHS end in
+      let i := find_implication LHS y in (* <-- multi-success! *)
+      (*TODO: nocore?*)
+      cancel_seps_at_indices_by_implication i j; [solve [auto 1 with ecancel_impl]|].
 
 Ltac ecancel_done :=
   cbn [seps];
@@ -422,21 +514,70 @@ Ltac cancel :=
   repeat cancel_emp_r;
   try solve [ cancel_done ].
 
+
+Ltac cancel_impl :=
+  reify_goal;
+  repeat cancel_step;
+  repeat cancel_emp_impl;
+  try solve [ cancel_done ].
+
+(*TODO: should I use deltavar here too?*)
+(*TODO: this assumes that the goal has (at most or exactly?) 1 evar predicate.
+  Test it on 0, 2 evars and adapt as necessary
+ *)
+(*TODO: make interactions w/ cancel, cancel_done more proper*)
 Ltac ecancel :=
+  cancel_impl;
+  repeat ecancel_step_by_implication;
+  (solve [ cbn [seps]; exact (fun m x => x) ]).
+
+Ltac ecancel_iff :=
   cancel;
   repeat ecancel_step;
   solve [ ecancel_done ].
 
-Ltac ecancel_assumption :=
+
+Ltac ecancel_assumption_old :=
   multimatch goal with
   | |- _ ?m1 =>
     multimatch goal with
     | H: _ ?m2 |- _ =>
       syntactic_unify_deltavar m1 m2;
       refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-      solve [ecancel]
+      solve [ecancel_iff]
     end
   end.
+
+
+ Ltac ecancel_assumption :=
+    multimatch goal with
+    | |- ?PG ?m1 =>
+      multimatch goal with
+      | H: ?PH ?m2
+        |- _ =>
+        syntactic_unify_deltavar m1 m2;
+        (*TODO: can I just revert H?*)
+        refine (Morphisms.subrelation_refl Lift1Prop.impl1 PH PG _ m1 H);
+        clear H;
+        solve[ecancel]
+      end
+    end.
+
+ (*TODO: for testing only*)
+ Ltac ecancel_assumption_preamble :=
+    multimatch goal with
+    | |- ?PG ?m1 =>
+      multimatch goal with
+      | H: ?PH ?m2
+        |- _ =>
+        syntactic_unify_deltavar m1 m2;
+        (*TODO: can I just revert H?*)
+        refine (Morphisms.subrelation_refl Lift1Prop.impl1 PH PG _ m1 H);
+        clear H;
+        cbn[seps]
+      end
+    end.
+
 
 Ltac use_sep_assumption :=
   match goal with
@@ -464,7 +605,7 @@ Ltac seprewrite0_in Hrw H :=
   let pf := fresh in
   (* COQBUG(faster use ltac:(...) here if that was multi-success *)
   eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
-      by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
+      by (ecancel_iff || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
   let H' := fresh H in (* rename H into H' (* COGBUG(9937) *) *)
   epose proof (proj1 (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) (proj1 (pf _) H)) as H';
   clear H pf; rename H' into H.
@@ -503,7 +644,7 @@ Ltac seprewrite0 Hrw :=
   let pf := fresh in
   (* COQBUG(faster use ltac:(...) here if that was multi-success *)
   eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
-      by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
+      by (ecancel_iff || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
   eapply (fun m => (proj2 (pf m))); clear pf; (* <-- note: proj2 instead of proj1 *)
   eapply (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _).
 
