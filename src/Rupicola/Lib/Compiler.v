@@ -1305,7 +1305,7 @@ Ltac compile_autocleanup :=
 
 Ltac compile_cleanup :=
   match goal with
-  | [ H: _ /\ _ |- _ ] => destruct H
+  | [ H: _ /\ _ |- _ ] => decompose [and] H; clear H
   | [ H: ?x = _ |- _ ] => is_var x; subst x
   | [ H: match ?x with _ => _ end |- _ ] => destruct x; [ idtac ]
   | [  |- let _ := _ in _ ] => intros
