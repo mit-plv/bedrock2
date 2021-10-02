@@ -29,9 +29,9 @@ Section KVStore.
     end.
 
   Class kv_ops :=
-    { map_init : bedrock_func;
-      get : bedrock_func;
-      put : bedrock_func; }.
+    { map_init : func;
+      get : func;
+      put : func; }.
 
   Class kv_parameters
         {ops : kv_ops} {key value : Type}

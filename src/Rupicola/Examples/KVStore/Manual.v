@@ -16,7 +16,7 @@ Section examples.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Section put_sum.
-    Context {add : bedrock_func}.
+    Context {add : func}.
     Definition Int (addr : word) (x : Z) : mem -> Prop :=
       sep (emp (0 <= x < 2^width)%Z)
           (truncated_scalar access_size.word addr x).
@@ -51,7 +51,7 @@ Section examples.
 
     (* like put, returns a boolean indicating whether the put was an
          overwrite, and stores the old value in v if the boolean is true *)
-    Definition put_sum : bedrock_func :=
+    Definition put_sum : func :=
       let m := "m" in
       let k1 := "k1" in
       let k2 := "k2" in
@@ -191,7 +191,7 @@ Section examples.
       | _, _ => m
       end.
 
-    Definition swap : bedrock_func :=
+    Definition swap : func :=
       let m := "m" in
       let k1 := "k1" in
       let k2 := "k2" in

@@ -10,7 +10,7 @@ Local Open Scope string_scope.
 Import ListNotations.
 
 Module Bedrock2.
-  Definition bedrock_func : Type :=
+  Definition func : Type :=
     string * (list string * list string * cmd).
 
   Axiom word_size : Z.
@@ -26,7 +26,7 @@ Module Bedrock2.
   Notation pairs_end := ("pairs_end" : string).
   Notation key := ("key" : string).
 
-  Definition assoc_found : bedrock_func :=
+  Definition assoc_found : func :=
     ("assoc",
      ([pairs; len; k],
       [found; out],
@@ -43,7 +43,7 @@ Module Bedrock2.
          pairs = (pairs + pair_size)
        }}))).
 
-  Definition assoc_skip : bedrock_func :=
+  Definition assoc_skip : func :=
     ("assoc",
      ([pairs; len; k],
       [found; out],

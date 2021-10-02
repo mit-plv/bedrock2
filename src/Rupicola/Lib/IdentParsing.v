@@ -325,7 +325,7 @@ Module TC.
            end).
 
   Class __IdentToString := __identToString: string.
-  Hint Extern 1 __IdentToString => serialize_ident_in_context : typeclass_instances.
+  #[global] Hint Extern 1 __IdentToString => serialize_ident_in_context : typeclass_instances.
 
   Notation ident_to_string a :=
     (match __ltac2_marker return __IdentToString with a => _ end).

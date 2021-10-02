@@ -9,7 +9,7 @@ Import ListNotations.
 
 (* bedrock2 code *)
 Module Bedrock2.
-  Definition swap : bedrock_func :=
+  Definition swap : func :=
     let a : string := "a" in
     let b : string := "b" in
     let tmp : string := "tmp" in

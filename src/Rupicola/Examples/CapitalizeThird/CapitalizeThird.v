@@ -10,11 +10,11 @@ Import ListNotations.
 (* bedrock2 code *)
 Module Bedrock2.
   Axiom wordsize : Z. (* in bytes *)
-  Axiom toupper : bedrock_func.
+  Axiom toupper : func.
   Definition charsize : Z := 1.
 
   (* TODO: use bedrock2 Structs? *)
-  Definition capitalize_String : bedrock_func :=
+  Definition capitalize_String : func :=
     let s_ptr : string := "s_ptr" in
     let ret : string := "ret" in
     let len : string := "len" in
@@ -34,7 +34,7 @@ Module Bedrock2.
        }} ;
        ret = (coq:(1))))).
 
-  Definition capitalize_3rd : bedrock_func :=
+  Definition capitalize_3rd : func :=
     let inp : string := "inp" in
     let ret : string := "ret" in
     let offset : Z := 2 * wordsize in

@@ -16,7 +16,7 @@ Section SepProperties.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
   Local Open Scope sep_scope.
 
-  Local Infix "++" := app. Local Infix "++" := app : list_scope.
+  Local Infix "++" := app.
   Let nth n xs := hd (emp(map:=map) True) (skipn n xs).
   Let remove_nth n (xs : list (map -> Prop)) :=
     (firstn n xs ++ tl (skipn n xs)).
@@ -48,7 +48,7 @@ Ltac cancel_seps_at_indices i j :=
   end.
 
 Create HintDb ecancel_impl discriminated.
-Hint Extern 1 => exact (fun m x => x) : ecancel_impl.
+#[export] Hint Extern 1 => exact (fun m x => x) : ecancel_impl.
 
 (*TODO: performance*)
 Ltac find_implication xs y :=

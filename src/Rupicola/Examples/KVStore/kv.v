@@ -2,6 +2,8 @@ From Coq Require Import List ZArith String.
 
 Inductive KVstore_op := GET | PUT.
 
+Local Set Warnings "-ambiguous-paths".
+
 Definition byte := Byte.byte.
 
 Definition Bytes := list byte.

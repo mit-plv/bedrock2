@@ -59,12 +59,12 @@ cleanall: clean clean-coqutil clean-bedrock2
 %.vo: deps Makefile.coq
 	+make -f Makefile.coq $@
 
-_CoqProject:
+_CoqProject: Makefile
 	@echo "-R src/Rupicola Rupicola" > $@
 	@echo "-Q bedrock2/bedrock2/src/bedrock2 bedrock2" >> $@
 	@echo "-Q bedrock2/deps/coqutil/src/coqutil coqutil" >> $@
 	@echo "-arg -w" >> $@
-	@echo "-arg -unexpected-implicit-declaration" >> $@
+	@echo "-arg -unexpected-implicit-declaration,-deprecated-ident-entry" >> $@
 
 Makefile: ;
 

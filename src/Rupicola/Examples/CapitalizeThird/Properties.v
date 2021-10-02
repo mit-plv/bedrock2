@@ -170,7 +170,7 @@ Ltac listsimplify :=
          end.
 
 Section Proofs.
-  Context (functions' : list bedrock_func)
+  Context (functions' : list func)
           (toupper_body : Byte.byte -> Byte.byte).
 
   Local Definition byte_to_word : Byte.byte -> word :=
