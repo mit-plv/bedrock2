@@ -57,15 +57,13 @@ Section FlatToRiscv1.
     intros. eauto using ForallVars_bcond_impl, valid_FlatImp_var_implies_valid_register.
   Qed.
 
-  Definition valid_FlatImp_vars: stmt Z -> Prop := ForallVars_stmt valid_FlatImp_var.
+  Definition valid_FlatImp_vars: stmt Z -> Prop := Forall_vars_stmt valid_FlatImp_var.
 
   Definition valid_FlatImp_fun: list Z * list Z * stmt Z -> Prop :=
     fun '(argnames, retnames, body) =>
       argnames = List.firstn (List.length argnames) (reg_class.all reg_class.arg) /\
       retnames = List.firstn (List.length retnames) (reg_class.all reg_class.arg) /\
       valid_FlatImp_vars body /\
-      NoDup argnames /\
-      NoDup retnames /\
       uses_standard_arg_regs body.
 
 

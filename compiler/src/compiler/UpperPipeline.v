@@ -168,11 +168,6 @@ Section WithWordAndMem.
         - rewrite ?Bool.andb_true_iff, ?Bool.orb_true_iff, ?Z.ltb_lt in F. exact F.
         - rewrite ?Bool.andb_true_iff, ?Bool.orb_true_iff, ?Z.ltb_lt. exact F.
       }
-      2: {
-        intros x. split; intros F.
-        - rewrite ?Bool.andb_true_iff, ?Bool.orb_true_iff, ?Z.ltb_lt in F. exact F.
-        - rewrite ?Bool.andb_true_iff, ?Bool.orb_true_iff, ?Z.ltb_lt. exact F.
-      }
       eexists _, _, _. split. 1: eassumption. intros.
       unfold map.of_list_zip in *.
 

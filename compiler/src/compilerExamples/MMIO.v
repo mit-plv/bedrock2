@@ -253,7 +253,7 @@ Section MMIO1.
         (FlatImp.SInteract resvars extcall argvars).
   Proof.
     unfold FlatToRiscvCommon.compiles_FlatToRiscv_correctly. simpl. intros.
-    destruct H5 as [V_resvars V_argvars].
+    destruct H5 as (? & ? & V_resvars & V_argvars).
     rename extcall into action.
     pose proof (compile_interact_emits_valid RV32I _ action _ V_resvars V_argvars).
     simp.

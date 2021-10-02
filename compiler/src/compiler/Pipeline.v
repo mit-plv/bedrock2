@@ -122,7 +122,7 @@ Section Pipeline1.
     unfold spill_fun in H. simp.
     unfold FlatToRiscvDef.valid_FlatImp_fun, FlatToRiscvDef.valid_FlatImp_var,
        FlatToRiscvDef.valid_FlatImp_vars,
-       FlatToRiscvDef.valid_FlatImp_var, FlatImp.ForallVars_stmt, fp in *.
+       FlatToRiscvDef.valid_FlatImp_var, fp in *.
     debool.
     ssplit.
     - case TODO. (* uses_standard_arg_regs *)
