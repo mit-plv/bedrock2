@@ -460,7 +460,8 @@ Ltac ecancel_step :=
    but that is expensive
  *)
 Ltac is_evar_or_alias e :=
-  is_evar e || (let e' := eval unfold e in e in is_evar e').
+  tryif is_evar e then idtac
+  else let e' := eval unfold e in e in is_evar e'.
 
 (* TODO: eventually replace ecancel_step? Probably not since implication is too agressive.*)
 (*TODO: performance. I've replaced the deltavar stuff with heavier operations  *)
@@ -474,7 +475,7 @@ Ltac ecancel_step_by_implication :=
          Makes sure j doesn't point to an evar
        *)
       (*TODO: need to check for bound idents too; use above fn*)
-      assert_fails (idtac; is_evar y);      
+      assert_fails (idtac; is_evar_or_alias y);      
       let LHS := lazymatch goal with |- Lift1Prop.impl1 (seps ?LHS) _ => LHS end in
       let i := find_implication LHS y in (* <-- multi-success! *)
       (*TODO: nocore?*)
@@ -512,14 +513,9 @@ Ltac cancel :=
   repeat cancel_step;
   repeat cancel_emp_l;
   repeat cancel_emp_r;
-  try solve [ cancel_done ].
-
-
-Ltac cancel_impl :=
-  reify_goal;
-  repeat cancel_step;
   repeat cancel_emp_impl;
   try solve [ cancel_done ].
+
 
 (*TODO: should I use deltavar here too?*)
 (*TODO: this assumes that the goal has (at most or exactly?) 1 evar predicate.
@@ -527,27 +523,15 @@ Ltac cancel_impl :=
  *)
 (*TODO: make interactions w/ cancel, cancel_done more proper*)
 Ltac ecancel :=
-  cancel_impl;
-  repeat ecancel_step_by_implication;
-  (solve [ cbn [seps]; exact (fun m x => x) ]).
-
-Ltac ecancel_iff :=
   cancel;
-  repeat ecancel_step;
-  solve [ ecancel_done ].
-
-
-Ltac ecancel_assumption_old :=
-  multimatch goal with
-  | |- _ ?m1 =>
-    multimatch goal with
-    | H: _ ?m2 |- _ =>
-      syntactic_unify_deltavar m1 m2;
-      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
-      solve [ecancel_iff]
-    end
+  lazymatch goal with
+  | [|- impl1 _ _] =>
+     repeat ecancel_step_by_implication;
+     (solve [ cbn [seps]; exact (fun m x => x) ])
+  | [|- iff1 _ _] =>
+    repeat ecancel_step;
+    solve [ ecancel_done ]
   end.
-
 
  Ltac ecancel_assumption :=
     multimatch goal with
@@ -605,7 +589,7 @@ Ltac seprewrite0_in Hrw H :=
   let pf := fresh in
   (* COQBUG(faster use ltac:(...) here if that was multi-success *)
   eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
-      by (ecancel_iff || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
+      by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
   let H' := fresh H in (* rename H into H' (* COGBUG(9937) *) *)
   epose proof (proj1 (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _) (proj1 (pf _) H)) as H';
   clear H pf; rename H' into H.
@@ -644,7 +628,7 @@ Ltac seprewrite0 Hrw :=
   let pf := fresh in
   (* COQBUG(faster use ltac:(...) here if that was multi-success *)
   eassert (@Lift1Prop.iff1 mem Psep (sep lemma_lhs _)) as pf
-      by (ecancel_iff || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
+      by (ecancel || fail "failed to find" lemma_lhs "in" Psep "using ecancel");
   eapply (fun m => (proj2 (pf m))); clear pf; (* <-- note: proj2 instead of proj1 *)
   eapply (Proper_sep_iff1 _ _ Hrw _ _ (RelationClasses.reflexivity _) _).
 
