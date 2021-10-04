@@ -281,3 +281,40 @@ Ltac find_app term head :=
     constr:(head)
   | _ => fail "Couldn't find" head "in" term
   end.
+
+Ltac map_to_list' m :=
+  let rec loop m acc :=
+      match m with
+      | map.put ?m ?k ?v =>
+        loop m uconstr:((k, v) :: acc)
+      | map.empty =>
+        (* Reverse for compatibility with map.of_list *)
+        uconstr:(List.rev_acc acc [])
+      end in
+  loop m uconstr:([]).
+
+Ltac map_to_list m :=
+  let l := map_to_list' m in
+  let l := (eval cbv [List.rev_acc List.app] in l) in
+  l.
+
+Tactic Notation "set_change" uconstr(x) "with" uconstr(y) :=
+  (* This tactic uses ‘set’ because ‘change’ sometimes fails to find ‘m’.
+     (See the last example of Loops.v for an example). Why? *)
+  (let sx := fresh in
+   set x as sx; change sx with y; clear sx).
+
+Ltac reify_map m :=
+  match type of m with
+  | @map.rep _ _ ?M =>
+    let b := map_to_list m in
+    set_change m with (@map.of_list _ _ M b)
+  end.
+
+Ltac _change x y :=
+  change x with y.
+  (* let Heq := constr:(eq_refl x: x = y) in *)
+  (* replace x with y by (vm_cast_no_check Heq). *)
+
+Tactic Notation "_change_hook" open_constr(x) open_constr(y) :=
+  (_change x y).
