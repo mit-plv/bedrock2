@@ -801,9 +801,9 @@ Module ExprReflection.
     | word.sru ?l ?r    => expr_reify_op bopname.sru l r
     | word.slu ?l ?r    => expr_reify_op bopname.slu l r
     | word.srs ?l ?r    => expr_reify_op bopname.srs l r
-    | word.lts ?l ?r    => expr_reify_op bopname.lts l r
-    | word.ltu ?l ?r    => expr_reify_op bopname.ltu l r
-    | word.eqb ?l ?r    => expr_reify_op bopname.eq l r
+    | word.b2w (word.lts ?l ?r) => expr_reify_op bopname.lts l r
+    | word.b2w (word.ltu ?l ?r) => expr_reify_op bopname.ltu l r
+    | word.b2w (word.eqb ?l ?r) => expr_reify_op bopname.eq l r
     | _ =>
       lazymatch find_key_by_value bindings w with
       | Some ?k => constr:(EVar (word:=W) (er := expr_word_denotation) k)
