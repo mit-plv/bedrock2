@@ -1,5 +1,5 @@
 (** A Rupicola version of the indirect_add example in Bedrock2. **)
-From Rupicola.Lib Require Import Api Alloc SepReification.
+Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.Cells.Cells.
 
 Section with_parameters.

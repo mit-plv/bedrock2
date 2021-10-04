@@ -9,8 +9,8 @@ From Rupicola Require Import Core.
 Import ListNotations.
 Open Scope list_scope.
 
-Module SepReif.
-Section Reification.
+Module SepRefl.
+Section Reflection.
   Context {key value} {map : map.map key value} {map_ok : map.ok map}.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
 
@@ -104,7 +104,7 @@ Section Reification.
       simpl in *; unfold unsep in *; auto.
     intuition.
   Qed.
-End Reification.
+End Reflection.
 
   Ltac reify e :=
     let rec loop e :=
@@ -117,7 +117,7 @@ End Reification.
         end in
     let ur := loop e in
     type_term ur.
-End SepReif.
+End SepRefl.
 
 Module Tactics.
   Ltac decompose_one_unsep H :=
@@ -151,9 +151,9 @@ Module Tactics.
     | [ H: ?P ?m |- (sep _ _) ?m ] =>
       lazymatch P with
       | context[unsep] =>
-        let r := SepReif.reify P in
-        change P with (SepReif.denote r) in H;
-        apply SepReif.unsep_normal_form_sound' in H;
+        let r := SepRefl.reify P in
+        change P with (SepRefl.denote r) in H;
+        apply SepRefl.unsep_normal_form_sound' in H;
         simpl in H; decompose [and] H; clear H
       end
     | _ => fail "No hypothesis to normalize"
