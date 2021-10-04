@@ -1523,11 +1523,10 @@ Ltac pattern_head needle haystack :=
             end
   end.
 
-Ltac infer_loop_predicate :=
+(* TODO redo generalization using names instead of values *)
+Ltac infer_loop_predicate from init :=
   lazymatch goal with
-  | [ |- WeakestPrecondition.cmd
-          _ _ ?tr ?mem ?locals
-          (_ (nlet_eq _ (_ ?from ?to ?body ?init) _)) ] =>
+  | [ |- WeakestPrecondition.cmd _ _ ?tr ?mem ?locals _ ] =>
     lazymatch goal with
     | [ H: ?pred mem |- _ ] =>
       let f_pred := pattern_head init pred in
@@ -1542,22 +1541,26 @@ Ltac infer_loop_predicate :=
     end
   end.
 
-Ltac compile_ranged_for :=
+Ltac compile_ranged_for_u :=
   (* FIXME why doesn't simple eapply work for these lemmas? *)
   lazymatch goal with
-  | [ |- WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ ?v _)) ] =>
-    lazymatch v with
-    | ranged_for_u _ _ _ _ =>
-      let lp := infer_loop_predicate in
-      eapply compile_ranged_for_u with (loop_pred := lp)
-    | ranged_for_s _ _ _ _ =>
-      let lp := infer_loop_predicate in
-      eapply compile_ranged_for_s with (loop_pred := lp)
-    end
+  | [ |- WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (ranged_for_u ?from _ _ ?init) _)) ] =>
+    let lp := infer_loop_predicate from init in
+    eapply compile_ranged_for_u with (loop_pred := lp)
   end.
 
-(* FIXME find a way to make compile_ranged_for apply only when applicable *)
-(* Hint Extern 1 => compile_ranged_for; shelve : compiler. *)
+Ltac compile_ranged_for_s :=
+  (* FIXME why doesn't simple eapply work for these lemmas? *)
+  lazymatch goal with
+  | [ |- WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (ranged_for_s ?from _ _ ?init) _)) ] =>
+    let lp := infer_loop_predicate from init  in
+    eapply compile_ranged_for_s with (loop_pred := lp)
+  end.
+
+Module LoopCompiler.
+  #[export] Hint Extern 1 => compile_ranged_for_s; shelve : compiler.
+  #[export] Hint Extern 1 => compile_ranged_for_u; shelve : compiler.
+End LoopCompiler.
 
 Require bedrock2.BasicC64Semantics.
 

@@ -600,6 +600,8 @@ Section __.
         r = crc32' data /\
         (listarray_value AccessByte  data_ptr data * R)%sep mem' }.
 
+  Import LoopCompiler.
+
   Derive crc32_body SuchThat
          (defn! "crc32" ("data", "len") ~> "crc32" { crc32_body },
           implements crc32')
@@ -608,10 +610,10 @@ Section __.
     compile_setup.    
     repeat (repeat compile_step).
 
-    simple apply compile_nlet_as_nlet_eq;
-      compile_ranged_for.
+    (* simple apply compile_nlet_as_nlet_eq; *)
+    (*   compile_ranged_for_u. *)
 
-    all: repeat compile_step.
+    all: repeat compile_step. (* FIXME this step doesn't do anything, it should be instant *)
     all: try replace (Z.of_nat (Datatypes.length data)) in *.
     all: try rewrite word.of_Z_unsigned in *.
     all: repeat compile_step.

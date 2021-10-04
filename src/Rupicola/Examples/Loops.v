@@ -2,6 +2,7 @@ Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.Arrays.
 Require Import Rupicola.Lib.Loops.
 Require Import Rupicola.Examples.Cells.Cells.
+Import LoopCompiler.
 
 Section Ex.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
@@ -12,11 +13,6 @@ Section Ex.
   Context {locals_ok : map.ok locals}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-
-  Ltac compile_loopy :=
-    compile_setup;
-    repeat compile_step || (apply compile_nlet_as_nlet_eq; compile_ranged_for);
-    compile_done.
 
   Open Scope Z_scope.
 
@@ -84,7 +80,7 @@ Section Ex.
           implements @vect_memcpy)
          As vect_memcpy_correct.
   Proof.
-    compile_loopy.
+    compile.
   Qed.
 
   Program Definition vect_memcpy_s {n1 n2} (len: word)
@@ -134,7 +130,7 @@ Section Ex.
           implements @vect_memcpy_s)
          As vect_memcpy_s_correct.
   Proof.
-    compile_loopy.
+    compile.
   Qed.
 
   Definition list_memcpy (len: word)
@@ -173,7 +169,7 @@ Section Ex.
            As sizedlist_memcpy_correct.
     Proof.
       Hint Extern 1 => lia : compiler_cleanup.
-      Time compile_loopy.
+      Time compile.
     Qed.
   End Sz.
 
@@ -201,7 +197,7 @@ Section Ex.
             implements list_memcpy)
            As unsizedlist_memcpy_correct.
     Proof.
-      compile_loopy.
+      compile.
 
       { lia. (* loop index in bounds + function precondition *) }
       { (* Note the call to induction.
@@ -252,7 +248,7 @@ Section Ex.
           implements incr_gallina)
          As body_correct.
   Proof.
-    compile_loopy.
+    compile.
   Qed.
 End Ex.
 
