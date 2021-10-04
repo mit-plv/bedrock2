@@ -546,7 +546,7 @@ Module ExprReflection.
     Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
     Section Core.
-      Class expr_reifier T :=
+      Class expr_denotation T :=
         { er_T2w: T -> word;
           er_default: T;
           er_op: Type;
@@ -556,7 +556,7 @@ Module ExprReflection.
               er_T2w ((er_opfun op) x y) =
               Semantics.interp_binop (er_opname op) (er_T2w x) (er_T2w y) }.
 
-      Context {T} {er: expr_reifier T}.
+      Context {T} {er: expr_denotation T}.
 
       Inductive AST :=
       | ELit (z: Z) (t: T) (ok: option (word.of_Z z = er_T2w t))
@@ -670,7 +670,7 @@ Module ExprReflection.
       Qed.
     End Core.
 
-    Instance expr_word_reifier : expr_reifier word :=
+    Instance expr_word_denotation : expr_denotation word :=
       {| er_T2w w := w;
          er_default := word.of_Z 0;
          er_op := bopname.bopname;
@@ -702,7 +702,7 @@ Module ExprReflection.
 
     Inductive ReifiedZOpp := RZ_add | RZ_sub | RZ_mul | RZ_land | RZ_lor | RZ_lxor.
 
-    Instance expr_Z_reifier : expr_reifier Z :=
+    Instance expr_Z_denotation : expr_denotation Z :=
       {| er_T2w z := word.of_Z z;
          er_default := 0%Z;
          er_op := ReifiedZOpp;
@@ -787,7 +787,7 @@ Module ExprReflection.
     let expr_reify_op nm l r :=
         let l := expr_reify_word W bindings l in
         let r := expr_reify_word W bindings r in
-        constr:(EOp (word:=W) (er := expr_word_reifier) nm l r) in
+        constr:(EOp (word:=W) (er := expr_word_denotation) nm l r) in
     lazymatch w with
     | word.add ?l ?r    => expr_reify_op bopname.add l r
     | word.sub ?l ?r    => expr_reify_op bopname.sub l r
@@ -806,11 +806,11 @@ Module ExprReflection.
     | word.eqb ?l ?r    => expr_reify_op bopname.eq l r
     | _ =>
       lazymatch find_key_by_value bindings w with
-      | Some ?k => constr:(EVar (word:=W) (er := expr_word_reifier) k)
+      | Some ?k => constr:(EVar (word:=W) (er := expr_word_denotation) k)
       | None =>
         lazymatch w with
-        | word.of_Z ?z => constr:(ELit (word:=W) (er := expr_word_reifier) z (word.of_Z z) (Some eq_refl))
-        | _ => constr:(ELit (word:=W) (er := expr_word_reifier) (word.unsigned w) w None)
+        | word.of_Z ?z => constr:(ELit (word:=W) (er := expr_word_denotation) z (word.of_Z z) (Some eq_refl))
+        | _ => constr:(ELit (word:=W) (er := expr_word_denotation) (word.unsigned w) w None)
         end
       end
     end.
@@ -819,7 +819,7 @@ Module ExprReflection.
     let expr_reify_op nm l r :=
         let l := expr_reify_Z bindings l in
         let r := expr_reify_Z bindings r in
-        constr:(EOp (er := expr_Z_reifier) nm l r) in
+        constr:(EOp (er := expr_Z_denotation) nm l r) in
     lazymatch z with
     | Z.add ?l ?r  => expr_reify_op RZ_add l r
     | Z.sub ?l ?r  => expr_reify_op RZ_sub l r
@@ -829,8 +829,8 @@ Module ExprReflection.
     | Z.lxor ?l ?r => expr_reify_op RZ_lxor l r
     | _ =>
       lazymatch find_key_by_value bindings z with
-      | Some ?k => constr:(EVar (er := expr_Z_reifier) k)
-      | None => constr:(ELit (er := expr_Z_reifier) z z (Some eq_refl))
+      | Some ?k => constr:(EVar (er := expr_Z_denotation) k)
+      | None => constr:(ELit (er := expr_Z_denotation) z z (Some eq_refl))
       end
     end.
 
@@ -839,7 +839,7 @@ Module ExprReflection.
     let reified := expr_reify_word W bindings w in
     simple apply compile_expr_w with (e := compile reified);
     [ set_change locals with (map.of_list bindings);
-      change w with (er_T2w (expr_reifier := expr_word_reifier)
+      change w with (er_T2w (expr_denotation := expr_word_denotation)
                             (interp (map.of_list (map := SortedListString.map _) bindings) reified))
     | ].
 
@@ -864,19 +864,19 @@ Module ExprReflection.
     [ set_change locals with (map.of_list bindings);
       change (word.of_Z z)
         with (ExprReflection.er_T2w
-                (expr_reifier := expr_Z_reifier)
-                (ExprReflection.interp (er := expr_Z_reifier)
+                (expr_denotation := expr_Z_denotation)
+                (ExprReflection.interp (er := expr_Z_denotation)
                                        (map.of_list (map := SortedListString.map _) z_bindings)
                                        reified))
     | ].
 
-  Ltac compile_prove_expr_reification_premise :=
+  Ltac compile_prove_reified_dexpr :=
     eapply interp_sound;
     [ reflexivity |
       apply map.mapped_compat_of_list;
       lazymatch goal with
-      | |- context[expr_Z_reifier] => (* LATER Use reification to speed up this rewrite *)
-        cbv [List.map fst snd er_T2w expr_Z_reifier]; rewrite ?word.of_Z_unsigned
+      | |- context[expr_Z_denotation] => (* LATER Use reification to speed up this rewrite *)
+        cbv [List.map fst snd er_T2w expr_Z_denotation]; rewrite ?word.of_Z_unsigned
       | _ => idtac
       end; reflexivity
       | .. ].
@@ -893,7 +893,7 @@ Module ExprReflection.
 
   Ltac compile_reified_expr :=
     compile_apply_expr_reification_lemma;
-    [ compile_prove_expr_reification_premise | .. ].
+    [ compile_prove_reified_dexpr | .. ].
 End ExprReflection.
 
 Section with_parameters.
