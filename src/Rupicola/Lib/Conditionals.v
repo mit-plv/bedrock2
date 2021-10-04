@@ -20,9 +20,9 @@ Section Conditionals.
     let v := if c then t else f in
     forall {P} {pred: P v -> predicate} {val_pred: A -> predicate}
       {k: nlet_eq_k P v} {k_impl t_impl f_impl}
-      c_var vars,
+      c_expr vars,
 
-      map.get locals c_var = Some (word.b2w c) ->
+      WeakestPrecondition.dexpr mem locals c_expr (word.b2w c) ->
 
       (let val_pred := val_pred in
        c = true ->
@@ -54,13 +54,14 @@ Section Conditionals.
          Locals := locals;
          Functions := functions }>
       cmd.seq
-        (cmd.cond (expr.var c_var) t_impl f_impl)
+        (cmd.cond c_expr t_impl f_impl)
         k_impl
       <{ pred (nlet_eq vars v k) }>.
   Proof.
     intros * Hc Ht Hf Hk.
     repeat straightline.
     split_if ltac:(repeat straightline'); subst_lets_in_goal.
+    eassumption.
     all: rewrite word.unsigned_b2w; cbv [Z.b2z].
     all: destruct_one_match; try congruence; [ ]; intros.
     all: eapply compile_seq; eauto.
@@ -69,9 +70,9 @@ Section Conditionals.
   Lemma compile_tail_if {tr mem locals functions} (c: bool) {A} (t f: A) :
     let v := if c then t else f in
     forall {pred: A -> predicate} {t_impl f_impl}
-      c_var,
+      c_expr,
 
-      map.get locals c_var = Some (word.b2w c) ->
+      WeakestPrecondition.dexpr mem locals c_expr (word.b2w c) ->
 
       (c = true ->
        <{ Trace := tr;
@@ -91,12 +92,13 @@ Section Conditionals.
          Memory := mem;
          Locals := locals;
          Functions := functions }>
-      cmd.cond (expr.var c_var) t_impl f_impl
+      cmd.cond c_expr t_impl f_impl
       <{ pred v }>.
   Proof.
     intros * Hc Ht Hf.
     repeat straightline'.
     split_if ltac:(repeat straightline'); subst_lets_in_goal.
+    eassumption.
     all: rewrite word.unsigned_b2w; cbv [Z.b2z].
     all: destruct_one_match; try congruence; [ ]; intros.
     all: eauto.
