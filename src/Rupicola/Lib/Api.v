@@ -2,6 +2,7 @@ Require Export Rupicola.Lib.Core.
 Require Export Rupicola.Lib.Tactics.
 Require Export Rupicola.Lib.Notations.
 Require Export Rupicola.Lib.Compiler.
+Require Export Rupicola.Lib.Conditionals.
 Require Export Rupicola.Lib.ExprReflection.
 Require Export Rupicola.Lib.SepReflection.
 Require Export Rupicola.Lib.Alloc.

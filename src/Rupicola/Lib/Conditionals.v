@@ -263,10 +263,15 @@ Ltac infer_val_predicate :=
   end.
 
 Ltac compile_if :=
-  lazymatch goal with
-  | [ |- WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (if _ then _ else _) _)) ] =>
-    let vp := infer_val_predicate in
-    simple eapply compile_if with (val_pred := vp)
-  end.
+  let vp := infer_val_predicate in
+  simple eapply compile_if with (val_pred := vp).
 
-(* FIXME add hint *)
+#[export] Hint Extern 2 (IsRupicolaBinding (if _ then _ else _)) =>
+  exact true : typeclass_instances.
+
+#[export] Hint Extern 1 =>
+  simple eapply compile_tail_if; shelve : compiler.
+
+#[export] Hint Extern 1
+ (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (if _ then _ else _) _))) =>
+  compile_if; shelve : compiler.

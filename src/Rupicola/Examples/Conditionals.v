@@ -1,5 +1,4 @@
 Require Import Rupicola.Lib.Api.
-Require Import Rupicola.Lib.Conditionals.
 
 Section with_parameters.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
@@ -26,9 +25,6 @@ Section with_parameters.
       { requires tr mem := True;
         ensures tr' mem' := tr = tr' /\ mem = mem' /\ z = min x y }.
 
-    Hint Extern 2 (IsRupicolaBinding (if _ then _ else _)) => exact true : typeclass_instances.
-    Local Hint Extern 1 => simple eapply compile_tail_if; shelve : compiler.
-
     Derive min_body SuchThat
            (defn! "min"("x", "y") ~> "r"
                 { min_body },
@@ -51,8 +47,6 @@ Section with_parameters.
       fnspec! "minm" (x y: word) / R ~> z,
       { requires tr mem := R mem;
         ensures tr' mem' := tr = tr' /\ R mem' /\ z = minm x y }. (* TODO explain why not mem; = mem *)
-
-    Hint Extern 1 => compile_if; shelve : compiler.
 
     Derive minm_body SuchThat
            (defn! "minm"("x", "y") ~> "r"
