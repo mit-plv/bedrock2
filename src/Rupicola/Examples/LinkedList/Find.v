@@ -50,7 +50,7 @@ Section Compile.
       (Data t_ptr t * Rt)%sep mem ->
       (Data f_ptr f * Rf)%sep mem ->
 
-      map.get locals c_var = Some (b2w c) ->
+      map.get locals c_var = Some (word.b2w c) ->
       map.get locals t_var = Some t_ptr ->
       map.get locals f_var = Some f_ptr ->
 
@@ -78,10 +78,10 @@ Section Compile.
     intros.
     repeat straightline' locals.
     split_if ltac:(repeat straightline' locals).
-    { subst_lets_in_goal. rewrite word.unsigned_of_Z_b2z.
+    { subst_lets_in_goal. rewrite word.unsigned_b2w.
       cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
       intros. repeat straightline' locals. eauto. }
-    { subst_lets_in_goal. rewrite word.unsigned_of_Z_b2z.
+    { subst_lets_in_goal. rewrite word.unsigned_b2w.
       cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
       intros. repeat straightline' locals. eauto. }
   Qed.

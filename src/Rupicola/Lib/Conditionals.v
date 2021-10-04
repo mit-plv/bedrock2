@@ -22,7 +22,7 @@ Section Conditionals.
       {k: nlet_eq_k P v} {k_impl t_impl f_impl}
       c_var vars,
 
-      map.get locals c_var = Some (b2w c) ->
+      map.get locals c_var = Some (word.b2w c) ->
 
       (let val_pred := val_pred in
        c = true ->
@@ -61,7 +61,7 @@ Section Conditionals.
     intros * Hc Ht Hf Hk.
     repeat straightline.
     split_if ltac:(repeat straightline'); subst_lets_in_goal.
-    all: rewrite word.unsigned_of_Z_b2z; cbv [Z.b2z].
+    all: rewrite word.unsigned_b2w; cbv [Z.b2z].
     all: destruct_one_match; try congruence; [ ]; intros.
     all: eapply compile_seq; eauto.
   Qed.
@@ -71,7 +71,7 @@ Section Conditionals.
     forall {pred: A -> predicate} {t_impl f_impl}
       c_var,
 
-      map.get locals c_var = Some (b2w c) ->
+      map.get locals c_var = Some (word.b2w c) ->
 
       (c = true ->
        <{ Trace := tr;
@@ -97,7 +97,7 @@ Section Conditionals.
     intros * Hc Ht Hf.
     repeat straightline'.
     split_if ltac:(repeat straightline'); subst_lets_in_goal.
-    all: rewrite word.unsigned_of_Z_b2z; cbv [Z.b2z].
+    all: rewrite word.unsigned_b2w; cbv [Z.b2z].
     all: destruct_one_match; try congruence; [ ]; intros.
     all: eauto.
   Qed.

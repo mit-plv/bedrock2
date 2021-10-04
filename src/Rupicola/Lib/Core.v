@@ -754,17 +754,21 @@ Module word.
         lia.
     Qed.
 
-    Local Notation b2w b :=
+    Definition b2w (b: bool) :=
       (@word.of_Z _ word (Z.b2z b)).
 
     Lemma b2w_inj:
       forall b1 b2, b2w b1 = b2w b2 -> b1 = b2.
     Proof.
-      intros [|] [|]; simpl;
+      unfold b2w; intros [|] [|]; simpl;
         intros H%(f_equal word.unsigned);
         rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1 in H;
         cbn; congruence.
     Qed.
+
+    Lemma unsigned_b2w b:
+      word.unsigned (b2w b) = Z.b2z b.
+    Proof. apply unsigned_of_Z_b2z. Qed.
 
     Ltac compile_binop_zzw_bitwise lemma :=
       intros; cbn;
@@ -788,8 +792,6 @@ Module word.
   End __.
 End word.
 
-Notation b2w b :=
-  (word.of_Z (Z.b2z b)).
 Notation word_of_byte b :=
   (word.of_Z (Byte.byte.unsigned b)).
 Notation byte_of_word w :=

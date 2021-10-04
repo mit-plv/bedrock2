@@ -185,7 +185,7 @@ Section CompilerBasics.
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
-          Locals := map.put locals var (b2w v);
+          Locals := map.put locals var (word.b2w v);
           Functions := functions }>
        k_impl
        <{ pred (k v eq_refl) }>) ->
@@ -267,7 +267,7 @@ Section CompilerBasics.
     @compile_binop_xxx _ word.of_Z bopname.xor Z.lxor word.morph_xor.
 
   Lemma compile_binop_xxb {T} T2w op (f: T -> T -> bool)
-        (H: forall x y, b2w (f x y) = Semantics.interp_binop op (T2w x) (T2w y))
+        (H: forall x y, word.b2w (f x y) = Semantics.interp_binop op (T2w x) (T2w y))
         {tr mem locals functions} (x y: T) :
     let v := f x y in
     forall {P} {pred: P v -> predicate}
@@ -278,7 +278,7 @@ Section CompilerBasics.
       (let v := v in
        <{ Trace := tr;
           Memory := mem;
-          Locals := map.put locals var (b2w v);
+          Locals := map.put locals var (word.b2w v);
           Functions := functions }>
        k_impl
        <{ pred (k v eq_refl) }>) ->
@@ -305,7 +305,8 @@ Section CompilerBasics.
         (T2w_inj: forall x y, T2w x = T2w y -> x = y)
         (eqb_compat: forall x y, eqb x y = true <-> x = y) :
     forall x y,
-      b2w (eqb x y) = (if word.eqb (T2w x) (T2w y) then word.of_Z 1 else word.of_Z 0) :> word.
+      word.b2w (eqb x y) =
+      (if word.eqb (T2w x) (T2w y) then word.of_Z 1 else word.of_Z 0) :> word.
   Proof.
     intros; rewrite word.unsigned_eqb.
     destruct eqb eqn:Hb; destruct Z.eqb eqn:Hz; try reflexivity.
@@ -316,7 +317,7 @@ Section CompilerBasics.
   Qed.
 
   Ltac compile_binop_bbb_t lemma :=
-    intros x y; cbn;
+    unfold word.b2w; intros x y; cbn;
     match goal with
     | [  |- _ = ?w ] =>
       rewrite <- (word.of_Z_unsigned w);
@@ -325,25 +326,28 @@ Section CompilerBasics.
 
   Notation cbv_beta_b2w x :=
     ltac:(pose proof x as x0;
-         change ((fun b => b2w b) ?y) with (b2w y : word) in (type of x0);
+         change ((fun b => word.b2w b) ?y) with (word.b2w y : word) in (type of x0);
          let t := type of x0 in exact (x: t)) (only parsing).
 
   Definition compile_bool_eqb :=
     cbv_beta_b2w (@compile_binop_xxb
-                    _ (fun x => b2w x) bopname.eq Bool.eqb
-                    (bool_word_eq_compat (fun w => b2w w) _ word.b2w_inj Bool.eqb_true_iff)).
+                    _ (fun x => word.b2w x) bopname.eq Bool.eqb
+                    (bool_word_eq_compat (fun w => word.b2w w) _ word.b2w_inj Bool.eqb_true_iff)).
 
   (* FIXME add comparisons on bytes *)
 
   Definition compile_bool_andb :=
-    cbv_beta_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.and andb
-                                     ltac:(compile_binop_bbb_t word.unsigned_and_nowrap)).
+    cbv_beta_b2w (@compile_binop_xxb
+                    _ (fun x => word.b2w x) bopname.and andb
+                    ltac:(compile_binop_bbb_t word.unsigned_and_nowrap)).
   Definition compile_bool_orb :=
-    cbv_beta_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.or orb
-                                     ltac:(compile_binop_bbb_t word.unsigned_or_nowrap)).
+    cbv_beta_b2w (@compile_binop_xxb
+                    _ (fun x => word.b2w x) bopname.or orb
+                    ltac:(compile_binop_bbb_t word.unsigned_or_nowrap)).
   Definition compile_bool_xorb :=
-    cbv_beta_b2w (@compile_binop_xxb _ (fun x => b2w x) bopname.xor xorb
-                                     ltac:(compile_binop_bbb_t word.unsigned_xor_nowrap)).
+    cbv_beta_b2w (@compile_binop_xxb
+                    _ (fun x => word.b2w x) bopname.xor xorb
+                    ltac:(compile_binop_bbb_t word.unsigned_xor_nowrap)).
 
   (* TODO: Remove? The expression reifier handles single variables just fine. *)
   Lemma compile_copy_word {tr mem locals functions} v0 :
@@ -685,9 +689,9 @@ Module ExprReflection.
            | bopname.sru => word.sru
            | bopname.slu => word.slu
            | bopname.srs => word.srs
-           | bopname.lts => fun x y => b2w (word.lts x y)
-           | bopname.ltu => fun x y => b2w (word.ltu x y)
-           | bopname.eq => fun x y => b2w (word.eqb x y)
+           | bopname.lts => fun x y => word.b2w (word.lts x y)
+           | bopname.ltu => fun x y => word.b2w (word.ltu x y)
+           | bopname.eq => fun x y => word.b2w (word.eqb x y)
            end;
          er_opfun_morphism :=
            ltac:(destruct op; intros; cbn;
