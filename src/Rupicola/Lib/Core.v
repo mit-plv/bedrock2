@@ -34,19 +34,23 @@ Definition predicate
   Semantics.trace -> mem -> locals -> Prop.
 
 Module P2.
-  (* NOTE: consider using coqutil.Datatypes.PrimitivePair.Pair. *)
+  (* Note: Unlike ``coqutil.Datatypes.PrimitivePair.pair``, these are
+     non-dependent and the notation for them associates to the left. *)
   Section Primitive.
     Set Primitive Projections.
-    Record prod {A B} := pair { fst: A; snd: B }.
+    Record prod {A B} := pair { car: A; cdr: B }.
   End Primitive.
   Arguments prod: clear implicits.
-  Arguments pair {A B} fst snd.
+  Arguments pair {A B} car cdr.
 End P2.
 
 Declare Scope p2_scope.
 Delimit Scope p2_scope with p2.
-Notation "\<  x ,  y ,  .. ,  z  \>" := (P2.pair .. (P2.pair x y) .. z) : p2_scope.
+Notation "\<  x ,  .. ,  y ,  z  \>" := (P2.pair x .. (P2.pair y z) ..) : p2_scope.
 Open Scope p2_scope.
+
+(* ⚠ These pairs associate to the *left*: \< 1, 2, 3 \> is \< 1, \< 2, 3 \> \> *)
+Definition __p2_assoc_test: \< 1, 2, 3 \> = \< 1, \< 2, 3 \> \> := eq_refl.
 
 (* TODO: should move upstream to coqutil *)
 Module map.

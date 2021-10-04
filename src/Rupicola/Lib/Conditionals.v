@@ -137,7 +137,7 @@ Not supported yet: using a conditional to assign a pointer to another one.
 (* FIXME loops should work this way too for the value part (not for the index
      part) instead of generalizing all instances of the value. *)
 
-Ltac substitute_if_target var repl pred locals :=
+Ltac substitute_target var repl pred locals :=
   lazymatch locals with
   | context LOC [map.put ?m var ?v] =>
     lazymatch pred with
@@ -152,23 +152,24 @@ Ltac substitute_if_target var repl pred locals :=
     constr:((pred, map.put locals var repl))
   end.
 
-Ltac substitute_if_targets vars repls pred locals :=
+Ltac substitute_targets vars repls pred locals :=
   lazymatch vars with
   | [] => constr:((pred, locals))
   | ?var :: [] =>
-    substitute_if_target var repls pred locals
+    substitute_target var repls pred locals
   | ?var :: ?vars  =>
-    match substitute_if_target var (P2.fst repls) pred locals with
-    | (?pred, ?locals) => substitute_if_targets vars (P2.snd repls) pred locals
+    match substitute_target var (P2.car repls) pred locals with
+    | (?pred, ?locals) => substitute_targets vars (P2.cdr repls) pred locals
     end
+  | _ => fail "substitute_targets:" vars "should be a list"
   end.
 
 (* This replaces apply_tuple_references.  FIXME move *)
 Ltac make_uncurried_application args_tuple curried_fn :=
   lazymatch type of args_tuple with
   | P2.prod _ _ =>
-    let fn := constr:(curried_fn (P2.fst args_tuple)) in
-    let fn := make_uncurried_application (P2.snd args_tuple) fn in
+    let fn := constr:(curried_fn (P2.car args_tuple)) in
+    let fn := make_uncurried_application (P2.cdr args_tuple) fn in
     fn
   | _ =>
     constr:(curried_fn args_tuple)
@@ -199,7 +200,7 @@ Ltac infer_val_predicate :=
     | [ H: ?pred mem |- _ ] =>
       let argtype := type of v in
       let val_pred := constr:(fun (args_tuple: argtype) =>
-                               ltac:(match substitute_if_targets vars args_tuple pred locals with
+                               ltac:(match substitute_targets vars args_tuple pred locals with
                                      | (?pred, ?locals) =>
                                        let f := constr:(fun tr' mem' locals' =>
                                                          tr' = tr /\

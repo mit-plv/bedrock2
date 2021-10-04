@@ -1498,8 +1498,8 @@ Ltac pattern_tuple_references needle haystack :=
 Ltac apply_tuple_references needle acc haystack_fn :=
   lazymatch needle with
   | \< _, ?snd \> =>
-    let haystack_fn := constr:(haystack_fn (P2.fst acc)) in
-    let haystack_fn := apply_tuple_references snd (P2.snd acc) haystack_fn in
+    let haystack_fn := constr:(haystack_fn (P2.car acc)) in
+    let haystack_fn := apply_tuple_references snd (P2.cdr acc) haystack_fn in
     haystack_fn
   | _ =>
     constr:(haystack_fn acc)
