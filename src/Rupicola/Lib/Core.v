@@ -46,11 +46,17 @@ End P2.
 
 Declare Scope p2_scope.
 Delimit Scope p2_scope with p2.
-Notation "\<  x ,  .. ,  y ,  z  \>" := (P2.pair x .. (P2.pair y z) ..) : p2_scope.
+Notation "\<<  x ,  .. ,  y ,  z  \>>" :=
+  (P2.prod x%type .. (P2.prod y%type z%type) ..) : p2_scope.
+Notation "\<  x ,  .. ,  y ,  z  \>" :=
+  (P2.pair x .. (P2.pair y z) ..) : p2_scope.
 Open Scope p2_scope.
 
 (* ⚠ These pairs associate to the *left*: \< 1, 2, 3 \> is \< 1, \< 2, 3 \> \> *)
-Definition __p2_assoc_test: \< 1, 2, 3 \> = \< 1, \< 2, 3 \> \> := eq_refl.
+Definition __p2_assoc_test:
+  (\< 1, 2, 3 \>       <: \<< nat, nat, nat \>>) =
+  (\< 1, \< 2, 3 \> \> <: \<< nat, \<< nat, nat \>> \>>)
+  := eq_refl.
 
 (* TODO: should move upstream to coqutil *)
 Module map.
