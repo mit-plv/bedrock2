@@ -3,7 +3,6 @@ Require Import bedrock2.Map.SeparationLogic.
 Require Import compiler.FlatImp.
 Require Import coqutil.Decidable.
 Require Import coqutil.Tactics.Tactics.
-Require Import coqutil.Tactics.simpl_rewrite.
 Require Import coqutil.Datatypes.PropSet.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import riscv.Utility.Utility.
@@ -16,6 +15,8 @@ Require Import compiler.SeparationLogic.
 Require Import compiler.SpillingMapGoals.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.FlatImpConstraints.
+Require Import coqutil.Tactics.autoforward.
+Existing Class autoforward.
 
 Open Scope Z_scope.
 
@@ -67,6 +68,16 @@ Module map.
         + rewrite map.get_put_diff by assumption. assumption.
         + eauto.
     Qed.
+
+    Global Instance of_list_zip_nil_keys: forall vs m,
+        autoforward (map.of_list_zip nil vs = Some m)
+                    (vs = nil /\ m = map.empty).
+    Proof. intros vs m H. cbn in H. destruct vs. 2: discriminate. split; congruence. Qed.
+
+    Global Instance of_list_zip_nil_values: forall ks m,
+        autoforward (map.of_list_zip nil ks = Some m)
+                    (ks = nil /\ m = map.empty).
+    Proof. intros ks m H. cbn in H. destruct ks. 2: discriminate. split; congruence. Qed.
   End WithMap.
 End map.
 
@@ -74,6 +85,22 @@ Section SepLog.
   Context {key value} {map : map.map key value} {ok : map.ok map}.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
   Local Hint Mode map.map - - : typeclass_instances.
+
+  Lemma sep_eq_empty_l: forall R, (eq map.empty * R)%sep = R.
+  Proof.
+    intros. eapply iff1ToEq.
+    unfold iff1, sep, map.split. split; intros.
+    - destruct H as (? & ? & (? & ?) & ? & ?). subst. rewrite map.putmany_empty_l. assumption.
+    - eauto 10 using map.putmany_empty_l, map.disjoint_empty_l.
+  Qed.
+
+  Lemma sep_eq_empty_r: forall R, (R * eq map.empty)%sep = R.
+  Proof.
+    intros. eapply iff1ToEq.
+    unfold iff1, sep, map.split. split; intros.
+    - destruct H as (? & ? & (? & ?) & ? & ?). subst. rewrite map.putmany_empty_r. assumption.
+    - eauto 10 using map.putmany_empty_r, map.disjoint_empty_r.
+  Qed.
 
   Lemma get_in_sep: forall lSmaller l k v R,
       map.get lSmaller k = Some v ->
@@ -86,6 +113,94 @@ Section SepLog.
     assumption.
   Qed.
 End SepLog.
+
+Module List.
+  Section WithA.
+    Context {A: Type}.
+
+    Lemma unfoldn_0: forall (f: A -> A) (start: A),
+        List.unfoldn f 0 start = [].
+    Proof. intros. reflexivity. Qed.
+
+    Global Instance invert_Forall_cons: forall (a: A) (l: list A) (P: A -> Prop),
+        autoforward (List.Forall P (a :: l))
+                    (P a /\ List.Forall P l).
+    Proof. intros a l P H. inversion H. subst. auto. Qed.
+  End WithA.
+End List.
+
+(* BEGIN MOVE fwd *)
+
+Hint Rewrite
+     @List.length_nil
+     @List.unfoldn_0
+  : fwd_rewrites.
+
+(* One step of destructing "H: A0 /\ A1 /\ ... An" into "Hp0: A0, Hp1: A1, .. Hpn: An" *)
+Ltac destr_and H :=
+  (* Note: We reuse the name H, so we will only succeed if H was cleared
+     (which might not be the case if H is a section variable), and enforcing that H is cleared
+     is needed to avoid infinite looping *)
+  let Hl := fresh H "p0" in destruct H as [Hl H];
+  lazymatch type of H with
+  | _ /\ _ => idtac (* not done yet *)
+  | _ => let Hr := fresh H "p0" in rename H into Hr (* done, name last clause uniformly *)
+  end.
+
+(* fail on notations that we don't want to destruct *)
+Ltac is_destructible_and T :=
+  lazymatch T with
+  | (Logic.and (N.le _ _) (N.le _ _)) => fail
+  | (Logic.and (Z.le _ _) (Z.le _ _)) => fail
+  | (Logic.and (Peano.le _ _) (Peano.le _ _)) => fail
+  | (Logic.and (Pos.le _ _) (Pos.le _ _)) => fail
+  | (Logic.and (N.le _ _) (N.lt _ _)) => fail
+  | (Logic.and (Z.le _ _) (Z.lt _ _)) => fail
+  | (Logic.and (Peano.le _ _) (Peano.lt _ _)) => fail
+  | (Logic.and (Pos.le _ _) (Pos.lt _ _)) => fail
+  | (Logic.and (N.lt _ _) (N.le _ _)) => fail
+  | (Logic.and (Z.lt _ _) (Z.le _ _)) => fail
+  | (Logic.and (Peano.lt _ _) (Peano.le _ _)) => fail
+  | (Logic.and (Pos.lt _ _) (Pos.le _ _)) => fail
+  | (Logic.and (N.lt _ _) (N.lt _ _)) => fail
+  | (Logic.and (Z.lt _ _) (Z.lt _ _)) => fail
+  | (Logic.and (Peano.lt _ _) (Peano.lt _ _)) => fail
+  | (Logic.and (Pos.lt _ _) (Pos.lt _ _)) => fail
+  | (Logic.and _ _) => idtac
+  end.
+
+Ltac autoforward_in_with_tc H :=
+  let tmp := fresh H in
+  rename H into tmp;
+  let A := type of tmp in
+  pose proof ((ltac:(typeclasses eauto with typeclass_instances) : autoforward A _) tmp) as H;
+  move H after tmp;
+  clear tmp.
+
+Ltac x_neq_x H :=
+  match type of H with
+  | ?x <> ?x => exfalso; apply (H eq_refl)
+  end.
+
+Ltac fwd_step :=
+  match goal with
+  | H: ?T |- _ => is_destructible_and T; destr_and H
+  | H: exists y, _ |- _ => let yf := fresh y in destruct H as [yf H]
+  | H: ?x = ?x |- _ => clear H
+  | H: context[match ?x with _ => _ end] |- _ => destr x; try (discriminate H || x_neq_x H); []
+  | H: _ |- _ => autoforward_in_with_tc H
+  | |- _ => progress subst
+  | |- _ => progress autorewrite with fwd_rewrites in *
+  end.
+
+Ltac fwd := repeat fwd_step.
+
+Instance invert_Some_eq{A: Type}: forall (x y: A),
+    autoforward (Some x = Some y)
+                (x = y).
+Proof. intros x y E. congruence. Qed.
+
+(* END MOVE fwd *)
 
 Section Spilling.
 
@@ -360,7 +475,7 @@ Section Spilling.
   Proof.
     induction args; simpl; intros.
     - exact I.
-    - simp. split.
+    - fwd. split.
       + eapply IHargs; try blia. assumption.
       + unfold read_register, stack_loc, fp, a0, a7 in *. destr (32 <=? a); simpl; blia.
   Qed.
@@ -373,7 +488,7 @@ Section Spilling.
   Proof.
     induction args; simpl; intros.
     - exact I.
-    - simp. split.
+    - fwd. split.
       + eapply IHargs; try blia. assumption.
       + unfold write_register, stack_loc, fp, a0, a7 in *. destr (32 <=? a); simpl; blia.
   Qed.
@@ -394,7 +509,7 @@ Section Spilling.
                          load_iarg_reg, load_iarg_reg, save_ires_reg, stack_loc in *
              end;
       try blia;
-      simp;
+      fwd;
       repeat match goal with
       | IH: _, H: Forall_vars_stmt _ _ |- _ =>
         specialize IH with (2 := H);
@@ -443,25 +558,26 @@ Section Spilling.
     intros.
     assert (((eq lRegs * ptsto fp fpval) * arg_regs)%sep l) as A by ecancel_assumption. clear H.
     enough (((eq lRegs * ptsto fp fpval) * arg_regs)%sep (map.put l r v)). 1: ecancel_assumption.
-    unfold sep at 1. unfold sep at 1 in A. simp.
+    unfold sep at 1. unfold sep at 1 in A. fwd.
     unfold arg_regs in *.
     unfold map.split.
-    unfold map.split in Ap0. simp.
+    unfold map.split in Ap0. fwd.
     exists mp, (map.put mq r v). ssplit.
     - apply map.put_putmany_commute.
-    - unfold sep, map.split in Ap1. simp. unfold map.disjoint in *.
-      intros. rewrite map.get_put_dec in H0. rewrite map.get_putmany_dec in H.
+    - unfold sep, map.split in Ap1. fwd. unfold map.disjoint in *.
+      intros. rewrite map.get_put_dec in H2. rewrite map.get_putmany_dec in H.
       unfold ptsto in *. subst.
       setoid_rewrite map.get_put_dec in Ap1p0p1. setoid_rewrite map.get_empty in Ap1p0p1.
       setoid_rewrite <- map.put_putmany_commute in Ap0p1.
       setoid_rewrite map.putmany_empty_r in Ap0p1.
       setoid_rewrite map.get_put_dec in Ap0p1.
       rewrite map.get_put_dec in H. rewrite map.get_empty in H. unfold fp, spill_tmp, a0, a7 in *.
-      destruct_one_match_hyp; simp; subst; destruct_one_match_hyp; simp; subst.
-      + apply Z.eqb_eq in E0. blia.
-      + specialize H1 with (1 := H). rewrite Z.eqb_neq in E0. blia.
-      + eapply Ap0p1. 2: exact H0. rewrite E1. reflexivity.
-      + specialize Ap0p1 with (2 := H0). rewrite E1 in Ap0p1. eauto.
+      specialize (Ap0p1 k).
+      destruct_one_match_hyp; fwd; subst; destruct_one_match_hyp; fwd; subst.
+      + blia.
+      + specialize H1 with (1 := H). blia.
+      + eauto.
+      + eauto.
     - assumption.
     - intros. rewrite map.get_put_dec in H. unfold spill_tmp, a0, a7 in *.
       destruct_one_match_hyp.
@@ -492,16 +608,16 @@ Section Spilling.
       exec e2 (load_iarg_reg i r) t2 m2 l2 mc2 post.
   Proof.
     intros.
-    unfold load_iarg_reg, stack_loc, iarg_reg, related in *. simp.
+    unfold load_iarg_reg, stack_loc, iarg_reg, related in *. fwd.
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. ecancel_assumption.
       + eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
-        eapply H0p5. 1: blia.
-        unfold sep in H0p3. simp.
+        eapply H0p6. 1: blia.
+        unfold sep in H0p4. fwd.
         eapply map.get_split_r. 1,3: eassumption.
         destr (map.get mp r); [exfalso|reflexivity].
-        specialize H0p1 with (1 := E0). blia.
+        specialize H0p2 with (1 := E0). blia.
       + eapply H3.
         repeat match goal with
                | |- exists _, _ => eexists
@@ -510,14 +626,14 @@ Section Spilling.
                end.
         eapply put_tmp; eassumption.
     - eapply exec.skip.
-      replace l2 with (map.put l2 r v) in H0p4|-*. 2: {
+      replace l2 with (map.put l2 r v) in H0p5|-*. 2: {
         apply map.put_idemp.
         edestruct (eq_sep_to_split l2) as (l2Rest & S22 & SP22). 1: ecancel_assumption.
         eapply map.get_split_grow_r. 1: eassumption.
-        unfold sep in H0p3. destruct H0p3 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
+        unfold sep in H0p4. destruct H0p4 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
         eapply map.get_split_l. 1: exact S2. 2: assumption.
         destr (map.get lStack r); [exfalso|reflexivity].
-        specialize H0p2 with (1 := E0). blia.
+        specialize H0p3 with (1 := E0). blia.
       }
       eapply H3.
       repeat match goal with
@@ -538,16 +654,16 @@ Section Spilling.
                 related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\ post t1' m1' l1' mc1').
   Proof.
     intros.
-    unfold load_iarg_reg, stack_loc, iarg_reg, related in *. simp.
+    unfold load_iarg_reg, stack_loc, iarg_reg, related in *. fwd.
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. ecancel_assumption.
       + eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
-        eapply H0p5. 1: blia.
-        unfold sep in H0p3. simp.
+        eapply H0p6. 1: blia.
+        unfold sep in H0p4. fwd.
         eapply map.get_split_r. 1,3: eassumption.
         destr (map.get mp r); [exfalso|reflexivity].
-        specialize H0p1 with (1 := E0). blia.
+        specialize H0p2 with (1 := E0). blia.
       + repeat match goal with
                | |- exists _, _ => eexists
                | |- _ /\ _ => split
@@ -555,14 +671,14 @@ Section Spilling.
                end.
         eapply put_tmp; eassumption.
     - eapply exec.skip.
-      replace l2 with (map.put l2 r v) in H0p4|-*. 2: {
+      replace l2 with (map.put l2 r v) in H0p5|-*. 2: {
         apply map.put_idemp.
         edestruct (eq_sep_to_split l2) as (l2Rest & S22 & SP22). 1: ecancel_assumption.
         eapply map.get_split_grow_r. 1: eassumption.
-        unfold sep in H0p3. destruct H0p3 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
+        unfold sep in H0p4. destruct H0p4 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
         eapply map.get_split_l. 1: exact S2. 2: assumption.
         destr (map.get lStack r); [exfalso|reflexivity].
-        specialize H0p2 with (1 := E0). blia.
+        specialize H0p3 with (1 := E0). blia.
       }
       repeat match goal with
              | |- exists _, _ => eexists
@@ -587,16 +703,16 @@ Section Spilling.
         related maxvar frame fpval t1 m1 l1 t2' m2' l2').
   Proof.
     intros.
-    unfold load_iarg_reg, stack_loc, iarg_reg, related in *. simp.
+    unfold load_iarg_reg, stack_loc, iarg_reg, related in *. fwd.
     destr (32 <=? r).
     - eapply exec.load.
       + eapply get_sep. ecancel_assumption.
       + eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
-        eapply H0p5. 1: blia.
-        unfold sep in H0p3. simp.
+        eapply H0p6. 1: blia.
+        unfold sep in H0p4. fwd.
         eapply map.get_split_r. 1,3: eassumption.
         destr (map.get mp r); [exfalso|reflexivity].
-        specialize H0p1 with (1 := E0). blia.
+        specialize H0p2 with (1 := E0). blia.
       + repeat match goal with
                | |- exists _, _ => eexists
                | |- _ /\ _ => split
@@ -608,10 +724,10 @@ Section Spilling.
         symmetry. apply map.put_idemp.
         edestruct (eq_sep_to_split l2) as (l2Rest & S22 & SP22). 1: ecancel_assumption.
         eapply map.get_split_grow_r. 1: eassumption.
-        unfold sep in H0p3. destruct H0p3 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
+        unfold sep in H0p4. destruct H0p4 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
         eapply map.get_split_l. 1: exact S2. 2: assumption.
         destr (map.get lStack r); [exfalso|reflexivity].
-        specialize H0p2 with (1 := E0). blia.
+        specialize H0p3 with (1 := E0). blia.
       }
       repeat match goal with
              | |- exists _, _ => eexists
@@ -633,7 +749,7 @@ Section Spilling.
                 related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\ post t1' m1' l1' mc1').
   Proof.
     intros.
-    unfold save_ires_reg, stack_loc, ires_reg, related in *. simp.
+    unfold save_ires_reg, stack_loc, ires_reg, related in *. fwd.
     destr (32 <=? x).
     - edestruct store_to_word_array as (m' & stackwords' & St & S' & Ni & Nj & L).
       1: ecancel_assumption.
@@ -652,15 +768,15 @@ Section Spilling.
           1: ecancel_assumption.
           3: {
             unfold sep, map.split in H0p3|-*.
-            destruct H0p3 as (lRegs' & lStack' & (? & D) & ? & ?). subst lRegs' lStack' l1.
+            destruct H0p4 as (lRegs' & lStack' & (? & D) & ? & ?). subst lRegs' lStack' l1.
             exists lRegs, (map.put lStack x v).
             repeat split.
             - apply map.put_putmany_commute.
             - unfold map.disjoint. intros.
-              specialize H0p1 with (1 := H0).
+              specialize H0p2 with (1 := H0).
               rewrite map.get_put_dec in H1. destr (x =? k).
               + subst x. blia.
-              + specialize H0p2 with (1 := H1). blia.
+              + specialize H0p3 with (1 := H1). blia.
           }
           1: eassumption.
           1: {
@@ -689,17 +805,17 @@ Section Spilling.
       8: eassumption.
       1: ecancel_assumption.
       3: {
-        apply sep_comm. apply sep_comm in H0p3.
+        apply sep_comm. apply sep_comm in H0p4.
         unfold sep, map.split in H0p3|-*.
-        destruct H0p3 as (lRegs' & lStack' & (? & D) & ? & ?). subst lRegs' lStack' l1.
+        destruct H0p4 as (lRegs' & lStack' & (? & D) & ? & ?). subst lRegs' lStack' l1.
         exists lStack, (map.put lRegs x v).
         repeat split.
         - apply map.put_putmany_commute.
         - unfold map.disjoint. intros.
-          specialize H0p2 with (1 := H0).
+          specialize H0p3 with (1 := H0).
           rewrite map.get_put_dec in H1. destr (x =? k).
           + subst x. blia.
-          + specialize H0p1 with (1 := H1). blia.
+          + specialize H0p2 with (1 := H1). blia.
       }
       1: {
         intros. rewrite map.get_put_dec in H0. destr (x =? x0).
@@ -709,10 +825,10 @@ Section Spilling.
       2: {
         spec (sep_eq_put lRegs l2) as A. 1,3: ecancel_assumption.
         unfold arg_regs, sep, map.split, spill_tmp, fp, a0, a7 in *.
-        intros. simp.
+        intros. fwd.
         unfold ptsto, map.disjoint in *. subst.
         rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty in H1.
-        repeat destruct_one_match_hyp; subst; simp; try congruence; try blia.
+        repeat destruct_one_match_hyp; subst; fwd; try congruence; try blia.
         specialize H0p8 with (1 := H1). blia.
       }
       all: try eassumption.
@@ -731,7 +847,7 @@ Section Spilling.
       exec e (save_ires_reg x) t2 m2 (map.put l2 (ires_reg x) v) mc2 post.
   Proof.
     intros.
-    unfold save_ires_reg, stack_loc, ires_reg, related in *. simp.
+    unfold save_ires_reg, stack_loc, ires_reg, related in *. fwd.
     destr (32 <=? x).
     - edestruct store_to_word_array as (m' & stackwords' & St & S' & Ni & Nj & L).
       1: ecancel_assumption.
@@ -750,15 +866,15 @@ Section Spilling.
           1: ecancel_assumption.
           3: {
             unfold sep, map.split in Hp3|-*.
-            destruct Hp3 as (lRegs' & lStack' & (? & D) & ? & ?). subst lRegs' lStack' l1.
+            destruct Hp4 as (lRegs' & lStack' & (? & D) & ? & ?). subst lRegs' lStack' l1.
             exists lRegs, (map.put lStack x v).
             repeat split.
             - apply map.put_putmany_commute.
             - unfold map.disjoint. intros.
-              specialize Hp1 with (1 := H).
+              specialize Hp2 with (1 := H).
               rewrite map.get_put_dec in H0. destr (x =? k).
               + subst x. blia.
-              + specialize Hp2 with (1 := H0). blia.
+              + eauto with zarith.
           }
           1: eassumption.
           1: {
@@ -787,17 +903,17 @@ Section Spilling.
       1: reflexivity.
       1: ecancel_assumption.
       3: {
-        apply sep_comm. apply sep_comm in Hp3.
-        unfold sep, map.split in Hp3|-*.
-        destruct Hp3 as (lRegs' & lStack' & (? & D) & ? & ?). subst lRegs' lStack' l1.
+        apply sep_comm. apply sep_comm in Hp4.
+        unfold sep, map.split in Hp4|-*.
+        destruct Hp4 as (lRegs' & lStack' & (? & D) & ? & ?). subst lRegs' lStack' l1.
         exists lStack, (map.put lRegs x v).
         repeat split.
         - apply map.put_putmany_commute.
         - unfold map.disjoint. intros.
-          specialize Hp2 with (1 := H).
+          specialize Hp3 with (1 := H).
           rewrite map.get_put_dec in H0. destr (x =? k).
           + subst x. blia.
-          + specialize Hp1 with (1 := H0). blia.
+          + eauto with zarith.
       }
       1: {
         intros. rewrite map.get_put_dec in H. destr (x =? x0).
@@ -807,10 +923,10 @@ Section Spilling.
       2: {
         spec (sep_eq_put lRegs l2) as A. 1,3: ecancel_assumption.
         unfold arg_regs, sep, map.split, spill_tmp, fp, a0, a7 in *.
-        intros. simp.
+        intros. fwd.
         unfold ptsto, map.disjoint in *. subst.
         rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty in H0.
-        repeat destruct_one_match_hyp; subst; simp; try congruence; try blia.
+        repeat destruct_one_match_hyp; subst; fwd; try congruence; try blia.
         specialize Hp8 with (1 := H0). blia.
       }
       all: try eassumption.
@@ -834,44 +950,76 @@ Section Spilling.
       + unfold iarg_reg, spill_tmp, a0, a7, fp in *. repeat destruct_one_match; blia.
   Qed.
 
+  (* variant of `related` where a list of HL variables (some from lRegs, some from lStack)
+     is not in the usual LL regs or on the stack, but is in the arg regs *)
+  Definition related'(maxvar: Z)(in_arg_regs: list Z)(frame: mem -> Prop)(fpval: word)
+             (t1: Semantics.trace)(m1: mem)(l1: locals)
+             (t2: Semantics.trace)(m2: mem)(l2: locals): Prop :=
+    exists lStack lRegs hlArgRegs llArgRegs stackwords argvals,
+      t1 = t2 /\
+      (eq m1 * word_array fpval stackwords * frame)%sep m2 /\
+      (forall x v, map.get lRegs x = Some v -> fp < x < 32 /\ (x < a0 \/ a7 < x)) /\
+      (forall x v, map.get lStack x = Some v -> 32 <= x <= maxvar) /\
+      map.of_list_zip in_arg_regs argvals = Some hlArgRegs /\
+      map.of_list_zip (List.unfoldn (Z.add 1) (length in_arg_regs) a0) argvals = Some llArgRegs /\
+      (eq lRegs * eq hlArgRegs * eq lStack)%sep l1 /\
+      (eq lRegs * eq llArgRegs * arg_regs * ptsto fp fpval)%sep l2 /\
+      (forall r, 32 <= r <= maxvar -> forall v, map.get lStack r = Some v ->
+                 nth_error stackwords (Z.to_nat (r - 32)) = Some v) /\
+      length stackwords = Z.to_nat (maxvar - 31).
+
+  (* Need to repeat in each section because autorewrite does not run typeclass search to
+     find key_eqb_spec *)
+  Hint Rewrite
+       (sep_eq_empty_l (key_eqb := Z.eqb))
+       (sep_eq_empty_r (key_eqb := Z.eqb))
+    : fwd_rewrites.
+
+  Lemma related'_nil_to_related: forall maxvar frame fpval t1 t2 m1 m2 l1 l2,
+      related' maxvar [] frame fpval t1 m1 l1 t2 m2 l2 ->
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2.
+  Proof.
+    unfold related', related. intros. fwd.
+    do 3 eexists. ssplit; try reflexivity; try eassumption.
+  Qed.
+
   Lemma read_register_range_correct:
-    forall args argvs start e t1 t2 m1 m2 l1 l2 mc2 maxvar frame post fpval,
-      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
+    forall args start e t1 t2 m1 m2 l1 l2 mc2 maxvar frame post fpval,
+      related' maxvar args frame fpval t1 m1 l1 t2 m2 l2 ->
       (List.length args <= 8)%nat ->
       a0 <= start ->
       start + Z.of_nat (List.length args) <= a7 + 1 ->
       Forall (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)) args ->
-      map.getmany_of_list l1 args = Some argvs ->
-      map.getmany_of_list l2 (List.unfoldn (Z.add 1) (List.length args) start) = Some argvs ->
       (forall m2' l2' mc2',
           related maxvar frame fpval t1 m1 l1 t2 m2' l2' ->
           post t2 m2' l2' mc2') ->
       exec e (read_register_range args start) t2 m2 l2 mc2 post.
   Proof.
     induction args; intros.
-    - simpl. eapply exec.skip. eapply H6. 1: eassumption.
+    - simpl. eapply exec.skip. eauto.
+(*
     - simpl. unfold read_register, stack_loc.
       destruct argvs as [|v vs]. {
-        unfold map.getmany_of_list in H4. cbn in H4. simp.
+        unfold map.getmany_of_list in H4. cbn in H4. fwd.
         destr (List.option_all (map (map.get l1) args)); discriminate.
       }
       eapply map.invert_getmany_of_list_cons in H4. destruct H4 as [G GM].
       cbn [List.unfoldn List.length] in *.
       eapply map.invert_getmany_of_list_cons in H5. rewrite Z.add_comm in H5.
-      simp.
+      fwd.
       destr (32 <=? a).
       + eapply exec.seq_cps.
         eapply IHargs; try eassumption; try blia.
         intros.
-        unfold related in H3. simp.
+        unfold related in H3. fwd.
         eapply exec.store.
         * eapply get_sep. ecancel_assumption.
-        *
+        *)
   Admitted.
   (*
         * eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
           eapply H3p5. 1: blia.
-          unfold sep in H3p3. simp.
+          unfold sep in H3p3. fwd.
           eapply map.get_split_r. 1,3: eassumption.
           destr (map.get mp a); [exfalso|reflexivity].
           specialize H3p1 with (1 := E0). blia.
@@ -900,7 +1048,7 @@ Section Spilling.
       + eapply exec.seq_cps.
         eapply IHargs; try eassumption; try blia.
         intros.
-        unfold related in H3. simp.
+        unfold related in H3. fwd.
         eapply exec.set.
         * edestruct (eq_sep_to_split l2') as (l2Rest & S22 & SP22). 1: ecancel_assumption.
           eapply map.get_split_grow_r. 1: eassumption.
@@ -954,25 +1102,25 @@ Section Spilling.
       destruct argvs. 1: reflexivity. discriminate.
     - simpl. unfold write_register, stack_loc.
       destruct argvs as [|v vs]. {
-        unfold map.getmany_of_list in H4. cbn in H4. simp.
+        unfold map.getmany_of_list in H4. cbn in H4. fwd.
         destr (List.option_all (map (map.get l1) args)); discriminate.
       }
       eapply map.invert_getmany_of_list_cons in H4. destruct H4 as [G GM].
       cbn [List.length] in *.
-      simp.
+      fwd.
       destr (32 <=? a).
       + eapply exec.seq_cps.
         eapply IHargs; try eassumption; try blia.
         intros.
-        unfold related in H3. simp.
+        unfold related in H3. fwd.
         eapply exec.load.
         * eapply get_sep. ecancel_assumption.
         * eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
-          eapply H3p5. 1: blia.
-          unfold sep in H3p3. simp.
+          eapply H3p7. 1: blia.
+          unfold sep in H3p5. fwd.
           eapply map.get_split_r. 1,3: eassumption.
           destr (map.get mp a); [exfalso|reflexivity].
-          specialize H3p1 with (1 := E0). blia.
+          specialize H3p3 with (1 := E0). blia.
         * eapply H5.
           -- unfold related.
              repeat match goal with
@@ -998,15 +1146,15 @@ Section Spilling.
       + eapply exec.seq_cps.
         eapply IHargs; try eassumption; try blia.
         intros.
-        unfold related in H3. simp.
+        unfold related in H3. fwd.
         eapply exec.set.
         * edestruct (eq_sep_to_split l2') as (l2Rest & S22 & SP22). 1: ecancel_assumption.
           eapply map.get_split_grow_r. 1: eassumption.
-          unfold sep in H3p3. destruct H3p3 as (lRegs' & lStack' & S2 & ? & ?).
+          unfold sep in H3p5. destruct H3p5 as (lRegs' & lStack' & S2 & ? & ?).
           subst lRegs' lStack'.
           eapply map.get_split_l. 1: exact S2. 2: exact G.
           destr (map.get lStack a); [exfalso|reflexivity].
-          specialize H3p2 with (1 := E0). blia.
+          specialize H3p4 with (1 := E0). blia.
         * eapply H5. 2: {
             cbn [List.unfoldn].
             eapply map.getmany_of_list_cons.
@@ -1038,9 +1186,9 @@ Section Spilling.
       exists mCombined1, map.split mCombined1 mSmall1 mStack /\
                          related maxvar frame fpval t1 mCombined1 l1 t2 mCombined2 l2.
   Proof.
-    unfold related, map.split. intros. simp.
+    unfold related, map.split. intros. fwd.
     eexists. ssplit. 1: reflexivity.
-    { unfold sep, map.split in Hp0. simp.
+    { unfold sep, map.split in Hp1. fwd.
       eapply map.disjoint_putmany_l in H0p1. apply proj1 in H0p1.
       eapply map.disjoint_putmany_l in H0p1. apply proj1 in H0p1.
       assumption. }
@@ -1050,11 +1198,11 @@ Section Spilling.
       symmetry. eapply iff1ToEq. apply sep_assoc.
     }
     replace (eq mSmall1 * word_array fpval stackwords * frame)%sep with
-        (eq mSmall1 * (word_array fpval stackwords * frame))%sep in Hp0. 2: {
+        (eq mSmall1 * (word_array fpval stackwords * frame))%sep in Hp1. 2: {
      symmetry. eapply iff1ToEq. apply sep_assoc.
     }
     forget (word_array fpval stackwords * frame)%sep as R.
-    unfold sep, map.split in Hp0|-*. simp.
+    unfold sep, map.split in Hp1|-*. fwd.
     assert (map.disjoint mStack mq) as D. {
       apply map.disjoint_putmany_l in H0p1. apply proj2 in H0p1. apply map.disjoint_comm. exact H0p1.
     }
@@ -1071,14 +1219,14 @@ Section Spilling.
       exists m2Small, map.split m2 m2Small mRemove /\
                       related maxvar frame fpval t1 m1Small l1 t2 m2Small l2.
   Proof.
-    unfold related, map.split. intros. simp.
+    unfold related, map.split. intros. fwd.
     replace (eq (map.putmany m1Small mRemove) * word_array fpval stackwords * frame)%sep
-      with (eq (map.putmany m1Small mRemove) * (word_array fpval stackwords * frame))%sep in Hp0. 2: {
+      with (eq (map.putmany m1Small mRemove) * (word_array fpval stackwords * frame))%sep in Hp1. 2: {
       symmetry. eapply iff1ToEq. apply sep_assoc.
     }
-    remember (word_array fpval stackwords * frame)%sep as R.
-    unfold sep, map.split in Hp0. simp.
-    apply map.disjoint_putmany_l in Hp0p0p1. destruct Hp0p0p1 as (D' & D).
+    set (R := (word_array fpval stackwords * frame)%sep) in *.
+    unfold sep, map.split in Hp1. fwd.
+    apply map.disjoint_putmany_l in Hp1p0p1. destruct Hp1p0p1 as (D' & D).
     eexists. ssplit.
     { rewrite <- map.putmany_assoc. rewrite (map.putmany_comm mRemove mq) by exact D.
       rewrite map.putmany_assoc. reflexivity. }
@@ -1088,7 +1236,7 @@ Section Spilling.
       with (eq m1Small * (word_array fpval stackwords * frame))%sep. 2: {
       symmetry. eapply iff1ToEq. apply sep_assoc.
     }
-    rewrite <- HeqR.
+    subst R.
     unfold sep, map.split.
     do 2 eexists. ssplit. 4: eassumption.
     1,3: reflexivity. assumption.
@@ -1112,10 +1260,10 @@ Section Spilling.
                   related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
                   post t1' m1' l1' mc1').
   Proof.
-    induction 1; intros; cbn [spill_stmt valid_vars_src Forall_vars_stmt] in *; simp.
+    induction 1; intros; cbn [spill_stmt valid_vars_src Forall_vars_stmt] in *; fwd.
     - (* exec.interact *)
       case TODO. (*
-      unfold related in *. simp.
+      unfold related in *. fwd.
       spec (subst_split (ok := mem_ok) m) as A.
       1: eassumption. 1: ecancel_assumption.
       edestruct (@sep_def _ _ _ m2 (eq mGive)) as (mGive' & mKeepL & B & ? & C).
@@ -1138,7 +1286,7 @@ Section Spilling.
         | H: context[outcome], A: context[outcome] |- _ =>
           specialize H with (1 := A); move H at bottom
         end.
-        simp.
+        fwd.
         rename l into l1, l' into l1'.
         pose proof H2p0 as P.
         eapply map.putmany_of_list_zip_split in P. 2: eassumption. 2: {
@@ -1156,7 +1304,7 @@ Section Spilling.
         eapply map.putmany_of_list_zip_grow with (l := l2) in P. 2: eassumption. 2: {
           eapply Forall_impl. 2: eassumption.
           clear -localsOk SP22. unfold fp, arg_regs, tmp1, tmp2 in *. intros.
-          unfold sep, ptsto, map.split in *. simp.
+          unfold sep, ptsto, map.split in *. fwd.
           rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty.
           repeat destruct_one_match; try congruence; repeat destruct_one_match_hyp; try congruence; try blia.
           destr (map.get mp a). 2: reflexivity.
@@ -1183,13 +1331,13 @@ Section Spilling.
           eapply grow_eq_sep. 1: exact C. eassumption. }
         { intros x v G.
           edestruct map.putmany_of_list_zip_find_index. 1: exact P0. 1: exact G.
-          - simp. apply nth_error_In in H6p0. eapply Forall_forall in FR. 1: exact FR. assumption.
+          - fwd. apply nth_error_In in H6p0. eapply Forall_forall in FR. 1: exact FR. assumption.
           - eauto. }
         { assumption. }
         { unfold map.split. split; [reflexivity|].
           move C at bottom. move H5 at bottom.
           unfold sep at 1 in C. destruct C as (mKeepL' & mRest & SC & ? & _). subst mKeepL'.
-          unfold map.split in H5. simp.
+          unfold map.split in H5. fwd.
           eapply map.shrink_disjoint_l; eassumption. }
           *)
 
@@ -1197,7 +1345,7 @@ Section Spilling.
       rename H4p0 into FR, H4p1 into FA.
       unfold spill_functions in Ev.
       eapply map.map_all_values_fw in Ev; try typeclasses eauto. 2: eassumption.
-      unfold spill_fun in Ev. simp.
+      unfold spill_fun in Ev. fwd.
       eapply exec.seq_cps.
       apply_in_hyps @map.getmany_of_list_length.
       apply_in_hyps @map.putmany_of_list_zip_sameLength.
@@ -1238,7 +1386,7 @@ Section Spilling.
           apply Zmod_0_l.
       }
       eapply F in Pt.
-      unfold related in *. simp.
+      unfold related in *. fwd.
       unfold sep in H4p5. destruct H4p5 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
 
       eapply exec.weaken. {
@@ -1252,7 +1400,7 @@ Section Spilling.
           unfold word_array at 2. ecancel. }
         { intros x v G.
           eapply map.putmany_of_list_zip_find_index in H1. 2: exact G.
-          rewrite map.get_empty in H1. destruct H1. 2: discriminate. simp.
+          rewrite map.get_empty in H1. destruct H1. 2: discriminate. fwd.
           apply nth_error_In in H1p0.
 
           Search params.
@@ -1266,9 +1414,9 @@ Section Spilling.
           - rewrite map.putmany_empty_r. unfold map.disjoint. intros *. intros G1 G2.
             rewrite map.get_put_dec in G2. destruct_one_match_hyp.
             2: { rewrite map.get_empty in G2. discriminate. }
-            subst k. simp.
+            subst k. fwd.
             eapply map.putmany_of_list_zip_find_index in H1. 2: exact G1.
-            rewrite map.get_empty in H1. destruct H1. 2: discriminate. simp.
+            rewrite map.get_empty in H1. destruct H1. 2: discriminate. fwd.
             apply nth_error_In in H1p0.
             eapply Forall_forall in Evp1. 2: eassumption. blia.
           - eapply map.disjoint_empty_r.
@@ -1278,7 +1426,7 @@ Section Spilling.
           clear -B48. (* <- LIA performance *)
           Z.div_mod_to_equations. blia. }
       }
-      cbv beta. intros. simp.
+      cbv beta. intros. fwd.
       clear dependent m2'. clear mc2'. rename P into P0.
       (* according to the IH, executing the spilled function body results in a state that
          is related to a high-level state that satisfies the `outcome` postcondition,
@@ -1290,7 +1438,7 @@ Section Spilling.
       | H: context[outcome], A: context[outcome] |- _ =>
         specialize H with (1 := A); move H at bottom; rename H into Q
       end.
-      simp. rename l' into l1'.
+      fwd. rename l' into l1'.
       pose proof Qp1 as P.
       eapply map.putmany_of_list_zip_split in P. 2: eassumption. 2: {
         eapply Forall_impl. 2: eassumption.
@@ -1307,14 +1455,14 @@ Section Spilling.
       eapply map.putmany_of_list_zip_grow with (l := l2) in P. 2: eassumption. 2: {
         eapply Forall_impl. 2: eassumption.
         clear -localsOk SP22. unfold fp, arg_regs, tmp1, tmp2 in *. intros.
-        unfold sep, ptsto, map.split in *. simp.
+        unfold sep, ptsto, map.split in *. fwd.
         rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty.
         repeat destruct_one_match; try congruence; repeat destruct_one_match_hyp; try congruence; try blia.
         destr (map.get mp a). 2: reflexivity.
         specialize SP22p1 with (1 := E1). blia.
       }
       destruct P as (l2' & ? & ?).
-      clear IHexec. unfold related in *. simp.
+      clear IHexec. unfold related in *. fwd.
       unfold sep in H4p0p3. destruct H4p0p3 as (lRegs0' & lStack0' & S2' & ? & ?). subst lRegs0' lStack0'.
       spec (map.getmany_of_list_zip_shrink st1') as GM. 1,2: eassumption. {
         intros k HI. destr (map.get lStack0 k); [exfalso|reflexivity].
@@ -1357,7 +1505,7 @@ Section Spilling.
       { intros x v G.
         destr (map.get lRegs x). 1: solve[eauto].
         eapply map.putmany_of_list_zip_to_putmany in P0. destruct P0 as (retmap & P0 & ?). subst lRegs'.
-        rewrite map.get_putmany_dec in G. rewrite E in G. simp.
+        rewrite map.get_putmany_dec in G. rewrite E in G. fwd.
         eapply Forall_forall in FR. 1: exact FR.
         eapply map.putmany_of_list_zip_to_In; eassumption. }
       all: assumption.
@@ -1369,12 +1517,12 @@ Section Spilling.
       eapply load_iarg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H3. intros.
       eapply exec.seq_cps.
-      pose proof H2 as A. unfold related in A. simp.
-      unfold Memory.load, Memory.load_Z, Memory.load_bytes in *. simp.
+      pose proof H2 as A. unfold related in A. fwd.
+      unfold Memory.load, Memory.load_Z, Memory.load_bytes in *. fwd.
       eapply exec.load. {
         rewrite map.get_put_same. reflexivity. }
       { edestruct (@sep_def _ _ _ m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
-        1: ecancel_assumption. unfold map.split in Sp. simp. subst m'.
+        1: ecancel_assumption. unfold map.split in Sp. fwd.
         unfold Memory.load, Memory.load_Z, Memory.load_bytes.
         erewrite map.getmany_of_tuple_in_disjoint_putmany; eauto. }
       eapply save_ires_reg_correct.
@@ -1386,12 +1534,12 @@ Section Spilling.
       clear mc2 H4. intros.
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H3. intros.
-      pose proof H3 as A. unfold related in A. simp.
-      unfold Memory.store, Memory.store_Z, Memory.store_bytes in *. simp.
+      pose proof H3 as A. unfold related in A. fwd.
+      unfold Memory.store, Memory.store_Z, Memory.store_bytes in *. fwd.
       edestruct (@sep_def _ _ _ m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
-      1: ecancel_assumption. unfold map.split in Sp. simp. subst m'.
+      1: ecancel_assumption. unfold map.split in Sp. fwd.
       eapply exec.store.
-      1: eapply get_iarg_reg_1; eauto.
+      1: eapply get_iarg_reg_1; eauto with zarith.
       1: apply map.get_put_same.
       { unfold Memory.store, Memory.store_Z, Memory.store_bytes.
         unfold Memory.load_bytes in *.
@@ -1427,7 +1575,7 @@ Section Spilling.
       intros.
       eapply exec.weaken. {
         eapply IH; eassumption. }
-      cbv beta. intros. simp.
+      cbv beta. intros. fwd.
       edestruct shrink_related_mem as (mSmall2 & ? & ?). 1,2: eassumption.
       repeat match goal with
              | |- exists _, _ => eexists
@@ -1447,7 +1595,7 @@ Section Spilling.
       clear mc2 H2. intros.
       eapply exec.seq_cps.
       eapply exec.op.
-      1: eapply get_iarg_reg_1; eauto.
+      1: eapply get_iarg_reg_1; eauto with zarith.
       1: apply map.get_put_same.
       eapply save_ires_reg_correct.
       + eassumption.
@@ -1463,14 +1611,14 @@ Section Spilling.
       + eassumption.
       + blia.
     - (* exec.if_true *)
-      unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; simp.
+      unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; fwd.
       + eapply exec.seq_assoc.
         eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H2. intros.
         eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
-        clear mc2 H. intros.
+        clear mc2 H1. intros.
         eapply exec.if_true. {
-          cbn. erewrite get_iarg_reg_1 by eauto. rewrite map.get_put_same. congruence.
+          cbn. erewrite get_iarg_reg_1 by eauto with zarith. rewrite map.get_put_same. congruence.
         }
         eapply IHexec; eassumption.
       + eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
@@ -1480,14 +1628,14 @@ Section Spilling.
         }
         eapply IHexec; eassumption.
     - (* exec.if_false *)
-      unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; simp.
+      unfold prepare_bcond. destr cond; cbn [ForallVars_bcond eval_bcond spill_bcond] in *; fwd.
       + eapply exec.seq_assoc.
         eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H2. intros.
         eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
-        clear mc2 H. intros.
+        clear mc2. intros.
         eapply exec.if_false. {
-          cbn. erewrite get_iarg_reg_1 by eauto. rewrite map.get_put_same. congruence.
+          cbn. erewrite get_iarg_reg_1 by eauto with zarith. rewrite map.get_put_same. congruence.
         }
         eapply IHexec; eassumption.
       + eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
@@ -1501,50 +1649,51 @@ Section Spilling.
       eapply exec.loop_cps.
       eapply exec.seq.
       1: eapply IH1; eassumption.
-      cbv beta. intros. simp.
-      unfold prepare_bcond. destr cond; cbn [ForallVars_bcond] in *; simp.
-      + specialize H0 with (1 := H3p1). cbn in H0. simp.
+      cbv beta. intros. fwd.
+      unfold prepare_bcond. destr cond; cbn [ForallVars_bcond] in *; fwd.
+      + specialize H0 with (1 := H3p1). cbn in H0. fwd.
         eapply exec.seq. {
           eapply load_iarg_reg_correct''; (blia || eassumption || idtac).
         }
-        cbv beta. intros. simp.
+        cbv beta. intros. fwd.
         eapply exec.weaken. {
           eapply load_iarg_reg_correct''; (blia || eassumption || idtac).
         }
-        cbv beta. intros. simp. cbn [eval_bcond spill_bcond].
-        erewrite get_iarg_reg_1 by eauto. rewrite map.get_put_same. eexists. split; [reflexivity|].
+        cbv beta. intros. fwd. cbn [eval_bcond spill_bcond].
+        erewrite get_iarg_reg_1 by eauto with zarith.
+        rewrite map.get_put_same. eexists. split; [reflexivity|].
         split; intros.
         * do 4 eexists. split.
-          -- exact H3p4.
+          -- exact H3p6.
           -- eapply H1. 1: eassumption. cbn. rewrite E, E0. congruence.
         * eapply exec.weaken. 1: eapply IH2.
           -- eassumption.
           -- cbn. rewrite E, E0. congruence.
           -- eassumption.
           -- eassumption.
-          -- cbv beta. intros. simp. eauto 10. (* IH12 *)
-      + specialize H0 with (1 := H3p1). cbn in H0. simp.
+          -- cbv beta. intros. fwd. eauto 10. (* IH12 *)
+      + specialize H0 with (1 := H3p1). cbn in H0. fwd.
         eapply exec.weaken. {
           eapply load_iarg_reg_correct''; (blia || eassumption || idtac).
         }
-        cbv beta. intros. simp. cbn [eval_bcond spill_bcond].
+        cbv beta. intros. fwd. cbn [eval_bcond spill_bcond].
         rewrite map.get_put_same. eexists. split; [reflexivity|].
         split; intros.
         * do 4 eexists. split.
-          -- exact H3p3.
+          -- exact H3p5.
           -- eapply H1. 1: eassumption. cbn. rewrite E. congruence.
         * eapply exec.weaken. 1: eapply IH2.
           -- eassumption.
           -- cbn. rewrite E. congruence.
           -- eassumption.
           -- eassumption.
-          -- cbv beta. intros. simp. eauto 10. (* IH12 *)
+          -- cbv beta. intros. fwd. eauto 10. (* IH12 *)
     - (* exec.seq *)
-      cbn in *. simp.
+      cbn in *. fwd.
       rename H1 into IH2, IHexec into IH1.
       eapply exec.seq.
       + eapply IH1. 1: eassumption. eauto 15.
-      + cbn. intros. simp. eapply IH2. 1,2: eassumption. eauto 15.
+      + cbn. intros. fwd. eapply IH2. 1,2: eassumption. eauto 15.
     - (* exec.skip *)
       eapply exec.skip. eauto 20.
     Unshelve.
