@@ -1102,7 +1102,8 @@ Section with_parameters.
              body_impl
              <{ lp from' (body acc ExitToken.new from' (conj Hl Hr)) }>)) ->
         (let v := v in
-         forall from' tr mem locals,
+         forall tr mem locals,
+           let from' := Z.max from to in
            loop_pred from' v tr mem locals ->
            (<{ Trace := tr;
                Memory := mem;
@@ -1139,7 +1140,8 @@ Section with_parameters.
           destruct signed; simpl; rewrite ?lts_of_Z, ?ltu_of_Z by tauto;
             destruct (from <? to); reflexivity || lia.
         - rewrite word.unsigned_of_Z_0; intros; exfalso; lia.
-        - intros. apply (Hk from).
+        - intros. apply Hk.
+          replace (Z.max from to) with from by lia.
           subst v. rewrite ranged_for_exit; eauto || lia. }
 
       pose (inv := (fun n tr mem locals =>
@@ -1250,6 +1252,7 @@ Section with_parameters.
           eapply Hk.
           subst v.
           unfold ranged_for.
+          replace (Z.max from from') with from' by lia.
           erewrite ranged_for'_Proper;
             [ eapply Hpred| .. ];
             intros; cbv beta; f_equal; (congruence || lia || apply range_unique). } }
@@ -1301,7 +1304,8 @@ Section with_parameters.
              body_impl
              <{ lp from' (body acc ExitToken.new from' (conj Hl Hr)) }>)) ->
         (let v := v in
-         forall from' tr mem locals,
+         forall tr mem locals,
+           let from' := Z.max from to in
            loop_pred from' v tr mem locals ->
            (<{ Trace := tr;
                Memory := mem;
@@ -1352,7 +1356,9 @@ Section with_parameters.
             (of_Z_to_Z: forall w, word.of_Z (to_Z w) = w)
             (to_Z_of_Z: forall l h w,
                 to_Z l <= w <= to_Z h ->
-                to_Z (word.of_Z w) = w).
+                to_Z (word.of_Z w) = w)
+            {max: word -> word -> word}
+            (max_of_Z: forall w1 w2, max w1 w2 = word.of_Z (Z.max (to_Z w1) (to_Z w2))).
 
     Lemma compile_ranged_for_w : forall A {tr mem locals functions}
           (from to: word)
@@ -1400,7 +1406,8 @@ Section with_parameters.
              body_impl
              <{ lp from' (body (snd a) tok from' (conj Hl Hr)) }>)) ->
         (let v := v in
-         forall from' tr mem locals,
+         forall tr mem locals,
+           let from' := max from to in
            loop_pred from' v tr mem locals ->
            (<{ Trace := tr;
                Memory := mem;
@@ -1460,7 +1467,7 @@ Section with_parameters.
               repeat rewrite ?word.ring_morph_add, ?word.ring_morph_sub, ?of_Z_to_Z;
               eauto.
       - intros; eapply Hk.
-        eassumption.
+        rewrite max_of_Z; eassumption.
     Qed.
   End Generic.
 
@@ -1473,12 +1480,12 @@ Section with_parameters.
 
   Definition compile_ranged_for_u :=
     @compile_ranged_for_w false _ word.of_Z_unsigned word_unsigned_of_Z_bracketed
-                          A tr m l functions from to
+                          word.maxu word.unsigned_maxu A tr m l functions from to
                           (conj (word.unsigned_range _) (word.unsigned_range _)).
 
   Definition compile_ranged_for_s :=
     @compile_ranged_for_w true _ word.of_Z_signed word_signed_of_Z_bracketed
-                          A tr m l functions from to
+                          word.maxs word.signed_maxs A tr m l functions from to
                           (conj (word.signed_range _) (word.signed_range _)).
 End with_parameters.
 

@@ -776,6 +776,76 @@ Module word.
       word.unsigned (b2w b) = Z.b2z b.
     Proof. apply unsigned_of_Z_b2z. Qed.
 
+    Section MinMax.
+      Definition minu w1 w2 := if word.gtu w1 w2 then w2 else w1.
+      Definition mins w1 w2 := if word.gts w1 w2 then w2 else w1.
+      Definition maxu w1 w2 := if word.ltu w1 w2 then w2 else w1.
+      Definition maxs w1 w2 := if word.lts w1 w2 then w2 else w1.
+
+      Ltac t :=
+        unfold minu, maxu, mins, maxs, word.gtu, word.gts, Z.min, Z.max;
+        intros; rewrite ?word.unsigned_ltu, ?word.signed_lts;
+        rewrite ?word.unsigned_of_Z_nowrap, ?word.signed_of_Z_nowrap by assumption;
+        (rewrite Z.compare_antisym + idtac);
+        rewrite Z.ltb_compare; destruct (_ ?= _);
+        simpl; rewrite ?word.of_Z_unsigned, ?word.of_Z_signed;
+        reflexivity.
+
+      Lemma unsigned_minu w1 w2 :
+        minu w1 w2 = word.of_Z (Z.min (word.unsigned w1) (word.unsigned w2)).
+      Proof. t. Qed.
+
+      Lemma unsigned_maxu w1 w2 :
+        maxu w1 w2 = word.of_Z (Z.max (word.unsigned w1) (word.unsigned w2)).
+      Proof. t. Qed.
+
+      Lemma signed_mins w1 w2 :
+        mins w1 w2 = word.of_Z (Z.min (word.signed w1) (word.signed w2)).
+      Proof. t. Qed.
+
+      Lemma signed_maxs w1 w2 :
+        maxs w1 w2 = word.of_Z (Z.max (word.signed w1) (word.signed w2)).
+      Proof. t. Qed.
+
+      Lemma minu_unsigned w1 w2 :
+        word.unsigned (minu w1 w2) = Z.min (word.unsigned w1) (word.unsigned w2).
+      Proof. t. Qed.
+
+      Lemma maxu_unsigned w1 w2 :
+        word.unsigned (maxu w1 w2) = Z.max (word.unsigned w1) (word.unsigned w2).
+      Proof. t. Qed.
+
+      Lemma mins_signed w1 w2 :
+        word.signed (mins w1 w2) = Z.min (word.signed w1) (word.signed w2).
+      Proof. t. Qed.
+
+      Lemma maxs_signed w1 w2 :
+        word.signed (maxs w1 w2) = Z.max (word.signed w1) (word.signed w2).
+      Proof. t. Qed.
+
+      Lemma minu_of_Z z1 z2 :
+        0 <= z1 < 2 ^ width -> 0 <= z2 < 2 ^ width ->
+        minu (word.of_Z z1) (word.of_Z z2) = word.of_Z (Z.min z1 z2).
+      Proof. t. Qed.
+
+      Lemma maxu_of_Z z1 z2 :
+        0 <= z1 < 2 ^ width -> 0 <= z2 < 2 ^ width ->
+        maxu (word.of_Z z1) (word.of_Z z2) = word.of_Z (Z.max z1 z2).
+      Proof. t. Qed.
+
+      Lemma mins_of_Z z1 z2 :
+        - 2 ^ (width - 1) <= z1 < 2 ^ (width - 1) ->
+        - 2 ^ (width - 1) <= z2 < 2 ^ (width - 1) ->
+        mins (word.of_Z z1) (word.of_Z z2) = word.of_Z (Z.min z1 z2).
+      Proof. t. Qed.
+
+      Lemma maxs_of_Z z1 z2 :
+        - 2 ^ (width - 1) <= z1 < 2 ^ (width - 1) ->
+        - 2 ^ (width - 1) <= z2 < 2 ^ (width - 1) ->
+        maxs (word.of_Z z1) (word.of_Z z2) = word.of_Z (Z.max z1 z2).
+      Proof. t. Qed.
+    End MinMax.
+
     Ltac compile_binop_zzw_bitwise lemma :=
       intros; cbn;
       apply word.unsigned_inj;
