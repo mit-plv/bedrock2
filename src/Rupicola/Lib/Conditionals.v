@@ -138,6 +138,7 @@ Not supported yet: using a conditional to assign a pointer to another one.
      part) instead of generalizing all instances of the value. *)
 
 Ltac substitute_target var repl pred locals :=
+  (** Replace the target of `var` with `repl` in `pred` and `locals`. **)
   lazymatch locals with
   | context LOC [map.put ?m var ?v] =>
     lazymatch pred with
@@ -153,6 +154,7 @@ Ltac substitute_target var repl pred locals :=
   end.
 
 Ltac substitute_targets vars repls pred locals :=
+  (** Replace targets of `vars` in `pred` and `locals` with `repls`. **)
   lazymatch vars with
   | [] => constr:((pred, locals))
   | ?var :: [] =>
@@ -163,6 +165,52 @@ Ltac substitute_targets vars repls pred locals :=
     end
   | _ => fail "substitute_targets:" vars "should be a list"
   end.
+
+Section __substitute_target.
+  Context {width: Z} {BW: Bitwidth width}.
+  Context {word: word.word width} {word_ok : word.ok word}.
+  Context {locals: map.map string word} {locals_ok : map.ok locals}.
+  Context {mem: map.map word byte} {mem_ok : map.ok mem}.
+
+  (* Mutating a heap object *)
+  Check (fun {A: Type} (ptr: word) (a a': A) (R: mem -> Prop) =>
+           let rp ptr a mem := True in
+           ltac:(let r := substitute_target
+                           "ptr" a'
+                           (rp ptr a ⋆ R)
+                           (map.put (map := locals) map.empty "ptr" ptr) in
+                 exact r)).
+
+  (* Mutating a local variable *)
+  Check (fun (v v': word) =>
+           let pred (m: mem) := True in
+           ltac:(let r := substitute_target
+                           "v" v'
+                           pred (map.put (map := locals) map.empty "v" v) in
+                 exact r)).
+
+  (* Creating a local variable *)
+  Check (fun (x y: word) =>
+           let pred (m: mem) := True in
+           ltac:(let r := substitute_target
+                           "y" y
+                           pred (map.put (map := locals) map.empty "x" x) in
+                 exact r)).
+
+  (* All three types of changes at once *)
+  Check (fun {A: Type} (ptr v v' y: word) (a a': A) (R: mem -> Prop) =>
+           let rp ptr a mem := True in
+           ltac:(let r := substitute_targets
+                           ["ptr"; "v"; "y"]
+                           (\< a', v', y \>)
+                           (rp ptr a ⋆ R)
+                           (map.put (map := locals)
+                                    (map.put map.empty "v" v) "ptr" ptr) in
+                 exact r)).
+
+
+End __substitute_target.
+
 
 (* This replaces apply_tuple_references.  FIXME move *)
 Ltac make_uncurried_application args_tuple curried_fn :=
