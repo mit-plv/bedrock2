@@ -1,60 +1,6 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.Conditionals.
 
-Import ExprReflection.
-
-Tactic Notation "_reify_change_dexpr"
-       constr(expr) open_constr(reifier)
-       constr(val) constr(reified) constr(bindings) :=
-  (* unify expr (compile reified); *)
-  change val
-    with (er_T2w (expr_denotation := reifier)
-                 (interp (er := reifier)
-                         (map.of_list (map := SortedListString.map _) bindings)
-                         reified)).
-
-Ltac reify_change_dexpr_z :=
-  lazymatch goal with
-  | [  |- WeakestPrecondition.dexpr _ (map.of_list ?bindings) ?expr ?val ] =>
-    lazymatch val with
-    | word.of_Z ?z =>
-      let z_bindings := zify_bindings bindings in
-      let z_bindings := type_term z_bindings in
-      let reified := expr_reify_Z z_bindings z in
-      _reify_change_dexpr expr expr_Z_denotation val reified z_bindings
-    end
-  end.
-
-Ltac reify_change_dexpr_w :=
-  lazymatch goal with
-  | [  |- WeakestPrecondition.dexpr _ (map.of_list ?bindings) ?expr ?val ] =>
-    lazymatch type of val with
-    | @word.rep _ ?W =>
-      let reified := expr_reify_word W bindings val in
-      _reify_change_dexpr expr expr_word_denotation val reified bindings
-    end
-  end.
-
-Ltac reify_change_dexpr_locals :=
-  lazymatch goal with
-  | [  |- WeakestPrecondition.dexpr _ ?locals _ _ ] =>
-    let bindings := map_to_list locals in
-    set_change locals with (map.of_list bindings)
-  end.
-
-Ltac reify_change_dexpr :=
-  lazymatch goal with
-  | [  |- WeakestPrecondition.dexpr _ _ _ ?val ] =>
-    reify_change_dexpr_locals;
-    lazymatch val with
-    | word.of_Z ?z => reify_change_dexpr_z
-    | _ => reify_change_dexpr_w
-    end
-  end.
-
-#[export] Hint Extern 8 (WeakestPrecondition.dexpr _ _ _ _) =>
-  reify_change_dexpr; compile_prove_reified_dexpr : compiler_side_conditions.
-
 Section with_parameters.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.

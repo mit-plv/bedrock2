@@ -201,7 +201,9 @@ Module ExprReflection.
       forall {P} {pred: P v -> predicate}
         {k: nlet_eq_k P v} {k_impl}
         var,
+
         WeakestPrecondition.dexpr mem locals e v ->
+
         (let v := v in
          <{ Trace := tr;
             Memory := mem;
@@ -209,6 +211,7 @@ Module ExprReflection.
             Functions := functions }>
          k_impl
          <{ pred (k v eq_refl) }>) ->
+
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -222,7 +225,9 @@ Module ExprReflection.
       forall {P} {pred: P v -> predicate}
         {k: nlet_eq_k P v} {k_impl}
         var,
+
         WeakestPrecondition.dexpr mem locals e (word.of_Z v) ->
+
         (let v := v in
          <{ Trace := tr;
             Memory := mem;
@@ -230,6 +235,7 @@ Module ExprReflection.
             Functions := functions }>
          k_impl
          <{ pred (k v eq_refl) }>) ->
+
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
@@ -300,14 +306,25 @@ Module ExprReflection.
       end
     end.
 
-  Ltac compile_reified_expr_w W locals w :=
-    let bindings := map_to_list locals in
-    let reified := expr_reify_word W bindings w in
-    simple apply compile_expr_w with (e := compile reified);
-    [ set_change locals with (map.of_list bindings);
-      change w with (er_T2w (expr_denotation := expr_word_denotation)
-                            (interp (map.of_list (map := SortedListString.map _) bindings) reified))
-    | ].
+  Tactic Notation "_reify_change_dexpr"
+         constr(expr) open_constr(reifier)
+         constr(val) constr(reified) constr(bindings) :=
+    unify expr (compile reified);
+    change val
+      with (er_T2w (expr_denotation := reifier)
+                   (interp (er := reifier)
+                           (map.of_list (map := SortedListString.map _) bindings)
+                           reified)).
+
+  Ltac reify_change_dexpr_w :=
+    lazymatch goal with
+    | [  |- WeakestPrecondition.dexpr _ (map.of_list ?bindings) ?expr ?val ] =>
+      lazymatch type of val with
+      | @word.rep _ ?W =>
+        let reified := expr_reify_word W bindings val in
+        _reify_change_dexpr expr expr_word_denotation val reified bindings
+      end
+    end.
 
   Ltac zify_bindings bs :=
     match bs with
@@ -321,20 +338,34 @@ Module ExprReflection.
       constr:((k, z) :: tl)
     end.
 
-  Ltac compile_reified_expr_Z locals z :=
-    let bindings := map_to_list locals in
-    let z_bindings := zify_bindings bindings in
-    let z_bindings := type_term z_bindings in
-    let reified := ExprReflection.expr_reify_Z z_bindings z in
-    simple apply compile_expr_Z with (e := ExprReflection.compile reified);
-    [ set_change locals with (map.of_list bindings);
-      change (word.of_Z z)
-        with (ExprReflection.er_T2w
-                (expr_denotation := expr_Z_denotation)
-                (ExprReflection.interp (er := expr_Z_denotation)
-                                       (map.of_list (map := SortedListString.map _) z_bindings)
-                                       reified))
-    | ].
+  Ltac reify_change_dexpr_z :=
+    lazymatch goal with
+    | [  |- WeakestPrecondition.dexpr _ (map.of_list ?bindings) ?expr ?val ] =>
+      lazymatch val with
+      | word.of_Z ?z =>
+        let z_bindings := zify_bindings bindings in
+        let z_bindings := type_term z_bindings in
+        let reified := expr_reify_Z z_bindings z in
+        _reify_change_dexpr expr expr_Z_denotation val reified z_bindings
+      end
+    end.
+
+  Ltac reify_change_dexpr_locals :=
+    lazymatch goal with
+    | [  |- WeakestPrecondition.dexpr _ ?locals _ _ ] =>
+      let bindings := map_to_list locals in
+      set_change locals with (map.of_list bindings)
+    end.
+
+  Ltac reify_change_dexpr :=
+    lazymatch goal with
+    | [  |- WeakestPrecondition.dexpr _ _ _ ?val ] =>
+      reify_change_dexpr_locals;
+      lazymatch val with
+      | word.of_Z ?z => reify_change_dexpr_z
+      | _ => reify_change_dexpr_w
+      end
+    end.
 
   Ltac compile_prove_reified_dexpr :=
     eapply interp_sound;
@@ -347,20 +378,30 @@ Module ExprReflection.
       end; reflexivity
       | .. ].
 
-  Ltac compile_apply_expr_reification_lemma :=
+  Ltac compile_let_as_expr :=
     lazymatch goal with
     | [ |- WeakestPrecondition.cmd _ _ _ _ ?locals (_ (nlet_eq _ ?v _)) ] =>
       lazymatch type of v with
-      | @word.rep _ ?W => compile_reified_expr_w W locals v
-      | Z => compile_reified_expr_Z locals v
+      | word.rep => simple apply compile_expr_w
+      | Z => simple apply compile_expr_Z
       | ?t => fail "Unrecognized type" t
       end
     end.
-
-  Ltac compile_reified_expr :=
-    compile_apply_expr_reification_lemma;
-    [ compile_prove_reified_dexpr | .. ].
 End ExprReflection.
 
+Import ExprReflection.
+
+Ltac compile_expr :=
+  reify_change_dexpr; compile_prove_reified_dexpr.
+
+Ltac compile_assignment :=
+  compile_let_as_expr; [ compile_expr | .. ].
+
+(* For dexpr side conditions: *)
+#[export] Hint Extern 8 (WeakestPrecondition.dexpr _ _ _ _) =>
+  ExprReflection.compile_expr : compiler_side_conditions.
+
+(* For let-bound exprs: *)
 #[export] Hint Extern 8 =>
-  ExprReflection.compile_reified_expr; shelve : compiler. (* Higher priority than individual ops *)
+  ExprReflection.compile_assignment; shelve : compiler.
+  (* Higher priority than compilation lemmas for individual operations *)
