@@ -635,7 +635,7 @@ Section Properties.
     destruct (Z_le_gt_dec to1 from), (Z_le_gt_dec from to).
     1-2: intros; rewrite !ranged_for_break_exit by lia; reflexivity.
     - unshelve erewrite (ranged_for_break_app from to to1); try lia.
-      rewrite ranged_for_break_stop with (a1 := ranged_for_break _ _ _ _ _).
+      rewrite @ranged_for_break_stop with (a0 := ranged_for_break _ _ _ _ _).
       + eauto with loops.
       + etransitivity; [ | eauto ]; f_equal; eauto with loops.
     - rewrite ranged_for_break_stop.
@@ -1205,7 +1205,7 @@ Section with_parameters.
               as [? Hrefold].
             { exists (ltac:(lia): from' + 1 <= to).
               subst acc_tok.
-              erewrite ranged_for'_unfold_r_nstop with (H0 := ?[H]).
+              erewrite @ranged_for'_unfold_r_nstop with (H := ?[H]).
               [H]: lia.
               f_equal; f_equal; apply range_unique.
               cbv beta; intros; f_equal; apply range_unique.
