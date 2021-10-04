@@ -479,7 +479,7 @@ Ltac ecancel_step_by_implication :=
       let LHS := lazymatch goal with |- Lift1Prop.impl1 (seps ?LHS) _ => LHS end in
       let i := find_implication LHS y in (* <-- multi-success! *)
       (*TODO: nocore?*)
-      cancel_seps_at_indices_by_implication i j; [solve [auto 1 with ecancel_impl]|].
+      cancel_seps_at_indices_by_implication i j; [solve [auto 1 with nocore ecancel_impl]|].
 
 Ltac ecancel_done :=
   cbn [seps];
