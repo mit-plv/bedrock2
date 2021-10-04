@@ -1062,6 +1062,12 @@ Section with_parameters.
     Notation in_unsigned_bounds x :=
       (0 <= x < 2 ^ width).
 
+    Definition cmd_loop (signed: bool) from_var to_var body_impl :=
+      cmd.while
+        (expr.op (if signed then bopname.lts else bopname.ltu)
+                 (expr.var from_var) (expr.var to_var))
+        body_impl.
+
     Lemma _compile_ranged_for : forall A {tr mem locals functions}
           (from to: Z) body (a0: A),
       let v := ranged_for from to body a0 in
@@ -1116,15 +1122,12 @@ Section with_parameters.
            Locals := locals;
            Functions := functions }>
         cmd.seq
-          (cmd.while
-             (expr.op (if signed then bopname.lts else bopname.ltu)
-                      (expr.var from_var)
-                      (expr.var to_var))
-             body_impl)
+          (cmd_loop signed from_var to_var body_impl)
           k_impl
         <{ pred (nlet_eq vars v k) }>.
     Proof.
-      intros * Hlocals Hinit Hbounds Hbody Hk.
+      intros * Hlocals Hinit Hbounds Hbody Hk;
+        unfold cmd_loop.
       repeat straightline.
 
       destruct (Z_gt_le_dec from to).
@@ -1258,6 +1261,14 @@ Section with_parameters.
             intros; cbv beta; f_equal; (congruence || lia || apply range_unique). } }
     Qed.
 
+    Definition cmd_loop_incr signed from_var to_var body_impl :=
+      cmd_loop signed from_var to_var
+               (cmd.seq body_impl
+                        (cmd.set from_var
+                                 (expr.op bopname.add
+                                          (expr.var from_var)
+                                          (expr.literal 1)))).
+
     (* TODO Use a section? *)
 
     Lemma compile_ranged_for_with_auto_increment : forall A {tr mem locals functions}
@@ -1318,15 +1329,7 @@ Section with_parameters.
            Locals := locals;
            Functions := functions }>
         cmd.seq
-          (cmd.while
-             (expr.op (if signed then bopname.lts else bopname.ltu)
-                      (expr.var from_var)
-                      (expr.var to_var))
-             (cmd.seq body_impl
-                      (cmd.set from_var
-                               (expr.op bopname.add
-                                        (expr.var from_var)
-                                        (expr.literal 1)))))
+          (cmd_loop_incr signed from_var to_var body_impl)
           k_impl
         <{ pred (nlet_eq vars v k) }>.
     Proof.
@@ -1420,16 +1423,7 @@ Section with_parameters.
            Locals := locals;
            Functions := functions }>
         cmd.seq
-          (cmd.while
-             (expr.op (if signed then bopname.lts else bopname.ltu)
-                      (expr.var from_var)
-                      (expr.var to_var))
-             (cmd.seq
-                body_impl
-                (cmd.set from_var
-                         (expr.op bopname.add
-                                  (expr.var from_var)
-                                  (expr.literal 1)))))
+          (cmd_loop_incr signed from_var to_var body_impl)
           k_impl
         <{ pred (nlet_eq vars v k) }>.
     Proof.
