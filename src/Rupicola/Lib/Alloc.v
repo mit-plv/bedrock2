@@ -15,19 +15,18 @@ Section with_parameters.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   (* To enable allocation of A terms via the predicate P, implement this class *)
-  (* I is a type if indices to use if P can take additional arguments *)
-  Class Allocable {I A} (P : I -> word.rep -> A -> mem -> Prop) :=
+  Class Allocable {A} (P : word.rep -> A -> mem -> Prop) :=
     {
     size_in_bytes : Z;
     size_in_bytes_mod
     : size_in_bytes mod Memory.bytes_per_word width = 0;
     P_to_bytes
-    : forall px i x,
-        Lift1Prop.impl1 (P i px x) (Memory.anybytes px size_in_bytes);
+    : forall px x,
+        Lift1Prop.impl1 (P px x) (Memory.anybytes px size_in_bytes);
     P_from_bytes
     : forall px,
         Lift1Prop.impl1 (Memory.anybytes px size_in_bytes)
-                        (Lift1Prop.ex1 (fun i => Lift1Prop.ex1 (P i px)))
+                        (Lift1Prop.ex1 (P px))
     }.
 
   (* FIXME if we need to roundtrip:
@@ -57,71 +56,47 @@ Section with_parameters.
        alloc_of_bytes (alloc_to_bytes a) Hlen = a.
      Proof. … Qed. *)
 
-  Class SimpleAllocable {A} (P : word.rep -> A -> mem -> Prop) :=
-    { ssize_in_bytes : Z;
-      ssize_in_bytes_mod :
-        ssize_in_bytes mod Memory.bytes_per_word width = 0;
-      sP_to_bytes px x :
-        Lift1Prop.impl1 (P px x) (Memory.anybytes px ssize_in_bytes);
-      sP_from_bytes px :
-        Lift1Prop.impl1 (Memory.anybytes px ssize_in_bytes)
-                        (Lift1Prop.ex1 (P px)) }.
-
-  Instance Allocable_of_SimpleAllocable {A} (P : word.rep -> A -> mem -> Prop)
-           {H: SimpleAllocable P} : Allocable (fun _: unit => P).
-  Proof.
-    refine {| size_in_bytes := ssize_in_bytes;
-              size_in_bytes_mod := ssize_in_bytes_mod;
-              P_to_bytes := _;
-              P_from_bytes := _ |}; intros.
-    - apply sP_to_bytes.
-    - abstract (red; exists tt; apply sP_from_bytes; assumption).
-  Defined.
-
-  Program Instance SimpleAllocable_scalar : SimpleAllocable scalar :=
-    {| ssize_in_bytes := Memory.bytes_per_word width;
-       ssize_in_bytes_mod := Z_mod_same_full _;
-       sP_to_bytes := scalar_to_anybytes;
-       sP_from_bytes := anybytes_to_scalar |}.
+  Program Instance Allocable_scalar : Allocable scalar :=
+    {| size_in_bytes := Memory.bytes_per_word width;
+       size_in_bytes_mod := Z_mod_same_full _;
+       P_to_bytes := scalar_to_anybytes;
+       P_from_bytes := anybytes_to_scalar |}.
 
   Definition pred_sep {A} R (pred : A -> predicate) (v : A) tr' mem' locals':=
     (R * (fun mem => pred v tr' mem locals'))%sep mem'.
 
   (* identity used as a marker to indicate when something should be allocated *)
-  (*TODO: should this require finding the instance? probably not
-   Definition alloc {p : Semantics.parameters} {A} {P : A -> @Semantics.mem p -> Prop} `{@Allocable p A P} (a : A) := a. *)
   Definition alloc {A} (a : A) := a. 
-  Definition simple_alloc {A} (a : A) := a.
 
-  Lemma compile_alloc
-        {tr m l functions A} (v : A):
+  Lemma compile_alloc {tr m l functions A} (v : A):
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-           {I} {AP : I -> word.rep -> A -> map.rep -> Prop} `{Allocable I A AP}
-           (R: mem -> Prop) out_var,
+      {AP : word.rep -> A -> map.rep -> Prop} `{Allocable A AP}
+      (R: mem -> Prop) out_var,
 
       R m ->
 
-      (forall i out_ptr uninit m',
-         sep (AP i out_ptr uninit) R m' ->
-         (<{ Trace := tr;
+      (forall out_ptr uninit m',
+          sep (AP out_ptr uninit) R m' ->
+          <{ Trace := tr;
              Memory := m';
              Locals := map.put l out_var out_ptr;
              Functions := functions }>
           k_impl
-          <{ pred_sep (Memory.anybytes out_ptr size_in_bytes) pred (nlet_eq [out_var] v k) }>)) ->
+          <{ pred_sep (Memory.anybytes out_ptr size_in_bytes)
+                      pred (nlet_eq [out_var] v k) }>) ->
       <{ Trace := tr;
          Memory := m;
          Locals := l;
-         Functions := functions }>      
+         Functions := functions }>
       cmd.stackalloc out_var size_in_bytes k_impl
       <{ pred (nlet_eq [out_var] (alloc v) k) }>.
   Proof.
     repeat straightline.
     split; eauto using size_in_bytes_mod.
     intros out_ptr mStack mCombined Hplace%P_from_bytes.
-    destruct Hplace as [i [out Hout]].
+    destruct Hplace as [out Hout].
     repeat straightline.
-    specialize (H1 i out_ptr out mCombined).     
+    specialize (H1 out_ptr out mCombined).     
     eapply WeakestPrecondition_weaken
       with (p1 := pred_sep (Memory.anybytes out_ptr size_in_bytes)
                            pred (let/n x as out_var eq:Heq := v in
@@ -146,35 +121,9 @@ Section with_parameters.
     }
   Qed.
 
-  Lemma compile_simple_alloc {tr m l functions A} (v : A):
-    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-      {AP : word.rep -> A -> map.rep -> Prop} `{SimpleAllocable A AP}
-      (R: mem -> Prop) out_var,
-
-      R m ->
-
-      (forall out_ptr uninit m',
-          sep (AP out_ptr uninit) R m' ->
-          <{ Trace := tr;
-             Memory := m';
-             Locals := map.put l out_var out_ptr;
-             Functions := functions }>
-          k_impl
-          <{ pred_sep (Memory.anybytes out_ptr size_in_bytes)
-                      pred (nlet_eq [out_var] v k) }>) ->
-      <{ Trace := tr;
-         Memory := m;
-         Locals := l;
-         Functions := functions }>
-      cmd.stackalloc out_var size_in_bytes k_impl
-      <{ pred (nlet_eq [out_var] (simple_alloc v) k) }>.
-  Proof.
-    intros; eapply compile_alloc; eauto.
-  Qed.
 End with_parameters.
 
 Arguments alloc : simpl never.
-Arguments simple_alloc : simpl never.
 Arguments size_in_bytes : simpl never.
 
 (*TODO: speed up by combining pred_seps first and using 1 proper/ecancel_assumption?*)
@@ -188,9 +137,10 @@ Ltac clear_pred_seps :=
          end.
 
 (* FIXME I don't think eassumption is needed, and there might actually be multiple ?R m *)
+(* must be applied before compile_simple_alloc 
+   TODO: understand why
+ *)
 #[export] Hint Extern 10 =>
   simple eapply compile_alloc; [eassumption | shelve] : compiler.
-#[export] Hint Extern 10 =>
-  simple eapply compile_simple_alloc; shelve : compiler.
 #[export] Hint Extern 1 (pred_sep _ _ _ _ _ _) =>
   clear_pred_seps; shelve : compiler_cleanup_post.
