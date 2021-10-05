@@ -188,18 +188,18 @@ Section Tree.
       replace (fst (replace t cond a1)) cond a2 =
       replace t cond a2.
     Proof.
-      induction t; intros;
-        repeat match goal with
-               | _ => progress cbn [replace fst snd] in *
-               | _ => progress subst
-               | _ => progress intuition
-               | H : (_,_) = (_,_) |- _ =>
-                 inversion H; clear H
-               | |- context [match ?x with _ => _ end] =>
-                 destruct x eqn:?
-               | _ => reflexivity
-               | _ => congruence
-               end.
+      (* induction t; intros; *)
+      (*   repeat match goal with *)
+      (*          | _ => progress cbn [replace fst snd] in * *)
+      (*          | _ => progress subst *)
+      (*          | _ => progress intuition *)
+      (*          | H : (_,_) = (_,_) |- _ => *)
+      (*            inversion H; clear H *)
+      (*          | |- context [match ?x with _ => _ end] => *)
+      (*            destruct x eqn:? *)
+      (*          | _ => reflexivity *)
+      (*          | _ => congruence *)
+      (*          end. *)
    Admitted.
   End proofs.
 End Tree.
