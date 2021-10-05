@@ -27,6 +27,14 @@ Module map.
     Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
     Local Hint Mode map.map - - : typeclass_instances.
 
+    Lemma put_put_diff: forall m k1 k2 v1 v2,
+        k1 <> k2 ->
+        map.put (map.put m k1 v1) k2 v2 = map.put (map.put m k2 v2) k1 v1.
+    Proof.
+      intros. apply map.map_ext. intros.
+      rewrite ?map.get_put_dec. destr (key_eqb k1 k); destr (key_eqb k2 k); congruence.
+    Qed.
+
     Lemma getmany_of_list_cons: forall m k v ks vs,
         map.get m k = Some v ->
         map.getmany_of_list m ks = Some vs ->
@@ -87,6 +95,25 @@ Module map.
       - subst. erewrite map.not_in_of_list_zip_to_get_None by eassumption. reflexivity.
       - rewrite map.get_empty. destr (map.get r k0); reflexivity.
     Qed.
+
+    Lemma putmany_of_list_zip_cons_put: forall ks k v vs m0 m,
+        ~ In k ks ->
+        map.putmany_of_list_zip ks vs m0 = Some m ->
+        map.putmany_of_list_zip (k :: ks) (v :: vs) m0 = Some (map.put m k v).
+    Proof.
+      induction ks; simpl; intros; destruct vs as [|v0 vs]; try discriminate.
+      - congruence.
+      - assert (a <> k) by intuition congruence.
+        assert (~ In k ks) by intuition congruence.
+        rewrite put_put_diff by congruence.
+        eapply IHks; eassumption.
+    Qed.
+
+    Lemma of_list_zip_cons_put: forall k ks v vs m,
+        ~ In k ks ->
+        map.of_list_zip ks vs = Some m ->
+        map.of_list_zip (k :: ks) (v :: vs) = Some (map.put m k v).
+    Proof. intros. eapply putmany_of_list_zip_cons_put; eassumption. Qed.
 
     Global Instance of_list_zip_nil_keys: forall vs m,
         autoforward (map.of_list_zip nil vs = Some m)
@@ -1052,6 +1079,14 @@ Section Spilling.
     do 3 eexists. ssplit; try reflexivity; try eassumption.
   Qed.
 
+  Lemma related_to_related'_nil: forall maxvar first_arg_reg frame fpval t1 t2 m1 m2 l1 l2,
+      related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
+      related' maxvar [] first_arg_reg frame fpval t1 m1 l1 t2 m2 l2.
+  Proof.
+    unfold related', related. intros. fwd.
+    eexists _, _, _, _, _, nil. ssplit; try reflexivity; try eassumption; fwd; try eassumption.
+  Qed.
+
   Lemma read_register_range_correct:
     forall args start e t1 t2 m1 m2 l1 l2 mc2 maxvar frame post fpval,
       related' maxvar args start frame fpval t1 m1 l1 t2 m2 l2 ->
@@ -1157,79 +1192,70 @@ Section Spilling.
     forall args argvs start e t1 t2 m1 m2 l1 l2 mc2 maxvar frame post fpval,
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       (List.length args <= 8)%nat ->
+      NoDup args ->
       a0 <= start ->
       start + Z.of_nat (List.length args) <= a7 + 1 ->
       Forall (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)) args ->
       map.getmany_of_list l1 args = Some argvs ->
       (forall m2' l2' mc2',
-          related maxvar frame fpval t1 m1 l1 t2 m2' l2' ->
-          map.getmany_of_list l2' (List.unfoldn (Z.add 1) (List.length args) start) = Some argvs ->
+          related' maxvar args start frame fpval t1 m1 l1 t2 m2' l2' ->
           post t2 m2' l2' mc2') ->
       exec e (write_register_range start args) t2 m2 l2 mc2 post.
   Proof.
     induction args; intros.
-    - simpl. eapply exec.skip. eapply H5. 1: eassumption. simpl.
-      destruct argvs. 1: reflexivity. discriminate.
+    - simpl. eapply exec.skip. eauto using related_to_related'_nil.
     - simpl. unfold write_register, stack_loc.
       destruct argvs as [|v vs]. {
-        unfold map.getmany_of_list in H4. cbn in H4. fwd.
+        unfold map.getmany_of_list in H5. cbn in H5. fwd.
         destr (List.option_all (map (map.get l1) args)); discriminate.
       }
-      eapply map.invert_getmany_of_list_cons in H4. destruct H4 as [G GM].
+      eapply map.invert_getmany_of_list_cons in H5. destruct H5 as [G GM].
       cbn [List.length] in *.
       fwd.
+      eapply exec.seq_cps.
+      eapply IHargs; try eassumption; try blia.
+      unfold related'. intros. fwd.
       destr (32 <=? a).
-      + eapply exec.seq_cps.
-        eapply IHargs; try eassumption; try blia.
-        intros.
-        unfold related in H3. fwd.
-        eapply exec.load.
+      + eapply exec.load.
         * eapply get_sep. ecancel_assumption.
         * eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
-          eapply H3p7. 1: blia.
-          unfold sep in H3p5. fwd.
+          eapply H1p10. 1: blia.
+          unfold sep in H1p8. fwd.
           eapply map.get_split_r. 1,3: eassumption.
           destr (map.get mp a); [exfalso|reflexivity].
-          specialize H3p3 with (1 := E0). blia.
-        * eapply H5.
-          -- unfold related.
-             repeat match goal with
-                    | |- exists _, _ => eexists
-                    | |- _ /\ _ => split
-                    | |- _ => eassumption || reflexivity
-                    end.
-             eapply put_arg_reg; try eassumption. blia.
-          -- cbn [List.unfoldn]. eapply map.getmany_of_list_cons.
-             ++ apply map.get_put_same.
-             ++ rewrite Z.add_comm.
-                eapply map.getmany_of_list_put_diff. 2: eassumption.
-                eapply not_In_Z_seq. blia.
-      + eapply exec.seq_cps.
-        eapply IHargs; try eassumption; try blia.
-        intros.
-        unfold related in H3. fwd.
-        eapply exec.set.
-        * edestruct (eq_sep_to_split l2') as (l2Rest & S22 & SP22). 1: ecancel_assumption.
-          eapply map.get_split_grow_r. 1: eassumption.
-          unfold sep in H3p5. destruct H3p5 as (lRegs' & lStack' & S2 & ? & ?).
-          subst lRegs' lStack'.
-          eapply map.get_split_l. 1: exact S2. 2: exact G.
-          destr (map.get lStack a); [exfalso|reflexivity].
-          specialize H3p4 with (1 := E0). blia.
-        * eapply H5. 2: {
-            cbn [List.unfoldn].
-            eapply map.getmany_of_list_cons.
-            - apply map.get_put_same.
-            - rewrite Z.add_comm. eapply map.getmany_of_list_put_diff. 2: eassumption.
-              eapply not_In_Z_seq. blia.
-          }
-          unfold related.
+          eapply map.get_split_l in E0. 2: eassumption.
+          -- specialize H1p4 with (1 := E0). blia.
+          -- eapply map.not_in_of_list_zip_to_get_None; eassumption.
+        * match goal with
+          | H: _ |- _ => eapply H
+          end.
+          unfold related'.
+          eexists _, _, (map.put hlArgRegs a v), (map.put llArgRegs start v), _, (v :: argvals).
           repeat match goal with
                  | |- exists _, _ => eexists
                  | |- _ /\ _ => split
                  | |- _ => eassumption || reflexivity
                  end.
-          eapply put_arg_reg; try eassumption. blia.
+          -- eapply map.of_list_zip_cons_put; eassumption.
+          -- cbn -[map.of_list_zip Z.add]. eapply map.of_list_zip_cons_put.
+             ++ eapply not_In_Z_seq. blia.
+             ++ rewrite Z.add_comm. eassumption.
+          -- (* might need to also say that some lArgRegs are on in stackwords? *)
+             case TODO.
+          -- case TODO.
+      + eapply exec.set.
+        * edestruct (eq_sep_to_split l2') as (l2Rest & S22 & SP22). 1: ecancel_assumption.
+          eapply map.get_split_grow_r. 1: eassumption.
+          apply sep_assoc in H1p8.
+          unfold sep in H1p8 at 1. destruct H1p8 as (lRegs' & lStack' & S2 & ? & ?).
+          subst lRegs'.
+          eapply map.get_split_l. 1: exact S2. 2: exact G.
+          case TODO.
+        * match goal with
+          | H: _ |- _ => eapply H
+          end.
+          unfold related'.
+          case TODO.
   Qed.
 
   Lemma grow_related_mem: forall maxvar frame t1 mSmall1 l1 t2 mSmall2 l2 mStack mCombined2 fpval,
@@ -1402,6 +1428,7 @@ Section Spilling.
       apply_in_hyps @map.getmany_of_list_length.
       apply_in_hyps @map.putmany_of_list_zip_sameLength.
       eapply write_register_range_correct; try eassumption || (unfold a0, a7 in *; blia).
+      1: case TODO.
       match goal with
       | H: related _ _ _ _ _ _ _ _ _ |- _ => clear H
       end.
@@ -1415,10 +1442,10 @@ Section Spilling.
       }
       eapply map.sameLength_putmany_of_list in L.
       destruct L as (st' & P).
+      (* TODO read_register_range
       eapply exec.call_cps; try eassumption. {
         rewrite arg_regs_alt; assumption.
       }
-      (* TODO read_register_range
 
       unfold spill_fbody.
       eapply exec.stackalloc. {
@@ -1754,6 +1781,7 @@ Section Spilling.
     all: simpl.
     all: try typeclasses eauto.
     all: try exact (fun (_: mem) => True).
+    all: try exact map.empty.
   Qed.
 
 End Spilling.
