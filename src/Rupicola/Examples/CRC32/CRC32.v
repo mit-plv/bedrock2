@@ -146,7 +146,7 @@ Section __.
     Definition crc32' (data : list byte) (*32bit or larger*) :=
       let/n crc32 := word.of_Z 0xFFFFFFFF in
       let/n idx := (word.of_Z 0) in
-      let/n crc32 :=
+      let/n (idx, crc32) :=
          ranged_for_u idx
                       (word.of_Z (Z.of_nat (length data)))
                       (fun crc32 tok idx _ => let/n b := (ListArray.get (data : ListArray.t byte) idx) in

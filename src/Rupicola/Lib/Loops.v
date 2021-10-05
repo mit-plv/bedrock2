@@ -957,14 +957,14 @@ Section with_parameters.
       intros; rewrite word.unsigned_of_Z, word.wrap_small; lia.
     Qed.
 
-    Definition ranged_for_u :=
-      ranged_for_w word_unsigned_of_Z_bracketed.
+    Definition ranged_for_u body a0 :=
+      \< to, ranged_for_w word_unsigned_of_Z_bracketed body a0 \>.
 
     Definition ranged_for_u_ind :=
       ranged_for_w_ind word_unsigned_of_Z_bracketed.
 
-    Definition ranged_for_all_u :=
-      ranged_for_all_w word_unsigned_of_Z_bracketed.
+    Definition ranged_for_all_u  body a0 :=
+      \< to, ranged_for_all_w word_unsigned_of_Z_bracketed body a0 \>.
 
     Definition ranged_for_all_u_ind :=
       ranged_for_all_w_ind word_unsigned_of_Z_bracketed.
@@ -980,14 +980,14 @@ Section with_parameters.
       intros; rewrite word.signed_of_Z, word.swrap_inrange; lia.
     Qed.
 
-    Definition ranged_for_s :=
-      ranged_for_w word_signed_of_Z_bracketed.
+    Definition ranged_for_s body a0 :=
+      \< to, ranged_for_w word_signed_of_Z_bracketed body a0 \>.
 
     Definition ranged_for_s_ind :=
       ranged_for_w_ind word_signed_of_Z_bracketed.
 
-    Definition ranged_for_all_s :=
-      ranged_for_all_w word_signed_of_Z_bracketed.
+    Definition ranged_for_all_s body a0 :=
+      \< to, ranged_for_all_w word_signed_of_Z_bracketed body a0 \>.
 
     Definition ranged_for_all_s_ind :=
       ranged_for_all_w_ind word_signed_of_Z_bracketed.
@@ -1463,6 +1463,76 @@ Section with_parameters.
       - intros; eapply Hk.
         rewrite max_of_Z; eassumption.
     Qed.
+
+    Lemma compile_ranged_for_w_pair : forall A {tr mem locals functions}
+          (from to: word)
+          (H: if signed then in_signed_bounds (to_Z from) /\ in_signed_bounds (to_Z to)
+              else in_unsigned_bounds (to_Z from) /\ in_unsigned_bounds (to_Z to))
+          body (a0: A),
+      let v := ranged_for_w from to to_Z_of_Z body a0 in
+      forall {P} {pred: P \< to, v \> -> predicate}
+        (loop_pred: word -> A -> predicate)
+        {k: nlet_eq_k P \< to, v \>} {k_impl} {body_impl}
+        (from_var to_var: string) vars,
+
+        let lp from tok_acc tr mem locals :=
+            let from := ExitToken.branch (fst tok_acc) (word.sub to (word.of_Z 1)) from in
+            loop_pred from (snd tok_acc) tr mem locals in
+
+        (forall from a0 tr mem locals,
+            loop_pred from a0 tr mem locals ->
+            map.getmany_of_list locals [from_var; to_var] =
+            Some [from; to]) ->
+
+        (forall from from' acc tr mem locals,
+            loop_pred from acc tr mem locals ->
+            loop_pred from' acc tr mem (map.put locals from_var from')) ->
+
+        loop_pred from a0 tr mem locals ->
+
+        ((* loop body *)
+          let lp := lp in
+          forall tr mem locals from'
+            (Hl: to_Z from - 1 < to_Z from')
+            (Hr: to_Z from' < to_Z to)
+            (Hr': to_Z from' <= to_Z to),
+            let tok := ExitToken.new in
+            let a := ranged_for' (to_Z from) (to_Z from')
+                                (w_body_tok _ _ to_Z_of_Z
+                                            (wbody body pr Hr')) a0 in
+            ExitToken.get (fst a) = false ->
+
+            loop_pred from' (snd a) tr mem locals ->
+            (<{ Trace := tr;
+                Memory := mem;
+                Locals := locals;
+                Functions := functions }>
+             body_impl
+             <{ lp from' (body (snd a) tok from' (conj Hl Hr)) }>)) ->
+        (let v := v in
+         forall tr mem locals,
+           let from' := max from to in
+           loop_pred from' v tr mem locals ->
+           (<{ Trace := tr;
+               Memory := mem;
+               Locals := locals;
+               Functions := functions }>
+            k_impl
+            <{ pred (k \< to, v \> eq_refl) }>)) ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd.seq
+          (cmd_loop_incr signed from_var to_var body_impl)
+          k_impl
+        <{ pred (nlet_eq (from_var :: vars) \< to, v \> k) }>.
+    Proof.
+      intros;
+        eapply compile_ranged_for_w
+          with (vars := vars) (k := fun v' (Heq: v' = v) => k \< to, v \> ltac:(f_equal; exact Heq));
+        eauto.
+    Qed.
   End Generic.
 
   Context {A: Type}
@@ -1473,14 +1543,16 @@ Section with_parameters.
           (from to : word).
 
   Definition compile_ranged_for_u :=
-    @compile_ranged_for_w false _ word.of_Z_unsigned word_unsigned_of_Z_bracketed
-                          word.maxu word.unsigned_maxu A tr m l functions from to
-                          (conj (word.unsigned_range _) (word.unsigned_range _)).
+    @compile_ranged_for_w_pair
+      false _ word.of_Z_unsigned word_unsigned_of_Z_bracketed
+      word.maxu word.unsigned_maxu A tr m l functions from to
+      (conj (word.unsigned_range _) (word.unsigned_range _)).
 
   Definition compile_ranged_for_s :=
-    @compile_ranged_for_w true _ word.of_Z_signed word_signed_of_Z_bracketed
-                          word.maxs word.signed_maxs A tr m l functions from to
-                          (conj (word.signed_range _) (word.signed_range _)).
+    @compile_ranged_for_w_pair
+      true _ word.of_Z_signed word_signed_of_Z_bracketed
+      word.maxs word.signed_maxs A tr m l functions from to
+      (conj (word.signed_range _) (word.signed_range _)).
 End with_parameters.
 
 Ltac pattern_tuple_references needle haystack :=

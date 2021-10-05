@@ -59,39 +59,38 @@ Section __.
                (a2: ListArray.t word.rep) :=
       let/n from := word.of_Z 0 in
       let/n nmask := (word.sub (word.of_Z (-1)) mask) in
-      let/n a1 := ranged_for_u
-                    from len
-                    (fun a1 tok idx Hlt =>
-                       let/n v1 := ListArray.get a1 idx in
-                       let/n v2 := ListArray.get a2 idx in
-                       let/n r := word.or (word.and mask v1)
-                                          (word.and nmask v2) in
-                       let/n a1 :=
-                          ListArray.put a1 idx r in
-                       (tok, a1)) a1 in
+      let/n (from, a1) :=
+         ranged_for_u
+           from len
+           (fun a1 tok idx Hlt =>
+              let/n v1 := ListArray.get a1 idx in
+              let/n v2 := ListArray.get a2 idx in
+              let/n r := word.or (word.and mask v1)
+                                (word.and nmask v2) in
+              let/n a1 :=
+                 ListArray.put a1 idx r in
+              (tok, a1)) a1 in
       (a1,a2).
-    
-    Definition cswap_array mask len 
+
+    Definition cswap_array mask len
                (a1: ListArray.t word.rep)
                (a2: ListArray.t word.rep) :=
       let/n from := word.of_Z 0 in
       let/n nmask := (word.sub (word.of_Z (-1)) mask) in
-      let/n (a1,a2) := ranged_for_u
-                    from len
-                    (fun p tok idx Hlt =>
-                       let/n v1 := ListArray.get (fst p) idx in
-                       let/n v2 := ListArray.get (snd p) idx in
-                       let/n r1 := word.or (word.and mask v1)
-                                          (word.and nmask v2) in
-                       let/n r2 := word.or (word.and mask v2)
-                                          (word.and nmask v1) in
-                       let/n a1 :=
-                          ListArray.put (fst p) idx r1 in
-                       let/n a2 :=
-                          ListArray.put (snd p) idx r2 in
-                       (tok, (a1,a2))) (a1,a2) in
-      (a1,a2).
-
+      let/n (from, a1, a2) :=
+         ranged_for_u
+           from len
+           (fun p tok idx Hlt =>
+              let/n v1 := ListArray.get (P2.car p) idx in
+              let/n v2 := ListArray.get (P2.cdr p) idx in
+              let/n r1 := word.or (word.and mask v1)
+                                 (word.and nmask v2) in
+              let/n r2 := word.or (word.and mask v2)
+                                 (word.and nmask v1) in
+              let/n a1 := ListArray.put (P2.car p) idx r1 in
+              let/n a2 := ListArray.put (P2.cdr p) idx r2 in
+              (tok, \< a1, a2 \>)) \< a1, a2 \> in
+      (a1, a2).
   End Gallina.
 
   

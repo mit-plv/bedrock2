@@ -948,7 +948,7 @@ Create HintDb compiler_side_conditions discriminated.
 Ltac compile_solve_side_conditions :=
   match goal with
   | [  |- sep _ _ _ ] =>
-      cbn [fst snd] in *;       (* FIXME generalize this? *)
+      cbn [fst snd P2.car P2.cdr] in *;       (* FIXME generalize this? *)
       ecancel_assumption
   | [  |- map.get _ _ = _ ] =>
     solve [subst_lets_in_goal; solve_map_get_goal]

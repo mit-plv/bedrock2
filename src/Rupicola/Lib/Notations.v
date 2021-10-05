@@ -140,6 +140,8 @@ Notation "'let/n' ( x , y , z ) := val 'in' body" :=
     (at level 200, x ident, y ident, body at level 200,
      only parsing).
 
+(* FIXME add a notation for loops? *)
+
 Infix "~>" := scalar (at level 40, only parsing).
 
 Notation "[[ locals ]]" := {| value := locals; _value_ok := _ |} (only printing).

@@ -39,12 +39,12 @@ Section Ex.
           (pr1: word.unsigned len < Z.of_nat n1)
           (pr2: word.unsigned len < Z.of_nat n2) :=
     let/n from := word.of_Z 0 in
-    let/n a2 := ranged_for_u
-                 from len
-                 (fun a2 tok idx Hlt =>
-                    let/n v := VectorArray.get a1 idx _ in
-                    let/n a2 := VectorArray.put a2 idx _ v in
-                    (tok, a2)) a2 in
+    let/n (from, a2) := ranged_for_u
+                         from len
+                         (fun a2 tok idx Hlt =>
+                            let/n v := VectorArray.get a1 idx _ in
+                            let/n a2 := VectorArray.put a2 idx _ v in
+                            (tok, a2)) a2 in
     (a1, a2).
   Next Obligation.
     pose proof word.unsigned_range idx.
@@ -89,12 +89,12 @@ Section Ex.
           (pr1: word.signed len < Z.of_nat n1)
           (pr2: word.signed len < Z.of_nat n2) :=
     let/n from eq:_ := word.of_Z 0 in
-    let/n a2 := ranged_for_s
-                 from len
-                 (fun a2 tok idx Hlt =>
-                    let/n v := VectorArray.get a1 idx _ in
-                    let/n a2 := VectorArray.put a2 idx _ v in
-                    (tok, a2)) a2 in
+    let/n (from, a2) := ranged_for_s
+                         from len
+                         (fun a2 tok idx Hlt =>
+                            let/n v := VectorArray.get a1 idx _ in
+                            let/n a2 := VectorArray.put a2 idx _ v in
+                            (tok, a2)) a2 in
     (a1, a2).
   Next Obligation.
     pose proof word.half_modulus_pos (word:=word).
@@ -137,12 +137,12 @@ Section Ex.
              (a1: ListArray.t word)
              (a2: ListArray.t word) :=
     let/n from := word.of_Z 0 in
-    let/n a2 := ranged_for_u
-                 from len
-                 (fun a2 tok idx Hlt =>
-                    let/n v := ListArray.get a1 idx in
-                    let/n a2 := ListArray.put a2 idx v in
-                    (tok, a2)) a2 in
+    let/n (from, a2) := ranged_for_u
+                         from len
+                         (fun a2 tok idx Hlt =>
+                            let/n v := ListArray.get a1 idx in
+                            let/n a2 := ListArray.put a2 idx v in
+                            (tok, a2)) a2 in
     (a1, a2).
 
   Instance spec_of_sizedlist_memcpy : spec_of "sizedlist_memcpy" :=
@@ -220,16 +220,16 @@ Section Ex.
     let/n from := word.of_Z 3 in
     let/n to := word.of_Z 5 in
     let/n tick := word.of_Z 0 in
-    let/n (tick, c) :=
-       ranged_for_u (A := P2.prod word cell)
-                    from to
-                    (fun '\< tick, c \> tok idx bounded =>
-                       let/n v := get c in
-                       let/n v := word.add v idx in
-                       let/n c := put v in
-                       let/n tick := word.add tick one in
-                       (tok, \< tick, c \>))
-                    \< tick, c \> : P2.prod word cell in
+    let/n (from, tick, c) :=
+       ranged_for_u
+         from to
+         (fun '\< tick, c \> tok idx bounded =>
+            let/n v := get c in
+            let/n v := word.add v idx in
+            let/n c := put v in
+            let/n tick := word.add tick one in
+            (tok, \< tick, c \>))
+         \< tick, c \> in
     (let/n v := get c in
      let/n v := word.add v tick in
      let/n c := put v in
