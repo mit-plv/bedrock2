@@ -1,5 +1,6 @@
 Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.Notations.
+Require Import Rupicola.Lib.Invariants.
 
 Open Scope list.
 
@@ -1555,78 +1556,21 @@ Section with_parameters.
       (conj (word.signed_range _) (word.signed_range _)).
 End with_parameters.
 
-Ltac pattern_tuple_references needle haystack :=
-  lazymatch needle with
-  | \< ?fst, ?snd \> =>
-    let hfn := pattern_tuple_references snd haystack in
-    match (eval pattern fst in hfn) with
-    | ?hf _ => hf
-    end
-  | _ =>
-    match (eval pattern needle in haystack) with
-    | ?hf _ => hf
-    end
-  end.
-
-Ltac apply_tuple_references needle acc haystack_fn :=
-  lazymatch needle with
-  | \< _, ?snd \> =>
-    let haystack_fn := constr:(haystack_fn (P2.car acc)) in
-    let haystack_fn := apply_tuple_references snd (P2.cdr acc) haystack_fn in
-    haystack_fn
-  | _ =>
-    constr:(haystack_fn acc)
-  end.
-
-Ltac change_tuple_references needle haystack :=
-  (* This two-step process avoids recursive replacements *)
-  let fn := pattern_tuple_references needle haystack in
-  let haystack := apply_tuple_references needle needle fn in
-  let haystack := (eval cbv beta in haystack) in
-  haystack.
-
-Ltac pattern_head needle haystack :=
-  let haystack := change_tuple_references needle haystack in
-  lazymatch (eval pattern needle in haystack) with
-  | ?hd _ => match hd with
-            (* | (fun _ => ?body) => *)
-            (*   let _ := constr:(body) in *)
-            (*   fail 1 "Pattern" needle "not found in" haystack *)
-            | _ => constr:(hd)
-            end
-  end.
-
-(* TODO redo generalization using names instead of values *)
-Ltac infer_loop_predicate from init :=
-  lazymatch goal with
-  | [ |- WeakestPrecondition.cmd _ _ ?tr ?mem ?locals _ ] =>
-    lazymatch goal with
-    | [ H: ?pred mem |- _ ] =>
-      let f_pred := pattern_head init pred in
-      let f_pred := pattern_head from f_pred in
-      let f_locals := pattern_head init locals in
-      let f_locals := pattern_head from f_locals in
-      let loop_pred := constr:(fun idx a2 tr' mem' locals' =>
-                                tr' = tr /\
-                                locals' = f_locals idx a2 /\
-                                (f_pred idx a2) mem') in
-      eval cbv beta in loop_pred
-    end
-  end.
-
 Ltac compile_ranged_for_u :=
   (* FIXME why doesn't simple eapply work for these lemmas? *)
   lazymatch goal with
-  | [ |- WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (ranged_for_u ?from _ _ ?init) _)) ] =>
-    let lp := infer_loop_predicate from init in
+  | [ |- WeakestPrecondition.cmd
+          _ _ _ _ _ (_ (nlet_eq _ (ranged_for_u _ _ _ _) _)) ] =>
+    let lp := infer_loop_predicate in
     eapply compile_ranged_for_u with (loop_pred := lp)
   end.
 
 Ltac compile_ranged_for_s :=
   (* FIXME why doesn't simple eapply work for these lemmas? *)
   lazymatch goal with
-  | [ |- WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (ranged_for_s ?from _ _ ?init) _)) ] =>
-    let lp := infer_loop_predicate from init  in
+  | [ |- WeakestPrecondition.cmd
+          _ _ _ _ _ (_ (nlet_eq _ (ranged_for_s _ _ _ _) _)) ] =>
+    let lp := infer_loop_predicate in
     eapply compile_ranged_for_s with (loop_pred := lp)
   end.
 

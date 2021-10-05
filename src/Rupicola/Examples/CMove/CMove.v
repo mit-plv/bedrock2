@@ -297,7 +297,7 @@ Section __.
   Hint Extern 10 (_ < _) => lia: compiler_side_conditions.
 
   Derive cmove_array_body SuchThat
-         (defn! "cmove_array" ("mask", "len", "c1", "c2") { cmove_array_body },
+         (defn! "cmove_array" ("mask", "len", "a1", "a2") { cmove_array_body },
           implements cmove_array)
          As cmove_array_body_correct.
   Proof.
@@ -319,7 +319,7 @@ Section __.
          * sizedlistarray_value AccessWord n ptr2 c2 * R)%sep mem' }.
 
   Derive cswap_array_body SuchThat
-         (defn! "cswap_array" ("mask", "len", "c1", "c2") { cswap_array_body },
+         (defn! "cswap_array" ("mask", "len", "a1", "a2") { cswap_array_body },
           implements cswap_array)
          As cswap_array_body_correct.
   Proof.

@@ -85,60 +85,57 @@ Ltac substitute_targets vars repls pred locals :=
   | _ => fail "substitute_targets:" vars "should be a list"
   end.
 
-(* This replaces apply_tuple_references.  FIXME move *)
-Ltac make_uncurried_application args_tuple curried_fn :=
-  lazymatch type of args_tuple with
-  | P2.prod _ _ =>
-    let fn := constr:(curried_fn (P2.car args_tuple)) in
-    let fn := make_uncurried_application (P2.cdr args_tuple) fn in
-    fn
-  | _ =>
-    constr:(curried_fn args_tuple)
-  end.
-
-Ltac make_uncurried_argtype fn_type :=
-  lazymatch fn_type with
-  | ?A -> ?B -> ?C =>
-    let bc := make_uncurried_argtype (B -> C) in
-    constr:(P2.prod A bc)
-  | ?A -> ?B => constr:(A)
-  | ?A => fail "Not a function"
-  end.
-
-Ltac uncurry fn :=
-  let arrows := type of fn in
-  let argtype := make_uncurried_argtype arrows in
-  constr:(fun args_tuple: argtype =>
-            ltac:(let body := make_uncurried_application args_tuple fn in
-                  exact body)).
-
-Ltac infer_val_predicate'' vars args tr pred locals :=
-  match substitute_targets vars args pred locals with
+Ltac make_predicate vars args tr pred locals :=
+  lazymatch substitute_targets vars args pred locals with
   | (?pred, ?locals) =>
     constr:(fun tr' mem' locals' =>
-              tr' = tr /\
-              locals' = locals /\
-              pred mem')
+              tr' = tr /\ locals' = locals /\ pred mem')
+  end.
+
+Ltac _infer_predicate_from_context k :=
+  lazymatch goal with
+  | [ |- WeakestPrecondition.cmd
+          _ _ ?tr ?mem ?locals (_ (nlet_eq ?vars ?v _)) ] =>
+    lazymatch goal with
+    | [ H: ?pred mem |- _ ] =>
+      let argstype := type of v in
+      k argstype vars tr pred locals
+    end
   end.
 
 Ltac infer_val_predicate' argstype vars tr pred locals :=
   let val_pred :=
       constr:(fun (args: argstype) =>
-                ltac:(let f := infer_val_predicate'' vars args tr pred locals in
+                ltac:(let f := make_predicate vars args tr pred locals in
                       exact f)) in
   eval cbv beta in val_pred.
 
 Ltac infer_val_predicate :=
-  lazymatch goal with
-  | [ |- WeakestPrecondition.cmd
-          _ _ ?tr ?mem ?locals
-          (_ (nlet_eq ?vars ?v _)) ] =>
-    lazymatch goal with
-    | [ H: ?pred mem |- _ ] =>
-      let argstype := type of v in
-      infer_val_predicate' argstype vars tr pred locals
+  _infer_predicate_from_context infer_val_predicate'.
+
+Ltac make_loop_predicate idxvar idxarg vars args tr pred locals :=
+  lazymatch substitute_target idxvar idxarg pred locals with
+  | (?pred, ?locals) => make_predicate vars args tr pred locals
+  end.
+
+Ltac infer_loop_predicate' argstype vars tr pred locals :=
+  (* Like make_predicate, but with one distinguished binding for `idx` at
+     the front. *)
+  match argstype with
+  | \<< ?idxtype, ?argstype \>> =>
+    match vars with
+    | ?idxvar :: ?vars =>
+      let val_pred :=
+          constr:(fun (idx: idxtype) (args: argstype) =>
+                    ltac:(let f := make_loop_predicate
+                                    idxvar idx vars args tr pred locals in
+                          exact f)) in
+      eval cbv beta in val_pred
     end
   end.
+
+Ltac infer_loop_predicate :=
+  _infer_predicate_from_context infer_loop_predicate'.
 
 Section Examples.
   Context {width: Z} {BW: Bitwidth width}.
@@ -196,4 +193,19 @@ Section Examples.
                                    (map.put map.empty "v" v) "ptr" ptr)
                 in exact t).
   End ValInference.
+
+  Section LoopInference.
+    Context (tr: Semantics.trace) {A} (ptr v v' from: word) (a a': A) (R: mem -> Prop)
+            (rp: word -> A -> mem -> Prop).
+
+    Check ltac:(let t := infer_loop_predicate'
+                          (\<< word, A, word \>>)
+                          ["from"; "ptr"; "v"]
+                          tr
+                          (rp ptr a ⋆ R)
+                          (map.put (map := locals)
+                                   (map.put (map.put map.empty "v" v)
+                                            "from" from) "ptr" ptr)
+                in exact t).
+  End LoopInference.
 End Examples.
