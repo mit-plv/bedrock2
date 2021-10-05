@@ -896,6 +896,8 @@ Section with_parameters.
 
       Definition ranged_for_w (a0: A) : A :=
         ranged_for (to_Z from) (to_Z to) w_body_tok a0.
+      Definition ranged_for_w_continued (a0: A) : \<< word, A \>> :=
+        \< to, ranged_for_w a0 \>.
 
       Lemma ranged_for_w_exit a0:
         to_Z from >= to_Z to -> ranged_for_w a0 = a0.
@@ -927,6 +929,8 @@ Section with_parameters.
 
       Definition ranged_for_all_w (a0: A) : A :=
         ranged_for_all (to_Z from) (to_Z to) w_body a0.
+      Definition ranged_for_all_w_continued (a0: A) : \<< word, A \>> :=
+        \< to, ranged_for_all_w a0 \>.
 
       Lemma ranged_for_all_w_exit a0:
         to_Z from >= to_Z to -> ranged_for_all_w a0 = a0.
@@ -958,14 +962,18 @@ Section with_parameters.
       intros; rewrite word.unsigned_of_Z, word.wrap_small; lia.
     Qed.
 
-    Definition ranged_for_u body a0 :=
-      \< to, ranged_for_w word_unsigned_of_Z_bracketed body a0 \>.
+    Definition ranged_for_u :=
+      ranged_for_w word_unsigned_of_Z_bracketed.
+    Definition ranged_for_u_continued :=
+      ranged_for_w_continued word_unsigned_of_Z_bracketed.
 
     Definition ranged_for_u_ind :=
       ranged_for_w_ind word_unsigned_of_Z_bracketed.
 
-    Definition ranged_for_all_u  body a0 :=
-      \< to, ranged_for_all_w word_unsigned_of_Z_bracketed body a0 \>.
+    Definition ranged_for_all_u :=
+      ranged_for_all_w word_unsigned_of_Z_bracketed.
+    Definition ranged_for_all_u_continued :=
+      ranged_for_all_w_continued word_unsigned_of_Z_bracketed.
 
     Definition ranged_for_all_u_ind :=
       ranged_for_all_w_ind word_unsigned_of_Z_bracketed.
@@ -981,14 +989,18 @@ Section with_parameters.
       intros; rewrite word.signed_of_Z, word.swrap_inrange; lia.
     Qed.
 
-    Definition ranged_for_s body a0 :=
-      \< to, ranged_for_w word_signed_of_Z_bracketed body a0 \>.
+    Definition ranged_for_s :=
+      ranged_for_w word_signed_of_Z_bracketed.
+    Definition ranged_for_s_continued :=
+      ranged_for_w_continued word_signed_of_Z_bracketed.
 
     Definition ranged_for_s_ind :=
       ranged_for_w_ind word_signed_of_Z_bracketed.
 
-    Definition ranged_for_all_s body a0 :=
-      \< to, ranged_for_all_w word_signed_of_Z_bracketed body a0 \>.
+    Definition ranged_for_all_s :=
+      ranged_for_all_w word_signed_of_Z_bracketed.
+    Definition ranged_for_all_s_continued :=
+      ranged_for_all_w_continued word_signed_of_Z_bracketed.
 
     Definition ranged_for_all_s_ind :=
       ranged_for_all_w_ind word_signed_of_Z_bracketed.
@@ -1465,15 +1477,16 @@ Section with_parameters.
         rewrite max_of_Z; eassumption.
     Qed.
 
-    Lemma compile_ranged_for_w_pair : forall A {tr mem locals functions}
+    Lemma compile_ranged_for_w_continued : forall A {tr mem locals functions}
           (from to: word)
           (H: if signed then in_signed_bounds (to_Z from) /\ in_signed_bounds (to_Z to)
               else in_unsigned_bounds (to_Z from) /\ in_unsigned_bounds (to_Z to))
           body (a0: A),
-      let v := ranged_for_w from to to_Z_of_Z body a0 in
-      forall {P} {pred: P \< to, v \> -> predicate}
+      let v0 := ranged_for_w from to to_Z_of_Z body a0 in
+      let v := ranged_for_w_continued from to to_Z_of_Z body a0 in
+      forall {P} {pred: P v -> predicate}
         (loop_pred: word -> A -> predicate)
-        {k: nlet_eq_k P \< to, v \>} {k_impl} {body_impl}
+        {k: nlet_eq_k P v} {k_impl} {body_impl}
         (from_var to_var: string) vars,
 
         let lp from tok_acc tr mem locals :=
@@ -1510,6 +1523,89 @@ Section with_parameters.
                 Functions := functions }>
              body_impl
              <{ lp from' (body (snd a) tok from' (conj Hl Hr)) }>)) ->
+        (let v0 := v0 in
+         forall tr mem locals,
+           let from' := max from to in
+           loop_pred from' v0 tr mem locals ->
+           (<{ Trace := tr;
+               Memory := mem;
+               Locals := locals;
+               Functions := functions }>
+            k_impl
+            <{ pred (k \< to, v0 \> eq_refl) }>)) ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd.seq
+          (cmd_loop_incr signed from_var to_var body_impl)
+          k_impl
+        <{ pred (nlet_eq (from_var :: vars) v k) }>.
+    Proof.
+      intros;
+        eapply compile_ranged_for_w
+          with (vars := vars)
+               (k := fun v' (Heq: v' = v0) => k \< to, v' \> ltac:(rewrite Heq; reflexivity));
+        eauto.
+    Qed.
+
+    Definition cmd_loop_fresh signed from_var from_expr to_var to_expr body_impl k_impl :=
+      cmd.seq (cmd.set from_var from_expr)
+              (cmd.seq (cmd.set to_var to_expr)
+                       (cmd.seq (cmd_loop_incr signed from_var to_var body_impl)
+                       k_impl)).
+
+    Lemma compile_ranged_for_w_fresh : forall A {tr mem locals functions}
+          (from to: word)
+          (H: if signed then in_signed_bounds (to_Z from) /\ in_signed_bounds (to_Z to)
+              else in_unsigned_bounds (to_Z from) /\ in_unsigned_bounds (to_Z to))
+          body (a0: A),
+      let v := ranged_for_w from to to_Z_of_Z body a0 in
+      forall {P} {pred: P v -> predicate}
+        (loop_pred: word -> A -> predicate)
+        {k: nlet_eq_k P v} {k_impl} {body_impl}
+        (from_var to_var: string) (from_expr to_expr: expr) vars,
+
+        let locals1 := map.put locals from_var from in
+        let locals2 := map.put locals1 to_var to in
+
+        WeakestPrecondition.dexpr mem locals from_expr from ->
+        WeakestPrecondition.dexpr mem locals1 to_expr to ->
+
+        let lp from tok_acc tr mem locals :=
+            let from := ExitToken.branch (fst tok_acc) (word.sub to (word.of_Z 1)) from in
+            loop_pred from (snd tok_acc) tr mem locals in
+
+        (forall from a0 tr mem locals,
+            loop_pred from a0 tr mem locals ->
+            map.getmany_of_list locals [from_var; to_var] =
+            Some [from; to]) ->
+
+        (forall from from' acc tr mem locals,
+            loop_pred from acc tr mem locals ->
+            loop_pred from' acc tr mem (map.put locals from_var from')) ->
+
+        loop_pred from a0 tr mem locals2 ->
+
+        ((* loop body *)
+          let lp := lp in
+          forall tr mem locals from'
+            (Hl: to_Z from - 1 < to_Z from')
+            (Hr: to_Z from' < to_Z to)
+            (Hr': to_Z from' <= to_Z to),
+            let tok := ExitToken.new in
+            let a := ranged_for' (to_Z from) (to_Z from')
+                                (w_body_tok _ _ to_Z_of_Z
+                                            (wbody body pr Hr')) a0 in
+            ExitToken.get (fst a) = false ->
+
+            loop_pred from' (snd a) tr mem locals ->
+            (<{ Trace := tr;
+                Memory := mem;
+                Locals := locals;
+                Functions := functions }>
+             body_impl
+             <{ lp from' (body (snd a) tok from' (conj Hl Hr)) }>)) ->
         (let v := v in
          forall tr mem locals,
            let from' := max from to in
@@ -1519,20 +1615,19 @@ Section with_parameters.
                Locals := locals;
                Functions := functions }>
             k_impl
-            <{ pred (k \< to, v \> eq_refl) }>)) ->
+            <{ pred (k v eq_refl) }>)) ->
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
            Functions := functions }>
-        cmd.seq
-          (cmd_loop_incr signed from_var to_var body_impl)
-          k_impl
-        <{ pred (nlet_eq (from_var :: vars) \< to, v \> k) }>.
+        cmd_loop_fresh signed from_var from_expr to_var to_expr body_impl k_impl
+        <{ pred (nlet_eq vars v k) }>.
     Proof.
-      intros;
-        eapply compile_ranged_for_w
-          with (vars := vars) (k := fun v' (Heq: v' = v) => k \< to, v \> ltac:(f_equal; exact Heq));
-        eauto.
+      intros.
+      unfold cmd_loop_fresh.
+      repeat straightline; eexists; split; eauto.
+      repeat straightline; eexists; split; eauto.
+      eapply compile_ranged_for_w; eauto.
     Qed.
   End Generic.
 
@@ -1544,39 +1639,89 @@ Section with_parameters.
           (from to : word).
 
   Definition compile_ranged_for_u :=
-    @compile_ranged_for_w_pair
+    @compile_ranged_for_w_fresh
       false _ word.of_Z_unsigned word_unsigned_of_Z_bracketed
       word.maxu word.unsigned_maxu A tr m l functions from to
       (conj (word.unsigned_range _) (word.unsigned_range _)).
 
   Definition compile_ranged_for_s :=
-    @compile_ranged_for_w_pair
+    @compile_ranged_for_w_fresh
+      true _ word.of_Z_signed word_signed_of_Z_bracketed
+      word.maxs word.signed_maxs A tr m l functions from to
+      (conj (word.signed_range _) (word.signed_range _)).
+
+  Definition compile_ranged_for_u_continued :=
+    @compile_ranged_for_w_continued
+      false _ word.of_Z_unsigned word_unsigned_of_Z_bracketed
+      word.maxu word.unsigned_maxu A tr m l functions from to
+      (conj (word.unsigned_range _) (word.unsigned_range _)).
+
+  Definition compile_ranged_for_s_continued :=
+    @compile_ranged_for_w_continued
       true _ word.of_Z_signed word_signed_of_Z_bracketed
       word.maxs word.signed_maxs A tr m l functions from to
       (conj (word.signed_range _) (word.signed_range _)).
 End with_parameters.
 
-Ltac compile_ranged_for_u :=
-  (* FIXME why doesn't simple eapply work for these lemmas? *)
+(* FIXME why doesn't simple eapply work for these lemmas? *)
+
+Ltac compile_ranged_for_continued :=
   lazymatch goal with
-  | [ |- WeakestPrecondition.cmd
-          _ _ _ _ _ (_ (nlet_eq _ (ranged_for_u _ _ _ _) _)) ] =>
-    let lp := infer_loop_predicate in
-    eapply compile_ranged_for_u with (loop_pred := lp)
+  | [ |- WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ ?v _)) ] =>
+    lazymatch v with
+    | (ranged_for_u_continued _ _ _ _) =>
+        let lp := infer_loop_predicate_continued in
+        eapply compile_ranged_for_u_continued with (loop_pred := lp)
+    | (ranged_for_s_continued _ _ _ _) =>
+        let lp := infer_loop_predicate_continued in
+        eapply compile_ranged_for_s_continued with (loop_pred := lp)
+    end
   end.
 
-Ltac compile_ranged_for_s :=
-  (* FIXME why doesn't simple eapply work for these lemmas? *)
+Definition _gs (prefix: string) (n: nat) :=
+  ("_gs_" ++ prefix ++ NilEmpty.string_of_uint (Nat.to_uint n))%string.
+
+Definition gs {prefix: string} {n: nat} (str: string) :=
+  str.
+
+Ltac gensym_next locals prefix n :=
+  match locals with
+  | context[gs prefix n] => gensym_next locals prefix (S n)
+  | _ => n
+  end.
+
+Ltac gensym locals prefix :=
+  let n0 := match locals with
+           | context[gs prefix ?n] => constr:(S n)
+           | _ => constr:(0%nat)
+           end in
+  let n := gensym_next locals prefix n0 in
+  let str := constr:(_gs prefix n) in
+  let str := (eval vm_compute in str) in
+  constr:(@gs prefix n str).
+
+#[export] Hint Unfold gs : solve_map_get_goal.
+
+Ltac _compile_ranged_for locals to thm :=
+  let from_v := gensym locals "from" in
+  let to_v := gensym locals "to" in
+  let lp := Invariants.infer_loop_predicate from_v to_v to in
+  eapply thm with (from_var := from_v) (to_var := to_v) (loop_pred := lp).
+
+Ltac compile_ranged_for :=
   lazymatch goal with
-  | [ |- WeakestPrecondition.cmd
-          _ _ _ _ _ (_ (nlet_eq _ (ranged_for_s _ _ _ _) _)) ] =>
-    let lp := infer_loop_predicate in
-    eapply compile_ranged_for_s with (loop_pred := lp)
+  | [ |- WeakestPrecondition.cmd _ _ _ _ ?locals (_ (nlet_eq _ ?v _)) ] =>
+    lazymatch v with
+    | (ranged_for_u _ ?to _ _) =>
+      _compile_ranged_for locals to compile_ranged_for_u
+    | (ranged_for_s _ ?to _ _) =>
+      _compile_ranged_for locals to compile_ranged_for_s
+    end
   end.
 
 Module LoopCompiler.
-  #[export] Hint Extern 1 => compile_ranged_for_s; shelve : compiler.
-  #[export] Hint Extern 1 => compile_ranged_for_u; shelve : compiler.
+  #[export] Hint Extern 1 => compile_ranged_for_continued; shelve : compiler.
+  #[export] Hint Extern 1 => compile_ranged_for; shelve : compiler.
 End LoopCompiler.
 
 Require bedrock2.BasicC64Semantics.

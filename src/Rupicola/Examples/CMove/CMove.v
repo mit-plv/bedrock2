@@ -59,17 +59,16 @@ Section __.
                (a2: ListArray.t word.rep) :=
       let/n from := word.of_Z 0 in
       let/n nmask := (word.sub (word.of_Z (-1)) mask) in
-      let/n (from, a1) :=
-         ranged_for_u
-           from len
-           (fun a1 tok idx Hlt =>
-              let/n v1 := ListArray.get a1 idx in
-              let/n v2 := ListArray.get a2 idx in
-              let/n r := word.or (word.and mask v1)
-                                (word.and nmask v2) in
-              let/n a1 :=
-                 ListArray.put a1 idx r in
-              (tok, a1)) a1 in
+      let/n a1 := ranged_for_u
+                    from len
+                    (fun a1 tok idx Hlt =>
+                       let/n v1 := ListArray.get a1 idx in
+                       let/n v2 := ListArray.get a2 idx in
+                       let/n r := word.or (word.and mask v1)
+                                          (word.and nmask v2) in
+                       let/n a1 :=
+                          ListArray.put a1 idx r in
+                       (tok, a1)) a1 in
       (a1,a2).
 
     Definition cswap_array mask len
@@ -77,7 +76,7 @@ Section __.
                (a2: ListArray.t word.rep) :=
       let/n from := word.of_Z 0 in
       let/n nmask := (word.sub (word.of_Z (-1)) mask) in
-      let/n (from, a1, a2) :=
+      let/n (a1, a2) :=
          ranged_for_u
            from len
            (fun p tok idx Hlt =>

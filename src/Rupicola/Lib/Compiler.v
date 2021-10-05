@@ -616,6 +616,7 @@ Ltac compile_use_default_value :=
   end.
 
 Create HintDb compiler_side_conditions discriminated.
+Create HintDb solve_map_get_goal.
 
 (* FIXME most cases below could be folded into the database above *)
 Ltac compile_solve_side_conditions :=
@@ -624,7 +625,9 @@ Ltac compile_solve_side_conditions :=
       cbn [fst snd P2.car P2.cdr] in *;       (* FIXME generalize this? *)
       ecancel_assumption
   | [  |- map.get _ _ = _ ] =>
-    solve [subst_lets_in_goal; solve_map_get_goal]
+    solve [subst_lets_in_goal;
+           autounfold with solve_map_get_goal;
+           solve_map_get_goal]
   | [  |- map.getmany_of_list _ _ = _ ] =>
     apply map.getmany_of_list_cons
   | [  |- map.remove_many _ _ = _ ] =>

@@ -113,29 +113,53 @@ Ltac infer_val_predicate' argstype vars tr pred locals :=
 Ltac infer_val_predicate :=
   _infer_predicate_from_context infer_val_predicate'.
 
-Ltac make_loop_predicate idxvar idxarg vars args tr pred locals :=
+Ltac make_loop_predicate from_var from_arg to_var to_val vars args tr pred locals :=
+  lazymatch substitute_target from_var from_arg pred locals with
+  | (?pred, ?locals) =>
+    lazymatch substitute_target to_var to_val pred locals with
+    | (?pred, ?locals) => make_predicate vars args tr pred locals
+    end
+  end.
+
+Ltac infer_loop_predicate'
+     from_var to_var to_val
+     argstype vars tr pred locals :=
+  (** Like `make_predicate`, but with a binding for `idx` at the front. *)
+  let idxtype := type of to_val in
+  let val_pred :=
+      constr:(fun (idx: idxtype) (args: argstype) =>
+                ltac:(let f := make_loop_predicate
+                                from_var idx to_var to_val
+                                vars args tr pred locals in
+                      exact f)) in
+  eval cbv beta in val_pred.
+
+Ltac infer_loop_predicate from_var to_var to_val :=
+  _infer_predicate_from_context
+    ltac:(infer_loop_predicate' from_var to_var to_val).
+
+Ltac make_loop_predicate_continued idxvar idxarg vars args tr pred locals :=
   lazymatch substitute_target idxvar idxarg pred locals with
   | (?pred, ?locals) => make_predicate vars args tr pred locals
   end.
 
-Ltac infer_loop_predicate' argstype vars tr pred locals :=
-  (* Like make_predicate, but with one distinguished binding for `idx` at
-     the front. *)
+Ltac infer_loop_predicate_continued' argstype vars tr pred locals :=
+  (** Like `make_predicate`, but with a binding for `idx` at the front. *)
   match argstype with
   | \<< ?idxtype, ?argstype \>> =>
     match vars with
     | ?idxvar :: ?vars =>
       let val_pred :=
           constr:(fun (idx: idxtype) (args: argstype) =>
-                    ltac:(let f := make_loop_predicate
+                    ltac:(let f := make_loop_predicate_continued
                                     idxvar idx vars args tr pred locals in
                           exact f)) in
       eval cbv beta in val_pred
     end
   end.
 
-Ltac infer_loop_predicate :=
-  _infer_predicate_from_context infer_loop_predicate'.
+Ltac infer_loop_predicate_continued :=
+  _infer_predicate_from_context infer_loop_predicate_continued'.
 
 Section Examples.
   Context {width: Z} {BW: Bitwidth width}.
@@ -198,7 +222,7 @@ Section Examples.
     Context (tr: Semantics.trace) {A} (ptr v v' from: word) (a a': A) (R: mem -> Prop)
             (rp: word -> A -> mem -> Prop).
 
-    Check ltac:(let t := infer_loop_predicate'
+    Check ltac:(let t := infer_loop_predicate_continued'
                           (\<< word, A, word \>>)
                           ["from"; "ptr"; "v"]
                           tr

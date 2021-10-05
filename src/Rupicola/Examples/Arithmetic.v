@@ -50,12 +50,12 @@ Module FNV1A (Import P: FNV1A_params).
     let/n p := P.prime in
     let/n hash := P.offset in
     let/n from := word.of_Z 0 in
-    let/n (from, hash) := ranged_for_u
-                           from len
-                           (fun hash tok idx Hlt =>
-                              let/n b := ListArray.get data idx in
-                              let/n hash := word.mul (word.xor hash (word_of_byte b)) p in
-                              (tok, hash)) hash in
+    let/n hash := ranged_for_u
+                   from len
+                   (fun hash tok idx Hlt =>
+                      let/n b := ListArray.get data idx in
+                      let/n hash := word.mul (word.xor hash (word_of_byte b)) p in
+                      (tok, hash)) hash in
     hash.
 
   Instance spec_of_fnv1a : spec_of "fnv1a" :=
