@@ -64,10 +64,10 @@ Module FNV1A (Import P: FNV1A_params).
            (pr: word.unsigned len < Z.of_nat n)
            ~> hash,
     { requires tr mem :=
-        (sizedlistarray_value AccessByte data_ptr n data ⋆ R) mem;
+        (sizedlistarray_value AccessByte n data_ptr data ⋆ R) mem;
       ensures tr' mem' :=
         tr = tr' /\
-        (sizedlistarray_value AccessByte data_ptr n data ⋆ R) mem' /\
+        (sizedlistarray_value AccessByte n data_ptr data ⋆ R) mem' /\
         hash = fnv1a data len }.
 
   Import LoopCompiler.

@@ -628,34 +628,34 @@ Section with_parameters.
     Notation put a idx v := (ListArray.put a idx v).
 
     Definition sizedlistarray_value
-               (addr: word) (len: nat) (a: ListArray.t ai.(ai_type))
+               (len: nat) (addr: word) (a: ListArray.t ai.(ai_type))
       : memT -> Prop :=
       sep (emp (List.length a = len))
           (listarray_value sz addr a).
 
-    Lemma sizedlistarray_value_of_array addr len a mem :
+    Lemma sizedlistarray_value_of_array len addr a mem :
       List.length a = len ->
       listarray_value sz addr a mem ->
-      sizedlistarray_value addr len a mem.
+      sizedlistarray_value len addr a mem.
     Proof. intros; apply sep_emp_l; eauto. Qed.
 
-    Lemma array_of_sizedlistarray_value addr len a mem :
-      sizedlistarray_value addr len a mem ->
+    Lemma array_of_sizedlistarray_value len addr a mem :
+      sizedlistarray_value len addr a mem ->
       listarray_value sz addr a mem.
     Proof. intros H; apply sep_emp_l in H; intuition. Qed.
 
-    Lemma length_of_sizedlistarray_value addr len a mem :
-      sizedlistarray_value addr len a mem ->
+    Lemma length_of_sizedlistarray_value len addr a mem :
+      sizedlistarray_value len addr a mem ->
       List.length a = len.
     Proof. intros H; apply sep_emp_l in H; intuition. Qed.
 
     Notation repr := sizedlistarray_value.
 
     Lemma SizedListArray_Hrw:
-      forall addr len (a: ListArray.t ai.(ai_type)),
+      forall len addr (a: ListArray.t ai.(ai_type)),
         List.length a = len ->
         Lift1Prop.iff1
-          (repr addr len a)
+          (repr len addr a)
           (array_repr sz (fun x => to_list x) addr a).
     Proof.
       unfold sizedlistarray_value.
@@ -663,8 +663,8 @@ Section with_parameters.
     Qed.
 
     Lemma SizedListArray_length :
-      forall addr len (a: ListArray.t ai.(ai_type)) mem R,
-        (repr addr len a * R)%sep mem -> List.length a = len.
+      forall len addr (a: ListArray.t ai.(ai_type)) mem R,
+        (repr len addr a * R)%sep mem -> List.length a = len.
     Proof.
       intros * H; unfold repr in H.
       eapply proj1. apply sep_emp_l with (m := mem).
@@ -677,7 +677,7 @@ Section with_parameters.
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
         R (a_ptr: word) a_var idx_var var,
 
-        sep (sizedlistarray_value a_ptr len a) R mem ->
+        sep (sizedlistarray_value len a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
         map.get locals idx_var = Some (word.of_Z (Z.of_nat (cast idx))) ->
 
@@ -706,7 +706,7 @@ Section with_parameters.
         <{ pred (nlet_eq [var] v k) }>.
     Proof.
       intros.
-      eapply (compile_array_get sz id (fun x => K_to_nat idx) _ (fun (addr: word) a => repr addr len a));
+      eapply (compile_array_get sz id (fun x => K_to_nat idx) _ (fun (addr: word) a => repr len addr a));
         eauto using ListArray_Hget.
       - eapply SizedListArray_Hrw, SizedListArray_length.
         eassumption.
@@ -721,7 +721,7 @@ Section with_parameters.
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
         R (a_ptr: word) a_var idx_var val_var var,
 
-        sep (sizedlistarray_value a_ptr len a) R mem ->
+        sep (sizedlistarray_value len a_ptr a) R mem ->
         map.get locals a_var = Some a_ptr ->
         map.get locals idx_var = Some (word.of_Z (Z.of_nat (cast idx))) ->
         map.get locals val_var = Some (ai.(ai_to_word) val) ->
@@ -730,7 +730,7 @@ Section with_parameters.
 
         (let v := v in
          forall mem',
-           sep (sizedlistarray_value a_ptr len v) R mem' ->
+           sep (sizedlistarray_value len a_ptr v) R mem' ->
            <{ Trace := tr;
               Memory := mem';
               Locals := locals;
@@ -752,7 +752,7 @@ Section with_parameters.
         <{ pred (nlet_eq [var] v k) }>.
     Proof.
       intros.
-      eapply (compile_array_put sz id (fun x => K_to_nat x) _ _ (fun (addr: word) a => repr addr len a));
+      eapply (compile_array_put sz id (fun x => K_to_nat x) _ _ (fun (addr: word) a => repr len addr a));
         eauto using ListArray_Hget, ListArray_Hput,
         ListArray_Hgetput.
       - eapply SizedListArray_Hrw, SizedListArray_length.

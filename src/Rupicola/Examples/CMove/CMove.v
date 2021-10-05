@@ -284,13 +284,13 @@ Section __.
     { requires tr mem :=
         word.unsigned len = Z.of_nat n /\
         is_mask mask /\
-        (sizedlistarray_value AccessWord ptr1 n c1
-         * sizedlistarray_value AccessWord ptr2 n c2 * R)%sep mem;
+        (sizedlistarray_value AccessWord n ptr1 c1
+         * sizedlistarray_value AccessWord n ptr2 c2 * R)%sep mem;
       ensures tr' mem' :=
         tr' = tr /\
         let (c1,c2) := cmove_array mask len c1 c2 in
-        (sizedlistarray_value AccessWord ptr1 n c1
-         * sizedlistarray_value AccessWord ptr2 n c2 * R)%sep mem' }.
+        (sizedlistarray_value AccessWord n ptr1 c1
+         * sizedlistarray_value AccessWord n ptr2 c2 * R)%sep mem' }.
 
   Import SizedListArrayCompiler.
   Import LoopCompiler.
@@ -310,13 +310,13 @@ Section __.
     { requires tr mem :=
         word.unsigned len = Z.of_nat n /\
         is_mask mask /\
-        (sizedlistarray_value AccessWord ptr1 n c1
-         * sizedlistarray_value AccessWord ptr2 n c2 * R)%sep mem;
+        (sizedlistarray_value AccessWord n ptr1 c1
+         * sizedlistarray_value AccessWord n ptr2 c2 * R)%sep mem;
       ensures tr' mem' :=
         tr' = tr /\
         let (c1,c2) := cswap_array mask len c1 c2 in
-        (sizedlistarray_value AccessWord ptr1 n c1
-         * sizedlistarray_value AccessWord ptr2 n c2 * R)%sep mem' }.
+        (sizedlistarray_value AccessWord n ptr1 c1
+         * sizedlistarray_value AccessWord n ptr2 c2 * R)%sep mem' }.
 
   Derive cswap_array_body SuchThat
          (defn! "cswap_array" ("mask", "len", "c1", "c2") { cswap_array_body },

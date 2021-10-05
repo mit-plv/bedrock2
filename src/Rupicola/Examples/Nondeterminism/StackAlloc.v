@@ -32,10 +32,10 @@ Section Peek.
       Z.of_nat nbytes mod Memory.bytes_per_word width = 0 ->
       (forall ptr (bs: ListArray.t byte) mem,
           List.length bs = nbytes ->
-          (sizedlistarray_value AccessByte ptr nbytes bs * R)%sep mem ->
+          (sizedlistarray_value AccessByte nbytes ptr bs * R)%sep mem ->
           let pred g tr' mem' locals' :=
               exists R' bs',
-                (sizedlistarray_value AccessByte ptr nbytes bs' * R')%sep mem' /\
+                (sizedlistarray_value AccessByte nbytes ptr bs' * R')%sep mem' /\
                 forall mem'', R' mem'' -> pred g tr' mem'' locals' in
           <{ Trace := tr;
              Memory := mem;

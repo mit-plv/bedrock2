@@ -153,13 +153,13 @@ Section Ex.
           (pr2: word.unsigned len < Z.of_nat n2)
           R,
     { requires tr mem :=
-        (sizedlistarray_value AccessWord a1_ptr n1 a1 ⋆
-                              sizedlistarray_value AccessWord a2_ptr n2 a2 ⋆ R) mem;
+        (sizedlistarray_value AccessWord n1 a1_ptr a1 ⋆
+         sizedlistarray_value AccessWord n2 a2_ptr a2 ⋆ R) mem;
       ensures tr' mem' :=
         tr' = tr /\
         let res := list_memcpy len a1 a2 in
-        (sizedlistarray_value AccessWord a1_ptr n1 (fst res) ⋆
-                              sizedlistarray_value AccessWord a2_ptr n2 (snd res) ⋆ R) mem' }.
+        (sizedlistarray_value AccessWord n1 a1_ptr (fst res) ⋆
+         sizedlistarray_value AccessWord n2 a2_ptr (snd res) ⋆ R) mem' }.
 
   Section Sz.
     Import SizedListArrayCompiler.
