@@ -530,24 +530,8 @@ Section __.
   Qed.
   
   Hint Extern 1 => simple eapply @compile_table_nth; shelve : compiler.
-
-(*
-  Definition set_local_nat locals var n :=
-    (map.put locals var (word.of_Z (Z.of_nat n) : word)).
-*)
-
-  Hint Extern 1 => simple eapply compile_table_nth; shelve : compiler.
-
-
-  Ltac solve_get_put :=
-    repeat(
-        (rewrite map.get_put_same; auto;easy)
-        ||  rewrite map.get_put_diff); easy.
-
-      
   Hint Extern 1 => simple eapply @compile_byte_unsizedlistarray_get; shelve : compiler.
 
-  
   Lemma Nsucc_double_preserves_leq n p
     : Z.of_N n <= Z.pos p -> Z.of_N (Pos.Nsucc_double n) <= Z.pos p~1.
   Proof.
@@ -600,43 +584,47 @@ Section __.
         r = crc32' data /\
         (listarray_value AccessByte  data_ptr data * R)%sep mem' }.
 
+  Lemma unsigned_ge_0 (w: word):
+    0 <= word.unsigned w.
+  Proof. pose proof word.unsigned_range w; intuition. Qed.
+
+  Lemma idx_in_bounds (w: word) :
+    (Z.to_nat (word.unsigned (word.and w (word.of_Z 255))) < 256)%nat.
+  Proof.
+    change 256%nat with (Z.to_nat 256).
+    apply Z2Nat.inj_lt; lia || eauto using unsigned_ge_0.
+    eapply Z.le_lt_trans; [apply word_and_leq_right|].
+    eapply Z.le_lt_trans; [apply word.unsigned_of_Z_le|].
+    all: lia.
+  Qed.
+
+  Lemma length_representable :
+    Z.of_nat (Datatypes.length (to_byte_table crc_table)) <= 2 ^ width.
+  Proof.
+    rewrite length_to_byte_table.
+    change (Datatypes.length crc_table) with 256%nat.
+    destruct width_cases as [H' | H']; clear -H'; subst;
+      vm_compute; inversion 1.
+  Qed.
+
   Import LoopCompiler.
+  Hint Rewrite word.of_Z_unsigned : compiler_cleanup. (* FIXME move to lib? *)
+  Hint Resolve idx_in_bounds length_representable : compiler_side_conditions.
+
+  Ltac cleanup := (* FIXME *)
+    match goal with
+    | [ H: _ = Z.of_nat (Datatypes.length _) |- _ ] => rewrite <- H in *
+    end.
+  Hint Extern 1 => cleanup; shelve : compiler.
+  Hint Extern 1 => cleanup; shelve : compiler_side_conditions.
 
   Derive crc32_body SuchThat
          (defn! "crc32" ("data", "len") ~> "crc32" { crc32_body },
           implements crc32')
          As body_correct.
   Proof.
-    compile_setup.    
-    repeat (repeat compile_step).
-
-    (* simple apply compile_nlet_as_nlet_eq; *)
-    (*   compile_ranged_for_u. *)
-
-    all: repeat compile_step. (* FIXME this step doesn't do anything, it should be instant *)
-    all: try replace (Z.of_nat (Datatypes.length data)) in *.
-    all: try rewrite word.of_Z_unsigned in *.
-    all: repeat compile_step.
-    all: rewrite word.of_Z_unsigned in Hr, Hr'.
-    { lia. }
-    { unfold v2.
-      simpl.
-      zify.
-      intuition try lia.
-      subst z8.
-      eapply Z.le_lt_trans; [apply word_and_leq_right|].
-      pose proof word.unsigned_of_Z_le 255; lia.
-    }
-    {
-      rewrite length_to_byte_table.
-      change (Datatypes.length crc_table) with 256%nat.
-      destruct width_cases as [H' | H']; clear -H'; subst;
-        compute; inversion 1.
-    }
+    compile.
   Qed.
-
-  Hint Extern 1 => simple eapply @compile_table_nth; shelve : compiler.
-
 
   (*
     -Notes: what is the right memoryLayout? should I be abstract?
@@ -644,5 +632,4 @@ Section __.
     -running the compiler requires instantiating things, right? (so I shouldn't)
     -WP.call -> exec : is that sound_cmd? sound_call?
    *)
-  
 End __.
