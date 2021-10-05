@@ -310,11 +310,3 @@ Ltac reify_map m :=
     let b := map_to_list m in
     set_change m with (@map.of_list _ _ M b)
   end.
-
-Ltac _change x y :=
-  change x with y.
-  (* let Heq := constr:(eq_refl x: x = y) in *)
-  (* replace x with y by (vm_cast_no_check Heq). *)
-
-Tactic Notation "_change_hook" open_constr(x) open_constr(y) :=
-  (_change x y).

@@ -361,16 +361,39 @@ Module ExprReflection.
   (* Swapping out the whole goal with `change` is more robust than swapping out
      just `val` with `change val with …` (the latter sometimes fails to find
      `val` in the goal). *)
+
+  Ltac change_goal_change term :=
+    change term.
+
+  Ltac change_goal_replace term :=
+    lazymatch goal with
+    | [  |- ?g ] =>
+      (* FIXME why is `by (vm_cast_no_check (@eq_refl Prop g))` slower? *)
+      replace g with term by reflexivity
+    end.
+
+  Lemma change_goal {P Q: Prop} : Q = P -> P -> Q.
+  Proof. intros -> ?; assumption. Qed.
+
+  Ltac change_goal_refine term :=
+    lazymatch goal with (* FIXME why is `@eq_refl Prop g <: g = term` slower? *)
+    | [  |- ?g ] => simple refine (change_goal (@eq_refl Prop g : g = term) _)
+    end.
+
+  Ltac change_goal term :=
+    (* `refine` is faster than `replace`, which is faster than `change` *)
+    change_goal_refine term.
+
   Tactic Notation "_reify_change_dexpr"
          constr(mem) constr(locals) constr(expr)
          open_constr(reifier) constr(reified) constr(bindings) :=
     unify expr (compile reified);
-    change (WeakestPrecondition.dexpr
-              mem locals (compile reified)
-              (er_T2w (expr_denotation := reifier)
-                      (interp (er := reifier)
-                              (map.of_list (map := SortedListString.map _) bindings)
-                              reified))).
+    change_goal (WeakestPrecondition.dexpr
+                   mem locals (compile reified)
+                   (er_T2w (expr_denotation := reifier)
+                           (interp (er := reifier)
+                                   (map.of_list (map := SortedListString.map _) bindings)
+                                   reified))).
 
   Ltac reify_change_dexpr_w :=
     lazymatch goal with
