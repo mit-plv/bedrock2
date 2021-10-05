@@ -1,6 +1,5 @@
 Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.Notations.
-Require Export Rupicola.Lib.Gensym.
 Require Import Rupicola.Lib.Tactics.
 
 Section CompilerBasics.

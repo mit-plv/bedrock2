@@ -206,7 +206,6 @@ Section Compile.
 
       1,2: map_t.
 
-      gen_sym_inc.
       eapply compile_nlet_as_nlet_eq;
       eapply compile_ll_next;
         [ repeat compile_step .. | ];
