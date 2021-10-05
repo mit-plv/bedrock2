@@ -42,8 +42,8 @@ Ltac substitute_target var repl pred locals :=
   lazymatch locals with
   | context LOC [map.put ?m var ?v] =>
     lazymatch pred with
-    | context PR [sep (?P v _) ?R] =>
-      let pred := context PR [sep (P v repl) R] in
+    | context PR [?P v _] => (* Ideally we'd match a full conjunct *)
+      let pred := context PR [P v repl] in
       constr:((pred, locals))
     | _ =>
       lazymatch type of repl with
