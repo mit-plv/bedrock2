@@ -148,6 +148,9 @@ Section with_parameters.
         t = t' /\
         (cell_value pout (indirect_add_three' a b c) ⋆ R) m' }.
 
+  (* The way the alloc lemma is phrased requires us to supply a `unit`: *)
+  Hint Extern 1 unit => exact tt : compiler_side_conditions.
+
   Derive indirect_add_three'_body SuchThat
          (defn! "indirect_add_three'"("out", "a", "b", "c") { indirect_add_three'_body },
           implements indirect_add_three' using ["indirect_add"])

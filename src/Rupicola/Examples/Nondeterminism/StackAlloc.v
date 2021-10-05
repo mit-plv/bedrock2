@@ -110,6 +110,7 @@ Section Peek.
 
   Import SizedListArrayCompiler.
   Hint Extern 1 => simple eapply compile_stack_alloc; shelve : compiler.
+  Hint Extern 1 (_ < _) => reflexivity : compiler_side_conditions.
 
   Hint Resolve stackalloc_universal_bound : compiler_cleanup.
 

@@ -823,7 +823,7 @@ Ltac solve_map_eq :=
   apply map.eq_of_str_list;
   reflexivity.
 
-Create HintDb compiler_cleanup discriminated.
+Create HintDb compiler_cleanup. (* https://github.com/coq/coq/issues/14874 *)
 #[export] Hint Unfold wp_bind_retvars : compiler_cleanup.
 #[export] Hint Unfold postcondition_cmd : compiler_cleanup.
 Hint Rewrite @word.of_nat_to_nat_unsigned : compiler_cleanup.
@@ -958,12 +958,12 @@ Ltac compile_solve_side_conditions :=
     solve_map_remove_many
   | [  |- eq (A := map.rep) _ _ ] =>
     solve_map_eq (* FIXME can this be unified with the previous case? *)
+  | [  |- _ = _ ] => reflexivity
   | [  |- _ <> _ ] => congruence
   | [  |- _ /\ _ ] => split
   | _ =>
     first [ compile_cleanup
           | compile_autocleanup
-          | reflexivity
           | compile_use_default_value
           | step_with_db compiler_side_conditions
           | solve [ typeclasses eauto | eauto with compiler_cleanup ] ]
