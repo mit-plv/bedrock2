@@ -25,7 +25,7 @@ Module ExprReflection.
       Context {T} {er: expr_denotation T}.
 
       Inductive AST :=
-      | ELit (z: Z) (t: T) (ok: option (word.of_Z z = er_T2w t))
+      | ELit (z: Z) (t: T) (ok: word.of_Z z = er_T2w t)
       | EVar (nm: string)
       | EOp (op: er_op) (l r: AST).
 
@@ -54,16 +54,14 @@ Module ExprReflection.
 
       Fixpoint witness ast :=
         match ast with
-        | ELit _ _ (Some _) => True
-        | ELit z t None => word.of_Z z = er_T2w t
+        | ELit z t _ => True
         | EVar nm => map.get concrete_locals nm <> None
         | EOp op l r => witness r /\ witness l
         end.
 
       Fixpoint witnessb ast acc :=
         match ast with          (* FIXME use naive word representation for equality checks *)
-        | ELit _ _ (Some _) => acc
-        | ELit z t None => (word.eqb (word.of_Z z) (er_T2w t) && acc)
+        | ELit z t _ => acc
         | EVar nm => is_some (map.get concrete_locals nm) && acc
         | EOp op l r => witnessb r (witnessb l acc)
         end%bool.
@@ -71,10 +69,8 @@ Module ExprReflection.
       Lemma witnessb_decreasing ast :
         witnessb ast false = false.
       Proof.
-        induction ast; cbn; intros; rewrite ?Bool.andb_false_r.
-        - destruct ok; eauto.
-        - reflexivity.
-        - congruence.
+        induction ast; cbn; intros; rewrite ?Bool.andb_false_r;
+          congruence.
       Qed.
 
       Lemma witnessb_sound ast :
@@ -82,7 +78,7 @@ Module ExprReflection.
         witness ast.
       Proof.
         induction ast; cbn; intros H; rewrite ?Bool.andb_true_r in H.
-        - destruct ok; eauto using word.eqb_true.
+        - eauto.
         - destruct lookup; cbn in *; congruence.
         - destruct (witnessb ast1 true); [ solve [eauto] | ].
           rewrite witnessb_decreasing in H; discriminate.
@@ -161,7 +157,7 @@ Module ExprReflection.
            end;
          er_opfun_morphism :=
            ltac:(destruct op; intros; cbn;
-                repeat match goal with
+                repeat lazymatch goal with
                        | [  |- context[if ?x then _ else _] ] => destruct x
                        | _ => reflexivity
                        end) |}.
@@ -294,10 +290,10 @@ Module ExprReflection.
   End with_parameters.
 
   Ltac find_key_by_value bs v0 :=
-    match bs with
+    lazymatch bs with
     | [] => constr:(@None string)
     | (?k, ?v) :: ?bs =>
-      match v with
+      lazymatch v with
       | v0 => constr:(Some k)
       | _ => find_key_by_value bs v0
       end
@@ -331,10 +327,10 @@ Module ExprReflection.
         lazymatch w with
         | word.of_Z ?z =>
           constr:(ELit (word:=W) (er := expr_word_denotation)
-                       z (word.of_Z z) (Some eq_refl))
+                       z (word.of_Z z) eq_refl)
         | _ =>
           constr:(ELit (word:=W) (er := expr_word_denotation)
-                       (word.unsigned w) w (Some (word.of_Z_unsigned w)))
+                       (word.unsigned w) w (word.of_Z_unsigned w))
         end
       end
     end.
@@ -354,7 +350,7 @@ Module ExprReflection.
     | _ =>
       lazymatch find_key_by_value bindings z with
       | Some ?k => constr:(EVar (er := expr_Z_denotation) k)
-      | None => constr:(ELit (er := expr_Z_denotation) z z (Some eq_refl))
+      | None => constr:(ELit (er := expr_Z_denotation) z z eq_refl)
       end
     end.
 
@@ -409,10 +405,10 @@ Module ExprReflection.
     end.
 
   Ltac zify_bindings bs :=
-    match bs with
+    lazymatch bs with
     | [] => constr:(@List.nil (string * Z))
     | (?k, ?w) :: ?tl =>
-      let z := match w with
+      let z := lazymatch w with
               | @word.of_Z _ _ ?z => constr:(z)
               | _                 => constr:(word.unsigned w)
               end in
@@ -455,7 +451,7 @@ Module ExprReflection.
   Ltac compile_prove_reified_dexpr :=
     eapply interp_sound;
     [ reflexivity |
-      apply map.mapped_compat_of_list;
+      eapply map.mapped_compat_of_list;
       lazymatch goal with
       | |- context[expr_Z_denotation] => (* LATER Use reification to speed up this rewrite *)
         cbv [List.map fst snd er_T2w expr_Z_denotation]; rewrite ?word.of_Z_unsigned
@@ -476,19 +472,21 @@ Module ExprReflection.
     end.
 End ExprReflection.
 
-Import ExprReflection.
-
 Ltac compile_expr :=
-  reify_change_dexpr; compile_prove_reified_dexpr.
+  (* LATER: Consider clearing local hypotheses here, since large contexts make
+     `apply` slow (but careful not to remove [map.ok]). *)
+  ExprReflection.reify_change_dexpr;
+  ExprReflection.compile_prove_reified_dexpr.
 
 Ltac compile_assignment :=
-  compile_let_as_expr; [ compile_expr | .. ].
+  ExprReflection.compile_let_as_expr;
+  [ ExprReflection.compile_expr | .. ].
 
 (* For dexpr side conditions: *)
 #[export] Hint Extern 8 (WeakestPrecondition.dexpr _ _ _ _) =>
-  ExprReflection.compile_expr : compiler_side_conditions.
+  compile_expr : compiler_side_conditions.
 
 (* For let-bound exprs: *)
 #[export] Hint Extern 8 =>
-  ExprReflection.compile_assignment; shelve : compiler.
+  compile_assignment; shelve : compiler.
   (* Higher priority than compilation lemmas for individual operations *)
