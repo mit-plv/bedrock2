@@ -96,6 +96,32 @@ Module map.
       - rewrite map.get_empty. destr (map.get r k0); reflexivity.
     Qed.
 
+    Lemma of_list_zip_to_getmany_of_list: forall ks vs m,
+        map.of_list_zip ks vs = Some m ->
+        NoDup ks ->
+        map.getmany_of_list m ks = Some vs.
+    Proof.
+      induction ks; intros; destruct vs as [|v vs]; try discriminate.
+      - reflexivity.
+      - inversion H0. subst. clear H0. cbn in *.
+        eapply map.putmany_of_list_zip_to_putmany in H.
+        destruct H as (m' & P & ?). subst.
+        rewrite map.get_putmany_dec, map.get_put_same.
+        unfold map.getmany_of_list in *.
+        replace (List.map (map.get (map.putmany (map.put map.empty a v) m')) ks)
+          with (List.map (map.get m') ks). 2: {
+          eapply List.map_ext_in.
+          intros k HI.
+          rewrite map.get_putmany_dec, map.get_put_dec, map.get_empty.
+          destr (map.get m' k). 1: reflexivity.
+          destr (key_eqb a k). 2: reflexivity.
+          subst. contradiction.
+        }
+        erewrite IHks by eassumption.
+        destr (map.get m' a). 2: reflexivity.
+        erewrite map.not_in_of_list_zip_to_get_None in E by eassumption. discriminate.
+    Qed.
+
     Lemma putmany_of_list_zip_cons_put: forall ks k v vs m0 m,
         ~ In k ks ->
         map.putmany_of_list_zip ks vs m0 = Some m ->
@@ -197,6 +223,50 @@ Module List.
     Lemma unfoldn_0: forall (f: A -> A) (start: A),
         List.unfoldn f 0 start = [].
     Proof. intros. reflexivity. Qed.
+
+    Lemma In_firstn_to_In: forall n a (l: list A),
+        In a (List.firstn n l) ->
+        In a l.
+    Proof.
+      induction n; simpl; intros.
+      - contradiction.
+      - destruct l. 1: contradiction.
+        simpl in H. destruct H.
+        + subst a0. simpl. auto.
+        + simpl. eauto.
+    Qed.
+
+    Lemma NoDup_firstn: forall n (l: list A),
+        NoDup l ->
+        NoDup (List.firstn n l).
+    Proof.
+      induction n; intros.
+      - constructor.
+      - destruct l as [|a l]; simpl. 1: constructor. inversion H. subst. clear H.
+        constructor. 2: eauto.
+        intro C. apply H2.
+        eapply In_firstn_to_In. exact C.
+    Qed.
+
+    Lemma not_In_Z_seq: forall L start d,
+        start < d ->
+        ~ In start (List.unfoldn (Z.add 1) L d).
+    Proof using.
+      unfold not.
+      induction L; cbn -[Z.add]; intros. 1: assumption.
+      destruct H0.
+      - subst. blia.
+      - eapply IHL. 2: exact H0. blia.
+    Qed.
+
+    Lemma NoDup_unfoldn_Z_seq: forall n start,
+        NoDup (List.unfoldn (Z.add 1) n start).
+    Proof using.
+      induction n; intros.
+      - constructor.
+      - cbn -[Z.add]. constructor. 2: eapply IHn.
+        eapply not_In_Z_seq. blia.
+    Qed.
 
     Global Instance invert_Forall_cons: forall (a: A) (l: list A) (P: A -> Prop),
         autoforward (List.Forall P (a :: l))
@@ -1061,17 +1131,6 @@ Section Spilling.
        (sep_eq_empty_r (key_eqb := Z.eqb))
     : fwd_rewrites.
 
-  Lemma not_In_Z_seq: forall L start d,
-      start < d ->
-      ~ In start (List.unfoldn (Z.add 1) L d).
-  Proof.
-    unfold not.
-    induction L; cbn -[Z.add]; intros. 1: assumption.
-    destruct H0.
-    - subst. blia.
-    - eapply IHL. 2: exact H0. blia.
-  Qed.
-
   Lemma related'_nil_to_related: forall maxvar first_arg_reg frame fpval t1 t2 m1 m2 l1 l2,
       related' maxvar [] first_arg_reg frame fpval t1 m1 l1 t2 m2 l2 ->
       related maxvar frame fpval t1 m1 l1 t2 m2 l2.
@@ -1100,7 +1159,7 @@ Section Spilling.
     unfold related'. intros. fwd. eapply map.of_list_zip_cons_keys in Hp4. 2: assumption. fwd.
     cbn -[map.of_list_zip Z.add] in Hp5.
     cbn -[map.of_list_zip Z.add] in Hp5. eapply map.of_list_zip_cons_keys in Hp5. 2: {
-      eapply not_In_Z_seq. blia.
+      eauto using List.not_In_Z_seq with zarith.
     }
     fwd.
     destr (32 <=? a).
@@ -1163,7 +1222,7 @@ Section Spilling.
       unfold related' in H. fwd.
       eapply map.of_list_zip_cons_keys in Hp4. 2: eassumption. fwd.
       cbn -[map.of_list_zip Z.add] in Hp5. eapply map.of_list_zip_cons_keys in Hp5. 2: {
-        eapply not_In_Z_seq. blia.
+        eauto using List.not_In_Z_seq with zarith.
       }
       fwd.
       cbn [List.unfoldn List.length] in *.
@@ -1176,8 +1235,8 @@ Section Spilling.
       }
       pose proof Hp7 as Hl2.
       rewrite eq_put_to_sep in Hp7. 2: {
-        eapply map.not_in_of_list_zip_to_get_None.
-        1: eassumption. eapply not_In_Z_seq. blia.
+        eapply map.not_in_of_list_zip_to_get_None. 1: eassumption.
+        eauto using List.not_In_Z_seq with zarith.
       }
       destr (32 <=? a).
       + eapply exec.seq_cps.
@@ -1198,7 +1257,8 @@ Section Spilling.
         * eassumption.
         * eapply map.of_list_zip_cons_put; eassumption.
         * cbn -[map.of_list_zip Z.add]. rewrite Z.add_comm. eapply map.of_list_zip_cons_put.
-          2: eassumption. eapply not_In_Z_seq. blia.
+          2: eassumption.
+          eauto using List.not_In_Z_seq with zarith.
         * eassumption.
         * eassumption.
         * intros r A v B. specialize (Hp8 r A v B).
@@ -1297,7 +1357,7 @@ Section Spilling.
           -- intros x w A. rewrite map.get_remove_dec in A. fwd. eauto.
           -- eapply map.of_list_zip_cons_put; eassumption.
           -- cbn -[map.of_list_zip Z.add]. eapply map.of_list_zip_cons_put.
-             ++ eapply not_In_Z_seq. blia.
+             ++ eauto using List.not_In_Z_seq with zarith.
              ++ rewrite Z.add_comm. eassumption.
           -- case TODO.
           -- case TODO.
@@ -1416,24 +1476,56 @@ Section Spilling.
   Proof.
     induction 1; intros; cbn [spill_stmt valid_vars_src Forall_vars_stmt] in *; fwd.
     - (* exec.interact *)
-      case TODO. (*
-      unfold related in *. fwd.
+      eapply exec.seq_cps.
+      eapply write_register_range_correct; try eassumption; try (unfold a0, a7; blia).
+      1: case TODO. (* NoDup *)
+      intros *. intro R. clear m2 l2 mc2 H4.
+      unfold related' in R. fwd.
       spec (subst_split (ok := mem_ok) m) as A.
       1: eassumption. 1: ecancel_assumption.
-      edestruct (@sep_def _ _ _ m2 (eq mGive)) as (mGive' & mKeepL & B & ? & C).
+      edestruct (@sep_def _ _ _ m2' (eq mGive)) as (mGive' & mKeepL & B & ? & C).
       1: ecancel_assumption.
       subst mGive'.
-      rename H3p0 into FR, H3p1 into FA.
-      unfold sep in H4p3. destruct H4p3 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
+      (*
+      unfold sep in Rp6. destruct Rp6 as (lRegs' & lStack' & S2 & ? & ?). subst lRegs' lStack'.
       spec (map.getmany_of_list_zip_shrink l) as R. 1,2: eassumption. {
         intros k HI. destr (map.get lStack k); [exfalso|reflexivity].
         specialize H4p2 with (1 := E).
         eapply Forall_forall in FA. 2: exact HI. clear -H4p2 FA. blia.
       }
-      edestruct (eq_sep_to_split l2) as (l2Rest & S22 & SP22). 1: ecancel_assumption.
+      *)
+      edestruct (eq_sep_to_split l2' llArgRegs) as (l2Rest & S22 & SP22). 1: ecancel_assumption.
+
+      assert (argvals0 = argvals). {
+        move Rp4 at bottom. move Rp5 at bottom.
+        move H1 at bottom. move H0 at bottom. move H2 at bottom.
+        eapply map.getmany_of_list_to_split in H0. fwd.
+        assert ((eq lRegs * eq lStack * eq hlArgRegs)%sep l) as S2 by ecancel_assumption.
+        unfold sep in S2 at 1. destruct S2 as (mrest' & hlArgRegs' & S2 & ? & ?).
+        subst hlArgRegs'.
+        assert (map.same_domain mks hlArgRegs) as SD. {
+          move Rp4 at bottom. move H0p0 at bottom.
+          case TODO.
+        }
+        pose proof (map.split_diff SD H0p1 S2) as D. destruct D. subst mrest' mks.
+        clear SD.
+        move H0p0 at bottom. move Rp4 at bottom.
+        case TODO.
+      }
+      subst argvals0.
+
+      eapply exec.seq_cps.
       eapply @exec.interact with (mGive := mGive).
       + eapply map.split_comm. exact B.
-      + eapply map.getmany_of_list_zip_grow. 2: exact R. 1: exact S22.
+      + eapply map.getmany_of_list_zip_grow. 1: exact S22.
+        eapply map.of_list_zip_to_getmany_of_list. 2: {
+          unfold reg_class.all.
+          eapply List.NoDup_firstn.
+          eapply List.NoDup_filter.
+          eapply List.NoDup_unfoldn_Z_seq.
+        }
+        rewrite arg_regs_alt by assumption.
+        eassumption.
       + eassumption.
       + intros.
         match goal with
@@ -1442,58 +1534,54 @@ Section Spilling.
         end.
         fwd.
         rename l into l1, l' into l1'.
-        pose proof H2p0 as P.
-        eapply map.putmany_of_list_zip_split in P. 2: eassumption. 2: {
-          eapply Forall_impl. 2: eassumption.
-          simpl.
-          intros.
-          destr (map.get lStack a). 2: reflexivity.
-          match goal with
-          | H: forall _, _ |- _ => specialize H with (1 := E)
-          end.
+        rename H2p0 into P.
+        eapply map.putmany_of_list_zip_to_disjoint_putmany in P. fwd.
+        assert (List.length (List.firstn (length resvars) (reg_class.all reg_class.arg)) =
+                List.length resvals) as HL. {
+          eapply map.putmany_of_list_zip_sameLength in Pp0. rewrite <- Pp0.
+          rewrite List.firstn_length. change (length (reg_class.all reg_class.arg)) with 8%nat.
           blia.
         }
-        destruct P as (lRegs' & Spl1' & P).
-        pose proof P as P0.
-        eapply map.putmany_of_list_zip_grow with (l := l2) in P. 2: eassumption. 2: {
-          eapply Forall_impl. 2: eassumption.
-          clear -localsOk SP22. unfold fp, arg_regs, tmp1, tmp2 in *. intros.
-          unfold sep, ptsto, map.split in *. fwd.
-          rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_empty.
-          repeat destruct_one_match; try congruence; repeat destruct_one_match_hyp; try congruence; try blia.
-          destr (map.get mp a). 2: reflexivity.
-          specialize SP22p1 with (1 := E1). blia.
+        eapply map.sameLength_putmany_of_list in HL. destruct HL as (l2'' & ER).
+        assert (List.length (List.unfoldn (Z.add 1) (length resvars) a0) =
+                List.length resvals) as HL'. {
+          eapply map.putmany_of_list_zip_sameLength in Pp0. rewrite <- Pp0.
+          apply List.length_unfoldn.
         }
-        destruct P as (l2' & ? & ?).
-        eexists. split. 1: eassumption.
+        eapply map.sameLength_putmany_of_list with (st := map.empty) in HL'.
+        destruct HL' as (resM & HresM).
+        change (map.of_list_zip (List.unfoldn (Z.add 1) (length resvars) a0) resvals =
+                Some resM) in HresM.
+        eexists. split. 1: exact ER.
         intros.
-        repeat match goal with
-               | |- exists _, _ => eexists
-               | |- _ /\ _ => split
-               end.
-        1: reflexivity.
-        8: eapply H2p1.
-        6: eassumption.
-        6: eassumption.
-        4: solve [unfold sep; eauto].
-        4: {
-          enough ((eq lRegs' * (arg_regs * ptsto fp fpval))%sep l2') as En. 1: ecancel_assumption.
-          unfold sep at 1. eauto. }
-        { eenough ((eq _ * (word_array fpval stackwords * frame))%sep m') as En.
-          1: ecancel_assumption.
-          move C before H5.
-          eapply grow_eq_sep. 1: exact C. eassumption. }
-        { intros x v G.
-          edestruct map.putmany_of_list_zip_find_index. 1: exact P0. 1: exact G.
-          - fwd. apply nth_error_In in H6p0. eapply Forall_forall in FR. 1: exact FR. assumption.
-          - eauto. }
-        { assumption. }
-        { unfold map.split. split; [reflexivity|].
-          move C at bottom. move H5 at bottom.
+        eapply read_register_range_correct; try eassumption; try (unfold a0, a7; blia).
+        2: case TODO. (* NoDup *)
+        2: {
+          intros. do 4 eexists. split. 1: eassumption. eapply H2p1.
+          unfold map.split. split; [reflexivity|].
+          move C at bottom.
           unfold sep at 1 in C. destruct C as (mKeepL' & mRest & SC & ? & _). subst mKeepL'.
-          unfold map.split in H5. fwd.
+          move H2 at bottom. unfold map.split in H2. fwd.
           eapply map.shrink_disjoint_l; eassumption. }
-          *)
+        (* related' for read_register_range_correct: *)
+        unfold related'.
+        eexists _, _, _, _, _, _. ssplit.
+        * reflexivity.
+        * eenough ((eq _ * (word_array fpval stackwords * frame))%sep m') as En.
+          1: ecancel_assumption.
+          move C at bottom.
+          eapply grow_eq_sep. 1: exact C. eassumption.
+        * eassumption.
+        * eassumption.
+        * eassumption.
+        * exact HresM.
+        * case TODO. (* HL locals *)
+        * case TODO. (* LL locals *)
+        * intros r A0 v B0.
+          (* values on stack are (lStack \union (hlArgRegs restricted to those keys on stack)),
+             which should equal  (lStack \union (ksvs      restricted to those keys on stack)) *)
+          case TODO.
+        * assumption.
 
     - (* exec.call *)
       rename H4p0 into FR, H4p1 into FA.
