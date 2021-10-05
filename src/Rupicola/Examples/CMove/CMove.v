@@ -292,50 +292,19 @@ Section __.
         let (c1,c2) := cmove_array mask len c1 c2 in
         (sizedlistarray_value AccessWord ptr1 n c1
          * sizedlistarray_value AccessWord ptr2 n c2 * R)%sep mem' }.
-  
+
+  Import SizedListArrayCompiler.
+  Import LoopCompiler.
+  Hint Extern 10 (_ < _) => lia: compiler_side_conditions.
+
   Derive cmove_array_body SuchThat
          (defn! "cmove_array" ("mask", "len", "c1", "c2") { cmove_array_body },
           implements cmove_array)
          As cmove_array_body_correct.
   Proof.
-    compile_setup.
-    repeat (repeat compile_step).
-    
-    simple apply compile_nlet_as_nlet_eq.
-    eapply compile_ranged_for_u with (loop_pred := (fun idx c1 tr' mem' locals' =>
-        tr' = tr /\
-        locals' = (map.put (map.put
-                     (map.put
-                        (map.put
-                           (map.put (map.put map.empty "mask" mask)
-                                    "len" len)
-                           "c1" ptr1)
-                        "c2" ptr2)
-                     "from" idx)
-                   "nmask" v0)/\
-        word.unsigned len <= Z.of_nat n /\
-        (sizedlistarray_value AccessWord ptr1 n c1 *
-         sizedlistarray_value AccessWord ptr2 n c2 * R)%sep mem')).
-  
-    solve[repeat compile_step; try lia; compile_done].
-   
-    solve[repeat compile_step; try lia; compile_done].
-   
-    solve[repeat compile_step; try lia; compile_done].
-
-      Import SizedListArrayCompiler.
-      all:solve[repeat compile_step; try lia; compile_done].
+    compile.
   Qed.
 
-  
-  
-  Ltac break :=
-    repeat match goal with
-           | [H: unit|-_]=> destruct H
-           | [H: _*_|-_]=> destruct H
-           end.
-  
-  
   Instance spec_of_cswap_array : spec_of "cswap_array" :=
     fnspec! "cswap_array" mask len ptr1 ptr2 / n c1 c2 R,
     (*TODO: if b then bw should be all 1s*)
@@ -349,31 +318,12 @@ Section __.
         let (c1,c2) := cswap_array mask len c1 c2 in
         (sizedlistarray_value AccessWord ptr1 n c1
          * sizedlistarray_value AccessWord ptr2 n c2 * R)%sep mem' }.
-  
+
   Derive cswap_array_body SuchThat
          (defn! "cswap_array" ("mask", "len", "c1", "c2") { cswap_array_body },
           implements cswap_array)
          As cswap_array_body_correct.
   Proof.
-    compile_setup.
-    repeat (repeat compile_step).
-    
-    simple apply compile_nlet_as_nlet_eq.
-    eapply compile_ranged_for_u with (loop_pred := (fun idx p tr' mem' locals' =>
-        tr' = tr /\
-        locals' = (map.put (map.put
-                     (map.put
-                        (map.put
-                           (map.put (map.put map.empty "mask" mask)
-                                    "len" len)
-                           "c1" ptr1)
-                        "c2" ptr2)
-                     "from" idx)
-                   "nmask" v0)/\
-        word.unsigned len <= Z.of_nat n /\
-        (sizedlistarray_value AccessWord ptr1 n (fst p) *
-         sizedlistarray_value AccessWord ptr2 n (snd p) * R)%sep mem')).
-    all:solve[repeat (break; compile_step); try lia; compile_done].
+    compile.
   Qed.
-
 End __.
