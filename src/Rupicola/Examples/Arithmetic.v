@@ -20,12 +20,6 @@ Module FNV1A (Import P: FNV1A_params).
   Existing Instances BW word locals mem env ext_spec wordok mapok localsok envok ext_spec_ok.
   Import SizedListArrayCompiler.
 
-  Notation "∅" := map.empty.
-  Notation "m [[ k ← v ]]" :=
-    (map.put m k v)
-      (left associativity, at level 1,
-       format "m [[ k  ←  v ]]").
-
   Definition update (hash data : word) :=
     let/n p := P.prime in
     let/n hash := word.xor hash data in

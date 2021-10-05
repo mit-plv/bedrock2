@@ -144,6 +144,29 @@ Notation "'let/n' ( x , y , z ) := val 'in' body" :=
 
 Infix "~>" := scalar (at level 40, only parsing).
 
+Declare Custom Entry maps.
+
+Notation "x  =>  y" :=
+  (map.put map.empty x y)
+    (in custom maps at level 80,
+        x constr at level 0, y constr at level 80,
+        no associativity).
+
+Notation "z ; x  =>  y" :=
+  (map.put z x y)
+    (in custom maps at level 82,
+        x constr at level 0, y constr at level 80,
+        z custom maps, left associativity).
+
+Notation "… x" :=
+  (x)
+    (in custom maps at level 80, x constr at level 80).
+
+Declare Scope maps_scope.
+Delimit Scope maps_scope with maps.
+Notation "#{  x  }#" := (x) (at level 0, x custom maps at level 200) : maps_scope.
+Open Scope maps_scope.
+
 Notation "[[ locals ]]" := {| value := locals; _value_ok := _ |} (only printing).
 
 Declare Scope old.
