@@ -113,7 +113,8 @@ Ltac compile_if :=
 #[export] Hint Extern 2 (IsRupicolaBinding (if _ then _ else _)) =>
   exact true : typeclass_instances.
 
-#[export] Hint Extern 1 =>
+#[export] Hint Extern 1
+ (WeakestPrecondition.cmd _ _ _ _ _ (_ (if _ then _ else _))) =>
   simple eapply compile_tail_if; shelve : compiler.
 
 #[export] Hint Extern 1
