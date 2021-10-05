@@ -68,5 +68,36 @@ Section with_parameters.
     compile.
   Qed.
 
-  Compute exZ_body.
+  (* Compute exZ_body. *)
+
+  Fixpoint overwrite_chain (n: nat) (w0 w1: word) :=
+    match n with
+    | O => w1
+    | S n => let/n w1 := word.add w0 w1 in
+            overwrite_chain n w0 w1
+    end.
+
+  Definition chain (w0: word) :=
+    Eval simpl in
+    let/n w1 := word.of_Z 1 in
+    overwrite_chain 5 w0 w1.
+
+  Instance spec_of_chain : spec_of "chain" :=
+    fnspec! "chain" (w0: word) ~> w1,
+    { requires tr mem := True;
+      ensures tr' mem' :=
+        tr = tr' /\
+        mem = mem' /\
+        w1 = chain w0 }.
+
+  Derive chain_body SuchThat
+         (defn! "chain"("w0") ~> "w1"
+              { chain_body },
+          implements chain)
+         As chain_body_correct.
+  Proof.
+    compile.
+  Qed.
+
+  (* Compute chain_body. *)
 End with_parameters.
