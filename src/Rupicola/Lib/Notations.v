@@ -169,14 +169,6 @@ Open Scope maps_scope.
 
 Notation "[[ locals ]]" := {| value := locals; _value_ok := _ |} (only printing).
 
-Declare Scope old.
-Delimit Scope old with old.
-Notation "'find' body 'implementing' spec 'and-returning' retvars 'and-locals-post' locals_post 'with-locals' locals 'and-memory' mem 'and-trace' tr 'and-rest' R 'and-functions' fns" :=
-  (WeakestPrecondition.cmd
-     (WeakestPrecondition.call fns)
-     body tr mem locals
-     (postcondition_cmd locals_post spec retvars R tr)) (at level 0, only parsing).
-
 Notation "<{ 'Trace' := tr ; 'Memory' := mem ; 'Locals' := locals ; 'Functions' := functions }> cmd <{ post }>" :=
   (WeakestPrecondition.cmd
      (WeakestPrecondition.call functions)
@@ -191,73 +183,6 @@ Notation "'liftexists' x .. y ',' P" :=
           (Lift1Prop.ex1
              (fun y => P)) .. ))
     (x binder, y binder, only parsing, at level 199).
-
-(* precondition is more permissively handled than postcondition in order to
-   non-separation-logic (or multiple separation-logic) preconditions *)
-Notation "'forall!' x .. y ',' pre '===>' fname '@' args 'returns' rets '===>' post" :=
-(fun functions =>
-   (forall x,
-       .. (forall y,
-              forall R tr mem,
-                pre R mem ->
-                WeakestPrecondition.call
-                  functions fname tr mem args
-                  (postcondition_func (fun rets => post) R tr)) ..))
-     (x binder, y binder, only parsing, at level 199) : old.
-
-(* shorthand for no return values *)
-Notation "'forall!' x .. y ',' pre '===>' fname '@' args '===>' post" :=
-(fun functions =>
-   (forall x,
-       .. (forall y,
-              forall R tr mem,
-                pre R mem ->
-                WeakestPrecondition.call
-                  functions fname tr mem args
-                  (postcondition_func_norets post R tr)) ..))
-     (x binder, y binder, only parsing, at level 199) : old.
-
-Section Examples.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
-  Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
-  Context {ext_spec: bedrock2.Semantics.ExtSpec}.
-  Example spec_example_withrets
-    : spec_of "example" :=
-    (forall! (pa : word) (a b : word),
-        (sep (pa ~> a))
-          ===>
-          "example" @ [pa; b] returns r
-          ===>
-          (liftexists x, emp (r = [x]) * (pa ~> x))%sep)%old.
-  Example spec_example_norets
-    : spec_of "example" :=
-       (forall! (pa : word) (a b : word),
-           (sep (pa ~> a))
-             ===>
-             "example" @ [pa; b] returns r
-             ===>
-             (emp (r = []) * (pa ~> word.add a b))%sep)%old.
-
-  (* N.B. postconditions with no return values still need to take in an argument
-     for return values to make types line up. However, the shorthand notation inserts
-     a clause to the postcondition saying the return values are nil, so the
-     postcondition does not need to ensure this. *)
-  Example spec_example_norets_short
-    : spec_of "example" :=
-    (forall! (pa : word) (a b : word),
-        (sep (pa ~> a))
-          ===>
-          "example" @ [pa; b]
-          ===>
-          (fun _ => pa ~> word.add a b)%sep)%old.
-End Examples.
-
-Global Open Scope old.
-
-(* unify short and long notations for functions without return values (fails if
-   spec_example_norets and spec_example_norets_short are not equivalent) *)
-Compute (let x := ltac:(unify @spec_example_norets @spec_example_norets_short) in x).
 
 Infix "⋆" := sep (at level 40, left associativity).
 Infix "&&&" := unsep (at level 50, left associativity). (* 50 binds less tightly than ⋆ *)
