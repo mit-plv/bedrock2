@@ -70,22 +70,14 @@ Module FNV1A (Import P: FNV1A_params).
         (sizedlistarray_value AccessByte data_ptr n data ⋆ R) mem' /\
         hash = fnv1a data len }.
 
+  Import LoopCompiler.
+  #[local] Hint Extern 1 (_ < _) => lia : compiler_side_conditions.
+
   Derive fnv1a_body SuchThat
          (defn! "fnv1a"("data", "len") ~> "hash" { fnv1a_body },
           implements fnv1a)
          As fnv1a_body_correct.
-  Proof.
-    compile_setup; repeat compile_step.
-
-     simple apply compile_nlet_as_nlet_eq.
-     eapply compile_ranged_for_u with (loop_pred := (fun idx hash tr' mem' locals' =>
-         tr' = tr /\
-         locals' = ∅[["data" ← data_ptr]][["len" ← len]][["p" ← P.prime]]
-                    [["hash" ← hash]][["from" ← idx]] /\
-         (sizedlistarray_value AccessByte data_ptr n data ⋆ R) mem')).
-
-     all: repeat repeat compile_step; try lia; compile_done.
-  Qed.
+  Proof. compile. Qed.
 End FNV1A.
 
 Module FNV1A32_params <: FNV1A_params.
