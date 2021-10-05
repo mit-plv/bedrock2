@@ -201,7 +201,8 @@ Section Compile.
       1: map_t.
 
       intros. clear_old_seps.
-      compile_step.
+      eapply compile_nlet_as_nlet_eq.
+      eapply compile_word_eqb. (* FIXME ExprReflection doesn't work here because we only have a partial map *)
 
       1,2: map_t.
 

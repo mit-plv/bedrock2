@@ -126,8 +126,8 @@ Module Murmur3.
           implements scramble)
          As scramble_body_correct.
   Proof.
-    Time compile.                  (* 1.9s, 1.16 on compressed example; 2.02 s previously; but 4s to fail on compressed example *)
-  Time Qed.                          (* 2.3, 0.35 on compressed example; instantaneous previously *)
+    compile.
+  Qed.
 End Murmur3.
 
 Eval cbv in Murmur3.scramble_body.

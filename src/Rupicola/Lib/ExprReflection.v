@@ -220,6 +220,54 @@ Module ExprReflection.
         <{ pred (nlet_eq [var] v k) }>.
     Proof. repeat straightline; eauto. Qed.
 
+    Lemma compile_expr_bool {tr mem locals functions} (b: bool) (e: expr) :
+      let v := b in
+      forall {P} {pred: P v -> predicate}
+        {k: nlet_eq_k P v} {k_impl}
+        var,
+
+        WeakestPrecondition.dexpr mem locals e (word.b2w v) ->
+
+        (let v := v in
+         <{ Trace := tr;
+            Memory := mem;
+            Locals := map.put locals var (word.b2w v);
+            Functions := functions }>
+         k_impl
+         <{ pred (k v eq_refl) }>) ->
+
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd.seq (cmd.set var e) k_impl
+        <{ pred (nlet_eq [var] v k) }>.
+    Proof. repeat straightline; eauto. Qed.
+
+    Lemma compile_expr_nat {tr mem locals functions} (n: nat) (e: expr) :
+      let v := n in
+      forall {P} {pred: P v -> predicate}
+        {k: nlet_eq_k P v} {k_impl}
+        var,
+
+        WeakestPrecondition.dexpr mem locals e (word.of_Z (Z.of_nat v)) ->
+
+        (let v := v in
+         <{ Trace := tr;
+            Memory := mem;
+            Locals := map.put locals var (word.of_Z (Z.of_nat v));
+            Functions := functions }>
+         k_impl
+         <{ pred (k v eq_refl) }>) ->
+
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd.seq (cmd.set var e) k_impl
+        <{ pred (nlet_eq [var] v k) }>.
+    Proof. repeat straightline; eauto. Qed.
+
     Lemma compile_expr_Z {tr mem locals functions} (z: Z) (e: expr) :
       let v := z in
       forall {P} {pred: P v -> predicate}
@@ -281,8 +329,12 @@ Module ExprReflection.
       | Some ?k => constr:(EVar (word:=W) (er := expr_word_denotation) k)
       | None =>
         lazymatch w with
-        | word.of_Z ?z => constr:(ELit (word:=W) (er := expr_word_denotation) z (word.of_Z z) (Some eq_refl))
-        | _ => constr:(ELit (word:=W) (er := expr_word_denotation) (word.unsigned w) w None)
+        | word.of_Z ?z =>
+          constr:(ELit (word:=W) (er := expr_word_denotation)
+                       z (word.of_Z z) (Some eq_refl))
+        | _ =>
+          constr:(ELit (word:=W) (er := expr_word_denotation)
+                       (word.unsigned w) w (Some (word.of_Z_unsigned w)))
         end
       end
     end.
@@ -306,23 +358,30 @@ Module ExprReflection.
       end
     end.
 
+  (* Swapping out the whole goal with `change` is more robust than swapping out
+     just `val` with `change val with …` (the latter sometimes fails to find
+     `val` in the goal). *)
   Tactic Notation "_reify_change_dexpr"
-         constr(expr) open_constr(reifier)
-         constr(val) constr(reified) constr(bindings) :=
+         constr(mem) constr(locals) constr(expr)
+         open_constr(reifier) constr(reified) constr(bindings) :=
     unify expr (compile reified);
-    change val
-      with (er_T2w (expr_denotation := reifier)
-                   (interp (er := reifier)
-                           (map.of_list (map := SortedListString.map _) bindings)
-                           reified)).
+    change (WeakestPrecondition.dexpr
+              mem locals (compile reified)
+              (er_T2w (expr_denotation := reifier)
+                      (interp (er := reifier)
+                              (map.of_list (map := SortedListString.map _) bindings)
+                              reified))).
 
   Ltac reify_change_dexpr_w :=
     lazymatch goal with
-    | [  |- WeakestPrecondition.dexpr _ (map.of_list ?bindings) ?expr ?val ] =>
-      lazymatch type of val with
-      | @word.rep _ ?W =>
-        let reified := expr_reify_word W bindings val in
-        _reify_change_dexpr expr expr_word_denotation val reified bindings
+    | [  |- WeakestPrecondition.dexpr ?mem ?locals ?expr ?val ] =>
+      lazymatch locals with
+      | map.of_list ?bindings =>
+        lazymatch type of val with
+        | @word.rep _ ?W =>
+          let reified := expr_reify_word W bindings val in
+          _reify_change_dexpr mem locals expr expr_word_denotation reified bindings
+        end
       end
     end.
 
@@ -340,13 +399,16 @@ Module ExprReflection.
 
   Ltac reify_change_dexpr_z :=
     lazymatch goal with
-    | [  |- WeakestPrecondition.dexpr _ (map.of_list ?bindings) ?expr ?val ] =>
-      lazymatch val with
-      | word.of_Z ?z =>
-        let z_bindings := zify_bindings bindings in
-        let z_bindings := type_term z_bindings in
-        let reified := expr_reify_Z z_bindings z in
-        _reify_change_dexpr expr expr_Z_denotation val reified z_bindings
+    | [  |- WeakestPrecondition.dexpr ?mem ?locals ?expr ?val ] =>
+      lazymatch locals with
+      | map.of_list ?bindings =>
+        lazymatch val with
+        | word.of_Z ?z =>
+          let z_bindings := zify_bindings bindings in
+          let z_bindings := type_term z_bindings in
+          let reified := expr_reify_Z z_bindings z in
+          _reify_change_dexpr mem locals expr expr_Z_denotation reified z_bindings
+        end
       end
     end.
 
@@ -384,6 +446,8 @@ Module ExprReflection.
       lazymatch type of v with
       | word.rep => simple apply compile_expr_w
       | Z => simple apply compile_expr_Z
+      | nat => simple apply compile_expr_nat
+      | bool => simple apply compile_expr_bool
       | ?t => fail "Unrecognized type" t
       end
     end.
