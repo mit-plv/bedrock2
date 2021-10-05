@@ -46,11 +46,30 @@ Ltac substitute_target var repl pred locals :=
       let pred := context PR [sep (P v repl) R] in
       constr:((pred, locals))
     | _ =>
-      let locals := context LOC [map.put m var repl] in
-      constr:((pred, locals))
+      lazymatch type of repl with
+      | word.rep =>
+        let locals := context LOC [map.put m var repl] in
+        constr:((pred, locals))
+      | ?t =>
+        fail "Invariant inference failure.
+Looking to replace target of" var "with" repl ".
+Variable" var "contains" v ".
+Since" repl "is of type" t "(not word)," v "should be a pointer.
+However, the current memory" pred "does not mention" v
+      end
     end
   | _ =>
-    constr:((pred, map.put locals var repl))
+    lazymatch type of repl with
+    | word.rep =>
+      constr:((pred, map.put locals var repl))
+    | ?t =>
+      fail "Invariant inference failure.
+Looking to bind" var "to" repl ".
+Variable" var "is not declared yet,
+but" repl "is of type" t "(not word)."
+           "Rupicola does not know how to allocate fresh (non-word) objects.
+Did you mean to use a different variable name?"
+      end
   end.
 
 Ltac substitute_targets vars repls pred locals :=
