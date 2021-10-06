@@ -34,11 +34,50 @@ Handling multiple bindings:
 Not supported yet: using a conditional to assign a pointer to another one.
 |*)
 
-(* FIXME loops should work this way too for the value part (not for the index
-     part) instead of generalizing all instances of the value. *)
+Ltac fail_inference_obj_in_scalar var v t pred :=
+  fail "
+Invariant inference failure while try to generalize over" var "
+
+- Variable" var "initially held" v "
+- The generalized value we are substituting has type" t ", which is not a word.
+
+This suggests that" v "is a pointer to an object, and that we should
+generalize that object, not the pointer.
+
+However, the current memory" pred "does not mention" v ".".
+
+Ltac fail_inference_fresh_obj var t pred :=
+  fail "
+Invariant inference failure while try to generalize over" var "
+
+- Variable" var "is not declared yet,
+- The generalized value we are substituting has type" t ", which is not a word.
+
+Rupicola does not know how to allocate fresh non-word objects.
+Did you mean to use a different variable name?".
+
+Ltac infer_word_instance locals :=
+  lazymatch type of locals with
+  | map.rep (map := ?ls) =>
+    lazymatch type of ls with
+    | map.map _ (word.rep (word := ?W)) => constr:(W)
+    end
+  end.
+
+Ltac check_scalar W repl :=
+  lazymatch type of repl with
+  (* FIXME | byte => *)
+  | word.rep => constr:(Some repl)
+  | Z => constr:(Some (word.of_Z (word := W) repl))
+  | nat => constr:(Some (word.of_Z (word := W) (Z.of_nat repl)))
+  | bool => constr:(Some (word.b2w (word := W) repl))
+  | _ => constr:(@None unit)
+  end.
 
 Ltac substitute_target var repl pred locals :=
   (** Replace the target of `var` with `repl` in `pred` and `locals`. **)
+  let t := type of repl in
+  let W := infer_word_instance locals in
   lazymatch locals with
   | context LOC [map.put ?m var ?v] =>
     lazymatch pred with
@@ -46,30 +85,19 @@ Ltac substitute_target var repl pred locals :=
       let pred := context PR [P v repl] in
       constr:((pred, locals))
     | _ =>
-      lazymatch type of repl with
-      | word.rep =>
+      lazymatch check_scalar W repl with
+      | Some ?repl =>
         let locals := context LOC [map.put m var repl] in
         constr:((pred, locals))
-      | ?t =>
-        fail "Invariant inference failure.
-Looking to replace target of" var "with" repl ".
-Variable" var "contains" v ".
-Since" repl "is of type" t "(not word)," v "should be a pointer.
-However, the current memory" pred "does not mention" v
+      | _ => fail_inference_obj_in_scalar var v t pred
       end
     end
   | _ =>
-    lazymatch type of repl with
-    | word.rep =>
+    lazymatch check_scalar W repl with
+    | Some ?repl =>
       constr:((pred, map.put locals var repl))
-    | ?t =>
-      fail "Invariant inference failure.
-Looking to bind" var "to" repl ".
-Variable" var "is not declared yet,
-but" repl "is of type" t "(not word)."
-           "Rupicola does not know how to allocate fresh (non-word) objects.
-Did you mean to use a different variable name?"
-      end
+    | _ => fail_inference_fresh_obj var t pred
+    end
   end.
 
 Ltac substitute_targets vars repls pred locals :=
