@@ -737,6 +737,7 @@ Module word.
       rewrite Z2Nat.id, word.of_Z_unsigned; intuition.
     Qed.
 
+    (* FIXME make this a definition *)
     Notation word_of_byte b :=
       (word.of_Z (Byte.byte.unsigned b)).
 

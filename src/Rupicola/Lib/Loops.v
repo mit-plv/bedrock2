@@ -1664,6 +1664,52 @@ Section with_parameters.
       (conj (word.signed_range _) (word.signed_range _)).
 End with_parameters.
 
+Ltac make_ranged_for_predicate from_var from_arg to_var to_val vars args tr pred locals :=
+  lazymatch substitute_target from_var from_arg pred locals with
+  | (?pred, ?locals) =>
+    lazymatch substitute_target to_var to_val pred locals with
+    | (?pred, ?locals) => make_predicate vars args tr pred locals
+    end
+  end.
+
+Ltac infer_ranged_for_predicate' from_var to_var to_val argstype vars tr pred locals :=
+  (** Like `make_predicate`, but with a binding for `idx` at the front. *)
+  let idxtype := type of to_val in
+  let val_pred :=
+      constr:(fun (idx: idxtype) (args: argstype) =>
+                ltac:(let f := make_ranged_for_predicate
+                                from_var idx to_var to_val
+                                vars args tr pred locals in
+                      exact f)) in
+  eval cbv beta in val_pred.
+
+Ltac infer_ranged_for_predicate from_var to_var to_val :=
+  _infer_predicate_from_context
+    ltac:(infer_ranged_for_predicate' from_var to_var to_val).
+
+Ltac make_ranged_for_continued_predicate idxvar idxarg vars args tr pred locals :=
+  lazymatch substitute_target idxvar idxarg pred locals with
+  | (?pred, ?locals) => make_predicate vars args tr pred locals
+  end.
+
+Ltac infer_ranged_for_continued_predicate' argstype vars tr pred locals :=
+  (** Like `make_predicate`, but with a binding for `idx` at the front. *)
+  match argstype with
+  | \<< ?idxtype, ?argstype \>> =>
+    match vars with
+    | ?idxvar :: ?vars =>
+      let val_pred :=
+          constr:(fun (idx: idxtype) (args: argstype) =>
+                    ltac:(let f := make_ranged_for_continued_predicate
+                                    idxvar idx vars args tr pred locals in
+                          exact f)) in
+      eval cbv beta in val_pred
+    end
+  end.
+
+Ltac infer_ranged_for_continued_predicate :=
+  _infer_predicate_from_context infer_ranged_for_continued_predicate'.
+
 (* FIXME why doesn't simple eapply work for these lemmas? *)
 
 Ltac compile_ranged_for_continued :=
@@ -1671,10 +1717,10 @@ Ltac compile_ranged_for_continued :=
   | [ |- WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ ?v _)) ] =>
     lazymatch v with
     | (ranged_for_u_continued _ _ _ _) =>
-        let lp := infer_loop_predicate_continued in
+        let lp := infer_ranged_for_continued_predicate in
         eapply compile_ranged_for_u_continued with (loop_pred := lp)
     | (ranged_for_s_continued _ _ _ _) =>
-        let lp := infer_loop_predicate_continued in
+        let lp := infer_ranged_for_continued_predicate in
         eapply compile_ranged_for_s_continued with (loop_pred := lp)
     end
   end.
@@ -1682,7 +1728,7 @@ Ltac compile_ranged_for_continued :=
 Ltac _compile_ranged_for locals to thm :=
   let from_v := gensym locals "from" in
   let to_v := gensym locals "to" in
-  let lp := Invariants.infer_loop_predicate from_v to_v to in
+  let lp := infer_ranged_for_predicate from_v to_v to in
   eapply thm with (from_var := from_v) (to_var := to_v) (loop_pred := lp).
 
 Ltac compile_ranged_for :=
@@ -1700,6 +1746,28 @@ Module LoopCompiler.
   #[export] Hint Extern 1 => compile_ranged_for_continued; shelve : compiler.
   #[export] Hint Extern 1 => compile_ranged_for; shelve : compiler.
 End LoopCompiler.
+
+Section Examples.
+  Context {width: Z} {BW: Bitwidth width}.
+  Context {word: word.word width} {word_ok : word.ok word}.
+  Context {locals: map.map string word} {locals_ok : map.ok locals}.
+  Context {mem: map.map word byte} {mem_ok : map.ok mem}.
+
+  Section LoopInference.
+    Context (tr: Semantics.trace) {A} (ptr v v' from: word) (a a': A) (R: mem -> Prop)
+            (rp: word -> A -> mem -> Prop).
+
+    Check ltac:(let t := infer_ranged_for_continued_predicate'
+                          (\<< word, A, word \>>)
+                          ["from"; "ptr"; "v"]
+                          tr
+                          (rp ptr a ⋆ R)
+                          (map.put (map := locals)
+                                   (map.put (map.put map.empty "v" v)
+                                            "from" from) "ptr" ptr)
+                in exact t).
+  End LoopInference.
+End Examples.
 
 Require bedrock2.BasicC64Semantics.
 

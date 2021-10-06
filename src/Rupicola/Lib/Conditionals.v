@@ -106,6 +106,16 @@ Section Conditionals.
   Qed.
 End Conditionals.
 
+Ltac infer_val_predicate' argstype vars tr pred locals :=
+  let val_pred :=
+      constr:(fun (args: argstype) =>
+                ltac:(let f := make_predicate vars args tr pred locals in
+                      exact f)) in
+  eval cbv beta in val_pred.
+
+Ltac infer_val_predicate :=
+  _infer_predicate_from_context infer_val_predicate'.
+
 Ltac compile_if :=
   let vp := infer_val_predicate in
   simple eapply compile_if with (val_pred := vp).
@@ -120,3 +130,24 @@ Ltac compile_if :=
 #[export] Hint Extern 1
  (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (if _ then _ else _) _))) =>
   compile_if; shelve : compiler.
+
+Section Examples.
+  Context {width: Z} {BW: Bitwidth width}.
+  Context {word: word.word width} {word_ok : word.ok word}.
+  Context {locals: map.map string word} {locals_ok : map.ok locals}.
+  Context {mem: map.map word byte} {mem_ok : map.ok mem}.
+
+  Section ValInference.
+    Context (tr: Semantics.trace) {A} (ptr v v' y: word) (a a': A) (R: mem -> Prop)
+            (rp: word -> A -> mem -> Prop).
+
+    Check ltac:(let t := infer_val_predicate'
+                          (\<< A , word , word \>>)
+                          ["ptr"; "v"; "y"]
+                          tr
+                          (rp ptr a ⋆ R)
+                          (map.put (map := locals)
+                                   (map.put map.empty "v" v) "ptr" ptr)
+                in exact t).
+  End ValInference.
+End Examples.
