@@ -1,6 +1,8 @@
 Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.Notations.
 Require Import Rupicola.Lib.Tactics.
+Require Import Rupicola.Lib.Invariants.
+Require Import Rupicola.Lib.Gensym.
 
 Section Gallina.
   Context {A: Type}.
@@ -81,7 +83,7 @@ Section Compilation.
     f_equal; lia.
   Qed.
 
-  Lemma compile_downto : forall {tr mem locals functions} {A} (a0: A) count step,
+  Lemma compile_downto_continued : forall {tr mem locals functions} {A} (a0: A) count step,
       let v := downto a0 count step in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl step_impl}
         (loop_pred : nat -> A -> predicate)
@@ -179,7 +181,7 @@ Section Compilation.
         use_hyp_with_matching_cmd; subst_lets_in_goal; eauto. } }
   Qed.
 
-  Lemma compile_downto_fresh : forall {tr mem locals functions} {A} (a0: A) count step,
+  Lemma compile_downto : forall {tr mem locals functions} {A} (a0: A) count step,
       let v := downto a0 count step in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl step_impl}
         (loop_pred : nat -> A -> predicate)
@@ -199,6 +201,7 @@ Section Compilation.
             map.get locals i_var = Some (word.of_Z (Z.of_nat i))) ->
 
         (let v := v in
+         let lp := loop_pred in
          (* loop body *)
          forall tr l m i,
            let st := downto' a0 (S i) count step in
@@ -210,7 +213,7 @@ Section Compilation.
               Locals := map.put l i_var wi;
               Functions := functions }>
            step_impl
-           <{ loop_pred i (step st i) }>) ->
+           <{ lp i (step st i) }>) ->
 
         (let v := v in
          (* continuation *)
@@ -233,9 +236,40 @@ Section Compilation.
       intros.
       unfold cmd_downto_fresh.
       repeat straightline; eexists; split; eauto.
-      eapply compile_downto; eauto.
+      eapply compile_downto_continued; eauto.
   Qed.
 End Compilation.
+
+Ltac make_downto_predicate i_var i_arg vars args tr pred locals :=
+  lazymatch substitute_target i_var i_arg pred locals with
+  | (?pred, ?locals) =>
+    make_predicate vars args tr pred locals
+  end.
+
+Ltac infer_downto_predicate' i_var argstype vars tr pred locals :=
+  let val_pred :=
+      constr:(fun (idx: nat) (args: argstype) =>
+                ltac:(let f := make_downto_predicate
+                                i_var idx vars args tr pred locals in
+                      exact f)) in
+  eval cbv beta in val_pred.
+
+Ltac infer_downto_predicate i_var :=
+  _infer_predicate_from_context
+    ltac:(infer_downto_predicate' i_var).
+
+Ltac compile_downto :=
+  lazymatch goal with
+  | [ |- WeakestPrecondition.cmd _ _ _ _ ?locals _ ] =>
+    let i_v := gensym locals "i" in
+    let lp := infer_downto_predicate i_v in
+    eapply compile_downto with (i_var := i_v) (loop_pred := lp)
+  end.
+
+Module DownToCompiler.
+  #[export] Hint Extern 1 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (downto _ _ _) _))) =>
+    compile_downto; shelve : compiler.
+End DownToCompiler.
 
 Section GhostCompilation.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
