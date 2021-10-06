@@ -59,27 +59,36 @@ Section Compilation.
     congruence.
   Qed.
 
+  Lemma word_of_Z_sub_1 n:
+    n > 0 ->
+    word.of_Z (Z.of_nat (n - 1)) =
+    word.sub (word := word)
+             (word.of_Z (Z.of_nat n)) (word.of_Z 1).
+  Proof.
+    intros; rewrite <- word.ring_morph_sub.
+    f_equal; lia.
+  Qed.
+
   Lemma compile_downto : forall {tr mem locals functions} {A} (a0: A) count step,
       let v := downto a0 count step in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl step_impl}
-        wcount
-        (loop_pred : nat -> A -> predicate) (* loop invariant *)
+        (loop_pred : nat -> A -> predicate)
         i_var vars,
 
-        loop_pred count a0 tr mem (map.remove locals i_var) ->
+        (Z.of_nat count < 2 ^ width)%Z ->
 
-        map.get locals i_var = Some wcount ->
-        word.unsigned wcount = Z.of_nat count ->
+        loop_pred count a0 tr mem (map.remove locals i_var) ->
+        map.get locals i_var = Some (word.of_Z (Z.of_nat count)) ->
 
         (let v := v in
          (* loop iteration case *)
-         forall tr l m i wi,
+         forall tr l m i,
+           let wi := word.of_Z (Z.of_nat i) in
            let st := downto' a0 (S i) count step in
            let inv' v tr' mem' locals :=
                map.get locals i_var = Some wi /\
                loop_pred i v tr' mem' (map.remove locals i_var) in
            loop_pred (S i) st tr m (map.remove l i_var) ->
-           word.unsigned wi = Z.of_nat i ->
            i < count ->
            <{ Trace := tr;
               Memory := m;
@@ -122,42 +131,42 @@ Section Compilation.
              downto' a0 i count step in
          loop_pred i st t m (map.remove l i_var)
          /\ i <= count
-         /\ (exists wi,
-               word.unsigned wi = Z.of_nat i
-               /\ map.get l i_var = Some wi)).
+         /\ map.get l i_var = Some (word.of_Z (Z.of_nat i))).
     ssplit; eauto using lt_wf; [ | ].
 
     { cbv zeta. subst.
       cbv [downto'].
-      exists count; ssplit; [ | | exists wcount];
+      exists count; ssplit; [ | | ];
         repeat match goal with
                | _ => rewrite skipn_all2 by (rewrite seq_length; lia)
                | _ => progress subst_lets_in_goal
                | _ => progress cbn [rev fold_left]
-               | _ => solve [eauto]
+               | _ => solve [eauto using Zle_0_nat]
                end. }
 
     { intros. cleanup; subst.
       repeat straightline'.
       lazymatch goal with x := context [word.ltu] |- _ => subst x end.
       rewrite word.unsigned_ltu, word.unsigned_of_Z_0.
+      rewrite word.unsigned_of_Z_nowrap by lia.
       destruct_one_match;
         rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1;
         ssplit; try lia; [ | ].
       { repeat straightline'.
         subst_lets_in_goal.
         lazymatch goal with
-        | Hcmd:context [ WeakestPrecondition.cmd _ ?impl ],
-               Hinv : context [loop_pred _ ?st],
-                      Hi : word.unsigned ?wi = Z.of_nat ?i
+        | [ Hcmd : context [WeakestPrecondition.cmd _ ?impl ],
+            Hinv : context [loop_pred ?i ?st]
           |- WeakestPrecondition.cmd
               _ ?impl ?tr ?mem
               (map.put ?locals ?i_var (word.sub ?wi (word.of_Z 1)))
-              ?post =>
-          specialize (Hcmd tr locals mem (i-1) (word.sub wi (word.of_Z 1)));
+              ?post ] =>
+          specialize (Hcmd tr locals mem (i - 1));
             replace (S (i-1)) with i in Hcmd by lia;
-            unshelve epose proof (Hcmd _ _ _); clear Hcmd
-        end; [ eauto using word_to_nat_sub_1; lia .. | ].
+            unshelve epose proof (Hcmd _ _); clear Hcmd
+        end; [ eauto; lia .. | ].
+
+        rewrite <- word_of_Z_sub_1 by lia.
         use_hyp_with_matching_cmd; [ ].
         cbv [postcondition_cmd] in *; sepsimpl; cleanup; subst.
         repeat match goal with
@@ -170,13 +179,8 @@ Section Compilation.
                end. }
       { repeat straightline'.
         match goal with
-        | H : (word.unsigned ?x <= 0)%Z |- _ =>
-          eapply word_to_nat_0 in H; [ | solve [eauto] .. ]; subst
+        | [ H: (Z.of_nat ?n <= 0)%Z |- _ ] => replace n with 0 in * by lia
         end.
-        match goal with
-          H : word.unsigned (word.of_Z 0) = Z.of_nat ?n |- _ =>
-          assert (n = 0) by (rewrite word.unsigned_of_Z_0 in H; lia)
-        end; subst.
         use_hyp_with_matching_cmd; subst_lets_in_goal; eauto. } }
   Qed.
 End Compilation.
