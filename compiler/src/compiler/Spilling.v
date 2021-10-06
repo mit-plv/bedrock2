@@ -1321,11 +1321,14 @@ Section Spilling.
     induction args; intros.
     - simpl. eapply exec.skip. eauto using related_to_related'_nil.
     - simpl. unfold write_register, stack_loc.
+      match goal with
+      | H: map.getmany_of_list _ (_ :: _) = Some _ |- _ => rename H into GM
+      end.
       destruct argvs as [|v vs]. {
-        unfold map.getmany_of_list in H5. cbn in H5. fwd.
+        unfold map.getmany_of_list in GM. cbn in GM. fwd.
         destr (List.option_all (map (map.get l1) args)); discriminate.
       }
-      eapply map.invert_getmany_of_list_cons in H5. destruct H5 as [G GM].
+      eapply map.invert_getmany_of_list_cons in GM. destruct GM as [G GM].
       cbn [List.length] in *.
       fwd.
       eapply exec.seq_cps.
@@ -1335,14 +1338,24 @@ Section Spilling.
       + eapply exec.load.
         * eapply get_sep. ecancel_assumption.
         * eapply load_from_word_array. 1: ecancel_assumption. 2: blia.
-          eapply H1p10. 1: blia.
-          left.
-          unfold sep in H1p8. fwd.
-          eapply map.get_split_r. 1,3: eassumption.
-          destr (map.get mp a); [exfalso|reflexivity].
-          eapply map.get_split_l in E0. 2: eassumption.
-          -- specialize H1p4 with (1 := E0). blia.
-          -- eapply map.not_in_of_list_zip_to_get_None; eassumption.
+          match goal with H: _ |- _ => eapply H end.
+          1: blia.
+          assert ((eq lRegs * (eq hlArgRegs * eq lStack))%sep l1) as Hl1 by ecancel_assumption.
+          unfold sep at 1 in Hl1. destruct Hl1 as (lRegs' & lStackOrArgs & Sl1 & ? & Hl1).
+          subst lRegs'.
+          assert (map.get lStackOrArgs a = Some v) as GS. {
+            eapply map.get_split_r. 1,3: eassumption.
+            destr (map.get lRegs a). 2: reflexivity. exfalso.
+            match goal with
+             | H: _, E: map.get _ _ = Some _ |- _ => specialize H with (1 := E)
+             end.
+             blia.
+          }
+          unfold sep in Hl1.
+          destruct Hl1 as (hlArgRegs' & lStack' & Hl1 & ? & ?). subst hlArgRegs' lStack'.
+          eapply map.get_split with (k := a) in Hl1.
+          rewrite GS in Hl1.
+          destruct Hl1 as [(Hl1 & ?) | (Hl1 & ?)]; symmetry in Hl1; eauto.
         * match goal with
           | H: _ |- _ => eapply H
           end.
