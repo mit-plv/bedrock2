@@ -1643,6 +1643,21 @@ Section Spilling.
     unfold map.forall_keys in H0. specialize H0 with (1 := H). unfold a0 in H0. blia.
   Qed.
 
+  Lemma split_off_hlArgRegs: forall argvars argvals lRegs lStack (l l': locals) maxvar,
+      (eq lRegs * eq lStack)%sep l ->
+      map.forall_keys (fun x => fp < x < 32 /\ (x < a0 \/ a7 < x)) lRegs ->
+      map.forall_keys (fun x => 32 <= x <= maxvar) lStack ->
+      map.putmany_of_list_zip argvars argvals l = Some l' ->
+      Forall (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)) argvars ->
+      exists lRegs' hlArgRegs lStack',
+        (eq lRegs' * eq hlArgRegs * eq lStack')%sep l' /\
+        map.of_list_zip argvars argvals = Some hlArgRegs /\
+        map.forall_keys (fun x => fp < x < 32 /\ (x < a0 \/ a7 < x)) lRegs' /\
+        map.forall_keys (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)) hlArgRegs /\
+        map.forall_keys (fun x => 32 <= x <= maxvar) lStack'.
+  Proof.
+  Admitted.
+
   Lemma spilling_correct (e1 e2 : env) (Ev : spill_functions e1 = Some e2)
         (s1 : stmt)
         (t1 : Semantics.trace)
@@ -1755,13 +1770,19 @@ Section Spilling.
           unfold sep, map.split in Hl1old. fwd.
           rewrite ?map.get_putmany_dec in B0. rewrite E, E0, E1 in B0. discriminate.
         }
-        clear hlArgRegs Rp4 Hl1old Rp8.
+
+        (* TODO: in related', register entries of hlArgRegs also need to show up in
+           the low-level l2! *)
 
         (* getting rid of the split into llArgRegs because that's not relevant any more *)
         rename Rp7 into Hl2. move Hl2 at bottom. rename Rp5 into Hll. move Hll at bottom.
         eapply hide_llArgRegs in Hll. 2: ecancel_assumption. 2: assumption.
         assert ((eq lRegs * arg_regs * ptsto fp fpval)%sep l2') as Hl2' by ecancel_assumption.
-        clear S22 llArgRegs l2Rest SP22 Hl2 Hll.
+        clear S22 llArgRegs l2Rest SP22 Hl2 Hll Rp2.
+
+        (* introducing a hlRetRegs split:
+        edestruct (split_off_hlArgRegs resvars resvals lRegs' lStack').
+        *)
 
         rename H2p0 into P.
         eapply map.putmany_of_list_zip_to_disjoint_putmany in P. fwd.
