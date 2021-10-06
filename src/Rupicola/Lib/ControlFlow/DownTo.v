@@ -70,7 +70,6 @@ Section Compilation.
 
         map.get locals i_var = Some wcount ->
         word.unsigned wcount = Z.of_nat count ->
-        0 < count -> (* FIXME unused *)
 
         (let v := v in
          (* loop iteration case *)
@@ -142,10 +141,6 @@ Section Compilation.
       repeat straightline'.
       lazymatch goal with x := context [word.ltu] |- _ => subst x end.
       rewrite word.unsigned_ltu, word.unsigned_of_Z_0.
-      match goal with
-      | H1 : ?y = Z.of_nat ?x, H2 : 0 < ?x |- _ =>
-        assert (0 < y)%Z by lia
-      end.
       destruct_one_match;
         rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1;
         ssplit; try lia; [ | ].
@@ -238,7 +233,6 @@ Section GhostCompilation.
 
       map.get locals i_var = Some wcount ->
       word.unsigned wcount = Z.of_nat count ->
-      0 < count -> (* FIXME unused *)
 
       (let v := v in
        (* loop iteration case *)
@@ -314,10 +308,6 @@ Section GhostCompilation.
       repeat straightline'.
       lazymatch goal with x := context [word.ltu] |- _ => subst x end.
       rewrite word.unsigned_ltu, word.unsigned_of_Z_0.
-      match goal with
-      | H1 : ?y = Z.of_nat ?x, H2 : 0 < ?x |- _ =>
-        assert (0 < y)%Z by lia
-      end.
       destruct_one_match;
         rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1;
         ssplit; try lia; [ | ].
