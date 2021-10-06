@@ -84,14 +84,14 @@ Section Compile.
   Lemma compile_ll_hd : forall {tr mem locals functions} d ll,
     let v := ll_hd d ll in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-      R end_ptr ll_var ll_ptr ll'_ptr var,
+      R end_ptr ll_expr ll_ptr ll'_ptr var,
 
       (scalar ll_ptr (ll_hd d ll)
        * scalar (next_word ll_ptr) ll'_ptr
        * LinkedList end_ptr ll'_ptr (ll_next ll)
        * R)%sep mem ->
 
-      map.get locals ll_var = Some ll_ptr ->
+      WeakestPrecondition.dexpr mem locals ll_expr ll_ptr ->
 
       (let v := v in
        forall m,
@@ -110,11 +110,14 @@ Section Compile.
          Memory := mem;
          Locals := locals;
          Functions := functions }>
-      cmd.seq (cmd.set var (expr.load access_size.word (expr.var ll_var))) k_impl
+      cmd.seq (cmd.set var (expr.load access_size.word ll_expr)) k_impl
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
     cbn [LinkedList ll_hd hd]; intros.
     sepsimpl. repeat straightline'.
+    eexists; split; repeat straightline.
+    eapply WeakestPrecondition_dexpr_expr; eauto.
+    all: repeat straightline'.
     use_hyp_with_matching_cmd; eauto;
       ecancel_assumption.
   Qed.
@@ -124,14 +127,14 @@ Section Compile.
   Lemma compile_ll_next : forall {tr mem locals functions} ll,
     let v := ll_next ll in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-      dummy R end_ptr ll_var ll_ptr ll'_ptr var,
+      dummy R end_ptr ll_expr ll_ptr ll'_ptr var,
 
       (scalar ll_ptr (ll_hd dummy ll)
        * scalar (next_word ll_ptr) ll'_ptr
        * LinkedList end_ptr ll'_ptr (ll_next ll)
        * R)%sep mem ->
 
-      map.get locals ll_var = Some ll_ptr ->
+      WeakestPrecondition.dexpr mem locals ll_expr ll_ptr ->
 
       (let v := v in
        <{ Trace := tr;
@@ -149,13 +152,16 @@ Section Compile.
                  (expr.load
                     access_size.word
                     (expr.op bopname.add
-                             (expr.var ll_var)
+                             ll_expr
                              (expr.literal
                                 (Z.of_nat word_size_in_bytes)))))
         k_impl
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
-    repeat straightline'. eauto.
+    repeat first [straightline |
+                  eexists; split; [ eauto | ] |
+                  eapply WeakestPrecondition_dexpr_expr; eauto];
+      eauto.
   Qed.
 End Compile.
 

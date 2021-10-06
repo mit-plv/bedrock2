@@ -484,11 +484,12 @@ Section __.
   Lemma compile_table_nth : forall {n t} {tr mem locals functions},
     let v := nth n t (word.of_Z 0) in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-           (R : _ -> Prop) var idx_var,
+           (R : _ -> Prop) var idx_expr,
       (n < Datatypes.length t)%nat ->
       (Z.of_nat (Datatypes.length (to_byte_table t)) <= 2 ^ width) ->
+
       R mem ->
-      map.get locals idx_var = Some (word.of_Z (Z.of_nat n)) ->
+      WeakestPrecondition.dexpr mem locals idx_expr (word.of_Z (Z.of_nat n)) ->
       
       (let v := v in
        forall m,
@@ -506,7 +507,7 @@ Section __.
       (cmd.seq (cmd.set
                   var
                   (expr.inlinetable access_size.word (to_byte_table t)
-                                    (expr.op bopname.mul (expr.literal (width/8)) (expr.var idx_var))))
+                                    (expr.op bopname.mul (expr.literal (width/8)) idx_expr)))
                k_impl)
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
@@ -515,12 +516,9 @@ Section __.
     split.
     {
       repeat straightline.
-      exists (word.of_Z (Z.of_nat n)).
-      split; auto.
-      exists v.
-      split; auto.
-      unfold v0.
-      rewrite <- word.ring_morph_mul.
+      eapply WeakestPrecondition_dexpr_expr; eauto.
+      eexists; split; eauto.
+      unfold v0; rewrite <- word.ring_morph_mul.
       apply load_from_word_table; auto.
     }
     {
@@ -528,7 +526,7 @@ Section __.
       eauto.
     }
   Qed.
-  
+
   Hint Extern 1 => simple eapply @compile_table_nth; shelve : compiler.
   Hint Extern 1 => simple eapply @compile_byte_unsizedlistarray_get; shelve : compiler.
 

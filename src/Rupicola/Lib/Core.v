@@ -1089,6 +1089,16 @@ Section Semantics.
           functions cmd tr mem locals p2.
   Proof. intros; eapply Proper_program; eassumption. Qed.
 
+  Lemma WeakestPrecondition_dexpr_expr :
+    forall mem locals (e: expr) w (k: word -> Prop),
+      k w ->
+      WeakestPrecondition.dexpr mem locals e w ->
+      WeakestPrecondition.expr mem locals e k.
+  Proof.
+    intros; eapply Proper_expr; [ | eassumption ].
+    intros ? ->; assumption.
+  Qed.
+
   Lemma getmany_list_map (l : locals) :
     forall a vs (P :_ -> Prop),
       P vs ->

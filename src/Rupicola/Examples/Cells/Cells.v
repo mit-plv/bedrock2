@@ -27,10 +27,10 @@ Section with_parameters.
   Lemma compile_get : forall {tr mem locals functions} (c: cell),
     let v := get c in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-      R c_ptr c_var var,
+      R c_ptr c_expr var,
 
       sep (cell_value c_ptr c) R mem ->
-      map.get locals c_var = Some c_ptr ->
+      WeakestPrecondition.dexpr mem locals c_expr c_ptr ->
 
       (let v := v in
        <{ Trace := tr;
@@ -43,7 +43,7 @@ Section with_parameters.
          Memory := mem;
          Locals := locals;
          Functions := functions }>
-      cmd.seq (cmd.set var (expr.load access_size.word (expr.var c_var)))
+      cmd.seq (cmd.set var (expr.load access_size.word c_expr))
               k_impl
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
@@ -52,10 +52,7 @@ Section with_parameters.
     exists (get c).
     split.
     { cbn.
-      red.
-      exists c_ptr.
-      split.
-      { eassumption. }
+      eapply WeakestPrecondition_dexpr_expr; eauto.
       { eexists; split; [ | reflexivity ].
         eapply load_word_of_sep.
         eassumption. } }
@@ -66,9 +63,9 @@ Section with_parameters.
   Lemma compile_put : forall {tr mem locals functions} x,
     let v := put x in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-      R c_ptr _c c_var x_var,
+      R c_ptr _c c_var x_expr,
 
-      map.get locals x_var = Some x ->
+      WeakestPrecondition.dexpr mem locals x_expr x ->
       map.get locals c_var = Some c_ptr ->
       sep (cell_value c_ptr _c) R mem -> (* See FAQ on parameter order *)
 
@@ -85,7 +82,7 @@ Section with_parameters.
          Memory := mem;
          Locals := locals;
          Functions := functions }>
-      cmd.seq (cmd.store access_size.word (expr.var c_var) (expr.var x_var))
+      cmd.seq (cmd.store access_size.word (expr.var c_var) x_expr)
               k_impl
       <{ pred (nlet_eq [c_var] v k) }>.
   Proof.
@@ -93,8 +90,7 @@ Section with_parameters.
     unfold cell_value in *.
     repeat straightline.
     exists c_ptr; split; eexists; split; eauto.
-    - repeat straightline; eexists; split; eauto.
-    - repeat straightline; eauto.
+    - repeat straightline. eauto.
   Qed.
 
   #[global] Program Instance SimpleAllocable_cell : Allocable cell_value :=

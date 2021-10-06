@@ -106,11 +106,11 @@ Section CompilerBasics.
     forall {P} {pred: P v -> predicate}
       {k: nlet_eq_k P v} {k_impl}
       (Data : word -> data -> memT -> Prop) R
-      x_var x_ptr var,
+      x_expr x_ptr var,
 
       (* This assumption is used to drive the compiler, but it's not used by the proof *)
       (Data x_ptr x * R)%sep mem ->
-      map.get locals x_var = Some x_ptr ->
+      WeakestPrecondition.dexpr mem locals x_expr x_ptr ->
 
       (let v := v in
        <{ Trace := tr;
@@ -123,12 +123,12 @@ Section CompilerBasics.
          Memory := mem;
          Locals := locals;
          Functions := functions }>
-      cmd.seq (cmd.set var (expr.var x_var)) k_impl
+      cmd.seq (cmd.set var x_expr) k_impl
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
     intros.
     repeat straightline'.
-    eassumption.
+    eauto.
   Qed.
 
   Lemma compile_sig_as_nlet_eq {tr mem locals functions} {A} P0 (x0: A) Px0:

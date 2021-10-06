@@ -20,7 +20,7 @@ Section Compile.
   (* There are two ways cswap could be compiled; you can either swap the local
      variables (the pointers), or you can leave the pointers and copy over the
      data. This version swaps the pointers without doing any copying. *)
-  Lemma compile_cswap_nocopy : forall {tr} {mem:mem} {locals:locals} {functions} (swap: bool) {A} (x y: A),
+  Lemma compile_cswap_nocopy : forall {tr} {mem: mem} {locals: locals} {functions} (swap: bool) {A} (x y: A),
     let v := cswap swap x y in
     forall {P} {pred: P v -> predicate}
       {k: nlet_eq_k P v} {k_impl}

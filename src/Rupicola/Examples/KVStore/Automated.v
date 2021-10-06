@@ -256,8 +256,8 @@ Section KVSwap.
 
   Lemma compile_map_get : forall
         {tr mem locals functions} {T} {pred: T -> predicate},
-    forall m m_ptr m_var M
-      k k_ptr k_var
+    forall m m_ptr m_expr M
+      k k_ptr k_expr
       default default_impl
       K K_impl err var R,
 
@@ -267,8 +267,8 @@ Section KVSwap.
       var <> err ->
 
       (AnnotatedMap m_ptr M * Key k_ptr k * R)%sep mem ->
-      map.get locals m_var = Some m_ptr ->
-      map.get locals k_var = Some k_ptr ->
+      WeakestPrecondition.dexpr mem locals m_expr m_ptr ->
+      WeakestPrecondition.dexpr mem locals k_expr k_ptr ->
 
       (forall a, map.get M k = Some a -> is_owned a) ->
 
@@ -297,7 +297,7 @@ Section KVSwap.
          Locals := locals;
          Functions := functions }>
       cmd.seq
-        (cmd.call [err; var] (fst (@KVStore.get ops)) [expr.var m_var; expr.var k_var])
+        (cmd.call [err; var] (fst (@KVStore.get ops)) [m_expr; k_expr])
         (cmd.cond (expr.op bopname.eq (expr.var err) (expr.literal 0))
                   K_impl
                   default_impl)
@@ -308,9 +308,8 @@ Section KVSwap.
     exists [m_ptr; k_ptr].
     split.
     { cbn.
-      eexists; split; [ eassumption | ].
-      eexists; split; [ eassumption | ].
-      reflexivity. }
+      eapply WeakestPrecondition_dexpr_expr; eauto.
+      eapply WeakestPrecondition_dexpr_expr; eauto. }
     kv_hammer.
     destruct_one_match_hyp_of_type (option (annotation * value)).
     { destruct_products.
@@ -410,9 +409,9 @@ Section KVSwap.
 
   Lemma compile_map_put_replace : forall
         {tr mem locals functions} {T} {pred: T -> predicate},
-    forall m m_ptr m_var M
-      k k_ptr k_var
-      v v_ptr v_var
+    forall m m_ptr m_expr M
+      k k_ptr k_expr
+      v v_ptr v_expr
       K K_impl R,
 
       spec_of_map_put functions ->
@@ -420,9 +419,9 @@ Section KVSwap.
 
       (AnnotatedMap m_ptr M * Key k_ptr k * Value v_ptr v * R)%sep mem ->
 
-      map.get locals m_var = Some m_ptr ->
-      map.get locals k_var = Some k_ptr ->
-      map.get locals v_var = Some v_ptr ->
+      WeakestPrecondition.dexpr mem locals m_expr m_ptr ->
+      WeakestPrecondition.dexpr mem locals k_expr k_ptr ->
+      WeakestPrecondition.dexpr mem locals v_expr v_ptr ->
 
       (exists a, map.get M k = Some a /\ is_borrowed a) ->
 
@@ -444,7 +443,7 @@ Section KVSwap.
       cmd.seq
         (cmd.call []
                   (fst (@KVStore.put ops))
-                  [expr.var m_var; expr.var k_var; expr.var v_var])
+                  [m_expr; k_expr; v_expr])
         K_impl
       <{ pred (dlet m K) }>.
   Proof.
@@ -453,9 +452,7 @@ Section KVSwap.
     exists [m_ptr; k_ptr; v_ptr].
     split.
     { cbn.
-      eexists; split; eauto.
-      eexists; split; eauto.
-      eexists; split; eauto. }
+      repeat (eapply WeakestPrecondition_dexpr_expr; eauto). }
     { kv_hammer.
       match goal with
       | [ H: forall mem, _ mem -> _ |- _ ] => apply H

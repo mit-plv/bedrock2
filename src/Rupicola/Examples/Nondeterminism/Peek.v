@@ -27,11 +27,11 @@ Section Peek.
     let c := peek b in
     forall {B} {pred: B -> predicate}
       {k: word -> Comp B} {k_impl}
-      R b_ptr b_var var,
+      R b_ptr b_expr var,
 
       b <> [] ->
       (bag_at b_ptr b * R)%sep mem ->
-      map.get locals b_var = Some b_ptr ->
+      WeakestPrecondition.dexpr mem locals b_expr b_ptr ->
 
       (forall v,
           c v ->
@@ -45,14 +45,14 @@ Section Peek.
          Memory := mem;
          Locals := locals;
          Functions := functions }>
-      cmd.seq (cmd.set var (expr.load access_size.word (expr.var b_var))) k_impl
+      cmd.seq (cmd.set var (expr.load access_size.word b_expr)) k_impl
       <{ pbind pred (bindn [var] c k) }>.
   Proof.
     destruct b as [|w b]; try congruence.
     intros * Hnn [ws [Hin Hm]%sep_assoc%sep_emp_l]%sep_ex1_l Hl Hk.
     destruct ws as [| w' ws]; [ exfalso; eapply Hin; red; eauto | ].
-    eexists; split.
-    - eexists; split; eauto.
+    eexists; split; repeat straightline.
+    - eapply WeakestPrecondition_dexpr_expr; eauto.
       eexists; split; eauto.
       eapply load_word_of_sep.
       seprewrite_in uconstr:(@array_cons) Hm.

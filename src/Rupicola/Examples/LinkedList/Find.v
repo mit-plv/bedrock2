@@ -45,14 +45,14 @@ Section Compile.
     forall {P} {pred: P v -> predicate}
       {k: nlet_eq_k P v} {k_impl}
       (Data : word -> data -> _ -> Prop) Rt Rf
-      t_var f_var t_ptr f_ptr c_var var,
+      t_expr f_expr t_ptr f_ptr c_expr var,
 
       (Data t_ptr t * Rt)%sep mem ->
       (Data f_ptr f * Rf)%sep mem ->
 
-      map.get locals c_var = Some (word.b2w c) ->
-      map.get locals t_var = Some t_ptr ->
-      map.get locals f_var = Some f_ptr ->
+      WeakestPrecondition.dexpr mem locals c_expr (word.b2w c) ->
+      WeakestPrecondition.dexpr mem locals t_expr t_ptr ->
+      WeakestPrecondition.dexpr mem locals f_expr f_ptr ->
 
       (let v := v in
        <{ Trace := tr;
@@ -66,9 +66,7 @@ Section Compile.
          Locals := locals;
          Functions := functions }>
       cmd.seq
-        (cmd.cond (expr.var c_var)
-                  (cmd.set var (expr.var t_var))
-                  (cmd.set var (expr.var f_var)))
+        (cmd.cond c_expr (cmd.set var t_expr) (cmd.set var f_expr))
         k_impl
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
@@ -78,12 +76,9 @@ Section Compile.
     intros.
     repeat straightline' locals.
     split_if ltac:(repeat straightline' locals).
-    { subst_lets_in_goal. rewrite word.unsigned_b2w.
-      cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
-      intros. repeat straightline' locals. eauto. }
-    { subst_lets_in_goal. rewrite word.unsigned_b2w.
-      cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
-      intros. repeat straightline' locals. eauto. }
+    all: subst_lets_in_goal; eauto.
+    all: rewrite word.unsigned_b2w; cbv [Z.b2z]; destruct_one_match; try congruence; [ ].
+    all: intros; repeat straightline' locals; eauto.
   Qed.
 
   Open Scope list_scope.
@@ -192,12 +187,14 @@ Section Compile.
                        rewrite map.get_remove_diff]; (eassumption || congruence).
 
       simple apply compile_nlet_as_nlet_eq.
-      simple eapply compile_ll_hd with (ll_var := "p").
+      simple eapply compile_ll_hd with (ll_expr := expr.var "p").
       all:lazymatch goal with
           | |- sep _ _ _ =>
             cbn [ll_hd hd ll_next tl]; ecancel_assumption
           | _ => idtac
           end.
+
+      eexists; split; eauto.
       1: map_t.
 
       intros. clear_old_seps.
@@ -210,6 +207,7 @@ Section Compile.
       eapply compile_ll_next;
         [ repeat compile_step .. | ];
         [ try solve [repeat compile_step] .. | ].
+      instantiate (1 := expr.var _); eexists; split; eauto.
       map_t.
 
       eapply compile_nlet_as_nlet_eq.
@@ -221,7 +219,16 @@ Section Compile.
         ecancel_assumption. }
       all: try map_t.
 
+      (* FIXME Rewrite to use fully explicit maps (not partial ones)  *)
+      instantiate (1 := expr.var _); eexists; split; [ | reflexivity ].
       compile_step.
+
+      instantiate (1 := expr.var _); eexists; split; [ | reflexivity ].
+      repeat rewrite map.get_put_diff; eauto; congruence.
+
+      instantiate (1 := expr.var _); eexists; split; [ | reflexivity ].
+      compile_step.
+
       (* unset loop-local variables *)
       (* FIXME remove_unused_vars does not work here. *)
       (* repeat remove_unused_var. *)

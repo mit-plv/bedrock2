@@ -43,16 +43,16 @@ Section with_parameters.
   Lemma compile_indirect_add : forall {tr mem locals functions} a b c,
     let v := indirect_add b c in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-      va vb vc pa pb pc Ra Rb Rc,
+      a_var b_expr c_expr pa pb pc Ra Rb Rc,
 
-      map.get locals va = Some pa ->
+      map.get locals a_var = Some pa ->
       (cell_value pa a ⋆ Ra) mem ->
 
       (cell_value pb b ⋆ Rb) mem ->
-      map.get locals vb = Some pb ->
+      WeakestPrecondition.dexpr mem locals b_expr pb ->
 
       (cell_value pc c ⋆ Rc) mem ->
-      map.get locals vc = Some pc ->
+      WeakestPrecondition.dexpr mem locals c_expr pc ->
 
       (_: spec_of "indirect_add") functions ->
 
@@ -69,13 +69,14 @@ Section with_parameters.
          Memory := mem;
          Locals := locals;
          Functions := functions }>
-      cmd.seq (cmd.call [] "indirect_add" [expr.var va; expr.var vb; expr.var vc])
+      cmd.seq (cmd.call [] "indirect_add" [expr.var a_var; b_expr; c_expr])
               k_impl
-      <{ pred (nlet_eq [va] v k) }>.
+      <{ pred (nlet_eq [a_var] v k) }>.
   Proof.
     unfold unsep.
     repeat straightline.
     repeat (eexists; split; eauto).
+    simpl; repeat (eapply WeakestPrecondition_dexpr_expr; eauto).
     straightline_call; unfold unsep in *; eauto; [].
     intuition subst.
     repeat (eexists; split; eauto).

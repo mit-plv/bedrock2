@@ -103,9 +103,9 @@ Section with_parameters.
 
     Notation K_to_word x := (word.of_Z (Z.of_nat (K_to_nat x))).
 
-    Context (a : A) (a_ptr : word) (a_var : string)
-            (val: V) (val_var: string)
-            (idx : K) (idx_var : string).
+    Context (a : A) (a_ptr : word) (a_expr : expr)
+            (val: V) (val_expr : expr)
+            (idx : K) (idx_expr : expr).
 
     Context
       (Hget: forall a,
@@ -128,8 +128,8 @@ Section with_parameters.
         Z.of_nat (K_to_nat idx) < Z.of_nat (Datatypes.length (to_list a)) ->
 
         sep (repr a_ptr a) R mem ->
-        map.get locals a_var = Some a_ptr ->
-        map.get locals idx_var = Some (K_to_word idx) ->
+        WeakestPrecondition.dexpr mem locals a_expr a_ptr ->
+        WeakestPrecondition.dexpr mem locals idx_expr (K_to_word idx) ->
 
         (let v := v in
          <{ Trace := tr;
@@ -146,9 +146,7 @@ Section with_parameters.
           (cmd.set
              var
              (expr.load (ai.(ai_size))
-                        (offset (expr.var a_var)
-                                (expr.var idx_var)
-                                (expr.literal ai.(ai_width)))))
+                        (offset a_expr idx_expr (expr.literal ai.(ai_width)))))
           k_impl
         <{ pred (nlet_eq [var] v k) }>.
     Proof.
@@ -157,8 +155,8 @@ Section with_parameters.
       destruct (Hget a) as [default Hget0].
 
       exists (ai.(ai_to_word) (get a idx)); split; cbn; [ | assumption ].
-      exists a_ptr; split; [ eassumption | ]; cbn.
-      exists (K_to_word idx); split; [ eassumption | ]; cbn.
+      eapply WeakestPrecondition_dexpr_expr; eauto.
+      eapply WeakestPrecondition_dexpr_expr; eauto.
       eexists; split; [ | reflexivity ].
 
       seprewrite_in Hrw H0.        (* FIXME seprewrite shouldn't rename *)
@@ -243,9 +241,9 @@ Section with_parameters.
       (K_to_nat idx < Datatypes.length (to_list a))%nat ->
 
       sep (repr a_ptr a) R mem ->
-      map.get locals a_var = Some a_ptr ->
-      map.get locals idx_var = Some (K_to_word idx) ->
-      map.get locals val_var = Some (ai.(ai_to_word) val) ->
+      WeakestPrecondition.dexpr mem locals a_expr a_ptr ->
+      WeakestPrecondition.dexpr mem locals idx_expr (K_to_word idx) ->
+      WeakestPrecondition.dexpr mem locals val_expr (ai.(ai_to_word) val) ->
 
       (let v := v in
        forall mem',
@@ -263,10 +261,8 @@ Section with_parameters.
       cmd.seq
         (cmd.store
            (ai.(ai_size))
-           (offset (expr.var a_var)
-                   (expr.var idx_var)
-                   (expr.literal ai.(ai_width)))
-           (expr.var val_var))
+           (offset a_expr idx_expr (expr.literal ai.(ai_width)))
+           val_expr)
         k_impl
       <{ pred (nlet_eq [var] v k) }>.
     Proof.
@@ -278,11 +274,10 @@ Section with_parameters.
       destruct (Hget (put a idx val)) as [default Hget0].
       eexists; split; cbn.
 
-      { eexists; split; [ eassumption | ]; cbn.
-        eexists; split; [ eassumption | reflexivity ]. }
+      { repeat (eapply WeakestPrecondition_dexpr_expr; eauto). }
 
       { eexists; split; cbn.
-        { eexists; split; [ eassumption | reflexivity ]. }
+        { repeat (eapply WeakestPrecondition_dexpr_expr; eauto). }
         { seprewrite_in Hrw H0.
 
           match goal with
@@ -384,11 +379,11 @@ Section with_parameters.
           (a: VectorArray.t ai.(ai_type) n) (idx: K) pr:
       let v := VectorArray.get a idx pr in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-        R (a_ptr: word) a_var idx_var var,
+        R (a_ptr: word) a_expr idx_expr var,
 
         sep (vectorarray_value a_ptr a) R mem ->
-        map.get locals a_var = Some a_ptr ->
-        map.get locals idx_var = Some (word.of_Z (Z.of_nat (cast idx))) ->
+        WeakestPrecondition.dexpr mem locals a_expr a_ptr ->
+        WeakestPrecondition.dexpr mem locals idx_expr (word.of_Z (Z.of_nat (cast idx))) ->
 
         (let v := v in
          <{ Trace := tr;
@@ -406,9 +401,7 @@ Section with_parameters.
              var
              (expr.load
                 (ai.(ai_size))
-                (offset (expr.var a_var)
-                        (expr.var idx_var)
-                        (expr.literal ai.(ai_width)))))
+                (offset a_expr idx_expr (expr.literal ai.(ai_width)))))
           k_impl
         <{ pred (nlet_eq [var] v k) }>.
     Proof.
@@ -425,12 +418,12 @@ Section with_parameters.
           (a: VectorArray.t ai.(ai_type) n) (idx: K) pr val:
       let v := VectorArray.put a idx pr val in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-        R a_ptr a_var idx_var val_var var,
+        R a_ptr a_expr idx_expr val_expr var,
 
         sep (vectorarray_value a_ptr a) R mem ->
-        map.get locals a_var = Some a_ptr ->
-        map.get locals idx_var = Some (word.of_Z (Z.of_nat (cast idx))) ->
-        map.get locals val_var = Some (ai.(ai_to_word) val) ->
+        WeakestPrecondition.dexpr mem locals a_expr a_ptr ->
+        WeakestPrecondition.dexpr mem locals idx_expr (word.of_Z (Z.of_nat (cast idx))) ->
+        WeakestPrecondition.dexpr mem locals val_expr (ai.(ai_to_word) val) ->
 
         (let v := v in
          forall mem',
@@ -448,10 +441,8 @@ Section with_parameters.
         cmd.seq
           (cmd.store
              (ai.(ai_size))
-             (offset (expr.var a_var)
-                     (expr.var idx_var)
-                     (expr.literal ai.(ai_width)))
-             (expr.var val_var))
+             (offset a_expr idx_expr (expr.literal ai.(ai_width)))
+             val_expr)
           k_impl
         <{ pred (nlet_eq [var] v k) }>.
     Proof.
@@ -532,11 +523,11 @@ Section with_parameters.
           (a: ListArray.t ai.(ai_type)) (idx: K):
       let v := ListArray.get a idx in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-        R (a_ptr: word) a_var idx_var var,
+        R (a_ptr: word) a_expr idx_expr var,
 
         sep (listarray_value a_ptr a) R mem ->
-        map.get locals a_var = Some a_ptr ->
-        map.get locals idx_var = Some (word.of_Z (Z.of_nat (cast idx))) ->
+        WeakestPrecondition.dexpr mem locals a_expr a_ptr ->
+        WeakestPrecondition.dexpr mem locals idx_expr (word.of_Z (Z.of_nat (cast idx))) ->
 
         Z.of_nat (cast idx) < Z.of_nat (Datatypes.length a) ->
 
@@ -556,9 +547,7 @@ Section with_parameters.
              var
              (expr.load
                 (ai.(ai_size))
-                (offset (expr.var a_var)
-                        (expr.var idx_var)
-                        (expr.literal ai.(ai_width)))))
+                (offset a_expr idx_expr (expr.literal ai.(ai_width)))))
           k_impl
         <{ pred (nlet_eq [var] v k) }>.
     Proof.
@@ -571,12 +560,12 @@ Section with_parameters.
           (a: ListArray.t ai.(ai_type)) (idx: K) val:
       let v := ListArray.put a idx val in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-        R (a_ptr: word) a_var idx_var val_var var,
+        R (a_ptr: word) a_expr idx_expr val_expr var,
 
         sep (listarray_value a_ptr a) R mem ->
-        map.get locals a_var = Some a_ptr ->
-        map.get locals idx_var = Some (word.of_Z (Z.of_nat (cast idx))) ->
-        map.get locals val_var = Some (ai.(ai_to_word) val) ->
+        WeakestPrecondition.dexpr mem locals a_expr a_ptr ->
+        WeakestPrecondition.dexpr mem locals idx_expr (word.of_Z (Z.of_nat (cast idx))) ->
+        WeakestPrecondition.dexpr mem locals val_expr (ai.(ai_to_word) val) ->
 
         Z.of_nat (K_to_nat idx) < Z.of_nat (List.length a) ->
 
@@ -596,10 +585,8 @@ Section with_parameters.
         cmd.seq
           (cmd.store
              (ai.(ai_size))
-             (offset (expr.var a_var)
-                     (expr.var idx_var)
-                     (expr.literal ai.(ai_width)))
-             (expr.var val_var))
+             (offset a_expr idx_expr (expr.literal ai.(ai_width)))
+             val_expr)
           k_impl
         <{ pred (nlet_eq [var] v k) }>.
     Proof.
@@ -675,11 +662,11 @@ Section with_parameters.
           (a: ListArray.t ai.(ai_type)) (idx: K):
       let v := ListArray.get a idx in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-        R (a_ptr: word) a_var idx_var var,
+        R (a_ptr: word) a_expr idx_expr var,
 
         sep (sizedlistarray_value len a_ptr a) R mem ->
-        map.get locals a_var = Some a_ptr ->
-        map.get locals idx_var = Some (word.of_Z (Z.of_nat (cast idx))) ->
+        WeakestPrecondition.dexpr mem locals a_expr a_ptr ->
+        WeakestPrecondition.dexpr mem locals idx_expr (word.of_Z (Z.of_nat (cast idx))) ->
 
         Z.of_nat (cast idx) < Z.of_nat len ->
 
@@ -699,9 +686,7 @@ Section with_parameters.
              var
              (expr.load
                 (ai.(ai_size))
-                (offset (expr.var a_var)
-                        (expr.var idx_var)
-                        (expr.literal ai.(ai_width)))))
+                (offset a_expr idx_expr (expr.literal ai.(ai_width)))))
           k_impl
         <{ pred (nlet_eq [var] v k) }>.
     Proof.
@@ -719,12 +704,12 @@ Section with_parameters.
           (a: ListArray.t ai.(ai_type)) (idx: K) val:
       let v := ListArray.put a idx val in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-        R (a_ptr: word) a_var idx_var val_var var,
+        R (a_ptr: word) a_expr idx_expr val_expr var,
 
         sep (sizedlistarray_value len a_ptr a) R mem ->
-        map.get locals a_var = Some a_ptr ->
-        map.get locals idx_var = Some (word.of_Z (Z.of_nat (cast idx))) ->
-        map.get locals val_var = Some (ai.(ai_to_word) val) ->
+        WeakestPrecondition.dexpr mem locals a_expr a_ptr ->
+        WeakestPrecondition.dexpr mem locals idx_expr (word.of_Z (Z.of_nat (cast idx))) ->
+        WeakestPrecondition.dexpr mem locals val_expr (ai.(ai_to_word) val) ->
 
         Z.of_nat (cast idx) < Z.of_nat len ->
 
@@ -744,10 +729,8 @@ Section with_parameters.
         cmd.seq
           (cmd.store
              (ai.(ai_size))
-             (offset (expr.var a_var)
-                     (expr.var idx_var)
-                     (expr.literal ai.(ai_width)))
-             (expr.var val_var))
+             (offset a_expr idx_expr (expr.literal ai.(ai_width)))
+             val_expr)
           k_impl
         <{ pred (nlet_eq [var] v k) }>.
     Proof.
