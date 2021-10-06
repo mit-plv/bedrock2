@@ -128,7 +128,7 @@ Section Compile.
       repeat compile_step.
 
     simple eapply compile_nlet_as_nlet_eq.
-    simple eapply compile_downto
+    simple eapply compile_downto_with_ghost_state
       with
         (ginit := [])
         (i_var := "n")
