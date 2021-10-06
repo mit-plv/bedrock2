@@ -76,37 +76,37 @@ Section Compilation.
         i_var vars,
 
         (Z.of_nat count < 2 ^ width)%Z ->
+        loop_pred count a0 tr mem locals ->
 
-        loop_pred count a0 tr mem (map.remove locals i_var) ->
-        map.get locals i_var = Some (word.of_Z (Z.of_nat count)) ->
+        (forall i st tr mem locals,
+            loop_pred i st tr mem locals ->
+            map.get locals i_var = Some (word.of_Z (Z.of_nat i))) ->
 
         (let v := v in
          (* loop iteration case *)
          forall tr l m i,
-           let wi := word.of_Z (Z.of_nat i) in
            let st := downto' a0 (S i) count step in
-           let inv' v tr' mem' locals :=
-               map.get locals i_var = Some wi /\
-               loop_pred i v tr' mem' (map.remove locals i_var) in
-           loop_pred (S i) st tr m (map.remove l i_var) ->
+           let wi := word.of_Z (Z.of_nat i) in
+           loop_pred (S i) st tr m l ->
            i < count ->
            <{ Trace := tr;
               Memory := m;
               Locals := map.put l i_var wi;
               Functions := functions }>
            step_impl
-           <{ inv' (step st i)}>) ->
+           <{ loop_pred i (step st i) }>) ->
+
         (let v := v in
          (* continuation *)
          forall tr l m,
-           loop_pred 0 v tr m (map.remove l i_var) ->
-           map.get l i_var = Some (word.of_Z 0) ->
+           loop_pred 0 v tr m l ->
            <{ Trace := tr;
               Memory := m;
               Locals := l;
               Functions := functions }>
            k_impl
            <{ pred (k v eq_refl) }>) ->
+
         (* while (i = n; 0 < i; pass)
         { i--; step i } *)
         <{ Trace := tr;
@@ -123,36 +123,28 @@ Section Compilation.
     repeat straightline.
 
     (* handle while *)
-    WeakestPrecondition.unfold1_cmd_goal;
-  (cbv beta match delta [WeakestPrecondition.cmd_body]).
+    WeakestPrecondition.unfold1_cmd_goal; (cbv beta match delta [WeakestPrecondition.cmd_body]).
+
     exists nat, lt.
     exists (fun i t m l =>
-         let st :=
-             downto' a0 i count step in
-         loop_pred i st t m (map.remove l i_var)
-         /\ i <= count
-         /\ map.get l i_var = Some (word.of_Z (Z.of_nat i))).
+         let st := downto' a0 i count step in
+         loop_pred i st t m l /\ i <= count).
     ssplit; eauto using lt_wf; [ | ].
 
     { cbv zeta. subst.
-      cbv [downto'].
-      exists count; ssplit; [ | | ];
-        repeat match goal with
-               | _ => rewrite skipn_all2 by (rewrite seq_length; lia)
-               | _ => progress subst_lets_in_goal
-               | _ => progress cbn [rev fold_left]
-               | _ => solve [eauto using Zle_0_nat]
-               end. }
+      exists count; split.
+      - unfold downto'; rewrite skipn_all2 by (rewrite seq_length; lia); eauto.
+      - eauto using Zle_0_nat. }
 
-    { intros. cleanup; subst.
-      repeat straightline'.
-      lazymatch goal with x := context [word.ltu] |- _ => subst x end.
+    { repeat straightline'.
+      repeat (eexists; split; repeat straightline; eauto).
       rewrite word.unsigned_ltu, word.unsigned_of_Z_0.
       rewrite word.unsigned_of_Z_nowrap by lia.
       destruct_one_match;
         rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1;
         ssplit; try lia; [ | ].
       { repeat straightline'.
+        repeat (eexists; split; repeat straightline; eauto).
         subst_lets_in_goal.
         lazymatch goal with
         | [ Hcmd : context [WeakestPrecondition.cmd _ ?impl ],
@@ -171,11 +163,8 @@ Section Compilation.
         cbv [postcondition_cmd] in *; sepsimpl; cleanup; subst.
         repeat match goal with
                | |- exists _, _ => eexists; ssplit
-               | _ => erewrite <- downto'_step;
-                       [ cbn [fst snd]; ecancel_assumption | ];
-                       lia
-               | _ => lia
-               | _ => solve [eauto using word_to_nat_sub_1]
+               | _ => erewrite <- downto'_step; [ cbn [fst snd]; ecancel_assumption | ]
+               | _ => lia || solve [eauto using word_to_nat_sub_1]
                end. }
       { repeat straightline'.
         match goal with
@@ -299,14 +288,10 @@ Section GhostCompilation.
     ssplit; eauto using lt_wf; [ | ].
 
     { cbv zeta. subst.
-      cbv [downto'_dependent downto'].
-      exists count; ssplit; [ | | exists wcount];
-        repeat match goal with
-               | _ => rewrite skipn_all2 by (rewrite seq_length; lia)
-               | _ => progress subst_lets_in_goal
-               | _ => progress cbn [rev fold_left]
-               | _ => solve [eauto]
-               end. }
+      exists count; split.
+      - unfold downto'_dependent;
+          rewrite skipn_all2 by (rewrite seq_length; lia); eauto.
+      - eauto using Zle_0_nat. }
 
     { intros. cleanup; subst.
       repeat straightline'.
@@ -334,11 +319,8 @@ Section GhostCompilation.
         cbv [postcondition_cmd] in *; sepsimpl; cleanup; subst.
         repeat match goal with
                | |- exists _, _ => eexists; ssplit
-               | _ => erewrite <-downto'_dependent_step;
-                        [ cbn [fst snd]; ecancel_assumption | ];
-                        lia
-               | _ => lia
-               | _ => solve [eauto using word_to_nat_sub_1]
+               | _ => erewrite <-downto'_dependent_step; [ cbn [fst snd]; ecancel_assumption | ]
+               | _ => lia || solve [eauto using word_to_nat_sub_1]
                end. }
       { repeat straightline'.
         rewrite @downto'_dependent_fst in *.
