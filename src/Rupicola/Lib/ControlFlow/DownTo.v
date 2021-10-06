@@ -22,6 +22,18 @@ Section Gallina.
   Proof. cbv [downto']; apply fold_left_skipn_seq. Qed.
 End Gallina.
 
+Definition cmd_downto i_var step_impl :=
+  (* while (i > 0) { i--; step i } *)
+  (cmd.while
+     (expr.op bopname.ltu (expr.literal 0) (expr.var i_var))
+     (cmd.seq (cmd.set i_var (expr.op bopname.sub (expr.var i_var) (expr.literal 1)))
+              step_impl)).
+
+Definition cmd_downto_fresh i_var i_expr step_impl k_impl :=
+  cmd.seq (cmd.set i_var i_expr)
+          (cmd.seq (cmd_downto i_var step_impl)
+                   k_impl).
+
 Section Compilation.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
@@ -83,7 +95,7 @@ Section Compilation.
             map.get locals i_var = Some (word.of_Z (Z.of_nat i))) ->
 
         (let v := v in
-         (* loop iteration case *)
+         (* loop body *)
          forall tr l m i,
            let st := downto' a0 (S i) count step in
            let wi := word.of_Z (Z.of_nat i) in
@@ -107,17 +119,11 @@ Section Compilation.
            k_impl
            <{ pred (k v eq_refl) }>) ->
 
-        (* while (i = n; 0 < i; pass)
-        { i--; step i } *)
         <{ Trace := tr;
            Memory := mem;
            Locals := locals;
            Functions := functions }>
-        cmd.seq
-          (cmd.while (expr.op bopname.ltu (expr.literal 0) (expr.var i_var))
-                     (cmd.seq (cmd.set i_var (expr.op bopname.sub (expr.var i_var) (expr.literal 1)))
-                              step_impl))
-          k_impl
+        cmd.seq (cmd_downto i_var step_impl) k_impl
         <{ pred (nlet_eq vars v k) }>.
   Proof.
     repeat straightline.
@@ -171,6 +177,63 @@ Section Compilation.
         | [ H: (Z.of_nat ?n <= 0)%Z |- _ ] => replace n with 0 in * by lia
         end.
         use_hyp_with_matching_cmd; subst_lets_in_goal; eauto. } }
+  Qed.
+
+  Lemma compile_downto_fresh : forall {tr mem locals functions} {A} (a0: A) count step,
+      let v := downto a0 count step in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl step_impl}
+        (loop_pred : nat -> A -> predicate)
+        i_var i_expr vars,
+
+        let zcount := Z.of_nat count in
+        let wcount := word.of_Z zcount in
+
+        (zcount < 2 ^ width)%Z ->
+        WeakestPrecondition.dexpr mem locals i_expr wcount ->
+
+        let locals0 := map.put locals i_var wcount in
+        loop_pred count a0 tr mem locals0 ->
+
+        (forall i st tr mem locals,
+            loop_pred i st tr mem locals ->
+            map.get locals i_var = Some (word.of_Z (Z.of_nat i))) ->
+
+        (let v := v in
+         (* loop body *)
+         forall tr l m i,
+           let st := downto' a0 (S i) count step in
+           let wi := word.of_Z (Z.of_nat i) in
+           loop_pred (S i) st tr m l ->
+           i < count ->
+           <{ Trace := tr;
+              Memory := m;
+              Locals := map.put l i_var wi;
+              Functions := functions }>
+           step_impl
+           <{ loop_pred i (step st i) }>) ->
+
+        (let v := v in
+         (* continuation *)
+         forall tr l m,
+           loop_pred 0 v tr m l ->
+           <{ Trace := tr;
+              Memory := m;
+              Locals := l;
+              Functions := functions }>
+           k_impl
+           <{ pred (k v eq_refl) }>) ->
+
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd_downto_fresh i_var i_expr step_impl k_impl
+        <{ pred (nlet_eq vars v k) }>.
+  Proof.
+      intros.
+      unfold cmd_downto_fresh.
+      repeat straightline; eexists; split; eauto.
+      eapply compile_downto; eauto.
   Qed.
 End Compilation.
 
@@ -256,16 +319,12 @@ Section GhostCompilation.
             Functions := functions }>
          k_impl
          <{ pred (k v eq_refl) }>) ->
-      (* while (i = n; 0 < i; pass)
-          { i--; step i } *)
+
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
-      cmd.seq
-        (cmd.while (expr.op bopname.ltu (expr.literal 0) (expr.var i_var))
-                   (cmd.seq (cmd.set i_var (expr.op bopname.sub (expr.var i_var) (expr.literal 1))) step_impl))
-        k_impl
+      cmd.seq (cmd_downto i_var step_impl) k_impl
       <{ pred (nlet_eq vars v k) }>.
   Proof.
     repeat straightline'.
