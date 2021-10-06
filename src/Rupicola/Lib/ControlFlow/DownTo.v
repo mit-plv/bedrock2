@@ -74,7 +74,8 @@ Section Compilation.
 
         (let v := v in
          (* loop iteration case *)
-         forall tr l m st i wi,
+         forall tr l m i wi,
+           let st := downto' a0 (S i) count step in
            let inv' v tr' mem' locals :=
                map.get locals i_var = Some wi /\
                loop_pred i v tr' mem' (map.remove locals i_var) in
@@ -158,11 +159,10 @@ Section Compilation.
               _ ?impl ?tr ?mem
               (map.put ?locals ?i_var (word.sub ?wi (word.of_Z 1)))
               ?post =>
-          specialize (Hcmd tr locals mem st (i-1) (word.sub wi (word.of_Z 1)));
+          specialize (Hcmd tr locals mem (i-1) (word.sub wi (word.of_Z 1)));
             replace (S (i-1)) with i in Hcmd by lia;
             unshelve epose proof (Hcmd _ _ _); clear Hcmd
-        end;
-          [ eauto using word_to_nat_sub_1; lia .. | ].
+        end; [ eauto using word_to_nat_sub_1; lia .. | ].
         use_hyp_with_matching_cmd; [ ].
         cbv [postcondition_cmd] in *; sepsimpl; cleanup; subst.
         repeat match goal with
@@ -242,7 +242,9 @@ Section GhostCompilation.
 
       (let v := v in
        (* loop iteration case *)
-       forall tr l m st gst i wi,
+       forall tr l m i wi,
+         let stgst := downto'_dependent init ginit (S i) count step ghost_step in
+         let st := fst stgst in let gst := snd stgst in
          let inv' v tr' mem' locals :=
              map.get locals i_var = Some wi /\
              Inv i (ghost_step st gst i) v tr' mem' (map.remove locals i_var) in
@@ -329,8 +331,7 @@ Section GhostCompilation.
                _ ?impl ?tr ?mem
                (map.put ?locals ?i_var (word.sub ?wi (word.of_Z 1)))
                ?post =>
-          specialize (Hcmd tr locals mem (fst stgst) (snd stgst)
-                           (i-1) (word.sub wi (word.of_Z 1)));
+          specialize (Hcmd tr locals mem (i-1) (word.sub wi (word.of_Z 1)));
             replace (S (i-1)) with i in Hcmd by lia;
             unshelve epose proof (Hcmd _ _ _); clear Hcmd
         end;

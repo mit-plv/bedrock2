@@ -158,7 +158,7 @@ Section Compile.
     { (* compile loop body *)
       intros. clear_old_seps.
       cbv [downto_inv] in H3.
-      sepsimpl_hyps. cleanup; subst.
+      sepsimpl_hyps. clearbody stgst. cleanup; subst.
 
       repeat match goal with
              | H : map.get (map.remove _ _) _ = _ |- _ =>
@@ -221,13 +221,13 @@ Section Compile.
 
       (* FIXME Rewrite to use fully explicit maps (not partial ones)  *)
       instantiate (1 := expr.var _); eexists; split; [ | reflexivity ].
-      compile_step.
+      solve [repeat compile_step].
 
       instantiate (1 := expr.var _); eexists; split; [ | reflexivity ].
-      repeat rewrite map.get_put_diff; eauto; congruence.
+      map_t.
 
       instantiate (1 := expr.var _); eexists; split; [ | reflexivity ].
-      compile_step.
+      solve [repeat compile_step].
 
       (* unset loop-local variables *)
       (* FIXME remove_unused_vars does not work here. *)
