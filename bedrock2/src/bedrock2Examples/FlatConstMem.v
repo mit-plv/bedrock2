@@ -89,6 +89,7 @@ Section WithParameters.
     match goal with
     |- context [?e] =>
         requireZcstExpr e;
+        assert_fails (idtac; requireZcst e);
         let e' := eval vm_compute in e in
         let Hrw := fresh in
         assert (e = e') as Hrw by (vm_cast_no_check (eq_refl e'));
@@ -99,6 +100,7 @@ Section WithParameters.
   Ltac simplify_ZcstExpr_in H :=
     match type of H with context [?e] =>
         requireZcstExpr e;
+        assert_fails (idtac; requireZcst e);
         let e' := eval vm_compute in e in
         let Hrw := fresh in
         assert (e = e') as Hrw by (vm_cast_no_check (eq_refl e'));
@@ -434,42 +436,256 @@ Section WithParameters.
   (* note: do we want an Ltac coding rule that tactics must not start with a match? *)
   Local Ltac ecancel_assumption := idtac; SeparationLogic.ecancel_assumption.
 
-  Axiom TODO: False.
+
+  Lemma dexpr_expr (m : mem) l e P
+    (H : WeakestPrecondition.expr m l e P)
+    : exists v, WeakestPrecondition.dexpr m l e v /\ P v.
+  Proof.
+    revert dependent P; induction e; cbn.
+    { cbv [WeakestPrecondition.literal dlet.dlet]; cbn; eauto. }
+    { cbv [WeakestPrecondition.get]; intros ?(?&?&?); eauto. }
+    { intros v H; case (IHe _ H) as (?&?&?&?&?); clear IHe H.
+      cbv [WeakestPrecondition.dexpr ] in *.
+      eexists; split; [|eassumption].
+      eapply WeakestPreconditionProperties.Proper_expr; [|eauto].
+      intros ? ?; subst.
+      eexists; eauto. }
+    { intros v H; case (IHe _ H) as (?&?&?&?&?); clear IHe H.
+      cbv [WeakestPrecondition.dexpr ] in *.
+      eexists; split; [|eassumption].
+      eapply WeakestPreconditionProperties.Proper_expr; [|eauto].
+      intros ? ?; subst.
+      eexists; eauto. }
+    { intros P H.
+      case (IHe1 _ H) as (?&?&H'); case (IHe2 _ H') as (?&?&?);
+      clear IHe1 IHe2 H H'.
+      cbv [WeakestPrecondition.dexpr ] in *.
+      eexists; split; [|eassumption].
+      eapply WeakestPreconditionProperties.Proper_expr; [|eauto]; intros ? [].
+      eapply WeakestPreconditionProperties.Proper_expr; [|eauto]; intros ? [].
+      trivial.
+    } 
+  Qed.
+
+(*
+Import coqutil.Macros.subst.
+Ltac flatten_hyps :=
+  repeat match goal with
+  | H : exists _, _ |- _ => destruct H as (?&H)
+  | H : _ /\ _  |- _ => destruct H as (?&H)
+  | H : let x := ?v in ?C |- _ =>
+      let y := fresh x in pose v as y;
+        change (subst! y for x in C) in H
+  end.
+*)
+Ltac flatten_goal :=
+  repeat match goal with
+         | |- (_ /\ _) /\ _ => eapply and_assoc
+         end.
+Ltac flatten := flatten_hyps; flatten_goal.
+
+
+Ltac is_ground_const e :=
+  lazymatch e with
+  | Z.of_nat => idtac
+  | Z.to_nat => idtac
+  | Z.of_N => idtac
+  | Z.to_N => idtac
+  | N.of_nat => idtac
+  | N.to_nat => idtac
+
+  | Z.succ => idtac
+  | Z.pred => idtac
+  | Z.add => idtac
+  | Z.sub => idtac
+  | Z.mul => idtac
+  | Z.div => idtac
+  | Z.pred => idtac
+  | Z.succ => idtac
+  | Z.ones => idtac
+  | Z.opp => idtac
+  | Z.lnot => idtac
+  | Z.log2 => idtac
+  | Z.log2_up => idtac
+  | Z.add => idtac
+  | Z.sub => idtac
+  | Z.mul => idtac
+  | Z.div => idtac
+  | Z.modulo => idtac
+  | Z.quot => idtac
+  | Z.rem => idtac
+  | Z.pow => idtac
+  | Z.shiftl => idtac
+  | Z.shiftr => idtac
+  | Z.land => idtac
+  | Z.lor => idtac
+  | Z.lxor => idtac
+  | Z.ldiff => idtac
+  | Z.clearbit => idtac
+  | Z.setbit => idtac
+  | Z.min => idtac
+  | Z.max => idtac
+  | Z.gcd => idtac
+  | Z.lcm => idtac
+
+  | N.succ => idtac
+  | N.pred => idtac
+  | N.add => idtac
+  | N.sub => idtac
+  | N.mul => idtac
+  | N.div => idtac
+  | N.pred => idtac
+  | N.succ => idtac
+  | N.ones => idtac
+  | N.lnot => idtac
+  | N.log2 => idtac
+  | N.log2_up => idtac
+  | N.add => idtac
+  | N.sub => idtac
+  | N.mul => idtac
+  | N.div => idtac
+  | N.modulo => idtac
+  | N.pow => idtac
+  | N.shiftl => idtac
+  | N.shiftr => idtac
+  | N.land => idtac
+  | N.lor => idtac
+  | N.lxor => idtac
+  | N.ldiff => idtac
+  | N.clearbit => idtac
+  | N.setbit => idtac
+  | N.min => idtac
+  | N.max => idtac
+  | N.gcd => idtac
+  | N.lcm => idtac
+
+  | Nat.succ => idtac
+  | Nat.pred => idtac
+  | Nat.add => idtac
+  | Nat.sub => idtac
+  | Nat.mul => idtac
+  | Nat.div => idtac
+  | Nat.pred => idtac
+  | Nat.succ => idtac
+  | Nat.ones => idtac
+  | Nat.lnot => idtac
+  | Nat.log2 => idtac
+  | Nat.log2_up => idtac
+  | Nat.add => idtac
+  | Nat.sub => idtac
+  | Nat.mul => idtac
+  | Nat.div => idtac
+  | Nat.modulo => idtac
+  | Nat.pow => idtac
+  | Nat.shiftl => idtac
+  | Nat.shiftr => idtac
+  | Nat.land => idtac
+  | Nat.lor => idtac
+  | Nat.lxor => idtac
+  | Nat.ldiff => idtac
+  | Nat.clearbit => idtac
+  | Nat.setbit => idtac
+  | Nat.min => idtac
+  | Nat.max => idtac
+  | Nat.gcd => idtac
+  | Nat.lcm => idtac
+  end.
+
+Ltac is_ground_atom var_allowed e :=
+  match e with
+  | _ => is_constructor e
+  | _ => is_proj e
+  | _ => is_ind e
+  | _ => is_const e; is_ground_const e
+  | _ => is_var e; var_allowed e
+  | _ => requireZcst e
+  | _ => fail "not ground"
+  end.
+
+Ltac is_ground' var_allowed e :=
+  let is_ground e := is_ground' var_allowed e in
+  match e with
+  | ?f ?x => is_ground f; is_ground x
+  | _ => is_ground_atom var_allowed e
+  (* note: lambdas could be implemented here I think *)
+  end.
+Ltac is_ground e := is_ground' ltac:(fun _ => fail) e.
+
+Inductive groundcbv_delayed :=.
+Ltac groundcbv' e :=
+  match e with
+  | ?f ?x =>
+      let gsf := groundcbv' f in
+      let gsx := groundcbv' x in
+      lazymatch gsx with
+      | groundcbv_delayed =>
+          lazymatch gsf with
+          | groundcbv_delayed => constr:(groundcbv_delayed)
+          | _ => let vx := eval cbv in x in
+                 constr:(gsf vx)
+          end
+      | ?gsx =>
+          match gsf with
+          | groundcbv_delayed => constr:(f gsx)
+          | _ => constr:(gsf gsx)
+          end
+      end
+  | _ =>
+      let __ := match constr:(Set) with _ => is_ground_atom ltac:(fun _ => fail) e end in
+      constr:(groundcbv_delayed)
+  | _ => e
+  end.
+Ltac groundcbv e :=
+  let e' := groundcbv' e in
+  lazymatch e' with
+  | groundcbv_delayed => eval cbv in e
+  | ?e => e
+  end.
+
+Ltac groundcbv_in_all :=
+  repeat match goal with
+  | H : ?t |- _ =>  let t' := groundcbv t in progress change t' in H
+  | x := ?t |- _ =>  let t' := groundcbv t in progress change t' in (value of x)
+  | |- ?t =>  let t' := groundcbv t in progress change t'
+  end.
+
+Ltac simpl_lengths_step :=
+  match goal with
+  | _ => progress groundcbv_in_all
+  | H : Z.of_nat (length ?x) = ?v |- _ =>
+    let t' := type of H in 
+    assert_fails(t'); first [is_var v | is_ground v];
+    progress rewr ltac:(fun t =>
+      match t with
+      | t' => fail 1
+      | context[Z.of_nat (length x)] => H
+      end) in *
+  | _ => progress rewr ltac:(fun t =>
+      match t with
+      | context[@List.length ?A (List.app ?x ?y)] => constr:(@app_length A x y)
+      end) in *
+  end.
+Ltac simpl_lengths := repeat simpl_lengths_step.
 
   Lemma silly1_ok : program_logic_goal_for_function! silly1.
   Proof.
-    repeat straightline.
+    repeat (straightline || apply dexpr_expr).
 
-    (* b = load4(a + coq:(16)); *)
-    cbv [WeakestPrecondition.dexpr].
-
-    match goal with
-    |- exists v (* Why does this annotation make the case not match? : word *),
-        WeakestPrecondition.expr ?m ?l ?e (eq v) /\ @?k v
-        => enough (WeakestPrecondition.expr m l e k) by case TODO
-    end.
-
-
-    repeat straightline.
-    eexists.
+    eexists ?[v].
 
     on_left eapply Z_uncurried_load_four_bytes_of_sep_at.
-    (*repeat syntactic_*)eapply and_assoc.
 
-    (* frame calculation for first load *)
-    subst_lets. (* for rewrite and rewr *)
-    set_evars.
-    match goal with |- context[?P m] =>
-    match P with context[?e$@?a] =>
-    match goal with | |- context[Z.of_nat (length e) = ?n] =>
-    match goal with H : ?S m |- _ =>
-    match S with context[?bs $@ ?a0] =>
-    let a_r := constr:(word.add a (word.of_Z n)) in
-    split_bytes_base_addr bs a0 a_r end;
-    match type of H with context[?bs $@ ?a0] =>
-    split_bytes_base_addr bs a0 a end end
-    end end end.
-    subst_evars.
+    pose proof List__splitZ_spec_n bs 20 _ H ltac:(blia).
+    flatten; simpl_lengths.
+    set_evars; rewrite H1 in *; subst_evars.
+    seprewrite_in_by sep_eq_of_list_word_at_app H0
+      ltac:(trivial || blia); simpl_lengths.
+
+    pose proof List__splitZ_spec_n _ 16 _ H2 ltac:(blia);
+    flatten; simpl_lengths.
+    set_evars; rewrite H4 in *; subst_evars; simpl_lengths.
+    seprewrite_in_by sep_eq_of_list_word_at_app H0
+      ltac:(trivial || blia); simpl_lengths.
 
     on_left ecancel_assumption. (*  this inlines definition of ys0, makes length proof annoying *)
     match goal with |- context[?x] => change x with ys0 end.
@@ -483,8 +699,10 @@ Section WithParameters.
     cbv [WeakestPrecondition.store].
 
     (* remerge *)
+    seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
+      simpl_lengths; rewrite ?word.word_sub_add_l_same_l, ?word.unsigned_of_Z; trivial; clear;blia).
     repeat seprewrite_in_by @list_word_at_app_of_adjacent_eq H0 ltac:(
-      rewrite ?app_length; wordcstexpr_tac; simplify_ZcstExpr; blia).
+      rewrite ?app_length; wordcstexpr_tac; simpl_lengths; blia).
 
     Tactics.rapply (fun addr oldvalue value R m post H => Scalars.store_four_of_sep addr oldvalue value R m post (proj1 H) (proj2 H)).
 
@@ -512,7 +730,9 @@ Section WithParameters.
 
     repeat match goal with x := _ : word.rep |- _ => subst x end.
     set_evars.
-    replace (length l0 = 4%nat) with (Z.of_nat (length l0) = 4) by case TODO.
+    Require Import AdmitAxiom.
+    replace (length l1 = 4%nat) with (Z.of_nat (length l1) = 4) by case proof_admitted.
+
     match goal with |- context[?P m] =>
     match P with context[?e$@?a] =>
     match goal with | |- context[Z.of_nat (length e) = ?n] =>
@@ -529,14 +749,16 @@ end end
     split; [trivial|].
     split; [reflexivity|].
 
-    repeat straightline.
+    repeat (straightline || apply dexpr_expr).
 
     (* last line *)
 
-    case TODO.
-    }
+    subst P.
+    all: case proof_admitted. }
+    
     Unshelve.
-    all: case TODO.
+    all : case proof_admitted.
+
   Time Qed.
 
 End WithParameters.
