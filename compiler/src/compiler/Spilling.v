@@ -643,6 +643,13 @@ Section Spilling.
     | x :: xs => read_register x range_start;; read_register_range xs (range_start+1)
     end.
 
+  Fixpoint read_register_range_tailrec(do_first: stmt)(dests: list Z)(range_start: Z): stmt :=
+    match dests with
+    | nil => do_first
+    | x :: xs => read_register_range_tailrec
+                   (do_first;; read_register x range_start) xs (range_start+1)
+    end.
+
   Definition prepare_bcond(c: bcond Z): stmt :=
     match c with
     | CondBinary _ x y => load_iarg_reg 1 x;; load_iarg_reg 2 y
@@ -1318,8 +1325,8 @@ Section Spilling.
       + unfold iarg_reg, spill_tmp, a0, a7, fp in *. repeat destruct_one_match; blia.
   Qed.
 
-  (* variant of `related` where a list of HL variables (some from lRegs, some from lStack)
-     is not in the usual LL regs or on the stack, but is in the arg regs *)
+  (* Variant of `related` where a list of HL variables, in_arg_regs, is asserted
+     to be also present in the LL argument registers. Used for write_register_range *)
   Definition related'(maxvar: Z)(in_arg_regs: list Z)(first_arg_reg: Z)
              (frame: mem -> Prop)(fpval: word)
              (t1: Semantics.trace)(m1: mem)(l1: locals)
@@ -1397,11 +1404,10 @@ Section Spilling.
     intros. apply H. eapply hide_ll_arg_reg_ptsto_core; eassumption.
   Qed.
 
-(* TODO: also state with argsTodo ++ argsDone and related both times,
-so that we can express correspondences that will be overwritten later
-  Lemma read_register_range_correct:
-    forall args start e t1 t2 m1 m2 l1 l2 mc2 maxvar frame post fpval,
-      related' maxvar args start frame fpval t1 m1 l1 t2 m2 l2 ->
+(*
+  Lemma read_register_range_correct_aux:
+    forall argsTodo argsDone start e t1 t2 m1 m2 l1 l2 mc2 maxvar frame post fpval,
+      related' maxvar (argsDone ++ argsTodo) start frame fpval t1 m1 l1 t2 m2 l2 ->
       (List.length args <= 8)%nat ->
       a0 <= start ->
       start + Z.of_nat (List.length args) <= a7 + 1 ->
@@ -1554,6 +1560,20 @@ eassumption.
     all: try exact (fun _ => True).
   Qed.
 *)
+
+  Lemma read_register_range_correct:
+    forall args start e t1 t2 m1 m2 l1 l2 mc2 maxvar frame post fpval,
+      related' maxvar args start frame fpval t1 m1 l1 t2 m2 l2 ->
+      (List.length args <= 8)%nat ->
+      a0 <= start ->
+      start + Z.of_nat (List.length args) <= a7 + 1 ->
+      Forall (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)) args ->
+      (forall m2' l2' mc2',
+          related maxvar frame fpval t1 m1 l1 t2 m2' l2' ->
+          post t2 m2' l2' mc2') ->
+      exec e (read_register_range args start) t2 m2 l2 mc2 post.
+  Proof.
+  Admitted.
 
   Lemma write_register_range_correct_aux:
     forall argsTodo argsDone argvs start e t1 t2 m1 m2 l1 l2 mc2 maxvar frame post fpval,
