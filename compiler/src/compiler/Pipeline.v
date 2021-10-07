@@ -130,7 +130,7 @@ Section Pipeline1.
     - pose proof spill_stmt_valid_vars as P.
       unfold valid_vars_src, valid_vars_tgt, sp in P.
       unfold spill_fbody. cbn. split.
-      { eapply read_register_range_valid_vars.
+      { eapply set_vars_to_reg_range_valid_vars.
 (*
       eapply P; clear P. 1: reflexivity.
       eapply max_var_sound.
