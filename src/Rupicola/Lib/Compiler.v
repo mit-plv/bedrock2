@@ -422,8 +422,6 @@ Ltac compile_setup_find_app term head :=
   | _ => fail "Gallina program" head "not found in postcondition" term
   end.
 
-Definition __rupicola_program_marker {A} (a: A) := True.
-
 Ltac compile_setup_isolate_gallina_program :=
   lazymatch goal with
   | [ _: __rupicola_program_marker ?prog |-

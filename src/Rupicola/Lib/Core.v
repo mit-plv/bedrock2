@@ -1170,6 +1170,8 @@ Section Misc.
 End Misc.
 
 Section Rupicola.
+  Definition __rupicola_program_marker {A} (a: A) := True.
+
   Definition nlet_eq {A} {P: forall a: A, Type}
              (vars: list string) (a0: A)
              (body : forall (a : A) (Heq: a = a0), P a) : P a0 :=
