@@ -441,6 +441,7 @@ Ltac compile_setup_unfold_gallina_spec :=
   | (_, ?spec) => let hd := term_head spec in unfold hd
   end.
 
+Create HintDb compiler_setup.
 Create HintDb compiler_setup_post.
 #[export] Hint Resolve compile_setup_postcondition_func : compiler_setup_post.
 #[export] Hint Resolve compile_setup_postcondition_func_noret : compiler_setup_post.
@@ -454,7 +455,8 @@ Ltac compile_setup :=
   compile_setup_unfold_spec_of;
   eapply compile_setup_WeakestPrecondition_call_first;
   [ try reflexivity (* Arity check *)
-  | (step_with_db compiler_setup_post ||
+  | repeat step_with_db compiler_setup;
+    (step_with_db compiler_setup_post ||
      compile_setup_isolate_gallina_program); intros;
     compile_setup_unfold_gallina_spec;
     apply compile_setup_remove_skips;
