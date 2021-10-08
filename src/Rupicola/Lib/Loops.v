@@ -697,7 +697,64 @@ Qed.
 Section FoldsAsLoops.
   Context {A B T: Type}.
 
-  Lemma map_as_mutating_rw_fold' xs:
+  Lemma copying_foldl_as_ranged_foldl' (f: A -> B -> A):
+    forall l1 l0 a0,
+      List.fold_left f (l0 ++ l1) a0 =
+      List.fold_left
+        (fun (a: A) idx =>
+           match List.nth_error (l0 ++ l1) (Z.to_nat idx) with
+           | Some x => f a x
+           | None => a
+           end)
+        (z_range' (Z.of_nat (List.length l0)) (List.length l1))
+        (List.fold_left f l0 a0).
+  Proof.
+    induction l1; intros; simpl.
+    - rewrite app_nil_r. reflexivity.
+    - rewrite Nat2Z.id, nth_error_app2, Nat.sub_diag by lia.
+      rewrite List_assoc_app_cons, IHl1, app_length; simpl.
+      rewrite <- List_assoc_app_cons.
+      rewrite fold_left_app.
+      simpl; repeat f_equal. lia.
+  Qed.
+
+  Lemma copying_foldl_as_ranged_foldl (f: A -> B -> A):
+    forall l a0,
+      List.fold_left f l a0 =
+      List.fold_left
+        (fun (a: A) idx =>
+           match List.nth_error l (Z.to_nat idx) with
+           | Some x => f a x
+           | None => a
+           end)
+        (z_range 0 (Z.of_nat (List.length l)))
+        a0.
+  Proof.
+    intros; unfold z_range; rewrite Z.sub_0_r, Nat2Z.id.
+    apply copying_foldl_as_ranged_foldl' with (l0 := []).
+  Qed.
+
+  Lemma copying_foldl_as_ranged_for (f: A -> B -> A):
+    forall l a0 f',
+      (forall idx pr, nth_error l (Z.to_nat idx) =
+                 Some (f' l idx pr)) ->
+      List.fold_left f l a0 =
+      ranged_for_all 0 (Z.of_nat (length l))
+                     (fun a idx pr => f a (f' l idx pr)) a0.
+  Proof.
+    intros * Hf'.
+    rewrite copying_foldl_as_ranged_foldl, foldl_as_foldl_dep.
+    unfold ranged_for_all, ranged_for_break.
+    apply foldl_dep_Proper_strong; eauto; intros.
+    erewrite Hf'; reflexivity.
+  Qed.
+
+  (* There are two kinds of folds: those that can keep consulting the original
+     list because it is not mutated (`copying_foldl` above), and those that have
+     to consult the list that's being mutated instead.  TODO: Support those, as
+     a generalization of the `map` code below.  *)
+
+  Lemma map_as_inplace_fold' xs:
     forall (xs0: list A) (f: A -> A),
       List.fold_left
         (fun acc x => acc ++ [f x])
@@ -720,7 +777,7 @@ Section FoldsAsLoops.
       + rewrite replace_nth_app_skip, <- app_assoc; reflexivity.
   Qed.
 
-  Lemma map_as_mutating_rw_fold xs:
+  Lemma map_as_inplace_fold xs:
     forall (f: A -> A),
       List.map f xs =
       List.fold_left
@@ -733,7 +790,7 @@ Section FoldsAsLoops.
         xs.
   Proof.
     unfold z_range; intros.
-    rewrite map_as_fold_left, map_as_mutating_rw_fold'.
+    rewrite map_as_fold_left, map_as_inplace_fold'.
     repeat f_equal.
     rewrite Z.sub_0_r, Nat2Z.id; reflexivity.
   Qed.
@@ -751,7 +808,7 @@ Section FoldsAsLoops.
       ranged_for_all 0 (Z.of_nat (List.length xs)) f' xs.
   Proof.
     intros * Hf'.
-    rewrite map_as_mutating_rw_fold, foldl_as_foldl_dep.
+    rewrite map_as_inplace_fold, foldl_as_foldl_dep.
     unfold ranged_for_all, ranged_for_break.
     apply foldl_dep_Proper_strong; eauto.
     intros ?? idx ?? xs'.
