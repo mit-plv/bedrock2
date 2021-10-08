@@ -9,6 +9,8 @@ Instance HasDefault_byte : HasDefault byte := Byte.x00.
 Class Convertible (T1 T2: Type) := cast: T1 -> T2.
 Instance Convertible_self {A}: Convertible A A := id.
 
+Open Scope list_scope.
+
 Module VectorArray.
   Section VectorArray.
     Context {K V: Type}.
@@ -41,6 +43,26 @@ Module ListArray.
     Lemma put_length (a: t) (k: K) (v: V) :
       List.length (put a k v) = List.length a.
     Proof. intros; apply replace_nth_length. Qed.
+
+    Lemma put_0 (a: list V) (k: K) (v: V) :
+      0 < length a -> cast k = 0 ->
+      put a k v = v :: List.tl a.
+    Proof.
+      unfold put; intros ? ->.
+      destruct a; simpl in *; reflexivity || lia.
+    Qed.
+
+    Lemma put_app_len (a1 a2: list V) (k: K) (v: V) :
+      0 < length a2 -> cast k = length a1 ->
+      put (a1 ++ a2) k v = a1 ++ v :: List.tl a2.
+    Proof.
+      unfold put; intros ? -> ;
+        rewrite !replace_nth_eqn by (rewrite ?app_length; lia).
+      rewrite List_firstn_app_l by reflexivity.
+      change (S ?x) with (1 + x); rewrite <- List.skipn_skipn.
+      rewrite List_skipn_app_r by reflexivity.
+      reflexivity.
+    Qed.
   End ListArray.
 
   Arguments t : clear implicits.
@@ -600,7 +622,7 @@ Section with_parameters.
   End GenericListArray.
 
   Section GenericSizedListArray.
-    Context (sz: AccessSize).
+    Context {sz: AccessSize}.
     Context {HD: HasDefault (_access_info sz).(ai_type)}.
     Notation ai := (_access_info sz).
 
@@ -620,21 +642,39 @@ Section with_parameters.
       sep (emp (List.length a = len))
           (listarray_value sz addr a).
 
-    Lemma sizedlistarray_value_of_array len addr a mem :
+    Lemma sizedlistarray_value_of_array {len addr a mem} :
       List.length a = len ->
       listarray_value sz addr a mem ->
       sizedlistarray_value len addr a mem.
     Proof. intros; apply sep_emp_l; eauto. Qed.
 
-    Lemma array_of_sizedlistarray_value len addr a mem :
+    Lemma array_of_sizedlistarray_value {len addr a mem} :
       sizedlistarray_value len addr a mem ->
       listarray_value sz addr a mem.
     Proof. intros H; apply sep_emp_l in H; intuition. Qed.
 
-    Lemma length_of_sizedlistarray_value len addr a mem :
+    Lemma length_of_sizedlistarray_value {len addr a mem} :
       sizedlistarray_value len addr a mem ->
       List.length a = len.
     Proof. intros H; apply sep_emp_l in H; intuition. Qed.
+
+    Lemma length_of_sizedlistarray_value_R {len addr a R mem} :
+      (sizedlistarray_value len addr a ⋆ R) mem ->
+      List.length a = len.
+    Proof.
+      intros (?&?&H); decompose [and] H.
+      eauto using length_of_sizedlistarray_value.
+    Qed.
+
+
+    Lemma sizedlistarray_value_app1_length {len addr a1 a2 R mem} :
+      (sizedlistarray_value len addr (a1 ++ a2) ⋆ R) mem ->
+      (length a1 = len - length a2)%nat.
+    Proof.
+      intros * Hmem.
+      apply length_of_sizedlistarray_value_R in Hmem.
+      rewrite app_length in Hmem; lia.
+    Qed.
 
     Notation repr := sizedlistarray_value.
 
@@ -789,6 +829,7 @@ Section with_parameters.
     prepare_array_lemma (@compile_sizedlistarray_put) AccessWord.
 End with_parameters.
 
+Arguments sizedlistarray_value {width word memT} sz len addr a _ : assert.
 Arguments Arrays._access_info /.
 Arguments Arrays.ai_width /.
 

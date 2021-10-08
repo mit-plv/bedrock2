@@ -61,7 +61,7 @@ Section Peek.
     - intros tr' mem' locals' (b & Hk & (R' & bs' & (mR' & mStack' & Hsplit' & HR' & Hbs')%sep_comm & Hpred')).
       eexists; eexists; split; [|split].
       + subst nbytes.
-        rewrite <- (length_of_sizedlistarray_value _ _ _ _ _ Hbs').
+        rewrite <- (length_of_sizedlistarray_value Hbs').
         apply array_1_to_anybytes.
         eapply array_of_sizedlistarray_value in Hbs'.
         apply Hbs'.
