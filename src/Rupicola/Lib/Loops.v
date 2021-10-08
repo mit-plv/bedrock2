@@ -1136,6 +1136,13 @@ Section with_parameters.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
+  Ltac _split_conj :=
+    match goal with
+    | [ H: forall from a0 tr mem0 locals0, _ -> _ /\ _ |- _ ] =>
+      pose proof (fun from a0 tr mem locals pred => proj1 (H from a0 tr mem locals pred));
+      pose proof (fun from a0 tr mem locals pred => proj2 (H from a0 tr mem locals pred))
+    end.
+
   Section Generic.
     Notation wbody body pr Hr :=
       (fun acc tok idx pr =>
@@ -1149,10 +1156,10 @@ Section with_parameters.
     Notation in_unsigned_bounds x :=
       (0 <= x < 2 ^ width).
 
-    Definition cmd_loop (signed: bool) from_var to_var body_impl :=
+    Definition cmd_loop (signed: bool) from_var to_expr body_impl :=
       cmd.while
         (expr.op (if signed then bopname.lts else bopname.ltu)
-                 (expr.var from_var) (expr.var to_var))
+                 (expr.var from_var) to_expr)
         body_impl.
 
     Lemma _compile_ranged_for : forall A {tr mem locals functions}
@@ -1161,7 +1168,7 @@ Section with_parameters.
       forall {P} {pred: P v -> predicate}
         (loop_pred: forall (idx: Z) (a: A), predicate)
         {k: nlet_eq_k P v} {k_impl} {body_impl}
-        (from_var to_var: string) vars,
+        (from_var: string) (to_expr: expr) vars,
 
         let lp from tok_acc tr mem locals :=
             let from := ExitToken.branch (fst tok_acc) to (from + 1) in
@@ -1169,8 +1176,8 @@ Section with_parameters.
 
         (forall from a0 tr mem locals,
             loop_pred from a0 tr mem locals ->
-            map.getmany_of_list locals [from_var; to_var] =
-            Some [word.of_Z from; word.of_Z to]) ->
+            map.get locals from_var = Some (word.of_Z from) /\
+            WeakestPrecondition.dexpr mem locals to_expr (word.of_Z to)) ->
 
         loop_pred from a0 tr mem locals ->
 
@@ -1209,13 +1216,14 @@ Section with_parameters.
            Locals := locals;
            Functions := functions }>
         cmd.seq
-          (cmd_loop signed from_var to_var body_impl)
+          (cmd_loop signed from_var to_expr body_impl)
           k_impl
         <{ pred (nlet_eq vars v k) }>.
     Proof.
       intros * Hlocals Hinit Hbounds Hbody Hk;
         unfold cmd_loop.
       repeat straightline.
+      _split_conj.
 
       destruct (Z_gt_le_dec from to).
       { (* Loop won't run at all *)
@@ -1224,8 +1232,8 @@ Section with_parameters.
 
         intros.
         exists (word.of_Z 0); repeat apply conj.
-        - eexists; split; eauto using getmany0.
-          eexists; split; eauto using getmany1.
+        - eexists; split; eauto.
+          eapply WeakestPrecondition_dexpr_expr; eauto.
           pose proof Zlt_cases from to.
           destruct signed; simpl; rewrite ?lts_of_Z, ?ltu_of_Z by tauto;
             destruct (from <? to); reflexivity || lia.
@@ -1260,8 +1268,8 @@ Section with_parameters.
         destruct Hinv as (from' & Hl & Hr & -> & Hcontinue & Hpred).
         eexists ?[b]; split; [|split].
         { (* loop test can be eval'd *)
-          eexists; split. eauto using getmany0.
-          eexists; split. eauto using getmany1.
+          eexists; split; eauto.
+          eapply WeakestPrecondition_dexpr_expr; [|eauto].
           destruct signed; simpl;
             rewrite ?lts_of_Z, ?ltu_of_Z by lia;
             reflexivity. }
@@ -1269,7 +1277,7 @@ Section with_parameters.
           pose proof Zlt_cases from' to;
           intros Hnz; destruct (from' <? to);
             try (rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1 in Hnz;
-                 congruence).
+                 congruence); [].
 
         { eapply WeakestPrecondition_weaken; cycle 1.
           { (* User-supplied loop body *)
@@ -1348,15 +1356,15 @@ Section with_parameters.
             intros; cbv beta; f_equal; (congruence || lia || apply range_unique). } }
     Qed.
 
-    Definition cmd_loop_incr signed from_var to_var body_impl :=
-      cmd_loop signed from_var to_var
+    Definition cmd_loop_incr signed from_var to_expr body_impl :=
+      cmd_loop signed from_var to_expr
                (cmd.seq body_impl
                         (cmd.set from_var
                                  (expr.op bopname.add
                                           (expr.var from_var)
                                           (expr.literal 1)))).
 
-    (* TODO Use a section? *)
+    (* FIXME Use a section? *)
 
     Lemma compile_ranged_for_with_auto_increment : forall A {tr mem locals functions}
           (from to: Z) body (a0: A),
@@ -1364,7 +1372,7 @@ Section with_parameters.
       forall {P} {pred: P v -> predicate}
         (loop_pred: forall (idx: Z) (a: A), predicate)
         {k: nlet_eq_k P v} {k_impl} {body_impl}
-        (from_var to_var: string) vars,
+        (from_var: string) (to_expr: expr) vars,
 
         let lp from tok_acc tr mem locals :=
             let from := ExitToken.branch (fst tok_acc) (to - 1) from in
@@ -1372,8 +1380,8 @@ Section with_parameters.
 
         (forall from a0 tr mem locals,
             loop_pred from a0 tr mem locals ->
-            map.getmany_of_list locals [from_var; to_var] =
-            Some [word.of_Z from; word.of_Z to]) ->
+            map.get locals from_var = Some (word.of_Z from) /\
+            WeakestPrecondition.dexpr mem locals to_expr (word.of_Z to)) ->
 
         (forall from from' acc tr mem locals,
             loop_pred from acc tr mem locals ->
@@ -1416,11 +1424,11 @@ Section with_parameters.
            Locals := locals;
            Functions := functions }>
         cmd.seq
-          (cmd_loop_incr signed from_var to_var body_impl)
+          (cmd_loop_incr signed from_var to_expr body_impl)
           k_impl
         <{ pred (nlet_eq vars v k) }>.
     Proof.
-      intros; eapply _compile_ranged_for; try eassumption.
+      intros; _split_conj; eapply _compile_ranged_for; try eassumption.
       (* Goal: (body; from := from + 1) does the right thing *)
       intros. simpl.
       eapply WeakestPrecondition_weaken; cycle 1.
@@ -1431,7 +1439,7 @@ Section with_parameters.
 
       eexists; split.
       eexists; split.
-      eauto using getmany0.
+      eauto.
 
       simpl. red. red. rewrite <- word.ring_morph_add.
       rewrite (ExitToken.map_branch (fun z => word.of_Z (z + 1))).
@@ -1467,8 +1475,8 @@ Section with_parameters.
 
         (forall from a0 tr mem locals,
             loop_pred from a0 tr mem locals ->
-            map.getmany_of_list locals [from_var; to_var] =
-            Some [from; to]) ->
+            map.get locals from_var = Some from /\
+            WeakestPrecondition.dexpr mem locals to_var to) ->
 
         (forall from from' acc tr mem locals,
             loop_pred from acc tr mem locals ->
@@ -1569,8 +1577,8 @@ Section with_parameters.
 
         (forall from a0 tr mem locals,
             loop_pred from a0 tr mem locals ->
-            map.getmany_of_list locals [from_var; to_var] =
-            Some [from; to]) ->
+            map.get locals from_var = Some from /\
+            WeakestPrecondition.dexpr mem locals to_var to) ->
 
         (forall from from' acc tr mem locals,
             loop_pred from acc tr mem locals ->
@@ -1652,8 +1660,8 @@ Section with_parameters.
 
         (forall from a0 tr mem locals,
             loop_pred from a0 tr mem locals ->
-            map.getmany_of_list locals [from_var; to_var] =
-            Some [from; to]) ->
+            map.get locals from_var = Some from /\
+            map.get locals to_var = Some to) ->
 
         (forall from from' acc tr mem locals,
             loop_pred from acc tr mem locals ->
@@ -1697,11 +1705,10 @@ Section with_parameters.
         cmd_loop_fresh signed from_var from_expr to_var to_expr body_impl k_impl
         <{ pred (nlet_eq vars v k) }>.
     Proof.
-      intros.
-      unfold cmd_loop_fresh.
-      repeat straightline; eexists; split; eauto.
-      repeat straightline; eexists; split; eauto.
+      intros; unfold cmd_loop_fresh.
+      repeat (repeat straightline; eexists; split; eauto).
       eapply compile_ranged_for_w; eauto.
+      { _split_conj; split; eauto; []; repeat straightline; eauto. }
     Qed.
   End Generic.
 
