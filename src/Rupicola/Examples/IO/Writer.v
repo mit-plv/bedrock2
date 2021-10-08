@@ -112,6 +112,6 @@ Section with_parameters.
   Qed.
 End with_parameters.
 
-#[export] Hint Resolve compile_setup_wrspec_k : compiler_setup.
+#[export] Hint Resolve compile_setup_wrspec_k : compiler_setup_post.
 #[export] Hint Extern 1 (mret _ _) => reflexivity : compiler_side_conditions.
 #[export] Hint Unfold wrspec_k wrspec wrbind_spec: compiler_cleanup_post.

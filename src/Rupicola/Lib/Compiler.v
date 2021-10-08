@@ -441,10 +441,10 @@ Ltac compile_setup_unfold_gallina_spec :=
   | (_, ?spec) => let hd := term_head spec in unfold hd
   end.
 
-Create HintDb compiler_setup discriminated.
-#[export] Hint Resolve compile_setup_postcondition_func : compiler_setup.
-#[export] Hint Resolve compile_setup_postcondition_func_noret : compiler_setup.
-#[export] Hint Extern 20 (WeakestPrecondition.cmd _ _ _ _ _ _) => intros; shelve : compiler_setup.
+Create HintDb compiler_setup_post.
+#[export] Hint Resolve compile_setup_postcondition_func : compiler_setup_post.
+#[export] Hint Resolve compile_setup_postcondition_func_noret : compiler_setup_post.
+#[export] Hint Extern 20 (WeakestPrecondition.cmd _ _ _ _ _ _) => shelve : compiler_setup_post.
 
 Tactic Notation "step_with_db" ident(db) :=
   progress unshelve (typeclasses eauto with db); shelve_unifiable.
@@ -454,8 +454,8 @@ Ltac compile_setup :=
   compile_setup_unfold_spec_of;
   eapply compile_setup_WeakestPrecondition_call_first;
   [ try reflexivity (* Arity check *)
-  | first [step_with_db compiler_setup |
-           compile_setup_isolate_gallina_program]; intros;
+  | (step_with_db compiler_setup_post ||
+     compile_setup_isolate_gallina_program); intros;
     compile_setup_unfold_gallina_spec;
     apply compile_setup_remove_skips;
     unfold WeakestPrecondition.program ].

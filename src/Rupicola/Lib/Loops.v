@@ -50,11 +50,11 @@ Section Subseq.
 End Subseq.
 
 Create HintDb loops discriminated.
-Global Hint Resolve subseq_singleton: loops.
-Global Hint Resolve subseq_cons_l subseq_cons_r: loops.
-Global Hint Resolve subseq_app_l1 subseq_app_l2: loops.
-Global Hint Resolve subseq_app_r1 subseq_app_r2: loops.
-Global Hint Resolve in_app_or in_or_app in_eq: loops.
+#[local] Hint Resolve subseq_singleton: loops.
+#[local] Hint Resolve subseq_cons_l subseq_cons_r: loops.
+#[local] Hint Resolve subseq_app_l1 subseq_app_l2: loops.
+#[local] Hint Resolve subseq_app_r1 subseq_app_r2: loops.
+#[local] Hint Resolve in_app_or in_or_app in_eq: loops.
 
 Notation body_ext_irrel b b' :=
   (forall acc idx pr pr', b acc idx pr = b' acc idx pr').
@@ -237,7 +237,7 @@ Section Props.
   Qed.
 End Props.
 
-Global Hint Resolve foldl_dep_Proper : loops.
+#[local] Hint Resolve foldl_dep_Proper : loops.
 
 Section Induction.
   Context {A T: Type}.
@@ -432,8 +432,8 @@ Section ZRange.
   Qed.
 End ZRange.
 
-Global Hint Extern 1 => f_equal: loops.
-Global Hint Resolve range_unique: loops.
+#[local] Hint Extern 1 => f_equal: loops.
+#[local] Hint Resolve range_unique: loops.
 
 Section Loops.
   Context {A: Type}.

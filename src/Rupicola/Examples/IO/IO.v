@@ -272,6 +272,6 @@ Ltac compile_if tr0 :=
  (WeakestPrecondition.cmd _ _ ?tr0 _ _ (_ (mbindn _ (if _ then _ else _) _))) =>
   compile_if tr0; shelve : compiler.
 
-#[export] Hint Resolve compile_setup_iospec_k : compiler_setup.
+#[export] Hint Resolve compile_setup_iospec_k : compiler_setup_post.
 #[export] Hint Extern 1 (IO.Valid (mret _) _) => eapply IO.ValidPure : compiler_side_conditions.
 #[export] Hint Unfold iospec_k iospec iobind_spec iobind: compiler_cleanup_post.
