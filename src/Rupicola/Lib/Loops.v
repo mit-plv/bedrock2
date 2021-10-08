@@ -925,6 +925,22 @@ Section WithTok.
     unfold ranged_for'; intros.
     erewrite ranged_for_break_monotonic; eauto; cbv beta; eauto.
   Qed.
+
+  Lemma ranged_for_all_as_ranged_for from to body a0:
+    ranged_for_all from to body a0 =
+    ranged_for from to (fun a tok idx pr => (tok, body a idx pr)) a0.
+  Proof.
+    unfold ranged_for_all, ranged_for, ranged_for', ranged_for_break.
+    generalize (z_range_sound from to);
+      generalize (z_range from to).
+    intros;
+      generalize (@subseq_refl _ l);
+      generalize l at 1 5 8 as ll.
+    intros ll; revert from to body a0 a;
+      induction ll; simpl; intros.
+    - reflexivity.
+    - rewrite IHll; reflexivity.
+  Qed.
 End WithTok.
 
 Section with_parameters.
