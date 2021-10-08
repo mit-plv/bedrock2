@@ -181,7 +181,6 @@ Section WithWordAndMem.
         blia.
       }
       eapply map.sameLength_putmany_of_list in L. destruct L as (lL & PM').
-      unfold spill_fbody.
       (* Note: redoing half (the callee part, but not the caller part) of call case of
          spilling proof... *)
 
