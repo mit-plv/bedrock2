@@ -511,23 +511,19 @@ Module List.
       - cbn -[Z.add Z.of_nat]. f_equal. rewrite IHn. f_equal. f_equal. blia.
     Qed.
 
-    Global Instance invert_Forall_cons: forall (a: A) (l: list A) (P: A -> Prop),
-        autoforward (List.Forall P (a :: l))
-                    (P a /\ List.Forall P l).
+    Lemma invert_Forall_cons: forall (a: A) (l: list A) (P: A -> Prop),
+        List.Forall P (a :: l) ->
+        P a /\ List.Forall P l.
     Proof. intros a l P H. inversion H. subst. auto. Qed.
 
-    Global Instance invert_NoDup_cons: forall (a: A) (l: list A),
-        autoforward (NoDup (a :: l))
-                    (~ In a l /\ NoDup l).
+    Lemma invert_NoDup_cons: forall (a: A) (l: list A),
+        NoDup (a :: l) ->
+        ~ In a l /\ NoDup l.
     Proof. intros a l H. inversion H. subst. auto. Qed.
   End WithA.
 End List.
 
 (* BEGIN MOVE fwd *)
-
-Class clearable(P: Prop) := {}.
-
-Instance refl_clearable{A: Type}(x: A): clearable (x = x) := {}.
 
 Hint Rewrite
      @List.length_nil
@@ -590,7 +586,8 @@ Ltac fwd_step :=
   match goal with
   | H: ?T |- _ => is_destructible_and T; destr_and H
   | H: exists y, _ |- _ => let yf := fresh y in destruct H as [yf H]
-  | H: ?P |- _ => let __ := constr:(_ : clearable P) in clear H
+  | H: ?x = ?x |- _ => clear H
+  | H: True |- _ => clear H
   | H: ?LHS = ?RHS |- _ =>
     let h1 := head_of_app LHS in is_constructor h1;
     let h2 := head_of_app RHS in is_constructor h2;
@@ -636,8 +633,14 @@ Global Hint Extern 1 (autoforward (orb _ _ = true) _)
 Global Hint Extern 1 (autoforward (orb _ _ = false) _)
   => refine (proj1 (Bool.orb_false_iff _ _)) : typeclass_instances.
 
-Instance forall_keys_empty_clearable{key value: Type}{map: map.map key value}(P: key -> Prop):
-  clearable (map.forall_keys P (@map.empty key value map)) := {}.
+Global Hint Extern 1 (autoforward (List.Forall _ (_ :: _)) _)
+  => rapply @List.invert_Forall_cons : typeclass_instances.
+Global Hint Extern 1 (autoforward (NoDup (_ :: _)) _)
+  => rapply @List.invert_NoDup_cons : typeclass_instances.
+
+(* replace useless hypothesis by True, which will then be cleared by fwd *)
+Global Hint Extern 1 (autoforward (map.forall_keys _ map.empty) _)
+  => refine (fun _ => Coq.Init.Logic.I) : typeclass_instances.
 
 (* END MOVE fwd *)
 
