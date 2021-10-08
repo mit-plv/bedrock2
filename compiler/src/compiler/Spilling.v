@@ -1049,8 +1049,6 @@ Section Spilling.
     unfold spill_tmp. eapply put_arg_reg; eassumption.
   Qed.
 
-  Axiom TODO: False.
-
   Lemma load_iarg_reg_correct(i: Z): forall r e2 t1 t2 m1 m2 l1 l2 mc2 fpval post frame maxvar v,
       i = 1 \/ i = 2 ->
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
@@ -1646,42 +1644,6 @@ Section Spilling.
     1,3: reflexivity. assumption.
   Qed.
 
-  Lemma put_back_hlArgRegs: forall hlArgRegs lRegs lStack (l: locals) maxvar,
-      map.forall_keys (fun x => fp < x < 32 /\ (x < a0 \/ a7 < x)) lRegs ->
-      map.forall_keys (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)) hlArgRegs ->
-      map.forall_keys (fun x => 32 <= x <= maxvar) lStack ->
-      (eq lRegs * eq hlArgRegs * eq lStack)%sep l ->
-      exists lRegs' lStack',
-        (eq lRegs' * eq lStack')%sep l /\
-        map.forall_keys (fun x => fp < x < 32 /\ (x < a0 \/ a7 < x)) lRegs' /\
-        map.forall_keys (fun x => 32 <= x <= maxvar) lStack'.
-  Proof.
-    intro hlArgRegs. pattern hlArgRegs.
-    match goal with
-    | |- ?Q hlArgRegs => eapply map.map_ind with (P := Q); intros
-    end.
-    - fwd. eauto.
-    - rewrite eq_put_to_sep in H4 by assumption.
-      rename H into IH.
-      destr (k <? 32).
-      + eapply (IH (map.put lRegs k v) lStack).
-        * case TODO.
-        * case TODO.
-        * assumption.
-        * rewrite eq_put_to_sep. 2: {
-            eapply sep_ptsto_to_get_None. ecancel_assumption.
-          }
-          ecancel_assumption.
-      + eapply (IH lRegs (map.put lStack k v)).
-        * assumption.
-        * case TODO.
-        * case TODO.
-        * rewrite eq_put_to_sep. 2: {
-            eapply sep_ptsto_to_get_None. ecancel_assumption.
-          }
-          ecancel_assumption.
-  Qed.
-
   Lemma hide_llArgRegs: forall llArgRegs R l argvals n,
       (eq llArgRegs * arg_regs * R)%sep l ->
       map.of_list_zip (List.unfoldn (Z.add 1) n a0) argvals = Some llArgRegs ->
@@ -1695,21 +1657,6 @@ Section Spilling.
     2: eapply List.unfoldn_Z_seq_Forall.
     unfold map.forall_keys in H0. specialize H0 with (1 := H). unfold a0 in H0. blia.
   Qed.
-
-  Lemma split_off_hlArgRegs: forall argvars argvals lRegs lStack (l l': locals) maxvar,
-      (eq lRegs * eq lStack)%sep l ->
-      map.forall_keys (fun x => fp < x < 32 /\ (x < a0 \/ a7 < x)) lRegs ->
-      map.forall_keys (fun x => 32 <= x <= maxvar) lStack ->
-      map.putmany_of_list_zip argvars argvals l = Some l' ->
-      Forall (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)) argvars ->
-      exists lRegs' hlArgRegs lStack',
-        (eq lRegs' * eq hlArgRegs * eq lStack')%sep l' /\
-        map.of_list_zip argvars argvals = Some hlArgRegs /\
-        map.forall_keys (fun x => fp < x < 32 /\ (x < a0 \/ a7 < x)) lRegs' /\
-        map.forall_keys (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)) hlArgRegs /\
-        map.forall_keys (fun x => 32 <= x <= maxvar) lStack'.
-  Proof.
-  Admitted.
 
   (* used at the beginning of a function *)
   Lemma fresh_related: forall maxvar frame fpval t m1 m2 l2 argcount vs stackwords,
@@ -1738,6 +1685,64 @@ Section Spilling.
         unfold map.forall_keys in *. intros. specialize H with (1 := H3). blia.
     - intros. rewrite map.get_empty in H4. discriminate.
     - assumption.
+  Qed.
+
+  Lemma arg_regs_absorbs_putmany_of_list_zip: forall n vs l l' lRegs fpval,
+      (forall x v, map.get lRegs x = Some v -> fp < x < 32 /\ (x < a0 \/ a7 < x)) ->
+      (eq lRegs * arg_regs * ptsto fp fpval)%sep l ->
+      map.putmany_of_list_zip (List.firstn n (reg_class.all reg_class.arg)) vs l = Some l' ->
+      (n <= 8)%nat ->
+      (eq lRegs * arg_regs * ptsto fp fpval)%sep l'.
+  Proof.
+    unfold sep, map.split, ptsto. intros.
+    destruct H0 as (mp & mq & (? & ?) & (lRegs' & mA & (? & ?) & ? & ?) & ?).
+    subst l lRegs' mp mq.
+    pose proof H1 as PM.
+    eapply map.putmany_of_list_zip_sameLength in PM.
+    eapply map.sameLength_putmany_of_list with (st := mA) in PM.
+    destruct PM as (mA' & PM).
+    assert (arg_regs mA') as AA. {
+      unfold arg_regs in *. intros. pose proof H7 as P.
+      erewrite map.get_putmany_of_list_zip in H0. 2: exact PM.
+      destruct_one_match_hyp. 2: eauto.
+      fwd.
+      eapply map.zipped_lookup_Some_in in E.
+      pose proof arg_range_Forall as Q.
+      eapply Forall_forall in Q. 2: eapply List.In_firstn_to_In. 2: exact E. blia.
+    }
+    repeat match goal with
+           | |- exists _, _ => eexists
+           | |- _ /\ _ => split
+           end.
+    all: try reflexivity.
+    4: exact AA.
+    - apply map.map_ext. intros. erewrite map.get_putmany_of_list_zip. 2: eassumption.
+      rewrite ?map.get_putmany_dec, ?map.get_put_dec, map.get_empty.
+      destruct_one_match.
+      + symmetry.
+        pose proof E as F.
+        eapply map.zipped_lookup_Some_in in E.
+        pose proof arg_range_Forall as Q.
+        eapply Forall_forall in Q. 2: eapply List.In_firstn_to_In. 2: exact E.
+        destr (fp =? k). 1: unfold fp in *; exfalso; blia.
+        erewrite map.get_putmany_of_list_zip. 2: exact PM.
+        rewrite F. reflexivity.
+      + destr (map.get mA' k).
+        * erewrite map.get_putmany_of_list_zip in E0. 2: exact PM.
+          rewrite E in E0. rewrite E0. reflexivity.
+        * erewrite map.get_putmany_of_list_zip in E0. 2: exact PM.
+          rewrite E in E0. rewrite E0. reflexivity.
+    - unfold map.disjoint. intros * G1 G2.
+      rewrite ?map.get_put_dec, ?map.get_empty in G2. fwd.
+      rewrite map.get_putmany_dec in G1. destruct_one_match_hyp; fwd.
+      + unfold arg_regs in AA. specialize (AA _ _ E). unfold fp in AA. blia.
+      + specialize (H _ _ G1). unfold fp in H. blia.
+    - unfold map.disjoint. intros * G1 G2.
+      unfold arg_regs in AA.
+      specialize (AA _ _ G2).
+      specialize (H _ _ G1).
+      unfold a0, a7 in H.
+      blia.
   Qed.
 
   Lemma spilling_correct (e1 e2 : env) (Ev : spill_functions e1 = Some e2)
@@ -1817,7 +1822,7 @@ Section Spilling.
         * eassumption.
         * eassumption.
         * eassumption.
-        * case TODO. (* arg_regs absorbs putmany_of_list_zip of resvars *)
+        * eapply arg_regs_absorbs_putmany_of_list_zip; try eassumption.
         * eassumption.
         * eassumption.
 
@@ -1924,7 +1929,17 @@ Section Spilling.
       eapply exec.seq_cps.
       eapply exec.weaken. {
         eapply IHexec. 2: exact R.
-        case TODO. (* valid_vars *)
+        unfold valid_vars_src.
+        eapply Forall_vars_stmt_impl.
+        2: eapply max_var_sound.
+        2: eapply forallb_vars_stmt_correct.
+        3: eassumption.
+        2: {
+          unfold is_valid_src_var.
+          intros *.
+          rewrite ?Bool.andb_true_iff, ?Bool.orb_true_iff, ?Z.ltb_lt. reflexivity.
+        }
+        cbv beta. subst maxvar'. blia.
       }
       cbv beta. intros tL5 mL5 lFL5 mcL5 (tH5 & mH5 & lFH5 & mcH5 & R5 & OC).
       match goal with
@@ -1937,7 +1952,17 @@ Section Spilling.
       { blia. }
       { reflexivity. }
       { unfold a0, a7. blia. }
-      { case TODO. (*valid_vars*) }
+      { eapply Forall_impl. 2: eapply Forall_and.
+        2: eapply List.forallb_to_Forall.
+        3: eassumption.
+        2: {
+          unfold is_valid_src_var.
+          intros *. intro F.
+          rewrite ?Bool.andb_true_iff, ?Bool.orb_true_iff, ?Z.ltb_lt in F. exact F.
+        }
+        2: eapply Forall_le_max.
+        cbv beta.
+        subst maxvar'. clear. blia. }
       { eassumption. }
       rename R into R0.
       intros mL6 lFL6 mcL6 R GM.
@@ -1984,10 +2009,11 @@ Section Spilling.
         { eassumption. }
         { eassumption. }
         { eassumption. }
-        { move H5 at bottom. move H4p7 at bottom.
-          (* since lCL2 and lCL7 only differ on arg_regs, which are ignored in the
-             seplog statement, H4p7 is enough *)
-          case TODO. }
+        { eapply arg_regs_absorbs_putmany_of_list_zip; try eassumption.
+          apply_in_hyps @map.getmany_of_list_length.
+          apply_in_hyps @map.putmany_of_list_zip_sameLength.
+          replace (length rets) with (length binds) by congruence.
+          rewrite arg_regs_alt by blia. exact PM67. }
         { eassumption. }
         { eassumption. }
       }
@@ -2185,13 +2211,6 @@ Section Spilling.
       + cbn. intros. fwd. eapply IH2. 1,2: eassumption. eauto 15.
     - (* exec.skip *)
       eapply exec.skip. eauto 20.
-    Unshelve.
-    all: try exact word.eqb.
-    all: try unshelve eapply word.eqb_spec.
-    all: simpl.
-    all: try typeclasses eauto.
-    all: try exact (fun (_: mem) => True).
-    all: try exact map.empty.
   Qed.
 
 End Spilling.
