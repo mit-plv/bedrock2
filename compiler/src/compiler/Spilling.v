@@ -1819,6 +1819,27 @@ Section Spilling.
         * eassumption.
 
     - (* exec.call *)
+      (* H = High-level, L = Low-level, C = Caller, F = called Function
+
+                   H                                       L
+
+                  lCH1                                    lCL1
+                                                   set_reg_range_to_vars
+                                                          lCL2
+             get/putmany_of_list                    get/putmany_of_list
+                                                          lFL3
+                                                   set_vars_to_reg_range
+                  lFH4                                    lFL4
+             function body                           function body
+                  lFH5                                    lFL5
+                                                   set_reg_range_to_vars
+                                                          lFL6
+           get/putmany_of_list                      get/putmany_of_list
+                                                          lCL7
+                                                   set_vars_to_reg_range
+                  lCH8                                    lCL8
+      *)
+      rename l into lCH1, l2 into lCL1, st0 into lFH4.
       rename H4p0 into FR, H4p1 into FA.
       unfold spill_functions in Ev.
       eapply map.map_all_values_fw in Ev; try typeclasses eauto. 2: eassumption.
@@ -1827,10 +1848,7 @@ Section Spilling.
       apply_in_hyps @map.getmany_of_list_length.
       apply_in_hyps @map.putmany_of_list_zip_sameLength.
       eapply set_reg_range_to_vars_correct; try eassumption || (unfold a0, a7 in *; blia).
-      match goal with
-      | H: related _ _ _ _ _ _ _ _ _ |- _ => clear H
-      end.
-      intros.
+      intros ? lCL2 ? ? ?.
       assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
         unfold bytes_per_word. destruct width_cases as [E' | E']; rewrite E'; cbv; auto.
       }
@@ -1840,7 +1858,7 @@ Section Spilling.
         rewrite List.firstn_length. change (length (reg_class.all reg_class.arg)) with 8%nat. blia.
       }
       eapply map.sameLength_putmany_of_list in L.
-      destruct L as (st' & P).
+      destruct L as (lFL3 & P).
       rewrite !arg_regs_alt by blia.
       eapply exec.call_cps; try eassumption.
       set (maxvar' := (Z.max (max_var fbody)
@@ -1866,7 +1884,7 @@ Section Spilling.
         Z.to_euclidean_division_equations; blia.
       }
       eapply exec.seq_cps.
-      unfold related in H4. fwd.
+      unfold related in H4. fwd. rename lStack into lStack1, lRegs into lRegs1.
       eapply set_vars_to_reg_range_correct.
       { eapply fresh_related with (m1 := m) (frame := (word_array fpval stackwords * frame)%sep).
         - eassumption.
@@ -1899,19 +1917,18 @@ Section Spilling.
         2: eapply Forall_le_max.
         cbv beta.
         subst maxvar'. clear. blia. }
-      clear m2 l2 mc2.
-      intros m2 l2 mc2 R.
+      intros mL4 lFL4 mcL4 R.
       eapply exec.seq_cps.
       eapply exec.weaken. {
         eapply IHexec. 2: exact R.
         case TODO. (* valid_vars *)
       }
-      cbv beta. intros t'' m2'' l2'' mc2'' ?. fwd.
+      cbv beta. intros tL5 mL5 lFL5 mcL5 (tH5 & mH5 & lFH5 & mcH5 & R5 & OC).
       match goal with
       | H: context[outcome], A: context[outcome] |- _ =>
         specialize H with (1 := A); move H at bottom; rename H into Q
       end.
-      fwd. rename l' into l1'', l into l1.
+      fwd. rename l' into lCH8.
       eapply set_reg_range_to_vars_correct.
       { eassumption. }
       { blia. }
@@ -1920,17 +1937,24 @@ Section Spilling.
       { case TODO. (*valid_vars*) }
       { eassumption. }
       rename R into R0.
-      intros m2''' l2''' mc2''' R GM.
+      intros mL6 lFL6 mcL6 R GM.
       (* prove that if we remove the additional stack provided by exec.stackalloc
          and store the result vars back into the caller's registers,
          states are still related and postcondition holds *)
-      unfold related in R. fwd.
+      unfold related in R. fwd. rename lStack into lStack5, lRegs into lRegs5.
       move A at bottom. move Sp at bottom.
-      assert ((eq m1' * word_array fpval stackwords * frame * word_array a stackwords0)%sep m2''')
+      assert ((eq mH5 * word_array fpval stackwords * frame * word_array a stackwords0)%sep mL6)
         as M2 by ecancel_assumption.
       unfold sep in M2 at 1. unfold map.split in M2.
       destruct M2 as (m2Small & mStack' & (? & ?) & ? & M2).
-      subst m2'''. unfold map.split.
+      assert (length (List.unfoldn (BinInt.Z.add 1) (length binds) a0) = length retvs) as PM67. {
+        apply_in_hyps @map.getmany_of_list_length.
+        apply_in_hyps @map.putmany_of_list_zip_sameLength.
+        congruence.
+      }
+      eapply map.sameLength_putmany_of_list with (st := lCL2) in PM67.
+      destruct PM67 as (lCL7 & PM67).
+      subst mL6. unfold map.split.
       repeat match goal with
              | |- exists _, _ => eexists
              | |- _ /\ _ => split
@@ -1949,30 +1973,30 @@ Section Spilling.
         simpl. blia. }
       { eassumption. }
       { rewrite arg_regs_alt by blia. eassumption. }
-      { case TODO. (* putmany_of_list_zip works *) }
-      eapply set_vars_to_reg_range_correct; cycle 1.
+      { exact PM67. }
+      eapply set_vars_to_reg_range_correct.
+      { unfold related. eexists lStack1, lRegs1, _. ssplit.
+        { reflexivity. }
+        { eassumption. }
+        { eassumption. }
+        { eassumption. }
+        { eassumption. }
+        { move H5 at bottom. move H4p7 at bottom.
+          (* since lCL2 and lCL7 only differ on arg_regs, which are ignored in the
+             seplog statement, H4p7 is enough *)
+          case TODO. }
+        { eassumption. }
+        { eassumption. }
+      }
       { eassumption. }
-      { apply_in_hyps @map.getmany_of_list_length.
-        apply_in_hyps @map.putmany_of_list_zip_sameLength.
-        replace (length binds) with (length rets) by blia.
-        exact GM. }
+      { eapply map.putmany_of_list_zip_to_getmany_of_list. 1: exact PM67.
+        eapply List.NoDup_unfoldn_Z_seq. }
       { blia. }
       { reflexivity. }
       { unfold a0, a7. blia. }
       { eassumption. }
       { intros m22 l22 mc22 R22. do 4 eexists. split. 1: eassumption.
         eassumption. }
-      unfold related. eexists _, _, _. ssplit.
-      { reflexivity. }
-      { eassumption. }
-      { eassumption. }
-      { eassumption. }
-      { replace lRegs0 with lRegs by case TODO.
-        eassumption. }
-      { replace fpval with a by case TODO.
-        eassumption. }
-      { eassumption. }
-      { eassumption. }
 
     - (* exec.load *)
       eapply exec.seq_cps.
