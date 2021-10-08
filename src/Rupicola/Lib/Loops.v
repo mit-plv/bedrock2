@@ -1450,6 +1450,84 @@ Section with_parameters.
       red. red. eauto.
     Qed.
 
+    Definition cmd_loop_fresh signed from_var from_expr to_var to_expr body_impl k_impl :=
+      cmd.seq (cmd.set from_var from_expr)
+              (cmd.seq (cmd.set to_var to_expr)
+                       (cmd.seq (cmd_loop_incr signed from_var to_var body_impl)
+                       k_impl)).
+
+    Lemma compile_ranged_for_fresh : forall A {tr mem locals functions}
+          (from to: Z) body (a0: A),
+      let v := ranged_for from to body a0 in
+      forall {P} {pred: P v -> predicate}
+        (loop_pred: forall (idx: Z) (a: A), predicate)
+        {k: nlet_eq_k P v} {k_impl} {body_impl}
+        (from_var to_var: string) (from_expr to_expr: expr) vars,
+
+        let locals1 := map.put locals from_var (word.of_Z from) in
+        let locals2 := map.put locals1 to_var (word.of_Z to) in
+
+        WeakestPrecondition.dexpr mem locals from_expr (word.of_Z from) ->
+        WeakestPrecondition.dexpr mem locals1 to_expr (word.of_Z to) ->
+
+        let lp from tok_acc tr mem locals :=
+            let from := ExitToken.branch (fst tok_acc) (to - 1) from in
+            loop_pred from (snd tok_acc) tr mem locals in
+
+        (forall from a0 tr mem locals,
+            loop_pred from a0 tr mem locals ->
+            map.get locals from_var = Some (word.of_Z from) /\
+            map.get locals to_var = Some (word.of_Z to)) ->
+
+        (forall from from' acc tr mem locals,
+            loop_pred from acc tr mem locals ->
+            loop_pred from' acc tr mem (map.put locals from_var (word.of_Z from'))) ->
+
+        loop_pred from a0 tr mem locals2 ->
+
+        (if signed then in_signed_bounds from /\ in_signed_bounds to
+         else in_unsigned_bounds from /\ in_unsigned_bounds to) ->
+
+        ((* loop body *)
+          let lp := lp in
+          forall tr mem locals from'
+            (Hl: from - 1 < from')
+            (Hr: from' < to)
+            (Hr': from' <= to),
+            let a := ranged_for' from from' (wbody body pr Hr') a0 in
+            let prev_tok := fst a in
+            let acc := snd a in  (* FIXME use primitive projections? *)
+            ExitToken.get prev_tok = false ->
+            loop_pred from' acc tr mem locals ->
+            (<{ Trace := tr;
+                Memory := mem;
+                Locals := locals;
+                Functions := functions }>
+             body_impl
+             <{ lp from' (body acc ExitToken.new from' (conj Hl Hr)) }>)) ->
+        (let v := v in
+         forall tr mem locals,
+           let from' := Z.max from to in
+           loop_pred from' v tr mem locals ->
+           (<{ Trace := tr;
+               Memory := mem;
+               Locals := locals;
+               Functions := functions }>
+            k_impl
+            <{ pred (k v eq_refl) }>)) ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd_loop_fresh signed from_var from_expr to_var to_expr body_impl k_impl
+        <{ pred (nlet_eq vars v k) }>.
+    Proof.
+      intros; unfold cmd_loop_fresh.
+      repeat (repeat straightline; eexists; split; eauto).
+      eapply compile_ranged_for_with_auto_increment; eauto.
+      { _split_conj; split; eauto; []; repeat straightline; eauto. }
+    Qed.
+
     Context {to_Z: word -> Z}
             (of_Z_to_Z: forall w, word.of_Z (to_Z w) = w)
             (to_Z_of_Z: forall l h w,
@@ -1630,12 +1708,6 @@ Section with_parameters.
                (k := fun v' (Heq: v' = v0) => k \< to, v' \> ltac:(rewrite Heq; reflexivity));
         eauto.
     Qed.
-
-    Definition cmd_loop_fresh signed from_var from_expr to_var to_expr body_impl k_impl :=
-      cmd.seq (cmd.set from_var from_expr)
-              (cmd.seq (cmd.set to_var to_expr)
-                       (cmd.seq (cmd_loop_incr signed from_var to_var body_impl)
-                       k_impl)).
 
     Lemma compile_ranged_for_w_fresh : forall A {tr mem locals functions}
           (from to: word)
