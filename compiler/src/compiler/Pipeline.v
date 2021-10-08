@@ -129,9 +129,9 @@ Section Pipeline1.
     - case TODO. (* uses_standard_arg_regs *)
     - pose proof spill_stmt_valid_vars as P.
       unfold valid_vars_src, valid_vars_tgt, sp in P.
+(*
       unfold spill_fbody. cbn. split.
       { eapply set_vars_to_reg_range_valid_vars.
-(*
       eapply P; clear P. 1: reflexivity.
       eapply max_var_sound.
       eapply FlatImp.forallb_vars_stmt_correct.

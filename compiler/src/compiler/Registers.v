@@ -58,6 +58,18 @@ Proof.
     destruct_one_match_hyp; discriminate.
 Qed.
 
+Lemma not_in_arg_regs: forall x n,
+    (n <= 8)%nat ->
+    x < RegisterNames.a0 \/ RegisterNames.a7 < x ->
+    ~ List.In x (List.firstn n (reg_class.all reg_class.arg)).
+Proof.
+  intros x n B1 B2 C.
+  pose proof arg_range_Forall as P.
+  eapply List.Forall_firstn in P.
+  eapply List.Forall_forall in P. 2: exact C.
+  unfold a0, a7 in *. blia.
+Qed.
+
 Lemma sp_not_in_arg_regs: forall n,
     ~ List.In RegisterNames.sp (List.firstn n (reg_class.all reg_class.arg)).
 Proof.
