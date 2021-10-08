@@ -3,9 +3,8 @@ From Coq Require Export
      String List ZArith Lia.
 From bedrock2 Require Export
      Array Map.Separation ProgramLogic
-     Map.SeparationLogic Scalars Syntax WeakestPreconditionProperties.
-From bedrock2 Require
-     ProgramLogic.
+     Map.SeparationLogic Scalars Syntax WeakestPreconditionProperties
+     ZnWords.
 From coqutil Require Export
      dlet Byte
      Z.PushPullMod Tactics.Tactics Tactics.letexists
@@ -525,6 +524,10 @@ Section Lists.
     intros; subst.
     rewrite List.skipn_app, List.skipn_all, minus_plus; simpl; (reflexivity || lia).
   Qed.
+
+  Lemma List_assoc_app_cons (l1 l2: list A) (a: A) :
+    l1 ++ a :: l2 = (l1 ++ [a]) ++ l2.
+  Proof. induction l1; simpl; congruence. Qed.
 
   Lemma replace_nth_eqn :
     forall (xs: list A) idx x,
@@ -1064,6 +1067,87 @@ Section Scalar.
     - rewrite Hlen. destruct width_cases; subst; reflexivity || lia.
   Qed.
 End Scalar.
+
+Section Array.
+  Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
+  Context {value} {Mem : map.map word value} {Mem_ok : map.ok Mem}.
+  Context {T} (element : word -> T -> Mem -> Prop) (size : word).
+
+  Open Scope Z_scope.
+
+  Lemma word_of_Z_mod z:
+    word.of_Z (word := word) z = word.of_Z (z mod 2 ^ width).
+  Proof.
+    apply word.of_Z_inj_mod.
+    pose proof word.modulus_pos.
+    rewrite Z.mod_mod; lia.
+  Qed.
+
+  Lemma Z_mod_eq' a b:
+    b <> 0 ->
+    b * (a / b) = a - a mod b.
+  Proof. intros H; pose proof Z.mod_eq a b H; lia. Qed.
+
+  Lemma array_max_length': forall addr xs (R: Mem -> Prop) m,
+      (array element size addr xs * R)%sep m ->
+      (forall a b p delta m R,
+          0 <= delta < word.unsigned size ->
+          ~ (element p a * element (word.add p (word.of_Z delta)) b * R)%sep m) ->
+      0 <= word.unsigned size < 2 ^ width ->
+      ~ word.unsigned size * Z.of_nat (length xs) > 2 ^ width.
+  Proof.
+    unfold not; intros * H He **.
+    pose (max_len := Z.to_nat (2 ^ width / word.unsigned size)).
+    assert (max_len <= Datatypes.length xs)%nat as B. {
+      apply Nat2Z.inj_le; subst max_len; rewrite Z2Nat.id;
+        [ apply Z.div_le_upper_bound | ]; ZnWords.
+    }
+    pose proof (List.firstn_skipn max_len xs) as E.
+    pose proof @List.firstn_length_le _ xs max_len B as A.
+    destruct (List.firstn max_len xs) as [|h1 t1] eqn:E1; [ ZnWords | ].
+    destruct (List.skipn max_len xs) as [|h2 t2] eqn:E2; [ ZnWords | ].
+    rewrite <- E in H.
+    SeparationLogic.seprewrite_in @array_append H.
+    SeparationLogic.seprewrite_in @array_cons H.
+    SeparationLogic.seprewrite_in @array_cons H.
+    (* FIXME: Get Sam to make this proof magically shorter *)
+    rewrite A in H.
+    set (word.unsigned size * Z.of_nat max_len) as max_len_bytes in H.
+    set (word.add addr (word.of_Z max_len_bytes)) as base in H.
+    replace (element addr) with
+        (element (word.add base (word.of_Z (word.unsigned (word.sub addr base))))) in H;
+      cycle 1.
+    - f_equal.
+      apply word.unsigned_inj.
+      rewrite word.unsigned_add, word.of_Z_unsigned, word.unsigned_sub.
+      unfold word.wrap; Z.push_pull_mod.
+      erewrite <- (Z.mod_small (word.unsigned addr)) at 2 by apply word.unsigned_range.
+      f_equal; lia.
+    - eapply He; [ | ecancel_assumption ].
+      subst base max_len_bytes max_len; rewrite Z2Nat.id by ZnWords.
+      rewrite word.unsigned_sub, word.unsigned_add, word.unsigned_of_Z.
+      unfold word.wrap; Z.push_pull_mod.
+      rewrite Z_mod_eq'.
+      match goal with
+      | [  |- _ <= ?t < _ ] => replace t with (2 ^ width mod word.unsigned size mod 2 ^ width)
+      end.
+      + rewrite Z.mod_small; ZnWords.
+      + etransitivity; [ | rewrite <- Z.mod_add with (b := 1) by ZnWords; reflexivity ].
+        f_equal; rewrite Z.mul_1_l; lia.
+      + lia.
+  Qed.
+
+  Lemma array_max_length: forall addr xs (R: Mem -> Prop) m,
+      0 < word.unsigned size ->
+      (array element size addr xs * R)%sep m ->
+      (forall a b p delta m R,
+          0 <= delta < word.unsigned size ->
+          ~ (element p a * element (word.add p (word.of_Z delta)) b * R)%sep m) ->
+      word.unsigned size * Z.of_nat (length xs) <= 2 ^ width.
+  Proof.
+    intros; eapply Znot_gt_le, array_max_length'; eauto using word.unsigned_range.
+  Qed.
+End Array.
 
 Section Semantics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
