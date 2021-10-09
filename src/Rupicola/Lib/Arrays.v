@@ -105,8 +105,12 @@ Section with_parameters.
                         ai_to_word v := v |}
       end.
 
-    (* Definition awidth {T} `{ak: access_kind T} : Z := *)
-    (*   Z.of_nat (@Memory.bytes_per Semantics.width a_size). *)
+    Lemma ai_width_bounded a :
+      0 < a.(ai_width) < 2 ^ width.
+    Proof.
+      unfold ai_width; destruct ai_size; simpl.
+      all: try (destruct width_cases as [H|H]; rewrite H; simpl; lia).
+    Qed.
 
     Context (sz: AccessSize).
     Notation ai := (_access_info sz).
@@ -666,6 +670,17 @@ Section with_parameters.
       eauto using length_of_sizedlistarray_value.
     Qed.
 
+    Lemma sizedlistarray_value_max_length {len addr a R mem} :
+      (sizedlistarray_value len addr a ⋆ R) mem ->
+      (ai_width ai) * Z.of_nat len <= 2 ^ width.
+    Proof.
+      pose proof ai_width_bounded ai.
+      intros * (<- & Hmem)%sep_assoc%sep_emp_l.
+      etransitivity; [ | eapply array_max_length ]; eauto.
+      - rewrite word.unsigned_of_Z_nowrap by lia; reflexivity.
+      - destruct sz; eauto using scalar8_no_aliasing, scalar_no_aliasing2.
+      - rewrite word.unsigned_of_Z_nowrap; lia.
+    Qed.
 
     Lemma sizedlistarray_value_app1_length {len addr a1 a2 R mem} :
       (sizedlistarray_value len addr (a1 ++ a2) ⋆ R) mem ->

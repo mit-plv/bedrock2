@@ -1088,11 +1088,14 @@ Section Array.
     b * (a / b) = a - a mod b.
   Proof. intros H; pose proof Z.mod_eq a b H; lia. Qed.
 
+  Definition no_aliasing {A} (repr: word -> A -> Mem -> Prop) :=
+    (forall a b p delta m R,
+        0 <= delta < word.unsigned size ->
+        ~ (repr p a * repr (word.add p (word.of_Z delta)) b * R)%sep m).
+
   Lemma array_max_length': forall addr xs (R: Mem -> Prop) m,
       (array element size addr xs * R)%sep m ->
-      (forall a b p delta m R,
-          0 <= delta < word.unsigned size ->
-          ~ (element p a * element (word.add p (word.of_Z delta)) b * R)%sep m) ->
+      no_aliasing element ->
       0 <= word.unsigned size < 2 ^ width ->
       ~ word.unsigned size * Z.of_nat (length xs) > 2 ^ width.
   Proof.
@@ -1138,16 +1141,103 @@ Section Array.
   Qed.
 
   Lemma array_max_length: forall addr xs (R: Mem -> Prop) m,
+      no_aliasing element ->
       0 < word.unsigned size ->
       (array element size addr xs * R)%sep m ->
-      (forall a b p delta m R,
-          0 <= delta < word.unsigned size ->
-          ~ (element p a * element (word.add p (word.of_Z delta)) b * R)%sep m) ->
       word.unsigned size * Z.of_nat (length xs) <= 2 ^ width.
   Proof.
     intros; eapply Znot_gt_le, array_max_length'; eauto using word.unsigned_range.
   Qed.
 End Array.
+
+Section Aliasing.
+  Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
+  Context {Mem : map.map word byte} {Mem_ok : map.ok Mem}.
+
+  Open Scope Z_scope.
+
+  Lemma bytes_per_word_range :
+    0 < Memory.bytes_per_word width < 2 ^ width.
+  Proof. (* FIXME: seriously?! *)
+    unfold Memory.bytes_per_word; pose proof word.width_pos.
+    split; [apply Z.div_str_pos; lia | ].
+    apply Z.div_lt_upper_bound; try lia.
+    apply Z.lt_add_lt_sub_r.
+    replace (2 ^ width) with (2 ^ (Z.succ (width - 1))) by (f_equal; lia).
+    rewrite Z.pow_succ_r by lia.
+    replace (8 * (2 * 2 ^ (width - 1))) with (8 * 2 ^ (width - 1) + 8 * 2 ^ (width - 1)) by lia.
+    assert (0 < 2 ^ (width - 1)) by (apply Z.pow_pos_nonneg; lia).
+    transitivity (8 * 2 ^ (width - 1)); try lia.
+    etransitivity; [ apply Zpow_facts.Zpower2_lt_lin; lia | ].
+    replace (8 * 2 ^ (width - 1)) with (2 ^ (Z.succ (Z.succ (Z.succ (width - 1))))).
+    apply Z.pow_lt_mono_r; lia.
+    rewrite !Z.pow_succ_r by lia.
+    lia.
+  Qed.
+
+  (* From insertionsort.v in Bedrock2 *)
+  Lemma ptsto_no_aliasing': forall addr b1 b2 m (R: Mem -> Prop),
+      (ptsto addr b1 * ptsto addr b2 * R)%sep m ->
+      False.
+  Proof.
+    intros. unfold ptsto, sep, map.split, map.disjoint in *.
+    repeat match goal with
+           | H: exists _, _ |- _ => destruct H
+           | H: _ /\ _ |- _ => destruct H
+           end.
+    subst.
+    specialize (H4 addr b1 b2). rewrite ?map.get_put_same in H4. auto.
+  Qed.
+
+  Lemma scalar8_no_aliasing :
+    no_aliasing (word := word) (Mem := Mem) (word.of_Z 1) ptsto.
+  Proof.
+    red; intros * h Hmem.
+    rewrite word.unsigned_of_Z_1 in h.
+    replace delta with 0 in * by lia.
+    replace (word.add p (word.of_Z 0)) with p in *; cycle 1.
+    - apply word.unsigned_inj;
+        rewrite word.unsigned_add, word.unsigned_of_Z_0, Z.add_0_r.
+      pose proof word.unsigned_range p; rewrite word.wrap_small by lia;
+        reflexivity.
+    - eapply ptsto_no_aliasing'; eassumption.
+  Qed.
+
+  Lemma scalar_no_aliasing1 :
+    no_aliasing (word := word) (Mem := Mem)
+                (word.of_Z (Memory.bytes_per_word width))
+                (scalar (mem := Mem)).
+  Proof.
+    red; intros * h Hmem.
+    pose proof bytes_per_word_range.
+    rewrite word.unsigned_of_Z_nowrap in h by lia.
+    unfold scalar, truncated_word, truncated_scalar,
+    littleendian, ptsto_bytes.ptsto_bytes in *.
+    pose proof split_bytes_per_word a as Hlena.
+    pose proof split_bytes_per_word b as Hlenb.
+    set (HList.tuple.to_list _) as la in Hmem, Hlena.
+    set (HList.tuple.to_list _) as lb in Hmem, Hlenb.
+    rewrite <- (firstn_skipn (Z.to_nat delta) la) in Hmem.
+    seprewrite_in @array_append Hmem; try lia.
+    rewrite word.unsigned_of_Z_1, Z.mul_1_l, firstn_length_le, Z2Nat.id in Hmem by lia.
+    destruct lb; cbn -[Z.of_nat] in Hlenb; [ lia | ].
+    pose proof List.skipn_length (Z.to_nat delta) la as Hlena'.
+    destruct (List.skipn (Z.to_nat delta) la) eqn:Ha; cbn [List.length] in Hlena'; [ lia | ].
+    seprewrite_in @array_cons Hmem; try lia.
+    seprewrite_in @array_cons Hmem; try lia.
+    eapply ptsto_no_aliasing'; ecancel_assumption.
+  Qed.
+
+  Lemma scalar_no_aliasing2 :
+    no_aliasing (word := word) (Mem := Mem)
+                (word.of_Z (Z.of_nat (Memory.bytes_per
+                                        (width := width)
+                                        access_size.word))) scalar.
+  Proof.
+    pose proof bytes_per_word_range.
+    simpl; rewrite Z2Nat.id by lia; apply scalar_no_aliasing1.
+  Qed.
+End Aliasing.
 
 Section Semantics.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
