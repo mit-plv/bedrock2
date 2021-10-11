@@ -1760,12 +1760,12 @@ Section Spilling.
                       post t1' m1' l1' mc1').
 
   Definition call_spec(e: env) '(argnames, retnames, fbody)
-             (t: Semantics.trace)(m: mem)(argvals: list word)(mc: MetricLog)
+             (t: Semantics.trace)(m: mem)(argvals: list word)
              (post: Semantics.trace -> mem -> list word -> Prop): Prop :=
-    forall l, map.of_list_zip argnames argvals = Some l ->
-              exec e fbody t m l mc (fun t' m' l' mc' =>
-                 exists retvals, map.getmany_of_list l' retnames = Some retvals /\
-                                 post t' m' retvals).
+    forall l mc, map.of_list_zip argnames argvals = Some l ->
+                 exec e fbody t m l mc (fun t' m' l' mc' =>
+                   exists retvals, map.getmany_of_list l' retnames = Some retvals /\
+                                   post t' m' retvals).
 
   (* In exec.call, there are many maps of locals involved:
 
@@ -1796,11 +1796,11 @@ Section Spilling.
   Lemma spill_fun_correct_aux: forall e1 e2 argnames1 retnames1 body1 argnames2 retnames2 body2,
       spill_fun (argnames1, retnames1, body1) = Some (argnames2, retnames2, body2) ->
       spilling_correct_for e1 e2 body1 ->
-      forall argvals t m mc (post: Semantics.trace -> mem -> list word -> Prop),
-        call_spec e1 (argnames1, retnames1, body1) t m argvals mc post ->
-        call_spec e2 (argnames2, retnames2, body2) t m argvals mc post.
+      forall argvals t m (post: Semantics.trace -> mem -> list word -> Prop),
+        call_spec e1 (argnames1, retnames1, body1) t m argvals post ->
+        call_spec e2 (argnames2, retnames2, body2) t m argvals post.
   Proof.
-    unfold call_spec, spilling_correct_for. intros * Sp IHexec * Ex lFL3 OL2.
+    unfold call_spec, spilling_correct_for. intros * Sp IHexec * Ex lFL3 mc OL2.
     unfold spill_fun in Sp. fwd.
     apply_in_hyps @map.getmany_of_list_length.
     apply_in_hyps @map.putmany_of_list_zip_sameLength.
@@ -1811,7 +1811,7 @@ Section Spilling.
     }
     eapply map.sameLength_putmany_of_list in LA.
     destruct LA as (lFH4 & PA).
-    specialize (Ex _ PA).
+    specialize Ex with (1 := PA).
     rewrite !arg_regs_alt by blia.
     assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
       unfold bytes_per_word. destruct width_cases as [E' | E']; rewrite E'; cbv; auto.
@@ -1872,7 +1872,7 @@ Section Spilling.
     intros mL4 lFL4 mcL4 R.
     eapply exec.seq_cps.
     eapply exec.weaken. {
-      eapply IHexec. 1: exact Ex. 2: exact R.
+      eapply IHexec. 1: apply Ex. 2: exact R.
       unfold valid_vars_src.
       eapply Forall_vars_stmt_impl.
       2: eapply max_var_sound.
@@ -1935,6 +1935,8 @@ Section Spilling.
       }
       blia. }
     { eassumption. }
+    Unshelve.
+    all: try assumption.
   Qed.
 
   Lemma spilling_correct (e1 e2 : env) (Ev : spill_functions e1 = Some e2)
@@ -2408,9 +2410,9 @@ Section Spilling.
   Lemma spill_fun_correct: forall e1 e2 argnames1 retnames1 body1 argnames2 retnames2 body2,
       spill_functions e1 = Some e2 ->
       spill_fun (argnames1, retnames1, body1) = Some (argnames2, retnames2, body2) ->
-      forall argvals t m mc (post: Semantics.trace -> mem -> list word -> Prop),
-        call_spec e1 (argnames1, retnames1, body1) t m argvals mc post ->
-        call_spec e2 (argnames2, retnames2, body2) t m argvals mc post.
+      forall argvals t m (post: Semantics.trace -> mem -> list word -> Prop),
+        call_spec e1 (argnames1, retnames1, body1) t m argvals post ->
+        call_spec e2 (argnames2, retnames2, body2) t m argvals post.
   Proof.
     intros. eapply spill_fun_correct_aux; try eassumption.
     unfold spilling_correct_for.

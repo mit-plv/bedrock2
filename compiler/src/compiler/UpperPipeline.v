@@ -20,7 +20,7 @@ Section WithWordAndMem.
   Context {width: Z} {BW: Bitwidth width} {word: Interface.word width} {mem : map.map word byte}.
 
   Definition CallSpec(FunEnv: Type): Type :=
-    FunEnv -> string -> trace -> mem -> list word -> MetricLog ->
+    FunEnv -> string -> trace -> mem -> list word ->
     (trace -> mem -> list word -> Prop) -> Prop.
 
   Definition phase_correct{Func1 Func2: Type}
@@ -29,9 +29,9 @@ Section WithWordAndMem.
              (compile: env1 -> option env2): Prop :=
     forall functions1 functions2 fname,
       compile functions1 = Some functions2 ->
-      forall argvals t m mc post,
-        Call1 functions1 fname t m argvals mc post ->
-        Call2 functions2 fname t m argvals mc post.
+      forall argvals t m post,
+        Call1 functions1 fname t m argvals post ->
+        Call2 functions2 fname t m argvals post.
 
   Definition compose_phases{A B C: Type}(phase1: A -> option B)(phase2: B -> option C)(a: A) :=
     match phase1 a with
@@ -66,23 +66,23 @@ Section WithWordAndMem.
     Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
     Definition SrcLang: CallSpec (string_keyed_map (list string * list string * Syntax.cmd)) :=
-      fun e f t m argvals mc post =>
+      fun e f t m argvals post =>
         exists argnames retnames fbody,
           map.get e f = Some (argnames, retnames, fbody) /\
-          forall l, map.of_list_zip argnames argvals = Some l ->
-                    Semantics.exec e fbody t m l mc (fun t' m' l' mc' =>
-                      exists retvals, map.getmany_of_list l' retnames = Some retvals /\
-                                      post t' m' retvals).
+          forall l mc, map.of_list_zip argnames argvals = Some l ->
+                       Semantics.exec e fbody t m l mc (fun t' m' l' mc' =>
+                        exists retvals, map.getmany_of_list l' retnames = Some retvals /\
+                                        post t' m' retvals).
 
     Definition FlatLang(Var: Type){locals: map.map Var word}:
       CallSpec (string_keyed_map (list Var * list Var * FlatImp.stmt Var)) :=
-      fun e f t m argvals mc post =>
+      fun e f t m argvals post =>
         exists argnames retnames fbody,
           map.get e f = Some (argnames, retnames, fbody) /\
-          forall l, map.of_list_zip argnames argvals = Some l ->
-                    FlatImp.exec e fbody t m l mc (fun t' m' l' mc' =>
-                      exists retvals, map.getmany_of_list l' retnames = Some retvals /\
-                                      post t' m' retvals).
+          forall l mc, map.of_list_zip argnames argvals = Some l ->
+                       FlatImp.exec e fbody t m l mc (fun t' m' l' mc' =>
+                        exists retvals, map.getmany_of_list l' retnames = Some retvals /\
+                                        post t' m' retvals).
 
     Lemma flattening_correct: phase_correct SrcLang (FlatLang string) flatten_functions.
     Proof.
