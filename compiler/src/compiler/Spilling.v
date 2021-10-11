@@ -1790,11 +1790,10 @@ Section Spilling.
                   lCH8                                    lCL8
 
      To simplify, it is helpful to have a separate lemma only talking about
-     what happens in the callee.
+     what happens in the callee. TODO: actually use that lemma in case exec.call.
      Moreover, this lemma will also be used in the pipeline, where phases
      are composed based on the semantics of function calls. *)
-
-  Lemma spill_fun_correct: forall e1 e2 argnames1 retnames1 body1 argnames2 retnames2 body2,
+  Lemma spill_fun_correct_aux: forall e1 e2 argnames1 retnames1 body1 argnames2 retnames2 body2,
       spill_fun (argnames1, retnames1, body1) = Some (argnames2, retnames2, body2) ->
       spilling_correct_for e1 e2 body1 ->
       forall argvals t m mc (post: Semantics.trace -> mem -> list word -> Prop),
@@ -2404,6 +2403,19 @@ Section Spilling.
       + cbn. intros. fwd. eapply IH2. 1,2: eassumption. eauto 15.
     - (* exec.skip *)
       eapply exec.skip. eauto 20.
+  Qed.
+
+  Lemma spill_fun_correct: forall e1 e2 argnames1 retnames1 body1 argnames2 retnames2 body2,
+      spill_functions e1 = Some e2 ->
+      spill_fun (argnames1, retnames1, body1) = Some (argnames2, retnames2, body2) ->
+      forall argvals t m mc (post: Semantics.trace -> mem -> list word -> Prop),
+        call_spec e1 (argnames1, retnames1, body1) t m argvals mc post ->
+        call_spec e2 (argnames2, retnames2, body2) t m argvals mc post.
+  Proof.
+    intros. eapply spill_fun_correct_aux; try eassumption.
+    unfold spilling_correct_for.
+    eapply spilling_correct.
+    assumption.
   Qed.
 
 End Spilling.
