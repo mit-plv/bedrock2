@@ -290,7 +290,6 @@ Section Pipeline1.
       - assumption.
       - eapply runsToDone. split; [exact I|reflexivity].
     }
-    specialize init_code_correct with (mc0 := (bedrock2.MetricLogging.mkMetricLog 0 0 0 0)).
     match goal with
     | H: map.get positions "init"%string = Some ?pos |- _ =>
       rename H into GetPos, pos into f_entry_rel_pos
@@ -309,8 +308,8 @@ Section Pipeline1.
         unfold hl_inv in init_code_correct.
         simpl.
         move init_code_correct at bottom.
-        subst.
-        refine (init_code_correct _ _).
+        subst. intros.
+        refine (init_code_correct _ _ _).
         replace (datamem_start spec) with (heap_start ml) by congruence.
         replace (datamem_pastend spec) with (heap_pastend ml) by congruence.
         exact HMem.
@@ -527,7 +526,7 @@ Section Pipeline1.
       | H: ProgramSatisfiesSpec _ _ _ _ |- _ => pose proof H as sat; destruct H
       end.
       unfold hl_inv in loop_body_correct.
-      specialize loop_body_correct with (l := map.empty) (mc := bedrock2.MetricLogging.mkMetricLog 0 0 0 0).
+      specialize loop_body_correct with (l := map.empty).
       lazymatch goal with
       | H: context[@word.add ?w ?wo ?x (word.of_Z 0)] |- _ =>
         replace (@word.add w wo x (word.of_Z 0)) with x in H
@@ -539,6 +538,7 @@ Section Pipeline1.
                                     compile_ext_call_length_ignores_positions as P.
         unfold runsTo in P.
         eapply P; clear P. 7: {
+          intros.
           eapply loop_body_correct; eauto.
         }
         all: try eassumption.

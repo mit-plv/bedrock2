@@ -181,7 +181,7 @@ Section Pipeline1.
       (functions: source_env)
       (instrs: list Instruction)
       (pos_map: string_keyed_map Z)
-      (mH: mem) (mc: MetricLog)
+      (mH: mem)
       (postH: Semantics.trace -> mem -> Prop)
       (required_stack_space: Z)
       (initial: MetricRiscvMachine),
@@ -191,7 +191,8 @@ Section Pipeline1.
       map.get pos_map f_entry_name = Some f_entry_rel_pos ->
       required_stack_space <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->
       word.unsigned (word.sub stack_pastend stack_start) mod bytes_per_word = 0 ->
-      Semantics.exec functions fbody initial.(getLog) mH map.empty mc (fun t' m' l' mc' => postH t' m') ->
+      (forall mc, Semantics.exec functions fbody initial.(getLog) mH map.empty mc
+                                 (fun t' m' l' mc' => postH t' m')) ->
       machine_ok p_functions f_entry_rel_pos stack_start stack_pastend instrs
                  p_call p_call mH Rdata Rexec initial ->
       runsTo initial (fun final => exists mH',
@@ -205,7 +206,7 @@ Section Pipeline1.
       as (argnames & retnames & fbody' & G' & Sim); clear U.
     { eassumption. }
     { do 3 eexists. split. 1: eassumption. unfold map.of_list_zip. simpl. intros. simp.
-      eapply ExprImp.weaken_exec. 1: eassumption.
+      eapply ExprImp.weaken_exec. 1: eauto.
       cbv beta. intros. exists []. split; [reflexivity|eassumption]. }
     assert (argnames = []) by case TODO.
     assert (retnames = []) by case TODO.
@@ -217,6 +218,8 @@ Section Pipeline1.
     eapply FlatImp.exec.weaken.
     - eapply Sim. reflexivity.
     - cbv beta. intros. simp. assumption.
+    Unshelve.
+    all: try exact EmptyMetricLog.
   Qed.
 
   Definition instrencode(p: list Instruction): list byte :=
