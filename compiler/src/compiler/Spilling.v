@@ -1511,10 +1511,10 @@ Section Spilling.
       start + Z.of_nat (List.length args) <= a7 + 1 ->
       Forall (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)) args ->
       map.getmany_of_list l1 args = Some argvs ->
-      (forall m2' l2' mc2',
-          related maxvar frame fpval t1 m1 l1 t2 m2' l2' ->
+      (forall l2' mc2',
+          related maxvar frame fpval t1 m1 l1 t2 m2 l2' ->
           map.getmany_of_list l2' (List.unfoldn (Z.add 1) (List.length args) start) = Some argvs ->
-          post t2 m2' l2' mc2') ->
+          post t2 m2 l2' mc2') ->
       exec e (set_reg_range_to_vars start args) t2 m2 l2 mc2 post.
   Proof.
     induction args; intros.
@@ -1745,6 +1745,199 @@ Section Spilling.
       blia.
   Qed.
 
+  Definition spilling_correct_for(e1 e2 : env)(s1 : stmt): Prop :=
+      forall (t1 : Semantics.trace) (m1 : mem) (l1 : locals) (mc1 : MetricLog)
+             (post : Semantics.trace -> mem -> locals -> MetricLog -> Prop),
+        exec e1 s1 t1 m1 l1 mc1 post ->
+        forall (frame : mem -> Prop) (maxvar : Z),
+          valid_vars_src maxvar s1 ->
+          forall (t2 : Semantics.trace) (m2 : mem) (l2 : locals) (mc2 : MetricLog) (fpval : word),
+            related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
+            exec e2 (spill_stmt s1) t2 m2 l2 mc2
+                 (fun (t2' : Semantics.trace) (m2' : mem) (l2' : locals) (mc2' : MetricLog) =>
+                    exists t1' m1' l1' mc1',
+                      related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
+                      post t1' m1' l1' mc1').
+
+  Definition call_spec(e: env) '(argnames, retnames, fbody)
+             (t: Semantics.trace)(m: mem)(argvals: list word)(mc: MetricLog)
+             (post: Semantics.trace -> mem -> list word -> Prop): Prop :=
+    forall l, map.of_list_zip argnames argvals = Some l ->
+              exec e fbody t m l mc (fun t' m' l' mc' =>
+                 exists retvals, map.getmany_of_list l' retnames = Some retvals /\
+                                 post t' m' retvals).
+
+  (* In exec.call, there are many maps of locals involved:
+
+         H = High-level, L = Low-level, C = Caller, F = called Function
+
+                   H                                       L
+
+                  lCH1                                    lCL1
+                                                   set_reg_range_to_vars
+                                                          lCL2
+             get/putmany_of_list                    get/putmany_of_list
+                                                          lFL3
+                                                   set_vars_to_reg_range
+                  lFH4                                    lFL4
+             function body                           function body
+                  lFH5                                    lFL5
+                                                   set_reg_range_to_vars
+                                                          lFL6
+           get/putmany_of_list                      get/putmany_of_list
+                                                          lCL7
+                                                   set_vars_to_reg_range
+                  lCH8                                    lCL8
+
+     To simplify, it is helpful to have a separate lemma only talking about
+     what happens in the callee.
+     Moreover, this lemma will also be used in the pipeline, where phases
+     are composed based on the semantics of function calls. *)
+
+  Lemma spill_fun_correct: forall e1 e2 argnames1 retnames1 body1 argnames2 retnames2 body2,
+      spill_fun (argnames1, retnames1, body1) = Some (argnames2, retnames2, body2) ->
+      spilling_correct_for e1 e2 body1 ->
+      forall argvals t m mc (post: Semantics.trace -> mem -> list word -> Prop),
+        call_spec e1 (argnames1, retnames1, body1) t m argvals mc post ->
+        call_spec e2 (argnames2, retnames2, body2) t m argvals mc post.
+  Proof.
+    unfold call_spec, spilling_correct_for. intros * Sp IHexec * Ex lFL3 OL2.
+    unfold spill_fun in Sp. fwd.
+    apply_in_hyps @map.getmany_of_list_length.
+    apply_in_hyps @map.putmany_of_list_zip_sameLength.
+    assert (length argnames1 = length argvals) as LA. {
+      rewrite List.firstn_length in *.
+      change (length (reg_class.all reg_class.arg)) with 8%nat in *.
+      blia.
+    }
+    eapply map.sameLength_putmany_of_list in LA.
+    destruct LA as (lFH4 & PA).
+    specialize (Ex _ PA).
+    rewrite !arg_regs_alt by blia.
+    assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
+      unfold bytes_per_word. destruct width_cases as [E' | E']; rewrite E'; cbv; auto.
+    }
+    set (maxvar' := (Z.max (max_var body1)
+                           (Z.max (fold_left Z.max argnames1 0)
+                                  (fold_left Z.max retnames1 0)))) in *.
+    eapply exec.stackalloc. {
+      rewrite Z.mul_comm.
+      apply Z_mod_mult.
+    }
+    intros *. intros A Sp.
+    destruct (anybytes_to_array_1 (mem_ok := mem_ok) _ _ _ A) as (bytes & Pt & L).
+    edestruct (byte_list_to_word_list_array bytes) as (words & L' & F). {
+      rewrite L.
+      unfold Memory.ftprint.
+      rewrite Z2Nat.id by blia.
+      destr (0 <=? (maxvar' - 31)).
+      - rewrite Z2Nat.id by assumption. rewrite Z.mul_comm. apply Z_mod_mult.
+      - replace (Z.of_nat (Z.to_nat (maxvar' - 31))) with 0 by blia.
+        rewrite Z.mul_0_r.
+        apply Zmod_0_l.
+    }
+    eapply F in Pt. clear F.
+    assert (length words = Z.to_nat (maxvar' - 31)) as L''. {
+      Z.to_euclidean_division_equations; blia.
+    }
+    eapply exec.seq_cps.
+    eapply set_vars_to_reg_range_correct.
+    { eapply fresh_related with (m1 := m) (frame := eq map.empty).
+      - eassumption.
+      - blia.
+      - exact L''.
+      - rewrite sep_eq_empty_r.
+        unfold sep. eauto. }
+    { eassumption. }
+    { eapply map.getmany_of_list_put_diff. {
+        eapply List.not_In_Z_seq. unfold fp, a0. blia.
+      }
+      eapply map.putmany_of_list_zip_to_getmany_of_list.
+      - rewrite <- arg_regs_alt by blia. exact OL2.
+      - eapply List.NoDup_unfoldn_Z_seq.
+    }
+    { blia. }
+    { reflexivity. }
+    { unfold a0, a7. blia. }
+    { eapply Forall_impl. 2: eapply Forall_and.
+      2: eapply List.forallb_to_Forall.
+      3: eassumption.
+      2: {
+        unfold is_valid_src_var.
+        intros *. intro F.
+        rewrite ?Bool.andb_true_iff, ?Bool.orb_true_iff, ?Z.ltb_lt in F. exact F.
+      }
+      2: eapply Forall_le_max.
+      cbv beta.
+      subst maxvar'. clear. blia. }
+    intros mL4 lFL4 mcL4 R.
+    eapply exec.seq_cps.
+    eapply exec.weaken. {
+      eapply IHexec. 1: exact Ex. 2: exact R.
+      unfold valid_vars_src.
+      eapply Forall_vars_stmt_impl.
+      2: eapply max_var_sound.
+      2: eapply forallb_vars_stmt_correct.
+      3: eassumption.
+      2: {
+        unfold is_valid_src_var.
+        intros *.
+        rewrite ?Bool.andb_true_iff, ?Bool.orb_true_iff, ?Z.ltb_lt. reflexivity.
+      }
+      cbv beta. subst maxvar'. blia.
+    }
+    cbv beta. intros tL5 mL5 lFL5 mcL5 (tH5 & mH5 & lFH5 & mcH5 & R5 & OC).
+    fwd.
+    eapply set_reg_range_to_vars_correct.
+    { eassumption. }
+    { blia. }
+    { reflexivity. }
+    { unfold a0, a7. blia. }
+    { eapply Forall_impl. 2: eapply Forall_and.
+      2: eapply List.forallb_to_Forall.
+      3: eassumption.
+      2: {
+        unfold is_valid_src_var.
+        intros *. intro F.
+        rewrite ?Bool.andb_true_iff, ?Bool.orb_true_iff, ?Z.ltb_lt in F. exact F.
+      }
+      2: eapply Forall_le_max.
+      cbv beta.
+      subst maxvar'. clear. blia. }
+    { eassumption. }
+    rename R into R0.
+    intros lFL6 mcL6 R GM.
+    (* prove that if we remove the additional stack provided by exec.stackalloc
+       and store the result vars back into the arg registers, the postcondition holds *)
+    unfold related in R. fwd. rename lStack into lStack5, lRegs into lRegs5.
+    move A at bottom. move Sp at bottom.
+    rename Rp1 into M2.
+    rewrite sep_eq_empty_r in M2.
+    unfold sep in M2. unfold map.split in M2.
+    destruct M2 as (m2Small & mStack' & (? & ?) & ? & M2).
+    subst.
+    repeat match goal with
+           | |- exists _, _ => eexists
+           | |- _ /\ _ => split
+           end.
+    4: eassumption.
+    2: {
+      unfold map.split. eauto.
+    }
+    {
+      eapply cast_word_array_to_bytes in M2.
+      eapply array_1_to_anybytes in M2.
+      match goal with
+      | H: Memory.anybytes a ?LEN1 mStack' |-
+        Memory.anybytes a ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
+      end.
+      erewrite List.flat_map_const_length. 2: {
+        intros w. rewrite HList.tuple.length_to_list. reflexivity.
+      }
+      blia. }
+    { eassumption. }
+  Qed.
+
   Lemma spilling_correct (e1 e2 : env) (Ev : spill_functions e1 = Some e2)
         (s1 : stmt)
         (t1 : Semantics.trace)
@@ -1767,11 +1960,11 @@ Section Spilling.
     - (* exec.interact *)
       eapply exec.seq_cps.
       eapply set_reg_range_to_vars_correct; try eassumption; try (unfold a0, a7; blia).
-      intros *. intros R GM. clear m2 l2 mc2 H4.
+      intros *. intros R GM. clear l2 mc2 H4.
       unfold related in R. fwd.
       spec (subst_split (ok := mem_ok) m) as A.
       1: eassumption. 1: ecancel_assumption.
-      edestruct (@sep_def _ _ _ m2' (eq mGive)) as (mGive' & mKeepL & B & ? & C).
+      edestruct (@sep_def _ _ _ m2 (eq mGive)) as (mGive' & mKeepL & B & ? & C).
       1: ecancel_assumption.
       subst mGive'.
       eapply exec.seq_cps.
@@ -1856,7 +2049,7 @@ Section Spilling.
       apply_in_hyps @map.getmany_of_list_length.
       apply_in_hyps @map.putmany_of_list_zip_sameLength.
       eapply set_reg_range_to_vars_correct; try eassumption || (unfold a0, a7 in *; blia).
-      intros ? lCL2 ? ? ?.
+      intros lCL2 ? ? ?.
       assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
         unfold bytes_per_word. destruct width_cases as [E' | E']; rewrite E'; cbv; auto.
       }
@@ -1965,13 +2158,13 @@ Section Spilling.
         subst maxvar'. clear. blia. }
       { eassumption. }
       rename R into R0.
-      intros mL6 lFL6 mcL6 R GM.
+      intros lFL6 mcL6 R GM.
       (* prove that if we remove the additional stack provided by exec.stackalloc
          and store the result vars back into the caller's registers,
          states are still related and postcondition holds *)
       unfold related in R. fwd. rename lStack into lStack5, lRegs into lRegs5.
       move A at bottom. move Sp at bottom.
-      assert ((eq mH5 * word_array fpval stackwords * frame * word_array a stackwords0)%sep mL6)
+      assert ((eq mH5 * word_array fpval stackwords * frame * word_array a stackwords0)%sep mL5)
         as M2 by ecancel_assumption.
       unfold sep in M2 at 1. unfold map.split in M2.
       destruct M2 as (m2Small & mStack' & (? & ?) & ? & M2).
@@ -1982,7 +2175,7 @@ Section Spilling.
       }
       eapply map.sameLength_putmany_of_list with (st := lCL2) in PM67.
       destruct PM67 as (lCL7 & PM67).
-      subst mL6. unfold map.split.
+      subst mL5. unfold map.split.
       repeat match goal with
              | |- exists _, _ => eexists
              | |- _ /\ _ => split
