@@ -18,6 +18,8 @@ Require Import coqutil.Tactics.Simp.
 Require Export riscv.Utility.Utility.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Spec.Decode.
+Require Import Coq.Logic.FunctionalExtensionality.
+Require Import Coq.Logic.PropExtensionality.
 
 Declare Scope sep_scope.
 
@@ -487,6 +489,110 @@ Section MoreSepLog.
       (P * Q)%sep m ->
       exists m1 m2, map.split m m1 m2 /\ P m1 /\ Q m2.
   Proof. unfold sep. intros *. apply id. Qed.
+
+  Lemma sep_eq_empty_l: forall (R: map -> Prop), (eq map.empty * R)%sep = R.
+  Proof.
+    intros. eapply iff1ToEq.
+    unfold iff1, sep, map.split. split; intros.
+    - destruct H as (? & ? & (? & ?) & ? & ?). subst. rewrite map.putmany_empty_l. assumption.
+    - eauto 10 using map.putmany_empty_l, map.disjoint_empty_l.
+  Qed.
+
+  Lemma sep_eq_empty_r: forall (R: map -> Prop), (R * eq map.empty)%sep = R.
+  Proof.
+    intros. eapply iff1ToEq.
+    unfold iff1, sep, map.split. split; intros.
+    - destruct H as (? & ? & (? & ?) & ? & ?). subst. rewrite map.putmany_empty_r. assumption.
+    - eauto 10 using map.putmany_empty_r, map.disjoint_empty_r.
+  Qed.
+
+  Lemma get_in_sep: forall (lSmaller l: map) k v R,
+      map.get lSmaller k = Some v ->
+      (eq lSmaller * R)%sep l ->
+      map.get l k = Some v.
+  Proof.
+    intros. eapply sep_comm in H0.
+    unfold sep, map.split in H0. simp.
+    eapply map.get_putmany_right.
+    assumption.
+  Qed.
+
+  Lemma eq_put_to_sep: forall (m: map) k v,
+      map.get m k = None ->
+      eq (map.put m k v) = sep (eq m) (ptsto k v).
+    intros. eapply iff1ToEq.
+    unfold iff1, ptsto, sep, map.split. split; intros.
+    - subst. exists m, (map.put map.empty k v). ssplit; try reflexivity.
+      + apply map.map_ext. intros.
+        rewrite map.get_put_dec, map.get_putmany_dec, map.get_put_dec, map.get_empty.
+        destr (key_eqb k k0); reflexivity.
+      + unfold map.disjoint. intros. rewrite map.get_put_dec in H1.
+        rewrite map.get_empty in H1. destr (key_eqb k k0); congruence.
+    - destruct H0 as (? & ? & (? & ?) & ? & ?).  subst.
+      apply map.map_ext. intros.
+      rewrite map.get_put_dec, map.get_putmany_dec, map.get_put_dec, map.get_empty.
+      destr (key_eqb k k0); reflexivity.
+  Qed.
+
+  Lemma ptsto_no_aliasing: forall l (Q: map -> Prop) R k v1 v2,
+      Q l ->
+      iff1 Q (ptsto k v1 * ptsto k v2 * R)%sep ->
+      False.
+  Proof.
+    intros. seprewrite_in H0 H. apply sep_emp_r in H. apply proj1 in H.
+    unfold sep, map.split, ptsto, map.disjoint in H.
+    decompose [Logic.and ex] H. clear H. subst.
+    specialize (H7 k). rewrite ?map.get_put_same in H7. eauto.
+  Qed.
+
+  Lemma get_Some_to_ptsto: forall k v (m: map),
+      map.get m k = Some v ->
+      eq m = (eq (map.remove m k) * ptsto k v)%sep.
+  Proof.
+    intros. extensionality l. eapply propositional_extensionality.
+    unfold sep, map.split.
+    split; intros.
+    - subst. do 2 eexists. ssplit; try reflexivity.
+      + apply map.map_ext. intros.
+        rewrite map.get_putmany_dec, map.get_put_dec, map.get_remove_dec, map.get_empty.
+        destr (key_eqb k k0); congruence.
+      + unfold map.disjoint. intros.
+        rewrite map.get_remove_dec in H0. rewrite map.get_put_dec, map.get_empty in H1.
+        destr (key_eqb k k0); congruence.
+    - unfold ptsto in H0. decompose [Logic.and ex] H0. subst.
+      apply map.map_ext. intros.
+        rewrite map.get_putmany_dec, map.get_put_dec, map.get_remove_dec, map.get_empty.
+        destr (key_eqb k k0); congruence.
+  Qed.
+
+  Lemma sep_ptsto_to_get_None: forall k v m (R: map -> Prop) l,
+      (eq m * ptsto k v * R)%sep l ->
+      map.get m k = None.
+  Proof.
+    intros. destr (map.get m k); [exfalso|reflexivity].
+    erewrite get_Some_to_ptsto in H by eassumption.
+    eapply ptsto_no_aliasing. 1: exact H. ecancel.
+  Qed.
+
+  Lemma ptsto_unique: forall k v0 v1 (R1 R2: map -> Prop) l,
+      (ptsto k v0 * R1)%sep l ->
+      (ptsto k v1 * R2)%sep l ->
+      v0 = v1.
+  Proof.
+    intros. apply sep_comm in H. apply sep_comm in H0.
+    unfold sep, map.split, ptsto in *.
+    decompose [Logic.and ex] H. decompose [Logic.and ex] H0. subst.
+    apply (f_equal (fun m => map.get m k)) in H6.
+    rewrite ?map.get_putmany_dec, ?map.get_put_same in H6.
+    congruence.
+  Qed.
+
+  Lemma sep_eq_to_disjoint: forall m1 m2 (R: map -> Prop) l,
+      (eq m1 * eq m2 * R)%sep l ->
+      map.disjoint m1 m2.
+  Proof.
+    unfold sep, map.split. intros. decompose [Logic.and ex] H. subst. assumption.
+  Qed.
 End MoreSepLog.
 
 (* This can be overridden by the user.
