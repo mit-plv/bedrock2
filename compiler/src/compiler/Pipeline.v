@@ -54,17 +54,6 @@ Require Import compiler.FitsStack.
 Require Import compiler.LowerPipeline.
 Import Utility.
 
-Module map.
-  Section WithMap. Local Set Default Proof Using "All".
-    Context {key value} {map : map.map key value} {ok : map.ok map}.
-    Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
-    Local Hint Mode map.map - - : typeclass_instances.
-
-    Definition forall_values(P: value -> Prop)(m: map): Prop :=
-      forall k v, map.get m k = Some v -> P v.
-  End WithMap.
-End map.
-
 Section WithWordAndMem.
   Context {width: Z} {BW: Bitwidth width} {word: Interface.word width} {mem : map.map word byte}.
 

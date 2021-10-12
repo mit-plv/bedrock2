@@ -28,31 +28,6 @@ Local Notation stmt' := (@FlatImp.stmt impvar). (* output type *)
 Local Notation bcond  := (@FlatImp.bcond srcvar).
 Local Notation bcond' := (@FlatImp.bcond impvar).
 
-Axiom TODO_sam: False.
-
-Module map.
-  Section WithParams.
-    Context {K V: Type} {M: map.map K V}.
-
-    Definition forallb(f: K -> V -> bool): M -> bool :=
-      map.fold (fun res k v => andb res (f k v)) true.
-
-    Context {ok: map.ok M} {keqb: K -> K -> bool} {keq_spec: EqDecider keqb}.
-
-    Lemma get_forallb: forall f m,
-        forallb f m = true -> forall k v, map.get m k = Some v -> f k v = true.
-    Proof.
-      unfold forallb. intros f m.
-      eapply map.fold_spec; intros.
-      - rewrite map.get_empty in H0. discriminate.
-      - eapply Bool.andb_true_iff in H1. destruct H1.
-        rewrite map.get_put_dec in H2. destruct_one_match_hyp.
-        + inversion H2. subst. eauto.
-        + eauto.
-    Qed.
-  End WithParams.
-End map.
-
 Definition accessed_vars_bcond(c: bcond): list srcvar :=
   match c with
   | CondBinary _ x y => list_union String.eqb [x] [y]
