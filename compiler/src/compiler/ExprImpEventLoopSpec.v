@@ -4,7 +4,7 @@ Require Import coqutil.Map.Interface coqutil.Word.Interface.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.SeparationLogic.
 Require Import compiler.LowerPipeline.
-Require Import compiler.UpperPipeline.
+Require Import compiler.Pipeline.
 
 Section Params1.
   Context {width} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.

@@ -22,6 +22,7 @@ Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.FitsStack.
+Require Import compiler.Registers.
 Require Import riscv.Utility.InstructionCoercions.
 
 Local Arguments Z.mul: simpl never.
@@ -355,19 +356,14 @@ Section LowerPipeline.
   Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
 
   Definition machine_ok{BWM: bitwidth_iset width iset}
-             (p_functions: word)(f_entry_rel_pos: Z)(stack_start stack_pastend: word)
+             (p_functions: word)(stack_start stack_pastend: word)
              (finstrs: list Instruction)
-             (p_call pc: word)(mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
-      let CallInst := Jal RegisterNames.ra
-                          (f_entry_rel_pos + word.signed (word.sub p_functions p_call)) : Instruction in
+             (pc: word)(mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
       (program iset p_functions finstrs *
-       program iset p_call [CallInst] *
        mem_available stack_start stack_pastend *
        Rdata * Rexec * eq mH
       )%sep mach.(getMem) /\
-      subset (footpr (program iset p_functions finstrs *
-                      program iset p_call [CallInst] *
-                      Rexec)%sep)
+      subset (footpr (program iset p_functions finstrs * Rexec)%sep)
              (of_list (getXAddrs mach)) /\
       word.unsigned (mach.(getPc)) mod 4 = 0 /\
       mach.(getPc) = pc /\
@@ -381,65 +377,70 @@ Section LowerPipeline.
       compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
                                      (FlatImp.SInteract resvars extcall argvars).
 
-  Lemma flat_to_riscv_correct: forall
-      (stack_start stack_pastend: word)
-      (f_entry_name : string) fbody (f_entry_rel_pos req_stack_size: Z)
-      (p_call p_functions: word)
-      (Rdata Rexec : mem -> Prop)
-      (functions: env)
-      (instrs: list Instruction)
-      (pos_map: fun_pos_env)
-      (mH: mem) (mc: MetricLog)
-      (postH: Semantics.trace -> mem -> Prop)
-      (initial: MetricRiscvMachine),
-      (forall f fun_impl, map.get functions f = Some fun_impl -> FlatToRiscvDef.valid_FlatImp_fun fun_impl) ->
-      riscvPhase functions = Some (instrs, pos_map, req_stack_size) ->
-      map.get functions f_entry_name = Some (nil, nil, fbody) ->
-      map.get pos_map f_entry_name = Some f_entry_rel_pos ->
-      req_stack_size <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->
-      word.unsigned (word.sub stack_pastend stack_start) mod bytes_per_word = 0 ->
-      FlatImp.exec functions fbody initial.(getLog) mH map.empty mc (fun t' m' l' mc' => postH t' m') ->
-      machine_ok p_functions f_entry_rel_pos stack_start stack_pastend instrs
-                 p_call p_call mH Rdata Rexec initial ->
-      runsTo initial (fun final => exists mH',
-          postH final.(getLog) mH' /\
-          machine_ok p_functions f_entry_rel_pos stack_start stack_pastend instrs
-                     p_call (word.add p_call (word.of_Z 4)) mH' Rdata Rexec final).
+  Definition riscv_call(p: list Instruction * fun_pos_env * Z)
+             (f_name: string)(t: Semantics.trace)(mH: mem)(argvals: list word)
+             (post: Semantics.trace -> mem -> list word -> Prop): Prop :=
+    let '(instrs, pos_map, req_stack_size) := p in
+    exists f_rel_pos,
+      map.get pos_map f_name = Some f_rel_pos /\
+      forall p_funcs stack_start stack_pastend ret_addr Rdata Rexec (initial: MetricRiscvMachine),
+        map.get initial.(getRegs) RegisterNames.ra = Some ret_addr ->
+        map.getmany_of_list initial.(getRegs)
+                            (List.firstn (List.length argvals) (reg_class.all reg_class.arg))
+        = Some argvals ->
+        let start_pc := word.add p_funcs (word.of_Z f_rel_pos) in
+        req_stack_size <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->
+        word.unsigned (word.sub stack_pastend stack_start) mod bytes_per_word = 0 ->
+        machine_ok p_funcs stack_start stack_pastend instrs start_pc mH Rdata Rexec initial ->
+        runsTo initial (fun final => exists mH' retvals,
+          map.getmany_of_list final.(getRegs)
+                              (List.firstn (List.length retvals) (reg_class.all reg_class.arg))
+          = Some retvals /\
+          post final.(getLog) mH' retvals /\
+          machine_ok p_funcs stack_start stack_pastend instrs ret_addr mH' Rdata Rexec final).
+
+  Lemma flat_to_riscv_correct: forall e p2,
+      riscvPhase e = Some p2 ->
+      forall fname t m argvals post,
+      (exists argnames retnames fbody,
+          map.get e fname = Some (argnames, retnames, fbody) /\
+          forall l mc, map.of_list_zip argnames argvals = Some l ->
+                       FlatImp.exec e fbody t m l mc (fun t' m' l' mc' =>
+                         exists retvals, map.getmany_of_list l' retnames = Some retvals /\
+                                         post t' m' retvals)) ->
+      riscv_call p2 fname t m argvals post.
   Proof.
-    intros.
-    match goal with
-    | H: map.get pos_map _ = Some _ |- _ => rename H into GetPos
-    end.
+    unfold riscv_call.
+    intros. destruct p2 as ((finstrs & pos_map) & req_stack_size).
     match goal with
     | H: riscvPhase _ = _ |- _ => pose proof H as RP; unfold riscvPhase in H
     end.
     simp.
+    edestruct (get_build_fun_pos_env e fname) as (f_rel_pos & GetPos). 1: congruence.
+    exists f_rel_pos. split. 1: assumption.
+    intros.
     pose proof GetPos as M0. eapply fun_pos_div4 in M0.
-    assert (word.unsigned p_functions mod 4 = 0). {
+    assert (word.unsigned p_funcs mod 4 = 0). {
       unfold machine_ok in *. simp.
       eapply program_mod_4_0. 2: ecancel_assumption.
       eapply compile_funs_nonnil; eassumption.
     }
-    assert (word.unsigned p_call mod 4 = 0). {
-      unfold machine_ok in *. simp.
-      eapply program_mod_4_0. 2: ecancel_assumption.
-      congruence.
-    }
     eapply runsTo_weaken.
     - specialize compile_stmt_correct with (1 := compile_ext_call_correct).
       unfold compiles_FlatToRiscv_correctly. intros compile_stmt_correct.
+      (* TODO isolate exec.call case from FlatToRiscvFunctions
       eapply compile_stmt_correct with (g := {|
         e_pos := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call functions;
-        program_base := p_functions;
+        program_base := p_funcs;
         e_impl := functions;
         rem_stackwords := word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
         rem_framewords := 0;
-        p_insts := p_call;
+        p_insts := _;
         insts := [[Jal RegisterNames.ra
-                      (f_entry_rel_pos + word.signed (word.sub p_functions (getPc initial)))]];
+                      (f_entry_rel_pos + word.signed (word.sub p_funcs (getPc initial)))]];
         xframe := Rexec;
         dframe := Rdata;
-      |}) (pos := - word.signed (word.sub p_functions p_call));
+      |}) (pos := - word.signed (word.sub p_funcs p_call));
       clear compile_stmt_correct; cbn.
       { eapply FlatImp.exec.call with (args := []) (argvs := []) (binds := []); cycle -1; try eassumption.
         2,3: reflexivity.
@@ -602,5 +603,7 @@ Section LowerPipeline.
         wwcancel.
       + destr_RiscvMachine final. subst. solve_divisibleBy4.
   Qed.
+  *)
+  Admitted.
 
 End LowerPipeline.
