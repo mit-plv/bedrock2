@@ -868,6 +868,8 @@ Section Spilling.
 
   Definition spill_fun: list Z * list Z * stmt -> option (list Z * list Z * stmt) :=
     fun '(argnames, resnames, body) =>
+      (* TODO these checks could also be put into Lang.(Valid), so that there are
+         fewer reasons for the compiler to return None *)
       if List.forallb is_valid_src_var argnames &&
          List.forallb is_valid_src_var resnames &&
          forallb_vars_stmt is_valid_src_var body &&
@@ -898,12 +900,28 @@ Section Spilling.
     - rewrite List.firstn_all. rewrite List.firstn_all2 by assumption. reflexivity.
   Qed.
 
+  Lemma set_reg_range_to_vars_uses_standard_arg_regs: forall args start,
+      uses_standard_arg_regs (set_reg_range_to_vars start args).
+  Proof.
+    induction args; intros; cbn; unfold set_reg_to_var;
+      repeat destruct_one_match; cbn; eauto.
+  Qed.
+
+  Lemma set_vars_to_reg_range_uses_standard_arg_regs: forall args start,
+      uses_standard_arg_regs (set_vars_to_reg_range args start).
+  Proof.
+    induction args; intros; cbn; unfold set_var_to_reg;
+      repeat destruct_one_match; cbn; eauto.
+  Qed.
+
   Lemma spill_stmt_uses_standard_arg_regs: forall s, uses_standard_arg_regs (spill_stmt s).
   Proof.
     induction s; simpl; unfold prepare_bcond, load_iarg_reg, save_ires_reg;
-      repeat destruct_one_match; simpl; eauto.
-    all: rewrite ?List.firstn_length, ?firstn_min_absorb_length_r.
-  Abort.
+      repeat destruct_one_match; simpl;
+      rewrite ?List.firstn_length, ?firstn_min_absorb_length_r;
+      eauto using set_reg_range_to_vars_uses_standard_arg_regs,
+                  set_vars_to_reg_range_uses_standard_arg_regs.
+  Qed.
 
   Context {locals: map.map Z word}.
   Context {localsOk: map.ok locals}.
@@ -921,10 +939,10 @@ Section Spilling.
 
   Local Arguments Z.of_nat: simpl never.
 
-  Lemma set_vars_to_reg_range_valid_vars: forall maxvar args start,
+  Lemma set_vars_to_reg_range_valid_vars: forall args start,
       3 <= start ->
       start + Z.of_nat (List.length args) <= 32 ->
-      Forall (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)) args ->
+      Forall (fun x => fp < x) args ->
       valid_vars_tgt (set_vars_to_reg_range args start).
   Proof.
     induction args; simpl; intros.
@@ -934,10 +952,10 @@ Section Spilling.
       + eapply IHargs; try blia. assumption.
   Qed.
 
-  Lemma set_reg_range_to_vars_valid_vars: forall maxvar args start,
+  Lemma set_reg_range_to_vars_valid_vars: forall args start,
       3 <= start ->
       start + Z.of_nat (List.length args) <= 32 ->
-      Forall (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)) args ->
+      Forall (fun x => fp < x) args ->
       valid_vars_tgt (set_reg_range_to_vars start args).
   Proof.
     induction args; simpl; intros.
@@ -980,7 +998,8 @@ Section Spilling.
       rewrite ?List.firstn_length;
       try eapply List.Forall_firstn;
       try (eapply List.Forall_impl; [|eapply arg_range_Forall]; cbv beta);
-      try blia.
+      try blia;
+      (eapply Forall_impl; [|eassumption]); cbv beta; unfold fp; blia.
   Qed.
 
   (* potentially uninitialized argument registers (used also as spilling temporaries) *)
