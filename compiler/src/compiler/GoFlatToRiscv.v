@@ -748,6 +748,25 @@ Ltac sidecondition_hook := idtac.
 
 #[export] Hint Resolve Forall_impl : sidecondition_hints.
 
+Ltac subst_if_not_in x t :=
+  lazymatch t with
+  | context[x] => fail
+  | _ => progress subst x
+  end.
+
+Ltac subst_sep_var_only_in_lhs lhs rhs :=
+  match lhs with
+  | context[sep ?x _] => is_var x; subst_if_not_in x rhs
+  | context[sep _ ?x] => is_var x; subst_if_not_in x rhs
+  end.
+
+Ltac subst_sep_vars :=
+  match goal with
+  | |- iff1 ?LHS ?RHS =>
+    repeat (subst_sep_var_only_in_lhs LHS RHS);
+    repeat (subst_sep_var_only_in_lhs RHS LHS)
+  end.
+
 Ltac sidecondition :=
   simpl; simpl_MetricRiscvMachine_get_set;
   match goal with
@@ -763,11 +782,21 @@ Ltac sidecondition :=
                                  simpl_MetricRiscvMachine_get_set;
                                  use_sep_assumption;
                                  wwcancel
+  | |- iff1 ?x _ =>
+    simpl_MetricRiscvMachine_get_set;
+    (tryif is_var x then
+       lazymatch goal with
+       | H: iff1 x _ |- _ => etransitivity; [exact H|]
+       end
+     else idtac);
+    subst_sep_vars;
+    wwcancel
   | H: subset (footpr _) _ |- subset (footpr ?F) _ =>
     tryif is_evar F then
       eassumption
     else
-      (simpl in H |- *; eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ])
+      (simpl in H |- *;
+       eapply rearrange_footpr_subset; [ exact H | solve [subst_sep_vars; wwcancel] ])
   | |- _ => reflexivity
   | A: map.get ?lH ?x = Some _, E: map.extends ?lL ?lH |- map.get ?lL ?x = Some _ =>
     eapply (map.extends_get A E)

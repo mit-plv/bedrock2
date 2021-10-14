@@ -71,7 +71,7 @@ Section Run.
   Context (iset: InstructionSet).
 
   Definition run_Jalr0_spec :=
-    forall (rs1: Z) (oimm12: Z) (initialL: RiscvMachineL) (R Rexec: mem -> Prop)
+    forall (rs1: Z) (oimm12: Z) (initialL: RiscvMachineL) (Exec R Rexec: mem -> Prop)
            (dest: word),
       (* [verify] (and decode-encode-id) only enforces divisibility by 2 because there could be
          compressed instructions, but we don't support them so we require divisibility by 4: *)
@@ -82,10 +82,9 @@ Section Run.
       valid_register rs1 ->
       map.get initialL.(getRegs) rs1 = Some dest ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      subset (footpr (program iset initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * Rexec)%sep)
-             (of_list (initialL.(getXAddrs))) ->
-      (program iset initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * Rexec * R)%sep
-          initialL.(getMem) ->
+      subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
+      iff1 Exec (program iset initialL.(getPc) [[Jalr RegisterNames.zero rs1 oimm12]] * Rexec)%sep ->
+      (Exec * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun (finalL: RiscvMachineL) =>
         finalL.(getRegs) = initialL.(getRegs) /\
@@ -97,13 +96,13 @@ Section Run.
         valid_machine finalL).
 
   Definition run_Jal_spec :=
-    forall (rd: Z) (jimm20: Z) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
+    forall (rd: Z) (jimm20: Z) (initialL: RiscvMachineL) (Exec R Rexec: mem -> Prop),
       jimm20 mod 4 = 0 ->
       valid_register rd ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
-      subset (footpr (program iset initialL.(getPc) [[Jal rd jimm20]] * Rexec)%sep)
-             (of_list (initialL.(getXAddrs))) ->
-      (program iset initialL.(getPc) [[Jal rd jimm20]] * Rexec * R)%sep initialL.(getMem) ->
+      subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
+      iff1 Exec (program iset initialL.(getPc) [[Jal rd jimm20]] * Rexec)%sep ->
+      (Exec * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd initialL.(getNextPc) /\
@@ -118,12 +117,12 @@ Section Run.
      enforced by program *)
 
   Definition run_Jal0_spec :=
-    forall (jimm20: Z) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
+    forall (jimm20: Z) (initialL: RiscvMachineL) (Exec R Rexec: mem -> Prop),
       - 2^20 <= jimm20 < 2^20 ->
       jimm20 mod 4 = 0 ->
-      subset (footpr (program iset initialL.(getPc) [[Jal Register0 jimm20]] * Rexec)%sep)
-             (of_list (initialL.(getXAddrs))) ->
-      (program iset initialL.(getPc) [[Jal Register0 jimm20]] * Rexec * R)%sep initialL.(getMem) ->
+      subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
+      iff1 Exec (program iset initialL.(getPc) [[Jal Register0 jimm20]] * Rexec)%sep ->
+      (Exec * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
@@ -136,14 +135,14 @@ Section Run.
 
   Definition run_ImmReg_spec(Op: Z -> Z -> Z -> Instruction)
                             (f: word -> word -> word): Prop :=
-    forall (rd rs: Z) rs_val imm (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
+    forall (rd rs: Z) rs_val imm (initialL: RiscvMachineL) (Exec R Rexec: mem -> Prop),
       valid_register rd ->
       valid_register rs ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some rs_val ->
-      subset (footpr (program iset initialL.(getPc) [[Op rd rs imm]] * Rexec)%sep)
-             (of_list (initialL.(getXAddrs))) ->
-      (program iset initialL.(getPc) [[Op rd rs imm]] * Rexec * R)%sep initialL.(getMem) ->
+      subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
+      iff1 Exec (program iset initialL.(getPc) [[Op rd rs imm]] * Rexec)%sep ->
+      (Exec * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd (f rs_val (word.of_Z imm)) /\
@@ -157,17 +156,16 @@ Section Run.
   Definition run_Load_spec(n: nat)(L: Z -> Z -> Z -> Instruction)
              (opt_sign_extender: Z -> Z): Prop :=
     forall (base addr: word) (v: HList.tuple byte n) (rd rs: Z) (ofs: Z)
-           (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
+           (initialL: RiscvMachineL) (Exec R Rexec: mem -> Prop),
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rd ->
       valid_register rs ->
       initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
       map.get initialL.(getRegs) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr (program iset initialL.(getPc) [[L rd rs ofs]] * Rexec)%sep)
-             (of_list (initialL.(getXAddrs))) ->
-      (program iset initialL.(getPc) [[L rd rs ofs]] * Rexec * ptsto_bytes n addr v * R)%sep
-        initialL.(getMem) ->
+      subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
+      iff1 Exec (program iset initialL.(getPc) [[L rd rs ofs]] * Rexec)%sep ->
+      (Exec * ptsto_bytes n addr v * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = map.put initialL.(getRegs) rd
@@ -181,7 +179,7 @@ Section Run.
 
   Definition run_Store_spec(n: nat)(S: Z -> Z -> Z -> Instruction): Prop :=
     forall (base addr v_new: word) (v_old: HList.tuple byte n) (rs1 rs2: Z)
-           (ofs: Z) (initialL: RiscvMachineL) (R Rexec: mem -> Prop),
+           (ofs: Z) (initialL: RiscvMachineL) (Exec R Rexec: mem -> Prop),
       (* valid_register almost follows from verify except for when the register is Register0 *)
       valid_register rs1 ->
       valid_register rs2 ->
@@ -189,19 +187,16 @@ Section Run.
       map.get initialL.(getRegs) rs1 = Some base ->
       map.get initialL.(getRegs) rs2 = Some v_new ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr (program iset initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep)
-             (of_list (initialL.(getXAddrs))) ->
-      (program iset initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec * ptsto_bytes n addr v_old * R)%sep
-        initialL.(getMem) ->
+      subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
+      iff1 Exec (program iset initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep ->
+      (Exec * ptsto_bytes n addr v_old * R)%sep initialL.(getMem) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL (fun finalL =>
         finalL.(getRegs) = initialL.(getRegs) /\
         finalL.(getLog) = initialL.(getLog) /\
-        subset (footpr (program iset initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec)%sep)
-               (of_list (finalL.(getXAddrs))) /\
-        (program iset initialL.(getPc) [[S rs1 rs2 ofs]] * Rexec *
-         ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
-            finalL.(getMem) /\
+        subset (footpr Exec) (of_list (finalL.(getXAddrs))) /\
+        (Exec * ptsto_bytes n addr (LittleEndian.split n (word.unsigned v_new)) * R)%sep
+          finalL.(getMem) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         valid_machine finalL).
@@ -235,6 +230,11 @@ Section Run.
     ];
     subst R.
 
+  Ltac inline_iff1 :=
+    match goal with
+    | H: iff1 ?x _ |- _ => is_var x; apply iff1ToEq in H; subst x
+    end.
+
   Ltac t0 :=
     match goal with
     | initialL: RiscvMachineL |- _ => destruct_RiscvMachine initialL
@@ -248,11 +248,12 @@ Section Run.
            | |- _ => ecancel_assumption
            end.
 
-  Ltac t := repeat intro; get_run1_valid_for_free; t0.
+  Ltac t := repeat intro; inline_iff1; get_run1_valid_for_free; t0.
 
   Lemma run_Jalr0: run_Jalr0_spec.
   Proof.
     repeat intro.
+    inline_iff1.
     get_run1_valid_for_free.
     match goal with
     | H: (?P * ?Q * ?R)%sep ?m |- _ =>
@@ -292,6 +293,7 @@ Section Run.
   Lemma run_Jal: run_Jal_spec.
   Proof.
     repeat intro.
+    inline_iff1.
     get_run1_valid_for_free.
     match goal with
     | H: (?P * ?Q * ?R)%sep ?m |- _ =>
@@ -307,6 +309,7 @@ Section Run.
   Lemma run_Jal0: run_Jal0_spec.
   Proof.
     repeat intro.
+    inline_iff1.
     get_run1_valid_for_free.
     match goal with
     | H: (?P * ?Q * ?R)%sep ?m |- _ =>

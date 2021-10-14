@@ -282,6 +282,9 @@ Section WithParameters.
     e_impl: env;
     dframe: mem -> Prop; (* data frame *)
     xframe: mem -> Prop; (* executable frame *)
+    allx: mem -> Prop;   (* all executable memory (ie xframe, insts and the functions),
+                            but potentially in a less-unfolded way to enable more concise
+                            computed postconditions *)
   }.
 
   Definition goodMachine{BWM: bitwidth_iset width iset}
@@ -299,16 +302,15 @@ Section WithParameters.
     (* pc: *)
     lo.(getNextPc) = word.add lo.(getPc) (word.of_Z 4) /\
     (* memory: *)
-    subset (footpr (g.(xframe) *
-                    program iset g.(p_insts) g.(insts) *
-                    functions g.(program_base) g.(e_pos) g.(e_impl))%sep)
-           (of_list lo.(getXAddrs)) /\
+    subset (footpr g.(allx)) (of_list lo.(getXAddrs)) /\
+    iff1 g.(allx) (g.(xframe) *
+                   program iset g.(p_insts) g.(insts) *
+                   functions g.(program_base) g.(e_pos) g.(e_impl))%sep /\
     (exists stack_trash,
         g.(rem_stackwords) = Z.of_nat (List.length stack_trash) - g.(rem_framewords) /\
-        (g.(dframe) * g.(xframe) * eq m *
-         word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(rem_stackwords)))) stack_trash *
-         program iset g.(p_insts) g.(insts) *
-         functions g.(program_base) g.(e_pos) g.(e_impl))%sep lo.(getMem)) /\
+        (g.(allx) * g.(dframe) * eq m *
+         word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(rem_stackwords))))
+                    stack_trash)%sep lo.(getMem)) /\
     (* trace: *)
     lo.(getLog) = t /\
     (* misc: *)
@@ -356,7 +358,7 @@ End WithParameters.
 
 Ltac simpl_g_get :=
   cbn [p_sp rem_framewords rem_stackwords p_insts insts program_base e_pos e_impl
-            dframe xframe] in *.
+            dframe xframe allx] in *.
 
 Ltac simpl_bools :=
   repeat match goal with
@@ -545,17 +547,16 @@ Section FlatToRiscv1.
   (* almost the same as run_compile_load, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
   Lemma run_load_word: forall (base addr v : word) (rd rs : Z) (ofs : Z)
-                              (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
+                              (initialL : RiscvMachineL) (Exec R Rexec : mem -> Prop),
       valid_register rd ->
       valid_register rs ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr (program iset initialL.(getPc) [[compile_load iset Syntax.access_size.word rd rs ofs]]
-                      * Rexec)%sep)
-             (of_list initialL.(getXAddrs)) ->
-      (program iset initialL.(getPc) [[compile_load iset Syntax.access_size.word rd rs ofs]] * Rexec *
-       ptsto_word addr v * R)%sep (getMem initialL) ->
+      subset (footpr Exec) (of_list initialL.(getXAddrs)) ->
+      iff1 Exec (program iset initialL.(getPc)
+                   [[compile_load iset Syntax.access_size.word rd rs ofs]] * Rexec)%sep ->
+      (Exec * ptsto_word addr v * R)%sep (getMem initialL) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
          (fun finalL : RiscvMachineL =>
@@ -569,7 +570,7 @@ Section FlatToRiscv1.
   Proof using word_ok mem_ok PR BWM.
     intros.
     eapply mcomp_sat_weaken; cycle 1.
-    - eapply (run_compile_load Syntax.access_size.word); cycle -2; try eassumption.
+    - eapply (run_compile_load Syntax.access_size.word); cycle -3; try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
       etransitivity. 1: eassumption.
       unfold id.
@@ -583,35 +584,31 @@ Section FlatToRiscv1.
   (* almost the same as run_compile_store, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
   Lemma run_store_word: forall (base addr v_new : word) (v_old : word) (rs1 rs2 : Z)
-              (ofs : Z) (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
+              (ofs : Z) (initialL : RiscvMachineL) (Exec Rdata Rexec : mem -> Prop),
       valid_register rs1 ->
       valid_register rs2 ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs1 = Some base ->
       map.get (getRegs initialL) rs2 = Some v_new ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr ((program iset initialL.(getPc)
-                          [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]]) * Rexec)%sep)
-             (of_list initialL.(getXAddrs)) ->
-      (program iset initialL.(getPc) [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]] * Rexec
-       * ptsto_word addr v_old * R)%sep (getMem initialL) ->
+      subset (footpr Exec) (of_list initialL.(getXAddrs)) ->
+      iff1 Exec (program iset (getPc initialL)
+                         [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]] * Rexec)%sep ->
+      (Exec * ptsto_word addr v_old * Rdata)%sep (getMem initialL) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
         (fun finalL : RiscvMachineL =>
            getRegs finalL = getRegs initialL /\
            getLog finalL = getLog initialL /\
-           subset (footpr (program iset initialL.(getPc)
-                              [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]] * Rexec)%sep)
-             (of_list finalL.(getXAddrs)) /\
-           (program iset initialL.(getPc) [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]] * Rexec
-            * ptsto_word addr v_new * R)%sep (getMem finalL) /\
+           subset (footpr Exec) (of_list finalL.(getXAddrs)) /\
+           (Exec * ptsto_word addr v_new * Rdata)%sep (getMem finalL) /\
            getPc finalL = getNextPc initialL /\
            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
            valid_machine finalL).
   Proof using word_ok mem_ok PR BWM.
     intros.
     eapply mcomp_sat_weaken; cycle 1.
-    - eapply (run_compile_store Syntax.access_size.word); cycle -2; try eassumption.
+    - eapply (run_compile_store Syntax.access_size.word); cycle -3; try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
   Qed.
 
@@ -958,7 +955,7 @@ Ltac subst_load_bytes_for_eq :=
     edestruct P as [Q ?]; clear P; [ecancel_assumption|]
   end.
 
-Hint Resolve
+Global Hint Resolve
      valid_FlatImp_var_implies_valid_register
      valid_FlatImp_vars_bcond_implies_valid_registers_bcond
 : sidecondition_hints.

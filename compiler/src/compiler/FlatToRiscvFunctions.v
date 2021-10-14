@@ -13,7 +13,7 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.util.Common.
 Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Datatypes.List.
-Require Import coqutil.Tactics.Simp.
+Require Import coqutil.Tactics.fwd.
 Require Import compiler.SeparationLogic.
 Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
@@ -41,6 +41,8 @@ Local Arguments Z.of_nat: simpl never.
 Local Arguments Z.modulo : simpl never.
 Local Arguments Z.pow: simpl never.
 Local Arguments Z.sub: simpl never.
+
+Set Ltac Profiling.
 
 Section Proofs.
   Context {iset: Decode.InstructionSet}.
@@ -109,7 +111,7 @@ Section Proofs.
       valid_FlatImp_vars s ->
       Forall valid_FlatImp_var (modVars_as_list Z.eqb s).
   Proof.
-    induction s; intros; cbn -[list_union] in *; simp; eauto 10 using @union_Forall.
+    induction s; intros; cbn -[list_union] in *; fwd; eauto 10 using @union_Forall.
   Qed.
 
   Set Printing Depth 100000.
@@ -157,8 +159,20 @@ Section Proofs.
                      | assumption
                      | solve_divisibleBy4
                      | solve_valid_machine word_ok ]
-    | H: subset (footpr _) _ |- subset (footpr _) _ =>
-      eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ]
+    | |- iff1 ?x _ =>
+      simpl_MetricRiscvMachine_get_set;
+      (tryif is_var x then
+         lazymatch goal with
+         | H: iff1 x _ |- _ => etransitivity; [exact H|]
+         end
+       else idtac);
+      subst_sep_vars;
+      wwcancel
+    | H: subset (footpr _) _ |- subset (footpr ?F) _ =>
+      tryif is_evar F then
+        eassumption
+      else
+        (eapply rearrange_footpr_subset; [ exact H | solve [subst_sep_vars; wwcancel] ])
     | |- _ => solve [wcancel_assumption]
     | |- ?G => is_lia G; assert_fails (has_evar G);
                (* not sure why this line is needed, lia should be able to deal with (x := _) hyps,
@@ -272,7 +286,7 @@ Section Proofs.
   Proof.
     induction l; intros.
     - simpl. blia.
-    - simpl. simp.
+    - simpl. fwd.
       specialize (IHl (removeb aeqb a s)).
       specialize_hyp IHl.
       + assumption.
@@ -359,7 +373,7 @@ Section Proofs.
                   | m: _ |- _ => destruct_RiscvMachine m
                   end.
       all: subst.
-      all: simp.
+      all: fwd.
     (*about this many lines should have been enough to prove this...*)
 
     - idtac "Case compile_stmt_correct/SInteract".
@@ -380,7 +394,10 @@ Section Proofs.
       (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
       unfold good_e_impl, valid_FlatImp_fun in *.
       simpl in *.
-      simp.
+      match goal with
+      | H: fits_stack _ _ _ (SCall _ _ _) |- _ => inversion H; clear H
+      end.
+      fwd.
       lazymatch goal with
       | H1: map.get e_impl_full fname = ?RHS1,
         H2: map.get e_impl fname = ?RHS2,
@@ -398,7 +415,7 @@ Section Proofs.
           specialize G with (1 := H);
           simpl in G
       end.
-      simp.
+      fwd.
       match goal with
       | H: map.get e_pos _ = Some _ |- _ => rename H into GetPos
       end.
@@ -489,7 +506,7 @@ Section Proofs.
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     clear_old_sep_hyps.
-    intros. simp.
+    intros. fwd.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
            end.
@@ -501,15 +518,14 @@ Section Proofs.
     end.
     specialize P with (1 := GetPos).
     specialize (P program_base).
-    match goal with
-    | H: (_ * _)%sep _ |- _ => seprewrite_in P H
+    match type of P with
+    | iff1 _ (functions _ _ _ * ?F)%sep => set (current_fun := F) in *
     end.
     apply iff1ToEq in P.
     match goal with
-    | H: subset _ _ |- _ => rewrite P in H
+    | H: iff1 allx _ |- _ => rewrite P in H
     end.
     clear P.
-
     simpl in *.
 
     (* decrease sp *)
@@ -523,7 +539,7 @@ Section Proofs.
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     clear_old_sep_hyps.
-    intros. simp.
+    intros. fwd.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
            end.
@@ -540,7 +556,7 @@ Section Proofs.
 
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     clear_old_sep_hyps.
-    intros. simp.
+    intros. fwd.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
            end.
@@ -567,7 +583,8 @@ Section Proofs.
       eapply save_regs_correct; simpl; cycle 1.
       2: rewrite map.get_put_same; reflexivity.
       1: exact P2.
-      2: { eapply rearrange_footpr_subset; [ eassumption | wwcancel ]. }
+      2: { eassumption. }
+      2: { safe_sidecond. }
       4: assumption.
       4: {
         eapply Forall_impl; cycle 1.
@@ -582,7 +599,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     clear_old_sep_hyps.
-    intros. simp.
+    intros. fwd.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
            end.
@@ -597,7 +614,7 @@ Section Proofs.
 
     (* execute function body *)
     eapply runsTo_trans. {
-      unfold good_e_impl, valid_FlatImp_fun in *. simp.
+      unfold good_e_impl, valid_FlatImp_fun in *. fwd.
       eapply IHexec with (g := {|
         p_sp := word.sub p_sp !(Memory.bytes_per_word (bitwidth iset) * FL);
         e_pos := e_pos;
@@ -618,7 +635,7 @@ Section Proofs.
         assert (map.get e_impl f = Some fun_impl) as G'. {
           eapply map_get_Some_remove; eassumption.
         }
-        specialize e_impl_reduced_props with (1 := G'). simp.
+        specialize e_impl_reduced_props with (1 := G'). fwd.
         repeat split; eauto.
       }
       { move H1 at bottom.
@@ -671,10 +688,10 @@ Section Proofs.
           eapply List.Forall_firstn.
           eapply List.Forall_filter.
           intros *. intro E. destr (reg_class.get a); try discriminate E.
-          unfold reg_class.get in E0. simp.
+          unfold reg_class.get in E0. fwd.
           unfold FlatToRiscvDef.valid_FlatImp_var.
           destruct_one_match_hyp.
-          + rewrite Bool.andb_true_iff in *. rewrite !Z.leb_le in *. blia.
+          + fwd. blia.
           + destruct_one_match_hyp. 1: discriminate.
             destruct_one_match_hyp; discriminate.
         - rewrite map.get_empty in C. discriminate.
@@ -706,14 +723,14 @@ Section Proofs.
       {
         exists (remaining_stack ++ old_scratch). split.
         - simpl_addrs. blia.
-        - wcancel_assumption.
+        - subst current_fun. wcancel_assumption.
       }
     }
 
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     clear_old_sep_hyps.
-    intros. simp.
+    intros. fwd.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
            end.
@@ -741,6 +758,7 @@ Section Proofs.
         symmetry.
         eassumption.
       - eapply rearrange_footpr_subset; [eassumption|wwcancel].
+      - etransitivity. 1: eassumption. wwcancel.
       - subst FL. wcancel_assumption.
       - reflexivity.
       - assumption.
@@ -750,7 +768,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine getMetrics].
     clear_old_sep_hyps.
-    intros. simp.
+    intros. fwd.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
            end.
@@ -786,8 +804,8 @@ Section Proofs.
         unfold valid_FlatImp_var, RegisterNames.sp in F. blia.
       - reflexivity.
       - simpl. eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
-      - simpl.
-        subst FL. wcancel_assumption.
+      - simpl. etransitivity. 1: eassumption. wwcancel.
+      - simpl. wcancel_assumption.
       - assumption.
       - eassumption.
       - assumption.
@@ -796,7 +814,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine].
     clear_old_sep_hyps.
-    intros. simp.
+    intros. fwd.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
            end.
@@ -853,7 +871,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog].
     clear_old_sep_hyps.
-    intros. simp.
+    intros. fwd.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
            end.
@@ -874,7 +892,7 @@ Section Proofs.
     simpl.
     cbn [getRegs getPc getNextPc getMem getLog getMachine].
     clear_old_sep_hyps.
-    intros. simp.
+    intros. fwd.
     repeat match goal with
            | m: _ |- _ => destruct_RiscvMachine m
            end.
@@ -1251,8 +1269,8 @@ Section Proofs.
       eapply preserve_regs_initialized_after_put.
       eapply preserve_regs_initialized_after_putmany_of_list_zip; cycle 1; try eassumption.
     + reflexivity.
-    + simpl.
-      eapply rearrange_footpr_subset; [ eassumption | ].
+    + assumption.
+    + etransitivity. 1: eassumption.
       pose proof functions_expose as P.
       match goal with
       | H: map.get e_impl _ = Some _ |- _ => specialize P with (2 := H)
@@ -1272,22 +1290,26 @@ Section Proofs.
       }
       simpl_addrs. split; [blia|].
       wseplog_pre.
-      pose proof functions_expose as P.
-      match goal with
-      | H: map.get e_impl _ = Some _ |- _ => specialize P with (2 := H)
-      end.
-      specialize P with (1 := GetPos).
-      specialize (P program_base).
-      apply iff1ToEq in P.
-      rewrite P. clear P.
-      unfold program, compile_function.
       subst FL new_ra.
       wcancel_assumption.
+      (*
+      cancel_seps_at_indices 0%nat 0%nat. {
+        save_regs_correct still changes the symbolic representation of the address of
+           the values!
+
+        f_equal.
+        eapply reduce_eq_to_diff0.
+        ring_simplify.
+
+*)
+      Set Nested Proofs Allowed.
+      Axiom TODO: False.
+      case TODO.
     + reflexivity.
     + assumption.
 
     - idtac "Case compile_stmt_correct/SLoad".
-      progress unfold Memory.load, Memory.load_Z in *. simp.
+      progress unfold Memory.load, Memory.load_Z in *. fwd.
       subst_load_bytes_for_eq.
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
@@ -1308,7 +1330,7 @@ Section Proofs.
       match goal with
       | H: _ = Some m' |- _ => move H at bottom; rename H into A
       end.
-      unfold Platform.Memory.store_bytes, Memory.store_Z, Memory.store_bytes in A. simp.
+      unfold Platform.Memory.store_bytes, Memory.store_Z, Memory.store_bytes in A. fwd.
       subst_load_bytes_for_eq.
       run1det. run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.
@@ -1442,7 +1464,7 @@ Section Proofs.
         { solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]. }
         { map_solver locals_ok. }
         { solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]. }
-      + intros. destruct_RiscvMachine middle. simp. subst. clear B48. rewrite BPW in *. clear BPW. run1done.
+      + intros. destruct_RiscvMachine middle. fwd. subst. clear B48. rewrite BPW in *. clear BPW. run1done.
         * rewrite ?of_list_list_union in *.
           repeat match goal with
                  | H: (_ * _)%sep _ |- _ => clear H
@@ -1464,7 +1486,7 @@ Section Proofs.
             apply propositional_extensionality.
             unfold PropSet.elem_of, singleton_set.
             destr (find (Z.eqb x) (modVars_as_list Z.eqb body)).
-            - apply List.find_some in E. simp. rewrite Z.eqb_eq in *. subst z. intuition congruence.
+            - apply List.find_some in E. fwd. rewrite Z.eqb_eq in *. subst z. intuition congruence.
             - simpl. reflexivity.
           }
           map_solver locals_ok.
@@ -1549,7 +1571,7 @@ Section Proofs.
       + assumption.
       + simulate'. simpl_MetricRiscvMachine_get_set.
         destruct cond; [destruct op | ];
-          simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
+          simpl in *; fwd; repeat (simulate'; simpl_bools; simpl); try reflexivity.
       + intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for then-branch *)
           eapply IHexec with (g := {| p_sp := _; |}) (pos := (pos + 4)%Z);
@@ -1558,7 +1580,7 @@ Section Proofs.
           all: try safe_sidecond.
           all: try safe_sidecond.
         * (* jump over else-branch *)
-          simpl. intros. destruct_RiscvMachine middle. simp. subst.
+          simpl. intros. destruct_RiscvMachine middle. fwd. subst.
           run1det. run1done.
 
     - idtac "Case compile_stmt_correct/SIf/Else".
@@ -1567,7 +1589,7 @@ Section Proofs.
       + assumption.
       + simulate'.
         destruct cond; [destruct op | ];
-          simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
+          simpl in *; fwd; repeat (simulate'; simpl_bools; simpl); try reflexivity.
       + intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for else-branch *)
           eapply IHexec with (g := {| p_sp := _; |});
@@ -1576,7 +1598,7 @@ Section Proofs.
             all: try safe_sidecond.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
-          simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
+          simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
 
     - idtac "Case compile_stmt_correct/SLoop".
       match goal with
@@ -1599,7 +1621,7 @@ Section Proofs.
         match goal with
         | H: exists _ _ _ _, _ |- _ => destruct H as [ tH' [ mH' [ lH' [ mcH' H ] ] ] ]
         end.
-        simp. subst.
+        fwd. subst.
         destruct (eval_bcond lH' cond) as [condB|] eqn: E.
         2: exfalso;
            match goal with
@@ -1611,7 +1633,7 @@ Section Proofs.
           { assumption. }
           { simulate'.
             destruct cond; [destruct op | ];
-              simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
+              simpl in *; fwd; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
           { intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
             - (* 2nd application of IH: part 2 of loop body *)
               eapply IH2 with (g := {| p_sp := _; |});
@@ -1621,7 +1643,7 @@ Section Proofs.
               1: eassumption.
               all: try safe_sidecond.
               all: try safe_sidecond.
-            - simpl in *. simpl. intros. destruct_RiscvMachine middle. simp. subst.
+            - simpl in *. simpl. intros. destruct_RiscvMachine middle. fwd. subst.
               (* jump back to beginning of loop: *)
               run1det.
               eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
@@ -1634,14 +1656,14 @@ Section Proofs.
                 1: constructor; congruence.
                 all: try safe_sidecond.
               + (* at end of loop, just prove that computed post satisfies required post *)
-                simpl. intros. destruct_RiscvMachine middle. simp. subst.
+                simpl. intros. destruct_RiscvMachine middle. fwd. subst.
                 run1done. }
         * (* false: done, jump over body2 *)
           eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
           { assumption. }
           { simulate'.
             destruct cond; [destruct op | ];
-              simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
+              simpl in *; fwd; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
           { intro V. simpl in *. run1done. }
 
     - idtac "Case compile_stmt_correct/SSeq".
@@ -1654,7 +1676,7 @@ Section Proofs.
           after_IH;
           try safe_sidecond.
         all: try safe_sidecond.
-      + simpl. intros. destruct_RiscvMachine middle. simp. subst.
+      + simpl. intros. destruct_RiscvMachine middle. fwd. subst.
         eapply runsTo_trans.
         * eapply IH2 with (g := {| p_sp := _; |});
             after_IH;
@@ -1662,7 +1684,7 @@ Section Proofs.
           1: eassumption.
           all: try safe_sidecond.
           all: try safe_sidecond.
-        * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
+        * simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
 
     - idtac "Case compile_stmt_correct/SSkip".
       run1done.
@@ -1674,3 +1696,5 @@ Section Proofs.
   Qed. (* <-- takes a while *)
 
 End Proofs.
+
+Show Ltac Profile.
