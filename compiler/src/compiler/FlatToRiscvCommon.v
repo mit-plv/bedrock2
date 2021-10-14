@@ -306,11 +306,13 @@ Section WithParameters.
     iff1 g.(allx) (g.(xframe) *
                    program iset g.(p_insts) g.(insts) *
                    functions g.(program_base) g.(e_pos) g.(e_impl))%sep /\
-    (exists stack_trash,
-        g.(rem_stackwords) = Z.of_nat (List.length stack_trash) - g.(rem_framewords) /\
+    (exists stack_trash frame_trash,
+        g.(rem_stackwords) = Z.of_nat (List.length stack_trash) /\
+        g.(rem_framewords) = Z.of_nat (List.length frame_trash) /\
         (g.(allx) * g.(dframe) * eq m *
          word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(rem_stackwords))))
-                    stack_trash)%sep lo.(getMem)) /\
+                    stack_trash *
+         word_array g.(p_sp) frame_trash)%sep lo.(getMem)) /\
     (* trace: *)
     lo.(getLog) = t /\
     (* misc: *)

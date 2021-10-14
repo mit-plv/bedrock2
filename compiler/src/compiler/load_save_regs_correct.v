@@ -38,21 +38,22 @@ Section Proofs.
   Local Arguments Z.add : simpl never.
   Local Arguments Z.of_nat : simpl never.
 
-  Lemma save_regs_correct: forall vars offset Exec R Rexec (initial: RiscvMachineL) p_sp oldvalues
-                                  newvalues,
+  Lemma save_regs_correct: forall vars offset Exec R Rexec (initial: RiscvMachineL)
+                                  p_sp oldvalues newvalues addr,
       Forall valid_register vars ->
       map.getmany_of_list initial.(getRegs) vars = Some newvalues ->
       map.get initial.(getRegs) RegisterNames.sp = Some p_sp ->
       List.length oldvalues = List.length vars ->
       subset (footpr Exec) (of_list (initial.(getXAddrs))) ->
       iff1 Exec (program iset initial.(getPc) (save_regs iset vars offset) * Rexec)%sep ->
-      (Exec * word_array (word.add p_sp (word.of_Z offset)) oldvalues * R)%sep initial.(getMem) ->
+      (Exec * word_array addr oldvalues * R)%sep initial.(getMem) ->
+      addr = word.add p_sp (word.of_Z offset) ->
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) ->
       valid_machine initial ->
       runsTo initial (fun final =>
           final.(getRegs) = initial.(getRegs) /\
           subset (footpr Exec) (of_list (final.(getXAddrs))) /\
-          (Exec * word_array (word.add p_sp (word.of_Z offset)) newvalues * R)%sep final.(getMem) /\
+          (Exec * word_array addr newvalues * R)%sep final.(getMem) /\
           final.(getPc) = word.add initial.(getPc) (word.mul (word.of_Z 4)
                                                    (word.of_Z (Z.of_nat (List.length vars)))) /\
           final.(getNextPc) = word.add final.(getPc) (word.of_Z 4) /\
@@ -60,7 +61,7 @@ Section Proofs.
           valid_machine final).
   Proof.
     unfold map.getmany_of_list.
-    induction vars; intros.
+    induction vars; intros; subst addr.
     - simpl in *. simp. destruct oldvalues; simpl in *; [|discriminate].
       apply runsToNonDet.runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
     - simpl in *. simp.
@@ -97,6 +98,7 @@ Section Proofs.
       all: try eassumption.
       + simpl in *. etransitivity. 1: eassumption. ecancel.
       + simpl. use_sep_assumption. wcancel.
+      + solve_word_eq word_ok.
       + reflexivity.
   Qed.
 
