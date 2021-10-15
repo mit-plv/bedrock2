@@ -307,8 +307,14 @@ Section WithParameters.
                    program iset g.(p_insts) g.(insts) *
                    functions g.(program_base) g.(e_pos) g.(e_impl))%sep /\
     (exists stack_trash frame_trash,
-        g.(rem_stackwords) = Z.of_nat (List.length stack_trash) /\
-        g.(rem_framewords) = Z.of_nat (List.length frame_trash) /\
+        (* Note: direction of equalities is deliberate:
+           When destructing a goodMachine that comes from an IH,
+           this direction of the equalities will be
+           "length of new thing equals old known value from before IH",
+           so rewriting with these equalities will result in
+           replacing newer values by older, "more basic" ones *)
+        Z.of_nat (List.length stack_trash) = g.(rem_stackwords) /\
+        Z.of_nat (List.length frame_trash) = g.(rem_framewords) /\
         (g.(allx) * g.(dframe) * eq m *
          word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(rem_stackwords))))
                     stack_trash *
@@ -919,7 +925,7 @@ Ltac get_run1valid_for_free :=
     assumption
   | (* the simpler runsTo goal, left open *)
     idtac
-  | (* the impliciation, needs to replace valid_machine by True *)
+  | (* the implication, needs to replace valid_machine by True *)
     let mach' := fresh "mach'" in
     let D := fresh "D" in
     let Pm := fresh "Pm" in
@@ -936,7 +942,7 @@ Ltac get_run1valid_for_free :=
     clear -V Pm;
     cbv beta in *;
     simp;
-    eauto 20
+    eauto 30
   ];
   subst R.
 

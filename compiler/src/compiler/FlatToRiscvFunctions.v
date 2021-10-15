@@ -210,23 +210,19 @@ Section Proofs.
     simpl_MetricRiscvMachine_get_set;
     simpl in *;
     repeat match goal with
-    | |- exists (_: _), _ => eexists
-    end;
-    ssplit;
-    simpl_word_exprs word_ok;
+           | |- exists _, _ => eexists
+           end; ssplit; simpl_word_exprs word_ok;
     match goal with
     | |- _ => solve_word_eq word_ok
-    | |- exists _, _ = _ /\ (_ * _)%sep _ =>
-      eexists; split; cycle 1; [ wcancel_assumption | blia ]
-    | |- _ => solve [rewrite ?of_list_list_union in *;
-                     (* Don't do that, because it will consider all Zs as variables
-                        and slow everything down
-                        change Z with Register in *; *)
-                     map_solver locals_ok]
-    | |- _ => solve [solve_valid_machine word_ok]
-    | |- _ => solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]
-    | H: subset (footpr _) _ |- subset (footpr _) _ =>
-      eapply rearrange_footpr_subset; [ exact H | solve [wwcancel] ]
+    | |- iff1 ?x ?x => reflexivity
+    (* `exists stack_trash frame_trash, ...` from goodMachine *)
+    | |- exists _ _, _ = _ /\ _ = _ /\ (_ * _)%sep _ =>
+      eexists _, _; (split; [|split]); [..|wcancel_assumption]; blia
+    | |- _ => solve [ rewrite ?of_list_list_union in *; map_solver locals_ok ]
+    | |- _ => solve [ solve_valid_machine word_ok ]
+    | |- _ => solve [ eauto  3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put ]
+    | H:subset (footpr _) _
+      |- subset (footpr _) _ => eapply rearrange_footpr_subset; [ exact H | solve [ wwcancel ] ]
     | |- _ => idtac
     end.
 
@@ -343,6 +339,11 @@ Section Proofs.
     repeat (autounfold with unf_to_array);
     repeat ( rewr getEq_length_load_save_regs in |-* || rewr get_array_rewr_eq in |-* ).
 
+  Ltac inline_iff1 :=
+    match goal with
+    | H: iff1 ?x _ |- _ => is_var x; apply iff1ToEq in H; subst x
+    end.
+
   Hint Resolve
        get_putmany_none
        Decidable.Z.eqb_spec
@@ -372,7 +373,11 @@ Section Proofs.
       all: repeat match goal with
                   | m: _ |- _ => destruct_RiscvMachine m
                   end.
-      all: subst.
+      all: match goal with
+           | H: fits_stack _ _ _ ?s |- _ =>
+             let h := head_of_app s in is_constructor h;
+             inversion H; clear H; subst
+           end.
       all: fwd.
     (*about this many lines should have been enough to prove this...*)
 
@@ -394,9 +399,6 @@ Section Proofs.
       (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
       unfold good_e_impl, valid_FlatImp_fun in *.
       simpl in *.
-      match goal with
-      | H: fits_stack _ _ _ (SCall _ _ _) |- _ => inversion H; clear H
-      end.
       fwd.
       lazymatch goal with
       | H1: map.get e_impl_full fname = ?RHS1,
@@ -564,7 +566,8 @@ Section Proofs.
     (* save vars modified by callee onto stack *)
     match goal with
     | |- context [ {| getRegs := ?l |} ] =>
-      pose proof (@map.getmany_of_list_exists _ _ _ l valid_register (list_diff Z.eqb (modVars_as_list Z.eqb body) retnames)) as P
+      pose proof (@map.getmany_of_list_exists _ _ _ l valid_register
+                      (list_diff Z.eqb (modVars_as_list Z.eqb body) retnames)) as P
     end.
     edestruct P as [newvalues P2]; clear P.
     { eapply Forall_impl; cycle 1.
@@ -1293,9 +1296,6 @@ Section Proofs.
         symmetry. eapply map.getmany_of_list_length. eassumption.
       }
       subst FL new_ra.
-      match goal with
-      | H: _ = #(Datatypes.length stack_trash) |- _ => ring_simplify in H
-      end.
       simpl_addrs.
       ssplit. 1: blia. 1: reflexivity.
       wcancel_assumption.
@@ -1309,31 +1309,6 @@ Section Proofs.
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
-
-  Ltac inline_iff1 :=
-    match goal with
-    | H: iff1 ?x _ |- _ => is_var x; apply iff1ToEq in H; subst x
-    end.
-
-Ltac run1done ::=
-  apply runsToDone; simpl_MetricRiscvMachine_get_set; simpl in *;
-   repeat match goal with
-          | |- exists _, _ => eexists
-          end; ssplit; simpl_word_exprs word_ok;
-   match goal with
-   | |- _ => solve_word_eq word_ok
-   | |- iff1 ?x ?x => reflexivity
-   (* `exists stack_trash frame_trash, ...` from goodMachine *)
-   | |- exists _ _, _ = _ /\ _ = _ /\ (_ * _)%sep _ =>
-     eexists _, _; (split; [|split]); [..|wcancel_assumption]; blia
-   | |- _ => solve [ rewrite ?of_list_list_union in *; map_solver locals_ok ]
-   | |- _ => solve [ solve_valid_machine word_ok ]
-   | |- _ => solve [ eauto  3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put ]
-   | H:subset (footpr _) _
-     |- subset (footpr _) _ => eapply rearrange_footpr_subset; [ exact H | solve [ wwcancel ] ]
-   | |- _ => idtac
-   end.
-
       inline_iff1.
       run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
 
@@ -1392,9 +1367,6 @@ Ltac run1done ::=
       assert (Memory.bytes_per_word (bitwidth iset) = bytes_per_word) as BPW. {
         rewrite bitwidth_matches. reflexivity.
       }
-      match goal with
-      | H: fits_stack _ _ _ (SStackalloc _ _ _) |- _ => inversion H; clear H; subst
-      end.
       assert (n / bytes_per_word <= Z.of_nat (List.length frame_trash)) as enough_stack_space. {
         match goal with
         | H: fits_stack _ _ _ _ |- _ => apply fits_stack_nonneg in H; move H at bottom
@@ -1448,7 +1420,7 @@ Ltac run1done ::=
           wwcancel.
         }
         { sidecondition. }
-        { exists remaining_stack, remaining_frame. split. 1: reflexivity.
+        { exists stack_trash, remaining_frame. ssplit. 1,2: reflexivity.
           wcancel_assumption. }
         { reflexivity. }
         { assumption. }
@@ -1464,7 +1436,7 @@ Ltac run1done ::=
         { eassumption. }
         { rewrite BPW in *.
           match goal with
-          | H: fits_stack _ ?N _ _ |- fits_stack _ ?N' _ _ => replace N' with N; [exact H|blia]
+          | H: fits_stack ?N _ _ _ |- fits_stack ?N' _ _ _ => replace N' with N; [exact H|blia]
           end. }
         { f_equal. rewrite BPW in *. clear BPW. Z.div_mod_to_equations. blia. }
         { assumption. }
@@ -1473,11 +1445,28 @@ Ltac run1done ::=
         { safe_sidecond. }
         { safe_sidecond. }
         { safe_sidecond. }
-        { map_solver locals_ok. }
+        { match goal with
+          | |- map.extends (map.put _ ?k ?v1) (map.put _ ?k ?v2) => replace v1 with v2
+          end.
+          - apply map.put_extends. assumption.
+          - simpl_addrs.
+            replace (bytes_per_word * (#(List.length remaining_frame) + n / bytes_per_word) - n)%Z
+              with (bytes_per_word * (#(Datatypes.length remaining_frame)))%Z.
+            1: solve_word_eq word_ok.
+            rewrite BPW in *.
+            forget bytes_per_word as B.
+            forget #(Datatypes.length remaining_frame) as L.
+            assert (0 <= L) as A1 by blia.
+            assert (0 <= n) as A2 by blia.
+            assert (n mod B = 0) as A3 by blia.
+            assert (B = 4 \/ B = 8) as A4 by blia.
+            clear -A1 A2 A3 A4.
+            Z.to_euclidean_division_equations. blia. }
         { solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]. }
         { map_solver locals_ok. }
         { solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]. }
-      + intros. destruct_RiscvMachine middle. fwd. subst. clear B48. rewrite BPW in *. clear BPW. run1done.
+      + intros. destruct_RiscvMachine middle. fwd.
+        clear B48. rewrite BPW in *. clear BPW. simpl_addrs. run1done.
         * rewrite ?of_list_list_union in *.
           repeat match goal with
                  | H: (_ * _)%sep _ |- _ => clear H
@@ -1499,40 +1488,24 @@ Ltac run1done ::=
             apply propositional_extensionality.
             unfold PropSet.elem_of, singleton_set.
             destr (find (Z.eqb x) (modVars_as_list Z.eqb body)).
-            - apply List.find_some in E. fwd. rewrite Z.eqb_eq in *. subst z. intuition congruence.
+            - apply List.find_some in E. fwd. intuition congruence.
             - simpl. reflexivity.
           }
           map_solver locals_ok.
-        * edestruct hl_mem_to_ll_mem with (mL := middle_mem) (mTraded := mStack') as (returned_bytes & L & Q).
+        * edestruct hl_mem_to_ll_mem with (mL := middle_mem) (mTraded := mStack')
+            as (returned_bytes & L & Q).
           1, 2: eassumption.
           1: ecancel_assumption.
           edestruct (byte_list_to_word_list_array returned_bytes) as (returned_words & LL & QQ). {
             rewrite L. rewrite Z2Nat.id; assumption.
           }
-          eexists (stack_trash ++ returned_words). split. 2: {
+          eexists stack_trash0, (frame_trash ++ returned_words). ssplit. 3: {
             seprewrite_in QQ Q.
-            replace (Datatypes.length remaining_stack) with (Datatypes.length stack_trash) by blia.
-            assert (!bytes_per_word * !(n / bytes_per_word) = !n :> word) as DivExact. {
-              rewrite <- (word.ring_morph_mul (bytes_per_word) (n / bytes_per_word)).
-              rewrite <- Z_div_exact_2.
-              - reflexivity.
-              - unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
-              - blia.
-            }
             wcancel_assumption.
-            cancel_seps_at_indices 0%nat 0%nat. {
-              f_equal.
-              eapply reduce_eq_to_diff0.
-              match goal with
-              | |- ?LHS = _ => ring_simplify LHS
-              end.
-              rewrite DivExact.
-              ring.
-            }
-            reflexivity.
           }
+          1: congruence.
           simpl_addrs.
-          blia.
+          reflexivity.
 
     - idtac "Case compile_stmt_correct/SLit".
       inline_iff1.
@@ -1555,6 +1528,7 @@ Ltac run1done ::=
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
+      inline_iff1.
       match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o
       end;
@@ -1577,15 +1551,17 @@ Ltac run1done ::=
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
+      inline_iff1.
       run1det. run1done.
 
     - idtac "Case compile_stmt_correct/SIf/Then".
+      inline_iff1.
       (* execute branch instruction, which will not jump *)
       eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
       + assumption.
       + simulate'. simpl_MetricRiscvMachine_get_set.
         destruct cond; [destruct op | ];
-          simpl in *; fwd; repeat (simulate'; simpl_bools; simpl); try reflexivity.
+          simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
       + intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for then-branch *)
           eapply IHexec with (g := {| p_sp := _; |}) (pos := (pos + 4)%Z);
@@ -1598,12 +1574,13 @@ Ltac run1done ::=
           run1det. run1done.
 
     - idtac "Case compile_stmt_correct/SIf/Else".
+      inline_iff1.
       (* execute branch instruction, which will jump over then-branch *)
       eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
       + assumption.
       + simulate'.
         destruct cond; [destruct op | ];
-          simpl in *; fwd; repeat (simulate'; simpl_bools; simpl); try reflexivity.
+          simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
       + intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for else-branch *)
           eapply IHexec with (g := {| p_sp := _; |});
@@ -1615,6 +1592,7 @@ Ltac run1done ::=
           simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
 
     - idtac "Case compile_stmt_correct/SLoop".
+      inline_iff1.
       match goal with
       | H: context[FlatImpConstraints.uses_standard_arg_regs body1 -> _] |- _ => rename H into IH1
       end.
@@ -1647,7 +1625,7 @@ Ltac run1done ::=
           { assumption. }
           { simulate'.
             destruct cond; [destruct op | ];
-              simpl in *; fwd; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
+              simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
           { intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
             - (* 2nd application of IH: part 2 of loop body *)
               eapply IH2 with (g := {| p_sp := _; |});
@@ -1667,8 +1645,9 @@ Ltac run1done ::=
                 all: try safe_sidecond.
                 1: eassumption.
                 all: try safe_sidecond.
-                1: constructor; congruence.
+                1: constructor; eassumption.
                 all: try safe_sidecond.
+                all: try congruence.
               + (* at end of loop, just prove that computed post satisfies required post *)
                 simpl. intros. destruct_RiscvMachine middle. fwd. subst.
                 run1done. }
@@ -1677,10 +1656,11 @@ Ltac run1done ::=
           { assumption. }
           { simulate'.
             destruct cond; [destruct op | ];
-              simpl in *; fwd; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
+              simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
           { intro V. simpl in *. run1done. }
 
     - idtac "Case compile_stmt_correct/SSeq".
+      inline_iff1.
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]
          do (fun H => rename H into IH1).
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s2); runsTo]
