@@ -294,7 +294,7 @@ Section WithParameters.
       (lo: MetricRiscvMachine): Prop :=
     (* registers: *)
     map.extends lo.(getRegs) l /\
-    (forall x v, map.get l x = Some v -> valid_FlatImp_var x) /\
+    map.forall_keys valid_FlatImp_var l /\
     map.get lo.(getRegs) RegisterNames.sp = Some g.(p_sp) /\
     regs_initialized lo.(getRegs) /\
     (* pc: *)

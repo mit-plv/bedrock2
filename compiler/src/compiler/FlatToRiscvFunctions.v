@@ -205,6 +205,11 @@ Section Proofs.
     * eauto.
   Qed.
 
+  Hint Resolve
+       regs_initialized_put
+       map.forall_keys_put
+    : map_hints.
+
   Ltac run1done :=
     apply runsToDone;
     simpl_MetricRiscvMachine_get_set;
@@ -218,11 +223,10 @@ Section Proofs.
     (* `exists stack_trash frame_trash, ...` from goodMachine *)
     | |- exists _ _, _ = _ /\ _ = _ /\ (_ * _)%sep _ =>
       eexists _, _; (split; [|split]); [..|wcancel_assumption]; blia
-    | |- _ => solve [ rewrite ?of_list_list_union in *; map_solver locals_ok ]
     | |- _ => solve [ solve_valid_machine word_ok ]
-    | |- _ => solve [ eauto  3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put ]
     | H:subset (footpr _) _
       |- subset (footpr _) _ => eapply rearrange_footpr_subset; [ exact H | solve [ wwcancel ] ]
+    | |- _ => solve [ rewrite ?of_list_list_union in *; eauto 8 with map_hints ]
     | |- _ => idtac
     end.
 
@@ -235,10 +239,6 @@ Section Proofs.
            | |- _ /\ _ => split
            | |- exists _, _ => eexists
            end.
-
-  Ltac sidecondition_hook ::=
-    try solve [ map_solver locals_ok
-              | wcancel_assumption ].
 
   Lemma split_from_right{A: Type}: forall (l: list A) (len: nat),
       (len <= length l)%nat ->
@@ -721,7 +721,8 @@ Section Proofs.
         unfold map.extends in H14p0. eapply H14p0.
         eauto using map.getmany_of_list_get.
       }
-      { lazymatch goal with
+      { unfold map.forall_keys in *.
+        lazymatch goal with
         | H: map.putmany_of_list_zip _ _ map.empty = Some st0 |- _ =>
           rename H into P; clear -P locals_ok
         end.
@@ -1154,6 +1155,7 @@ Section Proofs.
                              | map.putmany_of_list_zip _ newvalues lL = Some _ => revert H
                              | middle_regs0_ra_sp = _ => revert H
                              | @map.get _ _ locals _ _ = _ => revert H
+                             | map.forall_keys _ _ => revert H
                              | forall _ _, map.get _ _ = Some _ -> valid_FlatImp_var _ => revert H
                              | map.ok locals => revert H
                              | _ => clear H
@@ -1164,6 +1166,8 @@ Section Proofs.
                | |- regs_initialized _ -> _ => let RI := fresh "RI" in intro RI
                | |- forall (_: map.ok _), _ => intro
                | |- (forall _ _, map.get _ _ = Some _ -> valid_FlatImp_var _) -> _ =>
+                 let V := fresh "V0" in intros V
+               | |- map.forall_keys _ _ -> _ =>
                  let V := fresh "V0" in intros V
                | |- map.getmany_of_list _ _ = _ -> _ => let GM := fresh "GM0" in intros GM
                | |- map.putmany_of_list_zip _ _ _ = _ -> _ => let PM := fresh "PM0" in intros PM
@@ -1295,7 +1299,8 @@ Section Proofs.
       eapply map.zipped_lookup_Some_in in GM2.
       eapply invert_In_list_diff in GM1. destruct GM1 as [_ C]. contradiction.
 
-    + match goal with
+    + unfold map.forall_keys in *.
+      match goal with
       | H: map.putmany_of_list_zip _ _ _ = Some finalRegsH',
         L: forall _ _, map.get l _ = Some _ -> valid_FlatImp_var _,
         V: Forall valid_FlatImp_var (List.firstn ret_count (reg_class.all reg_class.arg)) |- _
@@ -1340,6 +1345,35 @@ Section Proofs.
         blia.
       }
       inline_iff1.
+
+Set Nested Proofs Allowed.
+
+Lemma in_union_l{A: Type}: forall x (s1 s2: set A), x \in s1 -> x \in (union s1 s2).
+Proof. unfold union, elem_of. auto. Qed.
+
+Lemma in_union_r{A: Type}: forall x (s1 s2: set A), x \in s2 -> x \in (union s1 s2).
+Proof. unfold union, elem_of. auto. Qed.
+
+Lemma in_of_list{A: Type}: forall x (l: list A), List.In x l -> x \in (of_list l).
+Proof. unfold of_list, elem_of. auto. Qed.
+
+Lemma get_put_diff_eq_l{key value : Type} {map : map.map key value} {ok: map.ok map}:
+  forall (m : map) (k : key) (v : value) (k' : key) (r: option value),
+    k <> k' ->
+    map.get m k = r ->
+    map.get (map.put m k' v) k = r.
+Proof. intros. rewrite map.get_put_diff; eassumption. Qed.
+
+Hint Resolve
+     only_differ_put
+     in_union_l
+     in_union_l
+     in_of_list
+     in_eq
+     map.put_extends
+     get_put_diff_eq_l
+  : map_hints.
+
       run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
 
     - idtac "Case compile_stmt_correct/SStore".
@@ -1358,6 +1392,11 @@ Section Proofs.
       end.
       unfold Platform.Memory.store_bytes, Memory.store_Z, Memory.store_bytes in A. fwd.
       subst_load_bytes_for_eq.
+
+Hint Resolve
+     only_differ_refl
+  : map_hints.
+
       run1det. run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.
       ecancel_assumption.
@@ -1490,9 +1529,9 @@ Section Proofs.
           end.
           - apply map.put_extends. assumption.
           - simpl_addrs. solve_word_eq word_ok. }
-        { solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]. }
-        { map_solver locals_ok. }
-        { solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]. }
+        { eauto with map_hints. }
+        { eauto with map_hints. }
+        { eauto with map_hints. }
       + intros. destruct_RiscvMachine middle. fwd.
         clear B48. rewrite BPW in *. clear BPW. simpl_addrs. run1done.
         * rewrite ?of_list_list_union in *.
@@ -1568,11 +1607,26 @@ Section Proofs.
               ?word.divu0_simpl,
               ?word.modu0_simpl in *.
       all: try solve [run1done].
+
+Lemma only_differ_put_r{key value : Type} {map : map.map key value} {ok: map.ok map}
+      {key_eqb: key -> key -> bool} {key_eqb_spec: EqDecider key_eqb}:
+  forall (m1 m2 : map) (k : key) (v : value) s,
+    k \in s ->
+    map.only_differ m1 s m2 ->
+    map.only_differ m1 s (map.put m2 k v).
+Proof.
+  intros. eapply only_differ_trans. 1: eassumption. eapply only_differ_put. assumption.
+Qed.
+
+Hint Resolve
+     only_differ_put_r
+  : map_hints.
+
       (* bopname.eq requires two instructions *)
       run1det. run1done.
       rewrite reduce_eq_to_sub_and_lt.
       rewrite map.put_put_same.
-      map_solver locals_ok.
+      eauto with map_hints.
 
     - idtac "Case compile_stmt_correct/SSet".
       assert (x <> RegisterNames.sp). {
@@ -1602,6 +1656,27 @@ Section Proofs.
           eapply runsToStep.
           { eapply run_Jal0; try safe_sidecond. solve_divisibleBy4. }
           simpl_MetricRiscvMachine_get_set.
+
+Lemma subset_refl{A: Type}: forall (s: set A), subset s s.
+Proof. intros. reflexivity. Qed.
+
+Lemma only_differ_subset :
+forall {var : Type} {var_eqb : var -> var -> bool},
+EqDecider var_eqb ->
+forall (val : Type) (stateMap : map.map var val),
+map.ok stateMap ->
+forall (s1 s2 : stateMap) (r1 r2 : var -> Prop),
+map.only_differ s1 r1 s2 -> subset r1 r2 -> map.only_differ s1 r2 s2.
+Proof. intros. map_solver H0. Qed.
+
+Hint Resolve
+     only_differ_subset
+     subset_union_l
+     subset_union_rl
+     subset_union_rr
+     subset_refl
+  : map_hints.
+
           intros. destruct_RiscvMachine mid. fwd. run1done.
 
     - idtac "Case compile_stmt_correct/SIf/Else".
@@ -1703,6 +1778,22 @@ Section Proofs.
           }
           (* at end of loop, just prove that computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd.
+
+Lemma only_differ_trans_l : forall
+ {var : Type} {var_eqb : var -> var -> bool}
+{key_eqb_spec: EqDecider var_eqb}
+{val : Type} {stateMap : map.map var val}
+{ok: map.ok stateMap} (s1 s2 s3 : stateMap) (r1 r2 : var -> Prop),
+  map.only_differ s1 r1 s2 ->
+  subset r1 r2 ->
+  map.only_differ s2 r2 s3 -> 
+  map.only_differ s1 r2 s3.
+Proof using. clear. intros. map_solver ok. Qed.
+
+Hint Extern 3 (map.only_differ _ _ _)
+=> eapply only_differ_trans_l; [eassumption|eauto with map_hints ..]
+: map_hints.
+
           run1done.
         * (* false: done, jump over body2 *)
           eapply runsToStep. {
