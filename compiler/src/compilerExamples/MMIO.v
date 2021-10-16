@@ -305,22 +305,16 @@ Section MMIO1.
       match goal with
       | HO: outcome _ _, H: _ |- _ => specialize (H _ HO); rename H into HP
       end.
-      destruct g. cbn [
-           FlatToRiscvCommon.p_sp
-           FlatToRiscvCommon.rem_stackwords
-           FlatToRiscvCommon.rem_framewords
-           FlatToRiscvCommon.p_insts
-           FlatToRiscvCommon.insts
-           FlatToRiscvCommon.program_base
-           FlatToRiscvCommon.e_pos
-           FlatToRiscvCommon.e_impl
-           FlatToRiscvCommon.dframe
-           FlatToRiscvCommon.xframe ] in *.
+      destruct g. FlatToRiscvCommon.simpl_g_get.
       simp.
       subst.
       cbn in *.
       simp.
       eapply runsToNonDet.runsToStep_cps.
+      match goal with
+      | H: iff1 allx _ |- _ => apply iff1ToEq in H; subst allx
+      end.
+
       split; simpl_MetricRiscvMachine_get_set. {
         intros _.
         eapply ptsto_instr_subset_to_isXAddr4.
@@ -446,21 +440,15 @@ Section MMIO1.
       match goal with
       | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
       end.
-      destruct g. cbn [
-           FlatToRiscvCommon.p_sp
-           FlatToRiscvCommon.rem_stackwords
-           FlatToRiscvCommon.rem_framewords
-           FlatToRiscvCommon.p_insts
-           FlatToRiscvCommon.insts
-           FlatToRiscvCommon.program_base
-           FlatToRiscvCommon.e_pos
-           FlatToRiscvCommon.e_impl
-           FlatToRiscvCommon.dframe
-           FlatToRiscvCommon.xframe ] in *.
+      destruct g. FlatToRiscvCommon.simpl_g_get.
       simp.
       subst.
       cbn in *.
       eapply runsToNonDet.runsToStep_cps.
+      match goal with
+      | H: iff1 allx _ |- _ => apply iff1ToEq in H; subst allx
+      end.
+
       split; simpl_MetricRiscvMachine_get_set. {
         intros _.
         eapply ptsto_instr_subset_to_isXAddr4.

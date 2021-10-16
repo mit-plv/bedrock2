@@ -216,7 +216,7 @@ Section Proofs.
       assumption.
 
     - (* SLit *)
-      get_run1valid_for_free.
+      RunInstruction.get_runsTo_valid_for_free.
       eapply compile_lit_correct_full.
       + sidecondition.
       + use_sep_assumption. cbn.

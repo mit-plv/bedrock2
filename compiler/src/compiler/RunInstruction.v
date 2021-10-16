@@ -34,6 +34,59 @@ Import Utility.
 
 Notation Register0 := 0%Z (only parsing).
 
+(* R: evar to be instantiated to goal but with valid_machine replaced by True *)
+Ltac replace_valid_machine_by_True R :=
+  let mach' := fresh "mach'" in
+  let D := fresh "D" in
+  let Pm := fresh "Pm" in
+  intros mach' D V Pm;
+  match goal with
+  | H: valid_machine mach' |- context C[valid_machine mach'] =>
+    let G := context C[True] in
+    let P := eval pattern mach' in G in
+    lazymatch P with
+    | ?F _ => instantiate (R := F)
+    end
+  end;
+  subst R;
+  clear -V Pm;
+  cbv beta in *;
+  simp;
+  solve [eauto 30].
+
+(* if we have valid_machine for the current machine, and need to prove a
+   run1 with valid_machine in the postcondition, this tactic can
+   replace the valid_machine in the postcondition by True *)
+Ltac get_run1_valid_for_free :=
+  let R := fresh "R" in
+  evar (R: MetricRiscvMachine -> Prop);
+  eapply run1_get_sane with (P := R);
+  [ (* valid_machine *)
+    assumption
+  | (* the simpler run1 goal, left open *)
+    idtac
+  | (* the implication, needs to replace valid_machine by True *)
+    replace_valid_machine_by_True R
+  ];
+  subst R.
+
+
+(* if we have valid_machine for the current machine, and need to prove a
+   runsTo with valid_machine in the postcondition, this tactic can
+   replace the valid_machine in the postcondition by True *)
+Ltac get_runsTo_valid_for_free :=
+  let R := fresh "R" in
+  evar (R: MetricRiscvMachine -> Prop);
+  eapply runsTo_get_sane with (P := R);
+  [ (* valid_machine *)
+    assumption
+  | (* the simpler runsTo goal, left open *)
+    idtac
+  | (* the implication, needs to replace valid_machine by True *)
+    replace_valid_machine_by_True R
+  ];
+  subst R.
+
 Section Run.
 
   Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
@@ -113,12 +166,8 @@ Section Run.
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         valid_machine finalL).
 
-  (* TOOD in the specs below we could remove divisibleBy4 and bounds because that's
-     enforced by program *)
-
   Definition run_Jal0_spec :=
     forall (jimm20: Z) (initialL: RiscvMachineL) (Exec R Rexec: mem -> Prop),
-      - 2^20 <= jimm20 < 2^20 ->
       jimm20 mod 4 = 0 ->
       subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
       iff1 Exec (program iset initialL.(getPc) [[Jal Register0 jimm20]] * Rexec)%sep ->
@@ -200,35 +249,6 @@ Section Run.
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
         valid_machine finalL).
-
-  Ltac get_run1_valid_for_free :=
-    let R := fresh "R" in
-    evar (R: MetricRiscvMachine -> Prop);
-    eapply run1_get_sane with (P := R);
-    [ (* valid_machine *)
-      assumption
-    | (* the simpler run1 goal, left open *)
-      idtac
-    | (* the impliciation, needs to replace valid_machine by True *)
-      let mach' := fresh "mach'" in
-      let D := fresh "D" in
-      let Pm := fresh "Pm" in
-      intros mach' D V Pm;
-      match goal with
-      | H: valid_machine mach' |- context C[valid_machine mach'] =>
-        let G := context C[True] in
-        let P := eval pattern mach' in G in
-        lazymatch P with
-        | ?F _ => instantiate (R := F)
-        end
-      end;
-      subst R;
-      clear -V Pm;
-      cbv beta in *;
-      simp;
-      eauto 20
-    ];
-    subst R.
 
   Ltac inline_iff1 :=
     match goal with

@@ -172,7 +172,7 @@ Section Proofs.
       tryif is_evar F then
         eassumption
       else
-        (eapply rearrange_footpr_subset; [ exact H | solve [subst_sep_vars; wwcancel] ])
+        (eapply rearrange_footpr_subset; [ exact H | solve [sidecondition] ])
     | |- _ => solve [wcancel_assumption]
     | |- ?G => is_lia G; assert_fails (has_evar G);
                (* not sure why this line is needed, lia should be able to deal with (x := _) hyps,
@@ -355,6 +355,44 @@ Section Proofs.
        ra_not_in_arg_regs
     : map_hints.
 
+  Lemma compile_bcond_by_inverting_correct: forall cond (amt: Z) (initialL: RiscvMachineL) l b
+                                                   (Exec R Rexec: mem -> Prop),
+      subset (footpr Exec) (of_list (initialL.(getXAddrs))) ->
+      iff1 Exec (ptsto_instr iset initialL.(getPc) (compile_bcond_by_inverting cond amt) *
+                 Rexec)%sep ->
+      (Exec * R)%sep initialL.(getMem) ->
+      valid_machine initialL ->
+      eval_bcond l cond = Some b ->
+      ForallVars_bcond valid_FlatImp_var cond ->
+      map.extends initialL.(getRegs) l ->
+      (* [verify] (and decode-encode-id) only enforces divisibility by 2 because there could be
+         compressed instructions, but we don't support them so we require divisibility by 4: *)
+      amt mod 4 = 0 ->
+      word.unsigned initialL.(getPc) mod 4 = 0 ->
+      initialL.(getNextPc) = word.add initialL.(getPc) (word.of_Z 4) ->
+      mcomp_sat (Run.run1 iset) initialL (fun (finalL: RiscvMachineL) =>
+        finalL.(getRegs) = initialL.(getRegs) /\
+        finalL.(getLog) = initialL.(getLog) /\
+        finalL.(getMem) = initialL.(getMem) /\
+        finalL.(getXAddrs) = initialL.(getXAddrs) /\
+        finalL.(getPc) = word.add initialL.(getPc)
+                                  (word.of_Z (if b then 4 else amt)) /\
+        finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        valid_machine finalL).
+  Proof.
+    intros. get_run1_valid_for_free.
+    inline_iff1.
+    destruct_RiscvMachine initialL.
+    simulate'.
+    destruct b.
+    - (* don't branch *)
+      destruct cond; [destruct op | ];
+        simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try intuition congruence.
+    - (* branch *)
+      destruct cond; [destruct op | ];
+        simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try intuition congruence.
+  Qed.
+
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
         compiles_FlatToRiscv_correctly compile_ext_call
@@ -367,9 +405,7 @@ Section Proofs.
      using cancellation, bitvector reasoning, lia, and firstorder for the sideconditions. *)
     intros compile_ext_call_correct.
     unfold compiles_FlatToRiscv_correctly.
-    induction 1; intros; unfold goodMachine in *;
-      destruct g as [p_sp rem_stackwords rem_framewords p_insts insts program_base
-                     e_pos e_impl dframe xframe].
+    induction 1; intros; unfold goodMachine in *; destruct g.
       all: repeat match goal with
                   | m: _ |- _ => destruct_RiscvMachine m
                   end.
@@ -385,7 +421,7 @@ Section Proofs.
       eapply runsTo_weaken.
       + unfold compiles_FlatToRiscv_correctly in *.
         eapply compile_ext_call_correct with
-            (postH := post) (g := {| program_base := program_base |}) (pos := pos)
+            (postH := post) (g := {| allx := allx |}) (pos := pos)
             (extcall := action) (argvars := argvars) (resvars := resvars) (initialMH := m);
           simpl;
           clear compile_ext_call_correct; cycle -1.
@@ -621,16 +657,21 @@ Section Proofs.
     (* execute function body *)
     eapply runsTo_trans. {
       unfold good_e_impl, valid_FlatImp_fun in *. fwd.
+      let f := eval unfold current_fun in current_fun in
+      let p := match f with
+               | context[compile_stmt _ _ _ ?p _ body] => p
+               end in
       eapply IHexec with (g := {|
         p_sp := word.sub p_sp !(Memory.bytes_per_word (bitwidth iset) * FL);
-        e_pos := e_pos;
-        e_impl := map.remove e_impl fname;
-        program_base := program_base;
-      |});
+        allx := allx;
+      |})
+      (pos := p)
+      (e_pos := e_pos)
+      (e_impl := map.remove e_impl fname)
+      (program_base := program_base);
       simpl_MetricRiscvMachine_get_set;
       simpl_g_get;
       rewrite ?@length_save_regs, ?@length_load_regs in *;
-      simpl_word_exprs word_ok;
       ssplit;
       subst FL.
       all: try safe_sidecond.
@@ -762,8 +803,8 @@ Section Proofs.
                end.
         symmetry.
         eassumption.
-      - eapply rearrange_footpr_subset; [eassumption|wwcancel].
-      - etransitivity. 1: eassumption. wwcancel.
+      - eassumption.
+      - etransitivity. 1: eassumption. subst current_fun. wwcancel.
       - subst FL. wcancel_assumption.
       - reflexivity.
       - assumption.
@@ -781,7 +822,7 @@ Section Proofs.
 
     (* load back the return address *)
     eapply runsToStep. {
-      eapply run_load_word; cycle 2.
+      eapply run_load_word; cycle 2; simpl_MetricRiscvMachine_get_set.
       - simpl. solve [sidecondition].
       - simpl.
         assert (forall x, In x (modVars_as_list Z.eqb body) -> valid_FlatImp_var x) as F. {
@@ -808,9 +849,9 @@ Section Proofs.
         specialize (F _ C).
         unfold valid_FlatImp_var, RegisterNames.sp in F. blia.
       - reflexivity.
-      - simpl. eapply rearrange_footpr_subset; [ eassumption | wwcancel ].
-      - simpl. etransitivity. 1: eassumption. wwcancel.
-      - simpl. wcancel_assumption.
+      - eassumption.
+      - etransitivity. 1: eassumption. subst current_fun. wwcancel.
+      - wcancel_assumption.
       - assumption.
       - eassumption.
       - assumption.
@@ -1276,17 +1317,6 @@ Section Proofs.
       eapply preserve_regs_initialized_after_putmany_of_list_zip; cycle 1; try eassumption.
     + reflexivity.
     + assumption.
-    + etransitivity. 1: eassumption.
-      pose proof functions_expose as P.
-      match goal with
-      | H: map.get e_impl _ = Some _ |- _ => specialize P with (2 := H)
-      end.
-      specialize P with (1 := GetPos).
-      specialize (P program_base).
-      apply iff1ToEq in P.
-      rewrite P. clear P.
-      simpl.
-      wwcancel.
     + epose (?[new_ra]: word) as new_ra. cbv delta [id] in new_ra.
       exists (stack_trash ++ frame_trash ++ newvalues ++ [new_ra]),
              unused_part_of_caller_frame.
@@ -1353,14 +1383,18 @@ Section Proofs.
       run1done.
 
     - idtac "Case compile_stmt_correct/SStackalloc".
-      inline_iff1.
       rename H1 into IHexec.
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
       assert (valid_register RegisterNames.sp) by (cbv; auto).
-      run1det.
+      eapply runsToStep. {
+        eapply run_Addi; cycle 4; try safe_sidecond.
+        apply valid_FlatImp_var_implies_valid_register. assumption.
+      }
+      simpl_MetricRiscvMachine_get_set.
+      intros. fwd. destruct_RiscvMachine mid.
       assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
         unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
       }
@@ -1383,25 +1417,38 @@ Section Proofs.
       | H: Datatypes.length remaining_frame = _ |- _ => clear H
       end.
 
-      edestruct (ll_mem_to_hl_mem mSmall initialL_mem
+      edestruct (ll_mem_to_hl_mem mSmall mid_mem
                        (p_sp + !bytes_per_word * !#(Datatypes.length remaining_frame)))
         as (mStack & P & D & Ab). {
         use_sep_assumption.
         wseplog_pre.
         rewrite (cast_word_array_to_bytes allocated_stack).
-        simpl_addrs.
         wcancel.
       }
       match reverse goal with
-      | H: _ initialL_mem |- _ => clear H
+      | H: _ mid_mem |- _ => clear H
       end.
+      subst.
+      (* Note: this equation will be used by simpl_addrs *)
+      assert ((bytes_per_word * (#(List.length remaining_frame) + n / bytes_per_word) - n)%Z
+              = (bytes_per_word * (#(Datatypes.length remaining_frame)))%Z) as DeDiv. {
+        rewrite BPW in *.
+        forget bytes_per_word as B.
+        forget (Datatypes.length remaining_frame) as L.
+        assert (0 <= #L) as A1 by blia.
+        assert (0 <= n) as A2 by blia.
+        assert (n mod B = 0) as A3 by blia.
+        assert (B = 4 \/ B = 8) as A4 by blia.
+        clear -A1 A2 A3 A4.
+        Z.to_euclidean_division_equations. blia.
+      }
 
       eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
       + eapply IHexec with (g := {| p_sp := p_sp;
-                                    p_insts := program_base + !pos + !4;
-                                    rem_framewords := Z.of_nat (List.length remaining_frame);
-                                    program_base := program_base;
-                                    e_impl := e_impl; |})
+                                    rem_framewords := Z.of_nat (List.length remaining_frame); |})
+                           (program_base := program_base)
+                           (e_impl := e_impl)
+                           (pos := (pos + 4)%Z)
                            (a := p_sp + !bytes_per_word * !#(Datatypes.length remaining_frame))
                            (mStack := mStack)
                            (mCombined := map.putmany mSmall mStack);
@@ -1410,16 +1457,9 @@ Section Proofs.
           rewrite ?@length_save_regs, ?@length_load_regs in *;
           simpl_word_exprs word_ok;
           ssplit;
-          cycle -6.
+          cycle -5.
         { reflexivity. }
-        {
-          match goal with
-          | H:subset (footpr _) _
-            |- subset (footpr _) _ => eapply rearrange_footpr_subset; [ exact H |  ]
-          end.
-          wwcancel.
-        }
-        { sidecondition. }
+        { eassumption. }
         { exists stack_trash, remaining_frame. ssplit. 1,2: reflexivity.
           wcancel_assumption. }
         { reflexivity. }
@@ -1438,30 +1478,18 @@ Section Proofs.
           match goal with
           | H: fits_stack ?N _ _ _ |- fits_stack ?N' _ _ _ => replace N' with N; [exact H|blia]
           end. }
-        { f_equal. rewrite BPW in *. clear BPW. Z.div_mod_to_equations. blia. }
+        { reflexivity. }
         { assumption. }
         { eassumption. }
         { safe_sidecond. }
         { safe_sidecond. }
         { safe_sidecond. }
-        { safe_sidecond. }
+        { etransitivity. 1: eassumption. wwcancel. }
         { match goal with
           | |- map.extends (map.put _ ?k ?v1) (map.put _ ?k ?v2) => replace v1 with v2
           end.
           - apply map.put_extends. assumption.
-          - simpl_addrs.
-            replace (bytes_per_word * (#(List.length remaining_frame) + n / bytes_per_word) - n)%Z
-              with (bytes_per_word * (#(Datatypes.length remaining_frame)))%Z.
-            1: solve_word_eq word_ok.
-            rewrite BPW in *.
-            forget bytes_per_word as B.
-            forget #(Datatypes.length remaining_frame) as L.
-            assert (0 <= L) as A1 by blia.
-            assert (0 <= n) as A2 by blia.
-            assert (n mod B = 0) as A3 by blia.
-            assert (B = 4 \/ B = 8) as A4 by blia.
-            clear -A1 A2 A3 A4.
-            Z.to_euclidean_division_equations. blia. }
+          - simpl_addrs. solve_word_eq word_ok. }
         { solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]. }
         { map_solver locals_ok. }
         { solve [eauto 3 using regs_initialized_put, preserve_valid_FlatImp_var_domain_put]. }
@@ -1509,7 +1537,7 @@ Section Proofs.
 
     - idtac "Case compile_stmt_correct/SLit".
       inline_iff1.
-      get_run1valid_for_free.
+      get_runsTo_valid_for_free.
       eapply compile_lit_correct_full.
       + sidecondition.
       + safe_sidecond.
@@ -1555,44 +1583,53 @@ Section Proofs.
       run1det. run1done.
 
     - idtac "Case compile_stmt_correct/SIf/Then".
-      inline_iff1.
       (* execute branch instruction, which will not jump *)
-      eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
-      + assumption.
-      + simulate'. simpl_MetricRiscvMachine_get_set.
-        destruct cond; [destruct op | ];
-          simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
-      + intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+      eapply runsToStep.
+      + eapply compile_bcond_by_inverting_correct with (l := l) (b := true);
+          simpl_MetricRiscvMachine_get_set;
+          try safe_sidecond.
+      + simpl_MetricRiscvMachine_get_set.
+        intros. fwd.
+        destruct_RiscvMachine mid.
+        eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for then-branch *)
-          eapply IHexec with (g := {| p_sp := _; |}) (pos := (pos + 4)%Z);
-            after_IH;
-            try safe_sidecond.
+          eapply IHexec with (g := {| allx := allx |}) (pos := (pos + 4)%Z);
+            after_IH.
           all: try safe_sidecond.
           all: try safe_sidecond.
         * (* jump over else-branch *)
           simpl. intros. destruct_RiscvMachine middle. fwd. subst.
-          run1det. run1done.
+          eapply runsToStep.
+          { eapply run_Jal0; try safe_sidecond. solve_divisibleBy4. }
+          simpl_MetricRiscvMachine_get_set.
+          intros. destruct_RiscvMachine mid. fwd. run1done.
 
     - idtac "Case compile_stmt_correct/SIf/Else".
-      inline_iff1.
       (* execute branch instruction, which will jump over then-branch *)
-      eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
-      + assumption.
-      + simulate'.
-        destruct cond; [destruct op | ];
-          simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try reflexivity.
-      + intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+      eapply runsToStep.
+      + eapply compile_bcond_by_inverting_correct with (l := l) (b := false);
+          simpl_MetricRiscvMachine_get_set;
+          try safe_sidecond.
+      + simpl_MetricRiscvMachine_get_set.
+        intros. fwd.
+        destruct_RiscvMachine mid.
+        eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
         * (* use IH for else-branch *)
-          eapply IHexec with (g := {| p_sp := _; |});
-            after_IH;
-            try safe_sidecond.
-            all: try safe_sidecond.
+          match goal with
+          | H: iff1 allx ?RHS |- _ =>
+            match RHS with
+            | context[compile_stmt _ _ _ ?POS _ bElse] =>
+              eapply IHexec with (g := {| allx := allx |}) (pos := POS)
+            end
+          end.
+          all: after_IH.
+          all: try safe_sidecond.
+          all: try safe_sidecond.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
 
     - idtac "Case compile_stmt_correct/SLoop".
-      inline_iff1.
       match goal with
       | H: context[FlatImpConstraints.uses_standard_arg_regs body1 -> _] |- _ => rename H into IH1
       end.
@@ -1605,15 +1642,21 @@ Section Proofs.
       end.
       eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
       + (* 1st application of IH: part 1 of loop body *)
-          eapply IH1 with (g := {| p_sp := _; |});
-            after_IH;
-            try safe_sidecond.
-          all: try safe_sidecond.
+        match goal with
+        | H: iff1 allx ?RHS |- _ =>
+          match RHS with
+          | context[compile_stmt _ _ _ ?POS _ body1] =>
+            eapply IH1 with (g := {| allx := allx |}) (pos := POS)
+          end
+        end.
+        all: after_IH.
+        all: try safe_sidecond.
+        all: try safe_sidecond.
       + simpl in *. simpl. intros. destruct_RiscvMachine middle.
         match goal with
         | H: exists _ _ _ _, _ |- _ => destruct H as [ tH' [ mH' [ lH' [ mcH' H ] ] ] ]
         end.
-        fwd. subst.
+        fwd.
         destruct (eval_bcond lH' cond) as [condB|] eqn: E.
         2: exfalso;
            match goal with
@@ -1621,72 +1664,83 @@ Section Proofs.
            end.
         destruct condB.
         * (* true: iterate again *)
-          eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
-          { assumption. }
-          { simulate'.
-            destruct cond; [destruct op | ];
-              simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
-          { intro V. eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
-            - (* 2nd application of IH: part 2 of loop body *)
-              eapply IH2 with (g := {| p_sp := _; |});
-                after_IH;
-                try safe_sidecond.
-              all: try safe_sidecond.
-              1: eassumption.
-              all: try safe_sidecond.
-              all: try safe_sidecond.
-            - simpl in *. simpl. intros. destruct_RiscvMachine middle. fwd. subst.
-              (* jump back to beginning of loop: *)
-              run1det.
-              eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
-              + (* 3rd application of IH: run the whole loop again *)
-                eapply IH12 with (g := {| p_sp := _; dframe := dframe |});
-                  after_IH.
-                all: try safe_sidecond.
-                1: eassumption.
-                all: try safe_sidecond.
-                1: constructor; eassumption.
-                all: try safe_sidecond.
-                all: try congruence.
-              + (* at end of loop, just prove that computed post satisfies required post *)
-                simpl. intros. destruct_RiscvMachine middle. fwd. subst.
-                run1done. }
+          eapply runsToStep. {
+            eapply compile_bcond_by_inverting_correct with (l := lH') (b := true);
+              simpl_MetricRiscvMachine_get_set;
+              try safe_sidecond.
+          }
+          simpl_MetricRiscvMachine_get_set.
+          intros. destruct_RiscvMachine mid. fwd.
+          eapply runsTo_trans; simpl_MetricRiscvMachine_get_set.
+          { (* 2nd application of IH: part 2 of loop body *)
+            match goal with
+            | H: iff1 allx ?RHS |- _ =>
+              match RHS with
+              | context[compile_stmt _ _ _ ?POS _ body2] =>
+                eapply IH2 with (g := {| allx := allx |}) (pos := POS)
+              end
+            end.
+            all: after_IH.
+            1: eassumption.
+            all: try safe_sidecond.
+            all: try safe_sidecond. }
+          simpl in *. intros. destruct_RiscvMachine middle. fwd.
+          (* jump back to beginning of loop: *)
+          eapply runsToStep.
+          { eapply run_Jal0; try safe_sidecond. solve_divisibleBy4. }
+          simpl_MetricRiscvMachine_get_set.
+          intros. destruct_RiscvMachine mid. fwd.
+          eapply runsTo_trans. {
+            (* 3rd application of IH: run the whole loop again *)
+            eapply IH12 with (g := {| allx := allx |}) (pos := pos).
+            1: eassumption.
+            all: after_IH.
+            all: try safe_sidecond.
+            all: try safe_sidecond.
+            1: constructor; eassumption.
+            all: try safe_sidecond.
+            all: try congruence.
+          }
+          (* at end of loop, just prove that computed post satisfies required post *)
+          simpl. intros. destruct_RiscvMachine middle. fwd.
+          run1done.
         * (* false: done, jump over body2 *)
-          eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
-          { assumption. }
-          { simulate'.
-            destruct cond; [destruct op | ];
-              simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
-          { intro V. simpl in *. run1done. }
+          eapply runsToStep. {
+            eapply compile_bcond_by_inverting_correct with (l := lH') (b := false);
+              simpl_MetricRiscvMachine_get_set;
+              try safe_sidecond.
+          }
+          simpl_MetricRiscvMachine_get_set.
+          intros. destruct_RiscvMachine mid. fwd.
+          run1done.
 
     - idtac "Case compile_stmt_correct/SSeq".
-      inline_iff1.
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]
          do (fun H => rename H into IH1).
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s2); runsTo]
          do (fun H => rename H into IH2).
       eapply runsTo_trans.
-      + eapply IH1 with (g := {| p_sp := _; |});
-          after_IH;
-          try safe_sidecond.
+      + eapply IH1 with (g := {| allx := allx; |}) (pos := pos).
+        all: after_IH.
         all: try safe_sidecond.
-      + simpl. intros. destruct_RiscvMachine middle. fwd. subst.
+        all: try safe_sidecond.
+      + simpl. intros. destruct_RiscvMachine middle. fwd.
         eapply runsTo_trans.
-        * eapply IH2 with (g := {| p_sp := _; |});
-            after_IH;
-            try safe_sidecond.
+        * match goal with
+          | H: iff1 allx ?RHS |- _ =>
+            match RHS with
+            | context[compile_stmt _ _ _ ?POS _ s2] =>
+              eapply IH2 with (g := {| allx := allx |}) (pos := POS)
+            end
+          end.
+          all: after_IH.
           1: eassumption.
           all: try safe_sidecond.
           all: try safe_sidecond.
-        * simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
+        * simpl. intros. destruct_RiscvMachine middle. fwd. run1done.
 
     - idtac "Case compile_stmt_correct/SSkip".
       run1done.
-
-    Unshelve.
-    all: repeat (exact Z0 || assumption || constructor).
-    all: try (unfold env; simpl; eapply funname_env_ok).
-    all: try (apply list_union_preserves_NoDup; assumption).
   Qed. (* <-- takes a while *)
 
 End Proofs.

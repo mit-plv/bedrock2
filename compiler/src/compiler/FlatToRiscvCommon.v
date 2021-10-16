@@ -272,19 +272,17 @@ Section WithParameters.
      in a function call, the function being called is removed from funnames so that
      it can't be recursively called again. *)
   Record GhostConsts := {
+    (* stack pointer *)
     p_sp: word;
-    rem_stackwords: Z; (* remaining number of available stack words (not including those in current frame) *)
-    rem_framewords: Z; (* remaining number of available stack words inside the current frame *)
-    p_insts: word;
-    insts: list Instruction;
-    program_base: word;
-    e_pos: funpos_env;
-    e_impl: env;
-    dframe: mem -> Prop; (* data frame *)
-    xframe: mem -> Prop; (* executable frame *)
-    allx: mem -> Prop;   (* all executable memory (ie xframe, insts and the functions),
-                            but potentially in a less-unfolded way to enable more concise
-                            computed postconditions *)
+    (* remaining number of available stack words (not including those in current frame) *)
+    rem_stackwords: Z;
+    (* remaining number of available stack words inside the current frame *)
+    rem_framewords: Z;
+    (* data frame *)
+    dframe: mem -> Prop;
+    (* all executable memory (ie xframe, insts and the functions), but potentially in a
+       less-unfolded way to enable more concise computed postconditions *)
+    allx: mem -> Prop;
   }.
 
   Definition goodMachine{BWM: bitwidth_iset width iset}
@@ -303,9 +301,6 @@ Section WithParameters.
     lo.(getNextPc) = word.add lo.(getPc) (word.of_Z 4) /\
     (* memory: *)
     subset (footpr g.(allx)) (of_list lo.(getXAddrs)) /\
-    iff1 g.(allx) (g.(xframe) *
-                   program iset g.(p_insts) g.(insts) *
-                   functions g.(program_base) g.(e_pos) g.(e_impl))%sep /\
     (exists stack_trash frame_trash,
         (* Note: direction of equalities is deliberate:
            When destructing a goodMachine that comes from an IH,
@@ -341,22 +336,24 @@ Section WithParameters.
     (s: stmt): Prop :=
     forall e_impl_full initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
-    forall (g: GhostConsts) (initialL: MetricRiscvMachine) (pos: Z),
-    map.extends e_impl_full g.(e_impl) ->
-    good_e_impl g.(e_impl) g.(e_pos) ->
-    fits_stack g.(rem_framewords) g.(rem_stackwords) g.(e_impl) s ->
-    f g.(e_pos) pos (bytes_per_word * g.(rem_framewords)) s = g.(insts) ->
+    forall g e_impl e_pos program_base insts xframe (initialL: MetricRiscvMachine) pos,
+    map.extends e_impl_full e_impl ->
+    good_e_impl e_impl e_pos ->
+    fits_stack g.(rem_framewords) g.(rem_stackwords) e_impl s ->
+    f e_pos pos (bytes_per_word * g.(rem_framewords)) s = insts ->
     uses_standard_arg_regs s ->
     valid_FlatImp_vars s ->
     pos mod 4 = 0 ->
-    (word.unsigned g.(program_base)) mod 4 = 0 ->
-    initialL.(getPc) = word.add g.(program_base) (word.of_Z pos) ->
-    g.(p_insts)      = word.add g.(program_base) (word.of_Z pos) ->
+    word.unsigned program_base mod 4 = 0 ->
+    initialL.(getPc) = word.add program_base (word.of_Z pos) ->
+    iff1 g.(allx) (xframe *
+                   program iset (word.add program_base (word.of_Z pos)) insts *
+                   functions program_base e_pos e_impl)%sep ->
     goodMachine initialTrace initialMH initialRegsH g initialL ->
     runsTo initialL (fun finalL => exists finalTrace finalMH finalRegsH finalMetricsH,
          postH finalTrace finalMH finalRegsH finalMetricsH /\
          finalL.(getPc) = word.add initialL.(getPc)
-                                   (word.of_Z (4 * Z.of_nat (List.length g.(insts)))) /\
+                                   (word.of_Z (4 * Z.of_nat (List.length insts))) /\
          map.only_differ initialL.(getRegs)
                  (union (of_list (modVars_as_list Z.eqb s)) (singleton_set RegisterNames.ra))
                  finalL.(getRegs) /\
@@ -365,8 +362,7 @@ Section WithParameters.
 End WithParameters.
 
 Ltac simpl_g_get :=
-  cbn [p_sp rem_framewords rem_stackwords p_insts insts program_base e_pos e_impl
-            dframe xframe allx] in *.
+  cbn [p_sp rem_framewords rem_stackwords dframe allx] in *.
 
 Ltac simpl_bools :=
   repeat match goal with
@@ -913,38 +909,6 @@ Section FlatToRiscv1.
   Qed.
 
 End FlatToRiscv1.
-
-(* if we have valid_machine for the current machine, and need to prove a
-   runsTo with valid_machine in the postcondition, this tactic can
-   replace the valid_machine in the postcondition by True *)
-Ltac get_run1valid_for_free :=
-  let R := fresh "R" in
-  evar (R: MetricRiscvMachine -> Prop);
-  eapply runsTo_get_sane with (P := R);
-  [ (* valid_machine *)
-    assumption
-  | (* the simpler runsTo goal, left open *)
-    idtac
-  | (* the implication, needs to replace valid_machine by True *)
-    let mach' := fresh "mach'" in
-    let D := fresh "D" in
-    let Pm := fresh "Pm" in
-    intros mach' D V Pm;
-    match goal with
-    | H: valid_machine mach' |- context C[valid_machine mach'] =>
-      let G := context C[True] in
-      let P := eval pattern mach' in G in
-      lazymatch P with
-      | ?F _ => instantiate (R := F)
-      end
-    end;
-    subst R;
-    clear -V Pm;
-    cbv beta in *;
-    simp;
-    eauto 30
-  ];
-  subst R.
 
 Ltac solve_valid_machine wordOk :=
   match goal with

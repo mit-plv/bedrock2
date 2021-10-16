@@ -35,7 +35,6 @@ Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.Simp.
 Require Import compiler.FlattenExprSimulation.
-Require Import compiler.FlatToRiscvSimulation.
 Require Import compiler.Simulation.
 Require Import compiler.RiscvEventLoop.
 Require Import bedrock2.MetricLogging.
@@ -248,7 +247,7 @@ Section Pipeline1.
     eapply runsTo_trans with (P := fun mach => valid_machine mach /\ mach = after_init_sp);
       subst after_init_sp.
     {
-      get_run1valid_for_free.
+      RunInstruction.get_runsTo_valid_for_free.
       (* first, run init_sp_code: *)
       pose proof FlatToRiscvLiterals.compile_lit_correct_full_raw as P.
       cbv zeta in P. (* needed for COQBUG https://github.com/coq/coq/issues/11253 *)
@@ -272,10 +271,8 @@ Section Pipeline1.
     eapply runsToStep. {
       eapply RunInstruction.run_Jal; cbn.
       3: solve_word_eq word_ok.
-      3: {
-        eapply rearrange_footpr_subset. 1: eassumption.
-        wwcancel.
-      }
+      3: eassumption.
+      3: wwcancel.
       { unfold compile, compose_phases, riscvPhase in E. simp.
         eapply fun_pos_div4 in GetPos. solve_divisibleBy4. }
       { cbv. auto. }
@@ -439,7 +436,6 @@ Section Pipeline1.
     - unfold ll_good, machine_ok.
       intros. simp. assumption.
     - cbv. intuition discriminate.
-    - solve_divisibleBy4.
     - solve_word_eq word_ok.
     - unfold ll_good, machine_ok.
       intros. simp. split.
@@ -453,11 +449,8 @@ Section Pipeline1.
       eapply runsToStep. {
         eapply RunInstruction.run_Jal; cbn.
         3: reflexivity.
-        3: {
-          eapply rearrange_footpr_subset. 1: eassumption.
-          unfold init_sp_pos, init_sp_insts, loop_pos, init_pos.
-          wwcancel.
-        }
+        3: eassumption.
+        3: { subst loop_pos init_pos init_sp_pos init_sp_insts. wwcancel. }
         { match goal with
           | H: map.get positions "loop"%string = Some _ |- _ => rename H into GetPos
           end.
@@ -568,7 +561,7 @@ Section Pipeline1.
     eapply extend_runsTo_to_good_trace. 2,3: eassumption.
     simpl. unfold ll_good, compile_inv, related, hl_inv,
            compose_relation, FlattenExprSimulation.related,
-           FlatToRiscvSimulation.related, FlatToRiscvCommon.goodMachine.
+           FlatToRiscvCommon.goodMachine.
     intros. simp. eassumption.
   Qed.
 

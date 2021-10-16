@@ -796,7 +796,7 @@ Ltac sidecondition :=
       eassumption
     else
       (simpl in H |- *;
-       eapply rearrange_footpr_subset; [ exact H | solve [subst_sep_vars; wwcancel] ])
+       eapply rearrange_footpr_subset; [ exact H | solve [sidecondition] ])
   | |- _ => reflexivity
   | A: map.get ?lH ?x = Some _, E: map.extends ?lL ?lH |- map.get ?lL ?x = Some _ =>
     eapply (map.extends_get A E)
