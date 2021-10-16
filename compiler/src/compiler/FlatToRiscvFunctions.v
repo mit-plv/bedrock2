@@ -1558,7 +1558,61 @@ Hint Resolve
             - apply List.find_some in E. fwd. intuition congruence.
             - simpl. reflexivity.
           }
-          map_solver locals_ok.
+
+Lemma subset_refl{A: Type}: forall (s: set A), subset s s.
+Proof. intros. reflexivity. Qed.
+
+Lemma in_singleton_set{A: Type}: forall (x: A), x \in singleton_set x.
+Proof. unfold elem_of, singleton_set. intros. reflexivity. Qed.
+
+Lemma only_differ_subset :
+forall {var : Type} {var_eqb : var -> var -> bool},
+EqDecider var_eqb ->
+forall (val : Type) (stateMap : map.map var val),
+map.ok stateMap ->
+forall (s1 s2 : stateMap) (r1 r2 : var -> Prop),
+map.only_differ s1 r1 s2 -> subset r1 r2 -> map.only_differ s1 r2 s2.
+Proof. intros. map_solver H0. Qed.
+
+Hint Resolve
+     only_differ_subset
+     subset_union_l
+     subset_union_rl
+     subset_union_rr
+     subset_refl
+     in_singleton_set
+  : map_hints.
+
+Lemma only_differ_put_r{key value : Type} {map : map.map key value} {ok: map.ok map}
+      {key_eqb: key -> key -> bool} {key_eqb_spec: EqDecider key_eqb}:
+  forall (m1 m2 : map) (k : key) (v : value) s,
+    k \in s ->
+    map.only_differ m1 s m2 ->
+    map.only_differ m1 s (map.put m2 k v).
+Proof.
+  intros. eapply only_differ_trans. 1: eassumption. eapply only_differ_put. assumption.
+Qed.
+
+Hint Resolve
+     only_differ_put_r
+  : map_hints.
+
+Lemma only_differ_trans_r : forall
+ {var : Type} {var_eqb : var -> var -> bool}
+{key_eqb_spec: EqDecider var_eqb}
+{val : Type} {stateMap : map.map var val}
+{ok: map.ok stateMap} (s1 s2 s3 : stateMap) (r1 r2 : var -> Prop),
+  map.only_differ s2 r1 s3 ->
+  subset r1 r2 ->
+  map.only_differ s1 r2 s2 ->
+  map.only_differ s1 r2 s3.
+Proof using. clear. intros. map_solver ok. Qed.
+
+Hint Extern 3 (map.only_differ _ _ _)
+=> eapply only_differ_trans_r; [eassumption|eauto with map_hints ..]
+: map_hints.
+
+          eauto with map_hints.
         * edestruct hl_mem_to_ll_mem with (mL := middle_mem) (mTraded := mStack')
             as (returned_bytes & L & Q).
           1, 2: eassumption.
@@ -1607,21 +1661,6 @@ Hint Resolve
               ?word.divu0_simpl,
               ?word.modu0_simpl in *.
       all: try solve [run1done].
-
-Lemma only_differ_put_r{key value : Type} {map : map.map key value} {ok: map.ok map}
-      {key_eqb: key -> key -> bool} {key_eqb_spec: EqDecider key_eqb}:
-  forall (m1 m2 : map) (k : key) (v : value) s,
-    k \in s ->
-    map.only_differ m1 s m2 ->
-    map.only_differ m1 s (map.put m2 k v).
-Proof.
-  intros. eapply only_differ_trans. 1: eassumption. eapply only_differ_put. assumption.
-Qed.
-
-Hint Resolve
-     only_differ_put_r
-  : map_hints.
-
       (* bopname.eq requires two instructions *)
       run1det. run1done.
       rewrite reduce_eq_to_sub_and_lt.
@@ -1656,27 +1695,6 @@ Hint Resolve
           eapply runsToStep.
           { eapply run_Jal0; try safe_sidecond. solve_divisibleBy4. }
           simpl_MetricRiscvMachine_get_set.
-
-Lemma subset_refl{A: Type}: forall (s: set A), subset s s.
-Proof. intros. reflexivity. Qed.
-
-Lemma only_differ_subset :
-forall {var : Type} {var_eqb : var -> var -> bool},
-EqDecider var_eqb ->
-forall (val : Type) (stateMap : map.map var val),
-map.ok stateMap ->
-forall (s1 s2 : stateMap) (r1 r2 : var -> Prop),
-map.only_differ s1 r1 s2 -> subset r1 r2 -> map.only_differ s1 r2 s2.
-Proof. intros. map_solver H0. Qed.
-
-Hint Resolve
-     only_differ_subset
-     subset_union_l
-     subset_union_rl
-     subset_union_rr
-     subset_refl
-  : map_hints.
-
           intros. destruct_RiscvMachine mid. fwd. run1done.
 
     - idtac "Case compile_stmt_correct/SIf/Else".
@@ -1778,6 +1796,7 @@ Hint Resolve
           }
           (* at end of loop, just prove that computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd.
+          run1done.
 
 Lemma only_differ_trans_l : forall
  {var : Type} {var_eqb : var -> var -> bool}
@@ -1786,15 +1805,16 @@ Lemma only_differ_trans_l : forall
 {ok: map.ok stateMap} (s1 s2 s3 : stateMap) (r1 r2 : var -> Prop),
   map.only_differ s1 r1 s2 ->
   subset r1 r2 ->
-  map.only_differ s2 r2 s3 -> 
+  map.only_differ s2 r2 s3 ->
   map.only_differ s1 r2 s3.
 Proof using. clear. intros. map_solver ok. Qed.
 
+(* Note: adding both only_differ_trans_l and only_differ_trans_r can lead to loops
 Hint Extern 3 (map.only_differ _ _ _)
 => eapply only_differ_trans_l; [eassumption|eauto with map_hints ..]
 : map_hints.
+*)
 
-          run1done.
         * (* false: done, jump over body2 *)
           eapply runsToStep. {
             eapply compile_bcond_by_inverting_correct with (l := lH') (b := false);
