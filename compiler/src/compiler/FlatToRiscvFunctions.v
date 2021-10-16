@@ -205,11 +205,6 @@ Section Proofs.
     * eauto.
   Qed.
 
-  Hint Resolve
-       regs_initialized_put
-       map.forall_keys_put
-    : map_hints.
-
   Ltac run1done :=
     apply runsToDone;
     simpl_MetricRiscvMachine_get_set;
@@ -259,16 +254,6 @@ Section Proofs.
     [ try blia
     | subst nameOrig;
       rename nL into nameL, nR into nameR ].
-
-  Lemma map_extends_remove: forall (m1 m2: env) k,
-      map.extends m1 m2 ->
-      map.extends m1 (map.remove m2 k).
-  Proof. map_solver env_ok. Qed.
-
-  Lemma map_get_Some_remove: forall (m: env) k1 k2 v,
-      map.get (map.remove m k1) k2 = Some v ->
-      map.get m k2 = Some v.
-  Proof. map_solver env_ok. Qed.
 
   Lemma pigeonhole{A: Type}{aeqb: A -> A -> bool}{aeqb_sepc: EqDecider aeqb}: forall (l s: list A),
       (* no pigeonhole contains more than one pigeon: *)
@@ -353,7 +338,33 @@ Section Proofs.
        map.not_in_of_list_zip_to_get_None
        sp_not_in_arg_regs
        ra_not_in_arg_regs
+       regs_initialized_put
+       map.forall_keys_put
+       only_differ_put
+       in_union_l
+       in_union_l
+       in_of_list
+       in_eq
+       map.put_extends
+       get_put_diff_eq_l
+       only_differ_refl
+       only_differ_subset
+       subset_union_l
+       subset_union_rl
+       subset_union_rr
+       subset_refl
+       in_singleton_set
+       only_differ_put_r
     : map_hints.
+
+  Hint Extern 3 (map.only_differ _ _ _)
+  => eapply only_differ_trans_r; [eassumption|eauto with map_hints ..]
+  : map_hints.
+
+  (* Note: adding both only_differ_trans_l and only_differ_trans_r can lead to loops
+  Hint Extern 3 (map.only_differ _ _ _)
+  => eapply only_differ_trans_l; [eassumption|eauto with map_hints ..]
+  : map_hints. *)
 
   Lemma compile_bcond_by_inverting_correct: forall cond (amt: Z) (initialL: RiscvMachineL) l b
                                                    (Exec R Rexec: mem -> Prop),
@@ -676,11 +687,11 @@ Section Proofs.
       subst FL.
       all: try safe_sidecond.
       all: try safe_sidecond.
-      { eapply map_extends_remove; eassumption. }
+      { eapply extends_remove; eassumption. }
       { move e_impl_reduced_props at bottom.
         intros *. intro G.
         assert (map.get e_impl f = Some fun_impl) as G'. {
-          eapply map_get_Some_remove; eassumption.
+          eapply get_Some_remove; eassumption.
         }
         specialize e_impl_reduced_props with (1 := G'). fwd.
         repeat split; eauto.
@@ -1345,35 +1356,6 @@ Section Proofs.
         blia.
       }
       inline_iff1.
-
-Set Nested Proofs Allowed.
-
-Lemma in_union_l{A: Type}: forall x (s1 s2: set A), x \in s1 -> x \in (union s1 s2).
-Proof. unfold union, elem_of. auto. Qed.
-
-Lemma in_union_r{A: Type}: forall x (s1 s2: set A), x \in s2 -> x \in (union s1 s2).
-Proof. unfold union, elem_of. auto. Qed.
-
-Lemma in_of_list{A: Type}: forall x (l: list A), List.In x l -> x \in (of_list l).
-Proof. unfold of_list, elem_of. auto. Qed.
-
-Lemma get_put_diff_eq_l{key value : Type} {map : map.map key value} {ok: map.ok map}:
-  forall (m : map) (k : key) (v : value) (k' : key) (r: option value),
-    k <> k' ->
-    map.get m k = r ->
-    map.get (map.put m k' v) k = r.
-Proof. intros. rewrite map.get_put_diff; eassumption. Qed.
-
-Hint Resolve
-     only_differ_put
-     in_union_l
-     in_union_l
-     in_of_list
-     in_eq
-     map.put_extends
-     get_put_diff_eq_l
-  : map_hints.
-
       run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
 
     - idtac "Case compile_stmt_correct/SStore".
@@ -1392,11 +1374,6 @@ Hint Resolve
       end.
       unfold Platform.Memory.store_bytes, Memory.store_Z, Memory.store_bytes in A. fwd.
       subst_load_bytes_for_eq.
-
-Hint Resolve
-     only_differ_refl
-  : map_hints.
-
       run1det. run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.
       ecancel_assumption.
@@ -1558,60 +1535,6 @@ Hint Resolve
             - apply List.find_some in E. fwd. intuition congruence.
             - simpl. reflexivity.
           }
-
-Lemma subset_refl{A: Type}: forall (s: set A), subset s s.
-Proof. intros. reflexivity. Qed.
-
-Lemma in_singleton_set{A: Type}: forall (x: A), x \in singleton_set x.
-Proof. unfold elem_of, singleton_set. intros. reflexivity. Qed.
-
-Lemma only_differ_subset :
-forall {var : Type} {var_eqb : var -> var -> bool},
-EqDecider var_eqb ->
-forall (val : Type) (stateMap : map.map var val),
-map.ok stateMap ->
-forall (s1 s2 : stateMap) (r1 r2 : var -> Prop),
-map.only_differ s1 r1 s2 -> subset r1 r2 -> map.only_differ s1 r2 s2.
-Proof. intros. map_solver H0. Qed.
-
-Hint Resolve
-     only_differ_subset
-     subset_union_l
-     subset_union_rl
-     subset_union_rr
-     subset_refl
-     in_singleton_set
-  : map_hints.
-
-Lemma only_differ_put_r{key value : Type} {map : map.map key value} {ok: map.ok map}
-      {key_eqb: key -> key -> bool} {key_eqb_spec: EqDecider key_eqb}:
-  forall (m1 m2 : map) (k : key) (v : value) s,
-    k \in s ->
-    map.only_differ m1 s m2 ->
-    map.only_differ m1 s (map.put m2 k v).
-Proof.
-  intros. eapply only_differ_trans. 1: eassumption. eapply only_differ_put. assumption.
-Qed.
-
-Hint Resolve
-     only_differ_put_r
-  : map_hints.
-
-Lemma only_differ_trans_r : forall
- {var : Type} {var_eqb : var -> var -> bool}
-{key_eqb_spec: EqDecider var_eqb}
-{val : Type} {stateMap : map.map var val}
-{ok: map.ok stateMap} (s1 s2 s3 : stateMap) (r1 r2 : var -> Prop),
-  map.only_differ s2 r1 s3 ->
-  subset r1 r2 ->
-  map.only_differ s1 r2 s2 ->
-  map.only_differ s1 r2 s3.
-Proof using. clear. intros. map_solver ok. Qed.
-
-Hint Extern 3 (map.only_differ _ _ _)
-=> eapply only_differ_trans_r; [eassumption|eauto with map_hints ..]
-: map_hints.
-
           eauto with map_hints.
         * edestruct hl_mem_to_ll_mem with (mL := middle_mem) (mTraded := mStack')
             as (returned_bytes & L & Q).
@@ -1797,24 +1720,6 @@ Hint Extern 3 (map.only_differ _ _ _)
           (* at end of loop, just prove that computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd.
           run1done.
-
-Lemma only_differ_trans_l : forall
- {var : Type} {var_eqb : var -> var -> bool}
-{key_eqb_spec: EqDecider var_eqb}
-{val : Type} {stateMap : map.map var val}
-{ok: map.ok stateMap} (s1 s2 s3 : stateMap) (r1 r2 : var -> Prop),
-  map.only_differ s1 r1 s2 ->
-  subset r1 r2 ->
-  map.only_differ s2 r2 s3 ->
-  map.only_differ s1 r2 s3.
-Proof using. clear. intros. map_solver ok. Qed.
-
-(* Note: adding both only_differ_trans_l and only_differ_trans_r can lead to loops
-Hint Extern 3 (map.only_differ _ _ _)
-=> eapply only_differ_trans_l; [eassumption|eauto with map_hints ..]
-: map_hints.
-*)
-
         * (* false: done, jump over body2 *)
           eapply runsToStep. {
             eapply compile_bcond_by_inverting_correct with (l := lH') (b := false);

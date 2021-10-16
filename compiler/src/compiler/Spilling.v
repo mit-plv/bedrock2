@@ -317,6 +317,7 @@ Section Spilling.
     Forall_vars_stmt (fun x => 3 <= x < 32).
 
   Local Arguments Z.of_nat: simpl never.
+  Local Ltac fwd_rewrites ::= fwd_rewrites_autorewrite.
 
   Lemma set_vars_to_reg_range_valid_vars: forall args start,
       3 <= start ->

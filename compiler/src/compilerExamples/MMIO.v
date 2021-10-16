@@ -516,6 +516,7 @@ Section MMIO1.
         eapply map.put_extends. eassumption.
       }
       split. {
+        unfold map.forall_keys in *.
         intros.
         lazymatch goal with
         | H : context [map.get _ ?x] |- _ <= ?x < _ =>
