@@ -7,6 +7,19 @@ Require Import coqutil.sanity coqutil.Decidable coqutil.Tactics.destr.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Import Map.Interface.map Map.Properties.map.
 
+
+(*TODO: use hintdb or user-provided tactic?
+  Study performance implications
+*)
+Create HintDb ecancel_impl discriminated.
+Lemma impl1_refl{T: Type}: forall (P: T -> Prop), Lift1Prop.impl1 P P.
+Proof. intros. reflexivity. Qed.
+(*
+  Can't use Hint Immediate since it needs to be priority 0.
+  Can't use pattern here, maybe because of evars?
+*)
+Hint Extern 0 => simple eapply impl1_refl : ecancel_impl.
+
 Section SepProperties.
   Context {key value} {map : map key value} {ok : ok map}.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
@@ -417,13 +430,6 @@ Ltac cancel_seps_at_indices_by_implication i j :=
     cbn [firstn skipn app hd tl]
   end.
 
-
-(*TODO: use hintdb or user-provided tactic?
-  Study performance implications
-*)
-Create HintDb ecancel_impl discriminated.
-Hint Extern 1 => exact (fun m x => x) : ecancel_impl.
-
 (*TODO: performance*)
 Ltac find_implication xs y :=
   multimatch xs with
@@ -454,15 +460,6 @@ Ltac ecancel_step :=
       let i := find_syntactic_unify_deltavar LHS y in (* <-- multi-success! *)
       cancel_seps_at_indices i j; [syntactic_exact_deltavar (@eq_refl _ _)|].
 
-
-(* TODO: are these the only cases I care to cover? 
-   In the best case, anything that reduces to an evar should be caught,
-   but that is expensive
- *)
-Ltac is_evar_or_alias e :=
-  tryif is_evar e then idtac
-  else let e' := eval unfold e in e in is_evar e'.
-
 (* TODO: eventually replace ecancel_step? Probably not since implication is too agressive.*)
 (*TODO: performance. I've replaced the deltavar stuff with heavier operations  *)
 Ltac ecancel_step_by_implication :=
@@ -470,15 +467,9 @@ Ltac ecancel_step_by_implication :=
       let jy := index_and_element_of RHS in (* <-- multi-success! *)
       let j := lazymatch jy with (?i, _) => i end in
       let y := lazymatch jy with (_, ?y) => y end in
-      (* For implication, we don't want to touch RHS evars 
-         until everything else is solved.
-         Makes sure j doesn't point to an evar
-       *)
-      (*TODO: need to check for bound idents too; use above fn*)
-      assert_fails (idtac; is_evar_or_alias y);      
+      assert_fails (idtac; let y := rdelta_var y in is_evar y);
       let LHS := lazymatch goal with |- Lift1Prop.impl1 (seps ?LHS) _ => LHS end in
       let i := find_implication LHS y in (* <-- multi-success! *)
-      (*TODO: nocore?*)
       cancel_seps_at_indices_by_implication i j; [solve [auto 1 with nocore ecancel_impl]|].
 
 Ltac ecancel_done :=
@@ -517,11 +508,6 @@ Ltac cancel :=
   try solve [ cancel_done ].
 
 
-(*TODO: should I use deltavar here too?*)
-(*TODO: this assumes that the goal has (at most or exactly?) 1 evar predicate.
-  Test it on 0, 2 evars and adapt as necessary
- *)
-(*TODO: make interactions w/ cancel, cancel_done more proper*)
 Ltac ecancel :=
   cancel;
   lazymatch goal with
@@ -533,7 +519,19 @@ Ltac ecancel :=
     solve [ ecancel_done ]
   end.
 
- Ltac ecancel_assumption :=
+
+Ltac ecancel_assumption :=
+  multimatch goal with
+  | |- _ ?m1 =>
+    multimatch goal with
+    | H: _ ?m2 |- _ =>
+      syntactic_unify_deltavar m1 m2;
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ H); clear H;
+      solve [ecancel]
+    end
+  end.
+
+ Ltac ecancel_assumption_impl :=
     multimatch goal with
     | |- ?PG ?m1 =>
       multimatch goal with
@@ -547,21 +545,13 @@ Ltac ecancel :=
       end
     end.
 
- (*TODO: for testing only*)
- Ltac ecancel_assumption_preamble :=
-    multimatch goal with
-    | |- ?PG ?m1 =>
-      multimatch goal with
-      | H: ?PH ?m2
-        |- _ =>
-        syntactic_unify_deltavar m1 m2;
-        (*TODO: can I just revert H?*)
-        refine (Morphisms.subrelation_refl Lift1Prop.impl1 PH PG _ m1 H);
-        clear H;
-        cbn[seps]
-      end
-    end.
+ (* To use the implication-based ecancel assumption in existing tactics in a proof, add this line:
 
+    Local Ltac ecancel_assumption ::= ecancel_assumption_impl.
+    
+    The implication-based tactic should in theory solve a strict superset of goals,
+    but its performance may be worse, especially when it fails.
+  *)
 
 Ltac use_sep_assumption :=
   match goal with
