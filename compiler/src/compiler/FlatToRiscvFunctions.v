@@ -423,7 +423,7 @@ Section Proofs.
       all: match goal with
            | H: fits_stack _ _ _ ?s |- _ =>
              let h := head_of_app s in is_constructor h;
-             inversion H; clear H; subst
+             inversion H; subst
            end.
       all: fwd.
     (*about this many lines should have been enough to prove this...*)
@@ -444,6 +444,7 @@ Section Proofs.
 
     - idtac "Case compile_stmt_correct/SCall".
       (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
+
       unfold good_e_impl, valid_FlatImp_fun in *.
       simpl in *.
       fwd.
@@ -472,29 +473,288 @@ Section Proofs.
       rename stack_trash into old_stackvals.
       rename frame_trash into unused_part_of_caller_frame.
 
+      assert (valid_register RegisterNames.ra) by (cbv; auto).
+      assert (valid_register RegisterNames.sp) by (cbv; auto).
+
+      (* jump to function *)
+      eapply runsToStep. {
+        eapply run_Jal; simpl; try solve [sidecondition]; cycle 2.
+        - solve_divisibleBy4.
+        - assumption.
+      }
+      simpl_MetricRiscvMachine_get_set.
+      clear_old_sep_hyps.
+      intro mid. set (mach := mid). intros. fwd. destruct_RiscvMachine mid. subst.
+
+      remember mach.(getLog) as t.
+      assert (GM: goodMachine t m l
+                              {| p_sp := p_sp;
+                                 rem_stackwords := #(List.length old_stackvals);
+                                 rem_framewords := #(List.length unused_part_of_caller_frame);
+                                 dframe := dframe;
+                                 allx := allx |}
+                              mach). {
+        unfold goodMachine; simpl.
+        subst mach. subst. simpl. ssplit.
+
+Hint Resolve
+     put_extends_l
+     get_None_in_forall_keys
+     ra_not_valid_FlatImp_var
+     extends_remove
+     coqutil.Decidable.String.eqb_spec
+     map.get_put_same
+  : map_hints.
+
+Hint Extern 3 (not (@eq Z _ _)) => (discriminate 1) : map_hints.
+
+      all: try eauto with map_hints.
+      }
+      match type of GM with
+      | goodMachine _ _ _ ?gh _ => remember gh as g
+      end.
+      match goal with
+      | |- ?G => replace G with
+            (runsToNonDet.runsTo (mcomp_sat (Run.run1 iset)) mach
+              (fun finalL : RiscvMachineL => exists
+                   finalTrace finalMH finalRegsH finalMetricsH,
+       post finalTrace finalMH finalRegsH finalMetricsH /\
+       getPc finalL = program_base + !pos + !(4 * #1) /\
+       map.only_differ initialL_regs
+         (union (of_list (list_union Z.eqb binds [])) (singleton_set RegisterNames.ra))
+         (getRegs finalL) /\
+       goodMachine finalTrace finalMH finalRegsH g finalL))
+      end.
+      2: { subst. reflexivity. }
+
+      pose proof functions_expose as P.
+      match goal with
+      | H: map.get e_impl _ = Some _ |- _ => specialize P with (2 := H)
+      end.
+      specialize P with (1 := GetPos).
+      specialize (P program_base).
+      match type of P with
+      | iff1 _ (functions _ _ _ * ?F)%sep => set (current_fun := F) in *
+      end.
+      apply iff1ToEq in P.
+      match goal with
+      | H: iff1 allx _ |- _ => rewrite P in H
+      end.
+      clear P.
+      set (insts := (compile_function e_pos pos0 (argnames, retnames, body))) in *.
+      rename xframe into xframe_orig.
+      set (xframe := (xframe_orig *
+          (ptsto_instr iset (program_base + !pos)
+                       (IInstruction (Jal RegisterNames.ra (pos0 - pos))) * emp True))%sep) in *.
+      match goal with
+      | H: iff1 allx _ |- _ => rename H into A
+      end.
+      move A before GM. replace allx with (FlatToRiscvCommon.allx g) in A by (subst; reflexivity).
+      rename e_impl into e_impl_orig.
+      set (e_impl := (map.remove e_impl_orig fname)) in *.
+      rewrite <- (sep_comm current_fun) in A. rewrite <- sep_assoc in A.
+      change current_fun with (program iset (program_base + !pos0) insts) in A.
+      eassert (_ = insts) as C. {
+        subst insts. reflexivity.
+      }
+      move C after A.
+      match goal with
+      | H: exec _ body _ _ _ _ _ |- _ => rename H into Exb
+      end.
+      move Exb before C.
+      assert (Ext: map.extends e_impl_full e_impl). {
+        subst e_impl. eauto with map_hints.
+      }
+      move Ext before Exb.
+      assert (GE: good_e_impl e_impl e_pos). {
+        unfold good_e_impl.
+        move e_impl_reduced_props at bottom.
+        intros *. intro G.
+        assert (map.get e_impl_orig f = Some fun_impl) as G'. {
+          subst e_impl.
+          eapply get_Some_remove; eassumption.
+        }
+        specialize e_impl_reduced_props with (1 := G'). fwd.
+        repeat split; eauto.
+      }
+      move GE before Ext.
+      match goal with
+      | H: fits_stack ?x ?y e_impl body |- _ =>
+        rename H into FS; move FS after GE;
+          replace y with
+              (g.(rem_stackwords) - framelength (argnames, retnames, body))%Z in FS
+      end.
+      2: {
+        unfold framelength. subst g. simpl. blia.
+      }
+      (* already in valid_FlatImp_fun
+      match goal with
+      | H: FlatImpConstraints.uses_standard_arg_regs body |- _ => rename H into SA; move SA after C
+      end.
+      *)
+      assert (V: valid_FlatImp_fun (argnames, retnames, body)). {
+        simpl. eauto.
+      }
+      move V before C.
+      match goal with
+      | H: pos0 mod 4 = 0 |- _ => rename H into Mo; move Mo after V
+      end.
+      match goal with
+      | H: word.unsigned program_base mod 4 = 0 |- _ => rename H into Mo'; move Mo' after Mo
+      end.
+      eassert (GPC: mach.(getPc) = program_base + !pos0). {
+        subst mach. simpl. solve_word_eq word_ok.
+      }
+      move GPC after A.
+      rename pos into pos_orig, pos0 into pos.
+      replace (!(4 * #1)) with (word.of_Z (word := word) 4). 2: { solve_word_eq word_ok. }
+      assert (OL: map.of_list_zip argnames argvs = Some st0) by assumption.
+      move OL after Exb.
+      set (stack_trash := old_stackvals).
+      assert (args = List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg)). {
+        replace (Datatypes.length argnames) with (Datatypes.length args). 1: assumption.
+        apply_in_hyps @map.putmany_of_list_zip_sameLength.
+        apply_in_hyps @map.getmany_of_list_length.
+        congruence.
+      }
+      subst args.
+      let T := type of IHexec in replace T with
+        (forall (g : GhostConsts) (e_impl : env) (e_pos : fun_pos_env)
+             (program_base : word) (insts : list Instruction) (xframe : mem -> Prop)
+             (initialL : RiscvMachineL) (pos : Z),
+           map.extends e_impl_full e_impl ->
+           good_e_impl e_impl e_pos ->
+           fits_stack (rem_framewords g) (rem_stackwords g) e_impl body ->
+           compile_stmt iset compile_ext_call e_pos pos (bytes_per_word * rem_framewords g) body =
+           insts ->
+           FlatImpConstraints.uses_standard_arg_regs body ->
+           valid_FlatImp_vars body ->
+           pos mod 4 = 0 ->
+           word.unsigned program_base mod 4 = 0 ->
+           getPc initialL = program_base + !pos ->
+           iff1 (FlatToRiscvCommon.allx g)
+             ((xframe * program iset (program_base + !pos) insts)%sep *
+              functions program_base e_pos e_impl) ->
+           goodMachine mid_log m st0 g initialL ->
+           runsTo initialL
+             (fun finalL : RiscvMachineL =>
+              exists
+                (finalTrace : Semantics.trace) (finalMH : mem) (finalRegsH : locals)
+              (finalMetricsH : MetricLog),
+                outcome finalTrace finalMH finalRegsH finalMetricsH /\
+                getPc finalL = getPc initialL + !(4 * #(Datatypes.length insts)) /\
+                map.only_differ (getRegs initialL)
+                  (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
+                  (getRegs finalL) /\
+                goodMachine finalTrace finalMH finalRegsH g finalL))
+        in IHexec.
+      2: {
+        reflexivity.
+      }
+
+      specialize IHexec with (1 := Ext).
+      specialize IHexec with (1 := GE).
+      specialize IHexec with (6 := Mo').
+      match goal with
+      | H: FlatImpConstraints.uses_standard_arg_regs body |- _ =>
+        specialize IHexec with (3 := H)
+      end.
+      match goal with
+      | H: valid_FlatImp_vars body |- _ => specialize IHexec with (3 := H)
+      end.
+      move stack_trash at top.
+      move IHexec before OL.
+      rename H3 into OC.
+      rename H0 into GetMany.
+      move GetMany after Exb.
+      move OC before OL.
+      remember (program_base + !pos_orig + !4) as ret_addr.
+      assert (map.get mach.(getRegs) RegisterNames.ra = Some ret_addr) as Gra. {
+        subst mach. cbn. eauto with map_hints.
+      }
+      move Gra after GPC.
+      assert (word.unsigned ret_addr mod 4 = 0) as RaM by (subst ret_addr; solve_divisibleBy4).
+      move RaM before Gra.
+      replace mid_log with t in *.
+      forget (Datatypes.length binds) as binds_count.
+      subst binds.
+      eapply runsTo_weaken with (P :=
+        (fun finalL : RiscvMachineL =>
+           exists
+             (finalTrace : Semantics.trace) (finalMH : mem) (finalRegsH : locals)
+             (finalMetricsH : MetricLog),
+             post finalTrace finalMH finalRegsH finalMetricsH /\
+             getPc finalL = ret_addr /\
+             map.only_differ (getRegs mach)
+                  (union (of_list
+                    (list_union Z.eqb (List.firstn binds_count (reg_class.all reg_class.arg)) []))
+                         (singleton_set RegisterNames.ra)) (getRegs finalL) /\
+             goodMachine finalTrace finalMH finalRegsH g finalL)).
+      2: {
+        subst mach. simpl_MetricRiscvMachine_get_set.
+        intros. fwd. eauto 8 with map_hints.
+      }
+      match goal with
+      | H: (binds_count <= 8)%nat |- _ => rename H into BC
+      end.
+      move BC after OC.
+      repeat match goal with
+             | x := _ |- _ => clearbody x
+             end.
+      clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok fun_pos_env_ok env_ok
+              IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
+
+      assert (valid_register RegisterNames.ra) by (cbv; auto).
+      assert (valid_register RegisterNames.sp) by (cbv; auto).
+
+      unfold goodMachine in GM. unfold valid_FlatImp_fun in V. fwd.
+      destruct g. simpl_g_get.
+
       set (FL := framelength (argnames, retnames, body)) in *.
       (* We have enough stack space for this call: *)
-      assert (FL <= Z.of_nat (List.length old_stackvals)) as enough_stack_space. {
-        match goal with
+      assert (FL <= Z.of_nat (List.length stack_trash)) as enough_stack_space. {
+        repeat match goal with
         | H: fits_stack _ _ _ _ |- _ => apply fits_stack_nonneg in H
         end.
         subst FL. simpl in *.
         blia.
       }
 
+      (* note: left-to-right rewriting with all [length _ = length _] equations has to
+         be terminating *)
+      match goal with
+      | H: _ |- _ => let N := fresh in pose proof H as N;
+                                         apply map.putmany_of_list_zip_sameLength in N;
+                                         symmetry in N
+      end.
+      assert (Memory.bytes_per_word (bitwidth iset) = bytes_per_word) as BPW. {
+        rewrite bitwidth_matches. reflexivity.
+      }
+
+      assert (exists arg_count, (arg_count <= 8)%nat /\
+                 argnames = List.firstn arg_count (reg_class.all reg_class.arg)) as AC. {
+        exists (List.length argnames). ssplit. 2: congruence.
+        replace argnames with
+            (List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg)) by assumption.
+        rewrite List.firstn_length.
+        change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
+        clear. blia.
+      }
+      destruct AC as (arg_count & AC & ?). subst argnames.
+
       assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
         unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
       }
       pose proof (stackalloc_words_nonneg body) as ScratchNonneg.
       assert (exists remaining_stack old_scratch old_modvarvals old_ra,
-          old_stackvals = remaining_stack ++ old_scratch ++ old_modvarvals ++ [old_ra] /\
+          stack_trash = remaining_stack ++ old_scratch ++ old_modvarvals ++ [old_ra] /\
           List.length old_scratch = Z.to_nat (stackalloc_words iset body) /\
           List.length old_modvarvals = List.length
                                          (list_diff Z.eqb (modVars_as_list Z.eqb body) retnames))
         as TheSplit. {
         clear IHexec.
         subst FL. unfold framelength in *.
-        rename old_stackvals into ToSplit.
+        rename stack_trash into ToSplit.
         split_from_right ToSplit ToSplit old_ras 1%nat.
         split_from_right ToSplit ToSplit old_modvarvals
                   (Datatypes.length (list_diff Z.eqb (modVars_as_list Z.eqb body) retnames)).
@@ -512,76 +772,13 @@ Section Proofs.
              | exists x, _ => destruct TheSplit as [x TheSplit]
              | _ /\ _ => destruct TheSplit as [? TheSplit]
              end.
-      subst old_stackvals.
-
-      (* note: left-to-right rewriting with all [length _ = length _] equations has to
-         be terminating *)
-      match goal with
-      | H: _ |- _ => let N := fresh in pose proof H as N;
-                     apply map.putmany_of_list_zip_sameLength in N;
-                     symmetry in N
-      end.
-      match goal with
-      | H: _ |- _ => let N := fresh in pose proof H as N;
-                     apply map.getmany_of_list_length in N
-      end.
-      assert (Memory.bytes_per_word (bitwidth iset) = bytes_per_word) as BPW. {
-        rewrite bitwidth_matches. reflexivity.
-      }
-
-      assert (exists arg_count, (arg_count <= 8)%nat /\
-                argnames = List.firstn arg_count (reg_class.all reg_class.arg) /\
-                args = List.firstn arg_count (reg_class.all reg_class.arg)) as AC. {
-        exists (List.length argnames). ssplit. 2,3: congruence.
-        replace argnames with
-            (List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg)) by assumption.
-        rewrite List.firstn_length.
-        change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
-        clear. blia.
-      }
-      destruct AC as (arg_count & AC & ? & ?). subst argnames args.
-
-    assert (valid_register RegisterNames.ra) by (cbv; auto).
-    assert (valid_register RegisterNames.sp) by (cbv; auto).
-
-    (* jump to function *)
-    eapply runsToStep. {
-      eapply run_Jal; simpl; try solve [sidecondition]; cycle 2.
-      - solve_divisibleBy4.
-      - assumption.
-    }
-
-    simpl_MetricRiscvMachine_get_set.
-    clear_old_sep_hyps.
-    intros. fwd.
-    repeat match goal with
-           | m: _ |- _ => destruct_RiscvMachine m
-           end.
-    subst.
-
-    pose proof functions_expose as P.
-    match goal with
-    | H: map.get e_impl _ = Some _ |- _ => specialize P with (2 := H)
-    end.
-    specialize P with (1 := GetPos).
-    specialize (P program_base).
-    match type of P with
-    | iff1 _ (functions _ _ _ * ?F)%sep => set (current_fun := F) in *
-    end.
-    apply iff1ToEq in P.
-    match goal with
-    | H: iff1 allx _ |- _ => rewrite P in H
-    end.
-    clear P.
-    simpl in *.
+      subst stack_trash.
 
     (* decrease sp *)
     eapply runsToStep. {
       eapply run_Addi with (rd := RegisterNames.sp) (rs := RegisterNames.sp);
+        simpl in *;
         try solve [safe_sidecond | simpl; solve_divisibleBy4 ].
-      simpl.
-      rewrite map.get_put_diff by (clear; cbv; congruence).
-      eassumption.
     }
 
     simpl_MetricRiscvMachine_get_set.
@@ -599,7 +796,7 @@ Section Proofs.
         try solve [sidecondition | simpl; solve_divisibleBy4]; try solve_word_eq word_ok.
         simpl.
         rewrite map.get_put_diff by (clear; cbv; congruence).
-        rewrite map.get_put_same. reflexivity.
+        eassumption.
     }
 
     simpl_MetricRiscvMachine_get_set.
@@ -624,7 +821,6 @@ Section Proofs.
     {
       intros.
       rewrite !map.get_put_dec.
-      destruct_one_match; [eexists; reflexivity|].
       destruct_one_match; [eexists; reflexivity|].
       eauto.
     }
@@ -668,35 +864,30 @@ Section Proofs.
     (* execute function body *)
     eapply runsTo_trans. {
       unfold good_e_impl, valid_FlatImp_fun in *. fwd.
-      let f := eval unfold current_fun in current_fun in
-      let p := match f with
+      set (argnames := List.firstn arg_count (reg_class.all reg_class.arg)).
+      let p := match type of A with
                | context[compile_stmt _ _ _ ?p _ body] => p
                end in
-      eapply IHexec with (g := {|
-        p_sp := word.sub p_sp !(Memory.bytes_per_word (bitwidth iset) * FL);
-        allx := allx;
-      |})
-      (pos := p)
-      (e_pos := e_pos)
-      (e_impl := map.remove e_impl fname)
-      (program_base := program_base);
+      eapply IHexec with
+           (pos := p)
+           (g := {| p_sp := p_sp - !(bytes_per_word * framelength (argnames, retnames, body));
+                    rem_stackwords := #(List.length remaining_stack);
+                    rem_framewords := stackalloc_words iset body;
+                    dframe := _;
+                    allx := allx |});
+      unfold goodMachine;
       simpl_MetricRiscvMachine_get_set;
       simpl_g_get;
       rewrite ?@length_save_regs, ?@length_load_regs in *;
       ssplit;
       subst FL.
       all: try safe_sidecond.
-      all: try safe_sidecond.
-      { eapply extends_remove; eassumption. }
-      { move e_impl_reduced_props at bottom.
-        intros *. intro G.
-        assert (map.get e_impl f = Some fun_impl) as G'. {
-          eapply get_Some_remove; eassumption.
-        }
-        specialize e_impl_reduced_props with (1 := G'). fwd.
-        repeat split; eauto.
-      }
-      { move H1 at bottom.
+      { lazymatch goal with
+        | H: fits_stack ?x ?y e_impl body |- fits_stack ?x' ?y' e_impl body =>
+          replace y' with y; [exact H|]
+        end.
+        ring_simplify. reflexivity. }
+      { move OL at bottom.
         unfold map.extends. intros *. intro G. rewrite !map.get_put_dec.
         destruct_one_match. {
           subst x.
@@ -711,30 +902,18 @@ Section Proofs.
           eapply filter_In in Gk.
           apply proj2 in Gk. discriminate Gk.
         }
-        destruct_one_match. {
-          subst x.
-          exfalso.
-          eapply map.putmany_of_list_zip_find_index in G. 2: eassumption.
-          rewrite map.get_empty in G.
-          destruct G as [G | G]. 2: discriminate G.
-          destruct G as (n & Gk & Gv).
-          eapply List.nth_error_firstn_weaken in Gk.
-          unfold reg_class.all in Gk.
-          eapply nth_error_In in Gk.
-          eapply filter_In in Gk.
-          apply proj2 in Gk. discriminate Gk.
-        }
-        clear -locals_ok G E E0 H14p0 H0 H1 H14p1.
         eapply map.putmany_of_list_zip_find_index in G. 2: eassumption.
         rewrite map.get_empty in G.
         destruct G as [G | G]. 2: discriminate G.
         destruct G as (n & Gk & Gv).
-        unfold map.extends in H14p0. eapply H14p0.
-        eauto using map.getmany_of_list_get.
+        unfold map.extends in GMp0. eapply GMp0.
+        eapply map.getmany_of_list_get. 3: exact Gv. 2: exact Gk.
+        rewrite <- GetMany.
+        f_equal. congruence.
       }
       { unfold map.forall_keys in *.
         lazymatch goal with
-        | H: map.putmany_of_list_zip _ _ map.empty = Some st0 |- _ =>
+        | H: map.of_list_zip _ _ = Some st0 |- _ =>
           rename H into P; clear -P locals_ok
         end.
         intros.
@@ -743,7 +922,6 @@ Section Proofs.
         - eapply Forall_forall.
           2: eapply nth_error_In. 2: eassumption.
           unfold reg_class.all.
-
           eapply List.Forall_firstn.
           eapply List.Forall_filter.
           intros *. intro E. destr (reg_class.get a); try discriminate E.
@@ -755,27 +933,8 @@ Section Proofs.
             destruct_one_match_hyp; discriminate.
         - rewrite map.get_empty in C. discriminate.
       }
+      { rewrite map.get_put_same. f_equal. unfold framelength. solve_word_eq word_ok. }
       {
-        assert (forall x, In x (List.firstn arg_count (reg_class.all reg_class.arg)) ->
-                          valid_FlatImp_var x) as F. {
-          eapply Forall_forall.
-          assumption.
-        }
-        revert F.
-        repeat match goal with
-               | H: ?T |- _ => lazymatch T with
-                               | map.putmany_of_list_zip _ _ _ = Some _ => revert H
-                               | map.ok _ => fail
-                               | word.ok _ => fail
-                               | _ = bytes_per_word => fail
-                               | _ => clear H
-                               end
-               end.
-        intros PM F.
-        rewrite map.get_put_same. f_equal. simpl_addrs. solve_word_eq word_ok.
-      }
-      {
-        eapply preserve_regs_initialized_after_put.
         eapply preserve_regs_initialized_after_put.
         assumption.
       }
@@ -786,6 +945,7 @@ Section Proofs.
       }
     }
 
+    unfold goodMachine.
     simpl.
     simpl_MetricRiscvMachine_get_set.
     clear_old_sep_hyps.
@@ -808,7 +968,13 @@ Section Proofs.
     eapply runsTo_trans. {
       eapply load_regs_correct with (values := newvalues);
         simpl; cycle 1.
-      - eassumption.
+      - eapply only_differ_get_unchanged. 2: eassumption.
+        + eapply map.get_put_same.
+        + intro C. unfold union, elem_of, of_list, singleton_set in C.
+          destruct C as [C|C]. 2: discriminate C.
+          enough (valid_FlatImp_var RegisterNames.sp) as En. 1: apply En; reflexivity.
+          eapply Forall_forall. 2: exact C.
+          eapply modVars_as_list_valid_FlatImp_var. assumption.
       - repeat match goal with
                | H: map.getmany_of_list _ _ = Some _ |- _ =>
                  unique eapply @map.getmany_of_list_length in copy of H
@@ -816,7 +982,7 @@ Section Proofs.
         symmetry.
         eassumption.
       - eassumption.
-      - etransitivity. 1: eassumption. subst current_fun. wwcancel.
+      - etransitivity. 1: eassumption. wwcancel.
       - subst FL. wcancel_assumption.
       - reflexivity.
       - assumption.
@@ -854,7 +1020,7 @@ Section Proofs.
         repeat match goal with
                | |- forall (_: map.ok _), _ => intro
                end.
-        intros PM G G' PM' PM'' F.
+        intros G G' PM PM' F.
         eapply map.putmany_of_list_zip_get_oldval. 3: exact G'. 1: eassumption.
         intro C.
         eapply In_list_diff_weaken in C.
@@ -862,7 +1028,7 @@ Section Proofs.
         unfold valid_FlatImp_var, RegisterNames.sp in F. blia.
       - reflexivity.
       - eassumption.
-      - etransitivity. 1: eassumption. subst current_fun. wwcancel.
+      - etransitivity. 1: eassumption. wwcancel.
       - wcancel_assumption.
       - assumption.
       - eassumption.
@@ -879,18 +1045,22 @@ Section Proofs.
     subst.
 
     assert (exists ret_count, (ret_count <= 8)%nat /\
-                              retnames = List.firstn ret_count (reg_class.all reg_class.arg) /\
-                              binds = List.firstn ret_count (reg_class.all reg_class.arg)) as RC. {
+                   retnames = List.firstn ret_count (reg_class.all reg_class.arg) /\
+                   binds_count = ret_count) as RC. {
       apply_in_hyps @map.putmany_of_list_zip_sameLength.
       apply_in_hyps @map.getmany_of_list_length.
-      exists (List.length retnames). ssplit. 2,3: congruence.
+      exists (List.length retnames). ssplit. 2: congruence. 2: {
+        rewrite List.firstn_length in *.
+        change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat in *.
+        blia.
+      }
       replace retnames with
           (List.firstn (Datatypes.length retnames) (reg_class.all reg_class.arg)) by assumption.
       rewrite List.firstn_length.
       change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
       clear. blia.
     }
-    destruct RC as (ret_count & RC & ? & ?). subst retnames binds.
+    destruct RC as (ret_count & RC & ? & ?). subst retnames binds_count.
 
     (* increase sp *)
     eapply runsToStep. {
@@ -911,7 +1081,7 @@ Section Proofs.
         repeat match goal with
                | |- forall (_: map.ok _), _ => intro
                end.
-        intros V F1 F2 G PM.
+        intros V G PM.
         eapply map.putmany_of_list_zip_get_oldval. 1: exact PM. 2: exact G.
         intro C.
         apply_in_hyps modVars_as_list_valid_FlatImp_var.
@@ -1019,27 +1189,9 @@ Section Proofs.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
           blia.
         }
-        rewrite map.get_put_diff in D.
-        2: {
+        rewrite map.get_put_dec. destruct_one_match. 1: {
+          subst x. exfalso.
           move HI' at bottom.
-          intro C. subst.
-          apply_in_hyps modVars_as_list_valid_FlatImp_var.
-          lazymatch goal with
-          | H: Forall ?P ?L |- _ =>
-            eapply (proj1 (Forall_forall P L)) in H; [rename H into BB|]
-          end.
-          2: eapply In_list_diff_weaken; eassumption.
-          clear -BB.
-          unfold valid_FlatImp_var, RegisterNames.ra in *.
-          blia.
-        }
-        rewrite D. rewrite <- E0.
-
-        (* 2) prove that RHS is in newvalues: *)
-        rewrite map.get_put_diff.
-        2: {
-          move HI' at bottom.
-          intro C. subst.
           apply_in_hyps modVars_as_list_valid_FlatImp_var.
           lazymatch goal with
           | H: Forall ?P ?L |- _ =>
@@ -1050,20 +1202,10 @@ Section Proofs.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
           blia.
         }
-        rewrite map.get_put_diff.
-        2: {
-          move HI' at bottom.
-          intro C. subst.
-          apply_in_hyps modVars_as_list_valid_FlatImp_var.
-          lazymatch goal with
-          | H: Forall ?P ?L |- _ =>
-            eapply (proj1 (Forall_forall P L)) in H; [rename H into BB|]
-          end.
-          2: eapply In_list_diff_weaken; eassumption.
-          clear -BB.
-          unfold valid_FlatImp_var, RegisterNames.ra in *.
-          blia.
-        }
+        rewrite map.get_put_diff by congruence.
+        rewrite D. rewrite <- E0.
+
+        (* 2) prove that RHS is in newvalues: *)
         pose proof (map.putmany_of_list_zip_get_newval (ok := locals_ok)) as D'.
         lazymatch goal with
         | H: map.putmany_of_list_zip _ _ middle_regs = Some middle_regs0 |- _ =>
@@ -1084,6 +1226,7 @@ Section Proofs.
           simpl_addrs.
           solve_word_eq word_ok. }
         { rewrite !map.get_put_diff by assumption.
+          clear A.
           (* initialL_regs to middle_regs *)
           lazymatch goal with
           | H: map.only_differ _ _ middle_regs |- _ => rename H into A; move A at bottom
@@ -1159,7 +1302,7 @@ Section Proofs.
                              | Forall valid_FlatImp_var _ => revert H
                              | regs_initialized _ => revert H
                              | map.putmany_of_list_zip _ retvs lH = Some lH' => revert H
-                             | map.extends initialL_regs lH => revert H
+                             | map.extends _ lH => revert H
                              | map.only_differ _ _ _ => revert H
                              | map.getmany_of_list _ _ = Some _ => revert H
                              | map.extends lL lFH' => revert H
@@ -1231,8 +1374,7 @@ Section Proofs.
     eapply only_differ_remove with (k := RegisterNames.sp) in OD1.
     rewrite remove_put_same in OD1.
     eapply only_differ_remove with (k := RegisterNames.ra) in OD1.
-    rewrite (remove_comm (map.put (map.putmany m0 ksvs)
-                                  RegisterNames.ra (program_base + !pos + !4))) in OD1.
+    rewrite (remove_comm (map.put (map.putmany m0 ksvs) RegisterNames.ra ret_addr)) in OD1.
     rewrite remove_put_same in OD1.
     match type of OD1 with
     | map.only_differ _ ?s _ => replace s with
@@ -1253,9 +1395,6 @@ Section Proofs.
     eapply only_differ_remove with (k := RegisterNames.sp) in OD0.
     rewrite remove_put_same in OD0.
     eapply only_differ_remove with (k := RegisterNames.ra) in OD0.
-    rewrite (remove_comm (map.put initialL_regs RegisterNames.ra (program_base + !pos + !4)))
-      in OD0.
-    rewrite remove_put_same in OD0.
     match type of OD0 with
     | map.only_differ _ ?s _ => replace s with
           (of_list (modVars_as_list Z.eqb body)) in OD0
@@ -1311,16 +1450,25 @@ Section Proofs.
       eapply invert_In_list_diff in GM1. destruct GM1 as [_ C]. contradiction.
 
     + unfold map.forall_keys in *.
-      match goal with
+      lazymatch goal with
       | H: map.putmany_of_list_zip _ _ _ = Some finalRegsH',
-        L: forall _ _, map.get l _ = Some _ -> valid_FlatImp_var _,
-        V: Forall valid_FlatImp_var (List.firstn ret_count (reg_class.all reg_class.arg)) |- _
-        => rename H into P, V into N, L into G; clear -P N G locals_ok
+        L: forall _ _, map.get l _ = Some _ -> valid_FlatImp_var _ |- _
+        => rename H into P, L into G; clear -P G locals_ok
       end.
       intros.
       pose proof (map.putmany_of_list_zip_find_index _ _ _ _ _ _ P H) as Q.
       destruct Q as [ [ n [A B] ] | C ].
-      * eapply Forall_forall. 1: exact N. eapply nth_error_In. exact A.
+      * eapply Forall_forall. 2: eapply nth_error_In. 2: exact A.
+        unfold reg_class.all.
+        eapply List.Forall_firstn.
+        eapply List.Forall_filter.
+        intros *. intro E. destr (reg_class.get a); try discriminate E.
+        unfold reg_class.get in E0. fwd.
+        unfold FlatToRiscvDef.valid_FlatImp_var.
+        destruct_one_match_hyp.
+        -- fwd. blia.
+        -- destruct_one_match_hyp. 1: discriminate.
+           destruct_one_match_hyp; discriminate.
       * eapply G. exact C.
     + subst FL.
       rewrite map.get_put_same. f_equal.
@@ -1334,8 +1482,7 @@ Section Proofs.
     + reflexivity.
     + assumption.
     + epose (?[new_ra]: word) as new_ra. cbv delta [id] in new_ra.
-      exists (stack_trash ++ frame_trash ++ newvalues ++ [new_ra]),
-             unused_part_of_caller_frame.
+      exists (stack_trash ++ frame_trash0 ++ newvalues ++ [new_ra]), frame_trash.
       assert (List.length newvalues =
               List.length (list_diff Z.eqb (modVars_as_list Z.eqb body)
                                      (List.firstn ret_count (reg_class.all reg_class.arg)))). {
@@ -1713,9 +1860,6 @@ Section Proofs.
             all: after_IH.
             all: try safe_sidecond.
             all: try safe_sidecond.
-            1: constructor; eassumption.
-            all: try safe_sidecond.
-            all: try congruence.
           }
           (* at end of loop, just prove that computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd.
