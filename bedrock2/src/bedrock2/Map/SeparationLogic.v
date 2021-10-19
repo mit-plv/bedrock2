@@ -12,13 +12,9 @@ Import Map.Interface.map Map.Properties.map.
   Study performance implications
 *)
 Create HintDb ecancel_impl discriminated.
-Lemma impl1_refl{T: Type}: forall (P: T -> Prop), Lift1Prop.impl1 P P.
+Lemma impl1_refl{T: Type}: forall {P: T -> Prop}, Lift1Prop.impl1 P P.
 Proof. intros. reflexivity. Qed.
-(*
-  Can't use Hint Immediate since it needs to be priority 0.
-  Can't use pattern here, maybe because of evars?
-*)
-Hint Extern 0 => simple eapply impl1_refl : ecancel_impl.
+Hint Resolve impl1_refl : ecancel_impl.
 
 Section SepProperties.
   Context {key value} {map : map key value} {ok : ok map}.
@@ -511,7 +507,7 @@ Ltac ecancel :=
   lazymatch goal with
   | [|- impl1 _ _] =>
      repeat ecancel_step_by_implication;
-     (solve [ cbn [seps]; exact (fun m x => x) ])
+     (solve [ cbn [seps]; exact impl1_refl ])
   | [|- iff1 _ _] =>
     repeat ecancel_step;
     solve [ ecancel_done ]
