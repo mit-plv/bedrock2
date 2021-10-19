@@ -42,8 +42,6 @@ Local Arguments Z.modulo : simpl never.
 Local Arguments Z.pow: simpl never.
 Local Arguments Z.sub: simpl never.
 
-Set Ltac Profiling.
-
 Section Proofs.
   Context {iset: Decode.InstructionSet}.
   Context {fun_pos_env: map.map String.string Z}.
@@ -332,6 +330,7 @@ Section Proofs.
   Hint Resolve
        get_putmany_none
        Decidable.Z.eqb_spec
+       coqutil.Decidable.String.eqb_spec
        get_None_in_forall_keys
        sp_not_valid_FlatImp_var
        ra_not_valid_FlatImp_var
@@ -355,7 +354,14 @@ Section Proofs.
        subset_refl
        in_singleton_set
        only_differ_put_r
+       put_extends_l
+       get_None_in_forall_keys
+       ra_not_valid_FlatImp_var
+       extends_remove
+       map.get_put_same
     : map_hints.
+
+  Hint Extern 3 (not (@eq Z _ _)) => (discriminate 1) : map_hints.
 
   Hint Extern 3 (map.only_differ _ _ _)
   => eapply only_differ_trans_r; [eassumption|eauto with map_hints ..]
@@ -404,375 +410,141 @@ Section Proofs.
         simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try intuition congruence.
   Qed.
 
-  Lemma compile_stmt_correct:
-    (forall resvars extcall argvars,
-        compiles_FlatToRiscv_correctly compile_ext_call
-          compile_ext_call (SInteract resvars extcall argvars)) ->
-    (forall s,
-        compiles_FlatToRiscv_correctly compile_ext_call
-          (compile_stmt iset compile_ext_call) s).
-  Proof. (* by induction on the FlatImp execution, symbolically executing through concrete
-     RISC-V instructions, and using the IH for lists of abstract instructions (eg a then or else branch),
-     using cancellation, bitvector reasoning, lia, and firstorder for the sideconditions. *)
-    intros compile_ext_call_correct.
-    unfold compiles_FlatToRiscv_correctly.
-    induction 1; intros; unfold goodMachine in *; destruct g.
-      all: repeat match goal with
-                  | m: _ |- _ => destruct_RiscvMachine m
-                  end.
-      all: match goal with
-           | H: fits_stack _ _ _ ?s |- _ =>
-             let h := head_of_app s in is_constructor h;
-             inversion H; subst
-           end.
-      all: fwd.
-    (*about this many lines should have been enough to prove this...*)
+  Lemma compile_function_body_correct: forall (e_impl_full : env) m l mc (argvs : list word)
+    (st0 : locals) (post outcome : Semantics.trace -> mem -> locals -> MetricLog -> Prop)
+    (argnames retnames : list Z) (body : stmt Z) (program_base : word)
+    (pos : Z) (ret_addr : word) (mach : RiscvMachineL) (e_impl : env)
+    (e_pos : fun_pos_env) (binds_count : nat) (insts : list Instruction)
+    (xframe : mem -> Prop) (t : list LogItem) (g : GhostConsts)
+    (IH: forall (g0 : GhostConsts) (insts0 : list Instruction) (xframe0 : mem -> Prop)
+                (initialL : RiscvMachineL) (pos0 : Z),
+        fits_stack (rem_framewords g0) (rem_stackwords g0) e_impl body ->
+        compile_stmt iset compile_ext_call e_pos pos0 (bytes_per_word * rem_framewords g0) body =
+        insts0 ->
+        pos0 mod 4 = 0 ->
+        getPc initialL = program_base + !pos0 ->
+        iff1 (allx g0)
+             ((xframe0 * program iset (program_base + !pos0) insts0)%sep *
+              FlatToRiscvCommon.functions compile_ext_call program_base e_pos e_impl) ->
+        goodMachine t m st0 g0 initialL ->
+        runsTo initialL (fun finalL =>
+          exists finalTrace finalMH finalRegsH finalMetricsH,
+            outcome finalTrace finalMH finalRegsH finalMetricsH /\
+            getPc finalL = getPc initialL + !(4 * #(Datatypes.length insts0)) /\
+            map.only_differ (getRegs initialL)
+                   (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
+                   (getRegs finalL) /\
+            goodMachine finalTrace finalMH finalRegsH g0 finalL))
+    (HOutcome: forall (t' : Semantics.trace) (m' : mem) (mc' : MetricLog) (st1 : locals),
+        outcome t' m' st1 mc' ->
+        exists (retvs : list word) (l' : locals),
+          map.getmany_of_list st1 retnames = Some retvs /\
+          map.putmany_of_list_zip (List.firstn binds_count (reg_class.all reg_class.arg)) retvs l =
+          Some l' /\
+          post t' m' l' mc'),
+      (binds_count <= 8)%nat ->
+      map.of_list_zip argnames argvs = Some st0 ->
+      exec e_impl_full body t m st0 mc outcome ->
+      map.getmany_of_list l (List.firstn (List.length argnames) (reg_class.all reg_class.arg)) =
+      Some argvs ->
+      map.extends e_impl_full e_impl ->
+      good_e_impl e_impl e_pos ->
+      fits_stack (stackalloc_words iset body)
+                 (rem_stackwords g - framelength (argnames, retnames, body)) e_impl body ->
+      FlatToRiscvDef.compile_function iset compile_ext_call e_pos pos (argnames, retnames, body) =
+      insts ->
+      valid_FlatImp_fun (argnames, retnames, body) ->
+      pos mod 4 = 0 ->
+      word.unsigned program_base mod 4 = 0 ->
+      map.get (getRegs mach) RegisterNames.ra = Some ret_addr ->
+      word.unsigned ret_addr mod 4 = 0 ->
+      getPc mach = program_base + !pos ->
+      iff1 (allx g)
+           ((xframe * program iset (program_base + !pos) insts)%sep *
+            FlatToRiscvCommon.functions compile_ext_call program_base e_pos e_impl) ->
+      goodMachine t m l g mach ->
+      runsToNonDet.runsTo (mcomp_sat (Run.run1 iset)) mach (fun finalL =>
+        exists finalTrace finalMH finalRegsH finalMetricsH,
+          post finalTrace finalMH finalRegsH finalMetricsH /\
+          getPc finalL = ret_addr /\
+          map.only_differ (getRegs mach)
+           (union
+              (of_list
+                 (list_union Z.eqb (List.firstn binds_count (reg_class.all reg_class.arg)) []))
+              (singleton_set RegisterNames.ra)) (getRegs finalL) /\
+          goodMachine finalTrace finalMH finalRegsH g finalL).
+  Proof.
+    intros * IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
 
-    - idtac "Case compile_stmt_correct/SInteract".
-      eapply runsTo_weaken.
-      + unfold compiles_FlatToRiscv_correctly in *.
-        eapply compile_ext_call_correct with
-            (postH := post) (g := {| allx := allx |}) (pos := pos)
-            (extcall := action) (argvars := argvars) (resvars := resvars) (initialMH := m);
-          simpl;
-          clear compile_ext_call_correct; cycle -1.
-        { unfold goodMachine, valid_FlatImp_var in *. simpl. ssplit; eauto. }
-        all: eauto using exec.interact, fits_stack_interact.
-      + simpl. intros finalL A. destruct_RiscvMachine finalL. unfold goodMachine in *. simpl in *.
-        destruct_products. subst.
-        do 4 eexists; ssplit; eauto.
+    assert (valid_register RegisterNames.ra) by (cbv; auto).
+    assert (valid_register RegisterNames.sp) by (cbv; auto).
 
-    - idtac "Case compile_stmt_correct/SCall".
-      (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
+    unfold goodMachine in GM. unfold valid_FlatImp_fun in V. fwd.
+    destruct g. simpl_g_get.
 
-      unfold good_e_impl, valid_FlatImp_fun in *.
-      simpl in *.
-      fwd.
-      lazymatch goal with
-      | H1: map.get e_impl_full fname = ?RHS1,
-        H2: map.get e_impl fname = ?RHS2,
-        H3: map.extends e_impl_full e_impl |- _ =>
-        let F := fresh in assert (RHS1 = RHS2) as F
-            by (clear -H1 H2 H3;
-                unfold map.extends in H3;
-                specialize H3 with (1 := H2); clear H2;
-                etransitivity; [symmetry|]; eassumption);
-        inversion F; subst; clear F
-      end.
-      match goal with
-      | H: map.get e_impl fname = Some _, G: _ |- _ =>
-          pose proof G as e_impl_reduced_props;
-          specialize G with (1 := H);
-          simpl in G
-      end.
-      fwd.
-      match goal with
-      | H: map.get e_pos _ = Some _ |- _ => rename H into GetPos
-      end.
-
-      rename stack_trash into old_stackvals.
-      rename frame_trash into unused_part_of_caller_frame.
-
-      assert (valid_register RegisterNames.ra) by (cbv; auto).
-      assert (valid_register RegisterNames.sp) by (cbv; auto).
-
-      (* jump to function *)
-      eapply runsToStep. {
-        eapply run_Jal; simpl; try solve [sidecondition]; cycle 2.
-        - solve_divisibleBy4.
-        - assumption.
-      }
-      simpl_MetricRiscvMachine_get_set.
-      clear_old_sep_hyps.
-      intro mid. set (mach := mid). intros. fwd. destruct_RiscvMachine mid. subst.
-
-      remember mach.(getLog) as t.
-      assert (GM: goodMachine t m l
-                              {| p_sp := p_sp;
-                                 rem_stackwords := #(List.length old_stackvals);
-                                 rem_framewords := #(List.length unused_part_of_caller_frame);
-                                 dframe := dframe;
-                                 allx := allx |}
-                              mach). {
-        unfold goodMachine; simpl.
-        subst mach. subst. simpl. ssplit.
-
-Hint Resolve
-     put_extends_l
-     get_None_in_forall_keys
-     ra_not_valid_FlatImp_var
-     extends_remove
-     coqutil.Decidable.String.eqb_spec
-     map.get_put_same
-  : map_hints.
-
-Hint Extern 3 (not (@eq Z _ _)) => (discriminate 1) : map_hints.
-
-      all: try eauto with map_hints.
-      }
-      match type of GM with
-      | goodMachine _ _ _ ?gh _ => remember gh as g
-      end.
-      match goal with
-      | |- ?G => replace G with
-            (runsToNonDet.runsTo (mcomp_sat (Run.run1 iset)) mach
-              (fun finalL : RiscvMachineL => exists
-                   finalTrace finalMH finalRegsH finalMetricsH,
-       post finalTrace finalMH finalRegsH finalMetricsH /\
-       getPc finalL = program_base + !pos + !(4 * #1) /\
-       map.only_differ initialL_regs
-         (union (of_list (list_union Z.eqb binds [])) (singleton_set RegisterNames.ra))
-         (getRegs finalL) /\
-       goodMachine finalTrace finalMH finalRegsH g finalL))
-      end.
-      2: { subst. reflexivity. }
-
-      pose proof functions_expose as P.
-      match goal with
-      | H: map.get e_impl _ = Some _ |- _ => specialize P with (2 := H)
-      end.
-      specialize P with (1 := GetPos).
-      specialize (P program_base).
-      match type of P with
-      | iff1 _ (functions _ _ _ * ?F)%sep => set (current_fun := F) in *
-      end.
-      apply iff1ToEq in P.
-      match goal with
-      | H: iff1 allx _ |- _ => rewrite P in H
-      end.
-      clear P.
-      set (insts := (compile_function e_pos pos0 (argnames, retnames, body))) in *.
-      rename xframe into xframe_orig.
-      set (xframe := (xframe_orig *
-          (ptsto_instr iset (program_base + !pos)
-                       (IInstruction (Jal RegisterNames.ra (pos0 - pos))) * emp True))%sep) in *.
-      match goal with
-      | H: iff1 allx _ |- _ => rename H into A
-      end.
-      move A before GM. replace allx with (FlatToRiscvCommon.allx g) in A by (subst; reflexivity).
-      rename e_impl into e_impl_orig.
-      set (e_impl := (map.remove e_impl_orig fname)) in *.
-      rewrite <- (sep_comm current_fun) in A. rewrite <- sep_assoc in A.
-      change current_fun with (program iset (program_base + !pos0) insts) in A.
-      eassert (_ = insts) as C. {
-        subst insts. reflexivity.
-      }
-      move C after A.
-      match goal with
-      | H: exec _ body _ _ _ _ _ |- _ => rename H into Exb
-      end.
-      move Exb before C.
-      assert (Ext: map.extends e_impl_full e_impl). {
-        subst e_impl. eauto with map_hints.
-      }
-      move Ext before Exb.
-      assert (GE: good_e_impl e_impl e_pos). {
-        unfold good_e_impl.
-        move e_impl_reduced_props at bottom.
-        intros *. intro G.
-        assert (map.get e_impl_orig f = Some fun_impl) as G'. {
-          subst e_impl.
-          eapply get_Some_remove; eassumption.
-        }
-        specialize e_impl_reduced_props with (1 := G'). fwd.
-        repeat split; eauto.
-      }
-      move GE before Ext.
-      match goal with
-      | H: fits_stack ?x ?y e_impl body |- _ =>
-        rename H into FS; move FS after GE;
-          replace y with
-              (g.(rem_stackwords) - framelength (argnames, retnames, body))%Z in FS
-      end.
-      2: {
-        unfold framelength. subst g. simpl. blia.
-      }
-      (* already in valid_FlatImp_fun
-      match goal with
-      | H: FlatImpConstraints.uses_standard_arg_regs body |- _ => rename H into SA; move SA after C
-      end.
-      *)
-      assert (V: valid_FlatImp_fun (argnames, retnames, body)). {
-        simpl. eauto.
-      }
-      move V before C.
-      match goal with
-      | H: pos0 mod 4 = 0 |- _ => rename H into Mo; move Mo after V
-      end.
-      match goal with
-      | H: word.unsigned program_base mod 4 = 0 |- _ => rename H into Mo'; move Mo' after Mo
-      end.
-      eassert (GPC: mach.(getPc) = program_base + !pos0). {
-        subst mach. simpl. solve_word_eq word_ok.
-      }
-      move GPC after A.
-      rename pos into pos_orig, pos0 into pos.
-      replace (!(4 * #1)) with (word.of_Z (word := word) 4). 2: { solve_word_eq word_ok. }
-      assert (OL: map.of_list_zip argnames argvs = Some st0) by assumption.
-      move OL after Exb.
-      set (stack_trash := old_stackvals).
-      assert (args = List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg)). {
-        replace (Datatypes.length argnames) with (Datatypes.length args). 1: assumption.
-        apply_in_hyps @map.putmany_of_list_zip_sameLength.
-        apply_in_hyps @map.getmany_of_list_length.
-        congruence.
-      }
-      subst args.
-      let T := type of IHexec in replace T with
-        (forall (g : GhostConsts) (e_impl : env) (e_pos : fun_pos_env)
-             (program_base : word) (insts : list Instruction) (xframe : mem -> Prop)
-             (initialL : RiscvMachineL) (pos : Z),
-           map.extends e_impl_full e_impl ->
-           good_e_impl e_impl e_pos ->
-           fits_stack (rem_framewords g) (rem_stackwords g) e_impl body ->
-           compile_stmt iset compile_ext_call e_pos pos (bytes_per_word * rem_framewords g) body =
-           insts ->
-           FlatImpConstraints.uses_standard_arg_regs body ->
-           valid_FlatImp_vars body ->
-           pos mod 4 = 0 ->
-           word.unsigned program_base mod 4 = 0 ->
-           getPc initialL = program_base + !pos ->
-           iff1 (FlatToRiscvCommon.allx g)
-             ((xframe * program iset (program_base + !pos) insts)%sep *
-              functions program_base e_pos e_impl) ->
-           goodMachine mid_log m st0 g initialL ->
-           runsTo initialL
-             (fun finalL : RiscvMachineL =>
-              exists
-                (finalTrace : Semantics.trace) (finalMH : mem) (finalRegsH : locals)
-              (finalMetricsH : MetricLog),
-                outcome finalTrace finalMH finalRegsH finalMetricsH /\
-                getPc finalL = getPc initialL + !(4 * #(Datatypes.length insts)) /\
-                map.only_differ (getRegs initialL)
-                  (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
-                  (getRegs finalL) /\
-                goodMachine finalTrace finalMH finalRegsH g finalL))
-        in IHexec.
-      2: {
-        reflexivity.
-      }
-
-      specialize IHexec with (1 := Ext).
-      specialize IHexec with (1 := GE).
-      specialize IHexec with (6 := Mo').
-      match goal with
-      | H: FlatImpConstraints.uses_standard_arg_regs body |- _ =>
-        specialize IHexec with (3 := H)
-      end.
-      match goal with
-      | H: valid_FlatImp_vars body |- _ => specialize IHexec with (3 := H)
-      end.
-      move stack_trash at top.
-      move IHexec before OL.
-      rename H3 into OC.
-      rename H0 into GetMany.
-      move GetMany after Exb.
-      move OC before OL.
-      remember (program_base + !pos_orig + !4) as ret_addr.
-      assert (map.get mach.(getRegs) RegisterNames.ra = Some ret_addr) as Gra. {
-        subst mach. cbn. eauto with map_hints.
-      }
-      move Gra after GPC.
-      assert (word.unsigned ret_addr mod 4 = 0) as RaM by (subst ret_addr; solve_divisibleBy4).
-      move RaM before Gra.
-      replace mid_log with t in *.
-      forget (Datatypes.length binds) as binds_count.
-      subst binds.
-      eapply runsTo_weaken with (P :=
-        (fun finalL : RiscvMachineL =>
-           exists
-             (finalTrace : Semantics.trace) (finalMH : mem) (finalRegsH : locals)
-             (finalMetricsH : MetricLog),
-             post finalTrace finalMH finalRegsH finalMetricsH /\
-             getPc finalL = ret_addr /\
-             map.only_differ (getRegs mach)
-                  (union (of_list
-                    (list_union Z.eqb (List.firstn binds_count (reg_class.all reg_class.arg)) []))
-                         (singleton_set RegisterNames.ra)) (getRegs finalL) /\
-             goodMachine finalTrace finalMH finalRegsH g finalL)).
-      2: {
-        subst mach. simpl_MetricRiscvMachine_get_set.
-        intros. fwd. eauto 8 with map_hints.
-      }
-      match goal with
-      | H: (binds_count <= 8)%nat |- _ => rename H into BC
-      end.
-      move BC after OC.
+    set (FL := framelength (argnames, retnames, body)) in *.
+    (* We have enough stack space for this call: *)
+    assert (FL <= Z.of_nat (List.length stack_trash)) as enough_stack_space. {
       repeat match goal with
-             | x := _ |- _ => clearbody x
-             end.
-      clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok fun_pos_env_ok env_ok
-              IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
-
-      assert (valid_register RegisterNames.ra) by (cbv; auto).
-      assert (valid_register RegisterNames.sp) by (cbv; auto).
-
-      unfold goodMachine in GM. unfold valid_FlatImp_fun in V. fwd.
-      destruct g. simpl_g_get.
-
-      set (FL := framelength (argnames, retnames, body)) in *.
-      (* We have enough stack space for this call: *)
-      assert (FL <= Z.of_nat (List.length stack_trash)) as enough_stack_space. {
-        repeat match goal with
-        | H: fits_stack _ _ _ _ |- _ => apply fits_stack_nonneg in H
-        end.
-        subst FL. simpl in *.
-        blia.
-      }
-
-      (* note: left-to-right rewriting with all [length _ = length _] equations has to
-         be terminating *)
-      match goal with
-      | H: _ |- _ => let N := fresh in pose proof H as N;
-                                         apply map.putmany_of_list_zip_sameLength in N;
-                                         symmetry in N
+      | H: fits_stack _ _ _ _ |- _ => apply fits_stack_nonneg in H
       end.
-      assert (Memory.bytes_per_word (bitwidth iset) = bytes_per_word) as BPW. {
-        rewrite bitwidth_matches. reflexivity.
-      }
+      subst FL. simpl in *.
+      blia.
+    }
 
-      assert (exists arg_count, (arg_count <= 8)%nat /\
-                 argnames = List.firstn arg_count (reg_class.all reg_class.arg)) as AC. {
-        exists (List.length argnames). ssplit. 2: congruence.
-        replace argnames with
-            (List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg)) by assumption.
-        rewrite List.firstn_length.
-        change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
-        clear. blia.
-      }
-      destruct AC as (arg_count & AC & ?). subst argnames.
+    (* note: left-to-right rewriting with all [length _ = length _] equations has to
+       be terminating *)
+    match goal with
+    | H: _ |- _ => let N := fresh in pose proof H as N;
+                                       apply map.putmany_of_list_zip_sameLength in N;
+                                       symmetry in N
+    end.
+    assert (Memory.bytes_per_word (bitwidth iset) = bytes_per_word) as BPW. {
+      rewrite bitwidth_matches. reflexivity.
+    }
 
-      assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
-        unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
-      }
-      pose proof (stackalloc_words_nonneg body) as ScratchNonneg.
-      assert (exists remaining_stack old_scratch old_modvarvals old_ra,
-          stack_trash = remaining_stack ++ old_scratch ++ old_modvarvals ++ [old_ra] /\
-          List.length old_scratch = Z.to_nat (stackalloc_words iset body) /\
-          List.length old_modvarvals = List.length
-                                         (list_diff Z.eqb (modVars_as_list Z.eqb body) retnames))
-        as TheSplit. {
-        clear IHexec.
-        subst FL. unfold framelength in *.
-        rename stack_trash into ToSplit.
-        split_from_right ToSplit ToSplit old_ras 1%nat.
-        split_from_right ToSplit ToSplit old_modvarvals
-                  (Datatypes.length (list_diff Z.eqb (modVars_as_list Z.eqb body) retnames)).
-        split_from_right ToSplit ToSplit old_scratch (Z.to_nat (stackalloc_words iset body)).
-        destruct old_ras as [|old_ra rest]; try discriminate.
-        destruct rest; try discriminate.
-        repeat match goal with
-               | |- exists _, _ => eexists
-               end.
-        split.
-        - do 2 rewrite <- List.app_assoc; reflexivity.
-        - blia.
-      }
-      repeat match type of TheSplit with
-             | exists x, _ => destruct TheSplit as [x TheSplit]
-             | _ /\ _ => destruct TheSplit as [? TheSplit]
+    assert (exists arg_count, (arg_count <= 8)%nat /\
+               argnames = List.firstn arg_count (reg_class.all reg_class.arg)) as AC. {
+      exists (List.length argnames). ssplit. 2: congruence.
+      replace argnames with
+          (List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg)) by assumption.
+      rewrite List.firstn_length.
+      change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
+      clear. blia.
+    }
+    destruct AC as (arg_count & AC & ?). subst argnames.
+
+    assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
+      unfold bytes_per_word. destruct width_cases as [E | E]; rewrite E; cbv; auto.
+    }
+    pose proof (stackalloc_words_nonneg body) as ScratchNonneg.
+    assert (exists remaining_stack old_scratch old_modvarvals old_ra,
+        stack_trash = remaining_stack ++ old_scratch ++ old_modvarvals ++ [old_ra] /\
+        List.length old_scratch = Z.to_nat (stackalloc_words iset body) /\
+        List.length old_modvarvals = List.length
+                                       (list_diff Z.eqb (modVars_as_list Z.eqb body) retnames))
+      as TheSplit. {
+      clear IHexec.
+      subst FL. unfold framelength in *.
+      rename stack_trash into ToSplit.
+      split_from_right ToSplit ToSplit old_ras 1%nat.
+      split_from_right ToSplit ToSplit old_modvarvals
+                (Datatypes.length (list_diff Z.eqb (modVars_as_list Z.eqb body) retnames)).
+      split_from_right ToSplit ToSplit old_scratch (Z.to_nat (stackalloc_words iset body)).
+      destruct old_ras as [|old_ra rest]; try discriminate.
+      destruct rest; try discriminate.
+      repeat match goal with
+             | |- exists _, _ => eexists
              end.
-      subst stack_trash.
+      split.
+      - do 2 rewrite <- List.app_assoc; reflexivity.
+      - blia.
+    }
+    repeat match type of TheSplit with
+           | exists x, _ => destruct TheSplit as [x TheSplit]
+           | _ /\ _ => destruct TheSplit as [? TheSplit]
+           end.
+    subst stack_trash.
 
     (* decrease sp *)
     eapply runsToStep. {
@@ -869,12 +641,12 @@ Hint Extern 3 (not (@eq Z _ _)) => (discriminate 1) : map_hints.
                | context[compile_stmt _ _ _ ?p _ body] => p
                end in
       eapply IHexec with
-           (pos := p)
-           (g := {| p_sp := p_sp - !(bytes_per_word * framelength (argnames, retnames, body));
-                    rem_stackwords := #(List.length remaining_stack);
-                    rem_framewords := stackalloc_words iset body;
-                    dframe := _;
-                    allx := allx |});
+           (pos0 := p)
+           (g0 := {| p_sp := p_sp - !(bytes_per_word * framelength (argnames, retnames, body));
+                     rem_stackwords := #(List.length remaining_stack);
+                     rem_framewords := stackalloc_words iset body;
+                     dframe := _;
+                     allx := allx |});
       unfold goodMachine;
       simpl_MetricRiscvMachine_get_set;
       simpl_g_get;
@@ -1494,6 +1266,296 @@ Hint Extern 3 (not (@eq Z _ _)) => (discriminate 1) : map_hints.
       wcancel_assumption.
     + reflexivity.
     + assumption.
+  Qed.
+
+  Lemma compile_stmt_correct:
+    (forall resvars extcall argvars,
+        compiles_FlatToRiscv_correctly compile_ext_call
+          compile_ext_call (SInteract resvars extcall argvars)) ->
+    (forall s,
+        compiles_FlatToRiscv_correctly compile_ext_call
+          (compile_stmt iset compile_ext_call) s).
+  Proof. (* by induction on the FlatImp execution, symbolically executing through concrete
+     RISC-V instructions, and using the IH for lists of abstract instructions (eg a then or else branch),
+     using cancellation, bitvector reasoning, lia, and firstorder for the sideconditions. *)
+    intros compile_ext_call_correct.
+    unfold compiles_FlatToRiscv_correctly.
+    induction 1; intros; unfold goodMachine in *; destruct g.
+      all: repeat match goal with
+                  | m: _ |- _ => destruct_RiscvMachine m
+                  end.
+      all: match goal with
+           | H: fits_stack _ _ _ ?s |- _ =>
+             let h := head_of_app s in is_constructor h;
+             inversion H; subst
+           end.
+      all: fwd.
+    (*about this many lines should have been enough to prove this...*)
+
+    - idtac "Case compile_stmt_correct/SInteract".
+      eapply runsTo_weaken.
+      + unfold compiles_FlatToRiscv_correctly in *.
+        eapply compile_ext_call_correct with
+            (postH := post) (g := {| allx := allx |}) (pos := pos)
+            (extcall := action) (argvars := argvars) (resvars := resvars) (initialMH := m);
+          simpl;
+          clear compile_ext_call_correct; cycle -1.
+        { unfold goodMachine, valid_FlatImp_var in *. simpl. ssplit; eauto. }
+        all: eauto using exec.interact, fits_stack_interact.
+      + simpl. intros finalL A. destruct_RiscvMachine finalL. unfold goodMachine in *. simpl in *.
+        destruct_products. subst.
+        do 4 eexists; ssplit; eauto.
+
+    - idtac "Case compile_stmt_correct/SCall".
+      (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
+      unfold good_e_impl, valid_FlatImp_fun in *.
+      simpl in *.
+      fwd.
+      lazymatch goal with
+      | H1: map.get e_impl_full fname = ?RHS1,
+        H2: map.get e_impl fname = ?RHS2,
+        H3: map.extends e_impl_full e_impl |- _ =>
+        let F := fresh in assert (RHS1 = RHS2) as F
+            by (clear -H1 H2 H3;
+                unfold map.extends in H3;
+                specialize H3 with (1 := H2); clear H2;
+                etransitivity; [symmetry|]; eassumption);
+        inversion F; subst; clear F
+      end.
+      match goal with
+      | H: map.get e_impl fname = Some _, G: _ |- _ =>
+          pose proof G as e_impl_reduced_props;
+          specialize G with (1 := H);
+          simpl in G
+      end.
+      fwd.
+      match goal with
+      | H: map.get e_pos _ = Some _ |- _ => rename H into GetPos
+      end.
+
+      rename stack_trash into old_stackvals.
+      rename frame_trash into unused_part_of_caller_frame.
+
+      assert (valid_register RegisterNames.ra) by (cbv; auto).
+      assert (valid_register RegisterNames.sp) by (cbv; auto).
+
+      (* jump to function *)
+      eapply runsToStep. {
+        eapply run_Jal; simpl; try solve [sidecondition]; cycle 2.
+        - solve_divisibleBy4.
+        - assumption.
+      }
+      simpl_MetricRiscvMachine_get_set.
+      clear_old_sep_hyps.
+      intro mid. set (mach := mid). intros. fwd. destruct_RiscvMachine mid. subst.
+
+      remember mach.(getLog) as t.
+      assert (GM: goodMachine t m l
+                              {| p_sp := p_sp;
+                                 rem_stackwords := #(List.length old_stackvals);
+                                 rem_framewords := #(List.length unused_part_of_caller_frame);
+                                 dframe := dframe;
+                                 allx := allx |}
+                              mach). {
+        unfold goodMachine; simpl.
+        subst mach. subst. simpl. ssplit.
+        all: try eauto with map_hints.
+      }
+      match type of GM with
+      | goodMachine _ _ _ ?gh _ => remember gh as g
+      end.
+      match goal with
+      | |- ?G => replace G with
+            (runsToNonDet.runsTo (mcomp_sat (Run.run1 iset)) mach
+              (fun finalL : RiscvMachineL => exists
+                   finalTrace finalMH finalRegsH finalMetricsH,
+       post finalTrace finalMH finalRegsH finalMetricsH /\
+       getPc finalL = program_base + !pos + !(4 * #1) /\
+       map.only_differ initialL_regs
+         (union (of_list (list_union Z.eqb binds [])) (singleton_set RegisterNames.ra))
+         (getRegs finalL) /\
+       goodMachine finalTrace finalMH finalRegsH g finalL))
+      end.
+      2: { subst. reflexivity. }
+
+      pose proof functions_expose as P.
+      match goal with
+      | H: map.get e_impl _ = Some _ |- _ => specialize P with (2 := H)
+      end.
+      specialize P with (1 := GetPos).
+      specialize (P program_base).
+      match type of P with
+      | iff1 _ (functions _ _ _ * ?F)%sep => set (current_fun := F) in *
+      end.
+      apply iff1ToEq in P.
+      match goal with
+      | H: iff1 allx _ |- _ => rewrite P in H
+      end.
+      clear P.
+      set (insts := (compile_function e_pos pos0 (argnames, retnames, body))) in *.
+      rename xframe into xframe_orig.
+      set (xframe := (xframe_orig *
+          (ptsto_instr iset (program_base + !pos)
+                       (IInstruction (Jal RegisterNames.ra (pos0 - pos))) * emp True))%sep) in *.
+      match goal with
+      | H: iff1 allx _ |- _ => rename H into A
+      end.
+      move A before GM. replace allx with (FlatToRiscvCommon.allx g) in A by (subst; reflexivity).
+      rename e_impl into e_impl_orig.
+      set (e_impl := (map.remove e_impl_orig fname)) in *.
+      rewrite <- (sep_comm current_fun) in A. rewrite <- sep_assoc in A.
+      change current_fun with (program iset (program_base + !pos0) insts) in A.
+      eassert (_ = insts) as C. {
+        subst insts. reflexivity.
+      }
+      move C after A.
+      match goal with
+      | H: exec _ body _ _ _ _ _ |- _ => rename H into Exb
+      end.
+      move Exb before C.
+      assert (Ext: map.extends e_impl_full e_impl). {
+        subst e_impl. eauto with map_hints.
+      }
+      move Ext before Exb.
+      assert (GE: good_e_impl e_impl e_pos). {
+        unfold good_e_impl.
+        move e_impl_reduced_props at bottom.
+        intros *. intro G.
+        assert (map.get e_impl_orig f = Some fun_impl) as G'. {
+          subst e_impl.
+          eapply get_Some_remove; eassumption.
+        }
+        specialize e_impl_reduced_props with (1 := G'). fwd.
+        repeat split; eauto.
+      }
+      move GE before Ext.
+      match goal with
+      | H: fits_stack ?x ?y e_impl body |- _ =>
+        rename H into FS; move FS after GE;
+          replace y with
+              (g.(rem_stackwords) - framelength (argnames, retnames, body))%Z in FS
+      end.
+      2: {
+        unfold framelength. subst g. simpl. blia.
+      }
+      (* already in valid_FlatImp_fun
+      match goal with
+      | H: FlatImpConstraints.uses_standard_arg_regs body |- _ => rename H into SA; move SA after C
+      end.
+      *)
+      assert (V: valid_FlatImp_fun (argnames, retnames, body)). {
+        simpl. eauto.
+      }
+      move V before C.
+      match goal with
+      | H: pos0 mod 4 = 0 |- _ => rename H into Mo; move Mo after V
+      end.
+      match goal with
+      | H: word.unsigned program_base mod 4 = 0 |- _ => rename H into Mo'; move Mo' after Mo
+      end.
+      eassert (GPC: mach.(getPc) = program_base + !pos0). {
+        subst mach. simpl. solve_word_eq word_ok.
+      }
+      move GPC after A.
+      rename pos into pos_orig, pos0 into pos.
+      replace (!(4 * #1)) with (word.of_Z (word := word) 4). 2: { solve_word_eq word_ok. }
+      assert (OL: map.of_list_zip argnames argvs = Some st0) by assumption.
+      move OL after Exb.
+      set (stack_trash := old_stackvals).
+      assert (args = List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg)). {
+        replace (Datatypes.length argnames) with (Datatypes.length args). 1: assumption.
+        apply_in_hyps @map.putmany_of_list_zip_sameLength.
+        apply_in_hyps @map.getmany_of_list_length.
+        congruence.
+      }
+      subst args.
+      let T := type of IHexec in replace T with
+        (forall (g : GhostConsts) (e_impl : env) (e_pos : fun_pos_env)
+             (program_base : word) (insts : list Instruction) (xframe : mem -> Prop)
+             (initialL : RiscvMachineL) (pos : Z),
+           map.extends e_impl_full e_impl ->
+           good_e_impl e_impl e_pos ->
+           fits_stack (rem_framewords g) (rem_stackwords g) e_impl body ->
+           compile_stmt iset compile_ext_call e_pos pos (bytes_per_word * rem_framewords g) body =
+           insts ->
+           FlatImpConstraints.uses_standard_arg_regs body ->
+           valid_FlatImp_vars body ->
+           pos mod 4 = 0 ->
+           word.unsigned program_base mod 4 = 0 ->
+           getPc initialL = program_base + !pos ->
+           iff1 (FlatToRiscvCommon.allx g)
+             ((xframe * program iset (program_base + !pos) insts)%sep *
+              functions program_base e_pos e_impl) ->
+           goodMachine mid_log m st0 g initialL ->
+           runsTo initialL
+             (fun finalL : RiscvMachineL =>
+              exists
+                (finalTrace : Semantics.trace) (finalMH : mem) (finalRegsH : locals)
+              (finalMetricsH : MetricLog),
+                outcome finalTrace finalMH finalRegsH finalMetricsH /\
+                getPc finalL = getPc initialL + !(4 * #(Datatypes.length insts)) /\
+                map.only_differ (getRegs initialL)
+                  (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
+                  (getRegs finalL) /\
+                goodMachine finalTrace finalMH finalRegsH g finalL))
+        in IHexec.
+      2: {
+        reflexivity.
+      }
+
+      specialize IHexec with (1 := Ext).
+      specialize IHexec with (1 := GE).
+      specialize IHexec with (6 := Mo').
+      match goal with
+      | H: FlatImpConstraints.uses_standard_arg_regs body |- _ =>
+        specialize IHexec with (3 := H)
+      end.
+      match goal with
+      | H: valid_FlatImp_vars body |- _ => specialize IHexec with (3 := H)
+      end.
+      move stack_trash at top.
+      move IHexec before OL.
+      rename H3 into OC.
+      rename H0 into GetMany.
+      move GetMany after Exb.
+      move OC before OL.
+      remember (program_base + !pos_orig + !4) as ret_addr.
+      assert (map.get mach.(getRegs) RegisterNames.ra = Some ret_addr) as Gra. {
+        subst mach. cbn. eauto with map_hints.
+      }
+      move Gra after GPC.
+      assert (word.unsigned ret_addr mod 4 = 0) as RaM by (subst ret_addr; solve_divisibleBy4).
+      move RaM before Gra.
+      replace mid_log with t in *.
+      forget (Datatypes.length binds) as binds_count.
+      subst binds.
+      eapply runsTo_weaken with (P :=
+        (fun finalL : RiscvMachineL =>
+           exists
+             (finalTrace : Semantics.trace) (finalMH : mem) (finalRegsH : locals)
+             (finalMetricsH : MetricLog),
+             post finalTrace finalMH finalRegsH finalMetricsH /\
+             getPc finalL = ret_addr /\
+             map.only_differ (getRegs mach)
+                  (union (of_list
+                    (list_union Z.eqb (List.firstn binds_count (reg_class.all reg_class.arg)) []))
+                         (singleton_set RegisterNames.ra)) (getRegs finalL) /\
+             goodMachine finalTrace finalMH finalRegsH g finalL)).
+      2: {
+        subst mach. simpl_MetricRiscvMachine_get_set.
+        intros. fwd. eauto 8 with map_hints.
+      }
+      match goal with
+      | H: (binds_count <= 8)%nat |- _ => rename H into BC
+      end.
+      move BC after OC.
+      repeat match goal with
+             | x := _ |- _ => clearbody x
+             end.
+      clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok fun_pos_env_ok env_ok
+              IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
+      revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
+      apply compile_function_body_correct.
 
     - idtac "Case compile_stmt_correct/SLoad".
       progress unfold Memory.load, Memory.load_Z in *. fwd.
@@ -1904,5 +1966,3 @@ Hint Extern 3 (not (@eq Z _ _)) => (discriminate 1) : map_hints.
   Qed. (* <-- takes a while *)
 
 End Proofs.
-
-Show Ltac Profile.
