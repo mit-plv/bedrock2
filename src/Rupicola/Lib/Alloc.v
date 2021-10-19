@@ -1,4 +1,3 @@
-Require Import Rupicola.Lib.SeparationLogicImpl.
 Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.Notations.
 
@@ -66,9 +65,10 @@ Section with_parameters.
     (R * (fun mem => pred v tr' mem locals'))%sep mem'.
 
   (* identity used as a marker to indicate when something should be allocated *)
-  Definition alloc {A} (a : A) := a. 
+  Definition stack {A} (a : A) := a. 
 
-  Lemma compile_alloc {tr m l functions A} (v : A):
+  (* TODO: modify to work with multiple hypotheses that apply to m? *)
+  Lemma compile_stack {tr m l functions A} (v : A):
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
       {AP : word.rep -> A -> map.rep -> Prop} `{Allocable A AP}
       (R: mem -> Prop) out_var,
@@ -89,7 +89,7 @@ Section with_parameters.
          Locals := l;
          Functions := functions }>
       cmd.stackalloc out_var size_in_bytes k_impl
-      <{ pred (nlet_eq [out_var] (alloc v) k) }>.
+      <{ pred (nlet_eq [out_var] (stack v) k) }>.
   Proof.
     repeat straightline.
     split; eauto using size_in_bytes_mod.
@@ -123,7 +123,7 @@ Section with_parameters.
 
 End with_parameters.
 
-Arguments alloc : simpl never.
+Arguments stack : simpl never.
 Arguments size_in_bytes : simpl never.
 
 (*TODO: speed up by combining pred_seps first and using 1 proper/ecancel_assumption?*)
@@ -141,6 +141,6 @@ Ltac clear_pred_seps :=
    TODO: understand why
  *)
 #[export] Hint Extern 10 =>
-  simple eapply compile_alloc; [eassumption | shelve] : compiler.
+  simple eapply compile_stack; [eassumption | shelve] : compiler.
 #[export] Hint Extern 1 (pred_sep _ _ _ _ _ _) =>
   clear_pred_seps; shelve : compiler_cleanup_post.

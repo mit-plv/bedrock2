@@ -134,7 +134,7 @@ Section with_parameters.
   Qed.
 
   Definition indirect_add_three' (a b c: cell) :=
-    let/n v := alloc (indirect_add a b) in
+    let/n v := stack (indirect_add a b) in
     let/n out := indirect_add v c in
     out.
 
