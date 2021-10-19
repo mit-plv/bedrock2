@@ -433,9 +433,7 @@ Ltac cancel_seps_at_indices_by_implication i j :=
 (*TODO: performance*)
 Ltac find_implication xs y :=
   multimatch xs with
-  | cons ?x _ =>
-    let H := fresh in
-    constr:(O)
+  | cons ?x _ => constr:(O)
   | cons _ ?xs => let i := find_implication xs y in constr:(S i)
   end.
 
