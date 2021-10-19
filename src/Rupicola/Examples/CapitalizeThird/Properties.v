@@ -268,8 +268,8 @@ Section Proofs.
     etransitivity.
     { rewrite sep_comm, <-sep_assoc.
       apply iff1_sep_cancel.
-      eapply array_index_nat_inbounds
-        with (n0:=n) (default:=byte.of_Z 0);
+      eapply @array_index_nat_inbounds
+        with (n:=n) (default:=byte.of_Z 0);
         eauto using wordok, mapok.
       lia. }
     rewrite word.ring_morph_mul, !word.of_Z_unsigned.
