@@ -2,7 +2,7 @@ Require Import Coq.Logic.FunctionalExtensionality.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.Simulation.
-Require Import coqutil.Tactics.Simp.
+Require Import coqutil.Tactics.fwd.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Platform.RiscvMachine.
@@ -47,11 +47,11 @@ End WithWordAndMem.
 Section LowerPipeline.
   Context {iset: Decode.InstructionSet}.
   Context {width: Z} {BW: Bitwidth width} {BWM: bitwidth_iset width iset}.
-  Context {fun_pos_env: map.map String.string Z}.
-  Context {fun_pos_env_ok: map.ok fun_pos_env}.
+  Context {fun_info: map.map String.string (nat * nat * Z)}. (* argcount, retcount, position *)
+  Context {fun_info_ok: map.ok fun_info}.
   Context {env: map.map String.string (list Z * list Z * FlatImp.stmt Z)}.
   Context {env_ok: map.ok env}.
-  Context (compile_ext_call: fun_pos_env -> Z -> Z -> stmt Z -> list Instruction).
+  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).
 
   Local Open Scope ilist_scope.
 
@@ -59,7 +59,7 @@ Section LowerPipeline.
      program, and a lot of infrastructure is already there, will do once/if we want to get
      a total compiler.
      Returns the fun_pos_env so that users know where to jump to call the compiled functions. *)
-  Definition riscvPhase (prog: env): option (list Instruction * fun_pos_env * Z) :=
+  Definition riscvPhase (prog: env): option (list Instruction * fun_info * Z) :=
     match stack_usage prog with
     | Some stack_words_needed =>
       let positions := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call prog in
@@ -78,12 +78,14 @@ Section LowerPipeline.
     - intros. rewrite map.get_empty in H. congruence.
     - intros. destruct r as [insts en]. simpl.
       rewrite map.get_put_dec in H1.
+      destruct v as ((argnames & retnames) & body).
       rewrite map.get_put_dec.
       destruct_one_match; eauto.
   Qed.
 
-  Lemma fun_pos_div4: forall functions f p,
-      map.get (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call functions) f = Some p ->
+  Lemma fun_pos_div4: forall functions f argcount retcount p,
+      map.get (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call functions) f =
+      Some (argcount, retcount, p) ->
       p mod 4 = 0.
   Proof.
     unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.compile_funs.
@@ -92,17 +94,12 @@ Section LowerPipeline.
     - rewrite map.get_empty in H. discriminate.
     - intros. destruct r as [insts en].
       unfold FlatToRiscvDef.add_compiled_function in *.
+      destruct v as ((argnames & retnames) & body).
       rewrite map.get_put_dec in H1.
       destruct_one_match_hyp.
-      + apply Option.eq_of_eq_Some in H1. subst p. rewrite Z.mul_comm. apply Z_mod_mult.
+      + fwd. rewrite Z.mul_comm. apply Z_mod_mult.
       + auto.
   Qed.
-
-(*
-  Local Definition FlatImp__word_eq : FlatImp.word -> FlatImp.word -> bool := word.eqb.
-  Local Instance  EqDecider_FlatImp__word_eq : EqDecider FlatImp__word_eq.
-  Proof. eapply word.eqb_spec. Unshelve. all: exact word_ok. Qed.
-*)
 
   Context {word: word.word width} {word_ok: word.ok word}.
   Context {locals: map.map Z word} {locals_ok: map.ok locals}.
@@ -135,21 +132,28 @@ Section LowerPipeline.
     eapply sep_ex1_l. eexists. eapply sep_assoc. eapply sep_emp_l. eauto.
   Qed.
 
-  Lemma get_compile_funs_pos: forall e,
-      let '(insts, posmap) := FlatToRiscvDef.compile_funs iset compile_ext_call map.empty e in
-      forall f impl, map.get e f = Some impl -> exists pos2, map.get posmap f = Some pos2 /\ pos2 mod 4 = 0.
-  Proof using fun_pos_env_ok env_ok.
-    intros e.
+  Lemma get_compile_funs_pos: forall e finfo0,
+      let '(insts, finfo) := FlatToRiscvDef.compile_funs iset compile_ext_call finfo0 e in
+      forall f impl,
+        map.get e f = Some impl ->
+        exists pos2,
+          let '(argnames, retnames, body) := impl in
+          map.get finfo f = Some (List.length argnames, List.length retnames, pos2) /\
+          pos2 mod 4 = 0.
+  Proof using fun_info_ok env_ok.
+    intros e finfo0.
     unfold FlatToRiscvDef.compile_funs.
     eapply map.fold_spec.
     - intros. rewrite map.get_empty in H. congruence.
-    - intros. destruct r as [insts en]. simpl.
+    - intros. destruct r as [insts en]. simpl. destruct v as ((argnames & retnames) & body).
       intros.
       rewrite map.get_put_dec in H1.
+      destruct impl as ((argnames' & retnames') & body').
       rewrite map.get_put_dec.
-      destruct_one_match; eauto.
-      eexists. split; [reflexivity|].
-      solve_divisibleBy4.
+      destruct_one_match; fwd.
+      + eexists. split; [reflexivity|].
+        solve_divisibleBy4.
+      + specialize H0 with (1 := H1). exact H0.
   Qed.
 
   Lemma program_mod_4_0: forall (a: word) instrs R m,
@@ -161,7 +165,7 @@ Section LowerPipeline.
     destruct instrs as [|instr instrs]. 1: congruence.
     simpl in *.
     unfold sep, ptsto_instr, sep, emp in *.
-    simp.
+    fwd.
     assumption.
   Qed.
 
@@ -178,29 +182,25 @@ Section LowerPipeline.
     - rewrite map.get_put_dec in H1.
       destr (k =? f)%string.
       + subst.
-        unfold FlatToRiscvDef.add_compiled_function in H2. simp.
-        unfold FlatToRiscvDef.compile_function.
-        destruct impl as [ [args res] body ].
+        unfold FlatToRiscvDef.add_compiled_function in H2. fwd.
         intro C. destruct l; discriminate.
       + specialize H0 with (1 := H1).
         destruct r as [ instrs'' positions'' ].
         specialize H0 with (1 := eq_refl).
         intro C. subst instrs.
-        unfold FlatToRiscvDef.add_compiled_function in H2. simp.
+        unfold FlatToRiscvDef.add_compiled_function in H2. fwd.
         unfold FlatToRiscvDef.compile_function in *.
-        destruct v as [ [args res] body ].
         destruct instrs''; discriminate.
   Qed.
 
-  Ltac ignore_positions :=
-    repeat match goal with
-           | |- _ => reflexivity
-           | |- _ => rewrite !List.app_length
-           | |- _ => solve [eauto]
-           | |- _ => progress simpl
-           | |- S _ = S _ => f_equal
-           | |- (_ + _)%nat = (_ + _)%nat => f_equal
-           end.
+  Ltac step :=
+    match goal with
+    | |- _ => reflexivity
+    | |- _ => rewrite !List.app_length
+    | |- _ => solve [eauto]
+    | |- S _ = S _ => f_equal
+    | |- (_ + _)%nat = (_ + _)%nat => f_equal
+    end.
 
   Hypothesis compile_ext_call_length_ignores_positions: forall stackoffset posmap1 posmap2 c pos1 pos2,
       List.length (compile_ext_call posmap1 pos1 stackoffset c) =
@@ -210,14 +210,14 @@ Section LowerPipeline.
       List.length (FlatToRiscvDef.compile_stmt iset compile_ext_call posmap1 pos1 stackoffset c) =
       List.length (FlatToRiscvDef.compile_stmt iset compile_ext_call posmap2 pos2 stackoffset c).
   Proof using compile_ext_call_length_ignores_positions.
-    induction c; intros; ignore_positions.
+    induction c; intros; repeat (step || simpl).
   Qed.
 
   Lemma compile_function_length_ignores_positions: forall posmap1 posmap2 pos1 pos2 impl,
       List.length (FlatToRiscvDef.compile_function iset compile_ext_call posmap1 pos1 impl) =
       List.length (FlatToRiscvDef.compile_function iset compile_ext_call posmap2 pos2 impl).
   Proof using compile_ext_call_length_ignores_positions.
-    intros. destruct impl as [ [args rets] body ]. ignore_positions.
+    intros. destruct impl as [ [args rets] body ]. repeat (step || simpl).
     apply compile_stmt_length_ignores_positions.
   Qed.
 
@@ -237,10 +237,11 @@ Section LowerPipeline.
       inversion H0. inversion H1. subst. clear H0 H1.
       specialize H with (1 := eq_refl) (2 := eq_refl). destruct H.
       rewrite ?H0. subst.
-      split. 1: reflexivity.
-      ignore_positions.
+      destruct v as ((argnames & retnames) & body). fwd.
+      split. 1: congruence.
+      repeat step.
       apply compile_function_length_ignores_positions.
-    - inversion H. inversion H0. subst. auto.
+    - fwd. auto.
   Qed.
 
   Lemma build_fun_pos_env_ignores_posmap: forall posmap1 posmap2 e,
@@ -275,22 +276,20 @@ Section LowerPipeline.
       iff1 (program iset functions_start instrs)
            (FlatToRiscvCommon.functions compile_ext_call functions_start
                                         (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e) e).
-  Proof using word_ok mem_ok fun_pos_env_ok env_ok compile_ext_call_length_ignores_positions.
-    assert nat as H by exact O. (* preserve names *)
-
+  Proof using word_ok mem_ok fun_info_ok env_ok compile_ext_call_length_ignores_positions.
     unfold riscvPhase.
     intros.
-    simp.
+    fwd.
     unfold FlatToRiscvDef.compile_funs, functions in *.
     remember (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e) as positions.
     (* choose your IH carefully! *)
     lazymatch goal with
     | |- ?G => enough ((forall f, map.get r f <> None <-> map.get e f <> None) /\
-                       ((forall f pos, map.get r f = Some pos -> map.get positions f = Some pos) -> G))
+             ((forall f pos, map.get r f = Some pos -> map.get positions f = Some pos) -> G))
     end.
     1: {
-      destruct H0. apply H1; clear H1.
-      intros. rewrite <- H1. f_equal.
+      fwd. apply Hp1; clear Hp1.
+      intros. rewrite <- H. f_equal.
       subst.
       apply (f_equal snd) in E0. simpl in E0. rewrite <- E0.
       transitivity (snd (map.fold (FlatToRiscvDef.add_compiled_function iset compile_ext_call map.empty) ([], map.empty) e)).
@@ -299,10 +298,10 @@ Section LowerPipeline.
     }
     revert E0.
     revert instrs r. clear E stack_size.
-    eapply (map.fold_spec (R:=(list Instruction * _))) with (m:=e); repeat (cbn || simp || intros).
+    eapply (map.fold_spec (R:=(list Instruction * _))) with (m:=e); repeat (cbn || fwd || intros).
     { rewrite map.fold_empty. intuition try reflexivity.
-      - eapply H0. eapply map.get_empty.
-      - eapply H0. eapply map.get_empty.
+      - eapply H. eapply map.get_empty.
+      - eapply H. eapply map.get_empty.
     }
     rewrite map.fold_put; trivial.
     2: { intros.
@@ -311,33 +310,32 @@ Section LowerPipeline.
       match goal with |- forall x, ?P x <-> ?Q x => change (iff1 P Q) end.
       cancel. }
     case r as (instrs'&r').
-    specialize H1 with (1 := eq_refl).
+    specialize H0 with (1 := eq_refl).
     unfold FlatToRiscvDef.add_compiled_function in E0.
-    injection E0; clear E0; intros. subst.
+    destruct v as ((argnames & retnames) & body).
+    fwd.
     unfold program in *.
     wseplog_pre.
-    destruct H1.
     split. {
       intros. rewrite ?map.get_put_dec.
       destr (k =? f)%string. 2: eauto. intuition discriminate.
     }
     intros.
-    rewrite H2. 2: {
+    rewrite H0p1. 2: {
       intros.
-      eapply H3.
+      eapply H0.
       rewrite map.get_put_dec.
       destr (k =? f)%string. 2: assumption.
       subst. exfalso.
-      specialize (H1 f). unfold not in H1. rewrite H0 in H1. rewrite H4 in H1.
+      specialize (H0p0 f). unfold not in H0p0. rewrite H1 in H0p0. rewrite H in H0p0.
       intuition congruence.
     }
     cancel.
     unfold function.
-    specialize (H3 k).
-    rewrite map.get_put_same in H3.
-    specialize H3 with (1 := eq_refl).
-    simpl in *. rewrite H3.
-    cancel.
+    specialize (H0 k).
+    rewrite map.get_put_same in H0.
+    specialize H0 with (1 := eq_refl).
+    rewrite H0.
     unfold program.
     cancel_seps_at_indices 0%nat 0%nat. 2: reflexivity.
     f_equal.
@@ -377,16 +375,16 @@ Section LowerPipeline.
       compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
                                      (FlatImp.SInteract resvars extcall argvars).
 
-  Definition riscv_call(p: list Instruction * fun_pos_env * Z)
+  Definition riscv_call(p: list Instruction * fun_info * Z)
              (f_name: string)(t: Semantics.trace)(mH: mem)(argvals: list word)
              (post: Semantics.trace -> mem -> list word -> Prop): Prop :=
-    let '(instrs, pos_map, req_stack_size) := p in
-    exists f_rel_pos,
-      map.get pos_map f_name = Some f_rel_pos /\
+    let '(instrs, finfo, req_stack_size) := p in
+    exists argcount retcount f_rel_pos,
+      map.get finfo f_name = Some (argcount, retcount, f_rel_pos) /\
       forall p_funcs stack_start stack_pastend ret_addr Rdata Rexec (initial: MetricRiscvMachine),
         map.get initial.(getRegs) RegisterNames.ra = Some ret_addr ->
         map.getmany_of_list initial.(getRegs)
-                            (List.firstn (List.length argvals) (reg_class.all reg_class.arg))
+                            (List.firstn argcount (reg_class.all reg_class.arg))
         = Some argvals ->
         let start_pc := word.add p_funcs (word.of_Z f_rel_pos) in
         req_stack_size <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->
@@ -394,41 +392,87 @@ Section LowerPipeline.
         machine_ok p_funcs stack_start stack_pastend instrs start_pc mH Rdata Rexec initial ->
         runsTo initial (fun final => exists mH' retvals,
           map.getmany_of_list final.(getRegs)
-                              (List.firstn (List.length retvals) (reg_class.all reg_class.arg))
+                              (List.firstn retcount (reg_class.all reg_class.arg))
           = Some retvals /\
           post final.(getLog) mH' retvals /\
           machine_ok p_funcs stack_start stack_pastend instrs ret_addr mH' Rdata Rexec final).
 
-  Lemma flat_to_riscv_correct: forall e p2,
-      riscvPhase e = Some p2 ->
+  Lemma flat_to_riscv_correct: forall p1 p2,
+      map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
+      riscvPhase p1 = Some p2 ->
       forall fname t m argvals post,
       (exists argnames retnames fbody,
-          map.get e fname = Some (argnames, retnames, fbody) /\
+          map.get p1 fname = Some (argnames, retnames, fbody) /\
           forall l mc, map.of_list_zip argnames argvals = Some l ->
-                       FlatImp.exec e fbody t m l mc (fun t' m' l' mc' =>
+                       FlatImp.exec p1 fbody t m l mc (fun t' m' l' mc' =>
                          exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                                          post t' m' retvals)) ->
       riscv_call p2 fname t m argvals post.
   Proof.
     unfold riscv_call.
-    intros. destruct p2 as ((finstrs & pos_map) & req_stack_size).
+    intros. destruct p2 as ((finstrs & finfo) & req_stack_size).
     match goal with
     | H: riscvPhase _ = _ |- _ => pose proof H as RP; unfold riscvPhase in H
     end.
-    simp.
-    edestruct (get_build_fun_pos_env e fname) as (f_rel_pos & GetPos). 1: congruence.
-    exists f_rel_pos. split. 1: assumption.
+    fwd.
+    pose proof (get_compile_funs_pos p1 (build_fun_pos_env iset compile_ext_call p1)) as P.
+    rewrite E0 in P.
+    specialize P with (1 := H1p0). cbn in P. rename r into finfo. fwd.
+    assert (finfo = build_fun_pos_env iset compile_ext_call p1). {
+      unfold riscvPhase in RP.
+(*
+    edestruct (get_build_fun_pos_env p1 fname) as (((argcount & retcount) & f_rel_pos) & GetPos).
+    1: congruence.
+    exists argcount, retcount, f_rel_pos. split. 1: assumption.
     intros.
     pose proof GetPos as M0. eapply fun_pos_div4 in M0.
     assert (word.unsigned p_funcs mod 4 = 0). {
-      unfold machine_ok in *. simp.
+      unfold machine_ok in *. fwd.
       eapply program_mod_4_0. 2: ecancel_assumption.
       eapply compile_funs_nonnil; eassumption.
     }
+    unfold map.forall_values in H.
+    match goal with
+    | H: map.get p1 fname = Some _ |- _ => rename H into GetFun
+    end.
+    specialize H with (1 := GetFun).
+    match goal with
+    | H: context[post] |- _ => rename H into Hpost
+    end.
+    unfold map.of_list_zip in Hpost.
+    unfold valid_FlatImp_fun in H. fwd.
+    apply_in_hyps @map.getmany_of_list_length.
+    match goal with
+    | H: _ |- _ => rename H into HL
+    end.
+    edestruct (map.sameLength_putmany_of_list _ _ map.empty HL) as [st0 OL].
+    rewrite List.firstn_length in HL.
+    change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat in HL.
+    pose proof (get_compile_funs_pos p1 (build_fun_pos_env iset compile_ext_call p1)) as P.
+    rewrite E0 in P.
+    Search p1.
+
+    Search argnames.
+    Search argvals.
+    apply_in_hyps
+
+
+    specialize Hpost with (1 := OL).
+
     eapply runsTo_weaken.
+    - eapply compile_function_body_correct with
+          (e_impl := e)
+          (e_pos := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e)
+          (xframe := Rexec)
+          (program_base := p_funcs).
+      + intros.
+        pose proof compile_stmt_correct as P.
+        unfold compiles_FlatToRiscv_correctly in P at 2.
+        eapply P; clear P. try eassumption.
+
     - specialize compile_stmt_correct with (1 := compile_ext_call_correct).
       unfold compiles_FlatToRiscv_correctly. intros compile_stmt_correct.
-      (* TODO isolate exec.call case from FlatToRiscvFunctions
+      (* TODO isolate exec.call case from FlatToRiscvFunctions *)
       eapply compile_stmt_correct with (g := {|
         e_pos := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call functions;
         program_base := p_funcs;

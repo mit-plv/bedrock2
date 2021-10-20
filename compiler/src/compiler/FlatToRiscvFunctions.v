@@ -44,7 +44,7 @@ Local Arguments Z.sub: simpl never.
 
 Section Proofs.
   Context {iset: Decode.InstructionSet}.
-  Context {fun_pos_env: map.map String.string Z}.
+  Context {fun_info: map.map String.string (nat * nat * Z)}.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
   Context {word_ok: word.ok word}.
   Context {locals: map.map Z word}.
@@ -58,11 +58,11 @@ Section Proofs.
   Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context {locals_ok: map.ok locals}.
   Context {mem_ok: map.ok mem}.
-  Context {fun_pos_env_ok: map.ok fun_pos_env}.
+  Context {fun_info_ok: map.ok fun_info}.
   Context {env_ok: map.ok env}.
   Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
   Context {BWM: bitwidth_iset width iset}.
-  Context (compile_ext_call: fun_pos_env -> Z -> Z -> stmt Z -> list Instruction).
+  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -87,12 +87,12 @@ Section Proofs.
   Notation functions := (functions (iset := iset) compile_ext_call).
   Notation compile_function := (compile_function iset compile_ext_call).
 
-  Lemma functions_expose: forall (base: word) rel_positions impls f pos impl,
-      map.get rel_positions f = Some pos ->
+  Lemma functions_expose: forall (base: word) (finfo: fun_info) impls f argcount retcount pos impl,
+      map.get finfo f = Some (argcount, retcount, pos) ->
       map.get impls f = Some impl ->
-      iff1 (functions base rel_positions impls)
-           (functions base rel_positions (map.remove impls f) *
-            program iset (word.add base (word.of_Z pos)) (compile_function rel_positions pos impl))%sep.
+      iff1 (functions base finfo impls)
+           (functions base finfo (map.remove impls f) *
+            program iset (word.add base (word.of_Z pos)) (compile_function finfo pos impl))%sep.
   Proof.
     intros. unfold functions.
     match goal with
@@ -414,7 +414,7 @@ Section Proofs.
     (st0 : locals) (post outcome : Semantics.trace -> mem -> locals -> MetricLog -> Prop)
     (argnames retnames : list Z) (body : stmt Z) (program_base : word)
     (pos : Z) (ret_addr : word) (mach : RiscvMachineL) (e_impl : env)
-    (e_pos : fun_pos_env) (binds_count : nat) (insts : list Instruction)
+    (e_pos : fun_info) (binds_count : nat) (insts : list Instruction)
     (xframe : mem -> Prop) (t : list LogItem) (g : GhostConsts)
     (IH: forall (g0 : GhostConsts) (insts0 : list Instruction) (xframe0 : mem -> Prop)
                 (initialL : RiscvMachineL) (pos0 : Z),
@@ -1470,7 +1470,7 @@ Section Proofs.
       }
       subst args.
       let T := type of IHexec in replace T with
-        (forall (g : GhostConsts) (e_impl : env) (e_pos : fun_pos_env)
+        (forall (g : GhostConsts) (e_impl : env) (e_pos : fun_info)
              (program_base : word) (insts : list Instruction) (xframe : mem -> Prop)
              (initialL : RiscvMachineL) (pos : Z),
            map.extends e_impl_full e_impl ->
@@ -1552,7 +1552,7 @@ Section Proofs.
       repeat match goal with
              | x := _ |- _ => clearbody x
              end.
-      clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok fun_pos_env_ok env_ok
+      clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok fun_info_ok env_ok
               IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
       revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
       apply compile_function_body_correct.

@@ -224,11 +224,11 @@ Section FlatToRiscv1.
      position independent code. *)
 
   Context {env: map.map String.string (list Z * list Z * stmt Z)}.
-  Context {funpos_env: map.map String.string Z}.
-  Context (compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Instruction).
+  Context {fun_info: map.map String.string (nat * nat * Z)}. (* argcount, retcount, position *)
+  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).
 
   Section WithEnv.
-    Variable e: funpos_env.
+    Variable e: fun_info.
 
     (* mypos: position of the code relative to the positions in e
        stackoffset: $sp + stackoffset is the (last) highest used stack address (for SStackalloc)
@@ -268,7 +268,7 @@ Section FlatToRiscv1.
       | SSkip => nil
       | SCall resvars f argvars =>
         let fpos := match map.get e f with
-                    | Some pos => pos
+                    | Some (argcount, retcount, pos) => pos
                     (* don't fail so that we can measure the size of the resulting code *)
                     | None => 42
                     end in
@@ -312,19 +312,21 @@ Section FlatToRiscv1.
         [[ Addi sp sp framesize ]] ++
         [[ Jalr zero ra 0 ]].
 
-    Definition add_compiled_function(state: list Instruction * funpos_env)(fname: String.string)
-               (fimpl: list Z * list Z * stmt Z): list Instruction * funpos_env :=
-      let '(old_insts, posmap) := state in
+    Definition add_compiled_function(state: list Instruction * fun_info)(fname: String.string)
+               (fimpl: list Z * list Z * stmt Z): list Instruction * fun_info :=
+      let '(old_insts, infomap) := state in
       let pos := 4 * Z.of_nat (length (old_insts)) in
       let new_insts := compile_function pos fimpl in
-      (old_insts ++ new_insts, map.put posmap fname pos).
+      let '(argnames, retnames, fbody) := fimpl in
+      (old_insts ++ new_insts,
+       map.put infomap fname (List.length argnames, List.length retnames, pos)).
 
-    Definition compile_funs: env -> list Instruction * funpos_env :=
+    Definition compile_funs: env -> list Instruction * fun_info :=
       map.fold add_compiled_function (nil, map.empty).
   End WithEnv.
 
   (* compiles all functions just to obtain their code size *)
-  Definition build_fun_pos_env(e_impl: env): funpos_env :=
+  Definition build_fun_pos_env(e_impl: env): fun_info :=
     (* since we pass map.empty as the fun_pos_env into compile_funs, the instrs
        returned don't jump to the right positions yet (they all jump to 42),
        but the instructions have the right size, so the posmap we return is correct *)

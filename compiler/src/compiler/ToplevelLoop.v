@@ -33,7 +33,7 @@ Require Import riscv.Utility.Utility.
 Require Export riscv.Platform.Memory.
 Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
-Require Import coqutil.Tactics.Simp.
+Require Import coqutil.Tactics.fwd.
 Require Import compiler.FlattenExprSimulation.
 Require Import compiler.Simulation.
 Require Import compiler.RiscvEventLoop.
@@ -94,7 +94,7 @@ Section Pipeline1.
   Context {BWM: bitwidth_iset width iset}.
   Context {mem_ok: map.ok mem}.
   Context {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
-  Context (compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z -> list Instruction).
+  Context (compile_ext_call : string_keyed_map (nat * nat * Z) -> Z -> Z -> FlatImp.stmt Z -> list Instruction).
   Context (compile_ext_call_correct: forall resvars extcall argvars,
               compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
                                              (FlatImp.SInteract resvars extcall argvars)).
@@ -125,10 +125,10 @@ Section Pipeline1.
   (* 5) Code of the compiled functions *)
   Let functions_pos := word.add backjump_pos (word.of_Z 4).
 
-  Definition compile_prog(prog: source_env): option (list Instruction * string_keyed_map Z * Z) :=
+  Definition compile_prog(prog: source_env): option (list Instruction * string_keyed_map (nat * nat * Z) * Z) :=
     'Some (functions_insts, positions, required_stack_space) <- compile compile_ext_call prog;
-    'Some init_fun_pos <- map.get positions "init"%string;
-    'Some loop_fun_pos <- map.get positions "loop"%string;
+    'Some (_, _, init_fun_pos) <- map.get positions "init"%string;
+    'Some (_, _, loop_fun_pos) <- map.get positions "loop"%string;
     let to_prepend := init_sp_insts ++ init_insts init_fun_pos ++ loop_insts loop_fun_pos ++ backjump_insts in
     Some (to_prepend ++ functions_insts, positions, required_stack_space).
 
@@ -137,14 +137,14 @@ Section Pipeline1.
   (* Holds each time before executing the loop body *)
   Definition ll_good(done: bool)(mach: MetricRiscvMachine): Prop :=
     exists (prog: source_env)
-           (functions_instrs: list Instruction) (positions: string_keyed_map Z)
+           (functions_instrs: list Instruction) (positions: string_keyed_map (nat * nat * Z))
            (required_stack_space: Z)
            (init_fun_pos loop_fun_pos: Z) (R: mem -> Prop),
       compile compile_ext_call prog = Some (functions_instrs, positions, required_stack_space) /\
       required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
-      map.get positions "init"%string = Some init_fun_pos /\
-      map.get positions "loop"%string = Some loop_fun_pos /\
+      map.get positions "init"%string = Some (O, O, init_fun_pos) /\
+      map.get positions "loop"%string = Some (O, O, loop_fun_pos) /\
       exists mH,
         isReady spec mach.(getLog) mH /\ goodTrace spec mach.(getLog) /\
         machine_ok functions_pos ml.(stack_start) ml.(stack_pastend) functions_instrs
@@ -226,7 +226,7 @@ Section Pipeline1.
       ll_inv initial.
   Proof.
     unfold initial_conditions.
-    intros. simp.
+    intros. fwd.
     unfold ll_inv, runsToGood_Invariant. split; [|assumption].
     destruct_RiscvMachine initial.
     match goal with
@@ -238,7 +238,7 @@ Section Pipeline1.
     | H: compile_prog srcprog = Some _ |- _ => pose proof H as CP; unfold compile_prog in H
     end.
     remember instrs as instrs0.
-    simp.
+    Simp.simp.
     eassert ((mem_available ml.(heap_start) ml.(heap_pastend) * _)%sep initial_mem) as SplitImem. {
       ecancel_assumption.
     }
@@ -262,18 +262,18 @@ Section Pipeline1.
       - eapply runsToDone. split; [exact I|reflexivity].
     }
     match goal with
-    | H: map.get positions "init"%string = Some ?pos |- _ =>
+    | H: map.get positions "init"%string = Some (_, _, ?pos) |- _ =>
       rename H into GetPos, pos into f_entry_rel_pos
     end.
     subst.
-    intros. simp.
+    intros. fwd.
     (* then, call init function (execute the Jal that jumps there) *)
     eapply runsToStep. {
       eapply RunInstruction.run_Jal; cbn.
       3: solve_word_eq word_ok.
       3: eassumption.
       3: wwcancel.
-      { unfold compile, compose_phases, riscvPhase in E. simp.
+      { unfold compile, compose_phases, riscvPhase in E. fwd.
         eapply fun_pos_div4 in GetPos. solve_divisibleBy4. }
       { cbv. auto. }
       { wcancel_assumption. }
@@ -283,7 +283,7 @@ Section Pipeline1.
     repeat match goal with
            | H: valid_machine _ |- _ => clear H
            end.
-    intros. destruct_RiscvMachine mid. simp.
+    intros. destruct_RiscvMachine mid. fwd.
     (* then, run body of init function (using compiler simulation and correctness of init) *)
     eapply runsTo_weaken.
     - pose proof compiler_correct compile_ext_call compile_ext_call_correct
@@ -293,7 +293,8 @@ Section Pipeline1.
                         (argnames := []) (retnames := []) (argvals := [])
                         (post := fun t' m' retvals => isReady spec t' m' /\ goodTrace spec t')
                         (fname := "init"%string).
-      eapply P; clear P.
+      edestruct P as (init_rel_pos & G & P'); clear P; cycle -1.
+      1: eapply P'.
       7: {
         cbn.
         unfold hl_inv in init_code_correct.
@@ -307,10 +308,13 @@ Section Pipeline1.
         - cbv beta. intros * _ _ HP. exists []. split. 1: reflexivity. exact HP.
       }
       all: try eassumption.
+      all: cycle 1.
       { apply stack_length_divisible. }
       { cbn. apply map.get_put_same. }
       { reflexivity. }
       unfold machine_ok.
+      clear P'.
+      rewrite GetPos in G. fwd.
       unfold_RiscvMachine_get_set.
       repeat match goal with
              | |- exists _, _  => eexists
@@ -355,16 +359,16 @@ Section Pipeline1.
         cbn [seps].
         reflexivity.
       }
-      + unfold compile, compose_phases, riscvPhase in E. simp.
+      + unfold compile, compose_phases, riscvPhase in E. fwd.
         eapply fun_pos_div4 in GetPos.
         destruct mlOk. solve_divisibleBy4.
       + clear CP. subst loop_pos init_pos init_sp. solve_word_eq word_ok.
       + do 2 rapply regs_initialized_put. eassumption.
       + rewrite map.get_put_diff by (cbv; discriminate).
         rewrite map.get_put_same. unfold init_sp. rewrite word.of_Z_unsigned. reflexivity.
-    - cbv beta. unfold ll_good. intros. simp.
+    - cbv beta. unfold ll_good. intros. fwd.
       match goal with
-      | _: map.get positions "loop"%string = Some ?z |- _ => rename z into f_loop_rel_pos
+      | _: map.get positions "loop"%string = Some (_, _, ?z) |- _ => rename z into f_loop_rel_pos
       end.
       repeat match goal with
              | |- exists _, _  => eexists
@@ -373,6 +377,8 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
+      + case TODO.
+      + case TODO.
       + move CP at bottom.
         (* prove that machine_ok of ll_inv (i.e. all instructions, and just before jumping calling
            loop body function) is implied by the state proven by the compiler correctness lemma for
@@ -416,13 +422,13 @@ Section Pipeline1.
         subst w; destruct width_cases as [E | E]; simpl in *; rewrite E in C; cbv in C; discriminate C.
     - intros.
       unfold ll_good, machine_ok in *.
-      simp.
+      fwd.
       etransitivity. 1: eassumption.
       destruct done; solve_word_eq word_ok.
     - (* Show that ll_ready (almost) ignores pc, nextPc, and metrics *)
       intros.
       unfold ll_good, machine_ok in *.
-      simp.
+      fwd.
       destr_RiscvMachine state.
       repeat match goal with
              | |- exists _, _  => eexists
@@ -434,17 +440,17 @@ Section Pipeline1.
       + destruct mlOk. subst. simpl in *. subst loop_pos init_pos. solve_divisibleBy4.
       + solve_word_eq word_ok.
     - unfold ll_good, machine_ok.
-      intros. simp. assumption.
+      intros. fwd. assumption.
     - cbv. intuition discriminate.
     - solve_word_eq word_ok.
     - unfold ll_good, machine_ok.
-      intros. simp. split.
+      intros. fwd. split.
       + eexists. subst loop_pos init_sp_pos init_sp_insts init_pos backjump_pos backjump_insts.
         wcancel_assumption.
       + eapply shrink_footpr_subset. 1: eassumption.
         subst loop_pos init_sp_pos init_sp_insts init_pos backjump_pos backjump_insts.
         wwcancel.
-    - intros. destruct_RiscvMachine initial. unfold ll_good, machine_ok in H. cbn in *. simp.
+    - intros. destruct_RiscvMachine initial. unfold ll_good, machine_ok in H. cbn in *. fwd.
       (* call loop function (execute the Jal that jumps there) *)
       eapply runsToStep. {
         eapply RunInstruction.run_Jal; cbn.
@@ -454,7 +460,7 @@ Section Pipeline1.
         { match goal with
           | H: map.get positions "loop"%string = Some _ |- _ => rename H into GetPos
           end.
-          unfold compile, compose_phases, riscvPhase in *. simp.
+          unfold compile, compose_phases, riscvPhase in *. fwd.
           eapply fun_pos_div4 in GetPos. solve_divisibleBy4. }
         { cbv. auto. }
         { subst loop_pos init_pos init_sp_pos init_sp_insts.
@@ -462,9 +468,9 @@ Section Pipeline1.
         { assumption. }
       }
       cbn.
-      intros. destruct_RiscvMachine mid. simp.
+      intros. destruct_RiscvMachine mid. fwd.
       (* use compiler correctness for loop body *)
-      unfold ll_good in *. simp.
+      unfold ll_good in *. fwd.
       match goal with
       | H: ProgramSatisfiesSpec _ _ _ _ |- _ => pose proof H as sat; destruct H
       end.
@@ -483,7 +489,9 @@ Section Pipeline1.
         specialize P with (argnames := []) (retnames := []) (argvals := [])
                           (fname := "loop"%string)
                           (post := fun t' m' retvals => isReady spec t' m' /\ goodTrace spec t').
-        eapply P; clear P. 7: {
+        edestruct P as (loop_rel_pos & G & P'); clear P; cycle -1.
+        1: eapply P'.
+        7: {
         cbn.
         move loop_body_correct at bottom.
         intros l' mc OL. cbn in OL. apply Option.eq_of_eq_Some in OL. subst l'.
@@ -492,6 +500,7 @@ Section Pipeline1.
         - cbv beta. intros * _ _ HP. exists []. split. 1: reflexivity. exact HP.
         }
         all: try eassumption.
+        all: cycle 1.
         { apply stack_length_divisible. }
         { cbn. apply map.get_put_same. }
         { reflexivity. }
@@ -510,7 +519,7 @@ Section Pipeline1.
         * match goal with
           | H: map.get positions "loop"%string = Some _ |- _ => rename H into GetPos
           end.
-          unfold compile, compose_phases, riscvPhase in *. simp.
+          unfold compile, compose_phases, riscvPhase in *. fwd.
           eapply fun_pos_div4 in GetPos.
           remember (word.add
                (word.add
@@ -523,7 +532,8 @@ Section Pipeline1.
                                  (word.unsigned (stack_pastend ml)))))))
                   (word.of_Z 4)) (word.of_Z 0)) as X.
           solve_divisibleBy4.
-        * solve_word_eq word_ok.
+          case TODO.
+        * solve_word_eq word_ok. case TODO.
         * eapply regs_initialized_put. eassumption.
         * rewrite map.get_put_diff by (cbv; discriminate). assumption.
         * match goal with
@@ -539,7 +549,7 @@ Section Pipeline1.
         repeat match goal with
                | x := _ |- _ => subst x
                end.
-        unfold machine_ok in *. simpl_MetricRiscvMachine_get_set. simp.
+        unfold machine_ok in *. simpl_MetricRiscvMachine_get_set. fwd.
         simpl_MetricRiscvMachine_get_set.
         repeat match goal with
                | |- exists _, _  => eexists
@@ -550,19 +560,22 @@ Section Pipeline1.
                end.
         move Hp10 at bottom.
         cbn in Hp10.
+        case TODO.
+        (*
         rewrite Hp10.
         solve_word_eq word_ok.
+        *)
   Qed.
 
   Lemma ll_inv_implies_prefix_of_good: forall st,
       ll_inv st -> exists suff, spec.(goodTrace) (suff ++ st.(getLog)).
   Proof.
-    unfold ll_inv, runsToGood_Invariant. intros. simp.
+    unfold ll_inv, runsToGood_Invariant. intros. fwd.
     eapply extend_runsTo_to_good_trace. 2,3: eassumption.
     simpl. unfold ll_good, compile_inv, related, hl_inv,
            compose_relation, FlattenExprSimulation.related,
            FlatToRiscvCommon.goodMachine.
-    intros. simp. eassumption.
+    intros. fwd. eassumption.
   Qed.
 
 End Pipeline1.

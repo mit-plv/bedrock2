@@ -116,8 +116,8 @@ Section WithParameters.
 
   End WithLocalsOk.
 
-  Context {funpos_env: map.map String.string Z}.
-  Context (compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Instruction).
+  Context {fun_info: map.map String.string (nat * nat * Z)}.
+  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).
   Context {word_ok: word.ok word}.
   Context {mem: map.map word byte}.
   Context {env: map.map String.string (list Z * list Z * stmt Z)}.
@@ -131,11 +131,12 @@ Section WithParameters.
     MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
 
-  Definition function{BWM: bitwidth_iset width iset}(base: word)(rel_positions: funpos_env)
+  Definition function{BWM: bitwidth_iset width iset}(base: word)(finfo: fun_info)
              (fname: String.string)(impl : list Z * list Z * stmt Z): mem -> Prop :=
-    match map.get rel_positions fname with
-    | Some pos => program iset (word.add base (word.of_Z pos))
-                          (compile_function iset compile_ext_call rel_positions pos impl)
+    match map.get finfo fname with
+    | Some (argcount, retcount, pos) =>
+      program iset (word.add base (word.of_Z pos))
+              (compile_function iset compile_ext_call finfo pos impl)
     | _ => emp False
     end.
 
@@ -145,7 +146,7 @@ Section WithParameters.
      a second time inside [functions]).
      To avoid this double mentioning, we will remove the function being called from the
      list of functions before entering the body of the function. *)
-  Definition functions{BWM: bitwidth_iset width iset}(base: word)(rel_positions: funpos_env):
+  Definition functions{BWM: bitwidth_iset width iset}(base: word)(rel_positions: fun_info):
     env -> mem -> Prop :=
     map.fold (fun P fname fbody => (function base rel_positions fname fbody * P)%sep) (emp True).
 
@@ -319,11 +320,13 @@ Section WithParameters.
     (* misc: *)
     valid_machine lo.
 
-  Definition good_e_impl(e_impl: env)(e_pos: funpos_env) :=
+  Definition good_e_impl(e_impl: env)(finfo: fun_info) :=
     forall f (fun_impl: list Z * list Z * stmt Z),
       map.get e_impl f = Some fun_impl ->
       valid_FlatImp_fun fun_impl /\
-      exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0.
+      let '(argnames, retnames, fbody) := fun_impl in
+      exists pos, map.get finfo f = Some (List.length argnames, List.length retnames, pos) /\
+                  pos mod 4 = 0.
 
   Local Notation stmt := (stmt Z).
 
@@ -332,7 +335,7 @@ Section WithParameters.
      [e_impl] and [e_pos] remain the same throughout because that's mandated by
      [FlatImp.exec] and [compile_stmt], respectively *)
   Definition compiles_FlatToRiscv_correctly{BWM: bitwidth_iset width iset}
-    (f: funpos_env -> Z -> Z -> stmt -> list Instruction)
+    (f: fun_info -> Z -> Z -> stmt -> list Instruction)
     (s: stmt): Prop :=
     forall e_impl_full initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
@@ -384,8 +387,8 @@ Ltac simpl_bools :=
 
 Section FlatToRiscv1.
   Context {iset: InstructionSet}.
-  Context {funpos_env: map.map String.string Z}.
-  Context (compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Instruction).
+  Context {fun_info: map.map String.string Z}.
+  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
   Context {word_ok: word.ok word}.
   Context {locals: map.map Z word}.

@@ -31,8 +31,8 @@ Local Arguments Z.sub: simpl never.
 
 Section Proofs.
   Context {iset: Decode.InstructionSet}.
-  Context {funpos_env: map.map String.string Z}.
-  Context (compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Decode.Instruction).
+  Context {fun_info: map.map String.string (nat * nat * Z)}.
+  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Decode.Instruction).
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
   Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context {locals: map.map Z word} {locals_ok: map.ok locals}.

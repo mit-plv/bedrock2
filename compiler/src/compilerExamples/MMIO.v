@@ -120,7 +120,7 @@ Section MMIO1.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Definition compile_ext_call(_: funname_env Z)(_ _: Z)(s: stmt Z) :=
+  Definition compile_ext_call(_: funname_env (nat * nat * Z))(_ _: Z)(s: stmt Z) :=
       match s with
       | SInteract resvars action argvars => compile_interact resvars action argvars
       | _ => []
