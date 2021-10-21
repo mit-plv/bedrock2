@@ -483,47 +483,46 @@ Section WithWordAndMem.
     (* restates composed_compiler_correct by unfolding definitions used to compose phases,
        and turning exists in hyps into toplevel foralls *)
     Lemma compiler_correct: forall
-        (stack_start stack_pastend: word)
-        (fname: string) (argnames retnames: list string) (fbody: cmd)
-        (p_funcs: word)
-        (Rdata Rexec: mem -> Prop)
+        (* input of compilation: *)
         (functions: string_keyed_map (list string * list string * cmd))
-        (instrs: list Instruction)
-        (finfo: string_keyed_map (nat * nat * Z))
-        (argvals: list word)
-        (mH: mem)
-        (post: trace -> mem -> list word -> Prop)
-        (req_stack_size: Z)
-        (ret_addr: word)
-        (initial: MetricRiscvMachine),
+        (* output of compilation: *)
+        (instrs: list Instruction) (finfo: string_keyed_map (nat * nat * Z)) (req_stack_size: Z)
+        (* function we choose to call: *)
+        (fname: string) (argnames retnames: list string) (fbody: cmd)
+        (* high-level initial state & post on final state: *)
+        (t: trace) (mH: mem) (argvals: list word) (post: trace -> mem -> list word -> Prop),
         ExprImp.valid_funs functions ->
         compile functions = Some (instrs, finfo, req_stack_size) ->
         map.get functions fname = Some (argnames, retnames, fbody) ->
-        req_stack_size <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->
-        word.unsigned (word.sub stack_pastend stack_start) mod bytes_per_word = 0 ->
         (forall l mc,
               map.of_list_zip argnames argvals = Some l ->
-              Semantics.exec functions fbody initial.(getLog) mH l mc
+              Semantics.exec functions fbody t mH l mc
                 (fun t' m' l' mc' => exists retvals: list word,
                      map.getmany_of_list l' retnames = Some retvals /\ post t' m' retvals)) ->
-        map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
-        word.unsigned ret_addr mod 4 = 0 ->
-        map.getmany_of_list initial.(getRegs)
-                            (List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg))
-        = Some argvals ->
         exists (f_rel_pos: Z),
           map.get finfo fname = Some (List.length argnames, List.length retnames, f_rel_pos) /\
-          (initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
-           machine_ok p_funcs stack_start stack_pastend instrs mH Rdata Rexec initial ->
-           runsTo initial (fun final : MetricRiscvMachine =>
-             exists mH' retvals,
-               map.getmany_of_list (getRegs final)
-                           (List.firstn (List.length retnames) (reg_class.all reg_class.arg))
-               = Some retvals /\
-               post final.(getLog) mH' retvals /\
-               map.agree_on callee_saved initial.(getRegs) final.(getRegs) /\
-               final.(getPc) = ret_addr /\
-               machine_ok p_funcs stack_start stack_pastend instrs mH' Rdata Rexec final)).
+          forall (* low-level machine on which we're going to run the compiled program: *)
+                 (initial: MetricRiscvMachine)
+                 (* ghost vars that help describe the low-level machine: *)
+                 (stack_lo stack_hi: word) (ret_addr p_funcs: word) (Rdata Rexec: mem -> Prop),
+            req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
+            word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
+            initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
+            map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
+            word.unsigned ret_addr mod 4 = 0 ->
+            map.getmany_of_list initial.(getRegs)
+              (List.firstn (List.length argnames) (reg_class.all reg_class.arg)) = Some argvals ->
+            initial.(getLog) = t ->
+            machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
+            runsTo initial (fun final : MetricRiscvMachine =>
+              exists mH' retvals,
+                map.getmany_of_list (getRegs final)
+                            (List.firstn (List.length retnames) (reg_class.all reg_class.arg))
+                = Some retvals /\
+                post final.(getLog) mH' retvals /\
+                map.agree_on callee_saved initial.(getRegs) final.(getRegs) /\
+                final.(getPc) = ret_addr /\
+                machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final).
     Proof.
       intros.
       pose proof (phase_preserves_post composed_compiler_correct) as C.

@@ -289,13 +289,13 @@ Section Pipeline1.
     - pose proof compiler_correct compile_ext_call compile_ext_call_correct
                                   compile_ext_call_length_ignores_positions as P.
       unfold runsTo in P.
-      specialize P with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R)
-                        (argnames := []) (retnames := []) (argvals := [])
+      specialize P with (argnames := []) (retnames := []) (argvals := [])
                         (post := fun t' m' retvals => isReady spec t' m' /\ goodTrace spec t')
                         (fname := "init"%string).
       edestruct P as (init_rel_pos & G & P'); clear P; cycle -1.
-      1: eapply P'.
-      8: {
+      1: eapply P' with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R).
+      all: simpl_MetricRiscvMachine_get_set.
+      12: {
         cbn.
         unfold hl_inv in init_code_correct.
         move init_code_correct at bottom.
@@ -308,14 +308,14 @@ Section Pipeline1.
         - cbv beta. intros * _ _ HP. exists []. split. 1: reflexivity. exact HP.
       }
       all: try eassumption.
-      all: cycle 2.
       { apply stack_length_divisible. }
-      { cbn. apply map.get_put_same. }
-      { destruct mlOk. solve_divisibleBy4. }
-      { reflexivity. }
       { cbn. clear CP.
         rewrite GetPos in G. fwd.
         subst loop_pos init_pos init_sp. solve_word_eq word_ok. }
+      { cbn. apply map.get_put_same. }
+      { destruct mlOk. solve_divisibleBy4. }
+      { reflexivity. }
+      { reflexivity. }
       unfold machine_ok.
       clear P'.
       rewrite GetPos in G. fwd.
@@ -511,31 +511,31 @@ Section Pipeline1.
       + pose proof compiler_correct compile_ext_call compile_ext_call_correct
                                     compile_ext_call_length_ignores_positions as P.
         unfold runsTo in P.
-        specialize P with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R)
-                          (argnames := []) (retnames := []) (argvals := [])
+        specialize P with (argnames := []) (retnames := []) (argvals := [])
                           (fname := "loop"%string)
-                          (post := fun t' m' retvals => isReady spec t' m' /\ goodTrace spec t')
-                          (ret_addr := word.add loop_pos (word.of_Z 4)).
+                          (post := fun t' m' retvals => isReady spec t' m' /\ goodTrace spec t').
         edestruct P as (loop_rel_pos & G & P'); clear P; cycle -1.
-        1: eapply P'.
-        8: {
-        cbn.
-        move loop_body_correct at bottom.
-        intros l' mc OL. cbn in OL. apply Option.eq_of_eq_Some in OL. subst l'.
-        eapply ExprImp.weaken_exec.
-        - eapply loop_body_correct; eauto.
-        - cbv beta. intros * _ _ HP. exists []. split. 1: reflexivity. exact HP.
+        1: eapply P' with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R)
+                          (ret_addr := word.add loop_pos (word.of_Z 4)).
+        12: {
+          cbn.
+          move loop_body_correct at bottom.
+          intros l' mc OL. cbn in OL. apply Option.eq_of_eq_Some in OL. subst l'.
+          eapply ExprImp.weaken_exec.
+          - eapply loop_body_correct; eauto.
+          - cbv beta. intros * _ _ HP. exists []. split. 1: reflexivity. exact HP.
         }
         all: try eassumption.
+        all: simpl_MetricRiscvMachine_get_set.
+        { apply stack_length_divisible. }
         { cbn.
           cbn in G. assert (loop_fun_pos = loop_rel_pos) by congruence. subst loop_rel_pos.
           solve_word_eq word_ok. }
-        all: cycle 1.
-        { apply stack_length_divisible. }
         { cbn. rewrite map.get_put_same. f_equal. solve_word_eq word_ok. }
         { subst loop_pos init_pos. destruct mlOk. solve_divisibleBy4. }
         { reflexivity. }
-        cbn. unfold loop_pos, init_pos.
+        { reflexivity. }
+        unfold loop_pos, init_pos.
         cbn in G. assert (loop_fun_pos = loop_rel_pos) by congruence. subst loop_rel_pos.
         unfold machine_ok.
         unfold_RiscvMachine_get_set.
