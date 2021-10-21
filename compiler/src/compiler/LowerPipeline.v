@@ -1,5 +1,6 @@
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import coqutil.Map.Interface.
+Require Import coqutil.Map.MapEauto.
 Require Import coqutil.Tactics.Tactics.
 Require Import compiler.Simulation.
 Require Import coqutil.Tactics.fwd.
@@ -44,6 +45,34 @@ Section WithWordAndMem.
       (ptsto_bytes start anybytes))%sep.
 End WithWordAndMem.
 
+Definition getFstOfThree{A B C: Type}{map: map.map string (A * B * C)}(m: map)(f: string):
+  option A :=
+  match map.get m f with
+  | Some (a, b, c) => Some a
+  | None => None
+  end.
+
+Definition getSndOfThree{A B C: Type}{map: map.map string (A * B * C)}(m: map)(f: string):
+  option B :=
+  match map.get m f with
+  | Some (a, b, c) => Some b
+  | None => None
+  end.
+
+Definition get_argcount{V T: Type}{map: map.map string (list V * list V * T)}(m: map)(f: string):
+  option nat :=
+  match getFstOfThree m f with
+  | Some argnames => Some (List.length argnames)
+  | None => None
+  end.
+
+Definition get_retcount{V T: Type}{map: map.map string (list V * list V * T)}(m: map)(f: string):
+  option nat :=
+  match getSndOfThree m f with
+  | Some retnames => Some (List.length retnames)
+  | None => None
+  end.
+
 Section LowerPipeline.
   Context {iset: Decode.InstructionSet}.
   Context {width: Z} {BW: Bitwidth width} {BWM: bitwidth_iset width iset}.
@@ -68,19 +97,38 @@ Section LowerPipeline.
     | None => None
     end.
 
-  Lemma get_build_fun_pos_env: forall e f,
-      map.get e f <> None ->
-      exists pos, map.get (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e) f = Some pos.
+  Lemma get_build_fun_pos_env: forall e f argnames retnames body,
+      map.get e f = Some (argnames, retnames, body) ->
+      exists pos, map.get (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e) f =
+                  Some (List.length argnames, List.length retnames, pos).
   Proof.
-    intros pos0 e.
+    intros *.
     unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.compile_funs.
     eapply map.fold_spec.
     - intros. rewrite map.get_empty in H. congruence.
     - intros. destruct r as [insts en]. simpl.
       rewrite map.get_put_dec in H1.
-      destruct v as ((argnames & retnames) & body).
+      destruct v as ((argnames' & retnames') & body').
+      unfold snd.
       rewrite map.get_put_dec.
-      destruct_one_match; eauto.
+      destruct_one_match; fwd; eauto.
+  Qed.
+
+  Lemma get_build_fun_pos_env_None: forall e f,
+      map.get e f = None ->
+      map.get (build_fun_pos_env iset compile_ext_call e) f = None.
+  Proof.
+    intros *.
+    unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.compile_funs.
+    eapply map.fold_spec.
+    - intros. simpl. apply map.get_empty.
+    - intros. destruct r as [insts en]. simpl.
+      rewrite map.get_put_dec in H1.
+      destruct v as ((argnames' & retnames') & body').
+      unfold snd.
+      rewrite map.get_put_dec.
+      destruct_one_match; fwd; eauto.
+      discriminate.
   Qed.
 
   Lemma fun_pos_div4: forall functions f argcount retcount p,
@@ -90,7 +138,7 @@ Section LowerPipeline.
   Proof.
     unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.compile_funs.
     intros *.
-    eapply map.fold_spec; intros.
+    eapply map.fold_spec; intros; unfold snd in *.
     - rewrite map.get_empty in H. discriminate.
     - intros. destruct r as [insts en].
       unfold FlatToRiscvDef.add_compiled_function in *.
@@ -383,6 +431,8 @@ Section LowerPipeline.
       map.get finfo f_name = Some (argcount, retcount, f_rel_pos) /\
       forall p_funcs stack_start stack_pastend ret_addr Rdata Rexec (initial: MetricRiscvMachine),
         map.get initial.(getRegs) RegisterNames.ra = Some ret_addr ->
+        initial.(getLog) = t ->
+        word.unsigned ret_addr mod 4 = 0 ->
         map.getmany_of_list initial.(getRegs)
                             (List.firstn argcount (reg_class.all reg_class.arg))
         = Some argvals ->
@@ -396,6 +446,137 @@ Section LowerPipeline.
           = Some retvals /\
           post final.(getLog) mH' retvals /\
           machine_ok p_funcs stack_start stack_pastend instrs ret_addr mH' Rdata Rexec final).
+
+  Definition max8args: nat * nat * Z -> Prop :=
+    fun '(argcount, retcount, pos) => (argcount <= 8)%nat /\ (retcount <= 8)%nat.
+
+  Definition same_finfo_and_length:
+    list Instruction * fun_info -> list Instruction * fun_info -> Prop :=
+    fun '(insts1, finfo1) '(insts2, finfo2) =>
+      List.length insts1 = List.length insts2 /\ finfo1 = finfo2.
+
+  Lemma compile_funs_finfo_ignores_finfo_aux(finfo1 finfo2: fun_info): forall e,
+      (fun e l r => same_finfo_and_length l r) e
+      (compile_funs iset compile_ext_call finfo1 e)
+      (compile_funs iset compile_ext_call finfo2 e).
+  Proof.
+    eapply map.fold_two_spec; unfold same_finfo_and_length.
+    1: split; reflexivity.
+    intros. destruct r1 as [insts1 finfo1']. destruct r2 as [insts2 finfo2'].
+    destruct v as ((argnames & retnames) & body).
+    unfold add_compiled_function.
+    fwd. rewrite !List.app_length. rewrite H0p0.
+    erewrite compile_function_length_ignores_positions.
+    split; try reflexivity.
+  Qed.
+
+  Lemma compile_funs_snd_ignores_finfo: forall finfo1 finfo2 e,
+      snd (compile_funs iset compile_ext_call finfo1 e) =
+      snd (compile_funs iset compile_ext_call finfo2 e).
+  Proof.
+    intros. pose proof (compile_funs_finfo_ignores_finfo_aux finfo1 finfo2 e) as P.
+    unfold same_finfo_and_length in P.
+    unfold snd.
+    destruct_one_match.
+    destruct_one_match.
+    apply P.
+  Qed.
+
+  Lemma compile_funs_finfo_idemp: forall p1 insts finfo,
+      compile_funs iset compile_ext_call (build_fun_pos_env iset compile_ext_call p1) p1 =
+      (insts, finfo) ->
+      finfo = build_fun_pos_env iset compile_ext_call p1.
+  Proof.
+    intros. apply (f_equal snd) in H. cbn in H. unfold build_fun_pos_env. subst finfo.
+    apply compile_funs_snd_ignores_finfo.
+  Qed.
+
+  Lemma build_fun_pos_env_good_e_impl: forall e,
+      map.forall_values valid_FlatImp_fun e ->
+      good_e_impl e (build_fun_pos_env iset compile_ext_call e).
+  Proof.
+    unfold good_e_impl.
+    intros *. intros H * G.
+    split.
+    - eapply H. eassumption.
+    - unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.build_fun_pos_env.
+      pose proof (get_compile_funs_pos e map.empty) as P.
+      destruct (compile_funs iset _ map.empty e) as [ insts posmap ] eqn: F.
+      destruct fun_impl as ((argnames' & retnames') & body').
+      specialize P with (1 := G). unfold snd. cbv beta iota zeta in *.
+      exact P.
+  Qed.
+
+  Lemma shrink_good_e_impl: forall e1 e2 finfo,
+      good_e_impl e1 finfo ->
+      map.extends e1 e2 ->
+      good_e_impl e2 finfo.
+  Proof.
+    unfold good_e_impl, map.extends.
+    intros. destruct fun_impl as ((argnames & retnames) & body).
+    specialize H0 with (1 := H1).
+    specialize H with (1 := H0).
+    cbv beta iota zeta in H.
+    exact H.
+  Qed.
+
+  Lemma riscvPhase_preserves_argcount: forall p1 l finfo z,
+      riscvPhase p1 = Some (l, finfo, z) ->
+      forall fname, get_argcount p1 fname = getFstOfThree finfo fname.
+  Proof.
+    unfold riscvPhase, get_argcount, getFstOfThree. intros. fwd.
+    pose proof (compile_funs_finfo_idemp _ _ _ E0) as P. subst r. rename l into insts.
+    pose proof (get_compile_funs_pos p1 (build_fun_pos_env iset compile_ext_call p1)) as P.
+    rewrite E0 in P.
+    destr (map.get p1 fname).
+    - specialize P with (1 := E1). destruct p as ((argnames & retnames) & body). fwd.
+      reflexivity.
+    - destr (map.get (build_fun_pos_env iset compile_ext_call p1) fname).
+      2: reflexivity.
+      destruct p as ((argnames & retnames) & body).
+      erewrite get_build_fun_pos_env_None in E2 by eassumption.
+      discriminate.
+  Qed.
+
+  Lemma riscvPhase_preserves_retcount: forall p1 l finfo z,
+      riscvPhase p1 = Some (l, finfo, z) ->
+      forall fname, get_retcount p1 fname = getSndOfThree finfo fname.
+  Proof.
+    unfold riscvPhase, get_retcount, getSndOfThree. intros. fwd.
+    pose proof (compile_funs_finfo_idemp _ _ _ E0) as P. subst r. rename l into insts.
+    pose proof (get_compile_funs_pos p1 (build_fun_pos_env iset compile_ext_call p1)) as P.
+    rewrite E0 in P.
+    destr (map.get p1 fname).
+    - specialize P with (1 := E1). destruct p as ((argnames & retnames) & body). fwd.
+      reflexivity.
+    - destr (map.get (build_fun_pos_env iset compile_ext_call p1) fname).
+      2: reflexivity.
+      destruct p as ((argnames & retnames) & body).
+      erewrite get_build_fun_pos_env_None in E2 by eassumption.
+      discriminate.
+  Qed.
+
+  Lemma riscv_phase_preserves_valid: forall p1 p2,
+      riscvPhase p1 = Some p2 ->
+      map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
+      let '(insts, finfo, req_stack_size) := p2 in map.forall_values max8args finfo.
+  Proof.
+    unfold map.forall_values. intros. destruct p2 as ((insts & finfo) & req_stack_size).
+    intros f ((argcount & retcount) & pos) G.
+    pose proof (riscvPhase_preserves_argcount _ _ _ _ H f) as AC.
+    pose proof (riscvPhase_preserves_retcount _ _ _ _ H f) as RC.
+    unfold get_argcount, get_retcount, getFstOfThree, getSndOfThree in *.
+    destr (map.get p1 f). 2: fwd; discriminate.
+    destruct p as ((argnames & retnames) & body).
+    unfold valid_FlatImp_fun in *.
+    specialize H0 with (1 := E). cbv beta iota zeta in *. fwd.
+    unfold max8args.
+    apply (f_equal (@List.length _)) in H0p0.
+    apply (f_equal (@List.length _)) in H0p1.
+    rewrite List.firstn_length in *.
+    change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat in *.
+    blia.
+  Qed.
 
   Lemma flat_to_riscv_correct: forall p1 p2,
       map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
@@ -417,15 +598,10 @@ Section LowerPipeline.
     fwd.
     pose proof (get_compile_funs_pos p1 (build_fun_pos_env iset compile_ext_call p1)) as P.
     rewrite E0 in P.
-    specialize P with (1 := H1p0). cbn in P. rename r into finfo. fwd.
-    assert (finfo = build_fun_pos_env iset compile_ext_call p1). {
-      unfold riscvPhase in RP.
-(*
-    edestruct (get_build_fun_pos_env p1 fname) as (((argcount & retcount) & f_rel_pos) & GetPos).
-    1: congruence.
-    exists argcount, retcount, f_rel_pos. split. 1: assumption.
+    specialize P with (1 := H1p0). cbn in P.
+    pose proof (compile_funs_finfo_idemp _ _ _ E0) as Q. fwd.
+    do 3 eexists. split. 1: eassumption.
     intros.
-    pose proof GetPos as M0. eapply fun_pos_div4 in M0.
     assert (word.unsigned p_funcs mod 4 = 0). {
       unfold machine_ok in *. fwd.
       eapply program_mod_4_0. 2: ecancel_assumption.
@@ -435,12 +611,12 @@ Section LowerPipeline.
     match goal with
     | H: map.get p1 fname = Some _ |- _ => rename H into GetFun
     end.
-    specialize H with (1 := GetFun).
+    specialize H with (1 := GetFun) as V.
     match goal with
     | H: context[post] |- _ => rename H into Hpost
     end.
     unfold map.of_list_zip in Hpost.
-    unfold valid_FlatImp_fun in H. fwd.
+    unfold valid_FlatImp_fun in V. fwd.
     apply_in_hyps @map.getmany_of_list_length.
     match goal with
     | H: _ |- _ => rename H into HL
@@ -448,163 +624,186 @@ Section LowerPipeline.
     edestruct (map.sameLength_putmany_of_list _ _ map.empty HL) as [st0 OL].
     rewrite List.firstn_length in HL.
     change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat in HL.
-    pose proof (get_compile_funs_pos p1 (build_fun_pos_env iset compile_ext_call p1)) as P.
-    rewrite E0 in P.
-    Search p1.
-
-    Search argnames.
-    Search argvals.
-    apply_in_hyps
-
-
+    replace (List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg))
+      with argnames in OL by congruence.
     specialize Hpost with (1 := OL).
-
     eapply runsTo_weaken.
     - eapply compile_function_body_correct with
-          (e_impl := e)
-          (e_pos := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e)
+          (g := {| rem_stackwords :=
+                     word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
+                   rem_framewords := 0; |})
+          (e_impl := map.remove p1 fname)
+          (e_pos := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call p1)
           (xframe := Rexec)
-          (program_base := p_funcs).
+          (pos := pos2)
+          (program_base := p_funcs)
+          (l := st0)
+          (post0 := fun t' m' l' mc' =>
+                     (exists retvals,
+                         map.getmany_of_list l' retnames = Some retvals /\ post t' m' retvals)).
       + intros.
         pose proof compile_stmt_correct as P.
         unfold compiles_FlatToRiscv_correctly in P at 2.
-        eapply P; clear P. try eassumption.
-
-    - specialize compile_stmt_correct with (1 := compile_ext_call_correct).
-      unfold compiles_FlatToRiscv_correctly. intros compile_stmt_correct.
-      (* TODO isolate exec.call case from FlatToRiscvFunctions *)
-      eapply compile_stmt_correct with (g := {|
-        e_pos := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call functions;
-        program_base := p_funcs;
-        e_impl := functions;
-        rem_stackwords := word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
-        rem_framewords := 0;
-        p_insts := _;
-        insts := [[Jal RegisterNames.ra
-                      (f_entry_rel_pos + word.signed (word.sub p_funcs (getPc initial)))]];
-        xframe := Rexec;
-        dframe := Rdata;
-      |}) (pos := - word.signed (word.sub p_funcs p_call));
-      clear compile_stmt_correct; cbn.
-      { eapply FlatImp.exec.call with (args := []) (argvs := []) (binds := []); cycle -1; try eassumption.
-        2,3: reflexivity.
-        intros *. intro Po. do 2 eexists. ssplit.
-        1,2: reflexivity.
-        revert Po.
-        match goal with
-        | |- ?A _ _ _ _ -> ?B _ _ _ _ => unify A B
-        end.
-        exact id. }
-      { clear. intros k v ?. eassumption. }
-      { unfold good_e_impl.
-        intros *. intro G.
-        split.
-        - eapply H. eassumption.
-        - unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.build_fun_pos_env.
-          pose proof (get_compile_funs_pos functions) as P.
-          destruct (compile_funs iset _ map.empty functions) as [ insts posmap ] eqn: F.
-          eapply P.
-          eassumption. }
-      { eapply fits_stack_call. 2: eassumption. 1: reflexivity.
-        eapply fits_stack_monotone.
+        eapply P with (e_pos := (build_fun_pos_env iset compile_ext_call p1))
+                      (program_base := p_funcs)
+                      (e_impl := map.remove p1 fname);
+          clear P.
+        { eassumption. }
+        { eapply Hpost. }
+        { eapply extends_remove. eapply extends_refl. }
+        { eapply shrink_good_e_impl.
+          1: eapply build_fun_pos_env_good_e_impl; assumption.
+          eapply extends_remove. eapply extends_refl. }
+        { eassumption. }
+        { eassumption. }
+        { eassumption. }
+        { eassumption. }
+        { eassumption. }
+        { eassumption. }
+        { eassumption. }
+        { eassumption. }
+        { eassumption. }
+      + cbv beta. intros. fwd.
+        rewrite <- Vp1.
+        assert (HLR: Datatypes.length retnames = Datatypes.length retvals). {
+          eapply map.getmany_of_list_length. eassumption.
+        }
+        eapply map.sameLength_putmany_of_list in HLR.
+        destruct HLR as (l' & HLR).
+        do 2 eexists. ssplit.
+        * eassumption.
+        * eassumption.
+        * eexists. split. 2: eassumption.
+          eapply map.putmany_of_list_zip_to_getmany_of_list.
+          1: eassumption.
+          rewrite Vp1.
+          eapply List.NoDup_firstn.
+          unfold reg_class.all.
+          eapply List.NoDup_filter.
+          eapply List.NoDup_unfoldn_Z_seq.
+      + rewrite Vp1. rewrite List.firstn_length.
+        change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat. clear. blia.
+      + exact OL.
+      + eapply Hpost.
+      + rewrite <- Vp0.
+        eapply map.putmany_of_list_zip_to_getmany_of_list.
+        1: eassumption.
+        rewrite Vp0.
+        eapply List.NoDup_firstn.
+        unfold reg_class.all.
+        eapply List.NoDup_filter.
+        eapply List.NoDup_unfoldn_Z_seq.
+      + apply extends_remove. apply extends_refl.
+      + eapply shrink_good_e_impl.
+        1: eapply build_fun_pos_env_good_e_impl; assumption.
+        eapply extends_remove. eapply extends_refl.
+      + eapply fits_stack_monotone.
         { eapply stack_usage_correct; eassumption. }
-        1: reflexivity.
-        blia. }
-      { cbn. cbn in GetPos. rewrite GetPos. f_equal. f_equal. f_equal.
-        unfold machine_ok in *. simp. blia. }
-      { simpl. auto. }
-      { cbn. auto using Forall_nil, Nat.le_0_l. }
-      { solve_divisibleBy4. }
-      { assumption. }
-      { unfold machine_ok in *. simp.
-        (* TODO why are these manual steps needed? *)
-        rewrite word.ring_morph_opp.
-        rewrite word.of_Z_signed.
-        solve_word_eq word_ok. }
-      { (* TODO why are these manual steps needed? *)
-        rewrite word.ring_morph_opp.
-        rewrite word.of_Z_signed.
-        solve_word_eq word_ok. }
-      unfold goodMachine. simpl. ssplit.
-      { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
-      { simpl. unfold map.extends. intros k v Emp. rewrite map.get_empty in Emp. discriminate. }
-      { simpl. unfold machine_ok in *. simp. eassumption. }
-      { unfold machine_ok in *. simp. assumption. }
-      { unfold machine_ok in *. simp. assumption. }
-      { unfold machine_ok in *. simp. simpl.
-        eapply rearrange_footpr_subset. 1: eassumption.
-        wwcancel.
-        eapply functions_to_program.
-        idtac. eassumption. }
-      { simpl.
-        unfold machine_ok in *. simp.
-        edestruct mem_available_to_exists as [ stack_trash [? ?] ]. 1: simpl; ecancel_assumption.
-        destruct (byte_list_to_word_list_array stack_trash)
-          as (stack_trash_words&Hlength_stack_trash_words&Hstack_trash_words).
-        { match goal with
-          | H: ?x = ?y |- _ => rewrite H
-          end.
-          assumption. }
-        exists stack_trash_words.
-        split. 2: {
-          unfold word_array.
-          rewrite <- (iff1ToEq (Hstack_trash_words _)).
+        1: reflexivity. simpl_g_get. blia.
+      + reflexivity.
+      + unfold valid_FlatImp_fun. eauto.
+      + assumption.
+      + assumption.
+      + eassumption.
+      + assumption.
+      + unfold machine_ok in *. fwd. assumption.
+      + simpl_g_get. reflexivity.
+      + unfold machine_ok in *. fwd.
+        unfold goodMachine; simpl_g_get. ssplit.
+        { move OL at bottom.
+          move H2 at bottom.
+          rewrite <- Vp0 in H3.
+          eapply map.extends_putmany_of_list_empty; eassumption. }
+        { eapply map.of_list_zip_forall_keys. 1: exact OL.
+          rewrite Vp0.
+          eapply List.Forall_firstn.
+          eapply Forall_impl.
+          2: eapply arg_range_Forall.
+          unfold valid_FlatImp_var. clear. blia. }
+        { eassumption. }
+        { assumption. }
+        { assumption. }
+        { eapply rearrange_footpr_subset. 1: eassumption.
+          wwcancel.
+          cbn [seps]. etransitivity. {
+            eapply functions_to_program. eassumption.
+          }
+          etransitivity. {
+            eapply functions_expose; eassumption.
+          }
+          wwcancel. }
+        { edestruct mem_available_to_exists as [ stack_trash [? ?] ]. 1: simpl; ecancel_assumption.
+          destruct (byte_list_to_word_list_array stack_trash)
+            as (stack_trash_words&Hlength_stack_trash_words&Hstack_trash_words).
+          { match goal with
+            | H: ?x = ?y |- _ => rewrite H
+            end.
+            assumption. }
+          exists stack_trash_words, nil. ssplit. 2: reflexivity.
+          2: {
+            unfold word_array.
+            rewrite <- (iff1ToEq (Hstack_trash_words _)).
+            match goal with
+            | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => rewrite <- E
+            end.
+            rewrite <- Z_div_exact_2; cycle 1. {
+              unfold bytes_per_word. clear -BW.
+              destruct width_cases as [E | E]; rewrite E; reflexivity.
+            }
+            {
+              match goal with
+              | H: ?x = ?y |- _ => rewrite H
+              end.
+              assumption.
+            }
+            use_sep_assumption.
+            unfold ptsto_bytes.
+            wseplog_pre.
+            simpl_addrs.
+            rewrite !word.of_Z_unsigned.
+            wwcancel.
+            cancel_seps_at_indices 1%nat 2%nat. 1: reflexivity.
+            cbn [seps].
+            etransitivity. {
+              eapply functions_to_program. 1: eassumption.
+            }
+            etransitivity. {
+              eapply functions_expose; eassumption.
+            }
+            wwcancel.
+          }
           match goal with
           | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
           end.
-          lazymatch goal with
-          | H: riscvPhase _ = _ |- _ => specialize functions_to_program with (1 := H) as P
-          end.
-          symmetry in P.
-          simpl in P|-*. unfold program in P.
-          seprewrite P. clear P.
-          rewrite <- Z_div_exact_2; cycle 1. {
-            unfold bytes_per_word. clear -BW.
-            destruct width_cases as [E | E]; rewrite E; reflexivity.
-          }
-          {
-            match goal with
-            | H: ?x = ?y |- _ => rewrite H
-            end.
-            assumption.
-          }
-          use_sep_assumption.
-          unfold ptsto_bytes.
-          wseplog_pre.
-          simpl_addrs.
-          rewrite !word.of_Z_unsigned.
-          wcancel.
-        }
-        match goal with
-        | E: Z.of_nat _ = word.unsigned (word.sub _ _) |- _ => simpl in E|-*; rewrite <- E
-        end.
-        rewrite Z.sub_0_r. symmetry.
-        apply Hlength_stack_trash_words. }
-      { reflexivity. }
-      { unfold machine_ok in *. simp. assumption. }
-    - cbv beta. unfold goodMachine. cbn. unfold machine_ok in *. intros. simp.
-      eexists. split. 1: eassumption.
-      ssplit; try assumption.
+          apply Hlength_stack_trash_words. }
+        { reflexivity. }
+        { assumption. }
+    - cbv beta. unfold goodMachine. simpl_g_get. unfold machine_ok in *. intros. fwd.
+      assert (0 < bytes_per_word). { (* TODO: deduplicate *)
+        unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
+      }
+      eexists _, _. ssplit.
+      + rewrite <- Vp1. eapply map.getmany_of_list_extends; eassumption.
+      + eassumption.
       + cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).
         exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x))) stack_trash).
         rewrite !(iff1ToEq (sep_emp_2 _ _ _)).
         rewrite !(iff1ToEq (sep_assoc _ _ _)).
         eapply (sep_emp_l _ _); split.
-        { assert (0 < bytes_per_word). { (* TODO: deduplicate *)
-            unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
-          }
-          rewrite (List.length_flat_map _ (Z.to_nat bytes_per_word)).
-          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia. rewrite Z.sub_0_r in H7p9p0.
-            rewrite <-H7p9p0, <-Z_div_exact_2; try trivial.
+        { rewrite (List.length_flat_map _ (Z.to_nat bytes_per_word)).
+          { rewrite Nat2Z.inj_mul, Z2Nat.id by blia.
+            replace (Z.of_nat (Datatypes.length stack_trash))
+              with (word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word)
+              by assumption.
+            rewrite <- Z_div_exact_2; try trivial.
             eapply Z.lt_gt; assumption. }
           intros w.
           rewrite HList.tuple.length_to_list; trivial. }
+        destruct frame_trash. 2: discriminate.
         use_sep_assumption.
-        cbn [dframe xframe program_base e_pos e_impl p_insts insts].
-        change (if width =? 32 then RV32I else RV64I) with iset.
         wwcancel.
-        cancel_seps_at_indices 0%nat 1%nat. {
+        cancel_seps_at_indices 2%nat 1%nat. {
           unfold ptsto_bytes.
           match goal with
           | |- array _ _ ?a _ = array _ _ ?a' _ => replace a with a'
@@ -613,41 +812,47 @@ Section LowerPipeline.
             match goal with
             | H: context[stack_trash] |- _ => rewrite <- H
             end.
-            rewrite <- Z_div_exact_2; cycle 1. {
-              unfold bytes_per_word. simpl.
-              destruct width_cases as [Ew | Ew]; rewrite Ew; reflexivity.
-            }
-            1: assumption.
+            replace (Z.of_nat (Datatypes.length stack_trash))
+              with (word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word)
+              by assumption.
+            rewrite <- Z_div_exact_2. 3: assumption.
+            2: eapply Z.lt_gt; assumption.
             rewrite word.of_Z_unsigned.
             solve_word_eq word_ok.
           }
           apply iff1ToEq, cast_word_array_to_bytes.
         }
-        unfold ptsto_instr.
-        simpl.
-        unfold ptsto_bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
-        simpl.
-        wwcancel.
-        pose proof functions_to_program as P. specialize P with (1 := RP).
         cbn [seps].
-        rewrite <- P; clear P.
+        etransitivity. 2: {
+          symmetry. eapply functions_to_program. 1: eassumption.
+        }
+        etransitivity. 2: {
+          symmetry. eapply functions_expose; eassumption.
+        }
         wwcancel.
-      + unfold machine_ok in *. simp. simpl.
-        eapply rearrange_footpr_subset. 1: eassumption.
+      + eapply rearrange_footpr_subset. 1: eassumption.
         (* TODO remove duplication *)
         lazymatch goal with
         | H: riscvPhase _ = _ |- _ => specialize functions_to_program with (1 := H) as P
         end.
         symmetry in P.
-        rewrite P. clear P.
-        cbn [dframe xframe program_base e_pos e_impl p_insts insts program].
-        simpl.
-        unfold ptsto_bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
-        simpl.
+        specialize (P p_funcs).
+        eapply iff1ToEq in P.
+        rewrite <- P. clear P.
+        wwcancel.
+        cbn [seps].
+        etransitivity. 2: {
+          symmetry. eapply functions_expose; eassumption.
+        }
         wwcancel.
       + destr_RiscvMachine final. subst. solve_divisibleBy4.
+      + reflexivity.
+      + assumption.
+      + assumption.
+      + assumption.
+      + assumption.
+    Unshelve.
+    all: try exact EmptyMetricLog.
   Qed.
-  *)
-  Admitted.
 
 End LowerPipeline.

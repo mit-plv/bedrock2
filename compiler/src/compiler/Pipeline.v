@@ -159,35 +159,6 @@ Section WithWordAndMem.
     Definition ParamsNoDup{Var: Type}: (list Var * list Var * FlatImp.stmt Var) -> Prop :=
       fun '(argnames, retnames, body) => NoDup argnames /\ NoDup retnames.
 
-    Definition max8args: nat * nat * Z -> Prop :=
-      fun '(argcount, retcount, pos) => (argcount <= 8)%nat /\ (retcount <= 8)%nat.
-
-    Definition getFstOfThree{A B C: Type}(m: string_keyed_map (A * B * C))(f: string): option A :=
-      match map.get m f with
-      | Some (a, b, c) => Some a
-      | None => None
-      end.
-
-    Definition getSndOfThree{A B C: Type}(m: string_keyed_map (A * B * C))(f: string): option B :=
-      match map.get m f with
-      | Some (a, b, c) => Some b
-      | None => None
-      end.
-
-    Definition get_argcount{V T: Type}(m: string_keyed_map (list V * list V * T))(f: string):
-      option nat :=
-      match getFstOfThree m f with
-      | Some argnames => Some (List.length argnames)
-      | None => None
-      end.
-
-    Definition get_retcount{V T: Type}(m: string_keyed_map (list V * list V * T))(f: string):
-      option nat :=
-      match getSndOfThree m f with
-      | Some retnames => Some (List.length retnames)
-      | None => None
-      end.
-
     Definition SrcLang: Lang := {|
       Program := string_keyed_map (list string * list string * Syntax.cmd);
       GetArgCount := get_argcount;
@@ -411,24 +382,14 @@ Section WithWordAndMem.
       eapply spill_fun_correct; eassumption.
     Qed.
 
-    Lemma riscv_phase_preserves_valid: forall p1 p2,
-        riscvPhase compile_ext_call p1 = Some p2 ->
-        map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
-        let '(insts, finfo, req_stack_size) := p2 in map.forall_values max8args finfo.
-    Proof.
-      unfold riscvPhase, map.forall_values, max8args. intros. fwd.
-      rename r into finfo.
-      epose proof (get_compile_funs_pos (iset := iset) compile_ext_call p1
-                     (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call p1)) as P.
-      rewrite E0 in P.
-      intros.
-    Admitted.
-
     Lemma riscv_phase_correct: phase_correct FlatWithRegs RiscvLang (riscvPhase compile_ext_call).
     Proof.
       unfold FlatWithRegs, RiscvLang.
-      split; cbn. 1, 2: case TODO. 1: exact riscv_phase_preserves_valid.
-      eapply flat_to_riscv_correct; try eassumption.
+      split; cbn. 1, 2: intros p1 ((? & finfo) & ?).
+      - eapply riscvPhase_preserves_argcount. assumption.
+      - eapply riscvPhase_preserves_retcount. assumption.
+      - eapply riscv_phase_preserves_valid. assumption.
+      - eapply flat_to_riscv_correct; eassumption.
     Qed.
 
     Definition compile:
@@ -475,6 +436,7 @@ Section WithWordAndMem.
                 (fun t' m' l' mc' => exists retvals: list word,
                      map.getmany_of_list l' retnames = Some retvals /\ post t' m' retvals)) ->
         map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
+        word.unsigned ret_addr mod 4 = 0 ->
         map.getmany_of_list initial.(getRegs)
                             (List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg))
         = Some argvals ->

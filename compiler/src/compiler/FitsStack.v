@@ -5,7 +5,7 @@ Require Import coqutil.Z.Lia.
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
-Require Import coqutil.Tactics.Simp.
+Require Import coqutil.Tactics.fwd.
 
 Local Open Scope Z_scope.
 
@@ -70,12 +70,10 @@ Section FitsStack.
   Definition update_stack_usage(e_glob: env)
              (current: option Z)(fname: String.string)(fimpl: list Z * list Z * stmt Z): option Z :=
     match current with
-    | Some cur => match fimpl with
-                  | (nil, nil, fbody) => match stack_usage_of_fun e_glob fname with
-                                         | Some res => Some (Z.max cur res)
-                                         | None => None
-                                         end
-                  | _ => Some cur
+    | Some cur => let '(_, _, fbody) := fimpl in
+                  match stack_usage_of_fun e_glob fname with
+                  | Some res => Some (Z.max cur res)
+                  | None => None
                   end
     | None => None
     end.
@@ -110,13 +108,12 @@ Section FitsStack.
   Proof.
     induction n; intros; simpl in *. 1: discriminate.
     revert M N H.
-    induction s; intros; simpl in *; simp;
+    induction s; intros; simpl in *; fwd;
       try specialize IHs with (1 := eq_refl);
       try specialize IHs1 with (1 := eq_refl);
       try specialize IHs2 with (1 := eq_refl);
       try blia.
     subst.
-    apply Z.leb_le in E. apply Z.eqb_eq in E0.
     assert (0 < Memory.bytes_per_word (Decode.bitwidth iset)). {
       unfold Memory.bytes_per_word.
       clear. destruct iset; reflexivity.
@@ -129,7 +126,7 @@ Section FitsStack.
     (* TODO why does "Z.div_mod_to_equations. blia." not work? *)
     replace (BinIntDef.Z.max 0 nbytes) with nbytes by blia.
     apply Zmod_divides in E0. 2: blia.
-    simp.
+    clear Heqbw. fwd.
     replace (bw * c + bw - 1) with (c * bw + (bw - 1)) by blia.
     rewrite Z.div_add_l by blia.
     rewrite (Z.div_small (bw - 1) bw) by blia.
@@ -145,11 +142,10 @@ Section FitsStack.
     - simpl in H. discriminate.
     - simpl in H.
       revert y z H.
-      induction s; intros; simpl in H; simp.
+      induction s; intros; simpl in H; fwd.
       all: try (constructor; eauto using fits_stack_monotone, Z.le_max_l, Z.le_max_r; blia).
       + specialize (IHs _ _ eq_refl).
         pose proof fits_stack_nonneg as P. specialize P with (1 := IHs).
-        apply Z.leb_le in E. apply Z.eqb_eq in E0.
         econstructor.
         * assert (0 <= nbytes / Memory.bytes_per_word (Decode.bitwidth iset)). {
             apply Z.div_pos. 1: assumption. unfold Memory.bytes_per_word.
@@ -174,12 +170,12 @@ Section FitsStack.
 
   (* The art of figuring out the right induction hypothesis... *)
   Let P(e_glob e_done: env)(r: option Z): Prop :=
-    forall e_rest f fbody z,
+    forall e_rest f argnames retnames fbody z,
       r = Some z ->
-      map.get e_done f = Some (nil, nil, fbody) ->
+      map.get e_done f = Some (argnames, retnames, fbody) ->
       map.split e_glob e_done e_rest ->
       fits_stack (FlatToRiscvDef.stackalloc_words iset fbody)
-                 (z - framelength (nil, nil, fbody)) (map.remove e_glob f) fbody.
+                 (z - framelength (argnames, retnames, fbody)) (map.remove e_glob f) fbody.
 
   Lemma stack_usage_correct_aux: forall e_glob e_done,
       P e_glob e_done (map.fold (update_stack_usage e_glob) (Some 0) e_done).
@@ -190,54 +186,49 @@ Section FitsStack.
       intros.
       destruct v as [ [ newargs newrets ] newbody ].
       unfold update_stack_usage in *.
-      simp.
+      fwd.
       pose proof H3 as A.
       apply map.split_put_l2r in A. 2: assumption.
-      destruct newargs; destruct newrets. {
+      rewrite map.get_put_dec in H2.
+      destr (String.eqb k f). {
         unfold stack_usage_of_fun in *.
-        simpl in H1.
-        simp.
-        assert (map.get e_glob k = Some (nil, nil, newbody)) as Q. {
-          clear -H3 E1 H env_ok.
+        fwd.
+        simpl in E1.
+        fwd.
+        assert (map.get e_glob f = Some (argnames, retnames, fbody)) as Q. {
           unfold map.split, map.disjoint in *.
-          simp.
-          etransitivity. 1: exact E1.
-          rewrite map.get_putmany_left in E1.
-          - rewrite map.get_put_same in E1. congruence.
+          fwd.
+          etransitivity. 1: exact E.
+          rewrite map.get_putmany_left in E.
+          - rewrite map.get_put_same in E. congruence.
           - match goal with
             | |- ?x = None => destr x
             end.
             2: reflexivity.
             exfalso.
-            eapply H3p1. 2: exact E.
+            eapply H3p1. 2: exact E1.
             rewrite map.get_put_same. reflexivity.
         }
-        simpl in Q,E1. rewrite Q in E1. symmetry in E1. simp.
-        rewrite map.get_put_dec in H2.
+        rewrite Q in E. symmetry in E. fwd.
         pose proof stack_usage_rec_equals_stackalloc_words as P.
-        specialize P with (1 := E2). subst.
-        eapply stack_usage_rec_correct in E2.
-        destr (String.eqb k f).
-        * simp. subst.
-          eapply fits_stack_monotone. 1: eassumption.
-          all: unfold framelength.
-          all: blia.
-        * specialize H0 with (1 := eq_refl).
-          eapply fits_stack_monotone.
-          -- eauto.
-          -- blia.
-          -- unfold framelength. blia.
+        specialize P with (1 := E0). subst.
+        eapply stack_usage_rec_correct in E0.
+        eapply fits_stack_monotone. 1: eassumption.
+        all: unfold framelength.
+        all: blia.
       }
-      all: rewrite map.get_put_dec in H2.
-      all: destr (String.eqb k f); try discriminate.
-      all: simp; eauto.
+      specialize H0 with (1 := eq_refl).
+      eapply fits_stack_monotone.
+      + eauto.
+      + blia.
+      + unfold framelength. blia.
   Qed.
 
-  Lemma stack_usage_correct: forall e z f fbody,
-      map.get e f = Some (nil, nil, fbody) ->
+  Lemma stack_usage_correct: forall e z f argnames retnames fbody,
+      map.get e f = Some (argnames, retnames, fbody) ->
       stack_usage e = Some z ->
       fits_stack (FlatToRiscvDef.stackalloc_words iset fbody)
-                 (z - framelength (nil, nil, fbody)) (map.remove e f) fbody.
+                 (z - framelength (argnames, retnames, fbody)) (map.remove e f) fbody.
   Proof.
     intros. unfold stack_usage in *.
     pose proof stack_usage_correct_aux as Q.

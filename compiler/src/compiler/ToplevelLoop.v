@@ -311,6 +311,7 @@ Section Pipeline1.
       all: cycle 1.
       { apply stack_length_divisible. }
       { cbn. apply map.get_put_same. }
+      { destruct mlOk. solve_divisibleBy4. }
       { reflexivity. }
       unfold machine_ok.
       clear P'.
@@ -488,7 +489,8 @@ Section Pipeline1.
         unfold runsTo in P.
         specialize P with (argnames := []) (retnames := []) (argvals := [])
                           (fname := "loop"%string)
-                          (post := fun t' m' retvals => isReady spec t' m' /\ goodTrace spec t').
+                          (post := fun t' m' retvals => isReady spec t' m' /\ goodTrace spec t')
+                          (ret_addr := word.add loop_pos (word.of_Z 4)).
         edestruct P as (loop_rel_pos & G & P'); clear P; cycle -1.
         1: eapply P'.
         7: {
@@ -502,7 +504,8 @@ Section Pipeline1.
         all: try eassumption.
         all: cycle 1.
         { apply stack_length_divisible. }
-        { cbn. apply map.get_put_same. }
+        { cbn. rewrite map.get_put_same. f_equal. solve_word_eq word_ok. }
+        { subst loop_pos init_pos. destruct mlOk. solve_divisibleBy4. }
         { reflexivity. }
         unfold machine_ok.
         unfold_RiscvMachine_get_set.
@@ -558,13 +561,6 @@ Section Pipeline1.
                | |- _ => eassumption
                | |- _ => reflexivity
                end.
-        move Hp10 at bottom.
-        cbn in Hp10.
-        case TODO.
-        (*
-        rewrite Hp10.
-        solve_word_eq word_ok.
-        *)
   Qed.
 
   Lemma ll_inv_implies_prefix_of_good: forall st,

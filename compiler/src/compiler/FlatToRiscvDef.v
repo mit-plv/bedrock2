@@ -330,6 +330,6 @@ Section FlatToRiscv1.
     (* since we pass map.empty as the fun_pos_env into compile_funs, the instrs
        returned don't jump to the right positions yet (they all jump to 42),
        but the instructions have the right size, so the posmap we return is correct *)
-    let '(instrs, posmap) := compile_funs map.empty e_impl in posmap.
+    snd (compile_funs map.empty e_impl).
 
 End FlatToRiscv1.
