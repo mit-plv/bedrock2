@@ -628,19 +628,21 @@ Section LowerPipeline.
       with argnames in OL by congruence.
     specialize Hpost with (1 := OL).
     eapply runsTo_weaken.
-    - eapply compile_function_body_correct with
-          (g := {| rem_stackwords :=
-                     word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
-                   rem_framewords := 0; |})
+    - pose proof compile_function_body_correct as Q.
+      specialize Q with
           (e_impl := map.remove p1 fname)
           (e_pos := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call p1)
           (xframe := Rexec)
           (pos := pos2)
           (program_base := p_funcs)
           (l := st0)
-          (post0 := fun t' m' l' mc' =>
+          (post := fun t' m' l' mc' =>
                      (exists retvals,
                          map.getmany_of_list l' retnames = Some retvals /\ post t' m' retvals)).
+      eapply Q with
+          (g := {| rem_stackwords :=
+                     word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word;
+                   rem_framewords := 0; |}); clear Q.
       + intros.
         pose proof compile_stmt_correct as P.
         unfold compiles_FlatToRiscv_correctly in P at 2.
