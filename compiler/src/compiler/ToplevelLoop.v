@@ -147,8 +147,8 @@ Section Pipeline1.
       map.get positions "loop"%string = Some (O, O, loop_fun_pos) /\
       exists mH,
         isReady spec mach.(getLog) mH /\ goodTrace spec mach.(getLog) /\
-        machine_ok functions_pos ml.(stack_start) ml.(stack_pastend) functions_instrs
-                   (word.add loop_pos (word.of_Z (if done then 4 else 0))) mH R
+        mach.(getPc) = word.add loop_pos (word.of_Z (if done then 4 else 0)) /\
+        machine_ok functions_pos ml.(stack_start) ml.(stack_pastend) functions_instrs mH R
                    (program iset init_sp_pos (init_sp_insts ++
                                               init_insts init_fun_pos ++
                                               loop_insts loop_fun_pos ++
@@ -295,7 +295,7 @@ Section Pipeline1.
                         (fname := "init"%string).
       edestruct P as (init_rel_pos & G & P'); clear P; cycle -1.
       1: eapply P'.
-      7: {
+      8: {
         cbn.
         unfold hl_inv in init_code_correct.
         move init_code_correct at bottom.
@@ -308,11 +308,14 @@ Section Pipeline1.
         - cbv beta. intros * _ _ HP. exists []. split. 1: reflexivity. exact HP.
       }
       all: try eassumption.
-      all: cycle 1.
+      all: cycle 2.
       { apply stack_length_divisible. }
       { cbn. apply map.get_put_same. }
       { destruct mlOk. solve_divisibleBy4. }
       { reflexivity. }
+      { cbn. clear CP.
+        rewrite GetPos in G. fwd.
+        subst loop_pos init_pos init_sp. solve_word_eq word_ok. }
       unfold machine_ok.
       clear P'.
       rewrite GetPos in G. fwd.
@@ -363,7 +366,6 @@ Section Pipeline1.
       + unfold compile, compose_phases, riscvPhase in E. fwd.
         eapply fun_pos_div4 in GetPos.
         destruct mlOk. solve_divisibleBy4.
-      + clear CP. subst loop_pos init_pos init_sp. solve_word_eq word_ok.
       + do 2 rapply regs_initialized_put. eassumption.
       + rewrite map.get_put_diff by (cbv; discriminate).
         rewrite map.get_put_same. unfold init_sp. rewrite word.of_Z_unsigned. reflexivity.
@@ -401,6 +403,9 @@ Section Pipeline1.
         unfold GetRetCount, SrcLang, RiscvLang, get_retcount, getSndOfThree in Q.
         specialize (Q "loop"%string).
         fwd. reflexivity.
+      + destruct_RiscvMachine final. subst.
+        subst loop_pos init_pos.
+        solve_word_eq word_ok.
       + (* prove that machine_ok of ll_inv (i.e. all instructions, and just before jumping calling
            loop body function) is implied by the state proven by the compiler correctness lemma for
            the init function *)
@@ -410,7 +415,6 @@ Section Pipeline1.
         end.
         f_equal.
         * unfold functions_pos, backjump_pos. solve_word_eq word_ok.
-        * unfold loop_pos, init_pos. solve_word_eq word_ok.
         * eapply iff1ToEq.
           unfold init_sp_insts, init_insts, loop_insts, backjump_insts.
           wwcancel.
@@ -458,8 +462,8 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
-      + destruct mlOk. subst. simpl in *. subst loop_pos init_pos. solve_divisibleBy4.
-      + solve_word_eq word_ok.
+      + cbn. solve_word_eq word_ok.
+      + cbn. destruct mlOk. subst. simpl in *. subst loop_pos init_pos. solve_divisibleBy4.
     - unfold ll_good, machine_ok.
       intros. fwd. assumption.
     - cbv. intuition discriminate.
@@ -507,13 +511,14 @@ Section Pipeline1.
       + pose proof compiler_correct compile_ext_call compile_ext_call_correct
                                     compile_ext_call_length_ignores_positions as P.
         unfold runsTo in P.
-        specialize P with (argnames := []) (retnames := []) (argvals := [])
+        specialize P with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R)
+                          (argnames := []) (retnames := []) (argvals := [])
                           (fname := "loop"%string)
                           (post := fun t' m' retvals => isReady spec t' m' /\ goodTrace spec t')
                           (ret_addr := word.add loop_pos (word.of_Z 4)).
         edestruct P as (loop_rel_pos & G & P'); clear P; cycle -1.
         1: eapply P'.
-        7: {
+        8: {
         cbn.
         move loop_body_correct at bottom.
         intros l' mc OL. cbn in OL. apply Option.eq_of_eq_Some in OL. subst l'.
@@ -522,11 +527,15 @@ Section Pipeline1.
         - cbv beta. intros * _ _ HP. exists []. split. 1: reflexivity. exact HP.
         }
         all: try eassumption.
+        { cbn.
+          cbn in G. assert (loop_fun_pos = loop_rel_pos) by congruence. subst loop_rel_pos.
+          solve_word_eq word_ok. }
         all: cycle 1.
         { apply stack_length_divisible. }
         { cbn. rewrite map.get_put_same. f_equal. solve_word_eq word_ok. }
         { subst loop_pos init_pos. destruct mlOk. solve_divisibleBy4. }
         { reflexivity. }
+        cbn. unfold loop_pos, init_pos.
         cbn in G. assert (loop_fun_pos = loop_rel_pos) by congruence. subst loop_rel_pos.
         unfold machine_ok.
         unfold_RiscvMachine_get_set.
@@ -540,6 +549,9 @@ Section Pipeline1.
                | |- _ => eassumption
                | |- _ => reflexivity
                end.
+        * wcancel_assumption.
+        * eapply rearrange_footpr_subset. 1: eassumption.
+          wwcancel.
         * match goal with
           | H: map.get positions "loop"%string = Some _ |- _ => rename H into GetPos
           end.
@@ -556,7 +568,6 @@ Section Pipeline1.
                                  (word.unsigned (stack_pastend ml)))))))
                   (word.of_Z 4)) (word.of_Z 0)) as X.
           solve_divisibleBy4.
-        * solve_word_eq word_ok.
         * eapply regs_initialized_put. eassumption.
         * rewrite map.get_put_diff by (cbv; discriminate). assumption.
         * match goal with
@@ -581,6 +592,9 @@ Section Pipeline1.
                | |- _ => eassumption
                | |- _ => reflexivity
                end.
+        * wcancel_assumption.
+        * eapply rearrange_footpr_subset. 1: eassumption.
+          wwcancel.
   Qed.
 
   Lemma ll_inv_implies_prefix_of_good: forall st,

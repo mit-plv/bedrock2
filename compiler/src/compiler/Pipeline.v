@@ -513,16 +513,22 @@ Section WithWordAndMem.
         = Some argvals ->
         exists (f_rel_pos: Z),
           map.get finfo fname = Some (List.length argnames, List.length retnames, f_rel_pos) /\
-          (machine_ok p_funcs stack_start stack_pastend instrs
-                      (word.add p_funcs (word.of_Z f_rel_pos)) mH Rdata Rexec initial ->
+          (initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
+           machine_ok p_funcs stack_start stack_pastend instrs mH Rdata Rexec initial ->
            runsTo initial (fun final : MetricRiscvMachine =>
              exists mH' retvals,
                map.getmany_of_list (getRegs final)
                            (List.firstn (List.length retnames) (reg_class.all reg_class.arg))
                = Some retvals /\
                post final.(getLog) mH' retvals /\
-               machine_ok p_funcs stack_start stack_pastend instrs
-                          ret_addr mH' Rdata Rexec final)).
+               map.getmany_of_list final.(getRegs) (reg_class.all reg_class.saved) =
+               map.getmany_of_list initial.(getRegs) (reg_class.all reg_class.saved) /\
+               map.get final.(getRegs) RegisterNames.gp =
+               map.get initial.(getRegs) RegisterNames.gp /\
+               map.get final.(getRegs) RegisterNames.tp =
+               map.get initial.(getRegs) RegisterNames.tp /\
+               final.(getPc) = ret_addr /\
+               machine_ok p_funcs stack_start stack_pastend instrs mH' Rdata Rexec final)).
     Proof.
       intros.
       pose proof (phase_preserves_post composed_compiler_correct) as C.

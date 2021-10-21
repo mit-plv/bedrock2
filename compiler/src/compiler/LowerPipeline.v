@@ -404,7 +404,7 @@ Section LowerPipeline.
   Definition machine_ok{BWM: bitwidth_iset width iset}
              (p_functions: word)(stack_start stack_pastend: word)
              (finstrs: list Instruction)
-             (pc: word)(mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
+             (mH: mem)(Rdata Rexec: mem -> Prop)(mach: MetricRiscvMachine): Prop :=
       (program iset p_functions finstrs *
        mem_available stack_start stack_pastend *
        Rdata * Rexec * eq mH
@@ -412,7 +412,6 @@ Section LowerPipeline.
       subset (footpr (program iset p_functions finstrs * Rexec)%sep)
              (of_list (getXAddrs mach)) /\
       word.unsigned (mach.(getPc)) mod 4 = 0 /\
-      mach.(getPc) = pc /\
       mach.(getNextPc) = word.add mach.(getPc) (word.of_Z 4) /\
       regs_initialized mach.(getRegs) /\
       map.get mach.(getRegs) RegisterNames.sp = Some stack_pastend /\
@@ -436,16 +435,21 @@ Section LowerPipeline.
         map.getmany_of_list initial.(getRegs)
                             (List.firstn argcount (reg_class.all reg_class.arg))
         = Some argvals ->
-        let start_pc := word.add p_funcs (word.of_Z f_rel_pos) in
         req_stack_size <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->
         word.unsigned (word.sub stack_pastend stack_start) mod bytes_per_word = 0 ->
-        machine_ok p_funcs stack_start stack_pastend instrs start_pc mH Rdata Rexec initial ->
+        initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
+        machine_ok p_funcs stack_start stack_pastend instrs mH Rdata Rexec initial ->
         runsTo initial (fun final => exists mH' retvals,
           map.getmany_of_list final.(getRegs)
                               (List.firstn retcount (reg_class.all reg_class.arg))
           = Some retvals /\
           post final.(getLog) mH' retvals /\
-          machine_ok p_funcs stack_start stack_pastend instrs ret_addr mH' Rdata Rexec final).
+          map.getmany_of_list final.(getRegs) (reg_class.all reg_class.saved) =
+          map.getmany_of_list initial.(getRegs) (reg_class.all reg_class.saved) /\
+          map.get final.(getRegs) RegisterNames.gp = map.get initial.(getRegs) RegisterNames.gp /\
+          map.get final.(getRegs) RegisterNames.tp = map.get initial.(getRegs) RegisterNames.tp /\
+          final.(getPc) = ret_addr /\
+          machine_ok p_funcs stack_start stack_pastend instrs mH' Rdata Rexec final).
 
   Definition max8args: nat * nat * Z -> Prop :=
     fun '(argcount, retcount, pos) => (argcount <= 8)%nat /\ (retcount <= 8)%nat.
@@ -577,6 +581,8 @@ Section LowerPipeline.
     change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat in *.
     blia.
   Qed.
+
+  Axiom TODO: False.
 
   Lemma flat_to_riscv_correct: forall p1 p2,
       map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
@@ -787,6 +793,14 @@ Section LowerPipeline.
       eexists _, _. ssplit.
       + rewrite <- Vp1. eapply map.getmany_of_list_extends; eassumption.
       + eassumption.
+      + case TODO.
+(*
+
+Search map.getmany_of_list map.putmany_of_list_zip. map.only_differ.
+*)
+      + case TODO.
+      + case TODO.
+      + reflexivity.
       + cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).
         exists (List.flat_map (fun x => HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x))) stack_trash).
@@ -848,7 +862,6 @@ Section LowerPipeline.
         }
         wwcancel.
       + destr_RiscvMachine final. subst. solve_divisibleBy4.
-      + reflexivity.
       + assumption.
       + assumption.
       + assumption.
