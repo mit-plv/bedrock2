@@ -58,6 +58,21 @@ Proof.
     destruct_one_match_hyp; discriminate.
 Qed.
 
+Lemma saved_range_Forall:
+  List.Forall (fun r => r = 8 \/ r = 9 \/ 18 <= r <= 27) (reg_class.all reg_class.saved).
+Proof.
+  unfold reg_class.all.
+  eapply Forall_filter.
+  intros *. intro E. destr (reg_class.get a); try discriminate E.
+  unfold reg_class.get in E0. simp.
+  destruct_one_match_hyp.
+  + rewrite Bool.andb_true_iff in *. rewrite !Z.leb_le in *. blia.
+  + destruct_one_match_hyp. 1: discriminate.
+    destruct_one_match_hyp.
+    * rewrite Bool.andb_true_iff in *. rewrite !Z.leb_le in *. auto.
+    * destruct_one_match_hyp; try discriminate.
+Qed.
+
 Lemma not_in_arg_regs: forall x n,
     (n <= 8)%nat ->
     x < RegisterNames.a0 \/ RegisterNames.a7 < x ->

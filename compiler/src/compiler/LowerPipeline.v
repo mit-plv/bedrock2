@@ -422,6 +422,10 @@ Section LowerPipeline.
       compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
                                      (FlatImp.SInteract resvars extcall argvars).
 
+  Definition callee_saved: set Z :=
+    union (union (of_list [RegisterNames.gp]) (of_list [RegisterNames.tp]))
+          (of_list (reg_class.all reg_class.saved)).
+
   Definition riscv_call(p: list Instruction * fun_info * Z)
              (f_name: string)(t: Semantics.trace)(mH: mem)(argvals: list word)
              (post: Semantics.trace -> mem -> list word -> Prop): Prop :=
@@ -444,10 +448,7 @@ Section LowerPipeline.
                               (List.firstn retcount (reg_class.all reg_class.arg))
           = Some retvals /\
           post final.(getLog) mH' retvals /\
-          map.getmany_of_list final.(getRegs) (reg_class.all reg_class.saved) =
-          map.getmany_of_list initial.(getRegs) (reg_class.all reg_class.saved) /\
-          map.get final.(getRegs) RegisterNames.gp = map.get initial.(getRegs) RegisterNames.gp /\
-          map.get final.(getRegs) RegisterNames.tp = map.get initial.(getRegs) RegisterNames.tp /\
+          map.agree_on callee_saved initial.(getRegs) final.(getRegs) /\
           final.(getPc) = ret_addr /\
           machine_ok p_funcs stack_start stack_pastend instrs mH' Rdata Rexec final).
 
@@ -581,8 +582,6 @@ Section LowerPipeline.
     change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat in *.
     blia.
   Qed.
-
-  Axiom TODO: False.
 
   Lemma flat_to_riscv_correct: forall p1 p2,
       map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
@@ -793,13 +792,25 @@ Section LowerPipeline.
       eexists _, _. ssplit.
       + rewrite <- Vp1. eapply map.getmany_of_list_extends; eassumption.
       + eassumption.
-      + case TODO.
-(*
-
-Search map.getmany_of_list map.putmany_of_list_zip. map.only_differ.
-*)
-      + case TODO.
-      + case TODO.
+      + eapply only_differ_to_agree_on. 1: eassumption.
+        unfold callee_saved.
+        rewrite ListSet.of_list_list_union.
+        rewrite ?singleton_set_eq_of_list.
+        repeat match goal with
+               | |- _ /\ _ => split
+               | |- disjoint (union _ _) _ => apply disjoint_union_l_iff
+               | |- disjoint _ (union _ _) => apply disjoint_union_r_iff
+               | |- disjoint (of_list _) (of_list _) => eapply disjoint_of_list_disjoint_Forall
+               end;
+        repeat match goal with
+               | |- Forall _ (List.firstn _ _) => apply List.Forall_firstn
+               | |- Forall _ (reg_class.all reg_class.arg) => apply arg_range_Forall
+               | |- Forall _ (reg_class.all reg_class.saved) => apply saved_range_Forall
+               | |- Forall _ [] => apply List.Forall_False_nil
+               | |- Forall _ [_] => apply List.Forall_singleton
+               end.
+        all: clear; unfold RegisterNames.ra, RegisterNames.gp, RegisterNames.tp.
+        all: blia.
       + reflexivity.
       + cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).

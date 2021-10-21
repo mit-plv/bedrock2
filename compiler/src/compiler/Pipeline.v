@@ -521,12 +521,7 @@ Section WithWordAndMem.
                            (List.firstn (List.length retnames) (reg_class.all reg_class.arg))
                = Some retvals /\
                post final.(getLog) mH' retvals /\
-               map.getmany_of_list final.(getRegs) (reg_class.all reg_class.saved) =
-               map.getmany_of_list initial.(getRegs) (reg_class.all reg_class.saved) /\
-               map.get final.(getRegs) RegisterNames.gp =
-               map.get initial.(getRegs) RegisterNames.gp /\
-               map.get final.(getRegs) RegisterNames.tp =
-               map.get initial.(getRegs) RegisterNames.tp /\
+               map.agree_on callee_saved initial.(getRegs) final.(getRegs) /\
                final.(getPc) = ret_addr /\
                machine_ok p_funcs stack_start stack_pastend instrs mH' Rdata Rexec final)).
     Proof.
