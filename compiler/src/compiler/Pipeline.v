@@ -224,26 +224,43 @@ Section WithWordAndMem.
       eapply H. eassumption.
     Qed.
 
-    Axiom TODO: False.
-
     Lemma flattening_correct: phase_correct SrcLang FlatWithStrVars flatten_functions.
     Proof.
       unfold SrcLang, FlatWithStrVars.
-      split; cbn. 1, 2: case TODO. {
-        unfold map.forall_values, ParamsNoDup.
+      split; cbn. {
+        unfold get_argcount, getFstOfThree, flatten_functions. intros.
+        destr (map.get p1 fname).
+        - destruct p as ((argnames & retnames) & body).
+          eapply map.map_all_values_fw in H; try typeclasses eauto. 2: exact E.
+          fwd. destruct v2 as ((argnames2 & retnames2) & body2).
+          unfold flatten_function in *. fwd. reflexivity.
+        - destr (map.get p2 fname). 2: reflexivity.
+          exfalso.
+          eapply map.map_all_values_bw in H; try typeclasses eauto. 2: exact E0.
+          fwd. congruence.
+      }
+      { unfold get_retcount, getSndOfThree, flatten_functions. intros.
+        destr (map.get p1 fname).
+        - destruct p as ((argnames & retnames) & body).
+          eapply map.map_all_values_fw in H; try typeclasses eauto. 2: exact E.
+          fwd. destruct v2 as ((argnames2 & retnames2) & body2).
+          unfold flatten_function in *. fwd. reflexivity.
+        - destr (map.get p2 fname). 2: reflexivity.
+          exfalso.
+          eapply map.map_all_values_bw in H; try typeclasses eauto. 2: exact E0.
+          fwd. congruence.
+      }
+      { unfold map.forall_values, ParamsNoDup.
         intros. destruct v as ((argnames & retnames) & body).
         eapply flatten_functions_NoDup; try eassumption.
         unfold valid_fun in *.
         intros. specialize H0 with (1 := H2). simpl in H0. eapply H0.
       }
-
       unfold locals_based_call_spec. intros. fwd.
-
       pose proof H0 as GF.
       unfold flatten_functions in GF.
       eapply map.map_all_values_fw in GF. 5: eassumption. 2-4: typeclasses eauto.
       unfold flatten_function in GF. fwd.
-
       eexists _, _, _. split. 1: eassumption.
       intros.
       eapply FlatImp.exec.weaken.
@@ -287,8 +304,36 @@ Section WithWordAndMem.
 
     Lemma regalloc_correct: phase_correct FlatWithStrVars FlatWithZVars regalloc_functions.
     Proof.
-      unfold FlatWithStrVars, FlatWithZVars. split; cbn. 1, 2: case TODO. {
-        unfold map.forall_values, ParamsNoDup. intros.
+      unfold FlatWithStrVars, FlatWithZVars. split; cbn. {
+        unfold get_argcount, getFstOfThree, regalloc_functions. intros. fwd.
+        destr (map.get p1 fname).
+        - destruct p as ((argnames & retnames) & body).
+          eapply map.map_all_values_fw in E; try typeclasses eauto. 2: exact E1.
+          fwd. destruct v2 as ((argnames2 & retnames2) & body2).
+          unfold regalloc_function, lookups in *. fwd.
+          apply_in_hyps @List.length_option_all.
+          rewrite List.map_length in *.
+          congruence.
+        - destr (map.get p2 fname). 2: reflexivity.
+          exfalso.
+          eapply map.map_all_values_bw in E; try typeclasses eauto. 2: exact E2.
+          fwd. congruence.
+      }
+      { unfold get_retcount, getSndOfThree, regalloc_functions. intros. fwd.
+        destr (map.get p1 fname).
+        - destruct p as ((argnames & retnames) & body).
+          eapply map.map_all_values_fw in E; try typeclasses eauto. 2: exact E1.
+          fwd. destruct v2 as ((argnames2 & retnames2) & body2).
+          unfold regalloc_function, lookups in *. fwd.
+          apply_in_hyps @List.length_option_all.
+          rewrite List.map_length in *.
+          congruence.
+        - destr (map.get p2 fname). 2: reflexivity.
+          exfalso.
+          eapply map.map_all_values_bw in E; try typeclasses eauto. 2: exact E2.
+          fwd. congruence.
+      }
+      { unfold map.forall_values, ParamsNoDup. intros.
         destruct v as ((argnames & retnames) & body).
         eapply regalloc_functions_NoDup; eassumption.
       }
@@ -370,7 +415,33 @@ Section WithWordAndMem.
 
     Lemma spilling_correct: phase_correct FlatWithZVars FlatWithRegs spill_functions.
     Proof.
-      unfold FlatWithZVars, FlatWithRegs. split; cbn. 1, 2: case TODO.
+      unfold FlatWithZVars, FlatWithRegs. split; cbn.
+      { unfold get_argcount, getFstOfThree, spill_functions. intros. fwd.
+        destr (map.get p1 fname).
+        - destruct p as ((argnames & retnames) & body).
+          eapply map.map_all_values_fw in E; try typeclasses eauto. 2: exact H.
+          fwd. destruct v2 as ((argnames2 & retnames2) & body2).
+          unfold spill_fun in *. fwd.
+          f_equal. rewrite List.firstn_length.
+          change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat. blia.
+        - destr (map.get p2 fname). 2: reflexivity.
+          exfalso.
+          eapply map.map_all_values_bw in H; try typeclasses eauto. 2: exact E0.
+          fwd. congruence.
+      }
+      { unfold get_retcount, getSndOfThree, regalloc_functions. intros. fwd.
+        destr (map.get p1 fname).
+        - destruct p as ((argnames & retnames) & body).
+          eapply map.map_all_values_fw in E; try typeclasses eauto. 2: exact H.
+          fwd. destruct v2 as ((argnames2 & retnames2) & body2).
+          unfold spill_fun in *. fwd.
+          f_equal. rewrite List.firstn_length.
+          change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat. blia.
+        - destr (map.get p2 fname). 2: reflexivity.
+          exfalso.
+          eapply map.map_all_values_bw in H; try typeclasses eauto. 2: exact E0.
+          fwd. congruence.
+      }
       1: exact spilling_preserves_valid.
       unfold locals_based_call_spec. intros. fwd.
       pose proof H0 as GL.
@@ -425,7 +496,7 @@ Section WithWordAndMem.
         (req_stack_size: Z)
         (ret_addr: word)
         (initial: MetricRiscvMachine),
-        ExprImp.valid_funs functions -> (* <-- TODO: why unused? *)
+        ExprImp.valid_funs functions ->
         compile functions = Some (instrs, finfo, req_stack_size) ->
         map.get functions fname = Some (argnames, retnames, fbody) ->
         req_stack_size <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->

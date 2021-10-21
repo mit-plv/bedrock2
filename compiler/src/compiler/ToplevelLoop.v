@@ -371,6 +371,7 @@ Section Pipeline1.
       match goal with
       | _: map.get positions "loop"%string = Some (_, _, ?z) |- _ => rename z into f_loop_rel_pos
       end.
+      unfold compile_prog in CP. fwd.
       repeat match goal with
              | |- exists _, _  => eexists
              | |- _ /\ _ => split
@@ -378,10 +379,29 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
-      + case TODO.
-      + case TODO.
-      + move CP at bottom.
-        (* prove that machine_ok of ll_inv (i.e. all instructions, and just before jumping calling
+      + unshelve epose proof (phase_preserves_argcount (composed_compiler_correct _ _ _)) as P;
+          try eassumption.
+        match goal with H: _ |- _ => specialize P with (1 := H) end.
+        unfold GetArgCount, SrcLang, RiscvLang, get_argcount, getFstOfThree in P.
+        specialize (P "init"%string).
+        unshelve epose proof (phase_preserves_retcount (composed_compiler_correct _ _ _)) as Q;
+          try eassumption.
+        match goal with H: _ |- _ => specialize Q with (1 := H) end.
+        unfold GetRetCount, SrcLang, RiscvLang, get_retcount, getSndOfThree in Q.
+        specialize (Q "init"%string).
+        fwd. reflexivity.
+      + unshelve epose proof (phase_preserves_argcount (composed_compiler_correct _ _ _)) as P;
+          try eassumption.
+        match goal with H: _ |- _ => specialize P with (1 := H) end.
+        unfold GetArgCount, SrcLang, RiscvLang, get_argcount, getFstOfThree in P.
+        specialize (P "loop"%string).
+        unshelve epose proof (phase_preserves_retcount (composed_compiler_correct _ _ _)) as Q;
+          try eassumption.
+        match goal with H: _ |- _ => specialize Q with (1 := H) end.
+        unfold GetRetCount, SrcLang, RiscvLang, get_retcount, getSndOfThree in Q.
+        specialize (Q "loop"%string).
+        fwd. reflexivity.
+      + (* prove that machine_ok of ll_inv (i.e. all instructions, and just before jumping calling
            loop body function) is implied by the state proven by the compiler correctness lemma for
            the init function *)
         lazymatch goal with
@@ -507,6 +527,7 @@ Section Pipeline1.
         { cbn. rewrite map.get_put_same. f_equal. solve_word_eq word_ok. }
         { subst loop_pos init_pos. destruct mlOk. solve_divisibleBy4. }
         { reflexivity. }
+        cbn in G. assert (loop_fun_pos = loop_rel_pos) by congruence. subst loop_rel_pos.
         unfold machine_ok.
         unfold_RiscvMachine_get_set.
         repeat match goal with
@@ -523,7 +544,7 @@ Section Pipeline1.
           | H: map.get positions "loop"%string = Some _ |- _ => rename H into GetPos
           end.
           unfold compile, compose_phases, riscvPhase in *. fwd.
-          eapply fun_pos_div4 in GetPos.
+          apply_in_hyps (fun_pos_div4 (iset := iset)).
           remember (word.add
                (word.add
                   (word.add (code_start ml)
@@ -535,8 +556,7 @@ Section Pipeline1.
                                  (word.unsigned (stack_pastend ml)))))))
                   (word.of_Z 4)) (word.of_Z 0)) as X.
           solve_divisibleBy4.
-          case TODO.
-        * solve_word_eq word_ok. case TODO.
+        * solve_word_eq word_ok.
         * eapply regs_initialized_put. eassumption.
         * rewrite map.get_put_diff by (cbv; discriminate). assumption.
         * match goal with
