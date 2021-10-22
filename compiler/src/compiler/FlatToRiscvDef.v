@@ -17,6 +17,8 @@ Require Import bedrock2.Syntax.
 Require Import coqutil.Map.Interface.
 Require Import compiler.SeparationLogic.
 Require Import riscv.Spec.Decode.
+Require Import compiler.Registers.
+Require Import compiler.FlatImpConstraints.
 
 Local Open Scope ilist_scope.
 Local Open Scope Z_scope.
@@ -31,6 +33,12 @@ Definition valid_instructions(iset: InstructionSet)(prog: list Instruction): Pro
 (* x0 is the constant 0, x1 is ra, x2 is sp, the others are usable *)
 Definition valid_FlatImp_var(x: Z): Prop := 3 <= x < 32.
 
+Lemma sp_not_valid_FlatImp_var: ~ valid_FlatImp_var RegisterNames.sp.
+Proof. unfold valid_FlatImp_var, RegisterNames.sp. clear. blia. Qed.
+
+Lemma ra_not_valid_FlatImp_var: ~ valid_FlatImp_var RegisterNames.ra.
+Proof. unfold valid_FlatImp_var, RegisterNames.ra. clear. blia. Qed.
+
 Lemma valid_FlatImp_var_implies_valid_register: forall (x: Z),
     valid_FlatImp_var x -> valid_register x.
 Proof. unfold valid_FlatImp_var, valid_register. intros. blia. Qed.
@@ -38,16 +46,6 @@ Proof. unfold valid_FlatImp_var, valid_register. intros. blia. Qed.
 Section FlatToRiscv1.
 
   (* Part 1: Definitions needed to state when compilation outputs valid code *)
-
-  (* If stmt_size is < 2^10, it is compiled to < 2^10 instructions, which is
-     < 2^12 bytes, and the branch instructions have 12 bits to encode the
-     relative jump length. One of them is used for the sign, and the other
-     11 encode the jump length as a multiple of 2, so jump lengths have to
-     be < 2^12 bytes, i.e. < 2^10 instructions, so this bound is tight,
-     unless we start using multi-instruction jumps.
-     But now we don't need this anymore because we just validate after compiling
-     that the immediates didn't get too big. *)
-  Definition stmt_not_too_big(s: stmt Z): Prop := True.
 
   Definition valid_registers_bcond: bcond Z -> Prop := ForallVars_bcond valid_register.
   Definition valid_FlatImp_vars_bcond: bcond Z -> Prop := ForallVars_bcond valid_FlatImp_var.
@@ -59,16 +57,14 @@ Section FlatToRiscv1.
     intros. eauto using ForallVars_bcond_impl, valid_FlatImp_var_implies_valid_register.
   Qed.
 
-  Definition valid_FlatImp_vars: stmt Z -> Prop := ForallVars_stmt valid_FlatImp_var.
+  Definition valid_FlatImp_vars: stmt Z -> Prop := Forall_vars_stmt valid_FlatImp_var.
 
   Definition valid_FlatImp_fun: list Z * list Z * stmt Z -> Prop :=
     fun '(argnames, retnames, body) =>
-      Forall valid_FlatImp_var argnames /\
-      Forall valid_FlatImp_var retnames /\
+      argnames = List.firstn (List.length argnames) (reg_class.all reg_class.arg) /\
+      retnames = List.firstn (List.length retnames) (reg_class.all reg_class.arg) /\
       valid_FlatImp_vars body /\
-      NoDup argnames /\
-      NoDup retnames /\
-      stmt_not_too_big body.
+      uses_standard_arg_regs body.
 
 
   Context (iset: InstructionSet).
@@ -228,11 +224,11 @@ Section FlatToRiscv1.
      position independent code. *)
 
   Context {env: map.map String.string (list Z * list Z * stmt Z)}.
-  Context {funpos_env: map.map String.string Z}.
-  Context (compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Instruction).
+  Context {fun_info: map.map String.string (nat * nat * Z)}. (* argcount, retcount, position *)
+  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).
 
   Section WithEnv.
-    Variable e: funpos_env.
+    Variable e: fun_info.
 
     (* mypos: position of the code relative to the positions in e
        stackoffset: $sp + stackoffset is the (last) highest used stack address (for SStackalloc)
@@ -272,13 +268,11 @@ Section FlatToRiscv1.
       | SSkip => nil
       | SCall resvars f argvars =>
         let fpos := match map.get e f with
-                    | Some pos => pos
+                    | Some (argcount, retcount, pos) => pos
                     (* don't fail so that we can measure the size of the resulting code *)
                     | None => 42
                     end in
-        save_regs argvars (- bytes_per_word * Z.of_nat (length argvars)) ++
-        [[ Jal ra (fpos - (mypos + 4 * Z.of_nat (length argvars))) ]] ++
-        load_regs resvars (- bytes_per_word * Z.of_nat (length argvars + length resvars))
+        [[ Jal ra (fpos - mypos) ]]
       | SInteract _ _ _ => compile_ext_call e mypos stackoffset s
       end.
 
@@ -287,12 +281,6 @@ Section FlatToRiscv1.
 
      high addresses              ...
                       old sp --> begin of stack scratch space of previous function
-                                 argn
-                                 ...
-                                 arg0
-                                 retn
-                                 ...
-                                 ret0
                                  ra
                                  mod_var_n
                                  ...
@@ -308,40 +296,40 @@ Section FlatToRiscv1.
     Definition compile_function(mypos: Z):
       (list Z * list Z * stmt Z) -> list Instruction :=
       fun '(argvars, resvars, body) =>
-        let mod_vars := list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
+        let need_to_save := list_diff Z.eqb (modVars_as_list Z.eqb body) resvars in
         let scratchwords := stackalloc_words body in
         let framesize := bytes_per_word *
-                         (Z.of_nat (length argvars + length resvars + 1 + length mod_vars) + scratchwords) in
+                         (Z.of_nat (1 + length need_to_save) + scratchwords) in
         [[ Addi sp sp (-framesize) ]] ++
         [[ compile_store access_size.word sp ra
-                         (bytes_per_word * (Z.of_nat (length mod_vars) + scratchwords)) ]] ++
-        save_regs mod_vars (bytes_per_word * scratchwords) ++
-        load_regs argvars (bytes_per_word * (Z.of_nat (length mod_vars + 1 + length resvars) + scratchwords)) ++
-        compile_stmt (mypos + 4 * (2 + Z.of_nat (length mod_vars + length argvars)))
+                         (bytes_per_word * (Z.of_nat (length need_to_save) + scratchwords)) ]] ++
+        save_regs need_to_save (bytes_per_word * scratchwords) ++
+        compile_stmt (mypos + 4 * (2 + Z.of_nat (length need_to_save)))
                      (bytes_per_word * scratchwords) body ++
-        save_regs resvars (bytes_per_word * (Z.of_nat (length mod_vars + 1) + scratchwords)) ++
-        load_regs mod_vars (bytes_per_word * scratchwords) ++
+        load_regs need_to_save (bytes_per_word * scratchwords) ++
         [[ compile_load access_size.word ra sp
-                        (bytes_per_word * (Z.of_nat (length mod_vars) + scratchwords)) ]] ++
+                        (bytes_per_word * (Z.of_nat (length need_to_save) + scratchwords)) ]] ++
         [[ Addi sp sp framesize ]] ++
         [[ Jalr zero ra 0 ]].
 
-    Definition add_compiled_function(state: list Instruction * funpos_env)(fname: String.string)
-               (fimpl: list Z * list Z * stmt Z): list Instruction * funpos_env :=
-      let '(old_insts, posmap) := state in
+    Definition add_compiled_function(state: list Instruction * fun_info)(fname: String.string)
+               (fimpl: list Z * list Z * stmt Z): list Instruction * fun_info :=
+      let '(old_insts, infomap) := state in
       let pos := 4 * Z.of_nat (length (old_insts)) in
       let new_insts := compile_function pos fimpl in
-      (old_insts ++ new_insts, map.put posmap fname pos).
+      let '(argnames, retnames, fbody) := fimpl in
+      (old_insts ++ new_insts,
+       map.put infomap fname (List.length argnames, List.length retnames, pos)).
 
-    Definition compile_funs: env -> list Instruction * funpos_env :=
+    Definition compile_funs: env -> list Instruction * fun_info :=
       map.fold add_compiled_function (nil, map.empty).
   End WithEnv.
 
   (* compiles all functions just to obtain their code size *)
-  Definition build_fun_pos_env(e_impl: env): funpos_env :=
+  Definition build_fun_pos_env(e_impl: env): fun_info :=
     (* since we pass map.empty as the fun_pos_env into compile_funs, the instrs
        returned don't jump to the right positions yet (they all jump to 42),
        but the instructions have the right size, so the posmap we return is correct *)
-    let '(instrs, posmap) := compile_funs map.empty e_impl in posmap.
+    snd (compile_funs map.empty e_impl).
 
 End FlatToRiscv1.

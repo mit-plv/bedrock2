@@ -28,6 +28,7 @@ Require Import compiler.util.Common.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.MkMachineWidth.
 Require Import riscv.Utility.runsToNonDet.
+Require Import compiler.FlatImpConstraints.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.SeparationLogic.
@@ -54,12 +55,12 @@ Local Open Scope Z_scope.
 
 Set Implicit Arguments.
 
-Arguments Z.mul: simpl never.
-Arguments Z.add: simpl never.
-Arguments Z.of_nat: simpl never.
-Arguments Z.modulo : simpl never.
-Arguments Z.pow: simpl never.
-Arguments Z.sub: simpl never.
+Local Arguments Z.mul: simpl never.
+Local Arguments Z.add: simpl never.
+Local Arguments Z.of_nat: simpl never.
+Local Arguments Z.modulo : simpl never.
+Local Arguments Z.pow: simpl never.
+Local Arguments Z.sub: simpl never.
 
 Arguments run1: simpl never.
 
@@ -115,8 +116,8 @@ Section WithParameters.
 
   End WithLocalsOk.
 
-  Context {funpos_env: map.map String.string Z}.
-  Context (compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Instruction).
+  Context {fun_info: map.map String.string (nat * nat * Z)}.
+  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).
   Context {word_ok: word.ok word}.
   Context {mem: map.map word byte}.
   Context {env: map.map String.string (list Z * list Z * stmt Z)}.
@@ -130,11 +131,12 @@ Section WithParameters.
     MetricRiscvMachine -> (MetricRiscvMachine -> Prop) -> Prop :=
     runsTo (mcomp_sat (run1 iset)).
 
-  Definition function{BWM: bitwidth_iset width iset}(base: word)(rel_positions: funpos_env)
+  Definition function{BWM: bitwidth_iset width iset}(base: word)(finfo: fun_info)
              (fname: String.string)(impl : list Z * list Z * stmt Z): mem -> Prop :=
-    match map.get rel_positions fname with
-    | Some pos => program iset (word.add base (word.of_Z pos))
-                          (compile_function iset compile_ext_call rel_positions pos impl)
+    match map.get finfo fname with
+    | Some (argcount, retcount, pos) =>
+      program iset (word.add base (word.of_Z pos))
+              (compile_function iset compile_ext_call finfo pos impl)
     | _ => emp False
     end.
 
@@ -144,7 +146,7 @@ Section WithParameters.
      a second time inside [functions]).
      To avoid this double mentioning, we will remove the function being called from the
      list of functions before entering the body of the function. *)
-  Definition functions{BWM: bitwidth_iset width iset}(base: word)(rel_positions: funpos_env):
+  Definition functions{BWM: bitwidth_iset width iset}(base: word)(rel_positions: fun_info):
     env -> mem -> Prop :=
     map.fold (fun P fname fbody => (function base rel_positions fname fbody * P)%sep) (emp True).
 
@@ -171,8 +173,7 @@ Section WithParameters.
   Definition framelength{BWM: bitwidth_iset width iset}: list Z * list Z * stmt Z -> Z :=
     fun '(argvars, resvars, body) =>
       stackalloc_words iset body +
-      let mod_vars := ListSet.list_union Z.eqb (modVars_as_list Z.eqb body) argvars in
-      Z.of_nat (List.length argvars + List.length resvars + 1 + List.length mod_vars).
+      1 + (Z.of_nat (List.length (ListSet.list_diff Z.eqb (modVars_as_list Z.eqb body) resvars))).
 
   (* "fits_stack M N env s" means that statement s will not run out of stack space
      if there are M words available before the stack pointer (in current frame),
@@ -272,16 +273,17 @@ Section WithParameters.
      in a function call, the function being called is removed from funnames so that
      it can't be recursively called again. *)
   Record GhostConsts := {
+    (* stack pointer *)
     p_sp: word;
-    rem_stackwords: Z; (* remaining number of available stack words (not including those in current frame) *)
-    rem_framewords: Z; (* remaining number of available stack words inside the current frame *)
-    p_insts: word;
-    insts: list Instruction;
-    program_base: word;
-    e_pos: funpos_env;
-    e_impl: env;
-    dframe: mem -> Prop; (* data frame *)
-    xframe: mem -> Prop; (* executable frame *)
+    (* remaining number of available stack words (not including those in current frame) *)
+    rem_stackwords: Z;
+    (* remaining number of available stack words inside the current frame *)
+    rem_framewords: Z;
+    (* data frame *)
+    dframe: mem -> Prop;
+    (* all executable memory (ie xframe, insts and the functions), but potentially in a
+       less-unfolded way to enable more concise computed postconditions *)
+    allx: mem -> Prop;
   }.
 
   Definition goodMachine{BWM: bitwidth_iset width iset}
@@ -293,32 +295,38 @@ Section WithParameters.
       (lo: MetricRiscvMachine): Prop :=
     (* registers: *)
     map.extends lo.(getRegs) l /\
-    (forall x v, map.get l x = Some v -> valid_FlatImp_var x) /\
+    map.forall_keys valid_FlatImp_var l /\
     map.get lo.(getRegs) RegisterNames.sp = Some g.(p_sp) /\
     regs_initialized lo.(getRegs) /\
     (* pc: *)
     lo.(getNextPc) = word.add lo.(getPc) (word.of_Z 4) /\
     (* memory: *)
-    subset (footpr (g.(xframe) *
-                    program iset g.(p_insts) g.(insts) *
-                    functions g.(program_base) g.(e_pos) g.(e_impl))%sep)
-           (of_list lo.(getXAddrs)) /\
-    (exists stack_trash,
-        g.(rem_stackwords) = Z.of_nat (List.length stack_trash) - g.(rem_framewords) /\
-        (g.(dframe) * g.(xframe) * eq m *
-         word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(rem_stackwords)))) stack_trash *
-         program iset g.(p_insts) g.(insts) *
-         functions g.(program_base) g.(e_pos) g.(e_impl))%sep lo.(getMem)) /\
+    subset (footpr g.(allx)) (of_list lo.(getXAddrs)) /\
+    (exists stack_trash frame_trash,
+        (* Note: direction of equalities is deliberate:
+           When destructing a goodMachine that comes from an IH,
+           this direction of the equalities will be
+           "length of new thing equals old known value from before IH",
+           so rewriting with these equalities will result in
+           replacing newer values by older, "more basic" ones *)
+        Z.of_nat (List.length stack_trash) = g.(rem_stackwords) /\
+        Z.of_nat (List.length frame_trash) = g.(rem_framewords) /\
+        (g.(allx) * g.(dframe) * eq m *
+         word_array (word.sub g.(p_sp) (word.of_Z (bytes_per_word * g.(rem_stackwords))))
+                    stack_trash *
+         word_array g.(p_sp) frame_trash)%sep lo.(getMem)) /\
     (* trace: *)
     lo.(getLog) = t /\
     (* misc: *)
     valid_machine lo.
 
-  Definition good_e_impl(e_impl: env)(e_pos: funpos_env) :=
+  Definition good_e_impl(e_impl: env)(finfo: fun_info) :=
     forall f (fun_impl: list Z * list Z * stmt Z),
       map.get e_impl f = Some fun_impl ->
       valid_FlatImp_fun fun_impl /\
-      exists pos, map.get e_pos f = Some pos /\ pos mod 4 = 0.
+      let '(argnames, retnames, fbody) := fun_impl in
+      exists pos, map.get finfo f = Some (List.length argnames, List.length retnames, pos) /\
+                  pos mod 4 = 0.
 
   Local Notation stmt := (stmt Z).
 
@@ -327,26 +335,28 @@ Section WithParameters.
      [e_impl] and [e_pos] remain the same throughout because that's mandated by
      [FlatImp.exec] and [compile_stmt], respectively *)
   Definition compiles_FlatToRiscv_correctly{BWM: bitwidth_iset width iset}
-    (f: funpos_env -> Z -> Z -> stmt -> list Instruction)
+    (f: fun_info -> Z -> Z -> stmt -> list Instruction)
     (s: stmt): Prop :=
     forall e_impl_full initialTrace initialMH initialRegsH initialMetricsH postH,
     exec e_impl_full s initialTrace (initialMH: mem) initialRegsH initialMetricsH postH ->
-    forall (g: GhostConsts) (initialL: MetricRiscvMachine) (pos: Z),
-    map.extends e_impl_full g.(e_impl) ->
-    good_e_impl g.(e_impl) g.(e_pos) ->
-    fits_stack g.(rem_framewords) g.(rem_stackwords) g.(e_impl) s ->
-    f g.(e_pos) pos (bytes_per_word * g.(rem_framewords)) s = g.(insts) ->
-    stmt_not_too_big s ->
+    forall g e_impl e_pos program_base insts xframe (initialL: MetricRiscvMachine) pos,
+    map.extends e_impl_full e_impl ->
+    good_e_impl e_impl e_pos ->
+    fits_stack g.(rem_framewords) g.(rem_stackwords) e_impl s ->
+    f e_pos pos (bytes_per_word * g.(rem_framewords)) s = insts ->
+    uses_standard_arg_regs s ->
     valid_FlatImp_vars s ->
     pos mod 4 = 0 ->
-    (word.unsigned g.(program_base)) mod 4 = 0 ->
-    initialL.(getPc) = word.add g.(program_base) (word.of_Z pos) ->
-    g.(p_insts)      = word.add g.(program_base) (word.of_Z pos) ->
+    word.unsigned program_base mod 4 = 0 ->
+    initialL.(getPc) = word.add program_base (word.of_Z pos) ->
+    iff1 g.(allx) (xframe *
+                   program iset (word.add program_base (word.of_Z pos)) insts *
+                   functions program_base e_pos e_impl)%sep ->
     goodMachine initialTrace initialMH initialRegsH g initialL ->
     runsTo initialL (fun finalL => exists finalTrace finalMH finalRegsH finalMetricsH,
          postH finalTrace finalMH finalRegsH finalMetricsH /\
          finalL.(getPc) = word.add initialL.(getPc)
-                                   (word.of_Z (4 * Z.of_nat (List.length g.(insts)))) /\
+                                   (word.of_Z (4 * Z.of_nat (List.length insts))) /\
          map.only_differ initialL.(getRegs)
                  (union (of_list (modVars_as_list Z.eqb s)) (singleton_set RegisterNames.ra))
                  finalL.(getRegs) /\
@@ -355,10 +365,7 @@ Section WithParameters.
 End WithParameters.
 
 Ltac simpl_g_get :=
-  cbn [p_sp rem_framewords rem_stackwords p_insts insts program_base e_pos e_impl
-            dframe xframe] in *.
-
-Ltac solve_stmt_not_too_big := exact I.
+  cbn [p_sp rem_framewords rem_stackwords dframe allx] in *.
 
 Ltac simpl_bools :=
   repeat match goal with
@@ -380,8 +387,8 @@ Ltac simpl_bools :=
 
 Section FlatToRiscv1.
   Context {iset: InstructionSet}.
-  Context {funpos_env: map.map String.string Z}.
-  Context (compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Instruction).
+  Context {fun_info: map.map String.string Z}.
+  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
   Context {word_ok: word.ok word}.
   Context {locals: map.map Z word}.
@@ -547,17 +554,16 @@ Section FlatToRiscv1.
   (* almost the same as run_compile_load, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
   Lemma run_load_word: forall (base addr v : word) (rd rs : Z) (ofs : Z)
-                              (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
+                              (initialL : RiscvMachineL) (Exec R Rexec : mem -> Prop),
       valid_register rd ->
       valid_register rs ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs = Some base ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr (program iset initialL.(getPc) [[compile_load iset Syntax.access_size.word rd rs ofs]]
-                      * Rexec)%sep)
-             (of_list initialL.(getXAddrs)) ->
-      (program iset initialL.(getPc) [[compile_load iset Syntax.access_size.word rd rs ofs]] * Rexec *
-       ptsto_word addr v * R)%sep (getMem initialL) ->
+      subset (footpr Exec) (of_list initialL.(getXAddrs)) ->
+      iff1 Exec (program iset initialL.(getPc)
+                   [[compile_load iset Syntax.access_size.word rd rs ofs]] * Rexec)%sep ->
+      (Exec * ptsto_word addr v * R)%sep (getMem initialL) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
          (fun finalL : RiscvMachineL =>
@@ -571,7 +577,7 @@ Section FlatToRiscv1.
   Proof using word_ok mem_ok PR BWM.
     intros.
     eapply mcomp_sat_weaken; cycle 1.
-    - eapply (run_compile_load Syntax.access_size.word); cycle -2; try eassumption.
+    - eapply (run_compile_load Syntax.access_size.word); cycle -3; try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
       etransitivity. 1: eassumption.
       unfold id.
@@ -585,35 +591,31 @@ Section FlatToRiscv1.
   (* almost the same as run_compile_store, but not using tuples nor ptsto_bytes or
      Memory.bytes_per, but using ptsto_word instead *)
   Lemma run_store_word: forall (base addr v_new : word) (v_old : word) (rs1 rs2 : Z)
-              (ofs : Z) (initialL : RiscvMachineL) (R Rexec : mem -> Prop),
+              (ofs : Z) (initialL : RiscvMachineL) (Exec Rdata Rexec : mem -> Prop),
       valid_register rs1 ->
       valid_register rs2 ->
       getNextPc initialL = word.add (getPc initialL) (word.of_Z 4) ->
       map.get (getRegs initialL) rs1 = Some base ->
       map.get (getRegs initialL) rs2 = Some v_new ->
       addr = word.add base (word.of_Z ofs) ->
-      subset (footpr ((program iset initialL.(getPc)
-                          [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]]) * Rexec)%sep)
-             (of_list initialL.(getXAddrs)) ->
-      (program iset initialL.(getPc) [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]] * Rexec
-       * ptsto_word addr v_old * R)%sep (getMem initialL) ->
+      subset (footpr Exec) (of_list initialL.(getXAddrs)) ->
+      iff1 Exec (program iset (getPc initialL)
+                         [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]] * Rexec)%sep ->
+      (Exec * ptsto_word addr v_old * Rdata)%sep (getMem initialL) ->
       valid_machine initialL ->
       mcomp_sat (run1 iset) initialL
         (fun finalL : RiscvMachineL =>
            getRegs finalL = getRegs initialL /\
            getLog finalL = getLog initialL /\
-           subset (footpr (program iset initialL.(getPc)
-                              [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]] * Rexec)%sep)
-             (of_list finalL.(getXAddrs)) /\
-           (program iset initialL.(getPc) [[compile_store iset Syntax.access_size.word rs1 rs2 ofs]] * Rexec
-            * ptsto_word addr v_new * R)%sep (getMem finalL) /\
+           subset (footpr Exec) (of_list finalL.(getXAddrs)) /\
+           (Exec * ptsto_word addr v_new * Rdata)%sep (getMem finalL) /\
            getPc finalL = getNextPc initialL /\
            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
            valid_machine finalL).
   Proof using word_ok mem_ok PR BWM.
     intros.
     eapply mcomp_sat_weaken; cycle 1.
-    - eapply (run_compile_store Syntax.access_size.word); cycle -2; try eassumption.
+    - eapply (run_compile_store Syntax.access_size.word); cycle -3; try eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
   Qed.
 
@@ -911,38 +913,6 @@ Section FlatToRiscv1.
 
 End FlatToRiscv1.
 
-(* if we have valid_machine for the current machine, and need to prove a
-   runsTo with valid_machine in the postcondition, this tactic can
-   replace the valid_machine in the postcondition by True *)
-Ltac get_run1valid_for_free :=
-  let R := fresh "R" in
-  evar (R: MetricRiscvMachine -> Prop);
-  eapply runsTo_get_sane with (P := R);
-  [ (* valid_machine *)
-    assumption
-  | (* the simpler runsTo goal, left open *)
-    idtac
-  | (* the impliciation, needs to replace valid_machine by True *)
-    let mach' := fresh "mach'" in
-    let D := fresh "D" in
-    let Pm := fresh "Pm" in
-    intros mach' D V Pm;
-    match goal with
-    | H: valid_machine mach' |- context C[valid_machine mach'] =>
-      let G := context C[True] in
-      let P := eval pattern mach' in G in
-      lazymatch P with
-      | ?F _ => instantiate (R := F)
-      end
-    end;
-    subst R;
-    clear -V Pm;
-    cbv beta in *;
-    simp;
-    eauto 20
-  ];
-  subst R.
-
 Ltac solve_valid_machine wordOk :=
   match goal with
   | H: valid_machine {| getMetrics := ?M |} |- valid_machine {| getMetrics := ?M |} =>
@@ -960,7 +930,7 @@ Ltac subst_load_bytes_for_eq :=
     edestruct P as [Q ?]; clear P; [ecancel_assumption|]
   end.
 
-Hint Resolve
+Global Hint Resolve
      valid_FlatImp_var_implies_valid_register
      valid_FlatImp_vars_bcond_implies_valid_registers_bcond
 : sidecondition_hints.

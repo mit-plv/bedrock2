@@ -116,11 +116,9 @@ Section EventLoop.
         destruct goodReadyState_implies_jump_back_instr. simp.
         specialize (goodReadyState_checks_PC _ _ H). subst pc_end.
         eapply run_Jal0; try eauto.
-        - unfold program, array.
-          eapply rearrange_footpr_subset; [ eassumption | ].
-          rewrite goodReadyState_checks_PC.
-          solve [ ecancel ].
-        - unfold program, array. rewrite goodReadyState_checks_PC. ecancel_assumption.
+        unfold program, array.
+        rewrite goodReadyState_checks_PC.
+        solve [ ecancel ].
       }
       simpl. intros. simp.
       destruct_RiscvMachine state.

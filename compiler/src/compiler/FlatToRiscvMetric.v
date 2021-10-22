@@ -22,10 +22,17 @@ Require Import compiler.FlatToRiscvLiterals.
 
 Open Scope ilist_scope.
 
+Local Arguments Z.mul: simpl never.
+Local Arguments Z.add: simpl never.
+Local Arguments Z.of_nat: simpl never.
+Local Arguments Z.modulo : simpl never.
+Local Arguments Z.pow: simpl never.
+Local Arguments Z.sub: simpl never.
+
 Section Proofs.
   Context {iset: Decode.InstructionSet}.
-  Context {funpos_env: map.map String.string Z}.
-  Context (compile_ext_call: funpos_env -> Z -> Z -> stmt Z -> list Decode.Instruction).
+  Context {fun_info: map.map String.string (nat * nat * Z)}.
+  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Decode.Instruction).
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
   Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context {locals: map.map Z word} {locals_ok: map.ok locals}.
@@ -74,7 +81,6 @@ Section Proofs.
     try solve
       [ reflexivity
       | auto
-      | solve_stmt_not_too_big
       | solve_word_eq word_ok
       | simpl; solve_divisibleBy4
       | solve_valid_machine word_ok
@@ -89,6 +95,9 @@ Section Proofs.
 
   Hypothesis sp_always_set: forall l: locals,
       map.get l RegisterNames.sp = Some (word.of_Z 42).
+
+  (* not needed any more *)
+  Definition stmt_not_too_big(s: stmt Z): Prop := True.
 
   Lemma compile_stmt_correct:
     forall (s: stmt Z) t initialMH initialRegsH postH initialMetricsH,
@@ -207,7 +216,7 @@ Section Proofs.
       assumption.
 
     - (* SLit *)
-      get_run1valid_for_free.
+      RunInstruction.get_runsTo_valid_for_free.
       eapply compile_lit_correct_full.
       + sidecondition.
       + use_sep_assumption. cbn.

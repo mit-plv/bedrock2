@@ -12,7 +12,7 @@ Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Properties.
 Require Import coqutil.Map.Solver.
 Require Import coqutil.Tactics.Tactics.
-Require Import coqutil.Map.TestLemmas.
+Require Import coqutil.Map.MapEauto.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Tactics.Simp.
@@ -489,6 +489,8 @@ Section RegAlloc.
     - destruct_one_match_hyp; simp; eauto.
   Qed.
 
+  Hypothesis TODO_arg_length_bound: forall args: list Z, (List.length args <= 8)%nat.
+
   (* a list of useful properties of rename, all proved in one induction *)
   Lemma rename_props: forall {sH r1 r2 sL av1 av2},
       rename r1 sH av1 = Some (r2, sL, av2) ->
@@ -500,7 +502,7 @@ Section RegAlloc.
       av1 <= av2 /\
       dom_bound r2 av2 /\
       (forall x y, map.get r2 x = Some y -> av1 <= y < av2 \/ map.get r1 x = Some y) /\
-      ForallVars_stmt (fun y => exists x, map.get r2 x = Some y) sL.
+      Forall_vars_stmt (fun y => exists x, map.get r2 x = Some y) sL.
   Proof.
     induction sH; simpl in *; intros; simp;
       apply_in_hyps @rename_assignment_lhs_props; simp;
@@ -567,7 +569,7 @@ Section RegAlloc.
         simpl. ssplit.
         + eapply ForallVars_bcond_impl. 2: eassumption.
           simpl. intros. simp. eauto.
-        + eapply ForallVars_stmt_impl. 2: eassumption.
+        + eapply Forall_vars_stmt_impl. 2: eassumption.
           simpl. intros. simp. eauto.
         + eauto.
       }
@@ -609,7 +611,7 @@ Section RegAlloc.
       + simpl. ssplit.
         * eapply ForallVars_bcond_impl. 2: eassumption.
           simpl. intros. simp. eauto.
-        * eapply ForallVars_stmt_impl. 2: eassumption.
+        * eapply Forall_vars_stmt_impl. 2: eassumption.
           simpl. intros. simp. eauto.
         * eauto.
     - (* SSeq *)
@@ -636,7 +638,7 @@ Section RegAlloc.
           end.
           intuition blia.
       + simpl. split.
-        * eapply ForallVars_stmt_impl. 2: eassumption.
+        * eapply Forall_vars_stmt_impl. 2: eassumption.
           simpl. intros. simp. eauto.
         * eauto.
     - (* SSkip *)
@@ -645,13 +647,17 @@ Section RegAlloc.
     - (* SCall *)
       apply_in_hyps @rename_binds_props. simp; ssplit; eauto.
       + intros. pose proof @map.getmany_of_list_extends. srew_g. reflexivity.
-      + simpl. split.
+      + simpl. ssplit.
+        * apply TODO_arg_length_bound.
+        * apply TODO_arg_length_bound.
         * eapply map.getmany_of_list_in_map. eassumption.
         * eapply map.getmany_of_list_in_map. eapply map.getmany_of_list_extends; eassumption.
     - (* SInteract *)
       apply_in_hyps @rename_binds_props. simp; ssplit; eauto.
       + intros. pose proof @map.getmany_of_list_extends. srew_g. reflexivity.
-      + simpl. split.
+      + simpl. ssplit.
+        * apply TODO_arg_length_bound.
+        * apply TODO_arg_length_bound.
         * eapply map.getmany_of_list_in_map. eassumption.
         * eapply map.getmany_of_list_in_map. eapply map.getmany_of_list_extends; eassumption.
   Qed.

@@ -113,23 +113,6 @@ Require Import riscv.Utility.Encode.
 
 Axiom TODO: False.
 
-Module map. Section __.
-  Context {key value} {map : map.map key value} {ok: map.ok map}.
-  Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
-  Implicit Types (k : key) (v : value) (m : map).
-
-  Lemma put_comm: forall k1 k2 v1 v2 m,
-      k1 <> k2 ->
-      map.put (map.put m k1 v1) k2 v2 = map.put (map.put m k2 v2) k1 v1.
-  Proof.
-    intros. apply map.map_ext. intros.
-    rewrite ?map.get_put_dec.
-    destr (key_eqb k2 k); destr (key_eqb k1 k); congruence.
-  Qed.
-
-  Definition singleton(k: key)(v: value): map := map.put map.empty k v.
-End __. End map.
-
 (* maybe-map *)
 Module mmap. Section __.
   Context {key value} {map : map.map key value} {ok: map.ok map}.

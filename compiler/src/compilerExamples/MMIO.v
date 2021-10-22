@@ -96,6 +96,14 @@ Qed.
 Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.
 Proof. reflexivity. Qed.
 
+Local Arguments Z.mul: simpl never.
+Local Arguments Z.add: simpl never.
+Local Arguments Z.of_nat: simpl never.
+Local Arguments Z.modulo : simpl never.
+Local Arguments Z.pow: simpl never.
+Local Arguments Z.sub: simpl never.
+Local Arguments Registers.reg_class.all: simpl never.
+
 Section MMIO1.
   Context {word: Word.Interface.word 32}.
   Context {word_ok: word.ok word}.
@@ -112,7 +120,7 @@ Section MMIO1.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Definition compile_ext_call(_: funname_env Z)(_ _: Z)(s: stmt Z) :=
+  Definition compile_ext_call(_: funname_env (nat * nat * Z))(_ _: Z)(s: stmt Z) :=
       match s with
       | SInteract resvars action argvars => compile_interact resvars action argvars
       | _ => []
@@ -245,7 +253,7 @@ Section MMIO1.
         (FlatImp.SInteract resvars extcall argvars).
   Proof.
     unfold FlatToRiscvCommon.compiles_FlatToRiscv_correctly. simpl. intros.
-    destruct H5 as [V_resvars V_argvars].
+    destruct H5 as (? & ? & V_resvars & V_argvars).
     rename extcall into action.
     pose proof (compile_interact_emits_valid RV32I _ action _ V_resvars V_argvars).
     simp.
@@ -297,22 +305,16 @@ Section MMIO1.
       match goal with
       | HO: outcome _ _, H: _ |- _ => specialize (H _ HO); rename H into HP
       end.
-      destruct g. cbn [
-           FlatToRiscvCommon.p_sp
-           FlatToRiscvCommon.rem_stackwords
-           FlatToRiscvCommon.rem_framewords
-           FlatToRiscvCommon.p_insts
-           FlatToRiscvCommon.insts
-           FlatToRiscvCommon.program_base
-           FlatToRiscvCommon.e_pos
-           FlatToRiscvCommon.e_impl
-           FlatToRiscvCommon.dframe
-           FlatToRiscvCommon.xframe ] in *.
+      destruct g. FlatToRiscvCommon.simpl_g_get.
       simp.
       subst.
       cbn in *.
       simp.
       eapply runsToNonDet.runsToStep_cps.
+      match goal with
+      | H: iff1 allx _ |- _ => apply iff1ToEq in H; subst allx
+      end.
+
       split; simpl_MetricRiscvMachine_get_set. {
         intros _.
         eapply ptsto_instr_subset_to_isXAddr4.
@@ -335,10 +337,10 @@ Section MMIO1.
       }
       repeat fwd.
 
-      destruct (Z.eq_dec z 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
-      destruct (Z.eq_dec z0 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
-      replace (map.get initialL_regs z) with (Some x) by (symmetry; unfold map.extends in *; eauto).
-      replace (map.get initialL_regs z0) with (Some x0) by (symmetry; unfold map.extends in *; eauto).
+      destruct (Z.eq_dec z1 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
+      destruct (Z.eq_dec z2 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
+      replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto).
+      replace (map.get initialL_regs z2) with (Some x0) by (symmetry; unfold map.extends in *; eauto).
 
       cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
       unshelve erewrite (_ : _ = None); [eapply storeWord_in_MMIO_is_None; eauto|].
@@ -394,7 +396,7 @@ Section MMIO1.
         eapply subset_trans. 1: eassumption.
         clear -D4 M0 D word_ok.
         unfold invalidateWrittenXAddrs.
-        change removeXAddr with (@List.removeb word word.eqb _).
+        change removeXAddr with (@List.removeb word word.eqb).
         rewrite ?ListSet.of_list_removeb.
         unfold map.undef_on, map.agree_on, disjoint in *.
         unfold subset, diff, singleton_set, of_list, PropSet.elem_of in *.
@@ -406,7 +408,7 @@ Section MMIO1.
       }
       ssplit; eauto.
       unfold invalidateWrittenXAddrs.
-      change removeXAddr with (@List.removeb word word.eqb _).
+      change removeXAddr with (@List.removeb word word.eqb).
       rewrite ?ListSet.of_list_removeb.
       repeat apply disjoint_diff_l.
       assumption.
@@ -438,21 +440,15 @@ Section MMIO1.
       match goal with
       | H: map.split _ _ map.empty |- _ => rewrite map.split_empty_r in H; subst
       end.
-      destruct g. cbn [
-           FlatToRiscvCommon.p_sp
-           FlatToRiscvCommon.rem_stackwords
-           FlatToRiscvCommon.rem_framewords
-           FlatToRiscvCommon.p_insts
-           FlatToRiscvCommon.insts
-           FlatToRiscvCommon.program_base
-           FlatToRiscvCommon.e_pos
-           FlatToRiscvCommon.e_impl
-           FlatToRiscvCommon.dframe
-           FlatToRiscvCommon.xframe ] in *.
+      destruct g. FlatToRiscvCommon.simpl_g_get.
       simp.
       subst.
       cbn in *.
       eapply runsToNonDet.runsToStep_cps.
+      match goal with
+      | H: iff1 allx _ |- _ => apply iff1ToEq in H; subst allx
+      end.
+
       split; simpl_MetricRiscvMachine_get_set. {
         intros _.
         eapply ptsto_instr_subset_to_isXAddr4.
@@ -477,9 +473,8 @@ Section MMIO1.
 
       repeat fwd.
 
-      destruct (Z.eq_dec z 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
-      destruct (Z.eq_dec z0 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
-      replace (map.get initialL_regs z) with (Some x) by (symmetry; unfold map.extends in *; eauto).
+      destruct (Z.eq_dec z1 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
+      replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto).
 
       split; try discriminate.
       cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
@@ -508,7 +503,7 @@ Section MMIO1.
       apply eqb_eq in EE. subst action.
       cbn in *.
       specialize (Pp1 mKeep). rewrite map.split_empty_r in Pp1. specialize (Pp1 eq_refl).
-      destruct (Z.eq_dec z0 0); try contradiction.
+      destruct (Z.eq_dec z1 0); try contradiction.
       do 4 eexists.
       split; eauto.
       split; eauto.
@@ -521,6 +516,7 @@ Section MMIO1.
         eapply map.put_extends. eassumption.
       }
       split. {
+        unfold map.forall_keys in *.
         intros.
         lazymatch goal with
         | H : context [map.get _ ?x] |- _ <= ?x < _ =>

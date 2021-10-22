@@ -41,3 +41,88 @@ Module reg_class.
   Definition all(class: t): list Z :=
     List.filter (fun r => eqb (get r) class) (List.unfoldn (Z.add 1) 32 0).
 End reg_class.
+
+Require Import riscv.Utility.RegisterNames.
+Require Import coqutil.Tactics.destr coqutil.Tactics.Simp coqutil.Tactics.Tactics.
+Require Import coqutil.Z.Lia.
+
+Lemma arg_range_Forall: List.Forall (fun r => 10 <= r <= 17) (reg_class.all reg_class.arg).
+Proof.
+  unfold reg_class.all.
+  eapply Forall_filter.
+  intros *. intro E. destr (reg_class.get a); try discriminate E.
+  unfold reg_class.get in E0. simp.
+  destruct_one_match_hyp.
+  + rewrite Bool.andb_true_iff in *. rewrite !Z.leb_le in *. assumption.
+  + destruct_one_match_hyp. 1: discriminate.
+    destruct_one_match_hyp; discriminate.
+Qed.
+
+Lemma saved_range_Forall:
+  List.Forall (fun r => r = 8 \/ r = 9 \/ 18 <= r <= 27) (reg_class.all reg_class.saved).
+Proof.
+  unfold reg_class.all.
+  eapply Forall_filter.
+  intros *. intro E. destr (reg_class.get a); try discriminate E.
+  unfold reg_class.get in E0. simp.
+  destruct_one_match_hyp.
+  + rewrite Bool.andb_true_iff in *. rewrite !Z.leb_le in *. blia.
+  + destruct_one_match_hyp. 1: discriminate.
+    destruct_one_match_hyp.
+    * rewrite Bool.andb_true_iff in *. rewrite !Z.leb_le in *. auto.
+    * destruct_one_match_hyp; try discriminate.
+Qed.
+
+Lemma not_in_arg_regs: forall x n,
+    (n <= 8)%nat ->
+    x < RegisterNames.a0 \/ RegisterNames.a7 < x ->
+    ~ List.In x (List.firstn n (reg_class.all reg_class.arg)).
+Proof.
+  intros x n B1 B2 C.
+  pose proof arg_range_Forall as P.
+  eapply List.Forall_firstn in P.
+  eapply List.Forall_forall in P. 2: exact C.
+  unfold a0, a7 in *. blia.
+Qed.
+
+Lemma sp_not_in_arg_regs: forall n,
+    ~ List.In RegisterNames.sp (List.firstn n (reg_class.all reg_class.arg)).
+Proof.
+  intros n C.
+  pose proof arg_range_Forall as P.
+  eapply List.Forall_firstn in P.
+  eapply List.Forall_forall in P. 2: exact C.
+  unfold RegisterNames.sp in P. blia.
+Qed.
+
+Lemma ra_not_in_arg_regs: forall n,
+    ~ List.In RegisterNames.ra (List.firstn n (reg_class.all reg_class.arg)).
+Proof.
+  intros n C.
+  pose proof arg_range_Forall as P.
+  eapply List.Forall_firstn in P.
+  eapply List.Forall_forall in P. 2: exact C.
+  unfold RegisterNames.ra in P. blia.
+Qed.
+
+(* TODO move *)
+Lemma firstn_unfoldn{A: Type}(f: A -> A): forall n m start,
+    (n <= m)%nat ->
+    List.firstn n (List.unfoldn f m start) = List.unfoldn f n start.
+Proof.
+  induction n; intros.
+  - reflexivity.
+  - destruct m. 1: inversion H.
+    cbn. f_equal. eapply IHn. eapply le_S_n. assumption.
+Qed.
+
+Lemma all_arg_regs_alt:
+  List.firstn 8 (reg_class.all reg_class.arg) = List.unfoldn (Z.add 1) 8 a0.
+Proof. reflexivity. Qed.
+
+Lemma arg_regs_alt: forall n,
+    (n <= 8)%nat ->
+    List.firstn n (reg_class.all reg_class.arg) = List.unfoldn (Z.add 1) n a0.
+Proof.
+  intros. erewrite <- firstn_unfoldn by eassumption. reflexivity.
+Qed.
