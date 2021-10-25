@@ -51,6 +51,7 @@ Require Import FunctionalExtensionality.
 Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Require Import compiler.LowerPipeline.
+Require Import bedrock2.WeakestPreconditionProperties.
 Import Utility.
 
 Section WithWordAndMem.
@@ -543,6 +544,64 @@ Section WithWordAndMem.
 
     Definition instrencode(p: list Instruction): list byte :=
       List.flat_map (fun inst => HList.tuple.to_list (LittleEndian.split 4 (encode inst))) p.
+
+    Ltac hyp p :=
+      multimatch goal with
+      | H: context[p] |- _ => H
+      end.
+
+    (* combines the above theorem with WeakestPrecondition soundness,
+       and makes `map.get finfo fname` a hypothesis rather than conclusion because
+       in concrete instantiations, users need to lookup that position themselves anyways *)
+    Lemma compiler_correct_wp: forall
+        (* input of compilation: *)
+        (fs: list (string * (list string * list string * cmd)))
+        (* output of compilation: *)
+        (instrs: list Instruction) (finfo: string_keyed_map (nat * nat * Z)) (req_stack_size: Z)
+        (* function we choose to call: *)
+        (fname: string) (argcount retcount: nat) (f_rel_pos: Z)
+        (* high-level initial state & post on final state: *)
+        (t: trace) (mH: mem) (argvals: list word) (post: trace -> mem -> list word -> Prop)
+        (* ghost vars that help describe the low-level machine: *)
+        (stack_lo stack_hi ret_addr p_funcs: word) (Rdata Rexec: mem -> Prop)
+        (* low-level machine on which we're going to run the compiled program: *)
+        (initial: MetricRiscvMachine),
+        ExprImp.valid_funs (map.of_list fs) ->
+        NoDup (map fst fs) ->
+        compile (map.of_list fs) = Some (instrs, finfo, req_stack_size) ->
+        WeakestPrecondition.call fs fname t mH argvals post ->
+        map.get finfo fname = Some (argcount, retcount, f_rel_pos) ->
+        req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
+        word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
+        initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
+        map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
+        word.unsigned ret_addr mod 4 = 0 ->
+        map.getmany_of_list initial.(getRegs)
+            (List.firstn argcount (reg_class.all reg_class.arg)) = Some argvals ->
+        initial.(getLog) = t ->
+        machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
+        runsTo initial (fun final : MetricRiscvMachine =>
+          exists mH' retvals,
+            map.getmany_of_list (getRegs final)
+              (List.firstn retcount (reg_class.all reg_class.arg)) = Some retvals /\
+            post final.(getLog) mH' retvals /\
+            map.agree_on callee_saved initial.(getRegs) final.(getRegs) /\
+            final.(getPc) = ret_addr /\
+            machine_ok p_funcs stack_lo stack_hi instrs mH' Rdata Rexec final).
+    Proof.
+      intros.
+      let H := hyp WeakestPrecondition.call in rename H into WP.
+      eapply WeakestPreconditionProperties.sound_call' in WP.
+      2: { eapply map.all_gets_from_map_of_NoDup_list; assumption. }
+      fwd.
+      edestruct compiler_correct with (argvals := argvals) (post := post) as (f_rel_pos' & G & C);
+        try eassumption.
+      - intros.
+        unfold map.of_list_zip in *. assert (lf = l) by congruence. subst lf.
+        apply WPp1p1.
+      - replace retcount with (List.length rets) by congruence.
+        eapply C; clear C; try assumption; try congruence.
+    Qed.
 
   End WithMoreParams.
 End WithWordAndMem.
