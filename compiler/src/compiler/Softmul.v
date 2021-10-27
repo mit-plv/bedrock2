@@ -401,6 +401,12 @@ Section Riscv.
       mcomp_sat endCycleNormal mach post.
   Proof. intros. assumption. Qed.
 
+  Lemma interpret_bind{T}(initial: State)(postF: T -> State -> Prop)(postA: State -> Prop) a b s:
+    free.interpret run_primitive (free.bind a b) s postF postA ->
+    free.interpret run_primitive a s
+                   (fun (x: T) s0 => free.interpret run_primitive (b x) s0 postF postA) postA.
+  Proof. eapply free.interpret_bind. apply weaken_run_primitive. Qed.
+
   Lemma interpret_getPC: forall (initial: State) (postF : word -> State -> Prop) (postA : State -> Prop),
       postF initial#"pc" initial ->
       free.interpret run_primitive getPC initial postF postA.
@@ -414,6 +420,14 @@ Section Riscv.
   (* Otherwise `@map.rep CSRField.CSRField Z CSRFile` gets simplified into `@SortedList.rep CSRFile_map_params`
      and `rewrite` stops working because of implicit argument mismatches. *)
   Arguments map.rep : simpl never.
+
+  Lemma interpret_getRegister0: forall (initial: State) (postF: word -> State -> Prop) (postA: State -> Prop),
+      postF (word.of_Z 0) initial ->
+      free.interpret run_primitive (getRegister RegisterNames.zero) initial postF postA.
+  Proof.
+    intros. simpl. unfold getReg, RegisterNames.zero. destr (Z.eq_dec 0 0).
+    2: exfalso; congruence. assumption.
+  Qed.
 
   Lemma interpret_getRegister: forall (initial: State) (postF: word -> State -> Prop) (postA: State -> Prop) r v,
       r <> 0 ->
@@ -500,6 +514,52 @@ Section Riscv.
       reflexivity
     end.
 
+  Ltac step :=
+    match goal with
+    | |- _ => rewrite !Monads.associativity
+    | |- _ => rewrite !Monads.left_identity
+    | |- _ => progress cbn [Execute.execute ExecuteCSR.execute ExecuteCSR.checkPermissions
+                            CSRGetSet.getCSR CSRGetSet.setCSR
+                            ExecuteI.execute]
+    | |- _ => progress unfold ExecuteCSR.checkPermissions, CSRSpec.getCSR, CSRSpec.setCSR,
+                              raiseExceptionWithInfo, updatePc
+    | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with (@Monads.Return M MM _ tt)
+    | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with B
+    | |- _ => progress record.simp
+    | |- _ => progress change (CSR.lookupCSR MScratch) with CSR.MScratch
+    | |- _ => rewrite !map.get_put_diff by congruence
+    | |- mcomp_sat (Monads.Bind _ _) _ _ => eapply mcomp_sat_bind
+    | |- free.interpret run_primitive ?x _ _ _ =>
+      lazymatch x with
+      | Monads.Bind _ _ => eapply interpret_bind
+      | free.bind _ _ => eapply interpret_bind
+      | free.ret _ => rewrite free.interpret_ret
+      | getPC => eapply interpret_getPC
+      | setPC _ => eapply interpret_setPC
+      | getRegister RegisterNames.zero => eapply interpret_getRegister0
+      | getRegister _ => eapply interpret_getRegister
+      | setRegister _ _ => eapply interpret_setRegister
+      | endCycleEarly _ => eapply interpret_endCycleEarly
+      | getCSRField _ => eapply interpret_getCSRField
+      | setCSRField _ _ => eapply interpret_setCSRField
+      | getPrivMode => eapply interpret_getPrivMode
+      end
+    | |- RegisterNames.sp <> 0 => cbv; congruence
+    | |- map.get _ _ = Some _ => eassumption
+    | |- map.get _ _ <> None => congruence
+    | |- map.get (map.put _ ?x _) ?x = _ => eapply map.get_put_same
+    | |- mcomp_sat endCycleNormal _ _ => eapply mcomp_sat_endCycleNormal
+    | |- mcomp_sat (run1 RV32I) _ _ =>
+      eapply build_fetch; record.simp; cbn [ZToReg MkMachineWidth.MachineWidth_XLEN];
+        [ etransitivity; [|eassumption]; reify_goal; cancel_program; reflexivity
+        | ZnWords
+        | instr_lookup
+        | apply decode_encode; vm_compute; intuition congruence
+        | ]
+    | |- _ => progress change (translate _ _ ?x)
+                       with (@free.ret riscv_primitive primitive_result _ x)
+    end.
+
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 RV32IM)) initialH post ->
       related initialH initialL ->
@@ -547,41 +607,6 @@ Section Riscv.
         exfalso. clear -Hp1 EVM. destruct inst; cbn in *; try discriminate EVM.
         unfold verify in *. apply proj1 in Hp1. exact Hp1.
       }
-
-  Ltac step :=
-    match goal with
-    | |- _ => rewrite !Monads.associativity
-    | |- _ => rewrite !Monads.left_identity
-    | |- _ => progress cbn [Execute.execute ExecuteCSR.execute ExecuteCSR.checkPermissions
-                            CSRGetSet.getCSR CSRGetSet.setCSR]
-    | |- _ => progress unfold ExecuteCSR.checkPermissions, CSRSpec.getCSR, CSRSpec.setCSR,
-                              raiseExceptionWithInfo, updatePc
-    | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with (@Monads.Return M MM _ tt)
-    | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with B
-    | |- _ => progress record.simp
-    | |- _ => progress change (CSR.lookupCSR MScratch) with CSR.MScratch
-    | |- _ => rewrite !map.get_put_diff by congruence
-    | |- mcomp_sat (Monads.Bind _ _) _ _ => eapply mcomp_sat_bind
-    | |- free.interpret run_primitive getPC _ _ _ => eapply interpret_getPC
-    | |- free.interpret run_primitive (setPC _) _ _ _ => eapply interpret_setPC
-    | |- free.interpret run_primitive (getRegister _) _ _ _ => eapply interpret_getRegister
-    | |- free.interpret run_primitive (setRegister _ _) _ _ _ => eapply interpret_setRegister
-    | |- free.interpret run_primitive (endCycleEarly _) _ _ _ => eapply interpret_endCycleEarly
-    | |- free.interpret run_primitive (getCSRField _) _ _ _ => eapply interpret_getCSRField
-    | |- free.interpret run_primitive (setCSRField _ _) _ _ _ => eapply interpret_setCSRField
-    | |- free.interpret run_primitive getPrivMode _ _ _ => eapply interpret_getPrivMode
-    | |- RegisterNames.sp <> 0 => cbv; congruence
-    | |- map.get _ _ = Some _ => eassumption
-    | |- map.get _ _ <> None => congruence
-    | |- mcomp_sat endCycleNormal _ _ => eapply mcomp_sat_endCycleNormal
-    | |- mcomp_sat (run1 RV32I) _ _ =>
-      eapply build_fetch; record.simp; cbn [ZToReg MkMachineWidth.MachineWidth_XLEN];
-        [ etransitivity; [|eassumption]; reify_goal; cancel_program; reflexivity
-        | ZnWords
-        | instr_lookup
-        | apply decode_encode; vm_compute; intuition congruence
-        | ]
-    end.
 
       repeat step.
 
