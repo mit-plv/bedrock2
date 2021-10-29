@@ -321,7 +321,8 @@ Module TC.
            | [ h: __Ltac2_Marker |- _ ] =>
              let coq_string := IdentParsing.coq_string_of_ident h in
              exact ($coq_string)
-           | [  |- _ ] => Control.throw NoIdentInContext
+           | [  |- _ ] =>
+             exact ("!! IndentParsing: no ident found"%string)
            end).
 
   Class __IdentToString := __identToString: string.
