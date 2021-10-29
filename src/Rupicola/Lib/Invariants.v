@@ -123,11 +123,15 @@ Ltac make_predicate vars args tr pred locals :=
 Ltac _infer_predicate_from_context k :=
   lazymatch goal with
   | [ |- WeakestPrecondition.cmd
-          _ _ ?tr ?mem ?locals (_ (nlet_eq ?vars ?v _)) ] =>
+          _ _ ?tr ?mem ?locals (_ ?prog) ] =>
     lazymatch goal with
     | [ H: ?pred mem |- _ ] =>
-      let argstype := type of v in
-      k argstype vars tr pred locals
+      match is_rupicola_binding prog with
+      | RupicolaBinding ?A ?vars =>
+        k A vars tr pred locals
+      | NotARupicolaBinding =>
+        fail 0 prog "does not look like a let-binding"
+      end
     end
   end.
 
