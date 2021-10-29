@@ -69,6 +69,7 @@ Section with_parameters.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Definition pbind {A} (pred: A -> predicate) (c: Comp A) : predicate :=
+    (* Morally a bind, but unfolding the definition saves us from having to build a triple *)
     fun tr mem locals => exists a, c a /\ pred a tr mem locals.
 
   Lemma WeakestPrecondition_unbind {A B} funcs main t m l post
@@ -108,7 +109,7 @@ Section with_parameters.
          Locals := locals;
          Functions := functions }>
       cmd
-      <{ (fun spec =>
+      <{ (fun spec => (* FIXME add a definition to make specs more readable *)
             wp_bind_retvars
               retvars
               (fun rets tr' mem' locals' =>

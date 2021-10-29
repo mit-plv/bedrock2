@@ -74,10 +74,10 @@ Section with_parameters.
   Definition tbind {A}
              (tr0: list Evt) (pred: Eventful A -> predicate)
              (k: Eventful A) :=
-    pred {| val := k.(val); trace := k.(trace) ++ tr0 |}.
+    pred (bind {| val := tt; trace := tr0 |} (fun _ => k)).
 
-  Lemma tbind_bindn {A B} tr0 pred var evf (k: A -> Eventful B) :
-    tbind tr0 pred (bindn var evf k) =
+  Lemma tbind_bindn {A B} tr0 pred vars evf (k: A -> Eventful B) :
+    tbind tr0 pred (bindn vars evf k) =
     tbind (evf.(trace) ++ tr0) pred (k (evf.(val))).
   Proof.
     unfold bindn, tbind, bind; simpl.
@@ -98,7 +98,7 @@ Section with_parameters.
       (trace_entry_of_event: Evt -> trace_entry)
       retvars,
 
-      (let pred a :=
+      (let pred a := (* FIXME this should not refer to `spec` *)
            wp_bind_retvars
              retvars
              (fun rets tr' mem' locals' =>
