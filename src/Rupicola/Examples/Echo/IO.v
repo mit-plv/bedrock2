@@ -17,7 +17,7 @@ Class Monad (M: Type -> Type) :=
 
     mbindn_mret {A} vars (ma: M A) : mbindn vars ma mret = ma :=
       mbind_mret _;
-    mret_mbindn {A B} vars a (k: A -> M B) : mbindn vars (mret a) k = k a :=
+    mret_mbindn {A B} vars a (k: A -> M B) : mbindn vars (mret a) k = nlet vars a k :=
       mret_mbind _ _;
     mbindn_mbindn {A B C} varsa varsb ma (ka: A -> M B) (kb: B -> M C) :
       mbindn varsb (mbindn varsa ma ka) kb = mbindn varsa ma (fun a => mbindn varsb (ka a) kb) :=
@@ -417,11 +417,21 @@ Section with_parameters.
   Qed.
 End with_parameters.
 
+Ltac compile_if tr0 :=
+  let vp := infer_val_predicate in
+  eapply compile_if with (val_pred := fun args => vp args tr0).
+
+#[export] Hint Extern 1
+ (WeakestPrecondition.cmd _ _ ?tr0 _ _ (_ (mbindn _ (if _ then _ else _) _))) =>
+  compile_if tr0; shelve : compiler.
+
 #[export] Hint Resolve compile_setup_iospec_k : compiler_setup.
+
+#[export] Hint Extern 2 (IsRupicolaBinding (mbindn (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.
+
+Hint Rewrite @mbindn_mbindn @mret_mbindn : compiler_cleanup.
 
 #[export] Hint Extern 1 (IO.Valid (mret _) _) => eapply IO.ValidPure : compiler_side_conditions.
 
 #[export] Hint Unfold wp_pure_bind_retvars : compiler_cleanup_post.
 #[export] Hint Unfold iospec_k iobind_spec iobind: compiler_cleanup_post.
-
-#[export] Hint Extern 2 (IsRupicolaBinding (mbindn (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.

@@ -33,11 +33,10 @@ Section Echo.
         tr' = trace_entry_of_event (IO.R r) :: tr }.
 
   Instance spec_of_putw : spec_of "putw" :=
-    fnspec! "putw" w ~> r,
+    fnspec! "putw" w,
     { requires tr mem := True;
       ensures tr' mem' :=
         mem' = mem /\
-        r = word.of_Z 0 /\
         tr' = trace_entry_of_event (IO.W w) :: tr }.
 
   Notation IO := (IO.M word).
@@ -53,13 +52,13 @@ Section Echo.
       (_: spec_of "getw") functions ->
 
       (forall w,
-          let evt := getw_trace w in
-          <{ Trace := evt :: tr;
+          let tr := getw_trace w :: tr in
+          <{ Trace := tr;
              Memory := mem;
              Locals := map.put locals var w;
              Functions := functions }>
           k_impl
-          <{ iospec_k (evt :: tr) pred (k w) }>) ->
+          <{ iospec_k tr pred (k w) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -89,21 +88,21 @@ Section Echo.
       WeakestPrecondition.dexpr mem locals w_expr w ->
 
       (_: spec_of "putw") functions ->
-      let evt := putw_trace w in
 
-      (<{ Trace := evt :: tr;
+      (let tr := putw_trace w :: tr in
+      <{ Trace := tr;
           Memory := mem;
-          Locals := map.put locals var (word.of_Z 0);
+          Locals := locals;
           Functions := functions }>
        k_impl
-       <{ iospec_k (evt :: tr) pred (k tt) }>) ->
+       <{ iospec_k tr pred (k tt) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq
         (* FIXME cmd.interact? *)
-        (cmd.call [var] "putw" [w_expr])
+        (cmd.call [] "putw" [w_expr])
         k_impl
       <{ iospec_k tr pred (mbindn [var] io k) }>.
   Proof.
@@ -158,36 +157,28 @@ Section Echo.
 
   Open Scope Z_scope.
 
-  Definition io_check expected : IO word :=
+  Definition io_check expected : IO Z :=
     let/! read := call! IO.Read in
     let/! err := if word.eqb (word := word) read expected
                 then let/! _ := call! IO.Write (word.of_Z 0) in
-                     mret (word.of_Z 0)
+                     mret 0
                 else let/! _ := call! IO.Write (word.of_Z 42) in
-                     mret (word.of_Z 42) in
+                     mret 42 in
+    let/n err := err + 1 in
     mret err.
 
   Instance spec_of_io_check : spec_of "io_check" :=
     fnspec! "io_check" expected / (R: mem -> Prop),
     { requires tr mem := R mem;
-      ensures tr' mem' rets := iospec tr tr' (io_check expected) (fun val => rets = [val] /\ R mem') }.
+      ensures tr' mem' rets := iospec tr tr' (io_check expected) (fun val => rets = [word.of_Z val] /\ R mem') }.
 
   Derive io_check_body SuchThat
-         (defn! "io_check"("expected") { io_check_body },
+         (defn! "io_check"("expected") ~> "err" { io_check_body },
           implements io_check using ["getw"; "putw"])
   As io_check_target_correct.
   Proof.
-    compile_setup.
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step.
-    eapply compile_if.
-    repeat compile_step.
-    (* FIXME rewrite bind_bind *)
+    compile.
   Qed.
-
-
 End Echo.
 
 Require Import bedrock2.NotationsCustomEntry.
@@ -196,4 +187,6 @@ Arguments io_sum_body /.
 Eval cbv in io_sum_body.
 
 Require Import bedrock2.ToCString.
-Compute c_func ("io_sum", (["y"], ["out"], io_sum_body)).
+Compute c_func ("io_echo", ([], [], io_echo_body)).
+Compute c_func ("io_sum", ([], [], io_sum_body)).
+Compute c_func ("io_check", (["expected"], ["err"], io_check_body)).
