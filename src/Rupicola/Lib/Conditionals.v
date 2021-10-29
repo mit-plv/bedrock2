@@ -121,7 +121,7 @@ Ltac compile_if :=
   simple eapply compile_if with (val_pred := vp).
 
 #[export] Hint Extern 2 (IsRupicolaBinding (if _ then _ else _)) =>
-  exact true : typeclass_instances.
+  (exact (RupicolaBinding Set [])) : typeclass_instances.
 
 #[export] Hint Extern 1
  (WeakestPrecondition.cmd _ _ _ _ _ (_ (if _ then _ else _))) =>

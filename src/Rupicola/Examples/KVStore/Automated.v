@@ -14,8 +14,8 @@ Definition do_or_default {A B}
 Notation "'let/o'  x  :=  val  'goto_fail' default 'in'  body" :=
   (do_or_default val (fun x => body) default) (at level 4).
 
-#[export] Hint Extern 2 (IsRupicolaBinding (do_or_default _ _ _)) =>
-  exact true : typeclass_instances.
+#[export] Hint Extern 2 (IsRupicolaBinding (do_or_default (A := ?A) _ _ _)) =>
+  exact (RupicolaBinding A []) : typeclass_instances.
 
 Section KVSwap.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.

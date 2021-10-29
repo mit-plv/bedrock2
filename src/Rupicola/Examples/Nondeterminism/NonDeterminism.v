@@ -124,6 +124,6 @@ End with_parameters.
 
 #[export] Hint Resolve compile_setup_nondet_pbind : compiler_setup.
 #[export] Hint Extern 1 (ret _ _) => reflexivity : compiler_side_conditions.
-#[export] Hint Extern 2 (IsRupicolaBinding (bindn _ _ _)) => exact true : typeclass_instances.
+#[export] Hint Extern 2 (IsRupicolaBinding (bindn (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.
 
 #[export] Hint Unfold pbind: compiler_cleanup_post.

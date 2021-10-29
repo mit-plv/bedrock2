@@ -415,7 +415,7 @@ Ltac compile_setup_unfold_spec_of :=
   match goal with
   | [  |- ?g ] =>
     let hd := term_head g in
-    match type of hd with
+    lazymatch type of hd with
     | spec_of _ => cbv [hd]; intros
     end
   | _ => idtac (* Spec inlined *)
@@ -444,7 +444,7 @@ Ltac compile_setup_isolate_gallina_program :=
   end.
 
 Ltac compile_setup_unfold_gallina_spec :=
-  match compile_find_post with
+  lazymatch compile_find_post with
   | (_, ?spec) => let hd := term_head spec in unfold hd
   end.
 
@@ -487,7 +487,7 @@ Ltac solve_map_get_goal_step :=
     change (map.remove_many ?m []) with m
   | [  |- map.get ?m ?k = ?v ] =>
     tryif first [ has_evar k | has_evar m ] then
-      match v with
+      lazymatch v with
       | Some ?val =>
         tryif has_evar val then fail 1 val "has evars" else
           first [ simple apply map.get_put_same | rewrite map.get_put_diff ]
@@ -537,11 +537,16 @@ Hint Rewrite __DummyConstructor : compiler_cleanup_post. (* Create the DB *)
 #[export] Hint Unfold wp_bind_retvars : compiler_cleanup_post.
 #[export] Hint Unfold postcondition_cmd : compiler_cleanup_post.
 
-Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: bool.
-#[export] Hint Extern 2 (IsRupicolaBinding (nlet _ _ _)) => exact true : typeclass_instances.
-#[export] Hint Extern 2 (IsRupicolaBinding (nlet_eq _ _ _)) => exact true : typeclass_instances.
-#[export] Hint Extern 2 (IsRupicolaBinding (dlet _ _)) => exact true : typeclass_instances.
-#[export] Hint Extern 5 (IsRupicolaBinding _) => exact false : typeclass_instances.
+Inductive RupicolaBindingInfo :=
+| RupicolaBinding (rb_type: Type) (rb_names: list string)
+| NotARupicolaBinding.
+
+Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: RupicolaBindingInfo.
+
+#[export] Hint Extern 2 (IsRupicolaBinding (nlet (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.
+#[export] Hint Extern 2 (IsRupicolaBinding (nlet_eq (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.
+#[export] Hint Extern 2 (IsRupicolaBinding (dlet (A := ?A) _ _)) => exact (RupicolaBinding A []) : typeclass_instances.
+#[export] Hint Extern 5 (IsRupicolaBinding _) => exact NotARupicolaBinding : typeclass_instances.
 
 Ltac is_rupicola_binding term :=
   constr:(match tt return IsRupicolaBinding term with _ => _ end).
@@ -552,12 +557,12 @@ Ltac compile_unfold_head_binder' hd :=
   | (?pred, ?x0) => (* FIXME should just unfold x in all cases that report isunifiable, but that does too much *)
     lazymatch goal with
     | [  |- context C [pred x0] ] =>
-      match is_rupicola_binding x0 with
-      | true =>
+      lazymatch is_rupicola_binding x0 with
+      | RupicolaBinding _ _ =>
         let x0 := unfold_head x0 in
         let C' := context C [pred x0] in
         change C'
-      | false => fail 0 x0 "does not look like a let-binding"
+      | NotARupicolaBinding => fail 0 x0 "does not look like a let-binding"
       end
     end
   end.
@@ -654,9 +659,9 @@ Ltac compile_triple :=
   | (_, ?hd) =>
     try clear_old_seps;
     (* Look for a binding: if there is none, finish compiling *)
-    match is_rupicola_binding hd with
-    | true => first [compile_custom | compile_binding]
-    | false => compile_unset_and_skip
+    lazymatch is_rupicola_binding hd with
+    | RupicolaBinding _ _ => first [compile_custom | compile_binding]
+    | NotARupicolaBinding => compile_unset_and_skip
     end
   end.
 
@@ -670,7 +675,7 @@ Ltac compile_done :=
   match goal with
   | _ =>
     idtac "Compilation incomplete.";
-    idtac "You may need to add new compilation lemmas using `Hint Extern 1 => simple eapply … : compiler` or to tell Rupicola about your custom bindings using `Hint Extern 2 (IsRupicolaBinding (xlet _ _ _)) => exact true : typeclass_instances`."
+    idtac "You may need to add new compilation lemmas using `Hint Extern 1 => simple eapply … : compiler` or to tell Rupicola about your custom bindings using `Hint Extern 2 (IsRupicolaBinding (xlet (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances`."
   end.
 
 (* only apply compile_step when repeat_compile_step solves all the side

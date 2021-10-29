@@ -424,4 +424,4 @@ End with_parameters.
 #[export] Hint Unfold wp_pure_bind_retvars : compiler_cleanup_post.
 #[export] Hint Unfold iospec_k iobind_spec iobind: compiler_cleanup_post.
 
-#[export] Hint Extern 2 (IsRupicolaBinding (mbindn _ _ _)) => exact true : typeclass_instances.
+#[export] Hint Extern 2 (IsRupicolaBinding (mbindn (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.

@@ -135,7 +135,7 @@ End with_parameters.
 
 Global Hint Resolve compile_setup_trace_tbind : compiler_setup.
 Global Hint Extern 1 (ret _ _) => reflexivity : compiler_side_conditions.
-Global Hint Extern 2 (IsRupicolaBinding (bindn _ _ _)) => exact true : typeclass_instances.
+Global Hint Extern 2 (IsRupicolaBinding (bindn (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.
 
 Global Hint Unfold tbind: compiler_cleanup_post.
 Global Hint Unfold tracebind: compiler_cleanup_post.
