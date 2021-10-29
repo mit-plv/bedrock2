@@ -122,7 +122,8 @@ Section with_parameters.
   Qed.
 End with_parameters.
 
-Global Hint Unfold pbind: compiler_cleanup.
-Global Hint Extern 1 (ret _ _) => reflexivity : compiler_cleanup.
-Global Hint Resolve compile_setup_nondet_pbind : compiler_setup.
-Global Hint Extern 2 (IsRupicolaBinding (bindn _ _ _)) => exact true : typeclass_instances.
+#[export] Hint Resolve compile_setup_nondet_pbind : compiler_setup.
+#[export] Hint Extern 1 (ret _ _) => reflexivity : compiler_side_conditions.
+#[export] Hint Extern 2 (IsRupicolaBinding (bindn _ _ _)) => exact true : typeclass_instances.
+
+#[export] Hint Unfold pbind: compiler_cleanup_post.

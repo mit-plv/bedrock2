@@ -525,11 +525,17 @@ Ltac solve_map_eq :=
   apply map.eq_of_str_list;
   reflexivity.
 
-Create HintDb compiler_cleanup. (* https://github.com/coq/coq/issues/14874 *)
-#[export] Hint Unfold wp_bind_retvars : compiler_cleanup.
-#[export] Hint Unfold postcondition_cmd : compiler_cleanup.
+Create HintDb compiler_cleanup.
 Hint Rewrite @word.of_nat_to_nat_unsigned : compiler_cleanup.
 Hint Rewrite @word.of_Z_of_nat_to_nat_unsigned : compiler_cleanup.
+
+Inductive __DummyRelation : False -> False -> Prop :=
+  __DummyConstructor : forall f: False, __DummyRelation f f.
+
+Create HintDb compiler_cleanup_post. (* https://github.com/coq/coq/issues/14874 *)
+Hint Rewrite __DummyConstructor : compiler_cleanup_post. (* Create the DB *)
+#[export] Hint Unfold wp_bind_retvars : compiler_cleanup_post.
+#[export] Hint Unfold postcondition_cmd : compiler_cleanup_post.
 
 Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: bool.
 #[export] Hint Extern 2 (IsRupicolaBinding (nlet _ _ _)) => exact true : typeclass_instances.
@@ -575,9 +581,9 @@ Ltac compile_binding :=
    doesn't peek past the first [nlet]. *)
 Ltac compile_custom := fail.
 
-Ltac compile_autocleanup :=
-  progress (autorewrite with compiler_cleanup in *;
-            repeat autounfold with compiler_cleanup in *).
+Tactic Notation "compile_autocleanup" "with" ident(db) :=
+  progress (autorewrite with db in *;
+            repeat autounfold with db in *).
 
 Ltac compile_cleanup :=
   match goal with
@@ -591,7 +597,7 @@ Ltac compile_cleanup :=
 Ltac compile_cleanup_post :=
   match goal with
   | _ => compile_cleanup
-  | _ => compile_autocleanup
+  | _ => compile_autocleanup with compiler_cleanup_post
   | _ => step_with_db compiler_cleanup_post
   | _ => progress subst_lets_in_goal
   | [  |- True ] => exact I
@@ -614,7 +620,7 @@ Ltac compile_use_default_value :=
   | [ |- DefaultValue ?T ?t ] => exact t
   end.
 
-Create HintDb compiler_side_conditions discriminated.
+Create HintDb compiler_side_conditions.
 Create HintDb solve_map_get_goal.
 
 (* FIXME most cases below could be folded into the database above *)
@@ -637,9 +643,8 @@ Ltac compile_solve_side_conditions :=
   | [  |- _ <> _ ] => congruence
   | [  |- _ /\ _ ] => split
   | _ =>
-    first [ compile_cleanup
-          | compile_autocleanup
-          | compile_use_default_value
+    first [ compile_use_default_value
+          | compile_autocleanup with compiler_side_conditions
           | step_with_db compiler_side_conditions
           | solve [ typeclasses eauto | eauto with compiler_cleanup ] ]
   end.
@@ -657,6 +662,7 @@ Ltac compile_triple :=
 
 Ltac compile_step :=
   first [ compile_cleanup |
+          compile_autocleanup with compiler_cleanup |
           compile_triple |
           compile_solve_side_conditions ].
 

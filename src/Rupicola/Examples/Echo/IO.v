@@ -417,8 +417,11 @@ Section with_parameters.
   Qed.
 End with_parameters.
 
-#[export] Hint Unfold wp_pure_bind_retvars : compiler_cleanup.
-#[export] Hint Unfold iospec_k iobind_spec iobind: compiler_cleanup.
-#[export] Hint Extern 1 (IO.Valid (mret _) _) => eapply IO.ValidPure : compiler_cleanup.
 #[export] Hint Resolve compile_setup_iospec_k : compiler_setup.
+
+#[export] Hint Extern 1 (IO.Valid (mret _) _) => eapply IO.ValidPure : compiler_side_conditions.
+
+#[export] Hint Unfold wp_pure_bind_retvars : compiler_cleanup_post.
+#[export] Hint Unfold iospec_k iobind_spec iobind: compiler_cleanup_post.
+
 #[export] Hint Extern 2 (IsRupicolaBinding (mbindn _ _ _)) => exact true : typeclass_instances.
