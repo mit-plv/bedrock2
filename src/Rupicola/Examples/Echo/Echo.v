@@ -1,7 +1,7 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.Echo.IO.
 
-Import IOMonad.
+(* Import IO. *)
 
 Section Echo.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
@@ -13,11 +13,18 @@ Section Echo.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
+  Definition getw_trace (w: word) : trace_entry :=
+    (map.empty (map := mem), "getw", [], (map.empty, [w])).
+
   Definition putw_trace (w: word) : trace_entry :=
     (map.empty (map := mem), "putw", [w], (map.empty, [])).
 
-  Definition getw_trace (w: word) : trace_entry :=
-    (map.empty (map := mem), "getw", [], (map.empty, [w])).
+  Instance spec_of_getw : spec_of "getw" :=
+    fnspec! "getw" ~> r,
+    { requires tr mem := True;
+      ensures tr' mem' :=
+        mem' = mem /\
+        tr' = getw_trace r :: tr }.
 
   Instance spec_of_putw : spec_of "putw" :=
     fnspec! "putw" w ~> r,
@@ -27,24 +34,52 @@ Section Echo.
         r = word.of_Z 0 /\
         tr' = putw_trace w :: tr }.
 
-  Instance spec_of_getw : spec_of "getw" :=
-    fnspec! "getw" ~> r,
-    { requires tr mem := True;
-      ensures tr' mem' :=
-        mem' = mem /\
-        tr' = getw_trace r :: tr }.
-
-  Definition trace_entry_of_event (evt: Event word) :=
+  Definition trace_entry_of_event (evt: IO.Event word) :=
     match evt with
-    | R t => getw_trace t
-    | W t => putw_trace t
+    | IO.R t => getw_trace t
+    | IO.W t => putw_trace t
     end.
 
-  Notation IO := (IO word).
+  Notation IO := (IO.M word).
   Notation iospec_k := (iospec_k trace_entry_of_event).
 
+  Lemma compile_getw : forall {tr mem locals functions},
+    let io: IO _ := Free.Call IO.Read in
+    forall {A} {pred: A -> predicate}
+      {k: word -> IO A} {k_impl}
+      var,
+
+      (_: spec_of "getw") functions ->
+
+      (forall w,
+          let evt := getw_trace w in
+          <{ Trace := evt :: tr;
+             Memory := mem;
+             Locals := map.put locals var w;
+             Functions := functions }>
+          k_impl
+          <{ iospec_k (evt :: tr) pred (k w) }>) ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd.seq
+        (* FIXME cmd.interact? *)
+        (cmd.call [var] "getw" [])
+        k_impl
+      <{ iospec_k tr pred (mbindn [var] io k) }>.
+  Proof.
+    repeat straightline.
+    straightline_call; eauto; [].
+    repeat straightline; subst_lets_in_goal.
+    eapply WeakestPrecondition_iospec_k_bindn
+      with (outa := {| Writer.val := x; Writer.trace := [IO.R x] |}).
+    - apply IO.ValidRead with (t := []), IO.ValidPure.
+    - intros; eapply H0.
+  Qed.
+
   Lemma compile_putw : forall {tr mem locals functions} (w: word),
-    let io: IO unit := Call (Write w) in
+    let io: IO unit := Free.Call (IO.Write w) in
     forall {A} {pred: A -> predicate}
       {k: unit -> IO A} {k_impl}
       w_expr var,
@@ -68,7 +103,7 @@ Section Echo.
         (* FIXME cmd.interact? *)
         (cmd.call [var] "putw" [w_expr])
         k_impl
-      <{ iospec_k tr pred (bindn [var] io k) }>.
+      <{ iospec_k tr pred (mbindn [var] io k) }>.
   Proof.
     repeat straightline.
     eexists; split; repeat straightline.
@@ -76,43 +111,43 @@ Section Echo.
     repeat straightline.
     straightline_call; eauto; [].
     repeat straightline; subst_lets_in_goal.
-    eapply WeakestPrecondition_weaken; try eassumption; [].
-
-    unfold bindn, FreeMonad.bindn, Call, iospec_k, iospec, iobind; simpl; intros.
-    rewrite tbind_bindn; eassumption.
+    eapply WeakestPrecondition_iospec_k_bindn
+      with (outa := {| Writer.val := tt; Writer.trace := [IO.W w] |}).
+    - apply IO.ValidWrite with (t := []), IO.ValidPure.
+    - intros; eassumption.
   Qed.
 
-  Definition hello_world_src (y: word) : Eventful string word :=
-    let/n x := word.of_Z 1 in
-    let/! _ := write "hello, world!" in
-    let/n out := word.add x y in
-    ret out.
+  Definition io_sum : IO unit :=
+    let/! w1 := IO.Read in
+    let/! w2 := IO.Read in
+    let/n sum := word.add w1 w2 in
+    let/! _ := IO.Write sum in
+    mret tt.
 
-  Instance spec_of_hello_word : spec_of "hello_world" :=
-    fnspec! "hello_world" y / (R: mem -> Prop),
+  Instance spec_of_hello_word : spec_of "io_sum" :=
+    fnspec! "io_sum" / (R: mem -> Prop),
     { requires tr mem :=
         R mem;
       ensures tr' mem' rets :=
-        tracebind trace_entry_of_write
-                  (hello_world_src y)
-                  (fun val tr0 => tr' = tr0 ++ tr /\ (R mem' /\ rets = [val])) }.
+        iospec trace_entry_of_event tr io_sum (fun val tr'' => tr' = tr'' /\ R mem') }.
 
-  Hint Extern 1 => simple eapply compile_putchars; shelve : compiler.
+  Hint Extern 1 => simple eapply compile_putw; shelve : compiler.
+  Hint Extern 1 => simple eapply compile_getw; shelve : compiler.
 
-  Derive hello_world_body SuchThat
-         (defn! "hello_world"("y") ~> "out"
-              { hello_world_body },
-          implements hello_world_src using ["putchars"])
-  As hello_world_target_correct.
+  Derive io_sum_body SuchThat
+         (defn! "io_sum"()
+              { io_sum_body },
+          implements io_sum using ["getw"; "putw"])
+  As io_sum_target_correct.
   Proof.
     compile.
   Qed.
-End Stdout.
+End Echo.
 
 Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.NotationsInConstr.
-Arguments hello_world_body /.
-Eval cbv in hello_world_body.
+Arguments io_sum_body /.
+Eval cbv in io_sum_body.
 
 Require Import bedrock2.ToCString.
-Compute c_func ("hello_world", (["y"], ["out"], hello_world_body)).
+Compute c_func ("io_sum", (["y"], ["out"], io_sum_body)).
