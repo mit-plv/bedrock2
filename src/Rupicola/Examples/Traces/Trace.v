@@ -7,7 +7,7 @@ Record Eventful {Evt A} : Type :=
 Arguments Eventful: clear implicits.
 
 Module TrMonad.
-  Section TrMonad.
+  Section TrMonad. (* FIXME replace with Writer from Echo *)
     Context {Evt: Type}.
     Notation Eventful := (Eventful Evt).
 

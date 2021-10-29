@@ -252,6 +252,24 @@ Notation "'fnspec!' name a0 .. an '~>' r0 .. rn ',' '{' 'requires' tr mem := pre
      pre at level 200,
      post at level 200).
 
+Notation "'fnspec!' name '~>' r0 .. rn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+     (forall tr mem,
+         pre%Z ->
+         WeakestPrecondition.call
+           functions name tr mem nil
+           (fun tr' mem' rets =>
+              (exists r0,
+                  .. (exists rn,
+                         rets = (cons r0 .. (cons rn nil) ..) /\
+                         post%Z) ..))))
+    (at level 200,
+     name at level 0,
+     r0 closed binder, rn closed binder,
+     tr ident, tr' ident, mem ident, mem' ident,
+     pre at level 200,
+     post at level 200).
+
 Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
   (fun functions =>
      (forall a0,
