@@ -324,69 +324,71 @@ Notation "'fnspec!' name a0 .. an ',' '{' 'requires' tr mem := pre ';' 'ensures'
 
 Declare Custom Entry defn_spec.
 
+Record _defn_spec_sig :=
+  { _defn_args: list string;
+    _defn_rets: list string }.
+
 Record _defn_spec {A: Type} :=
   { _defn_name: string;
-    _defn_args: list string;
-    _defn_rets: list string;
+    _defn_sig: _defn_spec_sig;
     _defn_bedrock: cmd;
     _defn_gallina: A;
     _defn_calls: list string }.
 
-Notation "name '(' a0 , .. , an ')'  '~>'  r0 , .. , rn  {  body  } ,  'implements'  fn" :=
+Declare Custom Entry defn_spec_commas.
+
+Notation "a0 , .. , an" :=
+  (cons a0 .. (cons an []) ..)
+    (in custom defn_spec_commas at level 0,
+        a0 constr at level 0, an constr at level 0).
+
+Declare Custom Entry defn_spec_args.
+
+Notation "'()'" :=
+  [] (in custom defn_spec_args at level 0).
+
+Notation "'(' ')'" :=
+  [] (in custom defn_spec_args at level 0).
+
+Notation "'(' args ')'" :=
+  args (in custom defn_spec_args at level 0,
+           args custom defn_spec_commas at level 0).
+
+Declare Custom Entry defn_spec_sig.
+
+Notation "args  '~>'  rets" :=
+  {| _defn_args := args; _defn_rets := rets |}
+    (in custom defn_spec_sig at level 0,
+        args custom defn_spec_args at level 0,
+        rets custom defn_spec_commas at level 0).
+
+Notation "args" :=
+  {| _defn_args := args; _defn_rets := [] |}
+    (in custom defn_spec_sig at level 0,
+        args custom defn_spec_args at level 0).
+
+Notation "name sig  {  body  } ,  'implements'  fn" :=
   {| _defn_name := name;
-     _defn_args := cons a0 .. (cons an []) ..;
-     _defn_rets := cons r0 .. (cons rn []) ..;
+     _defn_sig := sig;
      _defn_bedrock := match body return cmd with body => body end;
      _defn_gallina := fn;
      _defn_calls := [] |}
     (in custom defn_spec at level 10,
         name constr at level 0,
-        a0 constr at level 0, an constr at level 0,
-        r0 constr at level 0, rn constr at level 0,
+        sig custom defn_spec_sig at level 0,
         body constr at level 200,
         fn constr at level 0,
         no associativity).
 
-Notation "name '(' a0 , .. , an ')'  '~>'  r0 , .. , rn  {  body  } ,  'implements'  fn  'using'  fns" :=
+Notation "name sig  {  body  } ,  'implements'  fn  'using'  fns" :=
   {| _defn_name := name;
-     _defn_args := cons a0 .. (cons an []) ..;
-     _defn_rets := cons r0 .. (cons rn []) ..;
+     _defn_sig := sig;
      _defn_bedrock := match body return cmd with body => body end;
      _defn_gallina := fn;
      _defn_calls := fns |}
     (in custom defn_spec at level 10,
         name constr at level 0,
-        a0 constr at level 0, an constr at level 0,
-        r0 constr at level 0, rn constr at level 0,
-        body constr at level 200,
-        fn constr at level 0,
-        fns constr at level 0,
-        no associativity).
-
-Notation "name '(' a0 , .. , an ')'  {  body  } ,  'implements'  fn" :=
-  {| _defn_name := name;
-     _defn_args := cons a0 .. (cons an []) ..;
-     _defn_rets := [];
-     _defn_bedrock := match body return cmd with body => body end;
-     _defn_gallina := fn;
-     _defn_calls := [] |}
-    (in custom defn_spec at level 10,
-        name constr at level 0,
-        a0 constr at level 0, an constr at level 0,
-        body constr at level 200,
-        fn constr at level 0,
-        no associativity).
-
-Notation "name '(' a0 , .. , an ')'  {  body  } ,  'implements'  fn  'using'  fns" :=
-  {| _defn_name := name;
-     _defn_args := cons a0 .. (cons an []) ..;
-     _defn_rets := [];
-     _defn_bedrock := match body return cmd with body => body end;
-     _defn_gallina := fn;
-     _defn_calls := fns |}
-    (in custom defn_spec at level 10,
-        name constr at level 0,
-        a0 constr at level 0, an constr at level 0,
+        sig custom defn_spec_sig at level 0,
         body constr at level 200,
         fn constr at level 0,
         fns constr at level 0,
@@ -398,7 +400,7 @@ Notation "defn! spec" :=
      (* This match typechecks `spec` before passing it to Ltac, yielding much
         better error messages when `spec` isn't a valid term. *)
      ltac:(lazymatch (eval red in spec_constr) with
-           | {| _defn_name := ?name; _defn_args := ?args; _defn_rets := ?rets;
+           | {| _defn_name := ?name; _defn_sig := {| _defn_args := ?args; _defn_rets := ?rets |};
                 _defn_bedrock := ?bedrock; _defn_gallina := ?gallina;
                 _defn_calls := ?calls |} =>
              let proc := constr:((name, (args, rets, bedrock))) in
