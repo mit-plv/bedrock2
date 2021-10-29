@@ -1,5 +1,5 @@
 Require Import Rupicola.Lib.Api.
-Require Import Rupicola.Examples.Traces.Trace.
+Require Import Rupicola.Examples.IO.Writer.
 
 Import TrMonad.
 

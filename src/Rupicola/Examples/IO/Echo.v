@@ -1,7 +1,5 @@
 Require Import Rupicola.Lib.Api.
-Require Import Rupicola.Examples.Echo.IO.
-
-(* Import IO. *)
+Require Import Rupicola.Examples.IO.IO.
 
 Section Echo.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
