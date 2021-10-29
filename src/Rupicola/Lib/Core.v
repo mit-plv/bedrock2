@@ -1080,6 +1080,11 @@ Section Semantics.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
+  Definition wp_bind_retvars retvars (P: list word -> predicate) :=
+    fun tr mem locals =>
+      exists ws, map.getmany_of_list locals retvars = Some ws /\
+            P ws tr mem locals.
+
   Lemma WeakestPrecondition_weaken :
     forall cmd {functions} (p1 p2: _ -> _ -> _ -> Prop),
       (forall tr mem locals, p1 tr mem locals -> p2 tr mem locals) ->
@@ -1153,6 +1158,31 @@ Section Semantics.
       destruct width_cases as [-> | ->]; lia.
   Qed.
 End Semantics.
+
+Section Rupicola.
+  Definition nlet_eq {A} {P: forall a: A, Type}
+             (vars: list string) (a0: A)
+             (body : forall (a : A) (Heq: a = a0), P a) : P a0 :=
+    let x := a0 in body x eq_refl.
+
+  Definition nlet {A T}
+             (vars: list string) (a0: A)
+             (body : A -> T) : T :=
+    let x := a0 in body x.
+
+  Lemma nlet_as_nlet_eq {A T}
+        (vars: list string) (val: A)
+        (body : A -> T) :
+    nlet vars val body =
+    nlet_eq (P := fun _ => T) vars val (fun v _ => body v).
+  Proof. reflexivity. Qed.
+
+  Inductive RupicolaBindingInfo :=
+  | RupicolaBinding (rb_type: Type) (rb_names: list string)
+  | NotARupicolaBinding.
+
+  Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: RupicolaBindingInfo.
+End Rupicola.
 
 (* TODO: should be upstreamed to coqutil *)
 Module Z.

@@ -1,4 +1,5 @@
 Require Import Rupicola.Lib.Core.
+Require Import Rupicola.Lib.Monads.
 Require Import Rupicola.Lib.IdentParsing.
 Require Import Rupicola.Lib.Tactics.
 
@@ -33,25 +34,6 @@ Notation
 
 Notation nlet_eq_k P v :=
   (forall x, x = v -> P x).
-
-Section BlockedLets.
-  Definition nlet_eq {A} {P: forall a: A, Type}
-             (vars: list string) (a0: A)
-             (body : forall (a : A) (Heq: a = a0), P a) : P a0 :=
-    let x := a0 in body x eq_refl.
-
-  Definition nlet {A T}
-             (vars: list string) (a0: A)
-             (body : A -> T) : T :=
-    let x := a0 in body x.
-
-  Lemma nlet_as_nlet_eq {A T}
-        (vars: list string) (val: A)
-        (body : A -> T) :
-    nlet vars val body =
-    nlet_eq (P := fun _ => T) vars val (fun v _ => body v).
-  Proof. reflexivity. Qed.
-End BlockedLets.
 
 (* FIXME use `x binder` or `x name` instead of `x ident`? *)
 
@@ -138,6 +120,18 @@ Notation "'let/n' ( x , y , z ) := val 'in' body" :=
         IdentParsing.TC.ident_to_string z]
         val (fun xyz => let '\< x, y, z \> := xyz in body))
     (at level 200, x ident, y ident, body at level 200,
+     only parsing).
+
+Notation "'call!' x" := (Free.Call x) (x at level 200, at level 10).
+
+Notation "'let/!' x 'as' nm := val 'in' body" :=
+  (mbindn [nm] val (fun x => body))
+    (at level 200, x ident, body at level 200,
+     format "'[hv' 'let/!'  x  'as'  nm  :=  val  'in' '//' body ']'").
+
+Notation "'let/!' x := val 'in' body" :=
+  (mbindn [IdentParsing.TC.ident_to_string x] val (fun x => body))
+    (at level 200, x ident, body at level 200,
      only parsing).
 
 (* FIXME add a notation for loops? *)

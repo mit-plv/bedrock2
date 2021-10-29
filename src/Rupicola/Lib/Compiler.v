@@ -291,7 +291,7 @@ Section with_parameters.
       Originally added for fiat-crypto/src/Bedrock/Group/ScalarMult/Ladderstep.v.
      *)
     Strategy 1 [noskips is_skip].
-    
+
   End NoSkips.
 End with_parameters.
 
@@ -306,11 +306,6 @@ Section with_parameters.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Section Setup.
-    Definition wp_bind_retvars retvars (P: list word -> predicate) :=
-      fun tr mem locals =>
-        exists ws, map.getmany_of_list locals retvars = Some ws /\
-              P ws tr mem locals.
-
     Lemma compile_setup_getmany_list_map {tr mem locals functions} :
       forall P {cmd} retvars,
         <{ Trace := tr;
@@ -536,12 +531,6 @@ Create HintDb compiler_cleanup_post. (* https://github.com/coq/coq/issues/14874 
 Hint Rewrite __DummyConstructor : compiler_cleanup_post. (* Create the DB *)
 #[export] Hint Unfold wp_bind_retvars : compiler_cleanup_post.
 #[export] Hint Unfold postcondition_cmd : compiler_cleanup_post.
-
-Inductive RupicolaBindingInfo :=
-| RupicolaBinding (rb_type: Type) (rb_names: list string)
-| NotARupicolaBinding.
-
-Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: RupicolaBindingInfo.
 
 #[export] Hint Extern 2 (IsRupicolaBinding (nlet (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.
 #[export] Hint Extern 2 (IsRupicolaBinding (nlet_eq (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.
