@@ -67,14 +67,13 @@ Section Echo.
         k_impl
       <{ iospec_k tr pred (mbindn [var] io k) }>.
   Proof.
-    set (IO.Read).
     repeat straightline.
     straightline_call; eauto; [].
     repeat straightline; subst_lets_in_goal.
     eapply WeakestPrecondition_iospec_k_bindn
-      with (outa := {| Writer.val := x; Writer.trace := [IO.R x] |}).
+      with (wr := {| Writer.val := x; Writer.trace := [IO.R x] |}).
     - apply IO.ValidRead with (t := []), IO.ValidPure.
-    - intros; eapply H0.
+    - intros; apply H0.
   Qed.
 
   Lemma compile_putw : forall {tr mem locals functions} (w: word),
@@ -111,7 +110,7 @@ Section Echo.
     straightline_call; eauto; [].
     repeat straightline; subst_lets_in_goal.
     eapply WeakestPrecondition_iospec_k_bindn
-      with (outa := {| Writer.val := tt; Writer.trace := [IO.W w] |}).
+      with (wr := {| Writer.val := tt; Writer.trace := [IO.W w] |}).
     - apply IO.ValidWrite with (t := []), IO.ValidPure.
     - intros; eassumption.
   Qed.

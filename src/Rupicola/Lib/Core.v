@@ -28,11 +28,6 @@ Infix "*" := (sep) : sep_scope.
 Global Set Nested Proofs Allowed.
 Global Set Default Goal Selector "1".
 
-Definition predicate
-  {width : Z} {_:Bitwidth width} {word : word width} 
-  {mem : map.map word byte} {locals : map.map string word} :=
-  Semantics.trace -> mem -> locals -> Prop.
-
 Module P2.
   (* Note: Unlike ``coqutil.Datatypes.PrimitivePair.pair``, these are
      non-dependent and the notation for them associates to the left. *)
@@ -1080,10 +1075,20 @@ Section Semantics.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
+  Definition trace_entry :=
+    Eval cbv beta in ((fun {A} (_: list A) => A) _ ([]: Semantics.trace)).
+
+  Definition predicate := Semantics.trace -> mem -> locals -> Prop.
   Definition wp_bind_retvars retvars (P: list word -> predicate) :=
     fun tr mem locals =>
       exists ws, map.getmany_of_list locals retvars = Some ws /\
             P ws tr mem locals.
+
+  Definition pure_predicate := mem -> locals -> Prop.
+  Definition wp_pure_bind_retvars retvars (P: list word -> pure_predicate) :=
+    fun mem locals =>
+      exists ws, map.getmany_of_list locals retvars = Some ws /\
+            P ws mem locals.
 
   Lemma WeakestPrecondition_weaken :
     forall cmd {functions} (p1 p2: _ -> _ -> _ -> Prop),
@@ -1158,6 +1163,11 @@ Section Semantics.
       destruct width_cases as [-> | ->]; lia.
   Qed.
 End Semantics.
+
+Section Misc.
+  Lemma eq_impl : forall a b, a = b -> a -> b.
+  Proof. intros * -> ?; eassumption. Qed.
+End Misc.
 
 Section Rupicola.
   Definition nlet_eq {A} {P: forall a: A, Type}

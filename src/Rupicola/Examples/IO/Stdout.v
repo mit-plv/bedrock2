@@ -1,7 +1,7 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.IO.Writer.
 
-Import TrMonad.
+Import Writer.
 
 Section Stdout.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
@@ -13,12 +13,10 @@ Section Stdout.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Definition write (s: string) : Eventful string unit :=
+  Notation Writer := (Writer.M string).
+
+  Definition write (s: string) : Writer unit :=
     {| val := tt; trace := [s] |}.
-
-  Notation Writeful A := (Eventful string A).
-
-  Notation trace_entry := ((fun (A: Type) (_: list A) => A) _ ([]: Semantics.trace)).
 
   Definition words_of_const_string (s: string) : list (word) :=
     let chars := String.list_byte_of_string s in
@@ -28,9 +26,8 @@ Section Stdout.
     let chars := String.list_byte_of_string s in
     List.map (fun b => expr.literal (byte.unsigned b)) chars.
 
-  Definition trace_entry_of_write (s: string) : trace_entry := (* FIXME *)
+  Definition trace_entry_of_write (s: string) : trace_entry (mem := mem) :=
     (map.empty, "putchars", words_of_const_string s, (map.empty, [])).
-
 
   Lemma wp_literals_of_const_string:
     forall (mem : mem) (locals : locals) (s : string),
@@ -55,54 +52,56 @@ Section Stdout.
            functions "putchars" tr mem args
            (fun tr' mem' rets =>
               mem' = mem /\
-              rets = [word.of_Z 0] /\
+              rets = [] /\
               tr' = (map.empty, "putchars", args, (map.empty, [])) :: tr)).
 
   Lemma compile_putchars : forall {tr mem locals functions} (s: string),
-    let evf := write s in
-    forall {B} {pred: Writeful B -> predicate}
-      {k: unit -> Writeful B} {k_impl}
-      tr0 var,
+    let wr := write s in
+    forall {B} {pred: B -> pure_predicate}
+      {k: unit -> Writer B} {k_impl}
+      var,
 
       spec_of_putchars functions ->
 
-      (<{ Trace := (trace_entry_of_write s) :: tr;
+      (let tr := trace_entry_of_write s :: tr in
+       <{ Trace := tr;
           Memory := mem;
-          Locals := map.put locals var (word.of_Z 0);
+          Locals := locals;
           Functions := functions }>
        k_impl
-       <{ tbind (s :: tr0) pred (k tt) }>) ->
+       <{ wrspec_k trace_entry_of_write tr pred (k tt) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq
         (* (cmd.interact [var] "stdout.write" (literals_of_const_string s)) *)
-        (cmd.call [var] "putchars" (literals_of_const_string s))
+        (cmd.call [] "putchars" (literals_of_const_string s))
         k_impl
-      <{ tbind tr0 pred (bindn [var] evf k) }>.
+      <{ wrspec_k trace_entry_of_write tr pred (mbindn [var] wr k) }>.
   Proof.
     repeat straightline.
     eexists; (intuition eauto using wp_literals_of_const_string); [].
     straightline_call; eauto; [].
     repeat straightline; subst_lets_in_goal.
-    rewrite tbind_bindn; eassumption.
+    eapply WeakestPrecondition_wrspec_k_bindn
+      with (wr := {| Writer.val := tt; Writer.trace := [s] |}).
+    - intros; eassumption.
   Qed.
 
-  Definition hello_world_src (y: word) : Eventful string word :=
+  Definition hello_world_src (y: word) : Writer word :=
     let/n x := word.of_Z 1 in
     let/! _ := write "hello, world!" in
     let/n out := word.add x y in
-    ret out.
+    mret out.
 
   Instance spec_of_hello_word : spec_of "hello_world" :=
     fnspec! "hello_world" y / (R: mem -> Prop),
     { requires tr mem :=
         R mem;
       ensures tr' mem' rets :=
-        tracebind trace_entry_of_write
-                  (hello_world_src y)
-                  (fun val tr0 => tr' = tr0 ++ tr /\ (R mem' /\ rets = [val])) }.
+        wrspec trace_entry_of_write tr tr'
+               (hello_world_src y) (fun val => rets = [val] /\ R mem') }.
 
   Hint Extern 1 => simple eapply compile_putchars; shelve : compiler.
 

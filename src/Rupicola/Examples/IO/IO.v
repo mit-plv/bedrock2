@@ -1,34 +1,11 @@
+From Coq Require Logic.Eqdep Sets.Ensembles.
 Require Import Rupicola.Lib.Api.
-Require Coq.Logic.Eqdep Coq.Logic.FunctionalExtensionality Coq.Sets.Ensembles.
+Require Export Rupicola.Examples.IO.Writer.
+
 Open Scope list_scope.
 
 Set Implicit Arguments.
-
-Module Writer.
-Section Writer.
-  Context (T: Type).
-  Set Primitive Projections.
-  Record M A := { val: A; trace: list T }.
-  Unset Primitive Projections.
-
-  Local Definition ret {A} (a: A) : M A :=
-    {| val := a; trace := [] |}.
-  Local Definition bind {A B} (ma: M A) (k: A -> M B) : M B :=
-    let b := k ma.(val) in
-    {| val := b.(val); trace := b.(trace) ++ ma.(trace) |}.
-
-  Ltac s :=
-    unfold bind, ret; simpl;
-    rewrite ?List.app_nil_r, ?List.app_assoc;
-    firstorder congruence.
-
-  Global Program Instance MonadM : Monad M :=
-    {| mret := @ret;
-       mbind := @bind |}.
-  Obligation 2. Proof. s. Qed.
-  Obligation 3. Proof. s. Qed.
-End Writer.
-End Writer.
+Set Primitive Projections.
 
 Module Observable.
   Import Writer.
@@ -88,18 +65,12 @@ Module IO.
 
   Definition interpAction {A} (rw: Action A) : Observable.M (Event T) A :=
     match rw with
-    | Read => fun out => out.(trace) = [R out.(val)]
-    | Write w => fun out => out.(trace) = [W w]
+    | Read => fun wr => wr.(trace) = [R wr.(val)]
+    | Write w => fun wr => wr.(trace) = [W w]
     end.
 
   Definition interp {A} (spec: M A) : Observable.M (Event T) A :=
     Free.interp (MM' := Observable.MonadM (Event T)) (@interpAction) spec.
-
-  Lemma interp_bind {A B}:
-    forall (ma: M A) (k: A -> M B),
-      mbind (interp ma) (fun a => interp (k a)) =
-      interp (mbind ma k).
-  Proof. intros; apply Free.interp_bind. Qed.
 
   Inductive Valid {A} : IO.M A -> Writer.M (Event T) A -> Prop :=
     | ValidPure a : Valid (Free.Pure a) {| val := a; trace := [] |}
@@ -115,8 +86,8 @@ Module IO.
     forall obs,
       Valid spec obs <-> interp spec obs.
   Proof.
-    induction spec; simpl; unfold Observable.ret; intros.
-    - split; inversion 1; subst; eauto with io.
+    induction spec; simpl; unfold Observable.ret, mret; intros.
+    - split; inversion 1; subst; simpl; eauto with io.
     - split.
       + inversion 1;
           repeat match goal with
@@ -127,7 +98,7 @@ Module IO.
         1: exists {| val := r; trace := [R r] |}, {| val := a; trace := t |}.
         2: exists {| val := tt; trace := [W w] |}, {| val := a; trace := t |}.
         all: firstorder.
-      + destruct f; unfold Observable.bind;
+      + destruct f; unfold Observable.bind, mbind;
           repeat match goal with
                  | [ H: unit |- _ ] => destruct H
                  | [ H: exists _: Writer.M _ _, _ |- _ ] => destruct H as [(?&?) ?]
@@ -140,18 +111,6 @@ Module IO.
 End IO.
 
 Arguments IO.Read {_} : assert.
-
-Notation "'call!' x" := (Free.Call x) (x at level 200, at level 10).
-
-Notation "'let/!' x 'as' nm := val 'in' body" :=
-  (mbindn [nm] val (fun x => body))
-    (at level 200, x ident, body at level 200,
-     format "'[hv' 'let/!'  x  'as'  nm  :=  val  'in' '//' body ']'").
-
-Notation "'let/!' x := val 'in' body" :=
-  (mbindn [IdentParsing.TC.ident_to_string x] val (fun x => body))
-    (at level 200, x ident, body at level 200,
-     only parsing).
 
 Import Writer.
 
@@ -170,95 +129,54 @@ Section with_parameters.
   Notation Event := (IO.Event T).
   Notation Writer := (Writer.M Event).
 
+  Context (trace_entry_of_event: Event -> trace_entry (width := width)).
+  Notation wrbind_spec := (wrbind_spec trace_entry_of_event).
+  Notation lift_tr := (List.map trace_entry_of_event).
+
   Definition iobind {A} (io: IO A) (pred: Writer A -> Prop) :=
     (* NOTE: We do not need to capture the fact that all traces are achievable:
        Bedrock2 takes care of that for us (the source program has no control on the
        values returned by "read" *)
-    exists out, IO.Valid io out /\ pred out.
-
-  Definition trace_entry :=
-    Eval cbv beta in ((fun {A} (_: list A) => A) _ ([]: Semantics.trace)).
-
-  Context (trace_entry_of_event: Event -> trace_entry).
+    exists wr, IO.Valid io wr /\ pred wr.
 
   Definition iobind_spec {A} tr0 (io: IO A) (pred: A -> Semantics.trace -> Prop) : Prop :=
-    iobind io (fun out => pred out.(val) (List.map trace_entry_of_event out.(trace) ++ tr0)).
-
-  Definition pure_predicate := memT -> localsT -> Prop.
-  Definition predicate_of_pure (p: pure_predicate) : predicate :=
-    fun tr mem locals => p mem locals.
-
-  Definition iospec_k {A} tr0 (pred: A -> pure_predicate) (io: IO A) : predicate :=
-    fun tr mem locals =>
-      iobind_spec tr0 io (fun a tr' => tr = tr' /\ pred a mem locals).
+    iobind io (fun wr => wrbind_spec tr0 wr pred).
 
   Definition iospec {A} (tr0 tr1: Semantics.trace) (io: IO A) (post: A -> Prop) : Prop :=
     iobind_spec tr0 io (fun a tr' => tr' = tr1 /\ post a).
 
-  Arguments mret : simpl never.
-  Arguments mbind : simpl never.
+  Definition iospec_k {A} tr0 (pred: A -> pure_predicate) (io: IO A) : predicate :=
+    fun tr1 mem locals => iospec tr0 tr1 io (fun a => pred a mem locals).
 
-  Lemma iospec_k_bindn {A B} tr0 tr mem locals :
-    forall vars (fa : IO A) (k : A -> IO B) outa (pred : B -> pure_predicate),
-      IO.Valid fa outa ->
-      iospec_k (List.map trace_entry_of_event outa.(trace) ++ tr0) pred (k outa.(val)) tr mem locals ->
-      iospec_k tr0 pred (mbindn vars fa k) tr mem locals.
+  Lemma iobind_spec_bindn {A B} tr0 pred vars io wr (k : A -> IO B):
+      IO.Valid io wr ->
+      iobind_spec (List.map trace_entry_of_event wr.(trace) ++ tr0) (k wr.(val)) pred ->
+      iobind_spec tr0 (mbindn vars io k) pred.
   Proof.
-    unfold iospec_k, iospec_k, iobind, mbindn; simpl.
-    intros vars * Hv (out & ? & -> & ?).
-    eexists {| val := out.(val); trace := out.(trace) ++ outa.(trace) |}.
-    repeat split; cbn.
-    - apply IO.interp_Valid in H, Hv.
-      apply IO.interp_Valid.
-      rewrite <- IO.interp_bind.
-      red; red; eauto.
-    - rewrite map_app, <- app_assoc; reflexivity.
-    - eassumption.
+    unfold iobind_spec, iobind, wrbind_spec.
+    intros H (wrb & Hb & Hwr).
+    eexists {| val := wrb.(val); trace := wrb.(trace) ++ wr.(trace) |};
+      split.
+    - apply IO.interp_Valid in H, Hb; apply IO.interp_Valid.
+      unfold IO.interp; rewrite <- @Free.interp_mbindn.
+      red; red; red; eauto.
+    - simpl; rewrite map_app, <- app_assoc; eassumption.
   Qed.
-
-  (* Lemma iospec_k_bindn' {A B} tr0 tr mem locals : *)
-  (*   forall vars (fa : IO A) (k : A -> IO B) (pred : B -> pure_predicate), *)
-  (*     (forall outa, *)
-  (*         IO.Valid fa outa -> *)
-  (*         iospec_k (List.map trace_entry_of_event outa.(trace) ++ tr0) pred (k outa.(val)) tr mem locals) -> *)
-  (*     iospec_k tr0 pred (mbindn vars fa k) tr mem locals. *)
-  (* Proof. *)
-  (*   unfold iospec_k, iospec_k, iobind, mbindn; simpl. *)
-  (*   intros vars * Hv (out & ? & -> & ?). *)
-  (*   eexists {| val := out.(val); trace := out.(trace) ++ outa.(trace) |}. *)
-  (*   repeat split; cbn. *)
-  (*   - apply IO.interp_Valid in H, Hv. *)
-  (*     apply IO.interp_Valid. *)
-  (*     rewrite <- IO.interp_bind. *)
-  (*     red; red; eauto. *)
-  (*   - rewrite map_app, <- app_assoc; reflexivity. *)
-  (*   - eassumption. *)
-  (* Qed. *)
 
   Lemma WeakestPrecondition_iospec_k_bindn {A B} tr0 funcs prog tr mem locals :
-    forall vars (fa : IO A) (k : A -> IO B) outa (pred : B -> pure_predicate),
-    IO.Valid fa outa ->
-    (IO.Valid fa outa ->
+    forall vars (io : IO A) (k : A -> IO B) wr (pred : B -> pure_predicate),
+    IO.Valid io wr ->
+    (IO.Valid io wr ->
      WeakestPrecondition.program
        funcs prog tr mem locals
-       (iospec_k (List.map trace_entry_of_event outa.(trace) ++ tr0)
-                 pred (k outa.(val)))) ->
+       (iospec_k (lift_tr wr.(trace) ++ tr0) pred (k wr.(val)))) ->
     WeakestPrecondition.program
       funcs prog tr mem locals
-      (iospec_k tr0 pred (mbindn vars fa k)).
+      (iospec_k tr0 pred (mbindn vars io k)).
   Proof.
-    intros; eapply WeakestPrecondition_weaken.
-    - intros; eapply iospec_k_bindn; eauto.
-    - eauto.
+    intros; eapply WeakestPrecondition_weaken; [ | eauto ].
+    intros; eapply iobind_spec_bindn; eauto.
   Qed.
-
-  (* FIXME: is there a way to avoid repeating `tr`? (The problem is that iospec_k needs to connect the traces produced by k and by the bedrock2 program.)
-     Can running a program ever shrink the trace? *)
-
-  Definition wp_pure_bind_retvars retvars (P: list word -> pure_predicate) :=
-    fun mem locals =>
-      exists ws, map.getmany_of_list locals retvars = Some ws /\
-            P ws mem locals.
 
   Lemma compile_setup_iospec_k {tr mem locals functions} :
     forall {A} {pred: A -> _ -> pure_predicate}
@@ -284,13 +202,9 @@ Section with_parameters.
                  iospec tr tr' spec (fun a => pred a rets mem' locals')))
            spec }>.
   Proof.
-    intros; unfold iospec_k, iospec, iobind_spec, iobind, wp_bind_retvars, wp_pure_bind_retvars in *.
+    intros; unfold iospec_k, iospec, iobind_spec, wrbind_spec, iobind, wp_bind_retvars, wp_pure_bind_retvars in *.
     use_hyp_with_matching_cmd; simpl in *.
-    repeat match goal with
-           | [ H: exists _, _ |- _ ] => destruct H
-           | [ H: _ /\ _ |- _ ] => destruct H
-           | _ => subst; eauto 10
-           end.
+    cleanup; subst; eauto 10.
   Qed.
 
   (* FIXME can we generalize?  Basically this works with any monad that describes sets of values *)
@@ -344,7 +258,7 @@ Section with_parameters.
     all: rewrite word.unsigned_b2w; cbv [Z.b2z].
     all: destruct_one_match; try congruence; [ ]; intros.
     all: eapply compile_seq; [ (eapply Ht + eapply Hf); reflexivity | ].
-    all: intros * (out & Hvalid & -> & Hpred); rewrite mbindn_mret in Hvalid.
+    all: intros * (out & Hvalid & <- & Hpred); rewrite mbindn_mret in Hvalid.
     all: eapply WeakestPrecondition_iospec_k_bindn; intros;
       try eapply Hk; eauto.
   Qed.
@@ -359,12 +273,5 @@ Ltac compile_if tr0 :=
   compile_if tr0; shelve : compiler.
 
 #[export] Hint Resolve compile_setup_iospec_k : compiler_setup.
-
-#[export] Hint Extern 2 (IsRupicolaBinding (mbindn (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.
-
-Hint Rewrite @mbindn_mbindn @mret_mbindn : compiler_cleanup.
-
 #[export] Hint Extern 1 (IO.Valid (mret _) _) => eapply IO.ValidPure : compiler_side_conditions.
-
-#[export] Hint Unfold wp_pure_bind_retvars : compiler_cleanup_post.
-#[export] Hint Unfold iospec_k iobind_spec iobind: compiler_cleanup_post.
+#[export] Hint Unfold iospec_k iospec iobind_spec iobind: compiler_cleanup_post.

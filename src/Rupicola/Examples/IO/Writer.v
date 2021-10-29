@@ -1,62 +1,34 @@
 Require Import Rupicola.Lib.Api.
-Open Scope list_scope.
 
-Set Primitive Projections.
-Record Eventful {Evt A} : Type :=
-  { val: A; trace: list Evt }.
-Arguments Eventful: clear implicits.
+Set Implicit Arguments.
 
-Module TrMonad.
-  Section TrMonad. (* FIXME replace with Writer from Echo *)
-    Context {Evt: Type}.
-    Notation Eventful := (Eventful Evt).
+Module Writer.
+Section Writer.
+  Context (T: Type).
+  Set Primitive Projections.
+  Record M A := { val: A; trace: list T }.
+  Unset Primitive Projections.
 
-    Definition ret {A} (a: A) : Eventful A :=
-      {| val := a; trace := [] |}.
-    Definition bind {A B}
-               (a: Eventful A) (body: A -> Eventful B) : Eventful B :=
-      let b := body a.(val) in
-      {| val := b.(val); trace := b.(trace) ++ a.(trace) |}.
-    Definition bindn {A B} (vars: list string)
-               (a: Eventful A) (body: A -> Eventful B) : Eventful B :=
-      bind a body.
+  Local Definition ret {A} (a: A) : M A :=
+    {| val := a; trace := [] |}.
+  Local Definition bind {A B} (ma: M A) (k: A -> M B) : M B :=
+    let b := k ma.(val) in
+    {| val := b.(val); trace := b.(trace) ++ ma.(trace) |}.
 
-    Definition equiv {A} (a0 a1: Eventful A) := a0 = a1.
+  Ltac s :=
+    unfold bind, ret; simpl;
+    rewrite ?List.app_nil_r, ?List.app_assoc;
+    firstorder congruence.
 
-    Ltac s :=
-      unfold equiv, bind, ret; simpl;
-      rewrite ?List.app_nil_r, ?List.app_assoc;
-      firstorder congruence.
+  Global Program Instance MonadM : Monad M :=
+    {| mret := @ret;
+       mbind := @bind |}.
+  Obligation 2. Proof. s. Qed.
+  Obligation 3. Proof. s. Qed.
+End Writer.
+End Writer.
 
-    Definition bind_ret {A} (ca: Eventful A) :
-      equiv (bind ca ret) ca.
-    Proof. s. Qed.
-
-    Definition ret_bind {A B} a (k: A -> Eventful B) :
-      equiv (bind (ret a) k) (k a).
-    Proof. s. Qed.
-
-    Definition bind_bind {A B C}
-               ca (ka: A -> Eventful B) (kb: B -> Eventful C) :
-      equiv (bind (bind ca ka) kb)
-            (bind ca (fun a => bind (ka a) kb)).
-    Proof. s. Qed.
-  End TrMonad.
-End TrMonad.
-
-Import TrMonad.
-
-Notation "'let/!' x 'as' nm := val 'in' body" :=
-  (bindn [nm] val (fun x => body))
-    (at level 200, x ident, body at level 200,
-     format "'[hv' 'let/!'  x  'as'  nm  :=  val  'in' '//' body ']'").
-
-Notation "'let/!' x := val 'in' body" :=
-  (bindn [IdentParsing.TC.ident_to_string x] val (fun x => body))
-    (at level 200, x ident, body at level 200,
-     only parsing).
-
-Require Import Coq.Init.Byte.
+Import Writer.
 
 Section with_parameters.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {memT: map.map word Byte.byte}.
@@ -69,49 +41,59 @@ Section with_parameters.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Context {Evt: Type}.
-  Notation Eventful := (Eventful Evt).
+  Notation Writer := (Writer.M Evt).
 
-  Definition tbind {A}
-             (tr0: list Evt) (pred: Eventful A -> predicate)
-             (k: Eventful A) :=
-    pred (bind {| val := tt; trace := tr0 |} (fun _ => k)).
+  Context (trace_entry_of_event: Evt -> trace_entry (width := width)).
 
-  Lemma tbind_bindn {A B} tr0 pred vars evf (k: A -> Eventful B) :
-    tbind tr0 pred (bindn vars evf k) =
-    tbind (evf.(trace) ++ tr0) pred (k (evf.(val))).
+  Notation lift_tr :=
+    (List.map trace_entry_of_event).
+
+  Definition wrbind_spec {A} tr0 (wr: Writer A) (pred: A -> Semantics.trace -> Prop) : Prop :=
+    pred wr.(val) (lift_tr wr.(trace) ++ tr0).
+
+  Definition wrspec {A} (tr0 tr1: Semantics.trace) (wr: Writer A) (post: A -> Prop) : Prop :=
+    wrbind_spec tr0 wr (fun a tr' => tr' = tr1 /\ post a).
+
+  Definition wrspec_k {A} tr0 (pred: A -> pure_predicate) (wr: Writer A) : predicate :=
+    fun tr1 mem locals => wrspec tr0 tr1 wr (fun a => pred a mem locals).
+
+  Lemma wrbind_spec_bindn {A B} tr0 pred vars wr (k: A -> Writer B) :
+    wrbind_spec (lift_tr wr.(trace) ++ tr0) (k (wr.(val))) pred =
+    wrbind_spec tr0 (mbindn vars wr k) pred.
   Proof.
-    unfold bindn, tbind, bind; simpl.
-    rewrite app_assoc; reflexivity.
+    unfold mbindn, wrbind_spec, mbind; simpl; unfold Writer.bind.
+    rewrite map_app, app_assoc; reflexivity.
   Qed.
 
-  Notation trace_entry := ((fun (A: Type) (_: list A) => A) _ ([]: Semantics.trace)).
+  Lemma WeakestPrecondition_wrspec_k_bindn {A B} tr0 funcs prog tr mem locals :
+    forall vars (wr : Writer A) (k : A -> Writer B) (pred : B -> pure_predicate),
+      (WeakestPrecondition.program
+         funcs prog tr mem locals
+         (wrspec_k (lift_tr wr.(trace) ++ tr0) pred (k wr.(val)))) ->
+      WeakestPrecondition.program
+        funcs prog tr mem locals
+        (wrspec_k tr0 pred (mbindn vars wr k)).
+  Proof.
+    intros; eapply WeakestPrecondition_weaken; [ | eassumption ].
+    unfold wrspec_k, wrspec; intros.
+    rewrite <- wrbind_spec_bindn; eauto.
+  Qed.
 
-  Definition tracebind {A}
-             (trace_entry_of_event: Evt -> trace_entry)
-             (prog: Eventful A)
-             (k: A -> Semantics.trace -> Prop) : Prop :=
-    k prog.(val) (List.map trace_entry_of_event prog.(trace)).
+  (* FIXME: is there a way to avoid repeating `tr`? (The problem is that iospec_k needs to connect the traces produced by k and by the bedrock2 program.)
+     Can running a program ever shrink the trace? *)
 
-  Lemma compile_setup_trace_tbind {tr mem locals functions} :
-    forall {A} {pred: A -> _ -> predicate}
-      {spec: Eventful A} {cmd}
-      (trace_entry_of_event: Evt -> trace_entry)
+  Lemma compile_setup_wrspec_k {tr mem locals functions} :
+    forall {A} {pred: A -> _ -> pure_predicate}
+      {spec: Writer A} {cmd}
       retvars,
 
-      (let pred a := (* FIXME this should not refer to `spec` *)
-           wp_bind_retvars
-             retvars
-             (fun rets tr' mem' locals' =>
-                tracebind
-                  trace_entry_of_event spec
-                  (fun val tr1 =>
-                     tr' = tr1 ++ tr /\ pred val rets tr' mem' locals')) in
+      (let pred a := wp_pure_bind_retvars retvars (pred a) in
        <{ Trace := tr;
           Memory := mem;
           Locals := locals;
           Functions := functions }>
        cmd
-       <{ tbind [] pred spec }>) ->
+       <{ wrspec_k tr pred spec }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
@@ -121,21 +103,15 @@ Section with_parameters.
             wp_bind_retvars
               retvars
               (fun rets tr' mem' locals' =>
-                 tracebind
-                   trace_entry_of_event spec
-                   (fun val tr1 =>
-                      tr' = tr1 ++ tr /\ pred val rets tr' mem' locals')))
+                 wrspec tr tr' spec (fun a => pred a rets mem' locals')))
            spec }>.
   Proof.
-    intros; unfold tbind, tracebind, wp_bind_retvars in *.
+    intros; unfold wrspec_k, wrspec, wrbind_spec, wp_bind_retvars, wp_pure_bind_retvars in *.
     use_hyp_with_matching_cmd; cbv beta in *.
-    eassumption.
+    cleanup; subst; eauto 10.
   Qed.
 End with_parameters.
 
-Global Hint Resolve compile_setup_trace_tbind : compiler_setup.
-Global Hint Extern 1 (ret _ _) => reflexivity : compiler_side_conditions.
-Global Hint Extern 2 (IsRupicolaBinding (bindn (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.
-
-Global Hint Unfold tbind: compiler_cleanup_post.
-Global Hint Unfold tracebind: compiler_cleanup_post.
+#[export] Hint Resolve compile_setup_wrspec_k : compiler_setup.
+#[export] Hint Extern 1 (mret _ _) => reflexivity : compiler_side_conditions.
+#[export] Hint Unfold wrspec_k wrspec wrbind_spec: compiler_cleanup_post.

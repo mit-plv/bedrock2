@@ -530,6 +530,7 @@ Inductive __DummyRelation : False -> False -> Prop :=
 Create HintDb compiler_cleanup_post. (* https://github.com/coq/coq/issues/14874 *)
 Hint Rewrite __DummyConstructor : compiler_cleanup_post. (* Create the DB *)
 #[export] Hint Unfold wp_bind_retvars : compiler_cleanup_post.
+#[export] Hint Unfold wp_pure_bind_retvars : compiler_cleanup_post.
 #[export] Hint Unfold postcondition_cmd : compiler_cleanup_post.
 
 #[export] Hint Extern 2 (IsRupicolaBinding (nlet (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.
