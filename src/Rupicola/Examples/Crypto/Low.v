@@ -20,7 +20,7 @@ Definition array_slice_at {T} (start len: nat) (a: array_t T) :=
 Definition array_unslice {T} (a1 a2 a3: array_t T) := a1 ++ a2 ++ a3.
 
 Definition array_get {T} (a: array_t T) (n: nat) (d: T) := List.nth n a d.
-Definition array_put {T} (a: array_t T) (n: nat) (t: T) := upds a n [t].
+Definition array_put {T} (a: array_t T) (n: nat) (t: T) := upd a n t.
 
 Definition buffer_t := List.list.
 Definition buf_make T (n: nat) : buffer_t T := [].
@@ -226,9 +226,27 @@ Qed.
 
 Print Grammar constr.
 
+Local Notation "a + b" := (Z.land (a+b) (Z.ones 32)).
+Local Notation "a ^ b" := (Z.lxor a b).
+Local Notation "a <<< b" := (Z.shiftl a b + Z.shiftr a (32-b))
+  (at level 30).
+
+Definition sq '(a, b, c, d) :=
+  let a := a + b in  let d := d ^ a in  let d := d <<< 16 in
+  let c := c + d in  let b := b ^ c in  let b := b <<< 12 in
+  let a := a + b in  let d := d ^ a in  let d := d <<< 8 in
+  (a, b, c, d).
+
+Definition spec_quarter_letd_cast '(a, b, c, d) : \<< word, word, word, word \>> :=
+  let/d a := a + b in  let/d d := d ^ a in  let/d d := d <<< 16 in
+  let/d c := c + d in  let/d b := b ^ c in  let/d b := b <<< 12 in
+  let/d a := a + b in  let/d d := d ^ a in  let/d d := d <<< 8 in
+  let/d c := c + d in  let/d b := b ^ c in  let/d b := b <<< 7 in
+  \< word.of_Z a, word.of_Z b, word.of_Z c, word.of_Z d \>.
+
 Local Notation "a + b" := (word.add (word := word) a b).
 Local Notation "a ^ b" := (word.xor (word := word) a b).
-Local Notation "a <<< b" := (word.slu a b + word.srs a (word.sub (word.of_Z 32) b)) (at level 30).
+Local Notation "a <<< b" := (word.slu a b + word.sru a (word.sub (word.of_Z 32) b)) (at level 30).
 
 Definition quarter a b c d : \<< word, word, word, word \>> :=
   let/n a := a + b in  let/n d := d ^ a in  let/n d := d <<< word.of_Z 16 in
@@ -237,11 +255,128 @@ Definition quarter a b c d : \<< word, word, word, word \>> :=
   let/n c := c + d in  let/n b := b ^ c in  let/n b := b <<< word.of_Z 7 in
   \< a, b, c, d \>.
 
-Lemma quarter_ok a b c d:
+Section words.
+  Context {width} {word : Interface.word width} {word_ok: word.ok word}.
+
+  Lemma of_Z_land_ones z :
+    word.of_Z (Z.land z (Z.ones width)) = word.of_Z (word := word) z.
+  Proof.
+    rewrite Z.land_ones by apply word.width_nonneg.
+    apply word.unsigned_inj; rewrite !word.unsigned_of_Z; unfold word.wrap.
+    Z.push_pull_mod; reflexivity.
+  Qed.
+
+  Lemma Z_land_ones_word_add (a b: word) :
+    Z.land (word.unsigned a + word.unsigned b) (Z.ones width) =
+    word.unsigned (word.add a b).
+  Proof. rewrite Z.land_ones, word.unsigned_add; reflexivity || apply word.width_nonneg. Qed.
+
+  Lemma Z_land_ones_rotate (a: word) b (Hrange: 0 < b < width) :
+    Z.land (Z.shiftl (word.unsigned a) b + Z.shiftr (word.unsigned a) (width - b)) (Z.ones width) =
+    word.unsigned (word.add (word.slu a (word.of_Z b)) (word.sru a (word.sub (word.of_Z width) (word.of_Z b)))).
+  Proof.
+    rewrite Z.land_ones, word.unsigned_add by lia.
+    rewrite word.unsigned_slu, word.unsigned_sru, !word.unsigned_of_Z_nowrap.
+    unfold word.wrap; Z.push_pull_mod.
+    rewrite word.unsigned_sub, !word.unsigned_of_Z, !word.wrap_small.
+    reflexivity.
+    all: pose proof Zpow_facts.Zpower2_lt_lin width word.width_nonneg.
+    all: rewrite ?word.unsigned_sub, ?word.unsigned_of_Z_nowrap, ?word.wrap_small; lia.
+  Qed.
+
+  Lemma of_Z_land_ones_rotate a b (Ha: 0 <= a < 2 ^ width) (Hb: 0 < b < width) :
+    word.of_Z (Z.land (Z.shiftl a b + Z.shiftr a (width - b)) (Z.ones width)) =
+    word.add (word := word)
+      (word.slu (word.of_Z a) (word.of_Z b))
+      (word.sru (word.of_Z a) (word.sub (word.of_Z width) (word.of_Z b))).
+  Proof.
+    apply word.unsigned_inj.
+    rewrite word.unsigned_add, word.unsigned_slu, word.unsigned_sru_nowrap;
+      rewrite ?word.unsigned_sub, ?word.unsigned_of_Z_nowrap.
+    all: rewrite ?(word.wrap_small b), ?(word.wrap_small (width - b)).
+    unfold word.wrap; rewrite Z.land_ones by apply word.width_nonneg;
+      Z.push_pull_mod; reflexivity.
+    all: pose proof Zpow_facts.Zpower2_lt_lin width word.width_nonneg; try lia.
+    rewrite Z.land_ones by lia; apply Z.mod_pos_bound; lia.
+  Qed.
+End words.
+
+Hint Rewrite Z_land_ones_rotate using (split; reflexivity) : quarter.
+Hint Rewrite <- word.unsigned_xor_nowrap : quarter.
+Hint Rewrite Z_land_ones_word_add : quarter.
+
+(*
+Lemma q_ok a b c d:
+  q (word.of_Z a) (word.of_Z b) (word.of_Z c) (word.of_Z d) =
+  let '(a', b', c', d') := sq (a, b, c, d) in
+  \< word.of_Z a', word.of_Z b', word.of_Z c', word.of_Z d' \>.
+Proof.
+  unfold sq, q, nlet.
+  repeat (rewrite of_Z_land_ones_rotate ||
+          rewrite word.morph_xor ||
+          rewrite word.ring_morph_add ||
+          rewrite of_Z_land_ones).
+  reflexivity.
+Admitted.
+ *)
+
+Lemma quarter_ok0 a b c d:
   Spec.quarter (word.unsigned a, word.unsigned b, word.unsigned c, word.unsigned d) =
   let '\<a', b', c', d'\> := quarter a b c d in
   (word.unsigned a', word.unsigned b', word.unsigned c', word.unsigned d').
-Proof. Admitted.
+Proof.
+  unfold Spec.quarter, quarter, nlet;
+    autorewrite with quarter;
+    reflexivity.
+Qed.
+
+Ltac set_first :=
+  lazymatch goal with
+  | [  |- nlet _ (word.of_Z ?z) _ = dlet ?z _ ] =>
+    set z;
+    unfold nlet at 1; unfold dlet at 1
+  end.
+
+Lemma quarter_ok' a b c d:
+  quarter (word.of_Z a) (word.of_Z b) (word.of_Z c) (word.of_Z d) =
+  spec_quarter_letd_cast (a, b, c, d).
+Proof.
+  unfold spec_quarter_letd_cast, quarter.
+  repeat
+    (((rewrite <- of_Z_land_ones_rotate) ||
+      (rewrite <- word.morph_xor) ||
+      (rewrite <- word.ring_morph_add, <- of_Z_land_ones));
+     [ set_first | .. ]).
+  reflexivity.
+Admitted.
+
+(* FIXME these proofs about word/Z are a pain *)
+
+Lemma quarter_ok a b c d:
+  0 <= a < 2 ^ 32 -> 0 <= b < 2 ^ 32 -> 0 <= c < 2 ^ 32 -> 0 <= d < 2 ^ 32 ->
+  quarter (word.of_Z a) (word.of_Z b) (word.of_Z c) (word.of_Z d) =
+  let '(a', b', c', d') := Spec.quarter (a, b, c, d) in
+  \< word.of_Z a', word.of_Z b', word.of_Z c', word.of_Z d' \>.
+Proof.
+  intros;
+  set (wa := word.of_Z a); set (wb := word.of_Z b); set (wc := word.of_Z c); set (wd := word.of_Z d).
+  rewrite <- (word.unsigned_of_Z_nowrap a), <- (word.unsigned_of_Z_nowrap b) by assumption.
+  rewrite <- (word.unsigned_of_Z_nowrap c), <- (word.unsigned_of_Z_nowrap d) by assumption.
+  rewrite quarter_ok0; subst wa wb wc wd; destruct (quarter _ _ _ _) as (?&?&?&?); cbn -[word.of_Z].
+  rewrite !word.of_Z_unsigned; reflexivity.
+Qed.
+
+Lemma quarter_stable a b c d:
+  0 <= a < 2 ^ 32 -> 0 <= b < 2 ^ 32 -> 0 <= c < 2 ^ 32 -> 0 <= d < 2 ^ 32 ->
+  let '(a', b', c', d') := Spec.quarter (a, b, c, d) in
+  0 <= a' < 2 ^ 32 /\ 0 <= b' < 2 ^ 32 /\ 0 <= c' < 2 ^ 32 /\ 0 <= d' < 2 ^ 32.
+Proof.
+  intros.
+  rewrite <- (word.unsigned_of_Z_nowrap a), <- (word.unsigned_of_Z_nowrap b) by assumption.
+  rewrite <- (word.unsigned_of_Z_nowrap c), <- (word.unsigned_of_Z_nowrap d) by assumption.
+  rewrite quarter_ok0; destruct (quarter _ _ _ _) as (?&?&?&?); cbn -[word.of_Z Z.pow].
+  repeat (split; try apply word.unsigned_range).
+Qed.
 
 Definition quarterround x y z t (st : list word) : list word :=
   let/n stx := array_get st x (word.of_Z 0) in
@@ -255,10 +390,166 @@ Definition quarterround x y z t (st : list word) : list word :=
   let/n st := array_put st t stt in
   st.
 
+(* FIXME move to coqutil *)
+Lemma skipn_map{A B: Type}: forall (f: A -> B) (n: nat) (l: list A),
+    skipn n (map f l) = map f (skipn n l).
+Proof.
+  induction n; intros.
+  - reflexivity.
+  - simpl. destruct l; simpl; congruence.
+Qed.
+
+Lemma map_upds {A B} (f: A -> B) : forall l d n,
+    upds (map f l) n (map f d) = map f (upds l n d).
+Proof.
+  unfold upds; intros;
+    rewrite !firstn_map, !skipn_map, !map_app, !map_length; reflexivity.
+Qed.
+
+Lemma map_upd {A B} (f: A -> B) : forall l d n,
+    upd (map f l) n (f d) = map f (upd l n d).
+Proof. intros; apply @map_upds with (d := [d]). Qed.
+
 Lemma quarterround_ok x y z t st :
-  Spec.quarterround x y z t st =
-  List.map word.unsigned (quarterround x y z t (List.map word.of_Z st)).
-Admitted.
+  (forall i, 0 <= nth i st 0 < 2 ^ 32) ->
+  List.map word.of_Z (Spec.quarterround x y z t st) =
+  quarterround x y z t (List.map word.of_Z st).
+Proof.
+  unfold Spec.quarterround, quarterround, nlet; autounfold with poly; intros.
+  rewrite !map_nth, !quarter_ok by auto.
+  destruct (Spec.quarter _) as (((?&?)&?)&?).
+  rewrite !map_upd; reflexivity.
+Qed.
+
+Lemma upd_overflow {A} (l: list A) d n:
+  (n >= length l)%nat ->
+  upd l n d = l.
+Proof.
+  intros.
+  unfold upd, upds.
+  rewrite firstn_all2 by lia.
+  rewrite skipn_all2 by lia.
+  replace (Datatypes.length l - n)%nat with 0%nat by lia.
+  simpl; rewrite app_nil_r; reflexivity.
+Qed.
+
+Lemma nth_upd_same {A} (l: list A) (a d: A) (k: nat):
+  (k < length l)%nat ->
+  nth k (upd l k a) d = a.
+Proof.
+  unfold upd, upds; intros.
+  rewrite app_nth2; rewrite firstn_length_le; auto with arith.
+  rewrite Nat.sub_diag.
+  replace ((Datatypes.length l - k)%nat) with (S (Datatypes.length l - k - 1)%nat) by lia.
+  reflexivity.
+Qed.
+
+Lemma nth_firstn {A} i:
+  forall (l : list A) (d : A) (k : nat),
+    (i < k)%nat -> nth i (firstn k l) d = nth i l d.
+Proof.
+  induction i; destruct k; destruct l; intros;
+    try lia; try reflexivity; simpl.
+  rewrite IHi; reflexivity || lia.
+Qed.
+
+Lemma nth_skipn {A}:
+  forall (l : list A) (d : A) (i k : nat),
+    nth i (skipn k l) d = nth (i + k) l d.
+Proof.
+  intros; destruct (Nat.lt_ge_cases (i + k) (length l)); cycle 1.
+  - rewrite !nth_overflow; rewrite ?skipn_length; reflexivity || lia.
+  - assert ([nth i (skipn k l) d] = [nth (i + k) l d]) as [=->]; try reflexivity.
+    rewrite <- !firstn_skipn_nth; rewrite ?skipn_length; try lia.
+    rewrite skipn_skipn; reflexivity.
+Qed.
+
+Lemma nth_upd_diff {A} (l: list A) (a d: A) (i k: nat):
+  (i <> k) ->
+  nth i (upd l k a) d = nth i l d.
+Proof.
+  intros; destruct (Nat.lt_ge_cases i (length l)); cycle 1.
+  - rewrite !nth_overflow; rewrite ?upd_length; reflexivity || lia.
+  - intros; destruct (Nat.lt_ge_cases k (length l)); cycle 1.
+    + rewrite upd_overflow by lia. reflexivity.
+    +  rewrite upd_firstn_skipn by lia.
+       assert (i < k \/ i > k)%nat as [Hlt | Hgt] by lia.
+       * rewrite app_nth1; rewrite ?firstn_length; try lia.
+         rewrite nth_firstn by lia; reflexivity.
+       * rewrite app_nth2; rewrite ?firstn_length; try lia.
+         replace (Nat.min k (length l)) with k by lia.
+         replace (i - k)%nat with (S (i - k - 1))%nat by lia.
+         cbn [nth app].
+         rewrite nth_skipn; f_equal; lia.
+Qed.
+
+Lemma nth_upd {A} (l: list A) (a d: A) (i k: nat):
+  ((i >= length l)%nat /\ nth i (upd l k a) d = d) \/
+  (i = k /\ nth i (upd l k a) d = a) \/
+  (i <> k /\ nth i (upd l k a) d = nth i l d).
+Proof.
+  destruct (Nat.lt_ge_cases i (length l)); cycle 1; [ left | right ].
+  - unfold upd; rewrite nth_overflow; rewrite ?upds_length; eauto.
+  - destruct (Nat.eq_dec i k) as [-> | Heq]; [ left | right ].
+    + rewrite nth_upd_same; auto.
+    + rewrite nth_upd_diff; auto.
+Qed.
+
+Lemma default_stable {A} (P: A -> Prop) (l: list A) (d: A):
+  (forall i : nat, P (nth i l d)) -> P d.
+Proof.
+  intros H; specialize (H (length l)); rewrite nth_overflow in H;
+    assumption || reflexivity.
+Qed.
+
+
+Lemma Forall_nth' {A} (P : A -> Prop) (l : list A) d:
+  (P d /\ Forall P l) <-> (forall i, P (nth i l d)).
+Proof.
+  split; intros H *.
+  - destruct H; rewrite <- nth_default_eq; apply Forall_nth_default; eassumption.
+  - split; [eapply default_stable; eassumption|].
+    apply Forall_nth; intros.
+    erewrite nth_indep; eauto.
+Qed.
+
+Lemma cons_stable {A} (P: A -> Prop) (l1 l2: list A) (d: A):
+  (forall i : nat, P (nth i l1 d)) ->
+  (forall i : nat, P (nth i l2 d)) ->
+  (forall i : nat, P (nth i (l1 ++ l2) d)).
+Proof.
+  rewrite <- !Forall_nth', Forall_app; intuition eauto.
+Qed.
+
+Lemma app_stable {A} (P: A -> Prop) (l1 l2: list A) (d: A):
+  (forall i : nat, P (nth i l1 d)) ->
+  (forall i : nat, P (nth i l2 d)) ->
+  (forall i : nat, P (nth i (l1 ++ l2) d)).
+Proof.
+  rewrite <- !Forall_nth', Forall_app; intuition eauto.
+Qed.
+
+Lemma upd_stable {A} (P: A -> Prop) (l: list A) (a d: A) k:
+  P a ->
+  (forall i : nat, P (nth i l d)) ->
+  (forall i : nat, P (nth i (upd l k a) d)).
+Proof.
+  intros;
+    destruct (nth_upd l a d i k) as [(? & ->) | [ (? & ->) | (? & ->) ] ];
+    subst; eauto; (eapply default_stable; eauto).
+Qed.
+
+Lemma quarterround_stable x y z t a:
+  (forall i : nat, 0 <= nth i a 0 < 2 ^ 32) ->
+  (forall i : nat, 0 <= nth i (Spec.quarterround x y z t a) 0 < 2 ^ 32).
+Proof.
+  unfold Spec.quarterround, nlet; autounfold with poly; intros.
+  pose proof quarter_stable (nth x a 0) (nth y a 0) (nth z a 0) (nth t a 0)
+       ltac:(eauto) ltac:(eauto) ltac:(eauto) ltac:(eauto) as Hb.
+  destruct (Spec.quarter _) as (((?&?)&?)&?).
+  destruct Hb as (?&?&?&?).
+  repeat (apply upd_stable; lia || auto; intros).
+Qed.
 
 Definition chacha20_block_init : \<< word, word, word, word \>> :=
   Eval cbn -[word.of_Z] in
@@ -341,6 +632,21 @@ Proof.
   - erewrite Heq, IHn; reflexivity.
 Qed.
 
+Lemma Nat_iter_rew_inv {A B} (P: A -> Prop) (fA: A -> A) (fB: B -> B) (g: A -> B):
+  (forall a, P a -> P (fA a)) ->
+  (forall a, P a -> g (fA a) = fB (g a)) ->
+  forall n a b,
+    P a ->
+    b = g a ->
+    P (Nat.iter n fA a) /\
+    g (Nat.iter n fA a) = Nat.iter n fB b.
+Proof.
+  intros Hind Heq; induction n; simpl; intros * Ha ->.
+  - eauto.
+  - specialize (IHn _ _ Ha eq_refl) as [HPa Hg].
+    split; eauto. erewrite Heq, Hg; eauto.
+Qed.
+
 Lemma word_add_pair_eqn st:
   (let '(s, t) := st in Z.land (s + t) (Z.ones 32)) =
   word.unsigned (word.of_Z (fst st) + word.of_Z (snd st)).
@@ -365,7 +671,11 @@ Proof.
   cbn [List.map]; rewrite List.map_app.
   repeat f_equal.
 
-  apply Nat_iter_rew; intros.
-  - rewrite !quarterround_ok, !List.map_map, !(map_id _ word.of_Z_unsigned); reflexivity.
+  eapply Nat_iter_rew_inv with (P := fun a => (forall i : nat, 0 <= nth i a 0 < 2 ^ 32)); intros.
+  - eauto 10 using quarterround_stable.
+  - rewrite !quarterround_ok; try reflexivity.
+    all: eauto 10 using quarterround_stable.
+  - do 4 try destruct i as [ | i]; cbn [nth]; try lia.
+    apply app_stable.
   - cbn [List.map]; rewrite List.map_app; reflexivity.
 Qed.
