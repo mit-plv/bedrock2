@@ -305,21 +305,6 @@ Hint Rewrite Z_land_ones_rotate using (split; reflexivity) : quarter.
 Hint Rewrite <- word.unsigned_xor_nowrap : quarter.
 Hint Rewrite Z_land_ones_word_add : quarter.
 
-(*
-Lemma q_ok a b c d:
-  q (word.of_Z a) (word.of_Z b) (word.of_Z c) (word.of_Z d) =
-  let '(a', b', c', d') := sq (a, b, c, d) in
-  \< word.of_Z a', word.of_Z b', word.of_Z c', word.of_Z d' \>.
-Proof.
-  unfold sq, q, nlet.
-  repeat (rewrite of_Z_land_ones_rotate ||
-          rewrite word.morph_xor ||
-          rewrite word.ring_morph_add ||
-          rewrite of_Z_land_ones).
-  reflexivity.
-Admitted.
- *)
-
 Lemma quarter_ok0 a b c d:
   Spec.quarter (word.unsigned a, word.unsigned b, word.unsigned c, word.unsigned d) =
   let '\<a', b', c', d'\> := quarter a b c d in
@@ -352,13 +337,16 @@ Admitted.
 
 (* FIXME these proofs about word/Z are a pain *)
 
+Definition in_bounds x :=
+  0 <= x < 2 ^ 32.
+
 Lemma quarter_ok a b c d:
-  0 <= a < 2 ^ 32 -> 0 <= b < 2 ^ 32 -> 0 <= c < 2 ^ 32 -> 0 <= d < 2 ^ 32 ->
+  in_bounds a -> in_bounds b -> in_bounds c -> in_bounds d ->
   quarter (word.of_Z a) (word.of_Z b) (word.of_Z c) (word.of_Z d) =
   let '(a', b', c', d') := Spec.quarter (a, b, c, d) in
   \< word.of_Z a', word.of_Z b', word.of_Z c', word.of_Z d' \>.
 Proof.
-  intros;
+  unfold in_bounds; intros.
   set (wa := word.of_Z a); set (wb := word.of_Z b); set (wc := word.of_Z c); set (wd := word.of_Z d).
   rewrite <- (word.unsigned_of_Z_nowrap a), <- (word.unsigned_of_Z_nowrap b) by assumption.
   rewrite <- (word.unsigned_of_Z_nowrap c), <- (word.unsigned_of_Z_nowrap d) by assumption.
@@ -366,12 +354,12 @@ Proof.
   rewrite !word.of_Z_unsigned; reflexivity.
 Qed.
 
-Lemma quarter_stable a b c d:
-  0 <= a < 2 ^ 32 -> 0 <= b < 2 ^ 32 -> 0 <= c < 2 ^ 32 -> 0 <= d < 2 ^ 32 ->
+Lemma quarter_in_bounds a b c d:
+  in_bounds a -> in_bounds b -> in_bounds c -> in_bounds d ->
   let '(a', b', c', d') := Spec.quarter (a, b, c, d) in
-  0 <= a' < 2 ^ 32 /\ 0 <= b' < 2 ^ 32 /\ 0 <= c' < 2 ^ 32 /\ 0 <= d' < 2 ^ 32.
+  in_bounds a' /\ in_bounds b' /\ in_bounds c' /\ in_bounds d'.
 Proof.
-  intros.
+  unfold in_bounds; intros.
   rewrite <- (word.unsigned_of_Z_nowrap a), <- (word.unsigned_of_Z_nowrap b) by assumption.
   rewrite <- (word.unsigned_of_Z_nowrap c), <- (word.unsigned_of_Z_nowrap d) by assumption.
   rewrite quarter_ok0; destruct (quarter _ _ _ _) as (?&?&?&?); cbn -[word.of_Z Z.pow].
@@ -410,12 +398,41 @@ Lemma map_upd {A B} (f: A -> B) : forall l d n,
     upd (map f l) n (f d) = map f (upd l n d).
 Proof. intros; apply @map_upds with (d := [d]). Qed.
 
+Lemma forall_nth_default {A} (P: A -> Prop) (l: list A) (d: A):
+  (forall i : nat, P (nth i l d)) -> P d.
+Proof.
+  intros H; specialize (H (length l)); rewrite nth_overflow in H;
+    assumption || reflexivity.
+Qed.
+
+Lemma Forall_nth' {A} (P : A -> Prop) (l : list A) d:
+  (P d /\ Forall P l) <-> (forall i, P (nth i l d)).
+Proof.
+  split; intros H *.
+  - destruct H; rewrite <- nth_default_eq; apply Forall_nth_default; eassumption.
+  - split; [eapply forall_nth_default; eassumption|].
+    apply Forall_nth; intros.
+    erewrite nth_indep; eauto.
+Qed.
+
+Lemma Forall_nth_default' {A} (P : A -> Prop) (l : list A) d:
+  P d -> (Forall P l <-> (forall i, P (nth i l d))).
+Proof. intros; rewrite <- Forall_nth'; tauto. Qed.
+
+Definition forall_in_bounds l:
+  (Forall in_bounds l) <-> (forall i, in_bounds (nth i l 0)).
+Proof.
+  rewrite Forall_nth_default' with (d := 0);
+    unfold in_bounds; reflexivity || lia.
+Qed.
+
 Lemma quarterround_ok x y z t st :
-  (forall i, 0 <= nth i st 0 < 2 ^ 32) ->
+  Forall in_bounds st ->
   List.map word.of_Z (Spec.quarterround x y z t st) =
   quarterround x y z t (List.map word.of_Z st).
 Proof.
-  unfold Spec.quarterround, quarterround, nlet; autounfold with poly; intros.
+  unfold Spec.quarterround, quarterround, nlet; autounfold with poly; intros H.
+  rewrite forall_in_bounds in H.
   rewrite !map_nth, !quarter_ok by auto.
   destruct (Spec.quarter _) as (((?&?)&?)&?).
   rewrite !map_upd; reflexivity.
@@ -495,60 +512,45 @@ Proof.
     + rewrite nth_upd_diff; auto.
 Qed.
 
-Lemma default_stable {A} (P: A -> Prop) (l: list A) (d: A):
-  (forall i : nat, P (nth i l d)) -> P d.
-Proof.
-  intros H; specialize (H (length l)); rewrite nth_overflow in H;
-    assumption || reflexivity.
-Qed.
+(* Lemma app_stable {A} (P: A -> Prop) (l1 l2: list A) (d: A): *)
+(*   (forall i : nat, P (nth i l1 d)) -> *)
+(*   (forall i : nat, P (nth i l2 d)) -> *)
+(*   (forall i : nat, P (nth i (l1 ++ l2) d)). *)
+(* Proof. *)
+(*   rewrite <- !Forall_nth', Forall_app; intuition eauto. *)
+(* Qed. *)
 
-
-Lemma Forall_nth' {A} (P : A -> Prop) (l : list A) d:
-  (P d /\ Forall P l) <-> (forall i, P (nth i l d)).
-Proof.
-  split; intros H *.
-  - destruct H; rewrite <- nth_default_eq; apply Forall_nth_default; eassumption.
-  - split; [eapply default_stable; eassumption|].
-    apply Forall_nth; intros.
-    erewrite nth_indep; eauto.
-Qed.
-
-Lemma cons_stable {A} (P: A -> Prop) (l1 l2: list A) (d: A):
-  (forall i : nat, P (nth i l1 d)) ->
-  (forall i : nat, P (nth i l2 d)) ->
-  (forall i : nat, P (nth i (l1 ++ l2) d)).
-Proof.
-  rewrite <- !Forall_nth', Forall_app; intuition eauto.
-Qed.
-
-Lemma app_stable {A} (P: A -> Prop) (l1 l2: list A) (d: A):
-  (forall i : nat, P (nth i l1 d)) ->
-  (forall i : nat, P (nth i l2 d)) ->
-  (forall i : nat, P (nth i (l1 ++ l2) d)).
-Proof.
-  rewrite <- !Forall_nth', Forall_app; intuition eauto.
-Qed.
-
-Lemma upd_stable {A} (P: A -> Prop) (l: list A) (a d: A) k:
+Lemma Forall_upd {A} (P: A -> Prop) (l: list A) (a: A) k:
   P a ->
-  (forall i : nat, P (nth i l d)) ->
-  (forall i : nat, P (nth i (upd l k a) d)).
+  Forall P l ->
+  Forall P (upd l k a).
 Proof.
-  intros;
-    destruct (nth_upd l a d i k) as [(? & ->) | [ (? & ->) | (? & ->) ] ];
-    subst; eauto; (eapply default_stable; eauto).
+  intros Ha Hl.
+  rewrite @Forall_nth_default' with (d := a) in Hl |- *; eauto.
+  intros; destruct (nth_upd l a a i k) as [(? & ->) | [ (? & ->) | (? & ->) ] ];
+    subst; eauto; eauto.
 Qed.
 
-Lemma quarterround_stable x y z t a:
-  (forall i : nat, 0 <= nth i a 0 < 2 ^ 32) ->
-  (forall i : nat, 0 <= nth i (Spec.quarterround x y z t a) 0 < 2 ^ 32).
+Lemma Forall_map {A B} (P: B -> Prop) (f: A -> B) (l: list A):
+  Forall (fun x => P (f x)) l ->
+  Forall P (map f l).
 Proof.
-  unfold Spec.quarterround, nlet; autounfold with poly; intros.
-  pose proof quarter_stable (nth x a 0) (nth y a 0) (nth z a 0) (nth t a 0)
+  induction l; simpl; intros H.
+  - apply Forall_nil.
+  - apply invert_Forall_cons in H. apply Forall_cons; tauto.
+Qed.
+
+Lemma quarterround_in_bounds x y z t a:
+  Forall in_bounds a ->
+  Forall in_bounds (Spec.quarterround x y z t a).
+Proof.
+  unfold Spec.quarterround, nlet; autounfold with poly; intros Ha.
+  pose proof Ha as Ha'; rewrite forall_in_bounds in Ha.
+  pose proof quarter_in_bounds (nth x a 0) (nth y a 0) (nth z a 0) (nth t a 0)
        ltac:(eauto) ltac:(eauto) ltac:(eauto) ltac:(eauto) as Hb.
   destruct (Spec.quarter _) as (((?&?)&?)&?).
   destruct Hb as (?&?&?&?).
-  repeat (apply upd_stable; lia || auto; intros).
+  repeat (apply Forall_upd; auto).
 Qed.
 
 Definition chacha20_block_init : \<< word, word, word, word \>> :=
@@ -656,6 +658,46 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma le_combine_in_bounds bs:
+  (length bs <= 4)%nat ->
+  in_bounds (le_combine bs).
+Proof.
+  unfold in_bounds; intros.
+  pose proof le_combine_bound bs.
+  pose proof Zpow_facts.Zpower_le_monotone 2 (8 * Z.of_nat (Datatypes.length bs)) 32
+       ltac:(lia) ltac:(lia); lia.
+Qed.
+
+Lemma Forall_chunk'_length {A} (l: list A) n:
+  forall acc, (length acc < n)%nat ->
+         Forall (fun l => (Datatypes.length l <= n)%nat) (chunk' n l acc).
+Proof.
+  induction l; simpl; intros.
+  - destruct acc.
+    + apply Forall_nil.
+    + apply Forall_cons; eauto || lia.
+  - destruct (_ <? _)%nat eqn:Hlt.
+    + rewrite Nat.ltb_lt in Hlt.
+      apply IHl; lia.
+    + apply Forall_cons.
+      rewrite List.app_length; cbn [length]; lia.
+      apply IHl; simpl; lia.
+Qed.
+
+Lemma Forall_chunk_length {A} (l: list A) n:
+  (0 < n)%nat -> Forall (fun l => (Datatypes.length l <= n)%nat) (chunk n l).
+Proof.
+  intros; apply Forall_chunk'_length; simpl; eauto.
+Qed.
+
+Lemma Forall_le_combine_in_bounds zs:
+  Forall in_bounds (map le_combine (chunk 4 zs)).
+Proof.
+  eapply Forall_map, Forall_impl.
+  - intros a; apply le_combine_in_bounds.
+  - apply Forall_chunk_length; eauto.
+Qed.
+
 Lemma chacha20_block_ok key nonce :
   Spec.chacha20_block key nonce =
   chacha20_block key nonce [].
@@ -671,11 +713,14 @@ Proof.
   cbn [List.map]; rewrite List.map_app.
   repeat f_equal.
 
-  eapply Nat_iter_rew_inv with (P := fun a => (forall i : nat, 0 <= nth i a 0 < 2 ^ 32)); intros.
-  - eauto 10 using quarterround_stable.
-  - rewrite !quarterround_ok; try reflexivity.
-    all: eauto 10 using quarterround_stable.
-  - do 4 try destruct i as [ | i]; cbn [nth]; try lia.
-    apply app_stable.
+  eapply Nat_iter_rew_inv with (P := Forall in_bounds); intros.
+  - eauto 10 using quarterround_in_bounds.
+  - rewrite !quarterround_ok; try reflexivity;
+      eauto 10 using quarterround_in_bounds.
+  - repeat (apply Forall_cons; [ red; lia | ]).
+    apply Forall_app; split;
+      apply Forall_le_combine_in_bounds.
   - cbn [List.map]; rewrite List.map_app; reflexivity.
 Qed.
+
+Print Assumptions chacha20_block_ok.
