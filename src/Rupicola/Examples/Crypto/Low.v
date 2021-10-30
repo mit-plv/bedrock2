@@ -6,108 +6,225 @@ Require Import bedrock2.BasicC32Semantics.
 (* TODO array_split should record a special fact in the context to make it trivial to re-split. *)
 Open Scope Z_scope.
 
-(** * Types and operations **)
+(** * Properties missing from coqutil, bedrock2, or Coq's stdlib *)
 
-Definition array_t := List.list.
-Definition array_len {T} (a: array_t T) := List.length a.
-Definition array_split_at {T} (n: nat) (a: array_t T) :=
-  (List.firstn n a, List.skipn n a).
-Definition array_unsplit {T} (a1 a2: array_t T) := a1 ++ a2.
-Definition array_slice_at {T} (start len: nat) (a: array_t T) :=
-  let (before, rest) := array_split_at start a in
-  let (middle, after) := array_split_at len rest in
-  (before, middle, after).
-Definition array_unslice {T} (a1 a2 a3: array_t T) := a1 ++ a2 ++ a3.
+(** ** Nat.iter **)
 
-Definition array_get {T} (a: array_t T) (n: nat) (d: T) := List.nth n a d.
-Definition array_put {T} (a: array_t T) (n: nat) (t: T) := upd a n t.
+Lemma Nat_iter_rew {A B} (fA: A -> A) (fB: B -> B) (g: A -> B):
+  (forall a, g (fA a) = fB (g a)) ->
+  forall n a b,
+    b = g a ->
+    g (Nat.iter n fA a) = Nat.iter n fB b.
+Proof.
+  intros Heq; induction n; simpl; intros; subst.
+  - reflexivity.
+  - erewrite Heq, IHn; reflexivity.
+Qed.
 
-Definition buffer_t := List.list.
-Definition buf_make T (n: nat) : buffer_t T := [].
-Definition buf_push {T} (buf: buffer_t T) (t: T) := buf ++ [t].
-Definition buf_append {T} (buf: buffer_t T) (arr: array_t T) := buf ++ arr.
-Definition buf_split {T} (buf: buffer_t T) : array_t T * buffer_t T := (buf, []).
-Definition buf_unsplit {T} (arr: array_t T) (buf: buffer_t T) : buffer_t T := arr.
-Definition buf_as_array {T} (buf: buffer_t T) : buffer_t T := buf.
+Lemma Nat_iter_rew_inv {A B} (P: A -> Prop) (fA: A -> A) (fB: B -> B) (g: A -> B):
+  (forall a, P a -> P (fA a)) ->
+  (forall a, P a -> g (fA a) = fB (g a)) ->
+  forall n a b,
+    P a ->
+    b = g a ->
+    P (Nat.iter n fA a) /\
+    g (Nat.iter n fA a) = Nat.iter n fB b.
+Proof.
+  intros Hind Heq; induction n; simpl; intros * Ha ->.
+  - eauto.
+  - specialize (IHn _ _ Ha eq_refl) as [HPa Hg].
+    split; eauto. erewrite Heq, Hg; eauto.
+Qed.
 
-Definition p : Z := 2^130 - 5.
-Definition felem_init_zero := 0.
-Definition felem_add (z1 z2: Z) : Z := z1 + z2 mod p.
-Definition felem_mul (z1 z2: Z) : Z := z1 * z2 mod p.
-Definition bytes_as_felem_inplace (bs: list byte) : Z :=
-  le_combine bs.
-Definition felem_as_uint128 z : Z := z mod 2 ^ 128.
+(** ** Forall **)
 
-Definition uint128_add z1 z2 : Z :=
-  (z1 + z2) mod 2 ^ 128.
-Definition uint128_as_bytes (z: Z) :=
-  le_split 16 z.
-Definition bytes_as_uint128 (bs: list byte) :=
-  le_combine bs.
+Lemma forall_nth_default {A} (P: A -> Prop) (l: list A) (d: A):
+  (forall i : nat, P (nth i l d)) -> P d.
+Proof.
+  intros H; specialize (H (length l)); rewrite nth_overflow in H;
+    assumption || reflexivity.
+Qed.
 
-Definition w32s_of_bytes (bs: list byte) : list word :=
-  List.map word.of_Z (List.map le_combine (chunk 4 bs)).
+Lemma Forall_nth' {A} (P : A -> Prop) (l : list A) d:
+  (P d /\ Forall P l) <-> (forall i, P (nth i l d)).
+Proof.
+  split; intros H *.
+  - destruct H; rewrite <- nth_default_eq; apply Forall_nth_default; eassumption.
+  - split; [eapply forall_nth_default; eassumption|].
+    apply Forall_nth; intros.
+    erewrite nth_indep; eauto.
+Qed.
 
-Definition bytes_of_w32s (w32s: list word) : list byte :=
-  List.flat_map (le_split 4) (List.map word.unsigned w32s).
+Lemma Forall_nth_default' {A} (P : A -> Prop) (l : list A) d:
+  P d -> (Forall P l <-> (forall i, P (nth i l d))).
+Proof. intros; rewrite <- Forall_nth'; tauto. Qed.
 
-Definition array_fold_chunked {A T}
-           (a: array_t T) (size: nat)
-           (f: A -> list T -> A)
-           a0 :=
-  List.fold_left (fun acc c => f acc c) (chunk size a) a0.
+Lemma Forall_map {A B} (P: B -> Prop) (f: A -> B) (l: list A):
+  Forall (fun x => P (f x)) l ->
+  Forall P (map f l).
+Proof.
+  induction l; simpl; intros H.
+  - apply Forall_nil.
+  - apply invert_Forall_cons in H. apply Forall_cons; tauto.
+Qed.
 
-Axiom felem_size : nat.
+(** map **)
 
-(* FIXME isn't this defined somewhere already? *)
-Definition byte_land (b1 b2: byte) :=
-  byte.of_Z (Z.land (byte.unsigned b1) (byte.unsigned b2)).
+Lemma map_combine_separated {A B A' B'} (fA: A -> A') (fB: B -> B') :
+  forall (lA : list A) (lB: list B),
+    List.map (fun p => (fA (fst p), fB (snd p))) (combine lA lB) =
+    combine (List.map fA lA) (List.map fB lB).
+Proof.
+  induction lA; destruct lB; simpl; congruence.
+Qed.
 
-#[local] Hint Unfold buf_make : poly.
-#[local] Hint Unfold buf_push buf_append : poly.
-#[local] Hint Unfold buf_split buf_unsplit buf_as_array : poly.
-#[local] Hint Unfold array_split_at array_unsplit : poly.
-#[local] Hint Unfold array_fold_chunked : poly.
-#[local] Hint Unfold array_get array_put : poly.
-#[local] Hint Unfold bytes_as_felem_inplace : poly.
-#[local] Hint Unfold felem_init_zero felem_add felem_mul felem_as_uint128 : poly.
-#[local] Hint Unfold uint128_add bytes_as_uint128 uint128_as_bytes : poly.
-#[local] Hint Unfold bytes_of_w32s w32s_of_bytes : poly.
+Lemma map_combine_comm {A B} (f: A * A -> B) :
+  (forall a1 a2, f (a1, a2) = f (a2, a1)) ->
+  forall (l1 l2 : list A),
+    List.map f (combine l1 l2) =
+    List.map f (combine l2 l1).
+Proof.
+  induction l1; destruct l2; simpl; congruence.
+Qed.
 
-(** * Poly1305 **)
+Lemma map_id {A} (f: A -> A) :
+  (forall x, f x = x) ->
+  forall l, map f l = l.
+Proof. induction l; simpl; congruence. Qed.
 
-Definition poly1305 (k : list byte) (m : list byte) (output: Z): list byte :=
-  let/n (f16, l16) := array_split_at 16 k in
-  let/n scratch := buf_make byte felem_size in
-  let/n scratch := buf_append scratch f16 in
-  let/n (scratch, lone_byte_and_felem_spare_space) := buf_split scratch in
-  let/n scratch := List.map (fun '(w1, w2) => let/n w := byte_land w1 w2 in w)
-                           (combine scratch (le_split 16 0x0ffffffc0ffffffc0ffffffc0fffffff)) in
-  let/n scratch := buf_unsplit scratch lone_byte_and_felem_spare_space in
-  let/n scratch := buf_push scratch x00 in
-  let/n scratch := bytes_as_felem_inplace scratch in (* B2 primitive reads first 17 bytes of longer array *)
-  let output := felem_init_zero in
-  let/n output :=
-      array_fold_chunked
-        m 16
-        (fun output ck =>
-           let/n nscratch := buf_make byte felem_size in
-           let/n nscratch := buf_append nscratch ck in (* len = 16 *)
-           let/n nscratch := buf_push nscratch x01 in (* len = 17 *)
-           let/n nscratch := bytes_as_felem_inplace nscratch in
-           let/n output := felem_add output nscratch in
-           let/n output := felem_mul output scratch in
-           output)
-        output in
-  let/n output := felem_as_uint128 output in
-  let/n l16 := bytes_as_uint128 l16 in
-  let/n output := uint128_add output l16 in
-  let/n l16 := uint128_as_bytes l16 in
-  let/n k := array_unsplit f16 l16 in
-  let/n output := uint128_as_bytes output in
-  output.
+Lemma skipn_map{A B: Type}: forall (f: A -> B) (n: nat) (l: list A),
+    skipn n (map f l) = map f (skipn n l).
+Proof.
+  induction n; intros.
+  - reflexivity.
+  - simpl. destruct l; simpl; congruence.
+Qed.
 
-(** ** Lemmas **)
+(** ** nth **)
+
+Lemma nth_firstn {A} i:
+  forall (l : list A) (d : A) (k : nat),
+    (i < k)%nat -> nth i (firstn k l) d = nth i l d.
+Proof.
+  induction i; destruct k; destruct l; intros;
+    try lia; try reflexivity; simpl.
+  rewrite IHi; reflexivity || lia.
+Qed.
+
+Lemma nth_skipn {A}:
+  forall (l : list A) (d : A) (i k : nat),
+    nth i (skipn k l) d = nth (i + k) l d.
+Proof.
+  intros; destruct (Nat.lt_ge_cases (i + k) (length l)); cycle 1.
+  - rewrite !nth_overflow; rewrite ?skipn_length; reflexivity || lia.
+  - assert ([nth i (skipn k l) d] = [nth (i + k) l d]) as [=->]; try reflexivity.
+    rewrite <- !firstn_skipn_nth; rewrite ?skipn_length; try lia.
+    rewrite skipn_skipn; reflexivity.
+Qed.
+
+(** * upd **)
+
+Lemma upd_overflow {A} (l: list A) d n:
+  (n >= length l)%nat ->
+  upd l n d = l.
+Proof.
+  intros.
+  unfold upd, upds.
+  rewrite firstn_all2 by lia.
+  rewrite skipn_all2 by lia.
+  replace (Datatypes.length l - n)%nat with 0%nat by lia.
+  simpl; rewrite app_nil_r; reflexivity.
+Qed.
+
+Lemma map_upds {A B} (f: A -> B) : forall l d n,
+    upds (map f l) n (map f d) = map f (upds l n d).
+Proof.
+  unfold upds; intros;
+    rewrite !firstn_map, !skipn_map, !map_app, !map_length; reflexivity.
+Qed.
+
+Lemma map_upd {A B} (f: A -> B) : forall l d n,
+    upd (map f l) n (f d) = map f (upd l n d).
+Proof. intros; apply @map_upds with (d := [d]). Qed.
+
+Lemma nth_upd_same {A} (l: list A) (a d: A) (k: nat):
+  (k < length l)%nat ->
+  nth k (upd l k a) d = a.
+Proof.
+  unfold upd, upds; intros.
+  rewrite app_nth2; rewrite firstn_length_le; auto with arith.
+  rewrite Nat.sub_diag.
+  replace ((Datatypes.length l - k)%nat) with (S (Datatypes.length l - k - 1)%nat) by lia.
+  reflexivity.
+Qed.
+
+Lemma nth_upd_diff {A} (l: list A) (a d: A) (i k: nat):
+  (i <> k) ->
+  nth i (upd l k a) d = nth i l d.
+Proof.
+  intros; destruct (Nat.lt_ge_cases i (length l)); cycle 1.
+  - rewrite !nth_overflow; rewrite ?upd_length; reflexivity || lia.
+  - intros; destruct (Nat.lt_ge_cases k (length l)); cycle 1.
+    + rewrite upd_overflow by lia. reflexivity.
+    +  rewrite upd_firstn_skipn by lia.
+       assert (i < k \/ i > k)%nat as [Hlt | Hgt] by lia.
+       * rewrite app_nth1; rewrite ?firstn_length; try lia.
+         rewrite nth_firstn by lia; reflexivity.
+       * rewrite app_nth2; rewrite ?firstn_length; try lia.
+         replace (Nat.min k (length l)) with k by lia.
+         replace (i - k)%nat with (S (i - k - 1))%nat by lia.
+         cbn [nth app].
+         rewrite nth_skipn; f_equal; lia.
+Qed.
+
+Lemma nth_upd {A} (l: list A) (a d: A) (i k: nat):
+  ((i >= length l)%nat /\ nth i (upd l k a) d = d) \/
+  (i = k /\ nth i (upd l k a) d = a) \/
+  (i <> k /\ nth i (upd l k a) d = nth i l d).
+Proof.
+  destruct (Nat.lt_ge_cases i (length l)); cycle 1; [ left | right ].
+  - unfold upd; rewrite nth_overflow; rewrite ?upds_length; eauto.
+  - destruct (Nat.eq_dec i k) as [-> | Heq]; [ left | right ].
+    + rewrite nth_upd_same; auto.
+    + rewrite nth_upd_diff; auto.
+Qed.
+
+Lemma Forall_upd {A} (P: A -> Prop) (l: list A) (a: A) k:
+  P a ->
+  Forall P l ->
+  Forall P (upd l k a).
+Proof.
+  intros Ha Hl.
+  rewrite @Forall_nth_default' with (d := a) in Hl |- *; eauto.
+  intros; destruct (nth_upd l a a i k) as [(? & ->) | [ (? & ->) | (? & ->) ] ];
+    subst; eauto; eauto.
+Qed.
+
+(** ** chunks **)
+
+Lemma Forall_chunk'_length {A} (l: list A) n:
+  forall acc, (length acc < n)%nat ->
+         Forall (fun l => (Datatypes.length l <= n)%nat) (chunk' n l acc).
+Proof.
+  induction l; simpl; intros.
+  - destruct acc.
+    + apply Forall_nil.
+    + apply Forall_cons; eauto || lia.
+  - destruct (_ <? _)%nat eqn:Hlt.
+    + rewrite Nat.ltb_lt in Hlt.
+      apply IHl; lia.
+    + apply Forall_cons.
+      rewrite List.app_length; cbn [length]; lia.
+      apply IHl; simpl; lia.
+Qed.
+
+Lemma Forall_chunk_length {A} (l: list A) n:
+  (0 < n)%nat -> Forall (fun l => (Datatypes.length l <= n)%nat) (chunk n l).
+Proof.
+  intros; apply Forall_chunk'_length; simpl; eauto.
+Qed.
+
+(** ** le_combine / le_split **)
 
 Arguments le_combine: simpl nomatch.
 Arguments Z.mul: simpl nomatch.
@@ -124,6 +241,10 @@ Qed.
 
 (* FIXME this doesn't do anything *)
 Hint Rewrite testbit_byte_unsigned_ge using solve [auto with zarith] : z_bitwise_with_hyps.
+
+(* FIXME isn't this defined somewhere already? *)
+Definition byte_land (b1 b2: byte) :=
+  byte.of_Z (Z.land (byte.unsigned b1) (byte.unsigned b2)).
 
 Lemma byte_unsigned_land (b1 b2: byte) :
   byte.unsigned (byte_land b1 b2) =
@@ -183,6 +304,180 @@ Proof.
       simpl; reflexivity.
 Qed.
 
+Definition in_bounds x :=
+  0 <= x < 2 ^ 32.
+
+Definition forall_in_bounds l:
+  (Forall in_bounds l) <-> (forall i, in_bounds (nth i l 0)).
+Proof.
+  rewrite Forall_nth_default' with (d := 0);
+    unfold in_bounds; reflexivity || lia.
+Qed.
+
+Lemma le_combine_in_bounds bs:
+  (length bs <= 4)%nat ->
+  in_bounds (le_combine bs).
+Proof.
+  unfold in_bounds; intros.
+  pose proof le_combine_bound bs.
+  pose proof Zpow_facts.Zpower_le_monotone 2 (8 * Z.of_nat (Datatypes.length bs)) 32
+       ltac:(lia) ltac:(lia); lia.
+Qed.
+
+Lemma Forall_le_combine_in_bounds zs:
+  Forall in_bounds (map le_combine (chunk 4 zs)).
+Proof.
+  eapply Forall_map, Forall_impl.
+  - intros a; apply le_combine_in_bounds.
+  - apply Forall_chunk_length; eauto.
+Qed.
+
+(** ** words **)
+
+Section words.
+  (* FIXME these proofs about word/Z are a pain *)
+  Context {width} {word : Interface.word width} {word_ok: word.ok word}.
+
+  Lemma _of_Z_land_ones z :
+    word.of_Z (Z.land z (Z.ones width)) = word.of_Z (word := word) z.
+  Proof.
+    rewrite Z.land_ones by apply word.width_nonneg.
+    apply word.unsigned_inj; rewrite !word.unsigned_of_Z; unfold word.wrap.
+    Z.push_pull_mod; reflexivity.
+  Qed.
+
+  Lemma Z_land_ones_word_add (a b: word) :
+    Z.land (word.unsigned a + word.unsigned b) (Z.ones width) =
+    word.unsigned (word.add a b).
+  Proof. rewrite Z.land_ones, word.unsigned_add; reflexivity || apply word.width_nonneg. Qed.
+
+  Lemma Z_land_ones_rotate (a: word) b (Hrange: 0 < b < width) :
+    Z.land (Z.shiftl (word.unsigned a) b + Z.shiftr (word.unsigned a) (width - b)) (Z.ones width) =
+    word.unsigned (word.add (word.slu a (word.of_Z b)) (word.sru a (word.sub (word.of_Z width) (word.of_Z b)))).
+  Proof.
+    rewrite Z.land_ones, word.unsigned_add by lia.
+    rewrite word.unsigned_slu, word.unsigned_sru, !word.unsigned_of_Z_nowrap.
+    unfold word.wrap; Z.push_pull_mod.
+    rewrite word.unsigned_sub, !word.unsigned_of_Z, !word.wrap_small.
+    reflexivity.
+    all: pose proof Zpow_facts.Zpower2_lt_lin width word.width_nonneg.
+    all: rewrite ?word.unsigned_sub, ?word.unsigned_of_Z_nowrap, ?word.wrap_small; lia.
+  Qed.
+
+  Lemma _of_Z_land_ones_rotate a b (Ha: 0 <= a < 2 ^ width) (Hb: 0 < b < width) :
+    word.of_Z (Z.land (Z.shiftl a b + Z.shiftr a (width - b)) (Z.ones width)) =
+    word.add (word := word)
+      (word.slu (word.of_Z a) (word.of_Z b))
+      (word.sru (word.of_Z a) (word.sub (word.of_Z width) (word.of_Z b))).
+  Proof.
+    apply word.unsigned_inj.
+    rewrite word.unsigned_add, word.unsigned_slu, word.unsigned_sru_nowrap;
+      rewrite ?word.unsigned_sub, ?word.unsigned_of_Z_nowrap.
+    all: rewrite ?(word.wrap_small b), ?(word.wrap_small (width - b)).
+    unfold word.wrap; rewrite Z.land_ones by apply word.width_nonneg;
+      Z.push_pull_mod; reflexivity.
+    all: pose proof Zpow_facts.Zpower2_lt_lin width word.width_nonneg; try lia.
+    rewrite Z.land_ones by lia; apply Z.mod_pos_bound; lia.
+  Qed.
+End words.
+
+(** * Types and operations **)
+
+Definition array_t := List.list.
+Definition array_len {T} (a: array_t T) := List.length a.
+Definition array_split_at {T} (n: nat) (a: array_t T) :=
+  (List.firstn n a, List.skipn n a).
+Definition array_unsplit {T} (a1 a2: array_t T) := a1 ++ a2.
+Definition array_slice_at {T} (start len: nat) (a: array_t T) :=
+  let (before, rest) := array_split_at start a in
+  let (middle, after) := array_split_at len rest in
+  (before, middle, after).
+Definition array_unslice {T} (a1 a2 a3: array_t T) := a1 ++ a2 ++ a3.
+
+Definition array_get {T} (a: array_t T) (n: nat) (d: T) := List.nth n a d.
+Definition array_put {T} (a: array_t T) (n: nat) (t: T) := upd a n t.
+
+Definition buffer_t := List.list.
+Definition buf_make T (n: nat) : buffer_t T := [].
+Definition buf_push {T} (buf: buffer_t T) (t: T) := buf ++ [t].
+Definition buf_append {T} (buf: buffer_t T) (arr: array_t T) := buf ++ arr.
+Definition buf_split {T} (buf: buffer_t T) : array_t T * buffer_t T := (buf, []).
+Definition buf_unsplit {T} (arr: array_t T) (buf: buffer_t T) : buffer_t T := arr.
+Definition buf_as_array {T} (buf: buffer_t T) : buffer_t T := buf.
+
+Definition p : Z := 2^130 - 5.
+Definition felem_init_zero := 0.
+Definition felem_add (z1 z2: Z) : Z := z1 + z2 mod p.
+Definition felem_mul (z1 z2: Z) : Z := z1 * z2 mod p.
+Definition bytes_as_felem_inplace (bs: list byte) : Z :=
+  le_combine bs.
+Definition felem_as_uint128 z : Z := z mod 2 ^ 128.
+
+Definition uint128_add z1 z2 : Z :=
+  (z1 + z2) mod 2 ^ 128.
+Definition uint128_as_bytes (z: Z) :=
+  le_split 16 z.
+Definition bytes_as_uint128 (bs: list byte) :=
+  le_combine bs.
+
+Definition w32s_of_bytes (bs: list byte) : list word :=
+  List.map word.of_Z (List.map le_combine (chunk 4 bs)).
+
+Definition bytes_of_w32s (w32s: list word) : list byte :=
+  List.flat_map (le_split 4) (List.map word.unsigned w32s).
+
+Definition array_fold_chunked {A T}
+           (a: array_t T) (size: nat)
+           (f: A -> list T -> A)
+           a0 :=
+  List.fold_left (fun acc c => f acc c) (chunk size a) a0.
+
+Axiom felem_size : nat.
+
+#[local] Hint Unfold buf_make : poly.
+#[local] Hint Unfold buf_push buf_append : poly.
+#[local] Hint Unfold buf_split buf_unsplit buf_as_array : poly.
+#[local] Hint Unfold array_split_at array_unsplit : poly.
+#[local] Hint Unfold array_fold_chunked : poly.
+#[local] Hint Unfold array_get array_put : poly.
+#[local] Hint Unfold bytes_as_felem_inplace : poly.
+#[local] Hint Unfold felem_init_zero felem_add felem_mul felem_as_uint128 : poly.
+#[local] Hint Unfold uint128_add bytes_as_uint128 uint128_as_bytes : poly.
+#[local] Hint Unfold bytes_of_w32s w32s_of_bytes : poly.
+
+(** * Poly1305 **)
+
+Definition poly1305 (k : list byte) (m : list byte) (output: Z): list byte :=
+  let/n (f16, l16) := array_split_at 16 k in
+  let/n scratch := buf_make byte felem_size in
+  let/n scratch := buf_append scratch f16 in
+  let/n (scratch, lone_byte_and_felem_spare_space) := buf_split scratch in
+  let/n scratch := List.map (fun '(w1, w2) => let/n w := byte_land w1 w2 in w)
+                           (combine scratch (le_split 16 0x0ffffffc0ffffffc0ffffffc0fffffff)) in
+  let/n scratch := buf_unsplit scratch lone_byte_and_felem_spare_space in
+  let/n scratch := buf_push scratch x00 in
+  let/n scratch := bytes_as_felem_inplace scratch in (* B2 primitive reads first 17 bytes of longer array *)
+  let output := felem_init_zero in
+  let/n output :=
+      array_fold_chunked
+        m 16
+        (fun output ck =>
+           let/n nscratch := buf_make byte felem_size in
+           let/n nscratch := buf_append nscratch ck in (* len = 16 *)
+           let/n nscratch := buf_push nscratch x01 in (* len = 17 *)
+           let/n nscratch := bytes_as_felem_inplace nscratch in
+           let/n output := felem_add output nscratch in
+           let/n output := felem_mul output scratch in
+           output)
+        output in
+  let/n output := felem_as_uint128 output in
+  let/n l16 := bytes_as_uint128 l16 in
+  let/n output := uint128_add output l16 in
+  let/n l16 := uint128_as_bytes l16 in
+  let/n k := array_unsplit f16 l16 in
+  let/n output := uint128_as_bytes output in
+  output.
+
 (** ** Equivalence proof **)
 
 (* change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota. *)
@@ -224,26 +519,6 @@ Qed.
 
 (** * ChaCha20 **)
 
-Print Grammar constr.
-
-Local Notation "a + b" := (Z.land (a+b) (Z.ones 32)).
-Local Notation "a ^ b" := (Z.lxor a b).
-Local Notation "a <<< b" := (Z.shiftl a b + Z.shiftr a (32-b))
-  (at level 30).
-
-Definition sq '(a, b, c, d) :=
-  let a := a + b in  let d := d ^ a in  let d := d <<< 16 in
-  let c := c + d in  let b := b ^ c in  let b := b <<< 12 in
-  let a := a + b in  let d := d ^ a in  let d := d <<< 8 in
-  (a, b, c, d).
-
-Definition spec_quarter_letd_cast '(a, b, c, d) : \<< word, word, word, word \>> :=
-  let/d a := a + b in  let/d d := d ^ a in  let/d d := d <<< 16 in
-  let/d c := c + d in  let/d b := b ^ c in  let/d b := b <<< 12 in
-  let/d a := a + b in  let/d d := d ^ a in  let/d d := d <<< 8 in
-  let/d c := c + d in  let/d b := b ^ c in  let/d b := b <<< 7 in
-  \< word.of_Z a, word.of_Z b, word.of_Z c, word.of_Z d \>.
-
 Local Notation "a + b" := (word.add (word := word) a b).
 Local Notation "a ^ b" := (word.xor (word := word) a b).
 Local Notation "a <<< b" := (word.slu a b + word.sru a (word.sub (word.of_Z 32) b)) (at level 30).
@@ -254,52 +529,6 @@ Definition quarter a b c d : \<< word, word, word, word \>> :=
   let/n a := a + b in  let/n d := d ^ a in  let/n d := d <<< word.of_Z 8 in
   let/n c := c + d in  let/n b := b ^ c in  let/n b := b <<< word.of_Z 7 in
   \< a, b, c, d \>.
-
-Section words.
-  Context {width} {word : Interface.word width} {word_ok: word.ok word}.
-
-  Lemma of_Z_land_ones z :
-    word.of_Z (Z.land z (Z.ones width)) = word.of_Z (word := word) z.
-  Proof.
-    rewrite Z.land_ones by apply word.width_nonneg.
-    apply word.unsigned_inj; rewrite !word.unsigned_of_Z; unfold word.wrap.
-    Z.push_pull_mod; reflexivity.
-  Qed.
-
-  Lemma Z_land_ones_word_add (a b: word) :
-    Z.land (word.unsigned a + word.unsigned b) (Z.ones width) =
-    word.unsigned (word.add a b).
-  Proof. rewrite Z.land_ones, word.unsigned_add; reflexivity || apply word.width_nonneg. Qed.
-
-  Lemma Z_land_ones_rotate (a: word) b (Hrange: 0 < b < width) :
-    Z.land (Z.shiftl (word.unsigned a) b + Z.shiftr (word.unsigned a) (width - b)) (Z.ones width) =
-    word.unsigned (word.add (word.slu a (word.of_Z b)) (word.sru a (word.sub (word.of_Z width) (word.of_Z b)))).
-  Proof.
-    rewrite Z.land_ones, word.unsigned_add by lia.
-    rewrite word.unsigned_slu, word.unsigned_sru, !word.unsigned_of_Z_nowrap.
-    unfold word.wrap; Z.push_pull_mod.
-    rewrite word.unsigned_sub, !word.unsigned_of_Z, !word.wrap_small.
-    reflexivity.
-    all: pose proof Zpow_facts.Zpower2_lt_lin width word.width_nonneg.
-    all: rewrite ?word.unsigned_sub, ?word.unsigned_of_Z_nowrap, ?word.wrap_small; lia.
-  Qed.
-
-  Lemma of_Z_land_ones_rotate a b (Ha: 0 <= a < 2 ^ width) (Hb: 0 < b < width) :
-    word.of_Z (Z.land (Z.shiftl a b + Z.shiftr a (width - b)) (Z.ones width)) =
-    word.add (word := word)
-      (word.slu (word.of_Z a) (word.of_Z b))
-      (word.sru (word.of_Z a) (word.sub (word.of_Z width) (word.of_Z b))).
-  Proof.
-    apply word.unsigned_inj.
-    rewrite word.unsigned_add, word.unsigned_slu, word.unsigned_sru_nowrap;
-      rewrite ?word.unsigned_sub, ?word.unsigned_of_Z_nowrap.
-    all: rewrite ?(word.wrap_small b), ?(word.wrap_small (width - b)).
-    unfold word.wrap; rewrite Z.land_ones by apply word.width_nonneg;
-      Z.push_pull_mod; reflexivity.
-    all: pose proof Zpow_facts.Zpower2_lt_lin width word.width_nonneg; try lia.
-    rewrite Z.land_ones by lia; apply Z.mod_pos_bound; lia.
-  Qed.
-End words.
 
 Hint Rewrite Z_land_ones_rotate using (split; reflexivity) : quarter.
 Hint Rewrite <- word.unsigned_xor_nowrap : quarter.
@@ -314,31 +543,6 @@ Proof.
     autorewrite with quarter;
     reflexivity.
 Qed.
-
-Ltac set_first :=
-  lazymatch goal with
-  | [  |- nlet _ (word.of_Z ?z) _ = dlet ?z _ ] =>
-    set z;
-    unfold nlet at 1; unfold dlet at 1
-  end.
-
-Lemma quarter_ok' a b c d:
-  quarter (word.of_Z a) (word.of_Z b) (word.of_Z c) (word.of_Z d) =
-  spec_quarter_letd_cast (a, b, c, d).
-Proof.
-  unfold spec_quarter_letd_cast, quarter.
-  repeat
-    (((rewrite <- of_Z_land_ones_rotate) ||
-      (rewrite <- word.morph_xor) ||
-      (rewrite <- word.ring_morph_add, <- of_Z_land_ones));
-     [ set_first | .. ]).
-  reflexivity.
-Admitted.
-
-(* FIXME these proofs about word/Z are a pain *)
-
-Definition in_bounds x :=
-  0 <= x < 2 ^ 32.
 
 Lemma quarter_ok a b c d:
   in_bounds a -> in_bounds b -> in_bounds c -> in_bounds d ->
@@ -378,54 +582,6 @@ Definition quarterround x y z t (st : list word) : list word :=
   let/n st := array_put st t stt in
   st.
 
-(* FIXME move to coqutil *)
-Lemma skipn_map{A B: Type}: forall (f: A -> B) (n: nat) (l: list A),
-    skipn n (map f l) = map f (skipn n l).
-Proof.
-  induction n; intros.
-  - reflexivity.
-  - simpl. destruct l; simpl; congruence.
-Qed.
-
-Lemma map_upds {A B} (f: A -> B) : forall l d n,
-    upds (map f l) n (map f d) = map f (upds l n d).
-Proof.
-  unfold upds; intros;
-    rewrite !firstn_map, !skipn_map, !map_app, !map_length; reflexivity.
-Qed.
-
-Lemma map_upd {A B} (f: A -> B) : forall l d n,
-    upd (map f l) n (f d) = map f (upd l n d).
-Proof. intros; apply @map_upds with (d := [d]). Qed.
-
-Lemma forall_nth_default {A} (P: A -> Prop) (l: list A) (d: A):
-  (forall i : nat, P (nth i l d)) -> P d.
-Proof.
-  intros H; specialize (H (length l)); rewrite nth_overflow in H;
-    assumption || reflexivity.
-Qed.
-
-Lemma Forall_nth' {A} (P : A -> Prop) (l : list A) d:
-  (P d /\ Forall P l) <-> (forall i, P (nth i l d)).
-Proof.
-  split; intros H *.
-  - destruct H; rewrite <- nth_default_eq; apply Forall_nth_default; eassumption.
-  - split; [eapply forall_nth_default; eassumption|].
-    apply Forall_nth; intros.
-    erewrite nth_indep; eauto.
-Qed.
-
-Lemma Forall_nth_default' {A} (P : A -> Prop) (l : list A) d:
-  P d -> (Forall P l <-> (forall i, P (nth i l d))).
-Proof. intros; rewrite <- Forall_nth'; tauto. Qed.
-
-Definition forall_in_bounds l:
-  (Forall in_bounds l) <-> (forall i, in_bounds (nth i l 0)).
-Proof.
-  rewrite Forall_nth_default' with (d := 0);
-    unfold in_bounds; reflexivity || lia.
-Qed.
-
 Lemma quarterround_ok x y z t st :
   Forall in_bounds st ->
   List.map word.of_Z (Spec.quarterround x y z t st) =
@@ -436,108 +592,6 @@ Proof.
   rewrite !map_nth, !quarter_ok by auto.
   destruct (Spec.quarter _) as (((?&?)&?)&?).
   rewrite !map_upd; reflexivity.
-Qed.
-
-Lemma upd_overflow {A} (l: list A) d n:
-  (n >= length l)%nat ->
-  upd l n d = l.
-Proof.
-  intros.
-  unfold upd, upds.
-  rewrite firstn_all2 by lia.
-  rewrite skipn_all2 by lia.
-  replace (Datatypes.length l - n)%nat with 0%nat by lia.
-  simpl; rewrite app_nil_r; reflexivity.
-Qed.
-
-Lemma nth_upd_same {A} (l: list A) (a d: A) (k: nat):
-  (k < length l)%nat ->
-  nth k (upd l k a) d = a.
-Proof.
-  unfold upd, upds; intros.
-  rewrite app_nth2; rewrite firstn_length_le; auto with arith.
-  rewrite Nat.sub_diag.
-  replace ((Datatypes.length l - k)%nat) with (S (Datatypes.length l - k - 1)%nat) by lia.
-  reflexivity.
-Qed.
-
-Lemma nth_firstn {A} i:
-  forall (l : list A) (d : A) (k : nat),
-    (i < k)%nat -> nth i (firstn k l) d = nth i l d.
-Proof.
-  induction i; destruct k; destruct l; intros;
-    try lia; try reflexivity; simpl.
-  rewrite IHi; reflexivity || lia.
-Qed.
-
-Lemma nth_skipn {A}:
-  forall (l : list A) (d : A) (i k : nat),
-    nth i (skipn k l) d = nth (i + k) l d.
-Proof.
-  intros; destruct (Nat.lt_ge_cases (i + k) (length l)); cycle 1.
-  - rewrite !nth_overflow; rewrite ?skipn_length; reflexivity || lia.
-  - assert ([nth i (skipn k l) d] = [nth (i + k) l d]) as [=->]; try reflexivity.
-    rewrite <- !firstn_skipn_nth; rewrite ?skipn_length; try lia.
-    rewrite skipn_skipn; reflexivity.
-Qed.
-
-Lemma nth_upd_diff {A} (l: list A) (a d: A) (i k: nat):
-  (i <> k) ->
-  nth i (upd l k a) d = nth i l d.
-Proof.
-  intros; destruct (Nat.lt_ge_cases i (length l)); cycle 1.
-  - rewrite !nth_overflow; rewrite ?upd_length; reflexivity || lia.
-  - intros; destruct (Nat.lt_ge_cases k (length l)); cycle 1.
-    + rewrite upd_overflow by lia. reflexivity.
-    +  rewrite upd_firstn_skipn by lia.
-       assert (i < k \/ i > k)%nat as [Hlt | Hgt] by lia.
-       * rewrite app_nth1; rewrite ?firstn_length; try lia.
-         rewrite nth_firstn by lia; reflexivity.
-       * rewrite app_nth2; rewrite ?firstn_length; try lia.
-         replace (Nat.min k (length l)) with k by lia.
-         replace (i - k)%nat with (S (i - k - 1))%nat by lia.
-         cbn [nth app].
-         rewrite nth_skipn; f_equal; lia.
-Qed.
-
-Lemma nth_upd {A} (l: list A) (a d: A) (i k: nat):
-  ((i >= length l)%nat /\ nth i (upd l k a) d = d) \/
-  (i = k /\ nth i (upd l k a) d = a) \/
-  (i <> k /\ nth i (upd l k a) d = nth i l d).
-Proof.
-  destruct (Nat.lt_ge_cases i (length l)); cycle 1; [ left | right ].
-  - unfold upd; rewrite nth_overflow; rewrite ?upds_length; eauto.
-  - destruct (Nat.eq_dec i k) as [-> | Heq]; [ left | right ].
-    + rewrite nth_upd_same; auto.
-    + rewrite nth_upd_diff; auto.
-Qed.
-
-(* Lemma app_stable {A} (P: A -> Prop) (l1 l2: list A) (d: A): *)
-(*   (forall i : nat, P (nth i l1 d)) -> *)
-(*   (forall i : nat, P (nth i l2 d)) -> *)
-(*   (forall i : nat, P (nth i (l1 ++ l2) d)). *)
-(* Proof. *)
-(*   rewrite <- !Forall_nth', Forall_app; intuition eauto. *)
-(* Qed. *)
-
-Lemma Forall_upd {A} (P: A -> Prop) (l: list A) (a: A) k:
-  P a ->
-  Forall P l ->
-  Forall P (upd l k a).
-Proof.
-  intros Ha Hl.
-  rewrite @Forall_nth_default' with (d := a) in Hl |- *; eauto.
-  intros; destruct (nth_upd l a a i k) as [(? & ->) | [ (? & ->) | (? & ->) ] ];
-    subst; eauto; eauto.
-Qed.
-
-Lemma Forall_map {A B} (P: B -> Prop) (f: A -> B) (l: list A):
-  Forall (fun x => P (f x)) l ->
-  Forall P (map f l).
-Proof.
-  induction l; simpl; intros H.
-  - apply Forall_nil.
-  - apply invert_Forall_cons in H. apply Forall_cons; tauto.
 Qed.
 
 Lemma quarterround_in_bounds x y z t a:
@@ -601,54 +655,6 @@ Definition chacha20_block (*256bit*)key (*32bit+96bit*)nonce (*512 bits*)st :=
   let/n st := bytes_of_w32s st in
   st.
 
-Lemma map_combine_separated {A B A' B'} (fA: A -> A') (fB: B -> B') :
-  forall (lA : list A) (lB: list B),
-    List.map (fun p => (fA (fst p), fB (snd p))) (combine lA lB) =
-    combine (List.map fA lA) (List.map fB lB).
-Proof.
-  induction lA; destruct lB; simpl; congruence.
-Qed.
-
-Lemma map_combine_comm {A B} (f: A * A -> B) :
-  (forall a1 a2, f (a1, a2) = f (a2, a1)) ->
-  forall (l1 l2 : list A),
-    List.map f (combine l1 l2) =
-    List.map f (combine l2 l1).
-Proof.
-  induction l1; destruct l2; simpl; congruence.
-Qed.
-
-Lemma map_id {A} (f: A -> A) :
-  (forall x, f x = x) ->
-  forall l, map f l = l.
-Proof. induction l; simpl; congruence. Qed.
-
-Lemma Nat_iter_rew {A B} (fA: A -> A) (fB: B -> B) (g: A -> B):
-  (forall a, g (fA a) = fB (g a)) ->
-  forall n a b,
-    b = g a ->
-    g (Nat.iter n fA a) = Nat.iter n fB b.
-Proof.
-  intros Heq; induction n; simpl; intros; subst.
-  - reflexivity.
-  - erewrite Heq, IHn; reflexivity.
-Qed.
-
-Lemma Nat_iter_rew_inv {A B} (P: A -> Prop) (fA: A -> A) (fB: B -> B) (g: A -> B):
-  (forall a, P a -> P (fA a)) ->
-  (forall a, P a -> g (fA a) = fB (g a)) ->
-  forall n a b,
-    P a ->
-    b = g a ->
-    P (Nat.iter n fA a) /\
-    g (Nat.iter n fA a) = Nat.iter n fB b.
-Proof.
-  intros Hind Heq; induction n; simpl; intros * Ha ->.
-  - eauto.
-  - specialize (IHn _ _ Ha eq_refl) as [HPa Hg].
-    split; eauto. erewrite Heq, Hg; eauto.
-Qed.
-
 Lemma word_add_pair_eqn st:
   (let '(s, t) := st in Z.land (s + t) (Z.ones 32)) =
   word.unsigned (word.of_Z (fst st) + word.of_Z (snd st)).
@@ -656,46 +662,6 @@ Proof.
   destruct st.
   rewrite Z.land_ones, <- word.ring_morph_add, word.unsigned_of_Z by lia.
   reflexivity.
-Qed.
-
-Lemma le_combine_in_bounds bs:
-  (length bs <= 4)%nat ->
-  in_bounds (le_combine bs).
-Proof.
-  unfold in_bounds; intros.
-  pose proof le_combine_bound bs.
-  pose proof Zpow_facts.Zpower_le_monotone 2 (8 * Z.of_nat (Datatypes.length bs)) 32
-       ltac:(lia) ltac:(lia); lia.
-Qed.
-
-Lemma Forall_chunk'_length {A} (l: list A) n:
-  forall acc, (length acc < n)%nat ->
-         Forall (fun l => (Datatypes.length l <= n)%nat) (chunk' n l acc).
-Proof.
-  induction l; simpl; intros.
-  - destruct acc.
-    + apply Forall_nil.
-    + apply Forall_cons; eauto || lia.
-  - destruct (_ <? _)%nat eqn:Hlt.
-    + rewrite Nat.ltb_lt in Hlt.
-      apply IHl; lia.
-    + apply Forall_cons.
-      rewrite List.app_length; cbn [length]; lia.
-      apply IHl; simpl; lia.
-Qed.
-
-Lemma Forall_chunk_length {A} (l: list A) n:
-  (0 < n)%nat -> Forall (fun l => (Datatypes.length l <= n)%nat) (chunk n l).
-Proof.
-  intros; apply Forall_chunk'_length; simpl; eauto.
-Qed.
-
-Lemma Forall_le_combine_in_bounds zs:
-  Forall in_bounds (map le_combine (chunk 4 zs)).
-Proof.
-  eapply Forall_map, Forall_impl.
-  - intros a; apply le_combine_in_bounds.
-  - apply Forall_chunk_length; eauto.
 Qed.
 
 Lemma chacha20_block_ok key nonce :
