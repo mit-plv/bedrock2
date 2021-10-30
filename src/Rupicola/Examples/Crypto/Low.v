@@ -1,6 +1,6 @@
 (* Rewritten versions of poly1305 and chacha20 that you can compile with Rupicola *)
 Require Import Rupicola.Lib.Api.
-Require Import Rupicola.Examples.ChaCha20Poly1305.Spec.
+Require Import Rupicola.Examples.Crypto.Spec.
 Require Import bedrock2.BasicC32Semantics.
 
 (* TODO array_split should record a special fact in the context to make it trivial to re-split. *)
@@ -86,3 +86,112 @@ Definition poly1305 (k : list byte) (m : list byte) (output: Z): list byte :=
   let/n k := array_unsplit f16 l16 in
   let/n output := uint128_as_bytes output in
   output.
+
+#[local] Hint Unfold buf_make : poly.
+#[local] Hint Unfold buf_split : poly.
+#[local] Hint Unfold buf_push : poly.
+#[local] Hint Unfold buf_append : poly.
+#[local] Hint Unfold buf_unsplit : poly.
+#[local] Hint Unfold array_split_at array_unsplit : poly.
+#[local] Hint Unfold array_fold_chunked : poly.
+#[local] Hint Unfold bytes_as_felem_inplace : poly.
+#[local] Hint Unfold felem_init_zero felem_add felem_mul felem_as_uint128 : poly.
+#[local] Hint Unfold uint128_add bytes_as_uint128 uint128_as_bytes : poly.
+
+
+Arguments le_combine: simpl nomatch.
+Arguments Z.mul: simpl nomatch.
+
+Lemma le_combine_app bs1 bs2:
+  le_combine (bs1 ++ bs2) =
+  Z.lor (le_combine bs1) (Z.shiftl (le_combine bs2) (Z.of_nat (List.length bs1) * 8)).
+Proof.
+  induction bs1; cbn -[Z.shiftl Z.of_nat Z.mul]; intros.
+  - rewrite Z.mul_0_l, Z.shiftl_0_r; reflexivity.
+  - rewrite IHbs1, Z.shiftl_lor, Z.shiftl_shiftl, !Z.lor_assoc by lia.
+    f_equal; f_equal; lia.
+Qed.
+
+Lemma le_combine_app_0 bs:
+  le_combine (bs ++ [x00]) = le_combine bs.
+Proof.
+  rewrite le_combine_app; simpl; rewrite Z.shiftl_0_l, Z.lor_0_r.
+  reflexivity.
+Qed.
+
+Lemma le_split_mod z n:
+  le_split n z = le_split n (z mod 2 ^ (Z.of_nat n * 8)).
+Proof.
+  apply le_combine_inj.
+  - rewrite !length_le_split; reflexivity.
+  - rewrite !le_combine_split.
+    Z.push_pull_mod; reflexivity.
+Qed.
+
+Lemma split_le_combine' bs n:
+  List.length bs = n ->
+  le_split n (le_combine bs) = bs.
+Proof. intros <-; apply split_le_combine. Qed.
+
+
+Lemma poly1305_ok k m output:
+  List.length k = 32%nat ->
+  poly1305 k m = poly1305_uneven_length k m output.
+Proof.
+  intros; unfold poly1305_uneven_length, poly1305.
+  autounfold with poly.
+  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
+  change ([] ++ ?x) with x.
+  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
+
+  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
+  change ([] ++ ?x) with x.
+  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
+
+  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
+
+  rewrite split_le_combine' by (rewrite skipn_length; lia).
+
+  change (nlet _ ?v ?k) with (k v) at 3; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 3; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 3; cbv beta iota.
+
+  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
+  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
+
+  Z.push_pull_mod.
+  rewrite <- le_split_mod.
+
+  f_equal.
+  f_equal.
+
+  (* Lemma fold_left_Proper : *)
+  (*   forall [A B : Type] (f f': A -> B -> A) (l l': list B) (i i': A), *)
+  (*     l = l' -> i = i' -> *)
+  (*     (forall a b, f a b = f' a b) -> *)
+  (*     fold_left f l i = fold_left f' l' i'. *)
+  (* Proof. induction l; intros; subst; simpl; eauto. Qed. *)
+  f_equal. (* meh *)
+  apply FunctionalExtensionality.functional_extensionality; intros.
+  apply FunctionalExtensionality.functional_extensionality; intros.
+
+  Z.push_pull_mod.
+  f_equal.
+  f_equal.
+
+  rewrite le_combine_app_0.
+Admitted.
