@@ -6,6 +6,8 @@ Require Import bedrock2.BasicC32Semantics.
 (* TODO array_split should record a special fact in the context to make it trivial to re-split. *)
 Open Scope Z_scope.
 
+(** * Types and operations **)
+
 Definition array_t := List.list.
 Definition array_len {T} (a: array_t T) := List.length a.
 Definition array_split_at {T} (n: nat) (a: array_t T) :=
@@ -18,8 +20,7 @@ Definition array_slice_at {T} (start len: nat) (a: array_t T) :=
 Definition array_unslice {T} (a1 a2 a3: array_t T) := a1 ++ a2 ++ a3.
 
 Definition array_get {T} (a: array_t T) (n: nat) (d: T) := List.nth n a d.
-Definition array_put {T} (a: array_t T) (n: nat) (t: T) :=
-  List.firstn n a ++ t :: List.skipn (S n) a.
+Definition array_put {T} (a: array_t T) (n: nat) (t: T) := upds a n [t].
 
 Definition buffer_t := List.list.
 Definition buf_make T (n: nat) : buffer_t T := [].
@@ -27,6 +28,7 @@ Definition buf_push {T} (buf: buffer_t T) (t: T) := buf ++ [t].
 Definition buf_append {T} (buf: buffer_t T) (arr: array_t T) := buf ++ arr.
 Definition buf_split {T} (buf: buffer_t T) : array_t T * buffer_t T := (buf, []).
 Definition buf_unsplit {T} (arr: array_t T) (buf: buffer_t T) : buffer_t T := arr.
+Definition buf_as_array {T} (buf: buffer_t T) : buffer_t T := buf.
 
 Definition p : Z := 2^130 - 5.
 Definition felem_init_zero := 0.
@@ -57,8 +59,22 @@ Definition array_fold_chunked {A T}
 
 Axiom felem_size : nat.
 
+(* FIXME isn't this defined somewhere already? *)
 Definition byte_land (b1 b2: byte) :=
   byte.of_Z (Z.land (byte.unsigned b1) (byte.unsigned b2)).
+
+#[local] Hint Unfold buf_make : poly.
+#[local] Hint Unfold buf_push buf_append : poly.
+#[local] Hint Unfold buf_split buf_unsplit buf_as_array : poly.
+#[local] Hint Unfold array_split_at array_unsplit : poly.
+#[local] Hint Unfold array_fold_chunked : poly.
+#[local] Hint Unfold array_get array_put : poly.
+#[local] Hint Unfold bytes_as_felem_inplace : poly.
+#[local] Hint Unfold felem_init_zero felem_add felem_mul felem_as_uint128 : poly.
+#[local] Hint Unfold uint128_add bytes_as_uint128 uint128_as_bytes : poly.
+#[local] Hint Unfold bytes_of_w32s w32s_of_bytes : poly.
+
+(** * Poly1305 **)
 
 Definition poly1305 (k : list byte) (m : list byte) (output: Z): list byte :=
   let/n (f16, l16) := array_split_at 16 k in
@@ -91,17 +107,7 @@ Definition poly1305 (k : list byte) (m : list byte) (output: Z): list byte :=
   let/n output := uint128_as_bytes output in
   output.
 
-#[local] Hint Unfold buf_make : poly.
-#[local] Hint Unfold buf_split : poly.
-#[local] Hint Unfold buf_push : poly.
-#[local] Hint Unfold buf_append : poly.
-#[local] Hint Unfold buf_unsplit : poly.
-#[local] Hint Unfold array_split_at array_unsplit : poly.
-#[local] Hint Unfold array_fold_chunked : poly.
-#[local] Hint Unfold bytes_as_felem_inplace : poly.
-#[local] Hint Unfold felem_init_zero felem_add felem_mul felem_as_uint128 : poly.
-#[local] Hint Unfold uint128_add bytes_as_uint128 uint128_as_bytes : poly.
-#[local] Hint Unfold bytes_of_w32s w32s_of_bytes : poly.
+(** ** Lemmas **)
 
 Arguments le_combine: simpl nomatch.
 Arguments Z.mul: simpl nomatch.
@@ -177,6 +183,8 @@ Proof.
       simpl; reflexivity.
 Qed.
 
+(** ** Equivalence proof **)
+
 (* change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota. *)
 
 Lemma poly1305_ok k m output:
@@ -213,3 +221,89 @@ Lemma poly1305_ok' k m output:
 Proof.
   unfold Spec.poly1305, poly1305, nlet; repeat t.
 Qed.
+
+(** * ChaCha20 **)
+
+Print Grammar constr.
+
+Local Notation "a + b" := (word.add (word := word) a b).
+Local Notation "a ^ b" := (word.xor (word := word) a b).
+Local Notation "a <<< b" := (word.slu a b + word.srs a (word.sub (word.of_Z 32) b)) (at level 30).
+
+Definition quarter a b c d : \<< word, word, word, word \>> :=
+  let/n a := a + b in  let/n d := d ^ a in  let/n d := d <<< word.of_Z 16 in
+  let/n c := c + d in  let/n b := b ^ c in  let/n b := b <<< word.of_Z 12 in
+  let/n a := a + b in  let/n d := d ^ a in  let/n d := d <<< word.of_Z 8 in
+  let/n c := c + d in  let/n b := b ^ c in  let/n b := b <<< word.of_Z 7 in
+  \< a, b, c, d \>.
+
+Lemma quarter_ok a b c d:
+  Spec.quarter (word.unsigned a, word.unsigned b, word.unsigned c, word.unsigned d) =
+  let '\<a', b', c', d'\> := quarter a b c d in
+  (word.unsigned a', word.unsigned b', word.unsigned c', word.unsigned d').
+Proof. Admitted.
+
+Definition quarterround x y z t (st : list word) : list word :=
+  let/n stx := array_get st x (word.of_Z 0) in
+  let/n sty := array_get st y (word.of_Z 0) in
+  let/n stz := array_get st z (word.of_Z 0) in
+  let/n stt := array_get st t (word.of_Z 0) in
+  let/n (stx, sty, stz, stt) := quarter stx sty stz stt in
+  let/n st := array_put st x stx in
+  let/n st := array_put st y sty in
+  let/n st := array_put st z stz in
+  let/n st := array_put st t stt in
+  st.
+
+Lemma quarterround_ok x y z t st :
+  Spec.quarterround x y z t st =
+  List.map word.unsigned (quarterround x y z t (List.map word.of_Z st)).
+Admitted.
+
+Definition chacha20_block_init : \<< word, word, word, word \>> :=
+  Eval cbn -[word.of_Z] in
+  match w32s_of_bytes (list_byte_of_string"expand 32-byte k") as l
+        return match l with | [w1; w2; w3; w4] => _ | _ => True end with
+  | [w1; w2; w3; w4] => \<w1, w2, w3, w4\>
+  | _ => I
+  end.
+
+Require Import Rupicola.Lib.ControlFlow.DownTo.
+
+(* FIXME word/Z conversion *)
+Definition chacha20_block (*256bit*)key (*32bit+96bit*)nonce (*512 bits*)st :=
+  let '\< i1, i2, i3, i4 \> := chacha20_block_init in
+  let/n st := buf_push st i1 in
+  let/n st := buf_push st i2 in
+  let/n st := buf_push st i3 in
+  let/n st := buf_push st i4 in (* the inits are the chunks of "expand …" *)
+
+  let/n key := w32s_of_bytes key in
+  let/n st := buf_append st key in
+  let/n key := bytes_of_w32s key in
+
+  let/n nonce := w32s_of_bytes nonce in
+  let/n st := buf_append st nonce in
+  let/n nonce := bytes_of_w32s nonce in
+
+  let/n st := buf_as_array st in
+  let/n ss := buf_make word 16 in
+  let/n ss := buf_append ss st in
+  let/n ss := buf_as_array ss in
+  let/n ss := Nat.iter 10 (fun ss =>
+    let/n ss := quarterround  0  4  8 12  ss in
+    let/n ss := quarterround  1  5  9 13  ss in
+    let/n ss := quarterround  2  6 10 14  ss in
+    let/n ss := quarterround  3  7 11 15  ss in
+    let/n ss := quarterround  0  5 10 15  ss in
+    let/n ss := quarterround  1  6 11 12  ss in
+    let/n ss := quarterround  2  7  8 13  ss in
+    let/n ss := quarterround  3  4  9 14  ss in
+    ss) ss in
+
+  let/n st := List.map (fun '(st_i, ss_i) =>
+                         let/n st_i := st_i + ss_i in
+                         st_i) (combine st ss) in
+
+  let/n st := bytes_of_w32s st in
+  st.
