@@ -72,12 +72,12 @@ Notation "'let/n' x 'eq:' Heq := val 'in' body" :=
 
 Notation "'let/n' ( x , y ) 'as' ( nx , ny ) := val 'in' body" :=
   (nlet [nx; ny] val (fun xy => let (x, y) := xy in body))
-    (at level 200, x ident, body at level 200,
+    (at level 200, x ident, y ident, body at level 200,
      format "'[hv' 'let/n'  ( x ,  y )  'as'  ( nx ,  ny )  :=  val  'in' '//' body ']'").
 
 Notation "'let/n' ( x , y ) 'as' ( nx , ny ) 'eq:' Heq := val 'in' body" :=
   (nlet [nx; ny] val (fun xy Heq => let (x, y) := xy in body))
-    (at level 200, x ident, body at level 200,
+    (at level 200, x ident, y ident, body at level 200,
      format "'[hv' 'let/n'  ( x ,  y )  'as'  ( nx ,  ny )  'eq:' Heq  :=  val  'in' '//' body ']'").
 
 Notation "'let/n' ( x , y ) 'eq:' Heq := val 'in' body" :=
@@ -98,12 +98,12 @@ Notation "'let/n' ( x , y ) := val 'in' body" :=
 
 Notation "'let/n' ( x , y , z ) 'as' ( nx , ny , nz ) := val 'in' body" :=
   (nlet [nx; ny; nz] val (fun xyz => let '\< x, y, z \> := xyz in body))
-    (at level 200, x ident, body at level 200,
+    (at level 200, x ident, y ident, z ident, body at level 200,
      format "'[hv' 'let/n'  ( x ,  y ,  z )  'as'  ( nx ,  ny ,  nz )  :=  val  'in' '//' body ']'").
 
 Notation "'let/n' ( x , y , z ) 'as' ( nx , ny , nz ) 'eq:' Heq := val 'in' body" :=
   (nlet [nx; ny; nz] val (fun xyz Heq => let '\< x, y, z \> := xyz in body))
-    (at level 200, x ident, body at level 200,
+    (at level 200, x ident, y ident, z ident, body at level 200,
      format "'[hv' 'let/n'  ( x ,  y ,  z )  'as'  ( nx ,  ny ,  nz )  'eq:' Heq  :=  val  'in' '//' body ']'").
 
 Notation "'let/n' ( x , y , z ) 'eq:' Heq := val 'in' body" :=
@@ -111,7 +111,7 @@ Notation "'let/n' ( x , y , z ) 'eq:' Heq := val 'in' body" :=
            IdentParsing.TC.ident_to_string y;
            IdentParsing.TC.ident_to_string z]
            val (fun xyz Heq => let '\< x, y, z \> := xyz in body))
-    (at level 200, x ident, y ident, body at level 200,
+    (at level 200, x ident, y ident, z ident, body at level 200,
      only parsing).
 
 Notation "'let/n' ( x , y , z ) := val 'in' body" :=
@@ -119,7 +119,35 @@ Notation "'let/n' ( x , y , z ) := val 'in' body" :=
         IdentParsing.TC.ident_to_string y;
         IdentParsing.TC.ident_to_string z]
         val (fun xyz => let '\< x, y, z \> := xyz in body))
-    (at level 200, x ident, y ident, body at level 200,
+    (at level 200, x ident, y ident, z ident, body at level 200,
+     only parsing).
+
+Notation "'let/n' ( x , y , z , t ) 'as' ( nx , ny , nz , nt ) := val 'in' body" :=
+  (nlet [nx; ny; nz; nt] val (fun xyz => let '\< x, y, z, t \> := xyz in body))
+    (at level 200, x ident, y ident, z ident, t ident, body at level 200,
+     format "'[hv' 'let/n'  ( x ,  y ,  z ,  t )  'as'  ( nx ,  ny ,  nz ,  nt )  :=  val  'in' '//' body ']'").
+
+Notation "'let/n' ( x , y , z , t ) 'as' ( nx , ny , nz , nt ) 'eq:' Heq := val 'in' body" :=
+  (nlet [nx; ny; nz; nt] val (fun xyz Heq => let '\< x, y, z, t \> := xyz in body))
+    (at level 200, x ident, y ident, z ident, t ident, body at level 200,
+     format "'[hv' 'let/n'  ( x ,  y ,  z ,  t )  'as'  ( nx ,  ny ,  nz ,  nt )  'eq:' Heq  :=  val  'in' '//' body ']'").
+
+Notation "'let/n' ( x , y , z , t ) 'eq:' Heq := val 'in' body" :=
+  (nlet_eq [IdentParsing.TC.ident_to_string x;
+           IdentParsing.TC.ident_to_string y;
+           IdentParsing.TC.ident_to_string z;
+           IdentParsing.TC.ident_to_string t]
+           val (fun xyz Heq => let '\< x, y, z, t \> := xyz in body))
+    (at level 200, x ident, y ident, z ident, t ident, body at level 200,
+     only parsing).
+
+Notation "'let/n' ( x , y , z , t ) := val 'in' body" :=
+  (nlet [IdentParsing.TC.ident_to_string x;
+        IdentParsing.TC.ident_to_string y;
+        IdentParsing.TC.ident_to_string z;
+        IdentParsing.TC.ident_to_string t]
+        val (fun xyz => let '\< x, y, z, t \> := xyz in body))
+    (at level 200, x ident, y ident, z ident, t ident, body at level 200,
      only parsing).
 
 Notation "'call!' x" := (Free.Call x) (x at level 200, at level 10).
