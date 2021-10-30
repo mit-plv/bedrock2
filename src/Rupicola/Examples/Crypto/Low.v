@@ -17,6 +17,10 @@ Definition array_slice_at {T} (start len: nat) (a: array_t T) :=
   (before, middle, after).
 Definition array_unslice {T} (a1 a2 a3: array_t T) := a1 ++ a2 ++ a3.
 
+Definition array_get {T} (a: array_t T) (n: nat) (d: T) := List.nth n a d.
+Definition array_put {T} (a: array_t T) (n: nat) (t: T) :=
+  List.firstn n a ++ t :: List.skipn (S n) a.
+
 Definition buffer_t := List.list.
 Definition buf_make T (n: nat) : buffer_t T := [].
 Definition buf_push {T} (buf: buffer_t T) (t: T) := buf ++ [t].
@@ -97,10 +101,34 @@ Definition poly1305 (k : list byte) (m : list byte) (output: Z): list byte :=
 #[local] Hint Unfold bytes_as_felem_inplace : poly.
 #[local] Hint Unfold felem_init_zero felem_add felem_mul felem_as_uint128 : poly.
 #[local] Hint Unfold uint128_add bytes_as_uint128 uint128_as_bytes : poly.
-
+#[local] Hint Unfold bytes_of_w32s w32s_of_bytes : poly.
 
 Arguments le_combine: simpl nomatch.
 Arguments Z.mul: simpl nomatch.
+
+Lemma testbit_byte_unsigned_ge b n:
+  8 <= n ->
+  Z.testbit (byte.unsigned b) n = false.
+Proof.
+  intros;
+    erewrite prove_Zeq_bitwise.testbit_above;
+    eauto using byte.unsigned_range;
+    lia.
+Qed.
+
+(* FIXME this doesn't do anything *)
+Hint Rewrite testbit_byte_unsigned_ge using solve [auto with zarith] : z_bitwise_with_hyps.
+
+Lemma byte_unsigned_land (b1 b2: byte) :
+  byte.unsigned (byte_land b1 b2) =
+  Z.land (byte.unsigned b1) (byte.unsigned b2).
+Proof.
+  unfold byte_land; rewrite byte.unsigned_of_Z.
+  unfold byte.wrap; rewrite <- Z.land_ones.
+  bitblast.Z.bitblast.
+  rewrite testbit_byte_unsigned_ge.
+  all: lia.
+Qed.
 
 Lemma le_combine_app bs1 bs2:
   le_combine (bs1 ++ bs2) =
@@ -133,25 +161,28 @@ Lemma split_le_combine' bs n:
   le_split n (le_combine bs) = bs.
 Proof. intros <-; apply split_le_combine. Qed.
 
-Lemma poly1305_ok k m output:
-  List.length k = 32%nat ->
-  poly1305 k m = poly1305_uneven_length k m output.
+Lemma Z_land_le_combine bs1 : forall bs2,
+    Z.land (le_combine bs1) (le_combine bs2) =
+    le_combine (List.map (fun '(x, y) => byte_land x y) (combine bs1 bs2)).
 Proof.
-  #[local] Hint Unfold bytes_of_w32s w32s_of_bytes : poly.
-  intros; unfold poly1305_uneven_length, poly1305, nlet.
+  induction bs1.
+  - reflexivity.
+  - destruct bs2; [ apply Z.land_0_r | ]; cbn -[Z.shiftl] in *.
+    rewrite <- IHbs1, !byte_unsigned_land, !Z.shiftl_land.
+    bitblast.Z.bitblast.
+    assert (l < 0 \/ 8 <= i) as [Hlt | Hge] by lia.
+    + rewrite !(Z.testbit_neg_r _ l) by assumption.
+      rewrite !Bool.orb_false_r; reflexivity.
+    + rewrite !testbit_byte_unsigned_ge by lia.
+      simpl; reflexivity.
+Qed.
 
-  (*
-  Hint Rewrite <- le_split_mod : poly.
-  Hint Rewrite app_nil_r : poly.
-  Hint Rewrite le_combine_app_0 : poly.
+(* change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota. *)
 
-  repeat ((autounfold with poly) ||
-          Z.push_pull_mod ||
-          (autorewrite with poly) ||
-          f_equal ||
-          (apply FunctionalExtensionality.functional_extensionality; intros)).
-   *)
-
+Lemma poly1305_ok k m output:
+  Spec.poly1305 k m = poly1305 k m output.
+Proof.
+  intros; unfold Spec.poly1305, poly1305, nlet.
   autounfold with poly.
   Z.push_pull_mod.
   rewrite <- le_split_mod.
@@ -161,37 +192,24 @@ Proof.
   rewrite !app_nil_l.
   repeat f_equal.
   rewrite le_combine_app_0.
+  rewrite <- Z_land_le_combine.
+  reflexivity.
+Qed.
 
-  repeat (destruct k as [ | ? k ]; try solve [inversion H]; []).
-  cbn -[le_combine le_split].
+Hint Rewrite <- le_split_mod Z_land_le_combine : poly.
+Hint Rewrite le_combine_app_0 : poly.
+Hint Rewrite app_nil_r : poly.
 
-  rewrite !word.unsigned_and, !word.unsigned_of_Z.
-  rewrite !word.wrap_small by admit.
+Ltac t :=
+  intros
+  || (autounfold with poly)
+  || Z.push_pull_mod
+  || (autorewrite with poly)
+  || f_equal
+  || apply FunctionalExtensionality.functional_extensionality.
 
-  change 0x0ffffffc0ffffffc0ffffffc0fffffff
-    with (le_combine [xff; xff; xff; x0f; xfc; xff; xff; x0f; xfc; xff; xff; x0f; xfc; xff; xff; x0f]).
-
-  repeat change [?b; ?b0; ?b1; ?b2; ?b3; ?b4; ?b5; ?b6; ?b7; ?b8; ?b9; ?b10; ?b11; ?b12; ?b13; ?b14]
-    with ([b; b0; b1; b2] ++ [b3; b4; b5; b6] ++ [b7; b8; b9; b10] ++ [b11; b12; b13; b14]).
-
-  Lemma Z_land_le_combine_app :
-    Z.land (le_combine (l1 ++ l2)) (le_combine (r1 ++ r2)) =
-    le_combine (Z.land (le_combine l1) (le_combine l2)) (Z.land (le_combine r1) (le_combine r2)).
-
-
-  set (le_split 16 0x0ffffffc0ffffffc0ffffffc0fffffff) as n; cbv in n; subst n.
-
-
-  do 3 (rewrite le_combine_app; change (length _) with 4%nat).
-
-  rewrite le_combine_app; change (length _) with 4%nat.
-
-  repeat (rewrite le_combine_app, length_le_split).
-  rewrite !le_combine_split, !Z.mod_small.
-  unfold le_combine.
-
-  rewrite List.flat_map_concat_map, !List.map_map.
-  simpl List.firstn.
-  simpl w32s_of_bytes.
-  simpl.
-  do 32 destruct k as [? & k].
+Lemma poly1305_ok' k m output:
+  Spec.poly1305 k m = poly1305 k m output.
+Proof.
+  unfold Spec.poly1305, poly1305, nlet; repeat t.
+Qed.
