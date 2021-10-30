@@ -133,65 +133,65 @@ Lemma split_le_combine' bs n:
   le_split n (le_combine bs) = bs.
 Proof. intros <-; apply split_le_combine. Qed.
 
-
 Lemma poly1305_ok k m output:
   List.length k = 32%nat ->
   poly1305 k m = poly1305_uneven_length k m output.
 Proof.
-  intros; unfold poly1305_uneven_length, poly1305.
+  #[local] Hint Unfold bytes_of_w32s w32s_of_bytes : poly.
+  intros; unfold poly1305_uneven_length, poly1305, nlet.
+
+  (*
+  Hint Rewrite <- le_split_mod : poly.
+  Hint Rewrite app_nil_r : poly.
+  Hint Rewrite le_combine_app_0 : poly.
+
+  repeat ((autounfold with poly) ||
+          Z.push_pull_mod ||
+          (autorewrite with poly) ||
+          f_equal ||
+          (apply FunctionalExtensionality.functional_extensionality; intros)).
+   *)
+
   autounfold with poly.
-  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
-  change ([] ++ ?x) with x.
-  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
-
-  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
-  change ([] ++ ?x) with x.
-  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
-
-  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
-
-  rewrite split_le_combine' by (rewrite skipn_length; lia).
-
-  change (nlet _ ?v ?k) with (k v) at 3; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 3; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 3; cbv beta iota.
-
-  change (nlet _ ?v ?k) with (k v) at 2; cbv beta iota.
-  change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota.
-
   Z.push_pull_mod.
   rewrite <- le_split_mod.
-
-  f_equal.
-  f_equal.
-
-  (* Lemma fold_left_Proper : *)
-  (*   forall [A B : Type] (f f': A -> B -> A) (l l': list B) (i i': A), *)
-  (*     l = l' -> i = i' -> *)
-  (*     (forall a b, f a b = f' a b) -> *)
-  (*     fold_left f l i = fold_left f' l' i'. *)
-  (* Proof. induction l; intros; subst; simpl; eauto. Qed. *)
-  f_equal. (* meh *)
-  apply FunctionalExtensionality.functional_extensionality; intros.
-  apply FunctionalExtensionality.functional_extensionality; intros.
-
+  repeat f_equal.
+  repeat (apply FunctionalExtensionality.functional_extensionality; intros).
   Z.push_pull_mod.
-  f_equal.
-  f_equal.
-
+  rewrite !app_nil_l.
+  repeat f_equal.
   rewrite le_combine_app_0.
-Admitted.
+
+  repeat (destruct k as [ | ? k ]; try solve [inversion H]; []).
+  cbn -[le_combine le_split].
+
+  rewrite !word.unsigned_and, !word.unsigned_of_Z.
+  rewrite !word.wrap_small by admit.
+
+  change 0x0ffffffc0ffffffc0ffffffc0fffffff
+    with (le_combine [xff; xff; xff; x0f; xfc; xff; xff; x0f; xfc; xff; xff; x0f; xfc; xff; xff; x0f]).
+
+  repeat change [?b; ?b0; ?b1; ?b2; ?b3; ?b4; ?b5; ?b6; ?b7; ?b8; ?b9; ?b10; ?b11; ?b12; ?b13; ?b14]
+    with ([b; b0; b1; b2] ++ [b3; b4; b5; b6] ++ [b7; b8; b9; b10] ++ [b11; b12; b13; b14]).
+
+  Lemma Z_land_le_combine_app :
+    Z.land (le_combine (l1 ++ l2)) (le_combine (r1 ++ r2)) =
+    le_combine (Z.land (le_combine l1) (le_combine l2)) (Z.land (le_combine r1) (le_combine r2)).
+
+
+  set (le_split 16 0x0ffffffc0ffffffc0ffffffc0fffffff) as n; cbv in n; subst n.
+
+
+  do 3 (rewrite le_combine_app; change (length _) with 4%nat).
+
+  rewrite le_combine_app; change (length _) with 4%nat.
+
+  repeat (rewrite le_combine_app, length_le_split).
+  rewrite !le_combine_split, !Z.mod_small.
+  unfold le_combine.
+
+  rewrite List.flat_map_concat_map, !List.map_map.
+  simpl List.firstn.
+  simpl w32s_of_bytes.
+  simpl.
+  do 32 destruct k as [? & k].
