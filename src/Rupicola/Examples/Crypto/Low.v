@@ -307,3 +307,65 @@ Definition chacha20_block (*256bit*)key (*32bit+96bit*)nonce (*512 bits*)st :=
 
   let/n st := bytes_of_w32s st in
   st.
+
+Lemma map_combine_separated {A B A' B'} (fA: A -> A') (fB: B -> B') :
+  forall (lA : list A) (lB: list B),
+    List.map (fun p => (fA (fst p), fB (snd p))) (combine lA lB) =
+    combine (List.map fA lA) (List.map fB lB).
+Proof.
+  induction lA; destruct lB; simpl; congruence.
+Qed.
+
+Lemma map_combine_comm {A B} (f: A * A -> B) :
+  (forall a1 a2, f (a1, a2) = f (a2, a1)) ->
+  forall (l1 l2 : list A),
+    List.map f (combine l1 l2) =
+    List.map f (combine l2 l1).
+Proof.
+  induction l1; destruct l2; simpl; congruence.
+Qed.
+
+Lemma map_id {A} (f: A -> A) :
+  (forall x, f x = x) ->
+  forall l, map f l = l.
+Proof. induction l; simpl; congruence. Qed.
+
+Lemma Nat_iter_rew {A B} (fA: A -> A) (fB: B -> B) (g: A -> B):
+  (forall a, g (fA a) = fB (g a)) ->
+  forall n a b,
+    b = g a ->
+    g (Nat.iter n fA a) = Nat.iter n fB b.
+Proof.
+  intros Heq; induction n; simpl; intros; subst.
+  - reflexivity.
+  - erewrite Heq, IHn; reflexivity.
+Qed.
+
+Lemma word_add_pair_eqn st:
+  (let '(s, t) := st in Z.land (s + t) (Z.ones 32)) =
+  word.unsigned (word.of_Z (fst st) + word.of_Z (snd st)).
+Proof.
+  destruct st.
+  rewrite Z.land_ones, <- word.ring_morph_add, word.unsigned_of_Z by lia.
+  reflexivity.
+Qed.
+
+Lemma chacha20_block_ok key nonce :
+  Spec.chacha20_block key nonce =
+  chacha20_block key nonce [].
+Proof.
+  unfold Spec.chacha20_block, chacha20_block, chacha20_block_init, nlet.
+  autounfold with poly.
+
+  simpl (map le_combine (chunk 4 (list_byte_of_string _))); cbn [List.app].
+  erewrite (map_ext _ _ word_add_pair_eqn).
+  rewrite <- List.map_map.
+  rewrite <- List.map_map with (f := fun st => (_, _)) (g := fun '(s, t) => s + t).
+  rewrite map_combine_separated, map_combine_comm by (cbn; intros; ring).
+  cbn [List.map]; rewrite List.map_app.
+  repeat f_equal.
+
+  apply Nat_iter_rew; intros.
+  - rewrite !quarterround_ok, !List.map_map, !(map_id _ word.of_Z_unsigned); reflexivity.
+  - cbn [List.map]; rewrite List.map_app; reflexivity.
+Qed.
