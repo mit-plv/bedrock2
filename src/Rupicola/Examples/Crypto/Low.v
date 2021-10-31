@@ -969,6 +969,8 @@ Proof.
 Qed.
 
 Lemma chacha20poly1305_aead_encrypt_ok aad key iv constant plaintext tag:
+  (length key >= 32)%nat ->
+  (length (constant ++ iv) >= 12)%nat ->
   (length iv mod 4 = 0)%nat ->
   (length constant mod 4 = 0)%nat ->
   0 <= Z.of_nat (length aad) < 2 ^ 32 ->
@@ -1019,7 +1021,7 @@ Proof.
     apply Nat.mod_mul; assumption.
   Qed.
 
-  Lemma concat_length {A} (lss: list (list A)) :
+  Lemma length_concat_sum {A} (lss: list (list A)) :
     length (List.concat lss) =
     List.fold_left Nat.add (List.map (@length _) lss) 0%nat.
   Proof.
@@ -1041,32 +1043,75 @@ Proof.
     induction lB; destruct lA; simpl; intros; rewrite ?IHlB; reflexivity || lia.
   Qed.
 
+  Lemma Nat_iter_inv {A} (P: A -> Prop) (fA: A -> A):
+    (forall a, P a -> P (fA a)) ->
+    forall n a,
+      P a ->
+      P (Nat.iter n fA a).
+  Proof. intros Hind; induction n; simpl; auto. Qed.
+
+  Lemma Nat_iter_const_length {A : Type} f : forall (n : nat) (l0 : list A),
+      (forall l, length (f l) = length l) ->
+      length (Nat.iter n f l0) = length l0.
+  Proof. intros; apply Nat_iter_inv; congruence. Qed.
+
+  Lemma length_spec_quarterround x y z t st:
+    length (Spec.quarterround x y z t st) = length st.
+  Proof.
+    unfold Spec.quarterround.
+    destruct (Spec.quarter _) as (((?&?)&?)&?).
+    rewrite !upd_length; reflexivity.
+  Qed.
+
+  Lemma length_spec_chacha20_block key nonce:
+    (length key >= 32)%nat ->
+    (length nonce >= 16)%nat ->
+    (length (Spec.chacha20_block key nonce) >= 64)%nat.
+  Proof.
+    unfold Spec.chacha20_block; intros.
+    erewrite flat_map_const_length with (n := 4%nat); try apply length_le_split.
+    repeat (rewrite ?map_length, ?combine_length, ?app_length, ?length_chunk,
+            ?Nat_iter_const_length, ?Nat.min_id, ?Nat.mul_add_distr_l);
+      eauto; cycle 1.
+    - intros; rewrite !length_spec_quarterround; reflexivity.
+    - simpl (length _); simpl (Nat.div_up 16 4).
+      pose proof Nat.div_up_range (length key) 4 ltac:(lia).
+      pose proof Nat.div_up_range (length nonce) 4 ltac:(lia).
+      lia.
+  Qed.
+
   Lemma length_spec_chacha20_encrypt key start nonce plaintext :
+    (length key >= 32)%nat ->
+    (length nonce >= 12)%nat ->
     length (Spec.chacha20_encrypt key start nonce plaintext) = length plaintext.
   Proof.
-    unfold Spec.chacha20_encrypt.
-    rewrite flat_map_concat_map, concat_length, map_map.
-    erewrite map_ext with (g := fun x => length (snd x)); cycle 1.
+    unfold Spec.chacha20_encrypt; intros.
+    rewrite flat_map_concat_map, length_concat_sum, map_map.
+    erewrite map_ext_in with (g := fun x => length (snd x)); cycle 1.
     - intros (?&?); unfold zip.
-      rewrite map_length, combine_length.
-      admit. (* FIXME needs a more powerful lemma than map_ext (needs to know List.In *)
+      rewrite map_length, combine_length. cbn [snd].
+      intros Hin%in_combine_r%(Forall_In (Forall_chunk_length_le _ 64 ltac:(lia))).
+      unshelve epose proof length_spec_chacha20_block key (le_split 4 (Z.of_nat n) ++ nonce) ltac:(auto) _.
+      { rewrite app_length, length_le_split; lia. }
+      lia.
     - rewrite <- map_map with (f := snd) (g := @length _).
       unfold enumerate; rewrite map_combine_snd by apply seq_length.
-      rewrite <- concat_length, concat_chunk; reflexivity.
-  Admitted.
+      rewrite <- length_concat_sum, concat_chunk; reflexivity.
+  Qed.
 
   Lemma length_chacha20_encrypt key start nonce plaintext :
+    (length key >= 32)%nat ->
+    (length nonce >= 12)%nat ->
     (length nonce mod 4 = 0)%nat ->
     length (chacha20_encrypt key start nonce plaintext) = length plaintext.
   Proof.
     intros; rewrite <- chacha20_encrypt_ok by assumption;
-      apply length_spec_chacha20_encrypt.
+      apply length_spec_chacha20_encrypt; auto.
   Qed.
 
   all: try apply length_padded_mod.
   all: try rewrite length_chacha20_encrypt.
-  all: try reflexivity.
-  all: try eassumption.
+  all: eassumption || reflexivity.
 Qed.
 
 (* Print Assumptions poly1305_ok. *)
