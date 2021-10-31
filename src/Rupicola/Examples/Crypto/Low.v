@@ -309,6 +309,7 @@ Proof. unfold byte.xor; rewrite Z.lxor_comm; reflexivity. Qed.
 (** ** le_combine / le_split **)
 
 Arguments le_combine: simpl nomatch.
+Arguments le_split : simpl nomatch.
 Arguments Z.mul: simpl nomatch.
 
 Lemma le_combine_app bs1 bs2:
@@ -832,6 +833,30 @@ Proof.
   intros HF; rewrite Forall_forall in HF; intuition.
 Qed.
 
+Lemma flat_map_split_combine_chunk:
+  forall bs n,
+    (0 < n)%nat ->
+    (length bs mod n)%nat = 0%nat ->
+    flat_map (le_split n) (map le_combine (chunk n bs)) = bs.
+Proof.
+  intros; rewrite flat_map_concat_map, map_map, map_id, concat_chunk; [reflexivity|].
+  intros * Hin;
+    pose proof (Forall_In (Forall_chunk_length_mod _ n ltac:(lia)) Hin);
+    pose proof (Forall_In (Forall_chunk_length_le _ n ltac:(lia)) Hin);
+    cbv beta in *.
+  rewrite split_le_combine'; reflexivity || lia.
+Qed.
+
+Lemma map_unsigned_of_Z_combine_4 bs :
+  map (fun z : Z => word.unsigned (word := word) (word.of_Z z))
+      (map le_combine (chunk 4 bs)) =
+  map le_combine (chunk 4 bs).
+Proof.
+  rewrite map_id; [ reflexivity | ].
+  intros * Hin%(Forall_In (Forall_le_combine_in_bounds bs)).
+  apply word.unsigned_of_Z_nowrap; assumption.
+Qed.
+
 Lemma chacha20_encrypt_ok key start nonce plaintext :
   (length nonce mod 4 = 0)%nat ->
   Spec.chacha20_encrypt key start nonce plaintext =
@@ -849,18 +874,199 @@ Proof.
   f_equal.
   cbn [List.app List.map].
   rewrite word.unsigned_add, !word.unsigned_of_Z, map_map.
-  rewrite map_id; cycle 1.
-  - intros * Hin%(Forall_In (Forall_le_combine_in_bounds nonce)).
-    apply word.unsigned_of_Z_nowrap; assumption.
-  - cbn [List.flat_map]. f_equal.
-    + unfold word.wrap; Z.push_pull_mod; rewrite <- le_split_mod.
-      f_equal; simpl; lia.
-    + rewrite flat_map_concat_map, map_map, map_id, concat_chunk; [reflexivity|].
-      intros * Hin;
-        pose proof (Forall_In (Forall_chunk_length_mod _ 4 ltac:(lia)) Hin);
-        pose proof (Forall_In (Forall_chunk_length_le _ 4 ltac:(lia)) Hin);
-        cbv beta in *.
-      rewrite split_le_combine'; reflexivity || lia.
+  rewrite map_unsigned_of_Z_combine_4.
+  cbn [List.flat_map]. f_equal.
+  + unfold word.wrap; Z.push_pull_mod; rewrite <- le_split_mod.
+    f_equal; simpl; lia.
+  + rewrite flat_map_split_combine_chunk; eauto || reflexivity.
+Qed.
+
+(* let pad16 xs := repeat x00 (Nat.div_up (length xs) 16 * 16 - length xs) in *)
+
+Definition padded_len {A} (l: array_t A) :=
+  (Nat.div_up (length l) 16 * 16)%nat. (* FIXME 16 - (length l) mod 16 *)
+
+Definition padding_len {A} (l: array_t A) :=
+  (padded_len l - length l)%nat.
+
+Definition buf_pad {T} (b: buffer_t T) (len: nat) (t: T) :=
+  b ++ repeat t (len - length b).
+
+Definition chacha20poly1305_aead_encrypt aad key iv constant plaintext tag :=
+  let/n nonce := buf_make word 2 in
+  let/n otk_nonce := buf_make word 4 in
+
+  let/n otk_nonce := buf_push otk_nonce (word.of_Z 0) in
+
+  let/n constant := w32s_of_bytes constant in
+  let/n nonce := buf_append nonce constant in
+  let/n otk_nonce := buf_append otk_nonce constant in
+  let/n constant := bytes_of_w32s constant in
+
+  let/n iv := w32s_of_bytes iv in
+  let/n nonce := buf_append nonce iv in
+  let/n otk_nonce := buf_append otk_nonce iv in
+  let/n iv := bytes_of_w32s iv in
+
+  let/n nonce := buf_as_array nonce in
+  let/n nonce := bytes_of_w32s nonce in
+
+  let/n otk_nonce := buf_as_array otk_nonce in
+  let/n otk_nonce := bytes_of_w32s otk_nonce in
+
+  let/n otk := buf_make word 16 in
+  let/n otk := chacha20_block key otk_nonce otk in
+  let/n (otk, rest) := array_split_at 32 otk in
+
+  let/n plaintext := chacha20_encrypt key 1 nonce plaintext in
+
+  (* let/n mac_len := padded_len aad in *)
+  (* let/n mac_data := buf_make byte mac_len in *)
+  (* let/n mac_data := buf_append mac_data aad in *)
+  (* let/n mac_data := buf_pad mac_data mac_len x00 in *)
+  (* let/n mac_data := buf_as_array mac_data in *)
+
+  let/n footer := buf_make word 4 in
+  let/n footer := buf_push footer (word.of_Z (Z.of_nat (length aad))) in
+  let/n footer := buf_push footer (word.of_Z 0) in
+  let/n footer := buf_push footer (word.of_Z (Z.of_nat (length plaintext))) in
+  let/n footer := buf_push footer (word.of_Z 0) in
+  let/n footer := buf_as_array footer in
+  let/n footer := bytes_of_w32s footer in
+
+  let mac_data := aad in
+  let/n tag := poly1305 otk mac_data plaintext footer tag in
+  let/n otk := array_unsplit otk rest in
+  (plaintext, tag).
+
+#[local] Hint Unfold buf_pad : poly.
+
+Lemma le_split_0_l z:
+  le_split 0 z = [].
+Proof. reflexivity. Qed.
+
+Lemma le_split_0_r n:
+  le_split n 0 = repeat x00 n.
+Proof.
+  induction n.
+  - reflexivity.
+  - unfold le_split; fold le_split.
+    rewrite Z.shiftr_0_l, IHn; reflexivity.
+Qed.
+
+Lemma le_split_zeroes : forall m n z,
+  0 <= z < 2 ^ (8 * Z.of_nat n) ->
+  le_split (n + m) z = le_split n z ++ le_split m 0.
+Proof.
+  induction n; cbn -[Z.pow Z.of_nat Z.shiftr]; intros * (Hle & Hlt).
+  - replace z with 0 by lia; reflexivity.
+  - rewrite IHn, !le_split_0_r; try reflexivity; [].
+    rewrite Z.shiftr_div_pow2 by lia; split.
+    + apply Z.div_pos; lia.
+    + replace (8 * Z.of_nat (S n)) with (8 + 8 * Z.of_nat n)%Z in Hlt by lia.
+      rewrite Z.pow_add_r in Hlt by lia.
+      apply Z.div_lt_upper_bound; lia.
+Qed.
+
+Lemma chacha20poly1305_aead_encrypt_ok aad key iv constant plaintext tag:
+  (length iv mod 4 = 0)%nat ->
+  (length constant mod 4 = 0)%nat ->
+  0 <= Z.of_nat (length aad) < 2 ^ 32 ->
+  0 <= Z.of_nat (length plaintext) < 2 ^ 32 ->
+  Spec.chacha20poly1305_aead_encrypt aad key iv constant plaintext =
+  chacha20poly1305_aead_encrypt aad key iv constant plaintext tag.
+Proof.
+  unfold Spec.chacha20poly1305_aead_encrypt, chacha20poly1305_aead_encrypt, nlet;
+    autounfold with poly; intros.
+
+  assert (length (constant ++ iv) mod 4 = 0)%nat. {
+    rewrite ?app_length, Nat.add_mod by lia.
+    replace (length iv mod 4)%nat.
+    replace (length constant mod 4)%nat.
+    reflexivity.
+  }
+
+  cbn [List.app List.map List.flat_map].
+
+  rewrite !map_app, !map_map with (f := word.of_Z), !map_unsigned_of_Z_combine_4.
+  rewrite <- !map_app, <- !chunk_app, flat_map_split_combine_chunk;
+    [ | eauto || lia ..].
+  rewrite chacha20_encrypt_ok by eauto.
+  rewrite chacha20_block_ok.
+
+  apply f_equal2. reflexivity.
+
+  rewrite !(le_split_zeroes 4 4).
+  rewrite <- !app_assoc.
+  eassert (?[aad] ++ ?[aad_pad] ++ ?[ciphertext] ++ ?[ciphertext_pad] ++ ?[rest] =
+           (?aad ++ ?aad_pad) ++ (?ciphertext ++ ?ciphertext_pad) ++ ?rest) as ->
+      by (rewrite <- !app_assoc; reflexivity).
+  rewrite poly1305_ok' with (output := tag). (* FIXME no need for msg to have length multiple of 16: real thm is that padding message is same as without padding *)
+
+  rewrite !word.unsigned_of_Z_0.
+  rewrite !word.unsigned_of_Z_nowrap.
+
+  apply f_equal4.
+  admit. (* FIXME this isn't right: we need a more powerful lemma that skips the padding *)
+  admit.
+
+  Lemma length_padded_mod {A} n (l: list A) a:
+    (length (l ++ repeat a (Nat.div_up (length l) n * n - length l)) mod n = 0)%nat.
+  Proof.
+    destruct (Nat.eq_dec n 0); [ subst; reflexivity | ].
+    pose proof Nat.div_up_range (length l) n ltac:(eassumption).
+    rewrite app_length, repeat_length, <- le_plus_minus by lia.
+    apply Nat.mod_mul; assumption.
+  Qed.
+
+  Lemma concat_length {A} (lss: list (list A)) :
+    length (List.concat lss) =
+    List.fold_left Nat.add (List.map (@length _) lss) 0%nat.
+  Proof.
+    rewrite fold_symmetric by eauto with arith.
+    induction lss; simpl; rewrite ?app_length, ?IHlss; reflexivity.
+  Qed.
+
+  Lemma map_combine_fst {A B}: forall lA lB,
+      length lA = length lB ->
+      map fst (@combine A B lA lB) = lA.
+  Proof.
+    induction lA; destruct lB; simpl; intros; rewrite ?IHlA; reflexivity || lia.
+  Qed.
+
+  Lemma map_combine_snd {A B}: forall lB lA,
+      length lA = length lB ->
+      map snd (@combine A B lA lB) = lB.
+  Proof.
+    induction lB; destruct lA; simpl; intros; rewrite ?IHlB; reflexivity || lia.
+  Qed.
+
+  Lemma length_spec_chacha20_encrypt key start nonce plaintext :
+    length (Spec.chacha20_encrypt key start nonce plaintext) = length plaintext.
+  Proof.
+    unfold Spec.chacha20_encrypt.
+    rewrite flat_map_concat_map, concat_length, map_map.
+    erewrite map_ext with (g := fun x => length (snd x)); cycle 1.
+    - intros (?&?); unfold zip.
+      rewrite map_length, combine_length.
+      admit. (* FIXME needs a more powerful lemma than map_ext (needs to know List.In *)
+    - rewrite <- map_map with (f := snd) (g := @length _).
+      unfold enumerate; rewrite map_combine_snd by apply seq_length.
+      rewrite <- concat_length, concat_chunk; reflexivity.
+  Admitted.
+
+  Lemma length_chacha20_encrypt key start nonce plaintext :
+    (length nonce mod 4 = 0)%nat ->
+    length (chacha20_encrypt key start nonce plaintext) = length plaintext.
+  Proof.
+    intros; rewrite <- chacha20_encrypt_ok by assumption;
+      apply length_spec_chacha20_encrypt.
+  Qed.
+
+  all: try apply length_padded_mod.
+  all: try rewrite length_chacha20_encrypt.
+  all: try reflexivity.
+  all: try eassumption.
 Qed.
 
 (* Print Assumptions poly1305_ok. *)
