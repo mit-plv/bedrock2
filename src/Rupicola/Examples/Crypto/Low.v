@@ -11,6 +11,18 @@ Open Scope Z_scope.
 
 (** ** Nat.iter **)
 
+Lemma Nat_iter_inv {A} (P: A -> Prop) (fA: A -> A):
+  (forall a, P a -> P (fA a)) ->
+  forall n a,
+    P a ->
+    P (Nat.iter n fA a).
+Proof. intros Hind; induction n; simpl; auto. Qed.
+
+Lemma Nat_iter_const_length {A : Type} f : forall (n : nat) (l0 : list A),
+    (forall l, length (f l) = length l) ->
+    length (Nat.iter n f l0) = length l0.
+Proof. intros; apply Nat_iter_inv; congruence. Qed.
+
 Lemma Nat_iter_rew {A B} (fA: A -> A) (fB: B -> B) (g: A -> B):
   (forall a, g (fA a) = fB (g a)) ->
   forall n a b,
@@ -38,6 +50,12 @@ Proof.
 Qed.
 
 (** ** Forall **)
+
+Lemma Forall_In {A} {P : A -> Prop} {l : list A}:
+  Forall P l -> forall {x}, In x l -> P x.
+Proof.
+  intros HF; rewrite Forall_forall in HF; intuition.
+Qed.
 
 Lemma forall_nth_default {A} (P: A -> Prop) (l: list A) (d: A):
   (forall i : nat, P (nth i l d)) -> P d.
@@ -71,23 +89,6 @@ Qed.
 
 (** map **)
 
-Lemma map_combine_separated {A B A' B'} (fA: A -> A') (fB: B -> B') :
-  forall (lA : list A) (lB: list B),
-    List.map (fun p => (fA (fst p), fB (snd p))) (combine lA lB) =
-    combine (List.map fA lA) (List.map fB lB).
-Proof.
-  induction lA; destruct lB; simpl; congruence.
-Qed.
-
-Lemma map_combine_comm {A B} (f: A * A -> B) :
-  (forall a1 a2, f (a1, a2) = f (a2, a1)) ->
-  forall (l1 l2 : list A),
-    List.map f (combine l1 l2) =
-    List.map f (combine l2 l1).
-Proof.
-  induction l1; destruct l2; simpl; congruence.
-Qed.
-
 Lemma map_id {A} (f: A -> A) l:
   (forall x, List.In x l -> f x = x) ->
   map f l = l.
@@ -105,11 +106,92 @@ Proof.
   - simpl. destruct l; simpl; congruence.
 Qed.
 
+(** ** fold **)
+
+Lemma fold_left_Proper :
+  forall [A B : Type] (f f': A -> B -> A) (l l': list B) (i i': A),
+    l = l' -> i = i' ->
+    (forall a b, In b l -> f a b = f' a b) ->
+    fold_left f l i = fold_left f' l' i'.
+Proof.
+  induction l; intros * ? ? Heq; subst; simpl in *;
+    try rewrite Heq; eauto.
+Qed.
+
+(** ** combine **)
+
+Lemma map_combine_fst {A B}: forall lA lB,
+    length lA = length lB ->
+    map fst (@combine A B lA lB) = lA.
+Proof.
+  induction lA; destruct lB; simpl; intros; rewrite ?IHlA; reflexivity || lia.
+Qed.
+
+Lemma map_combine_snd {A B}: forall lB lA,
+    length lA = length lB ->
+    map snd (@combine A B lA lB) = lB.
+Proof.
+  induction lB; destruct lA; simpl; intros; rewrite ?IHlB; reflexivity || lia.
+Qed.
+
+Lemma map_combine_separated {A B A' B'} (fA: A -> A') (fB: B -> B') :
+  forall (lA : list A) (lB: list B),
+    List.map (fun p => (fA (fst p), fB (snd p))) (combine lA lB) =
+    combine (List.map fA lA) (List.map fB lB).
+Proof.
+  induction lA; destruct lB; simpl; congruence.
+Qed.
+
+Lemma map_combine_comm {A B} (f: A * A -> B) :
+  (forall a1 a2, f (a1, a2) = f (a2, a1)) ->
+  forall (l1 l2 : list A),
+    List.map f (combine l1 l2) =
+    List.map f (combine l2 l1).
+Proof.
+  induction l1; destruct l2; simpl; congruence.
+Qed.
+
+Lemma enumerate_offset {A} (l: list A) : forall (start: nat),
+    enumerate start l = map (fun p => (fst p + start, snd p)%nat) (enumerate 0 l).
+Proof.
+  unfold enumerate; induction l; simpl; intros.
+  - reflexivity.
+  - rewrite (IHl (S start)), (IHl 1%nat), List.map_map.
+    f_equal. simpl. apply map_ext.
+    intros; f_equal; lia.
+Qed.
+
+Lemma combine_app {A B} : forall (lA lA': list A) (lB lB': list B),
+    length lA = length lB ->
+    combine (lA ++ lA') (lB ++ lB') = combine lA lB ++ combine lA' lB'.
+Proof.
+  induction lA; destruct lB; simpl; inversion 1; try rewrite IHlA; eauto.
+Qed.
+
+Lemma enumerate_app {A} (l l': list A) start :
+  enumerate start (l ++ l') =
+  enumerate start l ++ enumerate (start + length l) l'.
+Proof.
+  unfold enumerate.
+  rewrite app_length, seq_app, combine_app;
+    eauto using seq_length.
+Qed.
+
 Lemma fold_left_combine_fst {A B C} (f: A -> B -> A) : forall (l1: list C) l2 a0,
     (List.length l1 >= List.length l2)%nat ->
     fold_left f l2 a0 = fold_left (fun a '(_, b) => f a b) (combine l1 l2) a0.
 Proof.
   induction l1; destruct l2; simpl; intros; try rewrite IHl1; reflexivity || lia.
+Qed.
+
+(** ** concat **)
+
+Lemma length_concat_sum {A} (lss: list (list A)) :
+  length (List.concat lss) =
+  List.fold_left Nat.add (List.map (@length _) lss) 0%nat.
+Proof.
+  rewrite fold_symmetric by eauto with arith.
+  induction lss; simpl; rewrite ?app_length, ?IHlss; reflexivity.
 Qed.
 
 (** ** nth **)
@@ -212,6 +294,57 @@ Proof.
     subst; eauto; eauto.
 Qed.
 
+(** ** div_up **)
+
+Ltac div_up_t :=
+  cbv [Nat.div_up]; zify;
+  rewrite ?Zdiv.div_Zdiv, ?mod_Zmod in * by Lia.lia;
+  Z.div_mod_to_equations;
+  nia.
+
+Lemma div_up_eqn a b:
+  Nat.div_up a b =
+  (a / b + if a mod b =? 0 then 0 else 1)%nat.
+Proof.
+  destruct (Nat.eq_dec b 0); [ subst; reflexivity | ].
+  destruct (Nat.eqb_spec (a mod b) 0); div_up_t.
+Qed.
+
+Lemma div_up_add_mod a b n:
+  (a mod n = 0)%nat ->
+  Nat.div_up (a + b) n =
+  (Nat.div_up a n + Nat.div_up b n)%nat.
+Proof.
+  intros; destruct (Nat.eq_dec n 0); subst; [ reflexivity | ].
+  rewrite !div_up_eqn.
+  rewrite <- Nat.add_mod_idemp_l by assumption.
+  replace (a mod n)%nat; cbn [Nat.add Nat.eqb].
+  rewrite (Nat.div_mod a n) by assumption.
+  replace (a mod n)%nat; cbn [Nat.add Nat.eqb].
+  rewrite !Nat.add_0_r, !(Nat.mul_comm n (a/n)).
+  rewrite !Nat.div_add_l, !Nat.div_mul by assumption.
+  lia.
+Qed.
+
+Lemma div_up_exact a b:
+  (b <> 0)%nat ->
+  (a mod b = 0)%nat <->
+  (a = b * (Nat.div_up a b))%nat.
+Proof.
+  intros.
+  rewrite div_up_eqn.
+  split; intros Heq.
+  - rewrite Heq; cbn; rewrite Nat.mul_add_distr_l, Nat.mul_0_r, Nat.add_0_r.
+    apply Nat.div_exact; assumption.
+  - replace a; rewrite Nat.mul_comm; apply Nat.mod_mul; assumption.
+Qed.
+
+Lemma div_up_exact_mod a b:
+  (b <> 0)%nat ->
+  (a mod b = 0)%nat ->
+  ((Nat.div_up a b) * b = a)%nat.
+Proof. intros * H0 Hmod; eapply div_up_exact in Hmod; lia. Qed.
+
 (** ** chunks **)
 
 Lemma Forall_chunk'_length_mod {A} (l: list A) n:
@@ -270,6 +403,44 @@ Proof.
   - cbv beta.
     pose proof Nat.mod_upper_bound (length l) n ltac:(lia).
     intros ? ([-> | ->] & ?); lia.
+Qed.
+
+Lemma length_chunk_app {A} (l l' : list A) (n : nat) :
+  (n <> 0)%nat ->
+  (length l mod n)%nat = 0%nat ->
+  length (chunk n (l ++ l')) = length (chunk n l ++ chunk n l').
+Proof.
+  intros; repeat rewrite ?app_length, ?length_chunk by assumption.
+  rewrite div_up_add_mod by assumption; reflexivity.
+Qed.
+
+Lemma chunk_app {A} : forall (l l': list A) n,
+    (n <> 0)%nat ->
+    (length l mod n = 0)%nat ->
+    chunk n (l ++ l') = chunk n l ++ chunk n l'.
+Proof.
+  intros * Hn Hmod.
+  eapply nth_ext with (d := []) (d' := []); [ | intros idx ].
+  - apply length_chunk_app; assumption.
+  - intros Hidx; eassert (Some _ = Some _) as HS; [ | injection HS; intros Hs; apply Hs ].
+    rewrite <- !nth_error_nth' by assumption.
+    rewrite <- !nth_error_nth' by (rewrite length_chunk_app in Hidx; eassumption).
+    assert (idx < length (chunk n l) \/ length (chunk n l) <= idx)%nat as [Hlt | Hge] by lia;
+      [ rewrite nth_error_app1 | rewrite nth_error_app2 ]; try eassumption.
+    all: rewrite !nth_error_chunk.
+    all: repeat rewrite ?length_chunk, ?app_length, ?div_up_add_mod in Hlt by assumption.
+    all: repeat rewrite ?length_chunk, ?app_length, ?div_up_add_mod in Hidx by assumption.
+    all: repeat rewrite ?length_chunk, ?app_length, ?div_up_add_mod in Hge by assumption.
+    all: rewrite ?length_chunk, ?app_length, ?div_up_add_mod by assumption.
+    all: try lia.
+    all: pose proof Nat.div_up_range (length l) n ltac:(lia).
+    + pose proof div_up_exact_mod (length l) n ltac:(lia) ltac:(lia).
+      rewrite !firstn_skipn_comm, !firstn_app.
+      replace (idx * n + n - length l)%nat with 0%nat by nia.
+      simpl; rewrite app_nil_r; reflexivity.
+    + rewrite Nat.mul_sub_distr_r.
+      erewrite div_up_exact_mod by lia.
+      rewrite skipn_app, skipn_all2; [ reflexivity | nia ].
 Qed.
 
 (** * byte **)
@@ -386,6 +557,90 @@ Proof.
   - intros a; apply le_combine_in_bounds.
   - eapply Forall_impl; [ | apply Forall_chunk_length_le ];
       simpl; intros; lia.
+Qed.
+
+Lemma le_split_0_l z:
+  le_split 0 z = [].
+Proof. reflexivity. Qed.
+
+Lemma le_split_0_r n:
+  le_split n 0 = repeat x00 n.
+Proof.
+  induction n.
+  - reflexivity.
+  - unfold le_split; fold le_split.
+    rewrite Z.shiftr_0_l, IHn; reflexivity.
+Qed.
+
+Lemma le_split_zeroes : forall m n z,
+  0 <= z < 2 ^ (8 * Z.of_nat n) ->
+  le_split (n + m) z = le_split n z ++ le_split m 0.
+Proof.
+  induction n; cbn -[Z.pow Z.of_nat Z.shiftr]; intros * (Hle & Hlt).
+  - replace z with 0 by lia; reflexivity.
+  - rewrite IHn, !le_split_0_r; try reflexivity; [].
+    rewrite Z.shiftr_div_pow2 by lia; split.
+    + apply Z.div_pos; lia.
+    + replace (8 * Z.of_nat (S n)) with (8 + 8 * Z.of_nat n)%Z in Hlt by lia.
+      rewrite Z.pow_add_r in Hlt by lia.
+      apply Z.div_lt_upper_bound; lia.
+Qed.
+
+Lemma flat_map_le_split_combine_chunk:
+  forall bs n,
+    (0 < n)%nat ->
+    (length bs mod n)%nat = 0%nat ->
+    flat_map (le_split n) (map le_combine (chunk n bs)) = bs.
+Proof.
+  intros; rewrite flat_map_concat_map, map_map, map_id, concat_chunk; [reflexivity|].
+  intros * Hin;
+    pose proof (Forall_In (Forall_chunk_length_mod _ n ltac:(lia)) Hin);
+    pose proof (Forall_In (Forall_chunk_length_le _ n ltac:(lia)) Hin);
+    cbv beta in *.
+  rewrite split_le_combine'; reflexivity || lia.
+Qed.
+
+Lemma map_unsigned_of_Z_le_combine_4 bs :
+  map (fun z : Z => word.unsigned (word := word) (word.of_Z z))
+      (map le_combine (chunk 4 bs)) =
+  map le_combine (chunk 4 bs).
+Proof.
+  rewrite map_id; [ reflexivity | ].
+  intros * Hin%(Forall_In (Forall_le_combine_in_bounds bs)).
+  apply word.unsigned_of_Z_nowrap; assumption.
+Qed.
+
+(** ** padding **)
+
+Definition padded_len {A} (l: list A) (m: nat) :=
+  (Nat.div_up (length l) m * m)%nat.
+
+Definition padding_len {A} (l: list A) m :=
+  (padded_len l m - length l)%nat.
+
+Definition pad (bs: list byte) m :=
+  bs ++ repeat x00 (padding_len bs m).
+
+Lemma padding_eqn a b:
+  (Nat.div_up a b * b - a =
+   if a mod b =? 0 then 0 else b - a mod b)%nat.
+Proof.
+  intros; rewrite div_up_eqn.
+  destruct (Nat.eq_dec b 0); [ subst; reflexivity | ].
+  destruct (Nat.eqb_spec (a mod b) 0); div_up_t.
+Qed.
+
+Lemma padding_len_eqn {T} (l: list T) m:
+  padding_len l m = (if length l mod m =? 0 then 0 else m - length l mod m)%nat.
+Proof. eauto using padding_eqn. Qed.
+
+Lemma length_padded_mod {A} n (l: list A) a:
+  (length (l ++ repeat a (Nat.div_up (length l) n * n - length l)) mod n = 0)%nat.
+Proof.
+  destruct (Nat.eq_dec n 0); [ subst; reflexivity | ].
+  pose proof Nat.div_up_range (length l) n ltac:(eassumption).
+  rewrite app_length, repeat_length, <- le_plus_minus by lia.
+  apply Nat.mod_mul; assumption.
 Qed.
 
 (** ** words **)
@@ -559,30 +814,6 @@ Definition poly1305
 
 (* change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota. *)
 
-Lemma combine_app {A B} : forall (lA lA': list A) (lB lB': list B),
-    length lA = length lB ->
-    combine (lA ++ lA') (lB ++ lB') = combine lA lB ++ combine lA' lB'.
-Proof.
-  induction lA; destruct lB; simpl; inversion 1; try rewrite IHlA; eauto.
-Qed.
-
-Lemma enumerate_app {A} (l l': list A) start :
-  enumerate start (l ++ l') =
-  enumerate start l ++ enumerate (start + length l) l'.
-Proof.
-  unfold enumerate.
-  rewrite app_length, seq_app, combine_app;
-    eauto using seq_length.
-Qed.
-
-Lemma chunk_app {A} : forall (l l': list A) n,
-    (length l mod n = 0)%nat ->
-    chunk n (l ++ l') = chunk n l ++ chunk n l'.
-Proof.
-  induction l; simpl; intros.
-  - reflexivity.
-Admitted.
-
 #[local] Hint Unfold poly1305_loop : poly.
 
 Lemma poly1305_ok' k header msg footer output:
@@ -597,7 +828,7 @@ Proof.
   rewrite <- le_split_mod.
   unfold enumerate.
   rewrite <- !fold_left_combine_fst by (rewrite seq_length; lia).
-  rewrite <- !fold_left_app, <- !chunk_app by assumption.
+  rewrite <- !fold_left_app, <- !chunk_app by assumption || lia.
   repeat f_equal.
   repeat (apply FunctionalExtensionality.functional_extensionality; intros).
   Z.push_pull_mod.
@@ -614,27 +845,6 @@ Proof.
   intros; pose proof (poly1305_ok' k [] [] msg output) as H.
   simpl in H. erewrite H; reflexivity.
 Qed.
-
-(* Hint Rewrite <- le_split_mod Z_land_le_combine : poly. *)
-(* Hint Rewrite le_combine_app_0 : poly. *)
-(* Hint Rewrite app_nil_r : poly. *)
-(* Hint Rewrite seq_length: poly. *)
-
-(* Ltac t := *)
-(*   intros *)
-(*   || (autounfold with poly) *)
-(*   || Z.push_pull_mod *)
-(*   || (autorewrite with poly) *)
-(*   || (unfold enumerate; rewrite <- fold_left_combine_fst) *)
-(*   || f_equal *)
-(*   || apply FunctionalExtensionality.functional_extensionality *)
-(*   || lia. *)
-
-(* Lemma poly1305_ok' k m output: *)
-(*   Spec.poly1305 k m = poly1305 k m output. *)
-(* Proof. *)
-(*   unfold Spec.poly1305, poly1305, nlet; repeat t. *)
-(* Qed. *)
 
 (** * ChaCha20 **)
 
@@ -827,47 +1037,6 @@ Definition chacha20_encrypt key start nonce plaintext :=
     chunk) in
   plaintext.
 
-
-Lemma enumerate_offset {A} (l: list A) : forall (start: nat),
-    enumerate start l = map (fun p => (fst p + start, snd p)%nat) (enumerate 0 l).
-Proof.
-  unfold enumerate; induction l; simpl; intros.
-  - reflexivity.
-  - rewrite (IHl (S start)), (IHl 1%nat), List.map_map.
-    f_equal. simpl. apply map_ext.
-    intros; f_equal; lia.
-Qed.
-
-Lemma Forall_In {A} {P : A -> Prop} {l : list A}:
-  Forall P l -> forall {x}, In x l -> P x.
-Proof.
-  intros HF; rewrite Forall_forall in HF; intuition.
-Qed.
-
-Lemma flat_map_split_combine_chunk:
-  forall bs n,
-    (0 < n)%nat ->
-    (length bs mod n)%nat = 0%nat ->
-    flat_map (le_split n) (map le_combine (chunk n bs)) = bs.
-Proof.
-  intros; rewrite flat_map_concat_map, map_map, map_id, concat_chunk; [reflexivity|].
-  intros * Hin;
-    pose proof (Forall_In (Forall_chunk_length_mod _ n ltac:(lia)) Hin);
-    pose proof (Forall_In (Forall_chunk_length_le _ n ltac:(lia)) Hin);
-    cbv beta in *.
-  rewrite split_le_combine'; reflexivity || lia.
-Qed.
-
-Lemma map_unsigned_of_Z_combine_4 bs :
-  map (fun z : Z => word.unsigned (word := word) (word.of_Z z))
-      (map le_combine (chunk 4 bs)) =
-  map le_combine (chunk 4 bs).
-Proof.
-  rewrite map_id; [ reflexivity | ].
-  intros * Hin%(Forall_In (Forall_le_combine_in_bounds bs)).
-  apply word.unsigned_of_Z_nowrap; assumption.
-Qed.
-
 Lemma chacha20_encrypt_ok key start nonce plaintext :
   (length nonce mod 4 = 0)%nat ->
   Spec.chacha20_encrypt key start nonce plaintext =
@@ -885,23 +1054,12 @@ Proof.
   f_equal.
   cbn [List.app List.map].
   rewrite word.unsigned_add, !word.unsigned_of_Z, map_map.
-  rewrite map_unsigned_of_Z_combine_4.
+  rewrite map_unsigned_of_Z_le_combine_4.
   cbn [List.flat_map]. f_equal.
   + unfold word.wrap; Z.push_pull_mod; rewrite <- le_split_mod.
     f_equal; simpl; lia.
-  + rewrite flat_map_split_combine_chunk; eauto || reflexivity.
+  + rewrite flat_map_le_split_combine_chunk; eauto || reflexivity.
 Qed.
-
-(* let pad16 xs := repeat x00 (Nat.div_up (length xs) 16 * 16 - length xs) in *)
-
-Definition padded_len {A} (l: array_t A) :=
-  (Nat.div_up (length l) 16 * 16)%nat. (* FIXME 16 - (length l) mod 16 *)
-
-Definition padding_len {A} (l: array_t A) :=
-  (padded_len l - length l)%nat.
-
-Definition buf_pad {T} (b: buffer_t T) (len: nat) (t: T) :=
-  b ++ repeat t (len - length b).
 
 Definition chacha20poly1305_aead_encrypt aad key iv constant plaintext tag :=
   let/n nonce := buf_make word 2 in
@@ -931,12 +1089,6 @@ Definition chacha20poly1305_aead_encrypt aad key iv constant plaintext tag :=
 
   let/n plaintext := chacha20_encrypt key 1 nonce plaintext in
 
-  (* let/n mac_len := padded_len aad in *)
-  (* let/n mac_data := buf_make byte mac_len in *)
-  (* let/n mac_data := buf_append mac_data aad in *)
-  (* let/n mac_data := buf_pad mac_data mac_len x00 in *)
-  (* let/n mac_data := buf_as_array mac_data in *)
-
   let/n footer := buf_make word 4 in
   let/n footer := buf_push footer (word.of_Z (Z.of_nat (length aad))) in
   let/n footer := buf_push footer (word.of_Z 0) in
@@ -950,40 +1102,133 @@ Definition chacha20poly1305_aead_encrypt aad key iv constant plaintext tag :=
   let/n otk := array_unsplit otk rest in
   (plaintext, tag).
 
-#[local] Hint Unfold buf_pad : poly.
-
-Lemma le_split_0_l z:
-  le_split 0 z = [].
-Proof. reflexivity. Qed.
-
-Lemma le_split_0_r n:
-  le_split n 0 = repeat x00 n.
+Lemma length_spec_quarterround x y z t st:
+  length (Spec.quarterround x y z t st) = length st.
 Proof.
-  induction n.
-  - reflexivity.
-  - unfold le_split; fold le_split.
-    rewrite Z.shiftr_0_l, IHn; reflexivity.
+  unfold Spec.quarterround.
+  destruct (Spec.quarter _) as (((?&?)&?)&?).
+  rewrite !upd_length; reflexivity.
 Qed.
 
-Lemma le_split_zeroes : forall m n z,
-  0 <= z < 2 ^ (8 * Z.of_nat n) ->
-  le_split (n + m) z = le_split n z ++ le_split m 0.
+Lemma length_spec_chacha20_block key nonce:
+  (length key >= 32)%nat ->
+  (length nonce >= 16)%nat ->
+  (length (Spec.chacha20_block key nonce) >= 64)%nat.
 Proof.
-  induction n; cbn -[Z.pow Z.of_nat Z.shiftr]; intros * (Hle & Hlt).
-  - replace z with 0 by lia; reflexivity.
-  - rewrite IHn, !le_split_0_r; try reflexivity; [].
-    rewrite Z.shiftr_div_pow2 by lia; split.
-    + apply Z.div_pos; lia.
-    + replace (8 * Z.of_nat (S n)) with (8 + 8 * Z.of_nat n)%Z in Hlt by lia.
-      rewrite Z.pow_add_r in Hlt by lia.
-      apply Z.div_lt_upper_bound; lia.
+  unfold Spec.chacha20_block; intros.
+  erewrite flat_map_const_length with (n := 4%nat); try apply length_le_split.
+  repeat (rewrite ?map_length, ?combine_length, ?app_length, ?length_chunk,
+          ?Nat_iter_const_length, ?Nat.min_id, ?Nat.mul_add_distr_l);
+    eauto; cycle 1.
+  - intros; rewrite !length_spec_quarterround; reflexivity.
+  - simpl (length _); simpl (Nat.div_up 16 4).
+    pose proof Nat.div_up_range (length key) 4 ltac:(lia).
+    pose proof Nat.div_up_range (length nonce) 4 ltac:(lia).
+    lia.
 Qed.
 
-Lemma chacha20poly1305_aead_encrypt_ok aad key iv constant plaintext tag:
+Lemma length_spec_chacha20_encrypt key start nonce plaintext :
+  (length key >= 32)%nat ->
+  (length nonce >= 12)%nat ->
+  length (Spec.chacha20_encrypt key start nonce plaintext) = length plaintext.
+Proof.
+  unfold Spec.chacha20_encrypt; intros.
+  rewrite flat_map_concat_map, length_concat_sum, map_map.
+  erewrite map_ext_in with (g := fun x => length (snd x)); cycle 1.
+  - intros (?&?); unfold zip.
+    rewrite map_length, combine_length. cbn [snd].
+    intros Hin%in_combine_r%(Forall_In (Forall_chunk_length_le _ 64 ltac:(lia))).
+    unshelve epose proof length_spec_chacha20_block key (le_split 4 (Z.of_nat n) ++ nonce) ltac:(auto) _.
+    { rewrite app_length, length_le_split; lia. }
+    lia.
+  - rewrite <- map_map with (f := snd) (g := @length _).
+    unfold enumerate; rewrite map_combine_snd by apply seq_length.
+    rewrite <- length_concat_sum, concat_chunk; reflexivity.
+Qed.
+
+Lemma length_chacha20_encrypt key start nonce plaintext :
+  (length key >= 32)%nat ->
+  (length nonce >= 12)%nat ->
+  (length nonce mod 4 = 0)%nat ->
+  length (chacha20_encrypt key start nonce plaintext) = length plaintext.
+Proof.
+  intros; rewrite <- chacha20_encrypt_ok by assumption;
+    apply length_spec_chacha20_encrypt; auto.
+Qed.
+
+Lemma poly1305_loop_pad z z' msg :
+  poly1305_loop z z' msg true =
+  poly1305_loop z z' (pad msg 16) false.
+Proof.
+  unfold poly1305_loop, nlet; autounfold with poly;
+    unfold pad, buf_pad; cbn [List.app].
+
+  pose proof Nat.div_mod (length msg) 16 ltac:(lia).
+
+  unfold enumerate; rewrite <- !fold_left_combine_fst by (rewrite seq_length; lia).
+  match goal with
+  | [  |- fold_left ?f _ _ = fold_left ?f' _ _ ] =>
+    erewrite (fold_left_Proper f' f); [ | reflexivity.. | ]; cycle 1
+  end. {
+    intros * Hin;
+      pose proof (Forall_In (Forall_chunk_length_mod _ 16 ltac:(lia)) Hin) as Hmod;
+      pose proof (Forall_In (Forall_chunk_length_le _ 16 ltac:(lia)) Hin) as Hle;
+      cbv beta in *.
+    unfold padding_len, padded_len in *.
+    rewrite (length_padded_mod 16 msg x00) in *.
+    destruct Hmod as [ -> | ]; [ | lia].
+    simpl repeat; rewrite app_nil_r.
+    reflexivity.
+  }
+
+  rewrite <- (firstn_skipn (16 * (length msg / 16))%nat msg), <- !app_assoc.
+  rewrite !(chunk_app (firstn _ _)), !firstn_skipn; try lia.
+  2-3: rewrite firstn_length_le, Nat.mul_comm, Nat.mod_mul by lia; reflexivity.
+
+  rewrite !fold_left_app.
+  set (fold_left _ (chunk 16 (firstn _ _)) _) as prefix.
+
+  rewrite padding_len_eqn.
+  destruct (Nat.eqb_spec (length msg mod 16) 0) as [Hz|Hnz].
+  - cbn [repeat]; rewrite app_nil_r; reflexivity.
+  - pose proof Nat.mod_upper_bound (length msg) 16 ltac:(lia).
+    rewrite !chunk_small.
+    cbn [fold_left List.app]; rewrite <- !app_assoc.
+    all: rewrite ?app_length, ?skipn_length, ?repeat_length, <- ?Nat.mod_eq.
+    replace (16 - (length msg mod 16 + (16 - length msg mod 16)))%nat with 0%nat.
+    reflexivity.
+    all: lia.
+Qed.
+
+Lemma poly1305_pad_header key header message footer pad_message pad_footer tag:
+  poly1305 key (pad header 16) message footer false pad_message pad_footer tag =
+  poly1305 key header message footer true pad_message pad_footer tag.
+Proof.
+  unfold poly1305, nlet; destruct array_split_at; destruct buf_split.
+  rewrite <- poly1305_loop_pad; reflexivity.
+Qed.
+
+Lemma poly1305_pad_message key header message footer pad_header pad_footer tag:
+  poly1305 key header (pad message 16) footer pad_header false pad_footer tag =
+  poly1305 key header message footer pad_header true pad_footer tag.
+Proof.
+  unfold poly1305, nlet; destruct array_split_at; destruct buf_split.
+  rewrite <- poly1305_loop_pad; reflexivity.
+Qed.
+
+Lemma poly1305_pad_footer key header message footer pad_header pad_message tag:
+  poly1305 key header message (pad footer 16) pad_header pad_message false tag =
+  poly1305 key header message footer pad_header pad_message true tag.
+Proof.
+  unfold poly1305, nlet; destruct array_split_at; destruct buf_split.
+  rewrite <- poly1305_loop_pad; reflexivity.
+Qed.
+
+Lemma chacha20poly1305_aead_encrypt_ok' aad key iv constant plaintext tag:
   (length key >= 32)%nat ->
   (length (constant ++ iv) >= 12)%nat ->
-  (length iv mod 4 = 0)%nat ->
   (length constant mod 4 = 0)%nat ->
+  (length (constant ++ iv) mod 4 = 0)%nat ->
   0 <= Z.of_nat (length aad) < 2 ^ 32 ->
   0 <= Z.of_nat (length plaintext) < 2 ^ 32 ->
   Spec.chacha20poly1305_aead_encrypt aad key iv constant plaintext =
@@ -992,138 +1237,45 @@ Proof.
   unfold Spec.chacha20poly1305_aead_encrypt, chacha20poly1305_aead_encrypt, nlet;
     autounfold with poly; intros.
 
-  assert (length (constant ++ iv) mod 4 = 0)%nat. {
-    rewrite ?app_length, Nat.add_mod by lia.
-    replace (length iv mod 4)%nat.
-    replace (length constant mod 4)%nat.
-    reflexivity.
-  }
-
   cbn [List.app List.map List.flat_map].
+  rewrite !map_app, !map_map with (f := word.of_Z), !map_unsigned_of_Z_le_combine_4.
+  rewrite <- !map_app, <- !chunk_app, flat_map_le_split_combine_chunk; [ | solve[eauto] || lia ..].
+  rewrite chacha20_encrypt_ok, chacha20_block_ok by eauto.
 
-  rewrite !map_app, !map_map with (f := word.of_Z), !map_unsigned_of_Z_combine_4.
-  rewrite <- !map_app, <- !chunk_app, flat_map_split_combine_chunk;
-    [ | eauto || lia ..].
-  rewrite chacha20_encrypt_ok by eauto.
-  rewrite chacha20_block_ok.
+  apply f_equal2; [ reflexivity | ]. (* FIXME why does f_equal not work? *)
 
-  apply f_equal2. reflexivity.
-
-  rewrite !(le_split_zeroes 4 4).
-  rewrite <- !app_assoc.
+  rewrite !(le_split_zeroes 4 4), <- !app_assoc.
   eassert (?[aad] ++ ?[aad_pad] ++ ?[ciphertext] ++ ?[ciphertext_pad] ++ ?[rest] =
            (?aad ++ ?aad_pad) ++ (?ciphertext ++ ?ciphertext_pad) ++ ?rest) as ->
       by (rewrite <- !app_assoc; reflexivity).
-  rewrite poly1305_ok' with (output := tag). (* FIXME no need for msg to have length multiple of 16: real thm is that padding message is same as without padding *)
 
-  rewrite !word.unsigned_of_Z_0.
-  rewrite !word.unsigned_of_Z_nowrap.
-
-  apply f_equal4.
-  admit. (* FIXME this isn't right: we need a more powerful lemma that skips the padding *)
-  admit.
-
-  Lemma length_padded_mod {A} n (l: list A) a:
-    (length (l ++ repeat a (Nat.div_up (length l) n * n - length l)) mod n = 0)%nat.
-  Proof.
-    destruct (Nat.eq_dec n 0); [ subst; reflexivity | ].
-    pose proof Nat.div_up_range (length l) n ltac:(eassumption).
-    rewrite app_length, repeat_length, <- le_plus_minus by lia.
-    apply Nat.mod_mul; assumption.
-  Qed.
-
-  Lemma length_concat_sum {A} (lss: list (list A)) :
-    length (List.concat lss) =
-    List.fold_left Nat.add (List.map (@length _) lss) 0%nat.
-  Proof.
-    rewrite fold_symmetric by eauto with arith.
-    induction lss; simpl; rewrite ?app_length, ?IHlss; reflexivity.
-  Qed.
-
-  Lemma map_combine_fst {A B}: forall lA lB,
-      length lA = length lB ->
-      map fst (@combine A B lA lB) = lA.
-  Proof.
-    induction lA; destruct lB; simpl; intros; rewrite ?IHlA; reflexivity || lia.
-  Qed.
-
-  Lemma map_combine_snd {A B}: forall lB lA,
-      length lA = length lB ->
-      map snd (@combine A B lA lB) = lB.
-  Proof.
-    induction lB; destruct lA; simpl; intros; rewrite ?IHlB; reflexivity || lia.
-  Qed.
-
-  Lemma Nat_iter_inv {A} (P: A -> Prop) (fA: A -> A):
-    (forall a, P a -> P (fA a)) ->
-    forall n a,
-      P a ->
-      P (Nat.iter n fA a).
-  Proof. intros Hind; induction n; simpl; auto. Qed.
-
-  Lemma Nat_iter_const_length {A : Type} f : forall (n : nat) (l0 : list A),
-      (forall l, length (f l) = length l) ->
-      length (Nat.iter n f l0) = length l0.
-  Proof. intros; apply Nat_iter_inv; congruence. Qed.
-
-  Lemma length_spec_quarterround x y z t st:
-    length (Spec.quarterround x y z t st) = length st.
-  Proof.
-    unfold Spec.quarterround.
-    destruct (Spec.quarter _) as (((?&?)&?)&?).
-    rewrite !upd_length; reflexivity.
-  Qed.
-
-  Lemma length_spec_chacha20_block key nonce:
-    (length key >= 32)%nat ->
-    (length nonce >= 16)%nat ->
-    (length (Spec.chacha20_block key nonce) >= 64)%nat.
-  Proof.
-    unfold Spec.chacha20_block; intros.
-    erewrite flat_map_const_length with (n := 4%nat); try apply length_le_split.
-    repeat (rewrite ?map_length, ?combine_length, ?app_length, ?length_chunk,
-            ?Nat_iter_const_length, ?Nat.min_id, ?Nat.mul_add_distr_l);
-      eauto; cycle 1.
-    - intros; rewrite !length_spec_quarterround; reflexivity.
-    - simpl (length _); simpl (Nat.div_up 16 4).
-      pose proof Nat.div_up_range (length key) 4 ltac:(lia).
-      pose proof Nat.div_up_range (length nonce) 4 ltac:(lia).
-      lia.
-  Qed.
-
-  Lemma length_spec_chacha20_encrypt key start nonce plaintext :
-    (length key >= 32)%nat ->
-    (length nonce >= 12)%nat ->
-    length (Spec.chacha20_encrypt key start nonce plaintext) = length plaintext.
-  Proof.
-    unfold Spec.chacha20_encrypt; intros.
-    rewrite flat_map_concat_map, length_concat_sum, map_map.
-    erewrite map_ext_in with (g := fun x => length (snd x)); cycle 1.
-    - intros (?&?); unfold zip.
-      rewrite map_length, combine_length. cbn [snd].
-      intros Hin%in_combine_r%(Forall_In (Forall_chunk_length_le _ 64 ltac:(lia))).
-      unshelve epose proof length_spec_chacha20_block key (le_split 4 (Z.of_nat n) ++ nonce) ltac:(auto) _.
-      { rewrite app_length, length_le_split; lia. }
-      lia.
-    - rewrite <- map_map with (f := snd) (g := @length _).
-      unfold enumerate; rewrite map_combine_snd by apply seq_length.
-      rewrite <- length_concat_sum, concat_chunk; reflexivity.
-  Qed.
-
-  Lemma length_chacha20_encrypt key start nonce plaintext :
-    (length key >= 32)%nat ->
-    (length nonce >= 12)%nat ->
-    (length nonce mod 4 = 0)%nat ->
-    length (chacha20_encrypt key start nonce plaintext) = length plaintext.
-  Proof.
-    intros; rewrite <- chacha20_encrypt_ok by assumption;
-      apply length_spec_chacha20_encrypt; auto.
-  Qed.
+  (* FIXME no need for msg to have length multiple of 16: real thm is that padding message is same as without padding *)
+  rewrite poly1305_ok' with (output := tag).
+  rewrite !word.unsigned_of_Z_0, !word.unsigned_of_Z_nowrap.
+  repeat change (?x ++ repeat x00 _) with (pad x 16).
+  rewrite poly1305_pad_header.
+  rewrite poly1305_pad_message.
+  reflexivity.
 
   all: try apply length_padded_mod.
   all: try rewrite length_chacha20_encrypt.
   all: eassumption || reflexivity.
 Qed.
 
-(* Print Assumptions poly1305_ok. *)
-(* Print Assumptions chacha20_encrypt_ok. *)
+Lemma chacha20poly1305_aead_encrypt_ok aad key iv constant plaintext tag:
+  length key = 32%nat ->
+  length constant = 4%nat ->
+  length iv = 8%nat ->
+  0 <= Z.of_nat (length aad) < 2 ^ 32 ->
+  0 <= Z.of_nat (length plaintext) < 2 ^ 32 ->
+  Spec.chacha20poly1305_aead_encrypt aad key iv constant plaintext =
+  chacha20poly1305_aead_encrypt aad key iv constant plaintext tag.
+Proof.
+  intros; apply chacha20poly1305_aead_encrypt_ok'.
+  all: try rewrite app_length by lia.
+  all: try replace (length key); try replace (length constant); try replace (length iv).
+  all: eauto.
+Qed.
+
+Print Assumptions poly1305_ok.
+Print Assumptions chacha20poly1305_aead_encrypt_ok.
