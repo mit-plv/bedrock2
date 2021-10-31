@@ -199,8 +199,8 @@ Definition chacha20_encrypt key start nonce plaintext :=
                        ck in
     let chunks := unpartition_array before chunk after in
     chunks) in
-  let cyphertext := of_small_arrays chunks in
-  cyphertext.
+  let ciphertext := of_small_arrays chunks in
+  ciphertext.
 
 Definition chacha20_encrypt_uneven_length key start nonce plaintext :=
   let plaintext := List.iter (Nat.div_up plaintext_len 16) (fun idx plaintext => (* FIXME nplaintext *)

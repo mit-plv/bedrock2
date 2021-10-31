@@ -507,7 +507,22 @@ Axiom felem_size : nat.
 
 (** * Poly1305 **)
 
-Definition poly1305 (k : list byte) (m : list byte) (output: Z): list byte :=
+Definition poly1305_loop scratch output msg :=
+  let/n output :=
+     array_fold_chunked
+       msg 16
+       (fun idx output ck =>
+          let/n nscratch := buf_make byte felem_size in
+          let/n nscratch := buf_append nscratch ck in (* len = 16 *)
+          let/n nscratch := buf_push nscratch x01 in (* len = 17 *)
+          let/n nscratch := bytes_as_felem_inplace nscratch in
+          let/n output := felem_add output nscratch in
+          let/n output := felem_mul output scratch in
+          output)
+       output in
+  output.
+
+Definition poly1305 (k : array_t byte) (header msg footer : array_t byte) (output: Z): array_t byte :=
   let/n (f16, l16) := array_split_at 16 k in
   let/n scratch := buf_make byte felem_size in
   let/n scratch := buf_append scratch f16 in
@@ -517,19 +532,10 @@ Definition poly1305 (k : list byte) (m : list byte) (output: Z): list byte :=
   let/n scratch := buf_unsplit scratch lone_byte_and_felem_spare_space in
   let/n scratch := buf_push scratch x00 in
   let/n scratch := bytes_as_felem_inplace scratch in (* B2 primitive reads first 17 bytes of longer array *)
-  let output := felem_init_zero in
-  let/n output :=
-      array_fold_chunked
-        m 16
-        (fun idx output ck =>
-           let/n nscratch := buf_make byte felem_size in
-           let/n nscratch := buf_append nscratch ck in (* len = 16 *)
-           let/n nscratch := buf_push nscratch x01 in (* len = 17 *)
-           let/n nscratch := bytes_as_felem_inplace nscratch in
-           let/n output := felem_add output nscratch in
-           let/n output := felem_mul output scratch in
-           output)
-        output in
+  let/n output := felem_init_zero in
+  let/n output := poly1305_loop scratch output header in
+  let/n output := poly1305_loop scratch output msg in
+  let/n output := poly1305_loop scratch output footer in
   let/n output := felem_as_uint128 output in
   let/n l16 := bytes_as_uint128 l16 in
   let/n output := uint128_add output l16 in
@@ -542,14 +548,44 @@ Definition poly1305 (k : list byte) (m : list byte) (output: Z): list byte :=
 
 (* change (nlet _ ?v ?k) with (k v) at 1; cbv beta iota. *)
 
-Lemma poly1305_ok k m output:
-  Spec.poly1305 k m = poly1305 k m output.
+Lemma combine_app {A B} : forall (lA lA': list A) (lB lB': list B),
+    length lA = length lB ->
+    combine (lA ++ lA') (lB ++ lB') = combine lA lB ++ combine lA' lB'.
 Proof.
-  intros; unfold Spec.poly1305, poly1305, nlet.
-  autounfold with poly.
+  induction lA; destruct lB; simpl; inversion 1; try rewrite IHlA; eauto.
+Qed.
+
+Lemma enumerate_app {A} (l l': list A) start :
+  enumerate start (l ++ l') =
+  enumerate start l ++ enumerate (start + length l) l'.
+Proof.
+  unfold enumerate.
+  rewrite app_length, seq_app, combine_app;
+    eauto using seq_length.
+Qed.
+
+Lemma chunk_app {A} : forall (l l': list A) n,
+    (length l mod n = 0)%nat ->
+    chunk n (l ++ l') = chunk n l ++ chunk n l'.
+Proof.
+  induction l; simpl; intros.
+  - reflexivity.
+Admitted.
+
+#[local] Hint Unfold poly1305_loop : poly.
+
+Lemma poly1305_ok' k header msg footer output:
+  (length header mod 16 = 0)%nat ->
+  (length msg mod 16 = 0)%nat ->
+  Spec.poly1305 k (header ++ msg ++ footer) = poly1305 k header msg footer output.
+Proof.
+  intros; unfold Spec.poly1305, poly1305.
+  autounfold with poly; unfold nlet.
   Z.push_pull_mod.
   rewrite <- le_split_mod.
-  unfold enumerate; rewrite <- fold_left_combine_fst by (rewrite seq_length; lia).
+  unfold enumerate.
+  rewrite <- !fold_left_combine_fst by (rewrite seq_length; lia).
+  rewrite <- !fold_left_app, <- !chunk_app by assumption.
   repeat f_equal.
   repeat (apply FunctionalExtensionality.functional_extensionality; intros).
   Z.push_pull_mod.
@@ -560,26 +596,33 @@ Proof.
   reflexivity.
 Qed.
 
-Hint Rewrite <- le_split_mod Z_land_le_combine : poly.
-Hint Rewrite le_combine_app_0 : poly.
-Hint Rewrite app_nil_r : poly.
-Hint Rewrite seq_length: poly.
-
-Ltac t :=
-  intros
-  || (autounfold with poly)
-  || Z.push_pull_mod
-  || (autorewrite with poly)
-  || (unfold enumerate; rewrite <- fold_left_combine_fst)
-  || f_equal
-  || apply FunctionalExtensionality.functional_extensionality
-  || lia.
-
-Lemma poly1305_ok' k m output:
-  Spec.poly1305 k m = poly1305 k m output.
+Lemma poly1305_ok k msg output:
+  Spec.poly1305 k msg = poly1305 k [] msg [] output.
 Proof.
-  unfold Spec.poly1305, poly1305, nlet; repeat t.
+  intros; pose proof (poly1305_ok' k [] [] msg output) as H.
+  simpl in H. erewrite H; reflexivity.
 Qed.
+
+(* Hint Rewrite <- le_split_mod Z_land_le_combine : poly. *)
+(* Hint Rewrite le_combine_app_0 : poly. *)
+(* Hint Rewrite app_nil_r : poly. *)
+(* Hint Rewrite seq_length: poly. *)
+
+(* Ltac t := *)
+(*   intros *)
+(*   || (autounfold with poly) *)
+(*   || Z.push_pull_mod *)
+(*   || (autorewrite with poly) *)
+(*   || (unfold enumerate; rewrite <- fold_left_combine_fst) *)
+(*   || f_equal *)
+(*   || apply FunctionalExtensionality.functional_extensionality *)
+(*   || lia. *)
+
+(* Lemma poly1305_ok' k m output: *)
+(*   Spec.poly1305 k m = poly1305 k m output. *)
+(* Proof. *)
+(*   unfold Spec.poly1305, poly1305, nlet; repeat t. *)
+(* Qed. *)
 
 (** * ChaCha20 **)
 
