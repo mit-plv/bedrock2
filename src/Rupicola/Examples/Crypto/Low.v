@@ -2,6 +2,7 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.Crypto.Spec.
 Require Import bedrock2.BasicC32Semantics.
+Import Datatypes.
 
 (* TODO array_split should record a special fact in the context to make it trivial to re-split. *)
 Open Scope Z_scope.
@@ -87,10 +88,14 @@ Proof.
   induction l1; destruct l2; simpl; congruence.
 Qed.
 
-Lemma map_id {A} (f: A -> A) :
-  (forall x, f x = x) ->
-  forall l, map f l = l.
-Proof. induction l; simpl; congruence. Qed.
+Lemma map_id {A} (f: A -> A) l:
+  (forall x, List.In x l -> f x = x) ->
+  map f l = l.
+Proof.
+  induction l; simpl.
+  - reflexivity.
+  - intros H; rewrite (H a), IHl by auto; reflexivity.
+Qed.
 
 Lemma skipn_map{A B: Type}: forall (f: A -> B) (n: nat) (l: list A),
     skipn n (map f l) = map f (skipn n l).
@@ -98,6 +103,13 @@ Proof.
   induction n; intros.
   - reflexivity.
   - simpl. destruct l; simpl; congruence.
+Qed.
+
+Lemma fold_left_combine_fst {A B C} (f: A -> B -> A) : forall (l1: list C) l2 a0,
+    (List.length l1 >= List.length l2)%nat ->
+    fold_left f l2 a0 = fold_left (fun a '(_, b) => f a b) (combine l1 l2) a0.
+Proof.
+  induction l1; destruct l2; simpl; intros; try rewrite IHl1; reflexivity || lia.
 Qed.
 
 (** ** nth **)
@@ -132,7 +144,7 @@ Proof.
   unfold upd, upds.
   rewrite firstn_all2 by lia.
   rewrite skipn_all2 by lia.
-  replace (Datatypes.length l - n)%nat with 0%nat by lia.
+  replace (length l - n)%nat with 0%nat by lia.
   simpl; rewrite app_nil_r; reflexivity.
 Qed.
 
@@ -154,7 +166,7 @@ Proof.
   unfold upd, upds; intros.
   rewrite app_nth2; rewrite firstn_length_le; auto with arith.
   rewrite Nat.sub_diag.
-  replace ((Datatypes.length l - k)%nat) with (S (Datatypes.length l - k - 1)%nat) by lia.
+  replace ((length l - k)%nat) with (S (length l - k - 1)%nat) by lia.
   reflexivity.
 Qed.
 
@@ -202,32 +214,65 @@ Qed.
 
 (** ** chunks **)
 
-Lemma Forall_chunk'_length {A} (l: list A) n:
+Lemma Forall_chunk'_length_mod {A} (l: list A) n:
   forall acc, (length acc < n)%nat ->
-         Forall (fun l => (Datatypes.length l <= n)%nat) (chunk' n l acc).
+         ((length l + length acc) mod n = length l mod n)%nat ->
+         Forall (fun c => length c = n \/ length c = length l mod n)%nat
+                (chunk' n l acc).
 Proof.
+  set (length l) as ll at 2 3; clearbody ll.
   induction l; simpl; intros.
-  - destruct acc.
-    + apply Forall_nil.
-    + apply Forall_cons; eauto || lia.
+  - destruct acc; eauto; [].
+    apply Forall_cons; eauto.
+    right. rewrite <- (Nat.mod_small _ n); assumption.
   - destruct (_ <? _)%nat eqn:Hlt.
     + rewrite Nat.ltb_lt in Hlt.
-      apply IHl; lia.
-    + apply Forall_cons.
-      rewrite List.app_length; cbn [length]; lia.
-      apply IHl; simpl; lia.
+      eapply IHl; try lia; [].
+      rewrite app_length; cbn [List.length].
+      replace (ll mod n)%nat; f_equal; lia.
+    + rewrite Nat.ltb_ge in Hlt.
+      apply Forall_cons;
+        rewrite app_length in *; cbn [List.length] in *;
+          replace (S (length l + length acc)) with (length l + n)%nat in * by lia.
+      * left; lia.
+      * apply IHl; simpl; try lia.
+        replace (ll mod n)%nat.
+        symmetry; rewrite <- Nat.add_mod_idemp_r at 1 by lia. (* FIXME why does ‘at 2’ not work? *)
+        rewrite Nat.mod_same by lia.
+        reflexivity.
 Qed.
 
-Lemma Forall_chunk_length {A} (l: list A) n:
-  (0 < n)%nat -> Forall (fun l => (Datatypes.length l <= n)%nat) (chunk n l).
+Lemma Forall_chunk'_length_pos {A} (l: list A) n:
+  forall acc, Forall (fun c => length c > 0)%nat (chunk' n l acc).
 Proof.
-  intros; apply Forall_chunk'_length; simpl; eauto.
+  induction l; simpl; intros.
+  - destruct acc; eauto; [].
+    apply Forall_cons; simpl; eauto || lia.
+  - destruct (_ <? _)%nat; eauto; [].
+    apply Forall_cons; rewrite ?app_length; cbn [length];
+      eauto || lia.
 Qed.
 
-(** ** le_combine / le_split **)
+Lemma Forall_chunk_length_mod {A} (l: list A) n:
+  (0 < n)%nat ->
+  Forall (fun c => length c = n \/ length c = length l mod n)%nat (chunk n l).
+Proof.
+  intros; apply Forall_chunk'_length_mod; simpl; eauto.
+Qed.
 
-Arguments le_combine: simpl nomatch.
-Arguments Z.mul: simpl nomatch.
+Lemma Forall_chunk_length_le {A} (l: list A) n:
+  (0 < n)%nat -> Forall (fun c => 0 < length c <= n)%nat (chunk n l).
+Proof.
+  intros; eapply Forall_impl; cycle 1.
+  - apply Forall_and;
+      [ apply Forall_chunk_length_mod | apply Forall_chunk'_length_pos ];
+      eauto.
+  - cbv beta.
+    pose proof Nat.mod_upper_bound (length l) n ltac:(lia).
+    intros ? ([-> | ->] & ?); lia.
+Qed.
+
+(** * byte **)
 
 Lemma testbit_byte_unsigned_ge b n:
   8 <= n ->
@@ -256,6 +301,15 @@ Proof.
   rewrite testbit_byte_unsigned_ge.
   all: lia.
 Qed.
+
+Lemma byte_xor_comm b1 b2:
+  byte.xor b1 b2 = byte.xor b2 b1.
+Proof. unfold byte.xor; rewrite Z.lxor_comm; reflexivity. Qed.
+
+(** ** le_combine / le_split **)
+
+Arguments le_combine: simpl nomatch.
+Arguments Z.mul: simpl nomatch.
 
 Lemma le_combine_app bs1 bs2:
   le_combine (bs1 ++ bs2) =
@@ -320,7 +374,7 @@ Lemma le_combine_in_bounds bs:
 Proof.
   unfold in_bounds; intros.
   pose proof le_combine_bound bs.
-  pose proof Zpow_facts.Zpower_le_monotone 2 (8 * Z.of_nat (Datatypes.length bs)) 32
+  pose proof Zpow_facts.Zpower_le_monotone 2 (8 * Z.of_nat (length bs)) 32
        ltac:(lia) ltac:(lia); lia.
 Qed.
 
@@ -329,7 +383,8 @@ Lemma Forall_le_combine_in_bounds zs:
 Proof.
   eapply Forall_map, Forall_impl.
   - intros a; apply le_combine_in_bounds.
-  - apply Forall_chunk_length; eauto.
+  - eapply Forall_impl; [ | apply Forall_chunk_length_le ];
+      simpl; intros; lia.
 Qed.
 
 (** ** words **)
@@ -420,17 +475,22 @@ Definition uint128_as_bytes (z: Z) :=
 Definition bytes_as_uint128 (bs: list byte) :=
   le_combine bs.
 
-Definition w32s_of_bytes (bs: list byte) : list word :=
+Definition w32s_of_bytes (bs: array_t byte) : array_t word :=
   List.map word.of_Z (List.map le_combine (chunk 4 bs)).
 
-Definition bytes_of_w32s (w32s: list word) : list byte :=
+Definition bytes_of_w32s (w32s: array_t word) : array_t byte :=
   List.flat_map (le_split 4) (List.map word.unsigned w32s).
 
 Definition array_fold_chunked {A T}
            (a: array_t T) (size: nat)
-           (f: A -> list T -> A)
+           (f: nat -> A -> list T -> A)
            a0 :=
-  List.fold_left (fun acc c => f acc c) (chunk size a) a0.
+  List.fold_left (fun acc '(i, c) => f i acc c) (enumerate 0 (chunk size a)) a0.
+
+Definition array_map_chunked {T}
+           (a: array_t T) (size: nat)
+           (f: nat -> list T -> list T) :=
+  List.flat_map (fun '(i, c) => f i c) (enumerate 0 (chunk size a)).
 
 Axiom felem_size : nat.
 
@@ -438,7 +498,7 @@ Axiom felem_size : nat.
 #[local] Hint Unfold buf_push buf_append : poly.
 #[local] Hint Unfold buf_split buf_unsplit buf_as_array : poly.
 #[local] Hint Unfold array_split_at array_unsplit : poly.
-#[local] Hint Unfold array_fold_chunked : poly.
+#[local] Hint Unfold array_fold_chunked array_map_chunked : poly.
 #[local] Hint Unfold array_get array_put : poly.
 #[local] Hint Unfold bytes_as_felem_inplace : poly.
 #[local] Hint Unfold felem_init_zero felem_add felem_mul felem_as_uint128 : poly.
@@ -452,7 +512,7 @@ Definition poly1305 (k : list byte) (m : list byte) (output: Z): list byte :=
   let/n scratch := buf_make byte felem_size in
   let/n scratch := buf_append scratch f16 in
   let/n (scratch, lone_byte_and_felem_spare_space) := buf_split scratch in
-  let/n scratch := List.map (fun '(w1, w2) => let/n w := byte_land w1 w2 in w)
+  let/n scratch := List.map (fun '(w1, w2) => let/n w1 := byte_land w1 w2 in w1)
                            (combine scratch (le_split 16 0x0ffffffc0ffffffc0ffffffc0fffffff)) in
   let/n scratch := buf_unsplit scratch lone_byte_and_felem_spare_space in
   let/n scratch := buf_push scratch x00 in
@@ -461,7 +521,7 @@ Definition poly1305 (k : list byte) (m : list byte) (output: Z): list byte :=
   let/n output :=
       array_fold_chunked
         m 16
-        (fun output ck =>
+        (fun idx output ck =>
            let/n nscratch := buf_make byte felem_size in
            let/n nscratch := buf_append nscratch ck in (* len = 16 *)
            let/n nscratch := buf_push nscratch x01 in (* len = 17 *)
@@ -489,6 +549,7 @@ Proof.
   autounfold with poly.
   Z.push_pull_mod.
   rewrite <- le_split_mod.
+  unfold enumerate; rewrite <- fold_left_combine_fst by (rewrite seq_length; lia).
   repeat f_equal.
   repeat (apply FunctionalExtensionality.functional_extensionality; intros).
   Z.push_pull_mod.
@@ -502,14 +563,17 @@ Qed.
 Hint Rewrite <- le_split_mod Z_land_le_combine : poly.
 Hint Rewrite le_combine_app_0 : poly.
 Hint Rewrite app_nil_r : poly.
+Hint Rewrite seq_length: poly.
 
 Ltac t :=
   intros
   || (autounfold with poly)
   || Z.push_pull_mod
   || (autorewrite with poly)
+  || (unfold enumerate; rewrite <- fold_left_combine_fst)
   || f_equal
-  || apply FunctionalExtensionality.functional_extensionality.
+  || apply FunctionalExtensionality.functional_extensionality
+  || lia.
 
 Lemma poly1305_ok' k m output:
   Spec.poly1305 k m = poly1305 k m output.
@@ -708,3 +772,53 @@ Definition chacha20_encrypt key start nonce plaintext :=
     chunk) in
   plaintext.
 
+
+Lemma enumerate_offset {A} (l: list A) : forall (start: nat),
+    enumerate start l = map (fun p => (fst p + start, snd p)%nat) (enumerate 0 l).
+Proof.
+  unfold enumerate; induction l; simpl; intros.
+  - reflexivity.
+  - rewrite (IHl (S start)), (IHl 1%nat), List.map_map.
+    f_equal. simpl. apply map_ext.
+    intros; f_equal; lia.
+Qed.
+
+Lemma Forall_In {A} {P : A -> Prop} {l : list A}:
+  Forall P l -> forall {x}, In x l -> P x.
+Proof.
+  intros HF; rewrite Forall_forall in HF; intuition.
+Qed.
+
+Lemma chacha20_encrypt_ok key start nonce plaintext :
+  (length nonce mod 4 = 0)%nat ->
+  Spec.chacha20_encrypt key start nonce plaintext =
+  chacha20_encrypt key start nonce plaintext.
+Proof.
+  unfold Spec.chacha20_encrypt, chacha20_encrypt, nlet;
+    autounfold with poly; intros.
+  rewrite enumerate_offset.
+  rewrite flat_map_concat_map, map_map, <- flat_map_concat_map.
+  f_equal.
+  apply FunctionalExtensionality.functional_extensionality; intros (?&?).
+  unfold zip; rewrite map_combine_comm by apply byte_xor_comm; f_equal.
+  f_equal.
+  rewrite chacha20_block_ok.
+  f_equal.
+  cbn [List.app List.map].
+  rewrite word.unsigned_add, !word.unsigned_of_Z, map_map.
+  rewrite map_id; cycle 1.
+  - intros * Hin%(Forall_In (Forall_le_combine_in_bounds nonce)).
+    apply word.unsigned_of_Z_nowrap; assumption.
+  - cbn [List.flat_map]. f_equal.
+    + unfold word.wrap; Z.push_pull_mod; rewrite <- le_split_mod.
+      f_equal; simpl; lia.
+    + rewrite flat_map_concat_map, map_map, map_id, concat_chunk; [reflexivity|].
+      intros * Hin;
+        pose proof (Forall_In (Forall_chunk_length_mod _ 4 ltac:(lia)) Hin);
+        pose proof (Forall_In (Forall_chunk_length_le _ 4 ltac:(lia)) Hin);
+        cbv beta in *.
+      rewrite split_le_combine'; reflexivity || lia.
+Qed.
+
+(* Print Assumptions poly1305_ok. *)
+(* Print Assumptions chacha20_encrypt_ok. *)
