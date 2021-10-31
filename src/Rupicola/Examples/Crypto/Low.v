@@ -689,4 +689,22 @@ Proof.
   - cbn [List.map]; rewrite List.map_app; reflexivity.
 Qed.
 
-Print Assumptions chacha20_block_ok.
+Definition chacha20_encrypt key start nonce plaintext :=
+  let plaintext := array_map_chunked plaintext 64 (fun idx chunk => (* FIXME nplaintext *)
+    let counter := word.add (word.of_Z (Z.of_nat start)) (word.of_Z (Z.of_nat idx)) in
+    let scratch := buf_make word 4 in
+    let scratch := buf_push scratch counter in
+    let nonce := w32s_of_bytes nonce in
+    let scratch := buf_append scratch nonce in (* FIXME? You can save a scratch buffer by doing the nonce concatenation of chacha20 here instead *)
+    let nonce := bytes_of_w32s nonce in
+    let scratch := buf_as_array scratch in
+    let scratch := bytes_of_w32s scratch in
+    let st := buf_make word 16 in
+    let st := chacha20_block key scratch st in
+    let chunk := List.map (fun '(st_i, ss_i) =>
+                            let st_i := byte.xor st_i ss_i in
+                            st_i)
+                         (combine chunk st) in
+    chunk) in
+  plaintext.
+
