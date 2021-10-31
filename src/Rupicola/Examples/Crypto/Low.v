@@ -460,6 +460,7 @@ Definition buf_append {T} (buf: buffer_t T) (arr: array_t T) := buf ++ arr.
 Definition buf_split {T} (buf: buffer_t T) : array_t T * buffer_t T := (buf, []).
 Definition buf_unsplit {T} (arr: array_t T) (buf: buffer_t T) : buffer_t T := arr.
 Definition buf_as_array {T} (buf: buffer_t T) : buffer_t T := buf.
+Definition buf_pad {T} (buf: buffer_t T) (len: nat) (t: T) : buffer_t T := buf ++ repeat t (len - length buf).
 
 Definition p : Z := 2^130 - 5.
 Definition felem_init_zero := 0.
@@ -508,13 +509,18 @@ Axiom felem_size : nat.
 
 (** * Poly1305 **)
 
-Definition poly1305_loop scratch output msg :=
+Definition poly1305_loop scratch output msg (padded: bool) :=
   let/n output :=
      array_fold_chunked
        msg 16
        (fun idx output ck =>
           let/n nscratch := buf_make byte felem_size in
           let/n nscratch := buf_append nscratch ck in (* len = 16 *)
+          let/n nscratch := if padded then
+                             let/n nscratch := buf_pad nscratch 16 x00 in
+                             nscratch
+                           else
+                             nscratch in
           let/n nscratch := buf_push nscratch x01 in (* len = 17 *)
           let/n nscratch := bytes_as_felem_inplace nscratch in
           let/n output := felem_add output nscratch in
@@ -523,7 +529,11 @@ Definition poly1305_loop scratch output msg :=
        output in
   output.
 
-Definition poly1305 (k : array_t byte) (header msg footer : array_t byte) (output: Z): array_t byte :=
+Definition poly1305
+           (k : array_t byte)
+           (header msg footer : array_t byte)
+           (pad_header pad_msg pad_footer : bool)
+           (output: Z): array_t byte :=
   let/n (f16, l16) := array_split_at 16 k in
   let/n scratch := buf_make byte felem_size in
   let/n scratch := buf_append scratch f16 in
@@ -534,9 +544,9 @@ Definition poly1305 (k : array_t byte) (header msg footer : array_t byte) (outpu
   let/n scratch := buf_push scratch x00 in
   let/n scratch := bytes_as_felem_inplace scratch in (* B2 primitive reads first 17 bytes of longer array *)
   let/n output := felem_init_zero in
-  let/n output := poly1305_loop scratch output header in
-  let/n output := poly1305_loop scratch output msg in
-  let/n output := poly1305_loop scratch output footer in
+  let/n output := poly1305_loop scratch output header pad_header in
+  let/n output := poly1305_loop scratch output msg pad_msg in
+  let/n output := poly1305_loop scratch output footer pad_footer in
   let/n output := felem_as_uint128 output in
   let/n l16 := bytes_as_uint128 l16 in
   let/n output := uint128_add output l16 in
@@ -578,7 +588,8 @@ Admitted.
 Lemma poly1305_ok' k header msg footer output:
   (length header mod 16 = 0)%nat ->
   (length msg mod 16 = 0)%nat ->
-  Spec.poly1305 k (header ++ msg ++ footer) = poly1305 k header msg footer output.
+  Spec.poly1305 k (header ++ msg ++ footer) =
+  poly1305 k header msg footer false false false output.
 Proof.
   intros; unfold Spec.poly1305, poly1305.
   autounfold with poly; unfold nlet.
@@ -598,7 +609,7 @@ Proof.
 Qed.
 
 Lemma poly1305_ok k msg output:
-  Spec.poly1305 k msg = poly1305 k [] msg [] output.
+  Spec.poly1305 k msg = poly1305 k [] msg [] false false false output.
 Proof.
   intros; pose proof (poly1305_ok' k [] [] msg output) as H.
   simpl in H. erewrite H; reflexivity.
@@ -935,7 +946,7 @@ Definition chacha20poly1305_aead_encrypt aad key iv constant plaintext tag :=
   let/n footer := bytes_of_w32s footer in
 
   let mac_data := aad in
-  let/n tag := poly1305 otk mac_data plaintext footer tag in
+  let/n tag := poly1305 otk mac_data plaintext footer true true true tag in
   let/n otk := array_unsplit otk rest in
   (plaintext, tag).
 
