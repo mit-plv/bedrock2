@@ -1277,5 +1277,5 @@ Proof.
   all: eauto.
 Qed.
 
-Print Assumptions poly1305_ok.
-Print Assumptions chacha20poly1305_aead_encrypt_ok.
+(* Print Assumptions poly1305_ok. *)
+(* Print Assumptions chacha20poly1305_aead_encrypt_ok. *)
