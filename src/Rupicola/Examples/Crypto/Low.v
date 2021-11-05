@@ -84,7 +84,7 @@ Lemma Forall_map {A B} (P: B -> Prop) (f: A -> B) (l: list A):
 Proof.
   induction l; simpl; intros H.
   - apply Forall_nil.
-  - apply invert_Forall_cons in H. apply Forall_cons; tauto.
+  - inversion H; subst. apply Forall_cons; tauto.
 Qed.
 
 (** map **)
