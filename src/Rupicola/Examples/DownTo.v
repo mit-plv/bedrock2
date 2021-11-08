@@ -41,7 +41,7 @@ Section Compilation.
   Lemma fits64 : Z.of_nat 64 < 2 ^ width.
   Proof. destruct width_cases; subst; reflexivity. Qed.
 
-  Hint Resolve fits64 : compiler_cleanup.
+  Hint Resolve fits64 : compiler_side_conditions.
 
   Derive popcount_body SuchThat
          (defn! "popcount"("w") ~> "ones" { popcount_body },

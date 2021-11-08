@@ -525,6 +525,9 @@ Hint Rewrite @word.of_Z_unsigned : compiler_cleanup.
 Hint Rewrite @word.of_nat_to_nat_unsigned : compiler_cleanup.
 Hint Rewrite @word.of_Z_of_nat_to_nat_unsigned : compiler_cleanup.
 #[export] Hint Unfold cast : compiler_cleanup.
+#[export] Hint Unfold Convertible_Z_nat : compiler_cleanup.
+#[export] Hint Unfold Convertible_byte_nat : compiler_cleanup.
+#[export] Hint Unfold Convertible_Fin_nat : compiler_cleanup.
 #[export] Hint Unfold Convertible_word_nat : compiler_cleanup.
 
 Inductive __DummyRelation : False -> False -> Prop :=
@@ -619,6 +622,9 @@ Ltac compile_use_default_value :=
   end.
 
 Create HintDb compiler_side_conditions.
+Hint Rewrite __DummyConstructor : compiler_side_conditions. (* Create the DB *)
+#[export] Hint Resolve eq_refl : compiler_side_conditions. (* For typeclasses eauto *)
+
 Create HintDb solve_map_get_goal.
 
 (* FIXME most cases below could be folded into the database above *)
@@ -644,7 +650,8 @@ Ltac compile_solve_side_conditions :=
     first [ compile_use_default_value
           | compile_autocleanup with compiler_side_conditions
           | step_with_db compiler_side_conditions
-          | solve [ typeclasses eauto | eauto with compiler_cleanup ] ]
+          | typeclasses eauto (* for TC instances *)
+          | solve [ eauto 2 with nocore ] ]
   end.
 
 Ltac compile_triple :=

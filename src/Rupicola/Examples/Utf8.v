@@ -54,13 +54,6 @@ Coercion co_word_of_Fin {n} (f: Fin.t n) : word :=
   word.of_Z (Z.of_nat (proj1_sig (Fin.to_nat f))).
 Open Scope word.
 
-Global Instance Convertible_byte_nat : Convertible byte nat :=
-  fun b => Z.to_nat (byte.unsigned b).
-Global Instance HasDefault_Fin {n} : HasDefault (Fin.t (S n)) :=
-  Fin.F1.
-Global Instance Convertible_Fin_nat {n} : Convertible (Fin.t n) nat :=
-  fun f => proj1_sig (Fin.to_nat f).
-
 Definition utf8_decode (bs: list byte) : word * word * word :=
   let/n b0 := ListArray.get bs 0 in
   let/n len := InlineTable.get lengths (b0 >>w 3) in
@@ -148,23 +141,15 @@ Instance Convertible_Fin_byte_5: Convertible (Fin.t 5) byte :=
   Convertible_Fin_byte (n := 5) ltac:(lia).
 
 Import UnsizedListArrayCompiler.
-Hint Unfold Convertible_byte_nat : compiler_cleanup.
-Hint Unfold Convertible_Z_nat : compiler_cleanup.
-Hint Unfold Convertible_Fin_nat : compiler_cleanup.
-Hint Unfold Convertible_Fin_byte : compiler_cleanup.
-Hint Unfold Convertible_Fin_byte_5 : compiler_cleanup.
-
-Hint Unfold co_word_of_Z co_word_of_byte co_word_of_Fin : compiler_cleanup.
+Hint Unfold Convertible_Fin_byte : compiler_side_conditions.
+Hint Unfold Convertible_Fin_byte_5 : compiler_side_conditions.
+Hint Unfold co_word_of_Z co_word_of_byte co_word_of_Fin : compiler_side_conditions.
 
 Hint Rewrite Nat2Z.id : compiler_side_conditions.
 Hint Rewrite @word_of_byte_of_fin : compiler_side_conditions.
-#[local] Hint Extern 1 (proj1_sig _ < _)%nat => apply Fin_to_nat_lt; shelve : compiler_side_conditions.
-
+#[local] Hint Resolve Fin_to_nat_lt : compiler_side_conditions.
 #[local] Hint Resolve word_of_byte_sru_lt : compiler_side_conditions.
-#[local] Hint Extern 10 (_ < _)%nat => (cbn; lia) : compiler_side_conditions.
-#[local] Hint Extern 10 (_ < _)%Z => (cbn; lia) : compiler_side_conditions.
-#[local] Hint Extern 10 (_ <= _)%nat => (cbn; lia) : compiler_side_conditions.
-#[local] Hint Extern 10 (_ <= _)%Z => (cbn; lia) : compiler_side_conditions.
+#[local] Hint Extern 10 => cbn; lia : compiler_side_conditions.
 
 Opaque InlineTable.get.
 Derive utf8_decode_body SuchThat

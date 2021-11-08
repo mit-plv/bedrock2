@@ -22,9 +22,6 @@ Section Ex.
     destruct Z_lt_le_dec; lia.
   Qed.
 
-  Instance HasDefault_word : HasDefault word :=
-    word.of_Z 0.
-
   Program Definition vect_memcpy {n1 n2} (len: word)
           (a1: VectorArray.t word n1)
           (a2: VectorArray.t word n2)
@@ -157,7 +154,7 @@ Section Ex.
             implements list_memcpy)
            As sizedlist_memcpy_correct.
     Proof.
-      Hint Extern 1 => lia : compiler_cleanup.
+      Hint Extern 1 => lia : compiler_side_conditions.
       Time compile.
     Qed.
   End Sz.

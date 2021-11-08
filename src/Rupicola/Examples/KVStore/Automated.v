@@ -463,7 +463,7 @@ Section KVSwap.
       eassumption. }
   Qed.
 
-  Hint Resolve get_annotate_is_Owned : compiler_cleanup.
+  Hint Resolve get_annotate_is_Owned : compiler_side_conditions.
 
   Lemma deannotate_annotate:
     forall m : map, m = deannotate (annotate m).
@@ -472,7 +472,7 @@ Section KVSwap.
     intros; rewrite !map.get_mapped; destruct map.get; reflexivity.
   Qed.
 
-  Hint Extern 1 (?m = deannotate (annotate ?m)) => simple apply deannotate_annotate : compiler_cleanup.
+  Hint Extern 1 (?m = deannotate (annotate ?m)) => simple apply deannotate_annotate : compiler_side_conditions.
 
   Lemma get_deannotate_annotate:
     forall k v (m : map),
@@ -482,8 +482,8 @@ Section KVSwap.
     intros. rewrite <- deannotate_annotate; eauto.
   Qed.
 
-  Hint Resolve get_deannotate_annotate : compiler_cleanup.
-  Hint Unfold MapAndTwoKeys : compiler_cleanup.
+  Hint Resolve get_deannotate_annotate : compiler_side_conditions.
+  Hint Unfold MapAndTwoKeys : compiler_side_conditions.
 
   Lemma deannotate_put:
     forall (m : map) M (k : key) (p : annotation * value),
@@ -495,9 +495,9 @@ Section KVSwap.
     destruct key_eqb; reflexivity.
   Qed.
 
-  Hint Resolve deannotate_put : compiler_cleanup.
+  Hint Resolve deannotate_put : compiler_side_conditions.
 
-  Hint Extern 1 => simple eapply put_noop' : compiler_cleanup.
+  Hint Extern 1 => simple eapply put_noop' : compiler_side_conditions.
 
   Instance spec_of_kvswap : spec_of "kvswap" :=
     fun functions =>
@@ -542,7 +542,7 @@ Section KVSwap.
              using (typeclasses eauto || congruence) : mapsimpl_not_too_much.
 
         autorewrite with mapsimpl_not_too_much in *. (* FIXME is that enough for the other cases? *)
-        eauto with compiler_cleanup. }
+        eauto with compiler_side_conditions. }
       { intros.
         repeat compile_step.
         - remove_map_annotations. (* Should be done only in the skip case *)
@@ -558,7 +558,7 @@ Section KVSwap.
         { simple apply deannotate_put.
           cbn.
           eapply put_noop';
-            try typeclasses eauto 10 with compiler_cleanup.
+            try typeclasses eauto 10 with compiler_side_conditions.
           autorewrite with mapsimpl_not_too_much.
           unfold annotate, deannotate;
             repeat rewrite ?map.get_mapped, ?map.get_put_diff by congruence.
