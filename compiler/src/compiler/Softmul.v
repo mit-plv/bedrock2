@@ -35,6 +35,51 @@ Require Import compiler.UniqueSepLog.
 
 Axiom TODO: False.
 
+Ltac cbn_MachineWidth := cbn [
+  MkMachineWidth.MachineWidth_XLEN
+  riscv.Utility.Utility.add
+  riscv.Utility.Utility.sub
+  riscv.Utility.Utility.mul
+  riscv.Utility.Utility.div
+  riscv.Utility.Utility.rem
+  riscv.Utility.Utility.negate
+  riscv.Utility.Utility.reg_eqb
+  riscv.Utility.Utility.signed_less_than
+  riscv.Utility.Utility.ltu
+  riscv.Utility.Utility.xor
+  riscv.Utility.Utility.or
+  riscv.Utility.Utility.and
+  riscv.Utility.Utility.XLEN
+  riscv.Utility.Utility.regToInt8
+  riscv.Utility.Utility.regToInt16
+  riscv.Utility.Utility.regToInt32
+  riscv.Utility.Utility.regToInt64
+  riscv.Utility.Utility.uInt8ToReg
+  riscv.Utility.Utility.uInt16ToReg
+  riscv.Utility.Utility.uInt32ToReg
+  riscv.Utility.Utility.uInt64ToReg
+  riscv.Utility.Utility.int8ToReg
+  riscv.Utility.Utility.int16ToReg
+  riscv.Utility.Utility.int32ToReg
+  riscv.Utility.Utility.int64ToReg
+  riscv.Utility.Utility.s32
+  riscv.Utility.Utility.u32
+  riscv.Utility.Utility.regToZ_signed
+  riscv.Utility.Utility.regToZ_unsigned
+  riscv.Utility.Utility.sll
+  riscv.Utility.Utility.srl
+  riscv.Utility.Utility.sra
+  riscv.Utility.Utility.divu
+  riscv.Utility.Utility.remu
+  riscv.Utility.Utility.maxSigned
+  riscv.Utility.Utility.maxUnsigned
+  riscv.Utility.Utility.minSigned
+  riscv.Utility.Utility.regToShamt5
+  riscv.Utility.Utility.regToShamt
+  riscv.Utility.Utility.highBits
+  riscv.Utility.Utility.ZToReg
+].
+
 Section Riscv.
   Context {word: Word.Interface.word 32}.
   Context {word_ok: word.ok word}.
@@ -93,7 +138,7 @@ Section Riscv.
 
   Lemma invert_fetch: forall initial post iset,
       mcomp_sat (run1 iset) initial post ->
-      exists R i, R \*/ instr initial#"pc" i = Some initial#"mem" /\
+      exists R i, Some initial#"mem" = R \*/ instr initial#"pc" i /\
                   verify i iset /\
                   mcomp_sat (Execute.execute i;; endCycleNormal) initial post.
   Proof.
@@ -102,7 +147,7 @@ Section Riscv.
 
   Definition store'(n: nat)(ctxid: SourceType)(a: word)(v: tuple byte n)(mach: State)(post: State -> Prop) :=
     exists (R: option mem) (v_old: tuple byte n),
-      R \*/ bytes a v_old = Some mach#"mem" /\ post mach(#"mem" := mmap.force (R \*/ bytes a v)).
+      Some mach#"mem" = R \*/ bytes a v_old /\ post mach(#"mem" := mmap.force (R \*/ bytes a v)).
 
   Definition store_orig(n: nat)(ctxid: SourceType)(a: word) v (mach: State)(post: State -> Prop) :=
     match Memory.store_bytes n mach#"mem" a v with
@@ -111,7 +156,7 @@ Section Riscv.
     end.
 
   Definition load'(n: nat)(ctxid: SourceType)(a: word)(mach: State)(post: tuple byte n -> State -> Prop): Prop :=
-    exists (R: option mem) (v: tuple byte n), R \*/ bytes a v = Some mach#"mem" /\ post v mach.
+    exists (R: option mem) (v: tuple byte n), Some mach#"mem" = R \*/ bytes a v /\ post v mach.
 
   Definition load_orig(n: nat)(ctxid: SourceType)(a: word)(mach: State)(post: tuple byte n -> State -> Prop) :=
     match Memory.load_bytes n mach#"mem" a with
@@ -120,7 +165,7 @@ Section Riscv.
     end.
 
   Lemma build_fetch_one_instr: forall (initial: State) iset post (instr1 instr2: Instruction) (R: option mem),
-      R \*/ (instr initial#"pc" instr1) = Some initial#"mem" ->
+      Some initial#"mem" = R \*/ (instr initial#"pc" instr1) ->
       decode iset (encode instr1) = instr2 ->
       mcomp_sat (Execute.execute instr2;; endCycleNormal) initial post ->
       mcomp_sat (run1 iset) initial post.
@@ -152,7 +197,7 @@ Section Riscv.
   Qed.
 
   Lemma build_fetch: forall (initial: State) iset post addr p (instr1 instr2: Instruction) (R: option mem),
-      R \*/ (program addr p) = Some initial#"mem" ->
+      Some initial#"mem" = R \*/ (program addr p) ->
       let offset := word.unsigned (word.sub initial#"pc" addr) in
       offset mod 4 = 0 ->
       nth_error p (Z.to_nat (offset / 4)) = Some instr1 ->
@@ -166,9 +211,9 @@ Section Riscv.
     unfold program in *.
     rewrite array_split in H. cbn [array] in H.
     eapply build_fetch_one_instr; [|eassumption..].
-    etransitivity. 2: eassumption.
+    etransitivity. 1: eassumption.
     reify_goal.
-    cancel_at 1%nat 2%nat. 2: reflexivity.
+    cancel_at 2%nat 1%nat. 2: reflexivity.
     rewrite E. f_equal. subst offset. ZnWords.
   Qed.
 
@@ -292,8 +337,9 @@ Section Riscv.
       map.get r2#"csrs" CSRField.MTVecBase = Some mtvec_base /\
       map.get r2#"csrs" CSRField.MScratch = Some mscratch /\
       List.length stacktrash = 32%nat /\
-      Some r1#"mem" \*/ word_array (word.of_Z mscratch) stacktrash \*/
-      program (word.of_Z (mtvec_base * 4)) handler_insts = Some r2#"mem" /\
+      Some r2#"mem" = Some r1#"mem" \*/
+                      word_array (word.of_Z mscratch) stacktrash \*/
+                      program (word.of_Z (mtvec_base * 4)) handler_insts /\
       map.get r2#"regs" RegisterNames.sp = Some spval.
 
   Lemma related_preserves_load_bytes: forall n sH sL a w,
@@ -465,6 +511,26 @@ Section Riscv.
     intros. cbn -[map.get map.rep]. destruct_one_match. 1: assumption. congruence.
   Qed.
 
+  Lemma run_store: forall n addr (v_old v_new: tuple byte n) R (m: State) (kind: SourceType)
+                          (post: State -> Prop),
+      Some m#"mem" = R \*/ bytes addr v_old ->
+      post m(#"mem" := mmap.force (R \*/ bytes addr v_new)) ->
+      MinimalCSRs.store n kind addr v_new m post.
+  Proof.
+    intros. unfold store, store_bytes.
+  Admitted.
+
+  Lemma interpret_storeWord: forall addr (v_old v_new: tuple byte 4) R (m: State)
+                                    (postF: unit -> State -> Prop) (postA: State -> Prop),
+      Some m#"mem" = R \*/ bytes addr v_old ->
+      postF tt m(#"mem" := mmap.force (R \*/ bytes addr v_new)) ->
+      free.interpret run_primitive (Machine.storeWord Execute addr v_new) m postF postA.
+  Proof.
+    (* Note: some unfolding/conversion is going on here that we prefer to control with
+       this lemma than to control each time we store a word *)
+    intros. eapply run_store; eassumption.
+  Qed.
+
   Lemma interpret_getPrivMode: forall (m: State) (postF: PrivMode -> State -> Prop) (postA: State -> Prop),
       postF Machine m -> (* we're always in machine mode *)
       free.interpret run_primitive getPrivMode m postF postA.
@@ -521,6 +587,7 @@ Section Riscv.
     | |- _ => progress cbn [Execute.execute ExecuteCSR.execute ExecuteCSR.checkPermissions
                             CSRGetSet.getCSR CSRGetSet.setCSR
                             ExecuteI.execute]
+    | |- _ => progress cbn_MachineWidth
     | |- _ => progress unfold ExecuteCSR.checkPermissions, CSRSpec.getCSR, CSRSpec.setCSR,
                               raiseExceptionWithInfo, updatePc
     | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with (@Monads.Return M MM _ tt)
@@ -550,8 +617,8 @@ Section Riscv.
     | |- map.get (map.put _ ?x _) ?x = _ => eapply map.get_put_same
     | |- mcomp_sat endCycleNormal _ _ => eapply mcomp_sat_endCycleNormal
     | |- mcomp_sat (run1 RV32I) _ _ =>
-      eapply build_fetch; record.simp; cbn [ZToReg MkMachineWidth.MachineWidth_XLEN];
-        [ etransitivity; [|eassumption]; reify_goal; cancel_program; reflexivity
+      eapply build_fetch; record.simp; cbn_MachineWidth;
+        [ etransitivity; [eassumption|]; reify_goal; cancel_program; reflexivity
         | ZnWords
         | instr_lookup
         | apply decode_encode; vm_compute; intuition congruence
@@ -559,6 +626,8 @@ Section Riscv.
     | |- _ => progress change (translate _ _ ?x)
                        with (@free.ret riscv_primitive primitive_result _ x)
     end.
+
+  Local Hint Mode word.word - : typeclass_instances.
 
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 RV32IM)) initialH post ->
@@ -574,7 +643,7 @@ Section Riscv.
     unfold related, basic_CSRFields_supported in H2.
     eapply invert_fetch in H. simp.
     rename initial into initialH.
-    rewrite <- Hp0 in H2p6p3.
+    rewrite Hp0 in H2p6p3.
     pose proof (proj2 Hp1) as V.
     destruct i as [inst|inst|inst|inst|inst|inst|inst|inst|inst|inst] eqn: E;
       cbn in V; try (intuition congruence).
@@ -582,7 +651,7 @@ Section Riscv.
       subst.
       eapply @runsToStep with (midset := fun midL => exists midH, related midH midL /\ midset midH).
       + eapply build_fetch_one_instr.
-        { etransitivity. 2: exact H2p6p3.
+        { etransitivity. 1: exact H2p6p3.
           reify_goal.
           cancel_at 1%nat 1%nat. { rewrite H2p1. reflexivity. }
           reflexivity.
@@ -595,7 +664,7 @@ Section Riscv.
       (* fetch M instruction (considered invalid by RV32I machine) *)
       eapply runsToStep_cps.
       eapply build_fetch_one_instr. {
-          etransitivity. 2: exact H2p6p3.
+          etransitivity. 1: exact H2p6p3.
           reify_goal.
           cancel_at 1%nat 1%nat. {
             unfold instr, one. rewrite H2p1. reflexivity.
@@ -610,6 +679,17 @@ Section Riscv.
 
       repeat step.
 
+      destruct stacktrash as [|zero_trash stacktrash]. 1: discriminate.
+      destruct stacktrash as [|ra_trash stacktrash]. 1: discriminate.
+      destruct stacktrash as [|sp_trash stacktrash]. 1: discriminate.
+      cbn [word_array array] in *.
+      change (Memory.bytes_per_word 32) with 4 in *.
+      replace (word.add (word.add (word.add (word.of_Z mscratch) (word.of_Z 4)) (word.of_Z 4))
+                        (word.of_Z 4))
+        with (word.add (word.of_Z mscratch) (word.of_Z 12)) in * by ring.
+      replace (word.add (word.add (word.of_Z mscratch) (word.of_Z 4)) (word.of_Z 4))
+        with (word.add (word.of_Z mscratch) (word.of_Z 8)) in * by ring.
+
       (* step through handler code *)
 
       (* Csrrw sp sp MScratch *)
@@ -617,28 +697,39 @@ Section Riscv.
 
       (* Sw sp zero 0        (needed if the instruction to be emulated reads register 0) *)
       eapply runsToStep_cps. repeat step.
+      eapply interpret_storeWord.
+      { repeat step.
+        etransitivity. 1: eassumption.
+        reify_goal.
+        cancel_at 2%nat 1%nat. {
+          unfold one. f_equal. ring.
+        }
+        cbn [mmap.dus].
+        reflexivity.
+      }
+      repeat step.
 
       (* Sw sp ra 4 *)
       (* Csrr ra MScratch *)
       (* Sw sp ra 8 *)
       (* save_regs3to31 *)
-      (* Csrr t1 MTVal                     t1 := the invalid instruction i that caused the exception *)
-      (* Srli t1 t1 5                      t1 := t1 >> 5                                             *)
-      (* Andi s3 t1 (31*4)                 s3 := i[7:12]<<2   // (rd of the MUL)*4                   *)
-      (* Srli t1 t1 8                      t1 := t1 >> 8                                             *)
-      (* Andi s1 t1 (31*4)                 s1 := i[15:20]<<2  // (rs1 of the MUL)*4                  *)
-      (* Srli t1 t1 5                      t1 := t1 >> 5                                             *)
-      (* Andi s2 t1 (31*4)                 s2 := i[20:25]<<2  // (rs2 of the MUL)*4                  *)
-      (* Add s1 s1 sp                      s1 := s1 + stack_start                                    *)
-      (* Add s2 s2 sp                      s2 := s2 + stack_start                                    *)
-      (* Add s3 s3 sp                      s3 := s3 + stack_start                                    *)
-      (* Lw a1 s1 0                        a1 := stack[s1]                                           *)
-      (* Lw a2 s2 0                        a2 := stack[s2]                                           *)
-      (* softmul_insts                     a3 := softmul(a1, a2)                                     *)
-      (* Sw s3 a3 0                        stack[s3] := a3                                           *)
+      (* Csrr t1 MTVal       t1 := the invalid instruction i that caused the exception *)
+      (* Srli t1 t1 5        t1 := t1 >> 5                                             *)
+      (* Andi s3 t1 (31*4)   s3 := i[7:12]<<2   // (rd of the MUL)*4                   *)
+      (* Srli t1 t1 8        t1 := t1 >> 8                                             *)
+      (* Andi s1 t1 (31*4)   s1 := i[15:20]<<2  // (rs1 of the MUL)*4                  *)
+      (* Srli t1 t1 5        t1 := t1 >> 5                                             *)
+      (* Andi s2 t1 (31*4)   s2 := i[20:25]<<2  // (rs2 of the MUL)*4                  *)
+      (* Add s1 s1 sp        s1 := s1 + stack_start                                    *)
+      (* Add s2 s2 sp        s2 := s2 + stack_start                                    *)
+      (* Add s3 s3 sp        s3 := s3 + stack_start                                    *)
+      (* Lw a1 s1 0          a1 := stack[s1]                                           *)
+      (* Lw a2 s2 0          a2 := stack[s2]                                           *)
+      (* softmul_insts       a3 := softmul(a1, a2)                                     *)
+      (* Sw s3 a3 0          stack[s3] := a3                                           *)
       (* Csrr t1 MEPC *)
       (* Addi t1 t1 4 *)
-      (* Csrw t1 MEPC                      MEPC := MEPC + 4                                          *)
+      (* Csrw t1 MEPC        MEPC := MEPC + 4                                          *)
       (* restore_regs3to31 *)
       (* Lw ra sp 4 *)
       (* Csrr sp MScratch *)
@@ -670,7 +761,7 @@ Section Riscv.
       subst.
       eapply @runsToStep with (midset := fun midL => exists midH, related midH midL /\ midset midH).
       + eapply build_fetch_one_instr.
-        { etransitivity. 2: exact H2p6p3.
+        { etransitivity. 1: exact H2p6p3.
           reify_goal.
           cancel_at 1%nat 1%nat. { rewrite H2p1. reflexivity. }
           reflexivity.

@@ -359,7 +359,7 @@ Ltac reify e :=
 
 Ltac reify_goal :=
   lazymatch goal with
-  | |- @eq (option (@map.rep _ _ _)) ?LHS ?RHS =>
+  | |- @eq (option _ (*=map.rep or something convertible to map.rep*)) ?LHS ?RHS =>
     let LHS := reify LHS in
     let RHS := reify RHS in
     change (tree_to_du LHS = tree_to_du RHS);
