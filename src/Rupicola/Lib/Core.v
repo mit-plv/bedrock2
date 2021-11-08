@@ -6,7 +6,7 @@ From bedrock2 Require Export
      Map.SeparationLogic Scalars Syntax WeakestPreconditionProperties
      ZnWords.
 From coqutil Require Export
-     dlet Byte
+     dlet Byte List
      Z.PushPullMod Tactics.Tactics Tactics.letexists
      Word.Interface Word.Properties Word.Bitwidth
      Map.Interface Map.Properties Map.SortedList.
@@ -576,6 +576,144 @@ Section Lists.
     rewrite !flat_map_concat_map, !concat_map, !map_map.
     f_equal; apply map_ext; intros; rewrite !map_map; reflexivity.
   Qed.
+
+  (** ** map **)
+
+  Lemma map_ext_id {A} (f: A -> A) l:
+    (forall x, List.In x l -> f x = x) ->
+    List.map f l = l.
+  Proof.
+    induction l; simpl.
+    - reflexivity.
+    - intros H; rewrite (H a), IHl by auto; reflexivity.
+  Qed.
+
+  Lemma skipn_map{A B: Type}: forall (f: A -> B) (n: nat) (l: list A),
+      skipn n (List.map f l) = List.map f (skipn n l).
+  Proof.
+    induction n; intros.
+    - reflexivity.
+    - simpl. destruct l; simpl; congruence.
+  Qed.
+
+  (** ** fold **)
+
+  Lemma fold_left_Proper :
+    forall [A B : Type] (f f': A -> B -> A) (l l': list B) (i i': A),
+      l = l' -> i = i' ->
+      (forall a b, In b l -> f a b = f' a b) ->
+      fold_left f l i = fold_left f' l' i'.
+  Proof.
+    induction l; intros * ? ? Heq; subst; simpl in *;
+      try rewrite Heq; eauto.
+  Qed.
+
+  Lemma fold_left_inv [A B] (f: A -> B -> A) (P: A -> Prop) :
+    forall (l: list B) (a0: A),
+      P a0 ->
+      (forall a b, In b l -> P a -> P (f a b)) ->
+      P (fold_left f l a0).
+  Proof. induction l; simpl; firstorder auto. Qed.
+
+  (** ** combine **)
+
+  Lemma fold_left_combine_fst {A B C} (f: A -> B -> A) : forall (l1: list C) l2 a0,
+      (List.length l1 >= List.length l2)%nat ->
+      fold_left f l2 a0 = fold_left (fun a '(_, b) => f a b) (combine l1 l2) a0.
+  Proof.
+    induction l1; destruct l2; simpl; intros; try rewrite IHl1; reflexivity || lia.
+  Qed.
+
+  Lemma map_combine_fst {A B}: forall lA lB,
+      length lA = length lB ->
+      List.map fst (@combine A B lA lB) = lA.
+  Proof.
+    induction lA; destruct lB; simpl; intros; rewrite ?IHlA; reflexivity || lia.
+  Qed.
+
+  Lemma map_combine_snd {A B}: forall lB lA,
+      length lA = length lB ->
+      List.map snd (@combine A B lA lB) = lB.
+  Proof.
+    induction lB; destruct lA; simpl; intros; rewrite ?IHlB; reflexivity || lia.
+  Qed.
+
+  Lemma map_combine_separated {A B A' B'} (fA: A -> A') (fB: B -> B') :
+    forall (lA : list A) (lB: list B),
+      List.map (fun p => (fA (fst p), fB (snd p))) (combine lA lB) =
+        combine (List.map fA lA) (List.map fB lB).
+  Proof.
+    induction lA; destruct lB; simpl; congruence.
+  Qed.
+
+  Lemma map_combine_comm {A B} (f: A * A -> B) :
+    (forall a1 a2, f (a1, a2) = f (a2, a1)) ->
+    forall (l1 l2 : list A),
+      List.map f (combine l1 l2) =
+        List.map f (combine l2 l1).
+  Proof.
+    induction l1; destruct l2; simpl; congruence.
+  Qed.
+
+  Lemma combine_app {A B} : forall (lA lA': list A) (lB lB': list B),
+      length lA = length lB ->
+      combine (lA ++ lA') (lB ++ lB') = combine lA lB ++ combine lA' lB'.
+  Proof.
+    induction lA; destruct lB; simpl; inversion 1; try rewrite IHlA; eauto.
+  Qed.
+
+  (** ** enumerate **)
+
+  Lemma enumerate_offset {A} (l: list A) : forall (start: nat),
+      List.enumerate start l = List.map (fun p => (fst p + start, snd p)%nat) (List.enumerate 0 l).
+  Proof.
+    unfold List.enumerate; induction l; simpl; intros.
+    - reflexivity.
+    - rewrite (IHl (S start)), (IHl 1%nat), List.map_map.
+      f_equal. simpl. apply map_ext.
+      intros; f_equal; lia.
+  Qed.
+
+  Lemma enumerate_app {A} (l l': list A) start :
+    List.enumerate start (l ++ l') =
+      List.enumerate start l ++ List.enumerate (start + length l) l'.
+  Proof.
+    unfold List.enumerate.
+    rewrite app_length, seq_app, combine_app;
+      eauto using seq_length.
+  Qed.
+
+  (** ** concat **)
+
+  Lemma length_concat_sum {A} (lss: list (list A)) :
+    length (List.concat lss) =
+      List.fold_left Nat.add (List.map (@length _) lss) 0%nat.
+  Proof.
+    rewrite fold_symmetric by eauto with arith.
+    induction lss; simpl; rewrite ?app_length, ?IHlss; reflexivity.
+  Qed.
+
+  (** ** nth **)
+
+  Lemma nth_firstn {A} i:
+    forall (l : list A) (d : A) (k : nat),
+      (i < k)%nat -> nth i (firstn k l) d = nth i l d.
+  Proof.
+    induction i; destruct k; destruct l; intros;
+      try lia; try reflexivity; simpl.
+    rewrite IHi; reflexivity || lia.
+  Qed.
+
+  Lemma nth_skipn {A}:
+    forall (l : list A) (d : A) (i k : nat),
+      nth i (skipn k l) d = nth (i + k) l d.
+  Proof.
+    intros; destruct (Nat.lt_ge_cases (i + k) (length l)); cycle 1.
+    - rewrite !nth_overflow; rewrite ?skipn_length; reflexivity || lia.
+    - assert ([nth i (skipn k l) d] = [nth (i + k) l d]) as [=->]; try reflexivity.
+      rewrite <- !firstn_skipn_nth; rewrite ?skipn_length; try lia.
+      rewrite skipn_skipn; reflexivity.
+  Qed.
 End Lists.
 
 Section Vectors.
@@ -630,6 +768,99 @@ Section Vectors.
 End Vectors.
 
 Global Open Scope Z_scope.
+
+Section Z.
+  Lemma Z_land_leq_right a b
+    : 0 <= a -> 0 <= b ->
+      0 <= Z.land a b <= b.
+  Proof.
+    destruct a as [|pa|], b as [|pb|];
+      rewrite ?Z.land_0_l, ?Z.land_0_r;
+      try lia; intros _ _.
+    revert pb; induction pa; destruct pb; simpl in *; try lia.
+    all: specialize (IHpa pb); destruct Pos.land in *; simpl; lia.
+  Qed.
+End Z.
+
+(** ** Nat.iter **)
+
+Lemma Nat_iter_inv {A} (P: A -> Prop) (fA: A -> A):
+  (forall a, P a -> P (fA a)) ->
+  forall n a,
+    P a ->
+    P (Nat.iter n fA a).
+Proof. intros Hind; induction n; simpl; auto. Qed.
+
+Lemma Nat_iter_const_length {A : Type} f : forall (n : nat) (l0 : list A),
+    (forall l, length (f l) = length l) ->
+    length (Nat.iter n f l0) = length l0.
+Proof. intros; apply Nat_iter_inv; congruence. Qed.
+
+Lemma Nat_iter_rew {A B} (fA: A -> A) (fB: B -> B) (g: A -> B):
+  (forall a, g (fA a) = fB (g a)) ->
+  forall n a b,
+    b = g a ->
+    g (Nat.iter n fA a) = Nat.iter n fB b.
+Proof.
+  intros Heq; induction n; simpl; intros; subst.
+  - reflexivity.
+  - erewrite Heq, IHn; reflexivity.
+Qed.
+
+Lemma Nat_iter_rew_inv {A B} (P: A -> Prop) (fA: A -> A) (fB: B -> B) (g: A -> B):
+  (forall a, P a -> P (fA a)) ->
+  (forall a, P a -> g (fA a) = fB (g a)) ->
+  forall n a b,
+    P a ->
+    b = g a ->
+    P (Nat.iter n fA a) /\
+    g (Nat.iter n fA a) = Nat.iter n fB b.
+Proof.
+  intros Hind Heq; induction n; simpl; intros * Ha ->.
+  - eauto.
+  - specialize (IHn _ _ Ha eq_refl) as [HPa Hg].
+    split; eauto. erewrite Heq, Hg; eauto.
+Qed.
+
+(** ** Forall **)
+
+Import List.
+
+Lemma Forall_In {A} {P : A -> Prop} {l : list A}:
+  Forall P l -> forall {x}, In x l -> P x.
+Proof.
+  intros HF; rewrite Forall_forall in HF; intuition.
+Qed.
+
+Lemma forall_nth_default {A} (P: A -> Prop) (l: list A) (d: A):
+  (forall i : nat, P (nth i l d)) -> P d.
+Proof.
+  intros H; specialize (H (length l)); rewrite nth_overflow in H;
+    assumption || reflexivity.
+Qed.
+
+Lemma Forall_nth' {A} (P : A -> Prop) (l : list A) d:
+  (P d /\ Forall P l) <-> (forall i, P (nth i l d)).
+Proof.
+  split; intros H *.
+  - destruct H; rewrite <- nth_default_eq; apply Forall_nth_default; eassumption.
+  - split; [eapply forall_nth_default; eassumption|].
+    apply Forall_nth; intros.
+    erewrite nth_indep; eauto.
+Qed.
+
+Lemma Forall_nth_default' {A} (P : A -> Prop) (l : list A) d:
+  P d -> (Forall P l <-> (forall i, P (nth i l d))).
+Proof. intros; rewrite <- Forall_nth'; tauto. Qed.
+
+Lemma Forall_map {A B} (P: B -> Prop) (f: A -> B) (l: list A):
+  Forall (fun x => P (f x)) l ->
+  Forall P (List.map f l).
+Proof.
+  induction l; simpl; intros H.
+  - apply Forall_nil.
+  - inversion H; subst. apply Forall_cons; tauto.
+Qed.
 
 (* TODO: should be upstreamed to coqutil *)
 Module word.
@@ -872,6 +1103,26 @@ Module word.
     Lemma morph_xor x y:
       word.of_Z (Z.lxor x y) = word.xor (word.of_Z x) (word.of_Z y) :> word.
     Proof. compile_binop_zzw_bitwise word.unsigned_xor_nowrap. Qed.
+
+    Lemma Z_land_wrap_l z1 z2:
+      0 <= z2 < 2 ^ width ->
+      Z.land (word.wrap z1) z2 = Z.land z1 z2.
+    Proof.
+      pose proof word.width_pos.
+      intros; unfold word.wrap.
+      rewrite <- Z.land_ones, <- Z.land_assoc by lia.
+      rewrite (Z.land_comm _ z2), Z.land_ones by lia.
+      rewrite Z.mod_small by lia.
+      reflexivity.
+    Qed.
+
+    Lemma Z_land_wrap_r z1 z2:
+      0 <= z1 < 2 ^ width ->
+      Z.land z1 (word.wrap z2) = Z.land z1 z2.
+    Proof.
+      intros; rewrite Z.land_comm at 1;
+        rewrite Z_land_wrap_l by lia; apply Z.land_comm.
+    Qed.
   End __.
 End word.
 

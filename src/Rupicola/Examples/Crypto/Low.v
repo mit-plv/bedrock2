@@ -9,213 +9,6 @@ Open Scope Z_scope.
 
 (** * Properties missing from coqutil, bedrock2, or Coq's stdlib *)
 
-(** ** Nat.iter **)
-
-Lemma Nat_iter_inv {A} (P: A -> Prop) (fA: A -> A):
-  (forall a, P a -> P (fA a)) ->
-  forall n a,
-    P a ->
-    P (Nat.iter n fA a).
-Proof. intros Hind; induction n; simpl; auto. Qed.
-
-Lemma Nat_iter_const_length {A : Type} f : forall (n : nat) (l0 : list A),
-    (forall l, length (f l) = length l) ->
-    length (Nat.iter n f l0) = length l0.
-Proof. intros; apply Nat_iter_inv; congruence. Qed.
-
-Lemma Nat_iter_rew {A B} (fA: A -> A) (fB: B -> B) (g: A -> B):
-  (forall a, g (fA a) = fB (g a)) ->
-  forall n a b,
-    b = g a ->
-    g (Nat.iter n fA a) = Nat.iter n fB b.
-Proof.
-  intros Heq; induction n; simpl; intros; subst.
-  - reflexivity.
-  - erewrite Heq, IHn; reflexivity.
-Qed.
-
-Lemma Nat_iter_rew_inv {A B} (P: A -> Prop) (fA: A -> A) (fB: B -> B) (g: A -> B):
-  (forall a, P a -> P (fA a)) ->
-  (forall a, P a -> g (fA a) = fB (g a)) ->
-  forall n a b,
-    P a ->
-    b = g a ->
-    P (Nat.iter n fA a) /\
-    g (Nat.iter n fA a) = Nat.iter n fB b.
-Proof.
-  intros Hind Heq; induction n; simpl; intros * Ha ->.
-  - eauto.
-  - specialize (IHn _ _ Ha eq_refl) as [HPa Hg].
-    split; eauto. erewrite Heq, Hg; eauto.
-Qed.
-
-(** ** Forall **)
-
-Lemma Forall_In {A} {P : A -> Prop} {l : list A}:
-  Forall P l -> forall {x}, In x l -> P x.
-Proof.
-  intros HF; rewrite Forall_forall in HF; intuition.
-Qed.
-
-Lemma forall_nth_default {A} (P: A -> Prop) (l: list A) (d: A):
-  (forall i : nat, P (nth i l d)) -> P d.
-Proof.
-  intros H; specialize (H (length l)); rewrite nth_overflow in H;
-    assumption || reflexivity.
-Qed.
-
-Lemma Forall_nth' {A} (P : A -> Prop) (l : list A) d:
-  (P d /\ Forall P l) <-> (forall i, P (nth i l d)).
-Proof.
-  split; intros H *.
-  - destruct H; rewrite <- nth_default_eq; apply Forall_nth_default; eassumption.
-  - split; [eapply forall_nth_default; eassumption|].
-    apply Forall_nth; intros.
-    erewrite nth_indep; eauto.
-Qed.
-
-Lemma Forall_nth_default' {A} (P : A -> Prop) (l : list A) d:
-  P d -> (Forall P l <-> (forall i, P (nth i l d))).
-Proof. intros; rewrite <- Forall_nth'; tauto. Qed.
-
-Lemma Forall_map {A B} (P: B -> Prop) (f: A -> B) (l: list A):
-  Forall (fun x => P (f x)) l ->
-  Forall P (map f l).
-Proof.
-  induction l; simpl; intros H.
-  - apply Forall_nil.
-  - inversion H; subst. apply Forall_cons; tauto.
-Qed.
-
-(** map **)
-
-Lemma map_id {A} (f: A -> A) l:
-  (forall x, List.In x l -> f x = x) ->
-  map f l = l.
-Proof.
-  induction l; simpl.
-  - reflexivity.
-  - intros H; rewrite (H a), IHl by auto; reflexivity.
-Qed.
-
-Lemma skipn_map{A B: Type}: forall (f: A -> B) (n: nat) (l: list A),
-    skipn n (map f l) = map f (skipn n l).
-Proof.
-  induction n; intros.
-  - reflexivity.
-  - simpl. destruct l; simpl; congruence.
-Qed.
-
-(** ** fold **)
-
-Lemma fold_left_Proper :
-  forall [A B : Type] (f f': A -> B -> A) (l l': list B) (i i': A),
-    l = l' -> i = i' ->
-    (forall a b, In b l -> f a b = f' a b) ->
-    fold_left f l i = fold_left f' l' i'.
-Proof.
-  induction l; intros * ? ? Heq; subst; simpl in *;
-    try rewrite Heq; eauto.
-Qed.
-
-(** ** combine **)
-
-Lemma map_combine_fst {A B}: forall lA lB,
-    length lA = length lB ->
-    map fst (@combine A B lA lB) = lA.
-Proof.
-  induction lA; destruct lB; simpl; intros; rewrite ?IHlA; reflexivity || lia.
-Qed.
-
-Lemma map_combine_snd {A B}: forall lB lA,
-    length lA = length lB ->
-    map snd (@combine A B lA lB) = lB.
-Proof.
-  induction lB; destruct lA; simpl; intros; rewrite ?IHlB; reflexivity || lia.
-Qed.
-
-Lemma map_combine_separated {A B A' B'} (fA: A -> A') (fB: B -> B') :
-  forall (lA : list A) (lB: list B),
-    List.map (fun p => (fA (fst p), fB (snd p))) (combine lA lB) =
-    combine (List.map fA lA) (List.map fB lB).
-Proof.
-  induction lA; destruct lB; simpl; congruence.
-Qed.
-
-Lemma map_combine_comm {A B} (f: A * A -> B) :
-  (forall a1 a2, f (a1, a2) = f (a2, a1)) ->
-  forall (l1 l2 : list A),
-    List.map f (combine l1 l2) =
-    List.map f (combine l2 l1).
-Proof.
-  induction l1; destruct l2; simpl; congruence.
-Qed.
-
-Lemma enumerate_offset {A} (l: list A) : forall (start: nat),
-    enumerate start l = map (fun p => (fst p + start, snd p)%nat) (enumerate 0 l).
-Proof.
-  unfold enumerate; induction l; simpl; intros.
-  - reflexivity.
-  - rewrite (IHl (S start)), (IHl 1%nat), List.map_map.
-    f_equal. simpl. apply map_ext.
-    intros; f_equal; lia.
-Qed.
-
-Lemma combine_app {A B} : forall (lA lA': list A) (lB lB': list B),
-    length lA = length lB ->
-    combine (lA ++ lA') (lB ++ lB') = combine lA lB ++ combine lA' lB'.
-Proof.
-  induction lA; destruct lB; simpl; inversion 1; try rewrite IHlA; eauto.
-Qed.
-
-Lemma enumerate_app {A} (l l': list A) start :
-  enumerate start (l ++ l') =
-  enumerate start l ++ enumerate (start + length l) l'.
-Proof.
-  unfold enumerate.
-  rewrite app_length, seq_app, combine_app;
-    eauto using seq_length.
-Qed.
-
-Lemma fold_left_combine_fst {A B C} (f: A -> B -> A) : forall (l1: list C) l2 a0,
-    (List.length l1 >= List.length l2)%nat ->
-    fold_left f l2 a0 = fold_left (fun a '(_, b) => f a b) (combine l1 l2) a0.
-Proof.
-  induction l1; destruct l2; simpl; intros; try rewrite IHl1; reflexivity || lia.
-Qed.
-
-(** ** concat **)
-
-Lemma length_concat_sum {A} (lss: list (list A)) :
-  length (List.concat lss) =
-  List.fold_left Nat.add (List.map (@length _) lss) 0%nat.
-Proof.
-  rewrite fold_symmetric by eauto with arith.
-  induction lss; simpl; rewrite ?app_length, ?IHlss; reflexivity.
-Qed.
-
-(** ** nth **)
-
-Lemma nth_firstn {A} i:
-  forall (l : list A) (d : A) (k : nat),
-    (i < k)%nat -> nth i (firstn k l) d = nth i l d.
-Proof.
-  induction i; destruct k; destruct l; intros;
-    try lia; try reflexivity; simpl.
-  rewrite IHi; reflexivity || lia.
-Qed.
-
-Lemma nth_skipn {A}:
-  forall (l : list A) (d : A) (i k : nat),
-    nth i (skipn k l) d = nth (i + k) l d.
-Proof.
-  intros; destruct (Nat.lt_ge_cases (i + k) (length l)); cycle 1.
-  - rewrite !nth_overflow; rewrite ?skipn_length; reflexivity || lia.
-  - assert ([nth i (skipn k l) d] = [nth (i + k) l d]) as [=->]; try reflexivity.
-    rewrite <- !firstn_skipn_nth; rewrite ?skipn_length; try lia.
-    rewrite skipn_skipn; reflexivity.
-Qed.
-
 (** * upd **)
 
 Lemma upd_overflow {A} (l: list A) d n:
@@ -530,30 +323,33 @@ Proof.
       simpl; reflexivity.
 Qed.
 
-Definition in_bounds x :=
-  0 <= x < 2 ^ 32.
+Definition in_bounds n x :=
+  0 <= x < 2 ^ n.
 
-Definition forall_in_bounds l:
-  (Forall in_bounds l) <-> (forall i, in_bounds (nth i l 0)).
+Definition forall_in_bounds l n:
+  0 <= n ->
+  (Forall (in_bounds n) l) <-> (forall i, in_bounds n (nth i l 0)).
 Proof.
+  intros; pose proof Z.pow_pos_nonneg 2 n.
   rewrite Forall_nth_default' with (d := 0);
     unfold in_bounds; reflexivity || lia.
 Qed.
 
-Lemma le_combine_in_bounds bs:
-  (length bs <= 4)%nat ->
-  in_bounds (le_combine bs).
+Lemma le_combine_in_bounds bs n:
+  (length bs <= n)%nat ->
+  in_bounds (8 * Z.of_nat n) (le_combine bs).
 Proof.
   unfold in_bounds; intros.
   pose proof le_combine_bound bs.
-  pose proof Zpow_facts.Zpower_le_monotone 2 (8 * Z.of_nat (length bs)) 32
+  pose proof Zpow_facts.Zpower_le_monotone 2 (8 * Z.of_nat (length bs)) (8 * Z.of_nat n)
        ltac:(lia) ltac:(lia); lia.
 Qed.
 
-Lemma Forall_le_combine_in_bounds zs:
-  Forall in_bounds (map le_combine (chunk 4 zs)).
+Lemma Forall_le_combine_in_bounds n zs:
+  (0 < n)%nat ->
+  Forall (in_bounds (8 * Z.of_nat n)) (map le_combine (chunk n zs)).
 Proof.
-  eapply Forall_map, Forall_impl.
+  intros; eapply Forall_map, Forall_impl.
   - intros a; apply le_combine_in_bounds.
   - eapply Forall_impl; [ | apply Forall_chunk_length_le ];
       simpl; intros; lia.
@@ -592,7 +388,7 @@ Lemma flat_map_le_split_combine_chunk:
     (length bs mod n)%nat = 0%nat ->
     flat_map (le_split n) (map le_combine (chunk n bs)) = bs.
 Proof.
-  intros; rewrite flat_map_concat_map, map_map, map_id, concat_chunk; [reflexivity|].
+  intros; rewrite flat_map_concat_map, map_map, map_ext_id, concat_chunk; [reflexivity|].
   intros * Hin;
     pose proof (Forall_In (Forall_chunk_length_mod _ n ltac:(lia)) Hin);
     pose proof (Forall_In (Forall_chunk_length_le _ n ltac:(lia)) Hin);
@@ -605,8 +401,8 @@ Lemma map_unsigned_of_Z_le_combine_4 bs :
       (map le_combine (chunk 4 bs)) =
   map le_combine (chunk 4 bs).
 Proof.
-  rewrite map_id; [ reflexivity | ].
-  intros * Hin%(Forall_In (Forall_le_combine_in_bounds bs)).
+  rewrite map_ext_id; [ reflexivity | ].
+  intros * Hin%(Forall_In (Forall_le_combine_in_bounds 4 bs ltac:(lia))).
   apply word.unsigned_of_Z_nowrap; assumption.
 Qed.
 
@@ -874,7 +670,7 @@ Proof.
 Qed.
 
 Lemma quarter_ok a b c d:
-  in_bounds a -> in_bounds b -> in_bounds c -> in_bounds d ->
+  in_bounds 32 a -> in_bounds 32 b -> in_bounds 32 c -> in_bounds 32 d ->
   quarter (word.of_Z a) (word.of_Z b) (word.of_Z c) (word.of_Z d) =
   let '(a', b', c', d') := Spec.quarter (a, b, c, d) in
   \< word.of_Z a', word.of_Z b', word.of_Z c', word.of_Z d' \>.
@@ -888,9 +684,9 @@ Proof.
 Qed.
 
 Lemma quarter_in_bounds a b c d:
-  in_bounds a -> in_bounds b -> in_bounds c -> in_bounds d ->
+  in_bounds 32 a -> in_bounds 32 b -> in_bounds 32 c -> in_bounds 32 d ->
   let '(a', b', c', d') := Spec.quarter (a, b, c, d) in
-  in_bounds a' /\ in_bounds b' /\ in_bounds c' /\ in_bounds d'.
+  in_bounds 32 a' /\ in_bounds 32 b' /\ in_bounds 32 c' /\ in_bounds 32 d'.
 Proof.
   unfold in_bounds; intros.
   rewrite <- (word.unsigned_of_Z_nowrap a), <- (word.unsigned_of_Z_nowrap b) by assumption.
@@ -912,23 +708,23 @@ Definition quarterround x y z t (st : list word) : list word :=
   st.
 
 Lemma quarterround_ok x y z t st :
-  Forall in_bounds st ->
+  Forall (in_bounds 32) st ->
   List.map word.of_Z (Spec.quarterround x y z t st) =
   quarterround x y z t (List.map word.of_Z st).
 Proof.
   unfold Spec.quarterround, quarterround, nlet; autounfold with poly; intros H.
-  rewrite forall_in_bounds in H.
+  rewrite forall_in_bounds in H by lia.
   rewrite !map_nth, !quarter_ok by auto.
   destruct (Spec.quarter _) as (((?&?)&?)&?).
   rewrite !map_upd; reflexivity.
 Qed.
 
 Lemma quarterround_in_bounds x y z t a:
-  Forall in_bounds a ->
-  Forall in_bounds (Spec.quarterround x y z t a).
+  Forall (in_bounds 32) a ->
+  Forall (in_bounds 32) (Spec.quarterround x y z t a).
 Proof.
   unfold Spec.quarterround, nlet; autounfold with poly; intros Ha.
-  pose proof Ha as Ha'; rewrite forall_in_bounds in Ha.
+  pose proof Ha as Ha'; rewrite forall_in_bounds in Ha by lia.
   pose proof quarter_in_bounds (nth x a 0) (nth y a 0) (nth z a 0) (nth t a 0)
        ltac:(eauto) ltac:(eauto) ltac:(eauto) ltac:(eauto) as Hb.
   destruct (Spec.quarter _) as (((?&?)&?)&?).
@@ -1008,13 +804,13 @@ Proof.
   cbn [List.map]; rewrite List.map_app.
   repeat f_equal.
 
-  eapply Nat_iter_rew_inv with (P := Forall in_bounds); intros.
+  eapply Nat_iter_rew_inv with (P := Forall (in_bounds 32)); intros.
   - eauto 10 using quarterround_in_bounds.
   - rewrite !quarterround_ok; try reflexivity;
       eauto 10 using quarterround_in_bounds.
   - repeat (apply Forall_cons; [ red; lia | ]).
     apply Forall_app; split;
-      apply Forall_le_combine_in_bounds.
+      apply (Forall_le_combine_in_bounds 4); lia.
   - cbn [List.map]; rewrite List.map_app; reflexivity.
 Qed.
 

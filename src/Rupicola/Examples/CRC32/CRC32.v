@@ -42,21 +42,11 @@ Section __.
     let/n crc32 := word.xor crc32 (word.of_Z 0xFFFFFFFF) in
     crc32.
 
-  Lemma Z_and_leq_right a b
-    : 0 <= a -> 0 <= b -> Z.land a b <= b.
-  Proof.
-    destruct a as [|pa|], b as [|pb|];
-      rewrite ?Z.land_0_l, ?Z.land_0_r;
-      try lia; intros _ _.
-    revert pb; induction pa; destruct pb; simpl in *; try lia.
-    all: specialize (IHpa pb); destruct Pos.land in *; simpl; lia.
-  Qed.
-
   Lemma word_and_leq_right (a b : word)
     : (word.unsigned (word.and a b)) <= (word.unsigned b).
   Proof.
     rewrite word.unsigned_and_nowrap.
-    apply Z_and_leq_right.
+    apply Z_land_leq_right.
     all: apply word.unsigned_range.
   Qed.
 
