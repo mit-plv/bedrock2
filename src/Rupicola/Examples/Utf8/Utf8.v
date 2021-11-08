@@ -3,9 +3,8 @@ Require Import
         Rupicola.Lib.Api
         Rupicola.Lib.Arrays
         Rupicola.Lib.InlineTables
+        Rupicola.Lib.WordNotations
         Rupicola.Examples.Utf8.Utils.
-
-Require Import bedrock2.BasicC32Semantics.
 
 Definition masks :=
   Eval cbv in List.map byte.of_Z [0x00; 0x7f; 0x1f; 0x0f; 0x07].
@@ -42,9 +41,9 @@ Definition utf8_decode (bs: list byte) : word * word * word :=
   let/n c := c >>w shiftc in
 
   let/n min := InlineTable.get mins len in
-  let/n e := (c <?w min) <<w 6 in
+  let/n e := (c <w min) <<w 6 in
   let/n e := e |w ((c >>w 11) ==w 0x1b) <<w 7 in
-  let/n e := e |w (0x10FFFF <?w c) <<w 8 in
+  let/n e := e |w (0x10FFFF <w c) <<w 8 in
   let/n e := e |w (b1 &w 0xc0) >>w 2 in
   let/n e := e |w (b2 &w 0xc0) >>w 4 in
   let/n e := e |w (b3       ) >>w 6 in

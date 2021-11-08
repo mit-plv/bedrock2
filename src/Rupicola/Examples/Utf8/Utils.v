@@ -1,32 +1,10 @@
 Require Import Rupicola.Lib.Api.
-Require Import bedrock2.BasicC32Semantics.
 
 Definition F {n} p : if lt_dec p n then Fin.t n else unit :=
   match lt_dec p n as cmp return (if cmp then Fin.t n else unit) with
   | left pr => Fin.of_nat_lt pr
   | _ => tt
   end.
-
-Declare Scope word.
-Notation "~w w" := (word.not w) (at level 40, no associativity): word.
-Infix "+w" := word.add (at level 50, left associativity): word.
-Infix "-w" := word.sub (at level 50, left associativity): word.
-Infix ">>w" := word.sru (at level 60, no associativity): word.
-Infix ">>>w" := word.srs (at level 60, no associativity): word.
-Infix "<<w" := word.slu (at level 60, no associativity): word.
-Notation "w1 <?w w2" := (word.b2w (word.ltu w1 w2)) (at level 70, no associativity): word.
-Notation "w1 >?w w2" := (word.b2w (word.gtu w1 w2)) (at level 70, no associativity): word.
-Notation "w1 <?sw w2" := (word.b2w (word.lts w1 w2)) (at level 70, no associativity): word.
-Notation "w1 >?sw w2" := (word.b2w (word.gts w1 w2)) (at level 70, no associativity): word.
-Notation "w1 ==w w2" := (word.b2w (word.eqb w1 w2)) (at level 80, no associativity): word.
-Infix "&w" := word.and (at level 90, left associativity): word.
-Infix "^w" := word.xor (at level 92, left associativity): word.
-Infix "|w" := word.or (at level 94, left associativity): word.
-Coercion co_word_of_Z := word.of_Z (word := word).
-Coercion co_word_of_byte (b: byte) : word := word_of_byte b.
-Coercion co_word_of_Fin {n} (f: Fin.t n) : word :=
-  word.of_Z (Z.of_nat (proj1_sig (Fin.to_nat f))).
-Open Scope word.
 
 Definition byte_of_fin_lt {n} (Hle: (n <= 256)%nat) (f: Fin.t n) : byte :=
   let (n, Hlt) := Fin.to_nat f in
@@ -76,3 +54,10 @@ Section __.
     pose proof word.word_of_byte_range b; apply Z.div_lt_upper_bound; lia.
   Qed.
 End __.
+
+Require Export bedrock2.BasicC32Semantics.
+
+Coercion co_word_of_Z := word.of_Z (word := word).
+Coercion co_word_of_byte (b: byte) : word := word_of_byte b.
+Coercion co_word_of_Fin {n} (f: Fin.t n) : word :=
+  word.of_Z (Z.of_nat (proj1_sig (Fin.to_nat f))).
