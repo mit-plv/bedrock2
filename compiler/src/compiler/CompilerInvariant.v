@@ -182,7 +182,7 @@ Section Pipeline1.
                  List.In a initial.(getXAddrs)) /\
       initial.(getPc) = ml.(code_start) /\
       initial.(getNextPc) = word.add initial.(getPc) (word.of_Z 4) /\
-      FlatToRiscvCommon.regs_initialized initial.(getRegs) /\
+      regs_initialized.regs_initialized initial.(getRegs) /\
       initial.(getLog) = nil /\
       valid_machine initial.
 

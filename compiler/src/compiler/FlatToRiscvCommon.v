@@ -44,6 +44,7 @@ Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import compiler.RunInstruction.
 Require Import compiler.DivisibleBy4.
 Require Import compiler.MetricsToRiscv.
+Require Export compiler.regs_initialized.
 
 Require Import coqutil.Word.Interface.
 Local Hint Mode Word.Interface.word - : typeclass_instances.
@@ -74,47 +75,6 @@ Section WithParameters.
   Context {iset: InstructionSet}.
   Context {width} {BW: Bitwidth width} {word: word.word width}.
   Context {locals: map.map Z word}.
-
-  Definition regs_initialized(regs: locals): Prop :=
-    forall r : Z, 0 < r < 32 -> exists v : word, map.get regs r = Some v.
-
-  Section WithLocalsOk.
-    Context {locals_ok: map.ok locals}.
-
-    Lemma regs_initialized_put: forall l x v,
-        regs_initialized l ->
-        regs_initialized (map.put l x v).
-    Proof.
-      unfold regs_initialized in *.
-      intros.
-      rewrite map.get_put_dec.
-      destruct_one_match; eauto.
-    Qed.
-
-    Lemma preserve_regs_initialized_after_put: forall regs var val,
-        regs_initialized regs ->
-        regs_initialized (map.put regs var val).
-    Proof.
-      unfold regs_initialized. intros. specialize (H _ H0).
-      rewrite map.get_put_dec. destruct_one_match; subst; eauto.
-    Qed.
-
-    Lemma preserve_regs_initialized_after_putmany_of_list_zip: forall vars vals (regs regs': locals),
-        regs_initialized regs ->
-        map.putmany_of_list_zip vars vals regs = Some regs' ->
-        regs_initialized regs'.
-    Proof.
-      induction vars; intros.
-      - simpl in H0. destruct vals; try discriminate.
-        replace regs' with regs in * by congruence. assumption.
-      - simpl in H0.
-        destruct vals; try discriminate.
-        eapply IHvars. 2: eassumption.
-        eapply preserve_regs_initialized_after_put.
-        eassumption.
-    Qed.
-
-  End WithLocalsOk.
 
   Context {fun_info: map.map String.string (nat * nat * Z)}.
   Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).

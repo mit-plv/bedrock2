@@ -507,7 +507,7 @@ Section Connect.
         assumption.
       + reflexivity.
       + reflexivity.
-      + unfold FlatToRiscvCommon.regs_initialized. intros.
+      + unfold regs_initialized.regs_initialized. intros.
         match goal with
         | |- exists _, ?x = Some _ => destr x; [eauto|exfalso]
         end.

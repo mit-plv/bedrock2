@@ -528,7 +528,7 @@ Section MMIO1.
         rewrite map.get_put_diff; eauto. unfold RegisterNames.sp. blia.
       }
       split. {
-        eapply @FlatToRiscvCommon.preserve_regs_initialized_after_put.
+        eapply @regs_initialized.preserve_regs_initialized_after_put.
         2: eassumption.
         typeclasses eauto.
       }

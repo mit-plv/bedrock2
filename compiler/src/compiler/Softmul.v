@@ -32,6 +32,7 @@ Require Import riscv.Proofs.DecodeEncode.
 Require Import riscv.Examples.SoftmulInsts.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import compiler.UniqueSepLog.
+Require Import compiler.regs_initialized.
 
 Axiom TODO: False.
 
@@ -333,14 +334,14 @@ Section Riscv.
     r1#"log" = r2#"log" /\
     r1#"csrs" = map.empty /\
     basic_CSRFields_supported r2 /\
-    exists mtvec_base mscratch stacktrash spval,
+    exists mtvec_base mscratch stacktrash,
       map.get r2#"csrs" CSRField.MTVecBase = Some mtvec_base /\
       map.get r2#"csrs" CSRField.MScratch = Some mscratch /\
       List.length stacktrash = 32%nat /\
       Some r2#"mem" = Some r1#"mem" \*/
                       word_array (word.of_Z mscratch) stacktrash \*/
                       program (word.of_Z (mtvec_base * 4)) handler_insts /\
-      map.get r2#"regs" RegisterNames.sp = Some spval.
+      regs_initialized r2#"regs".
 
   Lemma related_preserves_load_bytes: forall n sH sL a w,
       related sH sL ->
@@ -387,7 +388,7 @@ Section Riscv.
     - exists initialH. intuition (congruence || eauto 10).
     - exists initialH(#"regs" := setReg initialH#"regs" z r). record.simp.
       unfold setReg in *. destr (Z.eq_dec z 0). 1: intuition (congruence || eauto 10).
-      rewrite map.get_put_dec. destr (z =? RegisterNames.sp); intuition (congruence || eauto 10).
+      intuition (congruence || eauto 10 using preserve_regs_initialized_after_put).
     - eapply load_preserves_related; eauto.
     - eapply load_preserves_related; eauto.
     - eapply load_preserves_related; eauto.
@@ -448,9 +449,9 @@ Section Riscv.
   Proof. intros. assumption. Qed.
 
   Lemma interpret_bind{T}(initial: State)(postF: T -> State -> Prop)(postA: State -> Prop) a b s:
-    free.interpret run_primitive (free.bind a b) s postF postA ->
     free.interpret run_primitive a s
-                   (fun (x: T) s0 => free.interpret run_primitive (b x) s0 postF postA) postA.
+                   (fun (x: T) s0 => free.interpret run_primitive (b x) s0 postF postA) postA ->
+    free.interpret run_primitive (free.bind a b) s postF postA.
   Proof. eapply free.interpret_bind. apply weaken_run_primitive. Qed.
 
   Lemma interpret_getPC: forall (initial: State) (postF : word -> State -> Prop) (postA : State -> Prop),
@@ -482,6 +483,17 @@ Section Riscv.
       free.interpret run_primitive (getRegister r) initial postF postA.
   Proof.
     intros. simpl. unfold getReg. destr (Z.eq_dec r 0). 1: exfalso; congruence. rewrite H0. assumption.
+  Qed.
+
+  (* better wrt evar creation order *)
+  Lemma interpret_getRegister': forall (initial: State) (postF: word -> State -> Prop) (postA: State -> Prop) r,
+      0 < r < 32 ->
+      regs_initialized initial#"regs" ->
+      (forall v, map.get initial#"regs" r = Some v -> postF v initial) ->
+      free.interpret run_primitive (getRegister r) initial postF postA.
+  Proof.
+    intros. specialize (H0 _ H). destruct H0. eapply interpret_getRegister. 1: blia.
+    all: eauto.
   Qed.
 
   Lemma interpret_setRegister: forall (initial: State) (postF: unit -> State -> Prop) (postA: State -> Prop) r v,
@@ -588,13 +600,14 @@ Section Riscv.
                             CSRGetSet.getCSR CSRGetSet.setCSR
                             ExecuteI.execute]
     | |- _ => progress cbn_MachineWidth
+    | |- _ => progress intros
     | |- _ => progress unfold ExecuteCSR.checkPermissions, CSRSpec.getCSR, CSRSpec.setCSR,
-                              raiseExceptionWithInfo, updatePc
+                              PseudoInstructions.Csrr, raiseExceptionWithInfo, updatePc
     | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with (@Monads.Return M MM _ tt)
     | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with B
     | |- _ => progress record.simp
     | |- _ => progress change (CSR.lookupCSR MScratch) with CSR.MScratch
-    | |- _ => rewrite !map.get_put_diff by congruence
+    | |- _ => rewrite !map.get_put_diff by (unfold RegisterNames.sp, RegisterNames.ra; congruence)
     | |- mcomp_sat (Monads.Bind _ _) _ _ => eapply mcomp_sat_bind
     | |- free.interpret run_primitive ?x _ _ _ =>
       lazymatch x with
@@ -603,8 +616,13 @@ Section Riscv.
       | free.ret _ => rewrite free.interpret_ret
       | getPC => eapply interpret_getPC
       | setPC _ => eapply interpret_setPC
-      | getRegister RegisterNames.zero => eapply interpret_getRegister0
-      | getRegister _ => eapply interpret_getRegister
+      | getRegister ?r =>
+        lazymatch r with
+        | 0 => eapply interpret_getRegister0
+        | RegisterNames.zero => eapply interpret_getRegister0
+        | _ => first [ eapply interpret_getRegister ; [solve [repeat step]..|]
+                     | eapply interpret_getRegister'; [solve [repeat step]..|] ]
+        end
       | setRegister _ _ => eapply interpret_setRegister
       | endCycleEarly _ => eapply interpret_endCycleEarly
       | getCSRField _ => eapply interpret_getCSRField
@@ -612,10 +630,14 @@ Section Riscv.
       | getPrivMode => eapply interpret_getPrivMode
       end
     | |- RegisterNames.sp <> 0 => cbv; congruence
+    | |- RegisterNames.ra <> 0 => cbv; congruence
+    | |- 0 < RegisterNames.sp < 32 => do 2 split
+    | |- 0 < RegisterNames.ra < 32 => do 2 split
     | |- map.get _ _ = Some _ => eassumption
     | |- map.get _ _ <> None => congruence
     | |- map.get (map.put _ ?x _) ?x = _ => eapply map.get_put_same
     | |- mcomp_sat endCycleNormal _ _ => eapply mcomp_sat_endCycleNormal
+    | H: ?P |- ?P => exact H
     | |- mcomp_sat (run1 RV32I) _ _ =>
       eapply build_fetch; record.simp; cbn_MachineWidth;
         [ etransitivity; [eassumption|]; reify_goal; cancel_program; reflexivity
@@ -628,6 +650,19 @@ Section Riscv.
     end.
 
   Local Hint Mode word.word - : typeclass_instances.
+
+  (*
+  Lemma save_regs_correct: forall start n R addr initial pcval stacktrash (post: State -> Prop),
+      List.length stacktrash = n ->
+      stackaddr = word.add spval (word.of_Z (4 * (Z.of_nat start))) ->
+      Some initial#"mem" = R \*/ word_array addr stacktrash \*/
+              program addr (map (fun r : Z => IInstruction (Sw RegisterNames.sp r (4 * r)))
+                                (List.unfoldn (BinInt.Z.add 1) n start)) ->
+      (forall m, Some m = R \*/ word_array addr
+              program addr (map (fun r : Z => IInstruction (Sw RegisterNames.sp r (4 * r)))
+                                (List.unfoldn (BinInt.Z.add 1) n start))) ->
+      mcomp_sat (run1 iset) initial post.
+   *)
 
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 RV32IM)) initialH post ->
@@ -707,16 +742,48 @@ Section Riscv.
         cbn [mmap.dus].
         reflexivity.
       }
-      repeat step.
       match goal with
       | H: Some _ = _ |- _ => clear H
       end.
-      intros.
       repeat step.
 
       (* Sw sp ra 4 *)
+      eapply runsToStep_cps. repeat step.
+      eapply interpret_storeWord.
+      { repeat step.
+        etransitivity. 1: eassumption.
+        reify_goal.
+        cancel_at 2%nat 1%nat. {
+          unfold one. f_equal.
+        }
+        cbn [mmap.dus].
+        reflexivity.
+      }
+      match goal with
+      | H: Some _ = _ |- _ => clear H
+      end.
+      repeat step.
+
       (* Csrr ra MScratch *)
+      eapply runsToStep_cps. repeat step.
+
       (* Sw sp ra 8 *)
+      eapply runsToStep_cps. repeat step.
+      eapply interpret_storeWord.
+      { repeat step.
+        etransitivity. 1: eassumption.
+        reify_goal.
+        cancel_at 2%nat 1%nat. {
+          unfold one. f_equal.
+        }
+        cbn [mmap.dus].
+        reflexivity.
+      }
+      match goal with
+      | H: Some _ = _ |- _ => clear H
+      end.
+      repeat step.
+
       (* save_regs3to31 *)
       (* Csrr t1 MTVal       t1 := the invalid instruction i that caused the exception *)
       (* Srli t1 t1 5        t1 := t1 >> 5                                             *)
@@ -775,6 +842,9 @@ Section Riscv.
           (* "assumption" and relying on conversion would work too *) }
         eapply mcomp_sat_preserves_related; eassumption.
       + intros midL. intros. simp. eapply H1; eassumption.
+
+    Unshelve.
+    all: try exact (fun _ => True).
   Qed.
 
 End Riscv.
