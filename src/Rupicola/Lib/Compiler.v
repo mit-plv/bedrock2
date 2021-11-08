@@ -448,7 +448,7 @@ Create HintDb compiler_setup_post.
 #[export] Hint Extern 20 (WeakestPrecondition.cmd _ _ _ _ _ _) => shelve : compiler_setup_post.
 
 Tactic Notation "step_with_db" ident(db) :=
-  progress unshelve (typeclasses eauto with db); shelve_unifiable.
+  progress unshelve (typeclasses eauto 10 with db); shelve_unifiable.
 
 Ltac compile_setup :=
   cbv [program_logic_goal_for];
