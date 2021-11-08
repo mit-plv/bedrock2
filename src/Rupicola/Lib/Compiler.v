@@ -524,6 +524,8 @@ Create HintDb compiler_cleanup.
 Hint Rewrite @word.of_Z_unsigned : compiler_cleanup.
 Hint Rewrite @word.of_nat_to_nat_unsigned : compiler_cleanup.
 Hint Rewrite @word.of_Z_of_nat_to_nat_unsigned : compiler_cleanup.
+#[export] Hint Unfold cast : compiler_cleanup.
+#[export] Hint Unfold Convertible_word_nat : compiler_cleanup.
 
 Inductive __DummyRelation : False -> False -> Prop :=
   __DummyConstructor : forall f: False, __DummyRelation f f.

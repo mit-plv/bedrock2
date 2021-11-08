@@ -1,13 +1,6 @@
 From Coq Require Vector List.
 Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.Notations.
-(* Require Import Arith PeanoNat. *)
-
-Class HasDefault (T: Type) := default: T.
-Instance HasDefault_byte : HasDefault byte := Byte.x00.
-
-Class Convertible (T1 T2: Type) := cast: T1 -> T2.
-Instance Convertible_self {A}: Convertible A A := id.
 
 Open Scope list_scope.
 
@@ -857,12 +850,6 @@ Ltac cbn_array :=
   change (Z.of_nat 2%nat) with (2%Z) in *;
   change (Z.of_nat 4%nat) with (4%Z) in *;
   change (Z.of_nat 8%nat) with (8%Z) in *.
-
-Instance Convertible_word_nat {width : Z} {word : word width} : Convertible word nat :=
-  fun w => Z.to_nat (word.unsigned w).
-
-#[export] Hint Unfold cast : compiler_cleanup.
-#[export] Hint Unfold Convertible_word_nat : compiler_cleanup.
 
 Module VectorArrayCompiler.
   #[export] Hint Extern 1 => simple eapply (@compile_byte_vectorarray_get); shelve : compiler.

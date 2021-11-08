@@ -1380,6 +1380,20 @@ Section Rupicola.
   | NotARupicolaBinding.
 
   Class IsRupicolaBinding {T} (t: T) := is_rupicola_binding: RupicolaBindingInfo.
+
+  Class HasDefault (T: Type) := default: T.
+  Global Instance HasDefault_byte : HasDefault byte := Byte.x00.
+  Global Instance HasDefault_nat : HasDefault nat := 0%nat.
+  Global Instance HasDefault_Z : HasDefault Z := 0%Z.
+  Global Instance HasDefault_word {width : Z} {word : Interface.word width}
+    : HasDefault word := word.of_Z 0.
+
+  Class Convertible (T1 T2: Type) := cast: T1 -> T2.
+  Global Instance Convertible_self {A}: Convertible A A := id.
+  Global Instance Convertible_Z_nat : Convertible Z nat := Z.to_nat.
+  Global Instance Convertible_byte_nat : Convertible byte nat := Byte.to_nat.
+  Global Instance Convertible_word_nat {width : Z} {word : word width} : Convertible word nat :=
+    fun w => Z.to_nat (word.unsigned w).
 End Rupicola.
 
 (* TODO: should be upstreamed to coqutil *)
