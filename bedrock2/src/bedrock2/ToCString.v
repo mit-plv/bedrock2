@@ -25,6 +25,7 @@ Definition c_var := @id string.
 Definition c_fun := @id string.
 
 Definition c_lit w := "(uintptr_t)" ++ DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "ULL".
+Definition c_byte_withoutcast b := DecimalString.NilZero.string_of_uint (BinNatDef.N.to_uint (Byte.to_N b)).
 
 Definition c_bop e1 op e2 :=
   match op with
@@ -58,7 +59,7 @@ Fixpoint c_expr (e : expr) : string :=
   | expr.literal v => c_lit v
   | expr.var x => c_var x
   | expr.load s ea => "_br2_load(" ++ c_expr ea ++ ", " ++ c_size s++ ")"
-  | expr.inlinetable s t index => "TODO_inlinetable"
+  | expr.inlinetable s t index => "({ uint8_t _inlinetable["++c_lit (Z.of_nat (List.length t))++"] = {"++concat ", " (List.map c_byte_withoutcast t)++"}; _br2_load((uintptr_t)&_inlinetable["++c_expr index++"], "++c_size s++"); })"
   | expr.op op e1 e2 => c_bop ("(" ++ c_expr e1 ++ ")") op ("(" ++ c_expr e2 ++ ")")
   end.
 
