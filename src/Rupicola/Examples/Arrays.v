@@ -14,19 +14,19 @@ Section with_parameters.
   Definition packet :=
     Vector.t word 2. (* field1, ttl *)
 
-  Definition __lt {a b: nat} : if lt_dec a b return Prop then a < b else True :=
-    match lt_dec a b as c return (if c return Prop then a < b else True) with
+  Definition __lt {a b: nat} : if lt_dec a b return Prop then Nat.lt a b else True :=
+    match lt_dec a b as c return (if c return Prop then Nat.lt a b else True) with
     | left pr => pr
     | _ => I
     end.
 
   Notation _lt :=
     ltac:(lazymatch goal with
-          | [  |- ?a < ?b ] => exact (@__lt a b)
+          | [  |- (?a < ?b)%nat ] => exact (@__lt a b)
           end) (only parsing).
 
-  Notation ttl_idx := 1.
-  Definition field1 (p: packet) := (VectorArray.get p 0 _lt).
+  Notation ttl_idx := 1%nat.
+  Definition field1 (p: packet) := (VectorArray.get p 0%nat _lt).
   Definition ttl (p: packet) := (VectorArray.get p ttl_idx _lt).
 
   Definition Packet (addr: word) (p: packet) : mem -> Prop :=

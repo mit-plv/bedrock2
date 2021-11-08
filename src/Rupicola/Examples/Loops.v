@@ -14,8 +14,6 @@ Section Ex.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Open Scope Z_scope.
-
   Lemma signed_lt_unsigned (w : word):
     word.signed w <= word.unsigned w.
   Proof.

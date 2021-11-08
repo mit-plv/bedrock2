@@ -34,8 +34,6 @@ Section with_parameters.
     compile.
   Qed.
 
-  Open Scope Z_scope.
-
   Definition exZ (x: Z) (y: Z) :=
     let t := y + x in
     let t1 := ((1 - x) * (Z.land y 1) - x) * (Z.land y 1) in

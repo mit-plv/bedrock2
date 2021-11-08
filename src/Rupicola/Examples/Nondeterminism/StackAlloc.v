@@ -1,9 +1,7 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.Arrays.
 Require Import Rupicola.Examples.Nondeterminism.NonDeterminism.
-
 Require Import coqutil.Byte.
-Open Scope Z_scope.
 
 Import NDMonad.
 

@@ -1,9 +1,7 @@
 Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.Notations.
 
-Local Open Scope Z_scope.
-
-Section with_parameters.  
+Section with_parameters.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.

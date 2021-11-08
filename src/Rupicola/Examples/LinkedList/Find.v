@@ -3,6 +3,8 @@ Require Import Rupicola.Lib.SepLocals.
 Require Import Rupicola.Lib.ControlFlow.DownTo.
 Require Import Rupicola.Examples.LinkedList.LinkedList.
 
+Local Open Scope nat_scope.
+
 Section Gallina.
   (* returns the portion of the linked list headed by the first element x for
      which [f x = true]; if there is no such element, returns an empty list *)

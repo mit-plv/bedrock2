@@ -152,8 +152,6 @@ Section Echo.
   As io_sum_target_correct.
   Proof. compile. Qed.
 
-  Open Scope Z_scope.
-
   Definition io_check expected : IO Z :=
     let/! read := call! IO.Read in
     let/! err := if word.eqb (word := word) read expected

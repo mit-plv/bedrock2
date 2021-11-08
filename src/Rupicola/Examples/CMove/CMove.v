@@ -2,7 +2,6 @@ Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.Loops.
 Require Import bedrock2.Semantics.
 Require Import coqutil.Word.Interface coqutil.Byte.
-Local Open Scope Z_scope.
 Require Import Rupicola.Lib.Arrays.
 Require Import Rupicola.Examples.Cells.Cells.
 

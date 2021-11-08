@@ -5,6 +5,8 @@ Require Import Rupicola.Examples.KVStore.Tactics.
 
 Require Import bedrock2.NotationsCustomEntry.
 
+Local Open Scope nat_scope.
+
 Section examples.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.

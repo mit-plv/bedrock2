@@ -32,7 +32,7 @@ Ltac destruct_lists_of_known_length :=
          | H : S _ = S _ |- _ => apply Nat.succ_inj in H
          | H : length ?x = S _ |- _ =>
            destruct x; cbn [length] in H; [ congruence | ]
-         | H : length ?x = 0 |- _ =>
+         | H : length ?x = 0%nat |- _ =>
            destruct x; cbn [length] in H; [ clear H | congruence]
          end;
   cbn [hd tl] in *.

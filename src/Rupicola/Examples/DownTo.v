@@ -2,8 +2,6 @@ Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.Arrays.
 Require Import Rupicola.Lib.ControlFlow.DownTo.
 
-Open Scope Z_scope.
-
 Section Gallina.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
 

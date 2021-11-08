@@ -4,6 +4,8 @@ Require Import Rupicola.Lib.Tactics.
 Require Import Rupicola.Lib.Invariants.
 Require Import Rupicola.Lib.Gensym.
 
+Local Open Scope nat_scope.
+
 Section Gallina.
   Context {A: Type}.
   Implicit Type a : A.

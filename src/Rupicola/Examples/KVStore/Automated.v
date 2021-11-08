@@ -4,6 +4,8 @@ Require Import Rupicola.Examples.KVStore.KVStore.
 Require Import Rupicola.Examples.KVStore.Properties.
 Require Import Rupicola.Examples.KVStore.Tactics.
 
+Local Open Scope nat_scope.
+
 Definition do_or_default {A B}
            (a : option A) (f : A -> B) (default : B) : B :=
   match a with

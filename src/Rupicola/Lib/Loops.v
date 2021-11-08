@@ -298,8 +298,6 @@ Section SimpleFolds.
   Qed.
 End SimpleFolds.
 
-Open Scope Z_scope.
-
 Section ZRange.
   Fixpoint z_range' z0 len :=
     match len with

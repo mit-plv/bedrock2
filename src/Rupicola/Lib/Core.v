@@ -629,12 +629,12 @@ Section Vectors.
   Qed.
 End Vectors.
 
+Global Open Scope Z_scope.
+
 (* TODO: should be upstreamed to coqutil *)
 Module word.
   Section __.
     Context {width} {word : Interface.word width} {ok : word.ok word}.
-
-    Open Scope Z_scope.
 
     Lemma wrap_small x :
       0 <= x < 2 ^ width ->
@@ -1021,7 +1021,6 @@ Section Scalar.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
 
-  Open Scope Z_scope.
   Lemma width_at_least_32 : 32 <= width.
   Proof. destruct width_cases; lia. Qed.
 

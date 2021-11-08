@@ -15,6 +15,7 @@ Module VectorArray.
   Section VectorArray.
     Context {K V: Type}.
     Context {Conv: Convertible K nat}.
+    Open Scope nat_scope.
 
     Definition t n := Vector.t V n.
     Definition get {n} (a: t n) (k: K) (pr: cast k < n) : V :=
@@ -32,6 +33,7 @@ Module ListArray.
     Context {K V: Type}.
     Context {HD: HasDefault V}.
     Context {Conv: Convertible K nat}.
+    Open Scope nat_scope.
 
     Definition t := list V.
     Definition get (a: t) (k: K) : V :=
@@ -77,7 +79,6 @@ Section with_parameters.
   Context {locals_ok : map.ok localsT}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-  Open Scope Z_scope.
 
   Section GenericArray.
     (* No 16 or 32 to avoid depending on two more word instances. *)
