@@ -511,23 +511,23 @@ Section Riscv.
     intros. cbn -[map.get map.rep]. destruct_one_match. 1: assumption. congruence.
   Qed.
 
-  Lemma run_store: forall n addr (v_old v_new: tuple byte n) R (m: State) (kind: SourceType)
+  Lemma run_store: forall n addr (v_old v_new: tuple byte n) R (initial: State) (kind: SourceType)
                           (post: State -> Prop),
-      Some m#"mem" = R \*/ bytes addr v_old ->
-      post m(#"mem" := mmap.force (R \*/ bytes addr v_new)) ->
-      MinimalCSRs.store n kind addr v_new m post.
+      Some initial#"mem" = R \*/ bytes addr v_old ->
+      (forall m: mem, Some m = R \*/ bytes addr v_new -> post initial(#"mem" := m)) ->
+      MinimalCSRs.store n kind addr v_new initial post.
   Proof.
     intros. unfold store, store_bytes.
   Admitted.
 
-  Lemma interpret_storeWord: forall addr (v_old v_new: tuple byte 4) R (m: State)
+  Lemma interpret_storeWord: forall addr (v_old v_new: tuple byte 4) R (initial: State)
                                     (postF: unit -> State -> Prop) (postA: State -> Prop),
-      Some m#"mem" = R \*/ bytes addr v_old ->
-      postF tt m(#"mem" := mmap.force (R \*/ bytes addr v_new)) ->
-      free.interpret run_primitive (Machine.storeWord Execute addr v_new) m postF postA.
+      Some initial#"mem" = R \*/ bytes addr v_old ->
+      (forall m: mem, Some m = R \*/ bytes addr v_new -> postF tt initial(#"mem" := m)) ->
+      free.interpret run_primitive (Machine.storeWord Execute addr v_new) initial postF postA.
   Proof.
     (* Note: some unfolding/conversion is going on here that we prefer to control with
-       this lemma than to control each time we store a word *)
+       this lemma rather than to control each time we store a word *)
     intros. eapply run_store; eassumption.
   Qed.
 
@@ -707,6 +707,11 @@ Section Riscv.
         cbn [mmap.dus].
         reflexivity.
       }
+      repeat step.
+      match goal with
+      | H: Some _ = _ |- _ => clear H
+      end.
+      intros.
       repeat step.
 
       (* Sw sp ra 4 *)
