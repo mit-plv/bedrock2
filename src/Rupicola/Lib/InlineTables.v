@@ -27,13 +27,97 @@ Section __.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
+  Context {K: Type}.
+  Context {Conv: Convertible K nat}.
+
+  Context {HD_byte: HasDefault Byte.byte}.
+  Context {HD_word: HasDefault word}.
+
+  Section Any.
+    Context {V: Type}.
+    Context {HD: HasDefault V}.
+    Context (ConvV: Convertible V byte).
+
+    Lemma compile_inlinetable_get_any_as_byte : forall {tr mem locals functions},
+      forall (idx: K) (t: InlineTable.t V),
+        let v := InlineTable.get t idx in
+        forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+          var idx_expr,
+
+          let n := cast idx in
+          (n < List.length t)%nat ->
+          (Z.of_nat (List.length t) <= 2 ^ width) ->
+
+          WeakestPrecondition.dexpr mem locals idx_expr (word.of_Z (Z.of_nat n)) ->
+
+          (let v := v in
+           <{ Trace := tr;
+              Memory := mem;
+              Locals := map.put locals var (word_of_byte (cast v));
+              Functions := functions }>
+             k_impl
+           <{ pred (k v eq_refl) }>) ->
+
+          <{ Trace := tr;
+             Memory := mem;
+             Locals := locals;
+             Functions := functions }>
+            (cmd.seq
+               (cmd.set var (expr.inlinetable
+                               access_size.one
+                               (List.map cast t)
+                               idx_expr))
+               k_impl)
+          <{ pred (nlet_eq [var] v k) }>.
+    Proof.
+      intros; repeat straightline.
+      exists (word_of_byte (cast v)); split; repeat straightline; eauto.
+      eapply WeakestPrecondition_dexpr_expr; eauto.
+      eexists; split; eauto.
+      unfold load, load_Z, load_bytes, map.getmany_of_tuple; simpl.
+      rewrite OfListWord.map.get_of_list_word.
+      rewrite word.unsigned_of_Z_nowrap, Nat2Z.id by lia.
+      rewrite nth_error_nth' with (d := cast default)
+        by (rewrite map_length; lia).
+      rewrite map_nth.
+      setoid_rewrite LittleEndian.combine_1_of_list.
       reflexivity.
     Qed.
+  End Any.
 
+  Lemma compile_inlinetable_get_byte : forall {tr mem locals functions},
+    forall (idx: K) (t: InlineTable.t byte),
+      let v := InlineTable.get t idx in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+      var idx_expr,
 
+      let n := cast idx in
+      (n < List.length t)%nat ->
+      (Z.of_nat (List.length t) <= 2 ^ width) ->
 
+      WeakestPrecondition.dexpr mem locals idx_expr (word.of_Z (Z.of_nat n)) ->
 
+      (let v := v in
+         <{ Trace := tr;
+            Memory := mem;
+            Locals := map.put locals var (word_of_byte v);
+            Functions := functions }>
+         k_impl
+         <{ pred (k v eq_refl) }>) ->
 
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+        (cmd.seq
+           (cmd.set var (expr.inlinetable access_size.one t idx_expr))
+           k_impl)
+      <{ pred (nlet_eq [var] v k) }>.
+  Proof.
+    intros.
+    rewrite <- (map_id t).
+    apply compile_inlinetable_get_any_as_byte;
+      eauto.
   Qed.
 
   Definition word_to_bytes (z : word) : list byte:=
