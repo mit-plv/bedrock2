@@ -641,6 +641,17 @@ Module word.
       word.wrap x = x.
     Proof. apply Z.mod_small. Qed.
 
+    Lemma wrap_le z:
+      0 <= z -> word.wrap z <= z.
+    Proof.
+      pose proof word.width_pos.
+      intros; apply Z.mod_le; [|apply Z.pow_pos_nonneg]; lia.
+    Qed.
+
+    Lemma wrap_of_nat_le n:
+      word.wrap (Z.of_nat n) <= Z.of_nat n.
+    Proof. apply wrap_le; lia. Qed.
+
     Lemma unsigned_of_Z_b2z b :
       @word.unsigned _ word (word.of_Z (Z.b2z b)) = Z.b2z b.
     Proof.
@@ -652,10 +663,7 @@ Module word.
       0 <= z ->
       word.unsigned (word := word) (word.of_Z z) <= z.
     Proof.
-      intros; rewrite word.unsigned_of_Z; unfold word.wrap.
-      pose proof word.width_pos.
-      pose proof Z.pow_pos_nonneg 2 width.
-      apply Z.mod_le; lia.
+      rewrite word.unsigned_of_Z; apply wrap_le.
     Qed.
 
     Lemma word_to_nat_to_word (w : word) :
@@ -1014,6 +1022,11 @@ Section Scalar.
   Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
 
   Open Scope Z_scope.
+  Lemma width_at_least_32 : 32 <= width.
+  Proof. destruct width_cases; lia. Qed.
+
+  Lemma width_mod_8 : width mod 8 = 0.
+  Proof. destruct width_cases as [-> | ->]; reflexivity. Qed.
 
   Lemma bytes_per_width_bytes_per_word : forall width,
       width >= 0 ->

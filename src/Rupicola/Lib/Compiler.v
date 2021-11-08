@@ -521,6 +521,7 @@ Ltac solve_map_eq :=
   reflexivity.
 
 Create HintDb compiler_cleanup.
+Hint Rewrite @word.of_Z_unsigned : compiler_cleanup.
 Hint Rewrite @word.of_nat_to_nat_unsigned : compiler_cleanup.
 Hint Rewrite @word.of_Z_of_nat_to_nat_unsigned : compiler_cleanup.
 
