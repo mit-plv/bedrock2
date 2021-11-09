@@ -668,6 +668,7 @@ Ltac compile_triple :=
 Ltac compile_step :=
   first [ compile_cleanup |
           compile_autocleanup with compiler_cleanup |
+          step_with_db compiler_cleanup |
           compile_triple |
           compile_solve_side_conditions ].
 
