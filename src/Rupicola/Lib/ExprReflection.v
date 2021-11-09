@@ -304,7 +304,7 @@ Module ExprReflection.
         let l := expr_reify_word W bindings l in
         let r := expr_reify_word W bindings r in
         constr:(EOp (word:=W) (er := expr_word_denotation) nm l r) in
-    lazymatch w with (* FIXME add reification support for gt, ge, le, neg *)
+    lazymatch w with (* FIXME add reification support for gt, ge, le, neg; also for Byte constants *)
     | word.add ?l ?r    => expr_reify_op bopname.add l r
     | word.sub ?l ?r    => expr_reify_op bopname.sub l r
     | word.mul ?l ?r    => expr_reify_op bopname.mul l r
