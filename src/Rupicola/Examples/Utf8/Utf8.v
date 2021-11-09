@@ -76,7 +76,6 @@ Hint Rewrite @word_of_byte_of_fin : compiler_side_conditions.
 #[local] Hint Extern 1 => simple apply word_of_byte_sru_lt : compiler_side_conditions.
 #[local] Hint Extern 10 => cbn; lia : compiler_side_conditions.
 
-Opaque InlineTable.get.
 Derive utf8_decode_body SuchThat
        (defn! "utf8_decode" ("data", "len") ~> "c", "e", "offset"
          { utf8_decode_body },

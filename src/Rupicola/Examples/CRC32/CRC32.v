@@ -79,7 +79,6 @@ Section __.
 
   Import LoopCompiler.
   Import UnsizedListArrayCompiler.
-  Opaque InlineTable.get.
 
   Hint Resolve idx_in_bounds length_representable : compiler_side_conditions.
 
