@@ -32,7 +32,7 @@ Section Conditionals.
           Locals := locals;
           Functions := functions }>
        t_impl
-       <{ val_pred (nlet_eq vars t nlet_id) }>) ->
+       <{ val_pred (nlet vars t id) }>) ->
       (let val_pred := val_pred in
        c = false ->
        <{ Trace := tr;
@@ -40,7 +40,7 @@ Section Conditionals.
           Locals := locals;
           Functions := functions }>
        f_impl
-       <{ val_pred (nlet_eq vars f nlet_id) }>) ->
+       <{ val_pred (nlet vars f id) }>) ->
       (let v := v in
        forall tr mem locals,
          val_pred v tr mem locals ->
