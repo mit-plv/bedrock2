@@ -44,9 +44,21 @@ A: Minimal strategy for bridging that gap: write Gallina with just the right sha
 ## Big picture [C]
 
 1. Target a subset of a good proof language (Gallina)
+
    This is a common strategy, e.g. in F*-land
+
 2. Use tactics to synthesize Bedrock2
+
+   The idea is that each program will use a base compiler and a set of program-specific transformations to get good code
+
    We do this because we want extensibility: because of the misalignments between Gallina and Bedrock2, there's not a single correct way to translate each construct that we might be interested in compiling.  Instead we let users plug in new tactics.
+
+Some examples:
+- Source code mentions lists, need arrays
+  Could move to dealing with arrays, but what’s the point?  We don’t need to twist the code to get good extraction, since we can extend the extraction instead.
+- Similarly, the source code could attempt to use very fancy purely functional structures, but what’s the use?  We can use inefficient structures in the Coq code for reasoning, and swap them out.
+- Source code uses errors (in the option monad), but we want to generate code that checks return codes
+- Source code has options and matches on them, but we prefer to represent these using the null pointer.
 
 For now, no need to worry about memory allocation (caller is responsible)
 
