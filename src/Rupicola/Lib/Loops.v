@@ -65,30 +65,56 @@ Notation body_ext b b' :=
 Section Folds.
   Context {A T: Type}.
   Context (xs: list T).
-  Context (f: forall (acc: A) (x: T), List.In x xs -> A).
+
+  Section Dep.
+    Context (f: forall (acc: A) (x: T), List.In x xs -> A).
+    Context (stop: A -> bool).
+
+    Lemma foldl_dep'0 {x0 suffix}:
+      (forall x, In x (x0 :: suffix) -> In x xs) -> In x0 xs.
+    Proof. simpl; eauto. Defined.
+
+    Lemma foldl_dep'1 {idx tl P}:
+      (forall x : T, In x (idx :: tl) -> P x) ->
+      (forall x : T, In x tl -> P x).
+    Proof. simpl; eauto. Defined.
+
+    Fixpoint foldl_dep' xxs : subseq xxs xs -> A -> A :=
+      match xxs with
+      | [] => fun _ a => a
+      | x :: xxs => fun pr a =>
+                    if stop a then a
+                    else let a := f a x (foldl_dep'0 pr) in
+                         foldl_dep' xxs (foldl_dep'1 pr) a
+      end.
+  End Dep.
+
+  Context (f: forall (acc: A) (x: T), A).
   Context (stop: A -> bool).
 
-  Lemma foldl_dep'0 {x0 suffix}:
-    (forall x, In x (x0 :: suffix) -> In x xs) -> In x0 xs.
-  Proof. simpl; eauto. Defined.
-
-  Lemma foldl_dep'1 {idx tl P}:
-    (forall x : T, In x (idx :: tl) -> P x) ->
-    (forall x : T, In x tl -> P x).
-  Proof. simpl; eauto. Defined.
-
-  Fixpoint foldl_dep' xxs : subseq xxs xs -> A -> A :=
-    match xxs with
-    | [] => fun _ a => a
-    | x :: xxs => fun pr a =>
-                  if stop a then a
-                  else let a := f a x (foldl_dep'0 pr) in
-                       foldl_dep' xxs (foldl_dep'1 pr) a
+  Fixpoint foldl xs (a: A) : A :=
+    match xs with
+    | [] => a
+    | x :: xs =>
+        if stop a then a
+        else foldl xs (f a x)
     end.
+
+  Lemma foldl_as_foldl_dep' :
+    forall (xxs: list T) H (a0: A),
+      foldl xxs a0 = foldl_dep' (fun a idx _ => f a idx) stop xxs H a0.
+  Proof.
+    induction xxs; simpl; intros; erewrite ?IHxxs; reflexivity.
+  Qed.
 End Folds.
 
 Notation foldl_dep xs f stop a0 :=
   (foldl_dep' xs f stop xs subseq_refl a0).
+
+Lemma foldl_as_foldl_dep {A T} f stop :
+  forall (xs: list T) (a0: A),
+    foldl f stop xs a0 = foldl_dep xs (fun a idx _ => f a idx) stop a0.
+Proof. intros; apply foldl_as_foldl_dep'. Qed.
 
 Section Props.
   Context {A T: Type}.
@@ -264,16 +290,14 @@ Arguments foldl_dep' {A T} xs f stop !xxs _ _ / : assert.
 Section SimpleFolds.
   Context {A B T: Type}.
 
-  Lemma foldl_as_foldl_dep' (f: A -> T -> A) xs xxs Hs:
-    forall a0,
-      fold_left f xxs a0 =
-      foldl_dep' xs (fun a x _ => f a x) (fun _ => false) xxs Hs a0.
-  Proof. induction xxs; simpl; eauto. Qed.
+  Lemma fold_left_as_foldl (f: A -> T -> A) xs:
+    forall a0, fold_left f xs a0 = foldl f  (fun _ => false) xs a0.
+  Proof. induction xs; simpl; eauto. Qed.
 
-  Lemma foldl_as_foldl_dep (f: A -> T -> A) xs a0:
+  Lemma fold_left_as_foldl_dep (f: A -> T -> A) xs a0:
     fold_left f xs a0 =
-    foldl_dep' xs (fun a x _ => f a x) (fun _ => false) xs subseq_refl a0.
-  Proof. eauto using foldl_as_foldl_dep'. Qed.
+    foldl_dep xs (fun a x _ => f a x) (fun _ => false) a0.
+  Proof. rewrite fold_left_as_foldl; eauto using foldl_as_foldl_dep. Qed.
 
   Lemma map_as_fold_left' (f: A -> B) :
     forall xs xs', xs' ++ List.map f xs =
@@ -352,6 +376,12 @@ Section ZRange.
       lia.
   Qed.
 
+  Lemma z_range'_length : forall len from,
+      List.length (z_range' from len) = len.
+  Proof.
+    induction len; intros; simpl; rewrite ?IHlen; reflexivity.
+  Qed.
+
   Lemma z_range'_app:
     forall len from len',
       z_range' from (len + len') =
@@ -378,6 +408,10 @@ Section ZRange.
   Proof.
     unfold z_range; intros; apply z_range'_complete; lia.
   Qed.
+
+  Lemma z_range_length from to :
+    List.length (z_range from to) = Z.to_nat (to - from).
+  Proof. unfold z_range; rewrite z_range'_length; reflexivity. Qed.
 
   Lemma range_unique from to z :
     forall (h h': from - 1 < z < to), h = h'.
@@ -437,9 +471,8 @@ Section Loops.
   Context {A: Type}.
   Context (from to: Z).
 
-  Context (body: forall (acc: A) (idx: Z), from - 1 < idx < to -> A).
-
   Section WithBreak.
+    Context (body: forall (acc: A) (idx: Z), from - 1 < idx < to -> A).
     Context (stop: A -> bool).
 
     Definition ranged_for_break a0 :=
@@ -457,14 +490,49 @@ Section Loops.
     Proof. unfold ranged_for_break; auto using foldl_dep_exit, z_range_nil. Qed.
   End WithBreak.
 
+  Section WithBreakSimple.
+    Context (body: forall (acc: A) (idx: Z), A).
+    Context (stop: A -> bool).
+
+    Definition nd_ranged_for_break a0 :=
+      foldl body stop (z_range from to) a0.
+
+    Lemma nd_as_ranged_for_break a0:
+      nd_ranged_for_break a0 =
+      ranged_for_break (fun a idx _ => body a idx) stop a0.
+    Proof. apply foldl_as_foldl_dep. Qed.
+  End WithBreakSimple.
+
   Section NoBreak.
+    Context (body: forall (acc: A) (idx: Z), from - 1 < idx < to -> A).
+
     Definition ranged_for_all :=
-      ranged_for_break (fun _ => false).
+      ranged_for_break body (fun _ => false).
 
     Lemma ranged_for_all_exit a0:
       from >= to -> ranged_for_all a0 = a0.
     Proof. intros; apply ranged_for_break_exit; assumption. Qed.
   End NoBreak.
+
+  Section NoBreakSimple.
+    Context (body: forall (acc: A) (idx: Z), A).
+
+    Definition ranged_for_all_nd :=
+      nd_ranged_for_break body (fun _ => false).
+
+    Lemma nd_as_ranged_for_all a0:
+      ranged_for_all_nd a0 =
+      ranged_for_all (fun a idx _ => body a idx) a0.
+    Proof. apply foldl_as_foldl_dep. Qed.
+
+    Lemma fold_left_as_ranged_for_all_nd a0:
+      fold_left body (z_range from to) a0 =
+      ranged_for_all_nd a0.
+    Proof.
+      rewrite fold_left_as_foldl, nd_as_ranged_for_all;
+        symmetry; apply nd_as_ranged_for_all.
+    Qed.
+  End NoBreakSimple.
 End Loops.
 
 Section Properties.
@@ -695,7 +763,7 @@ Qed.
 Section FoldsAsLoops.
   Context {A B T: Type}.
 
-  Lemma copying_foldl_as_ranged_foldl' (f: A -> B -> A):
+  Lemma copying_fold_left_as_ranged_fold_left' (f: A -> B -> A):
     forall l1 l0 a0,
       List.fold_left f (l0 ++ l1) a0 =
       List.fold_left
@@ -716,7 +784,7 @@ Section FoldsAsLoops.
       simpl; repeat f_equal. lia.
   Qed.
 
-  Lemma copying_foldl_as_ranged_foldl (f: A -> B -> A):
+  Lemma copying_fold_left_as_ranged_fold_left (f: A -> B -> A):
     forall l a0,
       List.fold_left f l a0 =
       List.fold_left
@@ -729,10 +797,10 @@ Section FoldsAsLoops.
         a0.
   Proof.
     intros; unfold z_range; rewrite Z.sub_0_r, Nat2Z.id.
-    apply copying_foldl_as_ranged_foldl' with (l0 := []).
+    apply copying_fold_left_as_ranged_fold_left' with (l0 := []).
   Qed.
 
-  Lemma copying_foldl_as_ranged_for (f: A -> B -> A):
+  Lemma copying_fold_left_as_ranged_for_all (f: A -> B -> A):
     forall l a0 f',
       (forall idx pr, nth_error l (Z.to_nat idx) =
                  Some (f' l idx pr)) ->
@@ -741,14 +809,14 @@ Section FoldsAsLoops.
                      (fun a idx pr => f a (f' l idx pr)) a0.
   Proof.
     intros * Hf'.
-    rewrite copying_foldl_as_ranged_foldl, foldl_as_foldl_dep.
+    rewrite copying_fold_left_as_ranged_fold_left, fold_left_as_foldl_dep.
     unfold ranged_for_all, ranged_for_break.
     apply foldl_dep_Proper_strong; eauto; intros.
     erewrite Hf'; reflexivity.
   Qed.
 
   (* There are two kinds of folds: those that can keep consulting the original
-     list because it is not mutated (`copying_foldl` above), and those that have
+     list because it is not mutated (`copying_fold_left` above), and those that have
      to consult the list that's being mutated instead.  TODO: Support those, as
      a generalization of the `map` code below.  *)
 
@@ -806,7 +874,7 @@ Section FoldsAsLoops.
       ranged_for_all 0 (Z.of_nat (List.length xs)) f' xs.
   Proof.
     intros * Hf'.
-    rewrite map_as_inplace_fold, foldl_as_foldl_dep.
+    rewrite map_as_inplace_fold, fold_left_as_foldl_dep.
     unfold ranged_for_all, ranged_for_break.
     apply foldl_dep_Proper_strong; eauto.
     intros ?? idx ?? xs'.
