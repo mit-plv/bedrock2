@@ -7,27 +7,27 @@ Section Tree.
   Context {ext_spec: bedrock2.Semantics.ExtSpec}.
   Notation address := word.
 
-  Inductive Annotated {t : Type} :=
-  | Borrowed : address -> t -> Annotated
-  | Owned : t -> Annotated
-  .
-  Arguments Annotated : clear implicits.
+  Inductive annotation :=
+  | Borrowed (a: address)
+  | Reserved (a: address)
+  | Owned.
 
-  Inductive tree {alpha : Type}:=
+  Notation Annotated alpha := (annotation * alpha)%type.
+
+  Inductive tree {alpha : Type} :=
   | Empty : tree
-  | Node : alpha -> tree -> tree -> tree
-  .
+  | Node : alpha -> tree -> tree -> tree.
+
   Arguments tree : clear implicits.
 
   Section defs.
     Context {alpha : Type}.
 
-    Fixpoint lift (t : tree alpha)
-    : tree (Annotated alpha) :=
-      match t with 
+    Fixpoint owned (t : tree alpha)
+      : tree (Annotated alpha) :=
+      match t with
       | Empty => Empty
-      | Node a l r =>
-        Node (Owned a) (lift l) (lift r)
+      | Node a l r => Node (Owned, a) (owned l) (owned r)
       end.
 
     Definition setRoot (t : tree alpha) (a : alpha)
@@ -82,8 +82,9 @@ Section Tree.
                  (x : Annotated alpha)
         : mem -> Prop :=
         match x with
-        | Borrowed p _ => emp (addr = p)
-        | Owned a => Alpha addr a
+        | (Borrowed p, _) => emp (addr = p)
+        | (Reserved p, a) => sep (Alpha addr a) (emp (addr = p))
+        | (Owned, a) => Alpha addr a
         end.
 
       Fixpoint Tree
@@ -93,8 +94,8 @@ Section Tree.
         match t with
         | Empty => emp (addr = word.of_Z 0)
         | Node a r l =>
-          let laddr := word.add addr word_offset in 
-          let raddr := word.add laddr word_offset in 
+          let laddr := word.add addr word_offset in
+          let raddr := word.add laddr word_offset in
           sep (AnnotatedAlpha addr a)
               (sep (Tree laddr l) (Tree raddr r))
         end.
@@ -103,27 +104,24 @@ Section Tree.
 
   Section proofs.
     Context {alpha : Type}.
-    Lemma lift_setRoot_comm t (a : alpha) :
-      setRoot (lift t) (Owned a) = lift (setRoot t a).
+    Lemma owned_setRoot_comm t (a : alpha) :
+      setRoot (owned t) (Owned, a) = owned (setRoot t a).
     Proof. destruct t; reflexivity. Qed.
 
-    Definition liftf {T} (f : alpha -> T)
-               (x : Annotated alpha) :=
-      match x with
-      | Borrowed _ x => f x
-      | Owned x => f x
-      end.
+    Definition lift {T} (f : alpha -> T) (x : Annotated alpha) :=
+      f (snd x).
 
-    Lemma lift_replace_comm t cond (a : alpha) :
-      replace (lift t) (liftf cond) (Owned a)
-      = (lift (fst (replace t cond a)),
+    Lemma owned_replace_comm t cond (a : alpha) :
+      replace (owned t) (lift cond) (Owned, a)
+      = (owned (fst (replace t cond a)),
          snd (replace t cond a)).
     Proof.
-      induction t; cbn [replace lift];
+      induction t; cbn [replace owned];
         try reflexivity.
       repeat match goal with
              | _ => progress subst
-             | _ => progress cbn [lift liftf fst snd] in *
+             | _ => progress unfold lift in *
+             | _ => progress cbn [owned fst snd] in *
              | H : (_,_) = (_,_) |- _ =>
                inversion H; clear H
              | |- context [match ?x with _ => _ end] =>
@@ -149,8 +147,8 @@ Section Tree.
       Lemma lookup_replace t cond :
         forall a olda pt pa R mem,
           sep (sep (Tree pt t) (Alpha pa a)) R mem ->
-          lookup t cond = Some (Borrowed pa olda) ->
-          sep (Tree pt (fst (replace t cond (Owned a)))) R mem.
+          lookup t cond = Some (Borrowed pa, olda) ->
+          sep (Tree pt (fst (replace t cond (Owned, a)))) R mem.
       Proof.
         induction t; intros;
           repeat match goal with
@@ -167,23 +165,16 @@ Section Tree.
                  | _ => congruence
                  | _ => ecancel_assumption
                  end.
-        { use_sep_assumption.
-          cancel.
-          admit. }
-        { exfalso.
-          admit. }
-        { exfalso.
-          admit. }
-        { exfalso.
-          admit. }
-        { use_sep_assumption.
-          cancel. admit. }
-        { exfalso.
-          admit. }
-      Admitted.
+        1: use_sep_assumption; cancel.
+        2: exfalso.
+        3: exfalso.
+        4: exfalso.
+        5: use_sep_assumption; cancel.
+        6: exfalso.
+      Abort.
     End sep.
 
-    Lemma replace_replace t cond (a1 a2 : alpha) : 
+    Lemma replace_replace t cond (a1 a2 : alpha) :
       cond a1 = true ->
       replace (fst (replace t cond a1)) cond a2 =
       replace t cond a2.
@@ -200,10 +191,38 @@ Section Tree.
       (*          | _ => reflexivity *)
       (*          | _ => congruence *)
       (*          end. *)
-   Admitted.
+    Abort.
+
+    Section borrowing.
+      Context {Alpha : word -> alpha -> mem -> Prop}
+              {word_size_in_bytes : Z}.
+
+      Open Scope nat_scope.
+      Definition a (n: nat) := n + 1.
+      Definition b (n: nat) := a n + 1.
+      Definition c (n: nat) := b n + 1.
+
+      Hint Unfold a : test.
+      Hint Unfold b : test.
+      Hint Unfold c : test.
+
+      (* Goal c 3 = 5. *)
+      (*   autounfold with test. *)
+
+
+      (* Lemma borrow_reserved : *)
+      (*   forall addr t cond pa a, *)
+      (*     find t (lift cond) = Some (Reserved pa, a) -> *)
+      (*     Tree (Alpha := Alpha) addr t -> *)
+      (*     sep (Alpha a) (Tree addr (replace t (lift cond) (Borrowed pa, a))). *)
+      (* Abort. *)
+
+
+      (* Lemma owned_replace_comm t cond (a : alpha) : *)
+      (*   replace (owned t) (lift cond) (Owned, a) *)
+      (*   = (owned (fst (replace t cond a)), *)
+      (*       snd (replace t cond a)). *)
+      (* Abort. *)
+    End borrowing.
   End proofs.
 End Tree.
-
-  
-                           
-                             
