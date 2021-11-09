@@ -87,325 +87,6 @@ Proof.
     subst; eauto; eauto.
 Qed.
 
-(** ** div_up **)
-
-Ltac div_up_t :=
-  cbv [Nat.div_up]; zify;
-  rewrite ?Zdiv.div_Zdiv, ?mod_Zmod in * by Lia.lia;
-  Z.div_mod_to_equations;
-  nia.
-
-Lemma div_up_eqn a b:
-  Nat.div_up a b =
-  (a / b + if a mod b =? 0 then 0 else 1)%nat.
-Proof.
-  destruct (Nat.eq_dec b 0); [ subst; reflexivity | ].
-  destruct (Nat.eqb_spec (a mod b) 0); div_up_t.
-Qed.
-
-Lemma div_up_add_mod a b n:
-  (a mod n = 0)%nat ->
-  Nat.div_up (a + b) n =
-  (Nat.div_up a n + Nat.div_up b n)%nat.
-Proof.
-  intros; destruct (Nat.eq_dec n 0); subst; [ reflexivity | ].
-  rewrite !div_up_eqn.
-  rewrite <- Nat.add_mod_idemp_l by assumption.
-  replace (a mod n)%nat; cbn [Nat.add Nat.eqb].
-  rewrite (Nat.div_mod a n) by assumption.
-  replace (a mod n)%nat; cbn [Nat.add Nat.eqb].
-  rewrite !Nat.add_0_r, !(Nat.mul_comm n (a/n)).
-  rewrite !Nat.div_add_l, !Nat.div_mul by assumption.
-  lia.
-Qed.
-
-Lemma div_up_exact a b:
-  (b <> 0)%nat ->
-  (a mod b = 0)%nat <->
-  (a = b * (Nat.div_up a b))%nat.
-Proof.
-  intros.
-  rewrite div_up_eqn.
-  split; intros Heq.
-  - rewrite Heq; cbn; rewrite Nat.mul_add_distr_l, Nat.mul_0_r, Nat.add_0_r.
-    apply Nat.div_exact; assumption.
-  - replace a; rewrite Nat.mul_comm; apply Nat.mod_mul; assumption.
-Qed.
-
-Lemma div_up_exact_mod a b:
-  (b <> 0)%nat ->
-  (a mod b = 0)%nat ->
-  ((Nat.div_up a b) * b = a)%nat.
-Proof. intros * H0 Hmod; eapply div_up_exact in Hmod; lia. Qed.
-
-(** ** chunks **)
-
-Lemma Forall_chunk'_length_mod {A} (l: list A) n:
-  forall acc, (length acc < n)%nat ->
-         ((length l + length acc) mod n = length l mod n)%nat ->
-         Forall (fun c => length c = n \/ length c = length l mod n)%nat
-                (chunk' n l acc).
-Proof.
-  set (length l) as ll at 2 3; clearbody ll.
-  induction l; simpl; intros.
-  - destruct acc; eauto; [].
-    apply Forall_cons; eauto.
-    right. rewrite <- (Nat.mod_small _ n); assumption.
-  - destruct (_ <? _)%nat eqn:Hlt.
-    + rewrite Nat.ltb_lt in Hlt.
-      eapply IHl; try lia; [].
-      rewrite app_length; cbn [List.length].
-      replace (ll mod n)%nat; f_equal; lia.
-    + rewrite Nat.ltb_ge in Hlt.
-      apply Forall_cons;
-        rewrite app_length in *; cbn [List.length] in *;
-          replace (S (length l + length acc)) with (length l + n)%nat in * by lia.
-      * left; lia.
-      * apply IHl; simpl; try lia.
-        replace (ll mod n)%nat.
-        symmetry; rewrite <- Nat.add_mod_idemp_r at 1 by lia. (* FIXME why does ‘at 2’ not work? *)
-        rewrite Nat.mod_same by lia.
-        reflexivity.
-Qed.
-
-Lemma Forall_chunk'_length_pos {A} (l: list A) n:
-  forall acc, Forall (fun c => length c > 0)%nat (chunk' n l acc).
-Proof.
-  induction l; simpl; intros.
-  - destruct acc; eauto; [].
-    apply Forall_cons; simpl; eauto || lia.
-  - destruct (_ <? _)%nat; eauto; [].
-    apply Forall_cons; rewrite ?app_length; cbn [length];
-      eauto || lia.
-Qed.
-
-Lemma Forall_chunk_length_mod {A} (l: list A) n:
-  (0 < n)%nat ->
-  Forall (fun c => length c = n \/ length c = length l mod n)%nat (chunk n l).
-Proof.
-  intros; apply Forall_chunk'_length_mod; simpl; eauto.
-Qed.
-
-Lemma Forall_chunk_length_le {A} (l: list A) n:
-  (0 < n)%nat -> Forall (fun c => 0 < length c <= n)%nat (chunk n l).
-Proof.
-  intros; eapply Forall_impl; cycle 1.
-  - apply Forall_and;
-      [ apply Forall_chunk_length_mod | apply Forall_chunk'_length_pos ];
-      eauto.
-  - cbv beta.
-    pose proof Nat.mod_upper_bound (length l) n ltac:(lia).
-    intros ? ([-> | ->] & ?); lia.
-Qed.
-
-Lemma length_chunk_app {A} (l l' : list A) (n : nat) :
-  (n <> 0)%nat ->
-  (length l mod n)%nat = 0%nat ->
-  length (chunk n (l ++ l')) = length (chunk n l ++ chunk n l').
-Proof.
-  intros; repeat rewrite ?app_length, ?length_chunk by assumption.
-  rewrite div_up_add_mod by assumption; reflexivity.
-Qed.
-
-Lemma chunk_app {A} : forall (l l': list A) n,
-    (n <> 0)%nat ->
-    (length l mod n = 0)%nat ->
-    chunk n (l ++ l') = chunk n l ++ chunk n l'.
-Proof.
-  intros * Hn Hmod.
-  eapply nth_ext with (d := []) (d' := []); [ | intros idx ].
-  - apply length_chunk_app; assumption.
-  - intros Hidx; eassert (Some _ = Some _) as HS; [ | injection HS; intros Hs; apply Hs ].
-    rewrite <- !nth_error_nth' by assumption.
-    rewrite <- !nth_error_nth' by (rewrite length_chunk_app in Hidx; eassumption).
-    assert (idx < length (chunk n l) \/ length (chunk n l) <= idx)%nat as [Hlt | Hge] by lia;
-      [ rewrite nth_error_app1 | rewrite nth_error_app2 ]; try eassumption.
-    all: rewrite !nth_error_chunk.
-    all: repeat rewrite ?length_chunk, ?app_length, ?div_up_add_mod in Hlt by assumption.
-    all: repeat rewrite ?length_chunk, ?app_length, ?div_up_add_mod in Hidx by assumption.
-    all: repeat rewrite ?length_chunk, ?app_length, ?div_up_add_mod in Hge by assumption.
-    all: rewrite ?length_chunk, ?app_length, ?div_up_add_mod by assumption.
-    all: try lia.
-    all: pose proof Nat.div_up_range (length l) n ltac:(lia).
-    + pose proof div_up_exact_mod (length l) n ltac:(lia) ltac:(lia).
-      rewrite !firstn_skipn_comm, !firstn_app.
-      replace (idx * n + n - length l)%nat with 0%nat by nia.
-      simpl; rewrite app_nil_r; reflexivity.
-    + rewrite Nat.mul_sub_distr_r.
-      erewrite div_up_exact_mod by lia.
-      rewrite skipn_app, skipn_all2; [ reflexivity | nia ].
-Qed.
-
-(** * byte **)
-
-Lemma testbit_byte_unsigned_ge b n:
-  8 <= n ->
-  Z.testbit (byte.unsigned b) n = false.
-Proof.
-  intros;
-    erewrite prove_Zeq_bitwise.testbit_above;
-    eauto using byte.unsigned_range;
-    lia.
-Qed.
-
-(* FIXME this doesn't do anything *)
-Hint Rewrite testbit_byte_unsigned_ge using solve [auto with zarith] : z_bitwise_with_hyps.
-
-(* FIXME isn't this defined somewhere already? *)
-Definition byte_land (b1 b2: byte) :=
-  byte.of_Z (Z.land (byte.unsigned b1) (byte.unsigned b2)).
-
-Lemma byte_unsigned_land (b1 b2: byte) :
-  byte.unsigned (byte_land b1 b2) =
-  Z.land (byte.unsigned b1) (byte.unsigned b2).
-Proof.
-  unfold byte_land; rewrite byte.unsigned_of_Z.
-  unfold byte.wrap; rewrite <- Z.land_ones.
-  bitblast.Z.bitblast.
-  rewrite testbit_byte_unsigned_ge.
-  all: lia.
-Qed.
-
-Lemma byte_xor_comm b1 b2:
-  byte.xor b1 b2 = byte.xor b2 b1.
-Proof. unfold byte.xor; rewrite Z.lxor_comm; reflexivity. Qed.
-
-(** ** le_combine / le_split **)
-
-Arguments le_combine: simpl nomatch.
-Arguments le_split : simpl nomatch.
-Arguments Z.mul: simpl nomatch.
-
-Lemma le_combine_app bs1 bs2:
-  le_combine (bs1 ++ bs2) =
-  Z.lor (le_combine bs1) (Z.shiftl (le_combine bs2) (Z.of_nat (List.length bs1) * 8)).
-Proof.
-  induction bs1; cbn -[Z.shiftl Z.of_nat Z.mul]; intros.
-  - rewrite Z.mul_0_l, Z.shiftl_0_r; reflexivity.
-  - rewrite IHbs1, Z.shiftl_lor, Z.shiftl_shiftl, !Z.lor_assoc by lia.
-    f_equal; f_equal; lia.
-Qed.
-
-Lemma le_combine_app_0 bs:
-  le_combine (bs ++ [x00]) = le_combine bs.
-Proof.
-  rewrite le_combine_app; simpl; rewrite Z.shiftl_0_l, Z.lor_0_r.
-  reflexivity.
-Qed.
-
-Lemma le_split_mod z n:
-  le_split n z = le_split n (z mod 2 ^ (Z.of_nat n * 8)).
-Proof.
-  apply le_combine_inj.
-  - rewrite !length_le_split; reflexivity.
-  - rewrite !le_combine_split.
-    Z.push_pull_mod; reflexivity.
-Qed.
-
-Lemma split_le_combine' bs n:
-  List.length bs = n ->
-  le_split n (le_combine bs) = bs.
-Proof. intros <-; apply split_le_combine. Qed.
-
-Lemma Z_land_le_combine bs1 : forall bs2,
-    Z.land (le_combine bs1) (le_combine bs2) =
-    le_combine (List.map (fun '(x, y) => byte_land x y) (combine bs1 bs2)).
-Proof.
-  induction bs1.
-  - reflexivity.
-  - destruct bs2; [ apply Z.land_0_r | ]; cbn -[Z.shiftl] in *.
-    rewrite <- IHbs1, !byte_unsigned_land, !Z.shiftl_land.
-    bitblast.Z.bitblast.
-    assert (l < 0 \/ 8 <= i) as [Hlt | Hge] by lia.
-    + rewrite !(Z.testbit_neg_r _ l) by assumption.
-      rewrite !Bool.orb_false_r; reflexivity.
-    + rewrite !testbit_byte_unsigned_ge by lia.
-      simpl; reflexivity.
-Qed.
-
-Definition in_bounds n x :=
-  0 <= x < 2 ^ n.
-
-Definition forall_in_bounds l n:
-  0 <= n ->
-  (Forall (in_bounds n) l) <-> (forall i, in_bounds n (nth i l 0)).
-Proof.
-  intros; pose proof Z.pow_pos_nonneg 2 n.
-  rewrite Forall_nth_default' with (d := 0);
-    unfold in_bounds; reflexivity || lia.
-Qed.
-
-Lemma le_combine_in_bounds bs n:
-  (length bs <= n)%nat ->
-  in_bounds (8 * Z.of_nat n) (le_combine bs).
-Proof.
-  unfold in_bounds; intros.
-  pose proof le_combine_bound bs.
-  pose proof Zpow_facts.Zpower_le_monotone 2 (8 * Z.of_nat (length bs)) (8 * Z.of_nat n)
-       ltac:(lia) ltac:(lia); lia.
-Qed.
-
-Lemma Forall_le_combine_in_bounds n zs:
-  (0 < n)%nat ->
-  Forall (in_bounds (8 * Z.of_nat n)) (map le_combine (chunk n zs)).
-Proof.
-  intros; eapply Forall_map, Forall_impl.
-  - intros a; apply le_combine_in_bounds.
-  - eapply Forall_impl; [ | apply Forall_chunk_length_le ];
-      simpl; intros; lia.
-Qed.
-
-Lemma le_split_0_l z:
-  le_split 0 z = [].
-Proof. reflexivity. Qed.
-
-Lemma le_split_0_r n:
-  le_split n 0 = repeat x00 n.
-Proof.
-  induction n.
-  - reflexivity.
-  - unfold le_split; fold le_split.
-    rewrite Z.shiftr_0_l, IHn; reflexivity.
-Qed.
-
-Lemma le_split_zeroes : forall m n z,
-  0 <= z < 2 ^ (8 * Z.of_nat n) ->
-  le_split (n + m) z = le_split n z ++ le_split m 0.
-Proof.
-  induction n; cbn -[Z.pow Z.of_nat Z.shiftr]; intros * (Hle & Hlt).
-  - replace z with 0 by lia; reflexivity.
-  - rewrite IHn, !le_split_0_r; try reflexivity; [].
-    rewrite Z.shiftr_div_pow2 by lia; split.
-    + apply Z.div_pos; lia.
-    + replace (8 * Z.of_nat (S n)) with (8 + 8 * Z.of_nat n)%Z in Hlt by lia.
-      rewrite Z.pow_add_r in Hlt by lia.
-      apply Z.div_lt_upper_bound; lia.
-Qed.
-
-Lemma flat_map_le_split_combine_chunk:
-  forall bs n,
-    (0 < n)%nat ->
-    (length bs mod n)%nat = 0%nat ->
-    flat_map (le_split n) (map le_combine (chunk n bs)) = bs.
-Proof.
-  intros; rewrite flat_map_concat_map, map_map, map_ext_id, concat_chunk; [reflexivity|].
-  intros * Hin;
-    pose proof (Forall_In (Forall_chunk_length_mod _ n ltac:(lia)) Hin);
-    pose proof (Forall_In (Forall_chunk_length_le _ n ltac:(lia)) Hin);
-    cbv beta in *.
-  rewrite split_le_combine'; reflexivity || lia.
-Qed.
-
-Lemma map_unsigned_of_Z_le_combine_4 bs :
-  map (fun z : Z => word.unsigned (word := word) (word.of_Z z))
-      (map le_combine (chunk 4 bs)) =
-  map le_combine (chunk 4 bs).
-Proof.
-  rewrite map_ext_id; [ reflexivity | ].
-  intros * Hin%(Forall_In (Forall_le_combine_in_bounds 4 bs ltac:(lia))).
-  apply word.unsigned_of_Z_nowrap; assumption.
-Qed.
-
 (** ** padding **)
 
 Definition padded_len {A} (l: list A) (m: nat) :=
@@ -438,55 +119,6 @@ Proof.
   rewrite app_length, repeat_length, <- le_plus_minus by lia.
   apply Nat.mod_mul; assumption.
 Qed.
-
-(** ** words **)
-
-Section words.
-  (* FIXME these proofs about word/Z are a pain *)
-  Context {width} {word : Interface.word width} {word_ok: word.ok word}.
-
-  Lemma _of_Z_land_ones z :
-    word.of_Z (Z.land z (Z.ones width)) = word.of_Z (word := word) z.
-  Proof.
-    rewrite Z.land_ones by apply word.width_nonneg.
-    apply word.unsigned_inj; rewrite !word.unsigned_of_Z; unfold word.wrap.
-    Z.push_pull_mod; reflexivity.
-  Qed.
-
-  Lemma Z_land_ones_word_add (a b: word) :
-    Z.land (word.unsigned a + word.unsigned b) (Z.ones width) =
-    word.unsigned (word.add a b).
-  Proof. rewrite Z.land_ones, word.unsigned_add; reflexivity || apply word.width_nonneg. Qed.
-
-  Lemma Z_land_ones_rotate (a: word) b (Hrange: 0 < b < width) :
-    Z.land (Z.shiftl (word.unsigned a) b + Z.shiftr (word.unsigned a) (width - b)) (Z.ones width) =
-    word.unsigned (word.add (word.slu a (word.of_Z b)) (word.sru a (word.sub (word.of_Z width) (word.of_Z b)))).
-  Proof.
-    rewrite Z.land_ones, word.unsigned_add by lia.
-    rewrite word.unsigned_slu, word.unsigned_sru, !word.unsigned_of_Z_nowrap.
-    unfold word.wrap; Z.push_pull_mod.
-    rewrite word.unsigned_sub, !word.unsigned_of_Z, !word.wrap_small.
-    reflexivity.
-    all: pose proof Zpow_facts.Zpower2_lt_lin width word.width_nonneg.
-    all: rewrite ?word.unsigned_sub, ?word.unsigned_of_Z_nowrap, ?word.wrap_small; lia.
-  Qed.
-
-  Lemma _of_Z_land_ones_rotate a b (Ha: 0 <= a < 2 ^ width) (Hb: 0 < b < width) :
-    word.of_Z (Z.land (Z.shiftl a b + Z.shiftr a (width - b)) (Z.ones width)) =
-    word.add (word := word)
-      (word.slu (word.of_Z a) (word.of_Z b))
-      (word.sru (word.of_Z a) (word.sub (word.of_Z width) (word.of_Z b))).
-  Proof.
-    apply word.unsigned_inj.
-    rewrite word.unsigned_add, word.unsigned_slu, word.unsigned_sru_nowrap;
-      rewrite ?word.unsigned_sub, ?word.unsigned_of_Z_nowrap.
-    all: rewrite ?(word.wrap_small b), ?(word.wrap_small (width - b)).
-    unfold word.wrap; rewrite Z.land_ones by apply word.width_nonneg;
-      Z.push_pull_mod; reflexivity.
-    all: pose proof Zpow_facts.Zpower2_lt_lin width word.width_nonneg; try lia.
-    rewrite Z.land_ones by lia; apply Z.mod_pos_bound; lia.
-  Qed.
-End words.
 
 (** * Types and operations **)
 
@@ -630,7 +262,7 @@ Proof.
   Z.push_pull_mod.
   rewrite !app_nil_l.
   repeat f_equal.
-  rewrite le_combine_app_0.
+  rewrite le_combine_snoc_0.
   rewrite <- Z_land_le_combine.
   reflexivity.
 Qed.
@@ -655,9 +287,9 @@ Definition quarter a b c d : \<< word, word, word, word \>> :=
   let/n c := c + d in  let/n b := b ^ c in  let/n b := b <<< word.of_Z 7 in
   \< a, b, c, d \>.
 
-Hint Rewrite Z_land_ones_rotate using (split; reflexivity) : quarter.
+Hint Rewrite word.Z_land_ones_rotate using (split; reflexivity) : quarter.
 Hint Rewrite <- word.unsigned_xor_nowrap : quarter.
-Hint Rewrite Z_land_ones_word_add : quarter.
+Hint Rewrite word.Z_land_ones_word_add : quarter.
 
 Lemma quarter_ok0 a b c d:
   Spec.quarter (word.unsigned a, word.unsigned b, word.unsigned c, word.unsigned d) =
@@ -952,6 +584,63 @@ Proof.
     apply length_spec_chacha20_encrypt; auto.
 Qed.
 
+Lemma padding_len_mod {A} (bs1 bs2: list A) n :
+  (List.length bs1 mod n = List.length bs2 mod n)%nat ->
+  padding_len bs1 n = padding_len bs2 n.
+Proof. rewrite !padding_len_eqn; intros ->; reflexivity. Qed.
+
+Lemma padding_len_round {A} (bs: list A) n :
+  let rlen := (n * (length bs / n))%nat in
+  padding_len (skipn rlen bs) n = padding_len bs n.
+Proof.
+  destruct (Nat.eq_dec n 0) as [->|]; intros.
+  - reflexivity.
+  - intros; apply padding_len_mod.
+    rewrite skipn_length; subst rlen.
+    rewrite <- Nat.mod_eq, Nat.mod_mod by assumption.
+    reflexivity.
+Qed.
+
+Lemma chunk_split {A} (bs: list A) n:
+  (n > 0)%nat ->
+  let rlen := (n * (length bs / n))%nat in
+  chunk n bs =
+  if (length bs mod n =? 0)%nat then chunk n bs
+  else chunk n (firstn rlen bs) ++ [skipn rlen bs].
+Proof.
+  intros.
+  pose proof Nat.mod_le (length bs) n ltac:(lia).
+  pose proof Nat.mod_upper_bound (length bs) n ltac:(lia).
+  destruct (Nat.eqb_spec (length bs mod n) 0) as [Hz|Hnz].
+  - reflexivity.
+  - rewrite <- (firstn_skipn rlen bs) at 1.
+    rewrite !chunk_app; try lia.
+    f_equal; rewrite chunk_small; [reflexivity|].
+    all: subst rlen.
+    + rewrite skipn_length, <- Nat.mod_eq; lia.
+    + rewrite firstn_length_le, Nat.mul_comm, Nat.mod_mul; [..| apply Nat.mul_div_le]; lia.
+Qed.
+
+Lemma chunk_pad bs n:
+  (n > 0)%nat ->
+  let rlen := (n * (length bs / n))%nat in
+  chunk n (pad bs n) =
+  if (length bs mod n =? 0)%nat then chunk n bs
+  else chunk n (firstn rlen bs) ++ [pad (skipn rlen bs) n].
+Proof.
+  intros; unfold pad; rewrite <- (firstn_skipn (n * (length bs / n))%nat bs), <- !app_assoc.
+  rewrite !(chunk_app (firstn _ _)), !firstn_skipn; try lia.
+  subst rlen; rewrite padding_len_round, padding_len_eqn, !Nat_mod_eq'' by lia.
+  2-3: rewrite firstn_length_le, Nat.mul_comm, Nat.mod_mul; try lia; apply Nat.mul_div_le; lia.
+  destruct (Nat.eqb_spec (length bs mod n) 0) as [->|Hnz]; f_equal.
+  - simpl; rewrite app_nil_r; reflexivity.
+  - rewrite chunk_small; [reflexivity|].
+    rewrite app_length, skipn_length, repeat_length by lia.
+    pose proof Nat.mod_le (length bs) n ltac:(lia).
+    pose proof Nat.mod_upper_bound (length bs) n ltac:(lia).
+    lia.
+Qed.
+
 Lemma poly1305_loop_pad z z' msg :
   poly1305_loop z z' msg true =
   poly1305_loop z z' (pad msg 16) false.
@@ -977,23 +666,17 @@ Proof.
     reflexivity.
   }
 
-  rewrite <- (firstn_skipn (16 * (length msg / 16))%nat msg), <- !app_assoc.
-  rewrite !(chunk_app (firstn _ _)), !firstn_skipn; try lia.
-  2-3: rewrite firstn_length_le, Nat.mul_comm, Nat.mod_mul by lia; reflexivity.
-
-  rewrite !fold_left_app.
-  set (fold_left _ (chunk 16 (firstn _ _)) _) as prefix.
-
-  rewrite padding_len_eqn.
+  change (msg ++ repeat _ _) with (pad msg 16);
+    rewrite (chunk_split msg) by lia; rewrite (chunk_pad msg) by lia.
+  unfold pad; rewrite padding_len_eqn, skipn_length, <- Nat.mod_eq, Nat.mod_mod by lia.
   destruct (Nat.eqb_spec (length msg mod 16) 0) as [Hz|Hnz].
-  - cbn [repeat]; rewrite app_nil_r; reflexivity.
-  - pose proof Nat.mod_upper_bound (length msg) 16 ltac:(lia).
-    rewrite !chunk_small.
+  - reflexivity.
+  - rewrite !fold_left_app.
+    set (fold_left _ (chunk 16 (firstn _ _)) _) as prefix.
     cbn [fold_left List.app]; rewrite <- !app_assoc.
-    all: rewrite ?app_length, ?skipn_length, ?repeat_length, <- ?Nat.mod_eq.
-    replace (16 - (length msg mod 16 + (16 - length msg mod 16)))%nat with 0%nat.
-    reflexivity.
-    all: lia.
+    rewrite app_length, skipn_length, repeat_length; do 6 f_equal.
+    rewrite app_assoc, <- repeat_app; do 2 f_equal.
+    lia.
 Qed.
 
 Lemma poly1305_pad_header key header message footer pad_message pad_footer tag:
