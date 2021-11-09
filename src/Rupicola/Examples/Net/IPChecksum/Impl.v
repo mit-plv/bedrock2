@@ -1,9 +1,10 @@
-Require Import
+Require Export
         Rupicola.Lib.Api
         Rupicola.Lib.Arrays
         Rupicola.Lib.Loops
-        Rupicola.Lib.WordNotations.
-Require Import
+        Rupicola.Lib.WordNotations
+        Rupicola.Examples.Net.IPChecksum.Spec.
+Require Export
         bedrock2.BasicC32Semantics.
 
 Coercion co_word_of_Z := word.of_Z (word := word).
@@ -21,7 +22,7 @@ Definition ip_checksum_impl (bs: list byte) : word :=
 
   (* Main loop *)
   let/n chk16 :=
-    ranged_for_all_nd
+    nd_ranged_for_all
       0 (Z.of_nat (List.length bs) / 2)
       (fun chk16 idx =>
          let/n b0 := ListArray.get bs (2 * idx) in
@@ -127,9 +128,9 @@ Section Properties.
       rewrite Heq in *; lia.
   Qed.
 
-  Lemma ranged_for_all_nd_combine2 {A} (f: A -> byte -> byte -> A) (bs: list byte) n acc:
+  Lemma nd_ranged_for_all_combine2 {A} (f: A -> byte -> byte -> A) (bs: list byte) n acc:
     (n >= length bs)%nat ->
-    (let acc := ranged_for_all_nd
+    (let acc := nd_ranged_for_all
                  0 (Z.of_nat n / 2)
                  (fun acc idx =>
                     f acc
@@ -138,7 +139,7 @@ Section Properties.
                  acc in
      if Z.odd (Z.of_nat n) then f acc (ListArray.get bs (Z.of_nat n - 1)) default
      else acc) =
-      (ranged_for_all_nd
+      (nd_ranged_for_all
          0 (Z.of_nat (Nat.div_up n 2))
          (fun acc idx =>
             f acc
@@ -149,7 +150,7 @@ Section Properties.
     intros.
     rewrite div_up_eqn.
     rewrite Nat2Z.inj_add.
-    rewrite <- !fold_left_as_ranged_for_all_nd.
+    rewrite <- !fold_left_as_nd_ranged_for_all.
     rewrite (z_range_app 0 (Z.of_nat (n / 2)) (_ + _)) by lia.
     rewrite fold_left_app.
     rewrite Nat2Z_inj_div.
@@ -331,8 +332,8 @@ Section Properties.
     ip_checksum_impl bs = word.of_Z (ip_checksum bs).
   Proof.
     unfold ip_checksum, ip_checksum_impl, nlet, co_word_of_byte, co_word_of_Z.
-    rewrite ranged_for_all_nd_combine2 by lia.
-    rewrite <- fold_left_as_ranged_for_all_nd.
+    rewrite nd_ranged_for_all_combine2 by lia.
+    rewrite <- fold_left_as_nd_ranged_for_all.
     rewrite word.morph_and, word.morph_not.
     erewrite fold_left_push_fn
       with (f' := fun w z => word_onec_add16 w (word.of_Z z))
@@ -342,7 +343,7 @@ Section Properties.
       eapply (In_map_combine_in_bounds 2); eassumption || lia. }
     { intros * Hin%(In_map_combine_in_bounds 2 ltac:(lia)) Ha0.
       eapply word_morph_onec_add; eassumption. }
-    { red; lia. }.
+    { red; lia. }
     { rewrite (copying_fold_left_as_ranged_fold_left _ (List.map _ _)).
       rewrite map_length, length_chunk by lia.
       do 2 f_equal; apply fold_left_Proper; try reflexivity; []. {

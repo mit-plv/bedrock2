@@ -517,20 +517,19 @@ Section Loops.
   Section NoBreakSimple.
     Context (body: forall (acc: A) (idx: Z), A).
 
-    Definition ranged_for_all_nd :=
+    Definition nd_ranged_for_all :=
       nd_ranged_for_break body (fun _ => false).
 
     Lemma nd_as_ranged_for_all a0:
-      ranged_for_all_nd a0 =
+      nd_ranged_for_all a0 =
       ranged_for_all (fun a idx _ => body a idx) a0.
     Proof. apply foldl_as_foldl_dep. Qed.
 
-    Lemma fold_left_as_ranged_for_all_nd a0:
+    Lemma fold_left_as_nd_ranged_for_all a0:
       fold_left body (z_range from to) a0 =
-      ranged_for_all_nd a0.
+      nd_ranged_for_all a0.
     Proof.
-      rewrite fold_left_as_foldl, nd_as_ranged_for_all;
-        symmetry; apply nd_as_ranged_for_all.
+      rewrite fold_left_as_foldl, !nd_as_ranged_for_all; reflexivity.
     Qed.
   End NoBreakSimple.
 End Loops.
@@ -577,7 +576,7 @@ Section Properties.
     Context (body: forall (acc: A) (idx: Z), from - 1 < idx < to -> A).
 
     Context (H0: P a0).
-    Context (Hbody: forall idx a1 Hle, P a1 -> P (body a1 idx Hle)).
+    Context (Hbody: forall a1 idx Hle, P a1 -> P (body a1 idx Hle)).
 
     Section WithBreak.
       Context (stop: A -> bool).
@@ -945,6 +944,32 @@ Section WithTok.
     Qed.
   End Loops.
 
+  Section SimpleLoops.
+    Context (from to: Z)
+            (body: forall (acc: A) (tok: ExitToken.t) (idx: Z), ExitToken.t * A)
+            (a0: A).
+
+    Definition nd_ranged_for' :=
+      nd_ranged_for_break
+        from to
+        (fun acc idx => body (snd acc) ExitToken.new idx)
+        (fun tok_acc => ExitToken.get (fst tok_acc))
+        (ExitToken.new, a0).
+
+    Lemma nd_as_ranged_for' :
+      nd_ranged_for' =
+      ranged_for' from to (fun acc tok idx _ => body acc tok idx) a0.
+    Proof. apply nd_as_ranged_for_break. Qed.
+
+    Definition nd_ranged_for :=
+      snd nd_ranged_for'.
+
+    Lemma nd_as_ranged_for :
+      nd_ranged_for =
+      ranged_for from to (fun acc tok idx _ => body acc tok idx) a0.
+    Proof. unfold nd_ranged_for, ranged_for; f_equal; apply nd_as_ranged_for'. Qed.
+  End SimpleLoops.
+
   Lemma ranged_for'_Proper :
     forall from from' to to' body body' a0 a0',
       a0 = a0' ->
@@ -1059,13 +1084,42 @@ Section with_parameters.
       End Induction.
     End WithTok.
 
+    Section SimpleWithTok.
+      Context (body: forall (acc: A) (tok: ExitToken.t) (idx: word),
+                  (ExitToken.t * A)).
+
+      Definition nd_w_body_tok acc tok idx :=
+        body acc tok (word.of_Z idx).
+
+      Definition nd_ranged_for_w (a0: A) : A :=
+        nd_ranged_for (to_Z from) (to_Z to) nd_w_body_tok a0.
+      Definition nd_ranged_for_w_continued (a0: A) : \<< word, A \>> :=
+        \< to, nd_ranged_for_w a0 \>.
+
+      Lemma nd_as_ranged_for_w a0 :
+        nd_ranged_for_w a0 =
+        ranged_for_w (fun acc tok idx _ => body acc tok idx) a0.
+      Proof.
+        unfold nd_ranged_for_w, ranged_for_w.
+        rewrite nd_as_ranged_for; reflexivity.
+      Qed.
+
+      Lemma nd_as_ranged_for_w_continued a0 :
+        nd_ranged_for_w_continued a0 =
+        ranged_for_w_continued (fun acc tok idx _ => body acc tok idx) a0.
+      Proof.
+        unfold nd_ranged_for_w_continued, ranged_for_w_continued.
+        rewrite nd_as_ranged_for_w; reflexivity.
+      Qed.
+    End SimpleWithTok.
+
     Section NoBreak.
-      Context (body: forall (idx: word) (acc: A),
+      Context (body: forall (acc: A) (idx: word),
                   to_Z from - 1 < to_Z idx < to_Z to ->
                   A).
 
       Definition w_body acc idx pr :=
-        body (word.of_Z idx) acc (ranged_for_w1 pr).
+        body acc (word.of_Z idx) (ranged_for_w1 pr).
 
       Definition ranged_for_all_w (a0: A) : A :=
         ranged_for_all (to_Z from) (to_Z to) w_body a0.
@@ -1081,7 +1135,7 @@ Section with_parameters.
       Section Induction.
         Context (P: A -> Prop) (a0: A).
         Context (H0: P a0).
-        Context (Hbody: forall idx a1 Hle, P a1 -> P (body idx a1 Hle)).
+        Context (Hbody: forall a1 idx Hle, P a1 -> P (body a1 idx Hle)).
 
         Lemma ranged_for_all_w_ind : P (ranged_for_all_w a0).
         Proof.
@@ -1090,6 +1144,34 @@ Section with_parameters.
         Qed.
       End Induction.
     End NoBreak.
+
+    Section SimpleNoBreak.
+      Context (body: forall (acc: A) (idx: word), A).
+
+      Definition nd_w_body acc idx :=
+        body acc (word.of_Z idx).
+
+      Definition nd_ranged_for_all_w (a0: A) : A :=
+        nd_ranged_for_all (to_Z from) (to_Z to) nd_w_body a0.
+      Definition nd_ranged_for_all_w_continued (a0: A) : \<< word, A \>> :=
+        \< to, nd_ranged_for_all_w a0 \>.
+
+      Lemma nd_as_ranged_for_all_w a0 :
+        nd_ranged_for_all_w a0 =
+        ranged_for_all_w (fun acc idx _ => body acc idx) a0.
+      Proof.
+        unfold nd_ranged_for_all_w, ranged_for_all_w.
+        rewrite nd_as_ranged_for_all; reflexivity.
+      Qed.
+
+      Lemma nd_as_ranged_for_all_w_continued a0 :
+        nd_ranged_for_all_w_continued a0 =
+        ranged_for_all_w_continued (fun acc idx _ => body acc idx) a0.
+      Proof.
+        unfold nd_ranged_for_all_w_continued, ranged_for_all_w_continued.
+        rewrite nd_as_ranged_for_all_w; reflexivity.
+      Qed.
+    End SimpleNoBreak.
   End Loops.
 
   Section Unsigned.
@@ -1117,6 +1199,16 @@ Section with_parameters.
 
     Definition ranged_for_all_u_ind :=
       ranged_for_all_w_ind word_unsigned_of_Z_bracketed.
+
+    Definition nd_ranged_for_u :=
+      nd_ranged_for_w (to_Z := word.unsigned).
+    Definition nd_ranged_for_u_continued :=
+      nd_ranged_for_w_continued (to_Z := word.unsigned).
+
+    Definition nd_ranged_for_all_u :=
+      nd_ranged_for_all_w (to_Z := word.unsigned).
+    Definition nd_ranged_for_all_u_continued :=
+      nd_ranged_for_all_w_continued (to_Z := word.unsigned).
   End Unsigned.
 
   Section Signed.
@@ -1144,6 +1236,16 @@ Section with_parameters.
 
     Definition ranged_for_all_s_ind :=
       ranged_for_all_w_ind word_signed_of_Z_bracketed.
+
+    Definition nd_ranged_for_s :=
+      nd_ranged_for_w (to_Z := word.signed).
+    Definition nd_ranged_for_s_continued :=
+      nd_ranged_for_w_continued (to_Z := word.signed).
+
+    Definition nd_ranged_for_all_s :=
+      nd_ranged_for_all_w (to_Z := word.signed).
+    Definition nd_ranged_for_all_s_continued :=
+      nd_ranged_for_all_w_continued (to_Z := word.signed).
   End Signed.
 
   Definition wZ_must_pos (a: Z) {_ : Bitwidth width} :
