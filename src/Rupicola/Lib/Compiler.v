@@ -64,6 +64,23 @@ Section CompilerBasics.
       <{ pred (nlet vs2 v k2) }>.
   Proof. intros; assumption. Qed.
 
+  Lemma compile_nlet_push_continuation {tr mem locals functions} {A B B'} vs1 (f: B -> B') (v1: A) (k1: A -> B):
+    let v := f (nlet vs1 v1 k1) in
+    forall {pred: B' -> predicate} {cmd},
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd
+      <{ pred (nlet vs1 v1 (fun v1 => f (k1 v1))) }> ->
+      <{ Trace := tr;
+         Memory := mem;
+         Locals := locals;
+         Functions := functions }>
+      cmd
+      <{ pred (f (nlet vs1 v1 k1)) }>.
+  Proof. intros; assumption. Qed.
+
   Lemma compile_skip {tr mem locals functions} {pred0: predicate} :
     pred0 tr mem locals ->
     (<{ Trace := tr;
@@ -569,10 +586,13 @@ Ltac compile_unfold_head_binder :=
   compile_unfold_head_binder' p.
 
 Create HintDb compiler.
+Create HintDb compile_pull_binding.
+#[export] Hint Extern 1 =>
+  simple eapply compile_nested_nlet; shelve : compile_pull_binding.
+#[export] Hint Extern 1 =>
+  simple eapply compile_nlet_push_continuation; shelve : compile_pull_binding.
 
 Ltac compile_binding :=
-  (* We want to flip nlets before introducing nlet_eq. *)
-  try simple apply compile_nested_nlet;
   (* We don't want to show users goals with nlet_eq, so compile_nlet_as_nlet_eq
      isn't in the ‘compiler’ hint db. *)
   try simple apply compile_nlet_as_nlet_eq;
@@ -655,10 +675,12 @@ Ltac compile_solve_side_conditions :=
   end.
 
 Ltac compile_triple :=
+  let _ := compile_find_post in
+  try clear_old_seps;
+  (* Reorder `nlet`s before introducing `nlet_eq` and checking for bindings. *)
+  repeat step_with_db compile_pull_binding;
   lazymatch compile_find_post with
-  | (_, ?hd) =>
-    try clear_old_seps;
-    (* Look for a binding: if there is none, finish compiling *)
+  | (_, ?hd) => (* Look for a binding: if there is none, finish compiling *)
     lazymatch is_rupicola_binding hd with
     | RupicolaBinding _ _ => first [compile_custom | compile_binding]
     | NotARupicolaBinding => compile_unset_and_skip
