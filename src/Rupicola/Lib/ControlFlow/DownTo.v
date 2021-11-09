@@ -269,7 +269,7 @@ Ltac compile_downto :=
   end.
 
 Module DownToCompiler.
-  #[export] Hint Extern 1 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (downto _ _ _) _))) =>
+  #[export] Hint Extern 1 (WP_nlet_eq (downto _ _ _)) =>
     compile_downto; shelve : compiler.
 End DownToCompiler.
 

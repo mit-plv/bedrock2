@@ -198,6 +198,11 @@ Notation "<{ 'Trace' := tr ; 'Memory' := mem ; 'Locals' := locals ; 'Functions' 
     (at level 0,
      format "'[v' <{  '[v' 'Trace'  :=  '[hv' tr ']' ; '//' 'Memory'  :=  '[hv' mem ']' ; '//' 'Locals'  :=  '[hv' locals ']' ; '//' 'Functions'  :=  '[hv' functions ']' ']'  }> '//' cmd '//' <{  '[hv' post ']'  }> ']'").
 
+Notation WP_val v := (WeakestPrecondition.cmd _ _ _ _ _ (_ v)) (only parsing).
+Notation WP_dlet v := (WP_val (dlet v _)) (only parsing).
+Notation WP_nlet v := (WP_val (nlet _ v _)) (only parsing).
+Notation WP_nlet_eq v := (WP_val (nlet_eq _ v _)) (only parsing).
+
 Notation "'liftexists' x .. y ',' P" :=
   (Lift1Prop.ex1
      (fun x =>

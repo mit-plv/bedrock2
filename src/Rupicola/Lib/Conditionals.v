@@ -123,12 +123,10 @@ Ltac compile_if :=
 #[export] Hint Extern 2 (IsRupicolaBinding (if _ then _ else _)) =>
   (exact (RupicolaBinding Set [])) : typeclass_instances.
 
-#[export] Hint Extern 1
- (WeakestPrecondition.cmd _ _ _ _ _ (_ (if _ then _ else _))) =>
+#[export] Hint Extern 1 (WP_val (if _ then _ else _)) =>
   simple eapply compile_tail_if; shelve : compiler.
 
-#[export] Hint Extern 1
- (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (if _ then _ else _) _))) =>
+#[export] Hint Extern 1 (WP_nlet_eq (if _ then _ else _)) =>
   compile_if; shelve : compiler.
 
 Section Examples.
