@@ -2054,17 +2054,26 @@ Ltac _compile_ranged_for locals to thm :=
 Ltac compile_ranged_for :=
   lazymatch goal with
   | [ |- WeakestPrecondition.cmd _ _ _ _ ?locals (_ (nlet_eq _ ?v _)) ] =>
-    lazymatch v with
-    | (ranged_for_u _ ?to _ _) =>
-      _compile_ranged_for locals to compile_ranged_for_u
-    | (ranged_for_s _ ?to _ _) =>
-      _compile_ranged_for locals to compile_ranged_for_s
-    end
+      lazymatch v with
+      | (ranged_for 0%Z ?to _ _) =>
+          _compile_ranged_for locals to (compile_ranged_for_fresh false)
+      | (ranged_for _ ?to _ _) =>
+          _compile_ranged_for locals to (compile_ranged_for_fresh true)
+      | (ranged_for_u _ ?to _ _) =>
+          _compile_ranged_for locals to compile_ranged_for_u
+      | (ranged_for_s _ ?to _ _) =>
+          _compile_ranged_for locals to compile_ranged_for_s
+      end
   end.
 
 Module LoopCompiler.
   #[export] Hint Extern 1 => compile_ranged_for_continued; shelve : compiler.
   #[export] Hint Extern 1 => compile_ranged_for; shelve : compiler.
+
+  #[export] Hint Extern 1 (WP_nlet (nd_ranged_for_all _ _ _ _)) =>
+    rewrite nd_as_ranged_for_all; shelve : compiler_cleanup.
+  #[export] Hint Extern 1 (WP_nlet (ranged_for_all _ _ _ _)) =>
+    rewrite ranged_for_all_as_ranged_for; shelve : compiler_cleanup.
 End LoopCompiler.
 
 Section Examples.

@@ -56,6 +56,7 @@ Section Properties.
       split; reflexivity.
   Qed.
 
+  (* FIXME: already exists as div_Zdiv, mod_Zmod *)
   Lemma Nat2Z_inj_div_mod a b:
     Z.of_nat (a / b) = Z.of_nat a / Z.of_nat b /\
     Z.of_nat (a mod b) = Z.of_nat a mod Z.of_nat b.

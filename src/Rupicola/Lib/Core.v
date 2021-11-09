@@ -1114,6 +1114,18 @@ Module word.
       rewrite ?Z.testbit_neg_r by assumption; reflexivity.
     Qed.
 
+    Lemma morph_shiftr z n:
+      0 <= n < width ->
+      0 <= z < 2 ^ width ->
+      word.of_Z (Z.shiftr z n) = word.sru (word := word) (word.of_Z z) (word.of_Z n).
+    Proof.
+      intros; apply word.unsigned_inj.
+      rewrite word.unsigned_sru_shamtZ, !Z.shiftr_div_pow2 by lia.
+      rewrite !word.unsigned_of_Z_nowrap; try lia; try reflexivity.
+      pose proof Z.pow_pos_nonneg 2 n.
+      Z.div_mod_to_equations; nia.
+    Qed.
+
     Lemma Z_land_wrap_l z1 z2:
       0 <= z2 < 2 ^ width ->
       Z.land (word.wrap z1) z2 = Z.land z1 z2.
