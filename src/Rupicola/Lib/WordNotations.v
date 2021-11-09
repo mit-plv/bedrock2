@@ -1,7 +1,10 @@
 Require Import Rupicola.Lib.Core.
 
 Declare Scope word.
-Notation "~w w" := (word.not w) (at level 40, no associativity): word.
+Notation "~w w" := (word.not w) (at level 30, no associativity): word.
+Infix "*w" := word.mul (at level 40, left associativity): word.
+Infix "/w" := word.divu (at level 40, left associativity): word.
+Infix "/sw" := word.divs (at level 40, left associativity): word.
 Infix "+w" := word.add (at level 50, left associativity): word.
 Infix "-w" := word.sub (at level 50, left associativity): word.
 Infix ">>w" := word.sru (at level 60, no associativity): word.
