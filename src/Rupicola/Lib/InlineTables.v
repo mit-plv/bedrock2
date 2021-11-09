@@ -416,6 +416,9 @@ Section __.
   Qed.
 End __.
 
-#[export] Hint Extern 1 => simple eapply @compile_inlinetable_get_byte; shelve : compiler.
-#[export] Hint Extern 1 => simple eapply @compile_inlinetable_get_word; shelve : compiler.
-#[export] Hint Extern 5 => simple eapply @compile_inlinetable_get_any_as_byte; shelve : compiler.
+#[export] Hint Extern 1 (WP_nlet_eq (InlineTable.get _ _)) =>
+  simple eapply @compile_inlinetable_get_byte; shelve : compiler.
+#[export] Hint Extern 1 (WP_nlet_eq (InlineTable.get _ _)) =>
+  simple eapply @compile_inlinetable_get_word; shelve : compiler.
+#[export] Hint Extern 5 (WP_nlet_eq (InlineTable.get _ _)) =>
+  simple eapply @compile_inlinetable_get_any_as_byte; shelve : compiler.

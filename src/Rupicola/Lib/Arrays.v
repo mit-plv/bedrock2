@@ -852,24 +852,36 @@ Ltac cbn_array :=
   change (Z.of_nat 8%nat) with (8%Z) in *.
 
 Module VectorArrayCompiler.
-  #[export] Hint Extern 1 => simple eapply (@compile_byte_vectorarray_get); shelve : compiler.
-  #[export] Hint Extern 1 => simple eapply (@compile_word_vectorarray_get); shelve : compiler.
-  #[export] Hint Extern 1 => simple eapply (@compile_byte_vectorarray_put); shelve : compiler.
-  #[export] Hint Extern 1 => simple eapply (@compile_word_vectorarray_put); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (VectorArray.get _ _ _)) =>
+    simple eapply (@compile_byte_vectorarray_get); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (VectorArray.get _ _ _)) =>
+    simple eapply (@compile_word_vectorarray_get); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (VectorArray.put _ _ _ _)) =>
+    simple eapply (@compile_byte_vectorarray_put); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (VectorArray.put _ _ _ _)) =>
+    simple eapply (@compile_word_vectorarray_put); shelve : compiler.
 End VectorArrayCompiler.
 
 Module UnsizedListArrayCompiler.
-  #[export] Hint Extern 1 => simple eapply (@compile_byte_unsizedlistarray_get); shelve : compiler.
-  #[export] Hint Extern 1 => simple eapply (@compile_word_unsizedlistarray_get); shelve : compiler.
-  #[export] Hint Extern 1 => simple eapply (@compile_byte_unsizedlistarray_put); shelve : compiler.
-  #[export] Hint Extern 1 => simple eapply (@compile_word_unsizedlistarray_put); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (ListArray.get _ _)) =>
+    simple eapply (@compile_byte_unsizedlistarray_get); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (ListArray.get _ _)) =>
+    simple eapply (@compile_word_unsizedlistarray_get); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (ListArray.put _ _ _)) =>
+    simple eapply (@compile_byte_unsizedlistarray_put); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (ListArray.put _ _ _)) =>
+    simple eapply (@compile_word_unsizedlistarray_put); shelve : compiler.
 End UnsizedListArrayCompiler.
 
 Module SizedListArrayCompiler.
-  #[export] Hint Extern 1 => simple eapply (@compile_byte_sizedlistarray_get); shelve : compiler.
-  #[export] Hint Extern 1 => simple eapply (@compile_word_sizedlistarray_get); shelve : compiler.
-  #[export] Hint Extern 1 => simple eapply (@compile_byte_sizedlistarray_put); shelve : compiler.
-  #[export] Hint Extern 1 => simple eapply (@compile_word_sizedlistarray_put); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (ListArray.get _ _)) =>
+    simple eapply (@compile_byte_sizedlistarray_get); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (ListArray.get _ _)) =>
+    simple eapply (@compile_word_sizedlistarray_get); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (ListArray.put _ _ _)) =>
+    simple eapply (@compile_byte_sizedlistarray_put); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (ListArray.put _ _ _)) =>
+    simple eapply (@compile_word_sizedlistarray_put); shelve : compiler.
 End SizedListArrayCompiler.
 
 Export VectorArrayCompiler.
