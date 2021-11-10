@@ -421,10 +421,10 @@ Module map.
     - rewrite map.get_put_dec, IHbs; reflexivity.
   Qed.
 
-  Lemma get_of_str_list_assoc_Some {V} {map: map.map string V} {map_ok: map.ok map}:
+  Lemma get_of_str_list_assoc_impl {V} {map: map.map string V} {map_ok: map.ok map}:
     forall k bs v,
-      list_assoc_str k bs = Some v ->
-      map.get (map.of_list (map := map) bs) k = Some v.
+      list_assoc_str k bs = v ->
+      map.get (map.of_list (map := map) bs) k = v.
   Proof. intros; rewrite get_of_str_list_assoc; eassumption. Qed.
 End map.
 

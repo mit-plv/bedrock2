@@ -487,7 +487,7 @@ Ltac lookup_variable m val :=
 
 Ltac solve_map_get_goal_refl m :=
   reify_map m;
-  apply map.get_of_str_list;
+  apply map.get_of_str_list_assoc_impl;
   reflexivity.
 
 Ltac solve_map_get_goal_step :=

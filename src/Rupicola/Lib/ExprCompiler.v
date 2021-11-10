@@ -190,7 +190,7 @@ Section ExprCompiler.
 
     Lemma expr_compile_var_assoc {bs} s w (h: map.list_assoc_str s bs = Some w) :
       DEXPR (map.of_list bs) (expr.var s) w.
-    Proof. cleanup. eauto using map.get_of_str_list_assoc_Some. Qed.
+    Proof. cleanup. eauto using map.get_of_str_list_assoc_impl. Qed.
   End Variables.
 
   Section Assignments.
