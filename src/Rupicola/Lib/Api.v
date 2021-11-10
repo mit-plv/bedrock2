@@ -5,7 +5,7 @@ Require Export Rupicola.Lib.Notations.
 Require Export Rupicola.Lib.Compiler.
 Require Export Rupicola.Lib.Gensym.
 Require Export Rupicola.Lib.Conditionals.
-Require Export Rupicola.Lib.ExprReflection.
+Require Export Rupicola.Lib.ExprCompiler.
 Require Export Rupicola.Lib.NoExprReflection.
 Require Export Rupicola.Lib.SepReflection.
 Require Export Rupicola.Lib.Alloc.

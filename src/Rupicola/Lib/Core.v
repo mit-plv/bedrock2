@@ -404,6 +404,28 @@ Module map.
     intros SM SM_ok b1 b2 H%ext_rev; apply ext_eq.
     apply eq_of_list; assumption.
   Qed.
+
+  Fixpoint list_assoc_str {V} (k: string) (l: list (string * V)) :=
+    match l with
+    | [] => None
+    | (k', v) :: l => if String.eqb k' k then Some v else list_assoc_str k l
+    end.
+
+  Lemma get_of_str_list_assoc {V} {map: map.map string V} {map_ok: map.ok map}:
+    forall k bs,
+      map.get (map.of_list (map := map) bs) k =
+      list_assoc_str k bs.
+  Proof.
+    induction bs as [|(k', v) bs IHbs]; simpl; intros.
+    - rewrite map.get_empty; reflexivity.
+    - rewrite map.get_put_dec, IHbs; reflexivity.
+  Qed.
+
+  Lemma get_of_str_list_assoc_Some {V} {map: map.map string V} {map_ok: map.ok map}:
+    forall k bs v,
+      list_assoc_str k bs = Some v ->
+      map.get (map.of_list (map := map) bs) k = Some v.
+  Proof. intros; rewrite get_of_str_list_assoc; eassumption. Qed.
 End map.
 
 Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
@@ -1472,8 +1494,8 @@ Section Byte.
   Context {word_ok : word.ok word}.
 
   Lemma byte_morph_and b1 b2:
-    word.and (word := word) (word_of_byte b1) (word_of_byte b2) =
-    word_of_byte (byte_land b1 b2).
+    word_of_byte (byte.and b1 b2) =
+    word.and (word := word) (word_of_byte b1) (word_of_byte b2).
   Proof.
     apply word.unsigned_inj.
     rewrite word.unsigned_and_nowrap, !word.unsigned_of_Z, !wrap_byte_unsigned.
@@ -1481,8 +1503,8 @@ Section Byte.
   Qed.
 
   Lemma byte_morph_xor b1 b2:
-    word.xor (word := word) (word_of_byte b1) (word_of_byte b2) =
-    word_of_byte (byte.xor b1 b2).
+    word_of_byte (byte.xor b1 b2) =
+    word.xor (word := word) (word_of_byte b1) (word_of_byte b2).
   Proof.
     apply word.unsigned_inj.
     rewrite word.unsigned_xor_nowrap, !word.unsigned_of_Z, !wrap_byte_unsigned.
