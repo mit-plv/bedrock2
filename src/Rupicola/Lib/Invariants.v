@@ -66,11 +66,11 @@ Ltac infer_word_instance locals :=
 
 Ltac check_scalar W repl :=
   lazymatch type of repl with
-  (* FIXME | byte => *)
   | word.rep => constr:(Some repl)
   | Z => constr:(Some (word.of_Z (word := W) repl))
   | nat => constr:(Some (word.of_Z (word := W) (Z.of_nat repl)))
   | bool => constr:(Some (word.b2w (word := W) repl))
+  | Init.Byte.byte => constr:(Some (word.of_Z (word := W) (byte.unsigned repl)))
   | _ => constr:(@None unit)
   end.
 
