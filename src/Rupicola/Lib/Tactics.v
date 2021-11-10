@@ -287,9 +287,9 @@ Ltac map_to_list' m :=
       match m with
       | map.put ?m ?k ?v =>
         loop m uconstr:((k, v) :: acc)
-      | map.empty =>
+      | map.empty (key := ?K) (value := ?V) =>
         (* Reverse for compatibility with map.of_list *)
-        uconstr:(List.rev_acc acc [])
+        uconstr:(List.rev_append (A := (K * V)) acc [])
       end in
   loop m uconstr:([]).
 
