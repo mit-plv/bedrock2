@@ -433,3 +433,41 @@ Ltac compile_assignment :=
 #[export] Hint Extern 8 =>
   compile_assignment; shelve : compiler.
   (* Higher priority than compilation lemmas for individual operations *)
+
+Section Tests.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {mem: map.map word Byte.byte} {locals: map.map String.string word}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {locals_ok : map.ok locals}.
+
+  Context (m: mem).
+
+  #[local] Notation dexpr m e x :=
+    (WeakestPrecondition.dexpr (mem := mem) (locals := locals) map.empty m e x).
+
+  Local Goal {e | forall z,
+          dexpr #{ "z" => word.of_Z z }# e
+                (word.of_Z (Z.land 3 z)) }.
+  Proof. eexists; intros; compile_expr. Qed.
+
+  Local Goal {e | forall w,
+          dexpr #{ "w" => w }# e
+                (word.and (word.of_Z 3) w) }.
+  Proof. eexists; intros; compile_expr. Qed.
+
+  Local Goal {e | forall b,
+          dexpr #{ "b" => word_of_byte b }# e
+                (word_of_byte (byte_land Byte.x03 b)) }.
+  Proof. Fail eexists; intros; compile_expr. Abort. (* TODO *)
+
+  Local Goal {e | forall b,
+          dexpr #{ "b" => word.b2w b }# e
+                (word.b2w (andb b false)) }.
+  Proof. Fail eexists; intros; compile_expr. Abort. (* TODO *)
+
+  Local Goal {e | forall x b,
+          dexpr #{ "x" => word.of_Z x; "b" => word_of_byte b }# e
+                (word.add (word.of_Z (Z.add x x))
+                          (word_of_byte (byte_land b b))) }.
+  Proof. Fail eexists; intros; compile_expr. Abort. (* TODO *)
+End Tests.
