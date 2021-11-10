@@ -192,18 +192,19 @@ Module ExprReflection.
                 word.ring_morph_add, word.ring_morph_mul, word.ring_morph_sub;
                 reflexivity) |}.
 
-    Lemma compile_expr_w {tr mem locals functions} (v: word) (e: expr) :
-      let v := v in
+    Lemma compile_expr {A} (to_W: A -> word)
+          [tr mem locals functions] (a: A) (e: expr) :
+      let v := a in
       forall {P} {pred: P v -> predicate}
         {k: nlet_eq_k P v} {k_impl}
         var,
 
-        WeakestPrecondition.dexpr mem locals e v ->
+        WeakestPrecondition.dexpr mem locals e (to_W v) ->
 
         (let v := v in
          <{ Trace := tr;
             Memory := mem;
-            Locals := map.put locals var v;
+            Locals := map.put locals var (to_W v);
             Functions := functions }>
          k_impl
          <{ pred (k v eq_refl) }>) ->
@@ -216,77 +217,11 @@ Module ExprReflection.
         <{ pred (nlet_eq [var] v k) }>.
     Proof. repeat straightline; eauto. Qed.
 
-    Lemma compile_expr_bool {tr mem locals functions} (b: bool) (e: expr) :
-      let v := b in
-      forall {P} {pred: P v -> predicate}
-        {k: nlet_eq_k P v} {k_impl}
-        var,
-
-        WeakestPrecondition.dexpr mem locals e (word.b2w v) ->
-
-        (let v := v in
-         <{ Trace := tr;
-            Memory := mem;
-            Locals := map.put locals var (word.b2w v);
-            Functions := functions }>
-         k_impl
-         <{ pred (k v eq_refl) }>) ->
-
-        <{ Trace := tr;
-           Memory := mem;
-           Locals := locals;
-           Functions := functions }>
-        cmd.seq (cmd.set var e) k_impl
-        <{ pred (nlet_eq [var] v k) }>.
-    Proof. repeat straightline; eauto. Qed.
-
-    Lemma compile_expr_nat {tr mem locals functions} (n: nat) (e: expr) :
-      let v := n in
-      forall {P} {pred: P v -> predicate}
-        {k: nlet_eq_k P v} {k_impl}
-        var,
-
-        WeakestPrecondition.dexpr mem locals e (word.of_Z (Z.of_nat v)) ->
-
-        (let v := v in
-         <{ Trace := tr;
-            Memory := mem;
-            Locals := map.put locals var (word.of_Z (Z.of_nat v));
-            Functions := functions }>
-         k_impl
-         <{ pred (k v eq_refl) }>) ->
-
-        <{ Trace := tr;
-           Memory := mem;
-           Locals := locals;
-           Functions := functions }>
-        cmd.seq (cmd.set var e) k_impl
-        <{ pred (nlet_eq [var] v k) }>.
-    Proof. repeat straightline; eauto. Qed.
-
-    Lemma compile_expr_Z {tr mem locals functions} (z: Z) (e: expr) :
-      let v := z in
-      forall {P} {pred: P v -> predicate}
-        {k: nlet_eq_k P v} {k_impl}
-        var,
-
-        WeakestPrecondition.dexpr mem locals e (word.of_Z v) ->
-
-        (let v := v in
-         <{ Trace := tr;
-            Memory := mem;
-            Locals := map.put locals var (word.of_Z v);
-            Functions := functions }>
-         k_impl
-         <{ pred (k v eq_refl) }>) ->
-
-        <{ Trace := tr;
-           Memory := mem;
-           Locals := locals;
-           Functions := functions }>
-        cmd.seq (cmd.set var e) k_impl
-        <{ pred (nlet_eq [var] v k) }>.
-    Proof. repeat straightline; eauto. Qed.
+    Definition compile_expr_w := compile_expr (fun w => w).
+    Definition compile_expr_bool := compile_expr (fun b => word.b2w b).
+    Definition compile_expr_byte := compile_expr (fun b => word_of_byte b).
+    Definition compile_expr_nat := compile_expr (fun n => word.of_Z (Z.of_nat n)).
+    Definition compile_expr_Z := compile_expr (fun z => word.of_Z z).
   End with_parameters.
 
   Ltac find_key_by_value bs v0 :=
@@ -401,7 +336,9 @@ Module ExprReflection.
           let reified := expr_reify_word W bindings val in
           _reify_change_dexpr mem locals expr expr_word_denotation reified bindings
         end
+      | _ => fail 0 locals "is not a list of bindings"
       end
+    | [  |- ?g ] => fail 0 g "is not a dexpr goal"
     end.
 
   Ltac zify_bindings bs :=
@@ -428,7 +365,9 @@ Module ExprReflection.
           let reified := expr_reify_Z z_bindings z in
           _reify_change_dexpr mem locals expr expr_Z_denotation reified z_bindings
         end
+      | _ => fail 0 locals "is not a list of bindings"
       end
+    | [  |- ?g ] => fail 0 g "is not a dexpr goal"
     end.
 
   Ltac reify_change_dexpr_locals :=
@@ -436,6 +375,7 @@ Module ExprReflection.
     | [  |- WeakestPrecondition.dexpr _ ?locals _ _ ] =>
       let bindings := map_to_list locals in
       set_change locals with (map.of_list bindings)
+    | [  |- ?g ] => fail 0 g "is not a dexpr goal"
     end.
 
   Ltac reify_change_dexpr :=
@@ -446,6 +386,7 @@ Module ExprReflection.
       | word.of_Z ?z => reify_change_dexpr_z
       | _ => reify_change_dexpr_w
       end
+    | [  |- ?g ] => fail 0 g "is not a dexpr goal"
     end.
 
   Ltac compile_prove_reified_dexpr :=
@@ -461,14 +402,16 @@ Module ExprReflection.
 
   Ltac compile_let_as_expr :=
     lazymatch goal with
-    | [ |- WeakestPrecondition.cmd _ _ _ _ ?locals (_ (nlet_eq _ ?v _)) ] =>
+    | [ |- WP_nlet_eq ?v ] =>
       lazymatch type of v with
-      | word.rep => simple apply compile_expr_w
-      | Z => simple apply compile_expr_Z
-      | nat => simple apply compile_expr_nat
-      | bool => simple apply compile_expr_bool
-      | ?t => fail "Unrecognized type" t
-      end
+      | word.rep       => simple apply compile_expr_w
+      | bool              => simple apply compile_expr_bool
+      | Init.Byte.byte => simple apply compile_expr_byte
+      | nat              => simple apply compile_expr_nat
+      | Z              => simple apply compile_expr_Z
+      | ?t             => fail "Unrecognized type" t
+      end; cbv beta in *
+    | [  |- ?g ] => fail 0 g "is not a Rupicola goal"
     end.
 End ExprReflection.
 
