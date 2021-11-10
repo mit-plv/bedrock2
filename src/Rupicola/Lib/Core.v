@@ -1126,6 +1126,22 @@ Module word.
       Z.div_mod_to_equations; nia.
     Qed.
 
+    Lemma morph_lts x y:
+      - 2 ^ (width - 1) <= x < 2 ^ (width - 1) ->
+      - 2 ^ (width - 1) <= y < 2 ^ (width - 1) ->
+      (x <? y) = @word.lts _ word (word.of_Z x) (word.of_Z y).
+    Proof.
+      intros; rewrite word.signed_lts, !word.signed_of_Z, !word.swrap_inrange; eauto.
+    Qed.
+
+    Lemma morph_ltu x y:
+      0 <= x < 2 ^ width ->
+      0 <= y < 2 ^ width ->
+      (x <? y) = @word.ltu _ word (word.of_Z x) (word.of_Z y).
+    Proof.
+      intros; rewrite word.unsigned_ltu, !word.unsigned_of_Z, !wrap_small; eauto.
+    Qed.
+
     Lemma Z_land_wrap_l z1 z2:
       0 <= z2 < 2 ^ width ->
       Z.land (word.wrap z1) z2 = Z.land z1 z2.

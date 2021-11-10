@@ -864,11 +864,11 @@ Section FoldsAsLoops.
       representations and get/put interfaces (using default values, dependent
       types, etc.). **)
 
-  Lemma map_as_ranged_for xs:
+  Lemma map_as_ranged_for_all xs:
     forall (f: A -> A) f',
-      (forall xs n x Hin,
-          List.nth_error xs n = Some x ->
-          f' xs (Z.of_nat n) Hin = replace_nth n xs (f x)) ->
+      (forall xs' n x Hin,
+          List.nth_error xs' n = Some x ->
+          f' xs' (Z.of_nat n) Hin = replace_nth n xs' (f x)) ->
       List.map f xs =
       ranged_for_all 0 (Z.of_nat (List.length xs)) f' xs.
   Proof.
@@ -882,11 +882,35 @@ Section FoldsAsLoops.
     { apply foldl_dep_ind; eauto; [].
       intros; destruct nth_error; eauto; [].
       rewrite replace_nth_length; eauto. }
-    destruct (nth_error_lt_some xs' (Z.to_nat idx)) as (? & Hnth).
-    { rewrite Hlen; lia. }
+    destruct (nth_error_lt_some xs' (Z.to_nat idx) ltac:(lia)) as (? & Hnth).
     specialize (Hf' xs' (Z.to_nat idx) x).
     rewrite Z2Nat.id in Hf' by lia.
     rewrite Hf' by eauto. rewrite Hnth; reflexivity.
+  Qed.
+
+  Lemma nth_error_bound {xs: list A} {n x}:
+    nth_error xs n = Some x ->
+    -1 < Z.of_nat n < Z.of_nat (length xs).
+  Proof.
+    pose proof nth_error_Some xs n as (Hn, Hn').
+    intros * H; rewrite H in Hn; specialize (Hn ltac:(inversion 1)).
+    lia.
+  Qed.
+
+  Lemma map_as_nd_ranged_for_all xs:
+    forall (f: A -> A) f',
+      (forall xs' n d,
+          0 - 1 < Z.of_nat n < Z.of_nat (Datatypes.length xs') ->
+          f' xs' (Z.of_nat n) = replace_nth n xs' (f (nth n xs' d))) ->
+      List.map f xs =
+      nd_ranged_for_all 0 (Z.of_nat (List.length xs)) f' xs.
+  Proof.
+    intros * Hf'.
+    erewrite map_as_ranged_for_all with (f' := fun xs idx _ => f' xs idx).
+    - rewrite nd_as_ranged_for_all; reflexivity.
+    - intros ? ? x Hn Hnth.
+      rewrite <- (nth_error_nth xs' n x Hnth).
+      apply Hf'; eauto using nth_error_bound.
   Qed.
 End FoldsAsLoops.
 
@@ -1264,22 +1288,6 @@ End with_parameters.
 Section with_parameters.
   Context {width: Z} {word: word.word width} {word_ok : word.ok word}.
 
-  Lemma lts_of_Z x y:
-    - 2 ^ (width - 1) <= x < 2 ^ (width - 1) ->
-    - 2 ^ (width - 1) <= y < 2 ^ (width - 1) ->
-    @word.lts _ word (word.of_Z x) (word.of_Z y) = (x <? y).
-  Proof.
-    intros; rewrite word.signed_lts, !word.signed_of_Z, !word.swrap_inrange; eauto.
-  Qed.
-
-  Lemma ltu_of_Z x y:
-    0 <= x < 2 ^ width ->
-    0 <= y < 2 ^ width ->
-    @word.ltu _ word (word.of_Z x) (word.of_Z y) = (x <? y).
-  Proof.
-    intros; rewrite word.unsigned_ltu, !word.unsigned_of_Z, !word.wrap_small; eauto.
-  Qed.
-
   Context {locals: map.map String.string word}.
   Lemma getmany0 (l : locals) t vt vx vy x y:
     map.getmany_of_list l (vx :: vy :: vt) = Some (x :: y :: t) ->
@@ -1403,7 +1411,8 @@ Section with_parameters.
         - eexists; split; eauto.
           eapply WeakestPrecondition_dexpr_expr; eauto.
           pose proof Zlt_cases from to.
-          destruct signed; simpl; rewrite ?lts_of_Z, ?ltu_of_Z by tauto;
+          destruct signed; simpl;
+            rewrite <- ?word.morph_lts, <- ?word.morph_ltu by tauto;
             destruct (from <? to); reflexivity || lia.
         - rewrite word.unsigned_of_Z_0; intros; exfalso; lia.
         - intros. apply Hk.
@@ -1439,7 +1448,7 @@ Section with_parameters.
           eexists; split; eauto.
           eapply WeakestPrecondition_dexpr_expr; [|eauto].
           destruct signed; simpl;
-            rewrite ?lts_of_Z, ?ltu_of_Z by lia;
+            rewrite <- ?word.morph_lts, <- ?word.morph_ltu by lia;
             reflexivity. }
         all:
           pose proof Zlt_cases from' to;
