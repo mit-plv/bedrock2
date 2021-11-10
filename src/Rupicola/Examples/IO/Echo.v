@@ -176,12 +176,8 @@ Section Echo.
   Qed.
 End Echo.
 
-Require Import bedrock2.NotationsCustomEntry.
-Require Import bedrock2.NotationsInConstr.
-Arguments io_sum_body /.
-Eval cbv in io_sum_body.
-
-Require Import bedrock2.ToCString.
+From bedrock2 Require Import BasicC64Semantics ToCString NotationsInConstr.
+Compute io_sum_body. (* (word := word) *)
 Compute c_func ("io_echo", ([], [], io_echo_body)).
 Compute c_func ("io_sum", ([], [], io_sum_body)).
-Compute c_func ("io_check", (["expected"], ["err"], io_check_body)).
+Compute c_func ("io_check", (["expected"], ["err"], io_check_body (word := word))).

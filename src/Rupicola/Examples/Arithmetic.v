@@ -94,11 +94,10 @@ End FNV1A64_params.
 
 Module FNV1A64 := FNV1A FNV1A64_params.
 
-Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.NotationsInConstr.
 
-Eval cbv in FNV1A32.fnv1a_body.
-Eval cbv in FNV1A64.fnv1a_body.
+Compute FNV1A32.fnv1a_body.
+Compute FNV1A64.fnv1a_body.
 
 Module Murmur3.
   Import BasicC32Semantics.
@@ -124,4 +123,4 @@ Module Murmur3.
   Qed.
 End Murmur3.
 
-Eval cbv in Murmur3.scramble_body.
+Compute Murmur3.scramble_body.

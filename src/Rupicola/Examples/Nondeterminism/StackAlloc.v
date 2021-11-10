@@ -122,7 +122,5 @@ Section Peek.
   Qed.
 End Peek.
 
-Require Import bedrock2.NotationsCustomEntry.
-Require Import bedrock2.NotationsInConstr.
-Arguments nondet_xor_body /.
-Eval cbv in nondet_xor_body.
+From bedrock2 Require Import BasicC64Semantics ToCString NotationsInConstr.
+Compute nondet_xor_body (word := word).

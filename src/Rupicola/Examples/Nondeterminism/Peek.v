@@ -94,7 +94,5 @@ Section Peek.
   Qed.
 End Peek.
 
-Require Import bedrock2.NotationsCustomEntry.
-Require Import bedrock2.NotationsInConstr.
-Arguments nondet_sum_body /.
-Eval simpl in nondet_sum_body.
+From bedrock2 Require Import BasicC64Semantics ToCString NotationsInConstr.
+Compute nondet_sum_body. (* (word := word) *)

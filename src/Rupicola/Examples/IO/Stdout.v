@@ -115,10 +115,6 @@ Section Stdout.
   Qed.
 End Stdout.
 
-Require Import bedrock2.NotationsCustomEntry.
-Require Import bedrock2.NotationsInConstr.
-Arguments hello_world_body /.
-Eval cbv in hello_world_body.
-
-Require Import bedrock2.ToCString.
-Compute c_func ("hello_world", (["y"], ["out"], hello_world_body)).
+From bedrock2 Require Import BasicC64Semantics ToCString NotationsInConstr.
+Compute hello_world_body (word := word).
+Compute c_func ("hello_world", (["y"], ["out"], hello_world_body (word := word))).

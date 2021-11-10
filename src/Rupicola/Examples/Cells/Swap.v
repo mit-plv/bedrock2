@@ -36,7 +36,5 @@ Section with_parameters.
   Qed.
 End with_parameters.
 
-(* Require Import bedrock2.NotationsCustomEntry. *)
-(* Require Import bedrock2.NotationsInConstr. *)
-(* Arguments swap_body /. *)
-(* Eval simpl in swap_body. *)
+From bedrock2 Require Import BasicC64Semantics ToCString NotationsInConstr.
+Compute swap_body. (* (word := word) *)

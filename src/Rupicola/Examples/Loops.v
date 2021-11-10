@@ -235,6 +235,34 @@ Section Ex.
   Qed.
 End Ex.
 
-(* Require Import bedrock2.NotationsCustomEntry. *)
-(* Require Import bedrock2.NotationsInConstr. *)
-(* Eval cbv [sizedlist_memcpy_body unsizedlist_memcpy_body vect_memcpy_s_body fold_right noskips is_skip] in sizedlist_memcpy_body. *)
+Require bedrock2.BasicC64Semantics.
+
+Module RangedForTests.
+  (* This module lives here instead of in Lib/Arrays because the instances in
+     BasicC64Semantics are global, so simply `Require`-ing that module is enough
+     to pollute the context. *)
+  Import BasicC64Semantics.
+
+  Time Compute (ranged_for 0 15
+                        (fun acc t idx _ =>
+                           if Z.ltb 11 idx then
+                             let t' := ExitToken.break t in
+                             (t', acc)
+                           else
+                             let acc := idx :: acc in
+                             (t, acc)) []).
+
+  Time Compute (ranged_for_u (word.of_Z 0) (word.of_Z 15)
+                          (fun acc t idx _ =>
+                             if word.ltu (word.of_Z 11) idx then
+                               let t' := ExitToken.break t in
+                               (t', acc)
+                             else
+                               let acc := idx :: acc in
+                               (t, acc)) []).
+End RangedForTests.
+
+From bedrock2 Require Import BasicC64Semantics ToCString NotationsInConstr.
+Compute sizedlist_memcpy_body (word := word).
+Compute unsizedlist_memcpy_body (word := word).
+Compute vect_memcpy_s_body (word := word).

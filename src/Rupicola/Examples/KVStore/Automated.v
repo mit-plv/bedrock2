@@ -603,7 +603,5 @@ Section KVSwap.
   Qed.
 End KVSwap.
 
-(* Require Import bedrock2.NotationsCustomEntry. *)
-(* Require Import bedrock2.NotationsInConstr. *)
-(* Arguments kvswap_body /. *)
-(* Eval simpl in kvswap_body. *)
+(* From bedrock2 Require Import BasicC64Semantics ToCString NotationsInConstr. *)
+(* Compute kvswap_body. *)
