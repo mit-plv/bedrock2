@@ -1349,14 +1349,23 @@ End SeparationLogic.
 Export SeparationLogic.
 
 Section Scalar.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
-  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {word_ok : word.ok word}.
 
   Lemma width_at_least_32 : 32 <= width.
   Proof. destruct width_cases; lia. Qed.
 
   Lemma width_mod_8 : width mod 8 = 0.
   Proof. destruct width_cases as [-> | ->]; reflexivity. Qed.
+
+  Lemma wrap_byte_unsigned b:
+    word.wrap (width := width) (byte.unsigned b) =
+    byte.unsigned b.
+  Proof.
+    pose proof byte.unsigned_range b.
+    rewrite word.wrap_small by (destruct width_cases as [-> | ->]; lia).
+    reflexivity.
+  Qed.
 
   Lemma bytes_per_width_bytes_per_word : forall width,
       width >= 0 ->
@@ -1385,6 +1394,8 @@ Section Scalar.
     rewrite HList.tuple.length_to_list.
     apply bytes_per_wordwidth_bytes_per_word.
   Qed.
+
+  Context {mem: map.map word byte} {mem_ok : map.ok mem}.
 
   Lemma scalar_to_anybytes px x:
     Lift1Prop.impl1 (T := mem)
@@ -1440,9 +1451,41 @@ Section Byte.
     all: lia.
   Qed.
 
+  Lemma byte_unsigned_xor (b1 b2: byte) :
+    byte.unsigned (byte.xor b1 b2) =
+      Z.lxor (byte.unsigned b1) (byte.unsigned b2).
+  Proof.
+    unfold byte.xor; rewrite byte.unsigned_of_Z.
+    unfold byte.wrap; rewrite <- Z.land_ones.
+    bitblast.Z.bitblast.
+    rewrite !testbit_byte_unsigned_ge.
+    all: reflexivity || lia.
+  Qed.
+
   Lemma byte_xor_comm b1 b2:
     byte.xor b1 b2 = byte.xor b2 b1.
   Proof. unfold byte.xor; rewrite Z.lxor_comm; reflexivity. Qed.
+
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
+  Context {word_ok : word.ok word}.
+
+  Lemma byte_morph_and b1 b2:
+    word.and (word := word) (word_of_byte b1) (word_of_byte b2) =
+    word_of_byte (byte_land b1 b2).
+  Proof.
+    apply word.unsigned_inj.
+    rewrite word.unsigned_and_nowrap, !word.unsigned_of_Z, !wrap_byte_unsigned.
+    rewrite byte_unsigned_land; reflexivity.
+  Qed.
+
+  Lemma byte_morph_xor b1 b2:
+    word.xor (word := word) (word_of_byte b1) (word_of_byte b2) =
+    word_of_byte (byte.xor b1 b2).
+  Proof.
+    apply word.unsigned_inj.
+    rewrite word.unsigned_xor_nowrap, !word.unsigned_of_Z, !wrap_byte_unsigned.
+    rewrite byte_unsigned_xor; reflexivity.
+  Qed.
 End Byte.
 
 Ltac div_up_t :=

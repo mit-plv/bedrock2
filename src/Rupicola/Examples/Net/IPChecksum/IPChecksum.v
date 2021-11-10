@@ -20,12 +20,12 @@ Hint Rewrite Nat2Z.id : compiler_cleanup.
 #[local] Hint Unfold co_word_of_Z co_word_of_byte : compiler_cleanup.
 #[local] Hint Extern 10 => cbn; Z.div_mod_to_equations; nia : compiler_side_conditions.
 
+Hint Rewrite word_not_xor : compiler_cleanup.
 #[local] Hint Extern 1 => simple apply dexpr_compile_odd; shelve: compiler_side_conditions.
 #[local] Hint Extern 1 => simple apply dexpr_compile_div_2; shelve: compiler_side_conditions.
 
 #[local] Hint Extern 1 => lia : arith.
 #[local] Hint Resolve odd_sub_pos : arith.
-Hint Rewrite word_not_xor : compiler_cleanup.
 Hint Rewrite Z2Nat.id using eauto with arith : compiler_side_conditions.
 
 Derive ip_checksum_body SuchThat
