@@ -35,7 +35,7 @@ Not supported yet: using a conditional to assign a pointer to another one.
 |*)
 
 Ltac fail_inference_obj_in_scalar var v t pred :=
-  fail "
+  fail 99 "
 Invariant inference failure while try to generalize over" var "
 
 - Variable" var "initially held" v "
@@ -47,8 +47,8 @@ generalize that object, not the pointer.
 However, the current memory" pred "does not mention" v ".".
 
 Ltac fail_inference_fresh_obj var t pred :=
-  fail "
-Invariant inference failure while try to generalize over" var "
+  fail 99 "
+Invariant inference failure while trying to generalize over" var "
 
 - Variable" var "is not declared yet,
 - The generalized value we are substituting has type" t ", which is not a word.
@@ -132,7 +132,9 @@ Ltac _infer_predicate_from_context k :=
       | NotARupicolaBinding =>
         fail 0 prog "does not look like a let-binding"
       end
+    | _ => fail 0 "No hypothesis mentions memory" mem
     end
+  | [ |- ?g ] => fail 0 g "is not a Rupicola goal"
   end.
 
 Section Examples.
