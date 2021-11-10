@@ -1422,6 +1422,12 @@ Section Scalar.
   Qed.
 End Scalar.
 
+Module byte.
+  (* FIXME isn't this defined somewhere already? *)
+  Definition and (b1 b2: byte) :=
+    byte.of_Z (Z.land (byte.unsigned b1) (byte.unsigned b2)).
+End byte.
+
 Section Byte.
   Lemma testbit_byte_unsigned_ge b n:
     8 <= n ->
@@ -1436,15 +1442,11 @@ Section Byte.
   (* FIXME this doesn't do anything *)
   Hint Rewrite testbit_byte_unsigned_ge using solve [auto with zarith] : z_bitwise_with_hyps.
 
-  (* FIXME isn't this defined somewhere already? *)
-  Definition byte_land (b1 b2: byte) :=
-    byte.of_Z (Z.land (byte.unsigned b1) (byte.unsigned b2)).
-
   Lemma byte_unsigned_land (b1 b2: byte) :
-    byte.unsigned (byte_land b1 b2) =
-      Z.land (byte.unsigned b1) (byte.unsigned b2).
+    byte.unsigned (byte.and b1 b2) =
+    Z.land (byte.unsigned b1) (byte.unsigned b2).
   Proof.
-    unfold byte_land; rewrite byte.unsigned_of_Z.
+    unfold byte.and; rewrite byte.unsigned_of_Z.
     unfold byte.wrap; rewrite <- Z.land_ones.
     bitblast.Z.bitblast.
     rewrite testbit_byte_unsigned_ge.
@@ -1687,7 +1689,7 @@ Section combine_split.
 
   Lemma Z_land_le_combine bs1 : forall bs2,
       Z.land (le_combine bs1) (le_combine bs2) =
-        le_combine (List.map (fun '(x, y) => byte_land x y) (combine bs1 bs2)).
+      le_combine (List.map (fun '(x, y) => byte.and x y) (combine bs1 bs2)).
   Proof.
     induction bs1.
     - reflexivity.

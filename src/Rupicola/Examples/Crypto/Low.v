@@ -221,7 +221,7 @@ Definition poly1305
   let/n scratch := buf_make byte felem_size in
   let/n scratch := buf_append scratch f16 in
   let/n (scratch, lone_byte_and_felem_spare_space) := buf_split scratch in
-  let/n scratch := List.map (fun '(w1, w2) => let/n w1 := byte_land w1 w2 in w1)
+  let/n scratch := List.map (fun '(w1, w2) => let/n w1 := byte.and w1 w2 in w1)
                            (combine scratch (le_split 16 0x0ffffffc0ffffffc0ffffffc0fffffff)) in
   let/n scratch := buf_unsplit scratch lone_byte_and_felem_spare_space in
   let/n scratch := buf_push scratch x00 in

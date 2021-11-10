@@ -457,7 +457,7 @@ Section Tests.
 
   Local Goal {e | forall b,
           dexpr #{ "b" => word_of_byte b }# e
-                (word_of_byte (byte_land Byte.x03 b)) }.
+                (word_of_byte (byte.and Byte.x03 b)) }.
   Proof. Fail eexists; intros; compile_expr. Abort. (* TODO *)
 
   Local Goal {e | forall b,
@@ -468,6 +468,6 @@ Section Tests.
   Local Goal {e | forall x b,
           dexpr #{ "x" => word.of_Z x; "b" => word_of_byte b }# e
                 (word.add (word.of_Z (Z.add x x))
-                          (word_of_byte (byte_land b b))) }.
+                          (word_of_byte (byte.and b b))) }.
   Proof. Fail eexists; intros; compile_expr. Abort. (* TODO *)
 End Tests.
