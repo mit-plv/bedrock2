@@ -117,28 +117,8 @@ Section Upstr.
          As body_correct.
   Proof.
     Time compile.
-    eapply compile_nlet_as_nlet_eq.
-    ExprReflection.compile_let_as_expr.
-    ExprReflection.reify_change_dexpr.
-
-    eapply ExprReflection.interp_sound.
-    reflexivity.
-    eapply map.mapped_compat_of_list.
-    cbv [List.map fst snd ExprReflection.er_T2w ExprReflection.expr_byte_denotation].
-    rewrite ?word.of_Z_unsigned
-    lazymatch goal with
-    | |- context[expr_Z_denotation] => (* LATER Use reification to speed up this rewrite *)
-        cbv [List.map fst snd er_T2w expr_Z_denotation]; rewrite ?word.of_Z_unsigned
-      | _ => idtac
-      end; reflexivity
-      | .. ].
-
-
-    ExprReflection.compile_prove_reified_dexpr.
-      compile_assignment.
-    compile_step.
   Time Qed.
-
 End Upstr.
+
 Require Import bedrock2.ToCString.
 Compute c_func ("upstr", (["s"; "len"], ["chk16"], upstr_body)).
