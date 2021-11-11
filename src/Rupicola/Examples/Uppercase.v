@@ -1,12 +1,15 @@
-Require Import Coq.Strings.Byte Coq.Strings.String.
+Require Import Coq.Strings.String Coq.Strings.Ascii.
 
 Section Spec.
   Open Scope string_scope.
 
-  Definition string_map (f: byte -> byte) (s: String.string) :=
-    string_of_list_byte (List.map f (list_byte_of_string s)).
+  Fixpoint string_map (f: ascii -> ascii) (s: String.string) :=
+    match s with
+    | EmptyString => EmptyString
+    | String a s => String (f a) (string_map f s)
+    end.
 
-  Definition upchar_spec (c: byte) :=
+  Definition upchar_spec (c: ascii) :=
     match c with
     | "a" => "A" | "b" => "B" | "c" => "C" | "d" => "D"
     | "e" => "E" | "f" => "F" | "g" => "G" | "h" => "H"
@@ -15,7 +18,7 @@ Section Spec.
     | "q" => "Q" | "r" => "R" | "s" => "S" | "t" => "T"
     | "u" => "U" | "v" => "V" | "w" => "W" | "x" => "X"
     | "y" => "Y" | "z" => "Z" | c => c
-    end%byte.
+    end%char.
 
   Definition upstr_spec (s: string) :=
     string_map upchar_spec s.
@@ -23,6 +26,7 @@ Section Spec.
   Compute upstr_spec "rupicola".
 End Spec.
 
+Require Import Coq.Strings.Byte.
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.Loops.
 Require Import Rupicola.Lib.Arrays.
@@ -33,8 +37,12 @@ Section Impl.
     if word.wrap (byte.unsigned b - byte.unsigned "a"%byte) <? 26
     then byte.and b x5f else b.
 
-  Lemma upchar_impl_ok b:
-    upchar_spec b = upchar_impl b.
+  Lemma upchar_impl_ok a:
+    upchar_spec a = ascii_of_byte (upchar_impl (byte_of_ascii a)).
+  Proof. destruct a as [[|][|][|][|][|][|][|][|]]; reflexivity. Qed.
+
+  Lemma upchar_impl_ok' b:
+    byte_of_ascii (upchar_spec (ascii_of_byte b)) = upchar_impl b.
   Proof. destruct b; reflexivity. Qed.
 
   Definition upstr_impl (s: list byte) :=
@@ -47,14 +55,19 @@ Section Impl.
                    s) s in
     s.
 
+  Lemma string_map_is_map f s:
+    string_map f s = string_of_list_ascii (List.map f (list_ascii_of_string s)).
+  Proof. induction s; simpl; congruence. Qed.
+
   Lemma upstr_impl_ok bs:
     upstr_impl bs = list_byte_of_string (upstr_spec (string_of_list_byte bs)).
   Proof.
-    unfold upstr_spec, upstr_impl, string_map, nlet,
+    unfold upstr_spec, upstr_impl, nlet,
+      list_byte_of_string, string_of_list_byte,
       ListArray.get, ListArray.put, cast, Convertible_Z_nat.
-    rewrite !list_byte_of_string_of_list_byte;
+    rewrite string_map_is_map, !list_ascii_of_string_of_list_ascii, !map_map.
       symmetry; apply map_as_nd_ranged_for_all.
-    intros; erewrite !Nat2Z.id, nth_indep, upchar_impl_ok by lia;
+    intros; erewrite !Nat2Z.id, nth_indep, upchar_impl_ok' by lia.
       reflexivity.
   Qed.
 
