@@ -34,6 +34,22 @@ Section ExprCompiler.
     repeat straightline;
     repeat simple eapply WeakestPrecondition_dexpr_expr; eauto.
 
+  Section Literals.
+    Lemma expr_compile_Z_literal z : DX (expr.literal z) (of_Z z).
+    Proof. cleanup. Qed.
+    Lemma expr_compile_word_literal w : DX (expr.literal (word.unsigned w)) w.
+    Proof. cleanup; symmetry; apply word.of_Z_unsigned. Qed.
+  End Literals.
+
+  Section Variables.
+    Lemma expr_compile_var s w (h: map.get l s = Some w) : DX (expr.var s) w.
+    Proof. cleanup. Qed.
+
+    Lemma expr_compile_var_assoc {bs} s w (h: map.list_assoc_str s bs = Some w) :
+      DEXPR (map.of_list bs) (expr.var s) w.
+    Proof. cleanup. eauto using map.get_of_str_list_assoc_impl. Qed.
+  End Variables.
+
   Section w_bop.
     Context (w1 w2: word) (e1 e2: expr).
 
@@ -177,21 +193,6 @@ Section ExprCompiler.
     Proof. cleanup_bool word.morph_xor. Qed.
   End bool_bop.
 
-  Section Literals.
-    Lemma expr_compile_Z_literal z : DX (expr.literal z) (of_Z z).
-    Proof. cleanup. Qed.
-    Lemma expr_compile_word_literal w : DX (expr.literal (word.unsigned w)) w.
-    Proof. cleanup; symmetry; apply word.of_Z_unsigned. Qed.
-  End Literals.
-
-  Section Variables.
-    Lemma expr_compile_var s w (h: map.get l s = Some w) : DX (expr.var s) w.
-    Proof. cleanup. Qed.
-
-    Lemma expr_compile_var_assoc {bs} s w (h: map.list_assoc_str s bs = Some w) :
-      DEXPR (map.of_list bs) (expr.var s) w.
-    Proof. cleanup. eauto using map.get_of_str_list_assoc_impl. Qed.
-  End Variables.
 
   Section Assignments.
     Context {ext_spec: bedrock2.Semantics.ExtSpec}.
