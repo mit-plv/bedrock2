@@ -13,15 +13,35 @@ Section ExprCompiler.
   Context {locals: map.map String.string word} {locals_ok : map.ok locals}.
   Context {env: map.map string (list string * list string * cmd)}.
 
-  (* Notation "<{ 'Memory' := m ; 'Locals' := l }> e ~> w" := *)
-  (*   (WeakestPrecondition.dexpr (word := word) (mem := mem) (locals := locals) m l e w) *)
-  (*     (at level 0, *)
-  (*       format "'[v' <{  '[hv' 'Memory'  :=  '[hv' m ']' ; '//'  'Locals'  :=  '[hv' l ']' ']'  }> '//' e  '~>'  '[hv' w ']' ']'"). *)
+  Section WordLemmas.
+    Lemma word_not_xor (w: word):
+      word.not w = word.xor w (word.of_Z (-1)).
+    Proof.
+      rewrite <- (word.of_Z_unsigned w).
+      rewrite <- word.morph_not, <- word.morph_xor.
+      rewrite Z.lxor_m1_r; reflexivity.
+    Qed.
 
-  (* Notation "<{{ m ; l }}> e <{ w }>" := *)
-  (*   (WeakestPrecondition.dexpr (word := word) (mem := mem) (locals := locals) m l e w) *)
-  (*     (at level 0, *)
-  (*       format "'[hv' <{{  '[' '[hv' m ']' ; '//'  '[hv' l ']' ']'  }}> '//'  e '//' <{  '[hv' w ']'  }> ']'"). *)
+    Lemma word_sru_div_2 z:
+      0 <= z < 2 ^ width ->
+      word.of_Z (z / 2) = word.sru (word := word) (word.of_Z z) (word.of_Z 1).
+    Proof.
+      pose proof width_at_least_32.
+      intros; rewrite <- (Z.shiftr_div_pow2 _ 1), word.morph_shiftr; reflexivity || lia.
+    Qed.
+
+    Lemma word_and_odd z:
+      word.b2w (Z.odd z) = word.and (word := word) (word.of_Z z) (word.of_Z 1).
+    Proof.
+      rewrite <- word.morph_and.
+      rewrite (Z.land_ones _ 1), Zmod_odd by lia.
+      destruct Z.odd; reflexivity.
+    Qed.
+
+    Lemma b2w_if (b: bool) :
+      word.b2w (word := word) b = if b then word.of_Z 1 else word.of_Z 0.
+    Proof. destruct b; reflexivity. Qed.
+  End WordLemmas.
 
   Context {m: mem} {l: locals}.
 
@@ -50,7 +70,7 @@ Section ExprCompiler.
     Proof. cleanup. eauto using map.get_of_str_list_assoc_impl. Qed.
   End Variables.
 
-  Section w_bop.
+  Section w_expr.
     Context (w1 w2: word) (e1 e2: expr).
 
     Hypothesis (H1: DX e1 w1).
@@ -75,21 +95,21 @@ Section ExprCompiler.
     Definition expr_compile_word_slu : DOP bopname.slu (word.slu w1 w2) := expr_compile_word_bop.
     Definition expr_compile_word_srs : DOP bopname.srs (word.srs w1 w2) := expr_compile_word_bop.
 
-    Lemma b2w_if (b: bool) :
-      word.b2w (word := word) b = if b then word.of_Z 1 else word.of_Z 0.
-    Proof. destruct b; reflexivity. Qed.
-
     Definition expr_compile_word_lts : DOP bopname.lts (of_bool (word.lts w1 w2)).
     Proof. rewrite b2w_if; eapply (@expr_compile_word_bop bopname.lts). Qed.
     Definition expr_compile_word_ltu : DOP bopname.ltu (of_bool (word.ltu w1 w2)).
     Proof. rewrite b2w_if; eapply (@expr_compile_word_bop bopname.ltu). Qed.
     Definition expr_compile_word_eqb : DOP bopname.eq (of_bool (word.eqb w1 w2)).
     Proof. rewrite b2w_if; eapply (@expr_compile_word_bop bopname.eq). Qed.
-  End w_bop.
 
-  (* TODO add other operators: not, les, leu, gts, gtu *)
+    Lemma expr_compile_word_not:
+      DX (expr.op bopname.xor e1 (expr.literal (-1))) (word.not w1).
+    Proof. cleanup. apply word_not_xor. cleanup. Qed.
+  End w_expr.
 
-  Section Z_bop.
+  (* TODO add other operators: les, leu, gts, gtu *)
+
+  Section Z_expr.
     Context (z1 z2: Z) (e1 e2: expr).
 
     Notation to_w z := (of_Z z).
@@ -118,9 +138,21 @@ Section ExprCompiler.
     Lemma expr_compile_Z_shiftr (h1: 0 <= z1 < 2 ^ width) (h2: 0 <= z2 < width) :
       DOP bopname.sru (to_w (Z.shiftr z1 z2)).
     Proof. rewrite word.morph_shiftr; eauto using expr_compile_word_sru. Qed.
-  End Z_bop.
 
-  Section N_bop.
+    Lemma expr_compile_Z_lnot:
+      DX (expr.op bopname.xor e1 (expr.literal (-1))) (to_w (Z.lnot z1)).
+    Proof. rewrite word.morph_not; eauto using expr_compile_word_not. Qed.
+
+    Lemma expr_compile_Z_div_2 (h1: 0 <= z1 < 2 ^ width) :
+      DX (expr.op bopname.sru e1 (expr.literal 1)) (to_w (z1 / 2)).
+    Proof. rewrite word_sru_div_2; eauto using expr_compile_word_sru, expr_compile_Z_literal. Qed.
+
+    Lemma expr_compile_Z_odd:
+      DX (expr.op bopname.and e1 (expr.literal 1)) (of_bool (Z.odd z1)).
+    Proof. rewrite word_and_odd; eauto using expr_compile_word_and, expr_compile_Z_literal. Qed.
+  End Z_expr.
+
+  Section N_expr.
     Context (n1 n2: N) (e1 e2: expr).
 
     Notation to_w z := (of_N z).
@@ -136,9 +168,9 @@ Section ExprCompiler.
     Proof. rewrite N2Z.inj_sub; eauto using expr_compile_Z_sub. Qed.
     Lemma expr_compile_N_mul : DOP bopname.mul (to_w (N.mul n1 n2)).
     Proof. rewrite N2Z.inj_mul; eauto using expr_compile_Z_mul. Qed.
-  End N_bop.
+  End N_expr.
 
-  Section nat_bop.
+  Section nat_expr.
     Context (n1 n2: nat) (e1 e2: expr).
 
     Notation to_w n := (of_nat n).
@@ -155,9 +187,9 @@ Section ExprCompiler.
     Proof. intros; rewrite Nat2Z.inj_sub; eauto using expr_compile_Z_sub. Qed.
     Lemma expr_compile_nat_mul : DOP bopname.mul (to_w (Nat.mul n1 n2)).
     Proof. intros; rewrite Nat2Z.inj_mul; eauto using expr_compile_Z_mul. Qed.
-  End nat_bop.
+  End nat_expr.
 
-  Section byte_bop.
+  Section byte_expr.
     Context (b1 b2: byte) (e1 e2: expr).
     Notation to_w b := (of_byte b).
 
@@ -170,9 +202,9 @@ Section ExprCompiler.
     Proof. cleanup; apply byte_morph_and. Qed.
     Lemma expr_compile_byte_xor : DOP bopname.xor (to_w (byte.xor b1 b2)).
     Proof. cleanup; apply byte_morph_xor. Qed.
-  End byte_bop.
+  End byte_expr.
 
-  Section bool_bop.
+  Section bool_expr.
     Context (b1 b2: bool) (e1 e2: expr).
     Notation to_w b := (of_bool b).
 
@@ -182,8 +214,9 @@ Section ExprCompiler.
     Notation DOP op w := (DX (expr.op op e1 e2) w).
 
     Ltac cleanup_bool lemma :=
-      cleanup; rewrite !b2w_if; destruct b1, b2; simpl;
-      rewrite <- lemma; reflexivity.
+      cleanup; rewrite ?b2w_if; try reflexivity;
+      repeat match goal with |- context[if ?b then _ else _] => is_var b; destruct b end;
+      simpl; rewrite <- ?lemma; reflexivity.
 
     Lemma expr_compile_bool_andb : DOP bopname.and (to_w (andb b1 b2)).
     Proof. cleanup_bool word.morph_and. Qed.
@@ -191,8 +224,11 @@ Section ExprCompiler.
     Proof. cleanup_bool word.morph_or. Qed.
     Lemma expr_compile_bool_xorb : DOP bopname.xor (to_w (xorb b1 b2)).
     Proof. cleanup_bool word.morph_xor. Qed.
-  End bool_bop.
 
+    Lemma expr_compile_bool_negb:
+      DX (expr.op bopname.xor e1 (expr.literal 1)) (to_w (negb b1)).
+    Proof. cleanup_bool word.morph_xor. Qed.
+  End bool_expr.
 
   Section Assignments.
     Context {ext_spec: bedrock2.Semantics.ExtSpec}.
@@ -348,6 +384,17 @@ Notation DPAT p := (DEXPR _ _ _ p) (only parsing).
 #[export] Hint Extern 5 (DPAT (of_bool (word.eqb _ _))) =>
   simple eapply expr_compile_word_eqb; shelve : expr_compiler.
 
+#[export] Hint Extern 5 (DPAT (word.not _)) =>
+  simple eapply expr_compile_word_not; shelve : expr_compiler.
+#[export] Hint Extern 5 (DPAT (of_Z (Z.lnot _))) =>
+  simple eapply expr_compile_Z_lnot; shelve : expr_compiler.
+#[export] Hint Extern 5 (DPAT (of_Z (_ / 2))) =>
+  simple eapply expr_compile_Z_div_2; shelve : expr_compiler.
+#[export] Hint Extern 5 (DPAT (of_bool (Z.odd _))) =>
+  simple eapply expr_compile_Z_odd; shelve : expr_compiler.
+#[export] Hint Extern 5 (DPAT (of_bool (negb _))) =>
+  simple eapply expr_compile_bool_negb; shelve : expr_compiler.
+
 #[export] Hint Extern 5 (DPAT (of_Z (Z.add _ _))) =>
   simple eapply expr_compile_Z_add; shelve : expr_compiler.
 #[export] Hint Extern 5 (DPAT (of_Z (Z.sub _ _))) =>
@@ -424,12 +471,13 @@ Section Tests.
   Proof. eexists; intros; compile_expr. Qed.
 
   Local Goal {e | forall b,
-          DEXPR #{ "n" => word.b2w b }# e (word.b2w (andb b false)) }.
+          DEXPR #{ "n" => word.b2w b }# e (word.b2w (andb (negb b) false)) }.
   Proof. eexists; intros; compile_expr. Qed.
 
   Local Goal {e | forall x b,
+          0 <= x < 2 ^ width ->
           DEXPR #{ "x" => word.of_Z x; "b" => word_of_byte b }# e
-                (word.add (word.of_Z (Z.add x x))
+                (word.add (word.of_Z (Z.add (Z.lnot x) (Z.div x 2)))
                           (word_of_byte (byte.and b b))) }.
   Proof. eexists; intros; compile_expr. Qed.
 End Tests.

@@ -74,16 +74,12 @@ Section Compiler.
     intros; rewrite (word.wrap_small z); eauto.
   Qed.
 
-  Lemma dexpr_compile_upper {mem locals} {e} {z1 z2: Z}:
-    WeakestPrecondition.dexpr
-      mem locals e
-      (word.b2w (word := word)
-                (word.ltu (word.sub (word := word) (word.of_Z z1) (word.of_Z z2))
-                          (word.of_Z 26))) ->
-    WeakestPrecondition.dexpr
-      mem locals e
-      (word.b2w (word := word)
-                (word.wrap (z1 - z2) <? 26)).
+  Lemma expr_compile_upper_test {m: mem} {l: locals} {e} {z1 z2: Z}:
+    DEXPR m l e
+          (word.b2w (word.ltu (word.sub (word := word) (word.of_Z z1) (word.of_Z z2))
+                              (word.of_Z 26))) ->
+    DEXPR m l e
+          (word.b2w (word.wrap (z1 - z2) <? 26)).
   Proof. intros; rewrite wrap_unsigned_lt by lia; eassumption. Qed.
 End Compiler.
 
@@ -101,7 +97,7 @@ Section Upstr.
   Import LoopCompiler.
   Import SizedListArrayCompiler.
 
-  #[local] Hint Extern 1 => simple apply dexpr_compile_upper; shelve : compiler_side_conditions.
+  #[local] Hint Extern 1 => simple apply expr_compile_upper_test; shelve : compiler_side_conditions.
 
   #[local] Hint Extern 1 => lia : arith.
   Hint Rewrite Z2Nat.id using eauto with arith : compiler_side_conditions.
