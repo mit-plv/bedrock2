@@ -1,9 +1,10 @@
 #include <x86intrin.h>
 #include <stdio.h>
+#include <math.h>
 
-#define WARMUP 50
-#define TRIALS (100  /*odd for median*/|1)
-#define COOLDOWN 50
+#define WARMUP 100
+#define TRIALS (1000  /* >100 for normal distribution approximation, odd for median*/|1)
+#define COOLDOWN 10
 #define LAPS (WARMUP+TRIALS+COOLDOWN)
 
 #include "testdata.c"
@@ -37,5 +38,15 @@ int main() {
 	uint64_t min = laptimes[WARMUP];
 	uint64_t max = laptimes[WARMUP+TRIALS-1];
 	uint64_t median = laptimes[WARMUP+TRIALS/2];
-	printf ("n=%d; min=%llu; median=%llu; max=%llu; mean=%llu/%d;\n", TRIALS, min, median, total, max, TRIALS);
+
+	double mean = laptimes[WARMUP], squared_distance_from_mean = 0;
+	for (int i=1; i<TRIALS; i++) {
+	        double delta = laptimes[WARMUP+i] - mean;
+	        mean += delta / (i+1);
+	        double delta2 = laptimes[WARMUP+i] - mean;
+		squared_distance_from_mean += delta * delta2;
+	}
+	double stddev = sqrt(squared_distance_from_mean/(TRIALS-1));
+	double d95 = 1.95996398454005423552*stddev/sqrt(TRIALS), ci95lo = mean-d95, ci95hi = mean+d95;
+	printf ("n=%d; min=%llu; median=%llu; max=%llu; mean=%.0f; stddev=%.0f; ci95lo=%.0f; ci95hi=%.0f;\n", TRIALS, min, median, max, mean, stddev, ci95lo, ci95hi);
 }

@@ -27,14 +27,13 @@ Definition utf8_decode (ptr: word) (bs: list byte) : word * word * word :=
 
   let/n ptr := ptr +w len +w (len ==w 0) in
 
-  let/n b1 := ListArray.get bs 1 in
-  let/n b2 := ListArray.get bs 2 in
-  let/n b3 := ListArray.get bs 3 in
-
   let/n mask := InlineTable.get masks len in
   let/n c := (b0 &w mask) <<w 18 in
+  let/n b1 := ListArray.get bs 1 in
   let/n c := c |w (b1 &w 0x3f) <<w 12 in
+  let/n b2 := ListArray.get bs 2 in
   let/n c := c |w (b2 &w 0x3f) <<w 6 in
+  let/n b3 := ListArray.get bs 3 in
   let/n c := c |w (b3 &w 0x3f) <<w 0 in
 
   let/n shiftc := InlineTable.get shiftc len in
@@ -55,14 +54,14 @@ Definition utf8_decode (ptr: word) (bs: list byte) : word * word * word :=
   (c, e, ptr).
 
 Instance spec_of_utf8_decode : spec_of "utf8_decode" :=
-  fnspec! "utf8_decode" data_ptr wlen / (data : list byte) R ~> c e offset,
+  fnspec! "utf8_decode" data_ptr wlen / (data : list byte) R ~> c e ptr,
     { requires tr mem :=
         Z.of_nat (length data) >= 4 /\
         wlen = word.of_Z (Z.of_nat (length data)) /\
         (listarray_value AccessByte data_ptr data * R)%sep mem;
       ensures tr' mem' :=
         tr' = tr /\
-        (c, e, offset) = utf8_decode data_ptr data /\
+        (c, e, ptr) = utf8_decode data_ptr data /\
         (listarray_value AccessByte data_ptr data * R)%sep mem' }.
 
 Import UnsizedListArrayCompiler.
@@ -83,7 +82,7 @@ Proof.
 Time Qed.
 
 Definition utf8_decode_impl : func := Eval vm_compute in
-  ("utf8_decode", (["data"; "len"], ["c"; "e"; "offset"], utf8_decode_body)).
+  ("utf8_decode", (["data"; "len"], ["c"; "e"; "ptr"], utf8_decode_body)).
 
 (*
 Require Import bedrock2.ToCString.
