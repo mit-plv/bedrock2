@@ -38,9 +38,44 @@ Section ExprCompiler.
       destruct Z.odd; reflexivity.
     Qed.
 
+    Lemma word_morph_eqb z1 z2:
+      (0 <= z1 < 2 ^ width /\
+       0 <= z2 < 2 ^ width) \/
+      (- 2 ^ (width-1) <= z1 < 2 ^ (width-1) /\
+       - 2 ^ (width-1) <= z2 < 2 ^ (width-1)) ->
+      word.eqb (word := word) (word.of_Z z1) (word.of_Z z2) = (z1 =? z2).
+    Proof.
+      intros [(h1, h2) | (h1, h2)]; apply word.b2w_inj.
+      - rewrite word.unsigned_eqb, !word.unsigned_of_Z_nowrap by lia; reflexivity.
+      - rewrite word.signed_eqb, !word.signed_of_Z_nowrap by lia; reflexivity.
+    Qed.
+
     Lemma b2w_if (b: bool) :
       word.b2w (word := word) b = if b then word.of_Z 1 else word.of_Z 0.
     Proof. destruct b; reflexivity. Qed.
+
+    Lemma unsigned_range_32 z :
+      0 <= z < 2 ^ 32 ->
+      0 <= z < 2 ^ width.
+    Proof.
+      pose proof width_at_least_32.
+      pose proof Z.pow_le_mono_r 2 32 width.
+      lia.
+    Qed.
+
+    Lemma signed_range_31 z :
+      -2 ^ 31 <= z < 2 ^ 31 ->
+      -2 ^ (width - 1) <= z < 2 ^ (width - 1).
+    Proof.
+      pose proof width_at_least_32.
+      pose proof Z.pow_le_mono_r 2 31 (width - 1).
+      lia.
+    Qed.
+
+    Lemma Z_decide_word_bounds a b c:
+      (Z.leb a b && Z.ltb b c)%bool = true ->
+      a <= b < c.
+    Proof. lia. Qed.
   End WordLemmas.
 
   Context {m: mem} {l: locals}.
@@ -49,6 +84,10 @@ Section ExprCompiler.
     (WeakestPrecondition.dexpr (word := word) (mem := mem) (locals := locals) m).
 
   Notation DX := (DEXPR l).
+
+  Notation mb z := (0 <= z < width).
+  Notation ub z := (0 <= z < 2 ^ width).
+  Notation sb z := (- 2 ^ (width - 1) <= z < 2 ^ (width - 1)).
 
   Ltac cleanup :=
     repeat straightline;
@@ -132,18 +171,29 @@ Section ExprCompiler.
     Proof. rewrite word.morph_or; eauto using expr_compile_word_or. Qed.
     Lemma expr_compile_Z_lxor : DOP bopname.xor (to_w (Z.lxor z1 z2)).
     Proof. rewrite word.morph_xor; eauto using expr_compile_word_xor. Qed.
-    Lemma expr_compile_Z_shiftl (h2: 0 <= z2 < width) :
+    Lemma expr_compile_Z_shiftl (h2: mb z2) :
       DOP bopname.slu (to_w (Z.shiftl z1 z2)).
     Proof. rewrite word.morph_shiftl; eauto using expr_compile_word_slu. Qed.
-    Lemma expr_compile_Z_shiftr (h1: 0 <= z1 < 2 ^ width) (h2: 0 <= z2 < width) :
+    Lemma expr_compile_Z_shiftr (h1: ub z1) (h2: mb z2) :
       DOP bopname.sru (to_w (Z.shiftr z1 z2)).
     Proof. rewrite word.morph_shiftr; eauto using expr_compile_word_sru. Qed.
+
+    Lemma expr_compile_Z_ltb_u (h1: ub z1) (h2: ub z2) :
+      DOP bopname.ltu (of_bool (Z.ltb z1 z2)).
+    Proof. rewrite word.morph_ltu; eauto using expr_compile_word_ltu. Qed.
+    Lemma expr_compile_Z_ltb_s (h1: sb z1) (h2: sb z2) :
+      DOP bopname.lts (of_bool (Z.ltb z1 z2)).
+    Proof. rewrite word.morph_lts; eauto using expr_compile_word_lts. Qed.
+
+    Lemma expr_compile_Z_eqb (h: (ub z1 /\ ub z2) \/ (sb z1 /\ sb z2)) :
+      DOP bopname.eq (of_bool (Z.eqb z1 z2)).
+    Proof. rewrite <- word_morph_eqb; eauto using expr_compile_word_eqb. Qed.
 
     Lemma expr_compile_Z_lnot:
       DX (expr.op bopname.xor e1 (expr.literal (-1))) (to_w (Z.lnot z1)).
     Proof. rewrite word.morph_not; eauto using expr_compile_word_not. Qed.
 
-    Lemma expr_compile_Z_div_2 (h1: 0 <= z1 < 2 ^ width) :
+    Lemma expr_compile_Z_div_2 (h1: ub z1) :
       DX (expr.op bopname.sru e1 (expr.literal 1)) (to_w (z1 / 2)).
     Proof. rewrite word_sru_div_2; eauto using expr_compile_word_sru, expr_compile_Z_literal. Qed.
 
@@ -348,6 +398,19 @@ Create HintDb expr_compiler.
 #[export] Hint Extern 3 =>
   reify_change_dexpr_locals; shelve : expr_compiler.
 
+(* Some hints to handle the side conditions that some of the Z lemmas return.
+   In most cases its not crucial that these side conditions be solved by
+   `compile_expr` in one shot, because there's only one reasonable thing to do
+   (this is the case with shiftr, for example: if the arguments are not in
+   bounds, what can we do?).  But in some cases it is important that the range
+   side conditions be solved right away, because otherwise we want to backtrack;
+   this is the case with `Z.ltb`, which is either `word.lts` or `word.ltu`
+   depending on the range of the operands. *)
+#[export] Hint Constructors and or eq : expr_compiler.
+#[export] Hint Resolve unsigned_range_32 signed_range_31: expr_compiler.
+#[export] Hint Resolve word.unsigned_range word.signed_range: expr_compiler.
+#[export] Hint Extern 5 (_ <= _ < _) => apply Z_decide_word_bounds; reflexivity : expr_compiler.
+
 (* Adding explicit patterns speeds up expr compilation by a factor ~10.
    We need Hint Extern because we want to shelve to make partial progress. *)
 Notation DPAT p := (DEXPR _ _ _ p) (only parsing).
@@ -412,6 +475,16 @@ Notation DPAT p := (DEXPR _ _ _ p) (only parsing).
 #[export] Hint Extern 5 (DPAT (of_Z (Z.shiftr _ _))) =>
   simple eapply expr_compile_Z_shiftr; shelve : expr_compiler.
 
+(* Don't shelve side conditions for these two competing lemmas, since we'll use
+   them (with backtracking) to pick the right one. *)
+#[export] Hint Extern 5 (DPAT (of_bool (Z.ltb _ _))) =>
+  simple eapply expr_compile_Z_ltb_u; [ shelve.. | | ] : expr_compiler.
+#[export] Hint Extern 5 (DPAT (of_bool (Z.ltb _ _))) =>
+  simple eapply expr_compile_Z_ltb_s; [ shelve.. | | ] : expr_compiler.
+
+#[export] Hint Extern 5 (DPAT (of_bool (Z.eqb _ _))) =>
+  simple eapply expr_compile_Z_eqb; shelve : expr_compiler.
+
 #[export] Hint Extern 5 (DPAT (of_N (N.add _ _))) =>
   simple eapply expr_compile_N_add; shelve : expr_compiler.
 #[export] Hint Extern 5 (DPAT (of_N (N.sub _ _))) =>
@@ -466,12 +539,21 @@ Section Tests.
           DEXPR #{ "b" => of_byte b }# e (word_of_byte (byte.and Byte.x03 b)) }.
   Proof. eexists; intros; compile_expr. Qed.
 
-  Local Goal {e | forall z n, (* Casts to Z come "for free" *)
+  Local Goal {e | forall z n, (* Casts come "for free" *)
           DEXPR #{ "z" => of_Z z; "n" => of_N n }# e (of_Z (Z.add z (Z.of_N n))) }.
   Proof. eexists; intros; compile_expr. Qed.
 
   Local Goal {e | forall b,
           DEXPR #{ "n" => word.b2w b }# e (word.b2w (andb (negb b) false)) }.
+  Proof. eexists; intros; compile_expr. Qed.
+
+  (* The compiler picks the right comparisons *)
+  Local Goal {e | forall z, 0 <= z < 2 ^ width ->
+          DEXPR #{ "n" => word.of_Z z }# e (word.b2w (orb (Z.ltb z 3) false)) }.
+  Proof. eexists; intros; compile_expr. Qed.
+
+  Local Goal {e | forall z, -2 ^ (width-1) <= z < 2 ^ (width-1) ->
+          DEXPR #{ "n" => word.of_Z z }# e (word.b2w (orb (Z.eqb z 3) false)) }.
   Proof. eexists; intros; compile_expr. Qed.
 
   Local Goal {e | forall x b,
