@@ -1,0 +1,3 @@
+(executable
+ (name driver)
+ (libraries core core_bench))
