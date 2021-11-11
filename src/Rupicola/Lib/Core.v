@@ -1520,12 +1520,10 @@ Ltac div_up_t :=
 
 Section DivUp.
   Lemma div_up_eqn a b:
+    (b <> 0)%nat ->
     Nat.div_up a b =
     (a / b + if a mod b =? 0 then 0 else 1)%nat.
-  Proof.
-    destruct (Nat.eq_dec b 0); [ subst; reflexivity | ].
-    destruct (Nat.eqb_spec (a mod b) 0); div_up_t.
-  Qed.
+  Proof. destruct (Nat.eqb_spec (a mod b) 0); div_up_t. Qed.
 
   Lemma div_up_add_mod a b n:
     (a mod n = 0)%nat ->
@@ -1533,7 +1531,7 @@ Section DivUp.
     (Nat.div_up a n + Nat.div_up b n)%nat.
   Proof.
     intros; destruct (Nat.eq_dec n 0); subst; [ reflexivity | ].
-    rewrite !div_up_eqn.
+    rewrite !div_up_eqn by lia.
     rewrite <- Nat.add_mod_idemp_l by assumption.
     replace (a mod n)%nat; cbn [Nat.add Nat.eqb].
     rewrite (Nat.div_mod a n) by assumption.
@@ -1549,7 +1547,7 @@ Section DivUp.
     (a = b * (Nat.div_up a b))%nat.
   Proof.
     intros.
-    rewrite div_up_eqn.
+    rewrite div_up_eqn by lia.
     split; intros Heq.
     - rewrite Heq; cbn; rewrite Nat.mul_add_distr_l, Nat.mul_0_r, Nat.add_0_r.
       apply Nat.div_exact; assumption.

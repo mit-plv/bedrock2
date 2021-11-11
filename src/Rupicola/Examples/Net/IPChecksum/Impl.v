@@ -149,7 +149,7 @@ Section Properties.
          acc).
   Proof.
     intros.
-    rewrite div_up_eqn.
+    rewrite div_up_eqn by lia.
     rewrite Nat2Z.inj_add.
     rewrite <- !fold_left_as_nd_ranged_for_all.
     rewrite (z_range_app 0 (Z.of_nat (n / 2)) (_ + _)) by lia.

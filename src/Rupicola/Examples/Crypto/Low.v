@@ -102,8 +102,8 @@ Lemma padding_eqn a b:
   (Nat.div_up a b * b - a =
    if a mod b =? 0 then 0 else b - a mod b)%nat.
 Proof.
-  intros; rewrite div_up_eqn.
-  destruct (Nat.eq_dec b 0); [ subst; reflexivity | ].
+  destruct (Nat.eq_dec b 0); [subst; destruct (_ =? _)%nat; reflexivity|].
+  intros; rewrite div_up_eqn by lia.
   destruct (Nat.eqb_spec (a mod b) 0); div_up_t.
 Qed.
 
@@ -112,10 +112,10 @@ Lemma padding_len_eqn {T} (l: list T) m:
 Proof. eauto using padding_eqn. Qed.
 
 Lemma length_padded_mod {A} n (l: list A) a:
+  (n <> 0)%nat ->
   (length (l ++ repeat a (Nat.div_up (length l) n * n - length l)) mod n = 0)%nat.
 Proof.
-  destruct (Nat.eq_dec n 0); [ subst; reflexivity | ].
-  pose proof Nat.div_up_range (length l) n ltac:(eassumption).
+  intros; pose proof Nat.div_up_range (length l) n ltac:(eauto).
   rewrite app_length, repeat_length, <- le_plus_minus by lia.
   apply Nat.mod_mul; assumption.
 Qed.
@@ -587,7 +587,7 @@ Qed.
 Lemma padding_len_mod {A} (bs1 bs2: list A) n :
   (List.length bs1 mod n = List.length bs2 mod n)%nat ->
   padding_len bs1 n = padding_len bs2 n.
-Proof. rewrite !padding_len_eqn; intros ->; reflexivity. Qed.
+Proof. rewrite !padding_len_eqn by assumption; intros ->; reflexivity. Qed.
 
 Lemma padding_len_round {A} (bs: list A) n :
   let rlen := (n * (length bs / n))%nat in
@@ -660,7 +660,7 @@ Proof.
       pose proof (Forall_In (Forall_chunk_length_le _ 16 ltac:(lia)) Hin) as Hle;
       cbv beta in *.
     unfold padding_len, padded_len in *.
-    rewrite (length_padded_mod 16 msg x00) in *.
+    rewrite (length_padded_mod 16 msg x00) in * by lia.
     destruct Hmod as [ -> | ]; [ | lia].
     simpl repeat; rewrite app_nil_r.
     reflexivity.
@@ -738,7 +738,7 @@ Proof.
 
   all: try apply length_padded_mod.
   all: try rewrite length_chacha20_encrypt.
-  all: eassumption || reflexivity.
+  all: eassumption || reflexivity || lia.
 Qed.
 
 Lemma chacha20poly1305_aead_encrypt_ok aad key iv constant plaintext tag:
