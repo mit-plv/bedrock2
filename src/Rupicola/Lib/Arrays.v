@@ -170,7 +170,7 @@ Section with_parameters.
           k_impl
         <{ pred (nlet_eq [var] v k) }>.
     Proof.
-      cbn; intros Hlt *.
+      cbn; intros Hlt *. clear put.
       pose proof word.unsigned_range (K_to_word idx) as (Hge & _).
       destruct (Hget a) as [default Hget0].
 
@@ -196,7 +196,7 @@ Section with_parameters.
 
       rewrite Hget0.
 
-      clear put Hget Hrw.
+      clear Hget Hrw.
       destruct sz; cbv [_access_info ai_type ai_size ai_repr ai_to_word ai_width] in *.
       - eapply load_one_of_sep; ecancel_assumption.
       - eapply load_word_of_sep; ecancel_assumption.

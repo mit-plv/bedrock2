@@ -33,7 +33,7 @@ Section Properties.
     z mod n = z - n.
   Proof.
     intros Hn (Hnz, Hzn); rewrite Z.mod_eq by lia.
-    Z.div_mod_to_equations; assert (q = 1); nia.
+    Z.div_mod_to_equations; cut (q = 1); nia.
   Qed.
 
   Lemma Z_shiftr_add_carry m n z1 z2:

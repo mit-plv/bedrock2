@@ -52,6 +52,8 @@ Definition __p2_assoc_test:
   (\< 1, \< 2, 3 \> \> <: \<< nat, \<< nat, nat \>> \>>)
   := eq_refl.
 
+Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(true).
+
 (* TODO: should move upstream to coqutil *)
 Module map.
   Section __.
@@ -791,7 +793,7 @@ End Vectors.
 
 Global Open Scope Z_scope.
 
-Section Z.
+Section Arith.
   Lemma Z_land_leq_right a b
     : 0 <= a -> 0 <= b ->
       0 <= Z.land a b <= b.
@@ -802,7 +804,33 @@ Section Z.
     revert pb; induction pa; destruct pb; simpl in *; try lia.
     all: specialize (IHpa pb); destruct Pos.land in *; simpl; lia.
   Qed.
-End Z.
+
+  Lemma Nat_mod_eq' a n:
+    n <> 0%nat ->
+    a = (n * (a / n) + (a mod n))%nat.
+  Proof.
+    intros; pose proof Nat.mul_div_le a n.
+    rewrite Nat.mod_eq; lia.
+  Qed.
+
+  Lemma Nat_mod_eq'' a n:
+    n <> 0%nat ->
+    (n * (a / n) = a - (a mod n))%nat.
+  Proof.
+    intros; pose proof Nat.mul_div_le a n.
+    rewrite Nat.mod_eq; lia.
+  Qed.
+
+  Lemma Z_mod_eq' a b:
+    b <> 0 ->
+    a = b * (a / b) + a mod b.
+  Proof. pose proof Z.mod_eq a b; lia. Qed.
+
+  Lemma Z_mod_eq'' a b:
+    b <> 0 ->
+    b * (a / b) = a - a mod b.
+  Proof. pose proof Z.mod_eq a b; lia. Qed.
+End Arith.
 
 (** ** Nat.iter **)
 
@@ -1181,7 +1209,7 @@ Module word.
       rewrite word.unsigned_sru_shamtZ, !Z.shiftr_div_pow2 by lia.
       rewrite !word.unsigned_of_Z_nowrap; try lia; try reflexivity.
       pose proof Z.pow_pos_nonneg 2 n.
-      Z.div_mod_to_equations; nia.
+      nia.
     Qed.
 
     Lemma morph_lts x y:
@@ -1551,7 +1579,6 @@ End Byte.
 Ltac div_up_t :=
   cbv [Nat.div_up]; zify;
   rewrite ?Zdiv.div_Zdiv, ?mod_Zmod in * by Lia.lia;
-  Z.div_mod_to_equations;
   nia.
 
 Section DivUp.
@@ -1852,32 +1879,6 @@ Section Array.
   Context {T} (element : word -> T -> Mem -> Prop) (size : word).
 
   Open Scope Z_scope.
-
-  Lemma Nat_mod_eq' a n:
-    n <> 0%nat ->
-    a = (n * (a / n) + (a mod n))%nat.
-  Proof.
-    intros; pose proof Nat.mul_div_le a n.
-    rewrite Nat.mod_eq; lia.
-  Qed.
-
-  Lemma Nat_mod_eq'' a n:
-    n <> 0%nat ->
-    (n * (a / n) = a - (a mod n))%nat.
-  Proof.
-    intros; pose proof Nat.mul_div_le a n.
-    rewrite Nat.mod_eq; lia.
-  Qed.
-
-  Lemma Z_mod_eq' a b:
-    b <> 0 ->
-    a = b * (a / b) + a mod b.
-  Proof. pose proof Z.mod_eq a b; lia. Qed.
-
-  Lemma Z_mod_eq'' a b:
-    b <> 0 ->
-    b * (a / b) = a - a mod b.
-  Proof. pose proof Z.mod_eq a b; lia. Qed.
 
   Definition no_aliasing {A} (repr: word -> A -> Mem -> Prop) :=
     (forall a b p delta m R,
