@@ -82,5 +82,10 @@ Proof.
   Time compile.
 Time Qed.
 
+Definition utf8_decode_impl : func := Eval vm_compute in
+  ("utf8_decode", (["data"; "len"], ["c"; "e"; "offset"], utf8_decode_body)).
+
+(*
 Require Import bedrock2.ToCString.
-Compute c_func ("utf8_decode", (["data"; "len"], ["c"; "e"; "ptr"], utf8_decode_body)).
+Compute c_func utf8_decode_impl.
+*)
