@@ -905,6 +905,38 @@ Module word.
       word.wrap (Z.of_nat n) <= Z.of_nat n.
     Proof. apply wrap_le; lia. Qed.
 
+    Lemma wrap_range z:
+      0 <= word.wrap z < 2 ^ width.
+    Proof. apply Z.mod_pos_bound, word.modulus_pos. Qed.
+
+    Lemma swrap_range z:
+      - 2 ^ (width - 1) <= word.swrap (word := word) z < 2 ^ (width - 1).
+    Proof.
+      unfold word.swrap; set (z + _) as z0.
+      pose proof Z.mod_pos_bound z0 (2 ^ width) word.modulus_pos as h.
+      rewrite word.pow2_width_minus1 in h at 3; lia.
+    Qed.
+
+    Lemma wrap_idempotent z:
+      word.wrap (word.wrap z) = word.wrap z.
+    Proof. apply wrap_small, wrap_range. Qed.
+
+    Lemma swrap_idempotent z:
+      word.swrap (word := word) (word.swrap (word := word) z) = word.swrap (word := word) z.
+    Proof. apply word.swrap_inrange, swrap_range. Qed.
+
+    Lemma of_Z_wrap z:
+      word.of_Z (word := word) z = word.of_Z (word.wrap z).
+    Proof. apply word.unsigned_inj; rewrite !word.unsigned_of_Z, wrap_idempotent; reflexivity. Qed.
+
+    Lemma of_Z_swrap z:
+      word.of_Z (word := word) z = word.of_Z (word.swrap (word := word) z).
+    Proof. apply word.signed_inj; rewrite !word.signed_of_Z, swrap_idempotent; reflexivity. Qed.
+
+    Lemma of_Z_mod z:
+      word.of_Z (word := word) z = word.of_Z (z mod 2 ^ width).
+    Proof. apply of_Z_wrap. Qed.
+
     Lemma unsigned_of_Z_b2z b :
       @word.unsigned _ word (word.of_Z (Z.b2z b)) = Z.b2z b.
     Proof.
@@ -1022,6 +1054,10 @@ Module word.
 
     Definition b2w (b: bool) :=
       (@word.of_Z _ word (Z.b2z b)).
+
+    Lemma b2w_if (b: bool) :
+      b2w b = if b then word.of_Z 1 else word.of_Z 0.
+    Proof. destruct b; reflexivity. Qed.
 
     Lemma b2w_inj:
       forall b1 b2, b2w b1 = b2w b2 -> b1 = b2.
@@ -1816,14 +1852,6 @@ Section Array.
   Context {T} (element : word -> T -> Mem -> Prop) (size : word).
 
   Open Scope Z_scope.
-
-  Lemma word_of_Z_mod z:
-    word.of_Z (word := word) z = word.of_Z (z mod 2 ^ width).
-  Proof.
-    apply word.of_Z_inj_mod.
-    pose proof word.modulus_pos.
-    rewrite Z.mod_mod; lia.
-  Qed.
 
   Lemma Nat_mod_eq' a n:
     n <> 0%nat ->

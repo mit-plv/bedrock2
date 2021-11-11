@@ -50,10 +50,6 @@ Section ExprCompiler.
       - rewrite word.signed_eqb, !word.signed_of_Z_nowrap by lia; reflexivity.
     Qed.
 
-    Lemma b2w_if (b: bool) :
-      word.b2w (word := word) b = if b then word.of_Z 1 else word.of_Z 0.
-    Proof. destruct b; reflexivity. Qed.
-
     Lemma word_unsigned_range_32 z :
       0 <= z < 2 ^ 32 ->
       0 <= z < 2 ^ width.
@@ -70,18 +66,6 @@ Section ExprCompiler.
       pose proof width_at_least_32.
       pose proof Z.pow_le_mono_r 2 31 (width - 1).
       lia.
-    Qed.
-
-    Lemma word_wrap_range z:
-      0 <= word.wrap (word := word) z < 2 ^ width.
-    Proof. apply Z.mod_pos_bound, word.modulus_pos. Qed.
-
-    Lemma word_swrap_range z:
-      - 2 ^ (width - 1) <= word.swrap (word := word) z < 2 ^ (width - 1).
-    Proof.
-      unfold word.swrap; set (z + _) as z0.
-      pose proof Z.mod_pos_bound z0 (2 ^ width) word.modulus_pos as h.
-      rewrite word.pow2_width_minus1 in h at 3; lia.
     Qed.
 
     Lemma Z_decide_word_bounds a b c:
@@ -147,11 +131,11 @@ Section ExprCompiler.
     Definition expr_compile_word_srs : DOP bopname.srs (word.srs w1 w2) := expr_compile_word_bop.
 
     Definition expr_compile_word_lts : DOP bopname.lts (of_bool (word.lts w1 w2)).
-    Proof. rewrite b2w_if; eapply (@expr_compile_word_bop bopname.lts). Qed.
+    Proof. rewrite word.b2w_if; eapply (@expr_compile_word_bop bopname.lts). Qed.
     Definition expr_compile_word_ltu : DOP bopname.ltu (of_bool (word.ltu w1 w2)).
-    Proof. rewrite b2w_if; eapply (@expr_compile_word_bop bopname.ltu). Qed.
+    Proof. rewrite word.b2w_if; eapply (@expr_compile_word_bop bopname.ltu). Qed.
     Definition expr_compile_word_eqb : DOP bopname.eq (of_bool (word.eqb w1 w2)).
-    Proof. rewrite b2w_if; eapply (@expr_compile_word_bop bopname.eq). Qed.
+    Proof. rewrite word.b2w_if; eapply (@expr_compile_word_bop bopname.eq). Qed.
 
     Lemma expr_compile_word_not:
       DX (expr.op bopname.xor e1 (expr.literal (-1))) (word.not w1).
@@ -190,6 +174,9 @@ Section ExprCompiler.
       DOP bopname.sru (to_w (Z.shiftr z1 z2)).
     Proof. rewrite word.morph_shiftr; eauto using expr_compile_word_sru. Qed.
 
+    Lemma expr_compile_Z_eqb (h: (ub z1 /\ ub z2) \/ (sb z1 /\ sb z2)) :
+      DOP bopname.eq (of_bool (Z.eqb z1 z2)).
+    Proof. rewrite <- word_morph_eqb; eauto using expr_compile_word_eqb. Qed.
     Lemma expr_compile_Z_ltb_u (h1: ub z1) (h2: ub z2) :
       DOP bopname.ltu (of_bool (Z.ltb z1 z2)).
     Proof. rewrite word.morph_ltu; eauto using expr_compile_word_ltu. Qed.
@@ -197,11 +184,7 @@ Section ExprCompiler.
       DOP bopname.lts (of_bool (Z.ltb z1 z2)).
     Proof. rewrite word.morph_lts; eauto using expr_compile_word_lts. Qed.
 
-    Lemma expr_compile_Z_eqb (h: (ub z1 /\ ub z2) \/ (sb z1 /\ sb z2)) :
-      DOP bopname.eq (of_bool (Z.eqb z1 z2)).
-    Proof. rewrite <- word_morph_eqb; eauto using expr_compile_word_eqb. Qed.
-
-    Lemma expr_compile_Z_lnot:
+    Lemma expr_compile_Z_lnot :
       DX (expr.op bopname.xor e1 (expr.literal (-1))) (to_w (Z.lnot z1)).
     Proof. rewrite word.morph_not; eauto using expr_compile_word_not. Qed.
 
@@ -209,9 +192,16 @@ Section ExprCompiler.
       DX (expr.op bopname.sru e1 (expr.literal 1)) (to_w (z1 / 2)).
     Proof. rewrite word_sru_div_2; eauto using expr_compile_word_sru, expr_compile_Z_literal. Qed.
 
-    Lemma expr_compile_Z_odd:
+    Lemma expr_compile_Z_odd :
       DX (expr.op bopname.and e1 (expr.literal 1)) (of_bool (Z.odd z1)).
     Proof. rewrite word_and_odd; eauto using expr_compile_word_and, expr_compile_Z_literal. Qed.
+
+    Lemma expr_compile_Z_wrap :
+      DX e1 (to_w z1) -> DX e1 (to_w (word.wrap z1)).
+    Proof. rewrite word.of_Z_wrap; auto. Qed.
+    Lemma expr_compile_Z_swrap :
+      DX e1 (to_w z1) -> DX e1 (to_w (word.swrap (word := word) z1)).
+    Proof. rewrite word.of_Z_swrap; auto. Qed.
   End Z_expr.
 
   Section N_expr.
@@ -276,7 +266,7 @@ Section ExprCompiler.
     Notation DOP op w := (DX (expr.op op e1 e2) w).
 
     Ltac cleanup_bool lemma :=
-      cleanup; rewrite ?b2w_if; try reflexivity;
+      cleanup; rewrite ?word.b2w_if; try reflexivity;
       repeat match goal with |- context[if ?b then _ else _] => is_var b; destruct b end;
       simpl; rewrite <- ?lemma; reflexivity.
 
@@ -400,7 +390,7 @@ Create HintDb expr_compiler.
 
 (* For dexpr side conditions: *)
 #[export] Hint Extern 8 (DEXPR _ _ _ _) =>
-  compile_expr : compiler_side_conditions.
+  compile_expr; shelve : compiler_side_conditions.
 
 (* For variables *)
 #[export] Hint Extern 7 =>
@@ -419,7 +409,7 @@ Create HintDb expr_compiler.
    this is the case with `Z.ltb`, which is either `word.lts` or `word.ltu`
    depending on the range of the operands. *)
 #[export] Hint Constructors and or eq : expr_compiler.
-#[export] Hint Resolve word_wrap_range word_swrap_range: expr_compiler.
+#[export] Hint Resolve word.wrap_range word.swrap_range: expr_compiler.
 #[export] Hint Resolve word_unsigned_range_32 word_signed_range_31: expr_compiler.
 #[export] Hint Resolve word.unsigned_range word.signed_range: expr_compiler.
 #[export] Hint Extern 5 (_ <= _ < _) => apply Z_decide_word_bounds; reflexivity : expr_compiler.
@@ -487,6 +477,8 @@ Notation DPAT p := (DEXPR _ _ _ p) (only parsing).
   simple eapply expr_compile_Z_shiftl; shelve : expr_compiler.
 #[export] Hint Extern 5 (DPAT (of_Z (Z.shiftr _ _))) =>
   simple eapply expr_compile_Z_shiftr; shelve : expr_compiler.
+#[export] Hint Extern 5 (DPAT (of_bool (Z.eqb _ _))) =>
+  simple eapply expr_compile_Z_eqb; shelve : expr_compiler.
 
 (* Don't shelve side conditions for these two competing lemmas, since we'll use
    them (with backtracking) to pick the right one. *)
@@ -495,8 +487,10 @@ Notation DPAT p := (DEXPR _ _ _ p) (only parsing).
 #[export] Hint Extern 5 (DPAT (of_bool (Z.ltb _ _))) =>
   simple eapply expr_compile_Z_ltb_s; [ shelve.. | | ] : expr_compiler.
 
-#[export] Hint Extern 5 (DPAT (of_bool (Z.eqb _ _))) =>
-  simple eapply expr_compile_Z_eqb; shelve : expr_compiler.
+#[export] Hint Extern 5 (DPAT (of_Z (word.wrap _))) =>
+  simple eapply expr_compile_Z_wrap : expr_compiler.
+#[export] Hint Extern 5 (DPAT (of_Z (word.swrap _))) =>
+  simple eapply expr_compile_Z_swrap : expr_compiler.
 
 #[export] Hint Extern 5 (DPAT (of_N (N.add _ _))) =>
   simple eapply expr_compile_N_add; shelve : expr_compiler.
