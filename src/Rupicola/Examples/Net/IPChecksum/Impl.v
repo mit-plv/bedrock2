@@ -9,6 +9,7 @@ Require Export
 
 Coercion co_word_of_Z := word.of_Z (word := word).
 Coercion co_word_of_byte (b: byte) : word := word_of_byte b.
+#[export] Hint Unfold co_word_of_Z co_word_of_byte : compiler_cleanup.
 
 Definition ip_checksum_upd (chk16: word) (b0 b1: byte) :=
   let/n w16 := b0 |w (b1 <<w 8) in

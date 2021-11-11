@@ -52,6 +52,12 @@ Definition __p2_assoc_test:
   (\< 1, \< 2, 3 \> \> <: \<< nat, \<< nat, nat \>> \>>)
   := eq_refl.
 
+Create HintDb lia.
+#[export] Hint Extern 1 => lia : lia.
+
+Create HintDb nia.
+#[export] Hint Extern 1 => nia : nia.
+
 Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(true).
 
 (* TODO: should move upstream to coqutil *)

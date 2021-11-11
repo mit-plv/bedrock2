@@ -61,3 +61,7 @@ Coercion co_word_of_Z := word.of_Z (word := word).
 Coercion co_word_of_byte (b: byte) : word := word_of_byte b.
 Coercion co_word_of_Fin {n} (f: Fin.t n) : word :=
   word.of_Z (Z.of_nat (proj1_sig (Fin.to_nat f))).
+
+#[export] Hint Unfold Convertible_Fin_byte : compiler_side_conditions.
+#[export] Hint Unfold Convertible_Fin_byte_5 : compiler_side_conditions.
+#[export] Hint Unfold co_word_of_Z co_word_of_byte co_word_of_Fin : compiler_side_conditions.

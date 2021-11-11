@@ -17,16 +17,14 @@ Import UnsizedListArrayCompiler.
 Hint Rewrite Nat2Z.id : compiler_cleanup.
 
 #[local] Hint Unfold ip_checksum_upd : compiler_cleanup.
-#[local] Hint Unfold co_word_of_Z co_word_of_byte : compiler_cleanup.
-#[local] Hint Extern 10 => cbn; Z.div_mod_to_equations; nia : compiler_side_conditions.
+#[local] Hint Extern 10 => cbn; nia : compiler_side_conditions.
 
 Lemma odd_sub_pos z:
   0 <= z -> Z.odd z = true -> 0 <= z - 1.
 Proof. destruct (Z.eq_dec z 0) as [-> | ]; simpl; lia. Qed.
 
-#[local] Hint Extern 1 => lia : arith.
-#[local] Hint Resolve odd_sub_pos : arith.
-Hint Rewrite Z2Nat.id using eauto with arith : compiler_side_conditions.
+#[local] Hint Resolve odd_sub_pos : lia.
+Hint Rewrite Z2Nat.id using eauto with lia : compiler_side_conditions.
 
 Derive ip_checksum_body SuchThat
        (defn! "ip_checksum" ("data", "len") ~> "chk16"

@@ -63,26 +63,6 @@ Section Impl.
   Proof. rewrite upstr_impl_ok, !string_of_list_byte_of_string; reflexivity. Qed.
 End Impl.
 
-Section Compiler.
-  Lemma wrap_unsigned_lt (z1 z2: Z) (z: Z) :
-    0 <= z < 2 ^ 32 ->
-    (word.wrap (z1 - z2) <? z) =
-    (word.ltu (word.sub (word := word) (word.of_Z z1) (word.of_Z z2))
-              (word.of_Z z)).
-  Proof.
-    rewrite <- word.ring_morph_sub, word.unsigned_ltu, !word.unsigned_of_Z.
-    intros; rewrite (word.wrap_small z); eauto.
-  Qed.
-
-  Lemma expr_compile_upper_test {m: mem} {l: locals} {e} {z1 z2: Z}:
-    DEXPR m l e
-          (word.b2w (word.ltu (word.sub (word := word) (word.of_Z z1) (word.of_Z z2))
-                              (word.of_Z 26))) ->
-    DEXPR m l e
-          (word.b2w (word.wrap (z1 - z2) <? 26)).
-  Proof. intros; rewrite wrap_unsigned_lt by lia; eassumption. Qed.
-End Compiler.
-
 Section Upstr.
   Instance spec_of_upstr : spec_of "upstr" :=
     fnspec! "upstr" s_ptr wlen / (s : list byte) R,
@@ -97,14 +77,11 @@ Section Upstr.
   Import LoopCompiler.
   Import SizedListArrayCompiler.
 
-  #[local] Hint Extern 1 => simple apply expr_compile_upper_test; shelve : compiler_side_conditions.
-
-  #[local] Hint Extern 1 => lia : arith.
-  Hint Rewrite Z2Nat.id using eauto with arith : compiler_side_conditions.
-
   Hint Rewrite Nat2Z.id : compiler_cleanup.
+  Hint Rewrite Z2Nat.id using eauto with lia : compiler_side_conditions.
+
   #[local] Hint Unfold upchar_impl : compiler_cleanup.
-  #[local] Hint Extern 10 => cbn; Z.div_mod_to_equations; nia : compiler_side_conditions.
+  #[local] Hint Extern 1 => cbn; nia : compiler_side_conditions.
 
   Derive upstr_body SuchThat
          (defn! "upstr" ("s", "len")

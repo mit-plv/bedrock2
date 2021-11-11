@@ -66,9 +66,6 @@ Instance spec_of_utf8_decode : spec_of "utf8_decode" :=
         (listarray_value AccessByte data_ptr data * R)%sep mem' }.
 
 Import UnsizedListArrayCompiler.
-#[local] Hint Unfold Convertible_Fin_byte : compiler_side_conditions.
-#[local] Hint Unfold Convertible_Fin_byte_5 : compiler_side_conditions.
-#[local] Hint Unfold co_word_of_Z co_word_of_byte co_word_of_Fin : compiler_side_conditions.
 
 Hint Rewrite Nat2Z.id : compiler_side_conditions.
 Hint Rewrite @word_of_byte_of_fin : compiler_side_conditions.
