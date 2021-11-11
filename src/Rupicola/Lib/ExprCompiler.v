@@ -54,7 +54,7 @@ Section ExprCompiler.
       word.b2w (word := word) b = if b then word.of_Z 1 else word.of_Z 0.
     Proof. destruct b; reflexivity. Qed.
 
-    Lemma unsigned_range_32 z :
+    Lemma word_unsigned_range_32 z :
       0 <= z < 2 ^ 32 ->
       0 <= z < 2 ^ width.
     Proof.
@@ -63,13 +63,25 @@ Section ExprCompiler.
       lia.
     Qed.
 
-    Lemma signed_range_31 z :
+    Lemma word_signed_range_31 z :
       -2 ^ 31 <= z < 2 ^ 31 ->
       -2 ^ (width - 1) <= z < 2 ^ (width - 1).
     Proof.
       pose proof width_at_least_32.
       pose proof Z.pow_le_mono_r 2 31 (width - 1).
       lia.
+    Qed.
+
+    Lemma word_wrap_range z:
+      0 <= word.wrap (word := word) z < 2 ^ width.
+    Proof. apply Z.mod_pos_bound, word.modulus_pos. Qed.
+
+    Lemma word_swrap_range z:
+      - 2 ^ (width - 1) <= word.swrap (word := word) z < 2 ^ (width - 1).
+    Proof.
+      unfold word.swrap; set (z + _) as z0.
+      pose proof Z.mod_pos_bound z0 (2 ^ width) word.modulus_pos as h.
+      rewrite word.pow2_width_minus1 in h at 3; lia.
     Qed.
 
     Lemma Z_decide_word_bounds a b c:
@@ -407,7 +419,8 @@ Create HintDb expr_compiler.
    this is the case with `Z.ltb`, which is either `word.lts` or `word.ltu`
    depending on the range of the operands. *)
 #[export] Hint Constructors and or eq : expr_compiler.
-#[export] Hint Resolve unsigned_range_32 signed_range_31: expr_compiler.
+#[export] Hint Resolve word_wrap_range word_swrap_range: expr_compiler.
+#[export] Hint Resolve word_unsigned_range_32 word_signed_range_31: expr_compiler.
 #[export] Hint Resolve word.unsigned_range word.signed_range: expr_compiler.
 #[export] Hint Extern 5 (_ <= _ < _) => apply Z_decide_word_bounds; reflexivity : expr_compiler.
 
