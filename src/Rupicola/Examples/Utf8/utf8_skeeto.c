@@ -66,7 +66,7 @@ uintptr_t utf8_decode_all(uint8_t* p, size_t len) {
 	uint8_t* end = p + len - 4;
 	while (p < end) {
         int e;
-		uint32_t c;
+        uint32_t c;
 		p = utf8_decode(p, &c, &e);
 		ret += !!e;
 	}

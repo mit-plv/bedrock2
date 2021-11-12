@@ -83,7 +83,8 @@ Time Qed.
 Definition utf8_decode_impl : func := Eval vm_compute in
   ("utf8_decode", (["data"], ["c"; "e"; "ptr"], utf8_decode_body)).
 
-(*
 Require Import bedrock2.ToCString.
-Compute c_func utf8_decode_impl.
-*)
+Definition utf8_decode_cbytes := Eval vm_compute in
+  list_byte_of_string (ToCString.c_module
+    [("dummy_main_to_make_impl_get_inlined", ([], [], cmd.skip));
+     utf8_decode_impl]).

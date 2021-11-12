@@ -3,6 +3,7 @@ Makefile.coq
 Makefile.coq.conf
 Makefile.coq.lib
 Makefile.coq.lib.conf
+*.o
 *.vo
 *.vok
 *.vos
@@ -13,3 +14,10 @@ Makefile.coq.lib.conf
 *.cache
 *.timing
 .coq-native
+
+/src/Rupicola/Examples/Uppercase/ubench_c
+/src/Rupicola/Examples/Uppercase/ubench_rupicola
+/src/Rupicola/Examples/Uppercase/upstr_rupicola.c
+/src/Rupicola/Examples/Utf8/ubench_rupicola
+/src/Rupicola/Examples/Utf8/ubench_skeeto
+/src/Rupicola/Examples/Utf8/utf8_rupicola.c

@@ -8,7 +8,7 @@
 #define LAPS (WARMUP+TRIALS+COOLDOWN)
 
 #include "testdata.c"
-void utf8_decode_all(uint8_t* buf, size_t len);
+void upstr(uintptr_t bufaddr, uintptr_t len);
 
 int compare_uint64_t(const void* pa, const void* pb) {
 	uint64_t a = *(uint64_t*)pa;
@@ -26,7 +26,7 @@ int main() {
 	for (int i=0; i<LAPS; i++) {
 		laptimes[i] = __rdtsc();
 		{
-			utf8_decode_all(buf, sizeof(buf));
+			upstr((uintptr_t)buf, (uintptr_t)sizeof(buf));
 		}
 	}
 	laptimes[LAPS] = __rdtsc();
