@@ -8,7 +8,7 @@ SRCDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/bedrock2
 EXDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/bedrock2Examples
 
 VS_NOEX:=$(shell find $(SRCDIR) -type f -name '*.v')
-VS_EX:=$(shell find $(EXDIR) -type f -name '*.v')
+VS_EX:=$(shell find $(EXDIR) -type f -name '*.v' -and -not -name LiveVerif.v)
 
 DEPS_DIR ?= ../deps
 
