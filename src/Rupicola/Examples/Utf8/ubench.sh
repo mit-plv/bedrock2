@@ -3,7 +3,7 @@ set -eu
 scriptdir="$(realpath "$(dirname "$0")")"
 
 cd "$scriptdir/../../../../"
-coqc $(make -f Makefile.coqflags) "$(realpath src/Rupicola/Examples/Utf8/Print.v)" > src/Rupicola/Examples/Utf8/utf8_rupicola.c
+coqc $(make -f Makefile.coqflags) "$(realpath src/Rupicola/Examples/Utf8/Print.v)" > src/Rupicola/Examples/Utf8/utf8_rupicola.h
 
 cd "$scriptdir"
 
