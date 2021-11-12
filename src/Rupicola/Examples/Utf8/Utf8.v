@@ -54,10 +54,9 @@ Definition utf8_decode (ptr: word) (bs: list byte) : word * word * word :=
   (c, e, ptr).
 
 Instance spec_of_utf8_decode : spec_of "utf8_decode" :=
-  fnspec! "utf8_decode" data_ptr wlen / (data : list byte) R ~> c e ptr,
+  fnspec! "utf8_decode" data_ptr / (data : list byte) R ~> c e ptr,
     { requires tr mem :=
         Z.of_nat (length data) >= 4 /\
-        wlen = word.of_Z (Z.of_nat (length data)) /\
         (listarray_value AccessByte data_ptr data * R)%sep mem;
       ensures tr' mem' :=
         tr' = tr /\
@@ -73,7 +72,7 @@ Hint Rewrite @word_of_byte_of_fin : compiler_side_conditions.
 #[local] Hint Extern 10 => cbn; lia : compiler_side_conditions.
 
 Derive utf8_decode_body SuchThat
-       (defn! "utf8_decode" ("data", "len") ~> "c", "e", "ptr"
+       (defn! "utf8_decode" ("data") ~> "c", "e", "ptr"
          { utf8_decode_body },
          implements utf8_decode)
        As body_correct.
@@ -82,7 +81,7 @@ Proof.
 Time Qed.
 
 Definition utf8_decode_impl : func := Eval vm_compute in
-  ("utf8_decode", (["data"; "len"], ["c"; "e"; "ptr"], utf8_decode_body)).
+  ("utf8_decode", (["data"], ["c"; "e"; "ptr"], utf8_decode_body)).
 
 (*
 Require Import bedrock2.ToCString.
