@@ -8,10 +8,10 @@ coqc $(make -f Makefile.coqflags) "$(realpath src/Rupicola/Examples/Utf8/Print.v
 cd "$scriptdir"
 
 gcc -O3 -c utf8_skeeto.c
-gcc -O3 -lm ubench.c utf8_skeeto.o -o ubench_skeeto
+gcc -O3 ubench.c utf8_skeeto.o -lm -o ubench_skeeto
 
 gcc -O3 -c utf8_client_rupicola.c
-gcc -O3 -lm ubench.c utf8_client_rupicola.o -o ubench_rupicola
+gcc -O3 ubench.c utf8_client_rupicola.o -lm -o ubench_rupicola
 
 doas /usr/local/bin/turboboost-off.sh > /dev/null
 doas /usr/local/bin/hyperthreading-off.sh > /dev/null
