@@ -46,7 +46,7 @@ Section with_parameters.
     Instance spec_of_minm : spec_of "minm" :=
       fnspec! "minm" (x y: word) / R ~> z,
       { requires tr mem := R mem;
-        ensures tr' mem' := tr = tr' /\ R mem' /\ z = minm x y }. (* TODO explain why not mem; = mem *)
+        ensures tr' mem' := tr = tr' /\ R mem' /\ z = minm x y }. (* TODO explain why not mem' = mem *)
 
     Derive minm_body SuchThat
            (defn! "minm"("x", "y") ~> "r"
