@@ -346,7 +346,7 @@ Notation "}" := SEnd (in custom snippet at level 0).
 Notation "'else' {" := SElse (in custom snippet at level 0).
 *)
 
-Tactic Notation ".*" constr(s) "*" := add_snippet s; after_snippet.
+Tactic Notation "#" constr(s) := add_snippet s; after_snippet.
 
 Set Ltac Backtrace.
 
@@ -361,14 +361,15 @@ Definition swap_locals: {f: list string * list string * cmd &
     vc_func call f t m [a; b] (fun t' m' retvs =>
       t' = t /\ m' = m /\ retvs = [b; a]
   )}.
-  (* note: we could just return ["b", "a"] and then the body would be just skip *)
-  start. .**/
-  t = a; /**. .**/
-  a = b; /**. .**/
-  b = t; /**. .**/
-  res1 = a; /**. .**/
-  res2 = b; /**. .**/
-  return a, b; /**. intuition congruence.
+    (* note: we could just return ["b", "a"] and then the body would be just skip *)
+    start.
+#*/ t = a;                                                                   /*.
+#*/ a = b;                                                                   /*.
+#*/ b = t;                                                                   /*.
+#*/ res1 = a;                                                                /*.
+#*/ res2 = b;                                                                /*.
+#*/ return res1, res2;                                                       /*.
+    intuition congruence.
 Defined.
 
 (* TODO: write down postcondition only at end *)
@@ -378,8 +379,8 @@ Definition swap: {f: list string * list string * cmd &
     vc_func call f t m [a_addr; b_addr] (fun t' m' retvs =>
       t' = t /\ (scalar a_addr b * scalar b_addr a * R)%sep m' /\ retvs = []
   )}.
-  start. .**/
-  t = load(a_addr); /**.
+    start.
+#*/ t = load(a_addr);                                                        /*.
 
   Undelimit Scope live_scope.
   Close Scope live_scope.
