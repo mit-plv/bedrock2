@@ -11,27 +11,27 @@ Section Echo.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Definition getw_trace (w: word) : trace_entry :=
-    (map.empty (map := mem), "getw", [], (map.empty, [w])).
+  Definition readw_trace (w: word) : trace_entry :=
+    (map.empty (map := mem), "readw", [], (map.empty, [w])).
 
-  Definition putw_trace (w: word) : trace_entry :=
-    (map.empty (map := mem), "putw", [w], (map.empty, [])).
+  Definition writew_trace (w: word) : trace_entry :=
+    (map.empty (map := mem), "writew", [w], (map.empty, [])).
 
   Definition trace_entry_of_event (evt: IO.Event word) :=
     match evt with
-    | IO.R t => getw_trace t
-    | IO.W t => putw_trace t
+    | IO.R t => readw_trace t
+    | IO.W t => writew_trace t
     end.
 
-  Instance spec_of_getw : spec_of "getw" :=
-    fnspec! "getw" ~> r,
+  Instance spec_of_readw : spec_of "readw" :=
+    fnspec! "readw" ~> r,
     { requires tr mem := True;
       ensures tr' mem' :=
         mem' = mem /\
         tr' = trace_entry_of_event (IO.R r) :: tr }.
 
-  Instance spec_of_putw : spec_of "putw" :=
-    fnspec! "putw" w,
+  Instance spec_of_writew : spec_of "writew" :=
+    fnspec! "writew" w,
     { requires tr mem := True;
       ensures tr' mem' :=
         mem' = mem /\
@@ -41,16 +41,16 @@ Section Echo.
   Notation iospec := (iospec trace_entry_of_event).
   Notation iospec_k := (iospec_k trace_entry_of_event).
 
-  Lemma compile_getw : forall {tr mem locals functions},
+  Lemma compile_readw : forall {tr mem locals functions},
     let io: IO _ := Free.Call IO.Read in
     forall {A} {pred: A -> pure_predicate}
       {k: word -> IO A} {k_impl}
       var,
 
-      (_: spec_of "getw") functions ->
+      (_: spec_of "readw") functions ->
 
       (forall w,
-          let tr := getw_trace w :: tr in
+          let tr := readw_trace w :: tr in
           <{ Trace := tr;
              Memory := mem;
              Locals := map.put locals var w;
@@ -63,7 +63,7 @@ Section Echo.
          Functions := functions }>
       cmd.seq
         (* FIXME cmd.interact? *)
-        (cmd.call [var] "getw" [])
+        (cmd.call [var] "readw" [])
         k_impl
       <{ iospec_k tr pred (mbindn [var] io k) }>.
   Proof.
@@ -76,7 +76,7 @@ Section Echo.
     - intros; apply H0.
   Qed.
 
-  Lemma compile_putw : forall {tr mem locals functions} (w: word),
+  Lemma compile_writew : forall {tr mem locals functions} (w: word),
     let io: IO unit := Free.Call (IO.Write w) in
     forall {A} {pred: A -> pure_predicate}
       {k: unit -> IO A} {k_impl}
@@ -84,9 +84,9 @@ Section Echo.
 
       WeakestPrecondition.dexpr mem locals w_expr w ->
 
-      (_: spec_of "putw") functions ->
+      (_: spec_of "writew") functions ->
 
-      (let tr := putw_trace w :: tr in
+      (let tr := writew_trace w :: tr in
       <{ Trace := tr;
           Memory := mem;
           Locals := locals;
@@ -99,7 +99,7 @@ Section Echo.
          Functions := functions }>
       cmd.seq
         (* FIXME cmd.interact? *)
-        (cmd.call [] "putw" [w_expr])
+        (cmd.call [] "writew" [w_expr])
         k_impl
       <{ iospec_k tr pred (mbindn [var] io k) }>.
   Proof.
@@ -115,8 +115,8 @@ Section Echo.
     - intros; eassumption.
   Qed.
 
-  Hint Extern 1 => simple eapply compile_putw; shelve : compiler.
-  Hint Extern 1 => simple eapply compile_getw; shelve : compiler.
+  Hint Extern 1 => simple eapply compile_writew; shelve : compiler.
+  Hint Extern 1 => simple eapply compile_readw; shelve : compiler.
 
   Definition io_echo : IO unit :=
     let/! w := call! IO.Read in
@@ -130,7 +130,7 @@ Section Echo.
 
   Derive io_echo_body SuchThat
    (defn! "io_echo"() { io_echo_body },
-    implements io_echo using ["getw"; "putw"])
+    implements io_echo using ["readw"; "writew"])
    As io_echo_target_correct.
   Proof. compile. Qed.
 
@@ -148,7 +148,7 @@ Section Echo.
 
   Derive io_sum_body SuchThat
          (defn! "io_sum"() { io_sum_body },
-          implements io_sum using ["getw"; "putw"])
+          implements io_sum using ["readw"; "writew"])
   As io_sum_target_correct.
   Proof. compile. Qed.
 
@@ -169,7 +169,7 @@ Section Echo.
 
   Derive io_check_body SuchThat
          (defn! "io_check"("expected") ~> "err" { io_check_body },
-          implements io_check using ["getw"; "putw"])
+          implements io_check using ["readw"; "writew"])
   As io_check_target_correct.
   Proof.
     compile.

@@ -47,17 +47,11 @@ Section with_parameters.
               k_impl
       <{ pred (nlet_eq [var] v k) }>.
   Proof.
-    intros.
     repeat straightline.
-    exists (get c).
-    split.
-    { cbn.
-      eapply WeakestPrecondition_dexpr_expr; eauto.
-      { eexists; split; [ | reflexivity ].
-        eapply load_word_of_sep.
-        eassumption. } }
-    red; intros.
-    eassumption.
+    exists (get c); split; repeat straightline; eauto.
+    eapply WeakestPrecondition_dexpr_expr; eauto.
+    eexists; split; [ | reflexivity ].
+    eauto using load_word_of_sep.
   Qed.
 
   Lemma compile_put : forall {tr mem locals functions} x,
@@ -86,11 +80,9 @@ Section with_parameters.
               k_impl
       <{ pred (nlet_eq [c_var] v k) }>.
   Proof.
-    intros.
-    unfold cell_value in *.
-    repeat straightline.
+    unfold cell_value; repeat straightline.
     exists c_ptr; split; eexists; split; eauto.
-    - repeat straightline. eauto.
+    repeat straightline. eauto.
   Qed.
 
   #[global] Program Instance SimpleAllocable_cell : Allocable cell_value :=

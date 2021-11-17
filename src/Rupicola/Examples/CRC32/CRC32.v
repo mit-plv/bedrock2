@@ -42,20 +42,12 @@ Section __.
     let/n crc32 := word.xor crc32 (word.of_Z 0xFFFFFFFF) in
     crc32.
 
-  Lemma word_and_leq_right (a b : word)
-    : (word.unsigned (word.and a b)) <= (word.unsigned b).
-  Proof.
-    rewrite word.unsigned_and_nowrap.
-    apply Z_land_leq_right.
-    all: apply word.unsigned_range.
-  Qed.
-
   Lemma idx_in_bounds (w: word) :
     (Z.to_nat (word.unsigned (word.and w (word.of_Z 255))) < 256)%nat.
   Proof.
     pose proof word.unsigned_range (word.and w (word.of_Z 255)).
     apply (Z2Nat.inj_lt _ 256); [lia..|].
-    eapply Z.le_lt_trans; [apply word_and_leq_right|].
+    eapply Z.le_lt_trans; [apply word.and_leq_right|].
     eapply Z.le_lt_trans; [apply word.unsigned_of_Z_le|].
     all: lia.
   Qed.

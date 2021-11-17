@@ -65,7 +65,6 @@ Section with_parameters.
   (* identity used as a marker to indicate when something should be allocated *)
   Definition stack {A} (a : A) := a. 
 
-  (* TODO: modify to work with multiple hypotheses that apply to m? *)
   Lemma compile_stack {tr m l functions A} (v : A):
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
       {AP : word.rep -> A -> map.rep -> Prop} `{Allocable A AP}
@@ -89,34 +88,16 @@ Section with_parameters.
       cmd.stackalloc out_var size_in_bytes k_impl
       <{ pred (nlet_eq [out_var] (stack v) k) }>.
   Proof.
-    repeat straightline.
-    split; eauto using size_in_bytes_mod.
-    intros out_ptr mStack mCombined Hplace%P_from_bytes.
-    destruct Hplace as [out Hout].
-    repeat straightline.
-    specialize (H1 out_ptr out mCombined).     
+    repeat straightline; split; eauto using size_in_bytes_mod.
+    intros out_ptr mStack mCombined [out Hout]%P_from_bytes; repeat straightline.
     eapply WeakestPrecondition_weaken
       with (p1 := pred_sep (Memory.anybytes out_ptr size_in_bytes)
-                           pred (let/n x as out_var eq:Heq := v in
-                                 k x Heq)).
-    2:{
-      eapply H1.
-      exists mStack;
-        exists m;
-        intuition.
-      apply map.split_comm; eauto.
-    }
-    {
-      clear H1.
-      unfold pred_sep;
-        unfold Basics.flip;
-        simpl.
-      intros.
-      destruct H1 as [mem1 [mem2 ?]].
-      exists mem2; exists mem1;
-        intuition.
-      apply map.split_comm; eauto.
-    }
+                           pred (let/n x as out_var eq:Heq := v in k x Heq)).
+    - unfold pred_sep, Basics.flip; simpl.
+      intros * [mem1 [mem2 ?]].
+      exists mem2, mem1; intuition. apply map.split_comm; eauto.
+    - eapply H1.
+      exists mStack, m; intuition eauto. apply map.split_comm; eauto.
   Qed.
 
 End with_parameters.

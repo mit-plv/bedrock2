@@ -985,6 +985,14 @@ Module word.
       rewrite word.unsigned_of_Z; apply wrap_le.
     Qed.
 
+    Lemma and_leq_right (a b : word)
+      : (word.unsigned (word.and a b)) <= (word.unsigned b).
+    Proof.
+      rewrite word.unsigned_and_nowrap.
+      apply Z_land_leq_right.
+      all: apply word.unsigned_range.
+    Qed.
+
     Lemma word_to_nat_to_word (w : word) :
       w = word.of_Z (Z.of_nat (Z.to_nat (word.unsigned w))).
     Proof.
