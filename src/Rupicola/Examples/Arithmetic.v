@@ -40,6 +40,9 @@ Module FNV1A (Import P: FNV1A_params).
     compile.
   Qed.
 
+  Definition update_func := ltac:(
+    match type of update_body_correct with forall x env, ?spec (cons ?f env) => exact f end).
+
   Definition fnv1a (data: ListArray.t byte) len :=
     let/n p := P.prime in
     let/n hash := P.offset in
@@ -72,6 +75,9 @@ Module FNV1A (Import P: FNV1A_params).
           implements fnv1a)
          As fnv1a_body_correct.
   Proof. compile. Qed.
+
+  Definition fnv1a_func := ltac:(
+    match type of fnv1a_body_correct with forall x env, ?spec (cons ?f env) => exact f end).
 End FNV1A.
 
 Module FNV1A32_params <: FNV1A_params.
@@ -121,6 +127,15 @@ Module Murmur3.
   Proof.
     compile.
   Qed.
+
+  Definition scramble_func := ltac:(
+    match type of scramble_body_correct with forall x env, ?spec (cons ?f env) => exact f end).
 End Murmur3.
 
-Compute Murmur3.scramble_body.
+Require Import bedrock2.ToCString.
+Definition fnv1a64_update_cbytes := Eval vm_compute in
+  list_byte_of_string (c_module [FNV1A64.update_func]).
+Definition fnv1a64_cbytes := Eval vm_compute in
+  list_byte_of_string (c_module [FNV1A64.fnv1a_func]).
+Definition murmur3_scramble_cbytes := Eval vm_compute in
+  list_byte_of_string (c_module [Murmur3.scramble_func]).
