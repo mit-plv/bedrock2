@@ -21,7 +21,12 @@ Section WeakestPrecondition.
        "Error: Proper_load depends on the variable p which is not declared in the context."
        when trying to use Proper_load, or, due to COQBUG https://github.com/coq/coq/issues/11487,
        we'd get a typechecking failure at Qed time. *)
-    repeat match goal with x : ?T |- _ => first [ constr_eq T X; move x before ext_spec | revert x ] end;
+    repeat match goal with x : ?T |- _ => first
+       [ constr_eq T X; move x before ext_spec
+       | constr_eq T X; move x before env
+       | constr_eq T X; move x before locals
+       | constr_eq T X; move x at top
+       | revert x ] end;
     match goal with x : X |- _ => induction x end;
     intros.
 
@@ -30,19 +35,20 @@ Section WeakestPrecondition.
   (* we prove weakening lemmas for all WP definitions in a syntax-directed fashion,
    * moving from postcondition towards precondition one logical connective at a time. *)
   Global Instance Proper_literal : Proper (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)) WeakestPrecondition.literal.
-  Proof. cbv [WeakestPrecondition.literal]; cbv [Proper respectful pointwise_relation Basics.impl]; firstorder idtac. Qed.
+  Proof using. clear. cbv [WeakestPrecondition.literal]; cbv [Proper respectful pointwise_relation Basics.impl]. firstorder idtac. Qed.
 
   Global Instance Proper_get : Proper (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))) WeakestPrecondition.get.
-  Proof. cbv [WeakestPrecondition.get]; cbv [Proper respectful pointwise_relation Basics.impl]; firstorder idtac. Qed.
+  Proof using. clear. cbv [WeakestPrecondition.get]; cbv [Proper respectful pointwise_relation Basics.impl]; firstorder idtac. Qed.
 
   Global Instance Proper_load : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)))) WeakestPrecondition.load.
-  Proof. cbv [WeakestPrecondition.load]; cbv [Proper respectful pointwise_relation Basics.impl]; firstorder idtac. Qed.
+  Proof using. clear. cbv [WeakestPrecondition.load]; cbv [Proper respectful pointwise_relation Basics.impl]; firstorder idtac. Qed.
 
   Global Instance Proper_store : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl))))) WeakestPrecondition.store.
-  Proof. cbv [WeakestPrecondition.load]; cbv [Proper respectful pointwise_relation Basics.impl]; firstorder idtac. Qed.
+  Proof using. clear. cbv [WeakestPrecondition.load]; cbv [Proper respectful pointwise_relation Basics.impl]; firstorder idtac. Qed.
 
   Global Instance Proper_expr : Proper (pointwise_relation _ (pointwise_relation _ (pointwise_relation _ ((pointwise_relation _ Basics.impl) ==> Basics.impl)))) WeakestPrecondition.expr.
-  Proof.
+  Proof using.
+    clear.
     cbv [Proper respectful pointwise_relation Basics.impl]; ind_on Syntax.expr.expr;
       cbn in *; intuition (try typeclasses eauto with core).
     { eapply Proper_literal; eauto. }
@@ -53,7 +59,8 @@ Section WeakestPrecondition.
 
   Global Instance Proper_list_map {A B} :
     Proper ((pointwise_relation _ (pointwise_relation _ Basics.impl ==> Basics.impl)) ==> pointwise_relation _ (pointwise_relation _ Basics.impl ==> Basics.impl)) (WeakestPrecondition.list_map (A:=A) (B:=B)).
-  Proof.
+  Proof using.
+    clear.
     cbv [Proper respectful pointwise_relation Basics.impl]; ind_on (list A);
       cbn in *; intuition (try typeclasses eauto with core).
   Qed.
@@ -333,5 +340,34 @@ Section WeakestPrecondition.
     eapply ext_spec.weaken; [|eapply Hext]; intros ? ? [? [? []]]. subst a; subst.
     eexists; split; [eassumption|].
     intros. eapply Properties.map.split_empty_r in H. subst. assumption.
-Qed.
+  Qed.
+
+  Lemma intersect_expr: forall m l e (post1 post2: word -> Prop),
+      WeakestPrecondition.expr m l e post1 ->
+      WeakestPrecondition.expr m l e post2 ->
+      WeakestPrecondition.expr m l e (fun v => post1 v /\ post2 v).
+  Proof.
+    induction e; cbn; unfold literal, dlet.dlet, WeakestPrecondition.get; intros.
+    - eauto.
+    - decompose [and ex] H. decompose [and ex] H0. assert (x0 = x1) by congruence. subst. eauto.
+    - eapply Proper_expr.
+      2: eapply IHe.
+      2: eapply H.
+      2: eapply H0.
+      unfold Morphisms.pointwise_relation, Basics.impl.
+      unfold load. intros. decompose [and ex] H1. assert (x0 = x) by congruence. subst. eauto.
+    - eapply Proper_expr.
+      2: eapply IHe.
+      2: eapply H.
+      2: eapply H0.
+      unfold Morphisms.pointwise_relation, Basics.impl.
+      unfold load. intros. decompose [and ex] H1. assert (x0 = x) by congruence. subst. eauto.
+    - eapply Proper_expr.
+      2: eapply IHe1.
+      2: eapply H.
+      2: eapply H0.
+      unfold Morphisms.pointwise_relation, Basics.impl.
+      unfold load. intros. decompose [and ex] H1.
+      eapply IHe2; eassumption.
+  Qed.
 End WeakestPrecondition.
