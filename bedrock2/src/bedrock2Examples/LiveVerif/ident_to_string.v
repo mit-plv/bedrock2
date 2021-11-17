@@ -57,6 +57,12 @@ Ltac2 varconstr_to_coq(c: constr) :=
    Ltac2 Eval varconstr_to_coq constr:(a).
 *)
 
+Ltac2 exact_varconstr_as_string(c: constr) :=
+  let s := varconstr_to_coq c in exact $s.
+
+Ltac exact_varconstr_as_string :=
+  ltac2:(c |- exact_varconstr_as_string (Option.get (Ltac1.to_constr c))).
+
 Inductive PassStringFromLtac2ToLtac1 := mkPassStringFromLtac2ToLtac1 (s: string).
 
 Ltac2 pose_varconstr_as_wrapped_string(c: constr) :=
@@ -82,3 +88,17 @@ Goal forall my_var: nat, my_var = my_var.
   | |- _ = ?x => let r := varconstr_to_string x in pose r
   end.
 Abort.
+
+Inductive Ltac2IdentToPass := mkLtac2IdentToPass.
+
+(* Trick from https://pit-claudel.fr/clement/papers/koika-dsls-CoqPL21.pdf *)
+Ltac serialize_ident_in_context :=
+  ltac2:(match! goal with
+         | [ h: Ltac2IdentToPass |- _  ] =>
+           let s := ident_to_coq h in exact $s
+         end).
+
+Notation ident_to_string a :=
+  (match mkLtac2IdentToPass return string with
+   | a => ltac:(serialize_ident_in_context)
+   end) (only parsing).
