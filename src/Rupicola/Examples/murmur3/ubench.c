@@ -2,13 +2,14 @@
 #include <x86intrin.h>
 #include <stdio.h>
 #include <math.h>
+#include "testdata.c"
 
 #define WARMUP 100
 #define TRIALS (1000  /* >100 for normal distribution approximation, odd for median*/|1)
 #define COOLDOWN 10
 #define LAPS (WARMUP+TRIALS+COOLDOWN)
 
-uintptr_t update(uintptr_t hash, uintptr_t data);
+uintptr_t murmur3_32(uintptr_t data, uintptr_t len);
 
 int compare_uint64_t(const void* pa, const void* pb) {
 	uint64_t a = *(uint64_t*)pa;
@@ -19,11 +20,14 @@ int compare_uint64_t(const void* pa, const void* pb) {
 }
 
 int main() {
+	uint8_t buf[1024*1024];
+	buffer_fill(buf, sizeof(buf));
+
 	uint64_t laptimes[LAPS+1];
 	for (int i=0; i<LAPS; i++) {
 		laptimes[i] = __rdtsc();
 		{
-			update(0, 0);
+			murmur3_32((uintptr_t)buf, (uintptr_t)sizeof(buf));
 		}
 	}
 	laptimes[LAPS] = __rdtsc();

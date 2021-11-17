@@ -1,4 +1,3 @@
-#include <stdint.h>
 #include <x86intrin.h>
 #include <stdio.h>
 #include <math.h>
@@ -8,7 +7,8 @@
 #define COOLDOWN 10
 #define LAPS (WARMUP+TRIALS+COOLDOWN)
 
-uintptr_t scramble(uintptr_t data);
+#include "testdata.c"
+void revcomp(uintptr_t bufaddr, uintptr_t len);
 
 int compare_uint64_t(const void* pa, const void* pb) {
 	uint64_t a = *(uint64_t*)pa;
@@ -19,11 +19,14 @@ int compare_uint64_t(const void* pa, const void* pb) {
 }
 
 int main() {
+	uint8_t buf[1024*1024];
+	buffer_fill(buf, sizeof(buf));
+
 	uint64_t laptimes[LAPS+1];
 	for (int i=0; i<LAPS; i++) {
 		laptimes[i] = __rdtsc();
 		{
-			scramble(0);
+			revcomp((uintptr_t)buf, (uintptr_t)sizeof(buf));
 		}
 	}
 	laptimes[LAPS] = __rdtsc();

@@ -138,4 +138,4 @@ Definition fnv1a64_update_cbytes := Eval vm_compute in
 Definition fnv1a64_cbytes := Eval vm_compute in
   list_byte_of_string (c_module [FNV1A64.fnv1a_func]).
 Definition murmur3_scramble_cbytes := Eval vm_compute in
-  list_byte_of_string (c_module [Murmur3.scramble_func]).
+  list_byte_of_string (c_module [("dummy_main_for_static",([],[],cmd.skip)); Murmur3.scramble_func]).
