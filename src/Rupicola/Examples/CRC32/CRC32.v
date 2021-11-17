@@ -93,4 +93,12 @@ Section __.
   Proof.
     compile.
   Qed.
+
+  Definition crc32_func := ltac:(
+    match type of body_correct with forall x env, ?spec (cons ?f env) => exact f end).
 End __.
+
+Require Import bedrock2.ToCString.
+Require Import coqutil.Word.Naive.
+Definition crc32_cbytes := Eval vm_compute in
+  list_byte_of_string (c_module [crc32_func (word:=Naive.word64)]).
