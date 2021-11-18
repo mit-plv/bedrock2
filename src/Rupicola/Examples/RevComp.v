@@ -34,7 +34,7 @@ Section Spec.
   Definition revcomp_spec (s: string) :=
     string_map rev1_spec s.
 
-  Compute revcomp_spec "rupicola".
+  Compute revcomp_spec "RUPICOLA".
 End Spec.
 
 Require Import Coq.Strings.Byte.
