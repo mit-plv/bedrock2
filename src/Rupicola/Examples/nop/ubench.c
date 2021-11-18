@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <x86intrin.h>
 #include <stdio.h>
+#include <inttypes.h>
 #include <math.h>
 
 #define WARMUP 100
@@ -27,7 +28,6 @@ int main() {
 		}
 	}
 	laptimes[LAPS] = __rdtsc();
-	uint64_t total = laptimes[WARMUP+TRIALS] - laptimes[WARMUP];
 	for (int i=0; i<LAPS; i++) {
 		laptimes[i] = laptimes[i+1] - laptimes[i];
 	}
@@ -45,5 +45,6 @@ int main() {
 	}
 	double stddev = sqrt(squared_distance_from_mean/(TRIALS-1));
 	double d95 = 1.95996398454005423552*stddev/sqrt(TRIALS), ci95lo = mean-d95, ci95hi = mean+d95;
-	printf ("n=%d; min=%llu; median=%llu; max=%llu; mean=%.0f; stddev=%.0f; ci95lo=%.0f; ci95hi=%.0f;\n", TRIALS, min, median, max, mean, stddev, ci95lo, ci95hi);
+	printf ("n=%d; min=%" PRIu64 "; median=%" PRIu64 "; max=%" PRIu64 "; mean=%.0f; stddev=%.0f; ci95lo=%.0f; ci95hi=%.0f;\n",
+            TRIALS, min, median, max, mean, stddev, ci95lo, ci95hi);
 }
