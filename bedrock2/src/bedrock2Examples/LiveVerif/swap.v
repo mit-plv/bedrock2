@@ -54,6 +54,16 @@ Section WithParams.
     destruct H as (m1 & E & P). rewrite E. constructor. exact P.
   Qed.
 
+  (* R, typically instantiated to `seps [whatever; is; left]`, appears twice:
+     On the left of the impl1 (this determines its value), and as the first
+     element of the `seps` on the right (there, it is an evar for the frame).
+     P is the continuation postcondition. *)
+  Lemma impl1_done: forall (R: mem -> Prop) (P: Prop),
+      P -> impl1 R (seps [R; emp P]).
+  Proof.
+    unfold impl1, seps. intros. apply sep_emp_r. auto.
+  Qed.
+
   (* non-unfoldable wrappers, their definition might be swapped with something else later,
      as long as it satisfies the lemmas that follow below *)
 
@@ -68,7 +78,50 @@ Section WithParams.
     intros. constructor. cbn. unfold WeakestPrecondition.get. eauto.
   Qed.
 
-  Lemma wp_load: forall m l sz addr (post: word -> Prop),
+  Lemma weaken_wp_expr: forall m l e (post1 post2: word -> Prop),
+      wp_expr m l e post1 ->
+      (forall v, post1 v -> post2 v) ->
+      wp_expr m l e post2.
+  Proof.
+    intros. constructor. inversion H.
+    eapply WeakestPreconditionProperties.Proper_expr; eassumption.
+  Qed.
+
+  Lemma wp_load_anysize: forall m l sz addr (post: word -> Prop),
+      wp_expr m l addr (fun a =>
+        exists v R, seps [truncated_word sz a v; R; emp (post (truncate_word sz v))] m) ->
+      wp_expr m l (expr.load sz addr) post.
+  Proof.
+    intros. constructor. cbn. unfold load. inversion H.
+    eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
+    cbv [Morphisms.pointwise_relation Basics.impl]. intros.
+    destruct H1 as (v & R & H1). cbn [seps] in H1.
+    apply sep_assoc in H1.
+    apply sep_emp_r in H1.
+    destruct H1 as [Hm Hpost].
+    eapply load_of_sep in Hm.
+    eauto.
+  Qed.
+
+  Lemma wp_load_word: forall m l addr (post: word -> Prop),
+      wp_expr m l addr (fun a =>
+        exists v R, seps [scalar a v; R; emp (post v)] m) ->
+      wp_expr m l (expr.load access_size.word addr) post.
+  Proof.
+    intros. eapply wp_load_anysize.
+    eapply weaken_wp_expr. 1: exact H. cbv beta.
+    unfold scalar, truncate_word, truncate_Z.
+    clear H.
+    intros. destruct H as (val & R & H). exists val, R.
+    rewrite Z.land_ones.
+    2: cbv; discriminate.
+    rewrite Z.mod_small.
+    2: apply word.unsigned_range.
+    rewrite word.of_Z_unsigned.
+    exact H.
+  Qed.
+
+  Lemma wp_load_old: forall m l sz addr (post: word -> Prop),
       wp_expr m l addr (fun a => get_option (Memory.load sz m a) post) ->
       wp_expr m l (expr.load sz addr) post.
   Proof.
@@ -267,7 +320,8 @@ Ltac map_with_ltac f l :=
 
 Ltac eval_expr_step :=
   match goal with
-  | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load
+  | |- wp_expr _ _ (expr.load access_size.word _) _ => eapply wp_load_word
+  | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load_old
   | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity |]
   | |- get_option (Memory.load access_size.word _ _) _ =>
     eapply load_word_of_sep_cps; split; [try solve [ecancel_assumption]|]
@@ -315,7 +369,7 @@ Inductive snippet :=
 Ltac assign name val :=
   eapply (wp_set _ name val);
   repeat eval_expr_step;
-  [.. (* maybe some unsolved side conditions *) | put_into_current_locals].
+  [.. (* maybe some unsolved side conditions *) | try put_into_current_locals].
 
 Ltac store sz addr val :=
   eapply (wp_store _ sz addr val);
@@ -426,20 +480,40 @@ Defined.
 (* TODO: write down postcondition only at end *)
 Definition swap: {f: list string * list string * cmd &
   forall call t m a_addr b_addr a b R,
-    (scalar a_addr a * scalar b_addr b * R)%sep m ->
+    seps [scalar a_addr a; scalar b_addr b; R] m ->
     vc_func call f t m [a_addr; b_addr] (fun t' m' retvs =>
       t' = t /\ (scalar a_addr b * scalar b_addr a * R)%sep m' /\ retvs = []
   )}.
     start.
 #*/ t = load(a_addr);                                                        /*.
+
+    do 2 eexists.
+    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem x).
+    (* Here we can make goal modifications influenced by the canceling problem,
+       and the goal modifications will still be visible in the continuation subgoal: *)
+    remember a as we_could_have_split_a_into_two_pieces eqn: E.
+    ecancel_step_by_implication.
+    eapply impl1_done.
+
+    put_into_current_locals.
+
+    (* Changes made in load subgoal still visible: *)
+
+#*/ store(a_addr, load(b_addr));                                             /*.
+
+    do 2 eexists.
+    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem x).
+    ecancel_step_by_implication.
+    eapply impl1_done.
+    eapply store_word_of_sep_cps; [try solve [cbn[seps] in *; ecancel_assumption]|intros].
+
 #*/ store(b_addr, t);                                                        /*.
 
-eapply store_word_of_sep_cps; [try solve [ecancel_assumption]|intros].
+    eapply store_word_of_sep_cps; [try solve [cbn[seps] in *; ecancel_assumption]|intros].
 
-  Undelimit Scope live_scope.
-  Close Scope live_scope.
-
-Abort.
+    ret (@nil string).
+    subst. intuition solve[ecancel_assumption].
+Defined.
 
 Goal False.
   let r := eval unfold swap_locals in
