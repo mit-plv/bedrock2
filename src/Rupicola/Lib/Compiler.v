@@ -442,12 +442,13 @@ Ltac compile_setup_find_app term head :=
 Ltac compile_setup_isolate_gallina_program :=
   lazymatch goal with
   | [ _: __rupicola_program_marker ?prog |-
-      WeakestPrecondition.cmd _ _ _ _ _ ?post ] =>
+      WeakestPrecondition.cmd ?fns ?cmd ?tr ?mem ?locals ?post ] =>
     let gallina := compile_setup_find_app post prog in
     lazymatch (eval pattern gallina in post) with
     | ?pred ?gallina =>
       let nm := fresh "pred" in
-      set pred as nm; change post with (nm gallina)
+      set pred as nm;
+      change (WeakestPrecondition.cmd fns cmd tr mem locals (nm gallina))
     end
   | |- WeakestPrecondition.cmd _ _ _ _ _ (?pred ?spec) => idtac
   | _ => fail "Not sure which program is being compiled.  Expecting a WeakestPrecondition goal with a postcondition in the form (?pred gallina_spec)."
