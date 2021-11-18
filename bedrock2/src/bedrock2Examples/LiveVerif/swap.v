@@ -20,11 +20,39 @@ Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2Examples.LiveVerif.ident_to_string.
 Import List.ListNotations. Local Open Scope list_scope.
 
+Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
+| mk_get_option: forall (a: A) (post: A -> Prop), post a -> get_option (Some a) post.
+
 Section WithParams.
   Import bedrock2.Syntax.
   Context {word: word.word 32} {mem: map.map word byte} {locals: map.map string word}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok: map.ok locals}.
   Context {ext_spec: ExtSpec}.
+
+  Lemma load_of_sep_cps: forall sz addr value R m (post: word -> Prop),
+      sep (truncated_word sz addr value) R m /\ post (truncate_word sz value) ->
+      get_option (Memory.load sz m addr) post.
+  Proof.
+    intros. destruct H. eapply load_of_sep in H. rewrite H.
+    constructor. assumption.
+  Qed.
+
+  Lemma load_word_of_sep_cps: forall addr value R m (post: word -> Prop),
+      sep (scalar addr value) R m /\ post value ->
+      get_option (Memory.load Syntax.access_size.word m addr) post.
+  Proof.
+    intros. destruct H. eapply load_word_of_sep in H. rewrite H.
+    constructor. assumption.
+  Qed.
+
+  Lemma store_word_of_sep_cps: forall addr oldvalue newvalue R m (post: mem -> Prop),
+      sep (scalar addr oldvalue) R m ->
+      (forall m', sep (scalar addr newvalue) R m' -> post m') ->
+      get_option (Memory.store access_size.word m addr newvalue) post.
+  Proof.
+    intros. eapply Scalars.store_word_of_sep in H. 2: eassumption.
+    destruct H as (m1 & E & P). rewrite E. constructor. exact P.
+  Qed.
 
   (* non-unfoldable wrappers, their definition might be swapped with something else later,
      as long as it satisfies the lemmas that follow below *)
@@ -41,10 +69,12 @@ Section WithParams.
   Qed.
 
   Lemma wp_load: forall m l sz addr (post: word -> Prop),
-      wp_expr m l addr (fun a => exists v, Memory.load sz m a = Some v /\ post v) ->
+      wp_expr m l addr (fun a => get_option (Memory.load sz m a) post) ->
       wp_expr m l (expr.load sz addr) post.
   Proof.
-    intros. constructor. cbn. unfold load. inversion H. assumption.
+    intros. constructor. cbn. unfold load. inversion H.
+    eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
+    cbv [Morphisms.pointwise_relation Basics.impl]. intros. inversion H1. subst. eauto.
   Qed.
 
   Inductive wp_cmd(call: (string -> trace -> mem -> list word ->
@@ -109,16 +139,30 @@ Section WithParams.
     constructor. cbn. unfold dlet.dlet. eauto.
   Qed.
 
+  Notation "'let/c' x := r 'in' b" := (r (fun x => b)) (x binder, at level 200, only parsing).
+
+  Lemma wp_store: forall call sz ea ev t m l rest post,
+      (let/c a := wp_expr m l ea in
+       let/c v := wp_expr m l ev in
+       let/c m' := get_option (Memory.store sz m a v) in
+       wp_cmd call rest t m' l post) ->
+      wp_cmd call (cmd.seq (cmd.store sz ea ev) rest) t m l post.
+  Proof.
+    intros *.
+  Abort.
+  (* TODO can we disable Coq's auto-eta-expansion to make this notation print like written above?*)
+
   Lemma wp_store: forall call sz ea ev t m l rest post,
       wp_expr m l ea (fun a =>
         wp_expr m l ev (fun v =>
-          exists m', Memory.store sz m a v = Some m' /\ wp_cmd call rest t m' l post)) ->
+          get_option (Memory.store sz m a v) (fun m' =>
+            wp_cmd call rest t m' l post))) ->
       wp_cmd call (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
     intros. constructor. cbn.
     eapply wp_expr_to_dexpr in H. unfold dexpr in *. fwd.
     eapply wp_expr_to_dexpr in Hp1. unfold dexpr in *. fwd.
-    destruct Hp1p1p1. unfold store. eauto 10.
+    inversion Hp1p1. inversion H0. subst. unfold store. symmetry in H. eauto 10.
   Qed.
 
   Lemma wp_skip: forall call t m l (post: trace -> mem -> locals -> Prop),
@@ -225,9 +269,8 @@ Ltac eval_expr_step :=
   match goal with
   | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load
   | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity |]
-  | |- exists _, _ /\ _ => eexists; split
-  | |- Memory.load access_size.word _ _ = Some _ =>
-    eapply Scalars.load_word_of_sep; try solve [ecancel_assumption]
+  | |- get_option (Memory.load access_size.word _ _) _ =>
+    eapply load_word_of_sep_cps; split; [try solve [ecancel_assumption]|]
   end.
 
 Ltac start :=
@@ -261,6 +304,7 @@ Ltac start :=
 
 Inductive snippet :=
 | SAssign(x: string)(e: Syntax.expr)
+| SStore(sz: access_size)(addr val: Syntax.expr)
 | SRet(xs: list string)
 (*
 | SIf(cond: Syntax.expr)(merge: bool)
@@ -273,6 +317,10 @@ Ltac assign name val :=
   repeat eval_expr_step;
   [.. (* maybe some unsolved side conditions *) | put_into_current_locals].
 
+Ltac store sz addr val :=
+  eapply (wp_store _ sz addr val);
+  repeat eval_expr_step.
+
 Ltac ret retnames :=
   eapply wp_skip;
   lazymatch goal with
@@ -284,6 +332,7 @@ Ltac ret retnames :=
 Ltac add_snippet s :=
   lazymatch s with
   | SAssign ?y ?e => assign y e
+  | SStore ?sz ?addr ?val => store sz addr val
   | SRet ?retnames => ret retnames
   end.
 
@@ -336,6 +385,8 @@ Declare Custom Entry snippet.
 Notation "*/ s /*" := s (s custom snippet at level 100).
 Notation "x = e ;" := (SAssign x e)
   (in custom snippet at level 0, x custom lhs_var at level 100, e custom live_expr at level 100).
+Notation "store( a , v ) ;" := (SStore access_size.word a v)
+  (in custom snippet at level 0, a custom live_expr at level 100, v custom live_expr at level 100).
 Notation "'return' l ;" := (SRet l)
   (in custom snippet at level 0, l custom rhs_var_list at level 1).
 
@@ -381,21 +432,12 @@ Definition swap: {f: list string * list string * cmd &
   )}.
     start.
 #*/ t = load(a_addr);                                                        /*.
+#*/ store(b_addr, t);                                                        /*.
+
+eapply store_word_of_sep_cps; [try solve [ecancel_assumption]|intros].
 
   Undelimit Scope live_scope.
   Close Scope live_scope.
-{
-
-  eapply (wp_store _ access_size.word live_expr:(a_addr) (live_expr:(load(b_addr)))).
-  eval_expr_step.
-  eval_expr_step.
-  eval_expr_step.
-  eval_expr_step.
-  { eval_expr_step. }
-  eapply Scalars.store_word_of_sep.
-1:
-
-try solve [ecancel_assumption].
 
 Abort.
 
