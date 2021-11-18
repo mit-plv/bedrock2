@@ -1,4 +1,4 @@
-#include "utf8_rupicola.h"
+#include "utf8_decode1_rupicola.h"
 #include <stddef.h>
 
 uintptr_t utf8_decode_all(uint8_t* p, size_t len) {

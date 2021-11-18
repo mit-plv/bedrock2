@@ -7,22 +7,23 @@ cd "$(dirname "$0")"
   ) > revcomp_rupicola.c
 
 CC="${CC:-cc}"
+CFLAGS="${CFLAGS:--O3}"
+benchmark=revcomp
+for language in "c" "rupicola"; do
+	CCname="$(printf "%s" "$CC" | sed 's/[0-9-]\+$//')"
+	CCversion="$($CC --version | head -1 | tr ' ' '\n' | tail -1)"
+	name="$benchmark-$language-${CCname}-$CCversion$CFLAGS"
+	filename="benchmark-$(printf "%s" "$name" | tr -dc '0123456789=+-.ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz')"
+	# ident="$(printf "%s" "$filename" | tr '=+-.' _)"
+	$CC $CFLAGS -c ${benchmark}_${language}.c
+	$CC $CFLAGS ubench.c ${benchmark}_${language}.o -o "$filename"
 
-$CC -O3 -c revcomp_rupicola.c
-$CC -O3 ubench.c revcomp_rupicola.o -lm -o ubench_rupicola
-
-$CC -O3 -c revcomp_c.c
-$CC -O3 ubench.c revcomp_c.o -lm -o ubench_c
-
-doas /usr/local/bin/turboboost-off.sh > /dev/null
-doas /usr/local/bin/hyperthreading-off.sh > /dev/null
-
-#doas /usr/bin/cpupower -c 2 frequency-set --freq "$(grep -o '[0-9\.]*GHz' /proc/cpuinfo | sort -h | head -1)"
-doas /usr/bin/cpupower -c 2 frequency-set --governor performance
-sleep 1
-printf "revcomp_rupicola: "; taskset -c 2 ./ubench_rupicola
-printf "revcomp_c: "; taskset -c 2 ./ubench_rupicola
-#doas /usr/bin/cpupower -c 2 frequency-set --governor schedutil
-
-doas /usr/local/bin/hyperthreading-on.sh > /dev/null
-doas /usr/local/bin/turboboost-on.sh > /dev/null
+	doas /usr/local/bin/turboboost-off.sh > /dev/null
+	doas /usr/local/bin/hyperthreading-off.sh > /dev/null
+	doas /usr/bin/cpupower -c 2 frequency-set --governor performance > /dev/null
+	printf '("%s", "%s", ' "$language" "$benchmark"
+	taskset -c 2 ./"$filename"
+	printf "),\n"
+	doas /usr/local/bin/hyperthreading-on.sh > /dev/null
+	doas /usr/local/bin/turboboost-on.sh > /dev/null
+done

@@ -1,6 +1,5 @@
 #include <x86intrin.h>
 #include <stdio.h>
-#include <math.h>
 #include <inttypes.h>
 
 #define WARMUP 100
@@ -11,15 +10,7 @@
 #include "testdata.c"
 void utf8_decode_all(uint8_t* buf, size_t len);
 
-int compare_uint64_t(const void* pa, const void* pb) {
-	uint64_t a = *(uint64_t*)pa;
-	uint64_t b = *(uint64_t*)pb;
-	if (a < b) { return -1; }
-	if (a > b) { return  1; }
-	return 0;
-}
-
-int main() {
+int main(int argc, char** argv) {
 	uint8_t buf[1024*1024];
 	buffer_fill(buf, sizeof(buf));
 
@@ -34,20 +25,10 @@ int main() {
 	for (int i=0; i<LAPS; i++) {
 		laptimes[i] = laptimes[i+1] - laptimes[i];
 	}
-	qsort(&laptimes[WARMUP], TRIALS, sizeof(laptimes[0]), compare_uint64_t);
-	uint64_t min = laptimes[WARMUP];
-	uint64_t max = laptimes[WARMUP+TRIALS-1];
-	uint64_t median = laptimes[WARMUP+TRIALS/2];
 
-	double mean = laptimes[WARMUP], squared_distance_from_mean = 0;
-	for (int i=1; i<TRIALS; i++) {
-	        double delta = laptimes[WARMUP+i] - mean;
-	        mean += delta / (i+1);
-	        double delta2 = laptimes[WARMUP+i] - mean;
-		squared_distance_from_mean += delta * delta2;
+	printf("[%" PRIu64, laptimes[WARMUP]);
+	for (int i=WARMUP+1; i<WARMUP+TRIALS; i++) {
+		printf(", %" PRIu64, laptimes[i]);
 	}
-	double stddev = sqrt(squared_distance_from_mean/(TRIALS-1));
-	double d95 = 1.95996398454005423552*stddev/sqrt(TRIALS), ci95lo = mean-d95, ci95hi = mean+d95;
-	printf ("n=%d; min=%" PRIu64 "; median=%" PRIu64 "; max=%" PRIu64 "; mean=%.0f; stddev=%.0f; ci95lo=%.0f; ci95hi=%.0f;\n",
-            TRIALS, min, median, max, mean, stddev, ci95lo, ci95hi);
+	printf("]");
 }
