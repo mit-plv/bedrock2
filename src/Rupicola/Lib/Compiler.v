@@ -308,8 +308,67 @@ Section with_parameters.
       Originally added for fiat-crypto/src/Bedrock/Group/ScalarMult/Ladderstep.v.
      *)
     Strategy 1 [noskips is_skip].
-
   End NoSkips.
+
+  Section NoReassign.
+    Definition is_var_expr e v : bool:=
+      match e with
+      | expr.var v' => String.eqb v v'
+      | _ => false
+      end.
+
+    Lemma is_var_expr_spec e v:
+      BoolSpec (e = expr.var v) (e <> expr.var v) (is_var_expr e v).
+    Proof.
+      destruct e; simpl; try (constructor; congruence); [].
+      destruct (String.eqb_spec v x); constructor; congruence.
+    Qed.
+
+    Fixpoint noreassign (c: cmd.cmd) :=
+      match c with
+      | cmd.stackalloc lhs nbytes body =>
+        cmd.stackalloc lhs nbytes (noreassign body)
+      | cmd.cond condition nonzero_branch zero_branch =>
+        cmd.cond condition (noreassign nonzero_branch) (noreassign zero_branch)
+      | cmd.seq s1 s2 =>
+        cmd.seq (noreassign s1) (noreassign s2)
+      | cmd.while test body =>
+        cmd.while test (noreassign body)
+      | cmd.set v e =>
+        if is_var_expr e v then cmd.skip else c
+      | _ => c
+      end.
+
+    Lemma noreassign_correct:
+      forall cmd {tr mem locals functions} post,
+        WeakestPrecondition.program functions
+          cmd tr mem locals post ->
+        WeakestPrecondition.program functions
+          (noreassign cmd) tr mem locals post.
+    Proof.
+      all: induction cmd;
+        repeat match goal with
+               | _ => apply IHcmd
+               | [ H: _ /\ _ |- _ ] => destruct H
+               | [  |- _ /\ _ ] => split
+               | [ H: forall v t m l, ?P v t m l -> exists _, _ |- ?P _ _ _ _ -> _ ] =>
+                 let h := fresh in intros h; specialize (H _ _ _ _ h)
+               | [ H: exists _, _ |- _ ] => destruct H
+               | [  |- exists _, _ ] => eexists
+               | [ H: context[WeakestPrecondition.cmd] |- context[WeakestPrecondition.cmd] ] => solve [eapply H; eauto]
+               | _ => unfold WeakestPrecondition.program in * || cbn || intros ? || eauto
+               end.
+
+      - destruct (is_var_expr_spec rhs lhs); simpl in *; subst; eauto; [].
+        destruct H as (xx & Hxx & ->).
+        rewrite map.put_idemp in H0; assumption.
+      - eapply WeakestPrecondition_weaken, IHcmd1; eauto;
+          intros; eapply WeakestPrecondition_weaken, IHcmd2; eauto.
+    Qed.
+
+    Definition compile_setup_remove_reassigns := noreassign_correct.
+    Strategy 1 [noreassign is_var_expr].
+  End NoReassign.
 End with_parameters.
 
 Section with_parameters.
@@ -477,6 +536,7 @@ Ltac compile_setup :=
     (step_with_db compiler_setup_post ||
      compile_setup_isolate_gallina_program); intros;
     compile_setup_unfold_gallina_spec;
+    apply compile_setup_remove_reassigns;
     apply compile_setup_remove_skips;
     unfold WeakestPrecondition.program ].
 
