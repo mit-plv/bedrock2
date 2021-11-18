@@ -137,7 +137,7 @@ Section Revcomp.
   Time Qed.
 End Revcomp.
 
-Definition revcomp_br2func : func := ("revcomp", (["s"; "len"], ["chk16"], revcomp_body)).
+Definition revcomp_br2func : func := ("revcomp", (["s"; "len"], [], revcomp_body)).
 
 Require Import bedrock2.ToCString.
 Definition revcomp_cbytes := Eval vm_compute in

@@ -106,7 +106,7 @@ Section Upstr.
   Time Qed.
 End Upstr.
 
-Definition upstr_br2func : func := ("upstr", (["s"; "len"], ["chk16"], upstr_body)).
+Definition upstr_br2func : func := ("upstr", (["s"; "len"], [], upstr_body)).
 
 Require Import bedrock2.ToCString.
 Definition upstr_cbytes := Eval vm_compute in
