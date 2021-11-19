@@ -67,11 +67,19 @@ Definition c_size (s : access_size) : string :=
   | access_size.word => "sizeof(uintptr_t)"
   end.
 
-Fixpoint c_expr (e : expr) : string :=
+Fixpoint c_address (e: expr) (fallback: string) : string :=
+  match e with
+  | expr.op add e1 e2 =>
+      let u8e1 := "((char*)(" ++ c_expr e1 ++ "))" in
+      let uptre2 := "(" ++ c_expr e2 ++ ")" in
+      "(uintptr_t)(" ++ c_bop u8e1 add uptre2 ++ ")"
+  | _ => fallback
+  end
+with c_expr (e : expr) : string :=
   match e with
   | expr.literal v => c_lit v
   | expr.var x => c_var x
-  | expr.load s ea => "_br2_load(" ++ c_expr ea ++ ", " ++ c_size s++ ")"
+  | expr.load s ea => "_br2_load(" ++ c_address ea (c_expr ea) ++ ", " ++ c_size s++ ")"
   | expr.inlinetable s t index => "({ static const uint8_t _inlinetable["++c_lit (Z.of_nat (List.length t))++"] = {"++concat ", " (List.map c_byte_withoutcast t)++"}; _br2_load((uintptr_t)&_inlinetable["++c_expr index++"], "++c_size s++"); })"
   | expr.op op e1 e2 => c_bop ("(" ++ c_expr e1 ++ ")") op ("(" ++ c_expr e2 ++ ")")
   end.
@@ -100,7 +108,7 @@ Definition c_act := c_call.
 Fixpoint c_cmd (indent : string) (c : cmd) : string :=
   match c with
   | cmd.store s ea ev
-    => indent ++ "_br2_store(" ++ c_expr ea ++ ", " ++ c_expr ev ++ ", " ++ c_size s ++ ");" ++ LF
+    => indent ++ "_br2_store(" ++ c_address ea (c_expr ea) ++ ", " ++ c_expr ev ++ ", " ++ c_size s ++ ");" ++ LF
   | cmd.stackalloc x n body =>
     indent ++ c_var x ++ " = alloca(" ++ c_lit n ++ "); // TODO untested" ++ LF ++
     c_cmd indent body
