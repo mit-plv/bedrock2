@@ -107,7 +107,5 @@ Section Upstr.
 End Upstr.
 
 Definition upstr_br2func : func := ("upstr", (["s"; "len"], [], upstr_body)).
-
-Require Import bedrock2.ToCString.
 Definition upstr_cbytes := Eval vm_compute in
   list_byte_of_string (ToCString.c_module [upstr_br2func]).

@@ -132,7 +132,7 @@ Module Murmur3.
     match type of scramble_body_correct with forall x env, ?spec (cons ?f env) => exact f end).
 End Murmur3.
 
-Require Import bedrock2.ToCString.
+Require Import Rupicola.Lib.ToCString.
 Definition fnv1a64_update_cbytes := Eval vm_compute in
   list_byte_of_string (c_module [FNV1A64.update_func]).
 Definition fnv1a64_cbytes := Eval vm_compute in

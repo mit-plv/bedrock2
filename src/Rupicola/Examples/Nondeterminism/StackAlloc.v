@@ -122,5 +122,5 @@ Section Peek.
   Qed.
 End Peek.
 
-From bedrock2 Require Import BasicC64Semantics ToCString NotationsInConstr.
+From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
 Compute nondet_xor_body (word := word).

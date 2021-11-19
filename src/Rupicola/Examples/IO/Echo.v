@@ -176,8 +176,8 @@ Section Echo.
   Qed.
 End Echo.
 
-From bedrock2 Require Import BasicC64Semantics ToCString NotationsInConstr.
+From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
 Compute io_sum_body. (* (word := word) *)
-Compute c_func ("io_echo", ([], [], io_echo_body)).
-Compute c_func ("io_sum", ([], [], io_sum_body)).
-Compute c_func ("io_check", (["expected"], ["err"], io_check_body (word := word))).
+Compute ToCString.c_func ("io_echo", ([], [], io_echo_body)).
+Compute ToCString.c_func ("io_sum", ([], [], io_sum_body)).
+Compute ToCString.c_func ("io_check", (["expected"], ["err"], io_check_body (word := word))).

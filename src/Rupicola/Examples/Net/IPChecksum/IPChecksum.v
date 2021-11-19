@@ -35,6 +35,5 @@ Proof.
   Time compile.
 Time Qed.
 
-Require Import bedrock2.ToCString.
 Definition ip_checksum_cbytes := Eval vm_compute in
-  list_byte_of_string (c_module [("ip_checksum", (["data"; "len"], ["chk16"], ip_checksum_body))]).
+  list_byte_of_string (ToCString.c_module [("ip_checksum", (["data"; "len"], ["chk16"], ip_checksum_body))]).

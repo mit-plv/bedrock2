@@ -138,7 +138,5 @@ Section Revcomp.
 End Revcomp.
 
 Definition revcomp_br2func : func := ("revcomp", (["s"; "len"], [], revcomp_body)).
-
-Require Import bedrock2.ToCString.
 Definition revcomp_cbytes := Eval vm_compute in
   list_byte_of_string (ToCString.c_module [revcomp_br2func]).

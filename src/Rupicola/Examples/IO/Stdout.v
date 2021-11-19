@@ -115,6 +115,7 @@ Section Stdout.
   Qed.
 End Stdout.
 
-From bedrock2 Require Import BasicC64Semantics ToCString NotationsInConstr.
+From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
+Require Import Rupicola.Lib.ToCString.
 Compute hello_world_body (word := word).
-Compute c_func ("hello_world", (["y"], ["out"], hello_world_body (word := word))).
+Compute ToCString.c_func ("hello_world", (["y"], ["out"], hello_world_body (word := word))).

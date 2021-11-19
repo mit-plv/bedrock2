@@ -62,7 +62,5 @@ Qed.
 
 Definition lxm_next_func := ltac:(
   match type of lxm_next_body_correct with forall x env, ?spec (cons ?f env) => exact f end).
-
-Require Import bedrock2.ToCString.
 Definition lxm_next_cbytes := Eval vm_compute in
-  list_byte_of_string (c_module [("dummy_main_for_static",([],[],cmd.skip)); lxm_next_func]).
+  list_byte_of_string (ToCString.c_module [("dummy_main_for_static",([],[],cmd.skip)); lxm_next_func]).

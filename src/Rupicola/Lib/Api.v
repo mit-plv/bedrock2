@@ -9,4 +9,5 @@ Require Export Rupicola.Lib.ExprCompiler.
 Require Export Rupicola.Lib.NoExprReflection.
 Require Export Rupicola.Lib.SepReflection.
 Require Export Rupicola.Lib.Alloc.
+Require Rupicola.Lib.ToCString.
 Require Export Coq.derive.Derive.
