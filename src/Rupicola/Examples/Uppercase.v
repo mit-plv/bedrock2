@@ -34,7 +34,7 @@ Require Import bedrock2.BasicC32Semantics.
 
 Section Impl.
   Definition upchar_impl (b: byte) :=
-    if word.wrap (byte.unsigned b - byte.unsigned "a"%byte) <? 26
+    if byte.wrap (byte.unsigned b - byte.unsigned "a"%byte) <? 26
     then byte.and b x5f else b.
 
   Lemma upchar_impl_ok a:
