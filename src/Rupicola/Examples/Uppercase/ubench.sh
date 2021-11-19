@@ -21,7 +21,7 @@ for language in "c" "rupicola"; do
 	doas /usr/local/bin/turboboost-off.sh > /dev/null
 	doas /usr/local/bin/hyperthreading-off.sh > /dev/null
 	doas /usr/bin/cpupower -c 2 frequency-set --governor performance > /dev/null
-	printf '("%s", "%s", ' "$language" "$benchmark"
+	printf '("%s", "%s", "%s", ' "$benchmark" "$language" "$CCname-$CCversion"
 	taskset -c 2 ./"$filename"
 	printf "),\n"
 	doas /usr/local/bin/hyperthreading-on.sh > /dev/null
