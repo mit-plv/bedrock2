@@ -1455,6 +1455,20 @@ Section Scalar.
   Lemma width_at_least_32 : 32 <= width.
   Proof. destruct width_cases; lia. Qed.
 
+  Lemma byte_wrap_range z:
+    0 <= byte.wrap z < 2 ^ width.
+  Proof.
+    pose proof Z.mod_pos_bound z 8.
+    clear dependent word; unfold byte.wrap; destruct width_cases; subst; lia.
+  Qed.
+
+  Lemma byte_range_32 z:
+    0 <= byte.wrap z < 2 ^ 32.
+  Proof.
+    pose proof Z.mod_pos_bound z 8.
+    clear dependent word; unfold byte.wrap; lia.
+  Qed.
+
   Lemma width_mod_8 : width mod 8 = 0.
   Proof. destruct width_cases as [-> | ->]; reflexivity. Qed.
 
@@ -1526,6 +1540,10 @@ Module byte.
   (* FIXME isn't this defined somewhere already? *)
   Definition and (b1 b2: byte) :=
     byte.of_Z (Z.land (byte.unsigned b1) (byte.unsigned b2)).
+
+  Lemma wrap_range z:
+    0 <= byte.wrap z < 2 ^ 8.
+  Proof. apply Z.mod_pos_bound. reflexivity. Qed.
 End byte.
 
 Section Byte.

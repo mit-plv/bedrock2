@@ -202,6 +202,10 @@ Section ExprCompiler.
     Lemma expr_compile_Z_swrap :
       DX e1 (to_w z1) -> DX e1 (to_w (word.swrap (word := word) z1)).
     Proof. rewrite word.of_Z_swrap; auto. Qed.
+
+    Lemma expr_compile_byte_wrap:
+      DX e1 (to_w (Z.land z1 0xFF)) -> DX e1 (to_w (byte.wrap z1)).
+    Proof. rewrite (Z.land_ones _ 8) by lia; auto. Qed.
   End Z_expr.
 
   Section N_expr.
@@ -409,8 +413,8 @@ Create HintDb expr_compiler.
    this is the case with `Z.ltb`, which is either `word.lts` or `word.ltu`
    depending on the range of the operands. *)
 #[export] Hint Constructors and or eq : expr_compiler.
-#[export] Hint Resolve word.wrap_range word.swrap_range: expr_compiler.
-#[export] Hint Resolve word_unsigned_range_32 word_signed_range_31: expr_compiler.
+#[export] Hint Resolve byte.wrap_range word.wrap_range word.swrap_range: expr_compiler.
+#[export] Hint Resolve byte_range_32 word_unsigned_range_32 word_signed_range_31: expr_compiler.
 #[export] Hint Resolve word.unsigned_range word.signed_range: expr_compiler.
 #[export] Hint Extern 5 (_ <= _ < _) => apply Z_decide_word_bounds; reflexivity : expr_compiler.
 
@@ -491,6 +495,8 @@ Notation DPAT p := (DEXPR _ _ _ p) (only parsing).
   simple eapply expr_compile_Z_wrap : expr_compiler.
 #[export] Hint Extern 5 (DPAT (of_Z (word.swrap _))) =>
   simple eapply expr_compile_Z_swrap : expr_compiler.
+#[export] Hint Extern 5 (DPAT (of_Z (byte.wrap _))) =>
+  simple eapply expr_compile_byte_wrap : expr_compiler.
 
 #[export] Hint Extern 5 (DPAT (of_N (N.add _ _))) =>
   simple eapply expr_compile_N_add; shelve : expr_compiler.
