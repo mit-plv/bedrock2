@@ -80,13 +80,13 @@ Section __.
   Derive crc32_body SuchThat
          (defn! "crc32" ("data", "len") ~> "crc32" { crc32_body },
           implements crc32)
-         As body_correct.
+         As crc32_body_correct.
   Proof.
     compile.
   Qed.
 
   Definition crc32_func := ltac:(
-    match type of body_correct with forall x env, ?spec (cons ?f env) => exact f end).
+    match type of crc32_body_correct with forall x env, ?spec (cons ?f env) => exact f end).
 End __.
 
 Require Import bedrock2.ToCString.

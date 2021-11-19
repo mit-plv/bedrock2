@@ -131,7 +131,7 @@ Section Revcomp.
          (defn! "revcomp" ("s", "len")
            { revcomp_body },
            implements revcomp_impl)
-         As body_correct.
+         As revcomp_body_correct.
   Proof.
     Time compile.
   Time Qed.

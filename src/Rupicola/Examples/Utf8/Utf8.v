@@ -75,7 +75,7 @@ Derive utf8_decode_body SuchThat
        (defn! "utf8_decode" ("data") ~> "c", "e", "ptr"
          { utf8_decode_body },
          implements utf8_decode)
-       As body_correct.
+       As utf8_decode_body_correct.
 Proof.
   Time compile.
 Time Qed.

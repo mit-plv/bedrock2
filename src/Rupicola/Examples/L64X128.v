@@ -7,14 +7,14 @@ Require Import Rupicola.Lib.Arrays.
 Require Import Rupicola.Lib.WordNotations.
 From bedrock2 Require Import BasicC64Semantics.
 
+Coercion co_word_of_Z := word.of_Z (word := word).
+#[export] Hint Unfold co_word_of_Z : compiler_side_conditions.
+
 Definition M : word :=
   word.of_Z 0xd1342543de82ef95.
 
 Definition rotl (x: word) (k: Z) :=
   (x <<w word.of_Z k) |w (x >>w word.of_Z (64 - k)).
-
-Coercion co_word_of_Z := word.of_Z (word := word).
-#[export] Hint Unfold co_word_of_Z : compiler_side_conditions.
 
 Definition lxm_next (a s: word) (x: list word) :=
   let/n x0 := ListArray.get x 0 in

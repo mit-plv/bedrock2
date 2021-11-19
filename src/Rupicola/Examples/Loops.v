@@ -229,7 +229,7 @@ Section Ex.
   Derive incr_body SuchThat
          (defn! "incr"("c") { incr_body },
           implements incr_gallina)
-         As body_correct.
+         As incr_body_correct.
   Proof.
     compile.
   Qed.

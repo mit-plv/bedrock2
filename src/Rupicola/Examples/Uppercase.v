@@ -100,7 +100,7 @@ Section Upstr.
          (defn! "upstr" ("s", "len")
            { upstr_body },
            implements upstr_impl)
-         As body_correct.
+         As upstr_body_correct.
   Proof.
     Time compile.
   Time Qed.

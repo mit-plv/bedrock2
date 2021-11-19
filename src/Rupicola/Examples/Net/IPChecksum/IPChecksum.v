@@ -30,7 +30,7 @@ Derive ip_checksum_body SuchThat
        (defn! "ip_checksum" ("data", "len") ~> "chk16"
          { ip_checksum_body },
          implements ip_checksum_impl)
-       As body_correct.
+       As ip_checksum_body_correct.
 Proof.
   Time compile.
 Time Qed.
