@@ -17,6 +17,12 @@
 
    P holds for m                 P m                         P = Some m
 
+   Equivalent predicates         iff1 P Q :=                 P = Q
+                                   forall m, P m <-> Q m
+
+   Implication on predicates     impl1 P Q :=                not supported (or maybe lhs
+                                   forall m, P m -> Q m        can be None, aka exfalso, else =)
+
    going from a sep log          forall m: mem, P m ->       defined P /\
    predicate P to a memory       ... m ...                   ... force P ...
 
@@ -312,15 +318,38 @@ Section SepLog.
   Proof. intros. rewrite! dus_flatten in H. exact H. Qed.
 
   Section cancel_lemmas.
-    Let nth n xs := hd (@None mem) (skipn n xs).
+    Let nth n xs := hd (@Some mem map.empty) (skipn n xs).
     Let remove_nth n (xs : list (option mem)) := firstn n xs ++ tl (skipn n xs).
+
+    Lemma dus_nth_to_head n xs: mmap.du (nth n xs) (mmap.dus (remove_nth n xs)) = mmap.dus xs.
+    Proof.
+      cbv [nth remove_nth].
+      pose proof (List.firstn_skipn n xs : (firstn n xs ++ skipn n xs) = xs).
+      set (xsr := skipn n xs) in *; clearbody xsr.
+      set (xsl := firstn n xs) in *; clearbody xsl.
+      subst xs.
+      rewrite <-2mmap.dus'_dus.
+      destruct xsr.
+      { cbn [mmap.dus' hd]. rewrite mmap.du_empty_l. reflexivity. }
+      cbn [hd tl].
+      rewrite 2mmap.dus'_dus.
+      rewrite 2mmap.dus_app.
+      rewrite mmap.dus_cons.
+      rewrite <-2mmap.du_assoc.
+      f_equal.
+      apply mmap.du_comm.
+    Qed.
 
     Lemma cancel_at: forall (i j: nat) (xs ys: list (option mem)),
         nth i xs = nth j ys ->
         mmap.dus (remove_nth i xs) = mmap.dus (remove_nth j ys) ->
         mmap.dus xs = mmap.dus ys.
     Proof.
-    Admitted.
+      intros.
+      rewrite <-(dus_nth_to_head i xs).
+      rewrite <-(dus_nth_to_head j ys).
+      f_equal; assumption.
+    Qed.
   End cancel_lemmas.
 
   Definition one_byte(addr: word)(b: byte): option mem := Some (map.singleton addr b).
