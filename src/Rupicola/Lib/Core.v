@@ -1469,6 +1469,13 @@ Section Scalar.
     clear dependent word; unfold byte.wrap; lia.
   Qed.
 
+  Lemma byte_range_64 z:
+    0 <= byte.wrap z < 2 ^ 64.
+  Proof.
+    pose proof Z.mod_pos_bound z 8.
+    clear dependent word; unfold byte.wrap; lia.
+  Qed.
+
   Lemma width_mod_8 : width mod 8 = 0.
   Proof. destruct width_cases as [-> | ->]; reflexivity. Qed.
 

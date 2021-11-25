@@ -416,7 +416,7 @@ Create HintDb expr_compiler.
    depending on the range of the operands. *)
 #[export] Hint Constructors and or eq : expr_compiler.
 #[export] Hint Resolve byte.wrap_range word.wrap_range word.swrap_range: expr_compiler.
-#[export] Hint Resolve byte_range_32 word_unsigned_range_32 word_signed_range_31: expr_compiler.
+#[export] Hint Resolve byte_range_32 byte_range_64 word_unsigned_range_32 word_signed_range_31: expr_compiler.
 #[export] Hint Resolve word.unsigned_range word.signed_range: expr_compiler.
 #[export] Hint Extern 5 (_ <= _ < _) => apply Z_decide_word_bounds; reflexivity : expr_compiler.
 

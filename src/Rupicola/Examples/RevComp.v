@@ -98,7 +98,7 @@ Section Revcomp.
     fnspec! "revcomp" s_ptr wlen / (s : list byte) R,
       { requires tr mem :=
           wlen = word.of_Z (Z.of_nat (length s)) /\
-          Z.of_nat (Datatypes.length s) < 2 ^ 32 /\
+          Z.of_nat (Datatypes.length s) < 2 ^ 64 /\
           (sizedlistarray_value AccessByte (length s) s_ptr s * R)%sep mem;
         ensures tr' mem' :=
           tr' = tr /\

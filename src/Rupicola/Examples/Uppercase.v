@@ -30,7 +30,7 @@ Require Import Coq.Strings.Byte.
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.Loops.
 Require Import Rupicola.Lib.Arrays.
-Require Import bedrock2.BasicC32Semantics.
+Require Import bedrock2.BasicC64Semantics.
 
 Section Impl.
   Definition upchar_impl (b: byte) :=
@@ -69,7 +69,7 @@ Section Upstr.
     fnspec! "upstr" s_ptr wlen / (s : list byte) R,
       { requires tr mem :=
           wlen = word.of_Z (Z.of_nat (length s)) /\
-          Z.of_nat (length s) < 2 ^ 32 /\
+          Z.of_nat (length s) < 2 ^ 64 /\
           (sizedlistarray_value AccessByte (length s) s_ptr s * R)%sep mem;
         ensures tr' mem' :=
           tr' = tr /\
