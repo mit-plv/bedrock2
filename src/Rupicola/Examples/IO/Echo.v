@@ -128,10 +128,10 @@ Section Echo.
     { requires tr mem := R mem;
       ensures tr' mem' rets := iospec tr tr' io_echo (fun _ => R mem') }.
 
-  Derive io_echo_body SuchThat
-   (defn! "io_echo"() { io_echo_body },
+  Derive io_echo_br2fn SuchThat
+   (defn! "io_echo"() { io_echo_br2fn },
     implements io_echo using ["readw"; "writew"])
-   As io_echo_target_correct.
+   As io_echo_br2fn_ok.
   Proof. compile. Qed.
 
   Definition io_sum : IO unit :=
@@ -146,10 +146,10 @@ Section Echo.
     { requires tr mem := R mem;
       ensures tr' mem' rets := iospec tr tr' io_sum (fun _ => R mem') }.
 
-  Derive io_sum_body SuchThat
-         (defn! "io_sum"() { io_sum_body },
+  Derive io_sum_br2fn SuchThat
+         (defn! "io_sum"() { io_sum_br2fn },
           implements io_sum using ["readw"; "writew"])
-  As io_sum_target_correct.
+  As io_sum_br2fn_ok.
   Proof. compile. Qed.
 
   Definition io_check expected : IO Z :=
@@ -167,17 +167,17 @@ Section Echo.
     { requires tr mem := R mem;
       ensures tr' mem' rets := iospec tr tr' (io_check expected) (fun val => rets = [word.of_Z val] /\ R mem') }.
 
-  Derive io_check_body SuchThat
-         (defn! "io_check"("expected") ~> "err" { io_check_body },
+  Derive io_check_br2fn SuchThat
+         (defn! "io_check"("expected") ~> "err" { io_check_br2fn },
           implements io_check using ["readw"; "writew"])
-  As io_check_target_correct.
+  As io_check_br2fn_ok.
   Proof.
     compile.
   Qed.
 End Echo.
 
 From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
-Compute io_sum_body. (* (word := word) *)
-Compute ToCString.c_func ("io_echo", ([], [], io_echo_body)).
-Compute ToCString.c_func ("io_sum", ([], [], io_sum_body)).
-Compute ToCString.c_func ("io_check", (["expected"], ["err"], io_check_body (word := word))).
+Compute io_sum_br2fn. (* (word := word) *)
+Compute ToCString.c_func io_echo_br2fn.
+Compute ToCString.c_func io_sum_br2fn.
+Compute ToCString.c_func (io_check_br2fn (word := word)).

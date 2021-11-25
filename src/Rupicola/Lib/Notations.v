@@ -374,7 +374,7 @@ Record _defn_spec_sig :=
 Record _defn_spec {A: Type} :=
   { _defn_name: string;
     _defn_sig: _defn_spec_sig;
-    _defn_bedrock: cmd;
+    _defn_impl: Syntax.func;
     _defn_gallina: A;
     _defn_calls: list string }.
 
@@ -410,29 +410,29 @@ Notation "args" :=
     (in custom defn_spec_sig at level 0,
         args custom defn_spec_args at level 0).
 
-Notation "name sig  {  body  } ,  'implements'  fn" :=
+Notation "name sig  {  impl  } ,  'implements'  fn" :=
   {| _defn_name := name;
      _defn_sig := sig;
-     _defn_bedrock := match body return cmd with body => body end;
+     _defn_impl := match impl return Syntax.func with impl => impl end;
      _defn_gallina := fn;
      _defn_calls := [] |}
     (in custom defn_spec at level 10,
         name constr at level 0,
         sig custom defn_spec_sig at level 0,
-        body constr at level 200,
+        impl constr at level 200,
         fn constr at level 0,
         no associativity).
 
-Notation "name sig  {  body  } ,  'implements'  fn  'using'  fns" :=
+Notation "name sig  {  impl  } ,  'implements'  fn  'using'  fns" :=
   {| _defn_name := name;
      _defn_sig := sig;
-     _defn_bedrock := match body return cmd with body => body end;
+     _defn_impl := match impl return Syntax.func with impl => impl end;
      _defn_gallina := fn;
      _defn_calls := fns |}
     (in custom defn_spec at level 10,
         name constr at level 0,
         sig custom defn_spec_sig at level 0,
-        body constr at level 200,
+        impl constr at level 200,
         fn constr at level 0,
         fns constr at level 0,
         no associativity).
@@ -444,11 +444,13 @@ Notation "defn! spec" :=
         better error messages when `spec` isn't a valid term. *)
      ltac:(lazymatch (eval red in spec_constr) with
            | {| _defn_name := ?name; _defn_sig := {| _defn_args := ?args; _defn_rets := ?rets |};
-                _defn_bedrock := ?bedrock; _defn_gallina := ?gallina;
+                _defn_impl := ?impl; _defn_gallina := ?gallina;
                 _defn_calls := ?calls |} =>
-             let proc := constr:((name, (args, rets, bedrock))) in
-             let goal := Rupicola.Lib.Tactics.program_logic_goal_for_function proc calls in
-             exact (__rupicola_program_marker gallina -> goal)
+              evar (body: cmd);
+              let body := eval red in body in
+              unify impl (name, (args, rets, body));
+              let goal := Rupicola.Lib.Tactics.program_logic_goal_for_function impl calls in
+              exact (__rupicola_program_marker gallina -> goal)
            end)
    end)
     (at level 0, spec custom defn_spec at level 200, only parsing).

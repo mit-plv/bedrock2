@@ -27,14 +27,14 @@ Section with_parameters.
         let p := (swap_gallina c1 c2) in
         (cell_value c1_ptr (fst p) ⋆ cell_value c2_ptr (snd p) ⋆ R) mem' }.
 
-  Derive swap_body SuchThat
-         (defn! "swap"("c1", "c2") { swap_body },
+  Derive swap_br2fn SuchThat
+         (defn! "swap"("c1", "c2") { swap_br2fn },
           implements swap_gallina)
-    As swap_body_correct.
+    As swap_br2fn_ok.
   Proof.
     compile.
   Qed.
 End with_parameters.
 
 From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
-Compute swap_body. (* (word := word) *)
+Compute swap_br2fn. (* (word := word) *)

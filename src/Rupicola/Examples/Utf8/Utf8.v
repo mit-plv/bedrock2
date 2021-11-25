@@ -65,25 +65,21 @@ Instance spec_of_utf8_decode : spec_of "utf8_decode" :=
 
 Import UnsizedListArrayCompiler.
 
-Hint Rewrite Nat2Z.id : compiler_side_conditions.
 Hint Rewrite @word_of_byte_of_fin : compiler_side_conditions.
 #[local] Hint Resolve Fin_to_nat_lt : compiler_side_conditions.
 #[local] Hint Extern 1 => simple apply word_of_byte_sru_lt : compiler_side_conditions.
 #[local] Hint Extern 10 => cbn; lia : compiler_side_conditions.
 
-Derive utf8_decode_body SuchThat
+Derive utf8_decode_br2fn SuchThat
        (defn! "utf8_decode" ("data") ~> "c", "e", "ptr"
-         { utf8_decode_body },
+         { utf8_decode_br2fn },
          implements utf8_decode)
-       As utf8_decode_body_correct.
+       As utf8_decode_br2fn_ok.
 Proof.
   Time compile.
 Time Qed.
 
-Definition utf8_decode_impl : func := Eval vm_compute in
-  ("utf8_decode", (["data"], ["c"; "e"; "ptr"], utf8_decode_body)).
-
 Definition utf8_decode_cbytes := Eval vm_compute in
   list_byte_of_string (ToCString.c_module
     [("dummy_main_to_make_impl_get_inlined", ([], [], cmd.skip));
-     utf8_decode_impl]).
+     utf8_decode_br2fn]).

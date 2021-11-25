@@ -247,10 +247,10 @@ Section __.
         (cell_value ptr1 (cmove_word mask c1 c2)
          * cell_value ptr2 c2 * R)%sep mem' }.
   
-  Derive cmove_word_body SuchThat
-         (defn! "cmove_word" ("mask", "c1", "c2") { cmove_word_body },
+  Derive cmove_word_br2fn SuchThat
+         (defn! "cmove_word" ("mask", "c1", "c2") { cmove_word_br2fn },
           implements cmove_word)
-         As cmove_body_correct.
+         As cmove_br2fn_ok.
   Proof.
     compile.
   Qed.
@@ -266,10 +266,10 @@ Section __.
         (cell_value ptr1 c1'
          * cell_value ptr2 c2' * R)%sep mem' }.
   
-  Derive cswap_word_body SuchThat
-         (defn! "cswap_word" ("mask", "c1", "c2") { cswap_word_body },
+  Derive cswap_word_br2fn SuchThat
+         (defn! "cswap_word" ("mask", "c1", "c2") { cswap_word_br2fn },
           implements cswap_word)
-         As cswap_body_correct.
+         As cswap_br2fn_ok.
   Proof.
     compile.
   Qed.
@@ -294,10 +294,10 @@ Section __.
   Import LoopCompiler.
   Hint Extern 10 (_ < _) => lia: compiler_side_conditions.
 
-  Derive cmove_array_body SuchThat
-         (defn! "cmove_array" ("mask", "len", "a1", "a2") { cmove_array_body },
+  Derive cmove_array_br2fn SuchThat
+         (defn! "cmove_array" ("mask", "len", "a1", "a2") { cmove_array_br2fn },
           implements cmove_array)
-         As cmove_array_body_correct.
+         As cmove_array_br2fn_ok.
   Proof.
     compile.
   Qed.
@@ -316,10 +316,10 @@ Section __.
         (sizedlistarray_value AccessWord n ptr1 c1
          * sizedlistarray_value AccessWord n ptr2 c2 * R)%sep mem' }.
 
-  Derive cswap_array_body SuchThat
-         (defn! "cswap_array" ("mask", "len", "a1", "a2") { cswap_array_body },
+  Derive cswap_array_br2fn SuchThat
+         (defn! "cswap_array" ("mask", "len", "a1", "a2") { cswap_array_br2fn },
           implements cswap_array)
-         As cswap_array_body_correct.
+         As cswap_array_br2fn_ok.
   Proof.
     compile.
   Qed.

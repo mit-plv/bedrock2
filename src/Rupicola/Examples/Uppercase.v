@@ -81,16 +81,14 @@ Section Upstr.
   Hint Rewrite upchar_impl_ok : compiler_cleanup.
   Hint Unfold upchar_impl : compiler_cleanup.
 
-  Derive upstr_body SuchThat
-         (defn! "upstr" ("s", "len")
-           { upstr_body },
-           implements upstr_impl)
-         As upstr_body_correct.
+  Derive upstr_br2fn SuchThat
+         (defn! "upstr" ("s", "len") { upstr_br2fn },
+          implements upstr_impl)
+         As upstr_br2fn_ok.
   Proof.
     Time compile.
   Time Qed.
 End Upstr.
 
-Definition upstr_br2func : func := ("upstr", (["s"; "len"], [], upstr_body)).
 Definition upstr_cbytes := Eval vm_compute in
-  list_byte_of_string (ToCString.c_module [upstr_br2func]).
+  list_byte_of_string (ToCString.c_module [upstr_br2fn]).

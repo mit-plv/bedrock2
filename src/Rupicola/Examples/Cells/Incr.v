@@ -25,14 +25,14 @@ Section with_parameters.
       ensures tr' mem' :=
         tr' = tr /\ (cell_value c_ptr (incr_gallina c) ⋆ R) mem' }.
 
-  Derive incr_body SuchThat
-         (defn! "incr"("c") { incr_body },
+  Derive incr_br2fn SuchThat
+         (defn! "incr"("c") { incr_br2fn },
           implements incr_gallina)
-         As incr_body_correct.
+         As incr_br2fn_ok.
   Proof.
     compile.
   Qed.
 End with_parameters.
 
 From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
-Compute incr_body (word := word).
+Compute incr_br2fn (word := word).

@@ -515,10 +515,10 @@ Section KVSwap.
                 pm pk1 pk2
                 (kvswap_gallina m k1 k2)) R tr).
 
-  Derive kvswap_body SuchThat
-         (defn! "kvswap"("m", "k1", "k2") { kvswap_body },
+  Derive kvswap_br2fn SuchThat
+         (defn! "kvswap"("m", "k1", "k2") { kvswap_br2fn },
           implements kvswap_gallina)
-    As decr_body_correct.
+    As decr_br2fn_ok.
   Proof.
     compile_setup.
     (* Is there a systematic way to move from unannotated to annotated? The
@@ -604,4 +604,4 @@ Section KVSwap.
 End KVSwap.
 
 (* From bedrock2 Require Import BasicC64Semantics NotationsInConstr. *)
-(* Compute kvswap_body. *)
+(* Compute kvswap_br2fn. *)

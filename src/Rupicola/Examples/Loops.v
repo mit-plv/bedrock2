@@ -63,8 +63,8 @@ Section Ex.
         (vectorarray_value AccessWord a1_ptr (fst res) ⋆
                            vectorarray_value AccessWord a2_ptr (snd res) ⋆ R) mem' }.
 
-  Derive vect_memcpy_body SuchThat
-         (defn! "vect_memcpy"("len", "a1", "a2") { vect_memcpy_body },
+  Derive vect_memcpy_br2fn SuchThat
+         (defn! "vect_memcpy"("len", "a1", "a2") { vect_memcpy_br2fn },
           implements @vect_memcpy)
          As vect_memcpy_correct.
   Proof.
@@ -112,8 +112,8 @@ Section Ex.
         (vectorarray_value AccessWord a1_ptr (fst res) ⋆
                            vectorarray_value AccessWord a2_ptr (snd res) ⋆ R) mem' }.
 
-  Derive vect_memcpy_s_body SuchThat
-         (defn! "vect_memcpy_s"("len", "a1", "a2") { vect_memcpy_s_body },
+  Derive vect_memcpy_s_br2fn SuchThat
+         (defn! "vect_memcpy_s"("len", "a1", "a2") { vect_memcpy_s_br2fn },
           implements @vect_memcpy_s)
          As vect_memcpy_s_correct.
   Proof.
@@ -149,8 +149,8 @@ Section Ex.
 
   Section Sz.
     Import SizedListArrayCompiler.
-    Derive sizedlist_memcpy_body SuchThat
-           (defn! "sizedlist_memcpy"("len", "a1", "a2") { sizedlist_memcpy_body },
+    Derive sizedlist_memcpy_br2fn SuchThat
+           (defn! "sizedlist_memcpy"("len", "a1", "a2") { sizedlist_memcpy_br2fn },
             implements list_memcpy)
            As sizedlist_memcpy_correct.
     Proof.
@@ -177,9 +177,9 @@ Section Ex.
   Section Unsz.
     Import UnsizedListArrayCompiler.
 
-    Derive unsizedlist_memcpy_body SuchThat
+    Derive unsizedlist_memcpy_br2fn SuchThat
            (defn! "unsizedlist_memcpy"("len", "a1", "a2") {
-                  unsizedlist_memcpy_body },
+                  unsizedlist_memcpy_br2fn },
             implements list_memcpy)
            As unsizedlist_memcpy_correct.
     Proof.
@@ -226,10 +226,10 @@ Section Ex.
         tr' = tr /\
         (cell_value c_ptr (incr_gallina c) ⋆ R) mem' }.
 
-  Derive incr_body SuchThat
-         (defn! "incr"("c") { incr_body },
+  Derive incr_br2fn SuchThat
+         (defn! "incr"("c") { incr_br2fn },
           implements incr_gallina)
-         As incr_body_correct.
+         As incr_br2fn_ok.
   Proof.
     compile.
   Qed.
@@ -263,6 +263,6 @@ Module RangedForTests.
 End RangedForTests.
 
 From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
-Compute sizedlist_memcpy_body (word := word).
-Compute unsizedlist_memcpy_body (word := word).
-Compute vect_memcpy_s_body (word := word).
+Compute sizedlist_memcpy_br2fn (word := word).
+Compute unsizedlist_memcpy_br2fn (word := word).
+Compute vect_memcpy_s_br2fn (word := word).

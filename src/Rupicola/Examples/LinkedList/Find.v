@@ -117,10 +117,10 @@ Section Compile.
         /\ map.get locals p_var = Some p
         /\ (LinkedList p pll ll1 * LinkedList end_ptr p st * R)%sep mem.
 
-  Derive ll_find_body SuchThat
-         (defn! "ll_find"("pll", "n", "k") ~> "p" { ll_find_body },
+  Derive ll_find_br2fn SuchThat
+         (defn! "ll_find"("pll", "n", "k") ~> "p" { ll_find_br2fn },
           implements @ll_find)
-         As ll_find_body_correct.
+         As ll_find_br2fn_ok.
   Proof.
     compile_setup.
     cleanup.

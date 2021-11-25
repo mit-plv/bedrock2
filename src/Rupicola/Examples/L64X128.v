@@ -52,15 +52,13 @@ Import SizedListArrayCompiler.
 #[local] Hint Unfold rotl : compiler_cleanup.
 #[local] Hint Extern 10 => lia : compiler_side_conditions.
 
-Derive lxm_next_body SuchThat
-       (defn! "lxm_next"("a", "s", "x") ~> "s", "z" { lxm_next_body },
+Derive lxm_next_br2fn SuchThat
+       (defn! "lxm_next"("a", "s", "x") ~> "s", "z" { lxm_next_br2fn },
         implements lxm_next)
-       As lxm_next_body_correct.
+       As lxm_next_br2fn_ok.
 Proof.
   compile.
 Qed.
 
-Definition lxm_next_func := ltac:(
-  match type of lxm_next_body_correct with forall x env, ?spec (cons ?f env) => exact f end).
 Definition lxm_next_cbytes := Eval vm_compute in
-  list_byte_of_string (ToCString.c_module [("dummy_main_for_static",([],[],cmd.skip)); lxm_next_func]).
+  list_byte_of_string (ToCString.c_module [("dummy_main_for_static",([],[],cmd.skip)); lxm_next_br2fn]).

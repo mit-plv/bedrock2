@@ -25,11 +25,11 @@ Section with_parameters.
       { requires tr mem := True;
         ensures tr' mem' := tr = tr' /\ mem = mem' /\ z = min x y }.
 
-    Derive min_body SuchThat
+    Derive min_br2fn SuchThat
            (defn! "min"("x", "y") ~> "r"
-                { min_body },
+                { min_br2fn },
             implements min)
-           As min_body_correct.
+           As min_br2fn_ok.
     Proof.
       compile.
     Qed.
@@ -48,11 +48,11 @@ Section with_parameters.
       { requires tr mem := R mem;
         ensures tr' mem' := tr = tr' /\ R mem' /\ z = minm x y }. (* TODO explain why not mem' = mem *)
 
-    Derive minm_body SuchThat
+    Derive minm_br2fn SuchThat
            (defn! "minm"("x", "y") ~> "r"
-                { minm_body },
+                { minm_br2fn },
             implements minm)
-           As minm_body_correct.
+           As minm_br2fn_ok.
     Proof.
       compile.
     Qed.

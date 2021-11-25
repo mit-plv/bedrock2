@@ -75,15 +75,15 @@ Section Peek.
 
   Hint Extern 1 => simple eapply compile_peek; shelve : compiler.
 
-  Derive nondet_sum_body SuchThat
+  Derive nondet_sum_br2fn SuchThat
          (defn! "nondet_sum"("b") ~> "out"
-              { nondet_sum_body },
+              { nondet_sum_br2fn },
           implements nondet_sum_src)
-  As nondet_sum_target_correct.
+  As nondet_sum_br2fn_ok.
   Proof.
     compile.
   Qed.
 End Peek.
 
 From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
-Compute nondet_sum_body. (* (word := word) *)
+Compute nondet_sum_br2fn. (* (word := word) *)

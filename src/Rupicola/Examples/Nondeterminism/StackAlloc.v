@@ -110,15 +110,15 @@ Section Alloc.
 
   Hint Resolve stackalloc_universal_bound : compiler_side_conditions.
 
-  Derive nondet_xor_body SuchThat
+  Derive nondet_xor_br2fn SuchThat
          (defn! "nondet_xor"("w") ~> "out"
-              { nondet_xor_body },
+              { nondet_xor_br2fn },
           implements nondet_xor_src)
-  As nondet_xor_target_correct.
+  As nondet_xor_br2fn_ok.
   Proof.
     compile.
   Qed.
 End Alloc.
 
 From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
-Compute nondet_xor_body (word := word).
+Compute nondet_xor_br2fn (word := word).

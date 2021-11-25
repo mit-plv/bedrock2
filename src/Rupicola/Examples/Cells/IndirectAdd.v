@@ -30,10 +30,10 @@ Section with_parameters.
         t = t' /\
         (cell_value pa (indirect_add b c) ⋆ Ra) m' }.
 
-  Derive indirect_add_body SuchThat
-         (defn! "indirect_add"("a", "b", "c") { indirect_add_body },
+  Derive indirect_add_br2fn SuchThat
+         (defn! "indirect_add"("a", "b", "c") { indirect_add_br2fn },
           implements indirect_add)
-         As indirect_add_body_correct.
+         As indirect_add_br2fn_ok.
   Proof.
     compile.
   Qed.
@@ -96,10 +96,10 @@ Section with_parameters.
       ensures t' m' :=
         t = t' /\ (cell_value pa (indirect_add_twice a b) ⋆ cell_value pb b ⋆ R) m' }.
 
-  Derive indirect_add_twice_body SuchThat
-         (defn! "indirect_add_twice"("a", "b") { indirect_add_twice_body },
+  Derive indirect_add_twice_br2fn SuchThat
+         (defn! "indirect_add_twice"("a", "b") { indirect_add_twice_br2fn },
           implements indirect_add_twice using ["indirect_add"])
-         As indirect_add_twice_body_correct.
+         As indirect_add_twice_br2fn_ok.
   Proof.
     compile.
   Qed.
@@ -125,10 +125,10 @@ Section with_parameters.
         t = t' /\
         (cell_value pa (indirect_add_three a b c) ⋆ cell_value pc c ⋆ R) m' }.
 
-  Derive indirect_add_three_body SuchThat
-         (defn! "indirect_add_three"("a", "b", "c") { indirect_add_three_body },
+  Derive indirect_add_three_br2fn SuchThat
+         (defn! "indirect_add_three"("a", "b", "c") { indirect_add_three_br2fn },
           implements indirect_add_three using ["indirect_add"])
-         As indirect_add_three_body_correct.
+         As indirect_add_three_br2fn_ok.
   Proof.
     compile.
   Qed.
@@ -149,14 +149,14 @@ Section with_parameters.
         t = t' /\
         (cell_value pout (indirect_add_three' a b c) ⋆ R) m' }.
 
-  Derive indirect_add_three'_body SuchThat
-         (defn! "indirect_add_three'"("out", "a", "b", "c") { indirect_add_three'_body },
+  Derive indirect_add_three'_br2fn SuchThat
+         (defn! "indirect_add_three'"("out", "a", "b", "c") { indirect_add_three'_br2fn },
           implements indirect_add_three' using ["indirect_add"])
-    As indirect_add_three'_body_correct.
+    As indirect_add_three'_br2fn_ok.
   Proof.
     compile.
   Qed.
 
-  Arguments indirect_add_three'_body /.
-  Eval simpl in indirect_add_three'_body.
+  Arguments indirect_add_three'_br2fn /.
+  Eval simpl in indirect_add_three'_br2fn.
 End with_parameters.

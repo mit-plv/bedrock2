@@ -43,8 +43,8 @@ Section Compilation.
 
   Hint Resolve fits64 : compiler_side_conditions.
 
-  Derive popcount_body SuchThat
-         (defn! "popcount"("w") ~> "ones" { popcount_body },
+  Derive popcount_br2fn SuchThat
+         (defn! "popcount"("w") ~> "ones" { popcount_br2fn },
           implements (popcount (word := word)))
          As popcount_correct.
   Proof.

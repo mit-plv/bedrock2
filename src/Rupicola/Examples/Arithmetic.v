@@ -32,16 +32,13 @@ Module FNV1A (Import P: FNV1A_params).
     { requires tr mem := True;
       ensures tr' mem' := tr = tr' /\ mem = mem' /\ hash' = update hash data }.
 
-  Derive update_body SuchThat
-         (defn! "update"("hash", "data") ~> "hash" { update_body },
+  Derive update_br2fn SuchThat
+         (defn! "update"("hash", "data") ~> "hash" { update_br2fn },
           implements update)
-         As update_body_correct.
+         As update_br2fn_ok.
   Proof.
     compile.
   Qed.
-
-  Definition update_func := ltac:(
-    match type of update_body_correct with forall x env, ?spec (cons ?f env) => exact f end).
 
   Definition fnv1a (data: ListArray.t byte) len :=
     let/n p := P.prime in
@@ -70,14 +67,11 @@ Module FNV1A (Import P: FNV1A_params).
   Import LoopCompiler.
   #[local] Hint Extern 1 (_ < _) => lia : compiler_side_conditions.
 
-  Derive fnv1a_body SuchThat
-         (defn! "fnv1a"("data", "len") ~> "hash" { fnv1a_body },
+  Derive fnv1a_br2fn SuchThat
+         (defn! "fnv1a"("data", "len") ~> "hash" { fnv1a_br2fn },
           implements fnv1a)
-         As fnv1a_body_correct.
+         As fnv1a_br2fn_ok.
   Proof. compile. Qed.
-
-  Definition fnv1a_func := ltac:(
-    match type of fnv1a_body_correct with forall x env, ?spec (cons ?f env) => exact f end).
 End FNV1A.
 
 Module FNV1A32_params <: FNV1A_params.
@@ -102,8 +96,8 @@ Module FNV1A64 := FNV1A FNV1A64_params.
 
 Require Import bedrock2.NotationsInConstr.
 
-Compute FNV1A32.fnv1a_body.
-Compute FNV1A64.fnv1a_body.
+Compute FNV1A32.fnv1a_br2fn.
+Compute FNV1A64.fnv1a_br2fn.
 
 Module Murmur3.
   Import BasicC32Semantics.
@@ -120,22 +114,19 @@ Module Murmur3.
     { requires tr mem := True;
       ensures tr' mem' := tr = tr' /\ mem = mem' /\ k' = scramble k }.
 
-  Derive scramble_body SuchThat
-         (defn! "scramble"("k") ~> "k" { scramble_body },
+  Derive scramble_br2fn SuchThat
+         (defn! "scramble"("k") ~> "k" { scramble_br2fn },
           implements scramble)
-         As scramble_body_correct.
+         As scramble_br2fn_ok.
   Proof.
     compile.
   Qed.
-
-  Definition scramble_func := ltac:(
-    match type of scramble_body_correct with forall x env, ?spec (cons ?f env) => exact f end).
 End Murmur3.
 
 Require Import Rupicola.Lib.ToCString.
 Definition fnv1a64_update_cbytes := Eval vm_compute in
-  list_byte_of_string (c_module [FNV1A64.update_func]).
+  list_byte_of_string (c_module [FNV1A64.update_br2fn]).
 Definition fnv1a64_cbytes := Eval vm_compute in
-  list_byte_of_string (c_module [FNV1A64.fnv1a_func]).
+  list_byte_of_string (c_module [FNV1A64.fnv1a_br2fn]).
 Definition murmur3_scramble_cbytes := Eval vm_compute in
-  list_byte_of_string (c_module [("dummy_main_for_static",([],[],cmd.skip)); Murmur3.scramble_func]).
+  list_byte_of_string (c_module [("dummy_main_for_static",([],[],cmd.skip)); Murmur3.scramble_br2fn]).

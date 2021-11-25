@@ -50,14 +50,14 @@ Section with_parameters.
   Import VectorArrayCompiler.
   Hint Unfold ttl : compiler_cleanup.
 
-  Derive decr_body SuchThat
-         (defn! "decr"("p") { decr_body },
+  Derive decr_br2fn SuchThat
+         (defn! "decr"("p") { decr_br2fn },
           implements decr_gallina)
-    As decr_body_correct.
+    As decr_br2fn_ok.
   Proof.
     compile.
   Qed.
 End with_parameters.
 
 From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
-Compute decr_body (word := word).
+Compute decr_br2fn (word := word).

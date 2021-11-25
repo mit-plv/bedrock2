@@ -25,11 +25,11 @@ Section with_parameters.
         mem = mem' /\
         z = example x y }.
 
-  Derive example_body SuchThat
+  Derive example_br2fn SuchThat
          (defn! "example"("x", "y") ~> "x"
-              { example_body },
+              { example_br2fn },
           implements example)
-         As example_body_correct.
+         As example_br2fn_ok.
   Proof.
     compile.
   Qed.
@@ -57,16 +57,16 @@ Section with_parameters.
         mem = mem' /\
         z = word.of_Z (exZ (word.unsigned x) (word.unsigned y)) }.
 
-  Derive exZ_body SuchThat
+  Derive exZ_br2fn SuchThat
          (defn! "exZ"("x", "y") ~> "x"
-              { exZ_body },
+              { exZ_br2fn },
           implements exZ)
-         As exZ_body_correct.
+         As exZ_br2fn_ok.
   Proof.
     compile.
   Qed.
 
-  (* Compute exZ_body. *)
+  (* Compute exZ_br2fn. *)
 
   Fixpoint overwrite_chain (n: nat) (w0 w1: word) :=
     match n with
@@ -88,14 +88,14 @@ Section with_parameters.
         mem = mem' /\
         w1 = chain w0 }.
 
-  Derive chain_body SuchThat
+  Derive chain_br2fn SuchThat
          (defn! "chain"("w0") ~> "w1"
-              { chain_body },
+              { chain_br2fn },
           implements chain)
-         As chain_body_correct.
+         As chain_br2fn_ok.
   Proof.
     compile.
   Qed.
 
-  (* Compute chain_body. *)
+  (* Compute chain_br2fn. *)
 End with_parameters.

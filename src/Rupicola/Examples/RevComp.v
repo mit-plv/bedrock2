@@ -111,16 +111,15 @@ Section Revcomp.
   #[local] Hint Extern 10 => cbn; lia : compiler_side_conditions.
   #[local] Hint Resolve bytes_in_table byte_pos : compiler_side_conditions.
 
-  Derive revcomp_body SuchThat
+  Derive revcomp_br2fn SuchThat
          (defn! "revcomp" ("s", "len")
-           { revcomp_body },
+           { revcomp_br2fn },
            implements revcomp_impl)
-         As revcomp_body_correct.
+         As revcomp_br2fn_ok.
   Proof.
     Time compile.
   Time Qed.
 End Revcomp.
 
-Definition revcomp_br2func : func := ("revcomp", (["s"; "len"], [], revcomp_body)).
 Definition revcomp_cbytes := Eval vm_compute in
-  list_byte_of_string (ToCString.c_module [revcomp_br2func]).
+  list_byte_of_string (ToCString.c_module [revcomp_br2fn]).

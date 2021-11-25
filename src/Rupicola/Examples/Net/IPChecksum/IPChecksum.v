@@ -14,8 +14,6 @@ Instance spec_of_ip_checksum : spec_of "ip_checksum" :=
 Import LoopCompiler.
 Import UnsizedListArrayCompiler.
 
-Hint Rewrite Nat2Z.id : compiler_cleanup.
-
 #[local] Hint Unfold ip_checksum_upd : compiler_cleanup.
 #[local] Hint Extern 10 => cbn; nia : compiler_side_conditions.
 
@@ -26,14 +24,14 @@ Proof. destruct (Z.eq_dec z 0) as [-> | ]; simpl; lia. Qed.
 #[local] Hint Resolve odd_sub_pos : lia.
 Hint Rewrite Z2Nat.id using eauto with lia : compiler_side_conditions.
 
-Derive ip_checksum_body SuchThat
+Derive ip_checksum_br2fn SuchThat
        (defn! "ip_checksum" ("data", "len") ~> "chk16"
-         { ip_checksum_body },
+         { ip_checksum_br2fn },
          implements ip_checksum_impl)
-       As ip_checksum_body_correct.
+       As ip_checksum_br2fn_ok.
 Proof.
   Time compile.
 Time Qed.
 
 Definition ip_checksum_cbytes := Eval vm_compute in
-  list_byte_of_string (ToCString.c_module [("ip_checksum", (["data"; "len"], ["chk16"], ip_checksum_body))]).
+  list_byte_of_string (ToCString.c_module [ip_checksum_br2fn]).

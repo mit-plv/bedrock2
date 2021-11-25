@@ -105,11 +105,11 @@ Section Stdout.
 
   Hint Extern 1 => simple eapply compile_putchars; shelve : compiler.
 
-  Derive hello_world_body SuchThat
+  Derive hello_world_br2fn SuchThat
          (defn! "hello_world"("y") ~> "out"
-              { hello_world_body },
+              { hello_world_br2fn },
           implements hello_world_src using ["putchars"])
-  As hello_world_target_correct.
+  As hello_world_br2fn_ok.
   Proof.
     compile.
   Qed.
@@ -117,5 +117,5 @@ End Stdout.
 
 From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
 Require Import Rupicola.Lib.ToCString.
-Compute hello_world_body (word := word).
-Compute ToCString.c_func ("hello_world", (["y"], ["out"], hello_world_body (word := word))).
+Compute hello_world_br2fn (word := word).
+Compute ToCString.c_func (hello_world_br2fn (word := word)).

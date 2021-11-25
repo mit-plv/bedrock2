@@ -77,18 +77,15 @@ Section __.
   Hint Extern 1 (_ < Z.of_nat ?n) => (pose proof word.wrap_of_nat_le n; lia)
          : compiler_side_conditions.
 
-  Derive crc32_body SuchThat
-         (defn! "crc32" ("data", "len") ~> "crc32" { crc32_body },
+  Derive crc32_br2fn SuchThat
+         (defn! "crc32" ("data", "len") ~> "crc32" { crc32_br2fn },
           implements crc32)
-         As crc32_body_correct.
+         As crc32_br2fn_ok.
   Proof.
     compile.
   Qed.
-
-  Definition crc32_func := ltac:(
-    match type of crc32_body_correct with forall x env, ?spec (cons ?f env) => exact f end).
 End __.
 
 Require Import coqutil.Word.Naive.
 Definition crc32_cbytes := Eval vm_compute in
-  list_byte_of_string (ToCString.c_module [crc32_func (word:=Naive.word64)]).
+  list_byte_of_string (ToCString.c_module [crc32_br2fn (word:=word64)]).
