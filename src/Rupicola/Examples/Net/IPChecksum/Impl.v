@@ -34,8 +34,7 @@ Definition ip_checksum_impl (bs: list byte) : word :=
   (* Final iteration *)
   let/n chk16 := if Z.odd (Z.of_nat (List.length bs)) then
                   let/n b0 := ListArray.get bs (Z.of_nat (List.length bs) - 1) in
-                  let/n chk16 := ip_checksum_upd chk16 b0 (Byte.x00) in
-                  chk16
+                  ip_checksum_upd chk16 b0 (Byte.x00)
                 else chk16 in
 
   let/n chk16 := (~w chk16) &w 0xffff in
