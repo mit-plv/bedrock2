@@ -1,8 +1,6 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.Nondeterminism.NonDeterminism.
 
-Import NDMonad.
-
 Section Peek.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
@@ -26,7 +24,7 @@ Section Peek.
   Lemma compile_peek : forall {tr mem locals functions} (b: Bag),
     let c := peek b in
     forall {B} {pred: B -> predicate}
-      {k: word -> Comp B} {k_impl}
+      {k: word -> ND.M B} {k_impl}
       R b_ptr b_expr var,
 
       b <> [] ->
@@ -40,13 +38,13 @@ Section Peek.
              Locals := map.put locals var v;
              Functions := functions }>
           k_impl
-          <{ pbind pred (k v) }>) ->
+          <{ ndspec_k pred (k v) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.seq (cmd.set var (expr.load access_size.word b_expr)) k_impl
-      <{ pbind pred (bindn [var] c k) }>.
+      <{ ndspec_k pred (mbindn [var] c k) }>.
   Proof.
     destruct b as [|w b]; try congruence.
     intros * Hnn [ws [Hin Hm]%sep_assoc%sep_emp_l]%sep_ex1_l Hl Hk.
@@ -57,30 +55,23 @@ Section Peek.
       eapply load_word_of_sep.
       seprewrite_in uconstr:(@array_cons) Hm.
       ecancel_assumption.
-    - eapply WeakestPrecondition_unbindn; [ | intros; apply Hk; eauto ].
-      apply Hin; red; eauto.
+    - eapply WeakestPrecondition_ndspec_k_bindn; [ | intros; apply Hk; eauto ].
+      all: apply Hin; red; eauto.
   Qed.
 
   Definition nondet_sum_src (b: Bag) :=
     let/+ x := peek b in
     let/+ y := peek b in
     let/n out := word.add x y in
-    ret out.
+    mret out.
 
   Instance spec_of_nondet_sum : spec_of "nondet_sum" :=
-    let pre b b_ptr R tr mem :=
-        b <> [] /\
-        (bag_at b_ptr b * R)%sep mem in
-    let post b b_ptr R tr mem tr' mem' rets :=
-        exists v, (nondet_sum_src b) v /\ tr' = tr /\
-             rets = [v] /\ (bag_at b_ptr b * R)%sep mem' in
-      fun functions =>
-        forall b b_ptr R,
-        forall tr mem,
-          pre b b_ptr R tr mem ->
-          WeakestPrecondition.call
-            functions "nondet_sum" tr mem [b_ptr]
-            (post b b_ptr R tr mem).
+    fnspec! "nondet_sum" b_ptr / b R,
+      { requires tr mem :=
+          b <> [] /\ (bag_at b_ptr b ⋆ R) mem;
+        ensures tr' mem' rets :=
+          ndspec (nondet_sum_src b) (fun v =>
+             tr' = tr /\ rets = [v] /\ (bag_at b_ptr b ⋆ R) mem') }.
 
   Hint Extern 1 => simple eapply compile_peek; shelve : compiler.
 

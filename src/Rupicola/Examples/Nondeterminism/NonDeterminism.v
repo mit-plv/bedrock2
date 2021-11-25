@@ -1,50 +1,33 @@
 Require Import Rupicola.Lib.Api.
+Require Import Ensembles.
 
-Definition Comp A := A -> Prop.
+Module ND.
+  Definition M A := A -> Prop.
 
-Module NDMonad.
-  Definition ret {A} (a: A) : Comp A := fun a' => a' = a.
-  Definition bind {A B} (v: Comp A) (body: A -> Comp B) : Comp B :=
-    fun b => exists a, v a /\ body a b.
-  Definition bindn {A B} (vars: list string) (v: Comp A) (body: A -> Comp B) : Comp B :=
-    bind v body.
+  Ltac s :=
+    apply Extensionality_Ensembles; unfold Same_set, Included, In;
+    firstorder congruence.
 
-  Definition equiv {A} (a0 a1: Comp A) :=
-    forall v, a0 v <-> a1 v.
+  Global Program Instance MonadM : Monad M :=
+    {| mret {A} (a: A) := fun a' => a' = a;
+       mbind {A B} (ma: M A) (k: A -> M B) :=
+         fun b => exists a, ma a /\ k a b |}.
+  Obligation 1. Proof. s. Qed.
+  Obligation 2. Proof. s. Qed.
+  Obligation 3. Proof. s. Qed.
 
-  Definition bind_ret {A} (ca: Comp A) :
-     equiv (bind ca ret) ca.
-  Proof. firstorder congruence. Qed.
+  Definition pick {A} (P: A -> Prop) : M A := P.
+End ND.
 
-  Definition ret_bind {A B} a (k: A -> Comp B) :
-      equiv (bind (ret a) k) (k a).
-  Proof. firstorder congruence. Qed.
-
-  Definition bind_bind {A B C}
-             ca (ka: A -> Comp B) (kb: B -> Comp C) :
-    equiv (bind (bind ca ka) kb)
-          (bind ca (fun a => bind (ka a) kb)).
-  Proof. firstorder congruence. Qed.
-
-  Definition pick {A} (P: A -> Prop) : Comp A := P.
-
-  Definition any {A} (ca: Comp A) := (exists a, ca a).
-  Definition intersection {A} (ca ca': Comp A) :=
-    fun a => ca a /\ ca' a.
-
-  Definition propbind {A} (c: Comp A) (P: A -> Prop) : Prop :=
-    any (intersection c P).
-End NDMonad.
-
-Import NDMonad.
+Import ND.
 
 Notation "'let/+' x 'as' nm := val 'in' body" :=
-  (bindn [nm] val (fun x => body))
+  (mbindn [nm] val (fun x => body))
     (at level 200, x ident, body at level 200,
      format "'[hv' 'let/+'  x  'as'  nm  :=  val  'in' '//' body ']'").
 
 Notation "'let/+' x := val 'in' body" :=
-  (bindn [IdentParsing.TC.ident_to_string x] val (fun x => body))
+  (mbindn [IdentParsing.TC.ident_to_string x] val (fun x => body))
     (at level 200, x ident, body at level 200,
      only parsing).
 
@@ -56,7 +39,16 @@ Notation "%{ x : A | P }" :=
   (pick (A := A) (fun x => P))
     (at level 0, x pattern at level 99).
 
-Require Import Coq.Init.Byte.
+Definition ndbind {A} (c: M A) (pred: A -> Prop) :=
+  exists a, c a /\ pred a.
+
+Notation ndspec := ndbind.
+
+Lemma ndbind_bindn {A B} pred vars (c: M A) a (k : A -> M B):
+  c a ->
+  ndbind (k a) pred ->
+  ndbind (mbindn vars c k) pred.
+Proof. unfold ndspec, mbindn, mbind. simpl. firstorder idtac. Qed.
 
 Section with_parameters.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
@@ -68,33 +60,23 @@ Section with_parameters.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Definition pbind {A} (pred: A -> predicate) (c: Comp A) : predicate :=
-    (* Morally a bind, but unfolding the definition saves us from having to build a triple *)
-    fun tr mem locals => exists a, c a /\ pred a tr mem locals.
+  Definition ndspec_k {A} (pred: A -> predicate) (c: M A) : predicate :=
+    fun tr mem locals => ndspec c (fun a => pred a tr mem locals).
 
-  Lemma WeakestPrecondition_unbind {A B} funcs main t m l post
-        (c: Comp A) (k: A -> Comp B) a0 :
-    c a0 ->
-    WeakestPrecondition.program funcs main t m l (pbind post (k a0)) ->
-    WeakestPrecondition.program funcs main t m l (pbind post (bind c k)).
+  Lemma WeakestPrecondition_ndspec_k_bindn {A B} funcs prog t m l post
+        vars (c: M A) a (k: A -> M B) :
+    c a ->
+    WeakestPrecondition.program funcs prog t m l (ndspec_k post (k a)) ->
+    WeakestPrecondition.program funcs prog t m l (ndspec_k post (mbindn vars c k)).
   Proof.
-    unfold pbind, bind; intros * Hc;
-      eapply WeakestPrecondition_weaken; eauto; cbv beta.
-    clear - Hc; intros; firstorder.
+    unfold ndspec_k; intros.
+    eapply WeakestPrecondition_weaken; [ | eauto].
+    eauto using ndbind_bindn.
   Qed.
 
-  Lemma WeakestPrecondition_unbindn {A B} funcs main t m l post
-        vars (c: Comp A) (k: A -> Comp B) a0 :
-    c a0 ->
-    (c a0 -> WeakestPrecondition.program funcs main t m l (pbind post (k a0))) ->
-    WeakestPrecondition.program funcs main t m l (pbind post (bindn vars c k)).
-  Proof.
-    intros; eapply WeakestPrecondition_unbind; eauto.
-  Qed.
-
-  Lemma compile_setup_nondet_pbind : forall {tr mem locals functions},
+  Lemma compile_setup_nondet_ndbind : forall {tr mem locals functions},
     forall {A} {pred: A -> _ -> predicate}
-      {spec: Comp A} {cmd}
+      {spec: M A} {cmd}
       retvars,
 
       (let pred a := wp_bind_retvars retvars (pred a) in
@@ -103,27 +85,25 @@ Section with_parameters.
           Locals := locals;
           Functions := functions }>
        cmd
-       <{ pbind pred spec }>) ->
+       <{ ndspec_k pred spec }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd
-      <{ (fun spec => (* FIXME add a definition to make specs more readable *)
+      <{ (fun spec =>
             wp_bind_retvars
               retvars
               (fun rets tr' mem' locals' =>
-                 exists a, spec a /\ pred a rets tr' mem' locals'))
+                 ndspec spec (fun a => pred a rets tr' mem' locals')))
            spec }>.
   Proof.
-    intros; unfold pbind, wp_bind_retvars in *.
+    intros; unfold ndbind, wp_bind_retvars in *.
     use_hyp_with_matching_cmd; cbv beta in *.
     clear - H0; firstorder.
   Qed.
 End with_parameters.
 
-#[export] Hint Resolve compile_setup_nondet_pbind : compiler_setup_post.
-#[export] Hint Extern 1 (ret _ _) => reflexivity : compiler_side_conditions.
-#[export] Hint Extern 2 (IsRupicolaBinding (bindn (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.
-
-#[export] Hint Unfold pbind: compiler_cleanup_post.
+#[export] Hint Resolve compile_setup_nondet_ndbind : compiler_setup_post.
+#[export] Hint Unfold ndspec_k ndspec ndbind: compiler_cleanup_post.
+#[export] Hint Extern 1 (mret _ _) => reflexivity : compiler_side_conditions.

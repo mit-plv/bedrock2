@@ -3,9 +3,7 @@ Require Import Rupicola.Lib.Arrays.
 Require Import Rupicola.Examples.Nondeterminism.NonDeterminism.
 Require Import coqutil.Byte.
 
-Import NDMonad.
-
-Section Peek.
+Section Alloc.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
   Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
@@ -15,7 +13,7 @@ Section Peek.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Definition stack_alloc (nbytes: nat) : Comp (list byte) :=
+  Definition stack_alloc (nbytes: nat) : ND.M (list byte) :=
     %{ ls: list byte | List.length ls = nbytes }.
 
   Definition bytes_at addr data :=
@@ -24,7 +22,7 @@ Section Peek.
   Lemma compile_stack_alloc : forall {tr mem locals functions} (nbytes: nat),
     let c := stack_alloc nbytes in
     forall {B} {pred: B -> predicate}
-      {k: list byte -> Comp B} {k_impl}
+      {k: list byte -> ND.M B} {k_impl}
       (R: _ -> Prop) var,
       R mem ->
       Z.of_nat nbytes mod Memory.bytes_per_word width = 0 ->
@@ -40,13 +38,13 @@ Section Peek.
              Locals := map.put locals var ptr;
              Functions := functions }>
           k_impl
-          <{ pbind pred (k bs) }>) ->
+          <{ ndspec_k pred (k bs) }>) ->
       <{ Trace := tr;
          Memory := mem;
          Locals := locals;
          Functions := functions }>
       cmd.stackalloc var (Z.of_nat nbytes) k_impl
-      <{ pbind pred (bindn [var] c k) }>.
+      <{ ndspec_k pred (mbindn [var] c k) }>.
   Proof.
     red; red; cbn; intros * Hmem Hmod Hkimpl.
     split; eauto; red. intros ptr mStack mCombined Hany Hsplit.
@@ -64,7 +62,7 @@ Section Peek.
         eapply array_of_sizedlistarray_value in Hbs'.
         apply Hbs'.
       + eassumption.
-      + unfold pbind, bindn, bind; cbn; eauto 6.
+      + unfold ndspec_k, ndspec, mbindn, mbind; cbn; eauto 6.
   Qed.
 
   Lemma stackalloc_universal_bound :
@@ -88,14 +86,14 @@ Section Peek.
     let/n out := w in
     let/n out := word.xor (word_of_byte undef) out in
     let/n out := word.xor (word_of_byte undef) out in
-    ret out.
+    mret out.
 
   Lemma nondef_xor_id w w' : nondet_xor_src w w' -> w = w'.
-  Proof. unfold nondet_xor_src; unfold bindn, bind, stack_alloc, pick, ret, nlet.
-     intros (bs & Hlen & ->).
-     apply word.unsigned_inj. unfold byte.unsigned.
-     rewrite !word.unsigned_xor_nowrap, !word.unsigned_of_Z.
-     rewrite <- Z.lxor_assoc, Z.lxor_nilpotent, Z.lxor_0_l; reflexivity.
+  Proof.
+    intros (bs & Hlen & ->).
+    apply word.unsigned_inj. unfold byte.unsigned.
+    rewrite !word.unsigned_xor_nowrap, !word.unsigned_of_Z.
+    rewrite <- Z.lxor_assoc, Z.lxor_nilpotent, Z.lxor_0_l; reflexivity.
   Qed.
 
   Implicit Type R : mem -> Prop.
@@ -103,8 +101,8 @@ Section Peek.
     fnspec! "nondet_xor" w0 / R,
     { requires tr mem := R mem;
       ensures tr' mem' rets :=
-        propbind (nondet_xor_src w0)
-                 (fun w => tr' = tr /\ R mem' /\ rets = [w]) }.
+        ndspec (nondet_xor_src w0)
+               (fun w => tr' = tr /\ R mem' /\ rets = [w]) }.
 
   Import SizedListArrayCompiler.
   Hint Extern 1 => simple eapply compile_stack_alloc; shelve : compiler.
@@ -120,7 +118,7 @@ Section Peek.
   Proof.
     compile.
   Qed.
-End Peek.
+End Alloc.
 
 From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
 Compute nondet_xor_body (word := word).
