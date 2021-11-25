@@ -762,156 +762,125 @@ Qed.
 Section FoldsAsLoops.
   Context {A B T: Type}.
 
-  Lemma copying_fold_left_as_ranged_fold_left' (f: A -> B -> A):
-    forall l1 l0 a0,
-      List.fold_left f (l0 ++ l1) a0 =
-      List.fold_left
-        (fun (a: A) idx =>
-           match List.nth_error (l0 ++ l1) (Z.to_nat idx) with
-           | Some x => f a x
-           | None => a
-           end)
-        (z_range' (Z.of_nat (List.length l0)) (List.length l1))
-        (List.fold_left f l0 a0).
-  Proof.
-    induction l1; intros; simpl.
-    - rewrite app_nil_r. reflexivity.
-    - rewrite Nat2Z.id, nth_error_app2, Nat.sub_diag by lia.
-      rewrite List_assoc_app_cons, IHl1, app_length; simpl.
-      rewrite <- List_assoc_app_cons.
-      rewrite fold_left_app.
-      simpl; repeat f_equal. lia.
-  Qed.
-
-  Lemma copying_fold_left_as_ranged_fold_left (f: A -> B -> A):
-    forall l a0,
-      List.fold_left f l a0 =
-      List.fold_left
-        (fun (a: A) idx =>
-           match List.nth_error l (Z.to_nat idx) with
-           | Some x => f a x
-           | None => a
-           end)
-        (z_range 0 (Z.of_nat (List.length l)))
-        a0.
-  Proof.
-    intros; unfold z_range; rewrite Z.sub_0_r, Nat2Z.id.
-    apply copying_fold_left_as_ranged_fold_left' with (l0 := []).
-  Qed.
-
-  Lemma copying_fold_left_as_ranged_for_all (f: A -> B -> A):
-    forall l a0 f',
-      (forall idx pr, nth_error l (Z.to_nat idx) =
-                 Some (f' l idx pr)) ->
-      List.fold_left f l a0 =
-      ranged_for_all 0 (Z.of_nat (length l))
-                     (fun a idx pr => f a (f' l idx pr)) a0.
-  Proof.
-    intros * Hf'.
-    rewrite copying_fold_left_as_ranged_fold_left, fold_left_as_foldl_dep.
-    unfold ranged_for_all, ranged_for_break.
-    apply foldl_dep_Proper_strong; eauto; intros.
-    erewrite Hf'; reflexivity.
-  Qed.
+  Notation zlen l := (Z.of_nat (List.length l)).
 
   (* There are two kinds of folds: those that can keep consulting the original
-     list because it is not mutated (`copying_fold_left` above), and those that have
-     to consult the list that's being mutated instead.  TODO: Support those, as
-     a generalization of the `map` code below.  *)
+     list because it is not mutated (`copying_fold_left` above), and those that
+     have to consult the list that's being mutated instead.  TODO: Support the
+     second kind, as a generalization of the `map` code below.  *)
 
-  Lemma map_as_inplace_fold' xs:
-    forall (xs0: list A) (f: A -> A),
-      List.fold_left
-        (fun acc x => acc ++ [f x])
-        xs xs0 =
-      List.fold_left
-        (fun acc idx =>
-           match List.nth_error acc (Z.to_nat idx) with
-           | Some x => replace_nth (Z.to_nat idx) acc (f x)
-           | None => acc
-           end)
-        (z_range' (Z.of_nat (List.length xs0))
-                  (List.length xs))
-        (xs0 ++ xs).
-  Proof.
-    induction xs; simpl; intros.
-    - rewrite ?app_nil_r; congruence.
-    - rewrite Nat2Z.id, nth_error_app2, Nat.sub_diag by eauto; simpl.
-      rewrite IHxs by eauto; repeat f_equal.
-      + rewrite app_length; simpl; lia.
-      + rewrite replace_nth_app_skip, <- app_assoc; reflexivity.
-  Qed.
+  (** The way the following lemmas are phrased allows them to be used for all
+      sorts of list representations and get/put interfaces (using default
+      values, dependent types, etc.). **)
 
-  Lemma map_as_inplace_fold xs:
-    forall (f: A -> A),
-      List.map f xs =
-      List.fold_left
-        (fun acc idx =>
-           match List.nth_error acc (Z.to_nat idx) with
-           | Some x => replace_nth (Z.to_nat idx) acc (f x)
-           | None => acc
-           end)
-        (z_range 0 (Z.of_nat (List.length xs)))
-        xs.
-  Proof.
-    unfold z_range; intros.
-    rewrite map_as_fold_left, map_as_inplace_fold'.
-    repeat f_equal.
-    rewrite Z.sub_0_r, Nat2Z.id; reflexivity.
-  Qed.
+  Section CopyingFolds.
+    Lemma copying_fold_left_as_ranged_fold_left' (f: A -> B -> A):
+      forall l1 l0 a0,
+        List.fold_left f (l0 ++ l1) a0 =
+        List.fold_left
+          (fun (a: A) idx =>
+             match List.nth_error (l0 ++ l1) (Z.to_nat idx) with
+             | Some x => f a x
+             | None => a
+             end)
+          (z_range' (zlen l0) (List.length l1))
+          (List.fold_left f l0 a0).
+    Proof.
+      induction l1; intros; simpl.
+      - rewrite app_nil_r. reflexivity.
+      - rewrite Nat2Z.id, nth_error_app2, Nat.sub_diag by lia.
+        rewrite List_assoc_app_cons, IHl1, app_length; simpl.
+        rewrite <- List_assoc_app_cons.
+        rewrite fold_left_app.
+        simpl; repeat f_equal. lia.
+    Qed.
 
-  (** The way this lemma is phrased allows it to be used for all sorts of list
-      representations and get/put interfaces (using default values, dependent
-      types, etc.). **)
+    Lemma copying_fold_left_as_ranged_fold_left (f: A -> B -> A):
+      forall l a0,
+        List.fold_left f l a0 =
+        List.fold_left
+          (fun (a: A) idx =>
+             match List.nth_error l (Z.to_nat idx) with
+             | Some x => f a x
+             | None => a
+             end)
+          (z_range 0 (zlen l))
+          a0.
+    Proof.
+      intros; unfold z_range; rewrite Z.sub_0_r, Nat2Z.id.
+      apply copying_fold_left_as_ranged_fold_left' with (l0 := []).
+    Qed.
 
-  Lemma map_as_ranged_for_all xs:
-    forall (f: A -> A) f',
-      (forall xs' n x Hin,
-          List.nth_error xs' n = Some x ->
-          f' xs' (Z.of_nat n) Hin = replace_nth n xs' (f x)) ->
-      List.map f xs =
-      ranged_for_all 0 (Z.of_nat (List.length xs)) f' xs.
-  Proof.
-    intros * Hf'.
-    rewrite map_as_inplace_fold, fold_left_as_foldl_dep.
-    unfold ranged_for_all, ranged_for_break.
-    apply foldl_dep_Proper_strong; eauto.
-    intros ?? idx ?? xs'.
-    set (z_range_sound _ _ _ _) as Hin; clearbody Hin.
-    assert (List.length xs' = List.length xs) as Hlen.
-    { apply foldl_dep_ind; eauto; [].
-      intros; destruct nth_error; eauto; [].
-      rewrite replace_nth_length; eauto. }
-    destruct (nth_error_lt_some xs' (Z.to_nat idx) ltac:(lia)) as (? & Hnth).
-    specialize (Hf' xs' (Z.to_nat idx) x).
-    rewrite Z2Nat.id in Hf' by lia.
-    rewrite Hf' by eauto. rewrite Hnth; reflexivity.
-  Qed.
+    Lemma copying_fold_left_as_nd_ranged_for_all (f: A -> B -> A):
+      forall xs a0 f',
+        (forall idx,
+            -1 < idx < zlen xs ->
+            nth_error xs (Z.to_nat idx) = Some (f' xs idx)) ->
+        List.fold_left f xs a0 =
+        nd_ranged_for_all 0 (zlen xs) (fun a idx => f a (f' xs idx)) a0.
+    Proof.
+      intros * Hf'.
+      rewrite copying_fold_left_as_ranged_fold_left.
+      rewrite <- fold_left_as_nd_ranged_for_all.
+      apply fold_left_Proper; try reflexivity.
+      intros * Hin%z_range_sound.
+      erewrite Hf'; eauto.
+    Qed.
+  End CopyingFolds.
 
-  Lemma nth_error_bound {xs: list A} {n x}:
-    nth_error xs n = Some x ->
-    -1 < Z.of_nat n < Z.of_nat (length xs).
-  Proof.
-    pose proof nth_error_Some xs n as (Hn, Hn').
-    intros * H; rewrite H in Hn; specialize (Hn ltac:(inversion 1)).
-    lia.
-  Qed.
+  Section Maps.
+    Context (f: A -> A) (f': list A -> Z -> list A).
 
-  Lemma map_as_nd_ranged_for_all xs:
-    forall (f: A -> A) f',
-      (forall xs' n d,
-          0 - 1 < Z.of_nat n < Z.of_nat (Datatypes.length xs') ->
-          f' xs' (Z.of_nat n) = replace_nth n xs' (f (nth n xs' d))) ->
-      List.map f xs =
-      nd_ranged_for_all 0 (Z.of_nat (List.length xs)) f' xs.
-  Proof.
-    intros * Hf'.
-    erewrite map_as_ranged_for_all with (f' := fun xs idx _ => f' xs idx).
-    - rewrite nd_as_ranged_for_all; reflexivity.
-    - intros ? ? x Hn Hnth.
-      rewrite <- (nth_error_nth xs' n x Hnth).
-      apply Hf'; eauto using nth_error_bound.
-  Qed.
+    Definition acts_as_replace_nth :=
+      forall xs a xs', f' (xs ++ a :: xs') (zlen xs) = xs ++ f a :: xs'.
+
+    Context (Hrp: acts_as_replace_nth).
+
+    Lemma map_as_nd_ranged_for_all':
+      forall xs xs0 xs1,
+        xs0 ++ List.map f xs ++ xs1 =
+        nd_ranged_for_all (zlen xs0) (zlen xs0 + zlen xs) f' (xs0 ++ xs ++ xs1).
+    Proof.
+      setoid_rewrite <- fold_left_as_nd_ranged_for_all.
+      unfold z_range; setoid_rewrite Z.add_simpl_l.
+      setoid_rewrite Nat2Z.id.
+      induction xs; simpl; intros.
+      - reflexivity.
+      - rewrite Hrp.
+        rewrite (List_assoc_app_cons xs0 _ (f a)).
+        rewrite (List_assoc_app_cons xs0 (xs ++ xs1) (f a)).
+        replace (zlen xs0 + 1) with (zlen (xs0 ++ [f a]))
+          by (rewrite app_length, Nat2Z.inj_add; reflexivity).
+        rewrite <- IHxs; reflexivity.
+    Qed.
+
+    Lemma map_as_nd_ranged_for_all xs:
+      List.map f xs = nd_ranged_for_all 0 (zlen xs) f' xs.
+    Proof.
+      pose proof map_as_nd_ranged_for_all' xs [] [] as H.
+      rewrite !app_nil_l, !app_nil_r in H.
+      eassumption.
+    Qed.
+
+    Lemma map_firstn_as_nd_ranged_for_all n xs:
+      (n <= length xs)%nat ->
+      List.map f (List.firstn n xs) ++ List.skipn n xs =
+      nd_ranged_for_all 0 (Z.of_nat n) f' xs.
+    Proof.
+      pose proof map_as_nd_ranged_for_all' (List.firstn n xs) [] (List.skipn n xs) as H.
+      intros; rewrite !app_nil_l, List.firstn_skipn, List.firstn_length_le in H; simpl in H.
+      all: eassumption.
+    Qed.
+
+    Lemma nth_error_bound {xs: list A} {n x}:
+      nth_error xs n = Some x ->
+      -1 < Z.of_nat n < Z.of_nat (length xs).
+    Proof.
+      pose proof nth_error_Some xs n as (Hn, Hn').
+      intros * H; rewrite H in Hn; specialize (Hn ltac:(inversion 1)).
+      lia.
+    Qed.
+  End Maps.
 End FoldsAsLoops.
 
 Module Type ExitToken_sig.
@@ -1319,18 +1288,22 @@ Section with_parameters.
       pose proof (fun from a0 tr mem locals pred => proj2 (H from a0 tr mem locals pred))
     end.
 
+  Notation wbody body pr Hr :=
+    (fun acc tok idx pr =>
+       body acc tok idx (ranged_for_widen_bounds pr Hr)).
+
+  Notation wbody_all body pr Hr :=
+    (fun acc idx pr =>
+       body acc idx (ranged_for_widen_bounds pr Hr)).
+
+  Notation in_signed_bounds x :=
+    (- 2 ^ (width - 1) <= x < 2 ^ (width - 1)).
+
+  Notation in_unsigned_bounds x :=
+    (0 <= x < 2 ^ width).
+
   Section Generic.
-    Notation wbody body pr Hr :=
-      (fun acc tok idx pr =>
-         body acc tok idx (ranged_for_widen_bounds pr Hr)).
-
     Context (signed: bool).
-
-    Notation in_signed_bounds x :=
-      (- 2 ^ (width - 1) <= x < 2 ^ (width - 1)).
-
-    Notation in_unsigned_bounds x :=
-      (0 <= x < 2 ^ width).
 
     Definition cmd_loop (signed: bool) from_var to_expr body_impl :=
       cmd.while
@@ -1541,8 +1514,6 @@ Section with_parameters.
                                           (expr.var from_var)
                                           (expr.literal 1)))).
 
-    (* FIXME Use a section? *)
-
     Lemma compile_ranged_for_with_auto_increment : forall A {tr mem locals functions}
           (from to: Z) body (a0: A),
       let v := ranged_for from to body a0 in
@@ -1704,6 +1675,144 @@ Section with_parameters.
       eapply compile_ranged_for_with_auto_increment; eauto.
       { _split_conj; split; eauto; []; repeat straightline; eauto. }
     Qed.
+
+    Lemma compile_ranged_for_all_fresh : forall A {tr mem locals functions}
+          (from to: Z) body (a0: A),
+      let v := ranged_for_all from to body a0 in
+      forall {P} {pred: P v -> predicate}
+        (loop_pred: forall (idx: Z) (a: A), predicate)
+        {k: nlet_eq_k P v} {k_impl} {body_impl}
+        (from_var to_var: string) (from_expr to_expr: expr) vars,
+
+        let locals1 := map.put locals from_var (word.of_Z from) in
+        let locals2 := map.put locals1 to_var (word.of_Z to) in
+
+        WeakestPrecondition.dexpr mem locals from_expr (word.of_Z from) ->
+        WeakestPrecondition.dexpr mem locals1 to_expr (word.of_Z to) ->
+
+        (forall from a0 tr mem locals,
+            loop_pred from a0 tr mem locals ->
+            map.get locals from_var = Some (word.of_Z from) /\
+            map.get locals to_var = Some (word.of_Z to)) ->
+
+        (forall from from' acc tr mem locals,
+            loop_pred from acc tr mem locals ->
+            loop_pred from' acc tr mem (map.put locals from_var (word.of_Z from'))) ->
+
+        loop_pred from a0 tr mem locals2 ->
+
+        (if signed then in_signed_bounds from /\ in_signed_bounds to
+         else in_unsigned_bounds from /\ in_unsigned_bounds to) ->
+
+        ((* loop body *)
+          let lp := loop_pred in
+          forall tr mem locals from'
+            (Hl: from - 1 < from')
+            (Hr: from' < to)
+            (Hr': from' <= to),
+            let acc := ranged_for_all from from' (wbody_all body pr Hr') a0 in
+            loop_pred from' acc tr mem locals ->
+            (<{ Trace := tr;
+                Memory := mem;
+                Locals := locals;
+                Functions := functions }>
+             body_impl
+             <{ lp from' (body acc from' (conj Hl Hr)) }>)) ->
+        (let v := v in
+         forall tr mem locals,
+           let from' := Z.max from to in
+           loop_pred from' v tr mem locals ->
+           (<{ Trace := tr;
+               Memory := mem;
+               Locals := locals;
+               Functions := functions }>
+            k_impl
+            <{ pred (k v eq_refl) }>)) ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd_loop_fresh signed from_var from_expr to_var to_expr body_impl k_impl
+        <{ pred (nlet_eq vars v k) }>.
+    Proof.
+      cbv zeta; intros until P.
+      rewrite ranged_for_all_as_ranged_for; intros * ?????? Hb **.
+      simple apply compile_ranged_for_fresh with (loop_pred := loop_pred);
+        eauto; []; cbv zeta; intros.
+      eapply WeakestPrecondition_weaken; [ | eapply Hb];
+        simpl; rewrite ranged_for_all_as_ranged_for; intros; eassumption.
+    Qed.
+
+    Lemma compile_nd_ranged_for_all_fresh : forall A {tr mem locals functions}
+          (from to: Z) body (a0: A),
+      let v := nd_ranged_for_all from to body a0 in
+      forall {P} {pred: P v -> predicate}
+        (loop_pred: forall (idx: Z) (a: A), predicate)
+        {k: nlet_eq_k P v} {k_impl} {body_impl}
+        (from_var to_var: string) (from_expr to_expr: expr) vars,
+
+        let locals1 := map.put locals from_var (word.of_Z from) in
+        let locals2 := map.put locals1 to_var (word.of_Z to) in
+
+        WeakestPrecondition.dexpr mem locals from_expr (word.of_Z from) ->
+        WeakestPrecondition.dexpr mem locals1 to_expr (word.of_Z to) ->
+
+        (forall from a0 tr mem locals,
+            loop_pred from a0 tr mem locals ->
+            map.get locals from_var = Some (word.of_Z from) /\
+            map.get locals to_var = Some (word.of_Z to)) ->
+
+        (forall from from' acc tr mem locals,
+            loop_pred from acc tr mem locals ->
+            loop_pred from' acc tr mem (map.put locals from_var (word.of_Z from'))) ->
+
+        loop_pred from a0 tr mem locals2 ->
+
+        (if signed then in_signed_bounds from /\ in_signed_bounds to
+         else in_unsigned_bounds from /\ in_unsigned_bounds to) ->
+
+        ((* loop body *)
+          let lp := loop_pred in
+          forall tr mem locals from'
+            (Hl: from - 1 < from')
+            (Hr: from' < to)
+            (Hr': from' <= to),
+            let acc := nd_ranged_for_all from from' body a0 in
+            loop_pred from' acc tr mem locals ->
+            (<{ Trace := tr;
+                Memory := mem;
+                Locals := locals;
+                Functions := functions }>
+             body_impl
+             <{ lp from' (body acc from') }>)) ->
+        (let v := v in
+         forall tr mem locals,
+           let from' := Z.max from to in
+           loop_pred from' v tr mem locals ->
+           (<{ Trace := tr;
+               Memory := mem;
+               Locals := locals;
+               Functions := functions }>
+            k_impl
+            <{ pred (k v eq_refl) }>)) ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd_loop_fresh signed from_var from_expr to_var to_expr body_impl k_impl
+        <{ pred (nlet_eq vars v k) }>.
+    Proof.
+      cbv zeta; intros until P.
+      rewrite nd_as_ranged_for_all; intros * ?????? Hb **.
+      simple apply compile_ranged_for_all_fresh with (loop_pred := loop_pred);
+        eauto; []; cbv zeta; intros.
+      eapply WeakestPrecondition_weaken; [ | eapply Hb];
+        simpl; try rewrite nd_as_ranged_for_all; intros; eassumption.
+    Qed.
+  End Generic.
+
+  Section GenericWordLoops.
+    Context {signed: bool}.
 
     Context {to_Z: word -> Z}
             (of_Z_to_Z: forall w, word.of_Z (to_Z w) = w)
@@ -1959,38 +2068,108 @@ Section with_parameters.
       eapply compile_ranged_for_w; eauto.
       { _split_conj; split; eauto; []; repeat straightline; eauto. }
     Qed.
-  End Generic.
+  End GenericWordLoops.
 
-  Context {A: Type}
-          {tr : Semantics.trace}
-          {m : mem}
-          {l : locals}
-          {functions : list (string * (list string * list string * cmd))}
-          (from to : word).
+  Section ranged_for_words.
+    Context {A: Type}
+            {tr : Semantics.trace} {m : mem} {l : locals}
+            {functions : list (string * (list string * list string * cmd))}
+            (from to : word).
 
-  Definition compile_ranged_for_u :=
-    @compile_ranged_for_w_fresh
-      false _ word.of_Z_unsigned word_unsigned_of_Z_bracketed
-      word.maxu word.unsigned_maxu A tr m l functions from to
-      (conj (word.unsigned_range _) (word.unsigned_range _)).
+    Definition compile_ranged_for_u :=
+      @compile_ranged_for_w_fresh
+        false _ word.of_Z_unsigned word_unsigned_of_Z_bracketed
+        word.maxu word.unsigned_maxu A tr m l functions from to
+        (conj (word.unsigned_range _) (word.unsigned_range _)).
 
-  Definition compile_ranged_for_s :=
-    @compile_ranged_for_w_fresh
-      true _ word.of_Z_signed word_signed_of_Z_bracketed
-      word.maxs word.signed_maxs A tr m l functions from to
-      (conj (word.signed_range _) (word.signed_range _)).
+    Definition compile_ranged_for_s :=
+      @compile_ranged_for_w_fresh
+        true _ word.of_Z_signed word_signed_of_Z_bracketed
+        word.maxs word.signed_maxs A tr m l functions from to
+        (conj (word.signed_range _) (word.signed_range _)).
 
-  Definition compile_ranged_for_u_continued :=
-    @compile_ranged_for_w_continued
-      false _ word.of_Z_unsigned word_unsigned_of_Z_bracketed
-      word.maxu word.unsigned_maxu A tr m l functions from to
-      (conj (word.unsigned_range _) (word.unsigned_range _)).
+    Definition compile_ranged_for_u_continued :=
+      @compile_ranged_for_w_continued
+        false _ word.of_Z_unsigned word_unsigned_of_Z_bracketed
+        word.maxu word.unsigned_maxu A tr m l functions from to
+        (conj (word.unsigned_range _) (word.unsigned_range _)).
 
-  Definition compile_ranged_for_s_continued :=
-    @compile_ranged_for_w_continued
-      true _ word.of_Z_signed word_signed_of_Z_bracketed
-      word.maxs word.signed_maxs A tr m l functions from to
-      (conj (word.signed_range _) (word.signed_range _)).
+    Definition compile_ranged_for_s_continued :=
+      @compile_ranged_for_w_continued
+        true _ word.of_Z_signed word_signed_of_Z_bracketed
+        word.maxs word.signed_maxs A tr m l functions from to
+        (conj (word.signed_range _) (word.signed_range _)).
+  End ranged_for_words.
+
+  Section Maps.
+    Context {A} f f' (a: list A) v (vars: list string)
+            (Hrp: acts_as_replace_nth (A := A) f f')
+            (Heq: v = List.map f a).
+
+    Lemma compile_map: forall [tr mem locals functions],
+      let v := v in
+      forall {P} {pred: P v -> predicate}
+        (loop_pred: forall (idx: Z) (a: list A), predicate)
+        {k: nlet_eq_k P v} {k_impl} {body_impl}
+        (idx_var to_var: string) (to_expr: expr),
+
+        let to := Z.of_nat (length a) in
+        let locals1 := map.put locals idx_var (word.of_Z 0) in
+        let locals2 := map.put locals1 to_var (word.of_Z to) in
+
+        0 <= to < 2^width ->
+        WeakestPrecondition.dexpr mem locals1 to_expr (word.of_Z to) ->
+
+        (forall idx a0 tr mem locals,
+            loop_pred idx a0 tr mem locals ->
+            map.get locals idx_var = Some (word.of_Z idx) /\
+            map.get locals to_var = Some (word.of_Z to)) ->
+
+        (forall idx idx' acc tr mem locals,
+            loop_pred idx acc tr mem locals ->
+            loop_pred idx' acc tr mem (map.put locals idx_var (word.of_Z idx'))) ->
+
+        loop_pred 0 a tr mem locals2 ->
+
+        ((* loop body *)
+          let lp := loop_pred in
+          forall tr mem locals idx,
+            0 <= idx < to ->
+            let n := Z.to_nat idx in
+            let a := List.map f (List.firstn n a) ++ List.skipn n a in
+            loop_pred idx a tr mem locals ->
+            (<{ Trace := tr;
+                Memory := mem;
+                Locals := locals;
+                Functions := functions }>
+             body_impl
+             <{ lp idx (f' a idx) }>)) ->
+        (let v := v in
+         forall tr mem locals,
+           loop_pred to v tr mem locals ->
+           (<{ Trace := tr;
+               Memory := mem;
+               Locals := locals;
+               Functions := functions }>
+            k_impl
+            <{ pred (k v eq_refl) }>)) ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd_loop_fresh false idx_var (expr.literal 0) to_var to_expr body_impl k_impl
+        <{ pred (nlet_eq vars v k) }>.
+    Proof.
+      rewrite Heq; intros; subst v0. revert dependent k. revert dependent pred.
+      erewrite (map_as_nd_ranged_for_all f f' Hrp a).
+      intros; eapply compile_nd_ranged_for_all_fresh; reflexivity || lia || eauto.
+      - intros; cbn; eapply WeakestPrecondition_weaken.
+        2: eapply H4 with (idx := from'); try lia; [].
+        all: erewrite map_firstn_as_nd_ranged_for_all, Z2Nat.id;
+          eauto using Hrp; lia.
+      - intros; subst from'; rewrite Z.max_r in * by lia; eauto.
+    Qed.
+  End Maps.
 End with_parameters.
 
 Ltac make_ranged_for_predicate from_var from_arg to_var to_val vars args tr pred locals :=

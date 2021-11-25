@@ -57,22 +57,12 @@ Section Impl.
   Definition rev1_impl (b: byte) :=
     InlineTable.get table b.
 
-  Lemma rev1_impl_ok a:
-    rev1_spec a = ascii_of_byte (rev1_impl (byte_of_ascii a)).
-  Proof. destruct a as [[|][|][|][|][|][|][|][|]]; reflexivity. Qed.
-
-  Lemma rev1_impl_ok' b:
+  Lemma rev1_impl_ok b:
     byte_of_ascii (rev1_spec (ascii_of_byte b)) = rev1_impl b.
   Proof. destruct b; reflexivity. Qed.
 
   Definition revcomp_impl (s: list byte) :=
-    let/n s := nd_ranged_for_all
-                0 (Z.of_nat (length s))
-                (fun s idx =>
-                   let/n b := ListArray.get s idx in
-                   let/n b := rev1_impl b in
-                   let/n s := ListArray.put s idx b in
-                   s) s in
+    let/n s := ListArray.map rev1_impl s in
     s.
 
   Lemma string_map_is_map f s:
@@ -83,12 +73,9 @@ Section Impl.
     revcomp_impl bs = list_byte_of_string (revcomp_spec (string_of_list_byte bs)).
   Proof.
     unfold revcomp_spec, revcomp_impl, nlet,
-      list_byte_of_string, string_of_list_byte,
-      ListArray.get, ListArray.put, cast, Convertible_Z_nat.
+      list_byte_of_string, string_of_list_byte.
     rewrite string_map_is_map, !list_ascii_of_string_of_list_ascii, !map_map.
-      symmetry; apply map_as_nd_ranged_for_all.
-    intros; erewrite !Nat2Z.id, nth_indep, rev1_impl_ok' by lia.
-      reflexivity.
+    apply map_ext; intros; rewrite rev1_impl_ok; reflexivity.
   Qed.
 
   Lemma revcomp_impl_ok' s:

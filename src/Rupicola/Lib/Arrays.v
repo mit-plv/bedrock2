@@ -1,20 +1,23 @@
 From Coq Require Vector List.
 Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.Notations.
+Require Import Rupicola.Lib.Loops.
 
 Open Scope list_scope.
 
 Module VectorArray.
   Section VectorArray.
-    Context {K V: Type}.
+    Context {K: Type}.
     Context {Conv: Convertible K nat}.
     Open Scope nat_scope.
 
-    Definition t n := Vector.t V n.
-    Definition get {n} (a: t n) (k: K) (pr: cast k < n) : V :=
+    Definition t V n := Vector.t V n.
+    Definition get {V n} (a: t V n) (k: K) (pr: cast k < n) : V :=
       Vector.nth_order a pr.
-    Definition put {n} (a: t n) (k: K) (pr: cast k < n) (v: V) : t n :=
+    Definition put {V n} (a: t V n) (k: K) (pr: cast k < n) (v: V) : t V n :=
       Vector.replace_order a pr v.
+    Definition map {V V' n} (a: t V n) (f: V -> V') : t V' n :=
+      Vector.map f a.
     (* FIXME needs an accessor that generates a test and returns a default *)
   End VectorArray.
 
@@ -22,10 +25,11 @@ Module VectorArray.
 End VectorArray.
 
 Module ListArray.
-  Section ListArray.
-    Context {K V: Type}.
-    Context {HD: HasDefault V}.
-    Context {Conv: Convertible K nat}.
+Section ListArray.
+  Context {K: Type} {Conv: Convertible K nat}.
+
+  Section __.
+    Context {V: Type} {HD: HasDefault V}.
     Open Scope nat_scope.
 
     Definition t := list V.
@@ -39,7 +43,7 @@ Module ListArray.
       List.length (put a k v) = List.length a.
     Proof. intros; apply replace_nth_length. Qed.
 
-    Lemma put_0 (a: list V) (k: K) (v: V) :
+    Lemma put_0 (a: t) (k: K) (v: V) :
       0 < length a -> cast k = 0 ->
       put a k v = v :: List.tl a.
     Proof.
@@ -47,7 +51,7 @@ Module ListArray.
       destruct a; simpl in *; reflexivity || lia.
     Qed.
 
-    Lemma put_app_len (a1 a2: list V) (k: K) (v: V) :
+    Lemma put_app_len (a1 a2: t) (k: K) (v: V) :
       0 < length a2 -> cast k = length a1 ->
       put (a1 ++ a2) k v = a1 ++ v :: List.tl a2.
     Proof.
@@ -58,9 +62,13 @@ Module ListArray.
       rewrite List_skipn_app_r by reflexivity.
       reflexivity.
     Qed.
-  End ListArray.
+  End __.
 
-  Arguments t : clear implicits.
+  Definition map {V V'} (f: V -> V') (a: t) :=
+    List.map f a.
+End ListArray.
+
+Arguments t : clear implicits.
 End ListArray.
 
 Section with_parameters.
@@ -110,6 +118,7 @@ Section with_parameters.
     Notation ai := (_access_info sz).
     Notation V := ai.(ai_type).
 
+    (* FIXME should this be a type class? *)
     Context
       {A K}
       (to_list: A -> list V)
@@ -215,6 +224,11 @@ Section with_parameters.
                Lift1Prop.iff1
                  (repr a_ptr (put a idx val))
                  (array_repr a_ptr (put a idx val))).
+
+    Definition map_step tmp_var vars f a (idx: K) :=
+      (let/n tmp as tmp_var := get a idx in
+       let/n tmp as tmp_var := f tmp in
+       nlet vars (put a idx tmp) id).
 
     Local Lemma compile_array_put_length :
       (K_to_nat idx < Datatypes.length (to_list a))%nat ->
@@ -617,6 +631,20 @@ Section with_parameters.
       unfold id; pose proof word.unsigned_range (K_to_word idx).
       lia.
     Qed.
+
+    Notation map_step := (map_step sz ListArray.get ListArray.put).
+
+    Lemma ListArray_map_step_as_replace_nth {tmp_var vars f}:
+      acts_as_replace_nth f (map_step tmp_var vars f).
+    Proof.
+      unfold acts_as_replace_nth, map_step, nlet, id, get, put, cast, Convertible_Z_nat.
+      intros; rewrite Nat2Z.id, replace_nth_app_skip, nth_middle; reflexivity.
+    Qed.
+
+    Definition compile_listarray_map
+               f (a: ListArray.t ai.(ai_type)) tmp_var vars :=
+      compile_map f (map_step tmp_var vars f) a (ListArray.map f a) vars
+                  ListArray_map_step_as_replace_nth eq_refl.
   End GenericListArray.
 
   Section GenericSizedListArray.
@@ -801,7 +829,8 @@ Section with_parameters.
 
   Ltac prepare_array_lemma lemma sz := (* This makes [simple apply] work *)
     pose (lemma sz) as lem;
-    cbv beta iota delta [_access_info ai_type ai_repr ai_to_word ai_width ai_size] in (type of lem);
+    cbv beta iota delta [_access_info ai_type ai_repr ai_to_word ai_width ai_size map_step]
+      in (type of lem);
     change (let ai_width := _ in ?x) with x in (type of lem);
     cbv beta in (type of lem);
     let t := type of lem in
@@ -836,20 +865,36 @@ Section with_parameters.
     prepare_array_lemma (@compile_sizedlistarray_put) AccessByte.
   Definition compile_word_sizedlistarray_put :=
     prepare_array_lemma (@compile_sizedlistarray_put) AccessWord.
+
+  Definition compile_byte_listarray_map :=
+    prepare_array_lemma (@compile_listarray_map) AccessByte.
+  Definition compile_word_listarray_map :=
+    prepare_array_lemma (@compile_listarray_map) AccessWord.
 End with_parameters.
 
 Arguments sizedlistarray_value {width word memT} sz len addr a _ : assert.
 Arguments Arrays._access_info /.
 Arguments Arrays.ai_width /.
 
-Ltac cbn_array :=
-  cbn [Arrays._access_info
-         ai_type ai_size ai_repr ai_to_word ai_width
-         Memory.bytes_per] in *;
-  change (Z.of_nat 1%nat) with (1%Z) in *;
-  change (Z.of_nat 2%nat) with (2%Z) in *;
-  change (Z.of_nat 4%nat) with (4%Z) in *;
-  change (Z.of_nat 8%nat) with (8%Z) in *.
+Import Rupicola.Lib.Invariants Rupicola.Lib.Gensym.
+
+Ltac _compile_map locals to thm :=
+  let idx_v := gensym locals "from" in
+  let tmp_v := gensym locals "tmp" in
+  let to_v := gensym locals "to" in
+  let lp := infer_ranged_for_predicate idx_v to_v to in
+  eapply thm with (idx_var := idx_v) (to_var := to_v) (tmp_var := tmp_v) (loop_pred := lp).
+
+Ltac compile_map :=
+  lazymatch goal with
+  | [ |- WeakestPrecondition.cmd _ _ _ _ ?locals (_ (nlet_eq _ ?v _)) ] =>
+      lazymatch v with
+      | (ListArray.map (V := Init.Byte.byte) _ ?l) =>
+          _compile_map locals (Z.of_nat (List.length l)) compile_byte_listarray_map
+      | (ListArray.map (V := word) _ ?l) =>
+          _compile_map locals (Z.of_nat (List.length l)) compile_word_listarray_map
+      end
+  end.
 
 Module VectorArrayCompiler.
   #[export] Hint Extern 1 (WP_nlet_eq (VectorArray.get _ _ _)) =>
@@ -871,6 +916,8 @@ Module UnsizedListArrayCompiler.
     simple eapply (@compile_byte_unsizedlistarray_put); shelve : compiler.
   #[export] Hint Extern 1 (WP_nlet_eq (ListArray.put _ _ _)) =>
     simple eapply (@compile_word_unsizedlistarray_put); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (ListArray.map _ _)) =>
+    compile_map; shelve : compiler.
 End UnsizedListArrayCompiler.
 
 Module SizedListArrayCompiler.
@@ -882,6 +929,8 @@ Module SizedListArrayCompiler.
     simple eapply (@compile_byte_sizedlistarray_put); shelve : compiler.
   #[export] Hint Extern 1 (WP_nlet_eq (ListArray.put _ _ _)) =>
     simple eapply (@compile_word_sizedlistarray_put); shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (ListArray.map _ _)) =>
+    compile_map; shelve : compiler.
 End SizedListArrayCompiler.
 
 Export VectorArrayCompiler.

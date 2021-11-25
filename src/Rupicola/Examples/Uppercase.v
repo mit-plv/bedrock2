@@ -37,22 +37,14 @@ Section Impl.
     if byte.wrap (byte.unsigned b - byte.unsigned "a"%byte) <? 26
     then byte.and b x5f else b.
 
-  Lemma upchar_impl_ok a:
-    upchar_spec a = ascii_of_byte (upchar_impl (byte_of_ascii a)).
-  Proof. destruct a as [[|][|][|][|][|][|][|][|]]; reflexivity. Qed.
-
-  Lemma upchar_impl_ok' b:
+  Lemma upchar_impl_ok b:
     byte_of_ascii (upchar_spec (ascii_of_byte b)) = upchar_impl b.
   Proof. destruct b; reflexivity. Qed.
 
   Definition upstr_impl (s: list byte) :=
-    let/n s := nd_ranged_for_all
-                0 (Z.of_nat (length s))
-                (fun s idx =>
-                   let/n b := ListArray.get s idx in
-                   let/n b := upchar_impl b in
-                   let/n s := ListArray.put s idx b in
-                   s) s in
+    let/n s := ListArray.map
+                (fun b => byte_of_ascii (upchar_spec (ascii_of_byte b)))
+                s in
     s.
 
   Lemma string_map_is_map f s:
@@ -62,12 +54,8 @@ Section Impl.
   Lemma upstr_impl_ok bs:
     upstr_impl bs = list_byte_of_string (upstr_spec (string_of_list_byte bs)).
   Proof.
-    unfold upstr_spec, upstr_impl, nlet,
-      list_byte_of_string, string_of_list_byte,
-      ListArray.get, ListArray.put, cast, Convertible_Z_nat.
-    rewrite string_map_is_map, !list_ascii_of_string_of_list_ascii, !map_map.
-      symmetry; apply map_as_nd_ranged_for_all.
-    intros; erewrite !Nat2Z.id, nth_indep, upchar_impl_ok' by lia.
+    unfold upstr_spec, upstr_impl, nlet, list_byte_of_string, string_of_list_byte.
+    rewrite string_map_is_map, !list_ascii_of_string_of_list_ascii, !map_map;
       reflexivity.
   Qed.
 
@@ -91,9 +79,9 @@ Section Upstr.
   Import SizedListArrayCompiler.
 
   Hint Rewrite Nat2Z.id : compiler_cleanup.
+  Hint Rewrite upchar_impl_ok : compiler_cleanup.
+  Hint Unfold upchar_impl : compiler_cleanup.
   Hint Rewrite Z2Nat.id using eauto with lia : compiler_side_conditions.
-
-  #[local] Hint Unfold upchar_impl : compiler_cleanup.
   #[local] Hint Extern 1 => cbn; nia : compiler_side_conditions.
 
   Derive upstr_body SuchThat
