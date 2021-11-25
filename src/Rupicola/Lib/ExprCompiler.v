@@ -356,6 +356,8 @@ Ltac expr_compile_var :=
           simple eapply (expr_compile_var_assoc k w); reflexivity
       | None => fail "Not a variable"
       end
+  | [ |- DEXPR _ _ _ ?w ] =>
+      fail 0 "cannot call expr_compile_var without reify_change_dexpr_locals"
   | [  |- ?g ] => fail 0 g "is not a dexpr goal"
   end.
 
