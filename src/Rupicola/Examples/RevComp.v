@@ -98,7 +98,7 @@ Section Revcomp.
     fnspec! "revcomp" s_ptr wlen / (s : list byte) R,
       { requires tr mem :=
           wlen = word.of_Z (Z.of_nat (length s)) /\
-          Z.of_nat (Datatypes.length s) < 2 ^ 32 /\ (* FIXME implied by sep *)
+          Z.of_nat (Datatypes.length s) < 2 ^ 32 /\
           (sizedlistarray_value AccessByte (length s) s_ptr s * R)%sep mem;
         ensures tr' mem' :=
           tr' = tr /\
@@ -107,11 +107,8 @@ Section Revcomp.
   Import LoopCompiler.
   Import SizedListArrayCompiler.
 
-  Hint Rewrite Nat2Z.id : compiler_cleanup.
-  Hint Rewrite Z2Nat.id using eauto with lia : compiler_side_conditions.
-
   #[local] Hint Unfold rev1_impl : compiler_cleanup.
-  #[local] Hint Extern 1 => cbn; nia : compiler_side_conditions.
+  #[local] Hint Extern 10 => cbn; lia : compiler_side_conditions.
   #[local] Hint Resolve bytes_in_table byte_pos : compiler_side_conditions.
 
   Derive revcomp_body SuchThat

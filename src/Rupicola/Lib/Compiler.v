@@ -665,7 +665,7 @@ Ltac compile_custom := fail.
 
 Tactic Notation "compile_autocleanup" "with" ident(db) :=
   progress (autorewrite with db in *;
-            repeat autounfold with db in *).
+            repeat autounfold with db in * ).
 
 Ltac compile_cleanup :=
   match goal with
@@ -704,6 +704,9 @@ Ltac compile_use_default_value :=
 
 Create HintDb compiler_side_conditions.
 Hint Rewrite __DummyConstructor : compiler_side_conditions. (* Create the DB *)
+Hint Rewrite Nat2Z.id Z2Nat.id
+  using solve[typeclasses eauto with compiler_side_conditions lia]
+  : compiler_cleanup.
 #[export] Hint Resolve eq_refl : compiler_side_conditions. (* For typeclasses eauto *)
 
 Create HintDb solve_map_get_goal.
