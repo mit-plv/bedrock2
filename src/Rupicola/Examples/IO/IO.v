@@ -15,14 +15,6 @@ Module Observable.
 
   Definition M A := Writer.M T A -> Prop.
 
-  (* FIXME: Combine nondeterminism with writer instead of defining from scratch *)
-  Definition ret {A} (a: A) : M A := fun r => r = {| val := a; trace := [] |}.
-  Definition bind {A B} (ma: M A) (k: A -> M B) : M B :=
-    fun obs =>
-      exists obsA obsB, ma obsA /\ k obsA.(val) obsB /\
-                   obs = {| val := obsB.(val);
-                            trace := obsA.(trace) ++ obsB.(trace) |}.
-
   Ltac s :=
     apply Ensembles.Extensionality_Ensembles;
     unfold Ensembles.Same_set, Ensembles.Included, Ensembles.In;
@@ -86,19 +78,18 @@ Module IO.
     forall obs,
       Valid spec obs <-> interp spec obs.
   Proof.
-    induction spec; simpl; unfold Observable.ret, mret; intros.
+    induction spec; simpl; unfold mret; intros.
     - split; inversion 1; subst; simpl; eauto with io.
     - split.
       + inversion 1;
           repeat match goal with
                  | _ => progress subst
                  | [ H: existT _ _ _ = _ |- _ ] => apply Eqdep.EqdepTheory.inj_pair2 in H
-                 end;
-          unfold Observable.bind.
+                 end.
         1: exists {| val := r; trace := [R r] |}, {| val := a; trace := t |}.
         2: exists {| val := tt; trace := [W w] |}, {| val := a; trace := t |}.
         all: firstorder.
-      + destruct f; unfold Observable.bind, mbind;
+      + destruct f; unfold mbind;
           repeat match goal with
                  | [ H: unit |- _ ] => destruct H
                  | [ H: exists _: Writer.M _ _, _ |- _ ] => destruct H as [(?&?) ?]
