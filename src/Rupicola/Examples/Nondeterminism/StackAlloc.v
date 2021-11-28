@@ -16,9 +16,6 @@ Section Alloc.
   Definition stack_alloc (nbytes: nat) : ND.M (list byte) :=
     %{ ls: list byte | List.length ls = nbytes }.
 
-  Definition bytes_at addr data :=
-    listarray_value (word:=word) AccessByte addr data.
-
   Lemma compile_stack_alloc : forall {tr mem locals functions} (nbytes: nat),
     let c := stack_alloc nbytes in
     forall {B} {pred: B -> predicate}

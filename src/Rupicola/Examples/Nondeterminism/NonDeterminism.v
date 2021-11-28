@@ -74,7 +74,7 @@ Section with_parameters.
     eauto using ndbind_bindn.
   Qed.
 
-  Lemma compile_setup_nondet_ndbind : forall {tr mem locals functions},
+  Lemma compile_setup_ndspec_k : forall {tr mem locals functions},
     forall {A} {pred: A -> _ -> predicate}
       {spec: M A} {cmd}
       retvars,
@@ -104,6 +104,6 @@ Section with_parameters.
   Qed.
 End with_parameters.
 
-#[export] Hint Resolve compile_setup_nondet_ndbind : compiler_setup_post.
+#[export] Hint Resolve compile_setup_ndspec_k : compiler_setup_post.
 #[export] Hint Unfold ndspec_k ndspec ndbind: compiler_cleanup_post.
 #[export] Hint Extern 1 (mret _ _) => reflexivity : compiler_side_conditions.
