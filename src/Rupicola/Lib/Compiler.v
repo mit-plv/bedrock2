@@ -647,11 +647,11 @@ Ltac compile_unfold_head_binder :=
   compile_unfold_head_binder' p.
 
 Create HintDb compiler.
-Create HintDb compile_pull_binding.
+Create HintDb compiler_pull_binding.
 #[export] Hint Extern 1 =>
-  simple eapply compile_nested_nlet; shelve : compile_pull_binding.
+  simple eapply compile_nested_nlet; shelve : compiler_pull_binding.
 #[export] Hint Extern 1 =>
-  simple eapply compile_nlet_push_continuation; shelve : compile_pull_binding.
+  simple eapply compile_nlet_push_continuation; shelve : compiler_pull_binding.
 
 Ltac compile_binding :=
   (* We don't want to show users goals with nlet_eq, so compile_nlet_as_nlet_eq
@@ -742,7 +742,7 @@ Ltac compile_triple :=
   let _ := compile_find_post in
   try clear_old_seps;
   (* Reorder `nlet`s before introducing `nlet_eq` and checking for bindings. *)
-  repeat step_with_db compile_pull_binding;
+  repeat step_with_db compiler_pull_binding;
   lazymatch compile_find_post with
   | (_, ?hd) => (* Look for a binding: if there is none, finish compiling *)
     lazymatch is_rupicola_binding hd with
