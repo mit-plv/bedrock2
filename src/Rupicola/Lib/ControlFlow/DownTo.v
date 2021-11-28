@@ -24,6 +24,29 @@ Section Gallina.
     step (downto' a0 start count step) (start - 1) =
     downto' a0 (start - 1) count step.
   Proof. cbv [downto']; apply fold_left_skipn_seq. Qed.
+
+  Lemma Nat_iter_as_downto' n (f: A -> A) : forall a i,
+      Nat.iter n f a = downto' a i (i + n) (fun a _ => f a).
+  Proof.
+    unfold downto'.
+    setoid_rewrite skipn_seq_step; setoid_rewrite minus_plus.
+    simpl; induction n; simpl; intros.
+    - reflexivity.
+    - rewrite fold_left_app.
+      auto using f_equal.
+  Qed.
+
+  Lemma Nat_iter_as_downto'_sub n (f: A -> A) a i:
+    i <= n ->
+    Nat.iter (n - i) f a = downto' a i n (fun a _ => f a).
+  Proof.
+    intros; replace n with (i + (n - i)) at 2 by lia.
+    apply Nat_iter_as_downto'.
+  Qed.
+
+  Lemma Nat_iter_as_downto n (f: A -> A) a :
+    Nat.iter n f a = downto a n (fun a _ => f a).
+  Proof. apply (Nat_iter_as_downto' n f a 0). Qed.
 End Gallina.
 
 Definition cmd_downto i_var step_impl :=
@@ -98,8 +121,7 @@ Section Compilation.
             loop_pred i st tr mem locals ->
             map.get locals i_var = Some (word.of_Z (Z.of_nat i))) ->
 
-        (let v := v in
-         (* loop body *)
+        ((* loop body *)
          forall tr l m i,
            let st := downto' a0 (S i) count step in
            let wi := word.of_Z (Z.of_nat i) in
@@ -202,8 +224,7 @@ Section Compilation.
             loop_pred i st tr mem locals ->
             map.get locals i_var = Some (word.of_Z (Z.of_nat i))) ->
 
-        (let v := v in
-         let lp := loop_pred in
+        (let lp := loop_pred in
          (* loop body *)
          forall tr l m i,
            let st := downto' a0 (S i) count step in
@@ -240,6 +261,66 @@ Section Compilation.
       repeat straightline; eexists; split; eauto.
       eapply compile_downto_continued; eauto.
   Qed.
+
+  Lemma compile_Nat_iter : forall [tr mem locals functions] n {A} f (a: A),
+      let v := Nat.iter n f a in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl f_impl}
+        (loop_pred : nat -> A -> predicate)
+        i_var i_expr vars,
+
+        let zn := Z.of_nat n in
+        let wn := word.of_Z zn in
+
+        (zn < 2 ^ width)%Z ->
+        WeakestPrecondition.dexpr mem locals i_expr wn ->
+
+        let locals0 := map.put locals i_var wn in
+        loop_pred n a tr mem locals0 ->
+
+        (forall i st tr mem locals,
+            loop_pred i st tr mem locals ->
+            map.get locals i_var = Some (word.of_Z (Z.of_nat i))) ->
+
+        (let lp := loop_pred in
+         (* loop body *)
+         forall tr l m i,
+           let st := Nat.iter (n - S i) f a in
+           let wi := word.of_Z (Z.of_nat i) in
+           loop_pred (S i) st tr m l ->
+           i < n ->
+           <{ Trace := tr;
+              Memory := m;
+              Locals := map.put l i_var wi;
+              Functions := functions }>
+           f_impl
+           <{ lp i (f st) }>) ->
+
+        (let v := v in
+         (* continuation *)
+         forall tr l m,
+           loop_pred 0 v tr m l ->
+           <{ Trace := tr;
+              Memory := m;
+              Locals := l;
+              Functions := functions }>
+           k_impl
+           <{ pred (k v eq_refl) }>) ->
+
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd_downto_fresh i_var i_expr f_impl k_impl
+        <{ pred (nlet_eq vars v k) }>.
+  Proof.
+    cbv zeta; intros until a.
+    rewrite Nat_iter_as_downto; intros * ???? Hf Hk.
+    eapply compile_downto; eauto; [].
+    cbv zeta; intros.
+    rewrite <- Nat_iter_as_downto'_sub by lia;
+      eapply Hf; [ | lia]; rewrite Nat_iter_as_downto'_sub by lia.
+    eassumption.
+  Qed.
 End Compilation.
 
 Ltac make_downto_predicate i_var i_arg vars args tr pred locals :=
@@ -260,16 +341,24 @@ Ltac infer_downto_predicate i_var :=
   _infer_predicate_from_context
     ltac:(infer_downto_predicate' i_var).
 
+Ltac _compile_downto locals lemma :=
+  let i_v := gensym locals "i" in
+  let lp := infer_downto_predicate i_v in
+  eapply lemma with (i_var := i_v) (loop_pred := lp).
+
 Ltac compile_downto :=
   lazymatch goal with
-  | [ |- WeakestPrecondition.cmd _ _ _ _ ?locals _ ] =>
-    let i_v := gensym locals "i" in
-    let lp := infer_downto_predicate i_v in
-    eapply compile_downto with (i_var := i_v) (loop_pred := lp)
+  | [ |- WeakestPrecondition.cmd _ _ _ _ ?locals (_ (nlet_eq _ ?v _)) ] =>
+    lazymatch v with
+    | downto _ _ _ => _compile_downto locals compile_downto
+    | Nat.iter _ _ _ => _compile_downto locals compile_Nat_iter
+    end
   end.
 
 Module DownToCompiler.
   #[export] Hint Extern 1 (WP_nlet_eq (downto _ _ _)) =>
+    compile_downto; shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (Nat.iter _ _ _)) =>
     compile_downto; shelve : compiler.
 End DownToCompiler.
 

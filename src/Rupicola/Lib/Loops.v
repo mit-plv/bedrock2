@@ -409,6 +409,10 @@ Section ZRange.
     unfold z_range; intros; apply z_range'_complete; lia.
   Qed.
 
+  Lemma z_range_add from len:
+    z_range from (from + len) = z_range' from (Z.to_nat len).
+  Proof. unfold z_range; do 2 f_equal; lia. Qed.
+
   Lemma z_range_length from to :
     List.length (z_range from to) = Z.to_nat (to - from).
   Proof. unfold z_range; rewrite z_range'_length; reflexivity. Qed.
@@ -881,6 +885,22 @@ Section FoldsAsLoops.
       lia.
     Qed.
   End Maps.
+
+  Section Iter.
+   Lemma Nat_iter_S n f: forall (a : A),
+       Nat.iter (S n) f a = Nat.iter n f (f a).
+   Proof. induction n; intros; simpl; rewrite <- ?IHn; reflexivity. Qed.
+
+   Lemma Nat_iter_as_nd_ranged_for_all n f : forall (a: A) i,
+     Nat.iter n f a = nd_ranged_for_all i (i + Z.of_nat n) (fun a _ => f a) a.
+   Proof.
+     unfold nd_ranged_for_all, nd_ranged_for_break, z_range.
+     setoid_rewrite Z.add_simpl_l. rewrite Nat2Z.id.
+     induction n; intros.
+     - reflexivity.
+     - rewrite Nat_iter_S; apply IHn.
+   Qed.
+  End Iter.
 End FoldsAsLoops.
 
 Module Type ExitToken_sig.
