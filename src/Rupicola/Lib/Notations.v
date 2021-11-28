@@ -6,12 +6,12 @@ Require Import Rupicola.Lib.Tactics.
 Notation "'let/d' x := val 'in' body" :=
   (dlet val (fun x => body))
     (at level 200, x ident, body at level 200,
-     format "'[hv' 'let/d'  x  :=  val  'in' '//' body ']'").
+     format "'[hv' 'let/d'  x  :=  '/  ' val  'in'  '/' body ']'").
 
 Notation "'let/d' f a0 .. an := val 'in' body" :=
   (dlet (fun a0 => .. (fun an => val) ..) (fun f => body))
     (at level 200, f ident, a0 binder, an binder, body at level 200,
-     format "'[hv' 'let/d'  f  a0  ..  an  :=  val  'in' '//' body ']'").
+     format "'[hv' 'let/d'  f  a0  ..  an  :=  '/  ' val  'in'  '/' body ']'").
 
 (* TODO: figure out recursive notation for this *)
 Notation
@@ -41,18 +41,24 @@ Notation nlet_eq_k P v :=
 (* Notation "'let/n' x := val 'in' body" := *)
 (*   (nlet [_] val (fun x => body)) *)
 (*     (at level 200, x ident, body at level 200, *)
-(*      format "'[hv' 'let/n'  x  :=  val  'in' '//' body ']'", *)
+(*      format "'[hv' '[' 'let/n'  x  :=  '/  ' val  'in'  '/' body ']'", *)
+(*      only printing). *)
+
+(* Notation "'let/n' ( x , y ) := val 'in' body" := *)
+(*   (nlet [_; _] val (fun '(x, y) => body)) *)
+(*     (at level 200, x ident, body at level 200, *)
+(*      format "'[hv' '[' 'let/n'  ( x ,  y )  :=  '/  ' val  'in'  '/' body ']'", *)
 (*      only printing). *)
 
 Notation "'let/n' x 'as' nm := val 'in' body" :=
   (nlet [nm] val (fun x => body))
     (at level 200, x ident, body at level 200,
-     format "'[hv' 'let/n'  x  'as'  nm  :=  val  'in' '//' body ']'").
+     format "'[hv' '[' '[' 'let/n'  x  'as'  nm ']'  :=  '/  ' val  'in' ']'  '/' body ']'").
 
 Notation "'let/n' x 'as' nm 'eq:' Heq := val 'in' body" :=
   (nlet_eq [nm] val (fun x Heq => body))
     (at level 200, x ident, body at level 200,
-     format "'[hv' 'let/n'  x  'as'  nm  'eq:' Heq  :=  val  'in' '//' body ']'").
+     format "'[hv' '[' '[' 'let/n'  x  'as'  nm ']'  'eq:' Heq  :=  '/  ' val  'in' ']'  '/' body ']'").
 
 Notation "'let/n' x := val 'in' body" :=
   (nlet [IdentParsing.TC.ident_to_string x] val (fun x => body))
@@ -64,21 +70,15 @@ Notation "'let/n' x 'eq:' Heq := val 'in' body" :=
     (at level 200, x ident, body at level 200,
      only parsing).
 
-(* Notation "'let/n' ( x , y ) := val 'in' body" := *)
-(*   (nlet [_; _] val (fun '(x, y) => body)) *)
-(*     (at level 200, x ident, body at level 200, *)
-(*      format "'[hv' 'let/n'  ( x ,  y )  :=  val  'in' '//' body ']'", *)
-(*      only printing). *)
-
 Notation "'let/n' ( x , y ) 'as' ( nx , ny ) := val 'in' body" :=
   (nlet [nx; ny] val (fun xy => let (x, y) := xy in body))
     (at level 200, x ident, y ident, body at level 200,
-     format "'[hv' 'let/n'  ( x ,  y )  'as'  ( nx ,  ny )  :=  val  'in' '//' body ']'").
+     format "'[hv' '[' '[' 'let/n'  ( x ,  y )  'as'  ( nx ,  ny ) ']'  :=  '/  ' val  'in' ']'  '/' body ']'").
 
 Notation "'let/n' ( x , y ) 'as' ( nx , ny ) 'eq:' Heq := val 'in' body" :=
   (nlet [nx; ny] val (fun xy Heq => let (x, y) := xy in body))
     (at level 200, x ident, y ident, body at level 200,
-     format "'[hv' 'let/n'  ( x ,  y )  'as'  ( nx ,  ny )  'eq:' Heq  :=  val  'in' '//' body ']'").
+     format "'[hv' '[' '[' 'let/n'  ( x ,  y )  'as'  ( nx ,  ny ) ']'  'eq:' Heq  :=  '/  ' val  'in' ']'  '/' body ']'").
 
 Notation "'let/n' ( x , y ) 'eq:' Heq := val 'in' body" :=
   (nlet_eq [IdentParsing.TC.ident_to_string x;
@@ -99,12 +99,12 @@ Notation "'let/n' ( x , y ) := val 'in' body" :=
 Notation "'let/n' ( x , y , z ) 'as' ( nx , ny , nz ) := val 'in' body" :=
   (nlet [nx; ny; nz] val (fun xyz => let '\< x, y, z \> := xyz in body))
     (at level 200, x ident, y ident, z ident, body at level 200,
-     format "'[hv' 'let/n'  ( x ,  y ,  z )  'as'  ( nx ,  ny ,  nz )  :=  val  'in' '//' body ']'").
+     format "'[hv' '[' '[' 'let/n'  ( x ,  y ,  z )  'as'  ( nx ,  ny ,  nz ) ']'  :=  '/  ' val  'in' ']'  '/' body ']'").
 
 Notation "'let/n' ( x , y , z ) 'as' ( nx , ny , nz ) 'eq:' Heq := val 'in' body" :=
   (nlet [nx; ny; nz] val (fun xyz Heq => let '\< x, y, z \> := xyz in body))
     (at level 200, x ident, y ident, z ident, body at level 200,
-     format "'[hv' 'let/n'  ( x ,  y ,  z )  'as'  ( nx ,  ny ,  nz )  'eq:' Heq  :=  val  'in' '//' body ']'").
+     format "'[hv' '[' '[' 'let/n'  ( x ,  y ,  z )  'as'  ( nx ,  ny ,  nz ) ']'  'eq:' Heq  :=  '/  ' val  'in' ']'  '/' body ']'").
 
 Notation "'let/n' ( x , y , z ) 'eq:' Heq := val 'in' body" :=
   (nlet_eq [IdentParsing.TC.ident_to_string x;
@@ -125,12 +125,12 @@ Notation "'let/n' ( x , y , z ) := val 'in' body" :=
 Notation "'let/n' ( x , y , z , t ) 'as' ( nx , ny , nz , nt ) := val 'in' body" :=
   (nlet [nx; ny; nz; nt] val (fun xyz => let '\< x, y, z, t \> := xyz in body))
     (at level 200, x ident, y ident, z ident, t ident, body at level 200,
-     format "'[hv' 'let/n'  ( x ,  y ,  z ,  t )  'as'  ( nx ,  ny ,  nz ,  nt )  :=  val  'in' '//' body ']'").
+     format "'[hv' '[' '[' 'let/n'  ( x ,  y ,  z ,  t )  'as'  ( nx ,  ny ,  nz ,  nt ) ']'  :=  '/  ' val  'in' ']'  '/' body ']'").
 
 Notation "'let/n' ( x , y , z , t ) 'as' ( nx , ny , nz , nt ) 'eq:' Heq := val 'in' body" :=
   (nlet [nx; ny; nz; nt] val (fun xyz Heq => let '\< x, y, z, t \> := xyz in body))
     (at level 200, x ident, y ident, z ident, t ident, body at level 200,
-     format "'[hv' 'let/n'  ( x ,  y ,  z ,  t )  'as'  ( nx ,  ny ,  nz ,  nt )  'eq:' Heq  :=  val  'in' '//' body ']'").
+     format "'[hv' '[' '[' 'let/n'  ( x ,  y ,  z ,  t )  'as'  ( nx ,  ny ,  nz ,  nt ) ']'  'eq:' Heq  :=  '/  ' val  'in' ']'  '/' body ']'").
 
 Notation "'let/n' ( x , y , z , t ) 'eq:' Heq := val 'in' body" :=
   (nlet_eq [IdentParsing.TC.ident_to_string x;
@@ -155,7 +155,7 @@ Notation "'call!' x" := (Free.Call x) (x at level 200, at level 10).
 Notation "'let/!' x 'as' nm := val 'in' body" :=
   (mbindn [nm] val (fun x => body))
     (at level 200, x ident, body at level 200,
-     format "'[hv' 'let/!'  x  'as'  nm  :=  val  'in' '//' body ']'").
+     format "'[hv' '[' '[' 'let/!'  x  'as'  nm ']'  :=  '/  ' val  'in' ']'  '/' body ']'").
 
 Notation "'let/!' x := val 'in' body" :=
   (mbindn [IdentParsing.TC.ident_to_string x] val (fun x => body))
@@ -188,7 +188,7 @@ Declare Scope maps_scope.
 Delimit Scope maps_scope with maps.
 Notation "#{ x }#" :=
   (x) (at level 0, x custom maps at level 200,
-        format "'[hv   ' #{  x  }# ']'") : maps_scope.
+        format "'[   ' #{  x  }# ']'") : maps_scope.
 Open Scope maps_scope.
 
 Notation "[[ locals ]]" := {| value := locals; _value_ok := _ |} (only printing).
@@ -198,7 +198,7 @@ Notation "<{ 'Trace' := tr ; 'Memory' := mem ; 'Locals' := locals ; 'Functions' 
      (WeakestPrecondition.call functions)
      cmd tr mem locals post)
     (at level 0,
-     format "'[v' <{  '[v' 'Trace'  :=  '[hv' tr ']' ; '//' 'Memory'  :=  '[hv' mem ']' ; '//' 'Locals'  :=  '[hv' locals ']' ; '//' 'Functions'  :=  '[hv' functions ']' ']'  }> '//' cmd '//' <{  '[hv' post ']'  }> ']'").
+     format "'[hv' <{  '[' '[' 'Trace'  :=  tr ']' ;  '/' '[' 'Memory'  :=  mem ']' ;  '/' '[' 'Locals'  :=  locals ']' ;  '/' '[' 'Functions'  :=  functions ']' ']'  }>  '/  ' cmd  '/' <{  '[' post ']'  }> ']'").
 
 Notation WP_val v := (WeakestPrecondition.cmd _ _ _ _ _ (_ v)) (only parsing).
 Notation WP_dlet v := (WP_val (dlet v _)) (only parsing).
