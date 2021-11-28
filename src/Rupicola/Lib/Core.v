@@ -487,6 +487,23 @@ Section Lists.
     erewrite <-IHcs. reflexivity.
   Qed.
 
+  Lemma fold_left_push_fn {A' B}
+        (f: A -> B -> A)
+        (f': A' -> B -> A')
+        (g: A -> A')
+        (P: A -> Prop):
+    forall (l: list B),
+      (forall a0 a, List.In a l -> P a0 -> P (f a0 a)) ->
+      (forall a0 a, List.In a l -> P a0 -> g (f a0 a) = f' (g a0) a) ->
+      forall (a0: A),
+        P a0 ->
+        g (fold_left f l a0) = fold_left f' l (g a0).
+  Proof.
+    induction l; simpl; intros HP Hg a0 Pa0.
+    - reflexivity.
+    - rewrite IHl, Hg; eauto.
+  Qed.
+
   Fixpoint replace_nth (n: nat) (l: list A) (a: A) {struct l} :=
     match l, n with
     | [], _ => []
@@ -743,6 +760,77 @@ Section Lists.
     - assert ([nth i (skipn k l) d] = [nth (i + k) l d]) as [=->]; try reflexivity.
       rewrite <- !firstn_skipn_nth; rewrite ?skipn_length; try lia.
       rewrite skipn_skipn; reflexivity.
+  Qed.
+
+
+  Lemma nth_seq len: forall i start d,
+    (i < len)%nat ->
+    nth i (seq start len) d = (i + start)%nat.
+  Proof.
+    induction len; destruct i; intros; simpl; try lia.
+    rewrite IHlen; lia.
+  Qed.
+
+  Lemma nth_inj {A} n : forall (l l': list A) d,
+    length l = n ->
+    length l' = n ->
+    (forall i, (i < n)%nat -> nth i l d = nth i l' d) ->
+    l = l'.
+  Proof.
+    induction n; destruct l, l'; cbn [List.length]; intros * ?? Hi; try lia.
+    - reflexivity.
+    - f_equal.
+      + apply (Hi 0%nat ltac:(lia)).
+      + eapply IHn; eauto; intros i0 Hi0.
+        apply (Hi (S i0)%nat ltac:(lia)).
+  Qed.
+
+  Lemma nth_repeat {A} (a d: A): forall n i,
+      (i < n)%nat ->
+      nth i (repeat a n) d = a.
+  Proof.
+    induction n; destruct i; simpl; intros; try lia.
+    - reflexivity.
+    - apply IHn; lia.
+  Qed.
+
+  Lemma nth_repeat_default {A} (d: A): forall n i,
+      nth i (repeat d n) d = d.
+  Proof.
+    intros; destruct (Nat.lt_ge_cases i n).
+    - rewrite nth_repeat by lia; reflexivity.
+    - rewrite nth_overflow by (rewrite repeat_length; lia); reflexivity.
+  Qed.
+
+  Lemma map_seq_nth_slice {A} (l: list A) (d: A) :
+    forall len start,
+      List.map (fun idx => nth idx l d) (seq start len) =
+      List.firstn len (List.skipn start l) ++
+      repeat d (start + len - Nat.max start (List.length l)).
+  Proof.
+    intros.
+    eapply @nth_inj with (d := d); intros.
+    - rewrite map_length, seq_length; reflexivity.
+    - rewrite app_length, firstn_length, repeat_length, skipn_length; lia.
+    - destruct (Nat.lt_ge_cases i (List.length (List.firstn len (List.skipn start l))));
+        [rewrite app_nth1 by lia | rewrite app_nth2 by lia].
+      all: rewrite <- nth_nth_nth_map with (dn := List.length l) by lia.
+      all: rewrite nth_seq by lia.
+      + rewrite nth_firstn, nth_skipn by lia; reflexivity.
+      + rewrite firstn_length, skipn_length in *.
+        rewrite nth_overflow, nth_repeat_default by lia.
+        reflexivity.
+  Qed.
+
+  Lemma map_seq_nth_slice_le {A} (l: list A) (d: A) :
+    forall len start,
+      (start + len <= List.length l)%nat ->
+      List.map (fun idx => nth idx l d) (seq start len) =
+      List.firstn len (List.skipn start l).
+  Proof.
+    intros; rewrite map_seq_nth_slice.
+    replace (_ + _ - _)%nat with 0%nat by lia; simpl.
+    rewrite app_nil_r; reflexivity.
   Qed.
 End Lists.
 
@@ -1664,6 +1752,14 @@ Section DivUp.
 End DivUp.
 
 Section Chunks.
+  Lemma nth_chunk {A} k (Hk: (k <> 0)%nat) (bs: list A) i d
+        (Hi : (i < Nat.div_up (length bs) k)%nat) :
+    nth i (chunk k bs) d = firstn k (skipn (i*k) bs).
+  Proof.
+    pose proof nth_error_chunk k Hk bs i Hi as Hn.
+    eapply nth_error_nth in Hn; eassumption.
+  Qed.
+
   Lemma Forall_chunk'_length_mod {A} (l: list A) n:
     forall acc, (length acc < n)%nat ->
            ((length l + length acc) mod n = length l mod n)%nat ->
@@ -1909,6 +2005,26 @@ Section combine_split.
     rewrite map_ext_id; [ reflexivity | ].
     intros * Hin%(Forall_In (Forall_le_combine_in_bounds 4 bs ltac:(lia))).
     apply word.unsigned_of_Z_nowrap; assumption.
+  Qed.
+
+  Lemma le_combine_nth_chunk n (bs: list byte) idx dd:
+    n <> 0%nat ->
+    (idx < Nat.div_up (Datatypes.length bs) n)%nat ->
+    le_combine (nth idx (chunk n bs) dd) =
+    le_combine (List.map (fun idx => nth idx bs Byte.x00) (seq (idx * n) n)).
+  Proof.
+    intros.
+    rewrite nth_chunk by assumption.
+    rewrite map_seq_nth_slice, le_combine_app_0.
+    reflexivity.
+  Qed.
+
+  Lemma In_map_combine_in_bounds n (Hn: n <> 0%nat) bs a:
+    In a (List.map le_combine (chunk n bs)) ->
+    0 <= a < 2 ^ (8 * Z.of_nat n).
+  Proof.
+    intros; eapply (Forall_In (Forall_le_combine_in_bounds n bs ltac:(lia)));
+      eassumption.
   Qed.
 End combine_split.
 
@@ -2173,6 +2289,91 @@ Section Misc.
   Lemma eq_impl : forall a b, a = b -> a -> b.
   Proof. intros * -> ?; eassumption. Qed.
 End Misc.
+
+Section Nat2Z.
+  Lemma Nat2Z_inj_pow a b:
+    Z.of_nat (a ^ b) = (Z.of_nat a ^ Z.of_nat b)%Z.
+  Proof.
+    induction b.
+    - reflexivity.
+    - cbn -[Z.of_nat Z.pow].
+      rewrite Nat2Z.inj_succ, Z.pow_succ_r; lia.
+  Qed.
+
+  Lemma Z_div_eucl_unique a b q q' r r':
+    0 <= r < b \/ b < r <= 0 ->
+    0 <= r' < b \/ b < r' <= 0 ->
+    a = b * q + r ->
+    a = b * q' + r' ->
+    (q = q' /\ r = r').
+  Proof.
+    intros Hr Hr' Hq Hq';
+      erewrite (Z.div_unique a b q r Hr Hq);
+      erewrite (Z.div_unique a b q' r' Hr' Hq');
+      erewrite (Z.mod_unique a b q r Hr Hq);
+      erewrite (Z.mod_unique a b q' r' Hr' Hq');
+      split; reflexivity.
+  Qed.
+
+  (* FIXME: already exists as div_Zdiv, mod_Zmod *)
+  Lemma Nat2Z_inj_div_mod a b:
+    Z.of_nat (a / b) = Z.of_nat a / Z.of_nat b /\
+    Z.of_nat (a mod b) = Z.of_nat a mod Z.of_nat b.
+  Proof.
+    destruct (Nat.eq_dec b 0) as [->|].
+    - destruct a; split; reflexivity.
+    - pose (q := (a / b)%nat).
+      pose (r := (a mod b)%nat).
+      assert (a = b * q + r)%nat as Hnat by (apply Nat_mod_eq'; lia).
+      pose (zq := Z.of_nat a / Z.of_nat b).
+      pose (zr := Z.of_nat a mod Z.of_nat b).
+      assert (Z.of_nat a = Z.of_nat b * zq + zr) as Hz by (apply Z_mod_eq'; lia).
+      apply (f_equal Z.of_nat) in Hnat.
+      rewrite Nat2Z.inj_add, Nat2Z.inj_mul in Hnat.
+      pose proof Nat.mod_bound_pos a b ltac:(lia) ltac:(lia).
+      pose proof Z.mod_bound_or (Z.of_nat a) (Z.of_nat b).
+      eapply Z_div_eucl_unique; try eassumption.
+      all: try lia.
+  Qed.
+
+  Lemma Nat2Z_inj_div a b:
+    Z.of_nat (a / b) = Z.of_nat a / Z.of_nat b.
+  Proof. apply (Nat2Z_inj_div_mod a b). Qed.
+
+  Lemma Nat2Z_inj_mod a b:
+    Z.of_nat (a mod b) = Z.of_nat a mod Z.of_nat b.
+  Proof. apply (Nat2Z_inj_div_mod a b). Qed.
+
+  Lemma Nat2Z_inj_odd : forall n,
+    Z.odd (Z.of_nat n) = Nat.odd n.
+  Proof.
+    apply Nat.pair_induction.
+    - intros ?? ->; reflexivity.
+    - reflexivity.
+    - reflexivity.
+    - intros; rewrite !Nat2Z.inj_succ, Z.odd_succ_succ. eassumption.
+  Qed.
+
+  Lemma Natmod_odd: forall a : nat,
+      (a mod 2 = if Nat.odd a then 1 else 0)%nat.
+  Proof.
+    apply Nat.pair_induction.
+    - intros ?? ->; reflexivity.
+    - reflexivity.
+    - reflexivity.
+    - intros.
+      replace (S (S n)) with (n + 1 * 2)%nat at 1 by lia.
+      rewrite Nat.mod_add by lia.
+      eassumption.
+  Qed.
+
+  Lemma Natodd_mod : forall a : nat,
+      (Nat.odd a = negb (a mod 2 =? 0))%nat.
+  Proof.
+    intros; rewrite Natmod_odd.
+    destruct Nat.odd; reflexivity.
+  Qed.
+End Nat2Z.
 
 Section Rupicola.
   Definition __rupicola_program_marker {A} (a: A) := True.
