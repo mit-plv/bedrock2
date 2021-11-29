@@ -982,7 +982,7 @@ Ltac compile_map :=
       lazymatch v with
       | (ListArray.map (V := Init.Byte.byte) _ ?l) =>
           _compile_map locals (Z.of_nat (List.length l)) compile_byte_listarray_map
-      | (ListArray.map (V := word) _ ?l) =>
+      | (ListArray.map (V := @word.rep _ _) _ ?l) =>
           _compile_map locals (Z.of_nat (List.length l)) compile_word_listarray_map
       end
   end.
