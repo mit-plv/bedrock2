@@ -11,7 +11,7 @@ CFLAGS="${CFLAGS:--O3}"
 benchmark=ip_checksum
 for language in "c" "rupicola"; do
 	CCname="$(printf "%s" "$CC" | sed 's/[0-9-]\+$//')"
-	CCversion="$($CC --version | head -1 | tr ' ' '\n' | tail -1)"
+	CCversion="$($CC -dumpfullversion 2>/dev/null || $CC -dumpversion)"
 	name="$benchmark-$language-${CCname}-$CCversion$CFLAGS"
 	filename="benchmark-$(printf "%s" "$name" | tr -dc '0123456789=+-.ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz')"
 	# ident="$(printf "%s" "$filename" | tr '=+-.' _)"
