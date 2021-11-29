@@ -23,6 +23,36 @@ Import List.ListNotations. Local Open Scope list_scope.
 Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
 | mk_get_option: forall (a: A) (post: A -> Prop), post a -> get_option (Some a) post.
 
+Module Import SepLogPredsWithAddrLast. Section __.
+  Context {width : Z} {word : Word.Interface.word width} {mem : map.map word byte}.
+
+  Definition at_addr(addr: word)(clause: word -> mem -> Prop): mem -> Prop := clause addr.
+
+  (* Redefinitions to change order of arguments to put address last *)
+
+  Definition ptsto_bytes (n : nat) (value : tuple byte n) (addr : word) : mem -> Prop :=
+    ptsto_bytes n addr value.
+
+  Definition littleendian (n : nat) (value : Z) (addr : word) : mem -> Prop :=
+    littleendian n addr value.
+
+  Definition truncated_scalar sz (value : Z) addr : mem -> Prop :=
+    truncated_scalar sz addr value.
+
+  Definition truncated_word sz (value: word) addr : mem -> Prop :=
+    truncated_word sz addr value.
+
+  Definition scalar16 := truncated_word Syntax.access_size.two.
+  Definition scalar32 := truncated_word Syntax.access_size.four.
+  Definition scalar := truncated_word Syntax.access_size.word.
+End __. End SepLogPredsWithAddrLast.
+
+(* Note: This notation is *not* intended to be used together with a `*` that means `sep`,
+   but with a `*` that means `word.mul`, so that we can write `addr + 4 * offs |-> element`,
+   so `*` and `+` need to bind stronger than `|->`.
+   Given that `+` is at level 50 and `*` is at level 40, we choose level 55: *)
+Notation "addr |-> clause" := (at_addr addr clause) (at level 55).
+
 Section WithParams.
   Import bedrock2.Syntax.
   Context {word: word.word 32} {mem: map.map word byte} {locals: map.map string word}.
@@ -30,7 +60,7 @@ Section WithParams.
   Context {ext_spec: ExtSpec}.
 
   Lemma load_of_sep_cps: forall sz addr value R m (post: word -> Prop),
-      sep (truncated_word sz addr value) R m /\ post (truncate_word sz value) ->
+      sep (addr |-> truncated_word sz value) R m /\ post (truncate_word sz value) ->
       get_option (Memory.load sz m addr) post.
   Proof.
     intros. destruct H. eapply load_of_sep in H. rewrite H.
@@ -38,7 +68,7 @@ Section WithParams.
   Qed.
 
   Lemma load_word_of_sep_cps: forall addr value R m (post: word -> Prop),
-      sep (scalar addr value) R m /\ post value ->
+      sep (addr |-> scalar value) R m /\ post value ->
       get_option (Memory.load Syntax.access_size.word m addr) post.
   Proof.
     intros. destruct H. eapply load_word_of_sep in H. rewrite H.
@@ -46,8 +76,8 @@ Section WithParams.
   Qed.
 
   Lemma store_word_of_sep_cps: forall addr oldvalue newvalue R m (post: mem -> Prop),
-      sep (scalar addr oldvalue) R m ->
-      (forall m', sep (scalar addr newvalue) R m' -> post m') ->
+      sep (addr |-> scalar oldvalue) R m ->
+      (forall m', sep (addr |-> scalar newvalue) R m' -> post m') ->
       get_option (Memory.store access_size.word m addr newvalue) post.
   Proof.
     intros. eapply Scalars.store_word_of_sep in H. 2: eassumption.
@@ -89,7 +119,7 @@ Section WithParams.
 
   Lemma wp_load_anysize: forall m l sz addr (post: word -> Prop),
       wp_expr m l addr (fun a =>
-        exists v R, seps [truncated_word sz a v; R; emp (post (truncate_word sz v))] m) ->
+        exists v R, seps [a |-> truncated_word sz v; R; emp (post (truncate_word sz v))] m) ->
       wp_expr m l (expr.load sz addr) post.
   Proof.
     intros. constructor. cbn. unfold load. inversion H.
@@ -105,7 +135,7 @@ Section WithParams.
 
   Lemma wp_load_word: forall m l addr (post: word -> Prop),
       wp_expr m l addr (fun a =>
-        exists v R, seps [scalar a v; R; emp (post v)] m) ->
+        exists v R, seps [a |-> scalar v; R; emp (post v)] m) ->
       wp_expr m l (expr.load access_size.word addr) post.
   Proof.
     intros. eapply wp_load_anysize.
@@ -134,6 +164,18 @@ Section WithParams.
                           (trace -> mem -> list word -> Prop) -> Prop))
             (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop): Prop :=
     mk_wp_cmd: WeakestPrecondition.cmd call c t m l post -> wp_cmd call c t m l post.
+
+  Lemma weaken_wp_cmd: forall call c t m l (post1 post2: _->_->_->Prop),
+      wp_cmd call c t m l post1 ->
+      (forall t m l, post1 t m l -> post2 t m l) ->
+      wp_cmd call c t m l post2.
+  Proof.
+    intros. constructor. inversion H.
+    eapply WeakestPreconditionProperties.Proper_cmd. 3: eassumption.
+    1: admit.
+    cbv [RelationClasses.Reflexive Morphisms.pointwise_relation Morphisms.respectful Basics.impl].
+    assumption.
+  Admitted. (* TODO some Proper_call and some shelved params *)
 
   Lemma wp_expr_to_dexpr: forall m l e post,
       wp_expr m l e post ->
@@ -459,6 +501,8 @@ Set Ltac Backtrace.
 
 
 Load LiveVerif.
+Import SepLogPredsWithAddrLast.
+
 
 (* TODO: write down postcondition only at end *)
 Definition swap_locals: {f: list string * list string * cmd &
@@ -480,9 +524,9 @@ Defined.
 (* TODO: write down postcondition only at end *)
 Definition swap: {f: list string * list string * cmd &
   forall call t m a_addr b_addr a b R,
-    seps [scalar a_addr a; scalar b_addr b; R] m ->
+    seps [a_addr |-> scalar a; b_addr |-> scalar b; R] m ->
     vc_func call f t m [a_addr; b_addr] (fun t' m' retvs =>
-      t' = t /\ (scalar a_addr b * scalar b_addr a * R)%sep m' /\ retvs = []
+      t' = t /\ seps [a_addr |-> scalar b; b_addr |-> scalar a; R] m' /\ retvs = []
   )}.
     start.
 #*/ t = load(a_addr);                                                        /*.
@@ -503,6 +547,7 @@ Definition swap: {f: list string * list string * cmd &
 
     do 2 eexists.
     refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem x).
+    (* TODO: how to print seps list with emps? *)
     ecancel_step_by_implication.
     eapply impl1_done.
     eapply store_word_of_sep_cps; [try solve [cbn[seps] in *; ecancel_assumption]|intros].
@@ -512,7 +557,7 @@ Definition swap: {f: list string * list string * cmd &
     eapply store_word_of_sep_cps; [try solve [cbn[seps] in *; ecancel_assumption]|intros].
 
     ret (@nil string).
-    subst. intuition solve[ecancel_assumption].
+    subst. intuition solve[cbn[seps] in *; ecancel_assumption].
 Defined.
 
 Goal False.
