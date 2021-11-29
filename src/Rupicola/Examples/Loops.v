@@ -14,14 +14,6 @@ Section Ex.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Lemma signed_lt_unsigned (w : word):
-    word.signed w <= word.unsigned w.
-  Proof.
-    pose proof word.unsigned_range w.
-    rewrite word.signed_unsigned_dec.
-    destruct Z_lt_le_dec; lia.
-  Qed.
-
   Program Definition vect_memcpy {n1 n2} (len: word)
           (a1: VectorArray.t word n1)
           (a2: VectorArray.t word n2)

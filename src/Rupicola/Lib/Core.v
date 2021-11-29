@@ -1132,6 +1132,14 @@ Module word.
       - rewrite word.signed_eq_swrap_unsigned, word.swrap_inrange; lia.
     Qed.
 
+    Lemma signed_lt_unsigned (w : word):
+      word.signed w <= word.unsigned w.
+    Proof.
+      pose proof word.unsigned_range w.
+      rewrite signed_unsigned_dec.
+      destruct Z_lt_le_dec; lia.
+    Qed.
+
     Lemma signed_gz_eq_unsigned w :
       0 <= word.signed w ->
       word.unsigned w = word.signed w.
