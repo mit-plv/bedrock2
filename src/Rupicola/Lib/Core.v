@@ -1576,35 +1576,34 @@ Section Scalar.
     reflexivity.
   Qed.
 
-  Lemma bytes_per_width_bytes_per_word : forall width,
-      width >= 0 ->
-      Z.of_nat (Memory.bytes_per (width := width) access_size.word) = Memory.bytes_per_word width.
-  Proof.
-    intros; unfold Memory.bytes_per, Memory.bytes_per_word.
-    rewrite Z2Nat.id; try apply Z.div_pos; lia.
-  Qed.
-
-  Lemma bytes_per_wordwidth_bytes_per_word :
-      Z.of_nat (Memory.bytes_per (width := width) access_size.word) = Memory.bytes_per_word width.
-  Proof.
-    apply bytes_per_width_bytes_per_word.
-    pose proof word.width_pos; lia.
-  Qed.
-
-  Lemma split_bytes_per_word:
+  Lemma split_bytes_per_len sz:
     forall x : word,
-      Z.of_nat
-        (Datatypes.length
-           (HList.tuple.to_list
-              (LittleEndian.split (Memory.bytes_per (width := width) access_size.word)
-                                  (word.unsigned x)))) = Memory.bytes_per_word width.
+      Datatypes.length
+        (HList.tuple.to_list
+           (LittleEndian.split (Memory.bytes_per (width := width) sz)
+                               (word.unsigned x))) =
+      Memory.bytes_per (width := width) sz.
   Proof.
     intros x.
     rewrite HList.tuple.length_to_list.
-    apply bytes_per_wordwidth_bytes_per_word.
+    reflexivity.
   Qed.
 
   Context {mem: map.map word byte} {mem_ok : map.ok mem}.
+
+  Lemma bytes_per_width_bytes_per_word' : forall width,
+      width >= 0 ->
+      Z.of_nat (Memory.bytes_per (width := width) access_size.word) =
+      Memory.bytes_per_word width.
+  Proof. intros; unfold Memory.bytes_per, Memory.bytes_per_word; lia. Qed.
+
+  Lemma bytes_per_width_bytes_per_word :
+    Z.of_nat (Memory.bytes_per (width := width) access_size.word) =
+    Memory.bytes_per_word width.
+  Proof.
+    pose proof word.width_pos.
+    apply bytes_per_width_bytes_per_word'; lia.
+  Qed.
 
   Lemma scalar_to_anybytes px x:
     Lift1Prop.impl1 (T := mem)
@@ -1614,7 +1613,7 @@ Section Scalar.
     intros m H; evar (bs: list byte);
       assert (array ptsto (word.of_Z 1) px bs m) by
         (subst bs; simple apply H).
-    subst bs; erewrite <- split_bytes_per_word.
+    subst bs. erewrite <- bytes_per_width_bytes_per_word, <- split_bytes_per_len.
     eapply array_1_to_anybytes; eauto.
   Qed.
 
@@ -2060,7 +2059,7 @@ Section Array.
     SeparationLogic.seprewrite_in @array_append H.
     SeparationLogic.seprewrite_in @array_cons H.
     SeparationLogic.seprewrite_in @array_cons H.
-    (* FIXME: Get Sam to make this proof magically shorter *)
+    (* FIXME: Find a way to shorten this proof *)
     rewrite A in H.
     set (word.unsigned size * Z.of_nat max_len) as max_len_bytes in H.
     set (word.add addr (word.of_Z max_len_bytes)) as base in H.
@@ -2122,6 +2121,15 @@ Section Aliasing.
     lia.
   Qed.
 
+  Context {BW: Bitwidth width}.
+
+  Lemma bytes_per_range sz:
+    0 < Z.of_nat (Memory.bytes_per (width := width) sz) < 2 ^ width.
+  Proof. (* Cop out by depending on BW; the previous proof was too bad: *)
+    destruct sz; simpl.
+    all: try (destruct width_cases as [-> | ->]; split; reflexivity).
+  Qed.
+
   (* From insertionsort.v in Bedrock2 *)
   Lemma ptsto_no_aliasing': forall addr b1 b2 m (R: Mem -> Prop),
       (ptsto addr b1 * ptsto addr b2 * R)%sep m ->
@@ -2150,22 +2158,24 @@ Section Aliasing.
     - eapply ptsto_no_aliasing'; eassumption.
   Qed.
 
-  Lemma scalar_no_aliasing1 :
+  Lemma scalar_no_aliasing1 sz :
     no_aliasing (word := word) (Mem := Mem)
-                (word.of_Z (Memory.bytes_per_word width))
-                (scalar (mem := Mem)).
+                (word.of_Z (Z.of_nat (Memory.bytes_per (width := width) sz)))
+                (truncated_word sz (mem := Mem)).
   Proof.
-    red; intros * h Hmem.
-    pose proof bytes_per_word_range.
+    red. intros * h Hmem.
+    pose proof bytes_per_range.
     rewrite word.unsigned_of_Z_nowrap in h by lia.
     unfold scalar, truncated_word, truncated_scalar,
     littleendian, ptsto_bytes.ptsto_bytes in *.
-    pose proof split_bytes_per_word a as Hlena.
-    pose proof split_bytes_per_word b as Hlenb.
+    pose proof split_bytes_per_len sz a as Hlena.
+    pose proof split_bytes_per_len sz b as Hlenb.
     set (HList.tuple.to_list _) as la in Hmem, Hlena.
     set (HList.tuple.to_list _) as lb in Hmem, Hlenb.
     rewrite <- (firstn_skipn (Z.to_nat delta) la) in Hmem.
     seprewrite_in @array_append Hmem; try lia.
+    assert (Z.to_nat delta <= Datatypes.length la)%nat
+      by (subst la; rewrite HList.tuple.length_to_list; lia).
     rewrite word.unsigned_of_Z_1, Z.mul_1_l, firstn_length_le, Z2Nat.id in Hmem by lia.
     destruct lb; cbn -[Z.of_nat] in Hlenb; [ lia | ].
     pose proof List.skipn_length (Z.to_nat delta) la as Hlena'.
@@ -2180,10 +2190,7 @@ Section Aliasing.
                 (word.of_Z (Z.of_nat (Memory.bytes_per
                                         (width := width)
                                         access_size.word))) scalar.
-  Proof.
-    pose proof bytes_per_word_range.
-    simpl; rewrite Z2Nat.id by lia; apply scalar_no_aliasing1.
-  Qed.
+  Proof. apply scalar_no_aliasing1. Qed.
 End Aliasing.
 
 Section Semantics.

@@ -82,29 +82,51 @@ Section with_parameters.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Section GenericArray.
-    (* No 16 or 32 to avoid depending on two more word instances. *)
-    Inductive AccessSize := AccessByte | AccessWord.
-
     Record access_info :=
       { ai_type : Type;
         ai_size : access_size.access_size;
         ai_repr : word -> ai_type -> memT -> Prop;
         ai_to_word : ai_type -> word;
+        ai_to_truncated_word : ai_type -> word;
         ai_default : HasDefault ai_type;
         ai_width := Z.of_nat (@Memory.bytes_per width ai_size) }.
 
-    Local Definition _access_info asize :=
+    (* FIXME it might be better to use Cyclic.ZModulo.ZModulo. for the 16 and 32
+       cases, since it would avoid the truncation step (and it would make it
+       possible to recognize which type of array we're working with
+       unambiguously); otherwise currently the result of a 16 or 32-bits read
+       does not match the result of the Gallina-level get function. *)
+
+    Local Definition _access_info asize : access_info :=
       match asize with
-      | AccessByte => {| ai_size := access_size.one;
-                        ai_type := byte;
-                        ai_repr := scalar8;
-                        ai_default := Byte.x00;
-                        ai_to_word v := word_of_byte v |}
-      | AccessWord => {| ai_size := access_size.word;
-                        ai_type := word;
-                        ai_repr := scalar;
-                        ai_default := word.of_Z 0;
-                        ai_to_word v := v |}
+      | access_size.one =>
+          {| ai_size := asize;
+             ai_type := byte;
+             ai_repr := scalar8;
+             ai_default := Byte.x00;
+             ai_to_word v := word_of_byte v;
+             ai_to_truncated_word v := word_of_byte v |}
+      | access_size.two =>
+          {| ai_size := asize;
+             ai_type := word;
+             ai_repr := scalar16;
+             ai_default := word.of_Z 0;
+             ai_to_word v := v;
+             ai_to_truncated_word v := truncate_word access_size.two v |}
+      | access_size.four =>
+          {| ai_size := asize;
+             ai_type := word;
+             ai_repr := scalar32;
+             ai_default := word.of_Z 0;
+             ai_to_word v := v;
+             ai_to_truncated_word v := truncate_word access_size.four v |}
+      | access_size.word =>
+          {| ai_size := access_size.word;
+             ai_type := word;
+             ai_repr := scalar;
+             ai_default := word.of_Z 0;
+             ai_to_word v := v;
+             ai_to_truncated_word v := v |}
       end.
 
     Lemma ai_width_bounded a :
@@ -114,7 +136,7 @@ Section with_parameters.
       all: try (destruct width_cases as [H|H]; rewrite H; simpl; lia).
     Qed.
 
-    Context (sz: AccessSize).
+    Context (sz: access_size.access_size).
     Notation ai := (_access_info sz).
     Notation V := ai.(ai_type).
 
@@ -163,7 +185,7 @@ Section with_parameters.
         (let v := v in
          <{ Trace := tr;
             Memory := mem;
-            Locals := map.put locals var (ai.(ai_to_word) v);
+            Locals := map.put locals var (ai.(ai_to_truncated_word) v);
             Functions := functions }>
          k_impl
          <{ pred (k v eq_refl) }>) ->
@@ -183,7 +205,7 @@ Section with_parameters.
       pose proof word.unsigned_range (K_to_word idx) as (Hge & _).
       destruct (Hget a) as [default Hget0].
 
-      exists (ai.(ai_to_word) (get a idx)); split; cbn; [ | assumption ].
+      exists (ai.(ai_to_truncated_word) (get a idx)); split; cbn; [ | assumption ].
       eapply WeakestPrecondition_dexpr_expr; eauto.
       eapply WeakestPrecondition_dexpr_expr; eauto.
       eexists; split; [ | reflexivity ].
@@ -206,8 +228,10 @@ Section with_parameters.
       rewrite Hget0.
 
       clear Hget Hrw.
-      destruct sz; cbv [_access_info ai_type ai_size ai_repr ai_to_word ai_width] in *.
+      destruct sz; cbv [_access_info ai_type ai_size ai_repr ai_to_truncated_word ai_width] in *.
       - eapply load_one_of_sep; ecancel_assumption.
+      - eapply load_two_of_sep; ecancel_assumption.
+      - eapply load_four_of_sep; ecancel_assumption.
       - eapply load_word_of_sep; ecancel_assumption.
     Qed.
 
@@ -229,6 +253,10 @@ Section with_parameters.
       (let/n tmp as tmp_var := get a idx in
        let/n tmp as tmp_var := f tmp in
        nlet vars (put a idx tmp) id).
+
+    Definition foldl_step {A} tmp_var vars (f: A -> V -> A) bs acc (idx: K) :=
+      (let/n tmp as tmp_var := get bs idx in
+       nlet vars (f acc tmp) id).
 
     Local Lemma compile_array_put_length :
       (K_to_nat idx < Datatypes.length (to_list a))%nat ->
@@ -331,7 +359,9 @@ Section with_parameters.
             cbv [_access_info ai_type ai_size ai_repr ai_to_word ai_width] in *.
 
           1: eapply store_one_of_sep; [ ecancel_assumption | ].
-          2: eapply store_word_of_sep; [ ecancel_assumption | ].
+          2: eapply store_two_of_sep; [ ecancel_assumption | ].
+          3: eapply store_four_of_sep; [ ecancel_assumption | ].
+          4: eapply store_word_of_sep; [ ecancel_assumption | ].
 
           all: intros m Hm; apply H4; seprewrite Hrw_put.
           all: seprewrite
@@ -343,12 +373,13 @@ Section with_parameters.
           all: repeat rewrite word.ring_morph_mul, !word.of_Z_unsigned by lia.
 
           1: rewrite to_byte_of_byte_nowrap in Hm.
-          all: try ecancel_assumption. } }
+          all: try ecancel_assumption.
+      } }
     Qed.
   End GenericArray.
 
   Section GenericVectorArray.
-    Context (sz: AccessSize).
+    Context (sz: access_size.access_size).
     Notation ai := (_access_info sz).
 
     Context {K: Type}
@@ -422,7 +453,7 @@ Section with_parameters.
         (let v := v in
          <{ Trace := tr;
             Memory := mem;
-            Locals := map.put locals var (ai.(ai_to_word) v);
+            Locals := map.put locals var (ai.(ai_to_truncated_word) v);
             Functions := functions }>
          k_impl
          <{ pred (k v eq_refl) }>) ->
@@ -495,7 +526,7 @@ Section with_parameters.
   End GenericVectorArray.
 
   Section GenericListArray.
-    Context (sz: AccessSize).
+    Context (sz: access_size.access_size).
     Context {HD: HasDefault (_access_info sz).(ai_type)}.
     Notation ai := (_access_info sz).
 
@@ -568,7 +599,7 @@ Section with_parameters.
         (let v := v in
          <{ Trace := tr;
             Memory := mem;
-            Locals := map.put locals var (ai.(ai_to_word) v);
+            Locals := map.put locals var (ai.(ai_to_truncated_word) v);
             Functions := functions }>
          k_impl
          <{ pred (k v eq_refl) }>) ->
@@ -648,7 +679,7 @@ Section with_parameters.
   End GenericListArray.
 
   Section GenericSizedListArray.
-    Context {sz: AccessSize}.
+    Context {sz: access_size.access_size}.
     Context {HD: HasDefault (_access_info sz).(ai_type)}.
     Notation ai := (_access_info sz).
 
@@ -700,7 +731,7 @@ Section with_parameters.
       intros * (<- & Hmem)%sep_assoc%sep_emp_l.
       etransitivity; [ | eapply array_max_length ]; eauto.
       - rewrite word.unsigned_of_Z_nowrap by lia; reflexivity.
-      - destruct sz; eauto using scalar8_no_aliasing, scalar_no_aliasing2.
+      - destruct sz; apply scalar8_no_aliasing || apply scalar_no_aliasing1.
       - rewrite word.unsigned_of_Z_nowrap; lia.
     Qed.
 
@@ -750,7 +781,7 @@ Section with_parameters.
         (let v := v in
          <{ Trace := tr;
             Memory := mem;
-            Locals := map.put locals var (ai.(ai_to_word) v);
+            Locals := map.put locals var (ai.(ai_to_truncated_word) v);
             Functions := functions }>
          k_impl
          <{ pred (k v eq_refl) }>) ->
@@ -829,7 +860,7 @@ Section with_parameters.
 
   Ltac prepare_array_lemma lemma sz := (* This makes [simple apply] work *)
     pose (lemma sz) as lem;
-    cbv beta iota delta [_access_info ai_type ai_repr ai_to_word ai_width ai_size map_step]
+    cbv beta iota delta [_access_info ai_type ai_repr ai_to_word ai_to_truncated_word ai_width ai_size map_step]
       in (type of lem);
     change (let ai_width := _ in ?x) with x in (type of lem);
     cbv beta in (type of lem);
@@ -840,36 +871,64 @@ Section with_parameters.
     ltac:(prepare_array_lemma lemma sz) (only parsing).
 
   Definition compile_byte_vectorarray_get :=
-    prepare_array_lemma (@compile_vectorarray_get) AccessByte.
+    prepare_array_lemma (@compile_vectorarray_get) access_size.one.
+  Definition compile_w16_vectorarray_get :=
+    prepare_array_lemma (@compile_vectorarray_get) access_size.two.
+  Definition compile_w32_vectorarray_get :=
+    prepare_array_lemma (@compile_vectorarray_get) access_size.four.
   Definition compile_word_vectorarray_get :=
-    prepare_array_lemma (@compile_vectorarray_get) AccessWord.
+    prepare_array_lemma (@compile_vectorarray_get) access_size.word.
   Definition compile_byte_vectorarray_put :=
-    prepare_array_lemma (@compile_vectorarray_put) AccessByte.
+    prepare_array_lemma (@compile_vectorarray_put) access_size.one.
+  Definition compile_w16_vectorarray_put :=
+    prepare_array_lemma (@compile_vectorarray_put) access_size.two.
+  Definition compile_w32_vectorarray_put :=
+    prepare_array_lemma (@compile_vectorarray_put) access_size.four.
   Definition compile_word_vectorarray_put :=
-    prepare_array_lemma (@compile_vectorarray_put) AccessWord.
+    prepare_array_lemma (@compile_vectorarray_put) access_size.word.
 
   Definition compile_byte_unsizedlistarray_get :=
-    prepare_array_lemma (@compile_unsizedlistarray_get) AccessByte.
+    prepare_array_lemma (@compile_unsizedlistarray_get) access_size.one.
+  Definition compile_w16_unsizedlistarray_get :=
+    prepare_array_lemma (@compile_unsizedlistarray_get) access_size.two.
+  Definition compile_w32_unsizedlistarray_get :=
+    prepare_array_lemma (@compile_unsizedlistarray_get) access_size.four.
   Definition compile_word_unsizedlistarray_get :=
-    prepare_array_lemma (@compile_unsizedlistarray_get) AccessWord.
+    prepare_array_lemma (@compile_unsizedlistarray_get) access_size.word.
   Definition compile_byte_unsizedlistarray_put :=
-    prepare_array_lemma (@compile_unsizedlistarray_put) AccessByte.
+    prepare_array_lemma (@compile_unsizedlistarray_put) access_size.one.
+  Definition compile_w16_unsizedlistarray_put :=
+    prepare_array_lemma (@compile_unsizedlistarray_put) access_size.two.
+  Definition compile_w32_unsizedlistarray_put :=
+    prepare_array_lemma (@compile_unsizedlistarray_put) access_size.four.
   Definition compile_word_unsizedlistarray_put :=
-    prepare_array_lemma (@compile_unsizedlistarray_put) AccessWord.
+    prepare_array_lemma (@compile_unsizedlistarray_put) access_size.word.
 
   Definition compile_byte_sizedlistarray_get :=
-    prepare_array_lemma (@compile_sizedlistarray_get) AccessByte.
+    prepare_array_lemma (@compile_sizedlistarray_get) access_size.one.
+  Definition compile_w16_sizedlistarray_get :=
+    prepare_array_lemma (@compile_sizedlistarray_get) access_size.two.
+  Definition compile_w32_sizedlistarray_get :=
+    prepare_array_lemma (@compile_sizedlistarray_get) access_size.four.
   Definition compile_word_sizedlistarray_get :=
-    prepare_array_lemma (@compile_sizedlistarray_get) AccessWord.
+    prepare_array_lemma (@compile_sizedlistarray_get) access_size.word.
   Definition compile_byte_sizedlistarray_put :=
-    prepare_array_lemma (@compile_sizedlistarray_put) AccessByte.
+    prepare_array_lemma (@compile_sizedlistarray_put) access_size.one.
+  Definition compile_w16_sizedlistarray_put :=
+    prepare_array_lemma (@compile_sizedlistarray_put) access_size.two.
+  Definition compile_w32_sizedlistarray_put :=
+    prepare_array_lemma (@compile_sizedlistarray_put) access_size.four.
   Definition compile_word_sizedlistarray_put :=
-    prepare_array_lemma (@compile_sizedlistarray_put) AccessWord.
+    prepare_array_lemma (@compile_sizedlistarray_put) access_size.word.
 
   Definition compile_byte_listarray_map :=
-    prepare_array_lemma (@compile_listarray_map) AccessByte.
+    prepare_array_lemma (@compile_listarray_map) access_size.one.
+  Definition compile_w16_listarray_map :=
+    prepare_array_lemma (@compile_listarray_map) access_size.two.
+  Definition compile_w32_listarray_map :=
+    prepare_array_lemma (@compile_listarray_map) access_size.four.
   Definition compile_word_listarray_map :=
-    prepare_array_lemma (@compile_listarray_map) AccessWord.
+    prepare_array_lemma (@compile_listarray_map) access_size.word.
 End with_parameters.
 
 Arguments sizedlistarray_value {width word memT} sz len addr a _ : assert.
@@ -932,6 +991,13 @@ Module SizedListArrayCompiler.
   #[export] Hint Extern 1 (WP_nlet_eq (ListArray.map _ _)) =>
     compile_map; shelve : compiler.
 End SizedListArrayCompiler.
+
+Module AccessSizeCompatibilityNotations.
+  Notation AccessByte := access_size.one (only parsing).
+  Notation AccessWord := access_size.word (only parsing).
+End AccessSizeCompatibilityNotations.
+
+Export AccessSizeCompatibilityNotations.
 
 Export VectorArrayCompiler.
 (* UnsizedListArrayCompiler and SizedListArrayCompiler conflict, so don't export them. *)
