@@ -196,6 +196,10 @@ Section ExprCompiler.
       DX (expr.op bopname.and e1 (expr.literal 1)) (of_bool (Z.odd z1)).
     Proof. rewrite word_and_odd; eauto using expr_compile_word_and, expr_compile_Z_literal. Qed.
 
+    Lemma expr_compile_Z_b2z b1:
+      DX e1 (of_bool b1) -> DX e1 (to_w (Z.b2z b1)).
+    Proof. intros; assumption. Qed.
+
     Lemma expr_compile_Z_wrap :
       DX e1 (to_w z1) -> DX e1 (to_w (word.wrap z1)).
     Proof. rewrite word.of_Z_wrap; auto. Qed.
@@ -492,6 +496,9 @@ Notation DPAT p := (DEXPR _ _ _ p) (only parsing).
   simple eapply expr_compile_Z_ltb_u; [ shelve.. | | ] : expr_compiler.
 #[export] Hint Extern 5 (DPAT (of_bool (Z.ltb _ _))) =>
   simple eapply expr_compile_Z_ltb_s; [ shelve.. | | ] : expr_compiler.
+
+#[export] Hint Extern 5 (DPAT (of_Z (Z.b2z _))) =>
+  simple eapply expr_compile_Z_b2z : expr_compiler.
 
 #[export] Hint Extern 5 (DPAT (of_Z (word.wrap _))) =>
   simple eapply expr_compile_Z_wrap : expr_compiler.
