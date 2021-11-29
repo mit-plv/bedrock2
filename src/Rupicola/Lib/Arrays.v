@@ -16,8 +16,10 @@ Module VectorArray.
       Vector.nth_order a pr.
     Definition put {V n} (a: t V n) (k: K) (pr: cast k < n) (v: V) : t V n :=
       Vector.replace_order a pr v.
-    Definition map {V V' n} (a: t V n) (f: V -> V') : t V' n :=
+    Definition map {V V' n} (f: V -> V') (a: t V n) : t V' n :=
       Vector.map f a.
+    Definition fold_left {V V' n} (f: V' -> V -> V') v0 (a: t V n) : V' :=
+      Vector.fold_left f v0 a.
     (* FIXME needs an accessor that generates a test and returns a default *)
   End VectorArray.
 
@@ -66,6 +68,8 @@ Section ListArray.
 
   Definition map {V V'} (f: V -> V') (a: t) :=
     List.map f a.
+  Definition fold_left {V V'} (f: V' -> V -> V') (a: t) (v0: V') :=
+    List.fold_left f a v0.
 End ListArray.
 
 Arguments t : clear implicits.
@@ -665,7 +669,7 @@ Section with_parameters.
 
     Notation map_step := (map_step sz ListArray.get ListArray.put).
 
-    Lemma ListArray_map_step_as_replace_nth {tmp_var vars f}:
+    Lemma ListArray_map_step_ok {tmp_var vars f}:
       acts_as_replace_nth f (map_step tmp_var vars f).
     Proof.
       unfold acts_as_replace_nth, map_step, nlet, id, get, put, cast, Convertible_Z_nat.
@@ -675,7 +679,24 @@ Section with_parameters.
     Definition compile_listarray_map
                f (a: ListArray.t ai.(ai_type)) tmp_var vars :=
       compile_map f (map_step tmp_var vars f) a (ListArray.map f a) vars
-                  ListArray_map_step_as_replace_nth eq_refl.
+                  ListArray_map_step_ok eq_refl.
+
+    Notation foldl_step := (foldl_step sz ListArray.get).
+
+    Lemma ListArray_foldl_step_ok {A} {tmp_var vars} {f: A -> _ -> A} bs:
+      acts_as_foldl_step f (foldl_step tmp_var vars f bs) bs.
+    Proof.
+      unfold acts_as_foldl_step, foldl_step, nlet, id, get, put, cast, Convertible_Z_nat.
+      eintros * ->%nth_error_nth; reflexivity.
+    Qed.
+
+    Definition compile_listarray_scalar_fold_left {A}
+               (f: A -> _ -> A) (bs: ListArray.t ai.(ai_type)) a
+               tmp_var vars :=
+      compile_scalar_fold_left
+        f (foldl_step tmp_var vars f bs) bs
+        a (ListArray.fold_left f bs a) vars
+        eq_refl (ListArray_foldl_step_ok bs).
   End GenericListArray.
 
   Section GenericSizedListArray.
@@ -860,7 +881,8 @@ Section with_parameters.
 
   Ltac prepare_array_lemma lemma sz := (* This makes [simple apply] work *)
     pose (lemma sz) as lem;
-    cbv beta iota delta [_access_info ai_type ai_repr ai_to_word ai_to_truncated_word ai_width ai_size map_step]
+    cbv beta iota delta [_access_info ai_type ai_repr ai_to_word ai_to_truncated_word ai_width ai_size
+                            map_step foldl_step]
       in (type of lem);
     change (let ai_width := _ in ?x) with x in (type of lem);
     cbv beta in (type of lem);
@@ -929,6 +951,15 @@ Section with_parameters.
     prepare_array_lemma (@compile_listarray_map) access_size.four.
   Definition compile_word_listarray_map :=
     prepare_array_lemma (@compile_listarray_map) access_size.word.
+
+  Definition compile_byte_listarray_scalar_fold_left :=
+    prepare_array_lemma (@compile_listarray_scalar_fold_left) access_size.one.
+  Definition compile_w16_listarray_scalar_fold_left :=
+    prepare_array_lemma (@compile_listarray_scalar_fold_left) access_size.two.
+  Definition compile_w32_listarray_scalar_fold_left :=
+    prepare_array_lemma (@compile_listarray_scalar_fold_left) access_size.four.
+  Definition compile_word_listarray_scalar_fold_left :=
+    prepare_array_lemma (@compile_listarray_scalar_fold_left) access_size.word.
 End with_parameters.
 
 Arguments sizedlistarray_value {width word memT} sz len addr a _ : assert.
@@ -942,7 +973,8 @@ Ltac _compile_map locals to thm :=
   let tmp_v := gensym locals "tmp" in
   let to_v := gensym locals "to" in
   let lp := infer_ranged_for_predicate idx_v to_v to in
-  eapply thm with (idx_var := idx_v) (to_var := to_v) (tmp_var := tmp_v) (loop_pred := lp).
+  eapply thm with (idx_var := idx_v) (to_var := to_v)
+                  (tmp_var := tmp_v) (loop_pred := lp).
 
 Ltac compile_map :=
   lazymatch goal with
@@ -952,6 +984,29 @@ Ltac compile_map :=
           _compile_map locals (Z.of_nat (List.length l)) compile_byte_listarray_map
       | (ListArray.map (V := word) _ ?l) =>
           _compile_map locals (Z.of_nat (List.length l)) compile_word_listarray_map
+      end
+  end.
+
+Ltac _compile_scalar_fold_left locals to thm :=
+  let idx_v := gensym locals "from" in
+  let tmp_v := gensym locals "tmp" in
+  let to_v := gensym locals "to" in
+  let lp := infer_ranged_for_predicate idx_v to_v to in
+  eapply thm with (idx_var := idx_v) (to_var := to_v)
+                  (tmp_var := tmp_v) (loop_pred := lp).
+
+Ltac compile_fold_left :=
+  lazymatch goal with
+  | [ |- WeakestPrecondition.cmd _ _ _ _ ?locals (_ (nlet_eq _ ?v _)) ] =>
+      lazymatch v with
+      | (ListArray.fold_left (V := Init.Byte.byte) _ ?l _) =>
+          _compile_scalar_fold_left
+            locals (Z.of_nat (List.length l))
+            compile_byte_listarray_scalar_fold_left
+      | (ListArray.fold_left (V := @word.rep _ _) _ ?l _) =>
+          _compile_scalar_fold_left
+            locals (Z.of_nat (List.length l))
+            compile_word_listarray_scalar_fold_left
       end
   end.
 
@@ -977,6 +1032,8 @@ Module UnsizedListArrayCompiler.
     simple eapply (@compile_word_unsizedlistarray_put); shelve : compiler.
   #[export] Hint Extern 1 (WP_nlet_eq (ListArray.map _ _)) =>
     compile_map; shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (ListArray.fold_left _ _ _)) =>
+    compile_fold_left; shelve : compiler.
 End UnsizedListArrayCompiler.
 
 Module SizedListArrayCompiler.
@@ -990,6 +1047,8 @@ Module SizedListArrayCompiler.
     simple eapply (@compile_word_sizedlistarray_put); shelve : compiler.
   #[export] Hint Extern 1 (WP_nlet_eq (ListArray.map _ _)) =>
     compile_map; shelve : compiler.
+  #[export] Hint Extern 1 (WP_nlet_eq (ListArray.fold_left _ _ _)) =>
+    compile_fold_left; shelve : compiler.
 End SizedListArrayCompiler.
 
 Module AccessSizeCompatibilityNotations.

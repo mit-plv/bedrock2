@@ -815,20 +815,50 @@ Section FoldsAsLoops.
       apply copying_fold_left_as_ranged_fold_left' with (l0 := []).
     Qed.
 
-    Lemma copying_fold_left_as_nd_ranged_for_all (f: A -> B -> A):
-      forall xs a0 f',
-        (forall idx,
-            -1 < idx < zlen xs ->
-            nth_error xs (Z.to_nat idx) = Some (f' xs idx)) ->
-        List.fold_left f xs a0 =
-        nd_ranged_for_all 0 (zlen xs) (fun a idx => f a (f' xs idx)) a0.
+    Context (f: A -> B -> A).
+    Context (f': A -> Z -> A).
+
+    Definition acts_as_foldl_step (bs: list B) :=
+      (forall idx a b,
+          nth_error bs (Z.to_nat idx) = Some b ->
+          f' a idx  = f a b).
+
+    Lemma acts_as_foldl_step_firstn bs n:
+      (n <= length bs)%nat ->
+      acts_as_foldl_step bs ->
+      acts_as_foldl_step (firstn n bs).
     Proof.
-      intros * Hf'.
+      unfold acts_as_foldl_step; intros.
+      eauto using nth_error_firstn_weaken.
+    Qed.
+
+    Lemma copying_fold_left_as_nd_ranged_for_all (bs: list B) :
+      acts_as_foldl_step bs ->
+      forall a0,
+        List.fold_left f bs a0 =
+        nd_ranged_for_all 0 (zlen bs) f' a0.
+    Proof.
+      unfold acts_as_foldl_step; intros Hf' *.
       rewrite copying_fold_left_as_ranged_fold_left.
       rewrite <- fold_left_as_nd_ranged_for_all.
       apply fold_left_Proper; try reflexivity.
-      intros * Hin%z_range_sound.
-      erewrite Hf'; eauto.
+      intros a idx Hin%z_range_sound.
+      destruct (nth_error_lt_some bs (Z.to_nat idx) ltac:(lia)) as (b & Hb).
+      specialize (Hf' _ a _ Hb); rewrite Hb; eauto.
+    Qed.
+
+    Lemma copying_fold_left_firstn_as_nd_ranged_for_all n bs:
+      0 <= n <= zlen bs ->
+      acts_as_foldl_step bs ->
+      forall a0,
+        List.fold_left f (List.firstn (Z.to_nat n) bs) a0 =
+        nd_ranged_for_all 0 n f' a0.
+    Proof.
+      intros.
+      replace n with (zlen (firstn (Z.to_nat n) bs)) at 2
+        by (rewrite firstn_length_le; lia).
+      apply copying_fold_left_as_nd_ranged_for_all, acts_as_foldl_step_firstn;
+        eauto || lia.
     Qed.
   End CopyingFolds.
 
@@ -2190,6 +2220,77 @@ Section with_parameters.
       - intros; subst from'; rewrite Z.max_r in * by lia; eauto.
     Qed.
   End Maps.
+
+  Section CopyingFolds.
+    Context {A B} (f: A -> B -> A) (f': A -> Z -> A)
+            (bs: list B) (a: A) v (vars: list string)
+            (Heq: v = List.fold_left f bs a)
+            (Hrp: acts_as_foldl_step f f' bs).
+
+    Lemma compile_scalar_fold_left: forall [tr mem locals functions],
+      let v := v in
+      forall {P} {pred: P v -> predicate}
+        (loop_pred: forall (idx: Z) (a: A), predicate)
+        {k: nlet_eq_k P v} {k_impl} {body_impl}
+        (idx_var to_var: string) (to_expr: expr),
+
+        let to := Z.of_nat (length bs) in
+        let locals1 := map.put locals idx_var (word.of_Z 0) in
+        let locals2 := map.put locals1 to_var (word.of_Z to) in
+
+        0 <= to < 2^width ->
+        WeakestPrecondition.dexpr mem locals1 to_expr (word.of_Z to) ->
+
+        (forall idx a0 tr mem locals,
+            loop_pred idx a0 tr mem locals ->
+            map.get locals idx_var = Some (word.of_Z idx) /\
+            map.get locals to_var = Some (word.of_Z to)) ->
+
+        (forall idx idx' acc tr mem locals,
+            loop_pred idx acc tr mem locals ->
+            loop_pred idx' acc tr mem (map.put locals idx_var (word.of_Z idx'))) ->
+
+        loop_pred 0 a tr mem locals2 ->
+
+        ((* loop body *)
+          let lp := loop_pred in
+          forall tr mem locals idx,
+            0 <= idx < to ->
+            let n := Z.to_nat idx in
+            let a' := List.fold_left f (List.firstn n bs) a in
+            loop_pred idx a' tr mem locals ->
+            (<{ Trace := tr;
+                Memory := mem;
+                Locals := locals;
+                Functions := functions }>
+             body_impl
+             <{ lp idx (f' a' idx) }>)) ->
+        (let v := v in
+         forall tr mem locals,
+           loop_pred to v tr mem locals ->
+           (<{ Trace := tr;
+               Memory := mem;
+               Locals := locals;
+               Functions := functions }>
+            k_impl
+            <{ pred (k v eq_refl) }>)) ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+        cmd_loop_fresh false idx_var (expr.literal 0) to_var to_expr body_impl k_impl
+        <{ pred (nlet_eq vars v k) }>.
+    Proof.
+      rewrite Heq; intros; subst v0. revert dependent k. revert dependent pred.
+      erewrite (copying_fold_left_as_nd_ranged_for_all f f' bs Hrp).
+      intros; eapply compile_nd_ranged_for_all_fresh; reflexivity || lia || eauto.
+      - intros; cbn; eapply WeakestPrecondition_weaken.
+        2: eapply H4 with (idx := from'); try lia; [].
+        all: erewrite copying_fold_left_firstn_as_nd_ranged_for_all;
+          eauto using Hrp; lia.
+      - intros; subst from'; rewrite Z.max_r in * by lia; eauto.
+    Qed.
+  End CopyingFolds.
 End with_parameters.
 
 Ltac make_ranged_for_predicate from_var from_arg to_var to_val vars args tr pred locals :=
