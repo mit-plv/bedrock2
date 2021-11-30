@@ -1322,6 +1322,16 @@ Module word.
       nia.
     Qed.
 
+    Lemma morph_divu z1 z2:
+      0 <= z1 < 2 ^ width ->
+      0 < z2 < 2 ^ width ->
+      word.of_Z (Z.div z1 z2) = word.divu (word := word) (word.of_Z z1) (word.of_Z z2).
+    Proof.
+      intros; apply word.unsigned_inj.
+      rewrite word.unsigned_divu_nowrap.
+      all: rewrite !word.unsigned_of_Z_nowrap; try nia; try reflexivity.
+    Qed.
+
     Lemma morph_lts x y:
       - 2 ^ (width - 1) <= x < 2 ^ (width - 1) ->
       - 2 ^ (width - 1) <= y < 2 ^ (width - 1) ->

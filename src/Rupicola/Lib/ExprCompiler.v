@@ -83,6 +83,7 @@ Section ExprCompiler.
 
   Notation mb z := (0 <= z < width).
   Notation ub z := (0 <= z < 2 ^ width).
+  Notation Ub z := (0 < z < 2 ^ width).
   Notation sb z := (- 2 ^ (width - 1) <= z < 2 ^ (width - 1)).
 
   Ltac cleanup :=
@@ -160,6 +161,8 @@ Section ExprCompiler.
     Proof. rewrite word.ring_morph_sub; eauto using expr_compile_word_sub. Qed.
     Lemma expr_compile_Z_mul : DOP bopname.mul (to_w (Z.mul z1 z2)).
     Proof. rewrite word.ring_morph_mul; eauto using expr_compile_word_mul. Qed.
+    Lemma expr_compile_Z_div (h1: ub z1) (h2: Ub z2) : DOP bopname.divu (to_w (Z.div z1 z2)).
+    Proof. rewrite word.morph_divu; eauto using expr_compile_word_divu. Qed.
 
     Lemma expr_compile_Z_land : DOP bopname.and (to_w (Z.land z1 z2)).
     Proof. rewrite word.morph_and; eauto using expr_compile_word_and. Qed.
@@ -477,6 +480,8 @@ Notation DPAT p := (DEXPR _ _ _ p) (only parsing).
   simple eapply expr_compile_Z_sub; shelve : expr_compiler.
 #[export] Hint Extern 5 (DPAT (of_Z (Z.mul _ _))) =>
   simple eapply expr_compile_Z_mul; shelve : expr_compiler.
+#[export] Hint Extern 6 (DPAT (of_Z (Z.div _ _))) =>
+  simple eapply expr_compile_Z_div; shelve : expr_compiler.
 #[export] Hint Extern 5 (DPAT (of_Z (Z.land _ _))) =>
   simple eapply expr_compile_Z_land; shelve : expr_compiler.
 #[export] Hint Extern 5 (DPAT (of_Z (Z.lor _ _))) =>

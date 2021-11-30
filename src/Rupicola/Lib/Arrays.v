@@ -176,6 +176,7 @@ Section with_parameters.
     Definition offset base idx width :=
       (expr.op bopname.add base (expr.op bopname.mul width idx)).
 
+    (* FIXME this should be an expression lemma, not a statement one *)
     Lemma compile_array_get {tr mem locals functions}:
       let v := get a idx in
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl : cmd}
