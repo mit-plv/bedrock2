@@ -66,6 +66,71 @@ Section with_parameters.
   Definition ws2bs n (ws: list word): list byte :=
     zs2bs n (ws2zs ws).
 
+  Section Properties.
+    Open Scope nat_scope.
+
+    Lemma zs2ws_length zs :
+      length (zs2ws zs) = length zs.
+    Proof. apply map_length. Qed.
+
+    Lemma bs2zs_length' n bs :
+      n <> 0 ->
+      length (bs2zs n bs) = Nat.div_up (length bs) n.
+    Proof.
+      unfold bs2zs; intros.
+      rewrite map_length, length_chunk, div_up_eqn.
+      all: auto.
+    Qed.
+
+    Lemma div_up_mod_eq a b:
+      b <> 0 ->
+      a mod b = 0 ->
+      Nat.div_up a b = a / b.
+    Proof. intros H0 Hm; rewrite div_up_eqn, Hm; auto. Qed.
+
+    Lemma bs2zs_length n bs :
+      (n <> 0)%nat ->
+      (length bs mod n = 0)%nat ->
+      length (bs2zs n bs) = (length bs / n)%nat.
+    Proof.
+      intros; rewrite bs2zs_length', div_up_mod_eq by assumption; reflexivity.
+    Qed.
+
+    Lemma bs2ws_length' n bs:
+      n <> 0 ->
+      length (bs2ws n bs) = Nat.div_up (length bs) n.
+    Proof.
+      unfold bs2ws. rewrite zs2ws_length.
+      apply bs2zs_length'.
+    Qed.
+
+    Lemma bs2ws_length n bs:
+      n <> 0 ->
+      length bs mod n = 0 ->
+      length (bs2ws n bs) = length bs / n.
+    Proof.
+      intros; rewrite bs2ws_length', div_up_mod_eq by assumption; reflexivity.
+    Qed.
+
+    Lemma ws2zs_length ws :
+      length (ws2zs ws) = length ws.
+    Proof. apply map_length. Qed.
+
+    Lemma zs2bs_length n zs :
+      length (zs2bs n zs) = n * length zs.
+    Proof.
+      unfold zs2bs.
+      apply flat_map_const_length; apply length_le_split.
+    Qed.
+
+    Lemma ws2bs_length n bs:
+      length (ws2bs n bs) = n * length bs.
+    Proof.
+      unfold ws2bs.
+      rewrite zs2bs_length, ws2zs_length; reflexivity.
+    Qed.
+  End Properties.
+
   Lemma littleendian_split_dep n: forall z,
     HList.tuple.to_list (LittleEndian.split n z) = le_split n z.
   Proof.
