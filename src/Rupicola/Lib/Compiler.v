@@ -707,6 +707,7 @@ Hint Rewrite __DummyConstructor : compiler_side_conditions. (* Create the DB *)
 Hint Rewrite Nat2Z.id Z2Nat.id
   using solve[typeclasses eauto with compiler_side_conditions lia]
   : compiler_cleanup.
+#[export] Hint Resolve Nat2Z.is_nonneg : compiler_side_conditions.
 #[export] Hint Resolve eq_refl : compiler_side_conditions. (* For typeclasses eauto *)
 
 Create HintDb solve_map_get_goal.
