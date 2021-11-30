@@ -2,6 +2,7 @@ From Coq Require Vector List.
 Require Import Rupicola.Lib.Core.
 Require Import Rupicola.Lib.Notations.
 Require Import Rupicola.Lib.Loops.
+Require Export Rupicola.Lib.ArrayCasts.
 
 Open Scope list_scope.
 

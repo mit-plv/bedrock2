@@ -1912,6 +1912,15 @@ Section combine_split.
     le_split n (le_combine bs) = bs.
   Proof. intros <-; apply split_le_combine. Qed.
 
+  Lemma le_combine_chunk_split n z:
+    (0 < n)%nat ->
+    List.map le_combine (chunk n (le_split n z)) =
+      [z mod 2 ^ (Z.of_nat n * 8)].
+  Proof.
+    intros; rewrite chunk_small by (rewrite length_le_split; lia).
+    simpl; rewrite le_combine_split; reflexivity.
+  Qed.
+
   Lemma Z_land_le_combine bs1 : forall bs2,
       Z.land (le_combine bs1) (le_combine bs2) =
       le_combine (List.map (fun '(x, y) => byte.and x y) (combine bs1 bs2)).
@@ -2001,6 +2010,32 @@ Section combine_split.
       pose proof (Forall_In (Forall_chunk_length_le _ n ltac:(lia)) Hin);
       cbv beta in *.
     rewrite split_le_combine'; reflexivity || lia.
+  Qed.
+
+  Lemma map_le_combine_chunk_split:
+    forall zs n,
+      (0 < n)%nat ->
+      List.map le_combine (chunk n (flat_map (le_split n) zs)) =
+      List.map (fun z => z mod 2 ^ (Z.of_nat n * 8)) zs.
+  Proof.
+    induction zs; simpl; intros.
+    - reflexivity.
+    - rewrite chunk_app by (rewrite ?length_le_split, ?Nat.mod_same; lia).
+      rewrite map_app, IHzs by lia.
+      rewrite le_combine_chunk_split by lia; reflexivity.
+  Qed.
+
+  Lemma map_le_combine_chunk_split_le:
+    forall zs n,
+      (0 < n)%nat ->
+      Forall (in_bounds (8 * Z.of_nat n)) zs ->
+      List.map le_combine (chunk n (flat_map (le_split n) zs)) = zs.
+  Proof.
+    intros * Hlt Hle; rewrite map_le_combine_chunk_split by lia.
+    apply map_ext_id.
+    intros * Hin%(Forall_In Hle).
+    apply Z.mod_small.
+    rewrite Z.mul_comm; assumption.
   Qed.
 
   Lemma map_unsigned_of_Z_le_combine_4
