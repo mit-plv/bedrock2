@@ -75,13 +75,22 @@ Section WithParams.
     constructor. assumption.
   Qed.
 
-  Lemma store_word_of_sep_cps: forall addr oldvalue newvalue R m (post: mem -> Prop),
-      sep (addr |-> scalar oldvalue) R m ->
-      (forall m', sep (addr |-> scalar newvalue) R m' -> post m') ->
+  Lemma store_word_of_sep_cps_two_subgoals: forall addr oldvalue newvalue R m (post: mem -> Prop),
+      seps [addr |-> scalar oldvalue; R] m ->
+      (forall m', seps [addr |-> scalar newvalue; R] m' -> post m') ->
       get_option (Memory.store access_size.word m addr newvalue) post.
   Proof.
     intros. eapply Scalars.store_word_of_sep in H. 2: eassumption.
     destruct H as (m1 & E & P). rewrite E. constructor. exact P.
+  Qed.
+
+  Lemma store_word_of_sep_cps: forall addr oldvalue newvalue R m (post: mem -> Prop),
+      seps [addr |-> scalar oldvalue; R;
+            emp (forall m', seps [addr |-> scalar newvalue; R] m' -> post m')] m ->
+      get_option (Memory.store access_size.word m addr newvalue) post.
+  Proof.
+    intros. unfold seps in H. apply sep_assoc in H. apply sep_emp_r in H. destruct H.
+    eapply store_word_of_sep_cps_two_subgoals. 1: unfold seps. 1: eassumption. eassumption.
   Qed.
 
   (* R, typically instantiated to `seps [whatever; is; left]`, appears twice:
@@ -99,6 +108,13 @@ Section WithParams.
 
   Inductive wp_expr(m: mem)(l: locals)(e: expr)(post: word -> Prop): Prop :=
     mk_wp_expr: WeakestPrecondition.expr m l e post -> wp_expr m l e post.
+
+  Definition wp_exprs(m: mem)(l: locals): list expr -> (list word -> Prop) -> Prop :=
+    fix rec es post :=
+      match es with
+      | nil => post nil
+      | cons e rest => wp_expr m l e (fun v => rec rest (fun vs => post (cons v vs)))
+      end.
 
   Lemma wp_var: forall m l x v (post: word -> Prop),
       map.get l x = Some v ->
@@ -260,6 +276,58 @@ Section WithParams.
     inversion Hp1p1. inversion H0. subst. unfold store. symmetry in H. eauto 10.
   Qed.
 
+  (* The postcondition of the callee's spec will have a concrete shape that differs
+     from the postcondition that we pass to `call`, so when using this lemma, we have
+     to apply weakening for `call`, which generates two subgoals:
+     1) call f t m argvals ?mid
+     2) forall t' m' resvals, ?mid t' m' resvals -> the post of `call`
+     To solve 1), we will apply the callee's spec, but that means that if we make
+     changes to the context while solving the preconditions of the callee's spec,
+     these changes will not be visible in subgoal 2 *)
+  Lemma wp_call: forall call binds f argexprs rest t m l post,
+      wp_exprs m l argexprs (fun argvals =>
+        call f t m argvals (fun t' m' resvals =>
+          get_option (map.putmany_of_list_zip binds resvals l) (fun l' =>
+            wp_cmd call rest t' m' l' post))) ->
+      wp_cmd call (cmd.seq (cmd.call binds f argexprs) rest) t m l post.
+  Proof.
+  Admitted.
+
+  (* It's not clear whether a change to wp_call can fix this.
+     Right now, specs look like this:
+
+  Instance spec_of_foo : spec_of "foo" := fun functions =>
+    forall t m argvals ghosts,
+      NonmemHyps ->
+      (sepclause1 * ... * sepclauseN) m ->
+      WeakestPrecondition.call functions "foo" t m argvals
+        (fun t' m' rets => calleePost).
+
+  If I want to use spec_of_foo, I'll have a WeakestPrecondition.call goal with callerPost, and to
+  reconcile the callerPost with calleePost, I have to apply weakening/Proper for
+  WeakestPrecondition.call, which results in two sugoals:
+
+  1) WeakestPrecondition.call "foo" t m argvals ?mid
+  2) forall t' m' resvals, ?mid t' m' resvals -> callerPost
+
+  On 1), I will apply foo_ok (which proves spec_of_foo), so all hyps in spec_of_foo are proven
+  in a subgoal separate from subgoal 2), so changes made to the context won't be visible in
+  subgoal 2).
+
+  Easiest to use would be this one:
+
+  Instance spec_of_foo' : spec_of "foo" := fun functions =>
+    forall t m argvals ghosts callerPost,
+      seps [sepclause1; ...; sepclauseN; emp P1; ... emp PN;
+         emp (forall t' m' retvals,
+                  calleePost t' m' retvals ->
+                  callerPost t' m' retvals)] m ->
+      WeakestPrecondition.call functions "foo" t m argvals callerPost.
+
+  because it has weakening built in and creates only one subgoal, so all context modifications
+  remain visible.
+  And using some notations, this form might even become ergonomic. *)
+
   Lemma wp_skip: forall call t m l (post: trace -> mem -> locals -> Prop),
       post t m l ->
       wp_cmd call cmd.skip t m l post.
@@ -365,8 +433,6 @@ Ltac eval_expr_step :=
   | |- wp_expr _ _ (expr.load access_size.word _) _ => eapply wp_load_word
   | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load_old
   | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity |]
-  | |- get_option (Memory.load access_size.word _ _) _ =>
-    eapply load_word_of_sep_cps; split; [try solve [ecancel_assumption]|]
   end.
 
 Ltac start :=
@@ -503,7 +569,6 @@ Set Ltac Backtrace.
 Load LiveVerif.
 Import SepLogPredsWithAddrLast.
 
-
 (* TODO: write down postcondition only at end *)
 Definition swap_locals: {f: list string * list string * cmd &
   forall call t m a b,
@@ -550,11 +615,26 @@ Definition swap: {f: list string * list string * cmd &
     (* TODO: how to print seps list with emps? *)
     ecancel_step_by_implication.
     eapply impl1_done.
-    eapply store_word_of_sep_cps; [try solve [cbn[seps] in *; ecancel_assumption]|intros].
+    eapply store_word_of_sep_cps.
+    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem x).
+    ecancel_step_by_implication.
+    eapply impl1_done.
+    unfold seps. (* will need rearrangement anyways to preserve order *)
+    intros.
 
 #*/ store(b_addr, t);                                                        /*.
 
-    eapply store_word_of_sep_cps; [try solve [cbn[seps] in *; ecancel_assumption]|intros].
+    eapply store_word_of_sep_cps.
+    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m' H).
+    unfold seps at 1.
+    reify_goal.
+    ecancel_step_by_implication.
+    eapply impl1_done.
+    intros.
+    cbn [seps] in *.
+    change ((seps [a_addr |-> scalar b; b_addr |-> scalar b; R]) m') in H.
+    change ((seps [b_addr |-> scalar t; a_addr |-> scalar b; R]) m'0) in H0.
+    (* Note: order of sep clauses was changed *)
 
     ret (@nil string).
     subst. intuition solve[cbn[seps] in *; ecancel_assumption].
