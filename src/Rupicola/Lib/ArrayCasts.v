@@ -11,27 +11,27 @@ Section with_parameters.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Definition bs2zs (bs: list byte) n : list Z :=
+  Definition bs2zs n (bs: list byte) : list Z :=
     List.map le_combine (chunk n bs).
-  Definition zs2bs (zs: list Z) n: list byte :=
+  Definition zs2bs n (zs: list Z): list byte :=
     List.flat_map (le_split n) zs.
 
-  Lemma bs2zs2bs bs n:
+  Lemma bs2zs2bs n bs:
     (0 < n)%nat ->
     (length bs mod n = 0)%nat ->
-    zs2bs (bs2zs bs n) n = bs.
+    zs2bs n (bs2zs n bs) = bs.
   Proof. apply flat_map_le_split_combine_chunk. Qed.
 
-  Lemma zs2bs2zs zs n:
+  Lemma zs2bs2zs n zs:
     (0 < n)%nat ->
-    bs2zs (zs2bs zs n) n =
+    bs2zs n (zs2bs n zs) =
     List.map (fun z => z mod 2 ^ (Z.of_nat n * 8)) zs.
   Proof. apply map_le_combine_chunk_split. Qed.
 
-  Lemma zs2bs2zs_le zs n:
+  Lemma zs2bs2zs_le n zs:
     (0 < n)%nat ->
     Forall (in_bounds (8 * Z.of_nat n)) zs ->
-    bs2zs (zs2bs zs n) n = zs.
+    bs2zs n (zs2bs n zs) = zs.
   Proof. apply map_le_combine_chunk_split_le. Qed.
 
   Definition zs2ws := List.map (word.of_Z (word := word)).
@@ -61,10 +61,10 @@ Section with_parameters.
     apply word.unsigned_of_Z_nowrap; assumption.
   Qed.
 
-  Definition bs2ws (bs: list byte) n : list word :=
-    zs2ws (bs2zs bs n).
-  Definition ws2bs (ws: list word) n: list byte :=
-    zs2bs (ws2zs ws) n.
+  Definition bs2ws n (bs: list byte) : list word :=
+    zs2ws (bs2zs n bs).
+  Definition ws2bs n (ws: list word): list byte :=
+    zs2bs n (ws2zs ws).
 
   Lemma littleendian_split_dep n: forall z,
     HList.tuple.to_list (LittleEndian.split n z) = le_split n z.
@@ -91,7 +91,7 @@ Section with_parameters.
     let wn := (word.of_Z (Z.of_nat n)) in
     Lift1Prop.iff1
       (array (word := word) (truncated_scalar sz) wn ptr zs)
-      (array (word := word) ptsto (word.of_Z 1) ptr (zs2bs zs n)).
+      (array (word := word) ptsto (word.of_Z 1) ptr (zs2bs n zs)).
   Proof.
     induction zs; simpl; intros.
     - reflexivity.
@@ -106,13 +106,13 @@ Section with_parameters.
   Lemma truncated_scalars_of_bytes ptr bs sz:
     let n := Memory.bytes_per (width := width) sz in
     let wn := word.of_Z (Z.of_nat n) in
-    (0 < n)%nat ->
     (length bs mod n = 0)%nat ->
     Lift1Prop.iff1
       (array (word := word) ptsto (word.of_Z 1) ptr bs)
-      (array (word := word) (truncated_scalar sz) wn ptr (bs2zs bs n)).
+      (array (word := word) (truncated_scalar sz) wn ptr (bs2zs n bs)).
   Proof.
-    intros; replace bs with (zs2bs (bs2zs bs n) n) at 1 by auto using bs2zs2bs.
+    pose proof bytes_per_range sz.
+    intros; replace bs with (zs2bs n (bs2zs n bs)) at 1 by auto using bs2zs2bs with lia.
     symmetry; apply bytes_of_truncated_scalars.
   Qed.
 
@@ -192,7 +192,7 @@ Section with_parameters.
     let wn := (word.of_Z (Z.of_nat n)) in
     Lift1Prop.iff1
       (array (word := word) (truncated_word sz) wn ptr ws)
-      (array (word := word) ptsto (word.of_Z 1) ptr (ws2bs ws n)).
+      (array (word := word) ptsto (word.of_Z 1) ptr (ws2bs n ws)).
   Proof.
     cbv zeta; intros.
     rewrite truncated_scalars_of_truncated_words.
@@ -202,11 +202,10 @@ Section with_parameters.
   Lemma truncated_words_of_bytes ptr bs sz:
     let n := Memory.bytes_per (width := width) sz in
     let wn := word.of_Z (Z.of_nat n) in
-    (0 < n)%nat ->
     (length bs mod n = 0)%nat ->
     Lift1Prop.iff1
       (array (word := word) ptsto (word.of_Z 1) ptr bs)
-      (array (word := word) (truncated_word sz) wn ptr (bs2ws bs n)).
+      (array (word := word) (truncated_word sz) wn ptr (bs2ws n bs)).
   Proof.
     cbv zeta; intros.
     rewrite truncated_scalars_of_bytes by eassumption.
@@ -219,17 +218,16 @@ Section with_parameters.
     let wn := word.of_Z (Z.of_nat n) in
     Lift1Prop.iff1
       (array (word := word) scalar wn ptr ws)
-      (array (word := word) ptsto (word.of_Z 1) ptr (ws2bs ws n)).
+      (array (word := word) ptsto (word.of_Z 1) ptr (ws2bs n ws)).
   Proof. apply bytes_of_truncated_words. Qed.
 
   Lemma words_of_bytes ptr bs:
     let sz := access_size.word in
     let n := Memory.bytes_per (width := width) sz in
     let wn := word.of_Z (Z.of_nat n) in
-    (0 < n)%nat ->
     (length bs mod n = 0)%nat ->
     Lift1Prop.iff1
       (array (word := word) ptsto (word.of_Z 1) ptr bs)
-      (array (word := word) scalar wn ptr (bs2ws bs n)).
+      (array (word := word) scalar wn ptr (bs2ws n bs)).
   Proof. apply truncated_words_of_bytes. Qed.
 End with_parameters.
