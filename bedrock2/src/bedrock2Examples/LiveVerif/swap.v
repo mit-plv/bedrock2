@@ -390,8 +390,10 @@ Ltac intro_p_autonamed :=
 
 Ltac intros_p := repeat intro_p_autonamed.
 
+Ltac is_fresh x := assert_succeeds (pose proof tt as x).
+
 Ltac make_fresh x :=
-  tryif is_var x then let x' := fresh x "0" in rename x into x' else idtac.
+  tryif is_fresh x then idtac else let x' := fresh x in rename x into x'.
 
 Ltac put_into_current_locals :=
   lazymatch goal with
@@ -563,9 +565,6 @@ Tactic Notation "#" constr(s) := add_snippet s; after_snippet.
 
 Set Ltac Backtrace.
 
-(* end move *)
-
-
 Require Import Coq.Sorting.Permutation Coq.Sorting.Sorting.
 
 Module FstNatOrder <: Orders.TotalLeBool.
@@ -582,6 +581,15 @@ End FstNatOrder.
 
 Module FstNatSorting := Sort FstNatOrder.
 
+Lemma iff1_refl{A: Type}(P: A -> Prop): iff1 P P. Proof. reflexivity. Qed.
+Lemma iff1_sym{A: Type}{P Q: A -> Prop}: iff1 P Q -> iff1 Q P.
+Proof. intros. symmetry. assumption. Qed.
+
+Ltac iff1_syntactic_reflexivity :=
+  lazymatch goal with
+  | |- iff1 ?x ?y => first [is_evar x | is_evar y | constr_eq x y]
+  end;
+  exact (iff1_refl _).
 
 Load LiveVerif.
 Import SepLogPredsWithAddrLast.
@@ -743,45 +751,67 @@ Ltac get_order old_clauses new_clauses :=
   get_order_rec old_clauses new_clauses n.
 
 (* Given an old and a new sep hyp, transfers the order of the sepclauses from the old one
-   to the new one *)
+   to the new one (and first also removes nested seps in the new sep hyp) *)
 Ltac transfer_sep_order :=
   lazymatch goal with
-  | HOld: seps ?old_clauses ?mOld, HNew: seps ?new_clauses ?mNew |- wp_cmd _ _ _ ?mNew _ _ =>
-    let order := get_order old_clauses new_clauses in
+  | HOld: seps ?old_clauses ?mOld, HNew: seps ?new_nested ?mNew |- wp_cmd _ _ _ ?mNew _ _ =>
     let tmem := type of mNew in
     let E := fresh "E" in
-    eassert (@iff1 tmem _ _) as E;
-    [ etransitivity;
-      [ (* first equivalence step: from `new_clauses` to `reorder order new_clauses` *)
+    eassert (@iff1 tmem (seps new_nested) _) as E;
+    [ (* first equivalence step: from `seps new_nested` to `Tree.to_sep tree` *)
+      let stars := eval cbn[seps] in (seps new_nested) in
+      let tree := reify stars in
+      transitivity (Tree.to_sep tree); [
+        cbn [seps Tree.to_sep Tree.interp]; iff1_syntactic_reflexivity
+      |];
+      (* second equivalence step: from `Tree.to_sep tree` to `seps (Tree.flatten tree)` *)
+      transitivity (seps (Tree.flatten tree)); [
+        exact (iff1_sym (Tree.flatten_iff1_to_sep tree))
+      |];
+      (* third equivalence step: from `seps (Tree.flatten tree)` to `seps new_clauses` *)
+      etransitivity; [
+        cbn [SeparationLogic.Tree.flatten SeparationLogic.Tree.interp SeparationLogic.app];
+        iff1_syntactic_reflexivity
+      |];
+      let new_clauses := lazymatch goal with |- iff1 (seps ?C) _ => C end in
+      (* fourth equivalence step: from `seps new_clauses` to `seps (reorder order new_clauses)` *)
+      let order := get_order old_clauses new_clauses in
+      etransitivity; [
         eapply (reorder_is_iff1 order new_clauses); reflexivity
-      | (* second equivalence step: from `reorder order new_clauses` to cbv'd version of it *)
-        cbv [reorder];
-        let r := eval vm_compute in (order_to_permutation order) in
-            change (order_to_permutation order) with r;
-        cbv [apply_permutation apply_permutation_with_default my_list_map my_list_nth];
-        reflexivity ]
-    | let H := fresh in pose proof (proj1 (E mNew) HNew) as H;
+      |];
+      (* fifth equivalence step: from `seps (reorder order new_clauses)` to cbv'd version of it *)
+      cbv [reorder];
+      let r := eval vm_compute in (order_to_permutation order) in
+          change (order_to_permutation order) with r;
+      cbv [apply_permutation apply_permutation_with_default my_list_map my_list_nth];
+      reflexivity
+    | let HNewNew := fresh in pose proof (proj1 (E mNew) HNew) as HNewNew;
+      move HNewNew before HOld;
+      move mNew before mOld;
       clear E HOld HNew;
-      rename H into HNew ]
+      try clear mOld;
+      make_fresh mOld;
+      rename HNewNew into HOld, mNew into mOld ]
   end.
 
-Lemma reordering_test: forall addr1 addr2 addr3 addr4 v1_old v1_new v2 v3 v4 R (m0 m1: mem)
+Lemma reordering_test: forall addr1 addr2 addr3 addr4 v1_old v1_new v2 v3 v4 R (m m': mem)
                               call t l c post,
-    seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m0 ->
+    seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m ->
     (* value at addr1 was updated, addr2 was consumed, addr4 was added, and order was changed: *)
-    seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m1 ->
+    seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m' ->
     (* desired order:
     seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m1 *)
-    wp_cmd call c t m1 l post.
+    True ->
+    wp_cmd call c t m' l post.
 Proof.
-  intros *. intros M1 M2.
+  intros *. intros M1 M2 ExtraHyp.
           (* 0                        1                    2                    3
   M1 : seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m0
   M2 : seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m1
   order :=  [3; 2;                   2;                   0                      ] *)
   transfer_sep_order.
-  lazymatch type of M2 with
-  | seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m1 => idtac
+  lazymatch type of M1 with
+  | seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m => idtac
   end.
 Abort.
 
@@ -816,7 +846,7 @@ Definition swap: {f: list string * list string * cmd &
     refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem x).
     (* Here we can make goal modifications influenced by the canceling problem,
        and the goal modifications will still be visible in the continuation subgoal: *)
-    remember a as we_could_have_split_a_into_two_pieces eqn: E.
+    remember a as could_be_split eqn: E.
     ecancel_step_by_implication.
     eapply impl1_done.
 
@@ -835,21 +865,17 @@ Definition swap: {f: list string * list string * cmd &
     refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem x).
     ecancel_step_by_implication.
     eapply impl1_done.
-    unfold seps.
     intros.
-    change (seps [a_addr |-> scalar b; b_addr |-> scalar b; R] m') in H.
     transfer_sep_order.
 
 #*/ store(b_addr, t);                                                        /*.
 
     eapply store_word_of_sep_cps.
-    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m' H).
+    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem x).
     ecancel_step_by_implication.
     eapply impl1_done.
     intros.
-    change (seps [b_addr |-> scalar t; a_addr |-> scalar b; R] m'0) in H0.
     transfer_sep_order.
-    (* Note: order of sep clauses was changed *)
     ret (@nil string).
     subst. intuition solve[cbn[seps] in *; ecancel_assumption].
 Defined.
