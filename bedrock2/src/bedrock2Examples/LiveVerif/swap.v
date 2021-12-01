@@ -566,8 +566,166 @@ Set Ltac Backtrace.
 (* end move *)
 
 
+Require Import Coq.Sorting.Permutation Coq.Sorting.Sorting.
+
+Module FstNatOrder <: Orders.TotalLeBool.
+  Definition t: Type := nat * nat.
+  Definition leb: t -> t -> bool :=
+    fun '(x, _) '(y, _) => Nat.leb x y.
+  Theorem leb_total: forall a1 a2, leb a1 a2 = true \/ leb a2 a1 = true.
+  Proof.
+    unfold leb. intros [x _] [y _]. destr (x <=? y)%nat. 1: auto.
+    right. apply Nat.leb_le. unfold lt in E. eapply Nat.le_trans. 2: exact E.
+    do 2 constructor.
+  Qed.
+End FstNatOrder.
+
+Module FstNatSorting := Sort FstNatOrder.
+
+
 Load LiveVerif.
 Import SepLogPredsWithAddrLast.
+
+Lemma seps'_Permutation: forall (l1 l2: list (mem -> Prop)),
+    Permutation l1 l2 -> iff1 (seps' l1) (seps' l2).
+Proof.
+  induction 1.
+  - reflexivity.
+  - simpl. rewrite IHPermutation. reflexivity.
+  - simpl. cancel.
+  - etransitivity; eassumption.
+Qed.
+
+Lemma seps_Permutation: forall (l1 l2: list (mem -> Prop)),
+    Permutation l1 l2 -> iff1 (seps l1) (seps l2).
+Proof.
+  intros.
+  etransitivity. 2: eapply seps'_iff1_seps.
+  etransitivity. 2: eapply seps'_Permutation; exact H.
+  symmetry. eapply seps'_iff1_seps.
+Qed.
+
+Fixpoint zip_with_counter{A: Type}(l: list A)(start: nat): list (A * nat) :=
+  match l with
+  | nil => nil
+  | x :: xs => (x, start) :: zip_with_counter xs (S start)
+  end.
+
+Definition zip_with_index{A: Type}(l: list A): list (A * nat) := zip_with_counter l 0.
+
+Lemma snd_zip_with_counter: forall {A: Type} (l: list A) (start: nat),
+    List.map snd (zip_with_counter l start) = List.seq start (List.length l).
+Proof. induction l; simpl; intros. 1: reflexivity. f_equal. apply IHl. Qed.
+
+Lemma snd_zip_with_index: forall {A: Type} (l: list A),
+    List.map snd (zip_with_index l) = List.seq 0 (List.length l).
+Proof. intros. apply snd_zip_with_counter. Qed.
+
+Lemma List__map_nth_seq_self{A: Type}(d: A)(l: list A):
+  List.map (fun i => List.nth i l d) (List.seq 0 (List.length l)) = l.
+Proof.
+  induction l; cbn -[List.nth]. 1: reflexivity.
+  unfold List.nth at 1.
+  f_equal.
+  etransitivity. 2: exact IHl.
+  rewrite <- List.seq_shift.
+  rewrite List.map_map.
+  reflexivity.
+Qed.
+
+Definition apply_permutation_with_default(p: list nat){A: Type}(l: list A)(d: A): list A :=
+  List.map (fun i => List.nth i l d) p.
+
+Definition apply_permutation(p: list nat){A: Type}(l: list A): list A :=
+  match l with
+  | nil => nil
+  | cons d _ => apply_permutation_with_default p l d
+  end.
+
+Lemma apply_permutation_with_default_is_Permutation: forall (p: list nat) A (l: list A) d,
+    Permutation p (List.seq 0 (List.length l)) ->
+    Permutation l (apply_permutation_with_default p l d).
+Proof.
+  unfold apply_permutation_with_default. intros.
+  eapply Permutation_trans. 2: {
+    eapply Permutation_map.
+    eapply Permutation_sym.
+    exact H.
+  }
+  rewrite List__map_nth_seq_self.
+  apply Permutation_refl.
+Qed.
+
+Lemma apply_permutation_is_Permutation: forall (p: list nat) (A: Type) (l: list A),
+    Permutation p (List.seq 0 (List.length l)) ->
+    Permutation l (apply_permutation p l).
+Proof.
+  intros. unfold apply_permutation. destruct l.
+  - apply Permutation_refl.
+  - apply apply_permutation_with_default_is_Permutation. assumption.
+Qed.
+
+Definition order_to_permutation(order: list nat): list nat :=
+  List.map snd (FstNatSorting.sort (zip_with_index order)).
+
+Lemma order_to_permutation_is_Permutation(order: list nat):
+    Permutation (order_to_permutation order) (List.seq 0 (List.length order)).
+Proof.
+  unfold order_to_permutation.
+  eapply Permutation_trans. {
+    eapply Permutation_map.
+    eapply Permutation_sym.
+    eapply FstNatSorting.Permuted_sort.
+  }
+  rewrite snd_zip_with_index.
+  eapply Permutation_refl.
+Qed.
+
+(* `order` and `l` must have the same length.
+    The i-th element of `order` is the sort key of the i-th element of `l`.
+    Returns `l` sorted according to these sort keys. *)
+Definition reorder(order: list nat){A: Type}(l: list A): list A :=
+  apply_permutation (order_to_permutation order) l.
+
+Lemma reorder_is_iff1: forall (order: list nat) (l: list (mem -> Prop)),
+    List.length order = List.length l ->
+    iff1 (seps l) (seps (reorder order l)).
+Proof.
+  intros.
+  apply seps_Permutation.
+  unfold reorder.
+  apply apply_permutation_is_Permutation.
+  rewrite <- H.
+  apply order_to_permutation_is_Permutation.
+Qed.
+
+Lemma reordering_test: forall addr1 addr2 addr3 addr4 v1_old v1_new v2 v3 v4 R (m0 m1: mem),
+    seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m0 ->
+    (* value at addr1 was updated, addr2 was consumed, addr4 was added, and order was changed: *)
+    seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m1 ->
+    (* desired order: *)
+    seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m1.
+Proof.
+  intros. (* 0                        1                    2                    3
+  H  : seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m0
+  H0 : seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m1
+  order :=  [3; 2;                   2;                   0                      ] *)
+  pose [3%nat; 2%nat; 2%nat; 0%nat] as order.
+  eassert (@iff1 mem _ _) as E. {
+    etransitivity.
+    1: match goal with
+       | _: seps ?l m1 |- _ => eapply (reorder_is_iff1 order l)
+       end.
+    1: reflexivity.
+    cbv [reorder].
+    let r := eval vm_compute in (order_to_permutation order) in
+        change (order_to_permutation order) with r.
+    cbv [apply_permutation apply_permutation_with_default List.map List.nth].
+    reflexivity.
+  }
+  eapply E.
+  exact H0.
+Qed.
 
 (* TODO: write down postcondition only at end *)
 Definition swap_locals: {f: list string * list string * cmd &
@@ -635,6 +793,15 @@ Definition swap: {f: list string * list string * cmd &
     change ((seps [a_addr |-> scalar b; b_addr |-> scalar b; R]) m') in H.
     change ((seps [b_addr |-> scalar t; a_addr |-> scalar b; R]) m'0) in H0.
     (* Note: order of sep clauses was changed *)
+
+Undelimit Scope live_scope.
+Close Scope live_scope.
+
+  match goal with
+  | HOld: seps _ ?mOld, H: seps _ ?m |- wp_cmd _ _ _ ?m _ _ => idtac HOld H
+  end.
+
+idtac.
 
     ret (@nil string).
     subst. intuition solve[cbn[seps] in *; ecancel_assumption].
