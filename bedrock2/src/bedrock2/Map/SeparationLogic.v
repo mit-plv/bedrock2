@@ -246,7 +246,7 @@ Section SepProperties.
     rewrite Hij, Hrest.
     exact (reflexivity _).
   Qed.
-  
+
   Lemma cancel_emp_at_index_l i xs ys
         (Hi : nth i xs = emp True)
         (Hrest : iff1 (seps (remove_nth i xs)) (seps ys))
@@ -262,7 +262,7 @@ Section SepProperties.
     rewrite <-(seps_nth_to_head j ys), Hj, Hrest, sep_emp_True_l.
     exact (reflexivity _).
   Qed.
-  
+
   Lemma cancel_emp_at_index_impl j xs ys
         (Hj : nth j ys = emp True)
         (Hrest : impl1 (seps xs) (seps (remove_nth j ys)))
@@ -303,7 +303,7 @@ Module Tree.
     Context {key value} {map : map key value} {ok : ok map}.
     Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
 
-    Definition to_sep: Tree (map -> Prop) -> map -> Prop := interp id sep.
+    Definition to_sep: Tree (map -> Prop) -> map -> Prop := interp (fun x => x) sep.
 
     Lemma flatten_iff1_to_sep(t : Tree.Tree (map -> Prop)):
       Lift1Prop.iff1 (seps (flatten t)) (to_sep t).
@@ -542,7 +542,7 @@ Ltac ecancel_assumption :=
  (* To use the implication-based ecancel assumption in existing tactics in a proof, add this line:
 
     Local Ltac ecancel_assumption ::= ecancel_assumption_impl.
-    
+
     The implication-based tactic should in theory solve a strict superset of goals,
     but its performance may be worse, especially when it fails.
   *)
