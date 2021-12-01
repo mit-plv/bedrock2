@@ -633,8 +633,14 @@ Proof.
   reflexivity.
 Qed.
 
+(* redefinitions so that cbv on it does not cbv user-defined terms *)
+Definition my_list_map{A B: Type}(f: A -> B): list A -> list B :=
+  Eval unfold List.map in (List.map f).
+Definition my_list_nth{A: Type}: nat -> list A -> A -> A :=
+  Eval unfold List.nth in (@List.nth A).
+
 Definition apply_permutation_with_default(p: list nat){A: Type}(l: list A)(d: A): list A :=
-  List.map (fun i => List.nth i l d) p.
+  my_list_map (fun i => my_list_nth i l d) p.
 
 Definition apply_permutation(p: list nat){A: Type}(l: list A): list A :=
   match l with
@@ -699,33 +705,85 @@ Proof.
   apply order_to_permutation_is_Permutation.
 Qed.
 
-Lemma reordering_test: forall addr1 addr2 addr3 addr4 v1_old v1_new v2 v3 v4 R (m0 m1: mem),
+(* for lists with concrete structure/length, but elements that should not be cbv'd *)
+Ltac list_length l :=
+  lazymatch l with
+  | nil => constr:(O)
+  | cons _ ?tail => let r := list_length tail in constr:(S r)
+  end.
+
+Ltac clause_index clause clauses start_index default_index :=
+  lazymatch clauses with
+  | cons (at_addr ?a _) ?tail =>
+    lazymatch clause with
+    | at_addr a _ => constr:(start_index)
+    | _ => clause_index clause tail (S start_index) default_index
+    end
+  | cons clause _ => constr:(start_index)
+  | cons _ ?tail => clause_index clause tail (S start_index) default_index
+  | nil => constr:(default_index)
+  end.
+
+Ltac get_order_rec old_clauses new_clauses default_index :=
+  lazymatch new_clauses with
+  | nil => constr:(@nil nat)
+  | cons ?clause ?tail =>
+    let priority := clause_index clause old_clauses 0%nat default_index in
+    let rest := get_order_rec old_clauses tail priority in
+    constr:(priority :: rest)
+  end.
+
+Ltac get_order old_clauses new_clauses :=
+  (* if the first clause is not found in old_clauses, we put it at the end;
+     if a non-first clause is not found, we put it after the clause that's
+     to the left of it in new_clauses, so we give it the same priority value,
+     so the returned order might have duplicate priority values, and we rely
+     on mergesort being stable to keep the order between clauses of the same priority *)
+  let n := list_length old_clauses in
+  get_order_rec old_clauses new_clauses n.
+
+(* Given an old and a new sep hyp, transfers the order of the sepclauses from the old one
+   to the new one *)
+Ltac transfer_sep_order :=
+  lazymatch goal with
+  | HOld: seps ?old_clauses ?mOld, HNew: seps ?new_clauses ?mNew |- wp_cmd _ _ _ ?mNew _ _ =>
+    let order := get_order old_clauses new_clauses in
+    let tmem := type of mNew in
+    let E := fresh "E" in
+    eassert (@iff1 tmem _ _) as E;
+    [ etransitivity;
+      [ (* first equivalence step: from `new_clauses` to `reorder order new_clauses` *)
+        eapply (reorder_is_iff1 order new_clauses); reflexivity
+      | (* second equivalence step: from `reorder order new_clauses` to cbv'd version of it *)
+        cbv [reorder];
+        let r := eval vm_compute in (order_to_permutation order) in
+            change (order_to_permutation order) with r;
+        cbv [apply_permutation apply_permutation_with_default my_list_map my_list_nth];
+        reflexivity ]
+    | let H := fresh in pose proof (proj1 (E mNew) HNew) as H;
+      clear E HOld HNew;
+      rename H into HNew ]
+  end.
+
+Lemma reordering_test: forall addr1 addr2 addr3 addr4 v1_old v1_new v2 v3 v4 R (m0 m1: mem)
+                              call t l c post,
     seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m0 ->
     (* value at addr1 was updated, addr2 was consumed, addr4 was added, and order was changed: *)
     seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m1 ->
-    (* desired order: *)
-    seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m1.
+    (* desired order:
+    seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m1 *)
+    wp_cmd call c t m1 l post.
 Proof.
-  intros. (* 0                        1                    2                    3
-  H  : seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m0
-  H0 : seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m1
+  intros *. intros M1 M2.
+          (* 0                        1                    2                    3
+  M1 : seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m0
+  M2 : seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m1
   order :=  [3; 2;                   2;                   0                      ] *)
-  pose [3%nat; 2%nat; 2%nat; 0%nat] as order.
-  eassert (@iff1 mem _ _) as E. {
-    etransitivity.
-    1: match goal with
-       | _: seps ?l m1 |- _ => eapply (reorder_is_iff1 order l)
-       end.
-    1: reflexivity.
-    cbv [reorder].
-    let r := eval vm_compute in (order_to_permutation order) in
-        change (order_to_permutation order) with r.
-    cbv [apply_permutation apply_permutation_with_default List.map List.nth].
-    reflexivity.
-  }
-  eapply E.
-  exact H0.
-Qed.
+  transfer_sep_order.
+  lazymatch type of M2 with
+  | seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m1 => idtac
+  end.
+Abort.
 
 (* TODO: write down postcondition only at end *)
 Definition swap_locals: {f: list string * list string * cmd &
@@ -777,32 +835,21 @@ Definition swap: {f: list string * list string * cmd &
     refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem x).
     ecancel_step_by_implication.
     eapply impl1_done.
-    unfold seps. (* will need rearrangement anyways to preserve order *)
+    unfold seps.
     intros.
+    change (seps [a_addr |-> scalar b; b_addr |-> scalar b; R] m') in H.
+    transfer_sep_order.
 
 #*/ store(b_addr, t);                                                        /*.
 
     eapply store_word_of_sep_cps.
     refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m' H).
-    unfold seps at 1.
-    reify_goal.
     ecancel_step_by_implication.
     eapply impl1_done.
     intros.
-    cbn [seps] in *.
-    change ((seps [a_addr |-> scalar b; b_addr |-> scalar b; R]) m') in H.
-    change ((seps [b_addr |-> scalar t; a_addr |-> scalar b; R]) m'0) in H0.
+    change (seps [b_addr |-> scalar t; a_addr |-> scalar b; R] m'0) in H0.
+    transfer_sep_order.
     (* Note: order of sep clauses was changed *)
-
-Undelimit Scope live_scope.
-Close Scope live_scope.
-
-  match goal with
-  | HOld: seps _ ?mOld, H: seps _ ?m |- wp_cmd _ _ _ ?m _ _ => idtac HOld H
-  end.
-
-idtac.
-
     ret (@nil string).
     subst. intuition solve[cbn[seps] in *; ecancel_assumption].
 Defined.
