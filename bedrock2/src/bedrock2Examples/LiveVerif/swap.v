@@ -1,5 +1,3 @@
-(* begin move *)
-
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
@@ -47,11 +45,12 @@ Module Import SepLogPredsWithAddrLast. Section __.
   Definition scalar := truncated_word Syntax.access_size.word.
 End __. End SepLogPredsWithAddrLast.
 
-(* Note: This notation is *not* intended to be used together with a `*` that means `sep`,
-   but with a `*` that means `word.mul`, so that we can write `addr + 4 * offs |-> element`,
-   so `*` and `+` need to bind stronger than `|->`.
-   Given that `+` is at level 50 and `*` is at level 40, we choose level 55: *)
-Notation "addr |-> clause" := (at_addr addr clause) (at level 55).
+(* `*` is at level 40, and we want to bind stronger than `*`,
+   and moreover, `^` is at level 30, and for consistency, we also want to bind stronger than `^`,
+   so we choose 25 *)
+Notation "addr |-> clause" := (at_addr addr clause)
+  (at level 25,
+   format "addr  |->  '[' clause ']'").
 
 Section WithParams.
   Import bedrock2.Syntax.
@@ -375,16 +374,125 @@ Notation "l" := (current_locals_marker (reconstruct _ l%reconstruct_locals))
 Notation "l" := (arguments_marker l)
   (at level 100, only printing) : live_scope.
 
+Module Import MySepNotations.
+
+Declare Scope sep_list_scope.
+Delimit Scope sep_list_scope with sep_list.
+
+Notation "* x * y * .. * z" :=
+  (@cons (@map.rep _ _ _ -> Prop) x
+    (@cons (@map.rep _ _ _ -> Prop) y
+      .. (@cons (@map.rep _ _ _ -> Prop) z nil) .. ))
+  (at level 39, x at level 39, y at level 39, z at level 39,
+   (* starting with a space to make sure we never create an opening comment *)
+   format " '[v' *  x  '//' *  y  '//' *  ..  '//' *  z  ']'")
+  : sep_list_scope.
+
+Notation "m 'satisfies' <{ l }>" := (seps l%sep_list m)
+  (at level 10,
+   format "'[v' m  'satisfies'  <{ '//'  l '//' }> ']'")
+  : live_scope.
+
+Notation "<{ l1 }> ==> <{ l2 }>" := (impl1 (seps l1%sep_list) (seps l2%sep_list))
+  (at level 10,
+   format "'[v' <{ l1 '//' }>  ==>  <{ '//'   l2 '//' }> ']'")
+  : live_scope.
+
+Notation "<{ l1 }> <==> <{ l2 }>" := (iff1 (seps l1%sep_list) (seps l2%sep_list))
+  (at level 10,
+   format "'[v' <{ l1 '//' }>  <==>  <{ '//'   l2 '//' }> ']'")
+  : live_scope.
+
+End MySepNotations.
+
+Section NotationTests.
+  Context {width : Z} {word : Word.Interface.word width} {mem : map.map word byte}.
+
+  Goal Some (fun (a b: word) (v: word) =>
+               seps ( * (a |-> scalar v) * (b |-> scalar v) * (emp True) )%sep_list) = None.
+  Abort.
+
+  Goal (forall (a b: word) (v: word) (current_mem: mem),
+          seps ( * a |-> scalar v * b |-> scalar v * emp True )%sep_list current_mem).
+  Proof. intros. (*
+  Note how `satisfies` does not increase the indentation of the `*` bullet points,
+  each bullet point is indented by just two spaces:
+
+  current_mem satisfies <{
+    * a |-> scalar v
+    * b |-> scalar v
+    * emp True
+  }>
+  *)
+  match goal with |- ?G => enough G as M end. Abort.
+
+  Context (a b c d e f g h: word) (frobnicate: word -> word -> word) (v: word).
+
+  Let manyseps := (
+     * a |-> scalar v * b |-> scalar v * emp True * c |-> scalar v
+     * d |->  scalar v
+     * e |-> scalar (frobnicate (frobnicate (frobnicate v (frobnicate v v)) (frobnicate
+          (frobnicate v (frobnicate v v)) (frobnicate v (frobnicate v v)))) (frobnicate v v))
+     * f |-> scalar v
+     * (frobnicate (frobnicate (frobnicate v (frobnicate v v)) (frobnicate
+          (frobnicate v (frobnicate v v)) (frobnicate v (frobnicate v v)))) (frobnicate v v)) |->
+       scalar v
+     * h |-> (scalar v) * emp True
+     * (frobnicate (frobnicate (frobnicate v (frobnicate v v)) (frobnicate
+          (frobnicate v (frobnicate v v)) (frobnicate v (frobnicate v v)))) (frobnicate v v)) |->
+       scalar (frobnicate (frobnicate (frobnicate v (frobnicate v v)) (frobnicate
+          (frobnicate v (frobnicate v v)) (frobnicate v (frobnicate v v)))) (frobnicate v v))
+  )%sep_list.
+
+  Goal forall (a b c d e f g h: word) (frobnicate: word -> word -> word) (v: word) (m: mem),
+     m satisfies <{ manyseps }>.
+  Proof.
+    intros. subst manyseps. match goal with |- ?G => enough G end.
+  Abort.
+
+  Goal forall (a b: word) (v: word),
+    <{ * a |-> scalar v
+       * b |-> scalar v
+       * emp True
+    }> ==> <{
+       * b |-> scalar v
+       * a |-> scalar v
+    }>.
+  Proof. intros. match goal with |- ?G => enough G end. Abort.
+
+  Goal forall (a b: word) (v: word),
+    <{ manyseps }> ==> <{
+       * b |-> scalar v
+       * a |-> scalar v
+    }>.
+  Proof. intros. subst manyseps. match goal with |- ?G => enough G end. Abort.
+
+  Goal forall (a b: word) (v: word),
+    <{ manyseps }> <==> <{
+       * b |-> scalar v
+       * a |-> scalar v
+    }>.
+  Proof. intros. subst manyseps. match goal with |- ?G => enough G end. Abort.
+
+End NotationTests.
+
 (* intro-and-position *)
 Ltac intro_p n :=
-  lazymatch goal with
+  lazymatch reverse goal with
+  (* if we already have words, put the new word at the same position: *)
+  | x: @word.rep _ _ |- forall _: @word.rep _ _, _ => intro n; move n after x
+  (* else put just above (= after-wrt-moving-direction) the separator *)
   | separator: ignore_above_this_line |- forall _: @word.rep _ _, _ =>
-    intro n; move n after separator (* after-wrt-moving-direction = above *)
+    intro n; move n after separator
+  (* types other than words are considered interesting enough to go below the separator *)
   | |- forall _: _, _ => intro n
   end.
 
 Ltac intro_p_autonamed :=
   lazymatch goal with
+  (* mem hyps never need to be positioned above separator, so we can directly use `intro` *)
+  | |- seps _ _ -> _ => let n := fresh "M" in intro n
+  (* other types might need intro_p *)
   | |- forall x: ?T, _ => let n := fresh x in intro_p n
   end.
 
@@ -446,11 +554,13 @@ Ltac start :=
   intros_p;
   (* since the arguments will get renamed, it is useful to have a list of their
      names, so that we can always see their current renamed names *)
+  let arguments := fresh "arguments" in
   lazymatch goal with
   | |- vc_func ?call ?f ?t ?m ?argvalues ?post =>
-    let arguments := fresh "arguments" in pose (arguments_marker argvalues) as arguments;
+    pose (arguments_marker argvalues) as arguments;
     let argnames := map_with_ltac varconstr_to_string argvalues in
-    unify eargnames argnames
+    unify eargnames argnames;
+    move arguments before n
   end;
   unfold vc_func;
   lazymatch goal with
@@ -458,7 +568,8 @@ Ltac start :=
     let values := eval vm_compute in (tuple.of_list values) in
     let cl := fresh "current_locals" in
     refine (let cl := current_locals_marker (reconstruct keys values) in ex_intro _ cl _);
-    split; [reflexivity|]
+    split; [reflexivity|];
+    move cl before arguments
   end;
   lazymatch goal with
   | separator: ignore_above_this_line |- wp_cmd _ _ ?t ?m _ _ =>
@@ -593,6 +704,8 @@ Ltac iff1_syntactic_reflexivity :=
 
 Load LiveVerif.
 Import SepLogPredsWithAddrLast.
+Import MySepNotations.
+(* to re-override Notations loaded trough `Load LiveVerif/bedrock2.Map.SeparationLogic` *)
 
 Lemma seps'_Permutation: forall (l1 l2: list (mem -> Prop)),
     Permutation l1 l2 -> iff1 (seps' l1) (seps' l2).
@@ -804,13 +917,13 @@ Lemma reordering_test: forall addr1 addr2 addr3 addr4 v1_old v1_new v2 v3 v4 R (
     True ->
     wp_cmd call c t m' l post.
 Proof.
-  intros *. intros M1 M2 ExtraHyp.
+  intros *. intros M M2 ExtraHyp.
           (* 0                        1                    2                    3
-  M1 : seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m0
+  M  : seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m0
   M2 : seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m1
   order :=  [3; 2;                   2;                   0                      ] *)
   transfer_sep_order.
-  lazymatch type of M1 with
+  lazymatch type of M with
   | seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m => idtac
   end.
 Abort.
@@ -832,18 +945,27 @@ Definition swap_locals: {f: list string * list string * cmd &
     intuition congruence.
 Defined.
 
+
 (* TODO: write down postcondition only at end *)
 Definition swap: {f: list string * list string * cmd &
   forall call t m a_addr b_addr a b R,
-    seps [a_addr |-> scalar a; b_addr |-> scalar b; R] m ->
+    m satisfies <{
+      * a_addr |-> scalar a
+      * b_addr |-> scalar b
+      * R
+    }> ->
     vc_func call f t m [a_addr; b_addr] (fun t' m' retvs =>
-      t' = t /\ seps [a_addr |-> scalar b; b_addr |-> scalar a; R] m' /\ retvs = []
+      m' satisfies <{
+        * a_addr |-> scalar b
+        * b_addr |-> scalar a
+        * R
+      }> /\ retvs = [] /\ t' = t
   )}.
     start.
 #*/ t = load(a_addr);                                                        /*.
 
     do 2 eexists.
-    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem x).
+    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem M).
     (* Here we can make goal modifications influenced by the canceling problem,
        and the goal modifications will still be visible in the continuation subgoal: *)
     remember a as could_be_split eqn: E.
@@ -857,12 +979,12 @@ Definition swap: {f: list string * list string * cmd &
 #*/ store(a_addr, load(b_addr));                                             /*.
 
     do 2 eexists.
-    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem x).
+    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem M).
     (* TODO: how to print seps list with emps? *)
     ecancel_step_by_implication.
     eapply impl1_done.
     eapply store_word_of_sep_cps.
-    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem x).
+    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem M).
     ecancel_step_by_implication.
     eapply impl1_done.
     intros.
@@ -871,7 +993,7 @@ Definition swap: {f: list string * list string * cmd &
 #*/ store(b_addr, t);                                                        /*.
 
     eapply store_word_of_sep_cps.
-    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem x).
+    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem M).
     ecancel_step_by_implication.
     eapply impl1_done.
     intros.
