@@ -493,14 +493,14 @@ Ltac cancel_done :=
   end;
   ecancel_done.
 
-Ltac cancel :=
-  reify_goal;
+Ltac cancel_seps :=
   repeat cancel_step;
   repeat cancel_emp_l;
   repeat cancel_emp_r;
   repeat cancel_emp_impl;
   try solve [ cancel_done ].
 
+Ltac cancel := reify_goal; cancel_seps.
 
 Ltac ecancel :=
   cancel;
