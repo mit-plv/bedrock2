@@ -262,7 +262,7 @@ Section WithParams.
   Abort.
   (* TODO can we disable Coq's auto-eta-expansion to make this notation print like written above?*)
 
-  Lemma wp_store: forall call sz ea ev t m l rest post,
+  Lemma wp_store0: forall call sz ea ev t m l rest post,
       wp_expr m l ea (fun a =>
         wp_expr m l ev (fun v =>
           get_option (Memory.store sz m a v) (fun m' =>
@@ -273,6 +273,21 @@ Section WithParams.
     eapply wp_expr_to_dexpr in H. unfold dexpr in *. fwd.
     eapply wp_expr_to_dexpr in Hp1. unfold dexpr in *. fwd.
     inversion Hp1p1. inversion H0. subst. unfold store. symmetry in H. eauto 10.
+  Qed.
+
+  Lemma wp_store: forall call ea ev t m l rest post,
+      wp_expr m l ea (fun addr =>
+        wp_expr m l ev (fun newvalue => exists oldvalue R,
+          seps [addr |-> scalar oldvalue; R;
+                emp (forall m', seps [addr |-> scalar newvalue; R] m' ->
+                                wp_cmd call rest t m' l post)] m)) ->
+      wp_cmd call (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
+  Proof.
+    intros.
+    eapply wp_store0.
+    eapply weaken_wp_expr. 1: eassumption. clear H. cbv beta. intros.
+    eapply weaken_wp_expr. 1: eassumption. clear H. cbv beta. intros. fwd.
+    eapply store_word_of_sep_cps. eassumption.
   Qed.
 
   (* The postcondition of the callee's spec will have a concrete shape that differs
@@ -476,6 +491,18 @@ Section NotationTests.
 
 End NotationTests.
 
+Ltac ecancel_with_remaining_emp_Prop :=
+  cancel_seps;
+  repeat ecancel_step_by_implication;
+  refine (impl1_done _ _ _).
+
+Ltac ecancel_assumption_with_remaining_emp_Prop :=
+  match goal with
+  | H: seps _ ?m |- seps _ ?m =>
+    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m H)
+  end;
+  ecancel_with_remaining_emp_Prop.
+
 (* intro-and-position *)
 Ltac intro_p n :=
   lazymatch reverse goal with
@@ -539,8 +566,13 @@ Ltac map_with_ltac f l :=
   end.
 
 Ltac eval_expr_step :=
-  match goal with
+  lazymatch goal with
   | |- wp_expr _ _ (expr.load access_size.word _) _ => eapply wp_load_word
+  (* once the address of a load, or the address and value of a store have been evaluated,
+     the goal will have two existentials: *)
+  | |- exists (v: @word.rep _ _) (R: @map.rep _ _ _ -> Prop), seps _ _ => do 2 eexists
+  (* loads, stores and function calls all can lead to sep goals like this: *)
+  | |- seps _ _ => ecancel_assumption_with_remaining_emp_Prop
   | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load_old
   | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity |]
   end.
@@ -592,9 +624,16 @@ Ltac assign name val :=
   repeat eval_expr_step;
   [.. (* maybe some unsolved side conditions *) | try put_into_current_locals].
 
+(* TODO change order of definitions so that this hook is not needed any more *)
+Ltac transfer_sep_order := fail "not yet implemented".
+
 Ltac store sz addr val :=
-  eapply (wp_store _ sz addr val);
-  repeat eval_expr_step.
+  eapply (wp_store _ addr val);
+  repeat eval_expr_step;
+  lazymatch goal with
+  | |- forall (_: @map.rep _ _ _), seps _ _ -> _ => intros; transfer_sep_order
+  | |- _ => idtac (* expression evaluation did not work fully automatically *)
+  end.
 
 Ltac ret retnames :=
   eapply wp_skip;
@@ -865,7 +904,7 @@ Ltac get_order old_clauses new_clauses :=
 
 (* Given an old and a new sep hyp, transfers the order of the sepclauses from the old one
    to the new one (and first also removes nested seps in the new sep hyp) *)
-Ltac transfer_sep_order :=
+Ltac transfer_sep_order ::=
   lazymatch goal with
   | HOld: seps ?old_clauses ?mOld, HNew: seps ?new_nested ?mNew |- wp_cmd _ _ _ ?mNew _ _ =>
     let tmem := type of mNew in
@@ -963,41 +1002,8 @@ Definition swap: {f: list string * list string * cmd &
   )}.
     start.
 #*/ t = load(a_addr);                                                        /*.
-
-    do 2 eexists.
-    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem M).
-    (* Here we can make goal modifications influenced by the canceling problem,
-       and the goal modifications will still be visible in the continuation subgoal: *)
-    remember a as could_be_split eqn: E.
-    ecancel_step_by_implication.
-    eapply impl1_done.
-
-    put_into_current_locals.
-
-    (* Changes made in load subgoal still visible: *)
-
 #*/ store(a_addr, load(b_addr));                                             /*.
-
-    do 2 eexists.
-    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem M).
-    (* TODO: how to print seps list with emps? *)
-    ecancel_step_by_implication.
-    eapply impl1_done.
-    eapply store_word_of_sep_cps.
-    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem M).
-    ecancel_step_by_implication.
-    eapply impl1_done.
-    intros.
-    transfer_sep_order.
-
 #*/ store(b_addr, t);                                                        /*.
-
-    eapply store_word_of_sep_cps.
-    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ current_mem M).
-    ecancel_step_by_implication.
-    eapply impl1_done.
-    intros.
-    transfer_sep_order.
     ret (@nil string).
     subst. intuition solve[cbn[seps] in *; ecancel_assumption].
 Defined.
