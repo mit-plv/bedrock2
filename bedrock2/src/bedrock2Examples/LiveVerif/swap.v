@@ -290,6 +290,18 @@ Section WithParams.
     eapply store_word_of_sep_cps. eassumption.
   Qed.
 
+  Lemma wp_if: forall call c thn els rest t m l post,
+      wp_expr m l c (fun b => exists Q1 Q2,
+        (word.unsigned b <> 0 -> wp_cmd call thn t m l Q1) /\
+        (word.unsigned b =  0 -> wp_cmd call els t m l Q2) /\
+        (forall t' m' l', word.unsigned b <> 0 /\ Q1 t' m' l' \/
+                          word.unsigned b =  0 /\ Q2 t' m' l' ->
+                          wp_cmd call rest t' m' l' post)) ->
+      wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
+  Proof.
+    intros.
+  Admitted.
+
   (* The postcondition of the callee's spec will have a concrete shape that differs
      from the postcondition that we pass to `call`, so when using this lemma, we have
      to apply weakening for `call`, which generates two subgoals:
@@ -371,6 +383,8 @@ Local Open Scope live_scope.
 Inductive ignore_above_this_line := mk_ignore_above_this_line.
 Notation "'ignore' 'above' 'this' 'line' : '____'" := ignore_above_this_line
   (only printing) : live_scope.
+
+Inductive block_kind := ThenBranch | ElseBranch | LoopBody.
 
 Notation "'ready' 'for' 'next' 'command'" := (wp_cmd _ _ _ _ _ _)
   (at level 0, only printing) : live_scope.
@@ -607,17 +621,16 @@ Ltac start :=
   | separator: ignore_above_this_line |- wp_cmd _ _ ?t ?m _ _ =>
     move t after separator; let tn := fresh "current_trace" in rename t into tn;
     move m after separator; let mn := fresh "current_mem" in rename m into mn
-  end.
+  end;
+  let b := fresh "block_structure" in pose (@nil block_kind) as b; move b at top.
 
 Inductive snippet :=
 | SAssign(x: string)(e: Syntax.expr)
 | SStore(sz: access_size)(addr val: Syntax.expr)
 | SRet(xs: list string)
-(*
-| SIf(cond: Syntax.expr)(merge: bool)
+| SIf(cond: Syntax.expr)
 | SEnd
-| SElse
-*).
+| SElse.
 
 Ltac assign name val :=
   eapply (wp_set _ name val);
@@ -636,6 +649,13 @@ Ltac store sz addr val :=
   end.
 
 Ltac ret retnames :=
+  lazymatch goal with
+  | _ := @nil block_kind |- _ => idtac
+  | _ := cons ThenBranch _ |- _ => fail "return inside a then-branch is not supported"
+  | _ := cons ElseBranch _ |- _ => fail "return inside an else-branch is not supported"
+  | _ := cons LoopBody _ |- _ => fail "return inside a loop body is not supported"
+  | |- _ => fail "block structure lost (could not find a `list block_kind`)"
+  end;
   eapply wp_skip;
   lazymatch goal with
   | |- exists _, map.getmany_of_list _ ?eretnames = Some _ /\ _ =>
@@ -682,6 +702,46 @@ Declare Custom Entry live_expr.
 Notation "x" := (expr.var x)
   (in custom live_expr at level 0, x custom rhs_var at level 0, only parsing).
 
+Notation "live_expr:( e )" := e
+  (e custom live_expr at level 100, only parsing).
+
+(* Using the same precedences as https://en.cppreference.com/w/c/language/operator_precedence *)
+Notation "! x" := (expr.op bopname.eq x (expr.literal 0))
+  (in custom live_expr at level 2, x custom live_expr, right associativity, only parsing).
+Infix "*" := (expr.op bopname.mul)
+  (in custom live_expr at level 3, left associativity, only parsing).
+Infix "/" := (expr.op bopname.divu)
+  (in custom live_expr at level 3, left associativity, only parsing).
+Infix "%" := (expr.op bopname.remu)
+  (in custom live_expr at level 3, left associativity, only parsing).
+Infix "+" := (expr.op bopname.add)
+  (in custom live_expr at level 4, left associativity, only parsing).
+Infix "-" := (expr.op bopname.sub)
+  (in custom live_expr at level 4, left associativity, only parsing).
+Infix "<<" := (expr.op bopname.slu)
+  (in custom live_expr at level 5, left associativity, only parsing).
+Infix ">>" := (expr.op bopname.sru)
+  (in custom live_expr at level 5, left associativity, only parsing).
+Infix "<" := (expr.op bopname.ltu)
+  (in custom live_expr at level 6, no associativity, only parsing).
+Notation "a <= b" := (live_expr:(!(b < a)))
+  (in custom live_expr at level 6, a custom live_expr, b custom live_expr,
+   no associativity, only parsing).
+Notation "a > b" := (live_expr:(b < a))
+  (in custom live_expr at level 6, a custom live_expr, b custom live_expr,
+   no associativity, only parsing).
+Notation "a >= b" := (live_expr:(b <= a))
+  (in custom live_expr at level 6, a custom live_expr, b custom live_expr,
+   no associativity, only parsing).
+Infix "==" := (expr.op bopname.eq)
+  (in custom live_expr at level 7, no associativity, only parsing).
+Infix "&" := (expr.op bopname.and)
+  (in custom live_expr at level 8, left associativity, only parsing).
+Infix "^" := (expr.op bopname.xor)
+  (in custom live_expr at level 9, left associativity, only parsing).
+Infix "|" := (expr.op bopname.or)
+  (in custom live_expr at level 10, left associativity, only parsing).
+
 Notation "load1( a )" := (expr.load access_size.one a)
   (in custom live_expr at level 0, a custom live_expr at level 100, only parsing).
 Notation "load2( a )" := (expr.load access_size.two a)
@@ -690,9 +750,6 @@ Notation "load4( a )" := (expr.load access_size.four a)
   (in custom live_expr at level 0, a custom live_expr at level 100, only parsing).
 Notation  "load( a )" := (expr.load access_size.word a)
   (in custom live_expr at level 0, a custom live_expr at level 100, only parsing).
-
-Notation "live_expr:( e )" := e
-  (e custom live_expr at level 100, only parsing).
 
 Declare Custom Entry snippet.
 
@@ -704,12 +761,9 @@ Notation "store( a , v ) ;" := (SStore access_size.word a v)
 Notation "'return' l ;" := (SRet l)
   (in custom snippet at level 0, l custom rhs_var_list at level 1).
 
-(*
-Notation "'if' ( e ) '/*merge*/' {" := (SIf e true) (in custom snippet at level 0, e custom bedrock_expr).
-Notation "'if' ( e ) '/*split*/' {" := (SIf e false) (in custom snippet at level 0, e custom bedrock_expr).
+Notation "'if' ( e ) {" := (SIf e true) (in custom snippet at level 0, e custom live_expr).
 Notation "}" := SEnd (in custom snippet at level 0).
-Notation "'else' {" := SElse (in custom snippet at level 0).
-*)
+Notation "} 'else' {" := SElse (in custom snippet at level 0).
 
 Tactic Notation "#" constr(s) := add_snippet s; after_snippet.
 
