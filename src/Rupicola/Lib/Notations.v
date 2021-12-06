@@ -448,11 +448,10 @@ Notation "defn! spec" :=
            | {| _defn_name := ?name; _defn_sig := {| _defn_args := ?args; _defn_rets := ?rets |};
                 _defn_impl := ?impl; _defn_gallina := ?gallina;
                 _defn_calls := ?calls |} =>
-              evar (body: cmd);
-              let body := eval red in body in
+              let body := open_constr:(match _ return bedrock2.Syntax.cmd with c => c end) in
               unify impl (name, (args, rets, body));
               let goal := Rupicola.Lib.Tactics.program_logic_goal_for_function impl calls in
-              exact (__rupicola_program_marker gallina -> goal)
+              exact (Rupicola.Lib.Core.__rupicola_program_marker gallina -> goal)
            end)
    end)
     (at level 0, spec custom defn_spec at level 200, only parsing).
