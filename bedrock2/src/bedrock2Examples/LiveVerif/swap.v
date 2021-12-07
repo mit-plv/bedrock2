@@ -175,6 +175,17 @@ Section WithParams.
     cbv [Morphisms.pointwise_relation Basics.impl]. intros. inversion H1. subst. eauto.
   Qed.
 
+  Lemma wp_op: forall m l bop ea eb (post: word -> Prop),
+      wp_expr m l ea (fun a =>
+        wp_expr m l eb (fun b =>
+          post (interp_binop bop a b))) ->
+      wp_expr m l (expr.op bop ea eb) post.
+  Proof.
+    intros. constructor. cbn.
+    eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
+    intros. destruct H. exact H.
+  Qed.
+
   Inductive wp_cmd(call: (string -> trace -> mem -> list word ->
                           (trace -> mem -> list word -> Prop) -> Prop))
             (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop): Prop :=
@@ -292,14 +303,22 @@ Section WithParams.
 
   Lemma wp_if: forall call c thn els rest t m l post,
       wp_expr m l c (fun b => exists Q1 Q2,
-        (word.unsigned b <> 0 -> wp_cmd call thn t m l Q1) /\
-        (word.unsigned b =  0 -> wp_cmd call els t m l Q2) /\
+        ((word.unsigned b <> 0 -> wp_cmd call thn t m l Q1) /\
+         (word.unsigned b =  0 -> wp_cmd call els t m l Q2)) /\
         (forall t' m' l', word.unsigned b <> 0 /\ Q1 t' m' l' \/
                           word.unsigned b =  0 /\ Q2 t' m' l' ->
                           wp_cmd call rest t' m' l' post)) ->
       wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Proof.
-    intros.
+    intros. constructor. cbn.
+    eapply wp_expr_to_dexpr in H. fwd.
+    eexists. split; [eassumption|]. split; intros.
+    - eapply WeakestPreconditionProperties.Proper_cmd. 3: eapply Hp1p0p0; eassumption.
+      1: admit.
+      unfold Morphisms.pointwise_relation, Basics.impl. intros. eapply Hp1p1. eauto.
+    - eapply WeakestPreconditionProperties.Proper_cmd. 3: eapply Hp1p0p1; eassumption.
+      1: admit.
+      unfold Morphisms.pointwise_relation, Basics.impl. intros. eapply Hp1p1. eauto.
   Admitted.
 
   (* The postcondition of the callee's spec will have a concrete shape that differs
@@ -589,6 +608,7 @@ Ltac eval_expr_step :=
   | |- seps _ _ => ecancel_assumption_with_remaining_emp_Prop
   | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load_old
   | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity |]
+  | |- wp_expr _ _ (expr.op _ _ _) _ => eapply wp_op
   end.
 
 Ltac start :=
@@ -648,6 +668,9 @@ Ltac store sz addr val :=
   | |- _ => idtac (* expression evaluation did not work fully automatically *)
   end.
 
+Ltac cond c :=
+  eapply (wp_if _ c).
+
 Ltac ret retnames :=
   lazymatch goal with
   | _ := @nil block_kind |- _ => idtac
@@ -667,6 +690,7 @@ Ltac add_snippet s :=
   lazymatch s with
   | SAssign ?y ?e => assign y e
   | SStore ?sz ?addr ?val => store sz addr val
+  | SIf ?e => cond e
   | SRet ?retnames => ret retnames
   end.
 
@@ -761,7 +785,7 @@ Notation "store( a , v ) ;" := (SStore access_size.word a v)
 Notation "'return' l ;" := (SRet l)
   (in custom snippet at level 0, l custom rhs_var_list at level 1).
 
-Notation "'if' ( e ) {" := (SIf e true) (in custom snippet at level 0, e custom live_expr).
+Notation "'if' ( e ) {" := (SIf e) (in custom snippet at level 0, e custom live_expr).
 Notation "}" := SEnd (in custom snippet at level 0).
 Notation "} 'else' {" := SElse (in custom snippet at level 0).
 
@@ -1019,6 +1043,81 @@ Proof.
   lazymatch type of M with
   | seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m => idtac
   end.
+Abort.
+
+Definition u_min: {f: list string * list string * cmd &
+  forall call t m a b,
+    vc_func call f t m [a; b] (fun t' m' retvs =>
+      t' = t /\ m' = m /\
+      (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
+       word.unsigned b <= word.unsigned a /\ retvs = [b])
+  )}.
+    start.
+#*/ if (a < b) {                                                             /*.
+
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+
+    lazymatch goal with
+    | |- exists (_ _ : _ -> _ -> _ -> Prop), (_ /\ _) /\ _ =>
+      eexists; eexists; split;
+      [ cbv [interp_binop]; split; intros;
+        [ lazymatch goal with
+          | b := ?l : list block_kind |- _ => clear b; pose (cons ThenBranch l) as b; move b at top
+          end
+        | lazymatch goal with
+          | b := ?l : list block_kind |- _ => clear b; pose (cons ElseBranch l) as b; move b at top
+          end ]
+      | intros ]
+    end.
+
+    {
+
+
+Require Import Coq.Program.Tactics.
+Require Import coqutil.Tactics.autoforward.
+
+Hint Extern 1
+  (autoforward (word.unsigned (if _ then (word.of_Z 1) else (word.of_Z 0)) = 0) _)
+  => rapply @word.if_zero : typeclass_instances.
+
+Hint Extern 1
+  (autoforward (word.unsigned (if _ then (word.of_Z 1) else (word.of_Z 0)) <> 0) _)
+  => rapply @word.if_nonzero : typeclass_instances.
+
+Hint Rewrite @word.unsigned_ltu using typeclasses eauto: fwd_rewrites.
+
+Ltac fwd_rewrites ::= fwd_rewrites_autorewrite.
+
+
+fwd.
+
+
+#*/   r = a;                                                                 /*.
+
+  lazymatch goal with
+  | b := (cons ThenBranch ?l) : list block_kind |- _ => clear b
+  | _ => fail "Not in a then-branch"
+  end.
+  eapply wp_skip.
+  (* TODO: keep track of what has been introduced before/after the if.
+     By putting hypotheses introduced after the if below a marker hyp?
+     Or by passing list of varnames before and after command to wp_cmd?
+ *)
+  admit.
+    }
+    {
+
+      fwd.
+      admit.
+    }
+    (* TODO: don't redo simplification of interp_binop *)
+
+(*
+#*/ } else {                                                                 /*.
+#*/
+*)
 Abort.
 
 (* TODO: write down postcondition only at end *)
