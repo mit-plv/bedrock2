@@ -604,7 +604,7 @@ Section LowerPipeline.
     pose proof (get_compile_funs_pos p1 (build_fun_pos_env iset compile_ext_call p1)) as P.
     rewrite E0 in P.
     specialize P with (1 := H1p0). cbn in P.
-    pose proof (compile_funs_finfo_idemp _ _ _ E0) as Q. fwd.
+    pose proof (compile_funs_finfo_idemp _ _ _ E0) as Q. subst r. fwd.
     do 3 eexists. split. 1: eassumption.
     intros.
     assert (word.unsigned p_funcs mod 4 = 0). {
@@ -715,7 +715,7 @@ Section LowerPipeline.
       + assumption.
       + unfold machine_ok in *. fwd. assumption.
       + simpl_g_get. reflexivity.
-      + unfold machine_ok in *. fwd.
+      + unfold machine_ok in *. subst. fwd.
         unfold goodMachine; simpl_g_get. ssplit.
         { move OL at bottom.
           move H2 at bottom.

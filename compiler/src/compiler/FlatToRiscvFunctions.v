@@ -479,7 +479,7 @@ Section Proofs.
     assert (valid_register RegisterNames.ra) by (cbv; auto).
     assert (valid_register RegisterNames.sp) by (cbv; auto).
 
-    unfold goodMachine in GM. unfold valid_FlatImp_fun in V. fwd.
+    unfold goodMachine in GM. unfold valid_FlatImp_fun in V. subst insts. fwd.
     destruct g. simpl_g_get.
 
     set (FL := framelength (argnames, retnames, body)) in *.
@@ -662,7 +662,6 @@ Section Proofs.
       { move OL at bottom.
         unfold map.extends. intros *. intro G. rewrite !map.get_put_dec.
         destruct_one_match. {
-          subst x.
           exfalso.
           eapply map.putmany_of_list_zip_find_index in G. 2: eassumption.
           rewrite map.get_empty in G.
@@ -962,7 +961,7 @@ Section Proofs.
           blia.
         }
         rewrite map.get_put_dec. destruct_one_match. 1: {
-          subst x. exfalso.
+          exfalso.
           move HI' at bottom.
           apply_in_hyps modVars_as_list_valid_FlatImp_var.
           lazymatch goal with

@@ -193,26 +193,20 @@ Section FitsStack.
       destr (String.eqb k f). {
         unfold stack_usage_of_fun in *.
         fwd.
-        simpl in E1.
+        simpl in E0.
         fwd.
         assert (map.get e_glob f = Some (argnames, retnames, fbody)) as Q. {
           unfold map.split, map.disjoint in *.
           fwd.
           etransitivity. 1: exact E.
-          rewrite map.get_putmany_left in E.
-          - rewrite map.get_put_same in E. congruence.
-          - match goal with
-            | |- ?x = None => destr x
-            end.
-            2: reflexivity.
-            exfalso.
-            eapply H3p1. 2: exact E1.
-            rewrite map.get_put_same. reflexivity.
+          erewrite map.get_putmany_right in E.
+          - symmetry. exact E.
+          - rewrite map.get_put_same. reflexivity.
         }
         rewrite Q in E. symmetry in E. fwd.
         pose proof stack_usage_rec_equals_stackalloc_words as P.
-        specialize P with (1 := E0). subst.
-        eapply stack_usage_rec_correct in E0.
+        specialize P with (1 := E1). subst.
+        eapply stack_usage_rec_correct in E1.
         eapply fits_stack_monotone. 1: eassumption.
         all: unfold framelength.
         all: blia.

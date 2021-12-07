@@ -192,7 +192,7 @@ Section RegAlloc.
     unfold states_compat. intros.
     rewrite map.get_put_dec in H2.
     destruct_one_match_hyp.
-    - subst x0. simp. exists y. rewrite map.get_put_same. auto.
+    - simp. exists y. rewrite map.get_put_same. auto.
     - unfold map.injective in *.
       specialize H1 with (1 := H2). simp.
       eexists. split; [eassumption|].

@@ -391,7 +391,7 @@ Section Pipeline1.
         match goal with H: _ |- _ => specialize Q with (1 := H) end.
         unfold GetRetCount, SrcLang, RiscvLang, get_retcount, getSndOfThree in Q.
         specialize (Q "init"%string).
-        fwd. reflexivity.
+        fwd. eassumption.
       + unshelve epose proof (phase_preserves_argcount (composed_compiler_correct _ _ _)) as P;
           try eassumption.
         match goal with H: _ |- _ => specialize P with (1 := H) end.
@@ -402,7 +402,7 @@ Section Pipeline1.
         match goal with H: _ |- _ => specialize Q with (1 := H) end.
         unfold GetRetCount, SrcLang, RiscvLang, get_retcount, getSndOfThree in Q.
         specialize (Q "loop"%string).
-        fwd. reflexivity.
+        fwd. eassumption.
       + destruct_RiscvMachine final. subst.
         subst loop_pos init_pos.
         solve_word_eq word_ok.

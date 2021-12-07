@@ -350,7 +350,7 @@ Section WithWordAndMem.
       eapply map.get_forallb in E0. 2: eassumption.
       unfold lookup_and_check_func, check_func in E0. fwd.
 
-      eexists _, _, _. split. 1: reflexivity. intros.
+      eexists _, _, _. split. 1: eassumption. intros.
       unfold map.of_list_zip in *.
       apply_in_hyps assert_ins_same_length.
       apply_in_hyps assignments_same_length.

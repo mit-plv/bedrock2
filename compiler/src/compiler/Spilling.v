@@ -626,13 +626,13 @@ Section Spilling.
             - unfold map.disjoint. intros.
               specialize H0p2 with (1 := H0).
               rewrite map.get_put_dec in H1. destr (x =? k).
-              + subst x. blia.
+              + blia.
               + specialize H0p3 with (1 := H1). blia.
           }
           1: eassumption.
           1: {
             intros. rewrite map.get_put_dec in H0. destr (x =? x0).
-            - subst x0. blia.
+            - blia.
             - eauto.
           }
           2: {
@@ -665,12 +665,12 @@ Section Spilling.
         - unfold map.disjoint. intros.
           specialize H0p3 with (1 := H0).
           rewrite map.get_put_dec in H1. destr (x =? k).
-          + subst x. blia.
+          + blia.
           + specialize H0p2 with (1 := H1). blia.
       }
       1: {
         intros. rewrite map.get_put_dec in H0. destr (x =? x0).
-        - subst x0. blia.
+        - blia.
         - eauto.
       }
       2: {
@@ -724,13 +724,13 @@ Section Spilling.
             - unfold map.disjoint. intros.
               specialize Hp2 with (1 := H).
               rewrite map.get_put_dec in H0. destr (x =? k).
-              + subst x. blia.
+              + blia.
               + eauto with zarith.
           }
           1: eassumption.
           1: {
             intros. rewrite map.get_put_dec in H. destr (x =? x0).
-            - subst x0. blia.
+            - blia.
             - eauto.
           }
           2: {
@@ -763,12 +763,12 @@ Section Spilling.
         - unfold map.disjoint. intros.
           specialize Hp3 with (1 := H).
           rewrite map.get_put_dec in H0. destr (x =? k).
-          + subst x. blia.
+          + blia.
           + eauto with zarith.
       }
       1: {
         intros. rewrite map.get_put_dec in H. destr (x =? x0).
-        - subst x0. blia.
+        - blia.
         - eauto.
       }
       2: {
@@ -792,7 +792,7 @@ Section Spilling.
   Proof.
     intros.
     destr (y =? z).
-    - subst z. replace z' with y' in * by congruence.
+    - replace z' with y' in * by congruence.
       unfold iarg_reg, spill_tmp. destruct_one_match.
       + rewrite map.get_put_diff by blia. rewrite map.get_put_same. reflexivity.
       + rewrite map.get_put_same. reflexivity.
@@ -816,7 +816,7 @@ Section Spilling.
     unfold arg_regs, sep, ptsto, map.split. intros. fwd.
     exists (map.putmany mp0 (map.put map.empty k v)), mq. ssplit; auto.
     intros. rewrite map.get_putmany_dec, map.get_put_dec, map.get_empty in H.
-    destr (k =? k0); fwd; eauto.
+    destr (k =? k0); subst; fwd; eauto.
   Qed.
 
   Lemma hide_ll_arg_reg_ptsto: forall k v P R l,
@@ -1630,7 +1630,7 @@ Section Spilling.
       eapply exec.load. {
         rewrite map.get_put_same. reflexivity. }
       { edestruct (@sep_def _ _ _ m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
-        1: ecancel_assumption. unfold map.split in Sp. fwd.
+        1: ecancel_assumption. unfold map.split in Sp. subst. fwd.
         unfold Memory.load, Memory.load_Z, Memory.load_bytes.
         erewrite map.getmany_of_tuple_in_disjoint_putmany; eauto. }
       eapply save_ires_reg_correct.
@@ -1645,7 +1645,7 @@ Section Spilling.
       pose proof H3 as A. unfold related in A. fwd.
       unfold Memory.store, Memory.store_Z, Memory.store_bytes in *. fwd.
       edestruct (@sep_def _ _ _ m2 (eq m)) as (m' & m2Rest & Sp & ? & ?).
-      1: ecancel_assumption. unfold map.split in Sp. fwd.
+      1: ecancel_assumption. unfold map.split in Sp. subst. fwd.
       eapply exec.store.
       1: eapply get_iarg_reg_1; eauto with zarith.
       1: apply map.get_put_same.

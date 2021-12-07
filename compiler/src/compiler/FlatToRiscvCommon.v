@@ -765,7 +765,7 @@ Section FlatToRiscv1.
       unfold map.disjoint in *. rename Hp0p1 into D.
       specialize (D addr). rewrite map.get_put_same in D. specialize D with (1 := eq_refl).
       destr (word.eqb addr k).
-      + subst k. ring_simplify (word.sub addr addr). rewrite word.unsigned_of_Z. simpl.
+      + ring_simplify (word.sub k k). rewrite word.unsigned_of_Z. simpl.
         destruct_one_match. 2: reflexivity.
         exfalso. eapply D.
         rewrite OfListWord.map.get_of_list_word_at. exact E.

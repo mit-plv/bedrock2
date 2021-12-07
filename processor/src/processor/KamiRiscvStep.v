@@ -38,6 +38,8 @@ Require Import processor.Consistency.
 
 Local Open Scope Z_scope.
 
+Local Ltac subst_after_destr H ::= idtac.
+
 (** Consistency between the Kami word and the Z-based word *)
 Section WordZ.
   Local Hint Mode word.word - : typeclass_instances.

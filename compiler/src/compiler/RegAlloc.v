@@ -868,8 +868,7 @@ Section RegAlloc.
     unfold assert_in, assignment in H0. simp. simpl in E.
     rewrite String.eqb_sym, Z.eqb_sym in E.
     destr (Z.eqb x' k').
-    - subst k'.
-      destr (String.eqb x k).
+    - destr (String.eqb x k).
       + assumption.
       + simpl in E. eapply find_some in E. destruct E as [E F].
         destruct p. eapply Bool.andb_true_iff in F. destruct F as [F1 F2].
