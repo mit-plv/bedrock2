@@ -3,6 +3,7 @@ Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
 Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.rewr coqutil.Tactics.rdelta.
+Require Import Coq.Program.Tactics.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Tactics.fwd.
@@ -43,6 +44,9 @@ Module Import SepLogPredsWithAddrLast. Section __.
   Definition scalar16 := truncated_word Syntax.access_size.two.
   Definition scalar32 := truncated_word Syntax.access_size.four.
   Definition scalar := truncated_word Syntax.access_size.word.
+
+  Definition word_array(vs: list word)(addr: word): mem -> Prop :=
+    array Scalars.scalar (word.of_Z (bytes_per_word width)) addr vs.
 End __. End SepLogPredsWithAddrLast.
 
 (* `*` is at level 40, and we want to bind stronger than `*`,
@@ -122,6 +126,11 @@ Section WithParams.
   Proof.
     intros. constructor. cbn. unfold WeakestPrecondition.get. eauto.
   Qed.
+
+  Lemma wp_literal: forall m l z (post: word -> Prop),
+      post (word.of_Z z) ->
+      wp_expr m l (expr.literal z) post.
+  Proof. intros. constructor. assumption. Qed.
 
   Lemma weaken_wp_expr: forall m l e (post1 post2: word -> Prop),
       wp_expr m l e post1 ->
@@ -301,7 +310,7 @@ Section WithParams.
     eapply store_word_of_sep_cps. eassumption.
   Qed.
 
-  Lemma wp_if: forall call c thn els rest t m l post,
+  Lemma wp_if0: forall call c thn els rest t m l post,
       wp_expr m l c (fun b => exists Q1 Q2,
         ((word.unsigned b <> 0 -> wp_cmd call thn t m l Q1) /\
          (word.unsigned b =  0 -> wp_cmd call els t m l Q2)) /\
@@ -320,6 +329,25 @@ Section WithParams.
       1: admit.
       unfold Morphisms.pointwise_relation, Basics.impl. intros. eapply Hp1p1. eauto.
   Admitted.
+
+  Lemma wp_if: forall call c l vars vals thn els rest t m post,
+      l = reconstruct vars vals ->
+      wp_expr m l c (fun b =>
+        exists (Q1 Q2: trace -> mem -> locals -> Prop),
+          ((word.unsigned b <> 0 -> wp_cmd call thn t m l (fun t' m' l' =>
+              exists vals', l' = reconstruct vars vals' /\ Q1 t' m' l')) /\
+           (word.unsigned b =  0 -> wp_cmd call els t m l (fun t' m' l' =>
+              exists vals', l' = reconstruct vars vals' /\ Q2 t' m' l'))) /\
+          (forall t' m' vals', let l' := reconstruct vars vals' in
+                               word.unsigned b <> 0 /\ Q1 t' m' l' \/
+                               word.unsigned b =  0 /\ Q2 t' m' l' ->
+                               wp_cmd call rest t' m' l' post)) ->
+      wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
+  Proof.
+    intros. subst. eapply wp_if0. eapply weaken_wp_expr. 1: exact H0. clear H0. cbv beta.
+    intros v (Q1 & Q2 & A & B). eexists. eexists. split. 1: exact A. clear A. cbv beta.
+    intros * [? | ?]; fwd; eapply B; eauto.
+  Qed.
 
   (* The postcondition of the callee's spec will have a concrete shape that differs
      from the postcondition that we pass to `call`, so when using this lemma, we have
@@ -563,16 +591,23 @@ Ltac is_fresh x := assert_succeeds (pose proof tt as x).
 Ltac make_fresh x :=
   tryif is_fresh x then idtac else let x' := fresh x in rename x into x'.
 
-Ltac put_into_current_locals :=
+Ltac put_into_current_locals is_decl :=
   lazymatch goal with
-  | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
+  | cl := current_locals_marker (reconstruct _ _) |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
     let i := string_to_ident x in
-    make_fresh i;
-    let n := fresh "L0" in
-    apply wp_locals_put; intro_p i; intro_p n
-  end;
-  lazymatch goal with
-  | cl := current_locals_marker (reconstruct _ _) |- _ =>
+    let old_i := fresh i in
+    lazymatch is_decl with
+    | true => let E := fresh "L0" in apply wp_locals_put; intro_p i; intro_p E
+    | false =>
+      rename i into old_i;
+      match goal with
+      | E: old_i = _ |- _ =>
+        let oldE := fresh E in
+        rename E into oldE;
+        apply wp_locals_put; intro_p i; intro E; move E before oldE
+      | |- _ => let E := fresh "L0" in apply wp_locals_put; intro_p i; intro_p E
+      end
+    end;
     subst cl;
     lazymatch goal with
     | |- wp_cmd ?call ?c ?t ?m ?l ?post =>
@@ -587,6 +622,13 @@ Ltac put_into_current_locals :=
       | arguments := arguments_marker _ |- _ =>
         move cl before arguments (* before-wrt-moving-direction = below *)
       end
+    end;
+    lazymatch is_decl with
+    | true => idtac
+    | false => match goal with
+               | oldE: old_i = _ |- _ => clear old_i oldE
+               | |- _ => idtac
+               end
     end
   end.
 
@@ -608,6 +650,7 @@ Ltac eval_expr_step :=
   | |- seps _ _ => ecancel_assumption_with_remaining_emp_Prop
   | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load_old
   | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity |]
+  | |- wp_expr _ _ (expr.literal _) _ => eapply wp_literal
   | |- wp_expr _ _ (expr.op _ _ _) _ => eapply wp_op
   end.
 
@@ -645,17 +688,17 @@ Ltac start :=
   let b := fresh "block_structure" in pose (@nil block_kind) as b; move b at top.
 
 Inductive snippet :=
-| SAssign(x: string)(e: Syntax.expr)
+| SAssign(is_decl: bool)(x: string)(e: Syntax.expr)
 | SStore(sz: access_size)(addr val: Syntax.expr)
 | SRet(xs: list string)
 | SIf(cond: Syntax.expr)
 | SEnd
 | SElse.
 
-Ltac assign name val :=
+Ltac assign is_decl name val :=
   eapply (wp_set _ name val);
   repeat eval_expr_step;
-  [.. (* maybe some unsolved side conditions *) | try put_into_current_locals].
+  [.. (* maybe some unsolved side conditions *) | try put_into_current_locals is_decl].
 
 (* TODO change order of definitions so that this hook is not needed any more *)
 Ltac transfer_sep_order := fail "not yet implemented".
@@ -669,7 +712,11 @@ Ltac store sz addr val :=
   end.
 
 Ltac cond c :=
-  eapply (wp_if _ c).
+  lazymatch goal with
+  | cl := current_locals_marker (reconstruct ?vars ?vals) |- wp_cmd ?call _ ?t ?m ?l _ =>
+    (* rapply because eapply inlines `let l'` *)
+    rapply (wp_if call c l vars vals); [cbv [cl current_locals_marker]; reflexivity | ]
+  end.
 
 Ltac ret retnames :=
   lazymatch goal with
@@ -688,7 +735,7 @@ Ltac ret retnames :=
 
 Ltac add_snippet s :=
   lazymatch s with
-  | SAssign ?y ?e => assign y e
+  | SAssign ?is_decl ?y ?e => assign is_decl y e
   | SStore ?sz ?addr ?val => store sz addr val
   | SIf ?e => cond e
   | SRet ?retnames => ret retnames
@@ -708,6 +755,16 @@ Notation "x" :=
    end)
   (in custom rhs_var at level 0, x constr at level 0, only parsing).
 
+Declare Custom Entry var_or_literal.
+Notation "x" :=
+  (match x with
+   | _ => ltac:(lazymatch isZcst x with
+                | true => refine (expr.literal _); exact x
+                | false => refine (expr.var _); exact_varconstr_as_string x
+                end)
+   end)
+  (in custom var_or_literal at level 0, x constr at level 0, only parsing).
+
 Declare Custom Entry lhs_var.
 Notation "x" := (ident_to_string x)
   (in custom lhs_var at level 0, x constr at level 0, only parsing).
@@ -723,8 +780,8 @@ Notation "h , t" := (cons h t)
 
 Declare Custom Entry live_expr.
 
-Notation "x" := (expr.var x)
-  (in custom live_expr at level 0, x custom rhs_var at level 0, only parsing).
+Notation "x" := x
+  (in custom live_expr at level 0, x custom var_or_literal at level 0, only parsing).
 
 Notation "live_expr:( e )" := e
   (e custom live_expr at level 100, only parsing).
@@ -775,10 +832,16 @@ Notation "load4( a )" := (expr.load access_size.four a)
 Notation  "load( a )" := (expr.load access_size.word a)
   (in custom live_expr at level 0, a custom live_expr at level 100, only parsing).
 
+Goal forall (word: Type) (x: word),
+    live_expr:(x + 3) = expr.op bopname.add (expr.var "x") (expr.literal 3).
+Proof. intros. reflexivity. Abort.
+
 Declare Custom Entry snippet.
 
 Notation "*/ s /*" := s (s custom snippet at level 100).
-Notation "x = e ;" := (SAssign x e)
+Notation "x = e ;" := (SAssign false x e) (* rhs as in "already declared" (but still on lhs) *)
+  (in custom snippet at level 0, x custom rhs_var at level 100, e custom live_expr at level 100).
+Notation "'uintptr_t' x = e ;" := (SAssign true x e)
   (in custom snippet at level 0, x custom lhs_var at level 100, e custom live_expr at level 100).
 Notation "store( a , v ) ;" := (SStore access_size.word a v)
   (in custom snippet at level 0, a custom live_expr at level 100, v custom live_expr at level 100).
@@ -1053,6 +1116,7 @@ Definition u_min: {f: list string * list string * cmd &
        word.unsigned b <= word.unsigned a /\ retvs = [b])
   )}.
     start.
+#*/ uintptr_t r = 0;                                                         /*.
 #*/ if (a < b) {                                                             /*.
 
     eval_expr_step.
@@ -1090,9 +1154,7 @@ Hint Rewrite @word.unsigned_ltu using typeclasses eauto: fwd_rewrites.
 
 Ltac fwd_rewrites ::= fwd_rewrites_autorewrite.
 
-
-fwd.
-
+ fwd.
 
 #*/   r = a;                                                                 /*.
 
@@ -1101,6 +1163,7 @@ fwd.
   | _ => fail "Not in a then-branch"
   end.
   eapply wp_skip.
+  eexists. split. { cbv [current_locals current_locals_marker]. reflexivity. }
   (* TODO: keep track of what has been introduced before/after the if.
      By putting hypotheses introduced after the if below a marker hyp?
      Or by passing list of varnames before and after command to wp_cmd?
@@ -1109,15 +1172,44 @@ fwd.
     }
     {
 
-      fwd.
+ fwd.
+#*/   r = b;                                                                 /*.
+
+  eapply wp_skip.
+  eexists. split. { cbv [current_locals current_locals_marker]. reflexivity. }
+
       admit.
     }
-    (* TODO: don't redo simplification of interp_binop *)
+    (* TODO later: don't redo simplification of interp_binop *)
+
+fwd.
+
+(*Close Scope live_scope. Undelimit Scope live_scope.*)
+idtac.
 
 (*
 #*/ } else {                                                                 /*.
 #*/
 *)
+Abort.
+
+Definition sort3: {f: list string * list string * cmd &
+  forall call t m a vs R,
+    m satisfies <{
+      * a |-> word_array vs
+      * R
+    }> /\
+    List.length vs = 3%nat ->
+    vc_func call f t m [a] (fun t' m' retvs =>
+      exists v0 v1 v2,
+        t' = t /\
+        Permutation vs [v0; v1; v2] /\
+        \[v0] <= \[v1] <= \[v2] /\
+        m satisfies <{
+          * a |-> word_array [v0; v1; v2]
+          * R
+        }>
+  )}.
 Abort.
 
 (* TODO: write down postcondition only at end *)
@@ -1128,11 +1220,11 @@ Definition swap_locals: {f: list string * list string * cmd &
   )}.
     (* note: we could just return ["b", "a"] and then the body would be just skip *)
     start.
-#*/ t = a;                                                                   /*.
+#*/ uintptr_t t = a;                                                         /*.
 #*/ a = b;                                                                   /*.
 #*/ b = t;                                                                   /*.
-#*/ res1 = a;                                                                /*.
-#*/ res2 = b;                                                                /*.
+#*/ uintptr_t res1 = a;                                                      /*.
+#*/ uintptr_t res2 = b;                                                      /*.
 #*/ return res1, res2;                                                       /*.
     intuition congruence.
 Defined.
@@ -1154,7 +1246,7 @@ Definition swap: {f: list string * list string * cmd &
       }> /\ retvs = [] /\ t' = t
   )}.
     start.
-#*/ t = load(a_addr);                                                        /*.
+#*/ uintptr_t t = load(a_addr);                                              /*.
 #*/ store(a_addr, load(b_addr));                                             /*.
 #*/ store(b_addr, t);                                                        /*.
     ret (@nil string).
