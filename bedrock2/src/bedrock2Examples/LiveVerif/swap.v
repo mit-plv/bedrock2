@@ -19,6 +19,23 @@ Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2Examples.LiveVerif.ident_to_string.
 Import List.ListNotations. Local Open Scope list_scope.
 
+Require Import Coq.Program.Tactics.
+Require Import coqutil.Tactics.autoforward.
+
+#[export] Hint Extern 1
+  (autoforward (word.unsigned (if _ then (word.of_Z 1) else (word.of_Z 0)) = 0) _)
+  => rapply @word.if_zero : typeclass_instances.
+
+#[export] Hint Extern 1
+  (autoforward (word.unsigned (if _ then (word.of_Z 1) else (word.of_Z 0)) <> 0) _)
+  => rapply @word.if_nonzero : typeclass_instances.
+
+(*#[export] not supported in 8.13 yet*)
+Hint Rewrite @word.unsigned_ltu using typeclasses eauto: fwd_rewrites.
+
+Ltac fwd_rewrites ::= fwd_rewrites_autorewrite.
+
+
 Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
 | mk_get_option: forall (a: A) (post: A -> Prop), post a -> get_option (Some a) post.
 
@@ -690,10 +707,11 @@ Ltac start :=
 Inductive snippet :=
 | SAssign(is_decl: bool)(x: string)(e: Syntax.expr)
 | SStore(sz: access_size)(addr val: Syntax.expr)
-| SRet(xs: list string)
 | SIf(cond: Syntax.expr)
+| SElse
 | SEnd
-| SElse.
+| SRet(xs: list string)
+| SEmpty.
 
 Ltac assign is_decl name val :=
   eapply (wp_set _ name val);
@@ -706,16 +724,60 @@ Ltac transfer_sep_order := fail "not yet implemented".
 Ltac store sz addr val :=
   eapply (wp_store _ addr val);
   repeat eval_expr_step;
-  lazymatch goal with
-  | |- forall (_: @map.rep _ _ _), seps _ _ -> _ => intros; transfer_sep_order
-  | |- _ => idtac (* expression evaluation did not work fully automatically *)
-  end.
+  [.. (* maybe some unsolved side conditions *)
+  | lazymatch goal with
+    | |- forall (_: @map.rep _ _ _), seps _ _ -> _ => intros; transfer_sep_order
+    | |- _ => idtac (* expression evaluation did not work fully automatically *)
+    end ].
 
 Ltac cond c :=
   lazymatch goal with
   | cl := current_locals_marker (reconstruct ?vars ?vals) |- wp_cmd ?call _ ?t ?m ?l _ =>
     (* rapply because eapply inlines `let l'` *)
     rapply (wp_if call c l vars vals); [cbv [cl current_locals_marker]; reflexivity | ]
+  end;
+  repeat eval_expr_step;
+  [.. (* maybe some unsolved side conditions *)
+  | lazymatch goal with
+    | |- exists (_ _ : _ -> _ -> _ -> Prop), (_ /\ _) /\ _ =>
+      eexists; eexists; split;
+      [ cbv [interp_binop]; split; intros; fwd;
+        [ lazymatch goal with
+          | b := ?l : list block_kind |- _ => clear b; pose (cons ThenBranch l) as b; move b at top
+          end
+        | lazymatch goal with
+          | b := ?l : list block_kind |- _ => clear b; pose (cons ElseBranch l) as b; move b at top
+          end ]
+      | intros; fwd ]
+    | |- _ => idtac (* expression evaluation did not work fully automatically *)
+    end ].
+
+Ltac els :=
+  lazymatch goal with
+  | b := (cons ThenBranch ?l) : list block_kind |- _ => clear b
+  | _ => fail "Not in a then-branch"
+  end;
+  eapply wp_skip;
+  eexists; split;
+  [ lazymatch goal with
+    | cl := current_locals_marker (reconstruct ?vars ?vals) |- _ =>
+      cbv [cl current_locals_marker]; reflexivity
+    end
+  | ].
+
+Ltac close_block :=
+  lazymatch goal with
+  | b := (cons ElseBranch ?l) : list block_kind |- _ =>
+    clear b;
+    eapply wp_skip;
+    eexists; split;
+    [ lazymatch goal with
+      | cl := current_locals_marker (reconstruct ?vars ?vals) |- _ =>
+        cbv [cl current_locals_marker]; reflexivity
+      end
+    | ]
+  | b := (cons LoopBody ?l) : list block_kind |- _ => clear b
+  | _ => fail "Can't end a block here"
   end.
 
 Ltac ret retnames :=
@@ -738,7 +800,10 @@ Ltac add_snippet s :=
   | SAssign ?is_decl ?y ?e => assign is_decl y e
   | SStore ?sz ?addr ?val => store sz addr val
   | SIf ?e => cond e
+  | SElse => els
+  | SEnd => close_block
   | SRet ?retnames => ret retnames
+  | SEmpty => idtac
   end.
 
 Ltac after_snippet :=
@@ -839,6 +904,7 @@ Proof. intros. reflexivity. Abort.
 Declare Custom Entry snippet.
 
 Notation "*/ s /*" := s (s custom snippet at level 100).
+Notation "*/ /*" := SEmpty.
 Notation "x = e ;" := (SAssign false x e) (* rhs as in "already declared" (but still on lhs) *)
   (in custom snippet at level 0, x custom rhs_var at level 100, e custom live_expr at level 100).
 Notation "'uintptr_t' x = e ;" := (SAssign true x e)
@@ -886,6 +952,8 @@ Load LiveVerif.
 Import SepLogPredsWithAddrLast.
 Import MySepNotations.
 (* to re-override Notations loaded trough `Load LiveVerif/bedrock2.Map.SeparationLogic` *)
+
+Local Set Default Goal Selector "1".
 
 Lemma seps'_Permutation: forall (l1 l2: list (mem -> Prop)),
     Permutation l1 l2 -> iff1 (seps' l1) (seps' l2).
@@ -1108,6 +1176,8 @@ Proof.
   end.
 Abort.
 
+Tactic Notation ".*" constr(s) "*" := add_snippet s; after_snippet.
+
 Definition u_min: {f: list string * list string * cmd &
   forall call t m a b,
     vc_func call f t m [a; b] (fun t' m' retvs =>
@@ -1115,82 +1185,79 @@ Definition u_min: {f: list string * list string * cmd &
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
   )}.
-    start.
-#*/ uintptr_t r = 0;                                                         /*.
-#*/ if (a < b) {                                                             /*.
+(**)  start.                                                                    (**)
+.**/  uintptr_t r = 0;                                                          /**.
+.**/  if (a < b) {                                                              /**.
+.**/    r = a;                                                                  /**.
+.**/  } else {                                                                  /**.
+(**)    (* postcond of then-branch *)                                           (**)
+(**)    rename L0 into foo.                                                     (**)
+(**)    admit.                                                                  (**)
+.**/    r = b;                                                                  /**.
+.**/  }                                                                         /**.
+(**)  (* postcond of else-branch *)                                             (**)
+(**)  admit.                                                                    (**)
+Abort.
 
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
+Definition u_min: {f: list string * list string * cmd &
+  forall call t m a b,
+    vc_func call f t m [a; b] (fun t' m' retvs =>
+      t' = t /\ m' = m /\
+      (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
+       word.unsigned b <= word.unsigned a /\ retvs = [b])
+  )}. .**/
+  /**. start.                                                                   .**/
+  uintptr_t r = 0;                                                         /**. .**/
+  if (a < b) {                                                             /**. .**/
+    r = a;                                                                 /**. .**/
+  } else {                                                                 /**. .**/
+    /**. (* postcond of then-branch *)                                          .**/
+    /**. rename L0 into foo. admit.                                             .**/
+    r = b;                                                                 /**. .**/
+  }                                                                        /**. .**/
+  /**. (* postcond of else-branch *) admit.                                     .**/
+  /**.
+Abort.
 
-    lazymatch goal with
-    | |- exists (_ _ : _ -> _ -> _ -> Prop), (_ /\ _) /\ _ =>
-      eexists; eexists; split;
-      [ cbv [interp_binop]; split; intros;
-        [ lazymatch goal with
-          | b := ?l : list block_kind |- _ => clear b; pose (cons ThenBranch l) as b; move b at top
-          end
-        | lazymatch goal with
-          | b := ?l : list block_kind |- _ => clear b; pose (cons ElseBranch l) as b; move b at top
-          end ]
-      | intros ]
-    end.
-
-    {
-
-
-Require Import Coq.Program.Tactics.
-Require Import coqutil.Tactics.autoforward.
-
-Hint Extern 1
-  (autoforward (word.unsigned (if _ then (word.of_Z 1) else (word.of_Z 0)) = 0) _)
-  => rapply @word.if_zero : typeclass_instances.
-
-Hint Extern 1
-  (autoforward (word.unsigned (if _ then (word.of_Z 1) else (word.of_Z 0)) <> 0) _)
-  => rapply @word.if_nonzero : typeclass_instances.
-
-Hint Rewrite @word.unsigned_ltu using typeclasses eauto: fwd_rewrites.
-
-Ltac fwd_rewrites ::= fwd_rewrites_autorewrite.
-
- fwd.
-
-#*/   r = a;                                                                 /*.
-
-  lazymatch goal with
-  | b := (cons ThenBranch ?l) : list block_kind |- _ => clear b
-  | _ => fail "Not in a then-branch"
-  end.
-  eapply wp_skip.
-  eexists. split. { cbv [current_locals current_locals_marker]. reflexivity. }
-  (* TODO: keep track of what has been introduced before/after the if.
-     By putting hypotheses introduced after the if below a marker hyp?
-     Or by passing list of varnames before and after command to wp_cmd?
- *)
-  admit.
-    }
-    {
-
- fwd.
-#*/   r = b;                                                                 /*.
-
-  eapply wp_skip.
-  eexists. split. { cbv [current_locals current_locals_marker]. reflexivity. }
-
+Definition u_min: {f: list string * list string * cmd &
+  forall call t m a b,
+    vc_func call f t m [a; b] (fun t' m' retvs =>
+      t' = t /\ m' = m /\
+      (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
+       word.unsigned b <= word.unsigned a /\ retvs = [b])
+  )}.
+      start.
+.**/  uintptr_t r = 0;                                                          /**.
+.**/  if (a < b) {                                                              /**.
+.**/    r = a;                                                                  /**.
+.**/  } else {                                                                  /**.
+        (* postcond of then-branch *)
+        rename L0 into foo.
+        admit.
+.**/    r = b;                                                                  /**.
+.**/  }                                                                         /**.
+      (* postcond of else-branch *)
       admit.
-    }
-    (* TODO later: don't redo simplification of interp_binop *)
+Abort.
 
-fwd.
-
-(*Close Scope live_scope. Undelimit Scope live_scope.*)
-idtac.
-
-(*
-#*/ } else {                                                                 /*.
-#*/
-*)
+Definition u_min: {f: list string * list string * cmd &
+  forall call t m a b,
+    vc_func call f t m [a; b] (fun t' m' retvs =>
+      t' = t /\ m' = m /\
+      (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
+       word.unsigned b <= word.unsigned a /\ retvs = [b])
+  )}. .**/
+  /**. start. .**/                                                         /**. .**/
+  uintptr_t r = 0;                                                         /**. .**/
+  if (a < b) {                                                             /**. .**/
+    r = a;                                                                 /**. .**/
+  } else {                                                                 /**. .**/
+    /**. (* postcond of then-branch *)  .**/                               /**. .**/
+    /**. rename L0 into foo. admit.     .**/                               /**. .**/
+    r = b;                                                                 /**. .**/
+  }                                                                        /**. .**/
+  /**. (* postcond of else-branch *) admit. .**/                           /**. .**/
+  /**.
 Abort.
 
 Definition sort3: {f: list string * list string * cmd &
@@ -1219,14 +1286,15 @@ Definition swap_locals: {f: list string * list string * cmd &
       t' = t /\ m' = m /\ retvs = [b; a]
   )}.
     (* note: we could just return ["b", "a"] and then the body would be just skip *)
-    start.
-#*/ uintptr_t t = a;                                                         /*.
-#*/ a = b;                                                                   /*.
-#*/ b = t;                                                                   /*.
-#*/ uintptr_t res1 = a;                                                      /*.
-#*/ uintptr_t res2 = b;                                                      /*.
-#*/ return res1, res2;                                                       /*.
-    intuition congruence.
+    start. .**/
+  uintptr_t t = a;                                                         /**. .**/
+  a = b;                                                                   /**. .**/
+  b = t;                                                                   /**. .**/
+  uintptr_t res1 = a;                                                      /**. .**/
+  uintptr_t res2 = b;                                                      /**. .**/
+  return res1, res2;                                                       /**. .**/
+/**.
+  intuition congruence.
 Defined.
 
 
