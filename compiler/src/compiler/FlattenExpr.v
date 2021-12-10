@@ -592,7 +592,7 @@ Section FlattenExpr1.
   Qed.
 
   Lemma flattenStmt_correct_aux: forall eH eL,
-      flatten_functions eH = Some eL ->
+      flatten_functions eH = Success eL ->
       forall eH0 sH t m mcH lH post,
       Semantics.exec eH0 sH t m lH mcH post ->
       eH0 = eH ->
@@ -777,7 +777,7 @@ Section FlattenExpr1.
       + simpl in *. intros. simp.
         rename l into lH, l' into lL'. rename l0 into argValNames.
         unfold flatten_functions in H.
-        unshelve epose proof (map.map_all_values_fw _ _ _ _ H _ _ H0).
+        pose proof (map.try_map_values_fw _ _ _ H _ _ H0).
         simp.
         unfold flatten_function, ExprImp2FlatImp in *.
         destruct v2 as [[params' rets'] fbody'].
@@ -838,7 +838,7 @@ Section FlattenExpr1.
   Goal True. idtac "FlattenExpr: flattenStmt_correct_aux done". Abort.
 
   Lemma flattenStmt_correct: forall eH eL sH sL lL t m mc post,
-      flatten_functions eH = Some eL ->
+      flatten_functions eH = Success eL ->
       ExprImp2FlatImp sH = sL ->
       Semantics.exec eH sH t m map.empty mc post ->
       FlatImp.exec eL sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',

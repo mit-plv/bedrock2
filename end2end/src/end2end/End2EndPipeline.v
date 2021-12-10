@@ -300,7 +300,7 @@ Section Connect.
                    WeakestPrecondition.cmd funspecs loop_body t m l bedrock2Inv) ->
     (* Assumptions on the compiler level: *)
     forall (instrs: list Instruction) positions (required_stack_space: Z),
-    compile_prog compile_ext_call ml (map.of_list funimplsList) = Some (instrs, positions, required_stack_space) ->
+    compile_prog compile_ext_call ml (map.of_list funimplsList) = Success (instrs, positions, required_stack_space) ->
     required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word ->
     word.unsigned (code_start ml) + Z.of_nat (Datatypes.length (instrencode instrs)) <=
       word.unsigned (code_pastend ml) ->

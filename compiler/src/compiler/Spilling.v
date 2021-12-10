@@ -1,17 +1,11 @@
-Require Import Coq.ZArith.ZArith.
+Require Import compiler.util.Common.
 Require Import bedrock2.Map.SeparationLogic.
 Require Import compiler.FlatImp.
-Require Import coqutil.Decidable.
-Require Import coqutil.Tactics.Tactics.
-Require Import coqutil.Datatypes.PropSet.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import Coq.Logic.PropExtensionality.
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import riscv.Utility.Utility.
-Require Import coqutil.Z.Lia.
-Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Map.MapEauto.
-Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.Simp.
 Require Import compiler.Registers.
 Require Import compiler.SeparationLogic.
@@ -68,7 +62,7 @@ Section Spilling.
     | None => SSkip
     end.
 
-  Notation "s1 ;; s2" := (SSeq s1 s2) (right associativity, at level 100).
+  Notation "s1 ;; s2" := (SSeq s1 s2) (right associativity, at level 60).
 
   (* reg must be <32, var might be >= 32 *)
   Definition set_reg_to_var(reg var: Z): stmt :=
@@ -245,21 +239,20 @@ Section Spilling.
 
   Definition is_valid_src_var(x: Z): bool := Z.ltb fp x && (Z.ltb x a0 || Z.ltb a7 x).
 
-  Definition spill_fun: list Z * list Z * stmt -> option (list Z * list Z * stmt) :=
+  Definition spill_fun: list Z * list Z * stmt -> result (list Z * list Z * stmt) :=
     fun '(argnames, resnames, body) =>
       (* TODO these checks could also be put into Lang.(Valid), so that there are
          fewer reasons for the compiler to return None *)
       if List.forallb is_valid_src_var argnames &&
          List.forallb is_valid_src_var resnames &&
-         forallb_vars_stmt is_valid_src_var body &&
-         Nat.leb (List.length argnames) 8 &&
-         Nat.leb (List.length resnames) 8
+         forallb_vars_stmt is_valid_src_var body
       then
-        let argnames' := List.firstn (List.length argnames) (reg_class.all reg_class.arg) in
-        let resnames' := List.firstn (List.length resnames) (reg_class.all reg_class.arg) in
-        let maxvar := Z.max (max_var body)
-                            (Z.max (fold_left Z.max argnames 0) (fold_left Z.max resnames 0)) in
-        Some (argnames', resnames',
+        if Nat.leb (List.length argnames) 8 && Nat.leb (List.length resnames) 8 then
+          let argnames' := List.firstn (List.length argnames) (reg_class.all reg_class.arg) in
+          let resnames' := List.firstn (List.length resnames) (reg_class.all reg_class.arg) in
+          let maxvar := Z.max (max_var body)
+                              (Z.max (fold_left Z.max argnames 0) (fold_left Z.max resnames 0)) in
+          Success (argnames', resnames',
               (* `Z.of_nat (Z.to_nat _)` is to to make sure it's not negative.
               We might stackalloc 0 bytes, but that still writes fp, which is required to be
               set by `related`, and we don't want to complicate `related` to accommodate for a
@@ -269,7 +262,10 @@ Section Spilling.
                 spill_stmt body;;
                 set_reg_range_to_vars a0 resnames
               ))
-      else None.
+        else
+          error:("Number of function arguments and return values must not exceed 8")
+      else
+        error:("Spilling got input program with invalid var names (please report as a bug)").
 
   Lemma firstn_min_absorb_length_r{A: Type}: forall (l: list A) n,
       List.firstn (Nat.min n (length l)) l = List.firstn n l.
@@ -307,8 +303,8 @@ Section Spilling.
   Context {env: map.map String.string (list Z * list Z * stmt)} {env_ok: map.ok env}.
   Context {ext_spec: Semantics.ExtSpec}.
 
-  Definition spill_functions: env -> option env :=
-    map.map_all_values spill_fun.
+  Definition spill_functions: env -> result env :=
+    map.try_map_values spill_fun.
 
   Definition valid_vars_src(maxvar: Z): stmt -> Prop :=
     Forall_vars_stmt (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)).
@@ -1193,7 +1189,7 @@ Section Spilling.
      Moreover, this lemma will also be used in the pipeline, where phases
      are composed based on the semantics of function calls. *)
   Lemma spill_fun_correct_aux: forall e1 e2 argnames1 retnames1 body1 argnames2 retnames2 body2,
-      spill_fun (argnames1, retnames1, body1) = Some (argnames2, retnames2, body2) ->
+      spill_fun (argnames1, retnames1, body1) = Success (argnames2, retnames2, body2) ->
       spilling_correct_for e1 e2 body1 ->
       forall argvals t m (post: Semantics.trace -> mem -> list word -> Prop),
         call_spec e1 (argnames1, retnames1, body1) t m argvals post ->
@@ -1338,7 +1334,7 @@ Section Spilling.
     all: try assumption.
   Qed.
 
-  Lemma spilling_correct (e1 e2 : env) (Ev : spill_functions e1 = Some e2)
+  Lemma spilling_correct (e1 e2 : env) (Ev : spill_functions e1 = Success e2)
         (s1 : stmt)
         (t1 : Semantics.trace)
         (m1 : mem)
@@ -1443,7 +1439,7 @@ Section Spilling.
       rename l into lCH1, l2 into lCL1, st0 into lFH4.
       rename H4p0 into FR, H4p1 into FA.
       unfold spill_functions in Ev.
-      eapply map.map_all_values_fw in Ev; try typeclasses eauto. 2: eassumption.
+      eapply map.try_map_values_fw in Ev. 2: eassumption.
       unfold spill_fun in Ev. fwd.
       eapply exec.seq_cps.
       apply_in_hyps @map.getmany_of_list_length.
@@ -1807,8 +1803,8 @@ Section Spilling.
   Qed.
 
   Lemma spill_fun_correct: forall e1 e2 argnames1 retnames1 body1 argnames2 retnames2 body2,
-      spill_functions e1 = Some e2 ->
-      spill_fun (argnames1, retnames1, body1) = Some (argnames2, retnames2, body2) ->
+      spill_functions e1 = Success e2 ->
+      spill_fun (argnames1, retnames1, body1) = Success (argnames2, retnames2, body2) ->
       forall argvals t m (post: Semantics.trace -> mem -> list word -> Prop),
         call_spec e1 (argnames1, retnames1, body1) t m argvals post ->
         call_spec e2 (argnames2, retnames2, body2) t m argvals post.

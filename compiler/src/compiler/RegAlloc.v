@@ -1,22 +1,13 @@
-Require Import Coq.ZArith.ZArith.
+Require Import compiler.util.Common.
 Require Import compiler.FlatImp.
-Require Import coqutil.Decidable.
-Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.simpl_rewrite.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import riscv.Utility.Utility.
-Require Import coqutil.Z.Lia.
-Require Import coqutil.Macros.unique.
-Require Import coqutil.Map.Interface.
-Require Import coqutil.Map.Properties.
-Require Import coqutil.Map.Solver.
-Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Map.MapEauto.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Datatypes.ListSet.
 Require Import coqutil.Tactics.Simp.
 Require Import coqutil.Tactics.autoforward.
-Require Import compiler.Simulation.
 Require Import compiler.Registers.
 
 Open Scope Z_scope.
@@ -138,29 +129,6 @@ Definition intervals(input_vars: list srcvar)(s: stmt)(output_vars: list srcvar)
   let unfiltered := List.flat_map start_event input_vars ++ (events s (List.flat_map end_event output_vars)) in
   remove_nonfirst_starts [] (remove_nonlast_ends unfiltered).
 
-Declare Scope option_monad_scope. Local Open Scope option_monad_scope.
-
-Notation "' pat <- c1 ;; c2" :=
-  (match c1 with
-   | Some pat => c2
-   | None => None
-   end)
-  (at level 61, pat pattern, c1 at next level, right associativity) : option_monad_scope.
-
-Notation "x <- c1 ;; c2" :=
-  (match c1 with
-   | Some x => c2
-   | None => None
-   end)
-  (at level 61, c1 at next level, right associativity) : option_monad_scope.
-
-Notation "c1 ;; c2" :=
-  (match c1 with
-   | Some _ => c2
-   | None => None
-   end)
-  (at level 61, right associativity) : option_monad_scope.
-
 (* TODO: once spilling is changed, this will change too *)
 Definition not_reserved(x: Z): bool := 5 <? x.
 
@@ -212,14 +180,14 @@ Definition yield_reg(r: impvar)(av: av_regs): av_regs :=
     end
   end.
 
-Definition lookup(x: srcvar)(corresp: list (srcvar * impvar)): option impvar :=
+Definition lookup(x: srcvar)(corresp: list (srcvar * impvar)): result impvar :=
   match List.find (fun p => String.eqb x (fst p)) corresp with
-  | Some (_, x') => Some x'
-  | None => None
+  | Some (_, x') => Success x'
+  | None => error:(x "not found")
   end.
 
-Definition lookups(xs: list srcvar)(corresp: list (srcvar * impvar)): option (list impvar) :=
-  List.option_all (List.map (fun arg => lookup arg corresp) xs).
+Definition lookups(xs: list srcvar)(corresp: list (srcvar * impvar)): result (list impvar) :=
+  List.all_success (List.map (fun arg => lookup arg corresp) xs).
 
 Fixpoint process_intervals(corresp: list (srcvar * impvar))(av: av_regs)(l: list event):
   list (srcvar * impvar) :=
@@ -229,85 +197,85 @@ Fixpoint process_intervals(corresp: list (srcvar * impvar))(av: av_regs)(l: list
       let (y, av) := acquire_reg av in process_intervals ((x, y) :: corresp) av rest
     else
       let av := match lookup x corresp with
-                | Some y => yield_reg y av
-                | None => av (* unexpected: end_event without start_event *)
+                | Success y => yield_reg y av
+                | Failure _ => av (* unexpected: end_event without start_event *)
                 end in
       process_intervals corresp av rest
   | nil => corresp
   end.
 
-Definition rename_bcond(corresp: list (srcvar * impvar))(c: bcond): option bcond' :=
+Definition rename_bcond(corresp: list (srcvar * impvar))(c: bcond): result bcond' :=
   match c with
   | CondBinary op y z =>
     y' <- lookup y corresp;;
     z' <- lookup z corresp;;
-    Some (CondBinary op y' z')
+    Success (CondBinary op y' z')
   | CondNez y =>
     y' <- lookup y corresp;;
-    Some (CondNez y')
+    Success (CondNez y')
   end.
 
-Fixpoint rename(corresp: list (srcvar * impvar))(s: stmt): option stmt' :=
+Fixpoint rename(corresp: list (srcvar * impvar))(s: stmt): result stmt' :=
   match s with
   | SLoad sz x y ofs =>
     x' <- lookup x corresp;;
     y' <- lookup y corresp;;
-    Some (SLoad sz x' y' ofs)
+    Success (SLoad sz x' y' ofs)
   | SStore sz x y ofs =>
     x' <- lookup x corresp;;
     y' <- lookup y corresp;;
-    Some (SStore sz x' y' ofs)
+    Success (SStore sz x' y' ofs)
   | SInlinetable sz x bs y =>
     x' <- lookup x corresp;;
     y' <- lookup y corresp;;
-    Some (SInlinetable sz x' bs y')
+    Success (SInlinetable sz x' bs y')
   | SStackalloc x n body =>
     x' <- lookup x corresp;;
     body' <- rename corresp body;;
-    Some (SStackalloc x' n body')
+    Success (SStackalloc x' n body')
   | SLit x z =>
     x' <- lookup x corresp;;
-    Some (SLit x' z)
+    Success (SLit x' z)
   | SOp x op y z =>
     x' <- lookup x corresp;;
     y' <- lookup y corresp;;
     z' <- lookup z corresp;;
-    Some (SOp x' op y' z')
+    Success (SOp x' op y' z')
   | SSet x y =>
     x' <- lookup x corresp;;
     y' <- lookup y corresp;;
-    Some (SSet x' y')
+    Success (SSet x' y')
   | SIf c s1 s2 =>
     c' <- rename_bcond corresp c;;
     s1' <- rename corresp s1;;
     s2' <- rename corresp s2;;
-    Some (SIf c' s1' s2')
+    Success (SIf c' s1' s2')
   | SLoop s1 c s2 =>
     s1' <- rename corresp s1;;
     c' <- rename_bcond corresp c;;
     s2' <- rename corresp s2;;
-    Some (SLoop s1' c' s2')
+    Success (SLoop s1' c' s2')
   | SSeq s1 s2 =>
     s1' <- rename corresp s1;;
     s2' <- rename corresp s2;;
-    Some (SSeq s1' s2')
+    Success (SSeq s1' s2')
   | SSkip =>
-    Some SSkip
+    Success SSkip
   | SCall binds f args =>
     args' <- lookups args corresp;;
     binds' <- lookups binds corresp;;
-    Some (SCall binds' f args')
+    Success (SCall binds' f args')
   | SInteract binds f args =>
     args' <- lookups args corresp;;
     binds' <- lookups binds corresp;;
-    Some (SInteract binds' f args')
+    Success (SInteract binds' f args')
   end.
 
 Module WithBugs.
 Definition assign_lhs(x: srcvar)(corresp: list (srcvar * impvar))(av: av_regs) :=
   match lookup x corresp with
-  | Some x' => (x', corresp, av)
-  | None => let '(x', av) := acquire_reg av in (x', (x, x') :: corresp, av)
+  | Success x' => (x', corresp, av)
+  | Failure _ => let '(x', av) := acquire_reg av in (x', (x, x') :: corresp, av)
   end.
 
 Fixpoint assign_lhss(xs: list srcvar)(corresp: list (srcvar * impvar))(av: av_regs):
@@ -324,7 +292,7 @@ Fixpoint regalloc
          (av: av_regs)                      (* available registers *)
          (s: stmt)                          (* statement to be register allocated *)
          (l_after: list srcvar):            (* variables that are live after s *)
-  option (list (srcvar * impvar) * av_regs * stmt') := (* should aways return Some *)
+  result (list (srcvar * impvar) * av_regs * stmt') := (* should aways return Success *)
   let l_before := live s l_after in
   let av := List.fold_right
               (fun p av => if List.find (String.eqb (fst p)) l_before then av else yield_reg (snd p) av)
@@ -335,33 +303,33 @@ Fixpoint regalloc
   | SLoad sz x y ofs =>
     y' <- lookup y corresp;;
     let '(x', corresp, av) := assign_lhs x corresp av in
-    Some (corresp, av, SLoad sz x' y' ofs)
+    Success (corresp, av, SLoad sz x' y' ofs)
   | SStore sz x y ofs =>
     x' <- lookup x corresp;;
     y' <- lookup y corresp;;
-    Some (corresp, av, SStore sz x' y' ofs)
+    Success (corresp, av, SStore sz x' y' ofs)
   | SInlinetable sz x bs y =>
     (* Note: We expect that x<>y and that the srcvar->impvar mapping in corresp is injective,
        so we get x'<>y', which is required by exec.inlinetable *)
     y' <- lookup y corresp;;
     let '(x', corresp, av) := assign_lhs x corresp av in
-    Some (corresp, av, SInlinetable sz x' bs y')
+    Success (corresp, av, SInlinetable sz x' bs y')
   | SStackalloc x n body =>
     let '(x', corresp, av) := assign_lhs x corresp av in
     '(corresp, av, body') <- regalloc corresp av body l_after;;
-    Some (corresp, av, SStackalloc x' n body')
+    Success (corresp, av, SStackalloc x' n body')
   | SLit x z =>
     let '(x', corresp, av) := assign_lhs x corresp av in
-    Some (corresp, av, SLit x' z)
+    Success (corresp, av, SLit x' z)
   | SOp x op y z =>
     y' <- lookup y corresp;;
     z' <- lookup z corresp;;
     let '(x', corresp, av) := assign_lhs x corresp av in
-    Some (corresp, av, SOp x' op y' z')
+    Success (corresp, av, SOp x' op y' z')
   | SSet x y =>
     y' <- lookup y corresp;;
     let '(x', corresp, av) := assign_lhs x corresp av in
-    Some (corresp, av, SSet x' y')
+    Success (corresp, av, SSet x' y')
   | SIf c s1 s2 =>
     c' <- rename_bcond corresp c;;
     (* BUG: if s1 is SSkip, the recursive call for s1 might yield registers back into av that
@@ -371,36 +339,36 @@ Fixpoint regalloc
        different registers) in both branches and are used after the if *)
     '(corresp, av, s1') <- regalloc corresp av s1 l_after;;
     '(corresp, av, s2') <- regalloc corresp av s2 l_after;;
-    Some (corresp, av, SIf c' s1' s2')
+    Success (corresp, av, SIf c' s1' s2')
   | SLoop s1 c s2 =>
     '(corresp, av, s1') <- regalloc corresp av s1 (live s2 l_before);;
     c' <- rename_bcond corresp c;;
     '(corresp, av, s2') <- regalloc corresp av s2 l_before;;
-    Some (corresp, av, SLoop s1' c' s2')
+    Success (corresp, av, SLoop s1' c' s2')
   | SSeq s1 s2 =>
     '(corresp, av, s1') <- regalloc corresp av s1 (live s2 l_after);;
     '(corresp, av, s2') <- regalloc corresp av s2 l_after;;
-    Some (corresp, av, SSeq s1' s2')
+    Success (corresp, av, SSeq s1' s2')
   | SSkip =>
-    Some (corresp, av, SSkip)
+    Success (corresp, av, SSkip)
   | SCall binds f args =>
     args' <- lookups args corresp;;
     let '(binds', corresp, av) := assign_lhss binds corresp av in
-    Some (corresp, av, SCall binds' f args')
+    Success (corresp, av, SCall binds' f args')
   | SInteract binds f args =>
     args' <- lookups args corresp;;
     let '(binds', corresp, av) := assign_lhss binds corresp av in
-    Some (corresp, av, SInteract binds' f args')
+    Success (corresp, av, SInteract binds' f args')
   end.
 End WithBugs.
 
-Definition regalloc_function: list srcvar * list srcvar * stmt -> option (list impvar * list impvar * stmt') :=
+Definition regalloc_function: list srcvar * list srcvar * stmt -> result (list impvar * list impvar * stmt') :=
   fun '(args, rets, fbody) =>
     let corresp := process_intervals [] initial_av_regs (intervals args fbody rets) in
     fbody' <- rename corresp fbody;;
     args' <- lookups args corresp;;
     rets' <- lookups rets corresp;;
-    Some (args', rets', fbody').
+    Success (args', rets', fbody').
 
 Scheme Equality for Syntax.access_size. (* to create access_size_beq *)
 Scheme Equality for bopname. (* to create bopname_beq *)
@@ -477,56 +445,71 @@ End IntersectLemmas.
 
 #[export] Hint Resolve Byte.eqb_spec : typeclass_instances.
 
-Definition assert(b: bool): option unit := if b then Some tt else None.
+Definition assert(b: bool)(els: result unit): result unit := if b then Success tt else els.
 
 Definition mapping_eqb: srcvar * impvar -> srcvar * impvar -> bool :=
   fun '(x, x') '(y, y') => andb (String.eqb x y) (Z.eqb x' y').
 
-Definition assert_in(y: srcvar)(y': impvar)(m: list (srcvar * impvar)): option unit :=
-  _ <- List.find (mapping_eqb (y, y')) m;; Some tt.
+Definition assert_in(y: srcvar)(y': impvar)(m: list (srcvar * impvar)): result unit :=
+  match List.find (mapping_eqb (y, y')) m with
+  | Some _ => Success tt
+  | None => error:("The register allocator replaced source variable" y
+                   "by target variable" y'
+                   "but when the checker encountered this pair,"
+                   "its current mapping of source to target variables" m
+                   "did not contain the pair" (y, y'))
+  end.
 
-Definition assert_ins(args: list srcvar)(args': list impvar)(m: list (srcvar * impvar)): option unit :=
-  assert (Nat.eqb (List.length args) (List.length args'));;
+Definition assert_ins(args: list srcvar)(args': list impvar)(m: list (srcvar * impvar)): result unit :=
+  assert (Nat.eqb (List.length args) (List.length args'))
+         error:("Register allocation checker got a source variable list" args
+                "whose length does not match its corresponding target variable list" args');;
   assert (List.forallb (fun p => if List.find (mapping_eqb p) m then true else false)
-                       (List.combine args args')).
+                       (List.combine args args'))
+         error:("Register allocation checker got a source variable list" args
+                "and a target variable list" args'
+                "that are incompatible with its current mapping of source to target variables" m).
 
-Definition check_bcond(m: list (srcvar * impvar))(c: bcond)(c': bcond'): option unit :=
+Definition check_bcond(m: list (srcvar * impvar))(c: bcond)(c': bcond'): result unit :=
   match c, c' with
   | CondBinary op y z, CondBinary op' y' z' =>
-    assert_in y y' m;; assert_in z z' m;; assert (bbinop_beq op op')
+    assert_in y y' m;;
+    assert_in z z' m;;
+    assert (bbinop_beq op op')
+           error:("Register allocation checker found a" op' "that should be a" op)
   | CondNez y, CondNez y' =>
     assert_in y y' m
-  | _, _ => None
+  | _, _ => error:("Register allocation checker cannot match" c "and" c')
   end.
 
 Definition assignment(m: list (srcvar * impvar))(x: srcvar)(x': impvar): list (srcvar * impvar) :=
   (x, x') :: (remove_by_snd Z.eqb x' (remove_by_fst String.eqb x m)).
 
 Fixpoint assignments(m: list (srcvar * impvar))(xs: list srcvar)(xs': list impvar):
-  option (list (srcvar * impvar)) :=
+  result (list (srcvar * impvar)) :=
   match xs, xs' with
   | x :: xs0, x' :: xs0' => assignments (assignment m x x') xs0 xs0'
-  | nil, nil => Some m
-  | _, _ => None
+  | nil, nil => Success m
+  | _, _ => error:("Register allocator checker got variable lists of different length")
   end.
 
 Section LoopInv.
-  Context (check: list (srcvar * impvar) -> stmt -> stmt' -> option (list (srcvar * impvar)))
+  Context (check: list (srcvar * impvar) -> stmt -> stmt' -> result (list (srcvar * impvar)))
           (s1 s2: stmt)(s1' s2': stmt').
 
   (* Probably one iteration to compute the invariant, and another one to check that it
      doesn't change any more, ie 2 iterations, is enough, but that might be hard to prove.
      `List.length m` is enough fuel because the size can decrease at most that many times
      before we get to an empty invariant. *)
-  Fixpoint loop_inv'(fuel: nat)(m: list (srcvar * impvar)): option (list (srcvar * impvar)) :=
+  Fixpoint loop_inv'(fuel: nat)(m: list (srcvar * impvar)): result (list (srcvar * impvar)) :=
     match fuel with
-    | O => None
+    | O => error:("Loop invariant calculation of register allocation checker ran out of fuel")
     | S fuel' =>
       m1 <- check m s1 s1';;
       m2 <- check m1 s2 s2';;
       let cand := list_intersect mapping_eqb m m2 in
       if Nat.eqb (List.length m) (List.length cand)
-      then Some cand
+      then Success cand
       else loop_inv' fuel' cand
     end.
 End LoopInv.
@@ -534,67 +517,70 @@ End LoopInv.
 (* does 2 things at once: checks that the correct variables are read and computes the bindings
    that hold after executing the statement *)
 (* m: conservative underapproximation of which impvar stores which srcvar *)
-Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: option (list (srcvar * impvar)) :=
+Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: result (list (srcvar * impvar)) :=
+  let err := error:("Register allocation checker cannot match" s "and" s') in
   match s, s' with
   | SLoad sz x y ofs, SLoad sz' x' y' ofs' =>
     assert_in y y' m;;
-    assert (Z.eqb ofs ofs');;
-    assert (access_size_beq sz sz');;
-    Some (assignment m x x')
+    assert (Z.eqb ofs ofs') err;;
+    assert (access_size_beq sz sz') err;;
+    Success (assignment m x x')
   | SStore sz x y ofs, SStore sz' x' y' ofs' =>
     assert_in x x' m;;
     assert_in y y' m;;
-    assert (Z.eqb ofs ofs');;
-    assert (access_size_beq sz sz');;
-    Some m
+    assert (Z.eqb ofs ofs') err;;
+    assert (access_size_beq sz sz') err;;
+    Success m
   | SInlinetable sz x bs y, SInlinetable sz' x' bs' y' =>
     assert_in y y' m;;
     (* FlatToRiscv uses x' as a tmp register, and that should not overwrite y' *)
-    assert (negb (Z.eqb x' y'));;
-    assert (access_size_beq sz sz');;
-    assert (List.list_eqb Byte.eqb bs bs');;
-    Some (assignment m x x')
+    assert (negb (Z.eqb x' y')) err;;
+    assert (access_size_beq sz sz') err;;
+    assert (List.list_eqb Byte.eqb bs bs') err;;
+    Success (assignment m x x')
   | SStackalloc x n body, SStackalloc x' n' body' =>
-    assert (Z.eqb n n');;
+    assert (Z.eqb n n') err;;
     check (assignment m x x') body body'
   | SLit x z, SLit x' z' =>
-    assert (Z.eqb z z');;
-    Some (assignment m x x')
+    assert (Z.eqb z z') err;;
+    Success (assignment m x x')
   | SOp x op y z, SOp x' op' y' z' =>
     assert_in y y' m;;
     assert_in z z' m;;
-    assert (bopname_beq op op');;
-    Some (assignment m x x')
+    assert (bopname_beq op op') err;;
+    Success (assignment m x x')
   | SSet x y, SSet x' y' =>
-    assert_in y y' m;; Some (assignment m x x')
+    assert_in y y' m;; Success (assignment m x x')
   | SIf c s1 s2, SIf c' s1' s2' =>
     check_bcond m c c';;
     m1 <- check m s1 s1';;
     m2 <- check m s2 s2';;
-    Some (list_intersect mapping_eqb m1 m2)
+    Success (list_intersect mapping_eqb m1 m2)
   | SLoop s1 c s2, SLoop s1' c' s2' =>
     inv <- loop_inv' check s1 s2 s1' s2' (S (List.length m)) m;;
     m1 <- check inv s1 s1';;
     check_bcond m1 c c';;
     m2 <- check m1 s2 s2';;
-    Some m1
+    Success m1
   | SSeq s1 s2, SSeq s1' s2' =>
     m1 <- check m s1 s1';;
     check m1 s2 s2'
   | SSkip, SSkip =>
-    Some m
+    Success m
   | SCall binds f args, SCall binds' f' args'
   | SInteract binds f args, SInteract binds' f' args' =>
-    assert (String.eqb f f');;
+    assert (String.eqb f f') err;;
     assert_ins args args' m;;
     assignments m binds binds'
-  | _, _ => None
+  | _, _ => error:("Register allocation checker cannot match" s "and" s')
   end.
 
-Definition check_func: list srcvar * list srcvar * stmt -> list impvar * list impvar * stmt' -> option unit :=
+Definition check_func: list srcvar * list srcvar * stmt -> list impvar * list impvar * stmt' -> result unit :=
   fun '(args, rets, body) '(args', rets', body') =>
-    assert (List.list_eqb Z.eqb (List.dedup Z.eqb args') args');;
-    assert (List.list_eqb Z.eqb (List.dedup Z.eqb rets') rets');;
+    assert (List.list_eqb Z.eqb (List.dedup Z.eqb args') args')
+           error:("Register allocation checker got target arg variables with duplicates:" args');;
+    assert (List.list_eqb Z.eqb (List.dedup Z.eqb rets') rets')
+           error:("Register allocation checker got target ret variables with duplicates:" rets');;
     m0 <- assignments [] args args';;
     m1 <- check m0 body body';;
     assert_ins rets rets' m1.
@@ -605,26 +591,26 @@ Section WithEnv.
 
   Definition lookup_and_check_func(e': impEnv)(fname: String.string)(impl: list srcvar * list srcvar * stmt) :=
     match map.get e' fname with
-    | Some impl' => if check_func impl impl' then true else false
-    | None => false
+    | Some impl' => check_func impl impl'
+    | None => error:("Register allocation checker could not find function" fname "in target env")
     end.
 
-  Definition check_funcs(e: srcEnv)(e': impEnv): bool :=
-    map.forallb (lookup_and_check_func e') e.
+  Definition check_funcs(e: srcEnv)(e': impEnv): result unit :=
+    map.forall_success (lookup_and_check_func e') e.
 
-  Definition regalloc_functions(e: srcEnv): option impEnv :=
-    e' <- map.map_all_values regalloc_function e;;
-    if check_funcs e e' then Some e' else None.
+  Definition regalloc_functions(e: srcEnv): result impEnv :=
+    e' <- map.try_map_values regalloc_function e;;
+    check_funcs e e';; Success e'.
 End WithEnv.
 
 Definition loop_inv(corresp: list (srcvar * impvar))(s1 s2: stmt)(s1' s2': stmt'): list (srcvar * impvar) :=
   match loop_inv' check s1 s2 s1' s2' (S (List.length corresp)) corresp with
-  | Some inv => inv
-  | None => []
+  | Success inv => inv
+  | Failure _ => []
   end.
 
 Definition extends(m1 m2: list (srcvar * impvar)): Prop :=
-  forall x x', assert_in x x' m2 = Some tt -> assert_in x x' m1 = Some tt.
+  forall x x', assert_in x x' m2 = Success tt -> assert_in x x' m1 = Success tt.
 
 Lemma extends_refl: forall m, extends m m.
 Proof. unfold extends. eauto. Qed.
@@ -641,7 +627,8 @@ Lemma extends_cons: forall a l1 l2,
 Proof.
   unfold extends, assert_in. simpl. intros. simp.
   destruct_one_match_hyp. 1: reflexivity.
-  eapply H. rewrite E. reflexivity.
+  epose proof (H _ _ _) as A. destruct_one_match_hyp. 2: discriminate. rewrite E1. reflexivity.
+  Unshelve. rewrite E. reflexivity.
 Qed.
 
 Lemma extends_cons_l: forall a l,
@@ -692,7 +679,7 @@ Proof.
 Qed.
 
 Lemma extends_loop_inv': forall s1 s2 s1' s2' fuel corresp1 corresp2,
-    loop_inv' check s1 s2 s1' s2' fuel corresp1 = Some corresp2 ->
+    loop_inv' check s1 s2 s1' s2' fuel corresp1 = Success corresp2 ->
     extends corresp1 corresp2.
 Proof.
   induction fuel; simpl; intros.
@@ -714,9 +701,9 @@ Proof.
 Qed.
 
 Lemma defuel_loop_inv': forall fuel corresp inv m1 m2 s1 s2 s1' s2',
-    loop_inv' check s1 s2 s1' s2' fuel corresp = Some inv ->
-    check inv s1 s1' = Some m1 ->
-    check m1 s2 s2' = Some m2 ->
+    loop_inv' check s1 s2 s1' s2' fuel corresp = Success inv ->
+    check inv s1 s1' = Success m1 ->
+    check m1 s2 s2' = Success m2 ->
     inv = list_intersect mapping_eqb inv m2.
 Proof.
   induction fuel; intros; simpl in *.
@@ -733,8 +720,8 @@ Qed.
    ie this lemma allows us to prove `inv = intersect inv (update inv loop_body)` *)
 Lemma defuel_loop_inv: forall corresp inv m1 m2 s1 s2 s1' s2',
     inv = loop_inv corresp s1 s2 s1' s2' ->
-    check inv s1 s1' = Some m1 ->
-    check m1 s2 s2' = Some m2 ->
+    check inv s1 s1' = Success m1 ->
+    check m1 s2 s2' = Success m2 ->
     inv = list_intersect mapping_eqb inv m2.
 Proof.
   unfold loop_inv. intros. subst. destruct_one_match. 2: reflexivity.
@@ -755,7 +742,7 @@ Section RegAlloc.
 
   Definition states_compat(st: srcLocals)(corresp: list (srcvar * impvar))(st': impLocals) :=
     forall (x: srcvar) (x': impvar),
-      assert_in x x' corresp = Some tt ->
+      assert_in x x' corresp = Success tt ->
       forall w,
         map.get st x = Some w ->
         map.get st' x' = Some w.
@@ -767,7 +754,7 @@ Section RegAlloc.
     end.
 
   Lemma states_compat_eval_bcond: forall lH lL c c' b corresp,
-      check_bcond corresp c c' = Some tt ->
+      check_bcond corresp c c' = Success tt ->
       eval_bcond lH c = Some b ->
       states_compat lH corresp lL ->
       eval_bcond lL c' = Some b.
@@ -787,7 +774,7 @@ Section RegAlloc.
   Qed.
 
   Lemma states_compat_eval_bcond_None: forall lH lL c c' corresp,
-      check_bcond corresp c c' = Some tt ->
+      check_bcond corresp c c' = Success tt ->
       eval_bcond lH c <> None ->
       states_compat lH corresp lL ->
       eval_bcond lL c' <> None.
@@ -797,7 +784,7 @@ Section RegAlloc.
   Qed.
 
   Lemma states_compat_eval_bcond_bw: forall lH lL c c' b corresp,
-      check_bcond corresp c c' = Some tt ->
+      check_bcond corresp c c' = Success tt ->
       eval_bcond lL c' = Some b ->
       states_compat lH corresp lL ->
       eval_bcond lH c <> None ->
@@ -833,14 +820,14 @@ Section RegAlloc.
 
   Lemma states_compat_get: forall corresp lL lH y y' v,
       states_compat lH corresp lL ->
-      assert_in y y' corresp = Some tt ->
+      assert_in y y' corresp = Success tt ->
       map.get lH y = Some v ->
       map.get lL y' = Some v.
   Proof. unfold states_compat. eauto. Qed.
 
   Lemma states_compat_getmany: forall corresp lL lH ys ys' vs,
       states_compat lH corresp lL ->
-      assert_ins ys ys' corresp = Some tt ->
+      assert_ins ys ys' corresp = Success tt ->
       map.getmany_of_list lH ys = Some vs ->
       map.getmany_of_list lL ys' = Some vs.
   Proof.
@@ -892,7 +879,7 @@ Section RegAlloc.
 
   Lemma putmany_of_list_zip_states_compat: forall binds binds' resvals lL lH l' corresp corresp',
       map.putmany_of_list_zip binds resvals lH = Some l' ->
-      assignments corresp binds binds' = Some corresp' ->
+      assignments corresp binds binds' = Success corresp' ->
       states_compat lH corresp lL ->
       exists lL',
         map.putmany_of_list_zip binds' resvals lL = Some lL' /\
@@ -909,7 +896,7 @@ Section RegAlloc.
   Qed.
 
   Lemma assignments_same_length: forall xs xs' m1 m2,
-      assignments m1 xs xs' = Some m2 -> List.length xs = List.length xs'.
+      assignments m1 xs xs' = Success m2 -> List.length xs = List.length xs'.
   Proof.
     induction xs; intros; destruct xs'; try discriminate.
     - reflexivity.
@@ -917,7 +904,7 @@ Section RegAlloc.
   Qed.
 
   Lemma assert_ins_same_length: forall xs xs' m u,
-      assert_ins xs xs' m = Some u -> List.length xs = List.length xs'.
+      assert_ins xs xs' m = Success u -> List.length xs = List.length xs'.
   Proof.
     unfold assert_ins, assert. intros. simp. apply Nat.eqb_eq. assumption.
   Qed.
@@ -927,17 +914,17 @@ Section RegAlloc.
   Hint Resolve states_compat_put : checker_hints.
 
   Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s t m lH mc post,
-      check_funcs e e' = true ->
+      check_funcs e e' = Success tt ->
       exec e s t m lH mc post ->
       forall lL corresp corresp' s',
-      check corresp s s' = Some corresp' ->
+      check corresp s s' = Success corresp' ->
       states_compat lH (precond corresp s s') lL ->
       exec e' s' t m lL mc (fun t' m' lL' mc' =>
         exists lH', states_compat lH' corresp' lL' /\ post t' m' lH' mc').
   Proof.
     induction 2; intros;
       match goal with
-      | H: check _ _ _ = Some _ |- _ => pose proof H as C; move C at top; cbn [check] in H
+      | H: check _ _ _ = Success _ |- _ => pose proof H as C; move C at top; cbn [check] in H
       end;
       simp;
       repeat match goal with
@@ -961,7 +948,7 @@ Section RegAlloc.
     - (* Case exec.call *)
       rename binds0 into binds', args0 into args'.
       unfold check_funcs in H.
-      eapply map.get_forallb in H. 2: eassumption.
+      eapply map.get_forall_success in H. 2: eassumption.
       unfold lookup_and_check_func in *. simp.
       destruct p as ((params' & rets') & fbody').
       unfold check_func in *. simp.
@@ -974,12 +961,11 @@ Section RegAlloc.
       eapply @exec.call. 1: eassumption. 1: eauto using states_compat_getmany. 1: exact L3.
       + eapply IHexec. 1: eassumption. eapply states_compat_precond.
         edestruct putmany_of_list_zip_states_compat as [ lLF0 [L SC] ].
-        2: exact E4. 2: eapply states_compat_empty. 1: eassumption.
+        2: exact E3. 2: eapply states_compat_empty. 1: eassumption.
         rewrite L3 in L. apply Option.eq_of_eq_Some in L. subst lLF0. exact SC.
       + cbv beta. intros. simp. edestruct H4 as (retvs & lHF' & G & P & Hpost). 1: eassumption.
         edestruct putmany_of_list_zip_states_compat as (lL' & L4 & SC).
         1: exact P. 1: exact H5. 1: eassumption.
-        destruct u.
         do 2 eexists. ssplit.
         * eapply states_compat_getmany; eassumption.
         * exact L4.
@@ -1031,7 +1017,6 @@ Section RegAlloc.
       + cbv beta. intros. simp. eapply IH2; eauto using states_compat_eval_bcond_bw.
         eapply states_compat_precond. assumption.
       + cbv beta. intros. simp. eapply IH12. 1: eassumption. 1: eassumption.
-        rename l0 into inv.
         eapply states_compat_extends. 2: eassumption.
         pose proof defuel_loop_inv as P.
         specialize P with (2 := E0).

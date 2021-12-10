@@ -17,13 +17,6 @@ Import Semantics.
 
 Open Scope Z_scope.
 
-Local Notation "' x <- a ; f" :=
-  (match (a: option _) with
-   | x => f
-   | _ => None
-   end)
-  (right associativity, at level 70, x pattern).
-
 Section ExprImp1.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {locals: map.map String.string word}.
@@ -48,43 +41,51 @@ Section ExprImp1.
   Section WithEnv.
     Context (e: env).
 
+    Definition eval_expr(m: mem)(st: locals)(e: expr): result word :=
+      match eval_expr_old m st e with
+      | Some v => Success v
+      | None => error:("evaluation of expression" e "failed")
+      end.
+
     (* Fixoint semantics are not used at the moment, but could be useful to run a source program *)
-    Fixpoint eval_cmd(f: nat)(st: locals)(m: mem)(s: cmd): option (locals * mem) :=
+    Fixpoint eval_cmd(f: nat)(st: locals)(m: mem)(s: cmd): result (locals * mem) :=
       match f with
-      | O => None (* out of fuel *)
+      | O => error:("out of fuel")
       | S f => match s with
         | cmd.store aSize a v =>
-            'Some a <- eval_expr_old m st a;
-            'Some v <- eval_expr_old m st v;
-            'Some m <- store aSize m a v;
-            Some (st, m)
-        | cmd.stackalloc x n body => None (* unsupported *)
+            a <- eval_expr m st a;;
+            v <- eval_expr m st v;;
+            match store aSize m a v with
+            | Some m => Success (st, m)
+            | None => error:("Cannot store" aSize "at address" a)
+            end
+        | cmd.stackalloc x n body => error:(cmd.stackalloc "is not supported")
         | cmd.set x e =>
-            'Some v <- eval_expr_old m st e;
-            Some (map.put st x v, m)
+            v <- eval_expr m st e;;
+            Success (map.put st x v, m)
         | cmd.unset x =>
-            Some (map.remove st x, m)
+            Success (map.remove st x, m)
         | cmd.cond cond bThen bElse =>
-            'Some v <- eval_expr_old m st cond;
+            v <- eval_expr m st cond;;
             eval_cmd f st m (if word.eqb v (word.of_Z 0) then bElse else bThen)
         | cmd.while cond body =>
-            'Some v <- eval_expr_old m st cond;
-            if word.eqb v (word.of_Z 0) then Some (st, m) else
-              'Some (st, m) <- eval_cmd f st m body;
+            v <- eval_expr m st cond;;
+            if word.eqb v (word.of_Z 0) then Success (st, m) else
+              '(st, m) <- eval_cmd f st m body;;
               eval_cmd f st m (cmd.while cond body)
         | cmd.seq s1 s2 =>
-            'Some (st, m) <- eval_cmd f st m s1;
+            '(st, m) <- eval_cmd f st m s1;;
             eval_cmd f st m s2
-        | cmd.skip => Some (st, m)
+        | cmd.skip => Success (st, m)
         | cmd.call binds fname args =>
-          'Some (params, rets, fbody) <- map.get e fname;
-          'Some argvs <- List.option_all (List.map (eval_expr_old m st) args);
-          'Some st0 <- map.putmany_of_list_zip params argvs map.empty;
-          'Some (st1, m') <- eval_cmd f st0 m fbody;
-          'Some retvs <- map.getmany_of_list st1 rets;
-          'Some st' <- map.putmany_of_list_zip binds retvs st;
-          Some (st', m')
-        | cmd.interact _ _ _ => None (* unsupported *)
+          '(params, rets, fbody) <- result.of_option (map.get e fname);;
+          argvs <- List.all_success (List.map (eval_expr m st) args);;
+          st0 <- result.of_option (map.of_list_zip params argvs);;
+          '(st1, m') <- eval_cmd f st0 m fbody;;
+          retvs <- result.of_option (map.getmany_of_list st1 rets);;
+          st' <- result.of_option (map.putmany_of_list_zip binds retvs st);;
+          Success (st', m')
+        | cmd.interact _ _ _ => error:(cmd.interact "is not supported")
         end
       end.
 
@@ -142,6 +143,7 @@ Section ExprImp1.
     Local Ltac inversion_lemma :=
       intros;
       simpl in *;
+      unfold eval_expr, result.of_option in *;
       repeat (destruct_one_match_hyp; try discriminate);
       repeat match goal with
              | E: _ _ _ = true  |- _ => apply word.eqb_true  in E
@@ -152,7 +154,7 @@ Section ExprImp1.
       eauto 10.
 
     Lemma invert_eval_store: forall fuel initialSt initialM a v final aSize,
-      eval_cmd (S fuel) initialSt initialM (cmd.store aSize a v) = Some final ->
+      eval_cmd (S fuel) initialSt initialM (cmd.store aSize a v) = Success final ->
       exists av vv finalM, eval_expr_old initialM initialSt a = Some av /\
                            eval_expr_old initialM initialSt v = Some vv /\
                            store aSize initialM av vv = Some finalM /\
@@ -160,61 +162,61 @@ Section ExprImp1.
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_stackalloc : forall f st m1 x n body final,
-      eval_cmd (S f) st m1 (cmd.stackalloc x n body) = Some final ->
+      eval_cmd (S f) st m1 (cmd.stackalloc x n body) = Success final ->
       False.
     Proof. inversion_lemma. discriminate. Qed.
 
     Lemma invert_eval_set: forall f st1 m1 p2 x e,
-      eval_cmd (S f) st1 m1 (cmd.set x e) = Some p2 ->
+      eval_cmd (S f) st1 m1 (cmd.set x e) = Success p2 ->
       exists v, eval_expr_old m1 st1 e = Some v /\ p2 = (map.put st1 x v, m1).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_unset: forall f st1 m1 p2 x,
-      eval_cmd (S f) st1 m1 (cmd.unset x) = Some p2 ->
+      eval_cmd (S f) st1 m1 (cmd.unset x) = Success p2 ->
       p2 = (map.remove st1 x, m1).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_cond: forall f st1 m1 p2 cond bThen bElse,
-      eval_cmd (S f) st1 m1 (cmd.cond cond bThen bElse) = Some p2 ->
+      eval_cmd (S f) st1 m1 (cmd.cond cond bThen bElse) = Success p2 ->
       exists cv,
         eval_expr_old m1 st1 cond = Some cv /\
-        (cv <> word.of_Z 0 /\ eval_cmd f st1 m1 bThen = Some p2 \/
-         cv = word.of_Z 0  /\ eval_cmd f st1 m1 bElse = Some p2).
+        (cv <> word.of_Z 0 /\ eval_cmd f st1 m1 bThen = Success p2 \/
+         cv = word.of_Z 0  /\ eval_cmd f st1 m1 bElse = Success p2).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_while: forall st1 m1 p3 f cond body,
-      eval_cmd (S f) st1 m1 (cmd.while cond body) = Some p3 ->
+      eval_cmd (S f) st1 m1 (cmd.while cond body) = Success p3 ->
       exists cv,
         eval_expr_old m1 st1 cond = Some cv /\
-        (cv <> word.of_Z 0 /\ (exists st2 m2, eval_cmd f st1 m1 body = Some (st2, m2) /\
-                                     eval_cmd f st2 m2 (cmd.while cond body) = Some p3) \/
+        (cv <> word.of_Z 0 /\ (exists st2 m2, eval_cmd f st1 m1 body = Success (st2, m2) /\
+                                     eval_cmd f st2 m2 (cmd.while cond body) = Success p3) \/
          cv = word.of_Z 0 /\ p3 = (st1, m1)).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_seq: forall st1 m1 p3 f s1 s2,
-      eval_cmd (S f) st1 m1 (cmd.seq s1 s2) = Some p3 ->
-      exists st2 m2, eval_cmd f st1 m1 s1 = Some (st2, m2) /\ eval_cmd f st2 m2 s2 = Some p3.
+      eval_cmd (S f) st1 m1 (cmd.seq s1 s2) = Success p3 ->
+      exists st2 m2, eval_cmd f st1 m1 s1 = Success (st2, m2) /\ eval_cmd f st2 m2 s2 = Success p3.
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_skip: forall st1 m1 p2 f,
-      eval_cmd (S f) st1 m1 cmd.skip = Some p2 ->
+      eval_cmd (S f) st1 m1 cmd.skip = Success p2 ->
       p2 = (st1, m1).
     Proof. inversion_lemma. Qed.
 
     Lemma invert_eval_call : forall st m1 p2 f binds fname args,
-      eval_cmd (S f) st m1 (cmd.call binds fname args) = Some p2 ->
+      eval_cmd (S f) st m1 (cmd.call binds fname args) = Success p2 ->
       exists params rets fbody argvs st0 st1 m' retvs st',
         map.get e fname = Some (params, rets, fbody) /\
-        List.option_all (List.map (eval_expr_old m1 st) args) = Some argvs /\
+        List.all_success (List.map (eval_expr m1 st) args) = Success argvs /\
         map.putmany_of_list_zip params argvs map.empty = Some st0 /\
-        eval_cmd f st0 m1 fbody = Some (st1, m') /\
+        eval_cmd f st0 m1 fbody = Success (st1, m') /\
         map.getmany_of_list st1 rets = Some retvs /\
         map.putmany_of_list_zip binds retvs st = Some st' /\
         p2 = (st', m').
     Proof. inversion_lemma. eauto 16. Qed.
 
     Lemma invert_eval_interact : forall st m1 p2 f binds fname args,
-      eval_cmd (S f) st m1 (cmd.interact binds fname args) = Some p2 ->
+      eval_cmd (S f) st m1 (cmd.interact binds fname args) = Success p2 ->
       False.
     Proof. inversion_lemma. discriminate. Qed.
 
@@ -342,7 +344,7 @@ End ExprImp1.
 
 Ltac invert_eval_cmd :=
   lazymatch goal with
-  | E: eval_cmd _ (S ?fuel) _ _ ?s = Some _ |- _ =>
+  | E: eval_cmd _ (S ?fuel) _ _ ?s = Success _ |- _ =>
     destruct s;
     [ apply invert_eval_skip in E
     | apply invert_eval_set in E
@@ -392,7 +394,7 @@ Section ExprImp2.
   Ltac set_solver := set_solver_generic String.string.
 
   Lemma modVarsSound_fixpointsemantics: forall (e: env) fuel s (initialS: locals) initialM finalS finalM,
-    eval_cmd e fuel initialS initialM s = Some (finalS, finalM) ->
+    eval_cmd e fuel initialS initialM s = Success (finalS, finalM) ->
     map.only_differ initialS (modVars s) finalS.
   Proof.
     induction fuel; intros *; intro Ev.

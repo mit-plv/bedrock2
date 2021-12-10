@@ -1,7 +1,4 @@
-Require Import Coq.ZArith.ZArith.
-Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Decidable.
-Require Import coqutil.Tactics.destr.
-Require Import coqutil.Z.Lia.
+Require Import compiler.util.Common.
 Require Import compiler.FlatImp.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvFunctions.
@@ -20,40 +17,36 @@ Section FitsStack.
      - number of stack words needed by current statement
      - number of stack words needed by its callees
      The total required stack is the sum of the two. *)
-  Definition stack_usage_impl(outer_rec: env -> stmt Z -> option (Z*Z))(e: env): stmt Z -> option (Z*Z) :=
+  Definition stack_usage_impl(outer_rec: env -> stmt Z -> result (Z*Z))(e: env): stmt Z -> result (Z*Z) :=
     fix inner_rec s :=
       match s with
       | SLoad _ _ _ _ | SStore _ _ _ _ | SInlinetable _ _ _ _ | SLit _ _
-      | SOp _ _ _ _ | SSet _ _ | SSkip | SInteract _ _ _ => Some (0,0)
+      | SOp _ _ _ _ | SSet _ _ | SSkip | SInteract _ _ _ => Success (0,0)
       | SStackalloc x n body =>
         if Z.leb 0 n then
           if Z.eqb (n mod Memory.bytes_per_word (Decode.bitwidth iset)) 0 then
-            match inner_rec body with
-            | Some (M, N) => Some (M + n / Memory.bytes_per_word (Decode.bitwidth iset), N)
-            | None => None
-            end
-          else None
-        else None
+            '(M, N) <- inner_rec body;;
+            Success (M + n / Memory.bytes_per_word (Decode.bitwidth iset), N)
+          else error:("Cannot stackalloc" n
+                       "bytes, because that's not a multiple of bytes_per_word")
+        else error:("Cannot allocate" n "bytes, because that's a negative number")
       | SIf _ s1 s2 | SLoop s1 _ s2 | SSeq s1 s2 =>
-        match inner_rec s1, inner_rec s2 with
-        | Some (M1, N1), Some (M2, N2) => Some (Z.max M1 M2, Z.max N1 N2)
-        | _, _ => None
-        end
+        '(M1, N1) <- inner_rec s1;;
+        '(M2, N2) <- inner_rec s2;;
+        Success (Z.max M1 M2, Z.max N1 N2)
       | SCall binds fname args =>
         match map.get e fname with
         | Some (argnames, retnames, body) =>
-          match outer_rec (map.remove e fname) body with
+          '(M, N) <- outer_rec (map.remove e fname) body;;
           (* M is already accounted for in framelength *)
-          | Some (M, N) => Some (0, N + framelength (argnames, retnames, body))
-          | None => None
-          end
-        | None => None
+          Success (0, N + framelength (argnames, retnames, body))
+        | None => error:("Invalid function call: Cannot find function" fname)
         end
     end.
 
-  Fixpoint stack_usage_rec(env_size_S: nat): env -> stmt Z -> option (Z*Z) :=
+  Fixpoint stack_usage_rec(env_size_S: nat): env -> stmt Z -> result (Z*Z) :=
     match env_size_S with
-    | O => fun _ _ => None
+    | O => fun _ _ => error:("stack_usage_rec ran out of fuel (please report as a bug)")
     | S env_size => stack_usage_impl (stack_usage_rec env_size)
     end.
 
@@ -61,25 +54,19 @@ Section FitsStack.
 
   (* returns the number of stack words needed to execute f_entrypoint (which must have no args
      and no return values), None if a function not in funimpls is called or a function is recursive *)
-  Definition stack_usage_of_fun(funimpls: env)(f_entrypoint: String.string): option Z :=
-    match stack_usage_rec (S (count_funs funimpls)) funimpls (SCall nil f_entrypoint nil) with
-    | Some (M, N) => Some (M + N)
-    | None => None
-    end.
+  Definition stack_usage_of_fun(funimpls: env)(f_entrypoint: String.string): result Z :=
+    '(M, N) <- stack_usage_rec (S (count_funs funimpls)) funimpls (SCall nil f_entrypoint nil);;
+   Success (M + N).
 
   Definition update_stack_usage(e_glob: env)
-             (current: option Z)(fname: String.string)(fimpl: list Z * list Z * stmt Z): option Z :=
-    match current with
-    | Some cur => let '(_, _, fbody) := fimpl in
-                  match stack_usage_of_fun e_glob fname with
-                  | Some res => Some (Z.max cur res)
-                  | None => None
-                  end
-    | None => None
-    end.
+      (current_res: result Z)(fname: String.string)(fimpl: list Z * list Z * stmt Z): result Z :=
+    current <- current_res;;
+    let '(_, _, fbody) := fimpl in
+    res <- stack_usage_of_fun e_glob fname;;
+    Success (Z.max current res).
 
-  Definition stack_usage(funimpls: env): option Z :=
-    map.fold (update_stack_usage funimpls) (Some 0) funimpls.
+  Definition stack_usage(funimpls: env): result Z :=
+    map.fold (update_stack_usage funimpls) (Success 0) funimpls.
 
   Lemma fits_stack_monotone: forall e y1 z1 s,
       fits_stack y1 z1 e s -> forall y2 z2, y1 <= y2 -> z1 <= z2 -> fits_stack y2 z2 e s.
@@ -103,7 +90,7 @@ Section FitsStack.
   Qed.
 
   Lemma stack_usage_rec_equals_stackalloc_words: forall n s e M N,
-      stack_usage_rec n e s = Some (M, N) ->
+      stack_usage_rec n e s = Success (M, N) ->
       M = FlatToRiscvDef.stackalloc_words iset s.
   Proof.
     induction n; intros; simpl in *. 1: discriminate.
@@ -135,7 +122,7 @@ Section FitsStack.
   Qed.
 
   Lemma stack_usage_rec_correct: forall n e s y z,
-      stack_usage_rec n e s = Some (y, z) ->
+      stack_usage_rec n e s = Success (y, z) ->
       fits_stack y z e s.
   Proof.
     induction n; intros.
@@ -169,16 +156,16 @@ Section FitsStack.
   Qed.
 
   (* The art of figuring out the right induction hypothesis... *)
-  Let P(e_glob e_done: env)(r: option Z): Prop :=
+  Let P(e_glob e_done: env)(r: result Z): Prop :=
     forall e_rest f argnames retnames fbody z,
-      r = Some z ->
+      r = Success z ->
       map.get e_done f = Some (argnames, retnames, fbody) ->
       map.split e_glob e_done e_rest ->
       fits_stack (FlatToRiscvDef.stackalloc_words iset fbody)
                  (z - framelength (argnames, retnames, fbody)) (map.remove e_glob f) fbody.
 
   Lemma stack_usage_correct_aux: forall e_glob e_done,
-      P e_glob e_done (map.fold (update_stack_usage e_glob) (Some 0) e_done).
+      P e_glob e_done (map.fold (update_stack_usage e_glob) (Success 0) e_done).
   Proof.
     intro e_glob. eapply map.fold_spec.
     - subst P. cbv beta. intros. rewrite map.get_empty in H0. discriminate.
@@ -220,7 +207,7 @@ Section FitsStack.
 
   Lemma stack_usage_correct: forall e z f argnames retnames fbody,
       map.get e f = Some (argnames, retnames, fbody) ->
-      stack_usage e = Some z ->
+      stack_usage e = Success z ->
       fits_stack (FlatToRiscvDef.stackalloc_words iset fbody)
                  (z - framelength (argnames, retnames, fbody)) (map.remove e f) fbody.
   Proof.

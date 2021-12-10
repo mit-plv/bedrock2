@@ -85,7 +85,7 @@ Definition prog := map.of_list funimplsList.
 Definition lightbulb_compiled: list Decode.Instruction * SortedListString.map (nat * nat * Z) * Z.
   let r := eval cbv in (ToplevelLoop.compile_prog MMIO.compile_ext_call ml prog) in
   lazymatch r with
-  | Some ?x => exact x
+  | Success ?x => exact x
   end.
 Defined.
 
@@ -112,7 +112,7 @@ Defined.
 
 Definition compilation_result:
   ToplevelLoop.compile_prog MMIO.compile_ext_call ml prog =
-  Some (lightbulb_insts, function_positions, required_stack_space).
+  Success (lightbulb_insts, function_positions, required_stack_space).
 Proof. reflexivity. Qed.
 
 Module PrintProgram.

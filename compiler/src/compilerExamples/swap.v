@@ -87,7 +87,7 @@ Proof. reflexivity. Qed.
 Definition swap_asm: list Instruction.
   let r := eval cbv in (compile compile_ext_call e) in set (res := r).
   match goal with
-  | res := Some (?x, _, _) |- _ => exact x
+  | res := Success (?x, _, _) |- _ => exact x
   end.
 Defined.
 

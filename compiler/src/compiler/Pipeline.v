@@ -66,20 +66,20 @@ Section WithWordAndMem.
         (post: trace -> mem -> list word -> Prop): Prop;
   }.
 
-  Record phase_correct{L1 L2: Lang}{compile: L1.(Program) -> option L2.(Program)}: Prop := {
+  Record phase_correct{L1 L2: Lang}{compile: L1.(Program) -> result L2.(Program)}: Prop := {
     phase_preserves_argcount: forall p1 p2,
-        compile p1 = Some p2 ->
+        compile p1 = Success p2 ->
         forall fname, L1.(GetArgCount) p1 fname = L2.(GetArgCount) p2 fname;
     phase_preserves_retcount: forall p1 p2,
-        compile p1 = Some p2 ->
+        compile p1 = Success p2 ->
         forall fname, L1.(GetRetCount) p1 fname = L2.(GetRetCount) p2 fname;
     phase_preserves_valid: forall p1 p2,
-        compile p1 = Some p2 ->
+        compile p1 = Success p2 ->
         L1.(Valid) p1 ->
         L2.(Valid) p2;
     phase_preserves_post: forall p1 p2,
         L1.(Valid) p1 ->
-        compile p1 = Some p2 ->
+        compile p1 = Success p2 ->
         forall fname t m argvals post,
         L1.(Call) p1 fname t m argvals post ->
         L2.(Call) p2 fname t m argvals post;
@@ -87,15 +87,12 @@ Section WithWordAndMem.
 
   Arguments phase_correct : clear implicits.
 
-  Definition compose_phases{A B C: Type}(phase1: A -> option B)(phase2: B -> option C)(a: A) :=
-    match phase1 a with
-    | Some b => phase2 b
-    | None => None
-    end.
+  Definition compose_phases{A B C: Type}(phase1: A -> result B)(phase2: B -> result C)(a: A) :=
+    b <- phase1 a;; phase2 b.
 
   Lemma compose_phases_correct{L1 L2 L3: Lang}
-        {compile12: L1.(Program) -> option L2.(Program)}
-        {compile23: L2.(Program) -> option L3.(Program)}:
+        {compile12: L1.(Program) -> result L2.(Program)}
+        {compile23: L2.(Program) -> result L3.(Program)}:
     phase_correct L1 L2 compile12 ->
     phase_correct L2 L3 compile23 ->
     phase_correct L1 L3 (compose_phases compile12 compile23).
@@ -215,12 +212,12 @@ Section WithWordAndMem.
     Lemma flatten_functions_NoDup: forall funs funs',
         (forall f argnames retnames body,
           map.get funs f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames) ->
-        flatten_functions funs = Some funs' ->
+        flatten_functions funs = Success funs' ->
         forall f argnames retnames body,
           map.get funs' f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames.
     Proof.
       unfold flatten_functions. intros.
-      eapply map.map_all_values_bw in H0. 5: eassumption. 2-4: typeclasses eauto.
+      eapply map.try_map_values_bw in H0. 2: eassumption.
       unfold flatten_function in *. fwd.
       eapply H. eassumption.
     Qed.
@@ -232,23 +229,23 @@ Section WithWordAndMem.
         unfold get_argcount, getFstOfThree, flatten_functions. intros.
         destr (map.get p1 fname).
         - destruct p as ((argnames & retnames) & body).
-          eapply map.map_all_values_fw in H; try typeclasses eauto. 2: exact E.
+          eapply map.try_map_values_fw in H. 2: exact E.
           fwd. destruct v2 as ((argnames2 & retnames2) & body2).
           unfold flatten_function in *. fwd. reflexivity.
         - destr (map.get p2 fname). 2: reflexivity.
           exfalso.
-          eapply map.map_all_values_bw in H; try typeclasses eauto. 2: exact E0.
+          eapply map.try_map_values_bw in H. 2: exact E0.
           fwd. congruence.
       }
       { unfold get_retcount, getSndOfThree, flatten_functions. intros.
         destr (map.get p1 fname).
         - destruct p as ((argnames & retnames) & body).
-          eapply map.map_all_values_fw in H; try typeclasses eauto. 2: exact E.
+          eapply map.try_map_values_fw in H. 2: exact E.
           fwd. destruct v2 as ((argnames2 & retnames2) & body2).
           unfold flatten_function in *. fwd. reflexivity.
         - destr (map.get p2 fname). 2: reflexivity.
           exfalso.
-          eapply map.map_all_values_bw in H; try typeclasses eauto. 2: exact E0.
+          eapply map.try_map_values_bw in H. 2: exact E0.
           fwd. congruence.
       }
       { unfold map.forall_values, ParamsNoDup.
@@ -260,7 +257,7 @@ Section WithWordAndMem.
       unfold locals_based_call_spec. intros. fwd.
       pose proof H0 as GF.
       unfold flatten_functions in GF.
-      eapply map.map_all_values_fw in GF. 5: eassumption. 2-4: typeclasses eauto.
+      eapply map.try_map_values_fw in GF. 2: eassumption.
       unfold flatten_function in GF. fwd.
       eexists _, _, _. split. 1: eassumption.
       intros.
@@ -289,15 +286,15 @@ Section WithWordAndMem.
     Qed.
 
     Lemma regalloc_functions_NoDup: forall funs funs',
-        regalloc_functions funs = Some funs' ->
+        regalloc_functions funs = Success funs' ->
         forall f argnames retnames body,
           map.get funs' f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames.
     Proof.
       unfold regalloc_functions, check_funcs. intros.
       fwd.
-      eapply map.map_all_values_bw in E. 5: eassumption. 2-4: typeclasses eauto.
+      eapply map.try_map_values_bw in E. 2: eassumption.
       fwd.
-      eapply map.get_forallb in E0. 2: eassumption.
+      eapply map.get_forall_success in E0. 2: eassumption.
       unfold lookup_and_check_func, check_func, assert in *. fwd.
       rewrite <- E1, <- E4.
       split; apply List.NoDup_dedup.
@@ -309,29 +306,29 @@ Section WithWordAndMem.
         unfold get_argcount, getFstOfThree, regalloc_functions. intros. fwd.
         destr (map.get p1 fname).
         - destruct p as ((argnames & retnames) & body).
-          eapply map.map_all_values_fw in E; try typeclasses eauto. 2: exact E1.
+          eapply map.try_map_values_fw in E. 2: exact E1.
           fwd. destruct v2 as ((argnames2 & retnames2) & body2).
           unfold regalloc_function, lookups in *. fwd.
-          apply_in_hyps @List.length_option_all.
+          apply_in_hyps @List.length_all_success.
           rewrite List.map_length in *.
           congruence.
         - destr (map.get p2 fname). 2: reflexivity.
           exfalso.
-          eapply map.map_all_values_bw in E; try typeclasses eauto. 2: exact E2.
+          eapply map.try_map_values_bw in E. 2: exact E2.
           fwd. congruence.
       }
       { unfold get_retcount, getSndOfThree, regalloc_functions. intros. fwd.
         destr (map.get p1 fname).
         - destruct p as ((argnames & retnames) & body).
-          eapply map.map_all_values_fw in E; try typeclasses eauto. 2: exact E1.
+          eapply map.try_map_values_fw in E. 2: exact E1.
           fwd. destruct v2 as ((argnames2 & retnames2) & body2).
           unfold regalloc_function, lookups in *. fwd.
-          apply_in_hyps @List.length_option_all.
+          apply_in_hyps @List.length_all_success.
           rewrite List.map_length in *.
           congruence.
         - destr (map.get p2 fname). 2: reflexivity.
           exfalso.
-          eapply map.map_all_values_bw in E; try typeclasses eauto. 2: exact E2.
+          eapply map.try_map_values_bw in E. 2: exact E2.
           fwd. congruence.
       }
       { unfold map.forall_values, ParamsNoDup. intros.
@@ -343,11 +340,11 @@ Section WithWordAndMem.
       pose proof H0 as GR.
       unfold regalloc_functions in GR.
       fwd. rename E into GR.
-      eapply map.map_all_values_fw in GR. 5: eassumption. 2-4: typeclasses eauto.
+      eapply map.try_map_values_fw in GR. 2: eassumption.
       fwd. clear GRp0.
       pose proof E0 as C.
       unfold check_funcs in E0.
-      eapply map.get_forallb in E0. 2: eassumption.
+      eapply map.get_forall_success in E0. 2: eassumption.
       unfold lookup_and_check_func, check_func in E0. fwd.
 
       eexists _, _, _. split. 1: eassumption. intros.
@@ -364,7 +361,7 @@ Section WithWordAndMem.
         1: eapply states_compat_empty.
         rewrite H1 in P'. inversion P'. exact Cp.
       - simpl. intros. fwd. eexists. split. 2: eassumption.
-        destruct u. eauto using states_compat_getmany.
+        eauto using states_compat_getmany.
     Qed.
 
     Ltac debool :=
@@ -376,12 +373,12 @@ Section WithWordAndMem.
              end.
 
     Lemma spilling_preserves_valid: forall p1 p2 : string_keyed_map (list Z * list Z * stmt Z),
-        spill_functions p1 = Some p2 ->
+        spill_functions p1 = Success p2 ->
         map.forall_values ParamsNoDup p1 ->
         map.forall_values FlatToRiscvDef.valid_FlatImp_fun p2.
     Proof.
       unfold spill_functions, map.forall_values. intros.
-      eapply map.map_all_values_bw in H. 5: eassumption. all: try typeclasses eauto.
+      eapply map.try_map_values_bw in H. 2: eassumption.
       unfold spill_fun in H. fwd.
       unfold FlatToRiscvDef.valid_FlatImp_fun, FlatToRiscvDef.valid_FlatImp_var,
       FlatToRiscvDef.valid_FlatImp_vars,
@@ -420,34 +417,34 @@ Section WithWordAndMem.
       { unfold get_argcount, getFstOfThree, spill_functions. intros. fwd.
         destr (map.get p1 fname).
         - destruct p as ((argnames & retnames) & body).
-          eapply map.map_all_values_fw in E; try typeclasses eauto. 2: exact H.
+          eapply map.try_map_values_fw in E. 2: exact H.
           fwd. destruct v2 as ((argnames2 & retnames2) & body2).
           unfold spill_fun in *. fwd.
           f_equal. rewrite List.firstn_length.
           change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat. blia.
         - destr (map.get p2 fname). 2: reflexivity.
           exfalso.
-          eapply map.map_all_values_bw in H; try typeclasses eauto. 2: exact E0.
+          eapply map.try_map_values_bw in H. 2: exact E0.
           fwd. congruence.
       }
       { unfold get_retcount, getSndOfThree, regalloc_functions. intros. fwd.
         destr (map.get p1 fname).
         - destruct p as ((argnames & retnames) & body).
-          eapply map.map_all_values_fw in E; try typeclasses eauto. 2: exact H.
+          eapply map.try_map_values_fw in E. 2: exact H.
           fwd. destruct v2 as ((argnames2 & retnames2) & body2).
           unfold spill_fun in *. fwd.
           f_equal. rewrite List.firstn_length.
           change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat. blia.
         - destr (map.get p2 fname). 2: reflexivity.
           exfalso.
-          eapply map.map_all_values_bw in H; try typeclasses eauto. 2: exact E0.
+          eapply map.try_map_values_bw in H. 2: exact E0.
           fwd. congruence.
       }
       1: exact spilling_preserves_valid.
       unfold locals_based_call_spec. intros. fwd.
       pose proof H0 as GL.
       unfold spill_functions in GL.
-      eapply map.map_all_values_fw in GL. 5: eassumption. 2-4: typeclasses eauto.
+      eapply map.try_map_values_fw in GL. 2: eassumption.
       destruct GL as (((argnames2 & retnames2) & fbody2) & Sp & G2).
       exists argnames2, retnames2, fbody2.
       split. 1: exact G2.
@@ -466,7 +463,7 @@ Section WithWordAndMem.
 
     Definition compile:
       string_keyed_map (list string * list string * cmd) ->
-      option (list Instruction * string_keyed_map (nat * nat * Z) * Z) :=
+      result (list Instruction * string_keyed_map (nat * nat * Z) * Z) :=
       (compose_phases flatten_functions
       (compose_phases regalloc_functions
       (compose_phases spill_functions
@@ -493,7 +490,7 @@ Section WithWordAndMem.
         (* high-level initial state & post on final state: *)
         (t: trace) (mH: mem) (argvals: list word) (post: trace -> mem -> list word -> Prop),
         ExprImp.valid_funs functions ->
-        compile functions = Some (instrs, finfo, req_stack_size) ->
+        compile functions = Success (instrs, finfo, req_stack_size) ->
         map.get functions fname = Some (argnames, retnames, fbody) ->
         (forall l mc,
               map.of_list_zip argnames argvals = Some l ->
@@ -568,7 +565,7 @@ Section WithWordAndMem.
         (initial: MetricRiscvMachine),
         ExprImp.valid_funs (map.of_list fs) ->
         NoDup (map fst fs) ->
-        compile (map.of_list fs) = Some (instrs, finfo, req_stack_size) ->
+        compile (map.of_list fs) = Success (instrs, finfo, req_stack_size) ->
         WeakestPrecondition.call fs fname t mH argvals post ->
         map.get finfo fname = Some (argcount, retcount, f_rel_pos) ->
         req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->

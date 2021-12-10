@@ -186,14 +186,6 @@ End Syntax.
 Arguments bcond: clear implicits.
 Arguments stmt: clear implicits.
 
-Local Notation "' x <- a ; f" :=
-  (match (a: option _) with
-   | x => f
-   | _ => None
-   end)
-  (right associativity, at level 70, x pattern).
-
-
 Local Open Scope Z_scope.
 
 Section FlatImp1.
@@ -219,12 +211,15 @@ Section FlatImp1.
     Definition eval_bcond(st: locals)(cond: bcond varname): option bool :=
       match cond with
       | CondBinary op x y =>
-          'Some mx <- map.get st x;
-          'Some my <- map.get st y;
-          Some (eval_bbinop op mx my)
+        match map.get st x, map.get st y with
+        | Some mx, Some my => Some (eval_bbinop op mx my)
+        | _, _ => None
+        end
       | CondNez x =>
-          'Some mx <- map.get st x;
-          Some (negb (word.eqb mx (word.of_Z 0)))
+        match map.get st x with
+        | Some mx => Some (negb (word.eqb mx (word.of_Z 0)))
+        | None => None
+        end
       end.
   End WithEnv.
 

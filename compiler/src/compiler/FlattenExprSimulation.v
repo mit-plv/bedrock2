@@ -33,7 +33,7 @@ Section Sim.
       l1 = map.empty.
 
   Lemma flattenExprSim(e1: ExprImp_env)(e2: FlatImp_env)(funname: String.string):
-    flatten_functions e1 = Some e2 ->
+    flatten_functions e1 = Result.Success e2 ->
     simulation (ExprImp.SimExec e1 (Syntax.cmd.call nil funname nil))
                (FlatImp.SimExec String.string e2 (FlatImp.SSeq FlatImp.SSkip (FlatImp.SCall nil funname nil)))
                related.

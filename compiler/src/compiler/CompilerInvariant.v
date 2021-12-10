@@ -170,7 +170,7 @@ Section Pipeline1.
       ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
       spec.(datamem_start) = ml.(heap_start) /\
       spec.(datamem_pastend) = ml.(heap_pastend) /\
-      compile_prog compile_ext_call ml srcprog = Some (instrs, positions, required_stack_space) /\
+      compile_prog compile_ext_call ml srcprog = Success (instrs, positions, required_stack_space) /\
       required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       word.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
         word.unsigned ml.(code_pastend) /\

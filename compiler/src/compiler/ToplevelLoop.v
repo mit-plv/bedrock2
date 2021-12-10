@@ -66,13 +66,6 @@ Open Scope Z_scope.
 
 Local Open Scope ilist_scope.
 
-Local Notation "' x <- a ; f" :=
-  (match (a: option _) with
-   | x => f
-   | _ => None
-   end)
-  (right associativity, at level 70, x pattern).
-
 Section Pipeline1.
   Context {width: Z}.
   Context {BW: Bitwidth width}.
@@ -125,12 +118,18 @@ Section Pipeline1.
   (* 5) Code of the compiled functions *)
   Let functions_pos := word.add backjump_pos (word.of_Z 4).
 
-  Definition compile_prog(prog: source_env): option (list Instruction * string_keyed_map (nat * nat * Z) * Z) :=
-    'Some (functions_insts, positions, required_stack_space) <- compile compile_ext_call prog;
-    'Some (_, _, init_fun_pos) <- map.get positions "init"%string;
-    'Some (_, _, loop_fun_pos) <- map.get positions "loop"%string;
+  Definition compile_prog(prog: source_env): result (list Instruction * string_keyed_map (nat * nat * Z) * Z) :=
+    '(functions_insts, positions, required_stack_space) <- compile compile_ext_call prog;;
+    '(_, _, init_fun_pos) <- match map.get positions "init" with
+                             | Some f => Success f
+                             | None => error:("No function named" "init" "found")
+                             end;;
+    '(_, _, loop_fun_pos) <- match map.get positions "loop" with
+                             | Some f => Success f
+                             | None => error:("No function named" "loop" "found")
+                             end;;
     let to_prepend := init_sp_insts ++ init_insts init_fun_pos ++ loop_insts loop_fun_pos ++ backjump_insts in
-    Some (to_prepend ++ functions_insts, positions, required_stack_space).
+    Success (to_prepend ++ functions_insts, positions, required_stack_space).
 
   Context (spec: ProgramSpec).
 
@@ -140,7 +139,7 @@ Section Pipeline1.
            (functions_instrs: list Instruction) (positions: string_keyed_map (nat * nat * Z))
            (required_stack_space: Z)
            (init_fun_pos loop_fun_pos: Z) (R: mem -> Prop),
-      compile compile_ext_call prog = Some (functions_instrs, positions, required_stack_space) /\
+      compile compile_ext_call prog = Success (functions_instrs, positions, required_stack_space) /\
       required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
       map.get positions "init"%string = Some (O, O, init_fun_pos) /\
@@ -168,7 +167,7 @@ Section Pipeline1.
       ProgramSatisfiesSpec "init"%string "loop"%string srcprog spec /\
       spec.(datamem_start) = ml.(heap_start) /\
       spec.(datamem_pastend) = ml.(heap_pastend) /\
-      compile_prog srcprog = Some (instrs, positions, required_stack_space) /\
+      compile_prog srcprog = Success (instrs, positions, required_stack_space) /\
       required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       word.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
         word.unsigned ml.(code_pastend) /\
@@ -235,7 +234,7 @@ Section Pipeline1.
     pose proof sat.
     destruct sat.
     match goal with
-    | H: compile_prog srcprog = Some _ |- _ => pose proof H as CP; unfold compile_prog in H
+    | H: compile_prog srcprog = Success _ |- _ => pose proof H as CP; unfold compile_prog in H
     end.
     remember instrs as instrs0.
     Simp.simp.

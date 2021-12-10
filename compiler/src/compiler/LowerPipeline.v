@@ -88,14 +88,11 @@ Section LowerPipeline.
      program, and a lot of infrastructure is already there, will do once/if we want to get
      a total compiler.
      Returns the fun_pos_env so that users know where to jump to call the compiled functions. *)
-  Definition riscvPhase (prog: env): option (list Instruction * fun_info * Z) :=
-    match stack_usage prog with
-    | Some stack_words_needed =>
-      let positions := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call prog in
-      let '(i, _) := FlatToRiscvDef.compile_funs iset compile_ext_call positions prog in
-      Some (i, positions, stack_words_needed)
-    | None => None
-    end.
+  Definition riscvPhase (prog: env): result (list Instruction * fun_info * Z) :=
+    stack_words_needed <- stack_usage prog;;
+    let positions := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call prog in
+    let '(i, _) := FlatToRiscvDef.compile_funs iset compile_ext_call positions prog in
+    Success (i, positions, stack_words_needed).
 
   Lemma get_build_fun_pos_env: forall e f argnames retnames body,
       map.get e f = Some (argnames, retnames, body) ->
@@ -320,7 +317,7 @@ Section LowerPipeline.
      separation logic predicate it seps onto the separation logic formula is the same
      if we pass it the same function position map. *)
   Lemma functions_to_program: forall (functions_start: word) e instrs pos_map stack_size,
-      riscvPhase e = Some (instrs, pos_map, stack_size) ->
+      riscvPhase e = Success (instrs, pos_map, stack_size) ->
       iff1 (program iset functions_start instrs)
            (FlatToRiscvCommon.functions compile_ext_call functions_start
                                         (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e) e).
@@ -526,7 +523,7 @@ Section LowerPipeline.
   Qed.
 
   Lemma riscvPhase_preserves_argcount: forall p1 l finfo z,
-      riscvPhase p1 = Some (l, finfo, z) ->
+      riscvPhase p1 = Success (l, finfo, z) ->
       forall fname, get_argcount p1 fname = getFstOfThree finfo fname.
   Proof.
     unfold riscvPhase, get_argcount, getFstOfThree. intros. fwd.
@@ -544,7 +541,7 @@ Section LowerPipeline.
   Qed.
 
   Lemma riscvPhase_preserves_retcount: forall p1 l finfo z,
-      riscvPhase p1 = Some (l, finfo, z) ->
+      riscvPhase p1 = Success (l, finfo, z) ->
       forall fname, get_retcount p1 fname = getSndOfThree finfo fname.
   Proof.
     unfold riscvPhase, get_retcount, getSndOfThree. intros. fwd.
@@ -562,7 +559,7 @@ Section LowerPipeline.
   Qed.
 
   Lemma riscv_phase_preserves_valid: forall p1 p2,
-      riscvPhase p1 = Some p2 ->
+      riscvPhase p1 = Success p2 ->
       map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
       let '(insts, finfo, req_stack_size) := p2 in map.forall_values max8args finfo.
   Proof.
@@ -585,7 +582,7 @@ Section LowerPipeline.
 
   Lemma flat_to_riscv_correct: forall p1 p2,
       map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
-      riscvPhase p1 = Some p2 ->
+      riscvPhase p1 = Success p2 ->
       forall fname t m argvals post,
       (exists argnames retnames fbody,
           map.get p1 fname = Some (argnames, retnames, fbody) /\

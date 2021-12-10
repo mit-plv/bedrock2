@@ -144,16 +144,16 @@ Section FlattenExpr1.
   Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt string :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
 
-  Definition flatten_function:
-    list String.string * list String.string * Syntax.cmd -> option (list String.string * list String.string * FlatImp.stmt string) :=
+  Definition flatten_function: list string * list string * Syntax.cmd ->
+                               result (list string * list string * FlatImp.stmt string) :=
     fun '(argnames, retnames, body) =>
       let avoid := ListSet.list_union String.eqb
                                       (ListSet.list_union String.eqb argnames retnames)
                                       (ExprImp.allVars_cmd_as_list body) in
       let body' := fst (flattenStmt (freshNameGenState avoid) body) in
-      Some (argnames, retnames, body').
+      Success (argnames, retnames, body').
 
-  Definition flatten_functions: ExprImp_env -> option FlatImp_env :=
-    map.map_all_values flatten_function.
+  Definition flatten_functions: ExprImp_env -> result FlatImp_env :=
+    map.try_map_values flatten_function.
 
 End FlattenExpr1.
