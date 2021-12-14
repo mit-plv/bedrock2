@@ -101,14 +101,15 @@ Notation  "store( a , v )" := (store access_size.word a v)  (in custom bedrock_c
 
 Declare Custom Entry bedrock_call_lhs.
 (* COQBUG(15335): making this "only parsing" does not work *)
-Notation "bedrock_call_lhs:( e )"  := e  (e custom bedrock_call_lhs, format "'bedrock_call_lhs:(' e ')'", only parsing).
+(* Notation "bedrock_call_lhs:( e )"  := e  (e custom bedrock_call_lhs, format "'bedrock_call_lhs:(' e ')'", only parsing). *)
 Notation "coq:( e )"               := e  (in custom bedrock_call_lhs, e constr, format "'coq:(' e ')'").
 Notation "x" := (@cons String.string x nil) (in custom bedrock_call_lhs, x global).
 Notation "x , y , .. , z" := (@cons String.string x (@cons String.string y .. (@cons String.string z (@nil String.string)) ..))
   (in custom bedrock_call_lhs at level 0, x global, y constr at level 0, z constr at level 0).
 
 Declare Custom Entry bedrock_args.
-Notation "bedrock_args:( e )"   := e  (e custom bedrock_args, format "'bedrock_args:(' e ')'").
+(* COQBUG(15335): making this "only parsing" does not work *)
+(* Notation "bedrock_args:( e )"   := e  (e custom bedrock_args, format "'bedrock_args:(' e ')'", only parsing). *)
 Notation "coq:( e )" := e  (in custom bedrock_args, e constr, format "'coq:(' e ')'").
 Notation "( )" := (@nil expr) (in custom bedrock_args).
 Notation "()" := (@nil expr) (in custom bedrock_args).
@@ -152,9 +153,16 @@ Undelimit Scope bedrock_nontail.
 
 Module test.
   Local Notation "1" := (expr.literal 1) (in custom bedrock_expr at level 0).
-  Local Notation "2" := (expr.literal 1) (in custom bedrock_expr at level 0).
+  Local Notation "2" := (expr.literal 2) (in custom bedrock_expr at level 0).
+
+  Local Open Scope Z_scope.
+  Local Open Scope string_scope.
 
   Goal True.
+
+  pose (cons "a" (cons "b" nil)).
+  pose (cons (expr.var "a") (cons (expr.var "b") nil)).
+  pose (cons (expr.literal 5) (cons (expr.literal 8) nil)).
 
   (* TODO(after dropping 8.14): test the following:
   pose (fun while : nat => while=while).
@@ -297,8 +305,6 @@ Module test.
     $_
   ).
 
-  Local Open Scope Z_scope.
-  Local Open Scope string_scope.
   epose bedrock_func_body:(
     $"x" = $4 + $"x"
   ).
