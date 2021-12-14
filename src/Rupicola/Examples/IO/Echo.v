@@ -176,7 +176,7 @@ Section Echo.
   Qed.
 End Echo.
 
-From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
+From bedrock2 Require Import BasicC64Semantics NotationsCustomEntry.
 Compute io_sum_br2fn. (* (word := word) *)
 Compute ToCString.c_func io_echo_br2fn.
 Compute ToCString.c_func io_sum_br2fn.

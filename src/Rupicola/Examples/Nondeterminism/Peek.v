@@ -85,5 +85,5 @@ Section Peek.
   Qed.
 End Peek.
 
-From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
+From bedrock2 Require Import BasicC64Semantics NotationsCustomEntry.
 Compute nondet_sum_br2fn. (* (word := word) *)

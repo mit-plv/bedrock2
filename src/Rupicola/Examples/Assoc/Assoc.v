@@ -31,15 +31,14 @@ Module Bedrock2.
      ([pairs; len; k],
       [found; out],
       bedrock_func_body:(
-       found = coq:(0);
+       found = $0;
        pairs_end = (pairs + pair_size * len);
-       while ((pairs < pairs_end) & (found == coq:(0))) {{
+       while ((pairs < pairs_end) & (found == $0)) {{
          key = (load4(pairs));
          if (key == k) {{
            store(out, pairs);
-           found = (coq:(1))
+           found = $1
          }};
-         (* FIXME: How does pointer addition work in Bedrock2? *)
          pairs = (pairs + pair_size)
        }}))).
 
@@ -55,12 +54,10 @@ Module Bedrock2.
            store(out, pairs);
            pairs = (pairs_end)
          }} else {{
-           (* FIXME: How does pointer addition work in Bedrock2? *)
            pairs = (pairs + pair_size)
          }}
        }};
-       (* FIXME: negation? *)
-       found = ((pairs == pairs_end) ^ coq:(1))))).
+       found = ((pairs == pairs_end) ^ $1)))).
 End Bedrock2.
 
 Module Gallina.

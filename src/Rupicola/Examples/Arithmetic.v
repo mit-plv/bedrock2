@@ -94,8 +94,7 @@ End FNV1A64_params.
 
 Module FNV1A64 := FNV1A FNV1A64_params.
 
-Require Import bedrock2.NotationsInConstr.
-
+Require Import bedrock2.NotationsCustomEntry.
 Compute FNV1A32.fnv1a_br2fn.
 Compute FNV1A64.fnv1a_br2fn.
 

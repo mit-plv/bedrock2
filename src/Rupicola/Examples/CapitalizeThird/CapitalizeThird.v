@@ -13,7 +13,6 @@ Module Bedrock2.
   Axiom toupper : func.
   Definition charsize : Z := 1.
 
-  (* TODO: use bedrock2 Structs? *)
   Definition capitalize_String : func :=
     let s_ptr : string := "s_ptr" in
     let ret : string := "ret" in
@@ -24,15 +23,15 @@ Module Bedrock2.
     ("capitalize_String",
      ([s_ptr], [ret], bedrock_func_body:(
        len = (load( s_ptr )) ;
-       i = (coq:(0)) ;
+       i = $0;
        c_ptr = (s_ptr + wordsize) ;
        while (i < len) {{
          unpack! x = toupper (load1( c_ptr )) ;
          store1(c_ptr, x) ;
          c_ptr = (c_ptr + charsize) ;
-         i = (i + coq:(1))
+         i = (i + $1)
        }} ;
-       ret = (coq:(1))))).
+       ret = $1))).
 
   Definition capitalize_3rd : func :=
     let inp : string := "inp" in

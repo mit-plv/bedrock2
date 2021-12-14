@@ -117,5 +117,5 @@ Section Alloc.
   Qed.
 End Alloc.
 
-From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
+From bedrock2 Require Import BasicC64Semantics NotationsCustomEntry.
 Compute nondet_xor_br2fn (word := word).

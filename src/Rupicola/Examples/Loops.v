@@ -254,7 +254,7 @@ Module RangedForTests.
                                (t, acc)) []).
 End RangedForTests.
 
-From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
+From bedrock2 Require Import BasicC64Semantics NotationsCustomEntry.
 Compute sizedlist_memcpy_br2fn (word := word).
 Compute unsizedlist_memcpy_br2fn (word := word).
 Compute vect_memcpy_s_br2fn (word := word).

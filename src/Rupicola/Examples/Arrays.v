@@ -263,7 +263,7 @@ Instead of applying the mask byte by byte, the program starts by casting its inp
   End Casts.
 End with_parameters.
 
-From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
+From bedrock2 Require Import BasicC64Semantics NotationsCustomEntry.
 Compute decr_br2fn (word := word).
 Compute mask_bytes_br2fn (width := 64).
 Compute xor_bytes_br2fn (word := word).

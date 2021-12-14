@@ -603,5 +603,5 @@ Section KVSwap.
   Qed.
 End KVSwap.
 
-(* From bedrock2 Require Import BasicC64Semantics NotationsInConstr. *)
-(* Compute kvswap_br2fn. *)
+(* From bedrock2 Require Import BasicC64Semantics NotationsCustomEntry. *)
+(* Eval cbv -[fst snd map_init get put] in kvswap_br2fn. *)

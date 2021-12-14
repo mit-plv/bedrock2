@@ -36,5 +36,5 @@ Section with_parameters.
   Qed.
 End with_parameters.
 
-From bedrock2 Require Import BasicC64Semantics NotationsInConstr.
+From bedrock2 Require Import BasicC64Semantics NotationsCustomEntry.
 Compute swap_br2fn. (* (word := word) *)
