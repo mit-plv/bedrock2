@@ -1,14 +1,16 @@
 Require bedrock2.BasicC64Semantics bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Import BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
+Require Import coqutil.Macros.ident_to_string.
 
 Section chacha20.
   Import bedrock2.Syntax Syntax.Coercions NotationsCustomEntry HexNotation.
 
   Local Notation "x <<< n" := (bedrock_expr:((x<<coq:(expr.literal n)) | (x>>coq:(expr.literal (32-(n:Z)))))) (in custom bedrock_expr at level 2, left associativity).
-  Local Notation "x <<<= n" := (cmd.set x (expr.op bopname.slu x%string n)) (in custom bedrock_cmd at level 0, x global, n bigint).
-  Local Notation "x ^= e" := (cmd.set x (expr.op bopname.xor x%string e)) (in custom bedrock_cmd at level 0, x global, e custom bedrock_expr at level 999).
-  Local Notation "x += e" := (cmd.set x (expr.op bopname.add x%string e)) (in custom bedrock_cmd at level 0, x global, e custom bedrock_expr at level 999).
+  Local Notation "x <<<= n" := (cmd.set (ident_to_string! x) (expr.op bopname.slu x%string n)) (in custom bedrock_cmd at level 0, x ident, n bigint).
+  Local Notation "x ^= e" := (cmd.set (ident_to_string! x) (expr.op bopname.xor x%string e)) (in custom bedrock_cmd at level 0, x ident, e custom bedrock_expr at level 999).
+  Local Notation "x += e" := (cmd.set (ident_to_string! x) (expr.op bopname.add x%string e)) (in custom bedrock_cmd at level 0, x ident, e custom bedrock_expr at level 999).
+  Print Custom Grammar bedrock_cmd.
 
   Definition chacha20_quarter : func :=
     let a := "a" in let b := "b" in let c := "c" in let d := "d" in

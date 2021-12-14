@@ -18,14 +18,14 @@ Definition spi_write : function :=
   let SPI_WRITE_ADDR := 0x10024048 in
   ("spi_write", ([b], [busy], bedrock_func_body:(
     busy = ($-1);
-    i = (patience); while (i) { i = (i - $1);
-      io! busy = MMIOREAD(SPI_WRITE_ADDR);
+    i = ($patience); while (i) { i = (i - $1);
+      io! busy = $MMIOREAD($SPI_WRITE_ADDR);
       if !(busy >> $31) {
         i = (i^i)
       }
     };
     if !(busy >> $31) {
-      output! MMIOWRITE(SPI_WRITE_ADDR, b);
+      output! $MMIOWRITE($SPI_WRITE_ADDR, b);
       busy = (busy ^ busy)
     }
   ))).
@@ -36,8 +36,8 @@ Definition spi_read : function :=
   ("spi_read", (nil, (b::busy::nil), bedrock_func_body:(
     busy = ($-1);
     b = ($0x5a);
-    i = (patience); while (i) { i = (i - $1);
-      io! busy = MMIOREAD(SPI_READ_ADDR);
+    i = ($patience); while (i) { i = (i - $1);
+      io! busy = $MMIOREAD($SPI_READ_ADDR);
       if !(busy >> $31) {
         b = (busy & $0xff);
         i = (i^i);
