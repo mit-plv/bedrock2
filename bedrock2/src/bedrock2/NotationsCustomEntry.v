@@ -33,6 +33,7 @@ Infix ".<"  := (expr.op lts)  (in custom bedrock_expr at level 10, no associativ
 Infix "=="  := (expr.op  eq)  (in custom bedrock_expr at level 10, no associativity).
 
 (* DRAFT *)
+(* TODO(after dropping Coq 8.14): split "load(" into 'load' '(' *)
 Notation "load1( a )" := (expr.load access_size.one a)
   (in custom bedrock_expr, a custom bedrock_expr, format "load1( a )").
 Notation "load2( a )" := (expr.load access_size.two a)
@@ -60,7 +61,7 @@ Notation "c1 ; c2" := (seq c1%bedrock_nontail c2)
 (* the notations that start with a word must be at level 0 to avoid making that
    word into a global keyword, see coq/coq#15349 coq/coq#14562 *)
 Notation "'while' e { c }" := (while e c%bedrock_nontail)
-  (in custom bedrock_cmd, e custom bedrock_expr, format "'[v' 'while'  e  {  '/  ' c '/' } ']'").
+  (in custom bedrock_cmd at level 0, e custom bedrock_expr, format "'[v' 'while'  e  {  '/  ' c '/' } ']'").
 
 Notation "'if' e { c1 } 'else' c2"     := (cond e c1 c2)    (in custom bedrock_cmd at level 0,
   e custom bedrock_expr at level 1, c2 at level 0,
@@ -81,6 +82,7 @@ Notation "'stackalloc' z 'as' x ; c" := (stackalloc x z c)
 Notation "x = e" := (set x e) (in custom bedrock_cmd, x global, e custom bedrock_expr).
 (* DRAFT: *)
 Notation "/*skip*/" := skip (in custom bedrock_cmd).
+(* TODO(after dropping Coq 8.14): split "load(" into 'load' '(' *)
 Notation "store1( a , v )" := (store access_size.one a v)   (in custom bedrock_cmd,
   a custom bedrock_expr, v custom bedrock_expr, format "store1( a ,  v )").
 Notation "store2( a , v )" := (store access_size.two a v)   (in custom bedrock_cmd,
@@ -147,7 +149,7 @@ Module test.
 
   Goal True.
 
-  (* on 8.14 and later:
+  (* TODO(after dropping 8.14): test the following:
   pose (fun while : nat => while=while).
   pose (fun stackalloc : nat => stackalloc=stackalloc).
   pose (fun require : nat => require=require).
