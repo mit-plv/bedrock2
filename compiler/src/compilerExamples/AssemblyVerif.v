@@ -38,8 +38,8 @@ Definition asm_prog_1: list Instruction := [[
   Srai x2 x2 1
 ]].
 
-Definition input_ptr: Z := Ox"400".
-Definition output_ptr: Z := Ox"500".
+Definition input_ptr: Z := 0x400.
+Definition output_ptr: Z := 0x500.
 
 (* a program with memory operations *)
 Definition asm_prog_2: list Instruction := [[

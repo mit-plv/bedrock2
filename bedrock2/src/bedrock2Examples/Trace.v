@@ -91,11 +91,11 @@ Module SpiEth.
     Definition lo_byte(x: word): word :=
       word.and x (word.of_Z 255).
 
-    Definition spi_rx     : Z := Ox"1002404c".
-    Definition spi_tx_fifo: Z := Ox"10024048".
-    Definition spi_pinmux : Z := Ox"10012038".
-    Definition spi_sckdiv : Z := Ox"10024000".
-    Definition spi_csmode : Z := Ox"10024018".
+    Definition spi_rx     : Z := 0x1002404c.
+    Definition spi_tx_fifo: Z := 0x10024048.
+    Definition spi_pinmux : Z := 0x10012038.
+    Definition spi_sckdiv : Z := 0x10024000.
+    Definition spi_csmode : Z := 0x10024018.
 
     (* TODO should this be so specific or should it be the whole range? *)
     Definition isMMIOAddr(a: word): Prop :=
@@ -156,9 +156,6 @@ Module SpiEth.
 
     Import Syntax BinInt String List.ListNotations ZArith.
     Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-    Local Coercion expr.literal : Z >-> expr.
-    Local Coercion expr.var : String.string >-> expr.
-    Local Coercion name_of_func (f : function) : String.string := fst f.
 
     Local Axiom TODO: False.
 
@@ -166,7 +163,7 @@ Module SpiEth.
 
       (* TODO these only read a byte rather than a word *)
       IOMacros.read_word_code(x _: String.string) := bedrock_func_body:(
-        x = coq:(-1) ;
+        x = $-1 ;
         while (x & coq:(Z.shiftl 1 31)) { io! x = MMInput(spi_rx) }
       );
       IOMacros.write_word_code(x tmp: String.string) := bedrock_func_body:(
@@ -251,14 +248,9 @@ Module Syscalls.
         | _ => False
         end.
 
-    Local Coercion literal(z : Z) : Syntax.expr := Syntax.expr.literal z.
-(*  Local Coercion var(x: String.string): Syntax.expr := Syntax.expr.var x.*)
-    Local Definition var(x : String.string): expr.expr := expr.var x.
-    (* TODO make coercions work *)
-    (* Set Printing Implicit. Unset Printing Notations. *)
-
     Local Axiom TODO: False.
 
+    Import expr.
     Instance SyscallIOMacros: IOMacros.Interface. refine ({|
 
       IOMacros.read_word_code(x tmp: String.string) :=

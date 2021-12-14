@@ -3,8 +3,6 @@ Require Import bedrock2.NotationsCustomEntry.
 Import Syntax BinInt String List.ListNotations ZArith.
 Require Import coqutil.Z.Lia.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Coercion literal (z : Z) : Syntax.expr := Syntax.expr.literal z.
-Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
 
 (* Variant of "ipow" implementing multiplication in terms of addition instead
 * of exponentiation in terms of multiplication. *)
@@ -14,10 +12,10 @@ Definition rpmul :=
   let e := "e" in
   let ret := "ret" in
   ("rpmul", ([x;e], ([ret]:list String.string), bedrock_func_body:(
-  ret = coq:(0);
+  ret = $0;
   while (e) {
-    if (e & coq:(1)) { ret = ret + x };
-    e = e >> coq:(1);
+    if (e & $1) { ret = ret + x };
+    e = e >> $1;
     x = x + x
   }
 ))).

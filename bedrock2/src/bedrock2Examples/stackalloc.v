@@ -8,9 +8,9 @@ Definition stacktrivial : bedrock_func := let t := "t" in
 
 Definition stacknondet : bedrock_func := let a := "a" in let b := "b" in let t := "t" in
   ("stacknondet", ([]:list String.string, [a; b], bedrock_func_body:(stackalloc 4 as t;
-  a = (load4(t) >> coq:(8));
-  store1(a+coq:(3), coq:(42));
-  b = (load4(t) >> coq:(8))
+  a = (load4(t) >> $8);
+  store1(a+$3, $42);
+  b = (load4(t) >> $8)
 ))).
 
 Definition stackdisj : bedrock_func := let a := "a" in let b := "b" in

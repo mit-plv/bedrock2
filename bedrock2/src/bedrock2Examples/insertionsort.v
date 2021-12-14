@@ -2,28 +2,25 @@ Require Import bedrock2.NotationsCustomEntry.
 
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Coercion literal (z : Z) : expr := expr.literal z.
-Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
-Local Coercion name_of_func (f : function) := fst f.
 
 Definition insertionsort : func :=
   let a := "a" in let n := "n" in let i := "i" in let j := "j" in let t := "t" in let u := "u" in
   ("insertionsort", ([a; n], [], bedrock_func_body:(
-  i = coq:(0);
+  i = $0;
   while (i < n) {
-    t = load4(a + coq:(4)*i);
-    j = coq:(0);
-    while (load4(a + coq:(4)*j) < t) {
-      j = j + coq:(1)
+    t = load4(a + $4*i);
+    j = $0;
+    while (load4(a + $4*j) < t) {
+      j = j + $1
     };
-    while (j < i+coq:(1)) {
-      u = load4(a + coq:(4)*j);
-      store4(a + coq:(4)*j, t);
+    while (j < i+$1) {
+      u = load4(a + $4*j);
+      store4(a + $4*j, t);
       t = u;
-      j = j + coq:(1);
+      j = j + $1;
       coq:(cmd.unset u)
     };
-    i = i + coq:(1);
+    i = i + $1;
     coq:(cmd.unset t);
     coq:(cmd.unset j)
   }

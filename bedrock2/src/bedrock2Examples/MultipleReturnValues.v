@@ -5,10 +5,6 @@ Import BinInt String ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Section MultipleReturnValues.
-  Local Coercion literal (z : Z) : expr := expr.literal z.
-  Local Coercion var (x : String.string) : expr := expr.var x.
-  Local Coercion name_of_func (f : function) := fst f.
-
   Example addsub : func :=
     let a := "a" in let b := "b" in  let x := "x" in let y := "y" in
     ("addsub", ([a;b], [x;y], bedrock_func_body:(
@@ -19,8 +15,8 @@ Section MultipleReturnValues.
   Example addsub_test : func :=
     let ret := "ret" in
     ("addsub_test", ([], [ret], bedrock_func_body:(
-    unpack! ret, ret = addsub(coq:(14), coq:(7));
-    ret = ret - coq:(7)
+    unpack! ret, ret = addsub($14, $7);
+    ret = ret - $7
   ))).
 End MultipleReturnValues.
 

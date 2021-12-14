@@ -3,26 +3,23 @@ Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Z.Lia.
 
-  From bedrock2 Require Import BasicC64Semantics ProgramLogic.
-  From bedrock2 Require Import Array Scalars Separation.
-  From coqutil Require Import Word.Interface Map.Interface.
+From bedrock2 Require Import BasicC64Semantics ProgramLogic.
+From bedrock2 Require Import Array Scalars Separation.
+From coqutil Require Import Word.Interface Map.Interface.
 
-  From coqutil.Tactics Require Import letexists.
+From coqutil.Tactics Require Import letexists.
 
-    From coqutil.Tactics Require Import syntactic_unify.
-    From coqutil.Macros Require Import symmetry.
+From coqutil.Tactics Require Import syntactic_unify.
+From coqutil.Macros Require Import symmetry.
 
-    From coqutil.Tactics Require Import syntactic_unify.
-    From coqutil.Macros Require Import symmetry.
-    Require Import coqutil.Datatypes.List.
+From coqutil.Tactics Require Import syntactic_unify.
+From coqutil.Macros Require Import symmetry.
+Require Import coqutil.Datatypes.List.
 
 
 Section WithParameters.
   Import Syntax BinInt String List.ListNotations ZArith.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-  Local Coercion expr.literal : Z >-> expr.
-  Local Coercion expr.var : String.string >-> expr.
-  Local Coercion name_of_func (f : function) : String.string := fst f.
 
   Definition tf : bedrock_func :=
       let buf := "buf" in
@@ -32,8 +29,8 @@ Section WithParameters.
       let r := "r" in
     ("tf", ([buf; len; i; j], [], bedrock_func_body:(
       require ( i < len ) else { /*skip*/ };
-      store1(buf + i, coq:(0));
-      require ( j < len ) else { r = coq:(-1) };
+      store1(buf + i, $0);
+      require ( j < len ) else { r = $-1 };
       r = load1(buf + j)
     ))).
 

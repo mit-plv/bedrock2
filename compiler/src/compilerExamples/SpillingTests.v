@@ -2,9 +2,6 @@ Require Import bedrock2.NotationsCustomEntry.
 
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Coercion literal (z : Z) : expr := expr.literal z.
-Local Coercion var (x : string) : Syntax.expr := Syntax.expr.var x.
-Local Coercion name_of_func (f : function) := fst f.
 
 Definition swap : func := let a := "a" in let b := "b" in let t := "t" in
   ("swap", ([a; b], [], bedrock_func_body:(
@@ -38,8 +35,8 @@ Definition long1 : func :=
 
   (* TODO once spilling is improved, test that it still works if these two lines are removed
      (currently the test that all resnames are <32 fails if these two lines are removed) *)
-  a19 = coq:(0);
-  b19 = coq:(0);
+  a19 = $0;
+  b19 = $0;
 
   swap(a0, b0);
   a1 = a0 + b0 * b0;
@@ -67,22 +64,22 @@ Definition long1 : func :=
   a7 = a2;
   b14 = a7 + a12 * b0;
   a13 = b4;
-  a17 = coq:(2);
-  b6 = coq:(33);
+  a17 = $2;
+  b6 = $33;
   a12 = a13 - a17 - b6;
   b12 = a1 + a12 * b0;
-  a18 = coq:(18);
-  b19 = coq:(19);
+  a18 = $18;
+  b19 = $19;
   a17 = a1 - a18 - b19;
   b12 = a1 + a9 * b0;
-  a14 = coq:(14);
+  a14 = $14;
   a12 = a14 - a0 - b0;
   a8 = b12;
   b13 = a8 + a12 * b0;
   a12 = a1 - a0 - b0;
   b2 = a1 + a12 * b0;
   a18 = a1 - a0 - b0;
-  b16 = coq:(23);
+  b16 = $23;
   b12 = a15 + a8 * b16;
   a12 = a1 - a0 - b3;
   b12 = a1 + a12 * b0;

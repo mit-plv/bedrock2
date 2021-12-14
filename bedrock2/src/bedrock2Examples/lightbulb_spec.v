@@ -29,7 +29,7 @@ Section LightbulbSpec.
   Definition OP: Type := (string * word * word).
 
   (** FE310 GPIO *)
-  Definition GPIO_DATA_ADDR : word := word.of_Z (Ox"1001200c").
+  Definition GPIO_DATA_ADDR : word := word.of_Z (0x1001200c).
   (* i < 32, only some GPIOs are connected to external pins *)
   Definition gpio_set (i:Z) value :=
     existsl (fun v =>
@@ -40,9 +40,9 @@ Section LightbulbSpec.
       ))).
 
   (** F310 SPI *)
-  Definition SPI_RX_FIFO_ADDR : word := word.of_Z (Ox"1002404c").
-  Definition SPI_TX_FIFO_ADDR : word := word.of_Z (Ox"10024048").
-  Definition SPI_CSMODE_ADDR : word := word.of_Z (Ox"10024018").
+  Definition SPI_RX_FIFO_ADDR : word := word.of_Z (0x1002404c).
+  Definition SPI_TX_FIFO_ADDR : word := word.of_Z (0x10024048).
+  Definition SPI_CSMODE_ADDR : word := word.of_Z (0x10024018).
   Definition SPI_CSMODE_HOLD : word := word.of_Z 2.
 
   Definition spi_read_empty l :=
@@ -99,7 +99,7 @@ Section LightbulbSpec.
     word.unsigned v = LittleEndian.combine 4 (HList.tuple.of_list (cons b0 (cons b1 (cons b2 (cons b3 nil))))).
 
   Definition LAN9250_WRITE : byte := Byte.x02.
-  Definition HW_CFG : Z := Ox"074".
+  Definition HW_CFG : Z := 0x074.
 
   Definition lan9250_write4 (a v : word) t :=
     exists a0 a1 b0 b1 b2 b3, (
@@ -149,14 +149,14 @@ Section LightbulbSpec.
     Z.of_nat (List.length recv) = word.unsigned (lan9250_decode_length status).
 
   Definition lan9250_boot_attempt : list OP -> Prop :=
-    (fun attempt => exists v, lan9250_fastread4 (word.of_Z (Ox"64")) v attempt
-    /\ word.unsigned v <> Ox"87654321").
+    (fun attempt => exists v, lan9250_fastread4 (word.of_Z (0x64)) v attempt
+    /\ word.unsigned v <> 0x87654321).
   Definition lan9250_boot_timeout : list OP -> Prop :=
     multiple lan9250_boot_attempt (Z.to_nat patience).
 
   Definition lan9250_wait_for_boot_trace : list OP -> Prop :=
     lan9250_boot_attempt ^* +++
-    lan9250_fastread4 (word.of_Z (Ox"64")) (word.of_Z (Ox"87654321")).
+    lan9250_fastread4 (word.of_Z (0x64)) (word.of_Z (0x87654321)).
 
   Definition lan9250_mac_write_trace a v ioh := exists x,
      (lan9250_write4 (word.of_Z 168) v +++
@@ -170,19 +170,19 @@ Section LightbulbSpec.
     lan9250_fastread4 (word.of_Z HW_CFG) cfg0 +++
     lan9250_write4 (word.of_Z HW_CFG) cfg +++
     lan9250_mac_write_trace (word.of_Z 1) (word.of_Z (Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2))))) +++
-    lan9250_write4 (word.of_Z (Ox"070")) (word.of_Z (Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))) ioh.
+    lan9250_write4 (word.of_Z (0x070)) (word.of_Z (Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))) ioh.
 
   (** lightbulb *)
   Definition lightbulb_packet_rep cmd (buf : list byte) := (
     let idx i buf : word := word.of_Z (byte.unsigned (List.hd Byte.x00 (List.skipn i buf))) in
     42 < Z.of_nat (List.length buf) /\
     1535 < word.unsigned ((word.or (word.slu (idx 12%nat buf) (word.of_Z 8)) (idx 13%nat buf))) /\
-    idx 23%nat buf = word.of_Z (Ox"11") /\
+    idx 23%nat buf = word.of_Z (0x11) /\
     cmd = Z.testbit (byte.unsigned (List.hd Byte.x00 (List.skipn 42 buf))) 0).
 
   Definition iocfg : list OP -> Prop :=
-    one ("st", !(Ox"10012038"), !(Z.shiftl (Ox"f") 2)) +++
-    one ("st", !(Ox"10012008"), !(Z.shiftl 1 23)).
+    one ("st", !(0x10012038), !(Z.shiftl (0xf) 2)) +++
+    one ("st", !(0x10012008), !(Z.shiftl 1 23)).
 
   Definition BootSeq : list OP -> Prop :=
     iocfg +++ (lan9250_init_trace

@@ -37,8 +37,6 @@ Section WithParameters.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Local Set Implicit Arguments.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-  Local Coercion expr.literal : Z >-> expr.
-  Local Coercion expr.var : String.string >-> expr.
   Coercion Z.of_nat : nat >-> Z.
   Coercion byte.unsigned : byte >-> Z.
   Notation len := List.length.
@@ -249,8 +247,8 @@ Section WithParameters.
   Definition OPER_REQUEST := Byte.x01.
   Definition OPER_REPLY := Byte.x02.
 
-  Definition HTYPE_LE := Ox"0100".
-  Definition PTYPE_LE := Ox"0080".
+  Definition HTYPE_LE := 0x0100.
+  Definition PTYPE_LE := 0x0080.
 
   Definition isEthernetARPPacket: EthernetPacket ARPPacket -> list byte -> Prop :=
     isEthernetPacket (fun arpP => eq (encodeARPPacket arpP)).
