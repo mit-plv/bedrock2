@@ -1,5 +1,6 @@
-Require Import Coq.ZArith.BinIntDef.
+Require Import Coq.ZArith.BinIntDef Coq.Strings.String.
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
+Export Syntax.Coercions.
 
 (** Grammar for expressions *)
 
@@ -7,6 +8,7 @@ Import bopname.
 Declare Custom Entry bedrock_expr.
 Notation "bedrock_expr:( e )" := e (e custom bedrock_expr, format "'bedrock_expr:(' e ')'").
 Notation "coq:( e )"          := e (in custom bedrock_expr, e constr, format "'coq:(' e ')'").
+Notation "$ e"                := e%string%Z (in custom bedrock_expr at level 0, e constr at level 0, format "'$' e").
 Notation  "( e )" := e             (in custom bedrock_expr).
 Notation "x" := x                  (in custom bedrock_expr, x global).
 
@@ -51,6 +53,7 @@ Declare Scope bedrock_nontail.
 Delimit Scope bedrock_nontail with bedrock_nontail.
 Notation "bedrock_cmd:( c )" := c (c custom bedrock_cmd, format "'bedrock_cmd:(' '/  ' c '/ ' ')'").
 Notation "coq:( c )"         := c (in custom bedrock_cmd, c constr, format "'coq:(' c ')'").
+Notation "$ c"               := c (in custom bedrock_cmd at level 0, c constr at level 0, format "'$' c").
 Notation  "{ c }" := c            (in custom bedrock_cmd, c custom bedrock_cmd).
 Notation "x" := x (in custom bedrock_cmd, x global).
 
@@ -79,7 +82,8 @@ Notation "'stackalloc' z 'as' x ; c" := (stackalloc x z c)
   (in custom bedrock_cmd at level 0,  x global, z constr, c at level 999,
    format "'[v' 'stackalloc'  z  as  x ;  '//' c ']'").
 
-Notation "x = e" := (set x e) (in custom bedrock_cmd, x global, e custom bedrock_expr).
+Notation "$ x = e" := (set x%string e) (in custom bedrock_cmd at level 0, x constr at level 0, e custom bedrock_expr).
+Notation "x = e"   := (set x e) (in custom bedrock_cmd, x global, e custom bedrock_expr).
 (* DRAFT: *)
 Notation "/*skip*/" := skip (in custom bedrock_cmd).
 (* TODO(after dropping Coq 8.14): split "load(" into 'load' '(' *)
@@ -285,6 +289,20 @@ Module test.
       }
     }
   )).
+
+  epose bedrock_func_body:(
+    $_
+  ).
+
+  Local Open Scope Z_scope.
+  Local Open Scope string_scope.
+  epose bedrock_func_body:(
+    $"x" = $4 + $"x"
+  ).
+  epose bedrock_func_body:(
+    $("x" ++ "y") = $(Z.div 4 2) + $("x" ++ "y")
+  ).
+  epose (bedrock_func_body:($"x" = $4)).
 
   let x := constr:(1+1) in pose x.
 
