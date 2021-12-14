@@ -66,12 +66,12 @@ Section examples.
       ("get_add_put",
        ([m; k1; k2; k3; v], [ret],
         bedrock_func_body:(
-          unpack! err, v1 = get (m, k1) ;
+          unpack! err, v1 = $get (m, k1) ;
             require !err ;
-            unpack! err, v2 = get (m, k2) ;
+            unpack! err, v2 = $get (m, k2) ;
             require !err ;
-            add (v1, v2, v);
-            unpack! ret = put (m, k3, v)
+            $(cmd.call nil add [v1:expr; v2:expr; v:expr]);
+            unpack! ret = $put (m, k3, v)
       ))).
 
     Instance spec_of_put_sum : spec_of put_sum :=
@@ -203,11 +203,11 @@ Section examples.
       ("swap",
        ([m; k1; k2], [],
         bedrock_func_body:(
-          unpack! err, v1 = get (m, k1) ;
+          unpack! err, v1 = $get (m, k1) ;
             require !err ;
-            unpack! err, v2 = get (m, k2) ;
+            unpack! err, v2 = $get (m, k2) ;
             require !err ;
-            unpack! err = put (m, k2, v1)
+            unpack! err = $put (m, k2, v1)
             (* now v2 is stored in v1 -- no need for second put *)
       ))).
 

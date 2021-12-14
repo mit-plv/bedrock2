@@ -24,11 +24,11 @@ Module Bedrock2.
      ([s_ptr], [ret], bedrock_func_body:(
        len = (load( s_ptr )) ;
        i = $0;
-       c_ptr = (s_ptr + wordsize) ;
+       c_ptr = (s_ptr + $wordsize) ;
        while (i < len) {{
-         unpack! x = toupper (load1( c_ptr )) ;
+         unpack! x = $toupper (load1( c_ptr )) ;
          store1(c_ptr, x) ;
-         c_ptr = (c_ptr + charsize) ;
+         c_ptr = (c_ptr + $charsize) ;
          i = (i + $1)
        }} ;
        ret = $1))).
@@ -39,7 +39,7 @@ Module Bedrock2.
     let offset : Z := 2 * wordsize in
     ("capitalize_3rd",
      ([inp], [ret], bedrock_func_body:(
-       unpack! ret = capitalize_String(load( (inp + offset) ))))).
+       unpack! ret = capitalize_String(load( (inp + $offset) ))))).
 End Bedrock2.
 
 (* Gallina code *)
