@@ -6,9 +6,9 @@ Section chacha20.
   Import bedrock2.Syntax Syntax.Coercions NotationsCustomEntry HexNotation.
 
   Local Notation "x <<< n" := (bedrock_expr:((x<<coq:(expr.literal n)) | (x>>coq:(expr.literal (32-(n:Z)))))) (in custom bedrock_expr at level 2, left associativity).
-  Local Notation "x <<<= n" := (bedrock_cmd:(x = (x<<<n))) (in custom bedrock_cmd at level 0, x global, n bigint).
-  Local Notation "x ^= e" := (bedrock_cmd:(x = (x^e))) (in custom bedrock_cmd at level 0, x global, e custom bedrock_expr at level 999).
-  Local Notation "x += e" := (bedrock_cmd:(x = (x+e))) (in custom bedrock_cmd at level 0, x global, e custom bedrock_expr at level 999).
+  Local Notation "x <<<= n" := (cmd.set x (expr.op bopname.slu x%string n)) (in custom bedrock_cmd at level 0, x global, n bigint).
+  Local Notation "x ^= e" := (cmd.set x (expr.op bopname.xor x%string e)) (in custom bedrock_cmd at level 0, x global, e custom bedrock_expr at level 999).
+  Local Notation "x += e" := (cmd.set x (expr.op bopname.add x%string e)) (in custom bedrock_cmd at level 0, x global, e custom bedrock_expr at level 999).
 
   Definition chacha20_quarter : func :=
     let a := "a" in let b := "b" in let c := "c" in let d := "d" in
@@ -30,11 +30,11 @@ Section chacha20.
       let addr := bedrock_expr:((out+coq:(expr.literal(4*o)))) in
       bedrock_cmd:(store4(addr, load4(addr)^x)) in
     ("chacha20_block", ([out; key; nonce; countervalue], [], bedrock_func_body:(
-      x0 = coq:(Ox"61707865");   x1 = coq:(Ox"3320646e");   x2 = coq:(Ox"79622d32");    x3 = coq:(Ox"6b206574");
-      x4 = load4(key);           x5 = load4(key+coq:(4));   x6 = load4(key+coq:(8));    x7 = load4(key+coq:(12));
-      x8 = load4(key+coq:(16));  x9 = load4(key+coq:(20)); x10 = load4(key+coq:(24));  x11 = load4(key+coq:(28));
-      x12 = countervalue;       x13 = load4(nonce);        x14 = load4(nonce+coq:(4)); x15 = load4(nonce+coq:(8));
-      i = coq:(0); while (i < coq:(10)) { i += coq:(1);
+      x0 = $0x61707865;   x1 = $0x3320646e;   x2 = $0x79622d32;    x3 = $0x6b206574;
+      x4 = load4(key);           x5 = load4(key+$4);   x6 = load4(key+$8);    x7 = load4(key+$12);
+      x8 = load4(key+$16);  x9 = load4(key+$20); x10 = load4(key+$24);  x11 = load4(key+$28);
+      x12 = countervalue;       x13 = load4(nonce);        x14 = load4(nonce+$4); x15 = load4(nonce+$8);
+      i = $0; while (i < $10) { i += $1;
         (x0, x4,  x8, x12) = chacha20_quarter( x0, x4, x8,  x12);
         (x1, x5,  x9, x13) = chacha20_quarter( x1, x5, x9,  x13);
         (x2, x6, x10, x14) = chacha20_quarter( x2, x6, x10, x14);
@@ -44,10 +44,10 @@ Section chacha20.
         (x2, x7,  x8, x13) = chacha20_quarter( x2, x7, x8,  x13);
         (x3, x4,  x9,  x1) = chacha20_quarter( x3, x4, x9,  x14)
       };
-      x0 += coq:(Ox"61707865");  x1 += coq:(Ox"3320646e");   x2 += coq:(Ox"79622d32");    x3 += coq:(Ox"6b206574");
-      x4 += load4(key);          x5 += load4(key+coq:(4));   x6 += load4(key+coq:(8));    x7 += load4(key+coq:(12));
-      x8 += load4(key+coq:(16)); x9 += load4(key+coq:(20)); x10 += load4(key+coq:(24));  x11 += load4(key+coq:(28));
-      x12 += countervalue;      x13 += load4(nonce);        x14 += load4(nonce+coq:(4)); x15 += load4(nonce+coq:(8));
+      x0 += $0x61707865;  x1 += $0x3320646e;   x2 += $0x79622d32;    x3 += $0x6b206574;
+      x4 += load4(key);          x5 += load4(key+$4);   x6 += load4(key+$8);    x7 += load4(key+$12);
+      x8 += load4(key+$16); x9 += load4(key+$20); x10 += load4(key+$24);  x11 += load4(key+$28);
+      x12 += countervalue;      x13 += load4(nonce);        x14 += load4(nonce+$4); x15 += load4(nonce+$8);
       coq:(xorout  0  x0);   coq:(xorout 1 x1); coq:(xorout 2   x2);  coq:(xorout 3  x3);
       coq:(xorout  4  x4);   coq:(xorout 5 x5); coq:(xorout 6   x6);  coq:(xorout 7  x7);
       coq:(xorout  8  x8);   coq:(xorout 9 x9); coq:(xorout 10 x10); coq:(xorout 11 x11);

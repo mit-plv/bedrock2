@@ -3,18 +3,15 @@ Require Import bedrock2.FE310CSemantics.
 
 Import Syntax BinInt String Datatypes List List.ListNotations ZArith.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Coercion expr.literal : Z >-> expr.
-Local Coercion expr.var : String.string >-> expr.
-Local Coercion name_of_func (f : func) : String.string := fst f.
 
 Definition silly1 : func :=
     let a := "a" in
     let b := "b" in
     let c := "c" in
   ("silly1", ([a], [c], bedrock_func_body:(
-      b = load4(a + coq:(16));
-      store4(a + coq:(14), b);
-      c = load4(a + coq:(16))
+      b = load4(a + $16);
+      store4(a + $14, b);
+      c = load4(a + $16)
   ))).
 
 Require Import coqutil.Macros.symmetry.
@@ -694,7 +691,7 @@ Ltac simpl_lengths := repeat simpl_lengths_step.
 
     repeat straightline. (* this inlines too many lets *)
 
-    (* store4(a + coq:(14), b); *)
+    (* store4(a + $14, b); *)
 
     cbv [WeakestPrecondition.store].
 

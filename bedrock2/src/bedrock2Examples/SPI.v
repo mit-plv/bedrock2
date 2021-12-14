@@ -6,9 +6,6 @@ Require Import coqutil.Byte.
 
 Import BinInt String List.ListNotations ZArith.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
-Local Coercion literal (z : Z) : expr := expr.literal z.
-Local Coercion var (x : String.string) : expr := expr.var x.
-Local Coercion name_of_func (f : function) := fst f.
 
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
@@ -18,16 +15,16 @@ Local Notation patience := lightbulb_spec.patience.
 
 Definition spi_write : function :=
   let b := "b" in let busy := "busy" in let i := "i" in
-  let SPI_WRITE_ADDR := Ox"10024048" in
+  let SPI_WRITE_ADDR := 0x10024048 in
   ("spi_write", ([b], [busy], bedrock_func_body:(
-    busy = (coq:(-1));
-    i = (patience); while (i) { i = (i - coq:(1));
+    busy = ($-1);
+    i = (patience); while (i) { i = (i - $1);
       io! busy = MMIOREAD(SPI_WRITE_ADDR);
-      if !(busy >> coq:(31)) {
+      if !(busy >> $31) {
         i = (i^i)
       }
     };
-    if !(busy >> coq:(31)) {
+    if !(busy >> $31) {
       output! MMIOWRITE(SPI_WRITE_ADDR, b);
       busy = (busy ^ busy)
     }
@@ -35,14 +32,14 @@ Definition spi_write : function :=
 
 Definition spi_read : function :=
   let b := "b" in  let busy := "busy" in  let i := "i" in
-  let SPI_READ_ADDR := Ox"1002404c" in
+  let SPI_READ_ADDR := 0x1002404c in
   ("spi_read", (nil, (b::busy::nil), bedrock_func_body:(
-    busy = (coq:(-1));
-    b = (coq:(Ox"5a"));
-    i = (patience); while (i) { i = (i - coq:(1));
+    busy = ($-1);
+    b = ($0x5a);
+    i = (patience); while (i) { i = (i - $1);
       io! busy = MMIOREAD(SPI_READ_ADDR);
-      if !(busy >> coq:(31)) {
-        b = (busy & coq:(Ox"ff"));
+      if !(busy >> $31) {
+        b = (busy & $0xff);
         i = (i^i);
         busy = (busy ^ busy)
       }

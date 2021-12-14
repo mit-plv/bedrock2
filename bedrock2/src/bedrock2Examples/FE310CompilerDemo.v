@@ -16,10 +16,10 @@ Require Import bedrock2.Semantics.
 Import List.ListNotations.
 
 Definition otp_base   := Ox"0x00020000". Definition otp_pastend   := Ox"0x00022000".
-Definition hfrosccfg  := Ox"10008000".
+Definition hfrosccfg  := 0x10008000.
 Definition gpio0_base := Ox"0x10012000". Definition gpio0_pastend := Ox"0x10013000".
 Definition uart0_base := Ox"0x10013000". Definition uart0_pastend := Ox"0x10014000".
-Definition uart0_rxdata := Ox"10013004". Definition uart0_txdata  := Ox"10013000".
+Definition uart0_rxdata := 0x10013004. Definition uart0_txdata  := 0x10013000.
 
 Instance word: word.word 32 := Naive.word32.
 Instance mem: Interface.map.map word Byte.byte := SortedListWord.map _ _.
@@ -52,8 +52,6 @@ Instance ext_spec: ExtSpec :=
 
 
 Require Import bedrock2.NotationsCustomEntry.
-Local Coercion var (x : String.string) : expr := expr.var x. (* COQBUG(4593) *)
-Local Coercion literal (x : Z) : expr := expr.literal x.
 
 Definition swap_chars_over_uart: cmd :=
   let prev : String.string := "prev"%string in
@@ -76,25 +74,25 @@ Definition swap_chars_over_uart: cmd :=
   bedrock_func_body:(
     (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
     io! rx = MMIOREAD (coq:(Ox"0x00021fec"));
-    output! MMIOWRITE(hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << coq:(16));
+    output! MMIOWRITE(hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << $16);
     coq:(cmd.unset rx);
 
-    one = coq:(1);
-    output! MMIOWRITE(coq:(uart0_base + Ox"018"), coq:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
-    output! MMIOWRITE(coq:(uart0_base + Ox"008"), one); (* tx enable *)
-    output! MMIOWRITE(coq:(uart0_base + Ox"00c"), one); (* rx enable *)
-    output! MMIOWRITE(coq:(gpio0_base + Ox"038"), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
+    one = $1;
+    output! MMIOWRITE(coq:(uart0_base + 0x018), $624); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
+    output! MMIOWRITE(coq:(uart0_base + 0x008), one); (* tx enable *)
+    output! MMIOWRITE(coq:(uart0_base + 0x00c), one); (* rx enable *)
+    output! MMIOWRITE(coq:(gpio0_base + 0x038), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
 
-    dot = coq:(46);
+    dot = $46;
     prev = dot;
     running = one-dot;
     while (running) {
       bit31 = coq:(2^31);
       rx = bit31;
       polling = one-dot;
-      while (polling & rx & bit31) { io! rx = MMIOREAD(coq:(uart0_base + Ox"004")); polling = polling-one };
+      while (polling & rx & bit31) { io! rx = MMIOREAD(coq:(uart0_base + 0x004)); polling = polling-one };
 
-      uart_tx = coq:(uart0_base + Ox"000");
+      uart_tx = coq:(uart0_base + 0x000);
       tx = bit31;
       polling = one-dot;
       while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = polling-one };
@@ -192,18 +190,18 @@ Fixpoint echo_server_spec (t : trace) (output_to_explain : option word) : Prop :
   match t with
   | nil => output_to_explain = None
   | (_, MMInput, [addr], (_, [value]))::trace =>
-    if (word.unsigned addr =? uart0_base + Ox"004") && (word.unsigned (word.and value (word.of_Z (2 ^ 31))) =? 0)
+    if (word.unsigned addr =? uart0_base + 0x004) && (word.unsigned (word.and value (word.of_Z (2 ^ 31))) =? 0)
     then output_to_explain = Some value /\ spec trace None
     else spec trace output_to_explain
   | (_, MMOutput, [addr; value], (_, []))::trace => (
     if word.unsigned addr =? hfrosccfg
       then Z.testbit (word.unsigned value) 30 = true /\ spec trace output_to_explain else
-    if word.unsigned addr =? uart0_base + Ox"018"
+    if word.unsigned addr =? uart0_base + 0x018
       then word.unsigned value = 624 /\ spec trace output_to_explain else
-    if (word.unsigned addr =? uart0_base + Ox"000")
+    if (word.unsigned addr =? uart0_base + 0x000)
     then match trace with
          | (_, MMInput, [addr'], (_, [value']))::trace =>
-           word.unsigned addr' = uart0_base + Ox"000" /\
+           word.unsigned addr' = uart0_base + 0x000 /\
            word.unsigned (word.and value' (word.of_Z (2 ^ 31))) = 0 /\
            output_to_explain = None /\ spec trace (Some value)
          | _ => False end else
@@ -232,25 +230,25 @@ Definition echo_server: cmd :=
   bedrock_func_body:(
     (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
     io! rx = MMIOREAD (coq:(Ox"0x00021fec"));
-    output! MMIOWRITE(hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << coq:(16));
+    output! MMIOWRITE(hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << $16);
     coq:(cmd.unset rx);
 
-    one = coq:(1);
-    output! MMIOWRITE(coq:(uart0_base + Ox"018"), coq:(624)); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
-    output! MMIOWRITE(coq:(uart0_base + Ox"008"), one); (* tx enable *)
-    output! MMIOWRITE(coq:(uart0_base + Ox"00c"), one); (* rx enable *)
-    output! MMIOWRITE(coq:(gpio0_base + Ox"038"), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
+    one = $1;
+    output! MMIOWRITE(coq:(uart0_base + 0x018), $624); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
+    output! MMIOWRITE(coq:(uart0_base + 0x008), one); (* tx enable *)
+    output! MMIOWRITE(coq:(uart0_base + 0x00c), one); (* rx enable *)
+    output! MMIOWRITE(coq:(gpio0_base + 0x038), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
 
-    running = coq:(-1);
+    running = $-1;
     while (running) {
       bit31 = coq:(2^31);
       rx = bit31;
-      polling = coq:(-1);
-      while (polling & rx & bit31) { io! rx = MMIOREAD(coq:(uart0_base + Ox"004")); polling = polling-one };
+      polling = $-1;
+      while (polling & rx & bit31) { io! rx = MMIOREAD(coq:(uart0_base + 0x004)); polling = polling-one };
       if (rx & bit31) { coq:(cmd.skip) } else {
-        uart_tx = coq:(uart0_base + Ox"000");
+        uart_tx = coq:(uart0_base + 0x000);
         tx = bit31;
-        polling = coq:(-1);
+        polling = $-1;
         while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = polling-one };
         output! MMIOWRITE(uart_tx, tx)
       };
@@ -300,7 +298,7 @@ Proof.
     exfalso; revert H1 e; clear. subst b v3. admit. }
   eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list_zip [polling; tx] [v; txv] l0 = Some l /\
                                             if Z.eq_dec (word.unsigned (word.and txv (word.of_Z (2^31)))) 0
-                                            then echo_server_spec ((m, MMInput, [word.of_Z (uart0_base + Ox"000")], (m, [txv]))::t) None
+                                            then echo_server_spec ((m, MMInput, [word.of_Z (uart0_base + 0x000)], (m, [txv]))::t) None
                                             else echo_server_spec t (Some x)); repeat t.
   { subst v3.
     rewrite word.unsigned_and, ?word.unsigned_of_Z by admit; cbn.

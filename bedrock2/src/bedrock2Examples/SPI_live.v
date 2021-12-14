@@ -1,7 +1,4 @@
-(* Note: don't import bedrock2.NotationsCustomEntry as long as
-   https://github.com/mit-plv/bedrock2/issues/165 and https://github.com/coq/coq/issues/9633
-   are not resolved *)
-Require Import bedrock2.Syntax coqutil.Z.HexNotation.
+Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry.
 Require Import coqutil.Z.div_mod_to_equations.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte.
@@ -10,9 +7,6 @@ Require Import bedrock2.ZnWords.
 
 Import BinInt String List.ListNotations ZArith.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
-Local Coercion literal (z : Z) : expr := expr.literal z.
-Local Coercion var (x : String.string) : expr := expr.var x.
-Local Coercion name_of_func (f : function) := fst f.
 
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
@@ -25,7 +19,7 @@ Require Import coqutil.dlet.
 (*
 Definition spi_write : function :=
   let b := "b" in let busy := "busy" in let i := "i" in
-  let SPI_WRITE_ADDR := Ox"10024048" in
+  let SPI_WRITE_ADDR := 0x10024048 in
   ("spi_write", ([b], [busy], bedrock_func_body:(
     busy = (constr:(-1));
     i = (patience); while (i) { i = (i - constr:(1));
@@ -42,14 +36,14 @@ Definition spi_write : function :=
 
 Definition spi_read : function :=
   let b := "b" in  let busy := "busy" in  let i := "i" in
-  let SPI_READ_ADDR := Ox"1002404c" in
+  let SPI_READ_ADDR := 0x1002404c in
   ("spi_read", (nil, (b::busy::nil), bedrock_func_body:(
     busy = (constr:(-1));
-    b = (constr:(Ox"5a"));
+    b = (constr:(0x5a));
     i = (patience); while (i) { i = (i - constr:(1));
       io! busy = MMIOREAD(SPI_READ_ADDR);
       if !(busy >> constr:(31)) {
-        b = (busy & constr:(Ox"ff"));
+        b = (busy & constr:(0xff));
         i = (i^i);
         busy = (busy ^ busy)
       }
@@ -135,7 +129,7 @@ Section WithParameters.
   Definition b : String.string := "b".
   Definition busy : String.string := "busy".
   Definition i : String.string := "i".
-  Definition SPI_WRITE_ADDR := Ox"10024048".
+  Definition SPI_WRITE_ADDR := 0x10024048.
 
 (*
   Definition call(e: env)(f: string)(t: trace)(m: mem)(args: list word)

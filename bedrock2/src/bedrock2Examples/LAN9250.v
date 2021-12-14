@@ -10,9 +10,6 @@ Require Import coqutil.Z.Lia.
 
 Import BinInt String List.ListNotations.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
-Local Coercion literal (z : Z) : expr := expr.literal z.
-Local Coercion var (x : String.string) : expr := expr.var x.
-Local Coercion name_of_func (f : function) := fst f.
 
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
@@ -23,24 +20,24 @@ Definition lan9250_readword : function :=
   let err := "err" in
   let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
   ("lan9250_readword", ((addr::nil), (ret::err::nil), bedrock_func_body:(
-    SPI_CSMODE_ADDR = (coq:(Ox"10024018"));
+    SPI_CSMODE_ADDR = ($0x10024018);
     io! ret = MMIOREAD(SPI_CSMODE_ADDR);
-    ret = (ret | coq:(2));
+    ret = (ret | $2);
     output! MMIOWRITE(SPI_CSMODE_ADDR, ret);
 
     (* manually register-allocated, apologies for variable reuse *)
-    unpack! ret, err = spi_xchg(coq:(Ox"0b"));        require !err; (* FASTREAD *)
-    unpack! ret, err = spi_xchg(addr >> coq:(8));     require !err;
-    unpack! ret, err = spi_xchg(addr & coq:(Ox"ff")); require !err;
+    unpack! ret, err = spi_xchg($0x0b);        require !err; (* FASTREAD *)
+    unpack! ret, err = spi_xchg(addr >> $8);     require !err;
+    unpack! ret, err = spi_xchg(addr & $0xff); require !err;
     unpack! ret, err = spi_xchg(err);                    require !err; (* dummy *)
 
     unpack! ret, err = spi_xchg(err);                    require !err; (* read *)
     unpack! addr, err = spi_xchg(err);                   require !err; (* read *)
-    ret = (ret | (addr << coq:(8)));
+    ret = (ret | (addr << $8));
     unpack! addr, err = spi_xchg(err);                   require !err; (* read *)
-    ret = (ret | (addr << coq:(16)));
+    ret = (ret | (addr << $16));
     unpack! addr, err = spi_xchg(err);                   require !err; (* read *)
-    ret = (ret | (addr << coq:(24)));
+    ret = (ret | (addr << $24));
 
     io! addr = MMIOREAD(SPI_CSMODE_ADDR);
     addr = (addr & coq:(Z.lnot 2));
@@ -56,15 +53,15 @@ Definition lan9250_writeword : function :=
   let err : String.string := "err" in
   let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
   ("lan9250_writeword", ((addr::data::nil), (err::nil), bedrock_func_body:(
-    SPI_CSMODE_ADDR = (coq:(Ox"10024018"));
+    SPI_CSMODE_ADDR = ($0x10024018);
     io! ret = MMIOREAD(SPI_CSMODE_ADDR);
-    ret = (ret | coq:(2));
+    ret = (ret | $2);
     output! MMIOWRITE(SPI_CSMODE_ADDR, ret);
 
     (* manually register-allocated, apologies for variable reuse *)
-    Oxff = (coq:(Ox"ff"));
-    eight = (coq:(8));
-    unpack! ret, err = spi_xchg(coq:(Ox"02")); require !err; (* FASTREAD *)
+    Oxff = ($0xff);
+    eight = ($8);
+    unpack! ret, err = spi_xchg($0x02); require !err; (* FASTREAD *)
     unpack! ret, err = spi_xchg(addr >> eight);   require !err;
     unpack! ret, err = spi_xchg(addr & Oxff);     require !err;
 
@@ -83,7 +80,7 @@ Definition lan9250_writeword : function :=
 
 Definition MAC_CSR_DATA : Z := Ox"0A8".
 Definition MAC_CSR_CMD : Z := Ox"0A4".
-Definition BYTE_TEST : Z := Ox"64".
+Definition BYTE_TEST : Z := 0x64.
 
 Definition lan9250_mac_write : function :=
   let addr : String.string := "addr" in
@@ -103,13 +100,13 @@ Definition lan9250_wait_for_boot : function :=
   let i : String.string := "i" in
   let byteorder : String.string := "byteorder" in
   ("lan9250_wait_for_boot", (nil, (err::nil), bedrock_func_body:(
-  err = (coq:(0));
-  byteorder = (coq:(0));
-  i = (lightbulb_spec.patience); while (i) { i = (i - coq:(1));
-          unpack! byteorder, err = lan9250_readword(coq:(Ox"64"));
+  err = ($0);
+  byteorder = ($0);
+  i = (lightbulb_spec.patience); while (i) { i = (i - $1);
+          unpack! byteorder, err = lan9250_readword($0x64);
     if err { i = (i^i) }
-    else if (byteorder == coq:(Ox"87654321")) { i = (i^i) }
-    else { err = (coq:(-1)) }
+    else if (byteorder == $0x87654321) { i = (i^i) }
+    else { err = ($-1) }
   }
   ))).
 
@@ -127,9 +124,9 @@ Definition lan9250_init : function :=
     require !err;
 
     (* 20: full duplex; 18: promiscuous; 2, 3: TXEN/RXEN *)
-        unpack! err = lan9250_mac_write(coq:(1), coq:(Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2)))));
+        unpack! err = lan9250_mac_write($1, coq:(Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2)))));
     require !err;
-          unpack! err = lan9250_writeword(coq:(Ox"070"), coq:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
+          unpack! err = lan9250_writeword($0x070, coq:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
   ))).
 
 Require Import bedrock2.ProgramLogic.
@@ -148,7 +145,7 @@ Section WithParameters.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Global Instance spec_of_lan9250_readword : ProgramLogic.spec_of "lan9250_readword" := fun functions => forall t m a,
-    (Ox"0" <= Word.Interface.word.unsigned a < Ox"400") ->
+    (0x0 <= Word.Interface.word.unsigned a < 0x400) ->
     WeakestPrecondition.call functions "lan9250_readword" t m [a] (fun T M RETS =>
       M = m /\
       exists ret err, RETS = [ret; err] /\
@@ -159,7 +156,7 @@ Section WithParameters.
 
   Global Instance spec_of_lan9250_writeword : ProgramLogic.spec_of "lan9250_writeword" := fun functions =>
     forall t m a v,
-      (Ox"0" <= Word.Interface.word.unsigned a < Ox"400") ->
+      (0x0 <= Word.Interface.word.unsigned a < 0x400) ->
     (((WeakestPrecondition.call functions "lan9250_writeword"))) t m [a; v]
       (fun T M RETS =>
       M = m /\
