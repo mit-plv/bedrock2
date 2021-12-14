@@ -4,21 +4,21 @@ Import Syntax.Coercions BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Definition stacktrivial : bedrock_func := let t := "t" in
-  ("stacktrivial", ([]:list String.string, [], bedrock_func_body:(stackalloc 4 as t { /*skip*/ }))).
+  ("stacktrivial", ([]:list String.string, [], bedrock_func_body:(stackalloc 4 as t; /*skip*/ ))).
 
 Definition stacknondet : bedrock_func := let a := "a" in let b := "b" in let t := "t" in
-  ("stacknondet", ([]:list String.string, [a; b], bedrock_func_body:(stackalloc 4 as t {
+  ("stacknondet", ([]:list String.string, [a; b], bedrock_func_body:(stackalloc 4 as t;
   a = (load4(t) >> coq:(8));
   store1(a+coq:(3), coq:(42));
   b = (load4(t) >> coq:(8))
-}))).
+))).
 
 Definition stackdisj : bedrock_func := let a := "a" in let b := "b" in
   ("stackdisj", ([]:list String.string, [a; b], bedrock_func_body:(
-  stackalloc 4 as a {
-  stackalloc 4 as b {
+  stackalloc 4 as a;
+  stackalloc 4 as b;
   /*skip*/
-}}))).
+))).
 
 Require bedrock2.WeakestPrecondition.
 Require Import bedrock2.Semantics bedrock2.FE310CSemantics.

@@ -94,10 +94,9 @@ Section WithParameters.
 
   Definition indirect_add_three' : Syntax.func := let a := "a" in let b := "b" in let c := "c" in let out := "out" in let v := "v" in
     ("indirect_add_three'", ([out;a;b;c], [], bedrock_func_body:(
-    stackalloc 4 as v {
-      indirect_add(v, a, b);
-      indirect_add(out, v, c)
-    }
+    stackalloc 4 as v;
+    indirect_add(v, a, b);
+    indirect_add(out, v, c)
   ))).
 
   Instance spec_of_indirect_add_three' : spec_of "indirect_add_three'" :=
