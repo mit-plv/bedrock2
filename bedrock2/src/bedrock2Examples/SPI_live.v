@@ -80,6 +80,7 @@ End cmd.
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Import String Datatypes List.
 
   Definition mmio_event_abstraction_relation
     (h : lightbulb_spec.OP word)

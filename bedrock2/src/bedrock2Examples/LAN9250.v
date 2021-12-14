@@ -39,9 +39,9 @@ Definition lan9250_readword : function :=
     unpack! addr, err = spi_xchg(err);                   require !err; (* read *)
     ret = (ret | (addr << $24));
 
-    io! addr = MMIOREAD(SPI_CSMODE_ADDR);
+    io! addr = $MMIOREAD(SPI_CSMODE_ADDR);
     addr = (addr & coq:(Z.lnot 2));
-    output! MMIOWRITE(SPI_CSMODE_ADDR, addr)
+    output! $MMIOWRITE(SPI_CSMODE_ADDR, addr)
   ))).
 
 Definition lan9250_writeword : function :=
@@ -53,14 +53,14 @@ Definition lan9250_writeword : function :=
   let err : String.string := "err" in
   let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
   ("lan9250_writeword", ((addr::data::nil), (err::nil), bedrock_func_body:(
-    SPI_CSMODE_ADDR = ($0x10024018);
-    io! ret = MMIOREAD(SPI_CSMODE_ADDR);
+    SPI_CSMODE_ADDR = $0x10024018;
+    io! ret = $MMIOREAD(SPI_CSMODE_ADDR);
     ret = (ret | $2);
-    output! MMIOWRITE(SPI_CSMODE_ADDR, ret);
+    output! $MMIOWRITE(SPI_CSMODE_ADDR, ret);
 
     (* manually register-allocated, apologies for variable reuse *)
-    Oxff = ($0xff);
-    eight = ($8);
+    Oxff = $0xff;
+    eight = $8;
     unpack! ret, err = spi_xchg($0x02); require !err; (* FASTREAD *)
     unpack! ret, err = spi_xchg(addr >> eight);   require !err;
     unpack! ret, err = spi_xchg(addr & Oxff);     require !err;
@@ -73,9 +73,9 @@ Definition lan9250_writeword : function :=
     data = (data >> eight);
     unpack! ret, err = spi_xchg(data);     require !err; (* write *)
 
-    io! addr = MMIOREAD(SPI_CSMODE_ADDR);
+    io! addr = $MMIOREAD(SPI_CSMODE_ADDR);
     addr = (addr & coq:(Z.lnot 2));
-    output! MMIOWRITE(SPI_CSMODE_ADDR, addr)
+    output! $MMIOWRITE(SPI_CSMODE_ADDR, addr)
   ))).
 
 Definition MAC_CSR_DATA : Z := Ox"0A8".
@@ -87,11 +87,11 @@ Definition lan9250_mac_write : function :=
   let data : String.string := "data" in
   let err : String.string := "err" in
   ("lan9250_mac_write", ((addr::data::nil), (err::nil), bedrock_func_body:(
-    unpack! err = lan9250_writeword(MAC_CSR_DATA, data);
+    unpack! err = lan9250_writeword($MAC_CSR_DATA, data);
     require !err;
-unpack! err = lan9250_writeword(MAC_CSR_CMD, coq:(Z.shiftl 1 31)|addr);
+unpack! err = lan9250_writeword($MAC_CSR_CMD, coq:(Z.shiftl 1 31)|addr);
     require !err;
-          unpack! data, err = lan9250_readword(BYTE_TEST)
+          unpack! data, err = lan9250_readword($BYTE_TEST)
           (* while (lan9250_readword(0xA4) >> 31) { } // Wait until BUSY (= MAX_CSR_CMD >> 31) goes low *)
   ))).
 
@@ -102,7 +102,7 @@ Definition lan9250_wait_for_boot : function :=
   ("lan9250_wait_for_boot", (nil, (err::nil), bedrock_func_body:(
   err = ($0);
   byteorder = ($0);
-  i = (lightbulb_spec.patience); while (i) { i = (i - $1);
+  i = ($lightbulb_spec.patience); while (i) { i = (i - $1);
           unpack! byteorder, err = lan9250_readword($0x64);
     if err { i = (i^i) }
     else if (byteorder == $0x87654321) { i = (i^i) }
@@ -116,11 +116,11 @@ Definition lan9250_init : function :=
   ("lan9250_init", (nil, (err::nil), bedrock_func_body:(
           unpack! err = lan9250_wait_for_boot();
     require !err;
-          unpack! hw_cfg, err = lan9250_readword(lightbulb_spec.HW_CFG);
+          unpack! hw_cfg, err = lan9250_readword($lightbulb_spec.HW_CFG);
     require !err;
     hw_cfg = (hw_cfg | coq:(Z.shiftl 1 20)); (* mustbeone *)
     hw_cfg = (hw_cfg & coq:(Z.lnot (Z.shiftl 1 21))); (* mustbezero *)
-    unpack! err = lan9250_writeword(lightbulb_spec.HW_CFG, hw_cfg);
+    unpack! err = lan9250_writeword($lightbulb_spec.HW_CFG, hw_cfg);
     require !err;
 
     (* 20: full duplex; 18: promiscuous; 2, 3: TXEN/RXEN *)

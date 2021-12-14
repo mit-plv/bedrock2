@@ -73,15 +73,15 @@ Definition swap_chars_over_uart: cmd :=
 
   bedrock_func_body:(
     (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
-    io! rx = MMIOREAD (coq:(Ox"0x00021fec"));
-    output! MMIOWRITE(hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << $16);
+    io! rx = $MMIOREAD (coq:(Ox"0x00021fec"));
+    output! $MMIOWRITE($hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << $16);
     coq:(cmd.unset rx);
 
     one = $1;
-    output! MMIOWRITE(coq:(uart0_base + 0x018), $624); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
-    output! MMIOWRITE(coq:(uart0_base + 0x008), one); (* tx enable *)
-    output! MMIOWRITE(coq:(uart0_base + 0x00c), one); (* rx enable *)
-    output! MMIOWRITE(coq:(gpio0_base + 0x038), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
+    output! $MMIOWRITE(coq:(uart0_base + 0x018), $624); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
+    output! $MMIOWRITE(coq:(uart0_base + 0x008), one); (* tx enable *)
+    output! $MMIOWRITE(coq:(uart0_base + 0x00c), one); (* rx enable *)
+    output! $MMIOWRITE(coq:(gpio0_base + 0x038), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
 
     dot = $46;
     prev = dot;
@@ -90,13 +90,13 @@ Definition swap_chars_over_uart: cmd :=
       bit31 = coq:(2^31);
       rx = bit31;
       polling = one-dot;
-      while (polling & rx & bit31) { io! rx = MMIOREAD(coq:(uart0_base + 0x004)); polling = polling-one };
+      while (polling & rx & bit31) { io! rx = $MMIOREAD(coq:(uart0_base + 0x004)); polling = polling-one };
 
       uart_tx = coq:(uart0_base + 0x000);
       tx = bit31;
       polling = one-dot;
-      while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = polling-one };
-      output! MMIOWRITE(uart_tx, prev);
+      while (polling & tx & bit31) { io! tx = $MMIOREAD(uart_tx); polling = polling-one };
+      output! $MMIOWRITE(uart_tx, prev);
 
       prev = rx;
       running = running - one;
@@ -229,28 +229,28 @@ Definition echo_server: cmd :=
 
   bedrock_func_body:(
     (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
-    io! rx = MMIOREAD (coq:(Ox"0x00021fec"));
-    output! MMIOWRITE(hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << $16);
+    io! rx = $MMIOREAD (coq:(Ox"0x00021fec"));
+    output! $MMIOWRITE($hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << $16);
     coq:(cmd.unset rx);
 
     one = $1;
-    output! MMIOWRITE(coq:(uart0_base + 0x018), $624); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
-    output! MMIOWRITE(coq:(uart0_base + 0x008), one); (* tx enable *)
-    output! MMIOWRITE(coq:(uart0_base + 0x00c), one); (* rx enable *)
-    output! MMIOWRITE(coq:(gpio0_base + 0x038), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
+    output! $MMIOWRITE(coq:(uart0_base + 0x018), $624); (* --baud=115200 # = 72MHz/(0+1)/(624+1) *)
+    output! $MMIOWRITE(coq:(uart0_base + 0x008), one); (* tx enable *)
+    output! $MMIOWRITE(coq:(uart0_base + 0x00c), one); (* rx enable *)
+    output! $MMIOWRITE(coq:(gpio0_base + 0x038), coq:(2^17 + 2^16)); (* pinmux uart tx rx *)
 
     running = $-1;
     while (running) {
       bit31 = coq:(2^31);
       rx = bit31;
       polling = $-1;
-      while (polling & rx & bit31) { io! rx = MMIOREAD(coq:(uart0_base + 0x004)); polling = polling-one };
+      while (polling & rx & bit31) { io! rx = $MMIOREAD(coq:(uart0_base + 0x004)); polling = polling-one };
       if (rx & bit31) { coq:(cmd.skip) } else {
         uart_tx = coq:(uart0_base + 0x000);
         tx = bit31;
         polling = $-1;
-        while (polling & tx & bit31) { io! tx = MMIOREAD(uart_tx); polling = polling-one };
-        output! MMIOWRITE(uart_tx, tx)
+        while (polling & tx & bit31) { io! tx = $MMIOREAD(uart_tx); polling = polling-one };
+        output! $MMIOWRITE(uart_tx, tx)
       };
       running = running - one;
       coq:(cmd.unset uart_tx); coq:(cmd.unset rx); coq:(cmd.unset tx); coq:(cmd.unset bit31); coq:(cmd.unset polling)
