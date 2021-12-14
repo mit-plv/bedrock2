@@ -147,9 +147,11 @@ Module test.
 
   Goal True.
 
+  (* on 8.14 and later:
   pose (fun while : nat => while=while).
   pose (fun stackalloc : nat => stackalloc=stackalloc).
   pose (fun require : nat => require=require).
+  *)
 
   pose (seq skip (seq bedrock_cmd:(if 1 { /*skip*/ } else { /*skip*/ } ) (seq skip skip))).
   pose (seq (seq skip skip) (seq skip skip)).
