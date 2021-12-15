@@ -3,13 +3,13 @@ Require Import bedrock2.NotationsCustomEntry.
 Import Syntax Syntax.Coercions BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition indirect_add : func := let a := "a" in let b := "b" in let c := "c" in
-  ("indirect_add", ([a; b; c], [], bedrock_func_body:(
+Definition indirect_add : func :=
+  ("indirect_add", (["a"; "b"; "c"], [], bedrock_func_body:(
   store(a, load(b) + load(c))
 ))).
 
-Definition indirect_add_twice : func := let a := "a" in let b := "b" in
-  ("indirect_add_twice", ([a;b], [], bedrock_func_body:(
+Definition indirect_add_twice : func :=
+  ("indirect_add_twice", (["a";"b"], [], bedrock_func_body:(
   indirect_add(a, a, b);
   indirect_add(a, a, b)
 ))).
@@ -68,8 +68,8 @@ Section WithParameters.
   Abort.
   *)
 
-  Definition indirect_add_three : Syntax.func := let a := "a" in let b := "b" in let c := "c" in
-    ("indirect_add_three", ([a;b;c], [], bedrock_func_body:(
+  Definition indirect_add_three : Syntax.func :=
+    ("indirect_add_three", (["a";"b";"c"], [], bedrock_func_body:(
     indirect_add(a, a, b);
     indirect_add(a, a, c)
   ))).
@@ -92,8 +92,8 @@ Section WithParameters.
     { split; trivial. split; trivial. cbv [g]. ecancel_assumption. }
   Qed.
 
-  Definition indirect_add_three' : Syntax.func := let a := "a" in let b := "b" in let c := "c" in let out := "out" in let v := "v" in
-    ("indirect_add_three'", ([out;a;b;c], [], bedrock_func_body:(
+  Definition indirect_add_three' : Syntax.func :=
+    ("indirect_add_three'", (["out";"a";"b";"c"], [], bedrock_func_body:(
     stackalloc 4 as v;
     indirect_add(v, a, b);
     indirect_add(out, v, c)

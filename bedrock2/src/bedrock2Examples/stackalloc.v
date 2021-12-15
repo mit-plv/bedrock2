@@ -3,18 +3,18 @@ Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry.
 Import Syntax.Coercions BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition stacktrivial : Syntax.func := let t := "t" in
+Definition stacktrivial : Syntax.func :=
   ("stacktrivial", ([]:list String.string, [], bedrock_func_body:(stackalloc 4 as t; /*skip*/ ))).
 
-Definition stacknondet : Syntax.func := let a := "a" in let b := "b" in let t := "t" in
-  ("stacknondet", ([]:list String.string, [a; b], bedrock_func_body:(stackalloc 4 as t;
+Definition stacknondet : Syntax.func :=
+  ("stacknondet", ([]:list String.string, ["a"; "b"], bedrock_func_body:(stackalloc 4 as t;
   a = (load4(t) >> $8);
   store1(a+$3, $42);
   b = (load4(t) >> $8)
 ))).
 
-Definition stackdisj : Syntax.func := let a := "a" in let b := "b" in
-  ("stackdisj", ([]:list String.string, [a; b], bedrock_func_body:(
+Definition stackdisj : Syntax.func :=
+  ("stackdisj", ([]:list String.string, ["a"; "b"], bedrock_func_body:(
   stackalloc 4 as a;
   stackalloc 4 as b;
   /*skip*/
@@ -59,8 +59,6 @@ Section WithParameters.
   Instance spec_of_stacknondet : spec_of "stacknondet" := fun functions => forall m t,
       WeakestPrecondition.call functions
         "stacknondet" t m [] (fun t' m' rets => exists a b, rets = [a;b] /\ a = b /\ m'=m/\t'=t).
-
-  Require Import bedrock2.string2ident.
 
   Lemma stacknondet_ok : program_logic_goal_for_function! stacknondet.
   Proof.

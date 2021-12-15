@@ -8,10 +8,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 * of exponentiation in terms of multiplication. *)
 
 Definition rpmul :=
-  let x := "x" in
-  let e := "e" in
-  let ret := "ret" in
-  ("rpmul", ([x;e], ([ret]:list String.string), bedrock_func_body:(
+  ("rpmul", (["x";"e"], (["ret"]), bedrock_func_body:(
   ret = $0;
   while (e) {
     if (e & $1) { ret = ret + x };

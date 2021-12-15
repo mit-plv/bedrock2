@@ -21,8 +21,7 @@ Section WithParameters.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
   Definition lightbulb_loop :=
-    let p_addr := "p_addr" in let bytesWritten := "bytesWritten" in let recvEthernet := "recvEthernet" in let lightbulb_handle := "lightbulb_handle" in let err := "err" in
-    ("lightbulb_loop", ([p_addr], [err], bedrock_func_body:(
+    ("lightbulb_loop", (["p_addr"], ["err"], bedrock_func_body:(
       unpack! bytesWritten, err = recvEthernet(p_addr);
       if !err { (* success, packet *)
         unpack! err = lightbulb_handle(p_addr, bytesWritten);
@@ -33,8 +32,7 @@ Section WithParameters.
     ))).
 
   Definition recvEthernet :=
-    let buf := "buf" in let num_bytes := "num_bytes" in let i := "i" in let err := "err" in let read := "read" in
-    ("recvEthernet", ([buf], [num_bytes;err], bedrock_func_body:(
+    ("recvEthernet", (["buf"], ["num_bytes";"err"], bedrock_func_body:(
       num_bytes = $0;
       unpack! read, err = lan9250_readword(coq:(Ox"7C")); (* RX_FIFO_INF *)
       require !err else { err = $-1 };
@@ -58,9 +56,7 @@ Section WithParameters.
       ))).
 
   Definition lightbulb_handle :=
-    let packet := "packet" in let len := "len" in let ethertype := "ethertype" in let protocol := "protocol" in let port := "port" in let mmio_val := "mmio_val" in let command := "command" in let Oxff := "Oxff" in let MMIOREAD := "MMIOREAD" in let MMIOWRITE := "MMIOWRITE" in let r := "r" in
-
-    ("lightbulb_handle", ([packet;len], [r], bedrock_func_body:(
+    ("lightbulb_handle", (["packet";"len"], ["r"], bedrock_func_body:(
       r = $42;
       require (r < len) else { r = $-1 };
 
@@ -89,8 +85,6 @@ Section WithParameters.
     ))).
 
   Definition lightbulb_init : func :=
-    let err : String.string := "err" in
-    let MMIOWRITE : String.string := "MMIOWRITE" in
     ("lightbulb_init", ([], [], bedrock_func_body:(
       output! MMIOWRITE($0x10012038, coq:((Z.shiftl (0xf) 2)));
       output! MMIOWRITE($0x10012008, coq:((Z.shiftl 1 23)));

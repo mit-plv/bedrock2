@@ -70,7 +70,7 @@ Proof.
   { repeat straightline.
     2: solve [auto]. (* exiting loop *)
     (* loop body *)
-    rename H2 into length_rep. subst br. subst v0.
+    rename H2 into length_rep. subst br.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
     { case ZnWords_needs_lia_of_Coq_master. }

@@ -5,8 +5,7 @@ Require Import coqutil.Z.Lia.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Definition ipow :=
-  let x := "x" in   let e := "e" in   let ret := "ret" in
-  ("ipow", ([x;e], ([ret]:list String.string), bedrock_func_body:(
+  ("ipow", (["x";"e"], (["ret"]:list String.string), bedrock_func_body:(
   ret = $1;
   while (e) {
     if (e & $1) { ret = ret * x };

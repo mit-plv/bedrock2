@@ -3,15 +3,15 @@ Require Import bedrock2.NotationsCustomEntry.
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition swap : func := let a := "a" in let b := "b" in let t := "t" in
-  ("swap", ([a; b], [], bedrock_func_body:(
+Definition swap : func :=
+  ("swap", (["a"; "b"], [], bedrock_func_body:(
   t = load(b);
   store(b, load(a));
   store(a, t)
 ))).
 
-Definition swap_swap : func := let a := "a" in let b := "b" in
-  ("swap_swap", ([a;b], [], bedrock_func_body:(
+Definition swap_swap : func :=
+  ("swap_swap", (["a";"b"], [], bedrock_func_body:(
   swap(a, b);
   swap(a, b)
 ))).
@@ -47,8 +47,6 @@ Section WithParameters.
       WeakestPrecondition.call functions
         "swap_swap" t m [a_addr; b_addr]
         (fun t' m' rets => t=t' /\ (scalar a_addr a * (scalar b_addr b * R)) m' /\ rets = nil).
-
-  Require Import bedrock2.string2ident.
 
   Lemma swap_ok : program_logic_goal_for_function! swap.
   Proof.

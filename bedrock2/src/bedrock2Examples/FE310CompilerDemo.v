@@ -162,25 +162,9 @@ Lemma swap_chars_over_uart_correct m :
   (fun t m l => True).
 Proof.
   repeat t.
-
-
-  refine (
-  let prev : String.string := "prev"%string in
-  let rx : String.string := "rx"%string in
-  let tx : String.string := "tx"%string in
-  let running : String.string := "running"%string in
-
-  let bit31 : String.string := "bit31"%string in
-  let one : String.string := "one"%string in
-  let dot : String.string := "dot"%string in
-  let uart_tx : String.string := "uart_tx"%string in
-  let polling : String.string := "polling"%string in
-
-  _).
-  (* SearchAbout I (* ANOMALY *) *)
-  eexists _, _, (fun v t _ l => exists p, map.of_list_zip [running; prev; one; dot] [v; p; word.of_Z(1); word.of_Z(46)] = Some l ); repeat t.
-  eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip [polling; rx] [v; rxv] l0 = Some l); repeat t.
-  eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list_zip [polling; tx] [v; txv] l0 = Some l); repeat t.
+  eexists _, _, (fun v t _ l => exists p, map.of_list_zip ["running"; "prev"; "one"; "dot"]%string [v; p; word.of_Z(1); word.of_Z(46)] = Some l ); repeat t.
+  eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip ["polling"; "rx"]%string [v; rxv] l0 = Some l); repeat t.
+  eexists _, _, (fun v t _ l => exists txv, map.putmany_of_list_zip ["polling"; "tx"]%string [v; txv] l0 = Some l); repeat t.
   eexists; split; repeat t.
 Defined.
 
@@ -262,25 +246,9 @@ Lemma echo_server_correct m :
   (fun t m l => echo_server_spec t None).
 Proof.
   repeat t.
-
-  refine (
-  let prev : String.string := "prev"%string in
-  let rx : String.string := "rx"%string in
-  let tx : String.string := "tx"%string in
-  let running : String.string := "running"%string in
-
-  let bit31 : String.string := "bit31"%string in
-  let one : String.string := "one"%string in
-  let dot : String.string := "dot"%string in
-  let uart_tx : String.string := "uart_tx"%string in
-  let polling : String.string := "polling"%string in
-
-  _).
-  (* SearchAbout I (* ANOMALY *) *)
-
-  eexists _, _, (fun v t _ l => map.of_list_zip [running; one] [v; word.of_Z(1)] = Some l /\ echo_server_spec t None ); repeat t.
+  eexists _, _, (fun v t _ l => map.of_list_zip ["running"; "one"]%string [v; word.of_Z(1)] = Some l /\ echo_server_spec t None ); repeat t.
   { repeat split. admit. (* hfrosccfg*) }
-  eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip [polling; rx] [v; rxv] l0 = Some l /\
+  eexists _, _, (fun v t _ l => exists rxv, map.putmany_of_list_zip ["polling"; "rx"]%string [v; rxv] l0 = Some l /\
                                             if Z.eq_dec (word.unsigned (word.and rxv (word.of_Z (2^31)))) 0
                                             then echo_server_spec t (Some rxv)
                                             else echo_server_spec t None); repeat t.

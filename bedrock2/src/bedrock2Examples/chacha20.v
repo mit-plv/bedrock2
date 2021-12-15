@@ -6,32 +6,30 @@ Require Import coqutil.Macros.ident_to_string.
 Section chacha20.
   Import bedrock2.Syntax Syntax.Coercions NotationsCustomEntry HexNotation.
 
-  Local Notation "x <<< n" := (bedrock_expr:((x<<coq:(expr.literal n)) | (x>>coq:(expr.literal (32-(n:Z)))))) (in custom bedrock_expr at level 2, left associativity).
-  Local Notation "x <<<= n" := (cmd.set (ident_to_string! x) (expr.op bopname.slu x%string n)) (in custom bedrock_cmd at level 0, x ident, n bigint).
-  Local Notation "x ^= e" := (cmd.set (ident_to_string! x) (expr.op bopname.xor x%string e)) (in custom bedrock_cmd at level 0, x ident, e custom bedrock_expr at level 999).
-  Local Notation "x += e" := (cmd.set (ident_to_string! x) (expr.op bopname.add x%string e)) (in custom bedrock_cmd at level 0, x ident, e custom bedrock_expr at level 999).
-  Print Custom Grammar bedrock_cmd.
+  Local Notation "x <<<= n" := (cmd.set (ident_to_string! x) (expr.op bopname.slu (ident_to_string! x) n)) (in custom bedrock_cmd at level 0, x ident, n bigint).
+  Local Notation "x ^= e" := (cmd.set (ident_to_string! x) (expr.op bopname.xor (ident_to_string! x) e)) (in custom bedrock_cmd at level 0, x ident, e custom bedrock_expr).
+  Local Notation "x += e" := (cmd.set (ident_to_string! x) (expr.op bopname.add (ident_to_string! x) e)) (in custom bedrock_cmd at level 0, x ident, e custom bedrock_expr).
 
   Definition chacha20_quarter : func :=
-    let a := "a" in let b := "b" in let c := "c" in let d := "d" in
-    ("chacha20_quarter", ([a;b;c;d], [a;b;c;d], bedrock_func_body:(
+    ("chacha20_quarter", (["a";"b";"c";"d"], ["a";"b";"c";"d"], bedrock_func_body:(
       a += b; d ^= a; d <<<= 16;
       c += d; b ^= c; b <<<= 12;
       a += b; d ^= a; d <<<= 8;
       c += d; b ^= c; b <<<= 7
     ))).
 
+  Local Notation "'xorout' o x" := (
+      let addr := bedrock_expr:(out+coq:(expr.literal(4*o))) in
+      bedrock_cmd:(store4($addr, load4($addr)^$(expr.var (ident_to_string! x)))))
+      (in custom bedrock_cmd at level 0, o bigint, x ident).
+
   Definition chacha20_block : func :=
-    let key := "key" in let countervalue := "countervalue" in let nonce := "nonce" in let i := "i" in
+    (* NOTE: I (andreser) don't understand why xorout needs these *)
     let x0  := "x0" in let x1  := "x1" in let x2  := "x2" in let x3  := "x3" in
     let x4  := "x4" in let x5  := "x5" in let x6  := "x6" in let x7  := "x7" in
     let x8  := "x8" in let x9  := "x9" in let x10 := "x10" in let x11 := "x11" in
     let x12 := "x12" in let x13 := "x13" in let x14 := "x14" in let x15 := "x15" in
-    let out := "out" in
-    let xorout o x : cmd :=
-      let addr := bedrock_expr:((out+coq:(expr.literal(4*o)))) in
-      bedrock_cmd:(store4(addr, load4(addr)^x)) in
-    ("chacha20_block", ([out; key; nonce; countervalue], [], bedrock_func_body:(
+    ("chacha20_block", (["out"; "key"; "nonce"; "countervalue"], [], bedrock_func_body:(
       x0 = $0x61707865;   x1 = $0x3320646e;   x2 = $0x79622d32;    x3 = $0x6b206574;
       x4 = load4(key);           x5 = load4(key+$4);   x6 = load4(key+$8);    x7 = load4(key+$12);
       x8 = load4(key+$16);  x9 = load4(key+$20); x10 = load4(key+$24);  x11 = load4(key+$28);
@@ -50,10 +48,10 @@ Section chacha20.
       x4 += load4(key);          x5 += load4(key+$4);   x6 += load4(key+$8);    x7 += load4(key+$12);
       x8 += load4(key+$16); x9 += load4(key+$20); x10 += load4(key+$24);  x11 += load4(key+$28);
       x12 += countervalue;      x13 += load4(nonce);        x14 += load4(nonce+$4); x15 += load4(nonce+$8);
-      coq:(xorout  0  x0);   coq:(xorout 1 x1); coq:(xorout 2   x2);  coq:(xorout 3  x3);
-      coq:(xorout  4  x4);   coq:(xorout 5 x5); coq:(xorout 6   x6);  coq:(xorout 7  x7);
-      coq:(xorout  8  x8);   coq:(xorout 9 x9); coq:(xorout 10 x10); coq:(xorout 11 x11);
-      coq:(xorout 12 x12); coq:(xorout 13 x13); coq:(xorout 14 x14); coq:(xorout 15 x15)
+      xorout  0  x0;   xorout 1 x1; xorout 2   x2;  xorout 3  x3;
+      xorout  4  x4;   xorout 5 x5; xorout 6   x6;  xorout 7  x7;
+      xorout  8  x8;   xorout 9 x9; xorout 10 x10; xorout 11 x11;
+      xorout 12 x12; xorout 13 x13; xorout 14 x14; xorout 15 x15
   ))).
 End chacha20.
 

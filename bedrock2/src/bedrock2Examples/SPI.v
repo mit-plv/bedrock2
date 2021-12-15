@@ -14,9 +14,8 @@ Require bedrock2Examples.lightbulb_spec.
 Local Notation patience := lightbulb_spec.patience.
 
 Definition spi_write : function :=
-  let b := "b" in let busy := "busy" in let i := "i" in
   let SPI_WRITE_ADDR := 0x10024048 in
-  ("spi_write", ([b], [busy], bedrock_func_body:(
+  ("spi_write", (["b"], ["busy"], bedrock_func_body:(
     busy = ($-1);
     i = ($patience); while (i) { i = (i - $1);
       io! busy = $MMIOREAD($SPI_WRITE_ADDR);
@@ -31,9 +30,8 @@ Definition spi_write : function :=
   ))).
 
 Definition spi_read : function :=
-  let b := "b" in  let busy := "busy" in  let i := "i" in
   let SPI_READ_ADDR := 0x1002404c in
-  ("spi_read", (nil, (b::busy::nil), bedrock_func_body:(
+  ("spi_read", (nil, ("b"::"busy"::nil), bedrock_func_body:(
     busy = ($-1);
     b = ($0x5a);
     i = ($patience); while (i) { i = (i - $1);
@@ -47,8 +45,7 @@ Definition spi_read : function :=
   ))).
 
 Definition spi_xchg : function :=
-  let b := "b" in  let busy := "busy" in
-  ("spi_xchg", (b::nil, b::busy::nil, bedrock_func_body:(
+  ("spi_xchg", ("b"::nil, "b"::"busy"::nil, bedrock_func_body:(
     unpack! busy = spi_write(b);
     require !busy;
     unpack! b, busy = spi_read()

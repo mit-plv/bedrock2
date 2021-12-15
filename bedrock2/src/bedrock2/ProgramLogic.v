@@ -1,10 +1,9 @@
 Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
-From coqutil.Tactics Require Import letexists eabstract rdelta.
+From coqutil.Tactics Require Import letexists eabstract rdelta ident_of_string.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.Loops.
 Require Import bedrock2.Map.SeparationLogic bedrock2.Scalars.
-Require bedrock2.string2ident.
 
 Definition spec_of (procname:String.string) := list (String.string * (list String.string * list String.string * Syntax.cmd.cmd)) -> Prop.
 Existing Class spec_of.
@@ -95,11 +94,6 @@ Ltac app_head e :=
 Ltac enter f :=
   cbv beta delta [program_logic_goal_for]; intros;
   bind_body_of_function f;
-  let fname := app_head f in
-  let fdefn := eval cbv beta delta [fname] in f in
-  let ctx := string2ident.learn fdefn in
-  let H := fresh "_string_to_ident" in
-  pose ctx as H;
   lazymatch goal with |- ?s _ => cbv beta delta [s] end.
 
 Require coqutil.Map.SortedList. (* special-case eq_refl *)
@@ -201,6 +195,16 @@ Ltac straightline_stackdealloc :=
   clear Htmp Hsplit mStack Harray1 Hanybytes
   end.
 
+Ltac rename_to_different H := once (idtac;
+  let G := fresh H in
+  rename H into G;
+  assert_succeeds (set (H := Set))).
+Ltac ensure_free H :=
+  match constr:(Set) with
+  | _ => assert_succeeds (set (H := Set))
+  | _ => rename_to_different H
+  end.
+
 Ltac straightline :=
   match goal with
   | _ => straightline_cleanup
@@ -210,12 +214,10 @@ Ltac straightline :=
     lazymatch goal with |- if ?test then ?T else _ =>
       replace test with true by reflexivity; change T end;
     cbv match beta delta [WeakestPrecondition.func]
-  | names := _ : string2ident.Context.list
-    |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
+  | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
     unfold1_cmd_goal; cbv beta match delta [cmd_body];
-    let names := eval cbv [names] in names in
-    let x := string2ident.lookup s names in
-    string2ident.ensure_free x;
+    let x := ident_of_string s in
+    ensure_free x;
     (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
     letexists _ as x; split; [solve [repeat straightline]|]
   | |- cmd _ ?c _ _ _ ?post =>

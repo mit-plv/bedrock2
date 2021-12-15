@@ -6,8 +6,7 @@ Require Import coqutil.sanity.
 Local Open Scope Z_scope. Local Open Scope list_scope. Local Open Scope string_scope.
 
 Definition bsearch: func :=
-  let left := "left" in let right := "right" in let target := "target" in let mid := "mid" in
-  ("bsearch", ([left; right; target], [left], bedrock_func_body:(
+  ("bsearch", (["left"; "right"; "target"], ["left"], bedrock_func_body:(
   while (right - left) {
     mid = left + (((right-left) >> $4) << $3);
     if (load(mid) < target) {
@@ -15,14 +14,13 @@ Definition bsearch: func :=
     } else {
       right = mid
     };
-    coq:(cmd.unset mid)
+    coq:(cmd.unset "mid")
   }
 ))).
 
 (* input_base is an address fixed at compile time *)
 Definition listsum (input_base: Z): func :=
-  let sumreg := "sumreg" in let n := "n" in let i := "i" in let a := "a" in
-  ("listsum", ([], [sumreg], bedrock_func_body:(
+  ("listsum", ([], ["sumreg"], bedrock_func_body:(
   sumreg = $0;
   n = load4(input_base);
   i = $0;
@@ -35,8 +33,7 @@ Definition listsum (input_base: Z): func :=
 
 (* input_base is an address fixed at compile time *)
 Definition fibonacci(n: Z): func :=
-  let a := "a" in let b := "b" in let i := "i" in let n := "n" in let c := "c" in
-  ("fibonacci", ([], [b], bedrock_func_body:(
+  ("fibonacci", ([], ["b"], bedrock_func_body:(
   a = $0;
   b = $1;
   i = $0;
@@ -49,8 +46,7 @@ Definition fibonacci(n: Z): func :=
 ))).
 
 Definition fibonacciServer (n_load_addr n_store_addr: Z): func :=
-  let b := "b" in let n := "n" in let a := "a" in let i := "i" in let c := "c" in
-  ("fibonacciserver", ([], [b], bedrock_func_body:(
+  ("fibonacciserver", ([], ["b"], bedrock_func_body:(
   n = load4(n_load_addr);
   a = $0;
   b = $1;

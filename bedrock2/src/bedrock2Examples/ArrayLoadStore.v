@@ -22,12 +22,7 @@ Section WithParameters.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
   Definition tf : bedrock_func :=
-      let buf := "buf" in
-      let len := "len" in
-      let i := "i" in
-      let j := "j" in
-      let r := "r" in
-    ("tf", ([buf; len; i; j], [], bedrock_func_body:(
+    ("tf", (["buf"; "len"; "i"; "j"], [], bedrock_func_body:(
       require ( i < len ) else { /*skip*/ };
       store1(buf + i, $0);
       require ( j < len ) else { r = $-1 };

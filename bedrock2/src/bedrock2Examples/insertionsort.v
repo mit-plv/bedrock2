@@ -4,8 +4,7 @@ Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Definition insertionsort : func :=
-  let a := "a" in let n := "n" in let i := "i" in let j := "j" in let t := "t" in let u := "u" in
-  ("insertionsort", ([a; n], [], bedrock_func_body:(
+  ("insertionsort", (["a"; "n"], [], bedrock_func_body:(
   i = $0;
   while (i < n) {
     t = load4(a + $4*i);
@@ -18,11 +17,11 @@ Definition insertionsort : func :=
       store4(a + $4*j, t);
       t = u;
       j = j + $1;
-      coq:(cmd.unset u)
+      coq:(cmd.unset "u")
     };
     i = i + $1;
-    coq:(cmd.unset t);
-    coq:(cmd.unset j)
+    coq:(cmd.unset "t");
+    coq:(cmd.unset "j")
   }
 ))).
 

@@ -5,10 +5,7 @@ Import Syntax BinInt String Datatypes List List.ListNotations ZArith.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Definition silly1 : func :=
-    let a := "a" in
-    let b := "b" in
-    let c := "c" in
-  ("silly1", ([a], [c], bedrock_func_body:(
+  ("silly1", (["a"], ["c"], bedrock_func_body:(
       b = load4(a + $16);
       store4(a + $14, b);
       c = load4(a + $16)

@@ -15,11 +15,7 @@ Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
 
 Definition lan9250_readword : function :=
-  let addr := "addr" in
-  let ret := "ret" in
-  let err := "err" in
-  let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
-  ("lan9250_readword", ((addr::nil), (ret::err::nil), bedrock_func_body:(
+  ("lan9250_readword", (("addr"::nil), ("ret"::"err"::nil), bedrock_func_body:(
     SPI_CSMODE_ADDR = ($0x10024018);
     io! ret = MMIOREAD(SPI_CSMODE_ADDR);
     ret = (ret | $2);
@@ -45,14 +41,7 @@ Definition lan9250_readword : function :=
   ))).
 
 Definition lan9250_writeword : function :=
-  let addr : String.string := "addr" in
-  let data : String.string := "data" in
-  let Oxff : String.string := "Oxff" in
-  let eight : String.string := "eight" in
-  let ret : String.string := "ret" in
-  let err : String.string := "err" in
-  let SPI_CSMODE_ADDR := "SPI_CSMODE_ADDR" in
-  ("lan9250_writeword", ((addr::data::nil), (err::nil), bedrock_func_body:(
+  ("lan9250_writeword", (("addr"::"data"::nil), ("err"::nil), bedrock_func_body:(
     SPI_CSMODE_ADDR = $0x10024018;
     io! ret = $MMIOREAD(SPI_CSMODE_ADDR);
     ret = (ret | $2);
@@ -83,10 +72,7 @@ Definition MAC_CSR_CMD : Z := Ox"0A4".
 Definition BYTE_TEST : Z := 0x64.
 
 Definition lan9250_mac_write : function :=
-  let addr : String.string := "addr" in
-  let data : String.string := "data" in
-  let err : String.string := "err" in
-  ("lan9250_mac_write", ((addr::data::nil), (err::nil), bedrock_func_body:(
+  ("lan9250_mac_write", (("addr"::"data"::nil), ("err"::nil), bedrock_func_body:(
     unpack! err = lan9250_writeword($MAC_CSR_DATA, data);
     require !err;
 unpack! err = lan9250_writeword($MAC_CSR_CMD, coq:(Z.shiftl 1 31)|addr);
@@ -96,10 +82,7 @@ unpack! err = lan9250_writeword($MAC_CSR_CMD, coq:(Z.shiftl 1 31)|addr);
   ))).
 
 Definition lan9250_wait_for_boot : function :=
-  let err : String.string := "err" in
-  let i : String.string := "i" in
-  let byteorder : String.string := "byteorder" in
-  ("lan9250_wait_for_boot", (nil, (err::nil), bedrock_func_body:(
+  ("lan9250_wait_for_boot", (nil, ("err"::nil), bedrock_func_body:(
   err = ($0);
   byteorder = ($0);
   i = ($lightbulb_spec.patience); while (i) { i = (i - $1);
@@ -111,9 +94,7 @@ Definition lan9250_wait_for_boot : function :=
   ))).
 
 Definition lan9250_init : function :=
-  let hw_cfg : String.string := "hw_cfg" in
-  let err : String.string := "err" in
-  ("lan9250_init", (nil, (err::nil), bedrock_func_body:(
+  ("lan9250_init", (nil, ("err"::nil), bedrock_func_body:(
           unpack! err = lan9250_wait_for_boot();
     require !err;
           unpack! hw_cfg, err = lan9250_readword($lightbulb_spec.HW_CFG);

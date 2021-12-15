@@ -6,15 +6,13 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 
 Section MultipleReturnValues.
   Example addsub : func :=
-    let a := "a" in let b := "b" in  let x := "x" in let y := "y" in
-    ("addsub", ([a;b], [x;y], bedrock_func_body:(
+    ("addsub", (["a";"b"], ["x";"y"], bedrock_func_body:(
     x = a + b;
     y = a - b
   ))).
 
   Example addsub_test : func :=
-    let ret := "ret" in
-    ("addsub_test", ([], [ret], bedrock_func_body:(
+    ("addsub_test", ([], ["ret"], bedrock_func_body:(
     unpack! ret, ret = addsub($14, $7);
     ret = ret - $7
   ))).
