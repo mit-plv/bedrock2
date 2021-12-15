@@ -73,6 +73,15 @@ Notation "addr |-> clause" := (at_addr addr clause)
   (at level 25,
    format "addr  |->  '[' clause ']'").
 
+Module expr.
+  Axiom ite : expr.expr -> expr.expr -> expr.expr -> expr.expr.
+  Definition lazy_and(e1 e2: expr.expr) := ite e1 e2 (expr.literal 0).
+  (* If e1 is nonzero, both returning 1 and returning e1 could make sense,
+     but we follow C, which returns 1:
+     https://stackoverflow.com/questions/30621389/short-circuiting-of-non-booleans *)
+  Definition lazy_or(e1 e2: expr.expr) := ite e1 (expr.literal 1) e2.
+End expr.
+
 Section WithParams.
   Import bedrock2.Syntax.
   Context {word: word.word 32} {mem: map.map word byte} {locals: map.map string word}.
@@ -156,6 +165,35 @@ Section WithParams.
   Proof.
     intros. constructor. inversion H.
     eapply WeakestPreconditionProperties.Proper_expr; eassumption.
+  Qed.
+
+  Lemma wp_ite: forall m l c e1 e2 (post: word -> Prop),
+      wp_expr m l c (fun b => exists v1 v2,
+        (if Z.eqb (word.unsigned b) 0 then wp_expr m l e2 (eq v2) else wp_expr m l e1 (eq v1)) /\
+        (post (if Z.eqb (word.unsigned b) 0 then v1 else v2))) ->
+      wp_expr m l (expr.ite c e1 e2) post.
+  Admitted.
+
+  Lemma wp_lazy_and: forall m l e1 e2 (post: word -> Prop),
+      wp_expr m l e1 (fun b1 => exists b,
+        (if Z.eqb (word.unsigned b1) 0 then b = word.of_Z 0 else wp_expr m l e2 (eq b)) /\
+        (post b)) ->
+      wp_expr m l (expr.lazy_and e1 e2) post.
+  Proof.
+    unfold expr.lazy_and. intros. eapply wp_ite. eapply weaken_wp_expr. 1: exact H. clear H.
+    cbv beta. intros. fwd. destruct_one_match; subst; do 2 eexists; split; try eassumption.
+    eapply wp_literal. reflexivity.
+  Qed.
+
+  Lemma wp_lazy_or: forall m l e1 e2 (post: word -> Prop),
+      wp_expr m l e1 (fun b1 => exists b,
+        (if Z.eqb (word.unsigned b1) 0 then wp_expr m l e2 (eq b) else b = word.of_Z 1) /\
+        (post b)) ->
+      wp_expr m l (expr.lazy_or e1 e2) post.
+  Proof.
+    unfold expr.lazy_or. intros. eapply wp_ite. eapply weaken_wp_expr. 1: exact H. clear H.
+    cbv beta. intros. fwd. destruct_one_match; subst; do 2 eexists; split; try eassumption.
+    eapply wp_literal. reflexivity.
   Qed.
 
   Lemma wp_load_anysize: forall m l sz addr (post: word -> Prop),
@@ -668,7 +706,7 @@ Ltac eval_expr_step :=
   | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load_old
   | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity |]
   | |- wp_expr _ _ (expr.literal _) _ => eapply wp_literal
-  | |- wp_expr _ _ (expr.op _ _ _) _ => eapply wp_op
+  | |- wp_expr _ _ (expr.op _ _ _) _ => eapply wp_op; cbv [interp_binop]
   end.
 
 Ltac start :=
@@ -887,6 +925,12 @@ Infix "^" := (expr.op bopname.xor)
   (in custom live_expr at level 9, left associativity, only parsing).
 Infix "|" := (expr.op bopname.or)
   (in custom live_expr at level 10, left associativity, only parsing).
+Infix "&&" := expr.lazy_and
+  (in custom live_expr at level 11, left associativity, only parsing).
+Infix "||" := expr.lazy_or
+  (in custom live_expr at level 12, left associativity, only parsing).
+Notation "c ? e1 : e2" := (expr.ite c e1 e2)
+  (in custom live_expr at level 13, right associativity, only parsing).
 
 Notation "load1( a )" := (expr.load access_size.one a)
   (in custom live_expr at level 0, a custom live_expr at level 100, only parsing).
@@ -1277,6 +1321,37 @@ Definition sort3: {f: list string * list string * cmd &
           * R
         }>
   )}.
+      start. destruct x as [M ?].
+
+.**/  uintptr_t w1 = load(a+4);                                                 /**.
+
+  match goal with
+  | H: seps _ ?m |- seps _ ?m =>
+    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m H)
+  end.
+  cancel_seps.
+  repeat ecancel_step_by_implication.
+(*
+  refine (impl1_done _ _ _).
+
+.**/  uintptr_t w0 = load(a);                                                   /**.
+.**/  uintptr_t w1 = load(a+4);                                                 /**.
+.**/  uintptr_t w2 = load(a+8);                                                 /**.
+.**/  if (w1 < w0 && w1 < w2) {                                                 /**.
+.**/    store(a, w1);                                                           /**.
+.**/    w1 = w0;                                                                /**.
+.**/  } else if (w2 < w0 && w2 < w1) {                                          /**.
+.**/    store(a, w2);                                                           /**.
+.**/    w2 = w0;                                                                /**.
+.**/  }                                                                         /**.
+.**/  if (w2 < w1) {                                                            /**.
+.**/    store(a+4, w2);                                                         /**.
+.**/    store(a+8, w1);                                                         /**.
+.**/  } else {                                                                  /**.
+.**/    store(a+4, w1);                                                         /**.
+.**/    store(a+8, w2);                                                         /**.
+.**/  }                                                                         /**.
+*)
 Abort.
 
 (* TODO: write down postcondition only at end *)
@@ -1296,7 +1371,6 @@ Definition swap_locals: {f: list string * list string * cmd &
 /**.
   intuition congruence.
 Defined.
-
 
 (* TODO: write down postcondition only at end *)
 Definition swap: {f: list string * list string * cmd &
