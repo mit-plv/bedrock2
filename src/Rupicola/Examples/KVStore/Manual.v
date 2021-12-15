@@ -54,23 +54,14 @@ Section examples.
     (* like put, returns a boolean indicating whether the put was an
          overwrite, and stores the old value in v if the boolean is true *)
     Definition put_sum : func :=
-      let m := "m" in
-      let k1 := "k1" in
-      let k2 := "k2" in
-      let k3 := "k3" in
-      let v := "v" in (* pre-allocated memory for a value *)
-      let v1 := "v1" in
-      let v2 := "v2" in
-      let err := "err" in
-      let ret := "ret" in
       ("get_add_put",
-       ([m; k1; k2; k3; v], [ret],
+      (["m"; "k1"; "k2"; "k3"; "v"(*pre-allocated memory for a value*)], ["ret"],
         bedrock_func_body:(
           unpack! err, v1 = $get (m, k1) ;
             require !err ;
             unpack! err, v2 = $get (m, k2) ;
             require !err ;
-            $(cmd.call nil add [v1:expr; v2:expr; v:expr]);
+            $(cmd.call nil add ["v1":expr; "v2":expr; "v":expr]);
             unpack! ret = $put (m, k3, v)
       ))).
 
@@ -194,14 +185,8 @@ Section examples.
       end.
 
     Definition swap : func :=
-      let m := "m" in
-      let k1 := "k1" in
-      let k2 := "k2" in
-      let v1 := "v1" in
-      let v2 := "v2" in
-      let err := "err" in
       ("swap",
-       ([m; k1; k2], [],
+       (["m"; "k1"; "k2"], [],
         bedrock_func_body:(
           unpack! err, v1 = $get (m, k1) ;
             require !err ;

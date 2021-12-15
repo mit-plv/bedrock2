@@ -189,14 +189,8 @@ Section KVSwap.
 
   (*
   Definition swap : func :=
-    let m := "m" in
-    let k1 := "k1" in
-    let k2 := "k2" in
-    let v1 := "v1" in
-    let v2 := "v2" in
-    let err := "err" in
     ("swap",
-     ([m; k1; k2], [],
+     (["m"; "k1"; "k2"], [],
       bedrock_func_body:(
         unpack! err, v1 = get (m, k1) ;
           require !err ;
