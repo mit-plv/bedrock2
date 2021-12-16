@@ -1,6 +1,6 @@
 default_target: all
 
-.PHONY: clean force all noex ex install
+.PHONY: clean force all noex ex install test
 
 # absolute paths so that emacs compile mode knows where to find error
 # use cygpath -m because Coq on Windows cannot handle cygwin paths
@@ -10,6 +10,7 @@ EXDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/bedrock2Examples
 VS_NOEX:=$(shell find $(SRCDIR) -type f -name '*.v')
 VS_EX:=$(shell find $(EXDIR) -type f -name '*.v' -and -not -name LiveVerif.v)
 
+CC ?= cc
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
@@ -38,7 +39,8 @@ ex: Makefile.coq.ex $(VS_EX) noex
 	rm -f .coqdeps.d
 	$(MAKE) -f Makefile.coq.ex
 
-all: noex ex special/BytedumpTest.out
+all: noex ex test
+test: special/BytedumpTest.out typecheckExprToCString # typecheckExprToCString-32 typecheckExprToCString-64
 
 COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2 $(COQMF_ARGS)
 
@@ -50,10 +52,10 @@ Makefile.coq.ex: force _CoqProject
 	@echo "Generating Makefile.coq.ex"
 	@$(COQ_MAKEFILE) $(VS_EX) -o Makefile.coq.ex
 
-special/BytedumpTest.out: special/BytedumpTest.v special/BytedumpTest.golden.bin noex
-	coqc -q $(ALLDEPFLAGS) $< > special/BytedumpTest.out.tmp0
-	head -c $$(($$(wc -c < special/BytedumpTest.out.tmp0 | xargs) - 1)) special/BytedumpTest.out.tmp0 > special/BytedumpTest.out.tmp
-	rm special/BytedumpTest.out.tmp0
+BYTEDUMP = COQFLAGS="$(ALLDEPFLAGS)" ../etc/bytedump.sh
+
+special/BytedumpTest.out: special/BytedumpTest.golden.bin noex
+	$(BYTEDUMP) bedrock2.Bytedump.allBytes > special/BytedumpTest.out.tmp
 	hexdump < /dev/null && \
 		hexdump -C special/BytedumpTest.golden.bin > special/BytedumpTest.golden.hex && \
 		hexdump -C special/BytedumpTest.out.tmp > special/BytedumpTest.out.hex && \
@@ -61,6 +63,15 @@ special/BytedumpTest.out: special/BytedumpTest.v special/BytedumpTest.golden.bin
 		rm special/BytedumpTest.golden.hex special/BytedumpTest.out.hex || true
 	diff -u special/BytedumpTest.golden.bin special/BytedumpTest.out.tmp
 	mv special/BytedumpTest.out.tmp special/BytedumpTest.out
+
+special/TypecheckExprToCString.c: noex
+	$(BYTEDUMP) bedrock2.ToCStringExprTypecheckingTest.test > special/TypecheckExprToCString.c 
+typecheckExprToCString: special/TypecheckExprToCString.c
+	$(CC) -fsyntax-only special/TypecheckExprToCString.c
+typecheckExprToCString-64: special/TypecheckExprToCString.c
+	$(CC) -m64 -fsyntax-only special/TypecheckExprToCString.c
+typecheckExprToCString-32: special/TypecheckExprToCString.c
+	$(CC) -m32 -fsyntax-only special/TypecheckExprToCString.c
 
 force:
 

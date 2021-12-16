@@ -18,6 +18,7 @@ Makefile.coq.*
 
 /bedrock2/special/BytedumpTest.out
 /processor/integration/program.hex
+/bedrock2/special/TypecheckExprToCString.c
 
 end2end/admits.txt
 end2end/admits1perLine.txt

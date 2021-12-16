@@ -44,7 +44,7 @@ Definition c_bop e1 op e2 :=
   | add => e1++"+"++e2
   | sub => e1++"-"++e2
   | mul => e1++"*"++e2
-  | mulhuu => "sizeof(intptr_t) == 4 ? ((uint64_t)"++e1++"*"++e2++")>>32 : ((__uint128_t)"++e1++"*"++e2++")>>64"
+  | mulhuu => "(uintptr_t)(sizeof(intptr_t) == 4 ? ((uint64_t)"++e1++"*"++e2++")>>32 : ((__uint128_t)"++e1++"*"++e2++")>>64)"
   | divu => e1++"/"++e2
   | remu => e1++"%"++e2
   | and => e1++"&"++e2
@@ -52,10 +52,10 @@ Definition c_bop e1 op e2 :=
   | xor => e1++"^"++e2
   | sru => e1++">>"++e2
   | slu => e1++"<<"++e2
-  | srs => "(intptr_t)"++e1++">>"++e2
-  | lts => "(intptr_t)"++e1++"<"++"(intptr_t)"++e2
-  | ltu => e1++"<"++e2
-  | eq => e1++"=="++e2
+  | srs => "(uintptr_t)((intptr_t)"++e1++">>"++e2++")"
+  | lts => "(uintptr_t)((intptr_t)"++e1++"<"++"(intptr_t)"++e2++")"
+  | ltu => "(uintptr_t)("++e1++"<"++e2++")"
+  | eq => "(uintptr_t)("++e1++"=="++e2++")"
   end%string.
 
 Definition c_size (s : access_size) : string :=

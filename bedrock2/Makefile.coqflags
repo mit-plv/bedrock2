@@ -1,0 +1,6 @@
+.PHONY: all print_coqc
+-include Makefile.coq.ex.conf
+print_coqc:
+	@printf "%s %s\n" "$(COQMF_COQLIBS)" "$(COQMF_OTHERFLAGS)"
+Makefile.coq.ex.conf:
+	@make -f Makefile Makefile.coq.ex 1>&2
