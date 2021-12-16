@@ -354,19 +354,19 @@ Section WithParameters.
   End __.
 
   Lemma load_four_bytes_of_sep_at bs a R (m:mem) (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat) :
-    load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
+    load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof.
     eapply Scalars.load_four_bytes_of_sep_at; try eassumption. reflexivity.
   Qed.
 
   Lemma uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: (eq(bs$@a)*R) m /\ length bs = 4%nat) :
-    load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
+    load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply Scalars.uncurried_load_four_bytes_of_sep_at; try eassumption. reflexivity. Qed.
 
   Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: (eq(bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
-    load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
+    load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply Scalars.Z_uncurried_load_four_bytes_of_sep_at; try eassumption. reflexivity. Qed.
 
   (*

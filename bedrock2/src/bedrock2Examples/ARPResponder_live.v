@@ -56,12 +56,14 @@ Section WithParameters.
       Memory.load_Z sz m addr = Some value.
   Proof.
     intros.
-    cbv [load scalar littleendian load_Z] in *.
-    erewrite load_bytes_of_sep. 2: exact H0.
-    apply f_equal.
-    rewrite LittleEndian.combine_split.
-    apply Z.mod_small.
-    assumption.
+    assert (List.length (LittleEndianList.le_split (bytes_per(width:=32) sz) value) = bytes_per(width:=32) sz) as pf
+      by (rewrite LittleEndianList.length_le_split; trivial).
+    unfold load_Z.
+    unshelve erewrite load_bytes_of_sep; [|shelve|..]; destruct pf.
+    1:eapply tuple.of_list.
+    2:{ unfold truncated_scalar, littleendian, ptsto_bytes in *.
+       rewrite tuple.to_list_of_list in *; eauto. }
+    1:rewrite tuple.to_list_of_list, LittleEndianList.le_combine_split, Z.mod_small; trivial.
   Qed.
 
   Lemma load_of_sep_truncated_scalar: forall sz addr (value: Z) R m,
@@ -81,7 +83,7 @@ Section WithParameters.
   (* An n-byte unsigned little-endian number v at address a.
      Enforces that v fits into n bytes. *)
   Definition LEUnsigned(n: nat)(addr: word)(v: Z)(m: mem): Prop :=
-    exists bs: tuple byte n, ptsto_bytes n addr bs m /\ v = LittleEndian.combine n bs.
+    exists bs: tuple byte n, ptsto_bytes n addr bs m /\ v = LittleEndianList.le_combine (tuple.to_list bs).
 
   (* Enforces that v fits into (bytes_per sz) bytes.
      To be used as the one and only base-case separation logic assertion, because using
@@ -96,8 +98,8 @@ Section WithParameters.
   Proof.
     unfold value, Memory.load, Memory.load_Z, LEUnsigned. intros.
     assert (exists bs : tuple Init.Byte.byte (bytes_per sz),
-               sep (ptsto_bytes (bytes_per sz) addr bs) R m /\
-               word.unsigned v = LittleEndian.combine (bytes_per (width:=32) sz) bs) as A. {
+               sep (ptsto_bytes (bytes_per(width:=32) sz) addr bs) R m /\
+               word.unsigned v = LittleEndianList.le_combine (tuple.to_list bs)) as A. {
       unfold sep in *.
       destruct H as (mp & mq & A & B & C).
       destruct B as (bs & B & E).
@@ -105,7 +107,8 @@ Section WithParameters.
     }
     clear H. destruct A as (bs & A & E).
     erewrite load_bytes_of_sep by eassumption.
-    rewrite <- E.
+    eapply f_equal.
+    setoid_rewrite <- E.
     rewrite word.of_Z_unsigned.
     reflexivity.
   Qed.
@@ -162,14 +165,14 @@ Section WithParameters.
 
   (* ** Packet Formats *)
 
-  Definition EtherTypeARP := tuple.of_list [Byte.x08; Byte.x06].
-  Definition EtherTypeIPv4 := tuple.of_list [Byte.x08; Byte.x00].
+  Definition EtherTypeARP := [Byte.x08; Byte.x06].
+  Definition EtherTypeIPv4 := [Byte.x08; Byte.x00].
 
   Definition ETHERTYPE_IPV4_LE: Z :=
-    Eval compute in (LittleEndian.combine 2 EtherTypeIPv4).
+    Eval compute in (LittleEndianList.le_combine EtherTypeIPv4).
 
   Definition ETHERTYPE_ARP_LE: Z :=
-    Eval compute in (LittleEndian.combine 2 EtherTypeARP).
+    Eval compute in (LittleEndianList.le_combine EtherTypeARP).
 
   Definition MAC := tuple byte 6.
 
@@ -263,14 +266,14 @@ Section WithParameters.
   (* high-level protocol definition (does not mention lists of bytes) *)
 
   Definition needsARPReply(req: EthernetPacket ARPPacket): Prop :=
-    req.(etherType) = EtherTypeARP /\
+    req.(etherType) = tuple.of_list EtherTypeARP /\
     req.(payload).(oper) = ARPOperationRequest /\
     req.(payload).(tpa) = cfg.(myIPv4). (* <-- we only reply to requests asking for our own MAC *)
 
   Definition ARPReply(req: EthernetPacket ARPPacket): EthernetPacket ARPPacket :=
     {| dstMAC := req.(payload).(sha);
        srcMAC := cfg.(myMAC);
-       etherType := EtherTypeARP;
+       etherType := tuple.of_list EtherTypeARP;
        payload := {|
          htype := HTYPE;
          ptype := PTYPE;
@@ -975,7 +978,7 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
         symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
       }
       list_eq_cancel_step. {
-        instantiate (1 := EtherTypeARP).
+        instantiate (1 := tuple.of_list EtherTypeARP).
         assumption.
       }
   Abort. (*

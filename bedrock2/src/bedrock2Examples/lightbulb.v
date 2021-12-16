@@ -539,12 +539,13 @@ Section WithParameters.
           { rewrite List.app_assoc; eauto. }
           eexists; split.
           { eapply List.Forall2_app; eauto.  }
+          rewrite HList.tuple.to_list_of_list.
           destruct H29; [left|right]; repeat (straightline || split || eauto using TracePredicate.any_app_more).
           eapply TracePredicate.concat_app; eauto.
-          unshelve erewrite (_ : LittleEndian.combine _ _ = word.unsigned x10); rewrite ?word.of_Z_unsigned; try solve [intuition idtac].
-          { cbn[HList.tuple.of_list].
+          unshelve erewrite (_ : LittleEndianList.le_combine _ = word.unsigned x10); rewrite ?word.of_Z_unsigned; try solve [intuition idtac].
+          { 
             etransitivity.
-            1: eapply (LittleEndian.combine_split 4).
+            1: eapply (LittleEndianList.le_combine_split 4).
             eapply Properties.word.wrap_unsigned. } } }
 
       { split; eauto. eexists; split; eauto. split; eauto. exists nil; split; eauto.

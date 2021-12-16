@@ -2,7 +2,7 @@ Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
 Require Import coqutil.Decidable.
 Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
-Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndian coqutil.Word.Bitwidth.
+Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import bedrock2.MetricLogging.
 Require Export bedrock2.Memory.
 

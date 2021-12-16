@@ -6,7 +6,7 @@ Require Import coqutil.Decidable.
 Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList coqutil.Datatypes.List.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics coqutil.Datatypes.Option.
-Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndian.
+Require Import BinIntDef coqutil.Word.Interface coqutil.Word.LittleEndianList.
 Require Import bedrock2.Notations bedrock2.Syntax.
 Require Import coqutil.Byte.
 Require Import coqutil.Map.OfListWord.
@@ -141,12 +141,12 @@ Section Memory.
 
   Definition load_Z(sz: access_size)(m: mem)(a: word): option Z :=
     match load_bytes (bytes_per sz) m a with
-    | Some bs => Some (LittleEndian.combine _ bs)
+    | Some bs => Some (LittleEndianList.le_combine (tuple.to_list bs))
     | None => None
     end.
 
   Definition store_Z(sz: access_size)(m: mem)(a: word)(v: Z): option mem :=
-    store_bytes (bytes_per sz) m a (LittleEndian.split _ v).
+    store_bytes _ m a (tuple.of_list (LittleEndianList.le_split (bytes_per sz) v)).
 
   Definition load(sz: access_size)(m: mem)(a: word): option word :=
     match load_Z sz m a with

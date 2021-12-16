@@ -466,9 +466,9 @@ Section WithParameters.
       erewrite word.unsigned_of_Z in H11.
       exact H11. }
 
-    cbv [HList.tuple.of_list List.app].
+    cbv [List.app].
     repeat match goal with x := _ |- _ => subst x end.
-    cbv [LittleEndian.combine PrimitivePair.pair._1 PrimitivePair.pair._2].
+    cbv [LittleEndianList.le_combine].
     repeat rewrite ?word.unsigned_of_Z, word.unsigned_sru_nowrap by (rewrite word.unsigned_of_Z; exact eq_refl).
 
     try erewrite ?word.unsigned_of_Z.
@@ -754,7 +754,7 @@ Section WithParameters.
       change 255 with (Z.ones 8); rewrite Z.land_ones by blia.
       Z.div_mod_to_equations. blia. }
     repeat match goal with x := _ |- _ => subst x end.
-    cbv [LittleEndian.combine HList.tuple.of_list PrimitivePair.pair._1 PrimitivePair.pair._2].
+    cbv [LittleEndianList.le_combine].
 
     repeat rewrite ?Properties.word.unsigned_or_nowrap, <-?Z.lor_assoc by (rewrite ?word.unsigned_of_Z; exact eq_refl).
     change (Z.shiftl 0 8) with 0 in *; rewrite Z.lor_0_r.

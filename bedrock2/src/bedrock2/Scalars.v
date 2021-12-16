@@ -1,4 +1,4 @@
-Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Array coqutil.Word.LittleEndian.
+Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Array coqutil.Word.LittleEndianList.
 Require Import bedrock2.Memory.
 Require Import Coq.Lists.List Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface coqutil.Map.Interface. (* coercions word and rep *)
@@ -19,7 +19,7 @@ Section Scalars.
   Implicit Types (m : mem).
 
   Definition littleendian (n : nat) (addr : word) (value : Z) : mem -> Prop :=
-    ptsto_bytes n addr (LittleEndian.split n value).
+    ptsto_bytes _ addr (tuple.of_list (LittleEndianList.le_split n value)).
 
   Definition truncated_scalar sz addr (value:Z) : mem -> Prop :=
     littleendian (bytes_per (width:=width) sz) addr value.
@@ -43,19 +43,25 @@ Section Scalars.
     : Memory.load_Z sz m addr = Some (truncate_Z (bytes_per (width:=width) sz) value).
   Proof.
     cbv [truncate_Z load scalar littleendian load_Z] in *.
-    erewrite load_bytes_of_sep by exact Hsep; apply f_equal.
-    rewrite LittleEndian.combine_split.
+    unshelve erewrite (_ : bytes_per sz = _); shelve_unifiable; cycle 1.
+    1:erewrite load_bytes_of_sep by eassumption.
+    2:rewrite length_le_split; trivial.
+    rewrite tuple.to_list_of_list, LittleEndianList.le_combine_split.
     set (x := (Z.of_nat (bytes_per sz) * 8)%Z).
     assert ((0 <= x)%Z) by (subst x; destruct sz; blia).
     rewrite <- Z.land_ones by assumption.
-    reflexivity.
+    rewrite length_le_split; trivial.
   Qed.
 
   Lemma store_Z_of_sep sz addr (oldvalue value: Z) R m (post:_->Prop)
     (Hsep : sep (truncated_scalar sz addr oldvalue) R m)
     (Hpost : forall m, sep (truncated_scalar sz addr value) R m -> post m)
     : exists m1, Memory.store_Z sz m addr value = Some m1 /\ post m1.
-  Proof. eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost]. Qed.
+  Proof.
+    assert (length (le_split (bytes_per(width:=width) sz) oldvalue) = length (le_split (bytes_per(width:=width) sz) value)) as pf
+      by (rewrite 2LittleEndianList.length_le_split; trivial).
+    unshelve eapply store_bytes_of_sep; [..|eapply Hpost]; destruct pf; [|eassumption].
+  Qed.
 
   Lemma load_of_sep sz addr (value: word) R m
     (Hsep : sep (truncated_word sz addr value) R m)
@@ -78,10 +84,8 @@ Section Scalars.
     (Hsep : sep (scalar8 addr value) R m)
     : Memory.load Syntax.access_size.one m addr = Some (word.of_Z (byte.unsigned value)).
   Proof.
-    cbv [load load_Z load_bytes bytes_per footprint tuple.unfoldn map.getmany_of_tuple tuple.option_all tuple.map].
-    erewrite get_sep by exact Hsep; repeat f_equal.
-    cbv [LittleEndian.combine PrimitivePair.pair._1].
-    eapply Z.lor_0_r.
+    cbv [load load_Z load_bytes bytes_per footprint tuple.unfoldn map.getmany_of_tuple tuple.option_all tuple.map tuple.to_list].
+    erewrite get_sep, le_combine_1 by exact Hsep; repeat f_equal.
   Qed.
 
   Lemma load_two_of_sep addr value R m
@@ -145,7 +149,7 @@ Section Scalars.
     : exists m1, Memory.store Syntax.access_size.one m addr value = Some m1 /\ post m1.
   Proof.
     eapply (store_bytes_of_sep _ 1 (PrimitivePair.pair.mk _ tt)); cbn; [ecancel_assumption|].
-    cbv [LittleEndian.split].
+    cbv [LittleEndianList.le_split PrimitivePair.pair._1 tuple.of_list].
     intros; eapply Hpost; ecancel_assumption.
   Qed.
 
@@ -177,50 +181,49 @@ Section Scalars.
     (Hsep : sep (scalar addr oldvalue) R m)
     (Hpost : forall m, sep (scalar addr value) R m -> post m)
     : exists m1, Memory.store Syntax.access_size.word m addr value = Some m1 /\ post m1.
-  Proof. eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost]. Qed.
+  Proof.
+    let sz := Syntax.access_size.word in
+    assert (length (le_split (bytes_per(width:=width) sz) (word.unsigned oldvalue)) = length (le_split (bytes_per(width:=width) sz) (word.unsigned value))) as pf
+      by (rewrite 2LittleEndianList.length_le_split; trivial).
+    unshelve eapply store_bytes_of_sep; [..|eapply Hpost]; destruct pf; [|eassumption].
+  Qed.
 
   Context (width_lower_bound: 32 <= width).
 
   Lemma scalar16_of_bytes a l (H : List.length l = 2%nat) :
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
-                   (scalar16 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
+                   (scalar16 a (word.of_Z (LittleEndianList.le_combine l))).
   Proof.
     do 2 (destruct l as [|?x l]; [discriminate|]). destruct l; [|discriminate].
     cbv [scalar16 truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
     eapply Morphisms.eq_subrelation; [exact _|].
     f_equal.
     rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
-    { erewrite LittleEndian.split_combine; exact eq_refl. }
-    erewrite <-(LittleEndian.split_combine _ (HList.tuple.of_list (x :: x0 :: nil)%list)).
-    erewrite LittleEndian.combine_split.
-    cbn -[tuple.of_list Z.pow].
-    eapply shrink_upper_bound.
-    - eapply Z.mod_pos_bound; reflexivity.
-    - eapply Z.pow_le_mono_r; blia.
+    { erewrite tuple.to_list_of_list. setoid_rewrite (split_le_combine (x::x0::nil)). trivial. }
+    epose proof (le_combine_bound (x::x0::nil)); cbn -[Z.pow] in *.
+    eapply shrink_upper_bound; eauto.
+    eapply Z.pow_le_mono_r; blia.
   Qed.
 
   (*essentially duplicates of the previous lemma...*)
   Lemma scalar32_of_bytes a l (H : List.length l = 4%nat) :
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
-                   (scalar32 a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
+                   (scalar32 a (word.of_Z (LittleEndianList.le_combine l))).
   Proof.
     do 4 (destruct l as [|?x l]; [discriminate|]). destruct l; [|discriminate].
     cbv [scalar32 truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
     eapply Morphisms.eq_subrelation; [exact _|].
     f_equal.
     rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
-    { erewrite LittleEndian.split_combine; exact eq_refl. }
-    erewrite <-(LittleEndian.split_combine _ (HList.tuple.of_list (x :: x0 :: x1 :: x2 :: nil)%list)).
-    erewrite LittleEndian.combine_split.
-    cbn -[tuple.of_list Z.pow].
-    eapply shrink_upper_bound.
-    - eapply Z.mod_pos_bound; reflexivity.
-    - eapply Z.pow_le_mono_r; blia.
+    { erewrite tuple.to_list_of_list. setoid_rewrite (split_le_combine (x::x0::x1::x2::nil)). trivial. }
+    epose proof (le_combine_bound (x::x0::x1::x2::nil)); cbn -[Z.pow] in *.
+    eapply shrink_upper_bound; eauto.
+    eapply Z.pow_le_mono_r; blia.
   Qed.
 
   Lemma scalar_of_bytes a l (H : width = 8 * Z.of_nat (length l)) :
     Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
-                   (scalar a (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list l)))).
+                   (scalar a (word.of_Z (LittleEndianList.le_combine l))).
   Proof.
     cbv [scalar truncated_word truncated_scalar littleendian ptsto_bytes]. subst width.
     replace (bytes_per Syntax.access_size.word) with (length l). 2: {
@@ -228,9 +231,8 @@ Section Scalars.
       Z.div_mod_to_equations. blia.
     }
     rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
-    { erewrite LittleEndian.split_combine.
-      rewrite tuple.to_list_of_list. reflexivity. }
-    apply LittleEndian.combine_bound.
+    2: apply LittleEndianList.le_combine_bound.
+    rewrite tuple.to_list_of_list, split_le_combine; reflexivity.
   Qed.
 
   Local Infix "$+" := map.putmany (at level 70).
@@ -239,7 +241,7 @@ Section Scalars.
   Local Open Scope sep_scope.
   Import Syntax.
   Lemma load_four_bytes_of_sep_at bs a R m (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat):
-    load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
+    load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof.
     seprewrite_in (symmetry! (array1_iff_eq_of_list_word_at(map:=mem))) Hsep.
     { rewrite Hl. etransitivity. 2:eapply Z.pow_le_mono_r; try eassumption. all:blia. }
@@ -251,25 +253,19 @@ Section Scalars.
     rewrite word.unsigned_of_Z.
     rewrite Z.land_ones by blia.
     cbv [word.wrap]. simpl (Z.of_nat _ * _)%Z.
-    rewrite (Z.mod_small (LittleEndian.combine (length bs) (tuple.of_list bs)) (2 ^ width)). 2: {
-      eapply shrink_upper_bound.
-      - eapply LittleEndian.combine_bound.
-      - eapply Z.pow_le_mono_r; blia.
-    }
-    apply Z.mod_small.
-    eapply shrink_upper_bound.
-    - eapply LittleEndian.combine_bound.
-    - rewrite Hl. reflexivity.
+    epose proof le_combine_bound bs as Hll; rewrite Hl in Hll; cbn -[Z.pow] in Hll.
+    repeat rewrite Z.mod_small; eauto.
+    1,2: eapply shrink_upper_bound, Z.pow_le_mono_r; eauto; try blia.
   Qed.
 
   Lemma uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: (eq(bs$@a)*R) m /\ length bs = 4%nat) :
-    load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
+    load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply load_four_bytes_of_sep_at; eapply H. Qed.
 
   Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: (eq(bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
-    load access_size.four m a = Some (word.of_Z (LittleEndian.combine _ (HList.tuple.of_list bs))).
+    load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply load_four_bytes_of_sep_at; try eapply H; blia. Qed.
 
   (*
@@ -293,10 +289,9 @@ Section Scalars.
     do 2 seprewrite_in (array_append (truncated_word sz) size) Hsep.
     seprewrite_in (array_cons (truncated_word sz) size) Hsep.
     seprewrite_in (array_nil (truncated_word sz) size) Hsep.
-    rewrite firstn_length, min_l, <- H in Hsep by blia.
-    eapply store_bytes_of_sep.
-    { unfold truncated_word, truncated_scalar, littleendian in Hsep.
-      ecancel_assumption. }
+    rewrite !firstn_length_le in Hsep by Lia.lia.
+    subst addr'.
+    eapply store_of_sep; try ecancel_assumption.
     intros.
     apply Hpost.
     unfold upd, upds.
@@ -304,9 +299,7 @@ Section Scalars.
     do 2 seprewrite (array_append (truncated_word sz) size).
     seprewrite (array_cons (truncated_word sz) size).
     seprewrite (array_nil (truncated_word sz) size).
-    rewrite firstn_length, min_l, <- H by blia.
-    cbn[length Nat.add] in *.
-    unfold truncated_word, truncated_scalar, littleendian.
+    rewrite !firstn_length_le by Lia.lia; cbn [length Nat.add] in *.
     ecancel_assumption.
   Qed.
 

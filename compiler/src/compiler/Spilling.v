@@ -1326,7 +1326,7 @@ Section Spilling.
         Memory.anybytes a ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
       end.
       erewrite List.flat_map_const_length. 2: {
-        intros w. rewrite HList.tuple.length_to_list. reflexivity.
+        intros w. rewrite LittleEndianList.length_le_split; trivial.
       }
       blia. }
     { eassumption. }
@@ -1585,7 +1585,7 @@ Section Spilling.
           Memory.anybytes a ?LEN2 mStack' => replace LEN2 with LEN1; [exact H|]
         end.
         erewrite List.flat_map_const_length. 2: {
-          intros w. rewrite HList.tuple.length_to_list. reflexivity.
+          intros w. rewrite LittleEndianList.length_le_split; trivial.
         }
         simpl. blia. }
       { eassumption. }

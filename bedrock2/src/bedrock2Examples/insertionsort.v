@@ -210,8 +210,9 @@ Section WithParameters.
     unfold scalar32 at 1 3 in H.
     unfold truncated_word, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes in H.
     cbn in H.
-    eapply (ptsto_nonaliasing addr (PrimitivePair.pair._1 (LittleEndian.split 4 (word.unsigned h2)))
-                              (PrimitivePair.pair._1 (LittleEndian.split 4 (word.unsigned h1))) m).
+    rewrite !HList.tuple.to_list_of_list in H.
+    eapply (ptsto_nonaliasing addr (List.hd Byte.x00 (LittleEndianList.le_split 4 (word.unsigned h2))) (List.hd Byte.x00 (LittleEndianList.le_split 4 (word.unsigned h1))) m).
+    unfold LittleEndianList.le_split, List.hd, array in *.
     ecancel_assumption.
   Qed.
 

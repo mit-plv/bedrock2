@@ -330,7 +330,7 @@ Section MMIO1.
       change (@Bind _ _) with (@free.bind MetricMinimalMMIO.action result) in *.
       unfold free.bind at 1.
 
-      rewrite LittleEndian.combine_split.
+      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split.
       rewrite Z.mod_small by eapply EncodeBound.encode_range.
       rewrite DecodeEncode.decode_encode; cycle 1. {
         unfold valid_instructions in *. cbn in *. eauto.
@@ -465,7 +465,7 @@ Section MMIO1.
       change (@Bind _ _) with (@free.bind MetricMinimalMMIO.action result) in *.
       unfold free.bind at 1.
 
-      rewrite LittleEndian.combine_split.
+      rewrite <-LittleEndian.split_eq, LittleEndian.combine_split.
       rewrite Z.mod_small by (eapply EncodeBound.encode_range).
       rewrite DecodeEncode.decode_encode; cycle 1. {
         unfold valid_instructions in *. cbn in *. eauto.
