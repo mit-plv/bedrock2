@@ -64,10 +64,12 @@ Section WithParameters.
   (* Print Assumptions link_swap_swap_swap_swap. *)
   (* SortedList.* SortedListString.* *)
 
+  (*
   From bedrock2 Require Import ToCString Bytedump.
   Local Open Scope bytedump_scope.
   Goal True.
-    let c_code := eval cbv in (byte_list_of_string (c_module (swap_swap::swap::nil))) in
+    let c_code := eval cbv in (String.list_byte_of_string (c_module (swap_swap::swap::nil))) in
     idtac c_code.
   Abort.
+  *)
 End WithParameters.
