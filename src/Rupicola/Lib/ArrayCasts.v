@@ -131,25 +131,15 @@ Section with_parameters.
     Qed.
   End Properties.
 
-  Lemma littleendian_split_dep n: forall z,
-    HList.tuple.to_list (LittleEndian.split n z) = le_split n z.
-  Proof.
-    induction n; simpl; intros; rewrite <- ?IHn; reflexivity.
-  Qed.
-
   Lemma bytes_of_truncated_scalar sz ptr a:
     Lift1Prop.iff1
       (truncated_scalar sz ptr a)
       (array (word := word) ptsto (word.of_Z 1) ptr
-             (HList.tuple.to_list (LittleEndian.split (Memory.bytes_per (width:=width) sz) a))).
-  Proof. reflexivity. Qed.
-
-  Lemma bytes_of_truncated_scalar' sz ptr a:
-    Lift1Prop.iff1
-      (truncated_scalar sz ptr a)
-      (array (word := word) ptsto (word.of_Z 1) ptr
              (le_split (Memory.bytes_per (width:=width) sz) a)).
-  Proof. rewrite bytes_of_truncated_scalar, littleendian_split_dep; reflexivity. Qed.
+  Proof.
+    unfold truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
+    rewrite HList.tuple.to_list_of_list; reflexivity.
+  Qed.
 
   Lemma bytes_of_truncated_scalars : forall sz zs ptr,
     let n := Memory.bytes_per (width := width) sz in
@@ -164,7 +154,7 @@ Section with_parameters.
       rewrite <- IHzs.
       rewrite word.unsigned_of_Z_1, Z.mul_1_l.
       rewrite length_le_split.
-      rewrite bytes_of_truncated_scalar'.
+      rewrite bytes_of_truncated_scalar.
       reflexivity.
   Qed.
 
@@ -226,7 +216,7 @@ Section with_parameters.
       (truncated_scalar (word := word) sz ptr z).
   Proof.
     unfold truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
-    rewrite !littleendian_split_dep, le_split_wrap; reflexivity.
+    rewrite !le_split_wrap; reflexivity.
   Qed.
 
   Lemma truncated_words_of_truncated_scalars : forall sz zs ptr,

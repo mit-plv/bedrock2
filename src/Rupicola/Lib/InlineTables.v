@@ -80,7 +80,7 @@ Section __.
       rewrite nth_error_nth' with (d := cast default)
         by (rewrite map_length; lia).
       rewrite map_nth.
-      setoid_rewrite LittleEndian.combine_1_of_list.
+      setoid_rewrite LittleEndianList.le_combine_1.
       reflexivity.
     Qed.
   End Any.
@@ -121,7 +121,7 @@ Section __.
   Qed.
 
   Definition word_to_bytes (z : word) : list byte:=
-    HList.tuple.to_list (LittleEndian.split (Z.to_nat (width / 8)) (word.unsigned z)).
+    LittleEndianList.le_split (Z.to_nat (width / 8)) (word.unsigned z).
 
   (* Turns a table of 32-bit words stored in Zs into
      a table of bytes *)
@@ -225,10 +225,7 @@ Section __.
 
   Lemma length_word_to_bytes a :
     List.length (word_to_bytes a) = Z.to_nat (width / 8).
-  Proof.
-    unfold word_to_bytes.
-    rewrite HList.tuple.length_to_list; reflexivity.
-  Qed.
+  Proof. eapply LittleEndianList.length_le_split. Qed.
 
   Lemma length_to_byte_table t :
     List.length (to_byte_table t) = (Z.to_nat (width / 8) * List.length t)%nat.
@@ -274,17 +271,10 @@ Section __.
          apply length_of_to_bytes.
       }
       eapply load_word_of_sep.
-      assert ((LittleEndian.combine
-                (List.length (word_to_bytes a))
-                (HList.tuple.of_list (word_to_bytes a))) = word.unsigned a).
+      assert ((LittleEndianList.le_combine (word_to_bytes a)) = word.unsigned a).
       {
         unfold word_to_bytes.
-        rewrite (HList_tuple_of_list_to_list _ _(HList.tuple.length_to_list _)).
-        destruct (HList.tuple.length_to_list _).
-        cbn.
-        rewrite LittleEndian.combine_split.
-        rewrite HList.tuple.length_to_list.
-        rewrite Z2Nat.id.
+        rewrite LittleEndianList.le_combine_split, Z2Nat.id.
         {
           replace (width/8 *8) with width.
           rewrite word.wrap_unsigned; auto.
@@ -321,8 +311,7 @@ Section __.
       end.
       {
         unfold word_to_bytes.
-        rewrite HList.tuple.length_to_list.
-        rewrite Z2Nat.id; try lia.
+        rewrite LittleEndianList.length_le_split, Z2Nat.id; try lia.
         destruct width_cases as [H' | H']; rewrite H';
           intro cmp; inversion cmp.
       }
