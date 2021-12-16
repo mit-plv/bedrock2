@@ -11,6 +11,7 @@ Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
 Require Import bedrock2.ZnWords.
+Require Import bedrock2.groundcbv.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic bedrock2.Loops.
 Require Import coqutil.Word.Bitwidth32.
@@ -82,11 +83,9 @@ Module expr.
   Definition lazy_or(e1 e2: expr.expr) := ite e1 (expr.literal 1) e2.
 End expr.
 
-Section WithParams.
-  Import bedrock2.Syntax.
-  Context {word: word.word 32} {mem: map.map word byte} {locals: map.map string word}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok: map.ok locals}.
-  Context {ext_spec: ExtSpec}.
+Section SepLog.
+  Context {word: word.word 32} {mem: map.map word byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Lemma load_of_sep_cps: forall sz addr value R m (post: word -> Prop),
       sep (addr |-> truncated_word sz value) R m /\ post (truncate_word sz value) ->
@@ -131,6 +130,79 @@ Section WithParams.
   Proof.
     unfold impl1, seps. intros. apply sep_emp_r. auto.
   Qed.
+
+  (* Intended usage:
+     P:  input without evars
+     P1: input with some evars
+     P2: evar (output) *)
+  Definition split_sepclause(P P1: mem -> Prop)(P2: list (mem -> Prop)): Prop :=
+    iff1 P (seps (P1 :: P2)).
+
+  Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
+  Let nth n xs := SeparationLogic.hd (emp(map:=mem) True) (SeparationLogic.skipn n xs).
+  Let remove_nth n (xs : list (mem -> Prop)) :=
+    (SeparationLogic.firstn n xs ++ SeparationLogic.tl (SeparationLogic.skipn n xs)).
+
+  Lemma impl1_cancel_part_of_ith_left_with_first_right: forall i L F R1 RRest,
+      split_sepclause (nth i L) R1 F ->
+      impl1 (seps (remove_nth i L ++ F)) (seps RRest) ->
+      impl1 (seps L) (seps (R1 :: RRest)).
+  Proof.
+    intros.
+    unfold nth, remove_nth, split_sepclause in *.
+    rewrite <-(seps_nth_to_head i L).
+    rewrite H.
+    rewrite <-seps'_iff1_seps.
+    cbn [seps'].
+    rewrite seps_app in H0.
+    rewrite <-(seps'_iff1_seps (R1 :: RRest)).
+    cbn [seps'].
+    cancel.
+    ecancel_step_by_implication.
+    cbn [seps].
+    rewrite !seps'_iff1_seps.
+    etransitivity. 2: eassumption.
+    ecancel.
+  Qed.
+
+  Lemma access_word_array: forall a a' vs,
+      let i := Z.to_nat (word.unsigned (word.sub a' a) / 4) in
+      (i < List.length vs)%nat ->
+      a' = word.add a (word.of_Z (4 * Z.of_nat i)) ->
+      split_sepclause (a |-> word_array vs)
+        (a' |-> scalar (List.nth i vs (word.of_Z 0)))
+        [a |-> word_array (List.firstn i vs);
+         word.add a (word.of_Z (4 * Z.of_nat (S i))) |-> word_array (List.skipn (S i) vs)].
+  Proof.
+    unfold split_sepclause. intros.
+    rewrite <- (List.firstn_nth_skipn _ _ vs (word.of_Z 0)) at 1 by eassumption.
+    unfold word_array, scalar, truncated_word, Scalars.scalar, at_addr, seps.
+    cbn [List.app].
+    etransitivity.
+    1: eapply array_append.
+    cbn [array].
+    change (bytes_per_word _) with 4.
+    cancel.
+    cancel_seps_at_indices 0%nat 0%nat. {
+      f_equal. ZnWords.
+    }
+    cancel_seps_at_indices 0%nat 0%nat. {
+      f_equal. ZnWords.
+    }
+    reflexivity.
+  Qed.
+End SepLog.
+
+Existing Class split_sepclause.
+
+#[export] Hint Extern 1 (split_sepclause (_ |-> word_array _) (_ |-> scalar _) _) =>
+  rapply access_word_array; ZnWords : typeclass_instances.
+
+Section WithParams.
+  Import bedrock2.Syntax.
+  Context {word: word.word 32} {mem: map.map word byte} {locals: map.map string word}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok: map.ok locals}.
+  Context {ext_spec: ExtSpec}.
 
   (* non-unfoldable wrappers, their definition might be swapped with something else later,
      as long as it satisfies the lemmas that follow below *)
@@ -607,9 +679,21 @@ Section NotationTests.
 
 End NotationTests.
 
+Ltac impl_ecancel_step_with_splitting :=
+  lazymatch goal with
+  | |- Lift1Prop.impl1 (seps ?L) (seps (?R1 :: ?RRest)) =>
+    let iLi := index_and_element_of L in (* <-- multi-success! *)
+    let i := lazymatch iLi with (?i, _) => i end in
+    let Li := lazymatch iLi with (_, ?Li) => Li end in
+    refine (impl1_cancel_part_of_ith_left_with_first_right i _ _ R1 RRest _ _);
+    cbn [hd app firstn tl skipn];
+    [typeclasses eauto|]
+  end.
+
 Ltac ecancel_with_remaining_emp_Prop :=
   cancel_seps;
   repeat ecancel_step_by_implication;
+  repeat impl_ecancel_step_with_splitting;
   refine (impl1_done _ _ _).
 
 Ltac ecancel_assumption_with_remaining_emp_Prop :=
@@ -618,6 +702,14 @@ Ltac ecancel_assumption_with_remaining_emp_Prop :=
     refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m H)
   end;
   ecancel_with_remaining_emp_Prop.
+
+Ltac simpli_step :=
+  match goal with
+  | H: context[word.unsigned ?x] |- _ => progress (ring_simplify x in H)
+  | H: context[word.unsigned (word.of_Z _)] |- _ =>
+    rewrite word.unsigned_of_Z_nowrap in H by Lia.lia
+  | _ => progress groundcbv_in_all
+  end.
 
 (* intro-and-position *)
 Ltac intro_p n :=
@@ -754,7 +846,8 @@ Inductive snippet :=
 Ltac assign is_decl name val :=
   eapply (wp_set _ name val);
   repeat eval_expr_step;
-  [.. (* maybe some unsolved side conditions *) | try put_into_current_locals is_decl].
+  [.. (* maybe some unsolved side conditions *)
+  | try (put_into_current_locals is_decl; repeat simpli_step) ].
 
 (* TODO change order of definitions so that this hook is not needed any more *)
 Ltac transfer_sep_order := fail "not yet implemented".
@@ -992,10 +1085,36 @@ Ltac iff1_syntactic_reflexivity :=
   end;
   exact (iff1_refl _).
 
+(* COQBUG (performance) https://github.com/coq/coq/issues/10743#issuecomment-530673037
+   Probably fixed on master *)
+Ltac cond_hyp_factor :=
+  repeat match goal with
+         | H : ?x -> _, H' : ?x -> _ |- _  =>
+           pose proof (fun u : x => conj (H u) (H' u)); clear H H'
+         end.
+
+(* probably not needed any more in recent versions *)
+Ltac adhoc_lia_performance_fixes :=
+  repeat match goal with
+         | H: ?P -> _ |- _ => assert_succeeds (assert (~ P) by (clear; Lia.lia)); clear H
+         end;
+  repeat match goal with
+         | H: ?P -> _ |- _ => let A := fresh in (assert P as A by (clear; Lia.lia));
+                              specialize (H A); clear A
+         end;
+  cond_hyp_factor;
+  subst.
+
 Load LiveVerif.
 Import SepLogPredsWithAddrLast.
 Import MySepNotations.
 (* to re-override Notations loaded trough `Load LiveVerif/bedrock2.Map.SeparationLogic` *)
+
+(* Note: If you re-import ZnWords after this, you'll get the old better_lia again *)
+Ltac better_lia ::=
+  Z.div_mod_to_equations;
+  adhoc_lia_performance_fixes;
+  Lia.lia.
 
 Local Set Default Goal Selector "1".
 
@@ -1322,22 +1441,11 @@ Definition sort3: {f: list string * list string * cmd &
         }>
   )}.
       start. destruct x as [M ?].
-
-.**/  uintptr_t w1 = load(a+4);                                                 /**.
-
-  match goal with
-  | H: seps _ ?m |- seps _ ?m =>
-    refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m H)
-  end.
-  cancel_seps.
-  repeat ecancel_step_by_implication.
-(*
-  refine (impl1_done _ _ _).
-
 .**/  uintptr_t w0 = load(a);                                                   /**.
 .**/  uintptr_t w1 = load(a+4);                                                 /**.
 .**/  uintptr_t w2 = load(a+8);                                                 /**.
 .**/  if (w1 < w0 && w1 < w2) {                                                 /**.
+(*
 .**/    store(a, w1);                                                           /**.
 .**/    w1 = w0;                                                                /**.
 .**/  } else if (w2 < w0 && w2 < w1) {                                          /**.
