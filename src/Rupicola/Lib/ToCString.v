@@ -45,7 +45,7 @@ Definition c_bop e1 op e2 :=
   | add => e1++"+"++e2
   | sub => e1++"-"++e2
   | mul => e1++"*"++e2
-  | mulhuu => "sizeof(intptr_t) == 4 ? ((uint64_t)"++e1++"*"++e2++")>>32 : ((__uint128_t)"++e1++"*"++e2++")>>64"
+  | mulhuu => "(uintptr_t)(sizeof(intptr_t) == 4 ? ((uint64_t)"++e1++"*"++e2++")>>32 : ((__uint128_t)"++e1++"*"++e2++")>>64)"
   | divu => e1++"/"++e2
   | remu => e1++"%"++e2
   | and => e1++"&"++e2
@@ -53,10 +53,10 @@ Definition c_bop e1 op e2 :=
   | xor => e1++"^"++e2
   | sru => e1++">>"++e2
   | slu => e1++"<<"++e2
-  | srs => "(intptr_t)"++e1++">>"++e2
-  | lts => "(intptr_t)"++e1++"<"++"(intptr_t)"++e2
-  | ltu => e1++"<"++e2
-  | eq => e1++"=="++e2
+  | srs => "(uintptr_t)((intptr_t)"++e1++">>"++e2++")"
+  | lts => "(uintptr_t)((intptr_t)"++e1++"<"++"(intptr_t)"++e2++")"
+  | ltu => "(uintptr_t)("++e1++"<"++e2++")"
+  | eq => "(uintptr_t)("++e1++"=="++e2++")"
   end%string.
 
 Definition c_size (s : access_size) : string :=
@@ -110,8 +110,10 @@ Fixpoint c_cmd (indent : string) (c : cmd) : string :=
   | cmd.store s ea ev
     => indent ++ "_br2_store(" ++ c_address ea (c_expr ea) ++ ", " ++ c_expr ev ++ ", " ++ c_size s ++ ");" ++ LF
   | cmd.stackalloc x n body =>
-    indent ++ c_var x ++ " = alloca(" ++ c_lit n ++ "); // TODO untested" ++ LF ++
-    c_cmd indent body
+    let tmp := "_br2_stackalloc_"++x in (* might shadow if not fresh, likely type error... *)
+    indent ++ "{ uint8_t "++tmp++"["++c_lit n++"]; "++x++" = (uintptr_t)&"++tmp++";"++LF++
+    c_cmd indent body ++
+    indent ++ "}" ++ LF
   | cmd.set x ev =>
     indent ++ c_var x ++ " = " ++ c_expr ev ++ ";" ++ LF
   | cmd.unset x =>
