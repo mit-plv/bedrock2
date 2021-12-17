@@ -128,8 +128,10 @@ Notation "output! f args" :=  (interact nil f args) (in custom bedrock_cmd at le
 Notation "unpack! lhs = f args" :=  (call lhs f args) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs , f custom bedrock_ident, args custom bedrock_args ).
 Notation "( lhs ) = f args" :=  (call lhs f args) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs , f custom bedrock_ident, args custom bedrock_args ,
   format "'(' lhs ')'  =  f args").
-Notation "f args" :=  (call nil (ident_to_string! f) args) (in custom bedrock_cmd at level 0, f ident, args custom bedrock_args ,
-  format "f args").
+Notation "f args" :=  (call nil (ident_to_string! f) args) (in custom bedrock_cmd at level 0,
+  f ident, args custom bedrock_args, format "f args").
+Notation "$ f args" :=  (call nil f args) (in custom bedrock_cmd at level 0,
+  f constr at level 0, args custom bedrock_args, format "'$' f args").
 
 Declare Scope bedrock_tail.
 Delimit Scope bedrock_tail with bedrock_tail.
@@ -309,6 +311,8 @@ Module test.
       }
     }
   )).
+
+  epose bedrock_func_body:($"write" ($1, $"W", $1, $1, $1, $1)).
 
   epose bedrock_func_body:(
   stackalloc 64 as $"b";

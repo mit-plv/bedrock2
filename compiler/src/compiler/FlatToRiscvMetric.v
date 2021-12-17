@@ -158,6 +158,7 @@ Section Proofs.
       end.
       destruct P as (finalML & P1 & P2).
       simp.
+      destruct (eq_sym (LittleEndianList.length_le_split (Memory.bytes_per(width:=width) sz) (word.unsigned val))) in t0, E.
       subst_load_bytes_for_eq.
       run1det. run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.

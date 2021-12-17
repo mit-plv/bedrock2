@@ -84,7 +84,7 @@ Section ptstos.
   Lemma cast_word_array_to_bytes bs (addr : word) : iff1
     (array ptsto_word (word.of_Z bytes_per_word) addr bs)
     (array ptsto (word.of_Z 1) addr (flat_map (fun x =>
-       HList.tuple.to_list (LittleEndian.split (Z.to_nat bytes_per_word) (word.unsigned x)))
+       (LittleEndianList.le_split (Z.to_nat bytes_per_word) (word.unsigned x)))
           bs)).
   Proof.
     revert addr; induction bs; intros; [reflexivity|].
@@ -92,7 +92,8 @@ Section ptstos.
     etransitivity. 1:eapply Proper_sep_iff1; [reflexivity|]. 1:eapply IHbs.
     etransitivity. 2:symmetry; eapply bytearray_append.
     eapply Proper_sep_iff1.
-    { reflexivity. }
+    { unfold scalar, truncated_word, truncated_scalar, littleendian, ptsto_bytes.
+      rewrite HList.tuple.to_list_of_list. reflexivity. }
     assert (0 < bytes_per_word). { (* TODO: deduplicate *)
       unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
     }
@@ -100,7 +101,7 @@ Section ptstos.
     Morphisms.f_equiv.
     Morphisms.f_equiv.
     simpl.
-    rewrite HList.tuple.length_to_list.
+    rewrite LittleEndianList.length_le_split.
     rewrite Z2Nat.id; blia.
   Qed.
 
@@ -244,23 +245,22 @@ Section ptstos.
     2: rewrite List.length_firstn_inbounds; Lia.nia.
     cbv [ptsto_bytes.ptsto_bytes].
     Morphisms.f_equiv.
+    rewrite HList.tuple.to_list_of_list.
     setoid_rewrite word.unsigned_of_Z.
     setoid_rewrite Z.mod_small.
-    1: unshelve setoid_rewrite LittleEndian.split_combine.
-    1: {
-      eapply eq_rect; [exact (HList.tuple.of_list (List.firstn (Z.to_nat bytes_per_word) bytes))|].
-      abstract (rewrite List.length_firstn_inbounds; try Lia.nia; reflexivity). }
-    1:rewrite HList.tuple.to_list_eq_rect.
-    1:rewrite HList.tuple.to_list_of_list; trivial.
-    match goal with |- context[LittleEndian.combine _ ?xs] => generalize xs end.
+    1:unshelve erewrite (_:Memory.bytes_per Syntax.access_size.word = length _); shelve_unifiable; cycle 1.
+    1:setoid_rewrite LittleEndianList.split_le_combine.
+    1:reflexivity.
+    { rewrite List.length_firstn_inbounds; try Lia.nia. reflexivity. }
     intros.
-    pose proof (LittleEndian.combine_bound t).
+    pose proof (LittleEndianList.le_combine_bound (List.firstn (Z.to_nat bytes_per_word) bytes)).
     split; [blia|].
     destruct H0.
     eapply Z.lt_le_trans. 1: eassumption.
     eapply Z.pow_le_mono_r. 1: reflexivity.
-    simpl.
-    destruct width_cases as [E | E]; rewrite E; cbv; intuition discriminate.
+    rewrite List.length_firstn_inbounds; try Lia.nia.
+    unfold bytes_per_word;
+    destruct width_cases as [E | E]; rewrite E; cbv; inversion 1.
   Qed.
 
   Lemma ll_mem_to_hl_mem: forall mH mL (addr: word) bs R,

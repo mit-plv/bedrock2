@@ -200,9 +200,9 @@ H9 : (scalar a0 (word.add va vb)
 
     (* casting scalar to bytes for stack deallocation *)
     cbv [scalar truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in *.
-    set (HList.tuple.to_list
-               (LittleEndian.split (bytes_per access_size.word)
-               (word.unsigned (word.add va vb)))) as stackbytes in *.
+    rewrite !HList.tuple.to_list_of_list.
+    repeat match goal with H : _ |- _ => rewrite !HList.tuple.to_list_of_list in H end.
+    set ((LittleEndianList.le_split (bytes_per access_size.word) (word.unsigned (word.add va vb)))) as stackbytes in *.
     assert (Datatypes.length stackbytes = 4%nat) by exact eq_refl.
     repeat straightline; eauto.
   Qed.

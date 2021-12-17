@@ -450,12 +450,13 @@ Section Go.
     - eapply ptsto_instr_subset_to_isXAddr4.
       eapply shrink_footpr_subset. 1: eassumption. simpl. ecancel.
     - unfold Memory.loadWord.
-      eapply load_bytes_of_sep.
       unfold truncated_scalar, littleendian, Memory.bytes_per in A.
+      eapply load_bytes_of_sep with (n:=(length (LittleEndianList.le_split 4 (encode inst)))).
       (* TODO here it would be useful if seplog unfolded Memory.bytes_per for me,
          ie. did more than just syntactic unify *)
       ecancel_assumption.
-    - rewrite LittleEndian.combine_split.
+    - change 4%nat with (length (LittleEndianList.le_split 4 (encode inst))).
+      rewrite LittleEndian.combine_eq, HList.tuple.to_list_of_list, LittleEndianList.le_combine_split.
       assert (0 <= encode inst < 2 ^ width) as F. {
         pose proof (encode_range inst) as P.
         destruct width_cases as [E | E]; rewrite E; split. all: blia.

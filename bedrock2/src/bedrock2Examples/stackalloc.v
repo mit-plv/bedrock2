@@ -66,7 +66,7 @@ Section WithParameters.
     set (R := eq m).
     pose proof (eq_refl : R m) as Hm.
     repeat straightline.
-    assert (sep R (scalar32 a (Interface.word.of_Z (LittleEndian.combine _ (HList.tuple.of_list stack)))) m)
+    assert (sep R (scalar32 a (Interface.word.of_Z (LittleEndianList.le_combine stack))) m)
       by admit.
     repeat straightline.
   Abort.

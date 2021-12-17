@@ -844,6 +844,12 @@ Section LowerPipeline.
             rewrite word.of_Z_unsigned.
             solve_word_eq word_ok.
           }
+
+          Import Morphisms.
+          assert (Proper_flat_map : forall A B, Proper (pointwise_relation _ eq ==> eq ==> eq) (@flat_map A B)).
+          { clear; intros ? ? ? ? ? ? ? ?; subst; cbv [pointwise_relation] in *.
+            induction y0; cbn; congruence. }
+          setoid_rewrite LittleEndian.to_list_split.
           apply iff1ToEq, cast_word_array_to_bytes.
         }
         cbn [seps].

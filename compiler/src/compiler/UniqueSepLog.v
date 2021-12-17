@@ -112,6 +112,7 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.Simp.
+Require Import coqutil.Word.LittleEndian.
 Require Import bedrock2.Memory.
 Require Import bedrock2.Syntax.
 Require Import riscv.Spec.Decode.

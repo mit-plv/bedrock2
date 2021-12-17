@@ -536,16 +536,18 @@ Section FlatToRiscv1.
             valid_machine finalL).
   Proof using word_ok mem_ok PR BWM.
     intros.
-    eapply mcomp_sat_weaken; cycle 1.
+    eassert (_ = Memory.bytes_per(width:=width) Syntax.access_size.word) as pf; cycle 1.
+    1:eapply mcomp_sat_weaken; cycle 1.
     - eapply (run_compile_load Syntax.access_size.word); cycle -3; try eassumption.
+      instantiate (2:=ltac:(destruct pf)); destruct pf; eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
       etransitivity. 1: eassumption.
       unfold id.
-      f_equal.
-      rewrite LittleEndian.combine_split.
+      rewrite LittleEndian.combine_of_list, LittleEndianList.le_combine_split.
       replace (BinInt.Z.of_nat (Memory.bytes_per Syntax.access_size.word) * 8) with width.
       + rewrite word.wrap_unsigned. rewrite word.of_Z_unsigned. reflexivity.
       + clear -BW. destruct width_cases as [E | E]; rewrite E; reflexivity.
+    - eapply LittleEndianList.length_le_split.
   Qed.
 
   (* almost the same as run_compile_store, but not using tuples nor ptsto_bytes or
@@ -574,9 +576,16 @@ Section FlatToRiscv1.
            valid_machine finalL).
   Proof using word_ok mem_ok PR BWM.
     intros.
-    eapply mcomp_sat_weaken; cycle 1.
+    eassert (_ = Memory.bytes_per(width:=width) Syntax.access_size.word) as pf; cycle 1.
+    1:eapply mcomp_sat_weaken; cycle 1.
     - eapply (run_compile_store Syntax.access_size.word); cycle -3; try eassumption.
+      instantiate (2:=ltac:(destruct pf)); destruct pf; eassumption.
     - cbv beta. intros. simp. repeat split; try assumption.
+      unfold scalar, truncated_word, truncated_scalar, littleendian, ptsto_bytes in *.
+      rewrite HList.tuple.to_list_of_list.
+      rewrite LittleEndian.to_list_split in *.
+      eassumption.
+    - eapply LittleEndianList.length_le_split.
   Qed.
 
   Lemma one_step: forall initialL P,
@@ -688,11 +697,15 @@ Section FlatToRiscv1.
            (array ptsto (word.of_Z 1) addr
                   [nth 0 l Byte.x00; nth 1 l Byte.x00; nth 2 l Byte.x00; nth 3 l Byte.x00]).
   Proof using word_ok mem_ok.
-    intros. unfold compile4bytes, ptsto_instr, truncated_scalar, littleendian. simpl.
+    intros. unfold compile4bytes, ptsto_instr, truncated_scalar, littleendian, ptsto_bytes.
+    rewrite HList.tuple.to_list_of_list.
+    change 4%nat with (length [nth 0 l Byte.x00; nth 1 l Byte.x00; nth 2 l Byte.x00; nth 3 l Byte.x00]).
+    rewrite LittleEndian.combine_of_list.
+    cbn.
     unfold Encode.encode_Invalid.
-    rewrite bitSlice_all_nonneg. 2: cbv; discriminate. 2: apply (@LittleEndian.combine_bound 4).
-    rewrite LittleEndian.split_combine.
-    unfold ptsto_bytes.
+    rewrite bitSlice_all_nonneg. 2: cbv; discriminate. 2: apply LittleEndianList.le_combine_bound.
+    change 4%nat with (length [nth 0 l Byte.x00; nth 1 l Byte.x00; nth 2 l Byte.x00; nth 3 l Byte.x00]).
+    rewrite LittleEndianList.split_le_combine.
     simpl.
     wcancel.
     cbn [seps].
@@ -704,7 +717,7 @@ Section FlatToRiscv1.
     split. 2: assumption.
     right.
     eexists. split. 2: reflexivity.
-    apply (@LittleEndian.combine_bound 4).
+    apply LittleEndianList.le_combine_bound.
   Qed.
 
   Lemma program_compile_byte_list_array: forall instrs table addr,

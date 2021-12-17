@@ -1581,6 +1581,7 @@ Section Proofs.
       | H: _ = Some m' |- _ => move H at bottom; rename H into A
       end.
       unfold Platform.Memory.store_bytes, Memory.store_Z, Memory.store_bytes in A. fwd.
+      destruct (eq_sym (LittleEndianList.length_le_split (Memory.bytes_per(width:=width) sz) (word.unsigned val))) in t0, E.
       subst_load_bytes_for_eq.
       run1det. run1done.
       eapply preserve_subset_of_xAddrs. 1: assumption.
@@ -1693,7 +1694,7 @@ Section Proofs.
           end.
           rewrite @length_flat_map with (n := Z.to_nat bytes_per_word).
           - simpl_addrs. rewrite !Z2Nat.id by blia. rewrite <- BPW. rewrite <- Z_div_exact_2; blia.
-          - clear. intros. rewrite HList.tuple.length_to_list. reflexivity.
+          - clear. intros. eapply LittleEndianList.length_le_split.
         }
         { unfold map.split; split. 1: reflexivity. assumption. }
         { eassumption. }

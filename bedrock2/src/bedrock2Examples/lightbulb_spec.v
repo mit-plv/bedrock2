@@ -2,7 +2,7 @@ Require Import bedrock2.TracePredicate.
 Require Import Coq.ZArith.BinInt coqutil.Z.HexNotation.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Byte.
-Require coqutil.Word.LittleEndian.
+Require coqutil.Word.LittleEndianList.
 
 Section LightbulbSpec.
   Import BinInt TracePredicateNotations.
@@ -96,7 +96,7 @@ Section LightbulbSpec.
     spi_end) t /\
     byte.unsigned a1 = word.unsigned (word.sru a (word.of_Z 8)) /\
     byte.unsigned a0 = word.unsigned (word.and a (word.of_Z 255)) /\
-    word.unsigned v = LittleEndian.combine 4 (HList.tuple.of_list (cons b0 (cons b1 (cons b2 (cons b3 nil))))).
+    word.unsigned v = LittleEndianList.le_combine (cons b0 (cons b1 (cons b2 (cons b3 nil)))).
 
   Definition LAN9250_WRITE : byte := Byte.x02.
   Definition HW_CFG : Z := 0x074.
@@ -114,7 +114,7 @@ Section LightbulbSpec.
     spi_end) t /\
     byte.unsigned a1 = word.unsigned (word.sru a (word.of_Z 8)) /\
     byte.unsigned a0 = word.unsigned (word.and a (word.of_Z 255)) /\
-    word.unsigned v = LittleEndian.combine 4 (HList.tuple.of_list (cons b0 (cons b1 (cons b2 (cons b3 nil))))).
+    word.unsigned v = LittleEndianList.le_combine (cons b0 (cons b1 (cons b2 (cons b3 nil)))).
 
   (* NOTE: we could do this without rounding up to the nearest word, and this
   * might be necessary for other stacks than IP-TCP and IP-UDP *)
@@ -128,7 +128,7 @@ Section LightbulbSpec.
     match bs with
     | nil => eq nil
     | cons v0 (cons v1 (cons v2 (cons v3 bs))) =>
-      lan9250_fastread4 (word.of_Z 0) (word.of_Z (LittleEndian.combine 4 (HList.tuple.of_list (cons v0 (cons v1 (cons v2 (cons v3 nil))))))) +++
+      lan9250_fastread4 (word.of_Z 0) (word.of_Z (LittleEndianList.le_combine (cons v0 (cons v1 (cons v2 (cons v3 nil)))))) +++
       lan9250_readpacket bs
     | _ => constraint False (* TODO: padding? *)
     end.
