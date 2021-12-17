@@ -1597,15 +1597,10 @@ Section Scalar.
   Lemma split_bytes_per_len sz:
     forall x : word,
       Datatypes.length
-        (HList.tuple.to_list
-           (LittleEndian.split (Memory.bytes_per (width := width) sz)
-                               (word.unsigned x))) =
+         (LittleEndianList.le_split (Memory.bytes_per (width := width) sz)
+                               (word.unsigned x)) =
       Memory.bytes_per (width := width) sz.
-  Proof.
-    intros x.
-    rewrite HList.tuple.length_to_list.
-    reflexivity.
-  Qed.
+  Proof. intros x. eapply LittleEndianList.length_le_split. Qed.
 
   Context {mem: map.map word byte} {mem_ok : map.ok mem}.
 
@@ -1632,6 +1627,7 @@ Section Scalar.
       assert (array ptsto (word.of_Z 1) px bs m) by
         (subst bs; simple apply H).
     subst bs. erewrite <- bytes_per_width_bytes_per_word, <- split_bytes_per_len.
+    rewrite HList.tuple.to_list_of_list in H0.
     eapply array_1_to_anybytes; eauto.
   Qed.
 
@@ -2223,12 +2219,13 @@ Section Aliasing.
     littleendian, ptsto_bytes.ptsto_bytes in *.
     pose proof split_bytes_per_len sz a as Hlena.
     pose proof split_bytes_per_len sz b as Hlenb.
-    set (HList.tuple.to_list _) as la in Hmem, Hlena.
-    set (HList.tuple.to_list _) as lb in Hmem, Hlenb.
+    rewrite 2HList.tuple.to_list_of_list in Hmem.
+    set (le_split _ _) as la in Hmem, Hlena.
+    set (le_split _ _) as lb in Hmem, Hlenb.
     rewrite <- (firstn_skipn (Z.to_nat delta) la) in Hmem.
     seprewrite_in @array_append Hmem; try lia.
     assert (Z.to_nat delta <= Datatypes.length la)%nat
-      by (subst la; rewrite HList.tuple.length_to_list; lia).
+      by (subst la; rewrite LittleEndianList.length_le_split; lia).
     rewrite word.unsigned_of_Z_1, Z.mul_1_l, firstn_length_le, Z2Nat.id in Hmem by lia.
     destruct lb; cbn -[Z.of_nat] in Hlenb; [ lia | ].
     pose proof List.skipn_length (Z.to_nat delta) la as Hlena'.

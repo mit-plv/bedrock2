@@ -61,7 +61,7 @@ Section examples.
             require !err ;
             unpack! err, v2 = $get (m, k2) ;
             require !err ;
-            $(cmd.call nil add ["v1":expr; "v2":expr; "v":expr]);
+            $add(v1,v2,v);
             unpack! ret = $put (m, k3, v)
       ))).
 
