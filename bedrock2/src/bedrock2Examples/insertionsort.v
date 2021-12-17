@@ -706,11 +706,14 @@ Section WithParameters.
     rewrite List.app_nil_r in *. eauto.
   Time Qed. (* 4.208 secs *)
 
+  (*
   From bedrock2 Require Import ToCString Bytedump.
   Local Open Scope bytedump_scope.
   Goal True.
-    let c_code := eval cbv in (byte_list_of_string (c_module [insertionsort])) in
+    let c_code := eval cbv in (String.list_byte_of_string (c_module [insertionsort])) in
     idtac c_code.
+  Abort.
+  *)
 (* append this driver code for a little test:
 #include <stdio.h>
 
@@ -729,5 +732,4 @@ int main() {
   printlist(a, n);
 }
 *)
-  Abort.
 End WithParameters.

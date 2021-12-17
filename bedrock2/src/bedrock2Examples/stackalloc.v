@@ -87,10 +87,12 @@ Section WithParameters.
   Abort.
 
 
+  (*
   From bedrock2 Require Import ToCString Bytedump.
   Local Open Scope bytedump_scope.
   Goal True.
-    let c_code := eval cbv in (byte_list_of_string (c_module (stacknondet::nil))) in
+    let c_code := eval cbv in (String.list_byte_of_string (c_module (stacknondet::nil))) in
     idtac c_code.
   Abort.
+   *)
 End WithParameters.
