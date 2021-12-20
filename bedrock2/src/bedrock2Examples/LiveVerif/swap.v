@@ -84,6 +84,10 @@ Module expr.
   Definition lazy_or(e1 e2: expr.expr) := ite e1 (expr.literal 1) e2.
 End expr.
 
+Module bopname.
+  Axiom eager_and: bopname.
+End bopname.
+
 Section SepLog.
   Context {word: word.word 32} {mem: map.map word byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
@@ -371,125 +375,12 @@ Section WithParams.
       reflexivity. }
   Qed.
 
-  Definition wp_bool(m: mem)(l: locals)(e: expr)(PTrue PFalse: Prop): Prop :=
-    wp_expr m l e (fun b => (word.unsigned b <> 0 -> PTrue) /\
-                            (word.unsigned b =  0 -> PFalse)).
-
-  Lemma wp_bool_lazy_and: forall m l e1 e2 (PTrue PFalse: Prop),
-      wp_bool m l e1 (wp_bool m l e2 PTrue PFalse) PFalse -> (* PFalse invoked twice!! *)
-      wp_bool m l (expr.lazy_and e1 e2) PTrue PFalse.
-  Proof.
-    unfold wp_bool. intros.
-    eapply wp_lazy_and.
-    eapply weaken_wp_expr. 1: exact H. clear H.
-    cbv beta. intros. fwd. destruct_one_match.
-    - exists (word.of_Z 0).
-      rewrite word.unsigned_of_Z_nowrap by (vm_compute; intuition discriminate). ssplit.
-      + reflexivity.
-      + intuition discriminate.
-      + auto.
-    - specialize (Hp0 E). eapply wp_expr_to_dexpr in Hp0. fwd. unfold dexpr in *.
-      exists v0. ssplit.
-      + constructor. assumption.
-      + assumption.
-      + assumption.
-  Qed.
-
   Definition interp_bool_binop(bop: bopname)(a b: word): Prop :=
     match bop with
     | bopname.lts => word.signed a < word.signed b
     | bopname.ltu => word.unsigned a < word.unsigned b
     | bopname.eq => a = b
     | _ => False
-    end.
-
-  Definition bool_binop_true(bop: bopname)(a b: word): Prop :=
-    match bop with
-    | bopname.lts => word.signed a < word.signed b
-    | bopname.ltu => word.unsigned a < word.unsigned b
-    | bopname.eq => a = b
-    | _ => False
-    end.
-
-  Definition bool_binop_false(bop: bopname)(a b: word): Prop :=
-    match bop with
-    | bopname.lts => word.signed b <= word.signed a
-    | bopname.ltu => word.unsigned b <= word.unsigned a
-    | bopname.eq => a <> b
-    | _ => False
-    end.
-
-  Definition wp_bool_binop(bop: bopname)(a b: word)(PTrue PFalse: Prop): Prop :=
-    match bop with
-    | bopname.lts => (word.signed a < word.signed b -> PTrue) /\
-                     (word.signed b <= word.signed a -> PFalse)
-    | bopname.ltu => (word.unsigned a < word.unsigned b -> PTrue) /\
-                     (word.unsigned b <= word.unsigned a -> PFalse)
-    | bopname.eq => (a = b -> PTrue) /\ (a <> b -> PFalse)
-    | _ => (word.unsigned (interp_binop bop a b) <> 0 -> PTrue) /\
-           (word.unsigned (interp_binop bop a b) =  0 -> PFalse)
-    end.
-
-  (* note: the two props fed to this statement are not inputs (continuations),
-     but outputs, and will be evars *)
-  Inductive interp_bool_bop: bopname -> word -> word -> Prop -> Prop -> Prop :=
-  | interp_bool_lts: forall a b,
-      interp_bool_bop bopname.lts a b
-                      (word.signed a < word.signed b) (word.signed b <= word.signed a)
-  | interp_bool_ltu: forall a b,
-      interp_bool_bop bopname.ltu a b
-                      (word.unsigned a < word.unsigned b) (word.unsigned b <= word.unsigned a)
-  | interp_bool_eq: forall a b,
-      interp_bool_bop bopname.eq a b (a = b) (a <> b).
-
-  (* note: the two props fed to this lemma are not inputs (continuations),
-     but outputs, and will intially be evars, and then be determined by applying
-     a constructor of interp_bool_bop (but v1 and v2 is not in their scope!!) *)
-  Lemma wp_bool_op': forall m l op e1 e2 PTrue PFalse,
-      wp_expr m l e1 (fun v1 =>
-        wp_expr m l e2 (fun v2 =>
-          interp_bool_bop op v1 v2 PTrue PFalse)) ->
-      wp_bool m l (expr.op op e1 e2) PTrue PFalse.
-  Proof.
-    unfold wp_bool. intros. eapply wp_op. eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
-    intros. eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
-    intros. inversion H; subst; simpl; split; intros; fwd; auto.
-  Qed.
-
-  Lemma wp_bool_op: forall m l op e1 e2 (PTrue PFalse: Prop),
-      wp_expr m l e1 (fun v1 =>
-        wp_expr m l e2 (fun v2 =>
-          wp_bool_binop op v1 v2 PTrue PFalse)) ->
-      wp_bool m l (expr.op op e1 e2) PTrue PFalse.
-  Proof.
-    unfold wp_bool. intros. eapply wp_op. eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
-    intros. eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
-    intros. fwd. unfold interp_binop, wp_bool_binop in *.
-    destruct op; try destruct_one_match.
-    all: rewrite ?word.unsigned_of_Z_nowrap by (vm_compute; intuition discriminate).
-    all: split; intro C; try congruence; fwd; auto.
-  Qed.
-
-  Definition interp_bool_op(bop: bopname)(a b: word): Prop * Prop :=
-    match bop with
-    | bopname.lts => (word.signed a < word.signed b,
-                      word.signed b <= word.signed a)
-    | bopname.ltu => (word.unsigned a < word.unsigned b,
-                      word.unsigned b <= word.unsigned a)
-    | bopname.eq => (a = b, a <> b)
-    | _ => (word.unsigned (interp_binop bop a b) <> 0,
-            word.unsigned (interp_binop bop a b) =  0)
-    end.
-
-  Definition interp_wp_bool_op(bop: bopname)(a b: word)(post: Prop -> Prop -> Prop): Prop :=
-    match bop with
-    | bopname.lts => post (word.signed a < word.signed b)
-                          (word.signed b <= word.signed a)
-    | bopname.ltu => post (word.unsigned a < word.unsigned b)
-                          (word.unsigned b <= word.unsigned a)
-    | bopname.eq => post (a = b) (a <> b)
-    | _ => post (word.unsigned (interp_binop bop a b) <> 0)
-                (word.unsigned (interp_binop bop a b) = 0)
     end.
 
   Definition interp_bool_prop(bop: bopname)(a b: word): Prop :=
@@ -499,29 +390,6 @@ Section WithParams.
     | bopname.eq => a = b
     | _ => word.unsigned (interp_binop bop a b) <> 0
     end.
-
-  Definition wp_expr_bool(m: mem)(l: locals)(e: expr)(post: Prop -> Prop -> Prop): Prop :=
-    wp_expr m l e (fun b => post (word.unsigned b <> 0) (word.unsigned b = 0)).
-
-  Lemma wp_bool_op'': forall m l op e1 e2 (post: Prop -> Prop -> Prop),
-      wp_expr m l e1 (fun v1 =>
-        wp_expr m l e2 (fun v2 =>
-          interp_wp_bool_op op v1 v2 post)) -> (* v1 and v2 are not in post's scope! *)
-      wp_expr_bool m l (expr.op op e1 e2) post.
-  Proof.
-    unfold wp_expr_bool. intros. eapply wp_op.
-    eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
-    intros. eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
-    intros. unfold interp_wp_bool_op, interp_binop in *.
-    destruct op; auto; destruct_one_match; fwd.
-    all: rewrite ?word.unsigned_of_Z_nowrap by (vm_compute; intuition discriminate).
-    all: try (match goal with
-             | HP: ?post ?A ?B |- ?post ?A' ?B' =>
-               replace A' with A; [replace B' with B|]; [exact HP|..]
-         end;
-      apply PropExtensionality.propositional_extensionality; split; intros;
-      (Lia.lia || congruence)).
-  Qed.
 
   Definition wp_expr_bool_prop(m: mem)(l: locals)(e: expr)(post: Prop -> Prop): Prop :=
     wp_expr m l e (fun b => post (word.unsigned b <> 0)).
@@ -546,22 +414,34 @@ Section WithParams.
       (Lia.lia || congruence)).
   Qed.
 
-  Lemma wp_bool_lazy_and''': forall m l e1 e2 (post: Prop -> Prop),
-      wp_expr_bool_prop m l e1 (fun B1 => exists B,
-        (B1 -> exists P, wp_expr_bool_prop m l e2 P /\ P B) /\
-        (~B1 -> B) /\
-        (post B)) ->
-      wp_expr_bool_prop m l (expr.lazy_and e1 e2) post.
-  Abort.
+  Axiom interp_eager_and: forall (x y: word),
+      interp_binop bopname.eager_and x y =
+        if andb (negb (word.eqb x (word.of_Z 0)))
+                (negb (word.eqb y (word.of_Z 0)))
+        then word.of_Z 1 else word.of_Z 0.
 
-  (*
-  Lemma wp_bool_lazy_and''': forall m l e1 e2 (post: Prop -> Prop),
-      wp_expr_bool_prop m l e1 (fun B1 => exists B,
-        (B1 -> wp_expr_bool_prop m l e2 (fun B2 => B2 -> B)) /\
-        (~B1 -> ...) /\
-        (post B) ->
-      wp_expr_bool_prop m l (expr.lazy_and e1 e2) post.
-  *)
+  Lemma wp_bool_eager_and''': forall m l e1 e2 (post: Prop -> Prop),
+      wp_expr_bool_prop m l e1 (fun P1 =>
+        wp_expr_bool_prop m l e2 (fun P2 =>
+          post (P1 /\ P2))) ->
+      wp_expr_bool_prop m l (expr.op bopname.eager_and e1 e2) post.
+  Proof.
+    unfold wp_expr_bool_prop. intros. eapply wp_op.
+    eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
+    intros. eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
+    intros. rewrite interp_eager_and.
+    destr (word.eqb v (word.of_Z 0)); destr (word.eqb v0 (word.of_Z 0)); simpl;
+      rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1 in *.
+    all: try (match goal with
+             | HP: ?post ?A |- ?post ?A' =>
+               replace A' with A; [exact HP|..]
+         end).
+    all: apply PropExtensionality.propositional_extensionality; split; intros;
+      (Lia.lia || congruence || auto).
+    split; intro C.
+    - apply E. ZnWords.
+    - apply E0. ZnWords.
+  Qed.
 
   Inductive wp_cmd(call: (string -> trace -> mem -> list word ->
                           (trace -> mem -> list word -> Prop) -> Prop))
@@ -669,17 +549,17 @@ Section WithParams.
     intros * [? | ?]; fwd; eapply B; eauto.
   Qed.
 
-  Lemma wp_if_bool: forall call c l vars vals thn els rest t m BTrue BFalse Q1 Q2 post,
+  Lemma wp_if_bool: forall call c l vars vals thn els rest t m Q1 Q2 post,
       l = reconstruct vars vals ->
-      wp_bool m l c BTrue BFalse ->
-      (BTrue  ->  wp_cmd call thn t m l (fun t' m' l' =>
-                    exists vals', l' = reconstruct vars vals' /\ Q1 t' m' l')) ->
-      (BFalse -> wp_cmd call els t m l (fun t' m' l' =>
-                    exists vals', l' = reconstruct vars vals' /\ Q2 t' m' l')) ->
-      (forall t' m' vals', let l' := reconstruct vars vals' in
-                           BTrue  /\ Q1 t' m' l' \/
-                           BFalse /\ Q2 t' m' l' ->
-                           wp_cmd call rest t' m' l' post) ->
+      wp_expr_bool_prop m l c (fun P =>
+        ((P  -> wp_cmd call thn t m l (fun t' m' l' =>
+                  exists vals', l' = reconstruct vars vals' /\ Q1 t' m' l')) /\
+         (~P -> wp_cmd call els t m l (fun t' m' l' =>
+                  exists vals', l' = reconstruct vars vals' /\ Q2 t' m' l'))) /\
+        (forall t' m' vals', let l' := reconstruct vars vals' in
+                             P  /\ Q1 t' m' l' \/
+                             ~P /\ Q2 t' m' l' ->
+                             wp_cmd call rest t' m' l' post)) ->
       wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Admitted.
 
@@ -1227,6 +1107,8 @@ Infix "|" := (expr.op bopname.or)
   (in custom live_expr at level 10, left associativity, only parsing).
 Infix "&&" := expr.lazy_and
   (in custom live_expr at level 11, left associativity, only parsing).
+Infix "&&&" := (expr.op bopname.eager_and)
+  (in custom live_expr at level 11, left associativity, only parsing).
 Infix "||" := expr.lazy_or
   (in custom live_expr at level 12, left associativity, only parsing).
 Notation "c ? e1 : e2" := (expr.ite c e1 e2)
@@ -1650,7 +1532,38 @@ Definition sort3: {f: list string * list string * cmd &
       start. destruct x as [M ?].
 .**/  uintptr_t w0 = load(a);                                                   /**.
 .**/  uintptr_t w1 = load(a+4);                                                 /**.
+(*
+Ltac assign is_decl name val ::=
+  eapply (wp_set _ name val).
+(*
+  repeat eval_expr_step;
+  [.. (* maybe some unsolved side conditions *)
+  | try (put_into_current_locals is_decl; repeat simpli_step) ].
+*)
+
 .**/  uintptr_t w2 = load(a+8);                                                 /**.
+eval_expr_step.
+eval_expr_step.
+eval_expr_step.
+eval_expr_step.
+eval_expr_step.
+*)
+
+.**/  uintptr_t w2 = load(a+8);                                                 /**.
+
+(* adding more rewrite hints is costly:
+Ltac fwd_rewrites ::= fail.
+.**/  if (w1 < w0) {                                                 /**.
+Ltac fwd_rewrites ::= fwd_rewrites_autorewrite.
+(* Time rewrite @word.unsigned_ltu in * by typeclasses eauto. (* fast *) *)
+(*  Time autorewrite with fwd_rewrites in *. (* 0.372 secs *)*)
+
+Hint Rewrite @word.unsigned_ltu using typeclasses eauto: foo_test.
+Time autorewrite with foo_test in *.
+Print Rewrite HintDb foo_test.
+Print Rewrite HintDb fwd_rewrites.
+*)
+
 Ltac cond c ::=
   lazymatch goal with
   | cl := current_locals_marker (reconstruct ?vars ?vals) |- wp_cmd ?call _ ?t ?m ?l _ =>
@@ -1658,22 +1571,36 @@ Ltac cond c ::=
     rapply (wp_if_bool call c l vars vals); [cbv [cl current_locals_marker]; reflexivity | ..]
   end.
 
-.**/  if (w1 < w0 && w1 < w2) {                                                 /**.
+.**/  if (w1 < w0 &&& w1 < w2) {                                                 /**.
 
-{
-  eapply wp_bool_lazy_and.
-  eapply wp_bool_op.
+  eapply wp_bool_eager_and'''.
+  eapply wp_bool_op'''.
   eval_expr_step.
   eval_expr_step.
-  unfold wp_bool_binop. split.
-  (* cps doesn't help because binder that holds result of wp_expr is not in the scope of
-     PTrue/PFalse/merge conditions *)
+  eapply wp_bool_op'''.
+  eval_expr_step.
+  eval_expr_step.
+  cbv [interp_bool_prop].
+
+  lazymatch goal with
+  | |- (_ /\ _) /\ _ =>
+      split;
+      [ cbv [interp_binop]; split; intros; fwd;
+        [ lazymatch goal with
+          | b := ?l : list block_kind |- _ =>
+              clear b; pose (cons ThenBranch l) as b; move b at top
+          end
+        | lazymatch goal with
+          | b := ?l : list block_kind |- _ =>
+              clear b; pose (cons ElseBranch l) as b; move b at top
+          end ]
+      | intros; fwd ]
+  end.
+
+  Time fwd_rewrites. (* does nothing and still takes 0.332 secs, even in 8.15-rc1,
+    https://github.com/coq/coq/pull/14253 does not seem to help *)
 
 (*
-Time rewrite @word.unsigned_ltu by typeclasses eauto.
-(* hopefully faster in 8.15 thanks to https://github.com/coq/coq/pull/14253 *)
-
-fwd_step.
 .**/    store(a, w1);                                                           /**.
 .**/    w1 = w0;                                                                /**.
 .**/  } else if (w2 < w0 && w2 < w1) {                                          /**.
