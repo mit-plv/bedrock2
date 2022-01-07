@@ -2,9 +2,10 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
 Require Import coqutil.Datatypes.PropSet.
+Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.rewr coqutil.Tactics.rdelta.
 Require Import Coq.Program.Tactics.
-Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Tactics.fwd.
 Require Import bedrock2.Syntax bedrock2.Semantics.
@@ -19,6 +20,22 @@ Require Import Coq.Strings.String.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2Examples.LiveVerif.ident_to_string.
 Import List.ListNotations. Local Open Scope list_scope.
+
+Ltac eqapply A :=
+  let t := type of A in
+  let g := lazymatch goal with |- ?G => G end in
+  replace g with t; [exact A|f_equal..].
+
+Ltac head t :=
+  lazymatch t with
+  | ?f _ => head f
+  | _ => t
+  end.
+
+Ltac eqassumption :=
+  multimatch goal with
+  | H: ?T |- ?U => let hT := head T in let hU := head U in constr_eq hT hU; eqapply H
+  end.
 
 Require Import Coq.Program.Tactics.
 Require Import coqutil.Tactics.autoforward.
@@ -375,6 +392,24 @@ Section WithParams.
       reflexivity. }
   Qed.
 
+  Definition interp_expr_total_body(rec: expr -> word)(m: mem)(l: locals)(e: expr): word :=
+    match e with
+    | expr.literal v => word.of_Z v
+    | expr.var x => Option.force (map.get l x)
+    | expr.load sz a => Option.force (Memory.load sz m (rec a))
+    | expr.inlinetable sz bs i =>
+        Option.force (Memory.load sz (map.of_list_word bs) (rec i))
+    | expr.op op a b => interp_binop op (rec a) (rec b)
+    end.
+
+  Definition interp_expr_total(m: mem)(l: locals): expr -> word :=
+    fix rec(e: expr) := interp_expr_total_body rec m l e.
+
+  Axiom interp_expr_total_ite: forall m l e1 e2 e3,
+      interp_expr_total m l (expr.ite e1 e2 e3) =
+      interp_expr_total m l
+        (if word.unsigned (interp_expr_total m l e1) =? 0 then e3 else e2).
+
   Definition interp_bool_binop(bop: bopname)(a b: word): Prop :=
     match bop with
     | bopname.lts => word.signed a < word.signed b
@@ -391,6 +426,84 @@ Section WithParams.
     | _ => word.unsigned (interp_binop bop a b) <> 0
     end.
 
+  Lemma dexpr_ite: forall m l e1 e2 e3 (b v: word),
+      dexpr m l e1 b ->
+      dexpr m l (if word.unsigned b =? 0 then e3 else e2) v ->
+      dexpr m l (expr.ite e1 e2 e3) v.
+  Admitted.
+
+  Inductive dexpr_bool_prop(m: mem)(l: locals)(e: expr): Prop -> Prop :=
+    mk_dexpr_bool_prop: forall b: word,
+      dexpr m l e b ->
+      dexpr_bool_prop m l e (word.unsigned b <> 0).
+
+  Lemma dexpr_lazy_and: forall m l e1 e2 (P1 P2: Prop),
+      dexpr_bool_prop m l e1 P1 ->
+      (P1 -> dexpr_bool_prop m l e2 P2) ->
+      dexpr_bool_prop m l (expr.lazy_and e1 e2) (P1 /\ P2).
+  Proof.
+    unfold expr.lazy_and. intros.
+    inversion H; subst. destr (word.unsigned b =? 0).
+    - replace (word.unsigned b <> 0 /\ P2) with (word.unsigned b <> 0).
+      2: solve [apply PropExtensionality.propositional_extensionality; intuition idtac].
+      eapply mk_dexpr_bool_prop.
+      eapply dexpr_ite. 1: eassumption.
+      destruct_one_match. 2: exfalso; congruence.
+      unfold dexpr, WeakestPrecondition.expr, expr_body, literal, dlet.dlet.
+      apply word.unsigned_inj. rewrite E. symmetry.
+      apply word.unsigned_of_Z_0.
+    - specialize (H0 E). inversion H0; subst.
+      eassert (dexpr_bool_prop m l (expr.ite e1 e2 (expr.literal 0)) _) as A. {
+        eapply mk_dexpr_bool_prop.
+        eapply dexpr_ite. 1: eassumption.
+        destruct_one_match. 1: exfalso; congruence. eassumption.
+      }
+      replace (word.unsigned b <> 0 /\ word.unsigned b0 <> 0) with (word.unsigned b0 <> 0).
+      2: solve [apply PropExtensionality.propositional_extensionality; intuition idtac].
+      exact A.
+  Qed.
+
+  Lemma dexpr_lazy_or: forall m l e1 e2 (P1 P2: Prop),
+      dexpr_bool_prop m l e1 P1 ->
+      (~P1 -> dexpr_bool_prop m l e2 P2) ->
+      dexpr_bool_prop m l (expr.lazy_and e1 e2) (P1 \/ P2).
+  Admitted.
+
+  Lemma dexpr_var: forall m l x (v: word),
+      map.get l x = Some v ->
+      dexpr m l (expr.var x) v.
+  Proof.
+    intros. cbn. unfold WeakestPrecondition.get. eauto.
+  Qed.
+
+  Lemma dexpr_binop: forall m l op e1 e2 (v1 v2: word),
+      dexpr m l e1 v1 ->
+      dexpr m l e2 v2 ->
+      dexpr m l (expr.op op e1 e2) (interp_binop op v1 v2).
+  Proof.
+    unfold dexpr. intros. cbn.
+    eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
+    intros v E. subst v.
+    eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
+    intros v E. subst v. reflexivity.
+  Qed.
+
+  Lemma dexpr_bool_op_prop: forall m l op e1 e2 (v1 v2: word),
+      dexpr m l e1 v1 ->
+      dexpr m l e2 v2 ->
+      dexpr_bool_prop m l (expr.op op e1 e2) (interp_bool_prop op v1 v2).
+  Proof.
+    intros.
+    eassert (dexpr_bool_prop m l (expr.op op e1 e2) _) as A. {
+      eapply mk_dexpr_bool_prop.
+      eapply dexpr_binop; eassumption.
+    }
+    eqassumption.
+    apply PropExtensionality.propositional_extensionality; split; destruct op; cbn;
+      intros; auto; fwd; auto; destruct_one_match;
+      rewrite ?word.unsigned_of_Z_1, ?word.unsigned_of_Z_0; try congruence; try Lia.lia.
+  Qed.
+
   Definition wp_expr_bool_prop(m: mem)(l: locals)(e: expr)(post: Prop -> Prop): Prop :=
     wp_expr m l e (fun b => post (word.unsigned b <> 0)).
 
@@ -406,12 +519,9 @@ Section WithParams.
     intros. unfold interp_bool_prop, interp_binop in *.
     destruct op; auto; destruct_one_match; fwd.
     all: rewrite ?word.unsigned_of_Z_nowrap by (vm_compute; intuition discriminate).
-    all: try (match goal with
-             | HP: ?post ?A |- ?post ?A' =>
-               replace A' with A; [exact HP|..]
-         end;
-      apply PropExtensionality.propositional_extensionality; split; intros;
-      (Lia.lia || congruence)).
+    all: try (eqassumption;
+              apply PropExtensionality.propositional_extensionality; split; intros;
+              (Lia.lia || congruence)).
   Qed.
 
   Axiom interp_eager_and: forall (x y: word),
@@ -432,10 +542,7 @@ Section WithParams.
     intros. rewrite interp_eager_and.
     destr (word.eqb v (word.of_Z 0)); destr (word.eqb v0 (word.of_Z 0)); simpl;
       rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1 in *.
-    all: try (match goal with
-             | HP: ?post ?A |- ?post ?A' =>
-               replace A' with A; [exact HP|..]
-         end).
+    all: eqassumption.
     all: apply PropExtensionality.propositional_extensionality; split; intros;
       (Lia.lia || congruence || auto).
     split; intro C.
@@ -560,6 +667,20 @@ Section WithParams.
                              P  /\ Q1 t' m' l' \/
                              ~P /\ Q2 t' m' l' ->
                              wp_cmd call rest t' m' l' post)) ->
+      wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
+  Admitted.
+
+  Lemma wp_if_bool_dexpr: forall call c l vars vals thn els rest t m P Q1 Q2 post,
+      l = reconstruct vars vals ->
+      dexpr_bool_prop m l c P ->
+      (P  -> wp_cmd call thn t m l (fun t' m' l' =>
+               exists vals', l' = reconstruct vars vals' /\ Q1 t' m' l')) ->
+      (~P -> wp_cmd call els t m l (fun t' m' l' =>
+               exists vals', l' = reconstruct vars vals' /\ Q2 t' m' l')) ->
+      (forall t' m' vals', let l' := reconstruct vars vals' in
+                           P  /\ Q1 t' m' l' \/
+                           ~P /\ Q2 t' m' l' ->
+                           wp_cmd call rest t' m' l' post) ->
       wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Admitted.
 
@@ -823,13 +944,13 @@ Ltac intros_p := repeat intro_p_autonamed.
 Ltac is_fresh x := assert_succeeds (pose proof tt as x).
 
 Ltac make_fresh x :=
-  tryif is_fresh x then idtac else let x' := fresh x in rename x into x'.
+  tryif is_fresh x then idtac else let x' := fresh x "_0" in rename x into x'.
 
 Ltac put_into_current_locals is_decl :=
   lazymatch goal with
   | cl := current_locals_marker (reconstruct _ _) |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
     let i := string_to_ident x in
-    let old_i := fresh i in
+    let old_i := fresh i "_0" in
     lazymatch is_decl with
     | true => let E := fresh "L0" in apply wp_locals_put; intro_p i; intro_p E
     | false =>
@@ -944,7 +1065,8 @@ Ltac store sz addr val :=
   repeat eval_expr_step;
   [.. (* maybe some unsolved side conditions *)
   | lazymatch goal with
-    | |- forall (_: @map.rep _ _ _), seps _ _ -> _ => intros; transfer_sep_order
+    | |- forall (_: @map.rep _ _ _), seps _ _ -> _ =>
+        intros; transfer_sep_order; repeat simpli_step
     | |- _ => idtac (* expression evaluation did not work fully automatically *)
     end ].
 
@@ -1568,42 +1690,106 @@ Ltac cond c ::=
   lazymatch goal with
   | cl := current_locals_marker (reconstruct ?vars ?vals) |- wp_cmd ?call _ ?t ?m ?l _ =>
     (* rapply because eapply inlines `let l'` *)
-    rapply (wp_if_bool call c l vars vals); [cbv [cl current_locals_marker]; reflexivity | ..]
+    rapply (wp_if_bool_dexpr call c l vars vals);
+    [cbv [cl current_locals_marker]; reflexivity | ..]
   end.
 
-.**/  if (w1 < w0 &&& w1 < w2) {                                                 /**.
+.**/  if (w1 < w0 && w1 < w2) {                                                 /**.
 
-  eapply wp_bool_eager_and'''.
-  eapply wp_bool_op'''.
-  eval_expr_step.
-  eval_expr_step.
-  eapply wp_bool_op'''.
-  eval_expr_step.
-  eval_expr_step.
-  cbv [interp_bool_prop].
-
-  lazymatch goal with
-  | |- (_ /\ _) /\ _ =>
-      split;
-      [ cbv [interp_binop]; split; intros; fwd;
-        [ lazymatch goal with
-          | b := ?l : list block_kind |- _ =>
+  { eapply dexpr_lazy_and.
+    { eapply dexpr_bool_op_prop.
+      { eapply dexpr_var. reflexivity. }
+      { eapply dexpr_var. reflexivity. }
+    }
+    { cbv [interp_bool_prop]. intros.
+      eapply dexpr_bool_op_prop.
+      { eapply dexpr_var. reflexivity. }
+      { eapply dexpr_var. reflexivity. }
+    }
+  }
+  all: cbv [interp_bool_prop]; intros.
+  1: lazymatch goal with
+     | b := ?l : list block_kind |- _ =>
               clear b; pose (cons ThenBranch l) as b; move b at top
-          end
-        | lazymatch goal with
-          | b := ?l : list block_kind |- _ =>
+     end.
+  2: lazymatch goal with
+     | b := ?l : list block_kind |- _ =>
               clear b; pose (cons ElseBranch l) as b; move b at top
-          end ]
-      | intros; fwd ]
-  end.
+     end.
 
   Time fwd_rewrites. (* does nothing and still takes 0.332 secs, even in 8.15-rc1,
     https://github.com/coq/coq/pull/14253 does not seem to help *)
 
-(*
+  (* then branch: *)
 .**/    store(a, w1);                                                           /**.
 .**/    w1 = w0;                                                                /**.
-.**/  } else if (w2 < w0 && w2 < w1) {                                          /**.
+
+  lazymatch goal with
+  | b := (cons ThenBranch ?l) : list block_kind |- _ => clear b
+  | _ => fail "Not in a then-branch"
+  end.
+  eapply wp_skip.
+  eexists; split;
+  [ lazymatch goal with
+    | cl := current_locals_marker (reconstruct ?vars ?vals) |- _ =>
+      cbv [cl current_locals_marker]; reflexivity
+    end
+  | ].
+
+
+  Check (fun _ _ _ => eq_refl w0).
+  assert (exists foo, foo + foo = 2) as Foo. {
+    exists 1. reflexivity.
+  }
+  destruct Foo as (foo & Foo).
+
+Ltac is_in_evar_scope x e :=
+  lazymatch type of e with
+  | ?Trace -> ?Mem -> ?Locals -> Prop =>
+      assert_succeeds (idtac; unify e (fun (_: Trace) (_: Mem) (_: Locals) => x = x))
+  end.
+
+  (* list vars not in evar scope: (not needed any more if context is ordered correctly and
+     has block markers between vars) *)
+  try
+  match goal with
+  | x: ?tp |- ?E ?T ?M ?L =>
+    lazymatch type of tp with
+    | Prop => fail
+    | _ => lazymatch type of E with
+           | ?Trace -> ?Mem -> ?Locals -> Prop =>
+             assert_fails (idtac; unify E (fun (_: Trace) (_: Mem) (_: Locals) => x = x));
+             assert_fails (constr_eq x T);
+             assert_fails (constr_eq x M);
+             assert_fails (constr_eq x L);
+             idtac x;
+             fail
+           end
+      end
+  end.
+
+  rename mem into Mem, current_mem into mem.
+  subst current_locals.
+  rename current_trace into tr.
+  move tr at top. move mem at top.
+
+Ltac eq_to_colon_eq :=
+  match reverse goal with
+  | H: ?x = ?rhs |- _ =>
+      is_var x; let tmp := fresh "TMP" in rename x into tmp; set (x := rhs);
+      replace tmp with x in *; clear H tmp
+  end.
+
+  eq_to_colon_eq.
+  eq_to_colon_eq.
+  eq_to_colon_eq.
+  eq_to_colon_eq.
+
+(*
+Close Scope live_scope. Undelimit Scope live_scope. idtac.
+
+.**/  } else {                                                                  /**.
+.**/ if (w2 < w0 && w2 < w1) {                                          /**.
 .**/    store(a, w2);                                                           /**.
 .**/    w2 = w0;                                                                /**.
 .**/  }                                                                         /**.
