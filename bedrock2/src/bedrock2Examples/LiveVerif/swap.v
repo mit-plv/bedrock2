@@ -476,6 +476,10 @@ Section WithParams.
     intros. cbn. unfold WeakestPrecondition.get. eauto.
   Qed.
 
+  Lemma dexpr_literal: forall (m: mem) (l: locals) z,
+      dexpr m l (expr.literal z) (word.of_Z z).
+  Proof. intros. reflexivity. Qed.
+
   Lemma dexpr_binop: forall m l op e1 e2 (v1 v2: word),
       dexpr m l e1 v1 ->
       dexpr m l e2 v2 ->
@@ -503,6 +507,12 @@ Section WithParams.
       intros; auto; fwd; auto; destruct_one_match;
       rewrite ?word.unsigned_of_Z_1, ?word.unsigned_of_Z_0; try congruence; try Lia.lia.
   Qed.
+
+  Definition dexpr_bool_op_prop_unf := ltac:(
+    let t := type of dexpr_bool_op_prop in
+    let t' := eval unfold interp_bool_prop in t in
+    let p := constr:(dexpr_bool_op_prop : t') in
+    exact p).
 
   Definition wp_expr_bool_prop(m: mem)(l: locals)(e: expr)(post: Prop -> Prop): Prop :=
     wp_expr m l e (fun b => post (word.unsigned b <> 0)).
@@ -1007,6 +1017,16 @@ Ltac eval_expr_step :=
   | |- wp_expr _ _ (expr.op _ _ _) _ => eapply wp_op; cbv [interp_binop]
   end.
 
+Ltac eval_dexpr_step :=
+  lazymatch goal with
+  | |- dexpr_bool_prop _ _ (expr.lazy_and _ _) _ =>
+      eapply dexpr_lazy_and; [|intro]
+  | |- dexpr_bool_prop _ _ (expr.op _ _ _) _ =>
+      eapply dexpr_bool_op_prop_unf
+  | |- dexpr _ _ (expr.var _) _ => eapply dexpr_var; reflexivity
+  | |- dexpr _ _ (expr.literal _) _ => eapply dexpr_literal
+  end.
+
 Ltac start :=
   let eargnames := open_constr:(_: list string) in
   refine (existT _ (eargnames, _, _) _);
@@ -1071,19 +1091,13 @@ Ltac cond c :=
   lazymatch goal with
   | cl := current_locals_marker (reconstruct ?vars ?vals) |- wp_cmd ?call _ ?t ?m ?l _ =>
     (* rapply because eapply inlines `let l'` *)
-    rapply (wp_if call c l vars vals); [cbv [cl current_locals_marker]; reflexivity | ]
-  end;
-  repeat eval_expr_step;
-  [.. (* maybe some unsolved side conditions *)
-  | lazymatch goal with
-    | |- exists (_ _ : _ -> _ -> _ -> Prop), (_ /\ _) /\ _ =>
-      eexists; eexists; split;
-      [ cbv [interp_binop]; split; intros; fwd;
-        [ let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b
-        | let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b ]
-      | intros; fwd ]
-    | |- _ => idtac (* expression evaluation did not work fully automatically *)
-    end ].
+    rapply (wp_if_bool_dexpr call c l vars vals);
+    [ cbv [cl current_locals_marker]; reflexivity
+    | repeat eval_dexpr_step
+    | intro; let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b
+    | intro; let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b
+    | intros; fwd ]
+  end.
 
 Ltac els :=
 (*
@@ -1687,35 +1701,7 @@ Print Rewrite HintDb foo_test.
 Print Rewrite HintDb fwd_rewrites.
 *)
 
-Ltac cond c ::=
-  lazymatch goal with
-  | cl := current_locals_marker (reconstruct ?vars ?vals) |- wp_cmd ?call _ ?t ?m ?l _ =>
-    (* rapply because eapply inlines `let l'` *)
-    rapply (wp_if_bool_dexpr call c l vars vals);
-    [cbv [cl current_locals_marker]; reflexivity | ..]
-  end.
-
 .**/  if (w1 < w0 && w1 < w2) {                                                 /**.
-
-  { eapply dexpr_lazy_and.
-    { eapply dexpr_bool_op_prop.
-      { eapply dexpr_var. reflexivity. }
-      { eapply dexpr_var. reflexivity. }
-    }
-    { cbv [interp_bool_prop]. intros.
-      eapply dexpr_bool_op_prop.
-      { eapply dexpr_var. reflexivity. }
-      { eapply dexpr_var. reflexivity. }
-    }
-  }
-  all: cbv [interp_bool_prop]; intros.
-  1: let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b.
-  2: let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b.
-
-  Time fwd_rewrites. (* does nothing and still takes 0.332 secs, even in 8.15-rc1,
-    https://github.com/coq/coq/pull/14253 does not seem to help *)
-
-  (* then branch: *)
 .**/    store(a, w1);                                                           /**.
 .**/    w1 = w0;                                                                /**.
 
@@ -1773,26 +1759,81 @@ Ltac is_in_evar_scope x e :=
 Ltac eq_to_colon_eq :=
   match reverse goal with
   | H: ?x = ?rhs |- _ =>
-      is_var x; let tmp := fresh "TMP" in rename x into tmp; set (x := rhs);
+      is_var x; let tmp := fresh "TMP" in rename x into tmp; pose (x := rhs);
       replace tmp with x in *; clear H tmp
   end.
+
+(* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
+   used as the binder in the lambda being created *)
+Ltac vpattern_in x H :=
+  pattern x in H;
+  lazymatch type of H with
+  | ?f x => change ((fun x => ltac:(let r := eval cbv beta in (f x) in exact r)) x) in H
+  end.
+Tactic Notation "vpattern" ident(x) "in" ident(H) := vpattern_in x H.
+
+Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
 
   eq_to_colon_eq.
   eq_to_colon_eq.
   eq_to_colon_eq.
   eq_to_colon_eq.
   move mem at bottom.
+  move w1 at bottom.
+
+  assert (exists bar: nat, (bar + bar = 4 * Z.to_nat foo)%nat) as Bar. {
+    exists 2%nat. blia.
+  }
+  destruct Bar as (bar & Bar).
+  assert (w1 ^+ w0 = w1 ^+ w1) as E by ZnWords.
+
+  lazymatch goal with
+  | |- _ ?T ?M ?L => set (current_locals := L)
+  end.
 
   let lasthyp := lazymatch goal with H: _ |- _ => H end in
   idtac lasthyp.
 
+  eassert _ as A. {
+    clear current_locals.
+    refine (conj E _). clear E.
+    refine (conj Bar _). clear Bar.
+    clear bar.
+    clear w1.
+    refine (conj M _). clear M.
+    clear mem.
+    refine (conj Foo _). clear Foo.
+    clear foo.
+    exact I.
+  }
+
+  lazymatch goal with
+  | |- _ ?T ?M ?L =>
+      let cl := eval cbv delta [current_locals] in current_locals in
+      eapply (conj (eq_refl L : L = cl)) in A;
+      (* not for M because it was changed *)
+      eapply (conj (eq_refl T)) in A
+  end.
+
+  vpattern foo in A. eapply ex_intro in A.
+  vpattern w1 in A.
+  lazymatch type of A with
+  | ?f ?y => change (dlet y f) in A
+  end.
+  vpattern bar in A. eapply ex_intro in A.
+
+  lazymatch goal with
+  | |- _ ?T ?M ?L => pattern T, M, L in A
+  end.
+  exact A.
+
+  (* else branch: *)
+.**/ if (w2 < w0 && w2 < w1) {                                                  /**.
+.**/    store(a, w2);                                                           /**.
+.**/    w2 = w0;                                                                /**.
 (*
 Close Scope live_scope. Undelimit Scope live_scope. idtac.
 
-.**/  } else {                                                                  /**.
-.**/ if (w2 < w0 && w2 < w1) {                                          /**.
-.**/    store(a, w2);                                                           /**.
-.**/    w2 = w0;                                                                /**.
 .**/  }                                                                         /**.
 .**/  if (w2 < w1) {                                                            /**.
 .**/    store(a+4, w2);                                                         /**.
