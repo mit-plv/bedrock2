@@ -762,11 +762,9 @@ Declare Scope live_scope.
 Delimit Scope live_scope with live.
 Local Open Scope live_scope.
 
-Inductive ignore_above_this_line := mk_ignore_above_this_line.
-Notation "'ignore' 'above' 'this' 'line' : '____'" := ignore_above_this_line
-  (only printing) : live_scope.
-
-Inductive block_kind := ThenBranch | ElseBranch | LoopBody.
+Inductive scope_kind := FunctionBody | ThenBranch | ElseBranch | LoopBody.
+Inductive scope_marker: scope_kind -> Set := mk_scope_marker sk : scope_marker sk.
+Notation "'____' sk '____'" := (scope_marker sk) (only printing) : live_scope.
 
 Notation "'ready' 'for' 'next' 'command'" := (wp_cmd _ _ _ _ _ _)
   (at level 0, only printing) : live_scope.
@@ -925,7 +923,7 @@ Ltac intro_p n :=
   (* if we already have words, put the new word at the same position: *)
   | x: @word.rep _ _ |- forall _: @word.rep _ _, _ => intro n; move n after x
   (* else put just above (= after-wrt-moving-direction) the separator *)
-  | separator: ignore_above_this_line |- forall _: @word.rep _ _, _ =>
+  | separator: scope_marker FunctionBody |- forall _: @word.rep _ _, _ =>
     intro n; move n after separator
   (* types other than words are considered interesting enough to go below the separator *)
   | |- forall _: _, _ => intro n
@@ -1014,7 +1012,7 @@ Ltac start :=
   refine (existT _ (eargnames, _, _) _);
   let call := fresh "call" in
   intro call;
-  let n := fresh "____" in pose proof mk_ignore_above_this_line as n;
+  let n := fresh "Scope0" in pose proof (mk_scope_marker FunctionBody) as n;
   intros_p;
   (* since the arguments will get renamed, it is useful to have a list of their
      names, so that we can always see their current renamed names *)
@@ -1036,11 +1034,10 @@ Ltac start :=
     move cl before arguments
   end;
   lazymatch goal with
-  | separator: ignore_above_this_line |- wp_cmd _ _ ?t ?m _ _ =>
+  | separator: scope_marker FunctionBody |- wp_cmd _ _ ?t ?m _ _ =>
     move t after separator; let tn := fresh "current_trace" in rename t into tn;
     move m after separator; let mn := fresh "current_mem" in rename m into mn
-  end;
-  let b := fresh "block_structure" in pose (@nil block_kind) as b; move b at top.
+  end.
 
 Inductive snippet :=
 | SAssign(is_decl: bool)(x: string)(e: Syntax.expr)
@@ -1082,21 +1079,19 @@ Ltac cond c :=
     | |- exists (_ _ : _ -> _ -> _ -> Prop), (_ /\ _) /\ _ =>
       eexists; eexists; split;
       [ cbv [interp_binop]; split; intros; fwd;
-        [ lazymatch goal with
-          | b := ?l : list block_kind |- _ => clear b; pose (cons ThenBranch l) as b; move b at top
-          end
-        | lazymatch goal with
-          | b := ?l : list block_kind |- _ => clear b; pose (cons ElseBranch l) as b; move b at top
-          end ]
+        [ let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b
+        | let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b ]
       | intros; fwd ]
     | |- _ => idtac (* expression evaluation did not work fully automatically *)
     end ].
 
 Ltac els :=
+(*
   lazymatch goal with
   | b := (cons ThenBranch ?l) : list block_kind |- _ => clear b
   | _ => fail "Not in a then-branch"
   end;
+*)
   eapply wp_skip;
   eexists; split;
   [ lazymatch goal with
@@ -1107,26 +1102,32 @@ Ltac els :=
 
 Ltac close_block :=
   lazymatch goal with
-  | b := (cons ElseBranch ?l) : list block_kind |- _ =>
-    clear b;
-    eapply wp_skip;
-    eexists; split;
-    [ lazymatch goal with
-      | cl := current_locals_marker (reconstruct ?vars ?vals) |- _ =>
-        cbv [cl current_locals_marker]; reflexivity
+  | B: scope_marker ?sk |- _ =>
+      lazymatch sk with
+      | ElseBranch =>
+          idtac (*
+          eapply wp_skip;
+          eexists; split;
+          [ lazymatch goal with
+            | cl := current_locals_marker (reconstruct ?vars ?vals) |- _ =>
+                cbv [cl current_locals_marker]; reflexivity
+            end
+          | ]*)
+      | LoopBody => idtac
+      | _ => fail "Can't end a block here"
       end
-    | ]
-  | b := (cons LoopBody ?l) : list block_kind |- _ => clear b
-  | _ => fail "Can't end a block here"
   end.
 
 Ltac ret retnames :=
   lazymatch goal with
-  | _ := @nil block_kind |- _ => idtac
-  | _ := cons ThenBranch _ |- _ => fail "return inside a then-branch is not supported"
-  | _ := cons ElseBranch _ |- _ => fail "return inside an else-branch is not supported"
-  | _ := cons LoopBody _ |- _ => fail "return inside a loop body is not supported"
-  | |- _ => fail "block structure lost (could not find a `list block_kind`)"
+  | B: scope_marker ?sk |- _ =>
+      lazymatch sk with
+      | FunctionBody => idtac
+      | ThenBranch => fail "return inside a then-branch is not supported"
+      | ElseBranch => fail "return inside an else-branch is not supported"
+      | LoopBody => fail "return inside a loop body is not supported"
+      end
+  | |- _ => fail "block structure lost (could not find a scope_marker)"
   end;
   eapply wp_skip;
   lazymatch goal with
@@ -1708,14 +1709,8 @@ Ltac cond c ::=
     }
   }
   all: cbv [interp_bool_prop]; intros.
-  1: lazymatch goal with
-     | b := ?l : list block_kind |- _ =>
-              clear b; pose (cons ThenBranch l) as b; move b at top
-     end.
-  2: lazymatch goal with
-     | b := ?l : list block_kind |- _ =>
-              clear b; pose (cons ElseBranch l) as b; move b at top
-     end.
+  1: let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b.
+  2: let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b.
 
   Time fwd_rewrites. (* does nothing and still takes 0.332 secs, even in 8.15-rc1,
     https://github.com/coq/coq/pull/14253 does not seem to help *)
@@ -1724,10 +1719,12 @@ Ltac cond c ::=
 .**/    store(a, w1);                                                           /**.
 .**/    w1 = w0;                                                                /**.
 
+(*
   lazymatch goal with
   | b := (cons ThenBranch ?l) : list block_kind |- _ => clear b
   | _ => fail "Not in a then-branch"
   end.
+*)
   eapply wp_skip.
   eexists; split;
   [ lazymatch goal with
@@ -1784,6 +1781,10 @@ Ltac eq_to_colon_eq :=
   eq_to_colon_eq.
   eq_to_colon_eq.
   eq_to_colon_eq.
+  move mem at bottom.
+
+  let lasthyp := lazymatch goal with H: _ |- _ => H end in
+  idtac lasthyp.
 
 (*
 Close Scope live_scope. Undelimit Scope live_scope. idtac.
