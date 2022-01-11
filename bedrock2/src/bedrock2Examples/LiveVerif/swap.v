@@ -680,18 +680,17 @@ Section WithParams.
       wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Admitted.
 
-  Lemma wp_if_bool_dexpr: forall call c l vars vals thn els rest t m P Q1 Q2 post,
-      l = reconstruct vars vals ->
-      dexpr_bool_prop m l c P ->
-      (P  -> wp_cmd call thn t m l (fun t' m' l' =>
+  Lemma wp_if_bool_dexpr: forall call c vars vals thn els rest t m P Q1 Q2 post,
+      dexpr_bool_prop m (reconstruct vars vals) c P ->
+      (P  -> wp_cmd call thn t m (reconstruct vars vals) (fun t' m' l' =>
                exists vals', l' = reconstruct vars vals' /\ Q1 t' m' l')) ->
-      (~P -> wp_cmd call els t m l (fun t' m' l' =>
+      (~P -> wp_cmd call els t m (reconstruct vars vals) (fun t' m' l' =>
                exists vals', l' = reconstruct vars vals' /\ Q2 t' m' l')) ->
       (forall t' m' vals', let l' := reconstruct vars vals' in
                            P  /\ Q1 t' m' l' \/
                            ~P /\ Q2 t' m' l' ->
                            wp_cmd call rest t' m' l' post) ->
-      wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
+      wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m (reconstruct vars vals) post.
   Admitted.
 
   (* The postcondition of the callee's spec will have a concrete shape that differs
@@ -763,7 +762,6 @@ Section WithParams.
       wp_cmd call body t m l (fun t' m' l' =>
         exists retvs, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
 
-  Definition current_locals_marker(l: locals): locals := l.
   Definition arguments_marker(args: list word): list word := args.
 
 End WithParams.
@@ -776,8 +774,10 @@ Inductive scope_kind := FunctionBody | ThenBranch | ElseBranch | LoopBody.
 Inductive scope_marker: scope_kind -> Set := mk_scope_marker sk : scope_marker sk.
 Notation "'____' sk '____'" := (scope_marker sk) (only printing) : live_scope.
 
+(*
 Notation "'ready' 'for' 'next' 'command'" := (wp_cmd _ _ _ _ _ _)
   (at level 0, only printing) : live_scope.
+*)
 
 Declare Scope reconstruct_locals_scope.
 Delimit Scope reconstruct_locals_scope with reconstruct_locals.
@@ -788,8 +788,6 @@ Notation "[ x ; y ; .. ; z ]" :=
   (PrimitivePair.pair.mk x (PrimitivePair.pair.mk y .. (PrimitivePair.pair.mk z tt) ..))
   (only printing) : reconstruct_locals_scope.
 
-Notation "l" := (current_locals_marker (reconstruct _ l%reconstruct_locals))
-  (at level 100, only printing) : live_scope.
 Notation "l" := (arguments_marker l)
   (at level 100, only printing) : live_scope.
 
@@ -927,28 +925,6 @@ Ltac simpli_step :=
   | _ => progress groundcbv_in_all
   end.
 
-(* intro-and-position *)
-Ltac intro_p n :=
-  lazymatch reverse goal with
-  (* if we already have words, put the new word at the same position: *)
-  | x: @word.rep _ _ |- forall _: @word.rep _ _, _ => intro n; move n after x
-  (* else put just above (= after-wrt-moving-direction) the separator *)
-  | separator: scope_marker FunctionBody |- forall _: @word.rep _ _, _ =>
-    intro n; move n after separator
-  (* types other than words are considered interesting enough to go below the separator *)
-  | |- forall _: _, _ => intro n
-  end.
-
-Ltac intro_p_autonamed :=
-  lazymatch goal with
-  (* mem hyps never need to be positioned above separator, so we can directly use `intro` *)
-  | |- seps _ _ -> _ => let n := fresh "M" in intro n
-  (* other types might need intro_p *)
-  | |- forall x: ?T, _ => let n := fresh x in intro_p n
-  end.
-
-Ltac intros_p := repeat intro_p_autonamed.
-
 Ltac is_fresh x := assert_succeeds (pose proof tt as x).
 
 Ltac make_fresh x :=
@@ -956,42 +932,32 @@ Ltac make_fresh x :=
 
 Ltac put_into_current_locals is_decl :=
   lazymatch goal with
-  | cl := current_locals_marker (reconstruct _ _) |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
+  | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
     let i := string_to_ident x in
     let old_i := fresh i "_0" in
     lazymatch is_decl with
-    | true => let E := fresh "L0" in apply wp_locals_put; intro_p i; intro_p E
-    | false =>
-      rename i into old_i;
-      match goal with
-      | E: old_i = _ |- _ =>
-        let oldE := fresh E in
-        rename E into oldE;
-        apply wp_locals_put; intro_p i; intro E; move E before oldE
-      | |- _ => let E := fresh "L0" in apply wp_locals_put; intro_p i; intro_p E
-      end
+    | true => idtac
+    | false => rename i into old_i
     end;
-    subst cl;
+    pose (i := v);
+    lazymatch goal with
+    | |- wp_cmd ?call ?c ?t ?m (map.put ?l ?x ?v) ?post => change
+        (wp_cmd  call  c  t  m (map.put  l  x  i)  post)
+    end;
     lazymatch goal with
     | |- wp_cmd ?call ?c ?t ?m ?l ?post =>
-      let keys := eval vm_compute in (map.keys l) in
-      let values := eval vm_compute in (map.getmany_of_list l keys) in
-      let values := lazymatch values with Some ?values => values end in
-      let values := eval vm_compute in (tuple.of_list values) in
-      change (let cl := current_locals_marker (reconstruct keys values) in
-              wp_cmd call c t m cl post);
-      intro cl;
-      lazymatch goal with
-      | arguments := arguments_marker _ |- _ =>
-        move cl before arguments (* before-wrt-moving-direction = below *)
-      end
+        let keys := eval lazy in (map.keys l) in
+        let values := eval hnf in
+          (match map.getmany_of_list l keys with
+           | Some vs => vs
+           | None => nil
+           end) in
+        let values := eval cbn [tuple.of_list] in (tuple.of_list values) in
+        change (wp_cmd call c t m (reconstruct keys values) post)
     end;
     lazymatch is_decl with
     | true => idtac
-    | false => match goal with
-               | oldE: old_i = _ |- _ => clear old_i oldE
-               | |- _ => idtac
-               end
+    | false => try clear old_i
     end
   end.
 
@@ -1033,7 +999,7 @@ Ltac start :=
   let call := fresh "call" in
   intro call;
   let n := fresh "Scope0" in pose proof (mk_scope_marker FunctionBody) as n;
-  intros_p;
+  intros;
   (* since the arguments will get renamed, it is useful to have a list of their
      names, so that we can always see their current renamed names *)
   let arguments := fresh "arguments" in
@@ -1048,15 +1014,8 @@ Ltac start :=
   lazymatch goal with
   | |- exists l, map.of_list_zip ?keys ?values = Some l /\ _ =>
     let values := eval vm_compute in (tuple.of_list values) in
-    let cl := fresh "current_locals" in
-    refine (let cl := current_locals_marker (reconstruct keys values) in ex_intro _ cl _);
-    split; [reflexivity|];
-    move cl before arguments
-  end;
-  lazymatch goal with
-  | separator: scope_marker FunctionBody |- wp_cmd _ _ ?t ?m _ _ =>
-    move t after separator; let tn := fresh "current_trace" in rename t into tn;
-    move m after separator; let mn := fresh "current_mem" in rename m into mn
+    exists (reconstruct keys values);
+    split; [reflexivity|]
   end.
 
 Inductive snippet :=
@@ -1089,23 +1048,20 @@ Ltac store sz addr val :=
 
 Ltac cond c :=
   lazymatch goal with
-  | cl := current_locals_marker (reconstruct ?vars ?vals) |- wp_cmd ?call _ ?t ?m ?l _ =>
-    (* rapply because eapply inlines `let l'` *)
-    rapply (wp_if_bool_dexpr call c l vars vals);
-    [ cbv [cl current_locals_marker]; reflexivity
-    | repeat eval_dexpr_step
-    | intro; let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b
-    | intro; let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b
+  | |- wp_cmd ?call _ ?t ?m (reconstruct ?vars ?vals) _ =>
+    eapply (wp_if_bool_dexpr call c vars vals);
+    [ repeat eval_dexpr_step
+    | let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b; intro
+    | let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b; intro
     | intros; fwd ]
   end.
 
-Ltac els :=
+Ltac els := idtac.
 (*
   lazymatch goal with
   | b := (cons ThenBranch ?l) : list block_kind |- _ => clear b
   | _ => fail "Not in a then-branch"
   end;
-*)
   eapply wp_skip;
   eexists; split;
   [ lazymatch goal with
@@ -1113,6 +1069,7 @@ Ltac els :=
       cbv [cl current_locals_marker]; reflexivity
     end
   | ].
+*)
 
 Ltac close_block :=
   lazymatch goal with
@@ -1536,8 +1493,6 @@ Ltac transfer_sep_order ::=
       cbv [apply_permutation apply_permutation_with_default my_list_map my_list_nth];
       reflexivity
     | let HNewNew := fresh in pose proof (proj1 (E mNew) HNew) as HNewNew;
-      move HNewNew before HOld;
-      move mNew before mOld;
       clear E HOld HNew;
       try clear mOld;
       make_fresh mOld;
@@ -1580,7 +1535,6 @@ Definition u_min: {f: list string * list string * cmd &
 .**/    r = a;                                                                  /**.
 .**/  } else {                                                                  /**.
 (**)    (* postcond of then-branch *)                                           (**)
-(**)    rename L0 into foo.                                                     (**)
 (**)    admit.                                                                  (**)
 .**/    r = b;                                                                  /**.
 .**/  }                                                                         /**.
@@ -1601,7 +1555,7 @@ Definition u_min: {f: list string * list string * cmd &
     r = a;                                                                 /**. .**/
   } else {                                                                 /**. .**/
     /**. (* postcond of then-branch *)                                          .**/
-    /**. rename L0 into foo. admit.                                             .**/
+    /**. admit.                                                                 .**/
     r = b;                                                                 /**. .**/
   }                                                                        /**. .**/
   /**. (* postcond of else-branch *) admit.                                     .**/
@@ -1621,7 +1575,6 @@ Definition u_min: {f: list string * list string * cmd &
 .**/    r = a;                                                                  /**.
 .**/  } else {                                                                  /**.
         (* postcond of then-branch *)
-        rename L0 into foo.
         admit.
 .**/    r = b;                                                                  /**.
 .**/  }                                                                         /**.
@@ -1642,7 +1595,7 @@ Definition u_min: {f: list string * list string * cmd &
     r = a;                                                                 /**. .**/
   } else {                                                                 /**. .**/
     /**. (* postcond of then-branch *)  .**/                               /**. .**/
-    /**. rename L0 into foo. admit.     .**/                               /**. .**/
+    /**. admit.                         .**/                               /**. .**/
     r = b;                                                                 /**. .**/
   }                                                                        /**. .**/
   /**. (* postcond of else-branch *) admit. .**/                           /**. .**/
@@ -1666,7 +1619,7 @@ Definition sort3: {f: list string * list string * cmd &
           * R
         }>
   )}.
-      start. destruct x as [M ?].
+      start. destruct H as [M ?].
 .**/  uintptr_t w0 = load(a);                                                   /**.
 .**/  uintptr_t w1 = load(a+4);                                                 /**.
 (*
@@ -1712,13 +1665,7 @@ Print Rewrite HintDb fwd_rewrites.
   end.
 *)
   eapply wp_skip.
-  eexists; split;
-  [ lazymatch goal with
-    | cl := current_locals_marker (reconstruct ?vars ?vals) |- _ =>
-      cbv [cl current_locals_marker]; reflexivity
-    end
-  | ].
-
+  eexists; split; [ reflexivity | ].
 
   Check (fun _ _ _ => eq_refl w0).
   assert (exists foo, foo + foo = 2) as Foo. {
@@ -1751,18 +1698,6 @@ Ltac is_in_evar_scope x e :=
       end
   end.
 
-  rename mem into Mem, current_mem into mem.
-  subst current_locals.
-  rename current_trace into tr.
-  move tr at top. move mem at top.
-
-Ltac eq_to_colon_eq :=
-  match reverse goal with
-  | H: ?x = ?rhs |- _ =>
-      is_var x; let tmp := fresh "TMP" in rename x into tmp; pose (x := rhs);
-      replace tmp with x in *; clear H tmp
-  end.
-
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
    used as the binder in the lambda being created *)
 Ltac vpattern_in x H :=
@@ -1774,11 +1709,7 @@ Tactic Notation "vpattern" ident(x) "in" ident(H) := vpattern_in x H.
 
 Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
 
-  eq_to_colon_eq.
-  eq_to_colon_eq.
-  eq_to_colon_eq.
-  eq_to_colon_eq.
-  move mem at bottom.
+  move m at bottom.
   move w1 at bottom.
 
   assert (exists bar: nat, (bar + bar = 4 * Z.to_nat foo)%nat) as Bar. {
@@ -1801,7 +1732,7 @@ Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
     clear bar.
     clear w1.
     refine (conj M _). clear M.
-    clear mem.
+    clear m.
     refine (conj Foo _). clear Foo.
     clear foo.
     exact I.
@@ -1828,9 +1759,9 @@ Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
   exact A.
 
   (* else branch: *)
-.**/ if (w2 < w0 && w2 < w1) {                                                  /**.
-.**/    store(a, w2);                                                           /**.
-.**/    w2 = w0;                                                                /**.
+.**/   if (w2 < w0 && w2 < w1) {                                                /**.
+.**/     store(a, w2);                                                          /**.
+.**/     w2 = w0;                                                               /**.
 (*
 Close Scope live_scope. Undelimit Scope live_scope. idtac.
 
@@ -1847,9 +1778,9 @@ Abort.
 
 (* TODO: write down postcondition only at end *)
 Definition swap_locals: {f: list string * list string * cmd &
-  forall call t m a b,
-    vc_func call f t m [a; b] (fun t' m' retvs =>
-      t' = t /\ m' = m /\ retvs = [b; a]
+  forall call tr m a b,
+    vc_func call f tr m [a; b] (fun tr' m' retvs =>
+      tr' = tr /\ m' = m /\ retvs = [b; a]
   )}.
     (* note: we could just return ["b", "a"] and then the body would be just skip *)
     start. .**/
