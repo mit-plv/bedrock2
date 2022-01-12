@@ -1,7 +1,9 @@
 (* Rewritten versions of poly1305 and chacha20 that you can compile with Rupicola *)
+Require Import Coq.Unicode.Utf8.
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Examples.Crypto.Spec.
 Require Import bedrock2.BasicC32Semantics.
+Import Syntax.Coercions ProgramLogic.Coercions.
 Import Datatypes.
 
 (* TODO array_split should record a special fact in the context to make it trivial to re-split. *)
@@ -139,11 +141,227 @@ Definition array_put {T} (a: array_t T) (n: nat) (t: T) := upd a n t.
 Definition buffer_t := List.list.
 Definition buf_make T (n: nat) : buffer_t T := [].
 Definition buf_push {T} (buf: buffer_t T) (t: T) := buf ++ [t].
-Definition buf_append {T} (buf: buffer_t T) (arr: array_t T) := buf ++ arr.
+Definition buf_append {T} (buf: buffer_t T) (arr: array_t T) : buffer_t T := buf ++ arr.
 Definition buf_split {T} (buf: buffer_t T) : array_t T * buffer_t T := (buf, []).
 Definition buf_unsplit {T} (arr: array_t T) (buf: buffer_t T) : buffer_t T := arr.
 Definition buf_as_array {T} (buf: buffer_t T) : buffer_t T := buf.
 Definition buf_pad {T} (buf: buffer_t T) (len: nat) (t: T) : buffer_t T := buf ++ repeat t (len - length buf).
+
+Require Import bedrock2.NotationsCustomEntry.
+Section CompileBufPolymorphic.
+  Import ProgramLogic.Coercions WeakestPrecondition.
+  Context (e : list Syntax.func).
+  Context (T : Type) (sz : word) (pT : word -> T -> mem -> Prop).
+
+  Declare Scope word_scope.
+  Delimit Scope word_scope with word.
+  Local Infix "+" := word.add : word_scope.
+  Local Infix "*" := word.mul : word_scope.
+
+  Local Notation "xs $T@ a" := (array pT sz a%word xs%list) (at level 10, format "xs $T@ a").
+  Local Notation "xs $@ a" := (array ptsto (word.of_Z 1) a%word xs%list) (at level 10, format "xs $@ a").
+  Implicit Types (t : Semantics.trace) (l : locals) (m : mem) (k : Syntax.cmd).
+
+  Definition buffer_at c b a :=
+    (b$T@a *
+    (Lift1Prop.ex1 (fun s => emp (sz*length b + length s = sz*c)%Z
+    *s$@(a+word.of_Z(sz*length b)))))%sep.
+
+  Local Set Printing Coercions.
+  Context (dealloc_T : forall x, exists bs,
+    length bs = sz :>Z /\ forall a, Lift1Prop.iff1 (pT a x) (bs$@a)).
+  Lemma _dealloc_array_T xs : exists bs, length bs = sz * length xs :>Z
+    /\ forall a, Lift1Prop.iff1 (xs$T@a) (bs$@a).
+  Proof.
+    induction xs as [|x xs'].
+    { exists nil; cbn; split; eauto; rewrite ?Z.mul_0_r; reflexivity. }
+    { destruct IHxs' as [bs' [Hlbs' Hbs'] ].
+      destruct (dealloc_T x) as [b0s [Hlb0s Hb0s]].
+      eexists (b0s++bs'); split.
+      { cbn [length].
+        rewrite app_length, !Nat2Z.inj_add, Hlb0s.
+        rewrite Nat2Z.inj_succ, Z.mul_succ_r, <-Hlbs'.
+        rewrite Z.add_comm.
+        (*
+        Z.of_nat (length bs') + word.unsigned sz =
+        Z.of_nat (length bs') + word.unsigned sz
+        *)
+        lia || (match goal with |- ?g => idtac "WHY does lia fail to solve " g; trivial end). }
+      { intros; cbn.
+        etransitivity; [eapply Proper_sep_iff1; eauto|]; symmetry.
+        etransitivity.
+        1:eapply array_append.
+        cancel; cbn [seps].
+        rewrite word.unsigned_of_Z_1, Z.mul_1_l.
+        rewrite <-(word.of_Z_unsigned sz), <-Hlb0s; reflexivity. } }
+  Qed.
+  Local Unset Printing Coercions.
+
+  Lemma compile_buf_make_stack (n:nat) :
+    let v := buf_make T n in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+    a_var {t m l} (R: mem -> Prop),
+      (sz * n) mod Memory.bytes_per_word 32 = 0 ->
+      R m ->
+      (forall a m, (buffer_at n nil a * R)%sep m ->
+       <{ Trace := t; Memory := m; Locals := #{ … l; a_var => a }#;
+          Functions := e }>
+         k_impl
+         <{ pred_sep (Lift1Prop.ex1 (fun b => buffer_at n b a))
+                      pred (nlet_eq [a_var] v k) }>) ->
+    <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+      bedrock_func_body:(
+      stackalloc (sz*n) as $a_var;
+      $k_impl
+     )
+    <{ pred (k v eq_refl) }>.
+  Proof.
+    repeat straightline; split; eauto.
+    intros.
+    (* straightline_stackalloc with lia for length *)
+    pose proof word.unsigned_range sz.
+  match goal with
+  | Hanybytes:Memory.anybytes ?a ?n ?mStack
+    |- _ =>
+        let m :=
+         match goal with
+         | H:map.split ?mCobined ?m mStack |- _ => m
+         end
+        in
+        let mCombined :=
+         match goal with
+         | H:map.split ?mCobined ?m mStack |- _ => mCobined
+         end
+        in
+        let Hsplit :=
+         match goal with
+         | H:map.split ?mCobined ?m mStack |- _ => H
+         end
+        in
+        let Hm := multimatch goal with
+                  | H:_ m |- _ => H
+                  end in
+        let Hm' := fresh Hm in
+        let Htmp := fresh in
+        let Pm := match type of Hm with
+                  | ?P m => P
+                  end in
+        assert_fails
+         (idtac;
+          match goal with
+          | Halready:(Pm ⋆ _$@a) mCombined |- _ => idtac
+          end);
+          rename Hm into Hm';
+         (let stack := fresh "stack" in
+          let stack_length := fresh "length_" stack in
+          destruct (anybytes_to_array_1 mStack a n Hanybytes)
+           as (stack, (Htmp, stack_length));
+           epose proof
+            (ex_intro _ m (ex_intro _ mStack (conj Hsplit (conj Hm' Htmp)))
+             :
+             (_ ⋆ _$@a) mCombined) as Hm; clear Htmp;
+           try (let m' := fresh m in
+                rename
+                m into m'); rename mCombined into m;
+           assert (length stack = n :> Z) by Lia.lia)
+  end.
+  repeat straightline.
+  eapply Proper_cmd; [eapply Proper_call | intros ? ? ? ? | eapply H1 ]; cbn [app]; eauto; cycle 1.
+  { cbv [buffer_at]; cbn.
+    sepsimpl; trivial.
+    exists stack; cbn.
+    rewrite !Z.mul_0_r, !Z.add_0_l.
+    replace (a + word.of_Z 0)%word with a; cycle 1.
+    { eapply word.unsigned_inj.
+      rewrite word.unsigned_add, word.unsigned_of_Z_0, Z.add_0_r.
+      symmetry; eapply word.wrap_unsigned. }
+    use_sep_assumption; cancel; cbn [seps]; sepsimpl; split; cbv [emp]; intuition eauto. }
+  { case H8 as (?&?&?&(?&?)&?).
+    cbv [buffer_at] in H9; sepsimpl.
+    eapply map.split_comm in H8.
+    eexists _, _; split; [|split; [eassumption|] ]; eauto.
+    destruct (_dealloc_array_T x1) as [bs [Hlbs Hbs]].
+    rename H9 into Hm; seprewrite_in Hbs H11.
+    replace (word.of_Z (sz * length x1))%word with
+      (word.of_Z (width:=32) (1 * (length bs))) in H11; cycle 1.
+    { rewrite Z.mul_1_l. rewrite Hlbs; trivial. }
+    pose proof proj2 (array_append _ _ _ _ _ _) H11 as Hmm.
+    eapply array_1_to_anybytes in Hmm.
+    rewrite app_length, Nat2Z.inj_add, Hlbs, Hm in Hmm; exact Hmm. }
+  Qed.
+
+  Lemma compile_buf_append {t m l} var (buf : buffer_t T) (arr : array_t T) (c : Z) (a : word) :
+    let v := buf_append buf arr in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {fill_impl k_impl} R,
+    (buffer_at c buf a * R)%sep m ->
+    (length buf + length arr <= c) ->
+    (forall uninit Rbuf,
+      let ax := (a + word.of_Z (sz * length buf))%word in
+      (array pT sz a buf * uninit$@ax * Rbuf * R)%sep m ->
+      length uninit = sz * length arr :>Z ->
+      <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+        fill_impl
+        <{ nlet_eq [append var "_app"] arr (fun arr _ t m l =>
+          (array pT sz a buf * arr$T@ax * Rbuf * R)%sep m /\ (
+          (buffer_at c (buf++arr) a * R)%sep m ->
+          <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+            k_impl
+          <{ pred (k v eq_refl) }> )) }> ) ->
+    <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+      bedrock_cmd:($fill_impl; $k_impl)
+    <{ pred (nlet_eq [var] v k) }>.
+  Proof.
+    repeat straightline.
+    unfold buffer_at in *.
+    eapply sep_comm, sep_assoc, sep_comm in H; sepsimpl.
+    rename x into pad.
+    rewrite <-(firstn_skipn (Z.to_nat sz * length arr) pad) in H2.
+    seprewrite_in @bytearray_append H2.
+    eapply Proper_cmd; [eapply Proper_call| |eapply H1].
+    2: ecancel_assumption.
+    2: {
+      pose proof word.unsigned_range sz.
+      rewrite firstn_length; nia. }
+    intros t1 m1 l1 [Hm Hk]; eapply Hk; clear Hk.
+    seprewrite open_constr:(array_append _ _ buf arr).
+    rewrite app_length, Nat2Z.inj_add, Z.mul_add_distr_l.
+    sepsimpl. eexists. sepsimpl; cycle 1.
+    1: { use_sep_assumption. cancel; repeat ecancel_step.
+      f_equiv. f_equiv. f_equal.
+      rewrite firstn_length, word.ring_morph_add, word.add_assoc.
+      f_equal; f_equal.
+      pose proof word.unsigned_range sz.
+      nia. }
+    { pose proof word.unsigned_range sz.
+      rewrite skipn_length. 
+      nia. }
+  Qed.
+
+  Lemma compile_buf_push {t m l} var (buf : buffer_t T) (x : T) (c : Z) (a : word) :
+    let v := buf_push buf x in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {fill_impl k_impl} R,
+    (buffer_at c buf a * R)%sep m ->
+    (length buf + 1 <= c) ->
+    (forall uninit Rbuf,
+      let ax := (a + word.of_Z (sz * length buf))%word in
+      (array pT sz a buf * uninit$@ax * Rbuf * R)%sep m ->
+      length uninit = sz :>Z ->
+      <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+        fill_impl
+        <{ nlet_eq [append var "_app"] x (fun arr _ t m l =>
+          (array pT sz a buf * pT ax x * Rbuf * R)%sep m /\ (
+          (buffer_at c (buf++[x]) a * R)%sep m ->
+          <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+            k_impl
+          <{ pred (k v eq_refl) }> )) }> ) ->
+    <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+      bedrock_cmd:($fill_impl; $k_impl) <{ pred (nlet_eq [var] v k) }>.
+  Proof.  intros.  eapply compile_buf_append with (arr:=[x]).  {
+    ecancel_assumption. } { eassumption. } intros.  eapply Proper_cmd;
+    [eapply Proper_call| |eapply H1].  2:{ ecancel_assumption. } 2:{ cbn
+  [length] in *; lia. } intros t1 m1 l1 [Hm Hk].  cbv [nlet_eq] in *.  cbn
+  [array] in *.  split; sepsimpl.  { ecancel_assumption. } eapply Hk.  Qed.
+End CompileBufPolymorphic.
 
 Definition p : Z := 2^130 - 5.
 Definition felem_init_zero := 0.
