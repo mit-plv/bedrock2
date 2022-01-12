@@ -37,6 +37,31 @@ Ltac eqassumption :=
   | H: ?T |- ?U => let hT := head T in let hU := head U in constr_eq hT hU; eqapply H
   end.
 
+
+(* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
+   used as the binder in the lambda being created *)
+Ltac vpattern_in x H :=
+  pattern x in H;
+  lazymatch type of H with
+  | ?f x => change ((fun x => ltac:(let r := eval cbv beta in (f x) in exact r)) x) in H
+  end.
+Tactic Notation "vpattern" ident(x) "in" ident(H) := vpattern_in x H.
+
+
+Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
+
+
+Fixpoint ands(Ps: list Prop): Prop :=
+  match Ps with
+  | P :: rest => P /\ ands rest
+  | nil => True
+  end.
+
+Lemma ands_nil: ands nil. Proof. cbn. auto. Qed.
+Lemma ands_cons: forall [P: Prop] [Ps: list Prop], P -> ands Ps -> ands (P :: Ps).
+Proof. cbn. auto. Qed.
+
+
 Require Import Coq.Program.Tactics.
 Require Import coqutil.Tactics.autoforward.
 
@@ -686,10 +711,11 @@ Section WithParams.
                exists vals', l' = reconstruct vars vals' /\ Q1 t' m' l')) ->
       (~P -> wp_cmd call els t m (reconstruct vars vals) (fun t' m' l' =>
                exists vals', l' = reconstruct vars vals' /\ Q2 t' m' l')) ->
-      (forall (b: bool) t' m' vals', (if b then P else ~P) ->
-                                     (if b then Q1 t' m' (reconstruct vars vals')
-                                      else Q2 t' m' (reconstruct vars vals')) ->
-                                     wp_cmd call rest t' m' (reconstruct vars vals') post) ->
+      (forall (cond0: bool) t' m' vals',
+          (* (if cond0 then P else ~P) -> <-- already added to Q1/Q2 by automation *)
+          (if cond0 then Q1 t' m' (reconstruct vars vals')
+           else Q2 t' m' (reconstruct vars vals')) ->
+          wp_cmd call rest t' m' (reconstruct vars vals') post) ->
       wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m (reconstruct vars vals) post.
   Admitted.
 
@@ -773,6 +799,14 @@ Local Open Scope live_scope.
 Inductive scope_kind := FunctionBody | ThenBranch | ElseBranch | LoopBody.
 Inductive scope_marker: scope_kind -> Set := mk_scope_marker sk : scope_marker sk.
 Notation "'____' sk '____'" := (scope_marker sk) (only printing) : live_scope.
+
+Ltac assert_scope_kind expected :=
+  let sk := lazymatch goal with
+            | H: scope_marker ?sk |- _ => sk
+            | _ => fail "no scope marker found"
+            end in
+  tryif constr_eq sk expected then idtac
+  else fail "This snippet is only allowed in a" expected "block, but we're in a" sk "block".
 
 (*
 Notation "'ready' 'for' 'next' 'command'" := (wp_cmd _ _ _ _ _ _)
@@ -1018,6 +1052,98 @@ Ltac start :=
     split; [reflexivity|]
   end.
 
+(* Note: contrary to add_last_var_to_post, this one makes Post a goal rather
+   than a hypothesis, because if it was a hypothesis, it wouldn't be possible
+   to clear vars *)
+Ltac add_last_hyp_to_post :=
+  let last_hyp := match goal with H: _ |- _ => H end in
+  let T := type of last_hyp in
+  lazymatch T with
+  | scope_marker _ => fail "done (scope marker reached)"
+  | _ => idtac
+  end;
+  lazymatch type of T with
+  | Prop => refine (ands_cons last_hyp _); clear last_hyp
+  | _ => clear last_hyp
+  end.
+
+Ltac is_in_post_evar_scope x :=
+  lazymatch goal with
+  | |- ?E ?T ?M ?L =>
+      lazymatch type of E with
+      | ?Trace -> ?Mem -> ?Locals -> Prop =>
+          assert_succeeds (unify E (fun (_: Trace) (_: Mem) (_: Locals) => x = x))
+      end
+  end.
+
+Ltac add_equality_to_post x Post :=
+  let y := fresh "etmp0" in
+  (* using pose & context match instead of set because set adds the renaming @{x:=y}
+     to the evar, so x will not be in the evar scope any more at the end, even though
+     x was introduced before the evar was created *)
+  pose (y := x);
+  lazymatch goal with
+  | |- context C[x] => let C' := context C[y] in change C'
+  end;
+  eapply (ands_cons (eq_refl y : y = x)) in Post;
+  clearbody y.
+
+Ltac add_equalities_to_post Post :=
+  lazymatch goal with
+  | |- ?E ?T ?M ?L =>
+      add_equality_to_post L Post;
+      add_equality_to_post T Post;
+      (* only add equality for memory if it was not changed in the branch and therefore
+         does not have a sep log assertion that will be packaged *)
+      try (is_in_post_evar_scope M; add_equality_to_post M Post)
+  end.
+
+Ltac add_var_to_post x Post :=
+  first
+    [ let rhs := eval cbv delta [x] in x in
+      (tryif is_var rhs then idtac else (
+        vpattern x in Post;
+        lazymatch type of Post with
+        | ?f x => change (dlet x f) in Post
+        end));
+      subst x
+    | vpattern x in Post;
+      eapply ex_intro in Post;
+      clear x ].
+
+Ltac add_last_var_to_post Post :=
+  let lastvar :=
+    match goal with
+    | x: _ |- _ =>
+        let __ := match constr:(Set) with
+                  | _ => assert_fails (constr_eq x Post)
+                  end in x
+    end in
+  let T := type of lastvar in
+  lazymatch T with
+  | scope_marker _ => fail "done (scope marker reached)"
+  | _ => idtac
+  end;
+  lazymatch type of T with
+  | Prop => clear lastvar
+  | _ => lazymatch goal with
+         | |- _ lastvar _ _ => move lastvar at top
+         | |- _ _ lastvar _ => move lastvar at top
+         | |- _ _ _ lastvar => move lastvar at top
+         | |- _ => add_var_to_post lastvar Post
+         end
+  end.
+
+Ltac package_context :=
+  let Post := fresh "Post" in
+  eassert _ as Post by (repeat add_last_hyp_to_post; apply ands_nil);
+  add_equalities_to_post Post;
+  repeat add_last_var_to_post Post;
+  lazymatch goal with
+  | |- _ ?T ?M ?L => pattern T, M, L in Post
+  end;
+  exact Post.
+
 Inductive snippet :=
 | SAssign(is_decl: bool)(x: string)(e: Syntax.expr)
 | SStore(sz: access_size)(addr val: Syntax.expr)
@@ -1066,7 +1192,12 @@ Ltac cond c :=
       end ]
   end.
 
-Ltac els := idtac.
+Ltac els :=
+  assert_scope_kind ThenBranch;
+  eapply wp_skip;
+  eexists; split; [ reflexivity | ];
+  package_context.
+
 (*
   lazymatch goal with
   | b := (cons ThenBranch ?l) : list block_kind |- _ => clear b
@@ -1086,17 +1217,13 @@ Ltac close_block :=
   | B: scope_marker ?sk |- _ =>
       lazymatch sk with
       | ElseBranch =>
-          idtac (*
           eapply wp_skip;
-          eexists; split;
-          [ lazymatch goal with
-            | cl := current_locals_marker (reconstruct ?vars ?vals) |- _ =>
-                cbv [cl current_locals_marker]; reflexivity
-            end
-          | ]*)
-      | LoopBody => idtac
+          eexists; split; [ reflexivity | ];
+          package_context
+      | LoopBody => fail "Closing a loop body is not yet implemented"
       | _ => fail "Can't end a block here"
       end
+  | _ => fail "no scope marker found"
   end.
 
 Ltac ret retnames :=
@@ -1536,6 +1663,105 @@ Abort.
 
 Tactic Notation ".*" constr(s) "*" := add_snippet s; after_snippet.
 
+Section Merging.
+  Lemma if_dlet_l: forall (b: bool) (T: Type) (rhs: T) (body: T -> Prop) (P: Prop),
+      (if b then dlet rhs (fun binder => body binder) else P) ->
+      dlet rhs (fun binder => if b then body binder else P).
+  Proof. unfold dlet. intros. assumption. Qed.
+
+  Lemma if_ands_same_head: forall (b: bool) (P: Prop) (Qs1 Qs2: list Prop),
+      (if b then ands (P :: Qs1) else ands (P :: Qs2)) ->
+      P /\ (if b then ands Qs1 else ands Qs2).
+  Proof. cbn. intros. destruct b; intuition idtac. Qed.
+
+  Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
+  Let nth n xs := SeparationLogic.hd True (SeparationLogic.skipn n xs).
+  Let remove_nth n (xs : list Prop) :=
+    (SeparationLogic.firstn n xs ++ SeparationLogic.tl (SeparationLogic.skipn n xs)).
+
+  Lemma ands_app: forall Ps Qs, ands (Ps ++ Qs) = (ands Ps /\ ands Qs).
+  Proof.
+    induction Ps; cbn; intros; apply PropExtensionality.propositional_extensionality;
+      rewrite ?IHPs; intuition idtac.
+  Qed.
+
+  Lemma ands_nth_to_head: forall (n: nat) (Ps: list Prop),
+      (nth n Ps /\ ands (remove_nth n Ps)) = (ands Ps).
+  Proof.
+    intros. cbv [nth remove_nth].
+    pose proof (List.firstn_skipn n Ps: (firstn n Ps ++ skipn n Ps) = Ps).
+    forget (skipn n Ps) as Psr.
+    forget (firstn n Ps) as Psl.
+    subst Ps.
+    apply PropExtensionality.propositional_extensionality.
+    destruct Psr.
+    { cbn. rewrite List.app_nil_r. intuition idtac. }
+    cbn [hd tl]. rewrite ?ands_app. cbn [ands]. intuition idtac.
+  Qed.
+
+  Lemma merge_ands_at_indices: forall i j (P1 P2: Prop) (b: bool) (Ps1 Ps2: list Prop),
+      nth i Ps1 = P1 ->
+      nth j Ps2 = P2 ->
+      (if b then ands Ps1 else ands Ps2) ->
+      (if b then P1 else P2) /\
+      (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
+  Proof.
+    intros. subst.
+    rewrite <- (ands_nth_to_head i Ps1) in H1.
+    rewrite <- (ands_nth_to_head j Ps2) in H1.
+    destruct b; intuition idtac.
+  Qed.
+
+  Lemma merge_ands_at_indices_same_lhs:
+    forall i j {T: Type} (lhs rhs1 rhs2: T) (b: bool) (Ps1 Ps2: list Prop),
+      nth i Ps1 = (lhs = rhs1) ->
+      nth j Ps2 = (lhs = rhs2) ->
+      (if b then ands Ps1 else ands Ps2) ->
+      lhs = (if b then rhs1 else rhs2) /\
+      (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
+  Proof.
+    intros. eapply merge_ands_at_indices in H1; [|eassumption..].
+    destruct b; assumption.
+  Qed.
+
+  Lemma merge_ands_at_indices_same: forall i j (P: Prop) (b: bool) (Ps1 Ps2: list Prop),
+      nth i Ps1 = P ->
+      nth j Ps2 = P ->
+      (if b then ands Ps1 else ands Ps2) ->
+      P /\ (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
+  Proof.
+    intros. eapply merge_ands_at_indices in H1; [|eassumption..].
+    destruct b; assumption.
+  Qed.
+End Merging.
+
+Ltac find_eq_by_lhs lhs Ps :=
+  lazymatch Ps with
+  | ?h :: ?t => lazymatch h with
+                | lhs = _ => constr:((0%nat, h))
+                | _ => lazymatch find_eq_by_lhs lhs t with
+                       | (?i, ?P) => constr:((S i, P))
+                       end
+                end
+  end.
+
+Ltac merge_pair_with_same_lhs :=
+  lazymatch goal with
+  | H: if _ then ands ?Ps else ands ?Qs |- _ => once (
+      lazymatch index_and_element_of Ps with
+      | (?i, ?P) =>
+          lazymatch P with
+          | ?lhs = ?rhs1 =>
+              lazymatch find_eq_by_lhs lhs Qs with
+              | (?j, lhs = ?rhs2) =>
+                  eapply (@merge_ands_at_indices_same_lhs i j _ lhs rhs1 rhs2) in H;
+                  [  cbn [app firstn tl skipn] in H; destruct H
+                  | cbn [hd skipn]; reflexivity .. ]
+              end
+          end
+      end)
+  end.
+
 Definition u_min: {f: list string * list string * cmd &
   forall call t m a b,
     vc_func call f t m [a; b] (fun t' m' retvs =>
@@ -1548,11 +1774,15 @@ Definition u_min: {f: list string * list string * cmd &
 .**/  if (a < b) {                                                              /**.
 .**/    r = a;                                                                  /**.
 .**/  } else {                                                                  /**.
-(**)    (* postcond of then-branch *)                                           (**)
-(**)    admit.                                                                  (**)
 .**/    r = b;                                                                  /**.
 .**/  }                                                                         /**.
-(**)  (* postcond of else-branch *)                                             (**)
+.**/                                                                            /**.
+
+  repeat merge_pair_with_same_lhs.
+
+.**/  return r; /**.
+destruct cond0; intuition (blia || idtac).
+{
 (**)  admit.                                                                    (**)
 Abort.
 
@@ -1568,11 +1798,8 @@ Definition u_min: {f: list string * list string * cmd &
   if (a < b) {                                                             /**. .**/
     r = a;                                                                 /**. .**/
   } else {                                                                 /**. .**/
-    /**. (* postcond of then-branch *)                                          .**/
-    /**. admit.                                                                 .**/
     r = b;                                                                 /**. .**/
   }                                                                        /**. .**/
-  /**. (* postcond of else-branch *) admit.                                     .**/
   /**.
 Abort.
 
@@ -1588,12 +1815,8 @@ Definition u_min: {f: list string * list string * cmd &
 .**/  if (a < b) {                                                              /**.
 .**/    r = a;                                                                  /**.
 .**/  } else {                                                                  /**.
-        (* postcond of then-branch *)
-        admit.
 .**/    r = b;                                                                  /**.
 .**/  }                                                                         /**.
-      (* postcond of else-branch *)
-      admit.
 Abort.
 
 Definition u_min: {f: list string * list string * cmd &
@@ -1608,11 +1831,8 @@ Definition u_min: {f: list string * list string * cmd &
   if (a < b) {                                                             /**. .**/
     r = a;                                                                 /**. .**/
   } else {                                                                 /**. .**/
-    /**. (* postcond of then-branch *)  .**/                               /**. .**/
-    /**. admit.                         .**/                               /**. .**/
     r = b;                                                                 /**. .**/
   }                                                                        /**. .**/
-  /**. (* postcond of else-branch *) admit. .**/                           /**. .**/
   /**.
 Abort.
 
@@ -1676,23 +1896,6 @@ Print Rewrite HintDb fwd_rewrites.
   }
   destruct Foo as (foo & Foo).
 
-Ltac is_in_evar_scope x e :=
-  lazymatch type of e with
-  | ?Trace -> ?Mem -> ?Locals -> Prop =>
-      assert_succeeds (idtac; unify e (fun (_: Trace) (_: Mem) (_: Locals) => x = x))
-  end.
-
-(* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
-   used as the binder in the lambda being created *)
-Ltac vpattern_in x H :=
-  pattern x in H;
-  lazymatch type of H with
-  | ?f x => change ((fun x => ltac:(let r := eval cbv beta in (f x) in exact r)) x) in H
-  end.
-Tactic Notation "vpattern" ident(x) "in" ident(H) := vpattern_in x H.
-
-Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
-
   move m at bottom.
   move w1 at bottom.
 
@@ -1707,102 +1910,8 @@ Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
   move w1 after w1tmp.
   replace w1tmp with w1 in * by ZnWords. clear w1tmp.
 
-  eapply wp_skip.
-  eexists; split; [ reflexivity | ].
 
-  eassert _ as A. {
-    refine (conj E _). clear E.
-    refine (conj Bar _). clear Bar.
-    clear bar.
-    clear w1.
-    clear baz.
-    refine (conj M _). clear M.
-    clear m.
-    refine (conj Foo _). clear Foo.
-    clear foo.
-    refine (conj H0 _). clear H0.
-    exact I.
-  }
 
-Ltac is_in_post_evar_scope x :=
-  lazymatch goal with
-  | |- ?E ?T ?M ?L =>
-      lazymatch type of E with
-      | ?Trace -> ?Mem -> ?Locals -> Prop =>
-          assert_succeeds (unify E (fun (_: Trace) (_: Mem) (_: Locals) => x = x))
-      end
-  end.
-
-Ltac add_equality_to_post x Post :=
-  let y := fresh "etmp0" in
-  (* using pose & context match instead of set because set adds the renaming @{x:=y}
-     to the evar, so x will not be in the evar scope any more at the end, even though
-     x was introduced before the evar was created *)
-  pose (y := x);
-  lazymatch goal with
-  | |- context C[x] => let C' := context C[y] in change C'
-  end;
-  eapply (conj (eq_refl y : y = x)) in Post;
-  clearbody y.
-
-Ltac add_equalities_to_post Post :=
-  lazymatch goal with
-  | |- ?E ?T ?M ?L =>
-      add_equality_to_post T Post;
-      (* only add equality for memory if it was not changed in the branch and therefore
-         does not have a sep log assertion that will be packaged *)
-      try (is_in_post_evar_scope M; add_equality_to_post M Post);
-      add_equality_to_post L Post
-  end.
-
-  add_equalities_to_post A.
-
-Ltac has_rhs x :=
-  tryif (let _ := eval cbv delta [x] in x in idtac)
-  then idtac
-  else fail "The variable" x "does not have an rhs".
-
-Ltac add_var_to_post x Post :=
-  vpattern x in Post;
-  tryif has_rhs x then (
-    lazymatch type of Post with
-    | ?f ?y => change (dlet y f) in Post
-    end;
-    subst x
-  ) else (
-     eapply ex_intro in Post;
-     clear x
-  ).
-
-Ltac add_last_var_to_post Post :=
-  let lastvar :=
-    match goal with
-    | x: _ |- _ =>
-        let __ := match constr:(Set) with
-                  | _ => assert_fails (constr_eq x Post)
-                  end in x
-    end in
-  let T := type of lastvar in
-  lazymatch T with
-  | scope_marker _ => fail "done (scope marker reached)"
-  | _ => idtac
-  end;
-  lazymatch type of T with
-  | Prop => clear lastvar
-  | _ => lazymatch goal with
-         | |- _ lastvar _ _ => move lastvar at top
-         | |- _ _ lastvar _ => move lastvar at top
-         | |- _ _ _ lastvar => move lastvar at top
-         | |- _ => add_var_to_post lastvar Post
-         end
-  end.
-
-  repeat add_last_var_to_post A.
-
-  lazymatch goal with
-  | |- _ ?T ?M ?L => pattern T, M, L in A
-  end.
-  exact A.
 
   (* else branch: *)
 .**/   if (w2 < w0 && w2 < w1) {                                                /**.
