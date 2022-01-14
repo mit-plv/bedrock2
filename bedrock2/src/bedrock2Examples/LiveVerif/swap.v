@@ -79,6 +79,26 @@ Hint Rewrite @word.signed_lts using typeclasses eauto: fwd_rewrites.
 
 Ltac fwd_rewrites ::= fwd_rewrites_autorewrite.
 
+Module map.
+  Section __.
+    Context {key value: Type} {map: map.map key value} {map_ok: map.ok map}
+            {key_eqb: key -> key -> bool} {key_eqb_dec: EqDecider key_eqb}.
+
+    Lemma invert_put_eq: forall (k: key) (v1 v2: value) (m1 m2: map),
+        map.get m1 k = None ->
+        map.get m2 k = None ->
+        map.put m1 k v1 = map.put m2 k v2 ->
+        v1 = v2 /\ m1 = m2.
+    Proof.
+      intros. split.
+      - eapply (f_equal (fun m => map.get m k)) in H1.
+        rewrite 2map.get_put_same in H1. congruence.
+      - eapply map.map_ext. intros. destr (key_eqb k0 k). 1: congruence.
+        eapply (f_equal (fun m => map.get m k0)) in H1.
+        rewrite 2map.get_put_diff in H1 by assumption. exact H1.
+    Qed.
+  End __.
+End map.
 
 Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
 | mk_get_option: forall (a: A) (post: A -> Prop), post a -> get_option (Some a) post.
@@ -953,6 +973,7 @@ Ltac ecancel_assumption_with_remaining_emp_Prop :=
 
 Ltac simpli_step :=
   match goal with
+  | H: ?x = ?y |- _ => is_var x; is_var y; subst x
   | H: context[word.unsigned ?x] |- _ => progress (ring_simplify x in H)
   | H: context[word.unsigned (word.of_Z _)] |- _ =>
     rewrite word.unsigned_of_Z_nowrap in H by Lia.lia
@@ -1092,10 +1113,7 @@ Ltac add_equalities_to_post Post :=
   lazymatch goal with
   | |- ?E ?T ?M ?L =>
       add_equality_to_post L Post;
-      add_equality_to_post T Post;
-      (* only add equality for memory if it was not changed in the branch and therefore
-         does not have a sep log assertion that will be packaged *)
-      try (is_in_post_evar_scope M; add_equality_to_post M Post)
+      add_equality_to_post T Post
   end.
 
 Ltac add_var_to_post x Post :=
@@ -1135,6 +1153,12 @@ Ltac add_last_var_to_post Post :=
   end.
 
 Ltac package_context :=
+  lazymatch goal with
+  | H: seps _ ?m |- ?E ?t ?m ?l =>
+      (* always package sep log assertion, even if memory was not changed in current block *)
+      move H at bottom
+  | |- ?E ?t ?m ?l => fail "No separation logic hypothesis about" m "found"
+  end;
   let Post := fresh "Post" in
   eassert _ as Post by (repeat add_last_hyp_to_post; apply ands_nil);
   add_equalities_to_post Post;
@@ -1143,6 +1167,254 @@ Ltac package_context :=
   | |- _ ?T ?M ?L => pattern T, M, L in Post
   end;
   exact Post.
+
+Section Merging.
+  Lemma if_dlet_l: forall (b: bool) (T: Type) (rhs: T) (body: T -> Prop) (P: Prop),
+      (if b then dlet rhs (fun binder => body binder) else P) ->
+      dlet rhs (fun binder => if b then body binder else P).
+  Proof. unfold dlet. intros. assumption. Qed.
+
+  Lemma if_ands_same_head: forall (b: bool) (P: Prop) (Qs1 Qs2: list Prop),
+      (if b then ands (P :: Qs1) else ands (P :: Qs2)) ->
+      P /\ (if b then ands Qs1 else ands Qs2).
+  Proof. cbn. intros. destruct b; intuition idtac. Qed.
+
+  Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
+  Let nth n xs := SeparationLogic.hd True (SeparationLogic.skipn n xs).
+  Let remove_nth n (xs : list Prop) :=
+    (SeparationLogic.firstn n xs ++ SeparationLogic.tl (SeparationLogic.skipn n xs)).
+
+  Lemma ands_app: forall Ps Qs, ands (Ps ++ Qs) = (ands Ps /\ ands Qs).
+  Proof.
+    induction Ps; cbn; intros; apply PropExtensionality.propositional_extensionality;
+      rewrite ?IHPs; intuition idtac.
+  Qed.
+
+  Lemma ands_nth_to_head: forall (n: nat) (Ps: list Prop),
+      (nth n Ps /\ ands (remove_nth n Ps)) = (ands Ps).
+  Proof.
+    intros. cbv [nth remove_nth].
+    pose proof (List.firstn_skipn n Ps: (firstn n Ps ++ skipn n Ps) = Ps).
+    forget (skipn n Ps) as Psr.
+    forget (firstn n Ps) as Psl.
+    subst Ps.
+    apply PropExtensionality.propositional_extensionality.
+    destruct Psr.
+    { cbn. rewrite List.app_nil_r. intuition idtac. }
+    cbn [hd tl]. rewrite ?ands_app. cbn [ands]. intuition idtac.
+  Qed.
+
+  Lemma merge_ands_at_indices: forall i j (P1 P2: Prop) (b: bool) (Ps1 Ps2: list Prop),
+      nth i Ps1 = P1 ->
+      nth j Ps2 = P2 ->
+      (if b then ands Ps1 else ands Ps2) ->
+      (if b then P1 else P2) /\
+      (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
+  Proof.
+    intros. subst.
+    rewrite <- (ands_nth_to_head i Ps1) in H1.
+    rewrite <- (ands_nth_to_head j Ps2) in H1.
+    destruct b; intuition idtac.
+  Qed.
+
+  Lemma merge_ands_at_indices_same_lhs:
+    forall i j {T: Type} (lhs rhs1 rhs2: T) (b: bool) (Ps1 Ps2: list Prop),
+      nth i Ps1 = (lhs = rhs1) ->
+      nth j Ps2 = (lhs = rhs2) ->
+      (if b then ands Ps1 else ands Ps2) ->
+      lhs = (if b then rhs1 else rhs2) /\
+      (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
+  Proof.
+    intros. eapply merge_ands_at_indices in H1; [|eassumption..].
+    destruct b; assumption.
+  Qed.
+
+  Lemma merge_ands_at_indices_same_prop: forall i j (P: Prop) (b: bool) (Ps1 Ps2: list Prop),
+      nth i Ps1 = P ->
+      nth j Ps2 = P ->
+      (if b then ands Ps1 else ands Ps2) ->
+      P /\ (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
+  Proof.
+    intros. eapply merge_ands_at_indices in H1; [|eassumption..].
+    destruct b; assumption.
+  Qed.
+
+  Lemma merge_ands_at_indices_same_mem:
+    forall i j (mem: Type) (m: mem) (P1 P2: mem -> Prop) (b: bool) (Ps1 Ps2: list Prop),
+      nth i Ps1 = P1 m ->
+      nth j Ps2 = P2 m ->
+      (if b then ands Ps1 else ands Ps2) ->
+      (if b then P1 m else P2 m) /\
+        (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
+  Proof.
+    intros. eapply merge_ands_at_indices in H1; [|eassumption..].
+    destruct b; assumption.
+  Qed.
+End Merging.
+
+Fixpoint zip_tuple_if{A: Type}(b: bool){n: nat}(t1 t2: tuple A n){struct n}: tuple A n.
+  destruct n.
+  - exact tt.
+  - destruct t1 as (h1 & t1). destruct t2 as (h2 & t2).
+    constructor.
+    + exact (if b then h1 else h2).
+    + exact (zip_tuple_if A b n t1 t2).
+Defined.
+
+Lemma zip_tuple_if_true: forall A n (t1 t2: tuple A n), zip_tuple_if true t1 t2 = t1.
+Proof.
+  induction n; cbn; intros; destruct t1; destruct t2.
+  - reflexivity.
+  - f_equal. eapply IHn.
+Qed.
+
+Lemma zip_tuple_if_false: forall A n (t1 t2: tuple A n), zip_tuple_if false t1 t2 = t2.
+Proof.
+  induction n; cbn; intros; destruct t1; destruct t2.
+  - reflexivity.
+  - f_equal. eapply IHn.
+Qed.
+
+Section ReconstructLemmas.
+  Context {word: word.word 32} {mem: map.map word byte} {locals: map.map string word}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok: map.ok locals}.
+
+  Lemma push_if_reconstruct:
+    forall varnames (valsThen valsElse: tuple word (List.length varnames)) (b: bool),
+      (if b then reconstruct varnames valsThen else reconstruct varnames valsElse) =
+        reconstruct varnames (zip_tuple_if b valsThen valsElse).
+  Proof.
+    intros. destruct b.
+    - rewrite zip_tuple_if_true. reflexivity.
+    - rewrite zip_tuple_if_false. reflexivity.
+  Qed.
+
+  Lemma reconstruct_cons(v: string)(vs: list string)(x: word)
+        (xs: tuple word (List.length vs)):
+    reconstruct (cons v vs) (PrimitivePair.pair.mk x xs) = map.put (reconstruct vs xs) v x.
+  Proof. reflexivity. Qed.
+
+  Lemma not_in_reconstruct: forall a vs (xs: tuple word (List.length vs)),
+      ~ List.In a vs -> map.get (reconstruct vs xs) a = None.
+  Proof.
+    induction vs; intros.
+    - cbn. apply map.get_empty.
+    - destruct xs. rewrite reconstruct_cons.
+      rewrite map.get_put_dec. destruct_one_match.
+      + exfalso. apply H. cbn. auto.
+      + eapply IHvs. intro C. apply H. cbn. auto.
+  Qed.
+
+  Lemma invert_reconstruct_eq_aux: forall vs (xs ys: tuple word (List.length vs)),
+      List.NoDup vs ->
+      reconstruct vs xs = reconstruct vs ys ->
+      xs = ys.
+  Proof.
+    induction vs; intros; destruct xs; destruct ys.
+    - reflexivity.
+    - rewrite 2reconstruct_cons in H0.
+      inversion H. subst.
+      eapply map.invert_put_eq in H0.
+      + destruct H0. f_equal. 1: assumption. eapply IHvs; eassumption.
+      + cbn. apply not_in_reconstruct. assumption.
+      + cbn. apply not_in_reconstruct. assumption.
+  Qed.
+
+  Lemma invert_reconstruct_eq(vs: list string)(xs ys: tuple word (List.length vs)):
+    List.dedup String.eqb vs = vs ->
+    reconstruct vs xs = reconstruct vs ys ->
+    xs = ys.
+  Proof.
+    intros. eapply invert_reconstruct_eq_aux. 2: assumption. rewrite <- H.
+    apply List.NoDup_dedup.
+  Qed.
+
+  Lemma invert_reconstruct_eq_if:
+    forall (vs: list string)(xs ys zs: tuple word (List.length vs))(b: bool),
+      List.dedup String.eqb vs = vs ->
+      reconstruct vs xs = (if b then reconstruct vs ys else reconstruct vs zs) ->
+      xs = (if b then ys else zs).
+  Proof.
+    intros. destruct b; eapply invert_reconstruct_eq; assumption.
+  Qed.
+
+  Lemma invert_tuple_eq{A B: Type}: forall (h1 h2: A) (t1 t2: B),
+      PrimitivePair.pair.mk h1 t1 = PrimitivePair.pair.mk h2 t2 ->
+      h1 = h2 /\ t1 = t2.
+  Proof. intros. split; congruence. Qed.
+
+  Lemma eq_if_same{A: Type}: forall (lhs rhs: A) (b: bool),
+      lhs = (if b then rhs else rhs) ->
+      lhs = rhs.
+  Proof. intros; destruct b; assumption. Qed.
+End ReconstructLemmas.
+
+Ltac find_eq test Ps :=
+  lazymatch Ps with
+  | ?h :: ?t =>
+      lazymatch test h with
+      | true => constr:((0%nat, h))
+      | false => lazymatch find_eq test t with
+                 | (?i, ?P) => constr:((S i, P))
+                 end
+      end
+  end.
+
+Ltac merge_pair is_match lem :=
+  lazymatch goal with
+  | H: if _ then ands ?Ps else ands ?Qs |- _ => once (
+      lazymatch index_and_element_of Ps with
+      | (?i, ?P) =>
+          lazymatch find_eq ltac:(fun Q => is_match P Q) Qs with
+          | (?j, ?Q) =>
+              eapply (lem i j) in H;
+              [ cbn [app firstn tl skipn] in H; destruct H
+              | cbn [hd skipn]; reflexivity .. ]
+          end
+      end)
+  end.
+
+Ltac same_lhs P Q :=
+  lazymatch P with
+  | ?lhs = _ =>
+      lazymatch Q with
+      | lhs = _ => constr:(true)
+      | _ = _ => constr:(false)
+      end
+  end.
+
+Ltac constr_eqb x y :=
+  lazymatch x with
+  | y => constr:(true)
+  | _ => constr:(false)
+  end.
+
+Ltac seps_about_same_mem x y :=
+  lazymatch x with
+  | seps _ ?m => lazymatch y with
+                 | seps _ ?m => constr:(true)
+                 | _ => constr:(false)
+                 end
+  | _ => constr:(false)
+  end.
+
+Ltac after_if :=
+  repeat merge_pair constr_eqb merge_ands_at_indices_same_prop;
+  repeat merge_pair same_lhs merge_ands_at_indices_same_lhs;
+  repeat merge_pair seps_about_same_mem merge_ands_at_indices_same_mem;
+  try lazymatch goal with
+      | H: reconstruct _ _ = (if _ then _ else _) |- _ =>
+          rewrite push_if_reconstruct in H; cbn [zip_tuple_if List.length] in H;
+          eapply invert_reconstruct_eq in H; [|reflexivity]
+      end;
+  repeat match goal with
+         | H: PrimitivePair.pair.mk _ _ = PrimitivePair.pair.mk _ _ |- _ =>
+             eapply invert_tuple_eq in H; destruct H
+         end;
+  repeat match goal with
+         | H: _ = (if _ then _ else _) |- _ => eapply eq_if_same in H
+         end;
+  cbn [ands] in *.
 
 Inductive snippet :=
 | SAssign(is_decl: bool)(x: string)(e: Syntax.expr)
@@ -1198,20 +1470,6 @@ Ltac els :=
   eexists; split; [ reflexivity | ];
   package_context.
 
-(*
-  lazymatch goal with
-  | b := (cons ThenBranch ?l) : list block_kind |- _ => clear b
-  | _ => fail "Not in a then-branch"
-  end;
-  eapply wp_skip;
-  eexists; split;
-  [ lazymatch goal with
-    | cl := current_locals_marker (reconstruct ?vars ?vals) |- _ =>
-      cbv [cl current_locals_marker]; reflexivity
-    end
-  | ].
-*)
-
 Ltac close_block :=
   lazymatch goal with
   | B: scope_marker ?sk |- _ =>
@@ -1225,6 +1483,13 @@ Ltac close_block :=
       end
   | _ => fail "no scope marker found"
   end.
+
+Ltac prove_final_post :=
+  repeat match goal with
+         | H: context[if ?b then _ else _] |- _ =>
+             let t := type of b in constr_eq t bool; destruct b
+         end;
+  intuition (blia || congruence).
 
 Ltac ret retnames :=
   lazymatch goal with
@@ -1242,11 +1507,18 @@ Ltac ret retnames :=
   | |- exists _, map.getmany_of_list _ ?eretnames = Some _ /\ _ =>
     unify eretnames retnames;
     eexists; split; [reflexivity|]
-  end.
+  end;
+  try prove_final_post.
 
 Ltac prettify_goal :=
-  cbv beta in *;
-  fwd.
+  lazymatch goal with
+  | |- {f: list string * list string * Syntax.cmd & _ } => start
+  | |- _ =>
+      cbv beta in *;
+      after_if;
+      fwd;
+      repeat simpli_step
+  end.
 
 Ltac add_snippet s :=
   lazymatch s with
@@ -1663,113 +1935,15 @@ Abort.
 
 Tactic Notation ".*" constr(s) "*" := add_snippet s; after_snippet.
 
-Section Merging.
-  Lemma if_dlet_l: forall (b: bool) (T: Type) (rhs: T) (body: T -> Prop) (P: Prop),
-      (if b then dlet rhs (fun binder => body binder) else P) ->
-      dlet rhs (fun binder => if b then body binder else P).
-  Proof. unfold dlet. intros. assumption. Qed.
-
-  Lemma if_ands_same_head: forall (b: bool) (P: Prop) (Qs1 Qs2: list Prop),
-      (if b then ands (P :: Qs1) else ands (P :: Qs2)) ->
-      P /\ (if b then ands Qs1 else ands Qs2).
-  Proof. cbn. intros. destruct b; intuition idtac. Qed.
-
-  Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
-  Let nth n xs := SeparationLogic.hd True (SeparationLogic.skipn n xs).
-  Let remove_nth n (xs : list Prop) :=
-    (SeparationLogic.firstn n xs ++ SeparationLogic.tl (SeparationLogic.skipn n xs)).
-
-  Lemma ands_app: forall Ps Qs, ands (Ps ++ Qs) = (ands Ps /\ ands Qs).
-  Proof.
-    induction Ps; cbn; intros; apply PropExtensionality.propositional_extensionality;
-      rewrite ?IHPs; intuition idtac.
-  Qed.
-
-  Lemma ands_nth_to_head: forall (n: nat) (Ps: list Prop),
-      (nth n Ps /\ ands (remove_nth n Ps)) = (ands Ps).
-  Proof.
-    intros. cbv [nth remove_nth].
-    pose proof (List.firstn_skipn n Ps: (firstn n Ps ++ skipn n Ps) = Ps).
-    forget (skipn n Ps) as Psr.
-    forget (firstn n Ps) as Psl.
-    subst Ps.
-    apply PropExtensionality.propositional_extensionality.
-    destruct Psr.
-    { cbn. rewrite List.app_nil_r. intuition idtac. }
-    cbn [hd tl]. rewrite ?ands_app. cbn [ands]. intuition idtac.
-  Qed.
-
-  Lemma merge_ands_at_indices: forall i j (P1 P2: Prop) (b: bool) (Ps1 Ps2: list Prop),
-      nth i Ps1 = P1 ->
-      nth j Ps2 = P2 ->
-      (if b then ands Ps1 else ands Ps2) ->
-      (if b then P1 else P2) /\
-      (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
-  Proof.
-    intros. subst.
-    rewrite <- (ands_nth_to_head i Ps1) in H1.
-    rewrite <- (ands_nth_to_head j Ps2) in H1.
-    destruct b; intuition idtac.
-  Qed.
-
-  Lemma merge_ands_at_indices_same_lhs:
-    forall i j {T: Type} (lhs rhs1 rhs2: T) (b: bool) (Ps1 Ps2: list Prop),
-      nth i Ps1 = (lhs = rhs1) ->
-      nth j Ps2 = (lhs = rhs2) ->
-      (if b then ands Ps1 else ands Ps2) ->
-      lhs = (if b then rhs1 else rhs2) /\
-      (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
-  Proof.
-    intros. eapply merge_ands_at_indices in H1; [|eassumption..].
-    destruct b; assumption.
-  Qed.
-
-  Lemma merge_ands_at_indices_same: forall i j (P: Prop) (b: bool) (Ps1 Ps2: list Prop),
-      nth i Ps1 = P ->
-      nth j Ps2 = P ->
-      (if b then ands Ps1 else ands Ps2) ->
-      P /\ (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
-  Proof.
-    intros. eapply merge_ands_at_indices in H1; [|eassumption..].
-    destruct b; assumption.
-  Qed.
-End Merging.
-
-Ltac find_eq_by_lhs lhs Ps :=
-  lazymatch Ps with
-  | ?h :: ?t => lazymatch h with
-                | lhs = _ => constr:((0%nat, h))
-                | _ => lazymatch find_eq_by_lhs lhs t with
-                       | (?i, ?P) => constr:((S i, P))
-                       end
-                end
-  end.
-
-Ltac merge_pair_with_same_lhs :=
-  lazymatch goal with
-  | H: if _ then ands ?Ps else ands ?Qs |- _ => once (
-      lazymatch index_and_element_of Ps with
-      | (?i, ?P) =>
-          lazymatch P with
-          | ?lhs = ?rhs1 =>
-              lazymatch find_eq_by_lhs lhs Qs with
-              | (?j, lhs = ?rhs2) =>
-                  eapply (@merge_ands_at_indices_same_lhs i j _ lhs rhs1 rhs2) in H;
-                  [  cbn [app firstn tl skipn] in H; destruct H
-                  | cbn [hd skipn]; reflexivity .. ]
-              end
-          end
-      end)
-  end.
-
 Definition u_min: {f: list string * list string * cmd &
-  forall call t m a b,
+  forall call t m a b R,
+    seps [R] m ->
     vc_func call f t m [a; b] (fun t' m' retvs =>
-      t' = t /\ m' = m /\
+      t' = t /\ seps [R] m /\
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
   )}.
-(**)  start.                                                                    (**)
+.**/                                                                            /**.
 .**/  uintptr_t r = 0;                                                          /**.
 .**/  if (a < b) {                                                              /**.
 .**/    r = a;                                                                  /**.
@@ -1777,64 +1951,26 @@ Definition u_min: {f: list string * list string * cmd &
 .**/    r = b;                                                                  /**.
 .**/  }                                                                         /**.
 .**/                                                                            /**.
-
-  repeat merge_pair_with_same_lhs.
-
 .**/  return r; /**.
-destruct cond0; intuition (blia || idtac).
-{
-(**)  admit.                                                                    (**)
-Abort.
+Defined.
 
-Definition u_min: {f: list string * list string * cmd &
-  forall call t m a b,
+Definition u_min': {f: list string * list string * cmd &
+  forall call t m a b R,
+    seps [R] m ->
     vc_func call f t m [a; b] (fun t' m' retvs =>
-      t' = t /\ m' = m /\
+      t' = t /\ seps [R] m /\
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
-  )}. .**/
-  /**. start.                                                                   .**/
+  )}. .**/                                                                 /**. .**/
   uintptr_t r = 0;                                                         /**. .**/
   if (a < b) {                                                             /**. .**/
     r = a;                                                                 /**. .**/
   } else {                                                                 /**. .**/
     r = b;                                                                 /**. .**/
   }                                                                        /**. .**/
-  /**.
-Abort.
-
-Definition u_min: {f: list string * list string * cmd &
-  forall call t m a b,
-    vc_func call f t m [a; b] (fun t' m' retvs =>
-      t' = t /\ m' = m /\
-      (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
-       word.unsigned b <= word.unsigned a /\ retvs = [b])
-  )}.
-      start.
-.**/  uintptr_t r = 0;                                                          /**.
-.**/  if (a < b) {                                                              /**.
-.**/    r = a;                                                                  /**.
-.**/  } else {                                                                  /**.
-.**/    r = b;                                                                  /**.
-.**/  }                                                                         /**.
-Abort.
-
-Definition u_min: {f: list string * list string * cmd &
-  forall call t m a b,
-    vc_func call f t m [a; b] (fun t' m' retvs =>
-      t' = t /\ m' = m /\
-      (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
-       word.unsigned b <= word.unsigned a /\ retvs = [b])
-  )}. .**/
-  /**. start. .**/                                                         /**. .**/
-  uintptr_t r = 0;                                                         /**. .**/
-  if (a < b) {                                                             /**. .**/
-    r = a;                                                                 /**. .**/
-  } else {                                                                 /**. .**/
-    r = b;                                                                 /**. .**/
-  }                                                                        /**. .**/
-  /**.
-Abort.
+                                                                           /**. .**/
+  return r;                                                                /**.
+Defined.
 
 Definition sort3: {f: list string * list string * cmd &
   forall call t m a vs R,
@@ -1891,6 +2027,7 @@ Print Rewrite HintDb fwd_rewrites.
 .**/  if (w1 < w0 && w1 < w2) {                                                 /**.
 .**/    store(a, w1);                                                           /**.
 .**/    w1 = w0;                                                                /**.
+
   assert (exists foo, foo + foo = 2) as Foo. {
     exists 1. reflexivity.
   }
@@ -1910,13 +2047,14 @@ Print Rewrite HintDb fwd_rewrites.
   move w1 after w1tmp.
   replace w1tmp with w1 in * by ZnWords. clear w1tmp.
 
-
-
-
-  (* else branch: *)
+.**/  } else {                                                                  /**.
 .**/   if (w2 < w0 && w2 < w1) {                                                /**.
 .**/     store(a, w2);                                                          /**.
 .**/     w2 = w0;                                                               /**.
+.**/   } else {                                                                 /**.
+.**/   }                                                                        /**.
+.**/                                                                            /**.
+
 (*
 Close Scope live_scope. Undelimit Scope live_scope. idtac.
 
@@ -1944,9 +2082,7 @@ Definition swap_locals: {f: list string * list string * cmd &
   b = t;                                                                   /**. .**/
   uintptr_t res1 = a;                                                      /**. .**/
   uintptr_t res2 = b;                                                      /**. .**/
-  return res1, res2;                                                       /**. .**/
-/**.
-  intuition congruence.
+  return res1, res2;                                                       /**.
 Defined.
 
 (* TODO: write down postcondition only at end *)
@@ -1969,7 +2105,6 @@ Definition swap: {f: list string * list string * cmd &
 #*/ store(a_addr, load(b_addr));                                             /*.
 #*/ store(b_addr, t);                                                        /*.
     ret (@nil string).
-    subst. intuition solve[cbn[seps] in *; ecancel_assumption].
 Defined.
 
 Goal False.
