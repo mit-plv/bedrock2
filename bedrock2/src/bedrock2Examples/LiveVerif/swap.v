@@ -74,8 +74,7 @@ Require Import coqutil.Tactics.autoforward.
   => rapply @word.if_nonzero : typeclass_instances.
 
 (*#[export] not supported in 8.13 yet*)
-Hint Rewrite @word.unsigned_ltu using typeclasses eauto: fwd_rewrites.
-Hint Rewrite @word.signed_lts using typeclasses eauto: fwd_rewrites.
+Hint Rewrite List.firstn_O : fwd_rewrites.
 
 Ltac fwd_rewrites ::= fwd_rewrites_autorewrite.
 
@@ -258,11 +257,65 @@ Section SepLog.
     }
     reflexivity.
   Qed.
+
+  Add Ring wring : (Properties.word.ring_theory (word := word))
+        (preprocess [autorewrite with rew_word_morphism],
+         morphism (Properties.word.ring_morph (word := word)),
+         constants [Properties.word_cst]).
+
+  Lemma access_word_array_first: forall a vs,
+      (0 < Datatypes.length vs)%nat ->
+      split_sepclause (a |-> word_array vs)
+        (a |-> scalar (List.nth 0 vs (word.of_Z 0)))
+        [word.add a (word.of_Z 4) |-> word_array (List.skipn 1 vs)].
+  Proof.
+    intros.
+    pose proof access_word_array a a vs as A.
+    cbv zeta in A.
+    ring_simplify (word.sub a a) in A.
+    rewrite word.unsigned_of_Z_0 in A.
+    groundcbv_in_all.
+    rewrite List.firstn_O in A.
+    change (a |-> word_array []) with (emp (map := mem) True) in A.
+    ring_simplify (word.mul (word := word) (word.of_Z 4) (word.of_Z 1)) in A.
+    unfold split_sepclause in *.
+    etransitivity. 1: apply A. 3: cbn [seps]; cancel.
+    1: assumption. ring.
+  Qed.
+
+  Lemma access_word_array_last: forall a a' vs,
+      let i := Z.to_nat (word.unsigned (word.sub a' a) / 4) in
+      (i + 1 = List.length vs)%nat ->
+      a' = word.add a (word.of_Z (4 * Z.of_nat i)) ->
+      split_sepclause (a |-> word_array vs)
+        (a' |-> scalar (List.nth i vs (word.of_Z 0)))
+        [a |-> word_array (List.firstn i vs)].
+  Proof.
+    intros.
+    pose proof access_word_array a a' vs as A.
+    cbv zeta in A.
+    ring_simplify (word.mul (word := word) (word.of_Z 4) (word.of_Z 1)) in A.
+    unfold split_sepclause in *.
+    etransitivity. 1: apply A.
+    1: ZnWords.
+    1: ZnWords.
+    cbn [seps].
+    clear A. subst i.
+    rewrite List.skipn_all2 by ZnWords.
+    change (_ |-> word_array []) with (emp (map := mem) True).
+    cancel.
+  Qed.
 End SepLog.
 
 Existing Class split_sepclause.
 
 #[export] Hint Extern 1 (split_sepclause (_ |-> word_array _) (_ |-> scalar _) _) =>
+  rapply access_word_array_first; ZnWords : typeclass_instances.
+
+#[export] Hint Extern 1 (split_sepclause (_ |-> word_array _) (_ |-> scalar _) _) =>
+  rapply access_word_array_last; ZnWords : typeclass_instances.
+
+#[export] Hint Extern 2 (split_sepclause (_ |-> word_array _) (_ |-> scalar _) _) =>
   rapply access_word_array; ZnWords : typeclass_instances.
 
 Section WithParams.
@@ -536,6 +589,9 @@ Section WithParams.
     eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
     intros v E. subst v. reflexivity.
   Qed.
+
+  Local Hint Rewrite @word.unsigned_ltu using typeclasses eauto: fwd_rewrites.
+  Local Hint Rewrite @word.signed_lts using typeclasses eauto: fwd_rewrites.
 
   Lemma dexpr_bool_op_prop: forall m l op e1 e2 (v1 v2: word),
       dexpr m l e1 v1 ->
@@ -837,10 +893,10 @@ Declare Scope reconstruct_locals_scope.
 Delimit Scope reconstruct_locals_scope with reconstruct_locals.
 
 Notation "[ x ]" := (PrimitivePair.pair.mk x tt)
-  (only printing) : reconstruct_locals_scope.
+  : reconstruct_locals_scope.
 Notation "[ x ; y ; .. ; z ]" :=
   (PrimitivePair.pair.mk x (PrimitivePair.pair.mk y .. (PrimitivePair.pair.mk z tt) ..))
-  (only printing) : reconstruct_locals_scope.
+  : reconstruct_locals_scope.
 
 Notation "l" := (arguments_marker l)
   (at level 100, only printing) : live_scope.
@@ -974,10 +1030,20 @@ Ltac ecancel_assumption_with_remaining_emp_Prop :=
 Ltac simpli_step :=
   match goal with
   | H: ?x = ?y |- _ => is_var x; is_var y; subst x
+  | H: context[at_addr ?a _] |- _ => progress (ring_simplify a in H)
   | H: context[word.unsigned ?x] |- _ => progress (ring_simplify x in H)
   | H: context[word.unsigned (word.of_Z _)] |- _ =>
     rewrite word.unsigned_of_Z_nowrap in H by Lia.lia
   | _ => progress groundcbv_in_all
+  end.
+
+Ltac simpli_step_in_goal :=
+  match goal with
+  | |- context[at_addr ?a _] => progress (ring_simplify a)
+  | |- context[word.unsigned ?x] => progress (ring_simplify x)
+  | |- context[word.unsigned (word.of_Z _)] =>
+    rewrite word.unsigned_of_Z_nowrap by Lia.lia
+  | _ => progress groundcbv_in_goal
   end.
 
 Ltac is_fresh x := assert_succeeds (pose proof tt as x).
@@ -994,7 +1060,9 @@ Ltac put_into_current_locals is_decl :=
     | true => idtac
     | false => rename i into old_i
     end;
-    pose (i := v);
+    (* tradeoff between goal size blowup and not having to follow too many aliases *)
+    let v' := rdelta_var v in
+    pose (i := v');
     lazymatch goal with
     | |- wp_cmd ?call ?c ?t ?m (map.put ?l ?x ?v) ?post => change
         (wp_cmd  call  c  t  m (map.put  l  x  i)  post)
@@ -1169,9 +1237,14 @@ Ltac package_context :=
   exact Post.
 
 Section Merging.
-  Lemma if_dlet_l: forall (b: bool) (T: Type) (rhs: T) (body: T -> Prop) (P: Prop),
-      (if b then dlet rhs (fun binder => body binder) else P) ->
-      dlet rhs (fun binder => if b then body binder else P).
+  Lemma if_dlet_l_inline: forall (b: bool) (T: Type) (rhs: T) (body: T -> Prop) (P: Prop),
+      (if b then dlet rhs body else P) ->
+      (if b then body rhs else P).
+  Proof. unfold dlet. intros. assumption. Qed.
+
+  Lemma if_dlet_r_inline: forall (b: bool) (T: Type) (rhs: T) (body: T -> Prop) (P: Prop),
+      (if b then P else dlet rhs body) ->
+      (if b then P else body rhs).
   Proof. unfold dlet. intros. assumption. Qed.
 
   Lemma if_ands_same_head: forall (b: bool) (P: Prop) (Qs1 Qs2: list Prop),
@@ -1246,6 +1319,19 @@ Section Merging.
       (if b then ands Ps1 else ands Ps2) ->
       (if b then P1 m else P2 m) /\
         (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
+  Proof.
+    intros. eapply merge_ands_at_indices in H1; [|eassumption..].
+    destruct b; assumption.
+  Qed.
+
+  Lemma merge_ands_at_indices_seps_same_mem:
+    forall i j [word: Type] [mem: map.map word byte]
+           (m: mem) (l1 l2: list (mem -> Prop)) (b: bool) (Ps1 Ps2: list Prop),
+      nth i Ps1 = seps l1 m ->
+      nth j Ps2 = seps l2 m ->
+      (if b then ands Ps1 else ands Ps2) ->
+      seps [seps (if b then l1 else l2)] m /\
+        if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2).
   Proof.
     intros. eapply merge_ands_at_indices in H1; [|eassumption..].
     destruct b; assumption.
@@ -1349,6 +1435,28 @@ Section ReconstructLemmas.
   Proof. intros; destruct b; assumption. Qed.
 End ReconstructLemmas.
 
+Ltac pull_dlet_and_exists_step :=
+  lazymatch goal with
+  | H: if _ then dlet _ (fun x => _) else _ |- _ =>
+      make_fresh x;
+      lazymatch type of H with
+      | if ?c then dlet ?rhs ?body else ?els =>
+          pose (x := rhs);
+          change (if c then dlet x body else els) in H;
+          eapply if_dlet_l_inline in H
+      end
+  | H: if _ then _ else dlet _ (fun x => _) |- _ =>
+      make_fresh x;
+      lazymatch type of H with
+      | if ?c then ?thn else dlet ?rhs ?body =>
+          pose (x := rhs);
+          change (if c then thn else dlet x body) in H;
+          eapply if_dlet_r_inline in H
+      end
+  | H: if _ then (exists x, _) else _ |- _ => fail 1000 "TODO lifting existentials"
+  | H: if _ then _ else (exists x, _) |- _ => fail 1000 "TODO lifting existentials"
+  end.
+
 Ltac find_eq test Ps :=
   lazymatch Ps with
   | ?h :: ?t =>
@@ -1368,10 +1476,11 @@ Ltac merge_pair is_match lem :=
           lazymatch find_eq ltac:(fun Q => is_match P Q) Qs with
           | (?j, ?Q) =>
               eapply (lem i j) in H;
-              [ cbn [app firstn tl skipn] in H; destruct H
+              [ cbn [app firstn tl skipn] in H
               | cbn [hd skipn]; reflexivity .. ]
           end
-      end)
+      end);
+      destruct H
   end.
 
 Ltac same_lhs P Q :=
@@ -1399,9 +1508,10 @@ Ltac seps_about_same_mem x y :=
   end.
 
 Ltac after_if :=
+  repeat pull_dlet_and_exists_step;
   repeat merge_pair constr_eqb merge_ands_at_indices_same_prop;
   repeat merge_pair same_lhs merge_ands_at_indices_same_lhs;
-  repeat merge_pair seps_about_same_mem merge_ands_at_indices_same_mem;
+  repeat merge_pair seps_about_same_mem merge_ands_at_indices_seps_same_mem;
   try lazymatch goal with
       | H: reconstruct _ _ = (if _ then _ else _) |- _ =>
           rewrite push_if_reconstruct in H; cbn [zip_tuple_if List.length] in H;
@@ -1429,7 +1539,11 @@ Ltac assign is_decl name val :=
   eapply (wp_set _ name val);
   repeat eval_expr_step;
   [.. (* maybe some unsolved side conditions *)
-  | try (put_into_current_locals is_decl; repeat simpli_step) ].
+  | try ((* to simplify value that will become bound with :=, at which point
+            rewrites will not apply any more *)
+         repeat simpli_step_in_goal;
+         put_into_current_locals is_decl;
+         repeat simpli_step) ].
 
 (* TODO change order of definitions so that this hook is not needed any more *)
 Ltac transfer_sep_order := fail "not yet implemented".
@@ -1992,38 +2106,7 @@ Definition sort3: {f: list string * list string * cmd &
       start. destruct H as [M ?].
 .**/  uintptr_t w0 = load(a);                                                   /**.
 .**/  uintptr_t w1 = load(a+4);                                                 /**.
-(*
-Ltac assign is_decl name val ::=
-  eapply (wp_set _ name val).
-(*
-  repeat eval_expr_step;
-  [.. (* maybe some unsolved side conditions *)
-  | try (put_into_current_locals is_decl; repeat simpli_step) ].
-*)
-
 .**/  uintptr_t w2 = load(a+8);                                                 /**.
-eval_expr_step.
-eval_expr_step.
-eval_expr_step.
-eval_expr_step.
-eval_expr_step.
-*)
-
-.**/  uintptr_t w2 = load(a+8);                                                 /**.
-
-(* adding more rewrite hints is costly:
-Ltac fwd_rewrites ::= fail.
-.**/  if (w1 < w0) {                                                 /**.
-Ltac fwd_rewrites ::= fwd_rewrites_autorewrite.
-(* Time rewrite @word.unsigned_ltu in * by typeclasses eauto. (* fast *) *)
-(*  Time autorewrite with fwd_rewrites in *. (* 0.372 secs *)*)
-
-Hint Rewrite @word.unsigned_ltu using typeclasses eauto: foo_test.
-Time autorewrite with foo_test in *.
-Print Rewrite HintDb foo_test.
-Print Rewrite HintDb fwd_rewrites.
-*)
-
 .**/  if (w1 < w0 && w1 < w2) {                                                 /**.
 .**/    store(a, w1);                                                           /**.
 .**/    w1 = w0;                                                                /**.
