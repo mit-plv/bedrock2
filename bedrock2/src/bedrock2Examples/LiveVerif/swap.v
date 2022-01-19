@@ -781,18 +781,18 @@ Section WithParams.
       wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Admitted.
 
-  Lemma wp_if_bool_dexpr: forall call c vars vals thn els rest t m P Q1 Q2 post,
-      dexpr_bool_prop m (reconstruct vars vals) c P ->
-      (P  -> wp_cmd call thn t m (reconstruct vars vals) (fun t' m' l' =>
-               exists vals', l' = reconstruct vars vals' /\ Q1 t' m' l')) ->
-      (~P -> wp_cmd call els t m (reconstruct vars vals) (fun t' m' l' =>
-               exists vals', l' = reconstruct vars vals' /\ Q2 t' m' l')) ->
-      (forall (cond0: bool) t' m' vals',
+  Lemma wp_if_bool_dexpr: forall call c vars vals0 thn els rest t0 m0 P Q1 Q2 post,
+      dexpr_bool_prop m0 (reconstruct vars vals0) c P ->
+      (P  -> wp_cmd call thn t0 m0 (reconstruct vars vals0) (fun t m l =>
+               exists vals, l = reconstruct vars vals /\ Q1 t m l)) ->
+      (~P -> wp_cmd call els t0 m0 (reconstruct vars vals0) (fun t m l =>
+               exists vals, l = reconstruct vars vals /\ Q2 t m l)) ->
+      (forall (cond0: bool) t m vals,
           (* (if cond0 then P else ~P) -> <-- already added to Q1/Q2 by automation *)
-          (if cond0 then Q1 t' m' (reconstruct vars vals')
-           else Q2 t' m' (reconstruct vars vals')) ->
-          wp_cmd call rest t' m' (reconstruct vars vals') post) ->
-      wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m (reconstruct vars vals) post.
+          (if cond0 then Q1 t m (reconstruct vars vals)
+           else Q2 t m (reconstruct vars vals)) ->
+          wp_cmd call rest t m (reconstruct vars vals) post) ->
+      wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t0 m0 (reconstruct vars vals0) post.
   Admitted.
 
   (* The postcondition of the callee's spec will have a concrete shape that differs
@@ -913,6 +913,13 @@ Notation "* x * y * .. * z" :=
   (at level 39, x at level 39, y at level 39, z at level 39,
    (* starting with a space to make sure we never create an opening comment *)
    format " '[v' *  x  '//' *  y  '//' *  ..  '//' *  z  ']'")
+  : sep_list_scope.
+
+Notation "* x" :=
+  (@cons (@map.rep _ _ _ -> Prop) x nil)
+  (at level 39, x at level 39,
+   (* starting with a space to make sure we never create an opening comment *)
+   format " '[v' *  x ']'")
   : sep_list_scope.
 
 Notation "m 'satisfies' <{ l }>" := (seps l%sep_list m)
@@ -1236,7 +1243,7 @@ Ltac package_context :=
   end;
   exact Post.
 
-Section Merging.
+Section MergingAnd.
   Lemma if_dlet_l_inline: forall (b: bool) (T: Type) (rhs: T) (body: T -> Prop) (P: Prop),
       (if b then dlet rhs body else P) ->
       (if b then body rhs else P).
@@ -1312,6 +1319,16 @@ Section Merging.
     destruct b; assumption.
   Qed.
 
+  Lemma merge_ands_at_indices_neg_prop: forall i j (P: Prop) (b: bool) (Ps1 Ps2: list Prop),
+      nth i Ps1 = P ->
+      nth j Ps2 = (~P) ->
+      (if b then ands Ps1 else ands Ps2) ->
+      (if b then P else ~P) /\
+        (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
+  Proof.
+    intros. eapply merge_ands_at_indices in H1; eassumption.
+  Qed.
+
   Lemma merge_ands_at_indices_same_mem:
     forall i j (mem: Type) (m: mem) (P1 P2: mem -> Prop) (b: bool) (Ps1 Ps2: list Prop),
       nth i Ps1 = P1 m ->
@@ -1336,7 +1353,64 @@ Section Merging.
     intros. eapply merge_ands_at_indices in H1; [|eassumption..].
     destruct b; assumption.
   Qed.
-End Merging.
+End MergingAnd.
+
+Section MergingSep.
+  Context {width: Z} {word: word.word width}
+          {word_ok: word.ok word} {mem: map.map word byte} {ok: map.ok mem}.
+
+  Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
+  Let nth(n: nat)(xs: list (mem -> Prop)) :=
+        SeparationLogic.hd (emp True) (SeparationLogic.skipn n xs).
+  Let remove_nth(n: nat)(xs: list (mem -> Prop)) :=
+    (SeparationLogic.firstn n xs ++ SeparationLogic.tl (SeparationLogic.skipn n xs)).
+
+  Lemma merge_seps_at_indices (m: mem) (i j: nat)
+        (P1 P2: mem -> Prop) (Ps1 Ps2 Qs: list (mem -> Prop)) (b: bool):
+    nth i Ps1 = P1 ->
+    nth j Ps2 = P2 ->
+    seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
+    seps ((seps (if b then (remove_nth i Ps1) else (remove_nth j Ps2))) ::
+          (if b then P1 else P2) :: Qs) m.
+  Proof.
+    intros. subst. eapply seps'_iff1_seps in H1. eapply seps'_iff1_seps.
+    cbn [seps'] in *. unfold remove_nth, nth. destruct b.
+    - pose proof (seps_nth_to_head i Ps1) as A.
+      eapply iff1ToEq in A. rewrite <- A in H1. ecancel_assumption.
+    - pose proof (seps_nth_to_head j Ps2) as A.
+      eapply iff1ToEq in A. rewrite <- A in H1. ecancel_assumption.
+  Qed.
+
+  Lemma merge_seps_at_indices_same (m: mem) i j
+        (P: mem -> Prop) (Ps1 Ps2 Qs: list (mem -> Prop)) (b: bool):
+    nth i Ps1 = P ->
+    nth j Ps2 = P ->
+    seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
+    seps ((seps (if b then (remove_nth i Ps1) else (remove_nth j Ps2))) :: P :: Qs) m.
+  Proof.
+    intros. eapply (merge_seps_at_indices m i j P P) in H1; [|eassumption..].
+    destruct b; assumption.
+  Qed.
+
+  Lemma expose_addr_of_then_in_else:
+    forall (m: mem) a v (Ps1 Ps2 Rs Qs: list (mem -> Prop)) (b: bool),
+    impl1 (seps Ps2) (seps ((a |-> v) :: Rs)) ->
+    seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
+    seps ((seps (if b then Ps1 else ((a |-> v) :: Rs))) :: Qs) m.
+  Proof.
+    intros. destruct b.
+    - assumption.
+    - (* TODO make seprewrite_in work for impl1 *)
+      pose proof (seps'_iff1_seps (seps Ps2 :: Qs)) as A. eapply iff1ToEq in A.
+      rewrite <- A in H0. cbn [seps'] in H0. clear A.
+      pose proof (seps'_iff1_seps (seps (a |-> v :: Rs) :: Qs)) as A. eapply iff1ToEq in A.
+      rewrite <- A. cbn [seps']. clear A.
+      eassert (impl1 (sep (seps Ps2) (seps' Qs)) (sep (seps (a |-> v :: Rs)) _)) as A. {
+        ecancel.
+      }
+      eapply A. assumption.
+  Qed.
+End MergingSep.
 
 Fixpoint zip_tuple_if{A: Type}(b: bool){n: nat}(t1 t2: tuple A n){struct n}: tuple A n.
   destruct n.
@@ -1435,6 +1509,46 @@ Section ReconstructLemmas.
   Proof. intros; destruct b; assumption. Qed.
 End ReconstructLemmas.
 
+Ltac destruct_locals_norename tup names :=
+  lazymatch names with
+  | ?s :: ?rest =>
+      let name := string_to_ident s in
+      let t := fresh "tmp_" name in
+      destruct tup as (t & tup); destruct_locals_norename tup rest
+  | nil => destruct tup (* becomes tt *)
+  end.
+
+Ltac destruct_locals tup names :=
+  lazymatch names with
+  | ?s :: ?rest => let name := string_to_ident s in
+                   make_fresh name; destruct tup as (name & tup); destruct_locals tup rest
+  | nil => destruct tup (* becomes tt *)
+  end.
+
+Ltac destruct_locals_after_merge tup names :=
+  lazymatch names with
+  | ?s :: ?rest =>
+      lazymatch goal with
+      | H: tup = _ |- _ =>
+          let name := string_to_ident s in
+          let t := fresh "tmp_" name in
+          destruct tup as (t & tup);
+          eapply invert_tuple_eq in H;
+          let F := fresh in
+          destruct H as [F H];
+          lazymatch type of F with
+          | t = if _ then ?x else ?x => eapply eq_if_same in F; subst t
+          | t = _ => make_fresh name;
+                     (* compute type again because make_fresh might have changed it *)
+                     lazymatch type of F with
+                     | t = ?ite => subst t; set (name := ite)
+                     end
+          end;
+          destruct_locals_after_merge tup rest
+      end
+  | nil => destruct tup (* becomes tt *)
+  end.
+
 Ltac pull_dlet_and_exists_step :=
   lazymatch goal with
   | H: if _ then dlet _ (fun x => _) else _ |- _ =>
@@ -1457,30 +1571,32 @@ Ltac pull_dlet_and_exists_step :=
   | H: if _ then _ else (exists x, _) |- _ => fail 1000 "TODO lifting existentials"
   end.
 
-Ltac find_eq test Ps :=
+Ltac find_in_list test Ps :=
   lazymatch Ps with
   | ?h :: ?t =>
       lazymatch test h with
       | true => constr:((0%nat, h))
-      | false => lazymatch find_eq test t with
+      | false => lazymatch find_in_list test t with
                  | (?i, ?P) => constr:((S i, P))
                  end
       end
   end.
 
-Ltac merge_pair is_match lem :=
+Ltac merge_pair H Ps Qs is_match lem := once (
+  lazymatch index_and_element_of Ps with
+  | (?i, ?P) =>
+      lazymatch find_in_list ltac:(fun Q => is_match P Q) Qs with
+      | (?j, ?Q) =>
+          eapply (lem i j) in H;
+          [ cbn [app firstn tl skipn] in H
+          | cbn [hd skipn]; reflexivity .. ]
+      end
+  end).
+
+Ltac merge_and_pair is_match lem :=
   lazymatch goal with
-  | H: if _ then ands ?Ps else ands ?Qs |- _ => once (
-      lazymatch index_and_element_of Ps with
-      | (?i, ?P) =>
-          lazymatch find_eq ltac:(fun Q => is_match P Q) Qs with
-          | (?j, ?Q) =>
-              eapply (lem i j) in H;
-              [ cbn [app firstn tl skipn] in H
-              | cbn [hd skipn]; reflexivity .. ]
-          end
-      end);
-      destruct H
+  | H: if _ then ands ?Ps else ands ?Qs |- _ =>
+      merge_pair H Ps Qs is_match lem; destruct H
   end.
 
 Ltac same_lhs P Q :=
@@ -1498,6 +1614,12 @@ Ltac constr_eqb x y :=
   | _ => constr:(false)
   end.
 
+Ltac neg_prop P Q :=
+  lazymatch Q with
+  | ~ P => constr:(true)
+  | _ => constr:(false)
+  end.
+
 Ltac seps_about_same_mem x y :=
   lazymatch x with
   | seps _ ?m => lazymatch y with
@@ -1507,24 +1629,33 @@ Ltac seps_about_same_mem x y :=
   | _ => constr:(false)
   end.
 
+Ltac merge_sep_pair_step :=
+  lazymatch goal with
+  | H: seps ((seps (if ?b then ?Ps else ?Qs)) :: ?Rs) ?m |- _ =>
+      merge_pair H Ps Qs constr_eqb (merge_seps_at_indices_same m)
+  end.
+
 Ltac after_if :=
+  repeat match goal with
+         | H: seps _ ?M |- _ => clear M H
+         end;
+  intros;
   repeat pull_dlet_and_exists_step;
-  repeat merge_pair constr_eqb merge_ands_at_indices_same_prop;
-  repeat merge_pair same_lhs merge_ands_at_indices_same_lhs;
-  repeat merge_pair seps_about_same_mem merge_ands_at_indices_seps_same_mem;
+  repeat merge_and_pair constr_eqb merge_ands_at_indices_same_prop;
+  repeat merge_and_pair neg_prop merge_ands_at_indices_neg_prop;
+  repeat merge_and_pair same_lhs merge_ands_at_indices_same_lhs;
+  repeat merge_and_pair seps_about_same_mem merge_ands_at_indices_seps_same_mem;
+  repeat match goal with
+  | H: if _ then ands [] else ands [] |- _ => clear H
+  end;
   try lazymatch goal with
       | H: reconstruct _ _ = (if _ then _ else _) |- _ =>
           rewrite push_if_reconstruct in H; cbn [zip_tuple_if List.length] in H;
           eapply invert_reconstruct_eq in H; [|reflexivity]
       end;
-  repeat match goal with
-         | H: PrimitivePair.pair.mk _ _ = PrimitivePair.pair.mk _ _ |- _ =>
-             eapply invert_tuple_eq in H; destruct H
-         end;
-  repeat match goal with
-         | H: _ = (if _ then _ else _) |- _ => eapply eq_if_same in H
-         end;
-  cbn [ands] in *.
+  lazymatch goal with
+  | |- wp_cmd _ _ _ _ (reconstruct ?names ?tup) _ => destruct_locals_after_merge tup names
+  end.
 
 Inductive snippet :=
 | SAssign(is_decl: bool)(x: string)(e: Syntax.expr)
@@ -1558,13 +1689,6 @@ Ltac store sz addr val :=
     | |- _ => idtac (* expression evaluation did not work fully automatically *)
     end ].
 
-Ltac destruct_locals tup names :=
-  lazymatch names with
-  | ?s :: ?rest => let name := string_to_ident s in
-                   make_fresh name; destruct tup as (name & tup); destruct_locals tup rest
-  | nil => destruct tup (* becomes tt *)
-  end.
-
 Ltac cond c :=
   lazymatch goal with
   | |- wp_cmd ?call _ ?t ?m (reconstruct ?vars ?vals) _ =>
@@ -1572,10 +1696,7 @@ Ltac cond c :=
     [ repeat eval_dexpr_step
     | let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b; intro
     | let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b; intro
-    | intros;
-      lazymatch goal with
-      | |- wp_cmd _ _ _ _ (reconstruct ?names ?tup) _ => destruct_locals tup names
-      end ]
+    | ]
   end.
 
 Ltac els :=
@@ -2053,7 +2174,7 @@ Definition u_min: {f: list string * list string * cmd &
   forall call t m a b R,
     seps [R] m ->
     vc_func call f t m [a; b] (fun t' m' retvs =>
-      t' = t /\ seps [R] m /\
+      t' = t /\ seps [R] m' /\
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
   )}.
@@ -2072,7 +2193,7 @@ Definition u_min': {f: list string * list string * cmd &
   forall call t m a b R,
     seps [R] m ->
     vc_func call f t m [a; b] (fun t' m' retvs =>
-      t' = t /\ seps [R] m /\
+      t' = t /\ seps [R] m' /\
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
   )}. .**/                                                                 /**. .**/
@@ -2098,7 +2219,7 @@ Definition sort3: {f: list string * list string * cmd &
         t' = t /\
         Permutation vs [v0; v1; v2] /\
         \[v0] <= \[v1] <= \[v2] /\
-        m satisfies <{
+        m' satisfies <{
           * a |-> word_array [v0; v1; v2]
           * R
         }>
@@ -2138,6 +2259,20 @@ Definition sort3: {f: list string * list string * cmd &
 .**/   }                                                                        /**.
 .**/                                                                            /**.
 
+(* on the left, a points to a scalar, but on the right, a points to a word_array.
+   1) can we make a point to a word_array on the left? (needs array merging on the left)
+      --> might be best
+   2) can we make a point to a scalar on the right? (needs splitting on the right)
+      --> won't work well for accesses in middle of arr
+   or:
+   3) (a ^+ /[4]) is on the left but not on the right, can we make it appear on the right?
+      (needs splitting on the right)
+
+   --> don't do expose_addr_of_then_in_else, but eagerly glue adjacent sepclauses together
+       after updating them *)
+{
+  eapply (expose_addr_of_then_in_else m (a ^+ /[4])) in H4.
+  2: {
 (*
 Close Scope live_scope. Undelimit Scope live_scope. idtac.
 
