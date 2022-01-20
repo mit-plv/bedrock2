@@ -560,7 +560,7 @@ Section WithParameters.
         { rewrite word.unsigned_of_Z in H11. inversion H11. }
         eapply Z.ltb_nlt in HJ.
         revert dependent x7; revert dependent num_bytes; revert dependent x11; clear -word_ok; intros.
-        unshelve erewrite (_:x11 = num_bytes) in *.
+        unshelve erewrite (_:x11 = num_bytes).
         { eapply Properties.word.unsigned_inj. Z.div_mod_to_equations; blia. }
         rewrite word.unsigned_sub, Z.sub_diag; exact eq_refl. }
       repeat straightline.
