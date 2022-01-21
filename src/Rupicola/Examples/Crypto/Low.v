@@ -412,6 +412,109 @@ Definition chacha20_block (*256bit*)key (*32bit+96bit*)nonce (*512 bits*)st :=
   let/n st := bytes_of_w32s st in
   st.
 
+
+(* TODO: find a better way than hardcoding tuple length *)
+Notation "'let/n' ( x0 , y0 , z0 , t0 , x1 , y1 , z1 , t1 , x2 , y2 , z2 , t2 , x3 , y3 , z3 , t3 ) := val 'in' body" :=
+  (nlet [IdentParsing.TC.ident_to_string x0;
+         IdentParsing.TC.ident_to_string y0;
+         IdentParsing.TC.ident_to_string z0;
+         IdentParsing.TC.ident_to_string t0;
+         IdentParsing.TC.ident_to_string x1;
+         IdentParsing.TC.ident_to_string y1;
+         IdentParsing.TC.ident_to_string z1;
+         IdentParsing.TC.ident_to_string t1;
+         IdentParsing.TC.ident_to_string x2;
+         IdentParsing.TC.ident_to_string y2;
+         IdentParsing.TC.ident_to_string z2;
+         IdentParsing.TC.ident_to_string t2;
+         IdentParsing.TC.ident_to_string x3;
+         IdentParsing.TC.ident_to_string y3;
+         IdentParsing.TC.ident_to_string z3;
+         IdentParsing.TC.ident_to_string t3]
+        val (fun xyz => let '\< x0, y0, z0, t0,
+                          x1, y1, z1, t1,
+                          x2, y2, z2, t2,
+                          x3, y3, z3, t3 \> := xyz in body))
+    (at level 200,
+      x0 ident, y0 ident, z0 ident, t0 ident,
+      x1 ident, y1 ident, z1 ident, t1 ident,
+      x2 ident, y2 ident, z2 ident, t2 ident,
+      x3 ident, y3 ident, z3 ident, t3 ident,
+      body at level 200,
+      only parsing).
+
+(* This is the function that should be compiled by Rupicola. 
+   TODO: either prove this equivalent to the above older version
+   or directly adapt the proof below to fit this function.
+ *)
+(* FIXME word/Z conversion *)
+Definition chacha20_block' (*256bit*)key (*32bit+96bit*)nonce (*512 bits*)st :=
+  let '\< i1, i2, i3, i4 \> := chacha20_block_init in
+  let/n st := buf_push st i1 in
+  let/n st := buf_push st i2 in
+  let/n st := buf_push st i3 in
+  let/n st := buf_push st i4 in (* the inits are the chunks of "expand …" *)
+
+  let/n key := w32s_of_bytes key in
+  let/n st := buf_append st key in
+  let/n key := bytes_of_w32s key in
+
+  let/n nonce := w32s_of_bytes nonce in
+  let/n st := buf_append st nonce in
+  let/n nonce := bytes_of_w32s nonce in
+
+  let/n st := buf_as_array st in
+  let/n ss := buf_make word 16 in
+  let/n ss := buf_append ss st in
+  let/n ss := buf_as_array ss in
+  let/n qv0 := array_get st 0 (word.of_Z 0) in
+  let/n qv1 := array_get st 1 (word.of_Z 0) in
+  let/n qv2 := array_get st 2 (word.of_Z 0) in
+  let/n qv3 := array_get st 3 (word.of_Z 0) in
+  let/n qv4 := array_get st 4 (word.of_Z 0) in
+  let/n qv5 := array_get st 5 (word.of_Z 0) in
+  let/n qv6 := array_get st 6 (word.of_Z 0) in
+  let/n qv7 := array_get st 7 (word.of_Z 0) in
+  let/n qv8 := array_get st 8 (word.of_Z 0) in
+  let/n qv9 := array_get st 9 (word.of_Z 0) in
+  let/n qv10 := array_get st 10 (word.of_Z 0) in
+  let/n qv11 := array_get st 11 (word.of_Z 0) in
+  let/n qv12 := array_get st 12 (word.of_Z 0) in
+  let/n qv13 := array_get st 13 (word.of_Z 0) in
+  let/n qv14 := array_get st 14 (word.of_Z 0) in
+  let/n qv15 := array_get st 15 (word.of_Z 0) in
+  let/n (qv0,qv1,qv2,qv3,
+          qv4,qv5,qv6,qv7,
+          qv8,qv9,qv10,qv11,
+          qv12,qv13,qv14,qv15) :=
+    Nat.iter 10 (fun '\<qv0, qv1, qv2, qv3,
+                        qv4, qv5, qv6, qv7,
+                        qv8, qv9, qv10,qv11,
+                        qv12,qv13,qv14,qv15\>  =>
+     let/n (qv0, qv4, qv8,qv12) := quarter qv0  qv4  qv8 qv12 in
+     let/n (qv0, qv4, qv8,qv12) := quarter qv1  qv5  qv9 qv13 in
+     let/n (qv0, qv4, qv8,qv12) := quarter qv2  qv6 qv10 qv14 in
+     let/n (qv0, qv4, qv8,qv12) := quarter qv3  qv7 qv11 qv15 in
+     let/n (qv0, qv4, qv8,qv12) := quarter qv0  qv5 qv10 qv15 in
+     let/n (qv0, qv4, qv8,qv12) := quarter qv1  qv6 qv11 qv12 in
+     let/n (qv0, qv4, qv8,qv12) := quarter qv2  qv7  qv8 qv13 in
+     let/n (qv0, qv4, qv8,qv12) := quarter qv3  qv4  qv9 qv14 in
+     \<qv0,qv1,qv2,qv3,
+       qv4,qv5,qv6,qv7,
+       qv8,qv9,qv10,qv11,
+       qv12,qv13,qv14,qv15\>)
+     \<qv0,qv1,qv2,qv3,
+       qv4,qv5,qv6,qv7,
+       qv8,qv9,qv10,qv11,
+       qv12,qv13,qv14,qv15\> in
+
+  let/n st := List.map (fun '(st_i, ss_i) =>
+                          let/n st_i := st_i + ss_i in
+                         st_i) (combine st ss) in
+
+  let/n st := bytes_of_w32s st in
+  st.
+
 Lemma word_add_pair_eqn st:
   (let '(s, t) := st in Z.land (s + t) (Z.ones 32)) =
   word.unsigned (word.of_Z (fst st) + word.of_Z (snd st)).
