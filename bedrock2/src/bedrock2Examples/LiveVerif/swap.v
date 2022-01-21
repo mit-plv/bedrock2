@@ -73,8 +73,8 @@ Require Import coqutil.Tactics.autoforward.
   (autoforward (word.unsigned (if _ then (word.of_Z 1) else (word.of_Z 0)) <> 0) _)
   => rapply @word.if_nonzero : typeclass_instances.
 
-(*#[export] not supported in 8.13 yet*)
-Hint Rewrite List.firstn_O : fwd_rewrites.
+#[export] Hint Rewrite List.firstn_O : fwd_rewrites.
+#[export] Hint Rewrite List.app_nil_l : fwd_rewrites.
 
 Ltac fwd_rewrites ::= fwd_rewrites_autorewrite.
 
@@ -197,53 +197,36 @@ Section SepLog.
     unfold impl1, seps. intros. apply sep_emp_r. auto.
   Qed.
 
-  (* Intended usage:
-     P:  input without evars
-     P1: input with some evars
-     P2: evar (output) *)
-  Definition split_sepclause(P P1: mem -> Prop)(P2: list (mem -> Prop)): Prop :=
-    iff1 P (seps (P1 :: P2)).
+  (* All arguments except stmt are just ghost parameters to guide typeclass search.
+     The shape of stmt will typically be
+       forall valAll valPart valFrame1 ... valFrameN,
+         sidecondition saying that assembling valPart valFrame1 ... valFrameN = valAll ->
+         iff1 (seps [addrPart |-> predPart valPart; Frame...]) (addrAll |-> predAll valAll)
+     but since that's a variable number of universally quantified variables, it would
+     be a bit cumbersome to enforce that shape, and since it's not needed to enforce it,
+     we don't. *)
+  Definition split_sepclause{TypeAll TypePart: Type}
+             (addrAll : word)(predAll : TypeAll  -> word -> mem -> Prop)
+             (addrPart: word)(predPart: TypePart -> word -> mem -> Prop)
+             (stmt: Prop) := stmt.
 
-  Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
-  Let nth n xs := SeparationLogic.hd (emp(map:=mem) True) (SeparationLogic.skipn n xs).
-  Let remove_nth n (xs : list (mem -> Prop)) :=
-    (SeparationLogic.firstn n xs ++ SeparationLogic.tl (SeparationLogic.skipn n xs)).
-
-  Lemma impl1_cancel_part_of_ith_left_with_first_right: forall i L F R1 RRest,
-      split_sepclause (nth i L) R1 F ->
-      impl1 (seps (remove_nth i L ++ F)) (seps RRest) ->
-      impl1 (seps L) (seps (R1 :: RRest)).
+  Lemma access_scalar_in_word_array: forall a a',
+      word.unsigned (word.sub a' a) mod 4 = 0 ->
+      split_sepclause a word_array a' scalar
+        (let i := Z.to_nat (word.unsigned (word.sub a' a) / 4) in
+         forall vs vs1 v vs2,
+           (* connected with /\ because it needs to be solved by considering both at once *)
+           vs = vs1 ++ [v] ++ vs2 /\ List.length vs1 = i ->
+           iff1 (seps [a |-> word_array vs1;
+                       a' |-> scalar v;
+                       word.add a (word.of_Z (4 * Z.of_nat (S i))) |-> word_array vs2])
+                (a |-> word_array vs)).
   Proof.
-    intros.
-    unfold nth, remove_nth, split_sepclause in *.
-    rewrite <-(seps_nth_to_head i L).
-    rewrite H.
-    rewrite <-seps'_iff1_seps.
-    cbn [seps'].
-    rewrite seps_app in H0.
-    rewrite <-(seps'_iff1_seps (R1 :: RRest)).
-    cbn [seps'].
-    cancel.
-    ecancel_step_by_implication.
-    cbn [seps].
-    rewrite !seps'_iff1_seps.
-    etransitivity. 2: eassumption.
-    ecancel.
-  Qed.
-
-  Lemma access_word_array: forall a a' vs,
-      let i := Z.to_nat (word.unsigned (word.sub a' a) / 4) in
-      (i < List.length vs)%nat ->
-      a' = word.add a (word.of_Z (4 * Z.of_nat i)) ->
-      split_sepclause (a |-> word_array vs)
-        (a' |-> scalar (List.nth i vs (word.of_Z 0)))
-        [a |-> word_array (List.firstn i vs);
-         word.add a (word.of_Z (4 * Z.of_nat (S i))) |-> word_array (List.skipn (S i) vs)].
-  Proof.
-    unfold split_sepclause. intros.
-    rewrite <- (List.firstn_nth_skipn _ _ vs (word.of_Z 0)) at 1 by eassumption.
+    unfold split_sepclause.
     unfold word_array, scalar, truncated_word, Scalars.scalar, at_addr, seps.
+    intros. destruct H0. subst vs.
     cbn [List.app].
+    symmetry.
     etransitivity.
     1: eapply array_append.
     cbn [array].
@@ -258,65 +241,57 @@ Section SepLog.
     reflexivity.
   Qed.
 
-  Add Ring wring : (Properties.word.ring_theory (word := word))
-        (preprocess [autorewrite with rew_word_morphism],
-         morphism (Properties.word.ring_morph (word := word)),
-         constants [Properties.word_cst]).
+  Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
+  Let nth n xs := SeparationLogic.hd (emp(map:=mem) True) (SeparationLogic.skipn n xs).
+  Let remove_nth n (xs : list (mem -> Prop)) :=
+    (SeparationLogic.firstn n xs ++ SeparationLogic.tl (SeparationLogic.skipn n xs)).
 
-  Lemma access_word_array_first: forall a vs,
-      (0 < Datatypes.length vs)%nat ->
-      split_sepclause (a |-> word_array vs)
-        (a |-> scalar (List.nth 0 vs (word.of_Z 0)))
-        [word.add a (word.of_Z 4) |-> word_array (List.skipn 1 vs)].
+  Lemma rewrite_ith_in_lhs_of_impl1: forall i Ps Pi Qs R,
+      nth i Ps = Pi ->
+      iff1 (seps Qs) Pi -> (* <-- used right-to-left *)
+      impl1 (seps (remove_nth i Ps ++ Qs)) R ->
+      impl1 (seps Ps) R.
   Proof.
-    intros.
-    pose proof access_word_array a a vs as A.
-    cbv zeta in A.
-    ring_simplify (word.sub a a) in A.
-    rewrite word.unsigned_of_Z_0 in A.
-    groundcbv_in_all.
-    rewrite List.firstn_O in A.
-    change (a |-> word_array []) with (emp (map := mem) True) in A.
-    ring_simplify (word.mul (word := word) (word.of_Z 4) (word.of_Z 1)) in A.
-    unfold split_sepclause in *.
-    etransitivity. 1: apply A. 3: cbn [seps]; cancel.
-    1: assumption. ring.
-  Qed.
-
-  Lemma access_word_array_last: forall a a' vs,
-      let i := Z.to_nat (word.unsigned (word.sub a' a) / 4) in
-      (i + 1 = List.length vs)%nat ->
-      a' = word.add a (word.of_Z (4 * Z.of_nat i)) ->
-      split_sepclause (a |-> word_array vs)
-        (a' |-> scalar (List.nth i vs (word.of_Z 0)))
-        [a |-> word_array (List.firstn i vs)].
-  Proof.
-    intros.
-    pose proof access_word_array a a' vs as A.
-    cbv zeta in A.
-    ring_simplify (word.mul (word := word) (word.of_Z 4) (word.of_Z 1)) in A.
-    unfold split_sepclause in *.
-    etransitivity. 1: apply A.
-    1: ZnWords.
-    1: ZnWords.
-    cbn [seps].
-    clear A. subst i.
-    rewrite List.skipn_all2 by ZnWords.
-    change (_ |-> word_array []) with (emp (map := mem) True).
-    cancel.
+    intros. subst Pi.
+    unfold nth, remove_nth in *.
+    rewrite <-(seps_nth_to_head i Ps).
+    rewrite <- H0.
+    rewrite 2seps_app in H1. rewrite seps_app.
+    etransitivity. 2: eassumption.
+    ecancel.
   Qed.
 End SepLog.
 
-Existing Class split_sepclause.
+Create HintDb split_sepclause_goal.
 
-#[export] Hint Extern 1 (split_sepclause (_ |-> word_array _) (_ |-> scalar _) _) =>
-  rapply access_word_array_first; ZnWords : typeclass_instances.
+#[export] Hint Extern 1 (split_sepclause _ word_array _ scalar _) =>
+  eapply access_scalar_in_word_array; ZnWords : split_sepclause_goal.
 
-#[export] Hint Extern 1 (split_sepclause (_ |-> word_array _) (_ |-> scalar _) _) =>
-  rapply access_word_array_last; ZnWords : typeclass_instances.
+Section WithA.
+  Context {A: Type}.
 
-#[export] Hint Extern 2 (split_sepclause (_ |-> word_array _) (_ |-> scalar _) _) =>
-  rapply access_word_array; ZnWords : typeclass_instances.
+  Lemma list_expose_nth{inhA: inhabited A}: forall (vs: list A) i,
+      (i < List.length vs)%nat ->
+      vs = List.firstn i vs ++ [List.nth i vs default] ++ List.skipn (S i) vs /\
+        List.length (List.firstn i vs) = i.
+  Proof.
+    intros. rewrite List.firstn_nth_skipn by assumption.
+    rewrite List.firstn_length_le by Lia.lia. auto.
+  Qed.
+End WithA.
+
+Create HintDb split_sepclause_sidecond.
+
+#[export] Hint Extern 1 (_ = ?l ++ [_] ++ _ /\ List.length ?l = _) =>
+  eapply list_expose_nth; ZnWords : split_sepclause_sidecond.
+
+Create HintDb merge_sepclause_sidecond.
+
+#[export] Hint Extern 1 (@eq (list _) ?listL ?listR /\ @eq nat ?lenL ?lenR) =>
+  assert_fails (has_evar lenL);
+  assert_fails (has_evar lenR);
+  is_evar listL; split; [reflexivity|ZnWords]
+: merge_sepclause_sidecond.
 
 Section WithParams.
   Import bedrock2.Syntax.
@@ -1010,21 +985,52 @@ Section NotationTests.
 
 End NotationTests.
 
+Ltac clear_split_sepclause_stack :=
+  repeat match goal with
+         | H: split_sepclause _ _ _ _ _ |- _ => clear H
+         end.
+
+Ltac pop_split_sepclause_stack :=
+  let H := lazymatch goal with H: seps _ ?m |- wp_cmd _ _ _ ?m _ _ => H end in
+  let Sp := lazymatch goal with Sp: split_sepclause _ _ _ _ _ |- _ => Sp end in
+  ((cbv [split_sepclause] in Sp;
+    cbn [seps] in Sp, H;
+    seprewrite_in_by Sp H ltac:(eauto with merge_sepclause_sidecond)
+   ) || let T := type of Sp in idtac "Note: Failed to merge sep clauses using" T);
+  clear Sp.
+
 Ltac impl_ecancel_step_with_splitting :=
   lazymatch goal with
-  | |- Lift1Prop.impl1 (seps ?L) (seps (?R1 :: ?RRest)) =>
+  | |- Lift1Prop.impl1 (seps ?L) (seps ((?addrR |-> ?predR ?valR) :: ?RRest)) =>
     let iLi := index_and_element_of L in (* <-- multi-success! *)
     let i := lazymatch iLi with (?i, _) => i end in
     let Li := lazymatch iLi with (_, ?Li) => Li end in
-    refine (impl1_cancel_part_of_ith_left_with_first_right i _ _ R1 RRest _ _);
-    cbn [hd app firstn tl skipn];
-    [typeclasses eauto|]
+    let Li := eval cbn [hd app firstn tl skipn] in Li in
+    lazymatch Li with
+    (* Simplifying assumption: Only the last argument to predL is a value that
+       can be changed by stores and function calls, all other arguments are constants *)
+    | ?addrL |-> ?predL ?valL =>
+        let Sp := fresh "Sp" in
+        eassert (split_sepclause addrL predL addrR predR _) as Sp
+            (* typeclasses eauto instead of eauto because eauto unfolds split_sepclause
+               and then just does `exact H` for the last Prop in the context, and it
+               seems that `Hint Opaque` and `Hint Constants Opaque` don't fix that
+               (and `Opaque split_sepclause` would fix it, but also affects the conversion
+               algorithm) *)
+            by typeclasses eauto with split_sepclause_goal;
+        eapply (rewrite_ith_in_lhs_of_impl1 i L Li);
+        cbn [hd app firstn tl skipn];
+        [ reflexivity
+        | cbv [split_sepclause] in Sp;
+          eapply Sp;
+          eauto with split_sepclause_sidecond
+        | ]
+    end
   end.
 
 Ltac ecancel_with_remaining_emp_Prop :=
   cancel_seps;
-  repeat ecancel_step_by_implication;
-  repeat impl_ecancel_step_with_splitting;
+  repeat (repeat ecancel_step_by_implication; try impl_ecancel_step_with_splitting);
   refine (impl1_done _ _ _).
 
 Ltac ecancel_assumption_with_remaining_emp_Prop :=
@@ -1672,11 +1678,12 @@ Ltac assign is_decl name val :=
   [.. (* maybe some unsolved side conditions *)
   | try ((* to simplify value that will become bound with :=, at which point
             rewrites will not apply any more *)
+         clear_split_sepclause_stack;
          repeat simpli_step_in_goal;
-         put_into_current_locals is_decl;
-         repeat simpli_step) ].
+         put_into_current_locals is_decl) ].
 
 (* TODO change order of definitions so that this hook is not needed any more *)
+Ltac flatten_seps := fail "not yet implemented".
 Ltac transfer_sep_order := fail "not yet implemented".
 
 Ltac store sz addr val :=
@@ -1685,7 +1692,10 @@ Ltac store sz addr val :=
   [.. (* maybe some unsolved side conditions *)
   | lazymatch goal with
     | |- forall (_: @map.rep _ _ _), seps _ _ -> _ =>
-        intros; transfer_sep_order; repeat simpli_step
+        intros;
+        repeat pop_split_sepclause_stack;
+        flatten_seps;
+        transfer_sep_order
     | |- _ => idtac (* expression evaluation did not work fully automatically *)
     end ].
 
@@ -1750,9 +1760,7 @@ Ltac prettify_goal :=
   | |- {f: list string * list string * Syntax.cmd & _ } => start
   | |- _ =>
       cbv beta in *;
-      after_if;
-      fwd;
-      repeat simpli_step
+      after_if
   end.
 
 Ltac add_snippet s :=
@@ -1767,7 +1775,10 @@ Ltac add_snippet s :=
   end.
 
 Ltac after_snippet :=
-  cbn [PrimitivePair.pair._1 PrimitivePair.pair._2].
+  cbn [PrimitivePair.pair._1 PrimitivePair.pair._2];
+  repeat simpli_step;
+  fwd;
+  repeat simpli_step.
 
 (* Note: An rhs_var appears in expressions and, in our setting, always has a corresponding
    var (of type word) bound in the current context, whereas an lhs_var may or may not be
@@ -2105,36 +2116,44 @@ Ltac get_order old_clauses new_clauses :=
   let n := list_length old_clauses in
   get_order_rec old_clauses new_clauses n.
 
-(* Given an old and a new sep hyp, transfers the order of the sepclauses from the old one
-   to the new one (and first also removes nested seps in the new sep hyp) *)
-Ltac transfer_sep_order ::=
+Ltac flatten_seps ::=
   lazymatch goal with
-  | HOld: seps ?old_clauses ?mOld, HNew: seps ?new_nested ?mNew |- wp_cmd _ _ _ ?mNew _ _ =>
+  | HNew: ?new_nested ?mNew |- wp_cmd _ _ _ ?mNew _ _ =>
     let tmem := type of mNew in
     let E := fresh "E" in
-    eassert (@iff1 tmem (seps new_nested) _) as E;
-    [ (* first equivalence step: from `seps new_nested` to `Tree.to_sep tree` *)
-      let stars := eval cbn[seps] in (seps new_nested) in
+    eassert (@iff1 tmem new_nested _) as E;
+    [ (* from `new_nested` to `Tree.to_sep tree` *)
+      let stars := eval cbn[seps] in new_nested in
       let tree := reify stars in
       transitivity (Tree.to_sep tree); [
         cbn [seps Tree.to_sep Tree.interp]; iff1_syntactic_reflexivity
       |];
-      (* second equivalence step: from `Tree.to_sep tree` to `seps (Tree.flatten tree)` *)
+      (* from `Tree.to_sep tree` to `seps (Tree.flatten tree)` *)
       transitivity (seps (Tree.flatten tree)); [
         exact (iff1_sym (Tree.flatten_iff1_to_sep tree))
       |];
-      (* third equivalence step: from `seps (Tree.flatten tree)` to `seps new_clauses` *)
-      etransitivity; [
-        cbn [SeparationLogic.Tree.flatten SeparationLogic.Tree.interp SeparationLogic.app];
-        iff1_syntactic_reflexivity
-      |];
-      let new_clauses := lazymatch goal with |- iff1 (seps ?C) _ => C end in
-      (* fourth equivalence step: from `seps new_clauses` to `seps (reorder order new_clauses)` *)
+      (* from `seps (Tree.flatten tree)` to `seps new_clauses` *)
+      cbn [SeparationLogic.Tree.flatten SeparationLogic.Tree.interp SeparationLogic.app];
+      iff1_syntactic_reflexivity
+    | let HNewNew := fresh in pose proof (proj1 (E mNew) HNew) as HNewNew;
+      clear E HNew;
+      rename HNewNew into HNew ]
+  end.
+
+(* Given an old and a new sep hyp, transfers the order of the sepclauses from the old one
+   to the new one *)
+Ltac transfer_sep_order ::=
+  lazymatch goal with
+  | HOld: seps ?old_clauses ?mOld, HNew: seps ?new_clauses ?mNew |- wp_cmd _ _ _ ?mNew _ _ =>
+    let tmem := type of mNew in
+    let E := fresh "E" in
+    eassert (@iff1 tmem (seps new_clauses) _) as E;
+    [ (* from `seps new_clauses` to `seps (reorder order new_clauses)` *)
       let order := get_order old_clauses new_clauses in
       etransitivity; [
         eapply (reorder_is_iff1 order new_clauses); reflexivity
       |];
-      (* fifth equivalence step: from `seps (reorder order new_clauses)` to cbv'd version of it *)
+      (* from `seps (reorder order new_clauses)` to cbv'd version of it *)
       cbv [reorder];
       let r := eval vm_compute in (order_to_permutation order) in
           change (order_to_permutation order) with r;
@@ -2151,7 +2170,7 @@ Lemma reordering_test: forall addr1 addr2 addr3 addr4 v1_old v1_new v2 v3 v4 R (
                               call t l c post,
     seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m ->
     (* value at addr1 was updated, addr2 was consumed, addr4 was added, and order was changed: *)
-    seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m' ->
+    seps [R; seps [addr3 |-> scalar v3; addr4 |-> scalar v4]; addr1 |-> scalar v1_new] m' ->
     (* desired order:
     seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m1 *)
     True ->
@@ -2162,6 +2181,7 @@ Proof.
   M  : seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m0
   M2 : seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m1
   order :=  [3; 2;                   2;                   0                      ] *)
+  flatten_seps.
   transfer_sep_order.
   lazymatch type of M with
   | seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m => idtac
@@ -2259,20 +2279,8 @@ Definition sort3: {f: list string * list string * cmd &
 .**/   }                                                                        /**.
 .**/                                                                            /**.
 
-(* on the left, a points to a scalar, but on the right, a points to a word_array.
-   1) can we make a point to a word_array on the left? (needs array merging on the left)
-      --> might be best
-   2) can we make a point to a scalar on the right? (needs splitting on the right)
-      --> won't work well for accesses in middle of arr
-   or:
-   3) (a ^+ /[4]) is on the left but not on the right, can we make it appear on the right?
-      (needs splitting on the right)
+  merge_sep_pair_step.
 
-   --> don't do expose_addr_of_then_in_else, but eagerly glue adjacent sepclauses together
-       after updating them *)
-{
-  eapply (expose_addr_of_then_in_else m (a ^+ /[4])) in H4.
-  2: {
 (*
 Close Scope live_scope. Undelimit Scope live_scope. idtac.
 
