@@ -13,6 +13,7 @@ Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.groundcbv.
+Require Import bedrock2.footpr.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic bedrock2.Loops.
 Require Import coqutil.Word.Bitwidth32.
@@ -1260,6 +1261,16 @@ Section MergingAnd.
       (if b then P else body rhs).
   Proof. unfold dlet. intros. assumption. Qed.
 
+  Lemma pull_if_exists_l (b: bool) (T: Type) {inh: inhabited T} (body: T -> Prop) (P: Prop):
+      (if b then (exists x, body x) else P) ->
+      exists x, if b then body x else P.
+  Proof. intros. destruct b; fwd; [exists x|exists default]; assumption. Qed.
+
+  Lemma pull_if_exists_r (b: bool) (T: Type) {inh: inhabited T} (body: T -> Prop) (P: Prop):
+      (if b then P else (exists x, body x)) ->
+      exists x, if b then P else body x.
+  Proof. intros. destruct b; fwd; [exists default|exists x]; assumption. Qed.
+
   Lemma if_ands_same_head: forall (b: bool) (P: Prop) (Qs1 Qs2: list Prop),
       (if b then ands (P :: Qs1) else ands (P :: Qs2)) ->
       P /\ (if b then ands Qs1 else ands Qs2).
@@ -1365,6 +1376,19 @@ Section MergingSep.
   Context {width: Z} {word: word.word width}
           {word_ok: word.ok word} {mem: map.map word byte} {ok: map.ok mem}.
 
+  (* Could be replaced by id, but it's not needed because we only use lemmas based
+   on this definition to guide then/else merging automation, but not to create proofs *)
+  Inductive not_needed_for_proofs(P: Prop): Prop := mk_not_needed_for_proofs.
+
+  Definition same_footprint(P Q: mem -> Prop): Prop :=
+    not_needed_for_proofs (footpr P = footpr Q).
+
+  Lemma word_array_same_footprint: forall a1 a2 vs1 vs2,
+      a1 = a2 ->
+      List.length vs1 = List.length vs2 ->
+      same_footprint (a1 |-> word_array vs1) (a2 |-> word_array vs2).
+  Proof. intros. constructor. Qed.
+
   Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
   Let nth(n: nat)(xs: list (mem -> Prop)) :=
         SeparationLogic.hd (emp True) (SeparationLogic.skipn n xs).
@@ -1387,6 +1411,21 @@ Section MergingSep.
       eapply iff1ToEq in A. rewrite <- A in H1. ecancel_assumption.
   Qed.
 
+  (* Note: if the two predicates are at the same address, but have different footprints,
+     you might not want to merge them, but first combine them with other sep clauses
+     until they both have the same footprint *)
+  Lemma merge_seps_at_indices_same_addr_and_pred (m: mem) i j [V: Type] a (v1 v2: V)
+        (pred: V -> word -> mem -> Prop) (Ps1 Ps2 Qs: list (mem -> Prop)) (b: bool):
+    nth i Ps1 = (a |-> pred v1) ->
+    nth j Ps2 = (a |-> pred v2) ->
+    seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
+    seps ((seps (if b then (remove_nth i Ps1) else (remove_nth j Ps2)))
+            :: (a |-> pred (if b then v1 else v2)) :: Qs) m.
+  Proof.
+    intros. eapply (merge_seps_at_indices m i j) in H1; [|eassumption..].
+    destruct b; assumption.
+  Qed.
+
   Lemma merge_seps_at_indices_same (m: mem) i j
         (P: mem -> Prop) (Ps1 Ps2 Qs: list (mem -> Prop)) (b: bool):
     nth i Ps1 = P ->
@@ -1396,6 +1435,20 @@ Section MergingSep.
   Proof.
     intros. eapply (merge_seps_at_indices m i j P P) in H1; [|eassumption..].
     destruct b; assumption.
+  Qed.
+
+  Lemma merge_seps_done (m: mem) (Qs: list (mem -> Prop)) (b: bool):
+    seps ((seps (if b then [] else [])) :: Qs) m ->
+    seps Qs m.
+  Proof.
+    intros.
+    pose proof (seps'_iff1_seps (seps (if b then [] else []) :: Qs)) as A.
+    eapply iff1ToEq in A.
+    rewrite <- A in H. cbn [seps'] in H. clear A.
+    pose proof (seps'_iff1_seps Qs) as A.
+    eapply iff1ToEq in A.
+    rewrite A in H. clear A.
+    destruct b; cbn [seps] in H; eapply (proj1 (sep_emp_True_l _ _)) in H; exact H.
   Qed.
 
   Lemma expose_addr_of_then_in_else:
@@ -1417,6 +1470,12 @@ Section MergingSep.
       eapply A. assumption.
   Qed.
 End MergingSep.
+
+Create HintDb same_footprint.
+
+#[export] Hint Extern 1 (same_footprint (_ |-> word_array _) (_ |-> word_array _)) =>
+  eapply word_array_same_footprint; ZnWords
+: same_footprint.
 
 Fixpoint zip_tuple_if{A: Type}(b: bool){n: nat}(t1 t2: tuple A n){struct n}: tuple A n.
   destruct n.
@@ -1573,8 +1632,14 @@ Ltac pull_dlet_and_exists_step :=
           change (if c then thn else dlet x body) in H;
           eapply if_dlet_r_inline in H
       end
-  | H: if _ then (exists x, _) else _ |- _ => fail 1000 "TODO lifting existentials"
-  | H: if _ then _ else (exists x, _) |- _ => fail 1000 "TODO lifting existentials"
+  | H: if ?b then (exists x, _) else ?P |- _ =>
+      eapply (pull_if_exists_l b _ _ P) in H;
+      make_fresh x;
+      destruct H as [x H]
+  | H: if ?b then ?P else (exists x, _) |- _ =>
+      eapply (pull_if_exists_r b _ _ P) in H;
+      make_fresh x;
+      destruct H as [x H]
   end.
 
 Ltac find_in_list test Ps :=
@@ -1620,6 +1685,16 @@ Ltac constr_eqb x y :=
   | _ => constr:(false)
   end.
 
+Ltac same_addr_and_pred P Q :=
+  lazymatch P with
+  | ?a |-> ?pred _ =>
+      lazymatch Q with
+      | a |-> pred _ => constr:(true)
+      | _ => constr:(false)
+      end
+  | _ => constr:(false)
+  end.
+
 Ltac neg_prop P Q :=
   lazymatch Q with
   | ~ P => constr:(true)
@@ -1638,7 +1713,9 @@ Ltac seps_about_same_mem x y :=
 Ltac merge_sep_pair_step :=
   lazymatch goal with
   | H: seps ((seps (if ?b then ?Ps else ?Qs)) :: ?Rs) ?m |- _ =>
-      merge_pair H Ps Qs constr_eqb (merge_seps_at_indices_same m)
+      merge_pair H Ps Qs constr_eqb (merge_seps_at_indices_same m) ||
+      merge_pair H Ps Qs same_addr_and_pred (merge_seps_at_indices_same_addr_and_pred m) ||
+      eapply merge_seps_done in H
   end.
 
 Ltac after_if :=
@@ -1651,17 +1728,19 @@ Ltac after_if :=
   repeat merge_and_pair neg_prop merge_ands_at_indices_neg_prop;
   repeat merge_and_pair same_lhs merge_ands_at_indices_same_lhs;
   repeat merge_and_pair seps_about_same_mem merge_ands_at_indices_seps_same_mem;
+  repeat merge_sep_pair_step;
   repeat match goal with
   | H: if _ then ands [] else ands [] |- _ => clear H
   end;
-  try lazymatch goal with
-      | H: reconstruct _ _ = (if _ then _ else _) |- _ =>
-          rewrite push_if_reconstruct in H; cbn [zip_tuple_if List.length] in H;
-          eapply invert_reconstruct_eq in H; [|reflexivity]
-      end;
-  lazymatch goal with
-  | |- wp_cmd _ _ _ _ (reconstruct ?names ?tup) _ => destruct_locals_after_merge tup names
-  end.
+  try (lazymatch goal with
+       | H: reconstruct _ _ = (if _ then _ else _) |- _ =>
+           rewrite push_if_reconstruct in H; cbn [zip_tuple_if List.length] in H;
+           eapply invert_reconstruct_eq in H; [|reflexivity]
+       end;
+       lazymatch goal with
+       | |- wp_cmd _ _ _ _ (reconstruct ?names ?tup) _ =>
+           destruct_locals_after_merge tup names
+       end).
 
 Inductive snippet :=
 | SAssign(is_decl: bool)(x: string)(e: Syntax.expr)
@@ -2276,15 +2355,10 @@ Definition sort3: {f: list string * list string * cmd &
 .**/     store(a, w2);                                                          /**.
 .**/     w2 = w0;                                                               /**.
 .**/   } else {                                                                 /**.
-.**/   }                                                                        /**.
-.**/                                                                            /**.
-
-  merge_sep_pair_step.
-
+.**/   }                                                              /**. .**/ /**.
 (*
-Close Scope live_scope. Undelimit Scope live_scope. idtac.
-
-.**/  }                                                                         /**.
+need to push down ifs in list expression
+.**/ }                                                                /**. .**/ /**.
 .**/  if (w2 < w1) {                                                            /**.
 .**/    store(a+4, w2);                                                         /**.
 .**/    store(a+8, w1);                                                         /**.
