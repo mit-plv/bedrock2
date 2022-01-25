@@ -142,7 +142,7 @@ Ltac groundcbv' e :=
                  constr:(gsf vx)
           end
       | ?gsx =>
-          match gsf with
+          lazymatch gsf with
           | groundcbv_delayed => constr:(f gsx)
           | _ => constr:(gsf gsx)
           end
@@ -158,17 +158,37 @@ Ltac groundcbv' e :=
                  constr:(gP -> vQ)
           end
       | ?gQ =>
-          match gP with
+          lazymatch gP with
           | groundcbv_delayed => let vP := eval cbv in P in constr:(vP -> gQ)
           | _ => constr:(gP -> gQ)
           end
+      end
+  | if ?c then ?a else ?b =>
+      let gc := groundcbv c in
+      lazymatch gc with
+      | true =>
+          let ga := groundcbv' a in
+          lazymatch ga with
+          | groundcbv_delayed => constr:(groundcbv_delayed)
+          | _ => ga
+          end
+      | false =>
+          let gb := groundcbv' b in
+          lazymatch gb with
+          | groundcbv_delayed => constr:(groundcbv_delayed)
+          | _ => gb
+          end
+      | _ =>
+          let ga := groundcbv a in
+          let gb := groundcbv b in
+          constr:(if gc then ga else gb)
       end
   | _ =>
       let __ := match constr:(Set) with _ => is_ground_atom ltac:(fun _ => fail) e end in
       constr:(groundcbv_delayed)
   | _ => e
-  end.
-Ltac groundcbv e :=
+  end
+with groundcbv e :=
   let e' := groundcbv' e in
   lazymatch e' with
   | groundcbv_delayed => eval cbv in e
