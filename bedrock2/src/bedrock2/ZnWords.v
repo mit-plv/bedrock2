@@ -45,7 +45,7 @@ Ltac cleanup_for_ZModArith :=
 (* TODO improve
    @ needed because of COQBUG https://github.com/coq/coq/issues/3051 *)
 Ltac simpl_list_length_exprs :=
-  rewrite ?@List.length_skipn, ?@List.firstn_length, ?@List.app_length, ?@List.length_cons, ?@List.length_nil in *.
+  repeat ( rewrite ?@List.length_skipn, ?@List.firstn_length, ?@List.app_length, ?@List.length_cons, ?@List.length_nil in * ).
 
 
 (* word laws for shifts where the shift amount is a Z instead of a word *)
