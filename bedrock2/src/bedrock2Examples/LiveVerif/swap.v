@@ -13,7 +13,6 @@ Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.groundcbv.
-Require Import bedrock2.footpr.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic bedrock2.Loops.
 Require Import coqutil.Word.Bitwidth32.
@@ -38,6 +37,11 @@ Ltac eqassumption :=
   | H: ?T |- ?U => let hT := head T in let hU := head U in constr_eq hT hU; eqapply H
   end.
 
+Ltac destruct_bools :=
+  repeat match goal with
+         | H: context[if ?b then _ else _] |- _ =>
+             let t := type of b in constr_eq t bool; destruct b
+         end.
 
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
    used as the binder in the lambda being created *)
@@ -74,10 +78,27 @@ Require Import coqutil.Tactics.autoforward.
   (autoforward (word.unsigned (if _ then (word.of_Z 1) else (word.of_Z 0)) <> 0) _)
   => rapply @word.if_nonzero : typeclass_instances.
 
-#[export] Hint Rewrite List.firstn_O : fwd_rewrites.
-#[export] Hint Rewrite List.app_nil_l : fwd_rewrites.
+#[export] Hint Rewrite
+  List.firstn_O
+  List.app_nil_l
+  List.firstn_app
+  @List.skipn_app
+  List.firstn_firstn
+  @List.skipn_skipn
+  List.firstn_length
+  List.app_nil_l
+  List.app_nil_r
+: fwd_rewrites.
 
-Ltac fwd_rewrites ::= fwd_rewrites_autorewrite.
+#[export] Hint Rewrite <- List.app_assoc : fwd_rewrites.
+
+#[export] Hint Rewrite Nat.min_id : fwd_rewrites.
+
+Ltac fwd_rewrites ::=
+  repeat match goal with
+         | H: _ |- _ => progress rewrite_db fwd_rewrites in H
+         end;
+  try rewrite_db fwd_rewrites.
 
 Module map.
   Section __.
@@ -99,6 +120,31 @@ Module map.
     Qed.
   End __.
 End map.
+
+Module List.
+  Section __.
+    Context [A : Type].
+
+    Lemma firstn_eq_O: forall (n: nat) (l : list A),
+        n = 0%nat ->
+        List.firstn n l = [].
+    Proof. intros. subst. apply List.firstn_O. Qed.
+
+    Lemma skipn_eq_O: forall (n: nat) (l : list A),
+        n = 0%nat ->
+        List.skipn n l = l.
+    Proof. intros. subst. apply List.skipn_O. Qed.
+  End __.
+End List.
+
+#[export] Hint Rewrite
+  List.firstn_all2
+  List.skipn_all2
+  List.firstn_eq_O
+  List.skipn_eq_O
+  Nat.min_l
+  Nat.min_r
+using ZnWords : fwd_rewrites.
 
 Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
 | mk_get_option: forall (a: A) (post: A -> Prop), post a -> get_option (Some a) post.
@@ -266,7 +312,7 @@ End SepLog.
 Create HintDb split_sepclause_goal.
 
 #[export] Hint Extern 1 (split_sepclause _ word_array _ scalar _) =>
-  eapply access_scalar_in_word_array; ZnWords : split_sepclause_goal.
+  eapply access_scalar_in_word_array; destruct_bools; ZnWords : split_sepclause_goal.
 
 Section WithA.
   Context {A: Type}.
@@ -284,14 +330,14 @@ End WithA.
 Create HintDb split_sepclause_sidecond.
 
 #[export] Hint Extern 1 (_ = ?l ++ [_] ++ _ /\ List.length ?l = _) =>
-  eapply list_expose_nth; ZnWords : split_sepclause_sidecond.
+  eapply list_expose_nth; destruct_bools; ZnWords : split_sepclause_sidecond.
 
 Create HintDb merge_sepclause_sidecond.
 
 #[export] Hint Extern 1 (@eq (list _) ?listL ?listR /\ @eq nat ?lenL ?lenR) =>
   assert_fails (has_evar lenL);
   assert_fails (has_evar lenR);
-  is_evar listL; split; [reflexivity|ZnWords]
+  is_evar listL; split; [reflexivity|destruct_bools; ZnWords]
 : merge_sepclause_sidecond.
 
 Section WithParams.
@@ -1024,7 +1070,7 @@ Ltac impl_ecancel_step_with_splitting :=
         [ reflexivity
         | cbv [split_sepclause] in Sp;
           eapply Sp;
-          eauto with split_sepclause_sidecond
+          solve [eauto with split_sepclause_sidecond]
         | ]
     end
   end.
@@ -1376,19 +1422,6 @@ Section MergingSep.
   Context {width: Z} {word: word.word width}
           {word_ok: word.ok word} {mem: map.map word byte} {ok: map.ok mem}.
 
-  (* Could be replaced by id, but it's not needed because we only use lemmas based
-   on this definition to guide then/else merging automation, but not to create proofs *)
-  Inductive not_needed_for_proofs(P: Prop): Prop := mk_not_needed_for_proofs.
-
-  Definition same_footprint(P Q: mem -> Prop): Prop :=
-    not_needed_for_proofs (footpr P = footpr Q).
-
-  Lemma word_array_same_footprint: forall a1 a2 vs1 vs2,
-      a1 = a2 ->
-      List.length vs1 = List.length vs2 ->
-      same_footprint (a1 |-> word_array vs1) (a2 |-> word_array vs2).
-  Proof. intros. constructor. Qed.
-
   Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
   Let nth(n: nat)(xs: list (mem -> Prop)) :=
         SeparationLogic.hd (emp True) (SeparationLogic.skipn n xs).
@@ -1471,11 +1504,56 @@ Section MergingSep.
   Qed.
 End MergingSep.
 
-Create HintDb same_footprint.
+Section MergingLists.
+  Context [A: Type].
 
-#[export] Hint Extern 1 (same_footprint (_ |-> word_array _) (_ |-> word_array _)) =>
-  eapply word_array_same_footprint; ZnWords
-: same_footprint.
+  Lemma push_if_app_l: forall (b: bool) (l1 l2 r: list A),
+      (if b then (l1 ++ l2) else r) =
+        (if b then l1 else List.firstn (List.length l1) r) ++
+        (if b then l2 else List.skipn (List.length l1) r).
+  Proof.
+    intros. destruct b. 1: reflexivity. symmetry. apply List.firstn_skipn.
+  Qed.
+
+  Lemma push_if_app_r: forall (b: bool) (l r1 r2: list A),
+      (if b then l else (r1 ++ r2)) =
+        (if b then List.firstn (List.length r1) l else r1) ++
+        (if b then List.skipn (List.length r1) l else r2).
+  Proof.
+    intros. destruct b. 2: reflexivity. symmetry. apply List.firstn_skipn.
+  Qed.
+
+  Lemma push_if_singleton: forall (b: bool) (a1 a2: A),
+      (if b then [a1] else [a2]) = [if b then a1 else a2].
+  Proof. intros. destruct b; reflexivity. Qed.
+
+  Lemma pull_if_firstn: forall (b: bool) (l1 l2: list A) n,
+      List.firstn n (if b then l1 else l2) =
+        if b then List.firstn n l1 else List.firstn n l2.
+  Proof. intros. destruct b; reflexivity. Qed.
+
+  Lemma pull_if_skipn: forall (b: bool) (l1 l2: list A) n,
+      List.skipn n (if b then l1 else l2) =
+        if b then List.skipn n l1 else List.skipn n l2.
+  Proof. intros. destruct b; reflexivity. Qed.
+
+  Lemma pull_if_length: forall (b: bool) (l1 l2: list A),
+      List.length (if b then l1 else l2) = if b then List.length l1 else List.length l2.
+  Proof. intros. destruct b; reflexivity. Qed.
+End MergingLists.
+
+Lemma if_same[A: Type](b: bool)(a: A): (if b then a else a) = a.
+Proof. destruct b; reflexivity. Qed.
+
+#[export] Hint Rewrite
+  push_if_app_l
+  push_if_app_r
+  push_if_singleton
+  if_same
+  pull_if_firstn
+  pull_if_skipn
+  pull_if_length
+: fwd_rewrites.
 
 Fixpoint zip_tuple_if{A: Type}(b: bool){n: nat}(t1 t2: tuple A n){struct n}: tuple A n.
   destruct n.
@@ -1602,12 +1680,19 @@ Ltac destruct_locals_after_merge tup names :=
           let F := fresh in
           destruct H as [F H];
           lazymatch type of F with
-          | t = if _ then ?x else ?x => eapply eq_if_same in F; subst t
-          | t = _ => make_fresh name;
-                     (* compute type again because make_fresh might have changed it *)
-                     lazymatch type of F with
-                     | t = ?ite => subst t; set (name := ite)
-                     end
+          | t = if _ then ?x else ?x => eapply eq_if_same in F
+          | t = _ => idtac
+          end;
+          lazymatch type of F with
+          | t = ?rhs => tryif is_var rhs then (
+              subst t
+            ) else (
+              make_fresh name;
+              (* compute type again because make_fresh might have changed it *)
+              lazymatch type of F with
+              | t = ?ite => subst t; set (name := ite)
+              end
+            )
           end;
           destruct_locals_after_merge tup rest
       end
@@ -1732,12 +1817,15 @@ Ltac after_if :=
   repeat match goal with
   | H: if _ then ands [] else ands [] |- _ => clear H
   end;
+  repeat lazymatch goal with
+         | H: reconstruct _ _ = (if _ then _ else _) |- _ =>
+             rewrite push_if_reconstruct in H; cbn [zip_tuple_if List.length] in H
+         end;
+  repeat lazymatch goal with
+         | H: reconstruct _ _ = reconstruct _ _ |- _ =>
+             eapply invert_reconstruct_eq in H; [|reflexivity]
+         end;
   try (lazymatch goal with
-       | H: reconstruct _ _ = (if _ then _ else _) |- _ =>
-           rewrite push_if_reconstruct in H; cbn [zip_tuple_if List.length] in H;
-           eapply invert_reconstruct_eq in H; [|reflexivity]
-       end;
-       lazymatch goal with
        | |- wp_cmd _ _ _ _ (reconstruct ?names ?tup) _ =>
            destruct_locals_after_merge tup names
        end).
@@ -1809,11 +1897,7 @@ Ltac close_block :=
   end.
 
 Ltac prove_final_post :=
-  repeat match goal with
-         | H: context[if ?b then _ else _] |- _ =>
-             let t := type of b in constr_eq t bool; destruct b
-         end;
-  intuition (blia || congruence).
+  destruct_bools; intuition (blia || congruence).
 
 Ltac ret retnames :=
   lazymatch goal with
@@ -1854,10 +1938,7 @@ Ltac add_snippet s :=
   end.
 
 Ltac after_snippet :=
-  cbn [PrimitivePair.pair._1 PrimitivePair.pair._2];
-  repeat simpli_step;
-  fwd;
-  repeat simpli_step.
+  repeat (repeat simpli_step; fwd).
 
 (* Note: An rhs_var appears in expressions and, in our setting, always has a corresponding
    var (of type word) bound in the current context, whereas an lhs_var may or may not be
@@ -1901,6 +1982,8 @@ Notation "x" := x
 Notation "live_expr:( e )" := e
   (e custom live_expr at level 100, only parsing).
 
+Notation "( e )" := e (in custom live_expr, e custom live_expr at level 100).
+
 (* Using the same precedences as https://en.cppreference.com/w/c/language/operator_precedence *)
 Notation "! x" := (expr.op bopname.eq x (expr.literal 0))
   (in custom live_expr at level 2, x custom live_expr, right associativity, only parsing).
@@ -1920,13 +2003,13 @@ Infix ">>" := (expr.op bopname.sru)
   (in custom live_expr at level 5, left associativity, only parsing).
 Infix "<" := (expr.op bopname.ltu)
   (in custom live_expr at level 6, no associativity, only parsing).
-Notation "a <= b" := (live_expr:(!(b < a)))
+Notation "a <= b" := (expr.op bopname.eq (expr.op bopname.ltu b a) (expr.literal 0))
   (in custom live_expr at level 6, a custom live_expr, b custom live_expr,
    no associativity, only parsing).
-Notation "a > b" := (live_expr:(b < a))
+Notation "a > b" := (expr.op bopname.ltu b a)
   (in custom live_expr at level 6, a custom live_expr, b custom live_expr,
    no associativity, only parsing).
-Notation "a >= b" := (live_expr:(b <= a))
+Notation "a >= b" := (expr.op bopname.eq (expr.op bopname.ltu a b) (expr.literal 0))
   (in custom live_expr at level 6, a custom live_expr, b custom live_expr,
    no associativity, only parsing).
 Infix "==" := (expr.op bopname.eq)
@@ -1957,6 +2040,11 @@ Notation  "load( a )" := (expr.load access_size.word a)
 
 Goal forall (word: Type) (x: word),
     live_expr:(x + 3) = expr.op bopname.add (expr.var "x") (expr.literal 3).
+Proof. intros. reflexivity. Abort.
+
+Goal forall (word: Type) (x: word),
+  live_expr:(x <= 3) =
+  expr.op bopname.eq (expr.op bopname.ltu (expr.literal 3) (expr.var "x")) (expr.literal 0).
 Proof. intros. reflexivity. Abort.
 
 Declare Custom Entry snippet.
@@ -2306,23 +2394,15 @@ Definition u_min': {f: list string * list string * cmd &
   return r;                                                                /**.
 Defined.
 
-Definition sort3: {f: list string * list string * cmd &
+Definition merge_tests: {f: list string * list string * cmd &
   forall call t m a vs R,
     m satisfies <{
       * a |-> word_array vs
       * R
     }> /\
     List.length vs = 3%nat ->
-    vc_func call f t m [a] (fun t' m' retvs =>
-      exists v0 v1 v2,
-        t' = t /\
-        Permutation vs [v0; v1; v2] /\
-        \[v0] <= \[v1] <= \[v2] /\
-        m' satisfies <{
-          * a |-> word_array [v0; v1; v2]
-          * R
-        }>
-  )}.
+    vc_func call f t m [a] (fun t' m' retvs => False)
+  }.
       start. destruct H as [M ?].
 .**/  uintptr_t w0 = load(a);                                                   /**.
 .**/  uintptr_t w1 = load(a+4);                                                 /**.
@@ -2351,23 +2431,68 @@ Definition sort3: {f: list string * list string * cmd &
   replace w1tmp with w1 in * by ZnWords. clear w1tmp.
 
 .**/  } else {                                                                  /**.
-.**/   if (w2 < w0 && w2 < w1) {                                                /**.
-.**/     store(a, w2);                                                          /**.
-.**/     w2 = w0;                                                               /**.
-.**/   } else {                                                                 /**.
-.**/   }                                                              /**. .**/ /**.
-(*
-need to push down ifs in list expression
-.**/ }                                                                /**. .**/ /**.
+.**/  }                                                               /**. .**/ /**.
+Abort.
+
+Axiom TODO: False.
+
+Definition sort3: {f: list string * list string * cmd &
+  forall call t m a vs R,
+    m satisfies <{
+      * a |-> word_array vs
+      * R
+    }> /\
+    List.length vs = 3%nat ->
+    vc_func call f t m [a] (fun t' m' retvs =>
+      exists v0 v1 v2,
+        t' = t /\
+        Permutation vs [v0; v1; v2] /\
+        \[v0] <= \[v1] <= \[v2] /\
+        m' satisfies <{
+          * a |-> word_array [v0; v1; v2]
+          * R
+        }>
+  )}.
+      start. destruct H as [M ?].
+.**/  uintptr_t w0 = load(a);                                                   /**.
+.**/  uintptr_t w1 = load(a+4);                                                 /**.
+.**/  uintptr_t w2 = load(a+8);                                                 /**.
+.**/  if (w1 < w0 && w1 < w2) {                                                 /**.
+.**/    store(a, w1);                                                           /**.
+.**/    w1 = w0;                                                                /**.
+.**/  } else {                                                                  /**.
+.**/    if (w2 < w0 && w2 < w1) {                                               /**.
+.**/      store(a, w2);                                                         /**.
+.**/      w2 = w0;                                                              /**.
+.**/    } else {                                                                /**.
+.**/    }                                                             /**. .**/ /**.
+.**/  }                                                               /**. .**/ /**.
 .**/  if (w2 < w1) {                                                            /**.
 .**/    store(a+4, w2);                                                         /**.
 .**/    store(a+8, w1);                                                         /**.
 .**/  } else {                                                                  /**.
 .**/    store(a+4, w1);                                                         /**.
 .**/    store(a+8, w2);                                                         /**.
-.**/  }                                                                         /**.
-*)
-Abort.
+.**/  }                                                               /**. .**/ /**.
+
+    ret (@nil string).
+
+    repeat (destruct vs; try discriminate; []).
+    repeat match goal with
+           | x := _ |- _ => subst x
+           end.
+    cbn [List.nth] in *.
+    destruct_bools;
+    repeat match goal with
+           | H: ands (_ :: _) |- _ => destruct H
+           | H: ands [] |- _ => clear H
+           end;
+    cbn [List.app List.firstn] in *.
+    all: do 3 eexists; (split; [reflexivity|split; [|split; [|]]]).
+    all: try ecancel_assumption.
+    all: try blia.
+    all: case TODO.
+Defined.
 
 (* TODO: write down postcondition only at end *)
 Definition swap_locals: {f: list string * list string * cmd &
