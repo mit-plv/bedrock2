@@ -557,6 +557,24 @@ Section WithParams.
       dexpr m l e b ->
       dexpr_bool_prop m l e (word.unsigned b <> 0).
 
+  Lemma dexpr_not: forall m l e (P: Prop),
+      dexpr_bool_prop m l e P ->
+      dexpr_bool_prop m l (expr.op bopname.eq e (expr.literal 0)) (~ P).
+  Proof.
+    intros. inversion H. clear H. subst P.
+    eenough ((~ word.unsigned b <> 0) = _) as E. {
+      rewrite E. econstructor.
+      cbn. unfold dexpr in H0.
+      eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
+      cbv [RelationClasses.Reflexive Morphisms.pointwise_relation
+           Morphisms.respectful Basics.impl].
+      intros. subst. unfold literal, dlet.dlet. reflexivity.
+    }
+    apply PropExtensionality.propositional_extensionality.
+    destruct_one_match; split; try ZnWords.
+    intros. intros _. apply E. ZnWords.
+  Qed.
+
   Lemma dexpr_lazy_and: forall m l e1 e2 (P1 P2: Prop),
       dexpr_bool_prop m l e1 P1 ->
       (P1 -> dexpr_bool_prop m l e2 P2) ->
@@ -906,10 +924,11 @@ Ltac assert_scope_kind expected :=
   tryif constr_eq sk expected then idtac
   else fail "This snippet is only allowed in a" expected "block, but we're in a" sk "block".
 
-(*
+Declare Scope live_scope_prettier. (* prettier, but harder to debug *)
+Local Open Scope live_scope_prettier.
+
 Notation "'ready' 'for' 'next' 'command'" := (wp_cmd _ _ _ _ _ _)
-  (at level 0, only printing) : live_scope.
-*)
+  (at level 0, only printing) : live_scope_prettier.
 
 Declare Scope reconstruct_locals_scope.
 Delimit Scope reconstruct_locals_scope with reconstruct_locals.
@@ -1170,6 +1189,8 @@ Ltac eval_dexpr_step :=
   lazymatch goal with
   | |- dexpr_bool_prop _ _ (expr.lazy_and _ _) _ =>
       eapply dexpr_lazy_and; [|intro]
+  | |- dexpr_bool_prop _ _ (expr.op bopname.eq _ (expr.literal 0)) _ =>
+      eapply dexpr_not
   | |- dexpr_bool_prop _ _ (expr.op _ _ _) _ =>
       eapply dexpr_bool_op_prop_unf
   | |- dexpr _ _ (expr.var _) _ => eapply dexpr_var; reflexivity
@@ -1177,6 +1198,10 @@ Ltac eval_dexpr_step :=
   end.
 
 Ltac start :=
+  lazymatch goal with
+  | |- {_: list string * list string * Syntax.cmd & _ } => idtac
+  | |- _ => fail "goal needs to be of shape {_: list string * list string * Syntax.cmd & _ }"
+  end;
   let eargnames := open_constr:(_: list string) in
   refine (existT _ (eargnames, _, _) _);
   let call := fresh "call" in
@@ -1835,6 +1860,7 @@ Inductive snippet :=
 | SStore(sz: access_size)(addr val: Syntax.expr)
 | SIf(cond: Syntax.expr)
 | SElse
+| SStart
 | SEnd
 | SRet(xs: list string)
 | SEmpty.
@@ -1882,22 +1908,37 @@ Ltac els :=
   eexists; split; [ reflexivity | ];
   package_context.
 
-Ltac close_block :=
-  lazymatch goal with
-  | B: scope_marker ?sk |- _ =>
-      lazymatch sk with
-      | ElseBranch =>
-          eapply wp_skip;
-          eexists; split; [ reflexivity | ];
-          package_context
-      | LoopBody => fail "Closing a loop body is not yet implemented"
-      | _ => fail "Can't end a block here"
-      end
-  | _ => fail "no scope marker found"
-  end.
+Create HintDb prove_post.
 
 Ltac prove_final_post :=
-  destruct_bools; intuition (blia || congruence).
+    repeat match goal with
+           | H: List.length ?l = S _ |- _ =>
+               is_var l; destruct l;
+               [ discriminate H
+               | cbn [List.length] in H; eapply Nat.succ_inj in H ]
+           | H: List.length ?l = O |- _ =>
+               is_var l; destruct l;
+               [ clear H
+               | discriminate H ]
+           end;
+    repeat match goal with
+           | x := _ |- _ => subst x
+           end;
+    destruct_bools;
+    repeat match goal with
+           | H: ands (_ :: _) |- _ => destruct H
+           | H: ands [] |- _ => clear H
+           end;
+    cbn [List.app List.firstn List.nth] in *;
+    repeat match goal with
+           | |- exists _, _ => eexists
+           | |- _ /\ _ => split
+           | |- ?x = ?x => reflexivity
+           | |- seps _ _ => ecancel_assumption
+           end;
+    try congruence;
+    try ZnWords;
+    intuition (congruence || ZnWords || eauto with prove_post).
 
 Ltac ret retnames :=
   lazymatch goal with
@@ -1914,13 +1955,31 @@ Ltac ret retnames :=
   lazymatch goal with
   | |- exists _, map.getmany_of_list _ ?eretnames = Some _ /\ _ =>
     unify eretnames retnames;
-    eexists; split; [reflexivity|]
-  end;
-  try prove_final_post.
+    eexists; split; [reflexivity|cbn [PrimitivePair.pair._1 PrimitivePair.pair._2]]
+  end.
+
+Ltac close_block :=
+  lazymatch goal with
+  | B: scope_marker ?sk |- _ =>
+      lazymatch sk with
+      | ElseBranch =>
+          eapply wp_skip;
+          eexists; split; [ reflexivity | ];
+          package_context
+      | LoopBody => fail "Closing a loop body is not yet implemented"
+      | FunctionBody =>
+          lazymatch goal with
+          | |- wp_cmd _ _ _ _ _ _ => ret (@nil string)
+          | |- _ => idtac (* ret nonEmptyVarList was already called *)
+          end;
+          prove_final_post
+      | _ => fail "Can't end a block here"
+      end
+  | _ => fail "no scope marker found"
+  end.
 
 Ltac prettify_goal :=
   lazymatch goal with
-  | |- {f: list string * list string * Syntax.cmd & _ } => start
   | |- _ =>
       cbv beta in *;
       after_if
@@ -1932,6 +1991,7 @@ Ltac add_snippet s :=
   | SStore ?sz ?addr ?val => store sz addr val
   | SIf ?e => cond e
   | SElse => els
+  | SStart => start
   | SEnd => close_block
   | SRet ?retnames => ret retnames
   | SEmpty => prettify_goal
@@ -2061,6 +2121,7 @@ Notation "'return' l ;" := (SRet l)
   (in custom snippet at level 0, l custom rhs_var_list at level 1).
 
 Notation "'if' ( e ) {" := (SIf e) (in custom snippet at level 0, e custom live_expr).
+Notation "{" := SStart (in custom snippet at level 0).
 Notation "}" := SEnd (in custom snippet at level 0).
 Notation "} 'else' {" := SElse (in custom snippet at level 0).
 
@@ -2365,15 +2426,16 @@ Definition u_min: {f: list string * list string * cmd &
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
   )}.
+.**/ {                                                                          /**.
+.**/   uintptr_t r = 0;                                                         /**.
+.**/   if (a < b) {                                                             /**.
+.**/     r = a;                                                                 /**.
+.**/   } else {                                                                 /**.
+.**/     r = b;                                                                 /**.
+.**/   }                                                                        /**.
 .**/                                                                            /**.
-.**/  uintptr_t r = 0;                                                          /**.
-.**/  if (a < b) {                                                              /**.
-.**/    r = a;                                                                  /**.
-.**/  } else {                                                                  /**.
-.**/    r = b;                                                                  /**.
-.**/  }                                                                         /**.
-.**/                                                                            /**.
-.**/  return r; /**.
+.**/   return r;                                                                /**.
+.**/ }                                                                          /**.
 Defined.
 
 Definition u_min': {f: list string * list string * cmd &
@@ -2383,7 +2445,8 @@ Definition u_min': {f: list string * list string * cmd &
       t' = t /\ seps [R] m' /\
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
-  )}. .**/                                                                 /**. .**/
+  )}.                                                                           .**/
+{                                                                          /**. .**/
   uintptr_t r = 0;                                                         /**. .**/
   if (a < b) {                                                             /**. .**/
     r = a;                                                                 /**. .**/
@@ -2391,7 +2454,8 @@ Definition u_min': {f: list string * list string * cmd &
     r = b;                                                                 /**. .**/
   }                                                                        /**. .**/
                                                                            /**. .**/
-  return r;                                                                /**.
+  return r;                                                                /**. .**/
+}                                                                          /**.
 Defined.
 
 Definition merge_tests: {f: list string * list string * cmd &
@@ -2399,17 +2463,17 @@ Definition merge_tests: {f: list string * list string * cmd &
     m satisfies <{
       * a |-> word_array vs
       * R
-    }> /\
+    }> ->
     List.length vs = 3%nat ->
     vc_func call f t m [a] (fun t' m' retvs => False)
   }.
-      start. destruct H as [M ?].
-.**/  uintptr_t w0 = load(a);                                                   /**.
-.**/  uintptr_t w1 = load(a+4);                                                 /**.
-.**/  uintptr_t w2 = load(a+8);                                                 /**.
-.**/  if (w1 < w0 && w1 < w2) {                                                 /**.
-.**/    store(a, w1);                                                           /**.
-.**/    w1 = w0;                                                                /**.
+.**/ {                                                                          /**.
+.**/   uintptr_t w0 = load(a);                                                  /**.
+.**/   uintptr_t w1 = load(a+4);                                                /**.
+.**/   uintptr_t w2 = load(a+8);                                                /**.
+.**/   if (w1 < w0 && w1 < w2) {                                                /**.
+.**/     store(a, w1);                                                          /**.
+.**/     w1 = w0;                                                               /**.
 
   assert (exists foo, foo + foo = 2) as Foo. {
     exists 1. reflexivity.
@@ -2434,14 +2498,16 @@ Definition merge_tests: {f: list string * list string * cmd &
 .**/  }                                                               /**. .**/ /**.
 Abort.
 
-Axiom TODO: False.
+Hint Extern 4 (Permutation _ _) =>
+  eauto using perm_nil, perm_skip, perm_swap, perm_trans
+: prove_post.
 
 Definition sort3: {f: list string * list string * cmd &
   forall call t m a vs R,
     m satisfies <{
       * a |-> word_array vs
       * R
-    }> /\
+    }> ->
     List.length vs = 3%nat ->
     vc_func call f t m [a] (fun t' m' retvs =>
       exists v0 v1 v2,
@@ -2453,45 +2519,28 @@ Definition sort3: {f: list string * list string * cmd &
           * R
         }>
   )}.
-      start. destruct H as [M ?].
-.**/  uintptr_t w0 = load(a);                                                   /**.
-.**/  uintptr_t w1 = load(a+4);                                                 /**.
-.**/  uintptr_t w2 = load(a+8);                                                 /**.
-.**/  if (w1 < w0 && w1 < w2) {                                                 /**.
-.**/    store(a, w1);                                                           /**.
-.**/    w1 = w0;                                                                /**.
-.**/  } else {                                                                  /**.
-.**/    if (w2 < w0 && w2 < w1) {                                               /**.
-.**/      store(a, w2);                                                         /**.
-.**/      w2 = w0;                                                              /**.
-.**/    } else {                                                                /**.
-.**/    }                                                             /**. .**/ /**.
-.**/  }                                                               /**. .**/ /**.
-.**/  if (w2 < w1) {                                                            /**.
-.**/    store(a+4, w2);                                                         /**.
-.**/    store(a+8, w1);                                                         /**.
-.**/  } else {                                                                  /**.
-.**/    store(a+4, w1);                                                         /**.
-.**/    store(a+8, w2);                                                         /**.
-.**/  }                                                               /**. .**/ /**.
-
-    ret (@nil string).
-
-    repeat (destruct vs; try discriminate; []).
-    repeat match goal with
-           | x := _ |- _ => subst x
-           end.
-    cbn [List.nth] in *.
-    destruct_bools;
-    repeat match goal with
-           | H: ands (_ :: _) |- _ => destruct H
-           | H: ands [] |- _ => clear H
-           end;
-    cbn [List.app List.firstn] in *.
-    all: do 3 eexists; (split; [reflexivity|split; [|split; [|]]]).
-    all: try ecancel_assumption.
-    all: try blia.
-    all: case TODO.
+.**/ {                                                                          /**.
+.**/   uintptr_t w0 = load(a);                                                  /**.
+.**/   uintptr_t w1 = load(a+4);                                                /**.
+.**/   uintptr_t w2 = load(a+8);                                                /**.
+.**/   if (w1 <= w0 && w1 <= w2) {                                              /**.
+.**/     store(a, w1);                                                          /**.
+.**/     w1 = w0;                                                               /**.
+.**/   } else {                                                                 /**.
+.**/     if (w2 <= w0 && w2 <= w1) {                                            /**.
+.**/       store(a, w2);                                                        /**.
+.**/       w2 = w0;                                                             /**.
+.**/     } else {                                                               /**.
+.**/     }                                                            /**. .**/ /**.
+.**/   }                                                              /**. .**/ /**.
+.**/   if (w2 < w1) {                                                           /**.
+.**/     store(a+4, w2);                                                        /**.
+.**/     store(a+8, w1);                                                        /**.
+.**/   } else {                                                                 /**.
+.**/     store(a+4, w1);                                                        /**.
+.**/     store(a+8, w2);                                                        /**.
+.**/   }                                                              /**. .**/ /**.
+.**/ }                                                                          /**.
 Defined.
 
 (* TODO: write down postcondition only at end *)
@@ -2500,14 +2549,15 @@ Definition swap_locals: {f: list string * list string * cmd &
     vc_func call f tr m [a; b] (fun tr' m' retvs =>
       tr' = tr /\ m' = m /\ retvs = [b; a]
   )}.
-    (* note: we could just return ["b", "a"] and then the body would be just skip *)
-    start. .**/
+  (* note: we could just do skip and return ["b", "a"] *)                       .**/
+{                                                                          /**. .**/
   uintptr_t t = a;                                                         /**. .**/
   a = b;                                                                   /**. .**/
   b = t;                                                                   /**. .**/
   uintptr_t res1 = a;                                                      /**. .**/
   uintptr_t res2 = b;                                                      /**. .**/
-  return res1, res2;                                                       /**.
+  return res1, res2;                                                       /**. .**/
+}                                                                          /**.
 Defined.
 
 (* TODO: write down postcondition only at end *)
@@ -2525,11 +2575,11 @@ Definition swap: {f: list string * list string * cmd &
         * R
       }> /\ retvs = [] /\ t' = t
   )}.
-    start.
-#*/ uintptr_t t = load(a_addr);                                              /*.
-#*/ store(a_addr, load(b_addr));                                             /*.
-#*/ store(b_addr, t);                                                        /*.
-    ret (@nil string).
+#*/ {                                                                        /*.
+#*/   uintptr_t t = load(a_addr);                                            /*.
+#*/   store(a_addr, load(b_addr));                                           /*.
+#*/   store(b_addr, t);                                                      /*.
+#*/ }                                                                        /*.
 Defined.
 
 Goal False.
