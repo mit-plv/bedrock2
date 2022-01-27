@@ -320,6 +320,8 @@ Section WithParameters.
          map.only_differ initialL.(getRegs)
                  (union (of_list (modVars_as_list Z.eqb s)) (singleton_set RegisterNames.ra))
                  finalL.(getRegs) /\
+         (finalL.(getMetrics) - initialL.(getMetrics) <=
+          lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\    
          goodMachine finalTrace finalMH finalRegsH g finalL).
 
 End WithParameters.
