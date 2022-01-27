@@ -22,22 +22,6 @@ Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2Examples.LiveVerif.ident_to_string.
 Import List.ListNotations. Local Open Scope list_scope.
 
-Ltac eqapply A :=
-  let t := type of A in
-  let g := lazymatch goal with |- ?G => G end in
-  replace g with t; [exact A|f_equal..].
-
-Ltac head t :=
-  lazymatch t with
-  | ?f _ => head f
-  | _ => t
-  end.
-
-Ltac eqassumption :=
-  multimatch goal with
-  | H: ?T |- ?U => let hT := head T in let hU := head U in constr_eq hT hU; eqapply H
-  end.
-
 Ltac destruct_bools :=
   repeat match goal with
          | H: context[if ?b then _ else _] |- _ =>
@@ -71,72 +55,7 @@ Proof. cbn. auto. Qed.
 Require Import Coq.Program.Tactics.
 Require Import coqutil.Tactics.autoforward.
 
-#[export] Hint Extern 1
-  (autoforward (word.unsigned (if _ then (word.of_Z 1) else (word.of_Z 0)) = 0) _)
-  => rapply @word.if_zero : typeclass_instances.
-
-#[export] Hint Extern 1
-  (autoforward (word.unsigned (if _ then (word.of_Z 1) else (word.of_Z 0)) <> 0) _)
-  => rapply @word.if_nonzero : typeclass_instances.
-
-#[export] Hint Rewrite
-  List.firstn_O
-  List.app_nil_l
-  List.firstn_app
-  @List.skipn_app
-  List.firstn_firstn
-  @List.skipn_skipn
-  List.firstn_length
-  List.app_nil_l
-  List.app_nil_r
-: fwd_rewrites.
-
-#[export] Hint Rewrite <- List.app_assoc : fwd_rewrites.
-
-#[export] Hint Rewrite Nat.min_id : fwd_rewrites.
-
-Ltac fwd_rewrites ::=
-  repeat match goal with
-         | H: _ |- _ => progress rewrite_db fwd_rewrites in H
-         end;
-  try rewrite_db fwd_rewrites.
-
-Module map.
-  Section __.
-    Context {key value: Type} {map: map.map key value} {map_ok: map.ok map}
-            {key_eqb: key -> key -> bool} {key_eqb_dec: EqDecider key_eqb}.
-
-    Lemma invert_put_eq: forall (k: key) (v1 v2: value) (m1 m2: map),
-        map.get m1 k = None ->
-        map.get m2 k = None ->
-        map.put m1 k v1 = map.put m2 k v2 ->
-        v1 = v2 /\ m1 = m2.
-    Proof.
-      intros. split.
-      - eapply (f_equal (fun m => map.get m k)) in H1.
-        rewrite 2map.get_put_same in H1. congruence.
-      - eapply map.map_ext. intros. destr (key_eqb k0 k). 1: congruence.
-        eapply (f_equal (fun m => map.get m k0)) in H1.
-        rewrite 2map.get_put_diff in H1 by assumption. exact H1.
-    Qed.
-  End __.
-End map.
-
-Module List.
-  Section __.
-    Context [A : Type].
-
-    Lemma firstn_eq_O: forall (n: nat) (l : list A),
-        n = 0%nat ->
-        List.firstn n l = [].
-    Proof. intros. subst. apply List.firstn_O. Qed.
-
-    Lemma skipn_eq_O: forall (n: nat) (l : list A),
-        n = 0%nat ->
-        List.skipn n l = l.
-    Proof. intros. subst. apply List.skipn_O. Qed.
-  End __.
-End List.
+Ltac fwd_rewrites ::= fwd_rewrite_db_in_star.
 
 #[export] Hint Rewrite
   List.firstn_all2
@@ -648,19 +567,6 @@ Section WithParams.
     intros. eapply wp_expr_to_dexpr in H. fwd. destruct Hp1.
     constructor. cbn. unfold dlet.dlet. eauto.
   Qed.
-
-  Notation "'let/c' x := r 'in' b" := (r (fun x => b)) (x binder, at level 200, only parsing).
-
-  Lemma wp_store: forall fs sz ea ev t m l rest post,
-      (let/c a := wp_expr m l ea in
-       let/c v := wp_expr m l ev in
-       let/c m' := get_option (Memory.store sz m a v) in
-       wp_cmd (call fs) rest t m' l post) ->
-      wp_cmd (call fs) (cmd.seq (cmd.store sz ea ev) rest) t m l post.
-  Proof.
-    intros *.
-  Abort.
-  (* TODO can we disable Coq's auto-eta-expansion to make this notation print like written above?*)
 
   Lemma wp_store0: forall fs sz ea ev t m l rest post,
       wp_expr m l ea (fun a =>
