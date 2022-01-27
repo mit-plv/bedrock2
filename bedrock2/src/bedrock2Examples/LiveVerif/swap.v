@@ -6,6 +6,7 @@ Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.rewr coqutil.Tactics.rdelta.
 Require Import Coq.Program.Tactics.
 Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
+Require coqutil.Map.SortedListString. (* for function env, other maps are kept abstract *)
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Tactics.fwd.
 Require Import bedrock2.Syntax bedrock2.Semantics.
@@ -275,6 +276,7 @@ Section SepLog.
     reflexivity.
   Qed.
 
+  Local Set Warnings "-notation-overridden".
   Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
   Let nth n xs := SeparationLogic.hd (emp(map:=mem) True) (SeparationLogic.skipn n xs).
   Let remove_nth n (xs : list (mem -> Prop)) :=
@@ -331,7 +333,7 @@ Section WithParams.
   Import bedrock2.Syntax.
   Context {word: word.word 32} {mem: map.map word byte} {locals: map.map string word}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok: map.ok locals}.
-  Context {ext_spec: ExtSpec}.
+  Context {ext_spec: ExtSpec} {ext_spec_ok : ext_spec.ok ext_spec}.
 
   (* non-unfoldable wrappers, their definition might be swapped with something else later,
      as long as it satisfies the lemmas that follow below *)
@@ -617,22 +619,31 @@ Section WithParams.
             (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop): Prop :=
     mk_wp_cmd: WeakestPrecondition.cmd call c t m l post -> wp_cmd call c t m l post.
 
-  Lemma weaken_wp_cmd: forall call c t m l (post1 post2: _->_->_->Prop),
-      wp_cmd call c t m l post1 ->
+  Lemma WWP_weaken_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
+      WeakestPrecondition.cmd (call fs) c t m l post1 ->
       (forall t m l, post1 t m l -> post2 t m l) ->
-      wp_cmd call c t m l post2.
+      WeakestPrecondition.cmd (call fs) c t m l post2.
   Proof.
-    intros. constructor. inversion H.
+    intros.
+    set (env := SortedListString.map _ : map.map string (list string * list string * cmd)).
+    assert (env_ok: map.ok env) by apply SortedListString.ok. clearbody env.
     eapply WeakestPreconditionProperties.Proper_cmd. 3: eassumption.
-    1: admit.
-    cbv [RelationClasses.Reflexive Morphisms.pointwise_relation Morphisms.respectful Basics.impl].
+    1: eapply WeakestPreconditionProperties.Proper_call.
+    cbv [RelationClasses.Reflexive Morphisms.pointwise_relation
+         Morphisms.respectful Basics.impl].
     assumption.
-  Admitted. (* TODO some Proper_call and some shelved params *)
+  Qed.
 
-  Lemma wp_set: forall call x a t m l rest post,
+  Lemma weaken_wp_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
+      wp_cmd (call fs) c t m l post1 ->
+      (forall t m l, post1 t m l -> post2 t m l) ->
+      wp_cmd (call fs) c t m l post2.
+  Proof. intros. constructor. inversion H. eapply WWP_weaken_cmd; eassumption. Qed.
+
+  Lemma wp_set: forall fs x a t m l rest post,
       wp_expr m l a
-        (fun v => wp_cmd call rest t m (map.put l x v) post) ->
-      wp_cmd call (cmd.seq (cmd.set x a) rest) t m l post.
+        (fun v => wp_cmd (call fs) rest t m (map.put l x v) post) ->
+      wp_cmd (call fs) (cmd.seq (cmd.set x a) rest) t m l post.
   Proof.
     intros. eapply wp_expr_to_dexpr in H. fwd. destruct Hp1.
     constructor. cbn. unfold dlet.dlet. eauto.
@@ -640,23 +651,23 @@ Section WithParams.
 
   Notation "'let/c' x := r 'in' b" := (r (fun x => b)) (x binder, at level 200, only parsing).
 
-  Lemma wp_store: forall call sz ea ev t m l rest post,
+  Lemma wp_store: forall fs sz ea ev t m l rest post,
       (let/c a := wp_expr m l ea in
        let/c v := wp_expr m l ev in
        let/c m' := get_option (Memory.store sz m a v) in
-       wp_cmd call rest t m' l post) ->
-      wp_cmd call (cmd.seq (cmd.store sz ea ev) rest) t m l post.
+       wp_cmd (call fs) rest t m' l post) ->
+      wp_cmd (call fs) (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
     intros *.
   Abort.
   (* TODO can we disable Coq's auto-eta-expansion to make this notation print like written above?*)
 
-  Lemma wp_store0: forall call sz ea ev t m l rest post,
+  Lemma wp_store0: forall fs sz ea ev t m l rest post,
       wp_expr m l ea (fun a =>
         wp_expr m l ev (fun v =>
           get_option (Memory.store sz m a v) (fun m' =>
-            wp_cmd call rest t m' l post))) ->
-      wp_cmd call (cmd.seq (cmd.store sz ea ev) rest) t m l post.
+            wp_cmd (call fs) rest t m' l post))) ->
+      wp_cmd (call fs) (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
     intros. constructor. cbn.
     eapply wp_expr_to_dexpr in H. unfold dexpr in *. fwd.
@@ -664,13 +675,13 @@ Section WithParams.
     inversion Hp1p1. inversion H0. subst. unfold store. symmetry in H. eauto 10.
   Qed.
 
-  Lemma wp_store: forall call ea ev t m l rest post,
+  Lemma wp_store: forall fs ea ev t m l rest post,
       wp_expr m l ea (fun addr =>
         wp_expr m l ev (fun newvalue => exists oldvalue R,
           seps [addr |-> scalar oldvalue; R;
                 emp (forall m', seps [addr |-> scalar newvalue; R] m' ->
-                                wp_cmd call rest t m' l post)] m)) ->
-      wp_cmd call (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
+                                wp_cmd (call fs) rest t m' l post)] m)) ->
+      wp_cmd (call fs) (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
   Proof.
     intros.
     eapply wp_store0.
@@ -679,39 +690,37 @@ Section WithParams.
     eapply store_word_of_sep_cps. eassumption.
   Qed.
 
-  Lemma wp_if0: forall call c thn els rest t m l post,
+  Lemma wp_if0: forall fs c thn els rest t m l post,
       wp_expr m l c (fun b => exists Q1 Q2,
-        ((word.unsigned b <> 0 -> wp_cmd call thn t m l Q1) /\
-         (word.unsigned b =  0 -> wp_cmd call els t m l Q2)) /\
+        ((word.unsigned b <> 0 -> wp_cmd (call fs) thn t m l Q1) /\
+         (word.unsigned b =  0 -> wp_cmd (call fs) els t m l Q2)) /\
         (forall t' m' l', word.unsigned b <> 0 /\ Q1 t' m' l' \/
                           word.unsigned b =  0 /\ Q2 t' m' l' ->
-                          wp_cmd call rest t' m' l' post)) ->
-      wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
+                          wp_cmd (call fs) rest t' m' l' post)) ->
+      wp_cmd (call fs) (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Proof.
     intros. constructor. cbn.
     eapply wp_expr_to_dexpr in H. fwd.
     eexists. split; [eassumption|]. split; intros.
-    - eapply WeakestPreconditionProperties.Proper_cmd. 3: eapply Hp1p0p0; eassumption.
-      1: admit.
+    - eapply WWP_weaken_cmd. 1: eapply Hp1p0p0; eassumption.
       unfold Morphisms.pointwise_relation, Basics.impl. intros. eapply Hp1p1. eauto.
-    - eapply WeakestPreconditionProperties.Proper_cmd. 3: eapply Hp1p0p1; eassumption.
-      1: admit.
+    - eapply WWP_weaken_cmd. 1: eapply Hp1p0p1; eassumption.
       unfold Morphisms.pointwise_relation, Basics.impl. intros. eapply Hp1p1. eauto.
-  Admitted.
+  Qed.
 
-  Lemma wp_if: forall call c l vars vals thn els rest t m post,
+  Lemma wp_if: forall fs c l vars vals thn els rest t m post,
       l = reconstruct vars vals ->
       wp_expr m l c (fun b =>
         exists (Q1 Q2: trace -> mem -> locals -> Prop),
-          ((word.unsigned b <> 0 -> wp_cmd call thn t m l (fun t' m' l' =>
+          ((word.unsigned b <> 0 -> wp_cmd (call fs) thn t m l (fun t' m' l' =>
               exists vals', l' = reconstruct vars vals' /\ Q1 t' m' l')) /\
-           (word.unsigned b =  0 -> wp_cmd call els t m l (fun t' m' l' =>
+           (word.unsigned b =  0 -> wp_cmd (call fs) els t m l (fun t' m' l' =>
               exists vals', l' = reconstruct vars vals' /\ Q2 t' m' l'))) /\
           (forall t' m' vals', let l' := reconstruct vars vals' in
                                word.unsigned b <> 0 /\ Q1 t' m' l' \/
                                word.unsigned b =  0 /\ Q2 t' m' l' ->
-                               wp_cmd call rest t' m' l' post)) ->
-      wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
+                               wp_cmd (call fs) rest  t' m' l' post)) ->
+      wp_cmd (call fs) (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Proof.
     intros. subst. eapply wp_if0. eapply weaken_wp_expr. 1: exact H0. clear H0. cbv beta.
     intros v (Q1 & Q2 & A & B). eexists. eexists. split. 1: exact A. clear A. cbv beta.
@@ -720,32 +729,32 @@ Section WithParams.
 
   (* Not using this one because it's not clear how to prove a wp_expr_bool_prop
      without invoking post twice *)
-  Lemma wp_if_bool: forall call c l vars vals thn els rest t m Q1 Q2 post,
+  Lemma wp_if_bool: forall fs c l vars vals thn els rest t m Q1 Q2 post,
       l = reconstruct vars vals ->
       wp_expr_bool_prop m l c (fun P =>
-        ((P  -> wp_cmd call thn t m l (fun t' m' l' =>
+        ((P  -> wp_cmd (call fs) thn t m l (fun t' m' l' =>
                   exists vals', l' = reconstruct vars vals' /\ Q1 t' m' l')) /\
-         (~P -> wp_cmd call els t m l (fun t' m' l' =>
+         (~P -> wp_cmd (call fs) els t m l (fun t' m' l' =>
                   exists vals', l' = reconstruct vars vals' /\ Q2 t' m' l'))) /\
         (forall t' m' vals', let l' := reconstruct vars vals' in
                              P  /\ Q1 t' m' l' \/
                              ~P /\ Q2 t' m' l' ->
-                             wp_cmd call rest t' m' l' post)) ->
-      wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
+                             wp_cmd (call fs) rest t' m' l' post)) ->
+      wp_cmd (call fs) (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Abort.
 
-  Lemma wp_if_bool_dexpr: forall call c vars vals0 thn els rest t0 m0 P Q1 Q2 post,
+  Lemma wp_if_bool_dexpr: forall fs c vars vals0 thn els rest t0 m0 P Q1 Q2 post,
       dexpr_bool_prop m0 (reconstruct vars vals0) c P ->
-      (P  -> wp_cmd call thn t0 m0 (reconstruct vars vals0) (fun t m l =>
+      (P  -> wp_cmd (call fs) thn t0 m0 (reconstruct vars vals0) (fun t m l =>
                exists vals, l = reconstruct vars vals /\ Q1 t m l)) ->
-      (~P -> wp_cmd call els t0 m0 (reconstruct vars vals0) (fun t m l =>
+      (~P -> wp_cmd (call fs) els t0 m0 (reconstruct vars vals0) (fun t m l =>
                exists vals, l = reconstruct vars vals /\ Q2 t m l)) ->
       (forall (cond0: bool) t m vals,
           (* (if cond0 then P else ~P) -> <-- already added to Q1/Q2 by automation *)
           (if cond0 then Q1 t m (reconstruct vars vals)
            else Q2 t m (reconstruct vars vals)) ->
-          wp_cmd call rest t m (reconstruct vars vals) post) ->
-      wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t0 m0 (reconstruct vars vals0) post.
+          wp_cmd (call fs) rest t m (reconstruct vars vals) post) ->
+      wp_cmd (call fs) (cmd.seq (cmd.cond c thn els) rest) t0 m0 (reconstruct vars vals0) post.
   Proof.
     intros. inversion H. subst P. eapply wp_if. 1: reflexivity.
     unfold dexpr in H3.
@@ -765,12 +774,12 @@ Section WithParams.
      To solve 1), we will apply the callee's spec, but that means that if we make
      changes to the context while solving the preconditions of the callee's spec,
      these changes will not be visible in subgoal 2 *)
-  Lemma wp_call: forall call binds f argexprs rest t m l post,
+  Lemma wp_call: forall fs binds f argexprs rest t m l post,
       wp_exprs m l argexprs (fun argvals =>
-        call f t m argvals (fun t' m' resvals =>
+        call fs f t m argvals (fun t' m' resvals =>
           get_option (map.putmany_of_list_zip binds resvals l) (fun l' =>
-            wp_cmd call rest t' m' l' post))) ->
-      wp_cmd call (cmd.seq (cmd.call binds f argexprs) rest) t m l post.
+            wp_cmd (call fs) rest t' m' l' post))) ->
+      wp_cmd (call fs) (cmd.seq (cmd.call binds f argexprs) rest) t m l post.
   Proof.
   Admitted.
 
@@ -809,21 +818,21 @@ Section WithParams.
   remain visible.
   And using some notations, this form might even become ergonomic. *)
 
-  Lemma wp_skip: forall call t m l (post: trace -> mem -> locals -> Prop),
+  Lemma wp_skip: forall fs t m l (post: trace -> mem -> locals -> Prop),
       post t m l ->
-      wp_cmd call cmd.skip t m l post.
+      wp_cmd (call fs) cmd.skip t m l post.
   Proof. intros. constructor. assumption. Qed.
 
   (* to avoid using `remember` and having to control which occurrence we want to remember *)
-  Lemma wp_locals_put: forall call c x v t m l post,
-      (forall a, a = v -> wp_cmd call c t m (map.put l x a) post) ->
-      wp_cmd call c t m (map.put l x v) post.
+  Lemma wp_locals_put: forall fs c x v t m l post,
+      (forall a, a = v -> wp_cmd (call fs) c t m (map.put l x a) post) ->
+      wp_cmd (call fs) c t m (map.put l x v) post.
   Proof. auto. Qed.
 
-  Definition vc_func call '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
+  Definition vc_func fs '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
                      (post : trace -> mem -> list word -> Prop) :=
     exists l, map.of_list_zip innames argvs = Some l /\
-      wp_cmd call body t m l (fun t' m' l' =>
+      wp_cmd (call fs) body t m l (fun t' m' l' =>
         exists retvs, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
 
   Definition arguments_marker(args: list word): list word := args.
@@ -1126,15 +1135,15 @@ Ltac start :=
   end;
   let eargnames := open_constr:(_: list string) in
   refine (existT _ (eargnames, _, _) _);
-  let call := fresh "call" in
-  intro call;
+  let fs := fresh "fs" in
+  intro fs;
   let n := fresh "Scope0" in pose proof (mk_scope_marker FunctionBody) as n;
   intros;
   (* since the arguments will get renamed, it is useful to have a list of their
      names, so that we can always see their current renamed names *)
   let arguments := fresh "arguments" in
   lazymatch goal with
-  | |- vc_func ?call ?f ?t ?m ?argvalues ?post =>
+  | |- vc_func _ ?f ?t ?m ?argvalues ?post =>
     pose (arguments_marker argvalues) as arguments;
     let argnames := map_with_ltac varconstr_to_string argvalues in
     unify eargnames argnames;
@@ -1269,6 +1278,7 @@ Section MergingAnd.
       P /\ (if b then ands Qs1 else ands Qs2).
   Proof. cbn. intros. destruct b; intuition idtac. Qed.
 
+  Local Set Warnings "-notation-overridden".
   Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
   Let nth n xs := SeparationLogic.hd True (SeparationLogic.skipn n xs).
   Let remove_nth n (xs : list Prop) :=
@@ -1369,6 +1379,7 @@ Section MergingSep.
   Context {width: Z} {word: word.word width}
           {word_ok: word.ok word} {mem: map.map word byte} {ok: map.ok mem}.
 
+  Local Set Warnings "-notation-overridden".
   Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
   Let nth(n: nat)(xs: list (mem -> Prop)) :=
         SeparationLogic.hd (emp True) (SeparationLogic.skipn n xs).
@@ -1816,8 +1827,8 @@ Ltac store sz addr val :=
 
 Ltac cond c :=
   lazymatch goal with
-  | |- wp_cmd ?call _ ?t ?m (reconstruct ?vars ?vals) _ =>
-    eapply (wp_if_bool_dexpr call c vars vals);
+  | |- wp_cmd _ _ ?t ?m (reconstruct ?vars ?vals) _ =>
+    eapply (wp_if_bool_dexpr _ c vars vals);
     [ repeat eval_dexpr_step
     | let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b; intro
     | let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b; intro
@@ -2315,14 +2326,14 @@ Ltac transfer_sep_order ::=
   end.
 
 Lemma reordering_test: forall addr1 addr2 addr3 addr4 v1_old v1_new v2 v3 v4 R (m m': mem)
-                              call t l c post,
+                              fs t l c post,
     seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m ->
     (* value at addr1 was updated, addr2 was consumed, addr4 was added, and order was changed: *)
     seps [R; seps [addr3 |-> scalar v3; addr4 |-> scalar v4]; addr1 |-> scalar v1_new] m' ->
     (* desired order:
     seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m1 *)
     True ->
-    wp_cmd call c t m' l post.
+    wp_cmd (call fs) c t m' l post.
 Proof.
   intros *. intros M M2 ExtraHyp.
           (* 0                        1                    2                    3
@@ -2339,9 +2350,9 @@ Abort.
 Tactic Notation ".*" constr(s) "*" := add_snippet s; after_snippet.
 
 Definition u_min: {f: list string * list string * cmd &
-  forall call t m a b R,
+  forall fs t m a b R,
     seps [R] m ->
-    vc_func call f t m [a; b] (fun t' m' retvs =>
+    vc_func fs f t m [a; b] (fun t' m' retvs =>
       t' = t /\ seps [R] m' /\
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
@@ -2359,9 +2370,9 @@ Definition u_min: {f: list string * list string * cmd &
 Defined.
 
 Definition u_min': {f: list string * list string * cmd &
-  forall call t m a b R,
+  forall fs t m a b R,
     seps [R] m ->
-    vc_func call f t m [a; b] (fun t' m' retvs =>
+    vc_func fs f t m [a; b] (fun t' m' retvs =>
       t' = t /\ seps [R] m' /\
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
@@ -2379,13 +2390,13 @@ Definition u_min': {f: list string * list string * cmd &
 Defined.
 
 Definition merge_tests: {f: list string * list string * cmd &
-  forall call t m a vs R,
+  forall fs t m a vs R,
     m satisfies <{
       * a |-> word_array vs
       * R
     }> ->
     List.length vs = 3%nat ->
-    vc_func call f t m [a] (fun t' m' retvs => False)
+    vc_func fs f t m [a] (fun t' m' retvs => False)
   }.
 .**/ {                                                                          /**.
 .**/   uintptr_t w0 = load(a);                                                  /**.
@@ -2423,13 +2434,13 @@ Hint Extern 4 (Permutation _ _) =>
 : prove_post.
 
 Definition sort3: {f: list string * list string * cmd &
-  forall call t m a vs R,
+  forall fs t m a vs R,
     m satisfies <{
       * a |-> word_array vs
       * R
     }> ->
     List.length vs = 3%nat ->
-    vc_func call f t m [a] (fun t' m' retvs =>
+    vc_func fs f t m [a] (fun t' m' retvs =>
       exists v0 v1 v2,
         t' = t /\
         Permutation vs [v0; v1; v2] /\
@@ -2463,10 +2474,12 @@ Definition sort3: {f: list string * list string * cmd &
 .**/ }                                                                          /**.
 Defined.
 
+(* Print Assumptions sort3. *)
+
 (* TODO: write down postcondition only at end *)
 Definition swap_locals: {f: list string * list string * cmd &
-  forall call tr m a b,
-    vc_func call f tr m [a; b] (fun tr' m' retvs =>
+  forall fs tr m a b,
+    vc_func fs f tr m [a; b] (fun tr' m' retvs =>
       tr' = tr /\ m' = m /\ retvs = [b; a]
   )}.
   (* note: we could just do skip and return ["b", "a"] *)                       .**/
@@ -2482,13 +2495,13 @@ Defined.
 
 (* TODO: write down postcondition only at end *)
 Definition swap: {f: list string * list string * cmd &
-  forall call t m a_addr b_addr a b R,
+  forall fs t m a_addr b_addr a b R,
     m satisfies <{
       * a_addr |-> scalar a
       * b_addr |-> scalar b
       * R
     }> ->
-    vc_func call f t m [a_addr; b_addr] (fun t' m' retvs =>
+    vc_func fs f t m [a_addr; b_addr] (fun t' m' retvs =>
       m' satisfies <{
         * a_addr |-> scalar b
         * b_addr |-> scalar a
