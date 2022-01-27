@@ -96,6 +96,7 @@ Section ExprImp1.
       | expr.inlinetable _ t i => (Z.of_nat (length t) + 3) / 4 + expr_size i + 3
       | expr.var _ => 1
       | expr.op op e1 e2 => expr_size e1 + expr_size e2 + 2
+      | expr.ite c e1 e2 => expr_size c + expr_size e1 + expr_size e2 + 2
       end.
 
     Lemma expr_size_pos: forall exp, expr_size exp > 0.
@@ -231,6 +232,8 @@ Section ExprImp1.
     | expr.load nbytes e => allVars_expr_as_list e
     | expr.inlinetable sz t i => allVars_expr_as_list i
     | expr.op op e1 e2 => (allVars_expr_as_list e1) ++ (allVars_expr_as_list e2)
+    | expr.ite c e1 e2 => (allVars_expr_as_list c)
+                            ++ (allVars_expr_as_list e1) ++ (allVars_expr_as_list e2)
     end.
 
   Definition allVars_exprs_as_list(es: list expr): list var :=
@@ -257,6 +260,7 @@ Section ExprImp1.
     | expr.load nbytes e => allVars_expr e
     | expr.inlinetable sz t i => allVars_expr i
     | expr.op op e1 e2 => union (allVars_expr e1) (allVars_expr e2)
+    | expr.ite c e1 e2 => union (allVars_expr c) (union (allVars_expr e1) (allVars_expr e2))
     end.
 
   Definition allVars_exprs(es: list expr): set var :=
@@ -280,9 +284,7 @@ Section ExprImp1.
       x \in allVars_expr e <-> In x (allVars_expr_as_list e).
   Proof.
     induction e;
-      intros; simpl in *; set_solver; try apply in_or_app; set_solver.
-    apply in_app_or in H3.
-    destruct H3; eauto.
+      intros; simpl in *; set_solver; rewrite ?in_app_iff in *; set_solver.
   Qed.
 
   Lemma allVars_exprs_allVars_exprs_as_list: forall es x,

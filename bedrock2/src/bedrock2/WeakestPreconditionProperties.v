@@ -55,6 +55,8 @@ Section WeakestPrecondition.
     { eapply Proper_get; eauto. }
     { eapply IHa1; eauto; intuition idtac. eapply Proper_load; eauto using Proper_load. }
     { eapply IHa1; eauto; intuition idtac. eapply Proper_load; eauto using Proper_load. }
+    { eapply IHa1_1; eauto; intuition idtac.
+      Tactics.destruct_one_match; eauto using Proper_load. }
   Qed.
 
   Global Instance Proper_list_map {A B} :
@@ -223,6 +225,9 @@ Section WeakestPrecondition.
     { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe in H; t. cbv [WeakestPrecondition.load] in H0; t. rewrite H. rewrite H0. eauto. }
     { eapply IHe1 in H; t. eapply IHe2 in H0; t. rewrite H, H0; eauto. }
+    { eapply IHe1 in H; t. rewrite H. Tactics.destruct_one_match.
+      { eapply IHe3 in H0; t. }
+      { eapply IHe2 in H0; t. } }
   Qed.
 
   Lemma sound_args : forall m l args mc P,
@@ -369,5 +374,55 @@ Section WeakestPrecondition.
       unfold Morphisms.pointwise_relation, Basics.impl.
       unfold load. intros. decompose [and ex] H1.
       eapply IHe2; eassumption.
+    - eapply Proper_expr.
+      2: eapply IHe1.
+      2: eapply H.
+      2: eapply H0.
+      unfold Morphisms.pointwise_relation, Basics.impl.
+      intros ? [? ?]. Tactics.destruct_one_match; eauto using Proper_expr.
+  Qed.
+
+  Lemma dexpr_expr (m : mem) l e P
+    (H : WeakestPrecondition.expr m l e P)
+    : exists v, WeakestPrecondition.dexpr m l e v /\ P v.
+  Proof.
+    revert dependent P; induction e; cbn.
+    { cbv [WeakestPrecondition.literal dlet.dlet]; cbn; eauto. }
+    { cbv [WeakestPrecondition.get]; intros ?(?&?&?); eauto. }
+    { intros v H; case (IHe _ H) as (?&?&?&?&?); clear IHe H.
+      cbv [WeakestPrecondition.dexpr] in *.
+      eexists; split; [|eassumption].
+      eapply Proper_expr; [|eauto].
+      intros ? ?; subst.
+      eexists; eauto. }
+    { intros v H; case (IHe _ H) as (?&?&?&?&?); clear IHe H.
+      cbv [WeakestPrecondition.dexpr] in *.
+      eexists; split; [|eassumption].
+      eapply Proper_expr; [|eauto].
+      intros ? ?; subst.
+      eexists; eauto. }
+    { intros P H.
+      case (IHe1 _ H) as (?&?&H'); case (IHe2 _ H') as (?&?&?);
+      clear IHe1 IHe2 H H'.
+      cbv [WeakestPrecondition.dexpr] in *.
+      eexists; split; [|eassumption].
+      eapply Proper_expr; [|eauto]; intros ? [].
+      eapply Proper_expr; [|eauto]; intros ? [].
+      trivial.
+    }
+    { intros P H.
+      case (IHe1 _ H) as (?&?&H'). Tactics.destruct_one_match_hyp.
+      { case (IHe3 _ H') as (?&?&?).
+        clear IHe1 IHe2 H H'.
+        cbv [WeakestPrecondition.dexpr] in *.
+        eexists; split; [|eassumption].
+        eapply Proper_expr; [|eauto]; intros ? [].
+        rewrite word.eqb_eq by reflexivity. assumption. }
+      { case (IHe2 _ H') as (?&?&?).
+        clear IHe1 IHe3 H H'.
+        cbv [WeakestPrecondition.dexpr] in *.
+        eexists; split; [|eassumption].
+        eapply Proper_expr; [|eauto]; intros ? [].
+        Tactics.destruct_one_match. 1: contradiction. assumption. } }
   Qed.
 End WeakestPrecondition.

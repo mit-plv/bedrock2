@@ -36,6 +36,8 @@ Section WeakestPrecondition.
       | expr.inlinetable s t e =>
         rec e (fun a =>
         load s (map.of_list_word t) a post)
+      | expr.ite c e1 e2 =>
+        rec c (fun b => rec (if word.eqb b (word.of_Z 0) then e2 else e1) post)
     end.
     Fixpoint expr e := expr_body expr e.
   End WithMemAndLocals.

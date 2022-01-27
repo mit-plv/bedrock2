@@ -183,19 +183,6 @@ Notation "addr |-> clause" := (at_addr addr clause)
   (at level 25,
    format "addr  |->  '[' clause ']'").
 
-Module expr.
-  Axiom ite : expr.expr -> expr.expr -> expr.expr -> expr.expr.
-  Definition lazy_and(e1 e2: expr.expr) := ite e1 e2 (expr.literal 0).
-  (* If e1 is nonzero, both returning 1 and returning e1 could make sense,
-     but we follow C, which returns 1:
-     https://stackoverflow.com/questions/30621389/short-circuiting-of-non-booleans *)
-  Definition lazy_or(e1 e2: expr.expr) := ite e1 (expr.literal 1) e2.
-End expr.
-
-Module bopname.
-  Axiom eager_and: bopname.
-End bopname.
-
 Section SepLog.
   Context {word: word.word 32} {mem: map.map word byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
@@ -394,7 +381,7 @@ Section WithParams.
         (post b)) ->
       wp_expr m l (expr.lazy_and e1 e2) post.
   Proof.
-    unfold expr.lazy_and. intros. eapply wp_ite. eapply weaken_wp_expr. 1: exact H. clear H.
+    intros. eapply wp_ite. eapply weaken_wp_expr. 1: exact H. clear H.
     cbv beta. intros. fwd. destruct_one_match; subst; do 2 eexists; split; try eassumption.
     eapply wp_literal. reflexivity.
   Qed.
@@ -405,7 +392,7 @@ Section WithParams.
         (post b)) ->
       wp_expr m l (expr.lazy_or e1 e2) post.
   Proof.
-    unfold expr.lazy_or. intros. eapply wp_ite. eapply weaken_wp_expr. 1: exact H. clear H.
+    intros. eapply wp_ite. eapply weaken_wp_expr. 1: exact H. clear H.
     cbv beta. intros. fwd. destruct_one_match; subst; do 2 eexists; split; try eassumption.
     eapply wp_literal. reflexivity.
   Qed.
@@ -468,67 +455,8 @@ Section WithParams.
       wp_expr m l e post ->
       exists v, dexpr m l e v /\ post v.
   Proof.
-    intros. destruct H. unfold dexpr. revert e post H.
-    induction e; cbn;
-    unfold literal, dlet.dlet, WeakestPrecondition.get;
-    intros;
-    fwd;
-    eauto.
-    { unfold load in *.
-      specialize IHe with (1 := H).
-      fwd.
-      exists v0. split. 2: assumption.
-      eapply WeakestPreconditionProperties.Proper_expr.
-      2: eapply WeakestPreconditionProperties.intersect_expr.
-      2: eapply IHep0.
-      2: eapply H.
-      unfold Morphisms.pointwise_relation, Basics.impl. intros. fwd.
-      eexists. split. 1: eassumption. congruence. }
-    { unfold load in *.
-      specialize IHe with (1 := H).
-      fwd.
-      exists v0. split. 2: assumption.
-      eapply WeakestPreconditionProperties.Proper_expr.
-      2: eapply WeakestPreconditionProperties.intersect_expr.
-      2: eapply IHep0.
-      2: eapply H.
-      unfold Morphisms.pointwise_relation, Basics.impl. intros. fwd.
-      eexists. split. 1: eassumption. congruence. }
-    { specialize IHe1 with (1 := H).
-      fwd.
-      specialize IHe2 with (1 := IHe1p1).
-      fwd.
-      eexists. split. 2: eassumption.
-      eapply WeakestPreconditionProperties.Proper_expr.
-      2: eapply WeakestPreconditionProperties.intersect_expr.
-      2: eapply IHe1p0.
-      2: eapply H.
-      unfold Morphisms.pointwise_relation, Basics.impl. intros. fwd.
-      eapply WeakestPreconditionProperties.Proper_expr.
-      2: eapply WeakestPreconditionProperties.intersect_expr.
-      2: eapply IHe2p0.
-      2: eapply H0p1.
-      unfold Morphisms.pointwise_relation, Basics.impl. intros. fwd.
-      reflexivity. }
+    intros. destruct H. eapply WeakestPreconditionProperties.dexpr_expr. assumption.
   Qed.
-
-  Definition interp_expr_total_body(rec: expr -> word)(m: mem)(l: locals)(e: expr): word :=
-    match e with
-    | expr.literal v => word.of_Z v
-    | expr.var x => Option.force (map.get l x)
-    | expr.load sz a => Option.force (Memory.load sz m (rec a))
-    | expr.inlinetable sz bs i =>
-        Option.force (Memory.load sz (map.of_list_word bs) (rec i))
-    | expr.op op a b => interp_binop op (rec a) (rec b)
-    end.
-
-  Definition interp_expr_total(m: mem)(l: locals): expr -> word :=
-    fix rec(e: expr) := interp_expr_total_body rec m l e.
-
-  Axiom interp_expr_total_ite: forall m l e1 e2 e3,
-      interp_expr_total m l (expr.ite e1 e2 e3) =
-      interp_expr_total m l
-        (if word.unsigned (interp_expr_total m l e1) =? 0 then e3 else e2).
 
   Definition interp_bool_binop(bop: bopname)(a b: word): Prop :=
     match bop with
@@ -550,7 +478,16 @@ Section WithParams.
       dexpr m l e1 b ->
       dexpr m l (if word.unsigned b =? 0 then e3 else e2) v ->
       dexpr m l (expr.ite e1 e2 e3) v.
-  Admitted.
+  Proof.
+    unfold dexpr. cbn. intros.
+    eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
+    cbv [RelationClasses.Reflexive Morphisms.pointwise_relation
+         Morphisms.respectful Basics.impl].
+    intros. subst. eqapply H0.
+    do 2 destruct_one_match; try reflexivity; exfalso.
+    - apply E0. ZnWords.
+    - apply E. apply word.unsigned_of_Z_0.
+  Qed.
 
   Inductive dexpr_bool_prop(m: mem)(l: locals)(e: expr): Prop -> Prop :=
     mk_dexpr_bool_prop: forall b: word,
@@ -580,7 +517,7 @@ Section WithParams.
       (P1 -> dexpr_bool_prop m l e2 P2) ->
       dexpr_bool_prop m l (expr.lazy_and e1 e2) (P1 /\ P2).
   Proof.
-    unfold expr.lazy_and. intros.
+    intros.
     inversion H; subst. destr (word.unsigned b =? 0).
     - replace (word.unsigned b <> 0 /\ P2) with (word.unsigned b <> 0).
       2: solve [apply PropExtensionality.propositional_extensionality; intuition idtac].
@@ -673,32 +610,6 @@ Section WithParams.
     all: try (eqassumption;
               apply PropExtensionality.propositional_extensionality; split; intros;
               (Lia.lia || congruence)).
-  Qed.
-
-  Axiom interp_eager_and: forall (x y: word),
-      interp_binop bopname.eager_and x y =
-        if andb (negb (word.eqb x (word.of_Z 0)))
-                (negb (word.eqb y (word.of_Z 0)))
-        then word.of_Z 1 else word.of_Z 0.
-
-  Lemma wp_bool_eager_and''': forall m l e1 e2 (post: Prop -> Prop),
-      wp_expr_bool_prop m l e1 (fun P1 =>
-        wp_expr_bool_prop m l e2 (fun P2 =>
-          post (P1 /\ P2))) ->
-      wp_expr_bool_prop m l (expr.op bopname.eager_and e1 e2) post.
-  Proof.
-    unfold wp_expr_bool_prop. intros. eapply wp_op.
-    eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
-    intros. eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
-    intros. rewrite interp_eager_and.
-    destr (word.eqb v (word.of_Z 0)); destr (word.eqb v0 (word.of_Z 0)); simpl;
-      rewrite ?word.unsigned_of_Z_0, ?word.unsigned_of_Z_1 in *.
-    all: eqassumption.
-    all: apply PropExtensionality.propositional_extensionality; split; intros;
-      (Lia.lia || congruence || auto).
-    split; intro C.
-    - apply E. ZnWords.
-    - apply E0. ZnWords.
   Qed.
 
   Inductive wp_cmd(call: (string -> trace -> mem -> list word ->
@@ -807,6 +718,8 @@ Section WithParams.
     intros * [? | ?]; fwd; eapply B; eauto.
   Qed.
 
+  (* Not using this one because it's not clear how to prove a wp_expr_bool_prop
+     without invoking post twice *)
   Lemma wp_if_bool: forall call c l vars vals thn els rest t m Q1 Q2 post,
       l = reconstruct vars vals ->
       wp_expr_bool_prop m l c (fun P =>
@@ -819,7 +732,7 @@ Section WithParams.
                              ~P /\ Q2 t' m' l' ->
                              wp_cmd call rest t' m' l' post)) ->
       wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t m l post.
-  Admitted.
+  Abort.
 
   Lemma wp_if_bool_dexpr: forall call c vars vals0 thn els rest t0 m0 P Q1 Q2 post,
       dexpr_bool_prop m0 (reconstruct vars vals0) c P ->
@@ -833,7 +746,16 @@ Section WithParams.
            else Q2 t m (reconstruct vars vals)) ->
           wp_cmd call rest t m (reconstruct vars vals) post) ->
       wp_cmd call (cmd.seq (cmd.cond c thn els) rest) t0 m0 (reconstruct vars vals0) post.
-  Admitted.
+  Proof.
+    intros. inversion H. subst P. eapply wp_if. 1: reflexivity.
+    unfold dexpr in H3.
+    eapply weaken_wp_expr. 1: constructor; eassumption.
+    intros. subst v. do 2 eexists. ssplit.
+    - eassumption.
+    - intros. eapply H1. intro C. apply C. assumption.
+    - cbv zeta. intros. destruct H4 as [(Ne & P) | (E & P)];
+        [eapply (H2 true)| eapply (H2 false)]; assumption.
+  Qed.
 
   (* The postcondition of the callee's spec will have a concrete shape that differs
      from the postcondition that we pass to `call`, so when using this lemma, we have
@@ -2081,8 +2003,6 @@ Infix "^" := (expr.op bopname.xor)
 Infix "|" := (expr.op bopname.or)
   (in custom live_expr at level 10, left associativity, only parsing).
 Infix "&&" := expr.lazy_and
-  (in custom live_expr at level 11, left associativity, only parsing).
-Infix "&&&" := (expr.op bopname.eager_and)
   (in custom live_expr at level 11, left associativity, only parsing).
 Infix "||" := expr.lazy_or
   (in custom live_expr at level 12, left associativity, only parsing).

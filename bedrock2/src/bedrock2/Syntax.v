@@ -18,7 +18,15 @@ Module expr.
   | var (x: String.string)
   | load (_ : access_size) (addr:expr)
   | inlinetable (_ : access_size) (table: list Byte.byte) (index: expr)
-  | op (op: bopname) (e1 e2: expr).
+  | op (op: bopname) (e1 e2: expr)
+  | ite (c e1 e2: expr). (* if-then-else expression ("ternary if") *)
+
+  Notation lazy_and e1 e2 := (ite e1 e2 (expr.literal Z0)).
+
+  (* If e1 is nonzero, both returning 1 and returning e1 could make sense,
+     but we follow C, which returns 1:
+     https://stackoverflow.com/questions/30621389/short-circuiting-of-non-booleans *)
+  Notation lazy_or e1 e2 := (ite e1 (expr.literal (Zpos xH)) e2).
 End expr. Notation expr := expr.expr.
 
 Module cmd.

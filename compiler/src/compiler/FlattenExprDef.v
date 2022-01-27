@@ -63,6 +63,12 @@ Section FlattenExpr1.
         (FlatImp.SSeq s1
           (FlatImp.SSeq s2
             (FlatImp.SOp x op r1 r2)), x, ngs''')
+    | Syntax.expr.ite c e1 e2 =>
+        let '(sc, rc, ngs') := flattenExpr ngs None c in
+        let '(r, ngs'') := genFresh_if_needed resVar ngs' in
+        let '(s1, r1, ngs''') := flattenExpr ngs'' (Some r) e1 in
+        let '(s2, r2, ngs'''') := flattenExpr ngs''' (Some r) e2 in
+        (FlatImp.SSeq sc (FlatImp.SIf (FlatImp.CondNez rc) s1 s2), r, ngs'''')
     end.
 
   Definition flattenExprAsBoolExpr(ngs: NGstate)(e: Syntax.expr):

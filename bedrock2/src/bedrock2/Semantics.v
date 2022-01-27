@@ -112,6 +112,12 @@ Section semantics.
           'Some (v2, mc'') <- eval_expr e2 mc' | None;
           Some (interp_binop op v1 v2, addMetricInstructions 2
                                        (addMetricLoads 2 mc''))
+      | expr.ite c e1 e2 =>
+          'Some (vc, mc') <- eval_expr c mc | None;
+          eval_expr (if word.eqb vc (word.of_Z 0) then e2 else e1)
+                    (addMetricInstructions 2
+                       (addMetricLoads 2
+                       (addMetricJumps 1 mc')))
       end.
 
     Fixpoint eval_expr_old (e : expr) : option word :=
@@ -128,6 +134,9 @@ Section semantics.
           'Some v1 <- eval_expr_old e1 | None;
           'Some v2 <- eval_expr_old e2 | None;
           Some (interp_binop op v1 v2)
+      | expr.ite c e1 e2 =>
+          'Some vc <- eval_expr_old c | None;
+          eval_expr_old (if word.eqb vc (word.of_Z 0) then e2 else e1)
       end.
 
     Fixpoint evaluate_call_args_log (arges : list expr) (mc : metrics) :=

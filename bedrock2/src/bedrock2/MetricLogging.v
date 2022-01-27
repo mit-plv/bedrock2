@@ -51,6 +51,10 @@ Section Riscv.
     metricLeq loads m1 m2 /\
     metricLeq jumps m1 m2.
 
+  Definition metricMax(metric: MetricLog -> Z) m1 m2: Z :=
+    Z.max (metric m1) (metric m2).
+
+  Definition metricsMax := metricsOp metricMax.
 End Riscv.
 
 Bind Scope MetricH_scope with MetricLog.
@@ -59,7 +63,7 @@ Delimit Scope MetricH_scope with metricsH.
 Infix "<=" := metricsLeq : MetricH_scope.
 Infix "-" := metricsSub : MetricH_scope.
 
-Hint Unfold
+#[export] Hint Unfold
      withInstructions
      withLoads
      withStores

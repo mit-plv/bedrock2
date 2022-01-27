@@ -431,37 +431,6 @@ Section WithParameters.
   (* note: do we want an Ltac coding rule that tactics must not start with a match? *)
   Local Ltac ecancel_assumption := idtac; SeparationLogic.ecancel_assumption.
 
-
-  Lemma dexpr_expr (m : mem) l e P
-    (H : WeakestPrecondition.expr m l e P)
-    : exists v, WeakestPrecondition.dexpr m l e v /\ P v.
-  Proof.
-    revert dependent P; induction e; cbn.
-    { cbv [WeakestPrecondition.literal dlet.dlet]; cbn; eauto. }
-    { cbv [WeakestPrecondition.get]; intros ?(?&?&?); eauto. }
-    { intros v H; case (IHe _ H) as (?&?&?&?&?); clear IHe H.
-      cbv [WeakestPrecondition.dexpr ] in *.
-      eexists; split; [|eassumption].
-      eapply WeakestPreconditionProperties.Proper_expr; [|eauto].
-      intros ? ?; subst.
-      eexists; eauto. }
-    { intros v H; case (IHe _ H) as (?&?&?&?&?); clear IHe H.
-      cbv [WeakestPrecondition.dexpr ] in *.
-      eexists; split; [|eassumption].
-      eapply WeakestPreconditionProperties.Proper_expr; [|eauto].
-      intros ? ?; subst.
-      eexists; eauto. }
-    { intros P H.
-      case (IHe1 _ H) as (?&?&H'); case (IHe2 _ H') as (?&?&?);
-      clear IHe1 IHe2 H H'.
-      cbv [WeakestPrecondition.dexpr ] in *.
-      eexists; split; [|eassumption].
-      eapply WeakestPreconditionProperties.Proper_expr; [|eauto]; intros ? [].
-      eapply WeakestPreconditionProperties.Proper_expr; [|eauto]; intros ? [].
-      trivial.
-    }
-  Qed.
-
 (*
 Import coqutil.Macros.subst.
 Ltac flatten_hyps :=
@@ -499,7 +468,7 @@ Ltac simpl_lengths := repeat simpl_lengths_step.
 
   Lemma silly1_ok : program_logic_goal_for_function! silly1.
   Proof.
-    repeat (straightline || apply dexpr_expr).
+    repeat (straightline || apply WeakestPreconditionProperties.dexpr_expr).
 
     eexists ?[v].
 
@@ -579,7 +548,7 @@ end end
     split; [trivial|].
     split; [reflexivity|].
 
-    repeat (straightline || apply dexpr_expr).
+    repeat (straightline || apply WeakestPreconditionProperties.dexpr_expr).
 
     (* last line *)
 

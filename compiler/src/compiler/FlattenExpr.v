@@ -16,6 +16,7 @@ Require Import Coq.Program.Tactics.
 Require Import coqutil.Datatypes.String.
 Require Import compiler.FlattenExprDef.
 Require Export coqutil.Word.SimplWordExpr.
+Require Import coqutil.Map.MapEauto.
 
 Open Scope Z_scope.
 
@@ -351,6 +352,11 @@ Section FlattenExpr1.
     - simpl. intros. simp. eauto.
   Qed.
 
+  (* eauto doesn't see through RelationClasses.Transitive *)
+  Lemma subset_transitive[E: Type]: forall a b c: set E,
+      subset a b -> subset b c -> subset a c.
+  Proof. apply subset_trans. Qed.
+
   Goal True. idtac "FlattenExpr: Entering slow lemmas section". Abort.
 
   Lemma flattenExpr_correct_aux : forall e fenv oResVar ngs1 ngs2 resVar s initialH initialL initialM initialMcH initialMcL finalMcH res t,
@@ -406,6 +412,83 @@ Section FlattenExpr1.
         * intros. simpl in *. simp. clear IHe1 IHe2.
           eapply @FlatImp.exec.op; t_safe; t_safe. 2 : solve_MetricLog.
           eapply flattenExpr_valid_resVar in E1; maps.
+
+    - (* expr.ite *)
+      eapply seq_with_modVars.
+      + eapply IHe1. 1: eassumption. 4: eassumption. 1,2: eassumption.
+        clear -D. set_solver.
+      + simpl. intros. simp.
+        pose proof flattenExpr_valid_resVar as A.
+        specialize A with (1 := E0). cbn [of_option] in *.
+        destruct_one_match_hyp.
+        * eapply FlatImp.exec.if_false.
+          -- simpl. rewrite_match. rewrite word.eqb_eq; reflexivity.
+          -- eapply FlatImp.exec.weaken.
+             ++ eapply IHe3; clear IHe1 IHe2 IHe3. 1: eassumption. 4: eassumption.
+                ** solve [maps].
+                ** unfold genFresh_if_needed in *.
+                   destruct oResVar; simp; pose_flatten_var_ineqs; cbn[of_option] in *.
+                   { solve[maps]. }
+                   { apply_in_hyps genFresh_spec. solve[maps]. }
+                ** unfold genFresh_if_needed in *.
+                   destruct oResVar; simp; pose_flatten_var_ineqs; cbn[of_option] in *.
+                   { set_solver. }
+                   { apply_in_hyps genFresh_spec. simp.
+                     eapply disjoint_union_l_iff.
+                     split. 2: {
+                       assert (~ resVar \in (allFreshVars n1)) as HA by set_solver.
+                       unfold disjoint. intro k.
+                       (* TODO set_solver should do this case analysis *)
+                       destr (String.eqb k resVar); auto.
+                     }
+                     move D at bottom.
+                     assert (subset (allFreshVars n1) (allFreshVars ngs1)) as Sub1. {
+                         eauto using subset_transitive.
+                     }
+                     eapply subset_disjoint_r. 1: exact Sub1.
+                     eapply subset_disjoint_l. 2: exact D.
+                     eapply subset_union_rl.
+                     eapply subset_union_rr.
+                     eapply subset_union_rr.
+                     eapply subset_refl.
+                   }
+             ++ cbv beta. intros. simp. t_safe. 2: solve_MetricLog.
+                clear IHe1 IHe2 IHe3.
+                apply_in_hyps flattenExpr_uses_Some_resVar. subst. assumption.
+        * eapply FlatImp.exec.if_true.
+          -- simpl. rewrite_match. rewrite word.eqb_ne; cbn; congruence.
+          -- eapply FlatImp.exec.weaken.
+             ++ eapply IHe2; clear IHe1 IHe2 IHe3. 1: eassumption. 4: eassumption.
+                ** solve [maps].
+                ** unfold genFresh_if_needed in *.
+                   destruct oResVar; simp; pose_flatten_var_ineqs; cbn[of_option] in *.
+                   { solve[maps]. }
+                   { apply_in_hyps genFresh_spec. solve[maps]. }
+                ** unfold genFresh_if_needed in *.
+                   destruct oResVar; simp; pose_flatten_var_ineqs; cbn[of_option] in *.
+                   { set_solver. }
+                   { apply_in_hyps genFresh_spec. simp.
+                     eapply disjoint_union_l_iff.
+                     split. 2: {
+                       assert (~ resVar \in (allFreshVars n1)) as HA by set_solver.
+                       unfold disjoint. intro k.
+                       (* TODO set_solver should do this case analysis *)
+                       destr (String.eqb k resVar); auto.
+                     }
+                     move D at bottom.
+                     assert (subset (allFreshVars n0) (allFreshVars ngs1)) as Sub1. {
+                         eauto using subset_transitive.
+                     }
+                     eapply subset_disjoint_r. 1: exact Sub1.
+                     eapply subset_disjoint_l. 2: exact D.
+                     eapply subset_union_rl.
+                     eapply subset_union_rr.
+                     eapply subset_union_rl.
+                     eapply subset_refl.
+                   }
+             ++ cbv beta. intros. simp. t_safe. 2: solve_MetricLog.
+                clear IHe1 IHe2 IHe3.
+                apply_in_hyps flattenExpr_uses_Some_resVar. subst. assumption.
   Qed.
   Goal True. idtac "FlattenExpr: flattenExpr_correct_aux done". Abort.
 
@@ -514,7 +597,7 @@ Section FlattenExpr1.
   Proof.
     destruct e; intros *; intros F Ex U D Ev; unfold flattenExprAsBoolExpr in F.
 
-    1, 2, 3, 4: solve [simp; default_flattenBooleanExpr].
+    1, 2, 3, 4, 6: solve [simp; default_flattenBooleanExpr].
 
     simp.
     pose proof E  as N1. eapply flattenExpr_valid_resVar in N1; [|maps].
