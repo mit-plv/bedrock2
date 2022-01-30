@@ -4,6 +4,7 @@ Require Export coqutil.Word.Interface coqutil.Word.Properties.
 Require Export coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.rdelta coqutil.Tactics.destr coqutil.Decidable.
 Require Import coqutil.Tactics.rewr coqutil.Tactics.Tactics.
+Require Import coqutil.Tactics.ltac_list_ops.
 Require Export coqutil.Z.Lia.
 Require Export coqutil.Datatypes.PropSet.
 Require Export bedrock2.Lift1Prop.

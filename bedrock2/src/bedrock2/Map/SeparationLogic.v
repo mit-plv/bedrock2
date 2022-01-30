@@ -5,6 +5,7 @@ Require Import bedrock2.Lift1Prop.
 Require Coq.Lists.List.
 Require Import coqutil.sanity coqutil.Decidable coqutil.Tactics.destr.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Tactics.ltac_list_ops.
 Import Map.Interface.map Map.Properties.map.
 
 
@@ -166,6 +167,7 @@ Section SepProperties.
     | cons x xs => sep x (seps' xs)
     | nil => emp True
     end.
+  Remark seps'_fold_right: seps' = List.fold_right sep (emp True). reflexivity. Qed.
   Lemma seps'_iff1_seps xs : iff1 (seps' xs) (seps xs).
   Proof.
     induction xs; [exact (reflexivity _)|].
@@ -347,30 +349,6 @@ Ltac reify_goal :=
     eapply Tree.impl1_to_sep_of_impl1_flatten
   end;
   cbn [Tree.flatten Tree.interp app].
-
-Ltac index_and_element_of xs :=
-  multimatch xs with
-  | cons ?x _ => constr:((0%nat, x))
-  | cons _ ?xs =>
-    let r := index_and_element_of xs in
-    multimatch r with
-    | (?i, ?y) => constr:((S i, y))
-    end
-  end.
-
-Ltac find_syntactic_unify_deltavar xs y :=
-  multimatch xs with
-  | cons ?x _ =>
-    let __ := match constr:(Set) with _ => syntactic_unify_deltavar x y end in
-    constr:(O)
-  | cons _ ?xs => let i := find_syntactic_unify_deltavar xs y in constr:(S i)
-  end.
-
-Ltac find_constr_eq xs y :=
-  match xs with
-  | cons ?x _ => constr:(ltac:(constr_eq x y; exact 0%nat))
-  | cons _ ?xs => let i := find_constr_eq xs y in constr:(S i)
-  end.
 
 Ltac cancel_emp_l :=
   lazymatch goal with
