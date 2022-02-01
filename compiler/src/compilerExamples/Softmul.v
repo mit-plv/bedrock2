@@ -31,8 +31,8 @@ Require Import riscv.Proofs.DecodeEncodeProver.
 Require Import riscv.Proofs.DecodeEncode.
 Require Import riscv.Examples.SoftmulInsts.
 Require Import riscv.Platform.MaterializeRiscvProgram.
-Require Import compiler.UniqueSepLog.
 Require Import compiler.regs_initialized.
+Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
 
 Axiom TODO: False.
 
@@ -104,6 +104,11 @@ Section Riscv.
 
   Local Hint Mode map.map - - : typeclass_instances.
 
+  Definition instr(inst: Instruction): word -> mem -> Prop :=
+    scalar (word.of_Z (encode inst)).
+
+  Notation program := (array instr 4).
+
   (* both the finish-postcondition and the abort-postcondition are set to `post`
      to make sure `post` holds in all cases: *)
   Definition mcomp_sat(m: M unit)(initial: State)(post: State -> Prop): Prop :=
@@ -139,66 +144,40 @@ Section Riscv.
 
   Lemma invert_fetch: forall initial post iset,
       mcomp_sat (run1 iset) initial post ->
-      exists R i, Some initial#"mem" = R \*/ instr initial#"pc" i /\
+      exists R i, seps [initial#"pc" |-> instr i; R] initial#"mem" /\
                   verify i iset /\
                   mcomp_sat (Execute.execute i;; endCycleNormal) initial post.
   Proof.
     intros. apply invert_fetch0 in H. simp.
   Admitted.
 
-  Definition store'(n: nat)(ctxid: SourceType)(a: word)(v: tuple byte n)(mach: State)(post: State -> Prop) :=
-    exists (R: option mem) (v_old: tuple byte n),
-      Some mach#"mem" = R \*/ bytes a v_old /\ post mach(#"mem" := mmap.force (R \*/ bytes a v)).
-
-  Definition store_orig(n: nat)(ctxid: SourceType)(a: word) v (mach: State)(post: State -> Prop) :=
-    match Memory.store_bytes n mach#"mem" a v with
-    | Some m => post mach(#"mem" := m)
-    | None => False
-    end.
-
-  Definition load'(n: nat)(ctxid: SourceType)(a: word)(mach: State)(post: tuple byte n -> State -> Prop): Prop :=
-    exists (R: option mem) (v: tuple byte n), Some mach#"mem" = R \*/ bytes a v /\ post v mach.
-
-  Definition load_orig(n: nat)(ctxid: SourceType)(a: word)(mach: State)(post: tuple byte n -> State -> Prop) :=
-    match Memory.load_bytes n mach#"mem" a with
-    | Some v => post v mach
-    | None => False
-    end.
-
-  Lemma build_fetch_one_instr: forall (initial: State) iset post (instr1 instr2: Instruction) (R: option mem),
-      Some initial#"mem" = R \*/ (instr initial#"pc" instr1) ->
+  Lemma build_fetch_one_instr:
+    forall (initial: State) iset post (instr1 instr2: Instruction) (R: mem -> Prop),
+      seps [initial#"pc" |-> instr instr1; R] initial#"mem" ->
       decode iset (encode instr1) = instr2 ->
       mcomp_sat (Execute.execute instr2;; endCycleNormal) initial post ->
       mcomp_sat (run1 iset) initial post.
   Proof.
-    intros. subst instr2. unfold run1, mcomp_sat in *. cbn -[HList.tuple load_bytes].
-    assert (load = load') as E by case TODO. rewrite E; clear E.
-    unfold load'. do 2 eexists. split; try eassumption.
-    rewrite LittleEndian.combine_split. rewrite word.unsigned_of_Z_nowrap. 2: apply encode_range.
+    intros. subst instr2. unfold run1, mcomp_sat in *. cbn -[HList.tuple load_bytes] in *.
+    unfold load.
+    change load_bytes with bedrock2.Memory.load_bytes.
+    erewrite load_bytes_of_sep; cycle 1. {
+      cbn [seps] in H.
+      unfold instr, at_addr, scalar, truncated_word, Scalars.truncated_word,
+        Scalars.truncated_scalar, Scalars.littleendian in H.
+      exact H.
+    }
+    eqapply H1. do 3 f_equal.
+    rewrite word.unsigned_of_Z_nowrap. 2: apply encode_range.
+    change (Memory.bytes_per access_size.word) with 4%nat.
+    rewrite <- LittleEndian.split_eq.
+    rewrite LittleEndian.combine_split.
     rewrite Z.mod_small. 2: apply encode_range.
-    eassumption.
+    reflexivity.
   Qed.
 
-  Lemma array_split{T: Type}: forall elem size (l1 l2: list T) addr,
-      array elem size addr (l1 ++ l2) =
-      array elem size addr l1 \*/
-      array elem size (word.add addr (word.mul size (word.of_Z (Z.of_nat (List.length l1))))) l2.
-  Proof.
-    induction l1; intros.
-    - cbn [List.app array List.length Z.of_nat]. rewrite mmap.du_empty_l.
-      replace (word.add addr (word.mul size (word.of_Z 0))) with addr by ring.
-      reflexivity.
-    - cbn [List.app array List.length]. rewrite IHl1. reify_goal.
-      cancel_at 0%nat 0%nat. 1: reflexivity.
-      cancel_at 0%nat 0%nat. 1: reflexivity.
-      cancel_at 0%nat 0%nat. 2: reflexivity.
-      f_equal.
-      rewrite Nat2Z.inj_succ. (* <-- without this, lia checker fails, but it's already fixed on Coq master *)
-      ZnWords.
-  Qed.
-
-  Lemma build_fetch: forall (initial: State) iset post addr p (instr1 instr2: Instruction) (R: option mem),
-      Some initial#"mem" = R \*/ (program addr p) ->
+  Lemma build_fetch: forall (initial: State) iset post addr p (instr1 instr2: Instruction) (R: mem -> Prop),
+      seps [addr |-> program p; R] initial#"mem" ->
       let offset := word.unsigned (word.sub initial#"pc" addr) in
       offset mod 4 = 0 ->
       nth_error p (Z.to_nat (offset / 4)) = Some instr1 ->
@@ -207,9 +186,16 @@ Section Riscv.
       mcomp_sat (run1 iset) initial post.
   Proof.
     intros.
+    eapply build_fetch_one_instr. 2: eassumption.
+  Abort.
+  (*
+
+
     edestruct nth_error_split as (p0 & p1 & ? & E). 1: eassumption.
     subst p.
     unfold program in *.
+    eapply build_fetch_one_instr. ; [|eassumption..].
+
     rewrite array_split in H. cbn [array] in H.
     eapply build_fetch_one_instr; [|eassumption..].
     etransitivity. 1: eassumption.
@@ -846,5 +832,5 @@ Section Riscv.
     Unshelve.
     all: try exact (fun _ => True).
   Qed.
-
+*)
 End Riscv.

@@ -12,8 +12,9 @@ Require Export coqutil.Byte.
 Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Datatypes.PropSet.
 Require Export coqutil.Datatypes.Inhabited.
-Require Import coqutil.Tactics.Tactics coqutil.Tactics.rewr coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.rewr coqutil.Tactics.rdelta.
 Require Import Coq.Program.Tactics.
+Require Export coqutil.Tactics.Tactics.
 Require Export coqutil.Tactics.autoforward.
 Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
 Require Export coqutil.Word.Interface coqutil.Word.Properties.
@@ -248,6 +249,7 @@ Ltac flatten_seps_in H :=
       cbn [SeparationLogic.Tree.flatten SeparationLogic.Tree.interp SeparationLogic.app];
       iff1_syntactic_reflexivity
     | let HNew := fresh in pose proof (proj1 (E m) H) as HNew;
+      move HNew before H;
       clear E H;
       rename HNew into H ]
   end.
