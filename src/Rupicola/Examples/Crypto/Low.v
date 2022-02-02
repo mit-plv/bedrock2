@@ -355,13 +355,163 @@ Section CompileBufPolymorphic.
             k_impl
           <{ pred (k v eq_refl) }> )) }> ) ->
     <{ Trace := t; Memory := m; Locals := l; Functions := e }>
-      bedrock_cmd:($fill_impl; $k_impl) <{ pred (nlet_eq [var] v k) }>.
-  Proof.  intros.  eapply compile_buf_append with (arr:=[x]).  {
+      bedrock_cmd:($fill_impl; $k_impl)
+    <{ pred (nlet_eq [var] v k) }>.
+  Proof.
+    intros.  eapply compile_buf_append with (arr:=[x]).  {
     ecancel_assumption. } { eassumption. } intros.  eapply Proper_cmd;
     [eapply Proper_call| |eapply H1].  2:{ ecancel_assumption. } 2:{ cbn
   [length] in *; lia. } intros t1 m1 l1 [Hm Hk].  cbv [nlet_eq] in *.  cbn
   [array] in *.  split; sepsimpl.  { ecancel_assumption. } eapply Hk.  Qed.
 End CompileBufPolymorphic.
+
+Section CompileBufByte.
+  Context (e : list Syntax.func).
+  Context (T := byte) (sz : word := word.of_Z 1) (pT := ptsto(map:=mem)).
+
+  Declare Scope word_scope.
+  Delimit Scope word_scope with word.
+  Local Infix "+" := word.add : word_scope.
+  Local Infix "*" := word.mul : word_scope.
+
+  Local Notation "xs $T@ a" := (array pT sz a%word xs%list) (at level 10, format "xs $T@ a").
+  Local Notation "xs $@ a" := (array ptsto (word.of_Z 1) a%word xs%list) (at level 10, format "xs $@ a").
+  Implicit Types (t : Semantics.trace) (l : locals) (m : mem) (k : Syntax.cmd).
+
+  Local Notation buffer_at := (@buffer_at T sz pT).
+
+  Lemma compile_buf_push_byte {t m l} var buf_expr len_expr x_expr (buf : buffer_t T) (x : T) (c : Z) (a : word) :
+    let v := buf_push buf x in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl} R,
+    (buffer_at c buf a * R)%sep m ->
+    (length buf + 1 <= c) ->
+
+    WeakestPrecondition.dexpr m l buf_expr a ->
+    WeakestPrecondition.dexpr m l len_expr (word.of_Z (length buf)) ->
+    WeakestPrecondition.dexpr m l x_expr (word.of_Z (byte.unsigned x)) ->
+
+    let ax := (a + word.of_Z (sz * length buf))%word in
+    (forall m,
+      (buffer_at c (buf++[x]) a * R)%sep m ->
+      <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+        k_impl
+      <{ pred (k v eq_refl) }>) ->
+    <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+      bedrock_cmd:(store1($buf_expr+$len_expr, $x_expr); $k_impl)
+    <{ pred (nlet_eq [var] v k) }>.
+  Proof.
+    intros.
+    eapply compile_buf_push with (pT := pT) (sz:=sz).
+    { clear. subst pT; subst sz. intros x.
+      eexists (cons _ nil); split; eauto. intros. cbn [array]. ecancel. }
+    { ecancel_assumption. }
+    { eassumption. }
+    repeat straightline.
+    eexists.
+    eexists.
+    { repeat straightline.
+      eapply WeakestPrecondition_dexpr_expr; eauto.
+      eapply WeakestPrecondition_dexpr_expr; eauto. }
+    eexists.
+    split.
+    { eapply WeakestPrecondition_dexpr_expr; eauto. }
+    subst sz.
+    rewrite word.unsigned_of_Z_1 in H6.
+    eapply (f_equal Z.to_nat) in H6; rewrite Nat2Z.id in H6. (* handle injection *)
+    destruct uninit as [|? []]; try solve [inversion H6]; []. subst pT ax0.
+    rewrite word.unsigned_of_Z_1, Z.mul_1_l in H5.
+    cbn [array] in *; seprewrite_in @sep_emp_True_r H5.
+    eapply store_one_of_sep.
+    { ecancel_assumption. }
+    intros.
+    cbv [nlet_eq].
+    split.
+    rewrite to_byte_of_byte_nowrap in H7.
+    { rewrite word.unsigned_of_Z_1, Z.mul_1_l.
+      ecancel_assumption. }
+    eauto.
+  Qed.
+End CompileBufByte.
+
+Section CompileBufWord32.
+  Context (e : list Syntax.func).
+  Context (T := word) (sz : word := word.of_Z 4) (pT := scalar32(word:=word)).
+
+  Declare Scope word_scope.
+  Delimit Scope word_scope with word.
+  Local Infix "+" := word.add : word_scope.
+  Local Infix "*" := word.mul : word_scope.
+
+  Local Notation "xs $T@ a" := (array pT sz a%word xs%list) (at level 10, format "xs $T@ a").
+  Local Notation "xs $@ a" := (array ptsto (word.of_Z 1) a%word xs%list) (at level 10, format "xs $@ a").
+  Implicit Types (t : Semantics.trace) (l : locals) (m : mem) (k : Syntax.cmd).
+
+  Local Notation buffer_at := (@buffer_at T sz pT).
+
+  Lemma compile_buf_push_word32 {t m l} var buf_expr len_expr x_expr (buf : buffer_t T) (x : T) (c : Z) (a : word) :
+    let v := buf_push buf x in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl} R,
+    (buffer_at c buf a * R)%sep m ->
+    (length buf + 1 <= c) ->
+
+    WeakestPrecondition.dexpr m l buf_expr a ->
+    WeakestPrecondition.dexpr m l len_expr (word.of_Z (length buf)) ->
+    WeakestPrecondition.dexpr m l x_expr x ->
+
+    let ax := (a + word.of_Z (sz * length buf))%word in
+    (forall m,
+      (buffer_at c (buf++[x]) a * R)%sep m ->
+      <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+        k_impl
+      <{ pred (k v eq_refl) }>) ->
+    <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+      bedrock_cmd:(store($buf_expr+$len_expr<<$2,$x_expr); $k_impl)
+    <{ pred (nlet_eq [var] v k) }>.
+  Proof.
+    intros.
+    eapply compile_buf_push with (pT := pT) (sz:=sz).
+    { clear. subst pT; subst sz. intros x.
+      unfold scalar32, truncated_word, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
+      rewrite HList.tuple.to_list_of_list.
+      eexists.
+      split.
+      2:intros; reflexivity.
+      reflexivity. }
+    { ecancel_assumption. }
+    { eassumption. }
+    repeat straightline.
+    eexists.
+    eexists.
+    { repeat straightline.
+      eapply WeakestPrecondition_dexpr_expr; eauto.
+      eapply WeakestPrecondition_dexpr_expr; eauto.
+      cbn.
+      eapply WeakestPrecondition_dexpr_expr; eauto.
+      eexists. }
+    eexists.
+    split.
+    { eapply WeakestPrecondition_dexpr_expr; eauto. }
+    seprewrite_in @scalar32_of_bytes H5; trivial.
+    { reflexivity. }
+    { subst sz. rewrite word.unsigned_of_Z in H6.
+      rewrite word.wrap_small in H6; lia. }
+    eapply store_four_of_sep.
+    { subst ax0. subst sz.
+      rewrite Z.mul_comm, <-(Z.shiftl_mul_pow2 _ 2), word.morph_shiftl  in H5 by lia.
+      ecancel_assumption. }
+    intros.
+    cbv [nlet_eq].
+    split.
+    { subst ax0. subst sz.
+      use_sep_assumption.
+      cancel. subst pT. f_equiv. f_equal. f_equal. f_equal.
+      rewrite <-word.morph_shiftl, word.unsigned_of_Z, word.wrap_small by lia.
+      rewrite Z.shiftl_mul_pow2, Z.mul_comm by lia. reflexivity. }
+    eauto.
+  Qed.
+End CompileBufWord32.
+
+
 
 Definition p : Z := 2^130 - 5.
 Definition felem_init_zero := 0.
