@@ -36,10 +36,12 @@ Ltac cleanup_for_ZModArith :=
   subst*; (* <-- substituting `@eq word _ _` might create opportunities for wordOps_to_ZModArith_step *)
   repeat match goal with
          | a := _ |- _ => subst a
-         | H: ?T |- _ => lazymatch T with
-                         | @word.ok _ _ => fail
-                         | _ => tryif is_lia T then fail else clear H
-                         end
+         | H: ?T |- _ =>
+             lazymatch T with
+             | @word.ok _ _ => fail
+             | List.nth_error _ _ = Some _ => eapply List.nth_error_Some_bound_index in H
+             | _ => tryif is_lia T then fail else clear H
+             end
          end.
 
 (* TODO improve

@@ -81,6 +81,9 @@ Ltac cbn_MachineWidth := cbn [
   riscv.Utility.Utility.ZToReg
 ].
 
+#[export] Instance Instruction_inhabited: inhabited Instruction :=
+  mk_inhabited (InvalidInstruction 0).
+
 Section Riscv.
   Context {word: Word.Interface.word 32}.
   Context {word_ok: word.ok word}.
@@ -107,7 +110,9 @@ Section Riscv.
   Definition instr(inst: Instruction): word -> mem -> Prop :=
     scalar (word.of_Z (encode inst)).
 
-  Notation program := (array instr 4).
+  Declare Scope array_abbrevs_scope.
+  Open Scope array_abbrevs_scope.
+  Notation "'program'" := (array instr 4) : array_abbrevs_scope.
 
   (* both the finish-postcondition and the abort-postcondition are set to `post`
      to make sure `post` holds in all cases: *)
@@ -176,32 +181,18 @@ Section Riscv.
     reflexivity.
   Qed.
 
-  Lemma build_fetch: forall (initial: State) iset post addr p (instr1 instr2: Instruction) (R: mem -> Prop),
+  Lemma build_fetch: forall (initial: State) iset post addr p (ins: Instruction) (R: mem -> Prop),
       seps [addr |-> program p; R] initial#"mem" ->
       let offset := word.unsigned (word.sub initial#"pc" addr) in
       offset mod 4 = 0 ->
-      nth_error p (Z.to_nat (offset / 4)) = Some instr1 ->
-      decode iset (encode instr1) = instr2 ->
-      mcomp_sat (Execute.execute instr2;; endCycleNormal) initial post ->
+      let i := Z.to_nat (offset / 4) in
+      (i < List.length p)%nat ->
+      decode iset (encode (List.nth i p default)) = ins ->
+      mcomp_sat (Execute.execute ins;; endCycleNormal) initial post ->
       mcomp_sat (run1 iset) initial post.
   Proof.
     intros.
-    eapply build_fetch_one_instr. 2: eassumption.
-  Abort.
-  (*
-
-
-    edestruct nth_error_split as (p0 & p1 & ? & E). 1: eassumption.
-    subst p.
-    unfold program in *.
-    eapply build_fetch_one_instr. ; [|eassumption..].
-
-    rewrite array_split in H. cbn [array] in H.
-    eapply build_fetch_one_instr; [|eassumption..].
-    etransitivity. 1: eassumption.
-    reify_goal.
-    cancel_at 2%nat 1%nat. 2: reflexivity.
-    rewrite E. f_equal. subst offset. ZnWords.
+    eapply build_fetch_one_instr. 1: impl_ecancel_assumption. all: eassumption.
   Qed.
 
   Lemma decode_verify_iset: forall iset i, verify_iset (decode iset i) iset.
@@ -313,6 +304,7 @@ Section Riscv.
     map.get r#"csrs" CSRField.MEPC <> None /\
     map.get r#"csrs" CSRField.MCauseCode <> None.
 
+(*
   Definition related(r1 r2: State): Prop :=
     r1#"regs" = r2#"regs" /\
     r1#"pc" = r2#"pc" /\

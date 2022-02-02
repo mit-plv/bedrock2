@@ -638,7 +638,7 @@ Ltac eval_expr_step :=
      the goal will have two existentials: *)
   | |- exists (v: @word.rep _ _) (R: @map.rep _ _ _ -> Prop), seps _ _ => do 2 eexists
   (* loads, stores and function calls all can lead to sep goals like this: *)
-  | |- seps _ _ => ecancel_assumption_with_remaining_emp_Prop
+  | |- seps _ _ => impl_ecancel_assumption
   | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load_old
   | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity |]
   | |- wp_expr _ _ (expr.literal _) _ => eapply wp_literal

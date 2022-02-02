@@ -158,6 +158,23 @@ Create HintDb split_sepclause_sidecond.
    left-to-right, ie in the merge direction *)
 Create HintDb merge_sepclause_sidecond.
 
+Lemma iff1_refl{A: Type}(P: A -> Prop): iff1 P P. Proof. reflexivity. Qed.
+Lemma iff1_sym{A: Type}{P Q: A -> Prop}: iff1 P Q -> iff1 Q P.
+Proof. intros. symmetry. assumption. Qed.
+Lemma impl1_refl{A: Type}(P: A -> Prop): impl1 P P. Proof. reflexivity. Qed.
+
+Ltac iff1_syntactic_reflexivity :=
+  lazymatch goal with
+  | |- iff1 ?x ?y => first [is_evar x | is_evar y | constr_eq x y]
+  end;
+  exact (iff1_refl _).
+
+Ltac impl1_syntactic_reflexivity :=
+  lazymatch goal with
+  | |- impl1 ?x ?y => first [is_evar x | is_evar y | constr_eq x y]
+  end;
+  exact (impl1_refl _).
+
 (* Poses split_sepclause lemmas as hypotheses in the context, forming a stack of
    rewrite steps that have been performed, which can later be undone by
    pop_split_sepclause_stack *)
@@ -190,17 +207,27 @@ Ltac impl_ecancel_step_with_splitting :=
     end
   end.
 
-Ltac ecancel_with_remaining_emp_Prop :=
-  cancel_seps;
-  repeat (repeat ecancel_step_by_implication; try impl_ecancel_step_with_splitting);
-  refine (impl1_done _ _ _).
-
-Ltac ecancel_assumption_with_remaining_emp_Prop :=
+Ltac use_sep_asm :=
   match goal with
   | H: seps _ ?m |- seps _ ?m =>
     refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m H)
-  end;
-  ecancel_with_remaining_emp_Prop.
+  end.
+
+Ltac impl_ecancel :=
+  cancel_seps;
+  repeat (repeat (once ecancel_step_by_implication); try impl_ecancel_step_with_splitting).
+
+Ltac finish_impl_ecancel :=
+  match goal with
+  | |- impl1 ?R (seps [?E; emp ?P]) => is_evar E; refine (impl1_done R P _)
+  | |- impl1 ?x (seps [?E]) => is_evar E; change (impl1 x E); exact (impl1_refl _)
+  | |- impl1 ?x ?y => first [ is_evar x | is_evar y | constr_eq x y ]; exact (impl1_refl _)
+  end.
+
+Ltac impl_ecancel_assumption :=
+  use_sep_asm;
+  impl_ecancel;
+  try finish_impl_ecancel.
 
 Ltac clear_split_sepclause_stack :=
   repeat match goal with
@@ -215,16 +242,6 @@ Ltac pop_split_sepclause_stack :=
     seprewrite_in_by Sp H ltac:(eauto with merge_sepclause_sidecond)
    ) || let T := type of Sp in idtac "Note: Failed to merge sep clauses using" T);
   clear Sp.
-
-Lemma iff1_refl{A: Type}(P: A -> Prop): iff1 P P. Proof. reflexivity. Qed.
-Lemma iff1_sym{A: Type}{P Q: A -> Prop}: iff1 P Q -> iff1 Q P.
-Proof. intros. symmetry. assumption. Qed.
-
-Ltac iff1_syntactic_reflexivity :=
-  lazymatch goal with
-  | |- iff1 ?x ?y => first [is_evar x | is_evar y | constr_eq x y]
-  end;
-  exact (iff1_refl _).
 
 (* Given `H: seplogformula m`, first cbns away all occurrences of `seps` in H,
    and then flattens the formula into a list of sep clauses, resulting in an
