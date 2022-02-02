@@ -202,7 +202,7 @@ Section Proofs.
     * subst. assumption.
     * eauto.
   Qed.
-
+  
   Ltac run1done :=
     apply runsToDone;
     simpl_MetricRiscvMachine_get_set;
@@ -216,7 +216,7 @@ Section Proofs.
     (* `exists stack_trash frame_trash, ...` from goodMachine *)
     | |- exists _ _, _ = _ /\ _ = _ /\ (_ * _)%sep _ =>
       eexists _, _; (split; [|split]); [..|wcancel_assumption]; blia
-    | |- _ => solve [ solve_valid_machine word_ok ]
+    | |- _ => solve [ solve_valid_machine word_ok | MetricsToRiscv.solve_MetricLog ]
     | H:subset (footpr _) _
       |- subset (footpr _) _ => eapply rearrange_footpr_subset; [ exact H | solve [ wwcancel ] ]
     | |- _ => solve [ rewrite ?of_list_list_union in *; eauto 8 with map_hints ]
@@ -410,6 +410,9 @@ Section Proofs.
         simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try intuition congruence.
   Qed.
 
+    
+
+  
   Lemma compile_function_body_correct: forall (e_impl_full : env) m l mc (argvs : list word)
     (st0 : locals) (post outcome : Semantics.trace -> mem -> locals -> MetricLog -> Prop)
     (argnames retnames : list Z) (body : stmt Z) (program_base : word)
@@ -434,6 +437,7 @@ Section Proofs.
             map.only_differ (getRegs initialL)
                    (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
                    (getRegs finalL) /\
+            (getMetrics finalL - getMetrics initialL <= lowerMetrics (finalMetricsH - mc))%metricsL /\
             goodMachine finalTrace finalMH finalRegsH g0 finalL))
     (HOutcome: forall (t' : Semantics.trace) (m' : mem) (mc' : MetricLog) (st1 : locals),
         outcome t' m' st1 mc' ->
@@ -1373,6 +1377,7 @@ Section Proofs.
        map.only_differ initialL_regs
          (union (of_list (list_union Z.eqb binds [])) (singleton_set RegisterNames.ra))
          (getRegs finalL) /\
+       (getMetrics finalL - initialL_metrics <= lowerMetrics (finalMetricsH - mc))%metricsL /\
        goodMachine finalTrace finalMH finalRegsH g finalL))
       end.
       2: { subst. reflexivity. }
@@ -1496,10 +1501,11 @@ Section Proofs.
                 map.only_differ (getRegs initialL)
                   (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
                   (getRegs finalL) /\
+                (getMetrics finalL - initialL_metrics <= lowerMetrics (finalMetricsH - mc))%metricsL /\
                 goodMachine finalTrace finalMH finalRegsH g finalL))
         in IHexec.
       2: {
-        reflexivity.
+        subst. admit. (* SCall TODO 1 *)
       }
 
       specialize IHexec with (1 := Ext).
@@ -1542,7 +1548,7 @@ Section Proofs.
              goodMachine finalTrace finalMH finalRegsH g finalL)).
       2: {
         subst mach. simpl_MetricRiscvMachine_get_set.
-        intros. fwd. eauto 8 with map_hints.
+        intros. fwd. eauto 8 with map_hints. admit. (* SCall TODO 2 *) 
       }
       match goal with
       | H: (binds_count <= 8)%nat |- _ => rename H into BC
@@ -1554,7 +1560,7 @@ Section Proofs.
       clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok fun_info_ok env_ok
               IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
       revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
-      apply compile_function_body_correct.
+      Fail apply compile_function_body_correct. admit. (* SCall TODO 3: is initialL_metrics constrained here? *)
 
     - idtac "Case compile_stmt_correct/SLoad".
       progress unfold Memory.load, Memory.load_Z in *. fwd.
@@ -1745,6 +1751,7 @@ Section Proofs.
             - simpl. reflexivity.
           }
           eauto with map_hints.
+        * Fail MetricsToRiscv.solve_MetricLog. admit. (* TODO reason about metrics in middle config *)
         * edestruct hl_mem_to_ll_mem with (mL := middle_mem) (mTraded := mStack')
             as (returned_bytes & L & Q).
           1, 2: eassumption.
@@ -1774,7 +1781,12 @@ Section Proofs.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
           blia.
         }
-        run1done.
+        run1done. cbn.
+        remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;
+        symmetry in HeqfinalMetrics;
+        pose proof update_metrics_for_literal_bounded (width := width) as Hlit;
+        specialize Hlit with (1 := HeqfinalMetrics);
+        unfold_MetricLog; cbn; solve_MetricLog. 
 
     - idtac "Case compile_stmt_correct/SOp".
       assert (x <> RegisterNames.sp). {
@@ -1828,6 +1840,8 @@ Section Proofs.
           { eapply run_Jal0; try safe_sidecond. solve_divisibleBy4. }
           simpl_MetricRiscvMachine_get_set.
           intros. destruct_RiscvMachine mid. fwd. run1done.
+          unfold_MetricLog; cbn in *. 
+          admit. 
 
     - idtac "Case compile_stmt_correct/SIf/Else".
       (* execute branch instruction, which will jump over then-branch *)
@@ -1853,7 +1867,8 @@ Section Proofs.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
-
+          admit. 
+          
     - idtac "Case compile_stmt_correct/SLoop".
       match goal with
       | H: context[FlatImpConstraints.uses_standard_arg_regs body1 -> _] |- _ => rename H into IH1
@@ -1925,7 +1940,7 @@ Section Proofs.
           }
           (* at end of loop, just prove that computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd.
-          run1done.
+          run1done. admit. 
         * (* false: done, jump over body2 *)
           eapply runsToStep. {
             eapply compile_bcond_by_inverting_correct with (l := lH') (b := false);
@@ -1934,7 +1949,7 @@ Section Proofs.
           }
           simpl_MetricRiscvMachine_get_set.
           intros. destruct_RiscvMachine mid. fwd.
-          run1done.
+          run1done. admit. 
 
     - idtac "Case compile_stmt_correct/SSeq".
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]
@@ -1963,6 +1978,8 @@ Section Proofs.
 
     - idtac "Case compile_stmt_correct/SSkip".
       run1done.
-  Qed. (* <-- takes a while *)
+  (* Qed. (* <-- takes a while *) *)
+  Admitted.
 
+  
 End Proofs.
