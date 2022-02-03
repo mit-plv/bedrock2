@@ -16,6 +16,7 @@ Require Import coqutil.Z.Lia.
 Require Import coqutil.Z.HexNotation.
 Require Import coqutil.Datatypes.List.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import bedrock2.groundcbv.
 Local Open Scope Z_scope.
 
 Lemma computable_bounds{lo v hi: Z}(H: andb (Z.leb lo v) (Z.ltb v hi) = true): lo <= v < hi.
@@ -48,7 +49,6 @@ Ltac cleanup_for_ZModArith :=
    @ needed because of COQBUG https://github.com/coq/coq/issues/3051 *)
 Ltac simpl_list_length_exprs :=
   repeat ( rewrite ?@List.length_skipn, ?@List.firstn_length, ?@List.app_length, ?@List.length_cons, ?@List.length_nil in * ).
-
 
 (* word laws for shifts where the shift amount is a Z instead of a word *)
 Module word.
@@ -143,14 +143,33 @@ Ltac clear_unused_nonProps :=
 
 Require Import coqutil.Tactics.Tactics.
 
+Ltac concrete_list_length l :=
+  lazymatch l with
+  | cons ?h ?t => let r := concrete_list_length t in constr:(S r)
+  | nil => constr:(O)
+  | List.app ?l1 ?l2 =>
+      let r1 := concrete_list_length l1 in
+      let r2 := concrete_list_length l2 in
+      let r := eval cbv in (r1 + r2)%nat in constr:(r)
+  | List.map _ ?l' => concrete_list_length l'
+  | List.unfoldn _ ?n _ =>
+      let n' := groundcbv n in
+      lazymatch isnatcst n' with
+      | true => constr:(n')
+      end
+  | _ => let l' := eval unfold l in l in concrete_list_length l'
+  end.
+
 Ltac dewordify_step :=
   so fun hyporgoal =>
        match hyporgoal with
        | context [@word.unsigned ?w ?i ?x] =>
          pose proof (word.unsigned_range x : 0 <= @word.unsigned w i x < 2 ^ w);
          let a := fresh "w0" in forget (@word.unsigned w i x) as a
-       | context [@List.length ?T ?l] =>
-         let a := fresh "len0" in forget (@List.length T l) as a
+       | context[@List.length ?T ?l] => first
+         [ let n := concrete_list_length l in
+           replace (@List.length T l) with n in * by reflexivity
+         | let a := fresh "len0" in forget (@List.length T l) as a ]
        end.
 
 Ltac dewordify :=
