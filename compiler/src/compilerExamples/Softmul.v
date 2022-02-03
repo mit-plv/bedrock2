@@ -304,7 +304,6 @@ Section Riscv.
     map.get r#"csrs" CSRField.MEPC <> None /\
     map.get r#"csrs" CSRField.MCauseCode <> None.
 
-(*
   Definition related(r1 r2: State): Prop :=
     r1#"regs" = r2#"regs" /\
     r1#"pc" = r2#"pc" /\
@@ -316,9 +315,9 @@ Section Riscv.
       map.get r2#"csrs" CSRField.MTVecBase = Some mtvec_base /\
       map.get r2#"csrs" CSRField.MScratch = Some mscratch /\
       List.length stacktrash = 32%nat /\
-      Some r2#"mem" = Some r1#"mem" \*/
-                      word_array (word.of_Z mscratch) stacktrash \*/
-                      program (word.of_Z (mtvec_base * 4)) handler_insts /\
+      seps [eq r1#"mem";
+            word.of_Z mscratch |-> word_array stacktrash;
+            word.of_Z (mtvec_base * 4) |-> program handler_insts] r2#"mem" /\
       regs_initialized r2#"regs".
 
   Lemma related_preserves_load_bytes: forall n sH sL a w,
@@ -501,25 +500,37 @@ Section Riscv.
     intros. cbn -[map.get map.rep]. destruct_one_match. 1: assumption. congruence.
   Qed.
 
-  Lemma run_store: forall n addr (v_old v_new: tuple byte n) R (initial: State) (kind: SourceType)
-                          (post: State -> Prop),
-      Some initial#"mem" = R \*/ bytes addr v_old ->
-      (forall m: mem, Some m = R \*/ bytes addr v_new -> post initial(#"mem" := m)) ->
+  Lemma run_store: forall n addr (v_old v_new: tuple byte n) R (initial: State)
+                          (kind: SourceType) (post: State -> Prop),
+      seps [ptsto_bytes.ptsto_bytes n addr v_old; R] initial#"mem" ->
+      (forall m: mem, seps [ptsto_bytes.ptsto_bytes n addr v_new; R] m ->
+                      post initial(#"mem" := m)) ->
       MinimalCSRs.store n kind addr v_new initial post.
   Proof.
-    intros. unfold store, store_bytes.
-  Admitted.
+    intros. unfold store. cbn [seps] in *.
+    eapply store_bytes_of_sep in H. 2: exact H0.
+    destruct H as (m' & H & HP). change store_bytes with Memory.store_bytes. rewrite H.
+    apply HP.
+  Qed.
 
-  Lemma interpret_storeWord: forall addr (v_old v_new: tuple byte 4) R (initial: State)
+  Lemma interpret_storeWord: forall addr (v_old v_new: word) R (initial: State)
                                     (postF: unit -> State -> Prop) (postA: State -> Prop),
-      Some initial#"mem" = R \*/ bytes addr v_old ->
-      (forall m: mem, Some m = R \*/ bytes addr v_new -> postF tt initial(#"mem" := m)) ->
-      free.interpret run_primitive (Machine.storeWord Execute addr v_new) initial postF postA.
+      (* /\ instead of separate hypotheses because changes to the goal made while
+         proving the first hyp are needed to continue with the second hyp
+         (to remember how to undo the splitting of the word_array in which the scalar
+         was found) *)
+      seps [addr |-> scalar v_old; R] initial#"mem" /\
+      (forall m: mem, seps [addr |-> scalar v_new; R] m -> postF tt initial(#"mem" := m)) ->
+      free.interpret run_primitive (Machine.storeWord Execute addr
+         (LittleEndian.split 4 (word.unsigned v_new))) initial postF postA.
   Proof.
     (* Note: some unfolding/conversion is going on here that we prefer to control with
        this lemma rather than to control each time we store a word *)
-    intros. eapply run_store; eassumption.
+    intros. destruct H. eapply run_store; eassumption.
   Qed.
+
+  Definition bytes{n: nat}(v: tuple byte n)(addr: word): mem -> Prop :=
+    eq (map.of_list_word_at addr (tuple.to_list v)).
 
   Lemma interpret_getPrivMode: forall (m: State) (postF: PrivMode -> State -> Prop) (postA: State -> Prop),
       postF Machine m -> (* we're always in machine mode *)
@@ -544,14 +555,6 @@ Section Riscv.
     lazymatch l with
     | program _ _ :: _ => constr:(0%nat)
     | _ :: ?rest => let i := program_index rest in constr:(S i)
-    end.
-
-  Ltac cancel_program :=
-    match goal with
-    | |- mmap.dus ?LHS = mmap.dus ?RHS =>
-      let i := program_index LHS in
-      let j := program_index RHS in
-      cancel_at i j; [reflexivity|]
     end.
 
   Ltac instr_lookup :=
@@ -594,6 +597,10 @@ Section Riscv.
       | free.ret _ => rewrite free.interpret_ret
       | getPC => eapply interpret_getPC
       | setPC _ => eapply interpret_setPC
+      | Machine.storeWord Execute _ _ =>
+          eapply interpret_storeWord;
+          after_mem_modifying_lemma;
+          repeat (repeat word_simpl_step_in_hyps; fwd)
       | getRegister ?r =>
         lazymatch r with
         | 0 => eapply interpret_getRegister0
@@ -614,14 +621,20 @@ Section Riscv.
     | |- map.get _ _ = Some _ => eassumption
     | |- map.get _ _ <> None => congruence
     | |- map.get (map.put _ ?x _) ?x = _ => eapply map.get_put_same
+    | |- regs_initialized (map.put _ _ _) => eapply preserve_regs_initialized_after_put
     | |- mcomp_sat endCycleNormal _ _ => eapply mcomp_sat_endCycleNormal
     | H: ?P |- ?P => exact H
     | |- mcomp_sat (run1 RV32I) _ _ =>
-      eapply build_fetch; record.simp; cbn_MachineWidth;
-        [ etransitivity; [eassumption|]; reify_goal; cancel_program; reflexivity
-        | ZnWords
-        | instr_lookup
-        | apply decode_encode; vm_compute; intuition congruence
+        eapply build_fetch_one_instr; record.simp; cbn_MachineWidth;
+        [ impl_ecancel_assumption
+        | repeat word_simpl_step_in_goal;
+          lazymatch goal with
+          | |- decode RV32I (encode ?x) = _ =>
+              tryif (let x' := eval hnf in x in let h := head x' in is_constructor h;
+                     change x with x')
+              then (apply decode_encode; vm_compute; intuition congruence)
+              else (fail 1000 x "can't be simplified to a concrete instruction")
+          end
         | ]
     | |- _ => progress change (translate _ _ ?x)
                        with (@free.ret riscv_primitive primitive_result _ x)
@@ -656,7 +669,16 @@ Section Riscv.
     unfold related, basic_CSRFields_supported in H2.
     eapply invert_fetch in H. simp.
     rename initial into initialH.
-    rewrite Hp0 in H2p6p3.
+    match goal with
+    | H1: seps _ initialH#"mem", H2: seps _ initialL#"mem" |- _ =>
+        rename H1 into MH, H2 into ML
+    end.
+    cbn [seps] in ML.
+    epose proof (proj1 (sep_inline_eq _ _ initialL#"mem")) as ML'.
+    especialize ML'. {
+      exists initialH#"mem". split. 1: record.simp; ecancel_assumption. 1: exact MH.
+    }
+    flatten_seps_in ML'. clear ML.
     pose proof (proj2 Hp1) as V.
     destruct i as [inst|inst|inst|inst|inst|inst|inst|inst|inst|inst] eqn: E;
       cbn in V; try (intuition congruence).
@@ -664,11 +686,8 @@ Section Riscv.
       subst.
       eapply @runsToStep with (midset := fun midL => exists midH, related midH midL /\ midset midH).
       + eapply build_fetch_one_instr.
-        { etransitivity. 1: exact H2p6p3.
-          reify_goal.
-          cancel_at 1%nat 1%nat. { rewrite H2p1. reflexivity. }
-          reflexivity.
-        }
+        { replace initialH#"pc" with initialL#"pc" in ML'.
+          impl_ecancel_assumption. }
         { apply decode_encode.
           eapply verify_I_swap_extensions; try eassumption; reflexivity. }
         eapply mcomp_sat_preserves_related; eassumption.
@@ -676,14 +695,9 @@ Section Riscv.
     - (* MInstruction *)
       (* fetch M instruction (considered invalid by RV32I machine) *)
       eapply runsToStep_cps.
-      eapply build_fetch_one_instr. {
-          etransitivity. 1: exact H2p6p3.
-          reify_goal.
-          cancel_at 1%nat 1%nat. {
-            unfold instr, one. rewrite H2p1. reflexivity.
-          }
-          reflexivity.
-      }
+      eapply build_fetch_one_instr.
+      { replace initialH#"pc" with initialL#"pc" in ML'.
+        impl_ecancel_assumption. }
       { rewrite decode_M_on_RV32I_Invalid. 1: reflexivity.
         destruct (isValidM inst) eqn: EVM. 1: reflexivity.
         exfalso. clear -Hp1 EVM. destruct inst; cbn in *; try discriminate EVM.
@@ -692,17 +706,6 @@ Section Riscv.
 
       repeat step.
 
-      destruct stacktrash as [|zero_trash stacktrash]. 1: discriminate.
-      destruct stacktrash as [|ra_trash stacktrash]. 1: discriminate.
-      destruct stacktrash as [|sp_trash stacktrash]. 1: discriminate.
-      cbn [word_array array] in *.
-      change (Memory.bytes_per_word 32) with 4 in *.
-      replace (word.add (word.add (word.add (word.of_Z mscratch) (word.of_Z 4)) (word.of_Z 4))
-                        (word.of_Z 4))
-        with (word.add (word.of_Z mscratch) (word.of_Z 12)) in * by ring.
-      replace (word.add (word.add (word.of_Z mscratch) (word.of_Z 4)) (word.of_Z 4))
-        with (word.add (word.of_Z mscratch) (word.of_Z 8)) in * by ring.
-
       (* step through handler code *)
 
       (* Csrrw sp sp MScratch *)
@@ -710,57 +713,21 @@ Section Riscv.
 
       (* Sw sp zero 0        (needed if the instruction to be emulated reads register 0) *)
       eapply runsToStep_cps. repeat step.
-      eapply interpret_storeWord.
-      { repeat step.
-        etransitivity. 1: eassumption.
-        reify_goal.
-        cancel_at 2%nat 1%nat. {
-          unfold one. f_equal. ring.
-        }
-        cbn [mmap.dus].
-        reflexivity.
-      }
-      match goal with
-      | H: Some _ = _ |- _ => clear H
-      end.
-      repeat step.
 
       (* Sw sp ra 4 *)
       eapply runsToStep_cps. repeat step.
-      eapply interpret_storeWord.
-      { repeat step.
-        etransitivity. 1: eassumption.
-        reify_goal.
-        cancel_at 2%nat 1%nat. {
-          unfold one. f_equal.
-        }
-        cbn [mmap.dus].
-        reflexivity.
-      }
-      match goal with
-      | H: Some _ = _ |- _ => clear H
-      end.
-      repeat step.
 
       (* Csrr ra MScratch *)
       eapply runsToStep_cps. repeat step.
 
       (* Sw sp ra 8 *)
       eapply runsToStep_cps. repeat step.
-      eapply interpret_storeWord.
-      { repeat step.
-        etransitivity. 1: eassumption.
-        reify_goal.
-        cancel_at 2%nat 1%nat. {
-          unfold one. f_equal.
-        }
-        cbn [mmap.dus].
-        reflexivity.
-      }
-      match goal with
-      | H: Some _ = _ |- _ => clear H
-      end.
-      repeat step.
+
+      (* Can't use fwd/fwd_rewrites here to simplify `word.of_Z (word.unsigned v)` into `v`
+         because of https://github.com/coq/coq/issues/15596:
+
+         Hint Rewrite word.of_Z_unsigned : mydb.
+         Time Timeout 5 rewrite_db mydb in ML'. *)
 
       (* save_regs3to31 *)
       (* Csrr t1 MTVal       t1 := the invalid instruction i that caused the exception *)
@@ -811,11 +778,8 @@ Section Riscv.
       subst.
       eapply @runsToStep with (midset := fun midL => exists midH, related midH midL /\ midset midH).
       + eapply build_fetch_one_instr.
-        { etransitivity. 1: exact H2p6p3.
-          reify_goal.
-          cancel_at 1%nat 1%nat. { rewrite H2p1. reflexivity. }
-          reflexivity.
-        }
+        { replace initialH#"pc" with initialL#"pc" in ML'.
+          impl_ecancel_assumption. }
         { apply decode_encode. eapply verify_CSR_swap_extensions. eassumption.
           (* "assumption" and relying on conversion would work too *) }
         eapply mcomp_sat_preserves_related; eassumption.
@@ -824,5 +788,5 @@ Section Riscv.
     Unshelve.
     all: try exact (fun _ => True).
   Qed.
-*)
+
 End Riscv.

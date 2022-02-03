@@ -26,6 +26,7 @@ Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.Array.
 Require Export bedrock2.ZnWords.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
+Require Import bedrock2.groundcbv.
 Export List.ListNotations. Open Scope list_scope.
 
 Ltac fwd_rewrites ::= fwd_rewrite_db_in_star.
@@ -144,6 +145,16 @@ Section SepLog.
     rewrite 2seps_app in H1. rewrite seps_app.
     etransitivity. 2: eassumption.
     ecancel.
+  Qed.
+
+  (* Transforms the goal so that goal modifications that are made while proving Rs
+     are still visible when proving the continuation Cont of the program *)
+  Lemma put_and_r_into_emp_seps: forall (Cont: Prop) (Rs: list (mem -> Prop)) (m: mem),
+      seps (SeparationLogic.app Rs [emp Cont]) m ->
+      seps Rs m /\ Cont.
+  Proof.
+    intros. change SeparationLogic.app with (@List.app (mem -> Prop)) in H.
+    apply seps_app in H. eapply sep_emp_r in H. assumption.
   Qed.
 End SepLog.
 
@@ -271,6 +282,24 @@ Ltac flatten_seps_in H :=
       rename HNew into H ]
   end.
 
+Ltac word_simpl_step_in_hyps :=
+  match goal with
+  | H: ?x = ?y |- _ => is_var x; is_var y; subst x
+  | H: context[at_addr ?a _] |- _ => progress (ring_simplify a in H)
+  | H: context[word.unsigned ?x] |- _ => progress (ring_simplify x in H)
+  | H: context[word.unsigned (word.of_Z _)] |- _ =>
+    rewrite word.unsigned_of_Z_nowrap in H by Lia.lia
+  | _ => progress groundcbv_in_all
+  end.
+
+Ltac word_simpl_step_in_goal :=
+  match goal with
+  | |- context[at_addr ?a _] => progress (ring_simplify a)
+  | |- context[word.unsigned ?x] => progress (ring_simplify x)
+  | |- context[word.unsigned (word.of_Z _)] =>
+    rewrite word.unsigned_of_Z_nowrap by Lia.lia
+  | _ => progress groundcbv_in_goal
+  end.
 
 (* Applying the order of sep clauses from an old hypothesis onto a new hypothesis: *)
 
@@ -348,9 +377,10 @@ Ltac transfer_sep_order_from_to HOld HNew :=
         reflexivity
       | let HNewNew := fresh in pose proof (proj1 (E mNew) HNew) as HNewNew;
         clear E HOld HNew;
+        rename HNewNew into HOld;
         try clear mOld;
-        make_fresh mOld;
-        rename HNewNew into HOld, mNew into mOld ]
+        (* won't work if mNew or mOld is not a variable *)
+        try (make_fresh mOld; rename mNew into mOld) ]
     end
   end.
 
@@ -379,3 +409,31 @@ Section TestTransferSepsOrder.
     end.
   Abort.
 End TestTransferSepsOrder.
+
+Ltac intro_new_mem :=
+ lazymatch goal with
+ | |- forall (m: @map.rep _ _ _), seps _ _ -> _ =>
+     let mNew := fresh m in
+     intros mNew ?;
+     repeat pop_split_sepclause_stack;
+     lazymatch goal with
+     | HOld: seps _ ?mOld, HNew: _ mNew |- _ =>
+         flatten_seps_in HNew;
+         transfer_sep_order_from_to HOld HNew
+     end
+ end.
+
+Ltac put_cont_into_emp_seps :=
+  lazymatch goal with
+  | |- seps ?Pre ?mOld /\ (forall mNew, seps ?Post mNew -> _) =>
+      apply put_and_r_into_emp_seps; cbn [SeparationLogic.app]
+  | |- _ => fail "Expected a goal of the form"
+                 "(seps ?Pre ?mOld /\ (forall mNew, seps ?Post mNew -> _))"
+  end.
+
+Ltac after_mem_modifying_lemma :=
+  put_cont_into_emp_seps;
+  use_sep_asm;
+  impl_ecancel;
+  finish_impl_ecancel;
+  intro_new_mem.

@@ -384,16 +384,16 @@ Section WithParams.
   Lemma wp_store: forall fs ea ev t m l rest post,
       wp_expr m l ea (fun addr =>
         wp_expr m l ev (fun newvalue => exists oldvalue R,
-          seps [addr |-> scalar oldvalue; R;
-                emp (forall m', seps [addr |-> scalar newvalue; R] m' ->
-                                wp_cmd (call fs) rest t m' l post)] m)) ->
+          seps [addr |-> scalar oldvalue; R] m /\
+          (forall m', seps [addr |-> scalar newvalue; R] m' ->
+                      wp_cmd (call fs) rest t m' l post))) ->
       wp_cmd (call fs) (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
   Proof.
     intros.
     eapply wp_store0.
     eapply weaken_wp_expr. 1: eassumption. clear H. cbv beta. intros.
     eapply weaken_wp_expr. 1: eassumption. clear H. cbv beta. intros. fwd.
-    eapply store_word_of_sep_cps. eassumption.
+    eapply store_word_of_sep_cps_two_subgoals; eassumption.
   Qed.
 
   Lemma wp_if0: forall fs c thn els rest t m l post,
@@ -578,25 +578,6 @@ Notation "[ x ; y ; .. ; z ]" :=
 
 Notation "l" := (arguments_marker l)
   (at level 100, only printing) : live_scope.
-
-Ltac simpli_step :=
-  match goal with
-  | H: ?x = ?y |- _ => is_var x; is_var y; subst x
-  | H: context[at_addr ?a _] |- _ => progress (ring_simplify a in H)
-  | H: context[word.unsigned ?x] |- _ => progress (ring_simplify x in H)
-  | H: context[word.unsigned (word.of_Z _)] |- _ =>
-    rewrite word.unsigned_of_Z_nowrap in H by Lia.lia
-  | _ => progress groundcbv_in_all
-  end.
-
-Ltac simpli_step_in_goal :=
-  match goal with
-  | |- context[at_addr ?a _] => progress (ring_simplify a)
-  | |- context[word.unsigned ?x] => progress (ring_simplify x)
-  | |- context[word.unsigned (word.of_Z _)] =>
-    rewrite word.unsigned_of_Z_nowrap by Lia.lia
-  | _ => progress groundcbv_in_goal
-  end.
 
 Ltac put_into_current_locals is_decl :=
   lazymatch goal with
@@ -1327,23 +1308,19 @@ Ltac assign is_decl name val :=
   | try ((* to simplify value that will become bound with :=, at which point
             rewrites will not apply any more *)
          clear_split_sepclause_stack;
-         repeat simpli_step_in_goal;
+         repeat word_simpl_step_in_goal;
          put_into_current_locals is_decl) ].
 
 Ltac store sz addr val :=
   eapply (wp_store _ addr val);
   eval_expr;
   [.. (* maybe some unsolved side conditions *)
-  | lazymatch goal with
-    | |- forall (_: @map.rep _ _ _), seps _ _ -> _ =>
-        intros;
-        repeat pop_split_sepclause_stack;
-        lazymatch goal with
-        | HOld: seps _ ?mOld, HNew: _ ?mNew |- wp_cmd _ _ _ ?mNew _ _ =>
-            flatten_seps_in HNew;
-            transfer_sep_order_from_to HOld HNew
-        end
-    | |- _ => idtac (* expression evaluation did not work fully automatically *)
+  | match goal with
+    | |- exists (v: @word.rep _ _) (R: @map.rep _ _ _ -> Prop),
+           seps _ _ /\ forall (_: @map.rep _ _ _), seps _ _ -> _ =>
+        do 2 eexists; after_mem_modifying_lemma
+    | |- _ => idtac (* expression evaluation or after_mem_modifying_lemma
+                       did not work fully automatically *)
     end ].
 
 Ltac cond c :=
@@ -1452,7 +1429,7 @@ Ltac add_snippet s :=
   end.
 
 Ltac after_snippet :=
-  repeat (repeat simpli_step; fwd).
+  repeat (repeat word_simpl_step_in_hyps; fwd).
 
 (* Note: An rhs_var appears in expressions and, in our setting, always has a corresponding
    var (of type word) bound in the current context, whereas an lhs_var may or may not be
