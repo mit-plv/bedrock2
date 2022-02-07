@@ -181,7 +181,7 @@ Ltac dewordify :=
 Ltac unfold_Z_nat_consts :=
   repeat so fun hyporgoal => match hyporgoal with
          | context[?x] =>
-             let r := rdelta_const x in
+             let r := progress_rdelta_const x in
              lazymatch isZcst r with
              | true => progress change x with r in *
              | false =>
