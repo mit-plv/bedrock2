@@ -24,7 +24,6 @@ Require Import riscv.Utility.runsToNonDet.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Datatypes.Option.
-Require Import coqutil.Z.HexNotation.
 Require Import coqutil.Tactics.Simp.
 Require Import compiler.util.Learning.
 Require Export coqutil.Word.SimplWordExpr.
@@ -225,7 +224,7 @@ Section MMIO1.
   Proof.
     intros.
     unfold isMMIOAddr, FE310_mmio, isOTP,isPRCI, isGPIO0, isUART0, isSPI1 in *.
-    unfold Ox in *. simpl in *.
+    simpl in *.
     ssplit.
     all: intro C.
     1: replace x with (word.sub y (word.of_Z 3)) in * by (subst y; solve_word_eq word_ok).

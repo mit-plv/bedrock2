@@ -133,7 +133,6 @@ Section PrintExamples.
   Context (compile_ext_call: fun_pos_env -> Z -> Z -> stmt Z -> list Instruction).
 
   Import MonadNotations.
-  Import HexNotation.
   Open Scope bool_scope.
   Open Scope string_scope.
 
@@ -145,15 +144,13 @@ Section PrintExamples.
 
   Abort.
 
-  Notation "'Ox' a" := (Ox a) (at level 10, format "'Ox' a").
-
   Goal False.
     set (isMMIOAddr := MinimalMMIO.isMMIOAddr).
     simpl in *.
 
     unfold isOTP, isPRCI, isGPIO0, isUART0 in *.
 
-    set (test := (isMMIOAddr (word.of_Z (Ox "00020004")))).
+    set (test := (isMMIOAddr (word.of_Z (0x00020004)))).
   Abort.
 
   Goal False.

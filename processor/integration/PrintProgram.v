@@ -1,7 +1,6 @@
 Require Import List Coq.ZArith.ZArith.
 
 Require Import end2end.End2EndLightbulb.
-Import coqutil.Z.HexNotation.
 Import riscv.Utility.InstructionNotations.
 Import bedrock2.NotationsCustomEntry.
 Import bedrock2.Hexdump.
@@ -18,12 +17,12 @@ Goal True.
 
   (* pose ((IInstruction (Jal 0 8)) *)
   (*         :: (IInstruction (Jal 0 0)) (* When a test gets failed.. *) *)
-  (*         :: (IInstruction (Lui 1 (Ox"00004000"))) *)
-  (*         :: (IInstruction (Lui 2 (Ox"12345000"))) *)
-  (*         :: (IInstruction (Addi 2 2 (Ox"00000678"))) *)
-  (*         :: (IInstruction (Lui 3 (Ox"00005000"))) *)
-  (*         :: (IInstruction (Addi 3 3 (Ox"00000678"))) *)
-  (*         :: (IInstruction (Addi 4 4 (Ox"00000078"))) *)
+  (*         :: (IInstruction (Lui 1 (0x00004000))) *)
+  (*         :: (IInstruction (Lui 2 (0x12345000))) *)
+  (*         :: (IInstruction (Addi 2 2 (0x00000678))) *)
+  (*         :: (IInstruction (Lui 3 (0x00005000))) *)
+  (*         :: (IInstruction (Addi 3 3 (0x00000678))) *)
+  (*         :: (IInstruction (Addi 4 4 (0x00000078))) *)
   (*         (* Test 1: LW after SW *) *)
   (*         :: (IInstruction (Sw 1 2 (-4))) *)
   (*         :: (IInstruction (Lw 5 1 (-4))) *)

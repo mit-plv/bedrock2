@@ -8,7 +8,7 @@ Require Import coqutil.Tactics.rewr.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import bedrock2.Syntax bedrock2.Semantics.
-Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.FE310CSemantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.

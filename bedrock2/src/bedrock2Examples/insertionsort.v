@@ -35,7 +35,7 @@ Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars bedrock2.Array bedrock2.Loops.
 Require Import bedrock2.ZnWords.
-Require Import Coq.Sorting.Permutation.
+Require Import coqutil.Sorting.Permutation.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.

@@ -1,10 +1,10 @@
-Require bedrock2.BasicC64Semantics bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+Require bedrock2.BasicC64Semantics bedrock2.NotationsCustomEntry.
 Import BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 Require Import coqutil.Macros.ident_to_string.
 
 Section chacha20.
-  Import bedrock2.Syntax Syntax.Coercions NotationsCustomEntry HexNotation.
+  Import bedrock2.Syntax Syntax.Coercions NotationsCustomEntry.
 
   Local Notation "x <<<= n" := (cmd.set (ident_to_string! x) (expr.op bopname.slu (ident_to_string! x) n)) (in custom bedrock_cmd at level 0, x ident, n bigint).
   Local Notation "x ^= e" := (cmd.set (ident_to_string! x) (expr.op bopname.xor (ident_to_string! x) e)) (in custom bedrock_cmd at level 0, x ident, e custom bedrock_expr).

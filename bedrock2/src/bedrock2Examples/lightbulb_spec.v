@@ -1,5 +1,5 @@
 Require Import bedrock2.TracePredicate.
-Require Import Coq.ZArith.BinInt coqutil.Z.HexNotation.
+Require Import Coq.ZArith.BinInt Coq.Strings.String.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Byte.
 Require coqutil.Word.LittleEndianList.

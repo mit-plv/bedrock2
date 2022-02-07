@@ -713,10 +713,7 @@ Section Equiv.
            | H: _ /\ _ |- _ => destruct H
            | H: _ \/ _ |- _ => destruct H
            end.
-    all: repeat match goal with
-                | H: context [HexNotation.Ox _] |- _ =>
-                  cbv [HexNotation.Ox] in H; cbn in H
-                end.
+    all: cbn in *.
     all: blia.
   Qed.
 
@@ -726,7 +723,7 @@ Section Equiv.
     intros.
     cbv [isMMIOAddr isMMIOAligned FE310_mmio] in H.
     cbv [isOTP isPRCI isGPIO0 isUART0 isSPI1] in H.
-    cbv [HexNotation.Ox] in H; simpl in H.
+    simpl in H.
     assert (kunsigned addr < 2 ^ 16).
     { eapply Z.lt_le_trans; [eassumption|].
       apply Z.pow_le_mono_r; [blia|assumption].

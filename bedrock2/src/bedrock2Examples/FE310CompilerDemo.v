@@ -10,15 +10,15 @@ Notation MMInput := "MMInput"%string.
 Notation MMOutput := "MMOutput"%string.
 
 From coqutil.Map Require SortedListWord SortedListString Z_keyed_SortedListMap Empty_set_keyed_map.
-From coqutil Require Import Word.Interface Word.Naive Z.HexNotation String.
+From coqutil Require Import Word.Interface Word.Naive String.
 Require Import coqutil.Word.Bitwidth32.
 Require Import bedrock2.Semantics.
 Import List.ListNotations.
 
-Definition otp_base   := Ox"0x00020000". Definition otp_pastend   := Ox"0x00022000".
+Definition otp_base   := 0x00020000. Definition otp_pastend   := 0x00022000.
 Definition hfrosccfg  := 0x10008000.
-Definition gpio0_base := Ox"0x10012000". Definition gpio0_pastend := Ox"0x10013000".
-Definition uart0_base := Ox"0x10013000". Definition uart0_pastend := Ox"0x10014000".
+Definition gpio0_base := 0x10012000. Definition gpio0_pastend := 0x10013000.
+Definition uart0_base := 0x10013000. Definition uart0_pastend := 0x10014000.
 Definition uart0_rxdata := 0x10013004. Definition uart0_txdata  := 0x10013000.
 
 Instance word: word.word 32 := Naive.word32.
@@ -73,7 +73,7 @@ Definition swap_chars_over_uart: cmd :=
 
   bedrock_func_body:(
     (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
-    io! rx = $MMIOREAD (coq:(Ox"0x00021fec"));
+    io! rx = $MMIOREAD (coq:(0x00021fec));
     output! $MMIOWRITE($hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << $16);
     coq:(cmd.unset rx);
 
@@ -213,7 +213,7 @@ Definition echo_server: cmd :=
 
   bedrock_func_body:(
     (* ring oscillator: enable, trim to 72MHZ using value from OTP, divider=0+1 *)
-    io! rx = $MMIOREAD (coq:(Ox"0x00021fec"));
+    io! rx = $MMIOREAD (coq:(0x00021fec));
     output! $MMIOWRITE($hfrosccfg, coq:(2^30) | (rx & coq:(2^5-1)) << $16);
     coq:(cmd.unset rx);
 

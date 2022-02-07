@@ -4,7 +4,7 @@ Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth32.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.Tactics.
-Require Import coqutil.Z.HexNotation.
+Require Import Coq.Strings.String.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require Import bedrock2.Semantics.
 Require Import bedrock2.Syntax.

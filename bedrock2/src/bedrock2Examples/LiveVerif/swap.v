@@ -1578,7 +1578,7 @@ Ltac adhoc_lia_performance_fixes :=
   cond_hyp_factor;
   subst.
 
-Require Import Coq.Sorting.Permutation.
+Require Import coqutil.Sorting.Permutation.
 
 Load LiveVerif.
 Import SepLogPredsWithAddrLast.

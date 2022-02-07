@@ -12,7 +12,6 @@ Require Import riscv.Platform.Memory.
 Require Import riscv.Platform.Run.
 Require Import riscv.Utility.MkMachineWidth.
 Require Import coqutil.Map.Interface.
-Require Import coqutil.Z.HexNotation.
 Require Import riscv.Utility.InstructionCoercions.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Utility.runsToNonDet.

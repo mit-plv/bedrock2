@@ -1,4 +1,4 @@
-Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry.
 Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import bedrock2Examples.SPI.
 
@@ -67,8 +67,8 @@ Definition lan9250_writeword : function :=
     output! $MMIOWRITE(SPI_CSMODE_ADDR, addr)
   ))).
 
-Definition MAC_CSR_DATA : Z := Ox"0A8".
-Definition MAC_CSR_CMD : Z := Ox"0A4".
+Definition MAC_CSR_DATA : Z := 0x0A8.
+Definition MAC_CSR_CMD : Z := 0x0A4.
 Definition BYTE_TEST : Z := 0x64.
 
 Definition lan9250_mac_write : function :=
@@ -200,16 +200,10 @@ Section WithParameters.
           let e := eval cbv in (string_dec x y) in
           let goal := context G [e] in
           change goal
-      | |- context G[Ox ?x] =>
-          let x := rdelta x in
-          let e := eval cbv in (Ox x) in
-          let goal := context G [e] in
-          change goal
       | |- context G[word.unsigned ?x] =>
           let x := rdelta x in
           let x := lazymatch x with word.of_Z ?x => x end in
           let x := rdelta x in
-          let x := match x with Ox ?x => x | _ => x end in
           let x := rdelta x in
           requireZcst x;
           let x := eval cbv in x in
@@ -454,7 +448,6 @@ Section WithParameters.
     all : repeat match goal with |- context G[word.wrap ?x] => let g := context G [x] in change g end.
     all : change 255 with (Z.ones 8).
     all : rewrite ?Z.shiftr_div_pow2, ?Z.land_ones by blia.
-    all : let y := eval cbv in (Ox "400") in change (Ox "400") with y in *.
     3,4,5: clear -H7 H36; Z.div_mod_to_equations; blia.
     { subst addr.
       cbv [SPI_CSMODE_HOLD].
@@ -496,10 +489,6 @@ Section WithParameters.
       | |- context G [word.wrap ?a] =>
           requireZcst a;
           let t := eval cbv in (word.wrap a) in
-          let g := context G [t] in
-          change g
-      | |- context G [Ox ?a] =>
-          let t := eval cbv in (Ox a) in
           let g := context G [t] in
           change g
       | |- _ <= _ < _ => blia
@@ -546,10 +535,6 @@ Section WithParameters.
         | |- context G [word.wrap ?a] =>
             requireZcst a;
             let t := eval cbv in (word.wrap a) in
-            let g := context G [t] in
-            change g
-        | |- context G [Ox ?a] =>
-            let t := eval cbv in (Ox a) in
             let g := context G [t] in
             change g
         end.
@@ -702,7 +687,7 @@ Section WithParameters.
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
       rewrite Z.shiftr_div_pow2 by blia.
       clear -H8.
-      change (Ox "400") with (4*256) in *.
+      change 0x400 with (4*256) in *.
       Z.div_mod_to_equations. blia. }
     { rewrite Properties.word.unsigned_and_nowrap.
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
@@ -747,7 +732,7 @@ Section WithParameters.
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).
       rewrite Z.shiftr_div_pow2 by blia.
       revert dependent a; clear; intros.
-      change (Ox "400") with (4*256) in *. change (Ox "0") with 0 in *.
+      change 0x400 with (4*256) in *.
       Z.div_mod_to_equations. blia. }
     { rewrite Properties.word.unsigned_and_nowrap.
       rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small by (cbv; split; congruence).

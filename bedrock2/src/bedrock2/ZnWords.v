@@ -13,7 +13,6 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.ZArith.Zpow_facts.
 Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr.
 Require Import coqutil.Z.Lia.
-Require Import coqutil.Z.HexNotation.
 Require Import coqutil.Datatypes.List.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import bedrock2.groundcbv.
@@ -182,10 +181,7 @@ Ltac dewordify :=
 Ltac unfold_Z_nat_consts :=
   repeat so fun hyporgoal => match hyporgoal with
          | context[?x] =>
-           let r := rdelta_const x in
-           lazymatch r with
-           | Ox ?s => let r' := eval cbv in r in change x with r' in *
-           | _ =>
+             let r := rdelta_const x in
              lazymatch isZcst r with
              | true => progress change x with r in *
              | false =>
@@ -193,7 +189,6 @@ Ltac unfold_Z_nat_consts :=
                | true => progress change x with r in *
                end
              end
-           end
          end.
 
 Ltac pose_word_ok :=

@@ -1,6 +1,6 @@
 Require Import coqutil.Z.Lia.
 Require Import bedrock2.Syntax.
-Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Macros.symmetry.
 Require Import coqutil.Byte.
@@ -34,7 +34,7 @@ Section WithParameters.
   Definition recvEthernet :=
     ("recvEthernet", (["buf"], ["num_bytes";"err"], bedrock_func_body:(
       num_bytes = $0;
-      unpack! read, err = lan9250_readword(coq:(Ox"7C")); (* RX_FIFO_INF *)
+      unpack! read, err = lan9250_readword(coq:(0x7C)); (* RX_FIFO_INF *)
       require !err else { err = $-1 };
       require (read & coq:((2^8-1)*2^16)) else { err = $1 }; (* nonempty *)
       unpack! read, err = lan9250_readword($0x40); (* RX_STATUS_FIFO_PORT *)
@@ -543,7 +543,7 @@ Section WithParameters.
           destruct H29; [left|right]; repeat (straightline || split || eauto using TracePredicate.any_app_more).
           eapply TracePredicate.concat_app; eauto.
           unshelve erewrite (_ : LittleEndianList.le_combine _ = word.unsigned x10); rewrite ?word.of_Z_unsigned; try solve [intuition idtac].
-          { 
+          {
             etransitivity.
             1: eapply (LittleEndianList.le_combine_split 4).
             eapply Properties.word.wrap_unsigned. } } }

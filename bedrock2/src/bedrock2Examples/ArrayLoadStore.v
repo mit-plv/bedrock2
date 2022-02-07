@@ -1,5 +1,5 @@
 Require Import bedrock2.Syntax.
-Require Import bedrock2.NotationsCustomEntry coqutil.Z.HexNotation.
+Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Z.Lia.
 
