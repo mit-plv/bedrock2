@@ -219,10 +219,10 @@ Ltac ZnWords_pre :=
   word_eqs_to_Z_eqs;
   cleanup_for_ZModArith;
   simpl_list_length_exprs;
-  unfold_Z_nat_consts;
   repeat wordOps_to_ZModArith_step;
   dewordify;
-  clear_unused_nonProps.
+  clear_unused_nonProps;
+  unfold_Z_nat_consts.
 
 Require Import Lia.
 
@@ -240,4 +240,5 @@ Ltac better_lia :=
   Z.div_mod_to_equations;
   lia.
 
+(* Ltac ZnWords := time "ZnWords" (ZnWords_pre; better_lia). *)
 Ltac ZnWords := ZnWords_pre; better_lia.
