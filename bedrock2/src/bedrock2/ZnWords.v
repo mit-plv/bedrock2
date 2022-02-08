@@ -178,8 +178,8 @@ Ltac dewordify :=
   | context [@word.rep ?w ?inst] => let n := fresh "word" in forget (@word.rep w inst) as n
   end).
 
-Ltac unfold_Z_nat_consts :=
-  repeat so fun hyporgoal => match hyporgoal with
+Ltac slow_unfold_Z_nat_consts_step :=
+  so fun hyporgoal => match hyporgoal with
          | context[?x] =>
              let r := progress_rdelta_const x in
              lazymatch isZcst r with
@@ -190,6 +190,10 @@ Ltac unfold_Z_nat_consts :=
                end
              end
          end.
+
+Create HintDb ZnWords_unfold.
+
+Ltac unfold_Z_nat_consts := autounfold with ZnWords_unfold in *.
 
 Ltac pose_word_ok :=
   lazymatch goal with
