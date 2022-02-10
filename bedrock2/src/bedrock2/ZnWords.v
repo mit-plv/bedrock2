@@ -13,7 +13,6 @@ Require Import Coq.ZArith.ZArith.
 Require Import Coq.ZArith.Zpow_facts.
 Require Import coqutil.Tactics.rdelta coqutil.Tactics.rewr.
 Require Import coqutil.Z.Lia.
-Require Import coqutil.Datatypes.List.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import bedrock2.groundcbv.
 Local Open Scope Z_scope.
@@ -39,7 +38,6 @@ Ltac cleanup_for_ZModArith :=
          | H: ?T |- _ =>
              lazymatch T with
              | @word.ok _ _ => fail
-             | List.nth_error _ _ = Some _ => eapply List.nth_error_Some_bound_index in H
              | _ => tryif is_lia T then fail else clear H
              end
          end.
@@ -142,33 +140,12 @@ Ltac clear_unused_nonProps :=
 
 Require Import coqutil.Tactics.Tactics.
 
-Ltac concrete_list_length l :=
-  lazymatch l with
-  | cons ?h ?t => let r := concrete_list_length t in constr:(S r)
-  | nil => constr:(O)
-  | List.app ?l1 ?l2 =>
-      let r1 := concrete_list_length l1 in
-      let r2 := concrete_list_length l2 in
-      let r := eval cbv in (r1 + r2)%nat in constr:(r)
-  | List.map _ ?l' => concrete_list_length l'
-  | List.unfoldn _ ?n _ =>
-      let n' := groundcbv n in
-      lazymatch isnatcst n' with
-      | true => constr:(n')
-      end
-  | _ => let l' := eval unfold l in l in concrete_list_length l'
-  end.
-
 Ltac dewordify_step :=
   so fun hyporgoal =>
        match hyporgoal with
        | context [@word.unsigned ?w ?i ?x] =>
          pose proof (word.unsigned_range x : 0 <= @word.unsigned w i x < 2 ^ w);
          let a := fresh "w0" in forget (@word.unsigned w i x) as a
-       | context[@List.length ?T ?l] => first
-         [ let n := concrete_list_length l in
-           replace (@List.length T l) with n in * by reflexivity
-         | let a := fresh "len0" in forget (@List.length T l) as a ]
        end.
 
 Ltac dewordify :=
@@ -196,15 +173,15 @@ Create HintDb ZnWords_unfold.
 Ltac unfold_Z_nat_consts := autounfold with ZnWords_unfold in *.
 
 Ltac pose_word_ok :=
-  lazymatch goal with
+  match goal with
+  | _: word.ok _ |- _ => idtac
   | |- context [@word.unsigned ?wi ?inst]      => pose proof (_ : word.ok inst)
   | |- context [@word.signed ?wi ?inst]        => pose proof (_ : word.ok inst)
   | |- context [@word.of_Z ?wi ?inst]          => pose proof (_ : word.ok inst)
   | H: context [@word.unsigned ?wi ?inst] |- _ => pose proof (_ : word.ok inst)
   | H: context [@word.signed ?wi ?inst]   |- _ => pose proof (_ : word.ok inst)
   | H: context [@word.of_Z ?wi ?inst]     |- _ => pose proof (_ : word.ok inst)
-  | _ => idtac (* could/should fail here, but some goals don't use words, and still
-                  benefit from the list lemmas and consts unfolding *)
+  | _ => fail 10000 "ZnWords could not find a word.ok instance"
   end.
 
 Ltac word_eqs_to_Z_eqs :=
@@ -222,7 +199,6 @@ Ltac ZnWords_pre :=
   pose_word_ok;
   word_eqs_to_Z_eqs;
   cleanup_for_ZModArith;
-  simpl_list_length_exprs;
   repeat wordOps_to_ZModArith_step;
   dewordify;
   clear_unused_nonProps;
@@ -246,3 +222,12 @@ Ltac better_lia :=
 
 (* Ltac ZnWords := time "ZnWords" (ZnWords_pre; better_lia). *)
 Ltac ZnWords := ZnWords_pre; better_lia.
+
+(* A ZnWords that does also some list rewriting, which is often too expensive,
+   and can be done more efficiently if it's only done occasionally rather
+   than before each ZnWords invocation *)
+Ltac ZnWordsL :=
+  (* will subst vars bound by :=, which enables rewrites in their bodies *)
+  cleanup_for_ZModArith;
+  simpl_list_length_exprs;
+  ZnWords.

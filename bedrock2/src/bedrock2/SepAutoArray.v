@@ -1,6 +1,8 @@
 Require Import bedrock2.SepAuto.
 Require Import bedrock2.Array.
+Require Import bedrock2.groundcbv.
 Require Import coqutil.Word.Bitwidth.
+Require Import coqutil.Tactics.rewr.
 
 Section SepLog.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
@@ -107,6 +109,59 @@ Ltac destruct_bool_vars :=
              is_var b; let t := type of b in constr_eq t bool; destruct b
          end.
 
+Ltac concrete_list_length l :=
+  lazymatch l with
+  | cons ?h ?t => let r := concrete_list_length t in constr:(S r)
+  | nil => constr:(O)
+  | List.app ?l1 ?l2 =>
+      let r1 := concrete_list_length l1 in
+      let r2 := concrete_list_length l2 in
+      let r := eval cbv in (r1 + r2)%nat in constr:(r)
+  | List.map _ ?l' => concrete_list_length l'
+  | List.unfoldn _ ?n _ =>
+      let n' := groundcbv n in
+      lazymatch isnatcst n' with
+      | true => constr:(n')
+      end
+  | _ => let l' := eval unfold l in l in concrete_list_length l'
+  end.
+
+Ltac rewr_with_eq e :=
+  lazymatch type of e with
+  | ?LHS = _ => progress (pattern LHS; eapply rew_zoom_bw; [exact e|])
+  end.
+
+Ltac list_length_simpl_step_in_goal :=
+  match goal with
+  | |- context[@List.length ?T ?l] =>
+      let n := concrete_list_length l in change (@List.length T l) with n
+  | |- context[List.length (List.skipn ?n ?l)] => rewr_with_eq (List.length_skipn n l)
+  | |- context[List.length (List.firstn ?n ?l)] => rewr_with_eq (List.firstn_length n l)
+  | |- context[List.length (?l1 ++ ?l2)] => rewr_with_eq (List.app_length l1 l2)
+  | |- context[List.length (?h :: ?t)] => rewr_with_eq (List.length_cons h t)
+  end.
+
+Goal forall (l1 l2: list Z) (a: Z),
+    a + Z.of_nat (List.length (l1 ++ l2)) =
+    Z.of_nat (List.length l1) + Z.of_nat (List.length l2) + a.
+Proof.
+  intros. list_length_simpl_step_in_goal.
+Abort.
+
+(* Only rewrites below the line, because rewriting above the line should already
+   have been done (or will be done later), but the goal below the line might be the
+   sidecondition of another rewrite lemma that's being tried and thus did not yet
+   appear anywhere in the context before.
+   For example, trying to rewrite with List.firstn_all2 creates a sidecondition
+   containing a (List.length l) that did not yet have any chance to get
+   simplified.
+   For efficiency, we only use rewrite lemmas here that don't have sideconditions
+   themselves, and use the simplest possible homemade rewr_with_eq to avoid any
+   unexpected performance pitfalls of Coq's existing rewrite tactics. *)
+Ltac list_length_rewrites_without_sideconds_in_goal :=
+  repeat list_length_simpl_step_in_goal.
+
+
 (* Three hints in three different DBs indicating how to find the rewrite lemma,
    how to solve its sideconditions for the split direction, and how to solve its
    sideconditions for the merge direction: *)
@@ -125,15 +180,19 @@ Ltac destruct_bool_vars :=
 : split_sepclause_goal.
 
 #[export] Hint Extern 1 (_ = ?l ++ [_] ++ _ /\ List.length ?l = _) =>
-  eapply list_expose_nth; destruct_bool_vars; ZnWords
+  eapply list_expose_nth;
+  destruct_bool_vars;
+  list_length_rewrites_without_sideconds_in_goal;
+  ZnWords
 : split_sepclause_sidecond.
 
 #[export] Hint Extern 1 (@eq (list _) ?listL ?listR /\ @eq nat ?lenL ?lenR) =>
   assert_fails (has_evar lenL);
   assert_fails (has_evar lenR);
-  is_evar listL; split; [reflexivity|destruct_bool_vars; ZnWords]
+  is_evar listL; split;
+  [ reflexivity
+  | destruct_bool_vars; list_length_rewrites_without_sideconds_in_goal; ZnWords ]
 : merge_sepclause_sidecond.
-
 
 (* Hints to simplify/cleanup the expressions that were created by repeated
    splitting and merging of sep clauses: *)
@@ -144,4 +203,4 @@ Ltac destruct_bool_vars :=
   List.skipn_eq_O
   Nat.min_l
   Nat.min_r
-using ZnWords : fwd_rewrites.
+using (list_length_rewrites_without_sideconds_in_goal; ZnWords) : fwd_rewrites.

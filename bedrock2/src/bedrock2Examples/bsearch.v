@@ -14,19 +14,25 @@ From coqutil.Tactics Require Import rdelta.
 Require Import bedrock2.AbsintWordToZ.
 Strategy -1000 [word]. (* TODO where should this go? *)
 
-Local Infix "^+" := word.add  (at level 50, left associativity).
-Local Infix "^-" := word.sub  (at level 50, left associativity).
-Local Infix "^<<" := word.slu  (at level 37, left associativity).
-Local Infix "^>>" := word.sru  (at level 37, left associativity).
-Local Notation "/_" := word.of_Z.      (* smaller angle: squeeze a Z into a word *)
-Local Notation "\_" := word.unsigned.  (* supposed to be a denotation bracket;
+Declare Scope word_scope.
+
+Local Infix "^+" := word.add  (at level 50, left associativity) : word_scope.
+Local Infix "^-" := word.sub  (at level 50, left associativity) : word_scope.
+Local Infix "^<<" := word.slu  (at level 37, left associativity) : word_scope.
+Local Infix "^>>" := word.sru  (at level 37, left associativity) : word_scope.
+Local Notation "/_" := word.of_Z       (* smaller angle: squeeze a Z into a word *)
+ : word_scope.
+Local Notation "\_" := word.unsigned   (* supposed to be a denotation bracket;
                                           or bigger angle: let a word fly into the large Z space *)
+ : word_scope.
+
 Local Open Scope Z_scope.
+Local Open Scope word_scope.
 
 From bedrock2 Require Import Semantics BasicC64Semantics.
 
 Import HList List.
-Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
+#[export] Instance spec_of_bsearch : spec_of "bsearch"%string := fun functions =>
   forall left right target xs R t m,
     sep (array scalar (word.of_Z 8) left xs) R m ->
     \_ (right ^- left) = 8*Z.of_nat (Datatypes.length xs) ->
@@ -40,8 +46,6 @@ From coqutil.Tactics Require Import eabstract letexists rdelta.
 From coqutil.Macros Require Import symmetry.
 Import PrimitivePair.
 Require Import bedrock2.ZnWords.
-
-Axiom ZnWords_needs_lia_of_Coq_master: False.
 
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
 Proof.
@@ -73,20 +77,20 @@ Proof.
     rename H2 into length_rep. subst br.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
-    { case ZnWords_needs_lia_of_Coq_master. }
+    { ZnWords. }
     { ZnWords. }
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split; [repeat straightline|].
       1:split.
       2:split.
       { SeparationLogic.ecancel_assumption. }
-      { case ZnWords_needs_lia_of_Coq_master. }
+      { ZnWordsL. }
       { cleanup_for_ZModArith. reflexivity. }
       split; repeat straightline.
       2:split; repeat straightline.
       2: SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
+      { ZnWordsL. }
       { ZnWords. }
-      { case ZnWords_needs_lia_of_Coq_master. }
       { ZnWords. }
       { trivial. }
       { SeparationLogic.ecancel_assumption. } }
@@ -95,13 +99,13 @@ Proof.
       1:split.
       2:split.
       { SeparationLogic.ecancel_assumption. }
-      { case ZnWords_needs_lia_of_Coq_master. }
+      { ZnWordsL. }
       { cleanup_for_ZModArith. reflexivity. }
       split.
-      { case ZnWords_needs_lia_of_Coq_master. }
+      { ZnWordsL. }
       repeat straightline; split; trivial.
       subst x5. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
-      { case ZnWords_needs_lia_of_Coq_master. }
+      { ZnWords. }
       { ZnWords. }
       { ZnWords. }
       { SeparationLogic.ecancel_assumption. } } }

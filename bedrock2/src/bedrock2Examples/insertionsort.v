@@ -195,7 +195,7 @@ Section WithParameters.
     assert (Z.to_nat (2 ^ 32 / 4) <= Datatypes.length xs)%nat as B by ZnWords.
     specialize (A B). clear B.
     destruct (List.firstn (Z.to_nat (2 ^ 32 / 4)) xs) as [|h1 t1] eqn: E1. {
-      ZnWords.
+      ZnWordsL.
     }
     destruct (List.skipn (Z.to_nat (2 ^ 32 / 4)) xs) as [|h2 t2] eqn: E2. {
       pose proof @List.skipn_length _ (Z.to_nat (2 ^ 32 / 4)) xs as B.
@@ -366,16 +366,16 @@ Section WithParameters.
           ssplit. all: try reflexivity || ZnWords.
           { unfold nth.
             rewrite List.app_nil_r.
-            rewrite List.app_nth2 by ZnWords.
+            rewrite List.app_nth2 by ZnWordsL.
             match goal with
-            | |- context[List.nth ?N _ _] => replace N with O by ZnWords
+            | |- context[List.nth ?N _ _] => replace N with O by ZnWordsL
             end.
             assumption. }
           { intros k Hk.
             match goal with
             | H: forall _: nat, _ -> _ |- _ => apply H
             end.
-            ZnWords. }
+            ZnWordsL. }
           match goal with
           | H: (_ * _) m1 |- _ => rename H into HM1
           end.
@@ -398,7 +398,7 @@ Section WithParameters.
           }
           ssplit. all: try reflexivity || ZnWords.
           { unfold nth.
-            replace (Z.to_nat (word.unsigned j)) with (List.length seenSorted) by ZnWords.
+            replace (Z.to_nat (word.unsigned j)) with (List.length seenSorted) by ZnWordsL.
             rewrite <- List.app_assoc. rewrite <- List.app_comm_cons.
             rewrite List.nth_middle.
             assumption. }
@@ -406,7 +406,7 @@ Section WithParameters.
             match goal with
             | H: forall _: nat, _ -> _ |- _ => apply H
             end.
-            ZnWords. }
+            ZnWordsL. }
           SeparationLogic.seprewrite @array_cons.
           use_sep_assumption.
           cancel.
@@ -428,7 +428,7 @@ Section WithParameters.
         eexists (seenSorted ++ [e']), remSorted, _, _. split.
         { (* precondition of next loop iteration holds *)
           ssplit. all: rewrite <-?List.app_assoc; try reflexivity || ZnWords.
-          { intros k Hk. assert (k < List.length seenSorted \/ k = List.length seenSorted)%nat as D by ZnWords.
+          { intros k Hk. assert (k < List.length seenSorted \/ k = List.length seenSorted)%nat as D by ZnWordsL.
             unfold nth in *.
             destruct D as [D | D].
             - auto.
@@ -475,7 +475,7 @@ Section WithParameters.
         subst smaller toShift. symmetry. apply List.firstn_skipn.
       }
       assert (word.unsigned j = Z.of_nat (List.length smaller)) as Ej. {
-        subst smaller. ZnWords.
+        subst smaller. ZnWordsL.
       }
       rewrite Ej in *.
       (* WHY do I need width:=width even with   Local Hint Mode word - : typeclass_instances. ? *)
@@ -519,7 +519,7 @@ Section WithParameters.
       { repeat straightline. }
       { exact Wf_nat.lt_wf. }
       { (* current state satisfies loop precondition *)
-        repeat straightline. ssplit. all: reflexivity || ZnWords || idtac.
+        repeat straightline. ssplit. all: reflexivity || ZnWordsL || idtac.
         SeparationLogic.seprewrite @array_append.
         SeparationLogic.seprewrite_in @array_append HM1.
         SeparationLogic.seprewrite @array_cons.
@@ -530,7 +530,7 @@ Section WithParameters.
           f_equal. ZnWords.
         }
         cancel_seps_at_indices 1%nat 0%nat. {
-          f_equal. ZnWords.
+          f_equal. ZnWordsL.
         }
         cbn [seps].
         cancel.
@@ -649,13 +649,13 @@ Section WithParameters.
           SeparationLogic.seprewrite @array_nil.
           use_sep_assumption. cancel.
           cancel_seps_at_indices 0%nat 0%nat. {
-            f_equal. ZnWords.
+            f_equal. ZnWordsL.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
-            f_equal. ZnWords.
+            f_equal. ZnWordsL.
           }
           cancel_seps_at_indices 0%nat 0%nat. {
-            f_equal. ZnWords.
+            f_equal. ZnWordsL.
           }
           ecancel_done.
         }

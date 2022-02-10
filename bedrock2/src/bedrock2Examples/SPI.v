@@ -162,7 +162,7 @@ Section WithParameters.
           refine (kleene_step _ _ nil _ (kleene_empty _)).
           repeat econstructor.
           ZnWords. }
-        { ZnWords. } }
+        { ZnWordsL. } }
         { ZnWords. } }
     { (* SUBCASE loop condition was false (exit loop because of timeout *)
       letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
@@ -181,7 +181,7 @@ Section WithParameters.
           refine (kleene_step _ _ nil _ (kleene_empty _)).
           repeat econstructor.
           ZnWords. }
-        { ZnWords. } } }
+        { ZnWordsL. } } }
     }
     (* CASE if-condition was false (word.unsigned v0 = 0), i.e. we'll set i=i^i and exit loop *)
     repeat straightline.
@@ -280,7 +280,7 @@ Section WithParameters.
             eexists; split.
             { exact eq_refl. }
             { ZnWords. } }
-          { ZnWords. } }
+          { ZnWordsL. } }
           { ZnWords. }
           { ZnWords. } }
       { letexists; split; repeat straightline.
@@ -296,7 +296,7 @@ Section WithParameters.
           eexists; split.
           { exact eq_refl. }
           { ZnWords. } }
-        { ZnWords. } }
+        { ZnWordsL. } }
       { repeat straightline.
         repeat letexists; split.
         1: split.

@@ -975,7 +975,7 @@ So maybe `P -* P` is equivalent to `emp`? No, because from `P -* P`, `emp` only 
         symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
       }
       list_eq_cancel_step. {
-        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWords.
+        symmetry. apply to_list_firstn_as_tuple with (default := Byte.x00). ZnWordsL.
       }
       list_eq_cancel_step. {
         instantiate (1 := tuple.of_list EtherTypeARP).
