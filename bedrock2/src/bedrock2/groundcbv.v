@@ -1,4 +1,5 @@
 Require Import ZArith Ring.
+Require Import coqutil.Tactics.rdelta.
 
 Ltac is_ground_const e :=
   lazymatch e with
@@ -106,16 +107,25 @@ Ltac is_ground_const e :=
   | Nat.lcm => idtac
   end.
 
+Ltac is_number_constructor e :=
+  lazymatch e with
+  | Zpos => idtac
+  | Z0 => idtac
+  | Zneg => idtac
+  | N0 => idtac
+  | Npos => idtac
+  | xI => idtac
+  | xO => idtac
+  | xH => idtac
+  | S => idtac
+  | O => idtac
+  end.
+
 Ltac is_ground_atom var_allowed e :=
   match e with
-  | _ => is_constructor e
-  | _ => is_proj e
-  | _ => is_ind e
   | _ => is_const e; is_ground_const e
+  | _ => is_constructor e; is_number_constructor e
   | _ => is_var e; var_allowed e
-  | _ => lazymatch isZcst e with
-         | true => idtac
-         end
   | _ => fail "not ground"
   end.
 
@@ -128,6 +138,16 @@ Ltac is_ground' var_allowed e :=
   end.
 Ltac is_ground e := is_ground' ltac:(fun _ => fail) e.
 
+Ltac cbv_if_number e :=
+  let t := type of e in
+  lazymatch rdelta t with
+  | Z => eval cbv in e
+  | N => eval cbv in e
+  | nat => eval cbv in e
+  | positive => eval cbv in e
+  | _ => e
+  end.
+
 Inductive groundcbv_delayed :=.
 Ltac groundcbv' e :=
   match e with
@@ -138,7 +158,7 @@ Ltac groundcbv' e :=
       | groundcbv_delayed =>
           lazymatch gsf with
           | groundcbv_delayed => constr:(groundcbv_delayed)
-          | _ => let vx := eval cbv in x in
+          | _ => let vx := cbv_if_number x in
                  constr:(gsf vx)
           end
       | ?gsx =>
@@ -154,12 +174,12 @@ Ltac groundcbv' e :=
       | groundcbv_delayed =>
           lazymatch gP with
           | groundcbv_delayed => constr:(groundcbv_delayed)
-          | _ => let vQ := eval cbv in Q in
+          | _ => let vQ := cbv_if_number Q in
                  constr:(gP -> vQ)
           end
       | ?gQ =>
           lazymatch gP with
-          | groundcbv_delayed => let vP := eval cbv in P in constr:(vP -> gQ)
+          | groundcbv_delayed => let vP := cbv_if_number P in constr:(vP -> gQ)
           | _ => constr:(gP -> gQ)
           end
       end
@@ -191,7 +211,7 @@ Ltac groundcbv' e :=
 with groundcbv e :=
   let e' := groundcbv' e in
   lazymatch e' with
-  | groundcbv_delayed => eval cbv in e
+  | groundcbv_delayed => cbv_if_number e
   | ?e => e
   end.
 
@@ -206,3 +226,10 @@ Ltac groundcbv_in_all :=
   | x := ?t |- _ =>  let t' := groundcbv t in progress change t' in (value of x)
   | |- ?t =>  let t' := groundcbv t in progress change t'
   end.
+
+Goal Z.add 1 3 = Z.of_nat 4 -> True.
+  intros. groundcbv_in_all.
+  match goal with
+  | _: 4%Z = 4%Z |- _ => idtac
+  end.
+Abort.
