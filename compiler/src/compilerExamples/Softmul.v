@@ -84,6 +84,9 @@ Ltac cbn_MachineWidth := cbn [
 #[export] Instance Instruction_inhabited: inhabited Instruction :=
   mk_inhabited (InvalidInstruction 0).
 
+(* typeclasses eauto is for the word.ok sidecondition *)
+#[export] Hint Rewrite @word.of_Z_unsigned using typeclasses eauto : fwd_rewrites.
+
 Section Riscv.
   Context {word: Word.Interface.word 32}.
   Context {word_ok: word.ok word}.
@@ -642,18 +645,73 @@ Section Riscv.
 
   Local Hint Mode word.word - : typeclass_instances.
 
-  (*
-  Lemma save_regs_correct: forall start n R addr initial pcval stacktrash (post: State -> Prop),
-      List.length stacktrash = n ->
-      stackaddr = word.add spval (word.of_Z (4 * (Z.of_nat start))) ->
-      Some initial#"mem" = R \*/ word_array addr stacktrash \*/
-              program addr (map (fun r : Z => IInstruction (Sw RegisterNames.sp r (4 * r)))
-                                (List.unfoldn (BinInt.Z.add 1) n start)) ->
-      (forall m, Some m = R \*/ word_array addr
-              program addr (map (fun r : Z => IInstruction (Sw RegisterNames.sp r (4 * r)))
-                                (List.unfoldn (BinInt.Z.add 1) n start))) ->
-      mcomp_sat (run1 iset) initial post.
-   *)
+  Lemma record_extensionality{T: list (string * Type)}: forall (r1 r2: record.record T),
+    List.Forall (fun '(name, E) => r1#name = r2#name) T -> r1 = r2.
+  Proof.
+    induction T; intros.
+    - clear H.
+      refine (match r1 with
+              | record.Nil =>
+                  match r2 with
+                  | record.Nil => eq_refl
+                  | record.Cons _ _ _ => I
+                  end
+              | record.Cons _ _ _ => I
+              end).
+    - inversion H. subst. clear H. destruct a as [name E].
+      (* TODO proving it generically might require key uniqueness and dependent types
+         hackery, not interested in that right now *)
+  Abort.
+
+  Lemma State_extensionality: forall (r1 r2: State),
+      r1#"regs" = r2#"regs" ->
+      r1#"pc" = r2#"pc" ->
+      r1#"nextPc" = r2#"nextPc" ->
+      r1#"mem" = r2#"mem" ->
+      r1#"log"  = r2#"log"  ->
+      r1#"csrs" = r2#"csrs" ->
+      r1 = r2.
+  Proof.
+    (*
+    refine (fun r1 r2 =>
+      match r1, r2 with
+      | record.Cons _ regs1 (record.Cons _ pc1 (record.Cons _ nextPc1 (record.Cons _ mem1 (record.Cons _ log1 (record.Cons _ csrs1 record.Nil))))), record.Cons _ _ (record.Cons _ _ (record.Cons _ _ (record.Cons _ _ (record.Cons _ _ (record.Cons _ _ record.Nil))))) => _
+      | _, _ => _
+      end).
+     *)
+  Abort.
+
+  Lemma save_regs_correct: forall n start R addr (initial: State) stackaddr oldvals spval
+                                  (post: State -> Prop),
+      List.length oldvals = n ->
+      map.get initial#"regs" RegisterNames.sp = Some spval ->
+      stackaddr = word.add spval (word.of_Z (4 * start)) ->
+      addr = initial#"pc" ->
+      initial#"nextPc" = word.add initial#"pc" (word.of_Z 4) ->
+      regs_initialized initial#"regs" ->
+      seps [stackaddr |-> word_array oldvals;
+            addr |-> program (map (fun r : Z => IInstruction (Sw RegisterNames.sp r (4 * r)))
+                               (List.unfoldn (BinInt.Z.add 1) n start)); R] initial#"mem" /\
+      (forall m vals,
+         map.getmany_of_list initial#"regs" (List.unfoldn (BinInt.Z.add 1) n start) =
+           Some vals ->
+         seps [stackaddr |-> word_array vals;
+            addr |-> program (map (fun r : Z => IInstruction (Sw RegisterNames.sp r (4 * r)))
+                           (List.unfoldn (BinInt.Z.add 1) n start)); R] m ->
+         let newPc := word.add addr (word.of_Z (4 * Z.of_nat n)) in
+         mcomp_sat (run1 RV32I) initial(#"nextPc" := word.add newPc (word.of_Z 4))
+                                       (#"pc" := newPc)(#"mem" := m) post) ->
+      mcomp_sat (run1 RV32I) initial post.
+  Proof.
+    induction n; intros.
+    - match goal with H: _ |- _ => destruct H as [M HPost] end.
+      repeat word_simpl_step_in_hyps.
+      record.simp.
+      eqapply HPost.
+      3: {
+        (* needs StringRecords extensionality! *)
+
+  Abort.
 
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 RV32IM)) initialH post ->
@@ -722,12 +780,6 @@ Section Riscv.
 
       (* Sw sp ra 8 *)
       eapply runsToStep_cps. repeat step.
-
-      (* Can't use fwd/fwd_rewrites here to simplify `word.of_Z (word.unsigned v)` into `v`
-         because of https://github.com/coq/coq/issues/15596:
-
-         Hint Rewrite word.of_Z_unsigned : mydb.
-         Time Timeout 5 rewrite_db mydb in ML'. *)
 
       (* save_regs3to31 *)
       (* Csrr t1 MTVal       t1 := the invalid instruction i that caused the exception *)
