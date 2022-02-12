@@ -743,7 +743,7 @@ Definition chacha20_block_init : \<< word, word, word, word \>> :=
 Require Import Rupicola.Lib.ControlFlow.DownTo.
 
 (* FIXME word/Z conversion *)
-Definition chacha20_block (*256bit*)key (*32bit+96bit*)nonce (*512 bits*)st :=
+Definition chacha20_block' (*256bit*)key (*32bit+96bit*)nonce (*512 bits*)st :=
   let '\< i1, i2, i3, i4 \> := chacha20_block_init in
   let/n st := buf_push st i1 in
   let/n st := buf_push st i2 in
@@ -815,8 +815,10 @@ Notation "'let/n' ( x0 , y0 , z0 , t0 , x1 , y1 , z1 , t1 , x2 , y2 , z2 , t2 , 
    TODO: either prove this equivalent to the above older version
    or directly adapt the proof below to fit this function.
  *)
+
 (* FIXME word/Z conversion *)
-Definition chacha20_block' (*256bit*)key (*32bit+96bit*)nonce (*512 bits*)st :=
+
+Definition chacha20_block (*256bit*)key (*32bit+96bit*)nonce (*512 bits*)st :=
   let '\< i1, i2, i3, i4 \> := chacha20_block_init in
   let/n st := buf_push st i1 in
   let/n st := buf_push st i2 in
@@ -835,46 +837,64 @@ Definition chacha20_block' (*256bit*)key (*32bit+96bit*)nonce (*512 bits*)st :=
   let/n ss := buf_make word 16 in
   let/n ss := buf_append ss st in
   let/n ss := buf_as_array ss in
-  let/n qv0 := array_get st 0 (word.of_Z 0) in
-  let/n qv1 := array_get st 1 (word.of_Z 0) in
-  let/n qv2 := array_get st 2 (word.of_Z 0) in
-  let/n qv3 := array_get st 3 (word.of_Z 0) in
-  let/n qv4 := array_get st 4 (word.of_Z 0) in
-  let/n qv5 := array_get st 5 (word.of_Z 0) in
-  let/n qv6 := array_get st 6 (word.of_Z 0) in
-  let/n qv7 := array_get st 7 (word.of_Z 0) in
-  let/n qv8 := array_get st 8 (word.of_Z 0) in
-  let/n qv9 := array_get st 9 (word.of_Z 0) in
-  let/n qv10 := array_get st 10 (word.of_Z 0) in
-  let/n qv11 := array_get st 11 (word.of_Z 0) in
-  let/n qv12 := array_get st 12 (word.of_Z 0) in
-  let/n qv13 := array_get st 13 (word.of_Z 0) in
-  let/n qv14 := array_get st 14 (word.of_Z 0) in
-  let/n qv15 := array_get st 15 (word.of_Z 0) in
+  
+  let/n qv0 := array_get ss 0 (word.of_Z 0) in
+  let/n qv1 := array_get ss 1 (word.of_Z 0) in
+  let/n qv2 := array_get ss 2 (word.of_Z 0) in
+  let/n qv3 := array_get ss 3 (word.of_Z 0) in
+  let/n qv4 := array_get ss 4 (word.of_Z 0) in
+  let/n qv5 := array_get ss 5 (word.of_Z 0) in
+  let/n qv6 := array_get ss 6 (word.of_Z 0) in
+  let/n qv7 := array_get ss 7 (word.of_Z 0) in
+  let/n qv8 := array_get ss 8 (word.of_Z 0) in
+  let/n qv9 := array_get ss 9 (word.of_Z 0) in
+  let/n qv10 := array_get ss 10 (word.of_Z 0) in
+  let/n qv11 := array_get ss 11 (word.of_Z 0) in
+  let/n qv12 := array_get ss 12 (word.of_Z 0) in
+  let/n qv13 := array_get ss 13 (word.of_Z 0) in
+  let/n qv14 := array_get ss 14 (word.of_Z 0) in
+  let/n qv15 := array_get ss 15 (word.of_Z 0) in
   let/n (qv0,qv1,qv2,qv3,
-          qv4,qv5,qv6,qv7,
-          qv8,qv9,qv10,qv11,
-          qv12,qv13,qv14,qv15) :=
-    Nat.iter 10 (fun '\<qv0, qv1, qv2, qv3,
-                        qv4, qv5, qv6, qv7,
-                        qv8, qv9, qv10,qv11,
-                        qv12,qv13,qv14,qv15\>  =>
-     let/n (qv0, qv4, qv8,qv12) := quarter qv0  qv4  qv8 qv12 in
-     let/n (qv0, qv4, qv8,qv12) := quarter qv1  qv5  qv9 qv13 in
-     let/n (qv0, qv4, qv8,qv12) := quarter qv2  qv6 qv10 qv14 in
-     let/n (qv0, qv4, qv8,qv12) := quarter qv3  qv7 qv11 qv15 in
-     let/n (qv0, qv4, qv8,qv12) := quarter qv0  qv5 qv10 qv15 in
-     let/n (qv0, qv4, qv8,qv12) := quarter qv1  qv6 qv11 qv12 in
-     let/n (qv0, qv4, qv8,qv12) := quarter qv2  qv7  qv8 qv13 in
-     let/n (qv0, qv4, qv8,qv12) := quarter qv3  qv4  qv9 qv14 in
-     \<qv0,qv1,qv2,qv3,
-       qv4,qv5,qv6,qv7,
-       qv8,qv9,qv10,qv11,
-       qv12,qv13,qv14,qv15\>)
-     \<qv0,qv1,qv2,qv3,
-       qv4,qv5,qv6,qv7,
-       qv8,qv9,qv10,qv11,
-       qv12,qv13,qv14,qv15\> in
+         qv4,qv5,qv6,qv7,
+         qv8,qv9,qv10,qv11,
+         qv12,qv13,qv14,qv15) :=
+     Nat.iter 10 (fun '\<qv0, qv1, qv2, qv3,
+                      qv4, qv5, qv6, qv7,
+                      qv8, qv9, qv10,qv11,
+                      qv12,qv13,qv14,qv15\>  =>
+                    let/n (qv0, qv4, qv8,qv12) := quarter qv0  qv4  qv8 qv12 in
+                    let/n (qv1, qv5, qv9,qv13) := quarter qv1  qv5  qv9 qv13 in
+                    let/n (qv2, qv6, qv10,qv14) := quarter qv2  qv6 qv10 qv14 in
+                    let/n (qv3, qv7, qv11,qv15) := quarter qv3  qv7 qv11 qv15 in
+                    let/n (qv0, qv5, qv10,qv15) := quarter qv0  qv5 qv10 qv15 in
+                    let/n (qv1, qv6, qv11,qv12) := quarter qv1  qv6 qv11 qv12 in
+                    let/n (qv2, qv7, qv8,qv13) := quarter qv2  qv7  qv8 qv13 in
+                    let/n (qv3, qv4, qv9,qv14) := quarter qv3  qv4  qv9 qv14 in
+                    \<qv0,qv1,qv2,qv3,
+                    qv4,qv5,qv6,qv7,
+                    qv8,qv9,qv10,qv11,
+                    qv12,qv13,qv14,qv15\>)
+              \<qv0,qv1,qv2,qv3,
+     qv4,qv5,qv6,qv7,
+     qv8,qv9,qv10,qv11,
+     qv12,qv13,qv14,qv15\> in
+
+  let/n ss := array_put ss 0 qv0 in
+  let/n ss := array_put ss 1 qv1 in
+  let/n ss := array_put ss 2 qv2 in
+  let/n ss := array_put ss 3 qv3 in
+  let/n ss := array_put ss 4 qv4 in
+  let/n ss := array_put ss 5 qv5 in
+  let/n ss := array_put ss 6 qv6 in
+  let/n ss := array_put ss 7 qv7 in
+  let/n ss := array_put ss 8 qv8 in
+  let/n ss := array_put ss 9 qv9 in
+  let/n ss := array_put ss 10 qv10 in
+  let/n ss := array_put ss 11 qv11 in
+  let/n ss := array_put ss 12 qv12 in
+  let/n ss := array_put ss 13 qv13 in
+  let/n ss := array_put ss 14 qv14 in
+  let/n ss := array_put ss 15 qv15 in
 
   let/n st := List.map (fun '(st_i, ss_i) =>
                           let/n st_i := st_i + ss_i in
@@ -894,9 +914,9 @@ Qed.
 
 Lemma chacha20_block_ok key nonce :
   Spec.chacha20_block key nonce =
-  chacha20_block key nonce [].
+  chacha20_block' key nonce [].
 Proof.
-  unfold Spec.chacha20_block, chacha20_block, chacha20_block_init, nlet.
+  unfold Spec.chacha20_block, chacha20_block', chacha20_block_init, nlet.
   autounfold with poly.
 
   simpl (map le_combine (chunk 4 (list_byte_of_string _))); cbn [List.app].
@@ -906,6 +926,8 @@ Proof.
   rewrite map_combine_separated, map_combine_comm by (cbn; intros; ring).
   cbn [List.map]; rewrite List.map_app.
   repeat f_equal.
+
+  About Nat_iter_rew_inv.
 
   eapply Nat_iter_rew_inv with (P := Forall (in_bounds 32)); intros.
   - eauto 10 using quarterround_in_bounds.
@@ -917,23 +939,342 @@ Proof.
   - cbn [List.map]; rewrite List.map_app; reflexivity.
 Qed.
 
+Lemma quarterround_eq :
+  forall ss a b c d,
+    quarterround a b c d ss =
+    let '\<qv0, qv1, qv2, qv3\> := (quarter (nth a ss (word.of_Z 0))
+                                            (nth b ss (word.of_Z 0))
+                                            (nth c ss (word.of_Z 0))
+                                            (nth d ss (word.of_Z 0))) in
+upd (upd (upd (upd ss a qv0) b qv1) c qv2) d qv3.
+Proof.
+  intros.
+  unfold quarterround, nlet, array_put.
+  reflexivity.
+Qed.
+
+Ltac reduce_nth_hyp :=
+  lazymatch goal with
+  | [ |- not (_%nat = _%nat) ] => lia
+  | [ |- (_ < length _)%nat ] => rewrite upd_length
+  | [ H : nth ?k (upd ?l ?k _) _ = ?x |- context [?x] ] => rewrite nth_upd_same in H
+  | [ H : nth ?k (upd ?l ?k2 _) _ = ?x |- context [?x] ] => rewrite nth_upd_diff in H
+  end.
+
+Ltac reduce_nth_goal :=
+  repeat lazymatch goal with
+  | [ |- nth ?k (upd ?l ?k _) _ = _ ] => rewrite nth_upd_same
+  | [ |- nth ?k (upd ?l ?k2 _) _ = _ ] => rewrite nth_upd_diff
+  end;
+  try reflexivity;
+  try lia;
+  try repeat rewrite upd_length.
+
+Definition put_ss (ss : array_t word) p :=
+  let/n (qv0,qv1,qv2,qv3,
+         qv4,qv5,qv6,qv7,
+         qv8,qv9,qv10,qv11,
+         qv12,qv13,qv14,qv15) := p in
+  let/n ss := array_put ss 0 qv0 in
+  let/n ss := array_put ss 1 qv1 in
+  let/n ss := array_put ss 2 qv2 in
+  let/n ss := array_put ss 3 qv3 in
+  let/n ss := array_put ss 4 qv4 in
+  let/n ss := array_put ss 5 qv5 in
+  let/n ss := array_put ss 6 qv6 in
+  let/n ss := array_put ss 7 qv7 in
+  let/n ss := array_put ss 8 qv8 in
+  let/n ss := array_put ss 9 qv9 in
+  let/n ss := array_put ss 10 qv10 in
+  let/n ss := array_put ss 11 qv11 in
+  let/n ss := array_put ss 12 qv12 in
+  let/n ss := array_put ss 13 qv13 in
+  let/n ss := array_put ss 14 qv14 in
+  let/n ss := array_put ss 15 qv15 in
+  ss.
+
+Ltac simplify_quarterround :=
+   lazymatch goal with
+    | [ |- context [ quarterround ?a0 ?b0 ?c0 ?d0 (upd ?inner ?k ?def) ] ] =>
+      set inner;
+        rewrite quarterround_eq with (a := a0) (b := b0) (c := c0) (d := d0)
+    end;
+   repeat straightline.
+
+Ltac simplify_nth :=
+  lazymatch goal with
+  | [ |- context [ (nth ?k ?l ?def) ] ] =>
+    set (nth k l def);
+    try lazymatch goal with
+        | [ r := nth k l def |- _ ] => unfold l in r
+        end
+  end.
+
+Ltac rewrite_r rk :=
+  assert (Heq : rk = rk) by reflexivity;
+  unfold rk in Heq at 1;
+  repeat reduce_nth_hyp;
+  try lia;
+  rewrite <- Heq;
+  clear Heq.
+
+Ltac rewrite_quarter :=
+  simplify_quarterround;
+  lazymatch goal with
+  | [ |- context [nth _ (upd ?list ?index ?val)]] =>
+    set (upd list index val)
+  end.
+
+
+Ltac rewrite_r_auto :=
+  lazymatch goal with
+  | [ |- context [quarter ?r0 ?r1 ?r2 ?r3] ] =>
+    rewrite_r r0;
+    rewrite_r r1;
+    rewrite_r r2;
+    rewrite_r r3
+  end.
+
+Lemma chacha20_blocks_equiv :
+  forall ss,
+    length ss = 16%nat ->
+    (let/n ss := Nat.iter 10 (fun ss =>
+                                let/n ss := quarterround  0  4  8 12  ss in
+                                let/n ss := quarterround  1  5  9 13  ss in
+                                let/n ss := quarterround  2  6 10 14  ss in
+                                let/n ss := quarterround  3  7 11 15  ss in
+                                let/n ss := quarterround  0  5 10 15  ss in
+                                let/n ss := quarterround  1  6 11 12  ss in
+                                let/n ss := quarterround  2  7  8 13  ss in
+                                let/n ss := quarterround  3  4  9 14  ss in
+                                ss) ss in
+     ss) =
+    (let/n qv0 := array_get ss 0 (word.of_Z 0) in
+     let/n qv1 := array_get ss 1 (word.of_Z 0) in
+     let/n qv2 := array_get ss 2 (word.of_Z 0) in
+     let/n qv3 := array_get ss 3 (word.of_Z 0) in
+     let/n qv4 := array_get ss 4 (word.of_Z 0) in
+     let/n qv5 := array_get ss 5 (word.of_Z 0) in
+     let/n qv6 := array_get ss 6 (word.of_Z 0) in
+     let/n qv7 := array_get ss 7 (word.of_Z 0) in
+     let/n qv8 := array_get ss 8 (word.of_Z 0) in
+     let/n qv9 := array_get ss 9 (word.of_Z 0) in
+     let/n qv10 := array_get ss 10 (word.of_Z 0) in
+     let/n qv11 := array_get ss 11 (word.of_Z 0) in
+     let/n qv12 := array_get ss 12 (word.of_Z 0) in
+     let/n qv13 := array_get ss 13 (word.of_Z 0) in
+     let/n qv14 := array_get ss 14 (word.of_Z 0) in
+     let/n qv15 := array_get ss 15 (word.of_Z 0) in
+     let/n (qv0,qv1,qv2,qv3,
+            qv4,qv5,qv6,qv7,
+            qv8,qv9,qv10,qv11,
+            qv12,qv13,qv14,qv15) :=
+        Nat.iter 10 (fun '\<qv0, qv1, qv2, qv3,
+                         qv4, qv5, qv6, qv7,
+                         qv8, qv9, qv10,qv11,
+                         qv12,qv13,qv14,qv15\>  =>
+                       let/n (qv0, qv4, qv8,qv12) := quarter qv0  qv4  qv8 qv12 in
+                       let/n (qv1, qv5, qv9,qv13) := quarter qv1  qv5  qv9 qv13 in
+                       let/n (qv2, qv6, qv10,qv14) := quarter qv2  qv6 qv10 qv14 in
+                       let/n (qv3, qv7, qv11,qv15) := quarter qv3  qv7 qv11 qv15 in
+                       let/n (qv0, qv5, qv10,qv15) := quarter qv0  qv5 qv10 qv15 in
+                       let/n (qv1, qv6, qv11,qv12) := quarter qv1  qv6 qv11 qv12 in
+                       let/n (qv2, qv7, qv8,qv13) := quarter qv2  qv7  qv8 qv13 in
+                       let/n (qv3, qv4, qv9,qv14) := quarter qv3  qv4  qv9 qv14 in
+                       \<qv0,qv1,qv2,qv3,
+                       qv4,qv5,qv6,qv7,
+                       qv8,qv9,qv10,qv11,
+                       qv12,qv13,qv14,qv15\>)
+                 \<qv0,qv1,qv2,qv3,
+        qv4,qv5,qv6,qv7,
+        qv8,qv9,qv10,qv11,
+        qv12,qv13,qv14,qv15\> in
+     
+     let/n ss := array_put ss 0 qv0 in
+     let/n ss := array_put ss 1 qv1 in
+     let/n ss := array_put ss 2 qv2 in
+     let/n ss := array_put ss 3 qv3 in
+     let/n ss := array_put ss 4 qv4 in
+     let/n ss := array_put ss 5 qv5 in
+     let/n ss := array_put ss 6 qv6 in
+     let/n ss := array_put ss 7 qv7 in
+     let/n ss := array_put ss 8 qv8 in
+     let/n ss := array_put ss 9 qv9 in
+     let/n ss := array_put ss 10 qv10 in
+     let/n ss := array_put ss 11 qv11 in
+     let/n ss := array_put ss 12 qv12 in
+     let/n ss := array_put ss 13 qv13 in
+     let/n ss := array_put ss 14 qv14 in
+     let/n ss := array_put ss 15 qv15 in
+     ss).
+Proof.
+  intros.
+  repeat straightline.
+  unfold nlet at 1.
+  lazymatch goal with
+  | [ |- context [Nat.iter _ ?x _] ] => set x
+  end.
+  lazymatch goal with
+  | [ |- ?x = _ ] => set x
+  end.
+  lazymatch goal with
+  | [ |- context [Nat.iter _ ?x _] ] => set x
+  end.
+  lazymatch goal with
+  | [ |- _ = ?x ] => set x
+  end.
+  unfold l0.
+  set (\< array_get ss 0 (word.of_Z 0),
+       array_get ss 1 (word.of_Z 0),
+       array_get ss 2 (word.of_Z 0),
+       array_get ss 3 (word.of_Z 0),
+       array_get ss 4 (word.of_Z 0),
+       array_get ss 5 (word.of_Z 0),
+       array_get ss 6 (word.of_Z 0),
+       array_get ss 7 (word.of_Z 0),
+       array_get ss 8 (word.of_Z 0),
+       array_get ss 9 (word.of_Z 0),
+       array_get ss 10 (word.of_Z 0),
+       array_get ss 11 (word.of_Z 0),
+       array_get ss 12 (word.of_Z 0),
+       array_get ss 13 (word.of_Z 0),
+       array_get ss 14 (word.of_Z 0),
+       array_get ss 15 (word.of_Z 0) \>).
+
+  specialize @Nat_iter_rew with (fA := p0) (fB := l) (b := ss) (a := p1) (g := put_ss ss); intros.
+  rewrite <- H0.
+
+  - unfold put_ss.
+    unfold nlet.
+    fold p1.
+    set (Nat.iter 10 p0 p1).
+    unfold l1, nlet; reflexivity.
+    
+  - intros.
+    unfold l, put_ss.
+    destruct a as (?&?&?&?&?&?&?&?&?&?&?&?&?&?&?&?) in *.
+    unfold nlet, array_put.
+    subst p1.
+    subst p0.
+    subst l.
+
+    lazymatch goal with
+    | [ |- ?x = _ ] => set x
+    end.
+   
+    destruct (quarter car car3 car7 car11) as (?&?&?&?) eqn:q.
+    destruct (quarter car0 car4 car8 car12) as (?&?&?&?) eqn:q0.
+    destruct (quarter car1 car5 car9 car13) as (?&?&?&?) eqn:q1.
+    destruct (quarter car2 car6 car10 cdr) as (?&?&?&?) eqn:q2.
+    destruct (quarter car14 car18 car22 cdr3) as (?&?&?&?) eqn:q3.
+    destruct (quarter car17 car21 car25 cdr0) as (?&?&?&?) eqn:q4.
+    destruct (quarter car20 car24 car16 cdr1) as (?&?&?&?) eqn:q5.
+    destruct (quarter car23 car15 car19 cdr2) as (?&?&?&?) eqn:q6.
+
+    rewrite_quarter.
+    unfold l2 in l0.
+    repeat simplify_nth.
+    rewrite_r_auto.
+    rewrite q; clear q.
+    repeat straightline.
+    
+    rewrite_quarter.
+    unfold l0 in l1.
+    unfold l1 in l2.
+    repeat simplify_nth.
+    rewrite_r_auto.
+    rewrite q0; clear q0.
+    repeat straightline.
+
+    rewrite_quarter.
+    unfold l0, l2 in l1.
+    repeat simplify_nth.
+    rewrite_r_auto.
+    rewrite q1; clear q1.
+    repeat straightline.
+
+    rewrite_quarter.
+    unfold l0, l1 in l2.
+    repeat simplify_nth.
+    rewrite_r_auto.
+    rewrite q2; clear q2.
+    repeat straightline.
+
+    rewrite_quarter.
+    unfold l0, l2 in l1.
+    repeat simplify_nth.
+    rewrite_r_auto.
+    rewrite q3; clear q3.
+    repeat straightline.
+
+    rewrite_quarter.
+    unfold l0, l1 in l2.
+    repeat simplify_nth.
+    rewrite_r_auto.
+    rewrite q4; clear q4.
+    repeat straightline.
+
+    rewrite_quarter.
+    unfold l0, l2 in l1.
+    repeat simplify_nth.
+    rewrite_r_auto.
+    rewrite q5; clear q5.
+    repeat straightline.
+
+    rewrite_quarter.
+    unfold l0, l1 in l2.
+    repeat simplify_nth.
+    rewrite_r_auto.
+    rewrite q6; clear q6.
+
+    unfold l0.
+    unfold l2.
+    unfold l.
+    
+    admit.
+
+  - unfold p1; fold p1.
+    unfold array_put.
+    assert (forall (k : nat) default,
+               k < 16 -> ss = (upd ss k (array_get ss k default))).
+    { intros.
+      unfold array_get.
+      admit.
+    }
+    
+    unfold p1, put_ss, nlet; cbn [P2.cdr P2.car].
+    repeat rewrite <- H1; easy.
+    
+Admitted.
+
+Lemma chacha20_block_ok' key nonce :
+  chacha20_block' key nonce [] =
+  chacha20_block key nonce [].
+Proof.
+  unfold chacha20_block, chacha20_block'.
+  pose chacha20_blocks_equiv.
+  unfold nlet in *.
+  rewrite e.
+  reflexivity.
+Qed.
+
 Definition chacha20_encrypt key start nonce plaintext :=
   let plaintext := array_map_chunked plaintext 64 (fun idx chunk => (* FIXME nplaintext *)
-    let counter := word.add (word.of_Z (Z.of_nat start)) (word.of_Z (Z.of_nat idx)) in
-    let scratch := buf_make word 4 in
-    let scratch := buf_push scratch counter in
-    let nonce := w32s_of_bytes nonce in
-    let scratch := buf_append scratch nonce in (* FIXME? You can save a scratch buffer by doing the nonce concatenation of chacha20 here instead *)
-    let nonce := bytes_of_w32s nonce in
-    let scratch := buf_as_array scratch in
-    let scratch := bytes_of_w32s scratch in
-    let st := buf_make word 16 in
-    let st := chacha20_block key scratch st in
-    let chunk := List.map (fun '(st_i, ss_i) =>
-                            let st_i := byte.xor st_i ss_i in
-                            st_i)
-                         (combine chunk st) in
-    chunk) in
+                                                     let counter := word.add (word.of_Z (Z.of_nat start)) (word.of_Z (Z.of_nat idx)) in
+                                                     let scratch := buf_make word 4 in
+                                                     let scratch := buf_push scratch counter in
+                                                     let nonce := w32s_of_bytes nonce in
+                                                     let scratch := buf_append scratch nonce in (* FIXME? You can save a scratch buffer by doing the nonce concatenation of chacha20 here instead *)
+                                                     let nonce := bytes_of_w32s nonce in
+                                                     let scratch := buf_as_array scratch in
+                                                     let scratch := bytes_of_w32s scratch in
+                                                     let st := buf_make word 16 in
+                                                     let st := chacha20_block key scratch st in
+                                                     let chunk := List.map (fun '(st_i, ss_i) =>
+                                                                              let st_i := byte.xor st_i ss_i in
+                                                                              st_i)
+                                                                           (combine chunk st) in
+                                                     chunk) in
   plaintext.
 
 Lemma chacha20_encrypt_ok key start nonce plaintext :
