@@ -9,8 +9,7 @@ Require Import riscv.Spec.Machine.
 Require Import riscv.Platform.Memory.
 Require Import riscv.Spec.CSRFile.
 Require Import riscv.Utility.Utility.
-Require Import riscv.Utility.StringRecords.
-Import RecordNotations. (* Warnings are spurious, COQBUG https://github.com/coq/coq/issues/13058 *)
+Require Import riscv.Utility.RecordSetters.
 Require Import coqutil.Decidable.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Map.Interface.
@@ -84,8 +83,8 @@ Ltac cbn_MachineWidth := cbn [
 Section Riscv.
   Context {word: Word.Interface.word 32}.
   Context {word_ok: word.ok word}.
-  Context {mem: map.map word byte}.
-  Context {mem_ok: map.ok mem}.
+  Context {Mem: map.map word byte}.
+  Context {Mem_ok: map.ok Mem}.
   Context {registers: map.map Z word}.
   Context {registers_ok: map.ok registers}.
 
@@ -129,7 +128,7 @@ Section Riscv.
   Lemma invert_fetch0: forall initial post k,
       mcomp_sat (pc <- Machine.getPC; i <- Machine.loadWord Fetch pc; k i)
         initial post ->
-      exists w, load_bytes 4 initial#"mem" initial#"pc" = Some w /\
+      exists w, load_bytes 4 initial.(mem) initial.(pc) = Some w /\
                 mcomp_sat (k w) initial post.
   Proof.
     intros. unfold mcomp_sat in *. cbn -[HList.tuple load_bytes] in H.
@@ -139,7 +138,7 @@ Section Riscv.
 
   Lemma invert_fetch: forall initial post iset,
       mcomp_sat (run1 iset) initial post ->
-      exists R i, Some initial#"mem" = R \*/ instr initial#"pc" i /\
+      exists R i, Some initial.(mem) = R \*/ instr initial.(pc) i /\
                   verify i iset /\
                   mcomp_sat (Execute.execute i;; endCycleNormal) initial post.
   Proof.
@@ -147,26 +146,26 @@ Section Riscv.
   Admitted.
 
   Definition store'(n: nat)(ctxid: SourceType)(a: word)(v: tuple byte n)(mach: State)(post: State -> Prop) :=
-    exists (R: option mem) (v_old: tuple byte n),
-      Some mach#"mem" = R \*/ bytes a v_old /\ post mach(#"mem" := mmap.force (R \*/ bytes a v)).
+    exists (R: option Mem) (v_old: tuple byte n),
+      Some mach.(mem) = R \*/ bytes a v_old /\ post { mach with mem := mmap.force (R \*/ bytes a v) }.
 
   Definition store_orig(n: nat)(ctxid: SourceType)(a: word) v (mach: State)(post: State -> Prop) :=
-    match Memory.store_bytes n mach#"mem" a v with
-    | Some m => post mach(#"mem" := m)
+    match Memory.store_bytes n mach.(mem) a v with
+    | Some m => post { mach with mem := m }
     | None => False
     end.
 
   Definition load'(n: nat)(ctxid: SourceType)(a: word)(mach: State)(post: tuple byte n -> State -> Prop): Prop :=
-    exists (R: option mem) (v: tuple byte n), Some mach#"mem" = R \*/ bytes a v /\ post v mach.
+    exists (R: option Mem) (v: tuple byte n), Some mach.(mem) = R \*/ bytes a v /\ post v mach.
 
   Definition load_orig(n: nat)(ctxid: SourceType)(a: word)(mach: State)(post: tuple byte n -> State -> Prop) :=
-    match Memory.load_bytes n mach#"mem" a with
+    match Memory.load_bytes n mach.(mem) a with
     | Some v => post v mach
     | None => False
     end.
 
-  Lemma build_fetch_one_instr: forall (initial: State) iset post (instr1 instr2: Instruction) (R: option mem),
-      Some initial#"mem" = R \*/ (instr initial#"pc" instr1) ->
+  Lemma build_fetch_one_instr: forall (initial: State) iset post (instr1 instr2: Instruction) (R: option Mem),
+      Some initial.(mem) = R \*/ (instr initial.(pc) instr1) ->
       decode iset (encode instr1) = instr2 ->
       mcomp_sat (Execute.execute instr2;; endCycleNormal) initial post ->
       mcomp_sat (run1 iset) initial post.
@@ -197,9 +196,9 @@ Section Riscv.
       ZnWords.
   Qed.
 
-  Lemma build_fetch: forall (initial: State) iset post addr p (instr1 instr2: Instruction) (R: option mem),
-      Some initial#"mem" = R \*/ (program addr p) ->
-      let offset := word.unsigned (word.sub initial#"pc" addr) in
+  Lemma build_fetch: forall (initial: State) iset post addr p (instr1 instr2: Instruction) (R: option Mem),
+      Some initial.(mem) = R \*/ (program addr p) ->
+      let offset := word.unsigned (word.sub initial.(pc) addr) in
       offset mod 4 = 0 ->
       nth_error p (Z.to_nat (offset / 4)) = Some instr1 ->
       decode iset (encode instr1) = instr2 ->
@@ -321,32 +320,32 @@ Section Riscv.
   Qed.
 
   Definition basic_CSRFields_supported(r: State): Prop :=
-    map.get r#"csrs" CSRField.MTVal <> None /\
-    map.get r#"csrs" CSRField.MPP <> None /\
-    map.get r#"csrs" CSRField.MPIE <> None /\
-    map.get r#"csrs" CSRField.MEPC <> None /\
-    map.get r#"csrs" CSRField.MCauseCode <> None.
+    map.get r.(csrs) CSRField.MTVal <> None /\
+    map.get r.(csrs) CSRField.MPP <> None /\
+    map.get r.(csrs) CSRField.MPIE <> None /\
+    map.get r.(csrs) CSRField.MEPC <> None /\
+    map.get r.(csrs) CSRField.MCauseCode <> None.
 
   Definition related(r1 r2: State): Prop :=
-    r1#"regs" = r2#"regs" /\
-    r1#"pc" = r2#"pc" /\
-    r1#"nextPc" = r2#"nextPc" /\
-    r1#"log" = r2#"log" /\
-    r1#"csrs" = map.empty /\
+    r1.(regs) = r2.(regs) /\
+    r1.(pc) = r2.(pc) /\
+    r1.(nextPc) = r2.(nextPc) /\
+    r1.(log) = r2.(log) /\
+    r1.(csrs) = map.empty /\
     basic_CSRFields_supported r2 /\
     exists mtvec_base mscratch stacktrash,
-      map.get r2#"csrs" CSRField.MTVecBase = Some mtvec_base /\
-      map.get r2#"csrs" CSRField.MScratch = Some mscratch /\
+      map.get r2.(csrs) CSRField.MTVecBase = Some mtvec_base /\
+      map.get r2.(csrs) CSRField.MScratch = Some mscratch /\
       List.length stacktrash = 32%nat /\
-      Some r2#"mem" = Some r1#"mem" \*/
+      Some r2.(mem) = Some r1.(mem) \*/
                       word_array (word.of_Z mscratch) stacktrash \*/
                       program (word.of_Z (mtvec_base * 4)) handler_insts /\
-      regs_initialized r2#"regs".
+      regs_initialized r2.(regs).
 
   Lemma related_preserves_load_bytes: forall n sH sL a w,
       related sH sL ->
-      load_bytes n sH#"mem" a = Some w ->
-      load_bytes n sL#"mem" a = Some w.
+      load_bytes n sH.(mem) a = Some w ->
+      load_bytes n sL.(mem) a = Some w.
   Proof.
   Admitted.
 
@@ -386,7 +385,7 @@ Section Riscv.
     simp.
     destruct a; cbn [run_primitive] in *.
     - exists initialH. intuition (congruence || eauto 10).
-    - exists initialH(#"regs" := setReg initialH#"regs" z r). record.simp.
+    - exists { initialH with regs ::= setReg z r }. record.simp.
       unfold setReg in *. destr (Z.eq_dec z 0). 1: intuition (congruence || eauto 10).
       intuition (congruence || eauto 10 using preserve_regs_initialized_after_put).
     - eapply load_preserves_related; eauto.
@@ -439,12 +438,12 @@ Section Riscv.
 (*
   Lemma go_exception: forall iset initial post R,
       R \*/
-      runsTo (mcomp_sat (run1 iset)) initial(#"pc" := ini post.
+      runsTo (mcomp_sat (run1 iset)) initial(.(pc) := ini post.
       runsTo (mcomp_sat (run1 iset)) initial post.
 *)
 
   Lemma mcomp_sat_endCycleNormal: forall (mach: State) (post: State -> Prop),
-      post mach(#"pc" := mach#"nextPc")(#"nextPc" := word.add mach#"nextPc" (word.of_Z 4)) ->
+      post { mach with pc := mach.(nextPc); nextPc ::= word.add (word.of_Z 4) } ->
       mcomp_sat endCycleNormal mach post.
   Proof. intros. assumption. Qed.
 
@@ -455,12 +454,12 @@ Section Riscv.
   Proof. eapply free.interpret_bind. apply weaken_run_primitive. Qed.
 
   Lemma interpret_getPC: forall (initial: State) (postF : word -> State -> Prop) (postA : State -> Prop),
-      postF initial#"pc" initial ->
+      postF initial.(pc) initial ->
       free.interpret run_primitive getPC initial postF postA.
   Proof. intros *. exact id. Qed.
 
-  Lemma interpret_setPC: forall (m: State) (postF : unit -> State -> Prop) (postA : State -> Prop) v,
-      postF tt m(#"nextPc" := v) ->
+  Lemma interpret_setPC: forall (m: State) (postF : unit -> State -> Prop) (postA : State -> Prop) (v: word),
+      postF tt { m with nextPc := v } ->
       free.interpret run_primitive (setPC v) m postF postA.
   Proof. intros *. exact id. Qed.
 
@@ -478,7 +477,7 @@ Section Riscv.
 
   Lemma interpret_getRegister: forall (initial: State) (postF: word -> State -> Prop) (postA: State -> Prop) r v,
       r <> 0 ->
-      map.get initial#"regs" r = Some v ->
+      map.get initial.(regs) r = Some v ->
       postF v initial ->
       free.interpret run_primitive (getRegister r) initial postF postA.
   Proof.
@@ -488,8 +487,8 @@ Section Riscv.
   (* better wrt evar creation order *)
   Lemma interpret_getRegister': forall (initial: State) (postF: word -> State -> Prop) (postA: State -> Prop) r,
       0 < r < 32 ->
-      regs_initialized initial#"regs" ->
-      (forall v, map.get initial#"regs" r = Some v -> postF v initial) ->
+      regs_initialized initial.(regs) ->
+      (forall v, map.get initial.(regs) r = Some v -> postF v initial) ->
       free.interpret run_primitive (getRegister r) initial postF postA.
   Proof.
     intros. specialize (H0 _ H). destruct H0. eapply interpret_getRegister. 1: blia.
@@ -498,7 +497,7 @@ Section Riscv.
 
   Lemma interpret_setRegister: forall (initial: State) (postF: unit -> State -> Prop) (postA: State -> Prop) r v,
       r <> 0 ->
-      postF tt initial(#"regs" := map.put initial#"regs" r v) ->
+      postF tt { initial with regs ::= map.set r v } ->
       free.interpret run_primitive (setRegister r v) initial postF postA.
   Proof.
     intros. simpl. unfold setReg. destr (Z.eq_dec r 0). 1: exfalso; congruence. assumption.
@@ -510,14 +509,14 @@ Section Riscv.
   Proof. intros *. exact id. Qed.
 
   Lemma interpret_getCSRField: forall (m: State) (postF : Z -> State -> Prop) (postA : State -> Prop) fld z,
-      map.get m#"csrs" fld = Some z ->
+      map.get m.(csrs) fld = Some z ->
       postF z m ->
       free.interpret run_primitive (getCSRField fld) m postF postA.
   Proof. intros. cbn -[map.get map.rep]. rewrite H. assumption. Qed.
 
   Lemma interpret_setCSRField: forall (m: State) (postF : _->_->Prop) (postA : State -> Prop) fld z,
-      map.get m#"csrs" fld <> None ->
-      postF tt m(#"csrs" := map.put m#"csrs" fld z) ->
+      map.get m.(csrs) fld <> None ->
+      postF tt { m with csrs ::= map.set fld z } ->
       free.interpret run_primitive (setCSRField fld z) m postF postA.
   Proof.
     intros. cbn -[map.get map.rep]. destruct_one_match. 1: assumption. congruence.
@@ -525,8 +524,8 @@ Section Riscv.
 
   Lemma run_store: forall n addr (v_old v_new: tuple byte n) R (initial: State) (kind: SourceType)
                           (post: State -> Prop),
-      Some initial#"mem" = R \*/ bytes addr v_old ->
-      (forall m: mem, Some m = R \*/ bytes addr v_new -> post initial(#"mem" := m)) ->
+      Some initial.(mem) = R \*/ bytes addr v_old ->
+      (forall m: Mem, Some m = R \*/ bytes addr v_new -> post { initial with mem := m }) ->
       MinimalCSRs.store n kind addr v_new initial post.
   Proof.
     intros. unfold store, store_bytes.
@@ -534,8 +533,8 @@ Section Riscv.
 
   Lemma interpret_storeWord: forall addr (v_old v_new: tuple byte 4) R (initial: State)
                                     (postF: unit -> State -> Prop) (postA: State -> Prop),
-      Some initial#"mem" = R \*/ bytes addr v_old ->
-      (forall m: mem, Some m = R \*/ bytes addr v_new -> postF tt initial(#"mem" := m)) ->
+      Some initial.(mem) = R \*/ bytes addr v_old ->
+      (forall m, Some m = R \*/ bytes addr v_new -> postF tt {initial with mem := m}) ->
       free.interpret run_primitive (Machine.storeWord Execute addr v_new) initial postF postA.
   Proof.
     (* Note: some unfolding/conversion is going on here that we prefer to control with
@@ -547,20 +546,6 @@ Section Riscv.
       postF Machine m -> (* we're always in machine mode *)
       free.interpret run_primitive getPrivMode m postF postA.
   Proof. intros. cbn -[map.get map.rep]. assumption. Qed.
-
-  Ltac simpl_get_set :=
-    match goal with
-    | |- context[?getset] => lazymatch getset with
-                             | ?R(#?n := ?v)#?n => change getset with v
-                             end
-    end.
-
-  Ltac simpl_set_set :=
-    match goal with
-    | |- context[?setset] => lazymatch setset with
-                             | ?R(#?n := ?v)(#?n := ?v') => change setset with R(#n := v')
-                             end
-    end.
 
   Ltac program_index l :=
     lazymatch l with
@@ -607,7 +592,8 @@ Section Riscv.
     | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with B
     | |- _ => progress record.simp
     | |- _ => progress change (CSR.lookupCSR MScratch) with CSR.MScratch
-    | |- _ => rewrite !map.get_put_diff by (unfold RegisterNames.sp, RegisterNames.ra; congruence)
+    | |- _ => unfold map.set; rewrite !map.get_put_diff
+                by (unfold RegisterNames.sp, RegisterNames.ra; congruence)
     | |- mcomp_sat (Monads.Bind _ _) _ _ => eapply mcomp_sat_bind
     | |- free.interpret run_primitive ?x _ _ _ =>
       lazymatch x with
@@ -655,7 +641,7 @@ Section Riscv.
   Lemma save_regs_correct: forall start n R addr initial pcval stacktrash (post: State -> Prop),
       List.length stacktrash = n ->
       stackaddr = word.add spval (word.of_Z (4 * (Z.of_nat start))) ->
-      Some initial#"mem" = R \*/ word_array addr stacktrash \*/
+      Some initial.(mem) = R \*/ word_array addr stacktrash \*/
               program addr (map (fun r : Z => IInstruction (Sw RegisterNames.sp r (4 * r)))
                                 (List.unfoldn (BinInt.Z.add 1) n start)) ->
       (forall m, Some m = R \*/ word_array addr
@@ -726,7 +712,7 @@ Section Riscv.
         with (word.add (word.of_Z mscratch) (word.of_Z 8)) in * by ring.
 
       (* step through handler code *)
-
+(*
       (* Csrrw sp sp MScratch *)
       eapply runsToStep_cps. repeat step.
 
@@ -845,6 +831,7 @@ Section Riscv.
 
     Unshelve.
     all: try exact (fun _ => True).
-  Qed.
+  Qed. *)
+  Abort.
 
 End Riscv.
