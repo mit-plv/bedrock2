@@ -574,9 +574,9 @@ Section Riscv.
                               PseudoInstructions.Csrr, raiseExceptionWithInfo, updatePc
     | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with (@Monads.Return M MM _ tt)
     | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with B
-    | |- _ => progress record.simp
+    | |- _ => (*progress already embedded*) record.simp
     | |- _ => progress change (CSR.lookupCSR MScratch) with CSR.MScratch
-    | |- _ => unfold map.set; rewrite !map.get_put_diff
+    | |- _ => unfold Basics.compose, map.set; rewrite !map.get_put_diff
                 by (unfold RegisterNames.sp, RegisterNames.ra; congruence)
     | |- mcomp_sat (Monads.Bind _ _) _ _ => eapply mcomp_sat_bind
     | |- free.interpret run_primitive ?x _ _ _ =>
@@ -612,10 +612,11 @@ Section Riscv.
     | |- map.get (map.put _ ?x _) ?x = _ => eapply map.get_put_same
     | |- map.get (map.set ?x _ _) ?x = _ => eapply map.get_put_same
     | |- regs_initialized (map.put _ _ _) => eapply preserve_regs_initialized_after_put
+    | |- regs_initialized (map.set _ _ _) => eapply preserve_regs_initialized_after_put
     | |- mcomp_sat endCycleNormal _ _ => eapply mcomp_sat_endCycleNormal
     | H: ?P |- ?P => exact H
     | |- mcomp_sat (run1 RV32I) _ _ =>
-        eapply build_fetch_one_instr; record.simp; cbn_MachineWidth;
+        eapply build_fetch_one_instr; try record.simp; cbn_MachineWidth;
         [ impl_ecancel_assumption
         | repeat word_simpl_step_in_goal;
           lazymatch goal with
@@ -657,12 +658,17 @@ Section Riscv.
     induction n; intros.
     - match goal with H: _ |- _ => destruct H as [M HPost] end.
       repeat word_simpl_step_in_hyps.
-      record.simp.
       eqapply HPost.
       3: {
+        instantiate (1 := mem initial).
         destruct initial.
         record.simp.
-  Abort.
+        f_equal; ring.
+      }
+      all: case TODO.
+    - case TODO.
+    Unshelve. all: case TODO.
+  Qed.
 
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 RV32IM)) initialH post ->
@@ -685,7 +691,7 @@ Section Riscv.
     cbn [seps] in ML.
     epose proof (proj1 (sep_inline_eq _ _ initialL.(mem))) as ML'.
     especialize ML'. {
-      exists initialH.(mem). split. 1: record.simp; ecancel_assumption. 1: exact MH.
+      exists initialH.(mem). split. 1: ecancel_assumption. 1: exact MH.
     }
     flatten_seps_in ML'. clear ML.
     pose proof (proj2 Hp1) as V.
@@ -723,12 +729,15 @@ Section Riscv.
       (* Sw sp zero 0        (needed if the instruction to be emulated reads register 0) *)
       eapply runsToStep_cps. repeat step.
 
-      (* TODO step/record.simp is too slow
       (* Sw sp ra 4 *)
       eapply runsToStep_cps. repeat step.
 
       (* Csrr ra MScratch *)
-      eapply runsToStep_cps. repeat step.
+      eapply runsToStep_cps.
+
+      step. step. step. step. step. step. step. step. step. step. step. step. step.
+      step. step. step. step. step. step. step. {
+        record.simp. (* TODO should also simplify Basics.compose
 
       (* Sw sp ra 8 *)
       eapply runsToStep_cps. repeat step.

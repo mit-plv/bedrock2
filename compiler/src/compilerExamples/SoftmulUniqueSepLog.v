@@ -699,7 +699,7 @@ Section Riscv.
       }
 
       repeat step.
-
+(*
       destruct stacktrash as [|zero_trash stacktrash]. 1: discriminate.
       destruct stacktrash as [|ra_trash stacktrash]. 1: discriminate.
       destruct stacktrash as [|sp_trash stacktrash]. 1: discriminate.
@@ -712,7 +712,7 @@ Section Riscv.
         with (word.add (word.of_Z mscratch) (word.of_Z 8)) in * by ring.
 
       (* step through handler code *)
-(*
+
       (* Csrrw sp sp MScratch *)
       eapply runsToStep_cps. repeat step.
 
