@@ -139,6 +139,9 @@ Ltac list_length_simpl_step_in_goal :=
   | |- context[List.length (List.firstn ?n ?l)] => rewr_with_eq (List.firstn_length n l)
   | |- context[List.length (?l1 ++ ?l2)] => rewr_with_eq (List.app_length l1 l2)
   | |- context[List.length (?h :: ?t)] => rewr_with_eq (List.length_cons h t)
+  | |- context[List.length (List.map ?f ?l)] => rewr_with_eq (List.map_length f l)
+  | |- context[List.length (List.unfoldn ?step ?n ?start)] =>
+      rewr_with_eq (List.length_unfoldn step n start)
   end.
 
 Goal forall (l1 l2: list Z) (a: Z),
