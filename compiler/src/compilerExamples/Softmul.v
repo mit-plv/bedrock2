@@ -733,11 +733,7 @@ Section Riscv.
       eapply runsToStep_cps. repeat step.
 
       (* Csrr ra MScratch *)
-      eapply runsToStep_cps.
-
-      step. step. step. step. step. step. step. step. step. step. step. step. step.
-      step. step. step. step. step. step. step. {
-        record.simp. (* TODO should also simplify Basics.compose
+      eapply runsToStep_cps. repeat step.
 
       (* Sw sp ra 8 *)
       eapply runsToStep_cps. repeat step.
@@ -800,7 +796,6 @@ Section Riscv.
 
     Unshelve.
     all: try exact (fun _ => True).
-  Qed. *)
-  Abort.
+  Qed.
 
 End Riscv.
