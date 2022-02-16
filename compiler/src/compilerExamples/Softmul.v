@@ -109,12 +109,30 @@ Section Riscv.
 
   Local Hint Mode map.map - - : typeclass_instances.
 
-  Definition instr(inst: Instruction): word -> Mem -> Prop :=
-    scalar (word.of_Z (encode inst)).
+  Definition instr(iset: InstructionSet)(inst: Instruction)(addr: word): Mem -> Prop :=
+    sep (addr |-> truncated_scalar access_size.four (encode inst))
+        (emp (verify inst iset)).
+
+  Lemma instr_verify: forall {addr iset inst R m},
+    (sep (addr |-> instr iset inst) R) m ->
+    verify inst iset.
+  Proof.
+    intros.
+    unfold instr, at_addr in *.
+    unfold sep, emp in H. fwd. assumption.
+  Qed.
+
+  Lemma instr_IM_impl1_I: forall iinst addr,
+      impl1 (addr |-> instr RV32IM (IInstruction iinst))
+            (addr |-> instr RV32I (IInstruction iinst)).
+  Proof.
+    unfold impl1, at_addr, instr. intros. assumption. (* relying on conversion *)
+  Qed.
+  Hint Resolve instr_IM_impl1_I : ecancel_impl.
 
   Declare Scope array_abbrevs_scope.
   Open Scope array_abbrevs_scope.
-  Notation "'program'" := (array instr 4) : array_abbrevs_scope.
+  Notation "'program' iset" := (array (instr iset) 4) (at level 10): array_abbrevs_scope.
 
   (* both the finish-postcondition and the abort-postcondition are set to `post`
      to make sure `post` holds in all cases: *)
@@ -151,7 +169,7 @@ Section Riscv.
 
   Lemma invert_fetch: forall initial post iset,
       mcomp_sat (run1 iset) initial post ->
-      exists R i, seps [initial.(pc) |-> instr i; R] initial.(mem) /\
+      exists R i, seps [initial.(pc) |-> instr iset i; R] initial.(mem) /\
                   verify i iset /\
                   mcomp_sat (Execute.execute i;; endCycleNormal) initial post.
   Proof.
@@ -159,42 +177,39 @@ Section Riscv.
   Admitted.
 
   Lemma build_fetch_one_instr:
-    forall (initial: State) iset post (instr1 instr2: Instruction) (R: Mem -> Prop),
-      seps [initial.(pc) |-> instr instr1; R] initial.(mem) ->
-      decode iset (encode instr1) = instr2 ->
-      mcomp_sat (Execute.execute instr2;; endCycleNormal) initial post ->
+    forall (initial: State) iset post (instr1: Instruction) (R: Mem -> Prop),
+      seps [initial.(pc) |-> instr iset instr1; R] initial.(mem) ->
+      mcomp_sat (Execute.execute instr1;; endCycleNormal) initial post ->
       mcomp_sat (run1 iset) initial post.
   Proof.
-    intros. subst instr2. unfold run1, mcomp_sat in *. cbn -[HList.tuple load_bytes] in *.
+    intros. unfold run1, mcomp_sat in *. cbn -[HList.tuple load_bytes] in *.
     unfold load.
     change load_bytes with bedrock2.Memory.load_bytes.
+    pose proof (instr_verify H) as V.
     erewrite load_bytes_of_sep; cycle 1. {
-      cbn [seps] in H.
-      unfold instr, at_addr, scalar, truncated_word, Scalars.truncated_word,
-        Scalars.truncated_scalar, Scalars.littleendian in H.
+      apply sep_assoc in H.
+      unfold instr, at_addr, scalar, truncated_word, truncated_word,
+        truncated_scalar, Scalars.truncated_scalar, Scalars.littleendian in H.
+      cbn in H.
+      unfold ptsto_bytes.ptsto_bytes in *.
       exact H.
     }
-    eqapply H1. do 3 f_equal.
-    rewrite word.unsigned_of_Z_nowrap. 2: apply encode_range.
-    change (Memory.bytes_per access_size.word) with 4%nat.
-    rewrite <- LittleEndian.split_eq.
-    rewrite LittleEndian.combine_split.
+    eqapply H0. do 3 f_equal.
+    rewrite LittleEndian.combine_eq.
+    match goal with
+    | |- context[LittleEndianList.le_combine ?x] =>
+        replace x with (LittleEndianList.le_split 4 (encode instr1))
+    end.
+    2: {
+      etransitivity.
+      1: symmetry. 1: eapply tuple.to_list_of_list.
+      reflexivity.
+    }
+    rewrite LittleEndianList.le_combine_split.
     rewrite Z.mod_small. 2: apply encode_range.
-    reflexivity.
-  Qed.
-
-  Lemma build_fetch: forall (initial: State) iset post addr p (ins: Instruction) (R: Mem -> Prop),
-      seps [addr |-> program p; R] initial.(mem) ->
-      let offset := word.unsigned (word.sub initial.(pc) addr) in
-      offset mod 4 = 0 ->
-      let i := Z.to_nat (offset / 4) in
-      (i < List.length p)%nat ->
-      decode iset (encode (List.nth i p default)) = ins ->
-      mcomp_sat (Execute.execute ins;; endCycleNormal) initial post ->
-      mcomp_sat (run1 iset) initial post.
-  Proof.
-    intros.
-    eapply build_fetch_one_instr. 1: impl_ecancel_assumption. all: eassumption.
+    symmetry.
+    apply decode_encode.
+    assumption.
   Qed.
 
   Lemma decode_verify_iset: forall iset i, verify_iset (decode iset i) iset.
@@ -319,7 +334,7 @@ Section Riscv.
       List.length stacktrash = 32%nat /\
       seps [eq r1.(mem);
             word.of_Z mscratch |-> word_array stacktrash;
-            word.of_Z (mtvec_base * 4) |-> program handler_insts] r2.(mem) /\
+            word.of_Z (mtvec_base * 4) |-> program RV32I handler_insts] r2.(mem) /\
       regs_initialized r2.(regs).
 
   Lemma related_preserves_load_bytes: forall n sH sL a w,
@@ -617,39 +632,29 @@ Section Riscv.
     | H: ?P |- ?P => exact H
     | |- mcomp_sat (run1 RV32I) _ _ =>
         eapply build_fetch_one_instr; try record.simp; cbn_MachineWidth;
-        [ impl_ecancel_assumption
-        | repeat word_simpl_step_in_goal;
-          lazymatch goal with
-          | |- decode RV32I (encode ?x) = _ =>
-              tryif (let x' := eval hnf in x in let h := head x' in is_constructor h;
-                     change x with x')
-              then (apply decode_encode; vm_compute; intuition congruence)
-              else (fail 1000 x "can't be simplified to a concrete instruction")
-          end
-        | ]
+        [ impl_ecancel_assumption | ]
     | |- _ => progress change (translate _ _ ?x)
                        with (@free.ret riscv_primitive primitive_result _ x)
     end.
 
   Local Hint Mode word.word - : typeclass_instances.
 
-  Lemma save_regs_correct: forall n start R addr (initial: State) stackaddr oldvals spval
-                                  (post: State -> Prop),
+  Lemma save_regs_correct_aux: forall n start R (initial: State) stackaddr oldvals spval
+                                  vals (post: State -> Prop),
       List.length oldvals = n ->
       map.get initial.(regs) RegisterNames.sp = Some spval ->
       stackaddr = word.add spval (word.of_Z (4 * start)) ->
-      addr = initial.(pc) ->
       initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
-      regs_initialized initial.(regs) ->
+      map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) n start) = Some vals ->
       seps [stackaddr |-> word_array oldvals;
-            addr |-> program (map (fun r : Z => IInstruction (Sw RegisterNames.sp r (4 * r)))
-                               (List.unfoldn (BinInt.Z.add 1) n start)); R] initial.(mem) /\
-      (forall m vals,
-         map.getmany_of_list initial.(regs) (List.unfoldn (BinInt.Z.add 1) n start) =
-           Some vals ->
+        initial.(pc) |-> program RV32I
+           (map (fun r => IInstruction (Sw RegisterNames.sp r (4 * r)))
+                           (List.unfoldn (BinInt.Z.add 1) n start)); R] initial.(mem) /\
+      (forall m,
          seps [stackaddr |-> word_array vals;
-            addr |-> program (map (fun r : Z => IInstruction (Sw RegisterNames.sp r (4 * r)))
-                           (List.unfoldn (BinInt.Z.add 1) n start)); R] m ->
+               initial.(pc) |-> program RV32I
+                            (map (fun r => IInstruction (Sw RegisterNames.sp r (4 * r)))
+                                 (List.unfoldn (Z.add 1) n start)); R] m ->
          mcomp_sat (run1 RV32I) { initial with mem := m;
            nextPc ::= word.add (word.of_Z (4 * Z.of_nat n));
            pc ::= word.add (word.of_Z (4 * Z.of_nat n)) } post) ->
@@ -658,17 +663,14 @@ Section Riscv.
     induction n; intros.
     - match goal with H: _ |- _ => destruct H as [M HPost] end.
       repeat word_simpl_step_in_hyps.
-      eqapply HPost.
-      3: {
-        instantiate (1 := mem initial).
-        destruct initial.
-        record.simp.
-        f_equal; ring.
-      }
-      all: case TODO.
-    - case TODO.
-    Unshelve. all: case TODO.
-  Qed.
+      destruct oldvals. 2: discriminate.
+      destruct vals. 2: discriminate.
+      eqapply HPost. 1: eassumption.
+      destruct initial.
+      record.simp.
+      f_equal; ring.
+    - match goal with H: _ |- _ => destruct H as [M HPost] end.
+  Abort.
 
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 RV32IM)) initialH post ->
@@ -703,8 +705,6 @@ Section Riscv.
       + eapply build_fetch_one_instr.
         { replace initialH.(pc) with initialL.(pc) in ML'.
           impl_ecancel_assumption. }
-        { apply decode_encode.
-          eapply verify_I_swap_extensions; try eassumption; reflexivity. }
         eapply mcomp_sat_preserves_related; eassumption.
       + intros midL. intros. simp. eapply H1; eassumption.
     - (* MInstruction *)
@@ -712,13 +712,16 @@ Section Riscv.
       eapply runsToStep_cps.
       eapply build_fetch_one_instr.
       { replace initialH.(pc) with initialL.(pc) in ML'.
-        impl_ecancel_assumption. }
-      { rewrite decode_M_on_RV32I_Invalid. 1: reflexivity.
-        destruct (isValidM inst) eqn: EVM. 1: reflexivity.
-        exfalso. clear -Hp1 EVM. destruct inst; cbn in *; try discriminate EVM.
-        unfold verify in *. apply proj1 in Hp1. exact Hp1.
-      }
+        impl_ecancel_assumption.
 
+
+        case TODO. (* need to go from (instr RV32IM (MInstruction inst))
+                                   to (instr RV32I (MInstruction inst)),
+            which doesn't hold because instr requires verify,
+            better only require decode, which we could prove with
+            decode_M_on_RV32I_Invalid *)
+      }
+(*
       repeat step.
 
       (* step through handler code *)
@@ -789,13 +792,11 @@ Section Riscv.
       + eapply build_fetch_one_instr.
         { replace initialH.(pc) with initialL.(pc) in ML'.
           impl_ecancel_assumption. }
-        { apply decode_encode. eapply verify_CSR_swap_extensions. eassumption.
-          (* "assumption" and relying on conversion would work too *) }
         eapply mcomp_sat_preserves_related; eassumption.
       + intros midL. intros. simp. eapply H1; eassumption.
 
     Unshelve.
     all: try exact (fun _ => True).
-  Qed.
-
+  Qed. *)
+  Abort.
 End Riscv.
