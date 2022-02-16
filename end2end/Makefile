@@ -5,10 +5,28 @@ default_target: all
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
-DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n-Q $(DEPS_DIR)/riscv-coq/src/riscv riscv\n-Q $(DEPS_DIR)/kami/Kami/ Kami\n-Q ../processor/src/processor processor\n-Q ../bedrock2/src/bedrock2 bedrock2\n-Q ../bedrock2/src/bedrock2Examples bedrock2Examples\n-Q ../compiler/src/compiler compiler\n-Q ../compiler/src/compilerExamples compilerExamples\n
+DEPFLAGS_COQUTIL_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n
+DEPFLAGS_RISCV_COQ_NL=-Q $(DEPS_DIR)/riscv-coq/src/riscv riscv\n
+DEPFLAGS_KAMI_NL=-Q $(DEPS_DIR)/kami/Kami/ Kami\n
+DEPFLAGS_NL=-Q ../processor/src/processor processor\n-Q ../bedrock2/src/bedrock2 bedrock2\n-Q ../bedrock2/src/bedrock2Examples bedrock2Examples\n-Q ../compiler/src/compiler compiler\n-Q ../compiler/src/compilerExamples compilerExamples\n
 CURFLAGS_NL=-Q ./src/end2end end2end\n
 
 EXTERNAL_DEPENDENCIES?=
+EXTERNAL_COQUTIL?=
+EXTERNAL_RISCV_COQ?=
+EXTERNAL_KAMI?=
+
+ifneq ($(EXTERNAL_COQUTIL),1)
+DEPFLAGS_NL+=$(DEPFLAGS_COQUTIL_NL)
+endif
+
+ifneq ($(EXTERNAL_RISCV_COQ),1)
+DEPFLAGS_NL+=$(DEPFLAGS_RISCV_COQ_NL)
+endif
+
+ifneq ($(EXTERNAL_KAMI),1)
+DEPFLAGS_NL+=$(DEPFLAGS_KAMI_NL)
+endif
 
 # If we get our dependencies externally, then we should not bind the local versions of things
 ifneq ($(EXTERNAL_DEPENDENCIES),1)
