@@ -110,25 +110,25 @@ Section Riscv.
   Local Hint Mode map.map - - : typeclass_instances.
 
   Definition instr(iset: InstructionSet)(inst: Instruction)(addr: word): Mem -> Prop :=
-    sep (addr |-> truncated_scalar access_size.four (encode inst))
-        (emp (verify inst iset)).
+    ex1 (fun z => sep (addr |-> truncated_scalar access_size.four z)
+                      (emp (decode iset z = inst /\ 0 <= z < 2 ^ 32))).
 
-  Lemma instr_verify: forall {addr iset inst R m},
+  (* TODO more generic handling of ex1 *)
+  Lemma instr_decode: forall {addr iset inst R m},
     (sep (addr |-> instr iset inst) R) m ->
-    verify inst iset.
+    exists z, (sep (addr |-> truncated_scalar access_size.four z) R) m /\
+              decode iset z = inst /\ 0 <= z < 2 ^ 32.
   Proof.
     intros.
-    unfold instr, at_addr in *.
-    unfold sep, emp in H. fwd. assumption.
+    unfold instr, at_addr, ex1 in *.
+    unfold sep, emp, map.split in *. fwd.
+    exists a.
+    split; auto.
+    do 2 eexists. split; eauto.
+    split; eauto.
+    rewrite map.putmany_empty_r.
+    assumption.
   Qed.
-
-  Lemma instr_IM_impl1_I: forall iinst addr,
-      impl1 (addr |-> instr RV32IM (IInstruction iinst))
-            (addr |-> instr RV32I (IInstruction iinst)).
-  Proof.
-    unfold impl1, at_addr, instr. intros. assumption. (* relying on conversion *)
-  Qed.
-  Hint Resolve instr_IM_impl1_I : ecancel_impl.
 
   Declare Scope array_abbrevs_scope.
   Open Scope array_abbrevs_scope.
@@ -185,9 +185,8 @@ Section Riscv.
     intros. unfold run1, mcomp_sat in *. cbn -[HList.tuple load_bytes] in *.
     unfold load.
     change load_bytes with bedrock2.Memory.load_bytes.
-    pose proof (instr_verify H) as V.
+    eapply instr_decode in H. destruct H as (z & H & ? & ?). subst instr1.
     erewrite load_bytes_of_sep; cycle 1. {
-      apply sep_assoc in H.
       unfold instr, at_addr, scalar, truncated_word, truncated_word,
         truncated_scalar, Scalars.truncated_scalar, Scalars.littleendian in H.
       cbn in H.
@@ -198,7 +197,7 @@ Section Riscv.
     rewrite LittleEndian.combine_eq.
     match goal with
     | |- context[LittleEndianList.le_combine ?x] =>
-        replace x with (LittleEndianList.le_split 4 (encode instr1))
+        replace x with (LittleEndianList.le_split 4 z)
     end.
     2: {
       etransitivity.
@@ -206,27 +205,42 @@ Section Riscv.
       reflexivity.
     }
     rewrite LittleEndianList.le_combine_split.
-    rewrite Z.mod_small. 2: apply encode_range.
-    symmetry.
-    apply decode_encode.
-    assumption.
+    symmetry. apply Z.mod_small. assumption.
   Qed.
 
   Lemma decode_verify_iset: forall iset i, verify_iset (decode iset i) iset.
   Proof.
   Abort.
 
-  Lemma decode_I_to_IM: forall i inst,
+  Lemma decode_IM_I_to_I: forall i inst,
       decode RV32IM i = IInstruction inst ->
       decode RV32I  i = IInstruction inst.
   Proof.
-  Abort.
+  Admitted.
 
-  Lemma decode_CSR_to_IM: forall i inst,
+  Lemma decode_IM_M_to_Invalid_I: forall z minst,
+      decode RV32IM z = MInstruction minst ->
+      decode RV32I z = InvalidInstruction z.
+  Proof.
+  Admitted.
+
+  Lemma decode_IM_CSR_to_I: forall i inst,
       decode RV32IM i = CSRInstruction inst ->
       decode RV32I  i = CSRInstruction inst.
   Proof.
-  Abort.
+  Admitted.
+
+  Lemma instr_IM_impl1_I: forall iinst addr,
+      impl1 (addr |-> instr RV32IM (IInstruction iinst))
+            (addr |-> instr RV32I (IInstruction iinst)).
+  Proof.
+    unfold impl1. intros. eapply (fun x => conj x I) in H. eapply sep_emp_r in H.
+    eapply instr_decode in H. fwd.
+    eapply sep_emp_r in Hp0. fwd.
+    unfold at_addr, instr, ex1. exists z. apply sep_emp_r.
+    auto using decode_IM_I_to_I.
+  Qed.
+  Hint Resolve instr_IM_impl1_I : ecancel_impl.
 
   Lemma decode_verify: forall iset i, verify (decode iset i) iset.
   Proof.
@@ -632,7 +646,14 @@ Section Riscv.
     | H: ?P |- ?P => exact H
     | |- mcomp_sat (run1 RV32I) _ _ =>
         eapply build_fetch_one_instr; try record.simp; cbn_MachineWidth;
-        [ impl_ecancel_assumption | ]
+        [ impl_ecancel_assumption
+        | repeat word_simpl_step_in_goal;
+          lazymatch goal with
+          | |- context[Execute.execute ?x] =>
+              first [ let x' := eval hnf in x in let h := head x' in is_constructor h;
+                      change x with x'
+                    | fail 1000 x "can't be simplified to a concrete instruction" ]
+          end ]
     | |- _ => progress change (translate _ _ ?x)
                        with (@free.ret riscv_primitive primitive_result _ x)
     end.
@@ -710,18 +731,39 @@ Section Riscv.
     - (* MInstruction *)
       (* fetch M instruction (considered invalid by RV32I machine) *)
       eapply runsToStep_cps.
+      replace initialH.(pc) with initialL.(pc) in ML'.
+
+      unfold instr in ML' at 2. unfold at_addr in ML' at 3.
+      match type of ML' with
+      | seps [?A; ?B; ?C; ?D] ?M => assert (sep C (seps [A; B; D]) M) as ML
+            by (cbn [seps] in *; ecancel_assumption)
+      end.
+      clear ML'.
+      eapply sep_ex1_l in ML. unfold ex1 in ML. destruct ML as [z ML].
+      match type of ML with
+      | sep (sep ?A ?B) ?C ?M => assert (sep B (sep A C) M) as ML'
+            by (cbn [seps] in *; ecancel_assumption)
+      end.
+      clear ML.
+      eapply sep_emp_l in ML'.
+      destruct ML' as ((Ez & Bz) & ML).
+      flatten_seps_in ML.
+
       eapply build_fetch_one_instr.
-      { replace initialH.(pc) with initialL.(pc) in ML'.
-        impl_ecancel_assumption.
+      { replace initialH.(pc) with initialL.(pc) in ML.
+        unfold instr, at_addr, seps.
+        eapply sep_ex1_l. unfold ex1. exists z. cbn [seps] in ML.
+        refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML).
+        cancel.
+        impl_ecancel.
+        unfold seps at 2.
+        rewrite sep_comm.
+        cancel.
+        finish_impl_ecancel.
+        split. 2: assumption.
+        eapply decode_IM_M_to_Invalid_I.
+        exact Ez. }
 
-
-        case TODO. (* need to go from (instr RV32IM (MInstruction inst))
-                                   to (instr RV32I (MInstruction inst)),
-            which doesn't hold because instr requires verify,
-            better only require decode, which we could prove with
-            decode_M_on_RV32I_Invalid *)
-      }
-(*
       repeat step.
 
       (* step through handler code *)
@@ -789,14 +831,39 @@ Section Riscv.
     - (* CSRInstruction *)
       subst.
       eapply @runsToStep with (midset := fun midL => exists midH, related midH midL /\ midset midH).
-      + eapply build_fetch_one_instr.
-        { replace initialH.(pc) with initialL.(pc) in ML'.
-          impl_ecancel_assumption. }
+      + unfold instr in ML' at 2. unfold at_addr in ML' at 3.
+        match type of ML' with
+        | seps [?A; ?B; ?C; ?D] ?M => assert (sep C (seps [A; B; D]) M) as ML
+              by (cbn [seps] in *; ecancel_assumption)
+        end.
+        clear ML'.
+        eapply sep_ex1_l in ML. unfold ex1 in ML. destruct ML as [z ML].
+        match type of ML with
+        | sep (sep ?A ?B) ?C ?M => assert (sep B (sep A C) M) as ML'
+              by (cbn [seps] in *; ecancel_assumption)
+        end.
+        clear ML.
+        eapply sep_emp_l in ML'.
+        destruct ML' as ((Ez & Bz) & ML).
+        flatten_seps_in ML.
+        eapply build_fetch_one_instr.
+        { replace initialH.(pc) with initialL.(pc) in ML.
+          unfold instr, at_addr, seps.
+          eapply sep_ex1_l. unfold ex1. exists z. cbn [seps] in ML.
+          refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML).
+          cancel.
+          impl_ecancel.
+          unfold seps at 2.
+          rewrite sep_comm.
+          cancel.
+          finish_impl_ecancel.
+          split. 2: assumption.
+          eapply decode_IM_CSR_to_I.
+          exact Ez. }
         eapply mcomp_sat_preserves_related; eassumption.
       + intros midL. intros. simp. eapply H1; eassumption.
 
     Unshelve.
     all: try exact (fun _ => True).
-  Qed. *)
-  Abort.
+  Qed.
 End Riscv.
