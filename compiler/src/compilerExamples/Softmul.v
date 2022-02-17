@@ -666,32 +666,92 @@ Section Riscv.
       map.get initial.(regs) RegisterNames.sp = Some spval ->
       stackaddr = word.add spval (word.of_Z (4 * start)) ->
       initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
+      0 < start -> (* <-- could probably be removed if needed *)
       map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) n start) = Some vals ->
       seps [stackaddr |-> word_array oldvals;
         initial.(pc) |-> program RV32I
            (map (fun r => IInstruction (Sw RegisterNames.sp r (4 * r)))
-                           (List.unfoldn (BinInt.Z.add 1) n start)); R] initial.(mem) /\
-      (forall m,
+                           (List.unfoldn (BinInt.Z.add 1) n start)); R] initial.(mem) ->
+      (forall m: Mem,
          seps [stackaddr |-> word_array vals;
                initial.(pc) |-> program RV32I
                             (map (fun r => IInstruction (Sw RegisterNames.sp r (4 * r)))
                                  (List.unfoldn (Z.add 1) n start)); R] m ->
-         mcomp_sat (run1 RV32I) { initial with mem := m;
+         runsTo (mcomp_sat (run1 RV32I)) { initial with mem := m;
            nextPc ::= word.add (word.of_Z (4 * Z.of_nat n));
            pc ::= word.add (word.of_Z (4 * Z.of_nat n)) } post) ->
-      mcomp_sat (run1 RV32I) initial post.
+      runsTo (mcomp_sat (run1 RV32I)) initial post.
   Proof.
     induction n; intros.
-    - match goal with H: _ |- _ => destruct H as [M HPost] end.
-      repeat word_simpl_step_in_hyps.
+    - repeat word_simpl_step_in_hyps.
       destruct oldvals. 2: discriminate.
       destruct vals. 2: discriminate.
-      eqapply HPost. 1: eassumption.
+      match goal with
+      | H: _ |- _ => eqapply H
+      end.
+      1: eassumption.
       destruct initial.
       record.simp.
       f_equal; ring.
-    - match goal with H: _ |- _ => destruct H as [M HPost] end.
-  Abort.
+    - destruct vals as [|val vals]. {
+        apply_in_hyps map.getmany_of_list_length. discriminate.
+      }
+      destruct oldvals as [|oldval oldvals]. 1: discriminate.
+      fwd.
+      assert (start <> 0) by Lia.lia.
+      eapply runsToStep_cps. repeat step.
+      eapply IHn with (start := 1 + start) (oldvals := oldvals); try record.simp.
+      + reflexivity.
+      + eassumption.
+      + reflexivity.
+      + ring.
+      + Lia.lia.
+      + eassumption.
+      + use_sep_asm. impl_ecancel.
+        case TODO. (* separation logic automation *)
+      + intros.
+        eqapply H6. 2: {
+          match goal with
+          | H: nextPc _ = _ |- _ => rewrite H
+          end.
+          destruct initial; record.simp.
+          f_equal; try ZnWords.
+        }
+        use_sep_asm.
+        record.simp.
+        impl_ecancel. (* TODO should not instantiate R on lhs! *)
+        case TODO. (* separation logic automation *)
+  Qed.
+
+  Lemma save_regs3to31_correct: forall R (initial: State) oldvals spval
+                                  (post: State -> Prop),
+      List.length oldvals = 29%nat ->
+      map.get initial.(regs) RegisterNames.sp = Some spval ->
+      initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
+      regs_initialized initial.(regs) ->
+      (seps [word.add spval (word.of_Z 12) |-> word_array oldvals;
+        initial.(pc) |-> program RV32I save_regs3to31; R] initial.(mem) /\
+       forall m vals,
+         map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) 29 3) = Some vals ->
+         seps [word.add spval (word.of_Z 12) |-> word_array vals;
+               initial.(pc) |-> program RV32I save_regs3to31; R] m ->
+         runsTo (mcomp_sat (run1 RV32I)) { initial with mem := m;
+           nextPc ::= word.add (word.of_Z (4 * Z.of_nat 29));
+           pc ::= word.add (word.of_Z (4 * Z.of_nat 29)) } post) ->
+      runsTo (mcomp_sat (run1 RV32I)) initial post.
+  Proof.
+    unfold save_regs3to31. intros.
+    assert (exists vals,
+       map.getmany_of_list (regs initial) (List.unfoldn (Z.add 1) 29 3) = Some vals) as E
+        by case TODO. (* from regs_initialized *)
+    destruct E as [vals G].
+    match goal with
+    | H: _ /\ forall _, _ |- _ => destruct H as [HM HPost]
+    end.
+    eapply save_regs_correct_aux with (start := 3); try eassumption; try reflexivity.
+    intros.
+    eapply HPost. 1: exact G. assumption.
+  Qed.
 
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 RV32IM)) initialH post ->
@@ -784,6 +844,16 @@ Section Riscv.
       eapply runsToStep_cps. repeat step.
 
       (* save_regs3to31 *)
+      eapply save_regs3to31_correct with
+        (* TODO this could/should be determined automatically *)
+        (oldvals := List.skipn 3 stacktrash);
+        try record.simp.
+      { list_length_rewrites_without_sideconds_in_goal; ZnWords. }
+      { repeat step. }
+      { ZnWords. }
+      { repeat step. }
+      (* TODO word simpl even when not wrapped in word.unsigned *)
+
       (* Csrr t1 MTVal       t1 := the invalid instruction i that caused the exception *)
       (* Srli t1 t1 5        t1 := t1 >> 5                                             *)
       (* Andi s3 t1 (31*4)   s3 := i[7:12]<<2   // (rd of the MUL)*4                   *)
