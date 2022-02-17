@@ -35,7 +35,10 @@ Section LiveVerif.
   Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per 32 sz)) (at level 10).
 
   Add Ring wring : (Properties.word.ring_theory (word := word))
-        (preprocess [autorewrite with rew_word_morphism],
+        ((*This preprocessing is too expensive to be always run, especially if
+           we do many ring_simplify in a sequence, in which case it's sufficient
+           to run it once before the ring_simplify sequence.
+           preprocess [autorewrite with rew_word_morphism],*)
          morphism (Properties.word.ring_morph (word := word)),
          constants [Properties.word_cst]).
 

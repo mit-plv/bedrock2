@@ -95,7 +95,10 @@ Section Riscv.
   Context {registers_ok: map.ok registers}.
 
   Add Ring wring : (word.ring_theory (word := word))
-      (preprocess [autorewrite with rew_word_morphism],
+      ((*This preprocessing is too expensive to be always run, especially if
+         we do many ring_simplify in a sequence, in which case it's sufficient
+         to run it once before the ring_simplify sequence.
+         preprocess [autorewrite with rew_word_morphism],*)
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
@@ -692,7 +695,7 @@ Section Riscv.
       1: eassumption.
       destruct initial.
       record.simp.
-      f_equal; ring.
+      f_equal; autorewrite with rew_word_morphism; ring.
     - destruct vals as [|val vals]. {
         apply_in_hyps map.getmany_of_list_length. discriminate.
       }
@@ -852,7 +855,7 @@ Section Riscv.
       { repeat step. }
       { ZnWords. }
       { repeat step. }
-      (* TODO word simpl even when not wrapped in word.unsigned *)
+      autorewrite with rew_word_morphism. repeat word_simpl_step_in_goal.
 
       (* Csrr t1 MTVal       t1 := the invalid instruction i that caused the exception *)
       (* Srli t1 t1 5        t1 := t1 >> 5                                             *)
