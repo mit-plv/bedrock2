@@ -22,6 +22,8 @@ Section SepLog.
   Lemma access_elem_in_array: forall a a' E (elem: E -> word -> mem -> Prop) sz,
       0 < sz < 2 ^ width ->
       word.unsigned (word.sub a' a) mod sz = 0 ->
+      (* TODO here we also need a sidecondition that a' is within the array,
+         having it only below is too late *)
       split_sepclause a (array elem sz) a' elem
         (let i := Z.to_nat (word.unsigned (word.sub a' a) / sz) in
          forall vs vs1 v vs2,
@@ -86,22 +88,78 @@ Section SepLog.
     }
     reflexivity.
   Qed.
+
+  Lemma access_subarray_1: forall a a' E (elem: E -> word -> mem -> Prop) sz,
+      0 < sz < 2 ^ width ->
+      word.unsigned (word.sub a' a) mod sz = 0 ->
+      (* TODO here we also need a sidecondition that a' is within the array,
+         having it only below is too late *)
+      split_sepclause a (array elem sz) a' (array elem sz)
+        (let i := Z.to_nat (word.unsigned (word.sub a' a) / sz) in
+         forall vs vs1 vs2 vs3,
+           vs = vs1 ++ vs2 ++ vs3 /\ List.length vs1 = i ->
+           iff1 (seps
+              [a |-> array elem sz vs1;
+               a' |-> array elem sz vs2;
+               word.add a (word.of_Z (sz * Z.of_nat (i + List.length vs2))) |->
+                        array elem sz vs3])
+            (a |-> array elem sz vs)).
+  Proof.
+    intros.
+    unfold split_sepclause.
+    unfold array, at_addr, seps.
+    intros. destruct H1. subst vs.
+    symmetry.
+    rewrite 2array_append.
+    cancel.
+    cancel_seps_at_indices 0%nat 0%nat. {
+      f_equal. rewrite H2.
+      destruct width_cases; ZnWords.
+    }
+    cancel_seps_at_indices 0%nat 0%nat. {
+      f_equal. destruct width_cases; ZnWords.
+    }
+    reflexivity.
+  Qed.
+
+  Lemma access_subarray_2: forall a a' E (elem: E -> word -> mem -> Prop) sz n,
+      0 < sz < 2 ^ width ->
+      word.unsigned (word.sub a' a) mod sz = 0 ->
+      (* TODO here we also need a sidecondition that a' is within the array,
+         having it only below is too late *)
+      split_sepclause a (array elem sz)
+                      a' (suchThat (array elem sz) (fun vs => List.length vs = n))
+        (let i := Z.to_nat (word.unsigned (word.sub a' a) / sz) in
+         forall vs vs1 vs2 vs3,
+           vs = vs1 ++ vs2 ++ vs3 /\ List.length vs1 = i /\ List.length vs2 = n ->
+           iff1 (seps
+              [a |-> array elem sz vs1;
+               a' |-> suchThat (array elem sz) (fun vs => List.length vs = n) vs2;
+               word.add a (word.of_Z (sz * Z.of_nat (i + List.length vs2))) |->
+                        array elem sz vs3])
+            (a |-> array elem sz vs)).
+  Proof.
+    intros.
+    unfold split_sepclause.
+    unfold suchThat, array, at_addr, seps.
+    intros. fwd.
+    symmetry.
+    rewrite 2array_append.
+    replace (length vs2 = length vs2) with True. 2: {
+      eapply PropExtensionality.propositional_extensionality. split; auto.
+    }
+    cancel.
+    cancel_seps_at_indices 0%nat 0%nat. {
+      f_equal. rewrite H1p1.
+      destruct width_cases; ZnWords.
+    }
+    cancel_seps_at_indices 0%nat 0%nat. {
+      f_equal. destruct width_cases; ZnWords.
+    }
+    reflexivity.
+  Qed.
 End SepLog.
 
-Section WithA.
-  Context {A: Type}.
-
-  Lemma list_expose_nth{inhA: inhabited A}: forall (vs: list A) i,
-      (i < List.length vs)%nat ->
-      vs = List.firstn i vs ++ [List.nth i vs default] ++ List.skipn (S i) vs /\
-        List.length (List.firstn i vs) = i.
-  Proof.
-    intros. rewrite List.firstn_nth_skipn by assumption.
-    rewrite List.firstn_length_le by Lia.lia. auto.
-  Qed.
-End WithA.
-
-Notation word_array := (array scalar 4).
 
 Ltac destruct_bool_vars :=
   repeat match goal with
@@ -165,6 +223,34 @@ Ltac list_length_rewrites_without_sideconds_in_goal :=
   repeat list_length_simpl_step_in_goal.
 
 
+Section WithA.
+  Context {A: Type}.
+
+  Lemma list_expose_nth{inhA: inhabited A}: forall (vs: list A) i,
+      (i < List.length vs)%nat ->
+      vs = List.firstn i vs ++ [List.nth i vs default] ++ List.skipn (S i) vs /\
+        List.length (List.firstn i vs) = i.
+  Proof.
+    intros. rewrite List.firstn_nth_skipn by assumption.
+    rewrite List.firstn_length_le by Lia.lia. auto.
+  Qed.
+
+  Lemma list_expose_subarray: forall (vs: list A) i n,
+      (i + n <= List.length vs)%nat ->
+      vs = List.firstn i vs ++ List.firstn n (List.skipn i vs) ++ List.skipn (i + n) vs /\
+        List.length (List.firstn i vs) = i /\
+        List.length (List.firstn n (List.skipn i vs)) = n.
+  Proof.
+    intros. list_length_rewrites_without_sideconds_in_goal. ssplit; [ | Lia.lia..].
+    rewrite <- (List.firstn_skipn i vs) at 1. f_equal.
+    rewrite <- (List.firstn_skipn n (List.skipn i vs)) at 1. f_equal.
+    rewrite List.skipn_skipn. f_equal. apply Nat.add_comm.
+  Qed.
+End WithA.
+
+Notation word_array := (array scalar 4).
+
+
 (* Three hints in three different DBs indicating how to find the rewrite lemma,
    how to solve its sideconditions for the split direction, and how to solve its
    sideconditions for the merge direction: *)
@@ -182,8 +268,31 @@ Ltac list_length_rewrites_without_sideconds_in_goal :=
   | destruct_bool_vars; ZnWords ]
 : split_sepclause_goal.
 
+#[export] Hint Extern 1
+  (split_sepclause ?addrAll (array ?elem ?sz)
+                   ?addrPart (suchThat (array ?elem ?sz) (fun l => List.length l = ?n)) _) =>
+  eapply (access_subarray_2 addrAll addrPart _ elem sz);
+  [ lazymatch goal with
+    | |- 0 < sz < 2 ^ ?width =>
+        lazymatch isZcst sz with
+        | true => lazymatch isZcst width with
+                  | true => split; reflexivity
+                  end
+        end
+    end
+  | destruct_bool_vars; ZnWords ]
+: split_sepclause_goal.
+
 #[export] Hint Extern 1 (_ = ?l ++ [_] ++ _ /\ List.length ?l = _) =>
   eapply list_expose_nth;
+  destruct_bool_vars;
+  list_length_rewrites_without_sideconds_in_goal;
+  ZnWords
+: split_sepclause_sidecond.
+
+#[export] Hint Extern 1
+ (_ = ?l1 ++ ?l2 ++ ?l3 /\ List.length ?l1 = _ /\ List.length ?l2 = _) =>
+  eapply list_expose_subarray;
   destruct_bool_vars;
   list_length_rewrites_without_sideconds_in_goal;
   ZnWords

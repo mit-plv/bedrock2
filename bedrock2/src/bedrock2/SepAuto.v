@@ -69,6 +69,10 @@ Section SepLog.
   Context {width: Z} {word: word.word width} {mem: map.map word byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
+  Definition suchThat{V: Type}(memPred: V -> word -> mem -> Prop)(purePred: V -> Prop):
+    V -> word -> mem -> Prop :=
+    fun v a => sep (a |-> memPred v) (emp (purePred v)).
+
   Lemma load_of_sep_cps: forall sz addr value R m (post: word -> Prop),
       sep (addr |-> truncated_word sz value) R m /\ post (truncate_word sz value) ->
       get_option (Memory.load sz m addr) post.
@@ -134,11 +138,11 @@ Section SepLog.
 
   Lemma rewrite_ith_in_lhs_of_impl1: forall i Ps Pi Qs R,
       nth i Ps = Pi ->
-      iff1 (seps Qs) Pi -> (* <-- used right-to-left *)
+      iff1 (seps Qs) Pi /\ (* <-- used right-to-left *)
       impl1 (seps (remove_nth i Ps ++ Qs)) R ->
       impl1 (seps Ps) R.
   Proof.
-    intros. subst Pi.
+    intros. destruct H0. subst Pi.
     unfold nth, remove_nth in *.
     rewrite <-(seps_nth_to_head i Ps).
     rewrite <- H0.
@@ -169,6 +173,8 @@ Create HintDb split_sepclause_sidecond.
    left-to-right, ie in the merge direction *)
 Create HintDb merge_sepclause_sidecond.
 
+#[global] Hint Opaque split_sepclause : split_sepclause_goal.
+
 Lemma iff1_refl{A: Type}(P: A -> Prop): iff1 P P. Proof. reflexivity. Qed.
 Lemma iff1_sym{A: Type}{P Q: A -> Prop}: iff1 P Q -> iff1 Q P.
 Proof. intros. symmetry. assumption. Qed.
@@ -186,36 +192,55 @@ Ltac impl1_syntactic_reflexivity :=
   end;
   exact (impl1_refl _).
 
-(* Poses split_sepclause lemmas as hypotheses in the context, forming a stack of
-   rewrite steps that have been performed, which can later be undone by
-   pop_split_sepclause_stack *)
-Ltac impl_ecancel_step_with_splitting :=
+Ltac split_ith_left_to_cancel_with_fst_right i :=
   lazymatch goal with
   | |- Lift1Prop.impl1 (seps ?L) (seps ((?addrR |-> ?predR ?valR) :: ?RRest)) =>
-    let iLi := index_and_element_of L in (* <-- multi-success! *)
-    let i := lazymatch iLi with (?i, _) => i end in
-    let Li := lazymatch iLi with (_, ?Li) => Li end in
-    let Li := eval cbn [hd app firstn tl skipn] in Li in
+    eapply (rewrite_ith_in_lhs_of_impl1 i L);
+    cbn [hd app firstn tl skipn];
+    [ reflexivity | ];
+    (* Current goal is a conjunction of two subgoals:
+       - iff1 for right-to-left-rewrite that we'll derive from a split_sepclause instance
+       - new impl1 to be proven after this cancellation step *)
+    let Li := lazymatch goal with |- iff1 _ ?Li /\ impl1 _ _ => Li end in
     lazymatch Li with
     (* Simplifying assumption: Only the last argument to predL is a value that
        can be changed by stores and function calls, all other arguments are constants *)
     | ?addrL |-> ?predL ?valL =>
         let Sp := fresh "Sp" in
-        eassert (split_sepclause addrL predL addrR predR _) as Sp
+        eassert (split_sepclause addrL predL addrR predR _) as Sp;
+        [ (* can be left unsolved for debugging *)
+          try typeclasses eauto with split_sepclause_goal
             (* typeclasses eauto instead of eauto because eauto unfolds split_sepclause
                and then just does `exact H` for the last Prop in the context, and it
                seems that `Hint Opaque` and `Hint Constants Opaque` don't fix that
                (and `Opaque split_sepclause` would fix it, but also affects the conversion
                algorithm) *)
-            by typeclasses eauto with split_sepclause_goal;
-        eapply (rewrite_ith_in_lhs_of_impl1 i L Li);
-        cbn [hd app firstn tl skipn];
-        [ reflexivity
-        | cbv [split_sepclause] in Sp;
-          eapply Sp;
-          solve [eauto with split_sepclause_sidecond]
-        | ]
+        | split;
+          [ lazymatch type of Sp with
+            | split_sepclause _ _ _ _ ?stmt =>
+                tryif is_evar stmt then
+                  idtac (* debugging and typeclasses eauto above failed *)
+                else (
+                  cbv [split_sepclause] in Sp;
+                  eapply Sp;
+                  (* sideconditions of Sp can be left unsolved for debugging *)
+                  eauto with split_sepclause_sidecond
+                )
+            end
+          | (* this goal is the remaining impl1 after cancellation, and it's the only
+               goal supposed to remain open unless debugging *) ] ]
     end
+  end.
+
+(* Poses split_sepclause lemmas as hypotheses in the context, forming a stack of
+   rewrite steps that have been performed, which can later be undone by
+   pop_split_sepclause_stack *)
+Ltac impl_ecancel_step_with_splitting :=
+  lazymatch goal with
+  | |- Lift1Prop.impl1 (seps ?L) _ =>
+    let iLi := index_and_element_of L in (* <-- multi-success! *)
+    let i := lazymatch iLi with (?i, _) => i end in
+    split_ith_left_to_cancel_with_fst_right i; []
   end.
 
 Ltac use_sep_asm :=
@@ -433,10 +458,10 @@ Ltac intro_new_mem :=
 
 Ltac put_cont_into_emp_seps :=
   lazymatch goal with
-  | |- seps ?Pre ?mOld /\ (forall mNew, seps ?Post mNew -> _) =>
+  | |- seps ?Pre ?mOld /\ (forall mNew, _) =>
       apply put_and_r_into_emp_seps; cbn [SeparationLogic.app]
   | |- _ => fail "Expected a goal of the form"
-                 "(seps ?Pre ?mOld /\ (forall mNew, seps ?Post mNew -> _))"
+                 "(seps ?Pre ?mOld /\ (forall mNew, _))"
   end.
 
 Ltac after_mem_modifying_lemma :=

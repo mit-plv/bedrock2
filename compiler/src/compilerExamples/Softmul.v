@@ -721,18 +721,17 @@ Section Riscv.
           f_equal; try ZnWords.
         }
         use_sep_asm.
-        record.simp.
         impl_ecancel. (* TODO should not instantiate R on lhs! *)
         case TODO. (* separation logic automation *)
   Qed.
 
   Lemma save_regs3to31_correct: forall R (initial: State) oldvals spval
                                   (post: State -> Prop),
-      List.length oldvals = 29%nat ->
       map.get initial.(regs) RegisterNames.sp = Some spval ->
       initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
       regs_initialized initial.(regs) ->
-      (seps [word.add spval (word.of_Z 12) |-> word_array oldvals;
+      (seps [word.add spval (word.of_Z 12) |->
+           suchThat word_array (fun l => List.length l = 29%nat) oldvals;
         initial.(pc) |-> program RV32I save_regs3to31; R] initial.(mem) /\
        forall m vals,
          map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) 29 3) = Some vals ->
@@ -751,6 +750,9 @@ Section Riscv.
     match goal with
     | H: _ /\ forall _, _ |- _ => destruct H as [HM HPost]
     end.
+    replace (suchThat word_array (fun l => List.length l = 29%nat) oldvals)
+      with (word_array oldvals) in HM by case TODO.
+    assert (List.length oldvals = 29%nat) by case TODO.
     eapply save_regs_correct_aux with (start := 3); try eassumption; try reflexivity.
     intros.
     eapply HPost. 1: exact G. assumption.
@@ -847,15 +849,17 @@ Section Riscv.
       eapply runsToStep_cps. repeat step.
 
       (* save_regs3to31 *)
-      eapply save_regs3to31_correct with
-        (* TODO this could/should be determined automatically *)
-        (oldvals := List.skipn 3 stacktrash);
-        try record.simp.
-      { list_length_rewrites_without_sideconds_in_goal; ZnWords. }
+      eapply save_regs3to31_correct; try record.simp.
       { repeat step. }
       { ZnWords. }
       { repeat step. }
       autorewrite with rew_word_morphism. repeat word_simpl_step_in_goal.
+
+      put_cont_into_emp_seps.
+      use_sep_asm.
+      cancel_seps.
+      impl_ecancel_step_with_splitting.
+      once ecancel_step_by_implication.
 
       (* Csrr t1 MTVal       t1 := the invalid instruction i that caused the exception *)
       (* Srli t1 t1 5        t1 := t1 >> 5                                             *)
