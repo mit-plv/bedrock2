@@ -14,10 +14,16 @@ CC ?= cc
 DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
-DEPFLAGS_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n
+DEPFLAGS_COQUTIL_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n
+DEPFLAGS_NL=
 CURFLAGS_NL=-Q src/bedrock2 bedrock2\n-Q src/bedrock2Examples bedrock2Examples\n
 
 EXTERNAL_DEPENDENCIES?=
+EXTERNAL_COQUTIL?=
+
+ifneq ($(EXTERNAL_COQUTIL),1)
+DEPFLAGS_NL+=$(DEPFLAGS_COQUTIL_NL)
+endif
 
 # If we get our dependencies externally, then we should not bind the local versions of things
 ifneq ($(EXTERNAL_DEPENDENCIES),1)
@@ -65,14 +71,14 @@ special/BytedumpTest.out: special/BytedumpTest.golden.bin noex
 	mv special/BytedumpTest.out.tmp special/BytedumpTest.out
 
 special/stackloop.c: noex
-	$(BYTEDUMP) bedrock2.ToCStringStackallocLoopTest.main_cbytes > special/stackloop.c 
+	$(BYTEDUMP) bedrock2.ToCStringStackallocLoopTest.main_cbytes > special/stackloop.c
 special/stackloop: special/stackloop.c
 	$(CC) -O0 special/stackloop.c -o special/stackloop
 testStackLoop: special/stackloop
 	special/stackloop
 
 special/TypecheckExprToCString.c: noex
-	$(BYTEDUMP) bedrock2.ToCStringExprTypecheckingTest.test > special/TypecheckExprToCString.c 
+	$(BYTEDUMP) bedrock2.ToCStringExprTypecheckingTest.test > special/TypecheckExprToCString.c
 typecheckExprToCString: special/TypecheckExprToCString.c
 	$(CC) -fsyntax-only special/TypecheckExprToCString.c
 typecheckExprToCString-64: special/TypecheckExprToCString.c

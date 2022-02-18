@@ -22,17 +22,39 @@ export COQC
 endif
 
 EXTERNAL_DEPENDENCIES?=
+EXTERNAL_COQUTIL?=
+EXTERNAL_COQ_RECORD_UPDATE?=
+EXTERNAL_RISCV_COQ?=
+EXTERNAL_KAMI?=
 
 ifneq ($(EXTERNAL_DEPENDENCIES),1)
 
+ifneq ($(EXTERNAL_COQUTIL),1)
 bedrock2_noex: coqutil
-riscv-coq: coqutil coq-record-update
-kami: riscv-coq
-compiler_noex: riscv-coq bedrock2_noex
-processor: riscv-coq kami
-end2end: compiler_ex bedrock2_ex processor
+riscv-coq: coqutil
+install: install_coqutil
+endif
 
-install: install_coqutil install_coq-record-update install_riscv-coq install_kami
+ifneq ($(EXTERNAL_COQ_RECORD_UPDATE),1)
+riscv-coq: coq-record-update
+install: install_coq-record-update
+endif
+
+ifneq ($(EXTERNAL_RISCV_COQ),1)
+kami: riscv-coq
+compiler_noex: riscv-coq
+processor: riscv-coq
+install: install_riscv-coq
+endif
+
+ifneq ($(EXTERNAL_KAMI),1)
+processor: kami
+install: install_kami
+endif
+
+compiler_noex: bedrock2_noex
+compiler_ex: bedrock2_ex
+end2end: compiler_ex bedrock2_ex processor
 
 endif
 
@@ -91,7 +113,7 @@ install_bedrock2:
 compiler_noex:
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler noex
 
-compiler_ex: compiler_noex bedrock2_ex
+compiler_ex: compiler_noex
 	$(MAKE) -C $(ABS_ROOT_DIR)/compiler
 
 clean_compiler:
