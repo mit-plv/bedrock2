@@ -103,11 +103,11 @@ Section ZnWordTests.
                              * Z.of_nat (f vs1))) = a'.
   Proof.
     intros.
-    Fail ZnWords.
+(*    Fail ZnWords.*)
     (* This rewrite should not be needed, but it seems to be a limitation of lia:
        https://github.com/coq/coq/issues/15583
        TODO remove the rewrite if lia is fixed. *)
-    rewrite H0.
+(*    rewrite H0.*)
     ZnWords.
   Qed.
 
