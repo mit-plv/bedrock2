@@ -4,6 +4,10 @@ Require Import bedrock2.groundcbv.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Tactics.rewr.
 
+Definition with_len{width}{word: word width}{mem: map.map word byte}{V: Type}
+  (n: nat)(array_pred: list V -> word -> mem -> Prop)(vs: list V)(a: word): mem -> Prop :=
+  with_pure (a |-> array_pred vs) (List.length vs = n).
+
 Section SepLog.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
@@ -19,14 +23,14 @@ Section SepLog.
              (addr: word): mem -> Prop :=
     bedrock2.Array.array (fun a e => elem e a) (word.of_Z sz) addr vs.
 
-  Lemma access_elem_in_array: forall a a' E (elem: E -> word -> mem -> Prop) sz,
+  Lemma access_elem_in_array: forall a a' E (elem: E -> word -> mem -> Prop) vsOld vOld sz,
       0 < sz < 2 ^ width ->
       word.unsigned (word.sub a' a) mod sz = 0 ->
-      (* TODO here we also need a sidecondition that a' is within the array,
-         having it only below is too late *)
-      split_sepclause a (array elem sz) a' elem
-        (let i := Z.to_nat (word.unsigned (word.sub a' a) / sz) in
-         forall vs vs1 v vs2,
+      let i := Z.to_nat (word.unsigned (word.sub a' a) / sz) in
+      (* only here to make sure automation picks the right array *)
+      (i < List.length vsOld)%nat ->
+      split_sepclause (a |-> array elem sz vsOld) (a' |-> elem vOld)
+        (forall vs vs1 v vs2,
            (* connected with /\ because it needs to be solved by considering both at once *)
            vs = vs1 ++ [v] ++ vs2 /\ List.length vs1 = i ->
            iff1 (seps
@@ -37,7 +41,7 @@ Section SepLog.
   Proof.
     unfold split_sepclause.
     unfold array, at_addr, seps.
-    intros. destruct H1. subst vs.
+    intros. fwd.
     cbn [List.app].
     symmetry.
     etransitivity.
@@ -45,7 +49,7 @@ Section SepLog.
     cbn [Array.array].
     cancel.
     cancel_seps_at_indices 0%nat 0%nat. {
-      f_equal. rewrite H2.
+      f_equal. rewrite H2p1.
       destruct width_cases; ZnWords.
     }
     cancel_seps_at_indices 0%nat 0%nat. {
@@ -54,94 +58,26 @@ Section SepLog.
     reflexivity.
   Qed.
 
-  Definition array_alternative{E: Type}(elem: E -> word -> mem -> Prop)(sz: word)(vs: list E)
-             (addr: word): mem -> Prop :=
-    bedrock2.Array.array (fun a e => elem e a) sz addr vs.
-
-  Lemma access_elem_in_array_alternative: forall a a' E (elem: E -> word -> mem -> Prop) sz,
-      word.unsigned (word.sub a' a) mod (word.unsigned sz) = 0 ->
-      split_sepclause a (array_alternative elem sz) a' elem
-        (let i := Z.to_nat (word.unsigned (word.sub a' a) / (word.unsigned sz)) in
-         forall vs vs1 v vs2,
-           (* connected with /\ because it needs to be solved by considering both at once *)
-           vs = vs1 ++ [v] ++ vs2 /\ List.length vs1 = i ->
-           iff1 (seps
-              [a |-> array_alternative elem sz vs1;
-               a' |-> elem v;
-               word.add a (word.mul sz (word.of_Z (Z.of_nat (S i)))) |-> array_alternative elem sz vs2])
-            (a |-> array_alternative elem sz vs)).
-  Proof.
-    unfold split_sepclause.
-    unfold array_alternative, at_addr, seps.
-    intros. destruct H0. subst vs.
-    cbn [List.app].
-    symmetry.
-    etransitivity.
-    1: eapply array_append.
-    cbn [Array.array].
-    cancel.
-    cancel_seps_at_indices 0%nat 0%nat. {
-      f_equal. destruct width_cases; ZnWords.
-    }
-    cancel_seps_at_indices 0%nat 0%nat. {
-      f_equal. destruct width_cases; ZnWords.
-    }
-    reflexivity.
-  Qed.
-
-  Lemma access_subarray_1: forall a a' E (elem: E -> word -> mem -> Prop) sz,
+  Lemma access_subarray: forall a a' E (elem: E -> word -> mem -> Prop) sz n vsAll vsPart,
       0 < sz < 2 ^ width ->
       word.unsigned (word.sub a' a) mod sz = 0 ->
-      (* TODO here we also need a sidecondition that a' is within the array,
-         having it only below is too late *)
-      split_sepclause a (array elem sz) a' (array elem sz)
-        (let i := Z.to_nat (word.unsigned (word.sub a' a) / sz) in
-         forall vs vs1 vs2 vs3,
-           vs = vs1 ++ vs2 ++ vs3 /\ List.length vs1 = i ->
-           iff1 (seps
-              [a |-> array elem sz vs1;
-               a' |-> array elem sz vs2;
-               word.add a (word.of_Z (sz * Z.of_nat (i + List.length vs2))) |->
-                        array elem sz vs3])
-            (a |-> array elem sz vs)).
-  Proof.
-    intros.
-    unfold split_sepclause.
-    unfold array, at_addr, seps.
-    intros. destruct H1. subst vs.
-    symmetry.
-    rewrite 2array_append.
-    cancel.
-    cancel_seps_at_indices 0%nat 0%nat. {
-      f_equal. rewrite H2.
-      destruct width_cases; ZnWords.
-    }
-    cancel_seps_at_indices 0%nat 0%nat. {
-      f_equal. destruct width_cases; ZnWords.
-    }
-    reflexivity.
-  Qed.
-
-  Lemma access_subarray_2: forall a a' E (elem: E -> word -> mem -> Prop) sz n,
-      0 < sz < 2 ^ width ->
-      word.unsigned (word.sub a' a) mod sz = 0 ->
-      (* TODO here we also need a sidecondition that a' is within the array,
-         having it only below is too late *)
-      split_sepclause a (array elem sz)
-                      a' (suchThat (array elem sz) (fun vs => List.length vs = n))
-        (let i := Z.to_nat (word.unsigned (word.sub a' a) / sz) in
-         forall vs vs1 vs2 vs3,
+      let i := Z.to_nat (word.unsigned (word.sub a' a) / sz) in
+      (* only here to make sure automation picks the right array *)
+      (i + n <= List.length vsAll)%nat ->
+      split_sepclause (a |-> array elem sz vsAll)
+                      (a' |-> with_len n (array elem sz) vsPart)
+        (forall vs vs1 vs2 vs3,
            vs = vs1 ++ vs2 ++ vs3 /\ List.length vs1 = i /\ List.length vs2 = n ->
            iff1 (seps
               [a |-> array elem sz vs1;
-               a' |-> suchThat (array elem sz) (fun vs => List.length vs = n) vs2;
+               a' |-> with_len n (array elem sz) vs2;
                word.add a (word.of_Z (sz * Z.of_nat (i + List.length vs2))) |->
                         array elem sz vs3])
             (a |-> array elem sz vs)).
   Proof.
     intros.
     unfold split_sepclause.
-    unfold suchThat, array, at_addr, seps.
+    unfold with_len, with_pure, array, at_addr, seps.
     intros. fwd.
     symmetry.
     rewrite 2array_append.
@@ -150,7 +86,7 @@ Section SepLog.
     }
     cancel.
     cancel_seps_at_indices 0%nat 0%nat. {
-      f_equal. rewrite H1p1.
+      f_equal. rewrite H2p1.
       destruct width_cases; ZnWords.
     }
     cancel_seps_at_indices 0%nat 0%nat. {
@@ -222,6 +158,10 @@ Abort.
 Ltac list_length_rewrites_without_sideconds_in_goal :=
   repeat list_length_simpl_step_in_goal.
 
+Ltac ZnWordsL :=
+  destruct_bool_vars;
+  list_length_rewrites_without_sideconds_in_goal;
+  ZnWords.
 
 Section WithA.
   Context {A: Type}.
@@ -251,11 +191,11 @@ End WithA.
 Notation word_array := (array scalar 4).
 
 
-(* Three hints in three different DBs indicating how to find the rewrite lemma,
+(* Hints in three different DBs indicating how to find the rewrite lemma,
    how to solve its sideconditions for the split direction, and how to solve its
    sideconditions for the merge direction: *)
 
-#[export] Hint Extern 1 (split_sepclause _ (array ?elem ?sz) _ ?elem _) =>
+#[export] Hint Extern 1 (split_sepclause (_ |-> array ?elem ?sz _) (_ |-> ?elem _) _) =>
   eapply access_elem_in_array;
   [ lazymatch goal with
     | |- 0 < sz < 2 ^ ?width =>
@@ -265,13 +205,13 @@ Notation word_array := (array scalar 4).
                   end
         end
     end
-  | destruct_bool_vars; ZnWords ]
+  | ZnWordsL
+  | ZnWordsL ]
 : split_sepclause_goal.
 
 #[export] Hint Extern 1
-  (split_sepclause ?addrAll (array ?elem ?sz)
-                   ?addrPart (suchThat (array ?elem ?sz) (fun l => List.length l = ?n)) _) =>
-  eapply (access_subarray_2 addrAll addrPart _ elem sz);
+  (split_sepclause (?a |-> array ?elem ?sz _) (?a' |-> with_len ?n (array ?elem ?sz) _) _) =>
+  eapply (access_subarray a a' _ elem sz n);
   [ lazymatch goal with
     | |- 0 < sz < 2 ^ ?width =>
         lazymatch isZcst sz with
@@ -280,30 +220,23 @@ Notation word_array := (array scalar 4).
                   end
         end
     end
-  | destruct_bool_vars; ZnWords ]
+  | ZnWordsL
+  | ZnWordsL ]
 : split_sepclause_goal.
 
 #[export] Hint Extern 1 (_ = ?l ++ [_] ++ _ /\ List.length ?l = _) =>
-  eapply list_expose_nth;
-  destruct_bool_vars;
-  list_length_rewrites_without_sideconds_in_goal;
-  ZnWords
+  eapply list_expose_nth; ZnWordsL
 : split_sepclause_sidecond.
 
 #[export] Hint Extern 1
  (_ = ?l1 ++ ?l2 ++ ?l3 /\ List.length ?l1 = _ /\ List.length ?l2 = _) =>
-  eapply list_expose_subarray;
-  destruct_bool_vars;
-  list_length_rewrites_without_sideconds_in_goal;
-  ZnWords
+  eapply list_expose_subarray; ZnWordsL
 : split_sepclause_sidecond.
 
 #[export] Hint Extern 1 (@eq (list _) ?listL ?listR /\ @eq nat ?lenL ?lenR) =>
   assert_fails (has_evar lenL);
   assert_fails (has_evar lenR);
-  is_evar listL; split;
-  [ reflexivity
-  | destruct_bool_vars; list_length_rewrites_without_sideconds_in_goal; ZnWords ]
+  is_evar listL; split; [ reflexivity | ZnWordsL ]
 : merge_sepclause_sidecond.
 
 (* Hints to simplify/cleanup the expressions that were created by repeated

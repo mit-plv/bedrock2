@@ -730,8 +730,7 @@ Section Riscv.
       map.get initial.(regs) RegisterNames.sp = Some spval ->
       initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
       regs_initialized initial.(regs) ->
-      (seps [word.add spval (word.of_Z 12) |->
-           suchThat word_array (fun l => List.length l = 29%nat) oldvals;
+      (seps [word.add spval (word.of_Z 12) |-> with_len 29 word_array oldvals;
         initial.(pc) |-> program RV32I save_regs3to31; R] initial.(mem) /\
        forall m vals,
          map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) 29 3) = Some vals ->
@@ -750,7 +749,7 @@ Section Riscv.
     match goal with
     | H: _ /\ forall _, _ |- _ => destruct H as [HM HPost]
     end.
-    replace (suchThat word_array (fun l => List.length l = 29%nat) oldvals)
+    replace (with_len 29 word_array oldvals)
       with (word_array oldvals) in HM by case TODO.
     assert (List.length oldvals = 29%nat) by case TODO.
     eapply save_regs_correct_aux with (start := 3); try eassumption; try reflexivity.
@@ -860,6 +859,9 @@ Section Riscv.
       cancel_seps.
       impl_ecancel_step_with_splitting.
       once ecancel_step_by_implication.
+
+      (* TODO add hint that doesn't need with_len when concrete_list_length succeeds:
+      let l := concrete_list_length save_regs3to31 in idtac l. *)
 
       (* Csrr t1 MTVal       t1 := the invalid instruction i that caused the exception *)
       (* Srli t1 t1 5        t1 := t1 >> 5                                             *)

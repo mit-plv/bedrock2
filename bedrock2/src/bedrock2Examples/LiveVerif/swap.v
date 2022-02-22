@@ -20,6 +20,7 @@ Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic bedrock2.Loops.
 Require Import coqutil.Word.Bitwidth32.
 Require Import Coq.Strings.String.
+Require Import bedrock2.TacticError.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2Examples.LiveVerif.ident_to_string.
 Require Import bedrock2.SepBulletPoints.
@@ -1319,8 +1320,7 @@ Ltac store sz addr val :=
     | |- exists (v: @word.rep _ _) (R: @map.rep _ _ _ -> Prop),
            seps _ _ /\ forall (_: @map.rep _ _ _), seps _ _ -> _ =>
         do 2 eexists; after_mem_modifying_lemma
-    | |- _ => idtac (* expression evaluation or after_mem_modifying_lemma
-                       did not work fully automatically *)
+    | |- _ => pose_err Error:("eval_expr_step should not fail on this goal")
     end ].
 
 Ltac cond c :=
@@ -1417,6 +1417,7 @@ Ltac prettify_goal :=
   end.
 
 Ltac add_snippet s :=
+  assert_no_error;
   lazymatch s with
   | SAssign ?is_decl ?y ?e => assign is_decl y e
   | SStore ?sz ?addr ?val => store sz addr val
