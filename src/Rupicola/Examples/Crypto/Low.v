@@ -139,12 +139,13 @@ Definition array_get {T} (a: array_t T) (n: nat) (d: T) := List.nth n a d.
 Definition array_put {T} (a: array_t T) (n: nat) (t: T) := upd a n t.
 
 Definition buffer_t := List.list.
+Definition buf_backed_by T (n : nat) (_ : list byte) : buffer_t T := [].
 Definition buf_make T (n: nat) : buffer_t T := [].
 Definition buf_push {T} (buf: buffer_t T) (t: T) := buf ++ [t].
 Definition buf_append {T} (buf: buffer_t T) (arr: array_t T) : buffer_t T := buf ++ arr.
 Definition buf_split {T} (buf: buffer_t T) : array_t T * buffer_t T := (buf, []).
 Definition buf_unsplit {T} (arr: array_t T) (buf: buffer_t T) : buffer_t T := arr.
-Definition buf_as_array {T} (buf: buffer_t T) : buffer_t T := buf.
+Definition buf_as_array {T} (buf: buffer_t T) : list T := buf.
 Definition buf_pad {T} (buf: buffer_t T) (len: nat) (t: T) : buffer_t T := buf ++ repeat t (len - length buf).
 
 Require Import bedrock2.NotationsCustomEntry.
@@ -196,6 +197,47 @@ Section CompileBufPolymorphic.
         rewrite <-(word.of_Z_unsigned sz), <-Hlb0s; reflexivity. } }
   Qed.
   Local Unset Printing Coercions.
+
+  Lemma compile_buf_backed_by (n : nat) (bs : list byte) :
+    let v := buf_backed_by T n bs in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+    a a_var {t m l} (R: mem -> Prop),
+      (bs$@a * R)%sep m ->
+      sz * n = length bs ->
+      (forall a m, (buffer_at n nil a * R)%sep m ->
+       <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+         k_impl
+       <{ pred (nlet_eq [a_var] v k) }>) ->
+    <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+      k_impl
+    <{ pred (k v eq_refl) }>.
+  Proof.
+    intros * HA HB HC; eapply HC.
+    cbv [buffer_at]; cbn [array]; sepsimpl; trivial; [].
+    eexists; sepsimpl; cbn [length]; rewrite Z.mul_0_r, ?Z.add_0_l, ?HB; trivial; [].
+    replace a with (word.add a (word.of_Z 0)) in HA by ring; eassumption.
+  Qed.
+
+  Lemma compile_buf_as_array (n : nat) elts :
+    let v := buf_as_array elts in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+    a a_var {t m l} (R: mem -> Prop),
+      (buffer_at n elts a * R)%sep m ->
+      length elts = n ->
+      (forall a m, (elts$T@a * R)%sep m ->
+       <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+         k_impl
+       <{ pred (nlet_eq [a_var] v k) }>) ->
+    <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+      k_impl
+    <{ pred (k v eq_refl) }>.
+  Proof.
+    intros * HA HB HC; eapply HC; subst n.
+    cbv [buffer_at] in HA.
+    eapply sep_assoc, sep_comm, sep_assoc, sep_ex1_l  in HA; case HA as [? ?]; sepsimpl.
+    destruct x; cbn [length] in *; try lia; cbn [array] in *; sepsimpl.
+    ecancel_assumption.
+  Qed.
 
   Lemma compile_buf_make_stack (n:nat) :
     let v := buf_make T n in
