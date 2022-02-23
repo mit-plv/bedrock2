@@ -17,6 +17,7 @@ Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Z.prove_Zeq_bitwise.
 Require Import riscv.Utility.runsToNonDet.
+Require riscv.Spec.PseudoInstructions.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.Simp.
 Require Import bedrock2.Syntax.
@@ -28,9 +29,10 @@ Require Import riscv.Platform.MinimalCSRs.
 Require Import riscv.Proofs.InstructionSetOrder.
 Require Import riscv.Proofs.DecodeEncodeProver.
 Require Import riscv.Proofs.DecodeEncode.
-Require Import riscv.Examples.SoftmulInsts.
+Require riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import compiler.regs_initialized.
+Require Import compilerExamples.SoftmulCompile.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
 
 Axiom TODO: False.
@@ -85,6 +87,55 @@ Ltac cbn_MachineWidth := cbn [
 
 (* typeclasses eauto is for the word.ok sidecondition *)
 #[export] Hint Rewrite @word.of_Z_unsigned using typeclasses eauto : fwd_rewrites.
+
+Section WithRegisterNames.
+  Import RegisterNames PseudoInstructions.
+  Import InstructionCoercions. Open Scope ilist_scope.
+
+  Definition save_regs3to31 :=
+    @List.map Register Instruction (fun r => Sw sp r (4 * r)) (List.unfoldn (Z.add 1) 29 3).
+  Definition restore_regs3to31 :=
+    @List.map Register Instruction (fun r => Lw r sp (4 * r)) (List.unfoldn (Z.add 1) 29 3).
+
+  (* TODO write encoder (so far there's only a decoder called CSR.lookupCSR) *)
+  Definition MTVal    := 835.
+  Remark MTVal_correct   : CSR.lookupCSR MTVal    = CSR.MTVal.    reflexivity. Qed.
+  Definition MEPC     := 833.
+  Remark MEPC_correct    : CSR.lookupCSR MEPC     = CSR.MEPC.     reflexivity. Qed.
+  Definition MScratch := 832.
+  Remark MScratch_correct: CSR.lookupCSR MScratch = CSR.MScratch. reflexivity. Qed.
+
+  Definition handler_init := [[
+    Csrrw sp sp MScratch;
+    Sw sp zero 0;
+    Sw sp ra 4;
+    Csrr ra MScratch;
+    Sw sp ra 8
+  ]].
+
+  Definition inc_mepc := [[
+    Csrr t1 MEPC;
+    Addi t1 t1 4;
+    Csrw t1 MEPC
+  ]].
+
+  Definition handler_final := [[
+    Lw ra sp 4;
+    Csrr sp MScratch;
+    Mret
+  ]].
+
+  Definition call_mul := [[
+    Csrr a0 MTVal;  (* argument 0: value of invalid instruction *)
+    Addi a1 sp 0;   (* argument 1: pointer to memory with register values before trap *)
+    Jal ra (Z.of_nat (List.length inc_mepc + 29 + List.length handler_final) * 4)
+  ]].
+
+  Definition handler_insts :=
+    handler_init ++ save_regs3to31 ++ call_mul ++ inc_mepc ++
+       restore_regs3to31 ++ handler_final ++ mul_insts.
+End WithRegisterNames.
+
 
 Section Riscv.
   Context {word: Word.Interface.word 32}.
@@ -734,7 +785,7 @@ Section Riscv.
         initial.(pc) |-> program RV32I save_regs3to31; R] initial.(mem) /\
        forall m vals,
          map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) 29 3) = Some vals ->
-         seps [word.add spval (word.of_Z 12) |-> word_array vals;
+         seps [word.add spval (word.of_Z 12) |-> with_len 29 word_array vals;
                initial.(pc) |-> program RV32I save_regs3to31; R] m ->
          runsTo (mcomp_sat (run1 RV32I)) { initial with mem := m;
            nextPc ::= word.add (word.of_Z (4 * Z.of_nat 29));
@@ -754,7 +805,10 @@ Section Riscv.
     assert (List.length oldvals = 29%nat) by case TODO.
     eapply save_regs_correct_aux with (start := 3); try eassumption; try reflexivity.
     intros.
-    eapply HPost. 1: exact G. assumption.
+    eapply HPost. 1: exact G.
+    replace (with_len 29 word_array vals)
+      with (word_array vals) by case TODO.
+    assumption.
   Qed.
 
   Lemma softmul_correct: forall initialH initialL post,
@@ -854,59 +908,49 @@ Section Riscv.
       { repeat step. }
       autorewrite with rew_word_morphism. repeat word_simpl_step_in_goal.
 
+      unfold handler_insts in ML.
+      rewrite !(array_app (E := Instruction)) in ML.
+      repeat match type of ML with
+             | context[List.length ?l] => let n := concrete_list_length l in
+                                         change (List.length l) with n in ML
+             end.
+      autorewrite with rew_word_morphism in *.
+      repeat (repeat word_simpl_step_in_hyps; fwd).
+      flatten_seps_in ML.
+
+      (* TODO automate *)
+
       put_cont_into_emp_seps.
       use_sep_asm.
       cancel_seps.
+      once ecancel_step_by_implication.
       impl_ecancel_step_with_splitting.
       once ecancel_step_by_implication.
+      finish_impl_ecancel.
 
-      (* TODO add hint that doesn't need with_len when concrete_list_length succeeds:
-      let l := concrete_list_length save_regs3to31 in idtac l. *)
+Hint Extern 1 (?listL = ?listR1 ++ ?listR2 ++ ?listR3 /\ ?lenR1 = ?i /\ ?lenR2 = ?n) =>
+    apply_in_hyps @map.getmany_of_list_length; rewrite List.length_unfoldn in *;
+    is_evar listL; split; [ reflexivity | split; listZnWords ]
+: merge_sepclause_sidecond.
 
-      (* Csrr t1 MTVal       t1 := the invalid instruction i that caused the exception *)
-      (* Srli t1 t1 5        t1 := t1 >> 5                                             *)
-      (* Andi s3 t1 (31*4)   s3 := i[7:12]<<2   // (rd of the MUL)*4                   *)
-      (* Srli t1 t1 8        t1 := t1 >> 8                                             *)
-      (* Andi s1 t1 (31*4)   s1 := i[15:20]<<2  // (rs1 of the MUL)*4                  *)
-      (* Srli t1 t1 5        t1 := t1 >> 5                                             *)
-      (* Andi s2 t1 (31*4)   s2 := i[20:25]<<2  // (rs2 of the MUL)*4                  *)
-      (* Add s1 s1 sp        s1 := s1 + stack_start                                    *)
-      (* Add s2 s2 sp        s2 := s2 + stack_start                                    *)
-      (* Add s3 s3 sp        s3 := s3 + stack_start                                    *)
-      (* Lw a1 s1 0          a1 := stack[s1]                                           *)
-      (* Lw a2 s2 0          a2 := stack[s2]                                           *)
-      (* softmul_insts       a3 := softmul(a1, a2)                                     *)
-      (* Sw s3 a3 0          stack[s3] := a3                                           *)
-      (* Csrr t1 MEPC *)
-      (* Addi t1 t1 4 *)
-      (* Csrw t1 MEPC        MEPC := MEPC + 4                                          *)
-      (* restore_regs3to31 *)
-      (* Lw ra sp 4 *)
-      (* Csrr sp MScratch *)
-      (* Mret *)
+      intro_new_mem.
+      clear ML. rename H4 into ML.
+      flatten_seps_in ML.
+      repeat (repeat word_simpl_step_in_hyps; fwd).
 
-      (* ExecuteCSR.execute run_primitive *)
+      (* Csrr a0 MTVal       a0 := the invalid instruction i that caused the exception *)
+      eapply runsToStep_cps. repeat step.
 
-      (* instruction-specific handler code *)
-      destruct inst.
-      + (* Mul *)
-        case TODO.
-      + (* Mulh *)
-        case TODO.
-      + (* Mulhsu *)
-        case TODO.
-      + (* Mulhu *)
-        case TODO.
-      + (* Div *)
-        case TODO.
-      + (* Divu *)
-        case TODO.
-      + (* Rem *)
-        case TODO.
-      + (* Remu *)
-        case TODO.
-      + (* InvalidM *)
-        case TODO.
+      case TODO.
+
+      (*
+      (* Addi a1 sp 0        a1 := pointer to registers *)
+      eapply runsToStep_cps. repeat step.
+
+      (* Jal ra ofs          call mul_insts *)
+      eapply runsToStep_cps. repeat step.
+      *)
+
     - (* CSRInstruction *)
       subst.
       eapply @runsToStep with (midset := fun midL => exists midH, related midH midL /\ midset midH).
