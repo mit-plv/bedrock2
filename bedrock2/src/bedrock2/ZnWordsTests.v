@@ -52,8 +52,6 @@ Section ZnWordTests.
   Qed.
 
   Let at_addr(addr: word)(clause: word -> mem -> Prop): mem -> Prop := clause addr.
-  Local Notation "addr |-> clause" := (at_addr addr clause)
-    (at level 25, format "addr  |->  '[' clause ']'").
 
   Goal forall a : word,
     let arguments := [a] in

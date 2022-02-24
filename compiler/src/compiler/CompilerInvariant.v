@@ -14,7 +14,7 @@ Require Import compiler.ExprImpEventLoopSpec.
 Require Import compiler.ToplevelLoop.
 
 
-Existing Instance riscv.Spec.Machine.DefaultRiscvState.
+Global Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Open Scope Z_scope.
 

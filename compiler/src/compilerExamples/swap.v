@@ -35,11 +35,11 @@ Definition var: Set := Z.
 Definition Reg: Set := Z.
 
 
-Existing Instance DefaultRiscvState.
+Local Existing Instance DefaultRiscvState.
 
 Axiom TODO: forall {T: Type}, T.
 
-Instance funpos_env: map.map string (nat * nat * Z) := SortedListString.map _.
+Local Instance funpos_env: map.map string (nat * nat * Z) := SortedListString.map _.
 
 Definition compile_ext_call(posenv: funpos_env)(mypos stackoffset: Z)(s: FlatImp.stmt Z) :=
   match s with
@@ -53,8 +53,8 @@ Definition compile_ext_call(posenv: funpos_env)(mypos stackoffset: Z)(s: FlatImp
 
 Notation RiscvMachine := MetricRiscvMachine.
 
-Existing Instance coqutil.Map.SortedListString.map.
-Existing Instance coqutil.Map.SortedListString.ok.
+Local Existing Instance coqutil.Map.SortedListString.map.
+Local Existing Instance coqutil.Map.SortedListString.ok.
 
 Definition main_stackalloc :=
   ("main", ([]: list String.string, []: list String.string,
@@ -81,7 +81,7 @@ Lemma f_equal3_dep: forall {A B C: Type} {f1 f2: A -> B -> C} {a1 a2: A} {b1 b2:
 Proof. intros. congruence. Qed.
 
 
-Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.
+Local Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.
 Proof. reflexivity. Qed.
 
 Definition swap_asm: list Instruction.

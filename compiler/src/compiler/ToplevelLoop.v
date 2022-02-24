@@ -51,7 +51,7 @@ Require Import compiler.Pipeline.
 Require Import compiler.LowerPipeline.
 Require Import compiler.ExprImpEventLoopSpec.
 
-Existing Instance riscv.Spec.Machine.DefaultRiscvState.
+Global Existing Instance riscv.Spec.Machine.DefaultRiscvState.
 
 Local Hint Mode word.word - : typeclass_instances.
 

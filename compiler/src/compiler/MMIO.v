@@ -92,7 +92,7 @@ Proof.
     repeat split; (blia || assumption).
 Qed.
 
-Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.
+Global Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.
 Proof. reflexivity. Qed.
 
 Local Arguments Z.mul: simpl never.
