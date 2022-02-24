@@ -862,14 +862,24 @@ Section Riscv.
       exists initialH.(mem). split. 1: ecancel_assumption. 1: exact MH.
     }
     flatten_seps_in ML'. clear ML.
-    destruct (mdecode z) as [inst|inst|inst|inst|inst|inst|inst|inst|inst|inst] eqn: E.
-    - (* IInstruction *)
-      move E at bottom.
-      unfold mdecode in E. destruct_one_match_hyp. 1: discriminate E.
+    remember (match mdecode z with
+              | MInstruction _ => false
+              | _ => true
+              end) as doSame eqn: E.
+    symmetry in E.
+    destruct doSame; fwd.
+
+    - (* not a mul instruction, so both machines do the same *)
       replace initialH.(pc) with initialL.(pc) in ML'.
+      rename Hp1 into F. move F at bottom.
+      unfold mdecode in E, F.
+      match type of E with
+      | match (if ?x then _ else _) with _ => _ end = true => destr x
+      end.
+      1: discriminate E.
       eapply @runsToStep with
         (midset := fun midL => exists midH, related midH midL /\ midset midH).
-      + eapply build_fetch_one_instr with (instr1 := IInstruction inst).
+      + eapply build_fetch_one_instr with (instr1 := decode RV32I z).
         { refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML').
           cancel_seps_at_indices_by_implication 2%nat 0%nat. 2: finish_impl_ecancel.
           unfold impl1, instr, at_addr, ex1, emp. intros m A.
@@ -881,7 +891,9 @@ Section Riscv.
           unfold idecode. fwd. auto. }
         eapply mcomp_sat_preserves_related; eassumption.
       + intros midL. intros. simp. eapply H1; eassumption.
+
     - (* MInstruction *)
+      rename E0 into E.
       (* fetch M instruction (considered invalid by RV32I machine) *)
       eapply runsToStep_cps.
       replace initialH.(pc) with initialL.(pc) in ML'. rename ML' into ML.
@@ -991,84 +1003,5 @@ Section Riscv.
       (* Mret *)
       eapply runsToStep_cps. repeat step.
       *)
-
-    - (* AInstruction *)
-      case TODO. (* E is a contradiction *)
-
-    - (* FInstruction *)
-      case TODO. (* E is a contradiction *)
-
-    - (* I64Instruction *)
-      case TODO. (* E is a contradiction *)
-
-    - (* M64Instruction *)
-      case TODO. (* E is a contradiction *)
-
-
-    -
-      move E at bottom.
-      replace initialH.(pc) with initialL.(pc) in ML'.
-      clear -E ML' midset word_ok Mem_ok Bz registers_ok Rel Hp1 H1.
-
-      unfold mdecode in E. destruct_one_match_hyp. 1: discriminate E.
-      eapply @runsToStep with
-        (midset := fun midL => exists midH, related midH midL /\ midset midH).
-      + lazymatch goal with
-        | H: decode _ z = ?Inst |- _ => eapply build_fetch_one_instr with (instr1 := Inst)
-        end.
-        { refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML').
-          cancel_seps_at_indices_by_implication 2%nat 0%nat. 2: finish_impl_ecancel.
-          unfold impl1, instr, at_addr, ex1, emp. intros m A.
-          eexists.
-          refine (Morphisms.subrelation_refl impl1 _ _ _ m A).
-          cancel.
-          cancel_seps_at_indices_by_implication 0%nat 0%nat. 1: exact impl1_refl.
-          unfold impl1. cbn [seps]. unfold emp. intros.
-          unfold idecode. fwd. auto. }
-        eapply mcomp_sat_preserves_related; eassumption.
-      + intros midL. intros. simp. eapply H1; eassumption.
-
-    - (* A64Instruction *)
-      case TODO. (* E is a contradiction *)
-
-    - (* CSRInstruction *)
-      subst.
-      move E at bottom.
-      unfold mdecode in E. destruct_one_match_hyp. 1: discriminate E.
-      replace initialH.(pc) with initialL.(pc) in ML'.
-      eapply @runsToStep with
-        (midset := fun midL => exists midH, related midH midL /\ midset midH).
-      + eapply build_fetch_one_instr with (instr1 := CSRInstruction inst).
-        { refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML').
-          cancel_seps_at_indices_by_implication 2%nat 0%nat. 2: finish_impl_ecancel.
-          unfold impl1, instr, at_addr, ex1, emp. intros m A.
-          eexists.
-          refine (Morphisms.subrelation_refl impl1 _ _ _ m A).
-          cancel.
-          cancel_seps_at_indices_by_implication 0%nat 0%nat. 1: exact impl1_refl.
-          unfold impl1. cbn [seps]. unfold emp. intros.
-          unfold idecode. fwd. auto. }
-        eapply mcomp_sat_preserves_related; eassumption.
-      + intros midL. intros. simp. eapply H1; eassumption.
-
-    - (* InvalidInstruction *)
-      move E at bottom.
-      unfold mdecode in E. destruct_one_match_hyp. 1: discriminate E.
-      replace initialH.(pc) with initialL.(pc) in ML'.
-      eapply @runsToStep with
-        (midset := fun midL => exists midH, related midH midL /\ midset midH).
-      + eapply build_fetch_one_instr with (instr1 := InvalidInstruction inst).
-        { refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML').
-          cancel_seps_at_indices_by_implication 2%nat 0%nat. 2: finish_impl_ecancel.
-          unfold impl1, instr, at_addr, ex1, emp. intros m A.
-          eexists.
-          refine (Morphisms.subrelation_refl impl1 _ _ _ m A).
-          cancel.
-          cancel_seps_at_indices_by_implication 0%nat 0%nat. 1: exact impl1_refl.
-          unfold impl1. cbn [seps]. unfold emp. intros.
-          unfold idecode. fwd. auto. }
-        eapply mcomp_sat_preserves_related; eassumption.
-      + intros midL. intros. simp. eapply H1; eassumption.
-
   Qed.
 End Riscv.
