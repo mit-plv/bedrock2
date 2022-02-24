@@ -29,110 +29,9 @@ Require Import riscv.Proofs.EncodeBound.
 Require Import riscv.Platform.MinimalCSRs.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import compiler.regs_initialized.
-Require Import bedrock2.NotationsCustomEntry.
+Require Import compilerExamples.SoftmulBedrock2.
+Require compiler.Pipeline.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
-
-Definition binary_mul :=
-  ("binary_mul", (["x";"e"], (["ret"]:list String.string), bedrock_func_body:(
-  ret = $0;
-  while (e) {
-    if (e & $1) { ret = ret + x };
-    e = e >> $1;
-    x = x + x
-  }
-))).
-
-#[export] Instance spec_of_binary_mul : spec_of "binary_mul" := fun functions =>
-  forall x e t m,
-    WeakestPrecondition.call functions
-      "binary_mul" t m [x; e]
-      (fun t' m' rets => t=t'/\ m=m' /\ rets = [word.mul x e]).
-
-Require Import bedrock2.AbsintWordToZ coqutil.Z.Lia.
-
-Ltac t :=
-  repeat match goal with x := _ |- _ => subst x end;
-  repeat match goal with |- context [word.unsigned ?e] => progress (idtac; let H := rbounded (word.unsigned e) in idtac) end;
-  repeat match goal with G: context [word.unsigned ?e] |- _ => progress (idtac; let H := rbounded (word.unsigned e) in idtac) end;
-  repeat match goal with |- context [word.unsigned ?e] => progress (idtac; let H := unsigned.zify_expr e in try rewrite H) end;
-  repeat match goal with G: context [word.unsigned ?e] |- _ => progress (idtac; let H := unsigned.zify_expr e in try rewrite H in G) end;
-  repeat match goal with H: absint_eq ?x ?x |- _ => clear H end;
-  cbv [absint_eq] in *.
-
-Lemma binary_mul_ok : program_logic_goal_for_function! binary_mul.
-Proof.
-  repeat straightline.
-
-  refine ((Loops.tailrec
-    (* types of ghost variables*) HList.polymorphic_list.nil
-    (* program variables *) (["e";"ret";"x"] : list String.string))
-    (fun v t m e ret x => PrimitivePair.pair.mk (v = word.unsigned e) (* precondition *)
-    (fun   T M E RET X => T = t /\ M = m /\ (* postcondition *)
-      word.unsigned RET = (word.unsigned ret + word.unsigned x * word.unsigned e) mod 2^32))
-    (fun n m => 0 <= n < m) (* well_founded relation *)
-    _ _ _ _ _);
-    (* TODO wrap this into a tactic with the previous refine *)
-    cbn [HList.hlist.foralls HList.tuple.foralls
-         HList.hlist.existss HList.tuple.existss
-         HList.hlist.apply  HList.tuple.apply
-         HList.hlist
-         List.repeat Datatypes.length
-         HList.polymorphic_list.repeat HList.polymorphic_list.length
-         PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
-
-  { repeat straightline. }
-  { exact (Z.lt_wf _). }
-  { repeat straightline. } (* init precondition *)
-  { (* loop test *)
-    repeat straightline; try show_program.
-    { (* loop body *)
-      letexists; split; [repeat straightline|]. (* if condition evaluation *)
-      split. (* if cases, path-blasting *)
-      {
-        repeat (straightline || (split; trivial; [])). all:t.
-        { (* measure decreases *)
-          set (word.unsigned x0) in *. (* WHY does blia need this? *)
-          Z.div_mod_to_equations; blia. }
-        { (* invariant preserved *)
-          rewrite H3; clear H3.
-          change (1+1) with 2 in *.
-          assert (word.unsigned x0 mod 2 = 1) as Hbit by ZnWords.
-          epose proof (Z.div_mod _ 2 ltac:(discriminate)) as Heq; rewrite Hbit in Heq.
-          rewrite Heq at 2; clear Hbit Heq.
-          change (2 ^ 1) with 2. ZnWords. } }
-      {
-        repeat (straightline || (split; trivial; [])).
-        all: t.
-        { ZnWords. }
-        { (* invariant preserved *)
-          rewrite H3; clear H3.
-          change (1+1) with 2 in *.
-          rename H0 into Hbit.
-          epose proof (Z.div_mod _ 2 ltac:(discriminate)) as Heq; rewrite Hbit in Heq.
-          rewrite Heq at 2; clear Hbit Heq.
-          change (2 ^ 1) with 2. ZnWords. } } }
-    { (* postcondition *) ssplit; auto. ZnWords. } }
-
-  repeat straightline.
-  ssplit; auto. f_equal. ZnWords.
-Qed.
-
-Open Scope bool_scope.
-
-(* like (decode RV32I), but additionally also accepts the Mul instruction
-   (but no other instructions from the M extension) *)
-Definition mdecode(inst: Z): Instruction :=
-  let opcode := bitSlice inst 0 7 in
-  let rd := bitSlice inst 7 12 in
-  let funct3 := bitSlice inst 12 15 in
-  let rs1 := bitSlice inst 15 20 in
-  let rs2 := bitSlice inst 20 25 in
-  let funct7 := bitSlice inst 25 32 in
-  if (opcode =? opcode_OP) && (funct3 =? funct3_MUL) && (funct7 =? funct7_MUL)
-  then MInstruction (Mul rd rs1 rs2)
-  else decode RV32I inst.
-
-Definition idecode: Z -> Instruction := decode RV32I.
 
 Section Riscv.
   Context {word: Word.Interface.word 32}.
@@ -193,30 +92,26 @@ Section Riscv.
     J (-12)
   ]].
 
+  Definition funimplsList :=
+    (*softmul :: TODO uncomment and debug why compiler chokes on it *) rpmul.rpmul :: nil.
+  Definition prog := map.of_list funimplsList.
+
+  Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.
+  Proof. reflexivity. Qed.
+
   (* TODO implement in bedrock2 and compile to riscv, and also need to prove that
      programs running on the RISC-V machine used by the compiler (without CSRs)
      also run correctly on a RISC-V machine with CSRs and a different state type. *)
-  Definition mul_insts := [[
-    Addi t1 a1 0;
-    Srli t1 t1 5           ; (* t1 := t1 >> 5                                             *)
-    Andi s3 t1 (31*4)      ; (* s3 := i[7:12]<<2   // (rd of the MUL)*4                   *)
-    Srli t1 t1 8           ; (* t1 := t1 >> 8                                             *)
-    Andi s1 t1 (31*4)      ; (* s1 := i[15:20]<<2  // (rs1 of the MUL)*4                  *)
-    Srli t1 t1 5           ; (* t1 := t1 >> 5                                             *)
-    Andi s2 t1 (31*4)      ; (* s2 := i[20:25]<<2  // (rs2 of the MUL)*4                  *)
-    Add s1 s1 sp           ; (* s1 := s1 + stack_start                                    *)
-    Add s2 s2 sp           ; (* s2 := s2 + stack_start                                    *)
-    Add s3 s3 sp           ; (* s3 := s3 + stack_start                                    *)
-    Lw a1 s1 0             ; (* a1 := stack[s1]                                           *)
-    Lw a2 s2 0               (* a2 := stack[s2]                                           *)
-  ]] ++ softmul_insts ++ [[  (* a3 := softmul(a1,a2)                                      *)
-    Sw s3 a3 0;              (* stack[s3] := a3                                           *)
-    Jalr zero ra 0           (* return;                                                   *)
-  ]].
+  Definition mul_insts_result := Pipeline.compile (fun _ _ _ _ => []) prog.
 
-  (* update if index is nonzero *)
-  Definition updNz{A: Type}(l: list A)(i: Z)(v: A): list A :=
-    if Z.eqb i 0 then l else List.upd l (Z.to_nat i) v.
+  Definition mul_insts_tuple: list Instruction * SortedListString.map (nat * nat * Z) * Z.
+    let r := eval vm_compute in mul_insts_result in
+    match r with
+    | Result.Success ?p => exact p
+    end.
+  Defined.
+
+  Definition mul_insts: list Instruction := Eval compute in fst (fst mul_insts_tuple).
 
   (* TODO will need some stack space *)
   Lemma mul_correct: forall initial a_regs regvals invalidIInst R (post: State -> Prop)
@@ -230,7 +125,7 @@ Section Riscv.
       seps [a_regs |-> word_array regvals; initial.(pc) |-> program idecode mul_insts; R]
            initial.(mem) /\
       (forall newMem newRegs,
-        seps [a_regs |-> word_array (updNz regvals rd (word.mul
+        seps [a_regs |-> word_array (List.upd regvals (Z.to_nat rd) (word.mul
                    (List.nth (Z.to_nat rs1) regvals default)
                    (List.nth (Z.to_nat rs2) regvals default)));
                initial.(pc) |-> program idecode mul_insts; R] newMem ->
@@ -265,7 +160,7 @@ Section Riscv.
           decode RV32IM (word.unsigned invalidIInst) = MInstruction (Mul rd rs1 rs2) /\
           nth_error regvals (Z.to_nat rs1) = Some v1 /\
           nth_error regvals (Z.to_nat rs2) = Some v2 /\
-          seps [a_regs |-> word_array (updNz regvals rd (word.mul v1 v2));
+          seps [a_regs |-> word_array (List.upd regvals (Z.to_nat rd) (word.mul v1 v2));
                initial.(pc) |-> program idecode mul_insts; R] final.(mem))) ->
         (* In common: *)
         final.(pc) = word.add initial.(pc) (word.mul (word.of_Z 4)

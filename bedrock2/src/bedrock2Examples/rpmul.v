@@ -17,13 +17,14 @@ Definition rpmul :=
   }
 ))).
 
-From bedrock2 Require Import Semantics BasicC64Semantics WeakestPrecondition ProgramLogic.
+From bedrock2 Require Import Semantics BasicC32Semantics WeakestPrecondition ProgramLogic.
 From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
 
-Instance spec_of_rpmul : spec_of "rpmul" := fnspec! "rpmul" x e ~> v,
+#[export] Instance spec_of_rpmul : spec_of "rpmul" := fnspec! "rpmul" x e ~> v,
   { requires t m := True;
     ensures t' m' := t=t' /\ m=m' /\
-      word.unsigned v = word.unsigned x * word.unsigned e mod 2^64 }.
+      (* TODO could be expressed as just word.mul *)
+      word.unsigned v = word.unsigned x * word.unsigned e mod 2^32 }.
 
 Module Z.
   Lemma mod2_nonzero x : x mod 2 <> 0 -> x mod 2 = 1.
@@ -51,7 +52,7 @@ Proof.
     (* program variables *) (["e";"ret";"x"] : list String.string))
     (fun v t m e ret x => PrimitivePair.pair.mk (v = word.unsigned e) (* precondition *)
     (fun   T M E RET X => T = t /\ M = m /\ (* postcondition *)
-        word.unsigned RET = (word.unsigned ret + word.unsigned x * word.unsigned e) mod 2^64))
+        word.unsigned RET = (word.unsigned ret + word.unsigned x * word.unsigned e) mod 2^32))
     (fun n m => 0 <= n < m) (* well_founded relation *)
     _ _ _ _ _);
     (* TODO wrap this into a tactic with the previous refine *)

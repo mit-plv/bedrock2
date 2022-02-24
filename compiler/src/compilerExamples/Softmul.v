@@ -34,6 +34,7 @@ Require Import riscv.Proofs.DecodeEncode.
 Require riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import compiler.regs_initialized.
+Require Import compilerExamples.SoftmulBedrock2.
 Require Import compilerExamples.SoftmulCompile.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
 
