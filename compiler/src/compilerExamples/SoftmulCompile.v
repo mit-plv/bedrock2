@@ -2,6 +2,8 @@ Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Word.Bitwidth32.
+From bedrock2 Require Import Semantics BasicC32Semantics WeakestPrecondition ProgramLogic.
+From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
 Require Import riscv.Utility.MonadNotations.
 Require Import riscv.Utility.FreeMonad.
 Require Import riscv.Utility.RegisterNames.
@@ -27,7 +29,93 @@ Require Import riscv.Proofs.EncodeBound.
 Require Import riscv.Platform.MinimalCSRs.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import compiler.regs_initialized.
+Require Import bedrock2.NotationsCustomEntry.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
+
+Definition binary_mul :=
+  ("binary_mul", (["x";"e"], (["ret"]:list String.string), bedrock_func_body:(
+  ret = $0;
+  while (e) {
+    if (e & $1) { ret = ret + x };
+    e = e >> $1;
+    x = x + x
+  }
+))).
+
+#[export] Instance spec_of_binary_mul : spec_of "binary_mul" := fun functions =>
+  forall x e t m,
+    WeakestPrecondition.call functions
+      "binary_mul" t m [x; e]
+      (fun t' m' rets => t=t'/\ m=m' /\ rets = [word.mul x e]).
+
+Require Import bedrock2.AbsintWordToZ coqutil.Z.Lia.
+
+Ltac t :=
+  repeat match goal with x := _ |- _ => subst x end;
+  repeat match goal with |- context [word.unsigned ?e] => progress (idtac; let H := rbounded (word.unsigned e) in idtac) end;
+  repeat match goal with G: context [word.unsigned ?e] |- _ => progress (idtac; let H := rbounded (word.unsigned e) in idtac) end;
+  repeat match goal with |- context [word.unsigned ?e] => progress (idtac; let H := unsigned.zify_expr e in try rewrite H) end;
+  repeat match goal with G: context [word.unsigned ?e] |- _ => progress (idtac; let H := unsigned.zify_expr e in try rewrite H in G) end;
+  repeat match goal with H: absint_eq ?x ?x |- _ => clear H end;
+  cbv [absint_eq] in *.
+
+Lemma binary_mul_ok : program_logic_goal_for_function! binary_mul.
+Proof.
+  repeat straightline.
+
+  refine ((Loops.tailrec
+    (* types of ghost variables*) HList.polymorphic_list.nil
+    (* program variables *) (["e";"ret";"x"] : list String.string))
+    (fun v t m e ret x => PrimitivePair.pair.mk (v = word.unsigned e) (* precondition *)
+    (fun   T M E RET X => T = t /\ M = m /\ (* postcondition *)
+      word.unsigned RET = (word.unsigned ret + word.unsigned x * word.unsigned e) mod 2^32))
+    (fun n m => 0 <= n < m) (* well_founded relation *)
+    _ _ _ _ _);
+    (* TODO wrap this into a tactic with the previous refine *)
+    cbn [HList.hlist.foralls HList.tuple.foralls
+         HList.hlist.existss HList.tuple.existss
+         HList.hlist.apply  HList.tuple.apply
+         HList.hlist
+         List.repeat Datatypes.length
+         HList.polymorphic_list.repeat HList.polymorphic_list.length
+         PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
+
+  { repeat straightline. }
+  { exact (Z.lt_wf _). }
+  { repeat straightline. } (* init precondition *)
+  { (* loop test *)
+    repeat straightline; try show_program.
+    { (* loop body *)
+      letexists; split; [repeat straightline|]. (* if condition evaluation *)
+      split. (* if cases, path-blasting *)
+      {
+        repeat (straightline || (split; trivial; [])). all:t.
+        { (* measure decreases *)
+          set (word.unsigned x0) in *. (* WHY does blia need this? *)
+          Z.div_mod_to_equations; blia. }
+        { (* invariant preserved *)
+          rewrite H3; clear H3.
+          change (1+1) with 2 in *.
+          assert (word.unsigned x0 mod 2 = 1) as Hbit by ZnWords.
+          epose proof (Z.div_mod _ 2 ltac:(discriminate)) as Heq; rewrite Hbit in Heq.
+          rewrite Heq at 2; clear Hbit Heq.
+          change (2 ^ 1) with 2. ZnWords. } }
+      {
+        repeat (straightline || (split; trivial; [])).
+        all: t.
+        { ZnWords. }
+        { (* invariant preserved *)
+          rewrite H3; clear H3.
+          change (1+1) with 2 in *.
+          rename H0 into Hbit.
+          epose proof (Z.div_mod _ 2 ltac:(discriminate)) as Heq; rewrite Hbit in Heq.
+          rewrite Heq at 2; clear Hbit Heq.
+          change (2 ^ 1) with 2. ZnWords. } } }
+    { (* postcondition *) ssplit; auto. ZnWords. } }
+
+  repeat straightline.
+  ssplit; auto. f_equal. ZnWords.
+Qed.
 
 Open Scope bool_scope.
 
