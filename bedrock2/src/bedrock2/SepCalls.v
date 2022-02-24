@@ -195,6 +195,8 @@ Ltac pop_split_sepclause_stack :=
    ) || let T := type of Sp in idtac "Note: Failed to merge sep clauses using" T);
   clear Sp.
 
+(* Note: this won't work if the new `seps [...] mNew` is under some existentials
+   or under a disjunction *)
 Ltac intro_new_mem :=
   lazymatch goal with
   | |- forall (m: @map.rep _ _ _), _ =>
@@ -215,10 +217,6 @@ Ltac after_sep_call :=
   use_sep_asm;
   impl_ecancel;
   match goal with
-  | _: tactic_error _ |- _ => idtac
-  | |- _ => finish_impl_ecancel;
-            match goal with
-            | _: tactic_error _ |- _ => idtac
-            | |- _ => intro_new_mem
-            end
+  | H: tactic_error _ |- _ => idtac
+  | |- _ => finish_impl_ecancel
   end.

@@ -66,5 +66,5 @@ Ltac after_mem_modifying_lemma :=
   after_sep_call;
   match goal with
   | _: tactic_error _ |- _ => idtac
-  | |- _ => transfer_sep_order
+  | |- _ => intro_new_mem; transfer_sep_order
   end.

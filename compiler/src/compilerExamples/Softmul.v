@@ -13,16 +13,18 @@ Require Import riscv.Utility.RecordSetters.
 Require Import coqutil.Decidable.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Map.Interface.
+Require Import coqutil.Map.MapEauto.
 Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Z.prove_Zeq_bitwise.
+Require Import coqutil.Tactics.rdelta.
+Require Import compiler.DivisibleBy4.
 Require Import riscv.Utility.runsToNonDet.
 Require riscv.Spec.PseudoInstructions.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.Simp.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.ZnWords.
-Require Import riscv.Platform.Run.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Proofs.EncodeBound.
 Require Import riscv.Platform.MinimalCSRs.
@@ -36,6 +38,18 @@ Require Import compilerExamples.SoftmulCompile.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
 
 Axiom TODO: False.
+
+Ltac assertZcst x :=
+  let x' := rdelta x in lazymatch isZcst x' with true => idtac end.
+
+Ltac compareZconsts :=
+  lazymatch goal with
+  | |- not (@eq Z ?x ?y) => assertZcst x; assertZcst y; discriminate 1
+  | |- ?A /\ ?B => split; compareZconsts
+  | |- ?x < ?y => assertZcst x; assertZcst y; reflexivity
+  | |- ?x <= ?y => assertZcst x; assertZcst y; discriminate 1
+  | |- @eq Z ?x ?y => assertZcst x; assertZcst y; reflexivity
+  end.
 
 Ltac cbn_MachineWidth := cbn [
   MkMachineWidth.MachineWidth_XLEN
@@ -128,14 +142,13 @@ Section WithRegisterNames.
   Definition call_mul := [[
     Csrr a0 MTVal;  (* argument 0: value of invalid instruction *)
     Addi a1 sp 0;   (* argument 1: pointer to memory with register values before trap *)
-    Jal ra (Z.of_nat (List.length inc_mepc + 29 + List.length handler_final) * 4)
+    Jal ra (Z.of_nat (1 + List.length inc_mepc + 29 + List.length handler_final) * 4)
   ]].
 
   Definition handler_insts :=
     handler_init ++ save_regs3to31 ++ call_mul ++ inc_mepc ++
        restore_regs3to31 ++ handler_final ++ mul_insts.
 End WithRegisterNames.
-
 
 Section Riscv.
   Context {word: Word.Interface.word 32}.
@@ -156,22 +169,13 @@ Section Riscv.
   (* RISC-V Monad *)
   Local Notation M := (free riscv_primitive primitive_result).
 
-  (*
-  Definition mcomp_sat{A: Type}(m: M A)(initial: State)(post: A -> State -> Prop): Prop :=
-      free.interpret run_primitive m initial post (fun _ => False).
-   *)
-
   Local Hint Mode map.map - - : typeclass_instances.
 
-  Definition instr(iset: InstructionSet)(inst: Instruction)(addr: word): Mem -> Prop :=
-    ex1 (fun z => sep (addr |-> truncated_scalar access_size.four z)
-                      (emp (decode iset z = inst /\ 0 <= z < 2 ^ 32))).
-
   (* TODO more generic handling of ex1 *)
-  Lemma instr_decode: forall {addr iset inst R m},
-    (sep (addr |-> instr iset inst) R) m ->
+  Lemma instr_decode: forall {addr decoder inst R m},
+    (sep (addr |-> instr decoder inst) R) m ->
     exists z, (sep (addr |-> truncated_scalar access_size.four z) R) m /\
-              decode iset z = inst /\ 0 <= z < 2 ^ 32.
+              decoder z = inst /\ 0 <= z < 2 ^ 32.
   Proof.
     intros.
     unfold instr, at_addr, ex1 in *.
@@ -187,11 +191,6 @@ Section Riscv.
   Declare Scope array_abbrevs_scope.
   Open Scope array_abbrevs_scope.
   Notation "'program' iset" := (array (instr iset) 4) (at level 10): array_abbrevs_scope.
-
-  (* both the finish-postcondition and the abort-postcondition are set to `post`
-     to make sure `post` holds in all cases: *)
-  Definition mcomp_sat(m: M unit)(initial: State)(post: State -> Prop): Prop :=
-    free.interpret run_primitive m initial (fun tt => post) post.
 
   Lemma weaken_mcomp_sat: forall m initial (post1 post2: State -> Prop),
       (forall s, post1 s -> post2 s) ->
@@ -221,13 +220,13 @@ Section Riscv.
     simp. eauto.
   Qed.
 
-  Lemma invert_fetch: forall initial post iset,
-      mcomp_sat (run1 iset) initial post ->
-      exists R i, seps [initial.(pc) |-> instr iset i; R] initial.(mem) /\
-                  verify i iset /\
+  Lemma invert_fetch: forall initial post decoder,
+      mcomp_sat (run1 decoder) initial post ->
+      exists R i, seps [initial.(pc) |-> instr decoder i; R] initial.(mem) /\
                   mcomp_sat (Execute.execute i;; endCycleNormal) initial post.
   Proof.
     intros. apply invert_fetch0 in H. simp.
+    do 2 eexists. split. 2: eassumption. unfold instr, at_addr, seps.
   Admitted.
 
   Lemma build_fetch_one_instr:
@@ -267,8 +266,8 @@ Section Riscv.
   Abort.
 
   Lemma decode_IM_I_to_I: forall i inst,
-      decode RV32IM i = IInstruction inst ->
-      decode RV32I  i = IInstruction inst.
+      mdecode i = IInstruction inst ->
+      idecode i = IInstruction inst.
   Proof.
   Admitted.
 
@@ -285,8 +284,8 @@ Section Riscv.
   Admitted.
 
   Lemma instr_IM_impl1_I: forall iinst addr,
-      impl1 (addr |-> instr RV32IM (IInstruction iinst))
-            (addr |-> instr RV32I (IInstruction iinst)).
+      impl1 (addr |-> instr mdecode (IInstruction iinst))
+            (addr |-> instr idecode (IInstruction iinst)).
   Proof.
     unfold impl1. intros. eapply (fun x => conj x I) in H. eapply sep_emp_r in H.
     eapply instr_decode in H. fwd.
@@ -295,6 +294,21 @@ Section Riscv.
     auto using decode_IM_I_to_I.
   Qed.
   Hint Resolve instr_IM_impl1_I : ecancel_impl.
+
+  Lemma mdecodeM_to_InvalidI: forall z minst,
+      mdecode z = MInstruction minst ->
+      idecode z = InvalidInstruction z.
+  Proof.
+    unfold mdecode. intros.
+    destruct_one_match_hyp; fwd.
+    - case TODO.
+    - exfalso. (* H is a contradiction *) case TODO.
+  Qed.
+
+  Lemma invert_mdecode_M: forall z minst,
+      mdecode z = MInstruction minst ->
+      exists rd rs1 rs2, minst = Mul rd rs1 rs2.
+  Proof. Admitted.
 
   Lemma decode_verify: forall iset i, verify (decode iset i) iset.
   Proof.
@@ -402,7 +416,7 @@ Section Riscv.
       List.length stacktrash = 32%nat /\
       seps [eq r1.(mem);
             word.of_Z mscratch |-> word_array stacktrash;
-            word.of_Z (mtvec_base * 4) |-> program RV32I handler_insts] r2.(mem) /\
+            word.of_Z (mtvec_base * 4) |-> program idecode handler_insts] r2.(mem) /\
       regs_initialized r2.(regs).
 
   Lemma related_preserves_load_bytes: forall n sH sL a w,
@@ -510,7 +524,7 @@ Section Riscv.
       mcomp_sat endCycleNormal mach post.
   Proof. intros. assumption. Qed.
 
-  Lemma interpret_bind{T}(initial: State)(postF: T -> State -> Prop)(postA: State -> Prop) a b s:
+  Lemma interpret_bind{T U}(initial: State)(postF: U -> State -> Prop)(postA: State -> Prop) a b s:
     free.interpret run_primitive a s
                    (fun (x: T) s0 => free.interpret run_primitive (b x) s0 postF postA) postA ->
     free.interpret run_primitive (free.bind a b) s postF postA.
@@ -654,17 +668,21 @@ Section Riscv.
     | |- _ => progress cbn_MachineWidth
     | |- _ => progress intros
     | |- _ => progress unfold ExecuteCSR.checkPermissions, CSRSpec.getCSR, CSRSpec.setCSR,
-                              PseudoInstructions.Csrr, raiseExceptionWithInfo, updatePc
+                              PseudoInstructions.Csrr, PseudoInstructions.Csrw,
+                              raiseExceptionWithInfo, updatePc
     | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with (@Monads.Return M MM _ tt)
     | |- context[(@Monads.when ?M ?MM ?A ?B)] => change (@Monads.when M MM A B) with B
     | |- _ => (*progress already embedded*) record.simp
     | |- _ => progress change (CSR.lookupCSR MScratch) with CSR.MScratch
+    | |- _ => progress change (CSR.lookupCSR MTVal) with CSR.MTVal
+    | |- _ => progress change (CSR.lookupCSR MEPC) with CSR.MEPC
     | |- _ => unfold Basics.compose, map.set; rewrite !map.get_put_diff
                 by (unfold RegisterNames.sp, RegisterNames.ra; congruence)
     | |- mcomp_sat (Monads.Bind _ _) _ _ => eapply mcomp_sat_bind
-    | |- free.interpret run_primitive ?x _ _ _ =>
+    | |- free.interpret run_primitive ?x ?initial ?postF _ =>
       lazymatch x with
       | Monads.Bind _ _ => eapply interpret_bind
+      | Monads.Return ?a => change (postF a initial); cbv beta
       | free.bind _ _ => eapply interpret_bind
       | free.ret _ => rewrite free.interpret_ret
       | getPC => eapply interpret_getPC
@@ -685,20 +703,22 @@ Section Riscv.
       | getCSRField _ => eapply interpret_getCSRField
       | setCSRField _ _ => eapply interpret_setCSRField
       | getPrivMode => eapply interpret_getPrivMode
+      | if (negb (word.eqb ?a ?b)) then _ else _ =>
+          rewrite (word.eqb_eq a b) by (apply divisibleBy4_alt; solve_divisibleBy4);
+          cbv beta iota delta [negb]
       end
-    | |- RegisterNames.sp <> 0 => cbv; congruence
-    | |- RegisterNames.ra <> 0 => cbv; congruence
-    | |- 0 < RegisterNames.sp < 32 => do 2 split
-    | |- 0 < RegisterNames.ra < 32 => do 2 split
+    | |- _ => compareZconsts
     | |- map.get _ _ = Some _ => eassumption
     | |- map.get _ _ <> None => congruence
+    | |- map.get (map.set _ _ _) _ = _ => unfold map.set
     | |- map.get (map.put _ ?x _) ?x = _ => eapply map.get_put_same
-    | |- map.get (map.set ?x _ _) ?x = _ => eapply map.get_put_same
+    | |- map.get (map.put _ _ _) _ = _ => eapply get_put_diff_eq_l; [compareZconsts|]
+    | |- map.get (map.put _ ?x _) ?x <> None => rewrite map.get_put_same; clear; congruence
     | |- regs_initialized (map.put _ _ _) => eapply preserve_regs_initialized_after_put
     | |- regs_initialized (map.set _ _ _) => eapply preserve_regs_initialized_after_put
     | |- mcomp_sat endCycleNormal _ _ => eapply mcomp_sat_endCycleNormal
     | H: ?P |- ?P => exact H
-    | |- mcomp_sat (run1 RV32I) _ _ =>
+    | |- mcomp_sat (run1 idecode) _ _ =>
         eapply build_fetch_one_instr; try record.simp; cbn_MachineWidth;
         [ impl_ecancel_assumption
         | repeat word_simpl_step_in_goal;
@@ -723,18 +743,18 @@ Section Riscv.
       0 < start -> (* <-- could probably be removed if needed *)
       map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) n start) = Some vals ->
       seps [stackaddr |-> word_array oldvals;
-        initial.(pc) |-> program RV32I
+        initial.(pc) |-> program idecode
            (map (fun r => IInstruction (Sw RegisterNames.sp r (4 * r)))
                            (List.unfoldn (BinInt.Z.add 1) n start)); R] initial.(mem) ->
       (forall m: Mem,
          seps [stackaddr |-> word_array vals;
-               initial.(pc) |-> program RV32I
+               initial.(pc) |-> program idecode
                             (map (fun r => IInstruction (Sw RegisterNames.sp r (4 * r)))
                                  (List.unfoldn (Z.add 1) n start)); R] m ->
-         runsTo (mcomp_sat (run1 RV32I)) { initial with mem := m;
+         runsTo (mcomp_sat (run1 idecode)) { initial with mem := m;
            nextPc ::= word.add (word.of_Z (4 * Z.of_nat n));
            pc ::= word.add (word.of_Z (4 * Z.of_nat n)) } post) ->
-      runsTo (mcomp_sat (run1 RV32I)) initial post.
+      runsTo (mcomp_sat (run1 idecode)) initial post.
   Proof.
     induction n; intros.
     - repeat word_simpl_step_in_hyps.
@@ -782,15 +802,15 @@ Section Riscv.
       initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
       regs_initialized initial.(regs) ->
       (seps [word.add spval (word.of_Z 12) |-> with_len 29 word_array oldvals;
-        initial.(pc) |-> program RV32I save_regs3to31; R] initial.(mem) /\
+        initial.(pc) |-> program idecode save_regs3to31; R] initial.(mem) /\
        forall m vals,
          map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) 29 3) = Some vals ->
          seps [word.add spval (word.of_Z 12) |-> with_len 29 word_array vals;
-               initial.(pc) |-> program RV32I save_regs3to31; R] m ->
-         runsTo (mcomp_sat (run1 RV32I)) { initial with mem := m;
+               initial.(pc) |-> program idecode save_regs3to31; R] m ->
+         runsTo (mcomp_sat (run1 idecode)) { initial with mem := m;
            nextPc ::= word.add (word.of_Z (4 * Z.of_nat 29));
            pc ::= word.add (word.of_Z (4 * Z.of_nat 29)) } post) ->
-      runsTo (mcomp_sat (run1 RV32I)) initial post.
+      runsTo (mcomp_sat (run1 idecode)) initial post.
   Proof.
     unfold save_regs3to31. intros.
     assert (exists vals,
@@ -811,10 +831,16 @@ Section Riscv.
     assumption.
   Qed.
 
+  (* TODO add more generic list solver to SepAutoArray *)
+  Hint Extern 1 (?listL = ?listR1 ++ ?listR2 ++ ?listR3 /\ ?lenR1 = ?i /\ ?lenR2 = ?n) =>
+    apply_in_hyps @map.getmany_of_list_length; rewrite List.length_unfoldn in *;
+    is_evar listL; split; [ reflexivity | split; listZnWords ]
+  : merge_sepclause_sidecond.
+
   Lemma softmul_correct: forall initialH initialL post,
-      runsTo (mcomp_sat (run1 RV32IM)) initialH post ->
+      runsTo (mcomp_sat (run1 mdecode)) initialH post ->
       related initialH initialL ->
-      runsTo (mcomp_sat (run1 RV32I)) initialL (fun finalL =>
+      runsTo (mcomp_sat (run1 idecode)) initialL (fun finalL =>
         exists finalH, related finalH finalL /\ post finalH).
   Proof.
     intros *. intros R. revert initialL. induction R; intros. {
@@ -823,64 +849,55 @@ Section Riscv.
     unfold run1 in H.
     pose proof H2 as Rel.
     unfold related, basic_CSRFields_supported in H2.
-    eapply invert_fetch in H. simp.
+    eapply invert_fetch in H. fwd.
     rename initial into initialH.
     match goal with
     | H1: seps _ initialH.(mem), H2: seps _ initialL.(mem) |- _ =>
         rename H1 into MH, H2 into ML
     end.
+    eapply instr_decode in MH. destruct MH as (z & MH & Dz & Bz). subst i.
     cbn [seps] in ML.
     epose proof (proj1 (sep_inline_eq _ _ initialL.(mem))) as ML'.
     especialize ML'. {
       exists initialH.(mem). split. 1: ecancel_assumption. 1: exact MH.
     }
     flatten_seps_in ML'. clear ML.
-    pose proof (proj2 Hp1) as V.
-    destruct i as [inst|inst|inst|inst|inst|inst|inst|inst|inst|inst] eqn: E;
-      cbn in V; try (intuition congruence).
+    destruct (mdecode z) as [inst|inst|inst|inst|inst|inst|inst|inst|inst|inst] eqn: E.
     - (* IInstruction *)
-      subst.
-      eapply @runsToStep with (midset := fun midL => exists midH, related midH midL /\ midset midH).
-      + eapply build_fetch_one_instr.
-        { replace initialH.(pc) with initialL.(pc) in ML'.
-          impl_ecancel_assumption. }
+      move E at bottom.
+      unfold mdecode in E. destruct_one_match_hyp. 1: discriminate E.
+      replace initialH.(pc) with initialL.(pc) in ML'.
+      eapply @runsToStep with
+        (midset := fun midL => exists midH, related midH midL /\ midset midH).
+      + eapply build_fetch_one_instr with (instr1 := IInstruction inst).
+        { refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML').
+          cancel_seps_at_indices_by_implication 2%nat 0%nat. 2: finish_impl_ecancel.
+          unfold impl1, instr, at_addr, ex1, emp. intros m A.
+          eexists.
+          refine (Morphisms.subrelation_refl impl1 _ _ _ m A).
+          cancel.
+          cancel_seps_at_indices_by_implication 0%nat 0%nat. 1: exact impl1_refl.
+          unfold impl1. cbn [seps]. unfold emp. intros.
+          unfold idecode. fwd. auto. }
         eapply mcomp_sat_preserves_related; eassumption.
       + intros midL. intros. simp. eapply H1; eassumption.
     - (* MInstruction *)
       (* fetch M instruction (considered invalid by RV32I machine) *)
       eapply runsToStep_cps.
-      replace initialH.(pc) with initialL.(pc) in ML'.
-
-      unfold instr in ML' at 2. unfold at_addr in ML' at 3.
-      match type of ML' with
-      | seps [?A; ?B; ?C; ?D] ?M => assert (sep C (seps [A; B; D]) M) as ML
-            by (cbn [seps] in *; ecancel_assumption)
-      end.
-      clear ML'.
-      eapply sep_ex1_l in ML. unfold ex1 in ML. destruct ML as [z ML].
-      match type of ML with
-      | sep (sep ?A ?B) ?C ?M => assert (sep B (sep A C) M) as ML'
-            by (cbn [seps] in *; ecancel_assumption)
-      end.
-      clear ML.
-      eapply sep_emp_l in ML'.
-      destruct ML' as ((Ez & Bz) & ML).
-      flatten_seps_in ML.
-
-      eapply build_fetch_one_instr.
+      replace initialH.(pc) with initialL.(pc) in ML'. rename ML' into ML.
+      eapply build_fetch_one_instr with (instr1 := InvalidInstruction z).
       { replace initialH.(pc) with initialL.(pc) in ML.
-        unfold instr, at_addr, seps.
-        eapply sep_ex1_l. unfold ex1. exists z. cbn [seps] in ML.
         refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML).
+        cancel_seps_at_indices_by_implication 2%nat 0%nat. 2: finish_impl_ecancel.
+        move E at bottom.
+        unfold impl1, instr, at_addr, ex1, emp. intros m A.
+        eexists.
+        refine (Morphisms.subrelation_refl impl1 _ _ _ m A).
         cancel.
-        impl_ecancel.
-        unfold seps at 2.
-        rewrite sep_comm.
-        cancel.
-        finish_impl_ecancel.
-        split. 2: assumption.
-        eapply decode_IM_M_to_Invalid_I.
-        exact Ez. }
+        cancel_seps_at_indices_by_implication 0%nat 0%nat. 1: exact impl1_refl.
+        unfold impl1. cbn [seps]. unfold emp. intros.
+        fwd.
+        eapply mdecodeM_to_InvalidI in E. auto. }
 
       repeat step.
 
@@ -918,75 +935,140 @@ Section Riscv.
       repeat (repeat word_simpl_step_in_hyps; fwd).
       flatten_seps_in ML.
 
-      (* TODO automate *)
-
-      put_cont_into_emp_seps.
-      use_sep_asm.
-      cancel_seps.
-      once ecancel_step_by_implication.
-      impl_ecancel_step_with_splitting.
-      once ecancel_step_by_implication.
-      finish_impl_ecancel.
-
-Hint Extern 1 (?listL = ?listR1 ++ ?listR2 ++ ?listR3 /\ ?lenR1 = ?i /\ ?lenR2 = ?n) =>
-    apply_in_hyps @map.getmany_of_list_length; rewrite List.length_unfoldn in *;
-    is_evar listL; split; [ reflexivity | split; listZnWords ]
-: merge_sepclause_sidecond.
-
-      intro_new_mem.
-      clear ML. rename H4 into ML.
-      flatten_seps_in ML.
+      after_mem_modifying_lemma.
       repeat (repeat word_simpl_step_in_hyps; fwd).
+
+      (* TODO to get splitting/merging work for the program as well, we need
+         rewrite_ith_in_lhs_of_impl1 to also perform the cancelling, so that
+         the clause to be canceled on the right (callee) shows up in the
+         sidecondition of split_sepclause and the hints in split_sepclause_sidecond
+         can use what's there instead of creating a (List.firstn n (List.skipn i ...))
+         that doesn't match the callee's precondition *)
 
       (* Csrr a0 MTVal       a0 := the invalid instruction i that caused the exception *)
       eapply runsToStep_cps. repeat step.
 
-      case TODO.
-
-      (*
       (* Addi a1 sp 0        a1 := pointer to registers *)
       eapply runsToStep_cps. repeat step.
 
       (* Jal ra ofs          call mul_insts *)
       eapply runsToStep_cps. repeat step.
+
+      eapply runsTo_trans_cps.
+      pose proof E as E'.
+      eapply invert_mdecode_M in E'. fwd.
+      eapply mul_correct; repeat step. 1: ZnWords. 1: exact E.
+      repeat match goal with
+             | |- context[List.length ?l] => let n := concrete_list_length l in
+                                             change (List.length l) with n
+             end.
+      autorewrite with rew_word_morphism in *.
+      repeat (repeat word_simpl_step_in_goal; fwd).
+
+      after_sep_call.
+      clear ML m m_1.
+      intros m l ML Gsp.
+      flatten_seps_in ML.
+
+      (* Csrr t1 MEPC *)
+      eapply runsToStep_cps. repeat step.
+
+      (* Addi t1 t1 4 *)
+      eapply runsToStep_cps. repeat step.
+
+      (* Csrw t1 MEPC *)
+      eapply runsToStep_cps. repeat step.
+
+      case TODO.
+
+      (*
+      (* Lw ra sp 4 *)
+      eapply runsToStep_cps. repeat step.
+
+      (* Csrr sp MScratch *)
+      eapply runsToStep_cps. repeat step.
+
+      (* Mret *)
+      eapply runsToStep_cps. repeat step.
       *)
 
-    - (* CSRInstruction *)
-      subst.
-      eapply @runsToStep with (midset := fun midL => exists midH, related midH midL /\ midset midH).
-      + unfold instr in ML' at 2. unfold at_addr in ML' at 3.
-        match type of ML' with
-        | seps [?A; ?B; ?C; ?D] ?M => assert (sep C (seps [A; B; D]) M) as ML
-              by (cbn [seps] in *; ecancel_assumption)
+    - (* AInstruction *)
+      case TODO. (* E is a contradiction *)
+
+    - (* FInstruction *)
+      case TODO. (* E is a contradiction *)
+
+    - (* I64Instruction *)
+      case TODO. (* E is a contradiction *)
+
+    - (* M64Instruction *)
+      case TODO. (* E is a contradiction *)
+
+
+    -
+      move E at bottom.
+      replace initialH.(pc) with initialL.(pc) in ML'.
+      clear -E ML' midset word_ok Mem_ok Bz registers_ok Rel Hp1 H1.
+
+      unfold mdecode in E. destruct_one_match_hyp. 1: discriminate E.
+      eapply @runsToStep with
+        (midset := fun midL => exists midH, related midH midL /\ midset midH).
+      + lazymatch goal with
+        | H: decode _ z = ?Inst |- _ => eapply build_fetch_one_instr with (instr1 := Inst)
         end.
-        clear ML'.
-        eapply sep_ex1_l in ML. unfold ex1 in ML. destruct ML as [z ML].
-        match type of ML with
-        | sep (sep ?A ?B) ?C ?M => assert (sep B (sep A C) M) as ML'
-              by (cbn [seps] in *; ecancel_assumption)
-        end.
-        clear ML.
-        eapply sep_emp_l in ML'.
-        destruct ML' as ((Ez & Bz) & ML).
-        flatten_seps_in ML.
-        eapply build_fetch_one_instr.
-        { replace initialH.(pc) with initialL.(pc) in ML.
-          unfold instr, at_addr, seps.
-          eapply sep_ex1_l. unfold ex1. exists z. cbn [seps] in ML.
-          refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML).
+        { refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML').
+          cancel_seps_at_indices_by_implication 2%nat 0%nat. 2: finish_impl_ecancel.
+          unfold impl1, instr, at_addr, ex1, emp. intros m A.
+          eexists.
+          refine (Morphisms.subrelation_refl impl1 _ _ _ m A).
           cancel.
-          impl_ecancel.
-          unfold seps at 2.
-          rewrite sep_comm.
-          cancel.
-          finish_impl_ecancel.
-          split. 2: assumption.
-          eapply decode_IM_CSR_to_I.
-          exact Ez. }
+          cancel_seps_at_indices_by_implication 0%nat 0%nat. 1: exact impl1_refl.
+          unfold impl1. cbn [seps]. unfold emp. intros.
+          unfold idecode. fwd. auto. }
         eapply mcomp_sat_preserves_related; eassumption.
       + intros midL. intros. simp. eapply H1; eassumption.
 
-    Unshelve.
-    all: try exact (fun _ => True).
+    - (* A64Instruction *)
+      case TODO. (* E is a contradiction *)
+
+    - (* CSRInstruction *)
+      subst.
+      move E at bottom.
+      unfold mdecode in E. destruct_one_match_hyp. 1: discriminate E.
+      replace initialH.(pc) with initialL.(pc) in ML'.
+      eapply @runsToStep with
+        (midset := fun midL => exists midH, related midH midL /\ midset midH).
+      + eapply build_fetch_one_instr with (instr1 := CSRInstruction inst).
+        { refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML').
+          cancel_seps_at_indices_by_implication 2%nat 0%nat. 2: finish_impl_ecancel.
+          unfold impl1, instr, at_addr, ex1, emp. intros m A.
+          eexists.
+          refine (Morphisms.subrelation_refl impl1 _ _ _ m A).
+          cancel.
+          cancel_seps_at_indices_by_implication 0%nat 0%nat. 1: exact impl1_refl.
+          unfold impl1. cbn [seps]. unfold emp. intros.
+          unfold idecode. fwd. auto. }
+        eapply mcomp_sat_preserves_related; eassumption.
+      + intros midL. intros. simp. eapply H1; eassumption.
+
+    - (* InvalidInstruction *)
+      move E at bottom.
+      unfold mdecode in E. destruct_one_match_hyp. 1: discriminate E.
+      replace initialH.(pc) with initialL.(pc) in ML'.
+      eapply @runsToStep with
+        (midset := fun midL => exists midH, related midH midL /\ midset midH).
+      + eapply build_fetch_one_instr with (instr1 := InvalidInstruction inst).
+        { refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML').
+          cancel_seps_at_indices_by_implication 2%nat 0%nat. 2: finish_impl_ecancel.
+          unfold impl1, instr, at_addr, ex1, emp. intros m A.
+          eexists.
+          refine (Morphisms.subrelation_refl impl1 _ _ _ m A).
+          cancel.
+          cancel_seps_at_indices_by_implication 0%nat 0%nat. 1: exact impl1_refl.
+          unfold impl1. cbn [seps]. unfold emp. intros.
+          unfold idecode. fwd. auto. }
+        eapply mcomp_sat_preserves_related; eassumption.
+      + intros midL. intros. simp. eapply H1; eassumption.
+
   Qed.
 End Riscv.
