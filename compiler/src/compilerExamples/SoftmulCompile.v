@@ -92,8 +92,7 @@ Section Riscv.
     J (-12)
   ]].
 
-  Definition funimplsList :=
-    (*softmul :: TODO uncomment and debug why compiler chokes on it *) rpmul.rpmul :: nil.
+  Definition funimplsList := softmul :: rpmul.rpmul :: nil.
   Definition prog := map.of_list funimplsList.
 
   Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.

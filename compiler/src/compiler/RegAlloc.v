@@ -126,7 +126,13 @@ Fixpoint remove_nonlast_ends(l: list event): list event :=
   end.
 
 Definition intervals(input_vars: list srcvar)(s: stmt)(output_vars: list srcvar): list event :=
-  let unfiltered := List.flat_map start_event input_vars ++ (events s (List.flat_map end_event output_vars)) in
+  let arg_start_events := List.flat_map start_event input_vars in
+  (* We duplicate the arg_start_events (of which each also includes an end event) to
+     make sure that all argument variables seem live at the same time, so that
+     argument variables don't get assigned to the same registers, even if they are
+     never read *)
+  let unfiltered := arg_start_events ++ arg_start_events ++
+                    (events s (List.flat_map end_event output_vars)) in
   remove_nonfirst_starts [] (remove_nonlast_ends unfiltered).
 
 (* TODO: once spilling is changed, this will change too *)
