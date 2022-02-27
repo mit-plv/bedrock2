@@ -12,7 +12,7 @@ Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.RecordSetters.
 Require Import coqutil.Decidable.
 Require Import coqutil.Z.Lia.
-Require Import coqutil.Map.Interface.
+Require Import coqutil.Map.Interface coqutil.Map.OfFunc.
 Require Import coqutil.Map.MapEauto.
 Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Tactics.Tactics.
@@ -219,36 +219,24 @@ Section Riscv.
     do 2 eexists. split. 2: eassumption. unfold instr, at_addr, seps.
   Admitted.
 
-  Lemma build_fetch_one_instr:
-    forall (initial: State) iset post (instr1: Instruction) (R: Mem -> Prop),
-      seps [initial.(pc) |-> instr iset instr1; R] initial.(mem) ->
-      mcomp_sat (Execute.execute instr1;; endCycleNormal) initial post ->
-      mcomp_sat (run1 iset) initial post.
+  Lemma interpret_loadWord: forall (initial: State) (postF: w32 -> State -> Prop)
+                                   (postA: State -> Prop) (a v: word) R,
+      seps [a |-> scalar v; R] initial.(mem) /\
+      postF (LittleEndian.split 4 (word.unsigned v)) initial ->
+      free.interpret run_primitive (Machine.loadWord Execute a) initial postF postA.
   Proof.
-    intros. unfold run1, mcomp_sat in *. cbn -[HList.tuple load_bytes] in *.
+    intros *. intros [M P].
+    cbn -[HList.tuple load_bytes] in *.
     unfold load.
     change load_bytes with bedrock2.Memory.load_bytes.
-    eapply instr_decode in H. destruct H as (z & H & ? & ?). subst instr1.
     erewrite load_bytes_of_sep; cycle 1. {
-      unfold instr, at_addr, scalar, truncated_word, truncated_word,
-        truncated_scalar, Scalars.truncated_scalar, Scalars.littleendian in H.
-      cbn in H.
+      unfold at_addr, scalar, truncated_word, Scalars.truncated_word,
+        Scalars.truncated_scalar, Scalars.littleendian in M.
       unfold ptsto_bytes.ptsto_bytes in *.
-      exact H.
+      exact M.
     }
-    eqapply H0. do 3 f_equal.
-    rewrite LittleEndian.combine_eq.
-    match goal with
-    | |- context[LittleEndianList.le_combine ?x] =>
-        replace x with (LittleEndianList.le_split 4 z)
-    end.
-    2: {
-      etransitivity.
-      1: symmetry. 1: eapply tuple.to_list_of_list.
-      reflexivity.
-    }
-    rewrite LittleEndianList.le_combine_split.
-    symmetry. apply Z.mod_small. assumption.
+    change (Memory.bytes_per access_size.word) with 4%nat.
+    cbn. exact P.
   Qed.
 
   Lemma decode_verify_iset: forall iset i, verify_iset (decode iset i) iset.
@@ -514,7 +502,7 @@ Section Riscv.
       mcomp_sat endCycleNormal mach post.
   Proof. intros. assumption. Qed.
 
-  Lemma interpret_bind{T U}(initial: State)(postF: U -> State -> Prop)(postA: State -> Prop) a b s:
+  Lemma interpret_bind{T U}(postF: U -> State -> Prop)(postA: State -> Prop) a b s:
     free.interpret run_primitive a s
                    (fun (x: T) s0 => free.interpret run_primitive (b x) s0 postF postA) postA ->
     free.interpret run_primitive (free.bind a b) s postF postA.
@@ -589,6 +577,29 @@ Section Riscv.
     intros. cbn -[map.get map.rep]. destruct_one_match. 1: assumption. congruence.
   Qed.
 
+  Lemma build_fetch_one_instr:
+    forall (initial: State) iset post (instr1: Instruction) (R: Mem -> Prop),
+      seps [initial.(pc) |-> instr iset instr1; R] initial.(mem) ->
+      mcomp_sat (Execute.execute instr1;; endCycleNormal) initial post ->
+      mcomp_sat (run1 iset) initial post.
+  Proof.
+    intros. unfold run1, mcomp_sat in *.
+    eapply interpret_bind.
+    eapply interpret_getPC.
+    eapply interpret_bind.
+    eapply instr_decode in H. fwd.
+    eapply interpret_loadWord. split. {
+      unfold scalar. cbn [seps].
+      unfold truncated_scalar, truncated_word, at_addr in *.
+      unfold Scalars.truncated_word, Scalars.truncated_scalar in *.
+      rewrite <- (word.unsigned_of_Z_nowrap z) in Hp0 by assumption.
+      exact Hp0.
+    }
+    eqapply H0. do 3 f_equal.
+    rewrite LittleEndian.combine_split.
+    ZnWords.
+  Qed.
+
   Lemma run_store: forall n addr (v_old v_new: tuple byte n) R (initial: State)
                           (kind: SourceType) (post: State -> Prop),
       seps [ptsto_bytes.ptsto_bytes n addr v_old; R] initial.(mem) ->
@@ -625,6 +636,13 @@ Section Riscv.
       postF Machine m -> (* we're always in machine mode *)
       free.interpret run_primitive getPrivMode m postF postA.
   Proof. intros. cbn -[map.get map.rep]. assumption. Qed.
+
+  Lemma interpret_setPrivMode: forall (s: State) (postF : unit -> State -> Prop) (postA : State -> Prop) (m: PrivMode),
+      (* this simple machine only allows setting the mode to Machine mode *)
+      m = Machine ->
+      postF tt s ->
+      free.interpret run_primitive (setPrivMode m) s postF postA.
+  Proof. intros * E. subst. exact id. Qed.
 
   Ltac program_index l :=
     lazymatch l with
@@ -693,6 +711,7 @@ Section Riscv.
       | getCSRField _ => eapply interpret_getCSRField
       | setCSRField _ _ => eapply interpret_setCSRField
       | getPrivMode => eapply interpret_getPrivMode
+      | setPrivMode _ => eapply interpret_setPrivMode; [reflexivity|]
       | if (negb (word.eqb ?a ?b)) then _ else _ =>
           rewrite (word.eqb_eq a b) by (apply divisibleBy4_alt; solve_divisibleBy4);
           cbv beta iota delta [negb]
@@ -820,6 +839,21 @@ Section Riscv.
       with (word_array vals) by case TODO.
     assumption.
   Qed.
+
+  Lemma restore_regs3to31_correct: forall R (initial: State) vals spval
+                                  (post: State -> Prop),
+      map.get initial.(regs) RegisterNames.sp = Some spval ->
+      initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
+      seps [word.add spval (word.of_Z 12) |-> with_len 29 word_array vals;
+        initial.(pc) |-> program idecode restore_regs3to31; R] initial.(mem) /\
+      runsTo (mcomp_sat (run1 idecode)) { initial with
+           regs := map.putmany initial.(regs) (map.of_list_Z_at 3 vals);
+           nextPc ::= word.add (word.of_Z (4 * Z.of_nat 29));
+           pc ::= word.add (word.of_Z (4 * Z.of_nat 29)) } post ->
+      runsTo (mcomp_sat (run1 idecode)) initial post.
+  Proof.
+    unfold restore_regs3to31. intros.
+  Admitted.
 
   (* TODO add more generic list solver to SepAutoArray *)
   Hint Extern 1 (?listL = ?listR1 ++ ?listR2 ++ ?listR3 /\ ?lenR1 = ?i /\ ?lenR2 = ?n) =>
@@ -983,18 +1017,68 @@ Section Riscv.
       (* Csrw t1 MEPC *)
       eapply runsToStep_cps. repeat step.
 
-      case TODO.
+      (* restore_regs3to31 *)
 
-      (*
+      eapply restore_regs3to31_correct; try record.simp.
+      { repeat step. }
+      { ZnWords. }
+      autorewrite with rew_word_morphism. repeat word_simpl_step_in_goal.
+      (* TODO this should be in listZnWords or in sidecondition solvers in SepAutoArray *)
+      assert (List.length vals = 29%nat). {
+        apply_in_hyps @map.getmany_of_list_length.
+        symmetry. assumption.
+      }
+
+      split. {
+        (* we don't need to keep goal modifications for rest of program *)
+        use_sep_asm.
+        impl_ecancel.
+        finish_impl_ecancel.
+      }
+
       (* Lw ra sp 4 *)
       eapply runsToStep_cps. repeat step.
+
+      eapply interpret_getRegister.
+      1: repeat step.
+      { repeat step.
+        rewrite map.get_putmany_left.
+        - repeat step.
+        - rewrite map.get_of_list_Z_at.
+          change (RegisterNames.sp - 3) with (-1).
+          unfold List.Znth_error. reflexivity. }
+
+      repeat step.
+
+      eapply interpret_loadWord. split. {
+        (* we don't need to keep goal modifications for rest of program *)
+        use_sep_asm.
+        impl_ecancel.
+        finish_impl_ecancel.
+      }
+
+      repeat step.
 
       (* Csrr sp MScratch *)
       eapply runsToStep_cps. repeat step.
 
       (* Mret *)
       eapply runsToStep_cps. repeat step.
-      *)
+      { case TODO.
+      (*        basic_csrs: map.get (csrs initialL) CSRField.MIE <> None *) }
+
+      rename H1 into IH.
+      eapply IH with (mid := updatePc { initialH with
+        regs ::= setReg rd (word.mul (getReg initialH.(regs) rs1)
+                                     (getReg initialH.(regs) rs2)) }).
+      { move Hp1 at bottom.
+        cbn in Hp1.
+        unfold mcomp_sat in Hp1.
+        exact Hp1. }
+      unfold related, updatePc, setReg, getReg, basic_CSRFields_supported; record.simp.
+
+      (* big computed postcondition implies desired postcondition proof: *)
+      case TODO.
   Qed.
 
   (* TODO state same theorem with binary code of handler to make sure instructions

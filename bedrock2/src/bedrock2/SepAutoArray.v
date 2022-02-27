@@ -223,6 +223,7 @@ Ltac list_length_rewrites_without_sideconds_in_goal :=
 
 Ltac listZnWords :=
   destruct_bool_vars;
+  unfold List.upd, List.upds;
   list_length_rewrites_without_sideconds_in_goal;
   ZnWords.
 
@@ -318,4 +319,7 @@ Ltac concrete_sz_bounds :=
   List.skipn_eq_O
   Nat.min_l
   Nat.min_r
-using (list_length_rewrites_without_sideconds_in_goal; ZnWords) : fwd_rewrites.
+using (unfold List.upd, List.upds;
+       list_length_rewrites_without_sideconds_in_goal;
+       ZnWords)
+: fwd_rewrites.
