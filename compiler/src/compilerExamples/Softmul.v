@@ -152,20 +152,12 @@ Section WithRegisterNames.
 End WithRegisterNames.
 
 Section Riscv.
-  Context {word: Word.Interface.word 32}.
-  Context {word_ok: word.ok word}.
-  Context {Mem: map.map word byte}.
-  Context {Mem_ok: map.ok Mem}.
+  Import bedrock2.BasicC32Semantics.
+  Local Notation Mem := mem (only parsing).
+  Local Notation mem := MinimalCSRs.mem (only parsing).
+
   Context {registers: map.map Z word}.
   Context {registers_ok: map.ok registers}.
-
-  Add Ring wring : (word.ring_theory (word := word))
-      ((*This preprocessing is too expensive to be always run, especially if
-         we do many ring_simplify in a sequence, in which case it's sufficient
-         to run it once before the ring_simplify sequence.
-         preprocess [autorewrite with rew_word_morphism],*)
-       morphism (word.ring_morph (word := word)),
-       constants [word_cst]).
 
   (* RISC-V Monad *)
   Local Notation M := (free riscv_primitive primitive_result).
@@ -184,9 +176,6 @@ Section Riscv.
     exists a.
     split; auto.
     do 2 eexists. split; eauto.
-    split; eauto.
-    rewrite map.putmany_empty_r.
-    assumption.
   Qed.
 
   Declare Scope array_abbrevs_scope.
@@ -408,7 +397,7 @@ Section Riscv.
     r1.(regs) = r2.(regs) /\
     r1.(pc) = r2.(pc) /\
     r1.(nextPc) = r2.(nextPc) /\
-    r1.(log) = r2.(log) /\
+    r1.(log) = [] /\ r2.(log) = [] /\ (* no I/O at the moment *)
     r1.(csrs) = map.empty /\
     basic_CSRFields_supported r2 /\
     exists mtvec_base mscratch stacktrash,
@@ -477,8 +466,8 @@ Section Riscv.
     - contradiction.
     - contradiction.
     - contradiction.
-    - simp. rewrite Hp4 in E. rewrite map.get_empty in E. discriminate E.
-    - simp. rewrite Hp4 in E. rewrite map.get_empty in E. discriminate E.
+    - simp. rewrite Hp5 in E. rewrite map.get_empty in E. discriminate E.
+    - simp. rewrite Hp5 in E. rewrite map.get_empty in E. discriminate E.
     - eauto 10.
     - simp. eauto 10.
     - simp. eauto 10.
@@ -970,7 +959,9 @@ Section Riscv.
       eapply runsTo_trans_cps.
       pose proof E as E'.
       eapply invert_mdecode_M in E'. fwd.
-      eapply mul_correct; repeat step. 1: ZnWords. 1: exact E.
+      pose proof word.unsigned_of_Z_nowrap _ Bz as Q. rewrite <- Q in E. clear Q.
+      eapply mul_correct; repeat step. 1: ZnWords.
+      1: exact E.
       repeat match goal with
              | |- context[List.length ?l] => let n := concrete_list_length l in
                                              change (List.length l) with n
@@ -1005,4 +996,7 @@ Section Riscv.
       eapply runsToStep_cps. repeat step.
       *)
   Qed.
+
+  (* TODO state same theorem with binary code of handler to make sure instructions
+     are decodable after encoding *)
 End Riscv.
