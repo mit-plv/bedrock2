@@ -157,6 +157,47 @@ Section SepLog.
     unfold at_addr.
     cbn [seps]. ecancel.
   Qed.
+
+  Lemma access_suffix: forall a a' E (elem: E -> word -> _ -> Prop) sz vsPrefix vsSuffix,
+      0 < sz < 2 ^ width ->
+      word.sub a' a = word.mul (word.of_Z sz)
+                               (word.of_Z (Z.of_nat (List.length vsPrefix))) ->
+      split_sepclause (a |-> array elem sz (List.app vsPrefix vsSuffix))
+                      (a' |-> array elem sz vsSuffix)
+        (forall vs vs1 vs2,
+           vs = vs1 ++ vs2 /\
+           List.length vs1 = List.length vsPrefix /\
+           List.length vs2 = List.length vsSuffix ->
+           iff1 (seps [a |-> array elem sz vs1; a' |-> array elem sz vs2])
+                (a |-> array elem sz vs)).
+  Proof.
+    intros. unfold split_sepclause. intros. fwd.
+    rewrite array_app. cbn [seps].
+    cancel. cbn [seps].
+    match goal with
+    | |- iff1 _ (?x |-> _) => replace x with a'
+    end.
+    1: reflexivity.
+    destruct width_cases; ZnWords.
+  Qed.
+
+  Lemma access_tail: forall a a' E (elem: E -> word -> _ -> Prop) sz vH vsTail,
+      0 < sz < 2 ^ width ->
+      word.sub a' a = word.of_Z sz ->
+      split_sepclause (a |-> array elem sz (List.cons vH vsTail))
+                      (a' |-> array elem sz vsTail)
+        (forall v vs,
+           iff1 (seps [a |-> elem v; a' |-> array elem sz vs])
+                (a |-> array elem sz (List.cons v vs))).
+  Proof.
+    intros. unfold split_sepclause. intros. unfold at_addr, array. cbn.
+    cancel. cbn [seps].
+    match goal with
+    | |- iff1 _ (Array.array _ _ ?x _) => replace x with a'
+    end.
+    1: reflexivity.
+    destruct width_cases; ZnWords.
+  Qed.
 End SepLog.
 
 
@@ -288,6 +329,16 @@ Ltac concrete_sz_bounds :=
   [ concrete_sz_bounds | listZnWords | listZnWords ]
 : split_sepclause_goal.
 
+#[export] Hint Extern 1 (split_sepclause (_ |-> array ?elem ?sz (?vs1 ++ ?vs2))
+                                         (_ |-> array ?elem ?sz ?vs2) _) =>
+  eapply access_suffix; [ concrete_sz_bounds | listZnWords ]
+: split_sepclause_goal.
+
+#[export] Hint Extern 1 (split_sepclause (_ |-> array ?elem ?sz (_ :: ?vsTail))
+                                         (_ |-> array ?elem ?sz ?vsTail) _) =>
+  eapply access_tail; [ concrete_sz_bounds | listZnWords ]
+: split_sepclause_goal.
+
 
 (* split_sepclause_sidecond: *)
 
@@ -307,6 +358,19 @@ Ltac concrete_sz_bounds :=
   assert_fails (has_evar lenL);
   assert_fails (has_evar lenR);
   is_evar listL; split; [ reflexivity | listZnWords ]
+: merge_sepclause_sidecond.
+
+(* TODO make more generic *)
+#[export] Hint Extern 1 (?listL = ?listR1 ++ ?listR2 /\ ?lenR1 = _ /\ ?lenR2 = _) =>
+  apply_in_hyps @map.getmany_of_list_length; rewrite List.length_unfoldn in *;
+  is_evar listL; split; [ reflexivity | split; listZnWords ]
+: merge_sepclause_sidecond.
+
+(* TODO make more generic *)
+#[export] Hint Extern 1
+  (?listL = ?listR1 ++ ?listR2 ++ ?listR3 /\ ?lenR1 = ?i /\ ?lenR2 = ?n) =>
+  apply_in_hyps @map.getmany_of_list_length; rewrite List.length_unfoldn in *;
+  is_evar listL; split; [ reflexivity | split; listZnWords ]
 : merge_sepclause_sidecond.
 
 

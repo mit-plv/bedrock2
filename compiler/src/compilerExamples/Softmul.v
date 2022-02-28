@@ -273,15 +273,23 @@ Section Riscv.
   Qed.
   Hint Resolve instr_IM_impl1_I : ecancel_impl.
 
+  Set Printing Depth 100000.
+
   Lemma mdecodeM_to_InvalidI: forall z minst,
       mdecode z = MInstruction minst ->
       idecode z = InvalidInstruction z.
   Proof.
-    unfold mdecode. intros.
+    unfold mdecode, idecode. intros.
     destruct_one_match_hyp; fwd.
-    - case TODO.
-    - exfalso. (* H is a contradiction *) case TODO.
-  Qed.
+    - replace z with (
+          let rd := bitSlice z 7 12 in
+          let rs1 := bitSlice z 15 20 in
+          let rs2 := bitSlice z 20 25 in
+          encode (MInstruction (Mul rd rs1 rs2))) at 1; cbv zeta.
+      (* can't apply decode_encode because Mul is not in RV32I! *)
+      all: admit.
+    - exfalso. (* H is a contradiction *) admit.
+  Admitted.
 
   Lemma invert_mdecode_M: forall z minst,
       mdecode z = MInstruction minst ->
@@ -754,7 +762,7 @@ Section Riscv.
       seps [stackaddr |-> word_array oldvals;
         initial.(pc) |-> program idecode
            (map (fun r => IInstruction (Sw RegisterNames.sp r (4 * r)))
-                           (List.unfoldn (BinInt.Z.add 1) n start)); R] initial.(mem) ->
+                           (List.unfoldn (BinInt.Z.add 1) n start)); R] initial.(mem) /\
       (forall m: Mem,
          seps [stackaddr |-> word_array vals;
                initial.(pc) |-> program idecode
@@ -770,7 +778,7 @@ Section Riscv.
       destruct oldvals. 2: discriminate.
       destruct vals. 2: discriminate.
       match goal with
-      | H: _ |- _ => eqapply H
+      | H: _ |- _ => destruct H as [A B]; eqapply B
       end.
       1: eassumption.
       destruct initial.
@@ -783,6 +791,9 @@ Section Riscv.
       fwd.
       assert (start <> 0) by Lia.lia.
       eapply runsToStep_cps. repeat step.
+      subst stackaddr.
+      repeat (repeat word_simpl_step_in_hyps; fwd).
+      cbn [List.skipn List.map] in *.
       eapply IHn with (start := 1 + start) (oldvals := oldvals); try record.simp.
       + reflexivity.
       + eassumption.
@@ -790,19 +801,15 @@ Section Riscv.
       + ring.
       + Lia.lia.
       + eassumption.
-      + use_sep_asm. impl_ecancel.
-        case TODO. (* separation logic automation *)
-      + intros.
-        eqapply H6. 2: {
+      + after_mem_modifying_lemma.
+        eqapply H5p1. 2: {
           match goal with
           | H: nextPc _ = _ |- _ => rewrite H
           end.
           destruct initial; record.simp.
           f_equal; try ZnWords.
         }
-        use_sep_asm.
-        impl_ecancel. (* TODO should not instantiate R on lhs! *)
-        case TODO. (* separation logic automation *)
+        scancel_asm.
   Qed.
 
   Lemma save_regs3to31_correct: forall R (initial: State) oldvals spval
@@ -833,11 +840,12 @@ Section Riscv.
       with (word_array oldvals) in HM by case TODO.
     assert (List.length oldvals = 29%nat) by case TODO.
     eapply save_regs_correct_aux with (start := 3); try eassumption; try reflexivity.
-    intros.
-    eapply HPost. 1: exact G.
-    replace (with_len 29 word_array vals)
-      with (word_array vals) by case TODO.
-    assumption.
+    intros. split.
+    - exact HM.
+    - intros; eapply HPost. 1: exact G.
+      replace (with_len 29 word_array vals)
+        with (word_array vals) by case TODO.
+      assumption.
   Qed.
 
   Lemma restore_regs3to31_correct: forall R (initial: State) vals spval
@@ -854,12 +862,6 @@ Section Riscv.
   Proof.
     unfold restore_regs3to31. intros.
   Admitted.
-
-  (* TODO add more generic list solver to SepAutoArray *)
-  Hint Extern 1 (?listL = ?listR1 ++ ?listR2 ++ ?listR3 /\ ?lenR1 = ?i /\ ?lenR2 = ?n) =>
-    apply_in_hyps @map.getmany_of_list_length; rewrite List.length_unfoldn in *;
-    is_evar listL; split; [ reflexivity | split; listZnWords ]
-  : merge_sepclause_sidecond.
 
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 mdecode)) initialH post ->

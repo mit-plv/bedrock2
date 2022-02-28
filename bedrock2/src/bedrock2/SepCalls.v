@@ -186,8 +186,8 @@ Ltac clear_split_sepclause_stack :=
          | H: split_sepclause _ _ _ |- _ => clear H
          end.
 
-Ltac pop_split_sepclause_stack :=
-  let H := lazymatch goal with H: seps _ ?m |- _ => H end in
+Ltac pop_split_sepclause_stack m :=
+  let H := lazymatch goal with H: _ ?m |- _ => H end in
   let Sp := lazymatch goal with Sp: split_sepclause _ _ _ |- _ => Sp end in
   ((cbv [split_sepclause] in Sp;
     cbn [seps] in Sp, H;
@@ -202,21 +202,24 @@ Ltac intro_new_mem :=
   | |- forall (m: @map.rep _ _ _), _ =>
       let mNew := fresh m in
       intro mNew; intros;
-      repeat pop_split_sepclause_stack
+      repeat pop_split_sepclause_stack mNew
   end.
 
 Ltac put_cont_into_emp_seps :=
   lazymatch goal with
-  | |- seps ?Pre ?mOld /\ (forall mNew, _) =>
+  | |- seps ?Pre ?mOld /\ ?Cont =>
       apply put_and_r_into_emp_seps; cbn [SeparationLogic.app]
-  | |- _ => fail 10000 "Expected a goal of the form" "(seps ?Pre ?mOld /\ (forall mNew, _))"
+  | |- _ => fail 10000 "Expected a goal of the form" "(seps ?Pre ?mOld /\ ?Cont)"
   end.
 
-Ltac after_sep_call :=
-  put_cont_into_emp_seps;
+(* ecancel an assumption (using impl1), and also split sepclauses on the left
+   while canceling *)
+Ltac scancel_asm :=
   use_sep_asm;
   impl_ecancel;
   match goal with
   | H: tactic_error _ |- _ => idtac
   | |- _ => finish_impl_ecancel
   end.
+
+Ltac after_sep_call := put_cont_into_emp_seps; scancel_asm.
