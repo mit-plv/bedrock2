@@ -449,8 +449,8 @@ Section Riscv.
     destruct a; cbn [run_primitive] in *.
     - exists initialH. intuition (congruence || eauto 10).
     - exists { initialH with regs ::= setReg z r }. record.simp.
-      unfold setReg in *. destr (Z.eq_dec z 0). 1: intuition (congruence || eauto 10).
-      intuition (congruence || eauto 10 using preserve_regs_initialized_after_put).
+      unfold setReg in *. destr ((0 <? z) && (z <? 32))%bool;
+        intuition (congruence || eauto 10 using preserve_regs_initialized_after_put).
     - eapply load_preserves_related; eauto.
     - eapply load_preserves_related; eauto.
     - eapply load_preserves_related; eauto.
@@ -539,12 +539,13 @@ Section Riscv.
   Qed.
 
   Lemma interpret_getRegister: forall (initial: State) (postF: word -> State -> Prop) (postA: State -> Prop) r v,
-      r <> 0 ->
+      0 < r < 32 ->
       map.get initial.(regs) r = Some v ->
       postF v initial ->
       free.interpret run_primitive (getRegister r) initial postF postA.
   Proof.
-    intros. simpl. unfold getReg. destr (Z.eq_dec r 0). 1: exfalso; congruence. rewrite H0. assumption.
+    intros. simpl. unfold getReg. destruct_one_match; fwd. 1: assumption.
+    exfalso; Lia.lia.
   Qed.
 
   (* better wrt evar creation order *)
@@ -559,11 +560,12 @@ Section Riscv.
   Qed.
 
   Lemma interpret_setRegister: forall (initial: State) (postF: unit -> State -> Prop) (postA: State -> Prop) r v,
-      r <> 0 ->
+      0 < r < 32 ->
       postF tt { initial with regs ::= map.set r v } ->
       free.interpret run_primitive (setRegister r v) initial postF postA.
   Proof.
-    intros. simpl. unfold setReg. destr (Z.eq_dec r 0). 1: exfalso; congruence. assumption.
+    intros. simpl. unfold setReg. destruct_one_match; fwd. 1: assumption.
+    exfalso; Lia.lia.
   Qed.
 
   Lemma interpret_endCycleEarly: forall (m: State) (postF : unit -> State -> Prop) (postA : State -> Prop),
@@ -757,7 +759,8 @@ Section Riscv.
       map.get initial.(regs) RegisterNames.sp = Some spval ->
       stackaddr = word.add spval (word.of_Z (4 * start)) ->
       initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
-      0 < start -> (* <-- could probably be removed if needed *)
+      0 < start ->
+      (Z.to_nat start + n = 32)%nat ->
       map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) n start) = Some vals ->
       seps [stackaddr |-> word_array oldvals;
         initial.(pc) |-> program idecode
@@ -789,7 +792,7 @@ Section Riscv.
       }
       destruct oldvals as [|oldval oldvals]. 1: discriminate.
       fwd.
-      assert (start <> 0) by Lia.lia.
+      assert (0 < start < 32) by Lia.lia.
       eapply runsToStep_cps. repeat step.
       subst stackaddr.
       repeat (repeat word_simpl_step_in_hyps; fwd).
@@ -800,9 +803,10 @@ Section Riscv.
       + reflexivity.
       + ring.
       + Lia.lia.
+      + Lia.lia.
       + eassumption.
       + after_mem_modifying_lemma.
-        eqapply H5p1. 2: {
+        eqapply H6p1. 2: {
           match goal with
           | H: nextPc _ = _ |- _ => rewrite H
           end.
@@ -1077,10 +1081,45 @@ Section Riscv.
         cbn in Hp1.
         unfold mcomp_sat in Hp1.
         exact Hp1. }
-      unfold related, updatePc, setReg, getReg, basic_CSRFields_supported; record.simp.
+      unfold related, updatePc, map.set, basic_CSRFields_supported; record.simp.
+      ssplit.
+      { unfold setReg.
+        apply map.map_ext. intro k.
+        rewrite ?word.of_Z_unsigned.
+        unfold List.upd, List.upds.
+        list_length_rewrites_without_sideconds_in_goal.
+        destr ((0 <? rd) && (rd <? 32)).
+        { assert (0 < rd < 32) by Lia.lia.
+          rewrite ?map.get_put_dec.
+          destr (RegisterNames.sp =? k).
+          + (* Bug: second-to-last instruction should not be
+               Csrr sp MScratch,
+               but
+               Lw sp sp 8,
+               in case the Mul instruction assigned sp! *)
+            case TODO.
+          + case TODO. }
+        case TODO.
+      }
+      all: case TODO.
 
-      (* big computed postcondition implies desired postcondition proof: *)
-      case TODO.
+(*
+        - subst rd.
+          rewrite map.get_put_dec.
+          destr (RegisterNames.sp =? k).
+          1: congruence.
+          fwd. cbn [List.app nth].
+          rewrite map.get_put_dec.
+          destr (RegisterNames.ra =? k).
+          + rewrite LittleEndian.combine_split.
+            rewrite sextend_width_nop by reflexivity.
+            rewrite Z.mod_small by apply word.unsigned_range.
+            rewrite word.of_Z_unsigned.
+            etransitivity. 2: eassumption.
+            unfold map.set. rewrite map.get_put_diff by congruence.
+            congruence.
+          + Search l.
+*)
   Qed.
 
   (* TODO state same theorem with binary code of handler to make sure instructions

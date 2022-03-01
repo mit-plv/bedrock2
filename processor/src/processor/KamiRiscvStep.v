@@ -1719,6 +1719,20 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
+      all: replace (getReg rrf rs1) with
+        (if Z.eq_dec rs1 0 then word.of_Z 0
+         else match map.get rrf rs1 with
+              | Some x => x
+              | None => word.of_Z 0
+              end) in *.
+      2,4,6,8,10,12:
+        unfold getReg; repeat destruct_one_match; try reflexivity;
+      [ clearbody rs1; subst rs1; discriminate
+      | exfalso;
+        pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
+        change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+        Lia.lia ].
+
       (** Consistency proof for each instruction *)
       all: rt.
 
@@ -1754,6 +1768,21 @@ Section Equiv.
                  exfalso; clear -H; destruct H as [? ?]; discriminate
                end.
 
+      repeat r. t.
+      match goal with
+      | H: let _ := setReg rd ?newval rrf in _ |- _ =>
+          replace (setReg rd newval rrf) with
+        (if Z.eq_dec rd Register0
+         then rrf
+         else map.put rrf rd newval) in *
+      end.
+      2: {
+        unfold setReg; repeat destruct_one_match; try reflexivity;
+        [ clearbody rd; subst rd; discriminate
+        | exfalso;
+          pose proof bitSlice_range_ex (@kunsigned 32 kinst) 7 12 as HR;
+          Lia.lia ].
+      }
       rt.
       eexists _, _.
       prove_KamiLabelR_mmio.
@@ -1866,6 +1895,20 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
+      all: replace (getReg rrf rs1) with
+        (if Z.eq_dec rs1 0 then word.of_Z 0
+         else match map.get rrf rs1 with
+              | Some x => x
+              | None => word.of_Z 0
+              end) in *.
+      2,4,6,8,10,12:
+        unfold getReg; repeat destruct_one_match; try reflexivity;
+      [ clearbody rs1; subst rs1; discriminate
+      | exfalso;
+        pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
+        change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+        Lia.lia ].
+
       (** Consistency proof for each instruction *)
       all: rt.
 
@@ -1886,6 +1929,21 @@ Section Equiv.
            apply is_mmio_sound in H13.
            setoid_rewrite H13 in Heqic.
            discriminate. }
+
+      all: repeat r; t.
+      all: match goal with
+           | H: let _ := setReg ?rd ?newval ?rrf in _ |- _ =>
+               replace (setReg rd newval rrf) with
+               (if Z.eq_dec rd Register0
+                then rrf
+                else map.put rrf rd newval) in *;
+               [ | unfold setReg; repeat destruct_one_match; try reflexivity;
+                   [ clearbody rd; subst rd; discriminate
+                   | exfalso;
+                     pose proof bitSlice_range_ex (@kunsigned 32 kinst) 7 12 as HR;
+                     Lia.lia ]
+               ]
+           end.
 
       all: rt.
       all: eexists _, _.
@@ -2107,6 +2165,20 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
+      all: replace (getReg rrf rs1) with
+        (if Z.eq_dec rs1 0 then word.of_Z 0
+         else match map.get rrf rs1 with
+              | Some x => x
+              | None => word.of_Z 0
+              end) in *.
+      2,4,6,8,10,12:
+        unfold getReg; repeat destruct_one_match; try reflexivity;
+      [ clearbody rs1; subst rs1; discriminate
+      | exfalso;
+        pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
+        change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+        Lia.lia ].
+
       (** Consistency proof for each instruction *)
       all: rt.
 
@@ -2140,6 +2212,19 @@ Section Equiv.
                | [H: isMMIOAligned _ _ |- _] =>
                  exfalso; clear -H; destruct H as [? ?]; discriminate
                end.
+
+      repeat r; t.
+      match goal with
+      | H: let _ := setReg ?rd ?newval ?rrf in _ |- _ =>
+          replace (setReg rd newval rrf) with
+          (if Z.eq_dec rd Register0
+           then rrf
+           else map.put rrf rd newval) in *
+      end.
+      2: { unfold setReg; repeat destruct_one_match; try reflexivity;
+         [ discriminate
+         | contradiction ].
+      }
 
       rt.
       eexists _, _.
@@ -2243,6 +2328,20 @@ Section Equiv.
                | H : Instruction |- _ => clear H
                end.
 
+      all: replace (getReg rrf rs1) with
+        (if Z.eq_dec rs1 0 then word.of_Z 0
+         else match map.get rrf rs1 with
+              | Some x => x
+              | None => word.of_Z 0
+              end) in *.
+      2,4,6,8,10,12:
+        unfold getReg; repeat destruct_one_match; try reflexivity;
+      [ clearbody rs1; subst rs1; discriminate
+      | exfalso;
+        pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
+        change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+        Lia.lia ].
+
       (** Consistency proof for each instruction *)
       all: rt.
 
@@ -2263,6 +2362,21 @@ Section Equiv.
            apply is_mmio_sound in H13.
            setoid_rewrite H13 in Heqic.
            discriminate. }
+
+      all: t.
+      all: lazymatch goal with
+           | H: let _ := setReg ?rd ?newval ?rrf in _ |- _ =>
+               replace (setReg rd newval rrf) with
+               (if Z.eq_dec rd Register0
+                then rrf
+                else map.put rrf rd newval) in *;
+               [ | unfold setReg; repeat destruct_one_match; try reflexivity;
+                   [ discriminate
+                   | exfalso;
+                     pose proof bitSlice_range_ex (@kunsigned 32 kinst) 7 12 as HR;
+                     Lia.lia ]
+               ]
+           end.
 
       all: rt.
       all: eexists _, _.
@@ -2371,6 +2485,36 @@ Section Equiv.
                | H : list Instruction |- _ => clear H
                | H : Instruction |- _ => clear H
                end.
+
+      all: replace (getReg rrf rs1) with
+        (if Z.eq_dec rs1 0 then word.of_Z 0
+         else match map.get rrf rs1 with
+              | Some x => x
+              | None => word.of_Z 0
+              end) in *
+          by (
+            unfold getReg; repeat destruct_one_match; try reflexivity;
+            [ clearbody rs1; subst rs1; discriminate
+            | exfalso;
+              pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
+              change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+              Lia.lia ]).
+
+      all: repeat r; t.
+
+      all: replace (getReg rrf rs2) with
+        (if Z.eq_dec rs2 0 then word.of_Z 0
+         else match map.get rrf rs2 with
+              | Some x => x
+              | None => word.of_Z 0
+              end) in *
+          by (
+            unfold getReg; repeat destruct_one_match; try reflexivity;
+            [ clearbody rs2; subst rs2; discriminate
+            | exfalso;
+              pose proof bitSlice_range_ex (@kunsigned 32 kinst) 20 25 as HR;
+              change (bitSlice (@kunsigned 32 kinst) 20 25) with rs2 in HR;
+              Lia.lia ]).
 
       (** Consistency proof for each instruction *)
       all: rt.
@@ -2511,6 +2655,34 @@ Section Equiv.
                | H : list Instruction |- _ => clear H
                | H : Instruction |- _ => clear H
                end.
+
+      all: replace (getReg rrf rs1) with
+        (if Z.eq_dec rs1 0 then word.of_Z 0
+         else match map.get rrf rs1 with
+              | Some x => x
+              | None => word.of_Z 0
+              end) in *
+          by (
+            unfold getReg; repeat destruct_one_match; try reflexivity;
+            [ clearbody rs1; subst rs1; discriminate
+            | exfalso;
+              pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
+              change (bitSlice (@kunsigned 32 kinst) 15 20) with rs1 in HR;
+              Lia.lia ]).
+      all: repeat r; t.
+      all: replace (getReg rrf rs2) with
+        (if Z.eq_dec rs2 0 then word.of_Z 0
+         else match map.get rrf rs2 with
+              | Some x => x
+              | None => word.of_Z 0
+              end) in *
+          by (
+            unfold getReg; repeat destruct_one_match; try reflexivity;
+            [ clearbody rs2; subst rs2; discriminate
+            | exfalso;
+              pose proof bitSlice_range_ex (@kunsigned 32 kinst) 20 25 as HR;
+              change (bitSlice (@kunsigned 32 kinst) 20 25) with rs2 in HR;
+              Lia.lia ]).
 
       (** Consistency proof for each instruction *)
       all: rt.
@@ -2756,6 +2928,48 @@ Section Equiv.
              | H : Instruction |- _ => clear H
              end.
 
+    all: repeat (
+             match goal with
+             | H: let _ := getReg ?rff ?rs1 in _ |- _ =>
+                 (replace (getReg rrf rs1) with
+                   (if Z.eq_dec rs1 0 then word.of_Z 0
+                    else match map.get rrf rs1 with
+                         | Some x => x
+                         | None => word.of_Z 0
+                         end) in *
+                     by (
+                       unfold getReg; repeat destruct_one_match; try reflexivity;
+                       [ clearbody rs1; subst rs1; discriminate
+                       | exfalso;
+                         pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
+                         Lia.lia ]))
+             | H: let _ := getReg ?rff ?rs2 in _ |- _ =>
+                 (replace (getReg rrf rs2) with
+                   (if Z.eq_dec rs2 0 then word.of_Z 0
+                    else match map.get rrf rs2 with
+                         | Some x => x
+                         | None => word.of_Z 0
+                         end) in *
+                     by (
+                       unfold getReg; repeat destruct_one_match; try reflexivity;
+                       [ clearbody rs2; subst rs2; discriminate
+                       | exfalso;
+                         pose proof bitSlice_range_ex (@kunsigned 32 kinst) 20 25 as HR;
+                         Lia.lia ]))
+             | H: let _ := setReg ?rd ?newval ?rrf in _ |- _ =>
+                 replace (setReg rd newval rrf) with
+                 (if Z.eq_dec rd Register0
+                  then rrf
+                  else map.put rrf rd newval) in *;
+                 [ | unfold setReg; repeat destruct_one_match; try reflexivity;
+                     [ try (clearbody rd; subst rd); discriminate
+                     | exfalso;
+                       pose proof bitSlice_range_ex (@kunsigned 32 kinst) 7 12 as HR;
+                       Lia.lia ]
+                 ]
+             | _ => r || t
+             end).
+
     (** Consistency proof for each instruction *)
     all: rt.
     all: eexists _, _.
@@ -2772,7 +2986,6 @@ Section Equiv.
     all: try subst regs; try subst kupd.
 
     (** Proving simulation; solve trivial goals first *)
-
     all: prove_states_related.
 
     all: match goal with | H: pc_related ?kpc _ |- _ => red in H; subst kpc end.
@@ -3064,8 +3277,50 @@ Section Equiv.
              | H : Instruction |- _ => clear H
              end.
 
+    all: repeat match goal with
+                | H: let _ := getReg ?rff ?rs1 in _ |- _ =>
+                    (replace (getReg rrf rs1) with
+                      (if Z.eq_dec rs1 0 then word.of_Z 0
+                       else match map.get rrf rs1 with
+                            | Some x => x
+                            | None => word.of_Z 0
+                            end) in *
+                        by (
+                          unfold getReg; repeat destruct_one_match; try reflexivity;
+                          [ clearbody rs1; subst rs1; discriminate
+                          | exfalso;
+                            pose proof bitSlice_range_ex (@kunsigned 32 kinst) 15 20 as HR;
+                            Lia.lia ]))
+                | H: let _ := getReg ?rff ?rs2 in _ |- _ =>
+                    (replace (getReg rrf rs2) with
+                      (if Z.eq_dec rs2 0 then word.of_Z 0
+                       else match map.get rrf rs2 with
+                            | Some x => x
+                            | None => word.of_Z 0
+                            end) in *
+                        by (
+                          unfold getReg; repeat destruct_one_match; try reflexivity;
+                          [ clearbody rs2; subst rs2; discriminate
+                          | exfalso;
+                            pose proof bitSlice_range_ex (@kunsigned 32 kinst) 20 25 as HR;
+                            Lia.lia ]))
+                | H: let _ := setReg ?rd ?newval ?rrf in _ |- _ =>
+                    replace (setReg rd newval rrf) with
+                    (if Z.eq_dec rd Register0
+                     then rrf
+                     else map.put rrf rd newval) in *;
+                    [ | unfold setReg; repeat destruct_one_match; try reflexivity;
+                       [ try (clearbody rd; subst rd);
+                         try (replace (bitSlice (@kunsigned 32 kinst) 7 12) with 0 in *; []);
+                         discriminate
+                       | exfalso;
+                         pose proof bitSlice_range_ex (@kunsigned 32 kinst) 7 12 as HR;
+                         Lia.lia ]
+                    ]
+                | _ => r || t
+                end.
+
     (** Consistency proof for each instruction *)
-    all: rt.
     all: eexists _, _.
     all: prove_KamiLabelR_silent.
 

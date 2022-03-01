@@ -386,8 +386,8 @@ Section Riscv.
     destruct a; cbn [run_primitive] in *.
     - exists initialH. intuition (congruence || eauto 10).
     - exists { initialH with regs ::= setReg z r }. record.simp.
-      unfold setReg in *. destr (Z.eq_dec z 0). 1: intuition (congruence || eauto 10).
-      intuition (congruence || eauto 10 using preserve_regs_initialized_after_put).
+      unfold setReg in *. destr ((0 <? z) && (z <? 32))%bool;
+        intuition (congruence || eauto 10 using preserve_regs_initialized_after_put).
     - eapply load_preserves_related; eauto.
     - eapply load_preserves_related; eauto.
     - eapply load_preserves_related; eauto.
@@ -475,32 +475,19 @@ Section Riscv.
     2: exfalso; congruence. assumption.
   Qed.
 
-  Lemma interpret_getRegister: forall (initial: State) (postF: word -> State -> Prop) (postA: State -> Prop) r v,
-      r <> 0 ->
-      map.get initial.(regs) r = Some v ->
-      postF v initial ->
+  Lemma interpret_getRegister: forall (initial: State) (postF: word -> State -> Prop) (postA: State -> Prop) r,
+      postF (getReg initial.(regs) r) initial ->
       free.interpret run_primitive (getRegister r) initial postF postA.
   Proof.
-    intros. simpl. unfold getReg. destr (Z.eq_dec r 0). 1: exfalso; congruence. rewrite H0. assumption.
+    intros. simpl. assumption.
   Qed.
 
-  (* better wrt evar creation order *)
-  Lemma interpret_getRegister': forall (initial: State) (postF: word -> State -> Prop) (postA: State -> Prop) r,
-      0 < r < 32 ->
-      regs_initialized initial.(regs) ->
-      (forall v, map.get initial.(regs) r = Some v -> postF v initial) ->
-      free.interpret run_primitive (getRegister r) initial postF postA.
-  Proof.
-    intros. specialize (H0 _ H). destruct H0. eapply interpret_getRegister. 1: blia.
-    all: eauto.
-  Qed.
-
-  Lemma interpret_setRegister: forall (initial: State) (postF: unit -> State -> Prop) (postA: State -> Prop) r v,
-      r <> 0 ->
-      postF tt { initial with regs ::= map.set r v } ->
+  Lemma interpret_setRegister: forall (initial: State) (postF: unit -> State -> Prop)
+                                      (postA: State -> Prop) r (v: word),
+      postF tt { initial with regs ::= setReg r v } ->
       free.interpret run_primitive (setRegister r v) initial postF postA.
   Proof.
-    intros. simpl. unfold setReg. destr (Z.eq_dec r 0). 1: exfalso; congruence. assumption.
+    intros. simpl. assumption.
   Qed.
 
   Lemma interpret_endCycleEarly: forall (m: State) (postF : unit -> State -> Prop) (postA : State -> Prop),
@@ -606,8 +593,7 @@ Section Riscv.
         lazymatch r with
         | 0 => eapply interpret_getRegister0
         | RegisterNames.zero => eapply interpret_getRegister0
-        | _ => first [ eapply interpret_getRegister ; [solve [repeat step]..|]
-                     | eapply interpret_getRegister'; [solve [repeat step]..|] ]
+        | _ => eapply interpret_getRegister
         end
       | setRegister _ _ => eapply interpret_setRegister
       | endCycleEarly _ => eapply interpret_endCycleEarly

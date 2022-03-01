@@ -336,8 +336,9 @@ Section MMIO1.
       }
       repeat fwd.
 
-      destruct (Z.eq_dec z1 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
-      destruct (Z.eq_dec z2 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
+      unfold getReg.
+      destr ((0 <? z1) && (z1 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia].
+      destr ((0 <? z2) && (z2 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia].
       replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto).
       replace (map.get initialL_regs z2) with (Some x0) by (symmetry; unfold map.extends in *; eauto).
 
@@ -472,7 +473,8 @@ Section MMIO1.
 
       repeat fwd.
 
-      destruct (Z.eq_dec z1 0); cbv [valid_FlatImp_var] in *; [exfalso; blia|].
+      unfold getReg.
+      destr ((0 <? z1) && (z1 <? 32))%bool; cbv [valid_FlatImp_var] in *; [|exfalso; blia].
       replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto).
 
       split; try discriminate.
@@ -502,7 +504,8 @@ Section MMIO1.
       apply eqb_eq in EE. subst action.
       cbn in *.
       specialize (Pp1 mKeep). rewrite map.split_empty_r in Pp1. specialize (Pp1 eq_refl).
-      destruct (Z.eq_dec z1 0); try contradiction.
+      unfold setReg.
+      destr ((0 <? z1) && (z1 <? 32))%bool; [|exfalso;blia].
       do 4 eexists.
       split; eauto.
       split; eauto.
