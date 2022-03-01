@@ -1,3 +1,5 @@
+Require Import Coq.Logic.FunctionalExtensionality.
+Require Import Coq.Logic.PropExtensionality.
 Require Import bedrock2.SepAuto.
 Require Import bedrock2.Array.
 Require Import bedrock2.groundcbv.
@@ -11,6 +13,29 @@ Definition with_len{width}{word: word width}{mem: map.map word byte}{V: Type}
 Section SepLog.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+
+  Lemma with_len_eq[V: Type]: forall (array_pred: list V -> word -> mem -> Prop) vs n,
+      List.length vs = n ->
+      with_len n array_pred vs = array_pred vs.
+  Proof.
+    intros. unfold with_len, with_pure, at_addr. extensionality a.
+    replace (List.length vs = n) with True.
+    - eapply iff1ToEq. cancel.
+    - apply propositional_extensionality. split; auto.
+  Qed.
+
+  Lemma extract_pure: forall (P: Prop) (R1 R2: mem -> Prop) m,
+      sep (with_pure R1 P) R2 m -> P.
+  Proof.
+    unfold with_pure, sep, emp. intros. fwd. assumption.
+  Qed.
+
+  Lemma extract_with_len[V: Type]:
+    forall [array_pred: list V -> word -> mem -> Prop] [vs n m R a],
+      sep (a |-> with_len n array_pred vs) R m -> List.length vs = n.
+  Proof.
+    intros. eapply extract_pure in H. exact H.
+  Qed.
 
   (* There's some tradeoff in the choice whether sz should be a Z or a word:
      If it's a Z, lemmas need an explicit sidecondition to upper-bound it,
