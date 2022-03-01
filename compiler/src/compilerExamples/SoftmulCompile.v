@@ -30,6 +30,7 @@ Require Import riscv.Platform.MinimalCSRs.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import riscv.Platform.MetricMinimalNoMul.
 Require Import compiler.regs_initialized.
+Require Import compiler.Registers.
 Require Import compilerExamples.SoftmulBedrock2.
 Require compiler.Pipeline.
 Require Import bedrock2.BasicC32Semantics.
@@ -124,7 +125,8 @@ Section Riscv.
       states_related sH sL ->
       interp_action a sH postH ->
       run_primitive a sL (fun a sL' =>
-         exists sH', states_related sH' sL' /\ postH a sH') (fun _ => False).
+           exists sH', states_related sH' sL' /\ sL'.(csrs) = sL.(csrs) /\ postH a sH')
+        (fun _ => False).
   Proof.
     pose proof Radd_comm word.ring_theory.
     destruct a; intros; destruct sH as [sH logH]; destruct sH, sL;
@@ -142,14 +144,15 @@ Section Riscv.
       states_related sH sL ->
       free.interp MetricMinimalNoMul.interp_action m sH postH ->
       free.interpret run_primitive m sL (fun a sL' =>
-         exists sH', states_related sH' sL' /\ postH a sH') (fun _ => False).
+           exists sH', states_related sH' sL' /\ sL'.(csrs) = sL.(csrs) /\ postH a sH')
+        (fun _ => False).
   Proof.
     induction m; intros.
     - cbn in *.
       eapply weaken_run_primitive with (postA1 := fun _ => False). 2: auto.
       2: eapply change_state_rep_primitive; eassumption.
       cbv beta.
-      intros. fwd. eapply H; eauto.
+      intros. fwd. rewrite <- H2p1. eapply H; eauto.
     - cbn in *. eauto.
   Qed.
 
@@ -168,7 +171,7 @@ Section Riscv.
       runsTo (GoFlatToRiscv.mcomp_sat (Run.run1 RV32I)) sH postH ->
       forall sL, states_related sH sL ->
       runsTo (mcomp_sat (run1 idecode)) sL (fun sL' =>
-         exists sH', states_related sH' sL' /\ postH sH').
+         exists sH', states_related sH' sL' /\ sL'.(csrs) = sL.(csrs) /\ postH sH').
   Proof.
     induction 1; intros.
     - eapply runsToDone. eauto.
@@ -186,7 +189,7 @@ Section Riscv.
         2: contradiction.
         exact H3.
       + cbv beta; intros.
-        fwd. eauto.
+        fwd. rewrite <- H3p1. eauto.
   Qed.
 
   Definition instr(decoder: Z -> Instruction)(inst: Instruction)(addr: word): mem -> Prop :=
@@ -277,7 +280,7 @@ Section Riscv.
                    (List.nth (Z.to_nat rs1) regvals default)
                    (List.nth (Z.to_nat rs2) regvals default)));
                initial.(pc) |-> program idecode mul_insts; R] newMem ->
-        map.get newRegs RegisterNames.sp = Some sp_val ->
+        map.only_differ initial.(regs) reg_class.caller_saved newRegs ->
         post { initial with pc := ret_addr;
                             nextPc := word.add ret_addr (word.of_Z 4);
                             MinimalCSRs.mem := newMem;
@@ -347,10 +350,18 @@ Section Riscv.
       { case TODO. (* machine_ok... *) } }
     { cbv beta. cbn -[array HList.tuple Datatypes.length].
       intros. fwd.
-      case TODO. (* postcondition matching... *) }
+      specialize (C final.(MinimalCSRs.mem) final.(regs)).
+      eqapply C.
+      - case TODO.
+      - destruct sH' as [sH' lg]. destruct sH'.
+        unfold states_related in *. record.simp. fwd.
+        assumption.
+      - unfold states_related in *. fwd.
+        destruct final. destruct initial. record.simp. f_equal; try congruence.
+        case TODO. (* nextPc *) }
     Unshelve.
     all: case TODO.
-  Admitted.
+  Qed.
 
   (* Needed if the handler wants to handle the case where the instruction is not
      a multiplication: *)

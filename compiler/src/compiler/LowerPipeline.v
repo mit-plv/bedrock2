@@ -419,10 +419,6 @@ Section LowerPipeline.
       compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
                                      (FlatImp.SInteract resvars extcall argvars).
 
-  Definition callee_saved: set Z :=
-    union (union (of_list [RegisterNames.gp]) (of_list [RegisterNames.tp]))
-          (of_list (reg_class.all reg_class.saved)).
-
   Definition riscv_call(p: list Instruction * fun_info * Z)
              (f_name: string)(t: Semantics.trace)(mH: mem)(argvals: list word)
              (post: Semantics.trace -> mem -> list word -> Prop): Prop :=
@@ -445,7 +441,7 @@ Section LowerPipeline.
                               (List.firstn retcount (reg_class.all reg_class.arg))
           = Some retvals /\
           post final.(getLog) mH' retvals /\
-          map.agree_on callee_saved initial.(getRegs) final.(getRegs) /\
+          map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
           final.(getPc) = ret_addr /\
           machine_ok p_funcs stack_start stack_pastend instrs mH' Rdata Rexec final).
 
@@ -789,25 +785,27 @@ Section LowerPipeline.
       eexists _, _. ssplit.
       + rewrite <- Vp1. eapply map.getmany_of_list_extends; eassumption.
       + eassumption.
-      + eapply only_differ_to_agree_on. 1: eassumption.
-        unfold callee_saved.
+      + eapply only_differ_subset. 1: eassumption.
         rewrite ListSet.of_list_list_union.
         rewrite ?singleton_set_eq_of_list.
-        repeat match goal with
-               | |- _ /\ _ => split
-               | |- disjoint (union _ _) _ => apply disjoint_union_l_iff
-               | |- disjoint _ (union _ _) => apply disjoint_union_r_iff
-               | |- disjoint (of_list _) (of_list _) => eapply disjoint_of_list_disjoint_Forall
-               end;
-        repeat match goal with
-               | |- Forall _ (List.firstn _ _) => apply List.Forall_firstn
-               | |- Forall _ (reg_class.all reg_class.arg) => apply arg_range_Forall
-               | |- Forall _ (reg_class.all reg_class.saved) => apply saved_range_Forall
-               | |- Forall _ [] => apply List.Forall_False_nil
-               | |- Forall _ [_] => apply List.Forall_singleton
-               end.
-        all: clear; unfold RegisterNames.ra, RegisterNames.gp, RegisterNames.tp.
-        all: blia.
+        repeat apply subset_union_l;
+          unfold subset, of_list, elem_of, reg_class.caller_saved; intros k HI.
+        * eapply List.In_firstn_to_In in HI.
+          pose proof arg_range_Forall as F.
+          eapply Forall_forall in F. 2: eassumption.
+          unfold reg_class.get.
+          repeat match goal with
+                 | |- _ => progress cbn [andb]
+                 | |- context[if (?b && _)%bool then _ else _] =>
+                     destr b; try Lia.lia; []
+                 | |- context[if ?b then _ else _] => destr b; try Lia.lia; []
+                 end.
+          destr (k <=? 17)%bool.
+          1: exact I.
+          Lia.lia.
+        * cbn in HI. contradiction.
+        * unfold reg_class.get. subst k. cbn. exact I.
+        * contradiction.
       + reflexivity.
       + cbv [mem_available].
         repeat rewrite ?(iff1ToEq (sep_ex1_r _ _)), ?(iff1ToEq (sep_ex1_l _ _)).

@@ -386,6 +386,7 @@ Section Riscv.
     map.get r.(csrs) CSRField.MTVal <> None /\
     map.get r.(csrs) CSRField.MPP <> None /\
     map.get r.(csrs) CSRField.MPIE <> None /\
+    map.get r.(csrs) CSRField.MIE <> None /\
     map.get r.(csrs) CSRField.MEPC <> None /\
     map.get r.(csrs) CSRField.MCauseCode <> None.
 
@@ -1026,7 +1027,14 @@ Section Riscv.
       (* restore_regs3to31 *)
 
       eapply restore_regs3to31_correct; try record.simp.
-      { repeat step. }
+      { unfold map.only_differ, elem_of in Gsp.
+        specialize (Gsp RegisterNames.sp).
+        destruct Gsp as [Gsp | Gsp].
+        { cbn in Gsp. contradiction Gsp. }
+        repeat step.
+        unfold map.set in Gsp.
+        rewrite ?map.get_put_diff in Gsp by compareZconsts.
+        rewrite map.get_put_same in Gsp. symmetry in Gsp. exact Gsp. }
       { ZnWords. }
       autorewrite with rew_word_morphism. repeat word_simpl_step_in_goal.
       (* TODO this should be in listZnWords or in sidecondition solvers in SepAutoArray *)
@@ -1050,6 +1058,14 @@ Section Riscv.
       { repeat step.
         rewrite map.get_putmany_left.
         - repeat step.
+          unfold map.only_differ, elem_of in Gsp.
+          specialize (Gsp RegisterNames.sp).
+          destruct Gsp as [Gsp | Gsp].
+          { cbn in Gsp. contradiction Gsp. }
+          repeat step.
+          unfold map.set in Gsp.
+          rewrite ?map.get_put_diff in Gsp by compareZconsts.
+          rewrite map.get_put_same in Gsp. symmetry in Gsp. exact Gsp.
         - rewrite map.get_of_list_Z_at.
           change (RegisterNames.sp - 3) with (-1).
           unfold List.Znth_error. reflexivity. }
@@ -1070,8 +1086,6 @@ Section Riscv.
 
       (* Mret *)
       eapply runsToStep_cps. repeat step.
-      { case TODO.
-      (*        basic_csrs: map.get (csrs initialL) CSRField.MIE <> None *) }
 
       rename H1 into IH.
       eapply IH with (mid := updatePc { initialH with

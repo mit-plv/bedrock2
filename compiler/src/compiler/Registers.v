@@ -40,6 +40,12 @@ Module reg_class.
 
   Definition all(class: t): list Z :=
     List.filter (fun r => eqb (get r) class) (List.unfoldn (Z.add 1) 32 0).
+
+  Definition caller_saved(r: Z): Prop :=
+    match get r with
+    | ra | temp | arg => True
+    | neg | zero | sp | gp | tp | saved | stack_slot => False
+    end.
 End reg_class.
 
 Require Import riscv.Utility.RegisterNames.
