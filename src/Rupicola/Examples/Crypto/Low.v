@@ -204,7 +204,7 @@ Section CompileBufPolymorphic.
     a a_var {t m l} (R: mem -> Prop),
       (bs$@a * R)%sep m ->
       sz * n = length bs ->
-      (forall a m, (buffer_at n nil a * R)%sep m ->
+      (forall m, (buffer_at n nil a * R)%sep m ->
        <{ Trace := t; Memory := m; Locals := l; Functions := e }>
          k_impl
        <{ pred (nlet_eq [a_var] v k) }>) ->
@@ -224,7 +224,7 @@ Section CompileBufPolymorphic.
     a a_var {t m l} (R: mem -> Prop),
       (buffer_at n elts a * R)%sep m ->
       length elts = n ->
-      (forall a m, (elts$T@a * R)%sep m ->
+      (forall m, (elts$T@a * R)%sep m ->
        <{ Trace := t; Memory := m; Locals := l; Functions := e }>
          k_impl
        <{ pred (nlet_eq [a_var] v k) }>) ->
