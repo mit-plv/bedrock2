@@ -136,7 +136,7 @@ Section WithRegisterNames.
 
   Definition handler_final := [[
     Lw ra sp 4;
-    Csrr sp MScratch;
+    Lw sp sp 8; (* Bug: used to be `Csrr sp MScratch`, which is wrong if Mul sets sp *)
     Mret
   ]].
 
@@ -841,16 +841,14 @@ Section Riscv.
     match goal with
     | H: _ /\ forall _, _ |- _ => destruct H as [HM HPost]
     end.
-    replace (with_len 29 word_array oldvals)
-      with (word_array oldvals) in HM by case TODO.
-    assert (List.length oldvals = 29%nat) by case TODO.
+    pose proof (extract_with_len HM) as L.
+    rewrite with_len_eq in HM by assumption.
     eapply save_regs_correct_aux with (start := 3); try eassumption; try reflexivity.
     intros. split.
     - exact HM.
-    - intros; eapply HPost. 1: exact G.
-      replace (with_len 29 word_array vals)
-        with (word_array vals) by case TODO.
-      assumption.
+    - intros; eapply HPost. 1: eassumption.
+      rewrite with_len_eq. 1: assumption.
+      apply_in_hyps @map.getmany_of_list_length. symmetry. assumption.
   Qed.
 
   Lemma restore_regs3to31_correct: forall R (initial: State) vals spval
@@ -1012,7 +1010,7 @@ Section Riscv.
 
       after_sep_call.
       clear ML m m_1.
-      intros m l ML Gsp.
+      intros m l ML OD.
       flatten_seps_in ML.
 
       (* Csrr t1 MEPC *)
@@ -1027,14 +1025,14 @@ Section Riscv.
       (* restore_regs3to31 *)
 
       eapply restore_regs3to31_correct; try record.simp.
-      { unfold map.only_differ, elem_of in Gsp.
-        specialize (Gsp RegisterNames.sp).
-        destruct Gsp as [Gsp | Gsp].
-        { cbn in Gsp. contradiction Gsp. }
+      { unfold map.only_differ, elem_of in OD.
+        specialize (OD RegisterNames.sp).
+        destruct OD as [OD | OD].
+        { cbn in OD. contradiction OD. }
         repeat step.
-        unfold map.set in Gsp.
-        rewrite ?map.get_put_diff in Gsp by compareZconsts.
-        rewrite map.get_put_same in Gsp. symmetry in Gsp. exact Gsp. }
+        unfold map.set in OD.
+        rewrite ?map.get_put_diff in OD by compareZconsts.
+        rewrite map.get_put_same in OD. symmetry in OD. exact OD. }
       { ZnWords. }
       autorewrite with rew_word_morphism. repeat word_simpl_step_in_goal.
       (* TODO this should be in listZnWords or in sidecondition solvers in SepAutoArray *)
@@ -1043,46 +1041,37 @@ Section Riscv.
         symmetry. assumption.
       }
 
-      split. {
-        (* we don't need to keep goal modifications for rest of program *)
-        use_sep_asm.
-        impl_ecancel.
-        finish_impl_ecancel.
-      }
+      split. 1: scancel_asm. (* don't need to keep goal modifications for rest of program *)
 
-      (* Lw ra sp 4 *)
-      eapply runsToStep_cps. repeat step.
-
-      eapply interpret_getRegister.
-      1: repeat step.
+      repeat word_simpl_step_in_goal.
+      match goal with
+      | |- runsTo _ ?mach _ => eassert (Gsp: map.get (regs mach) RegisterNames.sp = Some _)
+      end.
       { repeat step.
         rewrite map.get_putmany_left.
         - repeat step.
-          unfold map.only_differ, elem_of in Gsp.
-          specialize (Gsp RegisterNames.sp).
-          destruct Gsp as [Gsp | Gsp].
-          { cbn in Gsp. contradiction Gsp. }
+          unfold map.only_differ, elem_of in OD.
+          specialize (OD RegisterNames.sp).
+          destruct OD as [OD | OD].
+          { cbn in OD. contradiction OD. }
           repeat step.
-          unfold map.set in Gsp.
-          rewrite ?map.get_put_diff in Gsp by compareZconsts.
-          rewrite map.get_put_same in Gsp. symmetry in Gsp. exact Gsp.
+          unfold map.set in OD.
+          rewrite ?map.get_put_diff in OD by compareZconsts.
+          rewrite map.get_put_same in OD. symmetry in OD. exact OD.
         - rewrite map.get_of_list_Z_at.
           change (RegisterNames.sp - 3) with (-1).
           unfold List.Znth_error. reflexivity. }
+      record.simp.
 
-      repeat step.
-
-      eapply interpret_loadWord. split. {
-        (* we don't need to keep goal modifications for rest of program *)
-        use_sep_asm.
-        impl_ecancel.
-        finish_impl_ecancel.
-      }
-
-      repeat step.
-
-      (* Csrr sp MScratch *)
+      (* Lw ra sp 4 *)
       eapply runsToStep_cps. repeat step.
+      eapply interpret_loadWord. split. 1: scancel_asm.
+      repeat step.
+
+      (* Lw sp sp 8 *)
+      eapply runsToStep_cps. repeat step.
+      eapply interpret_loadWord. split. 1: scancel_asm.
+      repeat step.
 
       (* Mret *)
       eapply runsToStep_cps. repeat step.
@@ -1096,44 +1085,275 @@ Section Riscv.
         unfold mcomp_sat in Hp1.
         exact Hp1. }
       unfold related, updatePc, map.set, basic_CSRFields_supported; record.simp.
+      cbn [List.app] in *.
+      rewrite ?word.of_Z_unsigned.
+      unfold map.set in *.
+      match goal with
+      | H: _ |- _ => rewrite map.get_put_diff in H by compareZconsts
+      end.
+      assert (OD': map.only_differ initialH.(regs)
+                       (union (singleton_set RegisterNames.sp)
+                              Registers.reg_class.caller_saved) l). {
+        replace initialH.(regs) with initialL.(regs).
+        eapply only_differ_trans. 2: {
+          eapply only_differ_subset. 1: exact OD.
+          eapply subset_union_rr. eapply subset_refl.
+        }
+        eapply only_differ_put_r. 1: eapply in_union_r; reflexivity.
+        eapply only_differ_put_r. 1: eapply in_union_r; reflexivity.
+        eapply only_differ_put_r. 1: eapply in_union_r; reflexivity.
+        eapply only_differ_put_r. 1: eapply in_union_r; reflexivity.
+        eapply only_differ_put_r. 1: eapply in_union_l; reflexivity.
+        eapply only_differ_refl.
+      }
+      rename H3 into GetVals. move GetVals at bottom.
+      match goal with
+      | H: regs_initialized _ |- _ => rename H into RI; move RI at bottom
+      end.
+      replace (regs initialL) with (regs initialH) in RI, GetVals.
+      assert (GetVal: forall k, 0 <= k < 29 ->
+        nth_error vals (Z.to_nat k) = map.get initialH.(regs) (k + 3)). {
+        intros k kR.
+        unfold regs_initialized in RI. specialize (RI (k + 3)).
+        destruct RI as [kv Gkv]. 1: Lia.lia.
+        rewrite nth_error_nth' with (d := default) by Lia.lia.
+        symmetry.
+        epose proof map.getmany_of_list_get _ (Z.to_nat k) _ _ (k + 3) as Q.
+        specialize Q with (1 := GetVals).
+        rewrite map.get_put_diff in Q by (unfold RegisterNames.ra; Lia.lia).
+        rewrite map.get_put_diff in Q by (unfold RegisterNames.sp; Lia.lia).
+        eapply Q.
+        - change (nth_error (List.map (fun i => Z.of_nat i + 3) (List.seq 0 29)) (Z.to_nat k)
+                          = Some (k + 3)).
+          rewrite map_nth_error with (d := Z.to_nat k).
+          + f_equal. Lia.lia.
+          + erewrite nth_error_nth'. 2: rewrite seq_length; Lia.lia.
+            f_equal. rewrite seq_nth by Lia.lia. reflexivity.
+        - erewrite nth_error_nth' by Lia.lia. reflexivity.
+      }
+
+      replace (nth (Z.to_nat rs1) (word.of_Z 0 :: v0 :: v :: vals) default) with
+              (getReg (regs initialH) rs1) in *.
+      2: case TODO.
+      replace (nth (Z.to_nat rs2) (word.of_Z 0 :: v0 :: v :: vals) default) with
+              (getReg (regs initialH) rs2) in *.
+      2: case TODO.
+      rewrite !LittleEndian.combine_split.
+      rewrite !sextend_width_nop by reflexivity.
+      rewrite !Z.mod_small by apply word.unsigned_range.
+      rewrite !word.of_Z_unsigned.
       ssplit.
       { unfold setReg.
         apply map.map_ext. intro k.
-        rewrite ?word.of_Z_unsigned.
-        unfold List.upd, List.upds.
-        list_length_rewrites_without_sideconds_in_goal.
+        repeat (rewrite ?map.get_put_dec, ?map.get_putmany_dec, ?map.get_of_list_Z_at).
+        unfold List.Znth_error.
+        assert ((k <= 0 \/ 32 <= k) \/ 0 < k < 32) as C by Lia.lia.
+        unfold RegisterNames.ra, RegisterNames.sp, RegisterNames.t1 in *.
+        destruct C as [C | C].
+        { repeat match goal with
+                 | |- context[if ?b then _ else _] => destr b; try (exfalso; Lia.lia); []
+                 end.
+          destr ((0 <? rd) && (rd <? 32)).
+          { assert (0 < rd < 32) by Lia.lia.
+            rewrite ?map.get_put_dec.
+            repeat match goal with
+                   | |- context[if ?b then _ else _] => destr b; try (exfalso; Lia.lia)
+                   end.
+            { eapply only_differ_get_unchanged.
+              2: eapply only_differ_sym; exact OD'. 1: reflexivity.
+              unfold union, singleton_set, elem_of, Registers.reg_class.caller_saved,
+                     Registers.reg_class.get.
+              intro A. destruct A. 1: Lia.lia.
+              repeat match goal with
+                   | H: context[if ?b then _ else _] |- _ =>
+                       destr b; try (exfalso; Lia.lia); []
+                     end.
+              destr (k =? 0); contradiction. }
+            rewrite (proj2 (nth_error_None _ (Z.to_nat (k - 3)))). 2: {
+              unfold List.upd, List.upds.
+              list_length_rewrites_without_sideconds_in_goal.
+              Lia.lia.
+            }
+            eapply only_differ_get_unchanged.
+            2: eapply only_differ_sym; exact OD'. 1: reflexivity.
+            unfold union, singleton_set, elem_of, Registers.reg_class.caller_saved,
+              Registers.reg_class.get.
+            intro A. destruct A. 1: Lia.lia.
+            repeat match goal with
+                   | H: context[if ?b then _ else _] |- _ =>
+                       destr b; try (exfalso; Lia.lia); []
+                   end.
+            destr ((28 <=? k) && (k <=? 31)); Lia.lia.
+          }
+          { assert (rd <= 0 \/ 32 <= rd) by Lia.lia.
+            rewrite ?map.get_put_dec.
+            repeat match goal with
+                   | |- context[if ?b then _ else _] => destr b; try (exfalso; Lia.lia)
+                   end.
+            { eapply only_differ_get_unchanged.
+              2: eapply only_differ_sym; exact OD'. 1: reflexivity.
+              unfold union, singleton_set, elem_of, Registers.reg_class.caller_saved,
+                     Registers.reg_class.get.
+              intro A. destruct A. 1: Lia.lia.
+              repeat match goal with
+                   | H: context[if ?b then _ else _] |- _ =>
+                       destr b; try (exfalso; Lia.lia); []
+                     end.
+              destr (k =? 0); contradiction. }
+            rewrite (proj2 (nth_error_None _ (Z.to_nat (k - 3)))). 2: {
+              unfold List.upd, List.upds.
+              list_length_rewrites_without_sideconds_in_goal.
+              Lia.lia.
+            }
+            eapply only_differ_get_unchanged.
+            2: eapply only_differ_sym; exact OD'. 1: reflexivity.
+            unfold union, singleton_set, elem_of, Registers.reg_class.caller_saved,
+              Registers.reg_class.get.
+            intro A. destruct A. 1: Lia.lia.
+            repeat match goal with
+                   | H: context[if ?b then _ else _] |- _ =>
+                       destr b; try (exfalso; Lia.lia); []
+                   end.
+            destr ((28 <=? k) && (k <=? 31)); Lia.lia.
+          }
+        }
+
+
+Set Nested Proofs Allowed.
+
+Lemma NEW_nth_error_skipn[A: Type]: forall i j (l: list A),
+    nth_error (skipn i l) j = nth_error l (i + j).
+Proof.
+  induction i; intros.
+  - cbn. reflexivity.
+  - destruct l; cbn. 1: destruct j; reflexivity.
+    eapply IHi.
+Qed.
+
+Lemma List__nth_error_upd_same[A: Type]: forall i v (l: list A),
+    (i < List.length l)%nat ->
+    nth_error (List.upd l i v) i = Some v.
+Proof.
+  unfold List.upd, List.upds. intros.
+  rewrite nth_error_app2. 2: {
+    rewrite List.firstn_length. Lia.lia.
+  }
+  rewrite nth_error_app1. 2: {
+    rewrite ?List.firstn_length. cbn. Lia.lia.
+  }
+  rewrite List.firstn_all2. 2: {
+    cbn. Lia.lia.
+  }
+  rewrite List.firstn_length.
+  replace (i - Init.Nat.min i (Datatypes.length l))%nat with 0%nat by Lia.lia.
+  reflexivity.
+Qed.
+
+Lemma List__nth_error_upd_same_eq[A: Type]: forall i j v (l: list A),
+    (i < List.length l)%nat ->
+    i = j ->
+    nth_error (List.upd l i v) j = Some v.
+Proof.
+  intros. subst. apply List__nth_error_upd_same. assumption.
+Qed.
+
+  Lemma List__nth_error_upd_diff[A: Type]: forall n1 n2 v (l: list A),
+      n1 <> n2 ->
+      nth_error (List.upd l n2 v) n1 = nth_error l n1.
+  Proof.
+  Admitted.
+
+        (* Now we know that k is in range 1..31 *)
         destr ((0 <? rd) && (rd <? 32)).
         { assert (0 < rd < 32) by Lia.lia.
           rewrite ?map.get_put_dec.
-          destr (RegisterNames.sp =? k).
-          + (* Bug: second-to-last instruction should not be
-               Csrr sp MScratch,
-               but
-               Lw sp sp 8,
-               in case the Mul instruction assigned sp! *)
-            case TODO.
-          + case TODO. }
-        case TODO.
+          destr (rd =? k).
+          { destr (2 =? k).
+            { change (Z.to_nat 2) with 2%nat. cbn. reflexivity. }
+            { destr (1 =? k).
+              { change (Z.to_nat 1) with 1%nat. cbn. reflexivity. }
+              { destr (k - 3 <? 0).
+                1: exfalso; Lia.lia.
+                rewrite List.nth_error_firstn by Lia.lia.
+                rewrite NEW_nth_error_skipn.
+                rewrite List__nth_error_upd_same_eq.
+                1: reflexivity.
+                1: listZnWords.
+                Lia.lia.
+              } } }
+          { destr (2 =? k).
+            { rewrite List.nth_upd_diff by Lia.lia.
+              cbn. congruence. }
+            { destr (1 =? k).
+              { rewrite List.nth_upd_diff by Lia.lia.
+                cbn. congruence. }
+              { destr (k - 3 <? 0).
+                1: exfalso; Lia.lia.
+                rewrite List.nth_error_firstn by Lia.lia.
+                rewrite NEW_nth_error_skipn.
+                rewrite List__nth_error_upd_diff by Lia.lia.
+                change (nth_error (word.of_Z 0 :: v0 :: v :: vals) (3 + Z.to_nat (k - 3)))
+                       with (nth_error vals (Z.to_nat (k - 3))).
+                rewrite GetVal by Lia.lia.
+                replace (k - 3 + 3) with k by Lia.lia.
+                unfold regs_initialized in RI.
+                edestruct RI as [kv Gkv]. 2: {
+                  rewrite Gkv. reflexivity.
+                }
+                Lia.lia.
+              } } } }
+        { destr (2 =? k).
+          { rewrite List.nth_upd_diff by Lia.lia.
+            cbn. congruence. }
+          { destr (1 =? k).
+            { rewrite List.nth_upd_diff by Lia.lia.
+              cbn. congruence. }
+            { destr (k - 3 <? 0).
+              1: exfalso; Lia.lia.
+              rewrite List.nth_error_firstn by Lia.lia.
+              rewrite NEW_nth_error_skipn.
+              rewrite List__nth_error_upd_diff by Lia.lia.
+              change (nth_error (word.of_Z 0 :: v0 :: v :: vals) (3 + Z.to_nat (k - 3)))
+                with (nth_error vals (Z.to_nat (k - 3))).
+              rewrite GetVal by Lia.lia.
+              replace (k - 3 + 3) with k by Lia.lia.
+              unfold regs_initialized in RI.
+              edestruct RI as [kv Gkv]. 2: rewrite Gkv; reflexivity.
+              Lia.lia.
+        } } } }
+      { case TODO. (* add nextPc = pc + 4 to related? *) }
+      { case TODO. (* add nextPc = pc + 4 to related? *) }
+      { congruence. }
+      { congruence. }
+      { congruence. }
+      { repeat step. }
+      { repeat step. }
+      { repeat step. }
+      { repeat step. }
+      { repeat step. }
+      { repeat step. }
+      { do 3 eexists. ssplit.
+        { repeat step. }
+        { repeat step. }
+        2: {
+          move ML at bottom.
+          instantiate (1 := (List.upd (word.of_Z 0 :: v0 :: v :: vals)
+                                      (Z.to_nat rd)
+                                      (word.mul (getReg (regs initialH) rs1)
+                                         (getReg (regs initialH) rs2)))).
+          case TODO. (* separation logic *)
+        }
+        { listZnWords. }
+        { repeat eapply regs_initialized_put.
+          unfold regs_initialized. intros.
+          rewrite map.get_putmany_dec. rewrite ?map.get_put_dec.
+          repeat destruct_one_match; eauto.
+          (* TODO next run: prove regs_initialized_putmany, and add regs_initialized
+             to postcondition of mul_correct *)
+          case TODO. }
       }
-      all: case TODO.
-
-(*
-        - subst rd.
-          rewrite map.get_put_dec.
-          destr (RegisterNames.sp =? k).
-          1: congruence.
-          fwd. cbn [List.app nth].
-          rewrite map.get_put_dec.
-          destr (RegisterNames.ra =? k).
-          + rewrite LittleEndian.combine_split.
-            rewrite sextend_width_nop by reflexivity.
-            rewrite Z.mod_small by apply word.unsigned_range.
-            rewrite word.of_Z_unsigned.
-            etransitivity. 2: eassumption.
-            unfold map.set. rewrite map.get_put_diff by congruence.
-            congruence.
-          + Search l.
-*)
+    Unshelve.
+    all: try solve [constructor].
   Qed.
 
   (* TODO state same theorem with binary code of handler to make sure instructions
