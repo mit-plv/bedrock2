@@ -36,6 +36,10 @@ Require compiler.Pipeline.
 Require Import bedrock2.BasicC32Semantics.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
 
+(* TODO might need slight change to Naive.word to make these hold
+   (shifts ignore high bits) *)
+Axiom word_riscv_ok: RiscvWordProperties.word.riscv_ok BasicC32Semantics.word.
+
 Section Riscv.
   Import bedrock2.BasicC32Semantics.
   Context {registers: map.map Z word}.
@@ -61,10 +65,28 @@ Section Riscv.
   Proof.
   Admitted.
 
+  Lemma decode_IM_M_to_Invalid_I: forall z minst,
+      decode RV32IM z = MInstruction minst ->
+      decode RV32I z = InvalidInstruction z.
+  Proof.
+  Admitted.
+
   Lemma decode_IM_cases: forall z,
       (exists iinst, decode RV32IM z = IInstruction iinst) \/
       (exists minst, decode RV32IM z = MInstruction minst) \/
       (decode RV32IM z = InvalidInstruction z).
+  Admitted.
+
+  Lemma decode_Imul_I_to_I: forall i inst,
+      mdecode i = IInstruction inst ->
+      idecode i = IInstruction inst.
+  Proof.
+  Admitted.
+
+  Lemma decode_IM_CSR_to_I: forall i inst,
+      decode RV32IM i = CSRInstruction inst ->
+      decode RV32I  i = CSRInstruction inst.
+  Proof.
   Admitted.
 
   (* To use the compiler correctness statement, we need to apply two transformation steps:
@@ -117,15 +139,15 @@ Section Riscv.
     sH.(getRegs) = sL.(regs) /\
     sH.(getPc) = sL.(pc) /\
     sH.(getNextPc) = sL.(nextPc) /\
-    sH.(getMem) = sL.(MinimalCSRs.mem) /\
-    (* no constraints on sH.(getXAddrs) here *)
-    sH.(getLog) = [] /\ sL.(log) = [].
+    sH.(getMem) = sL.(MinimalCSRs.mem).
+    (* no constraints on sH.(getXAddrs), sH.(getLog), sL.(log) *)
 
   Lemma change_state_rep_primitive: forall a sH sL postH,
       states_related sH sL ->
       interp_action a sH postH ->
       run_primitive a sL (fun a sL' =>
-           exists sH', states_related sH' sL' /\ sL'.(csrs) = sL.(csrs) /\ postH a sH')
+           exists sH', states_related sH' sL' /\ sL'.(csrs) = sL.(csrs) /\
+                         sL'.(log) = sL.(log) /\ postH a sH')
         (fun _ => False).
   Proof.
     pose proof Radd_comm word.ring_theory.
@@ -144,7 +166,8 @@ Section Riscv.
       states_related sH sL ->
       free.interp MetricMinimalNoMul.interp_action m sH postH ->
       free.interpret run_primitive m sL (fun a sL' =>
-           exists sH', states_related sH' sL' /\ sL'.(csrs) = sL.(csrs) /\ postH a sH')
+           exists sH', states_related sH' sL' /\ sL'.(csrs) = sL.(csrs) /\
+                         sL'.(log) = sL.(log) /\ postH a sH')
         (fun _ => False).
   Proof.
     induction m; intros.
@@ -152,7 +175,7 @@ Section Riscv.
       eapply weaken_run_primitive with (postA1 := fun _ => False). 2: auto.
       2: eapply change_state_rep_primitive; eassumption.
       cbv beta.
-      intros. fwd. rewrite <- H2p1. eapply H; eauto.
+      intros. fwd. rewrite <- H2p1, <- H2p2. eapply H; eauto.
     - cbn in *. eauto.
   Qed.
 
@@ -171,7 +194,8 @@ Section Riscv.
       runsTo (GoFlatToRiscv.mcomp_sat (Run.run1 RV32I)) sH postH ->
       forall sL, states_related sH sL ->
       runsTo (mcomp_sat (run1 idecode)) sL (fun sL' =>
-         exists sH', states_related sH' sL' /\ sL'.(csrs) = sL.(csrs) /\ postH sH').
+         exists sH', states_related sH' sL' /\ sL'.(csrs) = sL.(csrs) /\
+                     sL'.(log) = sL.(log) /\ postH sH').
   Proof.
     induction 1; intros.
     - eapply runsToDone. eauto.
@@ -189,12 +213,44 @@ Section Riscv.
         2: contradiction.
         exact H3.
       + cbv beta; intros.
-        fwd. rewrite <- H3p1. eauto.
+        fwd. rewrite <- H3p1, <- H3p2. eauto.
   Qed.
 
   Definition instr(decoder: Z -> Instruction)(inst: Instruction)(addr: word): mem -> Prop :=
     ex1 (fun z => sep (addr |-> truncated_scalar access_size.four z)
                       (emp (decoder z = inst /\ 0 <= z < 2 ^ 32))).
+
+  (* TODO more generic handling of ex1 *)
+  Lemma instr_decode: forall {addr decoder inst R m},
+    (sep (addr |-> instr decoder inst) R) m ->
+    exists z, (sep (addr |-> truncated_scalar access_size.four z) R) m /\
+              decoder z = inst /\ 0 <= z < 2 ^ 32.
+  Proof.
+    intros.
+    unfold instr, at_addr, ex1 in *.
+    unfold sep, emp, map.split in *. fwd.
+    exists a.
+    split; auto.
+    do 2 eexists. split; eauto.
+  Qed.
+
+  Lemma instr_IM_impl1_I: forall iinst addr,
+      impl1 (addr |-> instr mdecode (IInstruction iinst))
+            (addr |-> instr idecode (IInstruction iinst)).
+  Proof.
+    unfold impl1. intros. eapply (fun x => conj x I) in H. eapply sep_emp_r in H.
+    eapply instr_decode in H. fwd.
+    eapply sep_emp_r in Hp0. fwd.
+    unfold at_addr, instr, ex1. exists z. apply sep_emp_r.
+    auto using decode_Imul_I_to_I.
+  Qed.
+  Hint Resolve instr_IM_impl1_I : ecancel_impl.
+
+  Lemma idecode_array_implies_program: forall addr insts,
+      impl1 (addr |-> array (instr idecode) 4 insts)
+            (program RV32IM addr insts).
+  Proof.
+  Admitted.
 
   Declare Scope array_abbrevs_scope.
   Open Scope array_abbrevs_scope.
@@ -261,34 +317,64 @@ Section Riscv.
     eapply softmul_ok. eapply rpmul.rpmul_ok.
   Qed.
 
+  Lemma array_footpr_subset_unfoldn[V: Type]: forall addr elem sz (vs: list V),
+      (forall a v, subset (footpr (elem a v))
+             (of_list (List.unfoldn (word.add (word.of_Z 1)) (Z.to_nat sz) a))) ->
+      subset (footpr (Array.array elem (word.of_Z sz) addr vs))
+             (of_list (List.unfoldn (word.add (word.of_Z 1))
+                                    (Z.to_nat sz * List.length vs) addr)).
+  Admitted.
+
+  Lemma ptsto_instr_subset_unfoldn: forall (a : word) (v : Instruction),
+      subset (footpr (ptsto_instr RV32IM a v))
+             (of_list (List.unfoldn (word.add (word.of_Z 1)) (Z.to_nat 4) a)).
+  Admitted.
+
   Axiom TODO: False.
 
   (* TODO will need some stack space *)
   Lemma mul_correct: forall initial a_regs regvals invalidIInst R (post: State -> Prop)
-                            ret_addr sp_val rd rs1 rs2,
+                            ret_addr stack_start stack_pastend rd rs1 rs2,
+      word.unsigned initial.(pc) mod 4 = 0 ->
       initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
-      initial.(log) = [] ->
       map.get initial.(regs) RegisterNames.a0 = Some invalidIInst ->
       map.get initial.(regs) RegisterNames.a1 = Some a_regs ->
       map.get initial.(regs) RegisterNames.ra = Some ret_addr ->
-      map.get initial.(regs) RegisterNames.sp = Some sp_val ->
+      map.get initial.(regs) RegisterNames.sp = Some stack_pastend ->
+      word.unsigned ret_addr mod 4 = 0 ->
+      word.unsigned (word.sub stack_pastend stack_start) mod 4 = 0 ->
+      regs_initialized initial.(regs) ->
       mdecode (word.unsigned invalidIInst) = MInstruction (Mul rd rs1 rs2) ->
-      seps [a_regs |-> word_array regvals; initial.(pc) |-> program idecode mul_insts; R]
-           initial.(MinimalCSRs.mem) /\
+      (* At the time of writing, mul_insts_req_stack = 17, so 68 bytes of stack
+         are sufficient, but to be more robust agains future changes in the
+         handler implementation, we require a bit more stack space *)
+      128 <= word.unsigned (word.sub stack_pastend stack_start) ->
+      seps [a_regs |-> with_len 32 word_array regvals;
+            initial.(pc) |-> program idecode mul_insts;
+            LowerPipeline.mem_available stack_start stack_pastend;
+            R] initial.(MinimalCSRs.mem) /\
       (forall newMem newRegs,
-        seps [a_regs |-> word_array (List.upd regvals (Z.to_nat rd) (word.mul
+        seps [a_regs |-> with_len 32 word_array (List.upd regvals (Z.to_nat rd) (word.mul
                    (List.nth (Z.to_nat rs1) regvals default)
                    (List.nth (Z.to_nat rs2) regvals default)));
-               initial.(pc) |-> program idecode mul_insts; R] newMem ->
+              initial.(pc) |-> program idecode mul_insts;
+              LowerPipeline.mem_available stack_start stack_pastend;
+              R] newMem ->
         map.only_differ initial.(regs) reg_class.caller_saved newRegs ->
+        regs_initialized newRegs ->
         post { initial with pc := ret_addr;
                             nextPc := word.add ret_addr (word.of_Z 4);
                             MinimalCSRs.mem := newMem;
-                            regs := newRegs (* <- regs arbitrarily changed except sp *)
+                            regs := newRegs
                             (* log and csrs remain the same *) }) ->
       runsTo (mcomp_sat (run1 idecode)) initial post.
   Proof.
-    intros. destruct H6 as [ML C].
+    intros.
+    match goal with
+    | H: _ /\ _ |- _ => destruct H as [ML C]
+    end.
+    pose proof ML as ML'.
+    destruct ML as (mH & mL & Sp & MH & ML).
     eapply runsTo_weaken.
     { eapply change_state_rep with (sH := {|
             (****************)
@@ -311,56 +397,99 @@ Section Riscv.
             (************)
       2: {
         unfold Primitives.valid_machine, MetricMinimalNoMulPrimitivesParams.
-        eapply no_M_from_I_sep;
+        eapply no_M_from_I_sep with (insts := mul_insts);
         cbn -[array HList.tuple List.unfoldn List.length Nat.mul load_bytes].
-        2: reflexivity. cbn [seps] in ML. ecancel_assumption.
+        2: reflexivity. cbn [seps] in ML'. ecancel_assumption.
       }
-      eapply (Pipeline.compiler_correct_wp (ext_spec := fun _ _ _ _ _ => False)).
+      eapply (Pipeline.compiler_correct_wp (ext_spec := fun _ _ _ _ _ => False))
              (****************************)
+             with (stack_lo := stack_start) (stack_hi := stack_pastend) (Rexec := emp True).
       5: {
         pose proof mul_insts_result_eq as P. unfold mul_insts_result in P.
         exact P.
       }
       { clear C.
         unfold FlatToRiscvCommon.compiles_FlatToRiscv_correctly.
-        intros. inversion H6. contradiction. }
+        intros.
+        match goal with
+        | H: FlatImp.exec.exec _ (FlatImp.SInteract _ _ _) _ _ _ _ _ |- _ => inversion H
+        end.
+        contradiction. }
       { intros. reflexivity. }
       { exact funs_valid. }
       { constructor.
         - intro A. inversion A; try discriminate. eapply in_nil. eassumption.
         - constructor. 2: constructor. intro B. eapply in_nil. eassumption. }
-      {
-        pose proof link_softmul_bedrock2 as P.
+      { pose proof link_softmul_bedrock2 as P.
                   (*********************)
         unfold spec_of_softmul in P.
-        eapply P; clear P.
-        split.
-        - eassumption.
-        - case TODO. (* separation logic splitting high-level mem out of whole mem *) }
+        eapply P with (regvals := regvals) (R := emp True) (m := mH); clear P.
+        unfold with_len, with_pure, at_addr in MH.
+        eapply sep_emp_r in MH. destruct MH as [MH L].
+        ssplit; try eassumption.
+        cbn [seps]. unfold at_addr. ecancel_assumption. }
       { reflexivity. }
-      { case TODO. (* needs stack space *) }
-      { case TODO. (* stack related *) }
+      { unfold mul_insts_req_stack. change bytes_per_word with 4.
+        Z.div_mod_to_equations. Lia.lia. }
+      { assumption. }
       { cbn -[array HList.tuple Datatypes.length]. instantiate (1 := pc initial).
         ring. }
       { cbn -[array HList.tuple Datatypes.length]. eassumption. }
-      { case TODO. (*   word.unsigned ret_addr mod 4 = 0 *) }
+      { assumption. }
       { cbn -[array HList.tuple Datatypes.length]. unfold a0, a1 in *. rewrite_match.
         reflexivity. }
       { cbn -[array HList.tuple Datatypes.length]. reflexivity. }
-      { case TODO. (* machine_ok... *) } }
+      { unfold LowerPipeline.machine_ok. record.simp. ssplit.
+        { exists mL, mH. ssplit.
+          - eapply map.split_comm. assumption.
+          - match goal with
+            | |- sep (sep (sep ?A ?B) ?C) ?D mL =>
+                enough (seps [A; B; C; D] mL) as E
+            end.
+            1: cbn [seps] in E; ecancel_assumption.
+            instantiate (1 := R).
+            (* TODO weird Notation aliasing because program is a keyword *)
+            match goal with
+            | |- seps (?p _ _ _ _ _ _ :: _) _ => unfold p
+            end.
+            use_sep_asm. impl_ecancel.
+            cbn [seps].
+            eapply idecode_array_implies_program.
+          - reflexivity. }
+        { match goal with
+          | |- subset (footpr (sep ?p _)) _ => eapply rearrange_footpr_subset with (P :=  p)
+          end.
+          2: cancel.
+          eapply array_footpr_subset_unfoldn.
+          eapply ptsto_instr_subset_unfoldn. }
+        { assumption. }
+        { assumption. }
+        { assumption. }
+        { assumption. }
+        { remember (List.unfoldn (word.add (word.of_Z 1)) (4 * Datatypes.length mul_insts)
+                                 (pc initial)) as L.
+          cbn.
+          eapply no_M_from_I_sep; record.simp.
+          1: cbn[seps] in *; ecancel_assumption.
+          exact HeqL. } } }
     { cbv beta. cbn -[array HList.tuple Datatypes.length].
       intros. fwd.
       specialize (C final.(MinimalCSRs.mem) final.(regs)).
       eqapply C.
-      - case TODO.
+      - unfold LowerPipeline.machine_ok in *. fwd.
+        case TODO. (* memory splitting?? *)
       - destruct sH' as [sH' lg]. destruct sH'.
         unfold states_related in *. record.simp. fwd.
         assumption.
-      - unfold states_related in *. fwd.
-        destruct final. destruct initial. record.simp. f_equal; try congruence.
-        case TODO. (* nextPc *) }
+      - unfold LowerPipeline.machine_ok, states_related in *. fwd.
+        replace (regs final) with (getRegs sH').
+        assumption.
+      - unfold states_related, LowerPipeline.machine_ok in *. fwd.
+        destruct final. destruct initial. record.simp. f_equal; try congruence. }
     Unshelve.
-    all: case TODO.
+    all: try exact SortedListString.ok.
+    all: try exact word_riscv_ok.
+    all: try constructor.
   Qed.
 
   (* Needed if the handler wants to handle the case where the instruction is not
@@ -395,3 +524,5 @@ Section Riscv.
       runsTo (mcomp_sat (run1 idecode)) initial post.
   Admitted.
 End Riscv.
+
+#[export] Hint Resolve instr_IM_impl1_I : ecancel_impl.

@@ -19,6 +19,14 @@ Section WithParameters.
     destruct_one_match; eauto.
   Qed.
 
+  Lemma regs_initialized_putmany: forall l l',
+      regs_initialized l ->
+      regs_initialized (map.putmany l l').
+  Proof.
+    unfold regs_initialized. intros. specialize (H _ H0). destruct H as [v H].
+    rewrite map.get_putmany_dec. destruct_one_match; eauto.
+  Qed.
+
   Lemma preserve_regs_initialized_after_put: forall regs var val,
       regs_initialized regs ->
       regs_initialized (map.put regs var val).

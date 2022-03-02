@@ -11,7 +11,7 @@ Require Import riscv.Spec.CSRFile.
 Require Import riscv.Utility.Utility.
 Require Import riscv.Utility.RecordSetters.
 Require Import coqutil.Decidable.
-Require Import coqutil.Z.Lia.
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Map.Interface coqutil.Map.OfFunc.
 Require Import coqutil.Map.MapEauto.
 Require Import coqutil.Datatypes.HList.
@@ -122,6 +122,7 @@ Section WithRegisterNames.
 
   Definition handler_init := [[
     Csrrw sp sp MScratch;
+    Addi sp sp (-128); (* amount of stack we need to save the 32 registers *)
     Sw sp zero 0;
     Sw sp ra 4;
     Csrr ra MScratch;
@@ -163,20 +164,6 @@ Section Riscv.
   Local Notation M := (free riscv_primitive primitive_result).
 
   Local Hint Mode map.map - - : typeclass_instances.
-
-  (* TODO more generic handling of ex1 *)
-  Lemma instr_decode: forall {addr decoder inst R m},
-    (sep (addr |-> instr decoder inst) R) m ->
-    exists z, (sep (addr |-> truncated_scalar access_size.four z) R) m /\
-              decoder z = inst /\ 0 <= z < 2 ^ 32.
-  Proof.
-    intros.
-    unfold instr, at_addr, ex1 in *.
-    unfold sep, emp, map.split in *. fwd.
-    exists a.
-    split; auto.
-    do 2 eexists. split; eauto.
-  Qed.
 
   Declare Scope array_abbrevs_scope.
   Open Scope array_abbrevs_scope.
@@ -238,40 +225,6 @@ Section Riscv.
     change (Memory.bytes_per access_size.word) with 4%nat.
     cbn. exact P.
   Qed.
-
-  Lemma decode_verify_iset: forall iset i, verify_iset (decode iset i) iset.
-  Proof.
-  Abort.
-
-  Lemma decode_IM_I_to_I: forall i inst,
-      mdecode i = IInstruction inst ->
-      idecode i = IInstruction inst.
-  Proof.
-  Admitted.
-
-  Lemma decode_IM_M_to_Invalid_I: forall z minst,
-      decode RV32IM z = MInstruction minst ->
-      decode RV32I z = InvalidInstruction z.
-  Proof.
-  Admitted.
-
-  Lemma decode_IM_CSR_to_I: forall i inst,
-      decode RV32IM i = CSRInstruction inst ->
-      decode RV32I  i = CSRInstruction inst.
-  Proof.
-  Admitted.
-
-  Lemma instr_IM_impl1_I: forall iinst addr,
-      impl1 (addr |-> instr mdecode (IInstruction iinst))
-            (addr |-> instr idecode (IInstruction iinst)).
-  Proof.
-    unfold impl1. intros. eapply (fun x => conj x I) in H. eapply sep_emp_r in H.
-    eapply instr_decode in H. fwd.
-    eapply sep_emp_r in Hp0. fwd.
-    unfold at_addr, instr, ex1. exists z. apply sep_emp_r.
-    auto using decode_IM_I_to_I.
-  Qed.
-  Hint Resolve instr_IM_impl1_I : ecancel_impl.
 
   Set Printing Depth 100000.
 
@@ -394,17 +347,18 @@ Section Riscv.
     r1.(regs) = r2.(regs) /\
     r1.(pc) = r2.(pc) /\
     r1.(nextPc) = r2.(nextPc) /\
-    r1.(log) = [] /\ r2.(log) = [] /\ (* no I/O at the moment *)
     r1.(csrs) = map.empty /\
     basic_CSRFields_supported r2 /\
-    exists mtvec_base mscratch stacktrash,
+    regs_initialized r2.(regs) /\
+    exists mtvec_base stacktrash stack_hi,
       map.get r2.(csrs) CSRField.MTVecBase = Some mtvec_base /\
-      map.get r2.(csrs) CSRField.MScratch = Some mscratch /\
+      map.get r2.(csrs) CSRField.MScratch = Some stack_hi /\
       List.length stacktrash = 32%nat /\
       seps [eq r1.(mem);
-            word.of_Z mscratch |-> word_array stacktrash;
-            word.of_Z (mtvec_base * 4) |-> program idecode handler_insts] r2.(mem) /\
-      regs_initialized r2.(regs).
+            word.of_Z (stack_hi - 128) |-> word_array stacktrash;
+            LowerPipeline.mem_available (word.of_Z (stack_hi - 256))
+                                        (word.of_Z (stack_hi - 128));
+            word.of_Z (mtvec_base * 4) |-> program idecode handler_insts] r2.(mem).
 
   Lemma related_preserves_load_bytes: forall n sH sL a w,
       related sH sL ->
@@ -417,7 +371,7 @@ Section Riscv.
       related initialH initialL ->
       load n c a initialH postH ->
       load n c a initialL
-           (fun res finalL => exists finalH, related finalH finalL /\ postH res finalH).
+        (fun res finalL => exists finalH, related finalH finalL /\ postH res finalH).
   Proof.
     unfold load.
     cbn. intros.
@@ -441,8 +395,9 @@ Section Riscv.
       related initialH initialL ->
       run_primitive a initialH postF postA ->
       run_primitive a initialL
-                    (fun res finalL => exists finalH, related finalH finalL /\ postF res finalH)
-                    (fun finalL => exists finalH, related finalH finalL /\ postA finalH).
+        (fun res finalL => exists finalH,
+             related finalH finalL /\ postF res finalH)
+        (fun finalL => exists finalH, related finalH finalL /\ postA finalH).
   Proof.
     intros. pose proof H as R.
     unfold related, basic_CSRFields_supported in H|-*.
@@ -463,18 +418,21 @@ Section Riscv.
     - contradiction.
     - contradiction.
     - contradiction.
-    - simp. rewrite Hp5 in E. rewrite map.get_empty in E. discriminate E.
-    - simp. rewrite Hp5 in E. rewrite map.get_empty in E. discriminate E.
+    - simp. replace (csrs initialH) with (@map.empty _ _ CSRFile) in E.
+      rewrite map.get_empty in E. discriminate E.
+    - simp. replace (csrs initialH) with (@map.empty _ _ CSRFile) in E.
+      rewrite map.get_empty in E. discriminate E.
     - eauto 10.
     - simp. eauto 10.
     - simp. eauto 10.
     - exists initialH.
       intuition (congruence || eauto 10).
-    - eexists. ssplit; cycle -1. 1: eassumption. all: record.simp; try congruence. eauto 10.
+    - eexists. ssplit; cycle -1. 1: eassumption. all: try record.simp; try congruence; auto.
+      eauto 10.
     - eexists. unfold updatePc in *. ssplit; cycle -1. 1: eassumption.
-      all: record.simp; try congruence. eauto 10.
+      all: try record.simp; try congruence; auto. eauto 10.
     - eexists. unfold updatePc in *. ssplit; cycle -1. 1: eassumption.
-      all: record.simp; try congruence. eauto 10.
+      all: record.simp; try congruence; auto. eauto 10.
   Qed.
 
   (* If we're running the same primitives on two related states, they remain related.
@@ -498,13 +456,6 @@ Section Riscv.
     eapply H. 1: eassumption.
     eassumption.
   Qed.
-
-(*
-  Lemma go_exception: forall iset initial post R,
-      R \*/
-      runsTo (mcomp_sat (run1 iset)) initial(.(pc) := ini post.
-      runsTo (mcomp_sat (run1 iset)) initial post.
-*)
 
   Lemma mcomp_sat_endCycleNormal: forall (mach: State) (post: State -> Prop),
       post { mach with pc := mach.(nextPc); nextPc ::= word.add (word.of_Z 4) } ->
@@ -546,7 +497,7 @@ Section Riscv.
       free.interpret run_primitive (getRegister r) initial postF postA.
   Proof.
     intros. simpl. unfold getReg. destruct_one_match; fwd. 1: assumption.
-    exfalso; Lia.lia.
+    exfalso; lia.
   Qed.
 
   (* better wrt evar creation order *)
@@ -566,7 +517,7 @@ Section Riscv.
       free.interpret run_primitive (setRegister r v) initial postF postA.
   Proof.
     intros. simpl. unfold setReg. destruct_one_match; fwd. 1: assumption.
-    exfalso; Lia.lia.
+    exfalso; lia.
   Qed.
 
   Lemma interpret_endCycleEarly: forall (m: State) (postF : unit -> State -> Prop) (postA : State -> Prop),
@@ -793,7 +744,7 @@ Section Riscv.
       }
       destruct oldvals as [|oldval oldvals]. 1: discriminate.
       fwd.
-      assert (0 < start < 32) by Lia.lia.
+      assert (0 < start < 32) by lia.
       eapply runsToStep_cps. repeat step.
       subst stackaddr.
       repeat (repeat word_simpl_step_in_hyps; fwd).
@@ -803,8 +754,8 @@ Section Riscv.
       + eassumption.
       + reflexivity.
       + ring.
-      + Lia.lia.
-      + Lia.lia.
+      + lia.
+      + lia.
       + eassumption.
       + after_mem_modifying_lemma.
         eqapply H6p1. 2: {
@@ -835,8 +786,13 @@ Section Riscv.
   Proof.
     unfold save_regs3to31. intros.
     assert (exists vals,
-       map.getmany_of_list (regs initial) (List.unfoldn (Z.add 1) 29 3) = Some vals) as E
-        by case TODO. (* from regs_initialized *)
+       map.getmany_of_list (regs initial) (List.unfoldn (Z.add 1) 29 3) = Some vals) as E. {
+      eapply map.getmany_of_list_exists with (P := fun r => 3 <= r < 32).
+      - change 32 with (3 + Z.of_nat 29).
+        eapply List.unfoldn_Z_seq_Forall.
+      - intros k Bk. unfold regs_initialized in H1.
+        eapply H1. lia.
+    }
     destruct E as [vals G].
     match goal with
     | H: _ /\ forall _, _ |- _ => destruct H as [HM HPost]
@@ -884,11 +840,16 @@ Section Riscv.
     | H1: seps _ initialH.(mem), H2: seps _ initialL.(mem) |- _ =>
         rename H1 into MH, H2 into ML
     end.
-    eapply instr_decode in MH. destruct MH as (z & MH & Dz & Bz). subst i.
+    pose proof MH as MH'. move MH' after MH.
+    destruct MH as (mI & mHRest & SpH & MHI & MHRest). clear MHRest.
+    unfold at_addr, instr, ex1 in MHI.
+    destruct MHI as (z & MHI).
+    eapply sep_emp_r in MHI. destruct MHI as (MHI & Dz & Bz). subst i.
     cbn [seps] in ML.
+    eapply subst_split in ML. 2: exact SpH.
     epose proof (proj1 (sep_inline_eq _ _ initialL.(mem))) as ML'.
     especialize ML'. {
-      exists initialH.(mem). split. 1: ecancel_assumption. 1: exact MH.
+      eexists. split. 2: exact MHI. ecancel_assumption.
     }
     flatten_seps_in ML'. clear ML.
     remember (match mdecode z with
@@ -910,7 +871,7 @@ Section Riscv.
         (midset := fun midL => exists midH, related midH midL /\ midset midH).
       + eapply build_fetch_one_instr with (instr1 := decode RV32I z).
         { refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML').
-          cancel_seps_at_indices_by_implication 2%nat 0%nat. 2: finish_impl_ecancel.
+          cancel_seps_at_indices_by_implication 4%nat 0%nat. 2: finish_impl_ecancel.
           unfold impl1, instr, at_addr, ex1, emp. intros m A.
           eexists.
           refine (Morphisms.subrelation_refl impl1 _ _ _ m A).
@@ -929,7 +890,7 @@ Section Riscv.
       eapply build_fetch_one_instr with (instr1 := InvalidInstruction z).
       { replace initialH.(pc) with initialL.(pc) in ML.
         refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML).
-        cancel_seps_at_indices_by_implication 2%nat 0%nat. 2: finish_impl_ecancel.
+        cancel_seps_at_indices_by_implication 4%nat 0%nat. 2: finish_impl_ecancel.
         move E at bottom.
         unfold impl1, instr, at_addr, ex1, emp. intros m A.
         eexists.
@@ -945,6 +906,9 @@ Section Riscv.
       (* step through handler code *)
 
       (* Csrrw sp sp MScratch *)
+      eapply runsToStep_cps. repeat step.
+
+      (* Addi sp sp (-128) *)
       eapply runsToStep_cps. repeat step.
 
       (* Sw sp zero 0        (needed if the instruction to be emulated reads register 0) *)
@@ -999,7 +963,14 @@ Section Riscv.
       pose proof E as E'.
       eapply invert_mdecode_M in E'. fwd.
       pose proof word.unsigned_of_Z_nowrap _ Bz as Q. rewrite <- Q in E. clear Q.
-      eapply mul_correct; repeat step. 1: ZnWords.
+      (* TODO this match should not be needed *)
+      match type of ML with
+      | context[LowerPipeline.mem_available ?lo ?hi] =>
+          eapply mul_correct with (stack_start := lo) (stack_pastend := hi)
+            (regvals := [word.of_Z 0] ++ [v0] ++ [v] ++ vals);
+          repeat step;
+          try ZnWords
+      end.
       1: exact E.
       repeat match goal with
              | |- context[List.length ?l] => let n := concrete_list_length l in
@@ -1007,10 +978,16 @@ Section Riscv.
              end.
       autorewrite with rew_word_morphism in *.
       repeat (repeat word_simpl_step_in_goal; fwd).
+      (* TODO this should be in listZnWords or in sidecondition solvers in SepAutoArray *)
+      assert (List.length vals = 29%nat). {
+        apply_in_hyps @map.getmany_of_list_length.
+        symmetry. assumption.
+      }
+      rewrite !with_len_eq by listZnWords.
 
       after_sep_call.
       clear ML m m_1.
-      intros m l ML OD.
+      intros m l ML OD RIl.
       flatten_seps_in ML.
 
       (* Csrr t1 MEPC *)
@@ -1035,12 +1012,6 @@ Section Riscv.
         rewrite map.get_put_same in OD. symmetry in OD. exact OD. }
       { ZnWords. }
       autorewrite with rew_word_morphism. repeat word_simpl_step_in_goal.
-      (* TODO this should be in listZnWords or in sidecondition solvers in SepAutoArray *)
-      assert (List.length vals = 29%nat). {
-        apply_in_hyps @map.getmany_of_list_length.
-        symmetry. assumption.
-      }
-
       split. 1: scancel_asm. (* don't need to keep goal modifications for rest of program *)
 
       repeat word_simpl_step_in_goal.
@@ -1099,45 +1070,86 @@ Section Riscv.
           eapply only_differ_subset. 1: exact OD.
           eapply subset_union_rr. eapply subset_refl.
         }
-        eapply only_differ_put_r. 1: eapply in_union_r; reflexivity.
-        eapply only_differ_put_r. 1: eapply in_union_r; reflexivity.
-        eapply only_differ_put_r. 1: eapply in_union_r; reflexivity.
-        eapply only_differ_put_r. 1: eapply in_union_r; reflexivity.
-        eapply only_differ_put_r. 1: eapply in_union_l; reflexivity.
+        repeat (eapply only_differ_put_r;
+                [ first [ eapply in_union_r; reflexivity
+                        | eapply in_union_l; reflexivity ] | ]).
         eapply only_differ_refl.
       }
       rename H3 into GetVals. move GetVals at bottom.
       match goal with
-      | H: regs_initialized _ |- _ => rename H into RI; move RI at bottom
+      | H: regs_initialized (regs initialL) |- _ => rename H into RI; move RI at bottom
       end.
-      replace (regs initialL) with (regs initialH) in RI, GetVals.
+      replace (regs initialL) with (regs initialH) in *.
       assert (GetVal: forall k, 0 <= k < 29 ->
         nth_error vals (Z.to_nat k) = map.get initialH.(regs) (k + 3)). {
         intros k kR.
         unfold regs_initialized in RI. specialize (RI (k + 3)).
-        destruct RI as [kv Gkv]. 1: Lia.lia.
-        rewrite nth_error_nth' with (d := default) by Lia.lia.
+        destruct RI as [kv Gkv]. 1: lia.
+        rewrite nth_error_nth' with (d := default) by lia.
         symmetry.
         epose proof map.getmany_of_list_get _ (Z.to_nat k) _ _ (k + 3) as Q.
         specialize Q with (1 := GetVals).
-        rewrite map.get_put_diff in Q by (unfold RegisterNames.ra; Lia.lia).
-        rewrite map.get_put_diff in Q by (unfold RegisterNames.sp; Lia.lia).
+        rewrite !map.get_put_diff in Q by (unfold RegisterNames.sp, RegisterNames.ra; lia).
         eapply Q.
         - change (nth_error (List.map (fun i => Z.of_nat i + 3) (List.seq 0 29)) (Z.to_nat k)
                           = Some (k + 3)).
           rewrite map_nth_error with (d := Z.to_nat k).
-          + f_equal. Lia.lia.
-          + erewrite nth_error_nth'. 2: rewrite seq_length; Lia.lia.
-            f_equal. rewrite seq_nth by Lia.lia. reflexivity.
-        - erewrite nth_error_nth' by Lia.lia. reflexivity.
+          + f_equal. lia.
+          + erewrite nth_error_nth'. 2: rewrite seq_length; lia.
+            f_equal. rewrite seq_nth by lia. reflexivity.
+        - erewrite nth_error_nth' by lia. reflexivity.
       }
 
+      match goal with
+      | H: _ |- _ => rewrite map.get_put_diff in H by
+            (unfold RegisterNames.sp, RegisterNames.ra; lia)
+      end.
       replace (nth (Z.to_nat rs1) (word.of_Z 0 :: v0 :: v :: vals) default) with
               (getReg (regs initialH) rs1) in *.
-      2: case TODO.
+      2: {
+        unfold getReg.
+        specialize (GetVal (rs1 - 3)). replace (rs1 - 3 + 3) with rs1 in GetVal by lia.
+        assert (rs1 < 0 \/ rs1 = 0 \/ rs1 = 1 \/ rs1 = 2 \/ 3 <= rs1 < 32 \/ 32 <= rs1) as C
+            by lia.
+        repeat destruct C as [C | C];
+          (destr ((0 <? rs1) && (rs1 <? 32)); try (exfalso; lia); []);
+          try replace (Z.to_nat rs1) with 0%nat by lia;
+          try replace (Z.to_nat rs1) with 1%nat by lia;
+          try replace (Z.to_nat rs1) with 2%nat by lia;
+          try replace (Z.to_nat rs1) with (S (S (S (Z.to_nat (rs1 - 3))))) by lia;
+          try subst rs1;
+          cbn [nth];
+          unfold RegisterNames.sp, RegisterNames.ra in *;
+          rewrite_match;
+          try reflexivity.
+        - rewrite <- GetVal by lia.
+          erewrite nth_error_nth' by lia.
+          reflexivity.
+        - rewrite nth_overflow by lia. reflexivity.
+      }
       replace (nth (Z.to_nat rs2) (word.of_Z 0 :: v0 :: v :: vals) default) with
               (getReg (regs initialH) rs2) in *.
-      2: case TODO.
+      2: {
+        unfold getReg.
+        specialize (GetVal (rs2 - 3)). replace (rs2 - 3 + 3) with rs2 in GetVal by lia.
+        assert (rs2 < 0 \/ rs2 = 0 \/ rs2 = 1 \/ rs2 = 2 \/ 3 <= rs2 < 32 \/ 32 <= rs2) as C
+            by lia.
+        repeat destruct C as [C | C];
+          (destr ((0 <? rs2) && (rs2 <? 32)); try (exfalso; lia); []);
+          try replace (Z.to_nat rs2) with 0%nat by lia;
+          try replace (Z.to_nat rs2) with 1%nat by lia;
+          try replace (Z.to_nat rs2) with 2%nat by lia;
+          try replace (Z.to_nat rs2) with (S (S (S (Z.to_nat (rs2 - 3))))) by lia;
+          try subst rs2;
+          cbn [nth];
+          unfold RegisterNames.sp, RegisterNames.ra in *;
+          rewrite_match;
+          try reflexivity.
+        - rewrite <- GetVal by lia.
+          erewrite nth_error_nth' by lia.
+          reflexivity.
+        - rewrite nth_overflow by lia. reflexivity.
+      }
       rewrite !LittleEndian.combine_split.
       rewrite !sextend_width_nop by reflexivity.
       rewrite !Z.mod_small by apply word.unsigned_range.
@@ -1147,125 +1159,80 @@ Section Riscv.
         apply map.map_ext. intro k.
         repeat (rewrite ?map.get_put_dec, ?map.get_putmany_dec, ?map.get_of_list_Z_at).
         unfold List.Znth_error.
-        assert ((k <= 0 \/ 32 <= k) \/ 0 < k < 32) as C by Lia.lia.
+        assert ((k <= 0 \/ 32 <= k) \/ 0 < k < 32) as C by lia.
         unfold RegisterNames.ra, RegisterNames.sp, RegisterNames.t1 in *.
         destruct C as [C | C].
         { repeat match goal with
-                 | |- context[if ?b then _ else _] => destr b; try (exfalso; Lia.lia); []
+                 | |- context[if ?b then _ else _] => destr b; try (exfalso; lia); []
                  end.
           destr ((0 <? rd) && (rd <? 32)).
-          { assert (0 < rd < 32) by Lia.lia.
+          { assert (0 < rd < 32) by lia.
             rewrite ?map.get_put_dec.
             repeat match goal with
-                   | |- context[if ?b then _ else _] => destr b; try (exfalso; Lia.lia)
+                   | |- context[if ?b then _ else _] => destr b; try (exfalso; lia)
                    end.
             { eapply only_differ_get_unchanged.
               2: eapply only_differ_sym; exact OD'. 1: reflexivity.
               unfold union, singleton_set, elem_of, Registers.reg_class.caller_saved,
                      Registers.reg_class.get.
-              intro A. destruct A. 1: Lia.lia.
+              intro A. destruct A. 1: lia.
               repeat match goal with
                    | H: context[if ?b then _ else _] |- _ =>
-                       destr b; try (exfalso; Lia.lia); []
+                       destr b; try (exfalso; lia); []
                      end.
               destr (k =? 0); contradiction. }
             rewrite (proj2 (nth_error_None _ (Z.to_nat (k - 3)))). 2: {
               unfold List.upd, List.upds.
               list_length_rewrites_without_sideconds_in_goal.
-              Lia.lia.
+              lia.
             }
             eapply only_differ_get_unchanged.
             2: eapply only_differ_sym; exact OD'. 1: reflexivity.
             unfold union, singleton_set, elem_of, Registers.reg_class.caller_saved,
               Registers.reg_class.get.
-            intro A. destruct A. 1: Lia.lia.
+            intro A. destruct A. 1: lia.
             repeat match goal with
                    | H: context[if ?b then _ else _] |- _ =>
-                       destr b; try (exfalso; Lia.lia); []
+                       destr b; try (exfalso; lia); []
                    end.
-            destr ((28 <=? k) && (k <=? 31)); Lia.lia.
+            destr ((28 <=? k) && (k <=? 31)); lia.
           }
-          { assert (rd <= 0 \/ 32 <= rd) by Lia.lia.
+          { assert (rd <= 0 \/ 32 <= rd) by lia.
             rewrite ?map.get_put_dec.
             repeat match goal with
-                   | |- context[if ?b then _ else _] => destr b; try (exfalso; Lia.lia)
+                   | |- context[if ?b then _ else _] => destr b; try (exfalso; lia)
                    end.
             { eapply only_differ_get_unchanged.
               2: eapply only_differ_sym; exact OD'. 1: reflexivity.
               unfold union, singleton_set, elem_of, Registers.reg_class.caller_saved,
                      Registers.reg_class.get.
-              intro A. destruct A. 1: Lia.lia.
+              intro A. destruct A. 1: lia.
               repeat match goal with
                    | H: context[if ?b then _ else _] |- _ =>
-                       destr b; try (exfalso; Lia.lia); []
+                       destr b; try (exfalso; lia); []
                      end.
               destr (k =? 0); contradiction. }
             rewrite (proj2 (nth_error_None _ (Z.to_nat (k - 3)))). 2: {
               unfold List.upd, List.upds.
               list_length_rewrites_without_sideconds_in_goal.
-              Lia.lia.
+              lia.
             }
             eapply only_differ_get_unchanged.
             2: eapply only_differ_sym; exact OD'. 1: reflexivity.
             unfold union, singleton_set, elem_of, Registers.reg_class.caller_saved,
               Registers.reg_class.get.
-            intro A. destruct A. 1: Lia.lia.
+            intro A. destruct A. 1: lia.
             repeat match goal with
                    | H: context[if ?b then _ else _] |- _ =>
-                       destr b; try (exfalso; Lia.lia); []
+                       destr b; try (exfalso; lia); []
                    end.
-            destr ((28 <=? k) && (k <=? 31)); Lia.lia.
+            destr ((28 <=? k) && (k <=? 31)); lia.
           }
         }
 
-
-Set Nested Proofs Allowed.
-
-Lemma NEW_nth_error_skipn[A: Type]: forall i j (l: list A),
-    nth_error (skipn i l) j = nth_error l (i + j).
-Proof.
-  induction i; intros.
-  - cbn. reflexivity.
-  - destruct l; cbn. 1: destruct j; reflexivity.
-    eapply IHi.
-Qed.
-
-Lemma List__nth_error_upd_same[A: Type]: forall i v (l: list A),
-    (i < List.length l)%nat ->
-    nth_error (List.upd l i v) i = Some v.
-Proof.
-  unfold List.upd, List.upds. intros.
-  rewrite nth_error_app2. 2: {
-    rewrite List.firstn_length. Lia.lia.
-  }
-  rewrite nth_error_app1. 2: {
-    rewrite ?List.firstn_length. cbn. Lia.lia.
-  }
-  rewrite List.firstn_all2. 2: {
-    cbn. Lia.lia.
-  }
-  rewrite List.firstn_length.
-  replace (i - Init.Nat.min i (Datatypes.length l))%nat with 0%nat by Lia.lia.
-  reflexivity.
-Qed.
-
-Lemma List__nth_error_upd_same_eq[A: Type]: forall i j v (l: list A),
-    (i < List.length l)%nat ->
-    i = j ->
-    nth_error (List.upd l i v) j = Some v.
-Proof.
-  intros. subst. apply List__nth_error_upd_same. assumption.
-Qed.
-
-  Lemma List__nth_error_upd_diff[A: Type]: forall n1 n2 v (l: list A),
-      n1 <> n2 ->
-      nth_error (List.upd l n2 v) n1 = nth_error l n1.
-  Proof.
-  Admitted.
-
         (* Now we know that k is in range 1..31 *)
         destr ((0 <? rd) && (rd <? 32)).
-        { assert (0 < rd < 32) by Lia.lia.
+        { assert (0 < rd < 32) by lia.
           rewrite ?map.get_put_dec.
           destr (rd =? k).
           { destr (2 =? k).
@@ -1273,89 +1240,116 @@ Qed.
             { destr (1 =? k).
               { change (Z.to_nat 1) with 1%nat. cbn. reflexivity. }
               { destr (k - 3 <? 0).
-                1: exfalso; Lia.lia.
-                rewrite List.nth_error_firstn by Lia.lia.
-                rewrite NEW_nth_error_skipn.
-                rewrite List__nth_error_upd_same_eq.
+                1: exfalso; lia.
+                rewrite List.nth_error_firstn by lia.
+                rewrite List.nth_error_skipn.
+                rewrite List.nth_error_upd_same_eq.
                 1: reflexivity.
                 1: listZnWords.
-                Lia.lia.
+                lia.
               } } }
           { destr (2 =? k).
-            { rewrite List.nth_upd_diff by Lia.lia.
+            { rewrite List.nth_upd_diff by lia.
               cbn. congruence. }
             { destr (1 =? k).
-              { rewrite List.nth_upd_diff by Lia.lia.
+              { rewrite List.nth_upd_diff by lia.
                 cbn. congruence. }
               { destr (k - 3 <? 0).
-                1: exfalso; Lia.lia.
-                rewrite List.nth_error_firstn by Lia.lia.
-                rewrite NEW_nth_error_skipn.
-                rewrite List__nth_error_upd_diff by Lia.lia.
+                1: exfalso; lia.
+                rewrite List.nth_error_firstn by lia.
+                rewrite List.nth_error_skipn.
+                rewrite List.nth_error_upd_diff by lia.
                 change (nth_error (word.of_Z 0 :: v0 :: v :: vals) (3 + Z.to_nat (k - 3)))
                        with (nth_error vals (Z.to_nat (k - 3))).
-                rewrite GetVal by Lia.lia.
-                replace (k - 3 + 3) with k by Lia.lia.
+                rewrite GetVal by lia.
+                replace (k - 3 + 3) with k by lia.
                 unfold regs_initialized in RI.
                 edestruct RI as [kv Gkv]. 2: {
                   rewrite Gkv. reflexivity.
                 }
-                Lia.lia.
+                lia.
               } } } }
         { destr (2 =? k).
-          { rewrite List.nth_upd_diff by Lia.lia.
+          { rewrite List.nth_upd_diff by lia.
             cbn. congruence. }
           { destr (1 =? k).
-            { rewrite List.nth_upd_diff by Lia.lia.
+            { rewrite List.nth_upd_diff by lia.
               cbn. congruence. }
             { destr (k - 3 <? 0).
-              1: exfalso; Lia.lia.
-              rewrite List.nth_error_firstn by Lia.lia.
-              rewrite NEW_nth_error_skipn.
-              rewrite List__nth_error_upd_diff by Lia.lia.
+              1: exfalso; lia.
+              rewrite List.nth_error_firstn by lia.
+              rewrite List.nth_error_skipn.
+              rewrite List.nth_error_upd_diff by lia.
               change (nth_error (word.of_Z 0 :: v0 :: v :: vals) (3 + Z.to_nat (k - 3)))
                 with (nth_error vals (Z.to_nat (k - 3))).
-              rewrite GetVal by Lia.lia.
-              replace (k - 3 + 3) with k by Lia.lia.
+              rewrite GetVal by lia.
+              replace (k - 3 + 3) with k by lia.
               unfold regs_initialized in RI.
               edestruct RI as [kv Gkv]. 2: rewrite Gkv; reflexivity.
-              Lia.lia.
+              lia.
         } } } }
       { case TODO. (* add nextPc = pc + 4 to related? *) }
       { case TODO. (* add nextPc = pc + 4 to related? *) }
       { congruence. }
-      { congruence. }
-      { congruence. }
       { repeat step. }
       { repeat step. }
       { repeat step. }
       { repeat step. }
       { repeat step. }
       { repeat step. }
+      { repeat step.
+        eapply regs_initialized_putmany.
+        repeat step. }
       { do 3 eexists. ssplit.
         { repeat step. }
         { repeat step. }
         2: {
           move ML at bottom.
+          move MHI at bottom.
           instantiate (1 := (List.upd (word.of_Z 0 :: v0 :: v :: vals)
                                       (Z.to_nat rd)
                                       (word.mul (getReg (regs initialH) rs1)
                                          (getReg (regs initialH) rs2)))).
+
+Set Nested Proofs Allowed.
+
+  Lemma subst_split_bw: forall (m m1 m2 M : Mem) (R : Mem -> Prop),
+      map.split m m1 m2 ->
+      sep (sep (eq m1) (eq m2)) R M ->
+      sep (eq m) R M.
+  Proof.
+    unfold sep, map.split. intros. fwd. eauto 10.
+  Qed.
+
+  Lemma truncated_scalar_unique: forall [addr z m],
+      (addr |-> truncated_scalar access_size.four z) m ->
+      eq m = (addr |-> truncated_scalar access_size.four z).
+  Admitted.
+
+          cbn [seps]. eapply subst_split_bw. 1: eassumption.
+          rewrite (truncated_scalar_unique MHI).
+
+          unfold handler_insts.
+          rewrite !(array_app (E := Instruction)).
+          repeat match goal with
+                 | |- context[List.length ?l] => let n := concrete_list_length l in
+                                                 change (List.length l) with n
+                 end.
+          autorewrite with rew_word_morphism.
+          repeat (repeat word_simpl_step_in_goal; repeat word_simpl_step_in_hyps; fwd).
+          replace (pc initialH) with (pc initialL) in *.
+          cbn [seps] in ML. use_sep_assumption.
+          cancel.
+          (* BUG: v doesn't match (word.of_Z stack_hi) because we forgot to
+             reset MScratch to its original value! *)
           case TODO. (* separation logic *)
         }
         { listZnWords. }
-        { repeat eapply regs_initialized_put.
-          unfold regs_initialized. intros.
-          rewrite map.get_putmany_dec. rewrite ?map.get_put_dec.
-          repeat destruct_one_match; eauto.
-          (* TODO next run: prove regs_initialized_putmany, and add regs_initialized
-             to postcondition of mul_correct *)
-          case TODO. }
       }
     Unshelve.
     all: try solve [constructor].
-  Qed.
+  Qed. (* takes several minutes... *)
 
   (* TODO state same theorem with binary code of handler to make sure instructions
-     are decodable after encoding *)
+     are decodable after encoding, and merge the two stack areas *)
 End Riscv.
