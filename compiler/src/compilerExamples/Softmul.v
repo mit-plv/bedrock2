@@ -121,12 +121,13 @@ Section WithRegisterNames.
   Remark MScratch_correct: CSR.lookupCSR MScratch = CSR.MScratch. reflexivity. Qed.
 
   Definition handler_init := [[
-    Csrrw sp sp MScratch;
-    Addi sp sp (-128); (* amount of stack we need to save the 32 registers *)
-    Sw sp zero 0;
-    Sw sp ra 4;
-    Csrr ra MScratch;
-    Sw sp ra 8
+    Csrrw sp sp MScratch;  (* swap sp and MScratch CSR *)
+    Sw sp zero (-128);     (* save the 0 register (for uniformity) *)
+    Sw sp ra (-124);       (* save ra *)
+    Csrr ra MScratch;      (* use ra as a temporary register... *)
+    Sw sp ra (-120);       (* ... to save the original sp *)
+    Csrw sp MScratch;      (* restore the original value of MScratch *)
+    Addi sp sp (-128)      (* remainder of code will be relative to updated sp *)
   ]].
 
   Definition inc_mepc := [[
@@ -147,9 +148,11 @@ Section WithRegisterNames.
     Jal ra (Z.of_nat (1 + List.length inc_mepc + 29 + List.length handler_final) * 4)
   ]].
 
-  Definition handler_insts :=
+  Definition asm_handler_insts :=
     handler_init ++ save_regs3to31 ++ call_mul ++ inc_mepc ++
-       restore_regs3to31 ++ handler_final ++ mul_insts.
+       restore_regs3to31 ++ handler_final.
+
+  Definition handler_insts := asm_handler_insts ++ mul_insts.
 End WithRegisterNames.
 
 Section Riscv.
@@ -164,6 +167,11 @@ Section Riscv.
   Local Notation M := (free riscv_primitive primitive_result).
 
   Local Hint Mode map.map - - : typeclass_instances.
+
+  Lemma truncated_scalar_unique: forall [addr z m],
+      (addr |-> truncated_scalar access_size.four z) m ->
+      eq m = (addr |-> truncated_scalar access_size.four z).
+  Admitted.
 
   Declare Scope array_abbrevs_scope.
   Open Scope array_abbrevs_scope.
@@ -680,11 +688,13 @@ Section Riscv.
       end
     | |- _ => compareZconsts
     | |- map.get _ _ = Some _ => eassumption
-    | |- map.get _ _ <> None => congruence
+    | |- _ <> None => congruence
     | |- map.get (map.set _ _ _) _ = _ => unfold map.set
     | |- map.get (map.put _ ?x _) ?x = _ => eapply map.get_put_same
     | |- map.get (map.put _ _ _) _ = _ => eapply get_put_diff_eq_l; [compareZconsts|]
-    | |- map.get (map.put _ ?x _) ?x <> None => rewrite map.get_put_same; clear; congruence
+    | |- map.get (map.set _ _ _) _ <> None => unfold map.set
+    | |- map.get (map.put _ ?x _) ?x <> None => rewrite map.get_put_same
+    | |- map.get (map.put _ ?x _) ?y <> None => rewrite map.get_put_diff by congruence
     | |- regs_initialized (map.put _ _ _) => eapply preserve_regs_initialized_after_put
     | |- regs_initialized (map.set _ _ _) => eapply preserve_regs_initialized_after_put
     | |- mcomp_sat endCycleNormal _ _ => eapply mcomp_sat_endCycleNormal
@@ -908,19 +918,22 @@ Section Riscv.
       (* Csrrw sp sp MScratch *)
       eapply runsToStep_cps. repeat step.
 
-      (* Addi sp sp (-128) *)
+      (* Sw sp zero (-128) *)
       eapply runsToStep_cps. repeat step.
 
-      (* Sw sp zero 0        (needed if the instruction to be emulated reads register 0) *)
-      eapply runsToStep_cps. repeat step.
-
-      (* Sw sp ra 4 *)
+      (* Sw sp ra (-124) *)
       eapply runsToStep_cps. repeat step.
 
       (* Csrr ra MScratch *)
       eapply runsToStep_cps. repeat step.
 
-      (* Sw sp ra 8 *)
+      (* Sw sp ra (-120) *)
+      eapply runsToStep_cps. repeat step.
+
+      (* Csrw sp MScratch *)
+      eapply runsToStep_cps. repeat step.
+
+      (* Addi sp sp (-128) *)
       eapply runsToStep_cps. repeat step.
 
       (* save_regs3to31 *)
@@ -930,7 +943,7 @@ Section Riscv.
       { repeat step. }
       autorewrite with rew_word_morphism. repeat word_simpl_step_in_goal.
 
-      unfold handler_insts in ML.
+      unfold handler_insts, asm_handler_insts in ML.
       rewrite !(array_app (E := Instruction)) in ML.
       repeat match type of ML with
              | context[List.length ?l] => let n := concrete_list_length l in
@@ -1100,10 +1113,6 @@ Section Riscv.
         - erewrite nth_error_nth' by lia. reflexivity.
       }
 
-      match goal with
-      | H: _ |- _ => rewrite map.get_put_diff in H by
-            (unfold RegisterNames.sp, RegisterNames.ra; lia)
-      end.
       replace (nth (Z.to_nat rs1) (word.of_Z 0 :: v0 :: v :: vals) default) with
               (getReg (regs initialH) rs1) in *.
       2: {
@@ -1310,26 +1319,10 @@ Section Riscv.
                                       (Z.to_nat rd)
                                       (word.mul (getReg (regs initialH) rs1)
                                          (getReg (regs initialH) rs2)))).
-
-Set Nested Proofs Allowed.
-
-  Lemma subst_split_bw: forall (m m1 m2 M : Mem) (R : Mem -> Prop),
-      map.split m m1 m2 ->
-      sep (sep (eq m1) (eq m2)) R M ->
-      sep (eq m) R M.
-  Proof.
-    unfold sep, map.split. intros. fwd. eauto 10.
-  Qed.
-
-  Lemma truncated_scalar_unique: forall [addr z m],
-      (addr |-> truncated_scalar access_size.four z) m ->
-      eq m = (addr |-> truncated_scalar access_size.four z).
-  Admitted.
-
           cbn [seps]. eapply subst_split_bw. 1: eassumption.
           rewrite (truncated_scalar_unique MHI).
 
-          unfold handler_insts.
+          unfold handler_insts, asm_handler_insts.
           rewrite !(array_app (E := Instruction)).
           repeat match goal with
                  | |- context[List.length ?l] => let n := concrete_list_length l in
@@ -1340,9 +1333,6 @@ Set Nested Proofs Allowed.
           replace (pc initialH) with (pc initialL) in *.
           cbn [seps] in ML. use_sep_assumption.
           cancel.
-          (* BUG: v doesn't match (word.of_Z stack_hi) because we forgot to
-             reset MScratch to its original value! *)
-          case TODO. (* separation logic *)
         }
         { listZnWords. }
       }

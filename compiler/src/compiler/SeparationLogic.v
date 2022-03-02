@@ -416,6 +416,14 @@ Section MoreSepLog.
     - simp. reflexivity.
   Qed.
 
+  Lemma subst_split_bw: forall (m m1 m2 M : map) (R : map -> Prop),
+      map.split m m1 m2 ->
+      sep (sep (eq m1) (eq m2)) R M ->
+      sep (eq m) R M.
+  Proof.
+    unfold sep, map.split. intros. simp. eauto 10.
+  Qed.
+
   Lemma eq_sep_to_split: forall (m m1: map) P,
       (eq m1 * P)%sep m ->
       exists m2, map.split m m1 m2 /\ P m2.
