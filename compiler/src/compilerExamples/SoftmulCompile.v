@@ -305,6 +305,12 @@ Section Riscv.
                            | _ => true
                            end).
 
+  Lemma verify_mul_insts : Forall (fun i => verify i RV32I) mul_insts.
+  Proof.
+    repeat (eapply Forall_cons || eapply Forall_nil).
+    all : cbv; ssplit; trivial; try congruence.
+  Qed.
+
   Lemma no_M_from_I_sep: forall (mach: RiscvMachine) insts R,
       sep (mach.(getPc) |-> program idecode insts) R mach.(getMem) ->
       mach.(getXAddrs) = List.unfoldn (word.add (word.of_Z 1))
@@ -475,9 +481,74 @@ Section Riscv.
     { cbv beta. cbn -[array HList.tuple Datatypes.length].
       intros. fwd.
       specialize (C final.(MinimalCSRs.mem) final.(regs)).
-      eqapply C.
-      - unfold LowerPipeline.machine_ok in *. fwd.
-        case TODO. (* memory splitting?? *)
+      eqapply C; clear C.
+      - unfold LowerPipeline.machine_ok, states_related in *; fwd.
+        Import eplace.
+        eplace (MinimalCSRs.mem final) with _ by (symmetry;eassumption).
+        match goal with | |- _ ?m1 => match goal with | H:_ ?m2 |- _ =>
+          unify m1 m2; refine (Morphisms.subrelation_refl impl1 _ _ _ m1 H) end end.
+        etransitivity; [eapply Proper_sep_impl1; [reflexivity|] | ].
+        { intros ? []; eassumption. }
+        unfold "|->", with_len, with_pure; cbn [seps]; reify_goal; impl_ecancel; cbn [seps].
+        intros m Hm; eapply sep_assoc, (proj1 (sep_emp_True_r _ _)), (proj1 (sep_emp_True_r _ _)) in Hm.
+        eapply sep_emp_l; split; eauto with ecancel_impl.
+        { rewrite List.upd_length.
+          unfold with_len, with_pure, "|->" in MH. eapply sep_emp_r in MH; intuition eauto. }
+        cbn [seps] in ML. case ML as (?&?&?&?&?&?).
+        unfold "|->" in *. move H11 at bottom.
+        unfold "program" in *.
+        match type of Hm with ?f _ _ _ _ _ _ _ => unfold f in * end.
+        unfold ptsto_instr, instr, truncated_scalar, "|->" in *.
+
+        Import Scalars Array.
+
+        assert (array_exmem : forall T (P:word->T->mem->Prop) p a l m,
+          array P p a l m -> Forall (fun e => exists a m, P a e m) l).
+        { clear.
+          intros. revert dependent a; revert p; revert P; revert m.
+          induction l; cbn [array]; eauto; intros.
+          inversion H as (?&?&?&?&HI); eapply IHl in HI; eauto. }
+
+        assert (array_Forall : forall T (Q:T->Prop) (P:word->T->mem->Prop) p a l m,
+          Forall Q l -> array P p a l m -> array (fun a e => sep (emp (Q e)) (P a e)) p a l m).
+        { clear.
+          intros. revert dependent a; revert p; revert P; revert m.
+          induction l; cbn [array]; eauto; intros.
+          inversion H; subst; clear H.
+          eapply sep_assoc, sep_emp_l; split; trivial.
+          match goal with | |- _ ?m1 => match goal with | H:_ ?m2 |- _ =>
+            unify m1 m2; refine (Morphisms.subrelation_refl impl1 _ _ _ m1 H) end end.
+          eapply Proper_sep_impl1; [reflexivity|cbv[impl1];intros].
+          eapply IHl; eauto. }
+
+        assert (Proper_impl1_array :
+          forall T (P Q:word->T->mem->Prop) p a l,
+          (forall a e, impl1 (P a e) (Q a e)) -> impl1 (array P p a l) (array Q p a l)).
+        { clear.
+          intros. revert dependent a; revert p.
+          induction l; cbn [array]; eauto; intros; [reflexivity|].
+          eapply Proper_sep_impl1; eauto. }
+
+        eapply array_exmem in H11.
+        eapply (Forall_and verify_mul_insts) in H11.
+        epose proof (array_Forall _ _ _ _ _ _ _ H11 Hm).
+        eapply Proper_impl1_array; try eassumption.
+
+        intros ? ? mx Hmx.
+        eapply sep_emp_l in Hmx; case Hmx as [[? [? [? [? Hmx]]]] Hmy].
+        eapply sep_emp_r in Hmx; intuition idtac; subst.
+        eapply sep_assoc in Hmy.
+        eapply Proper_sep_iff1 in Hmy. 3: symmetry; eapply sep_emp_emp. 2: reflexivity.
+        eapply sep_emp_r in Hmy as (?&?&?).
+
+        eexists.
+        eapply sep_emp_r.
+        split.
+        1:eassumption.
+        split; eauto using encode_range.
+        unfold idecode.
+        rewrite DecodeEncode.decode_encode; trivial.
+
       - destruct sH' as [sH' lg]. destruct sH'.
         unfold states_related in *. record.simp. fwd.
         assumption.
