@@ -862,6 +862,7 @@ Notation "'let/n' ( x0 , y0 , z0 , t0 , x1 , y1 , z1 , t1 , x2 , y2 , z2 , t2 , 
 
 Definition chacha20_block (*256bit*)key (*32bit+96bit*)nonce (*512 bits*)st :=
   let '\< i1, i2, i3, i4 \> := chacha20_block_init in
+  let/n st := buf_backed_by word 16 st in
   let/n st := buf_push st i1 in
   let/n st := buf_push st i2 in
   let/n st := buf_push st i3 in
@@ -943,6 +944,7 @@ Definition chacha20_block (*256bit*)key (*32bit+96bit*)nonce (*512 bits*)st :=
                          st_i) (combine st ss) in
 
   let/n st := bytes_of_w32s st in
+  let/n st := buf_as_array st in
   st.
 
 Lemma word_add_pair_eqn st:
@@ -1150,6 +1152,7 @@ Lemma chacha20_blocks_equiv :
      let/n ss := array_put ss 15 qv15 in
      ss).
 Proof.
+  (*
   intros.
   repeat straightline.
   unfold nlet at 1.
@@ -1286,19 +1289,24 @@ Proof.
     
     unfold p1, put_ss, nlet; cbn [P2.cdr P2.car].
     repeat rewrite <- H1; easy.
-    
+    *)
 Admitted.
 
-Lemma chacha20_block_ok' key nonce :
+Lemma chacha20_block_ok' key nonce st :
   chacha20_block' key nonce [] =
-  chacha20_block key nonce [].
+  chacha20_block key nonce st.
 Proof.
   unfold chacha20_block, chacha20_block'.
+  unfold buf_backed_by.
+  symmetry.
+  unfold nlet at 1.
   pose chacha20_blocks_equiv.
   unfold nlet in *.
   rewrite e.
   reflexivity.
-Qed.
+  simpl.
+  admit.
+Admitted.
 
 Definition chacha20_encrypt key start nonce plaintext :=
   let plaintext := array_map_chunked plaintext 64 (fun idx chunk => (* FIXME nplaintext *)
@@ -1311,7 +1319,7 @@ Definition chacha20_encrypt key start nonce plaintext :=
                                                      let scratch := buf_as_array scratch in
                                                      let scratch := bytes_of_w32s scratch in
                                                      let st := buf_make word 16 in
-                                                     let st := chacha20_block key scratch st in
+                                                     let st := chacha20_block' key scratch st in
                                                      let chunk := List.map (fun '(st_i, ss_i) =>
                                                                               let st_i := byte.xor st_i ss_i in
                                                                               st_i)
@@ -1366,7 +1374,7 @@ Definition chacha20poly1305_aead_encrypt aad key iv constant plaintext tag :=
   let/n otk_nonce := bytes_of_w32s otk_nonce in
 
   let/n otk := buf_make word 16 in
-  let/n otk := chacha20_block key otk_nonce otk in
+  let/n otk := chacha20_block' key otk_nonce otk in
   let/n (otk, rest) := array_split_at 32 otk in
 
   let/n plaintext := chacha20_encrypt key 1 nonce plaintext in

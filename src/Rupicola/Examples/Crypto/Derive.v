@@ -1,4 +1,7 @@
 Require Import Rupicola.Lib.Api.
+Require Import Rupicola.Lib.Arrays.
+Require Import Rupicola.Lib.Loops.
+Require Import coqutil.Word.LittleEndianList.
 Require Import Rupicola.Examples.Crypto.Low.
 Require Import bedrock2.BasicC32Semantics.
 
@@ -12,12 +15,6 @@ Section Bedrock2.
         mem = mem' /\
         let '\<w, x, y, z\> := quarter a b c d in
         (a' = w /\ b' = x /\ c' = y /\ d' = z)}.
-
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
-  Context {mem: map.map word Byte.byte} {locals: map.map String.string word}.
-  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
-  Context {locals_ok : map.ok locals}.
-  Context {env: map.map string (list string * list string * cmd)}.
 
   Derive quarter_body SuchThat
          (defn! "quarter" ("a", "b", "c", "d") ~> "a", "b", "c", "d" { quarter_body },
@@ -64,4 +61,62 @@ Section Bedrock2.
     handle_call; eauto.
   Qed.
 
+  (*
+
+  Instance spec_of_chacha20_block : spec_of "chacha20_block" :=
+    fnspec! "chacha20_block" (key_ptr nonce_ptr st_ptr : word) /
+          (key nonce st : ListArray.t byte) R,
+    { requires tr mem :=
+        (Z.of_nat (Datatypes.length st) = 64) /\
+        (array ptsto (word.of_Z 1) key_ptr key ⋆
+                                                array ptsto (word.of_Z 1) nonce_ptr nonce ⋆
+                                                array ptsto (word.of_Z 1) st_ptr st ⋆ R) mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        (array ptsto (word.of_Z 1) key_ptr key ⋆
+                                                array ptsto (word.of_Z 1) nonce_ptr nonce ⋆
+                                                array ptsto (word.of_Z 1) st_ptr (chacha20_block key nonce st) ⋆ R) mem }.
+
+  Derive chacha20_block_body SuchThat
+         (defn! "chacha20_block" ("key", "nonce", "st") ~> "st" { chacha20_block_body },
+          implements (chacha20_block) using [ "quarter" ])
+         As chacha20_block_body_correct.
+  Proof.
+    compile_setup.
+    cbn [chacha20_block_init].
+    repeat compile_step.
+
+    simple eapply compile_nlet_as_nlet_eq.
+    eapply compile_buf_backed_by; repeat compile_step.
+    simpl.
+    instantiate (1 := (Naive.wrap 4)).
+    simpl.
+    eauto.
+    
+    simple eapply compile_nlet_as_nlet_eq.
+    eapply compile_buf_push_word32; repeat compile_step.
+
+    unfold buf_backed_by.
+    unfold Datatypes.length. lia.
+
+    instantiate (1 := "st").
+    
+    unfold buffer_at in H1
+
+    unfold buffer_at.
+    
+    simpl.
+    Set Printing Parentheses.
+    eapply sep_assoc.
+    Check (proj2(sep_emp_True_l (_ : _) mem) _).
+    refine (proj2(sep_emp_True_l (_ : _) mem) _); repeat compile_step.
+    replace (4 mod (Z.pow_pos 2 32)) with 4 by lia.
+    replace (0 mod (Z.pow_pos 2 32)) with 0 by lia.
+    Search Lift1Prop.ex1.
+
+    4 : { simple eapply compile_nlet_as_nlet_eq.
+          eapply compile_buf_push_word32; repeat compile_step.
+
+   *)
+  
 End Bedrock2.
