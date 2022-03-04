@@ -208,7 +208,9 @@ Section Riscv.
   Lemma invert_fetch: forall initial post decoder,
       mcomp_sat (run1 decoder) initial post ->
       exists R i, seps [initial.(pc) |-> instr decoder i; R] initial.(mem) /\
-                  mcomp_sat (Execute.execute i;; endCycleNormal) initial post.
+                  mcomp_sat (Execute.execute i;; endCycleNormal)
+                            { initial with nextPc := word.add (pc initial) (word.of_Z 4) }
+                            post.
   Proof.
     intros. apply invert_fetch0 in H. simp.
     do 2 eexists. split. 2: eassumption. unfold instr, at_addr, seps.
@@ -440,6 +442,8 @@ Section Riscv.
     - eexists. unfold updatePc in *. ssplit; cycle -1. 1: eassumption.
       all: try record.simp; try congruence; auto. eauto 10.
     - eexists. unfold updatePc in *. ssplit; cycle -1. 1: eassumption.
+      all: try record.simp; try congruence; auto. eauto 10.
+    - eexists. unfold updatePc in *. ssplit; cycle -1. 1: eassumption.
       all: record.simp; try congruence; auto. eauto 10.
   Qed.
 
@@ -479,6 +483,12 @@ Section Riscv.
   Lemma interpret_getPC: forall (initial: State) (postF : word -> State -> Prop) (postA : State -> Prop),
       postF initial.(pc) initial ->
       free.interpret run_primitive getPC initial postF postA.
+  Proof. intros *. exact id. Qed.
+
+  Lemma interpret_startCycle: forall (initial: State) (postF : unit -> State -> Prop) (postA : State -> Prop),
+      postF tt { initial with nextPc :=
+                                word.add initial.(pc) (word.of_Z (word := word) 4) } ->
+      free.interpret run_primitive startCycle initial postF postA.
   Proof. intros *. exact id. Qed.
 
   Lemma interpret_setPC: forall (m: State) (postF : unit -> State -> Prop) (postA : State -> Prop) (v: word),
@@ -550,10 +560,13 @@ Section Riscv.
   Lemma build_fetch_one_instr:
     forall (initial: State) iset post (instr1: Instruction) (R: Mem -> Prop),
       seps [initial.(pc) |-> instr iset instr1; R] initial.(mem) ->
-      mcomp_sat (Execute.execute instr1;; endCycleNormal) initial post ->
+      mcomp_sat (Execute.execute instr1;; endCycleNormal)
+                { initial with nextPc := word.add (pc initial) (word.of_Z 4) } post ->
       mcomp_sat (run1 iset) initial post.
   Proof.
     intros. unfold run1, mcomp_sat in *.
+    eapply interpret_bind.
+    eapply interpret_startCycle.
     eapply interpret_bind.
     eapply interpret_getPC.
     eapply interpret_bind.
@@ -769,9 +782,6 @@ Section Riscv.
       + eassumption.
       + after_mem_modifying_lemma.
         eqapply H6p1. 2: {
-          match goal with
-          | H: nextPc _ = _ |- _ => rewrite H
-          end.
           destruct initial; record.simp.
           f_equal; try ZnWords.
         }
@@ -832,6 +842,15 @@ Section Riscv.
     unfold restore_regs3to31. intros.
   Admitted.
 
+  Lemma related_with_nextPc: forall initialH initialL,
+      related initialH initialL ->
+      related { initialH with nextPc := word.add (pc initialH) (word.of_Z 4) }
+              { initialL with nextPc := word.add (pc initialL) (word.of_Z 4) }.
+  Proof.
+    destruct initialH, initialL; unfold related; record.simp.
+    intros; fwd; eauto 20.
+  Qed.
+
   Lemma softmul_correct: forall initialH initialL post,
       runsTo (mcomp_sat (run1 mdecode)) initialH post ->
       related initialH initialL ->
@@ -889,7 +908,7 @@ Section Riscv.
           cancel_seps_at_indices_by_implication 0%nat 0%nat. 1: exact impl1_refl.
           unfold impl1. cbn [seps]. unfold emp. intros.
           unfold idecode. fwd. auto. }
-        eapply mcomp_sat_preserves_related; eassumption.
+        eapply mcomp_sat_preserves_related; eauto 2 using related_with_nextPc.
       + intros midL. intros. simp. eapply H1; eassumption.
 
     - (* MInstruction *)
@@ -1062,11 +1081,11 @@ Section Riscv.
 
       rename H1 into IH.
       eapply IH with (mid := updatePc { initialH with
+        nextPc := word.add (pc initialH) (word.of_Z 4);
         regs ::= setReg rd (word.mul (getReg initialH.(regs) rs1)
                                      (getReg initialH.(regs) rs2)) }).
       { move Hp1 at bottom.
         cbn in Hp1.
-        unfold mcomp_sat in Hp1.
         exact Hp1. }
       unfold related, updatePc, map.set, basic_CSRFields_supported; record.simp.
       cbn [List.app] in *.
@@ -1297,8 +1316,8 @@ Section Riscv.
               edestruct RI as [kv Gkv]. 2: rewrite Gkv; reflexivity.
               lia.
         } } } }
-      { case TODO. (* add nextPc = pc + 4 to related? *) }
-      { case TODO. (* add nextPc = pc + 4 to related? *) }
+      { congruence. }
+      { congruence. }
       { congruence. }
       { repeat step. }
       { repeat step. }

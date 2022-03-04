@@ -411,6 +411,8 @@ Section Riscv.
       all: record.simp; try congruence. eauto 10.
     - eexists. unfold updatePc in *. ssplit; cycle -1. 1: eassumption.
       all: record.simp; try congruence. eauto 10.
+    - eexists. unfold updatePc in *. ssplit; cycle -1. 1: eassumption.
+      all: record.simp; try congruence. eauto 10.
   Qed.
 
   (* If we're running the same primitives on two related states, they remain related.

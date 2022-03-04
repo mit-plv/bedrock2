@@ -180,6 +180,7 @@ Section Riscv.
   Qed.
 
   Definition run1(decoder: Z -> Instruction): M unit :=
+    startCycle;;
     pc <- getPC;
     inst <- Machine.loadWord Fetch pc;
     Execute.execute (decoder (LittleEndian.combine 4 inst));;
@@ -190,8 +191,9 @@ Section Riscv.
   Definition mcomp_sat(m: M unit)(initial: State)(post: State -> Prop): Prop :=
     free.interpret run_primitive m initial (fun tt => post) post.
 
-  Lemma change_state_rep: forall sH postH,
+  Lemma change_state_rep: forall (sH: MetricRiscvMachine) postH,
       runsTo (GoFlatToRiscv.mcomp_sat (Run.run1 RV32I)) sH postH ->
+      sH.(getNextPc) = word.add sH.(getPc) (word.of_Z 4) ->
       forall sL, states_related sH sL ->
       runsTo (mcomp_sat (run1 idecode)) sL (fun sL' =>
          exists sH', states_related sH' sL' /\ sL'.(csrs) = sL.(csrs) /\
@@ -199,21 +201,66 @@ Section Riscv.
   Proof.
     induction 1; intros.
     - eapply runsToDone. eauto.
-    - eapply runsToStep.
+    - eapply runsToStep with (midset := fun sL' =>
+         exists sH', states_related sH' sL' /\ sL'.(csrs) = sL.(csrs) /\
+                     sL'.(log) = sL.(log) /\ midset sH' /\
+                     sH'.(getNextPc) = word.add sH'.(getPc) (word.of_Z 4)).
       + unfold mcomp_sat.
+        replace (run1 idecode) with
+          (startCycle;;
+             (pc <- getPC;
+              inst <- Machine.loadWord Fetch pc;
+              Execute.execute (idecode (LittleEndian.combine 4 inst)));;
+           endCycleNormal). 2: {
+          unfold run1.
+          unfold Monads.Bind, free.Monad_free.
+          rewrite <-?free.bind_assoc. reflexivity.
+        }
+        unfold GoFlatToRiscv.mcomp_sat, Run.run1 in H.
+        unfold Primitives.mcomp_sat, MetricMinimalNoMulPrimitivesParams in *.
+        replace (pc <- getPC;
+          inst <- Machine.loadWord Fetch pc;
+          Execute.execute (decode RV32I (LittleEndian.combine_deprecated 4 inst));;
+          endCycleNormal)
+        with ((pc <- getPC;
+          inst <- Machine.loadWord Fetch pc;
+          Execute.execute (decode RV32I (LittleEndian.combine_deprecated 4 inst)));;
+          endCycleNormal) in H. 2: {
+          unfold Monads.Bind, free.Monad_free.
+          rewrite <-?free.bind_assoc. reflexivity.
+        }
+        eapply free.interp_bind_ex_mid in H.
+        2: eapply interp_action_weaken_post.
+        destruct H as (pre_mid & A & B).
+        eapply free.interpret_bind. 1: eapply weaken_run_primitive.
+        unfold startCycle.
+        unfold free.interpret at 1. unfold free.interpret_fix at 1.
+        unfold free.interpret_body.
+        unfold run_primitive at 1.
+        eapply free.interpret_bind. 1: eapply weaken_run_primitive.
         eapply free.interpret_weaken_post.
         4: {
-          eapply change_state_rep_free. 1: eassumption.
-          unfold GoFlatToRiscv.mcomp_sat, Primitives.mcomp_sat,
-                 MetricMinimalNoMulPrimitivesParams in *.
-          exact H.
+          eapply change_state_rep_free with (sH := initial). {
+            clear -H2 H3. unfold states_related in *.
+            destruct initial, getMachine, sL; record.simp.
+            intuition congruence.
+          }
+          exact A.
         }
         1: eapply weaken_run_primitive.
         all: cbv beta; intros.
         2: contradiction.
-        exact H3.
+        cbn.
+        unfold states_related in H|-*. fwd.
+        destruct sH' as [sH' mc]. destruct sH'. destruct s. unfold updatePc.
+        record.simp. subst.
+        move B at bottom.
+        specialize (B _ _ Hp3). cbn in B. eexists. ssplit.
+        7: exact B.
+        all: try reflexivity.
+        record.simp. ring.
       + cbv beta; intros.
-        fwd. rewrite <- H3p1, <- H3p2. eauto.
+        fwd. rewrite <- H4p1, <- H4p2. eauto.
   Qed.
 
   Definition instr(decoder: Z -> Instruction)(inst: Instruction)(addr: word): mem -> Prop :=
@@ -336,9 +383,6 @@ Section Riscv.
              (of_list (List.unfoldn (word.add (word.of_Z 1)) (Z.to_nat 4) a)).
   Admitted.
 
-  Axiom TODO: False.
-
-  (* TODO will need some stack space *)
   Lemma mul_correct: forall initial a_regs regvals invalidIInst R (post: State -> Prop)
                             ret_addr stack_start stack_pastend rd rs1 rs2,
       word.unsigned initial.(pc) mod 4 = 0 ->
@@ -387,7 +431,7 @@ Section Riscv.
         getMachine := {|
           getRegs := initial.(regs);
           getPc := initial.(pc);
-          getNextPc := initial.(nextPc);
+          getNextPc := word.add initial.(pc) (word.of_Z 4);
           getMem := initial.(MinimalCSRs.mem);
           getXAddrs := List.unfoldn (word.add (word.of_Z 1)) (4 * List.length mul_insts)
                                     initial.(pc);
@@ -395,9 +439,10 @@ Section Riscv.
         |};
         getMetrics := MetricLogging.EmptyMetricLog
       |}).
+      2: reflexivity.
       2: {
         unfold states_related; cbn -[array HList.tuple] in *.
-        ssplit; congruence.
+        ssplit; try congruence.
       }
       eapply run1_IM_to_I.
             (************)
@@ -469,7 +514,7 @@ Section Riscv.
           eapply array_footpr_subset_unfoldn.
           eapply ptsto_instr_subset_unfoldn. }
         { assumption. }
-        { assumption. }
+        { reflexivity. }
         { assumption. }
         { assumption. }
         { remember (List.unfoldn (word.add (word.of_Z 1)) (4 * Datatypes.length mul_insts)
@@ -593,7 +638,7 @@ Section Riscv.
         final.(nextPc) = word.add final.(pc) (word.of_Z 4) ->
         post final) ->
       runsTo (mcomp_sat (run1 idecode)) initial post.
-  Admitted.
+  Abort.
 End Riscv.
 
 #[export] Hint Resolve instr_IM_impl1_I : ecancel_impl.
