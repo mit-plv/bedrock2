@@ -394,7 +394,7 @@ Ltac concrete_sz_bounds :=
 (* TODO make more generic *)
 #[export] Hint Extern 1
   (?listL = ?listR1 ++ ?listR2 ++ ?listR3 /\ ?lenR1 = ?i /\ ?lenR2 = ?n) =>
-  apply_in_hyps @map.getmany_of_list_length; rewrite List.length_unfoldn in *;
+  apply_in_hyps @map.getmany_of_list_length; rewrite ?List.length_unfoldn in *;
   is_evar listL; split; [ reflexivity | split; listZnWords ]
 : merge_sepclause_sidecond.
 
