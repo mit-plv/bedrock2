@@ -17,7 +17,6 @@ Section Scalars.
   Context {width : Z} {BW : Bitwidth.Bitwidth width} {word : Word.Interface.word width} {word_ok : word.ok word}.
 
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
-  Context (TODO_Hl : forall sz, Z.of_nat (bytes_per(width:=width) sz) <= 2 ^ width).
   Implicit Types (m : mem).
 
   Definition littleendian (n : nat) (addr : word) (value : Z) : mem -> Prop :=
@@ -39,6 +38,11 @@ Section Scalars.
 
   Definition truncate_word(sz: Syntax.access_size)(w: word): word :=
     word.of_Z (truncate_Z (bytes_per (width := width) sz) (word.unsigned w)).
+
+  Let word_length_representable : forall sz, Z.of_nat (bytes_per(width:=width) sz) <= 2 ^ width.
+  Proof.
+    destruct sz; destruct Bitwidth.width_cases; subst; cbv; congruence.
+  Qed.
 
   Ltac t :=
     try eassumption;

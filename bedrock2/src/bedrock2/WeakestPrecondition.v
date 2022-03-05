@@ -151,9 +151,9 @@ Ltac unfold1_cmd_goal :=
 
 Ltac unfold1_expr e :=
   lazymatch e with
-    @expr ?width ?word ?mem ?locals ?m ?l ?arg ?post =>
+    @expr ?width ?BW ?word ?mem ?locals ?m ?l ?arg ?post =>
     let arg := eval hnf in arg in
-    constr:(@expr_body width word mem locals m l (@expr width word mem locals m l) arg post)
+    constr:(@expr_body width BW word mem locals m l (@expr width BW word mem locals m l) arg post)
   end.
 Ltac unfold1_expr_goal :=
   let G := lazymatch goal with |- ?G => G end in

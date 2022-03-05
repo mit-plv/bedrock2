@@ -210,7 +210,6 @@ Section WithParameters.
       Local Infix "-" := word.sub : word_scope.
       Local Coercion Z.of_nat : nat >-> Z.
       Local Infix "$+" := putmany (at level 70).
-      Local Notation "xs $@ a" := (map.of_list_word_at a%word xs) (at level 10, format "xs $@ a").
       Local Notation "! x" := (word.of_Z x) (at level 10, format "! x").
       Local Notation "a * b" := (sep a%type b%type) : type_scope.
       Local Open Scope word_scope.
@@ -321,7 +320,6 @@ Section WithParameters.
       end.
 
   Section __.
-    Import WithoutTuples.
     Lemma load_bytes_of_putmany_bytes_at bs a (mR:mem) n (Hn : length bs = n) (Hl : Z.of_nat n < 2^32)
       : load_bytes (mR $+ bs$@a) a n = Some bs.
     Proof.
