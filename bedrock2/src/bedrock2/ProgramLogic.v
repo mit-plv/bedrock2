@@ -12,10 +12,7 @@ Module Import Coercions.
   Import Map.Interface Word.Interface BinInt.
   Coercion Z.of_nat : nat >-> Z.
   Coercion word.unsigned : word.rep >-> Z.
-
-  Definition sepclause_of_map {key value map} (m : @map.rep key value map)
-    : map.rep -> Prop := Logic.eq m.
-  Coercion sepclause_of_map : Interface.map.rep >-> Funclass.
+  Export Separation.Coercions.
 End Coercions.
 
 Goal True.

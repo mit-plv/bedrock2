@@ -15,6 +15,9 @@ Open Scope Z_scope.
 
 Definition bytes_per_word(width: Z): Z := (width + 7) / 8.
 
+Global Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
+Local Infix "$+" := map.putmany (at level 70).
+
 Module WithoutTuples. Section Memory.
   Context {width: Z} {word: word width} {mem: map.map word byte}.
   Definition footprint (a : word) (n : nat) : list word :=
@@ -22,7 +25,7 @@ Module WithoutTuples. Section Memory.
   Definition load_bytes (m : mem) (a : word) (n : nat) : option (list byte) :=
     option_all (List.map (map.get m) (footprint a n)).
   Definition unchecked_store_bytes (m : mem) (a : word) (bs : list byte) :=
-    map.putmany m (map.of_list_word_at a bs).
+    m $+ (bs $@ a).
   Definition store_bytes (m : mem)(a : word) (bs : list byte): option mem :=
     match load_bytes m a (length bs) with
     | Some _ => Some (unchecked_store_bytes m a bs)
@@ -83,9 +86,7 @@ Module WithoutTuples. Section Memory.
 
   Import Word.Properties.
   Context {mem_ok: map.ok mem} {word_ok: word.ok word}.
-  Local Infix "$+" := map.putmany (at level 70).
-  Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
-  Lemma load_bytes_of_putmany_bytes_at bs a mR n (Hn : length bs = n) (Hl : Z.of_nat n < 2^width)
+  Lemma load_bytes_of_putmany_bytes_at bs a mR n (Hn : length bs = n) (Hl : Z.of_nat n <= 2^width)
     : load_bytes (mR $+ bs$@a) a n = Some bs.
   Proof.
     destruct (load_bytes (mR $+ bs$@a) a n) eqn:HN in *; cycle 1.
@@ -178,6 +179,72 @@ Section Memory.
 
   Context {mem_ok: map.ok mem}.
   Context {word_ok: word.ok word}.
+
+  Lemma footprint_WithoutTuples a s : tuple.to_list (footprint a s) = WithoutTuples.footprint a s.
+  Proof.
+    cbv [footprint WithoutTuples.footprint].
+    revert a; induction s; cbn; trivial; 
+    intros; f_equal.
+    2: rewrite <-List.seq_shift, List.map_map, IHs; eapply List.map_ext; intros i.
+    all : eapply Properties.word.unsigned_inj;
+      repeat erewrite ?word.unsigned_add, ?Properties.word.unsigned_of_Z_0, ?Properties.word.unsigned_of_Z_1, ?word.unsigned_of_Z.
+    { rewrite Z.add_0_r. symmetry. eapply Properties.word.wrap_unsigned. }
+    all : cbv [word.wrap]; repeat rewrite ?Zplus_mod_idemp_l, ?Zplus_mod_idemp_r.
+    f_equal. blia.
+  Qed.
+
+  Lemma load_bytes_WithoutTuples s m a :
+    option_map tuple.to_list (load_bytes s m a) = WithoutTuples.load_bytes m a s.
+  Proof.
+    cbv [load_bytes WithoutTuples.load_bytes map.getmany_of_tuple ].
+    rewrite <- footprint_WithoutTuples; generalize (footprint a s); clear a.
+    induction s; cbn; trivial; intros (p&t').
+    destruct map.get; cbn; trivial.
+    rewrite <-IHs.
+    destruct tuple.option_all; cbn; trivial.
+  Qed.
+
+  Lemma nth_error_cons {A} (x:A) xs i : List.nth_error (cons x xs) i =
+    if Nat.eqb i O then Some x else List.nth_error xs (pred i).
+  Proof. destruct i; trivial. Qed.
+
+  Lemma unchecked_store_bytes_WithoutTuples s m a v :
+    unchecked_store_bytes s m a v
+    = WithoutTuples.unchecked_store_bytes m a (tuple.to_list v).
+  Proof.
+    cbv [unchecked_store_bytes WithoutTuples.unchecked_store_bytes footprint].
+    revert a; revert v; revert m. induction s; cbn; intros.
+    { erewrite map.of_list_word_nil, map.putmany_empty_r; trivial. }
+    destruct v as [v vs].
+    erewrite IHs; clear IHs.
+    eapply map.map_ext; intros k.
+    erewrite map.get_put_dec; destr (word.eqb a k).
+    { erewrite map.get_putmany_right; trivial.
+      erewrite map.get_of_list_word_at, word.unsigned_sub, Z.sub_diag; reflexivity. }
+    pose proof Properties.word.unsigned_sub_neq k a ltac:(congruence).
+    pose proof Properties.word.unsigned_range (word.sub k a).
+    rewrite 2map.get_putmany_dec.
+    rewrite 2map.get_of_list_word_at.
+    rewrite nth_error_cons.
+    erewrite (proj2 (Nat.eqb_neq _ _)) by blia.
+    match goal with |- context [List.nth_error _ ?a] =>
+    match goal with |- context [List.nth_error _ ?b] =>
+      assert_fails (constr_eq a b); replace b with a; [reflexivity|] end end.
+    rewrite <-Z2Nat.inj_pred, <-Z.sub_1_r; f_equal.
+    erewrite <-(Properties.word.decrement_nonzero) by assumption.
+    rewrite !word.unsigned_sub, !word.unsigned_add, Properties.word.unsigned_of_Z_1.
+    cbv [word.wrap].
+    rewrite !Zminus_mod_idemp_l, !Zminus_mod_idemp_r, Z.sub_add_distr; trivial.
+  Qed.
+
+  Lemma store_bytes_WithoutTuples s m a v :
+    store_bytes s m a v = WithoutTuples.store_bytes m a (tuple.to_list v).
+  Proof.
+    cbv [store_bytes WithoutTuples.store_bytes].
+    rewrite tuple.length_to_list, <-load_bytes_WithoutTuples; cbv [option_map].
+    destruct load_bytes in *; f_equal.
+    eapply unchecked_store_bytes_WithoutTuples.
+  Qed.
 
   Lemma store_preserves_domain: forall sz m a v m',
       store sz m a v = Some m' -> map.same_domain m m'.

@@ -7,6 +7,7 @@ Import HList List PrimitivePair.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte.
 Require Import Coq.ZArith.ZArith.
+Import Map.Separation.Coercions.
 
 Open Scope Z_scope.
 
@@ -23,8 +24,8 @@ Section WithWord.
   Add Ring __wring: (@word.ring_theory width word word_ok).
   Lemma sep_eq_of_list_word_at_app (a : word) (xs ys : list value)
     lxs (Hlxs : Z.of_nat (length xs) = lxs) (Htotal : length xs + length ys <= 2^width)
-    : Lift1Prop.iff1 (eq ((xs ++ ys)$@a))
-      (sep (eq (xs$@a)) (eq (ys$@(word.add a (word.of_Z lxs))))).
+    : Lift1Prop.iff1 ((xs ++ ys)$@a)
+      (sep (xs$@a) (ys$@(word.add a (word.of_Z lxs)))).
   Proof.
     etransitivity.
     2: eapply sep_comm.
@@ -36,7 +37,7 @@ Section WithWord.
   Lemma list_word_at_app_of_adjacent_eq (a b : word) (xs ys : list value)
     (Hl: word.unsigned (word.sub b a) = Z.of_nat (length xs))
     (Htotal : length xs + length ys <= 2^width)
-    : Lift1Prop.iff1 (eq(xs$@a)*eq(ys$@b)) (eq((xs++ys)$@a)).
+    : Lift1Prop.iff1 (xs$@a * ys$@b) ((xs++ys)$@a).
   Proof.
     etransitivity.
     2:symmetry; eapply sep_eq_of_list_word_at_app; trivial.
@@ -45,11 +46,11 @@ Section WithWord.
 
   Lemma array1_iff_eq_of_list_word_at (a : word) (bs : list value)
     (H : length bs <= 2 ^ width) :
-    iff1 (array ptsto (word.of_Z 1) a bs) (eq(bs$@a)).
+    iff1 (array ptsto (word.of_Z 1) a bs) (bs$@a).
   Proof.
     symmetry.
     revert H; revert a; induction bs; cbn [array]; intros.
-    { rewrite map.of_list_word_nil; cbv [emp iff1]; intuition auto. }
+    { rewrite map.of_list_word_nil; cbv [emp iff1 sepclause_of_map]; intuition auto. }
     { etransitivity.
       2: eapply Proper_sep_iff1.
       3: eapply IHbs.
@@ -72,14 +73,22 @@ Section Scalars.
 
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
 
-  Definition ptsto_bytes (n : nat) (addr : word) (value : tuple byte n) : mem -> Prop :=
+  Definition ptsto_bytes_deprecated (n : nat) (addr : word) (value : tuple byte n) : mem -> Prop :=
     array ptsto (word.of_Z 1) addr (tuple.to_list value).
+  Local Notation ptsto_bytes := ptsto_bytes_deprecated.
 
-  Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
   Lemma ptsto_bytes_iff_eq_of_list_word_at (n : nat) (addr : word) (value : tuple byte n)
     (H : (Z.of_nat n <= 2 ^ width)%Z) :
-    iff1 (ptsto_bytes n addr value) (eq(tuple.to_list value$@addr)).
+    iff1 (ptsto_bytes_deprecated n addr value) (tuple.to_list value$@addr).
   Proof. eapply array1_iff_eq_of_list_word_at; rewrite ?tuple.length_to_list; trivial. Qed.
+
+  Lemma WithoutTuples__load_bytes_of_sep a n bs (Hn : length bs = n) (Hl : Z.of_nat n <= 2^width)
+    R (m : mem) (Hsep : sep (bs$@a) R m) : Memory.WithoutTuples.load_bytes m a n = Some bs.
+  Proof.
+    eapply sep_comm in Hsep.
+    case Hsep as (mR&?&(?&?)&?&Hmbs); destruct Hmbs; subst m.
+    eauto using WithoutTuples.load_bytes_of_putmany_bytes_at.
+  Qed.
 
   Lemma load_bytes_of_sep a n bs R m
     (Hsep : sep (ptsto_bytes n a bs) R m)
@@ -97,7 +106,7 @@ Section Scalars.
     SeparationLogic.ecancel_assumption.
   Qed.
 
-  Arguments Z.of_nat: simpl never.
+  Local Arguments Z.of_nat: simpl never.
 
   Lemma invert_getmany_of_tuple_Some_footprint
     (n : nat) (a: word) (vs : tuple byte (S n)) (m : mem)
@@ -248,6 +257,34 @@ Section Scalars.
     - seplog.
   Qed.
 
+  Lemma WithoutTuples__unchecked_store_bytes_of_sep(a: word)(oldbs bs: list byte)(R: mem -> Prop)(m: mem)
+    (Hsep : sep (oldbs$@a) R m)(H:length bs = length oldbs)
+    : sep (bs$@a) R (Memory.WithoutTuples.unchecked_store_bytes m a bs).
+  Proof.
+    cbv [WithoutTuples.unchecked_store_bytes].
+    case Hsep as (mo&mR&(?&?)&?&?); subst m.
+    destruct H2. (* subst mo *)
+    eexists (bs$@a), mR; Tactics.ssplit; trivial; try reflexivity.
+    assert (map.disjoint (bs$@a) mR).
+    { cbv [map.disjoint] in *.
+      intros k v1 v2; specialize (H1 k).
+      erewrite map.get_of_list_word_at in *.
+      intros HSome.
+      eapply nth_error_Some_bound_index in HSome.
+      destruct nth_error eqn:Hd in H1; eauto.
+      eapply nth_error_None in Hd; blia. }
+    split; trivial.
+    rewrite <-Properties.map.putmany_assoc.
+    rewrite (Properties.map.putmany_comm mR) by (eapply map.disjoint_comm; assumption).
+    rewrite Properties.map.putmany_assoc.
+    f_equal.
+    eapply map.map_ext; intros k.
+    erewrite Properties.map.get_putmany_dec; case map.get eqn:?; trivial.
+    erewrite map.get_of_list_word_at in *.
+    erewrite nth_error_None in *.
+    blia.
+  Qed.
+
   Lemma unchecked_store_bytes_of_sep'
       (a: word)(n: nat)(bs1 bs2: tuple byte n)(R1 R2 F: mem -> Prop)(m: mem):
       R1 m ->
@@ -264,3 +301,6 @@ Section Scalars.
     cbv [store_bytes]. erewrite load_bytes_of_sep; eauto using unchecked_store_bytes_of_sep.
   Qed.
 End Scalars.
+
+#[deprecated(note="Use bs$@a instead; Import bedrock2.Memory bedrock2.Map.Separation.Coercions; use array1_iff_eq_of_list_word_at and ptsto_bytes_iff_eq_of_list_word_at.")]
+Global Notation ptsto_bytes := ptsto_bytes_deprecated.

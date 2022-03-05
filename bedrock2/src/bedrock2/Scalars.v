@@ -10,16 +10,17 @@ Require Import coqutil.Byte.
 Require Import coqutil.Map.OfListWord.
 Require Import coqutil.Macros.symmetry.
 Require Import bedrock2.ptsto_bytes.
-Import HList List.
+Import HList List Separation.Coercions.
 
 Section Scalars.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
 
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
+  Context (Hl : forall sz, Z.of_nat (bytes_per(width:=width) sz) <= 2 ^ width).
   Implicit Types (m : mem).
 
   Definition littleendian (n : nat) (addr : word) (value : Z) : mem -> Prop :=
-    ptsto_bytes _ addr (tuple.of_list (LittleEndianList.le_split n value)).
+    LittleEndianList.le_split n value $@ addr.
 
   Definition truncated_scalar sz addr (value:Z) : mem -> Prop :=
     littleendian (bytes_per (width:=width) sz) addr value.
@@ -38,19 +39,19 @@ Section Scalars.
   Definition truncate_word(sz: Syntax.access_size)(w: word): word :=
     word.of_Z (truncate_Z (bytes_per (width := width) sz) (word.unsigned w)).
 
-  Lemma load_Z_of_sep sz addr (value: Z) R m
+  Lemma load_Z_of_sep sz addr (value: Z) R m 
     (Hsep : sep (truncated_scalar sz addr value) R m)
     : Memory.load_Z sz m addr = Some (truncate_Z (bytes_per (width:=width) sz) value).
   Proof.
-    cbv [truncate_Z load scalar littleendian load_Z] in *.
-    unshelve erewrite (_ : bytes_per sz = _); shelve_unifiable; cycle 1.
-    1:erewrite load_bytes_of_sep by eassumption.
-    2:rewrite length_le_split; trivial.
-    rewrite tuple.to_list_of_list, LittleEndianList.le_combine_split.
-    set (x := (Z.of_nat (bytes_per sz) * 8)%Z).
-    assert ((0 <= x)%Z) by (subst x; destruct sz; blia).
-    rewrite <- Z.land_ones by assumption.
-    rewrite length_le_split; trivial.
+    cbv [load_Z].
+    epose proof load_bytes_WithoutTuples (bytes_per sz) m addr as H.
+    erewrite WithoutTuples__load_bytes_of_sep in H; eauto; cycle 1.
+    { rewrite length_le_split; trivial. }
+    cbv [option_map] in *. destruct load_bytes eqn:HL; inversion H.
+    (* rewrite H1. *)
+    (* WHY: Tactic generated a subgoal identical to the original goal. *)
+    setoid_rewrite H1; f_equal; clear H H1.
+    rewrite le_combine_split; cbv [truncate_Z]; rewrite Z.land_ones; blia.
   Qed.
 
   Lemma store_Z_of_sep sz addr (oldvalue value: Z) R m (post:_->Prop)
@@ -58,9 +59,15 @@ Section Scalars.
     (Hpost : forall m, sep (truncated_scalar sz addr value) R m -> post m)
     : exists m1, Memory.store_Z sz m addr value = Some m1 /\ post m1.
   Proof.
-    assert (length (le_split (bytes_per(width:=width) sz) oldvalue) = length (le_split (bytes_per(width:=width) sz) value)) as pf
-      by (rewrite 2LittleEndianList.length_le_split; trivial).
-    unshelve eapply store_bytes_of_sep; [..|eapply Hpost]; destruct pf; [|eassumption].
+    cbv [store_Z].
+    rewrite store_bytes_WithoutTuples, tuple.to_list_of_list.
+    cbv [WithoutTuples.store_bytes].
+    erewrite WithoutTuples__load_bytes_of_sep; try eassumption; cycle 1.
+    { rewrite 2length_le_split; trivial. }
+    { rewrite length_le_split; trivial. }
+    eexists; split; trivial; eapply Hpost; clear Hpost.
+    eapply WithoutTuples__unchecked_store_bytes_of_sep; try eassumption.
+    { rewrite 2length_le_split; trivial. }
   Qed.
 
   Lemma load_of_sep sz addr (value: word) R m
