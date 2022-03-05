@@ -1,6 +1,7 @@
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Bitwidth32.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
+Require Import bedrock2.OperatorOverloading. Local Open Scope oo_scope.
 
 Lemma list_goal_after_simplifications[A: Type]{inh: inhabited A}(f: A -> A): forall ws,
     (16 <= length ws)%nat ->
@@ -44,7 +45,7 @@ Qed.
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
-  Local Open Scope Z_scope. Local Open Scope list_scope.
+  Local Open Scope list_scope.
 
   Add Ring wring : (Properties.word.ring_theory (word := word))
         ((*This preprocessing is too expensive to be always run, especially if
@@ -58,7 +59,7 @@ Section WithParameters.
   Context (wp: cmd -> mem -> (mem -> Prop) -> Prop).
   Context (sample_call: word -> word -> cmd).
 
-  Hypothesis sample_call_correct: forall m a1 n vs R (post: mem -> Prop),
+  Hypothesis sample_call_correct: forall m a1 n (vs: list word) R (post: mem -> Prop),
       seps [a1 |-> with_len (Z.to_nat (word.unsigned n)) word_array vs; R] m /\
       (forall m',
         (* Currently, the postcondition also needs a `with_len` so that when the caller
@@ -67,7 +68,7 @@ Section WithParameters.
            TODO consider ways of supporting to drop with_len in the postcondition when
            it can be derived like here (List.upd is guaranteed to preserve the length). *)
         seps [a1 |-> with_len (Z.to_nat (word.unsigned n))
-                word_array (List.upd vs 5 (word.mul (List.nth 5 vs default) (word.of_Z 2)));
+                word_array (List.upd vs 5 (List.nth 5 vs default * (word.of_Z (width := 32) 2)));
               R] m' ->
         post m') ->
       wp (sample_call a1 n) m post.
@@ -85,7 +86,7 @@ Section WithParameters.
                       (word.of_Z 10))
          m
          (fun m' => seps [addr |-> word_array
-            (List.upd ws 7 (word.mul (List.nth 7 ws default) (word.of_Z 2))); R] m').
+            (List.upd ws 7 (List.nth 7 ws default * word.of_Z (width := 32) 2)); R] m').
 
   Lemma use_sample_call_with_tactics_unfolded: sample_call_usage_goal.
   Proof.
