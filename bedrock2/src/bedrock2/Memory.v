@@ -128,7 +128,7 @@ Section Memory.
     | None => None (* some addresses were invalid *)
     end.
   Definition anybytes(a: word)(n: Z)(m: mem): Prop :=
-    exists bs, Z.of_nat (length bs) = n /\ m = bs$@a.
+    exists bs, Z.of_nat (length bs) = n /\ bs$@a = m.
 
   Local Notation "a [ i ]" := (List.nth_error a i) (at level 9, format "a [ i ]").
 

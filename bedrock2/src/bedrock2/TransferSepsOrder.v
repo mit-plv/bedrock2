@@ -157,7 +157,7 @@ Ltac transfer_sep_order :=
   end.
 
 Section TestTransferSepsOrder.
-  Context {width : Z} {word : Word.Interface.word width} {word_ok: word.ok word}
+  Context {width : Z} {BW : Bitwidth.Bitwidth width} {word : Word.Interface.word width} {word_ok: word.ok word}
           {mem : map.map word byte} {mem_ok: map.ok mem}.
 
   Lemma reordering_test: forall addr1 addr2 addr3 addr4 v1_old v1_new v2 v3 v4 R (m m': mem),

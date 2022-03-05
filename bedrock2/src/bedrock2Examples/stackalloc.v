@@ -29,6 +29,21 @@ From coqutil.Tactics Require Import letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 Require Import coqutil.Word.Interface.
 
+(* TODO: move *)
+  Import BinNat.
+  Lemma subst_injection_nat_Z n z : z = Z.of_nat n -> Z.to_nat z = n.
+  Proof. Lia.lia. Qed.
+  Lemma subst_injection_nat_N n N : N = N.of_nat n -> N.to_nat N = n.
+  Proof. Lia.lia. Qed.
+  Create HintDb subst_injection.
+  Hint Resolve subst_injection_nat_Z : subst_injection.
+  Hint Resolve subst_injection_nat_N : subst_injection.
+  Ltac subst_injection x :=
+    let H := fresh in
+    eassert (_ = _ -> _ = x) as H by (typeclasses eauto with subst_injection); (* multisuccess *)
+    destruct (H ltac:(eassumption || symmetry; eassumption)) in *;
+    clear H.
+
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
@@ -53,7 +68,7 @@ Section WithParameters.
     idtac
     end end end.
 
-    intuition congruence.
+    intuition  congruence.
   Qed.
 
   Instance spec_of_stacknondet : spec_of "stacknondet" := fun functions => forall m t,

@@ -148,8 +148,6 @@ Import WeakestPrecondition.
 Import coqutil.Map.Interface.
 
 Ltac straightline_stackalloc :=
-  fail.
-(*TODO
   match goal with Hanybytes: Memory.anybytes ?a ?n ?mStack |- _ =>
   let m := match goal with H : map.split ?mCobined ?m mStack |- _ => m end in
   let mCombined := match goal with H : map.split ?mCobined ?m mStack |- _ => mCobined end in
@@ -161,29 +159,28 @@ Ltac straightline_stackalloc :=
   assert_fails (idtac; match goal with Halready : (Separation.sep Pm (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a _) mCombined) |- _ => idtac end);
   rename Hm into Hm';
   let stack := fresh "stack" in
-  let stack_length := fresh "length_" stack in (* MUST remain in context for deallocation *)
-  destruct (Array.anybytes_to_array_1 mStack a n Hanybytes) as (stack&Htmp&stack_length);
-  epose proof (ex_intro _ m (ex_intro _ mStack (conj Hsplit (conj Hm' Htmp)))
+  let length_stack := fresh "length_" stack in (* MUST remain in context for deallocation *)
+  case Hanybytes as (stack & length_stack & Htmp);
+  epose proof (ex_intro _ m (ex_intro _ mStack (conj Hsplit (conj Hm' (proj2 (Array.array1_iff_eq_of_list_word_at _ _ ltac:(rewrite length_stack; cbv; inversion 1) _) Htmp))))
   : Separation.sep _ (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a _) mCombined) as Hm;
   clear Htmp; (* note: we could clear more here if we assumed only one separation-logic description of each memory is present *)
   try (let m' := fresh m in rename m into m'); rename mCombined into m;
   ( assert (BinInt.Z.of_nat (Datatypes.length stack) = n)
-  by (rewrite stack_length; apply (ZifyInst.of_nat_to_nat_eq n))
+  by (rewrite length_stack; apply (ZifyInst.of_nat_to_nat_eq n))
   || fail 2 "negative stackalloc of size" n )
   end.
- *)
 
 Ltac straightline_stackdealloc :=
-  fail.
-(*TODO
   lazymatch goal with |- exists _ _, Memory.anybytes ?a ?n _ /\ map.split ?m _ _ /\ _ =>
+  let Harray1 := fresh in
   let Hm := multimatch goal with Hm : _ m |- _ => Hm end in
   let stack := match type of Hm with context [Array.array Separation.ptsto _ a ?stack] => stack end in
-  let length_stack := match goal with H : Datatypes.length stack = _ |- _ => H end in
+  let length_stack := match goal with H : BinInt.Z.of_nat (Datatypes.length stack) = _ |- _ => H end in
   let Hm' := fresh Hm in
   pose proof Hm as Hm';
   let Psep := match type of Hm with ?P _ => P end in
   let Htmp := fresh "Htmp" in
+
   eassert (Lift1Prop.iff1 Psep (Separation.sep _ (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a stack))) as Htmp
   by ecancel || fail "failed to find stack frame in" Psep "using ecancel";
   eapply (fun m => proj1 (Htmp m)) in Hm;
@@ -191,12 +188,11 @@ Ltac straightline_stackdealloc :=
   rename m into m';
   let mStack := fresh in
   destruct Hm as (m&mStack&Hsplit&Hm&Harray1); move Hm at bottom;
-  pose proof Array.array_1_to_anybytes _ _ _ Harray1 as Hanybytes;
-  rewrite length_stack in Hanybytes;
-  refine (ex_intro _ m (ex_intro _ mStack (conj Hanybytes (conj Hsplit _))));
-  clear Htmp Hsplit mStack Harray1 Hanybytes
+  eapply Array.array1_iff_eq_of_list_word_at in Harray1;
+    [ refine (ex_intro _ m (ex_intro _ mStack (conj (ex_intro _ _ (conj length_stack Harray1)) (conj Hsplit _))))
+    | rewrite length_stack; cbv; inversion 1 ];
+  clear Htmp Hsplit mStack Harray1
   end.
- *)
 
 Ltac rename_to_different H := once (idtac;
   let G := fresh H in

@@ -530,6 +530,7 @@ Ltac simpl_lengths := repeat simpl_lengths_step.
     Require Import AdmitAxiom.
     replace (length l1 = 4%nat) with (Z.of_nat (length l1) = 4) by case proof_admitted.
 
+    (*
     match goal with |- context[?P m] =>
     match P with context[?e$@?a] =>
     match goal with | |- context[Z.of_nat (length e) = ?n] =>
@@ -551,6 +552,7 @@ end end
     (* last line *)
 
     subst P.
+     *)
     all: case proof_admitted. }
 
     Unshelve.

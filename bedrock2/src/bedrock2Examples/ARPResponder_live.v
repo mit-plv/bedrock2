@@ -49,31 +49,18 @@ Section WithParameters.
 
   Implicit Types m : mem.
 
-  (* TODO move (to Scalars.v?) *)
-  Lemma load_bounded_Z_of_sep: forall sz addr (value: Z) R m,
-      0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=32) sz) * 8) ->
-      sep (truncated_scalar sz addr value) R m ->
-      Memory.load_Z sz m addr = Some value.
-  Proof.
-    intros.
-    assert (List.length (LittleEndianList.le_split (bytes_per(width:=32) sz) value) = bytes_per(width:=32) sz) as pf
-      by (rewrite LittleEndianList.length_le_split; trivial).
-    unfold load_Z.
-    unshelve erewrite load_bytes_of_sep; [|shelve|..]; destruct pf.
-    1:eapply tuple.of_list.
-    2:{ unfold truncated_scalar, littleendian, ptsto_bytes in *.
-       rewrite tuple.to_list_of_list in *; eauto. }
-    1:rewrite tuple.to_list_of_list, LittleEndianList.le_combine_split, Z.mod_small; trivial.
-  Qed.
-
   Lemma load_of_sep_truncated_scalar: forall sz addr (value: Z) R m,
       0 <= value < 2 ^ (Z.of_nat (bytes_per (width:=32) sz) * 8) ->
       sep (truncated_scalar sz addr value) R m ->
-      Memory.load sz m addr = Some (word.of_Z value).
+      Semantics.load sz m addr = Some (word.of_Z value).
   Proof.
-    intros. unfold Memory.load.
-    erewrite load_bounded_Z_of_sep by eassumption.
-    reflexivity.
+    intros.
+    erewrite load_of_sep with (value := word.of_Z value).
+    all : cbv [truncate_word truncated_word truncate_Z];
+    rewrite ?word.unsigned_of_Z; cbv [word.wrap]; rewrite ?Z.mod_small;
+    try eassumption; f_equal; f_equal.
+    all : destruct sz; cbn in H; try ZnWords;
+      rewrite ?Z.land_ones; cbn; try ZnWords.
   Qed.
 
   Definition BEBytesToWord{n: nat}(bs: tuple byte n): word := word.of_Z (BigEndian.combine n bs).

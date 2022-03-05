@@ -80,7 +80,6 @@ Ltac addr P :=
             end in
   lazymatch P with
   | ptsto ?A _ => A
-  | ptsto_bytes _ ?A _ => A
   | ptsto_word ?A _ => A
   | array _ _ ?A _ => A
   | _ => fail "no recognizable address"
