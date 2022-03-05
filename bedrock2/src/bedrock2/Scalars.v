@@ -17,7 +17,7 @@ Section Scalars.
   Context {width : Z} {BW : Bitwidth.Bitwidth width} {word : Word.Interface.word width} {word_ok : word.ok word}.
 
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
-  Context (Hl : forall sz, Z.of_nat (bytes_per(width:=width) sz) <= 2 ^ width).
+  Context (TODO_Hl : forall sz, Z.of_nat (bytes_per(width:=width) sz) <= 2 ^ width).
   Implicit Types (m : mem).
 
   Definition littleendian (n : nat) (addr : word) (value : Z) : mem -> Prop :=
@@ -137,12 +137,21 @@ Section Scalars.
   Lemma store_one_of_sep addr (oldvalue : byte) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar8 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar8 addr (byte.of_Z (word.unsigned value))) R m -> post m)
-    : exists m1, Memory.store Syntax.access_size.one m addr value = Some m1 /\ post m1.
+    : exists m1, store Syntax.access_size.one m addr value = Some m1 /\ post m1.
   Proof.
-    eapply (store_bytes_of_sep _ 1 (PrimitivePair.pair.mk _ tt)); cbn; [ecancel_assumption|].
-    cbv [LittleEndianList.le_split PrimitivePair.pair._1 tuple.of_list].
-    intros; eapply Hpost; ecancel_assumption.
-  Qed.
+    eapply store_of_sep;
+     cbv [truncated_word truncated_scalar littleendian bytes_per le_split];
+     rewrite map.of_list_word_singleton; eauto.
+   instantiate (1:=word.of_Z(byte.unsigned oldvalue)).
+    rewrite word.unsigned_of_Z.
+    epose proof byte.unsigned_range oldvalue. 
+    cbv [word.wrap]; rewrite Z.mod_small; cycle 1.
+    { destruct Bitwidth.width_cases; subst; Lia.lia. }
+      replace (byte.of_Z (byte.unsigned oldvalue)) with oldvalue; cycle 1.
+      { eapply byte.unsigned_inj; rewrite byte.unsigned_of_Z.
+        cbv [byte.wrap]; rewrite Z.mod_small; trivial. }
+      eassumption.
+  Admitted.
 
   Local Ltac byte_bitblast :=
     apply byte.unsigned_inj;
@@ -159,85 +168,73 @@ Section Scalars.
   Lemma store_two_of_sep addr (oldvalue : word) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar16 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar16 addr value) R m -> post m)
-    : exists m1, Memory.store Syntax.access_size.two m addr value = Some m1 /\ post m1.
-  Proof. eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost]. Qed.
+    : exists m1, store Syntax.access_size.two m addr value = Some m1 /\ post m1.
+  Proof. eapply store_of_sep; [eapply Hsep|eapply Hpost]. Qed.
 
   Lemma store_four_of_sep addr (oldvalue : word) (value : word) R m (post:_->Prop)
     (Hsep : sep (scalar32 addr oldvalue) R m)
     (Hpost : forall m, sep (scalar32 addr value) R m -> post m)
-    : exists m1, Memory.store Syntax.access_size.four m addr value = Some m1 /\ post m1.
-  Proof. eapply store_bytes_of_sep; [eapply Hsep|eapply Hpost]. Qed.
+    : exists m1, store Syntax.access_size.four m addr value = Some m1 /\ post m1.
+  Proof. eapply store_of_sep; [eapply Hsep|eapply Hpost]. Qed.
 
   Lemma store_word_of_sep addr (oldvalue value: word) R m (post:_->Prop)
     (Hsep : sep (scalar addr oldvalue) R m)
     (Hpost : forall m, sep (scalar addr value) R m -> post m)
-    : exists m1, Memory.store Syntax.access_size.word m addr value = Some m1 /\ post m1.
+    : exists m1, store Syntax.access_size.word m addr value = Some m1 /\ post m1.
   Proof.
     let sz := Syntax.access_size.word in
     assert (length (le_split (bytes_per(width:=width) sz) (word.unsigned oldvalue)) = length (le_split (bytes_per(width:=width) sz) (word.unsigned value))) as pf
       by (rewrite 2LittleEndianList.length_le_split; trivial).
-    unshelve eapply store_bytes_of_sep; [..|eapply Hpost]; destruct pf; [|eassumption].
+    unshelve eapply store_of_sep; [..|eapply Hpost]; destruct pf; [|eassumption].
   Qed.
 
   Context (width_lower_bound: 32 <= width).
 
   Lemma scalar16_of_bytes a l (H : List.length l = 2%nat) :
-    Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
+    Lift1Prop.iff1 (l$@a)
                    (scalar16 a (word.of_Z (LittleEndianList.le_combine l))).
   Proof.
-    do 2 (destruct l as [|?x l]; [discriminate|]). destruct l; [|discriminate].
-    cbv [scalar16 truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
-    eapply Morphisms.eq_subrelation; [exact _|].
-    f_equal.
-    rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
-    { erewrite tuple.to_list_of_list. setoid_rewrite (split_le_combine (x::x0::nil)). trivial. }
-    epose proof (le_combine_bound (x::x0::nil)); cbn -[Z.pow] in *.
-    eapply shrink_upper_bound; eauto.
-    eapply Z.pow_le_mono_r; blia.
+    cbv [scalar16 truncated_word truncated_scalar littleendian].
+    rewrite word.unsigned_of_Z by (destruct Bitwidth.width_cases; subst; Lia.lia).
+    setoid_rewrite <-H.
+    cbv [word.wrap]; rewrite Z.mod_small, split_le_combine; [reflexivity|].
+    epose proof (le_combine_bound l) as Hb; rewrite H in Hb;
+      (destruct Bitwidth.width_cases; subst; Lia.lia).
   Qed.
 
   (*essentially duplicates of the previous lemma...*)
   Lemma scalar32_of_bytes a l (H : List.length l = 4%nat) :
-    Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
+    Lift1Prop.iff1 (l$@a)
                    (scalar32 a (word.of_Z (LittleEndianList.le_combine l))).
   Proof.
-    do 4 (destruct l as [|?x l]; [discriminate|]). destruct l; [|discriminate].
-    cbv [scalar32 truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes].
-    eapply Morphisms.eq_subrelation; [exact _|].
-    f_equal.
-    rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
-    { erewrite tuple.to_list_of_list. setoid_rewrite (split_le_combine (x::x0::x1::x2::nil)). trivial. }
-    epose proof (le_combine_bound (x::x0::x1::x2::nil)); cbn -[Z.pow] in *.
-    eapply shrink_upper_bound; eauto.
-    eapply Z.pow_le_mono_r; blia.
+    cbv [scalar32 truncated_word truncated_scalar littleendian].
+    rewrite word.unsigned_of_Z by (destruct Bitwidth.width_cases; subst; Lia.lia).
+    setoid_rewrite <-H.
+    cbv [word.wrap]; rewrite Z.mod_small, split_le_combine; [reflexivity|].
+    epose proof (le_combine_bound l) as Hb; rewrite H in Hb;
+      (destruct Bitwidth.width_cases; subst; Lia.lia).
   Qed.
 
   Lemma scalar_of_bytes a l (H : width = 8 * Z.of_nat (length l)) :
-    Lift1Prop.iff1 (array ptsto (word.of_Z 1) a l)
+    Lift1Prop.iff1 (l$@a)
                    (scalar a (word.of_Z (LittleEndianList.le_combine l))).
   Proof.
-    cbv [scalar truncated_word truncated_scalar littleendian ptsto_bytes]. subst width.
+    cbv [scalar truncated_word truncated_scalar littleendian]. subst width.
     replace (bytes_per Syntax.access_size.word) with (length l). 2: {
       unfold bytes_per, bytes_per_word. clear.
       Z.div_mod_to_equations. blia.
     }
     rewrite word.unsigned_of_Z. cbv [word.wrap]; rewrite Z.mod_small.
     2: apply LittleEndianList.le_combine_bound.
-    rewrite tuple.to_list_of_list, split_le_combine; reflexivity.
+    rewrite split_le_combine; reflexivity.
   Qed.
 
-  Local Infix "$+" := map.putmany (at level 70).
-  Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
-  Local Infix "*" := sep : type_scope.
-  Local Open Scope sep_scope.
   Import Syntax.
-  Lemma load_four_bytes_of_sep_at bs a R m (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat):
+  Lemma load_four_bytes_of_sep_at bs a R m (Hsep: ((bs$@a)*R)%sep m) (Hl : length bs = 4%nat):
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof.
-    seprewrite_in (symmetry! (array1_iff_eq_of_list_word_at(map:=mem))) Hsep.
-    { rewrite Hl. etransitivity. 2:eapply Z.pow_le_mono_r; try eassumption. all:blia. }
-    unshelve seprewrite_in open_constr:(Scalars.scalar32_of_bytes _ _ _) Hsep; shelve_unifiable; trivial.
-    erewrite @Scalars.load_four_of_sep; shelve_unifiable; try exact _; eauto.
+    erewrite load_four_of_sep.
+    2: seprewrite_by (symmetry! scalar32_of_bytes) eassumption; eassumption.
     f_equal.
     unfold truncate_word, truncate_Z.
     f_equal.
@@ -250,12 +247,12 @@ Section Scalars.
   Qed.
 
   Lemma uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
-    (H: (eq(bs$@a)*R) m /\ length bs = 4%nat) :
+    (H: ((bs$@a)*R)%sep m /\ length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply load_four_bytes_of_sep_at; eapply H. Qed.
 
   Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
-    (H: (eq(bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
+    (H: ((bs$@a)*R)%sep m /\ Z.of_nat (length bs) = 4) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof. eapply load_four_bytes_of_sep_at; try eapply H; blia. Qed.
 
@@ -274,7 +271,7 @@ Section Scalars.
     (Hsep : sep (array (truncated_word sz) size addr oldvalues) R m)
     (_ : (n < length oldvalues)%nat)
     (Hpost : forall m, sep (array (truncated_word sz) size addr (upd oldvalues n value)) R m -> post m)
-    : exists m1, Memory.store sz m addr' value = Some m1 /\ post m1.
+    : exists m1, store sz m addr' value = Some m1 /\ post m1.
   Proof.
     rewrite <-(firstn_nth_skipn _ _ oldvalues (word.of_Z 0) H0) in Hsep.
     do 2 seprewrite_in (array_append (truncated_word sz) size) Hsep.
@@ -301,7 +298,7 @@ Section Scalars.
          (Z.modulo offset (word.unsigned size) = 0) /\
          (let n := Z.to_nat (offset / word.unsigned size) in (n < List.length oldvalues)%nat /\
     (forall m, sep (array (truncated_word sz) size addr (upd oldvalues n value)) R m -> post m)))
-    : exists m1, Memory.store sz m addr' value = Some m1 /\ post m1.
+    : exists m1, store sz m addr' value = Some m1 /\ post m1.
   Proof.
     destruct H0.
     destruct H1.
@@ -316,7 +313,7 @@ Section Scalars.
     (Hsep : (sep (array (truncated_word sz) size addr values) R m))
     (_ : addr' = (word.add addr (word.of_Z (word.unsigned size * Z.of_nat n))))
     (_ : (n < length values)%nat) :
-    Memory.load sz m addr' =
+    load sz m addr' =
     Some (truncate_word sz (nth n values (word.of_Z 0))).
   Proof.
     rewrite <-(firstn_nth_skipn _ _ values (word.of_Z 0) H0) in Hsep.
@@ -334,7 +331,7 @@ Section Scalars.
     : let offset := word.unsigned (word.sub addr' addr) in
       (Z.modulo offset (word.unsigned size) = 0) ->
       (let n := Z.to_nat (offset / word.unsigned size) in (n < List.length values)%nat ->
-      Memory.load sz m addr' =
+      load sz m addr' =
       Some (truncate_word sz (nth n values (word.of_Z 0)))).
   Proof.
     intros.

@@ -148,6 +148,8 @@ Import WeakestPrecondition.
 Import coqutil.Map.Interface.
 
 Ltac straightline_stackalloc :=
+  fail.
+(*TODO
   match goal with Hanybytes: Memory.anybytes ?a ?n ?mStack |- _ =>
   let m := match goal with H : map.split ?mCobined ?m mStack |- _ => m end in
   let mCombined := match goal with H : map.split ?mCobined ?m mStack |- _ => mCobined end in
@@ -169,8 +171,11 @@ Ltac straightline_stackalloc :=
   by (rewrite stack_length; apply (ZifyInst.of_nat_to_nat_eq n))
   || fail 2 "negative stackalloc of size" n )
   end.
+ *)
 
 Ltac straightline_stackdealloc :=
+  fail.
+(*TODO
   lazymatch goal with |- exists _ _, Memory.anybytes ?a ?n _ /\ map.split ?m _ _ /\ _ =>
   let Hm := multimatch goal with Hm : _ m |- _ => Hm end in
   let stack := match type of Hm with context [Array.array Separation.ptsto _ a ?stack] => stack end in
@@ -191,6 +196,7 @@ Ltac straightline_stackdealloc :=
   refine (ex_intro _ m (ex_intro _ mStack (conj Hanybytes (conj Hsplit _))));
   clear Htmp Hsplit mStack Harray1 Hanybytes
   end.
+ *)
 
 Ltac rename_to_different H := once (idtac;
   let G := fresh H in
@@ -262,15 +268,15 @@ Ltac straightline :=
     eapply Scalars.store_four_of_sep; [solve[ecancel_assumption]|]
   | |- store Syntax.access_size.word _ _ _ _ =>
     eapply Scalars.store_word_of_sep; [solve[ecancel_assumption]|]
-  | |- bedrock2.Memory.load Syntax.access_size.one ?m ?a = Some ?ev =>
+  | |- bedrock2.Semantics.load Syntax.access_size.one ?m ?a = Some ?ev =>
     try subst ev; refine (@Scalars.load_one_of_sep _ _ _ _ _ _ _ _ _ _); ecancel_assumption
-  | |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.two ?m ?a = Some ?ev =>
+  | |- @bedrock2.Semantics.load _ ?word ?mem Syntax.access_size.two ?m ?a = Some ?ev =>
     try subst ev; refine (@Scalars.load_two_of_sep _ word _ mem _ a _ _ m _); ecancel_assumption
-  | |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
+  | |- @bedrock2.Semantics.load _ ?word ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
     try subst ev; refine (@Scalars.load_four_of_sep_32bit _ word _ mem _ eq_refl a _ _ m _); ecancel_assumption
-  | |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
+  | |- @bedrock2.Semantics.load _ ?word ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
     try subst ev; refine (@Scalars.load_four_of_sep _ word _ mem _ a _ _ m _); ecancel_assumption
-  | |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.word ?m ?a = Some ?ev =>
+  | |- @bedrock2.Semantics.load _ ?word ?mem Syntax.access_size.word ?m ?a = Some ?ev =>
     try subst ev; refine (@Scalars.load_word_of_sep _ word _ mem _ a _ _ m _); ecancel_assumption
   | |- exists l', Interface.map.of_list_zip ?ks ?vs = Some l' /\ _ =>
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
