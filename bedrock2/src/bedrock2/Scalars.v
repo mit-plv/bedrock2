@@ -1,4 +1,5 @@
 Require Import coqutil.Map.Interface bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Lift1Prop bedrock2.Array coqutil.Word.LittleEndianList.
+Require Import bedrock2.Semantics.
 Require Import bedrock2.Memory.
 Require Import Coq.Lists.List Coq.ZArith.ZArith.
 Require Import coqutil.Word.Interface coqutil.Map.Interface. (* coercions word and rep *)
@@ -13,7 +14,7 @@ Require Import bedrock2.ptsto_bytes.
 Import HList List Separation.Coercions.
 
 Section Scalars.
-  Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
+  Context {width : Z} {BW : Bitwidth.Bitwidth width} {word : Word.Interface.word width} {word_ok : word.ok word}.
 
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
   Context (Hl : forall sz, Z.of_nat (bytes_per(width:=width) sz) <= 2 ^ width).
@@ -39,70 +40,60 @@ Section Scalars.
   Definition truncate_word(sz: Syntax.access_size)(w: word): word :=
     word.of_Z (truncate_Z (bytes_per (width := width) sz) (word.unsigned w)).
 
-  Lemma load_Z_of_sep sz addr (value: Z) R m 
-    (Hsep : sep (truncated_scalar sz addr value) R m)
-    : Memory.load_Z sz m addr = Some (truncate_Z (bytes_per (width:=width) sz) value).
-  Proof.
-    cbv [load_Z].
-    epose proof load_bytes_WithoutTuples (bytes_per sz) m addr as H.
-    erewrite WithoutTuples__load_bytes_of_sep in H; eauto; cycle 1.
-    { rewrite length_le_split; trivial. }
-    cbv [option_map] in *. destruct load_bytes eqn:HL; inversion H.
-    (* rewrite H1. *)
-    (* WHY: Tactic generated a subgoal identical to the original goal. *)
-    setoid_rewrite H1; f_equal; clear H H1.
-    rewrite le_combine_split; cbv [truncate_Z]; rewrite Z.land_ones; blia.
-  Qed.
-
-  Lemma store_Z_of_sep sz addr (oldvalue value: Z) R m (post:_->Prop)
-    (Hsep : sep (truncated_scalar sz addr oldvalue) R m)
-    (Hpost : forall m, sep (truncated_scalar sz addr value) R m -> post m)
-    : exists m1, Memory.store_Z sz m addr value = Some m1 /\ post m1.
-  Proof.
-    cbv [store_Z].
-    rewrite store_bytes_WithoutTuples, tuple.to_list_of_list.
-    cbv [WithoutTuples.store_bytes].
-    erewrite WithoutTuples__load_bytes_of_sep; try eassumption; cycle 1.
-    { rewrite 2length_le_split; trivial. }
-    { rewrite length_le_split; trivial. }
-    eexists; split; trivial; eapply Hpost; clear Hpost.
-    eapply WithoutTuples__unchecked_store_bytes_of_sep; try eassumption.
-    { rewrite 2length_le_split; trivial. }
-  Qed.
+  Ltac t :=
+    try eassumption;
+    cbn;
+    rewrite ?length_le_split, ?le_combine_split, ?Z.land_ones;
+    auto; try Lia.lia.
 
   Lemma load_of_sep sz addr (value: word) R m
     (Hsep : sep (truncated_word sz addr value) R m)
-    : Memory.load sz m addr = Some (truncate_word sz value).
+    : load sz m addr = Some (truncate_word sz value).
   Proof.
-    cbv [load truncate_word truncated_word] in *.
-    erewrite load_Z_of_sep; eauto.
+    cbv [load store truncate_word truncated_word truncate_Z] in *.
+    erewrite ?load_bytes_of_sep; t.
   Qed.
 
   Lemma store_of_sep sz addr (oldvalue value: word) R m (post:_->Prop)
     (Hsep : sep (truncated_word sz addr oldvalue) R m)
     (Hpost : forall m, sep (truncated_word sz addr value) R m -> post m)
-    : exists m1, Memory.store sz m addr value = Some m1 /\ post m1.
+    : exists m1, store sz m addr value = Some m1 /\ post m1.
   Proof.
-    cbv [store truncate_word truncated_word] in *.
-    eapply store_Z_of_sep; eauto.
+    cbv [load store store_bytes truncated_word truncated_scalar littleendian truncate_word truncate_Z] in *.
+    erewrite ?load_bytes_of_sep; t.
+    eexists; split; eauto.
+    eapply Hpost, unchecked_store_bytes_of_sep; t.
   Qed.
 
   Lemma load_one_of_sep addr value R m
     (Hsep : sep (scalar8 addr value) R m)
-    : Memory.load Syntax.access_size.one m addr = Some (word.of_Z (byte.unsigned value)).
+    : load Syntax.access_size.one m addr = Some (word.of_Z (byte.unsigned value)).
   Proof.
-    cbv [load load_Z load_bytes bytes_per footprint tuple.unfoldn map.getmany_of_tuple tuple.option_all tuple.map tuple.to_list].
-    erewrite get_sep, le_combine_1 by exact Hsep; repeat f_equal.
+    epose proof byte.unsigned_range value. 
+    erewrite load_of_sep with (value:=word.of_Z (byte.unsigned value)); cycle 1;
+    cbv [truncated_scalar littleendian truncated_word truncate_word truncate_Z bytes_per byte.wrap le_split ptsto] in *.
+    { rewrite map.of_list_word_singleton, word.unsigned_of_Z.
+      cbv [word.wrap]; rewrite Z.mod_small; cycle 1.
+      { destruct BW as [[|]]; subst; Lia.lia. }
+      replace (byte.of_Z (byte.unsigned value)) with value; cycle 1.
+      { eapply byte.unsigned_inj; rewrite byte.unsigned_of_Z.
+        cbv [byte.wrap]; rewrite Z.mod_small; trivial. }
+      eassumption. }
+    { rewrite <-byte.wrap_unsigned.
+      cbv [truncated_word truncate_word truncate_Z bytes_per byte.wrap].
+      rewrite Z.land_ones, word.unsigned_of_Z by Lia.lia; cbn.
+      cbv [word.wrap]; repeat rewrite Z.mod_small; trivial.
+      all : destruct BW as [[|]]; subst; try Lia.lia. }
   Qed.
 
   Lemma load_two_of_sep addr value R m
     (Hsep : sep (scalar16 addr value) R m)
-    : Memory.load Syntax.access_size.two m addr = Some (truncate_word Syntax.access_size.two value).
+    : load Syntax.access_size.two m addr = Some (truncate_word Syntax.access_size.two value).
   Proof. eapply load_of_sep. exact Hsep. Qed.
 
   Lemma load_four_of_sep addr value R m
     (Hsep : sep (scalar32 addr value) R m)
-    : Memory.load Syntax.access_size.four m addr = Some (truncate_word Syntax.access_size.four value).
+    : load Syntax.access_size.four m addr = Some (truncate_word Syntax.access_size.four value).
   Proof. eapply load_of_sep. exact Hsep. Qed.
 
   Lemma truncate_word_nop_32bit(W32: width = 32)(value: word):
@@ -125,29 +116,22 @@ Section Scalars.
 
   Lemma load_four_of_sep_32bit(W32: width = 32) addr value R m
     (Hsep : sep (scalar32 addr value) R m)
-    : Memory.load Syntax.access_size.four m addr = Some value.
+    : load Syntax.access_size.four m addr = Some value.
   Proof.
     eapply load_of_sep in Hsep. rewrite Hsep. f_equal. apply truncate_word_nop_32bit. assumption.
   Qed.
 
   Lemma load_word_of_sep addr value R m
     (Hsep : sep (scalar addr value) R m)
-    : Memory.load Syntax.access_size.word m addr = Some value.
+    : load Syntax.access_size.word m addr = Some value.
   Proof.
-    cbv [load].
-    erewrite load_Z_of_sep by exact Hsep; f_equal.
-    cbv [truncate_Z bytes_per bytes_per_word].
-    eapply Properties.word.unsigned_inj.
-    rewrite !word.unsigned_of_Z.
-    rewrite <-Properties.word.wrap_unsigned at 2.
-    eapply Z.bits_inj'; intros i Hi.
-    pose proof word.width_pos (width:=width).
-    repeat ((rewrite ?bitblast.Z.testbit_mod_pow2, ?bitblast.Z.testbit_ones, ?Z.lor_spec, ?Z.shiftl_spec, ?Z.shiftr_spec, ?Z.land_spec by blia) || unfold word.wrap).
-    destruct (Z.ltb_spec0 i width); cbn [andb]; trivial; [].
-    destruct (Z.testbit (word.unsigned value) i); cbn [andb]; trivial; [].
-    destruct (Z.leb_spec0 0 i); try blia; cbn [andb];
-    eapply Z.ltb_lt;
-    rewrite Z2Nat.id; Z.div_mod_to_equations; Lia.nia.
+    erewrite load_of_sep by eassumption; f_equal.
+    cbv [truncate_word truncate_Z bytes_per bytes_per_word].
+    rewrite Z.land_ones by Lia.lia; rewrite Z.mod_small, word.of_Z_unsigned; trivial.
+    destruct (word.unsigned_range value); split; try Lia.lia.
+    eapply Z.lt_le_trans; [eassumption|].
+    eapply Z.pow_le_mono_r; try Lia.lia.
+    destruct Bitwidth.width_cases; clear Hsep; subst width; Z.div_mod_to_equations; Lia.lia.
   Qed.
 
   Lemma store_one_of_sep addr (oldvalue : byte) (value : word) R m (post:_->Prop)

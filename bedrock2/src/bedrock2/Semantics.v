@@ -1,5 +1,5 @@
 Require Import coqutil.sanity coqutil.Macros.subst coqutil.Macros.unique coqutil.Byte.
-Require Import coqutil.Datatypes.PrimitivePair coqutil.Datatypes.HList.
+Require Import coqutil.Word.LittleEndianList.
 Require Import coqutil.Decidable.
 Require Import bedrock2.Notations bedrock2.Syntax coqutil.Map.Interface coqutil.Map.OfListWord.
 Require Import BinIntDef coqutil.Word.Interface coqutil.Word.Bitwidth.
@@ -81,6 +81,11 @@ Section semantics.
   Context {locals: map.map String.string word}.
   Context {env: map.map String.string (list String.string * list String.string * cmd)}.
   Context {ext_spec: ExtSpec}.
+
+  Definition load s (m : mem) a : option word :=
+    option_map word.of_Z (option_map le_combine (load_bytes m a (bytes_per s))).
+  Definition store s m a (v : word) : option mem :=
+    store_bytes m a (le_split (bytes_per s) (word.unsigned v)).
 
   Local Notation metrics := MetricLog.
 

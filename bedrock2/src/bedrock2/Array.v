@@ -135,8 +135,32 @@ End Array.
 Section ByteArray.
   Context {width : Z} {word : Word.Interface.word width} {word_ok : word.ok word}.
   Context {mem : map.map word byte} {mem_ok : map.ok mem}.
+  Import Separation.Coercions Map.OfListWord.
+  Local Open Scope sep_scope.
   Local Notation array := (array (mem:=mem) ptsto (word.of_Z 1)).
-  Local Infix "*" := sep.
+  Local Coercion Z.of_nat : nat >-> Z.
+
+  Lemma array1_iff_eq_of_list_word_at (a : word) (bs : list byte)
+    (H : length bs <= 2 ^ width) : iff1 (array a bs) (bs$@a).
+  Proof.
+    symmetry.
+    revert H; revert a; induction bs; cbn [array]; intros.
+    { rewrite map.of_list_word_nil; cbv [emp iff1 exactly]; intuition auto. }
+    { etransitivity.
+      2: eapply Proper_sep_iff1.
+      3: eapply IHbs.
+      2: reflexivity.
+      2: cbn [length] in H; blia.
+      change (a::bs) with (cons a nil++bs).
+      rewrite map.of_list_word_at_app.
+      etransitivity.
+      1: eapply sep_eq_putmany, map.adjacent_arrays_disjoint; cbn [length] in *; blia.
+      etransitivity.
+      2:eapply sep_comm.
+      Morphisms.f_equiv.
+      rewrite map.of_list_word_singleton; try exact _.
+      cbv [ptsto iff1]; intuition auto. }
+  Qed.
 
   Lemma bytearray_address_inbounds xs (start : word) a
     (Hlen : word.unsigned (word.sub a start) < Z.of_nat (length xs))
@@ -181,21 +205,21 @@ Section ByteArray.
     subst i; symmetry; apply bytearray_append.
   Qed.
 
-  (** [anybytes] *)
+  (** [deprecated anybytes] *)
   Import Map.Properties Znat.
   Local Arguments Z.of_nat: simpl never.
 
   Lemma array_1_to_of_disjoint_list_zip: forall bs m (addr: word),
       array  addr bs m ->
-      map.of_disjoint_list_zip (Memory.ftprint addr (Z.of_nat (List.length bs))) bs = Some m.
+      map.of_disjoint_list_zip (Memory.Deprecated.ftprint addr (Z.of_nat (List.length bs))) bs = Some m.
   Proof.
     unfold map.of_disjoint_list_zip.
     induction bs; intros.
     - simpl in *. unfold emp in *. intuition congruence.
     - simpl in *. unfold sep in *. destruct H as (?&?&(?&Hlr)&?&?).
       specialize IHbs with (1 := ltac:(eassumption)). subst.
-      match goal with H:ptsto _ _ ?x |- _ => unfold ptsto in H; subst x end.
-      unfold Memory.ftprint in *. rewrite Nat2Z.id in *. simpl.
+      match goal with H:ptsto _ _ ?x |- _ => unfold ptsto, exactly in H; subst x end.
+      unfold Memory.Deprecated.ftprint in *. rewrite Nat2Z.id in *. simpl.
       rewrite IHbs.
       destruct (map.get _ addr) eqn:?.
       + unfold map.disjoint in *. specialize (Hlr addr).
@@ -208,33 +232,33 @@ Section ByteArray.
         symmetry. apply map.putmany_empty_r.
   Qed.
 
-  Lemma array_1_to_anybytes: forall bs m (addr: word),
+  Lemma array_1_to_deprecated_anybytes: forall bs m (addr: word),
       array  addr bs m ->
-      Memory.anybytes addr (Z.of_nat (List.length bs)) m.
+      Memory.Deprecated.anybytes addr (Z.of_nat (List.length bs)) m.
   Proof.
-    unfold Memory.anybytes.
+    unfold Memory.Deprecated.anybytes.
     intros. eauto using array_1_to_of_disjoint_list_zip.
   Qed.
 
   Lemma of_disjoint_list_zip_to_array_1: forall n (addr: word) bs m,
-      map.of_disjoint_list_zip (Memory.ftprint addr (Z.of_nat n)) bs = Some m ->
+      map.of_disjoint_list_zip (Memory.Deprecated.ftprint addr (Z.of_nat n)) bs = Some m ->
       array  addr bs m.
   Proof.
     induction n; intros.
-    - change (Z.of_nat 0) with 0 in *. unfold Memory.ftprint, map.of_disjoint_list_zip in *. simpl in *.
+    - change (Z.of_nat 0) with 0 in *. unfold Memory.Deprecated.ftprint, map.of_disjoint_list_zip in *. simpl in *.
       destruct bs eqn:?; simpl; subst; unfold emp; intuition congruence.
-    - unfold Memory.ftprint, map.of_disjoint_list_zip in H.
+    - unfold Memory.Deprecated.ftprint, map.of_disjoint_list_zip in H.
       rewrite Nat2Z.id in H.
       simpl in H.
       do 3 match type of H with match ?x with _ => _ end = _ => destruct x eqn:?; try discriminate end.
       inversion H; subst; clear H.
-      eapply sep_on_undef_put. 1: assumption. apply IHn. unfold map.of_disjoint_list_zip, Memory.ftprint.
+      eapply sep_on_undef_put. 1: assumption. apply IHn. unfold map.of_disjoint_list_zip, Memory.Deprecated.ftprint.
       rewrite Nat2Z.id.
       eassumption.
   Qed.
 
-  Lemma anybytes_to_array_1: forall m (addr: word) n,
-      Memory.anybytes addr n m ->
+  Lemma deprecated_anybytes_to_array_1: forall m (addr: word) n,
+      Memory.Deprecated.anybytes addr n m ->
       exists bs, array  addr bs m /\ List.length bs = Z.to_nat n.
   Proof.
     unfold Memory.anybytes.
@@ -242,7 +266,7 @@ Section ByteArray.
     destruct H as (?&?).
     assert (n < 0 \/ 0 <= n) as C by blia. destruct C as [C | C]. {
       destruct n; try blia.
-      unfold Memory.ftprint in H.
+      unfold Memory.Deprecated.ftprint in H.
       rewrite Z2Nat.inj_neg in H.
       simpl in *.
       unfold map.of_disjoint_list_zip in H. simpl in H. destruct x; try discriminate.
@@ -251,7 +275,7 @@ Section ByteArray.
     eexists.
     epose proof of_disjoint_list_zip_to_array_1 (Z.to_nat n) addr _ m as P.
     rewrite Z2Nat.id in P by assumption. split; eauto.
-    unfold Memory.ftprint in H.
+    unfold Memory.Deprecated.ftprint in H.
     apply map.of_disjoint_list_zip_length in H.
     rewrite List.length_unfoldn in H.
     blia.

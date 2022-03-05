@@ -3,10 +3,10 @@ Require Import coqutil.Map.Interface bedrock2.Lift1Prop. Import map.
 Section Sep.
   Context {key value} {map : map key value}.
   Definition emp (P : Prop) := fun m : map => m = empty /\ P.
+  Definition exactly (m : map) : map-> Prop := eq m.
   Definition sep (p q : map -> Prop) m :=
     exists mp mq, split m mp mq /\ p mp /\ q mq.
-  Definition ptsto k v := fun m : map => m = put empty k v.
-  Definition read k (P : value -> rep -> Prop) := (ex1 (fun v => sep (ptsto k v) (P v))).
+  Definition ptsto k v := exactly (put empty k v).
 
   Fixpoint seps (xs : list (rep -> Prop)) : rep -> Prop :=
     match xs with
@@ -16,10 +16,8 @@ Section Sep.
     end.
 End Sep.
 
-Definition sepclause_of_map {key value map} (m : @map.rep key value map)
-  : map.rep -> Prop := Logic.eq m.
 Module Import Coercions.
-  Global Coercion sepclause_of_map : Interface.map.rep >-> Funclass.
+  Global Coercion exactly : Interface.map.rep >-> Funclass.
 End Coercions.
 
 Declare Scope sep_scope.
