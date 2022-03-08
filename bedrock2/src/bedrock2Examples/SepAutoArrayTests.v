@@ -2,14 +2,13 @@ Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Bitwidth32.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
 Require Import bedrock2.OperatorOverloading. Local Open Scope oo_scope.
+Import Coq.Lists.List.ListNotations. Local Open Scope list_scope.
+Require Import bedrock2.ListIndexNotations. Local Open Scope list_index_scope.
 
 Lemma list_goal_after_simplifications[A: Type]{inh: inhabited A}(f: A -> A): forall ws,
     (16 <= length ws)%nat ->
-    List.firstn 7 ws ++ [f (List.nth 7 ws default)] ++ List.skipn 8 ws =
-    List.firstn 2 ws ++
-    List.firstn 5 (List.skipn 2 ws) ++
-    [f (List.nth 5 (List.firstn 10 (List.skipn 2 ws)) default)] ++
-    List.skipn 6 (List.firstn 10 (List.skipn 2 ws)) ++ List.skipn 12 ws.
+    ws[:7] ++ [f (ws[7])] ++ ws[8:] =
+    ws[:2] ++ ws[2:][:5] ++ [f (ws[2:][:10][5])] ++ ws[2:][6:10] ++ ws[12:].
 Proof.
   intros.
   (* list equality example, solved partially manually
@@ -45,7 +44,6 @@ Qed.
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
-  Local Open Scope list_scope.
 
   Add Ring wring : (Properties.word.ring_theory (word := word))
         ((*This preprocessing is too expensive to be always run, especially if
