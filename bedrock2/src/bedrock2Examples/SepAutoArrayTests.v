@@ -5,42 +5,6 @@ Require Import bedrock2.OperatorOverloading. Local Open Scope oo_scope.
 Import Coq.Lists.List.ListNotations. Local Open Scope list_scope.
 Require Import bedrock2.ListIndexNotations. Local Open Scope list_index_scope.
 
-Lemma list_goal_after_simplifications[A: Type]{inh: inhabited A}(f: A -> A): forall ws,
-    (16 <= length ws)%nat ->
-    ws[:7] ++ [f (ws[7])] ++ ws[8:] =
-    ws[:2] ++ ws[2:][:5] ++ [f (ws[2:][:10][5])] ++ ws[2:][6:10] ++ ws[12:].
-Proof.
-  intros.
-  (* list equality example, solved partially manually
-     to show the kinds of steps needed, TODO automate *)
-  replace (List.firstn 7 ws) with (List.firstn 2 ws ++ List.firstn 5 (List.skipn 2 ws)).
-  2: {
-    rewrite List.firstn_skipn_comm.
-    rewrite <- (List.firstn_skipn 2 (List.firstn 7 ws)).
-    f_equal.
-    rewrite List.firstn_firstn.
-    change (Init.Nat.min 2 7) with 2%nat.
-    reflexivity.
-  }
-  rewrite <- List.app_assoc.
-  f_equal.
-  f_equal.
-  f_equal.
-  { rewrite List.firstn_skipn_comm.
-    rewrite List.nth_skipn.
-    rewrite List.nth_firstn by lia.
-    reflexivity. }
-  { rewrite List.firstn_skipn_comm.
-    rewrite List.skipn_skipn.
-    change (2 + 10)%nat with ((6 + 2) + 4)%nat.
-    rewrite <- List.firstn_skipn_comm.
-    change 12%nat with (4 + 8)%nat.
-    change (6 + 2)%nat with 8%nat.
-    rewrite <- List.skipn_skipn.
-    rewrite List.firstn_skipn.
-    reflexivity. }
-Qed.
-
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
@@ -117,9 +81,7 @@ Section WithParameters.
       clear HM'.
       unfold List.upd, List.upds.
       repeat (repeat word_simpl_step_in_goal; fwd).
-      pose proof list_goal_after_simplifications as P.
-      specialize P with (f := word.mul (word.of_Z (word := word) 2)).
-      eapply P. assumption.
+      reflexivity.
     }
     exact impl1_refl.
   Qed.
@@ -153,9 +115,7 @@ Section WithParameters.
       f_equal.
       unfold List.upd, List.upds.
       repeat (repeat word_simpl_step_in_goal; fwd).
-      pose proof list_goal_after_simplifications as P.
-      specialize P with (f := word.mul (word.of_Z (word := word) 2)).
-      eapply P. assumption.
+      reflexivity.
     }
     exact impl1_refl.
   Qed.

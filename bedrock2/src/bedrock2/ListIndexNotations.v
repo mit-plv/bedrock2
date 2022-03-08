@@ -1,4 +1,7 @@
 Require Import Coq.Lists.List.
+Require Import Coq.micromega.Lia.
+Require Import coqutil.Tactics.fwd.
+Require Import bedrock2.groundcbv.
 Require Import coqutil.Datatypes.List.
 Require Import coqutil.Datatypes.Inhabited.
 
@@ -100,3 +103,132 @@ Section Tests.
   Goal xs[i := a][j := b] = xs[j := b][i := f (ys[4])]. Abort.
   Goal List.upds xs i ys = zs[i:k]. unfold List.upds. Abort.
 End Tests.
+
+
+(* makes expressions a bit more complicated by repeating n, but enables detection
+   of merge opportunities around ++ *)
+#[export] Hint Rewrite List.firstn_skipn_comm : fwd_rewrites.
+
+#[export] Hint Rewrite List.nth_skipn : fwd_rewrites.
+#[export] Hint Rewrite List.nth_firstn using lia : fwd_rewrites.
+
+Module List. Section __.
+  Context [A: Type].
+
+  (* Rewrite lemmas to merge patterns similar to `xs[i:j] ++ xs[j:k]` into `xs[i:k]`.
+     We could normalize everything into `xs[_:_]` form (instead of also allowing `xs[:_]`
+     and `xs[_:]`) and insist on writing `xs ++ ys ++ zs ++ []` instead of just
+     `xs ++ ys ++ zs`, which would then only require one merging rewrite lemma, but
+     then other ad-hoc rewrites might break this form requirement, so we distinguish
+     three dimensions along which the rewrite lemma to merge `xs[i:j] ++ xs[j':k]`
+     has to vary:
+     - On the left, is there only an end index (0) or both a start+end index (1)?
+     - On the right, is there only a start index (0) or both a start+end index (1)?
+     - Is the right list the last one (0) or is another one appended to it (1)?
+     By "is there a start index", we mean "is it wrapped in a List.skipn", and
+     by "is there an end index", we mean "is it wrapped in a List.firstn". *)
+
+  Lemma merge_sublist_000: forall j j' (xs: list A),
+      j = j' ->
+      List.firstn j xs ++ List.skipn j' xs = xs.
+  Proof.
+    intros. subst j'. apply List.firstn_skipn.
+  Qed.
+
+  Lemma merge_sublist_001: forall j j' (xs ys: list A),
+      j = j' ->
+      List.firstn j xs ++ List.skipn j' xs ++ ys = xs ++ ys.
+  Proof.
+    intros. subst j'. rewrite List.app_assoc. f_equal. apply List.firstn_skipn.
+  Qed.
+
+  Lemma merge_sublist_010: forall j j' k (xs: list A),
+      (j = j' /\ j' <= k)%nat ->
+      List.firstn j xs ++ List.skipn j' (List.firstn k xs) = List.firstn k xs.
+  Proof.
+    intros. destruct H as (? & H). subst j'.
+    rewrite <- (List.firstn_skipn j (List.firstn k xs)) at 2.
+    f_equal. rewrite List.firstn_firstn. f_equal. lia.
+  Qed.
+
+  Lemma merge_sublist_011: forall j j' k (xs ys: list A),
+      (j = j' /\ j' <= k)%nat ->
+      List.firstn j xs ++ List.skipn j' (List.firstn k xs) ++ ys = List.firstn k xs ++ ys.
+  Proof.
+    intros. rewrite List.app_assoc. f_equal. apply merge_sublist_010. assumption.
+  Qed.
+
+  Lemma merge_sublist_100: forall i j j' (xs: list A),
+      (i <= j /\ j = j')%nat ->
+      List.skipn i (List.firstn j xs) ++ List.skipn j' xs = List.skipn i xs.
+  Proof.
+    intros. destruct H as (H & ?). subst j'.
+    rewrite <- (List.firstn_skipn (j-i) (List.skipn i xs)).
+    rewrite List.firstn_skipn_comm.
+    rewrite List.skipn_skipn.
+    repeat match goal with
+           | |- @eq (list _) _ _ => f_equal
+           end.
+    all: lia.
+  Qed.
+
+  Lemma merge_sublist_101: forall i j j' (xs ys: list A),
+      (i <= j /\ j = j')%nat ->
+      List.skipn i (List.firstn j xs) ++ List.skipn j' xs ++ ys = List.skipn i xs ++ ys.
+  Proof.
+    intros. rewrite List.app_assoc. f_equal. apply merge_sublist_100. assumption.
+  Qed.
+
+  Lemma merge_sublist_110: forall i j j' k (xs: list A),
+      (i <= j /\ j = j' /\ j' <= k)%nat ->
+      List.skipn i (List.firstn j xs) ++ List.skipn j' (List.firstn k xs) =
+        List.skipn i (List.firstn k xs).
+  Proof.
+    intros. destruct H as (? & ? & ?). subst j'.
+    rewrite <- (List.firstn_skipn (j-i) (List.skipn i (List.firstn k xs))).
+    rewrite List.firstn_skipn_comm.
+    rewrite List.skipn_skipn.
+    rewrite List.firstn_firstn.
+    repeat match goal with
+           | |- @eq (list _) _ _ => f_equal
+           end.
+    all: lia.
+  Qed.
+
+  Lemma merge_sublist_111: forall i j j' k (xs ys: list A),
+      (i <= j /\ j = j' /\ j' <= k)%nat ->
+      List.skipn i (List.firstn j xs) ++ List.skipn j' (List.firstn k xs) ++ ys =
+        List.skipn i (List.firstn k xs) ++ ys.
+  Proof.
+    intros. rewrite List.app_assoc. f_equal. apply merge_sublist_110. assumption.
+  Qed.
+End __. End List.
+
+#[export] Hint Rewrite
+  List.merge_sublist_000
+  List.merge_sublist_001
+  List.merge_sublist_010
+  List.merge_sublist_011
+  List.merge_sublist_100
+  List.merge_sublist_101
+  List.merge_sublist_110
+  List.merge_sublist_111
+using lia : fwd_rewrites.
+
+Section ListRewriterTests.
+  Import ListNotations. Local Open Scope list_scope.
+  Local Open Scope list_index_scope.
+
+  Ltac fwd_rewrites ::= fwd_rewrite_db_in_star.
+
+  Goal forall [A: Type] {inh: inhabited A}(f: A -> A) ws,
+      (16 <= length ws)%nat ->
+      ws[:7] ++ [f (ws[7])] ++ ws[8:] =
+        ws[:2] ++ ws[2:][:5] ++ [f (ws[2:][:10][5])] ++ ws[2:][6:10] ++ ws[12:].
+  Proof.
+    intros.
+    repeat (groundcbv.groundcbv_in_goal; fwd).
+    reflexivity.
+    all: fail.
+  Abort.
+End ListRewriterTests.
