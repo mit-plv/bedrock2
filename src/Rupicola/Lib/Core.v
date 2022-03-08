@@ -2102,8 +2102,8 @@ Section Array.
     }
     pose proof (List.firstn_skipn max_len xs) as E.
     pose proof @List.firstn_length_le _ xs max_len B as A.
-    destruct (List.firstn max_len xs) as [|h1 t1] eqn:E1; [ ZnWords | ].
-    destruct (List.skipn max_len xs) as [|h2 t2] eqn:E2; [ ZnWords | ].
+    destruct (List.firstn max_len xs) as [|h1 t1] eqn:E1; [ ZnWordsL | ].
+    destruct (List.skipn max_len xs) as [|h2 t2] eqn:E2; [ ZnWordsL | ].
     rewrite <- E in H.
     SeparationLogic.seprewrite_in @array_append H.
     SeparationLogic.seprewrite_in @array_cons H.
