@@ -22,7 +22,6 @@ Require Import bedrock2.groundcbv.
 Export List.ListNotations. Open Scope list_scope.
 Require Export bedrock2.SepCalls.
 Require Export bedrock2.TransferSepsOrder.
-Require Export bedrock2.SepAddrLast. (* goes last because it redefines "array" and others *)
 
 Ltac fwd_rewrites ::= fwd_rewrite_db_in_star.
 

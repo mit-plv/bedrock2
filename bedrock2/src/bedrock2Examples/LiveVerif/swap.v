@@ -49,6 +49,48 @@ Lemma ands_nil: ands nil. Proof. cbn. auto. Qed.
 Lemma ands_cons: forall [P: Prop] [Ps: list Prop], P -> ands Ps -> ands (P :: Ps).
 Proof. cbn. auto. Qed.
 
+Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
+| mk_get_option: forall (a: A) (post: A -> Prop), post a -> get_option (Some a) post.
+
+Section SepLog.
+  Context {width: Z} {word: word.word width} {mem: map.map word byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+
+  Lemma load_of_sep_cps: forall sz addr value R m (post: word -> Prop),
+      sep (addr :-> value : truncated_word sz) R m /\ post (truncate_word sz value) ->
+      get_option (Memory.load sz m addr) post.
+  Proof.
+    intros. destruct H. eapply load_of_sep in H. rewrite H.
+    constructor. assumption.
+  Qed.
+
+  Lemma load_word_of_sep_cps: forall addr value R m (post: word -> Prop),
+      sep (addr :-> value : scalar) R m /\ post value ->
+      get_option (Memory.load Syntax.access_size.word m addr) post.
+  Proof.
+    intros. destruct H. eapply load_word_of_sep in H. rewrite H.
+    constructor. assumption.
+  Qed.
+
+  Lemma store_word_of_sep_cps_two_subgoals: forall addr oldvalue newvalue R m (post: mem -> Prop),
+      seps [addr :-> oldvalue : scalar; R] m ->
+      (forall m', seps [addr :-> newvalue : scalar; R] m' -> post m') ->
+      get_option (Memory.store Syntax.access_size.word m addr newvalue) post.
+  Proof.
+    intros. eapply Scalars.store_word_of_sep in H. 2: eassumption.
+    destruct H as (m1 & E & P). rewrite E. constructor. exact P.
+  Qed.
+
+  Lemma store_word_of_sep_cps: forall addr oldvalue newvalue R m (post: mem -> Prop),
+      seps [addr :-> oldvalue : scalar; R;
+            emp (forall m', seps [addr :-> newvalue : scalar; R] m' -> post m')] m ->
+      get_option (Memory.store Syntax.access_size.word m addr newvalue) post.
+  Proof.
+    intros. unfold seps in H. apply sep_assoc in H. apply sep_emp_r in H. destruct H.
+    eapply store_word_of_sep_cps_two_subgoals. 1: unfold seps. 1: eassumption. eassumption.
+  Qed.
+End SepLog.
+
 Section WithParams.
   Import bedrock2.Syntax.
   Context {word: word.word 32} {mem: map.map word byte} {locals: map.map string word}.
@@ -121,7 +163,7 @@ Section WithParams.
 
   Lemma wp_load_anysize: forall m l sz addr (post: word -> Prop),
       wp_expr m l addr (fun a =>
-        exists v R, seps [a |-> truncated_word sz v; R; emp (post (truncate_word sz v))] m) ->
+        exists v R, seps [a :-> v : truncated_word sz; R; emp (post (truncate_word sz v))] m) ->
       wp_expr m l (expr.load sz addr) post.
   Proof.
     intros. constructor. cbn. unfold load. inversion H.
@@ -137,7 +179,7 @@ Section WithParams.
 
   Lemma wp_load_word: forall m l addr (post: word -> Prop),
       wp_expr m l addr (fun a =>
-        exists v R, seps [a |-> scalar v; R; emp (post v)] m) ->
+        exists v R, seps [a :-> v : scalar; R; emp (post v)] m) ->
       wp_expr m l (expr.load access_size.word addr) post.
   Proof.
     intros. eapply wp_load_anysize.
@@ -385,8 +427,8 @@ Section WithParams.
   Lemma wp_store: forall fs ea ev t m l rest post,
       wp_expr m l ea (fun addr =>
         wp_expr m l ev (fun newvalue => exists oldvalue R,
-          seps [addr |-> scalar oldvalue; R] m /\
-          (forall m', seps [addr |-> scalar newvalue; R] m' ->
+          seps [addr :-> oldvalue : scalar; R] m /\
+          (forall m', seps [addr :-> newvalue : scalar; R] m' ->
                       wp_cmd (call fs) rest t m' l post))) ->
       wp_cmd (call fs) (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
   Proof.
@@ -921,12 +963,12 @@ Section MergingSep.
      you might not want to merge them, but first combine them with other sep clauses
      until they both have the same footprint *)
   Lemma merge_seps_at_indices_same_addr_and_pred (m: mem) i j [V: Type] a (v1 v2: V)
-        (pred: V -> word -> mem -> Prop) (Ps1 Ps2 Qs: list (mem -> Prop)) (b: bool):
-    nth i Ps1 = (a |-> pred v1) ->
-    nth j Ps2 = (a |-> pred v2) ->
+        (pred: sep_predicate mem V) (Ps1 Ps2 Qs: list (mem -> Prop)) (b: bool):
+    nth i Ps1 = (a :-> v1 : pred) ->
+    nth j Ps2 = (a :-> v2 : pred) ->
     seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
     seps ((seps (if b then (remove_nth i Ps1) else (remove_nth j Ps2)))
-            :: (a |-> pred (if b then v1 else v2)) :: Qs) m.
+            :: (a :-> (if b then v1 else v2) : pred) :: Qs) m.
   Proof.
     intros. eapply (merge_seps_at_indices m i j) in H1; [|eassumption..].
     destruct b; assumption.
@@ -958,19 +1000,19 @@ Section MergingSep.
   Qed.
 
   Lemma expose_addr_of_then_in_else:
-    forall (m: mem) a v (Ps1 Ps2 Rs Qs: list (mem -> Prop)) (b: bool),
-    impl1 (seps Ps2) (seps ((a |-> v) :: Rs)) ->
+    forall (m: mem) (a: word) v (Ps1 Ps2 Rs Qs: list (mem -> Prop)) (b: bool),
+    impl1 (seps Ps2) (seps ((v a) :: Rs)) ->
     seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
-    seps ((seps (if b then Ps1 else ((a |-> v) :: Rs))) :: Qs) m.
+    seps ((seps (if b then Ps1 else ((v a) :: Rs))) :: Qs) m.
   Proof.
     intros. destruct b.
     - assumption.
     - (* TODO make seprewrite_in work for impl1 *)
       pose proof (seps'_iff1_seps (seps Ps2 :: Qs)) as A. eapply iff1ToEq in A.
       rewrite <- A in H0. cbn [seps'] in H0. clear A.
-      pose proof (seps'_iff1_seps (seps (a |-> v :: Rs) :: Qs)) as A. eapply iff1ToEq in A.
+      pose proof (seps'_iff1_seps (seps ((v a) :: Rs) :: Qs)) as A. eapply iff1ToEq in A.
       rewrite <- A. cbn [seps']. clear A.
-      eassert (impl1 (sep (seps Ps2) (seps' Qs)) (sep (seps (a |-> v :: Rs)) _)) as A. {
+      eassert (impl1 (sep (seps Ps2) (seps' Qs)) (sep (seps (v a :: Rs)) _)) as A. {
         ecancel.
       }
       eapply A. assumption.
@@ -1228,9 +1270,9 @@ Ltac same_lhs P Q :=
 
 Ltac same_addr_and_pred P Q :=
   lazymatch P with
-  | ?a |-> ?pred _ =>
+  | sepcl ?pred _ ?a =>
       lazymatch Q with
-      | a |-> pred _ => constr:(true)
+      | sepcl pred _ a => constr:(true)
       | _ => constr:(false)
       end
   | _ => constr:(false)
@@ -1582,7 +1624,6 @@ Ltac adhoc_lia_performance_fixes :=
 Require Import coqutil.Sorting.Permutation.
 
 Load LiveVerif.
-Import SepLogPredsWithAddrLast.
 Import bedrock2.SepBulletPoints.
 (* to re-override Notations loaded trough `Load LiveVerif/bedrock2.Map.SeparationLogic` *)
 
@@ -1639,7 +1680,7 @@ Defined.
 Definition merge_tests: {f: list string * list string * cmd &
   forall fs t m a vs R,
     m satisfies <{
-      * a |-> word_array vs
+      * a :-> vs : word_array
       * R
     }> ->
     List.length vs = 3%nat ->
@@ -1683,7 +1724,7 @@ Hint Extern 4 (Permutation _ _) =>
 Definition sort3: {f: list string * list string * cmd &
   forall fs t m a vs R,
     m satisfies <{
-      * a |-> word_array vs
+      * a :-> vs : word_array
       * R
     }> ->
     List.length vs = 3%nat ->
@@ -1693,7 +1734,7 @@ Definition sort3: {f: list string * list string * cmd &
         Permutation vs [v0; v1; v2] /\
         \[v0] <= \[v1] <= \[v2] /\
         m' satisfies <{
-          * a |-> word_array [v0; v1; v2]
+          * a :-> [v0; v1; v2] : word_array
           * R
         }>
   )}.
@@ -1744,14 +1785,14 @@ Defined.
 Definition swap: {f: list string * list string * cmd &
   forall fs t m a_addr b_addr a b R,
     m satisfies <{
-      * a_addr |-> scalar a
-      * b_addr |-> scalar b
+      * a_addr :-> a : scalar
+      * b_addr :-> b : scalar
       * R
     }> ->
     vc_func fs f t m [a_addr; b_addr] (fun t' m' retvs =>
       m' satisfies <{
-        * a_addr |-> scalar b
-        * b_addr |-> scalar a
+        * a_addr :-> b : scalar
+        * b_addr :-> a : scalar
         * R
       }> /\ retvs = [] /\ t' = t
   )}.

@@ -20,7 +20,7 @@ Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.Array.
 Require Export bedrock2.ZnWords.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
-Require Export bedrock2.SepAddrLast.
+Require Export bedrock2.SepClause.
 Export List.ListNotations. Open Scope list_scope.
 
 Section TransferSepsOrder.
@@ -57,9 +57,9 @@ Ltac impl1_syntactic_reflexivity :=
 
 Ltac clause_index clause clauses start_index default_index :=
   lazymatch clauses with
-  | cons (at_addr ?a _) ?tail =>
+  | cons (sepcl _ _ ?a) ?tail =>
     lazymatch clause with
-    | at_addr a _ => constr:(start_index)
+    | sepcl _ _ a => constr:(start_index)
     | _ => clause_index clause tail (S start_index) default_index
     end
   | cons clause _ => constr:(start_index)
@@ -161,11 +161,10 @@ Section TestTransferSepsOrder.
           {mem : map.map word byte} {mem_ok: map.ok mem}.
 
   Lemma reordering_test: forall addr1 addr2 addr3 addr4 v1_old v1_new v2 v3 v4 R (m m': mem),
-    seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m ->
+    seps [addr1 :-> v1_old : scalar; addr2 :-> v2 : scalar; addr3 :-> v3 : scalar; R] m ->
     (* value at addr1 was updated, addr2 was consumed, addr4 was added, and order changed: *)
-    seps [R; seps [addr3 |-> scalar v3; addr4 |-> scalar v4]; addr1 |-> scalar v1_new] m' ->
-    (* desired order:
-    seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m1 *)
+    seps [R; seps [addr3 :-> v3 : scalar; addr4 :-> v4 : scalar];
+          addr1 :-> v1_new : scalar] m' ->
     True ->
     True.
   Proof.
@@ -177,7 +176,8 @@ Section TestTransferSepsOrder.
     flatten_seps_in M2.
     transfer_sep_order_from_to M M2.
     lazymatch type of M with
-    | seps [addr1 |-> scalar v1_new; addr3 |-> scalar v3; addr4 |-> scalar v4; R] m => idtac
+    | seps [addr1 :-> v1_new : scalar; addr3 :-> v3 : scalar; addr4 :-> v4 : scalar; R] m =>
+        idtac
     end.
   Abort.
 End TestTransferSepsOrder.

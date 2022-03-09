@@ -22,16 +22,15 @@ Section WithParameters.
   Context (sample_call: word -> word -> cmd).
 
   Hypothesis sample_call_correct: forall m a1 n (vs: list word) R (post: mem -> Prop),
-      seps [a1 |-> with_len (Z.to_nat (word.unsigned n)) word_array vs; R] m /\
+      seps [a1 :-> vs : with_len (Z.to_nat (word.unsigned n)) word_array; R] m /\
       (forall m',
         (* Currently, the postcondition also needs a `with_len` so that when the caller
            merges the pieces back together, it recognizes the clause as having the
            same shape as in the precondition.
            TODO consider ways of supporting to drop with_len in the postcondition when
            it can be derived like here (List.upd is guaranteed to preserve the length). *)
-        seps [a1 |-> with_len (Z.to_nat (word.unsigned n))
-                word_array (List.upd vs 5 (List.nth 5 vs default * (word.of_Z (width := 32) 2)));
-              R] m' ->
+        seps [a1 :-> List.upd vs 5 (List.nth 5 vs default * (word.of_Z (width := 32) 2))
+            : with_len (Z.to_nat (word.unsigned n)) word_array; R] m' ->
         post m') ->
       wp (sample_call a1 n) m post.
 
@@ -43,12 +42,12 @@ Section WithParameters.
 
   Definition sample_call_usage_goal := forall ws R addr m,
       (16 <= List.length ws)%nat ->
-      seps [addr |-> word_array ws; R] m ->
+      seps [addr :-> ws : word_array; R] m ->
       wp (sample_call (word.add addr (word.of_Z (2*4)))
                       (word.of_Z 10))
-         m
-         (fun m' => seps [addr |-> word_array
-            (List.upd ws 7 (List.nth 7 ws default * word.of_Z (width := 32) 2)); R] m').
+         m (fun m' => seps [
+           addr :-> List.upd ws 7 (List.nth 7 ws default * word.of_Z (width := 32) 2)
+                         : word_array; R] m').
 
   Lemma use_sample_call_with_tactics_unfolded: sample_call_usage_goal.
   Proof.
@@ -76,7 +75,6 @@ Section WithParameters.
       | |- impl1 ?LHS ?RHS => replace LHS with RHS
       end.
       1: exact impl1_refl.
-      f_equal.
       f_equal.
       clear HM'.
       unfold List.upd, List.upds.
@@ -111,7 +109,6 @@ Section WithParameters.
       | |- impl1 ?LHS ?RHS => replace LHS with RHS
       end.
       1: exact impl1_refl.
-      f_equal.
       f_equal.
       unfold List.upd, List.upds.
       repeat (repeat word_simpl_step_in_goal; fwd).

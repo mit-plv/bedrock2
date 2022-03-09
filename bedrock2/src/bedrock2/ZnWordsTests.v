@@ -51,8 +51,6 @@ Section ZnWordTests.
     intros. ZnWords.
   Qed.
 
-  Let at_addr(addr: word)(clause: word -> mem -> Prop): mem -> Prop := clause addr.
-
   Goal forall a : word,
     let arguments := [a] in
     forall (vs : list word) (R : mem -> Prop),
@@ -68,28 +66,8 @@ Section ZnWordTests.
     let w1 := w1_1 in
     let w2 := w2_0 in
     ~ \[w2] < \[w1] ->
-    forall m : mem,
-    seps [a |-> word_array ([w1_0] ++ [w1] ++ List.skipn 2 vs); R] m ->
-    (forall (vs0 vs1 : list word) (v : word) (vs2 : list word),
-     vs0 = vs1 ++ [v] ++ vs2 /\ len vs1 = Z.to_nat (\[a ^+ /[8] ^- a] / 4) ->
-     Lift1Prop.iff1
-       (sep (a |-> word_array vs1)
-          (sep ((a ^+ /[8]) |-> scalar v)
-             ((a ^+ /[4 * S (Z.to_nat (\[a ^+ /[8] ^- a] / 4))]) |-> word_array vs2)))
-       (a |-> word_array vs0)) ->
-    forall m' : mem,
-    sep ((a ^+ /[8]) |-> scalar w2)
-      (sep R
-         (sep
-            (a |-> word_array
-                     (List.firstn (Z.to_nat (\[a ^+ /[8] ^- a] / 4))
-                        ([w1_0] ++ [w1] ++ List.skipn 2 vs)))
-            ((a ^+ /[4 * S (Z.to_nat (\[a ^+ /[8] ^- a] / 4))]) |->
-             word_array
-               (List.skipn (S (Z.to_nat (\[a ^+ /[8] ^- a] / 4)))
-                  ([w1_0] ++ [w1] ++ List.skipn 2 vs))))) m' ->
-    len (List.firstn (Z.to_nat (\[a ^+ /[8] ^- a] / 4)) ([w1_0] ++ [w1] ++ List.skipn 2 vs)) =
-    Z.to_nat (\[a ^+ /[8] ^- a] / 4).
+    len (List.firstn (Z.to_nat (\[a ^+ /[8] ^- a] / 4)) ([w1_0] ++ [w1] ++ List.skipn 2 vs))
+    = Z.to_nat (\[a ^+ /[8] ^- a] / 4).
   Proof.
     intros. list_length_rewrites_without_sideconds_in_goal. ZnWords.
   Qed.

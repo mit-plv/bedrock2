@@ -263,18 +263,19 @@ Section Riscv.
         fwd. rewrite <- H4p1, <- H4p2. eauto.
   Qed.
 
-  Definition instr(decoder: Z -> Instruction)(inst: Instruction)(addr: word): mem -> Prop :=
-    ex1 (fun z => sep (addr |-> truncated_scalar access_size.four z)
+  Definition instr(decoder: Z -> Instruction): sep_predicate mem Instruction :=
+    fun (addr: word) (inst: Instruction) =>
+    ex1 (fun z => sep (addr :-> z : truncated_scalar access_size.four)
                       (emp (decoder z = inst /\ 0 <= z < 2 ^ 32))).
 
   (* TODO more generic handling of ex1 *)
   Lemma instr_decode: forall {addr decoder inst R m},
-    (sep (addr |-> instr decoder inst) R) m ->
-    exists z, (sep (addr |-> truncated_scalar access_size.four z) R) m /\
+    (sep (addr :-> inst : instr decoder) R) m ->
+    exists z, (sep (addr :-> z : truncated_scalar access_size.four) R) m /\
               decoder z = inst /\ 0 <= z < 2 ^ 32.
   Proof.
     intros.
-    unfold instr, at_addr, ex1 in *.
+    unfold instr, sepcl, ex1 in *.
     unfold sep, emp, map.split in *. fwd.
     exists a.
     split; auto.
@@ -282,26 +283,24 @@ Section Riscv.
   Qed.
 
   Lemma instr_IM_impl1_I: forall iinst addr,
-      impl1 (addr |-> instr mdecode (IInstruction iinst))
-            (addr |-> instr idecode (IInstruction iinst)).
+      impl1 (addr :-> IInstruction iinst : instr mdecode)
+            (addr :-> IInstruction iinst : instr idecode).
   Proof.
     unfold impl1. intros. eapply (fun x => conj x I) in H. eapply sep_emp_r in H.
     eapply instr_decode in H. fwd.
     eapply sep_emp_r in Hp0. fwd.
-    unfold at_addr, instr, ex1. exists z. apply sep_emp_r.
+    unfold sepcl, instr, ex1. exists z. apply sep_emp_r.
     auto using decode_Imul_I_to_I.
   Qed.
   Hint Resolve instr_IM_impl1_I : ecancel_impl.
 
   Lemma idecode_array_implies_program: forall addr insts,
-      impl1 (addr |-> array (instr idecode) 4 insts)
+      impl1 (addr :-> insts : array (instr idecode) (word.of_Z 4))
             (program RV32IM addr insts).
   Proof.
   Admitted.
 
-  Declare Scope array_abbrevs_scope.
-  Open Scope array_abbrevs_scope.
-  Notation "'program' d" := (array (instr d) 4) (at level 10): array_abbrevs_scope.
+  Notation program d := (array (instr d) (word.of_Z 4)).
 
   Definition funimplsList := softmul :: rpmul.rpmul :: nil.
   Definition prog := map.of_list funimplsList.
@@ -359,7 +358,7 @@ Section Riscv.
   Qed.
 
   Lemma no_M_from_I_sep: forall (mach: RiscvMachine) insts R,
-      sep (mach.(getPc) |-> program idecode insts) R mach.(getMem) ->
+      sep (mach.(getPc) :-> insts : program idecode) R mach.(getMem) ->
       mach.(getXAddrs) = List.unfoldn (word.add (word.of_Z 1))
                                       (4 * Datatypes.length insts) mach.(getPc) ->
       MinimalNoMul.no_M mach.
@@ -399,15 +398,15 @@ Section Riscv.
          are sufficient, but to be more robust agains future changes in the
          handler implementation, we require a bit more stack space *)
       128 <= word.unsigned (word.sub stack_pastend stack_start) ->
-      seps [a_regs |-> with_len 32 word_array regvals;
-            initial.(pc) |-> program idecode mul_insts;
+      seps [a_regs :-> regvals : with_len 32 word_array;
+            initial.(pc) :-> mul_insts : program idecode;
             LowerPipeline.mem_available stack_start stack_pastend;
             R] initial.(MinimalCSRs.mem) /\
       (forall newMem newRegs,
-        seps [a_regs |-> with_len 32 word_array (List.upd regvals (Z.to_nat rd) (word.mul
+        seps [a_regs :-> List.upd regvals (Z.to_nat rd) (word.mul
                    (List.nth (Z.to_nat rs1) regvals default)
-                   (List.nth (Z.to_nat rs2) regvals default)));
-              initial.(pc) |-> program idecode mul_insts;
+                   (List.nth (Z.to_nat rs2) regvals default)) : with_len 32 word_array;
+              initial.(pc) :-> mul_insts : program idecode;
               LowerPipeline.mem_available stack_start stack_pastend;
               R] newMem ->
         map.only_differ initial.(regs) reg_class.caller_saved newRegs ->
@@ -475,10 +474,10 @@ Section Riscv.
                   (*********************)
         unfold spec_of_softmul in P.
         eapply P with (regvals := regvals) (R := emp True) (m := mH); clear P.
-        unfold with_len, with_pure, at_addr in MH.
+        unfold with_len, with_pure, sepcl in MH.
         eapply sep_emp_r in MH. destruct MH as [MH L].
         ssplit; try eassumption.
-        cbn [seps]. unfold at_addr. ecancel_assumption. }
+        cbn [seps]. unfold sepcl. ecancel_assumption. }
       { reflexivity. }
       { unfold mul_insts_req_stack. change bytes_per_word with 4.
         Z.div_mod_to_equations. Lia.lia. }
@@ -534,18 +533,15 @@ Section Riscv.
           unify m1 m2; refine (Morphisms.subrelation_refl impl1 _ _ _ m1 H) end end.
         etransitivity; [eapply Proper_sep_impl1; [reflexivity|] | ].
         { intros ? []; eassumption. }
-        unfold "|->", with_len, with_pure; cbn [seps]; reify_goal; impl_ecancel; cbn [seps].
+        unfold sepcl, with_len, with_pure; cbn [seps]; reify_goal; impl_ecancel; cbn [seps].
         intros m Hm; eapply sep_assoc, (proj1 (sep_emp_True_r _ _)), (proj1 (sep_emp_True_r _ _)) in Hm.
         eapply sep_emp_l; split; eauto with ecancel_impl.
         { rewrite List.upd_length.
-          unfold with_len, with_pure, "|->" in MH. eapply sep_emp_r in MH; intuition eauto. }
+          unfold with_len, with_pure, sepcl in MH. eapply sep_emp_r in MH; intuition eauto. }
         cbn [seps] in ML. case ML as (?&?&?&?&?&?).
-        unfold "|->" in *. move H11 at bottom.
-        unfold "program" in *.
+        unfold sepcl in *. move H11 at bottom.
         match type of Hm with ?f _ _ _ _ _ _ _ => unfold f in * end.
-        unfold ptsto_instr, instr, truncated_scalar, "|->" in *.
-
-        Import Scalars Array.
+        unfold ptsto_instr, instr, truncated_scalar, sepcl in *.
 
         assert (array_exmem : forall T (P:word->T->mem->Prop) p a l m,
           array P p a l m -> Forall (fun e => exists a m, P a e m) l).
@@ -607,38 +603,6 @@ Section Riscv.
     all: try exact word_riscv_ok.
     all: try constructor.
   Qed.
-
-  (* Needed if the handler wants to handle the case where the instruction is not
-     a multiplication: *)
-  Lemma mul_correct_2: forall initial a_regs regvals invalidIInst R (post: State -> Prop),
-      initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
-      map.get initial.(regs) RegisterNames.a0 = Some invalidIInst ->
-      map.get initial.(regs) RegisterNames.a1 = Some a_regs ->
-      seps [a_regs |-> word_array regvals; initial.(pc) |-> program idecode mul_insts; R]
-           initial.(MinimalCSRs.mem) /\
-      (forall final,
-        ((* case 1: It was not the Mul instruction *)
-         (map.get final.(regs) RegisterNames.a0 = Some (word.of_Z 0) /\
-          (forall rd rs1 rs2, decode RV32IM (word.unsigned invalidIInst) <>
-                                MInstruction (Mul rd rs1 rs2)) /\
-          seps [a_regs |-> word_array regvals;
-                initial.(pc) |-> program idecode mul_insts; R] final.(MinimalCSRs.mem))
-         \/ (* case 2: It was the Mul instruction *)
-         (exists ans rd rs1 rs2 v1 v2,
-          map.get final.(regs) RegisterNames.a0 = Some ans /\
-          word.unsigned ans <> 0 /\
-          decode RV32IM (word.unsigned invalidIInst) = MInstruction (Mul rd rs1 rs2) /\
-          nth_error regvals (Z.to_nat rs1) = Some v1 /\
-          nth_error regvals (Z.to_nat rs2) = Some v2 /\
-          seps [a_regs |-> word_array (List.upd regvals (Z.to_nat rd) (word.mul v1 v2));
-               initial.(pc) |-> program idecode mul_insts; R] final.(MinimalCSRs.mem))) ->
-        (* In common: *)
-        final.(pc) = word.add initial.(pc) (word.mul (word.of_Z 4)
-                           (word.of_Z (Z.of_nat (List.length mul_insts)))) ->
-        final.(nextPc) = word.add final.(pc) (word.of_Z 4) ->
-        post final) ->
-      runsTo (mcomp_sat (run1 idecode)) initial post.
-  Abort.
 End Riscv.
 
 #[export] Hint Resolve instr_IM_impl1_I : ecancel_impl.

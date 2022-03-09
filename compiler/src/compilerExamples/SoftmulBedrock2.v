@@ -45,14 +45,14 @@ Definition idecode: Z -> Instruction := decode RV32I.
   { requires t m :=
       mdecode (word.unsigned inst) = MInstruction (Mul rd rs1 rs2) /\
       List.length regvals = 32%nat /\
-      seps [a_regs |-> word_array regvals; R] m;
+      seps [a_regs :-> regvals : word_array; R] m;
       (* Alternative way of expressing the length constraint:
       seps [a_regs |-> with_len 32 word_array regvals; R] m; *)
     ensures t' m' :=
       t = t' /\
-      seps [a_regs |-> word_array (List.upd regvals (Z.to_nat rd) (word.mul
+      seps [a_regs :-> List.upd regvals (Z.to_nat rd) (word.mul
                (List.nth (Z.to_nat rs1) regvals default)
-               (List.nth (Z.to_nat rs2) regvals default))); R] m'
+               (List.nth (Z.to_nat rs2) regvals default)) : word_array; R] m'
  }.
 
 Lemma decode_RV32I_not_MInstruction i mi : decode RV32I i <> MInstruction mi.
@@ -73,7 +73,7 @@ Proof.
     progress change H' in H
   end.
   repeat match goal with
-    | x := ?v |- _ => 
+    | x := ?v |- _ =>
         idtac x;
         let H := fresh "H" x in
         pose proof (eq_refl x : x = v) as H; move H before x; clearbody x; move x at top
@@ -90,14 +90,14 @@ Proof.
   { eexists; split; repeat straightline.
     eexists; split; repeat straightline.
     eapply Scalars.load_word_of_sep.
-    match goal with |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (seps [scalar v a;b] m) end.
+    match goal with |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (seps [Scalars.scalar a v;b] m) end.
     use_sep_asm.
     pose proof Naive.word32_ok.
     split_ith_left_to_cancel_with_fst_right 0%nat.
     1:eapply access_elem_in_array.
     6:eapply Sp.
     2:clear;blia.
-    5:cbv [at_addr]; ecancel_step_by_implication; cbv [seps]; reflexivity.
+    5:cbv [sepcl]; ecancel_step_by_implication; cbv [seps]; reflexivity.
     2:ZnWords.
     3: eapply list_expose_nth; ZnWords.
     2: instantiate (1:=regvals); ZnWords.
@@ -109,14 +109,14 @@ Proof.
   { eexists; split; repeat straightline.
     eexists; split; repeat straightline.
     eapply Scalars.load_word_of_sep.
-    match goal with |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (seps [scalar v a;b] m) end.
+    match goal with |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (seps [Scalars.scalar a v;b] m) end.
     use_sep_asm.
     pose proof Naive.word32_ok.
     split_ith_left_to_cancel_with_fst_right 0%nat.
     1:eapply access_elem_in_array.
     6:eapply Sp.
     2:clear;blia.
-    5:cbv [at_addr]; ecancel_step_by_implication; cbv [seps]; reflexivity.
+    5:cbv [sepcl]; ecancel_step_by_implication; cbv [seps]; reflexivity.
     2:ZnWords.
     3: eapply list_expose_nth; ZnWords.
     2: instantiate (1:=regvals); ZnWords.
@@ -126,13 +126,13 @@ Proof.
 
   eapply Scalars.array_store_of_sep with (sz:=access_size.word) (n:=Z.to_nat rd) (size:=word.of_Z 4%Z).
   { subst d. f_equal. ZnWords. }
-  { use_sep_assumption; cbn [seps]; unfold "|->", word_array, scalar, truncated_word.
+  { use_sep_assumption; cbn [seps]; unfold sepcl, word_array.
     reflexivity. }
   { ZnWords. }
 
   intro_new_mem.
   repeat straightline; ssplit; trivial.
-  use_sep_assumption; cbn [seps]; unfold "|->", word_array, scalar, truncated_word.
+  use_sep_assumption; cbn [seps]; unfold sepcl, word_array.
 
   rewrite <-!Z.land_ones in * by better_lia.
   Morphisms.f_equiv.
