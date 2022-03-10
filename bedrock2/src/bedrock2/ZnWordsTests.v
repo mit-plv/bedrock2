@@ -1,11 +1,8 @@
 Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Import bedrock2.ZnWords.
 Require Import coqutil.Word.Interface.
-Require Import coqutil.Map.Interface.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Datatypes.Inhabited.
-Require Import bedrock2.Map.Separation.
-Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
 Open Scope Z_scope.
 
 Local Hint Mode Word.Interface.word - : typeclass_instances.
@@ -29,8 +26,7 @@ Fixpoint ands(Ps: list Prop): Prop :=
   end.
 
 Section ZnWordTests.
-  Context {word: word.word 32} {word_ok: word.ok word}
-          {mem: map.map word Init.Byte.byte} {mem_ok: map.ok mem}.
+  Context {word: word.word 32} {word_ok: word.ok word}.
 
   Goal forall (left0 right : word) (xs : list word),
     word.unsigned (word.sub right left0) = 8 * Z.of_nat (Datatypes.length xs) ->
@@ -53,7 +49,7 @@ Section ZnWordTests.
 
   Goal forall a : word,
     let arguments := [a] in
-    forall (vs : list word) (R : mem -> Prop),
+    forall (vs : list word),
     len vs = 3%nat ->
     let w0 := List.nth 0 vs default in
     let w1_0 := List.nth 1 vs default in
@@ -69,7 +65,7 @@ Section ZnWordTests.
     len (List.firstn (Z.to_nat (\[a ^+ /[8] ^- a] / 4)) ([w1_0] ++ [w1] ++ List.skipn 2 vs))
     = Z.to_nat (\[a ^+ /[8] ^- a] / 4).
   Proof.
-    intros. list_length_rewrites_without_sideconds_in_goal. ZnWords.
+    intros. ZnWordsL.
   Qed.
 
   Goal forall (a a' SZ: word) (T: Type) (f: T -> nat) (vs1: T),

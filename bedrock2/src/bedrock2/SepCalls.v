@@ -15,6 +15,7 @@ Require Import coqutil.Datatypes.PropSet.
 Require Export coqutil.Datatypes.Inhabited.
 Require Import coqutil.Tactics.rewr coqutil.Tactics.rdelta.
 Require Import Coq.Program.Tactics.
+Require Import coqutil.Macros.symmetry.
 Require Export coqutil.Tactics.Tactics.
 Require Export coqutil.Tactics.autoforward.
 Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
@@ -29,8 +30,12 @@ Require Export bedrock2.ZnWords.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.groundcbv.
 Require Export bedrock2.TacticError.
-Require Import Coq.Strings.String. Open Scope string_scope.
-Export List.ListNotations. Open Scope list_scope.
+Require Import bedrock2.ident_to_string.
+Require Export Coq.Strings.String. Open Scope string_scope.
+(* exporting String because otherwise error messages will be displayed as
+   (String.String (Ascii.Ascii false false true false true false true false) ...) *)
+Require Export Coq.Lists.List. (* to make sure `length` refers to list rather than string *)
+Import List.ListNotations. Open Scope list_scope.
 
 Section SepLog.
   Context {width: Z} {word: word.word width} {mem: map.map word byte}.
@@ -52,38 +57,40 @@ Section SepLog.
   Qed.
 
   (* All arguments except stmt are just ghost parameters to guide typeclass search.
-     The shape of stmt will typically be
+     The shape of stmt has to be
        forall valAll valPart valFrame1 ... valFrameN,
          sidecondition saying that assembling valPart valFrame1 ... valFrameN = valAll ->
-         iff1 (seps [addrPart |-> predPart valPart; Frame...]) (addrAll |-> predAll valAll)
+         iff1 (predAll valAll addrAll) (sep (predPart valPart addrPart)
+                                            (seps [Frame...]))
      but since that's a variable number of universally quantified variables, it would
-     be a bit cumbersome to enforce that shape, and since it's not needed to enforce it,
-     we don't.
+     be a bit cumbersome to enforce that shape in Gallina, so we don't.
      Note that stmt needs to be not only applicable to split oldAll into oldPart and a
      frame, but also to merge back a newPart and newFrame (potentially modified as well,
      eg if a function separately takes two record fields) into a newAll.
      So stmt needs to be more general than oldAll/oldPart.
      But we still pass in the specific oldPart so that typeclass search for split_sepclause
-     can determine its length, either from a suchThat, or by computing it *)
+     can determine its length, either from a with_len, or by computing it *)
   Definition split_sepclause(oldAll oldPart: mem -> Prop)(stmt: Prop) := stmt.
 
-  Local Set Warnings "-notation-overridden".
-  Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
   Let nth n xs := SeparationLogic.hd (emp(map:=mem) True) (SeparationLogic.skipn n xs).
   Let remove_nth n (xs : list (mem -> Prop)) :=
-    (SeparationLogic.firstn n xs ++ SeparationLogic.tl (SeparationLogic.skipn n xs)).
+        (SeparationLogic.app (SeparationLogic.firstn n xs)
+                             (SeparationLogic.tl (SeparationLogic.skipn n xs))).
 
-  Lemma rewrite_ith_in_lhs_of_impl1: forall i Ps Pi Qs R,
-      nth i Ps = Pi ->
-      iff1 (seps Qs) Pi /\ (* <-- used right-to-left *)
-      impl1 (seps (remove_nth i Ps ++ Qs)) R ->
-      impl1 (seps Ps) R.
+  Lemma cancel_part_of_ith_lhs_with_first_rhs: forall i Ls Li Frame R1 Rs,
+      nth i Ls = Li ->
+      iff1 Li (sep R1 (seps Frame)) /\
+      impl1 (seps (SeparationLogic.app (remove_nth i Ls) Frame)) (seps Rs) ->
+      impl1 (seps Ls) (seps (R1 :: Rs)).
   Proof.
-    intros. destruct H0. subst Pi.
+    intros. destruct H0. subst Li.
     unfold nth, remove_nth in *.
-    rewrite <-(seps_nth_to_head i Ps).
-    rewrite <- H0.
+    rewrite <-(seps_nth_to_head i Ls).
+    rewrite H0.
     rewrite 2seps_app in H1. rewrite seps_app.
+    rewrite seps_cons.
+    cancel. cancel_seps_at_indices_by_implication 0%nat 0%nat. 1: exact impl1_refl.
+    cbn [seps].
     etransitivity. 2: eassumption.
     ecancel.
   Qed.
@@ -101,51 +108,112 @@ End SepLog.
 
 (* Hints for `(split_sepclause ?oldAll ?oldPart ?stmt)` goals *)
 Create HintDb split_sepclause_goal.
-
-(* Hints to solve the sideconditions of the `stmt` above, when using the iff1
-   right-to-left, ie in the split direction *)
-Create HintDb split_sepclause_sidecond.
-
-(* Hints to solve the sideconditions of the `stmt` above, when using the iff1
-   left-to-right, ie in the merge direction *)
-Create HintDb merge_sepclause_sidecond.
-
 #[global] Hint Opaque split_sepclause : split_sepclause_goal.
 
-Ltac split_ith_left_to_cancel_with_fst_right i :=
+Ltac default_solve_split_sepclause_goal_or_else error_handler :=
+  first [ once (typeclasses eauto with split_sepclause_goal)
+        (* `typeclasses eauto` instead of eauto because eauto unfolds split_sepclause
+           and then just does `exact H` for the last Prop in the context, and it
+           seems that `Hint Opaque` and `Hint Constants Opaque` don't fix that
+           (and `Opaque split_sepclause` would fix it, but also affects the conversion
+           algorithm).
+           `once` because otherwise later errors will cause `typeclasses eauto` (which
+           is multisuccess) to backtrack, and the error will not be the later error,
+           but a generic "Tactic failure: Proof search failed." from `typeclasses eauto` *)
+        | error_handler Error:("This goal should be solvable by"
+                               "typeclasses eauto with split_sepclause_goal") ].
+
+(* Hook that can be overriden with ::=, for users who don't want to use the
+   split_sepclause_goal hint DB.
+   In case of failure, should call error_handler with one argument of type tactic_error *)
+Ltac solve_split_sepclause_goal_or_else error_handler :=
+  default_solve_split_sepclause_goal_or_else error_handler.
+
+
+(* Hints to solve the sideconditions of the `stmt` above, when using the iff1
+   left-to-right, ie in the split direction *)
+Create HintDb split_sepclause_sidecond.
+
+Ltac default_solve_split_sepclause_sidecond_or_pose_err :=
+  first [ solve [eauto with split_sepclause_sidecond]
+        | pose_err Error:("This goal should be solvable by"
+                          "eauto with split_sepclause_sidecond") ].
+
+(* Hook that can be overriden with ::=, for users who don't want to use the
+   split_sepclause_sidecond hint DB *)
+Ltac solve_split_sepclause_sidecond_or_pose_err :=
+  default_solve_split_sepclause_sidecond_or_pose_err.
+
+
+(* Hints to solve the sideconditions of the `stmt` above, when using the iff1
+   right-to-left, ie in the merge direction *)
+Create HintDb merge_sepclause_sidecond.
+
+Ltac default_solve_merge_sepclause_sidecond_or_pose_err :=
+  first [ solve [eauto with merge_sepclause_sidecond]
+        | pose_err Error:("This goal should be solvable by"
+                          "eauto with merge_sepclause_sidecond") ].
+
+(* Hook that can be overriden with ::=, for users who don't want to use the
+   merge_sepclause_sidecond hint DB *)
+Ltac solve_merge_sepclause_sidecond_or_pose_err :=
+  default_solve_merge_sepclause_sidecond_or_pose_err.
+
+
+Ltac check_split_sepclause_stmt_shape stmt :=
+  assert_succeeds (idtac;
+    let T := ret_type stmt in
+    lazymatch T with
+    | iff1 ?predAll (sep ?predPart (seps ?Frame)) => idtac
+    | _ => fail 10000 "Conclusion of stmt of split_sepclause (third argument) should be of shape (iff1 ?predAll (sep ?predPart (seps ?Frame))), but got shape" T
+    end).
+
+Ltac split_ith_left_to_cancel_with_fst_right0 i are_you_sure_about_i :=
   lazymatch goal with
   | |- Lift1Prop.impl1 (seps ?L) (seps (?RHead :: ?RRest)) =>
-    eapply (rewrite_ith_in_lhs_of_impl1 i L);
-    cbn [hd app firstn tl skipn];
+    eapply (cancel_part_of_ith_lhs_with_first_rhs i L);
+    cbn [SeparationLogic.hd SeparationLogic.tl
+         SeparationLogic.app SeparationLogic.firstn SeparationLogic.skipn];
     [ reflexivity | ];
     (* Current goal is a conjunction of two subgoals:
-       - iff1 for right-to-left-rewrite that we'll derive from a split_sepclause instance
+       - iff1 for left-to-right-rewrite that we'll derive from a split_sepclause instance
        - new impl1 to be proven after this cancellation step *)
-    let Li := lazymatch goal with |- iff1 _ ?Li /\ impl1 _ _ => Li end in
+    let Li := lazymatch goal with |- iff1 ?Li _ /\ impl1 _ _ => Li end in
     let Sp := fresh "Sp" in
     eassert (split_sepclause Li RHead _) as Sp;
-    [ (* can be left unsolved for debugging *)
-      try typeclasses eauto with split_sepclause_goal
-      (* typeclasses eauto instead of eauto because eauto unfolds split_sepclause
-         and then just does `exact H` for the last Prop in the context, and it
-         seems that `Hint Opaque` and `Hint Constants Opaque` don't fix that
-         (and `Opaque split_sepclause` would fix it, but also affects the conversion
-         algorithm) *)
+    [ solve_split_sepclause_goal_or_else
+        ltac:(fun e => lazymatch are_you_sure_about_i with
+                       | true => pose_err e
+                       | false => fail
+                       | _ => fail 10000 "argument are_you_sure_about_i should be a bool"
+                       end)
     | split;
     [ lazymatch type of Sp with
       | split_sepclause _ _ ?stmt =>
           tryif is_evar stmt then
             idtac (* debugging and typeclasses eauto above failed *)
           else (
-            cbv [split_sepclause] in Sp;
-            eapply Sp;
-            (* sideconditions of Sp can be left unsolved for debugging *)
-            eauto with split_sepclause_sidecond
+            tryif (assert_fails (idtac;
+                     lazymatch ret_type stmt with
+                     | iff1 ?predAll (sep ?predPart (seps ?Frame)) => idtac
+                     end))
+            then pose_err Error:("The conclusion of" Sp "is not of shape"
+                                 "iff1 ?predAll (sep ?predPart (seps ?Frame))")
+            else (
+              cbv [split_sepclause] in Sp;
+              eapply Sp;
+              (* sideconditions of Sp can be left unsolved for debugging *)
+              solve_split_sepclause_sidecond_or_pose_err
+            )
           )
       end
     | (* this goal is the remaining impl1 after cancellation, and it's the only
          goal supposed to remain open unless debugging *) ] ]
   end.
+
+(* Can be called manually to debug *)
+Ltac split_ith_left_to_cancel_with_fst_right i :=
+  split_ith_left_to_cancel_with_fst_right0 i true.
 
 (* Poses split_sepclause lemmas as hypotheses in the context, forming a stack of
    rewrite steps that have been performed, which can later be undone by
@@ -155,7 +223,7 @@ Ltac impl_ecancel_step_with_splitting :=
   | |- Lift1Prop.impl1 (seps ?L) _ =>
     let iLi := index_and_element_of L in (* <-- multi-success! *)
     let i := lazymatch iLi with (?i, _) => i end in
-    split_ith_left_to_cancel_with_fst_right i; []
+    split_ith_left_to_cancel_with_fst_right0 i false; []
   end.
 
 Ltac use_sep_asm :=
@@ -186,14 +254,26 @@ Ltac clear_split_sepclause_stack :=
          | H: split_sepclause _ _ _ |- _ => clear H
          end.
 
-Ltac pop_split_sepclause_stack m :=
+Ltac pop_split_sepclause_stack_step m :=
   let H := lazymatch goal with H: _ ?m |- _ => H end in
   let Sp := lazymatch goal with Sp: split_sepclause _ _ _ |- _ => Sp end in
-  ((cbv [split_sepclause] in Sp;
-    cbn [seps] in Sp, H;
-    seprewrite_in_by Sp H ltac:(eauto with merge_sepclause_sidecond)
-   ) || let T := type of Sp in idtac "Note: Failed to merge sep clauses using" T);
-  clear Sp.
+  cbv [split_sepclause] in Sp;
+  cbn [seps] in Sp, H;
+  first [ seprewrite_in (symmetry! Sp) H;
+          [ solve_merge_sepclause_sidecond_or_pose_err .. | clear Sp ]
+        | let Hs := varconstr_to_string H in
+          let Sps := varconstr_to_string Sp in
+          let tac := eval cbv in ("seprewrite_in (symmetry! " ++ Sps ++ ") " ++ Hs)%string in
+          pose_err Error:(tac "should succeed on this goal") ].
+
+Ltac pop_split_sepclause_stack m :=
+  match goal with
+  | _: tactic_error _ |- _ => idtac
+  | |- _ => tryif (progress pop_split_sepclause_stack_step m) then
+             pop_split_sepclause_stack m
+           else
+             idtac
+  end.
 
 (* Note: this won't work if the new `seps [...] mNew` is under some existentials
    or under a disjunction *)
@@ -202,7 +282,7 @@ Ltac intro_new_mem :=
   | |- forall (m: @map.rep _ _ _), _ =>
       let mNew := fresh m in
       intro mNew; intros;
-      repeat pop_split_sepclause_stack mNew
+      pop_split_sepclause_stack mNew
   end.
 
 Ltac put_cont_into_emp_seps :=

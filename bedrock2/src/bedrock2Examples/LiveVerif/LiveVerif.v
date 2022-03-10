@@ -18,7 +18,7 @@ Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic bedrock2.Loops
 Require Import coqutil.Word.Bitwidth32.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
-Require Import bedrock2Examples.LiveVerif.ident_to_string.
+Require Import bedrock2.ident_to_string.
 Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
 

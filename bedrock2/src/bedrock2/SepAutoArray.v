@@ -67,18 +67,16 @@ Section SepLog.
         (forall vs vs1 v vs2,
            (* connected with /\ because it needs to be solved by considering both at once *)
            vs = vs1 ++ [v] ++ vs2 /\ List.length vs1 = i ->
-           iff1 (seps
-              [a :-> vs1 : array elem (word.of_Z sz);
-               a' :-> v : elem;
-               word.add a (word.of_Z (sz * Z.of_nat (S i))) :-> vs2
-                 : array elem (word.of_Z sz)])
-            (a :-> vs : array elem (word.of_Z sz))).
+           iff1 (a :-> vs : array elem (word.of_Z sz))
+                (sep (a' :-> v : elem)
+                     (seps [a :-> vs1 : array elem (word.of_Z sz);
+                            word.add a (word.of_Z (sz * Z.of_nat (S i))) :-> vs2
+                              : array elem (word.of_Z sz)]))).
   Proof.
     unfold split_sepclause.
     unfold sepcl, seps.
     intros. fwd.
     cbn [List.app].
-    symmetry.
     etransitivity.
     1: eapply array_append.
     cbn [Array.array].
@@ -99,17 +97,15 @@ Section SepLog.
       let i := Z.to_nat (word.unsigned (word.sub a' a) / sz) in
       (forall vs vs1 vs2 vs3,
           vs = vs1 ++ vs2 ++ vs3 /\ List.length vs1 = i /\ List.length vs2 = n ->
-           iff1 (seps
-              [a :-> vs1 : array elem (word.of_Z sz);
-               a' :-> vs2 : array elem (word.of_Z sz);
-               word.add a (word.of_Z (sz * Z.of_nat (i + n))) :-> vs3
-                 : array elem (word.of_Z sz)])
-            (a :-> vs : array elem (word.of_Z sz))).
+           iff1 (a :-> vs : array elem (word.of_Z sz))
+                (sep (a' :-> vs2 : array elem (word.of_Z sz))
+                     (seps [a :-> vs1 : array elem (word.of_Z sz);
+                            word.add a (word.of_Z (sz * Z.of_nat (i + n))) :-> vs3
+                              : array elem (word.of_Z sz)]))).
   Proof.
     intros.
     unfold sepcl, seps.
     intros. fwd.
-    symmetry.
     rewrite 2array_append.
     cancel.
     cancel_seps_at_indices 0%nat 0%nat. {
@@ -134,12 +130,11 @@ Section SepLog.
                       (a' :-> vsPart : array elem (word.of_Z sz))
         (forall vs vs1 vs2 vs3,
            vs = vs1 ++ vs2 ++ vs3 /\ List.length vs1 = i /\ List.length vs2 = n ->
-           iff1 (seps
-              [a :-> vs1 : array elem (word.of_Z sz);
-               a' :-> vs2 : array elem (word.of_Z sz);
-               word.add a (word.of_Z (sz * Z.of_nat (i + n))) :-> vs3
-                 : array elem (word.of_Z sz)])
-            (a :-> vs : array elem (word.of_Z sz))).
+           iff1 (a :-> vs : array elem (word.of_Z sz))
+                (sep (a' :-> vs2 : array elem (word.of_Z sz))
+                     (seps [a :-> vs1 : array elem (word.of_Z sz);
+                            word.add a (word.of_Z (sz * Z.of_nat (i + n))) :-> vs3
+                              : array elem (word.of_Z sz)]))).
   Proof.
     intros. unfold split_sepclause. intros. eapply access_subarray_stmt; eassumption.
   Qed.
@@ -155,12 +150,11 @@ Section SepLog.
                       (a' :-> vsPart : with_len n (array elem (word.of_Z sz)))
         (forall vs vs1 vs2 vs3,
            vs = vs1 ++ vs2 ++ vs3 /\ List.length vs1 = i /\ List.length vs2 = n ->
-           iff1 (seps
-              [a :-> vs1 : array elem (word.of_Z sz);
-               a' :-> vs2 : with_len n (array elem (word.of_Z sz));
-               word.add a (word.of_Z (sz * Z.of_nat (i + n))) :-> vs3
-                 : array elem (word.of_Z sz)])
-            (a :-> vs : array elem (word.of_Z sz))).
+           iff1 (a :-> vs : array elem (word.of_Z sz))
+                (sep (a' :-> vs2 : with_len n (array elem (word.of_Z sz)))
+                     (seps [a :-> vs1 : array elem (word.of_Z sz);
+                            word.add a (word.of_Z (sz * Z.of_nat (i + n))) :-> vs3
+                              : array elem (word.of_Z sz)]))).
   Proof.
     intros. unfold split_sepclause. intros.
     unfold with_len, with_pure, sepcl. fwd.
@@ -168,7 +162,7 @@ Section SepLog.
       eapply PropExtensionality.propositional_extensionality. split; auto.
     }
     etransitivity.
-    2: eapply access_subarray_stmt; eauto.
+    1: eapply access_subarray_stmt; eauto.
     unfold sepcl.
     cbn [seps]. ecancel.
   Qed.
@@ -183,15 +177,15 @@ Section SepLog.
            vs = vs1 ++ vs2 /\
            List.length vs1 = List.length vsPrefix /\
            List.length vs2 = List.length vsSuffix ->
-           iff1 (seps [a :-> vs1 : array elem (word.of_Z sz);
-                       a' :-> vs2 : array elem (word.of_Z sz)])
-                (a :-> vs : array elem (word.of_Z sz))).
+           iff1 (a :-> vs : array elem (word.of_Z sz))
+                (sep (a' :-> vs2 : array elem (word.of_Z sz))
+                     (seps [a :-> vs1 : array elem (word.of_Z sz)]))).
   Proof.
     intros. unfold split_sepclause. intros. fwd.
     rewrite array_app. cbn [seps].
     cancel. cbn [seps].
     match goal with
-    | |- iff1 _ (?x :-> _ : _) => replace x with a'
+    | |- iff1 (?x :-> _ : _) _ => replace x with a'
     end.
     1: reflexivity.
     destruct width_cases; ZnWords.
@@ -203,13 +197,14 @@ Section SepLog.
       split_sepclause (a :-> List.cons vH vsTail : array elem (word.of_Z sz))
                       (a' :-> vsTail : array elem (word.of_Z sz))
         (forall v vs,
-           iff1 (seps [a :-> v : elem; a' :-> vs : array elem (word.of_Z sz)])
-                (a :-> List.cons v vs : array elem (word.of_Z sz))).
+            iff1 (a :-> List.cons v vs : array elem (word.of_Z sz))
+                 (sep (a' :-> vs : array elem (word.of_Z sz))
+                      (seps [a :-> v : elem]))).
   Proof.
     intros. unfold split_sepclause. intros. unfold sepcl. cbn.
     cancel. cbn [seps].
     match goal with
-    | |- iff1 _ (Array.array _ _ ?x _) => replace x with a'
+    | |- iff1 (Array.array _ _ ?x _) _ => replace x with a'
     end.
     1: reflexivity.
     destruct width_cases; ZnWords.

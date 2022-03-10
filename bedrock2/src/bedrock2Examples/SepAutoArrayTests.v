@@ -58,9 +58,8 @@ Section WithParameters.
        as used for proving precondition: *)
     put_cont_into_emp_seps.
     use_sep_asm.
-    cancel_seps.
+    cancel_seps. (* does nothing because nothing can be canceled without splitting *)
     split_ith_left_to_cancel_with_fst_right 0%nat.
-    once ecancel_step_by_implication.
     finish_impl_ecancel.
     intros m' HM'.
     pop_split_sepclause_stack m'.

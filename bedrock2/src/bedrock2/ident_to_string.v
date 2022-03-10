@@ -87,6 +87,9 @@ Goal forall my_var: nat, my_var = my_var.
   match goal with
   | |- _ = ?x => let r := varconstr_to_string x in pose r
   end.
+  match goal with
+  | H: nat |- _ => let r := varconstr_to_string H in pose r
+  end.
 Abort.
 
 Inductive Ltac2IdentToPass := mkLtac2IdentToPass.

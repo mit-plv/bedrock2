@@ -90,18 +90,10 @@ Proof.
   { eexists; split; repeat straightline.
     eexists; split; repeat straightline.
     eapply Scalars.load_word_of_sep.
-    match goal with |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (seps [Scalars.scalar a v;b] m) end.
-    use_sep_asm.
-    pose proof Naive.word32_ok.
-    split_ith_left_to_cancel_with_fst_right 0%nat.
-    1:eapply access_elem_in_array.
-    6:eapply Sp.
-    2:clear;blia.
-    5:cbv [sepcl]; ecancel_step_by_implication; cbv [seps]; reflexivity.
-    2:ZnWords.
-    3: eapply list_expose_nth; ZnWords.
-    2: instantiate (1:=regvals); ZnWords.
-    shelve. }
+    match goal with
+    | |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (seps [a :-> v : Scalars.scalar; b] m)
+    end.
+    scancel_asm. }
 
   repeat straightline.
 
@@ -109,18 +101,10 @@ Proof.
   { eexists; split; repeat straightline.
     eexists; split; repeat straightline.
     eapply Scalars.load_word_of_sep.
-    match goal with |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (seps [Scalars.scalar a v;b] m) end.
-    use_sep_asm.
-    pose proof Naive.word32_ok.
-    split_ith_left_to_cancel_with_fst_right 0%nat.
-    1:eapply access_elem_in_array.
-    6:eapply Sp.
-    2:clear;blia.
-    5:cbv [sepcl]; ecancel_step_by_implication; cbv [seps]; reflexivity.
-    2:ZnWords.
-    3: eapply list_expose_nth; ZnWords.
-    2: instantiate (1:=regvals); ZnWords.
-    shelve. }
+    match goal with
+    | |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (seps [a :-> v : Scalars.scalar; b] m)
+    end.
+    scancel_asm. }
 
   repeat (straightline || straightline_call).
 
