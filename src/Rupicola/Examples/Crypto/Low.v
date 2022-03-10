@@ -576,6 +576,69 @@ Definition w32s_of_bytes (bs: array_t byte) : array_t word :=
 Definition bytes_of_w32s (w32s: array_t word) : array_t byte :=
   List.flat_map (le_split 4) (List.map word.unsigned w32s).
 
+
+Lemma compile_bytes_of_w32s {tr mem locals functions} w32s :
+      let v := bytes_of_w32s w32s in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl : cmd}
+        R (var : string) a_ptr,
+
+        (*Note: hardcoded length of words here*)
+        sep ((array scalar (word.of_Z 4) a_ptr w32s)) R mem ->
+        WeakestPrecondition.dexpr mem locals var a_ptr ->
+
+        (let v := v in
+         (*Forall mem is not necessary,
+           but included so that Rupicola doesn't pick up the old predicate.
+          TODO: Assess whether this is the right approach.
+          *)
+         forall mem,
+         sep ((array ptsto (word.of_Z 1) a_ptr v)) R mem ->
+         <{ Trace := tr;
+            Memory := mem;
+            Locals := locals;
+            Functions := functions }>
+         k_impl
+         <{ pred (k v eq_refl) }>) ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+          k_impl
+        <{ pred (nlet_eq [var] v k) }>.
+Proof.
+Admitted.
+
+Lemma compile_w32s_of_bytes {tr mem locals functions} bytes :
+      let v := w32s_of_bytes bytes in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl : cmd}
+        R (var : string) a_ptr,
+
+        (*Note: hardcoded length of words here*)
+        sep ((array ptsto (word.of_Z 1) a_ptr bytes)) R mem ->
+        WeakestPrecondition.dexpr mem locals var a_ptr ->
+
+        (let v := v in
+         (*Forall mem is not necessary,
+           but included so that Rupicola doesn't pick up the old predicate.
+          TODO: Assess whether this is the right approach.
+          *)
+         forall mem,
+         sep ((array scalar (word.of_Z 4) a_ptr v)) R mem ->
+         <{ Trace := tr;
+            Memory := mem;
+            Locals := locals;
+            Functions := functions }>
+         k_impl
+         <{ pred (k v eq_refl) }>) ->
+        <{ Trace := tr;
+           Memory := mem;
+           Locals := locals;
+           Functions := functions }>
+          k_impl
+        <{ pred (nlet_eq [var] v k) }>.
+Proof.
+Admitted.
+
 Definition array_fold_chunked {A T}
            (a: array_t T) (size: nat)
            (f: nat -> A -> list T -> A)
