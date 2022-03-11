@@ -88,6 +88,37 @@ Notation "x + y" := (N.add x y) (only printing): oo_scope.
 Notation "x + y" := (Z.add x y) (only printing): oo_scope.
 Notation "x + y" := (word.add x y) (only printing): oo_scope.
 
+(* Check ((_: nat) * (_: nat))
+   fails, but here are workarounds: *)
+Notation "?? x : T 'in' b" := (match _: T with
+                               | x => b
+                               end)
+  (at level 10, right associativity, x at level 0, T at level 9, b at level 9, only parsing)
+    : oo_scope.
+
+Goal False.
+  epose ((_: nat) - (_: nat)). (* succeeds because we haven't overloaded - yet *)
+
+  assert_fails (epose ((_:nat) * (_:nat))). (* Cannot infer this placeholder of type "nat" *)
+
+  epose (let a: nat := _ in let b: nat := _ in a * b).
+  (* works but creates let binders, and passing them through an ltac that does cbv zeta
+     runs into the same error *)
+
+  epose ((fun (a: nat) (b: nat) (c: nat) => fun f => f (a * b * c)) _ _ _).
+  (* like with let binders, but would need to do cbv beta *)
+
+  epose (match  _: nat, _: nat, _: nat with
+         | a, b, c => a * b * c
+         end).
+  (* works, but names are too far apart from their types *)
+
+  epose (??a: nat in (a * a)).
+  epose (??a: nat in ??b: nat in (a * b)).
+  epose (??a: Z in ??b: Z in ??c: Z in (a * b * c)).
+  (* best workaround so far *)
+Abort.
+
 (* Tests:
 
 Goal False.
