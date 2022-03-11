@@ -65,22 +65,9 @@ Section WithParameters.
     intros m' HM'.
     pop_split_sepclause_stack m'.
 
-    (* at the end of the function, prove that computed symbolic state implies desired
-       postcondition *)
-    use_sep_asm.
-    cancel.
-    cancel_seps_at_indices_by_implication 0%nat 0%nat. {
-      match goal with
-      | |- impl1 ?LHS ?RHS => replace LHS with RHS
-      end.
-      1: exact impl1_refl.
-      f_equal.
-      clear HM'.
-      unfold List.upd, List.upds.
-      repeat (repeat word_simpl_step_in_goal; fwd).
-      reflexivity.
-    }
-    exact impl1_refl.
+    list_simpl_in_hyps.
+    list_simpl_in_goal.
+    scancel_asm.
   Qed.
 
   (* up for discussion: naming, and convention on what position the memory has
@@ -98,20 +85,8 @@ Section WithParameters.
 
     sep_call_pre_post.
 
-    (* at the end of the function, prove that computed symbolic state implies desired
-       postcondition, TODO automate as well *)
-    use_sep_asm.
-    cancel.
-    cancel_seps_at_indices_by_implication 0%nat 0%nat. {
-      match goal with
-      | |- impl1 ?LHS ?RHS => replace LHS with RHS
-      end.
-      1: exact impl1_refl.
-      f_equal.
-      unfold List.upd, List.upds.
-      repeat (repeat word_simpl_step_in_goal; fwd).
-      reflexivity.
-    }
-    exact impl1_refl.
+    list_simpl_in_hyps.
+    list_simpl_in_goal.
+    scancel_asm.
   Qed.
 End WithParameters.

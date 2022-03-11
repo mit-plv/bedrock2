@@ -1,7 +1,7 @@
 Require Import Coq.Lists.List.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Tactics.fwd.
-Require Import bedrock2.groundcbv.
+Require Import bedrock2.WordSimpl.
 Require Import coqutil.Datatypes.List.
 Require Import coqutil.Datatypes.Inhabited.
 
@@ -202,6 +202,19 @@ Module List. Section __.
   Proof.
     intros. rewrite List.app_assoc. f_equal. apply merge_sublist_110. assumption.
   Qed.
+
+  Import ListNotations. Local Open Scope list_scope.
+
+  Lemma fold_upd: forall (l: list A) i j v,
+      (j = i + 1 /\ i < List.length l)%nat ->
+      List.firstn i l ++ [v] ++ List.skipn j l = List.upd l i v.
+  Proof.
+    intros *. intros (? & ?). subst j. unfold upd, upds. cbn [List.length].
+    f_equal. f_equal.
+    - replace (length l - i)%nat with (S (length l - i - 1)) by lia. cbn.
+      rewrite List.firstn_nil. reflexivity.
+    - f_equal. lia.
+  Qed.
 End __. End List.
 
 #[export] Hint Rewrite
@@ -215,11 +228,26 @@ End __. End List.
   List.merge_sublist_111
 using lia : fwd_rewrites.
 
+Ltac list_simpl_in_hyps :=
+  unfold List.upd, List.upds in *;
+  repeat (repeat word_simpl_step_in_hyps;
+          repeat match goal with
+                 | H:_ |- _ => rewrite_db fwd_rewrites in H
+                 end);
+  repeat match goal with
+         | H: _ |- _ => progress rewrite List.fold_upd in H by lia
+         end.
+
+Ltac list_simpl_in_goal :=
+  unfold List.upd, List.upds;
+  repeat (repeat word_simpl_step_in_goal; try rewrite_db fwd_rewrites);
+  rewrite ?List.fold_upd by lia.
+
+Ltac list_simpl_in_all := list_simpl_in_hyps; list_simpl_in_goal.
+
 Section ListRewriterTests.
   Import ListNotations. Local Open Scope list_scope.
   Local Open Scope list_index_scope.
-
-  Ltac fwd_rewrites ::= fwd_rewrite_db_in_star.
 
   Goal forall [A: Type] {inh: inhabited A}(f: A -> A) ws,
       (16 <= length ws)%nat ->
@@ -227,8 +255,17 @@ Section ListRewriterTests.
         ws[:2] ++ ws[2:][:5] ++ [f (ws[2:][:10][5])] ++ ws[2:][6:10] ++ ws[12:].
   Proof.
     intros.
-    repeat (groundcbv.groundcbv_in_goal; fwd).
-    reflexivity.
+    match goal with
+    | |- ?G => assert G
+    end.
+    { list_simpl_in_goal.
+      match goal with
+      | |- ?x = ?x => reflexivity
+      end. }
+    { list_simpl_in_all.
+      match goal with
+      | H: ?A |- ?A => exact H
+      end. }
     all: fail.
   Abort.
 End ListRewriterTests.
