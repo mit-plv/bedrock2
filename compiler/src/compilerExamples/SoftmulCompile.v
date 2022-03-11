@@ -34,6 +34,7 @@ Require Import compiler.Registers.
 Require Import compilerExamples.SoftmulBedrock2.
 Require compiler.Pipeline.
 Require Import bedrock2.BasicC32Semantics.
+Require Import bedrock2.SepBulletPoints. Local Open Scope sep_bullets_scope.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
 
 (* TODO might need slight change to Naive.word to make these hold
@@ -300,7 +301,7 @@ Section Riscv.
   Proof.
   Admitted.
 
-  Notation program d := (array (instr d) (word.of_Z 4)).
+  Notation program d := (array (instr d) (word.of_Z 4)) (only parsing).
 
   Definition funimplsList := softmul :: rpmul.rpmul :: nil.
   Definition prog := map.of_list funimplsList.
@@ -398,17 +399,17 @@ Section Riscv.
          are sufficient, but to be more robust agains future changes in the
          handler implementation, we require a bit more stack space *)
       128 <= word.unsigned (word.sub stack_pastend stack_start) ->
-      seps [a_regs :-> regvals : with_len 32 word_array;
-            initial.(pc) :-> mul_insts : program idecode;
-            LowerPipeline.mem_available stack_start stack_pastend;
-            R] initial.(MinimalCSRs.mem) /\
+      <{ * a_regs :-> regvals : with_len 32 word_array
+         * initial.(pc) :-> mul_insts : program idecode
+         * LowerPipeline.mem_available stack_start stack_pastend
+         * R }> initial.(MinimalCSRs.mem) /\
       (forall newMem newRegs,
-        seps [a_regs :-> List.upd regvals (Z.to_nat rd) (word.mul
+        <{ * a_regs :-> List.upd regvals (Z.to_nat rd) (word.mul
                    (List.nth (Z.to_nat rs1) regvals default)
-                   (List.nth (Z.to_nat rs2) regvals default)) : with_len 32 word_array;
-              initial.(pc) :-> mul_insts : program idecode;
-              LowerPipeline.mem_available stack_start stack_pastend;
-              R] newMem ->
+                   (List.nth (Z.to_nat rs2) regvals default)) : with_len 32 word_array
+           * initial.(pc) :-> mul_insts : program idecode
+           * LowerPipeline.mem_available stack_start stack_pastend
+           * R }> newMem ->
         map.only_differ initial.(regs) reg_class.caller_saved newRegs ->
         regs_initialized newRegs ->
         post { initial with pc := ret_addr;
@@ -492,16 +493,8 @@ Section Riscv.
       { unfold LowerPipeline.machine_ok. record.simp. ssplit.
         { exists mL, mH. ssplit.
           - eapply map.split_comm. assumption.
-          - match goal with
-            | |- sep (sep (sep ?A ?B) ?C) ?D mL =>
-                enough (seps [A; B; C; D] mL) as E
-            end.
-            1: cbn [seps] in E; ecancel_assumption.
-            instantiate (1 := R).
-            (* TODO weird Notation aliasing because program is a keyword *)
-            match goal with
-            | |- seps (?p _ _ _ _ _ _ :: _) _ => unfold p
-            end.
+          - instantiate (1 := R).
+            unfold SeparationLogic.program.
             use_sep_asm. impl_ecancel.
             cbn [seps].
             eapply idecode_array_implies_program.
@@ -532,15 +525,17 @@ Section Riscv.
         match goal with | |- _ ?m1 => match goal with | H:_ ?m2 |- _ =>
           unify m1 m2; refine (Morphisms.subrelation_refl impl1 _ _ _ m1 H) end end.
         etransitivity; [eapply Proper_sep_impl1; [reflexivity|] | ].
-        { intros ? []; eassumption. }
-        unfold sepcl, with_len, with_pure; cbn [seps]; reify_goal; impl_ecancel; cbn [seps].
+        { intros ? []. eassumption. }
+        change (@word.of_Z ?wi ?wo 0) with (@default (@word.rep wi wo) _).
+        rewrite with_len_eq. 2: {
+          apply_in_hyps @extract_with_len. listZnWords.
+        }
+        unfold sepcl, SeparationLogic.program.
+        cancel.
+        repeat ecancel_step_by_implication.
         intros m Hm; eapply sep_assoc, (proj1 (sep_emp_True_r _ _)), (proj1 (sep_emp_True_r _ _)) in Hm.
-        eapply sep_emp_l; split; eauto with ecancel_impl.
-        { rewrite List.upd_length.
-          unfold with_len, with_pure, sepcl in MH. eapply sep_emp_r in MH; intuition eauto. }
-        cbn [seps] in ML. case ML as (?&?&?&?&?&?).
+        case ML as (?&?&?&?&?&?).
         unfold sepcl in *. move H11 at bottom.
-        match type of Hm with ?f _ _ _ _ _ _ _ => unfold f in * end.
         unfold ptsto_instr, instr, truncated_scalar, sepcl in *.
 
         assert (array_exmem : forall T (P:word->T->mem->Prop) p a l m,

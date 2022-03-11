@@ -4,6 +4,7 @@ Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
 Require Import bedrock2.OperatorOverloading. Local Open Scope oo_scope.
 Import Coq.Lists.List.ListNotations. Local Open Scope list_scope.
 Require Import bedrock2.ListIndexNotations. Local Open Scope list_index_scope.
+Require Import bedrock2.SepBulletPoints. Local Open Scope sep_bullets_scope.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
@@ -22,15 +23,15 @@ Section WithParameters.
   Context (sample_call: word -> word -> cmd).
 
   Hypothesis sample_call_correct: forall m a1 n (vs: list word) R (post: mem -> Prop),
-      seps [a1 :-> vs : with_len (Z.to_nat (word.unsigned n)) word_array; R] m /\
+      sep (a1 :-> vs : with_len (Z.to_nat (word.unsigned n)) word_array) R m /\
       (forall m',
         (* Currently, the postcondition also needs a `with_len` so that when the caller
            merges the pieces back together, it recognizes the clause as having the
            same shape as in the precondition.
            TODO consider ways of supporting to drop with_len in the postcondition when
            it can be derived like here (List.upd is guaranteed to preserve the length). *)
-        seps [a1 :-> List.upd vs 5 (List.nth 5 vs default * (word.of_Z (width := 32) 2))
-            : with_len (Z.to_nat (word.unsigned n)) word_array; R] m' ->
+        sep (a1 :-> List.upd vs 5 (List.nth 5 vs default * (word.of_Z (width := 32) 2))
+            : with_len (Z.to_nat (word.unsigned n)) word_array) R m' ->
         post m') ->
       wp (sample_call a1 n) m post.
 
@@ -42,12 +43,12 @@ Section WithParameters.
 
   Definition sample_call_usage_goal := forall ws R addr m,
       (16 <= List.length ws)%nat ->
-      seps [addr :-> ws : word_array; R] m ->
+      sep (addr :-> ws : word_array) R m ->
       wp (sample_call (word.add addr (word.of_Z (2*4)))
                       (word.of_Z 10))
-         m (fun m' => seps [
-           addr :-> List.upd ws 7 (List.nth 7 ws default * word.of_Z (width := 32) 2)
-                         : word_array; R] m').
+         m (fun m' => sep
+           (addr :-> List.upd ws 7 (List.nth 7 ws default * word.of_Z (width := 32) 2)
+                         : word_array) R m').
 
   Lemma use_sample_call_with_tactics_unfolded: sample_call_usage_goal.
   Proof.
@@ -56,19 +57,18 @@ Section WithParameters.
 
     (* prove precondition and after intro-ing postcondition, merge back with same lemma
        as used for proving precondition: *)
-    put_cont_into_emp_seps.
+    put_cont_into_emp_sep.
     use_sep_asm.
-    cancel_seps. (* does nothing because nothing can be canceled without splitting *)
+    cancel. (* only reifies, because nothing can be canceled without splitting *)
     split_ith_left_to_cancel_with_fst_right 0%nat.
     finish_impl_ecancel.
     intros m' HM'.
     pop_split_sepclause_stack m'.
-    flatten_seps_in HM'.
 
     (* at the end of the function, prove that computed symbolic state implies desired
        postcondition *)
     use_sep_asm.
-    cancel_seps.
+    cancel.
     cancel_seps_at_indices_by_implication 0%nat 0%nat. {
       match goal with
       | |- impl1 ?LHS ?RHS => replace LHS with RHS
@@ -98,11 +98,10 @@ Section WithParameters.
 
     sep_call_pre_post.
 
-    flatten_seps_in H1.
     (* at the end of the function, prove that computed symbolic state implies desired
        postcondition, TODO automate as well *)
     use_sep_asm.
-    cancel_seps.
+    cancel.
     cancel_seps_at_indices_by_implication 0%nat 0%nat. {
       match goal with
       | |- impl1 ?LHS ?RHS => replace LHS with RHS

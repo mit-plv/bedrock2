@@ -24,4 +24,4 @@ Definition sepcl{width: Z}{word: word width}{mem: map.map word byte}{V: Type}
    Order: Mimics hypothesis with a body, eg in `x := 1 : Z`, the order is
    "label, value, type". *)
 Notation "a :-> v : p" := (sepcl p v a)
-  (at level 25, v at level 99, format "a  :->  v  :  p").
+  (at level 25, v at level 99, format "'[  ' a  :->  v  '/' :  p ']'").

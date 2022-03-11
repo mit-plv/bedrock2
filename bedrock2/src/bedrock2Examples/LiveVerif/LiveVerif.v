@@ -38,6 +38,7 @@ Section LiveVerif.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Local Set Implicit Arguments.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
+  Local Open Scope sep_bullets_scope.
   Coercion Z.of_nat : nat >-> Z.
   Coercion byte.unsigned : byte >-> Z.
   Notation len := List.length.

@@ -121,6 +121,8 @@ Ltac flatten_seps_in H :=
 (* Given an old and a new sep hyp, transfers the order of the sepclauses from the old one
    to the new one *)
 Ltac transfer_sep_order_from_to HOld HNew :=
+  flatten_seps_in HNew;
+  flatten_seps_in HOld;
   lazymatch type of HOld with
   | seps ?old_clauses ?mOld =>
     lazymatch type of HNew with
@@ -138,6 +140,7 @@ Ltac transfer_sep_order_from_to HOld HNew :=
         let r := eval vm_compute in (order_to_permutation order) in
             change (order_to_permutation order) with r;
         cbv [apply_permutation apply_permutation_with_default my_list_map my_list_nth];
+        cbn [seps];
         reflexivity
       | let HNewNew := fresh in pose proof (proj1 (E mNew) HNew) as HNewNew;
         clear E HOld HNew;
@@ -149,10 +152,8 @@ Ltac transfer_sep_order_from_to HOld HNew :=
   end.
 
 Ltac transfer_sep_order :=
-  let mNew := lazymatch goal with mNew: @map.rep (@word.rep _ _) _ _ |- _ => mNew end in
   lazymatch goal with
-  | HOld: seps _ ?mOld, HNew: _ mNew |- _ =>
-      flatten_seps_in HNew;
+  | HOld: sep _ _ _, HNew: sep _ _ _ |- _ =>
       transfer_sep_order_from_to HOld HNew
   end.
 
@@ -173,8 +174,8 @@ Section TestTransferSepsOrder.
        M  : seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m0
        M2 : seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m1
        order :=  [3; 2;                   2;                   0                      ] *)
-    flatten_seps_in M2.
     transfer_sep_order_from_to M M2.
+    flatten_seps_in M.
     lazymatch type of M with
     | seps [addr1 :-> v1_new : scalar; addr3 :-> v3 : scalar; addr4 :-> v4 : scalar; R] m =>
         idtac

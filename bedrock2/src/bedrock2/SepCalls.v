@@ -1,7 +1,7 @@
 (* Separation logic automation for a general notion of function call,
    based on "call lemmas" of the form
 
-   seps [...] mOld /\ (forall mNew vals, callPost vals -> seps [...] mNew -> finalPost) ->
+   (_ * ...) mOld /\ (forall mNew vals, callPost vals -> (_ * ...) mNew -> finalPost) ->
    executing a snippet of code satisfies finalPost
 
    Applying the call lemma is not handled by this file, but solving the above conjunction
@@ -69,7 +69,10 @@ Section SepLog.
      eg if a function separately takes two record fields) into a newAll.
      So stmt needs to be more general than oldAll/oldPart.
      But we still pass in the specific oldPart so that typeclass search for split_sepclause
-     can determine its length, either from a with_len, or by computing it *)
+     can determine its length, either from a with_len, or by computing it.
+     The specific shape of the RHS of the above iff1 is for compatibility with
+     cancel_part_of_ith_lhs_with_first_rhs, so that no sep flattening is required
+     during cancellation. *)
   Definition split_sepclause(oldAll oldPart: mem -> Prop)(stmt: Prop) := stmt.
 
   Let nth n xs := SeparationLogic.hd (emp(map:=mem) True) (SeparationLogic.skipn n xs).
@@ -97,13 +100,10 @@ Section SepLog.
 
   (* Transforms the goal so that goal modifications that are made while proving Rs
      are still visible when proving the continuation Cont of the program *)
-  Lemma put_and_r_into_emp_seps: forall (Cont: Prop) (Rs: list (mem -> Prop)) (m: mem),
-      seps (SeparationLogic.app Rs [emp Cont]) m ->
-      seps Rs m /\ Cont.
-  Proof.
-    intros. change SeparationLogic.app with (@List.app (mem -> Prop)) in H.
-    apply seps_app in H. eapply sep_emp_r in H. assumption.
-  Qed.
+  Lemma put_and_r_into_emp_sep: forall (Cont: Prop) (R: mem -> Prop) (m: mem),
+      sep R (emp Cont) m ->
+      R m /\ Cont.
+  Proof. intros. eapply sep_emp_r. exact H. Qed.
 End SepLog.
 
 (* Hints for `(split_sepclause ?oldAll ?oldPart ?stmt)` goals *)
@@ -158,15 +158,6 @@ Ltac default_solve_merge_sepclause_sidecond_or_pose_err :=
    merge_sepclause_sidecond hint DB *)
 Ltac solve_merge_sepclause_sidecond_or_pose_err :=
   default_solve_merge_sepclause_sidecond_or_pose_err.
-
-
-Ltac check_split_sepclause_stmt_shape stmt :=
-  assert_succeeds (idtac;
-    let T := ret_type stmt in
-    lazymatch T with
-    | iff1 ?predAll (sep ?predPart (seps ?Frame)) => idtac
-    | _ => fail 10000 "Conclusion of stmt of split_sepclause (third argument) should be of shape (iff1 ?predAll (sep ?predPart (seps ?Frame))), but got shape" T
-    end).
 
 Ltac split_ith_left_to_cancel_with_fst_right0 i are_you_sure_about_i :=
   lazymatch goal with
@@ -228,12 +219,12 @@ Ltac impl_ecancel_step_with_splitting :=
 
 Ltac use_sep_asm :=
   match goal with
-  | H: seps _ ?m |- seps _ ?m =>
+  | H: sep _ _ ?m |- _ ?m =>
     refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m H)
   end.
 
 Ltac impl_ecancel :=
-  cancel_seps;
+  cancel;
   repeat (repeat (once ecancel_step_by_implication); try impl_ecancel_step_with_splitting).
 
 Ltac finish_impl_ecancel :=
@@ -275,7 +266,7 @@ Ltac pop_split_sepclause_stack m :=
              idtac
   end.
 
-(* Note: this won't work if the new `seps [...] mNew` is under some existentials
+(* Note: this won't work if the new `(_ * ...) mNew` is under some existentials
    or under a disjunction *)
 Ltac intro_new_mem :=
   lazymatch goal with
@@ -285,11 +276,11 @@ Ltac intro_new_mem :=
       pop_split_sepclause_stack mNew
   end.
 
-Ltac put_cont_into_emp_seps :=
+Ltac put_cont_into_emp_sep :=
   lazymatch goal with
-  | |- seps ?Pre ?mOld /\ ?Cont =>
-      apply put_and_r_into_emp_seps; cbn [SeparationLogic.app]
-  | |- _ => fail 10000 "Expected a goal of the form" "(seps ?Pre ?mOld /\ ?Cont)"
+  | |- sep _ _ ?mOld /\ ?Cont =>
+      apply put_and_r_into_emp_sep
+  | |- _ => fail 10000 "Expected a goal of the form" "(sep _ _ ?mOld /\ ?Cont)"
   end.
 
 (* ecancel an assumption (using impl1), and also split sepclauses on the left
@@ -302,4 +293,4 @@ Ltac scancel_asm :=
   | |- _ => finish_impl_ecancel
   end.
 
-Ltac after_sep_call := put_cont_into_emp_seps; scancel_asm.
+Ltac after_sep_call := put_cont_into_emp_sep; scancel_asm.

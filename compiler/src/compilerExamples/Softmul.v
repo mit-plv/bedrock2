@@ -37,6 +37,8 @@ Require Import compiler.regs_initialized.
 Require Import compilerExamples.SoftmulBedrock2.
 Require Import compilerExamples.SoftmulCompile.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
+Require Import bedrock2.SepBulletPoints.
+Local Open Scope sep_bullets_scope. Undelimit Scope sep_scope.
 
 Axiom TODO: False.
 
@@ -205,7 +207,7 @@ Section Riscv.
 
   Lemma invert_fetch: forall initial post decoder,
       mcomp_sat (run1 decoder) initial post ->
-      exists R i, seps [initial.(pc) :-> i : instr decoder; R] initial.(mem) /\
+      exists R i, sep (initial.(pc) :-> i : instr decoder) R initial.(mem) /\
                   mcomp_sat (Execute.execute i;; endCycleNormal)
                             { initial with nextPc := word.add (pc initial) (word.of_Z 4) }
                             post.
@@ -216,7 +218,7 @@ Section Riscv.
 
   Lemma interpret_loadWord: forall (initial: State) (postF: w32 -> State -> Prop)
                                    (postA: State -> Prop) (a v: word) R,
-      seps [a :-> v : scalar; R] initial.(mem) /\
+      sep (a :-> v : scalar) R initial.(mem) /\
       postF (LittleEndian.split 4 (word.unsigned v)) initial ->
       free.interpret run_primitive (Machine.loadWord Execute a) initial postF postA.
   Proof.
@@ -362,11 +364,11 @@ Section Riscv.
       map.get r2.(csrs) CSRField.MTVecBase = Some mtvec_base /\
       map.get r2.(csrs) CSRField.MScratch = Some stack_hi /\
       List.length stacktrash = 32%nat /\
-      seps [eq r1.(mem);
-            word.of_Z (stack_hi - 128) :-> stacktrash : word_array;
-            LowerPipeline.mem_available (word.of_Z (stack_hi - 256))
-                                        (word.of_Z (stack_hi - 128));
-            word.of_Z (mtvec_base * 4) :-> handler_insts : program idecode] r2.(mem).
+      <{ * eq r1.(mem)
+         * word.of_Z (stack_hi - 128) :-> stacktrash : word_array
+         * LowerPipeline.mem_available (word.of_Z (stack_hi - 256))
+                                       (word.of_Z (stack_hi - 128))
+         * word.of_Z (mtvec_base * 4) :-> handler_insts : program idecode }> r2.(mem).
 
   Lemma related_preserves_load_bytes: forall n sH sL a w,
       related sH sL ->
@@ -557,7 +559,7 @@ Section Riscv.
 
   Lemma build_fetch_one_instr:
     forall (initial: State) iset post (instr1: Instruction) (R: Mem -> Prop),
-      seps [initial.(pc) :-> instr1 : instr iset; R] initial.(mem) ->
+      sep (initial.(pc) :-> instr1 : instr iset) R initial.(mem) ->
       mcomp_sat (Execute.execute instr1;; endCycleNormal)
                 { initial with nextPc := word.add (pc initial) (word.of_Z 4) } post ->
       mcomp_sat (run1 iset) initial post.
@@ -583,8 +585,8 @@ Section Riscv.
 
   Lemma run_store: forall n addr (v_old v_new: tuple byte n) R (initial: State)
                           (kind: SourceType) (post: State -> Prop),
-      seps [ptsto_bytes.ptsto_bytes n addr v_old; R] initial.(mem) ->
-      (forall m: Mem, seps [ptsto_bytes.ptsto_bytes n addr v_new; R] m ->
+      sep (ptsto_bytes.ptsto_bytes n addr v_old) R initial.(mem) ->
+      (forall m: Mem, sep (ptsto_bytes.ptsto_bytes n addr v_new) R m ->
                       post { initial with mem := m }) ->
       MinimalCSRs.store n kind addr v_new initial post.
   Proof.
@@ -600,8 +602,8 @@ Section Riscv.
          proving the first hyp are needed to continue with the second hyp
          (to remember how to undo the splitting of the word_array in which the scalar
          was found) *)
-      seps [addr :-> v_old : scalar; R] initial.(mem) /\
-      (forall m, seps [addr :-> v_new : scalar; R] m ->
+      sep (addr :-> v_old : scalar) R initial.(mem) /\
+      (forall m, sep (addr :-> v_new : scalar) R m ->
                  postF tt { initial with mem := m }) ->
       free.interpret run_primitive (Machine.storeWord Execute addr
          (LittleEndian.split 4 (word.unsigned v_new))) initial postF postA.
@@ -736,15 +738,15 @@ Section Riscv.
       0 < start ->
       (Z.to_nat start + n = 32)%nat ->
       map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) n start) = Some vals ->
-      seps [stackaddr :-> oldvals : word_array;
-            initial.(pc) :-> (map (fun r => IInstruction (Sw RegisterNames.sp r (4 * r)))
-                                  (List.unfoldn (BinInt.Z.add 1) n start))
-              : program idecode; R] initial.(mem) /\
+      <{ * stackaddr :-> oldvals : word_array
+         * initial.(pc) :-> (map (fun r => IInstruction (Sw RegisterNames.sp r (4 * r)))
+               (List.unfoldn (BinInt.Z.add 1) n start)) : program idecode
+         * R }> initial.(mem) /\
       (forall m: Mem,
-         seps [stackaddr :-> vals : word_array;
-               initial.(pc) :-> (map (fun r => IInstruction (Sw RegisterNames.sp r (4 * r)))
-                                     (List.unfoldn (Z.add 1) n start))
-                 : program idecode; R] m ->
+         <{ * stackaddr :-> vals : word_array
+            * initial.(pc) :-> (map (fun r => IInstruction (Sw RegisterNames.sp r (4 * r)))
+                 (List.unfoldn (Z.add 1) n start)) : program idecode
+            * R }> m ->
          runsTo (mcomp_sat (run1 idecode)) { initial with mem := m;
            nextPc ::= word.add (word.of_Z (4 * Z.of_nat n));
            pc ::= word.add (word.of_Z (4 * Z.of_nat n)) } post) ->
@@ -792,12 +794,14 @@ Section Riscv.
       map.get initial.(regs) RegisterNames.sp = Some spval ->
       initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
       regs_initialized initial.(regs) ->
-      (seps [word.add spval (word.of_Z 12) :-> oldvals : with_len 29 word_array;
-        initial.(pc) :-> save_regs3to31 : program idecode; R] initial.(mem) /\
+      (<{ * word.add spval (word.of_Z 12) :-> oldvals : with_len 29 word_array
+          * initial.(pc) :-> save_regs3to31 : program idecode
+          * R }> initial.(mem) /\
        forall m vals,
          map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) 29 3) = Some vals ->
-         seps [word.add spval (word.of_Z 12) :-> vals : with_len 29 word_array;
-               initial.(pc) :-> save_regs3to31 : program idecode; R] m ->
+         <{ * word.add spval (word.of_Z 12) :-> vals : with_len 29 word_array
+            * initial.(pc) :-> save_regs3to31 : program idecode
+            * R }> m ->
          runsTo (mcomp_sat (run1 idecode)) { initial with mem := m;
            nextPc ::= word.add (word.of_Z (4 * Z.of_nat 29));
            pc ::= word.add (word.of_Z (4 * Z.of_nat 29)) } post) ->
@@ -830,8 +834,9 @@ Section Riscv.
                                   (post: State -> Prop),
       map.get initial.(regs) RegisterNames.sp = Some spval ->
       initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
-      seps [word.add spval (word.of_Z 12) :-> vals : with_len 29 word_array;
-        initial.(pc) :-> restore_regs3to31 : program idecode; R] initial.(mem) /\
+      <{ * word.add spval (word.of_Z 12) :-> vals : with_len 29 word_array
+         * initial.(pc) :-> restore_regs3to31 : program idecode
+         * R }> initial.(mem) /\
       runsTo (mcomp_sat (run1 idecode)) { initial with
            regs := map.putmany initial.(regs) (map.of_list_Z_at 3 vals);
            nextPc ::= word.add (word.of_Z (4 * Z.of_nat 29));
@@ -865,7 +870,7 @@ Section Riscv.
     eapply invert_fetch in H. fwd.
     rename initial into initialH.
     match goal with
-    | H1: seps _ initialH.(mem), H2: seps _ initialL.(mem) |- _ =>
+    | H1: sep _ _ initialH.(mem), H2: sep _ _ initialL.(mem) |- _ =>
         rename H1 into MH, H2 into ML
     end.
     pose proof MH as MH'. move MH' after MH.
@@ -879,7 +884,7 @@ Section Riscv.
     especialize ML'. {
       eexists. split. 2: exact MHI. ecancel_assumption.
     }
-    flatten_seps_in ML'. clear ML.
+    flatten_seps_in ML'. cbn [seps] in ML'. clear ML.
     remember (match mdecode z with
               | MInstruction _ => false
               | _ => true
@@ -899,6 +904,7 @@ Section Riscv.
         (midset := fun midL => exists midH, related midH midL /\ midset midH).
       + eapply build_fetch_one_instr with (instr1 := decode RV32I z).
         { refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML').
+          cancel.
           cancel_seps_at_indices_by_implication 4%nat 0%nat. 2: finish_impl_ecancel.
           unfold impl1, instr, sepcl, ex1, emp. intros m A.
           eexists.
@@ -918,6 +924,7 @@ Section Riscv.
       eapply build_fetch_one_instr with (instr1 := InvalidInstruction z).
       { replace initialH.(pc) with initialL.(pc) in ML.
         refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML).
+        cancel.
         cancel_seps_at_indices_by_implication 4%nat 0%nat. 2: finish_impl_ecancel.
         move E at bottom.
         unfold impl1, instr, sepcl, ex1, emp. intros m A.
@@ -969,7 +976,7 @@ Section Riscv.
              end.
       autorewrite with rew_word_morphism in *.
       repeat (repeat word_simpl_step_in_hyps; fwd).
-      flatten_seps_in ML.
+      flatten_seps_in ML. cbn [seps] in ML.
 
       after_mem_modifying_lemma.
       repeat (repeat word_simpl_step_in_hyps; fwd).
@@ -1019,7 +1026,7 @@ Section Riscv.
       after_sep_call.
       clear ML m m_1.
       intros m l ML OD RIl.
-      flatten_seps_in ML.
+      flatten_seps_in ML. cbn [seps] in ML.
 
       (* Csrr t1 MEPC *)
       eapply runsToStep_cps. repeat step.

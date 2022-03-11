@@ -45,14 +45,14 @@ Definition idecode: Z -> Instruction := decode RV32I.
   { requires t m :=
       mdecode (word.unsigned inst) = MInstruction (Mul rd rs1 rs2) /\
       List.length regvals = 32%nat /\
-      seps [a_regs :-> regvals : word_array; R] m;
+      sep (a_regs :-> regvals : word_array) R m;
       (* Alternative way of expressing the length constraint:
-      seps [a_regs |-> with_len 32 word_array regvals; R] m; *)
+      sep (a_regs |-> with_len 32 word_array regvals) R m; *)
     ensures t' m' :=
       t = t' /\
-      seps [a_regs :-> List.upd regvals (Z.to_nat rd) (word.mul
+      sep (a_regs :-> List.upd regvals (Z.to_nat rd) (word.mul
                (List.nth (Z.to_nat rs1) regvals default)
-               (List.nth (Z.to_nat rs2) regvals default)) : word_array; R] m'
+               (List.nth (Z.to_nat rs2) regvals default)) : word_array) R m'
  }.
 
 Lemma decode_RV32I_not_MInstruction i mi : decode RV32I i <> MInstruction mi.
@@ -91,7 +91,7 @@ Proof.
     eexists; split; repeat straightline.
     eapply Scalars.load_word_of_sep.
     match goal with
-    | |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (seps [a :-> v : Scalars.scalar; b] m)
+    | |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (sep (a :-> v : Scalars.scalar) b m)
     end.
     scancel_asm. }
 
@@ -102,7 +102,7 @@ Proof.
     eexists; split; repeat straightline.
     eapply Scalars.load_word_of_sep.
     match goal with
-    | |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (seps [a :-> v : Scalars.scalar; b] m)
+    | |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (sep (a :-> v : Scalars.scalar) b m)
     end.
     scancel_asm. }
 

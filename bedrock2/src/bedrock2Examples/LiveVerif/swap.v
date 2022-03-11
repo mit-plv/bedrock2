@@ -23,7 +23,6 @@ Require Import Coq.Strings.String.
 Require Import bedrock2.TacticError.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
-Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
 
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
@@ -73,8 +72,8 @@ Section SepLog.
   Qed.
 
   Lemma store_word_of_sep_cps_two_subgoals: forall addr oldvalue newvalue R m (post: mem -> Prop),
-      seps [addr :-> oldvalue : scalar; R] m ->
-      (forall m', seps [addr :-> newvalue : scalar; R] m' -> post m') ->
+      sep (addr :-> oldvalue : scalar) R m ->
+      (forall m', sep (addr :-> newvalue : scalar) R m' -> post m') ->
       get_option (Memory.store Syntax.access_size.word m addr newvalue) post.
   Proof.
     intros. eapply Scalars.store_word_of_sep in H. 2: eassumption.
@@ -82,11 +81,11 @@ Section SepLog.
   Qed.
 
   Lemma store_word_of_sep_cps: forall addr oldvalue newvalue R m (post: mem -> Prop),
-      seps [addr :-> oldvalue : scalar; R;
-            emp (forall m', seps [addr :-> newvalue : scalar; R] m' -> post m')] m ->
+      sep (addr :-> oldvalue : scalar)
+          (sep R (emp (forall m', sep (addr :-> newvalue : scalar) R m' -> post m'))) m ->
       get_option (Memory.store Syntax.access_size.word m addr newvalue) post.
   Proof.
-    intros. unfold seps in H. apply sep_assoc in H. apply sep_emp_r in H. destruct H.
+    intros. apply sep_assoc in H. apply sep_emp_r in H. destruct H.
     eapply store_word_of_sep_cps_two_subgoals. 1: unfold seps. 1: eassumption. eassumption.
   Qed.
 End SepLog.
@@ -163,7 +162,7 @@ Section WithParams.
 
   Lemma wp_load_anysize: forall m l sz addr (post: word -> Prop),
       wp_expr m l addr (fun a =>
-        exists v R, seps [a :-> v : truncated_word sz; R; emp (post (truncate_word sz v))] m) ->
+        exists v R, sep (a :-> v : truncated_word sz) (sep R (emp (post (truncate_word sz v)))) m) ->
       wp_expr m l (expr.load sz addr) post.
   Proof.
     intros. constructor. cbn. unfold load. inversion H.
@@ -179,7 +178,7 @@ Section WithParams.
 
   Lemma wp_load_word: forall m l addr (post: word -> Prop),
       wp_expr m l addr (fun a =>
-        exists v R, seps [a :-> v : scalar; R; emp (post v)] m) ->
+        exists v R, sep (a :-> v : scalar) (sep R (emp (post v))) m) ->
       wp_expr m l (expr.load access_size.word addr) post.
   Proof.
     intros. eapply wp_load_anysize.
@@ -427,8 +426,8 @@ Section WithParams.
   Lemma wp_store: forall fs ea ev t m l rest post,
       wp_expr m l ea (fun addr =>
         wp_expr m l ev (fun newvalue => exists oldvalue R,
-          seps [addr :-> oldvalue : scalar; R] m /\
-          (forall m', seps [addr :-> newvalue : scalar; R] m' ->
+          sep (addr :-> oldvalue : scalar) R m /\
+          (forall m', sep (addr :-> newvalue : scalar) R m' ->
                       wp_cmd (call fs) rest t m' l post))) ->
       wp_cmd (call fs) (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
   Proof.
@@ -660,9 +659,9 @@ Ltac eval_expr_step :=
   | |- wp_expr _ _ (expr.load access_size.word _) _ => eapply wp_load_word
   (* once the address of a load, or the address and value of a store have been evaluated,
      the goal will have two existentials: *)
-  | |- exists (v: @word.rep _ _) (R: @map.rep _ _ _ -> Prop), seps _ _ => do 2 eexists
+  | |- exists (v: @word.rep _ _) (R: @map.rep _ _ _ -> Prop), sep _ _ _ => do 2 eexists
   (* loads, stores and function calls all can lead to sep goals like this: *)
-  | |- seps _ _ => impl_ecancel_assumption
+  | |- sep _ _ _ => impl_ecancel_assumption
   | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load_old
   | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity |]
   | |- wp_expr _ _ (expr.literal _) _ => eapply wp_literal
@@ -722,6 +721,11 @@ Ltac add_last_hyp_to_post :=
   let T := type of last_hyp in
   lazymatch T with
   | scope_marker _ => fail "done (scope marker reached)"
+  | _ ?m => let t := type of m in
+            lazymatch t with
+            | @map.rep (@word.rep _ _) Init.Byte.byte _ => flatten_seps_in last_hyp
+            | _ => idtac
+            end
   | _ => idtac
   end;
   lazymatch type of T with
@@ -795,7 +799,7 @@ Ltac add_last_var_to_post Post :=
 
 Ltac package_context :=
   lazymatch goal with
-  | H: seps _ ?m |- ?E ?t ?m ?l =>
+  | H: _ ?m |- ?E ?t ?m ?l =>
       (* always package sep log assertion, even if memory was not changed in current block *)
       move H at bottom
   | |- ?E ?t ?m ?l => fail "No separation logic hypothesis about" m "found"
@@ -1304,12 +1308,12 @@ Ltac merge_sep_pair_step :=
   | H: seps ((seps (if ?b then ?Ps else ?Qs)) :: ?Rs) ?m |- _ =>
       merge_pair H Ps Qs constr_eqb (merge_seps_at_indices_same m) ||
       merge_pair H Ps Qs same_addr_and_pred (merge_seps_at_indices_same_addr_and_pred m) ||
-      eapply merge_seps_done in H
+      (eapply merge_seps_done in H; cbn [seps] in H)
   end.
 
 Ltac after_if :=
   repeat match goal with
-         | H: seps _ ?M |- _ => clear M H
+         | H: sep _ _ ?M |- _ => clear M H
          end;
   intros;
   repeat pull_dlet_and_exists_step;
@@ -1360,7 +1364,7 @@ Ltac store sz addr val :=
   [.. (* maybe some unsolved side conditions *)
   | match goal with
     | |- exists (v: @word.rep _ _) (R: @map.rep _ _ _ -> Prop),
-           seps _ _ /\ forall (_: @map.rep _ _ _), seps _ _ -> _ =>
+           sep _ _ _ /\ forall (_: @map.rep _ _ _), sep _ _ _ -> _ =>
         do 2 eexists; after_mem_modifying_lemma
     | |- _ => pose_err Error:("eval_expr_step should not fail on this goal")
     end ].
@@ -1407,7 +1411,7 @@ Ltac prove_final_post :=
            | |- exists _, _ => eexists
            | |- _ /\ _ => split
            | |- ?x = ?x => reflexivity
-           | |- seps _ _ => ecancel_assumption
+           | |- sep _ _ _ => ecancel_assumption
            end;
     try congruence;
     try ZnWords;
@@ -1624,7 +1628,6 @@ Ltac adhoc_lia_performance_fixes :=
 Require Import coqutil.Sorting.Permutation.
 
 Load LiveVerif.
-Import bedrock2.SepBulletPoints.
 (* to re-override Notations loaded trough `Load LiveVerif/bedrock2.Map.SeparationLogic` *)
 
 (* Note: If you re-import ZnWords after this, you'll get the old better_lia again *)
@@ -1638,10 +1641,10 @@ Local Set Default Goal Selector "1".
 Tactic Notation ".*" constr(s) "*" := add_snippet s; after_snippet.
 
 Definition u_min: {f: list string * list string * cmd &
-  forall fs t m a b R,
-    seps [R] m ->
+  forall fs t m a b (R: mem -> Prop),
+    R m ->
     vc_func fs f t m [a; b] (fun t' m' retvs =>
-      t' = t /\ seps [R] m' /\
+      t' = t /\ R m' /\
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
   )}.
@@ -1658,10 +1661,10 @@ Definition u_min: {f: list string * list string * cmd &
 Defined.
 
 Definition u_min': {f: list string * list string * cmd &
-  forall fs t m a b R,
-    seps [R] m ->
+  forall fs t m a b (R: mem -> Prop),
+    R m ->
     vc_func fs f t m [a; b] (fun t' m' retvs =>
-      t' = t /\ seps [R] m' /\
+      t' = t /\ R m' /\
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
   )}.                                                                           .**/
@@ -1679,10 +1682,8 @@ Defined.
 
 Definition merge_tests: {f: list string * list string * cmd &
   forall fs t m a vs R,
-    m satisfies <{
-      * a :-> vs : word_array
-      * R
-    }> ->
+    <{ * a :-> vs : word_array
+       * R }> m ->
     List.length vs = 3%nat ->
     vc_func fs f t m [a] (fun t' m' retvs => False)
   }.
@@ -1723,20 +1724,16 @@ Hint Extern 4 (Permutation _ _) =>
 
 Definition sort3: {f: list string * list string * cmd &
   forall fs t m a vs R,
-    m satisfies <{
-      * a :-> vs : word_array
-      * R
-    }> ->
+    <{ * a :-> vs : word_array
+       * R }> m ->
     List.length vs = 3%nat ->
     vc_func fs f t m [a] (fun t' m' retvs =>
       exists v0 v1 v2,
         t' = t /\
         Permutation vs [v0; v1; v2] /\
         \[v0] <= \[v1] <= \[v2] /\
-        m' satisfies <{
-          * a :-> [v0; v1; v2] : word_array
-          * R
-        }>
+        <{ * a :-> [v0; v1; v2] : word_array
+           * R }> m'
   )}.
 .**/ {                                                                          /**.
 .**/   uintptr_t w0 = load(a);                                                  /**.
@@ -1784,17 +1781,15 @@ Defined.
 (* TODO: write down postcondition only at end *)
 Definition swap: {f: list string * list string * cmd &
   forall fs t m a_addr b_addr a b R,
-    m satisfies <{
-      * a_addr :-> a : scalar
-      * b_addr :-> b : scalar
-      * R
-    }> ->
+    <{ * a_addr :-> a : scalar
+       * b_addr :-> b : scalar
+       * R
+    }> m ->
     vc_func fs f t m [a_addr; b_addr] (fun t' m' retvs =>
-      m' satisfies <{
-        * a_addr :-> b : scalar
-        * b_addr :-> a : scalar
-        * R
-      }> /\ retvs = [] /\ t' = t
+      <{ * a_addr :-> b : scalar
+         * b_addr :-> a : scalar
+         * R
+      }> m' /\ retvs = [] /\ t' = t
   )}.
 #*/ {                                                                        /*.
 #*/   uintptr_t t = load(a_addr);                                            /*.
