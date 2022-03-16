@@ -229,7 +229,7 @@ End __. End List.
 using lia : fwd_rewrites.
 
 Ltac list_simpl_in_hyps :=
-  unfold List.upd, List.upds in *;
+  unfold List.upd, List.upds in *|-;
   repeat (repeat word_simpl_step_in_hyps;
           repeat match goal with
                  | H:_ |- _ => rewrite_db fwd_rewrites in H

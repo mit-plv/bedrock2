@@ -35,6 +35,45 @@ Section WithParameters.
           post m') ->
       wp (memmove_call dst src n) m post.
 
+  Hint Rewrite Z.div_1_r Nat2Z.id : fwd_rewrites.
+
+  Lemma memmove_usage_correct: forall (n p: nat) addr (vs: list byte) R m,
+      List.length vs = (p + n + p + n + p)%nat ->
+      (* if p=0, sep disjointness only implies <= but not <, but do we need < ? *)
+      Z.of_nat (List.length vs) * 2 < 2 ^ 32 ->
+      sep (addr :-> vs : array ptsto (word.of_Z 1)) R m ->
+      wp (memmove_call (word.add addr (word.of_Z (Z.of_nat p)))
+                       (word.add addr (word.of_Z (Z.of_nat (p + n + p))))
+                       (word.of_Z (Z.of_nat n)))
+         m (fun m' => sep
+           (addr :-> vs[p := vs[p + n + p :][:n] ..] : array ptsto (word.of_Z 1)) R m').
+  Proof.
+    intros.
+    (* apply call lemma *)
+    eapply memmove_ok.
+    (* precondition #1 (separation logic assertion for src) *)
+    scancel_asm.
+      (* Currently manual hint: We will only need merging for dst, but not for src, so
+         we can remove the split/merge that was posed *)
+      clear_split_sepclause_stack.
+    (* precondition #2 (separation logic assertion for dst) *)
+    scancel_asm.
+    (* precondition #3 (length of src) *)
+    split; [listZnWords|].
+    (* precondition #4 (length of dst) *)
+    split; [listZnWords|].
+    (* precondition #5 (bounds) *)
+    split; [ZnWords|].
+    (* introduce postcondition and prettify *)
+    intro_new_mem.
+    transfer_sep_order. (* also clears old mem hyps and renames mem *)
+    list_simpl_in_hyps.
+    (* prove that computed state implies final postcondition *)
+    list_simpl_in_goal.
+    replace (n + p)%nat with (p + n)%nat at 1 by lia. (* TODO canonicalization for nat *)
+    scancel_asm.
+  Qed.
+
   Context (sample_call: word -> word -> cmd).
 
   Hypothesis sample_call_correct: forall m a1 n (vs: list word) R (post: mem -> Prop),
