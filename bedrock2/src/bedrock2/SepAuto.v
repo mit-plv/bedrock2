@@ -35,7 +35,7 @@ Tactic Notation "ebind" tactic3(t1) ";;" tactic3(t2) :=
 
 but if t2 is a match and not prefixed with idtac, it's evaluated too early *)
 Ltac after_mem_modifying_lemma :=
-  after_sep_call;
+  scancel_asm;
   match goal with
   | _: tactic_error _ |- _ => idtac
   | |- _ => intro_new_mem; transfer_sep_order

@@ -399,14 +399,15 @@ Section Riscv.
          are sufficient, but to be more robust agains future changes in the
          handler implementation, we require a bit more stack space *)
       128 <= word.unsigned (word.sub stack_pastend stack_start) ->
-      <{ * a_regs :-> regvals : with_len 32 word_array
+      <{ * a_regs :-> regvals : word_array
          * initial.(pc) :-> mul_insts : program idecode
          * LowerPipeline.mem_available stack_start stack_pastend
          * R }> initial.(MinimalCSRs.mem) /\
+      List.length regvals = 32%nat /\
       (forall newMem newRegs,
         <{ * a_regs :-> List.upd regvals (Z.to_nat rd) (word.mul
                    (List.nth (Z.to_nat rs1) regvals default)
-                   (List.nth (Z.to_nat rs2) regvals default)) : with_len 32 word_array
+                   (List.nth (Z.to_nat rs2) regvals default)) : word_array
            * initial.(pc) :-> mul_insts : program idecode
            * LowerPipeline.mem_available stack_start stack_pastend
            * R }> newMem ->
@@ -421,7 +422,7 @@ Section Riscv.
   Proof.
     intros.
     match goal with
-    | H: _ /\ _ |- _ => destruct H as [ML C]
+    | H: _ /\ _ /\ _ |- _ => destruct H as (ML & rL & C)
     end.
     pose proof ML as ML'.
     destruct ML as (mH & mL & Sp & MH & ML).
@@ -475,8 +476,7 @@ Section Riscv.
                   (*********************)
         unfold spec_of_softmul in P.
         eapply P with (regvals := regvals) (R := emp True) (m := mH); clear P.
-        unfold with_len, with_pure, sepcl in MH.
-        eapply sep_emp_r in MH. destruct MH as [MH L].
+        unfold sepcl in MH.
         ssplit; try eassumption.
         cbn [seps]. unfold sepcl. ecancel_assumption. }
       { reflexivity. }
@@ -494,9 +494,9 @@ Section Riscv.
         { exists mL, mH. ssplit.
           - eapply map.split_comm. assumption.
           - instantiate (1 := R).
-            unfold SeparationLogic.program.
-            use_sep_asm. impl_ecancel.
-            cbn [seps].
+            eapply sep_emp_True_r.
+            use_sep_asm. refine (conj _ I). repeat ecancel_step_by_implication.
+            unfold sepcl, SeparationLogic.program.
             eapply idecode_array_implies_program.
           - reflexivity. }
         { match goal with
@@ -527,9 +527,6 @@ Section Riscv.
         etransitivity; [eapply Proper_sep_impl1; [reflexivity|] | ].
         { intros ? []. eassumption. }
         change (@word.of_Z ?wi ?wo 0) with (@default (@word.rep wi wo) _).
-        rewrite with_len_eq. 2: {
-          apply_in_hyps @extract_with_len. listZnWords.
-        }
         unfold sepcl, SeparationLogic.program.
         cancel.
         repeat ecancel_step_by_implication.

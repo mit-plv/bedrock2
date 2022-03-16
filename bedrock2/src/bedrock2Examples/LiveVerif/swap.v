@@ -81,12 +81,11 @@ Section SepLog.
   Qed.
 
   Lemma store_word_of_sep_cps: forall addr oldvalue newvalue R m (post: mem -> Prop),
-      sep (addr :-> oldvalue : scalar)
-          (sep R (emp (forall m', sep (addr :-> newvalue : scalar) R m' -> post m'))) m ->
+      sep (addr :-> oldvalue : scalar) R m /\
+      (forall m', sep (addr :-> newvalue : scalar) R m' -> post m') ->
       get_option (Memory.store Syntax.access_size.word m addr newvalue) post.
   Proof.
-    intros. apply sep_assoc in H. apply sep_emp_r in H. destruct H.
-    eapply store_word_of_sep_cps_two_subgoals. 1: unfold seps. 1: eassumption. eassumption.
+    intros. destruct H. eapply store_word_of_sep_cps_two_subgoals; eassumption.
   Qed.
 End SepLog.
 
@@ -160,47 +159,14 @@ Section WithParams.
     eapply wp_literal. reflexivity.
   Qed.
 
-  Lemma wp_load_anysize: forall m l sz addr (post: word -> Prop),
-      wp_expr m l addr (fun a =>
-        exists v R, sep (a :-> v : truncated_word sz) (sep R (emp (post (truncate_word sz v)))) m) ->
-      wp_expr m l (expr.load sz addr) post.
-  Proof.
-    intros. constructor. cbn. unfold load. inversion H.
-    eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
-    cbv [Morphisms.pointwise_relation Basics.impl]. intros.
-    destruct H1 as (v & R & H1). cbn [seps] in H1.
-    apply sep_assoc in H1.
-    apply sep_emp_r in H1.
-    destruct H1 as [Hm Hpost].
-    eapply load_of_sep in Hm.
-    eauto.
-  Qed.
-
-  Lemma wp_load_word: forall m l addr (post: word -> Prop),
-      wp_expr m l addr (fun a =>
-        exists v R, sep (a :-> v : scalar) (sep R (emp (post v))) m) ->
-      wp_expr m l (expr.load access_size.word addr) post.
-  Proof.
-    intros. eapply wp_load_anysize.
-    eapply weaken_wp_expr. 1: exact H. cbv beta.
-    unfold scalar, truncate_word, truncate_Z.
-    clear H.
-    intros. destruct H as (val & R & H). exists val, R.
-    rewrite Z.land_ones.
-    2: cbv; discriminate.
-    rewrite Z.mod_small.
-    2: apply word.unsigned_range.
-    rewrite word.of_Z_unsigned.
-    exact H.
-  Qed.
-
-  Lemma wp_load_old: forall m l sz addr (post: word -> Prop),
+  Lemma wp_load: forall m l sz addr (post: word -> Prop),
       wp_expr m l addr (fun a => get_option (Memory.load sz m a) post) ->
       wp_expr m l (expr.load sz addr) post.
   Proof.
     intros. constructor. cbn. unfold load. inversion H.
     eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
-    cbv [Morphisms.pointwise_relation Basics.impl]. intros. inversion H1. subst. eauto.
+    cbv [Morphisms.pointwise_relation Basics.impl]. intros.
+    inversion H1. subst. eauto.
   Qed.
 
   Lemma wp_op: forall m l bop ea eb (post: word -> Prop),
@@ -410,7 +376,7 @@ Section WithParams.
     constructor. cbn. unfold dlet.dlet. eauto.
   Qed.
 
-  Lemma wp_store0: forall fs sz ea ev t m l rest post,
+  Lemma wp_store: forall fs sz ea ev t m l rest post,
       wp_expr m l ea (fun a =>
         wp_expr m l ev (fun v =>
           get_option (Memory.store sz m a v) (fun m' =>
@@ -421,21 +387,6 @@ Section WithParams.
     eapply wp_expr_to_dexpr in H. unfold dexpr in *. fwd.
     eapply wp_expr_to_dexpr in Hp1. unfold dexpr in *. fwd.
     inversion Hp1p1. inversion H0. subst. unfold store. symmetry in H. eauto 10.
-  Qed.
-
-  Lemma wp_store: forall fs ea ev t m l rest post,
-      wp_expr m l ea (fun addr =>
-        wp_expr m l ev (fun newvalue => exists oldvalue R,
-          sep (addr :-> oldvalue : scalar) R m /\
-          (forall m', sep (addr :-> newvalue : scalar) R m' ->
-                      wp_cmd (call fs) rest t m' l post))) ->
-      wp_cmd (call fs) (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
-  Proof.
-    intros.
-    eapply wp_store0.
-    eapply weaken_wp_expr. 1: eassumption. clear H. cbv beta. intros.
-    eapply weaken_wp_expr. 1: eassumption. clear H. cbv beta. intros. fwd.
-    eapply store_word_of_sep_cps_two_subgoals; eassumption.
   Qed.
 
   Lemma wp_if0: forall fs c thn els rest t m l post,
@@ -656,16 +607,12 @@ Ltac put_into_current_locals is_decl :=
 
 Ltac eval_expr_step :=
   lazymatch goal with
-  | |- wp_expr _ _ (expr.load access_size.word _) _ => eapply wp_load_word
-  (* once the address of a load, or the address and value of a store have been evaluated,
-     the goal will have two existentials: *)
-  | |- exists (v: @word.rep _ _) (R: @map.rep _ _ _ -> Prop), sep _ _ _ => do 2 eexists
-  (* loads, stores and function calls all can lead to sep goals like this: *)
-  | |- sep _ _ _ => impl_ecancel_assumption
-  | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load_old
+  | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load
   | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity |]
   | |- wp_expr _ _ (expr.literal _) _ => eapply wp_literal
   | |- wp_expr _ _ (expr.op _ _ _) _ => eapply wp_op; cbv [interp_binop]
+  | |- get_option (Memory.load access_size.word _ _) _ =>
+      eapply load_word_of_sep_cps; scancel_asm; clear_split_sepclause_stack
   end.
 
 Ltac eval_expr := repeat eval_expr_step.
@@ -1354,18 +1301,18 @@ Ltac assign is_decl name val :=
   [.. (* maybe some unsolved side conditions *)
   | try ((* to simplify value that will become bound with :=, at which point
             rewrites will not apply any more *)
-         clear_split_sepclause_stack;
          repeat word_simpl_step_in_goal;
          put_into_current_locals is_decl) ].
 
 Ltac store sz addr val :=
-  eapply (wp_store _ addr val);
+  eapply (wp_store _ sz addr val);
   eval_expr;
   [.. (* maybe some unsolved side conditions *)
-  | match goal with
-    | |- exists (v: @word.rep _ _) (R: @map.rep _ _ _ -> Prop),
-           sep _ _ _ /\ forall (_: @map.rep _ _ _), sep _ _ _ -> _ =>
-        do 2 eexists; after_mem_modifying_lemma
+  | lazymatch goal with
+    | |- get_option (Memory.store access_size.word _ _ _) _ =>
+        eapply store_word_of_sep_cps; after_mem_modifying_lemma
+    | |- get_option (Memory.store ?sz _ _ _) _ =>
+        fail 10000 "storing" sz "not yet supported"
     | |- _ => pose_err Error:("eval_expr_step should not fail on this goal")
     end ].
 

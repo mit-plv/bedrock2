@@ -1,5 +1,6 @@
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Bitwidth32.
+Require Import bedrock2.Array.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
 Require Import bedrock2.OperatorOverloading. Local Open Scope oo_scope.
 Import Coq.Lists.List.ListNotations. Local Open Scope list_scope.
@@ -20,22 +21,29 @@ Section WithParameters.
 
   Context (cmd: Type).
   Context (wp: cmd -> mem -> (mem -> Prop) -> Prop).
+
+  Context (memmove_call: forall dst src n: word, cmd).
+
+  Hypothesis memmove_ok: forall m (dst src n: word) s d R1 R2 (post: mem -> Prop),
+      sep (src :-> s : array ptsto (word.of_Z 1)) R1 m /\
+      sep (dst :-> d : array ptsto (word.of_Z 1)) R2 m /\
+      List.length s = Z.to_nat (word.unsigned n) /\
+      List.length d = Z.to_nat (word.unsigned n) /\
+      word.unsigned n * 2 < 2 ^ 32 /\
+      (forall m',
+          sep (dst :-> s : array ptsto (word.of_Z 1)) R2 m' ->
+          post m') ->
+      wp (memmove_call dst src n) m post.
+
   Context (sample_call: word -> word -> cmd).
 
   Hypothesis sample_call_correct: forall m a1 n (vs: list word) R (post: mem -> Prop),
-      sep (a1 :-> vs : with_len (Z.to_nat (word.unsigned n)) word_array) R m /\
+      sep (a1 :-> vs : word_array) R m /\
+      List.length vs = Z.to_nat (word.unsigned n) /\
       (forall m',
-        (* Currently, the postcondition also needs a `with_len` so that when the caller
-           merges the pieces back together, it recognizes the clause as having the
-           same shape as in the precondition.
-           TODO consider ways of supporting to drop with_len in the postcondition when
-           it can be derived like here (List.upd is guaranteed to preserve the length). *)
-        sep (a1 :-> List.upd vs 5 (List.nth 5 vs default * (word.of_Z (width := 32) 2))
-            : with_len (Z.to_nat (word.unsigned n)) word_array) R m' ->
+        sep (a1 :-> vs[5 := vs[5] * (word.of_Z (width := 32) 2)] : word_array) R m' ->
         post m') ->
       wp (sample_call a1 n) m post.
-
-  Context (sample_post: mem -> Prop).
 
   (* even this small example needs higher-than-default printing depth to fully display
      the intermediate goals... *)
@@ -57,34 +65,23 @@ Section WithParameters.
 
     (* prove precondition and after intro-ing postcondition, merge back with same lemma
        as used for proving precondition: *)
-    put_cont_into_emp_sep.
     use_sep_asm.
-    cancel. (* only reifies, because nothing can be canceled without splitting *)
-    split_ith_left_to_cancel_with_fst_right 0%nat.
+    split_ith_left_and_cancel_with_fst_right 0%nat.
     finish_impl_ecancel.
+    split. 1: listZnWords.
     intros m' HM'.
-    pop_split_sepclause_stack m'.
-
+    pop_split_sepclause_stack_step m'.
     list_simpl_in_hyps.
     list_simpl_in_goal.
     scancel_asm.
   Qed.
 
-  (* up for discussion: naming, and convention on what position the memory has
-     in postcondition, and what to do with calls that don't modify the memory,
-     and what to do if the new sep formula is under some existentials
-     or under a disjunction -- therefore it's not automated yet in SepCalls.v,
-     and here we just pretend that this tactic would always work even though it doesn't *)
-  Ltac sep_call_pre_post :=
-    after_sep_call; intro_new_mem.
-
   Lemma use_sample_call_automated: sample_call_usage_goal.
   Proof.
     unfold sample_call_usage_goal. intros.
     eapply sample_call_correct.
-
-    sep_call_pre_post.
-
+    scancel_asm. split. 1: listZnWords.
+    intro_new_mem.
     list_simpl_in_hyps.
     list_simpl_in_goal.
     scancel_asm.

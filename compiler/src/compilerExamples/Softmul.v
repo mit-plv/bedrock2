@@ -715,7 +715,7 @@ Section Riscv.
     | H: ?P |- ?P => exact H
     | |- mcomp_sat (run1 idecode) _ _ =>
         eapply build_fetch_one_instr; try record.simp; cbn_MachineWidth;
-        [ impl_ecancel_assumption
+        [ scancel_asm
         | repeat word_simpl_step_in_goal;
           lazymatch goal with
           | |- context[Execute.execute ?x] =>
@@ -794,12 +794,13 @@ Section Riscv.
       map.get initial.(regs) RegisterNames.sp = Some spval ->
       initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
       regs_initialized initial.(regs) ->
-      (<{ * word.add spval (word.of_Z 12) :-> oldvals : with_len 29 word_array
+      (<{ * word.add spval (word.of_Z 12) :-> oldvals : word_array
           * initial.(pc) :-> save_regs3to31 : program idecode
           * R }> initial.(mem) /\
+       List.length oldvals = 29%nat /\
        forall m vals,
          map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) 29 3) = Some vals ->
-         <{ * word.add spval (word.of_Z 12) :-> vals : with_len 29 word_array
+         <{ * word.add spval (word.of_Z 12) :-> vals : word_array
             * initial.(pc) :-> save_regs3to31 : program idecode
             * R }> m ->
          runsTo (mcomp_sat (run1 idecode)) { initial with mem := m;
@@ -818,25 +819,22 @@ Section Riscv.
     }
     destruct E as [vals G].
     match goal with
-    | H: _ /\ forall _, _ |- _ => destruct H as [HM HPost]
+    | H: _ /\ _ /\ forall _, _ |- _ => destruct H as (HM & L & HPost)
     end.
-    pose proof (extract_with_len HM) as L.
-    rewrite with_len_eq in HM by assumption.
     eapply save_regs_correct_aux with (start := 3); try eassumption; try reflexivity.
     intros. split.
     - exact HM.
-    - intros; eapply HPost. 1: eassumption.
-      rewrite with_len_eq. 1: assumption.
-      apply_in_hyps @map.getmany_of_list_length. symmetry. assumption.
+    - intros; eapply HPost. 1: eassumption. assumption.
   Qed.
 
   Lemma restore_regs3to31_correct: forall R (initial: State) vals spval
                                   (post: State -> Prop),
       map.get initial.(regs) RegisterNames.sp = Some spval ->
       initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
-      <{ * word.add spval (word.of_Z 12) :-> vals : with_len 29 word_array
+      <{ * word.add spval (word.of_Z 12) :-> vals : word_array
          * initial.(pc) :-> restore_regs3to31 : program idecode
          * R }> initial.(mem) /\
+      List.length vals = 29%nat /\
       runsTo (mcomp_sat (run1 idecode)) { initial with
            regs := map.putmany initial.(regs) (map.of_list_Z_at 3 vals);
            nextPc ::= word.add (word.of_Z (4 * Z.of_nat 29));
@@ -905,7 +903,7 @@ Section Riscv.
       + eapply build_fetch_one_instr with (instr1 := decode RV32I z).
         { refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML').
           cancel.
-          cancel_seps_at_indices_by_implication 4%nat 0%nat. 2: finish_impl_ecancel.
+          cancel_seps_at_indices_by_implication 4%nat 0%nat. 2: exact impl1_refl.
           unfold impl1, instr, sepcl, ex1, emp. intros m A.
           eexists.
           refine (Morphisms.subrelation_refl impl1 _ _ _ m A).
@@ -925,7 +923,7 @@ Section Riscv.
       { replace initialH.(pc) with initialL.(pc) in ML.
         refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML).
         cancel.
-        cancel_seps_at_indices_by_implication 4%nat 0%nat. 2: finish_impl_ecancel.
+        cancel_seps_at_indices_by_implication 4%nat 0%nat. 2: exact impl1_refl.
         move E at bottom.
         unfold impl1, instr, sepcl, ex1, emp. intros m A.
         eexists.
@@ -975,10 +973,24 @@ Section Riscv.
                                          change (List.length l) with n in ML
              end.
       autorewrite with rew_word_morphism in *.
+      (* needed because of https://github.com/coq/coq/issues/10848 (otherwise evar
+         of `Datatypes.length ?oldvals` gets instantiated to whole LHS of rewrite lemma *)
+
+Ltac set_evars_goal :=
+  repeat match goal with
+         | |- context[?x] => is_evar x; set x
+         end.
+
+Ltac subst_evars :=
+  repeat match goal with
+         | y:= ?v |- _ => is_evar v; subst y
+         end.
+
+      set_evars_goal.
       repeat (repeat word_simpl_step_in_hyps; fwd).
       flatten_seps_in ML. cbn [seps] in ML.
-
-      after_mem_modifying_lemma.
+      subst_evars.
+      scancel_asm. split. 1: listZnWords. intro_new_mem. transfer_sep_order.
       repeat (repeat word_simpl_step_in_hyps; fwd).
 
       (* TODO to get splitting/merging work for the program as well, we need
@@ -1021,9 +1033,8 @@ Section Riscv.
         apply_in_hyps @map.getmany_of_list_length.
         symmetry. assumption.
       }
-      rewrite !with_len_eq by listZnWords.
 
-      after_sep_call.
+      scancel_asm. split. 1: listZnWords.
       clear ML m m_1.
       intros m l ML OD RIl.
       flatten_seps_in ML. cbn [seps] in ML.
@@ -1050,7 +1061,7 @@ Section Riscv.
         rewrite map.get_put_same in OD. symmetry in OD. exact OD. }
       { ZnWords. }
       autorewrite with rew_word_morphism. repeat word_simpl_step_in_goal.
-      split. 1: scancel_asm. (* don't need to keep goal modifications for rest of program *)
+      scancel_asm. split. 1: listZnWords.
 
       repeat word_simpl_step_in_goal.
       match goal with
@@ -1074,12 +1085,12 @@ Section Riscv.
 
       (* Lw ra sp 4 *)
       eapply runsToStep_cps. repeat step.
-      eapply interpret_loadWord. split. 1: scancel_asm.
+      eapply interpret_loadWord. scancel_asm. clear_split_sepclause_stack.
       repeat step.
 
       (* Lw sp sp 8 *)
       eapply runsToStep_cps. repeat step.
-      eapply interpret_loadWord. split. 1: scancel_asm.
+      eapply interpret_loadWord. scancel_asm. clear_split_sepclause_stack.
       repeat step.
 
       (* Mret *)
@@ -1113,7 +1124,10 @@ Section Riscv.
                         | eapply in_union_l; reflexivity ] | ]).
         eapply only_differ_refl.
       }
-      rename H3 into GetVals. move GetVals at bottom.
+      match goal with
+      | H: map.getmany_of_list _ _ = Some _ |- _ =>
+          rename H into GetVals; move GetVals at bottom
+      end.
       match goal with
       | H: regs_initialized (regs initialL) |- _ => rename H into RI; move RI at bottom
       end.
