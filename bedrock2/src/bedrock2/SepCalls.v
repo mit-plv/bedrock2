@@ -257,7 +257,7 @@ Ltac clear_split_sepclause_stack :=
          end.
 
 Ltac pop_split_sepclause_stack_step m :=
-  let H := lazymatch goal with H: _ ?m |- _ => H end in
+  let H := lazymatch goal with H: _ m |- _ => H end in
   let Sp := lazymatch goal with Sp: split_merge_lemma _ |- _ => Sp end in
   cbv [split_merge_lemma] in Sp;
   cbn [seps] in Sp, H;
