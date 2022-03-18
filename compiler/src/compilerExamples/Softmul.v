@@ -105,14 +105,16 @@ Ltac cbn_MachineWidth := cbn [
 (* typeclasses eauto is for the word.ok sidecondition *)
 #[export] Hint Rewrite @word.of_Z_unsigned using typeclasses eauto : fwd_rewrites.
 
+Definition regs3to31: list Z := List.unfoldn (Z.add 1) 29 3.
+
 Section WithRegisterNames.
   Import RegisterNames PseudoInstructions.
   Import InstructionCoercions. Open Scope ilist_scope.
 
   Definition save_regs3to31 :=
-    @List.map Register Instruction (fun r => Sw sp r (4 * r)) (List.unfoldn (Z.add 1) 29 3).
+    @List.map Register Instruction (fun r => Sw sp r (4 * r)) regs3to31.
   Definition restore_regs3to31 :=
-    @List.map Register Instruction (fun r => Lw r sp (4 * r)) (List.unfoldn (Z.add 1) 29 3).
+    @List.map Register Instruction (fun r => Lw r sp (4 * r)) regs3to31.
 
   (* TODO write encoder (so far there's only a decoder called CSR.lookupCSR) *)
   Definition MTVal    := 835.
@@ -799,7 +801,7 @@ Section Riscv.
           * R }> initial.(mem) /\
        List.length oldvals = 29%nat /\
        forall m vals,
-         map.getmany_of_list initial.(regs) (List.unfoldn (Z.add 1) 29 3) = Some vals ->
+         map.getmany_of_list initial.(regs) regs3to31 = Some vals ->
          <{ * word.add spval (word.of_Z 12) :-> vals : word_array
             * initial.(pc) :-> save_regs3to31 : program idecode
             * R }> m ->
@@ -810,7 +812,7 @@ Section Riscv.
   Proof.
     unfold save_regs3to31. intros.
     assert (exists vals,
-       map.getmany_of_list (regs initial) (List.unfoldn (Z.add 1) 29 3) = Some vals) as E. {
+       map.getmany_of_list (regs initial) regs3to31 = Some vals) as E. {
       eapply map.getmany_of_list_exists with (P := fun r => 3 <= r < 32).
       - change 32 with (3 + Z.of_nat 29).
         eapply List.unfoldn_Z_seq_Forall.
@@ -990,7 +992,16 @@ Ltac subst_evars :=
       repeat (repeat word_simpl_step_in_hyps; fwd).
       flatten_seps_in ML. cbn [seps] in ML.
       subst_evars.
-      scancel_asm. split. 1: listZnWords. intro_new_mem. transfer_sep_order.
+      scancel_asm. split. 1: listZnWords.
+      intro mNew. intros.
+      (* TODO this should be in listZnWords or in sidecondition solvers in SepAutoArray *)
+      assert (List.length vals = 29%nat). {
+        unfold regs3to31 in *.
+        apply_in_hyps @map.getmany_of_list_length.
+        symmetry. assumption.
+      }
+      pop_split_sepclause_stack mNew.
+      transfer_sep_order.
       repeat (repeat word_simpl_step_in_hyps; fwd).
 
       (* TODO to get splitting/merging work for the program as well, we need
@@ -1028,11 +1039,6 @@ Ltac subst_evars :=
              end.
       autorewrite with rew_word_morphism in *.
       repeat (repeat word_simpl_step_in_goal; fwd).
-      (* TODO this should be in listZnWords or in sidecondition solvers in SepAutoArray *)
-      assert (List.length vals = 29%nat). {
-        apply_in_hyps @map.getmany_of_list_length.
-        symmetry. assumption.
-      }
 
       scancel_asm. split. 1: listZnWords.
       clear ML m m_1.
