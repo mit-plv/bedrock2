@@ -23,12 +23,12 @@ Import ND.
 
 Notation "'let/+' x 'as' nm := val 'in' body" :=
   (mbindn [nm] val (fun x => body))
-    (at level 200, x ident, body at level 200,
+    (at level 200, x name, body at level 200,
      format "'[hv' 'let/+'  x  'as'  nm  :=  val  'in' '//' body ']'").
 
 Notation "'let/+' x := val 'in' body" :=
   (mbindn [IdentParsing.TC.ident_to_string x] val (fun x => body))
-    (at level 200, x ident, body at level 200,
+    (at level 200, x name, body at level 200,
      only parsing).
 
 Notation "%{ x | P }" :=
