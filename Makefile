@@ -1,8 +1,5 @@
 # Makefile originally based off of one from coq-club, also borrowing from fiat-crypto and bedrock2's Makefiles
 
-COQPATH?=$(COQUTIL_FOLDER)/src:$(BEDROCK2_FOLDER)/src
-export COQPATH
-
 # use cygpath -m because Coq on Windows cannot handle cygwin paths
 LIBDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/Rupicola/Lib
 ALLDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/Rupicola
@@ -11,7 +8,7 @@ ALLDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/Rupicola
 VS_LIB:=$(abspath $(shell git ls-files "$(LIBDIR)/*.v"))
 VS_ALL:=$(abspath $(shell git ls-files "$(ALLDIR)/*.v"))
 
-all: deps Makefile.coq $(VS_ALL)
+all: Makefile.coq $(VS_ALL)
 	rm -f .coqdeps.d
 	$(MAKE) -f Makefile.coq
 
@@ -37,37 +34,81 @@ clean:: Makefile.coq.lib Makefile.coq
 	find . -type f \( -name '*~' -o -name '*.aux' -o -name '.lia.cache' -o -name '.nia.cache' \) -delete
 	rm -f Makefile.coq.lib Makefile.coq.lib.conf Makefile.coq Makefile.coq.conf _CoqProject
 
+EXTERNAL_DEPENDENCIES?=
+EXTERNAL_COQUTIL?=
+EXTERNAL_BEDROCK2?=
+
 COQUTIL_FOLDER := bedrock2/deps/coqutil
 BEDROCK2_FOLDER := bedrock2/bedrock2
 
+# Note: make does not interpret "\n", and this is intended
+DEPFLAGS_COQUTIL_NL=-Q $(COQUTIL_FOLDER)/src/coqutil coqutil\n
+DEPFLAGS_BEDROCK2_NL=-Q $(BEDROCK2_FOLDER)/src/bedrock2 bedrock2\n
+CURFLAGS_NL=-R src/Rupicola Rupicola\n-arg -w\n-arg -unexpected-implicit-declaration,-deprecated-ident-entry\n
+DEPFLAGS_NL=
+
+ifneq ($(EXTERNAL_COQUTIL),1)
+DEPFLAGS_NL+=$(DEPFLAGS_COQUTIL_NL)
+endif
+
+ifneq ($(EXTERNAL_BEDROCK2),1)
+DEPFLAGS_NL+=$(DEPFLAGS_BEDROCK2_NL)
+endif
+
+# If we get our dependencies externally, then we should not bind the local versions of things
+ifneq ($(EXTERNAL_DEPENDENCIES),1)
+ALLDEPFLAGS_NL=$(CURFLAGS_NL)$(DEPFLAGS_NL)
+else
+ALLDEPFLAGS_NL=$(CURFLAGS_NL)
+endif
+
+ifneq ($(EXTERNAL_DEPENDENCIES),1)
+
+ifneq ($(EXTERNAL_COQUTIL),1)
+bedrock2: coqutil
+install: install_coqutil
+endif
+
+ifneq ($(EXTERNAL_BEDROCK2),1)
+install: install_bedrock2
+all: bedrock2
+deps: bedrock2
+%.vo: bedrock2
+endif
+
+endif
+
 coqutil:
-	$(MAKE) --no-print-directory -C $(COQUTIL_FOLDER) 
+	$(MAKE) --no-print-directory -C $(COQUTIL_FOLDER)
 
 clean-coqutil:
 	$(MAKE) --no-print-directory -C $(COQUTIL_FOLDER) clean
 
-bedrock2: coqutil
+install-coqutil:
+	$(MAKE) --no-print-directory -C $(COQUTIL_FOLDER) install
+
+bedrock2:
 	$(MAKE) --no-print-directory -C $(BEDROCK2_FOLDER) noex
 
 clean-bedrock2:
 	$(MAKE) --no-print-directory -C $(BEDROCK2_FOLDER) clean
 
-deps: bedrock2
+install-bedrock2:
+	$(MAKE) --no-print-directory -C $(BEDROCK2_FOLDER) install_bedrock2
 
 cleanall: clean clean-coqutil clean-bedrock2
 
 %.vo: deps Makefile.coq
-	+make -f Makefile.coq $@
+	+$(MAKE) -f Makefile.coq $@
 
-_CoqProject: Makefile
-	@echo "-R src/Rupicola Rupicola" > $@
-	@echo "-Q bedrock2/bedrock2/src/bedrock2 bedrock2" >> $@
-	@echo "-Q bedrock2/deps/coqutil/src/coqutil coqutil" >> $@
-	@echo "-arg -w" >> $@
-	@echo "-arg -unexpected-implicit-declaration,-deprecated-ident-entry" >> $@
+install: Makefile.coq
+	+$(MAKE) -f Makefile.coq $@
+
+_CoqProject:
+	@printf -- '$(ALLDEPFLAGS_NL)' > _CoqProject
 
 Makefile: ;
 
 phony: ;
 
-.PHONY: all lib clean phony base coqutil clean-coqutil bedrock2 clean-bedrock2 deps cleanall _CoqProject
+.PHONY: all lib clean phony base coqutil clean-coqutil install-coqutil bedrock2 clean-bedrock2 install-bedrock2 install deps cleanall _CoqProject
