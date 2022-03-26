@@ -15,6 +15,8 @@ Makefile.coq.lib.conf
 *.timing
 .coq-native
 
+/_CoqProject
+
 /src/Rupicola/Examples/latest_benchmark_results.py
 /src/Rupicola/Examples/latest_benchmark_ocaml_results.py
 
