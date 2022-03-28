@@ -135,6 +135,12 @@ Section ExprCompiler.
     Proof. rewrite word.b2w_if; eapply (@expr_compile_word_bop bopname.lts). Qed.
     Definition expr_compile_word_ltu : DOP bopname.ltu (of_bool (word.ltu w1 w2)).
     Proof. rewrite word.b2w_if; eapply (@expr_compile_word_bop bopname.ltu). Qed.
+
+    Definition expr_compile_word_gts : DOP bopname.lts (of_bool (word.gts w2 w1)).
+    Proof. apply expr_compile_word_lts. Qed.
+    Definition expr_compile_word_gtu : DOP bopname.ltu (of_bool (word.gtu w2 w1)).
+    Proof. apply expr_compile_word_ltu. Qed.
+
     Definition expr_compile_word_eqb : DOP bopname.eq (of_bool (word.eqb w1 w2)).
     Proof. rewrite word.b2w_if; eapply (@expr_compile_word_bop bopname.eq). Qed.
 
@@ -180,12 +186,20 @@ Section ExprCompiler.
     Lemma expr_compile_Z_eqb (h: (ub z1 /\ ub z2) \/ (sb z1 /\ sb z2)) :
       DOP bopname.eq (of_bool (Z.eqb z1 z2)).
     Proof. rewrite <- word_morph_eqb; eauto using expr_compile_word_eqb. Qed.
+
     Lemma expr_compile_Z_ltb_u (h1: ub z1) (h2: ub z2) :
       DOP bopname.ltu (of_bool (Z.ltb z1 z2)).
     Proof. rewrite word.morph_ltu; eauto using expr_compile_word_ltu. Qed.
     Lemma expr_compile_Z_ltb_s (h1: sb z1) (h2: sb z2) :
       DOP bopname.lts (of_bool (Z.ltb z1 z2)).
     Proof. rewrite word.morph_lts; eauto using expr_compile_word_lts. Qed.
+
+    Lemma expr_compile_Z_gtb_u (h1: ub z1) (h2: ub z2) :
+      DOP bopname.ltu (of_bool (Z.gtb z2 z1)).
+    Proof. rewrite Z.gtb_ltb; auto using expr_compile_Z_ltb_u. Qed.
+    Lemma expr_compile_Z_gtb_s (h1: sb z1) (h2: sb z2) :
+      DOP bopname.lts (of_bool (Z.gtb z2 z1)).
+    Proof. rewrite Z.gtb_ltb; auto using expr_compile_Z_ltb_s. Qed.
 
     Lemma expr_compile_Z_lnot :
       DX (expr.op bopname.xor e1 (expr.literal (-1))) (to_w (Z.lnot z1)).
@@ -460,6 +474,10 @@ Notation DPAT p := (DEXPR _ _ _ p) (only parsing).
   simple eapply expr_compile_word_lts; shelve : expr_compiler.
 #[export] Hint Extern 5 (DPAT (of_bool (word.ltu _ _))) =>
   simple eapply expr_compile_word_ltu; shelve : expr_compiler.
+#[export] Hint Extern 5 (DPAT (of_bool (word.gts _ _))) =>
+  simple eapply expr_compile_word_gts; shelve : expr_compiler.
+#[export] Hint Extern 5 (DPAT (of_bool (word.gtu _ _))) =>
+  simple eapply expr_compile_word_gtu; shelve : expr_compiler.
 #[export] Hint Extern 5 (DPAT (of_bool (word.eqb _ _))) =>
   simple eapply expr_compile_word_eqb; shelve : expr_compiler.
 
@@ -501,6 +519,11 @@ Notation DPAT p := (DEXPR _ _ _ p) (only parsing).
   simple eapply expr_compile_Z_ltb_u; [ shelve.. | | ] : expr_compiler.
 #[export] Hint Extern 5 (DPAT (of_bool (Z.ltb _ _))) =>
   simple eapply expr_compile_Z_ltb_s; [ shelve.. | | ] : expr_compiler.
+(* Don't shelve side conditions for these two either *)
+#[export] Hint Extern 5 (DPAT (of_bool (Z.gtb _ _))) =>
+  simple eapply expr_compile_Z_gtb_u; [ shelve.. | | ] : expr_compiler.
+#[export] Hint Extern 5 (DPAT (of_bool (Z.gtb _ _))) =>
+  simple eapply expr_compile_Z_gtb_s; [ shelve.. | | ] : expr_compiler.
 
 #[export] Hint Extern 5 (DPAT (of_Z (Z.b2z _))) =>
   simple eapply expr_compile_Z_b2z : expr_compiler.
