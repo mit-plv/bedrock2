@@ -81,22 +81,22 @@ endif
 coqutil:
 	$(MAKE) --no-print-directory -C $(COQUTIL_FOLDER)
 
-clean-coqutil:
+clean_coqutil:
 	$(MAKE) --no-print-directory -C $(COQUTIL_FOLDER) clean
 
-install-coqutil:
+install_coqutil:
 	$(MAKE) --no-print-directory -C $(COQUTIL_FOLDER) install
 
 bedrock2:
 	$(MAKE) --no-print-directory -C $(BEDROCK2_FOLDER) noex
 
-clean-bedrock2:
+clean_bedrock2:
 	$(MAKE) --no-print-directory -C $(BEDROCK2_FOLDER) clean
 
-install-bedrock2:
+install_bedrock2:
 	$(MAKE) --no-print-directory -C $(BEDROCK2_FOLDER) install_bedrock2
 
-cleanall: clean clean-coqutil clean-bedrock2
+cleanall: clean clean_coqutil clean_bedrock2
 
 %.vo: deps Makefile.coq
 	+$(MAKE) -f Makefile.coq $@
@@ -111,4 +111,4 @@ Makefile: ;
 
 phony: ;
 
-.PHONY: all lib clean phony base coqutil clean-coqutil install-coqutil bedrock2 clean-bedrock2 install-bedrock2 install deps cleanall _CoqProject
+.PHONY: all lib clean phony base coqutil clean_coqutil install_coqutil bedrock2 clean_bedrock2 install_bedrock2 install deps cleanall _CoqProject
