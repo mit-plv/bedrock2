@@ -1507,7 +1507,7 @@ Section Proofs.
                 map.only_differ (getRegs initialL)
                   (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
                   (getRegs finalL) /\
-                (* (getMetrics finalL - initialL_metrics <= lowerMetrics (finalMetricsH - mc))%metricsL /\ *)
+                (getMetrics finalL - initialL_metrics <= lowerMetrics (finalMetricsH - mc))%metricsL /\
                 goodMachine finalTrace finalMH finalRegsH g finalL))
         in IHexec.
       2: {
@@ -1554,7 +1554,14 @@ Section Proofs.
              goodMachine finalTrace finalMH finalRegsH g finalL)).
       2: {
         subst mach. simpl_MetricRiscvMachine_get_set.
-        intros. fwd. eauto 8 with map_hints. admit. (* SCall TODO 2 *) 
+        intros. fwd. eauto 8 with map_hints.
+        exists finalTrace. exists finalMH. exists finalRegsH. exists finalMetricsH.
+        split; eauto 8 with map_hints.
+        split; eauto 8 with map_hints.
+        split; eauto 8 with map_hints.
+        split; eauto 8 with map_hints. 
+        
+        
       }
       match goal with
       | H: (binds_count <= 8)%nat |- _ => rename H into BC
