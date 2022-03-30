@@ -201,16 +201,18 @@ Section CompileBufPolymorphic.
   Lemma compile_buf_backed_by (n : nat) (bs : list byte) :
     let v := buf_backed_by T n bs in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-    a a_var {t m l} (R: mem -> Prop),
+           a a_var {t m l} (R: mem -> Prop),
       (bs$@a * R)%sep m ->
       sz * n = length bs ->
-      (forall m, (buffer_at n nil a * R)%sep m ->
-       <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+      (let v := v in
+       forall m,
+         (buffer_at n nil a * R)%sep m ->
+         <{ Trace := t; Memory := m; Locals := l; Functions := e }>
          k_impl
-       <{ pred (nlet_eq [a_var] v k) }>) ->
-    <{ Trace := t; Memory := m; Locals := l; Functions := e }>
+         <{ pred (k v eq_refl) }>) ->
+      <{ Trace := t; Memory := m; Locals := l; Functions := e }>
       k_impl
-    <{ pred (k v eq_refl) }>.
+      <{ pred (nlet_eq [a_var] v k) }>.
   Proof.
     intros * HA HB HC; eapply HC.
     cbv [buffer_at]; cbn [array]; sepsimpl; trivial; [].
@@ -501,8 +503,9 @@ Section CompileBufWord32.
     WeakestPrecondition.dexpr m l x_expr x ->
 
     let ax := (a + word.of_Z (sz * length buf))%word in
-    (forall m,
-      (buffer_at c (buf++[x]) a * R)%sep m ->
+    (let v := v in
+      forall m,
+      (buffer_at c v a * R)%sep m ->
       <{ Trace := t; Memory := m; Locals := l; Functions := e }>
         k_impl
       <{ pred (k v eq_refl) }>) ->

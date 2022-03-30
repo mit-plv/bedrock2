@@ -61,8 +61,6 @@ Section Bedrock2.
     handle_call; eauto.
   Qed.
 
-  (*
-
   Instance spec_of_chacha20_block : spec_of "chacha20_block" :=
     fnspec! "chacha20_block" (key_ptr nonce_ptr st_ptr : word) /
           (key nonce st : ListArray.t byte) R,
@@ -87,14 +85,49 @@ Section Bedrock2.
     repeat compile_step.
 
     simple eapply compile_nlet_as_nlet_eq.
-    eapply compile_buf_backed_by; repeat compile_step.
-    simpl.
+    simple eapply compile_buf_backed_by; repeat compile_step.
     instantiate (1 := (Naive.wrap 4)).
-    simpl.
-    eauto.
-    
+    simpl; eauto.
+
     simple eapply compile_nlet_as_nlet_eq.
     eapply compile_buf_push_word32; repeat compile_step.
+    subst v; cbn [buf_backed_by Datatypes.length]; lia.
+    subst v; unfold buf_backed_by; compile_step.
+
+    simple eapply compile_nlet_as_nlet_eq.
+    eapply compile_buf_push_word32; repeat compile_step.
+    subst v; unfold buf_backed_by. unfold buf_push. eauto. simpl. lia.
+    subst v; unfold buf_backed_by. unfold buf_push. compile_step.
+
+    simple eapply compile_nlet_as_nlet_eq.
+    eapply compile_buf_push_word32; repeat compile_step.
+    subst v; unfold buf_backed_by. unfold buf_push. eauto. simpl. lia.
+    subst v; unfold buf_backed_by. unfold buf_push. compile_step.
+
+    simple eapply compile_nlet_as_nlet_eq.
+    eapply compile_buf_push_word32; repeat compile_step.
+    subst v; unfold buf_backed_by. unfold buf_push. eauto. simpl. lia.
+    subst v; unfold buf_backed_by. unfold buf_push. compile_step.n
+
+    simple eapply compile_nlet_as_nlet_eq.
+    simple eapply compile_w32s_of_bytes; repeat compile_step.
+
+    simple eapply compile_nlet_as_nlet_eq.
+    simple eapply compile_buf_append; repeat compile_step.
+    {
+      use_sep_assumption. cancel. 
+
+
+
+    
+    subst v. unfold buffer_at. unfold buf_push. progress simpl. eauto.
+
+    simpl.
+
+    progress sepsimpl.
+
+    compile_step.
+    
 
     unfold buf_backed_by.
     unfold Datatypes.length. lia.
