@@ -4,9 +4,16 @@
 LIBDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/Rupicola/Lib
 ALLDIR := $(shell cygpath -m "$$(pwd)" 2>/dev/null || pwd)/src/Rupicola
 
+# use git ls-files if we can to avoid building non-checked-in cruft;
+# use find when building from a tarball
+ifneq (,$(wildcard .git/))
+find_vs = $(shell git ls-files "$(1)/*.v")
+else
+find_vs = $(shell find "$(1)" -type f -name '*.v')
+endif
 # absolute paths so that emacs compile mode knows where to find error
-VS_LIB:=$(abspath $(shell git ls-files "$(LIBDIR)/*.v"))
-VS_ALL:=$(abspath $(shell git ls-files "$(ALLDIR)/*.v"))
+VS_LIB:=$(abspath $(call find_vs,$(LIBDIR)))
+VS_ALL:=$(abspath $(call find_vs,$(ALLDIR)))
 
 all: Makefile.coq $(VS_ALL)
 	rm -f .coqdeps.d
