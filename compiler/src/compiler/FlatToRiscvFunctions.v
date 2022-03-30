@@ -212,16 +212,17 @@ Section Proofs.
            end; ssplit; simpl_word_exprs word_ok;
     match goal with
     | |- _ => solve_word_eq word_ok
+    | |- (_ <= _)%metricsL => MetricsToRiscv.solve_MetricLog
     | |- iff1 ?x ?x => reflexivity
     (* `exists stack_trash frame_trash, ...` from goodMachine *)
     | |- exists _ _, _ = _ /\ _ = _ /\ (_ * _)%sep _ =>
       eexists _, _; (split; [|split]); [..|wcancel_assumption]; blia
-    | |- _ => solve [ solve_valid_machine word_ok | MetricsToRiscv.solve_MetricLog ]
+    | |- _ => solve [ solve_valid_machine word_ok ]
     | H:subset (footpr _) _
       |- subset (footpr _) _ => eapply rearrange_footpr_subset; [ exact H | solve [ wwcancel ] ]
     | |- _ => solve [ rewrite ?of_list_list_union in *; eauto 8 with map_hints ]
     | |- _ => idtac
-    end.
+  end.
 
   Ltac after_IH :=
     simpl_MetricRiscvMachine_get_set;
@@ -395,6 +396,11 @@ Section Proofs.
         finalL.(getPc) = word.add initialL.(getPc)
                                   (word.of_Z (if b then 4 else amt)) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getMetrics) =
+          (if b then
+             (Platform.MetricLogging.addMetricLoads 1 (Platform.MetricLogging.addMetricInstructions 1 initialL.(getMetrics)))
+           else
+             (Platform.MetricLogging.addMetricJumps 1 (Platform.MetricLogging.addMetricLoads 1 (Platform.MetricLogging.addMetricInstructions 1 initialL.(getMetrics))))) /\
         valid_machine finalL).
   Proof.
     intros. get_run1_valid_for_free.
@@ -1501,11 +1507,11 @@ Section Proofs.
                 map.only_differ (getRegs initialL)
                   (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
                   (getRegs finalL) /\
-                (getMetrics finalL - initialL_metrics <= lowerMetrics (finalMetricsH - mc))%metricsL /\
+                (* (getMetrics finalL - initialL_metrics <= lowerMetrics (finalMetricsH - mc))%metricsL /\ *)
                 goodMachine finalTrace finalMH finalRegsH g finalL))
         in IHexec.
       2: {
-        subst. admit. (* SCall TODO 1 *)
+        subst. Fail reflexivity.  admit. (* SCall TODO 1 *)
       }
 
       specialize IHexec with (1 := Ext).
@@ -1560,7 +1566,7 @@ Section Proofs.
       clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok fun_info_ok env_ok
               IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
       revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
-      Fail apply compile_function_body_correct. admit. (* SCall TODO 3: is initialL_metrics constrained here? *)
+      Fail apply compile_function_body_correct. admit. (* SCall TODO 3 *)
 
     - idtac "Case compile_stmt_correct/SLoad".
       progress unfold Memory.load, Memory.load_Z in *. fwd.
@@ -1610,7 +1616,7 @@ Section Proofs.
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
-      }
+      }     
       run1done.
 
     - idtac "Case compile_stmt_correct/SStackalloc".
@@ -1751,7 +1757,6 @@ Section Proofs.
             - simpl. reflexivity.
           }
           eauto with map_hints.
-        * Fail MetricsToRiscv.solve_MetricLog. admit. (* TODO reason about metrics in middle config *)
         * edestruct hl_mem_to_ll_mem with (mL := middle_mem) (mTraded := mStack')
             as (returned_bytes & L & Q).
           1, 2: eassumption.
@@ -1781,12 +1786,13 @@ Section Proofs.
           unfold valid_FlatImp_var, RegisterNames.sp in *.
           blia.
         }
-        run1done. cbn.
+        run1done.
+        cbn.
         remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;
         symmetry in HeqfinalMetrics;
         pose proof update_metrics_for_literal_bounded (width := width) as Hlit;
         specialize Hlit with (1 := HeqfinalMetrics);
-        unfold_MetricLog; cbn; solve_MetricLog. 
+        MetricsToRiscv.solve_MetricLog. 
 
     - idtac "Case compile_stmt_correct/SOp".
       assert (x <> RegisterNames.sp). {
@@ -1835,14 +1841,14 @@ Section Proofs.
           all: try safe_sidecond.
           all: try safe_sidecond.
         * (* jump over else-branch *)
-          simpl. intros. destruct_RiscvMachine middle. fwd. subst.
+          simpl. intros. destruct_RiscvMachine middle.
+          fwd. subst.
           eapply runsToStep.
           { eapply run_Jal0; try safe_sidecond. solve_divisibleBy4. }
           simpl_MetricRiscvMachine_get_set.
-          intros. destruct_RiscvMachine mid. fwd. run1done.
-          unfold_MetricLog; cbn in *. 
-          admit. 
 
+          intros. destruct_RiscvMachine mid. fwd. run1done.
+ 
     - idtac "Case compile_stmt_correct/SIf/Else".
       (* execute branch instruction, which will jump over then-branch *)
       eapply runsToStep.
@@ -1867,7 +1873,6 @@ Section Proofs.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
-          admit. 
           
     - idtac "Case compile_stmt_correct/SLoop".
       match goal with
@@ -1939,8 +1944,7 @@ Section Proofs.
             all: try safe_sidecond.
           }
           (* at end of loop, just prove that computed post satisfies required post *)
-          simpl. intros. destruct_RiscvMachine middle. fwd.
-          run1done. admit. 
+          simpl. intros. destruct_RiscvMachine middle. fwd. run1done.
         * (* false: done, jump over body2 *)
           eapply runsToStep. {
             eapply compile_bcond_by_inverting_correct with (l := lH') (b := false);
@@ -1948,8 +1952,7 @@ Section Proofs.
               try safe_sidecond.
           }
           simpl_MetricRiscvMachine_get_set.
-          intros. destruct_RiscvMachine mid. fwd.
-          run1done. admit. 
+          intros. destruct_RiscvMachine mid. fwd. run1done. 
 
     - idtac "Case compile_stmt_correct/SSeq".
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]
