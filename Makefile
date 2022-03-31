@@ -73,11 +73,11 @@ ifneq ($(EXTERNAL_DEPENDENCIES),1)
 
 ifneq ($(EXTERNAL_COQUTIL),1)
 bedrock2: coqutil
-install: install_coqutil
+install install_lib: install_coqutil
 endif
 
 ifneq ($(EXTERNAL_BEDROCK2),1)
-install: install_bedrock2
+install install_lib: install_bedrock2
 all: bedrock2
 deps: bedrock2
 %.vo: bedrock2
@@ -111,6 +111,9 @@ cleanall: clean clean_coqutil clean_bedrock2
 install: Makefile.coq
 	+$(MAKE) -f Makefile.coq $@
 
+install_lib: Makefile.coq.lib
+	+$(MAKE) -f Makefile.coq.lib install
+
 _CoqProject:
 	@printf -- '$(ALLDEPFLAGS_NL)' > _CoqProject
 
@@ -118,4 +121,4 @@ Makefile: ;
 
 phony: ;
 
-.PHONY: all lib clean phony base coqutil clean_coqutil install_coqutil bedrock2 clean_bedrock2 install_bedrock2 install deps cleanall _CoqProject
+.PHONY: all lib clean phony base coqutil clean_coqutil install_coqutil bedrock2 clean_bedrock2 install_bedrock2 install install_lib deps cleanall _CoqProject
