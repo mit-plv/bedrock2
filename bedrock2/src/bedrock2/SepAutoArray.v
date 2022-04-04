@@ -1,10 +1,13 @@
-Require Import Coq.Logic.FunctionalExtensionality.
-Require Import Coq.Logic.PropExtensionality.
+Require Import Coq.ZArith.BinInt.
+Require Import Coq.Init.Byte.
+Require Import coqutil.Word.Bitwidth.
+Require Import coqutil.Tactics.rewr.
+Require Import coqutil.Map.Interface.
 Require Import bedrock2.SepAuto.
 Require Import bedrock2.Array.
 Require Import bedrock2.groundcbv.
-Require Import coqutil.Word.Bitwidth.
-Require Import coqutil.Tactics.rewr.
+Require Import bedrock2.TransferSepsOrder.
+Require Import bedrock2.SepCalls.
 
 Section SepLog.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.

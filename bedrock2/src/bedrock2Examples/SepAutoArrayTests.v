@@ -1,9 +1,12 @@
+Require Import Coq.ZArith.ZArith.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Bitwidth32.
 Require Import bedrock2.Array.
-Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
+Require Import bedrock2.SepCalls bedrock2.SepAutoArray bedrock2.SepAuto.
 Close Scope list_scope. Close Scope Z_scope. (* TODO *)
-Require Import bedrock2.OperatorOverloading. Local Open Scope oo_scope.
+Require Import bedrock2.TransferSepsOrder.
+Require Import coqutil.Map.Interface.
+Require Import coqutil.Datatypes.OperatorOverloading bedrock2.OperatorOverloading. Local Open Scope oo_scope.
 Require Import bedrock2.ListIndexNotations. Local Open Scope list_index_scope.
 Require Import bedrock2.SepBulletPoints. Local Open Scope sep_bullets_scope.
 
@@ -76,11 +79,11 @@ Section WithParameters.
 
   Context (sample_call: word -> word -> cmd).
 
-  Hypothesis sample_call_correct: forall m a1 n (vs: list word) R (post: mem -> Prop),
+  Hypothesis sample_call_correct: forall (m : mem) (a1 n : word) (vs: list word) (R post: mem -> Prop),
       sep (a1 :-> vs : word_array) R m /\
       List.length vs = Z.to_nat (word.unsigned n) /\
-      (forall m',
-        sep (a1 :-> vs[5 := vs[5] * (word.of_Z (word := word) 2)] : word_array) R m' ->
+      (forall m':mem,
+        sep (a1 :-> vs[5 := vs[5%nat] * (word.of_Z (word := word) 2)] : word_array) R m' ->
         post m') ->
       wp (sample_call a1 n) m post.
 

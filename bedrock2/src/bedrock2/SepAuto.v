@@ -6,22 +6,22 @@
    undo the `Ltac fwd_rewrites ::= fwd_rewrite_db_in_star.` patching, so `fwd` and
    tactics using `fwd` will do fewer simplifications than intended *)
 
-Require Export Coq.ZArith.ZArith. Open Scope Z_scope. (* TODO remove *)
-Require Export coqutil.Byte.
-Require Export coqutil.Datatypes.Inhabited.
-Require Export coqutil.Tactics.Tactics.
-Require Export coqutil.Tactics.autoforward.
-Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
-Require Export coqutil.Word.Interface coqutil.Word.Properties.
-Require Export coqutil.Tactics.fwd.
-Require Export bedrock2.Lift1Prop.
-Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
+Require Import Coq.ZArith.ZArith. Open Scope Z_scope. (* TODO remove *)
+Require Import coqutil.Byte.
+Require Import coqutil.Datatypes.Inhabited.
+Require Import coqutil.Tactics.Tactics.
+Require Import coqutil.Tactics.autoforward.
+Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
+Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Tactics.fwd.
+Require Import bedrock2.Lift1Prop.
+Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.Array.
-Require Export bedrock2.ZnWords.
-Require Export bedrock2.WordSimpl.
-Export List.ListNotations. Open Scope list_scope. (* TODO remove *)
-Require Export bedrock2.SepCalls.
-Require Export bedrock2.TransferSepsOrder.
+Require Import bedrock2.ZnWords.
+Require Import bedrock2.WordSimpl.
+Import List.ListNotations. Open Scope list_scope. (* TODO remove *)
+Require Import bedrock2.SepCalls.
+Require Import bedrock2.TransferSepsOrder.
 
 Ltac fwd_rewrites ::= fwd_rewrite_db_in_star.
 
@@ -37,6 +37,6 @@ but if t2 is a match and not prefixed with idtac, it's evaluated too early *)
 Ltac after_mem_modifying_lemma :=
   scancel_asm;
   match goal with
-  | _: tactic_error _ |- _ => idtac
+  | _: bedrock2.TacticError.tactic_error _ |- _ => idtac
   | |- _ => intro_new_mem; transfer_sep_order
   end.

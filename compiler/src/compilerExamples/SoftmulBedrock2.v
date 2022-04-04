@@ -22,7 +22,7 @@ Definition softmul :=
 From bedrock2 Require Import Semantics BasicC32Semantics WeakestPrecondition ProgramLogic.
 From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
 Require Import riscv.Spec.Decode riscv.Utility.Utility.
-Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
+Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Open Scope bool_scope.
 
 (* like (decode RV32I), but additionally also accepts the Mul instruction

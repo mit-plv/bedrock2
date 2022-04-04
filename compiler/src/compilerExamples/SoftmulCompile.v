@@ -35,7 +35,7 @@ Require Import compilerExamples.SoftmulBedrock2.
 Require compiler.Pipeline.
 Require Import bedrock2.BasicC32Semantics.
 Require Import bedrock2.SepBulletPoints. Local Open Scope sep_bullets_scope.
-Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
+Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 
 (* TODO might need slight change to Naive.word to make these hold
    (shifts ignore high bits) *)
