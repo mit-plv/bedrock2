@@ -17,7 +17,6 @@ Section SepLog.
            (word.add start (word.of_Z (sz * Z.of_nat (Datatypes.length xs))) :-> ys
              : array elem (word.of_Z sz))).
   Proof.
-    unfold sepcl.
     intros.
     eapply iff1ToEq.
     etransitivity.
@@ -45,7 +44,7 @@ Section SepLog.
                          word.add a (word.of_Z (sz * Z.of_nat (S i))) :-> vs2
                            : array elem (word.of_Z sz)])).
   Proof.
-    unfold sepcl, seps.
+    unfold seps.
     intros. fwd.
     cbn [List.app].
     etransitivity.
@@ -77,7 +76,7 @@ Section SepLog.
                            : array elem (word.of_Z sz)])).
   Proof.
     intros.
-    unfold sepcl, seps.
+    unfold seps.
     intros. fwd.
     rewrite 2array_append.
     cancel.
@@ -118,7 +117,7 @@ Section SepLog.
              (sep (a' :-> vs : array elem (word.of_Z sz))
                   (seps [a :-> v : elem])).
   Proof.
-    intros. intros. unfold sepcl. cbn.
+    intros. intros. cbn.
     cancel. cbn [seps].
     match goal with
     | |- iff1 (Array.array _ _ ?x _) _ => replace x with a'

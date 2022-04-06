@@ -10,18 +10,12 @@ Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Definition sep_predicate{width: Z}{word: word width}(mem: map.map word byte)(V: Type) :=
   word -> V -> mem -> Prop.
 
-(* One level of indirection to:
-   - enable notations that need to detect "the address", "the value", and
-     the sep_predicate of a clause
-   - potentially infer the sep_predicate from the value type
-   - detection of "the address" of a predicate for preserving the order of clauses *)
-Definition sepcl{width: Z}{word: word width}{mem: map.map word byte}{V: Type}
-           (p: sep_predicate mem V)(v: V)(a: word): mem -> Prop := p a v.
-
+(* TODO deprecate this scope and notation *)
+Declare Scope sepcl_scope.
 (* Precedence: `*` is at level 40, and we want to bind stronger than `*`, and moreover,
    `^` is at level 30, and for consistency, we also want to bind stronger than `^`,
    so we choose 25. To avoid conflict with type annotation, we put v at level 99.
    Order: Mimics hypothesis with a body, eg in `x := 1 : Z`, the order is
    "label, value, type". *)
-Notation "a :-> v : p" := (sepcl p v a)
-  (at level 25, v at level 99, format "'[  ' a  :->  '/' v  '/' :  p ']'").
+Notation "a :-> v : p" := (p a v) (at level 25, v at level 99, only parsing) : sepcl_scope.
+Open Scope sepcl_scope.

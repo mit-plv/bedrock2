@@ -55,14 +55,24 @@ Ltac impl1_syntactic_reflexivity :=
   end;
   exact impl1_refl.
 
+(* If the second-to-last argument of a predicate is a word, we assume it's the address.
+   Could be made more flexible and accurate using typeclasses, but that would require
+   adding an instance for each predicate. *)
+Ltac get_addr clause :=
+  lazymatch clause with
+  | _ ?a _ => lazymatch type of a with
+              | @word.rep _ _ => constr:(a)
+              end
+  end.
+
 Ltac clause_index clause clauses start_index default_index :=
-  lazymatch clauses with
-  | cons (sepcl _ _ ?a) ?tail =>
-    lazymatch clause with
-    | sepcl _ _ a => constr:(start_index)
-    | _ => clause_index clause tail (S start_index) default_index
-    end
+  match clauses with
   | cons clause _ => constr:(start_index)
+  | cons ?otherclause _ =>
+      let a := get_addr clause in
+      lazymatch get_addr otherclause with
+      | a => constr:(start_index)
+      end
   | cons _ ?tail => clause_index clause tail (S start_index) default_index
   | nil => constr:(default_index)
   end.
@@ -162,22 +172,21 @@ Section TestTransferSepsOrder.
           {mem : map.map word byte} {mem_ok: map.ok mem}.
 
   Lemma reordering_test: forall addr1 addr2 addr3 addr4 v1_old v1_new v2 v3 v4 R (m m': mem),
-    seps [addr1 :-> v1_old : scalar; addr2 :-> v2 : scalar; addr3 :-> v3 : scalar; R] m ->
+    seps [scalar addr1 v1_old; scalar addr2 v2; scalar addr3 v3; R] m ->
     (* value at addr1 was updated, addr2 was consumed, addr4 was added, and order changed: *)
-    seps [R; seps [addr3 :-> v3 : scalar; addr4 :-> v4 : scalar];
-          addr1 :-> v1_new : scalar] m' ->
+    seps [R; seps [scalar addr3 v3; scalar addr4 v4]; scalar addr1 v1_new] m' ->
     True ->
     True.
   Proof.
     intros *. intros M M2 ExtraHyp.
-    (*            0                        1                    2                    3
-       M  : seps [addr1 |-> scalar v1_old; addr2 |-> scalar v2; addr3 |-> scalar v3; R] m0
-       M2 : seps [R; addr3 |-> scalar v3; addr4 |-> scalar v4; addr1 |-> scalar v1_new] m1
-       order :=  [3; 2;                   2;                   0                      ] *)
+    (*            0                    1                2                3
+       M  : seps [scalar addr1 v1_old; scalar addr2 v2; scalar addr3 v3; R] m
+       M2 : seps [R; seps [scalar addr3 v3; scalar addr4 v4]; scalar addr1 v1_new] m'
+       order :=  [3; 2;                     2;                0                  ] *)
     transfer_sep_order_from_to M M2.
     flatten_seps_in M.
     lazymatch type of M with
-    | seps [addr1 :-> v1_new : scalar; addr3 :-> v3 : scalar; addr4 :-> v4 : scalar; R] m =>
+    | seps [scalar addr1 v1_new; scalar addr3 v3; scalar addr4 v4; R] m =>
         idtac
     end.
   Abort.

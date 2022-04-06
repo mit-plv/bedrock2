@@ -110,13 +110,13 @@ Proof.
 
   eapply Scalars.array_store_of_sep with (sz:=access_size.word) (n:=Z.to_nat rd) (size:=word.of_Z 4%Z).
   { subst d. f_equal. ZnWords. }
-  { use_sep_assumption; cbn [seps]; unfold sepcl, word_array.
+  { use_sep_assumption; cbn [seps]; unfold word_array.
     reflexivity. }
   { ZnWords. }
 
   intro_new_mem.
   repeat straightline; ssplit; trivial.
-  use_sep_assumption; cbn [seps]; unfold sepcl, word_array.
+  use_sep_assumption; cbn [seps]; unfold word_array.
 
   rewrite <-!Z.land_ones in * by better_lia.
   Morphisms.f_equiv.

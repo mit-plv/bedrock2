@@ -21,12 +21,8 @@ Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
+Require Import bedrock2.OperatorOverloading.
 
-Infix "^+" := word.add  (at level 50, left associativity).
-Infix "^-" := word.sub  (at level 50, left associativity).
-Infix "^*" := word.mul  (at level 40, left associativity).
-Infix "^<<" := word.slu  (at level 37, left associativity).
-Infix "^>>" := word.sru  (at level 37, left associativity).
 Notation "/[ x ]" := (word.of_Z x)       (* squeeze a Z into a word (beat it with a / to make it smaller) *)
   (format "/[ x ]").
 Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the modulo box imposed by words, *)
@@ -43,6 +39,7 @@ Section LiveVerif.
   Coercion byte.unsigned : byte >-> Z.
   Notation len := List.length.
   Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per 32 sz)) (at level 10).
+  Local Open Scope oo_scope.
 
   Add Ring wring : (Properties.word.ring_theory (word := word))
         ((*This preprocessing is too expensive to be always run, especially if

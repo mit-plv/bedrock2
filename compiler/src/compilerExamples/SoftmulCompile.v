@@ -276,7 +276,7 @@ Section Riscv.
               decoder z = inst /\ 0 <= z < 2 ^ 32.
   Proof.
     intros.
-    unfold instr, sepcl, ex1 in *.
+    unfold instr, ex1 in *.
     unfold sep, emp, map.split in *. fwd.
     exists a.
     split; auto.
@@ -290,7 +290,7 @@ Section Riscv.
     unfold impl1. intros. eapply (fun x => conj x I) in H. eapply sep_emp_r in H.
     eapply instr_decode in H. fwd.
     eapply sep_emp_r in Hp0. fwd.
-    unfold sepcl, instr, ex1. exists z. apply sep_emp_r.
+    unfold instr, ex1. exists z. apply sep_emp_r.
     auto using decode_Imul_I_to_I.
   Qed.
   Hint Resolve instr_IM_impl1_I : ecancel_impl.
@@ -476,9 +476,8 @@ Section Riscv.
                   (*********************)
         unfold spec_of_softmul in P.
         eapply P with (regvals := regvals) (R := emp True) (m := mH); clear P.
-        unfold sepcl in MH.
         ssplit; try eassumption.
-        cbn [seps]. unfold sepcl. ecancel_assumption. }
+        cbn [seps]. ecancel_assumption. }
       { reflexivity. }
       { unfold mul_insts_req_stack. change bytes_per_word with 4.
         Z.div_mod_to_equations. Lia.lia. }
@@ -496,7 +495,7 @@ Section Riscv.
           - instantiate (1 := R).
             eapply sep_emp_True_r.
             use_sep_asm. refine (conj _ I). repeat ecancel_step_by_implication.
-            unfold sepcl, SeparationLogic.program.
+            unfold SeparationLogic.program.
             eapply idecode_array_implies_program.
           - reflexivity. }
         { match goal with
@@ -527,13 +526,13 @@ Section Riscv.
         etransitivity; [eapply Proper_sep_impl1; [reflexivity|] | ].
         { intros ? []. eassumption. }
         change (@word.of_Z ?wi ?wo 0) with (@default (@word.rep wi wo) _).
-        unfold sepcl, SeparationLogic.program.
+        unfold SeparationLogic.program.
         cancel.
         repeat ecancel_step_by_implication.
         intros m Hm; eapply sep_assoc, (proj1 (sep_emp_True_r _ _)), (proj1 (sep_emp_True_r _ _)) in Hm.
         case ML as (?&?&?&?&?&?).
-        unfold sepcl in *. move H11 at bottom.
-        unfold ptsto_instr, instr, truncated_scalar, sepcl in *.
+        move H11 at bottom.
+        unfold ptsto_instr, instr, truncated_scalar in *.
 
         assert (array_exmem : forall T (P:word->T->mem->Prop) p a l m,
           array P p a l m -> Forall (fun e => exists a m, P a e m) l).

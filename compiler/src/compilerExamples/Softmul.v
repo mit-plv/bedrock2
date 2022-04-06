@@ -215,7 +215,7 @@ Section Riscv.
                             post.
   Proof.
     intros. apply invert_fetch0 in H. simp.
-    do 2 eexists. split. 2: eassumption. unfold instr, sepcl, seps.
+    do 2 eexists. split. 2: eassumption. unfold instr, seps.
   Admitted.
 
   Lemma interpret_loadWord: forall (initial: State) (postF: w32 -> State -> Prop)
@@ -229,7 +229,7 @@ Section Riscv.
     unfold load.
     change load_bytes with bedrock2.Memory.load_bytes.
     erewrite load_bytes_of_sep; cycle 1. {
-      unfold sepcl, scalar, truncated_word, Scalars.truncated_word,
+      unfold scalar, truncated_word, Scalars.truncated_word,
         Scalars.truncated_scalar, Scalars.littleendian in M.
       unfold ptsto_bytes.ptsto_bytes in *.
       exact M.
@@ -575,7 +575,7 @@ Section Riscv.
     eapply instr_decode in H. fwd.
     eapply interpret_loadWord. split. {
       unfold scalar. cbn [seps].
-      unfold truncated_scalar, truncated_word, sepcl in *.
+      unfold truncated_scalar, truncated_word in *.
       unfold Scalars.truncated_word, Scalars.truncated_scalar in *.
       rewrite <- (word.unsigned_of_Z_nowrap z) in Hp0 by assumption.
       exact Hp0.
@@ -875,7 +875,7 @@ Section Riscv.
     end.
     pose proof MH as MH'. move MH' after MH.
     destruct MH as (mI & mHRest & SpH & MHI & MHRest). clear MHRest.
-    unfold sepcl, instr, ex1 in MHI.
+    unfold instr, ex1 in MHI.
     destruct MHI as (z & MHI).
     eapply sep_emp_r in MHI. destruct MHI as (MHI & Dz & Bz). subst i.
     cbn [seps] in ML.
@@ -906,7 +906,7 @@ Section Riscv.
         { refine (Morphisms.subrelation_refl impl1 _ _ _ (mem initialL) ML').
           cancel.
           cancel_seps_at_indices_by_implication 4%nat 0%nat. 2: exact impl1_refl.
-          unfold impl1, instr, sepcl, ex1, emp. intros m A.
+          unfold impl1, instr, ex1, emp. intros m A.
           eexists.
           refine (Morphisms.subrelation_refl impl1 _ _ _ m A).
           cancel.
@@ -927,7 +927,7 @@ Section Riscv.
         cancel.
         cancel_seps_at_indices_by_implication 4%nat 0%nat. 2: exact impl1_refl.
         move E at bottom.
-        unfold impl1, instr, sepcl, ex1, emp. intros m A.
+        unfold impl1, instr, ex1, emp. intros m A.
         eexists.
         refine (Morphisms.subrelation_refl impl1 _ _ _ m A).
         cancel.

@@ -24,6 +24,9 @@ Require Import bedrock2.TacticError.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
+Require Import bedrock2.OperatorOverloading.
+Local Open Scope oo_scope.
+Close Scope sepcl_scope.
 
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
    used as the binder in the lambda being created *)
@@ -55,34 +58,36 @@ Section SepLog.
   Context {width: Z} {word: word.word width} {mem: map.map word byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
-  Lemma load_of_sep_cps: forall sz addr value R m (post: word -> Prop),
-      sep (addr :-> value : truncated_word sz) R m /\ post (truncate_word sz value) ->
+  Lemma load_of_sep_cps: forall sz addr value (R: mem -> Prop) m (post: word -> Prop),
+      (truncated_word sz addr value * R) m /\ post (truncate_word sz value) ->
       get_option (Memory.load sz m addr) post.
   Proof.
     intros. destruct H. eapply load_of_sep in H. rewrite H.
     constructor. assumption.
   Qed.
 
-  Lemma load_word_of_sep_cps: forall addr value R m (post: word -> Prop),
-      sep (addr :-> value : scalar) R m /\ post value ->
+  Lemma load_word_of_sep_cps: forall addr value (R: mem -> Prop) m (post: word -> Prop),
+      (addr ~> value * R) m /\ post value ->
       get_option (Memory.load Syntax.access_size.word m addr) post.
   Proof.
     intros. destruct H. eapply load_word_of_sep in H. rewrite H.
     constructor. assumption.
   Qed.
 
-  Lemma store_word_of_sep_cps_two_subgoals: forall addr oldvalue newvalue R m (post: mem -> Prop),
-      sep (addr :-> oldvalue : scalar) R m ->
-      (forall m', sep (addr :-> newvalue : scalar) R m' -> post m') ->
+  Lemma store_word_of_sep_cps_two_subgoals:
+    forall addr oldvalue newvalue (R: mem -> Prop) m (post: mem -> Prop),
+      (addr ~> oldvalue * R) m ->
+      (forall m', (addr ~> newvalue * R) m' -> post m') ->
       get_option (Memory.store Syntax.access_size.word m addr newvalue) post.
   Proof.
     intros. eapply Scalars.store_word_of_sep in H. 2: eassumption.
     destruct H as (m1 & E & P). rewrite E. constructor. exact P.
   Qed.
 
-  Lemma store_word_of_sep_cps: forall addr oldvalue newvalue R m (post: mem -> Prop),
-      sep (addr :-> oldvalue : scalar) R m /\
-      (forall m', sep (addr :-> newvalue : scalar) R m' -> post m') ->
+  Lemma store_word_of_sep_cps:
+    forall addr oldvalue newvalue (R: mem -> Prop) m (post: mem -> Prop),
+      (addr ~> oldvalue * R) m /\
+      (forall m', (addr ~> newvalue * R) m' -> post m') ->
       get_option (Memory.store Syntax.access_size.word m addr newvalue) post.
   Proof.
     intros. destruct H. eapply store_word_of_sep_cps_two_subgoals; eassumption.
@@ -352,7 +357,9 @@ Section WithParams.
       WeakestPrecondition.cmd (call fs) c t m l post2.
   Proof.
     intros.
-    set (env := SortedListString.map _ : map.map string (list string * list string * cmd)).
+    unshelve epose (env := _ : map.map string (list string * list string * cmd)).
+    1: eapply SortedListString.map.
+    (* TODO why are pairs printed back as prod rather than * ? *)
     assert (env_ok: map.ok env) by apply SortedListString.ok. clearbody env.
     eapply WeakestPreconditionProperties.Proper_cmd. 3: eassumption.
     1: eapply WeakestPreconditionProperties.Proper_call.
@@ -400,7 +407,7 @@ Section WithParams.
   Proof.
     intros. constructor. cbn.
     eapply wp_expr_to_dexpr in H. fwd.
-    eexists. split; [eassumption|]. split; intros.
+    eexists. split; [eassumption| ]. split; intros.
     - eapply WWP_weaken_cmd. 1: eapply Hp1p0p0; eassumption.
       unfold Morphisms.pointwise_relation, Basics.impl. intros. eapply Hp1p1. eauto.
     - eapply WWP_weaken_cmd. 1: eapply Hp1p0p1; eassumption.
@@ -608,7 +615,7 @@ Ltac put_into_current_locals is_decl :=
 Ltac eval_expr_step :=
   lazymatch goal with
   | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load
-  | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity |]
+  | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity | ]
   | |- wp_expr _ _ (expr.literal _) _ => eapply wp_literal
   | |- wp_expr _ _ (expr.op _ _ _) _ => eapply wp_op; cbv [interp_binop]
   | |- get_option (Memory.load access_size.word _ _) _ =>
@@ -620,7 +627,7 @@ Ltac eval_expr := repeat eval_expr_step.
 Ltac eval_dexpr_step :=
   lazymatch goal with
   | |- dexpr_bool_prop _ _ (expr.lazy_and _ _) _ =>
-      eapply dexpr_lazy_and; [|intro]
+      eapply dexpr_lazy_and; [ |intro]
   | |- dexpr_bool_prop _ _ (expr.op bopname.eq _ (expr.literal 0)) _ =>
       eapply dexpr_not
   | |- dexpr_bool_prop _ _ (expr.op _ _ _) _ =>
@@ -633,7 +640,7 @@ Ltac eval_dexpr := repeat eval_dexpr_step.
 
 Ltac start :=
   lazymatch goal with
-  | |- {_: list string * list string * Syntax.cmd & _ } => idtac
+  | |- {_: prod (prod (list string) (list string)) Syntax.cmd & _ } => idtac
   | |- _ => fail "goal needs to be of shape {_: list string * list string * Syntax.cmd & _ }"
   end;
   let eargnames := open_constr:(_: list string) in
@@ -657,7 +664,7 @@ Ltac start :=
   | |- exists l, map.of_list_zip ?keys ?values = Some l /\ _ =>
     let values := eval vm_compute in (tuple.of_list values) in
     exists (reconstruct keys values);
-    split; [reflexivity|]
+    split; [reflexivity| ]
   end.
 
 (* Note: contrary to add_last_var_to_post, this one makes Post a goal rather
@@ -833,7 +840,7 @@ Section MergingAnd.
       lhs = (if b then rhs1 else rhs2) /\
       (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
   Proof.
-    intros. eapply merge_ands_at_indices in H1; [|eassumption..].
+    intros. eapply merge_ands_at_indices in H1; [ | eassumption.. ].
     destruct b; assumption.
   Qed.
 
@@ -843,7 +850,7 @@ Section MergingAnd.
       (if b then ands Ps1 else ands Ps2) ->
       P /\ (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
   Proof.
-    intros. eapply merge_ands_at_indices in H1; [|eassumption..].
+    intros. eapply merge_ands_at_indices in H1; [ | eassumption.. ].
     destruct b; assumption.
   Qed.
 
@@ -865,7 +872,7 @@ Section MergingAnd.
       (if b then P1 m else P2 m) /\
         (if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2)).
   Proof.
-    intros. eapply merge_ands_at_indices in H1; [|eassumption..].
+    intros. eapply merge_ands_at_indices in H1; [ | eassumption.. ].
     destruct b; assumption.
   Qed.
 
@@ -875,10 +882,10 @@ Section MergingAnd.
       nth i Ps1 = seps l1 m ->
       nth j Ps2 = seps l2 m ->
       (if b then ands Ps1 else ands Ps2) ->
-      seps [seps (if b then l1 else l2)] m /\
+      seps [| seps (if b then l1 else l2) |] m /\
         if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2).
   Proof.
-    intros. eapply merge_ands_at_indices in H1; [|eassumption..].
+    intros. eapply merge_ands_at_indices in H1; [ | eassumption.. ].
     destruct b; assumption.
   Qed.
 End MergingAnd.
@@ -915,13 +922,13 @@ Section MergingSep.
      until they both have the same footprint *)
   Lemma merge_seps_at_indices_same_addr_and_pred (m: mem) i j [V: Type] a (v1 v2: V)
         (pred: sep_predicate mem V) (Ps1 Ps2 Qs: list (mem -> Prop)) (b: bool):
-    nth i Ps1 = (a :-> v1 : pred) ->
-    nth j Ps2 = (a :-> v2 : pred) ->
+    nth i Ps1 = pred a v1 ->
+    nth j Ps2 = pred a v2 ->
     seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
     seps ((seps (if b then (remove_nth i Ps1) else (remove_nth j Ps2)))
-            :: (a :-> (if b then v1 else v2) : pred) :: Qs) m.
+            :: pred a (if b then v1 else v2) :: Qs) m.
   Proof.
-    intros. eapply (merge_seps_at_indices m i j) in H1; [|eassumption..].
+    intros. eapply (merge_seps_at_indices m i j) in H1; [ | eassumption.. ].
     destruct b; assumption.
   Qed.
 
@@ -932,7 +939,7 @@ Section MergingSep.
     seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
     seps ((seps (if b then (remove_nth i Ps1) else (remove_nth j Ps2))) :: P :: Qs) m.
   Proof.
-    intros. eapply (merge_seps_at_indices m i j P P) in H1; [|eassumption..].
+    intros. eapply (merge_seps_at_indices m i j P P) in H1; [ | eassumption.. ].
     destruct b; assumption.
   Qed.
 
@@ -1221,9 +1228,9 @@ Ltac same_lhs P Q :=
 
 Ltac same_addr_and_pred P Q :=
   lazymatch P with
-  | sepcl ?pred _ ?a =>
+  | ?pred ?addr ?valueP =>
       lazymatch Q with
-      | sepcl pred _ a => constr:(true)
+      | pred addr ?valueQ => constr:(true)
       | _ => constr:(false)
       end
   | _ => constr:(false)
@@ -1270,7 +1277,7 @@ Ltac after_if :=
   repeat merge_and_pair seps_about_same_mem merge_ands_at_indices_seps_same_mem;
   repeat merge_sep_pair_step;
   repeat match goal with
-  | H: if _ then ands [] else ands [] |- _ => clear H
+  | H: if _ then ands nil else ands nil |- _ => clear H
   end;
   repeat lazymatch goal with
          | H: reconstruct _ _ = (if _ then _ else _) |- _ =>
@@ -1278,7 +1285,7 @@ Ltac after_if :=
          end;
   repeat lazymatch goal with
          | H: reconstruct _ _ = reconstruct _ _ |- _ =>
-             eapply invert_reconstruct_eq in H; [|reflexivity]
+             eapply invert_reconstruct_eq in H; [ | reflexivity]
          end;
   try (lazymatch goal with
        | |- wp_cmd _ _ _ _ (reconstruct ?names ?tup) _ =>
@@ -1351,7 +1358,7 @@ Ltac prove_final_post :=
     destruct_bool_vars;
     repeat match goal with
            | H: ands (_ :: _) |- _ => destruct H
-           | H: ands [] |- _ => clear H
+           | H: ands nil |- _ => clear H
            end;
     cbn [List.app List.firstn List.nth] in *;
     repeat match goal with
@@ -1575,7 +1582,7 @@ Ltac adhoc_lia_performance_fixes :=
 Require Import coqutil.Sorting.Permutation.
 
 Load LiveVerif.
-(* to re-override Notations loaded trough `Load LiveVerif/bedrock2.Map.SeparationLogic` *)
+Close Scope sepcl_scope.
 
 (* Note: If you re-import ZnWords after this, you'll get the old better_lia again *)
 Ltac better_lia ::=
@@ -1590,7 +1597,7 @@ Tactic Notation ".*" constr(s) "*" := add_snippet s; after_snippet.
 Definition u_min: {f: list string * list string * cmd &
   forall fs t m a b (R: mem -> Prop),
     R m ->
-    vc_func fs f t m [a; b] (fun t' m' retvs =>
+    vc_func fs f t m [| a; b |] (fun t' m' retvs =>
       t' = t /\ R m' /\
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
@@ -1610,7 +1617,7 @@ Defined.
 Definition u_min': {f: list string * list string * cmd &
   forall fs t m a b (R: mem -> Prop),
     R m ->
-    vc_func fs f t m [a; b] (fun t' m' retvs =>
+    vc_func fs f t m [| a; b |] (fun t' m' retvs =>
       t' = t /\ R m' /\
       (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
        word.unsigned b <= word.unsigned a /\ retvs = [b])
@@ -1629,10 +1636,10 @@ Defined.
 
 Definition merge_tests: {f: list string * list string * cmd &
   forall fs t m a vs R,
-    <{ * a :-> vs : word_array
+    <{ * a --> vs
        * R }> m ->
     List.length vs = 3%nat ->
-    vc_func fs f t m [a] (fun t' m' retvs => False)
+    vc_func fs f t m [| a |] (fun t' m' retvs => False)
   }.
 .**/ {                                                                          /**.
 .**/   uintptr_t w0 = load(a);                                                  /**.
@@ -1642,7 +1649,7 @@ Definition merge_tests: {f: list string * list string * cmd &
 .**/     store(a, w1);                                                          /**.
 .**/     w1 = w0;                                                               /**.
 
-  assert (exists foo, foo + foo = 2) as Foo. {
+  assert (exists foo: Z, foo + foo = 2) as Foo. {
     exists 1. reflexivity.
   }
   destruct Foo as (foo & Foo).
@@ -1654,10 +1661,10 @@ Definition merge_tests: {f: list string * list string * cmd &
     exists 2%nat. blia.
   }
   destruct Bar as (bar & Bar).
-  set (baz := foo + foo).
-  assert (w1 ^+ w0 ^+ word.of_Z baz = word.of_Z baz ^+ w1 ^+ w1) as E by ZnWords.
+  pose (baz := foo + foo).
+  assert (w1 + w0 + word.of_Z baz = word.of_Z baz + w1 + w1) as E by ZnWords.
   rename w1 into w1tmp.
-  pose (w1 := w0 ^+ word.of_Z baz ^- word.of_Z baz).
+  pose (w1 := w0 + word.of_Z baz - word.of_Z baz).
   move w1 after w1tmp.
   replace w1tmp with w1 in * by ZnWords. clear w1tmp.
 
@@ -1671,15 +1678,15 @@ Hint Extern 4 (Permutation _ _) =>
 
 Definition sort3: {f: list string * list string * cmd &
   forall fs t m a vs R,
-    <{ * a :-> vs : word_array
+    <{ * a --> vs
        * R }> m ->
     List.length vs = 3%nat ->
-    vc_func fs f t m [a] (fun t' m' retvs =>
+    vc_func fs f t m [| a |] (fun t' m' retvs =>
       exists v0 v1 v2,
         t' = t /\
-        Permutation vs [v0; v1; v2] /\
+        Permutation vs [| v0; v1; v2 |] /\
         \[v0] <= \[v1] <= \[v2] /\
-        <{ * a :-> [v0; v1; v2] : word_array
+        <{ * a --> [| v0; v1; v2 |]
            * R }> m'
   )}.
 .**/ {                                                                          /**.
@@ -1711,8 +1718,8 @@ Defined.
 (* TODO: write down postcondition only at end *)
 Definition swap_locals: {f: list string * list string * cmd &
   forall fs tr m a b,
-    vc_func fs f tr m [a; b] (fun tr' m' retvs =>
-      tr' = tr /\ m' = m /\ retvs = [b; a]
+    vc_func fs f tr m [| a; b |] (fun tr' m' retvs =>
+      tr' = tr /\ m' = m /\ retvs = [| b; a |]
   )}.
   (* note: we could just do skip and return ["b", "a"] *)                       .**/
 {                                                                          /**. .**/
@@ -1728,13 +1735,13 @@ Defined.
 (* TODO: write down postcondition only at end *)
 Definition swap: {f: list string * list string * cmd &
   forall fs t m a_addr b_addr a b R,
-    <{ * a_addr :-> a : scalar
-       * b_addr :-> b : scalar
+    <{ * a_addr ~> a
+       * b_addr ~> b
        * R
     }> m ->
-    vc_func fs f t m [a_addr; b_addr] (fun t' m' retvs =>
-      <{ * a_addr :-> b : scalar
-         * b_addr :-> a : scalar
+    vc_func fs f t m [| a_addr; b_addr |] (fun t' m' retvs =>
+      <{ * a_addr ~> b
+         * b_addr ~> a
          * R
       }> m' /\ retvs = [] /\ t' = t
   )}.
@@ -1752,7 +1759,7 @@ Goal False.
   end in pose r.
 Abort.
 
-Definition foo(a b: word): word := a ^+ b.
+Definition foo(a b: word): word := a + b.
 
 Lemma test: forall a b, foo a b = foo b a.
 Proof. unfold foo. intros. ring. Qed.
