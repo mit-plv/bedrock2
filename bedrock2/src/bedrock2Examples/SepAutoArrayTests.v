@@ -2,8 +2,8 @@ Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Bitwidth32.
 Require Import bedrock2.Array.
 Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
+Close Scope list_scope. Close Scope Z_scope. (* TODO *)
 Require Import bedrock2.OperatorOverloading. Local Open Scope oo_scope.
-Import Coq.Lists.List.ListNotations. Local Open Scope list_scope.
 Require Import bedrock2.ListIndexNotations. Local Open Scope list_index_scope.
 Require Import bedrock2.SepBulletPoints. Local Open Scope sep_bullets_scope.
 
@@ -29,7 +29,7 @@ Section WithParameters.
       sep (dst :-> d : array ptsto (word.of_Z 1)) R2 m /\
       List.length s = Z.to_nat (word.unsigned n) /\
       List.length d = Z.to_nat (word.unsigned n) /\
-      word.unsigned n * 2 < 2 ^ 32 /\
+      Z.lt (word.unsigned n * 2) (2 ^ 32) /\ (* TODO inequalities and number literals *)
       (forall m',
           sep (dst :-> s : array ptsto (word.of_Z 1)) R2 m' ->
           post m') ->
@@ -40,7 +40,7 @@ Section WithParameters.
   Lemma memmove_usage_correct: forall (n p: nat) addr (vs: list byte) R m,
       List.length vs = (p + n + p + n + p)%nat ->
       (* if p=0, sep disjointness only implies <= but not <, but do we need < ? *)
-      Z.of_nat (List.length vs) * 2 < 2 ^ 32 ->
+      Z.lt (Z.of_nat (List.length vs) * 2) (2 ^ 32) ->
       sep (addr :-> vs : array ptsto (word.of_Z 1)) R m ->
       wp (memmove_call (word.add addr (word.of_Z (Z.of_nat p)))
                        (word.add addr (word.of_Z (Z.of_nat (p + n + p))))
@@ -59,11 +59,11 @@ Section WithParameters.
     (* precondition #2 (separation logic assertion for dst) *)
     scancel_asm.
     (* precondition #3 (length of src) *)
-    split; [listZnWords|].
+    split; [listZnWords| ].
     (* precondition #4 (length of dst) *)
-    split; [listZnWords|].
+    split; [listZnWords| ].
     (* precondition #5 (bounds) *)
-    split; [ZnWords|].
+    split; [ZnWords| ].
     (* introduce postcondition and prettify *)
     intro_new_mem.
     transfer_sep_order. (* also clears old mem hyps and renames mem *)
@@ -80,7 +80,7 @@ Section WithParameters.
       sep (a1 :-> vs : word_array) R m /\
       List.length vs = Z.to_nat (word.unsigned n) /\
       (forall m',
-        sep (a1 :-> vs[5 := vs[5] * (word.of_Z (width := 32) 2)] : word_array) R m' ->
+        sep (a1 :-> vs[5 := vs[5] * (word.of_Z (word := word) 2)] : word_array) R m' ->
         post m') ->
       wp (sample_call a1 n) m post.
 

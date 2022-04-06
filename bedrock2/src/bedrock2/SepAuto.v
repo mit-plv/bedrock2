@@ -6,7 +6,7 @@
    undo the `Ltac fwd_rewrites ::= fwd_rewrite_db_in_star.` patching, so `fwd` and
    tactics using `fwd` will do fewer simplifications than intended *)
 
-Require Export Coq.ZArith.ZArith. Open Scope Z_scope.
+Require Export Coq.ZArith.ZArith. Open Scope Z_scope. (* TODO remove *)
 Require Export coqutil.Byte.
 Require Export coqutil.Datatypes.Inhabited.
 Require Export coqutil.Tactics.Tactics.
@@ -19,7 +19,7 @@ Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.Array.
 Require Export bedrock2.ZnWords.
 Require Export bedrock2.WordSimpl.
-Export List.ListNotations. Open Scope list_scope.
+Export List.ListNotations. Open Scope list_scope. (* TODO remove *)
 Require Export bedrock2.SepCalls.
 Require Export bedrock2.TransferSepsOrder.
 
