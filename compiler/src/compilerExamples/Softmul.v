@@ -36,7 +36,7 @@ Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import compiler.regs_initialized.
 Require Import compilerExamples.SoftmulBedrock2.
 Require Import compilerExamples.SoftmulCompile.
-Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
+Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Require Import bedrock2.SepBulletPoints.
 Local Open Scope sep_bullets_scope. Undelimit Scope sep_scope.
 

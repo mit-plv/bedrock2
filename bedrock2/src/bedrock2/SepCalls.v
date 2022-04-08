@@ -7,34 +7,32 @@
    Applying the call lemma is not handled by this file, but solving the above conjunction
    (except for solving finalPost) is. *)
 
-Require Export Coq.ZArith.ZArith. Open Scope Z_scope.
+Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
 Require Import coqutil.Z.Lia.
-Require Export coqutil.Byte.
+Require Import coqutil.Byte.
 Require Import coqutil.Datatypes.HList.
 Require Import coqutil.Datatypes.PropSet.
-Require Export coqutil.Datatypes.Inhabited.
+Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Tactics.rewr coqutil.Tactics.rdelta.
 Require Import Coq.Program.Tactics.
 Require Import coqutil.Macros.symmetry.
-Require Export coqutil.Tactics.Tactics.
-Require Export coqutil.Tactics.autoforward.
-Require Export coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
-Require Export coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Tactics.Tactics.
+Require Import coqutil.Tactics.autoforward.
+Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWord.
+Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Sorting.OrderToPermutation.
-Require Export coqutil.Tactics.fwd.
+Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.ltac_list_ops.
-Require Export bedrock2.Lift1Prop.
-Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
+Require Import bedrock2.Lift1Prop.
+Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.Array.
-Require Export bedrock2.ZnWords.
+Require Import bedrock2.ZnWords.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.groundcbv.
-Require Export bedrock2.TacticError.
+Require Import bedrock2.TacticError.
 Require Import bedrock2.ident_to_string.
-Require Export Coq.Strings.String. Open Scope string_scope.
-(* exporting String because otherwise error messages will be displayed as
-   (String.String (Ascii.Ascii false false true false true false true false) ...) *)
-Require Export Coq.Lists.List. (* to make sure `length` refers to list rather than string *)
+Require Import Coq.Strings.String. Open Scope string_scope.
+Require Import Coq.Lists.List. (* to make sure `length` refers to list rather than string *)
 Import List.ListNotations. Open Scope list_scope.
 
 Section SepLog.
@@ -238,7 +236,7 @@ Ltac use_sep_asm :=
   end.
 
 Ltac impl_ecancel :=
-  repeat (impl_ecancel_step_without_splitting || impl_ecancel_step_with_splitting).
+  repeat (impl_ecancel_step_with_splitting || impl_ecancel_step_without_splitting ).
 
 Ltac finish_impl_ecancel :=
   lazymatch goal with

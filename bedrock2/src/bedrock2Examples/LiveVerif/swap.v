@@ -23,7 +23,7 @@ Require Import Coq.Strings.String.
 Require Import bedrock2.TacticError.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
-Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
+Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Require Import bedrock2.OperatorOverloading.
 Local Open Scope oo_scope.
 Close Scope sepcl_scope.

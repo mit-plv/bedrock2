@@ -20,7 +20,7 @@ Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListSt
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.SepBulletPoints.
-Require Import bedrock2.SepAutoArray bedrock2.SepAuto.
+Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Require Import bedrock2.OperatorOverloading.
 
 Notation "/[ x ]" := (word.of_Z x)       (* squeeze a Z into a word (beat it with a / to make it smaller) *)
