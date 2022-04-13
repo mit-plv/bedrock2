@@ -298,13 +298,13 @@ Module exec.
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list_zip params argvs map.empty = Some st0 ->
-        exec fbody t m st0 mc outcome ->
+        exec fbody t m st0 (addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 mc))) outcome ->
         (forall t' m' mc' st1,
             outcome t' m' st1 mc' ->
             exists retvs l',
               map.getmany_of_list st1 rets = Some retvs /\
               map.putmany_of_list_zip binds retvs l = Some l' /\
-              post t' m' l' mc') ->
+              post t' m' l' (addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 mc')))) ->
         exec (SCall binds fname args) t m l mc post
     | load: forall t m l mc sz x a o v addr post,
         map.get l a = Some addr ->
@@ -432,11 +432,12 @@ Module exec.
         map.get e fname = Some (params, rets, fbody) ->
         map.getmany_of_list l args = Some argvs ->
         map.putmany_of_list_zip params argvs map.empty = Some st ->
-        exec fbody t m st mc (fun t' m' st' mc' =>
-          exists retvs l',
-            map.getmany_of_list st' rets = Some retvs /\
-            map.putmany_of_list_zip binds retvs l = Some l' /\
-            post t' m' l' mc') ->
+        exec fbody t m st (addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 mc)))
+             (fun t' m' st' mc' =>
+                exists retvs l',
+                  map.getmany_of_list st' rets = Some retvs /\
+                    map.putmany_of_list_zip binds retvs l = Some l' /\
+                    post t' m' l' (addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 mc')))) ->
       exec (SCall binds fname args) t m l mc post.
     Proof.
       intros. eapply call; try eassumption.
