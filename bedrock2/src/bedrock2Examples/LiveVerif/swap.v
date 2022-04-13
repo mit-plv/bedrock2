@@ -74,23 +74,33 @@ Section SepLog.
     constructor. assumption.
   Qed.
 
-  Lemma store_word_of_sep_cps_two_subgoals:
-    forall addr oldvalue newvalue (R: mem -> Prop) m (post: mem -> Prop),
-      (addr ~> oldvalue * R) m ->
-      (forall m', (addr ~> newvalue * R) m' -> post m') ->
-      get_option (Memory.store Syntax.access_size.word m addr newvalue) post.
+  Lemma store_truncated_word_of_sep_cps:
+    forall (addr oldvalue newvalue: word) sz (R: mem -> Prop) m (post: mem -> Prop),
+      (truncated_word sz addr oldvalue * R) m /\
+      (forall m', (truncated_word sz addr newvalue * R) m' -> post m') ->
+      get_option (Memory.store sz m addr newvalue) post.
   Proof.
-    intros. eapply Scalars.store_word_of_sep in H. 2: eassumption.
+    intros. destruct H. eapply Scalars.store_of_sep in H. 2: eassumption.
+    destruct H as (m1 & E & P). rewrite E. constructor. exact P.
+  Qed.
+
+  Lemma store_byte_of_sep_cps: forall (addr: word) (oldvalue: byte) (newvalue: word)
+                                      (R: mem -> Prop) (m: mem) (post: mem -> Prop),
+      (ptsto addr oldvalue * R) m /\
+      (forall m', (ptsto addr (byte.of_Z (word.unsigned newvalue)) * R) m' -> post m') ->
+      get_option (Memory.store access_size.one m addr newvalue) post.
+  Proof.
+    intros. destruct H. eapply store_one_of_sep in H. 2: eassumption.
     destruct H as (m1 & E & P). rewrite E. constructor. exact P.
   Qed.
 
   Lemma store_word_of_sep_cps:
-    forall addr oldvalue newvalue (R: mem -> Prop) m (post: mem -> Prop),
-      (addr ~> oldvalue * R) m /\
-      (forall m', (addr ~> newvalue * R) m' -> post m') ->
-      get_option (Memory.store Syntax.access_size.word m addr newvalue) post.
+    forall (addr oldvalue newvalue: word) (R: mem -> Prop) m (post: mem -> Prop),
+      (scalar addr oldvalue * R) m /\
+      (forall m', (scalar addr newvalue * R) m' -> post m') ->
+      get_option (Memory.store access_size.word m addr newvalue) post.
   Proof.
-    intros. destruct H. eapply store_word_of_sep_cps_two_subgoals; eassumption.
+    intros. eapply store_truncated_word_of_sep_cps. eassumption.
   Qed.
 End SepLog.
 
@@ -549,7 +559,7 @@ Declare Scope live_scope.
 Delimit Scope live_scope with live.
 Local Open Scope live_scope.
 
-Inductive scope_kind := FunctionBody | ThenBranch | ElseBranch | LoopBody.
+Inductive scope_kind := FunctionBody | ThenBranch | ElseBranch | LoopBody | LoopInvariant.
 Inductive scope_marker: scope_kind -> Set := mk_scope_marker sk : scope_marker sk.
 Notation "'____' sk '____'" := (scope_marker sk) (only printing) : live_scope.
 
@@ -1316,6 +1326,8 @@ Ltac store sz addr val :=
   eval_expr;
   [.. (* maybe some unsolved side conditions *)
   | lazymatch goal with
+    | |- get_option (Memory.store access_size.one _ _ _) _ =>
+        eapply store_byte_of_sep_cps; after_mem_modifying_lemma
     | |- get_option (Memory.store access_size.word _ _ _) _ =>
         eapply store_word_of_sep_cps; after_mem_modifying_lemma
     | |- get_option (Memory.store ?sz _ _ _) _ =>
@@ -1545,8 +1557,18 @@ Notation "x = e ;" := (SAssign false x e) (* rhs as in "already declared" (but s
   (in custom snippet at level 0, x custom rhs_var at level 100, e custom live_expr at level 100).
 Notation "'uintptr_t' x = e ;" := (SAssign true x e)
   (in custom snippet at level 0, x custom lhs_var at level 100, e custom live_expr at level 100).
+Notation "store1( a , v ) ;" := (SStore access_size.one a v)
+  (in custom snippet at level 0,
+   a custom live_expr at level 100, v custom live_expr at level 100).
+Notation "store2( a , v ) ;" := (SStore access_size.two a v)
+  (in custom snippet at level 0,
+   a custom live_expr at level 100, v custom live_expr at level 100).
+Notation "store4( a , v ) ;" := (SStore access_size.four a v)
+  (in custom snippet at level 0,
+   a custom live_expr at level 100, v custom live_expr at level 100).
 Notation "store( a , v ) ;" := (SStore access_size.word a v)
-  (in custom snippet at level 0, a custom live_expr at level 100, v custom live_expr at level 100).
+  (in custom snippet at level 0,
+   a custom live_expr at level 100, v custom live_expr at level 100).
 Notation "'return' l ;" := (SRet l)
   (in custom snippet at level 0, l custom rhs_var_list at level 1).
 
@@ -1634,8 +1656,160 @@ Definition u_min': {f: list string * list string * cmd &
 }                                                                          /**.
 Defined.
 
+Close Scope live_scope_prettier.
+Unset Implicit Arguments.
+
+  Require Import FunctionalExtensionality.
+  Require Import Coq.Logic.PropExtensionality.
+
+  Lemma word__ltu_wf: well_founded (fun x y: word => word.unsigned x < word.unsigned y).
+  Proof.
+    epose proof (well_founded_ltof _ (fun (w: word) => Z.to_nat (word.unsigned w))) as P.
+    unfold ltof in P.
+    eqapply P.
+    extensionality a. extensionality b. eapply propositional_extensionality.
+    split; ZnWords.
+  Qed.
+
+  Lemma wp_while {measure : Type} (v0 : measure) (e: expr) (c: cmd) t (m: mem) l fs rest
+    (invariant: measure -> trace -> mem -> locals -> Prop) {lt}
+    {post : trace -> mem -> locals -> Prop}
+    (Hpre: invariant v0 t m l)
+    (Hwf : well_founded lt)
+    (Hbody : forall v t m l,
+      invariant v t m l ->
+      exists P, dexpr_bool_prop m l e P /\
+         (P -> wp_cmd (call fs) c t m l
+                      (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
+         (~P -> wp_cmd (call fs) rest t m l post))
+    : wp_cmd (call fs) (cmd.seq (cmd.while e c) rest) t m l post.
+  Proof.
+  Admitted.
+
+(*
+  Lemma wp_if_bool_dexpr: forall fs c vars vals0 thn els rest t0 m0 P Q1 Q2 post,
+      dexpr_bool_prop m0 (reconstruct vars vals0) c P ->
+      (P  -> wp_cmd (call fs) thn t0 m0 (reconstruct vars vals0) (fun t m l =>
+               exists vals, l = reconstruct vars vals /\ Q1 t m l)) ->
+      (~P -> wp_cmd (call fs) els t0 m0 (reconstruct vars vals0) (fun t m l =>
+               exists vals, l = reconstruct vars vals /\ Q2 t m l)) ->
+      (forall (cond0: bool) t m vals,
+          (* (if cond0 then P else ~P) -> <-- already added to Q1/Q2 by automation *)
+          (if cond0 then Q1 t m (reconstruct vars vals)
+           else Q2 t m (reconstruct vars vals)) ->
+          wp_cmd (call fs) rest t m (reconstruct vars vals) post) ->
+      wp_cmd (call fs) (cmd.seq (cmd.cond c thn els) rest) t0 m0 (reconstruct vars vals0) post.
+
+  Lemma while_localsmap
+    {e c t l} {m : mem}
+    {measure : Type} (invariant:_->_->_->_->Prop)
+    {lt} (Hwf : well_founded lt) (v0 : measure)
+    {post : _->_->_-> Prop}
+    (Hpre : invariant v0 t m l)
+    (Hbody : forall v t m l,
+      invariant v t m l ->
+      exists br, expr m l e (eq br) /\
+         (word.unsigned br <> 0 ->
+          cmd call c t m l (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
+         (word.unsigned br = 0 -> post t m l))
+    : cmd call (cmd.while e c) t m l post.
+  Proof.
+*)
+
+Definition memset: {f: list string * list string * cmd &
+  forall fs t m (a b n: word) (bs: list byte) (R: mem -> Prop),
+    <{ * a --> bs
+       * R }> m ->
+    word.unsigned n = Z.of_nat (List.length bs) ->
+    vc_func fs f t m [| a; b; n |] (fun t' m' retvs =>
+      t' = t /\
+      <{ * a --> List.repeat (byte.of_Z (word.unsigned b)) (List.length bs)
+         * R }> m' /\
+      retvs = nil)
+  }.
+.**/ {                                                                          /**.
+.**/   uintptr_t i = 0;                                                         /**.
+       (* ghost var to make it more interesting: *)
+       pose (count := 0%nat).
+       assert (Z.of_nat count = word.unsigned i) by ZnWords.
+       clearbody count.
+       replace bs with
+         (List.repeat (byte.of_Z (word.unsigned b)) count ++
+          List.skipn count bs) in H. 2: {
+         subst i.
+         replace count with 0%nat by ZnWords.
+         repeat word_simpl_step_in_goal.
+         list_simpl_in_goal.
+         reflexivity.
+       }
+       let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n.
+       move i at bottom. move count at bottom.
+       assert (0 <= word.unsigned i <= word.unsigned n) by ZnWords.
+       clearbody i.
+
+       eapply (wp_while (n - i) (live_expr:(i < n))).
+
+
+{
+  lazymatch goal with
+  | H: _ ?m |- ?E ?t ?m ?l =>
+      (* always package sep log assertion, even if memory was not changed in current block *)
+      move H at bottom
+  | |- ?E ?t ?m ?l => fail "No separation logic hypothesis about" m "found"
+  end;
+  let Post := fresh "Post" in
+  eassert _ as Post by (repeat add_last_hyp_to_post; apply ands_nil);
+  add_equalities_to_post Post.
+  add_equality_to_post (n - i) Post.
+  repeat add_last_var_to_post Post.
+  move etmp2 at top.
+  repeat add_last_var_to_post Post.
+  lazymatch goal with
+  | |- _ ?V ?T ?M ?L => pattern V, T, M, L in Post
+  end.
+  exact Post.
+}
+{
+  eapply word__ltu_wf.
+}
+  cbv beta.
+
+  repeat match goal with
+         | x: ?T |- _ => lazymatch T with
+                         | scope_marker LoopInvariant => fail 1
+                         | _ => clear x
+                         end
+         end.
+  match goal with
+  | x: ?T |- _ => lazymatch T with
+                  | scope_marker LoopInvariant => clear x
+                  end
+  end.
+  clear m.
+  unfold ands.
+  intros.
+  fwd.
+  eexists. split.
+  { eval_dexpr_step.
+    eval_dexpr_step.
+    eval_dexpr_step. }
+  split. {
+    intros. unfold seps in *.
+
+(*.**/   while (i < n) {                                                          /**.*)
+.**/     store1(a + i, b);                                                      /**.
+(*
+.**/     i = i + 1;                                                             /**.
+.**/   }
+(*
+.**/   uintptr_t e = a + n;                                                     /**.
+--> works less well with wrap-around (word.lt not correct)
+*) *)
+Abort.
+
+
 Definition merge_tests: {f: list string * list string * cmd &
-  forall fs t m a vs R,
+  forall fs t (m: mem) (a: word) (vs: list word) R,
     <{ * a --> vs
        * R }> m ->
     List.length vs = 3%nat ->
@@ -1677,7 +1851,7 @@ Hint Extern 4 (Permutation _ _) =>
 : prove_post.
 
 Definition sort3: {f: list string * list string * cmd &
-  forall fs t m a vs R,
+  forall fs t (m: mem) (a: word) (vs: list word) R,
     <{ * a --> vs
        * R }> m ->
     List.length vs = 3%nat ->
@@ -1734,7 +1908,7 @@ Defined.
 
 (* TODO: write down postcondition only at end *)
 Definition swap: {f: list string * list string * cmd &
-  forall fs t m a_addr b_addr a b R,
+  forall fs t (m: mem) (a_addr b_addr a b: word) R,
     <{ * a_addr ~> a
        * b_addr ~> b
        * R
