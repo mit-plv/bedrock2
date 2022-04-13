@@ -482,6 +482,31 @@ Section WithParams.
         [eapply (H2 true)| eapply (H2 false)]; assumption.
   Qed.
 
+  Lemma wp_while {measure : Type} (v0 : measure) (e: expr) (c: cmd) t (m: mem) l fs rest
+    (invariant: measure -> trace -> mem -> locals -> Prop) {lt}
+    {post : trace -> mem -> locals -> Prop}
+    (Hpre: invariant v0 t m l)
+    (Hwf : well_founded lt)
+    (Hbody : forall v t m l,
+      invariant v t m l ->
+      exists P, dexpr_bool_prop m l e P /\
+         (P -> wp_cmd (call fs) c t m l
+                      (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
+         (~P -> wp_cmd (call fs) rest t m l post))
+    : wp_cmd (call fs) (cmd.seq (cmd.while e c) rest) t m l post.
+  Proof.
+    econstructor. cbn. exists measure, lt, invariant.
+    split. 1: assumption.
+    split. 1: eauto.
+    clear Hpre v0 t m l.
+    intros v t m l Hinv.
+    specialize (Hbody v t m l Hinv).
+    fwd.
+    inversion Hbodyp0. subst P. exists b. split. 1: exact H. split.
+    - intro NE. eapply Hbodyp1. assumption.
+    - intro E. eapply Hbodyp2. intro C. apply C. exact E.
+  Qed.
+
   (* The postcondition of the callee's spec will have a concrete shape that differs
      from the postcondition that we pass to `call`, so when using this lemma, we have
      to apply weakening for `call`, which generates two subgoals:
@@ -598,12 +623,13 @@ Ltac put_into_current_locals is_decl :=
     | true => idtac
     | false => rename i into old_i
     end;
-    (* tradeoff between goal size blowup and not having to follow too many aliases *)
-    let v' := rdelta_var v in
-    pose (i := v');
+    (* match again because there might have been a renaming *)
     lazymatch goal with
-    | |- wp_cmd ?call ?c ?t ?m (map.put ?l ?x ?v) ?post => change
-        (wp_cmd  call  c  t  m (map.put  l  x  i)  post)
+    | |- wp_cmd ?call ?c ?t ?m (map.put ?l ?x ?v) ?post =>
+        (* tradeoff between goal size blowup and not having to follow too many aliases *)
+        let v' := rdelta_var v in
+        pose (i := v');
+        change (wp_cmd call c t m (map.put l x i) post)
     end;
     lazymatch goal with
     | |- wp_cmd ?call ?c ?t ?m ?l ?post =>
@@ -1353,7 +1379,7 @@ Ltac els :=
 
 Create HintDb prove_post.
 
-Ltac prove_final_post :=
+Ltac prove_concrete_post :=
     repeat match goal with
            | H: List.length ?l = S _ |- _ =>
                is_var l; destruct l;
@@ -1415,7 +1441,7 @@ Ltac close_block :=
           | |- wp_cmd _ _ _ _ _ _ => ret (@nil string)
           | |- _ => idtac (* ret nonEmptyVarList was already called *)
           end;
-          prove_final_post
+          prove_concrete_post
       | _ => fail "Can't end a block here"
       end
   | _ => fail "no scope marker found"
@@ -1671,51 +1697,6 @@ Unset Implicit Arguments.
     split; ZnWords.
   Qed.
 
-  Lemma wp_while {measure : Type} (v0 : measure) (e: expr) (c: cmd) t (m: mem) l fs rest
-    (invariant: measure -> trace -> mem -> locals -> Prop) {lt}
-    {post : trace -> mem -> locals -> Prop}
-    (Hpre: invariant v0 t m l)
-    (Hwf : well_founded lt)
-    (Hbody : forall v t m l,
-      invariant v t m l ->
-      exists P, dexpr_bool_prop m l e P /\
-         (P -> wp_cmd (call fs) c t m l
-                      (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
-         (~P -> wp_cmd (call fs) rest t m l post))
-    : wp_cmd (call fs) (cmd.seq (cmd.while e c) rest) t m l post.
-  Proof.
-  Admitted.
-
-(*
-  Lemma wp_if_bool_dexpr: forall fs c vars vals0 thn els rest t0 m0 P Q1 Q2 post,
-      dexpr_bool_prop m0 (reconstruct vars vals0) c P ->
-      (P  -> wp_cmd (call fs) thn t0 m0 (reconstruct vars vals0) (fun t m l =>
-               exists vals, l = reconstruct vars vals /\ Q1 t m l)) ->
-      (~P -> wp_cmd (call fs) els t0 m0 (reconstruct vars vals0) (fun t m l =>
-               exists vals, l = reconstruct vars vals /\ Q2 t m l)) ->
-      (forall (cond0: bool) t m vals,
-          (* (if cond0 then P else ~P) -> <-- already added to Q1/Q2 by automation *)
-          (if cond0 then Q1 t m (reconstruct vars vals)
-           else Q2 t m (reconstruct vars vals)) ->
-          wp_cmd (call fs) rest t m (reconstruct vars vals) post) ->
-      wp_cmd (call fs) (cmd.seq (cmd.cond c thn els) rest) t0 m0 (reconstruct vars vals0) post.
-
-  Lemma while_localsmap
-    {e c t l} {m : mem}
-    {measure : Type} (invariant:_->_->_->_->Prop)
-    {lt} (Hwf : well_founded lt) (v0 : measure)
-    {post : _->_->_-> Prop}
-    (Hpre : invariant v0 t m l)
-    (Hbody : forall v t m l,
-      invariant v t m l ->
-      exists br, expr m l e (eq br) /\
-         (word.unsigned br <> 0 ->
-          cmd call c t m l (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
-         (word.unsigned br = 0 -> post t m l))
-    : cmd call (cmd.while e c) t m l post.
-  Proof.
-*)
-
 Definition memset: {f: list string * list string * cmd &
   forall fs t m (a b n: word) (bs: list byte) (R: mem -> Prop),
     <{ * a --> bs
@@ -1729,21 +1710,16 @@ Definition memset: {f: list string * list string * cmd &
   }.
 .**/ {                                                                          /**.
 .**/   uintptr_t i = 0;                                                         /**.
-       (* ghost var to make it more interesting: *)
-       pose (count := 0%nat).
-       assert (Z.of_nat count = word.unsigned i) by ZnWords.
-       clearbody count.
        replace bs with
-         (List.repeat (byte.of_Z (word.unsigned b)) count ++
-          List.skipn count bs) in H. 2: {
+         (List.repeat (byte.of_Z (word.unsigned b)) (Z.to_nat (word.unsigned i)) ++
+          List.skipn (Z.to_nat (word.unsigned i)) bs) in H. 2: {
          subst i.
-         replace count with 0%nat by ZnWords.
          repeat word_simpl_step_in_goal.
          list_simpl_in_goal.
          reflexivity.
        }
        let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n.
-       move i at bottom. move count at bottom.
+       move i at bottom.
        assert (0 <= word.unsigned i <= word.unsigned n) by ZnWords.
        clearbody i.
 
@@ -1787,6 +1763,7 @@ Definition memset: {f: list string * list string * cmd &
   end.
   clear m.
   unfold ands.
+  pose proof (mk_scope_marker LoopBody).
   intros.
   fwd.
   eexists. split.
@@ -1798,15 +1775,39 @@ Definition memset: {f: list string * list string * cmd &
 
 (*.**/   while (i < n) {                                                          /**.*)
 .**/     store1(a + i, b);                                                      /**.
-(*
-.**/     i = i + 1;                                                             /**.
-.**/   }
-(*
-.**/   uintptr_t e = a + n;                                                     /**.
---> works less well with wrap-around (word.lt not correct)
-*) *)
-Abort.
+         (* TODO: automate prettification steps below *)
+         rewrite Z.div_1_r in *.
+         rewrite List.repeat_length in *.
+         replace (S (Z.to_nat \[i]) - Z.to_nat \[i] + Z.to_nat \[i])
+           with (Z.to_nat \[i] + 1%nat) in * by ZnWords.
 
+.**/     i = i + 1;                                                             /**.
+(*.**/   }                                                                        /**.*)
+  eapply wp_skip.
+  eexists.
+  prove_concrete_post.
+  replace (Z.to_nat \[i_0 + word.of_Z (word := word) 1])
+    with (Z.to_nat \[i_0] + 1%nat) by ZnWords.
+  rewrite List.repeat_app.
+  rewrite <- List.app_assoc.
+  assumption. }
+
+  match goal with
+  | H: scope_marker LoopBody |- _ => clear H
+  end.
+  intros.
+  unfold seps in *.
+  fwd.
+  replace (Z.to_nat \[i]) with (len bs) in * by ZnWords.
+.**/   }                                                                        /**.
+Defined.
+
+Goal False.
+  let r := eval unfold memset in
+  match memset with
+  | existT _ f _ => f
+  end in pose r.
+Abort.
 
 Definition merge_tests: {f: list string * list string * cmd &
   forall fs t (m: mem) (a: word) (vs: list word) R,
