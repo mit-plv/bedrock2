@@ -69,6 +69,6 @@ admits.txt: all0 PrintAdmits.v
 	$(COQBIN)coqc $(ALLDEPFLAGS) PrintAdmits.v > admits.txt
 
 admitsCount: count_admits.py admits.txt
-	python count_admits.py admits.txt admits_archive
+	python3 count_admits.py admits.txt admits_archive
 
 all: all0 admitsCount
