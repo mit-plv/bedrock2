@@ -161,6 +161,7 @@ End WithRegisterNames.
 
 Section Riscv.
   Import bedrock2.BasicC32Semantics.
+  Import Coq.Logic.FunctionalExtensionality.
   Local Notation Mem := mem (only parsing).
   Local Notation mem := MinimalCSRs.mem (only parsing).
 
@@ -172,10 +173,52 @@ Section Riscv.
 
   Local Hint Mode map.map - - : typeclass_instances.
 
-  Lemma truncated_scalar_unique: forall [addr z m],
+  Lemma ptsto_unique: forall (addr: word) (b: byte) (m1 m2: Mem),
+      ptsto addr b m1 ->
+      ptsto addr b m2 ->
+      m1 = m2.
+  Proof.
+    intros. unfold ptsto in *. subst. reflexivity.
+  Qed.
+
+  Lemma array_unique{V: Type}(pred: word -> V -> Mem -> Prop)
+      (pred_unique: forall addr v m1 m2, pred addr v m1 -> pred addr v m2 -> m1 = m2):
+    forall sz vs addr m1 m2,
+      array pred sz addr vs m1 ->
+      array pred sz addr vs m2 ->
+      m1 = m2.
+  Proof.
+    induction vs; intros.
+    - cbn in *. unfold emp in *. fwd. reflexivity.
+    - cbn in *.
+      unfold sep, map.split in H, H0. fwd.
+      f_equal.
+      + eapply pred_unique; eassumption.
+      + eapply IHvs; eassumption.
+  Qed.
+
+  Lemma truncated_scalar_unique: forall addr z m1 m2,
+      truncated_scalar access_size.four addr z m1 ->
+      truncated_scalar access_size.four addr z m2 ->
+      m1 = m2.
+  Proof.
+    unfold truncated_scalar, littleendian, ptsto_bytes.
+    intros.
+    eapply array_unique.
+    1: eapply ptsto_unique.
+    all: eassumption.
+  Qed.
+
+  Lemma truncated_scalar_unique': forall [addr z m],
       (addr :-> z : truncated_scalar access_size.four) m ->
       eq m = (addr :-> z : truncated_scalar access_size.four).
-  Admitted.
+  Proof.
+    intros.
+    extensionality m'. apply PropExtensionality.propositional_extensionality.
+    split; intros.
+    - subst. assumption.
+    - eapply truncated_scalar_unique; eassumption.
+  Qed.
 
   Notation program iset := (array (instr iset) (word.of_Z 4)).
 
@@ -207,6 +250,12 @@ Section Riscv.
     simp. eauto.
   Qed.
 
+  Lemma invert_load_bytes: forall n m addr bs,
+      load_bytes n m addr = Some bs ->
+      exists R, sep (ptsto_bytes n addr bs) R m.
+  Proof.
+  Admitted.
+
   Lemma invert_fetch: forall initial post decoder,
       mcomp_sat (run1 decoder) initial post ->
       exists R i, sep (initial.(pc) :-> i : instr decoder) R initial.(mem) /\
@@ -214,8 +263,10 @@ Section Riscv.
                             { initial with nextPc := word.add (pc initial) (word.of_Z 4) }
                             post.
   Proof.
-    intros. apply invert_fetch0 in H. simp.
-    do 2 eexists. split. 2: eassumption. unfold instr, seps.
+    intros. apply invert_fetch0 in H. fwd. record.simp.
+    eapply invert_load_bytes in Hp0. fwd.
+    do 2 eexists. split. 2: eassumption.
+    unfold instr.
   Admitted.
 
   Lemma interpret_loadWord: forall (initial: State) (postF: w32 -> State -> Prop)
@@ -1365,7 +1416,7 @@ Ltac subst_evars :=
                                       (word.mul (getReg (regs initialH) rs1)
                                          (getReg (regs initialH) rs2)))).
           cbn [seps]. eapply subst_split_bw. 1: eassumption.
-          rewrite (truncated_scalar_unique MHI).
+          rewrite (truncated_scalar_unique' MHI).
 
           unfold handler_insts, asm_handler_insts.
           rewrite !(array_app (E := Instruction)).
