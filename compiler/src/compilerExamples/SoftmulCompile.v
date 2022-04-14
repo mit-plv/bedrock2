@@ -54,16 +54,60 @@ Section Riscv.
   Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.
   Proof. reflexivity. Qed.
 
+  Ltac change_if_goal :=
+    match goal with
+    | |- context[if ?b then ?x else ?y] =>
+        change (if b then x else y) with x || change (if b then x else y) with y
+    end.
+
+  Ltac change_if_hyp :=
+    match goal with
+    | H: context[if ?b then ?x else ?y] |- _ =>
+        change (if b then x else y) with x in H || change (if b then x else y) with y in H
+    end.
+
+  Ltac decode_implication_pre :=
+    intros *;
+    cbv beta delta [decode];
+    change (bitwidth RV32IM =? 64) with false;
+    change (bitwidth RV32I =? 64) with false;
+    repeat lazymatch goal with
+           | x := bitSlice _ 25 26 |- _ =>
+               (* shamtHi is the only field which another field depends on *)
+               subst x
+           | |- (let x := ?a in ?b) = ?c -> (let x' := ?a in @?b' x') = ?c' =>
+               change (let x := a in (b = c -> b' x = c')); cbv beta; intro
+           end;
+    repeat change_if_goal;
+    cbv zeta;
+    let E := fresh "E" in intro E.
+
   Lemma decode_IM_I_to_I: forall i inst,
       decode RV32IM i = IInstruction inst ->
       decode RV32I  i = IInstruction inst.
   Proof.
-  Admitted.
+    decode_implication_pre.
+    destruct_one_match_hyp. 1: discriminate E.
+    clearbody decodeI decodeM decodeCSR.
+    subst resultI resultM resultCSR.
+    clear -E0 E.
+    destr (isValidI decodeI); destr (isValidM decodeM); destr (isValidCSR decodeCSR);
+      cbn -[Z.gtb Z.of_nat] in *; subst;
+      try discriminate; destruct_one_match; try (exfalso; Lia.lia);
+      try congruence.
+  Qed.
 
   Lemma decode_IM_Invalid_to_I: forall i z,
       decode RV32IM i = InvalidInstruction z ->
       decode RV32I  i = InvalidInstruction z.
   Proof.
+    decode_implication_pre.
+    subst resultI resultM resultCSR.
+    destr (isValidI decodeI); destr (isValidM decodeM); destr (isValidCSR decodeCSR);
+      cbn [List.app List.length List.nth] in *;
+      repeat change_if_goal;
+      repeat change_if_hyp;
+      try congruence.
   Admitted.
 
   Lemma decode_IM_M_to_Invalid_I: forall z minst,

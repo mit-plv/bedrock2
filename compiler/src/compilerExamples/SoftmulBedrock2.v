@@ -56,8 +56,20 @@ Definition idecode: Z -> Instruction := decode RV32I.
  }.
 
 Lemma decode_RV32I_not_MInstruction i mi : decode RV32I i <> MInstruction mi.
-  (* for Sam *)
-Admitted.
+Proof.
+  cbv beta delta [decode].
+  repeat lazymatch goal with
+         | |- (let x := ?a in ?b) <> ?c =>
+             change (let x := a in b <> c); intro
+         | x := ?t : ?T |- _ =>
+             pose proof (eq_refl t : x = t); clearbody x
+         end.
+  destruct_one_match. 1: clear; congruence.
+  clear -H H0 H8.
+  subst. cbn.
+  destruct_one_match; cbn. 1: clear; congruence.
+  destruct_one_match; cbn; congruence.
+Qed.
 
 Lemma softmul_ok : program_logic_goal_for_function! softmul.
 Proof.
