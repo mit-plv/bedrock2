@@ -26,6 +26,7 @@ Require Import bedrock2.Syntax.
 Require Import bedrock2.ZnWords.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Proofs.EncodeBound.
+Require Import riscv.Proofs.DecodeByExtension.
 Require Import riscv.Platform.MinimalCSRs.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import riscv.Platform.MetricMinimalNoMul.
@@ -101,38 +102,68 @@ Section Riscv.
       decode RV32IM i = InvalidInstruction z ->
       decode RV32I  i = InvalidInstruction z.
   Proof.
-    decode_implication_pre.
-    subst resultI resultM resultCSR.
-    destr (isValidI decodeI); destr (isValidM decodeM); destr (isValidCSR decodeCSR);
-      cbn [List.app List.length List.nth] in *;
-      repeat change_if_goal;
-      repeat change_if_hyp;
-      try congruence.
-  Admitted.
+    intros. rewrite <- decode_alt_correct in *. unfold decode_alt in *.
+    pose proof (extensions_disjoint RV32IM i) as D.
+    unfold decode_results in *.
+    cbn in *.
+    unfold decode_resultI, decode_resultM, decode_resultCSR in *.
+    do 3 destruct_one_match_hyp;
+    cbn [List.app List.length List.nth] in *;
+    try congruence.
+  Qed.
 
   Lemma decode_IM_M_to_Invalid_I: forall z minst,
       decode RV32IM z = MInstruction minst ->
       decode RV32I z = InvalidInstruction z.
   Proof.
-  Admitted.
+    intros. rewrite <- decode_alt_correct in *. unfold decode_alt in *.
+    pose proof (extensions_disjoint RV32IM z) as D.
+    unfold decode_results in *.
+    cbn in *.
+    unfold decode_resultI, decode_resultM, decode_resultCSR in *.
+    do 3 destruct_one_match_hyp;
+    cbn [List.app List.length List.nth] in *;
+    try congruence.
+    exfalso. Lia.lia.
+  Qed.
 
   Lemma decode_IM_cases: forall z,
       (exists iinst, decode RV32IM z = IInstruction iinst) \/
       (exists minst, decode RV32IM z = MInstruction minst) \/
+      (exists cinst, decode RV32IM z = CSRInstruction cinst) \/
       (decode RV32IM z = InvalidInstruction z).
-  Admitted.
+  Proof.
+    intros. rewrite <- decode_alt_correct in *. unfold decode_alt in *.
+    pose proof (extensions_disjoint RV32IM z) as D.
+    unfold decode_results in *.
+    cbn in *.
+    unfold decode_resultI, decode_resultM, decode_resultCSR in *.
+    do 3 destruct_one_match_hyp;
+    cbn [List.app List.length List.nth] in *;
+    eauto.
+  Qed.
 
   Lemma decode_Imul_I_to_I: forall i inst,
       mdecode i = IInstruction inst ->
       idecode i = IInstruction inst.
   Proof.
-  Admitted.
+    unfold mdecode, idecode. intros.
+    destruct_one_match_hyp. 1: discriminate. assumption.
+  Qed.
 
   Lemma decode_IM_CSR_to_I: forall i inst,
       decode RV32IM i = CSRInstruction inst ->
       decode RV32I  i = CSRInstruction inst.
   Proof.
-  Admitted.
+    intros. rewrite <- decode_alt_correct in *. unfold decode_alt in *.
+    pose proof (extensions_disjoint RV32IM i) as D.
+    unfold decode_results in *.
+    cbn in *.
+    unfold decode_resultI, decode_resultM, decode_resultCSR in *.
+    do 3 destruct_one_match_hyp;
+    cbn [List.app List.length List.nth] in *;
+    eauto; try (exfalso; Lia.lia); try discriminate.
+  Qed.
 
   (* To use the compiler correctness statement, we need to apply two transformation steps:
      1) Change decode from RV32IM to RV32I (lemma run1_IM_to_I)
@@ -156,10 +187,11 @@ Section Riscv.
     clear H0p1.
     specialize (H0p0 eq_refl).
     specialize (H _ _ H0p0 E).
-    destruct (decode_IM_cases (LittleEndian.combine 4 t)) as [ C | [C | C] ];
+    destruct (decode_IM_cases (LittleEndian.combine 4 t)) as [ C | [C | [C | C] ] ];
       fwd; rewrite C; symmetry.
     - eapply decode_IM_I_to_I. exact C.
     - exfalso. eapply H. exact C.
+    - eapply decode_IM_CSR_to_I. exact C.
     - eapply decode_IM_Invalid_to_I. exact C.
   Qed.
 
@@ -339,10 +371,44 @@ Section Riscv.
   Qed.
   Hint Resolve instr_IM_impl1_I : ecancel_impl.
 
+  (* TODO move *)
+  Lemma Proper_impl1_array : forall T (P Q: word->T->mem->Prop) p a l,
+      (forall a e, impl1 (P a e) (Q a e)) ->
+      impl1 (array P p a l) (array Q p a l).
+  Proof.
+    intros. revert dependent a; revert p.
+    induction l; cbn [array]; eauto; intros; [reflexivity|].
+    eapply Proper_sep_impl1; eauto.
+  Qed.
+
+  (* TODO move *)
+  Lemma Proper_impl1_array_with_offset : forall T (P Q: word->T->mem->Prop) sz l a,
+      (forall i e, List.nth_error l i = Some e ->
+                   let a' := (word.add a (word.of_Z (Z.of_nat i * sz))) in
+                   impl1 (P a' e) (Q a' e)) ->
+      impl1 (array P (word.of_Z sz) a l) (array Q (word.of_Z sz) a l).
+  Proof.
+    induction l; cbn [array]; intros; [reflexivity|].
+    rename a0 into addr.
+    eapply Proper_sep_impl1.
+    - specialize (H O). cbn in H. specialize (H _ eq_refl). rewrite add_0_r in H.
+      exact H.
+    - eapply IHl. cbv zeta. intros.
+      specialize (H (S i)). cbn -[Z.of_nat] in H. specialize (H _ H0).
+      eqapply H; f_equal; ZnWords.
+  Qed.
+
   Lemma idecode_array_implies_program: forall addr insts,
+      word.unsigned addr mod 4 = 0 ->
       impl1 (addr :-> insts : array (instr idecode) (word.of_Z 4))
             (program RV32IM addr insts).
   Proof.
+    intros. eapply Proper_impl1_array_with_offset.
+    intros.
+    unfold instr, ptsto_instr, impl1, ex1.
+    intros m Hm. fwd.
+    eapply sep_emp_r in Hm. fwd.
+    unfold idecode in *.
   Admitted.
 
   Notation program d := (array (instr d) (word.of_Z 4)) (only parsing).
@@ -541,6 +607,7 @@ Section Riscv.
             use_sep_asm. refine (conj _ I). repeat ecancel_step_by_implication.
             unfold SeparationLogic.program.
             eapply idecode_array_implies_program.
+            assumption.
           - reflexivity. }
         { match goal with
           | |- subset (footpr (sep ?p _)) _ => eapply rearrange_footpr_subset with (P :=  p)
@@ -596,14 +663,6 @@ Section Riscv.
             unify m1 m2; refine (Morphisms.subrelation_refl impl1 _ _ _ m1 H) end end.
           eapply Proper_sep_impl1; [reflexivity|cbv[impl1];intros].
           eapply IHl; eauto. }
-
-        assert (Proper_impl1_array :
-          forall T (P Q:word->T->mem->Prop) p a l,
-          (forall a e, impl1 (P a e) (Q a e)) -> impl1 (array P p a l) (array Q p a l)).
-        { clear.
-          intros. revert dependent a; revert p.
-          induction l; cbn [array]; eauto; intros; [reflexivity|].
-          eapply Proper_sep_impl1; eauto. }
 
         eapply array_exmem in H11.
         eapply (Forall_and verify_mul_insts) in H11.
