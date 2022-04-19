@@ -27,6 +27,8 @@ Require Import bedrock2.ZnWords.
 Require Import riscv.Utility.Encode.
 Require Import riscv.Proofs.EncodeBound.
 Require Import riscv.Proofs.DecodeByExtension.
+Require Import riscv.Proofs.VerifyDecode.
+Require Import riscv.Proofs.EncodeDecode.
 Require Import riscv.Platform.MinimalCSRs.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import riscv.Platform.MetricMinimalNoMul.
@@ -125,6 +127,21 @@ Section Riscv.
     cbn [List.app List.length List.nth] in *;
     try congruence.
     exfalso. Lia.lia.
+  Qed.
+
+  Lemma decode_I_cases: forall z,
+      (exists iinst, decode RV32I z = IInstruction iinst) \/
+      (exists cinst, decode RV32I z = CSRInstruction cinst) \/
+      (decode RV32I z = InvalidInstruction z).
+  Proof.
+    intros. rewrite <- decode_alt_correct in *. unfold decode_alt in *.
+    pose proof (extensions_disjoint RV32I z) as D.
+    unfold decode_results in *.
+    cbn in *.
+    unfold decode_resultI, decode_resultCSR in *.
+    do 2 destruct_one_match_hyp;
+    cbn [List.app List.length List.nth] in *;
+    eauto.
   Qed.
 
   Lemma decode_IM_cases: forall z,
@@ -409,7 +426,16 @@ Section Riscv.
     intros m Hm. fwd.
     eapply sep_emp_r in Hm. fwd.
     unfold idecode in *.
-  Admitted.
+    rewrite encode_decode. 2: reflexivity. 2: assumption.
+    repeat (eapply sep_emp_r; split).
+    - assumption.
+    - pose proof (verify_decode RV32I a eq_refl) as P.
+      destruct P as [P | P].
+      + left. unfold verify, verify_iset in *. destruct P.
+        split. 1: assumption. destruct (decode RV32I a); intuition discriminate.
+      + right. rewrite P. unfold valid_InvalidInstruction. eauto.
+    - subst a'. DivisibleBy4.solve_divisibleBy4.
+  Qed.
 
   Notation program d := (array (instr d) (word.of_Z 4)) (only parsing).
 
