@@ -194,6 +194,7 @@ Section Riscv.
   Lemma run1_IM_to_I_run1: forall (initial: MetricRiscvMachine) post,
       Primitives.valid_machine initial ->
       GoFlatToRiscv.mcomp_sat (Run.run1 RV32IM) initial post ->
+      word.unsigned initial.(getPc) mod 4 = 0 ->
       GoFlatToRiscv.mcomp_sat (Run.run1 RV32I) initial post.
   Proof.
     unfold Run.run1. cbn -[HList.tuple].
@@ -203,7 +204,7 @@ Section Riscv.
       (decode RV32IM (LittleEndian.combine 4 t)). 1: assumption.
     clear H0p1.
     specialize (H0p0 eq_refl).
-    specialize (H _ _ H0p0 E).
+    specialize (H _ _ H0p0 H1 E).
     destruct (decode_IM_cases (LittleEndian.combine 4 t)) as [ C | [C | [C | C] ] ];
       fwd; rewrite C; symmetry.
     - eapply decode_IM_I_to_I. exact C.
@@ -212,21 +213,66 @@ Section Riscv.
     - eapply decode_IM_Invalid_to_I. exact C.
   Qed.
 
+  Local Hint Extern 3 (_ mod 4 = 0) => DivisibleBy4.solve_divisibleBy4 : div4db.
+
+  Lemma run1_preserves_mod4_0: forall (initial: MetricRiscvMachine) post,
+      word.unsigned initial.(getPc) mod 4 = 0 ->
+      word.unsigned initial.(getNextPc) mod 4 = 0 ->
+      GoFlatToRiscv.mcomp_sat (Run.run1 RV32IM) initial post ->
+      GoFlatToRiscv.mcomp_sat (Run.run1 RV32IM) initial
+       (fun final => post final /\
+                     word.unsigned final.(getPc) mod 4 = 0 /\
+                     word.unsigned final.(getNextPc) mod 4 = 0).
+  Proof.
+    unfold Run.run1. cbn -[HList.tuple]. unfold MinimalNoMul.load. intros.
+    fwd. split. 1: assumption.
+    only_destruct_RiscvMachine initial. record.simp.
+    destruct (decode_IM_cases (LittleEndian.combine 4 t)) as [ C | [C | [C | C] ] ]; fwd;
+      rewrite C in *.
+    4: exact H1p1.
+    all: match goal with
+         | |- context[Execute.execute (_ ?inst)] => destruct inst
+         end.
+    all: unfold Execute.execute, ExecuteI.execute, ExecuteM.execute, ExecuteCSR.execute in *.
+    all: cbn -[load_bytes] in *.
+    all: unfold MinimalNoMul.load, MinimalNoMul.store, Monads.when in *;
+      cbn -[load_bytes] in *.
+    all: try assumption.
+    all: try (split; [assumption|]).
+    all: fwd.
+    all: auto with div4db.
+    all: repeat destruct_one_match.
+    all: cbn -[load_bytes] in *.
+    all: auto with div4db.
+    all: split; [assumption|].
+    all: try
+      match goal with
+      | H: negb _ = _ |- _ => apply Bool.negb_false_iff in H; fwd;
+                              apply (f_equal word.unsigned) in H;
+                              rewrite word.unsigned_modu_nowrap in H by ZnWords
+      end;
+      ZnWords.
+  Qed.
+
   Lemma run1_IM_to_I: forall s post,
       runsTo (GoFlatToRiscv.mcomp_sat (Run.run1 RV32IM)) s post ->
       Primitives.valid_machine s ->
+      word.unsigned s.(getPc) mod 4 = 0 ->
+      word.unsigned s.(getNextPc) mod 4 = 0 ->
       runsTo (GoFlatToRiscv.mcomp_sat (Run.run1 RV32I )) s post.
   Proof.
     induction 1; intros.
     - eapply runsToDone. assumption.
-    - eapply runsToStep with (midset := fun m => midset m /\ Primitives.valid_machine m).
-      + eapply run1_IM_to_I_run1. 1: assumption.
+    - eapply runsToStep with (midset := fun m => midset m /\ Primitives.valid_machine m
+         /\ word.unsigned m.(getPc) mod 4 = 0 /\ word.unsigned m.(getNextPc) mod 4 = 0).
+      + eapply run1_IM_to_I_run1. 1,3: assumption.
+        eapply run1_preserves_mod4_0 in H. 2,3: assumption.
         eapply GoFlatToRiscv.mcomp_sat_weaken.
         2: eapply GoFlatToRiscv.run1_get_sane.
         2,3: eassumption.
         1: intros mach A; exact A.
-        intros. fwd. auto.
-      + intros. fwd. eapply H1; assumption.
+        cbv beta. intros. fwd. auto.
+      + intros. fwd. eapply H1; try assumption.
   Qed.
 
   Definition states_related(sH: MetricRiscvMachine)(sL: State): Prop :=
@@ -494,12 +540,93 @@ Section Riscv.
     all : cbv; ssplit; trivial; try congruence.
   Qed.
 
-  Lemma no_M_from_I_sep: forall (mach: RiscvMachine) insts R,
+  Lemma verify_not_Invalid: forall inst iset,
+      verify inst iset ->
+      match inst with
+      | InvalidInstruction _ => False
+      | _ => True
+      end.
+  Proof. intros. destruct inst; auto. cbv in H. apply H. Qed.
+
+  Lemma In_word_seq: forall n (a start: word),
+      In a (List.unfoldn (word.add (word.of_Z 1)) n start) <->
+      word.unsigned (word.sub a start) < Z.of_nat n.
+  Proof.
+    induction n; cbn -[Z.of_nat]; intros; split; intros.
+    - contradiction H.
+    - ZnWords.
+    - destruct H as [H | H].
+      + ZnWords.
+      + eapply IHn in H. ZnWords.
+    - destr (word.unsigned start =? word.unsigned a).
+      + left. ZnWords.
+      + right. eapply IHn. ZnWords.
+  Qed.
+
+  Lemma no_M_from_I_sep: forall insts (mach: RiscvMachine) R,
+      word.unsigned mach.(getPc) mod 4 = 0 ->
       sep (mach.(getPc) :-> insts : program idecode) R mach.(getMem) ->
       mach.(getXAddrs) = List.unfoldn (word.add (word.of_Z 1))
                                       (4 * Datatypes.length insts) mach.(getPc) ->
+      List.Forall (fun inst => match inst with
+                               | InvalidInstruction _ => False
+                               | _ => True
+                               end) insts ->
       MinimalNoMul.no_M mach.
-  Admitted.
+  Proof.
+    unfold MinimalNoMul.no_M. intros.
+    destruct mach as [regs pc npc m xAddrs log].
+    cbn -[load_bytes HList.tuple Nat.mul] in *.
+    subst.
+    revert dependent m. revert minst. revert a v pc H H2 H3 H4 R.
+    clear log npc regs.
+    induction insts; cbn -[load_bytes HList.tuple Nat.mul]; intros.
+    - unfold isXAddr4 in H3. apply proj1 in H3. simpl in H3. contradiction H3.
+    - pose proof H3 as XA. replace (4 * (S (List.length insts)))%nat
+        with (S (S (S (S (4 * List.length insts))))) in H3 by Lia.lia.
+      unfold isXAddr4, isXAddr1 in H3. apply proj1 in H3.
+      cbn [List.unfoldn In] in H3.
+      fwd.
+      repeat destruct H3 as [H3 | H3]; try subst a0.
+      { intro C. unfold idecode in *.
+        eapply decode_IM_M_to_Invalid_I in C.
+        apply sep_assoc in H0.
+        eapply instr_decode in H0.
+        fwd.
+        replace (LittleEndian.combine_deprecated 4 v) with z in C. {
+          rewrite C in H2p0. exact H2p0.
+        }
+        pose proof load_four_of_sep as P.
+        unfold scalar32, truncated_word, Memory.load, Memory.load_Z in P.
+        change (bedrock2.Memory.load_bytes (bytes_per access_size.four))
+               with (load_bytes 4) in P.
+        specialize P with (addr := pc) (m := m) (value := word.of_Z z).
+        rewrite H5 in P.
+        rewrite word.unsigned_of_Z_nowrap in P by assumption.
+        specialize P with (1 := H0p0).
+        apply Option.eq_of_eq_Some in P.
+        unfold truncate_word, truncate_Z in P.
+        rewrite LittleEndian.combine_eq.
+        rewrite Z.land_ones in P by (cbv; discriminate 1).
+        clear -P H0. apply (f_equal word.unsigned) in P.
+        rewrite word.unsigned_of_Z_nowrap in P by apply LittleEndianList.le_combine_bound.
+        etransitivity. 2: symmetry. 2: exact P. clear P.
+        change (Z.of_nat (bytes_per access_size.four) * 8) with 32.
+        ZnWords. }
+      1-3: repeat match goal with
+           | H: ?T |- _ => lazymatch T with
+                           | word.unsigned _ mod 4 = 0 => fail
+                           | _ => clear H
+                           end
+           end;
+           exfalso;
+           ZnWords.
+      eapply IHinsts. 6: eassumption. 5: ecancel_assumption.
+      all: try assumption.
+      1: DivisibleBy4.solve_divisibleBy4.
+      eapply In_word_seq in H3.
+      unfold isXAddr4, isXAddr1. ssplit; eapply In_word_seq; try ZnWords.
+  Qed.
 
   Lemma link_softmul_bedrock2: spec_of_softmul funimplsList.
   Proof.
@@ -587,8 +714,14 @@ Section Riscv.
         unfold Primitives.valid_machine, MetricMinimalNoMulPrimitivesParams.
         eapply no_M_from_I_sep with (insts := mul_insts);
         cbn -[array HList.tuple List.unfoldn List.length Nat.mul load_bytes].
-        2: reflexivity. cbn [seps] in ML'. ecancel_assumption.
+        1: assumption.
+        2: reflexivity.
+        2: { eapply Forall_impl. 2: eapply verify_mul_insts.
+             cbv beta. intros. eapply verify_not_Invalid. eassumption. }
+        cbn [seps] in ML'. ecancel_assumption.
       }
+      2: { cbn. assumption. }
+      2: { cbn. DivisibleBy4.solve_divisibleBy4. }
       eapply (Pipeline.compiler_correct_wp (ext_spec := fun _ _ _ _ _ => False))
              (****************************)
              with (stack_lo := stack_start) (stack_hi := stack_pastend) (Rexec := emp True).
@@ -648,9 +781,12 @@ Section Riscv.
         { remember (List.unfoldn (word.add (word.of_Z 1)) (4 * Datatypes.length mul_insts)
                                  (pc initial)) as L.
           cbn.
-          eapply no_M_from_I_sep; record.simp.
+          eapply no_M_from_I_sep; try record.simp.
+          1: assumption.
           1: cbn[seps] in *; ecancel_assumption.
-          exact HeqL. } } }
+          1: exact HeqL.
+          eapply Forall_impl. 2: eapply verify_mul_insts.
+          cbv beta. intros. eapply verify_not_Invalid. eassumption. } } }
     { cbv beta. cbn -[array HList.tuple Datatypes.length].
       intros. fwd.
       specialize (C final.(MinimalCSRs.mem) final.(regs)).
