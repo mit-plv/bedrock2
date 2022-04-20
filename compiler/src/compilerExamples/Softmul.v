@@ -250,11 +250,114 @@ Section Riscv.
     simp. eauto.
   Qed.
 
+  Lemma split_of_list_word_at_cons: forall n addr b (bs: tuple byte n),
+      Z.of_nat n < 2 ^ 32 ->
+      map.split (map.of_list_word_at addr (b :: tuple.to_list bs))
+        (map.put map.empty addr b)
+        (map.of_list_word_at (word.add addr (word.of_Z 1)) (tuple.to_list bs)).
+  Proof.
+    unfold map.split. split.
+    + eapply map.map_ext. intros.
+      rewrite map.get_putmany_dec.
+      rewrite 2map.get_of_list_word_at.
+      rewrite map.get_put_dec.
+      destr (word.eqb addr k).
+      * ring_simplify (word.sub k k). rewrite word.unsigned_of_Z_0. cbn.
+        replace (Z.to_nat (word.unsigned (word.sub k (word.add k (word.of_Z 1)))))
+          with (Z.to_nat (2 ^ 32 - 1)) by ZnWords.
+        pose proof (tuple.length_to_list bs) as L.
+        assert (List.length (tuple.to_list bs) <= Z.to_nat (2 ^ 32 - 1))%nat as N by lia.
+        eapply (proj2 (nth_error_None _ _)) in N.
+        rewrite N. reflexivity.
+      * assert (word.unsigned addr <> word.unsigned k). {
+          intro C. apply E. apply word.unsigned_inj in C. exact C.
+        }
+        replace (Z.to_nat (word.unsigned (word.sub k addr))) with
+          (S (Z.to_nat (word.unsigned (word.sub k (word.add addr (word.of_Z 1))))))
+          by ZnWords.
+        cbn.
+        rewrite map.get_empty.
+        destruct_one_match; reflexivity.
+    + unfold map.disjoint. intros. rewrite map.get_put_dec in H0. fwd.
+      match goal with
+      | H: map.get ?m ?k = Some _ |- _ => assert (map.get m k <> None) as P
+            by congruence
+      end.
+      eapply map.get_of_list_word_at_domain in P.
+      pose proof (tuple.length_to_list bs) as L.
+      ZnWords.
+  Qed.
+
+  Lemma getmany_of_tuple_footprint_to_split: forall n a vs m,
+      Z.of_nat n <= 2 ^ 32 ->
+      map.getmany_of_tuple m (Memory.footprint a n) = Some vs ->
+      exists m', map.split m (map.of_list_word_at a (tuple.to_list vs)) m'.
+  Proof.
+    induction n; intros.
+    - exists m. unfold map.split. split.
+      + symmetry. apply map.putmany_empty_l.
+      + apply map.disjoint_empty_l.
+    - destruct vs as (v & vs). cbn in H0|-*. unfold tuple in H0. fwd.
+      unfold map.getmany_of_tuple, Memory.footprint in IHn.
+      specialize IHn with (2 := E0).
+      edestruct IHn as (m' & IH). 1: lia. clear IHn.
+      exists (map.remove m' a).
+      unfold map.split in IH |- *. fwd.
+      unfold map.disjoint in *. split.
+      + apply map.map_ext.
+        intros. rewrite ?map.get_putmany_dec in *.
+        rewrite ?map.get_of_list_word_at in *.
+        rewrite map.get_remove_dec in *.
+        destr (word.eqb a k).
+        * replace (Z.to_nat (word.unsigned (word.sub k k))) with O by ZnWords.
+          destr (map.get m' k).
+          { fwd. reflexivity. }
+          { assumption. }
+        * assert (word.unsigned a <> word.unsigned k). {
+            intro C. apply E1. apply word.unsigned_inj in C. exact C.
+          }
+          replace (Z.to_nat (word.unsigned (word.sub k a))) with
+            (S (Z.to_nat (word.unsigned (word.sub k (word.add a (word.of_Z 1))))))
+            by ZnWords.
+          cbn.
+          reflexivity.
+      + intros.
+        rewrite map.get_remove_dec in H1.
+        fwd.
+        rewrite map.get_of_list_word_at in H0.
+        assert (word.unsigned a <> word.unsigned k). {
+          intro C. apply E1. apply word.unsigned_inj in C. exact C.
+        }
+        replace (Z.to_nat (word.unsigned (word.sub k a))) with
+          (S (Z.to_nat (word.unsigned (word.sub k (word.add a (word.of_Z 1)))))) in H0
+          by ZnWords.
+        cbn in H0.
+        eapply IHp1. 2: eassumption.
+        rewrite map.get_of_list_word_at. eassumption.
+  Qed.
+
+  Lemma ptsto_bytes_of_list_word_at: forall n addr bs,
+      Z.of_nat n <= 2 ^ 32 ->
+      ptsto_bytes n addr bs (map.of_list_word_at addr (tuple.to_list bs)).
+  Proof.
+    induction n; intros; cbn.
+    - unfold emp. split; [reflexivity|auto].
+    - unfold sep. destruct bs as (b & bs). do 2 eexists. ssplit.
+      3: eapply IHn; lia.
+      2: unfold ptsto; reflexivity.
+      eapply split_of_list_word_at_cons. lia.
+  Qed.
+
   Lemma invert_load_bytes: forall n m addr bs,
+      Z.of_nat n <= 2 ^ 32 ->
       load_bytes n m addr = Some bs ->
       exists R, sep (ptsto_bytes n addr bs) R m.
   Proof.
-  Admitted.
+    intros. unfold load_bytes in *.
+    eapply getmany_of_tuple_footprint_to_split in H0. 2: assumption. fwd.
+    exists (eq m'). unfold sep. do 2 eexists; ssplit; eauto.
+    eapply ptsto_bytes_of_list_word_at. assumption.
+  Qed.
 
   Lemma invert_fetch: forall initial post decoder,
       mcomp_sat (run1 decoder) initial post ->
@@ -264,7 +367,7 @@ Section Riscv.
                             post.
   Proof.
     intros. apply invert_fetch0 in H. fwd. record.simp.
-    eapply invert_load_bytes in Hp0. fwd.
+    eapply invert_load_bytes in Hp0. 2: cbv; discriminate 1. fwd.
     do 2 eexists. split. 2: eassumption.
     unfold instr.
   Admitted.
