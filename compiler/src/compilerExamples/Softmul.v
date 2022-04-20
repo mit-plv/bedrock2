@@ -31,6 +31,7 @@ Require Import riscv.Platform.MinimalCSRs.
 Require Import riscv.Proofs.InstructionSetOrder.
 Require Import riscv.Proofs.DecodeEncodeProver.
 Require Import riscv.Proofs.DecodeEncode.
+Require Import riscv.Proofs.DecodeByExtension.
 Require riscv.Utility.InstructionCoercions.
 Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import compiler.regs_initialized.
@@ -39,8 +40,6 @@ Require Import compilerExamples.SoftmulCompile.
 Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Require Import bedrock2.SepBulletPoints.
 Local Open Scope sep_bullets_scope. Undelimit Scope sep_scope.
-
-Axiom TODO: False.
 
 Ltac assertZcst x :=
   let x' := rdelta x in lazymatch isZcst x' with true => idtac end.
@@ -368,9 +367,20 @@ Section Riscv.
   Proof.
     intros. apply invert_fetch0 in H. fwd. record.simp.
     eapply invert_load_bytes in Hp0. 2: cbv; discriminate 1. fwd.
-    do 2 eexists. split. 2: eassumption.
+    eexists R, _. split. 2: eassumption.
     unfold instr.
-  Admitted.
+    eapply sep_ex1_l. unfold ex1.
+    unfold truncated_scalar, littleendian. cbn -[Z.pow].
+    exists (LittleEndianList.le_combine (tuple.to_list w)).
+    apply sep_comm. apply sep_assoc. apply sep_emp_r. split; [|split].
+    - apply sep_comm. eqapply Hp0. f_equal.
+      rewrite <- LittleEndian.combine_eq.
+      rewrite <- LittleEndian.split_eq.
+      symmetry.
+      eapply LittleEndian.split_combine.
+    - reflexivity.
+    - eapply LittleEndianList.le_combine_bound.
+  Qed.
 
   Lemma interpret_loadWord: forall (initial: State) (postF: w32 -> State -> Prop)
                                    (postA: State -> Prop) (a v: word) R,
@@ -400,24 +410,31 @@ Section Riscv.
   Proof.
     unfold mdecode, idecode. intros.
     destruct_one_match_hyp; fwd.
-    - replace z with (
-          let rd := bitSlice z 7 12 in
-          let rs1 := bitSlice z 15 20 in
-          let rs2 := bitSlice z 20 25 in
-          encode (MInstruction (Mul rd rs1 rs2))) at 1; cbv zeta.
-      (* can't apply decode_encode because Mul is not in RV32I! *)
-      all: admit.
-    - exfalso. (* H is a contradiction *) admit.
-  Admitted.
+    - rewrite <- decode_seq_correct. unfold decode_seq.
+      change (bitwidth RV32I) with 32.
+      remember (decodeI 32 z) as d.
+      remember (decodeCSR 32 z) as c.
+      repeat match goal with
+             | |- context C[if andb ?b1 ?b2 then ?a1 else ?a2] =>
+                 let G := context C[a2] in change G
+             end.
+      unfold decodeI, decodeCSR in *.
+      rewrite Ep0p0, Ep0p1, Ep1 in *.
+      change (c = InvalidCSR) in Heqc.
+      change (d = InvalidI) in Heqd.
+      subst.
+      reflexivity.
+    - eapply decode_RV32I_not_MInstruction in H. contradiction H.
+  Qed.
 
   Lemma invert_mdecode_M: forall z minst,
       mdecode z = MInstruction minst ->
       exists rd rs1 rs2, minst = Mul rd rs1 rs2.
-  Proof. Admitted.
-
-  Lemma decode_verify: forall iset i, verify (decode iset i) iset.
   Proof.
-  Abort. (* maybe not needed *)
+    unfold mdecode. intros. destruct_one_match_hyp.
+    - inversion H. eauto.
+    - eapply decode_RV32I_not_MInstruction in H. contradiction H.
+  Qed.
 
   Lemma opcode_M_is_OP: forall inst,
       isValidM inst = true ->
@@ -526,14 +543,45 @@ Section Riscv.
                                        (word.of_Z (stack_hi - 128))
          * word.of_Z (mtvec_base * 4) :-> handler_insts : program idecode }> r2.(mem).
 
+  (* From FlatToRiscvCommon, but with arbitrary n instead of access_size,
+     because we also need support for loading 8 bytes, even though there's
+     no instruction for it in RV32 *)
+  Lemma subst_load_bytes_for_eq {n} {mH mL: Mem} {addr: word} {bs P R}:
+      bedrock2.Memory.load_bytes n mH addr = Some bs ->
+      Z.of_nat n <= 2 ^ 32 ->
+      sep P (sep (eq mH) R) mL ->
+      exists Q, sep P (sep (ptsto_bytes n addr bs) (sep Q R)) mL.
+  Proof.
+    intros.
+    apply sep_of_load_bytes in H. 2: assumption.
+    destruct H as [Q A]. exists Q.
+    assert (sep (sep (ptsto_bytes n addr bs) Q) (sep P R) mL); [|ecancel_assumption].
+    eapply FlatToRiscvCommon.seplog_subst_eq; [exact H1|..|exact A]. ecancel.
+  Qed.
+
+  Ltac subst_load_bytes_for_eq :=
+    lazymatch goal with
+    | Load: ?LB ?n _ _ _ ?m _ = _ |- _ =>
+        unify LB @Memory.load_bytes;
+        let P := fresh "P" in
+        epose proof (subst_load_bytes_for_eq Load) as P;
+        let Q := fresh "Q" in
+        edestruct P as [Q ?]; clear P; [assumption | ecancel_assumption|]
+    end.
+
   Lemma related_preserves_load_bytes: forall n sH sL a w,
+      Z.of_nat n <= 2 ^ 32 ->
       related sH sL ->
       load_bytes n sH.(mem) a = Some w ->
       load_bytes n sL.(mem) a = Some w.
   Proof.
-  Admitted.
+    unfold related. intros. fwd.
+    subst_load_bytes_for_eq.
+    eapply load_bytes_of_sep. ecancel_assumption.
+  Qed.
 
   Lemma load_preserves_related: forall n c a initialH initialL postH,
+      Z.of_nat n <= 2 ^ 32 ->
       related initialH initialL ->
       load n c a initialH postH ->
       load n c a initialL
@@ -546,16 +594,29 @@ Section Riscv.
   Qed.
 
   Lemma store_preserves_related: forall n c a v initialH initialL postH,
+      Z.of_nat n <= 2 ^ 32 ->
       related initialH initialL ->
       store n c a v initialH postH ->
       store n c a v initialL
             (fun finalL => exists finalH, related finalH finalL /\ postH finalH).
   Proof.
-    unfold store.
-    cbn. intros.
-    destruct_one_match_hyp. 2: contradiction.
-    (* TODO separation logic/memory stuff *)
-  Admitted.
+    unfold store, related. intros. fwd.
+    lazymatch goal with
+    | H: store_bytes _ _ _ _ = _ |- _ =>
+        unshelve epose proof (FlatToRiscvCommon.store_bytes_frame H _) as P; cycle 2
+    end.
+    1: ecancel_assumption.
+    destruct P as (finalML & P1 & P2).
+    move E at bottom.
+    unfold store_bytes in E. fwd.
+    subst_load_bytes_for_eq.
+    repeat match goal with
+           | |- exists _, _ => eexists
+           | |- _ /\ _ => split
+           end; cycle -1.
+    1: eassumption.
+    all: eauto.
+  Qed.
 
   Lemma run_primitive_preserves_related: forall a initialH initialL postF postA,
       related initialH initialL ->
@@ -573,14 +634,14 @@ Section Riscv.
     - exists { initialH with regs ::= setReg z r }. record.simp.
       unfold setReg in *. destr ((0 <? z) && (z <? 32))%bool;
         intuition (congruence || eauto 10 using preserve_regs_initialized_after_put).
-    - eapply load_preserves_related; eauto.
-    - eapply load_preserves_related; eauto.
-    - eapply load_preserves_related; eauto.
-    - eapply load_preserves_related; eauto.
-    - eapply store_preserves_related; eauto.
-    - eapply store_preserves_related; eauto.
-    - eapply store_preserves_related; eauto.
-    - eapply store_preserves_related; eauto.
+    - eapply load_preserves_related; eauto. cbv. discriminate 1.
+    - eapply load_preserves_related; eauto. cbv. discriminate 1.
+    - eapply load_preserves_related; eauto. cbv. discriminate 1.
+    - eapply load_preserves_related; eauto. cbv. discriminate 1.
+    - eapply store_preserves_related; eauto. cbv. discriminate 1.
+    - eapply store_preserves_related; eauto. cbv. discriminate 1.
+    - eapply store_preserves_related; eauto. cbv. discriminate 1.
+    - eapply store_preserves_related; eauto. cbv. discriminate 1.
     - contradiction.
     - contradiction.
     - contradiction.
