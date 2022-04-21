@@ -416,8 +416,7 @@ Section Proofs.
         simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try intuition congruence.
   Qed.
 
-    
-
+   
   
   Lemma compile_function_body_correct: forall (e_impl_full : env) m l mc (argvs : list word)
     (st0 : locals) (post outcome : Semantics.trace -> mem -> locals -> MetricLog -> Prop)
@@ -482,7 +481,34 @@ Section Proofs.
               (of_list
                  (list_union Z.eqb (List.firstn binds_count (reg_class.all reg_class.arg)) []))
               (singleton_set RegisterNames.ra)) (getRegs finalL) /\
-          goodMachine finalTrace finalMH finalRegsH g finalL).
+
+(* (getMetrics finalL - *)
+(*   (Platform.MetricLogging.addMetricInstructions 1 *)
+(*      (Platform.MetricLogging.addMetricJumps 1 *)
+(*         (Platform.MetricLogging.addMetricLoads 1 *)
+(*            (Platform.MetricLogging.addMetricInstructions 1 *)
+(*               (Platform.MetricLogging.addMetricLoads 1 *)
+(*                  (Platform.MetricLogging.addMetricInstructions 1 *)
+(*                     (Platform.MetricLogging.addMetricLoads 2 *)
+(*                        (Platform.MetricLogging.addMetricInstructions *)
+(*                           #(Datatypes.length *)
+(*                               (list_diff Z.eqb (modVars_as_list Z.eqb body) *)
+(*                                  (List.firstn ret_count (reg_class.all reg_class.arg)))) *)
+(*                           (Platform.MetricLogging.addMetricLoads *)
+(*                              #(Datatypes.length *)
+(*                                  (list_diff Z.eqb (modVars_as_list Z.eqb body) *)
+(*                                     (List.firstn ret_count (reg_class.all reg_class.arg))) + *)
+(*                                (Datatypes.length *)
+(*                                   (list_diff Z.eqb (modVars_as_list Z.eqb body) *)
+(*                                      (List.firstn ret_count (reg_class.all reg_class.arg))))) (getMetrics mach)))))))))) *)
+(*     <= lowerMetrics (finalMetricsH - mc))%metricsL /\ *)
+
+            (getMetrics finalL - Platform.MetricLogging.addMetricInstructions 100
+                                   (Platform.MetricLogging.addMetricJumps 100
+                                      (Platform.MetricLogging.addMetricLoads 100
+                                         (Platform.MetricLogging.addMetricStores 100 (getMetrics mach)))) <= lowerMetrics (finalMetricsH - mc))%metricsL /\
+
+            goodMachine finalTrace finalMH finalRegsH g finalL).
   Proof.
     intros * IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
 
@@ -1042,9 +1068,62 @@ Section Proofs.
     + eassumption.
     + solve_word_eq word_ok.
     + exact OD.
+    + assert (#(Datatypes.length (modVars_as_list Z.eqb body)) <= 29).
+      { admit. }
+      
+      assert ((Datatypes.length
+                              (list_diff Z.eqb (modVars_as_list Z.eqb body)
+                                         (List.firstn ret_count (reg_class.all reg_class.arg))))
+              <= (Datatypes.length (modVars_as_list Z.eqb body)))%nat by apply list_diff_length. 
+      
+      assert (#(Datatypes.length
+                  (list_diff Z.eqb (modVars_as_list Z.eqb body)
+                             (List.firstn ret_count (reg_class.all reg_class.arg)))) <= 29) by blia.
+      clear - H8 H2p6.
+      
+      Ltac unfold_MetricLog ::= unfold withInstructions, withLoads, withStores, withJumps, addMetricInstructions, addMetricLoads, addMetricStores, addMetricJumps, subMetricInstructions, subMetricLoads, subMetricStores, subMetricJumps, metricsOp, metricSub, metricsSub, metricLeq, metricsLeq in *.
+
+
+      cbv[lowerMetrics] in *. 
+      repeat unfold_MetricLog. 
+      repeat simpl_MetricLog.
+      remember (Datatypes.length
+                  (list_diff Z.eqb (modVars_as_list Z.eqb body) (List.firstn ret_count (reg_class.all reg_class.arg)))) as blah.
+
+
+      destruct mach_metrics.
+      destruct middle_metrics.
+      unfold Platform.MetricLogging.metricsLeq in *.
+      unfold Platform.MetricLogging.metricLeq in *.
+      unfold Platform.MetricLogging.metricsSub in *.
+      unfold Platform.MetricLogging.metricSub in *.
+      repeat     
+        match goal with
+        | |- context[?f ?n (Platform.MetricLogging.mkMetricLog ?i ?s ?l ?j)] =>
+            match type of (f n (Platform.MetricLogging.mkMetricLog i s l j)) with
+            | Platform.MetricLogging.MetricLog =>
+                progress let t := eval hnf in (f n (Platform.MetricLogging.mkMetricLog i s l j)) in
+                           let t' := eval cbn -[BinInt.Z.add BinInt.Z.sub BinInt.Z.mul Z.of_nat Init.Nat.add] in t in
+                             change (f n (Platform.MetricLogging.mkMetricLog i s l j)) with t'
+            end
+        end.
+      cbn. 
+      repeat match goal with
+             | |- context[?f ?n (Platform.MetricLogging.mkMetricLog ?i ?s ?l ?j)] =>
+                 match type of (f n (Platform.MetricLogging.mkMetricLog i s l j)) with
+              | Platform.MetricLogging.MetricLog =>
+                  let t := eval hnf in (f n (Platform.MetricLogging.mkMetricLog i s l j)) in
+                    let t' := eval cbn in t in
+                      change (f n (Platform.MetricLogging.mkMetricLog i s l j)) with t' in H
+                 end
+             end.
+      cbn in H2p6.
+      blia. 
+      
     + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
              middle_regs into lL.
 
+      
       (* The following list of lemmas and about that much helper code would probably be required
          even in a near-perfect proof assistant:
 
@@ -1071,8 +1150,7 @@ Section Proofs.
          load back the return address     run_load_word
          increase sp                      run_Addi
          jump back to caller              run_Jalr0
-       *)
-
+       *)      
       match goal with
       | |- map.extends ?A lH' => remember A as middle_regs0_ra_sp
       end.
@@ -1275,7 +1353,7 @@ Section Proofs.
       wcancel_assumption.
     + reflexivity.
     + assumption.
-  Qed.
+  Admitted. 
 
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
@@ -1479,7 +1557,7 @@ Section Proofs.
         congruence.
       }
       subst args.
-      let T := type of IHexec in replace T with
+      let T := type of IHexec in let T' := open_constr:(
         (forall (g : GhostConsts) (e_impl : env) (e_pos : fun_info)
              (program_base : word) (insts : list Instruction) (xframe : mem -> Prop)
              (initialL : RiscvMachineL) (pos : Z),
@@ -1507,11 +1585,12 @@ Section Proofs.
                 map.only_differ (getRegs initialL)
                   (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
                   (getRegs finalL) /\
-                (getMetrics finalL - initialL_metrics <= lowerMetrics (finalMetricsH - mc))%metricsL /\
+                  (*                (getMetrics finalL - initialL_metrics <= lowerMetrics (finalMetricsH - mc))%metricsL /\ *)
+                  _ /\                    
                 goodMachine finalTrace finalMH finalRegsH g finalL))
-        in IHexec.
+        ) in replace T with T' in IHexec.
       2: {
-        subst. Fail reflexivity.  admit. (* SCall TODO 1 *)
+        subst. reflexivity. 
       }
 
       specialize IHexec with (1 := Ext).
@@ -1540,40 +1619,30 @@ Section Proofs.
       replace mid_log with t in *.
       forget (Datatypes.length binds) as binds_count.
       subst binds.
-      eapply runsTo_weaken with (P :=
-        (fun finalL : RiscvMachineL =>
-           exists
-             (finalTrace : Semantics.trace) (finalMH : mem) (finalRegsH : locals)
-             (finalMetricsH : MetricLog),
-             post finalTrace finalMH finalRegsH finalMetricsH /\
-             getPc finalL = ret_addr /\
-             map.only_differ (getRegs mach)
-                  (union (of_list
-                    (list_union Z.eqb (List.firstn binds_count (reg_class.all reg_class.arg)) []))
-                         (singleton_set RegisterNames.ra)) (getRegs finalL) /\
-             goodMachine finalTrace finalMH finalRegsH g finalL)).
-      2: {
-        subst mach. simpl_MetricRiscvMachine_get_set.
-        intros. fwd. eauto 8 with map_hints.
-        exists finalTrace. exists finalMH. exists finalRegsH. exists finalMetricsH.
-        split; eauto 8 with map_hints.
-        split; eauto 8 with map_hints.
-        split; eauto 8 with map_hints.
-        split; eauto 8 with map_hints. 
-        
-        
+      eapply runsTo_weaken.
+      1:{ 
+              match goal with
+              | H: (binds_count <= 8)%nat |- _ => rename H into BC
+              end.
+              move BC after OC.
+              repeat match goal with
+                     | x := _ |- _ => clearbody x
+                     end.
+              
+              Search initialL_metrics. 
+              clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok fun_info_ok env_ok
+                              IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
+              revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
+              eapply compile_function_body_correct.
       }
-      match goal with
-      | H: (binds_count <= 8)%nat |- _ => rename H into BC
-      end.
-      move BC after OC.
-      repeat match goal with
-             | x := _ |- _ => clearbody x
-             end.
-      clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok fun_info_ok env_ok
-              IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
-      revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
-      Fail apply compile_function_body_correct. admit. (* SCall TODO 3 *)
+      
+      subst mach. simpl_MetricRiscvMachine_get_set.
+      intros. fwd. eexists. eexists. eexists. eexists.
+      split; [ eapply H0p0 | ]. 
+      split; eauto 8 with map_hints.
+      split; eauto 8 with map_hints.
+      split; eauto 8 with map_hints.
+      MetricsToRiscv.solve_MetricLog. 
 
     - idtac "Case compile_stmt_correct/SLoad".
       progress unfold Memory.load, Memory.load_Z in *. fwd.
@@ -1988,8 +2057,7 @@ Section Proofs.
 
     - idtac "Case compile_stmt_correct/SSkip".
       run1done.
-  (* Qed. (* <-- takes a while *) *)
-  Admitted.
+  Qed. (* <-- takes a while *)
 
   
 End Proofs.
