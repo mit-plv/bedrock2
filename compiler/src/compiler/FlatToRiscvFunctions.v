@@ -481,34 +481,12 @@ Section Proofs.
               (of_list
                  (list_union Z.eqb (List.firstn binds_count (reg_class.all reg_class.arg)) []))
               (singleton_set RegisterNames.ra)) (getRegs finalL) /\
-
-(* (getMetrics finalL - *)
-(*   (Platform.MetricLogging.addMetricInstructions 1 *)
-(*      (Platform.MetricLogging.addMetricJumps 1 *)
-(*         (Platform.MetricLogging.addMetricLoads 1 *)
-(*            (Platform.MetricLogging.addMetricInstructions 1 *)
-(*               (Platform.MetricLogging.addMetricLoads 1 *)
-(*                  (Platform.MetricLogging.addMetricInstructions 1 *)
-(*                     (Platform.MetricLogging.addMetricLoads 2 *)
-(*                        (Platform.MetricLogging.addMetricInstructions *)
-(*                           #(Datatypes.length *)
-(*                               (list_diff Z.eqb (modVars_as_list Z.eqb body) *)
-(*                                  (List.firstn ret_count (reg_class.all reg_class.arg)))) *)
-(*                           (Platform.MetricLogging.addMetricLoads *)
-(*                              #(Datatypes.length *)
-(*                                  (list_diff Z.eqb (modVars_as_list Z.eqb body) *)
-(*                                     (List.firstn ret_count (reg_class.all reg_class.arg))) + *)
-(*                                (Datatypes.length *)
-(*                                   (list_diff Z.eqb (modVars_as_list Z.eqb body) *)
-(*                                      (List.firstn ret_count (reg_class.all reg_class.arg))))) (getMetrics mach)))))))))) *)
-(*     <= lowerMetrics (finalMetricsH - mc))%metricsL /\ *)
-
-            (getMetrics finalL - Platform.MetricLogging.addMetricInstructions 100
-                                   (Platform.MetricLogging.addMetricJumps 100
-                                      (Platform.MetricLogging.addMetricLoads 100
-                                         (Platform.MetricLogging.addMetricStores 100 (getMetrics mach)))) <= lowerMetrics (finalMetricsH - mc))%metricsL /\
-
-            goodMachine finalTrace finalMH finalRegsH g finalL).
+          (getMetrics finalL - Platform.MetricLogging.addMetricInstructions 100
+                                 (Platform.MetricLogging.addMetricJumps 100
+                                    (Platform.MetricLogging.addMetricLoads 100
+                                       (Platform.MetricLogging.addMetricStores 100 (getMetrics mach)))) <=
+             lowerMetrics (finalMetricsH - mc))%metricsL /\
+          goodMachine finalTrace finalMH finalRegsH g finalL).
   Proof.
     intros * IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
 
@@ -1068,35 +1046,34 @@ Section Proofs.
     + eassumption.
     + solve_word_eq word_ok.
     + exact OD.
-    + assert (#(Datatypes.length (modVars_as_list Z.eqb body)) <= 29).
-      { admit. }
-      
+    + assert ((Datatypes.length (modVars_as_list Z.eqb body)) <= 29)%nat by
+        auto using NoDup_valid_FlatImp_vars_bound_length, NoDup_modVars_as_list, modVars_as_list_valid_FlatImp_var. 
       assert ((Datatypes.length
-                              (list_diff Z.eqb (modVars_as_list Z.eqb body)
-                                         (List.firstn ret_count (reg_class.all reg_class.arg))))
-              <= (Datatypes.length (modVars_as_list Z.eqb body)))%nat by apply list_diff_length. 
-      
+                 (list_diff Z.eqb (modVars_as_list Z.eqb body)
+                            (List.firstn ret_count (reg_class.all reg_class.arg))))
+              <= (Datatypes.length (modVars_as_list Z.eqb body)))%nat by
+        apply list_diff_length. 
       assert (#(Datatypes.length
                   (list_diff Z.eqb (modVars_as_list Z.eqb body)
-                             (List.firstn ret_count (reg_class.all reg_class.arg)))) <= 29) by blia.
+                             (List.firstn ret_count (reg_class.all reg_class.arg)))) <= 29) by
+        blia.
       clear - H8 H2p6.
-      
-      Ltac unfold_MetricLog ::= unfold withInstructions, withLoads, withStores, withJumps, addMetricInstructions, addMetricLoads, addMetricStores, addMetricJumps, subMetricInstructions, subMetricLoads, subMetricStores, subMetricJumps, metricsOp, metricSub, metricsSub, metricLeq, metricsLeq in *.
-
 
       cbv[lowerMetrics] in *. 
-      repeat unfold_MetricLog. 
+      unfold withInstructions, withLoads, withStores, withJumps,
+        addMetricInstructions, addMetricLoads, addMetricStores, addMetricJumps,
+        subMetricInstructions, subMetricLoads, subMetricStores, subMetricJumps,
+        metricsOp, metricSub, metricsSub, metricLeq, metricsLeq
+        in *.
       repeat simpl_MetricLog.
       remember (Datatypes.length
                   (list_diff Z.eqb (modVars_as_list Z.eqb body) (List.firstn ret_count (reg_class.all reg_class.arg)))) as blah.
 
-
       destruct mach_metrics.
       destruct middle_metrics.
-      unfold Platform.MetricLogging.metricsLeq in *.
-      unfold Platform.MetricLogging.metricLeq in *.
-      unfold Platform.MetricLogging.metricsSub in *.
-      unfold Platform.MetricLogging.metricSub in *.
+      unfold Platform.MetricLogging.metricsLeq, Platform.MetricLogging.metricLeq,
+        Platform.MetricLogging.metricsSub, Platform.MetricLogging.metricSub
+        in *.
       repeat     
         match goal with
         | |- context[?f ?n (Platform.MetricLogging.mkMetricLog ?i ?s ?l ?j)] =>
@@ -1353,7 +1330,7 @@ Section Proofs.
       wcancel_assumption.
     + reflexivity.
     + assumption.
-  Admitted. 
+  Qed. 
 
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
