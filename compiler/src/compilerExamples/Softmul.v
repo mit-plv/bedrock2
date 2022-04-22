@@ -1044,6 +1044,70 @@ Section Riscv.
     - intros; eapply HPost. 1: eassumption. assumption.
   Qed.
 
+  Lemma restore_regs3to31_correct_aux: forall n vals R (initial: State) spval stackaddr start
+                                  (post: State -> Prop),
+      List.length vals = n ->
+      map.get initial.(regs) RegisterNames.sp = Some spval ->
+      stackaddr = word.add spval (word.of_Z (4 * start)) ->
+      initial.(nextPc) = word.add initial.(pc) (word.of_Z 4) ->
+      3 <= start ->
+      (Z.to_nat start + n = 32)%nat ->
+      <{ * stackaddr :-> vals : word_array
+         * initial.(pc) :-> map (fun r => IInstruction (Lw r RegisterNames.sp (4 * r)))
+                                (List.unfoldn (BinInt.Z.add 1) n start)
+            : program idecode
+         * R }> initial.(mem) ->
+      runsTo (mcomp_sat (run1 idecode)) { initial with
+           regs := map.putmany initial.(regs) (map.of_list_Z_at start vals);
+           nextPc ::= word.add (word.of_Z (4 * Z.of_nat n));
+           pc ::= word.add (word.of_Z (4 * Z.of_nat n)) } post ->
+      runsTo (mcomp_sat (run1 idecode)) initial post.
+  Proof.
+    induction n; intros.
+    - destruct vals. 2: discriminate.
+      replace (map.of_list_Z_at start []) with map.empty in *. 2: {
+        unfold map.of_list_Z_at. cbn. unfold MapKeys.map.map_keys.
+        symmetry. apply map.fold_empty.
+      }
+      rewrite map.putmany_empty_r in H6.
+      eqapply H6. destruct initial. record.simp. f_equal; ZnWords.
+    - destruct vals as [|val vals]. 1: discriminate.
+      assert (0 < start < 32) by lia.
+      eapply runsToStep_cps. repeat step.
+      subst stackaddr.
+      eapply interpret_loadWord. scancel_asm. clear_split_sepclause_stack.
+      repeat step.
+      repeat word_simpl_step_in_goal. cbn [List.nth List.length] in *.
+      repeat (repeat word_simpl_step_in_hyps; fwd).
+      cbn [List.map] in *.
+      eapply IHn with (start := 1 + start) (vals := vals); try record.simp.
+      + congruence.
+      + unfold map.set. rewrite map.get_put_diff. 1: eassumption.
+        unfold RegisterNames.sp. lia.
+      + reflexivity.
+      + ring.
+      + lia.
+      + lia.
+      + scancel_asm.
+      + eqapply H6.
+        destruct initial; record.simp.
+        f_equal; try ZnWords.
+        unfold map.set.
+        apply map.map_ext.
+        intro k.
+        rewrite ?map.get_putmany_dec, ?map.get_put_dec, ?map.get_of_list_Z_at.
+        unfold List.Znth_error.
+        destr (start =? k).
+        * destr (k - k <? 0). 1: exfalso; lia.
+          destr (k - (1 + k) <? 0). 2: exfalso; lia.
+          rewrite Z.sub_diag. cbn [List.nth_error Z.to_nat].
+          f_equal. rewrite LittleEndian.combine_split. unfold signExtend. ZnWords.
+        * destr (k - start <? 0); destr (k - (1 + start) <? 0);
+            try (exfalso; lia); try reflexivity.
+          replace (Z.to_nat (k - start)) with (S (Z.to_nat (k - (1 + start)))) by lia.
+          cbn [List.nth_error Z.to_nat]. reflexivity.
+  Qed.
+
   Lemma restore_regs3to31_correct: forall R (initial: State) vals spval
                                   (post: State -> Prop),
       map.get initial.(regs) RegisterNames.sp = Some spval ->
@@ -1058,8 +1122,17 @@ Section Riscv.
            pc ::= word.add (word.of_Z (4 * Z.of_nat 29)) } post ->
       runsTo (mcomp_sat (run1 idecode)) initial post.
   Proof.
-    unfold restore_regs3to31. intros.
-  Admitted.
+    unfold restore_regs3to31. intros. fwd.
+    eapply restore_regs3to31_correct_aux with (start := 3).
+    - eassumption.
+    - eassumption.
+    - reflexivity.
+    - assumption.
+    - cbv. discriminate 1.
+    - reflexivity.
+    - eassumption.
+    - eassumption.
+  Qed.
 
   Lemma related_with_nextPc: forall initialH initialL,
       related initialH initialL ->
