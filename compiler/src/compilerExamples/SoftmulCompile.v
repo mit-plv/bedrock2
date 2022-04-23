@@ -633,12 +633,96 @@ Section Riscv.
     eapply softmul_ok. eapply rpmul.rpmul_ok.
   Qed.
 
-  Lemma array_footpr_subset_unfoldn[V: Type]: forall addr elem sz (vs: list V),
+  Lemma unfoldn_word_seq_add: forall n m (start: word),
+      List.unfoldn (word.add (word.of_Z 1)) (n + m) start =
+      List.unfoldn (word.add (word.of_Z 1)) n start ++
+      List.unfoldn (word.add (word.of_Z 1)) m (word.add start (word.of_Z (Z.of_nat n))).
+  Proof.
+    induction n; intros.
+    - word_simpl_step_in_goal. reflexivity.
+    - cbn -[Z.of_nat]. f_equal. eqapply (IHn m (word.add start (word.of_Z 1))).
+      + f_equal. ring.
+      + f_equal; f_equal; ZnWords.
+  Qed.
+
+  Import FunctionalExtensionality PropExtensionality.
+
+  Lemma of_list_app_eq[E: Type]: forall (l1 l2: list E),
+      of_list (l1 ++ l2) = union (of_list l1) (of_list l2).
+  Proof.
+    intros. extensionality x. eapply propositional_extensionality.
+    unfold of_list, union, elem_of. eapply in_app_iff.
+  Qed.
+
+  Lemma footpr_sep_eq{key value : Type} {map : map.map key value} {ok: map.ok map}
+    {key_eqb : key -> key -> bool}{eqd: EqDecider key_eqb}:
+    forall (P Q : map -> Prop), footpr (sep P Q) = union (footpr P) (footpr Q).
+  Proof.
+    unfold sep, subset, footpr, elem_of, footprint_underapprox, union, elem_of.
+    intros.
+    extensionality a. apply propositional_extensionality. split; intros.
+  Abort.
+
+(*
+  Lemma footpr_sep_subset{key value : Type} {map : map.map key value} {ok: map.ok map}
+    {key_eqb : key -> key -> bool}{eqd: EqDecider key_eqb}:
+    forall (P Q : map -> Prop) (A : key -> Prop),
+      subset (footpr P) A ->
+      subset (footpr Q) A ->
+      subset (footpr (sep P Q)) A.
+  Proof.
+    unfold sep, subset, footpr, elem_of, footprint_underapprox.
+    intros. specialize (H x). specialize (H0 x).
+*)
+
+  Lemma array_footpr_eq_unfoldn[V: Type]:
+    forall (elem: word -> V -> mem -> Prop) sz (vs: list V) addr,
+      (forall a v, footpr (elem a v) =
+                   of_list (List.unfoldn (word.add (word.of_Z 1)) (Z.to_nat sz) a)) ->
+      footpr (Array.array elem (word.of_Z sz) addr vs) =
+      of_list (List.unfoldn (word.add (word.of_Z 1))
+                 (Z.to_nat sz * List.length vs) addr).
+  Proof.
+    intros. revert addr. induction vs; intros.
+    - cbn.
+      unfold footpr, subset, elem_of, footprint_underapprox.
+      rewrite Nat.mul_0_r. cbn. unfold of_list, subset, elem_of.
+      extensionality a. apply propositional_extensionality. split.
+      + intros C. specialize (C map.empty). destruct C as (v & C).
+        * unfold emp. auto.
+        * rewrite map.get_empty in C. discriminate C.
+      + cbn. intro C. contradiction C.
+    - cbn.
+      replace (Z.to_nat sz * S (Datatypes.length vs))%nat with
+        (Z.to_nat sz + Z.to_nat sz * (Datatypes.length vs))%nat by Lia.lia.
+      rewrite unfoldn_word_seq_add.
+      rewrite of_list_app_eq.
+      rewrite <- IHvs.
+      unfold sep, subset, footpr, elem_of, footprint_underapprox.
+      intros.
+  Abort.
+
+  Lemma array_footpr_subset_unfoldn[V: Type]:
+    forall (elem: word -> V -> mem -> Prop) sz (vs: list V) addr,
       (forall a v, subset (footpr (elem a v))
              (of_list (List.unfoldn (word.add (word.of_Z 1)) (Z.to_nat sz) a))) ->
       subset (footpr (Array.array elem (word.of_Z sz) addr vs))
              (of_list (List.unfoldn (word.add (word.of_Z 1))
-                                    (Z.to_nat sz * List.length vs) addr)).
+                         (Z.to_nat sz * List.length vs) addr)).
+  Proof.
+    intros. revert addr. induction vs; intros.
+    - cbn.
+      unfold footpr, subset, elem_of, footprint_underapprox.
+      intros x C. specialize (C map.empty). destruct C as (v & C).
+      + unfold emp. auto.
+      + rewrite map.get_empty in C. discriminate C.
+    - cbn.
+      replace (Z.to_nat sz * S (Datatypes.length vs))%nat with
+        (Z.to_nat sz + Z.to_nat sz * (Datatypes.length vs))%nat by Lia.lia.
+      rewrite unfoldn_word_seq_add.
+      rewrite of_list_app_eq.
+      unfold sep, subset, footpr, elem_of, footprint_underapprox.
+      intros.
   Admitted.
 
   Lemma ptsto_instr_subset_unfoldn: forall (a : word) (v : Instruction),
