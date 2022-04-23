@@ -34,15 +34,12 @@ Require Import riscv.Platform.MaterializeRiscvProgram.
 Require Import riscv.Platform.MetricMinimalNoMul.
 Require Import compiler.regs_initialized.
 Require Import compiler.Registers.
+Require compiler.NaiveRiscvWordProperties.
 Require Import compilerExamples.SoftmulBedrock2.
 Require compiler.Pipeline.
 Require Import bedrock2.BasicC32Semantics.
 Require Import bedrock2.SepBulletPoints. Local Open Scope sep_bullets_scope.
 Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
-
-(* TODO might need slight change to Naive.word to make these hold
-   (shifts ignore high bits) *)
-Axiom word_riscv_ok: RiscvWordProperties.word.riscv_ok BasicC32Semantics.word.
 
 Section Riscv.
   Import bedrock2.BasicC32Semantics.
@@ -329,7 +326,7 @@ Section Riscv.
   (* both the finish-postcondition and the abort-postcondition are set to `post`
      to make sure `post` holds in all cases: *)
   Definition mcomp_sat(m: M unit)(initial: State)(post: State -> Prop): Prop :=
-    free.interpret run_primitive m initial (fun tt => post) post.
+    free.interpret (@run_primitive _ _ _ mem registers) m initial (fun tt => post) post.
 
   Lemma change_state_rep: forall (sH: MetricRiscvMachine) postH,
       runsTo (GoFlatToRiscv.mcomp_sat (Run.run1 RV32I)) sH postH ->
@@ -599,7 +596,7 @@ Section Riscv.
         pose proof load_four_of_sep as P.
         unfold scalar32, truncated_word, Memory.load, Memory.load_Z in P.
         change (bedrock2.Memory.load_bytes (bytes_per access_size.four))
-               with (load_bytes 4) in P.
+               with (load_bytes (mem := mem) 4) in P.
         specialize P with (addr := pc) (m := m) (value := word.of_Z z).
         rewrite H5 in P.
         rewrite word.unsigned_of_Z_nowrap in P by assumption.
@@ -940,7 +937,7 @@ Section Riscv.
         destruct final. destruct initial. record.simp. f_equal; try congruence. }
     Unshelve.
     all: try exact SortedListString.ok.
-    all: try exact word_riscv_ok.
+    all: try exact (NaiveRiscvWordProperties.naive_word_riscv_ok 5).
     all: try constructor.
   Qed.
 End Riscv.

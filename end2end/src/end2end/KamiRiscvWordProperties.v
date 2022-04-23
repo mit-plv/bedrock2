@@ -76,22 +76,6 @@ Section KamiRiscvWord.
       change kunsigned with (word.unsigned (width:= 2 ^ log2width)).
       apply unsigned_of_Z_mod_idemp.
 
-    - change kofZ with (@word.of_Z _ (KamiWord.word (2 ^ log2width))).
-      apply word.of_Z_inj_mod.
-      rewrite bitSlice_alt; cycle 1. {
-        pose proof (Z.pow_gt_lin_r 2 log2width). blia.
-      }
-      unfold bitSlice'.
-      pose proof (word.unsigned_range y) as R1.
-      pose proof (word.unsigned_range z) as R2.
-      unfold word.unsigned in *. cbn in *.
-      remember (kunsigned y) as a. remember (kunsigned z) as b. clear Heqa Heqb y z.
-      ring_simplify (2 * 2 ^ log2width - 2 ^ log2width).
-      rewrite Z.mod_mod; cycle 1. {
-        apply Z.pow_nonzero; blia.
-      }
-      reflexivity.
-
     - destruct (word.eqb _ _) eqn:Heq; [|reflexivity].
       apply word.eqb_true in Heq; subst z.
       cbv [riscvZdivu].
