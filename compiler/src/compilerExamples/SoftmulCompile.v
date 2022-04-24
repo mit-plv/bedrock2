@@ -480,6 +480,82 @@ Section Riscv.
     - subst a'. DivisibleBy4.solve_divisibleBy4.
   Qed.
 
+  Lemma of_list_word_at_implies_program: forall iset insts addr,
+      Forall (fun inst => verify inst iset) insts ->
+      word.unsigned addr mod 4 = 0 ->
+      Z.of_nat (Datatypes.length (Pipeline.instrencode insts)) < 2 ^ 32 ->
+      impl1 (eq (map.of_list_word_at addr (Pipeline.instrencode insts)))
+            (SeparationLogic.program iset addr insts).
+  Proof.
+    unfold impl1. intros. subst. revert addr H0 H1. induction H; intros.
+    - cbn. unfold emp. auto.
+    - unfold program in *. eapply array_cons.
+      unfold Pipeline.instrencode at 1. unfold Pipeline.instrencode in H2.
+      cbn [List.flat_map] in *.
+      change (flat_map
+                (fun inst : Instruction =>
+                   HList.tuple.to_list (LittleEndian.split_deprecated 4 (encode inst))) l)
+        with (Pipeline.instrencode l) in *.
+      rewrite List.app_length in *.
+      rewrite HList.tuple.length_to_list in H2.
+      unfold sep. do 2 eexists. ssplit.
+      3: eapply IHForall.
+      2: {
+        unfold ptsto_instr.
+        eapply sep_emp_r. split; [|assumption].
+        eapply sep_emp_r. split; [|auto].
+        unfold truncated_scalar, littleendian, ptsto_bytes.
+        rewrite HList.tuple.to_list_of_list. change (bytes_per access_size.four) with 4%nat.
+        eapply array1_iff_eq_of_list_word_at.
+        1: typeclasses eauto.
+        2: reflexivity.
+        rewrite LittleEndianList.length_le_split. cbv. discriminate 1.
+      }
+      2: DivisibleBy4.solve_divisibleBy4. 2: ZnWords.
+      rewrite LittleEndian.to_list_split in *.
+      unfold map.split. split.
+      + apply map.map_ext. intro a.
+        repeat rewrite ?map.get_of_list_word_at, ?map.get_putmany_dec.
+        destruct_one_match.
+        * pose proof E as B.
+          eapply List.nth_error_Some_bound_index in B.
+          rewrite nth_error_app2. 2: {
+            rewrite LittleEndianList.length_le_split.
+            ZnWords.
+          }
+          rewrite <- E. f_equal. rewrite LittleEndianList.length_le_split. ZnWords.
+        * match goal with
+          | |- _ = ?r => destr r
+          end.
+          { rewrite <- E0. apply nth_error_app1.
+            rewrite LittleEndianList.length_le_split.
+            eapply nth_error_None in E.
+            eapply List.nth_error_Some_bound_index in E0.
+            rewrite LittleEndianList.length_le_split in E0.
+            exact E0. }
+          match goal with
+          | |- ?l = _ => destr l; [|reflexivity]
+          end.
+          eapply List.nth_error_app_Some in E1.
+          rewrite E0 in E1.
+          destruct E1 as [C | C]; [discriminate C|].
+          rewrite <- C.
+          rewrite <- E.
+          f_equal.
+          eapply nth_error_None in E.
+          eapply nth_error_None in E0.
+          eapply List.nth_error_Some_bound_index in C.
+          rewrite LittleEndianList.length_le_split in *.
+          ZnWords.
+      + unfold map.disjoint.
+        intros a b1 b2 G1 G2.
+        rewrite map.get_of_list_word_at in G1,G2.
+        eapply List.nth_error_Some_bound_index in G1.
+        eapply List.nth_error_Some_bound_index in G2.
+        rewrite LittleEndianList.length_le_split in G1.
+        ZnWords.
+  Qed.
+
   Notation program d := (array (instr d) (word.of_Z 4)) (only parsing).
 
   Definition funimplsList := softmul :: rpmul.rpmul :: nil.
@@ -651,81 +727,14 @@ Section Riscv.
     unfold of_list, union, elem_of. eapply in_app_iff.
   Qed.
 
-  Lemma footpr_sep_eq{key value : Type} {map : map.map key value} {ok: map.ok map}
-    {key_eqb : key -> key -> bool}{eqd: EqDecider key_eqb}:
-    forall (P Q : map -> Prop), footpr (sep P Q) = union (footpr P) (footpr Q).
+  (* TODO move to bedrock2.footpr *)
+  Lemma rearrange_footpr_subset_impl1: forall {key value : Type} {map : map.map key value}
+                                        (P Q : map -> Prop) (A : key -> Prop),
+      subset (footpr P) A -> impl1 P Q -> subset (footpr Q) A.
   Proof.
-    unfold sep, subset, footpr, elem_of, footprint_underapprox, union, elem_of.
-    intros.
-    extensionality a. apply propositional_extensionality. split; intros.
-  Abort.
-
-(*
-  Lemma footpr_sep_subset{key value : Type} {map : map.map key value} {ok: map.ok map}
-    {key_eqb : key -> key -> bool}{eqd: EqDecider key_eqb}:
-    forall (P Q : map -> Prop) (A : key -> Prop),
-      subset (footpr P) A ->
-      subset (footpr Q) A ->
-      subset (footpr (sep P Q)) A.
-  Proof.
-    unfold sep, subset, footpr, elem_of, footprint_underapprox.
-    intros. specialize (H x). specialize (H0 x).
-*)
-
-  Lemma array_footpr_eq_unfoldn[V: Type]:
-    forall (elem: word -> V -> mem -> Prop) sz (vs: list V) addr,
-      (forall a v, footpr (elem a v) =
-                   of_list (List.unfoldn (word.add (word.of_Z 1)) (Z.to_nat sz) a)) ->
-      footpr (Array.array elem (word.of_Z sz) addr vs) =
-      of_list (List.unfoldn (word.add (word.of_Z 1))
-                 (Z.to_nat sz * List.length vs) addr).
-  Proof.
-    intros. revert addr. induction vs; intros.
-    - cbn.
-      unfold footpr, subset, elem_of, footprint_underapprox.
-      rewrite Nat.mul_0_r. cbn. unfold of_list, subset, elem_of.
-      extensionality a. apply propositional_extensionality. split.
-      + intros C. specialize (C map.empty). destruct C as (v & C).
-        * unfold emp. auto.
-        * rewrite map.get_empty in C. discriminate C.
-      + cbn. intro C. contradiction C.
-    - cbn.
-      replace (Z.to_nat sz * S (Datatypes.length vs))%nat with
-        (Z.to_nat sz + Z.to_nat sz * (Datatypes.length vs))%nat by Lia.lia.
-      rewrite unfoldn_word_seq_add.
-      rewrite of_list_app_eq.
-      rewrite <- IHvs.
-      unfold sep, subset, footpr, elem_of, footprint_underapprox.
-      intros.
-  Abort.
-
-  Lemma array_footpr_subset_unfoldn[V: Type]:
-    forall (elem: word -> V -> mem -> Prop) sz (vs: list V) addr,
-      (forall a v, subset (footpr (elem a v))
-             (of_list (List.unfoldn (word.add (word.of_Z 1)) (Z.to_nat sz) a))) ->
-      subset (footpr (Array.array elem (word.of_Z sz) addr vs))
-             (of_list (List.unfoldn (word.add (word.of_Z 1))
-                         (Z.to_nat sz * List.length vs) addr)).
-  Proof.
-    intros. revert addr. induction vs; intros.
-    - cbn.
-      unfold footpr, subset, elem_of, footprint_underapprox.
-      intros x C. specialize (C map.empty). destruct C as (v & C).
-      + unfold emp. auto.
-      + rewrite map.get_empty in C. discriminate C.
-    - cbn.
-      replace (Z.to_nat sz * S (Datatypes.length vs))%nat with
-        (Z.to_nat sz + Z.to_nat sz * (Datatypes.length vs))%nat by Lia.lia.
-      rewrite unfoldn_word_seq_add.
-      rewrite of_list_app_eq.
-      unfold sep, subset, footpr, elem_of, footprint_underapprox.
-      intros.
-  Admitted.
-
-  Lemma ptsto_instr_subset_unfoldn: forall (a : word) (v : Instruction),
-      subset (footpr (ptsto_instr RV32IM a v))
-             (of_list (List.unfoldn (word.add (word.of_Z 1)) (Z.to_nat 4) a)).
-  Admitted.
+    unfold subset, impl1, footpr, footprint_underapprox, elem_of. intros.
+    eapply H. intros. specialize (H0 _ H2). exact (H1 _ H0).
+  Qed.
 
   Lemma mul_correct: forall initial a_regs regvals invalidIInst R (post: State -> Prop)
                             ret_addr stack_start stack_pastend rd rs1 rs2,
@@ -853,8 +862,25 @@ Section Riscv.
           | |- subset (footpr (sep ?p _)) _ => eapply rearrange_footpr_subset with (P :=  p)
           end.
           2: cancel.
-          eapply array_footpr_subset_unfoldn.
-          eapply ptsto_instr_subset_unfoldn. }
+          eapply rearrange_footpr_subset_impl1 with
+            (P := (eq (map.of_list_word_at (pc initial)
+                                           (Pipeline.instrencode mul_insts)))).
+          { clear.
+            unfold subset, footpr, footprint_underapprox, elem_of, of_list. intros.
+            specialize (H _ eq_refl). fwd.
+            rewrite map.get_of_list_word_at in H.
+            eapply In_word_seq.
+            eapply List.nth_error_Some_bound_index in H.
+            change (Datatypes.length (Pipeline.instrencode mul_insts))
+              with (4 * List.length mul_insts)%nat in H.
+            forget (4 * List.length mul_insts)%nat as L.
+            ZnWords. }
+          { eapply of_list_word_at_implies_program. 2: assumption.
+            2: vm_compute; reflexivity.
+            eapply Forall_impl. 2: eapply verify_mul_insts.
+            cbv beta. clear. unfold verify. intros i [V1 V2]. split. 1: exact V1.
+            unfold verify_iset in *.
+            destruct i; intuition congruence. } }
         { assumption. }
         { reflexivity. }
         { assumption. }
