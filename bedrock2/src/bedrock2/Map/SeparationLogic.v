@@ -349,6 +349,15 @@ Section SepProperties.
     eapply sep_ex1_l. unfold ex1. exists a.
     eapply replace_nth_sep_remove_nth. exact NewGoal.
   Qed.
+
+  Lemma extract_ex1_in_goal_with_and_at_index{A : Type} i xs m (P: A -> map -> Prop) a C
+        (Hi : nth i xs = ex1 P)
+        (NewGoal : seps (replace_nth i (P a) xs) m /\ C)
+    : seps xs m /\ C.
+  Proof.
+    destruct NewGoal as (HN & HC). split; [|exact HC].
+    eapply (extract_ex1_in_goal_at_index i); eauto.
+  Qed.
 End SepProperties.
 
 Require Import coqutil.Tactics.syntactic_unify coqutil.Tactics.rdelta.
@@ -399,6 +408,12 @@ Module Tree.
       Lift1Prop.impl1 (seps (flatten LHS)) (seps (flatten RHS)) ->
       Lift1Prop.impl1 (to_sep LHS) (to_sep RHS).
     Proof. rewrite! flatten_iff1_to_sep. exact id. Qed.
+
+    Lemma flatten_to_sep_with_and(t : Tree.Tree (map -> Prop))(m: map)(C: Prop):
+      seps (flatten t) m /\ C -> to_sep t m /\ C.
+    Proof.
+      intros (H & HC). refine (conj _ HC). eapply flatten_iff1_to_sep. exact H.
+    Qed.
   End WithMap.
 End Tree.
 
@@ -460,11 +475,15 @@ Ltac flatten_seps_in H :=
 Ltac flatten_seps_in_goal :=
   cbn [seps];
   lazymatch goal with
+  | |- ?nested ?m /\ ?C =>
+      let xs := reify nested in
+      change (Tree.to_sep xs m /\ C);
+      eapply Tree.flatten_to_sep_with_and
   | |- ?nested ?m =>
       let xs := reify nested in
-      change (Tree.to_sep xs m)
+      change (Tree.to_sep xs m);
+      eapply Tree.flatten_iff1_to_sep
   end;
-  eapply Tree.flatten_iff1_to_sep;
   cbn [Tree.flatten Tree.interp app].
 
 Ltac cancel_emp_l :=
@@ -796,6 +815,13 @@ Ltac extract_ex1_and_emp_in_hyps :=
 
 Ltac extract_ex1_step_in_goal :=
   match goal with
+  | |- seps ?xs _ /\ _ =>
+      lazymatch find_in_list ltac:(is_ex1) xs with
+      | (?j, ex1 _) =>
+          eapply (extract_ex1_in_goal_with_and_at_index j);
+          cbn [firstn skipn app hd tl];
+          [ syntactic_exact_deltavar (@eq_refl _ _) | ]
+      end
   | |- seps ?xs _ =>
       lazymatch find_in_list ltac:(is_ex1) xs with
       | (?j, ex1 _) =>
@@ -841,6 +867,20 @@ Section Tests.
       (OtherH: v1 = v1'),
       (ex1 (fun z => ex1 (fun y => ptsto a2 y) * emp (0 < z)%nat) *
        ptsto a1 v1 * emp (v1 = v1'))%sep m.
+  Proof.
+    intros.
+    extract_ex1_and_emp_in H.
+    extract_ex1_and_emp_in_goal.
+    eapply sep_comm in H.
+    eauto.
+    all: fail.
+  Abort.
+
+  Goal forall (a1 a2: key) (v1 v1': value) (m: map)
+      (H: (ptsto a1 v1 * ex1 (fun y => emp (0 < y)%nat * ex1 (fun v => ptsto a2 v)))%sep m)
+      (OtherH: v1 = v1'),
+      (ex1 (fun z => ex1 (fun y => ptsto a2 y) * emp (0 < z)%nat) *
+       ptsto a1 v1 * emp (v1 = v1'))%sep m /\ v1 = v1'.
   Proof.
     intros.
     extract_ex1_and_emp_in H.
