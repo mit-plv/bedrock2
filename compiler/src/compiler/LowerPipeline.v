@@ -155,28 +155,6 @@ Section LowerPipeline.
        morphism (word.ring_morph (word := word)),
        constants [word_cst]).
 
-  Lemma mem_available_to_exists: forall start pastend (m: mem) P,
-      (mem_available start pastend * P)%sep m ->
-      exists anybytes,
-        Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) /\
-        (ptsto_bytes start anybytes * P)%sep m.
-  Proof using word_ok mem_ok.
-    unfold mem_available. intros * H.
-    eapply sep_ex1_l in H. (* semicolon here fails *) destruct H.
-    eapply sep_assoc in H.
-    eapply sep_emp_l in H. destruct H.
-    eauto.
-  Qed.
-
-  Definition mem_to_available: forall start pastend (m: mem) P anybytes,
-     Z.of_nat (List.length anybytes) = word.unsigned (word.sub pastend start) ->
-     (ptsto_bytes start anybytes * P)%sep m ->
-     (mem_available start pastend * P)%sep m.
-  Proof using word_ok mem_ok.
-    unfold mem_available. intros * H Hsep.
-    eapply sep_ex1_l. eexists. eapply sep_assoc. eapply sep_emp_l. eauto.
-  Qed.
-
   Lemma get_compile_funs_pos: forall e finfo0,
       let '(insts, finfo) := FlatToRiscvDef.compile_funs iset compile_ext_call finfo0 e in
       forall f impl,
@@ -732,11 +710,12 @@ Section LowerPipeline.
             eapply functions_expose; eassumption.
           }
           wwcancel. }
-        { edestruct mem_available_to_exists as [ stack_trash [? ?] ]. 1: simpl; ecancel_assumption.
-          destruct (byte_list_to_word_list_array stack_trash)
+        { unfold mem_available in *.
+          extract_ex1_and_emp_in_hyps.
+          destruct (byte_list_to_word_list_array anybytes)
             as (stack_trash_words&Hlength_stack_trash_words&Hstack_trash_words).
           { match goal with
-            | H: ?x = ?y |- _ => rewrite H
+            | H: ?x = ?y |- ?x mod _ = 0 => rewrite H
             end.
             assumption. }
           exists stack_trash_words, nil. ssplit. 2: reflexivity.

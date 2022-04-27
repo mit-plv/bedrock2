@@ -39,22 +39,6 @@ Section TransferSepsOrder.
   Qed.
 End TransferSepsOrder.
 
-Lemma iff1_refl{A: Type}(P: A -> Prop): iff1 P P. Proof. reflexivity. Qed.
-Lemma iff1_sym{A: Type}{P Q: A -> Prop}: iff1 P Q -> iff1 Q P.
-Proof. intros. symmetry. assumption. Qed.
-
-Ltac iff1_syntactic_reflexivity :=
-  lazymatch goal with
-  | |- iff1 ?x ?y => first [is_evar x | is_evar y | constr_eq x y]
-  end;
-  exact (iff1_refl _).
-
-Ltac impl1_syntactic_reflexivity :=
-  lazymatch goal with
-  | |- impl1 ?x ?y => first [is_evar x | is_evar y | constr_eq x y]
-  end;
-  exact impl1_refl.
-
 (* If the second-to-last argument of a predicate is a word, we assume it's the address.
    Could be made more flexible and accurate using typeclasses, but that would require
    adding an instance for each predicate. *)
@@ -99,34 +83,6 @@ Ltac is_fresh x := assert_succeeds (pose proof tt as x).
 
 Ltac make_fresh x :=
   tryif is_fresh x then idtac else let x' := fresh x "_0" in rename x into x'.
-
-(* Given `H: seplogformula m`, first cbns away all occurrences of `seps` in H,
-   and then flattens the formula into a list of sep clauses, resulting in an
-   `H: seps [...] m` *)
-Ltac flatten_seps_in H :=
-  lazymatch type of H with
-  | ?nested ?m =>
-    let tmem := type of m in
-    let E := fresh "E" in
-    eassert (@iff1 tmem nested _) as E;
-    [ (* from `nested` to `Tree.to_sep tree` *)
-      let stars := eval cbn[seps] in nested in
-      let tree := reify stars in
-      transitivity (Tree.to_sep tree); [
-        cbn [seps Tree.to_sep Tree.interp]; iff1_syntactic_reflexivity
-      |];
-      (* from `Tree.to_sep tree` to `seps (Tree.flatten tree)` *)
-      transitivity (seps (Tree.flatten tree)); [
-        exact (iff1_sym (Tree.flatten_iff1_to_sep tree))
-      |];
-      (* from `seps (Tree.flatten tree)` to `seps clauses` *)
-      cbn [SeparationLogic.Tree.flatten SeparationLogic.Tree.interp SeparationLogic.app];
-      iff1_syntactic_reflexivity
-    | let HNew := fresh in pose proof (proj1 (E m) H) as HNew;
-      move HNew before H;
-      clear E H;
-      rename HNew into H ]
-  end.
 
 (* Given an old and a new sep hyp, transfers the order of the sepclauses from the old one
    to the new one *)

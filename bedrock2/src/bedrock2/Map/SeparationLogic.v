@@ -17,6 +17,22 @@ Lemma impl1_refl{T: Type}: forall {P: T -> Prop}, Lift1Prop.impl1 P P.
 Proof. intros. reflexivity. Qed.
 Hint Resolve impl1_refl : ecancel_impl.
 
+Lemma iff1_refl{A: Type}(P: A -> Prop): iff1 P P. Proof. reflexivity. Qed.
+Lemma iff1_sym{A: Type}{P Q: A -> Prop}: iff1 P Q -> iff1 Q P.
+Proof. intros. symmetry. assumption. Qed.
+
+Ltac iff1_syntactic_reflexivity :=
+  lazymatch goal with
+  | |- iff1 ?x ?y => first [is_evar x | is_evar y | constr_eq x y]
+  end;
+  exact (iff1_refl _).
+
+Ltac impl1_syntactic_reflexivity :=
+  lazymatch goal with
+  | |- impl1 ?x ?y => first [is_evar x | is_evar y | constr_eq x y]
+  end;
+  exact impl1_refl.
+
 Section SepProperties.
   Context {key value} {map : map key value} {ok : ok map}.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
@@ -197,6 +213,8 @@ Section SepProperties.
   Let nth n xs := hd (emp(map:=map) True) (skipn n xs).
   Let remove_nth n (xs : list (map -> Prop)) :=
     (firstn n xs ++ tl (skipn n xs)).
+  Let replace_nth n (P: map -> Prop) (xs : list (map -> Prop)) :=
+    (firstn n xs ++ P :: tl (skipn n xs)).
 
   Lemma seps_nth_to_head n xs : iff1 (sep (nth n xs) (seps (remove_nth n xs))) (seps xs).
   Proof.
@@ -273,6 +291,64 @@ Section SepProperties.
     rewrite <-(seps_nth_to_head j ys), Hj, Hrest, sep_emp_True_l.
     exact (reflexivity _).
   Qed.
+
+  Lemma extract_emp_in_hyp_at_index i xs m P
+        (Hi : nth i xs = emp P)
+        (H : seps xs m)
+    : P /\ seps (remove_nth i xs) m.
+  Proof.
+    eapply (seps_nth_to_head i xs) in H. rewrite Hi in H.
+    eapply sep_emp_l in H. exact H.
+  Qed.
+
+  Lemma extract_emp_in_goal_at_index i xs m P
+        (Hi : nth i xs = emp P)
+        (NewGoal : seps (remove_nth i xs) m /\ P)
+    : seps xs m.
+  Proof.
+    eapply (seps_nth_to_head i xs). rewrite Hi.
+    eapply sep_comm. eapply sep_emp_r. exact NewGoal.
+  Qed.
+
+  Lemma extract_emp_in_goal_with_and_at_index i xs m P C
+        (Hi : nth i xs = emp P)
+        (NewGoal : seps (remove_nth i xs) m /\ P /\ C)
+    : seps xs m /\ C.
+  Proof.
+    destruct NewGoal as (HN & HP & HC). split; [|exact HC].
+    eapply (extract_emp_in_goal_at_index i); eauto.
+  Qed.
+
+  Lemma replace_nth_sep_remove_nth i P xs :
+      iff1 (seps (replace_nth i P xs))
+           (sep P (seps (remove_nth i xs))).
+  Proof.
+    unfold replace_nth, remove_nth.
+    rewrite ?seps_app, ?seps_cons.
+    rewrite <-?sep_assoc.
+    rewrite (sep_comm P).
+    reflexivity.
+  Qed.
+
+  Lemma extract_ex1_in_hyp_at_index{A : Type} i xs m (P: A -> map -> Prop)
+        (Hi : nth i xs = ex1 P)
+        (H : seps xs m)
+    : exists a, seps (replace_nth i (P a) xs) m.
+  Proof.
+    eapply (seps_nth_to_head i xs) in H. rewrite Hi in H.
+    eapply sep_ex1_l in H. unfold ex1 in H. destruct H as [a H]. exists a.
+    eapply replace_nth_sep_remove_nth. exact H.
+  Qed.
+
+  Lemma extract_ex1_in_goal_at_index{A : Type} i xs m (P: A -> map -> Prop) a
+        (Hi : nth i xs = ex1 P)
+        (NewGoal : seps (replace_nth i (P a) xs) m)
+    : seps xs m.
+  Proof.
+    eapply (seps_nth_to_head i xs). rewrite Hi.
+    eapply sep_ex1_l. unfold ex1. exists a.
+    eapply replace_nth_sep_remove_nth. exact NewGoal.
+  Qed.
 End SepProperties.
 
 Require Import coqutil.Tactics.syntactic_unify coqutil.Tactics.rdelta.
@@ -348,6 +424,47 @@ Ltac reify_goal :=
     change (Lift1Prop.impl1 (Tree.to_sep LHS) (Tree.to_sep RHS));
     eapply Tree.impl1_to_sep_of_impl1_flatten
   end;
+  cbn [Tree.flatten Tree.interp app].
+
+(* Given `H: seplogformula m`, first cbns away all occurrences of `seps` in H,
+   and then flattens the formula into a list of sep clauses, resulting in an
+   `H: seps [...] m` *)
+Ltac flatten_seps_in H :=
+  lazymatch type of H with
+  | ?nested ?m =>
+    let tmem := type of m in
+    let E := fresh "E" in
+    eassert (@iff1 tmem nested _) as E;
+    [ (* from `nested` to `Tree.to_sep tree` *)
+      let stars := eval cbn[seps] in nested in
+      let tree := reify stars in
+      transitivity (Tree.to_sep tree); [
+        cbn [seps Tree.to_sep Tree.interp]; iff1_syntactic_reflexivity
+      |];
+      (* from `Tree.to_sep tree` to `seps (Tree.flatten tree)` *)
+      transitivity (seps (Tree.flatten tree)); [
+        exact (iff1_sym (Tree.flatten_iff1_to_sep tree))
+      |];
+      (* from `seps (Tree.flatten tree)` to `seps clauses` *)
+      cbn [SeparationLogic.Tree.flatten SeparationLogic.Tree.interp SeparationLogic.app];
+      iff1_syntactic_reflexivity
+    | let HNew := fresh in pose proof (proj1 (E m) H) as HNew;
+      move HNew before H;
+      clear E H;
+      rename HNew into H ]
+  end.
+
+(* Given a goal of shape `seplogformula m`, first cbns away all occurrences of
+   `seps` in H, and then flattens the formula into a list of sep clauses, resulting
+   in a goal of shape `seps [...] m` *)
+Ltac flatten_seps_in_goal :=
+  cbn [seps];
+  lazymatch goal with
+  | |- ?nested ?m =>
+      let xs := reify nested in
+      change (Tree.to_sep xs m)
+  end;
+  eapply Tree.flatten_iff1_to_sep;
   cbn [Tree.flatten Tree.interp app].
 
 Ltac cancel_emp_l :=
@@ -622,3 +739,114 @@ Proof.
   eapply propositional_extensionality.
   eapply H.
 Qed.
+
+Ltac is_emp P :=
+  lazymatch P with
+  | emp _ => constr:(true)
+  | _ => constr:(false)
+  end.
+
+Ltac is_ex1 P :=
+  lazymatch P with
+  | ex1 _ => constr:(true)
+  | _ => constr:(false)
+  end.
+
+Ltac extract_ex1_step_in H :=
+  match type of H with
+  | seps ?xs _ =>
+      lazymatch find_in_list ltac:(is_ex1) xs with
+      | (?j, ex1 ?Q) =>
+          apply extract_ex1_in_hyp_at_index with (i := j) (P := Q) in H;
+          [ cbn [firstn skipn app hd tl] in H
+          | cbn [firstn skipn app hd tl]; syntactic_exact_deltavar (@eq_refl _ _) ];
+          let name := lazymatch Q with
+                      | fun e => _ => e
+                      | _ => fresh "e"
+                      end in
+          destruct H as [name H]
+      end
+  end.
+
+Ltac extract_emp_step_in H :=
+  match type of H with
+  | seps ?xs _ =>
+      lazymatch find_in_list ltac:(is_emp) xs with
+      | (?j, emp ?Q) =>
+          apply extract_emp_in_hyp_at_index with (i := j) (P := Q) in H;
+          [ cbn [firstn skipn app hd tl] in H
+          | cbn [firstn skipn app hd tl]; syntactic_exact_deltavar (@eq_refl _ _) ];
+          let name := fresh H "_emp0" in
+          destruct H as [name H]
+      end
+  end.
+
+Ltac extract_ex1_and_emp_in0 H :=
+  repeat first [ extract_ex1_step_in H
+               | extract_emp_step_in H
+               | flatten_seps_in H ].
+
+Ltac extract_ex1_and_emp_in H :=
+  extract_ex1_and_emp_in0 H; cbn [seps] in H.
+
+Ltac extract_ex1_and_emp_in_hyps :=
+  repeat match goal with
+         | H: _ |- _ => progress extract_ex1_and_emp_in H
+         end.
+
+Ltac extract_ex1_step_in_goal :=
+  match goal with
+  | |- seps ?xs _ =>
+      lazymatch find_in_list ltac:(is_ex1) xs with
+      | (?j, ex1 _) =>
+          eapply (extract_ex1_in_goal_at_index j);
+          cbn [firstn skipn app hd tl];
+          [ syntactic_exact_deltavar (@eq_refl _ _) | ]
+      end
+  end.
+
+Ltac extract_emp_step_in_goal :=
+  lazymatch goal with
+  | |- seps ?xs _ =>
+      lazymatch find_in_list_bw ltac:(is_emp) xs with
+      | (?j, emp _) =>
+          eapply (extract_emp_in_goal_at_index j);
+          cbn [firstn skipn app hd tl];
+          [ syntactic_exact_deltavar (@eq_refl _ _) | ]
+      end
+  | |- seps ?xs _  /\ _ =>
+      lazymatch find_in_list_bw ltac:(is_emp) xs with
+      | (?j, emp _) =>
+          eapply (extract_emp_in_goal_with_and_at_index j);
+          cbn [firstn skipn app hd tl];
+          [ syntactic_exact_deltavar (@eq_refl _ _) | ]
+      end
+  end.
+
+Ltac extract_ex1_and_emp_in_goal0 :=
+  repeat first [extract_ex1_step_in_goal | flatten_seps_in_goal];
+  repeat extract_emp_step_in_goal.
+
+Ltac extract_ex1_and_emp_in_goal :=
+   extract_ex1_and_emp_in_goal0; cbn [seps].
+
+Section Tests.
+  Context {key value} {map : map key value} {ok : ok map}.
+  Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
+  Local Open Scope sep_scope.
+  Import List.ListNotations.
+
+  Goal forall (a1 a2: key) (v1 v1': value) (m: map)
+      (H: (ptsto a1 v1 * ex1 (fun y => emp (0 < y)%nat * ex1 (fun v => ptsto a2 v)))%sep m)
+      (OtherH: v1 = v1'),
+      (ex1 (fun z => ex1 (fun y => ptsto a2 y) * emp (0 < z)%nat) *
+       ptsto a1 v1 * emp (v1 = v1'))%sep m.
+  Proof.
+    intros.
+    extract_ex1_and_emp_in H.
+    extract_ex1_and_emp_in_goal.
+    eapply sep_comm in H.
+    eauto.
+    all: fail.
+  Abort.
+End Tests.
