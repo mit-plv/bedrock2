@@ -154,8 +154,8 @@ Section Ex.
   Instance spec_of_unsizedlist_memcpy : spec_of "unsizedlist_memcpy" :=
     fnspec! "unsizedlist_memcpy" (len: word) (a1_ptr a2_ptr : word) /
           (a1: ListArray.t word) (a2: ListArray.t word)
-          (pr1: word.unsigned len < Z.of_nat (List.length a1))
-          (pr2: word.unsigned len < Z.of_nat (List.length a2))
+          (pr1: word.unsigned len <= Z.of_nat (List.length a1))
+          (pr2: word.unsigned len <= Z.of_nat (List.length a2))
           R,
     { requires tr mem :=
         (listarray_value AccessWord a1_ptr a1 ⋆
