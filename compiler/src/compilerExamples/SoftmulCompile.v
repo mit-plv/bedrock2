@@ -405,29 +405,14 @@ Section Riscv.
     ex1 (fun z => sep (addr :-> z : truncated_scalar access_size.four)
                       (emp (decoder z = inst /\ 0 <= z < 2 ^ 32))).
 
-  (* TODO more generic handling of ex1 *)
-  Lemma instr_decode: forall {addr decoder inst R m},
-    (sep (addr :-> inst : instr decoder) R) m ->
-    exists z, (sep (addr :-> z : truncated_scalar access_size.four) R) m /\
-              decoder z = inst /\ 0 <= z < 2 ^ 32.
-  Proof.
-    intros.
-    unfold instr, ex1 in *.
-    unfold sep, emp, map.split in *. fwd.
-    exists a.
-    split; auto.
-    do 2 eexists. split; eauto.
-  Qed.
-
   Lemma instr_IM_impl1_I: forall iinst addr,
       impl1 (addr :-> IInstruction iinst : instr mdecode)
             (addr :-> IInstruction iinst : instr idecode).
   Proof.
-    unfold impl1. intros. eapply (fun x => conj x I) in H. eapply sep_emp_r in H.
-    eapply instr_decode in H. fwd.
-    eapply sep_emp_r in Hp0. fwd.
-    unfold instr, ex1. exists z. apply sep_emp_r.
-    auto using decode_Imul_I_to_I.
+    unfold impl1, instr. intros.
+    extract_ex1_and_emp_in H. fwd.
+    extract_ex1_and_emp_in_goal.
+    eauto using decode_Imul_I_to_I.
   Qed.
   Hint Resolve instr_IM_impl1_I : ecancel_impl.
 
@@ -664,7 +649,7 @@ Section Riscv.
       { intro C. unfold idecode in *.
         eapply decode_IM_M_to_Invalid_I in C.
         apply sep_assoc in H0.
-        eapply instr_decode in H0.
+        unfold instr at 1 in H0. extract_ex1_and_emp_in H0.
         fwd.
         replace (LittleEndian.combine_deprecated 4 v) with z in C. {
           rewrite C in H2p0. exact H2p0.
@@ -676,12 +661,12 @@ Section Riscv.
         specialize P with (addr := pc) (m := m) (value := word.of_Z z).
         rewrite H5 in P.
         rewrite word.unsigned_of_Z_nowrap in P by assumption.
-        specialize P with (1 := H0p0).
+        specialize P with (1 := H0).
         apply Option.eq_of_eq_Some in P.
         unfold truncate_word, truncate_Z in P.
         rewrite LittleEndian.combine_eq.
         rewrite Z.land_ones in P by (cbv; discriminate 1).
-        clear -P H0. apply (f_equal word.unsigned) in P.
+        clear -P H0_emp0. apply (f_equal word.unsigned) in P.
         rewrite word.unsigned_of_Z_nowrap in P by apply LittleEndianList.le_combine_bound.
         etransitivity. 2: symmetry. 2: exact P. clear P.
         change (Z.of_nat (bytes_per access_size.four) * 8) with 32.

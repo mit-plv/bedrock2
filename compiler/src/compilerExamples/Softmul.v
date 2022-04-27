@@ -787,13 +787,13 @@ Section Riscv.
     eapply interpret_bind.
     eapply interpret_getPC.
     eapply interpret_bind.
-    eapply instr_decode in H. fwd.
+    unfold instr in H. extract_ex1_and_emp_in H. fwd.
     eapply interpret_loadWord. split. {
       unfold scalar. cbn [seps].
       unfold truncated_scalar, truncated_word in *.
       unfold Scalars.truncated_word, Scalars.truncated_scalar in *.
-      rewrite <- (word.unsigned_of_Z_nowrap z) in Hp0 by assumption.
-      exact Hp0.
+      rewrite <- (word.unsigned_of_Z_nowrap z) in H by assumption.
+      exact H.
     }
     eqapply H0. do 3 f_equal.
     rewrite LittleEndian.combine_split.
