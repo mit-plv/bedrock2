@@ -2,7 +2,6 @@ Require Import Coq.Logic.FunctionalExtensionality.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.MapEauto.
 Require Import coqutil.Tactics.Tactics.
-Require Import compiler.Simulation.
 Require Import coqutil.Tactics.fwd.
 Require Import riscv.Spec.Decode.
 Require Import riscv.Spec.Primitives.

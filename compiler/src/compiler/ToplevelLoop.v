@@ -34,8 +34,6 @@ Require Export riscv.Platform.Memory.
 Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import coqutil.Tactics.fwd.
-Require Import compiler.FlattenExprSimulation.
-Require Import compiler.Simulation.
 Require Import compiler.RiscvEventLoop.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.FlatToRiscvCommon.
@@ -601,9 +599,7 @@ Section Pipeline1.
   Proof.
     unfold ll_inv, runsToGood_Invariant. intros. fwd.
     eapply extend_runsTo_to_good_trace. 2,3: eassumption.
-    simpl. unfold ll_good, compile_inv, related, hl_inv,
-           compose_relation, FlattenExprSimulation.related,
-           FlatToRiscvCommon.goodMachine.
+    simpl. unfold ll_good, hl_inv, FlatToRiscvCommon.goodMachine.
     intros. fwd. eassumption.
   Qed.
 

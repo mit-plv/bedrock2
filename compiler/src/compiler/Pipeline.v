@@ -38,7 +38,6 @@ Require Export riscv.Utility.InstructionCoercions.
 Require Import compiler.SeparationLogic.
 Require Import compiler.Spilling.
 Require Import compiler.RegAlloc.
-Require Import compiler.Simulation.
 Require Import compiler.RiscvEventLoop.
 Require Import bedrock2.MetricLogging.
 Require Import compiler.FlatToRiscvCommon.
