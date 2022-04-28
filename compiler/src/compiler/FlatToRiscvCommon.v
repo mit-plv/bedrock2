@@ -320,6 +320,8 @@ Section WithParameters.
          map.only_differ initialL.(getRegs)
                  (union (of_list (modVars_as_list Z.eqb s)) (singleton_set RegisterNames.ra))
                  finalL.(getRegs) /\
+         (finalL.(getMetrics) - initialL.(getMetrics) <=
+          lowerMetrics (finalMetricsH - initialMetricsH))%metricsL /\    
          goodMachine finalTrace finalMH finalRegsH g finalL).
 
 End WithParameters.
@@ -533,6 +535,7 @@ Section FlatToRiscv1.
             getMem finalL = getMem initialL /\
             getPc finalL = getNextPc initialL /\
             getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
+            getMetrics finalL = addMetricInstructions 1 (addMetricLoads 2 (getMetrics initialL)) /\
             valid_machine finalL).
   Proof using word_ok mem_ok PR BWM.
     intros.
@@ -573,6 +576,7 @@ Section FlatToRiscv1.
            (Exec * ptsto_word addr v_new * Rdata)%sep (getMem finalL) /\
            getPc finalL = getNextPc initialL /\
            getNextPc finalL = word.add (getPc finalL) (word.of_Z 4) /\
+           getMetrics finalL = addMetricInstructions 1 (addMetricStores 1 (addMetricLoads 1 (getMetrics initialL))) /\
            valid_machine finalL).
   Proof using word_ok mem_ok PR BWM.
     intros.

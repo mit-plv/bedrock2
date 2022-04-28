@@ -55,9 +55,16 @@ Section Sim.
         end. *)
         (* works: apply H12. *)
         Fail eassumption.
-        match goal with
+        Fail match goal with
         | H: _ |- _ => exact H
         end.
+        intros. 
+        specialize (H14 _ _ _ _ H0). destruct H14. 
+        exists x.
+        destruct H1. split; eauto. 
+        destruct H2. exists x0. destruct H2. split; eauto.
+        remember (addMetricInstructions 100 (addMetricJumps 100 (addMetricLoads 100 (addMetricStores 100 mc'')))) as mc'''.
+        eapply H3.         
       + reflexivity.
       + reflexivity.
       + intros x k A. rewrite map.get_empty in A. discriminate.

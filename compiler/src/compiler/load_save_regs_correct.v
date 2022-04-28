@@ -58,12 +58,17 @@ Section Proofs.
                                                    (word.of_Z (Z.of_nat (List.length vars)))) /\
           final.(getNextPc) = word.add final.(getPc) (word.of_Z 4) /\
           final.(getLog) = initial.(getLog) /\
+          final.(getMetrics) =
+              Platform.MetricLogging.addMetricInstructions (Z.of_nat (List.length vars))
+                (Platform.MetricLogging.addMetricStores (Z.of_nat (List.length vars))
+                   (Platform.MetricLogging.addMetricLoads (Z.of_nat (List.length vars)) initial.(getMetrics))) /\   
           valid_machine final).
   Proof.
     unfold map.getmany_of_list.
     induction vars; intros; subst addr.
     - simpl in *. simp. destruct oldvalues; simpl in *; [|discriminate].
       apply runsToNonDet.runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
+      destruct_RiscvMachine initial. destruct initial_metrics. MetricsToRiscv.solve_MetricLog. 
     - simpl in *. simp.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       destruct oldvalues as [|oldvalue oldvalues]; simpl in *; [discriminate|].
@@ -94,6 +99,7 @@ Section Proofs.
           etransitivity; [eassumption|].
           replace (List.length vars) with (List.length oldvalues) by blia.
           solve_word_eq word_ok.
+        - rewrite H0p7. MetricsToRiscv.solve_MetricLog. 
       }
       all: try eassumption.
       + simpl in *. etransitivity. 1: eassumption. ecancel.
@@ -125,11 +131,16 @@ Section Proofs.
           final.(getNextPc) = word.add final.(getPc) (word.of_Z 4) /\
           final.(getLog) = initial.(getLog) /\
           final.(getXAddrs) = initial.(getXAddrs) /\
+          final.(getMetrics) =
+              Platform.MetricLogging.addMetricInstructions (Z.of_nat (List.length vars))
+                (Platform.MetricLogging.addMetricLoads (Z.of_nat (2 * (List.length vars)))
+                   initial.(getMetrics)) /\
           valid_machine final).
   Proof.
     induction vars; intros.
     - simpl in *. simp. destruct values; simpl in *; [|discriminate].
       apply runsToNonDet.runsToDone. repeat split; try assumption; try solve_word_eq word_ok.
+      destruct_RiscvMachine initial. destruct initial_metrics. MetricsToRiscv.solve_MetricLog. 
     - simpl in *. simp.
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       assert (valid_register a). {
@@ -168,10 +179,11 @@ Section Proofs.
         * etransitivity. 1: eassumption. ecancel.
       + simpl. intros. simp.
         ssplit; try first [assumption|reflexivity].
-        etransitivity; [eassumption|].
-        rewrite Znat.Nat2Z.inj_succ. rewrite <- Z.add_1_r.
-        replace (List.length values) with (List.length vars) by congruence.
-        solve_word_eq word_ok.
+        * etransitivity; [eassumption|].
+          rewrite Znat.Nat2Z.inj_succ. rewrite <- Z.add_1_r.
+          replace (List.length values) with (List.length vars) by congruence.
+          solve_word_eq word_ok.
+        * rewrite H1p3. MetricsToRiscv.solve_MetricLog. 
   Qed.
 
   Lemma length_load_regs: forall vars offset,

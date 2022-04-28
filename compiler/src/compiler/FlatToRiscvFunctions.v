@@ -202,7 +202,7 @@ Section Proofs.
     * subst. assumption.
     * eauto.
   Qed.
-
+  
   Ltac run1done :=
     apply runsToDone;
     simpl_MetricRiscvMachine_get_set;
@@ -212,6 +212,7 @@ Section Proofs.
            end; ssplit; simpl_word_exprs word_ok;
     match goal with
     | |- _ => solve_word_eq word_ok
+    | |- (_ <= _)%metricsL => MetricsToRiscv.solve_MetricLog
     | |- iff1 ?x ?x => reflexivity
     (* `exists stack_trash frame_trash, ...` from goodMachine *)
     | |- exists _ _, _ = _ /\ _ = _ /\ (_ * _)%sep _ =>
@@ -221,7 +222,7 @@ Section Proofs.
       |- subset (footpr _) _ => eapply rearrange_footpr_subset; [ exact H | solve [ wwcancel ] ]
     | |- _ => solve [ rewrite ?of_list_list_union in *; eauto 8 with map_hints ]
     | |- _ => idtac
-    end.
+  end.
 
   Ltac after_IH :=
     simpl_MetricRiscvMachine_get_set;
@@ -395,6 +396,11 @@ Section Proofs.
         finalL.(getPc) = word.add initialL.(getPc)
                                   (word.of_Z (if b then 4 else amt)) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getMetrics) =
+          (if b then
+             (Platform.MetricLogging.addMetricLoads 1 (Platform.MetricLogging.addMetricInstructions 1 initialL.(getMetrics)))
+           else
+             (Platform.MetricLogging.addMetricJumps 1 (Platform.MetricLogging.addMetricLoads 1 (Platform.MetricLogging.addMetricInstructions 1 initialL.(getMetrics))))) /\
         valid_machine finalL).
   Proof.
     intros. get_run1_valid_for_free.
@@ -410,6 +416,8 @@ Section Proofs.
         simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try intuition congruence.
   Qed.
 
+   
+  
   Lemma compile_function_body_correct: forall (e_impl_full : env) m l mc (argvs : list word)
     (st0 : locals) (post outcome : Semantics.trace -> mem -> locals -> MetricLog -> Prop)
     (argnames retnames : list Z) (body : stmt Z) (program_base : word)
@@ -434,6 +442,7 @@ Section Proofs.
             map.only_differ (getRegs initialL)
                    (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
                    (getRegs finalL) /\
+            (getMetrics finalL - getMetrics initialL <= lowerMetrics (finalMetricsH - mc))%metricsL /\
             goodMachine finalTrace finalMH finalRegsH g0 finalL))
     (HOutcome: forall (t' : Semantics.trace) (m' : mem) (mc' : MetricLog) (st1 : locals),
         outcome t' m' st1 mc' ->
@@ -472,6 +481,11 @@ Section Proofs.
               (of_list
                  (list_union Z.eqb (List.firstn binds_count (reg_class.all reg_class.arg)) []))
               (singleton_set RegisterNames.ra)) (getRegs finalL) /\
+          (getMetrics finalL - Platform.MetricLogging.addMetricInstructions 100
+                                 (Platform.MetricLogging.addMetricJumps 100
+                                    (Platform.MetricLogging.addMetricLoads 100
+                                       (Platform.MetricLogging.addMetricStores 100 (getMetrics mach)))) <=
+             lowerMetrics (finalMetricsH - mc))%metricsL /\
           goodMachine finalTrace finalMH finalRegsH g finalL).
   Proof.
     intros * IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
@@ -1032,9 +1046,61 @@ Section Proofs.
     + eassumption.
     + solve_word_eq word_ok.
     + exact OD.
+    + assert ((Datatypes.length (modVars_as_list Z.eqb body)) <= 29)%nat by
+        auto using NoDup_valid_FlatImp_vars_bound_length, NoDup_modVars_as_list, modVars_as_list_valid_FlatImp_var. 
+      assert ((Datatypes.length
+                 (list_diff Z.eqb (modVars_as_list Z.eqb body)
+                            (List.firstn ret_count (reg_class.all reg_class.arg))))
+              <= (Datatypes.length (modVars_as_list Z.eqb body)))%nat by
+        apply list_diff_length. 
+      assert (#(Datatypes.length
+                  (list_diff Z.eqb (modVars_as_list Z.eqb body)
+                             (List.firstn ret_count (reg_class.all reg_class.arg)))) <= 29) by
+        blia.
+      clear - H8 H2p6.
+
+      cbv[lowerMetrics] in *. 
+      unfold withInstructions, withLoads, withStores, withJumps,
+        addMetricInstructions, addMetricLoads, addMetricStores, addMetricJumps,
+        subMetricInstructions, subMetricLoads, subMetricStores, subMetricJumps,
+        metricsOp, metricSub, metricsSub, metricLeq, metricsLeq
+        in *.
+      repeat simpl_MetricLog.
+      remember (Datatypes.length
+                  (list_diff Z.eqb (modVars_as_list Z.eqb body) (List.firstn ret_count (reg_class.all reg_class.arg)))) as blah.
+
+      destruct mach_metrics.
+      destruct middle_metrics.
+      unfold Platform.MetricLogging.metricsLeq, Platform.MetricLogging.metricLeq,
+        Platform.MetricLogging.metricsSub, Platform.MetricLogging.metricSub
+        in *.
+      repeat     
+        match goal with
+        | |- context[?f ?n (Platform.MetricLogging.mkMetricLog ?i ?s ?l ?j)] =>
+            match type of (f n (Platform.MetricLogging.mkMetricLog i s l j)) with
+            | Platform.MetricLogging.MetricLog =>
+                progress let t := eval hnf in (f n (Platform.MetricLogging.mkMetricLog i s l j)) in
+                           let t' := eval cbn -[BinInt.Z.add BinInt.Z.sub BinInt.Z.mul Z.of_nat Init.Nat.add] in t in
+                             change (f n (Platform.MetricLogging.mkMetricLog i s l j)) with t'
+            end
+        end.
+      cbn. 
+      repeat match goal with
+             | |- context[?f ?n (Platform.MetricLogging.mkMetricLog ?i ?s ?l ?j)] =>
+                 match type of (f n (Platform.MetricLogging.mkMetricLog i s l j)) with
+              | Platform.MetricLogging.MetricLog =>
+                  let t := eval hnf in (f n (Platform.MetricLogging.mkMetricLog i s l j)) in
+                    let t' := eval cbn in t in
+                      change (f n (Platform.MetricLogging.mkMetricLog i s l j)) with t' in H
+                 end
+             end.
+      cbn in H2p6.
+      blia. 
+      
     + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
              middle_regs into lL.
 
+      
       (* The following list of lemmas and about that much helper code would probably be required
          even in a near-perfect proof assistant:
 
@@ -1061,8 +1127,7 @@ Section Proofs.
          load back the return address     run_load_word
          increase sp                      run_Addi
          jump back to caller              run_Jalr0
-       *)
-
+       *)      
       match goal with
       | |- map.extends ?A lH' => remember A as middle_regs0_ra_sp
       end.
@@ -1265,7 +1330,7 @@ Section Proofs.
       wcancel_assumption.
     + reflexivity.
     + assumption.
-  Qed.
+  Qed. 
 
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
@@ -1373,6 +1438,7 @@ Section Proofs.
        map.only_differ initialL_regs
          (union (of_list (list_union Z.eqb binds [])) (singleton_set RegisterNames.ra))
          (getRegs finalL) /\
+       (getMetrics finalL - initialL_metrics <= lowerMetrics (finalMetricsH - mc))%metricsL /\
        goodMachine finalTrace finalMH finalRegsH g finalL))
       end.
       2: { subst. reflexivity. }
@@ -1468,7 +1534,7 @@ Section Proofs.
         congruence.
       }
       subst args.
-      let T := type of IHexec in replace T with
+      let T := type of IHexec in let T' := open_constr:(
         (forall (g : GhostConsts) (e_impl : env) (e_pos : fun_info)
              (program_base : word) (insts : list Instruction) (xframe : mem -> Prop)
              (initialL : RiscvMachineL) (pos : Z),
@@ -1496,10 +1562,12 @@ Section Proofs.
                 map.only_differ (getRegs initialL)
                   (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
                   (getRegs finalL) /\
+                  (*                (getMetrics finalL - initialL_metrics <= lowerMetrics (finalMetricsH - mc))%metricsL /\ *)
+                  _ /\                    
                 goodMachine finalTrace finalMH finalRegsH g finalL))
-        in IHexec.
+        ) in replace T with T' in IHexec.
       2: {
-        reflexivity.
+        subst. reflexivity. 
       }
 
       specialize IHexec with (1 := Ext).
@@ -1528,33 +1596,30 @@ Section Proofs.
       replace mid_log with t in *.
       forget (Datatypes.length binds) as binds_count.
       subst binds.
-      eapply runsTo_weaken with (P :=
-        (fun finalL : RiscvMachineL =>
-           exists
-             (finalTrace : Semantics.trace) (finalMH : mem) (finalRegsH : locals)
-             (finalMetricsH : MetricLog),
-             post finalTrace finalMH finalRegsH finalMetricsH /\
-             getPc finalL = ret_addr /\
-             map.only_differ (getRegs mach)
-                  (union (of_list
-                    (list_union Z.eqb (List.firstn binds_count (reg_class.all reg_class.arg)) []))
-                         (singleton_set RegisterNames.ra)) (getRegs finalL) /\
-             goodMachine finalTrace finalMH finalRegsH g finalL)).
-      2: {
-        subst mach. simpl_MetricRiscvMachine_get_set.
-        intros. fwd. eauto 8 with map_hints.
+      eapply runsTo_weaken.
+      1:{ 
+              match goal with
+              | H: (binds_count <= 8)%nat |- _ => rename H into BC
+              end.
+              move BC after OC.
+              repeat match goal with
+                     | x := _ |- _ => clearbody x
+                     end.
+              
+              Search initialL_metrics. 
+              clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok fun_info_ok env_ok
+                              IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
+              revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
+              eapply compile_function_body_correct.
       }
-      match goal with
-      | H: (binds_count <= 8)%nat |- _ => rename H into BC
-      end.
-      move BC after OC.
-      repeat match goal with
-             | x := _ |- _ => clearbody x
-             end.
-      clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok fun_info_ok env_ok
-              IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
-      revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
-      apply compile_function_body_correct.
+      
+      subst mach. simpl_MetricRiscvMachine_get_set.
+      intros. fwd. eexists. eexists. eexists. eexists.
+      split; [ eapply H0p0 | ]. 
+      split; eauto 8 with map_hints.
+      split; eauto 8 with map_hints.
+      split; eauto 8 with map_hints.
+      MetricsToRiscv.solve_MetricLog. 
 
     - idtac "Case compile_stmt_correct/SLoad".
       progress unfold Memory.load, Memory.load_Z in *. fwd.
@@ -1604,7 +1669,7 @@ Section Proofs.
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
-      }
+      }     
       run1done.
 
     - idtac "Case compile_stmt_correct/SStackalloc".
@@ -1775,6 +1840,12 @@ Section Proofs.
           blia.
         }
         run1done.
+        cbn.
+        remember (updateMetricsForLiteral v initialL_metrics) as finalMetrics;
+        symmetry in HeqfinalMetrics;
+        pose proof update_metrics_for_literal_bounded (width := width) as Hlit;
+        specialize Hlit with (1 := HeqfinalMetrics);
+        MetricsToRiscv.solve_MetricLog. 
 
     - idtac "Case compile_stmt_correct/SOp".
       assert (x <> RegisterNames.sp). {
@@ -1823,12 +1894,14 @@ Section Proofs.
           all: try safe_sidecond.
           all: try safe_sidecond.
         * (* jump over else-branch *)
-          simpl. intros. destruct_RiscvMachine middle. fwd. subst.
+          simpl. intros. destruct_RiscvMachine middle.
+          fwd. subst.
           eapply runsToStep.
           { eapply run_Jal0; try safe_sidecond. solve_divisibleBy4. }
           simpl_MetricRiscvMachine_get_set.
-          intros. destruct_RiscvMachine mid. fwd. run1done.
 
+          intros. destruct_RiscvMachine mid. fwd. run1done.
+ 
     - idtac "Case compile_stmt_correct/SIf/Else".
       (* execute branch instruction, which will jump over then-branch *)
       eapply runsToStep.
@@ -1853,7 +1926,7 @@ Section Proofs.
         * (* at end of else-branch, i.e. also at end of if-then-else, just prove that
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
-
+          
     - idtac "Case compile_stmt_correct/SLoop".
       match goal with
       | H: context[FlatImpConstraints.uses_standard_arg_regs body1 -> _] |- _ => rename H into IH1
@@ -1924,8 +1997,7 @@ Section Proofs.
             all: try safe_sidecond.
           }
           (* at end of loop, just prove that computed post satisfies required post *)
-          simpl. intros. destruct_RiscvMachine middle. fwd.
-          run1done.
+          simpl. intros. destruct_RiscvMachine middle. fwd. run1done.
         * (* false: done, jump over body2 *)
           eapply runsToStep. {
             eapply compile_bcond_by_inverting_correct with (l := lH') (b := false);
@@ -1933,8 +2005,7 @@ Section Proofs.
               try safe_sidecond.
           }
           simpl_MetricRiscvMachine_get_set.
-          intros. destruct_RiscvMachine mid. fwd.
-          run1done.
+          intros. destruct_RiscvMachine mid. fwd. run1done. 
 
     - idtac "Case compile_stmt_correct/SSeq".
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]
@@ -1965,4 +2036,5 @@ Section Proofs.
       run1done.
   Qed. (* <-- takes a while *)
 
+  
 End Proofs.

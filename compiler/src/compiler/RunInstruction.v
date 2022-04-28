@@ -11,6 +11,7 @@ Require Import riscv.Platform.Memory.
 Require Import riscv.Spec.Machine.
 Require Import riscv.Platform.RiscvMachine.
 Require Import riscv.Platform.MetricRiscvMachine.
+Require Import riscv.Platform.MetricLogging.
 Require Import riscv.Spec.Primitives.
 Require Import riscv.Spec.MetricPrimitives.
 Require Import riscv.Platform.Run.
@@ -146,6 +147,7 @@ Section Run.
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add dest (word.of_Z oimm12) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getMetrics) = addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 initialL.(getMetrics))) /\
         valid_machine finalL).
 
   Definition run_Jal_spec :=
@@ -164,6 +166,7 @@ Section Run.
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getMetrics) = addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 initialL.(getMetrics))) /\
         valid_machine finalL).
 
   Definition run_Jal0_spec :=
@@ -180,6 +183,7 @@ Section Run.
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = word.add initialL.(getPc) (word.of_Z jimm20) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getMetrics) = addMetricInstructions 1 (addMetricJumps 1 (addMetricLoads 1 initialL.(getMetrics))) /\
         valid_machine finalL).
 
   Definition run_ImmReg_spec(Op: Z -> Z -> Z -> Instruction)
@@ -200,6 +204,7 @@ Section Run.
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getMetrics) = addMetricInstructions 1 (addMetricLoads 1 initialL.(getMetrics)) /\
         valid_machine finalL).
 
   Definition run_Load_spec(n: nat)(L: Z -> Z -> Z -> Instruction)
@@ -224,6 +229,7 @@ Section Run.
         finalL.(getXAddrs) = initialL.(getXAddrs) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getMetrics) = addMetricInstructions 1 (addMetricLoads 2 initialL.(getMetrics)) /\
         valid_machine finalL).
 
   Definition run_Store_spec(n: nat)(S: Z -> Z -> Z -> Instruction): Prop :=
@@ -248,6 +254,7 @@ Section Run.
           finalL.(getMem) /\
         finalL.(getPc) = initialL.(getNextPc) /\
         finalL.(getNextPc) = word.add finalL.(getPc) (word.of_Z 4) /\
+        finalL.(getMetrics) = addMetricInstructions 1 (addMetricStores 1 (addMetricLoads 1 initialL.(getMetrics))) /\
         valid_machine finalL).
 
   Ltac inline_iff1 :=
@@ -266,6 +273,7 @@ Section Run.
            | |- _ /\ _ => split
            | |- _ => solve [auto]
            | |- _ => ecancel_assumption
+           | |- _ => solve_MetricLog
            end.
 
   Ltac t := repeat intro; inline_iff1; get_run1_valid_for_free; t0.

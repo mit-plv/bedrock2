@@ -895,7 +895,7 @@ Section FlattenExpr1.
           -- eassumption.
           -- do 2 eexists. ssplit; try eassumption.
              ++ simple eapply map.only_differ_putmany; eassumption.
-             ++ solve_MetricLog.
+             ++ solve_MetricLog. 
 
     - (* interact *)
       unfold flattenInteract in *. simp.

@@ -367,11 +367,14 @@ Section MMIO1.
       split; eauto.
       split; eauto.
       split; [unfold map.only_differ; eauto|].
+      split. {
+        unfold id. MetricsToRiscv.solve_MetricLog.
+      }
       split; eauto.
       split; eauto.
       split; eauto.
       split; eauto.
-      split; eauto.
+      split; eauto. 
       split. {
         lazymatch goal with
         | H: map.undef_on initialL_mem ?A |- _ =>
@@ -513,6 +516,9 @@ Section MMIO1.
         unfold map.only_differ. intros. unfold union, of_list, elem_of, singleton_set. simpl.
         rewrite map.get_put_dec.
         destruct_one_match; auto.
+      }
+      split. {
+        unfold id. MetricsToRiscv.solve_MetricLog.
       }
       split. {
         eapply map.put_extends. eassumption.
