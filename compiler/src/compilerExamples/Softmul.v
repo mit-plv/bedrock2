@@ -1672,7 +1672,4 @@ Ltac subst_evars :=
     Unshelve.
     all: try solve [constructor].
   Qed. (* takes several minutes... *)
-
-  (* TODO state same theorem with binary code of handler to make sure instructions
-     are decodable after encoding, and merge the two stack areas *)
 End Riscv.
