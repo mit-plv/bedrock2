@@ -20,6 +20,7 @@ Global Instance Proper_iff1_impl1 T : Proper (Basics.flip impl1 ==> impl1 ==> Ba
 Global Instance Proper_impl1_iff1 T : Proper (iff1 ==> iff1 ==> iff) (@impl1 T). firstorder idtac. Qed.
 Global Instance Proper_ex1_iff1 A B : Proper (pointwise_relation _ iff1 ==> iff1) (@ex1 A B). firstorder idtac. Qed.
 Global Instance Proper_ex1_impl1 A B : Proper (pointwise_relation _ impl1 ==> impl1) (@ex1 A B). firstorder idtac. Qed.
+Global Instance iff1_rewrite_relation T : RewriteRelation (@iff1 T) := {}.
 
 Lemma impl1_ex1_l {A B} p q : impl1 (@ex1 A B p) q <-> (forall x, impl1  (p x) q).
 Proof. firstorder idtac. Qed.
