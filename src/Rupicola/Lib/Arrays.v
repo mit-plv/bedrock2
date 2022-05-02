@@ -60,9 +60,9 @@ Section ListArray.
     Proof.
       unfold put; intros ? -> ;
         rewrite !replace_nth_eqn by (rewrite ?app_length; lia).
-      rewrite List_firstn_app_l by reflexivity.
+      rewrite List.firstn_app_l by reflexivity.
       change (S ?x) with (1 + x); rewrite <- List.skipn_skipn.
-      rewrite List_skipn_app_r by reflexivity.
+      rewrite List.skipn_app_r by reflexivity.
       reflexivity.
     Qed.
   End __.

@@ -78,7 +78,7 @@ Section with_parameters.
       length (bs2zs n bs) = Nat.div_up (length bs) n.
     Proof.
       unfold bs2zs; intros.
-      rewrite map_length, length_chunk, div_up_eqn.
+      rewrite map_length, length_chunk, Nat.div_up_eqn.
       all: auto.
     Qed.
 
@@ -86,7 +86,7 @@ Section with_parameters.
       b <> 0 ->
       a mod b = 0 ->
       Nat.div_up a b = a / b.
-    Proof. intros H0 Hm; rewrite div_up_eqn, Hm; auto. Qed.
+    Proof. intros H0 Hm; rewrite Nat.div_up_eqn, Hm; auto. Qed.
 
     Lemma bs2zs_length n bs :
       (n <> 0)%nat ->

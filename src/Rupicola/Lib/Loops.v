@@ -793,8 +793,8 @@ Section FoldsAsLoops.
       induction l1; intros; simpl.
       - rewrite app_nil_r. reflexivity.
       - rewrite Nat2Z.id, nth_error_app2, Nat.sub_diag by lia.
-        rewrite List_assoc_app_cons, IHl1, app_length; simpl.
-        rewrite <- List_assoc_app_cons.
+        rewrite List.assoc_app_cons, IHl1, app_length; simpl.
+        rewrite <- List.assoc_app_cons.
         rewrite fold_left_app.
         simpl; repeat f_equal. lia.
     Qed.
@@ -881,8 +881,8 @@ Section FoldsAsLoops.
       induction xs; simpl; intros.
       - reflexivity.
       - rewrite Hrp.
-        rewrite (List_assoc_app_cons xs0 _ (f a)).
-        rewrite (List_assoc_app_cons xs0 (xs ++ xs1) (f a)).
+        rewrite (List.assoc_app_cons xs0 _ (f a)).
+        rewrite (List.assoc_app_cons xs0 (xs ++ xs1) (f a)).
         replace (zlen xs0 + 1) with (zlen (xs0 ++ [f a]))
           by (rewrite app_length, Nat2Z.inj_add; reflexivity).
         rewrite <- IHxs; reflexivity.
