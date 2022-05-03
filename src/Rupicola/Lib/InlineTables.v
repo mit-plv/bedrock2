@@ -207,7 +207,7 @@ Section __.
       rewrite <-!word.ring_morph_add in H1.
       simpl in H1.
 
-      seprewrite_in (scalar_of_bytes width_at_least_32 (word.of_Z (Z.of_nat (length b1))) b2 H2) H1.
+      seprewrite_in (scalar_of_bytes (word.of_Z (Z.of_nat (length b1))) b2 H2) H1.
       ecancel_assumption.
     }
     {
@@ -218,7 +218,7 @@ Section __.
       rewrite <-!word.ring_morph_add in H1.
       simpl in H1.
 
-      seprewrite_in (scalar_of_bytes width_at_least_32) H1; auto.
+      seprewrite_in scalar_of_bytes H1; auto.
       ecancel_assumption.
     }
   Qed.
@@ -266,10 +266,7 @@ Section __.
       }
       seprewrite_in @array_append H0.
       seprewrite_in @scalar_of_bytes H0; auto.
-      apply width_at_least_32.
-      {
-         apply length_of_to_bytes.
-      }
+      apply length_of_to_bytes.
       eapply load_word_of_sep.
       assert ((LittleEndianList.le_combine (word_to_bytes a)) = word.unsigned a).
       {

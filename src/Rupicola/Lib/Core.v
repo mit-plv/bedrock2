@@ -2,7 +2,7 @@ From Coq Require Export
      Classes.Morphisms Numbers.DecimalString
      String List ZArith Lia.
 From bedrock2 Require Export
-     Array Map.Separation ProgramLogic
+     Array ArrayCasts Map.Separation ProgramLogic
      Map.SeparationLogic Scalars Syntax WeakestPreconditionProperties
      ZnWords.
 From coqutil Require Export
@@ -893,7 +893,7 @@ Module SeparationLogic. (* FIXME move to bedrock2? *)
 
     Definition pure (P: Prop) := (fun m: map => P).
 
-    (* FIXME shouldn't *this* be the definition of `and1`? *)
+    (* FIXME replace by `and1` *)
     Definition unsep (p q: map -> Prop) : map -> Prop :=
       fun m => p m /\ q m.
 
@@ -1023,136 +1023,7 @@ End SeparationLogic.
 
 Export SeparationLogic.
 
-Section Scalar.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
-  Context {word_ok : word.ok word}.
-
-  Lemma width_at_least_32 : 32 <= width.
-  Proof. destruct width_cases; lia. Qed.
-
-  Lemma byte_wrap_range z:
-    0 <= byte.wrap z < 2 ^ width.
-  Proof.
-    pose proof Z.mod_pos_bound z 8.
-    clear dependent word; unfold byte.wrap; destruct width_cases; subst; lia.
-  Qed.
-
-  Lemma byte_range_32 z:
-    0 <= byte.wrap z < 2 ^ 32.
-  Proof.
-    pose proof Z.mod_pos_bound z 8.
-    clear dependent word; unfold byte.wrap; lia.
-  Qed.
-
-  Lemma byte_range_64 z:
-    0 <= byte.wrap z < 2 ^ 64.
-  Proof.
-    pose proof Z.mod_pos_bound z 8.
-    clear dependent word; unfold byte.wrap; lia.
-  Qed.
-
-  Lemma width_mod_8 : width mod 8 = 0.
-  Proof. destruct width_cases as [-> | ->]; reflexivity. Qed.
-
-  Lemma wrap_byte_unsigned b:
-    word.wrap (width := width) (byte.unsigned b) =
-    byte.unsigned b.
-  Proof.
-    pose proof byte.unsigned_range b.
-    rewrite word.wrap_small by (destruct width_cases as [-> | ->]; lia).
-    reflexivity.
-  Qed.
-
-  Lemma split_bytes_per_len sz:
-    forall x : word,
-      Datatypes.length
-         (LittleEndianList.le_split (Memory.bytes_per (width := width) sz)
-                               (word.unsigned x)) =
-      Memory.bytes_per (width := width) sz.
-  Proof. intros x. eapply LittleEndianList.length_le_split. Qed.
-
-  Context {mem: map.map word byte} {mem_ok : map.ok mem}.
-
-  Lemma bytes_per_width_bytes_per_word' : forall width,
-      width >= 0 ->
-      Z.of_nat (Memory.bytes_per (width := width) access_size.word) =
-      Memory.bytes_per_word width.
-  Proof. intros; unfold Memory.bytes_per, Memory.bytes_per_word; lia. Qed.
-
-  Lemma bytes_per_width_bytes_per_word :
-    Z.of_nat (Memory.bytes_per (width := width) access_size.word) =
-    Memory.bytes_per_word width.
-  Proof.
-    pose proof word.width_pos.
-    apply bytes_per_width_bytes_per_word'; lia.
-  Qed.
-
-  Lemma scalar_to_anybytes px x:
-    Lift1Prop.impl1 (T := mem)
-      (scalar px x)
-      (Memory.anybytes px (Memory.bytes_per_word width)).
-  Proof.
-    intros m H; evar (bs: list byte);
-      assert (array ptsto (word.of_Z 1) px bs m) by
-        (subst bs; simple apply H).
-    subst bs. erewrite <- bytes_per_width_bytes_per_word, <- split_bytes_per_len.
-    rewrite HList.tuple.to_list_of_list in H0.
-    eapply array_1_to_anybytes; eauto.
-  Qed.
-
-  Lemma anybytes_to_scalar px:
-    Lift1Prop.impl1 (T := mem)
-      (Memory.anybytes px (Memory.bytes_per_word width))
-      (Lift1Prop.ex1 (scalar px)).
-  Proof.
-    intros m (bs & Harray & Hlen)%anybytes_to_array_1.
-    apply scalar_of_bytes in Harray.
-    - eexists; eassumption.
-    - destruct width_cases; lia.
-    - rewrite Hlen. destruct width_cases; subst; reflexivity || lia.
-  Qed.
-End Scalar.
-
 Section Byte.
-  Lemma testbit_byte_unsigned_ge b n:
-    8 <= n ->
-    Z.testbit (byte.unsigned b) n = false.
-  Proof.
-    intros;
-      erewrite prove_Zeq_bitwise.testbit_above;
-      eauto using byte.unsigned_range;
-      lia.
-  Qed.
-
-  (* FIXME this doesn't do anything *)
-  Hint Rewrite testbit_byte_unsigned_ge using solve [auto with zarith] : z_bitwise_with_hyps.
-
-  Lemma byte_unsigned_land (b1 b2: byte) :
-    byte.unsigned (byte.and b1 b2) =
-    Z.land (byte.unsigned b1) (byte.unsigned b2).
-  Proof.
-    unfold byte.and; rewrite byte.unsigned_of_Z.
-    unfold byte.wrap; rewrite <- Z.land_ones.
-    bitblast.Z.bitblast.
-    rewrite testbit_byte_unsigned_ge.
-    all: lia.
-  Qed.
-
-  Lemma byte_unsigned_xor (b1 b2: byte) :
-    byte.unsigned (byte.xor b1 b2) =
-      Z.lxor (byte.unsigned b1) (byte.unsigned b2).
-  Proof.
-    unfold byte.xor; rewrite byte.unsigned_of_Z.
-    unfold byte.wrap; rewrite <- Z.land_ones.
-    bitblast.Z.bitblast.
-    rewrite !testbit_byte_unsigned_ge.
-    all: reflexivity || lia.
-  Qed.
-
-  Lemma byte_xor_comm b1 b2:
-    byte.xor b1 b2 = byte.xor b2 b1.
-  Proof. unfold byte.xor; rewrite Z.lxor_comm; reflexivity. Qed.
-
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
   Context {word_ok : word.ok word}.
 
@@ -1181,153 +1052,6 @@ Arguments le_split : simpl nomatch.
 Arguments Z.mul: simpl nomatch.
 
 Section combine_split.
-  Lemma Z_land_le_combine bs1 : forall bs2,
-      Z.land (le_combine bs1) (le_combine bs2) =
-      le_combine (List.map (fun '(x, y) => byte.and x y) (combine bs1 bs2)).
-  Proof.
-    induction bs1.
-    - reflexivity.
-    - destruct bs2; [ apply Z.land_0_r | ]; cbn -[Z.shiftl] in *.
-      rewrite <- IHbs1, !byte_unsigned_land, !Z.shiftl_land.
-      bitblast.Z.bitblast.
-      assert (l < 0 \/ 8 <= i) as [Hlt | Hge] by lia.
-      + rewrite !(Z.testbit_neg_r _ l) by assumption.
-        rewrite !Bool.orb_false_r; reflexivity.
-      + rewrite !testbit_byte_unsigned_ge by lia.
-        simpl; reflexivity.
-  Qed.
-
-  Definition in_bounds n x :=
-    0 <= x < 2 ^ n.
-
-  Definition forall_in_bounds l n:
-    0 <= n ->
-    (Forall (in_bounds n) l) <-> (forall i, in_bounds n (nth i l 0)).
-  Proof.
-    intros; pose proof Z.pow_pos_nonneg 2 n.
-    rewrite Forall_nth_default' with (d := 0);
-      unfold in_bounds; reflexivity || lia.
-  Qed.
-
-  Lemma le_combine_in_bounds bs n:
-    (length bs <= n)%nat ->
-    in_bounds (8 * Z.of_nat n) (le_combine bs).
-  Proof.
-    unfold in_bounds; intros.
-    pose proof le_combine_bound bs.
-    pose proof Zpow_facts.Zpower_le_monotone 2 (8 * Z.of_nat (length bs)) (8 * Z.of_nat n)
-         ltac:(lia) ltac:(lia); lia.
-  Qed.
-
-  Lemma Forall_le_combine_in_bounds n zs:
-    (0 < n)%nat ->
-    Forall (in_bounds (8 * Z.of_nat n)) (List.map le_combine (chunk n zs)).
-  Proof.
-    intros; eapply Forall_map, Forall_impl.
-    - intros a; apply le_combine_in_bounds.
-    - eapply Forall_impl; [ | apply Forall_chunk_length_le ];
-        simpl; intros; lia.
-  Qed.
-
-  Lemma le_split_0_l z:
-    le_split 0 z = [].
-  Proof. reflexivity. Qed.
-
-  Lemma le_split_0_r n:
-    le_split n 0 = repeat Byte.x00 n.
-  Proof.
-    induction n.
-    - reflexivity.
-    - unfold le_split; fold le_split.
-      rewrite Z.shiftr_0_l, IHn; reflexivity.
-  Qed.
-
-  Open Scope list_scope.
-
-  Lemma le_split_zeroes : forall m n z,
-      0 <= z < 2 ^ (8 * Z.of_nat n) ->
-      le_split (n + m) z = le_split n z ++ le_split m 0.
-  Proof.
-    induction n; cbn -[Z.pow Z.of_nat Z.shiftr]; intros * (Hle & Hlt).
-    - replace z with 0 by lia; reflexivity.
-    - rewrite IHn, !le_split_0_r; try reflexivity; [].
-      rewrite Z.shiftr_div_pow2 by lia; split.
-      + apply Z.div_pos; lia.
-      + replace (8 * Z.of_nat (S n)) with (8 + 8 * Z.of_nat n)%Z in Hlt by lia.
-        rewrite Z.pow_add_r in Hlt by lia.
-        apply Z.div_lt_upper_bound; lia.
-  Qed.
-
-  Lemma flat_map_le_split_combine_chunk:
-    forall bs n,
-      (0 < n)%nat ->
-      (length bs mod n)%nat = 0%nat ->
-      flat_map (le_split n) (List.map le_combine (chunk n bs)) = bs.
-  Proof.
-    intros; rewrite flat_map_concat_map, map_map, map_ext_id, concat_chunk; [reflexivity|].
-    intros * Hin;
-      pose proof (Forall_In (@Forall_chunk_length_mod _ n ltac:(lia) _) Hin);
-      pose proof (Forall_In (@Forall_chunk_length_le _ n ltac:(lia) _) Hin);
-      cbv beta in *.
-    rewrite split_le_combine'; reflexivity || lia.
-  Qed.
-
-  Lemma map_le_combine_chunk_split:
-    forall zs n,
-      (0 < n)%nat ->
-      List.map le_combine (chunk n (flat_map (le_split n) zs)) =
-      List.map (fun z => z mod 2 ^ (Z.of_nat n * 8)) zs.
-  Proof.
-    induction zs; simpl; intros.
-    - reflexivity.
-    - rewrite chunk_app by (rewrite ?length_le_split, ?Nat.mod_same; lia).
-      rewrite map_app, IHzs by lia.
-      rewrite le_combine_chunk_split by lia; reflexivity.
-  Qed.
-
-  Lemma map_le_combine_chunk_split_le:
-    forall zs n,
-      (0 < n)%nat ->
-      Forall (in_bounds (8 * Z.of_nat n)) zs ->
-      List.map le_combine (chunk n (flat_map (le_split n) zs)) = zs.
-  Proof.
-    intros * Hlt Hle; rewrite map_le_combine_chunk_split by lia.
-    apply map_ext_id.
-    intros * Hin%(Forall_In Hle).
-    apply Z.mod_small.
-    rewrite Z.mul_comm; assumption.
-  Qed.
-
-  Lemma map_unsigned_of_Z_le_combine_4
-        {word : Word.Interface.word 32} {word_ok : word.ok word} bs :
-    List.map (fun z : Z => word.unsigned (word := word) (word.of_Z z))
-             (List.map le_combine (chunk 4 bs)) =
-    List.map le_combine (chunk 4 bs).
-  Proof.
-    rewrite map_ext_id; [ reflexivity | ].
-    intros * Hin%(Forall_In (Forall_le_combine_in_bounds 4 bs ltac:(lia))).
-    apply word.unsigned_of_Z_nowrap; assumption.
-  Qed.
-
-  Lemma le_combine_nth_chunk n (bs: list byte) idx dd:
-    n <> 0%nat ->
-    (idx < Nat.div_up (Datatypes.length bs) n)%nat ->
-    le_combine (nth idx (chunk n bs) dd) =
-    le_combine (List.map (fun idx => nth idx bs Byte.x00) (seq (idx * n) n)).
-  Proof.
-    intros.
-    rewrite nth_chunk by assumption.
-    rewrite map_seq_nth_slice, le_combine_app_0.
-    reflexivity.
-  Qed.
-
-  Lemma In_map_combine_in_bounds n (Hn: n <> 0%nat) bs a:
-    In a (List.map le_combine (chunk n bs)) ->
-    0 <= a < 2 ^ (8 * Z.of_nat n).
-  Proof.
-    intros; eapply (Forall_In (Forall_le_combine_in_bounds n bs ltac:(lia)));
-      eassumption.
-  Qed.
 End combine_split.
 
 Section Array.
@@ -1425,13 +1149,6 @@ Section Aliasing.
   Qed.
 
   Context {BW: Bitwidth width}.
-
-  Lemma bytes_per_range sz:
-    0 < Z.of_nat (Memory.bytes_per (width := width) sz) < 2 ^ width.
-  Proof. (* Cop out by depending on BW; the previous proof was too bad: *)
-    destruct sz; simpl.
-    all: try (destruct width_cases as [-> | ->]; split; reflexivity).
-  Qed.
 
   (* From insertionsort.v in Bedrock2 *)
   Lemma ptsto_no_aliasing': forall addr b1 b2 m (R: Mem -> Prop),
