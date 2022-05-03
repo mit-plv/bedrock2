@@ -4,8 +4,8 @@ Section Binary.
   Context {T: Type} (P Q: T -> Prop).
   Definition impl1 := forall x, P x -> Q x.
   Definition iff1 := forall x, P x <-> Q x.
-  Definition and1 := forall x, P x /\ Q x.
-  Definition or1 := forall x, P x \/ Q x.
+  Definition and1 := fun x => P x /\ Q x.
+  Definition or1 := fun x => P x \/ Q x.
 End Binary.
 
 Definition ex1 {A B} (P : A -> B -> Prop) := fun (b:B) => exists a:A, P a b.

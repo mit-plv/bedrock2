@@ -357,18 +357,18 @@ Section WithParameters.
   Lemma load_four_bytes_of_sep_at bs a R (m:mem) (Hsep: (eq(bs$@a)*R) m) (Hl : length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
   Proof.
-    eapply Scalars.load_four_bytes_of_sep_at; try eassumption. reflexivity.
+    eapply Scalars.load_four_bytes_of_sep_at; try eassumption.
   Qed.
 
   Lemma uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: (eq(bs$@a)*R) m /\ length bs = 4%nat) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
-  Proof. eapply Scalars.uncurried_load_four_bytes_of_sep_at; try eassumption. reflexivity. Qed.
+  Proof. eapply Scalars.uncurried_load_four_bytes_of_sep_at; try eassumption. Qed.
 
   Lemma Z_uncurried_load_four_bytes_of_sep_at bs a R (m : mem)
     (H: (eq(bs$@a)*R) m /\ Z.of_nat (length bs) = 4) :
     load access_size.four m a = Some (word.of_Z (LittleEndianList.le_combine bs)).
-  Proof. eapply Scalars.Z_uncurried_load_four_bytes_of_sep_at; try eassumption. reflexivity. Qed.
+  Proof. eapply Scalars.Z_uncurried_load_four_bytes_of_sep_at; try eassumption. Qed.
 
   (*
   Lemma store_four_of_sep addr (oldvalue : word32) (value : word) R m (post:_->Prop)
@@ -508,7 +508,7 @@ Ltac simpl_lengths := repeat simpl_lengths_step.
     (* note: it would be nice to have a generalization of this /\-goal logic in on_left *)
     unshelve (
     let x := open_constr:(_ : _ /\ (_ /\ _)) in
-    once (on_left (idtac; seprewrite (symmetry! @Scalars.scalar32_of_bytes))); [exact (proj1 (proj2 x)) | exact (proj1 x) | exact (proj2 (proj2 x))]); shelve_unifiable.
+    once (on_left (idtac; seprewrite (symmetry! (fun _: 32 <= 32 => @Scalars.scalar32_of_bytes)))); [exact (proj1 (proj2 x)) | exact (proj1 x) | exact (proj2 (proj2 x))]); shelve_unifiable.
     2: reflexivity. (* already in goal 1, but should only be there and not a second subgoal *)
     on_left (idtac; seprewrite @array1_iff_eq_of_list_word_at; cycle 1); cycle 1.
 
