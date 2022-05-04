@@ -15,6 +15,13 @@ Section with_parameters.
   Arguments le_split : simpl nomatch.
   Arguments Z.mul: simpl nomatch.
 
+  Lemma bytes_per_range sz:
+    0 < Z.of_nat (Memory.bytes_per (width := width) sz) < 2 ^ width.
+  Proof using BW. (* Cop out by depending on BW; the previous proof was too bad: *)
+    clear -BW. destruct sz; simpl.
+    all: try (destruct width_cases as [-> | ->]; split; reflexivity).
+  Qed.
+
   Lemma testbit_byte_unsigned_ge b n:
     8 <= n ->
     Z.testbit (byte.unsigned b) n = false.
@@ -70,7 +77,7 @@ Section with_parameters.
   Definition in_bounds n x :=
     0 <= x < 2 ^ n.
 
-  Definition forall_in_bounds l n:
+  Lemma forall_in_bounds l n:
     0 <= n ->
     (Forall (in_bounds n) l) <-> (forall i, in_bounds n (nth i l 0)).
   Proof.
@@ -329,16 +336,28 @@ Section with_parameters.
       unfold ws2bs.
       rewrite zs2bs_length, ws2zs_length; reflexivity.
     Qed.
+
+    Lemma bs2ws2bs bs:
+      let sz := Syntax.access_size.word in
+      let n := Memory.bytes_per (width := width) sz in
+      (List.length bs mod n = 0)%nat ->
+      ws2bs n (bs2ws n bs) = bs.
+    Proof using word_ok BW.
+      clear mem mem_ok.
+      cbv zeta. intros. unfold ws2bs, bs2ws. rewrite zs2ws2zs.
+      rewrite List.map_ext_id.
+      - apply bs2zs2bs. 2: assumption.
+        pose proof (bytes_per_range Syntax.access_size.word). lia.
+      - intros. unfold bs2zs in H0.
+        eapply In_map_combine_in_bounds in H0.
+        2: destruct width_cases; subst; cbv; discriminate 1.
+        unfold word.wrap. apply Z.mod_small.
+        cbn in H0.
+        destruct width_cases; subst width; cbn in H0; lia.
+    Qed.
   End Properties.
 
   Ltac Zify.zify_convert_to_euclidean_division_equations_flag ::= constr:(true).
-
-  Lemma bytes_per_range sz:
-    0 < Z.of_nat (Memory.bytes_per (width := width) sz) < 2 ^ width.
-  Proof. (* Cop out by depending on BW; the previous proof was too bad: *)
-    destruct sz; simpl.
-    all: try (destruct width_cases as [-> | ->]; split; reflexivity).
-  Qed.
 
   Lemma bytes_of_truncated_scalar sz ptr a:
     Lift1Prop.iff1
@@ -495,4 +514,5 @@ Section with_parameters.
       (array (word := word) ptsto (word.of_Z 1) ptr bs)
       (array (word := word) scalar wn ptr (bs2ws n bs)).
   Proof. apply truncated_words_of_bytes. Qed.
+
 End with_parameters.

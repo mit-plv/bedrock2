@@ -19,6 +19,7 @@ Require Import compilerExamples.SoftmulBedrock2.
 Require Import compilerExamples.SoftmulCompile.
 Require Import compilerExamples.Softmul.
 Require Import compiler.LowerPipeline.
+Require Import bedrock2.ArrayCasts.
 Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Require Import bedrock2.SepBulletPoints.
 Local Open Scope sep_bullets_scope. Undelimit Scope sep_scope.
@@ -89,91 +90,22 @@ Proof.
   all : cbv; ssplit; trivial; try congruence.
 Qed.
 
-Definition bytes_to_word(bs: list byte): word :=
-  word.of_Z (LittleEndianList.le_combine bs).
-
-(* TODO generalize over bitwidth and add to library *)
-Definition byte_list_to_word_list(bs: list byte): list word :=
-  List.map bytes_to_word (List.chunk 4 bs).
-
-Lemma length_byte_list_to_word_list_divisible: forall bs n,
-    List.length bs = (n * 4)%nat ->
-    List.length (byte_list_to_word_list bs) = n.
-Admitted.
-
-Definition word_to_bytes(w: word): list byte :=
-  LittleEndianList.le_split 4 (word.unsigned w).
-
-(* TODO generalize over bitwidth and add to library *)
-Definition word_list_to_byte_list(ws: list word): list byte :=
-  List.flat_map word_to_bytes ws.
-
-Lemma word_list_to_byte_list_length: forall ws,
-    List.length (word_list_to_byte_list ws) = (List.length ws * 4)%nat.
-Admitted.
-
-Lemma split_le_combine_grow: forall bs n,
-    (Datatypes.length bs <= n)%nat ->
-    LittleEndianList.le_split n (LittleEndianList.le_combine bs) =
-      bs ++ List.repeat Byte.x00 (n - List.length bs)%nat.
-Proof.
-  intros.
-  assert (bs = [Byte.x12; Byte.x23; Byte.x24]) by admit.
-  assert (n = 5%nat) by admit.
-  subst.
-  cbv.
-  reflexivity.
-Admitted.
-
-Lemma bytes_to_word_roundtrip: forall bs,
-    (List.length bs <= 4)%nat ->
-    word_to_bytes (bytes_to_word bs) = bs ++ List.repeat Byte.x00 (4 - List.length bs)%nat.
-Proof.
-  unfold word_to_bytes, bytes_to_word. intros.
-  rewrite word.unsigned_of_Z_nowrap.
-  1: eapply split_le_combine_grow. 1: assumption.
-  pose proof (LittleEndianList.le_combine_bound bs) as P.
-Admitted.
-
-Lemma byte_list_to_word_list_roundtrip_aux: forall n bs,
-    (List.length bs <= n)%nat ->
-    word_list_to_byte_list (byte_list_to_word_list bs) =
-      bs ++ List.repeat Byte.x00 ((List.length bs + 3)/4*4 - List.length bs)%nat.
-Proof.
-  induction n; intros.
-  - destruct bs. 1: reflexivity. inversion H.
-  - destruct bs. 1: reflexivity. cbn in H.
-    rename b into b0.
-    destruct bs as [|b1 bs]. {
-      cbn. rewrite List.app_nil_r. unfold bytes_to_word, LittleEndianList.le_combine.
-      rewrite Z.shiftl_0_l. rewrite Z.lor_0_r.
-Admitted.
-
 Lemma byte_list_to_word_list_roundtrip: forall bs,
     Z.of_nat (List.length bs) mod 4 = 0 ->
-    word_list_to_byte_list (byte_list_to_word_list bs) = bs.
+    ws2bs 4 (bs2ws (word := word) 4 bs) = bs.
 Proof.
-  intros.
-  rewrite byte_list_to_word_list_roundtrip_aux with (n := List.length bs) by reflexivity.
-Admitted.
+  intros. refine (bs2ws2bs _ _).
+  change (Memory.bytes_per Syntax.access_size.word) with 4%nat.
+  change 4 with (Z.of_nat 4) in H.
+  rewrite <- Nat2Z.inj_mod in H.
+  Lia.lia.
+Qed.
 
 Lemma word_array_to_byte_array: forall addr (bs: list byte) (ws: list word),
-    word_list_to_byte_list ws = bs ->
+    ws2bs 4 ws = bs ->
     iff1 (array scalar (word.of_Z 4) addr ws) (array ptsto (word.of_Z 1) addr bs).
 Proof.
-  intros. subst. revert addr. induction ws; intros.
-  - cbn. reflexivity.
-  - rewrite array_cons.
-    unfold word_list_to_byte_list in *. cbn [flat_map]. rewrite array_app.
-    rewrite IHws. clear IHws.
-    unfold word_to_bytes at 3.
-    rewrite LittleEndianList.length_le_split.
-    repeat word_simpl_step_in_goal.
-    cancel.
-    cbn [seps].
-    unfold scalar, truncated_word, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
-    rewrite HList.tuple.to_list_of_list.
-    unfold word_to_bytes. reflexivity.
+  intros. subst bs. refine (bytes_of_words _ _).
 Qed.
 
 Lemma split_sepclause_convert: forall (all part part': Mem -> Prop) frame (C: Prop),
@@ -184,10 +116,18 @@ Proof.
   unfold split_sepclause. intros. rewrite <- H. assumption.
 Qed.
 
-Axiom TODO_bytelist_length: forall bs n,
+Lemma bytelist_length_eq: forall bs n,
     Datatypes.length bs = (n * 4)%nat ->
     (Datatypes.length bs = (n * 4)%nat) =
-    (Datatypes.length (byte_list_to_word_list bs) = n).
+    (Datatypes.length (bs2ws (word := word) 4 bs) = n).
+Proof.
+  intros. apply PropExtensionality.propositional_extensionality.
+  split; intro A. 2: assumption.
+  rewrite bs2ws_length' by Lia.lia.
+  rewrite A.
+  apply List.Nat.div_up_exact.
+  Lia.lia.
+Qed.
 
 Lemma R_equiv_related: forall r1 r2,
     R r1 r2 <-> related r1 r2.
@@ -212,11 +152,11 @@ Proof.
     1: eapply byte_list_to_word_list_roundtrip.
     all: cycle 1.
     1: lazymatch goal with
-       | |- context [List.length (byte_list_to_word_list ?B) = 32%nat] =>
-           replace (List.length (byte_list_to_word_list B) = 32%nat) with
+       | |- context [List.length (bs2ws 4 ?B) = 32%nat] =>
+           replace (List.length (bs2ws 4 B) = 32%nat) with
            (List.length B = 128%nat)
        end.
-    2: eapply TODO_bytelist_length with (n := 32%nat).
+    2: eapply bytelist_length_eq with (n := 32%nat).
     1: unshelve (eauto with split_sepclause_goal).
     1: rename H into Sp.
     1: split.
@@ -249,7 +189,7 @@ Proof.
     1: reflexivity.
     rewrite (array_app
                anybytes
-               (word_list_to_byte_list stacktrash)
+               (ws2bs 4 stacktrash)
                (word.of_Z (stack_hi - 256))).
     flatten_seps_in_goal. cbn [seps].
     rewrite Hp6p3_emp0.
@@ -263,7 +203,7 @@ Proof.
     replace (word.mul (word.of_Z 4) (word.of_Z mtvec_base))
       with (word.of_Z (word := word) (mtvec_base * 4)) by ring.
     scancel_asm.
-    pose proof (word_list_to_byte_list_length stacktrash).
+    pose proof (ws2bs_length 4 stacktrash).
     listZnWords.
 Qed.
 
@@ -283,5 +223,9 @@ Qed.
 
 (*
 Print Assumptions softmul_correct.
-only word list to byte list stuff
+Only two standard axioms:
+PropExtensionality.propositional_extensionality : forall P Q : Prop, P <-> Q -> P = Q
+FunctionalExtensionality.functional_extensionality_dep
+  : forall (A : Type) (B : A -> Type) (f g : forall x : A, B x),
+    (forall x : A, f x = g x) -> f = g
 *)
