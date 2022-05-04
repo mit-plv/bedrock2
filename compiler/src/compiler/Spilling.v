@@ -20,7 +20,8 @@ Open Scope Z_scope.
 Section Spilling.
 
   Notation stmt := (stmt Z).
-
+  Notation exec := (exec isRegZ).
+  
   Definition zero := 0.
   Definition ra := 1.
   Definition sp := 2.

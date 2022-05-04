@@ -750,3 +750,12 @@ Section FlatImp2.
   Qed.
 
 End FlatImp2.
+
+Definition isRegZ (var : Z) : bool :=
+  Z.leb var 31.
+
+Definition isRegStr (var : String.string) : bool :=
+  String.prefix "reg_" var.
+
+
+
