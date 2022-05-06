@@ -129,6 +129,13 @@ Section Pipeline1.
     let to_prepend := init_sp_insts ++ init_insts init_fun_pos ++ loop_insts loop_fun_pos ++ backjump_insts in
     Success (to_prepend ++ functions_insts, positions, required_stack_space).
 
+  Definition get_fun_pos(positions: string_keyed_map (nat * nat * Z))(f: string)
+    : option Z :=
+    match map.get positions f with
+    | Some (_, _, pos) => Some pos
+    | None => None
+    end.
+
   Context (spec: ProgramSpec).
 
   (* Holds each time before executing the loop body *)
@@ -140,8 +147,8 @@ Section Pipeline1.
       compile compile_ext_call prog = Success (functions_instrs, positions, required_stack_space) /\
       required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
-      map.get positions "init"%string = Some (O, O, init_fun_pos) /\
-      map.get positions "loop"%string = Some (O, O, loop_fun_pos) /\
+      get_fun_pos positions "init"%string = Some init_fun_pos /\
+      get_fun_pos positions "loop"%string = Some loop_fun_pos /\
       exists mH,
         isReady spec mach.(getLog) mH /\ goodTrace spec mach.(getLog) /\
         mach.(getPc) = word.add loop_pos (word.of_Z (if done then 4 else 0)) /\
@@ -378,28 +385,8 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
-      + unshelve epose proof (phase_preserves_argcount (composed_compiler_correct _ _ _)) as P;
-          try eassumption.
-        match goal with H: _ |- _ => specialize P with (1 := H) end.
-        unfold GetArgCount, SrcLang, RiscvLang, get_argcount, getFstOfThree in P.
-        specialize (P "init"%string).
-        unshelve epose proof (phase_preserves_retcount (composed_compiler_correct _ _ _)) as Q;
-          try eassumption.
-        match goal with H: _ |- _ => specialize Q with (1 := H) end.
-        unfold GetRetCount, SrcLang, RiscvLang, get_retcount, getSndOfThree in Q.
-        specialize (Q "init"%string).
-        fwd. eassumption.
-      + unshelve epose proof (phase_preserves_argcount (composed_compiler_correct _ _ _)) as P;
-          try eassumption.
-        match goal with H: _ |- _ => specialize P with (1 := H) end.
-        unfold GetArgCount, SrcLang, RiscvLang, get_argcount, getFstOfThree in P.
-        specialize (P "loop"%string).
-        unshelve epose proof (phase_preserves_retcount (composed_compiler_correct _ _ _)) as Q;
-          try eassumption.
-        match goal with H: _ |- _ => specialize Q with (1 := H) end.
-        unfold GetRetCount, SrcLang, RiscvLang, get_retcount, getSndOfThree in Q.
-        specialize (Q "loop"%string).
-        fwd. eassumption.
+      + unfold get_fun_pos. rewrite_match. reflexivity.
+      + unfold get_fun_pos. rewrite_match. reflexivity.
       + destruct_RiscvMachine final. subst.
         subst loop_pos init_pos.
         solve_word_eq word_ok.
@@ -479,10 +466,10 @@ Section Pipeline1.
         3: reflexivity.
         3: eassumption.
         3: { subst loop_pos init_pos init_sp_pos init_sp_insts. wwcancel. }
-        { match goal with
-          | H: map.get positions "loop"%string = Some _ |- _ => rename H into GetPos
+        { unfold get_fun_pos, compile, compose_phases, riscvPhase in *. fwd.
+          match goal with
+          | H: map.get _ "loop"%string = Some _ |- _ => rename H into GetPos
           end.
-          unfold compile, compose_phases, riscvPhase in *. fwd.
           eapply fun_pos_div4 in GetPos. solve_divisibleBy4. }
         { cbv. auto. }
         { subst loop_pos init_pos init_sp_pos init_sp_insts.
@@ -525,15 +512,14 @@ Section Pipeline1.
         all: try eassumption.
         all: simpl_MetricRiscvMachine_get_set.
         { apply stack_length_divisible. }
-        { cbn.
-          cbn in G. assert (loop_fun_pos = loop_rel_pos) by congruence. subst loop_rel_pos.
+        { unfold get_fun_pos in *. fwd.
           solve_word_eq word_ok. }
         { cbn. rewrite map.get_put_same. f_equal. solve_word_eq word_ok. }
         { subst loop_pos init_pos. destruct mlOk. solve_divisibleBy4. }
         { reflexivity. }
         { reflexivity. }
         unfold loop_pos, init_pos.
-        cbn in G. assert (loop_fun_pos = loop_rel_pos) by congruence. subst loop_rel_pos.
+        unfold get_fun_pos in *. fwd.
         unfold machine_ok.
         unfold_RiscvMachine_get_set.
         repeat match goal with

@@ -61,17 +61,19 @@ Section WithWordAndMem.
     GetArgCount(p: Program)(funcname: string): option nat;
     GetRetCount(p: Program)(funcname: string): option nat;
     Valid: Program -> Prop;
-    Call(p: Program)(funcname: string)(t: trace)(m: mem)(argvals: list word)
+    Call(p: Program)(funcname: string)
+        (t: trace)(m: mem)(argvals: list word)
         (post: trace -> mem -> list word -> Prop): Prop;
   }.
 
-  Record phase_correct{L1 L2: Lang}{compile: L1.(Program) -> result L2.(Program)}: Prop := {
-    phase_preserves_argcount: forall p1 p2,
+  Record phase_correct{L1 L2: Lang}
+    {compile: L1.(Program) -> result L2.(Program)}: Prop :=
+  {
+    phase_preserves_signatures: forall p1 p2,
         compile p1 = Success p2 ->
-        forall fname, L1.(GetArgCount) p1 fname = L2.(GetArgCount) p2 fname;
-    phase_preserves_retcount: forall p1 p2,
-        compile p1 = Success p2 ->
-        forall fname, L1.(GetRetCount) p1 fname = L2.(GetRetCount) p2 fname;
+        forall fname,
+          L1.(GetArgCount) p1 fname = L2.(GetArgCount) p2 fname /\
+          L1.(GetRetCount) p1 fname = L2.(GetRetCount) p2 fname;
     phase_preserves_valid: forall p1 p2,
         compile p1 = Success p2 ->
         L1.(Valid) p1 ->
@@ -86,8 +88,8 @@ Section WithWordAndMem.
 
   Arguments phase_correct : clear implicits.
 
-  Definition compose_phases{A B C: Type}(phase1: A -> result B)(phase2: B -> result C)(a: A) :=
-    b <- phase1 a;; phase2 b.
+  Definition compose_phases{A B C: Type}(phase1: A -> result B)(phase2: B -> result C):
+    A -> result C := fun a => b <- phase1 a;; phase2 b.
 
   Lemma compose_phases_correct{L1 L2 L3: Lang}
         {compile12: L1.(Program) -> result L2.(Program)}
@@ -97,14 +99,14 @@ Section WithWordAndMem.
     phase_correct L1 L3 (compose_phases compile12 compile23).
   Proof.
     unfold compose_phases.
-    intros [A12 R12 V12 C12] [A23 R23 V23 C23].
-    split; intros; fwd; eauto.
+    intros [S12 V12 C12] [S23 V23 C23].
+    split; intros; fwd; eauto. split.
     - etransitivity.
-      + eapply A12. eassumption.
-      + eapply A23. eassumption.
+      + eapply S12. eassumption.
+      + eapply S23. eassumption.
     - etransitivity.
-      + eapply R12. eassumption.
-      + eapply R23. eassumption.
+      + eapply S12. eassumption.
+      + eapply S23. eassumption.
   Qed.
 
   Section WithMoreParams.
@@ -225,24 +227,14 @@ Section WithWordAndMem.
     Proof.
       unfold SrcLang, FlatWithStrVars.
       split; cbn. {
-        unfold get_argcount, getFstOfThree, flatten_functions. intros.
+        unfold get_argcount, get_retcount,
+          getFstOfThree, getSndOfThree, flatten_functions. intros.
         destr (map.get p1 fname).
         - destruct p as ((argnames & retnames) & body).
           eapply map.try_map_values_fw in H. 2: exact E.
           fwd. destruct v2 as ((argnames2 & retnames2) & body2).
-          unfold flatten_function in *. fwd. reflexivity.
-        - destr (map.get p2 fname). 2: reflexivity.
-          exfalso.
-          eapply map.try_map_values_bw in H. 2: exact E0.
-          fwd. congruence.
-      }
-      { unfold get_retcount, getSndOfThree, flatten_functions. intros.
-        destr (map.get p1 fname).
-        - destruct p as ((argnames & retnames) & body).
-          eapply map.try_map_values_fw in H. 2: exact E.
-          fwd. destruct v2 as ((argnames2 & retnames2) & body2).
-          unfold flatten_function in *. fwd. reflexivity.
-        - destr (map.get p2 fname). 2: reflexivity.
+          unfold flatten_function in *. fwd. split; reflexivity.
+        - destr (map.get p2 fname). 2: split; reflexivity.
           exfalso.
           eapply map.try_map_values_bw in H. 2: exact E0.
           fwd. congruence.
@@ -302,7 +294,8 @@ Section WithWordAndMem.
     Lemma regalloc_correct: phase_correct FlatWithStrVars FlatWithZVars regalloc_functions.
     Proof.
       unfold FlatWithStrVars, FlatWithZVars. split; cbn. {
-        unfold get_argcount, getFstOfThree, regalloc_functions. intros. fwd.
+        unfold get_argcount, get_retcount, getFstOfThree, getSndOfThree,
+          regalloc_functions. intros. fwd.
         destr (map.get p1 fname).
         - destruct p as ((argnames & retnames) & body).
           eapply map.try_map_values_fw in E. 2: exact E1.
@@ -310,22 +303,8 @@ Section WithWordAndMem.
           unfold regalloc_function, lookups in *. fwd.
           apply_in_hyps @List.length_all_success.
           rewrite List.map_length in *.
-          congruence.
-        - destr (map.get p2 fname). 2: reflexivity.
-          exfalso.
-          eapply map.try_map_values_bw in E. 2: exact E2.
-          fwd. congruence.
-      }
-      { unfold get_retcount, getSndOfThree, regalloc_functions. intros. fwd.
-        destr (map.get p1 fname).
-        - destruct p as ((argnames & retnames) & body).
-          eapply map.try_map_values_fw in E. 2: exact E1.
-          fwd. destruct v2 as ((argnames2 & retnames2) & body2).
-          unfold regalloc_function, lookups in *. fwd.
-          apply_in_hyps @List.length_all_success.
-          rewrite List.map_length in *.
-          congruence.
-        - destr (map.get p2 fname). 2: reflexivity.
+          intuition congruence.
+        - destr (map.get p2 fname). 2: split; reflexivity.
           exfalso.
           eapply map.try_map_values_bw in E. 2: exact E2.
           fwd. congruence.
@@ -413,28 +392,17 @@ Section WithWordAndMem.
     Lemma spilling_correct: phase_correct FlatWithZVars FlatWithRegs spill_functions.
     Proof.
       unfold FlatWithZVars, FlatWithRegs. split; cbn.
-      { unfold get_argcount, getFstOfThree, spill_functions. intros. fwd.
+      { unfold get_argcount, get_retcount,
+          getFstOfThree, getSndOfThree, spill_functions. intros. fwd.
         destr (map.get p1 fname).
         - destruct p as ((argnames & retnames) & body).
           eapply map.try_map_values_fw in E. 2: exact H.
           fwd. destruct v2 as ((argnames2 & retnames2) & body2).
           unfold spill_fun in *. fwd.
-          f_equal. rewrite List.firstn_length.
-          change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat. blia.
-        - destr (map.get p2 fname). 2: reflexivity.
-          exfalso.
-          eapply map.try_map_values_bw in H. 2: exact E0.
-          fwd. congruence.
-      }
-      { unfold get_retcount, getSndOfThree, regalloc_functions. intros. fwd.
-        destr (map.get p1 fname).
-        - destruct p as ((argnames & retnames) & body).
-          eapply map.try_map_values_fw in E. 2: exact H.
-          fwd. destruct v2 as ((argnames2 & retnames2) & body2).
-          unfold spill_fun in *. fwd.
-          f_equal. rewrite List.firstn_length.
-          change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat. blia.
-        - destr (map.get p2 fname). 2: reflexivity.
+          rewrite !List.firstn_length.
+          change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
+          split; f_equal; blia.
+        - destr (map.get p2 fname). 2: split; reflexivity.
           exfalso.
           eapply map.try_map_values_bw in H. 2: exact E0.
           fwd. congruence.
@@ -453,9 +421,10 @@ Section WithWordAndMem.
     Lemma riscv_phase_correct: phase_correct FlatWithRegs RiscvLang (riscvPhase compile_ext_call).
     Proof.
       unfold FlatWithRegs, RiscvLang.
-      split; cbn. 1, 2: intros p1 ((? & finfo) & ?).
-      - eapply riscvPhase_preserves_argcount. assumption.
-      - eapply riscvPhase_preserves_retcount. assumption.
+      split; cbn.
+      - intros p1 ((? & finfo) & ?). split.
+        + eapply riscvPhase_preserves_argcount. 2: eassumption. assumption.
+        + eapply riscvPhase_preserves_retcount. 2: eassumption. assumption.
       - eapply riscv_phase_preserves_valid. assumption.
       - eapply flat_to_riscv_correct; eassumption.
     Qed.
@@ -527,11 +496,9 @@ Section WithWordAndMem.
       match goal with H: _ |- _ => specialize C with (1 := H) end.
       unfold Call, SrcLang, RiscvLang, locals_based_call_spec, riscv_call in C.
       edestruct C as (argcount & retcount & f_rel_pos & G & D); clear C. 1: eauto.
-      pose proof (phase_preserves_argcount composed_compiler_correct) as AC.
-      match goal with H: _ |- _ => specialize AC with (1 := H) end.
-      pose proof (phase_preserves_retcount composed_compiler_correct) as RC.
-      match goal with H: _ |- _ => specialize RC with (1 := H) end.
-      specialize (AC fname). specialize (RC fname).
+      pose proof (phase_preserves_signatures composed_compiler_correct) as SC.
+      match goal with H: _ |- _ => specialize SC with (1 := H) end.
+      specialize (SC fname).
       unfold GetArgCount, GetRetCount, SrcLang, RiscvLang,
              get_argcount, get_retcount, getFstOfThree, getSndOfThree in *.
       fwd.
