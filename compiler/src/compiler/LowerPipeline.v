@@ -44,42 +44,14 @@ Section WithWordAndMem.
       (ptsto_bytes start anybytes))%sep.
 End WithWordAndMem.
 
-Definition getFstOfThree{A B C: Type}{map: map.map string (A * B * C)}(m: map)(f: string):
-  option A :=
-  match map.get m f with
-  | Some (a, b, c) => Some a
-  | None => None
-  end.
-
-Definition getSndOfThree{A B C: Type}{map: map.map string (A * B * C)}(m: map)(f: string):
-  option B :=
-  match map.get m f with
-  | Some (a, b, c) => Some b
-  | None => None
-  end.
-
-Definition get_argcount{V T: Type}{map: map.map string (list V * list V * T)}(m: map)(f: string):
-  option nat :=
-  match getFstOfThree m f with
-  | Some argnames => Some (List.length argnames)
-  | None => None
-  end.
-
-Definition get_retcount{V T: Type}{map: map.map string (list V * list V * T)}(m: map)(f: string):
-  option nat :=
-  match getSndOfThree m f with
-  | Some retnames => Some (List.length retnames)
-  | None => None
-  end.
-
 Section LowerPipeline.
   Context {iset: Decode.InstructionSet}.
   Context {width: Z} {BW: Bitwidth width} {BWM: bitwidth_iset width iset}.
-  Context {fun_info: map.map String.string (nat * nat * Z)}. (* argcount, retcount, position *)
-  Context {fun_info_ok: map.ok fun_info}.
+  Context {pos_map: map.map String.string Z}.
+  Context {pos_map_ok: map.ok pos_map}.
   Context {env: map.map String.string (list Z * list Z * FlatImp.stmt Z)}.
   Context {env_ok: map.ok env}.
-  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).
+  Context (compile_ext_call: pos_map -> Z -> Z -> stmt Z -> list Instruction).
 
   Local Open Scope ilist_scope.
 
@@ -87,7 +59,7 @@ Section LowerPipeline.
      program, and a lot of infrastructure is already there, will do once/if we want to get
      a total compiler.
      Returns the fun_pos_env so that users know where to jump to call the compiled functions. *)
-  Definition riscvPhase (prog: env): result (list Instruction * fun_info * Z) :=
+  Definition riscvPhase (prog: env): result (list Instruction * pos_map * Z) :=
     stack_words_needed <- stack_usage prog;;
     let positions := FlatToRiscvDef.build_fun_pos_env iset compile_ext_call prog in
     let '(i, _) := FlatToRiscvDef.compile_funs iset compile_ext_call positions prog in
@@ -96,7 +68,7 @@ Section LowerPipeline.
   Lemma get_build_fun_pos_env: forall e f argnames retnames body,
       map.get e f = Some (argnames, retnames, body) ->
       exists pos, map.get (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e) f =
-                  Some (List.length argnames, List.length retnames, pos).
+                  Some pos.
   Proof.
     intros *.
     unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.compile_funs.
@@ -127,9 +99,9 @@ Section LowerPipeline.
       discriminate.
   Qed.
 
-  Lemma fun_pos_div4: forall functions f argcount retcount p,
+  Lemma fun_pos_div4: forall functions f p,
       map.get (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call functions) f =
-      Some (argcount, retcount, p) ->
+      Some p ->
       p mod 4 = 0.
   Proof.
     unfold FlatToRiscvDef.build_fun_pos_env, FlatToRiscvDef.compile_funs.
@@ -160,9 +132,9 @@ Section LowerPipeline.
         map.get e f = Some impl ->
         exists pos2,
           let '(argnames, retnames, body) := impl in
-          map.get finfo f = Some (List.length argnames, List.length retnames, pos2) /\
+          map.get finfo f = Some pos2 /\
           pos2 mod 4 = 0.
-  Proof using fun_info_ok env_ok.
+  Proof using pos_map_ok env_ok.
     intros e finfo0.
     unfold FlatToRiscvDef.compile_funs.
     eapply map.fold_spec.
@@ -298,7 +270,7 @@ Section LowerPipeline.
       iff1 (program iset functions_start instrs)
            (FlatToRiscvCommon.functions compile_ext_call functions_start
                                         (FlatToRiscvDef.build_fun_pos_env iset compile_ext_call e) e).
-  Proof using word_ok mem_ok fun_info_ok env_ok compile_ext_call_length_ignores_positions.
+  Proof using word_ok mem_ok pos_map_ok env_ok compile_ext_call_length_ignores_positions.
     unfold riscvPhase.
     intros.
     fwd.
@@ -392,45 +364,45 @@ Section LowerPipeline.
       (* configured by PrimitivesParams, can contain invariants needed for external calls *)
       valid_machine mach.
 
+  (* Note: since the length of (reg_class.all reg_class.arg) is 8, this definition
+     forces vals to be of length at most 8 *)
+  Definition arg_regs_contain(regs: locals)(vals: list word): Prop :=
+    map.getmany_of_list regs
+      (List.firstn (List.length vals) (reg_class.all reg_class.arg))
+    = Some vals.
+
   Hypothesis compile_ext_call_correct: forall resvars extcall argvars,
       compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
                                      (FlatImp.SInteract resvars extcall argvars).
 
-  Definition riscv_call(p: list Instruction * fun_info * Z)
+  Definition riscv_call(p: list Instruction * pos_map * Z)
              (f_name: string)(t: Semantics.trace)(mH: mem)(argvals: list word)
              (post: Semantics.trace -> mem -> list word -> Prop): Prop :=
     let '(instrs, finfo, req_stack_size) := p in
-    exists argcount retcount f_rel_pos,
-      map.get finfo f_name = Some (argcount, retcount, f_rel_pos) /\
+    exists f_rel_pos,
+      map.get finfo f_name = Some f_rel_pos /\
       forall p_funcs stack_start stack_pastend ret_addr Rdata Rexec (initial: MetricRiscvMachine),
         map.get initial.(getRegs) RegisterNames.ra = Some ret_addr ->
         initial.(getLog) = t ->
         word.unsigned ret_addr mod 4 = 0 ->
-        map.getmany_of_list initial.(getRegs)
-                            (List.firstn argcount (reg_class.all reg_class.arg))
-        = Some argvals ->
+        arg_regs_contain initial.(getRegs) argvals ->
         req_stack_size <= word.unsigned (word.sub stack_pastend stack_start) / bytes_per_word ->
         word.unsigned (word.sub stack_pastend stack_start) mod bytes_per_word = 0 ->
         initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
         machine_ok p_funcs stack_start stack_pastend instrs mH Rdata Rexec initial ->
         runsTo initial (fun final => exists mH' retvals,
-          map.getmany_of_list final.(getRegs)
-                              (List.firstn retcount (reg_class.all reg_class.arg))
-          = Some retvals /\
+          arg_regs_contain final.(getRegs) retvals /\
           post final.(getLog) mH' retvals /\
           map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
           final.(getPc) = ret_addr /\
           machine_ok p_funcs stack_start stack_pastend instrs mH' Rdata Rexec final).
 
-  Definition max8args: nat * nat * Z -> Prop :=
-    fun '(argcount, retcount, pos) => (argcount <= 8)%nat /\ (retcount <= 8)%nat.
-
   Definition same_finfo_and_length:
-    list Instruction * fun_info -> list Instruction * fun_info -> Prop :=
+    list Instruction * pos_map -> list Instruction * pos_map -> Prop :=
     fun '(insts1, finfo1) '(insts2, finfo2) =>
       List.length insts1 = List.length insts2 /\ finfo1 = finfo2.
 
-  Lemma compile_funs_finfo_ignores_finfo_aux(finfo1 finfo2: fun_info): forall e,
+  Lemma compile_funs_finfo_ignores_finfo_aux(finfo1 finfo2: pos_map): forall e,
       (fun e l r => same_finfo_and_length l r) e
       (compile_funs iset compile_ext_call finfo1 e)
       (compile_funs iset compile_ext_call finfo2 e).
@@ -495,72 +467,14 @@ Section LowerPipeline.
     exact H.
   Qed.
 
-  Lemma riscvPhase_preserves_argcount: forall p1 l finfo z,
-      riscvPhase p1 = Success (l, finfo, z) ->
-      forall fname, get_argcount p1 fname = getFstOfThree finfo fname.
-  Proof.
-    unfold riscvPhase, get_argcount, getFstOfThree. intros. fwd.
-    pose proof (compile_funs_finfo_idemp _ _ _ E0) as P. subst r. rename l into insts.
-    pose proof (get_compile_funs_pos p1 (build_fun_pos_env iset compile_ext_call p1)) as P.
-    rewrite E0 in P.
-    destr (map.get p1 fname).
-    - specialize P with (1 := E1). destruct p as ((argnames & retnames) & body). fwd.
-      reflexivity.
-    - destr (map.get (build_fun_pos_env iset compile_ext_call p1) fname).
-      2: reflexivity.
-      destruct p as ((argnames & retnames) & body).
-      erewrite get_build_fun_pos_env_None in E2 by eassumption.
-      discriminate.
-  Qed.
-
-  Lemma riscvPhase_preserves_retcount: forall p1 l finfo z,
-      riscvPhase p1 = Success (l, finfo, z) ->
-      forall fname, get_retcount p1 fname = getSndOfThree finfo fname.
-  Proof.
-    unfold riscvPhase, get_retcount, getSndOfThree. intros. fwd.
-    pose proof (compile_funs_finfo_idemp _ _ _ E0) as P. subst r. rename l into insts.
-    pose proof (get_compile_funs_pos p1 (build_fun_pos_env iset compile_ext_call p1)) as P.
-    rewrite E0 in P.
-    destr (map.get p1 fname).
-    - specialize P with (1 := E1). destruct p as ((argnames & retnames) & body). fwd.
-      reflexivity.
-    - destr (map.get (build_fun_pos_env iset compile_ext_call p1) fname).
-      2: reflexivity.
-      destruct p as ((argnames & retnames) & body).
-      erewrite get_build_fun_pos_env_None in E2 by eassumption.
-      discriminate.
-  Qed.
-
-  Lemma riscv_phase_preserves_valid: forall p1 p2,
-      riscvPhase p1 = Success p2 ->
-      map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
-      let '(insts, finfo, req_stack_size) := p2 in map.forall_values max8args finfo.
-  Proof.
-    unfold map.forall_values. intros. destruct p2 as ((insts & finfo) & req_stack_size).
-    intros f ((argcount & retcount) & pos) G.
-    pose proof (riscvPhase_preserves_argcount _ _ _ _ H f) as AC.
-    pose proof (riscvPhase_preserves_retcount _ _ _ _ H f) as RC.
-    unfold get_argcount, get_retcount, getFstOfThree, getSndOfThree in *.
-    destr (map.get p1 f). 2: fwd; discriminate.
-    destruct p as ((argnames & retnames) & body).
-    unfold valid_FlatImp_fun in *.
-    specialize H0 with (1 := E). cbv beta iota zeta in *. fwd.
-    unfold max8args.
-    apply (f_equal (@List.length _)) in H0p0.
-    apply (f_equal (@List.length _)) in H0p1.
-    rewrite List.firstn_length in *.
-    change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat in *.
-    blia.
-  Qed.
-
   Lemma flat_to_riscv_correct: forall p1 p2,
       map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
       riscvPhase p1 = Success p2 ->
       forall fname t m argvals post,
-      (exists argnames retnames fbody,
+      (exists argnames retnames fbody l,
           map.get p1 fname = Some (argnames, retnames, fbody) /\
-          forall l mc, map.of_list_zip argnames argvals = Some l ->
-                       FlatImp.exec p1 fbody t m l mc (fun t' m' l' mc' =>
+          map.of_list_zip argnames argvals = Some l /\
+          forall mc, FlatImp.exec p1 fbody t m l mc (fun t' m' l' mc' =>
                          exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                                          post t' m' retvals)) ->
       riscv_call p2 fname t m argvals post.
@@ -575,7 +489,7 @@ Section LowerPipeline.
     rewrite E0 in P.
     specialize P with (1 := H1p0). cbn in P.
     pose proof (compile_funs_finfo_idemp _ _ _ E0) as Q. subst r. fwd.
-    do 3 eexists. split. 1: eassumption.
+    eexists. split. 1: eassumption.
     intros.
     assert (word.unsigned p_funcs mod 4 = 0). {
       unfold machine_ok in *. fwd.
@@ -592,16 +506,6 @@ Section LowerPipeline.
     end.
     unfold map.of_list_zip in Hpost.
     unfold valid_FlatImp_fun in V. fwd.
-    apply_in_hyps @map.getmany_of_list_length.
-    match goal with
-    | H: _ |- _ => rename H into HL
-    end.
-    edestruct (map.sameLength_putmany_of_list _ _ map.empty HL) as [st0 OL].
-    rewrite List.firstn_length in HL.
-    change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat in HL.
-    replace (List.firstn (Datatypes.length argnames) (reg_class.all reg_class.arg))
-      with argnames in OL by congruence.
-    specialize Hpost with (1 := OL).
     eapply runsTo_weaken.
     - pose proof compile_function_body_correct as Q.
       specialize Q with
@@ -610,7 +514,7 @@ Section LowerPipeline.
           (xframe := Rexec)
           (pos := pos2)
           (program_base := p_funcs)
-          (l := st0)
+          (l := l)
           (post := fun t' m' l' mc' =>
                      (exists retvals,
                          map.getmany_of_list l' retnames = Some retvals /\ post t' m' retvals)).
@@ -660,7 +564,7 @@ Section LowerPipeline.
           eapply List.NoDup_unfoldn_Z_seq.
       + rewrite Vp1. rewrite List.firstn_length.
         change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat. clear. blia.
-      + exact OL.
+      + eassumption.
       + eapply Hpost.
       + rewrite <- Vp0.
         eapply map.putmany_of_list_zip_to_getmany_of_list.
@@ -687,11 +591,10 @@ Section LowerPipeline.
       + simpl_g_get. reflexivity.
       + unfold machine_ok in *. subst. fwd.
         unfold goodMachine; simpl_g_get. ssplit.
-        { move OL at bottom.
-          move H2 at bottom.
-          rewrite <- Vp0 in H3.
-          eapply map.extends_putmany_of_list_empty; eassumption. }
-        { eapply map.of_list_zip_forall_keys. 1: exact OL.
+        { eapply map.extends_putmany_of_list_empty. 1: eassumption.
+          apply_in_hyps @map.putmany_of_list_zip_sameLength.
+          congruence. }
+        { eapply map.of_list_zip_forall_keys. 1: eassumption.
           rewrite Vp0.
           eapply List.Forall_firstn.
           eapply Forall_impl.
@@ -761,7 +664,18 @@ Section LowerPipeline.
         unfold bytes_per_word; simpl; destruct width_cases as [EE | EE]; rewrite EE; cbv; trivial.
       }
       eexists _, _. ssplit.
-      + rewrite <- Vp1. eapply map.getmany_of_list_extends; eassumption.
+      + eapply map.getmany_of_list_extends. 1: eassumption.
+        match goal with
+        | H: map.getmany_of_list finalRegsH _ = Some _ |-
+             map.getmany_of_list finalRegsH _ = Some _ =>
+            rename H into GM; move GM at bottom
+        end.
+        etransitivity. 2: exact GM. f_equal.
+        rewrite Vp1.
+        f_equal.
+        symmetry.
+        eapply map.getmany_of_list_length.
+        exact GM.
       + eassumption.
       + eapply only_differ_subset. 1: eassumption.
         rewrite ListSet.of_list_list_union.

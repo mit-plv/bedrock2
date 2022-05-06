@@ -85,7 +85,7 @@ Section Pipeline1.
   Context {BWM: bitwidth_iset width iset}.
   Context {mem_ok: map.ok mem}.
   Context {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
-  Context (compile_ext_call : string_keyed_map (nat * nat * Z) -> Z -> Z -> FlatImp.stmt Z -> list Instruction).
+  Context (compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z -> list Instruction).
   Context (compile_ext_call_correct: forall resvars extcall argvars,
               compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
                                              (FlatImp.SInteract resvars extcall argvars)).
@@ -116,39 +116,32 @@ Section Pipeline1.
   (* 5) Code of the compiled functions *)
   Let functions_pos := word.add backjump_pos (word.of_Z 4).
 
-  Definition compile_prog(prog: source_env): result (list Instruction * string_keyed_map (nat * nat * Z) * Z) :=
+  Definition compile_prog(prog: source_env): result (list Instruction * string_keyed_map Z * Z) :=
     '(functions_insts, positions, required_stack_space) <- compile compile_ext_call prog;;
-    '(_, _, init_fun_pos) <- match map.get positions "init" with
-                             | Some f => Success f
-                             | None => error:("No function named" "init" "found")
-                             end;;
-    '(_, _, loop_fun_pos) <- match map.get positions "loop" with
-                             | Some f => Success f
-                             | None => error:("No function named" "loop" "found")
-                             end;;
+    'init_fun_pos <- match map.get positions "init" with
+                     | Some p => Success p
+                     | None => error:("No function named" "init" "found")
+                     end;;
+    'loop_fun_pos <- match map.get positions "loop" with
+                     | Some p => Success p
+                     | None => error:("No function named" "loop" "found")
+                     end;;
     let to_prepend := init_sp_insts ++ init_insts init_fun_pos ++ loop_insts loop_fun_pos ++ backjump_insts in
     Success (to_prepend ++ functions_insts, positions, required_stack_space).
-
-  Definition get_fun_pos(positions: string_keyed_map (nat * nat * Z))(f: string)
-    : option Z :=
-    match map.get positions f with
-    | Some (_, _, pos) => Some pos
-    | None => None
-    end.
 
   Context (spec: ProgramSpec).
 
   (* Holds each time before executing the loop body *)
   Definition ll_good(done: bool)(mach: MetricRiscvMachine): Prop :=
     exists (prog: source_env)
-           (functions_instrs: list Instruction) (positions: string_keyed_map (nat * nat * Z))
+           (functions_instrs: list Instruction) (positions: string_keyed_map Z)
            (required_stack_space: Z)
            (init_fun_pos loop_fun_pos: Z) (R: mem -> Prop),
       compile compile_ext_call prog = Success (functions_instrs, positions, required_stack_space) /\
       required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
-      get_fun_pos positions "init"%string = Some init_fun_pos /\
-      get_fun_pos positions "loop"%string = Some loop_fun_pos /\
+      map.get positions "init"%string = Some init_fun_pos /\
+      map.get positions "loop"%string = Some loop_fun_pos /\
       exists mH,
         isReady spec mach.(getLog) mH /\ goodTrace spec mach.(getLog) /\
         mach.(getPc) = word.add loop_pos (word.of_Z (if done then 4 else 0)) /\
@@ -266,7 +259,7 @@ Section Pipeline1.
       - eapply runsToDone. split; [exact I|reflexivity].
     }
     match goal with
-    | H: map.get positions "init"%string = Some (_, _, ?pos) |- _ =>
+    | H: map.get positions "init"%string = Some ?pos |- _ =>
       rename H into GetPos, pos into f_entry_rel_pos
     end.
     subst.
@@ -293,23 +286,23 @@ Section Pipeline1.
     - pose proof compiler_correct compile_ext_call compile_ext_call_correct
                                   compile_ext_call_length_ignores_positions as P.
       unfold runsTo in P.
-      specialize P with (argnames := []) (retnames := []) (argvals := [])
+      specialize P with (argvals := [])
                         (post := fun t' m' retvals => isReady spec t' m' /\ goodTrace spec t')
                         (fname := "init"%string).
       edestruct P as (init_rel_pos & G & P'); clear P; cycle -1.
       1: eapply P' with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R).
       all: simpl_MetricRiscvMachine_get_set.
-      12: {
-        cbn.
+      11: {
         unfold hl_inv in init_code_correct.
         move init_code_correct at bottom.
-        intros l' mc OL. cbn in OL. apply Option.eq_of_eq_Some in OL. subst l'.
+        do 4 eexists. split. 1: eassumption. split. 1: reflexivity.
+        intros mc.
         eapply ExprImp.weaken_exec.
         - refine (init_code_correct _ _ _).
           replace (datamem_start spec) with (heap_start ml) by congruence.
           replace (datamem_pastend spec) with (heap_pastend ml) by congruence.
           exact HMem.
-        - cbv beta. intros * _ _ HP. exists []. split. 1: reflexivity. exact HP.
+        - cbv beta. intros * _ HP. exists []. split. 1: reflexivity. exact HP.
       }
       all: try eassumption.
       { apply stack_length_divisible. }
@@ -375,7 +368,7 @@ Section Pipeline1.
         rewrite map.get_put_same. unfold init_sp. rewrite word.of_Z_unsigned. reflexivity.
     - cbv beta. unfold ll_good. intros. fwd.
       match goal with
-      | _: map.get positions "loop"%string = Some (_, _, ?z) |- _ => rename z into f_loop_rel_pos
+      | _: map.get positions "loop"%string = Some ?z |- _ => rename z into f_loop_rel_pos
       end.
       unfold compile_prog in CP. fwd.
       repeat match goal with
@@ -385,8 +378,6 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
-      + unfold get_fun_pos. rewrite_match. reflexivity.
-      + unfold get_fun_pos. rewrite_match. reflexivity.
       + destruct_RiscvMachine final. subst.
         subst loop_pos init_pos.
         solve_word_eq word_ok.
@@ -466,7 +457,7 @@ Section Pipeline1.
         3: reflexivity.
         3: eassumption.
         3: { subst loop_pos init_pos init_sp_pos init_sp_insts. wwcancel. }
-        { unfold get_fun_pos, compile, compose_phases, riscvPhase in *. fwd.
+        { unfold compile, compose_phases, riscvPhase in *. fwd.
           match goal with
           | H: map.get _ "loop"%string = Some _ |- _ => rename H into GetPos
           end.
@@ -495,31 +486,30 @@ Section Pipeline1.
       + pose proof compiler_correct compile_ext_call compile_ext_call_correct
                                     compile_ext_call_length_ignores_positions as P.
         unfold runsTo in P.
-        specialize P with (argnames := []) (retnames := []) (argvals := [])
+        specialize P with (argvals := [])
                           (fname := "loop"%string)
                           (post := fun t' m' retvals => isReady spec t' m' /\ goodTrace spec t').
         edestruct P as (loop_rel_pos & G & P'); clear P; cycle -1.
         1: eapply P' with (p_funcs := word.add loop_pos (word.of_Z 8)) (Rdata := R)
                           (ret_addr := word.add loop_pos (word.of_Z 4)).
-        12: {
-          cbn.
+        11: {
           move loop_body_correct at bottom.
-          intros l' mc OL. cbn in OL. apply Option.eq_of_eq_Some in OL. subst l'.
+          do 4 eexists. split. 1: eassumption. split. 1: reflexivity.
+          intros mc.
           eapply ExprImp.weaken_exec.
           - eapply loop_body_correct; eauto.
-          - cbv beta. intros * _ _ HP. exists []. split. 1: reflexivity. exact HP.
+          - cbv beta. intros * _ HP. exists []. split. 1: reflexivity. exact HP.
         }
         all: try eassumption.
         all: simpl_MetricRiscvMachine_get_set.
         { apply stack_length_divisible. }
-        { unfold get_fun_pos in *. fwd.
+        { replace loop_rel_pos with loop_fun_pos by congruence.
           solve_word_eq word_ok. }
         { cbn. rewrite map.get_put_same. f_equal. solve_word_eq word_ok. }
         { subst loop_pos init_pos. destruct mlOk. solve_divisibleBy4. }
         { reflexivity. }
         { reflexivity. }
         unfold loop_pos, init_pos.
-        unfold get_fun_pos in *. fwd.
         unfold machine_ok.
         unfold_RiscvMachine_get_set.
         repeat match goal with

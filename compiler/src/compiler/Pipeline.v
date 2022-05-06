@@ -58,8 +58,6 @@ Section WithWordAndMem.
 
   Record Lang := {
     Program: Type;
-    GetArgCount(p: Program)(funcname: string): option nat;
-    GetRetCount(p: Program)(funcname: string): option nat;
     Valid: Program -> Prop;
     Call(p: Program)(funcname: string)
         (t: trace)(m: mem)(argvals: list word)
@@ -69,11 +67,6 @@ Section WithWordAndMem.
   Record phase_correct{L1 L2: Lang}
     {compile: L1.(Program) -> result L2.(Program)}: Prop :=
   {
-    phase_preserves_signatures: forall p1 p2,
-        compile p1 = Success p2 ->
-        forall fname,
-          L1.(GetArgCount) p1 fname = L2.(GetArgCount) p2 fname /\
-          L1.(GetRetCount) p1 fname = L2.(GetRetCount) p2 fname;
     phase_preserves_valid: forall p1 p2,
         compile p1 = Success p2 ->
         L1.(Valid) p1 ->
@@ -89,7 +82,11 @@ Section WithWordAndMem.
   Arguments phase_correct : clear implicits.
 
   Definition compose_phases{A B C: Type}(phase1: A -> result B)(phase2: B -> result C):
-    A -> result C := fun a => b <- phase1 a;; phase2 b.
+    A -> result C :=
+    fun a => match phase1 a with
+             | Success b => phase2 b
+             | Failure e => Failure e
+             end.
 
   Lemma compose_phases_correct{L1 L2 L3: Lang}
         {compile12: L1.(Program) -> result L2.(Program)}
@@ -99,14 +96,8 @@ Section WithWordAndMem.
     phase_correct L1 L3 (compose_phases compile12 compile23).
   Proof.
     unfold compose_phases.
-    intros [S12 V12 C12] [S23 V23 C23].
-    split; intros; fwd; eauto. split.
-    - etransitivity.
-      + eapply S12. eassumption.
-      + eapply S23. eassumption.
-    - etransitivity.
-      + eapply S12. eassumption.
-      + eapply S23. eassumption.
+    intros [V12 C12] [V23 C23].
+    split; intros; fwd; eauto.
   Qed.
 
   Section WithMoreParams.
@@ -131,7 +122,7 @@ Section WithWordAndMem.
     Context {PR: MetricPrimitives PRParams}.
     Context {iset: InstructionSet}.
     Context {BWM: bitwidth_iset width iset}.
-    Context (compile_ext_call : string_keyed_map (nat * nat * Z) -> Z -> Z -> FlatImp.stmt Z ->
+    Context (compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z ->
                                 list Instruction).
     Context (compile_ext_call_correct: forall resvars extcall argvars,
                 compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
@@ -148,10 +139,10 @@ Section WithWordAndMem.
                (e: string_keyed_map (list Var * list Var * Cmd))(f: string)
                (t: trace)(m: mem)(argvals: list word)
                (post: trace -> mem -> list word -> Prop): Prop :=
-      exists argnames retnames fbody,
+      exists argnames retnames fbody l,
         map.get e f = Some (argnames, retnames, fbody) /\
-        forall l mc, map.of_list_zip argnames argvals = Some l ->
-                     Exec e fbody t m l mc (fun t' m' l' mc' =>
+        map.of_list_zip argnames argvals = Some l /\
+        forall mc, Exec e fbody t m l mc (fun t' m' l' mc' =>
                        exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                                        post t' m' retvals).
 
@@ -160,8 +151,6 @@ Section WithWordAndMem.
 
     Definition SrcLang: Lang := {|
       Program := string_keyed_map (list string * list string * Syntax.cmd);
-      GetArgCount := get_argcount;
-      GetRetCount := get_retcount;
       Valid := map.forall_values ExprImp.valid_fun;
       Call := locals_based_call_spec Semantics.exec;
     |}.
@@ -170,8 +159,6 @@ Section WithWordAndMem.
     (* V                 *)
     Definition FlatWithStrVars: Lang := {|
       Program := string_keyed_map (list string * list string * FlatImp.stmt string);
-      GetArgCount := get_argcount;
-      GetRetCount := get_retcount;
       Valid := map.forall_values ParamsNoDup;
       Call := locals_based_call_spec FlatImp.exec;
     |}.
@@ -180,8 +167,6 @@ Section WithWordAndMem.
     (* V                 *)
     Definition FlatWithZVars: Lang := {|
       Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
-      GetArgCount := get_argcount;
-      GetRetCount := get_retcount;
       Valid := map.forall_values ParamsNoDup;
       Call := locals_based_call_spec FlatImp.exec;
     |}.
@@ -190,8 +175,6 @@ Section WithWordAndMem.
     (* V                 *)
     Definition FlatWithRegs: Lang := {|
       Program := string_keyed_map (list Z * list Z * FlatImp.stmt Z);
-      GetArgCount := get_argcount;
-      GetRetCount := get_retcount;
       Valid := map.forall_values FlatToRiscvDef.valid_FlatImp_fun;
       Call := locals_based_call_spec FlatImp.exec;
     |}.
@@ -200,13 +183,11 @@ Section WithWordAndMem.
     (* V                 *)
     Definition RiscvLang: Lang := {|
       Program :=
-        list Instruction *                 (* <- code of all functions concatenated             *)
-        string_keyed_map (nat * nat * Z) * (* <- (argcount, retcount, offset) for each function *)
-        Z                                  (* <- required stack space in XLEN-bit words         *);
-      GetArgCount '(insts, finfo, req_stack_size) := getFstOfThree finfo;
-      GetRetCount '(insts, finfo, req_stack_size) := getSndOfThree finfo;
+        list Instruction *      (* <- code of all functions concatenated       *)
+        string_keyed_map Z *    (* <- position (offset) for each function      *)
+        Z;                      (* <- required stack space in XLEN-bit words   *)
       (* bounds in instructions are checked by `ptsto_instr` *)
-      Valid '(insts, finfo, req_stack_size) := map.forall_values max8args finfo;
+      Valid '(insts, finfo, req_stack_size) := True;
       Call := riscv_call;
     |}.
 
@@ -226,19 +207,7 @@ Section WithWordAndMem.
     Lemma flattening_correct: phase_correct SrcLang FlatWithStrVars flatten_functions.
     Proof.
       unfold SrcLang, FlatWithStrVars.
-      split; cbn. {
-        unfold get_argcount, get_retcount,
-          getFstOfThree, getSndOfThree, flatten_functions. intros.
-        destr (map.get p1 fname).
-        - destruct p as ((argnames & retnames) & body).
-          eapply map.try_map_values_fw in H. 2: exact E.
-          fwd. destruct v2 as ((argnames2 & retnames2) & body2).
-          unfold flatten_function in *. fwd. split; reflexivity.
-        - destr (map.get p2 fname). 2: split; reflexivity.
-          exfalso.
-          eapply map.try_map_values_bw in H. 2: exact E0.
-          fwd. congruence.
-      }
+      split; cbn.
       { unfold map.forall_values, ParamsNoDup.
         intros. destruct v as ((argnames & retnames) & body).
         eapply flatten_functions_NoDup; try eassumption.
@@ -250,7 +219,7 @@ Section WithWordAndMem.
       unfold flatten_functions in GF.
       eapply map.try_map_values_fw in GF. 2: eassumption.
       unfold flatten_function in GF. fwd.
-      eexists _, _, _. split. 1: eassumption.
+      eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption.
       intros.
       eapply FlatImp.exec.weaken.
       - eapply flattenStmt_correct_aux with (mcH := mc).
@@ -264,8 +233,9 @@ Section WithWordAndMem.
         + intros x k A. assumption.
         + unfold map.undef_on, map.agree_on. cbn. intros k A.
           rewrite map.get_empty. destr (map.get l k). 2: reflexivity. exfalso.
-          unfold map.of_list_zip in H0.
-          edestruct (map.putmany_of_list_zip_find_index _ _ _ _ _ _ H1 E) as [G | G]. 2: {
+          unfold map.of_list_zip in H1p1.
+          edestruct (map.putmany_of_list_zip_find_index _ _ _ _ _ _ H1p1 E) as [G | G].
+          2: {
             rewrite map.get_empty in G. discriminate.
           }
           destruct G as (i & G1 & G2).
@@ -293,22 +263,7 @@ Section WithWordAndMem.
 
     Lemma regalloc_correct: phase_correct FlatWithStrVars FlatWithZVars regalloc_functions.
     Proof.
-      unfold FlatWithStrVars, FlatWithZVars. split; cbn. {
-        unfold get_argcount, get_retcount, getFstOfThree, getSndOfThree,
-          regalloc_functions. intros. fwd.
-        destr (map.get p1 fname).
-        - destruct p as ((argnames & retnames) & body).
-          eapply map.try_map_values_fw in E. 2: exact E1.
-          fwd. destruct v2 as ((argnames2 & retnames2) & body2).
-          unfold regalloc_function, lookups in *. fwd.
-          apply_in_hyps @List.length_all_success.
-          rewrite List.map_length in *.
-          intuition congruence.
-        - destr (map.get p2 fname). 2: split; reflexivity.
-          exfalso.
-          eapply map.try_map_values_bw in E. 2: exact E2.
-          fwd. congruence.
-      }
+      unfold FlatWithStrVars, FlatWithZVars. split; cbn.
       { unfold map.forall_values, ParamsNoDup. intros.
         destruct v as ((argnames & retnames) & body).
         eapply regalloc_functions_NoDup; eassumption.
@@ -325,13 +280,16 @@ Section WithWordAndMem.
       eapply map.get_forall_success in E0. 2: eassumption.
       unfold lookup_and_check_func, check_func in E0. fwd.
 
-      eexists _, _, _. split. 1: eassumption. intros.
-      unfold map.of_list_zip in *.
+      rename l0 into argregs, l1 into retregs.
       apply_in_hyps assert_ins_same_length.
       apply_in_hyps assignments_same_length.
       apply_in_hyps @map.putmany_of_list_zip_sameLength.
-      assert (List.length argnames = List.length argvals) as P by congruence.
-      eapply map.sameLength_putmany_of_list in P. destruct P as [st2 P].
+      assert (exists l', map.of_list_zip argregs argvals = Some l'). {
+        eapply map.sameLength_putmany_of_list. congruence.
+      }
+      fwd.
+      eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption. intros.
+      unfold map.of_list_zip in *.
       eapply FlatImp.exec.weaken.
       - eapply checker_correct; eauto.
         eapply states_compat_precond.
@@ -392,46 +350,38 @@ Section WithWordAndMem.
     Lemma spilling_correct: phase_correct FlatWithZVars FlatWithRegs spill_functions.
     Proof.
       unfold FlatWithZVars, FlatWithRegs. split; cbn.
-      { unfold get_argcount, get_retcount,
-          getFstOfThree, getSndOfThree, spill_functions. intros. fwd.
-        destr (map.get p1 fname).
-        - destruct p as ((argnames & retnames) & body).
-          eapply map.try_map_values_fw in E. 2: exact H.
-          fwd. destruct v2 as ((argnames2 & retnames2) & body2).
-          unfold spill_fun in *. fwd.
-          rewrite !List.firstn_length.
-          change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
-          split; f_equal; blia.
-        - destr (map.get p2 fname). 2: split; reflexivity.
-          exfalso.
-          eapply map.try_map_values_bw in H. 2: exact E0.
-          fwd. congruence.
-      }
       1: exact spilling_preserves_valid.
       unfold locals_based_call_spec. intros. fwd.
       pose proof H0 as GL.
       unfold spill_functions in GL.
       eapply map.try_map_values_fw in GL. 2: eassumption.
       destruct GL as (((argnames2 & retnames2) & fbody2) & Sp & G2).
-      exists argnames2, retnames2, fbody2.
-      split. 1: exact G2.
-      eapply spill_fun_correct; eassumption.
+      apply_in_hyps @map.putmany_of_list_zip_sameLength.
+      assert (exists l', map.of_list_zip argnames2 argvals = Some l'). {
+        eapply map.sameLength_putmany_of_list.
+        unfold spill_fun in Sp. fwd.
+        rewrite !List.firstn_length.
+        change (Datatypes.length (reg_class.all reg_class.arg)) with 8%nat.
+        blia.
+      }
+      fwd.
+      exists argnames2, retnames2, fbody2, l'.
+      split. 1: exact G2. split. 1: eassumption.
+      intros. eapply spill_fun_correct; try eassumption.
+      unfold call_spec. intros * E. rewrite E in *. fwd. eauto.
     Qed.
 
     Lemma riscv_phase_correct: phase_correct FlatWithRegs RiscvLang (riscvPhase compile_ext_call).
     Proof.
       unfold FlatWithRegs, RiscvLang.
       split; cbn.
-      - intros p1 ((? & finfo) & ?). split.
-        + eapply riscvPhase_preserves_argcount. 2: eassumption. assumption.
-        + eapply riscvPhase_preserves_retcount. 2: eassumption. assumption.
-      - eapply riscv_phase_preserves_valid. assumption.
+      - intros p1 ((? & finfo) & ?). intros. exact I.
       - eapply flat_to_riscv_correct; eassumption.
     Qed.
 
     Definition compile:
       string_keyed_map (list string * list string * cmd) ->
-      result (list Instruction * string_keyed_map (nat * nat * Z) * Z) :=
+      result (list Instruction * string_keyed_map Z * Z) :=
       (compose_phases flatten_functions
       (compose_phases regalloc_functions
       (compose_phases spill_functions
@@ -446,27 +396,28 @@ Section WithWordAndMem.
                                     riscv_phase_correct))).
     Qed.
 
-    (* restates composed_compiler_correct by unfolding definitions used to compose phases,
-       and turning exists in hyps into toplevel foralls *)
+    (* restate composed_compiler_correct by unfolding definitions used to compose phases *)
     Lemma compiler_correct: forall
         (* input of compilation: *)
         (functions: string_keyed_map (list string * list string * cmd))
         (* output of compilation: *)
-        (instrs: list Instruction) (finfo: string_keyed_map (nat * nat * Z)) (req_stack_size: Z)
+        (instrs: list Instruction) (finfo: string_keyed_map Z) (req_stack_size: Z)
         (* function we choose to call: *)
-        (fname: string) (argnames retnames: list string) (fbody: cmd)
+        (fname: string)
         (* high-level initial state & post on final state: *)
         (t: trace) (mH: mem) (argvals: list word) (post: trace -> mem -> list word -> Prop),
         ExprImp.valid_funs functions ->
         compile functions = Success (instrs, finfo, req_stack_size) ->
-        map.get functions fname = Some (argnames, retnames, fbody) ->
-        (forall l mc,
-              map.of_list_zip argnames argvals = Some l ->
+        (exists (argnames retnames: list string) (fbody: cmd) l,
+            map.get functions fname = Some (argnames, retnames, fbody) /\
+            map.of_list_zip argnames argvals = Some l /\
+            forall mc,
               Semantics.exec functions fbody t mH l mc
                 (fun t' m' l' mc' => exists retvals: list word,
-                     map.getmany_of_list l' retnames = Some retvals /\ post t' m' retvals)) ->
+                     map.getmany_of_list l' retnames = Some retvals /\
+                     post t' m' retvals)) ->
         exists (f_rel_pos: Z),
-          map.get finfo fname = Some (List.length argnames, List.length retnames, f_rel_pos) /\
+          map.get finfo fname = Some f_rel_pos /\
           forall (* low-level machine on which we're going to run the compiled program: *)
                  (initial: MetricRiscvMachine)
                  (* ghost vars that help describe the low-level machine: *)
@@ -476,15 +427,12 @@ Section WithWordAndMem.
             initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
             map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
             word.unsigned ret_addr mod 4 = 0 ->
-            map.getmany_of_list initial.(getRegs)
-              (List.firstn (List.length argnames) (reg_class.all reg_class.arg)) = Some argvals ->
+            arg_regs_contain initial.(getRegs) argvals ->
             initial.(getLog) = t ->
             machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
             runsTo initial (fun final : MetricRiscvMachine =>
               exists mH' retvals,
-                map.getmany_of_list (getRegs final)
-                            (List.firstn (List.length retnames) (reg_class.all reg_class.arg))
-                = Some retvals /\
+                arg_regs_contain (getRegs final) retvals /\
                 post final.(getLog) mH' retvals /\
                 map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
                 final.(getPc) = ret_addr /\
@@ -492,17 +440,12 @@ Section WithWordAndMem.
     Proof.
       intros.
       pose proof (phase_preserves_post composed_compiler_correct) as C.
-      match goal with H: _ |- _ => specialize C with (1 := H) end.
-      match goal with H: _ |- _ => specialize C with (1 := H) end.
       unfold Call, SrcLang, RiscvLang, locals_based_call_spec, riscv_call in C.
-      edestruct C as (argcount & retcount & f_rel_pos & G & D); clear C. 1: eauto.
-      pose proof (phase_preserves_signatures composed_compiler_correct) as SC.
-      match goal with H: _ |- _ => specialize SC with (1 := H) end.
-      specialize (SC fname).
-      unfold GetArgCount, GetRetCount, SrcLang, RiscvLang,
-             get_argcount, get_retcount, getFstOfThree, getSndOfThree in *.
-      fwd.
-      eauto 10.
+      match goal with H: _ |- _ => specialize C with (1 := H) end.
+      match goal with H: _ |- _ => specialize C with (1 := H) end.
+      match goal with H: _ |- _ => specialize C with (1 := H) end.
+      cbv iota in C.
+      fwd. eauto 10.
     Qed.
 
     Definition instrencode(p: list Instruction): list byte :=
@@ -520,9 +463,9 @@ Section WithWordAndMem.
         (* input of compilation: *)
         (fs: list (string * (list string * list string * cmd)))
         (* output of compilation: *)
-        (instrs: list Instruction) (finfo: string_keyed_map (nat * nat * Z)) (req_stack_size: Z)
+        (instrs: list Instruction) (finfo: string_keyed_map Z) (req_stack_size: Z)
         (* function we choose to call: *)
-        (fname: string) (argcount retcount: nat) (f_rel_pos: Z)
+        (fname: string) (f_rel_pos: Z)
         (* high-level initial state & post on final state: *)
         (t: trace) (mH: mem) (argvals: list word) (post: trace -> mem -> list word -> Prop)
         (* ghost vars that help describe the low-level machine: *)
@@ -533,20 +476,18 @@ Section WithWordAndMem.
         NoDup (map fst fs) ->
         compile (map.of_list fs) = Success (instrs, finfo, req_stack_size) ->
         WeakestPrecondition.call fs fname t mH argvals post ->
-        map.get finfo fname = Some (argcount, retcount, f_rel_pos) ->
+        map.get finfo fname = Some f_rel_pos ->
         req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
         word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
         initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->
         map.get (getRegs initial) RegisterNames.ra = Some ret_addr ->
         word.unsigned ret_addr mod 4 = 0 ->
-        map.getmany_of_list initial.(getRegs)
-            (List.firstn argcount (reg_class.all reg_class.arg)) = Some argvals ->
+        arg_regs_contain initial.(getRegs) argvals ->
         initial.(getLog) = t ->
         machine_ok p_funcs stack_lo stack_hi instrs mH Rdata Rexec initial ->
         runsTo initial (fun final : MetricRiscvMachine =>
           exists mH' retvals,
-            map.getmany_of_list (getRegs final)
-              (List.firstn retcount (reg_class.all reg_class.arg)) = Some retvals /\
+            arg_regs_contain (getRegs final) retvals /\
             post final.(getLog) mH' retvals /\
             map.only_differ initial.(getRegs) reg_class.caller_saved final.(getRegs) /\
             final.(getPc) = ret_addr /\
@@ -560,10 +501,8 @@ Section WithWordAndMem.
       edestruct compiler_correct with (argvals := argvals) (post := post) as (f_rel_pos' & G & C);
         try eassumption.
       - intros.
-        unfold map.of_list_zip in *. assert (lf = l) by congruence. subst lf.
-        apply WPp1p1.
-      - replace retcount with (List.length rets) by congruence.
-        eapply C; clear C; try assumption; try congruence.
+        unfold map.of_list_zip in *. eauto 10.
+      - eapply C; clear C; try assumption; try congruence.
     Qed.
 
   End WithMoreParams.

@@ -565,12 +565,9 @@ Section Riscv.
         * simpl. right. eapply IHl. exact H.
   Qed.
 
-  (* TODO implement in bedrock2 and compile to riscv, and also need to prove that
-     programs running on the RISC-V machine used by the compiler (without CSRs)
-     also run correctly on a RISC-V machine with CSRs and a different state type. *)
   Definition mul_insts_result := Pipeline.compile (fun _ _ _ _ => []) prog.
 
-  Definition mul_insts_tuple: list Instruction * SortedListString.map (nat * nat * Z) * Z.
+  Definition mul_insts_tuple: list Instruction * SortedListString.map Z * Z.
     let r := eval vm_compute in mul_insts_result in
     match r with
     | Result.Success ?p => exact p
@@ -578,7 +575,7 @@ Section Riscv.
   Defined.
 
   Definition mul_insts: list Instruction := Eval compute in fst (fst mul_insts_tuple).
-  Definition mul_insts_fpos: SortedListString.map (nat * nat * Z) :=
+  Definition mul_insts_fpos: SortedListString.map Z :=
     Eval compute in snd (fst mul_insts_tuple).
   Definition mul_insts_req_stack: Z := Eval compute in snd (mul_insts_tuple).
 
@@ -830,7 +827,9 @@ Section Riscv.
         ring. }
       { cbn -[array HList.tuple Datatypes.length]. eassumption. }
       { assumption. }
-      { cbn -[array HList.tuple Datatypes.length]. unfold a0, a1 in *. rewrite_match.
+      { unfold LowerPipeline.arg_regs_contain.
+        cbn -[array HList.tuple].
+        unfold a0, a1 in *. rewrite_match.
         reflexivity. }
       { cbn -[array HList.tuple Datatypes.length]. reflexivity. }
       { unfold LowerPipeline.machine_ok. record.simp. ssplit.
