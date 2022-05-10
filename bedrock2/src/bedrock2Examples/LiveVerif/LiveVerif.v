@@ -23,21 +23,19 @@ Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Require Import bedrock2.OperatorOverloading.
 
-Notation "/[ x ]" := (word.of_Z x)       (* squeeze a Z into a word (beat it with a / to make it smaller) *)
-  (format "/[ x ]").
-Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the modulo box imposed by words, *)
-  (format "\[ x ]").                     (* let a word fly into the large Z space *)
-
 Section LiveVerif.
   Import Syntax BinInt String List.ListNotations ZArith.
   Context {word: word.word 32} {mem: map.map word byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Local Set Implicit Arguments.
-  Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-  Local Open Scope sep_bullets_scope.
+  Local Open Scope string_scope. Local Open Scope Z_scope.
   Notation len := List.length.
   Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per 32 sz)) (at level 10).
   Local Open Scope oo_scope.
+  Local Open Scope list_index_scope.
+  Local Open Scope conversion_parse_scope.
+  Local Open Scope conversion_print_scope.
+  Local Open Scope sep_bullets_scope.
 
   Add Ring wring : (Properties.word.ring_theory (word := word))
         ((*This preprocessing is too expensive to be always run, especially if

@@ -1697,6 +1697,53 @@ Unset Implicit Arguments.
     split; ZnWords.
   Qed.
 
+Section WithNonmaximallyInsertedA.
+  Context [A: Type].
+
+  Lemma List__repeat_0: forall (a: A), List.repeat a 0 = [].
+  Proof. intros. reflexivity. Qed.
+End WithNonmaximallyInsertedA.
+
+Hint Rewrite List__repeat_0 : fwd_rewrites.
+
+Ltac word_simpl_step_in_goal ::=
+  match goal with
+  | |- context[@word.add ?wi ?wo ?x ?y] => progress (ring_simplify (@word.add wi wo x y))
+  | |- context[@word.sub ?wi ?wo ?x ?y] => progress (ring_simplify (@word.sub wi wo x y))
+  | |- context[@word.opp ?wi ?wo ?x   ] => progress (ring_simplify (@word.opp wi wo x  ))
+  | |- context[@word.mul ?wi ?wo ?x ?y] => progress (ring_simplify (@word.mul wi wo x y))
+  | |- context C[word.unsigned ?x] =>
+      let x' := rdelta_var x in
+      lazymatch x' with
+      | word.of_Z ?z =>
+          (tryif constr_eq x x' then idtac
+           (* don't subst x everywhere, but only where the rewrite can simplify something *)
+           else let C' := context C[word.unsigned x'] in change C');
+          rewrite (word.unsigned_of_Z_nowrap z) by Lia.lia
+      end
+  | _ => progress groundcbv_in_goal
+  end.
+
+Require Import coqutil.Tactics.syntactic_unify.
+
+Ltac solve_list_eq :=
+  list_simpl_in_goal; try syntactic_exact_deltavar (@eq_refl _ _).
+
+(* make t1 a constr instead of pattern because typeclass-based notations
+   don't work in patterns *)
+Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" ident(H) :=
+  replace t1 with t2 in H.
+Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" "*" :=
+  replace t1 with t2 in *.
+Tactic Notation "Replace" constr(t1) "with" constr(t2) :=
+  replace t1 with t2.
+Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" ident(H) "by" tactic(tac) :=
+  replace t1 with t2 in H by tac.
+Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" "*" "by" tactic(tac) :=
+  replace t1 with t2 in * by tac.
+Tactic Notation "Replace" constr(t1) "with" constr(t2) "by" tactic(tac) :=
+  replace t1 with t2 by tac.
+
 Definition memset: {f: list string * list string * cmd &
   forall fs t m (a b n: word) (bs: list byte) (R: mem -> Prop),
     <{ * a --> bs
@@ -1710,21 +1757,14 @@ Definition memset: {f: list string * list string * cmd &
   }.
 .**/ {                                                                          /**.
 .**/   uintptr_t i = 0;                                                         /**.
-       replace bs with
-         (List.repeat (byte.of_Z (word.unsigned b)) (Z.to_nat (word.unsigned i)) ++
-          List.skipn (Z.to_nat (word.unsigned i)) bs) in H. 2: {
-         subst i.
-         repeat word_simpl_step_in_goal.
-         list_simpl_in_goal.
-         reflexivity.
-       }
+       Replace bs with (repeat (b to byte) (i to nat) ++ bs[i to nat :]) in H
+           by solve_list_eq.
        let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n.
        move i at bottom.
        assert (0 <= word.unsigned i <= word.unsigned n) by ZnWords.
        clearbody i.
 
        eapply (wp_while (n - i) (live_expr:(i < n))).
-
 
 {
   lazymatch goal with
@@ -1778,16 +1818,15 @@ Definition memset: {f: list string * list string * cmd &
          (* TODO: automate prettification steps below *)
          rewrite Z.div_1_r in *.
          rewrite List.repeat_length in *.
-         replace (S (Z.to_nat \[i]) - Z.to_nat \[i] + Z.to_nat \[i])
-           with (Z.to_nat \[i] + 1%nat) in * by ZnWords.
+         Replace (S (i to nat) - i to nat + i to nat) with (i to nat + 1%nat) in *
+             by ZnWords.
 
 .**/     i = i + 1;                                                             /**.
 (*.**/   }                                                                        /**.*)
   eapply wp_skip.
   eexists.
   prove_concrete_post.
-  replace (Z.to_nat \[i_0 + word.of_Z (word := word) 1])
-    with (Z.to_nat \[i_0] + 1%nat) by ZnWords.
+  Replace ((i_0 + 1 to word) to nat) with (i_0 to nat + 1 to nat) by ZnWords.
   rewrite List.repeat_app.
   rewrite <- List.app_assoc.
   assumption. }
@@ -1798,7 +1837,7 @@ Definition memset: {f: list string * list string * cmd &
   intros.
   unfold seps in *.
   fwd.
-  replace (Z.to_nat \[i]) with (len bs) in * by ZnWords.
+  Replace (i to nat) with (len bs) in * by ZnWords.
 .**/   }                                                                        /**.
 Defined.
 
@@ -1860,7 +1899,7 @@ Definition sort3: {f: list string * list string * cmd &
       exists v0 v1 v2,
         t' = t /\
         Permutation vs [| v0; v1; v2 |] /\
-        \[v0] <= \[v1] <= \[v2] /\
+        v0 to Z <= v1 to Z <= v2 to Z /\
         <{ * a --> [| v0; v1; v2 |]
            * R }> m'
   )}.

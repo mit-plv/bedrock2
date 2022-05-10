@@ -3,6 +3,7 @@ Require Import coqutil.Map.Interface.
 Require Import coqutil.Word.Interface.
 Require Import bedrock2.Map.SeparationLogic.
 Require Export coqutil.Datatypes.OperatorOverloading.
+Require Export coqutil.Datatypes.ToConversion.
 Require Export bedrock2.ListIndexNotations.
 
 #[export] Instance MulSepClause{K V: Type}{M: map.map K V}(a b: @map.rep K V M -> Prop)
