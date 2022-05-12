@@ -29,7 +29,8 @@ Section LiveVerif.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Local Set Implicit Arguments.
   Local Open Scope string_scope. Local Open Scope Z_scope.
-  Notation len := List.length.
+  (* Not a Definition because if the Z.of_nat is visible, lia knows it's positive *)
+  Notation "'len' l" := (Z.of_nat (List.length l)) (at level 10).
   Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per 32 sz)) (at level 10).
   Local Open Scope oo_scope.
   Local Open Scope list_index_scope.

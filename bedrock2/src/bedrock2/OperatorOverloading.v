@@ -14,11 +14,10 @@ Require Export bedrock2.ListIndexNotations.
 
 Local Set Warnings "-notation-overridden".
 Notation "a * b" := (sep a b) (only printing) : type_scope.
+Notation "a * b" := (infer! Multiplication a b) (only parsing) : type_scope.
 Local Set Warnings "notation-overridden".
 
 Notation "a * b" := (sep a b) (only printing) : oo_scope.
-
-Notation "a * b" := (infer! Multiplication a b) (only parsing) : type_scope.
 
 
 Require Import bedrock2.Scalars.
