@@ -183,7 +183,7 @@ Section FitsStack.
         simpl in E0.
         fwd.
         assert (map.get e_glob f = Some (argnames, retnames, fbody)) as Q. {
-          unfold map.split, map.disjoint in *.
+          unfold map.split, map.disjoint in A.
           fwd.
           etransitivity. 1: exact E.
           erewrite map.get_putmany_right in E.
