@@ -456,9 +456,15 @@ Definition assert(b: bool)(els: result unit): result unit := if b then Success t
 Definition mapping_eqb: srcvar * impvar -> srcvar * impvar -> bool :=
   fun '(x, x') '(y, y') => andb (String.eqb x y) (Z.eqb x' y').
 
+Definition check_regs (x: srcvar) (x': impvar) : bool :=
+  negb (andb (isRegStr x) (negb (isRegZ x'))).
+
 Definition assert_in(y: srcvar)(y': impvar)(m: list (srcvar * impvar)): result unit :=
   match List.find (mapping_eqb (y, y')) m with
-  | Some _ => Success tt
+  | Some _ => if check_regs y y' then Success tt else
+               error:("The register allocator found a mapping of source register variable" y
+                      "to target stack variable" y'                                                                     
+                      "but source register variables must be in registers in the target.")                      
   | None => error:("The register allocator replaced source variable" y
                    "by target variable" y'
                    "but when the checker encountered this pair,"
@@ -474,7 +480,12 @@ Definition assert_ins(args: list srcvar)(args': list impvar)(m: list (srcvar * i
                        (List.combine args args'))
          error:("Register allocation checker got a source variable list" args
                 "and a target variable list" args'
-                "that are incompatible with its current mapping of source to target variables" m).
+                "that are incompatible with its current mapping of source to target variables" m);;
+  assert (List.forallb (fun '(x, x') => if check_regs x x' then true else false)
+                       (List.combine args args'))                                  
+         error:("Register allocation checker got a source variable list" args
+                "and a target variable list" args'
+                "in which at least one source register variable is on the stack in the target.").
 
 Definition check_bcond(m: list (srcvar * impvar))(c: bcond)(c': bcond'): result unit :=
   match c, c' with
@@ -488,13 +499,20 @@ Definition check_bcond(m: list (srcvar * impvar))(c: bcond)(c': bcond'): result 
   | _, _ => error:("Register allocation checker cannot match" c "and" c')
   end.
 
-Definition assignment(m: list (srcvar * impvar))(x: srcvar)(x': impvar): list (srcvar * impvar) :=
-  (x, x') :: (remove_by_snd Z.eqb x' (remove_by_fst String.eqb x m)).
-
+Definition assignment(m: list (srcvar * impvar))(x: srcvar)(x': impvar): result (list (srcvar * impvar)) :=
+  if check_regs x x' then
+    Success ((x, x') :: (remove_by_snd Z.eqb x' (remove_by_fst String.eqb x m)))
+  else
+    error:("Register allocation checker got an assignment of source register variable" x
+           "to target stack variable" x'
+           "but source register variables must be in registers in the target.").
+           
 Fixpoint assignments(m: list (srcvar * impvar))(xs: list srcvar)(xs': list impvar):
   result (list (srcvar * impvar)) :=
   match xs, xs' with
-  | x :: xs0, x' :: xs0' => assignments (assignment m x x') xs0 xs0'
+  | x :: xs0, x' :: xs0' =>
+      a <- assignment m x x';;
+      assignments a xs0 xs0'
   | nil, nil => Success m
   | _, _ => error:("Register allocator checker got variable lists of different length")
   end.
@@ -530,7 +548,8 @@ Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: result 
     assert_in y y' m;;
     assert (Z.eqb ofs ofs') err;;
     assert (access_size_beq sz sz') err;;
-    Success (assignment m x x')
+    a <- assignment m x x';;
+    Success a
   | SStore sz x y ofs, SStore sz' x' y' ofs' =>
     assert_in x x' m;;
     assert_in y y' m;;
@@ -543,20 +562,26 @@ Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: result 
     assert (negb (Z.eqb x' y')) err;;
     assert (access_size_beq sz sz') err;;
     assert (List.list_eqb Byte.eqb bs bs') err;;
-    Success (assignment m x x')
+    a <- (assignment m x x');;
+    Success a
   | SStackalloc x n body, SStackalloc x' n' body' =>
     assert (Z.eqb n n') err;;
-    check (assignment m x x') body body'
+    a <- assignment m x x';;
+    check a body body'
   | SLit x z, SLit x' z' =>
     assert (Z.eqb z z') err;;
-    Success (assignment m x x')
+    a <- assignment m x x';;
+    Success a
   | SOp x op y z, SOp x' op' y' z' =>
     assert_in y y' m;;
     assert_in z z' m;;
     assert (bopname_beq op op') err;;
-    Success (assignment m x x')
+    a <- assignment m x x';;
+    Success a
   | SSet x y, SSet x' y' =>
-    assert_in y y' m;; Success (assignment m x x')
+    assert_in y y' m;;
+    a <- assignment m x x';;
+    Success a
   | SIf c s1 s2, SIf c' s1' s2' =>
     check_bcond m c c';;
     m1 <- check m s1 s1';;
@@ -633,8 +658,8 @@ Lemma extends_cons: forall a l1 l2,
 Proof.
   unfold extends, assert_in. simpl. intros. simp.
   destruct_one_match_hyp. 1: reflexivity.
-  epose proof (H _ _ _) as A. destruct_one_match_hyp. 2: discriminate. rewrite E1. reflexivity.
-  Unshelve. rewrite E. reflexivity.
+  epose proof (H _ _ _) as A. destruct_one_match_hyp. 2: discriminate. rewrite E2. reflexivity.
+  Unshelve. rewrite E. rewrite E0. reflexivity.
 Qed.
 
 Lemma extends_cons_l: forall a l,
@@ -650,13 +675,14 @@ Lemma extends_cons_r: forall a l1 l2,
     extends l1 l2 ->
     extends l1 (a :: l2).
 Proof.
-  unfold extends, assert_in. simpl. intros. simp.
+  unfold extends, assert_in. simpl. intros. simp.  
   destruct_one_match_hyp. 2: {
-    eapply H0. rewrite E. reflexivity.
+    specialize (H0 x x'). rewrite E in H0. rewrite E0 in H0. 
+    eapply H0. reflexivity. 
   }
   destruct_one_match. 1: reflexivity.
-  eapply find_none in E1. 2: eassumption.
-  simpl in E1. exfalso. congruence.
+  eapply find_none in E2. 2: eassumption.
+  simpl in E2. exfalso. congruence.
 Qed.
 
 Lemma extends_intersect_l: forall l1 l2,
@@ -840,25 +866,26 @@ Section RegAlloc.
     induction ys; intros.
     - unfold assert_ins in *. cbn in *. simp. destruct ys'. 2: discriminate. reflexivity.
     - cbn in *. unfold assert_ins, assert in H0. simp.
-      autoforward with typeclass_instances in E3. destruct ys' as [|a' ys']. 1: discriminate.
-      inversion E3. clear E3.
-      cbn in *. simp. simpl in E2.
+      autoforward with typeclass_instances in E5. destruct ys' as [|a' ys']. 1: discriminate.
+      inversion E5. clear E5.
+      cbn in *. simp. simpl in E3.
       erewrite states_compat_get; try eassumption. 2: {
-        unfold assert_in. unfold mapping_eqb. rewrite E1. reflexivity.
+        unfold assert_in. unfold mapping_eqb. rewrite E2. rewrite E1. reflexivity.
       }
       unfold map.getmany_of_list in *.
       erewrite IHys; eauto.
       unfold assert_ins. rewrite H1. rewrite Nat.eqb_refl. simpl.
-      unfold assert. rewrite E2. reflexivity.
+      unfold assert. rewrite E3. cbn in E4. rewrite E4. reflexivity.
   Qed.
 
-  Lemma states_compat_put: forall lH corresp lL x x' v,
+  Lemma states_compat_put: forall lH corresp lL x x' v m,
+      assignment corresp x x' = Success m ->
       states_compat lH corresp lL ->
-      states_compat (map.put lH x v) (assignment corresp x x') (map.put lL x' v).
+      states_compat (map.put lH x v) m (map.put lL x' v).
   Proof.
     intros. unfold states_compat in *. intros k k'. intros.
-    rewrite map.get_put_dec. rewrite map.get_put_dec in H1.
-    unfold assert_in, assignment in H0. simp. simpl in E.
+    rewrite map.get_put_dec. rewrite map.get_put_dec in H2.
+    unfold assert_in, assignment in H, H0, H1. simp. simpl in E.
     rewrite String.eqb_sym, Z.eqb_sym in E.
     destr (Z.eqb x' k').
     - destr (String.eqb x k).
@@ -877,10 +904,10 @@ Section RegAlloc.
       eapply In_remove_by_fst in E. destruct E.
       destr (String.eqb x k).
       + exfalso. congruence.
-      + eapply H. 2: eassumption. unfold assert_in.
-        destruct_one_match. 1: reflexivity.
-        eapply find_none in E1. 2: eassumption.
-        simpl in E1. rewrite String.eqb_refl, Z.eqb_refl in E1. discriminate.
+      + eapply H0. 2: eassumption. unfold assert_in.
+        destruct_one_match. 1: rewrite E0; trivial. 
+        eapply find_none in E3. 2: eassumption.
+        simpl in E3. rewrite String.eqb_refl, Z.eqb_refl in E3. discriminate.
   Qed.
 
   Lemma putmany_of_list_zip_states_compat: forall binds binds' resvals lL lH l' corresp corresp',
@@ -897,7 +924,7 @@ Section RegAlloc.
     - simpl in *. simp.
       specialize IHbinds with (1 := H).
       rename l' into lH'.
-      edestruct IHbinds as (lL' & P & C). 1: eassumption. 1: eapply states_compat_put. 1: eassumption.
+      edestruct IHbinds as (lL' & P & C). 1: eassumption. 1: eapply states_compat_put. 1: eassumption. 1: eassumption.
       simpl. rewrite P. eauto.
   Qed.
 
@@ -906,7 +933,8 @@ Section RegAlloc.
   Proof.
     induction xs; intros; destruct xs'; try discriminate.
     - reflexivity.
-    - simpl in *. f_equal. eapply IHxs. eassumption.
+    - simpl in *. f_equal. destruct_one_match_hyp; try discriminate.
+      specialize (IHxs xs' a0 m2). eauto. 
   Qed.
 
   Lemma assert_ins_same_length: forall xs xs' m u,
@@ -921,11 +949,11 @@ Section RegAlloc.
 
   Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s t m lH mc post,
       check_funcs e e' = Success tt ->
-      exec e s t m lH mc post ->
+      exec isRegStr e s t m lH mc post ->
       forall lL corresp corresp' s',
       check corresp s s' = Success corresp' ->
       states_compat lH (precond corresp s s') lL ->
-      exec e' s' t m lL mc (fun t' m' lL' mc' =>
+      exec isRegZ e' s' t m lL mc (fun t' m' lL' mc' =>
         exists lH', states_compat lH' corresp' lL' /\ post t' m' lH' mc').
   Proof.
     induction 2; intros;
@@ -977,6 +1005,8 @@ Section RegAlloc.
         * exact L4.
         * eexists. split. 2: eassumption. exact SC.
     - (* Case exec.load *)
+      econstructor; eauto 10 with checker_hints. 
+      
       eauto 10 with checker_hints.
     - (* Case exec.store *)
       eauto 10 with checker_hints.
