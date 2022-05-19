@@ -146,7 +146,7 @@ Proof.
       apply N.pow_le_mono_r; blia.
 Qed.
 
-Instance StringNameGen: NameGen string N := {|
+#[global] Instance StringNameGen: NameGen string N := {|
   freshNameGenState := start_state;
   genFresh := fresh_string_var;
   allFreshVars := all_from;

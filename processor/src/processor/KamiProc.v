@@ -293,7 +293,7 @@ Section PerInstAddr.
 
 End PerInstAddr.
 
-Instance kami_AbsMMIO (memSizeLg: N): AbsMMIO (Z.to_nat width) :=
+#[global] Instance kami_AbsMMIO (memSizeLg: N): AbsMMIO (Z.to_nat width) :=
   {| isMMIO :=
        fun _ addr => ($$(NToWord _ (2 ^ memSizeLg)) <= #addr)%kami_expr
   |}.
