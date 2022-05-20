@@ -43,7 +43,9 @@
 ;;    (setq dbg-latest-overlay ov)))
 
 (defun lv-hs-set-up-overlay (ov)
-  (move-overlay ov (overlay-start ov) (- (overlay-end ov) 1)))
+  ; (move-overlay ov (overlay-start ov) (- (overlay-end ov) 1)))
+  ; u2026 = triple dot in one char
+  (overlay-put ov 'display (propertize "\u2026" 'face 'font-lock-type-face)))
 
 (setq hs-set-up-overlay #'lv-hs-set-up-overlay)
 

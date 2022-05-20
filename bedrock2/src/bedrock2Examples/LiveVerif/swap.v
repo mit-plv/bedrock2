@@ -1,3 +1,5 @@
+(* -*- eval: (load-file "live_verif_setup.el"); -*- *)
+
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
@@ -1837,27 +1839,27 @@ Definition memset: {f: list string * list string * cmd &
          * R }> m' /\
       retvs = nil)
   }.
-.**/ {                                                                          /**.
-.**/   uintptr_t i = 0;                                                         /**.
+.**/
+{                                                                        /**. .**/
+  uintptr_t i = 0;                                                       /**.
 
-       Replace bs with (repeat (b to byte) (i to nat) ++ bs[i to nat :]) in H
-           by solve_list_eq.
-       loop invariant above i.
-       move H0 before R. (* not strictly needed *)
-       assert (0 <= i to Z <= n to Z) by ZnWords.
-       clearbody i.
+Replace bs with (repeat (b to byte) (i to nat) ++ bs[i to nat :]) in H by solve_list_eq.
+loop invariant above i.
+move H0 before R. (* not strictly needed *)
+assert (0 <= i to Z <= n to Z) by ZnWords.
+clearbody i.
+.**/
+  while (i < n) /* decreases (n - i) */ {                                /**. .**/
+    store1(a + i, b);                                                    /**.
 
-.**/   while (i < n) /* decreases (n - i) */ {                                  /**.
-.**/     store1(a + i, b);                                                      /**.
+(* TODO: automate prettification steps below *)
+rewrite Z.div_1_r in *.
+rewrite List.repeat_length in *.
+Replace (S (i to nat) - i to nat + i to nat) with (i to nat + 1%nat) in * by ZnWords.
 
-         (* TODO: automate prettification steps below *)
-         rewrite Z.div_1_r in *.
-         rewrite List.repeat_length in *.
-         Replace (S (i to nat) - i to nat + i to nat) with (i to nat + 1%nat) in *
-             by ZnWords.
-
-.**/     i = i + 1;                                                             /**.
-.**/   }                                                                        /**.
+.**/
+     i = i + 1;                                                          /**. .**/
+  }                                                                      /**.
 
 {
   Replace ((i_0 + 1 to word) to nat) with (i_0 to nat + 1 to nat) by ZnWords.
@@ -1868,7 +1870,8 @@ Definition memset: {f: list string * list string * cmd &
 
   fwd.
   Replace (i to nat) with (List.length bs) in * by ZnWords.
-.**/   }                                                                        /**.
+.**/
+}                                                                        /**.
 Defined.
 
 Goal False.
@@ -1884,36 +1887,38 @@ Definition merge_tests: {f: list string * list string * cmd &
        * R }> m ->
     List.length vs = 3%nat ->
     vc_func fs f t m [| a |] (fun t' m' retvs => False)
-  }.
-.**/ {                                                                          /**.
-.**/   uintptr_t w0 = load(a);                                                  /**.
-.**/   uintptr_t w1 = load(a+4);                                                /**.
-.**/   uintptr_t w2 = load(a+8);                                                /**.
-.**/   if (w1 < w0 && w1 < w2) {                                                /**.
-.**/     store(a, w1);                                                          /**.
-.**/     w1 = w0;                                                               /**.
+  }. .**/
+{                                                                        /**. .**/
+  uintptr_t w0 = load(a);                                                /**. .**/
+  uintptr_t w1 = load(a+4);                                              /**. .**/
+  uintptr_t w2 = load(a+8);                                              /**. .**/
+  if (w1 < w0 && w1 < w2) {                                              /**. .**/
+    store(a, w1);                                                        /**. .**/
+    w1 = w0;                                                             /**.
 
-  assert (exists foo: Z, foo + foo = 2) as Foo. {
-    exists 1. reflexivity.
-  }
-  destruct Foo as (foo & Foo).
+assert (exists foo: Z, foo + foo = 2) as Foo. {
+  exists 1. reflexivity.
+}
+destruct Foo as (foo & Foo).
 
-  move m at bottom.
-  move w1 at bottom.
+move m at bottom.
+move w1 at bottom.
 
-  assert (exists bar: nat, (bar + bar = 4 * Z.to_nat foo)%nat) as Bar. {
-    exists 2%nat. blia.
-  }
-  destruct Bar as (bar & Bar).
-  pose (baz := foo + foo).
-  assert (w1 + w0 + word.of_Z baz = word.of_Z baz + w1 + w1) as E by ZnWords.
-  rename w1 into w1tmp.
-  pose (w1 := w0 + word.of_Z baz - word.of_Z baz).
-  move w1 after w1tmp.
-  replace w1tmp with w1 in * by ZnWords. clear w1tmp.
+assert (exists bar: nat, (bar + bar = 4 * Z.to_nat foo)%nat) as Bar. {
+  exists 2%nat. blia.
+}
+destruct Bar as (bar & Bar).
+pose (baz := foo + foo).
+assert (w1 + w0 + word.of_Z baz = word.of_Z baz + w1 + w1) as E by ZnWords.
+rename w1 into w1tmp.
+pose (w1 := w0 + word.of_Z baz - word.of_Z baz).
+move w1 after w1tmp.
+replace w1tmp with w1 in * by ZnWords. clear w1tmp.
 
-.**/  } else {                                                                  /**.
-.**/  }                                                               /**. .**/ /**.
+.**/
+  } else {                                                               /**. .**/
+}                                                                        /**. .**/
+                                                                         /**.
 Abort.
 
 Hint Extern 4 (Permutation _ _) =>
@@ -1932,29 +1937,29 @@ Definition sort3: {f: list string * list string * cmd &
         v0 to Z <= v1 to Z <= v2 to Z /\
         <{ * a --> [| v0; v1; v2 |]
            * R }> m'
-  )}.
-.**/ {                                                                          /**.
-.**/   uintptr_t w0 = load(a);                                                  /**.
-.**/   uintptr_t w1 = load(a+4);                                                /**.
-.**/   uintptr_t w2 = load(a+8);                                                /**.
-.**/   if (w1 <= w0 && w1 <= w2) {                                              /**.
-.**/     store(a, w1);                                                          /**.
-.**/     w1 = w0;                                                               /**.
-.**/   } else {                                                                 /**.
-.**/     if (w2 <= w0 && w2 <= w1) {                                            /**.
-.**/       store(a, w2);                                                        /**.
-.**/       w2 = w0;                                                             /**.
-.**/     } else {                                                               /**.
-.**/     }                                                            /**. .**/ /**.
-.**/   }                                                              /**. .**/ /**.
-.**/   if (w2 < w1) {                                                           /**.
-.**/     store(a+4, w2);                                                        /**.
-.**/     store(a+8, w1);                                                        /**.
-.**/   } else {                                                                 /**.
-.**/     store(a+4, w1);                                                        /**.
-.**/     store(a+8, w2);                                                        /**.
-.**/   }                                                              /**. .**/ /**.
-.**/ }                                                                          /**.
+  )}. .**/
+{                                                                        /**. .**/
+  uintptr_t w0 = load(a);                                                /**. .**/
+  uintptr_t w1 = load(a+4);                                              /**. .**/
+  uintptr_t w2 = load(a+8);                                              /**. .**/
+  if (w1 <= w0 && w1 <= w2) {                                            /**. .**/
+    store(a, w1);                                                        /**. .**/
+    w1 = w0;                                                             /**. .**/
+  } else {                                                               /**. .**/
+    if (w2 <= w0 && w2 <= w1) {                                          /**. .**/
+      store(a, w2);                                                      /**. .**/
+      w2 = w0;                                                           /**. .**/
+    } else {                                                             /**. .**/
+    }                                                          /**. .**/ /**. .**/
+  }                                                            /**. .**/ /**. .**/
+  if (w2 < w1) {                                                         /**. .**/
+    store(a+4, w2);                                                      /**. .**/
+    store(a+8, w1);                                                      /**. .**/
+  } else {                                                               /**. .**/
+    store(a+4, w1);                                                      /**. .**/
+    store(a+8, w2);                                                      /**. .**/
+  }                                                            /**. .**/ /**. .**/
+}                                                                        /**.
 Defined.
 
 (* Print Assumptions sort3. *)
