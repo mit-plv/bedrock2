@@ -1,5 +1,4 @@
 (* -*- eval: (load-file "live_verif_setup.el"); -*- *)
-
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
@@ -581,6 +580,15 @@ Section WithParams.
   Definition arguments_marker(args: list word): list word := args.
 
 End WithParams.
+
+
+(*
+TODO: once we have C notations for function signatures,
+put vernac between /*.   .*/ and ltac between /**.  .**/ so that
+only Ltac gets hidden *)
+Notation "'C_STARTS_HERE' /* *" := True (only parsing).
+Notation "'!EOF' '.*' '*/' //" := True (only parsing).
+
 
 Declare Scope live_scope.
 Delimit Scope live_scope with live.
@@ -1717,27 +1725,10 @@ Local Set Default Goal Selector "1".
 
 Tactic Notation ".*" constr(s) "*" := add_snippet s; after_snippet.
 
-Definition u_min: {f: list string * list string * cmd &
-  forall fs t m a b (R: mem -> Prop),
-    R m ->
-    vc_func fs f t m [| a; b |] (fun t' m' retvs =>
-      t' = t /\ R m' /\
-      (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
-       word.unsigned b <= word.unsigned a /\ retvs = [b])
-  )}.
-.**/ {                                                                          /**.
-.**/   uintptr_t r = 0;                                                         /**.
-.**/   if (a < b) {                                                             /**.
-.**/     r = a;                                                                 /**.
-.**/   } else {                                                                 /**.
-.**/     r = b;                                                                 /**.
-.**/   }                                                                        /**.
-.**/                                                                            /**.
-.**/   return r;                                                                /**.
-.**/ }                                                                          /**.
-Defined.
+Comments C_STARTS_HERE
+/**.
 
-Definition u_min': {f: list string * list string * cmd &
+Definition u_min: {f: list string * list string * cmd &
   forall fs t m a b (R: mem -> Prop),
     R m ->
     vc_func fs f t m [| a; b |] (fun t' m' retvs =>
@@ -2027,3 +2018,5 @@ forall
                (BinNums.xO (BinNums.xO (BinNums.xO (BinNums.xO (BinNums.xO BinNums.xH))))))},
 word.ok word -> forall a b : word, foo a b = foo b a
  *)
+
+Comments !EOF .**/ //.

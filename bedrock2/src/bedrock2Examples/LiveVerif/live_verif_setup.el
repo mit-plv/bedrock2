@@ -16,7 +16,7 @@
 ;; In hideshow, this is not the default because it doesn't work with nested blocks,
 ;; so the default uses forward-sexp instead.
 (defun lv-hs-forward-sexp-func (arg)
-  (re-search-forward hs-block-end-regexp nil t))
+  (re-search-forward hs-block-end-regexp nil))
 
 (add-to-list 'hs-special-modes-alist `(coq-mode
    "/\\*\\*\\."             ; hs-block-start-regexp
