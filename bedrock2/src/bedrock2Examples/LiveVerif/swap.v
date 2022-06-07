@@ -1035,57 +1035,6 @@ Section MergingSep.
   Qed.
 End MergingSep.
 
-Section MergingLists.
-  Context [A: Type].
-
-  Lemma push_if_app_l: forall (b: bool) (l1 l2 r: list A),
-      (if b then (l1 ++ l2) else r) =
-        (if b then l1 else List.firstn (List.length l1) r) ++
-        (if b then l2 else List.skipn (List.length l1) r).
-  Proof.
-    intros. destruct b. 1: reflexivity. symmetry. apply List.firstn_skipn.
-  Qed.
-
-  Lemma push_if_app_r: forall (b: bool) (l r1 r2: list A),
-      (if b then l else (r1 ++ r2)) =
-        (if b then List.firstn (List.length r1) l else r1) ++
-        (if b then List.skipn (List.length r1) l else r2).
-  Proof.
-    intros. destruct b. 2: reflexivity. symmetry. apply List.firstn_skipn.
-  Qed.
-
-  Lemma push_if_singleton: forall (b: bool) (a1 a2: A),
-      (if b then [a1] else [a2]) = [if b then a1 else a2].
-  Proof. intros. destruct b; reflexivity. Qed.
-
-  Lemma pull_if_firstn: forall (b: bool) (l1 l2: list A) n,
-      List.firstn n (if b then l1 else l2) =
-        if b then List.firstn n l1 else List.firstn n l2.
-  Proof. intros. destruct b; reflexivity. Qed.
-
-  Lemma pull_if_skipn: forall (b: bool) (l1 l2: list A) n,
-      List.skipn n (if b then l1 else l2) =
-        if b then List.skipn n l1 else List.skipn n l2.
-  Proof. intros. destruct b; reflexivity. Qed.
-
-  Lemma pull_if_length: forall (b: bool) (l1 l2: list A),
-      List.length (if b then l1 else l2) = if b then List.length l1 else List.length l2.
-  Proof. intros. destruct b; reflexivity. Qed.
-End MergingLists.
-
-Lemma if_same[A: Type](b: bool)(a: A): (if b then a else a) = a.
-Proof. destruct b; reflexivity. Qed.
-
-#[export] Hint Rewrite
-  push_if_app_l
-  push_if_app_r
-  push_if_singleton
-  if_same
-  pull_if_firstn
-  pull_if_skipn
-  pull_if_length
-: fwd_rewrites.
-
 Fixpoint zip_tuple_if{A: Type}(b: bool){n: nat}(t1 t2: tuple A n){struct n}: tuple A n.
   destruct n.
   - exact tt.
@@ -1548,7 +1497,11 @@ Ltac add_snippet s :=
   end.
 
 Ltac after_snippet :=
-  repeat (repeat word_simpl_step_in_hyps; fwd).
+  fwd;
+  (* leftover from word_simpl_step_in_hyps, TODO where to put? in fwd? *)
+  repeat match goal with
+         | H: ?x = ?y |- _ => is_var x; is_var y; subst x
+         end.
 
 (* Note: An rhs_var appears in expressions and, in our setting, always has a corresponding
    var (of type word) bound in the current context, whereas an lhs_var may or may not be
