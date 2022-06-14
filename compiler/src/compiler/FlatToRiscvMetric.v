@@ -91,7 +91,7 @@ Section Proofs.
       ext_spec t mGive action argvals outcome -> False.
 
   Hypothesis stackalloc_always_0: forall x n body t m (l: locals) mc post,
-      FlatImp.exec map.empty (SStackalloc x n body) t m l mc post -> n = 0.
+      FlatImp.exec isRegZ map.empty (SStackalloc x n body) t m l mc post -> n = 0.
 
   Hypothesis sp_always_set: forall l: locals,
       map.get l RegisterNames.sp = Some (word.of_Z 42).
@@ -101,7 +101,7 @@ Section Proofs.
 
   Lemma compile_stmt_correct:
     forall (s: stmt Z) t initialMH initialRegsH postH initialMetricsH,
-    FlatImp.exec map.empty s t initialMH initialRegsH initialMetricsH postH ->
+    FlatImp.exec isRegZ map.empty s t initialMH initialRegsH initialMetricsH postH ->
     forall R Rexec (initialL: RiscvMachineL) insts pos,
     compile_stmt iset compile_ext_call map.empty pos 12345678 s = insts ->
     stmt_not_too_big s ->

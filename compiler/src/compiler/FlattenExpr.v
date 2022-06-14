@@ -337,13 +337,15 @@ Section FlattenExpr1.
     simpl (disjoint _ _) in *;
     map_solver locals_ok.
 
+  Local Notation exec := (FlatImp.exec FlatImp.isRegStr). 
+  
   Lemma seq_with_modVars: forall env t m (l: locals) mc s1 s2 mid post,
-    FlatImp.exec env s1 t m l mc mid ->
+    exec env s1 t m l mc mid ->
     (forall t' m' l' mc',
         mid t' m' l' mc' ->
         map.only_differ l (FlatImp.modVars s1) l' ->
-        FlatImp.exec env s2 t' m' l' mc' post) ->
-    FlatImp.exec env (FlatImp.SSeq s1 s2) t m l mc post.
+        exec env s2 t' m' l' mc' post) ->
+    exec env (FlatImp.SSeq s1 s2) t m l mc post.
   Proof.
     intros *. intros E1 E2. eapply @FlatImp.exec.seq.
     - eapply FlatImp.exec.intersect.
@@ -365,7 +367,7 @@ Section FlattenExpr1.
     map.undef_on initialH (allFreshVars ngs1) ->
     disjoint (union (ExprImp.allVars_expr e) (of_option oResVar)) (allFreshVars ngs1) ->
     eval_expr initialM initialH e initialMcH = Some (res, finalMcH) ->
-    FlatImp.exec fenv s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
+    exec fenv s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       t' = t /\ finalM = initialM /\ map.get finalL resVar = Some res /\
       (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
   Proof.
@@ -498,7 +500,7 @@ Section FlattenExpr1.
     map.undef_on lH (allFreshVars ngs1) ->
     disjoint (union (ExprImp.allVars_expr e) (of_option oResVar)) (allFreshVars ngs1) ->
     eval_expr m lH e initialMcH = Some (res, finalMcH) ->
-    FlatImp.exec fenv s t m lL initialMcL (fun t' m' lL' finalMcL =>
+    exec fenv s t m lL initialMcL (fun t' m' lL' finalMcL =>
       map.only_differ lL (FlatImp.modVars s) lL' /\
       t' = t /\ m' = m /\ map.get lL' resVar = Some res /\
       (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
@@ -517,7 +519,7 @@ Section FlattenExpr1.
     disjoint (ExprImp.allVars_exprs es) (allFreshVars ngs1) ->
     evaluate_call_args_log m lH es initialMcH = Some (resVals, finalMcH) ->
     (* List.option_all (List.map (eval_expr m lH) es) = Some resVals -> *)
-    FlatImp.exec fenv s t m lL initialMcL (fun t' m' lL' finalMcL =>
+    exec fenv s t m lL initialMcL (fun t' m' lL' finalMcL =>
       t' = t /\ m' = m /\
       map.getmany_of_list lL' resVars = Some resVals /\
       map.only_differ lL (FlatImp.modVars s) lL' /\
@@ -590,7 +592,7 @@ Section FlattenExpr1.
     map.undef_on initialH (allFreshVars ngs1) ->
     disjoint (ExprImp.allVars_expr e) (allFreshVars ngs1) ->
     eval_expr initialM initialH e initialMcH = Some (res, finalMcH) ->
-    FlatImp.exec fenv s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
+    exec fenv s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       t' = t /\ finalM = initialM /\
       FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))) /\
       (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH).
@@ -627,7 +629,7 @@ Section FlattenExpr1.
     map.undef_on initialH (allFreshVars ngs1) ->
     disjoint (ExprImp.allVars_expr e) (allFreshVars ngs1) ->
     eval_expr initialM initialH e initialMcH = Some (res, finalMcH) ->
-    FlatImp.exec fenv s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
+    exec fenv s t initialM initialL initialMcL (fun t' finalM finalL finalMcL =>
       (t' = t /\ finalM = initialM /\
        FlatImp.eval_bcond finalL resCond = Some (negb (word.eqb res (word.of_Z 0))) /\
        (finalMcL - initialMcL <= finalMcH - initialMcH)%metricsH) /\
@@ -684,7 +686,7 @@ Section FlattenExpr1.
       map.extends lL lH ->
       map.undef_on lH (allFreshVars ngs) ->
       disjoint (ExprImp.allVars_cmd sH) (allFreshVars ngs) ->
-      FlatImp.exec eL sL t m lL mcL (fun t' m' lL' mcL' => exists lH' mcH',
+      exec eL sL t m lL mcL (fun t' m' lL' mcL' => exists lH' mcH',
         post t' m' lH' mcH' /\ (* <-- put first so that eassumption will instantiate lH' correctly *)
         map.extends lL' lH' /\
         (* this one is a property purely about ExprImp (it's the conclusion of
@@ -924,7 +926,7 @@ Section FlattenExpr1.
       flatten_functions eH = Success eL ->
       ExprImp2FlatImp sH = sL ->
       Semantics.exec eH sH t m map.empty mc post ->
-      FlatImp.exec eL sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
+      exec eL sL t m lL mc (fun t' m' lL' mcL' => exists lH' mcH',
         post t' m' lH' mcH' /\
         map.extends lL' lH' /\
         (mcL' - mc <= mcH' - mc)%metricsH).
