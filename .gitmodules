@@ -12,3 +12,6 @@
 [submodule "deps/coq-record-update"]
 	path = deps/coq-record-update
 	url = https://github.com/tchajed/coq-record-update.git
+[submodule "deps/sponge"]
+	path = deps/sponge
+	url = git@github.com:threonorm/sponge.git
