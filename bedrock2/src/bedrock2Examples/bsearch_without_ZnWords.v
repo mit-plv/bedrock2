@@ -63,8 +63,7 @@ Module word.
       rewrite Z.shiftr_div_pow2. 2: apply H. reflexivity.
     Qed.
 
-    Lemma unsigned_nonneg: forall x: word,
-        trigger (word.unsigned x) -> 0 <= word.unsigned x.
+    Lemma unsigned_nonneg: forall x: word, 0 <= word.unsigned x.
     Proof. intros. apply word.unsigned_range. Qed.
   End WithWord.
 End word.
@@ -85,12 +84,10 @@ Module Z.
       x <= y -> x <> y -> x < y.
   Proof. intros. Lia.lia. Qed.
 
-  Lemma mul_nonneg : forall e1 e2 : Z,
-      trigger (e1 * e2) -> 0 <= e1 -> 0 <= e2 -> 0 <= e1 * e2.
+  Lemma mul_nonneg : forall e1 e2 : Z, 0 <= e1 -> 0 <= e2 -> 0 <= e1 * e2.
   Proof. intros. Lia.nia. Qed.
 
-  Lemma div_nonneg : forall a b : Z,
-      trigger (a / b) -> 0 <= a -> 0 < b -> 0 <= a / b.
+  Lemma div_nonneg : forall a b : Z, 0 <= a -> 0 < b -> 0 <= a / b.
   Proof. intros. apply Z.div_pos; assumption. Qed.
 
   Lemma forget_mod_in_lt_l : forall a b m : Z,
@@ -205,13 +202,19 @@ Ltac pose_lib_lemmas :=
   pose proof word.add_opp as wadd_opp;
   pose proof word.sub_def as wsub_def;
   pose proof word.unsigned_of_Z_nowrap as wunsigned_of_Z_nowrap;
-  pose proof word.unsigned_nonneg as wunsigned_nonneg;
+  pose proof (word.unsigned_nonneg: forall x : word,
+                 trigger! ((word.unsigned x)) (0 <= word.unsigned x))
+    as wunsigned_nonneg;
   pose proof word.unsigned_sru_to_div_pow2 as wunsigned_sru_to_div_pow2;
   pose proof word.unsigned_slu_to_mul_pow2 as wunsigned_slu_to_mul_pow2;
   (* Z *)
   pose proof Z.forget_mod_in_lt_l as Z_forget_mod_in_lt_l;
-  pose proof Z.mul_nonneg as Z_mul_nonneg;
-  pose proof Z.div_nonneg as Z_div_nonneg;
+  pose proof (Z.mul_nonneg: forall e1 e2 : Z,
+                 trigger! ((e1 * e2)) (0 <= e1 -> 0 <= e2 -> 0 <= e1 * e2))
+    as Z_mul_nonneg;
+  pose proof (Z.div_nonneg: forall a b : Z,
+                 trigger! ((a / b)) (0 <= a -> 0 < b -> 0 <= a / b))
+    as Z_div_nonneg;
   pose proof Z.div_mul_lt as Z_div_mul_lt;
   pose proof Z.lt_from_le_and_neq as Z_lt_from_le_and_neq;
   pose proof Z.remove_inner_mod as Z_remove_inner_mod;
@@ -220,8 +223,15 @@ Ltac pose_lib_lemmas :=
   pose proof @eq_eq_sym as H_eq_eq_sym;
   pose proof eq_same_True as H_eq_same_True.
 
+(* will have to stop using fully applied sep *)
+Ltac desep :=
+  repeat match goal with
+         | H: sep _ _ _ |- _ => clear H
+         | x := context[@sep] |- _ => subst x
+         end.
+
 Ltac write_goal :=
-  pose_const_sideconds; pose_lib_lemmas; egg_simpl_goal.
+  desep; pose_const_sideconds; pose_lib_lemmas; egg_simpl_goal.
 
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
 Proof.
@@ -266,12 +276,11 @@ Proof.
       eapply Z.le_lt_trans. 1: eapply Z.mod_le.
       { eapply Ztac.mul_le. 2: consts.
         eapply Z.div_pos. 2: consts.
-        eapply word.unsigned_nonneg.
-        exact I. }
+        eapply word.unsigned_nonneg.}
       { consts. }
       eapply Z.div_mul_lt. 2,3: consts.
       eapply Z.lt_from_le_and_neq.
-      1: apply word.unsigned_nonneg. 1: exact I.
+      1: apply word.unsigned_nonneg.
       apply neq_sym.
       apply H4. }
 
@@ -288,10 +297,8 @@ Proof.
       rewrite <- C9.
       rewrite Z_remove_inner_mod. 2: exact C7. 2: exact C6. 2: exact C10.
       rewrite Z__mod_mult.
-      reflexivity.
+      reflexivity. }
 
-(*
-      ZnWords. }
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split; [repeat straightline|].
       1:split.
@@ -333,5 +340,3 @@ Proof.
 
   all:fail "remaining subgoals".
 Qed.
-*)
-Abort.
