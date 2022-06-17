@@ -1,5 +1,6 @@
 Require Import Coq.Strings.String Coq.ZArith.ZArith.
 Require Import coqutil.Z.Lia.
+Require Import bedrock2.ZnWords.
 From bedrock2 Require Import NotationsCustomEntry ProgramLogic Map.Separation Array Scalars Loops.
 
 Require Import egg.Loader.
@@ -62,7 +63,8 @@ Module word.
       rewrite Z.shiftr_div_pow2. 2: apply H. reflexivity.
     Qed.
 
-    Lemma unsigned_nonneg: forall x: word, 0 <= word.unsigned x.
+    Lemma unsigned_nonneg: forall x: word,
+        trigger (word.unsigned x) -> 0 <= word.unsigned x.
     Proof. intros. apply word.unsigned_range. Qed.
   End WithWord.
 End word.
@@ -81,8 +83,13 @@ Module Z.
       x <= y -> x <> y -> x < y.
   Proof. intros. Lia.lia. Qed.
 
-  Lemma mul_nonneg : forall e1 e2 : Z, 0 <= e1 -> 0 <= e2 -> 0 <= e1 * e2.
+  Lemma mul_nonneg : forall e1 e2 : Z,
+      trigger (e1 * e2) -> 0 <= e1 -> 0 <= e2 -> 0 <= e1 * e2.
   Proof. intros. Lia.nia. Qed.
+
+  Lemma div_nonneg : forall a b : Z,
+      trigger (a / b) -> 0 <= a -> 0 < b -> 0 <= a / b.
+  Proof. intros. apply Z.div_pos; assumption. Qed.
 
   Lemma forget_mod_in_lt_l : forall a b m : Z,
       0 <= a ->
@@ -190,12 +197,14 @@ Ltac pose_lib_lemmas :=
   (* Z *)
   pose proof Z.forget_mod_in_lt_l as Z_forget_mod_in_lt_l;
   pose proof Z.mul_nonneg as Z_mul_nonneg;
-  pose proof Z.div_pos as Z_div_pos;
+  pose proof Z.div_nonneg as Z_div_nonneg;
   pose proof Z.div_mul_lt as Z_div_mul_lt;
   pose proof Z.lt_from_le_and_neq as Z_lt_from_le_and_neq;
   (* misc *)
   pose proof @eq_eq_sym as H_eq_eq_sym.
 
+Ltac write_goal :=
+  pose_const_sideconds; pose_lib_lemmas; egg_simpl_goal.
 
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
 Proof.
@@ -232,8 +241,7 @@ Proof.
       clear H3 v.
       clear -H4 length_rep.
 
-      pose_const_sideconds. pose_lib_lemmas.
-      egg_simpl_goal.
+      write_goal.
 
       rewrite word.unsigned_of_Z_nowrap by consts.
       rewrite <- length_rep.
@@ -244,60 +252,19 @@ Proof.
       eapply Z.le_lt_trans. 1: eapply Z.mod_le.
       { eapply Ztac.mul_le. 2: consts.
         eapply Z.div_pos. 2: consts.
-        eapply word.unsigned_nonneg. }
+        eapply word.unsigned_nonneg.
+        exact I. }
       { consts. }
       eapply Z.div_mul_lt. 2,3: consts.
       eapply Z.lt_from_le_and_neq.
-      1: apply word.unsigned_nonneg.
+      1: apply word.unsigned_nonneg. 1: exact I.
       apply neq_sym.
       apply H4. }
+
+    { write_goal.
 
 (*
-    { subst mid.
-      clear H3 v.
-      clear -H4 length_rep.
-Notation "'(unsigned'  x )" := (word.unsigned x) (at level 10).
-Notation "'(ZToWord'  x )" := (word.of_Z x) (at level 10).
-Notation "'(wslu'  a b )" := (word.slu a b) (at level 10).
-Notation "'(wsru'  a b )" := (word.sru a b) (at level 10).
-Notation "'(wsub'  a b )" := (word.sub a b) (at level 10).
-Notation "'(wadd'  a b )" := (word.add a b) (at level 10).
-
-{
-revert x x1 x2 length_rep H4.
-
-      generalize word.word_sub_add_l_same_l.
-      generalize word.unsigned_slu_to_mul_pow2.
-      generalize word.unsigned_sru_to_div_pow2.
-      generalize Z.le_lt_trans.
-
-      generalize  Z.mod_le.
-      generalize Ztac.mul_le.
-      generalize  Z.div_pos.
-        generalize word.unsigned_nonneg.
-        generalize Z.div_mul_lt.
-      generalize Z.lt_from_le_and_neq.
-      generalize @neq_sym.
-      apply H4. }
-
-    { rewrite word.unsigned_of_Z_nowrap by consts.
-      subst mid.
-      rewrite <- length_rep.
-      rewrite word.word_sub_add_l_same_l.
-      rewrite word.unsigned_slu_to_mul_pow2 by consts.
-      rewrite word.unsigned_sru_to_div_pow2 by consts.
-      eapply Z.le_lt_trans. 1: eapply Z.mod_le.
-      { eapply Ztac.mul_le. 2: consts.
-        eapply Z.div_pos. 2: consts.
-        eapply word.unsigned_nonneg. }
-      { consts. }
-      eapply Z.div_mul_lt. 2,3: consts.
-      eapply Z.lt_from_le_and_neq.
-      1: apply word.unsigned_nonneg.
-      apply neq_sym.
-      apply H4. }
-
-    { ZnWords. }
+      ZnWords. }
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split; [repeat straightline|].
       1:split.
