@@ -69,7 +69,9 @@ Module word.
   End WithWord.
 End word.
 
-Lemma neq_sym{A: Type}: forall (x y: A), x <> y -> y <> x. congruence. Qed.
+Lemma neq_sym{A: Type}: forall (x y: A), x <> y -> y <> x. Proof. congruence. Qed.
+Lemma eq_same_True: forall (A: Type) (a: A), (a = a) = True.
+Proof. intros. apply propositional_extensionality; split; intros; auto. Qed.
 
 Module Z.
   Lemma div_mul_lt: forall x d1 d2,
@@ -99,6 +101,13 @@ Module Z.
   Proof.
     intros. eapply Z.le_lt_trans. 1: eapply Z.mod_le. all: assumption.
   Qed.
+
+  Lemma remove_inner_mod: forall n m a : Z,
+      0 < n ->
+      0 < m ->
+      (n | m) ->
+      (a mod m) mod n = a mod n.
+  Proof. intros. symmetry. apply Znumtheory.Zmod_div_mod; assumption. Qed.
 End Z.
 
 From bedrock2 Require Import Semantics BasicC64Semantics.
@@ -171,6 +180,9 @@ Ltac consts :=
   end;
   reflexivity.
 
+Lemma eight_divides_2_64: (2 ^ 3 | 2 ^ 64).
+Proof. unfold Z.divide. exists (2 ^ 61). reflexivity. Qed.
+
 Ltac pose_const_sideconds :=
   assert (0 <= 8 < 2 ^ 64) as C1 by consts;
   assert (0 <= 3 < 64) as C2 by consts;
@@ -179,7 +191,9 @@ Ltac pose_const_sideconds :=
   assert (0 < 2 ^ 4) as C5 by consts;
   assert (0 < 2 ^ 64) as C6 by consts;
   assert (0 < 2 ^ 3) as C7 by consts;
-  assert (2 ^ 3 < 2 ^ 4) as C8 by consts.
+  assert (2 ^ 3 < 2 ^ 4) as C8 by consts;
+  assert (2 ^ 3 = 8) as C9 by reflexivity;
+  pose proof eight_divides_2_64 as C10.
 
 Ltac pose_lib_lemmas :=
   (* word *)
@@ -200,8 +214,11 @@ Ltac pose_lib_lemmas :=
   pose proof Z.div_nonneg as Z_div_nonneg;
   pose proof Z.div_mul_lt as Z_div_mul_lt;
   pose proof Z.lt_from_le_and_neq as Z_lt_from_le_and_neq;
+  pose proof Z.remove_inner_mod as Z_remove_inner_mod;
+  pose proof Z_mod_mult as Z__mod_mult;
   (* misc *)
-  pose proof @eq_eq_sym as H_eq_eq_sym.
+  pose proof @eq_eq_sym as H_eq_eq_sym;
+  pose proof eq_same_True as H_eq_same_True.
 
 Ltac write_goal :=
   pose_const_sideconds; pose_lib_lemmas; egg_simpl_goal.
@@ -237,12 +254,9 @@ Proof.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
 
-    { subst mid.
-      clear H3 v.
-      clear -H4 length_rep.
+    { write_goal.
 
-      write_goal.
-
+      subst mid.
       rewrite word.unsigned_of_Z_nowrap by consts.
       rewrite <- length_rep.
       rewrite word.word_sub_add_l_same_l.
@@ -262,6 +276,19 @@ Proof.
       apply H4. }
 
     { write_goal.
+      subst mid.
+      rewrite wunsigned_of_Z_nowrap by exact C1.
+      rewrite wsub_def.
+      rewrite wadd_comm.
+      rewrite wadd_to_left_assoc.
+      rewrite (wadd_comm (word.opp x1) x1).
+      rewrite wadd_opp.
+      rewrite wadd_0_l.
+      rewrite wunsigned_slu_to_mul_pow2 by exact C2.
+      rewrite <- C9.
+      rewrite Z_remove_inner_mod. 2: exact C7. 2: exact C6. 2: exact C10.
+      rewrite Z__mod_mult.
+      reflexivity.
 
 (*
       ZnWords. }
