@@ -265,7 +265,15 @@ Proof.
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
 
     { write_goal.
+      all: try assumption || (try exact I).
+      all: egg_simpl_goal.
+      all: try assumption || (try exact I).
+      all: egg_simpl_goal.
+      all: try assumption || (try exact I).
+      all: egg_simpl_goal.
+      all: try assumption || (try exact I). }
 
+(*
       subst mid.
       rewrite word.unsigned_of_Z_nowrap by consts.
       rewrite <- length_rep.
@@ -283,8 +291,12 @@ Proof.
       1: apply word.unsigned_nonneg.
       apply neq_sym.
       apply H4. }
+*)
 
     { write_goal.
+      all: try assumption || (try exact I). }
+
+(*
       subst mid.
       rewrite wunsigned_of_Z_nowrap by exact C1.
       rewrite wsub_def.
@@ -298,6 +310,7 @@ Proof.
       rewrite Z_remove_inner_mod. 2: exact C7. 2: exact C6. 2: exact C10.
       rewrite Z__mod_mult.
       reflexivity. }
+*)
 
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split; [repeat straightline|].
