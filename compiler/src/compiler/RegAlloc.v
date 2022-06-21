@@ -1233,13 +1233,7 @@ Section RegAlloc.
       pose proof SC as SC0.
       unfold loop_inv in SC.
       rewrite E in SC. 
-      eapply exec.loop
-        with
-        (* (mid3 := (fun (t' : Semantics.trace) (m' : mem) (lL' : impLocals) (mcL' : MetricLogging.MetricLog) => *)
-        (*    exists (lH' : srcLocals) (mcH' : MetricLogging.MetricLog), *)
-        (*      states_compat lH' corresp' lL' /\ *)
-        (*      (MetricLogging.metricsLeq (MetricLogging.metricsSub mcL' mcL) (MetricLogging.metricsSub mcH' mc)) /\ *)
-        (*      mid1 t' m' lH' mcH')) *)
+      eapply exec.loop with
         (mid4 := (fun (t'0 : Semantics.trace) (m'0 : mem) (lL' : impLocals) (mcL' : MetricLogging.MetricLog) =>
            exists (lH' : srcLocals) (mcH' : MetricLogging.MetricLog),
              states_compat lH' a2 lL' /\
@@ -1257,14 +1251,6 @@ Section RegAlloc.
         cbv beta. intros. simp. eexists. eexists. split. 2: split. 1,3: eauto.
         exists mcH'. exists mc'.
         split; eauto. 
-        (* repeat (unfold check_bcond, assert_in, assignment in *; simp). *)
-        (*   intros; unfold check_regs in *; cbn in *; unfold exec.cost_SLoop_true in *; *)
-        (*     destr cond; destr cond0; destr (isRegStr x); destr (isRegZ x0); try (destr (isRegStr y)); try (destr (isRegZ y0)); *)
-        (*     try discriminate; *)
-        (*     unfold_metrics; cbn in *; repeat split; cbn in *; unfold_metrics; cbn in *; simp; *)
-        (*     destr mcL; destr mc'; destr mc; destr mcH'; destr mc'0; destr mcH'0; try blia. *)
-        (*   all: try discr_match_success. *)
-        (*   all: cbn in *; simp; try blia. *)
       + cbv beta. intros. simp. eapply exec.weaken. 1: eapply IH12. 1: eassumption. 1: eassumption.
         * eapply states_compat_extends. 2: eassumption.
           pose proof defuel_loop_inv as P.
@@ -1280,13 +1266,13 @@ Section RegAlloc.
           intros.
           repeat (unfold check_bcond, assert_in, assignment in *; simp).
           clear -E0 E1 E2 H4p1p0 H4p1p1 H4p1 H4p3. 
-          intros; unfold check_regs in *; cbn in *; unfold exec.cost_SLoop_true in *;
+          intros; unfold check_regs in *; cbn in *; unfold exec.cost_SLoop_true in *; try discr_match_success;
             destr cond; destr cond0; destr (isRegStr x); destr (isRegZ x0); try (destr (isRegStr y)); try (destr (isRegZ y0));
-            try discriminate; try discr_match_success;
-            unfold_metrics; cbn in *; repeat split; cbn in *; unfold_metrics; cbn in *; simp.
-          all: destr mc''; destr mcH'; destr mcHmid; destr mcLmid; destr mc'; destr mcH'0; destr mc; destr mcL.
-          all: try discr_match_success.
-          all: cbn in *; simp; try blia.          
+            try discriminate; try discr_match_success.
+          all: unfold_metrics; cbn in *; repeat split; cbn in *; unfold_metrics; cbn in *; simp.
+          all: destr mc''; destr mcH'; destr mcHmid; destr mcLmid; destr mc'; destr mcH'0; destr mc; destr mcL;
+            try discr_match_success.
+          all: cbn in *; try blia.
     - (* Case exec.seq *)
       rename H2 into IH2, IHexec into IH1.
       eapply exec.seq.
