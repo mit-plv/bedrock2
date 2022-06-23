@@ -15,3 +15,6 @@
 [submodule "deps/sponge"]
 	path = deps/sponge
 	url = git@github.com:threonorm/sponge.git
+[submodule "deps/egg"]
+	path = deps/egg
+	url = git@github.com:samuelgruetter/egg.git
