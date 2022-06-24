@@ -211,14 +211,14 @@ Ltac pose_lib_lemmas :=
   pose proof Z.forget_mod_in_lt_l as Z_forget_mod_in_lt_l;
   pose proof (Z.mul_nonneg: forall e1 e2 : Z,
                  trigger! ((e1 * e2)) (0 <= e1 -> 0 <= e2 -> 0 <= e1 * e2))
-    as Z_mul_nonneg;
+    as z_mul_nonneg;
   pose proof (Z.div_nonneg: forall a b : Z,
                  trigger! ((a / b)) (0 <= a -> 0 < b -> 0 <= a / b))
-    as Z_div_nonneg;
-  pose proof Z.div_mul_lt as Z_div_mul_lt;
-  pose proof Z.lt_from_le_and_neq as Z_lt_from_le_and_neq;
-  pose proof Z.remove_inner_mod as Z_remove_inner_mod;
-  pose proof Z_mod_mult as Z__mod_mult;
+    as z_div_nonneg;
+  pose proof Z.div_mul_lt as z_div_mul_lt;
+  pose proof Z.lt_from_le_and_neq as z_lt_from_le_and_neq;
+  pose proof Z.remove_inner_mod as z_remove_inner_mod;
+  pose proof Z_mod_mult as z_mod_mult;
   (* misc *)
   pose proof @eq_eq_sym as H_eq_eq_sym;
   pose proof eq_same_True as H_eq_same_True.
@@ -317,7 +317,141 @@ Proof.
       1:split.
       2:split.
       { SeparationLogic.ecancel_assumption. }
-      { ZnWordsL. }
+      {
+
+
+        pose proof @length_skipn as L_length_skipn;
+        pose proof @List.firstn_length as L_firstn_length;
+        pose proof @List.app_length as L_app_length;
+        pose proof @length_cons as L_length_cons;
+        pose proof @length_nil as L_length_nil.
+
+        repeat match goal with
+               | x := _ |- _ => clear x || subst x
+               end.
+
+(*
+        write_goal.
+        all: try assumption.
+        cbv beta.
+*)
+        clear H2.
+
+  pose proof word.unsigned_sub as wunsigned_sub; unfold word.wrap in wunsigned_sub.
+  pose proof word.unsigned_add as wunsigned_add; unfold word.wrap in wunsigned_add.
+  pose proof Zplus_mod_idemp_r as z_plus_mod_idemp_r.
+  pose proof Zplus_mod_idemp_l as z_plus_mod_idemp_l.
+  pose proof Zminus_mod_idemp_r as z_minus_mod_idemp_r.
+  pose proof Zminus_mod_idemp_l as z_minus_mod_idemp_l.
+
+  pose proof Z.add_0_l as z_add_0_l;
+  pose proof Z.add_comm as z_add_comm;
+  pose proof Z.add_assoc as z_add_to_left_assoc;
+  pose proof Z.add_assoc as z_add_to_right_assoc; symmetry in z_add_to_right_assoc;
+  pose proof Z.add_opp_diag_r as z_add_opp;
+  pose proof Z.add_opp_r as z_sub_def; symmetry in z_sub_def.
+
+  pose proof Z.mul_0_l as z_mul_0_l;
+  pose proof Z.mul_comm as z_mul_comm;
+  pose proof Z.mul_assoc as z_mul_to_left_assoc;
+  pose proof Z.mul_assoc as z_mul_to_right_assoc; symmetry in z_mul_to_right_assoc.
+
+  pose proof Z.mul_add_distr_l as z_mul_add_distr_l.
+  pose proof Z.mul_opp_r as z_mul_opp_r.
+
+  pose proof Nat2Z.inj_sub_max as Nat2Z_inj_sub_max.
+  pose proof (Nat2Z.inj_succ: forall n: nat, Z.of_nat (S n) = Z.of_nat n + 1) as
+    Nat2Z_inj_succ.
+  pose proof ZifyInst.of_nat_to_nat_eq as z_of_nat_to_nat.
+  pose proof Z.mul_max_distr_nonneg_l as z_mul_max_distr_nonneg_l;
+    symmetry in z_mul_max_distr_nonneg_l.
+  pose proof Z.mul_min_distr_nonpos_l as z_mul_max_distr_nonpos_l;
+    symmetry in z_mul_max_distr_nonpos_l.
+
+  pose proof Zmod_eq as z_mod_eq.
+
+  pose proof Z.opp_add_distr as z_opp_add_distr.
+  pose proof Z.add_opp_r as z_sub_def_bw.
+  pose proof word.unsigned_sub as wunsigned_sub_bw;
+    unfold word.wrap in wunsigned_sub_bw; symmetry in wunsigned_sub_bw.
+  pose proof word.unsigned_add as wunsigned_add_bw;
+    unfold word.wrap in wunsigned_add_bw; symmetry in wunsigned_add_bw.
+
+  pose proof Z.mul_sub_distr_l as z_mul_sub_distr_l.
+  pose proof Z.mod_small as z_mod_small.
+  pose proof Z_mod_plus_full as z_mod_plus_full.
+
+  pose proof Zmult_mod_distr_r as z_mult_mod_distr_r.
+
+  pose proof Z.mul_1_r as z_mul_1_r.
+  assert (8 <> 0) as C11 by consts.
+  assert (2 ^ 64 = 2 ^ 64 / 8 * 8) as C12 by reflexivity.
+
+  assert (forall a b: Z, trigger! ((a mod b)) (a = (a / b) * b + a mod b)) as z_explain_mod.
+  {
+    clear. unfold with_trigger. intros.
+    etransitivity. 1: eapply (Z_div_mod_eq_full a b). f_equal.
+    apply Z.mul_comm.
+  }
+
+  pose proof Zred_factor2 as z_factor_1_plus.
+  pose proof Z.mul_add_distr_l as z_mul_add_distr_l_bw; symmetry in z_mul_add_distr_l_bw.
+  pose proof Z.mul_opp_r as z_mul_opp_r_bw; symmetry in z_mul_opp_r_bw.
+  pose proof Z_div_mult_full as z_div_mult_full.
+
+  set (halflen := (8 * Z.of_nat v / 2 ^ 4)).
+
+        write_goal.
+        all: try assumption.
+        cbv beta.
+
+(*
+ffn 6: node limit, but additional mod went away
+  (\_ x2 - (8 * (1 + halflen) + \_ x1)) mod 2 ^ 64 =
+  8 * Z.of_nat (v - S (Z.to_nat ((8 * halflen) mod 2 ^ 64 / 8)))
+
+ffn 5:
+  (\_ x2 - (8 + (\_ x1 + 8 * halflen) mod 2 ^ 64)) mod 2 ^ 64 =
+  8 * Z.of_nat (v - S (Z.to_nat ((8 * halflen) mod 2 ^ 64 / 8)))
+
+*)
+
+        egg_simpl_goal. (* hits node limit, but does more simplification *)
+        cbv beta.
+
+(*
+ffn 6 again:
+  (8 * (Z.of_nat v - (1 + halflen))) mod 2 ^ 64 =
+  8 * Z.of_nat (v - S (Z.to_nat (halflen mod (2 ^ 64 / 8))))
+*)
+
+change (2 ^ 64) with (2 ^ 64 / 8 * 8) at 1.
+rewrite z_mul_comm.
+rewrite z_mult_mod_distr_r.
+rewrite z_mul_comm.
+f_equal.
+rewrite Z.mod_small.
+2: {
+  ZnWords.
+}
+rewrite Z.mod_small.
+2: {
+  ZnWords.
+}
+rewrite Nat2Z.inj_sub.
+2: {
+  ZnWords.
+}
+rewrite Nat2Z_inj_succ.
+rewrite Z2Nat.id. 2: {
+  ZnWords.
+}
+
+egg_simpl_goal. (* note limit! *)
+cbv beta.
+exact I.
+}
+
       { cleanup_for_ZModArith. reflexivity. }
       split; repeat straightline.
       2:split; repeat straightline.
@@ -352,4 +486,4 @@ Proof.
   all: exact (word.of_Z 0).
 
   all:fail "remaining subgoals".
-Qed.
+Time Qed. (* 1.637 secs *)
