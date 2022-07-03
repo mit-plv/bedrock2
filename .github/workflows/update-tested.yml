@@ -1,4 +1,7 @@
+name: Update tested branch
+
 on:
+  workflow_dispatch:
   schedule:
     # run at 06:59 UTC each day
     - cron:  '59 6 * * *'
@@ -6,7 +9,7 @@ on:
 jobs:
   updateBranch:
     runs-on: ubuntu-latest
-    name: WIP
+    name: Update tested
     steps:
     - uses: actions/checkout@v3
       with:
