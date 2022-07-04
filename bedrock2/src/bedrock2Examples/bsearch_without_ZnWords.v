@@ -401,8 +401,23 @@ Proof.
   all: cbv beta; try assumption; try exact I.
   all: egg_simpl_goal 2.
   all: cbv beta; try assumption; try exact I.
+
+(*
+  (\_ x2 - (8 + ((8 * halflen) mod 2 ^ 64 + \_ x1))) mod 2 ^ 64 =
+  8 * Z.of_nat (v - S (Z.to_nat (halflen mod (2 ^ 64 / 8))))
+*)
+
   all: egg_simpl_goal 5; cbv beta.
   (* needs at least 5 to do something, and hits time limit *)
+
+(*
+  this step needs to put x1 and x2 next to each other, so that it can be replaced
+  by 8*v, and this requires many commutativity/associativity steps
+
+
+  (8 * Z.of_nat v + (- ((8 * halflen) mod 2 ^ 64) - 8)) mod 2 ^ 64 =
+  8 * Z.of_nat (v - S (Z.to_nat (halflen mod (2 ^ 64 / 8))))
+*)
 
   all: egg_simpl_goal 3; cbv beta.
   all: egg_simpl_goal 5; cbv beta.
