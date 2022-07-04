@@ -230,8 +230,8 @@ Ltac desep :=
          | x := context[@sep] |- _ => subst x
          end.
 
-Ltac write_goal :=
-  desep; pose_const_sideconds; pose_lib_lemmas; egg_simpl_goal.
+Ltac preproc :=
+  desep; pose_const_sideconds; pose_lib_lemmas.
 
 Lemma bsearch_ok : program_logic_goal_for_function! bsearch.
 Proof.
@@ -264,16 +264,7 @@ Proof.
     seprewrite @array_address_inbounds;
        [ ..|(* if expression *) exact eq_refl|letexists; split; [repeat straightline|]]. (* determines element *)
 
-    { write_goal.
-      all: try assumption || (try exact I).
-      all: egg_simpl_goal.
-      all: try assumption || (try exact I).
-      all: egg_simpl_goal.
-      all: try assumption || (try exact I).
-      all: egg_simpl_goal.
-      all: try assumption || (try exact I). }
-
-(*
+    { (*
       subst mid.
       rewrite word.unsigned_of_Z_nowrap by consts.
       rewrite <- length_rep.
@@ -290,13 +281,20 @@ Proof.
       eapply Z.lt_from_le_and_neq.
       1: apply word.unsigned_nonneg.
       apply neq_sym.
-      apply H4. }
-*)
+      apply H4. *)
 
-    { write_goal.
-      all: try assumption || (try exact I). }
+      preproc.
+      egg_simpl_goal 3.
+      all: cbv beta; try assumption; try exact I.
+      all: egg_simpl_goal 3.
+      all: cbv beta; try assumption; try exact I.
+      all: egg_simpl_goal 3.
+      all: cbv beta; try assumption; try exact I.
+      all: egg_simpl_goal 3.
+      all: cbv beta; try assumption; try exact I. }
 
-(*
+    { preproc.
+      (*
       subst mid.
       rewrite wunsigned_of_Z_nowrap by exact C1.
       rewrite wsub_def.
@@ -307,10 +305,13 @@ Proof.
       rewrite wadd_0_l.
       rewrite wunsigned_slu_to_mul_pow2 by exact C2.
       rewrite <- C9.
-      rewrite Z_remove_inner_mod. 2: exact C7. 2: exact C6. 2: exact C10.
-      rewrite Z__mod_mult.
-      reflexivity. }
-*)
+      rewrite z_remove_inner_mod. 2: exact C7. 2: exact C6. 2: exact C10.
+      rewrite z_mod_mult.
+      reflexivity.
+      *)
+
+      egg_simpl_goal 3.
+      all: cbv beta; try assumption; try exact I. }
 
     (* split if cases *) split; repeat straightline. (* code is processed, loop-go-again goals left behind *)
     { repeat letexists. split; [repeat straightline|].
@@ -318,7 +319,6 @@ Proof.
       2:split.
       { SeparationLogic.ecancel_assumption. }
       {
-
 
         pose proof @length_skipn as L_length_skipn;
         pose proof @List.firstn_length as L_firstn_length;
@@ -330,11 +330,7 @@ Proof.
                | x := _ |- _ => clear x || subst x
                end.
 
-(*
-        write_goal.
-        all: try assumption.
-        cbv beta.
-*)
+        preproc.
         clear H2.
 
   pose proof word.unsigned_sub as wunsigned_sub; unfold word.wrap in wunsigned_sub.
@@ -401,32 +397,22 @@ Proof.
 
   set (halflen := (8 * Z.of_nat v / 2 ^ 4)).
 
-        write_goal.
-        all: try assumption.
-        cbv beta.
+  egg_simpl_goal 2.
+  all: cbv beta; try assumption; try exact I.
+  all: egg_simpl_goal 2.
+  all: cbv beta; try assumption; try exact I.
+  all: egg_simpl_goal 5; cbv beta.
+  (* needs at least 5 to do something, and hits time limit *)
 
-(*
-ffn 6: node limit, but additional mod went away
-  (\_ x2 - (8 * (1 + halflen) + \_ x1)) mod 2 ^ 64 =
-  8 * Z.of_nat (v - S (Z.to_nat ((8 * halflen) mod 2 ^ 64 / 8)))
+  all: egg_simpl_goal 3; cbv beta.
+  all: egg_simpl_goal 5; cbv beta.
+  (* needs at least 5 to do something, and hits time limit *)
 
-ffn 5:
-  (\_ x2 - (8 + (\_ x1 + 8 * halflen) mod 2 ^ 64)) mod 2 ^ 64 =
-  8 * Z.of_nat (v - S (Z.to_nat ((8 * halflen) mod 2 ^ 64 / 8)))
-
-*)
-
-        egg_simpl_goal. (* hits node limit, but does more simplification *)
-        cbv beta.
-
-(*
-ffn 6 again:
-  (8 * (Z.of_nat v - (1 + halflen))) mod 2 ^ 64 =
-  8 * Z.of_nat (v - S (Z.to_nat (halflen mod (2 ^ 64 / 8))))
-*)
 
 change (2 ^ 64) with (2 ^ 64 / 8 * 8) at 1.
-rewrite z_mul_comm.
+replace (8 * Z.of_nat v - 8 - 8 * halflen) with ((Z.of_nat v - 1 - halflen) * 8). 2: {
+  egg_simpl_goal 3; cbv beta. exact I.
+}
 rewrite z_mult_mod_distr_r.
 rewrite z_mul_comm.
 f_equal.
@@ -447,11 +433,9 @@ rewrite Z2Nat.id. 2: {
   ZnWords.
 }
 
-egg_simpl_goal. (* note limit! *)
-cbv beta.
+egg_simpl_goal 3; cbv beta.
 exact I.
 }
-
       { cleanup_for_ZModArith. reflexivity. }
       split; repeat straightline.
       2:split; repeat straightline.
