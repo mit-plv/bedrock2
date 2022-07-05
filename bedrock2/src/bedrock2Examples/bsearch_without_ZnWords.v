@@ -36,6 +36,10 @@ Module word.
 
     Lemma add_comm: forall a b, word.add a b = word.add b a.
     Proof. intros. ring. Qed.
+    Lemma add_rot: forall a m b, word.add (word.add a m) b = word.add (word.add b a) m.
+    Proof. intros. ring. Qed.
+    Lemma add_join: forall a m b, word.add (word.add a m) b = word.add m (word.add a b).
+    Proof. intros. ring. Qed.
     Lemma add_to_left_assoc: forall a b c,
         word.add a (word.add b c) = word.add (word.add a b) c.
     Proof. intros. ring. Qed.
@@ -43,6 +47,10 @@ Module word.
         word.add (word.add a b) c = word.add a (word.add b c).
     Proof. intros. ring. Qed.
     Lemma add_opp: forall a, word.add a (word.opp a) = word.of_Z 0.
+    Proof. intros. ring. Qed.
+    Lemma add_opp_l_distant: forall a m, word.add (word.opp a) (word.add m a) = m.
+    Proof. intros. ring. Qed.
+    Lemma add_opp_r_distant: forall a m, word.add a (word.add m (word.opp a)) = m.
     Proof. intros. ring. Qed.
     Lemma sub_def: forall a b, word.sub a b = word.add a (word.opp b).
     Proof. intros. ring. Qed.
@@ -105,6 +113,11 @@ Module Z.
       (n | m) ->
       (a mod m) mod n = a mod n.
   Proof. intros. symmetry. apply Znumtheory.Zmod_div_mod; assumption. Qed.
+
+  Lemma add_rot: forall a m b, Z.add (Z.add a m) b = Z.add (Z.add b a) m.
+  Proof. intros. ring. Qed.
+  Lemma add_join: forall a m b, Z.add (Z.add a m) b = Z.add m (Z.add a b).
+  Proof. intros. ring. Qed.
 End Z.
 
 From bedrock2 Require Import Semantics BasicC64Semantics.
@@ -196,10 +209,17 @@ Ltac pose_lib_lemmas :=
   (* word *)
   pose proof word.add_0_l as wadd_0_l;
   pose proof word.add_0_r as wadd_0_r;
-  pose proof word.add_comm as wadd_comm;
+  pose proof (word.add_join: forall a m b,
+       trigger! ((word.add a b)) (word.add (word.add a m) b = word.add m (word.add a b)))
+       as wadd_join;
+  pose proof (word.add_rot: forall a m b,
+       trigger! ((word.add b a)) (word.add (word.add a m) b = word.add (word.add b a) m))
+       as wadd_rot;
   pose proof word.add_to_left_assoc as wadd_to_left_assoc;
   pose proof word.add_to_right_assoc as wadd_to_right_assoc;
   pose proof word.add_opp as wadd_opp;
+  pose proof word.add_opp_l_distant as wadd_opp_l_distant;
+  pose proof word.add_opp_r_distant as wadd_opp_r_distant;
   pose proof word.sub_def as wsub_def;
   pose proof word.unsigned_of_Z_nowrap as wunsigned_of_Z_nowrap;
   pose proof (word.unsigned_nonneg: forall x : word,
@@ -339,9 +359,25 @@ Proof.
   pose proof Zplus_mod_idemp_l as z_plus_mod_idemp_l.
   pose proof Zminus_mod_idemp_r as z_minus_mod_idemp_r.
   pose proof Zminus_mod_idemp_l as z_minus_mod_idemp_l.
+  assert (z_plus_mod_idemp_r_bw : forall a b n,
+             trigger! ((b mod n)) ((a + b) mod n = (a + b mod n) mod n))
+    by (symmetry; apply Zplus_mod_idemp_r).
+  assert (z_plus_mod_idemp_l_bw : forall a b n,
+             trigger! ((a mod n)) ((a + b) mod n = (a mod n + b) mod n))
+    by (symmetry; apply Zplus_mod_idemp_l).
+  assert (z_minus_mod_idemp_r_bw : forall a b n,
+             trigger! ((b mod n)) ((a - b) mod n = (a - b mod n) mod n))
+    by (symmetry; apply Zminus_mod_idemp_r).
+  assert (z_minus_mod_idemp_l_bw : forall a b n,
+             trigger! ((a mod n)) ((a - b) mod n = (a mod n - b) mod n))
+    by (symmetry; apply Zminus_mod_idemp_l).
 
   pose proof Z.add_0_l as z_add_0_l;
-  pose proof Z.add_comm as z_add_comm;
+  pose proof (Z.add_join: forall a m b,
+       trigger! ((Z.add a b)) (Z.add (Z.add a m) b = Z.add m (Z.add a b))) as z_add_join;
+  pose proof (Z.add_rot: forall a m b,
+       trigger! ((Z.add b a)) (Z.add (Z.add a m) b = Z.add (Z.add b a) m))
+       as z_add_rot;
   pose proof Z.add_assoc as z_add_to_left_assoc;
   pose proof Z.add_assoc as z_add_to_right_assoc; symmetry in z_add_to_right_assoc;
   pose proof Z.add_opp_diag_r as z_add_opp;
@@ -377,6 +413,7 @@ Proof.
   pose proof Z.mod_small as z_mod_small.
   pose proof Z_mod_plus_full as z_mod_plus_full.
 
+  pose proof Zmult_mod_distr_l as z_mult_mod_distr_l.
   pose proof Zmult_mod_distr_r as z_mult_mod_distr_r.
 
   pose proof Z.mul_1_r as z_mul_1_r.
@@ -401,35 +438,22 @@ Proof.
   all: cbv beta; try assumption; try exact I.
   all: egg_simpl_goal 2.
   all: cbv beta; try assumption; try exact I.
+  all: egg_simpl_goal 2; cbv beta.
+  all: cbv beta; try assumption; try exact I.
+  all: egg_simpl_goal 4; cbv beta. (* ffn 4 is needed, but it only takes 300ms *)
+  all: cbv beta; try assumption; try exact I.
+  all: egg_simpl_goal 2; cbv beta.
+  all: cbv beta; try assumption; try exact I.
+  all: egg_simpl_goal 3.
+  all: cbv beta; try assumption; try exact I.
+  all: egg_simpl_goal 3.
+  all: cbv beta; try assumption; try exact I.
 
-(*
-  (\_ x2 - (8 + ((8 * halflen) mod 2 ^ 64 + \_ x1))) mod 2 ^ 64 =
-  8 * Z.of_nat (v - S (Z.to_nat (halflen mod (2 ^ 64 / 8))))
-*)
-
-  all: egg_simpl_goal 5; cbv beta.
-  (* needs at least 5 to do something, and hits time limit *)
-
-(*
-  this step needs to put x1 and x2 next to each other, so that it can be replaced
-  by 8*v, and this requires many commutativity/associativity steps
-
-
-  (8 * Z.of_nat v + (- ((8 * halflen) mod 2 ^ 64) - 8)) mod 2 ^ 64 =
-  8 * Z.of_nat (v - S (Z.to_nat (halflen mod (2 ^ 64 / 8))))
-*)
-
-  all: egg_simpl_goal 3; cbv beta.
-  all: egg_simpl_goal 5; cbv beta.
-  (* needs at least 5 to do something, and hits time limit *)
-
-
-change (2 ^ 64) with (2 ^ 64 / 8 * 8) at 1.
-replace (8 * Z.of_nat v - 8 - 8 * halflen) with ((Z.of_nat v - 1 - halflen) * 8). 2: {
+change (2 ^ 64) with (8 * (2 ^ 64 / 8)) at 1.
+replace (8 * Z.of_nat v - (8 * halflen + 8)) with (8 * (Z.of_nat v - halflen - 1)). 2: {
   egg_simpl_goal 3; cbv beta. exact I.
 }
-rewrite z_mult_mod_distr_r.
-rewrite z_mul_comm.
+rewrite z_mult_mod_distr_l.
 f_equal.
 rewrite Z.mod_small.
 2: {
