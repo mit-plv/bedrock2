@@ -383,6 +383,17 @@ Proof.
   pose proof Z.add_opp_diag_r as z_add_opp;
   pose proof Z.add_opp_r as z_sub_def; symmetry in z_sub_def.
 
+  (* shortcuts to not depend on sub_def, which requires too high ffn: *)
+  pose proof Z.sub_add_distr as z_sub_add_to_left_assoc;
+  pose proof Z.sub_add_distr as z_sub_sub_to_right_assoc;
+    symmetry in z_sub_sub_to_right_assoc;
+  pose proof Z.sub_sub_distr as z_sub_sub_to_left_assoc;
+  pose proof Z.sub_sub_distr as z_sub_add_to_right_assoc;
+    symmetry in z_sub_add_to_right_assoc;
+  pose proof Z.add_sub_assoc as z_add_sub_to_left_assoc;
+  pose proof Z.add_sub_assoc as z_add_sub_to_right_assoc;
+    symmetry in z_add_sub_to_right_assoc.
+
   pose proof Z.mul_0_l as z_mul_0_l;
   pose proof Z.mul_comm as z_mul_comm;
   pose proof Z.mul_assoc as z_mul_to_left_assoc;
@@ -440,18 +451,12 @@ Proof.
   all: cbv beta; try assumption; try exact I.
   all: egg_simpl_goal 2; cbv beta.
   all: cbv beta; try assumption; try exact I.
-  all: egg_simpl_goal 4; cbv beta. (* ffn 4 is needed, but it only takes 300ms *)
-  all: cbv beta; try assumption; try exact I.
   all: egg_simpl_goal 2; cbv beta.
-  all: cbv beta; try assumption; try exact I.
-  all: egg_simpl_goal 3.
-  all: cbv beta; try assumption; try exact I.
-  all: egg_simpl_goal 3.
   all: cbv beta; try assumption; try exact I.
 
 change (2 ^ 64) with (8 * (2 ^ 64 / 8)) at 1.
 replace (8 * Z.of_nat v - (8 * halflen + 8)) with (8 * (Z.of_nat v - halflen - 1)). 2: {
-  egg_simpl_goal 3; cbv beta. exact I.
+  egg_simpl_goal 2; cbv beta. exact I.
 }
 rewrite z_mult_mod_distr_l.
 f_equal.
