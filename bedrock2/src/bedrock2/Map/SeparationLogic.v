@@ -15,7 +15,7 @@ Import Map.Interface.map Map.Properties.map.
 Create HintDb ecancel_impl discriminated.
 Lemma impl1_refl{T: Type}: forall {P: T -> Prop}, Lift1Prop.impl1 P P.
 Proof. intros. reflexivity. Qed.
-Hint Resolve impl1_refl : ecancel_impl.
+#[global] Hint Resolve impl1_refl : ecancel_impl.
 
 Lemma iff1_refl{A: Type}(P: A -> Prop): iff1 P P. Proof. reflexivity. Qed.
 Lemma iff1_sym{A: Type}{P Q: A -> Prop}: iff1 P Q -> iff1 Q P.

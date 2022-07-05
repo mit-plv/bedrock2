@@ -48,13 +48,13 @@ Local Open Scope Z_scope.
 
 Require Import Coq.Classes.Morphisms.
 
-Instance word_riscv_ok: @RiscvWordProperties.word.riscv_ok 32 KamiWord.wordW.
+#[global] Instance word_riscv_ok: @RiscvWordProperties.word.riscv_ok 32 KamiWord.wordW.
 refine (@KamiRiscvWordProperties.kami_word_riscv_ok 5 _ _).
 all: cbv; congruence.
 Qed.
 
-Existing Instance SortedListString.map.
-Existing Instance SortedListString.ok.
+#[global] Existing Instance SortedListString.map.
+#[global] Existing Instance SortedListString.ok.
 
 (* TODO these definitions should be in KamiRiscv.v: *)
 
