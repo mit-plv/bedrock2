@@ -73,6 +73,9 @@ Module word.
 
     Lemma unsigned_nonneg: forall x: word, 0 <= word.unsigned x.
     Proof. intros. apply word.unsigned_range. Qed.
+
+    Lemma unsigned_upper: forall x: word, word.unsigned x < 2 ^ width.
+    Proof. intros. apply word.unsigned_range. Qed.
   End WithWord.
 End word.
 
@@ -114,11 +117,67 @@ Module Z.
       (a mod m) mod n = a mod n.
   Proof. intros. symmetry. apply Znumtheory.Zmod_div_mod; assumption. Qed.
 
+  Lemma euclidean_decomp: forall a b, a = a / b * b + a mod b.
+  Proof.
+    intros.
+    etransitivity. 1: eapply (Z_div_mod_eq_full a b). f_equal.
+    apply Z.mul_comm.
+  Qed.
+
+  (* TODO generalize coqutil.Z.ZLib.Z.div_mul_undo_le *)
+  Lemma div_mul_undo_le: forall a b, 0 < b -> a / b * b <= a.
+  Proof.
+    intros.
+    pose proof (Zmod_eq_full a b) as P.
+    pose proof (Z.mod_pos_bound a b) as Q.
+    Lia.lia.
+  Qed.
+
   Lemma add_rot: forall a m b, Z.add (Z.add a m) b = Z.add (Z.add b a) m.
   Proof. intros. ring. Qed.
   Lemma add_join: forall a m b, Z.add (Z.add a m) b = Z.add m (Z.add a b).
   Proof. intros. ring. Qed.
+
+  Lemma add_opp_l_distant: forall a m, Z.add (Z.opp a) (Z.add m a) = m.
+  Proof. intros. ring. Qed.
+  Lemma add_opp_r_distant: forall a m, Z.add a (Z.add m (Z.opp a)) = m.
+  Proof. intros. ring. Qed.
+
+  Lemma factor_add_mul_11: forall a, a + a = a * 2.
+  Proof. intros. Lia.lia. Qed.
+  Lemma factor_add_mul_1q: forall a q, a + a * q = a * (1 + q).
+  Proof. intros. Lia.lia. Qed.
+  Lemma factor_add_mul_q1: forall a q, a * q + a = a * (q + 1).
+  Proof. intros. Lia.lia. Qed.
+  Lemma factor_add_mul_qq: forall a p q, a * p + a * q = a * (p + q).
+  Proof. intros. Lia.lia. Qed.
+
+  (* Lemma factor_sub_mul_11: forall a, a - a = a * 2. already Z.sub_diag *)
+  Lemma factor_sub_mul_1q: forall a q, a - a * q = a * (1 - q).
+  Proof. intros. Lia.lia. Qed.
+  Lemma factor_sub_mul_q1: forall a q, a * q - a = a * (q - 1).
+  Proof. intros. Lia.lia. Qed.
+  Lemma factor_sub_mul_qq: forall a p q, a * p - a * q = a * (p - q).
+  Proof. intros. Lia.lia. Qed.
+
 End Z.
+
+Lemma Z_cancel_mul_ll: forall f a b,
+    f <> 0 ->
+    (f * a = f * b) = (a = b).
+Proof.
+  intros. apply propositional_extensionality. split; intros; Lia.nia.
+Qed.
+
+Lemma and_True_l: forall P, and True P = P.
+Proof.
+  intros. apply propositional_extensionality. split; intros; intuition idtac.
+Qed.
+
+Lemma and_True_r: forall P, and P True = P.
+Proof.
+  intros. apply propositional_extensionality. split; intros; intuition idtac.
+Qed.
 
 From bedrock2 Require Import Semantics BasicC64Semantics.
 
@@ -178,6 +237,10 @@ Proof.
   intros. apply propositional_extensionality. split; intros; congruence.
 Qed.
 
+Inductive worth_considering_status: Set := is_worth_considering.
+
+Definition consider{T: Type}(x: T) := is_worth_considering.
+
 Ltac consts :=
   lazymatch goal with
   | |- ?a <= ?b < ?c => requireZcstExpr a; requireZcstExpr b; requireZcstExpr c;
@@ -225,6 +288,10 @@ Ltac pose_lib_lemmas :=
   pose proof (word.unsigned_nonneg: forall x : word,
                  trigger! ((word.unsigned x)) (0 <= word.unsigned x))
     as wunsigned_nonneg;
+  pose proof (word.unsigned_upper: forall x : word,
+                 trigger! ((word.unsigned x)) (word.unsigned x < 2 ^ 64))
+                   (* ^ TODO make width-generic *)
+    as wunsigned_upper;
   pose proof word.unsigned_sru_to_div_pow2 as wunsigned_sru_to_div_pow2;
   pose proof word.unsigned_slu_to_mul_pow2 as wunsigned_slu_to_mul_pow2;
   (* Z *)
@@ -241,7 +308,9 @@ Ltac pose_lib_lemmas :=
   pose proof Z_mod_mult as z_mod_mult;
   (* misc *)
   pose proof @eq_eq_sym as H_eq_eq_sym;
-  pose proof eq_same_True as H_eq_same_True.
+  pose proof eq_same_True as H_eq_same_True;
+  pose proof and_True_l as and_True_l;
+  pose proof and_True_r as and_True_r.
 
 (* will have to stop using fully applied sep *)
 Ltac desep :=
@@ -357,6 +426,26 @@ Proof.
   pose proof word.unsigned_add as wunsigned_add; unfold word.wrap in wunsigned_add.
   pose proof Zplus_mod_idemp_r as z_plus_mod_idemp_r.
   pose proof Zplus_mod_idemp_l as z_plus_mod_idemp_l.
+  assert (z_add_add_mod_idemp: forall a b c n : Z,
+             (a + b mod n + c) mod n = (a + b + c) mod n). {
+    clear. intros. rewrite (Z.add_comm a (b mod n)).
+    rewrite <- Z.add_assoc. rewrite Zplus_mod_idemp_l. f_equal. ring.
+  }
+  assert (z_add_sub_mod_idemp: forall a b c n : Z,
+             (a + b mod n - c) mod n = (a + b - c) mod n). {
+    clear. intros. replace (a + b mod n - c) with (a - c + b mod n) by ring.
+    rewrite Zplus_mod_idemp_r. f_equal. ring.
+  }
+  assert (z_sub_add_mod_idemp: forall a b c n : Z,
+             (a - b mod n + c) mod n = (a - b + c) mod n). {
+    clear. intros. replace (a - b mod n + c) with (a + c - b mod n) by ring.
+    rewrite Zminus_mod_idemp_r. f_equal. ring.
+  }
+  assert (z_sub_sub_mod_idemp: forall a b c n : Z,
+             (a - b mod n - c) mod n = (a - b - c) mod n). {
+    clear. intros. replace (a - b mod n - c) with (a - c - b mod n) by ring.
+    rewrite Zminus_mod_idemp_r. f_equal. ring.
+  }
   pose proof Zminus_mod_idemp_r as z_minus_mod_idemp_r.
   pose proof Zminus_mod_idemp_l as z_minus_mod_idemp_l.
   assert (z_plus_mod_idemp_r_bw : forall a b n,
@@ -382,6 +471,9 @@ Proof.
   pose proof Z.add_assoc as z_add_to_right_assoc; symmetry in z_add_to_right_assoc;
   pose proof Z.add_opp_diag_r as z_add_opp;
   pose proof Z.add_opp_r as z_sub_def; symmetry in z_sub_def.
+
+  pose proof Z.add_opp_l_distant as z_add_opp_l_distant.
+  pose proof Z.add_opp_r_distant as z_add_opp_r_distant.
 
   (* shortcuts to not depend on sub_def, which requires too high ffn: *)
   pose proof Z.sub_add_distr as z_sub_add_to_left_assoc;
@@ -422,6 +514,10 @@ Proof.
 
   pose proof Z.mul_sub_distr_l as z_mul_sub_distr_l.
   pose proof Z.mod_small as z_mod_small.
+  assert (z_mod_small_precond: forall a b,
+           trigger! ((a mod b)) (is_worth_considering = consider (0 <= a < b)))
+    by reflexivity.
+
   pose proof Z_mod_plus_full as z_mod_plus_full.
 
   pose proof Zmult_mod_distr_l as z_mult_mod_distr_l.
@@ -430,56 +526,198 @@ Proof.
   pose proof Z.mul_1_r as z_mul_1_r.
   assert (8 <> 0) as C11 by consts.
   assert (2 ^ 64 = 2 ^ 64 / 8 * 8) as C12 by reflexivity.
+  assert (2 ^ 64 / 8 * 2 ^ 4 = 2 * 2 ^ 64) as C13 by reflexivity.
+  assert (0 < 2) as C14 by reflexivity.
+  assert (2 ^ 4 = 8 * 2) by reflexivity.
 
-  assert (forall a b: Z, trigger! ((a mod b)) (a = (a / b) * b + a mod b)) as z_explain_mod.
-  {
-    clear. unfold with_trigger. intros.
-    etransitivity. 1: eapply (Z_div_mod_eq_full a b). f_equal.
-    apply Z.mul_comm.
+  assert (z_div_lt_to_mul: forall a b d, 0 < d -> (a / d < b) = (a < b * d)). {
+    clear. intros. apply propositional_extensionality.
+    Z.to_euclidean_division_equations.
+    split; intros; Lia.nia.
+  }
+  assert (z_forget_mul_in_lt: forall a b f,
+    trigger! ((a < f * b)) (0 < f -> 0 < b -> a < b -> a < f * b)). {
+    clear. unfold with_trigger. intros. eapply Z.lt_le_trans. 1: eassumption.
+    replace b with (1 * b) at 1 by Lia.lia.
+    pose proof Z.mul_le_mono_pos_r as P. specialize P with (1 := H0).
+    specialize (P 1 f). eapply P. Lia.lia.
+  }
+
+  assert (forall a b: Z, trigger! ((a mod b)) (a = (a / b) * b + a mod b)) as
+    z_euclidean_decomp_mod_trigger by apply Z.euclidean_decomp.
+  assert (forall a b: Z, trigger! ((a / b)) (a = (a / b) * b + a mod b)) as
+    z_euclidean_decomp_div_trigger by apply Z.euclidean_decomp.
+
+  assert (z_mod_lower: forall a b,
+             trigger! ((a mod b)) (0 < b -> 0 <= a mod b)). {
+    unfold with_trigger. eapply Z.mod_pos_bound.
+  }
+  assert (z_mod_upper: forall a b,
+             trigger! ((a mod b)) (0 < b -> a mod b < b)). {
+    unfold with_trigger. eapply Z.mod_pos_bound.
   }
 
   pose proof Zred_factor2 as z_factor_1_plus.
   pose proof Z.mul_add_distr_l as z_mul_add_distr_l_bw; symmetry in z_mul_add_distr_l_bw.
   pose proof Z.mul_opp_r as z_mul_opp_r_bw; symmetry in z_mul_opp_r_bw.
   pose proof Z_div_mult_full as z_div_mult_full.
+  pose proof Zdiv_mult_cancel_l as z_div_mult_cancel_l.
+
+  pose proof Z.factor_add_mul_11 as z_factor_add_mul_11;
+  pose proof Z.factor_add_mul_1q as z_factor_add_mul_1q;
+  pose proof Z.factor_add_mul_q1 as z_factor_add_mul_q1;
+  pose proof Z.factor_add_mul_qq as z_factor_add_mul_qq;
+  pose proof Z.factor_sub_mul_1q as z_factor_sub_mul_1q;
+  pose proof Z.factor_sub_mul_q1 as z_factor_sub_mul_q1;
+  pose proof Z.factor_sub_mul_qq as z_factor_sub_mul_qq.
+
+  pose proof Z_cancel_mul_ll as z_cancel_mul_ll.
+
+  (* stated in a convoluted way because each quantified variable must appear in conclusion *)
+  assert (and_proj_l: forall P Q, and P Q -> and P Q = P). {
+    clear. intros. apply propositional_extensionality. intuition idtac.
+  }
+  assert (and_proj_r: forall P Q, and P Q -> and P Q = Q). {
+    clear. intros. apply propositional_extensionality. intuition idtac.
+  }
+  assert (z_neq_mul: forall n m, (n * m <> 0) = (n <> 0 /\ m <> 0)). {
+    intros. symmetry. apply propositional_extensionality. eapply Z.neq_mul_0.
+  }
+  assert (z_mod_neq_0: forall n m, n mod m <> 0 -> n <> 0). {
+    clear. intros. intro C. subst. apply H. apply Zmod_0_l.
+  }
+  assert (z_unfold_times_2: forall x, x * 2 = x + x). {
+    clear. intros. Lia.lia.
+  }
+  (* not really helpful because where it looked useful, the (d * x) that was created
+     contained a division in x, but that doesn't simplify away with the (d *...)
+  assert (z_bounds_div: forall x b d,
+             0 < d ->
+             (d | b) ->
+             (0 <= x < b / d) = (0 <= d * x < b)). {
+    clear. intros.
+    pose proof (Z.mul_lt_mono_pos_r d x (b / d) H) as P.
+    apply propositional_extensionality. split; intros [? ?]; split; try Lia.lia.
+    - eapply proj1 in P. specialize (P H2).
+      rewrite Z.mul_comm. eapply Z.lt_le_trans. 1: exact P.
+      apply Z.div_mul_undo_le. assumption.
+    - unfold Z.divide in H0. destruct H0 as [z H0]. subst b.
+      eapply proj2 in P. eapply P.
+      rewrite Z.mul_comm. rewrite Z.div_mul by Lia.lia. assumption.
+  }
+  *)
+
+  assert (z_mul_lt_to_lt_div: forall x b d,
+             0 < d ->
+             (d | b) ->
+             (d * x < b) = (x < b / d)). {
+    clear. intros.
+    pose proof (Z.mul_lt_mono_pos_r d x (b / d) H) as P.
+    apply propositional_extensionality. split; intros.
+    - unfold Z.divide in H0. destruct H0 as [z H0]. subst b.
+      eapply proj2 in P. eapply P.
+      rewrite Z.mul_comm. rewrite Z.div_mul by Lia.lia. assumption.
+    - eapply proj1 in P. specialize (P H1).
+      rewrite Z.mul_comm. eapply Z.lt_le_trans. 1: exact P.
+      apply Z.div_mul_undo_le. assumption.
+  }
 
   set (halflen := (8 * Z.of_nat v / 2 ^ 4)).
 
-  egg_simpl_goal 2.
-  all: cbv beta; try assumption; try exact I.
-  all: egg_simpl_goal 2.
-  all: cbv beta; try assumption; try exact I.
-  all: egg_simpl_goal 2; cbv beta.
-  all: cbv beta; try assumption; try exact I.
-  all: egg_simpl_goal 2; cbv beta.
-  all: cbv beta; try assumption; try exact I.
+Tactic Notation "egg_step" int(n) :=
+  let G := lazymatch goal with |- ?x => x end in
+  egg_simpl_goal n;
+  [ try assumption; assert (is_worth_considering = consider G) by reflexivity  ..
+  | cbv beta; try exact I].
 
-change (2 ^ 64) with (8 * (2 ^ 64 / 8)) at 1.
-replace (8 * Z.of_nat v - (8 * halflen + 8)) with (8 * (Z.of_nat v - halflen - 1)). 2: {
-  egg_simpl_goal 2; cbv beta. exact I.
+all: egg_step 2.
+all: egg_step 2.
+all: egg_step 2.
+all: egg_step 2.
+all: egg_step 3.
+
+rewrite z_mod_small.
+
+  2: {
+    subst halflen.
+    all: egg_step 3.
+
+    replace (Z.of_nat v - (Z.of_nat v / 2 + 1)) with
+      (Z.of_nat v - Z.of_nat v / 2 - 1).
+    2: {
+    all: egg_step 3.
+    }
+
+rewrite (Z.euclidean_decomp (Z.of_nat v) 2) at 1 3.
+
+replace (Z.of_nat v / 2 * 2 + Z.of_nat v mod 2 - Z.of_nat v / 2 - 1)
+with (Z.of_nat v mod 2 + Z.of_nat v / 2 - 1). 2: {
+    all: egg_step 2.
 }
-rewrite z_mult_mod_distr_l.
-f_equal.
-rewrite Z.mod_small.
-2: {
-  ZnWords.
+
+    move length_rep at bottom.
+    move H3 at bottom.
+    move H4 at bottom.
+    rewrite H3 in length_rep.
+    pose proof (wunsigned_upper (x2 ^- x1)) as U. unfold with_trigger in U.
+    rewrite length_rep in U.
+    rewrite z_mul_lt_to_lt_div in U by assumption.
+    pose proof (z_mod_upper (Z.of_nat v) 2) as MU. unfold with_trigger in MU.
+    specialize (MU eq_refl).
+
+assert (z_div_upper_bound: forall x b d,
+           trigger! ((x / d)) (0 < d -> x < b -> x / d < b / d + 1)). {
+  clear. unfold with_trigger. intros. Z.to_euclidean_division_equations. Lia.nia.
 }
-rewrite Z.mod_small.
-2: {
-  ZnWords.
+pose proof z_div_upper_bound as A.
+unfold with_trigger in A.
+specialize A with (1 := C14) (2 := U).
+
+assert (Z.of_nat v <> 0) as Nz. {
+  egg_step 2.
 }
-rewrite Nat2Z.inj_sub.
-2: {
-  ZnWords.
+
+(* could do bounds propagation like in AbsintWordToZ.v, but lower bound would
+   not be strong enough:
+
+  0 <= Z.of_nat v mod 2 + Z.of_nat v / 2 - 1 < 2 ^ 64 / 8
+               0                  0       -1
+
+  need case distinction: Z.of_nat v can't be 0. If it is 1:
+
+  0 <= Z.of_nat v mod 2 + Z.of_nat v / 2 - 1 < 2 ^ 64 / 8
+               1                  0       -1
+  ok
+
+  If Z.of_nat v >= 2:
+  0 <= Z.of_nat v mod 2 + Z.of_nat v / 2 - 1 < 2 ^ 64 / 8
+               0                  1       -1
+  ok
+
+  so how does ZnWords do it?
+*)
+split.
+{
+  clear -Nz. Z.to_euclidean_division_equations.
+  assert_succeeds Lia.lia.
+  clear H1 H2 H3.
+  specialize (H (ltac:(Lia.lia))).
+  specialize (H0 (ltac:(Lia.lia))).
+  remember (Z.of_nat v) as x.
+  Zify.zify.
+  rewrite <- Heqx in cstr. clear Heqx v. subst x.
+  assert (0 < 2 * q + r) as G0 by Lia.lia. clear Nz cstr.
+
+
+  Lia.lia.
 }
-rewrite Nat2Z_inj_succ.
-rewrite Z2Nat.id. 2: {
+ZnWords.
+}
+
+    all: egg_step 2.
   ZnWords.
 }
 
-egg_simpl_goal 3; cbv beta.
-exact I.
-}
       { cleanup_for_ZModArith. reflexivity. }
       split; repeat straightline.
       2:split; repeat straightline.
