@@ -1,33 +1,46 @@
-# Based on a similar workflow for the mit-plv/fiat-crypto repository
-
-name: Coq
+name: CI (Coq)
 
 on:
   push:
+    branches: [ master , sp2019latest , v8.6 , v8.8 , v8.10 ]
   pull_request:
+  workflow_dispatch:
   schedule:
     - cron: '0 0 1 * *'
 
 jobs:
   build:
 
-    runs-on: ubuntu-latest
-
     strategy:
+      fail-fast: false
       matrix:
-        env:
-        - { COQ_VERSION: "8.15.0", COQ_PACKAGE: "coq-8.15.0 libcoq-8.15.0-ocaml-dev", PPA: "ppa:jgross-h/many-coq-versions-ocaml-4-11" }
-        - { COQ_VERSION: "master", COQ_PACKAGE: "coq libcoq-ocaml-dev"              , PPA: "ppa:jgross-h/coq-master-daily" }
+        include:
+        - env: { COQ_VERSION: "master"    , COQ_PACKAGE: "coq libcoq-core-ocaml-dev", SKIP_VALIDATE: "", COQCHKEXTRAFLAGS: "-bytecode-compiler yes", PPA: "ppa:jgross-h/coq-master-daily", EXTRA_GH_REPORTIFY: "--warnings" }
+          os: 'ubuntu-latest'
+        - env: { COQ_VERSION: "Ubuntu LTS", COQ_PACKAGE: "coq libcoq-ocaml-dev"     , SKIP_VALIDATE: "", COQCHKEXTRAFLAGS: ""                      , PPA: "" }
+          os: 'ubuntu-20.04'
 
+    runs-on: ${{ matrix.os }}
     env: ${{ matrix.env }}
+    name: ${{ matrix.env.COQ_VERSION }}
+
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.env.COQ_VERSION }}-${{ github.head_ref || github.run_id }}
+      cancel-in-progress: true
 
     steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
     - name: install Coq
       run: |
-        sudo sed -i 's/azure\.//' /etc/apt/sources.list
         if [ ! -z "$PPA" ]; then sudo add-apt-repository "$PPA" -y; fi
         sudo apt-get -o Acquire::Retries=30 update -q
         sudo apt-get -o Acquire::Retries=30 install ocaml-findlib $COQ_PACKAGE -y --allow-unauthenticated
+    - uses: haskell/actions/setup@v2
+      with:
+        ghc-version: 'latest'
+        cabal-version: 'latest'
     - name: echo build params
       run: |
         echo "::group::lscpu"
@@ -38,6 +51,9 @@ jobs:
         echo "::endgroup::"
         echo "::group::lsb_release -a"
         lsb_release -a
+        echo "::endgroup::"
+        echo "::group::ghc --version"
+        ghc --version
         echo "::endgroup::"
         echo "::group::gcc -v"
         gcc -v
@@ -51,13 +67,50 @@ jobs:
         echo "::group::coqc --version"
         coqc --version
         echo "::endgroup::"
-        echo "::group::echo | coqtop"
-        echo | coqtop
+        echo "::group::true | coqtop"
+        true | coqtop
         echo "::endgroup::"
-    - uses: actions/checkout@v3
-    - name: submodules-init
-      run: git submodule update --init --recursive
-    - name: make dependencies
-      run: make -j2 deps
-    - name: make all
-      run: make -j2 all
+    - name: deps
+      run: etc/ci/github-actions-make.sh -j2 deps
+    - name: all-except-generated
+      run: etc/ci/github-actions-make.sh ${EXTRA_GH_REPORTIFY} -j2 all-except-generated
+    - name: generated-files
+      run: etc/ci/github-actions-make.sh ${EXTRA_GH_REPORTIFY} -j2 generated-files
+      if: github.event_name == 'pull_request' || ${{ matrix.env.COQ_VERSION }} != 'master'
+    - run: tar -czvf generated-files.tgz fiat-*/
+      if: ${{ failure() }}
+    - name: upload generated files
+      uses: actions/upload-artifact@v3
+      with:
+        name: generated-files-${{ matrix.env.COQ_VERSION }}
+        path: generated-files.tgz
+      if: ${{ failure() }}
+    - name: only-test-amd64-files
+      run: etc/ci/github-actions-make.sh -j2 only-test-amd64-files SLOWEST_FIRST=1
+    - name: upload OCaml files
+      uses: actions/upload-artifact@v3
+      with:
+        name: ExtractionOCaml-${{ matrix.env.COQ_VERSION }}
+        path: src/ExtractionOCaml
+      if: always ()
+    - name: standalone-haskell
+      run: etc/ci/github-actions-make.sh -j1 standalone-haskell GHCFLAGS='+RTS -M6G -RTS'
+    - name: upload Haskell files
+      uses: actions/upload-artifact@v3
+      with:
+        name: ExtractionHaskell-${{ matrix.env.COQ_VERSION }}
+        path: src/ExtractionHaskell
+      if: always ()
+    - name: display timing info
+      run: cat time-of-build-pretty.log
+    - name: display per-line timing info
+      run: etc/ci/github-actions-display-per-line-timing.sh
+#    - name: upload timing and .vo info
+#      uses: actions/upload-artifact@v3
+#      with:
+#        name: build-outputs-${{ matrix.env.COQ_VERSION }}
+#        path: .
+#      if: always ()
+    - name: validate
+      run: make TIMED=1 validate COQCHKFLAGS="-o ${COQCHKEXTRAFLAGS}"
+      if: matrix.env.SKIP_VALIDATE == '' && github.event_name != 'pull_request'
