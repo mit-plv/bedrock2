@@ -21,7 +21,7 @@ jobs:
         repo_owner: 'mit-plv'
         repo_name: 'bedrock2'
         branch_name: 'master'
-        check_name: 'build (master, coq libcoq-ocaml-dev, ppa:jgross-h/coq-master-daily)'
+        check_name: 'build (master)'
     - run: echo "This step runs after the python script"
     - run: git fetch origin master
     - run: git log --oneline --max-count=10
