@@ -147,15 +147,6 @@ Module Z.
     apply Z.mul_comm.
   Qed.
 
-  (* TODO generalize coqutil.Z.ZLib.Z.div_mul_undo_le *)
-  Lemma div_mul_undo_le: forall a b, 0 < b -> a / b * b <= a.
-  Proof.
-    intros.
-    pose proof (Zmod_eq_full a b) as P.
-    pose proof (Z.mod_pos_bound a b) as Q.
-    Lia.lia.
-  Qed.
-
   Lemma add_rot: forall a m b, Z.add (Z.add a m) b = Z.add (Z.add b a) m.
   Proof. intros. ring. Qed.
   Lemma add_join: forall a m b, Z.add (Z.add a m) b = Z.add m (Z.add a b).

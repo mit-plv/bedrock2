@@ -18,7 +18,12 @@ Declare Scope list_index_scope.
    We would prefer making i a `global`, which in addition to bound names also includes
    globals and number literals, but `i global` is also printed back even if i is an
    arbitrary expression (COQBUG https://github.com/coq/coq/issues/15360), so we use
-   `i name` for now. *)
+   `i name` for now.
+   TODO is `a[:i + j]` really that bad?
+   Try out new scheme:
+   a[:i + j], a[:i], a[j:], a[i:][:n]
+   a[i : j], a[i + 1 : j + 3], a[i : j + l]
+*)
 Notation "a [: i ]" := (List.firstn i a)
   (at level 8, i at level 99, left associativity, format "a [:  i ]")
 : list_index_scope.
