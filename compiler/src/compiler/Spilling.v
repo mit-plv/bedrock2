@@ -1351,13 +1351,14 @@ Section Spilling.
              (fun (t2' : Semantics.trace) (m2' : mem) (l2' : locals) (mc2' : MetricLog) =>
                 exists t1' m1' l1' mc1',
                   related maxvar frame fpval t1' m1' l1' t2' m2' l2' /\
-                  post t1' m1' l1' mc1').
+                  post t1' m1' l1' mc1' /\
+                  MetricLogging.metricsLeq (MetricLogging.metricsSub mc2' mc2) (MetricLogging.metricsSub mc1' mc1)).
   Proof.
     induction 1; intros; cbn [spill_stmt valid_vars_src Forall_vars_stmt] in *; fwd.
     - (* exec.interact *)
       eapply exec.seq_cps.
       eapply set_reg_range_to_vars_correct; try eassumption; try (unfold a0, a7; blia).
-      intros *. intros R GM. clear l2 mc2 H4.
+      intros *. intros R GM. clear l2 H4.
       unfold related in R. fwd.
       spec (subst_split (ok := mem_ok) m) as A.
       1: eassumption. 1: ecancel_assumption.
@@ -1395,12 +1396,15 @@ Section Spilling.
         { reflexivity. }
         { unfold a0, a7. blia. }
         { eassumption. }
-        { intros. do 4 eexists. split. 1: eassumption. eapply H2p1.
-          unfold map.split. split; [reflexivity|].
-          move C at bottom.
-          unfold sep at 1 in C. destruct C as (mKeepL' & mRest & SC & ? & _). subst mKeepL'.
-          move H2 at bottom. unfold map.split in H2. fwd.
-          eapply map.shrink_disjoint_l; eassumption. }
+        { intros. do 4 eexists. split. 1: eassumption. split.
+          { eapply H2p1.
+            unfold map.split. split; [reflexivity|].
+            move C at bottom.
+            unfold sep at 1 in C. destruct C as (mKeepL' & mRest & SC & ? & _). subst mKeepL'.
+            move H2 at bottom. unfold map.split in H2. fwd.
+            eapply map.shrink_disjoint_l; eassumption. }
+          admit. 
+          }
         (* related for set_vars_to_reg_range_correct: *)
         unfold related.
         eexists _, _, _. ssplit.
@@ -1531,7 +1535,7 @@ Section Spilling.
         }
         cbv beta. subst maxvar'. blia.
       }
-      cbv beta. intros tL5 mL5 lFL5 mcL5 (tH5 & mH5 & lFH5 & mcH5 & R5 & OC).
+      cbv beta. intros tL5 mL5 lFL5 mcL5 (tH5 & mH5 & lFH5 & mcH5 & R5 & OC & Hmetrics).
       match goal with
       | H: context[outcome], A: context[outcome] |- _ =>
         specialize H with (1 := A); move H at bottom; rename H into Q
@@ -1615,12 +1619,12 @@ Section Spilling.
       { unfold a0, a7. blia. }
       { eassumption. }
       { intros m22 l22 mc22 R22. do 4 eexists. split. 1: eassumption.
-        eassumption. }
+        split; try eassumption. Fail solve_MetricLog. admit. }
 
     - (* exec.load *)
       eapply exec.seq_cps.
       eapply load_iarg_reg_correct; (blia || eassumption || idtac).
-      clear mc2 H3. intros.
+      intros.
       eapply exec.seq_cps.
       pose proof H2 as A. unfold related in A. fwd.
       unfold Memory.load, Memory.load_Z, Memory.load_bytes in *. fwd.
