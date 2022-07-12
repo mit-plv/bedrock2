@@ -561,7 +561,7 @@ Section LowerPipeline.
       (exists argnames retnames fbody,
           map.get p1 fname = Some (argnames, retnames, fbody) /\
           forall l mc, map.of_list_zip argnames argvals = Some l ->
-                       FlatImp.exec p1 fbody t m l mc (fun t' m' l' mc' =>
+                       FlatImp.exec isRegZ p1 fbody t m l mc (fun t' m' l' mc' =>
                          exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                                          post t' m' retvals)) ->
       riscv_call p2 fname t m argvals post.

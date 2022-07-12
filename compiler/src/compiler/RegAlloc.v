@@ -1234,7 +1234,7 @@ Section RegAlloc.
       unfold loop_inv in SC.
       rewrite E in SC. 
       eapply exec.loop with
-        (mid4 := (fun (t'0 : Semantics.trace) (m'0 : mem) (lL' : impLocals) (mcL' : MetricLogging.MetricLog) =>
+        (mid2 := (fun (t'0 : Semantics.trace) (m'0 : mem) (lL' : impLocals) (mcL' : MetricLogging.MetricLog) =>
            exists (lH' : srcLocals) (mcH' : MetricLogging.MetricLog),
              states_compat lH' a2 lL' /\
                (exists mcHmid mcLmid,
