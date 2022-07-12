@@ -57,6 +57,11 @@ Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
 #[export] Instance locals: map.map string Z := SortedListString.map Z.
 #[export] Instance locals_ok: map.ok locals := SortedListString.ok Z.
 
+#[export] Instance env: map.map String.string
+                          (list String.string * list String.string * Syntax.cmd) :=
+    SortedListString.map _.
+#[export] Instance env_ok: map.ok env := SortedListString.ok _.
+
 Require Import coqutil.Datatypes.PropSet.
 
 Module map.
@@ -151,121 +156,67 @@ Section WithParams.
 
   Import bedrock2.Syntax.
 
-  Inductive wp_expr: mem -> locals -> expr -> (Z -> Prop) -> Prop :=
-  | wp_literal: forall m l z (post: Z -> Prop),
-      post (wwrap z) ->
-      wp_expr m l (expr.literal z) post
-  | wp_var: forall m l x v (post: Z -> Prop),
+  Axiom dexpr: mem -> locals -> expr -> Z -> Prop.
+
+  (* TODO later also add dexpr_signed, whose range is -2^(width-1)..2^(width-1),
+     (so we'll have 3 interpreters: to unsigned, to signed, and to Prop,
+     and each operator decides which one to invoke for its arguments *)
+
+  Axiom dexpr_range: forall m l e v, dexpr m l e v -> 0 <= v < 2 ^ width.
+
+  Lemma dexpr_literal: forall (m: mem) (l: locals) z,
+      dexpr m l (expr.literal z) (wwrap z).
+  Admitted.
+
+  Lemma dexpr_var: forall m l x (v: Z),
       map.get l x = Some v ->
-      post v ->
-      wp_expr m l (expr.var x) post
-  | wp_load: forall m l sz eaddr post,
-      wp_expr m l eaddr (fun addr => exists v R, sep (value sz v addr) R m /\ post v) ->
-      wp_expr m l (expr.load sz eaddr) post
-  (* inlinetable: TODO *)
-  | wp_op_unchained: forall m l bop ea eb pa pb (post: Z -> Prop),
-      wp_expr m l ea pa ->
-      wp_expr m l eb pb ->
-      (forall a b, pa a -> pb b -> post (interp_binop bop a b)) ->
-      wp_expr m l (expr.op bop ea eb) post
-  | wp_ite_true: forall m l c e1 e2 post,
-      wp_expr m l c (fun r => wwrap r <> 0) ->
-      wp_expr m l e1 post ->
-      wp_expr m l (expr.ite c e1 e2) post
-  | wp_ite_false: forall m l c e1 e2 post,
-      wp_expr m l c (fun r => wwrap r = 0) ->
-      wp_expr m l e2 post ->
-      wp_expr m l (expr.ite c e1 e2) post.
-
-  Definition wp_exprs(m: mem)(l: locals): list expr -> (list Z -> Prop) -> Prop :=
-    fix rec es post :=
-      match es with
-      | nil => post nil
-      | cons e rest => wp_expr m l e (fun v => rec rest (fun vs => post (cons v vs)))
-      end.
-
-  Hint Constructors wp_expr : wp_expr_db.
-
-  Lemma weaken_wp_expr: forall m l e (post1 post2: Z -> Prop),
-      wp_expr m l e post1 ->
-      (forall v, post1 v -> post2 v) ->
-      wp_expr m l e post2.
+      dexpr m l (expr.var x) (wwrap v).
   Proof.
-    intros. revert dependent post2. induction H; intros; eauto with wp_expr_db.
-    eapply wp_load. eapply IHwp_expr. clear -H0. intros. fwd. eauto.
-  Qed.
-
-  Lemma wp_ite: forall m l c e1 e2 (post: Z -> Prop),
-      wp_expr m l c (fun b => exists v1 v2,
-        (if Z.eqb b 0 then wp_expr m l e2 (eq v2) else wp_expr m l e1 (eq v1)) /\
-        (post (if Z.eqb b 0 then v1 else v2))) ->
-      wp_expr m l (expr.ite c e1 e2) post.
-  Proof.
-    intros.
-    eapply weaken_wp_expr.
-    (* TODO deterministic case distinction on value of c might require dexpr *)
   Admitted.
 
-  Lemma wp_lazy_and: forall m l e1 e2 (post: Z -> Prop),
-      wp_expr m l e1 (fun b1 => exists b,
-        (if Z.eqb b1 0 then b = 0 else wp_expr m l e2 (eq b)) /\
-        (post b)) ->
-      wp_expr m l (expr.lazy_and e1 e2) post.
-  Proof.
-    intros. eapply wp_ite. eapply weaken_wp_expr. 1: exact H. clear H.
-    cbv beta. intros. fwd. destruct_one_match; subst; do 2 eexists; split; try eassumption.
-    eapply wp_literal. reflexivity.
-  Qed.
-
-  Lemma wp_lazy_or: forall m l e1 e2 (post: Z -> Prop),
-      wp_expr m l e1 (fun b1 => exists b,
-        (if Z.eqb b1 0 then wp_expr m l e2 (eq b) else b = 1) /\
-        (post b)) ->
-      wp_expr m l (expr.lazy_or e1 e2) post.
-  Proof.
-    intros. eapply wp_ite. eapply weaken_wp_expr. 1: exact H. clear H.
-    cbv beta. intros. fwd. destruct_one_match; subst; do 2 eexists; split; try eassumption.
-    eapply wp_literal. reflexivity.
-  Qed.
-
-  Lemma wp_op: forall m l bop ea eb (post: Z -> Prop),
-      wp_expr m l ea (fun a =>
-        wp_expr m l eb (fun b =>
-          post (interp_binop bop a b))) ->
-      wp_expr m l (expr.op bop ea eb) post.
-  Proof.
-    intros.
-    eapply wp_op_unchained.
-    (* TODO probably wp_expr as a recursive Inductive is not the best choice,
-       use dexpr or eval_expr instead *)
+  (* Note: no conversion needed between v in sepclause and v returned,
+     and sep already enforces bounds on v *)
+  Lemma dexpr_load: forall m l e addr sz v R,
+      dexpr m l e addr ->
+      sep (value sz v addr) R m ->
+      dexpr m l (expr.load sz e) v.
   Admitted.
 
-  Axiom zdexpr: mem -> locals -> expr -> Z -> Prop.
+  (* TODO later: dexpr_inlinetable *)
+
+  Lemma dexpr_binop: forall m l op e1 e2 (v1 v2: Z),
+      dexpr m l e1 v1 ->
+      dexpr m l e2 v2 ->
+      dexpr m l (expr.op op e1 e2) (interp_binop op v1 v2).
+  Admitted.
+
+  Lemma dexpr_ite: forall m l e1 e2 e3 (b v: Z),
+      dexpr m l e1 b ->
+      dexpr m l (if Z.eqb b 0 then e3 else e2) v ->
+      dexpr m l (expr.ite e1 e2 e3) v.
+  Admitted.
 
   Inductive dexpr_bool_prop(m: mem)(l: locals)(e: expr): Prop -> Prop :=
     mk_dexpr_bool_prop: forall b: Z,
-      zdexpr m l e b ->
-      dexpr_bool_prop m l e (wwrap b <> 0).
+      dexpr m l e b ->
+      dexpr_bool_prop m l e (b <> 0).
 
   Lemma dexpr_not: forall m l e (P: Prop),
       dexpr_bool_prop m l e P ->
-      dexpr_bool_prop m l (expr.op bopname.eq e (expr.literal 0)) (~ P).
+      dexpr_bool_prop m l (expr.not e) (~ P).
   Proof.
     intros. inversion H. clear H. subst P.
-    eenough ((~ wwrap b <> 0) = _) as E. {
+    eenough ((~ b <> 0) = _) as E. {
       rewrite E. econstructor.
-      cbn. unfold dexpr in H0.
-  Admitted.
-  (*
-      eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
-      cbv [RelationClasses.Reflexive Morphisms.pointwise_relation
-           Morphisms.respectful Basics.impl].
-      intros. subst. unfold literal, dlet.dlet. reflexivity.
+      eapply dexpr_binop. 1: eassumption.
+      eapply dexpr_literal.
     }
+    cbn. unfold weq, wwrap.
     apply PropExtensionality.propositional_extensionality.
-    destruct_one_match; split; try ZnWords.
-    intros. intros _. apply E. ZnWords.
-  Qed. *)
+    pose proof (dexpr_range _ _ _ _ H0).
+    destruct_one_match; split; intros; intro C;
+      destruct width_cases; subst width; try better_lia.
+  Qed.
 
   Lemma dexpr_lazy_and: forall m l e1 e2 (P1 P2: Prop),
       dexpr_bool_prop m l e1 P1 ->
@@ -273,212 +224,171 @@ Section WithParams.
       dexpr_bool_prop m l (expr.lazy_and e1 e2) (P1 /\ P2).
   Proof.
     intros.
-    inversion H; subst. destr (Z.eqb (wwrap b) 0).
-    - replace (wwrap b <> 0 /\ P2) with (wwrap b <> 0).
+    inversion H; subst. destr (Z.eqb b 0).
+    - replace (0 <> 0 /\ P2) with (0 <> 0).
       2: solve [apply PropExtensionality.propositional_extensionality; intuition idtac].
       eapply mk_dexpr_bool_prop.
-  Admitted.
-  (*
       eapply dexpr_ite. 1: eassumption.
-      destruct_one_match. 2: exfalso; congruence.
-      unfold dexpr, WeakestPrecondition.expr, expr_body, literal, dlet.dlet.
-      apply word.unsigned_inj. rewrite E. symmetry.
-      apply word.unsigned_of_Z_0.
+      rewrite Z.eqb_refl. eapply dexpr_literal.
     - specialize (H0 E). inversion H0; subst.
-      eassert (dexpr_bool_prop m l (expr.ite e1 e2 (expr.literal 0)) _) as A. {
+      eassert (dexpr_bool_prop m l (expr.lazy_and e1 e2) _) as A. {
         eapply mk_dexpr_bool_prop.
         eapply dexpr_ite. 1: eassumption.
-        destruct_one_match. 1: exfalso; congruence. eassumption.
+        destruct_one_match. 1: exfalso; congruence.
+        eapply dexpr_binop. 1: eapply dexpr_literal. eassumption.
       }
-      replace (word.unsigned b <> 0 /\ word.unsigned b0 <> 0) with (word.unsigned b0 <> 0).
-      2: solve [apply PropExtensionality.propositional_extensionality; intuition idtac].
-      exact A.
-  Qed. *)
+      eqapply A.
+      cbn. unfold wltu, wwrap. rewrite Zmod_0_l.
+      eapply dexpr_range in H2.
+      rewrite Z.mod_small by eassumption.
+      destruct_one_match;
+        apply PropExtensionality.propositional_extensionality; split; Lia.lia.
+  Qed.
 
   Lemma dexpr_lazy_or: forall m l e1 e2 (P1 P2: Prop),
       dexpr_bool_prop m l e1 P1 ->
       (~P1 -> dexpr_bool_prop m l e2 P2) ->
-      dexpr_bool_prop m l (expr.lazy_and e1 e2) (P1 \/ P2).
-  Admitted.
-
-  Lemma dexpr_var: forall m l x (v: Z),
-      map.get l x = Some v ->
-      zdexpr m l (expr.var x) v.
-  Proof.
-    intros. cbn. unfold WeakestPrecondition.get. eauto.
-  Admitted.
-
-  (* TODO express everything in terms of a dexpr on Z memory, and then wp_expr becomes unnecessary  *)
-
-  Lemma dexpr_literal: forall (m: mem) (l: locals) z,
-      dexpr m l (expr.literal z) (word.of_Z z).
-  Proof. intros. reflexivity. Qed.
-
-  Lemma dexpr_binop: forall m l op e1 e2 (v1 v2: word),
-      dexpr m l e1 v1 ->
-      dexpr m l e2 v2 ->
-      dexpr m l (expr.op op e1 e2) (interp_binop op v1 v2).
-  Proof.
-    unfold dexpr. intros. cbn.
-    eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
-    intros v E. subst v.
-    eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
-    intros v E. subst v. reflexivity.
-  Qed.
-
-  Local Hint Rewrite @word.unsigned_ltu using typeclasses eauto: fwd_rewrites.
-  Local Hint Rewrite @word.signed_lts using typeclasses eauto: fwd_rewrites.
-
-  Lemma dexpr_bool_op_prop: forall m l op e1 e2 (v1 v2: word),
-      dexpr m l e1 v1 ->
-      dexpr m l e2 v2 ->
-      dexpr_bool_prop m l (expr.op op e1 e2) (interp_bool_prop op v1 v2).
+      dexpr_bool_prop m l (expr.lazy_or e1 e2) (P1 \/ P2).
   Proof.
     intros.
-    eassert (dexpr_bool_prop m l (expr.op op e1 e2) _) as A. {
+    inversion H; subst. clear H. destr (Z.eqb b 0).
+    - specialize (H0 ltac:(Lia.lia)). inversion H0; subst. clear H0.
+      eassert (dexpr_bool_prop m l (expr.lazy_or e1 e2) _) as A. {
+        eapply mk_dexpr_bool_prop.
+        eapply dexpr_ite. 1: eassumption.
+        rewrite Z.eqb_refl.
+        eapply dexpr_binop. 1: eapply dexpr_literal. eassumption.
+      }
+      eqapply A.
+      cbn. unfold wltu, wwrap.
+      rewrite Zmod_0_l.
+      eapply dexpr_range in H.
+      rewrite Z.mod_small by eassumption.
+      destruct_one_match;
+        apply PropExtensionality.propositional_extensionality; split; Lia.lia.
+    - unshelve erewrite (_: (b <> 0 \/ P2) = _); cycle 2. {
+        eapply mk_dexpr_bool_prop.
+        eapply dexpr_ite. 1: eassumption.
+        destruct_one_match. 1: exfalso; congruence.
+        eapply dexpr_literal.
+      }
+      unfold wwrap. rewrite Z.mod_small. 2: {
+        destruct width_cases; subst width; cbv; intuition discriminate.
+      }
+      solve [apply PropExtensionality.propositional_extensionality; intuition Lia.lia].
+  Qed.
+
+  Lemma dexpr_ltu_prop: forall m l e1 e2 v1 v2,
+      dexpr m l e1 v1 ->
+      dexpr m l e2 v2 ->
+      dexpr_bool_prop m l (expr.op bopname.ltu e1 e2) (v1 < v2).
+  Proof.
+    intros.
+    unshelve erewrite (_: (v1 < v2) = _); cycle 2. {
       eapply mk_dexpr_bool_prop.
       eapply dexpr_binop; eassumption.
     }
-    eqassumption.
-    apply PropExtensionality.propositional_extensionality; split; destruct op; cbn;
-      intros; auto; fwd; auto; destruct_one_match;
-      rewrite ?word.unsigned_of_Z_1, ?word.unsigned_of_Z_0; try congruence; try Lia.lia.
+    eapply dexpr_range in H.
+    eapply dexpr_range in H0.
+    apply PropExtensionality.propositional_extensionality; cbn; unfold wltu, wwrap.
+    rewrite 2Z.mod_small by eassumption.
+    destr ((v1 <? v2)%Z); split; Lia.lia.
   Qed.
 
-  Definition dexpr_bool_op_prop_unf := ltac:(
-    let t := type of dexpr_bool_op_prop in
-    let t' := eval unfold interp_bool_prop in t in
-    let p := constr:(dexpr_bool_op_prop : t') in
-    exact p).
-
-  Definition wp_expr_bool_prop(m: mem)(l: locals)(e: expr)(post: Prop -> Prop): Prop :=
-    wp_expr m l e (fun b => post (word.unsigned b <> 0)).
-
-  Lemma wp_bool_op''': forall m l op e1 e2 (post: Prop -> Prop),
-      wp_expr m l e1 (fun v1 =>
-        wp_expr m l e2 (fun v2 =>
-          post (interp_bool_prop op v1 v2))) ->
-      wp_expr_bool_prop m l (expr.op op e1 e2) post.
-  Proof.
-    unfold wp_expr_bool_prop. intros. eapply wp_op.
-    eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
-    intros. eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
-    intros. unfold interp_bool_prop, interp_binop in *.
-    destruct op; auto; destruct_one_match; fwd.
-    all: rewrite ?word.unsigned_of_Z_nowrap by (vm_compute; intuition discriminate).
-    all: try (eqassumption;
-              apply PropExtensionality.propositional_extensionality; split; intros;
-              (Lia.lia || congruence)).
-  Qed.
-
-  Inductive wp_cmd(call: (string -> trace -> mem -> list word ->
-                          (trace -> mem -> list word -> Prop) -> Prop))
-            (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop): Prop :=
-    mk_wp_cmd: WeakestPrecondition.cmd call c t m l post -> wp_cmd call c t m l post.
-
-  Lemma WWP_weaken_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
-      WeakestPrecondition.cmd (call fs) c t m l post1 ->
-      (forall t m l, post1 t m l -> post2 t m l) ->
-      WeakestPrecondition.cmd (call fs) c t m l post2.
+  Lemma dexpr_eq_prop: forall m l e1 e2 v1 v2,
+      dexpr m l e1 v1 ->
+      dexpr m l e2 v2 ->
+      dexpr_bool_prop m l (expr.op bopname.eq e1 e2) (v1 = v2).
   Proof.
     intros.
-    unshelve epose (env := _ : map.map string (list string * list string * cmd)).
-    1: eapply SortedListString.map.
-    (* TODO why are pairs printed back as prod rather than * ? *)
-    assert (env_ok: map.ok env) by apply SortedListString.ok. clearbody env.
-    eapply WeakestPreconditionProperties.Proper_cmd. 3: eassumption.
-    1: eapply WeakestPreconditionProperties.Proper_call.
-    cbv [RelationClasses.Reflexive Morphisms.pointwise_relation
-         Morphisms.respectful Basics.impl].
-    assumption.
+    unshelve erewrite (_: (v1 = v2) = _); cycle 2. {
+      eapply mk_dexpr_bool_prop.
+      eapply dexpr_binop; eassumption.
+    }
+    cbn. unfold weq, wwrap.
+    eapply dexpr_range in H.
+    eapply dexpr_range in H0.
+    rewrite 2Z.mod_small by eassumption.
+    apply PropExtensionality.propositional_extensionality.
+    destr ((v1 =? v2)%Z); split; Lia.lia.
   Qed.
+
+  Definition trace := list (mem * string * list Z * (mem * list Z)).
+
+  Definition wp_cmd(fs: list (string * (list string * list string * cmd)))
+    (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop): Prop.
+  Admitted.
 
   Lemma weaken_wp_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
-      wp_cmd (call fs) c t m l post1 ->
+      wp_cmd fs c t m l post1 ->
       (forall t m l, post1 t m l -> post2 t m l) ->
-      wp_cmd (call fs) c t m l post2.
-  Proof. intros. constructor. inversion H. eapply WWP_weaken_cmd; eassumption. Qed.
+      wp_cmd fs c t m l post2.
+  Admitted.
 
-  Lemma wp_set: forall fs x a t m l rest post,
-      wp_expr m l a
-        (fun v => wp_cmd (call fs) rest t m (map.put l x v) post) ->
-      wp_cmd (call fs) (cmd.seq (cmd.set x a) rest) t m l post.
+  Lemma wp_set: forall fs x e v t m l rest post,
+      dexpr m l e v ->
+      (let name := v in wp_cmd fs rest t m (map.put l x name) post) ->
+      wp_cmd fs (cmd.seq (cmd.set x e) rest) t m l post.
+  Admitted.
+
+  Lemma wp_store: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
+      dexpr m l ea a ->
+      dexpr m l ev v ->
+      sep (value sz v_old a) R m ->
+      (forall m', sep (value sz v a) R m' -> wp_cmd fs rest t m' l post) ->
+      wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
+  Admitted.
+
+  Lemma wp_if0: forall fs c thn els rest b Q1 Q2 t m l post,
+      dexpr m l c b ->
+      (b <> 0 -> wp_cmd fs thn t m l Q1) ->
+      (b =  0 -> wp_cmd fs els t m l Q2) ->
+      (forall t' m' l', b <> 0 /\ Q1 t' m' l' \/
+                        b =  0 /\ Q2 t' m' l' ->
+                        wp_cmd fs rest t' m' l' post) ->
+      wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t m l post.
+  Admitted.
+
+  Definition sorted_varnames(l: locals): list string :=
+    match l with
+    | SortedList.Build_rep tuples pf => List.map fst tuples
+    end.
+
+  Lemma wp_if: forall fs c l thn els rest b Q1 Q2 t m post,
+      dexpr m l c b ->
+      (b <> 0 -> wp_cmd fs thn t m l (fun t' m' l' =>
+                   sorted_varnames l' = sorted_varnames l /\ Q1 t' m' l')) ->
+      (b =  0 -> wp_cmd fs els t m l (fun t' m' l' =>
+                   sorted_varnames l' = sorted_varnames l /\ Q2 t' m' l')) ->
+      (forall t' m' l', sorted_varnames l' = sorted_varnames l ->
+                        (b <> 0 /\ Q1 t' m' l' \/
+                         b =  0 /\ Q2 t' m' l') ->
+                        wp_cmd fs rest  t' m' l' post) ->
+      wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Proof.
-    intros. eapply wp_expr_to_dexpr in H. fwd. destruct Hp1.
-    constructor. cbn. unfold dlet.dlet. eauto.
+    intros. eapply wp_if0. 1: exact H. all: clear H; eauto.
+    cbv beta in *.
+    intros * [? | ?]; fwd; eapply H2; eauto.
   Qed.
 
-  Lemma wp_store: forall fs sz ea ev t m l rest post,
-      wp_expr m l ea (fun a =>
-        wp_expr m l ev (fun v =>
-          get_option (Memory.store sz m a v) (fun m' =>
-            wp_cmd (call fs) rest t m' l post))) ->
-      wp_cmd (call fs) (cmd.seq (cmd.store sz ea ev) rest) t m l post.
-  Proof.
-    intros. constructor. cbn.
-    eapply wp_expr_to_dexpr in H. unfold dexpr in *. fwd.
-    eapply wp_expr_to_dexpr in Hp1. unfold dexpr in *. fwd.
-    inversion Hp1p1. inversion H0. subst. unfold store. symmetry in H. eauto 10.
-  Qed.
-
-  Lemma wp_if0: forall fs c thn els rest t m l post,
-      wp_expr m l c (fun b => exists Q1 Q2,
-        ((word.unsigned b <> 0 -> wp_cmd (call fs) thn t m l Q1) /\
-         (word.unsigned b =  0 -> wp_cmd (call fs) els t m l Q2)) /\
-        (forall t' m' l', word.unsigned b <> 0 /\ Q1 t' m' l' \/
-                          word.unsigned b =  0 /\ Q2 t' m' l' ->
-                          wp_cmd (call fs) rest t' m' l' post)) ->
-      wp_cmd (call fs) (cmd.seq (cmd.cond c thn els) rest) t m l post.
-  Proof.
-    intros. constructor. cbn.
-    eapply wp_expr_to_dexpr in H. fwd.
-    eexists. split; [eassumption| ]. split; intros.
-    - eapply WWP_weaken_cmd. 1: eapply Hp1p0p0; eassumption.
-      unfold Morphisms.pointwise_relation, Basics.impl. intros. eapply Hp1p1. eauto.
-    - eapply WWP_weaken_cmd. 1: eapply Hp1p0p1; eassumption.
-      unfold Morphisms.pointwise_relation, Basics.impl. intros. eapply Hp1p1. eauto.
-  Qed.
-
-  Lemma wp_if: forall fs c l vars vals thn els rest t m post,
-      l = reconstruct vars vals ->
-      wp_expr m l c (fun b =>
-        exists (Q1 Q2: trace -> mem -> locals -> Prop),
-          ((word.unsigned b <> 0 -> wp_cmd (call fs) thn t m l (fun t' m' l' =>
-              exists vals', l' = reconstruct vars vals' /\ Q1 t' m' l')) /\
-           (word.unsigned b =  0 -> wp_cmd (call fs) els t m l (fun t' m' l' =>
-              exists vals', l' = reconstruct vars vals' /\ Q2 t' m' l'))) /\
-          (forall t' m' vals', let l' := reconstruct vars vals' in
-                               word.unsigned b <> 0 /\ Q1 t' m' l' \/
-                               word.unsigned b =  0 /\ Q2 t' m' l' ->
-                               wp_cmd (call fs) rest  t' m' l' post)) ->
-      wp_cmd (call fs) (cmd.seq (cmd.cond c thn els) rest) t m l post.
-  Proof.
-    intros. subst. eapply wp_if0. eapply weaken_wp_expr. 1: exact H0. clear H0. cbv beta.
-    intros v (Q1 & Q2 & A & B). eexists. eexists. split. 1: exact A. clear A. cbv beta.
-    intros * [? | ?]; fwd; eapply B; eauto.
-  Qed.
-
-  Lemma wp_if_bool_dexpr: forall fs c vars vals0 thn els rest t0 m0 P Q1 Q2 post,
-      dexpr_bool_prop m0 (reconstruct vars vals0) c P ->
-      (P  -> wp_cmd (call fs) thn t0 m0 (reconstruct vars vals0) (fun t m l =>
-               exists vals, l = reconstruct vars vals /\ Q1 t m l)) ->
-      (~P -> wp_cmd (call fs) els t0 m0 (reconstruct vars vals0) (fun t m l =>
-               exists vals, l = reconstruct vars vals /\ Q2 t m l)) ->
-      (forall (cond0: bool) t m vals,
+  Lemma wp_if_bool_dexpr: forall fs c thn els rest t0 m0 l0 P Q1 Q2 post,
+      dexpr_bool_prop m0 l0 c P ->
+      (P  -> wp_cmd fs thn t0 m0 l0 (fun t m l =>
+               sorted_varnames l = sorted_varnames l0 /\ Q1 t m l)) ->
+      (~P -> wp_cmd fs els t0 m0 l0 (fun t m l =>
+               sorted_varnames l = sorted_varnames l0 /\ Q2 t m l)) ->
+      (forall (cond0: bool) t m l,
+          sorted_varnames l = sorted_varnames l0 ->
           (* (if cond0 then P else ~P) -> <-- already added to Q1/Q2 by automation *)
-          (if cond0 then Q1 t m (reconstruct vars vals)
-           else Q2 t m (reconstruct vars vals)) ->
-          wp_cmd (call fs) rest t m (reconstruct vars vals) post) ->
-      wp_cmd (call fs) (cmd.seq (cmd.cond c thn els) rest) t0 m0 (reconstruct vars vals0) post.
+          (if cond0 then Q1 t m l else Q2 t m l) ->
+          wp_cmd fs rest t m l post) ->
+      wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t0 m0 l0 post.
   Proof.
-    intros. inversion H. subst P. eapply wp_if. 1: reflexivity.
-    unfold dexpr in H3.
-    eapply weaken_wp_expr. 1: constructor; eassumption.
-    intros. subst v. do 2 eexists. ssplit.
-    - eassumption.
-    - intros. eapply H1. intro C. apply C. assumption.
-    - cbv zeta. intros. destruct H4 as [(Ne & P) | (E & P)];
-        [eapply (H2 true)| eapply (H2 false)]; assumption.
+    intros. inversion H. subst P. clear H. eapply wp_if.
+    1,2: eassumption.
+    { intro E. subst b. eapply H1. intro C. apply C. reflexivity. }
+    intros. destruct H4 as [(Ne & P) | (E & P)];
+      [eapply (H2 true)| eapply (H2 false)]; assumption.
   Qed.
 
   Lemma wp_while {measure : Type} (v0 : measure) (e: expr) (c: cmd) t (m: mem) l fs rest
@@ -489,22 +399,11 @@ Section WithParams.
     (Hbody : forall v t m l,
       invariant v t m l ->
       exists P, dexpr_bool_prop m l e P /\
-         (P -> wp_cmd (call fs) c t m l
+         (P -> wp_cmd fs c t m l
                       (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
-         (~P -> wp_cmd (call fs) rest t m l post))
-    : wp_cmd (call fs) (cmd.seq (cmd.while e c) rest) t m l post.
-  Proof.
-    econstructor. cbn. exists measure, lt, invariant.
-    split. 1: assumption.
-    split. 1: eauto.
-    clear Hpre v0 t m l.
-    intros v t m l Hinv.
-    specialize (Hbody v t m l Hinv).
-    fwd.
-    inversion Hbodyp0. subst P. exists b. split. 1: exact H. split.
-    - intro NE. eapply Hbodyp1. assumption.
-    - intro E. eapply Hbodyp2. intro C. apply C. exact E.
-  Qed.
+         (~P -> wp_cmd fs rest t m l post))
+    : wp_cmd fs (cmd.seq (cmd.while e c) rest) t m l post.
+  Admitted.
 
   (* The postcondition of the callee's spec will have a concrete shape that differs
      from the postcondition that we pass to `call`, so when using this lemma, we have
@@ -513,17 +412,17 @@ Section WithParams.
      2) forall t' m' resvals, ?mid t' m' resvals -> the post of `call`
      To solve 1), we will apply the callee's spec, but that means that if we make
      changes to the context while solving the preconditions of the callee's spec,
-     these changes will not be visible in subgoal 2 *)
+     these changes will not be visible in subgoal 2
   Lemma wp_call: forall fs binds f argexprs rest t m l post,
       wp_exprs m l argexprs (fun argvals =>
         call fs f t m argvals (fun t' m' resvals =>
           get_option (map.putmany_of_list_zip binds resvals l) (fun l' =>
-            wp_cmd (call fs) rest t' m' l' post))) ->
-      wp_cmd (call fs) (cmd.seq (cmd.call binds f argexprs) rest) t m l post.
+            wp_cmd fs rest t' m' l' post))) ->
+      wp_cmd fs (cmd.seq (cmd.call binds f argexprs) rest) t m l post.
   Proof.
   Admitted.
 
-  (* It's not clear whether a change to wp_call can fix this.
+     It's not clear whether a change to wp_call can fix this.
      Right now, specs look like this:
 
   Instance spec_of_foo : spec_of "foo" := fun functions =>
@@ -560,22 +459,16 @@ Section WithParams.
 
   Lemma wp_skip: forall fs t m l (post: trace -> mem -> locals -> Prop),
       post t m l ->
-      wp_cmd (call fs) cmd.skip t m l post.
-  Proof. intros. constructor. assumption. Qed.
+      wp_cmd fs cmd.skip t m l post.
+  Admitted.
 
-  (* to avoid using `remember` and having to control which occurrence we want to remember *)
-  Lemma wp_locals_put: forall fs c x v t m l post,
-      (forall a, a = v -> wp_cmd (call fs) c t m (map.put l x a) post) ->
-      wp_cmd (call fs) c t m (map.put l x v) post.
-  Proof. auto. Qed.
-
-  Definition vc_func fs '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
-                     (post : trace -> mem -> list word -> Prop) :=
+  Definition vc_func fs '(innames, outnames, body) (t: trace) (m: mem) (argvs: list Z)
+                     (post : trace -> mem -> list Z -> Prop) :=
     exists l, map.of_list_zip innames argvs = Some l /\
-      wp_cmd (call fs) body t m l (fun t' m' l' =>
+      wp_cmd fs body t m l (fun t' m' l' =>
         exists retvs, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
 
-  Definition arguments_marker(args: list word): list word := args.
+  Definition arguments_marker(args: list Z): list Z := args.
 
 End WithParams.
 
@@ -605,19 +498,10 @@ Ltac assert_scope_kind expected :=
   else fail "This snippet is only allowed in a" expected "block, but we're in a" sk "block".
 
 Declare Scope live_scope_prettier. (* prettier, but harder to debug *)
-Local Open Scope live_scope_prettier.
+(*Local Open Scope live_scope_prettier.*)
 
 Notation "'ready' 'for' 'next' 'command'" := (wp_cmd _ _ _ _ _ _)
   (at level 0, only printing) : live_scope_prettier.
-
-Declare Scope reconstruct_locals_scope.
-Delimit Scope reconstruct_locals_scope with reconstruct_locals.
-
-Notation "[ x ]" := (PrimitivePair.pair.mk x tt)
-  : reconstruct_locals_scope.
-Notation "[ x ; y ; .. ; z ]" :=
-  (PrimitivePair.pair.mk x (PrimitivePair.pair.mk y .. (PrimitivePair.pair.mk z tt) ..))
-  : reconstruct_locals_scope.
 
 Notation "l" := (arguments_marker l)
   (at level 100, only printing) : live_scope.
@@ -656,28 +540,19 @@ Ltac put_into_current_locals is_decl :=
     end
   end.
 
-Ltac eval_expr_step :=
-  lazymatch goal with
-  | |- wp_expr _ _ (expr.load _ _) _ => eapply wp_load
-  | |- wp_expr _ _ (expr.var _) _ => eapply wp_var; [ reflexivity | ]
-  | |- wp_expr _ _ (expr.literal _) _ => eapply wp_literal
-  | |- wp_expr _ _ (expr.op _ _ _) _ => eapply wp_op; cbv [interp_binop]
-  | |- get_option (Memory.load access_size.word _ _) _ =>
-      eapply load_word_of_sep_cps; scancel_asm; clear_split_sepclause_stack
-  end.
-
-Ltac eval_expr := repeat eval_expr_step.
-
 Ltac eval_dexpr_step :=
   lazymatch goal with
-  | |- dexpr_bool_prop _ _ (expr.lazy_and _ _) _ =>
-      eapply dexpr_lazy_and; [ |intro]
-  | |- dexpr_bool_prop _ _ (expr.op bopname.eq _ (expr.literal 0)) _ =>
-      eapply dexpr_not
-  | |- dexpr_bool_prop _ _ (expr.op _ _ _) _ =>
-      eapply dexpr_bool_op_prop_unf
-  | |- dexpr _ _ (expr.var _) _ => eapply dexpr_var; reflexivity
+  | |- dexpr_bool_prop _ _ (expr.lazy_and _ _) _ => eapply dexpr_lazy_and; [ |intro]
+  | |- dexpr_bool_prop _ _ (expr.lazy_or _ _) _ => eapply dexpr_lazy_or; [ |intro]
+  | |- dexpr_bool_prop _ _ (expr.not _) _ => eapply dexpr_not
+  | |- dexpr_bool_prop _ _ (expr.op bopname.eq _ _) _ => eapply dexpr_eq_prop
+  | |- dexpr_bool_prop _ _ (expr.op bopname.ltu _ _) _ => eapply dexpr_ltu_prop
+  | |- dexpr_bool_prop _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)
+  | |- dexpr _ _ (expr.var _) _ => eapply dexpr_var
   | |- dexpr _ _ (expr.literal _) _ => eapply dexpr_literal
+  | |- dexpr _ _ (expr.op _ _) _ => eapply dexpr_binop; cbv [interp_binop]
+  | |- dexpr _ _ (expr.load _ _) => eapply dexpr_load
+  | |- dexpr _ _ (expr.ite _ _ _) _ => eapply dexpr_ite
   end.
 
 Ltac eval_dexpr := repeat eval_dexpr_step.
@@ -938,7 +813,7 @@ Section MergingAnd.
       nth i Ps1 = seps l1 m ->
       nth j Ps2 = seps l2 m ->
       (if b then ands Ps1 else ands Ps2) ->
-      seps [| seps (if b then l1 else l2) |] m /\
+      seps (cons (seps (if b then l1 else l2)) nil) m /\
         if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2).
   Proof.
     intros. eapply merge_ands_at_indices in H1; [ | eassumption.. ].
@@ -973,6 +848,7 @@ Section MergingSep.
       eapply iff1ToEq in A. rewrite <- A in H1. ecancel_assumption.
   Qed.
 
+(*
   (* Note: if the two predicates are at the same address, but have different footprints,
      you might not want to merge them, but first combine them with other sep clauses
      until they both have the same footprint *)
@@ -1031,6 +907,7 @@ Section MergingSep.
       }
       eapply A. assumption.
   Qed.
+*)
 End MergingSep.
 
 Fixpoint zip_tuple_if{A: Type}(b: bool){n: nat}(t1 t2: tuple A n){struct n}: tuple A n.
@@ -1130,9 +1007,14 @@ Section ReconstructLemmas.
   Proof. intros; destruct b; assumption. Qed.
 End ReconstructLemmas.
 
+Ltac is_fresh x := assert_succeeds (pose proof tt as x).
+
+Ltac make_fresh x :=
+  tryif is_fresh x then idtac else let x' := fresh x "_0" in rename x into x'.
+
 Ltac destruct_locals_norename tup names :=
   lazymatch names with
-  | ?s :: ?rest =>
+  | cons ?s ?rest =>
       let name := string_to_ident s in
       let t := fresh "tmp_" name in
       destruct tup as (t & tup); destruct_locals_norename tup rest
@@ -1141,14 +1023,14 @@ Ltac destruct_locals_norename tup names :=
 
 Ltac destruct_locals tup names :=
   lazymatch names with
-  | ?s :: ?rest => let name := string_to_ident s in
+  | cons ?s ?rest => let name := string_to_ident s in
                    make_fresh name; destruct tup as (name & tup); destruct_locals tup rest
   | nil => destruct tup (* becomes tt *)
   end.
 
 Ltac destruct_locals_after_merge tup names :=
   lazymatch names with
-  | ?s :: ?rest =>
+  | cons ?s ?rest =>
       lazymatch goal with
       | H: tup = _ |- _ =>
           let name := string_to_ident s in
@@ -1262,13 +1144,13 @@ Ltac constr_eqb x y :=
   | _ => constr:(false)
   end.
 
-Ltac merge_sep_pair_step :=
+Ltac merge_sep_pair_step := idtac. (*
   lazymatch goal with
   | H: seps ((seps (if ?b then ?Ps else ?Qs)) :: ?Rs) ?m |- _ =>
       merge_pair H Ps Qs constr_eqb (merge_seps_at_indices_same m) ||
       merge_pair H Ps Qs same_addr_and_pred (merge_seps_at_indices_same_addr_and_pred m) ||
       (eapply merge_seps_done in H; cbn [seps] in H)
-  end.
+  end. *)
 
 Ltac after_if :=
   repeat match goal with
@@ -1314,14 +1196,14 @@ Ltac assign is_decl name val :=
   [.. (* maybe some unsolved side conditions *)
   | try ((* to simplify value that will become bound with :=, at which point
             rewrites will not apply any more *)
-         repeat word_simpl_step_in_goal;
+         (*repeat word_simpl_step_in_goal;*)
          put_into_current_locals is_decl) ].
 
 Ltac store sz addr val :=
   eapply (wp_store _ sz addr val);
   eval_expr;
   [.. (* maybe some unsolved side conditions *)
-  | lazymatch goal with
+  | (*lazymatch goal with
     | |- get_option (Memory.store access_size.one _ _ _) _ =>
         eapply store_byte_of_sep_cps; after_mem_modifying_lemma
     | |- get_option (Memory.store access_size.word _ _ _) _ =>
@@ -1329,7 +1211,7 @@ Ltac store sz addr val :=
     | |- get_option (Memory.store ?sz _ _ _) _ =>
         fail 10000 "storing" sz "not yet supported"
     | |- _ => pose_err Error:("eval_expr_step should not fail on this goal")
-    end ].
+    end *) ].
 
 Ltac cond c :=
   lazymatch goal with
@@ -1402,6 +1284,12 @@ Ltac while cond measure0 :=
     ] ].
 
 Create HintDb prove_post.
+
+Ltac destruct_bool_vars :=
+  repeat match goal with
+         | H: context[if ?b then _ else _] |- _ =>
+             is_var b; let t := type of b in constr_eq t bool; destruct b
+         end.
 
 Ltac prove_concrete_post :=
     repeat match goal with
@@ -1663,8 +1551,12 @@ Ltac adhoc_lia_performance_fixes :=
 
 Require Import coqutil.Sorting.Permutation.
 
-Load LiveVerif.
-Close Scope sepcl_scope.
+Import Syntax BinInt String List.ListNotations ZArith.
+Local Open Scope string_scope. Local Open Scope Z_scope.
+(* Not a Definition because if the Z.of_nat is visible, lia knows it's positive *)
+Notation "'len' l" := (Z.of_nat (List.length l)) (at level 10).
+
+Require Import coqutil.Word.Bitwidth32.
 
 (* Note: If you re-import ZnWords after this, you'll get the old better_lia again *)
 Ltac better_lia ::=
@@ -1682,11 +1574,11 @@ Comments C_STARTS_HERE
 Definition u_min: {f: list string * list string * cmd &
   forall fs t m a b (R: mem -> Prop),
     R m ->
-    vc_func fs f t m [| a; b |] (fun t' m' retvs =>
+    vc_func fs f t m (cons a (cons b nil)) (fun t' m' retvs =>
       t' = t /\ R m' /\
-      (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
-       word.unsigned b <= word.unsigned a /\ retvs = [b])
-  )}.                                                                           .**/
+      (a < b /\ retvs = (cons a nil) \/
+       b <= a /\ retvs = (cons b nil))
+  )}.                           (*                                                .**/
 {                                                                          /**. .**/
   uintptr_t r = 0;                                                         /**. .**/
   if (a < b) {                                                             /**. .**/

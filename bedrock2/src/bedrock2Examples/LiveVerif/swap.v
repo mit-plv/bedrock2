@@ -146,6 +146,17 @@ Section WithParams.
     eapply WeakestPreconditionProperties.Proper_expr; eassumption.
   Qed.
 
+  Lemma wp_op: forall m l bop ea eb (post: word -> Prop),
+      wp_expr m l ea (fun a =>
+        wp_expr m l eb (fun b =>
+          post (interp_binop bop a b))) ->
+      wp_expr m l (expr.op bop ea eb) post.
+  Proof.
+    intros. constructor. cbn.
+    eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
+    intros. destruct H. exact H.
+  Qed.
+
   Lemma wp_ite: forall m l c e1 e2 (post: word -> Prop),
       wp_expr m l c (fun b => exists v1 v2,
         (if Z.eqb (word.unsigned b) 0 then wp_expr m l e2 (eq v2) else wp_expr m l e1 (eq v1)) /\
@@ -161,8 +172,9 @@ Section WithParams.
   Proof.
     intros. eapply wp_ite. eapply weaken_wp_expr. 1: exact H. clear H.
     cbv beta. intros. fwd. destruct_one_match; subst; do 2 eexists; split; try eassumption.
-    eapply wp_literal. reflexivity.
-  Qed.
+    1: eapply wp_literal; reflexivity.
+    eapply wp_op. cbn. eapply weaken_wp_expr.
+  Admitted.
 
   Lemma wp_lazy_or: forall m l e1 e2 (post: word -> Prop),
       wp_expr m l e1 (fun b1 => exists b,
@@ -172,8 +184,8 @@ Section WithParams.
   Proof.
     intros. eapply wp_ite. eapply weaken_wp_expr. 1: exact H. clear H.
     cbv beta. intros. fwd. destruct_one_match; subst; do 2 eexists; split; try eassumption.
-    eapply wp_literal. reflexivity.
-  Qed.
+    2: eapply wp_literal; reflexivity.
+  Admitted.
 
   Lemma wp_load: forall m l sz addr (post: word -> Prop),
       wp_expr m l addr (fun a => get_option (Memory.load sz m a) post) ->
@@ -183,17 +195,6 @@ Section WithParams.
     eapply WeakestPreconditionProperties.Proper_expr. 2: eassumption.
     cbv [Morphisms.pointwise_relation Basics.impl]. intros.
     inversion H1. subst. eauto.
-  Qed.
-
-  Lemma wp_op: forall m l bop ea eb (post: word -> Prop),
-      wp_expr m l ea (fun a =>
-        wp_expr m l eb (fun b =>
-          post (interp_binop bop a b))) ->
-      wp_expr m l (expr.op bop ea eb) post.
-  Proof.
-    intros. constructor. cbn.
-    eapply weaken_wp_expr. 1: exact H. clear H. cbv beta.
-    intros. destruct H. exact H.
   Qed.
 
   Lemma wp_expr_to_dexpr: forall m l e post,
@@ -280,8 +281,7 @@ Section WithParams.
       }
       replace (word.unsigned b <> 0 /\ word.unsigned b0 <> 0) with (word.unsigned b0 <> 0).
       2: solve [apply PropExtensionality.propositional_extensionality; intuition idtac].
-      exact A.
-  Qed.
+  Admitted.
 
   Lemma dexpr_lazy_or: forall m l e1 e2 (P1 P2: Prop),
       dexpr_bool_prop m l e1 P1 ->
