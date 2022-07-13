@@ -18,7 +18,8 @@ Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Arr
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.groundcbv.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
-Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic bedrock2.Loops.
+Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic.
+Require bedrock2.Loops.
 Require Import Coq.Strings.String.
 Require Import bedrock2.TacticError.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
@@ -327,7 +328,7 @@ Section WithParams.
 
   Lemma wp_set: forall fs x e v t m l rest post,
       dexpr m l e v ->
-      (let name := v in wp_cmd fs rest t m (map.put l x name) post) ->
+      wp_cmd fs rest t m (map.put l x v) post ->
       wp_cmd fs (cmd.seq (cmd.set x e) rest) t m l post.
   Admitted.
 
@@ -371,7 +372,7 @@ Section WithParams.
     intros * [? | ?]; fwd; eapply H2; eauto.
   Qed.
 
-  Lemma wp_if_bool_dexpr: forall fs c thn els rest t0 m0 l0 P Q1 Q2 post,
+  Lemma wp_if_bool_dexpr_with_varnames: forall fs c thn els rest t0 m0 l0 P Q1 Q2 post,
       dexpr_bool_prop m0 l0 c P ->
       (P  -> wp_cmd fs thn t0 m0 l0 (fun t m l =>
                sorted_varnames l = sorted_varnames l0 /\ Q1 t m l)) ->
@@ -388,6 +389,23 @@ Section WithParams.
     1,2: eassumption.
     { intro E. subst b. eapply H1. intro C. apply C. reflexivity. }
     intros. destruct H4 as [(Ne & P) | (E & P)];
+      [eapply (H2 true)| eapply (H2 false)]; assumption.
+  Qed.
+
+  Lemma wp_if_bool_dexpr: forall fs c thn els rest t0 m0 l0 P Q1 Q2 post,
+      dexpr_bool_prop m0 l0 c P ->
+      (P  -> wp_cmd fs thn t0 m0 l0 Q1) ->
+      (~P -> wp_cmd fs els t0 m0 l0 Q2) ->
+      (forall (cond0: bool) t m l,
+          (* (if cond0 then P else ~P) -> <-- already added to Q1/Q2 by automation *)
+          (if cond0 then Q1 t m l else Q2 t m l) ->
+          wp_cmd fs rest t m l post) ->
+      wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t0 m0 l0 post.
+  Proof.
+    intros. inversion H. subst P. clear H. eapply wp_if0.
+    1,2: eassumption.
+    { intro E. subst b. eapply H1. intro C. apply C. reflexivity. }
+    intros *. intros [(Ne & P) | (E & P)];
       [eapply (H2 true)| eapply (H2 false)]; assumption.
   Qed.
 
@@ -531,8 +549,8 @@ Ltac put_into_current_locals is_decl :=
            | Some vs => vs
            | None => nil
            end) in
-        let values := eval cbn [tuple.of_list] in (tuple.of_list values) in
-        change (wp_cmd call c t m (reconstruct keys values) post)
+        let kvs := eval unfold List.combine in (List.combine keys values) in
+        change (wp_cmd call c t m (map.of_list kvs) post)
     end;
     lazymatch is_decl with
     | true => idtac
@@ -548,7 +566,7 @@ Ltac eval_dexpr_step :=
   | |- dexpr_bool_prop _ _ (expr.op bopname.eq _ _) _ => eapply dexpr_eq_prop
   | |- dexpr_bool_prop _ _ (expr.op bopname.ltu _ _) _ => eapply dexpr_ltu_prop
   | |- dexpr_bool_prop _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)
-  | |- dexpr _ _ (expr.var _) _ => eapply dexpr_var
+  | |- dexpr _ _ (expr.var _) _ => eapply dexpr_var; reflexivity
   | |- dexpr _ _ (expr.literal _) _ => eapply dexpr_literal
   | |- dexpr _ _ (expr.op _ _) _ => eapply dexpr_binop; cbv [interp_binop]
   | |- dexpr _ _ (expr.load _ _) => eapply dexpr_load
@@ -581,8 +599,8 @@ Ltac start :=
   unfold vc_func;
   lazymatch goal with
   | |- exists l, map.of_list_zip ?keys ?values = Some l /\ _ =>
-    let values := eval vm_compute in (tuple.of_list values) in
-    exists (reconstruct keys values);
+    let kvs := eval unfold List.combine in (List.combine keys values) in
+    exists (map.of_list kvs);
     split; [reflexivity| ]
   end.
 
@@ -910,153 +928,40 @@ Section MergingSep.
 *)
 End MergingSep.
 
-Fixpoint zip_tuple_if{A: Type}(b: bool){n: nat}(t1 t2: tuple A n){struct n}: tuple A n.
-  destruct n.
-  - exact tt.
-  - destruct t1 as (h1 & t1). destruct t2 as (h2 & t2).
-    constructor.
-    + exact (if b then h1 else h2).
-    + exact (zip_tuple_if A b n t1 t2).
-Defined.
+Lemma push_if_into_arg{A B: Type}(f: A -> B)(a1 a2: A)(cond: bool):
+  (if cond then f a1 else f a2) = f (if cond then a1 else a2).
+Proof. destruct cond; reflexivity. Qed.
 
-Lemma zip_tuple_if_true: forall A n (t1 t2: tuple A n), zip_tuple_if true t1 t2 = t1.
-Proof.
-  induction n; cbn; intros; destruct t1; destruct t2.
-  - reflexivity.
-  - f_equal. eapply IHn.
-Qed.
+Lemma push_if_into_cons_tuple_same_key(cond: bool)(k: string)(v1 v2: Z) t1 t2:
+  (if cond then cons (k, v1) t1 else cons (k, v2) t2)
+  = cons (k, if cond then v1 else v2) (if cond then t1 else t2).
+Proof. destruct cond; reflexivity. Qed.
 
-Lemma zip_tuple_if_false: forall A n (t1 t2: tuple A n), zip_tuple_if false t1 t2 = t2.
-Proof.
-  induction n; cbn; intros; destruct t1; destruct t2.
-  - reflexivity.
-  - f_equal. eapply IHn.
-Qed.
-
-Section ReconstructLemmas.
-  Context {word: word.word 32} {mem: map.map word byte} {locals: map.map string word}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok: map.ok locals}.
-
-  Lemma push_if_reconstruct:
-    forall varnames (valsThen valsElse: tuple word (List.length varnames)) (b: bool),
-      (if b then reconstruct varnames valsThen else reconstruct varnames valsElse) =
-        reconstruct varnames (zip_tuple_if b valsThen valsElse).
-  Proof.
-    intros. destruct b.
-    - rewrite zip_tuple_if_true. reflexivity.
-    - rewrite zip_tuple_if_false. reflexivity.
-  Qed.
-
-  Lemma reconstruct_cons(v: string)(vs: list string)(x: word)
-        (xs: tuple word (List.length vs)):
-    reconstruct (cons v vs) (PrimitivePair.pair.mk x xs) = map.put (reconstruct vs xs) v x.
-  Proof. reflexivity. Qed.
-
-  Lemma not_in_reconstruct: forall a vs (xs: tuple word (List.length vs)),
-      ~ List.In a vs -> map.get (reconstruct vs xs) a = None.
-  Proof.
-    induction vs; intros.
-    - cbn. apply map.get_empty.
-    - destruct xs. rewrite reconstruct_cons.
-      rewrite map.get_put_dec. destruct_one_match.
-      + exfalso. apply H. cbn. auto.
-      + eapply IHvs. intro C. apply H. cbn. auto.
-  Qed.
-
-  Lemma invert_reconstruct_eq_aux: forall vs (xs ys: tuple word (List.length vs)),
-      List.NoDup vs ->
-      reconstruct vs xs = reconstruct vs ys ->
-      xs = ys.
-  Proof.
-    induction vs; intros; destruct xs; destruct ys.
-    - reflexivity.
-    - rewrite 2reconstruct_cons in H0.
-      inversion H. subst.
-      eapply map.invert_put_eq in H0.
-      + destruct H0. f_equal. 1: assumption. eapply IHvs; eassumption.
-      + cbn. apply not_in_reconstruct. assumption.
-      + cbn. apply not_in_reconstruct. assumption.
-  Qed.
-
-  Lemma invert_reconstruct_eq(vs: list string)(xs ys: tuple word (List.length vs)):
-    List.dedup String.eqb vs = vs ->
-    reconstruct vs xs = reconstruct vs ys ->
-    xs = ys.
-  Proof.
-    intros. eapply invert_reconstruct_eq_aux. 2: assumption. rewrite <- H.
-    apply List.NoDup_dedup.
-  Qed.
-
-  Lemma invert_reconstruct_eq_if:
-    forall (vs: list string)(xs ys zs: tuple word (List.length vs))(b: bool),
-      List.dedup String.eqb vs = vs ->
-      reconstruct vs xs = (if b then reconstruct vs ys else reconstruct vs zs) ->
-      xs = (if b then ys else zs).
-  Proof.
-    intros. destruct b; eapply invert_reconstruct_eq; assumption.
-  Qed.
-
-  Lemma invert_tuple_eq{A B: Type}: forall (h1 h2: A) (t1 t2: B),
-      PrimitivePair.pair.mk h1 t1 = PrimitivePair.pair.mk h2 t2 ->
-      h1 = h2 /\ t1 = t2.
-  Proof. intros. split; congruence. Qed.
-
-  Lemma eq_if_same{A: Type}: forall (lhs rhs: A) (b: bool),
-      lhs = (if b then rhs else rhs) ->
-      lhs = rhs.
-  Proof. intros; destruct b; assumption. Qed.
-End ReconstructLemmas.
+Lemma if_same{A: Type}(cond: bool)(a: A): (if cond then a else a) = a.
+Proof. destruct cond; reflexivity. Qed.
 
 Ltac is_fresh x := assert_succeeds (pose proof tt as x).
 
 Ltac make_fresh x :=
   tryif is_fresh x then idtac else let x' := fresh x "_0" in rename x into x'.
 
-Ltac destruct_locals_norename tup names :=
-  lazymatch names with
-  | cons ?s ?rest =>
-      let name := string_to_ident s in
-      let t := fresh "tmp_" name in
-      destruct tup as (t & tup); destruct_locals_norename tup rest
-  | nil => destruct tup (* becomes tt *)
-  end.
-
-Ltac destruct_locals tup names :=
-  lazymatch names with
-  | cons ?s ?rest => let name := string_to_ident s in
-                   make_fresh name; destruct tup as (name & tup); destruct_locals tup rest
-  | nil => destruct tup (* becomes tt *)
-  end.
-
-Ltac destruct_locals_after_merge tup names :=
-  lazymatch names with
-  | cons ?s ?rest =>
-      lazymatch goal with
-      | H: tup = _ |- _ =>
-          let name := string_to_ident s in
-          let t := fresh "tmp_" name in
-          destruct tup as (t & tup);
-          eapply invert_tuple_eq in H;
-          let F := fresh in
-          destruct H as [F H];
-          lazymatch type of F with
-          | t = if _ then ?x else ?x => eapply eq_if_same in F
-          | t = _ => idtac
-          end;
-          lazymatch type of F with
-          | t = ?rhs => tryif is_var rhs then (
-              subst t
-            ) else (
-              make_fresh name;
-              (* compute type again because make_fresh might have changed it *)
-              lazymatch type of F with
-              | t = ?ite => subst t; set (name := ite)
-              end
-            )
-          end;
-          destruct_locals_after_merge tup rest
+Ltac letbind_locals start_index :=
+  lazymatch goal with
+  | |- wp_cmd _ _ _ _ (map.of_list ?kvs) _ =>
+      lazymatch eval hnf in (List.nth_error kvs start_index) with
+      | None => idtac (* done *)
+      | Some (?name, ?val) =>
+          tryif is_var val then
+            letbind_locals (S start_index)
+          else (
+            let tmp := fresh in
+            set (tmp := val);
+            let namei := string_to_ident name in
+            make_fresh namei;
+            rename tmp into namei;
+            letbind_locals (S start_index)
+         )
       end
-  | nil => destruct tup (* becomes tt *)
   end.
 
 Ltac pull_dlet_and_exists_step :=
@@ -1166,18 +1071,14 @@ Ltac after_if :=
   repeat match goal with
   | H: if _ then ands nil else ands nil |- _ => clear H
   end;
-  repeat lazymatch goal with
-         | H: reconstruct _ _ = (if _ then _ else _) |- _ =>
-             rewrite push_if_reconstruct in H; cbn [zip_tuple_if List.length] in H
-         end;
-  repeat lazymatch goal with
-         | H: reconstruct _ _ = reconstruct _ _ |- _ =>
-             eapply invert_reconstruct_eq in H; [ | reflexivity]
-         end;
-  try (lazymatch goal with
-       | |- wp_cmd _ _ _ _ (reconstruct ?names ?tup) _ =>
-           destruct_locals_after_merge tup names
-       end).
+  lazymatch goal with
+  | H: ?l = _ |- wp_cmd _ _ _ _ ?l _ =>
+      repeat (rewrite ?push_if_into_arg,
+                      ?push_if_into_cons_tuple_same_key,
+                      ?if_same in H);
+      subst l
+  end;
+  letbind_locals 0%nat.
 
 Inductive snippet :=
 | SAssign(is_decl: bool)(x: string)(e: Syntax.expr)
@@ -1192,7 +1093,7 @@ Inductive snippet :=
 
 Ltac assign is_decl name val :=
   eapply (wp_set _ name val);
-  eval_expr;
+  eval_dexpr;
   [.. (* maybe some unsolved side conditions *)
   | try ((* to simplify value that will become bound with :=, at which point
             rewrites will not apply any more *)
@@ -1201,7 +1102,7 @@ Ltac assign is_decl name val :=
 
 Ltac store sz addr val :=
   eapply (wp_store _ sz addr val);
-  eval_expr;
+  eval_dexpr;
   [.. (* maybe some unsolved side conditions *)
   | (*lazymatch goal with
     | |- get_option (Memory.store access_size.one _ _ _) _ =>
@@ -1210,13 +1111,13 @@ Ltac store sz addr val :=
         eapply store_word_of_sep_cps; after_mem_modifying_lemma
     | |- get_option (Memory.store ?sz _ _ _) _ =>
         fail 10000 "storing" sz "not yet supported"
-    | |- _ => pose_err Error:("eval_expr_step should not fail on this goal")
+    | |- _ => pose_err Error:("eval_dexpr_step should not fail on this goal")
     end *) ].
 
 Ltac cond c :=
   lazymatch goal with
-  | |- wp_cmd _ _ ?t ?m (reconstruct ?vars ?vals) _ =>
-    eapply (wp_if_bool_dexpr _ c vars vals);
+  | |- wp_cmd _ _ ?t ?m ?l _ =>
+    eapply (wp_if_bool_dexpr _ c);
     [ eval_dexpr
     | let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b; intro
     | let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b; intro
@@ -1226,7 +1127,6 @@ Ltac cond c :=
 Ltac els :=
   assert_scope_kind ThenBranch;
   eapply wp_skip;
-  eexists; split; [ reflexivity | ];
   package_context.
 
 Ltac clear_until_LoopInvariant_marker :=
@@ -1291,6 +1191,8 @@ Ltac destruct_bool_vars :=
              is_var b; let t := type of b in constr_eq t bool; destruct b
          end.
 
+Ltac ZWords := unfold wwrap, wswrap in *; better_lia.
+
 Ltac prove_concrete_post :=
     repeat match goal with
            | H: List.length ?l = S _ |- _ =>
@@ -1318,8 +1220,8 @@ Ltac prove_concrete_post :=
            | |- sep _ _ _ => ecancel_assumption
            end;
     try congruence;
-    try ZnWords;
-    intuition (congruence || ZnWords || eauto with prove_post).
+    try ZWords;
+    intuition (congruence || ZWords || eauto with prove_post).
 
 Ltac ret retnames :=
   lazymatch goal with
@@ -1335,9 +1237,9 @@ Ltac ret retnames :=
   eapply wp_skip;
   lazymatch goal with
   | |- exists _, map.getmany_of_list _ ?eretnames = Some _ /\ _ =>
-    unify eretnames retnames;
-    eexists; split; [reflexivity|cbn [PrimitivePair.pair._1 PrimitivePair.pair._2]]
-  end.
+    unify eretnames retnames
+  end;
+  eexists; split; [reflexivity|].
 
 Ltac close_block :=
   lazymatch goal with
@@ -1345,7 +1247,6 @@ Ltac close_block :=
       lazymatch sk with
       | ElseBranch =>
           eapply wp_skip;
-          eexists; split; [ reflexivity | ];
           package_context
       | LoopBody =>
           eapply wp_skip;
@@ -1553,9 +1454,9 @@ Require Import coqutil.Sorting.Permutation.
 
 Import Syntax BinInt String List.ListNotations ZArith.
 Local Open Scope string_scope. Local Open Scope Z_scope.
-(* Not a Definition because if the Z.of_nat is visible, lia knows it's positive *)
-Notation "'len' l" := (Z.of_nat (List.length l)) (at level 10).
 
+Require Import coqutil.Datatypes.ZList.
+Import ZListNotations. Local Open Scope zlist_scope.
 Require Import coqutil.Word.Bitwidth32.
 
 (* Note: If you re-import ZnWords after this, you'll get the old better_lia again *)
@@ -1574,11 +1475,13 @@ Comments C_STARTS_HERE
 Definition u_min: {f: list string * list string * cmd &
   forall fs t m a b (R: mem -> Prop),
     R m ->
-    vc_func fs f t m (cons a (cons b nil)) (fun t' m' retvs =>
+    0 <= a < 2 ^ 32 ->
+    0 <= b < 2 ^ 32 ->
+    vc_func fs f t m [|a; b|] (fun t' m' retvs =>
       t' = t /\ R m' /\
-      (a < b /\ retvs = (cons a nil) \/
-       b <= a /\ retvs = (cons b nil))
-  )}.                           (*                                                .**/
+      (a < b /\ retvs = [|a|] \/
+       b <= a /\ retvs = [|b|])
+  )}.                                                                           .**/
 {                                                                          /**. .**/
   uintptr_t r = 0;                                                         /**. .**/
   if (a < b) {                                                             /**. .**/
@@ -1589,79 +1492,52 @@ Definition u_min: {f: list string * list string * cmd &
                                                                            /**. .**/
   return r;                                                                /**. .**/
 }                                                                          /**.
+1: left.
+2: right.
+all: split; try f_equal; ZWords.
 Defined.
 
 Close Scope live_scope_prettier.
 Unset Implicit Arguments.
 
-  Require Import FunctionalExtensionality.
-  Require Import Coq.Logic.PropExtensionality.
+Require Import FunctionalExtensionality.
+Require Import Coq.Logic.PropExtensionality.
 
-  Lemma word__ltu_wf: well_founded (fun x y: word => word.unsigned x < word.unsigned y).
-  Proof.
-    epose proof (well_founded_ltof _ (fun (w: word) => Z.to_nat (word.unsigned w))) as P.
-    unfold ltof in P.
-    eqapply P.
-    extensionality a. extensionality b. eapply propositional_extensionality.
-    split; ZnWords.
-  Qed.
+Lemma wltu_wf: well_founded (fun x y: Z => wwrap x < wwrap y).
+Proof.
+  epose proof (well_founded_ltof _ (fun (w: Z) => Z.to_nat (wwrap w))) as P.
+  unfold ltof in P.
+  eqapply P.
+  extensionality a. extensionality b. eapply propositional_extensionality.
+  split; ZWords.
+Qed.
 
 (* Assigns default well_founded relations to types.
    Use lower costs to override existing entries. *)
 Create HintDb wf_of_type.
-Hint Resolve word__ltu_wf | 4 : wf_of_type.
+#[export] Hint Resolve wltu_wf | 4 : wf_of_type.
 
 Section WithNonmaximallyInsertedA.
   Context [A: Type].
 
-  Lemma List__repeat_0: forall (a: A), List.repeat a 0 = [].
+  Lemma List__repeat_0: forall (a: A), List.repeat a 0 = nil.
   Proof. intros. reflexivity. Qed.
 End WithNonmaximallyInsertedA.
 
-Hint Rewrite List__repeat_0 : fwd_rewrites.
-
-Ltac word_simpl_step_in_goal ::=
-  match goal with
-  | |- context[@word.add ?wi ?wo ?x ?y] => progress (ring_simplify (@word.add wi wo x y))
-  | |- context[@word.sub ?wi ?wo ?x ?y] => progress (ring_simplify (@word.sub wi wo x y))
-  | |- context[@word.opp ?wi ?wo ?x   ] => progress (ring_simplify (@word.opp wi wo x  ))
-  | |- context[@word.mul ?wi ?wo ?x ?y] => progress (ring_simplify (@word.mul wi wo x y))
-  | |- context C[word.unsigned ?x] =>
-      let x' := rdelta_var x in
-      lazymatch x' with
-      | word.of_Z ?z =>
-          (tryif constr_eq x x' then idtac
-           (* don't subst x everywhere, but only where the rewrite can simplify something *)
-           else let C' := context C[word.unsigned x'] in change C');
-          rewrite (word.unsigned_of_Z_nowrap z) by Lia.lia
-      end
-  | _ => progress groundcbv_in_goal
-  end.
+#[export] Hint Rewrite List__repeat_0 : fwd_rewrites.
 
 Require Import coqutil.Tactics.syntactic_unify.
 
+(*
 Ltac solve_list_eq :=
   list_simpl_in_goal; try syntactic_exact_deltavar (@eq_refl _ _).
-
-(* make t1 a constr instead of pattern because typeclass-based notations
-   don't work in patterns *)
-Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" ident(H) :=
-  replace t1 with t2 in H.
-Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" "*" :=
-  replace t1 with t2 in *.
-Tactic Notation "Replace" constr(t1) "with" constr(t2) :=
-  replace t1 with t2.
-Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" ident(H) "by" tactic(tac) :=
-  replace t1 with t2 in H by tac.
-Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" "*" "by" tactic(tac) :=
-  replace t1 with t2 in * by tac.
-Tactic Notation "Replace" constr(t1) "with" constr(t2) "by" tactic(tac) :=
-  replace t1 with t2 by tac.
+*)
 
 Tactic Notation "loop" "invariant" "above" ident(i) :=
   let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
   move n after i.
 
+(*
 Definition memset: {f: list string * list string * cmd &
   forall fs t m (a b n: word) (bs: list byte) (R: mem -> Prop),
     <{ * a --> bs
