@@ -22,9 +22,11 @@ Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic.
 Require bedrock2.Loops.
 Require Import Coq.Strings.String.
 Require Import bedrock2.TacticError.
+Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
-
+Require Import egg.Loader.
+Require Import bedrock2.egg_lemmas.
 
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
    used as the binder in the lambda being created *)
@@ -101,6 +103,8 @@ Section WithParams.
   Definition wltu(a b: Z): Z := if Z.ltb (wwrap a) (wwrap b) then 1 else 0.
   Definition weq(a b: Z): Z := if Z.eqb (wwrap a) (wwrap b) then 1 else 0.
 
+  Lemma wwrap_small: forall a, 0 <= a < 2 ^ width -> wwrap a = a.
+  Proof. intros. unfold wwrap. apply Z.mod_small. assumption. Qed.
 
   (* Memory: *)
 
@@ -134,7 +138,19 @@ Section WithParams.
   Definition value(sz: access_size): Z -> Z -> mem -> Prop :=
     littleendian (access_len sz).
 
+  Definition PredicateSize{T: Type}(predicate: T -> Z -> mem -> Prop) := Z.
+  Existing Class PredicateSize.
 
+  Global Instance value_PredicateSize(sz: access_size): PredicateSize (value sz) :=
+    access_len sz.
+
+  Definition array{T: Type}(elem: T -> Z -> mem -> Prop){size: PredicateSize elem}:
+    list T -> Z -> mem -> Prop :=
+    fix rec xs start :=
+      match xs with
+      | nil => emp True
+      | cons h tl => sep (elem h start) (rec tl (wadd start size))
+      end.
 
   Definition interp_binop(bop : bopname): Z -> Z -> Z :=
     match bop with
@@ -489,6 +505,15 @@ Section WithParams.
   Definition arguments_marker(args: list Z): list Z := args.
 
 End WithParams.
+
+Ltac pose_ZWord_lemmas :=
+  pose proof wwrap_small as z_wwrap_small.
+
+Ltac egg_simpl_or_prove :=
+  pose_Prop_lemmas;
+  pose_ZWord_lemmas;
+  pose_basic_Z_lemmas;
+  repeat egg_step 3.
 
 
 (*
@@ -1183,8 +1208,6 @@ Ltac while cond measure0 :=
         expect_and_clear_last_marker LoopBody ]
     ] ].
 
-Create HintDb prove_post.
-
 Ltac destruct_bool_vars :=
   repeat match goal with
          | H: context[if ?b then _ else _] |- _ =>
@@ -1193,7 +1216,7 @@ Ltac destruct_bool_vars :=
 
 Ltac ZWords := unfold wwrap, wswrap in *; better_lia.
 
-Ltac prove_concrete_post :=
+Ltac prove_concrete_post_pre :=
     repeat match goal with
            | H: List.length ?l = S _ |- _ =>
                is_var l; destruct l;
@@ -1218,10 +1241,9 @@ Ltac prove_concrete_post :=
            | |- _ /\ _ => split
            | |- ?x = ?x => reflexivity
            | |- sep _ _ _ => ecancel_assumption
-           end;
-    try congruence;
-    try ZWords;
-    intuition (congruence || ZWords || eauto with prove_post).
+           end.
+
+Ltac prove_concrete_post := prove_concrete_post_pre; egg_simpl_or_prove.
 
 Ltac ret retnames :=
   lazymatch goal with
@@ -1458,6 +1480,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope.
 Require Import coqutil.Datatypes.ZList.
 Import ZListNotations. Local Open Scope zlist_scope.
 Require Import coqutil.Word.Bitwidth32.
+Open Scope sep_bullets_scope.
 
 (* Note: If you re-import ZnWords after this, you'll get the old better_lia again *)
 Ltac better_lia ::=
@@ -1492,9 +1515,6 @@ Definition u_min: {f: list string * list string * cmd &
                                                                            /**. .**/
   return r;                                                                /**. .**/
 }                                                                          /**.
-1: left.
-2: right.
-all: split; try f_equal; ZWords.
 Defined.
 
 Close Scope live_scope_prettier.
@@ -1537,15 +1557,16 @@ Tactic Notation "loop" "invariant" "above" ident(i) :=
   let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
   move n after i.
 
-(*
 Definition memset: {f: list string * list string * cmd &
-  forall fs t m (a b n: word) (bs: list byte) (R: mem -> Prop),
-    <{ * a --> bs
+  forall fs t m (a b n: Z) (bs: list Z) (R: mem -> Prop),
+    0 <= a < 2 ^ 32 ->
+    0 <= b < 2 ^ 8 ->
+    <{ * array (value access_size.one) bs a
        * R }> m ->
-    word.unsigned n = Z.of_nat (List.length bs) ->
+    n = len bs ->
     vc_func fs f t m [| a; b; n |] (fun t' m' retvs =>
       t' = t /\
-      <{ * a --> List.repeat (byte.of_Z (word.unsigned b)) (List.length bs)
+      <{ * array (value access_size.one) (List.repeat b n) a
          * R }> m' /\
       retvs = nil)
   }.

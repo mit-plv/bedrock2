@@ -29,6 +29,16 @@ Proof.
   intros. apply propositional_extensionality. split; intros; intuition idtac.
 Qed.
 
+Lemma or_True_l: forall P, or True P = True.
+Proof.
+  intros. apply propositional_extensionality. split; intros; intuition idtac.
+Qed.
+
+Lemma or_True_r: forall P, or P True = True.
+Proof.
+  intros. apply propositional_extensionality. split; intros; intuition idtac.
+Qed.
+
 (* stated in a convoluted way because each quantified variable must appear in conclusion *)
 Lemma and_proj_l: forall P Q, and P Q -> and P Q = P.
 Proof. intros. apply propositional_extensionality. intuition idtac. Qed.
@@ -172,6 +182,12 @@ Module Z.
   Lemma factor_sub_mul_q1: forall a q, a * q - a = a * (q - 1).
   Proof. intros. Lia.lia. Qed.
   Lemma factor_sub_mul_qq: forall a p q, a * p - a * q = a * (p - q).
+  Proof. intros. Lia.lia. Qed.
+
+  Lemma not_lt: forall a b, ~ a < b -> b <= a.
+  Proof. intros. Lia.lia. Qed.
+
+  Lemma not_le: forall a b, ~ a <= b -> b < a.
   Proof. intros. Lia.lia. Qed.
 
 End Z.
@@ -332,6 +348,10 @@ Ltac pose_word_lemmas width word :=
   pose proof word.unsigned_sub as wunsigned_sub; unfold word.wrap in wunsigned_sub;
   pose proof word.unsigned_add as wunsigned_add; unfold word.wrap in wunsigned_add.
 
+Ltac pose_basic_Z_lemmas :=
+  pose proof Z.not_lt as z_not_lt;
+  pose proof Z.not_le as Z_not_le.
+
 Ltac pose_Z_lemmas :=
   pose proof Z.forget_mod_in_lt_l as Z_forget_mod_in_lt_l;
   pose proof (Z.mul_nonneg: forall e1 e2 : Z,
@@ -426,6 +446,8 @@ Ltac pose_Prop_lemmas :=
   pose proof eq_same_True as H_eq_same_True;
   pose proof and_True_l as and_True_l;
   pose proof and_True_r as and_True_r;
+  pose proof or_True_l as or_True_l;
+  pose proof or_True_r as or_True_r;
   pose proof and_proj_l as and_proj_l;
   pose proof and_proj_r as and_proj_r.
 
