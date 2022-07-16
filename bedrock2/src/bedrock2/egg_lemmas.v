@@ -3,6 +3,7 @@ Require Import Coq.micromega.Lia.
 Require Import egg.Loader.
 Require Import Coq.Logic.PropExtensionality.
 Require Import coqutil.Datatypes.List.
+Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Word.Properties.
 
@@ -48,7 +49,10 @@ Proof. intros. apply propositional_extensionality. intuition idtac. Qed.
 
 Inductive worth_considering_status: Set := is_worth_considering.
 
-Definition consider{T: Type}(x: T) := is_worth_considering.
+Definition consider(l: dyn_list) := is_worth_considering.
+
+Notation "'consider!' ( t )" := (is_worth_considering = consider t)
+  (at level 10, t custom dyn_list at level 0, format "consider!  ( t )").
 
 
 Module word.
@@ -190,6 +194,9 @@ Module Z.
   Lemma not_le: forall a b, ~ a <= b -> b < a.
   Proof. intros. Lia.lia. Qed.
 
+  (* "= True" formulation to make sure all variables appear in conclusion *)
+  Lemma le_refl_True: forall n, (n <= n) = True.
+  Proof. intros. apply propositional_extensionality. intuition reflexivity. Qed.
 End Z.
 
 Lemma Z_cancel_mul_ll: forall f a b,
@@ -346,11 +353,20 @@ Ltac pose_word_lemmas width word :=
   pose proof word.unsigned_sru_to_div_pow2 as wunsigned_sru_to_div_pow2;
   pose proof word.unsigned_slu_to_mul_pow2 as wunsigned_slu_to_mul_pow2;
   pose proof word.unsigned_sub as wunsigned_sub; unfold word.wrap in wunsigned_sub;
-  pose proof word.unsigned_add as wunsigned_add; unfold word.wrap in wunsigned_add.
+  pose proof word.unsigned_add as wunsigned_add; unfold word.wrap in wunsigned_add;
+  pose proof word.unsigned_sub as wunsigned_sub_bw;
+    unfold word.wrap in wunsigned_sub_bw; symmetry in wunsigned_sub_bw;
+  pose proof word.unsigned_add as wunsigned_add_bw;
+    unfold word.wrap in wunsigned_add_bw; symmetry in wunsigned_add_bw.
 
 Ltac pose_basic_Z_lemmas :=
   pose proof Z.not_lt as z_not_lt;
-  pose proof Z.not_le as Z_not_le.
+  pose proof Z.not_le as z_not_le;
+  pose proof Z.le_refl_True as z_le_refl_True.
+
+Lemma consider_mod_bounds: forall a b,
+    trigger! ((a mod b)) (consider! ((0 <= a < b))).
+Proof. reflexivity. Qed.
 
 Ltac pose_Z_lemmas :=
   pose proof Z.forget_mod_in_lt_l as Z_forget_mod_in_lt_l;
@@ -415,15 +431,9 @@ Ltac pose_Z_lemmas :=
   pose proof Zmod_eq as z_mod_eq;
   pose proof Z.opp_add_distr as z_opp_add_distr;
   pose proof Z.add_opp_r as z_sub_def_bw;
-  pose proof word.unsigned_sub as wunsigned_sub_bw;
-    unfold word.wrap in wunsigned_sub_bw; symmetry in wunsigned_sub_bw;
-  pose proof word.unsigned_add as wunsigned_add_bw;
-    unfold word.wrap in wunsigned_add_bw; symmetry in wunsigned_add_bw;
   pose proof Z.mul_sub_distr_l as z_mul_sub_distr_l;
   pose proof Z.mod_small as z_mod_small;
-  assert (z_mod_small_precond: forall a b,
-           trigger! ((a mod b)) (is_worth_considering = consider (0 <= a < b)))
-    by reflexivity;
+  pose proof consider_mod_bounds as z_consider_mod_bounds;
   pose proof Z_mod_plus_full as z_mod_plus_full;
   pose proof Zmult_mod_distr_l as z_mult_mod_distr_l;
   pose proof Zmult_mod_distr_r as z_mult_mod_distr_r;
@@ -458,8 +468,45 @@ Ltac pose_list_lemmas :=
   pose proof @length_cons as L_length_cons;
   pose proof @length_nil as L_length_nil.
 
+(* useful both for lists indexed by Z and for lists indexed by nat *)
+Ltac pose_common_list_lemmas :=
+  pose proof List.app_nil_l as list_app_nil_l;
+  pose proof List.app_nil_r as list_app_nil_r.
+
+Section ListSeeds.
+  Context [A: Type].
+  Implicit Types (l: list A).
+  Import ZListNotations.
+
+  Lemma consider_from_bounds: forall i l,
+      trigger! ((List.from i l)) (consider! ((i <= 0) (0 <= i < len l) (len l <= i))).
+  Proof. reflexivity. Qed.
+
+  Lemma consider_upto_bounds: forall i l,
+      trigger! ((List.upto i l)) (consider! ((i <= 0) (0 <= i < len l) (len l <= i))).
+  Proof. reflexivity. Qed.
+
+  Lemma consider_set_bounds: forall i l x,
+      trigger! ((List.set l i x)) (consider! ((0 <= i < len l))).
+  Proof. reflexivity. Qed.
+End ListSeeds.
+
+Ltac pose_zlist_lemmas :=
+  pose proof List.len_from as zlist_len_from;
+  pose proof List.len_upto as zlist_len_upto;
+  pose proof List.len_set as zlist_len_set;
+  pose proof List.len_repeatz as zlist_len_repeatz;
+  pose proof List.repeatz_0 as zlist_repeatz_0;
+  pose proof List.from_beginning as zlist_from_beginning;
+  pose proof List.upto_beginning as zlist_upto_beginning;
+  pose proof List.from_pastend as zlist_from_pastend;
+  pose proof List.upto_pastend as zlist_upto_pastend;
+  pose proof consider_from_bounds as zlist_consider_from_bounds;
+  pose proof consider_upto_bounds as zlist_consider_upto_bounds;
+  pose proof consider_set_bounds as zlist_consider_set_bounds.
+
 Tactic Notation "egg_step" int(n) :=
   let G := lazymatch goal with |- ?x => x end in
   egg_simpl_goal n;
-  [ try assumption; assert (is_worth_considering = consider G) by reflexivity  ..
+  [ try assumption; assert (consider! (G)) by reflexivity  ..
   | cbv beta; try exact I].

@@ -1,5 +1,5 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import coqutil.Z.Lia.
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
 Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Datatypes.Inhabited.
@@ -27,6 +27,7 @@ Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 Require Import egg.Loader.
 Require Import bedrock2.egg_lemmas.
+Require Import bedrock2.find_hyp.
 
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
    used as the binder in the lambda being created *)
@@ -182,12 +183,14 @@ Section WithParams.
   Axiom dexpr_range: forall m l e v, dexpr m l e v -> 0 <= v < 2 ^ width.
 
   Lemma dexpr_literal: forall (m: mem) (l: locals) z,
-      dexpr m l (expr.literal z) (wwrap z).
+      0 <= z < 2 ^ width ->
+      dexpr m l (expr.literal z) z.
   Admitted.
 
   Lemma dexpr_var: forall m l x (v: Z),
       map.get l x = Some v ->
-      dexpr m l (expr.var x) (wwrap v).
+      0 <= v < 2 ^ width ->
+      dexpr m l (expr.var x) v.
   Proof.
   Admitted.
 
@@ -206,6 +209,11 @@ Section WithParams.
       dexpr m l e2 v2 ->
       dexpr m l (expr.op op e1 e2) (interp_binop op v1 v2).
   Admitted.
+
+  Definition dexpr_binop_unf :=
+    ltac:(let T := type of dexpr_binop in
+          let Tu := eval unfold interp_binop in T in
+          exact (dexpr_binop: Tu)).
 
   Lemma dexpr_ite: forall m l e1 e2 e3 (b v: Z),
       dexpr m l e1 b ->
@@ -227,6 +235,8 @@ Section WithParams.
       rewrite E. econstructor.
       eapply dexpr_binop. 1: eassumption.
       eapply dexpr_literal.
+      clear E.
+      destruct width_cases; subst width; better_lia.
     }
     cbn. unfold weq, wwrap.
     apply PropExtensionality.propositional_extensionality.
@@ -247,19 +257,21 @@ Section WithParams.
       eapply mk_dexpr_bool_prop.
       eapply dexpr_ite. 1: eassumption.
       rewrite Z.eqb_refl. eapply dexpr_literal.
+      destruct width_cases; subst width; better_lia.
     - specialize (H0 E). inversion H0; subst.
       eassert (dexpr_bool_prop m l (expr.lazy_and e1 e2) _) as A. {
         eapply mk_dexpr_bool_prop.
         eapply dexpr_ite. 1: eassumption.
         destruct_one_match. 1: exfalso; congruence.
-        eapply dexpr_binop. 1: eapply dexpr_literal. eassumption.
+        eapply dexpr_binop. 1: eapply dexpr_literal.
+        1: destruct width_cases; subst width; better_lia.
+        eassumption.
       }
       eqapply A.
       cbn. unfold wltu, wwrap. rewrite Zmod_0_l.
       eapply dexpr_range in H2.
       rewrite Z.mod_small by eassumption.
-      destruct_one_match;
-        apply PropExtensionality.propositional_extensionality; split; Lia.lia.
+      destruct_one_match; apply PropExtensionality.propositional_extensionality; split; lia.
   Qed.
 
   Lemma dexpr_lazy_or: forall m l e1 e2 (P1 P2: Prop),
@@ -274,23 +286,22 @@ Section WithParams.
         eapply mk_dexpr_bool_prop.
         eapply dexpr_ite. 1: eassumption.
         rewrite Z.eqb_refl.
-        eapply dexpr_binop. 1: eapply dexpr_literal. eassumption.
+        eapply dexpr_binop. 1: eapply dexpr_literal.
+        1: destruct width_cases; subst width; better_lia.
+        eassumption.
       }
       eqapply A.
       cbn. unfold wltu, wwrap.
       rewrite Zmod_0_l.
       eapply dexpr_range in H.
       rewrite Z.mod_small by eassumption.
-      destruct_one_match;
-        apply PropExtensionality.propositional_extensionality; split; Lia.lia.
+      destruct_one_match; apply PropExtensionality.propositional_extensionality; split; lia.
     - unshelve erewrite (_: (b <> 0 \/ P2) = _); cycle 2. {
         eapply mk_dexpr_bool_prop.
         eapply dexpr_ite. 1: eassumption.
         destruct_one_match. 1: exfalso; congruence.
         eapply dexpr_literal.
-      }
-      unfold wwrap. rewrite Z.mod_small. 2: {
-        destruct width_cases; subst width; cbv; intuition discriminate.
+        destruct width_cases; subst width; better_lia.
       }
       solve [apply PropExtensionality.propositional_extensionality; intuition Lia.lia].
   Qed.
@@ -513,8 +524,9 @@ Ltac egg_simpl_or_prove :=
   pose_Prop_lemmas;
   pose_ZWord_lemmas;
   pose_basic_Z_lemmas;
+  pose_common_list_lemmas;
+  pose_zlist_lemmas;
   repeat egg_step 3.
-
 
 (*
 TODO: once we have C notations for function signatures,
@@ -591,9 +603,9 @@ Ltac eval_dexpr_step :=
   | |- dexpr_bool_prop _ _ (expr.op bopname.eq _ _) _ => eapply dexpr_eq_prop
   | |- dexpr_bool_prop _ _ (expr.op bopname.ltu _ _) _ => eapply dexpr_ltu_prop
   | |- dexpr_bool_prop _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)
-  | |- dexpr _ _ (expr.var _) _ => eapply dexpr_var; reflexivity
-  | |- dexpr _ _ (expr.literal _) _ => eapply dexpr_literal
-  | |- dexpr _ _ (expr.op _ _) _ => eapply dexpr_binop; cbv [interp_binop]
+  | |- dexpr _ _ (expr.var _) _ => eapply dexpr_var; [reflexivity|lia]
+  | |- dexpr _ _ (expr.literal _) _ => eapply dexpr_literal; lia
+  | |- dexpr _ _ (expr.op _ _ _) _ => eapply dexpr_binop_unf
   | |- dexpr _ _ (expr.load _ _) => eapply dexpr_load
   | |- dexpr _ _ (expr.ite _ _ _) _ => eapply dexpr_ite
   end.
@@ -1475,7 +1487,7 @@ Ltac adhoc_lia_performance_fixes :=
 Require Import coqutil.Sorting.Permutation.
 
 Import Syntax BinInt String List.ListNotations ZArith.
-Local Open Scope string_scope. Local Open Scope Z_scope.
+Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Require Import coqutil.Datatypes.ZList.
 Import ZListNotations. Local Open Scope zlist_scope.
@@ -1557,16 +1569,26 @@ Tactic Notation "loop" "invariant" "above" ident(i) :=
   let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
   move n after i.
 
+Ltac indep H :=
+  lazymatch goal with
+  | Sc: scope_marker LoopInvariant |- _ => move H after Sc
+  end.
+
+(* redefinition to accept a constr (as returned by find) in the occurrence clause: *)
+Tactic Notation "Replace" constr(lhs) "with" constr(rhs) "in" constr(hypname)
+       "by" tactic3(tac) := replace lhs with rhs in hypname by tac.
+
 Definition memset: {f: list string * list string * cmd &
   forall fs t m (a b n: Z) (bs: list Z) (R: mem -> Prop),
     0 <= a < 2 ^ 32 ->
     0 <= b < 2 ^ 8 ->
+    0 <= n < 2 ^ 32 ->
     <{ * array (value access_size.one) bs a
        * R }> m ->
     n = len bs ->
     vc_func fs f t m [| a; b; n |] (fun t' m' retvs =>
       t' = t /\
-      <{ * array (value access_size.one) (List.repeat b n) a
+      <{ * array (value access_size.one) (List.repeatz b n) a
          * R }> m' /\
       retvs = nil)
   }.
@@ -1574,14 +1596,18 @@ Definition memset: {f: list string * list string * cmd &
 {                                                                        /**. .**/
   uintptr_t i = 0;                                                       /**.
 
-Replace bs with (repeat (b to byte) (i to nat) ++ bs[i to nat :]) in H by solve_list_eq.
+Replace bs with (List.repeatz b i ++ bs[i:]) in (find! @sep) by egg_simpl_or_prove.
 loop invariant above i.
-move H0 before R. (* not strictly needed *)
-assert (0 <= i to Z <= n to Z) by ZnWords.
+indep (find! (n = ??)).
+assert (0 <= i <= n) by ZWords.
 clearbody i.
+
 .**/
   while (i < n) /* decreases (n - i) */ {                                /**. .**/
     store1(a + i, b);                                                    /**.
+
+Abort.
+(*
 
 (* TODO: automate prettification steps below *)
 rewrite Z.div_1_r in *.
