@@ -172,7 +172,7 @@ Section WithWordAndMem.
       GetArgCount := get_argcount;
       GetRetCount := get_retcount;
       Valid := map.forall_values ParamsNoDup;
-      Call := locals_based_call_spec FlatImp.exec;
+      Call := locals_based_call_spec (FlatImp.exec isRegStr);
     |}.
     (* |                 *)
     (* | RegAlloc        *)
@@ -182,7 +182,7 @@ Section WithWordAndMem.
       GetArgCount := get_argcount;
       GetRetCount := get_retcount;
       Valid := map.forall_values ParamsNoDup;
-      Call := locals_based_call_spec FlatImp.exec;
+      Call := locals_based_call_spec (FlatImp.exec isRegZ);
     |}.
     (* |                 *)
     (* | Spilling        *)
@@ -192,7 +192,7 @@ Section WithWordAndMem.
       GetArgCount := get_argcount;
       GetRetCount := get_retcount;
       Valid := map.forall_values FlatToRiscvDef.valid_FlatImp_fun;
-      Call := locals_based_call_spec FlatImp.exec;
+      Call := locals_based_call_spec (FlatImp.exec isRegZ);
     |}.
     (* |                 *)
     (* | FlatToRiscv     *)
@@ -362,6 +362,8 @@ Section WithWordAndMem.
         rewrite H1 in P'. inversion P'. exact Cp.
       - simpl. intros. fwd. eexists. split. 2: eassumption.
         eauto using states_compat_getmany.
+    Unshelve.
+    all: repeat constructor.
     Qed.
 
     Ltac debool :=
