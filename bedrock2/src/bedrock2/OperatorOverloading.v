@@ -3,6 +3,7 @@ Require Import coqutil.Map.Interface.
 Require Import coqutil.Word.Interface.
 Require Import bedrock2.Map.SeparationLogic.
 Require Export coqutil.Datatypes.OperatorOverloading.
+Require Export coqutil.Datatypes.ToConversion.
 Require Export bedrock2.ListIndexNotations.
 
 #[export] Instance MulSepClause{K V: Type}{M: map.map K V}(a b: @map.rep K V M -> Prop)
@@ -13,11 +14,10 @@ Require Export bedrock2.ListIndexNotations.
 
 Local Set Warnings "-notation-overridden".
 Notation "a * b" := (sep a b) (only printing) : type_scope.
+Notation "a * b" := (infer! Multiplication a b) (only parsing) : type_scope.
 Local Set Warnings "notation-overridden".
 
 Notation "a * b" := (sep a b) (only printing) : oo_scope.
-
-Notation "a * b" := (infer! Multiplication a b) (only parsing) : type_scope.
 
 
 Require Import bedrock2.Scalars.

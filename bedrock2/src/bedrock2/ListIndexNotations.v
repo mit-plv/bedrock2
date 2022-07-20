@@ -39,14 +39,6 @@ Notation "a [ i : j ]" := (List.skipn i (List.firstn j a))
   (at level 8, i at level 99, left associativity, format "a [ i  :  j ]")
 : list_index_scope.
 
-Notation "a [ i := v ]" := (List.upd a i v)
-  (at level 8, i at level 99, left associativity, format "a [ i  :=  v ]")
-: list_index_scope.
-
-Notation "a [ i := vs ..]" := (List.upds a i vs)
-  (at level 8, i at level 99, left associativity, format "a [ i  :=  vs  ..]")
-: list_index_scope.
-
 Section Tests.
   Import ListNotations. Local Open Scope list_scope.
   Local Open Scope list_index_scope.

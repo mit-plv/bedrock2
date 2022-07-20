@@ -468,7 +468,7 @@ Section WithParameters.
           rewrite word.unsigned_of_Z.
           rewrite List.length_firstn_inbounds; [exact eq_refl|]. Z.div_mod_to_equations. blia. }
         do 2 straightline.
-        match goal with H12:_|-_ => seprewrite_in @scalar32_of_bytes H12 end. 1: reflexivity.
+        match goal with H12:_|-_ => seprewrite_in @scalar32_of_bytes H12 end.
         { eapply List.length_firstn_inbounds; Z.div_mod_to_equations; blia. }
         straightline.
         (* after store *)

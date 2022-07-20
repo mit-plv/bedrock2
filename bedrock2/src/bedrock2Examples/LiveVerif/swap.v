@@ -1,3 +1,4 @@
+(* -*- eval: (load-file "live_verif_setup.el"); -*- *)
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
@@ -580,6 +581,15 @@ Section WithParams.
 
 End WithParams.
 
+
+(*
+TODO: once we have C notations for function signatures,
+put vernac between /*.   .*/ and ltac between /**.  .**/ so that
+only Ltac gets hidden *)
+Notation "'C_STARTS_HERE' /* *" := True (only parsing).
+Notation "'!EOF' '.*' '*/' //" := True (only parsing).
+
+
 Declare Scope live_scope.
 Delimit Scope live_scope with live.
 Local Open Scope live_scope.
@@ -746,6 +756,12 @@ Ltac add_equality_to_post x Post :=
 
 Ltac add_equalities_to_post Post :=
   lazymatch goal with
+  (* loop invariant *)
+  | |- ?E ?Measure ?T ?M ?L =>
+      add_equality_to_post L Post;
+      add_equality_to_post T Post;
+      add_equality_to_post Measure Post
+  (* if branch post *)
   | |- ?E ?T ?M ?L =>
       add_equality_to_post L Post;
       add_equality_to_post T Post
@@ -780,9 +796,14 @@ Ltac add_last_var_to_post Post :=
   lazymatch type of T with
   | Prop => clear lastvar
   | _ => lazymatch goal with
+         (* at the beginning of a while loop, where we have to instantiate the
+            loop invariant, the goal is of form (?invariant measure_tmp t_tmp m_tmp l_tmp *)
+         | |- _ lastvar _ _ _ => move lastvar at top
+         (* after an if branch, the goal is of form (?post t_tmp m_tmp l_tmp) *)
          | |- _ lastvar _ _ => move lastvar at top
          | |- _ _ lastvar _ => move lastvar at top
          | |- _ _ _ lastvar => move lastvar at top
+         (* if lastvar is not a _tmp var to be patterned out later, add it to post: *)
          | |- _ => add_var_to_post lastvar Post
          end
   end.
@@ -799,6 +820,7 @@ Ltac package_context :=
   add_equalities_to_post Post;
   repeat add_last_var_to_post Post;
   lazymatch goal with
+  | |- _ ?Measure ?T ?M ?L => pattern Measure, T, M, L in Post
   | |- _ ?T ?M ?L => pattern T, M, L in Post
   end;
   exact Post.
@@ -1012,57 +1034,6 @@ Section MergingSep.
       eapply A. assumption.
   Qed.
 End MergingSep.
-
-Section MergingLists.
-  Context [A: Type].
-
-  Lemma push_if_app_l: forall (b: bool) (l1 l2 r: list A),
-      (if b then (l1 ++ l2) else r) =
-        (if b then l1 else List.firstn (List.length l1) r) ++
-        (if b then l2 else List.skipn (List.length l1) r).
-  Proof.
-    intros. destruct b. 1: reflexivity. symmetry. apply List.firstn_skipn.
-  Qed.
-
-  Lemma push_if_app_r: forall (b: bool) (l r1 r2: list A),
-      (if b then l else (r1 ++ r2)) =
-        (if b then List.firstn (List.length r1) l else r1) ++
-        (if b then List.skipn (List.length r1) l else r2).
-  Proof.
-    intros. destruct b. 2: reflexivity. symmetry. apply List.firstn_skipn.
-  Qed.
-
-  Lemma push_if_singleton: forall (b: bool) (a1 a2: A),
-      (if b then [a1] else [a2]) = [if b then a1 else a2].
-  Proof. intros. destruct b; reflexivity. Qed.
-
-  Lemma pull_if_firstn: forall (b: bool) (l1 l2: list A) n,
-      List.firstn n (if b then l1 else l2) =
-        if b then List.firstn n l1 else List.firstn n l2.
-  Proof. intros. destruct b; reflexivity. Qed.
-
-  Lemma pull_if_skipn: forall (b: bool) (l1 l2: list A) n,
-      List.skipn n (if b then l1 else l2) =
-        if b then List.skipn n l1 else List.skipn n l2.
-  Proof. intros. destruct b; reflexivity. Qed.
-
-  Lemma pull_if_length: forall (b: bool) (l1 l2: list A),
-      List.length (if b then l1 else l2) = if b then List.length l1 else List.length l2.
-  Proof. intros. destruct b; reflexivity. Qed.
-End MergingLists.
-
-Lemma if_same[A: Type](b: bool)(a: A): (if b then a else a) = a.
-Proof. destruct b; reflexivity. Qed.
-
-#[export] Hint Rewrite
-  push_if_app_l
-  push_if_app_r
-  push_if_singleton
-  if_same
-  pull_if_firstn
-  pull_if_skipn
-  pull_if_length
-: fwd_rewrites.
 
 Fixpoint zip_tuple_if{A: Type}(b: bool){n: nat}(t1 t2: tuple A n){struct n}: tuple A n.
   destruct n.
@@ -1333,6 +1304,7 @@ Inductive snippet :=
 | SStore(sz: access_size)(addr val: Syntax.expr)
 | SIf(cond: Syntax.expr)
 | SElse
+| SWhile(cond: Syntax.expr){Measure: Type}(measure0: Measure)
 | SStart
 | SEnd
 | SRet(xs: list string)
@@ -1376,6 +1348,60 @@ Ltac els :=
   eapply wp_skip;
   eexists; split; [ reflexivity | ];
   package_context.
+
+Ltac clear_until_LoopInvariant_marker :=
+  repeat match goal with
+         | x: ?T |- _ => lazymatch T with
+                         | scope_marker LoopInvariant => fail 1
+                         | _ => clear x
+                         end
+         end;
+  match goal with
+  | x: ?T |- _ => lazymatch T with
+                  | scope_marker LoopInvariant => clear x
+                  end
+  end.
+
+Ltac expect_and_clear_last_marker expected :=
+  lazymatch goal with
+  | H: scope_marker ?sk |- _ =>
+      tryif constr_eq sk expected then
+        clear H
+      else
+        fail "Assertion failure: Expected last marker to be" expected "but got" sk
+  end.
+
+Ltac while cond measure0 :=
+  eapply (wp_while measure0 cond);
+  [ package_context
+  | eauto with wf_of_type
+  | repeat match goal with
+           | H: sep _ _ ?M |- _ => clear M H
+           end;
+    clear_until_LoopInvariant_marker;
+    cbv beta iota delta [ands];
+    cbn [seps] in *;
+    (* Note: will also appear after loop, where we'll have to clear it,
+       but we have to pose it here because the foralls are shared between
+       loop body and after the loop *)
+    (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
+    intros;
+    fwd;
+    lazymatch goal with
+    | |- exists P, dexpr_bool_prop _ _ _ P /\
+                   (P -> wp_cmd _ _ _ _ _ _) /\
+                   (~P -> wp_cmd _ _ _ _ _ _) => idtac
+    | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
+    end;
+    eexists;
+    split;
+    [ (* evaluate condition *)
+      repeat eval_dexpr_step
+    | split; intros;
+      [ (* loop body *)
+      | (* after loop *)
+        expect_and_clear_last_marker LoopBody ]
+    ] ].
 
 Create HintDb prove_post.
 
@@ -1435,7 +1461,9 @@ Ltac close_block :=
           eapply wp_skip;
           eexists; split; [ reflexivity | ];
           package_context
-      | LoopBody => fail "Closing a loop body is not yet implemented"
+      | LoopBody =>
+          eapply wp_skip;
+          prove_concrete_post
       | FunctionBody =>
           lazymatch goal with
           | |- wp_cmd _ _ _ _ _ _ => ret (@nil string)
@@ -1461,6 +1489,7 @@ Ltac add_snippet s :=
   | SStore ?sz ?addr ?val => store sz addr val
   | SIf ?e => cond e
   | SElse => els
+  | SWhile ?cond ?measure0 => while cond measure0
   | SStart => start
   | SEnd => close_block
   | SRet ?retnames => ret retnames
@@ -1468,7 +1497,11 @@ Ltac add_snippet s :=
   end.
 
 Ltac after_snippet :=
-  repeat (repeat word_simpl_step_in_hyps; fwd).
+  fwd;
+  (* leftover from word_simpl_step_in_hyps, TODO where to put? in fwd? *)
+  repeat match goal with
+         | H: ?x = ?y |- _ => is_var x; is_var y; subst x
+         end.
 
 (* Note: An rhs_var appears in expressions and, in our setting, always has a corresponding
    var (of type word) bound in the current context, whereas an lhs_var may or may not be
@@ -1603,6 +1636,9 @@ Notation "{" := SStart (in custom snippet at level 0).
 Notation "}" := SEnd (in custom snippet at level 0).
 Notation "} 'else' {" := SElse (in custom snippet at level 0).
 
+Notation "'while' ( e ) /* 'decreases' m */ {" :=
+  (SWhile e m) (in custom snippet at level 0, e custom live_expr, m constr at level 0).
+
 Tactic Notation "#" constr(s) := add_snippet s; after_snippet.
 
 Set Ltac Backtrace.
@@ -1642,27 +1678,10 @@ Local Set Default Goal Selector "1".
 
 Tactic Notation ".*" constr(s) "*" := add_snippet s; after_snippet.
 
-Definition u_min: {f: list string * list string * cmd &
-  forall fs t m a b (R: mem -> Prop),
-    R m ->
-    vc_func fs f t m [| a; b |] (fun t' m' retvs =>
-      t' = t /\ R m' /\
-      (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
-       word.unsigned b <= word.unsigned a /\ retvs = [b])
-  )}.
-.**/ {                                                                          /**.
-.**/   uintptr_t r = 0;                                                         /**.
-.**/   if (a < b) {                                                             /**.
-.**/     r = a;                                                                 /**.
-.**/   } else {                                                                 /**.
-.**/     r = b;                                                                 /**.
-.**/   }                                                                        /**.
-.**/                                                                            /**.
-.**/   return r;                                                                /**.
-.**/ }                                                                          /**.
-Defined.
+Comments C_STARTS_HERE
+/**.
 
-Definition u_min': {f: list string * list string * cmd &
+Definition u_min: {f: list string * list string * cmd &
   forall fs t m a b (R: mem -> Prop),
     R m ->
     vc_func fs f t m [| a; b |] (fun t' m' retvs =>
@@ -1697,6 +1716,62 @@ Unset Implicit Arguments.
     split; ZnWords.
   Qed.
 
+(* Assigns default well_founded relations to types.
+   Use lower costs to override existing entries. *)
+Create HintDb wf_of_type.
+Hint Resolve word__ltu_wf | 4 : wf_of_type.
+
+Section WithNonmaximallyInsertedA.
+  Context [A: Type].
+
+  Lemma List__repeat_0: forall (a: A), List.repeat a 0 = [].
+  Proof. intros. reflexivity. Qed.
+End WithNonmaximallyInsertedA.
+
+Hint Rewrite List__repeat_0 : fwd_rewrites.
+
+Ltac word_simpl_step_in_goal ::=
+  match goal with
+  | |- context[@word.add ?wi ?wo ?x ?y] => progress (ring_simplify (@word.add wi wo x y))
+  | |- context[@word.sub ?wi ?wo ?x ?y] => progress (ring_simplify (@word.sub wi wo x y))
+  | |- context[@word.opp ?wi ?wo ?x   ] => progress (ring_simplify (@word.opp wi wo x  ))
+  | |- context[@word.mul ?wi ?wo ?x ?y] => progress (ring_simplify (@word.mul wi wo x y))
+  | |- context C[word.unsigned ?x] =>
+      let x' := rdelta_var x in
+      lazymatch x' with
+      | word.of_Z ?z =>
+          (tryif constr_eq x x' then idtac
+           (* don't subst x everywhere, but only where the rewrite can simplify something *)
+           else let C' := context C[word.unsigned x'] in change C');
+          rewrite (word.unsigned_of_Z_nowrap z) by Lia.lia
+      end
+  | _ => progress groundcbv_in_goal
+  end.
+
+Require Import coqutil.Tactics.syntactic_unify.
+
+Ltac solve_list_eq :=
+  list_simpl_in_goal; try syntactic_exact_deltavar (@eq_refl _ _).
+
+(* make t1 a constr instead of pattern because typeclass-based notations
+   don't work in patterns *)
+Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" ident(H) :=
+  replace t1 with t2 in H.
+Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" "*" :=
+  replace t1 with t2 in *.
+Tactic Notation "Replace" constr(t1) "with" constr(t2) :=
+  replace t1 with t2.
+Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" ident(H) "by" tactic(tac) :=
+  replace t1 with t2 in H by tac.
+Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" "*" "by" tactic(tac) :=
+  replace t1 with t2 in * by tac.
+Tactic Notation "Replace" constr(t1) "with" constr(t2) "by" tactic(tac) :=
+  replace t1 with t2 by tac.
+
+Tactic Notation "loop" "invariant" "above" ident(i) :=
+  let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
+  move n after i.
+
 Definition memset: {f: list string * list string * cmd &
   forall fs t m (a b n: word) (bs: list byte) (R: mem -> Prop),
     <{ * a --> bs
@@ -1708,98 +1783,39 @@ Definition memset: {f: list string * list string * cmd &
          * R }> m' /\
       retvs = nil)
   }.
-.**/ {                                                                          /**.
-.**/   uintptr_t i = 0;                                                         /**.
-       replace bs with
-         (List.repeat (byte.of_Z (word.unsigned b)) (Z.to_nat (word.unsigned i)) ++
-          List.skipn (Z.to_nat (word.unsigned i)) bs) in H. 2: {
-         subst i.
-         repeat word_simpl_step_in_goal.
-         list_simpl_in_goal.
-         reflexivity.
-       }
-       let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n.
-       move i at bottom.
-       assert (0 <= word.unsigned i <= word.unsigned n) by ZnWords.
-       clearbody i.
+.**/
+{                                                                        /**. .**/
+  uintptr_t i = 0;                                                       /**.
 
-       eapply (wp_while (n - i) (live_expr:(i < n))).
+Replace bs with (repeat (b to byte) (i to nat) ++ bs[i to nat :]) in H by solve_list_eq.
+loop invariant above i.
+move H0 before R. (* not strictly needed *)
+assert (0 <= i to Z <= n to Z) by ZnWords.
+clearbody i.
+.**/
+  while (i < n) /* decreases (n - i) */ {                                /**. .**/
+    store1(a + i, b);                                                    /**.
 
+(* TODO: automate prettification steps below *)
+rewrite Z.div_1_r in *.
+rewrite List.repeat_length in *.
+Replace (S (i to nat) - i to nat + i to nat) with (i to nat + 1%nat) in * by ZnWords.
+
+.**/
+     i = i + 1;                                                          /**. .**/
+  }                                                                      /**.
 
 {
-  lazymatch goal with
-  | H: _ ?m |- ?E ?t ?m ?l =>
-      (* always package sep log assertion, even if memory was not changed in current block *)
-      move H at bottom
-  | |- ?E ?t ?m ?l => fail "No separation logic hypothesis about" m "found"
-  end;
-  let Post := fresh "Post" in
-  eassert _ as Post by (repeat add_last_hyp_to_post; apply ands_nil);
-  add_equalities_to_post Post.
-  add_equality_to_post (n - i) Post.
-  repeat add_last_var_to_post Post.
-  move etmp2 at top.
-  repeat add_last_var_to_post Post.
-  lazymatch goal with
-  | |- _ ?V ?T ?M ?L => pattern V, T, M, L in Post
-  end.
-  exact Post.
-}
-{
-  eapply word__ltu_wf.
-}
-  cbv beta.
-
-  repeat match goal with
-         | x: ?T |- _ => lazymatch T with
-                         | scope_marker LoopInvariant => fail 1
-                         | _ => clear x
-                         end
-         end.
-  match goal with
-  | x: ?T |- _ => lazymatch T with
-                  | scope_marker LoopInvariant => clear x
-                  end
-  end.
-  clear m.
-  unfold ands.
-  pose proof (mk_scope_marker LoopBody).
-  intros.
-  fwd.
-  eexists. split.
-  { eval_dexpr_step.
-    eval_dexpr_step.
-    eval_dexpr_step. }
-  split. {
-    intros. unfold seps in *.
-
-(*.**/   while (i < n) {                                                          /**.*)
-.**/     store1(a + i, b);                                                      /**.
-         (* TODO: automate prettification steps below *)
-         rewrite Z.div_1_r in *.
-         rewrite List.repeat_length in *.
-         replace (S (Z.to_nat \[i]) - Z.to_nat \[i] + Z.to_nat \[i])
-           with (Z.to_nat \[i] + 1%nat) in * by ZnWords.
-
-.**/     i = i + 1;                                                             /**.
-(*.**/   }                                                                        /**.*)
-  eapply wp_skip.
-  eexists.
-  prove_concrete_post.
-  replace (Z.to_nat \[i_0 + word.of_Z (word := word) 1])
-    with (Z.to_nat \[i_0] + 1%nat) by ZnWords.
+  Replace ((i_0 + 1 to word) to nat) with (i_0 to nat + 1 to nat) by ZnWords.
   rewrite List.repeat_app.
   rewrite <- List.app_assoc.
-  assumption. }
+  assumption.
+}
 
-  match goal with
-  | H: scope_marker LoopBody |- _ => clear H
-  end.
-  intros.
-  unfold seps in *.
   fwd.
-  replace (Z.to_nat \[i]) with (len bs) in * by ZnWords.
-.**/   }                                                                        /**.
+  Replace (i to nat) with (List.length bs) in * by ZnWords.
+.**/
+}                                                                        /**.
 Defined.
 
 Goal False.
@@ -1815,36 +1831,38 @@ Definition merge_tests: {f: list string * list string * cmd &
        * R }> m ->
     List.length vs = 3%nat ->
     vc_func fs f t m [| a |] (fun t' m' retvs => False)
-  }.
-.**/ {                                                                          /**.
-.**/   uintptr_t w0 = load(a);                                                  /**.
-.**/   uintptr_t w1 = load(a+4);                                                /**.
-.**/   uintptr_t w2 = load(a+8);                                                /**.
-.**/   if (w1 < w0 && w1 < w2) {                                                /**.
-.**/     store(a, w1);                                                          /**.
-.**/     w1 = w0;                                                               /**.
+  }. .**/
+{                                                                        /**. .**/
+  uintptr_t w0 = load(a);                                                /**. .**/
+  uintptr_t w1 = load(a+4);                                              /**. .**/
+  uintptr_t w2 = load(a+8);                                              /**. .**/
+  if (w1 < w0 && w1 < w2) {                                              /**. .**/
+    store(a, w1);                                                        /**. .**/
+    w1 = w0;                                                             /**.
 
-  assert (exists foo: Z, foo + foo = 2) as Foo. {
-    exists 1. reflexivity.
-  }
-  destruct Foo as (foo & Foo).
+assert (exists foo: Z, foo + foo = 2) as Foo. {
+  exists 1. reflexivity.
+}
+destruct Foo as (foo & Foo).
 
-  move m at bottom.
-  move w1 at bottom.
+move m at bottom.
+move w1 at bottom.
 
-  assert (exists bar: nat, (bar + bar = 4 * Z.to_nat foo)%nat) as Bar. {
-    exists 2%nat. blia.
-  }
-  destruct Bar as (bar & Bar).
-  pose (baz := foo + foo).
-  assert (w1 + w0 + word.of_Z baz = word.of_Z baz + w1 + w1) as E by ZnWords.
-  rename w1 into w1tmp.
-  pose (w1 := w0 + word.of_Z baz - word.of_Z baz).
-  move w1 after w1tmp.
-  replace w1tmp with w1 in * by ZnWords. clear w1tmp.
+assert (exists bar: nat, (bar + bar = 4 * Z.to_nat foo)%nat) as Bar. {
+  exists 2%nat. blia.
+}
+destruct Bar as (bar & Bar).
+pose (baz := foo + foo).
+assert (w1 + w0 + word.of_Z baz = word.of_Z baz + w1 + w1) as E by ZnWords.
+rename w1 into w1tmp.
+pose (w1 := w0 + word.of_Z baz - word.of_Z baz).
+move w1 after w1tmp.
+replace w1tmp with w1 in * by ZnWords. clear w1tmp.
 
-.**/  } else {                                                                  /**.
-.**/  }                                                               /**. .**/ /**.
+.**/
+  } else {                                                               /**. .**/
+}                                                                        /**. .**/
+                                                                         /**.
 Abort.
 
 Hint Extern 4 (Permutation _ _) =>
@@ -1860,32 +1878,32 @@ Definition sort3: {f: list string * list string * cmd &
       exists v0 v1 v2,
         t' = t /\
         Permutation vs [| v0; v1; v2 |] /\
-        \[v0] <= \[v1] <= \[v2] /\
+        v0 to Z <= v1 to Z <= v2 to Z /\
         <{ * a --> [| v0; v1; v2 |]
            * R }> m'
-  )}.
-.**/ {                                                                          /**.
-.**/   uintptr_t w0 = load(a);                                                  /**.
-.**/   uintptr_t w1 = load(a+4);                                                /**.
-.**/   uintptr_t w2 = load(a+8);                                                /**.
-.**/   if (w1 <= w0 && w1 <= w2) {                                              /**.
-.**/     store(a, w1);                                                          /**.
-.**/     w1 = w0;                                                               /**.
-.**/   } else {                                                                 /**.
-.**/     if (w2 <= w0 && w2 <= w1) {                                            /**.
-.**/       store(a, w2);                                                        /**.
-.**/       w2 = w0;                                                             /**.
-.**/     } else {                                                               /**.
-.**/     }                                                            /**. .**/ /**.
-.**/   }                                                              /**. .**/ /**.
-.**/   if (w2 < w1) {                                                           /**.
-.**/     store(a+4, w2);                                                        /**.
-.**/     store(a+8, w1);                                                        /**.
-.**/   } else {                                                                 /**.
-.**/     store(a+4, w1);                                                        /**.
-.**/     store(a+8, w2);                                                        /**.
-.**/   }                                                              /**. .**/ /**.
-.**/ }                                                                          /**.
+  )}. .**/
+{                                                                        /**. .**/
+  uintptr_t w0 = load(a);                                                /**. .**/
+  uintptr_t w1 = load(a+4);                                              /**. .**/
+  uintptr_t w2 = load(a+8);                                              /**. .**/
+  if (w1 <= w0 && w1 <= w2) {                                            /**. .**/
+    store(a, w1);                                                        /**. .**/
+    w1 = w0;                                                             /**. .**/
+  } else {                                                               /**. .**/
+    if (w2 <= w0 && w2 <= w1) {                                          /**. .**/
+      store(a, w2);                                                      /**. .**/
+      w2 = w0;                                                           /**. .**/
+    } else {                                                             /**. .**/
+    }                                                          /**. .**/ /**. .**/
+  }                                                            /**. .**/ /**. .**/
+  if (w2 < w1) {                                                         /**. .**/
+    store(a+4, w2);                                                      /**. .**/
+    store(a+8, w1);                                                      /**. .**/
+  } else {                                                               /**. .**/
+    store(a+4, w1);                                                      /**. .**/
+    store(a+8, w2);                                                      /**. .**/
+  }                                                            /**. .**/ /**. .**/
+}                                                                        /**.
 Defined.
 
 (* Print Assumptions sort3. *)
@@ -1953,3 +1971,5 @@ forall
                (BinNums.xO (BinNums.xO (BinNums.xO (BinNums.xO (BinNums.xO BinNums.xH))))))},
 word.ok word -> forall a b : word, foo a b = foo b a
  *)
+
+Comments !EOF .**/ //.
