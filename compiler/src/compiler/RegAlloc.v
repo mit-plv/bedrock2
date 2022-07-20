@@ -380,13 +380,13 @@ Scheme Equality for Syntax.access_size. (* to create access_size_beq *)
 Scheme Equality for bopname. (* to create bopname_beq *)
 Scheme Equality for bbinop. (* to create bbinop_beq *)
 
-Instance access_size_beq_spec: EqDecider access_size_beq.
+#[global] Instance access_size_beq_spec: EqDecider access_size_beq.
 Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
 
-Instance bopname_beq_spec: EqDecider bopname_beq.
+#[global] Instance bopname_beq_spec: EqDecider bopname_beq.
 Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
 
-Instance bbinop_beq_spec: EqDecider bbinop_beq.
+#[global] Instance bbinop_beq_spec: EqDecider bbinop_beq.
 Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
 
 Section PairList.

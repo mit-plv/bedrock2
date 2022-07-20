@@ -41,7 +41,7 @@ Section Pipeline1.
   Context {BWM: bitwidth_iset width iset}.
   Context {mem_ok: map.ok mem}.
   Context {ext_spec_ok: Semantics.ext_spec.ok ext_spec}.
-  Context (compile_ext_call : string_keyed_map (nat * nat * Z) -> Z -> Z -> FlatImp.stmt Z -> list Instruction).
+  Context (compile_ext_call : string_keyed_map Z -> Z -> Z -> FlatImp.stmt Z -> list Instruction).
   Context (compile_ext_call_correct: forall resvars extcall argvars,
               compiles_FlatToRiscv_correctly compile_ext_call compile_ext_call
                                              (FlatImp.SInteract resvars extcall argvars)).

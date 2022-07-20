@@ -82,7 +82,7 @@ Definition prog := map.of_list funimplsList.
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
    and to check if there are any axioms which could block the computation. *)
-Definition lightbulb_compiled: list Decode.Instruction * SortedListString.map (nat * nat * Z) * Z.
+Definition lightbulb_compiled: list Decode.Instruction * SortedListString.map Z * Z.
   let r := eval cbv in (ToplevelLoop.compile_prog MMIO.compile_ext_call ml prog) in
   lazymatch r with
   | Success ?x => exact x
@@ -96,7 +96,7 @@ Definition lightbulb_insts: list Decode.Instruction.
   end.
 Defined.
 
-Definition function_positions: SortedListString.map (nat * nat * Z).
+Definition function_positions: SortedListString.map Z.
   let r := eval cbv delta [lightbulb_compiled] in lightbulb_compiled in
   lazymatch r with
   | (_, ?x, _) => exact x

@@ -17,7 +17,7 @@ Definition ipow :=
 From bedrock2 Require Import Semantics BasicC64Semantics WeakestPrecondition ProgramLogic.
 From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
 
-Instance spec_of_ipow : spec_of "ipow" := fun functions =>
+#[global] Instance spec_of_ipow : spec_of "ipow" := fun functions =>
   forall x e t m,
     WeakestPrecondition.call functions
       "ipow" t m [x; e]

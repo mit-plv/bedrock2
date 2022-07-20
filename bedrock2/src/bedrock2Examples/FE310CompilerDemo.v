@@ -21,13 +21,13 @@ Definition gpio0_base := 0x10012000. Definition gpio0_pastend := 0x10013000.
 Definition uart0_base := 0x10013000. Definition uart0_pastend := 0x10014000.
 Definition uart0_rxdata := 0x10013004. Definition uart0_txdata  := 0x10013000.
 
-Instance word: word.word 32 := Naive.word32.
-Instance mem: Interface.map.map word Byte.byte := SortedListWord.map _ _.
-Instance locals: Interface.map.map String.string word := SortedListString.map _.
-Instance env: Interface.map.map String.string (list String.string * list String.string * cmd) :=
+#[global] Instance word: word.word 32 := Naive.word32.
+#[global] Instance mem: Interface.map.map word Byte.byte := SortedListWord.map _ _.
+#[global] Instance locals: Interface.map.map String.string word := SortedListString.map _.
+#[global] Instance env: Interface.map.map String.string (list String.string * list String.string * cmd) :=
   SortedListString.map _.
 
-Instance ext_spec: ExtSpec :=
+#[global] Instance ext_spec: ExtSpec :=
   fun t mGive action args post =>
     mGive = Map.Interface.map.empty /\
     match action, List.map word.unsigned args with

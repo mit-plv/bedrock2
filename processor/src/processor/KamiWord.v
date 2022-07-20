@@ -576,8 +576,8 @@ Arguments word : clear implicits.
 Arguments ok : clear implicits.
 Arguments kword : clear implicits.
 
-Existing Instance word.
-Existing Instance ok.
+#[global] Existing Instance word.
+#[global] Existing Instance ok.
 
 
 Open Scope Z_scope.
@@ -590,9 +590,9 @@ Section MkWords.
   Proof.
     case width_cases; intro E; rewrite E; reflexivity.
   Defined.
-  Instance wordW: word.word width := word width.
-  Instance wordWok: word.ok wordW := ok width boundW.
+  #[local] Instance wordW: word.word width := word width.
+  #[local] Instance wordWok: word.ok wordW := ok width boundW.
 
-  Instance word8: word.word 8 := word 8.
-  Instance word8ok: word.ok word8 := ok 8 eq_refl.
+  #[local] Instance word8: word.word 8 := word 8.
+  #[local] Instance word8ok: word.ok word8 := ok 8 eq_refl.
 End MkWords.

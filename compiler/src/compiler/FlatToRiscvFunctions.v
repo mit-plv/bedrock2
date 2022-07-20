@@ -44,7 +44,7 @@ Local Arguments Z.sub: simpl never.
 
 Section Proofs.
   Context {iset: Decode.InstructionSet}.
-  Context {fun_info: map.map String.string (nat * nat * Z)}.
+  Context {pos_map: map.map String.string Z}.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
   Context {word_ok: word.ok word}.
   Context {locals: map.map Z word}.
@@ -58,11 +58,11 @@ Section Proofs.
   Context {word_riscv_ok: RiscvWordProperties.word.riscv_ok word}.
   Context {locals_ok: map.ok locals}.
   Context {mem_ok: map.ok mem}.
-  Context {fun_info_ok: map.ok fun_info}.
+  Context {pos_map_ok: map.ok pos_map}.
   Context {env_ok: map.ok env}.
   Context {PR: MetricPrimitives.MetricPrimitives PRParams}.
   Context {BWM: bitwidth_iset width iset}.
-  Context (compile_ext_call: fun_info -> Z -> Z -> stmt Z -> list Instruction).
+  Context (compile_ext_call: pos_map -> Z -> Z -> stmt Z -> list Instruction).
 
   Add Ring wring : (word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],
@@ -87,8 +87,8 @@ Section Proofs.
   Notation functions := (functions (iset := iset) compile_ext_call).
   Notation compile_function := (compile_function iset compile_ext_call).
 
-  Lemma functions_expose: forall (base: word) (finfo: fun_info) impls f argcount retcount pos impl,
-      map.get finfo f = Some (argcount, retcount, pos) ->
+  Lemma functions_expose: forall (base: word) (finfo: pos_map) impls f pos impl,
+      map.get finfo f = Some pos ->
       map.get impls f = Some impl ->
       iff1 (functions base finfo impls)
            (functions base finfo (map.remove impls f) *
@@ -430,13 +430,15 @@ Section Proofs.
         simpl in *; Simp.simp; repeat (simulate'; simpl_bools; simpl); try intuition congruence.
   Qed.
 
+
   Local Notation exec := (exec isRegZ).
+
 
   Lemma compile_function_body_correct: forall (e_impl_full : env) m l mc (argvs : list word)
     (st0 : locals) (post outcome : Semantics.trace -> mem -> locals -> MetricLog -> Prop)
     (argnames retnames : list Z) (body : stmt Z) (program_base : word)
     (pos : Z) (ret_addr : word) (mach : RiscvMachineL) (e_impl : env)
-    (e_pos : fun_info) (binds_count : nat) (insts : list Instruction)
+    (e_pos : pos_map) (binds_count : nat) (insts : list Instruction)
     (xframe : mem -> Prop) (t : list LogItem) (g : GhostConsts)
     (IH: forall (g0 : GhostConsts) (insts0 : list Instruction) (xframe0 : mem -> Prop)
                 (initialL : RiscvMachineL) (pos0 : Z),
@@ -1061,19 +1063,19 @@ Section Proofs.
     + solve_word_eq word_ok.
     + exact OD.
     + assert ((Datatypes.length (modVars_as_list Z.eqb body)) <= 29)%nat by
-        auto using NoDup_valid_FlatImp_vars_bound_length, NoDup_modVars_as_list, modVars_as_list_valid_FlatImp_var. 
+        auto using NoDup_valid_FlatImp_vars_bound_length, NoDup_modVars_as_list, modVars_as_list_valid_FlatImp_var.
       assert ((Datatypes.length
                  (list_diff Z.eqb (modVars_as_list Z.eqb body)
                             (List.firstn ret_count (reg_class.all reg_class.arg))))
               <= (Datatypes.length (modVars_as_list Z.eqb body)))%nat by
-        apply list_diff_length. 
+        apply list_diff_length.
       assert (#(Datatypes.length
                   (list_diff Z.eqb (modVars_as_list Z.eqb body)
                              (List.firstn ret_count (reg_class.all reg_class.arg)))) <= 29) by
         blia.
       clear - H8 H2p6.
 
-      cbv[lowerMetrics] in *. 
+      cbv[lowerMetrics] in *.
       unfold withInstructions, withLoads, withStores, withJumps,
         addMetricInstructions, addMetricLoads, addMetricStores, addMetricJumps,
         subMetricInstructions, subMetricLoads, subMetricStores, subMetricJumps,
@@ -1088,7 +1090,7 @@ Section Proofs.
       unfold Platform.MetricLogging.metricsLeq, Platform.MetricLogging.metricLeq,
         Platform.MetricLogging.metricsSub, Platform.MetricLogging.metricSub
         in *.
-      repeat     
+      repeat
         match goal with
         | |- context[?f ?n (Platform.MetricLogging.mkMetricLog ?i ?s ?l ?j)] =>
             match type of (f n (Platform.MetricLogging.mkMetricLog i s l j)) with
@@ -1098,7 +1100,7 @@ Section Proofs.
                              change (f n (Platform.MetricLogging.mkMetricLog i s l j)) with t'
             end
         end.
-      cbn. 
+      cbn.
       repeat match goal with
              | |- context[?f ?n (Platform.MetricLogging.mkMetricLog ?i ?s ?l ?j)] =>
                  match type of (f n (Platform.MetricLogging.mkMetricLog i s l j)) with
@@ -1109,12 +1111,12 @@ Section Proofs.
                  end
              end.
       cbn in H2p6.
-      blia. 
-      
+      blia.
+
     + rename l into lH, finalRegsH into lFH', finalRegsH' into lH', st0 into lFH,
              middle_regs into lL.
 
-      
+
       (* The following list of lemmas and about that much helper code would probably be required
          even in a near-perfect proof assistant:
 
@@ -1141,7 +1143,7 @@ Section Proofs.
          load back the return address     run_load_word
          increase sp                      run_Addi
          jump back to caller              run_Jalr0
-       *)      
+       *)
       match goal with
       | |- map.extends ?A lH' => remember A as middle_regs0_ra_sp
       end.
@@ -1344,7 +1346,7 @@ Section Proofs.
       wcancel_assumption.
     + reflexivity.
     + assumption.
-  Qed. 
+  Qed.
 
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
@@ -1549,7 +1551,7 @@ Section Proofs.
       }
       subst args.
       let T := type of IHexec in let T' := open_constr:(
-        (forall (g : GhostConsts) (e_impl : env) (e_pos : fun_info)
+        (forall (g : GhostConsts) (e_impl : env) (e_pos : pos_map)
              (program_base : word) (insts : list Instruction) (xframe : mem -> Prop)
              (initialL : RiscvMachineL) (pos : Z),
            map.extends e_impl_full e_impl ->
@@ -1577,11 +1579,11 @@ Section Proofs.
                   (union (of_list (modVars_as_list Z.eqb body)) (singleton_set RegisterNames.ra))
                   (getRegs finalL) /\
                   (*                (getMetrics finalL - initialL_metrics <= lowerMetrics (finalMetricsH - mc))%metricsL /\ *)
-                  _ /\                    
+                  _ /\
                 goodMachine finalTrace finalMH finalRegsH g finalL))
         ) in replace T with T' in IHexec.
       2: {
-        subst. reflexivity. 
+        subst. reflexivity.
       }
 
       specialize IHexec with (1 := Ext).
@@ -1625,14 +1627,13 @@ Section Proofs.
               revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
               eapply compile_function_body_correct.
       }
-      
       subst mach. simpl_MetricRiscvMachine_get_set.
       intros. fwd. eexists. eexists. eexists. eexists.
-      split; [ eapply H0p0 | ]. 
+      split; [ eapply H0p0 | ].
       split; eauto 8 with map_hints.
       split; eauto 8 with map_hints.
       split; eauto 8 with map_hints.
-      MetricsToRiscv.solve_MetricLog. 
+      MetricsToRiscv.solve_MetricLog.
 
     - idtac "Case compile_stmt_correct/SLoad".
       progress unfold Memory.load, Memory.load_Z in *. fwd.
@@ -1683,7 +1684,7 @@ Section Proofs.
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
-      }     
+      }
       run1done.
 
     - idtac "Case compile_stmt_correct/SStackalloc".
@@ -1865,7 +1866,7 @@ Section Proofs.
         symmetry in HeqfinalMetrics;
         pose proof update_metrics_for_literal_bounded (width := width) as Hlit;
         specialize Hlit with (1 := HeqfinalMetrics);
-        MetricsToRiscv.solve_MetricLog. 
+        MetricsToRiscv.solve_MetricLog.
 
     - idtac "Case compile_stmt_correct/SOp".
       assert (x <> RegisterNames.sp). {
@@ -1939,7 +1940,6 @@ Section Proofs.
                  end.
           MetricsToRiscv.solve_MetricLog. 
           
-             
     - idtac "Case compile_stmt_correct/SIf/Else".
       (* execute branch instruction, which will jump over then-branch *)
       eapply runsToStep.
@@ -2126,5 +2126,5 @@ Section Proofs.
       run1done.
   Qed. (* <-- takes a while *)
 
-  
+
 End Proofs.

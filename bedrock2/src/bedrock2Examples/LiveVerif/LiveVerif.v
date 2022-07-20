@@ -19,25 +19,27 @@ Require Import coqutil.Word.Bitwidth32.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
+Require Import bedrock2.autorew.
+Import WordRingAutorewr HypAutorewr ListNoSCAutorewr
+       PushPullIfAutorewr LiaSCAutorewr ZnWordsSCAutorewr.
 Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Require Import bedrock2.OperatorOverloading.
-
-Notation "/[ x ]" := (word.of_Z x)       (* squeeze a Z into a word (beat it with a / to make it smaller) *)
-  (format "/[ x ]").
-Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the modulo box imposed by words, *)
-  (format "\[ x ]").                     (* let a word fly into the large Z space *)
 
 Section LiveVerif.
   Import Syntax BinInt String List.ListNotations ZArith.
   Context {word: word.word 32} {mem: map.map word byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Local Set Implicit Arguments.
-  Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-  Local Open Scope sep_bullets_scope.
-  Notation len := List.length.
+  Local Open Scope string_scope. Local Open Scope Z_scope.
+  (* Not a Definition because if the Z.of_nat is visible, lia knows it's positive *)
+  Notation "'len' l" := (Z.of_nat (List.length l)) (at level 10).
   Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per 32 sz)) (at level 10).
   Local Open Scope oo_scope.
+  Local Open Scope list_index_scope.
+  Local Open Scope conversion_parse_scope.
+  Local Open Scope conversion_print_scope.
+  Local Open Scope sep_bullets_scope.
 
   Add Ring wring : (Properties.word.ring_theory (word := word))
         ((*This preprocessing is too expensive to be always run, especially if
@@ -58,3 +60,5 @@ Section LiveVerif.
 
   Arguments locals: simpl never.
   Arguments env: simpl never.
+
+  Ltac fwd_rewrites ::= autorew_in_hyps.
