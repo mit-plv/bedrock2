@@ -468,13 +468,13 @@ Section LowerPipeline.
   Qed.
 
   Lemma flat_to_riscv_correct: forall p1 p2,
-      map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
+     map.forall_values FlatToRiscvDef.valid_FlatImp_fun p1 ->
       riscvPhase p1 = Success p2 ->
       forall fname t m argvals post,
       (exists argnames retnames fbody l,
           map.get p1 fname = Some (argnames, retnames, fbody) /\
-          forall l mc, map.of_list_zip argnames argvals = Some l ->
-                       FlatImp.exec isRegZ p1 fbody t m l mc (fun t' m' l' mc' =>
+          map.of_list_zip argnames argvals = Some l /\
+          forall mc, FlatImp.exec isRegZ p1 fbody t m l mc (fun t' m' l' mc' =>
                          exists retvals, map.getmany_of_list l' retnames = Some retvals /\
                                          post t' m' retvals)) ->
       riscv_call p2 fname t m argvals post.

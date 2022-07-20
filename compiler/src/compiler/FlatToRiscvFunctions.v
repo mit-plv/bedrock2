@@ -1621,9 +1621,6 @@ Section Proofs.
               repeat match goal with
                      | x := _ |- _ => clearbody x
                      end.
-              
-              clear - word_ok RVM PRParams PR ext_spec word_riscv_ok locals_ok mem_ok fun_info_ok env_ok
-                              IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
               revert IHexec OC BC OL Exb GetMany Ext GE FS C V Mo Mo' Gra RaM GPC A GM.
               eapply compile_function_body_correct.
       }
@@ -2128,3 +2125,4 @@ Section Proofs.
 
 
 End Proofs.
+ 
