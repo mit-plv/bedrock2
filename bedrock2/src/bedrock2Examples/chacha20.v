@@ -42,7 +42,7 @@ Section chacha20.
         (x0, x5, x10, x15) = chacha20_quarter( x0, x5, x10, x15);
         (x1, x6, x11, x12) = chacha20_quarter( x1, x6, x11, x12);
         (x2, x7,  x8, x13) = chacha20_quarter( x2, x7, x8,  x13);
-        (x3, x4,  x9,  x1) = chacha20_quarter( x3, x4, x9,  x14)
+        (x3, x4,  x9, x14) = chacha20_quarter( x3, x4, x9,  x14)
       };
       x0 += $0x61707865;  x1 += $0x3320646e;   x2 += $0x79622d32;    x3 += $0x6b206574;
       x4 += load4(key);          x5 += load4(key+$4);   x6 += load4(key+$8);    x7 += load4(key+$12);
