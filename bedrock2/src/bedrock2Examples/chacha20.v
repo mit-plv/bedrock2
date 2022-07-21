@@ -18,12 +18,20 @@ Section chacha20.
       c += d; b ^= c; b <<<= 7
     ))).
 
+  Definition QUARTERROUND (a b c d : String.string) : cmd
+    := ltac:(let body := (eval cbv [chacha20_quarter] in (let '(_, (_, _, body)) := chacha20_quarter in body)) in
+             lazymatch (eval pattern "a", "b", "c", "d" in body) with
+             | ?x "a" "b" "c" "d"
+               => let y := (eval cbv beta in (x a b c d)) in
+                  exact y
+             end).
+
   Local Notation "'xorout' o x" := (
       let addr := bedrock_expr:(out+coq:(expr.literal(4*o))) in
       bedrock_cmd:(store4($addr, load4($addr)^$(expr.var (ident_to_string! x)))))
       (in custom bedrock_cmd at level 0, o bigint, x ident).
 
-  Definition chacha20_block : func :=
+  Definition chacha20_block_separate : func :=
     (* NOTE: I (andreser) don't understand why xorout needs these *)
     let x0  := "x0" in let x1  := "x1" in let x2  := "x2" in let x3  := "x3" in
     let x4  := "x4" in let x5  := "x5" in let x6  := "x6" in let x7  := "x7" in
@@ -53,11 +61,28 @@ Section chacha20.
       xorout  8  x8;   xorout 9 x9; xorout 10 x10; xorout 11 x11;
       xorout 12 x12; xorout 13 x13; xorout 14 x14; xorout 15 x15
   ))).
+
+  Local Ltac repquarterround body :=
+    lazymatch body with
+    | context body[cmd.call [?x1; ?x2; ?x3; ?x4] "chacha20_quarter" [expr.var ?x1; expr.var ?x2; expr.var ?x3; expr.var ?x4] ]
+      => let body := context body[QUARTERROUND x1 x2 x3 x4] in
+         repquarterround body
+    | context body[cmd.call ?ls "chacha20_quarter" ?ls' ]
+      => let v := constr:(cmd.call ls "chacha20_quarter" ls') in
+         fail 0 "could not replace ""chacha20_quarter"" in" v
+    | context["chacha20_quarter"]
+      => fail 0 "could not replace ""chacha20_quarter"" in" body
+    | _ => body
+    end.
+  Definition chacha20_block : func :=
+    ltac:(let body := (eval cbv delta [chacha20_block_separate] in chacha20_block_separate) in
+          let body := repquarterround body in
+          exact body).
 End chacha20.
 
 (*
 Require bedrock2.ToCString.
 Example chacha20_block_c_string := Eval vm_compute in
-  ToCString.c_module [chacha20_quarter; chacha20_block].
+  ToCString.c_module [chacha20_quarter; chacha20_block_separate].
 Print chacha20_block_c_string.
 *)
