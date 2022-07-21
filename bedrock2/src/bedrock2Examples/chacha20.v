@@ -122,6 +122,8 @@ Hint Rewrite
      using trivial
   : word_laws.
 
+Import BasicC64Semantics. (* for ring *)
+
 Lemma chacha20_ok : program_logic_goal_for_function! chacha20_block.
 Proof.
   straightline.
