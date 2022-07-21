@@ -87,22 +87,19 @@ Example chacha20_block_c_string := Eval vm_compute in
 Print chacha20_block_c_string.
 *)
 
+From Coq Require Import String.
 From Coq Require Import ZArith.ZArith.
 From coqutil Require Import Word.Interface Word.Properties Map.Interface.
 From coqutil.Word Require Import Naive.
 From coqutil.Tactics Require Import letexists eabstract.
-From bedrock2 Require Import FE310CSemantics Semantics WeakestPrecondition ProgramLogic Array Scalars TailRecursion.
+From bedrock2 Require Import FE310CSemantics Semantics WeakestPrecondition ProgramLogic Array Scalars Loops.
 From bedrock2.Map Require Import Separation SeparationLogic.
 From coqutil.Z Require Import Lia.
 
 Local Infix "*" := sep.
 Local Infix "*" := sep : type_scope.
 
-Local Instance word32: Interface.word 32 := coqutil.Word.Naive.word 32 eq_refl.
-Local Instance word32_ok: word.ok word32 := coqutil.Word.Naive.ok _ _.
-Local Instance byte_ok: word.ok byte := coqutil.Word.Naive.ok _ _.
-Local Instance mapok: map.ok mem := SortedListWord.ok (Naive.word 32 eq_refl) _.
-Local Instance wordok: word.ok word := coqutil.Word.Naive.ok _ _.
+Local Existing Instance coqutil.Word.Naive.word.
 
 Instance spec_of_chacha20 : spec_of "chacha20_block" := fun functions =>
   forall outAddr out keyAddr key nonceAddr nonce cval R m t,
@@ -124,9 +121,6 @@ Hint Rewrite
      word.unsigned_of_Z word.signed_of_Z word.of_Z_unsigned word.unsigned_add word.unsigned_sub word.unsigned_opp word.unsigned_or word.unsigned_and word.unsigned_xor word.unsigned_not word.unsigned_ndn word.unsigned_mul word.signed_mulhss word.signed_mulhsu word.unsigned_mulhuu word.unsigned_divu word.signed_divs word.unsigned_modu word.signed_mods word.unsigned_slu word.unsigned_sru word.signed_srs word.unsigned_eqb word.unsigned_ltu word.signed_lts
      using trivial
   : word_laws.
-
-Monomorphic Definition word__monomorphic_ring_theory := Properties.word.ring_theory (word := word).
-Add Ring word_ring : word__monomorphic_ring_theory.
 
 Lemma chacha20_ok : program_logic_goal_for_function! chacha20_block.
 Proof.
@@ -199,7 +193,6 @@ Proof.
     Time do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
-    Time do 10 straightline.
     straightline.
     Time do 10 straightline.
     Time do 10 straightline.
@@ -239,7 +232,7 @@ Proof.
     match goal with |- Markers.unique (Markers.left (exists x131 x132 x133 x134 x135 x136 x137 x138 x139 x140 x141 x142 x143 x144 x145 x146 x147 x148 x149 x150 x151, _)) => idtac end.
 
     repeat letexists. split.
-    { 
+    {
       cbv [enforce gather].
       repeat match goal with
       | |- context G [@map.get ?K ?V ?M ?m ?k] =>
@@ -251,6 +244,7 @@ Proof.
     split; refine eq_refl.
     }
 
+    Time do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
     Time do 10 straightline.
