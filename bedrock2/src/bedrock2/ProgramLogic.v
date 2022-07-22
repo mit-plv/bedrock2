@@ -98,54 +98,66 @@ Ltac enter f :=
 
 Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
-Ltac straightline_cleanup :=
-  match goal with
+From Ltac2 Require Notations Control.
+Module Ltac2ForPerf.
+  Import Ltac2.Notations Ltac2.Init.
+  Ltac2 straightline_cleanup_clear () :=
+    let h := Control.hyps () in
+    let should_clear_type ty := (match! ty with
   (* TODO remove superfluous _ after .rep, but that will break some proofs that rely on
      x not being cleared to instantiate evars with terms depending on x *)
-  | x : Word.Interface.word.rep _ |- _ => clear x
-  | x : Init.Byte.byte |- _ => clear x
-  | x : Semantics.trace |- _ => clear x
-  | x : Syntax.cmd |- _ => clear x
-  | x : Syntax.expr |- _ => clear x
-  | x : coqutil.Map.Interface.map.rep |- _ => clear x
-  | x : BinNums.Z |- _ => clear x
-  | x : unit |- _ => clear x
-  | x : bool |- _ => clear x
-  | x : list _ |- _ => clear x
-  | x : nat |- _ => clear x
-  (* same TODO as above *)
-  | x := _ : Word.Interface.word.rep _ |- _ => clear x
-  | x := _ : Init.Byte.byte |- _ => clear x
-  | x := _ : Semantics.trace |- _ => clear x
-  | x := _ : Syntax.cmd |- _ => clear x
-  | x := _ : Syntax.expr |- _ => clear x
-  | x := _ : coqutil.Map.Interface.map.rep |- _ => clear x
-  | x := _ : BinNums.Z |- _ => clear x
-  | x := _ : unit |- _ => clear x
-  | x := _ : bool |- _ => clear x
-  | x := _ : list _ |- _ => clear x
-  | x := _ : nat |- _ => clear x
-  | |- forall _, _ => intros
-  | |- let _ := _ in _ => intros
-  | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
-  | _ => progress (cbn [Semantics.interp_binop] in * )
-  | H: exists _, _ |- _ => destruct H
-  | H: _ /\ _ |- _ => destruct H
-  | x := ?y |- ?G => is_var y; subst x
-  | H: ?x = ?y |- _ => constr_eq x y; clear H
-  | H: ?x = ?y |- _ => is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [x] in x in idtac); subst x
-  | H: ?x = ?y |- _ => is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [y] in y in idtac); subst y
-  | H: ?x = ?v |- _ =>
-    is_var x;
-    assert_fails (idtac; let __ := eval cbv delta [x] in x in idtac);
-    lazymatch v with context[x] => fail | _ => idtac end;
-    let x' := fresh x in
-    rename x into x';
-    simple refine (let x := v in _);
-    change (x' = x) in H;
-    symmetry in H;
-    destruct H
-  end.
+  | Word.Interface.word.rep _ => true
+  | Init.Byte.byte => true
+  | Semantics.trace => true
+  | Syntax.cmd => true
+  | Syntax.expr => true
+  | coqutil.Map.Interface.map.rep => true
+  | BinNums.Z => true
+  | unit => true
+  | bool => true
+  | list _ => true
+  | nat => true
+  | _ => false
+                                 end) in
+    let h := List.filter (fun (name, body, ty) => should_clear_type ty) h in
+    progress (List.iter (fun (name, _, _) => try (clear $name)) h).
+End Ltac2ForPerf.
+
+(* Use [first] rather than [match] so we see a more accurate Ltac profile *)
+Ltac straightline_cleanup :=
+  first [ ltac2:(Ltac2ForPerf.straightline_cleanup_clear ())
+        | match goal with
+          | |- forall _, _ => idtac
+          | |- let _ := _ in _ => idtac
+          end;
+          intros
+        | match goal with
+          | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P)
+          end; intros
+        | progress (cbn [Semantics.interp_binop] in * )
+        | let H := match goal with
+                   | H: exists _, _ |- _ => H
+                   | H: _ /\ _ |- _ => H
+                   end in
+          destruct H
+        | match goal with
+          | x := ?y |- ?G => is_var y; subst x
+          end
+        | let H := multimatch goal with | H: ?x = ?v |- _ => H end in
+          let x := lazymatch type of H with ?x = ?y => x end in
+          let y := lazymatch type of H with ?x = ?y => y end in
+          first [ constr_eq x y; clear H
+                | is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [x] in x in idtac); subst x
+                | is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [y] in y in idtac); subst y
+                | is_var x;
+                  assert_fails (idtac; let __ := eval cbv delta [x] in x in idtac);
+                  lazymatch y with context[x] => fail | _ => idtac end;
+                  let x' := fresh x in
+                  rename x into x';
+                  simple refine (let x := y in _);
+                  change (x' = x) in H;
+                  symmetry in H;
+                  destruct H ] ].
 
 Import WeakestPrecondition.
 Import coqutil.Map.Interface.
