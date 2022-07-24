@@ -146,6 +146,7 @@ Module map.
              m0 m1 :=
     (forall k, map.get (map := map0) m0 k = map.get (map := map1) m1 k).
 
+#[global]
   Instance eq_refl {K V} {map: map.map K V} {map_ok: map.ok map} :
     RelationClasses.Reflexive (@map_eq K V map map map_ok map_ok).
   Proof. unfold map_eq; constructor; congruence. Qed.
@@ -336,6 +337,7 @@ Module map.
   Proof. intros; rewrite get_of_str_list_assoc; eassumption. Qed.
 End map.
 
+#[global]
 Hint Rewrite @map.get_put_diff @map.get_put_same @map.put_put_same
      @map.remove_put_diff @map.remove_put_same
      @map.remove_empty @map.get_empty

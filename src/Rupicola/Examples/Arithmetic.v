@@ -17,6 +17,7 @@ Module Type FNV1A_params.
 End FNV1A_params.
 
 Module FNV1A (Import P: FNV1A_params).
+#[global]
   Existing Instances BW word locals mem env ext_spec wordok mapok localsok envok ext_spec_ok.
   Import SizedListArrayCompiler.
 
@@ -27,6 +28,7 @@ Module FNV1A (Import P: FNV1A_params).
     hash.
 
   Implicit Type R : mem -> Prop.
+#[global]
   Instance spec_of_update : spec_of "update" :=
     fnspec! "update" (hash: word) (data: word) ~> hash',
     { requires tr mem := True;
@@ -52,6 +54,7 @@ Module FNV1A (Import P: FNV1A_params).
                       (tok, hash)) hash in
     hash.
 
+#[global]
   Instance spec_of_fnv1a : spec_of "fnv1a" :=
     fnspec! "fnv1a" data_ptr len /
            (data: ListArray.t byte) n R
@@ -108,6 +111,7 @@ Module Murmur3.
     k.
 
   Implicit Type R : mem -> Prop.
+#[global]
   Instance spec_of_scramble : spec_of "scramble" :=
     fnspec! "scramble" (k: word) ~> k',
     { requires tr mem := True;

@@ -20,8 +20,10 @@ Lemma Fin_to_nat_lt {n} (f: Fin.t n) m:
   (n <= m)%nat -> (proj1_sig (Fin.to_nat f) < m)%nat.
 Proof. intros; pose proof proj2_sig (Fin.to_nat f); simpl in *; lia. Qed.
 
+#[global]
 Instance Convertible_Fin_byte {n} (Hle: (n <= 256)%nat) : Convertible (Fin.t n) byte :=
   byte_of_fin_lt Hle.
+#[global]
 Instance Convertible_Fin_byte_5: Convertible (Fin.t 5) byte :=
   Convertible_Fin_byte (n := 5) ltac:(lia).
 

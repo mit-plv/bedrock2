@@ -599,8 +599,11 @@ Ltac solve_map_eq :=
   reflexivity.
 
 Create HintDb compiler_cleanup.
+#[global]
 Hint Rewrite @word.of_Z_unsigned : compiler_cleanup.
+#[global]
 Hint Rewrite @word.of_nat_to_nat_unsigned : compiler_cleanup.
+#[global]
 Hint Rewrite @word.of_Z_of_nat_to_nat_unsigned : compiler_cleanup.
 #[export] Hint Unfold cast : compiler_cleanup.
 #[export] Hint Unfold Convertible_Z_nat : compiler_cleanup.
@@ -612,6 +615,7 @@ Inductive __DummyRelation : False -> False -> Prop :=
   __DummyConstructor : forall f: False, __DummyRelation f f.
 
 Create HintDb compiler_cleanup_post. (* https://github.com/coq/coq/issues/14874 *)
+#[global]
 Hint Rewrite __DummyConstructor : compiler_cleanup_post. (* Create the DB *)
 #[export] Hint Unfold wp_bind_retvars : compiler_cleanup_post.
 #[export] Hint Unfold wp_pure_bind_retvars : compiler_cleanup_post.
@@ -703,7 +707,9 @@ Ltac compile_use_default_value :=
   end.
 
 Create HintDb compiler_side_conditions.
+#[global]
 Hint Rewrite __DummyConstructor : compiler_side_conditions. (* Create the DB *)
+#[global]
 Hint Rewrite Nat2Z.id Z2Nat.id
   using solve[typeclasses eauto with compiler_side_conditions lia]
   : compiler_cleanup.

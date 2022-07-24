@@ -53,6 +53,7 @@ Definition utf8_decode (ptr: word) (bs: list byte) : word * word * word :=
 
   (c, e, ptr).
 
+#[global]
 Instance spec_of_utf8_decode : spec_of "utf8_decode" :=
   fnspec! "utf8_decode" data_ptr / (data : list byte) R ~> c e ptr,
     { requires tr mem :=
@@ -65,6 +66,7 @@ Instance spec_of_utf8_decode : spec_of "utf8_decode" :=
 
 Import UnsizedListArrayCompiler.
 
+#[global]
 Hint Rewrite @word_of_byte_of_fin : compiler_side_conditions.
 #[local] Hint Resolve Fin_to_nat_lt : compiler_side_conditions.
 #[local] Hint Extern 1 => simple apply word_of_byte_sru_lt : compiler_side_conditions.

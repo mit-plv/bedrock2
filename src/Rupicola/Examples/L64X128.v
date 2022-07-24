@@ -38,6 +38,7 @@ Definition lxm_next (a s: word) (x: list word) :=
   \< s, z, x \>.
 
 Implicit Type R : mem -> Prop.
+#[global]
 Instance spec_of_lxm_next : spec_of "lxm_next" :=
   fnspec! "lxm_next" a s xptr / x R ~> s' z,
   { requires tr mem :=

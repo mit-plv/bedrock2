@@ -1,5 +1,6 @@
 From Rupicola.Examples Require Import IPChecksum.Impl.
 
+#[global]
 Instance spec_of_ip_checksum : spec_of "ip_checksum" :=
   fnspec! "ip_checksum" data_ptr wlen / (data : list byte) R ~> chk,
     { requires tr mem :=
@@ -22,6 +23,7 @@ Lemma odd_sub_pos z:
 Proof. destruct (Z.eq_dec z 0) as [-> | ]; simpl; lia. Qed.
 
 #[local] Hint Resolve odd_sub_pos : lia.
+#[global]
 Hint Rewrite Z2Nat.id using eauto with lia : compiler_side_conditions.
 
 Derive ip_checksum_br2fn SuchThat

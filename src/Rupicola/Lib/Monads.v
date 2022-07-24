@@ -80,4 +80,5 @@ End Free.
 
 #[export] Hint Extern 2 (IsRupicolaBinding (mbindn (A := ?A) ?vars _ _)) => exact (RupicolaBinding A vars) : typeclass_instances.
 
+#[global]
 Hint Rewrite @mbindn_mbindn @mret_mbindn : compiler_cleanup.

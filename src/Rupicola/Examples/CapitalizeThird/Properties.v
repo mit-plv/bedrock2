@@ -23,11 +23,15 @@ Local Open Scope Z_scope. Local Open Scope string_scope.
 Import ListNotations.
 Import CapitalizeThird.Bedrock2.
 
+#[global]
 Hint Rewrite word.unsigned_add word.unsigned_mul word.unsigned_of_Z
      word.unsigned_of_Z_1 using lia : push_unsigned.
+#[global]
 Hint Rewrite @firstn_length @skipn_length @map_length @app_length
   : push_length.
+#[global]
 Hint Rewrite @skipn_app @skipn_O @skipn_cons @List.skipn_skipn : push_skipn.
+#[global]
 Hint Rewrite @firstn_app @firstn_O @firstn_cons @firstn_firstn : push_firstn.
 
 
@@ -148,10 +152,13 @@ Ltac push_length :=
   try (clear; autorewrite with push_length; lia);
   autorewrite with push_length; lia.
 
+#[global]
 Hint Rewrite @skipn_firstn_same @skipn_all2 using solve [push_length]
   : push_skipn_slow.
 
+#[global]
 Hint Rewrite @hd_app_l @hd_firstn using solve [push_length] : push_hd_slow.
+#[global]
 Hint Rewrite @app_nil_l @app_nil_r : push_app.
 
 Ltac push_list_fast :=
