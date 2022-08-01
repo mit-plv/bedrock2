@@ -119,14 +119,12 @@ Module Ltac2ForPerf.
   | nat => true
   | _ => false
                                  end) in
-    let h := Control.time (Some "filter") (fun _ => List.filter (fun (name, body, ty) => should_clear_type ty) h) in
-    Control.time (Some "progress iter") (fun _ => progress (Control.time (Some "iter") (fun _ => List.iter (fun (name, _, _) => Control.time (Some "try clear") (fun _ => try (clear $name))) h))).
+    let h := List.filter (fun (name, body, ty) => should_clear_type ty) h in
+    progress (List.iter (fun (name, _, _) => try (clear $name)) h).
 End Ltac2ForPerf.
 
-Ltac straightline_cleanup_clear :=
-  idtac; ltac2:(Ltac2ForPerf.straightline_cleanup_clear ()).
 Ltac straightline_cleanup :=
-  first [ straightline_cleanup_clear
+  first [ ltac2:(Ltac2ForPerf.straightline_cleanup_clear ())
         | match goal with
           | |- forall _, _ => idtac
           | |- let _ := _ in _ => idtac
