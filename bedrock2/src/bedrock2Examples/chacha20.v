@@ -178,7 +178,528 @@ Proof.
     }
     { blia. }
   }
-  { straightline.
+  { Notation "( x , y , .. , z )" := (PrimitivePair.pair.mk .. (PrimitivePair.pair.mk x y) .. z) : core_scope.
+    Notation "'dlet' x .. y := v 'in' f" := (dlet.dlet v (fun x => .. (fun y => f) .. ))
+                                              (at level 200, x binder, y binder, f at level 200, format "'dlet'  x .. y  :=  v  'in' '//' f").
+    Set Printing Depth 1000000.
+    repeat match goal with |- forall _, _ => straightline end.
+    repeat (straightline; []).
+    straightline; [ | solve [ intuition ] ].
+    straightline.
+    Import NotationsCustomEntry.
+    Ltac straightline_subst :=
+      idtac;
+      lazymatch goal with
+      | [ |- @cmd _ _ _ _ _ _ _ (Syntax.cmd.set ?s ?e) _ _ _ ?post ]
+        => fail
+      | [ |- @cmd _ _ _ _ _ _ _ ?c _ _ _ ?post ]
+        => time "unfold"
+                (idtac;
+                 let c := eval hnf in c in
+                   lazymatch c with
+                   | Syntax.cmd.while _ _ => fail
+                   | Syntax.cmd.cond _ _ _ => fail
+                   | Syntax.cmd.interact _ _ _ => fail
+                   | _ => idtac
+                   end; unfold1_cmd_goal; cbv beta match delta [cmd_body])
+      end.
+    Ltac straightline_set :=
+      idtac;
+      lazymatch goal with
+      | [ |- @cmd _ _ _ _ _ _ _ (Syntax.cmd.set ?s ?e) _ _ _ ?post ]
+        => time "handle set"
+                (unfold1_cmd_goal; (cbv beta match delta [cmd_body]);
+                 (let x := ident_of_string.ident_of_string s in
+                  let x' := fresh x in
+                  try (rename x into x');
+                  time "letexists" letexists _ as x;
+                  time "split" split))
+      end.
+    Ltac straightline_unfold_expr :=
+      lazymatch goal with
+      | |- @dexpr _ _ _ _ _ _ _ _ => idtac
+      | |- @expr _ _ _ _ _ _ _ _ => idtac
+      end;
+      time "unfold" repeat
+           match goal with
+           | |- @dexpr _ _ _ _ _ _ _ _ => cbv beta delta [dexpr]
+           | |- @expr _ _ _ _ _ _ _ _ => unfold1_expr_goal; (cbv beta match delta [expr_body])
+           | |- @get _ _ _ _ _ _ => (cbv beta delta [get])
+           | |- @literal _ _ _ _ => (cbv beta delta [literal])
+           end.
+    Ltac straightline_eexists_intro_split :=
+      lazymatch goal with
+      | [ |- @ex _ (fun x => and ?P ?Q) ]
+        => let x' := fresh x in
+           time "refine let_ex_intro_split" refine (let x' := _ in @ex_intro _ (fun x => and P Q) x' (@conj (match x' with x => P end) (match x' with x => Q end) _ _))
+      end.
+    Ltac intro_let :=
+      idtac;
+      lazymatch goal with
+      | [ |- dlet x := ?v in ?P ]
+        => time "intro let" (change (let x := v in P); intros)
+      end.
+    Ltac print_context_size' base :=
+      lazymatch goal with
+      | [ H : _ |- _ ] => revert H; print_context_size' (S base)
+      | _ => idtac "Context size:" base
+      end.
+    Ltac print_context_size := assert_succeeds (idtac; print_context_size' O).
+    Ltac do_refl_slow :=
+      lazymatch goal with
+      | |- @eq ?T1 (@map.get string (@word.rep _ _) _ _ _) (@Some ?T ?v) =>
+          time "refl"
+               (idtac;
+                let v' := rdelta.rdelta v in
+                is_evar v'; change v with v'; exact (@eq_refl T1 (@Some T v')))
+      | |- @eq ?T ?x ?y
+        => time "refl"
+                (idtac;
+                 let x := rdelta.rdelta x in
+                 is_evar x; change (@eq T x y);
+                 exact (@eq_refl T y))
+      end.
+    Ltac do_refl :=
+      lazymatch goal with
+      | |- @eq ?T1 (@map.get string (@word.rep _ _) _ _ _) (@Some ?T ?v) =>
+          time "refl"
+               (idtac;
+                let v' := rdelta.rdelta v in
+                is_evar v'; change v with v'; exact (@eq_refl T1 (@Some T v')))
+      | |- @eq ?T ?x ?y
+        => time "refl"
+                (idtac;
+                 let x := rdelta.rdelta x in
+                 is_evar x; change (@eq T x y);
+                 exact (@eq_refl T y))
+      end.
+    Ltac prof_refl :=
+      print_context_size; match goal with
+      | |- @eq ?T1 (@map.get string (@word.rep _ _) _ _ _) (@Some ?T ?v) =>
+          let v' := rdelta.rdelta v in
+          is_evar v'; change v with v'; do 100 assert_succeeds (once time "slow" exact (@eq_refl _ _)); do 100 assert_succeeds (once time "fast" exact (@eq_refl T1 (@Some T v'))); exact (@eq_refl T1 (@Some T v')) end.
+    Ltac step :=
+      repeat lazymatch goal with
+             | [ |- cmd _ ?c _ _ _ _ ]
+               => is_var c;
+                  straightline_subst
+             end; [];
+      straightline_set;
+      [ straightline_unfold_expr; [];
+        straightline_eexists_intro_split;
+        [ do_refl
+        | straightline_unfold_expr;
+          repeat intro_let;
+          try do_refl ]
+      | intro_let ].
+    Set Ltac Profiling. Reset Ltac Profile.
+    Time repeat lazymatch goal with
+                | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
+                | [ |- dlet x := _ in _ ] => straightline
+                end.
+    Show Ltac Profile.
+    HERE
+    Time repeat straightline.
+    Time unshelve (repeat (repeat straightline_subst; straightline_set; [ shelve | intro_let ])); shelve_unifiable; [ .. | shelve ].
+    Time all: straightline_unfold_expr.
+    Time all: straightline_eexists_intro_split.
+    Time all: try straightline_unfold_expr.
+    Time all: try straightline_eexists_intro_split.
+    Time all: try intro_let.
+    Time all: do_refl.
+    Unshelve.
+    lazymatch goal with |- cmd _ _ _ _ _ ?postc => set (post := postc) end.
+    repeat match goal with H : Syntax.cmd.cmd |- _ => subst H end.
+    Time straightline_subst; straightline_set; [ shelve | intro_let ].
+    Time unshelve (repeat (repeat straightline_subst; straightline_set; [ shelve | intro_let ])); shelve_unifiable; [ .. | shelve ].
+    Time all: straightline_unfold_expr.
+    Time all: straightline_eexists_intro_split.
+    Time all: try straightline_unfold_expr.
+    Time all: try straightline_eexists_intro_split.
+    Time all: try intro_let.
+    Time all: do_refl.
+    Unshelve.
+    all: shelve_unifiable.
+    1: straightline_unfold_expr; straightline_eexists_intro_split.
+    1: do_refl.
+    1: straightline_unfold_expr; intro_let.
+    1: do_refl.
+    subst post.
+
+    cbv beta.
+    (* prove [enforce] *)
+    match goal with |- Markers.unique (Markers.left (exists x131 x132 x133 x134 x135 x136 x137 x138 x139 x140 x141 x142 x143 x144 x145 x146 x147 x148 x149 x150 x151, _)) => idtac end.
+
+    repeat letexists. split.
+    {
+      cbv [enforce gather].
+      Time repeat match goal with
+                  | [ H : ?T |- _ ]
+                    => lazymatch T with
+                       | word.rep
+                         => (let v := (eval cbv delta [H] in H) in
+                             (tryif is_evar v then fail else clearbody H))
+                       end
+                  end.
+      Time cbv.
+      split; reflexivity. }
+
+                             (*try revert H)
+                       | _ => first [ clear H | revert H ]
+                       end
+                  end.
+
+      Time intros.
+      let e := open_constr:(_) in
+      cut e.
+      { Time repeat match goal with
+                    | [ H : ?T |- _ ]
+                      => lazymatch T with
+                         | word.rep => clearbody H
+                         end
+                    end.
+        intro H'.
+        Time vm_compute.
+
+      | _ => first [ clear H | revert H ]
+        end
+        end.
+        Time intros.
+
+        Time repeat match goal with H : word.rep |- _ => clearbody H end.
+        repeat match goal with H : _ |- _ => clear H end.
+        Time vm_compute.
+        exact H'. }
+
+      split; reflexivity.
+      repeat match goal with
+      | |- context G [@map.get ?K ?V ?M ?m ?k] =>
+        time "all" (idtac; let v := match goal with H := context [map.put _ k ?v] |- _ => v end in
+        let goal := context G [Some v] in
+        time "change" change goal)
+      end.
+    cbv beta iota.
+    split; refine eq_refl.
+    }
+
+
+
+    Time all: try do_refl.
+    Unshelve.
+    allg
+
+    Time repeat straightline_subst; straightline_set; [ shelve | intro_let ].
+    Time repeat straightline_subst; straightline_set; [ shelve | intro_let ].
+    Time repeat straightline_subst; straightline_set; [ shelve | intro_let ].
+    1:straightline_unfold_expr.
+    1: straightline_eexists_intro_split.
+    1: do_refl.
+    1: straightline_unfold_expr.
+    1: repeat intro_let.
+    1: do_refl.₂
+    repeat lazymatch goal with
+             | [ |- cmd _ ?c _ _ _ _ ]
+               => is_var c;
+                  straightline_subst
+             end; [].
+
+    straightline_set; [ | intro_let ].
+    step.
+    1: straightline_eexists_intro_split.
+    straightline_subst; [].
+      straightline_set;
+      [ | intro_let ].
+    step.
+    straightline_set.
+    1: straightline_unfold_expr.
+    1: straightline_eexists_intro_split.
+    1: do_refl.
+    1: straightline_unfold_expr.
+    1: intro_let.
+    1: do_refl.
+    1: intro_let.
+
+    1: intro_let.
+      end.
+
+    Set Ltac Profiling. Reset Ltac Profile.
+    Time straightline_set. Show Ltac Profile.
+    { match goal with
+    | |- @dexpr _ _ _ _ _ _ _ _ => idtac
+      end; cbv beta delta [dexpr].
+      match goal with
+      | |- @expr _ _ _ _ _ _ _ _ => idtac
+      end; unfold1_expr_goal; (cbv beta match delta [expr_body]).
+      match goal with
+      | |- @expr _ _ _ _ _ _ _ _ => idtac
+      end; unfold1_expr_goal; (cbv beta match delta [expr_body]).
+      match goal with
+      | |- @get _ _ _ _ _ _ => idtac
+      end; (cbv beta delta [get]).
+      (*repeat match goal with H : _ |- _ => clear H end.*)
+      Time match goal with
+           | |- @ex _ (fun x => and ?P ?Q) =>
+               let x := fresh x in
+               refine (let x := _ in @ex_intro _ (fun x => and P Q) x _); split
+      end.
+      Ltac print_context_size' base :=
+        lazymatch goal with
+        | [ H : _ |- _ ] => revert H; print_context_size' (S base)
+        | _ => idtac "Context size:" base
+        end.
+      Ltac print_context_size := assert_succeeds (idtac; print_context_size' O).
+      1: print_context_size; match goal with
+      | |- @eq ?T1 (@map.get string (@word.rep _ _) _ _ _) (@Some ?T ?v) =>
+          let v' := rdelta.rdelta v in
+          is_evar v'; change v with v'; do 100 assert_succeeds (once time "slow" exact (@eq_refl _ _)); do 100 assert_succeeds (once time "fast" exact (@eq_refl T1 (@Some T v'))); exact (@eq_refl T1 (@Some T v')) end.
+      match goal with
+      | |- @expr _ _ _ _ _ _ _ _ => idtac
+      end; unfold1_expr_goal; (cbv beta match delta [expr_body]).
+      match goal with
+      | |- @literal _ _ _ _ => idtac
+      end; cbv beta delta [literal].
+      Time match goal with
+           | |- dlet x := ?v in
+               ?P => change (let x := v in P)
+           end; intros.
+    match goal with
+    | |- @eq ?T ?x ?y
+      => let x := rdelta.rdelta x in
+         is_evar x; change (@eq T x y);
+         time exact (@eq_refl T y)
+    end. }
+    Time match goal with
+           | |- dlet x := ?v in
+               ?P => change (let x := v in P)
+         end; intros.
+
+
+    first
+    [ (*let y := rdelta.rdelta y in
+      is_evar y; change (@eq _ x y); exact (@eq_refl _ _)
+    | *)let x := rdelta.rdelta x in
+      is_evar x; change (@eq _ x y); exact (@eq_refl _ _) ].
+    | let x := rdelta.rdelta x in
+      let y := rdelta.rdelta y in
+      constr_eq x y; exact (@eq_refl _ _) ].
+      Print Ltac straightline_cleanup.
+      Time match goal with
+    | |- @dlet.dlet _ _ ?v (fun x => ?P) => change (let x := v in P)
+    end; intros.
+      repeat (straightline; match goal with |- dlet v := _ in _ => idtac end).
+      Set Printing All.
+      Print Ltac straightline_cleanup.
+      Info 1 straightline.
+      Info 1 straightline.
+      Info 1 straightline.
+          [ solve [ repeat straightline ] |  ]
+
+    Time 1: solve [ repeat straightline ].
+    all: [ >
+
+    repeat match goal with
+           | [ H : Syntax.cmd.cm
+
+  |
+  | let c := match goal with
+             | |- @cmd _ _ _ _ _ _ _ ?c _ _ _ ?post => c
+             end in
+    let post := match goal with
+                | |- @cmd _ _ _ _ _ _ _ ?c _ _ _ ?post => post
+                end in
+    let c := eval hnf in c in
+    lazymatch c with
+    | Syntax.cmd.while _ _ => fail
+    | Syntax.cmd.cond _ _ _ => fail
+    | Syntax.cmd.interact _ _ _ => fail
+    | _ => idtac
+    end; unfold1_cmd_goal; cbv beta match delta [cmd_body]
+  | match goal with
+    | |- @list_map _ _ (@get _ _ _ _) _ _ => idtac
+    end; unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | match goal with
+    | |- @list_map _ _ (@expr _ _ _ _ _ _) _ _ => idtac
+    end; unfold1_list_map_goal; cbv beta match delta [list_map_body]
+  | match goal with
+    | |- @list_map _ _ _ (@nil _) _ => idtac
+    end; cbv beta match fix delta [list_map list_map_body]
+  | match goal with
+    | |- @expr _ _ _ _ _ _ _ _ => idtac
+    end; unfold1_expr_goal; cbv beta match delta [expr_body]
+  | match goal with
+    | |- @dexpr _ _ _ _ _ _ _ _ => idtac
+    end; cbv beta delta [dexpr]
+  | match goal with
+    | |- @dexprs _ _ _ _ _ _ _ _ => idtac
+    end; cbv beta delta [dexprs]
+  | match goal with
+    | |- @literal _ _ _ _ => idtac
+    end; cbv beta delta [literal]
+  | match goal with
+    | |- @get _ _ _ _ _ _ => idtac
+    end; cbv beta delta [get]
+  | match goal with
+    | |- @load _ _ _ _ _ _ _ => idtac
+    end; cbv beta delta [load]
+  | match goal with
+    | |- @enforce ?width ?word ?locals ?names ?values ?map =>
+          let values := eval compute in values in
+          change (@enforce width word locals names values map); exact
+           (@conj _ _ (@eq_refl _ values) (@eq_refl _ _))
+    end
+  | match goal with
+    | |- @eq (@map.rep string (@word.rep _ _) _) _ _ => idtac
+    end; eapply (@SortedList.eq_value _ _ _); exact (@eq_refl _ _)
+  | match goal with
+    | |- @eq _ (@map.get string (@word.rep _ _) ?M ?m ?k) (@Some _ ?e') =>
+          let e := rdelta.rdelta e' in
+          is_evar e;
+           once
+            (let v :=
+              multimatch goal with
+              | x:=context [ @map.put _ _ M _ k ?v ]:_ (* XXX TODO Report Print Ltac bug *) |- _ => v
+              end
+             in
+             unify e v; exact (@eq_refl _ (@Some _ v)))
+    end
+  | let v :=
+     match goal with
+     | |- @eq _ (@map.get string (@word.rep _ _) _ _ _) (@Some _ ?v) => v
+     end
+    in
+    let v' := rdelta.rdelta v in
+    is_evar v'; change v with v'; exact (@eq_refl _ _)
+  | let x := match goal with
+             | |- @eq _ ?x ?y => x
+             end in
+    let y := match goal with
+             | |- @eq _ ?x ?y => y
+             end in
+    first
+    [ let y := rdelta.rdelta y in
+      is_evar y; change (@eq _ x y); exact (@eq_refl _ _)
+    | let x := rdelta.rdelta x in
+      is_evar x; change (@eq _ x y); exact (@eq_refl _ _)
+    | let x := rdelta.rdelta x in
+      let y := rdelta.rdelta y in
+      constr_eq x y; exact (@eq_refl _ _) ]
+  | match goal with
+    | |- @store _ _ _ Syntax.access_size.one _ _ _ _ => idtac
+    end; eapply (@store_one_of_sep _ _ _ _ _); [ solve [ ecancel_assumption ] |  ]
+  | match goal with
+    | |- @store _ _ _ Syntax.access_size.two _ _ _ _ => idtac
+    end; eapply (@store_two_of_sep _ _ _ _ _); [ solve [ ecancel_assumption ] |  ]
+  | match goal with
+    | |- @store _ _ _ Syntax.access_size.four _ _ _ _ => idtac
+    end; eapply (@store_four_of_sep _ _ _ _ _); [ solve [ ecancel_assumption ] |  ]
+  | match goal with
+    | |- @store _ _ _ Syntax.access_size.word _ _ _ _ => idtac
+    end; eapply (@store_word_of_sep _ _ _ _ _); [ solve [ ecancel_assumption ] |  ]
+  | let ev :=
+     match goal with
+     | |- @eq _ (@Memory.load _ _ _ Syntax.access_size.one ?m ?a) (@Some _ ?ev) =>
+           ev
+     end
+    in
+    try subst ev; refine (@load_one_of_sep _ _ _ _ _ _ _ _ _ _); ecancel_assumption
+  | match goal with
+    | |-
+      @eq _ (@Memory.load _ ?word ?mem Syntax.access_size.two ?m ?a) (@Some _ ?ev)
+      =>
+          try subst ev; refine (@load_two_of_sep _ word _ mem _ a _ _ m _);
+           ecancel_assumption
+    end
+  | match goal with
+    | |-
+      @eq _ (@Memory.load _ ?word ?mem Syntax.access_size.four ?m ?a) (@Some _ ?ev)
+      =>
+          try subst ev; refine
+           (@load_four_of_sep_32bit _ word _ mem _ (@eq_refl _ _) a _ _ m _);
+           ecancel_assumption
+    end
+  | match goal with
+    | |-
+      @eq _ (@Memory.load _ ?word ?mem Syntax.access_size.four ?m ?a) (@Some _ ?ev)
+      =>
+          try subst ev; refine (@load_four_of_sep _ word _ mem _ a _ _ m _);
+           ecancel_assumption
+    end
+  | match goal with
+    | |-
+      @eq _ (@Memory.load _ ?word ?mem Syntax.access_size.word ?m ?a) (@Some _ ?ev)
+      =>
+          try subst ev; refine (@load_word_of_sep _ word _ mem _ a _ _ m _);
+           ecancel_assumption
+    end
+  | match goal with
+    | |-
+      @ex _ (fun l' => and (@eq _ (@map.of_list_zip _ _ _ ?ks ?vs) (@Some _ l')) _)
+      => idtac
+    end; letexists; split; [ exact (@eq_refl _ _) |  ]
+  | match goal with
+    | |-
+      @ex _
+        (fun l' =>
+         and (@eq _ (@map.putmany_of_list_zip _ _ _ ?ks ?vs ?l) (@Some _ l')) _) =>
+          idtac
+    end; letexists; split; [ exact (@eq_refl _ _) |  ]
+  | match goal with
+    | |- @ex _ (fun x => and ?P ?Q) =>
+          let x := fresh x in
+          refine (let x := _ in @ex_intro _ (fun x => and P Q) x _); split;
+           [ solve [ repeat straightline ] |  ]
+    | |- @ex _ (fun x => @Markers.split _ (and ?P ?Q)) =>
+          let x := fresh x in
+          refine (let x := _ in @ex_intro _ (fun x => and P Q) x _); split;
+           [ solve [ repeat straightline ] |  ]
+    | |- @Markers.unique _ (@ex _ (fun x => @Markers.split _ (and ?P ?Q))) =>
+          let x := fresh x in
+          refine (let x := _ in @ex_intro _ (fun x => and P Q) x _); split;
+           [ solve [ repeat straightline ] |  ]
+    end
+  | let G := match goal with
+             | |- @Markers.unique _ (@Markers.left _ ?G) => G
+             end in
+    change G; unshelve
+     (idtac;
+       repeat
+        match goal with
+        | |- @Markers.split _ (and ?P (@Markers.right _ ?Q)) =>
+              split; [ eabstract repeat straightline | change Q ]
+        | |- @ex _ (fun _ => _) => letexists
+        end); [  ]
+  | let G := match goal with
+             | |- @Markers.split _ ?G => G
+             end in
+    change G; split
+  | match goal with
+    | |- True => idtac
+    end; exact I
+  | match goal with
+    | |- or False _ => idtac
+    end; right
+  | match goal with
+    | |- or _ False => idtac
+    end; left
+  | let z :=
+     match goal with
+     | |- and (@eq _ (Z.modulo ?z (bytes_per_word _)) Z0) _ => z
+     end
+    in
+    lazymatch isZcst z with
+    | true => idtac
+    end; split; [ exact (@eq_refl _ _) |  ]
+  | straightline_stackalloc
+  | straightline_stackdealloc ].
+
+    Set Printing All.
+    Print Ltac straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    repeat (straightline; []).
     straightline.
     do 5 straightline.
     straightline.
