@@ -128,15 +128,22 @@ Ltac straightline_cleanup_clear :=
   end.
 Ltac cbn_interp_binop :=
   progress (cbn [Semantics.interp_binop] in * ).
-Ltac straightline_cleanup :=
+Ltac straightline_cleanup_intros :=
+  idtac;
   match goal with
-  | _ => straightline_cleanup_clear
   | |- forall _, _ => intros
   | |- let _ := _ in _ => intros
   | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
-  | _ => cbn_interp_binop
+  end.
+Ltac straightline_cleanup_destruct :=
+  idtac;
+  match goal with
   | H: exists _, _ |- _ => destruct H
   | H: _ /\ _ |- _ => destruct H
+  end.
+Ltac straightline_cleanup_subst :=
+  idtac;
+  match goal with
   | x := ?y |- ?G => is_var y; subst x
   | H: ?x = ?y |- _ => constr_eq x y; clear H
   | H: ?x = ?y |- _ => is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [x] in x in idtac); subst x
@@ -152,6 +159,13 @@ Ltac straightline_cleanup :=
     symmetry in H;
     destruct H
   end.
+
+Ltac straightline_cleanup :=
+  first [ straightline_cleanup_clear
+        | straightline_cleanup_intros
+        | cbn_interp_binop
+        | straightline_cleanup_destruct
+        | straightline_cleanup_subst ].
 
 Import WeakestPrecondition.
 Import coqutil.Map.Interface.
