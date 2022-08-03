@@ -183,7 +183,7 @@ Proof.
                                               (at level 200, x binder, y binder, f at level 200, format "'dlet'  x .. y  :=  v  'in' '//' f").
     Set Printing Depth 1000000.
     repeat match goal with |- forall _, _ => straightline end.
-    repeat (straightline; []).
+    Time repeat (straightline; []).
     straightline; [ | solve [ intuition ] ].
     straightline.
     Import NotationsCustomEntry.
@@ -295,11 +295,48 @@ Proof.
     Ltac straightline_cleanup_clear ::= fail.
     Ltac cbn_interp_binop ::= fail.
     Ltac straightline_cleanup_subst ::= fail.
+    (*Ltac straightline_set ::= match goal with |- WeakestPrecondition.cmd _ (Syntax.cmd.set ?s ?e) _ _ _ ?post => shelve end.*)
+    (*Ltac straightline_split ::=
+      match goal with
+      | |- exists l', Interface.map.of_list_zip ?ks ?vs = Some l' /\ _ => idtac
+      | |- exists l', Interface.map.putmany_of_list_zip ?ks ?vs ?l = Some l' /\ _ => idtac
+      | |- exists x, ?P /\ ?Q => idtac
+      | |- exists x, Markers.split (?P /\ ?Q) => idtac
+      | |- Markers.unique (exists x, Markers.split (?P /\ ?Q)) => idtac
+      | |- Markers.unique (Markers.left ?G) => idtac
+      | |- Markers.split ?G => idtac
+      end;
+      shelve.*)
+    Ltac straightline_side_condition_solver ::= idtac.
+    Ltac straightline_side_condition_solver_inline ::= solve [ repeat straightline ].
     Set Ltac Profiling. Reset Ltac Profile.
     Time repeat lazymatch goal with
                 | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
                 | [ |- dlet x := _ in _ ] => straightline
                 end.
+    Show Ltac Profile.
+    HERE
+    (*Time unshelve (do 100 straightline); shelve_unifiable.*)
+    Optimize Proof.
+
+    repeat match goal with
+           | [ H : Syntax.cmd.cmd |- _ ] => subst H
+           end.
+    Optimize Proof.
+    Time idtac;  let s := match goal with |- WeakestPrecondition.cmd _ (Syntax.cmd.set ?s ?e) _ _ _ ?post => s end in
+           unfold1_cmd_goal; (cbv beta match delta [cmd_body]);
+                               let x := ident_of_string.ident_of_string s in
+                               ensure_free x;
+    lazymatch goal with
+    | [ |- ex ?T ]
+      => lazymatch T with
+         | (fun y : ?A => and ?P ?Q)
+           => notypeclasses refine (let x : A := _ in let P' : Prop := match x return Prop with y => P end in let Q' : Prop := match x return Prop with y => Q end in @ex_intro A (fun y : A => and P' Q') x (@conj P' Q' _ _))
+         end
+    end.
+    letexists _ as x; split.
+    (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
+    letexists _ as x; split; [solve [repeat straightline]|].
     Show Ltac Profile.
     HERE
     Time repeat straightline_subst.

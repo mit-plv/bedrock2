@@ -237,6 +237,7 @@ Ltac straightline_program_logic :=
     lazymatch goal with |- if ?test then ?T else _ =>
       replace test with true by reflexivity; change T end;
     (cbv match beta delta [WeakestPrecondition.func]).
+Ltac straightline_side_condition_solver := solve [ repeat straightline ].
 Ltac straightline_set :=
   idtac;
   let s := match goal with |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post => s end in
@@ -246,7 +247,7 @@ Ltac straightline_set :=
     let x := ident_of_string s in
     ensure_free x;
     (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
-    letexists _ as x; split; [solve [repeat straightline]|].
+    letexists _ as x; split; [straightline_side_condition_solver|].
 Ltac straightline_unfold :=
   first [
   let c := match goal with |- cmd _ ?c _ _ _ ?post => c end in
@@ -288,33 +289,41 @@ Ltac straightline_refl :=
     first [ let y := rdelta y in is_evar y; change (x=y); exact eq_refl
           | let x := rdelta x in is_evar x; change (x=y); exact eq_refl
           | let x := rdelta x in let y := rdelta y in constr_eq x y; exact eq_refl ] ].
-Ltac straightline_split :=
+Ltac straightline_split_refl :=
   first [ match goal with |- exists l', Interface.map.of_list_zip ?ks ?vs = Some l' /\ _ => idtac end;
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
   | match goal with |- exists l', Interface.map.putmany_of_list_zip ?ks ?vs ?l = Some l' /\ _ => idtac end;
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
-  | match goal with |- exists x, ?P /\ ?Q =>
-    let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
-                        split; [solve [repeat straightline]|]
-  | |- exists x, Markers.split (?P /\ ?Q) =>
-    let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
-                        split; [solve [repeat straightline]|]
-  | |- Markers.unique (exists x, Markers.split (?P /\ ?Q)) =>
-    let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
-                        split; [solve [repeat straightline]|] end
-  | let G := match goal with |- Markers.unique (Markers.left ?G) => G end in
-    change G;
-    unshelve (idtac; repeat match goal with
+    ].
+
+Ltac straightline_split :=
+  (let res := match goal with |- exists x, ?P /\ ?Q =>
+                                        let x := fresh x in uconstr:(let x := _ in ex_intro (fun x => P /\ Q) x _) end in
+          refine res;
+          split; [straightline_side_condition_solver|]
+        ) + ( let res := match goal with |- exists x, Markers.split (?P /\ ?Q) =>
+                                       let x := fresh x in uconstr:(let x := _ in ex_intro (fun x => P /\ Q) x _) end in
+          refine res;
+          split; [straightline_side_condition_solver|]
+        ) + ( let res := match goal with
+          | |- Markers.unique (exists x, Markers.split (?P /\ ?Q)) =>
+              let x := fresh x in uconstr:(let x := _ in ex_intro (fun x => P /\ Q) x _) end in
+          refine res;
+          split; [straightline_side_condition_solver|]
+        ) + ( let G := match goal with |- Markers.unique (Markers.left ?G) => G end in
+          change G;
+    unshelve (idtac "questionable"; repeat match goal with
                      | |- Markers.split (?P /\ Markers.right ?Q) =>
                        split; [eabstract (repeat straightline) | change Q]
                      | |- exists _, _ => letexists
                      end); []
-  | let G := match goal with |- Markers.split ?G => G end in
-    change G; split ].
+  ) + ( let G := match goal with |- Markers.split ?G => G end in
+    change G; split ).
+Ltac straightline_side_condition_solver_inline := idtac.
 Ltac straightline ::=
   first [ straightline_cleanup
         | straightline_program_logic
-        | straightline_set
+        | once (straightline_set; [ straightline_side_condition_solver_inline .. | ])
         | straightline_unfold
         | straightline_enforce
         | straightline_refl
@@ -336,7 +345,8 @@ Ltac straightline ::=
     try subst ev; refine (@Scalars.load_four_of_sep _ word _ mem _ a _ _ m _); ecancel_assumption end
   | match goal with |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.word ?m ?a = Some ?ev =>
     try subst ev; refine (@Scalars.load_word_of_sep _ word _ mem _ a _ _ m _); ecancel_assumption end
-  | straightline_split
+  | straightline_split_refl
+  | once (straightline_split; [ straightline_side_condition_solver_inline .. | ])
   | match goal with |- True => idtac end; exact I
   | match goal with |- False \/ _ => idtac end; right
   | match goal with |- _ \/ False => idtac end; left
