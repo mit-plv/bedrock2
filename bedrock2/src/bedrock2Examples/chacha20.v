@@ -292,12 +292,16 @@ Proof.
           repeat intro_let;
           try do_refl ]
       | intro_let ].
+    Ltac straightline_cleanup_clear ::= fail.
+    (*Ltac cbn_interp_binop ::= fail.*)
     Set Ltac Profiling. Reset Ltac Profile.
     Time repeat lazymatch goal with
                 | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
                 | [ |- dlet x := _ in _ ] => straightline
                 end.
     Show Ltac Profile.
+    HERE
+    Time repeat straightline_subst.
     HERE
     Time repeat straightline.
     Time unshelve (repeat (repeat straightline_subst; straightline_set; [ shelve | intro_let ])); shelve_unifiable; [ .. | shelve ].

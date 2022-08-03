@@ -98,7 +98,7 @@ Ltac enter f :=
 
 Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
-Ltac straightline_cleanup :=
+Ltac straightline_cleanup_clear :=
   match goal with
   (* TODO remove superfluous _ after .rep, but that will break some proofs that rely on
      x not being cleared to instantiate evars with terms depending on x *)
@@ -125,10 +125,16 @@ Ltac straightline_cleanup :=
   | x := _ : bool |- _ => clear x
   | x := _ : list _ |- _ => clear x
   | x := _ : nat |- _ => clear x
+  end.
+Ltac cbn_interp_binop :=
+  progress (cbn [Semantics.interp_binop] in * ).
+Ltac straightline_cleanup :=
+  match goal with
+  | _ => straightline_cleanup_clear
   | |- forall _, _ => intros
   | |- let _ := _ in _ => intros
   | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
-  | _ => progress (cbn [Semantics.interp_binop] in * )
+  | _ => cbn_interp_binop
   | H: exists _, _ |- _ => destruct H
   | H: _ /\ _ |- _ => destruct H
   | x := ?y |- ?G => is_var y; subst x
