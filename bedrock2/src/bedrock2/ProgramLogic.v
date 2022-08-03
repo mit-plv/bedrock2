@@ -141,23 +141,32 @@ Ltac straightline_cleanup_destruct :=
   | H: exists _, _ |- _ => destruct H
   | H: _ /\ _ |- _ => destruct H
   end.
+Ltac straightline_cleanup_subst_constr_eq x y H :=
+  constr_eq x y; clear H.
+Ltac assert_not_unfoldable x :=
+  assert_fails (idtac; let __ := eval cbv [x] in x in idtac).
+Ltac straightline_cleanup_subst_let x y H :=
+  lazymatch y with context[x] => fail | _ => idtac end;
+  let x' := fresh x in
+  rename x into x';
+  simple refine (let x := y in _);
+  change (x' = x) in H;
+  symmetry in H;
+  destruct H.
 Ltac straightline_cleanup_subst :=
   idtac;
   match goal with
   | x := ?y |- ?G => is_var y; subst x
-  | H: ?x = ?y |- _ => constr_eq x y; clear H
-  | H: ?x = ?y |- _ => is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [x] in x in idtac); subst x
-  | H: ?x = ?y |- _ => is_var x; is_var y; assert_fails (idtac; let __ := eval cbv [y] in y in idtac); subst y
-  | H: ?x = ?v |- _ =>
-    is_var x;
-    assert_fails (idtac; let __ := eval cbv delta [x] in x in idtac);
-    lazymatch v with context[x] => fail | _ => idtac end;
-    let x' := fresh x in
-    rename x into x';
-    simple refine (let x := v in _);
-    change (x' = x) in H;
-    symmetry in H;
-    destruct H
+  | H: ?x = ?y |- _
+    => first [ straightline_cleanup_subst_constr_eq x y H
+             | is_var x;
+       first [ assert_not_unfoldable x;
+       first [ is_var y;
+       first [ subst x
+             | assert_not_unfoldable y; subst y ]
+             | straightline_cleanup_subst_let x y H ]
+             | is_var y;
+               assert_not_unfoldable y; subst y ] ]
   end.
 
 Ltac straightline_cleanup :=
