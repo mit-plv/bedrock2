@@ -294,6 +294,7 @@ Proof.
       | intro_let ].
     Ltac straightline_cleanup_clear ::= fail.
     Ltac cbn_interp_binop ::= fail.
+    Ltac straightline_cleanup_subst ::= fail.
     Set Ltac Profiling. Reset Ltac Profile.
     Time repeat lazymatch goal with
                 | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
