@@ -295,11 +295,31 @@ Proof.
     Ltac straightline_cleanup_clear ::= fail.
     Ltac cbn_interp_binop ::= fail.
     Ltac straightline_cleanup_subst ::= fail.
+    Ltac straightline_set ::= match goal with |- WeakestPrecondition.cmd _ (Syntax.cmd.set ?s ?e) _ _ _ ?post => shelve end.
     Set Ltac Profiling. Reset Ltac Profile.
     Time repeat lazymatch goal with
                 | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
                 | [ |- dlet x := _ in _ ] => straightline
                 end.
+    Optimize Proof.
+    repeat match goal with
+           | [ H : Syntax.cmd.cmd |- _ ] => subst H
+           end.
+    Optimize Proof.
+    Time do 100 assert_succeeds (idtac;  let s := match goal with |- WeakestPrecondition.cmd _ (Syntax.cmd.set ?s ?e) _ _ _ ?post => s end in
+           unfold1_cmd_goal; (cbv beta match delta [cmd_body]);
+                               let x := ident_of_string.ident_of_string s in
+                               ensure_free x;
+    lazymatch goal with
+    | [ |- ex ?T ]
+      => lazymatch T with
+         | (fun y : ?A => and ?P ?Q)
+           => notypeclasses refine (let x : A := _ in let P' : Prop := match x return Prop with y => P end in let Q' : Prop := match x return Prop with y => Q end in @ex_intro A (fun y : A => and P' Q') x (@conj P' Q' _ _))
+         end
+    end).
+    letexists _ as x; split.
+    (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
+    letexists _ as x; split; [solve [repeat straightline]|].
     Show Ltac Profile.
     HERE
     Time repeat straightline_subst.
