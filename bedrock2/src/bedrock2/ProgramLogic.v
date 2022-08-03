@@ -272,28 +272,28 @@ Ltac straightline_enforce :=
   match goal with |- @Loops.enforce ?width ?word ?locals ?names ?values ?map =>
     let values := eval cbv in values in
     change (@Loops.enforce width word locals names values map);
-    exact (conj (eq_refl values) eq_refl) end.
+    refine (conj (eq_refl values) eq_refl) end.
 Ltac straightline_refl :=
   first [ match goal with |- @eq (@coqutil.Map.Interface.map.rep String.string Interface.word.rep _) _ _ => idtac end;
-    eapply SortedList.eq_value; exact eq_refl
+    eapply SortedList.eq_value; refine eq_refl
   | match goal with |- @map.get String.string Interface.word.rep ?M ?m ?k = Some ?e' =>
     let e := rdelta e' in
     is_evar e;
     once (let v := multimatch goal with x := context[@map.put _ _ M _ k ?v] |- _ => v end in
           (* cbv is slower than this, cbv with whitelist would have an enormous whitelist, cbv delta for map is slower than this, generalize unrelated then cbv is slower than this, generalize then vm_compute is slower than this, lazy is as slow as this: *)
-          unify e v; exact (eq_refl (Some v))) end
+          unify e v; refine (eq_refl (Some v))) end
   | let v := match goal with |- @coqutil.Map.Interface.map.get String.string Interface.word.rep _ _ _ = Some ?v => v end in
-    let v' := rdelta v in is_evar v'; (change v with v'); exact eq_refl
+    let v' := rdelta v in is_evar v'; (change v with v'); refine eq_refl
   | let x := match goal with |- ?x = ?y => x end in
     let y := match goal with |- ?x = ?y => y end in
-    first [ let y := rdelta y in is_evar y; change (x=y); exact eq_refl
-          | let x := rdelta x in is_evar x; change (x=y); exact eq_refl
-          | let x := rdelta x in let y := rdelta y in constr_eq x y; exact eq_refl ] ].
+    first [ let y := rdelta y in is_evar y; change (x=y); refine eq_refl
+          | let x := rdelta x in is_evar x; change (x=y); refine eq_refl
+          | let x := rdelta x in let y := rdelta y in constr_eq x y; refine eq_refl ] ].
 Ltac straightline_split_refl :=
   first [ match goal with |- exists l', Interface.map.of_list_zip ?ks ?vs = Some l' /\ _ => idtac end;
-    letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
+    letexists; split; [refine eq_refl|] (* TODO: less unification here? *)
   | match goal with |- exists l', Interface.map.putmany_of_list_zip ?ks ?vs ?l = Some l' /\ _ => idtac end;
-    letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
+    letexists; split; [refine eq_refl|] (* TODO: less unification here? *)
     ].
 
 Ltac straightline_split :=
@@ -347,14 +347,14 @@ Ltac straightline ::=
     try subst ev; refine (@Scalars.load_word_of_sep _ word _ mem _ a _ _ m _); ecancel_assumption end
   | straightline_split_refl
   | once (straightline_split; [ straightline_side_condition_solver_inline .. | ])
-  | match goal with |- True => idtac end; exact I
+  | match goal with |- True => idtac end; refine I
   | match goal with |- False \/ _ => idtac end; right
   | match goal with |- _ \/ False => idtac end; left
   | let z := match goal with |- BinInt.Z.modulo ?z (Memory.bytes_per_word _) = BinInt.Z0 /\ _ => z end in
       lazymatch Coq.setoid_ring.InitialRing.isZcst z with
       | true => idtac
       end;
-      split; [exact eq_refl|]
+      split; [refine eq_refl|]
   | straightline_stackalloc
   | straightline_stackdealloc ].
 
