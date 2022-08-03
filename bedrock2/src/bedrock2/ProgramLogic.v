@@ -228,32 +228,37 @@ Ltac ensure_free H :=
   let G := fresh H in
   try rename H into G.
 
-Ltac straightline :=
-  first [ straightline_cleanup
-        | let f := match goal with |- program_logic_goal_for ?f _ => f end in
+Ltac straightline := fail.
+Ltac straightline_program_logic :=
+  idtac;
+  let f := match goal with |- program_logic_goal_for ?f _ => f end in
     enter f; intros;
-    unfold1_call_goal; cbv match beta delta [call_body];
+    unfold1_call_goal; (cbv match beta delta [call_body]);
     lazymatch goal with |- if ?test then ?T else _ =>
       replace test with true by reflexivity; change T end;
-    cbv match beta delta [WeakestPrecondition.func]
-        | let s := match goal with |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post => s end in
+    (cbv match beta delta [WeakestPrecondition.func]).
+Ltac straightline_set :=
+  idtac;
+  let s := match goal with |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post => s end in
           let e := match goal with |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post => e end in
           let post := match goal with |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post => post end in
-    unfold1_cmd_goal; cbv beta match delta [cmd_body];
+    unfold1_cmd_goal; (cbv beta match delta [cmd_body]);
     let x := ident_of_string s in
     ensure_free x;
     (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
-    letexists _ as x; split; [solve [repeat straightline]|]
-                | let c := match goal with |- cmd _ ?c _ _ _ ?post => c end in
-                  let post := match goal with |- cmd _ ?c _ _ _ ?post => post end in
-    let c := eval hnf in c in
+    letexists _ as x; split; [solve [repeat straightline]|].
+Ltac straightline_unfold :=
+  first [
+  let c := match goal with |- cmd _ ?c _ _ _ ?post => c end in
+  let post := match goal with |- cmd _ ?c _ _ _ ?post => post end in
+  let c := eval hnf in c in
     lazymatch c with
     | cmd.while _ _ => fail
     | cmd.cond _ _ _ => fail
     | cmd.interact _ _ _ => fail
     | _ => idtac
     end; unfold1_cmd_goal; cbv beta match delta [cmd_body]
-  | match goal with |- @list_map _ _ (get _) _ _ => idtac end; unfold1_list_map_goal; cbv beta match delta [list_map_body]
+                                    | match goal with |- @list_map _ _ (get _) _ _ => idtac end; unfold1_list_map_goal; cbv beta match delta [list_map_body]
   | match goal with |- @list_map _ _ (expr _ _) _ _ => idtac end; unfold1_list_map_goal; cbv beta match delta [list_map_body]
   | match goal with |- @list_map _ _ _ nil _ => idtac end; cbv beta match fix delta [list_map list_map_body]
   | match goal with |- expr _ _ _ _ => idtac end; unfold1_expr_goal; cbv beta match delta [expr_body]
@@ -261,12 +266,14 @@ Ltac straightline :=
   | match goal with |- dexprs _ _ _ _ => idtac end; cbv beta delta [dexprs]
   | match goal with |- literal _ _ => idtac end; cbv beta delta [literal]
   | match goal with |- get _ _ _ => idtac end; cbv beta delta [get]
-  | match goal with |- load _ _ _ _ => idtac end; cbv beta delta [load]
-  | match goal with |- @Loops.enforce ?width ?word ?locals ?names ?values ?map =>
+  | match goal with |- load _ _ _ _ => idtac end; cbv beta delta [load] ].
+Ltac straightline_enforce :=
+  match goal with |- @Loops.enforce ?width ?word ?locals ?names ?values ?map =>
     let values := eval cbv in values in
     change (@Loops.enforce width word locals names values map);
-    exact (conj (eq_refl values) eq_refl) end
-  | match goal with |- @eq (@coqutil.Map.Interface.map.rep String.string Interface.word.rep _) _ _ => idtac end;
+    exact (conj (eq_refl values) eq_refl) end.
+Ltac straightline_refl :=
+  first [ match goal with |- @eq (@coqutil.Map.Interface.map.rep String.string Interface.word.rep _) _ _ => idtac end;
     eapply SortedList.eq_value; exact eq_refl
   | match goal with |- @map.get String.string Interface.word.rep ?M ?m ?k = Some ?e' =>
     let e := rdelta e' in
@@ -280,26 +287,9 @@ Ltac straightline :=
     let y := match goal with |- ?x = ?y => y end in
     first [ let y := rdelta y in is_evar y; change (x=y); exact eq_refl
           | let x := rdelta x in is_evar x; change (x=y); exact eq_refl
-          | let x := rdelta x in let y := rdelta y in constr_eq x y; exact eq_refl ]
-  | match goal with |- store Syntax.access_size.one _ _ _ _ => idtac end;
-    eapply Scalars.store_one_of_sep; [solve[ecancel_assumption]|]
-  | match goal with |- store Syntax.access_size.two _ _ _ _ => idtac end;
-    eapply Scalars.store_two_of_sep; [solve[ecancel_assumption]|]
-  | match goal with |- store Syntax.access_size.four _ _ _ _ => idtac end;
-    eapply Scalars.store_four_of_sep; [solve[ecancel_assumption]|]
-  | match goal with |- store Syntax.access_size.word _ _ _ _ => idtac end;
-    eapply Scalars.store_word_of_sep; [solve[ecancel_assumption]|]
-  | let ev := match goal with |- bedrock2.Memory.load Syntax.access_size.one ?m ?a = Some ?ev => ev end in
-    try subst ev; refine (@Scalars.load_one_of_sep _ _ _ _ _ _ _ _ _ _); ecancel_assumption
-  | match goal with |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.two ?m ?a = Some ?ev =>
-    try subst ev; refine (@Scalars.load_two_of_sep _ word _ mem _ a _ _ m _); ecancel_assumption end
-  | match goal with |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
-    try subst ev; refine (@Scalars.load_four_of_sep_32bit _ word _ mem _ eq_refl a _ _ m _); ecancel_assumption end
-  | match goal with |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
-    try subst ev; refine (@Scalars.load_four_of_sep _ word _ mem _ a _ _ m _); ecancel_assumption end
-  | match goal with |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.word ?m ?a = Some ?ev =>
-    try subst ev; refine (@Scalars.load_word_of_sep _ word _ mem _ a _ _ m _); ecancel_assumption end
-  | match goal with |- exists l', Interface.map.of_list_zip ?ks ?vs = Some l' /\ _ => idtac end;
+          | let x := rdelta x in let y := rdelta y in constr_eq x y; exact eq_refl ] ].
+Ltac straightline_split :=
+  first [ match goal with |- exists l', Interface.map.of_list_zip ?ks ?vs = Some l' /\ _ => idtac end;
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
   | match goal with |- exists l', Interface.map.putmany_of_list_zip ?ks ?vs ?l = Some l' /\ _ => idtac end;
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
@@ -320,7 +310,33 @@ Ltac straightline :=
                      | |- exists _, _ => letexists
                      end); []
   | let G := match goal with |- Markers.split ?G => G end in
-    change G; split
+    change G; split ].
+Ltac straightline ::=
+  first [ straightline_cleanup
+        | straightline_program_logic
+        | straightline_set
+        | straightline_unfold
+        | straightline_enforce
+        | straightline_refl
+  | match goal with |- store Syntax.access_size.one _ _ _ _ => idtac end;
+    eapply Scalars.store_one_of_sep; [solve[ecancel_assumption]|]
+  | match goal with |- store Syntax.access_size.two _ _ _ _ => idtac end;
+    eapply Scalars.store_two_of_sep; [solve[ecancel_assumption]|]
+  | match goal with |- store Syntax.access_size.four _ _ _ _ => idtac end;
+    eapply Scalars.store_four_of_sep; [solve[ecancel_assumption]|]
+  | match goal with |- store Syntax.access_size.word _ _ _ _ => idtac end;
+    eapply Scalars.store_word_of_sep; [solve[ecancel_assumption]|]
+  | let ev := match goal with |- bedrock2.Memory.load Syntax.access_size.one ?m ?a = Some ?ev => ev end in
+    try subst ev; refine (@Scalars.load_one_of_sep _ _ _ _ _ _ _ _ _ _); ecancel_assumption
+  | match goal with |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.two ?m ?a = Some ?ev =>
+    try subst ev; refine (@Scalars.load_two_of_sep _ word _ mem _ a _ _ m _); ecancel_assumption end
+  | match goal with |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
+    try subst ev; refine (@Scalars.load_four_of_sep_32bit _ word _ mem _ eq_refl a _ _ m _); ecancel_assumption end
+  | match goal with |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.four ?m ?a = Some ?ev =>
+    try subst ev; refine (@Scalars.load_four_of_sep _ word _ mem _ a _ _ m _); ecancel_assumption end
+  | match goal with |- @bedrock2.Memory.load _ ?word ?mem Syntax.access_size.word ?m ?a = Some ?ev =>
+    try subst ev; refine (@Scalars.load_word_of_sep _ word _ mem _ a _ _ m _); ecancel_assumption end
+  | straightline_split
   | match goal with |- True => idtac end; exact I
   | match goal with |- False \/ _ => idtac end; right
   | match goal with |- _ \/ False => idtac end; left

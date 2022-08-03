@@ -203,7 +203,7 @@ Proof.
                    | _ => idtac
                    end; unfold1_cmd_goal; cbv beta match delta [cmd_body])
       end.
-    Ltac straightline_set :=
+    Ltac straightline_set' :=
       idtac;
       lazymatch goal with
       | [ |- @cmd _ _ _ _ _ _ _ (Syntax.cmd.set ?s ?e) _ _ _ ?post ]
@@ -284,7 +284,7 @@ Proof.
                => is_var c;
                   straightline_subst
              end; [];
-      straightline_set;
+      straightline_set';
       [ straightline_unfold_expr; [];
         straightline_eexists_intro_split;
         [ do_refl
@@ -305,7 +305,7 @@ Proof.
     Time repeat straightline_subst.
     HERE
     Time repeat straightline.
-    Time unshelve (repeat (repeat straightline_subst; straightline_set; [ shelve | intro_let ])); shelve_unifiable; [ .. | shelve ].
+    Time unshelve (repeat (repeat straightline_subst; straightline_set'; [ shelve | intro_let ])); shelve_unifiable; [ .. | shelve ].
     Time all: straightline_unfold_expr.
     Time all: straightline_eexists_intro_split.
     Time all: try straightline_unfold_expr.
@@ -315,7 +315,7 @@ Proof.
     Unshelve.
     lazymatch goal with |- cmd _ _ _ _ _ ?postc => set (post := postc) end.
     repeat match goal with H : Syntax.cmd.cmd |- _ => subst H end.
-    Time straightline_subst; straightline_set; [ shelve | intro_let ].
+    Time straightline_subst; straightline_set'; [ shelve | intro_let ].
     Time unshelve (repeat (repeat straightline_subst; straightline_set; [ shelve | intro_let ])); shelve_unifiable; [ .. | shelve ].
     Time all: straightline_unfold_expr.
     Time all: straightline_eexists_intro_split.
