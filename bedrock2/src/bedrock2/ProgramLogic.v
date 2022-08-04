@@ -113,18 +113,6 @@ Ltac straightline_cleanup :=
   | x : bool |- _ => clear x
   | x : list _ |- _ => clear x
   | x : nat |- _ => clear x
-  (* same TODO as above *)
-  | x := _ : Word.Interface.word.rep _ |- _ => clear x
-  | x := _ : Init.Byte.byte |- _ => clear x
-  | x := _ : Semantics.trace |- _ => clear x
-  | x := _ : Syntax.cmd |- _ => clear x
-  | x := _ : Syntax.expr |- _ => clear x
-  | x := _ : coqutil.Map.Interface.map.rep |- _ => clear x
-  | x := _ : BinNums.Z |- _ => clear x
-  | x := _ : unit |- _ => clear x
-  | x := _ : bool |- _ => clear x
-  | x := _ : list _ |- _ => clear x
-  | x := _ : nat |- _ => clear x
   | |- forall _, _ => intros
   | |- let _ := _ in _ => intros
   | |- dlet.dlet ?v (fun x => ?P) => change (let x := v in P); intros
