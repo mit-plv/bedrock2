@@ -124,6 +124,7 @@ Hint Rewrite
 
 Import BasicC64Semantics. (* for ring *)
 
+Axiom admit : forall {T}, T.
 Lemma chacha20_ok : program_logic_goal_for_function! chacha20_block.
 Proof.
   straightline.
@@ -517,7 +518,346 @@ total time:     26.750s
  │└straightline_cleanup_destruct -------   6.1%   6.1%    1194    0.334s
  └─straightline_unfold -----------------   0.2%   2.1%    1097    0.007s
 
-*)
+     *)
+    cbv beta.
+    (* prove [enforce] *)
+    match goal with |- Markers.unique (Markers.left (exists x131 x132 x133 x134 x135 x136 x137 x138 x139 x140 x141 x142 x143 x144 x145 x146 x147 x148 x149 x150 x151, _)) => idtac end.
+
+    repeat letexists. split.
+    {
+      cbv [enforce gather].
+      Time repeat match goal with
+                  | [ H : ?T |- _ ]
+                    => lazymatch T with
+                       | word.rep
+                         => (let v := (eval cbv delta [H] in H) in
+                             (tryif is_evar v then fail else clearbody H))
+                       end
+                  end.
+      Time cbv.
+      split; reflexivity. }
+    repeat straightline_cleanup.
+
+    letexists. split.
+    2:split.
+    1: split.
+    2: split.
+
+    all : repeat straightline.
+    all : try typeclasses eauto with core.
+    all: repeat match goal with
+                | [ |- context[?x] ] => subst x
+                end.
+    all: match goal with
+         | [ |- ?x = ?y - Z.of_nat ?ev ]
+           => is_evar ev; unify ev (Z.to_nat (y - x))
+         | _ => idtac
+         end.
+    all: match goal with
+         | [ H := if ?b then _ else _ |- _ ] => destruct b eqn:?
+         end.
+    all: match goal with
+         | [ H : ?x <> 0 |- _ ] => try (change (0 <> 0) in H; exfalso; apply H; reflexivity)
+         end.
+    all: match goal with
+         | [ H : context[word.ltu] |- _ ] => rewrite word.unsigned_ltu, Z.ltb_lt in H
+         end.
+    all: rewrite ?word.unsigned_add, ?word.unsigned_of_Z.
+    all: repeat match goal with
+                | [ H : word.unsigned ?x = _ |- context[word.unsigned ?x] ]
+                  => generalize (word.unsigned_range x); move x at bottom; rewrite H in *
+                end.
+    all: match goal with
+         | [ H : context[word.unsigned (word.of_Z ?x)] |- _ ]
+           => change (word.unsigned (word.of_Z x)) with x in H
+         end.
+    all: change (word.wrap 1) with 1.
+    all: cbv [word.wrap].
+    all: repeat match goal with
+                | [ |- context[?x mod ?m] ]
+                  => assert (0 <= x < m) by (Z.to_euclidean_division_equations; Lia.nia);
+                     replace (x mod m) with x in * by (Z.to_euclidean_division_equations; Lia.nia)
+                end.
+    all: intros.
+    all: try Lia.lia. }
+
+  subst Hsep.
+  repeat straightline.
+  letexists _.
+  split.
+  1: repeat straightline.
+  2: repeat straightline.
+  all: exact admit. Unshelve. exact admit. Time Qed.
+  eexists; split.
+  replace (scalar32 x47 r) with (scalar32 (word.add x47 (word.of_Z 0)) r) in H8.
+  2: {
+    f_equal.
+    1: {
+      intros.
+      rewrite H9.
+      reflexivity.
+    }
+    ring.
+  }
+  repeat straightline.
+  intuition.
+  destruct out; cbn in H0; [| blia].
+  cbn [array] in H19.
+  let x := open_constr:(@cons word32 _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ nil)))))))))))))))) in
+  unify out' x.
+  subst out'.
+  cbn [array].
+  repeat match goal with
+  | [ |- context[@word.add _ ?w (word.add x47 ?x) ?y] ] =>
+    replace (@word.add _ w (word.add x47 x) y) with (@word.add _ w x47 (word.add x y)) by ring
+  end.
+  repeat match goal with
+  | [ |- context[@word.add _ ?w (word.add x16 ?x) ?y] ] =>
+    replace (@word.add _ w (word.add x16 x) y) with (@word.add _ w x16 (word.add x y)) by ring
+  end.
+  repeat match goal with
+  | [ |- context[@word.add _ ?w (word.add x17 ?x) ?y] ] =>
+    replace (@word.add _ w (word.add x17 x) y) with (@word.add _ w x17 (word.add x y)) by ring
+  end.
+  repeat match goal with
+         | [ |- context[@word.add _ ?w (word.of_Z ?x) (word.of_Z ?y)] ] =>
+           let z := eval cbv in (x + y) in
+               change (@word.add _ w (word.of_Z x) (word.of_Z y)) with (@word.of_Z _ w z)
+         end.
+  rewrite !word.of_Z_unsigned in H19.
+  repeat match type of H19 with
+         | context[scalar32 ?a _] =>
+           subst a
+         end.
+  replace (word.add x47 (word.of_Z 0)) with x47 in H19 by ring.
+  ecancel_assumption.
+
+
+
+    all: lazymatch goal with
+         | [ |- ?x = ?y - Z.of_nat ?ev ]
+           => is_evar ev; unify ev (Z.to_nat (y - x))
+         | _ => idtac
+         end.
+    all: try Lia.lia.
+    2: {
+    all: change (1 mod _) with 1.
+    all: lazymatch goal with
+         | [ |- ?x = ?y - Z.of_nat ?z ]
+           => let z' := rdelta.rdelta z in
+              is_evar z';
+              unify z' (Z.to_nat (y - x))
+         | _ => idtac
+         end.
+    all: repeat match goal with
+                | [ |- context[?x] ] => subst x
+                end.
+    all: rewrite ?word.unsigned_add, ?word.unsigned_of_Z.
+    all: cbv [word.wrap].
+    all: repeat match goal with
+                | [ H : word.unsigned ?x = _ |- context[word.unsigned ?x] ]
+                  => generalize (word.unsigned_range x); rewrite H
+                end.
+    all: intros.
+    all: repeat match goal with
+                | [ |- context[?x mod ?m] ]
+                  => assert (0 <= x < m) by (Z.to_euclidean_division_equations; Lia.nia);
+                     replace (x mod m) with x in * by (Z.to_euclidean_division_equations; Lia.nia)
+                end.
+    all: try Lia.lia.
+    { move v at bottom.
+      clear -H5.
+      zify.
+      repeat match goal with H : and _ _ |- _ => destruct H | H : or _ _ |- _ => destruct H end; subst.
+      all: try Lia.lia.
+      assert (Z.of_nat v <= 1) by Lia.lia.
+      assert ((v = 1 \/ v = 0)%nat) by Lia.lia.
+      destruct H1; subst; try Lia.lia.
+      cbn.
+    all: zify.
+    all: match goal with
+         | [ |- ?x = ?y ] => cut (x - y = 0); [ Lia.lia | ring_simplify ]
+         end.
+    { move v at bottom.
+      revert H5.
+      clear.
+      change (1 mod 2^64) with 1.
+
+      zify.
+      all: assert (0 < 2^64) by Lia.lia.
+      assert (0 < 2) by Lia.lia.
+      assert (2^64 <> 0) by Lia.lia.
+      Z.to_euclidean_division_equations.
+      zify.
+    all: repeat match goal with
+                | [ |- context[word.unsigned ?x] ]
+                  => is_var x;
+                     generalize (word.unsigned x)
+                end.
+    {
+      clear; intros.
+      all: assert (0 < 2^64) by Lia.lia.
+      assert (0 < 2) by Lia.lia.
+      assert (2^64 <> 0) by Lia.lia.
+      Z.to_euclidean_division_equations.
+      zify.
+
+    Search word.unsigned Z.le.
+    1: zify; Z.to_euclidean_division_equations.
+    1: Lia.nia.
+    Search word.wrap.
+    2: { clear.
+         set (k:=word.unsigned _).
+         clearbody k.
+         zify.
+         repeat match goal with H : and _ _ |- _ => destruct H | H : or _ _ |- _ => destruct H end; subst.
+         all: try Lia.lia.
+         destruct_head'
+         Lia.lia.
+
+    Search Z.to_nat Z.sub.
+
+      match goal with
+      | [ |- word.unsigned ?i = _ ] => subst i
+      end.
+      rewrite word.unsigned_add.
+      match goal with
+      | [ H : word.unsigned ?x = _ |- context[word.unsigned ?x] ]
+        => rewrite H
+      end.
+
+              .
+    { move i at bottom.
+      move x at bottom.
+      match goal with
+      | [ H : word.unsigned ?x = ?n - Z.of_nat ?v |- word.unsigned
+    all: lazymatch goal with
+         | [ |- ?x = ?y - Z.of_nat ?z ]
+           => let z' := rdelta.rdelta z in
+              is_evar z';
+              cut (y - x = z)
+         | _ => idtac
+         end.
+    Search (_ = _ - _).
+
+    {
+      lazymatch goal with
+      | [ H : word.unsigned br <> 0 |- _ ] =>
+        subst br;
+          rewrite word.unsigned_ltu in H;
+          lazymatch type of H with
+          | word.unsigned (if ?x <? ?y then _ else _) <> _ =>
+            destruct (Z.ltb_spec0 x y) as [Hv |];
+              rewrite word.unsigned_of_Z in H;
+              cbv in H;
+              [| congruence]
+          end
+      end.
+      move i at bottom.
+
+      subst x131.
+      subst v'.
+      match goal with
+      | [ |- word.unsigned ?w = _ ] =>
+        change w with (word.add x (word.of_Z 1))
+      end.
+      rewrite word.unsigned_add, word.unsigned_of_Z.
+      match goal with
+      | [ H : word.unsigned _ = 10 - _ |- _ ] =>
+        rewrite H in *
+      end.
+      rewrite word.unsigned_of_Z in Hv.
+      change (word.wrap 10) with 10 in Hv.
+      instantiate (1 := Nat.pred v).
+      rewrite Nat2Z.inj_pred; [| blia].
+      change (word.wrap 1) with 1.
+      cbv [word.wrap].
+      rewrite Z.mod_small; [blia |].
+      split; [blia |].
+      match goal with
+      | [ H : (_ <= _)%nat |- _ ] =>
+        let H' := fresh "H" in
+        pose proof (inj_le _ _ H) as H'; cbn in H'
+      end.
+      match goal with
+      | [ |- _ < 2^?w ] =>
+          let w' := eval cbv in w in
+          change w with w'
+      end.
+      blia.
+    }
+    { subst v'. blia. }
+    { subst v'.
+      lazymatch goal with
+      | [ H : word.unsigned br <> 0 |- _ ] =>
+        subst br;
+          rewrite word.unsigned_ltu in H;
+          lazymatch type of H with
+          | word.unsigned (if ?x <? ?y then _ else _) <> _ =>
+            destruct (Z.ltb_spec0 x y) as [Hv |];
+              rewrite word.unsigned_of_Z in H;
+              cbv in H;
+              [| congruence]
+          end
+      end.
+      match goal with
+      | [ H : word.unsigned _ = 10 - _ |- _ ] =>
+        rewrite H in *
+      end.
+      rewrite word.unsigned_of_Z in Hv.
+      change (word.wrap 10) with 10 in Hv.
+      apply lt_pred_n_n.
+      apply Nat2Z.inj_lt.
+      blia.
+    }
+  }
+
+  subst Hsep.
+  repeat straightline.
+  replace (scalar32 x47 r) with (scalar32 (word.add x47 (word.of_Z 0)) r) in H8.
+  2: {
+    f_equal.
+    1: {
+      intros.
+      rewrite H9.
+      reflexivity.
+    }
+    ring.
+  }
+  repeat straightline.
+  intuition.
+  destruct out; cbn in H0; [| blia].
+  cbn [array] in H19.
+  let x := open_constr:(@cons word32 _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ (cons _ nil)))))))))))))))) in
+  unify out' x.
+  subst out'.
+  cbn [array].
+  repeat match goal with
+  | [ |- context[@word.add _ ?w (word.add x47 ?x) ?y] ] =>
+    replace (@word.add _ w (word.add x47 x) y) with (@word.add _ w x47 (word.add x y)) by ring
+  end.
+  repeat match goal with
+  | [ |- context[@word.add _ ?w (word.add x16 ?x) ?y] ] =>
+    replace (@word.add _ w (word.add x16 x) y) with (@word.add _ w x16 (word.add x y)) by ring
+  end.
+  repeat match goal with
+  | [ |- context[@word.add _ ?w (word.add x17 ?x) ?y] ] =>
+    replace (@word.add _ w (word.add x17 x) y) with (@word.add _ w x17 (word.add x y)) by ring
+  end.
+  repeat match goal with
+         | [ |- context[@word.add _ ?w (word.of_Z ?x) (word.of_Z ?y)] ] =>
+           let z := eval cbv in (x + y) in
+               change (@word.add _ w (word.of_Z x) (word.of_Z y)) with (@word.of_Z _ w z)
+         end.
+  rewrite !word.of_Z_unsigned in H19.
+  repeat match type of H19 with
+         | context[scalar32 ?a _] =>
+           subst a
+         end.
+  replace (word.add x47 (word.of_Z 0)) with x47 in H19 by ring.
+  ecancel_assumption.
+
+
     Time unshelve (do 100 straightline); shelve_unifiable.
     straightline.
     straightline.
