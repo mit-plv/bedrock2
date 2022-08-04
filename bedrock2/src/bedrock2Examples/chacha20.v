@@ -309,11 +309,90 @@ Proof.
       shelve.*)
     Ltac straightline_side_condition_solver ::= idtac.
     Ltac straightline_side_condition_solver_inline ::= solve [ repeat straightline ].
+    (* Ltac straightline_refl :=
+  first
+  [ match goal with
+    | |- @eq (@map.rep string (@word.rep _ _) _) _ _ => idtac
+    end; eapply (@SortedList.eq_value _ _ _); refine (@eq_refl _ _)
+  | match goal with
+    | |- @eq _ (@map.get string (@word.rep _ _) ?M ?m ?k) (@Some _ ?e') =>
+          let e := rdelta.rdelta e' in
+          is_evar e;
+           once
+            (let v :=
+              multimatch goal with
+              | x:=context [ @map.put _ _ M _ k ?v ]:_ |- _ => v
+              end
+             in
+             unify e v; refine (@eq_refl _ (@Some _ v)))
+    end
+  | let v :=
+     match goal with
+     | |- @eq _ (@map.get string (@word.rep _ _) _ _ _) (@Some _ ?v) => v
+     end
+    in
+    let v' := rdelta.rdelta v in
+    is_evar v'; change v with v'; refine (@eq_refl _ _)
+  | let x := match goal with
+             | |- @eq _ ?x ?y => x
+             end in
+    let y := match goal with
+             | |- @eq _ ?x ?y => y
+             end in
+    first
+    [ let y := rdelta.rdelta y in
+      is_evar y; change (@eq _ x y); refine (@eq_refl _ _)
+    | let x := rdelta.rdelta x in
+      is_evar x; change (@eq _ x y); refine (@eq_refl _ _)
+    | let x := rdelta.rdelta x in
+      let y := rdelta.rdelta y in
+      constr_eq x y; refine (@eq_refl _ _) ] ]
+     *)
+    Ltac straightline_refl ::= first
+  [ match goal with
+    | |- @eq (@map.rep string (@word.rep _ _) _) _ _ => idtac
+    end; eapply (@SortedList.eq_value _ _ _); assert_succeeds refine (@eq_refl _ _); shelve
+  | match goal with
+    | |- @eq _ (@map.get string (@word.rep _ _) ?M ?m ?k) (@Some _ ?e') =>
+          let e := rdelta.rdelta e' in
+          is_evar e;
+           once
+            (let v :=
+              multimatch goal with
+              | x:=context [ @map.put _ _ M _ k ?v ] |- _ => v
+              end
+             in
+             unify e v; assert_succeeds refine (@eq_refl _ (@Some _ v))); shelve
+    end
+  | let v :=
+     match goal with
+     | |- @eq _ (@map.get string (@word.rep _ _) _ _ _) (@Some _ ?v) => v
+     end
+    in
+    let v' := rdelta.rdelta v in
+    is_evar v'; change v with v'; assert_succeeds refine (@eq_refl _ _); shelve
+  | let x := match goal with
+             | |- @eq _ ?x ?y => x
+             end in
+    let y := match goal with
+             | |- @eq _ ?x ?y => y
+             end in
+    first
+    [ let y := rdelta.rdelta y in
+      is_evar y; change (@eq _ x y); assert_succeeds refine (@eq_refl _ _); shelve
+    | let x := rdelta.rdelta x in
+      is_evar x; change (@eq _ x y); assert_succeeds refine (@eq_refl _ _); shelve
+    | let x := rdelta.rdelta x in
+      let y := rdelta.rdelta y in
+      constr_eq x y; assert_succeeds refine (@eq_refl _ _); shelve ] ].
     Set Ltac Profiling. Reset Ltac Profile.
-    Time repeat lazymatch goal with
-                | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
-                | [ |- dlet x := _ in _ ] => straightline
-                end.
+    Time unshelve (repeat lazymatch goal with
+                          | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
+                          | [ |- dlet x := _ in _ ] => straightline
+                          end); shelve_unifiable.
+    Reset Ltac Profile.
+    Time all: [ > refine eq_refl
+                         .. | ].
     Show Ltac Profile.
     HERE
     (*Time unshelve (do 100 straightline); shelve_unifiable.*)
