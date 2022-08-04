@@ -261,17 +261,18 @@ Proof.
       end.
     Ltac do_refl :=
       lazymatch goal with
-      | |- @eq ?T1 (@map.get string (@word.rep _ _) _ _ _) (@Some ?T ?v) =>
+      | |- @eq ?T1 ?y (@Some ?T ?v) =>
           time "refl"
                (idtac;
                 let v' := rdelta.rdelta v in
-                is_evar v'; change v with v'; exact (@eq_refl T1 (@Some T v')))
+                is_evar v'; change v with v';
+                exact (@eq_refl T1 (@Some T v')))
       | |- @eq ?T ?x ?y
         => time "refl"
                 (idtac;
                  let x := rdelta.rdelta x in
                  is_evar x; change (@eq T x y);
-                 exact (@eq_refl T y))
+                 instantiate(1:=y); reflexivity)
       end.
     Ltac prof_refl :=
       print_context_size; match goal with
@@ -386,10 +387,71 @@ Proof.
       let y := rdelta.rdelta y in
       constr_eq x y; assert_succeeds refine (@eq_refl _ _); shelve ] ].
     Set Ltac Profiling. Reset Ltac Profile.
-    Time unshelve (repeat lazymatch goal with
+    (*Time unshelve (repeat lazymatch goal with
                           | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
                           | [ |- dlet x := _ in _ ] => straightline
-                          end); shelve_unifiable.
+                          end); shelve_unifiable.*)
+    Time lazymatch goal with |- cmd _ _ _ _ _ ?postc => set (post := postc) end. (* Finished transaction in 0.001 secs (0.001u,0.s) (successful) *)
+    Time repeat match goal with H : Syntax.cmd.cmd |- _ => subst H end. (* Finished transaction in 0.648 secs (0.638u,0.01s) (successful) *)
+    Time unshelve (repeat (repeat straightline_subst; straightline_set'; [ shelve | intro_let ])); shelve_unifiable; [ .. | shelve ]. (* Finished transaction in 3.912 secs (3.807u,0.104s) (successful) *)
+    Time all: clear post. (* Finished transaction in 0.577 secs (0.577u,0.s) (successful) *)
+    Time all: repeat match goal with H : map.rep -> Prop |- _ => clear H | H : map.rep |- _ => clear H end. (* Finished transaction in 1.009 secs (0.968u,0.041s) (successful) *)
+    Time all: straightline_unfold_expr. (* Finished transaction in 0.117 secs (0.117u,0.s) (successful) *)
+    Time all: straightline_eexists_intro_split. (* Finished transaction in 0.407 secs (0.407u,0.s) (successful) *)
+    Time all: try straightline_unfold_expr. (* Finished transaction in 0.084 secs (0.074u,0.01s) (successful) *)
+    Time all: try straightline_eexists_intro_split. (* Finished transaction in 0.319 secs (0.319u,0.s) (successful) *)
+    Time all: try intro_let. (* Finished transaction in 0.019 secs (0.019u,0.s) (successful) *)
+    Time all: do_refl. (* Finished transaction in 15.81 secs (15.792u,0.017s) (successful) *)
+    Show Ltac Profile.
+    HERE
+(*
+total time:     22.532s
+
+ tactic                                   local  total   calls       max
+────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
+─do_refl -------------------------------  70.2%  70.2%     258   15.810s
+─unshelve (tactic1) --------------------   0.4%  17.1%       1    3.844s
+─straightline_set' ---------------------   0.5%  12.1%      98    0.066s
+─refine (uconstr) ----------------------   6.1%   6.1%     258    0.030s
+─clear (hyp_list) ----------------------   5.9%   5.9%    5238    0.021s
+─unfold1_cmd_goal ----------------------   0.2%   4.0%     193    0.024s
+─letexists_as --------------------------   0.3%   4.0%      97    0.031s
+─split ---------------------------------   3.8%   3.8%      97    0.045s
+─straightline_eexists_intro_split ------   3.2%   3.2%     483    0.404s
+─change G ------------------------------   3.1%   3.1%     484    0.024s
+─straightline_subst --------------------   0.3%   2.6%     194    0.024s
+─subst (ne_hyp_list) -------------------   2.5%   2.5%      96    0.053s
+
+ tactic                                   local  total   calls       max
+────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
+─do_refl -------------------------------  70.2%  70.2%     258   15.810s
+─unshelve (tactic1) --------------------   0.4%  17.1%       1    3.844s
+ ├─straightline_set' -------------------   0.5%  12.1%      98    0.066s
+ │ ├─letexists_as ----------------------   0.3%   4.0%      97    0.031s
+ │ │└refine (uconstr) ------------------   3.1%   3.1%      97    0.030s
+ │ ├─split -----------------------------   3.8%   3.8%      97    0.045s
+ │ └─unfold1_cmd_goal ------------------   0.1%   2.0%      97    0.024s
+ └─straightline_subst ------------------   0.3%   2.6%     194    0.024s
+─clear (hyp_list) ----------------------   5.9%   5.9%    5238    0.021s
+─straightline_eexists_intro_split ------   3.2%   3.2%     483    0.404s
+└refine (uconstr) ----------------------   3.0%   3.0%     161    0.010s
+─subst (ne_hyp_list) -------------------   2.5%   2.5%      96    0.053s
+
+*)
+    Unshelve.
+    subst post.
+    cbv beta.
+    HERE
+    repeat match goal with H : Syntax.cmd.cmd |- _ => subst H end.
+    Time straightline_subst; straightline_set'; [ shelve | intro_let ].
+    Time unshelve (repeat (repeat straightline_subst; straightline_set; [ shelve | intro_let ])); shelve_unifiable; [ .. | shelve ].
+    Time all: straightline_unfold_expr.
+    Time all: straightline_eexists_intro_split.
+    Time all: try straightline_unfold_expr.
+    Time all: try straightline_eexists_intro_split.
+    Time all: try intro_let.
+    Time all: do_refl.
+    Time unshelve (do 100 straightline); shelve_unifiable.
     Reset Ltac Profile.
     all: let n := numgoals in idtac "Full num goals:" n.
     all: match goal with
