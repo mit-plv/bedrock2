@@ -391,6 +391,334 @@ Proof.
                           | [ |- dlet x := _ in _ ] => straightline
                           end); shelve_unifiable.
     Reset Ltac Profile.
+    all: let n := numgoals in idtac "Full num goals:" n.
+    all: match goal with
+         | [ |- ?x = ?v :> ?T ]
+           => is_evar x; idtac
+         | _ => shelve
+         end; let n := numgoals in idtac "Num goals:" n.
+    1: idtac "reflexivity".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; reflexivity)
+                    | _ => idtac
+                    end. (* Finished transaction in 14.835 secs (14.794u,0.04s) (successful) *)
+    1: idtac "refine eq_refl".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; refine eq_refl)
+                    | _ => idtac
+                    end. (* Finished transaction in 26.682 secs (26.652u,0.029s) (successful) *)
+    1: idtac "exact eq_refl".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; exact eq_refl)
+                    | _ => idtac
+                    end. (* Finished transaction in 26.085 secs (26.024u,0.059s) (successful) *)
+    1: idtac "refine (@eq_refl T x)".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; refine (@eq_refl T x))
+                    | _ => idtac
+                    end. (* Finished transaction in 13.641 secs (13.631u,0.009s) (successful) *)
+    1: idtac "refine (@eq_refl T v)".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; refine (@eq_refl T v))
+                    | _ => idtac
+                    end. (* Finished transaction in 13.725 secs (13.694u,0.03s) (successful) *)
+    1: idtac "instantiate (1:=v); reflexivity".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; instantiate (1:=v); reflexivity)
+                    | _ => idtac
+                    end. (* Finished transaction in 1.576 secs (1.526u,0.05s) (successful) *)
+    1: idtac "instantiate (1:=v); refine eq_refl".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; instantiate (1:=v); refine eq_refl)
+                    | _ => idtac
+                    end. (*Finished transaction in 1.915 secs (1.884u,0.03s) (successful)*)
+    1: idtac "instantiate (1:=v); refine (@eq_refl T v)".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; instantiate (1:=v); refine (@eq_refl T v))
+                    | _ => idtac
+                    end. (* Finished transaction in 1.588 secs (1.548u,0.04s) (successful) *)
+    1: idtac "unify x v; reflexivity".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; unify x v; reflexivity)
+                    | _ => idtac
+                    end.
+    1: idtac "unify x v; refine eq_refl".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; unify x v; refine eq_refl)
+                    | _ => idtac
+                    end.
+    1: idtac "unify x v; refine (@eq_refl T v)".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; unify x v; refine (@eq_refl T v))
+                    | _ => idtac
+                    end.
+    1: idtac "unify v x; reflexivity".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; unify v x; reflexivity)
+                    | _ => idtac
+                    end.
+    1: idtac "unify v x; refine eq_refl".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; unify v x; refine eq_refl)
+                    | _ => idtac
+                    end.
+    1: idtac "unify v x; refine (@eq_refl T v)".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; unify v x; refine (@eq_refl T v))
+                    | _ => idtac
+                    end.
+    all: print_context_size.
+    (*Context size: 186%nat
+Context size: 187%nat
+Context size: 188%nat
+Context size: 189%nat
+Context size: 189%nat
+Context size: 190%nat
+Context size: 191%nat
+Context size: 191%nat
+Context size: 192%nat
+Context size: 193%nat
+Context size: 194%nat
+Context size: 195%nat
+Context size: 195%nat
+Context size: 196%nat
+Context size: 197%nat
+Context size: 197%nat
+Context size: 198%nat
+Context size: 199%nat
+Context size: 200%nat
+Context size: 201%nat
+Context size: 201%nat
+Context size: 202%nat
+Context size: 203%nat
+Context size: 203%nat
+Context size: 204%nat
+Context size: 205%nat
+Context size: 206%nat
+Context size: 207%nat
+Context size: 207%nat
+Context size: 208%nat
+Context size: 209%nat
+Context size: 209%nat
+Context size: 210%nat
+Context size: 211%nat
+Context size: 212%nat
+Context size: 213%nat
+Context size: 213%nat
+Context size: 214%nat
+Context size: 215%nat
+Context size: 215%nat
+Context size: 216%nat
+Context size: 217%nat
+Context size: 218%nat
+Context size: 219%nat
+Context size: 219%nat
+Context size: 220%nat
+Context size: 221%nat
+Context size: 221%nat
+Context size: 222%nat
+Context size: 223%nat
+Context size: 224%nat
+Context size: 225%nat
+Context size: 225%nat
+Context size: 226%nat
+Context size: 227%nat
+Context size: 227%nat
+Context size: 228%nat
+Context size: 229%nat
+Context size: 230%nat
+Context size: 231%nat
+Context size: 231%nat
+Context size: 232%nat
+Context size: 233%nat
+Context size: 233%nat
+Context size: 234%nat
+Context size: 235%nat
+Context size: 236%nat
+Context size: 237%nat
+Context size: 237%nat
+Context size: 238%nat
+Context size: 239%nat
+Context size: 239%nat
+Context size: 240%nat
+Context size: 241%nat
+Context size: 242%nat
+Context size: 243%nat
+Context size: 243%nat
+Context size: 244%nat
+Context size: 245%nat
+Context size: 245%nat
+Context size: 246%nat
+Context size: 247%nat
+Context size: 248%nat
+Context size: 249%nat
+Context size: 249%nat
+Context size: 250%nat
+Context size: 251%nat
+Context size: 251%nat
+Context size: 250%nat
+     *)
+    1: idtac "clear subst".
+    Time all: [ > match goal with
+                  | [ |- ?x = interp_binop _ _ _ ]
+                    => is_evar x;
+                repeat match goal with H := ?v |- _ => is_evar v; clear H end
+              | _ => idtac
+                  end .. | ]. (* Finished transaction in 1.24 secs (1.24u,0.s) (successful) *)
+    1: idtac "clear- in evar".
+    Time all: [ > match goal with
+                  | [ |- ?ev = interp_binop _ ?x ?y ]
+                    => is_evar ev;
+                try (instantiate(1:=ltac:(clear)) in (value of x));
+                try (instantiate(1:=ltac:(clear)) in (value of y));
+                instantiate(1:=ltac:(clear -x y)); clear -x y
+              | _ => idtac
+                end .. | ]. (* Finished transaction in 0.299 secs (0.299u,0.s) (successful) *)
+    Time all: [ > match goal with
+                  | [ |- ?ev = interp_binop _ ?x ?y ]
+                    => is_evar ev;
+                print_context_size
+              | _ => idtac
+                end .. | ]. (* Context size: 2%nat
+Context size: 2%nat
+Context size: 3%nat
+Context size: 3%nat
+Context size: 3%nat
+Context size: 3%nat
+Context size: 3%nat
+Context size: 4%nat
+Context size: 4%nat
+Context size: 3%nat
+Context size: 4%nat
+Context size: 4%nat
+Context size: 3%nat
+Context size: 2%nat
+Context size: 3%nat
+Context size: 3%nat
+Context size: 3%nat
+Context size: 3%nat
+Context size: 3%nat
+Context size: 4%nat
+Context size: 4%nat
+Context size: 3%nat
+Context size: 4%nat
+Context size: 4%nat
+Context size: 3%nat
+Context size: 2%nat
+Context size: 3%nat
+Context size: 3%nat
+Context size: 3%nat
+Context size: 3%nat
+Context size: 3%nat
+Context size: 4%nat
+Context size: 4%nat
+
+Finished transaction in 0.022 secs (0.022u,0.s) (successful)
+*)
+    1: idtac "reflexivity".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; reflexivity)
+                    | _ => idtac
+                    end. (* Finished transaction in 14.835 secs (14.794u,0.04s) (successful) *)
+    1: idtac "refine eq_refl".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; refine eq_refl)
+                    | _ => idtac
+                    end. (* Finished transaction in 26.682 secs (26.652u,0.029s) (successful) *)
+    1: idtac "exact eq_refl".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; exact eq_refl)
+                    | _ => idtac
+                    end. (* Finished transaction in 26.085 secs (26.024u,0.059s) (successful) *)
+    1: idtac "refine (@eq_refl T x)".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; refine (@eq_refl T x))
+                    | _ => idtac
+                    end. (* Finished transaction in 13.641 secs (13.631u,0.009s) (successful) *)
+    1: idtac "refine (@eq_refl T v)".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; refine (@eq_refl T v))
+                    | _ => idtac
+                    end. (* Finished transaction in 13.725 secs (13.694u,0.03s) (successful) *)
+    1: idtac "instantiate (1:=v); reflexivity".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; instantiate (1:=v); reflexivity)
+                    | _ => idtac
+                    end. (* Finished transaction in 1.576 secs (1.526u,0.05s) (successful) *)
+    1: idtac "instantiate (1:=v); refine eq_refl".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; instantiate (1:=v); refine eq_refl)
+                    | _ => idtac
+                    end. (*Finished transaction in 1.915 secs (1.884u,0.03s) (successful)*)
+    1: idtac "instantiate (1:=v); refine (@eq_refl T v)".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; instantiate (1:=v); refine (@eq_refl T v))
+                    | _ => idtac
+                    end. (* Finished transaction in 1.588 secs (1.548u,0.04s) (successful) *)
+    1: idtac "unify x v; reflexivity".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; unify x v; reflexivity)
+                    | _ => idtac
+                    end.
+    1: idtac "unify x v; refine eq_refl".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; unify x v; refine eq_refl)
+                    | _ => idtac
+                    end.
+    1: idtac "unify x v; refine (@eq_refl T v)".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; unify x v; refine (@eq_refl T v))
+                    | _ => idtac
+                    end.
+    1: idtac "unify v x; reflexivity".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; unify v x; reflexivity)
+                    | _ => idtac
+                    end.
+    1: idtac "unify v x; refine eq_refl".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; unify v x; refine eq_refl)
+                    | _ => idtac
+                    end.
+    1: idtac "unify v x; refine (@eq_refl T v)".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; unify v x; refine (@eq_refl T v))
+                    | _ => idtac
+                    end.
+HERE
+
+
+
+
+                    time "refl" do 100 assert_succeeds reflexivity
     Time all: [ > refine eq_refl
                          .. | ].
     Show Ltac Profile.
