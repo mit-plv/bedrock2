@@ -195,15 +195,12 @@ Ltac straightline_stackdealloc :=
   clear Htmp Hsplit mStack Harray1 Hanybytes
   end.
 
-Ltac rename_to_different H := once (idtac;
+Ltac rename_to_different H :=
+  idtac;
   let G := fresh H in
-  rename H into G;
-  assert_succeeds (set (H := Set))).
+  rename H into G.
 Ltac ensure_free H :=
-  match constr:(Set) with
-  | _ => assert_succeeds (set (H := Set))
-  | _ => rename_to_different H
-  end.
+  try rename_to_different H.
 
 Ltac straightline :=
   match goal with
