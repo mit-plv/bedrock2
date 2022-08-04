@@ -349,8 +349,8 @@ Proof.
       let y := rdelta.rdelta y in
       constr_eq x y; refine (@eq_refl _ _) ] ]
      *)
-    Ltac straightline_refl ::= first
-  [ match goal with
+    (*Ltac straightline_refl ::= first
+                                 [ match goal with
     | |- @eq (@map.rep string (@word.rep _ _) _) _ _ => idtac
     end; eapply (@SortedList.eq_value _ _ _); assert_succeeds refine (@eq_refl _ _); shelve
   | match goal with
@@ -385,14 +385,191 @@ Proof.
       is_evar x; change (@eq _ x y); assert_succeeds refine (@eq_refl _ _); shelve
     | let x := rdelta.rdelta x in
       let y := rdelta.rdelta y in
-      constr_eq x y; assert_succeeds refine (@eq_refl _ _); shelve ] ].
+      constr_eq x y; assert_succeeds refine (@eq_refl _ _); shelve ] ].*)
+    (*Time lazymatch goal with |- cmd _ _ _ _ _ ?postc => set (post := postc) end. (* Finished transaction in 0.001 secs (0.001u,0.s) (successful) *)*)
+    (*Ltac refine_eq_refl ::= lazymatch goal with
+                            | [ |- ?x = ?y :> ?T ]
+                              => tryif is_evar x
+                                then (instantiate(1:=y); reflexivity)
+                                else
+                                  (idtac x "=" y ":>" T; refine eq_refl)
+                            end.*)
     Set Ltac Profiling. Reset Ltac Profile.
-    (*Time unshelve (repeat lazymatch goal with
+    Time unshelve (repeat lazymatch goal with
                           | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
                           | [ |- dlet x := _ in _ ] => straightline
-                          end); shelve_unifiable.*)
+                          end); shelve_unifiable.
+    Show Ltac Profile.
+    (* without set post: total time:     30.933s
+
+ tactic                                   local  total   calls       max
+────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
+─straightline --------------------------   0.0%  98.9%    1324    0.706s
+─straightline_side_condition_solver_inli  78.2%  78.2%      97    0.616s
+─refine (uconstr) ----------------------  77.9%  77.9%     516    0.161s
+─straightline_refl ---------------------   1.0%  54.9%     419    0.196s
+─refine_eq_refl ------------------------   0.0%  20.2%     118    0.119s
+─straightline_set ----------------------   0.1%  18.6%    1194    0.100s
+─straightline_split --------------------   0.1%  18.6%     161    0.076s
+─letexists_as --------------------------   0.3%  12.8%      97    0.075s
+─straightline_cleanup ------------------   0.4%   5.7%    1324    0.008s
+─straightline_cleanup_destruct ---------   4.2%   4.2%    1194    0.007s
+─unify (constr) (constr) ---------------   3.8%   3.8%     140    0.021s
+─split ---------------------------------   3.6%   3.6%     258    0.019s
+─change (x = y) ------------------------   2.6%   2.6%      97    0.016s
+─unfold1_cmd_goal ----------------------   0.1%   2.1%     193    0.007s
+
+ tactic                                   local  total   calls       max
+────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
+─straightline --------------------------   0.0%  98.9%    1324    0.706s
+ ├─straightline_side_condition_solver_in  78.2%  78.2%      97    0.616s
+ ├─straightline_refl -------------------   1.0%  54.9%     419    0.196s
+ │ ├─refine (uconstr) ------------------  27.2%  27.2%     140    0.161s
+ │ ├─refine_eq_refl --------------------   0.0%  20.2%     118    0.119s
+ │ │└refine (uconstr) ------------------  20.1%  20.1%     118    0.119s
+ │ ├─unify (constr) (constr) -----------   3.8%   3.8%     140    0.021s
+ │ └─change (x = y) --------------------   2.6%   2.6%      97    0.016s
+ ├─straightline_set --------------------   0.1%  18.6%    1194    0.100s
+ │ ├─letexists_as ----------------------   0.3%  12.8%      97    0.075s
+ │ │└refine (uconstr) ------------------  12.2%  12.2%      97    0.073s
+ │ └─split -----------------------------   3.4%   3.4%      97    0.019s
+ ├─straightline_split ------------------   0.1%  18.6%     161    0.076s
+ │└refine (uconstr) --------------------  18.3%  18.3%     161    0.076s
+ └─straightline_cleanup ----------------   0.3%   4.6%    1227    0.008s
+  └straightline_cleanup_destruct -------   4.2%   4.2%    1194    0.007s
+
+*)
+    (* with set post: total time:     29.652s
+
+ tactic                                   local  total   calls       max
+────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
+─straightline --------------------------   0.1%  99.9%    1324    0.682s
+─straightline_side_condition_solver_inli  84.4%  84.4%      97    0.603s
+─refine (uconstr) ----------------------  83.7%  83.7%     516    0.156s
+─straightline_refl ---------------------   1.2%  59.0%     419    0.171s
+─refine_eq_refl ------------------------   0.0%  22.2%     118    0.126s
+─straightline_split --------------------   0.1%  20.3%     161    0.071s
+─straightline_set ----------------------   0.1%  14.3%    1194    0.087s
+─letexists_as --------------------------   0.0%  13.0%      97    0.080s
+─straightline_cleanup ------------------   0.4%   5.1%    1324    0.004s
+─straightline_cleanup_destruct ---------   4.5%   4.5%    1194    0.004s
+─unify (constr) (constr) ---------------   4.1%   4.1%     140    0.019s
+─change (x = y) ------------------------   2.8%   2.8%      97    0.018s
+
+ tactic                                   local  total   calls       max
+────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
+─straightline --------------------------   0.1%  99.9%    1324    0.682s
+ ├─straightline_side_condition_solver_in  84.4%  84.4%      97    0.603s
+ ├─straightline_refl -------------------   1.2%  59.0%     419    0.171s
+ │ ├─refine (uconstr) ------------------  28.4%  28.4%     140    0.156s
+ │ ├─refine_eq_refl --------------------   0.0%  22.2%     118    0.126s
+ │ │└refine (uconstr) ------------------  22.2%  22.2%     118    0.126s
+ │ ├─unify (constr) (constr) -----------   4.1%   4.1%     140    0.019s
+ │ └─change (x = y) --------------------   2.8%   2.8%      97    0.018s
+ ├─straightline_split ------------------   0.1%  20.3%     161    0.071s
+ │└refine (uconstr) --------------------  20.1%  20.1%     161    0.070s
+ ├─straightline_set --------------------   0.1%  14.3%    1194    0.087s
+ │└letexists_as ------------------------   0.0%  13.0%      97    0.080s
+ │└refine (uconstr) --------------------  13.0%  13.0%      97    0.080s
+ └─straightline_cleanup ----------------   0.4%   5.0%    1227    0.004s
+  └straightline_cleanup_destruct -------   4.5%   4.5%    1194    0.004s
+
+     *)
+    (* after adjust refine refl
+total time:     26.750s
+
+ tactic                                   local  total   calls       max
+────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
+─straightline --------------------------   0.1%  98.7%    1324    0.639s
+─straightline_side_condition_solver_inli  73.7%  73.7%      97    0.570s
+─refine (uconstr) ----------------------  71.3%  71.3%     419    0.133s
+─straightline_refl ---------------------   1.2%  45.4%     419    0.146s
+─straightline_set ----------------------   0.1%  22.5%    1194    0.103s
+─straightline_split --------------------   0.1%  21.5%     161    0.066s
+─letexists_as --------------------------   0.4%  15.8%      97    0.083s
+─straightline_cleanup ------------------   0.4%   7.9%    1324    0.335s
+─straightline_cleanup_destruct ---------   6.1%   6.1%    1194    0.334s
+─refine_eq_refl ------------------------   5.3%   5.3%     118    0.098s
+─unify (constr) (constr) ---------------   4.3%   4.3%     140    0.015s
+─split ---------------------------------   4.0%   4.0%     258    0.019s
+─change (x = y) ------------------------   2.9%   2.9%      97    0.016s
+─unfold1_cmd_goal ----------------------   0.1%   2.5%     193    0.008s
+─change G ------------------------------   2.2%   2.2%     484    0.008s
+─straightline_unfold -------------------   0.2%   2.1%    1097    0.007s
+
+ tactic                                   local  total   calls       max
+────────────────────────────────────────┴──────┴──────┴───────┴─────────┘
+─straightline --------------------------   0.1%  98.7%    1324    0.639s
+ ├─straightline_side_condition_solver_in  73.7%  73.7%      97    0.570s
+ ├─straightline_refl -------------------   1.2%  45.4%     419    0.146s
+ │ ├─refine (uconstr) ------------------  31.4%  31.4%     140    0.133s
+ │ ├─refine_eq_refl --------------------   5.3%   5.3%     118    0.098s
+ │ │└refine (uconstr) ------------------   3.6%   3.6%      21    0.098s
+ │ ├─unify (constr) (constr) -----------   4.3%   4.3%     140    0.015s
+ │ └─change (x = y) --------------------   2.9%   2.9%      97    0.016s
+ ├─straightline_set --------------------   0.1%  22.5%    1194    0.103s
+ │ ├─letexists_as ----------------------   0.4%  15.8%      97    0.083s
+ │ │└refine (uconstr) ------------------  15.1%  15.1%      97    0.079s
+ │ └─split -----------------------------   3.9%   3.9%      97    0.019s
+ ├─straightline_split ------------------   0.1%  21.5%     161    0.066s
+ │└refine (uconstr) --------------------  21.2%  21.2%     161    0.065s
+ ├─straightline_cleanup ----------------   0.4%   6.6%    1227    0.335s
+ │└straightline_cleanup_destruct -------   6.1%   6.1%    1194    0.334s
+ └─straightline_unfold -----------------   0.2%   2.1%    1097    0.007s
+
+*)
+    Time unshelve (do 100 straightline); shelve_unifiable.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    Show Ltac Profile.
     Time lazymatch goal with |- cmd _ _ _ _ _ ?postc => set (post := postc) end. (* Finished transaction in 0.001 secs (0.001u,0.s) (successful) *)
-    Time repeat match goal with H : Syntax.cmd.cmd |- _ => subst H end. (* Finished transaction in 0.648 secs (0.638u,0.01s) (successful) *)
+    (*Time repeat match goal with H : Syntax.cmd.cmd |- _ => subst H end. (* Finished transaction in 0.648 secs (0.638u,0.01s) (successful) *)*)
     Time unshelve (repeat (repeat straightline_subst; straightline_set'; [ shelve | intro_let ])); shelve_unifiable; [ .. | shelve ]. (* Finished transaction in 3.912 secs (3.807u,0.104s) (successful) *)
     Time all: clear post. (* Finished transaction in 0.577 secs (0.577u,0.s) (successful) *)
     Time all: repeat match goal with H : map.rep -> Prop |- _ => clear H | H : map.rep |- _ => clear H end. (* Finished transaction in 1.009 secs (0.968u,0.041s) (successful) *)

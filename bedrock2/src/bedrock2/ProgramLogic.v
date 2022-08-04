@@ -273,22 +273,24 @@ Ltac straightline_enforce :=
     let values := eval cbv in values in
     change (@Loops.enforce width word locals names values map);
     refine (conj (eq_refl values) eq_refl) end.
+Ltac refine_eq_refl :=
+  refine eq_refl.
 Ltac straightline_refl :=
   first [ match goal with |- @eq (@coqutil.Map.Interface.map.rep String.string Interface.word.rep _) _ _ => idtac end;
     eapply SortedList.eq_value; refine eq_refl
-  | match goal with |- @map.get String.string Interface.word.rep ?M ?m ?k = Some ?e' =>
+  | match goal with |- @map.get String.string Interface.word.rep ?M ?m ?k = @Some ?U ?e' :> ?T =>
     let e := rdelta e' in
     is_evar e;
     once (let v := multimatch goal with x := context[@map.put _ _ M _ k ?v] |- _ => v end in
           (* cbv is slower than this, cbv with whitelist would have an enormous whitelist, cbv delta for map is slower than this, generalize unrelated then cbv is slower than this, generalize then vm_compute is slower than this, lazy is as slow as this: *)
-          unify e v; refine (eq_refl (Some v))) end
+          unify e v; refine (@eq_refl T (@Some U v))) end
   | let v := match goal with |- @coqutil.Map.Interface.map.get String.string Interface.word.rep _ _ _ = Some ?v => v end in
-    let v' := rdelta v in is_evar v'; (change v with v'); refine eq_refl
+    let v' := rdelta v in is_evar v'; (change v with v'); refine_eq_refl
   | let x := match goal with |- ?x = ?y => x end in
     let y := match goal with |- ?x = ?y => y end in
-    first [ let y := rdelta y in is_evar y; change (x=y); refine eq_refl
-          | let x := rdelta x in is_evar x; change (x=y); refine eq_refl
-          | let x := rdelta x in let y := rdelta y in constr_eq x y; refine eq_refl ] ].
+    first [ let y := rdelta y in is_evar y; change (x=y); refine_eq_refl
+          | let x := rdelta x in is_evar x; change (x=y); refine_eq_refl
+          | let x := rdelta x in let y := rdelta y in constr_eq x y; refine_eq_refl ] ].
 Ltac straightline_split_refl :=
   first [ match goal with |- exists l', Interface.map.of_list_zip ?ks ?vs = Some l' /\ _ => idtac end;
     letexists; split; [refine eq_refl|] (* TODO: less unification here? *)
