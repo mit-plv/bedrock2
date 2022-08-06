@@ -161,6 +161,26 @@ Module map. Section __.
   Lemma du_empty_r: forall m, du m map.empty = Some m.
   Proof. intros. rewrite du_comm. eapply du_empty_l. Qed.
 
+  Lemma du_inj_r: forall (R P1 P2 m: map),
+      du R P1 = Some m ->
+      du R P2 = Some m ->
+      P1 = P2.
+  Proof.
+    unfold du. intros. fwd.
+    eapply disjointb_spec in E0.
+    eapply disjointb_spec in E.
+    eapply map.map_ext.
+    intro k.
+    eapply (f_equal (fun m => map.get m k)) in H0.
+    rewrite 2map.get_putmany_dec in H0.
+    unfold map.disjoint in *.
+    do 2 destruct_one_match_hyp.
+    - assumption.
+    - exfalso. eapply E0. 1: symmetry. all: eassumption.
+    - exfalso. eapply E. all: eassumption.
+    - reflexivity.
+  Qed.
+
 End __. End map.
 
 (* maybe-map *)
@@ -281,6 +301,14 @@ Module mmap. Section __.
       symmetry. apply du_assoc.
   Qed.
 
+  Lemma du_inj_r: forall (R P1 P2: option map) (m: map),
+      du R P1 = Some m ->
+      du R P2 = Some m ->
+      P1 = P2.
+  Proof.
+    unfold du. intros. fwd. f_equal. eapply map.du_inj_r; eassumption.
+  Qed.
+
 End __. End mmap.
 
 Notation "a \*/ b" := (mmap.du a b) (at level 34, left associativity).
@@ -356,6 +384,32 @@ Section SepLog.
       rewrite <-(dus_nth_to_head j ys).
       f_equal; assumption.
     Qed.
+
+    Lemma cancel_at_bw: forall (i j: nat) (xs ys: list (option map)),
+        mmap.defined (mmap.dus xs) ->
+        nth i xs = nth j ys ->
+        mmap.dus xs = mmap.dus ys ->
+        mmap.dus (remove_nth i xs) = mmap.dus (remove_nth j ys).
+    Proof.
+      unfold mmap.defined. intros. fwd.
+      rewrite <-(dus_nth_to_head i xs) in *.
+      rewrite <-(dus_nth_to_head j ys) in *.
+      eapply mmap.du_inj_r. 1: eassumption.
+      congruence.
+    Qed.
+
+    Lemma cancel_at_eq: forall (i j: nat) (xs ys: list (option map)),
+        mmap.defined (mmap.dus xs) ->
+        nth i xs = nth j ys ->
+        (mmap.dus (remove_nth i xs) = mmap.dus (remove_nth j ys)) =
+        (mmap.dus xs = mmap.dus ys).
+    Proof.
+      intros.
+      eapply PropExtensionality.propositional_extensionality. split.
+      - eapply cancel_at; assumption.
+      - eapply cancel_at_bw; assumption.
+    Qed.
+
   End cancel_lemmas.
 End SepLog.
 
