@@ -193,20 +193,166 @@ Proof.
     Ltac straightline_cleanup_subst ::= fail.
     Ltac straightline_side_condition_solver ::= idtac.
     Ltac straightline_side_condition_solver_inline ::= solve [ repeat straightline ].
+    Ltac find_hyp_for body :=
+      match goal with
+      | [ H := ?x |- _ ]
+        => let __ := match goal with _ => constr_eq body x end in
+           H
+      end.
+    Ltac subst_after H :=
+      repeat match goal with
+             | [ H' := _ |- _ ] => tryif constr_eq H H' then fail 1 else subst H'
+             end.
+    Ltac instantiate_evar ev body :=
+      idtac;
+      let H := fresh in
+      let __ := constr:(match ev return True with
+                        | H => ltac:(instantiate (1:=body) in (value of H);
+                                     exact I)
+                        end) in
+      idtac.
+    Ltac subst_var x :=
+      tryif is_var x
+      then try (let x' := (eval cbv delta [x] in x) in
+                tryif is_var x' then subst x; subst_var x' else idtac)
+      else idtac.
+    Ltac refine_eq_refl_v T v ::=
+      match goal with
+      | [ |- _ = @Some ?T ?x ]
+        => subst_var x;
+           let x := lazymatch goal with |- _ = Some ?x => x end in
+           try clearbody x;
+           vm_compute; refine (@eq_refl (option T) (@Some T x))
+      | _ => assert_succeeds refine (@eq_refl T v); shelve
+      end.
     Ltac refine_eq_refl ::=
       idtac;
       match goal with
       | [ |- ?x = ?v :> ?T ]
-        => is_evar x; instantiate (1:=v); reflexivity
+        => is_evar x;
+           let H := find_hyp_for x in
+           subst_after H;
+           cbn [interp_binop];
+           let v := lazymatch goal with |- _ = ?v => v end in
+           instantiate_evar x v;
+           refine (@eq_refl T v)
       | _ => assert_succeeds refine eq_refl; shelve
       end.
+    Ltac straightline_set ::=
+      idtac;
+      (let s :=
+         match goal with
+         | |- @cmd _ _ _ _ _ _ _ (Syntax.cmd.set ?s ?e) _ _ _ ?post => s
+         end
+       in
+       let e :=
+         match goal with
+         | |- @cmd _ _ _ _ _ _ _ (Syntax.cmd.set ?s ?e) _ _ _ ?post => e
+         end
+       in
+       let post :=
+         match goal with
+         | |- @cmd _ _ _ _ _ _ _ (Syntax.cmd.set ?s ?e) _ _ _ ?post => post
+         end
+       in
+       unfold1_cmd_goal; (cbv beta match delta [cmd_body]);
+       (let x := ident_of_string.ident_of_string s in
+        ensure_free x;
+        lazymatch goal with
+        | [ |- ex ?T ]
+          => lazymatch T with
+             | (fun y : ?A => ?P /\ ?Q)
+               => refine (let x : A := _ in @ex_intro A T x (@conj match x return Prop with y => P end match x return Prop with y => Q end _ _))
+             end
+        end;[ straightline_side_condition_solver |  ])).
     cbv [reconstruct HList.tuple.of_list map.putmany_of_tuple List.length] in localsmap.
     Set Ltac Profiling. Reset Ltac Profile.
+    Time repeat match goal with H : Syntax.cmd.cmd |- _ => subst H end.
     Time unshelve (repeat lazymatch goal with
                           | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
                           | [ |- dlet x := _ in _ ] => straightline
                           end); shelve_unifiable.
+    Show Ltac Profile.
+    HERE
+    Set Printing All.
+    Print Ltac straightline_set.
+    Ltac subst_var x :=
+      tryif is_var x
+      then try (let x' := (eval cbv delta [x] in x) in
+                tryif is_var x' then subst x; subst_var x' else idtac)
+      else idtac.
+    Time all: [ > match goal with
+                  | [ |- _ = Some ?x ]
+                    => subst_var x
+                  end .. | ].
+    Time all: [ > match goal with
+                  | [ |- _ = Some ?x ]
+                    => try clearbody x
+                  end .. | ].
+    Time all: [ > match goal with
+                  | [ |- _ = Some ?x ]
+                    => vm_compute; reflexivity
+                  end .. | ].
+    Time 1: vm_compute; reflexivity.
+    Time 1: vm_compute; reflexivity.
+    Time 1: vm_compute; reflexivity.
+    Time 1: vm_compute; reflexivity.
+    Time 1: vm_compute; reflexivity.
+    1: move x19 at bottom.
 
+    Time all: [ > vm_compute .. | ].
+    { vm_compute.
+    { match goal with
+      | [ |- ?x = ?v :> ?T ]
+        => is_evar x;
+           let H := find_hyp_for x in
+           subst_after H;
+           cbn [interp_binop];
+           let v := lazymatch goal with |- _ = ?v => v end in
+           instantiate_evar x v
+      end.
+      move x at bottom.
+      instantiate_evar x v;
+           reflexivity
+
+    end.
+    all: match goal with
+         | [ |- ?x = ?v :> ?T ]
+           => is_evar x; idtac
+         | _ => shelve
+         end; let n := numgoals in idtac "Num goals:" n.
+    { Time let x := lazymatch goal with |- ?x = _ => x end in
+           is_evar x;
+      let v := match goal with H := ?x' |- _ => let __ := match goal with _ => constr_eq x' x end in H end in
+      idtac v;
+      repeat match goal with
+             | [ H := _ |- _ ] => tryif constr_eq H v then fail 1 else subst H
+             end;
+      cbn [interp_binop].
+      Time lazymatch goal with
+           | [ |- ?x = ?y ]
+             => let x' := fresh in
+                do 10 assert_succeeds (idtac; let __ := constr:(match x return True with x' => ltac:(instantiate (1:=y) in (value of x'); exact I) end) in
+                reflexivity)
+           end.
+
+           instantiate (1:=y).
+           do 10 assert_succeeds (instantiate (1:=y); reflexivity).
+      Time do 10 assert_succeeds reflexivity.
+      end
+           | [
+
+      2: {
+      2:lazymatch goal with
+        | [ |- ?x = ?y ]
+          => instantiate(1:=y); reflexivity
+        end.
+    1: idtac "reflexivity".
+    Time all: do 10 match goal with
+                    | [ |- ?x = ?v :> ?T ]
+                      => assert_succeeds (is_evar x; reflexivity)
+                    | _ => idtac
+                    end. (* Finished transaction in 14.835 secs (14.794u,0.04s) (su
     {
       Info  straightline.
     Show Ltac Profile.

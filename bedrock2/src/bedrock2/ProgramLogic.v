@@ -275,6 +275,8 @@ Ltac straightline_enforce :=
     refine (conj (eq_refl values) eq_refl) end.
 Ltac refine_eq_refl :=
   refine eq_refl.
+Ltac refine_eq_refl_v T v :=
+  refine (@eq_refl T v).
 Ltac straightline_refl :=
   first [ match goal with |- @eq (@coqutil.Map.Interface.map.rep String.string Interface.word.rep _) _ _ => idtac end;
     eapply SortedList.eq_value; refine eq_refl
@@ -283,7 +285,7 @@ Ltac straightline_refl :=
     is_evar e;
     once (let v := multimatch goal with x := context[@map.put _ _ M _ k ?v] |- _ => v end in
           (* cbv is slower than this, cbv with whitelist would have an enormous whitelist, cbv delta for map is slower than this, generalize unrelated then cbv is slower than this, generalize then vm_compute is slower than this, lazy is as slow as this: *)
-          unify e v; refine (@eq_refl T (@Some U v))) end
+          unify e v; refine_eq_refl_v T (@Some U v)) end
   | let v := match goal with |- @coqutil.Map.Interface.map.get String.string Interface.word.rep _ _ _ = Some ?v => v end in
     let v' := rdelta v in is_evar v'; (change v with v'); refine_eq_refl
   | let x := match goal with |- ?x = ?y => x end in
