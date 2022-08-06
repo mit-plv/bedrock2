@@ -267,11 +267,12 @@ Proof.
         end;[ straightline_side_condition_solver |  ])).
     cbv [reconstruct HList.tuple.of_list map.putmany_of_tuple List.length] in localsmap.
     Set Ltac Profiling. Reset Ltac Profile.
-    Time repeat match goal with H : Syntax.cmd.cmd |- _ => subst H end.
+    (*Time repeat match goal with H : Syntax.cmd.cmd |- _ => subst H end.*)
     Time (*unshelve ( *)repeat lazymatch goal with
                           | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
                           | [ |- dlet x := _ in _ ] => straightline
                           end(* ); shelve_unifiable*).
+    Unshelve. all: shelve_unifiable. all: let n := numgoals in guard n = 1.
     Show Ltac Profile.
     HERE
     Set Printing All.
