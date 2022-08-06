@@ -188,6 +188,29 @@ Proof.
     straightline; [ | solve [ intuition ] ].
     straightline.
     Import NotationsCustomEntry.
+    Ltac straightline_cleanup_clear ::= fail.
+    Ltac cbn_interp_binop ::= fail.
+    Ltac straightline_cleanup_subst ::= fail.
+    Ltac straightline_side_condition_solver ::= idtac.
+    Ltac straightline_side_condition_solver_inline ::= solve [ repeat straightline ].
+    Ltac refine_eq_refl ::=
+      idtac;
+      match goal with
+      | [ |- ?x = ?v :> ?T ]
+        => is_evar x; instantiate (1:=v); reflexivity
+      | _ => assert_succeeds refine eq_refl; shelve
+      end.
+    cbv [reconstruct HList.tuple.of_list map.putmany_of_tuple List.length] in localsmap.
+    Set Ltac Profiling. Reset Ltac Profile.
+    Time unshelve (repeat lazymatch goal with
+                          | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
+                          | [ |- dlet x := _ in _ ] => straightline
+                          end); shelve_unifiable.
+
+    {
+      Info  straightline.
+    Show Ltac Profile.
+
     Ltac straightline_subst :=
       idtac;
       lazymatch goal with
@@ -294,9 +317,6 @@ Proof.
           repeat intro_let;
           try do_refl ]
       | intro_let ].
-    Ltac straightline_cleanup_clear ::= fail.
-    Ltac cbn_interp_binop ::= fail.
-    Ltac straightline_cleanup_subst ::= fail.
     (*Ltac straightline_set ::= match goal with |- WeakestPrecondition.cmd _ (Syntax.cmd.set ?s ?e) _ _ _ ?post => shelve end.*)
     (*Ltac straightline_split ::=
       match goal with
@@ -309,8 +329,6 @@ Proof.
       | |- Markers.split ?G => idtac
       end;
       shelve.*)
-    Ltac straightline_side_condition_solver ::= idtac.
-    Ltac straightline_side_condition_solver_inline ::= solve [ repeat straightline ].
     (* Ltac straightline_refl :=
   first
   [ match goal with
