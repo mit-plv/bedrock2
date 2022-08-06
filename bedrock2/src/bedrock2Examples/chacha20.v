@@ -268,10 +268,10 @@ Proof.
     cbv [reconstruct HList.tuple.of_list map.putmany_of_tuple List.length] in localsmap.
     Set Ltac Profiling. Reset Ltac Profile.
     Time repeat match goal with H : Syntax.cmd.cmd |- _ => subst H end.
-    Time unshelve (repeat lazymatch goal with
+    Time (*unshelve ( *)repeat lazymatch goal with
                           | [ |- cmd _ ?c _ _ _ _ ] => (idtac c; time "cmd straightline" straightline)
                           | [ |- dlet x := _ in _ ] => straightline
-                          end); shelve_unifiable.
+                          end(* ); shelve_unifiable*).
     Show Ltac Profile.
     HERE
     Set Printing All.
