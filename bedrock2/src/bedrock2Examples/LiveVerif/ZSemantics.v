@@ -86,6 +86,14 @@ Section WithParams.
   Definition wwrap{BW: Bitwidth width}(z: Z): Z := z mod 2 ^ width.
   Definition wswrap{BW: Bitwidth width}(z: Z): Z := (z + 2 ^ (width - 1)) - 2 ^ (width - 1).
 
+  Definition access_len{BW: Bitwidth width}(sz: access_size): Z :=
+    match sz with
+    | access_size.one => 1
+    | access_size.two => 2
+    | access_size.four => 4
+    | access_size.word => bytes_per_word width
+    end.
+
   Context {BW: Bitwidth width}.
 
   Definition wadd(a b: Z): Z := wwrap (a + b).
@@ -127,14 +135,6 @@ Section WithParams.
   Definition littleendian(n v addr: Z)(m: mem): Prop :=
     get_seq addr n m = LittleEndianList.le_split (Z.to_nat n) v /\
     map.domain m = of_list (addr_seq addr n).
-
-  Definition access_len(sz: access_size): Z :=
-    match sz with
-    | access_size.one => 1
-    | access_size.two => 2
-    | access_size.four => 4
-    | access_size.word => bytes_per_word width
-    end.
 
   Definition value(sz: access_size): Z -> Z -> mem -> Prop :=
     littleendian (access_len sz).
