@@ -655,9 +655,7 @@ Section Spilling.
           1: { unfold spill_tmp. eapply put_tmp; eauto. }
           1: blia.
           unfold exec.cost_SStore. unfold spill_tmp; cbn.
-          destr (isRegZ x).
-          { solve_MetricLog. }
-          { solve_MetricLog. }
+          destr (isRegZ x); solve_MetricLog. 
       }
       blia.
     - eapply exec.skip.
@@ -708,9 +706,9 @@ Section Spilling.
   Lemma save_ires_reg_correct'': forall e t1 t2 m1 m2 l1 l2 mc2 x v maxvar frame post fpval,
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
       fp < x <= maxvar /\ (x < a0 \/ a7 < x) ->
-      (forall t2' m2' l2' mc2',
+      (forall t2' m2' l2',
           related maxvar frame fpval t1 m1 (map.put l1 x v) t2' m2' l2' ->
-          post t2' m2' l2' mc2') ->
+          post t2' m2' l2' (if isRegZ x then mc2 else (addMetricInstructions 1 (addMetricLoads 1 (addMetricStores 1 mc2))))) ->
       exec e (save_ires_reg x) t2 m2 (map.put l2 (ires_reg x) v) mc2 post.
   Proof.
     intros.
@@ -724,7 +722,12 @@ Section Spilling.
           eapply get_sep. ecancel_assumption.
         - rewrite map.get_put_same. reflexivity.
         - exact St.
-        - eapply H1.
+        - unfold exec.cost_SStore.
+          assert (isRegZ (spill_tmp 1) = true) by auto; rewrite H.
+          assert (isRegZ fp = true) by auto; rewrite H0.
+          clear H H0. 
+          destr (isRegZ x); try blia. 
+          eapply H1.
           repeat match goal with
                  | |- exists _, _ => eexists
                  | |- _ /\ _ => split
@@ -760,6 +763,7 @@ Section Spilling.
       }
       blia.
     - eapply exec.skip.
+      destr (isRegZ x); try blia. 
       eapply H1.
       (* even though we did nothing, we have to reconstruct the `related` from the `related` that *)
   (*        held *before* the SOp *)
@@ -844,6 +848,41 @@ Section Spilling.
     intros. apply H. eapply hide_ll_arg_reg_ptsto_core; eassumption.
   Qed.
 
+  Fixpoint cost_set_vars_to_reg_range (args: list Z) (start : Z) (mc : MetricLog) : MetricLog :=
+    match args with
+    | [] => mc
+    | x :: xs => if isRegZ x then
+                 addMetricInstructions 1
+                   (addMetricLoads 1
+                      (cost_set_vars_to_reg_range xs (start + 1) mc))
+               else (addMetricInstructions 1
+                       (addMetricLoads 1
+                          (addMetricStores 1
+                             (cost_set_vars_to_reg_range xs (start + 1) mc))))
+    end.
+
+  Lemma cost_set_vars_to_reg_range_commutes:
+    forall args start mc,
+      cost_set_vars_to_reg_range args start
+        (addMetricInstructions 1 (addMetricLoads 1 (addMetricStores 1 mc))) =
+        addMetricInstructions 1
+          (addMetricLoads 1 (addMetricStores 1 (cost_set_vars_to_reg_range args start mc))).
+  Proof.
+    induction args; intros; cbn; try trivial. 
+    destr (isRegZ a); cbn; rewrite IHargs; trivial. 
+  Qed. 
+
+  Lemma cost_set_vars_to_reg_range_commutes':
+    forall args start mc,
+      cost_set_vars_to_reg_range args start
+        (addMetricInstructions 1 (addMetricLoads 1 mc)) =
+        addMetricInstructions 1
+          (addMetricLoads 1 (cost_set_vars_to_reg_range args start mc)).
+  Proof.
+    induction args; intros; cbn; try trivial. 
+    destr (isRegZ a); cbn; rewrite IHargs; trivial. 
+  Qed.   
+  
   Lemma set_vars_to_reg_range_correct:
     forall args start argvs e t1 t2 m1 m2 l1 l1' l2 mc2 maxvar frame post fpval,
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
@@ -855,6 +894,7 @@ Section Spilling.
       Forall (fun x => fp < x <= maxvar /\ (x < a0 \/ a7 < x)) args ->
       (forall m2' l2' mc2',
           related maxvar frame fpval t1 m1 l1' t2 m2' l2' ->
+          mc2' = (cost_set_vars_to_reg_range args start mc2) ->
           post t2 m2' l2' mc2') ->
       exec e (set_vars_to_reg_range args start) t2 m2 l2 mc2 post.
   Proof.
@@ -874,50 +914,64 @@ Section Spilling.
         { eassumption. }
         eapply IHargs; try eassumption; try blia.
         (* establish related for IH: *)
-        unfold related.
-        eexists (map.put lStack a v), lRegs, _.
-        ssplit.
-        { reflexivity. }
-        { ecancel_assumption. }
-        { eassumption. }
-        { intros. rewrite map.get_put_dec in H. destr (a =? x0). 1: blia. eauto. }
-        { apply sep_comm. eapply sep_eq_put. 1: apply sep_comm; assumption.
-          intros lRegs' w ? G. subst lRegs'.
-          match goal with H: _ |- _ => specialize H with (1 := G) end. blia. }
-        { eassumption. }
-        { intros b A0 w B0.
+        * unfold related.
+          eexists (map.put lStack a v), lRegs, _.
+          ssplit.
+          { reflexivity. }
+          { ecancel_assumption. }
+          { eassumption. }
+          { intros. rewrite map.get_put_dec in H. destr (a =? x0). 1: blia. eauto. }
+          { apply sep_comm. eapply sep_eq_put. 1: apply sep_comm; assumption.
+            intros lRegs' w ? G. subst lRegs'.
+            match goal with H: _ |- _ => specialize H with (1 := G) end. blia. }
+          { eassumption. }
+          { intros b A0 w B0.
           rewrite map.get_put_dec in B0.
           destr (a =? b). 1: congruence.
           match goal with H: _ |- _ => eapply H end. 1: blia.
           match goal with H: _ |- _ => eapply H end. 1: blia.
           assumption. }
-        { blia. }
+          { blia. }
+        * intros. apply H6; auto.
+          cbn in *. destr (isRegZ start); try blia; destr (isRegZ a); try blia.
+          rewrite H0. rewrite cost_set_vars_to_reg_range_commutes. trivial.            
       + eapply exec.set.
         { eassumption. }
         eapply IHargs; try eassumption; try blia. 2: {
           eapply map.getmany_of_list_put_diff. 2: eassumption.
           eapply List.not_In_Z_seq. blia.
         }
-        unfold related. eexists lStack, (map.put lRegs a v), _.
-        ssplit.
-        { reflexivity. }
-        { ecancel_assumption. }
-        { intros. rewrite map.get_put_dec in H. destr (a =? x). 1: blia. eauto. }
-        { eassumption. }
-        { eapply sep_eq_put. 1: assumption.
-          intros lStack' w ? G. subst lStack'.
-          match goal with H: _ |- _ => specialize H with (1 := G) end. blia. }
-        { apply sep_assoc. eapply sep_eq_put. 1: ecancel_assumption.
-          unfold ptsto, arg_regs.
-          intros l w (l_arg_regs & l_fpval & (? & ?) & ? & ?) G. subst.
+        * unfold related. eexists lStack, (map.put lRegs a v), _.
+          ssplit.
+          { reflexivity. }
+          { ecancel_assumption. }
+          { intros. rewrite map.get_put_dec in H. destr (a =? x). 1: blia. eauto. }
+          { eassumption. }
+          { eapply sep_eq_put. 1: assumption.
+            intros lStack' w ? G. subst lStack'.
+            match goal with H: _ |- _ => specialize H with (1 := G) end. blia. }
+          { apply sep_assoc. eapply sep_eq_put. 1: ecancel_assumption.
+            unfold ptsto, arg_regs.
+            intros l w (l_arg_regs & l_fpval & (? & ?) & ? & ?) G. subst.
           rewrite map.get_putmany_dec, map.get_put_dec, map.get_empty in G.
           destr (fp =? a). 1: unfold fp; blia.
           match goal with H: _ |- _ => specialize H with (1 := G) end.
           unfold a0, a7 in *. blia. }
-        { assumption. }
-        { assumption. }
+          { assumption. }
+          { assumption. }
+        * intros. apply H6; auto.
+          cbn in *. destr (isRegZ start); try blia; destr (isRegZ a); try blia.
+          rewrite H0. rewrite cost_set_vars_to_reg_range_commutes'. trivial.       
   Qed.
 
+  Fixpoint cost_set_reg_range_to_vars (start : Z) (args: list Z) (mc : MetricLog) : MetricLog :=
+    match args with
+    | [] => mc
+    | x :: xs => if isRegZ x then
+                 addMetricInstructions 1 (addMetricLoads 1 (cost_set_reg_range_to_vars (start + 1) xs mc))
+               else (addMetricInstructions 1 (addMetricLoads 2 (cost_set_reg_range_to_vars (start + 1) xs mc)))
+    end.
+    
   Lemma set_reg_range_to_vars_correct:
     forall args argvs start e t1 t2 m1 m2 l1 l2 mc2 maxvar frame post fpval,
       related maxvar frame fpval t1 m1 l1 t2 m2 l2 ->
@@ -929,12 +983,14 @@ Section Spilling.
       (forall l2' mc2',
           related maxvar frame fpval t1 m1 l1 t2 m2 l2' ->
           map.getmany_of_list l2' (List.unfoldn (Z.add 1) (List.length args) start) = Some argvs ->
+          mc2' = (cost_set_reg_range_to_vars start args mc2) ->
           post t2 m2 l2' mc2') ->
       exec e (set_reg_range_to_vars start args) t2 m2 l2 mc2 post.
   Proof.
     induction args; intros.
-    - simpl. eapply exec.skip. eapply H5. 1: eassumption. simpl.
-      destruct argvs. 1: reflexivity. discriminate.
+    - simpl. eapply exec.skip. eapply H5. 1: eassumption.
+      + simpl. destruct argvs. 1: reflexivity. discriminate.
+      + trivial.
     - simpl. unfold set_reg_to_var, stack_loc.
       destruct argvs as [|v vs]. {
         unfold map.getmany_of_list in H4. cbn in H4. simp.
@@ -969,6 +1025,8 @@ Section Spilling.
              ++ rewrite Z.add_comm.
                 eapply map.getmany_of_list_put_diff. 2: eassumption.
                 eauto using List.not_In_Z_seq with zarith.
+          -- cbn. destr (isRegZ start); destr (isRegZ a); cbn in *; try blia.
+             rewrite H6; trivial.
       + eapply exec.seq_cps.
         eapply IHargs; try eassumption; try blia.
         intros.
@@ -988,13 +1046,15 @@ Section Spilling.
             - rewrite Z.add_comm. eapply map.getmany_of_list_put_diff. 2: eassumption.
               eauto using List.not_In_Z_seq with zarith.
           }
-          unfold related.
-          repeat match goal with
-                 | |- exists _, _ => eexists
-                 | |- _ /\ _ => split
-                 | |- _ => eassumption || reflexivity
-                 end.
-          eapply put_arg_reg; try eassumption. blia.
+          -- unfold related.
+             repeat match goal with
+                    | |- exists _, _ => eexists
+                    | |- _ /\ _ => split
+                    | |- _ => eassumption || reflexivity
+                    end.
+             eapply put_arg_reg; try eassumption. blia.
+          -- cbn. destr (isRegZ start); destr (isRegZ a); cbn in *; try blia.
+             rewrite H6; trivial.
   Qed.
 
   Lemma grow_related_mem: forall maxvar frame t1 mSmall1 l1 t2 mSmall2 l2 mStack mCombined2 fpval,
@@ -1285,7 +1345,7 @@ Section Spilling.
       2: eapply Forall_le_max.
       cbv beta.
       subst maxvar'. clear. blia. }
-    intros mL4 lFL4 mcL4 R.
+    intros mL4 lFL4 mcL4 R Hcost.
     eapply exec.seq_cps.
     eapply exec.weaken. {
       eapply IHexec. 1: apply Ex. 2: exact R.
@@ -1321,7 +1381,7 @@ Section Spilling.
       subst maxvar'. clear. blia. }
     { eassumption. }
     rename R into R0.
-    intros lFL6 mcL6 R GM.
+    intros lFL6 mcL6 R GM HCost.
     (* prove that if we remove the additional stack provided by exec.stackalloc
        and store the result vars back into the arg registers, the postcondition holds *)
     unfold related in R. fwd. rename lStack into lStack5, lRegs into lRegs5.
@@ -1357,7 +1417,7 @@ Section Spilling.
 
 
   Lemma iarg_reg_isReg: forall i a,
-      (i <= 10) ->
+      (i <= 20) ->
       (isRegZ (iarg_reg i a) = true). 
   Proof.
     intros. unfold isRegZ, iarg_reg. destr (32 <=? a); unfold spill_tmp; blia.
@@ -1402,7 +1462,7 @@ Section Spilling.
     - (* exec.interact *)
       eapply exec.seq_cps.
       eapply set_reg_range_to_vars_correct; try eassumption; try (unfold a0, a7; blia).
-      intros *. intros R GM. clear l2 H4.
+      intros *. intros R GM CSet. clear l2 H4.
       unfold related in R. fwd.
       spec (subst_split (ok := mem_ok) m) as A.
       1: eassumption. 1: ecancel_assumption.
@@ -1447,9 +1507,8 @@ Section Spilling.
             unfold sep at 1 in C. destruct C as (mKeepL' & mRest & SC & ? & _). subst mKeepL'.
             move H2 at bottom. unfold map.split in H2. fwd.
             eapply map.shrink_disjoint_l; eassumption. }
-          
-          admit. 
-          }
+          cbn in *. rewrite H5; rewrite CSet. admit. (* currently wrong *)
+        }
         (* related for set_vars_to_reg_range_correct: *)
         unfold related.
         eexists _, _, _. ssplit.
@@ -1495,7 +1554,7 @@ Section Spilling.
       apply_in_hyps @map.getmany_of_list_length.
       apply_in_hyps @map.putmany_of_list_zip_sameLength.
       eapply set_reg_range_to_vars_correct; try eassumption || (unfold a0, a7 in *; blia).
-      intros lCL2 ? ? ?.
+      intros lCL2 ? ? ? ?.
       assert (bytes_per_word = 4 \/ bytes_per_word = 8) as B48. {
         unfold bytes_per_word. destruct width_cases as [E' | E']; rewrite E'; cbv; auto.
       }
@@ -1564,7 +1623,7 @@ Section Spilling.
         2: eapply Forall_le_max.
         cbv beta.
         subst maxvar'. clear. blia. }
-      intros mL4 lFL4 mcL4 R.
+      intros mL4 lFL4 mcL4 R CSet.
       eapply exec.seq_cps.
       eapply exec.weaken. {
         eapply IHexec. 2: exact R.
@@ -1604,7 +1663,7 @@ Section Spilling.
         subst maxvar'. clear. blia. }
       { eassumption. }
       rename R into R0.
-      intros lFL6 mcL6 R GM.
+      intros lFL6 mcL6 R GM ?.
       (* prove that if we remove the additional stack provided by exec.stackalloc
          and store the result vars back into the caller's registers,
          states are still related and postcondition holds *)
@@ -1740,7 +1799,7 @@ Section Spilling.
              end.
       1,4,3,2: eassumption.
       unfold exec.cost_SStackalloc in *; repeat isReg_helper.
-      destr (isRegZ x); try solve_MetricLog. all: admit. 
+      destr (isRegZ x); solve_MetricLog.
     - (* exec.lit *)
       eapply exec.seq_cps. eapply exec.lit.
       eapply save_ires_reg_correct.

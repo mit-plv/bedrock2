@@ -920,7 +920,7 @@ Section FlattenExpr1.
         split; eauto.
         simple apply conj; [eassumption|].
         split; [simple eapply map.only_differ_putmany; eassumption|].
-        solve_MetricLog.
+        Fail solve_MetricLog. admit.
   Admitted.
   Goal True. idtac "FlattenExpr: flattenStmt_correct_aux done". Abort.
 
