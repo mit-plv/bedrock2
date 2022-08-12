@@ -1594,42 +1594,15 @@ Section WithNonmaximallyInsertedA.
   Proof. intros. reflexivity. Qed.
 End WithNonmaximallyInsertedA.
 
-Inductive NestedType :=
-| TUInt(nbits: Z)
-| TRecord(fields: NestedFields)
-| TArray(tp: NestedType)(L: Z)
-with NestedField :=
-| FField(name: string)(tp: NestedType)
-with NestedFields :=
-| FSnoc(rest: NestedFields)(f: NestedField) (* to match structure of stdlib pairs *)
-| FSingle(f: NestedField).
-
 (* Type aliases that can inform proof automation as well as humans on intended usage: *)
 Definition uint_t(nbits: Z) := Z.
 Definition array_t(tp: Type)(nElems: Z) := list tp.
-
-Fixpoint interp_type(t: NestedType): Type :=
-  match t with
-  | TUInt nbits => uint_t nbits
-  | TRecord fields => interp_fields fields
-  | TArray tp L => array_t (interp_type tp) L
-  end
-with interp_field(field: NestedField): Type :=
-  match field with
-  | FField _ tp => interp_type tp
-  end
-with interp_fields(fields: NestedFields): Type :=
-  match fields with
-  | FSnoc rest f => prod (interp_fields rest) (interp_field f)
-  | FSingle f => interp_field f
-  end.
 
 Definition nbits_to_nbytes(nbits: Z): Z := (Z.max 0 nbits + 7) / 8.
 
 Definition encode_uint(nbits: Z): Z -> list byte :=
   LittleEndianList.le_split (Z.to_nat (nbits_to_nbytes nbits)).
 
-(*
 Definition sized_uint(nbits: Z)(v: Z): Prop := 0 <= v < 2 ^ nbits.
 
 Lemma encode_uint_length: forall nbits v, len (encode_uint nbits v) = nbits_to_nbytes nbits.
@@ -1637,18 +1610,16 @@ Proof.
   unfold encode_uint. intros. rewrite LittleEndianList.length_le_split. simpl.
   unfold nbits_to_nbytes. Z.to_euclidean_division_equations. lia.
 Qed.
-*)
 
 Definition encode_array{T: Type}: (T -> list byte) -> list T -> list byte :=
   @List.flat_map T byte.
 
 
+Definition MAC := array_t (uint_t 8) 6.
+Definition IPv4 := array_t (uint_t 8) 4.
+
+
 (* ARP responder example *)
-
-Definition TMAC := TArray (TUInt 8) 6.
-Definition TIPv4 := TArray (TUInt 8) 4.
-
-(*
 
 Record EthernetPacket{Payload: Type} := mkEthernetPacket {
   dstMAC: MAC;
@@ -1706,178 +1677,143 @@ Definition isEthernetPacket{P: Type}(payloadOk: P -> list byte -> Prop)(p: Ether
     (* TODO could/should also verify CRC *)
 *)
 
-*)
-
 Definition ARPOperationRequest: Z := 1.
 Definition ARPOperationReply: Z := 2.
 
-Declare Custom Entry record_field.
-Notation "s : t" := (FField s t)
-  (in custom record_field at level 1, s constr at level 0, t constr at level 99).
+Record ARPPacket := mkARPPacket {
+  htype: uint_t 16; (* hardware type *)
+  ptype: uint_t 16; (* protocol type *)
+  hlen: uint_t 8;   (* hardware address length (6 for MAC addresses) *)
+  plen: uint_t 8;   (* protocol address length (4 for IPv4 addresses) *)
+  oper: uint_t 16;
+  sha: MAC;  (* sender hardware address *)
+  spa: IPv4; (* sender protocol address *)
+  tha: MAC;  (* target hardware address *)
+  tpa: IPv4; (* target protocol address *)
+}.
 
-Notation "<{ f1 ; f2 ; .. ; fn }>" := (FSnoc .. (FSnoc (FSingle f1) f2) .. fn)
-  (f1 custom record_field at level 1, f2 custom record_field at level 1,
-   fn custom record_field at level 1).
+Ltac encoder tp :=
+  lazymatch tp with
+  | uint_t ?nbits => constr:(encode_uint nbits)
+  | array_t ?E _ => let e := encoder E in constr:(@encode_array E e)
+  | ?alias => let u := eval unfold alias in alias in encoder u
+  end.
 
-Definition TARPPacket := TRecord <{
-  "htype": TUInt 16; (* hardware type *)
-  "ptype": TUInt 16; (* protocol type *)
-  "hlen": TUInt 8;   (* hardware address length (6 for MAC addresses) *)
-  "plen": TUInt 8;   (* protocol address length (4 for IPv4 addresses) *)
-  "oper": TUInt 16;  (* operation *)
-  "sha": TMAC;       (* sender hardware address *)
-  "spa": TIPv4;      (* sender protocol address *)
-  "tha": TMAC;       (* target hardware address *)
-  "tpa": TIPv4       (* target protocol address *)
-}>.
+Ltac more_than_one_hyp :=
+  lazymatch goal with
+  | x: _, y: _ |- _ => idtac
+  end.
+
+Ltac is_ind_b tp :=
+  match constr:(Set) with
+  | _ => let __ := match constr:(Set) with _ => is_ind tp end in constr:(true)
+  | _ => constr:(false)
+  end.
+
+Ltac type_size tp :=
+  lazymatch tp with
+  | uint_t ?nbits => constr:(nbits_to_nbytes nbits)
+  | array_t ?E ?n => let s := type_size E in constr:(Z.mul n s)
+  | _ => lazymatch is_ind_b tp with
+         | true =>
+             let res := open_constr:(_) in
+             let __ := constr:(fun p: tp => ltac:(
+               clear -p; destruct p; [];
+               let s := type_size_from_ctx in
+               unify res s;
+               exact tt)) in
+             res
+         | false => let u := eval unfold tp in tp in type_size u
+         end
+  end
+with type_size_from_ctx :=
+  lazymatch goal with
+  | x: ?T |- _ =>
+      let __ := match constr:(Set) with _ => clear x end in
+      let sT := type_size T in
+      let sRest := type_size_from_ctx in
+      constr:(sRest + sT)
+  | |- _ => constr:(0)
+  end.
+
+Example arp_packet_size_test: ARPPacket -> Z.
+  intro p.
+  destruct p.
+  repeat lazymatch reverse goal with
+         | x: ?T |- _ =>
+             let s := type_size T in
+             tryif more_than_one_hyp then (refine (s + _); clear x) else exact s
+         end.
+Defined.
+
+(* Note: clears more than `clear` without arguments clears *)
+Ltac clear_all :=
+  repeat match goal with
+    | x: _ |- _ => clear x
+    end.
+
+Notation sizeof tp :=
+  ltac:(clear_all; let r := type_size tp in let r' := eval cbv in r in exact r')
+  (only parsing).
+
+Goal sizeof ARPPacket = 28. reflexivity. Abort.
+
+Definition encode_ARPPacket(p: ARPPacket): list byte.
+  clear -p.
+  (*refine (let (_, _, _, _, _, _, _, _, _) := p in _). clear p.*)
+  (* refine (match p with mkARPPacket _ _ _ _ _ _ _ _ _ => _ end). clear p. *)
+  destruct p.
+  repeat lazymatch reverse goal with
+         | x: ?T |- _ =>
+             let e := encoder T in
+             tryif more_than_one_hyp then (refine (e x ++ _); clear x) else exact (e x)
+         end.
+Defined.
 
 Goal True.
-  pose (interp_type TARPPacket) as r.
-  cbn in r.
+  let r := eval unfold encode_ARPPacket in encode_ARPPacket in pose r.
 Abort.
 
-Fixpoint encode(t: NestedType): interp_type t -> list byte :=
-  match t with
-  | TUInt nbits => encode_uint nbits
-  | TRecord fields => encode_fields fields
-  | TArray tp L => encode_array (encode tp)
-  end
-with encode_field(field: NestedField): interp_field field -> list byte :=
-  match field with
-  | FField _ tp => encode tp
-  end
-with encode_fields(fields: NestedFields): interp_fields fields -> list byte :=
-  match fields with
-  | FSnoc rest f => fun '(rest_vals, f_val) =>
-      encode_fields rest rest_vals ++ encode_field f f_val
-  | FSingle f => encode_field f
+Definition encode_ARPPacket'(p: ARPPacket): list byte :=
+  encode_uint 16 (htype p) ++
+  encode_uint 16 (ptype p) ++
+  encode_uint 8 (hlen p) ++
+  encode_uint 8 (plen p) ++
+  encode_uint 16 (oper p) ++
+  encode_array (encode_uint 8) (sha p) ++
+  encode_array (encode_uint 8) (spa p) ++
+  encode_array (encode_uint 8) (tha p) ++
+  encode_array (encode_uint 8) (tpa p).
+
+Ltac size_check tp v :=
+  lazymatch tp with
+  | uint_t ?nbits => constr:(0 <= v < 2 ^ nbits)
+  | array_t ?E ?n => constr:(len v = n /\ List.Forall (fun (e: E) => ltac:(
+      let r := size_check E e in exact r)) v)
+  | ?alias => let u := eval unfold alias in alias in size_check u v
   end.
 
-(* Note: does not add the outer-most option *)
-Fixpoint ointerp_type(t: NestedType): Type :=
-  match t with
-  | TUInt nbits => uint_t nbits
-  | TRecord fields => ointerp_fields fields
-  | TArray tp L => array_t (option (ointerp_type tp)) L
-  end
-with ointerp_field(field: NestedField): Type :=
-  match field with
-  | FField _ tp => ointerp_type tp
-  end
-with ointerp_fields(fields: NestedFields): Type :=
-  match fields with
-  | FSnoc rest f => prod (ointerp_fields rest) (option (ointerp_field f))
-  | FSingle f => option (ointerp_field f) (* Note: this option is not the outer-most yet;
-      if this field ends up as a singleton in a record, one more option will be added *)
-  end.
+Definition sized_ARPPacket(p: ARPPacket): Prop.
+  clear -p.
+  destruct p.
+  repeat lazymatch reverse goal with
+         | x: ?T |- _ =>
+             let c := size_check T x in
+             tryif more_than_one_hyp then (refine (c /\ _); clear x) else exact c
+         end.
+Defined.
 
 Goal True.
-  pose (ointerp_type TARPPacket) as r.
-  cbn in r.
-Abort.
-
-Fixpoint type_size(tp: NestedType): Z :=
-  match tp with
-  | TUInt nbits => nbits_to_nbytes nbits
-  | TRecord fields => fields_size fields
-  | TArray tp L => type_size tp * L
-  end
-with field_size(field: NestedField): Z :=
-  match field with
-  | FField _ tp => type_size tp
-  end
-with fields_size(fields: NestedFields): Z :=
-  match fields with
-  | FSnoc rest f => fields_size rest + field_size f
-  | FSingle f => field_size f
-  end.
-
-Definition oencode_uint(nbits: Z)(v: Z): list (option byte) :=
-  List.map Some (encode_uint nbits v).
-
-Definition optionize_input{D: Type}(d: D)(ointerp: D -> Type)(sz: D -> Z)
-  (oenc: ointerp d -> list (option byte)): option (ointerp d) -> list (option byte) :=
-  fun o => match o with
-           | Some v => oenc v
-           | None => List.repeatz None (sz d)
-           end.
-
-Definition oencode_array{tp: NestedType}(oenc: ointerp_type tp -> list (option byte))
-  : list (option (ointerp_type tp)) -> list (option byte) :=
-  List.flat_map (optionize_input tp ointerp_type type_size oenc).
-
-Fixpoint oencode(t: NestedType): ointerp_type t -> list (option byte) :=
-  match t with
-  | TUInt nbits => oencode_uint nbits
-  | TRecord fields => oencode_fields fields
-  | TArray tp L => oencode_array (oencode tp)
-  end
-with oencode_field(field: NestedField): ointerp_field field -> list (option byte) :=
-  match field with
-  | FField _ tp => oencode tp
-  end
-with oencode_fields(fields: NestedFields): ointerp_fields fields -> list (option byte) :=
-  match fields as fields0 return ointerp_fields fields0 -> list (option byte) with
-  | FSnoc rest f => fun '(rest_vals, f_val) =>
-                      oencode_fields rest rest_vals ++
-                      optionize_input f ointerp_field field_size (oencode_field f) f_val
-  | FSingle f => optionize_input f ointerp_field field_size (oencode_field f)
-  end.
-
-Goal interp_type TARPPacket -> True.
-  intro p.
-  pose (encode TARPPacket p) as e.
-  repeat destruct p as (p & ?).
-  cbn in *.
-Abort.
-
-Goal ointerp_type TARPPacket -> True.
-  intro p.
-  pose (oencode TARPPacket p) as e.
-  repeat destruct p as (p & ?).
-  cbn in *.
-Abort.
-
-Definition someify_output{A B: Type}(f: A -> B): A -> option B :=
-  fun a => Some (f a).
-
-Fixpoint someify_type(t: NestedType): interp_type t -> ointerp_type t :=
-  match t as t0 return interp_type t0 -> ointerp_type t0 with
-  | TUInt nbits => id: uint_t nbits -> uint_t nbits
-  | TRecord fields => someify_fields fields
-  | TArray tp L => List.map (someify_output (someify_type tp))
-  end
-with someify_field(field: NestedField): interp_field field -> ointerp_field field :=
-  match field with
-  | FField _ tp => someify_type tp
-  end
-with someify_fields(fields: NestedFields): interp_fields fields -> ointerp_fields fields :=
-  match fields as fs return interp_fields fs -> ointerp_fields fs with
-  | FSnoc rest f => fun '(rest_vals, f_val) =>
-      (someify_fields rest rest_vals, someify_output (someify_field f) f_val)
-  | FSingle f => someify_output (someify_field f)
-  end.
-
-Goal interp_type TARPPacket -> True.
-  intro p.
-  pose (someify_type TARPPacket p) as s.
-  repeat destruct p as (p & ?).
-  cbn in *.
-  unfold someify_output, id in *.
+  let r := eval unfold sized_ARPPacket in sized_ARPPacket in pose r.
 Abort.
 
 Lemma cast_bytes_to_ARPPacket: forall (bs: list byte),
-    len bs = type_size TARPPacket ->
-    exists (p: interp_type TARPPacket), encode TARPPacket p = bs. (* /\ correct sizes? *)
+    len bs = sizeof ARPPacket ->
+    exists (p: ARPPacket), encode_ARPPacket p = bs /\ sized_ARPPacket p.
 Proof.
   intros.
-  unshelve eexists.
-  repeat (cbn; match goal with
-               | |- prod _ _ => constructor
-               | |- uint_t _ => shelve
-               | |- array_t _ _ => shelve
-               end).
-  cbn.
+  unshelve eexists. 1: constructor; shelve.
+  unfold encode_ARPPacket, sized_ARPPacket.
   (* --> need to instantiate goals with decoders *)
 Abort.
 
