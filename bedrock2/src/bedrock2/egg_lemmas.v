@@ -476,7 +476,7 @@ Ltac pose_common_list_lemmas :=
 Section ListSeeds.
   Context [A: Type].
   Implicit Types (l: list A).
-  Import ZListNotations.
+  Import List.ZIndexNotations.
 
   Lemma consider_from_bounds: forall i l,
       trigger! ((List.from i l)) (consider! ((i <= 0) (0 <= i < len l) (len l <= i))).

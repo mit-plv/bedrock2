@@ -153,7 +153,7 @@ Section WithParams.
       | cons h tl => sep (elem h start) (rec tl (wadd start size))
       end.
 
-  Import ZList.ZListNotations.
+  Import ZList.List.ZIndexNotations.
 
   (* or what if no constraints on lengths, and all lengths are inferred from
      length facts in context?
@@ -1528,7 +1528,7 @@ Import Syntax BinInt String List.ListNotations ZArith.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Require Import coqutil.Datatypes.ZList.
-Import ZListNotations. Local Open Scope zlist_scope.
+Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
 Require Import coqutil.Word.Bitwidth32.
 Open Scope sep_bullets_scope.
 

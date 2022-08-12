@@ -153,7 +153,8 @@ Section WithParams.
       | cons h tl => sep (elem h start) (rec tl (wadd start size))
       end.
 
-  Import ZList.ZListNotations.
+  Import ZList.
+  Import ZList.List.ZIndexNotations.
 
   (* or what if no constraints on lengths, and all lengths are inferred from
      length facts in context?
@@ -1528,7 +1529,7 @@ Import Syntax BinInt String List.ListNotations ZArith.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Require Import coqutil.Datatypes.ZList.
-Import ZListNotations. Local Open Scope zlist_scope.
+Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
 Require Import coqutil.Word.Bitwidth32.
 Open Scope sep_bullets_scope.
 
@@ -1780,7 +1781,7 @@ Fixpoint type_size(tp: NestedType): Z :=
   match tp with
   | TUInt nbits => nbits_to_nbytes nbits
   | TRecord fields => fields_size fields
-  | TArray tp L => type_size tp * L
+  | TArray tp L => type_size tp * Z.max 0 L
   end
 with field_size(field: NestedField): Z :=
   match field with
@@ -1838,6 +1839,210 @@ Goal ointerp_type TARPPacket -> True.
   cbn in *.
 Abort.
 
+Definition decoder_monad(A: Type) := list byte -> list byte * A.
+
+Definition decoder_bind{A B: Type}(m1: decoder_monad A)(m2: A -> decoder_monad B):
+  decoder_monad B := fun bs => let (bs', a) := m1 bs in m2 a bs'.
+
+Definition decoder_ret{A: Type}(a: A): decoder_monad A := fun bs => (bs, a).
+
+Definition decoder_read(n: Z): decoder_monad (list byte) :=
+  fun bs => (List.from n bs, List.upto n bs).
+
+Definition decoder_map{A B: Type}(m: decoder_monad A)(f: A -> B): decoder_monad B :=
+  fun bs => let (bs', a) := m bs in (bs', f a).
+
+Section decoder_fold_def.
+  Context {A B: Type} (f: A -> B -> decoder_monad A).
+
+  Fixpoint decoder_fold(l: list B)(a0: A): decoder_monad A :=
+    match l with
+    | nil => decoder_ret a0
+    | cons b t => decoder_bind (f a0 b) (decoder_fold t)
+    end.
+End decoder_fold_def.
+
+Section decoder_repeat_def.
+  Context {A: Type} (f: A -> decoder_monad A).
+
+  Fixpoint decoder_repeat(n: nat)(a0: A): decoder_monad A :=
+    match n with
+    | O => decoder_ret a0
+    | S m => decoder_bind (f a0) (decoder_repeat m)
+    end.
+End decoder_repeat_def.
+
+Fixpoint decode(t: NestedType): decoder_monad (interp_type t) :=
+  match t as t0 return decoder_monad (interp_type t0) with
+  | TUInt nbits =>
+      decoder_map (decoder_read (nbits_to_nbytes nbits)) LittleEndianList.le_combine
+  | TRecord fields => decode_fields fields
+  | TArray tp L => decoder_repeat
+                     (fun res => decoder_map (decode tp) (fun e => res ++ [|e|]))
+                     (Z.to_nat L) nil
+  end
+with decode_field(f: NestedField): decoder_monad (interp_field f) :=
+  match f with
+  | FField _ tp => decode tp
+  end
+with decode_fields(fs: NestedFields): decoder_monad (interp_fields fs) :=
+  match fs as fs0 return decoder_monad (interp_fields fs0) with
+  | FSnoc rest f => decoder_bind (decode_fields rest) (fun rest_deco =>
+                      decoder_bind (decode_field f) (fun f_deco =>
+                        decoder_ret (rest_deco, f_deco)))
+  | FSingle f => decode_field f
+  end.
+
+
+(* decoder which fails if not enough bytes (but for IHs to work, can't fail
+   if too many bytes, so we still need to check the number of bytes)
+
+Definition decoder_monad(A: Type) := list byte -> option (list byte * A).
+
+Definition decoder_bind{A B: Type}(m1: decoder_monad A)(m2: A -> decoder_monad B):
+  decoder_monad B := fun bs => match m1 bs with
+                               | Some (bs', a) => m2 a bs
+                               | None => None
+                               end.
+
+Definition decoder_ret{A: Type}(a: A): decoder_monad A := fun bs => Some (bs, a).
+
+Definition decoder_read(n: Z): decoder_monad (list byte) :=
+  fun bs => if n <=? len bs then Some (List.upto n bs, List.from n bs) else None.
+
+Definition decoder_map{A B: Type}(m: option (list byte * A))(f: A -> B):
+  option (list byte * B) :=
+  match m with
+  | Some (bs, a) => Some (bs, f a)
+  | None => None
+  end.
+
+Section decoder_fold_def.
+  Context {A B: Type} (f: A -> B -> list byte -> option (list byte * A)).
+
+  Fixpoint decoder_fold(l: list B)(a0: A): list byte -> option (list byte * A) :=
+    match l with
+    | nil => fun bs => Some (bs, a0)
+    | cons h t => fun bs =>
+
+List.fold_left
+Fixpoint decode(t: NestedType): list byte -> option (list byte * interp_type t) :=
+  match t with
+  | TUInt nbits =>
+      map_decode (read_bytes (nbits_to_nbytes nbits)) LittleEndianList.le_combine
+  | TRecord fields => decode_fields fields
+  | TArray tp L => decode_array (decode tp)
+  end
+with decode_field(f: NestedField): list byte -> option (list byte * interp_field f) :=
+  match field with
+  | FField _ tp => decode tp
+  end
+with decode_fields(fs: NestedFields): list byte -> option (list byte * interp_fields fs) :=
+  match fields as fields0 return ointerp_fields fields0 -> list (option byte) with
+  | FSnoc rest f => fun '(rest_vals, f_val) =>
+                      decode_fields rest rest_vals ++
+                      optionize_input f ointerp_field field_size (decode_field f) f_val
+  | FSingle f => optionize_input f ointerp_field field_size (decode_field f)
+  end.
+
+Notation "x <- c1 ;; c2" := (decoder_bind c1 (fun x => c2)).
+  (fun bs => match c1 bs with
+             | Some (bs', x) => c2
+   | Failure e => Failure e
+   end)
+    (at level 60, c1 at next level, right associativity) : result_monad_scope.
+*)
+
+Scheme NestedType_mut   := Induction for NestedType   Sort Prop
+with   NestedField_mut  := Induction for NestedField  Sort Prop
+with   NestedFields_mut := Induction for NestedFields Sort Prop.
+Combined Scheme NestedType_mutind from NestedType_mut, NestedField_mut, NestedFields_mut.
+
+Lemma nbits_to_nbytes_nonneg: forall nbits, 0 <= nbits_to_nbytes nbits.
+Proof. intros. unfold nbits_to_nbytes. Z.to_euclidean_division_equations. lia. Qed.
+
+
+Lemma type_size_nonneg_induction:
+  (forall tp, 0 <= type_size tp) /\
+  (forall f, 0 <= field_size f) /\
+  (forall fs, 0 <= fields_size fs).
+Proof.
+  eapply NestedType_mutind; simpl; intros; eauto using nbits_to_nbytes_nonneg; try lia.
+Qed.
+
+Lemma encode_decode_induction:
+  (forall tp bs,
+    type_size tp <= len bs ->
+    List.upto (type_size tp) bs = encode tp (snd (decode tp bs)) /\
+    List.from (type_size tp) bs = fst (decode tp bs)) /\
+  (forall f bs,
+    field_size f <= len bs ->
+    List.upto (field_size f) bs = encode_field f (snd (decode_field f bs)) /\
+    List.from (field_size f) bs = fst (decode_field f bs)) /\
+  (forall fs bs,
+    fields_size fs <= len bs ->
+    List.upto (fields_size fs) bs = encode_fields fs (snd (decode_fields fs bs)) /\
+    List.from (fields_size fs) bs = fst (decode_fields fs bs)).
+Proof.
+  eapply NestedType_mutind; intros.
+  - simpl in *. split; [ |reflexivity].
+    unfold encode_uint.
+    replace (Z.to_nat (nbits_to_nbytes nbits)) with
+      (List.length bs[:nbits_to_nbytes nbits]). 2: {
+      unfold List.upto. rewrite List.firstn_length. lia.
+    }
+    symmetry.
+    apply LittleEndianList.split_le_combine.
+  - eauto.
+  - admit.
+  - eauto.
+  - cbn [encode_fields].
+    rewrite (surjective_pairing (snd (decode_fields (FSnoc rest f) bs)));
+    cbn [fst snd].
+    cbn [fields_size].
+    cbn [decode_fields].
+    unfold decoder_bind, decoder_ret.
+    rewrite (surjective_pairing (decode_fields rest bs)).
+    rewrite (surjective_pairing (decode_field f (fst (decode_fields rest bs)))).
+    simpl in *.
+    destruct type_size_nonneg_induction as (N1 & N2 & N3).
+    specialize (N2 f). specialize (N3 rest).
+    specialize (H bs ltac:(lia)). destruct H as (IH1 & IH2).
+    rewrite <- IH1. rewrite <- IH2.
+    specialize (H0 bs[fields_size rest:]). rewrite List.len_from in H0 by lia.
+    specialize (H0 ltac:(lia)). destruct H0 as (IH3 & IH4).
+    rewrite <- IH3. rewrite <- IH4.
+    rewrite List.from_from by lia.
+    rewrite List.from_upto_comm by lia.
+    rewrite (List.upto_canon bs (fields_size rest)).
+    rewrite List.merge_adjacent_slices by lia.
+    rewrite <- List.upto_canon.
+    split; reflexivity.
+  - eauto.
+Admitted.
+
+Lemma encode_decode: forall tp bs,
+    len bs = type_size tp ->
+    encode tp (snd (decode tp bs)) = bs /\ fst (decode tp bs) = nil.
+Proof.
+  intros.
+  pose proof (proj1 encode_decode_induction tp bs ltac:(lia)) as P.
+  rewrite List.upto_pastend in P by lia.
+  rewrite List.from_pastend in P by lia.
+  intuition congruence.
+Qed.
+
+Lemma cast_bytes_to_ARPPacket: forall (bs: list byte),
+    len bs = type_size TARPPacket ->
+    exists (p: interp_type TARPPacket), encode TARPPacket p = bs. (* /\ correct sizes? *)
+Proof.
+  intros.
+  exists (snd (decode TARPPacket bs)).
+  eapply encode_decode.
+  assumption.
+Qed.
+
+
 Definition someify_output{A B: Type}(f: A -> B): A -> option B :=
   fun a => Some (f a).
 
@@ -1864,21 +2069,6 @@ Goal interp_type TARPPacket -> True.
   repeat destruct p as (p & ?).
   cbn in *.
   unfold someify_output, id in *.
-Abort.
-
-Lemma cast_bytes_to_ARPPacket: forall (bs: list byte),
-    len bs = type_size TARPPacket ->
-    exists (p: interp_type TARPPacket), encode TARPPacket p = bs. (* /\ correct sizes? *)
-Proof.
-  intros.
-  unshelve eexists.
-  repeat (cbn; match goal with
-               | |- prod _ _ => constructor
-               | |- uint_t _ => shelve
-               | |- array_t _ _ => shelve
-               end).
-  cbn.
-  (* --> need to instantiate goals with decoders *)
 Abort.
 
 #[export] Hint Rewrite List__repeat_0 : fwd_rewrites.
