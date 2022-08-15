@@ -80,6 +80,18 @@ Module map.
   End WithMap.
 End map.
 
+Module List.
+  Section WithA.
+    Context [A: Type].
+    Fixpoint all_none(l: list (option A)): bool :=
+      match l with
+      | nil => true
+      | cons (Some _) _ => false
+      | cons None t => all_none t
+      end.
+  End WithA.
+End List.
+
 Section WithParams.
   Context {width: Z}.
 
@@ -1595,34 +1607,61 @@ Section WithNonmaximallyInsertedA.
   Proof. intros. reflexivity. Qed.
 End WithNonmaximallyInsertedA.
 
+(* Each field can be present or absent (if it has been split off to pass to a function).
+   If a field is absent, all the presence flags of its subfields are ignored. *)
 Inductive NestedType :=
 | TUInt(nbits: Z)
 | TRecord(fields: NestedFields)
-| TArray(tp: NestedType)(L: Z)
+| TArray(tp: NestedType)(presence: list bool)
 with NestedField :=
-| FField(name: string)(tp: NestedType)
+| FField(name: string)(tp: NestedType)(present: bool)
 with NestedFields :=
 | FSnoc(rest: NestedFields)(f: NestedField) (* to match structure of stdlib pairs *)
 | FSingle(f: NestedField).
+
+Scheme NestedType_mut   := Induction for NestedType   Sort Prop
+with   NestedField_mut  := Induction for NestedField  Sort Prop
+with   NestedFields_mut := Induction for NestedFields Sort Prop.
+Combined Scheme NestedType_mutind from NestedType_mut, NestedField_mut, NestedFields_mut.
 
 (* Type aliases that can inform proof automation as well as humans on intended usage: *)
 Definition uint_t(nbits: Z) := Z.
 Definition array_t(tp: Type)(nElems: Z) := list tp.
 
+(* deliberately ignores the presence flags, so that if two types only differ
+   in their presence flages, the result of applying interp_type remains the same *)
 Fixpoint interp_type(t: NestedType): Type :=
   match t with
   | TUInt nbits => uint_t nbits
   | TRecord fields => interp_fields fields
-  | TArray tp L => array_t (interp_type tp) L
+  | TArray tp presence => array_t (interp_type tp) (len presence)
   end
 with interp_field(field: NestedField): Type :=
   match field with
-  | FField _ tp => interp_type tp
+  | FField _ tp present => interp_type tp
   end
 with interp_fields(fields: NestedFields): Type :=
   match fields with
   | FSnoc rest f => prod (interp_fields rest) (interp_field f)
   | FSingle f => interp_field f
+  end.
+
+(* only returns presence structure of nested parts, outermost option needs to be added
+   by caller *)
+Fixpoint interp_type_presence(t: NestedType): Type :=
+  match t with
+  | TUInt nbits => unit
+  | TRecord fields => interp_fields_presence fields
+  | TArray tp presence => list (option (interp_type_presence tp))
+  end
+with interp_field_presence(field: NestedField): Type :=
+  match field with
+  | FField _ tp present => interp_type_presence tp
+  end
+with interp_fields_presence(fields: NestedFields): Type :=
+  match fields with
+  | FSnoc rest f => prod (interp_fields_presence rest) (option (interp_field_presence f))
+  | FSingle f => option (interp_field_presence f)
   end.
 
 Definition nbits_to_nbytes(nbits: Z): Z := (Z.max 0 nbits + 7) / 8.
@@ -1646,8 +1685,8 @@ Definition encode_array{T: Type}: (T -> list byte) -> list T -> list byte :=
 
 (* ARP responder example *)
 
-Definition TMAC := TArray (TUInt 8) 6.
-Definition TIPv4 := TArray (TUInt 8) 4.
+Definition TMAC := TArray (TUInt 8) (List.repeatz true 6).
+Definition TIPv4 := TArray (TUInt 8) (List.repeatz true 4).
 
 (*
 
@@ -1713,7 +1752,7 @@ Definition ARPOperationRequest: Z := 1.
 Definition ARPOperationReply: Z := 2.
 
 Declare Custom Entry record_field.
-Notation "s : t" := (FField s t)
+Notation "s : t" := (FField s t true)
   (in custom record_field at level 1, s constr at level 0, t constr at level 99).
 
 Notation "<{ f1 ; f2 ; .. ; fn }>" := (FSnoc .. (FSnoc (FSingle f1) f2) .. fn)
@@ -1735,57 +1774,19 @@ Definition TARPPacket := TRecord <{
 Goal True.
   pose (interp_type TARPPacket) as r.
   cbn in r.
-Abort.
-
-Fixpoint encode(t: NestedType): interp_type t -> list byte :=
-  match t with
-  | TUInt nbits => encode_uint nbits
-  | TRecord fields => encode_fields fields
-  | TArray tp L => encode_array (encode tp)
-  end
-with encode_field(field: NestedField): interp_field field -> list byte :=
-  match field with
-  | FField _ tp => encode tp
-  end
-with encode_fields(fields: NestedFields): interp_fields fields -> list byte :=
-  match fields with
-  | FSnoc rest f => fun '(rest_vals, f_val) =>
-      encode_fields rest rest_vals ++ encode_field f f_val
-  | FSingle f => encode_field f
-  end.
-
-(* Note: does not add the outer-most option *)
-Fixpoint ointerp_type(t: NestedType): Type :=
-  match t with
-  | TUInt nbits => uint_t nbits
-  | TRecord fields => ointerp_fields fields
-  | TArray tp L => array_t (option (ointerp_type tp)) L
-  end
-with ointerp_field(field: NestedField): Type :=
-  match field with
-  | FField _ tp => ointerp_type tp
-  end
-with ointerp_fields(fields: NestedFields): Type :=
-  match fields with
-  | FSnoc rest f => prod (ointerp_fields rest) (option (ointerp_field f))
-  | FSingle f => option (ointerp_field f) (* Note: this option is not the outer-most yet;
-      if this field ends up as a singleton in a record, one more option will be added *)
-  end.
-
-Goal True.
-  pose (ointerp_type TARPPacket) as r.
-  cbn in r.
+  pose (interp_type_presence TARPPacket) as p.
+  cbn in p.
 Abort.
 
 Fixpoint type_size(tp: NestedType): Z :=
   match tp with
   | TUInt nbits => nbits_to_nbytes nbits
   | TRecord fields => fields_size fields
-  | TArray tp L => type_size tp * Z.max 0 L
+  | TArray tp presence => type_size tp * len presence
   end
 with field_size(field: NestedField): Z :=
   match field with
-  | FField _ tp => type_size tp
+  | FField _ tp _ => type_size tp
   end
 with fields_size(fields: NestedFields): Z :=
   match fields with
@@ -1793,64 +1794,307 @@ with fields_size(fields: NestedFields): Z :=
   | FSingle f => field_size f
   end.
 
-Definition oencode_uint(nbits: Z)(v: Z): list (option byte) :=
-  List.map Some (encode_uint nbits v).
+Local Open Scope bool_scope.
 
-Definition optionize_input{D: Type}(d: D)(ointerp: D -> Type)(sz: D -> Z)
-  (oenc: ointerp d -> list (option byte)): option (ointerp d) -> list (option byte) :=
-  fun o => match o with
-           | Some v => oenc v
-           | None => List.repeatz None (sz d)
-           end.
-
-Definition oencode_array{tp: NestedType}(oenc: ointerp_type tp -> list (option byte))
-  : list (option (ointerp_type tp)) -> list (option byte) :=
-  List.flat_map (optionize_input tp ointerp_type type_size oenc).
-
-Fixpoint oencode(t: NestedType): ointerp_type t -> list (option byte) :=
-  match t with
-  | TUInt nbits => oencode_uint nbits
-  | TRecord fields => oencode_fields fields
-  | TArray tp L => oencode_array (oencode tp)
+Fixpoint type_eqb(tp1 tp2: NestedType): bool :=
+  match tp1, tp2 with
+  | TUInt nbits1, TUInt nbits2 => nbits1 =? nbits2
+  | TRecord fs1, TRecord fs2 => fields_eqb fs1 fs2
+  | TArray tE1 pr1, TArray tE2 pr2 => type_eqb tE1 tE2 && List.list_eqb Bool.eqb pr1 pr2
+  | _, _ => false
   end
-with oencode_field(field: NestedField): ointerp_field field -> list (option byte) :=
-  match field with
-  | FField _ tp => oencode tp
+with field_eqb(f1 f2: NestedField): bool :=
+  match f1, f2 with
+  | FField name1 tp1 pr1, FField name2 tp2 pr2 =>
+      String.eqb name1 name2 && type_eqb tp1 tp2 && Bool.eqb pr1 pr2
   end
-with oencode_fields(fields: NestedFields): ointerp_fields fields -> list (option byte) :=
-  match fields as fields0 return ointerp_fields fields0 -> list (option byte) with
-  | FSnoc rest f => fun '(rest_vals, f_val) =>
-                      oencode_fields rest rest_vals ++
-                      optionize_input f ointerp_field field_size (oencode_field f) f_val
-  | FSingle f => optionize_input f ointerp_field field_size (oencode_field f)
+with fields_eqb(fs1 fs2: NestedFields): bool :=
+  match fs1, fs2 with
+  | FSnoc rest1 f1, FSnoc rest2 f2 => fields_eqb rest1 rest2 && field_eqb f1 f2
+  | FSingle f1, FSingle f2 => field_eqb f1 f2
+  | _, _ => false
   end.
 
-Goal interp_type TARPPacket -> True.
-  intro p.
-  pose (encode TARPPacket p) as e.
-  repeat destruct p as (p & ?).
-  cbn in *.
+(* TODO move to coqutil *)
+Global Instance Bool_eqb_spec: EqDecider Bool.eqb.
+Proof. intros. destruct x; destruct y; constructor; congruence. Qed.
+
+Lemma type_eqb_induction: EqDecider type_eqb /\ EqDecider field_eqb /\ EqDecider fields_eqb.
+Proof.
+  eapply NestedType_mutind.
+  - destruct y; simpl; try (constructor; congruence).
+    destr (Z.eqb nbits nbits0); constructor; congruence.
+  - destruct y; simpl; try (constructor; congruence).
+    specialize (H fields0). destruct H; constructor; congruence.
+  - destruct y; simpl; try (constructor; congruence).
+    specialize (H y). destr H; try (constructor; congruence).
+    destr (List.list_eqb Bool.eqb presence presence0); constructor; congruence.
+  - destruct y; simpl; try (constructor; congruence).
+    specialize (H tp0).
+    destr (String.eqb name name0); try (constructor; congruence).
+    destr H; try (constructor; congruence).
+    destr (Bool.eqb present present0); constructor; congruence.
+  - destruct y; simpl; try (constructor; congruence).
+    specialize (H y). destr H; try (constructor; congruence).
+    specialize (H0 f0). destr H0; try (constructor; congruence).
+  - destruct y; simpl; try (constructor; congruence).
+    specialize (H f0). destr H; try (constructor; congruence).
+Qed.
+
+Global Instance type_eqb_spec: EqDecider type_eqb := proj1 type_eqb_induction.
+Global Instance field_eqb_spec: EqDecider field_eqb := proj1 (proj2 type_eqb_induction).
+Global Instance fields_eqb_spec: EqDecider fields_eqb := proj2 (proj2 type_eqb_induction).
+
+Scheme NestedType_mutT   := Induction for NestedType   Sort Type
+with   NestedField_mutT  := Induction for NestedField  Sort Type
+with   NestedFields_mutT := Induction for NestedFields Sort Type.
+Arguments NestedType_mutT P P0 P1 : rename. (* https://github.com/coq/coq/issues/15985 *)
+Combined Scheme NestedType_mutindT from NestedType_mutT, NestedField_mutT, NestedFields_mutT.
+Arguments NestedType_mutindT P P0 P1 : rename.
+
+Scheme NestedType_mutS   := Induction for NestedType   Sort Set
+with   NestedField_mutS  := Induction for NestedField  Sort Set
+with   NestedFields_mutS := Induction for NestedFields Sort Set.
+Arguments NestedType_mutS P P0 P1 : rename. (* https://github.com/coq/coq/issues/15985 *)
+
+(* TODO maybe we should return defaults that have the correct size? *)
+Definition interp_type_inhabited_induction:
+  (forall tp: NestedType, inhabited (interp_type tp)) *
+  ((forall f: NestedField, inhabited (interp_field f)) *
+   (forall fs: NestedFields, inhabited (interp_fields fs))).
+  eapply NestedType_mutindT; simpl; try typeclasses eauto.
+  intros. econstructor. exact (default, default).
+Defined.
+
+Global Instance interp_type_inhabited: forall tp: NestedType, inhabited (interp_type tp) :=
+  fst interp_type_inhabited_induction.
+Global Instance interp_field_inhabited: forall f: NestedField, inhabited (interp_field f) :=
+  fst (snd interp_type_inhabited_induction).
+Global Instance interp_fields_inhabited: forall fs: NestedFields, inhabited (interp_fields fs) :=
+  snd (snd interp_type_inhabited_induction).
+
+Definition type_eq_dec: forall tp1 tp2: NestedType, { tp1 = tp2 } + { tp1 <> tp2 }.
+  pose proof NestedType_mutS as A.
+  specialize A with
+     (P := fun tp1 => forall tp2, { tp1 = tp2 } + { tp1 <> tp2 })
+     (P0 := fun f1 => forall f2, { f1 = f2 } + { f1 <> f2 })
+     (P1 := fun fs1 => forall fs2, { fs1 = fs2 } + { fs1 <> fs2 }).
+  cbn beta in A.
+  eapply A; clear A.
+  - destruct tp2; try (right; congruence).
+    destruct (Z.eq_dec nbits nbits0); [left|right]; congruence.
+  - destruct tp2; try (right; congruence).
+    specialize (H fields0).
+    destruct H; [left|right]; congruence.
+  - destruct tp2; try (right; congruence).
+    specialize (H tp2). destruct H; try (right; congruence).
+    destruct (List.list_eq_dec Bool.bool_dec presence presence0); [left|right]; congruence.
+  - destruct f2.
+    specialize (H tp0). destruct H; try (right; congruence).
+    destruct (String.string_dec name name0); try (right; congruence).
+    destruct (Bool.bool_dec present present0); [left|right]; congruence.
+  - destruct fs2; try (right; congruence).
+    specialize (H fs2). destruct H; try (right; congruence).
+    specialize (H0 f0). destruct H0; [left|right]; congruence.
+  - destruct fs2; try (right; congruence).
+    specialize (H f0). destruct H; [left|right]; congruence.
+Defined.
+
+(* Note: This does not compute, because BoolSpecs are opaque! *)
+Definition ocast(tp1 tp2: NestedType)(v: interp_type tp1): option (interp_type tp2).
+  destr (type_eqb tp1 tp2).
+  - exact (Some v).
+  - exact None.
 Abort.
 
-Goal ointerp_type TARPPacket -> True.
-  intro p.
-  pose (oencode TARPPacket p) as e.
-  repeat destruct p as (p & ?).
-  cbn in *.
-Abort.
+Definition ocast(tp1 tp2: NestedType)(v: interp_type tp1): option (interp_type tp2) :=
+  match type_eq_dec tp1 tp2 with
+  | left pf => Some (eq_rect tp1 interp_type v tp2 pf)
+  | right pf => None
+  end.
 
-Definition decoder_monad(A: Type) := list byte -> list byte * A.
+Lemma ocast_diff: forall tp1 tp2 v, tp1 <> tp2 -> ocast tp1 tp2 v = None.
+Proof.
+  intros. unfold ocast. destruct (type_eq_dec tp1 tp2); congruence.
+Qed.
+
+Lemma ocast_same_eq: forall tp1 tp2 v (pf: tp1 = tp2),
+    ocast tp1 tp2 v = Some (eq_rect tp1 interp_type v tp2 pf).
+Proof.
+  intros. unfold ocast.
+  destruct (type_eq_dec tp1 tp2). 2: congruence.
+  f_equal. f_equal. eapply Eqdep_dec.UIP_dec. eapply type_eq_dec.
+Qed.
+
+Lemma ocast_same: forall tp v, ocast tp tp v = Some v.
+Proof.
+  intros. rewrite (ocast_same_eq _ _ _ eq_refl). reflexivity.
+Qed.
+
+Definition cast{tp1 tp2: NestedType}(pf: tp1 = tp2)(x: interp_type tp1): interp_type tp2 :=
+  eq_rect tp1 interp_type x tp2 pf.
+
+(* Note: present=true means "maybe some (or even all) subfields have been split off,
+                             but the field never has been split off as a whole"
+         present=false means "the whole field has been split off, and the presence
+                              fields of the subfields are to be ignored" *)
+
+(* Note: return type (type of nested value) could almost be inferred from range,
+   except that if the range denotes one single array element, we don't know if
+   a one-element array or just the element was meant, so we pass the expected
+   return type as an argument (and thus also avoid returning a sigma type). *)
+Fixpoint split_off_from_type(start size addr: Z)(tp expTp: NestedType)
+  (* inner None means range matched *)
+  : interp_type tp -> option (option NestedType * interp_type expTp) :=
+  if (addr =? start) && (size =? type_size tp) then
+    (* queried range equals our range *)
+    match type_eq_dec tp expTp with
+    | left pf => fun v => Some (None, cast pf v)
+    | right _ => fun v => None
+    end
+  else if (addr <=? start) && (start + size <=? addr + type_size tp) then
+    (* queried range is a strict subrange of our range *)
+    match tp as tp0 return interp_type tp0 -> option (option NestedType * interp_type expTp)
+    with
+    | TUInt nbits => fun v => None
+    | TRecord fields => fun v: interp_type (TRecord fields) =>
+        match split_off_from_fields start size addr fields expTp v with
+        | Some (fields', res) => Some (Some (TRecord fields'), res)
+        | None => None
+        end
+    | TArray tE presence =>
+        match type_eq_dec (TArray tE presence) expTp with
+        | left pf => fun v => (* according to types, a subarray is requested *)
+            if ((start - addr) mod (type_size tE) =? 0)
+               && (size mod (type_size tE) =? 0)
+               && List.forallb id presence[(start-addr)/type_size tE:][:size/type_size tE]
+            then Some (Some (TArray tE (presence[:(start-addr)/type_size tE]
+                          ++ List.repeatz false (size/type_size tE)
+                          ++ presence[(start-addr)/type_size tE + size/type_size tE :])),
+                       cast pf v[(start-addr)/type_size tE:][:size/type_size tE])
+            else None
+        | right _ =>
+            match type_eq_dec tE expTp with
+            | left pf => fun v => (* according to types, one array element is requested *)
+              if ((start - addr) mod (type_size tE) =? 0)
+                 && (size =? type_size tE)
+                 && presence[(start-addr)/type_size tE]
+              then Some (Some (TArray tE (presence[:(start-addr)/type_size tE]
+                            ++ [| false |]
+                            ++ presence[(start-addr)/type_size tE + 1 :])),
+                         cast pf v[(start-addr)/type_size tE])
+              else None
+              | right _ => fun v => None
+            end
+        end
+    end
+  else fun _ => None (* queried range is (at least partially) outside of our range *)
+with split_off_from_field(start size addr: Z)(f: NestedField)(expTp: NestedType)
+  : interp_field f -> option (NestedField * interp_type expTp) :=
+  match f with
+  | FField name tp present => fun v =>
+      (* Note: We don't need to check that the presence flags of the subfields in tp
+         are all true, because if expTp contains holes, tp may contain holes too, as
+         long as it's exactly the same holes, which is checked by type_eq_dec in
+         split_off_from_type *)
+      if present then
+        match split_off_from_type start size addr tp expTp v with
+        | Some (Some tp', res) => Some (FField name tp' true, res)
+        | Some (None, res) => Some (FField name tp false, res)
+        | None => None
+        end
+      else None
+  end
+with split_off_from_fields(start size addr: Z)(fs: NestedFields)(expTp: NestedType)
+  : interp_fields fs -> option (NestedFields * interp_type expTp) :=
+  match fs as fs0 return interp_fields fs0 -> option (NestedFields * interp_type expTp) with
+  | FSnoc rest f => fun '(v_rest, v_f) =>
+      (* Note: returning a subsequence of the fields is not yet supported *)
+      if start <? addr + fields_size rest then
+        match split_off_from_fields start size addr rest expTp v_rest with
+        | Some (rest', res) => Some (FSnoc rest' f, res)
+        | None => None
+        end
+      else
+        match split_off_from_field start size addr f expTp v_f with
+        | Some (f', res) => Some (FSnoc rest f', res)
+        | None => None
+        end
+  | FSingle f => fun v =>
+      match split_off_from_field start size addr f expTp v with
+      | Some (field', res) => Some (FSingle field', res)
+      | None => None
+      end
+  end.
+
+(* if the type has holes, any values should be accepted for the holes,
+   so we can't use a judgment of the form "decode bytes = value", but
+   we have to use a relation *)
+
+(* instead of (list (option byte)), use (map Z byte) starting at index 0 and
+   shift the keys?
+
+but byte lists do appear when casting from byte arrays to records
+
+for casting byte buffer to record:
+decode taking (list byte), no holes
+
+
+ *)
+
+(*
+Fixpoint type_rep(t: NestedType): list (option byte) -> interp_type t -> Prop :=
+  match t with
+  | TUInt nbits => fun bs v => len bs = nbits_to_nbytes nbits /\
+                               LittleEndianList.le_combine bs = v
+  | TRecord fields => fields_rep fields
+  | TArray tp presence => fun bs vs => True (*decoder_fold
+                     (fun res present =>
+                        if present then decoder_map (decode tp) (fun e => res ++ [|e|])
+                        else decoder_bind (decoder_hole (type_size tp)) (fun _ => decoder_ret res
+                     presence nil*)
+  end
+with field_rep(f: NestedField): list (option byte) -> interp_field f -> Prop :=
+  match f with
+  | FField _ tp => decode tp
+  end
+with fields_rep(fs: NestedFields): list (option byte) -> interp_fields fs -> Prop :=
+  match fs with
+  | FSnoc rest f => decoder_bind (fields_rep rest) (fun rest_deco =>
+                      decoder_bind (field_rep f) (fun f_deco =>
+                        decoder_ret (rest_deco, f_deco)))
+  | FSingle f => field_rep f
+  end.
+*)
+
+Definition decoder_monad(A: Type) := list (option byte) -> option (list (option byte) * A).
 
 Definition decoder_bind{A B: Type}(m1: decoder_monad A)(m2: A -> decoder_monad B):
-  decoder_monad B := fun bs => let (bs', a) := m1 bs in m2 a bs'.
+  decoder_monad B := fun bs => match m1 bs with
+                               | Some (bs', a) => m2 a bs'
+                               | None => None
+                               end.
 
-Definition decoder_ret{A: Type}(a: A): decoder_monad A := fun bs => (bs, a).
+Definition decoder_ret{A: Type}(a: A): decoder_monad A := fun bs => Some (bs, a).
 
 Definition decoder_read(n: Z): decoder_monad (list byte) :=
-  fun bs => (List.from n bs, List.upto n bs).
+  fun bs => if n <=? len bs then
+              match List.option_all (List.upto n bs) with
+              | Some bytes => Some (List.from n bs, bytes)
+              | None => None
+              end
+            else None.
+
+Definition decoder_hole(n: Z): decoder_monad unit :=
+  fun bs => if n <=? len bs then
+              if List.all_none (List.upto n bs) then Some (List.from n bs, tt) else None
+            else None.
 
 Definition decoder_map{A B: Type}(m: decoder_monad A)(f: A -> B): decoder_monad B :=
-  fun bs => let (bs', a) := m bs in (bs', f a).
+  fun bs => match m bs with
+            | Some (bs', a) => Some (bs', f a)
+            | None => None
+            end.
 
 Section decoder_fold_def.
   Context {A B: Type} (f: A -> B -> decoder_monad A).
@@ -1862,24 +2106,17 @@ Section decoder_fold_def.
     end.
 End decoder_fold_def.
 
-Section decoder_repeat_def.
-  Context {A: Type} (f: A -> decoder_monad A).
-
-  Fixpoint decoder_repeat(n: nat)(a0: A): decoder_monad A :=
-    match n with
-    | O => decoder_ret a0
-    | S m => decoder_bind (f a0) (decoder_repeat m)
-    end.
-End decoder_repeat_def.
-
+(*
 Fixpoint decode(t: NestedType): decoder_monad (interp_type t) :=
   match t as t0 return decoder_monad (interp_type t0) with
   | TUInt nbits =>
       decoder_map (decoder_read (nbits_to_nbytes nbits)) LittleEndianList.le_combine
   | TRecord fields => decode_fields fields
-  | TArray tp L => decoder_repeat
-                     (fun res => decoder_map (decode tp) (fun e => res ++ [|e|]))
-                     (Z.to_nat L) nil
+  | TArray tp presence => decoder_fold
+                     (fun res present =>
+                        if present then decoder_map (decode tp) (fun e => res ++ [|e|])
+                        else decoder_bind (decoder_hole (type_size tp)) (fun _ => decoder_ret res
+                     presence nil
   end
 with decode_field(f: NestedField): decoder_monad (interp_field f) :=
   match f with
@@ -1892,7 +2129,7 @@ with decode_fields(fs: NestedFields): decoder_monad (interp_fields fs) :=
                         decoder_ret (rest_deco, f_deco)))
   | FSingle f => decode_field f
   end.
-
+*)
 
 (* decoder which fails if not enough bytes (but for IHs to work, can't fail
    if too many bytes, so we still need to check the number of bytes)
@@ -1953,11 +2190,6 @@ Notation "x <- c1 ;; c2" := (decoder_bind c1 (fun x => c2)).
     (at level 60, c1 at next level, right associativity) : result_monad_scope.
 *)
 
-Scheme NestedType_mut   := Induction for NestedType   Sort Prop
-with   NestedField_mut  := Induction for NestedField  Sort Prop
-with   NestedFields_mut := Induction for NestedFields Sort Prop.
-Combined Scheme NestedType_mutind from NestedType_mut, NestedField_mut, NestedFields_mut.
-
 Lemma nbits_to_nbytes_nonneg: forall nbits, 0 <= nbits_to_nbytes nbits.
 Proof. intros. unfold nbits_to_nbytes. Z.to_euclidean_division_equations. lia. Qed.
 
@@ -1970,6 +2202,7 @@ Proof.
   eapply NestedType_mutind; simpl; intros; eauto using nbits_to_nbytes_nonneg; try lia.
 Qed.
 
+(*
 Lemma encode_decode_induction:
   (forall tp bs,
     type_size tp <= len bs ->
@@ -2070,6 +2303,7 @@ Goal interp_type TARPPacket -> True.
   cbn in *.
   unfold someify_output, id in *.
 Abort.
+*)
 
 #[export] Hint Rewrite List__repeat_0 : fwd_rewrites.
 
