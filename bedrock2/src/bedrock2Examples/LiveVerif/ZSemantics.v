@@ -12,6 +12,7 @@ Require coqutil.Map.SortedListString. (* for function env, other maps are kept a
 Require Import coqutil.Map.Z_keyed_SortedListMap.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Word.Bitwidth.
+Require Import coqutil.Map.OfOptionListZ.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
@@ -90,6 +91,13 @@ Module List.
       | cons None t => all_none t
       end.
   End WithA.
+
+  Inductive Forall3[A B C: Type](R: A -> B -> C -> Prop)
+    : list A -> list B -> list C -> Prop :=
+  | Forall3_nil: Forall3 R nil nil nil
+  | Forall3_cons: forall (x : A) (y : B) (z: C) lA lB lC,
+      R x y z -> Forall3 R lA lB lC -> Forall3 R (x :: lA) (y :: lB) (z :: lC).
+
 End List.
 
 Section WithParams.
@@ -2030,6 +2038,49 @@ with split_off_from_fields(start size addr: Z)(fs: NestedFields)(expTp: NestedTy
 (* if the type has holes, any values should be accepted for the holes,
    so we can't use a judgment of the form "decode bytes = value", but
    we have to use a relation *)
+
+Fixpoint type_rep(tp: NestedType): interp_type tp -> list (option byte) -> Prop :=
+  match tp as tp0 return interp_type tp0 -> list (option byte) -> Prop with
+  | TUInt nbits => fun (v: Z) bso =>
+      len bso = nbits_to_nbytes nbits /\
+      exists bs, List.map Some bs = bso /\ LittleEndianList.le_combine bs = v
+  | TRecord fields => fields_rep fields
+  | TArray tE presence => fun vs bso =>
+      exists chunks, List.concat chunks = bso /\
+        List.Forall3 (fun (present: bool) chunk v =>
+          if present then type_rep tE v chunk
+          else chunk = List.repeatz None (type_size tE) (* any v is allowed *))
+          presence chunks vs
+  end
+with field_rep(f: NestedField): interp_field f -> list (option byte) -> Prop :=
+  match f with
+  | FField _ tE present => fun v bso =>
+      if present then type_rep tE v bso
+      else bso = List.repeatz None (type_size tE) (* any v is allowed *)
+  end
+with fields_rep(fs: NestedFields): interp_fields fs -> list (option byte) -> Prop :=
+  match fs with
+  | FSnoc rest f => fun '(v_rest, v_f) bso =>
+      exists bso_rest bso_f, bso = bso_rest ++ bso_f /\
+                             fields_rep rest v_rest bso_rest /\
+                             field_rep f v_f bso_f
+  | FSingle f => field_rep f
+  end.
+
+Definition record(tp: NestedType)(v: interp_type tp)(addr: Z)(m: mem): Prop :=
+  exists bso, m = map.of_olist_Z_at addr bso /\ type_rep tp v bso.
+
+Fail (* problem: interp_type tp1 = interp_type tp1' is not obvious,
+        (a lemma to be proven by mutual induction over NestedType) but needed
+        to typecheck the two record statements *)
+Lemma split_off_correct_induction:
+  (forall tp1 tp2 (v1: interp_type tp1) start size addr otp1' v2,
+     split_off_from_type start size addr tp1 tp2 v1 = Some (otp1', v2) ->
+     match otp1' with
+     | Some tp1' => record tp1 v1 addr = sep (record tp1' v1 addr) (record tp2 v2 start)
+     | None => tp1 = tp2
+     end).
+
 
 (* instead of (list (option byte)), use (map Z byte) starting at index 0 and
    shift the keys?
