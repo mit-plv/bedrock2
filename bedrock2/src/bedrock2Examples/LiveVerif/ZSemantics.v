@@ -102,6 +102,9 @@ End List.
 
 Definition nbits_to_nbytes(nbits: Z): Z := (Z.max 0 nbits + 7) / 8.
 
+Lemma nbits_to_nbytes_nonneg: forall nbits, 0 <= nbits_to_nbytes nbits.
+Proof. intros. unfold nbits_to_nbytes. Z.to_euclidean_division_equations. lia. Qed.
+
 Section WithParams.
   Context {width: Z}.
 
@@ -1621,6 +1624,7 @@ Inductive NestedType: Type :=
 | TUInt(nbits: Z)
 | TRecord(fields: NestedFields)
 | TArray(tp: NestedType)(L: Z) (* length of array is needed for type_size *)
+        (L_nonneg: -1 < L) (* can be eq_refl for constant values of L *)
 with NestedField :=
 | FField(name: string)(tp: NestedType)
 with NestedFields :=
@@ -1651,7 +1655,7 @@ Fixpoint interp_type(t: NestedType): Type :=
   match t with
   | TUInt nbits => uint_t nbits
   | TRecord fields => interp_fields fields
-  | TArray tp L => array_t (interp_type tp) L
+  | TArray tp L _ => array_t (interp_type tp) L
   end
 with interp_field(field: NestedField): Type :=
   match field with
@@ -1675,7 +1679,7 @@ Fixpoint type_presence(t: NestedType): Type :=
   match t with
   | TUInt nbits => bool
   | TRecord fields => fields_presence fields
-  | TArray tp L => list (type_presence tp)
+  | TArray tp L _ => list (type_presence tp)
   end
 with field_presence(field: NestedField): Type :=
   match field with
@@ -1693,7 +1697,7 @@ Section WithPresence.
     match t with
     | TUInt nbits => b
     | TRecord fields => const_fields_presence fields
-    | TArray tp L => List.repeatz (const_type_presence tp) L
+    | TArray tp L _ => List.repeatz (const_type_presence tp) L
     end
   with const_field_presence(f: NestedField): field_presence f :=
     match f with
@@ -1716,7 +1720,7 @@ Fixpoint type_presence_eqb{tp: NestedType}:
   match tp with
   | TUInt nbits => Bool.eqb
   | TRecord fields => @fields_presence_eqb fields
-  | TArray tE L => List.list_eqb (@type_presence_eqb tE)
+  | TArray tE L _ => List.list_eqb (@type_presence_eqb tE)
   end
 with field_presence_eqb{f: NestedField}:
   field_presence f -> field_presence f -> bool :=
@@ -1759,7 +1763,7 @@ Fixpoint type_presence_sub{tp: NestedType}:
   match tp with
   | TUInt nbits => atomic_presence_sub
   | TRecord fields => @fields_presence_sub fields
-  | TArray tE L => type_presence_list_sub type_presence_sub
+  | TArray tE L _ => type_presence_list_sub type_presence_sub
   end
 with field_presence_sub{f: NestedField}:
   field_presence f -> field_presence f -> option (field_presence f) :=
@@ -1799,8 +1803,8 @@ Definition encode_array{T: Type}: (T -> list byte) -> list T -> list byte :=
 
 (* ARP responder example *)
 
-Definition TMAC := TArray (TUInt 8) 6.
-Definition TIPv4 := TArray (TUInt 8) 4.
+Definition TMAC := TArray (TUInt 8) 6 eq_refl.
+Definition TIPv4 := TArray (TUInt 8) 4 eq_refl.
 
 (*
 
@@ -1894,7 +1898,7 @@ Fixpoint type_size(tp: NestedType): Z :=
   match tp with
   | TUInt nbits => nbits_to_nbytes nbits
   | TRecord fields => fields_size fields
-  | TArray tp L => type_size tp * Z.max 0 L
+  | TArray tp L _ => type_size tp * L
   end
 with field_size(field: NestedField): Z :=
   match field with
@@ -1906,11 +1910,23 @@ with fields_size(fields: NestedFields): Z :=
   | FSingle f => field_size f
   end.
 
+Lemma type_size_nonneg_induction:
+  (forall tp, 0 <= type_size tp) /\
+  (forall f, 0 <= field_size f) /\
+  (forall fs, 0 <= fields_size fs).
+Proof.
+  eapply NestedType_mutind; simpl; intros; eauto using nbits_to_nbytes_nonneg; try lia.
+Qed.
+
+Definition type_size_nonneg := proj1 type_size_nonneg_induction.
+Definition field_size_nonneg := proj1 (proj2 type_size_nonneg_induction).
+Definition fields_size_nonneg := proj2 (proj2 type_size_nonneg_induction).
+
 Fixpoint type_eqb(tp1 tp2: NestedType): bool :=
   match tp1, tp2 with
   | TUInt nbits1, TUInt nbits2 => nbits1 =? nbits2
   | TRecord fs1, TRecord fs2 => fields_eqb fs1 fs2
-  | TArray tE1 L1, TArray tE2 L2 => type_eqb tE1 tE2 && Z.eqb L1 L2
+  | TArray tE1 L1 _, TArray tE2 L2 _ => type_eqb tE1 tE2 && Z.eqb L1 L2
   | _, _ => false
   end
 with field_eqb(f1 f2: NestedField): bool :=
@@ -1928,6 +1944,12 @@ with fields_eqb(fs1 fs2: NestedFields): bool :=
 Global Instance Bool_eqb_spec: EqDecider Bool.eqb.
 Proof. intros. destruct x; destruct y; constructor; congruence. Qed.
 
+Lemma lt_proofs_unique: forall (a b: Z) (pf1 pf2: a < b), pf1 = pf2.
+Proof.
+  unfold Z.lt. intros. eapply Eqdep_dec.UIP_dec.
+  intros. destruct x; destruct y; constructor; congruence.
+Qed.
+
 Lemma type_eqb_induction: EqDecider type_eqb /\ EqDecider field_eqb /\ EqDecider fields_eqb.
 Proof.
   eapply NestedType_mutind.
@@ -1937,7 +1959,8 @@ Proof.
     specialize (H fields0). destruct H; constructor; congruence.
   - destruct y; simpl; try (constructor; congruence).
     specialize (H y). destr H; try (constructor; congruence).
-    destr (Z.eqb L L0); constructor; congruence.
+    destr (Z.eqb L L0); try (constructor; congruence).
+    constructor. f_equal; try assumption. apply lt_proofs_unique.
   - destruct y; simpl; try (constructor; congruence).
     specialize (H tp0).
     destr (String.eqb name name0); try (constructor; congruence).
@@ -2014,7 +2037,8 @@ Definition type_eq_dec: forall tp1 tp2: NestedType, { tp1 = tp2 } + { tp1 <> tp2
     destruct H; [left|right]; congruence.
   - destruct tp2; try (right; congruence).
     specialize (H tp2). destruct H; try (right; congruence).
-    destruct (Z.eq_dec L L0); [left|right]; congruence.
+    destruct (Z.eq_dec L L0); try (right; congruence).
+    subst L0. left. f_equal. 1: assumption. apply lt_proofs_unique.
   - destruct f2.
     specialize (H tp0). destruct H; try (right; congruence).
     destruct (String.string_dec name name0); [left|right]; congruence.
@@ -2068,8 +2092,11 @@ Definition toplevel_elem_count(tp: NestedType): Z :=
   match tp with
   | TUInt _ => 1
   | TRecord _ => 1
-  | TArray _ L => L
+  | TArray _ L _ => L
   end.
+
+Lemma toplevel_elem_count_nonneg: forall tp, -1 < toplevel_elem_count tp.
+Proof. destruct tp; simpl; lia. Qed.
 
 Section SplitOff.
   (* tp1 with holes as described in pr1, located at addr1, is what we want to split off *)
@@ -2090,13 +2117,15 @@ Section SplitOff.
         match tp2 as tp2 return type_presence tp2 -> interp_type tp2 -> option (type_presence tp2 * interp_type tp1) with
         | TUInt nbits => fun pr2 v => None
         | TRecord fields => split_off_from_fields addr2 fields
-        | TArray tE L2 =>
+        | TArray tE L2 L2nonneg =>
             let i := (addr1 - addr2)/type_size tE in
-            match type_eq_dec (TArray tE (toplevel_elem_count tp1)) tp1 with
+            match type_eq_dec (TArray tE (toplevel_elem_count tp1)
+                                 (toplevel_elem_count_nonneg tp1)) tp1
+            with
             | left pf => fun pr2 v => (* according to types, a subarray is requested *)
                 if ((addr1 - addr2) mod (type_size tE) =? 0) then
                   let pr2slice := pr2[i:][: toplevel_elem_count tp1] in
-                  match @type_presence_sub (TArray tE (toplevel_elem_count tp1))
+                  match @type_presence_sub (TArray tE (toplevel_elem_count tp1) _)
                           pr2slice (cast type_presence (eq_sym pf) pr1)
                   with
                   | Some pr2slice' => Some (
@@ -2164,7 +2193,7 @@ Fixpoint type_rep(tp: NestedType):
       then exists bs, List.map Some bs = bso /\ LittleEndianList.le_combine bs = v
       else List.Forall (eq None) bso
   | TRecord fields => fields_rep fields
-  | TArray tE L => fun presence vs bso =>
+  | TArray tE L _ => fun presence vs bso =>
       exists chunks, len chunks = L /\ List.concat chunks = bso /\
         List.Forall3 (type_rep tE) presence vs chunks
   end
@@ -2183,6 +2212,78 @@ with fields_rep(fs: NestedFields):
   | FSingle f => field_rep f
   end.
 
+Lemma cast_bytes_induction:
+  (forall tp bs, len bs = type_size tp -> exists v: interp_type tp,
+     type_rep tp (const_type_presence true tp) v (List.map Some bs)) /\
+  (forall f bs, len bs = field_size f -> exists v: interp_field f,
+     field_rep f (const_field_presence true f) v (List.map Some bs)) /\
+  (forall fs bs, len bs = fields_size fs -> exists v: interp_fields fs,
+     fields_rep fs (const_fields_presence true fs) v (List.map Some bs)).
+Proof.
+  eapply NestedType_mutind;
+    cbn [interp_type type_rep type_size
+         interp_field field_rep field_size
+         interp_fields fields_rep fields_size];
+    intros.
+  - eexists. rewrite List.map_length. split. 1: assumption.
+    simpl. eexists. split; reflexivity.
+  - eauto.
+  - revert H0. unfold array_t. cbn. unfold List.repeatz.
+    set (n := Z.to_nat L).
+    replace L with (Z.of_nat n) by lia. clearbody n. clear L L_nonneg.
+    revert bs.
+    induction n; intros.
+    + change (Z.of_nat 0) with 0 in *. rewrite Z.mul_0_r in *.
+      destruct bs. 2: discriminate. clear H0.
+      exists nil, nil. ssplit; constructor.
+    + specialize (H (List.upto (type_size tp) bs)).
+      destruct H as (v & H). {
+        apply List.len_upto. pose proof (type_size_nonneg tp). lia.
+      }
+      specialize (IHn (List.from (type_size tp) bs)).
+      destruct IHn as (vs & chunks & IH1 & IH2 & IH3). {
+        pose proof (type_size_nonneg tp).
+        rewrite List.len_from; lia.
+      }
+      exists (v :: vs), ((List.map Some (List.upto (type_size tp) bs)) :: chunks).
+      ssplit.
+      * cbn [List.length]. lia.
+      * cbn. rewrite IH2. rewrite <- List.map_app. f_equal.
+        rewrite List.upto_canon. rewrite (List.from_canon bs (type_size tp)).
+        rewrite List.merge_adjacent_slices. 2: pose proof (type_size_nonneg tp); lia.
+        rewrite <- List.upto_canon.
+        (* TODO add to ZList *)
+        unfold List.upto.
+        replace (Z.to_nat (Z.of_nat (List.length bs))) with (List.length bs) by lia.
+        apply List.firstn_all.
+      * cbn. constructor; assumption.
+  - eauto.
+  - specialize (H (List.upto (fields_size rest) bs)).
+    pose proof (fields_size_nonneg rest).
+    pose proof (field_size_nonneg f).
+    destruct H as (v_rest & IHrest). {
+      apply List.len_upto. lia.
+    }
+    specialize (H0 (List.from (fields_size rest) bs)).
+    destruct H0 as (v_f & IHf). {
+      rewrite List.len_from; lia.
+    }
+    change (const_fields_presence true (FSnoc rest f))
+             with (const_fields_presence true rest, const_field_presence true f).
+    eexists (_, _).
+    eexists _, _.
+    ssplit. 2,3: eassumption.
+    rewrite <- List.map_app. f_equal.
+    rewrite List.upto_canon. rewrite (List.from_canon bs (fields_size rest)).
+    rewrite List.merge_adjacent_slices by lia.
+    rewrite <- List.upto_canon.
+    (* TODO add to ZList *)
+    unfold List.upto.
+    replace (Z.to_nat (Z.of_nat (List.length bs))) with (List.length bs) by lia.
+    symmetry. apply List.firstn_all.
+  - eauto.
+Qed.
+
 Definition record(tp: NestedType)(pr: type_presence tp)(v: interp_type tp)
   (addr: Z)(m: mem): Prop :=
   exists bso, m = map.of_olist_Z_at addr bso /\ type_rep tp pr v bso.
@@ -2196,6 +2297,14 @@ Definition record_fields(fs: NestedFields)(pr: fields_presence fs)(v: interp_fie
   exists bso, m = map.of_olist_Z_at addr bso /\ fields_rep fs pr v bso.
 
 Axiom TODO: False.
+
+Lemma bytearray_to_record: forall (bs: list Z) L addr pf R m tp,
+    type_size tp = L ->
+    sep (record (TArray (TUInt 8) L pf) (all_present _) bs addr) R m ->
+    exists (v: interp_type tp),
+      sep (record tp (all_present _) v addr) R m.
+Proof.
+Admitted.
 
 Lemma record_TUInt_present: forall v a nbits,
     record (TUInt nbits) true v a = littleendian nbits v a.
@@ -2218,7 +2327,7 @@ Proof.
   - fwd. split. 2: constructor. case TODO.
   - apply proj1 in H. subst m. exists (List.repeatz None (nbits_to_nbytes nbits)). ssplit.
     + case TODO.
-    + apply List.len_repeatz. case TODO.
+    + apply List.len_repeatz. apply nbits_to_nbytes_nonneg.
     + case TODO.
 Qed.
 
@@ -2424,17 +2533,6 @@ Notation "x <- c1 ;; c2" := (decoder_bind c1 (fun x => c2)).
     (at level 60, c1 at next level, right associativity) : result_monad_scope.
 *)
 
-Lemma nbits_to_nbytes_nonneg: forall nbits, 0 <= nbits_to_nbytes nbits.
-Proof. intros. unfold nbits_to_nbytes. Z.to_euclidean_division_equations. lia. Qed.
-
-
-Lemma type_size_nonneg_induction:
-  (forall tp, 0 <= type_size tp) /\
-  (forall f, 0 <= field_size f) /\
-  (forall fs, 0 <= fields_size fs).
-Proof.
-  eapply NestedType_mutind; simpl; intros; eauto using nbits_to_nbytes_nonneg; try lia.
-Qed.
 
 (*
 Lemma encode_decode_induction:
