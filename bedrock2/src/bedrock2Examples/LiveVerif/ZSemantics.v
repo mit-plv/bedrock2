@@ -1669,23 +1669,15 @@ with interp_fields(fields: NestedFields): Type :=
    matching becomes too cumbersome, so we prefer a
    `Fixpoint type_presence: NestedType -> Type` *)
 
-Inductive presence{P: Type}: Type :=
-| PPresent
-| PAbsent
-| PPartial(details: P).
-Arguments presence: clear implicits.
-
-(* only returns presence structure of nested parts, outermost presence wrapper needs to
-   be added by caller *)
 Fixpoint type_presence(t: NestedType): Type :=
   match t with
-  | TUInt nbits => unit
+  | TUInt nbits => bool
   | TRecord fields => fields_presence fields
-  | TArray tp L => list (presence (type_presence tp))
+  | TArray tp L => list (type_presence tp)
   end
 with field_presence(field: NestedField): Type :=
   match field with
-  | FField _ tp => presence (type_presence tp)
+  | FField _ tp => type_presence tp
   end
 with fields_presence(fields: NestedFields): Type :=
   match fields with
@@ -1693,23 +1685,97 @@ with fields_presence(fields: NestedFields): Type :=
   | FSingle f => field_presence f
   end.
 
-Definition field_present(f: NestedField): field_presence f :=
+Section WithPresence.
+  Context (b: bool).
+  Fixpoint const_type_presence(t: NestedType): type_presence t :=
+    match t with
+    | TUInt nbits => b
+    | TRecord fields => const_fields_presence fields
+    | TArray tp L => List.repeatz (const_type_presence tp) L
+    end
+  with const_field_presence(f: NestedField): field_presence f :=
+    match f with
+    | FField _ tp => const_type_presence tp
+    end
+  with const_fields_presence(fs: NestedFields): fields_presence fs :=
+    match fs with
+    | FSnoc rest f => (const_fields_presence rest, const_field_presence f)
+    | FSingle f => const_field_presence f
+    end.
+End WithPresence.
+
+Definition all_present: forall tp: NestedType, type_presence tp := const_type_presence true.
+Definition all_absent: forall tp: NestedType, type_presence tp := const_type_presence false.
+
+Local Open Scope bool_scope.
+
+Fixpoint type_presence_eqb{tp: NestedType}:
+  type_presence tp -> type_presence tp -> bool :=
+  match tp with
+  | TUInt nbits => Bool.eqb
+  | TRecord fields => @fields_presence_eqb fields
+  | TArray tE L => List.list_eqb (@type_presence_eqb tE)
+  end
+with field_presence_eqb{f: NestedField}:
+  field_presence f -> field_presence f -> bool :=
   match f with
-  | FField _ tp => PPresent
-  end.
-
-Fixpoint all_fields_present(fs: NestedFields): fields_presence fs :=
+  | FField _ tp => @type_presence_eqb tp
+  end
+with fields_presence_eqb{fs: NestedFields}:
+  fields_presence fs -> fields_presence fs -> bool :=
   match fs with
-  | FSnoc rest f => (all_fields_present rest, field_present f)
-  | FSingle f => field_present f
+  | FSnoc rest f => fun '(p_rest1, p_f1) '(p_rest2, p_f2) =>
+      (fields_presence_eqb p_rest1 p_rest2) && (field_presence_eqb p_f1 p_f2)
+  | FSingle f => @field_presence_eqb f
   end.
 
-(* unfold one layer of "all fields are present" *)
-Fixpoint unfold_type_present(t: NestedType): type_presence t :=
-  match t with
-  | TUInt nbits => tt
-  | TRecord fields => all_fields_present fields
-  | TArray tp L => List.repeatz PPresent L
+Definition type_presence_list_sub{tp: NestedType}
+  (type_presence_sub: type_presence tp -> type_presence tp -> option (type_presence tp)):
+  list (type_presence tp) -> list (type_presence tp) -> option (list (type_presence tp)) :=
+  fix rec ps1 ps2 :=
+    match ps1, ps2 with
+    | cons p1 rest1, cons p2 rest2 =>
+        match type_presence_sub p1 p2 with
+        | Some p3 =>
+            match rec rest1 rest2 with
+            | Some rest3 => Some (cons p3 rest3)
+            | None => None
+            end
+        | None => None
+        end
+    | nil, nil => Some nil
+    | _, _ => None
+    end.
+
+Definition atomic_presence_sub(p1 p2: bool): option bool :=
+  if p1 then if p2 then Some false else Some true
+  else if p2 then None else Some false.
+
+(* type presence subtraction, returns None if trying to subtract presence from absence *)
+Fixpoint type_presence_sub{tp: NestedType}:
+  type_presence tp -> type_presence tp -> option (type_presence tp) :=
+  match tp with
+  | TUInt nbits => atomic_presence_sub
+  | TRecord fields => @fields_presence_sub fields
+  | TArray tE L => type_presence_list_sub type_presence_sub
+  end
+with field_presence_sub{f: NestedField}:
+  field_presence f -> field_presence f -> option (field_presence f) :=
+  match f with
+  | FField _ tp => @type_presence_sub tp
+  end
+with fields_presence_sub{fs: NestedFields}:
+  fields_presence fs -> fields_presence fs -> option (fields_presence fs) :=
+  match fs with
+  | FSnoc rest f => fun '(p_rest1, p_f1) '(p_rest2, p_f2) =>
+      match fields_presence_sub p_rest1 p_rest2 with
+      | Some p_rest3 => match field_presence_sub p_f1 p_f2 with
+                      | Some p_f3 => Some (p_rest3, p_f3)
+                      | None => None
+                      end
+      | None => None
+      end
+  | FSingle f => @field_presence_sub f
   end.
 
 Definition nbits_to_nbytes(nbits: Z): Z := (Z.max 0 nbits + 7) / 8.
@@ -1839,8 +1905,6 @@ with fields_size(fields: NestedFields): Z :=
   | FSnoc rest f => fields_size rest + field_size f
   | FSingle f => field_size f
   end.
-
-Local Open Scope bool_scope.
 
 Fixpoint type_eqb(tp1 tp2: NestedType): bool :=
   match tp1, tp2 with
@@ -1974,128 +2038,116 @@ Proof.
   intros. rewrite (ocast_same_eq _ _ _ eq_refl). reflexivity.
 Qed.
 
-Definition cast{tp1 tp2: NestedType}(pf: tp1 = tp2)(x: interp_type tp1): interp_type tp2 :=
+Definition cast0{tp1 tp2: NestedType}(pf: tp1 = tp2)(x: interp_type tp1): interp_type tp2 :=
   eq_rect tp1 interp_type x tp2 pf.
 
-(* Note: return type (type of nested value) could almost be inferred from range,
-   except that if the range denotes one single array element, we don't know if
-   a one-element array or just the element was meant, so we pass the expected
-   return type as an argument (and thus also avoid returning a sigma type).
-Fixpoint split_off_from_type(start size addr: Z)(tp expTp: NestedType)
-  (* inner None means range matched *)
-  : type_presence tp -> interp_type tp -> option (option NestedType * interp_type expTp) :=
-  if (addr =? start) && (size =? type_size tp) then
-    (* queried range equals our range *)
-    match type_eq_dec tp expTp with
-    | left pf => fun v => Some (None, cast pf v)
-    | right _ => fun v => None
-    end
-  else if (addr <=? start) && (start + size <=? addr + type_size tp) then
-    (* queried range is a strict subrange of our range *)
-    match tp as tp0 return interp_type tp0 -> option (option NestedType * interp_type expTp)
-    with
-    | TUInt nbits => fun v => None
-    | TRecord fields => fun v: interp_type (TRecord fields) =>
-        match split_off_from_fields start size addr fields expTp v with
-        | Some (fields', res) => Some (Some (TRecord fields'), res)
+Definition toplevel_elem_count(tp: NestedType): Z :=
+  match tp with
+  | TUInt _ => 1
+  | TRecord _ => 1
+  | TArray _ L => L
+  end.
+
+Section SplitOff.
+  (* tp1 with holes as described in pr1, located at addr1, is what we want to split off *)
+  Context (addr1: Z) (tp1: NestedType) (pr1: type_presence tp1).
+
+(*
+  Fixpoint split_off_from_type(addr2: Z)(tp2: NestedType):
+    type_presence tp2 -> interp_type tp2 -> option (type_presence tp2 * interp_type tp1) :=
+    match type_eq_dec tp2 tp1 with
+    | left pf => fun pr2 v =>
+        match type_presence_sub (eq_rect tp2 type_presence pr2 tp1 pf) pr1 with
+        | Some pr2' => if addr1 =? addr2 then
+                         Some (eq_rect tp2 type_presence pr2' tp1 pf,
+                               eq_rect tp2 interp_type v tp1 pf)
+                       else None
         | None => None
         end
-    | TArray tE presence =>
-        match type_eq_dec (TArray tE presence) expTp with
-        | left pf => fun v => (* according to types, a subarray is requested *)
-            if ((start - addr) mod (type_size tE) =? 0)
-               && (size mod (type_size tE) =? 0)
-               && List.forallb id presence[(start-addr)/type_size tE:][:size/type_size tE]
-            then Some (Some (TArray tE (presence[:(start-addr)/type_size tE]
-                          ++ List.repeatz false (size/type_size tE)
-                          ++ presence[(start-addr)/type_size tE + size/type_size tE :])),
-                       cast pf v[(start-addr)/type_size tE:][:size/type_size tE])
-            else None
-        | right _ =>
-            match type_eq_dec tE expTp with
-            | left pf => fun v => (* according to types, one array element is requested *)
-              if ((start - addr) mod (type_size tE) =? 0)
-                 && (size =? type_size tE)
-                 && presence[(start-addr)/type_size tE]
-              then Some (Some (TArray tE (presence[:(start-addr)/type_size tE]
-                            ++ [| false |]
-                            ++ presence[(start-addr)/type_size tE + 1 :])),
-                         cast pf v[(start-addr)/type_size tE])
-              else None
-              | right _ => fun v => None
+    | right _ =>
+        match tp2 with
+        | TUInt nbits => fun pr2 v => None
+        | TRecord fields => split_off_from_fields addr2 fields
+        | TArray tE L2 =>
+            let i := (addr1 - addr2)/type_size tE in
+            match type_eq_dec (TArray tE (toplevel_elem_count tp1)) tp1 with
+            | left pf => fun pr2 v => (* according to types, a subarray is requested *)
+                if ((addr1 - addr2) mod (type_size tE) =? 0) then
+                  let pr2slice := pr2[i:][: toplevel_elem_count tp1] in
+                  match type_presence_sub pr2slice pr1 with
+                  | Some pr2slice' => Some (
+                      pr2[:i] ++ pr2slice' ++ pr2[i + toplevel_elem_count tp1 :],
+                      eq_rect _ interp_type tp1 v[i:][:toplevel_elem_count tp1] pf)
+                  | None => None
+                  end
+                else None
+            | right _ =>
+                match type_eq_dec tE tp1 with
+                | left pf => fun pr2 v => (* according to types, 1 array element requested *)
+                    if ((addr1 - addr2) mod (type_size tE) =? 0) then
+                      match type_presence_sub pr2[i] pr1 with
+                      | Some pr2i' => Some (pr2[:i] ++ [| pr2i' |] ++ pr2[i + 1 :],
+                                           eq_rect _ interp_type tp1 v[i] pf)
+                      | None => None
+                      end
+                    else None
+                | right _ => fun pr2 v => (* according to types, the only remaining
+                       possibility is that a subpart of an array element is requested *)
+                    match split_off_from_type (addr2 + i * type_size tE) tE pr2[i] v[i] with
+                    | Some (pr2i', res) => Some(pr2[:i] ++ [| pr2i' |] ++ pr2[i + 1 :], res)
+                    | None => None
+                    end
+                end
             end
         end
     end
-  else fun _ => None (* queried range is (at least partially) outside of our range *)
-with split_off_from_field(start size addr: Z)(f: NestedField)(expTp: NestedType)
-  : field_presence f -> interp_field f -> option (NestedField * interp_type expTp) :=
-  match f with
-  | FField name tp present => fun v =>
-      (* Note: We don't need to check that the presence flags of the subfields in tp
-         are all true, because if expTp contains holes, tp may contain holes too, as
-         long as it's exactly the same holes, which is checked by type_eq_dec in
-         split_off_from_type *)
-      if present then
-        match split_off_from_type start size addr tp expTp v with
-        | Some (Some tp', res) => Some (FField name tp' true, res)
-        | Some (None, res) => Some (FField name tp false, res)
-        | None => None
-        end
-      else None
-  end
-with split_off_from_fields(start size addr: Z)(fs: NestedFields)(expTp: NestedType)
-  : fields_presence fs -> interp_fields fs -> option (NestedFields * interp_type expTp) :=
-  match fs as fs0 return interp_fields fs0 -> option (NestedFields * interp_type expTp) with
-  | FSnoc rest f => fun '(v_rest, v_f) =>
-      (* Note: returning a subsequence of the fields is not yet supported *)
-      if start <? addr + fields_size rest then
-        match split_off_from_fields start size addr rest expTp v_rest with
-        | Some (rest', res) => Some (FSnoc rest' f, res)
-        | None => None
-        end
-      else
-        match split_off_from_field start size addr f expTp v_f with
-        | Some (f', res) => Some (FSnoc rest f', res)
-        | None => None
-        end
-  | FSingle f => fun v =>
-      match split_off_from_field start size addr f expTp v with
-      | Some (field', res) => Some (FSingle field', res)
-      | None => None
-      end
+  with split_off_from_field(addr2: Z)(f2: NestedField)
+    : field_presence f2 -> interp_field f2 -> option (field_presence f2 * interp_type tp1) :=
+    match f2 with
+    | FField name tp => split_off_from_type addr2 tp
+    end
+  with split_off_from_fields(addr2: Z)(fs2: NestedFields)
+    : fields_presence fs2 -> interp_fields fs2 ->
+      option (fields_presence fs2 * interp_type tp1) :=
+    match fs with
+    | FSnoc rest f => fun '(pr2_rest, pr2_f) '(v_rest, v_f) =>
+        if addr1 <? addr2 + fields_size rest then
+          match split_off_from_fields addr2 rest pr2_rest v_rest with
+          | Some (pr2_rest', res) => Some ((pr2_rest', pr2_f), res)
+          | None => None
+          end
+        else
+          match split_off_from_field (addr2 + fields_size rest) f pr2_f v_f with
+          | Some (pr2_f', res) => Some ((pr2_rest, pr2_f'), res)
+          | None => None
+          end
+    | FSingle f => split_off_from_field addr2 f
   end.
 *)
+End SplitOff.
 
 (* if the type has holes, any values should be accepted for the holes,
    so we can't use a judgment of the form "decode bytes = value", but
    we have to use a relation *)
 
-Definition unnamed_field_rep
-  (type_rep: forall tp, type_presence tp -> interp_type tp -> list (option byte) -> Prop)
-  (tp: NestedType)
-  (p: presence (type_presence tp))(v: interp_type tp)(bso: list (option byte)): Prop :=
-  match p with
-  | PPresent => type_rep tp (unfold_type_present tp) v bso
-  | PAbsent => bso = List.repeatz None (type_size tp) (* v unused becaue any v is allowed *)
-  | PPartial pr => type_rep tp pr v bso
-  end.
-
 Fixpoint type_rep(tp: NestedType):
   type_presence tp -> interp_type tp -> list (option byte) -> Prop :=
   match tp as tp0 return type_presence tp0 -> interp_type tp0 -> list (option byte) -> Prop
   with
-  | TUInt nbits => fun _ (v: Z) bso =>
+  | TUInt nbits => fun present (v: Z) bso =>
       len bso = nbits_to_nbytes nbits /\
-      exists bs, List.map Some bs = bso /\ LittleEndianList.le_combine bs = v
+      if present
+      then exists bs, List.map Some bs = bso /\ LittleEndianList.le_combine bs = v
+      else List.Forall (eq None) bso
   | TRecord fields => fields_rep fields
   | TArray tE L => fun presence vs bso =>
       exists chunks, len chunks = L /\ List.concat chunks = bso /\
-        List.Forall3 (unnamed_field_rep type_rep tE) presence vs chunks
+        List.Forall3 (type_rep tE) presence vs chunks
   end
 with field_rep(f: NestedField):
   field_presence f -> interp_field f -> list (option byte) -> Prop :=
   match f with
-  | FField _ tE => unnamed_field_rep type_rep tE
+  | FField _ tE => type_rep tE
   end
 with fields_rep(fs: NestedFields):
   fields_presence fs -> interp_fields fs -> list (option byte) -> Prop :=
