@@ -170,7 +170,7 @@ Section WithParams.
   Global Instance value_PredicateSize(sz: access_size): PredicateSize (value sz) :=
     access_len sz.
 
-  Definition array{T: Type}(elem: T -> Z -> mem -> Prop){size: PredicateSize elem}:
+  Definition array_old{T: Type}(elem: T -> Z -> mem -> Prop){size: PredicateSize elem}:
     list T -> Z -> mem -> Prop :=
     fix rec xs start :=
       match xs with
@@ -2290,15 +2290,31 @@ Definition record_fields(fs: NestedFields)(pr: fields_presence fs)(v: interp_fie
   (addr: Z)(m: mem): Prop :=
   exists bso, m = map.of_olist_Z_at addr bso /\ fields_rep fs pr v bso.
 
+Definition array(tp: NestedType)(vs: list (interp_type tp)): Z -> mem -> Prop :=
+  record (TArray tp (Z.to_N (len vs))) (all_present _) vs.
+
 Axiom TODO: False.
 
-Lemma bytearray_to_record: forall (bs: list Z) L addr R m tp,
-    type_size tp = Z.of_N L ->
-    sep (record (TArray (TUInt 8) L) (all_present _) bs addr) R m ->
+Lemma invert_bytearray: forall (bs: list Z) addr m,
+    array (TUInt 8) bs addr m ->
+    m = map.of_olist_Z_at addr (List.map Some (List.map byte.of_Z bs)).
+Proof.
+Admitted.
+
+Lemma bytearray_to_record: forall (bs: list Z) addr R m tp,
+    len bs = type_size tp ->
+    sep (array (TUInt 8) bs addr) R m ->
     exists (v: interp_type tp),
       sep (record tp (all_present _) v addr) R m.
 Proof.
-Admitted.
+  intros. destruct H0 as (m1 & m2 & Sp & Hm1 & Hm2).
+  pose proof (proj1 cast_bytes_induction) as P.
+  specialize (P tp (List.map byte.of_Z bs)). rewrite List.map_length in P.
+  specialize (P H). destruct P as (v & P). exists v.
+  exists m1, m2. ssplit; try assumption.
+  unfold record. eexists. split. 2: exact P.
+  eapply invert_bytearray. exact Hm1.
+Qed.
 
 Lemma record_TUInt_present: forall v a nbits,
     record (TUInt nbits) true v a = littleendian nbits v a.
@@ -2406,12 +2422,12 @@ Definition memset: {f: list string * list string * cmd &
     0 <= a < 2 ^ 32 ->
     0 <= b < 2 ^ 8 ->
     0 <= n < 2 ^ 32 ->
-    <{ * array (value access_size.one) bs a
+    <{ * array_old (value access_size.one) bs a
        * R }> m ->
     n = len bs ->
     vc_func fs f t m [| a; b; n |] (fun t' m' retvs =>
       t' = t /\
-      <{ * array (value access_size.one) (List.repeatz b n) a
+      <{ * array_old (value access_size.one) (List.repeatz b n) a
          * R }> m' /\
       retvs = nil)
   }.
