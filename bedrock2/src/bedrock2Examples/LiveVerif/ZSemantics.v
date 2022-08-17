@@ -1623,8 +1623,7 @@ End WithNonmaximallyInsertedA.
 Inductive NestedType: Type :=
 | TUInt(nbits: Z)
 | TRecord(fields: NestedFields)
-| TArray(tp: NestedType)(L: Z) (* length of array is needed for type_size *)
-        (L_nonneg: -1 < L) (* can be eq_refl for constant values of L *)
+| TArray(tp: NestedType)(L: N) (* length of array is needed for type_size *)
 with NestedField :=
 | FField(name: string)(tp: NestedType)
 with NestedFields :=
@@ -1655,7 +1654,7 @@ Fixpoint interp_type(t: NestedType): Type :=
   match t with
   | TUInt nbits => uint_t nbits
   | TRecord fields => interp_fields fields
-  | TArray tp L _ => array_t (interp_type tp) L
+  | TArray tp L => array_t (interp_type tp) (Z.of_N L)
   end
 with interp_field(field: NestedField): Type :=
   match field with
@@ -1679,7 +1678,7 @@ Fixpoint type_presence(t: NestedType): Type :=
   match t with
   | TUInt nbits => bool
   | TRecord fields => fields_presence fields
-  | TArray tp L _ => list (type_presence tp)
+  | TArray tp L => list (type_presence tp)
   end
 with field_presence(field: NestedField): Type :=
   match field with
@@ -1697,7 +1696,7 @@ Section WithPresence.
     match t with
     | TUInt nbits => b
     | TRecord fields => const_fields_presence fields
-    | TArray tp L _ => List.repeatz (const_type_presence tp) L
+    | TArray tp L => List.repeatz (const_type_presence tp) (Z.of_N L)
     end
   with const_field_presence(f: NestedField): field_presence f :=
     match f with
@@ -1720,7 +1719,7 @@ Fixpoint type_presence_eqb{tp: NestedType}:
   match tp with
   | TUInt nbits => Bool.eqb
   | TRecord fields => @fields_presence_eqb fields
-  | TArray tE L _ => List.list_eqb (@type_presence_eqb tE)
+  | TArray tE L => List.list_eqb (@type_presence_eqb tE)
   end
 with field_presence_eqb{f: NestedField}:
   field_presence f -> field_presence f -> bool :=
@@ -1763,7 +1762,7 @@ Fixpoint type_presence_sub{tp: NestedType}:
   match tp with
   | TUInt nbits => atomic_presence_sub
   | TRecord fields => @fields_presence_sub fields
-  | TArray tE L _ => type_presence_list_sub type_presence_sub
+  | TArray tE L => type_presence_list_sub type_presence_sub
   end
 with field_presence_sub{f: NestedField}:
   field_presence f -> field_presence f -> option (field_presence f) :=
@@ -1803,8 +1802,8 @@ Definition encode_array{T: Type}: (T -> list byte) -> list T -> list byte :=
 
 (* ARP responder example *)
 
-Definition TMAC := TArray (TUInt 8) 6 eq_refl.
-Definition TIPv4 := TArray (TUInt 8) 4 eq_refl.
+Definition TMAC := TArray (TUInt 8) 6.
+Definition TIPv4 := TArray (TUInt 8) 4.
 
 (*
 
@@ -1898,7 +1897,7 @@ Fixpoint type_size(tp: NestedType): Z :=
   match tp with
   | TUInt nbits => nbits_to_nbytes nbits
   | TRecord fields => fields_size fields
-  | TArray tp L _ => type_size tp * L
+  | TArray tp L => type_size tp * Z.of_N L
   end
 with field_size(field: NestedField): Z :=
   match field with
@@ -1926,7 +1925,7 @@ Fixpoint type_eqb(tp1 tp2: NestedType): bool :=
   match tp1, tp2 with
   | TUInt nbits1, TUInt nbits2 => nbits1 =? nbits2
   | TRecord fs1, TRecord fs2 => fields_eqb fs1 fs2
-  | TArray tE1 L1 _, TArray tE2 L2 _ => type_eqb tE1 tE2 && Z.eqb L1 L2
+  | TArray tE1 L1, TArray tE2 L2 => type_eqb tE1 tE2 && N.eqb L1 L2
   | _, _ => false
   end
 with field_eqb(f1 f2: NestedField): bool :=
@@ -1959,8 +1958,7 @@ Proof.
     specialize (H fields0). destruct H; constructor; congruence.
   - destruct y; simpl; try (constructor; congruence).
     specialize (H y). destr H; try (constructor; congruence).
-    destr (Z.eqb L L0); try (constructor; congruence).
-    constructor. f_equal; try assumption. apply lt_proofs_unique.
+    destr (N.eqb L L0); try (constructor; congruence).
   - destruct y; simpl; try (constructor; congruence).
     specialize (H tp0).
     destr (String.eqb name name0); try (constructor; congruence).
@@ -2037,8 +2035,7 @@ Definition type_eq_dec: forall tp1 tp2: NestedType, { tp1 = tp2 } + { tp1 <> tp2
     destruct H; [left|right]; congruence.
   - destruct tp2; try (right; congruence).
     specialize (H tp2). destruct H; try (right; congruence).
-    destruct (Z.eq_dec L L0); try (right; congruence).
-    subst L0. left. f_equal. 1: assumption. apply lt_proofs_unique.
+    destruct (N.eq_dec L L0); [left|right]; congruence.
   - destruct f2.
     specialize (H tp0). destruct H; try (right; congruence).
     destruct (String.string_dec name name0); [left|right]; congruence.
@@ -2088,15 +2085,12 @@ Definition cast0{tp1 tp2: NestedType}(pf: tp1 = tp2)(x: interp_type tp1): interp
 Definition cast{T: Type}{t1 t2: T}(f: T -> Type)(pf: t1 = t2)(x: f t1): f t2 :=
   eq_rect t1 f x t2 pf.
 
-Definition toplevel_elem_count(tp: NestedType): Z :=
+Definition toplevel_elem_count(tp: NestedType): N :=
   match tp with
   | TUInt _ => 1
   | TRecord _ => 1
-  | TArray _ L _ => L
+  | TArray _ L => L
   end.
-
-Lemma toplevel_elem_count_nonneg: forall tp, -1 < toplevel_elem_count tp.
-Proof. destruct tp; simpl; lia. Qed.
 
 Section SplitOff.
   (* tp1 with holes as described in pr1, located at addr1, is what we want to split off *)
@@ -2117,20 +2111,19 @@ Section SplitOff.
         match tp2 as tp2 return type_presence tp2 -> interp_type tp2 -> option (type_presence tp2 * interp_type tp1) with
         | TUInt nbits => fun pr2 v => None
         | TRecord fields => split_off_from_fields addr2 fields
-        | TArray tE L2 L2nonneg =>
+        | TArray tE L2 =>
             let i := (addr1 - addr2)/type_size tE in
-            match type_eq_dec (TArray tE (toplevel_elem_count tp1)
-                                 (toplevel_elem_count_nonneg tp1)) tp1
+            match type_eq_dec (TArray tE (toplevel_elem_count tp1)) tp1
             with
             | left pf => fun pr2 v => (* according to types, a subarray is requested *)
                 if ((addr1 - addr2) mod (type_size tE) =? 0) then
-                  let pr2slice := pr2[i:][: toplevel_elem_count tp1] in
-                  match @type_presence_sub (TArray tE (toplevel_elem_count tp1) _)
+                  let pr2slice := pr2[i:][: Z.of_N (toplevel_elem_count tp1)] in
+                  match @type_presence_sub (TArray tE (toplevel_elem_count tp1))
                           pr2slice (cast type_presence (eq_sym pf) pr1)
                   with
                   | Some pr2slice' => Some (
-                      pr2[:i] ++ pr2slice' ++ pr2[i + toplevel_elem_count tp1 :],
-                      cast interp_type pf v[i:][:toplevel_elem_count tp1])
+                      pr2[:i] ++ pr2slice' ++ pr2[i + Z.of_N (toplevel_elem_count tp1) :],
+                      cast interp_type pf v[i:][:Z.of_N (toplevel_elem_count tp1)])
                   | None => None
                   end
                 else None
@@ -2193,8 +2186,8 @@ Fixpoint type_rep(tp: NestedType):
       then exists bs, List.map Some bs = bso /\ LittleEndianList.le_combine bs = v
       else List.Forall (eq None) bso
   | TRecord fields => fields_rep fields
-  | TArray tE L _ => fun presence vs bso =>
-      exists chunks, len chunks = L /\ List.concat chunks = bso /\
+  | TArray tE L => fun presence vs bso =>
+      exists chunks, len chunks = Z.of_N L /\ List.concat chunks = bso /\
         List.Forall3 (type_rep tE) presence vs chunks
   end
 with field_rep(f: NestedField):
@@ -2229,8 +2222,9 @@ Proof.
     simpl. eexists. split; reflexivity.
   - eauto.
   - revert H0. unfold array_t. cbn. unfold List.repeatz.
-    set (n := Z.to_nat L).
-    replace L with (Z.of_nat n) by lia. clearbody n. clear L L_nonneg.
+    replace (Z.to_nat (Z.of_N L)) with (N.to_nat L) by lia.
+    set (n := N.to_nat L).
+    replace (Z.of_N L) with (Z.of_nat n) by lia. clearbody n. clear L.
     revert bs.
     induction n; intros.
     + change (Z.of_nat 0) with 0 in *. rewrite Z.mul_0_r in *.
@@ -2298,9 +2292,9 @@ Definition record_fields(fs: NestedFields)(pr: fields_presence fs)(v: interp_fie
 
 Axiom TODO: False.
 
-Lemma bytearray_to_record: forall (bs: list Z) L addr pf R m tp,
-    type_size tp = L ->
-    sep (record (TArray (TUInt 8) L pf) (all_present _) bs addr) R m ->
+Lemma bytearray_to_record: forall (bs: list Z) L addr R m tp,
+    type_size tp = Z.of_N L ->
+    sep (record (TArray (TUInt 8) L) (all_present _) bs addr) R m ->
     exists (v: interp_type tp),
       sep (record tp (all_present _) v addr) R m.
 Proof.
