@@ -100,6 +100,8 @@ Module List.
 
 End List.
 
+Definition nbits_to_nbytes(nbits: Z): Z := (Z.max 0 nbits + 7) / 8.
+
 Section WithParams.
   Context {width: Z}.
 
@@ -152,9 +154,9 @@ Section WithParams.
   Definition get_seq(start len: Z)(m: mem): list byte :=
     List.map (get_or_zero m) (addr_seq start len).
 
-  Definition littleendian(n v addr: Z)(m: mem): Prop :=
-    get_seq addr n m = LittleEndianList.le_split (Z.to_nat n) v /\
-    map.domain m = of_list (addr_seq addr n).
+  Definition littleendian(nbits v addr: Z)(m: mem): Prop :=
+    LittleEndianList.le_combine (get_seq addr (nbits_to_nbytes nbits) m) = v /\
+    map.domain m = of_list (addr_seq addr (nbits_to_nbytes nbits)).
 
   Definition value(sz: access_size): Z -> Z -> mem -> Prop :=
     littleendian (access_len sz).
@@ -1778,8 +1780,6 @@ with fields_presence_sub{fs: NestedFields}:
   | FSingle f => @field_presence_sub f
   end.
 
-Definition nbits_to_nbytes(nbits: Z): Z := (Z.max 0 nbits + 7) / 8.
-
 Definition encode_uint(nbits: Z): Z -> list byte :=
   LittleEndianList.le_split (Z.to_nat (nbits_to_nbytes nbits)).
 
@@ -1981,6 +1981,24 @@ Global Instance interp_field_inhabited: forall f: NestedField, inhabited (interp
 Global Instance interp_fields_inhabited: forall fs: NestedFields, inhabited (interp_fields fs) :=
   snd (snd interp_type_inhabited_induction).
 
+Definition type_presence_inhabited_induction:
+  (forall tp: NestedType, inhabited (type_presence tp)) *
+  ((forall f: NestedField, inhabited (field_presence f)) *
+   (forall fs: NestedFields, inhabited (fields_presence fs))).
+  eapply NestedType_mutindT; simpl; try typeclasses eauto.
+  intros. econstructor. exact (default, default).
+Defined.
+
+Global Instance type_presence_inhabited:
+  forall tp: NestedType, inhabited (type_presence tp) :=
+  fst type_presence_inhabited_induction.
+Global Instance field_presence_inhabited:
+  forall f: NestedField, inhabited (field_presence f) :=
+  fst (snd type_presence_inhabited_induction).
+Global Instance fields_presence_inhabited:
+  forall fs: NestedFields, inhabited (fields_presence fs) :=
+  snd (snd type_presence_inhabited_induction).
+
 Definition type_eq_dec: forall tp1 tp2: NestedType, { tp1 = tp2 } + { tp1 <> tp2 }.
   pose proof NestedType_mutS as A.
   specialize A with
@@ -2041,6 +2059,11 @@ Qed.
 Definition cast0{tp1 tp2: NestedType}(pf: tp1 = tp2)(x: interp_type tp1): interp_type tp2 :=
   eq_rect tp1 interp_type x tp2 pf.
 
+(* like eq_rect, but more implicit arguments, and argument order that works better for
+   inference *)
+Definition cast{T: Type}{t1 t2: T}(f: T -> Type)(pf: t1 = t2)(x: f t1): f t2 :=
+  eq_rect t1 f x t2 pf.
+
 Definition toplevel_elem_count(tp: NestedType): Z :=
   match tp with
   | TUInt _ => 1
@@ -2052,20 +2075,19 @@ Section SplitOff.
   (* tp1 with holes as described in pr1, located at addr1, is what we want to split off *)
   Context (addr1: Z) (tp1: NestedType) (pr1: type_presence tp1).
 
-(*
   Fixpoint split_off_from_type(addr2: Z)(tp2: NestedType):
     type_presence tp2 -> interp_type tp2 -> option (type_presence tp2 * interp_type tp1) :=
     match type_eq_dec tp2 tp1 with
     | left pf => fun pr2 v =>
-        match type_presence_sub (eq_rect tp2 type_presence pr2 tp1 pf) pr1 with
+        match type_presence_sub (cast type_presence pf pr2) pr1 with
         | Some pr2' => if addr1 =? addr2 then
-                         Some (eq_rect tp2 type_presence pr2' tp1 pf,
+                         Some (eq_rect_r type_presence pr2' pf,
                                eq_rect tp2 interp_type v tp1 pf)
                        else None
         | None => None
         end
     | right _ =>
-        match tp2 with
+        match tp2 as tp2 return type_presence tp2 -> interp_type tp2 -> option (type_presence tp2 * interp_type tp1) with
         | TUInt nbits => fun pr2 v => None
         | TRecord fields => split_off_from_fields addr2 fields
         | TArray tE L2 =>
@@ -2074,10 +2096,12 @@ Section SplitOff.
             | left pf => fun pr2 v => (* according to types, a subarray is requested *)
                 if ((addr1 - addr2) mod (type_size tE) =? 0) then
                   let pr2slice := pr2[i:][: toplevel_elem_count tp1] in
-                  match type_presence_sub pr2slice pr1 with
+                  match @type_presence_sub (TArray tE (toplevel_elem_count tp1))
+                          pr2slice (cast type_presence (eq_sym pf) pr1)
+                  with
                   | Some pr2slice' => Some (
                       pr2[:i] ++ pr2slice' ++ pr2[i + toplevel_elem_count tp1 :],
-                      eq_rect _ interp_type tp1 v[i:][:toplevel_elem_count tp1] pf)
+                      cast interp_type pf v[i:][:toplevel_elem_count tp1])
                   | None => None
                   end
                 else None
@@ -2085,9 +2109,10 @@ Section SplitOff.
                 match type_eq_dec tE tp1 with
                 | left pf => fun pr2 v => (* according to types, 1 array element requested *)
                     if ((addr1 - addr2) mod (type_size tE) =? 0) then
-                      match type_presence_sub pr2[i] pr1 with
+                      match type_presence_sub pr2[i] (cast type_presence (eq_sym pf) pr1)
+                      with
                       | Some pr2i' => Some (pr2[:i] ++ [| pr2i' |] ++ pr2[i + 1 :],
-                                           eq_rect _ interp_type tp1 v[i] pf)
+                                           cast interp_type pf v[i])
                       | None => None
                       end
                     else None
@@ -2109,21 +2134,20 @@ Section SplitOff.
   with split_off_from_fields(addr2: Z)(fs2: NestedFields)
     : fields_presence fs2 -> interp_fields fs2 ->
       option (fields_presence fs2 * interp_type tp1) :=
-    match fs with
-    | FSnoc rest f => fun '(pr2_rest, pr2_f) '(v_rest, v_f) =>
+    match fs2 with
+    | FSnoc rest f2 => fun '(pr2_rest, pr2_f) '(v_rest, v_f) =>
         if addr1 <? addr2 + fields_size rest then
           match split_off_from_fields addr2 rest pr2_rest v_rest with
           | Some (pr2_rest', res) => Some ((pr2_rest', pr2_f), res)
           | None => None
           end
         else
-          match split_off_from_field (addr2 + fields_size rest) f pr2_f v_f with
+          match split_off_from_field (addr2 + fields_size rest) f2 pr2_f v_f with
           | Some (pr2_f', res) => Some ((pr2_rest, pr2_f'), res)
           | None => None
           end
-    | FSingle f => split_off_from_field addr2 f
+    | FSingle f2 => split_off_from_field addr2 f2
   end.
-*)
 End SplitOff.
 
 (* if the type has holes, any values should be accepted for the holes,
@@ -2163,17 +2187,83 @@ Definition record(tp: NestedType)(pr: type_presence tp)(v: interp_type tp)
   (addr: Z)(m: mem): Prop :=
   exists bso, m = map.of_olist_Z_at addr bso /\ type_rep tp pr v bso.
 
-Fail (* problem: interp_type tp1 = interp_type tp1' is not obvious,
-        (a lemma to be proven by mutual induction over NestedType) but needed
-        to typecheck the two record statements *)
-Lemma split_off_correct_induction:
-  (forall tp1 tp2 (v1: interp_type tp1) start size addr otp1' v2,
-     split_off_from_type start size addr tp1 tp2 v1 = Some (otp1', v2) ->
-     match otp1' with
-     | Some tp1' => record tp1 v1 addr = sep (record tp1' v1 addr) (record tp2 v2 start)
-     | None => tp1 = tp2
-     end).
+Definition record_field(f: NestedField)(pr: field_presence f)(v: interp_field f)
+  (addr: Z)(m: mem): Prop :=
+  exists bso, m = map.of_olist_Z_at addr bso /\ field_rep f pr v bso.
 
+Definition record_fields(fs: NestedFields)(pr: fields_presence fs)(v: interp_fields fs)
+  (addr: Z)(m: mem): Prop :=
+  exists bso, m = map.of_olist_Z_at addr bso /\ fields_rep fs pr v bso.
+
+Axiom TODO: False.
+
+Lemma record_TUInt_present: forall v a nbits,
+    record (TUInt nbits) true v a = littleendian nbits v a.
+Proof.
+  unfold record, littleendian. intros. extensionality m. unfold type_rep.
+  eapply propositional_extensionality; split; intros.
+  - fwd. split.
+    + f_equal. case TODO.
+    + case TODO.
+  - fwd. eexists. ssplit. 3: eexists. 3: split. 3: reflexivity. 3: reflexivity.
+    + case TODO.
+    + case TODO.
+Qed.
+
+Lemma record_TUInt_absent: forall v a nbits,
+    record (TUInt nbits) false v a = emp True.
+Proof.
+  unfold record, littleendian. intros. extensionality m. unfold type_rep.
+  eapply propositional_extensionality; split; intros.
+  - fwd. split. 2: constructor. case TODO.
+  - apply proj1 in H. subst m. exists (List.repeatz None (nbits_to_nbytes nbits)). ssplit.
+    + case TODO.
+    + apply List.len_repeatz. case TODO.
+    + case TODO.
+Qed.
+
+Lemma split_off_correct_induction(addr1: Z) (tp1: NestedType) (pr1: type_presence tp1):
+  (forall (tp2: NestedType) (addr2: Z) pr2 v2 pr2' v1,
+     split_off_from_type addr1 tp1 pr1 addr2 tp2 pr2 v2 = Some (pr2', v1) ->
+     iff1 (record tp2 pr2 v2 addr2)
+          (sep (record tp1 pr1 v1 addr1) (record tp2 pr2' v2 addr2))) /\
+  (forall (f2: NestedField) (addr2: Z) pr2 v2 pr2' v1,
+     split_off_from_field addr1 tp1 pr1 addr2 f2 pr2 v2 = Some (pr2', v1) ->
+     iff1 (record_field f2 pr2 v2 addr2)
+          (sep (record tp1 pr1 v1 addr1) (record_field f2 pr2' v2 addr2))) /\
+  (forall (fs2: NestedFields) (addr2: Z) pr2 v2 pr2' v1,
+     split_off_from_fields addr1 tp1 pr1 addr2 fs2 pr2 v2 = Some (pr2', v1) ->
+     iff1 (record_fields fs2 pr2 v2 addr2)
+          (sep (record tp1 pr1 v1 addr1) (record_fields fs2 pr2' v2 addr2))).
+Proof.
+  eapply NestedType_mutind; simpl; intros.
+  - unfold split_off_from_type in H. fwd. subst tp1. simpl in *.
+    unfold atomic_presence_sub in *.
+    destr pr1; destr pr2; fwd; unfold eq_rect_r; simpl;
+      rewrite ?record_TUInt_present, ?record_TUInt_absent, ?sep_emp_True_r, ?sep_emp_True_l;
+      try reflexivity. discriminate.
+  -
+Admitted.
+
+Definition split_off(addr1: Z)(tp1: NestedType)(pr1: type_presence tp1)
+  (addr2: Z)(tp2: NestedType)(pr2: type_presence tp2)(v2: interp_type tp2): mem -> Prop :=
+  match split_off_from_type addr1 tp1 pr1 addr2 tp2 pr2 v2 with
+  | Some (pr2', v1) => sep (record tp1 pr1 v1 addr1) (record tp2 pr2' v2 addr2)
+  | None => record tp2 pr2 v2 addr2
+  end.
+
+Lemma split_off_correct: forall (addr1: Z)(tp1: NestedType)(pr1: type_presence tp1)
+                                (tp2: NestedType)(addr2: Z) pr2 v2,
+    split_off addr1 tp1 pr1 addr2 tp2 pr2 v2 = record tp2 pr2 v2 addr2.
+Proof.
+  intros.
+  unfold split_off.
+  destruct_one_match.
+  - destruct p. eapply iff1ToEq.
+    pose proof (split_off_correct_induction addr1 tp1 pr1) as P.
+    apply proj1 in P. symmetry. eapply P. assumption.
+  - reflexivity.
+Qed.
 
 (* instead of (list (option byte)), use (map Z byte) starting at index 0 and
    shift the keys?
