@@ -1921,6 +1921,94 @@ Definition type_size_nonneg := proj1 type_size_nonneg_induction.
 Definition field_size_nonneg := proj1 (proj2 type_size_nonneg_induction).
 Definition fields_size_nonneg := proj2 (proj2 type_size_nonneg_induction).
 
+Fixpoint lookup_type_in_fields(fs: NestedFields)(s: string): NestedType :=
+  match fs with
+  | FSnoc rest (FField name tp) => if String.eqb s name then tp
+                                  else lookup_type_in_fields rest s
+  | FSingle (FField name tp) => if String.eqb s name then tp
+                                else TUInt 0
+  end.
+
+Definition lookup_type_in_type(tp: NestedType)(s: string): NestedType :=
+  match tp  with
+  | TUInt nbits => TUInt 0
+  | TRecord fields => lookup_type_in_fields fields s
+  | TArray tE L => TUInt 0
+  end.
+
+Fixpoint lookup_in_fields(fs: NestedFields):
+  interp_fields fs -> forall s: string, interp_type (lookup_type_in_fields fs s) :=
+  match fs with
+  | FSnoc rest (FField name tp) => fun '(v_rest, v_f) s =>
+      if String.eqb s name
+        as b return interp_type (if b then tp else lookup_type_in_fields rest s)
+      then v_f else lookup_in_fields rest v_rest s
+  | FSingle (FField name tp) => fun v s =>
+      if String.eqb s name
+        as b return interp_type (if b then tp else TUInt 0)
+      then v else 0
+  end.
+
+Definition lookup_in_type(tp: NestedType):
+  interp_type tp -> forall s: string, interp_type (lookup_type_in_type tp s) :=
+  match tp with
+  | TUInt _ => fun v s => 0
+  | TRecord fields => lookup_in_fields fields
+  | TArray _ _ => fun v s => 0
+  end.
+
+Ltac annot_with_simplified_type x :=
+  let x' := eval cbv beta in x in (* get rid of previous annotation if nested path *)
+  let t := type of x' in
+  let t' := eval cbn in t in
+  exact (x': t').
+
+Notation "a ~> f" := (lookup_in_type _ a f%string)
+  (at level 8 (* same level as a[i] notation *), left associativity, f at level 0,
+   format "a ~> f"(*, only printing*)).
+
+(*
+Notation "a ~> f" := (ltac:(annot_with_simplified_type (lookup_in_type _ a f%string)))
+  (at level 8 (* same level as a[i] notation *), left associativity, f at level 0,
+   only parsing).
+*)
+
+Goal forall p: interp_type TARPPacket, False.
+  intros.
+  pose (p~>"foo").
+  pose (p~>"sha").
+  pose (p~>"sha"[3]).
+Abort.
+
+Fixpoint remove_from_fields_presence{fs: NestedFields}:
+  fields_presence fs -> string -> fields_presence fs :=
+  match fs with
+  | FSnoc rest (FField name tp) => fun '(pr_rest, pr_f) s =>
+      if String.eqb s name then (pr_rest, all_absent tp)
+      else (remove_from_fields_presence pr_rest s, pr_f)
+  | FSingle (FField name tp) => fun pr s =>
+      if String.eqb s name then all_absent tp else pr
+  end.
+
+Definition remove_from_type_presence{tp: NestedType}:
+  type_presence tp -> string -> type_presence tp :=
+  match tp with
+  | TUInt nbits => fun pr s => pr
+  | TRecord fields => @remove_from_fields_presence fields
+  | TArray tE L => fun pr s => pr
+  end.
+
+(*
+Notations to indicate what has been removed:
+record TMyType-"field1"-"arrayfield" ...
+record (TArray ...)-[i]-[j:k] ...
+
+to dig out path ->a->b
+  record MyType all_present v addr1
+= record MyType -"a" v addr1 * record TA v~>"a" addr2
+                             = record TA-"b" v~>"a" addr2 * record TB v~>"a"~>"b" addr3
+*)
+
 Fixpoint type_eqb(tp1 tp2: NestedType): bool :=
   match tp1, tp2 with
   | TUInt nbits1, TUInt nbits2 => nbits1 =? nbits2
@@ -2362,6 +2450,9 @@ Proof.
       rewrite ?record_TUInt_present, ?record_TUInt_absent, ?sep_emp_True_r, ?sep_emp_True_l;
       try reflexivity. discriminate.
   -
+    (* TODO since split_off is just a complicated identity function, could we actually define
+       it as the identity, and turn each case of its original definition into a rewrite
+       lemma? *)
 Admitted.
 
 Definition split_off(addr1: Z)(tp1: NestedType)(pr1: type_presence tp1)
