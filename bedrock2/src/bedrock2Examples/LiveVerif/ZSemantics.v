@@ -142,6 +142,12 @@ Section WithParams.
 
   (* Memory: *)
 
+  Lemma sep_assoc_eq: forall (p q r: mem -> Prop),
+      sep (sep p q) r = sep p (sep q r).
+  Proof.
+    intros. eapply iff1ToEq. eapply sep_assoc.
+  Qed.
+
   Definition addr_seq(start len: Z): list Z :=
     List.map (fun ofs => wadd start (Z.of_nat ofs)) (List.seq 0 (Z.to_nat len)).
 
@@ -1630,6 +1636,11 @@ with NestedFields :=
 | FSnoc(rest: NestedFields)(f: NestedField) (* snoc to match structure of stdlib pairs *)
 | FSingle(f: NestedField).
 
+(* we often need to write (TRecord SomeFields) instead of MyDefinitionOfTRecordSomeFields
+   to make typechecking work, so we just write SomeFields and let coercions insert the
+   TRecord *)
+Coercion TRecord : NestedFields >-> NestedType.
+
 Notation Array tp L := (TArray tp (Z.to_N L)).
 
 Scheme NestedType_mut   := Induction for NestedType   Sort Prop
@@ -1774,107 +1785,13 @@ Fixpoint fields_presence_sub{fs: NestedFields}:
   end.
 
 (* type presence subtraction, returns None if trying to subtract presence from absence *)
-Fixpoint type_presence_sub{tp: NestedType}:
+Definition type_presence_sub{tp: NestedType}:
   type_presence tp -> type_presence tp -> option (type_presence tp) :=
   match tp with
   | UInt nbits => fun _ _ => Some tt
   | TRecord fields => @fields_presence_sub fields
   | TArray tE L => bool_list_sub
   end.
-
-
-(* ARP responder example *)
-
-Definition TMAC := TArray (UInt 8) 6.
-Definition TIPv4 := TArray (UInt 8) 4.
-
-(*
-
-Record EthernetPacket{Payload: Type} := mkEthernetPacket {
-  dstMAC: MAC;
-  srcMAC: MAC;
-  etherType: uint_t 16;
-  payload: Payload;
-  (* Note: payload is followed by padding (if too small) and by CRC, but they are at
-     variable positions, so we don't include them here) *)
-}.
-Arguments EthernetPacket: clear implicits.
-
-(* TODO this could be derived using Ltac *)
-Definition encode_EthernetPacket{Payload: Type}
-  (encode_payload: Payload -> list byte)(p: EthernetPacket Payload): list byte :=
-  encode_array (encode_uint 8) (dstMAC p) ++
-  encode_array (encode_uint 8) (srcMAC p) ++
-  encode_uint 16 (etherType p) ++
-  encode_payload (payload p).
-
-(*
-Definition sized_EthernetPacket{Payload: Type}(sized_payload: Payload -> Prop): Prop :=
-  sized_array (sized_scalar access_size.one) 6 (dstMAC p) /\
-  sized_array (sized_scalar access_size.one) 6 (srcMAC p) /\
-  sized_scalar access_size.two (etherType p) /\
-  sized_payload (payload p).
-
-Lemma cast_bytes_to_EthernetPacket:
-  exists (p: EthernetPacket Payload)
-
-Lemma cast_Ethernet_payload:
-  encode_EthernetPacket encode_payload1 p =
-  encode_EthernetPacket encode_payload2
-
-EthernetPacket Payload1
-EthernetPacket Payload2
-
-Lemma cast_EthernetBytes_to_EthernetARP:
-
-
-Definition EthernetPacket_spec{Payload: Type}(Payload_spec: TypeSpec Payload) := TStruct [
-  FField (@dstMAC Payload) TODO (TTuple 6 1 byte_spec);
-  FField (@srcMAC Payload) TODO (TTuple 6 1 byte_spec);
-  FField (@etherType Payload) TODO (TValue access_size.two (@BEBytesToWord 2));
-  FField (@payload Payload) TODO Payload_spec
-].
-
-(* Note: At the moment we want to allow any padding and crc, so we use an isXxx predicate rather
-   than an encodeXxx function *)
-Definition isEthernetPacket{P: Type}(payloadOk: P -> list byte -> Prop)(p: EthernetPacket P)(bs: list byte) :=
-  exists data padding crc,
-    bs = encodeMAC p.(srcMAC) ++ encodeMAC p.(dstMAC) ++ tuple.to_list p.(etherType)
-         ++ data ++ padding ++ encodeCRC crc /\
-    payloadOk p.(payload) data /\
-    46 <= Z.of_nat (List.length (data ++ padding)) <= 1500.
-    (* TODO could/should also verify CRC *)
-*)
-
-*)
-
-Definition ARPOperationRequest: Z := 1.
-Definition ARPOperationReply: Z := 2.
-
-Declare Custom Entry record_field.
-Notation "s : t" := (FField s t)
-  (in custom record_field at level 1, s constr at level 0, t constr at level 99).
-
-Notation "<{ f1 ; f2 ; .. ; fn }>" := (FSnoc .. (FSnoc (FSingle f1) f2) .. fn)
-  (f1 custom record_field at level 1, f2 custom record_field at level 1,
-   fn custom record_field at level 1).
-
-Definition ARPPacket := TRecord <{
-  "htype": UInt 16; (* hardware type *)
-  "ptype": UInt 16; (* protocol type *)
-  "hlen": UInt 8;   (* hardware address length (6 for MAC addresses) *)
-  "plen": UInt 8;   (* protocol address length (4 for IPv4 addresses) *)
-  "oper": UInt 16;  (* operation *)
-  "sha": TMAC;       (* sender hardware address *)
-  "spa": TIPv4;      (* sender protocol address *)
-  "tha": TMAC;       (* target hardware address *)
-  "tpa": TIPv4       (* target protocol address *)
-}>.
-
-Goal True.
-  pose (interp_type ARPPacket) as r.
-  cbn in r.
-Abort.
 
 Fixpoint type_size(tp: NestedType): Z :=
   match tp with
@@ -1903,6 +1820,49 @@ Qed.
 Definition type_size_nonneg := proj1 type_size_nonneg_induction.
 Definition field_size_nonneg := proj1 (proj2 type_size_nonneg_induction).
 Definition fields_size_nonneg := proj2 (proj2 type_size_nonneg_induction).
+
+
+(* ARP responder example *)
+
+Definition MAC := TArray (UInt 8) 6.
+Definition IPv4 := TArray (UInt 8) 4.
+
+Definition ARPOperationRequest: Z := 1.
+Definition ARPOperationReply: Z := 2.
+
+Declare Custom Entry record_field.
+Notation "s : t" := (FField s t)
+  (in custom record_field at level 1, s constr at level 0, t constr at level 99).
+
+Notation "<{ f1 ; f2 ; .. ; fn }>" := (FSnoc .. (FSnoc (FSingle f1) f2) .. fn)
+  (f1 custom record_field at level 1, f2 custom record_field at level 1,
+   fn custom record_field at level 1).
+
+Definition ARPPacket := <{
+  "htype": UInt 16; (* hardware type *)
+  "ptype": UInt 16; (* protocol type *)
+  "hlen": UInt 8;   (* hardware address length (6 for MAC addresses) *)
+  "plen": UInt 8;   (* protocol address length (4 for IPv4 addresses) *)
+  "oper": UInt 16;  (* operation *)
+  "sha": MAC;       (* sender hardware address *)
+  "spa": IPv4;      (* sender protocol address *)
+  "tha": MAC;       (* target hardware address *)
+  "tpa": IPv4       (* target protocol address *)
+}>.
+
+Definition EthernetPacket(Payload: NestedType) := <{
+  "dstMAC": MAC;
+  "srcMAC": MAC;
+  "etherType": UInt 16;
+  "payload": Payload;
+  "padding": Array (UInt 8) (Z.max 0 (64 - 12 - 2 - type_size Payload - 4));
+  "crc": UInt 32
+}>.
+
+Goal True.
+  pose (interp_type ARPPacket) as r.
+  cbn in r.
+Abort.
 
 Fixpoint lookup_type_in_fields(fs: NestedFields)(s: string): NestedType :=
   match fs with
@@ -2417,9 +2377,9 @@ Declare Custom Entry type_with_presence.
 
 Notation "tp" := (all_present tp)
   (in custom type_with_presence at level 2, tp constr at level 11).
-Notation "pr - fld" := (remove_from_fields_presence pr fld)
+Notation "pr - fld" := (remove_from_type_presence pr fld)
   (left associativity, in custom type_with_presence at level 3, fld constr at level 0,
-   format "pr - fld").
+   format "pr  - fld").
 
 Notation "v @@ a : pr" := (record _ pr v a)
   (at level 25, a at level 99, pr custom type_with_presence at level 3).
@@ -2444,11 +2404,12 @@ Lemma invert_bytearray: forall (bs: list Z) addr m n,
 Proof.
 Admitted.
 
-Lemma bytearray_to_record: forall (bs: list Z) addr R m tp,
-    sep (bs @@ addr : Array (UInt 8) (type_size tp)) R m ->
+Lemma bytearray_to_record: forall tp (bs: list Z) n addr R m,
+    sep (bs @@ addr : Array (UInt 8) n) R m ->
+    n = (type_size tp) ->
     exists (v: interp_type tp), sep (v @@ addr : tp) R m.
 Proof.
-  intros. destruct H as (m1 & m2 & Sp & Hm1 & Hm2).
+  intros. subst. destruct H as (m1 & m2 & Sp & Hm1 & Hm2).
   pose proof (proj1 cast_bytes_induction) as P.
   specialize (P tp (List.map byte.of_Z bs)). rewrite List.map_length in P.
   eapply invert_bytearray in Hm1. destruct Hm1 as (A & B).
@@ -2541,7 +2502,7 @@ Proof.
     rewrite record_field_absent. rewrite sep_emp_True_l. rewrite Z.add_0_r. reflexivity.
 Qed.
 
-Lemma split_off_field_from_type: forall fs (pr: type_presence (TRecord fs)) name
+Lemma split_off_field_from_type_by_addr: forall fs (pr: type_presence (TRecord fs)) name
                               (v: interp_type (TRecord fs)) aBase aTgt aTgt',
     (* not strictly needed, only to determine name: *)
     offset_to_field fs (aTgt-aBase) = name ->
@@ -2561,6 +2522,48 @@ Proof.
   cbn [seps]. reflexivity.
 Qed.
 
+Lemma split_off_field_from_type_by_name: forall fs (pr: type_presence (TRecord fs)) name
+                              (v: interp_type (TRecord fs)) aBase R,
+    get_field_presence pr name = Some true ->
+    sep (record (TRecord fs) pr v aBase) R =
+    sep (record (TRecord fs) (remove_from_type_presence pr name) v aBase)
+        (sep (record (lookup_type_in_fields fs name) (all_present _) v~>name
+                     (aBase + offset_of_field fs name)) R).
+Proof.
+  intros. eapply iff1ToEq.
+  change (record (TRecord fs) pr v aBase) with (record_fields fs pr v aBase).
+  change (record (TRecord fs) (remove_from_type_presence pr name) v aBase) with
+         (record_fields fs (remove_from_fields_presence pr name) v aBase).
+  cancel. cbn [seps].
+  etransitivity.
+  1: eapply split_off_field. 1: eassumption. cancel.
+  cbn [seps]. reflexivity.
+Qed.
+
+(*
+Lemma merge_back_field_into_type_by_name: forall fs (pr: type_presence (TRecord fs)) name
+                (v: interp_type (TRecord fs)) vFieldNew aBase R,
+    get_field_presence pr name = Some false ->
+    sep (record (TRecord fs) pr v aBase)
+        (sep (record tp2 (all_present tp2) vFieldNew aField) R) =
+    sep (record (TRecord fs) (updateTODO pr vFieldNew) v aBase).
+*)
+
+Ltac split_off_field baseAddr name Hm :=
+  let P := fresh "P" in
+  match type of Hm with
+  | context[sep (record (TRecord ?fs) ?pr ?v baseAddr) ?R] =>
+      pose proof (split_off_field_from_type_by_name fs pr name v baseAddr R eq_refl) as P
+  end;
+  lazymatch type of P with
+  | ?A = sep ?A' (sep (record ?tp (all_present ?tp) ?v ?addr) ?R) =>
+      let addr' := eval cbn in addr in
+      let tp' := eval cbn in tp in
+      change (A = sep A' (sep (record tp' (all_present tp') v addr') R)) in P
+  end;
+  rewrite P in Hm;
+  clear P.
+
 (* instead of (list (option byte)), use (map Z byte) starting at index 0 and
    shift the keys?
 
@@ -2571,6 +2574,55 @@ decode taking (list byte), no holes
 
 
  *)
+
+
+(* New Feature TODO:
+   Allow "breakpoints" /**. .**/ anywhere inside expressions,
+   and allow removing /**. .**/ between statements.
+
+eg
+   a + /**. .**/ b
+but also
+   call1(args1); call2(args2)
+*)
+
+Definition arp: {f: list string * list string * cmd &
+  forall fs t m (a n: Z) (bs: list Z) (R: mem -> Prop),
+    0 <= a < 2 ^ 32 ->
+    0 <= n < 2 ^ 32 ->
+    <{ * bs @@ a : Array (UInt 8) n
+       * R }> m ->
+    vc_func fs f t m [| a; n |] (fun t' m' retvs => True)
+      (* TODO can we infer a reasonable postcondition on-the-go? *)
+  }.
+.**/
+{                                                                        /**. .**/
+  uintptr_t doReply = 0;                                                 /**. .**/
+
+  if (n == 64) {                                                         /**.
+
+rename H1 into Hm.
+eapply (bytearray_to_record (EthernetPacket ARPPacket)) in Hm.
+(* TODO n is bound using =, but doReply is bound using :=, consolidate? *)
+2: subst n; reflexivity.
+destruct Hm as (p & Hm).
+split_off_field a "etherType" Hm.
+split_off_field a "payload" Hm.
+split_off_field (a+14) "htype" Hm.
+(*
+Close Scope sep_bullets_scope. {
+Undelimit Scope sep_scope. {
+*)
+
+(*
+      if ((load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP_LE) &
+          (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE_LE) &
+          (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE_LE) &
+          (load1(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) &
+          (load1(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) &
+          (load1(ethbuf @ (@payload ARPPacket) @ oper) == OPER_REQUEST)) /*split*/ { /*$.
+*)
+Abort.
 
 #[export] Hint Rewrite List__repeat_0 : fwd_rewrites.
 
