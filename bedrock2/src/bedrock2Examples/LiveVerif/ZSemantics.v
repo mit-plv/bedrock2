@@ -1621,7 +1621,7 @@ Section WithNonmaximallyInsertedA.
 End WithNonmaximallyInsertedA.
 
 Inductive NestedType: Type :=
-| TUInt(nbits: Z)
+| UInt(nbits: Z)
 | TRecord(fields: NestedFields)
 | TArray(tp: NestedType)(L: N) (* length of array is needed for type_size *)
 with NestedField :=
@@ -1629,6 +1629,8 @@ with NestedField :=
 with NestedFields :=
 | FSnoc(rest: NestedFields)(f: NestedField) (* snoc to match structure of stdlib pairs *)
 | FSingle(f: NestedField).
+
+Notation Array tp L := (TArray tp (Z.to_N L)).
 
 Scheme NestedType_mut   := Induction for NestedType   Sort Prop
 with   NestedField_mut  := Induction for NestedField  Sort Prop
@@ -1646,13 +1648,13 @@ Definition array_t(tp: Type)(nElems: Z) := list tp.
    NestedValue for better compatibility with code that's not interested in records, but
    still wants to use array splitting/merging functionality
 Inductive NestedValue: NestedType -> Type :=
-| VUInt(nbits: Z)(v: Z): NestedValue (TUInt nbits)
+| VUInt(nbits: Z)(v: Z): NestedValue (UInt nbits)
 | VRecord( ...
 | VArray *)
 
 Fixpoint interp_type(t: NestedType): Type :=
   match t with
-  | TUInt nbits => uint_t nbits
+  | UInt nbits => uint_t nbits
   | TRecord fields => interp_fields fields
   | TArray tp L => array_t (interp_type tp) (Z.of_N L)
   end
@@ -1670,54 +1672,56 @@ with interp_fields(fields: NestedFields): Type :=
    each field must be the same, but the presence of each field can be different.
 
    The split_off function needs to destruct both a NestedType tp and a (type_presence tp),
-   and if use an `Inductive type_presence: NestedType -> Type`, the dependent pattern
+   and if we use an `Inductive type_presence: NestedType -> Type`, the dependent pattern
    matching becomes too cumbersome, so we prefer a
    `Fixpoint type_presence: NestedType -> Type` *)
 
-Fixpoint type_presence(t: NestedType): Type :=
-  match t with
-  | TUInt nbits => bool
-  | TRecord fields => fields_presence fields
-  | TArray tp L => list (type_presence tp)
-  end
-with field_presence(field: NestedField): Type :=
-  match field with
-  | FField _ tp => type_presence tp
-  end
-with fields_presence(fields: NestedFields): Type :=
+Definition field_presence(f: NestedField): Type := bool.
+
+Fixpoint fields_presence(fields: NestedFields): Type :=
   match fields with
   | FSnoc rest f => prod (fields_presence rest) (field_presence f)
-  | FSingle f => field_presence f
+  | FSingle f => (field_presence f)
+  end.
+
+Definition type_presence(t: NestedType): Type :=
+  match t with
+  | UInt nbits => unit
+  | TRecord fields => fields_presence fields
+  | TArray tp L => list bool
   end.
 
 Section WithPresence.
   Context (b: bool).
-  Fixpoint const_type_presence(t: NestedType): type_presence t :=
-    match t with
-    | TUInt nbits => b
-    | TRecord fields => const_fields_presence fields
-    | TArray tp L => List.repeatz (const_type_presence tp) (Z.of_N L)
-    end
-  with const_field_presence(f: NestedField): field_presence f :=
-    match f with
-    | FField _ tp => const_type_presence tp
-    end
-  with const_fields_presence(fs: NestedFields): fields_presence fs :=
+
+  Definition const_field_presence(f: NestedField): field_presence f := b.
+
+  Fixpoint const_fields_presence(fs: NestedFields): fields_presence fs :=
     match fs with
-    | FSnoc rest f => (const_fields_presence rest, const_field_presence f)
-    | FSingle f => const_field_presence f
+    | FSnoc rest f => (const_fields_presence rest, b)
+    | FSingle f => b
+    end.
+
+  Definition const_type_presence(t: NestedType): type_presence t :=
+    match t with
+    | UInt nbits => tt
+    | TRecord fields => const_fields_presence fields
+    | TArray tp L => List.repeatz b (Z.of_N L)
     end.
 End WithPresence.
 
-Definition all_present: forall tp: NestedType, type_presence tp := const_type_presence true.
-Definition all_absent: forall tp: NestedType, type_presence tp := const_type_presence false.
+Definition all_present: forall tp: NestedType, type_presence tp :=
+  const_type_presence true.
+Definition all_absent: forall tp: NestedType, type_presence tp :=
+  const_type_presence false.
 
 Local Open Scope bool_scope.
 
+(*
 Fixpoint type_presence_eqb{tp: NestedType}:
   type_presence tp -> type_presence tp -> bool :=
   match tp with
-  | TUInt nbits => Bool.eqb
+  | UInt nbits => Bool.eqb
   | TRecord fields => @fields_presence_eqb fields
   | TArray tE L => List.list_eqb (@type_presence_eqb tE)
   end
@@ -1733,14 +1737,17 @@ with fields_presence_eqb{fs: NestedFields}:
       (fields_presence_eqb p_rest1 p_rest2) && (field_presence_eqb p_f1 p_f2)
   | FSingle f => @field_presence_eqb f
   end.
+*)
 
-Definition type_presence_list_sub{tp: NestedType}
-  (type_presence_sub: type_presence tp -> type_presence tp -> option (type_presence tp)):
-  list (type_presence tp) -> list (type_presence tp) -> option (list (type_presence tp)) :=
+Definition bool_sub(p1 p2: bool): option bool :=
+  if p1 then if p2 then Some false else Some true
+  else if p2 then None else Some false.
+
+Definition bool_list_sub: list bool -> list bool -> option (list bool) :=
   fix rec ps1 ps2 :=
     match ps1, ps2 with
     | cons p1 rest1, cons p2 rest2 =>
-        match type_presence_sub p1 p2 with
+        match bool_sub p1 p2 with
         | Some p3 =>
             match rec rest1 rest2 with
             | Some rest3 => Some (cons p3 rest3)
@@ -1752,58 +1759,34 @@ Definition type_presence_list_sub{tp: NestedType}
     | _, _ => None
     end.
 
-Definition atomic_presence_sub(p1 p2: bool): option bool :=
-  if p1 then if p2 then Some false else Some true
-  else if p2 then None else Some false.
-
-(* type presence subtraction, returns None if trying to subtract presence from absence *)
-Fixpoint type_presence_sub{tp: NestedType}:
-  type_presence tp -> type_presence tp -> option (type_presence tp) :=
-  match tp with
-  | TUInt nbits => atomic_presence_sub
-  | TRecord fields => @fields_presence_sub fields
-  | TArray tE L => type_presence_list_sub type_presence_sub
-  end
-with field_presence_sub{f: NestedField}:
-  field_presence f -> field_presence f -> option (field_presence f) :=
-  match f with
-  | FField _ tp => @type_presence_sub tp
-  end
-with fields_presence_sub{fs: NestedFields}:
+Fixpoint fields_presence_sub{fs: NestedFields}:
   fields_presence fs -> fields_presence fs -> option (fields_presence fs) :=
   match fs with
   | FSnoc rest f => fun '(p_rest1, p_f1) '(p_rest2, p_f2) =>
       match fields_presence_sub p_rest1 p_rest2 with
-      | Some p_rest3 => match field_presence_sub p_f1 p_f2 with
+      | Some p_rest3 => match bool_sub p_f1 p_f2 with
                       | Some p_f3 => Some (p_rest3, p_f3)
                       | None => None
                       end
       | None => None
       end
-  | FSingle f => @field_presence_sub f
+  | FSingle f => bool_sub
   end.
 
-Definition encode_uint(nbits: Z): Z -> list byte :=
-  LittleEndianList.le_split (Z.to_nat (nbits_to_nbytes nbits)).
-
-(*
-Definition sized_uint(nbits: Z)(v: Z): Prop := 0 <= v < 2 ^ nbits.
-
-Lemma encode_uint_length: forall nbits v, len (encode_uint nbits v) = nbits_to_nbytes nbits.
-Proof.
-  unfold encode_uint. intros. rewrite LittleEndianList.length_le_split. simpl.
-  unfold nbits_to_nbytes. Z.to_euclidean_division_equations. lia.
-Qed.
-*)
-
-Definition encode_array{T: Type}: (T -> list byte) -> list T -> list byte :=
-  @List.flat_map T byte.
+(* type presence subtraction, returns None if trying to subtract presence from absence *)
+Fixpoint type_presence_sub{tp: NestedType}:
+  type_presence tp -> type_presence tp -> option (type_presence tp) :=
+  match tp with
+  | UInt nbits => fun _ _ => Some tt
+  | TRecord fields => @fields_presence_sub fields
+  | TArray tE L => bool_list_sub
+  end.
 
 
 (* ARP responder example *)
 
-Definition TMAC := TArray (TUInt 8) 6.
-Definition TIPv4 := TArray (TUInt 8) 4.
+Definition TMAC := TArray (UInt 8) 6.
+Definition TIPv4 := TArray (UInt 8) 4.
 
 (*
 
@@ -1876,12 +1859,12 @@ Notation "<{ f1 ; f2 ; .. ; fn }>" := (FSnoc .. (FSnoc (FSingle f1) f2) .. fn)
   (f1 custom record_field at level 1, f2 custom record_field at level 1,
    fn custom record_field at level 1).
 
-Definition TARPPacket := TRecord <{
-  "htype": TUInt 16; (* hardware type *)
-  "ptype": TUInt 16; (* protocol type *)
-  "hlen": TUInt 8;   (* hardware address length (6 for MAC addresses) *)
-  "plen": TUInt 8;   (* protocol address length (4 for IPv4 addresses) *)
-  "oper": TUInt 16;  (* operation *)
+Definition ARPPacket := TRecord <{
+  "htype": UInt 16; (* hardware type *)
+  "ptype": UInt 16; (* protocol type *)
+  "hlen": UInt 8;   (* hardware address length (6 for MAC addresses) *)
+  "plen": UInt 8;   (* protocol address length (4 for IPv4 addresses) *)
+  "oper": UInt 16;  (* operation *)
   "sha": TMAC;       (* sender hardware address *)
   "spa": TIPv4;      (* sender protocol address *)
   "tha": TMAC;       (* target hardware address *)
@@ -1889,13 +1872,13 @@ Definition TARPPacket := TRecord <{
 }>.
 
 Goal True.
-  pose (interp_type TARPPacket) as r.
+  pose (interp_type ARPPacket) as r.
   cbn in r.
 Abort.
 
 Fixpoint type_size(tp: NestedType): Z :=
   match tp with
-  | TUInt nbits => nbits_to_nbytes nbits
+  | UInt nbits => nbits_to_nbytes nbits
   | TRecord fields => fields_size fields
   | TArray tp L => type_size tp * Z.of_N L
   end
@@ -1926,14 +1909,14 @@ Fixpoint lookup_type_in_fields(fs: NestedFields)(s: string): NestedType :=
   | FSnoc rest (FField name tp) => if String.eqb s name then tp
                                   else lookup_type_in_fields rest s
   | FSingle (FField name tp) => if String.eqb s name then tp
-                                else TUInt 0
+                                else UInt 0
   end.
 
 Definition lookup_type_in_type(tp: NestedType)(s: string): NestedType :=
   match tp  with
-  | TUInt nbits => TUInt 0
+  | UInt nbits => UInt 0
   | TRecord fields => lookup_type_in_fields fields s
-  | TArray tE L => TUInt 0
+  | TArray tE L => UInt 0
   end.
 
 Fixpoint lookup_in_fields(fs: NestedFields):
@@ -1945,14 +1928,14 @@ Fixpoint lookup_in_fields(fs: NestedFields):
       then v_f else lookup_in_fields rest v_rest s
   | FSingle (FField name tp) => fun v s =>
       if String.eqb s name
-        as b return interp_type (if b then tp else TUInt 0)
+        as b return interp_type (if b then tp else UInt 0)
       then v else 0
   end.
 
 Definition lookup_in_type(tp: NestedType):
   interp_type tp -> forall s: string, interp_type (lookup_type_in_type tp s) :=
   match tp with
-  | TUInt _ => fun v s => 0
+  | UInt _ => fun v s => 0
   | TRecord fields => lookup_in_fields fields
   | TArray _ _ => fun v s => 0
   end.
@@ -1973,45 +1956,112 @@ Notation "a ~> f" := (ltac:(annot_with_simplified_type (lookup_in_type _ a f%str
    only parsing).
 *)
 
-Goal forall p: interp_type TARPPacket, False.
+Goal forall p: interp_type ARPPacket, False.
   intros.
   pose (p~>"foo").
   pose (p~>"sha").
   pose (p~>"sha"[3]).
 Abort.
 
+Fixpoint has_field(fs: NestedFields)(s: string): bool :=
+  match fs with
+  | FSnoc rest (FField name tp) => if String.eqb s name then true else has_field rest s
+  | FSingle (FField name tp) => String.eqb s name
+  end.
+
+(* Designed to be computable, and only returns Some if the field name occurs
+   exactly once *)
+Fixpoint get_field_presence{fs: NestedFields}:
+  fields_presence fs -> string -> option bool :=
+  match fs as fs return fields_presence fs -> string -> option bool with
+  | FSnoc rest (FField name tp) => fun '(pr_rest, pr_f) s =>
+      if String.eqb s name then
+        if has_field rest s then None else Some pr_f
+      else get_field_presence pr_rest s
+  | FSingle (FField name tp) => fun pr s =>
+      if String.eqb s name then Some pr else None
+  end.
+
+(* Computable, but we will use it symbolically because that's more readable
+   "all_present minus field1 minus field2" rather than "(true, false, false, true)" *)
 Fixpoint remove_from_fields_presence{fs: NestedFields}:
   fields_presence fs -> string -> fields_presence fs :=
-  match fs with
+  match fs as fs return fields_presence fs -> string -> fields_presence fs with
   | FSnoc rest (FField name tp) => fun '(pr_rest, pr_f) s =>
-      if String.eqb s name then (pr_rest, all_absent tp)
+      if String.eqb s name then (pr_rest, false)
       else (remove_from_fields_presence pr_rest s, pr_f)
   | FSingle (FField name tp) => fun pr s =>
-      if String.eqb s name then all_absent tp else pr
+      if String.eqb s name then false else pr
+  end.
+
+Definition removable_in(tp: NestedType): Type :=
+  match tp with
+  | UInt _ => Empty_set
+  | TRecord fields => string
+  | TArray _ _ => Z (* TODO also allow ranges rather than just one index at a time *)
   end.
 
 Definition remove_from_type_presence{tp: NestedType}:
-  type_presence tp -> string -> type_presence tp :=
+  type_presence tp -> removable_in tp -> type_presence tp :=
   match tp with
-  | TUInt nbits => fun pr s => pr
+  | UInt _ => fun pr _ => pr
   | TRecord fields => @remove_from_fields_presence fields
-  | TArray tE L => fun pr s => pr
+  | TArray tE L => fun pr i => List.set pr i false
   end.
+
+Fixpoint offset_of_field(fs: NestedFields)(s: string): Z :=
+  match fs with
+  | FSnoc rest (FField name tp) =>
+      if String.eqb s name then fields_size rest else offset_of_field rest s
+  | FSingle (FField name tp) =>
+      if String.eqb s name then 0 else -1
+  end.
+
+Fixpoint offset_to_field(fs: NestedFields)(ofs: Z): string :=
+  match fs with
+  | FSnoc rest (FField name tp) =>
+      if fields_size rest <=? ofs then name else offset_to_field rest ofs
+  | FSingle (FField name tp) => name
+  end.
+
+(* TODO decide later if we also want presence infrastructure for arrays
+
+Definition remove_index_from_array_presence(pr: list bool)(i: Z): list bool :=
+  List.set pr i false.
+
+Definition remove_range_from_array_presence(pr: list bool)(i
+*)
 
 (*
 Notations to indicate what has been removed:
 record TMyType-"field1"-"arrayfield" ...
-record (TArray ...)-[i]-[j:k] ...
 
 to dig out path ->a->b
   record MyType all_present v addr1
 = record MyType -"a" v addr1 * record TA v~>"a" addr2
                              = record TA-"b" v~>"a" addr2 * record TB v~>"a"~>"b" addr3
+
+
+record (TArray ...)-[i]-[j:k]-[i1:][:n]-[:n1]-[n2:] ...
+
+loop invariants:
+
+a |-> xs1 * p |-> x * (p+4) |-> xs2
+
+a |-> (xs1 ++ [|x|] ++ xs2)
+
+a+4*i |-> x * (xs1 ++ [|x|] ++ xs2) @@ a : (array (UInt 32) n)-[i]
+p=a+4*i
+
+a+4*i |-> x * (xs1 ++ [|??|] ++ xs2) @@ a : (array (UInt 32) n)-[i]
+p=a+4*i
+where ?? := opaque default
+
 *)
 
 Fixpoint type_eqb(tp1 tp2: NestedType): bool :=
   match tp1, tp2 with
-  | TUInt nbits1, TUInt nbits2 => nbits1 =? nbits2
+  | UInt nbits1, UInt nbits2 => nbits1 =? nbits2
   | TRecord fs1, TRecord fs2 => fields_eqb fs1 fs2
   | TArray tE1 L1, TArray tE2 L2 => type_eqb tE1 tE2 && N.eqb L1 L2
   | _, _ => false
@@ -2090,24 +2140,6 @@ Global Instance interp_field_inhabited: forall f: NestedField, inhabited (interp
 Global Instance interp_fields_inhabited: forall fs: NestedFields, inhabited (interp_fields fs) :=
   snd (snd interp_type_inhabited_induction).
 
-Definition type_presence_inhabited_induction:
-  (forall tp: NestedType, inhabited (type_presence tp)) *
-  ((forall f: NestedField, inhabited (field_presence f)) *
-   (forall fs: NestedFields, inhabited (fields_presence fs))).
-  eapply NestedType_mutindT; simpl; try typeclasses eauto.
-  intros. econstructor. exact (default, default).
-Defined.
-
-Global Instance type_presence_inhabited:
-  forall tp: NestedType, inhabited (type_presence tp) :=
-  fst type_presence_inhabited_induction.
-Global Instance field_presence_inhabited:
-  forall f: NestedField, inhabited (field_presence f) :=
-  fst (snd type_presence_inhabited_induction).
-Global Instance fields_presence_inhabited:
-  forall fs: NestedFields, inhabited (fields_presence fs) :=
-  snd (snd type_presence_inhabited_induction).
-
 Definition type_eq_dec: forall tp1 tp2: NestedType, { tp1 = tp2 } + { tp1 <> tp2 }.
   pose proof NestedType_mutS as A.
   specialize A with
@@ -2165,9 +2197,6 @@ Proof.
   intros. rewrite (ocast_same_eq _ _ _ eq_refl). reflexivity.
 Qed.
 
-Definition cast0{tp1 tp2: NestedType}(pf: tp1 = tp2)(x: interp_type tp1): interp_type tp2 :=
-  eq_rect tp1 interp_type x tp2 pf.
-
 (* like eq_rect, but more implicit arguments, and argument order that works better for
    inference *)
 Definition cast{T: Type}{t1 t2: T}(f: T -> Type)(pf: t1 = t2)(x: f t1): f t2 :=
@@ -2175,11 +2204,12 @@ Definition cast{T: Type}{t1 t2: T}(f: T -> Type)(pf: t1 = t2)(x: f t1): f t2 :=
 
 Definition toplevel_elem_count(tp: NestedType): N :=
   match tp with
-  | TUInt _ => 1
+  | UInt _ => 1
   | TRecord _ => 1
   | TArray _ L => L
   end.
 
+(*
 Section SplitOff.
   (* tp1 with holes as described in pr1, located at addr1, is what we want to split off *)
   Context (addr1: Z) (tp1: NestedType) (pr1: type_presence tp1).
@@ -2197,7 +2227,7 @@ Section SplitOff.
         end
     | right _ =>
         match tp2 as tp2 return type_presence tp2 -> interp_type tp2 -> option (type_presence tp2 * interp_type tp1) with
-        | TUInt nbits => fun pr2 v => None
+        | UInt nbits => fun pr2 v => None
         | TRecord fields => split_off_from_fields addr2 fields
         | TArray tE L2 =>
             let i := (addr1 - addr2)/type_size tE in
@@ -2259,29 +2289,34 @@ Section SplitOff.
     | FSingle f2 => split_off_from_field addr2 f2
   end.
 End SplitOff.
+*)
 
 (* if the type has holes, any values should be accepted for the holes,
    so we can't use a judgment of the form "decode bytes = value", but
    we have to use a relation *)
 
+Definition unnamed_field_rep{tp: NestedType}
+  (type_rep: type_presence tp -> interp_type tp -> list (option byte) -> Prop)
+  (present: bool)(v: interp_type tp)(bso: list (option byte)): Prop :=
+  if present then type_rep (all_present tp) v bso
+  else bso = List.repeatz None (type_size tp).
+
 Fixpoint type_rep(tp: NestedType):
   type_presence tp -> interp_type tp -> list (option byte) -> Prop :=
   match tp as tp0 return type_presence tp0 -> interp_type tp0 -> list (option byte) -> Prop
   with
-  | TUInt nbits => fun present (v: Z) bso =>
+  | UInt nbits => fun (_: unit) (v: Z) bso =>
       len bso = nbits_to_nbytes nbits /\
-      if present
-      then exists bs, List.map Some bs = bso /\ LittleEndianList.le_combine bs = v
-      else List.Forall (eq None) bso
+      exists bs, List.map Some bs = bso /\ LittleEndianList.le_combine bs = v
   | TRecord fields => fields_rep fields
   | TArray tE L => fun presence vs bso =>
       exists chunks, len chunks = Z.of_N L /\ List.concat chunks = bso /\
-        List.Forall3 (type_rep tE) presence vs chunks
+        List.Forall3 (unnamed_field_rep (type_rep tE)) presence vs chunks
   end
 with field_rep(f: NestedField):
   field_presence f -> interp_field f -> list (option byte) -> Prop :=
   match f with
-  | FField _ tE => type_rep tE
+  | FField _ tE => unnamed_field_rep (type_rep tE)
   end
 with fields_rep(fs: NestedFields):
   fields_presence fs -> interp_fields fs -> list (option byte) -> Prop :=
@@ -2339,7 +2374,7 @@ Proof.
         replace (Z.to_nat (Z.of_nat (List.length bs))) with (List.length bs) by lia.
         apply List.firstn_all.
       * cbn. constructor; assumption.
-  - eauto.
+  - simpl. eauto.
   - specialize (H (List.upto (fields_size rest) bs)).
     pose proof (fields_size_nonneg rest).
     pose proof (field_size_nonneg f).
@@ -2378,34 +2413,53 @@ Definition record_fields(fs: NestedFields)(pr: fields_presence fs)(v: interp_fie
   (addr: Z)(m: mem): Prop :=
   exists bso, m = map.of_olist_Z_at addr bso /\ fields_rep fs pr v bso.
 
-Definition array(tp: NestedType)(vs: list (interp_type tp)): Z -> mem -> Prop :=
-  record (TArray tp (Z.to_N (len vs))) (all_present _) vs.
+Declare Custom Entry type_with_presence.
+
+Notation "tp" := (all_present tp)
+  (in custom type_with_presence at level 2, tp constr at level 11).
+Notation "pr - fld" := (remove_from_fields_presence pr fld)
+  (left associativity, in custom type_with_presence at level 3, fld constr at level 0,
+   format "pr - fld").
+
+Notation "v @@ a : pr" := (record _ pr v a)
+  (at level 25, a at level 99, pr custom type_with_presence at level 3).
+
+Goal forall (p: interp_type ARPPacket) (addr: Z) (ws: list Z), True.
+Proof.
+  intros.
+  pose (record ARPPacket (all_present _) p addr) as c1.
+  pose (record ARPPacket (remove_from_fields_presence (all_present ARPPacket) "tha") p addr) as c2.
+  pose (record ARPPacket (remove_from_fields_presence (remove_from_fields_presence (all_present ARPPacket) "tha") "sha") p addr) as c3.
+  pose (record (TArray (UInt 32) 12) (all_present _) ws addr) as c4.
+  pose (seps [|c1; c2; c3; c4|]) as c5.
+  subst c1 c2 c3 c4. cbn [seps] in c5.
+Abort.
 
 Axiom TODO: False.
 
-Lemma invert_bytearray: forall (bs: list Z) addr m,
-    array (TUInt 8) bs addr m ->
-    m = map.of_olist_Z_at addr (List.map Some (List.map byte.of_Z bs)).
+Lemma invert_bytearray: forall (bs: list Z) addr m n,
+    (bs @@ addr : Array (UInt 8) n) m ->
+    m = map.of_olist_Z_at addr (List.map Some (List.map byte.of_Z bs)) /\
+    len bs = Z.max 0 n.
 Proof.
 Admitted.
 
 Lemma bytearray_to_record: forall (bs: list Z) addr R m tp,
-    len bs = type_size tp ->
-    sep (array (TUInt 8) bs addr) R m ->
-    exists (v: interp_type tp),
-      sep (record tp (all_present _) v addr) R m.
+    sep (bs @@ addr : Array (UInt 8) (type_size tp)) R m ->
+    exists (v: interp_type tp), sep (v @@ addr : tp) R m.
 Proof.
-  intros. destruct H0 as (m1 & m2 & Sp & Hm1 & Hm2).
+  intros. destruct H as (m1 & m2 & Sp & Hm1 & Hm2).
   pose proof (proj1 cast_bytes_induction) as P.
   specialize (P tp (List.map byte.of_Z bs)). rewrite List.map_length in P.
-  specialize (P H). destruct P as (v & P). exists v.
+  eapply invert_bytearray in Hm1. destruct Hm1 as (A & B).
+  pose proof (type_size_nonneg tp).
+  specialize (P ltac:(lia)). destruct P as (v & P). exists v.
   exists m1, m2. ssplit; try assumption.
-  unfold record. eexists. split. 2: exact P.
-  eapply invert_bytearray. exact Hm1.
+  unfold record. eexists. split. 2: exact P. exact A.
 Qed.
 
-Lemma record_TUInt_present: forall v a nbits,
-    record (TUInt nbits) true v a = littleendian nbits v a.
+Lemma record_UInt_present: forall v a nbits,
+    record (UInt nbits) (all_present _) v a = littleendian nbits v a.
 Proof.
   unfold record, littleendian. intros. extensionality m. unfold type_rep.
   eapply propositional_extensionality; split; intros.
@@ -2417,62 +2471,94 @@ Proof.
     + case TODO.
 Qed.
 
-Lemma record_TUInt_absent: forall v a nbits,
-    record (TUInt nbits) false v a = emp True.
+(* Note: If target address points to the i-th element of an array which is a field
+   of the record we're looking at, and i is symbolic, the whole target address expression
+   is symbolic, and we can't compute on it, even if we first symbolically subtract
+   the base address from it. *)
+
+Lemma record_fields_single: forall f pr v a,
+    record_fields (FSingle f) pr v a = record_field f pr v a.
 Proof.
-  unfold record, littleendian. intros. extensionality m. unfold type_rep.
-  eapply propositional_extensionality; split; intros.
-  - fwd. split. 2: constructor. case TODO.
-  - apply proj1 in H. subst m. exists (List.repeatz None (nbits_to_nbytes nbits)). ssplit.
-    + case TODO.
-    + apply List.len_repeatz. apply nbits_to_nbytes_nonneg.
-    + case TODO.
+  intros. unfold record_fields, record_field. reflexivity.
 Qed.
 
-Lemma split_off_correct_induction(addr1: Z) (tp1: NestedType) (pr1: type_presence tp1):
-  (forall (tp2: NestedType) (addr2: Z) pr2 v2 pr2' v1,
-     split_off_from_type addr1 tp1 pr1 addr2 tp2 pr2 v2 = Some (pr2', v1) ->
-     iff1 (record tp2 pr2 v2 addr2)
-          (sep (record tp1 pr1 v1 addr1) (record tp2 pr2' v2 addr2))) /\
-  (forall (f2: NestedField) (addr2: Z) pr2 v2 pr2' v1,
-     split_off_from_field addr1 tp1 pr1 addr2 f2 pr2 v2 = Some (pr2', v1) ->
-     iff1 (record_field f2 pr2 v2 addr2)
-          (sep (record tp1 pr1 v1 addr1) (record_field f2 pr2' v2 addr2))) /\
-  (forall (fs2: NestedFields) (addr2: Z) pr2 v2 pr2' v1,
-     split_off_from_fields addr1 tp1 pr1 addr2 fs2 pr2 v2 = Some (pr2', v1) ->
-     iff1 (record_fields fs2 pr2 v2 addr2)
-          (sep (record tp1 pr1 v1 addr1) (record_fields fs2 pr2' v2 addr2))).
+(* TODO maybe use lemmas like this one as the definition instead of going through
+   list (option byte) ? *)
+Lemma record_fields_snoc: forall fs f (pr_fs: fields_presence fs) (pr_f: field_presence f)
+                                 (v_fs: interp_fields fs) (v_f: interp_field f) a,
+    record_fields (FSnoc fs f) (pr_fs, pr_f) (v_fs, v_f) a =
+    sep (record_fields fs pr_fs v_fs a)
+        (record_field f pr_f v_f (a + fields_size fs)).
 Proof.
-  eapply NestedType_mutind; simpl; intros.
-  - unfold split_off_from_type in H. fwd. subst tp1. simpl in *.
-    unfold atomic_presence_sub in *.
-    destr pr1; destr pr2; fwd; unfold eq_rect_r; simpl;
-      rewrite ?record_TUInt_present, ?record_TUInt_absent, ?sep_emp_True_r, ?sep_emp_True_l;
-      try reflexivity. discriminate.
-  -
-    (* TODO since split_off is just a complicated identity function, could we actually define
-       it as the identity, and turn each case of its original definition into a rewrite
-       lemma? *)
-Admitted.
+  intros. eapply iff1ToEq. intro m. unfold record_fields, record_field.
+  unfold sep.
+  split; intros; fwd.
+  - simpl in Hp1. fwd. do 2 eexists. ssplit. 2,3: eexists; split. 2,4: reflexivity.
+    2,3: eassumption. case TODO.
+  - eexists. split. 2: eexists _, _. 2: split. 2: reflexivity.
+    2: split; eassumption.
+    case TODO.
+Qed.
 
-Definition split_off(addr1: Z)(tp1: NestedType)(pr1: type_presence tp1)
-  (addr2: Z)(tp2: NestedType)(pr2: type_presence tp2)(v2: interp_type tp2): mem -> Prop :=
-  match split_off_from_type addr1 tp1 pr1 addr2 tp2 pr2 v2 with
-  | Some (pr2', v1) => sep (record tp1 pr1 v1 addr1) (record tp2 pr2' v2 addr2)
-  | None => record tp2 pr2 v2 addr2
-  end.
-
-Lemma split_off_correct: forall (addr1: Z)(tp1: NestedType)(pr1: type_presence tp1)
-                                (tp2: NestedType)(addr2: Z) pr2 v2,
-    split_off addr1 tp1 pr1 addr2 tp2 pr2 v2 = record tp2 pr2 v2 addr2.
+Lemma record_field_present: forall name tp v a,
+    record_field (FField name tp) true v a = record tp (all_present tp) v a.
 Proof.
-  intros.
-  unfold split_off.
-  destruct_one_match.
-  - destruct p. eapply iff1ToEq.
-    pose proof (split_off_correct_induction addr1 tp1 pr1) as P.
-    apply proj1 in P. symmetry. eapply P. assumption.
-  - reflexivity.
+  intros. unfold record_field, record. reflexivity.
+Qed.
+
+Lemma record_field_absent: forall name tp v a,
+    record_field (FField name tp) false v a = emp True.
+Proof.
+  intros. eapply iff1ToEq. intro m. unfold record_field, emp. split; intros; fwd.
+  - change (field_rep (FField name tp))
+      with (unnamed_field_rep (type_rep tp)) in Hp1.
+    simpl in Hp1. subst bso.
+    case TODO.
+  - exists (List.repeatz None (type_size tp)). split.
+    + case TODO.
+    + reflexivity.
+Qed.
+
+Lemma split_off_field: forall name fs (v: interp_fields fs) pr a,
+    get_field_presence pr name = Some true ->
+    iff1 (record_fields fs pr v a)
+         (sep (record_fields fs (remove_from_fields_presence pr name) v a)
+              (record (lookup_type_in_fields fs name) (all_present _)
+                 (lookup_in_fields _ v name) (a + offset_of_field fs name))).
+Proof.
+  induction fs; intros.
+  - destruct f. simpl in *. destruct v as (v_rest & v_f).
+    destruct pr as (pr_rest & pr_f).
+    unfold field_presence in pr_f. destruct_one_match.
+    + destruct_one_match_hyp. 1: discriminate.
+      fwd. rewrite 2record_fields_snoc. rewrite record_field_present.
+      rewrite record_field_absent. rewrite sep_emp_True_r. reflexivity.
+    + rewrite 2record_fields_snoc. cancel. cbn [seps].
+      eapply IHfs. assumption.
+  - destruct f. simpl in *. unfold field_presence in pr. destruct_one_match.
+    2: discriminate.
+    fwd. rewrite 2record_fields_single. rewrite record_field_present.
+    rewrite record_field_absent. rewrite sep_emp_True_l. rewrite Z.add_0_r. reflexivity.
+Qed.
+
+Lemma split_off_field_from_type: forall fs (pr: type_presence (TRecord fs)) name
+                              (v: interp_type (TRecord fs)) aBase aTgt aTgt',
+    (* not strictly needed, only to determine name: *)
+    offset_to_field fs (aTgt-aBase) = name ->
+    get_field_presence pr name = Some true ->
+    (* aTgt' is aTgt rounded-down to field boundaries *)
+    aBase + offset_of_field fs name = aTgt' ->
+    (record (TRecord fs) pr v aBase) =
+      sep (record (TRecord fs) (remove_from_type_presence pr name) v aBase)
+          (record (lookup_type_in_fields fs name) (all_present _) v~>name aTgt').
+Proof.
+  intros. eapply iff1ToEq. subst aTgt'.
+  change (record (TRecord fs) pr v aBase) with (record_fields fs pr v aBase).
+  change (record (TRecord fs) (remove_from_type_presence pr name) v aBase) with
+         (record_fields fs (remove_from_fields_presence pr name) v aBase).
+  etransitivity.
+  1: eapply split_off_field. 1: eassumption. cancel.
+  cbn [seps]. reflexivity.
 Qed.
 
 (* instead of (list (option byte)), use (map Z byte) starting at index 0 and
