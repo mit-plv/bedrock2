@@ -59,7 +59,7 @@ Proof.
   intros *. intro E. destr (reg_class.get a); try discriminate E.
   unfold reg_class.get in E0. simp.
   destruct_one_match_hyp.
-  + rewrite Bool.andb_true_iff in *. rewrite !Z.leb_le in *. assumption.
+  + assumption.
   + destruct_one_match_hyp. 1: discriminate.
     destruct_one_match_hyp; discriminate.
 Qed.
@@ -72,10 +72,10 @@ Proof.
   intros *. intro E. destr (reg_class.get a); try discriminate E.
   unfold reg_class.get in E0. simp.
   destruct_one_match_hyp.
-  + rewrite Bool.andb_true_iff in *. rewrite !Z.leb_le in *. blia.
+  + blia.
   + destruct_one_match_hyp. 1: discriminate.
     destruct_one_match_hyp.
-    * rewrite Bool.andb_true_iff in *. rewrite !Z.leb_le in *. auto.
+    * auto.
     * destruct_one_match_hyp; try discriminate.
 Qed.
 

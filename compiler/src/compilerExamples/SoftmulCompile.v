@@ -244,9 +244,8 @@ Section Riscv.
     all: split; [assumption|].
     all: try
       match goal with
-      | H: negb _ = _ |- _ => apply Bool.negb_false_iff in H; fwd;
-                              apply (f_equal word.unsigned) in H;
-                              rewrite word.unsigned_modu_nowrap in H by ZnWords
+      | H: word.modu _ _ = _ |- _ => apply (f_equal word.unsigned) in H;
+                                     rewrite word.unsigned_modu_nowrap in H by ZnWords
       end;
       ZnWords.
   Qed.

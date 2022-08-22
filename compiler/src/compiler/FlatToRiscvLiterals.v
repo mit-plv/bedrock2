@@ -74,22 +74,6 @@ Section FlatToRiscvLiterals.
            | _: _ = ?x |- _ => subst x
            end.
 
-  Ltac post_destr db :=
-    repeat match goal with
-           | E: (_ && _)%bool = true |- _ =>
-             let E1 := fresh E in let E2 := fresh E in
-             apply andb_prop in E; destruct E as [E1 E2];
-             autoforward_in db E1;
-             autoforward_in db E2
-           end.
-
-  (* mark as Instance? *)
-  Lemma andb_spec: forall b1 b2,
-      BoolSpec (b1 = true /\ b2 = true) (b1 = false \/ b2 = false) (b1 && b2)%bool.
-  Proof using .
-    intros. destruct b1; destruct b2; constructor; auto.
-  Qed.
-
   Lemma compile_lit_correct_full_raw: forall (initialL: RiscvMachineL) post x v R Rexec,
       initialL.(getNextPc) = add initialL.(getPc) (word.of_Z 4) ->
       let insts := compile_lit iset x v in
@@ -111,24 +95,19 @@ Section FlatToRiscvLiterals.
     destruct_RiscvMachine initialL.
     subst d insts initialL_npc.
     unfold compile_lit, updateMetricsForLiteral in *.
-    destruct_one_match_hyp; [|destruct_one_match_hyp]; post_destr typeclass_instances.
+    (* TODO once we're on 8.16, it should be possible to replace "F, P, N" by "*"
+       https://github.com/coq/coq/pull/15426 *)
+    rewrite bitwidth_matches in F, P, N.
+    destruct_one_match_hyp; [|destruct_one_match_hyp].
     - unfold compile_lit_12bit in *.
       run1det.
       simpl_word_exprs word_ok.
       match_apply_runsTo.
       erewrite signExtend_nop; eauto; try blia.
-    - (* TODO this step should be automatic *)
-      rewrite bitwidth_matches in E0.
-      assert (width = 32 \/ - 2 ^ 31 <= v < 2 ^ 31). {
-        apply Bool.orb_true_iff in E0. destruct E0 as [E0 | E0].
-        - autoforward_in typeclass_instances E0. auto.
-        - post_destr typeclass_instances. auto.
-      }
-      unfold compile_lit_32bit in *.
+    - unfold compile_lit_32bit in *.
       simpl in P.
       run1det. run1det.
       match_apply_runsTo.
-      rewrite E0.
       f_equal; [|solve_MetricLog].
       f_equal.
       + rewrite map.put_put_same. f_equal.
@@ -141,8 +120,8 @@ Section FlatToRiscvLiterals.
           clear -BW. destruct width_cases; rewrite H; reflexivity.
         }
         rewrite! signExtend_alt_bitwise by (reflexivity || assumption).
-        clear -Wpos H.
-        destruct H as [E | B ].
+        clear -Wpos E0.
+        destruct E0 as [E | B].
         * rewrite E. unfold signExtend_bitwise. Zbitwise.
         * unfold signExtend_bitwise. Zbitwise.
           (* TODO these should also be solved by Zbitwise *)
@@ -183,8 +162,6 @@ Section FlatToRiscvLiterals.
       run1det. repeat unfold_MetricLog.
       run1det. repeat unfold_MetricLog.
       match_apply_runsTo.
-      rewrite bitwidth_matches in E0.
-      rewrite E0.
       f_equal; [|simpl; try solve_MetricLog].
       f_equal.
       + rewrite! map.put_put_same. f_equal. Simp.unprotect_equalities. subst mid hi.
@@ -192,7 +169,7 @@ Section FlatToRiscvLiterals.
         assert (width = 64) as W64. {
           clear -E0 BW.
           destruct width_cases as [E | E]; rewrite E in *; try reflexivity.
-          exfalso. simpl in E0. discriminate E0.
+          exfalso. blia.
         }
         (repeat rewrite ?word.unsigned_of_Z, ?word.unsigned_xor, ?word.unsigned_slu);
         unfold word.wrap;
