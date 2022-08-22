@@ -120,6 +120,7 @@ Ltac pose_fwd_list_hints :=
     unfold List.upd, List.upds.
 (*    pose_word_lemmas 32%Z word. pose_Prop_lemmas. pose_fwd_list_hints.*)
 
+(*
 Time
 time "all" (let t := uconstr:(((@rew_zoom_bw _
     (@word.add 32 word (@word.add 32 word addr (@word.of_Z 32 word (Z.mul 2 4)))
@@ -4550,7 +4551,6 @@ time "typechecking" (let tp := type of t in idtac)).
 
     (*
     Time refine (printed proof) takes 0.244 secs.
-*)
 
     Set Printing Depth 1000000.
     Set Printing All.
@@ -4620,9 +4620,6 @@ end.
     WordSimpl.word_simpl_step_in_goal.
     WordSimpl.word_simpl_step_in_goal.
     WordSimpl.word_simpl_step_in_goal.
-    { WordSimpl.word_simpl_step_in_goal.
-
-   repeat (repeat WordSimpl.word_simpl_step_in_goal; try rewrite_db fwd_rewrites);
 
   Abort.
 
