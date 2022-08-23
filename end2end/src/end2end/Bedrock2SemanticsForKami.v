@@ -13,16 +13,16 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 Definition MMIOREAD : string := "MMIOREAD".
 Definition MMIOWRITE : string := "MMIOWRITE".
 
-Instance word: word.word 32 := KamiWord.word 32.
-Instance word_ok: word.ok word := KamiWord.ok 32 eq_refl.
+#[global] Instance word: word.word 32 := KamiWord.word 32.
+#[global] Instance word_ok: word.ok word := KamiWord.ok 32 eq_refl.
 
-Instance word_riscv_ok: word.riscv_ok word.
+#[global] Instance word_riscv_ok: word.riscv_ok word.
 refine (@kami_word_riscv_ok 5 _ _).
 all: cbv; congruence.
 Qed.
 
-Instance mem: Interface.map.map word Byte.byte := SortedListWord.map _ _.
-Instance mem_ok: Interface.map.ok mem := SortedListWord.ok _ _.
+#[global] Instance mem: Interface.map.map word Byte.byte := SortedListWord.map _ _.
+#[global] Instance mem_ok: Interface.map.ok mem := SortedListWord.ok _ _.
 
 Add Ring wring : (Properties.word.ring_theory (word := word))
       (preprocess [autorewrite with rew_word_morphism],

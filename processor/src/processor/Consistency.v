@@ -33,8 +33,8 @@ Proof.
   reflexivity.
 Qed.
 
-Instance word: word 32 := @KamiWord.wordW width.
-Instance word_ok: word.ok word := @KamiWord.wordWok width width_cases.
+#[global] Instance word: word 32 := @KamiWord.wordW width.
+#[global] Instance word_ok: word.ok word := @KamiWord.wordWok width width_cases.
 
 Section FetchOk.
   Fixpoint alignedXAddrsRange (base: nat) (n: nat): XAddrs (width := width) :=

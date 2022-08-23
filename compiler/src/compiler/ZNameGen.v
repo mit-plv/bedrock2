@@ -33,7 +33,7 @@ Qed.
 
 Unset Universe Minimization ToSet.
 
-Instance ZNameGen: NameGen Z Z. refine ({|
+#[global] Instance ZNameGen: NameGen Z Z. refine ({|
   freshNameGenState := fun l => listmaxZ l + 1;
   genFresh s := (s, s + 1);
   allFreshVars s := fun x => (s <= x)

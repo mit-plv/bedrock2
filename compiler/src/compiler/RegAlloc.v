@@ -6,7 +6,7 @@ Require Import riscv.Utility.Utility.
 Require Import coqutil.Map.MapEauto.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Datatypes.ListSet.
-Require Import coqutil.Tactics.Simp.
+Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.autoforward.
 Require Import compiler.Registers.
 
@@ -380,13 +380,13 @@ Scheme Equality for Syntax.access_size. (* to create access_size_beq *)
 Scheme Equality for bopname. (* to create bopname_beq *)
 Scheme Equality for bbinop. (* to create bbinop_beq *)
 
-Instance access_size_beq_spec: EqDecider access_size_beq.
+#[global] Instance access_size_beq_spec: EqDecider access_size_beq.
 Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
 
-Instance bopname_beq_spec: EqDecider bopname_beq.
+#[global] Instance bopname_beq_spec: EqDecider bopname_beq.
 Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
 
-Instance bbinop_beq_spec: EqDecider bbinop_beq.
+#[global] Instance bbinop_beq_spec: EqDecider bbinop_beq.
 Proof. intros. destruct x; destruct y; simpl; constructor; congruence. Qed.
 
 Section PairList.
@@ -631,7 +631,7 @@ Lemma extends_cons: forall a l1 l2,
     extends l1 l2 ->
     extends (a :: l1) (a :: l2).
 Proof.
-  unfold extends, assert_in. simpl. intros. simp.
+  unfold extends, assert_in. simpl. intros. fwd.
   destruct_one_match_hyp. 1: reflexivity.
   epose proof (H _ _ _) as A. destruct_one_match_hyp. 2: discriminate. rewrite E1. reflexivity.
   Unshelve. rewrite E. reflexivity.
@@ -640,7 +640,7 @@ Qed.
 Lemma extends_cons_l: forall a l,
     extends (a :: l) l.
 Proof.
-  unfold extends, assert_in. simpl. intros. simp.
+  unfold extends, assert_in. simpl. intros. fwd.
   destruct_one_match. 1: reflexivity.
   destruct_one_match_hyp; discriminate.
 Qed.
@@ -650,13 +650,13 @@ Lemma extends_cons_r: forall a l1 l2,
     extends l1 l2 ->
     extends l1 (a :: l2).
 Proof.
-  unfold extends, assert_in. simpl. intros. simp.
+  unfold extends, assert_in. simpl. intros. fwd.
   destruct_one_match_hyp. 2: {
     eapply H0. rewrite E. reflexivity.
   }
   destruct_one_match. 1: reflexivity.
   eapply find_none in E1. 2: eassumption.
-  simpl in E1. exfalso. congruence.
+  simpl in E1. exfalso. fwd. intuition congruence.
 Qed.
 
 Lemma extends_intersect_l: forall l1 l2,
@@ -690,8 +690,8 @@ Lemma extends_loop_inv': forall s1 s2 s1' s2' fuel corresp1 corresp2,
 Proof.
   induction fuel; simpl; intros.
   - discriminate.
-  - simp. destruct_one_match_hyp.
-    + simp. symmetry in E1. eapply intersect_same_length in E1.
+  - fwd. destruct_one_match_hyp.
+    + fwd. symmetry in E1. eapply intersect_same_length in E1.
       rewrite E1. eapply extends_refl.
     + eapply IHfuel in H. eapply extends_trans.
       2: exact H. apply extends_intersect_l.
@@ -714,10 +714,10 @@ Lemma defuel_loop_inv': forall fuel corresp inv m1 m2 s1 s2 s1' s2',
 Proof.
   induction fuel; intros; simpl in *.
   - discriminate.
-  - simp. destruct_one_match_hyp.
-    + simp. symmetry in E1. eapply intersect_same_length in E1. rewrite E1 in H0.
-      rewrite E in H0. simp.
-      rewrite E0 in H1. simp.
+  - fwd. destruct_one_match_hyp.
+    + fwd. symmetry in E1. eapply intersect_same_length in E1. rewrite E1 in H0.
+      rewrite E in H0. fwd.
+      rewrite E0 in H1. fwd.
       rewrite <- E1 at 1. reflexivity.
     + eapply IHfuel; eassumption.
 Qed.
@@ -766,12 +766,12 @@ Section RegAlloc.
       eval_bcond lL c' = Some b.
   Proof.
     intros. rename H1 into C. unfold states_compat in C.
-    destruct c; cbn in *; simp;
+    destruct c; cbn in *; fwd;
       repeat match goal with
              | u: unit |- _ => destruct u
              end;
       unfold assert in *;
-      cbn; simp;
+      cbn; fwd;
       repeat match goal with
              | H: @eq bool _ _ |- _ => autoforward with typeclass_instances in H
              end;
@@ -838,18 +838,18 @@ Section RegAlloc.
       map.getmany_of_list lL ys' = Some vs.
   Proof.
     induction ys; intros.
-    - unfold assert_ins in *. cbn in *. simp. destruct ys'. 2: discriminate. reflexivity.
-    - cbn in *. unfold assert_ins, assert in H0. simp.
-      autoforward with typeclass_instances in E3. destruct ys' as [|a' ys']. 1: discriminate.
+    - unfold assert_ins in *. cbn in *. fwd. destruct ys'. 2: discriminate. reflexivity.
+    - cbn in *. unfold assert_ins, assert in H0. fwd.
+      destruct ys' as [|a' ys']. 1: discriminate.
       inversion E3. clear E3.
-      cbn in *. simp. simpl in E2.
+      cbn in *. fwd.
       erewrite states_compat_get; try eassumption. 2: {
         unfold assert_in. unfold mapping_eqb. rewrite E1. reflexivity.
       }
       unfold map.getmany_of_list in *.
       erewrite IHys; eauto.
       unfold assert_ins. rewrite H1. rewrite Nat.eqb_refl. simpl.
-      unfold assert. rewrite E2. reflexivity.
+      unfold assert. rewrite E2p1. reflexivity.
   Qed.
 
   Lemma states_compat_put: forall lH corresp lL x x' v,
@@ -858,7 +858,7 @@ Section RegAlloc.
   Proof.
     intros. unfold states_compat in *. intros k k'. intros.
     rewrite map.get_put_dec. rewrite map.get_put_dec in H1.
-    unfold assert_in, assignment in H0. simp. simpl in E.
+    unfold assert_in, assignment in H0. fwd. simpl in E.
     rewrite String.eqb_sym, Z.eqb_sym in E.
     destr (Z.eqb x' k').
     - destr (String.eqb x k).
@@ -892,9 +892,9 @@ Section RegAlloc.
         states_compat l' corresp' lL'.
   Proof.
     induction binds; intros.
-    - simpl in H. simp. destruct binds'. 2: discriminate.
-      simpl in *. simp. eauto.
-    - simpl in *. simp.
+    - simpl in H. fwd. destruct binds'. 2: discriminate.
+      simpl in *. fwd. eauto.
+    - simpl in *. fwd.
       specialize IHbinds with (1 := H).
       rename l' into lH'.
       edestruct IHbinds as (lL' & P & C). 1: eassumption. 1: eapply states_compat_put. 1: eassumption.
@@ -912,7 +912,7 @@ Section RegAlloc.
   Lemma assert_ins_same_length: forall xs xs' m u,
       assert_ins xs xs' m = Success u -> List.length xs = List.length xs'.
   Proof.
-    unfold assert_ins, assert. intros. simp. apply Nat.eqb_eq. assumption.
+    unfold assert_ins, assert. intros. fwd. assumption.
   Qed.
 
   Hint Constructors exec.exec : checker_hints.
@@ -932,12 +932,12 @@ Section RegAlloc.
       match goal with
       | H: check _ _ _ = Success _ |- _ => pose proof H as C; move C at top; cbn [check] in H
       end;
-      simp;
+      fwd;
       repeat match goal with
              | u: unit |- _ => destruct u
              end;
       unfold assert in *;
-      simp;
+      fwd;
       repeat match goal with
              | H: negb _ = false |- _ => apply Bool.negb_false_iff in H
              | H: negb _ = true  |- _ => apply Bool.negb_true_iff in H
@@ -955,9 +955,9 @@ Section RegAlloc.
       rename binds0 into binds', args0 into args'.
       unfold check_funcs in H.
       eapply map.get_forall_success in H. 2: eassumption.
-      unfold lookup_and_check_func in *. simp.
+      unfold lookup_and_check_func in *. fwd.
       destruct p as ((params' & rets') & fbody').
-      unfold check_func in *. simp.
+      unfold check_func in *. fwd.
       apply_in_hyps @map.getmany_of_list_length.
       apply_in_hyps assert_ins_same_length.
       apply_in_hyps assignments_same_length.
@@ -969,7 +969,7 @@ Section RegAlloc.
         edestruct putmany_of_list_zip_states_compat as [ lLF0 [L SC] ].
         2: exact E3. 2: eapply states_compat_empty. 1: eassumption.
         rewrite L3 in L. apply Option.eq_of_eq_Some in L. subst lLF0. exact SC.
-      + cbv beta. intros. simp. edestruct H4 as (retvs & lHF' & G & P & Hpost). 1: eassumption.
+      + cbv beta. intros. fwd. edestruct H4 as (retvs & lHF' & G & P & Hpost). 1: eassumption.
         edestruct putmany_of_list_zip_states_compat as (lL' & L4 & SC).
         1: exact P. 1: exact H5. 1: eassumption.
         do 2 eexists. ssplit.
@@ -987,7 +987,7 @@ Section RegAlloc.
       intros. eapply exec.weaken.
       + eapply H2; try eassumption.
         eapply states_compat_precond. eapply states_compat_put. assumption.
-      + cbv beta. intros. simp. eauto 10 with checker_hints.
+      + cbv beta. intros. fwd. eauto 10 with checker_hints.
     - (* Case exec.lit *)
       eauto 10 with checker_hints.
     - (* Case exec.op *)
@@ -999,14 +999,14 @@ Section RegAlloc.
       eapply exec.weaken.
       + eapply IHexec. 1: eassumption.
         eapply states_compat_precond. eassumption.
-      + cbv beta. intros. simp. eexists. split. 2: eassumption.
+      + cbv beta. intros. fwd. eexists. split. 2: eassumption.
         eapply states_compat_extends. 2: eassumption. eapply extends_intersect_l.
     - (* Case exec.if_false *)
       eapply exec.if_false. 1: eauto using states_compat_eval_bcond.
       eapply exec.weaken.
       + eapply IHexec. 1: eassumption.
         eapply states_compat_precond. eassumption.
-      + cbv beta. intros. simp. eexists. split. 2: eassumption.
+      + cbv beta. intros. fwd. eexists. split. 2: eassumption.
         eapply states_compat_extends. 2: eassumption. eapply extends_intersect_r.
     - (* Case exec.loop *)
       rename H4 into IH2, IHexec into IH1, H6 into IH12.
@@ -1018,11 +1018,11 @@ Section RegAlloc.
       rewrite E in SC.
       eapply exec.loop.
       + eapply IH1. 1: eassumption. eapply states_compat_precond. exact SC.
-      + cbv beta. intros. simp. eauto using states_compat_eval_bcond_None.
-      + cbv beta. intros. simp. eexists. split. 2: eauto using states_compat_eval_bcond_bw. assumption.
-      + cbv beta. intros. simp. eapply IH2; eauto using states_compat_eval_bcond_bw.
+      + cbv beta. intros. fwd. eauto using states_compat_eval_bcond_None.
+      + cbv beta. intros. fwd. eexists. split. 2: eauto using states_compat_eval_bcond_bw. assumption.
+      + cbv beta. intros. fwd. eapply IH2; eauto using states_compat_eval_bcond_bw.
         eapply states_compat_precond. assumption.
-      + cbv beta. intros. simp. eapply IH12. 1: eassumption. 1: eassumption.
+      + cbv beta. intros. fwd. eapply IH12. 1: eassumption. 1: eassumption.
         eapply states_compat_extends. 2: eassumption.
         pose proof defuel_loop_inv as P.
         specialize P with (2 := E0).
@@ -1038,7 +1038,7 @@ Section RegAlloc.
       eapply exec.seq.
       + eapply IH1. 1: eassumption.
         eapply states_compat_precond. assumption.
-      + cbv beta. intros. simp.
+      + cbv beta. intros. fwd.
         eapply IH2. 1: eassumption. 1: eassumption.
         eapply states_compat_precond. assumption.
     - (* Case exec.skip *)

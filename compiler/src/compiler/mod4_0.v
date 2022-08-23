@@ -93,7 +93,7 @@ Proof.
   intros. Z.div_mod_to_equations. blia.
 Qed.
 
-Hint Resolve
+#[global] Hint Resolve
      mod4_0_mod_pow2
      mod4_0_add
      mod4_0_sub

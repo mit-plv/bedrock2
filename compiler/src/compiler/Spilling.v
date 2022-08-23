@@ -1728,7 +1728,7 @@ Section Spilling.
       + eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H2. intros.
         eapply exec.if_true. {
-          cbn. rewrite map.get_put_same. congruence.
+          cbn. rewrite map.get_put_same. rewrite word.eqb_ne by assumption. reflexivity.
         }
         eapply IHexec; eassumption.
     - (* exec.if_false *)
@@ -1745,7 +1745,7 @@ Section Spilling.
       + eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
         clear mc2 H2. intros.
         eapply exec.if_false. {
-          cbn. rewrite map.get_put_same. congruence.
+          cbn. rewrite map.get_put_same. rewrite word.eqb_eq; reflexivity.
         }
         eapply IHexec; eassumption.
     - (* exec.loop *)
