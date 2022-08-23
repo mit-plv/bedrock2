@@ -1,6 +1,8 @@
 (* Provides the notation `find! p`, which finds a hypothesis containing pattern p,
    where p has to use ?? instead of underscore or named question mark variables like ?x. *)
 
+Require Import coqutil.Macros.subst.
+
 Ltac matches t p :=
   lazymatch p with
   | t => constr:(tt)
@@ -20,9 +22,6 @@ Ltac matches t p :=
           constr:(tt)
       end
   end.
-
-Notation "'subst!' y 'for' x 'in' f" :=
-  (match y with x => f end) (at level 10, f at level 200).
 
 Ltac beta1 func arg :=
   lazymatch func with
