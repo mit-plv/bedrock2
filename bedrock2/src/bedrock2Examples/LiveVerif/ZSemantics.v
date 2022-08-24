@@ -643,10 +643,10 @@ Ltac eval_dexpr_step :=
   | |- dexpr_bool _ _ (expr.op bopname.eq _ _) _ => eapply dexpr_eq
   | |- dexpr_bool _ _ (expr.op bopname.ltu _ _) _ => eapply dexpr_ltu
   | |- dexpr_bool _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)
-  | |- dexpr _ _ (expr.var _) _ => eapply dexpr_var; [reflexivity|lia]
+  | |- dexpr _ _ (expr.var _)     _ => eapply dexpr_var; [reflexivity|lia]
   | |- dexpr _ _ (expr.literal _) _ => eapply dexpr_literal; lia
-  | |- dexpr _ _ (expr.op _ _ _) _ => eapply dexpr_binop_unf
-  | |- dexpr _ _ (expr.load _ _) => eapply dexpr_load
+  | |- dexpr _ _ (expr.op _ _ _)  _ => eapply dexpr_binop_unf
+  | |- dexpr _ _ (expr.load _ _)  _ => eapply dexpr_load
   | |- dexpr _ _ (expr.ite _ _ _) _ => eapply dexpr_ite
   end.
 
@@ -2654,6 +2654,68 @@ eg
    a + /**. .**/ b
 but also
    call1(args1); call2(args2)
+*)
+
+(* TODO: min function where both args and res could all be aliased,
+   can we do it with several hyps about mem, or with and1?
+
+Pre:  (a @@ pa /\ b @@ pb /\ c @@ pc) * R
+Body: *pc = min( *pa, *pb )
+Post: (any @@ pa /\ any @@ pb /\ min(a,b) @@ pc) * R
+*)
+
+Definition u_min_mem: {f: list string * list string * cmd &
+  forall fs t m a b c pa pb pc (R: mem -> Prop),
+    <{ * a @@ pa : UInt 32
+       * b @@ pb : UInt 32
+       * c @@ pc : UInt 32
+       * R }> m ->
+    vc_func fs f t m [|pa; pb; pc|] (fun t' m' retvs =>
+      t' = t /\ R m' /\
+      (a < b /\ retvs = [|a|] \/
+       b <= a /\ retvs = [|b|])
+  )}.                                                                           .**/
+{                                                                          /**. .**/
+  uintptr_t r = 0;                                                         /**.
+
+assert (id (  0 <= pa < 2 ^ 32 /\   0 <= pb < 2 ^ 32 /\   0 <= pc < 2 ^ 32)) by admit.
+
+
+
+ .**/
+  if (load4(pa) < load4(pb)) {                                             /**.
+Abort.
+(*
+{
+
+  eapply dexpr_var; [ reflexivity |  ].
+
+(*
+need to derive (emp (0 <= a < 2 ^ 32)) and (emp (0 <= pa < 2 ^ 32)) from H
+Or no detour through emp?
+What's most egg-friendly?
+
+(R1 * addr @@ v : UInt 32 * R2) m ->
+*)
+
+  unfold id in *. lia.
+
+  eval_dexpr_step.
+
+  eapply dexpr_load.
+
+
+  eval_dexpr_step.
+
+.**/
+    r = a;                                                                 /**. .**/
+  } else {                                                                 /**. .**/
+    r = b;                                                                 /**. .**/
+  }                                                                        /**. .**/
+                                                                           /**. .**/
+  return r;                                                                /**. .**/
+}                                                                          /**.
+Defined.
 *)
 
 Definition arp: {f: list string * list string * cmd &
