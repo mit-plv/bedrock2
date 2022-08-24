@@ -140,6 +140,11 @@ Section WithParams.
   Lemma wwrap_small: forall a, 0 <= a < 2 ^ width -> wwrap a = a.
   Proof. intros. unfold wwrap. apply Z.mod_small. assumption. Qed.
 
+  Lemma const_in_bounds: forall c: Z,
+      andb (Z.leb 0 c) (Z.ltb c (2 ^ 32)) = true ->
+      0 <= c < 2 ^ width.
+  Proof. intros. destruct width_cases; subst width; lia. Qed.
+
   (* Memory: *)
 
   Lemma sep_assoc_eq: forall (p q r: mem -> Prop),
@@ -291,123 +296,107 @@ Section WithParams.
       dexpr m l (expr.ite e1 e2 e3) v.
   Admitted.
 
-  Inductive dexpr_bool_prop(m: mem)(l: locals)(e: expr): Prop -> Prop :=
-    mk_dexpr_bool_prop: forall b: Z,
-      dexpr m l e b ->
-      dexpr_bool_prop m l e (b <> 0).
-
-  Lemma dexpr_not: forall m l e (P: Prop),
-      dexpr_bool_prop m l e P ->
-      dexpr_bool_prop m l (expr.not e) (~ P).
+  Lemma dexpr_ite_evarfriendly: forall m l e1 e2 e3 (b v2 v3: Z),
+      dexpr m l e1 b ->
+      (if Z.eqb b 0 then dexpr m l e3 v3 else dexpr m l e2 v2) ->
+      dexpr m l (expr.ite e1 e2 e3) (if Z.eqb b 0 then v3 else v2).
   Proof.
-    intros. inversion H. clear H. subst P.
-    eenough ((~ b <> 0) = _) as E. {
-      rewrite E. econstructor.
-      eapply dexpr_binop. 1: eassumption.
+    intros. eapply dexpr_ite. 1: eassumption.
+    destruct_one_match; assumption.
+  Qed.
+
+  Inductive dexpr_bool(m: mem)(l: locals)(e: expr): bool -> Prop :=
+    mk_dexpr_bool_prop: forall (v: Z) (c: bool),
+      dexpr m l e v ->
+      c = negb (Z.eqb v 0) ->
+      dexpr_bool m l e c.
+
+  Lemma dexpr_not: forall m l e b,
+      dexpr_bool m l e b ->
+      dexpr_bool m l (expr.not e) (negb b).
+  Proof.
+    intros. inversion H. clear H. subst.
+    econstructor.
+    - eapply dexpr_binop. 1: eassumption.
       eapply dexpr_literal.
-      clear E.
       destruct width_cases; subst width; better_lia.
-    }
-    cbn. unfold weq, wwrap.
-    apply PropExtensionality.propositional_extensionality.
-    pose proof (dexpr_range _ _ _ _ H0).
-    destruct_one_match; split; intros; intro C;
-      destruct width_cases; subst width; try better_lia.
+    - cbn. unfold weq, wwrap.
+      pose proof (dexpr_range _ _ _ _ H0). rewrite Z.mod_small by assumption.
+      rewrite Z.mod_small by (destruct width_cases; subst width; try better_lia).
+      destruct_one_match; reflexivity.
   Qed.
 
-  Lemma dexpr_lazy_and: forall m l e1 e2 (P1 P2: Prop),
-      dexpr_bool_prop m l e1 P1 ->
-      (P1 -> dexpr_bool_prop m l e2 P2) ->
-      dexpr_bool_prop m l (expr.lazy_and e1 e2) (P1 /\ P2).
+  Lemma dexpr_lazy_and: forall m l e1 e2 (b1 b2: bool),
+      dexpr_bool m l e1 b1 ->
+      forall (P1t P1f: Prop), BoolSpec P1t P1f b1 ->
+      (P1t -> dexpr_bool m l e2 b2) ->
+      dexpr_bool m l (expr.lazy_and e1 e2) (andb b1 b2).
   Proof.
     intros.
-    inversion H; subst. destr (Z.eqb b 0).
-    - replace (0 <> 0 /\ P2) with (0 <> 0).
-      2: solve [apply PropExtensionality.propositional_extensionality; intuition idtac].
-      eapply mk_dexpr_bool_prop.
-      eapply dexpr_ite. 1: eassumption.
-      rewrite Z.eqb_refl. eapply dexpr_literal.
-      destruct width_cases; subst width; better_lia.
-    - specialize (H0 E). inversion H0; subst.
-      eassert (dexpr_bool_prop m l (expr.lazy_and e1 e2) _) as A. {
-        eapply mk_dexpr_bool_prop.
-        eapply dexpr_ite. 1: eassumption.
-        destruct_one_match. 1: exfalso; congruence.
-        eapply dexpr_binop. 1: eapply dexpr_literal.
-        1: destruct width_cases; subst width; better_lia.
-        eassumption.
-      }
-      eqapply A.
+    inversion H; subst. clear H.
+    eapply negb_BoolSpec in H0. rewrite Bool.negb_involutive in H0.
+    destruct (Z.eqb v 0) eqn: E; inversion H0; clear H0; cbn.
+    - econstructor; [eapply dexpr_ite; [eassumption | rewrite E ] | ].
+      1: eapply dexpr_literal. 1: eapply const_in_bounds. all: reflexivity.
+    - specialize (H1 H). inversion H1. subst. clear H1.
+      econstructor; [eapply dexpr_ite; [eassumption | rewrite E ] | ].
+      1: eapply dexpr_binop. 1: eapply dexpr_literal. 1: eapply const_in_bounds.
+      2: eassumption. 1: reflexivity. cbn.
       cbn. unfold wltu, wwrap. rewrite Zmod_0_l.
-      eapply dexpr_range in H2.
+      eapply dexpr_range in H0.
       rewrite Z.mod_small by eassumption.
-      destruct_one_match; apply PropExtensionality.propositional_extensionality; split; lia.
+      destruct_one_match; lia.
   Qed.
 
-  Lemma dexpr_lazy_or: forall m l e1 e2 (P1 P2: Prop),
-      dexpr_bool_prop m l e1 P1 ->
-      (~P1 -> dexpr_bool_prop m l e2 P2) ->
-      dexpr_bool_prop m l (expr.lazy_or e1 e2) (P1 \/ P2).
+  Lemma dexpr_lazy_or: forall m l e1 e2 (b1 b2: bool),
+      dexpr_bool m l e1 b1 ->
+      forall (P1t P1f: Prop), BoolSpec P1t P1f b1 ->
+      (P1f -> dexpr_bool m l e2 b2) ->
+      dexpr_bool m l (expr.lazy_or e1 e2) (orb b1 b2).
   Proof.
     intros.
-    inversion H; subst. clear H. destr (Z.eqb b 0).
-    - specialize (H0 ltac:(Lia.lia)). inversion H0; subst. clear H0.
-      eassert (dexpr_bool_prop m l (expr.lazy_or e1 e2) _) as A. {
-        eapply mk_dexpr_bool_prop.
-        eapply dexpr_ite. 1: eassumption.
-        rewrite Z.eqb_refl.
-        eapply dexpr_binop. 1: eapply dexpr_literal.
-        1: destruct width_cases; subst width; better_lia.
-        eassumption.
-      }
-      eqapply A.
-      cbn. unfold wltu, wwrap.
-      rewrite Zmod_0_l.
-      eapply dexpr_range in H.
+    inversion H; subst. clear H.
+    eapply negb_BoolSpec in H0. rewrite Bool.negb_involutive in H0.
+    destruct (Z.eqb v 0) eqn: E; inversion H0; clear H0; cbn.
+    - specialize (H1 H). inversion H1. subst. clear H1.
+      econstructor; [eapply dexpr_ite; [eassumption | rewrite E ] | ].
+      1: eapply dexpr_binop. 1: eapply dexpr_literal. 1: eapply const_in_bounds.
+      2: eassumption. 1: reflexivity. cbn.
+      cbn. unfold wltu, wwrap. rewrite Zmod_0_l.
+      eapply dexpr_range in H0.
       rewrite Z.mod_small by eassumption.
-      destruct_one_match; apply PropExtensionality.propositional_extensionality; split; lia.
-    - unshelve erewrite (_: (b <> 0 \/ P2) = _); cycle 2. {
-        eapply mk_dexpr_bool_prop.
-        eapply dexpr_ite. 1: eassumption.
-        destruct_one_match. 1: exfalso; congruence.
-        eapply dexpr_literal.
-        destruct width_cases; subst width; better_lia.
-      }
-      solve [apply PropExtensionality.propositional_extensionality; intuition Lia.lia].
+      destruct_one_match; lia.
+    - econstructor; [eapply dexpr_ite; [eassumption | rewrite E ] | ].
+      1: eapply dexpr_literal. 1: eapply const_in_bounds. all: reflexivity.
   Qed.
 
-  Lemma dexpr_ltu_prop: forall m l e1 e2 v1 v2,
+  Lemma dexpr_ltu: forall m l e1 e2 v1 v2,
       dexpr m l e1 v1 ->
       dexpr m l e2 v2 ->
-      dexpr_bool_prop m l (expr.op bopname.ltu e1 e2) (v1 < v2).
+      dexpr_bool m l (expr.op bopname.ltu e1 e2) (Z.ltb v1 v2).
   Proof.
     intros.
-    unshelve erewrite (_: (v1 < v2) = _); cycle 2. {
-      eapply mk_dexpr_bool_prop.
-      eapply dexpr_binop; eassumption.
-    }
+    econstructor.
+    1: eapply dexpr_binop; eassumption.
     eapply dexpr_range in H.
     eapply dexpr_range in H0.
-    apply PropExtensionality.propositional_extensionality; cbn; unfold wltu, wwrap.
+    cbn; unfold wltu, wwrap.
     rewrite 2Z.mod_small by eassumption.
     destr ((v1 <? v2)%Z); split; Lia.lia.
   Qed.
 
-  Lemma dexpr_eq_prop: forall m l e1 e2 v1 v2,
+  Lemma dexpr_eq: forall m l e1 e2 v1 v2,
       dexpr m l e1 v1 ->
       dexpr m l e2 v2 ->
-      dexpr_bool_prop m l (expr.op bopname.eq e1 e2) (v1 = v2).
+      dexpr_bool m l (expr.op bopname.eq e1 e2) (Z.eqb v1 v2).
   Proof.
     intros.
-    unshelve erewrite (_: (v1 = v2) = _); cycle 2. {
-      eapply mk_dexpr_bool_prop.
-      eapply dexpr_binop; eassumption.
-    }
+    econstructor.
+    1: eapply dexpr_binop; eassumption.
     cbn. unfold weq, wwrap.
     eapply dexpr_range in H.
     eapply dexpr_range in H0.
     rewrite 2Z.mod_small by eassumption.
-    apply PropExtensionality.propositional_extensionality.
     destr ((v1 =? v2)%Z); split; Lia.lia.
   Qed.
 
@@ -469,41 +458,21 @@ Section WithParams.
     intros * [? | ?]; fwd; eapply H2; eauto.
   Qed.
 
-  Lemma wp_if_bool_dexpr_with_varnames: forall fs c thn els rest t0 m0 l0 P Q1 Q2 post,
-      dexpr_bool_prop m0 l0 c P ->
-      (P  -> wp_cmd fs thn t0 m0 l0 (fun t m l =>
-               sorted_varnames l = sorted_varnames l0 /\ Q1 t m l)) ->
-      (~P -> wp_cmd fs els t0 m0 l0 (fun t m l =>
-               sorted_varnames l = sorted_varnames l0 /\ Q2 t m l)) ->
-      (forall (cond0: bool) t m l,
-          sorted_varnames l = sorted_varnames l0 ->
-          (* (if cond0 then P else ~P) -> <-- already added to Q1/Q2 by automation *)
-          (if cond0 then Q1 t m l else Q2 t m l) ->
+  Lemma wp_if_bool_dexpr: forall fs c thn els rest t0 m0 l0 b Q1 Q2 post,
+      dexpr_bool m0 l0 c b ->
+      forall (Pt Pf: Prop), BoolSpec Pt Pf b ->
+      (Pt -> wp_cmd fs thn t0 m0 l0 Q1) ->
+      (Pf -> wp_cmd fs els t0 m0 l0 Q2) ->
+      (forall t m l,
+          (if b then Q1 t m l else Q2 t m l) ->
           wp_cmd fs rest t m l post) ->
       wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t0 m0 l0 post.
   Proof.
-    intros. inversion H. subst P. clear H. eapply wp_if.
-    1,2: eassumption.
-    { intro E. subst b. eapply H1. intro C. apply C. reflexivity. }
-    intros. destruct H4 as [(Ne & P) | (E & P)];
-      [eapply (H2 true)| eapply (H2 false)]; assumption.
-  Qed.
-
-  Lemma wp_if_bool_dexpr: forall fs c thn els rest t0 m0 l0 P Q1 Q2 post,
-      dexpr_bool_prop m0 l0 c P ->
-      (P  -> wp_cmd fs thn t0 m0 l0 Q1) ->
-      (~P -> wp_cmd fs els t0 m0 l0 Q2) ->
-      (forall (cond0: bool) t m l,
-          (* (if cond0 then P else ~P) -> <-- already added to Q1/Q2 by automation *)
-          (if cond0 then Q1 t m l else Q2 t m l) ->
-          wp_cmd fs rest t m l post) ->
-      wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t0 m0 l0 post.
-  Proof.
-    intros. inversion H. subst P. clear H. eapply wp_if0.
-    1,2: eassumption.
-    { intro E. subst b. eapply H1. intro C. apply C. reflexivity. }
-    intros *. intros [(Ne & P) | (E & P)];
-      [eapply (H2 true)| eapply (H2 false)]; assumption.
+    intros. inversion H. subst. clear H.
+    destr (Z.eqb v 0); inversion H0; clear H0;
+      (eapply wp_if0; [eassumption|intro C; try congruence; cbn in *; eauto ..]).
+    all: intros * [(? & ?) | (? & ?)]; try (exfalso; congruence); eauto.
+    Unshelve. all: try assumption.
   Qed.
 
   Lemma wp_while {measure : Type} (v0 : measure) (e: expr) (c: cmd) t (m: mem) l fs rest
@@ -513,10 +482,11 @@ Section WithParams.
     (Hwf : well_founded lt)
     (Hbody : forall v t m l,
       invariant v t m l ->
-      exists P, dexpr_bool_prop m l e P /\
-         (P -> wp_cmd fs c t m l
+      exists b, dexpr_bool m l e b /\
+         exists Pt Pf, BoolSpec Pt Pf b /\
+         (Pt -> wp_cmd fs c t m l
                       (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
-         (~P -> wp_cmd fs rest t m l post))
+         (Pf -> wp_cmd fs rest t m l post))
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t m l post.
   Admitted.
 
@@ -667,12 +637,12 @@ Ltac put_into_current_locals is_decl :=
 
 Ltac eval_dexpr_step :=
   lazymatch goal with
-  | |- dexpr_bool_prop _ _ (expr.lazy_and _ _) _ => eapply dexpr_lazy_and; [ |intro]
-  | |- dexpr_bool_prop _ _ (expr.lazy_or _ _) _ => eapply dexpr_lazy_or; [ |intro]
-  | |- dexpr_bool_prop _ _ (expr.not _) _ => eapply dexpr_not
-  | |- dexpr_bool_prop _ _ (expr.op bopname.eq _ _) _ => eapply dexpr_eq_prop
-  | |- dexpr_bool_prop _ _ (expr.op bopname.ltu _ _) _ => eapply dexpr_ltu_prop
-  | |- dexpr_bool_prop _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)
+  | |- dexpr_bool _ _ (expr.lazy_and _ _) _ => eapply dexpr_lazy_and; [ |intro]
+  | |- dexpr_bool _ _ (expr.lazy_or _ _) _ => eapply dexpr_lazy_or; [ |intro]
+  | |- dexpr_bool _ _ (expr.not _) _ => eapply dexpr_not
+  | |- dexpr_bool _ _ (expr.op bopname.eq _ _) _ => eapply dexpr_eq
+  | |- dexpr_bool _ _ (expr.op bopname.ltu _ _) _ => eapply dexpr_ltu
+  | |- dexpr_bool _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)
   | |- dexpr _ _ (expr.var _) _ => eapply dexpr_var; [reflexivity|lia]
   | |- dexpr _ _ (expr.literal _) _ => eapply dexpr_literal; lia
   | |- dexpr _ _ (expr.op _ _ _) _ => eapply dexpr_binop_unf
@@ -1226,6 +1196,7 @@ Ltac cond c :=
   | |- wp_cmd _ _ ?t ?m ?l _ =>
     eapply (wp_if_bool_dexpr _ c);
     [ eval_dexpr
+    | once (typeclasses eauto)
     | let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b; intro
     | let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b; intro
     | ]
@@ -1275,25 +1246,27 @@ Ltac while cond measure0 :=
     intros;
     fwd;
     lazymatch goal with
-    | |- exists P, dexpr_bool_prop _ _ _ P /\
-                   (P -> wp_cmd _ _ _ _ _ _) /\
-                   (~P -> wp_cmd _ _ _ _ _ _) => idtac
+    | |- exists b, dexpr_bool _ _ _ b /\
+           exists Pt Pf, BoolSpec Pt Pf b /\
+           (Pt -> wp_cmd _ _ _ _ _ _) /\
+           (Pf -> wp_cmd _ _ _ _ _ _) => idtac
     | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
     end;
     eexists;
     split;
     [ (* evaluate condition *)
       repeat eval_dexpr_step
-    | split; intros;
+    | eexists _, _; split; [once typeclasses eauto|];
+      split; intros;
       [ (* loop body *)
       | (* after loop *)
         expect_and_clear_last_marker LoopBody ]
     ] ].
 
-Ltac destruct_bool_vars :=
+Ltac destruct_ifs :=
   repeat match goal with
          | H: context[if ?b then _ else _] |- _ =>
-             is_var b; let t := type of b in constr_eq t bool; destruct b
+             let t := type of b in constr_eq t bool; destr b
          end.
 
 Ltac ZWords := unfold wwrap, wswrap in *; better_lia.
@@ -1312,7 +1285,7 @@ Ltac prove_concrete_post_pre :=
     repeat match goal with
            | x := _ |- _ => subst x
            end;
-    destruct_bool_vars;
+    destruct_ifs;
     repeat match goal with
            | H: ands (_ :: _) |- _ => destruct H
            | H: ands nil |- _ => clear H
@@ -1583,7 +1556,6 @@ Notation "'If' c 'then' a 'else' b" := (if dec c then a else b) (at level 200).
 
 Goal forall (a b c: Z), True.
   intros.
-  Set Printing Implicit.
   pose (If a = b then 1 else 2).
   pose (If a <= c then a else c).
   pose (If a <= b <= c then 1 else 0).
@@ -2226,8 +2198,8 @@ Defined.
 
 (* Note: This does not compute, because BoolSpecs are opaque! *)
 Definition ocast(tp1 tp2: NestedType)(v: interp_type tp1): option (interp_type tp2).
-  destr (type_eqb tp1 tp2).
-  - exact (Some v).
+  destruct (type_eqb tp1 tp2) eqn: E.
+  - fwd. exact (Some v).
   - exact None.
 Abort.
 
