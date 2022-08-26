@@ -1360,6 +1360,40 @@ Ltac add_snippet s :=
   | SEmpty => prettify_goal
   end.
 
+Inductive head_of_implicit_facts: Prop :=
+| mk_head_of_implicit_facts.
+
+Ltac mark_as_implicit_facts H := eapply (conj mk_head_of_implicit_facts) in H.
+
+Declare Scope implicit_facts_scope.
+Open Scope implicit_facts_scope.
+
+Notation "(implicit facts)" := (head_of_implicit_facts /\ _) (only printing)
+  : implicit_facts_scope.
+
+(* fail on notations that we don't want to destruct *)
+Ltac is_destructible_and T ::=
+  lazymatch T with
+  | (Logic.and (N.le     _ ?y) (N.le     ?y _)) => fail
+  | (Logic.and (Z.le     _ ?y) (Z.le     ?y _)) => fail
+  | (Logic.and (Peano.le _ ?y) (Peano.le ?y _)) => fail
+  | (Logic.and (Pos.le   _ ?y) (Pos.le   ?y _)) => fail
+  | (Logic.and (N.le     _ ?y) (N.lt     ?y _)) => fail
+  | (Logic.and (Z.le     _ ?y) (Z.lt     ?y _)) => fail
+  | (Logic.and (Peano.le _ ?y) (Peano.lt ?y _)) => fail
+  | (Logic.and (Pos.le   _ ?y) (Pos.lt   ?y _)) => fail
+  | (Logic.and (N.lt     _ ?y) (N.le     ?y _)) => fail
+  | (Logic.and (Z.lt     _ ?y) (Z.le     ?y _)) => fail
+  | (Logic.and (Peano.lt _ ?y) (Peano.le ?y _)) => fail
+  | (Logic.and (Pos.lt   _ ?y) (Pos.le   ?y _)) => fail
+  | (Logic.and (N.lt     _ ?y) (N.lt     ?y _)) => fail
+  | (Logic.and (Z.lt     _ ?y) (Z.lt     ?y _)) => fail
+  | (Logic.and (Peano.lt _ ?y) (Peano.lt ?y _)) => fail
+  | (Logic.and (Pos.lt   _ ?y) (Pos.lt   ?y _)) => fail
+  | (Logic.and head_of_implicit_facts _) => fail
+  | (Logic.and _ _) => idtac
+  end.
+
 Ltac after_snippet :=
   fwd;
   (* leftover from word_simpl_step_in_hyps, TODO where to put? in fwd? *)
@@ -2664,6 +2698,75 @@ Body: *pc = min( *pa, *pb )
 Post: (any @@ pa /\ any @@ pb /\ min(a,b) @@ pc) * R
 *)
 
+(*
+Inductive purify: (mem -> Prop) -> Prop -> Prop :=
+| purify_one: forall (R: mem -> Prop) (P: Prop), (forall m, R m -> P) -> purify R P
+| purify_cons: forall (RHead RTail: mem -> Prop) (PHead PTail: Prop),
+    (forall m, RHead m -> PHead) ->
+    purify RTail PTail ->
+    purify (sep RHead RTail) (PHead /\ PTail).
+
+Lemma apply_purify: forall (R: mem -> Prop) (P: Prop),
+    purify R P -> forall m, R m -> P.
+Proof.
+*)
+
+Definition purify(R: mem -> Prop)(P: Prop): Prop := forall m, R m -> P.
+
+Lemma purify_sep: forall {RHead RTail: mem -> Prop} {PHead PTail: Prop},
+    purify RHead PHead ->
+    purify RTail PTail ->
+    purify (sep RHead RTail) (PHead /\ PTail).
+Admitted.
+
+Lemma purify_sep_skip_l: forall {RHead RTail: mem -> Prop} {PTail: Prop},
+    purify RTail PTail ->
+    purify (sep RHead RTail) PTail.
+Admitted.
+
+Lemma purify_sep_skip_r: forall {RHead RTail: mem -> Prop} {PHead: Prop},
+    purify RHead PHead ->
+    purify (sep RHead RTail) PHead.
+Admitted.
+
+Lemma purify_scalar: forall a v nbits,
+    purify (v @@ a : UInt nbits) (0 <= v < 2 ^ nbits /\ 0 <= a < 2 ^ 32).
+Proof.
+Admitted.
+
+#[export] Hint Resolve purify_scalar : purify.
+
+Ltac purify_rec :=
+  lazymatch goal with
+  | |- purify (sep ?R1 ?R2) ?E =>
+      is_evar E;
+      let HLeft := fresh in
+      let HRight := fresh in
+      tryif (eassert (purify R1 _) as HLeft by purify_rec) then
+        tryif (eassert (purify R2 _) as HRight by purify_rec) then
+          exact (purify_sep HLeft HRight)
+        else
+          refine (purify_sep_skip_r HLeft)
+      else
+        tryif (eassert (purify R2 _) as HRight by purify_rec) then
+          exact (purify_sep_skip_l HRight)
+        else
+          fail "can't be purified"
+  | |- purify _ ?E => is_evar E; solve [eauto with purify]
+  | |- _ => fail "goal should be of form 'purify _ _'"
+  end.
+
+Ltac purify_hyp H :=
+  match type of H with
+  | ?R ?m => let HP := fresh H "P" in eassert (purify R _) as HP;
+             [ purify_rec | specialize (HP m H); mark_as_implicit_facts HP ]
+  end.
+
+Ltac purify :=
+  match goal with
+  | H: sep _ _ _ |- _ => purify_hyp H
+  end.
+
 Definition u_min_mem: {f: list string * list string * cmd &
   forall fs t m a b c pa pb pc (R: mem -> Prop),
     <{ * a @@ pa : UInt 32
@@ -2678,34 +2781,15 @@ Definition u_min_mem: {f: list string * list string * cmd &
 {                                                                          /**. .**/
   uintptr_t r = 0;                                                         /**.
 
-assert (id (  0 <= pa < 2 ^ 32 /\   0 <= pb < 2 ^ 32 /\   0 <= pc < 2 ^ 32)) by admit.
-
-
+  purify.
 
  .**/
   if (load4(pa) < load4(pb)) {                                             /**.
-Abort.
-(*
-{
 
-  eapply dexpr_var; [ reflexivity |  ].
-
-(*
-need to derive (emp (0 <= a < 2 ^ 32)) and (emp (0 <= pa < 2 ^ 32)) from H
-Or no detour through emp?
-What's most egg-friendly?
-
-(R1 * addr @@ v : UInt 32 * R2) m ->
-*)
-
-  unfold id in *. lia.
-
+(* TODO new load lemmas
   eval_dexpr_step.
 
   eapply dexpr_load.
-
-
-  eval_dexpr_step.
 
 .**/
     r = a;                                                                 /**. .**/
@@ -2717,6 +2801,7 @@ What's most egg-friendly?
 }                                                                          /**.
 Defined.
 *)
+Abort.
 
 Definition arp: {f: list string * list string * cmd &
   forall fs t m (a n: Z) (bs: list Z) (R: mem -> Prop),
