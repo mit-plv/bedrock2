@@ -100,6 +100,7 @@ Section LightbulbSpec.
 
   Definition LAN9250_WRITE : byte := Byte.x02.
   Definition HW_CFG : Z := 0x074.
+  Definition TX_DATA_FIFO : Z := 0x20.
 
   Definition lan9250_write4 (a v : word) t :=
     exists a0 a1 b0 b1 b2 b3, (

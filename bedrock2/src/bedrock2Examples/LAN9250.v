@@ -110,6 +110,22 @@ Definition lan9250_init : function :=
           unpack! err = lan9250_writeword($0x070, coq:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
   ))).
 
+Definition lan9250_tx : function :=
+  ("lan9250_tx", (("p"::"l"::nil), ("err"::nil), bedrock_func_body:(
+  (* A: first segment, last segment, length *)
+  unpack! err = lan9250_writeword($lightbulb_spec.TX_DATA_FIFO, $(2^13)|$(2^12)|l);
+  require !err;
+  (* B: length *)
+  unpack! err = lan9250_writeword($lightbulb_spec.TX_DATA_FIFO, l);
+  require !err;
+  while ($3 < l) {
+    unpack! err = lan9250_writeword($lightbulb_spec.TX_DATA_FIFO, load4(p));
+    if err { l = $0 } else {
+    p = p + $4;
+    l = l - $4
+  }}
+  ))).
+
 Require Import bedrock2.ProgramLogic.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Word.Interface.
@@ -758,5 +774,105 @@ Section WithParameters.
     all : clear.
     all : rewrite ?Z.shiftl_mul_pow2 by blia.
     all : try (Z.div_mod_to_equations; blia).
+  Qed.
+
+  Require Import bedrock2.ZnWords.
+
+  Import WeakestPrecondition SeparationLogic Array Scalars ProgramLogic.Coercions.
+  Global Instance spec_of_lan9250_tx : ProgramLogic.spec_of "lan9250_tx" :=
+    fnspec! "lan9250_tx" p l / bs R ~> err,
+    { requires t m := word.unsigned l = length bs /\
+       word.unsigned l mod 4 = 0 /\
+       (array ptsto (word.of_Z 1) p bs * R)%sep m;
+     ensures t' m' := m' = m /\ (fun _ => True) t }.
+
+  Import symmetry autoforward.
+
+  Lemma lan9250_tx_ok : program_logic_goal_for_function! lan9250_tx.
+  Proof.
+    
+    repeat (subst || straightline || straightline_call || ZnWords || intuition idtac || esplit).
+    repeat (straightline || esplit).
+    straightline_call; [ZnWords|]; repeat (intuition idtac; repeat straightline).
+    1 : eexists; split; repeat (straightline; intuition idtac; eauto).
+    eexists; split; repeat (straightline; intuition idtac; eauto).
+
+    refine (Loops.tailrec_earlyout
+      (HList.polymorphic_list.cons (list Byte.byte) (HList.polymorphic_list.cons (mem -> Prop) HList.polymorphic_list.nil))
+      ["p";"l";"err"]
+      (fun v bs R t m p l err => PrimitivePair.pair.mk (
+         word.unsigned l = length bs /\
+         word.unsigned l mod 4 = 0 /\
+        (array ptsto (word.of_Z 1) p bs * R)%sep m /\
+        v = word.unsigned l
+      )
+      (fun T M P L ERR =>
+         M = m
+         )
+      ) _ (Z.lt_wf 0) _ _ _ _ _ _);
+    (* TODO wrap this into a tactic with the previous refine? *)
+    cbn [HList.hlist.foralls HList.tuple.foralls
+         HList.hlist.existss HList.tuple.existss
+         HList.hlist.apply  HList.tuple.apply
+         HList.hlist
+         List.repeat Datatypes.length
+         HList.polymorphic_list.repeat HList.polymorphic_list.length
+         PrimitivePair.pair._1 PrimitivePair.pair._2] in *.
+    { repeat straightline. }
+    { repeat straightline; eauto. }
+    { repeat straightline.
+      subst br.
+      rename l into l0.
+      rename x8 into l.
+      rewrite word.unsigned_ltu in H16.
+      destr.destr Z.ltb.
+      2: { contradiction H16. rewrite word.unsigned_of_Z_0; trivial. }
+      pose proof word.unsigned_range l as Hl. rewrite H13 in Hl.
+      eapply (f_equal word.of_Z) in H13. rewrite word.of_Z_unsigned in H13.
+      rewrite word.unsigned_of_Z in E; cbv [word.wrap] in E; rewrite Z.mod_small in E by blia.
+      subst l.
+      rename bs into bs0.
+      rename x5 into bs.
+      rewrite <-(firstn_skipn 4 bs) in H15.
+      seprewrite_in @array_append H15.
+      seprewrite_in @scalar32_of_bytes H15.
+      { autoforward with typeclass_instances in E.
+        rewrite firstn_length. ZnWords. }
+        
+      eexists; split; repeat straightline.
+      straightline_call; repeat straightline.
+      { ZnWords. }
+
+      seprewrite_in (symmetry! @scalar32_of_bytes) H15.
+      { autoforward with typeclass_instances in E.
+        rewrite firstn_length. ZnWords. }
+
+      eexists; split; repeat straightline; intuition idtac.
+      { seprewrite_in (symmetry! @array_append) H15.
+        rewrite (firstn_skipn 4 bs) in H15.
+        repeat straightline.
+        left; repeat straightline.
+        subst l br.
+        rewrite word.unsigned_ltu; rewrite ?word.unsigned_of_Z; cbn; ZnWords. }
+
+      autoforward with typeclass_instances in E.
+      repeat straightline.
+      right; repeat straightline.
+      subst l p.
+      Set Printing Coercions.
+      rewrite word.unsigned_of_Z_1, Z.mul_1_l, firstn_length, min_l in H15 by ZnWords.
+      progress change (Z.of_nat 4) with 4%Z in H15.
+      eexists _, _, _; split; intuition eauto.
+      3: ecancel_assumption.
+      1: rewrite skipn_length; ZnWords.
+      1 : ZnWords.
+      split; repeat straightline.
+      ZnWords. }
+
+    { repeat straightline.
+      eauto. }
+
+    Unshelve.
+    all : constructor.
   Qed.
 End WithParameters.
