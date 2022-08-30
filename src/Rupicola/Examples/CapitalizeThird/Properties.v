@@ -131,9 +131,6 @@ Section Generalizable.
 
   Lemma sub_succ_l x : (S x - x)%nat = 1%nat.
   Proof. lia. Qed.
-
-  Lemma byte_of_Z_unsigned b : byte.of_Z (byte.unsigned b) = b.
-  Proof. destruct b; reflexivity. Qed.
 End Generalizable.
 
 Ltac natsimplify :=
@@ -632,7 +629,7 @@ Section Proofs.
         match goal with
           |- context [byte.of_Z (word.unsigned (byte_to_word ?b))] =>
           replace (byte.of_Z (word.unsigned (byte_to_word b))) with b
-            by (clear; pose proof (byte.unsigned_range b); cbv [byte_to_word]; rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small, byte_of_Z_unsigned by (cbn in *; lia); reflexivity)
+            by (clear; pose proof (byte.unsigned_range b); cbv [byte_to_word]; rewrite word.unsigned_of_Z; cbv [word.wrap]; rewrite Z.mod_small, byte.of_Z_unsigned by (cbn in *; lia); reflexivity)
         end.
 
         push_list_fast.
