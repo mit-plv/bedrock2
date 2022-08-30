@@ -133,24 +133,6 @@ Fixpoint c_cmd (indent : string) (c : cmd) : string :=
     indent ++ c_act binds action (List.map c_expr es)
   end.
 
-Definition fmt_c_decl (rett : string) (args : list String.string) (name : String.string) (retptrs : list String.string) : string :=
-  let argstring : String.string :=
-    (match args, retptrs with
-    | nil, nil => "void"
-    | _, _ => concat ", " (
-        List.map (fun a => "uintptr_t "++c_var a) args ++
-        List.map (fun r => "uintptr_t* "++c_var r) retptrs)
-    end)
-  in
-  (rett ++ " " ++ c_fun name ++ "(" ++ argstring ++ ")").
-
-Definition c_decl (f : String.string * (list String.string * list String.string * cmd)) :=
-  let '(name, (args, rets, body)) := f in
-  match rets with
-  | nil => fmt_c_decl "void" args name nil
-  | cons _ _ => fmt_c_decl "uintptr_t" args name (List.removelast rets)
-  end ++ ";".
-
 Definition rename_away_from x xs :=
   let x' := "_" ++ x in
   if List.existsb (String.eqb x') xs
@@ -166,6 +148,26 @@ Fixpoint rename_outs (outs : list String.string) (used : list String.string) : l
     (cons (o, optr) outrenames, cons o used)
   | nil => (nil, used)
   end.
+
+Definition fmt_c_decl (rett : string) (args : list String.string) (name : String.string) (retptrs : list String.string) : string :=
+  let argstring : String.string :=
+    (match args, retptrs with
+    | nil, nil => "void"
+    | _, _ => concat ", " (
+        List.map (fun a => "uintptr_t "++c_var a) args ++
+        List.map (fun r => "uintptr_t* "++c_var r) retptrs)
+    end)
+  in
+  (rett ++ " " ++ c_fun name ++ "(" ++ argstring ++ ")").
+
+Definition c_decl (f : String.string * (list String.string * list String.string * cmd)) :=
+  let '(name, (args, rets, body)) := f in
+  match rets with
+  | nil => fmt_c_decl "void" args name nil
+  | cons _ _ =>
+    let retrenames := fst (rename_outs (List.removelast rets) (cmd.vars body)) in
+     fmt_c_decl "uintptr_t" args name (List.map snd retrenames)
+  end ++ ";".
 
 
 (* `globals` is a list of varnames that should be treated as global variables,

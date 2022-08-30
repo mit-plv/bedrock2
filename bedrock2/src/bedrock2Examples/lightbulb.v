@@ -654,11 +654,13 @@ Section WithParameters.
 
   (* Print Assumptions link_lightbulb. *)
 
+  (*
   From bedrock2 Require Import ToCString.
   Goal True.
     let c_code := eval cbv in ((* of_string *) (c_module function_impls)) in
     pose c_code.
   Abort.
+  *)
 
   (*
   From bedrock2 Require Import ToCString Byte Bytedump.
