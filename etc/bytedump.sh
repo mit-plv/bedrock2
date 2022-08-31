@@ -1,5 +1,6 @@
 #/bin/sh
 set -eu
+ulimit -s unlimited
 
 {
 coqtop -q -quiet $COQFLAGS 2>/dev/null << EOF
