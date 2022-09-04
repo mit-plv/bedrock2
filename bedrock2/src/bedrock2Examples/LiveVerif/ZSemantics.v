@@ -136,11 +136,15 @@ Definition sepapp(P1 P2: Z -> mem -> Prop)
   {ofs: Z}{H: PredicateSize P1 ofs} :=
   fun (addr: Z) => sep (P1 addr) (P2 (addr + ofs)).
 
-Infix "*+" := sepapp (at level 36).
+Infix "*+" := sepapp (at level 36, right associativity).
 
 Global Instance sepapp_PredicateSize(P1 P2: Z -> mem -> Prop)(sz1 sz2: Z)
   (H1: PredicateSize P1 sz1)(H2: PredicateSize P2 sz2)
   : PredicateSize (sepapp P1 P2) (sz1 + sz2) := {}.
+
+Definition hole(n addr: Z): mem -> Prop := emp True.
+
+Global Instance hole_PredicateSize(n: Z): PredicateSize (hole n) n := {}.
 
 Require Import Coq.Logic.FunctionalExtensionality.
 
@@ -2016,26 +2020,6 @@ Definition EthernetHeader_rep(h: EthernetHeader): Z -> mem -> Prop :=
   end.
 (* array (uint 8) 6 (dstMAC h) *+ array (uint 8) 6 (srcMAC h) *+ uint 16 (etherType h) *)
 
-(* not a Lemma because this kind of goal will be solved inline by sepcalls canceler *)
-Goal forall (bs: list Z) (R: mem -> Prop) a m (Rest: EthernetHeader -> Prop),
-    sep (array (uint 8) 14 bs a) R m ->
-    exists h, sep (EthernetHeader_rep h a) R m /\ Rest h.
-Proof.
-  intros. eexists (mkEthernetHeader _ _ _).
-  unfold EthernetHeader_rep.
-  assert (len bs = 14) by admit.
-  rewrite (array_split 6) in H.
-  rewrite (array_split 6 _ (14 - 6) bs[6:]) in H.
-  change (14 - 6 - 6) with 2 in H.
-  rewrite (bytes_to_uint 2) in H.
-  2: {
-    repeat rewrite List.len_from; lia.
-  }
-  rewrite <- sepapp_assoc in H.
-  split. 1: exact H. (* instantiates all evars *)
-
-Abort.
-
 
 (* New Feature TODO:
    Allow "breakpoints" /**. .**/ anywhere inside expressions,
@@ -2093,6 +2077,16 @@ Proof.
 Admitted.
 
 #[export] Hint Resolve purify_scalar : purify.
+*)
+
+Lemma purify_array{T: Type}: forall elem n (vs: list T) a elemSize
+    {Hsz: forall v, PredicateSize (elem v) elemSize},
+    purify (array elem n vs a) (len vs = n).
+Proof.
+  unfold purify, array. intros. eapply sep_emp_l in H. apply H.
+Qed.
+
+#[export] Hint Resolve purify_array : purify.
 
 Ltac purify_rec :=
   lazymatch goal with
@@ -2125,6 +2119,66 @@ Ltac purify :=
   | H: sep _ _ _ |- _ => purify_hyp H
   end.
 
+Inductive unfold_step{V: Type}(addr: Z)(pred: V -> Z -> mem -> Prop): Prop :=
+  mk_unfold_step.
+
+Ltac unfold_pred a pred :=
+  let name := fresh "step0" in
+  pose proof (mk_unfold_step a pred) as name;
+  let h := head pred in
+  unfold h.
+
+Ltac fold_pred :=
+  lazymatch goal with
+  | St: @unfold_step ?V ?addr ?pred |- _ =>
+      let c := open_constr:(pred ltac:(constructor) addr) in
+      repeat match goal with
+      | H: context[?unfolded addr] |- _ =>
+          unify (unfolded addr) c;
+          change (unfolded addr) with c in H
+      end;
+      clear St
+  end.
+
+(* not a Lemma because this kind of goal will be solved inline by sepcalls canceler *)
+Goal forall (bs: list Z) (R: mem -> Prop) a m (Rest: EthernetHeader -> Prop),
+    sep (array (uint 8) 14 bs a) R m ->
+    exists h, sep (EthernetHeader_rep h a) R m /\ Rest h.
+Proof.
+  intros.
+  purify.
+  eexists (mkEthernetHeader _ _ _).
+
+  match goal with
+  | |- context[EthernetHeader_rep ?h ?a] =>
+      pose proof (_ : PredicateSize (EthernetHeader_rep h) _) as Hsz
+  end.
+  cbn in Hsz. (* --> clause in goal has same size as clause in hyp H *)
+  clear Hsz.
+
+  (* how to make sure we get folded EthernetHeader_rep in H rather than unfolded?
+     - fold at end
+     - "cast" function in H that takes goal, ignores it, but drives Ltac rewrites?
+
+     -> need good folder anyways?
+        fold using egg?
+        but how to seed the egraph? (triggers)
+   *)
+
+  unfold_pred a EthernetHeader_rep.
+
+  rewrite (array_split 6) in H.
+  rewrite (array_split 6 _ (14 - 6) bs[6:]) in H.
+  change (14 - 6 - 6) with 2 in H.
+  rewrite (bytes_to_uint 2) in H.
+  2: {
+    repeat rewrite List.len_from; lia.
+  }
+  split. 1: exact H. (* instantiates all evars *)
+
+  fold_pred.
+
+Abort.
 
 Definition u_min_mem: {f: list string * list string * cmd &
   forall fs t m a b c pa pb pc (R: mem -> Prop),
