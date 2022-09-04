@@ -178,10 +178,7 @@ Module map.
       map_eq (map.put m0 k v) (map.put m1 k v).
   Proof.
     intros * Heq k.
-    destruct (key_eqb k0 k) eqn:Hk;
-      [ eapply (Decidable.BoolSpec_true _ _ _ (key_eq_dec _ _)) in Hk |
-        eapply (Decidable.BoolSpec_false _ _ _ (key_eq_dec _ _)) in Hk ];
-      subst; rewrite ?map.get_put_same, ?map.get_put_diff; auto.
+    destr (key_eqb k0 k); rewrite ?map.get_put_same, ?map.get_put_diff; auto.
   Qed.
 
   Lemma remove_proper {K V}
@@ -194,10 +191,7 @@ Module map.
       map_eq (map.remove m0 k) (map.remove m1 k).
   Proof.
     intros * Heq k.
-    destruct (key_eqb k0 k) eqn:Hk;
-      [ eapply (Decidable.BoolSpec_true _ _ _ (key_eq_dec _ _)) in Hk |
-        eapply (Decidable.BoolSpec_false _ _ _ (key_eq_dec _ _)) in Hk ];
-      subst; rewrite ?map.get_remove_same, ?map.get_remove_diff; auto.
+    destr (key_eqb k0 k); rewrite ?map.get_remove_same, ?map.get_remove_diff; auto.
   Qed.
 
   Definition remove_many {K V} {M: map.map K V} (m : M) (ks: list K) :=
