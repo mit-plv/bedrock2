@@ -127,6 +127,8 @@ Section Pipeline1.
                      | None => error:("No function named" "loop" "found")
                      end;;
     let to_prepend := init_sp_insts ++ init_insts init_fun_pos ++ loop_insts loop_fun_pos ++ backjump_insts in
+    let adjust := Z.add (4 * Z.of_nat (length  to_prepend)) in
+    let positions := map.fold (fun m f p => map.put m f (adjust p)) map.empty positions in
     Success (to_prepend ++ functions_insts, positions, required_stack_space).
 
   Context (spec: ProgramSpec).
@@ -259,7 +261,7 @@ Section Pipeline1.
       - eapply runsToDone. split; [exact I|reflexivity].
     }
     match goal with
-    | H: map.get positions "init"%string = Some ?pos |- _ =>
+    | H: map.get ?positions "init"%string = Some ?pos |- _ =>
       rename H into GetPos, pos into f_entry_rel_pos
     end.
     subst.
@@ -368,7 +370,7 @@ Section Pipeline1.
         rewrite map.get_put_same. unfold init_sp. rewrite word.of_Z_unsigned. reflexivity.
     - cbv beta. unfold ll_good. intros. fwd.
       match goal with
-      | _: map.get positions "loop"%string = Some ?z |- _ => rename z into f_loop_rel_pos
+      | _: map.get ?positions "loop"%string = Some ?z |- _ => rename z into f_loop_rel_pos
       end.
       unfold compile_prog in CP. fwd.
       repeat match goal with
