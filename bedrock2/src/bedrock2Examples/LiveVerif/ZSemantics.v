@@ -136,17 +136,34 @@ Definition sepapp(P1 P2: Z -> mem -> Prop)
   {ofs: Z}{H: PredicateSize P1 ofs} :=
   fun (addr: Z) => sep (P1 addr) (P2 (addr + ofs)).
 
-Infix "*+" := sepapp (at level 36, right associativity).
+Infix "*+" := sepapp (at level 36, left associativity).
 
 Global Instance sepapp_PredicateSize(P1 P2: Z -> mem -> Prop)(sz1 sz2: Z)
   (H1: PredicateSize P1 sz1)(H2: PredicateSize P2 sz2)
   : PredicateSize (sepapp P1 P2) (sz1 + sz2) := {}.
 
-Definition hole(n addr: Z): mem -> Prop := emp True.
+Definition emp_at(addr: Z): mem -> Prop := emp True.
+Global Instance emp_at_PredicateSize: PredicateSize emp_at 0 := {}.
+Global Hint Opaque emp_at : typeclass_instances.
 
+Definition hole(n addr: Z): mem -> Prop := emp True.
 Global Instance hole_PredicateSize(n: Z): PredicateSize (hole n) n := {}.
+Global Hint Opaque hole : typeclass_instances.
+(* otherwise, hole_PredicateSize triggers when `emp_at_PredicateSize` should *)
 
 Require Import Coq.Logic.FunctionalExtensionality.
+
+Lemma sepapp_emp_at_l: forall (p: Z -> mem -> Prop), emp_at *+ p = p.
+Proof.
+  unfold sepapp, emp_at. intros. extensionality addr. eapply iff1ToEq.
+  rewrite Z.add_0_r. eapply sep_emp_True_l.
+Qed.
+
+Lemma sepapp_emp_at_r: forall p sz (H: PredicateSize p sz), p *+ emp_at = p.
+Proof.
+  unfold sepapp, emp_at. intros. extensionality addr. eapply iff1ToEq.
+  eapply sep_emp_True_r.
+Qed.
 
 Import ZList.
 Import ZList.List.ZIndexNotations.
@@ -792,6 +809,67 @@ Section WithParams.
   Definition arguments_marker(args: list Z): list Z := args.
 
 End WithParams.
+
+Inductive sized_predicate: Type :=
+| mk_sized_predicate(p: Z -> mem -> Prop)(sz: Z)(Hsz: PredicateSize p sz).
+
+Definition sized_emp := mk_sized_predicate emp_at 0 emp_at_PredicateSize.
+
+Definition sepapp_sized_predicates(sp1 sp2: sized_predicate): sized_predicate :=
+  match sp1, sp2 with
+  | mk_sized_predicate p1 sz1 Hsz1, mk_sized_predicate p2 sz2 Hsz2 =>
+      mk_sized_predicate (@sepapp p1 p2 sz1 Hsz1) (sz1 + sz2)
+        (@sepapp_PredicateSize p1 p2 sz1 sz2 Hsz1 Hsz2)
+  end.
+
+Definition proj_sized_predicate(sp: sized_predicate): Z -> mem -> Prop :=
+  match sp with
+  | mk_sized_predicate p _ _ => p
+  end.
+
+Definition sepapps(l: list sized_predicate): Z -> mem -> Prop :=
+  proj_sized_predicate (List.fold_left sepapp_sized_predicates l sized_emp).
+
+Definition interp_sepapp_tree(t: Tree.Tree sized_predicate): Z -> mem -> Prop :=
+  proj_sized_predicate (Tree.interp id sepapp_sized_predicates t).
+
+Lemma flatten_eq_interp_sepapp_tree_aux(t : Tree.Tree sized_predicate):
+  forall sp0: sized_predicate,
+    match List.fold_left sepapp_sized_predicates (Tree.flatten t) sp0,
+          sepapp_sized_predicates sp0 (Tree.interp id sepapp_sized_predicates t) with
+    | mk_sized_predicate p1 sz1 Hsz1, mk_sized_predicate p2 sz2 Hsz2 =>
+        p1 = p2 /\ sz1 = sz2
+    end.
+Proof.
+  induction t; intros.
+  - simpl. destruct sp0. destruct a. simpl. auto.
+  - simpl. change @app with @List.app.
+    rewrite List.fold_left_app.
+    specialize (IHt1 sp0).
+    specialize (IHt2 (List.fold_left sepapp_sized_predicates (Tree.flatten t1) sp0)).
+    destruct_one_match.
+    destr sp0.
+    destr (List.fold_left sepapp_sized_predicates (Tree.flatten t1)
+             (mk_sized_predicate p0 sz0 Hsz0)).
+    destr (Tree.interp id sepapp_sized_predicates t1).
+    destr (Tree.interp id sepapp_sized_predicates t2).
+    simpl in *.
+    fwd. subst. rewrite <- sepapp_assoc. rewrite Z.add_assoc. split; reflexivity.
+Qed.
+
+Lemma flatten_eq_interp_sepapp_tree(t : Tree.Tree sized_predicate):
+  sepapps (Tree.flatten t) = interp_sepapp_tree t.
+Proof.
+  unfold sepapps, interp_sepapp_tree, proj_sized_predicate.
+  pose proof (flatten_eq_interp_sepapp_tree_aux t sized_emp) as P.
+  unfold sized_emp in *. do 2 destruct_one_match. simpl in P. apply proj1 in P.
+  subst. apply sepapp_emp_at_l.
+Qed.
+
+Lemma interp_sepapp_tree_eq_of_flatten_eq(LHS RHS : Tree.Tree sized_predicate):
+  Tree.flatten LHS = Tree.flatten RHS ->
+  interp_sepapp_tree LHS = interp_sepapp_tree RHS.
+Proof. intros. rewrite <-2flatten_eq_interp_sepapp_tree. f_equal. assumption. Qed.
 
 Ltac pose_ZWord_lemmas :=
   pose proof wwrap_small as z_wwrap_small.
@@ -2174,6 +2252,7 @@ Proof.
   2: {
     repeat rewrite List.len_from; lia.
   }
+  rewrite <- sepapp_assoc in H.
   split. 1: exact H. (* instantiates all evars *)
 
   fold_pred.
