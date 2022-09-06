@@ -169,6 +169,13 @@ Import ZList.
 Import ZList.List.ZIndexNotations.
 Local Open Scope zlist_scope.
 
+(* Type aliases that can inform proof automation, typeclass search,
+   as well as humans on intended usage: *)
+Definition uint_t(nbits: Z) := Z.
+Definition array_t(tp: Type)(nElems: Z) := list tp.
+
+Global Hint Opaque uint_t array_t : typeclass_instances.
+
 Section WithParams.
   Context {width: Z}.
 
@@ -242,7 +249,13 @@ Section WithParams.
     sep (emp (len vs = n)) (array_rec elem elemSize vs addr).
 
   Global Instance array_PredicateSize{T: Type}(elem: T -> Z -> mem -> Prop)(n: Z)
-    (elemSize: Z)(H: forall v, PredicateSize (elem v) elemSize)(vs: list T):
+    (elemSize: Z)(H: forall v, PredicateSize (elem v) elemSize)
+    (vs: array_t T n):
+    PredicateSize (array elem n vs) (elemSize * n) := {}.
+
+  Global Instance array_PredicateSize_list{T: Type}(elem: T -> Z -> mem -> Prop)(n: Z)
+    (elemSize: Z)(H: forall v, PredicateSize (elem v) elemSize)
+    (vs: list T):
     PredicateSize (array elem n vs) (elemSize * n) := {}.
 
   Lemma array_app{T: Type}(elem: T -> Z -> mem -> Prop){elemSize: Z}
@@ -284,13 +297,13 @@ Section WithParams.
     intros.
   Admitted.
 
-  Definition uint(nbits v: Z): Z -> mem -> Prop :=
+  Definition uint(nbits: Z)(v: uint_t nbits (*=Z*)): Z -> mem -> Prop :=
     byteseq_predicate (nbits_to_nbytes nbits) (fun bs => LittleEndianList.le_combine bs = v).
 
   Definition value(sz: access_size): Z -> Z -> mem -> Prop :=
     uint (access_len sz).
 
-  Global Instance uint_PredicateSize(nbits: Z)(v: Z):
+  Global Instance uint_PredicateSize(nbits: Z)(v: uint_t nbits):
     PredicateSize (uint nbits v) (nbits_to_nbytes nbits) := {}.
 
   Fixpoint le_combine_z(bytes: list Z): Z :=
@@ -301,11 +314,11 @@ Section WithParams.
 
   Axiom TODO: False.
 
-  Lemma bytes_to_uint: forall L bs,
+  Lemma bytes_to_uint: forall L (bs: array_t (uint_t 8) L),
       len bs = L -> (* <-- Note: already asserted by LHS, but not by RHS *)
       array (uint 8) L bs = uint (L * 8) (le_combine_z bs).
   Proof.
-    intros.
+    unfold array_t in *. intros.
     remember (Z.to_nat L) as nbytes eqn: E.
     eapply (f_equal Z.of_nat) in E. rewrite Z2Nat.id in E by lia. subst L.
     revert nbytes bs E.
@@ -323,7 +336,7 @@ Section WithParams.
         case TODO.
     - destruct bs; try discriminate.
       rewrite array_cons.
-      replace (len (z :: bs) - 1) with (len bs) by (rewrite List.length_cons; lia).
+      replace (len (u :: bs) - 1) with (len bs) by (rewrite List.length_cons; lia).
       rewrite IHnbytes by (rewrite List.length_cons in *; lia).
 
       (* TODO... *)
@@ -2056,10 +2069,7 @@ Section WithNonmaximallyInsertedA.
   Proof. intros. reflexivity. Qed.
 End WithNonmaximallyInsertedA.
 
-(* Type aliases that can inform proof automation as well as humans on intended usage: *)
-Definition uint_t(nbits: Z) := Z.
-Definition array_t(tp: Type)(nElems: Z) := list tp.
-
+Class RepPredicate(T: Type) := rep: T -> Z -> mem -> Prop.
 
 (* ARP responder example *)
 
@@ -2091,13 +2101,38 @@ Record EthernetHeader := mkEthernetHeader {
 Global Instance Bool_eqb_spec: EqDecider Bool.eqb.
 Proof. intros. destruct x; destruct y; constructor; congruence. Qed.
 
-Definition EthernetHeader_rep(h: EthernetHeader): Z -> mem -> Prop :=
-  match h with
-  | mkEthernetHeader dstMAC srcMAC etherType =>
-      array (uint 8) 6 dstMAC *+ array (uint 8) 6 srcMAC *+ uint 16 etherType
-  end.
-(* array (uint 8) 6 (dstMAC h) *+ array (uint 8) 6 (srcMAC h) *+ uint 16 (etherType h) *)
+Global Instance uint_t_predicate(nbits: Z): RepPredicate (uint_t nbits) := uint nbits.
 
+Global Instance array_t_predicate(T: Type)(n: Z)(elem_pred: RepPredicate T)(elemSize: Z)
+  (Hsz: forall v : T, PredicateSize (rep v) elemSize): RepPredicate (array_t T n) :=
+  array (@rep T elem_pred) n.
+
+Ltac create_predicate_rec refine_already_introd :=
+  lazymatch goal with
+  | |- forall (lastField: _), Z -> ?mem -> Prop =>
+      let f := fresh lastField in
+      intro f;
+      refine_already_introd;
+      exact (rep f)
+  | |- forall (name: _), _ =>
+      let f := fresh name in
+      intro f;
+      create_predicate_rec ltac:(refine_already_introd; refine (sepapp (rep f) _))
+  end.
+
+Ltac create_predicate :=
+  match goal with
+  | |- ?G => let t := constr:(ltac:(
+                let p := fresh in intro p; case p; create_predicate_rec idtac) : G) in
+             let t' := eval cbv beta in t in
+             exact t'
+  end.
+
+Global Instance ARPPacket_predicate: RepPredicate ARPPacket :=
+  ltac:(create_predicate).
+
+Global Instance EthernetHeader_predicate: RepPredicate EthernetHeader :=
+  ltac:(create_predicate).
 
 (* New Feature TODO:
    Allow "breakpoints" /**. .**/ anywhere inside expressions,
@@ -2200,11 +2235,27 @@ Ltac purify :=
 Inductive unfold_step{V: Type}(addr: Z)(pred: V -> Z -> mem -> Prop): Prop :=
   mk_unfold_step.
 
+Ltac unfold_until_sepapp t :=
+  lazymatch t with
+  | (sepapp _ _) _ => t
+  | _ => let h := head t in
+         let u := eval cbv beta iota delta[h] in t in
+         unfold_until_sepapp u
+  end.
+
 Ltac unfold_pred a pred :=
   let name := fresh "step0" in
   pose proof (mk_unfold_step a pred) as name;
-  let h := head pred in
-  unfold h.
+  repeat match goal with
+    | H: context C[pred ?v a] |- _ =>
+        let u := unfold_until_sepapp (pred v a) in
+        let t := context C[u] in
+        change t in H
+    | |- context C[pred ?v a] =>
+        let u := unfold_until_sepapp (pred v a) in
+        let t := context C[u] in
+        change t
+    end.
 
 Ltac fold_pred :=
   lazymatch goal with
@@ -2219,17 +2270,17 @@ Ltac fold_pred :=
   end.
 
 (* not a Lemma because this kind of goal will be solved inline by sepcalls canceler *)
-Goal forall (bs: list Z) (R: mem -> Prop) a m (Rest: EthernetHeader -> Prop),
+Goal forall (bs: list (uint_t 8)) (R: mem -> Prop) a m (Rest: EthernetHeader -> Prop),
     sep (array (uint 8) 14 bs a) R m ->
-    exists h, sep (EthernetHeader_rep h a) R m /\ Rest h.
+    exists h, sep (rep h a) R m /\ Rest h.
 Proof.
   intros.
   purify.
   eexists (mkEthernetHeader _ _ _).
 
   match goal with
-  | |- context[EthernetHeader_rep ?h ?a] =>
-      pose proof (_ : PredicateSize (EthernetHeader_rep h) _) as Hsz
+  | |- context[rep ?h ?a] =>
+      pose proof (_ : PredicateSize (rep h) _) as Hsz
   end.
   cbn in Hsz. (* --> clause in goal has same size as clause in hyp H *)
   clear Hsz.
@@ -2243,7 +2294,14 @@ Proof.
         but how to seed the egraph? (triggers)
    *)
 
-  unfold_pred a EthernetHeader_rep.
+  match goal with
+  | |- context[@rep ?T ?pred ?h ?a] =>
+      let r := unfold_until_sepapp (@rep T pred h a) in idtac r
+  end.
+
+  match goal with
+  | |- context[?folded ?v a] => unfold_pred a folded
+  end.
 
   rewrite (array_split 6) in H.
   rewrite (array_split 6 _ (14 - 6) bs[6:]) in H.
@@ -2253,12 +2311,22 @@ Proof.
     repeat rewrite List.len_from; lia.
   }
   rewrite <- sepapp_assoc in H.
+
+  (* TODO if "rep ?dstMAC" was a nested record as well that needs to be unfolded,
+     how would we record it, given that we have no address?
+  unfold rep.
   split. 1: exact H. (* instantiates all evars *)
 
   fold_pred.
 
+  unfold_pred a EthernetHeader_rep.
+  *)
+
 Abort.
 
+
+
+(*
 Definition u_min_mem: {f: list string * list string * cmd &
   forall fs t m a b c pa pb pc (R: mem -> Prop),
     <{ * a @@ pa : UInt 32
