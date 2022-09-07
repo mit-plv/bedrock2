@@ -256,10 +256,18 @@ Section WithParams.
     (vs: array_t T n):
     PredicateSize (array elem n vs) (elemSize * n) := {}.
 
+  (*Global*) Hint Extern 1 (PredicateSize (array ?elem ?n ?vs) _) =>
+    lazymatch type of vs with
+    | list ?T => exact (@array_PredicateSize T elem n _ _ vs)
+    end
+    : typeclass_instances.
+
+  (* don't add this instance, otherwise terms that should be syntactically equal
+     will differ in which of the two instances they use!
   Global Instance array_PredicateSize_list{T: Type}(elem: T -> Z -> mem -> Prop)(n: Z)
     (elemSize: Z)(H: forall v, PredicateSize (elem v) elemSize)
     (vs: list T):
-    PredicateSize (array elem n vs) (elemSize * n) := {}.
+    PredicateSize (array elem n vs) (elemSize * n) := {}. *)
 
   Lemma array_app{T: Type}(elem: T -> Z -> mem -> Prop){elemSize: Z}
     {Hsz: forall v, PredicateSize (elem v) elemSize}
@@ -2240,33 +2248,50 @@ Ltac purify :=
   | H: sep _ _ _ |- _ => purify_hyp H
   end.
 
-Inductive unfold_step{V: Type}(addr: Z)(pred: V -> Z -> mem -> Prop): Prop :=
-  mk_unfold_step.
+Inductive step: Type :=
+| unfold_step{V: Type}(pred: V -> Z -> mem -> Prop).
 
-Ltac unfold_pred a pred :=
+Ltac unfold_pred pred :=
   let name := fresh "step0" in
-  pose proof (mk_unfold_step a pred) as name;
+  pose (unfold_step pred) as name;
   let h := head pred in
   repeat match goal with
-    | H: context C[pred ?v a] |- _ =>
-        let u := eval unfold h in (pred v a) in
+    | H: context C[pred ?v] |- _ =>
+        let u := eval unfold h in (pred v) in
         let t := context C[u] in
         change t in H
-    | |- context C[pred ?v a] =>
-        let u := eval unfold h in (pred v a) in
+    | |- context C[pred ?v] =>
+        let u := eval unfold h in (pred v) in
         let t := context C[u] in
         change t
     end.
 
-Ltac fold_pred :=
+Require Import coqutil.Tactics.syntactic_unify.
+
+Ltac fold_in_goal p :=
+  let h := head p in
+  let p' := eval cbv beta iota delta [h] in p in
+  match goal with
+  | |- context C[?x] =>
+    syntactic_unify p' x;
+    let g := context C[p] in
+    change g
+  end.
+
+Ltac fold_in_hyps p :=
+  let h := head p in
+  let p' := eval cbv beta iota delta [h] in p in
+  match goal with
+  | H: context C[?x] |- _ =>
+    syntactic_unify p' x;
+    let g := context C[p] in
+    change g in H
+  end.
+
+Ltac undo_step :=
   lazymatch goal with
-  | St: @unfold_step ?V ?addr ?pred |- _ =>
-      let c := open_constr:(pred ltac:(constructor) addr) in
-      repeat match goal with
-      | H: context[?unfolded addr] |- _ =>
-          unify (unfolded addr) c;
-          change (unfolded addr) with c in H
-      end;
+  | St := unfold_step ?pred |- _ =>
+      repeat (let c := open_constr:(pred ltac:(constructor)) in fold_in_hyps c);
       clear St
   end.
 
@@ -2295,9 +2320,24 @@ Proof.
         but how to seed the egraph? (triggers)
    *)
 
+(*
+
+canceling_state PDone PTodo m := sep PDone PTodo m
+
+both for hyp and conclusion? -> no, only for conclusion, leave hyp in same order
+
+how to record partial progress in canceling inside sepapp?
+*)
+
   match goal with
-  | |- context[?folded ?v a] => unfold_pred a folded
+  | |- context[?folded ?v a] => unfold_pred folded
   end.
+
+(*
+  let pred := constr:(EthernetHeader) in
+  let c := open_constr:(pred ltac:(constructor)) in
+  fold_in_goal c.
+*)
 
   rewrite (array_split 6) in H.
   rewrite (array_split 6 _ (14 - 6) bs[6:]) in H.
@@ -2306,15 +2346,14 @@ Proof.
   2: {
     repeat rewrite List.len_from; lia.
   }
+  change (2 * 8) with 16 in H.
 
   (* TODO if "rep ?dstMAC" was a nested record as well that needs to be unfolded,
      how would we record it, given that we have no address?
      --> don't record address, only the predicate *)
   split. 1: exact H. (* instantiates all evars *)
 
-  fold_pred.
-
-  unfold_pred a EthernetHeader.
+  undo_step.
 
 Abort.
 
