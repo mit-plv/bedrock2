@@ -72,13 +72,13 @@ install_coqutil:
 	$(MAKE) -C $(DEPS_DIR)/coqutil install
 
 coq-record-update:
-	$(MAKE) -C $(DEPS_DIR)/coq-record-update
+	$(MAKE) NO_TEST=1 -C $(DEPS_DIR)/coq-record-update
 
 clean_coq-record-update:
-	$(MAKE) -C $(DEPS_DIR)/coq-record-update clean
+	$(MAKE) NO_TEST=1 -C $(DEPS_DIR)/coq-record-update clean
 
 install_coq-record-update:
-	$(MAKE) -C $(DEPS_DIR)/coq-record-update install
+	$(MAKE) NO_TEST=1 -C $(DEPS_DIR)/coq-record-update install
 
 kami:
 	$(MAKE) -C $(DEPS_DIR)/kami
