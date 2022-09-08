@@ -1,4 +1,4 @@
-Require bedrock2.BasicC64Semantics bedrock2.NotationsCustomEntry.
+Require bedrock2.FE310CSemantics bedrock2.NotationsCustomEntry.
 Import BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 Require Import coqutil.Macros.ident_to_string.
@@ -20,15 +20,10 @@ Section chacha20.
 
   Local Notation "'xorout' o x" := (
       let addr := bedrock_expr:(out+coq:(expr.literal(4*o))) in
-      bedrock_cmd:(store4($addr, load4($addr)^$(expr.var (ident_to_string! x)))))
-      (in custom bedrock_cmd at level 0, o bigint, x ident).
+      bedrock_cmd:(store4($addr, load4($addr)^$(expr.var (x)))))
+      (in custom bedrock_cmd at level 0, o bigint, x custom bedrock_expr).
 
   Definition chacha20_block : func :=
-    (* NOTE: I (andreser) don't understand why xorout needs these *)
-    let x0  := "x0" in let x1  := "x1" in let x2  := "x2" in let x3  := "x3" in
-    let x4  := "x4" in let x5  := "x5" in let x6  := "x6" in let x7  := "x7" in
-    let x8  := "x8" in let x9  := "x9" in let x10 := "x10" in let x11 := "x11" in
-    let x12 := "x12" in let x13 := "x13" in let x14 := "x14" in let x15 := "x15" in
     ("chacha20_block", (["out"; "key"; "nonce"; "countervalue"], [], bedrock_func_body:(
       x0 = $0x61707865;   x1 = $0x3320646e;   x2 = $0x79622d32;    x3 = $0x6b206574;
       x4 = load4(key);           x5 = load4(key+$4);   x6 = load4(key+$8);    x7 = load4(key+$12);
@@ -59,5 +54,6 @@ End chacha20.
 Require bedrock2.ToCString.
 Example chacha20_block_c_string := Eval vm_compute in
   ToCString.c_module [chacha20_quarter; chacha20_block].
+Import Strings.String.
 Print chacha20_block_c_string.
 *)
