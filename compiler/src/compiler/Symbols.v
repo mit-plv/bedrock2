@@ -15,7 +15,7 @@ riscv64-elf-gcc -T mylinkerscript.lds -g -nostdlib /tmp/l.s -o /tmp/l
 *)
 
 Definition symbols {map : map.map string BinNums.Z} (finfo : map) : list byte := 
-  "globl _start" ++ [x0a] ++
+  ".globl _start" ++ [x0a] ++
   "_start:" ++ [x0a] ++
   List.flat_map (A:=_*string) (fun '(a, s) =>
     ".org " ++ HexString.of_Z a ++ [x0a] ++
