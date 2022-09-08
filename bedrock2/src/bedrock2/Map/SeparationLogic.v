@@ -780,7 +780,7 @@ Ltac extract_ex1_step_in H :=
           [ cbn [firstn skipn app hd tl] in H
           | cbn [firstn skipn app hd tl]; syntactic_exact_deltavar (@eq_refl _ _) ];
           let name := lazymatch Q with
-                      | fun e => _ => e
+                      | fun e => _ => fresh e
                       | _ => fresh "e"
                       end in
           destruct H as [name H]
