@@ -179,6 +179,84 @@ Global Hint Opaque uint_t array_t : typeclass_instances.
 Definition RepPredicate(T: Type) := T -> Z -> mem -> Prop.
 Existing Class RepPredicate.
 
+Lemma sepapp_assoc(P1 P2 P3: Z -> mem -> Prop){sz1 sz2: Z}
+  {Hsz1: PredicateSize P1 sz1}{Hsz2: PredicateSize P2 sz2}:
+  sepapp (sepapp P1 P2) P3 = sepapp P1 (sepapp P2 P3).
+Proof.
+  unfold sepapp. extensionality addr.
+  rewrite sep_assoc_eq. rewrite Z.add_assoc.
+  reflexivity.
+Qed.
+
+Definition array_rec{T: Type}(elem: T -> Z -> mem -> Prop)(elemSize: Z):
+  list T -> Z -> mem -> Prop :=
+  fix rec xs start :=
+    match xs with
+    | nil => emp True
+    | cons h tl => sep (elem h start) (rec tl (start + elemSize))
+    end.
+
+Definition array{T: Type}(elem: RepPredicate T)(n: Z){elemSize: Z}
+  {H: forall v, PredicateSize (elem v) elemSize}(vs: list T)(addr: Z): mem -> Prop :=
+  sep (emp (len vs = n)) (array_rec elem elemSize vs addr).
+
+Global Instance array_PredicateSize{T: Type}(elem: T -> Z -> mem -> Prop)(n: Z)
+  (elemSize: Z)(H: forall v, PredicateSize (elem v) elemSize)
+  (vs: array_t T n):
+  PredicateSize (array elem n vs) (elemSize * n) := {}.
+
+Global Hint Extern 1 (PredicateSize (array ?elem ?n ?vs) _) =>
+         lazymatch type of vs with
+         | list ?T => exact (@array_PredicateSize T elem n _ _ vs)
+         end
+         : typeclass_instances.
+
+(* don't add this instance, otherwise terms that should be syntactically equal
+     will differ in which of the two instances they use!
+Global Instance array_PredicateSize_list{T: Type}(elem: T -> Z -> mem -> Prop)(n: Z)
+  (elemSize: Z)(H: forall v, PredicateSize (elem v) elemSize)
+  (vs: list T):
+  PredicateSize (array elem n vs) (elemSize * n) := {}. *)
+
+Lemma array_app{T: Type}(elem: T -> Z -> mem -> Prop){elemSize: Z}
+  {Hsz: forall v, PredicateSize (elem v) elemSize}
+  (n n1 n2: Z)(vs vs1 vs2: list T):
+  n = n1 + n2 ->
+  vs = vs1 ++ vs2 ->
+  array elem n vs = sepapp (array elem n1 vs1) (array elem n2 vs2).
+Proof.
+  intros.
+Abort.
+
+Lemma array_cons{T: Type}(elem: T -> Z -> mem -> Prop){elemSize: Z}
+  {Hsz: forall v, PredicateSize (elem v) elemSize}
+  (n: Z)(v: T)(vs: list T):
+  array elem n (v :: vs) = sepapp (elem v) (array elem (n-1) vs).
+Proof.
+  unfold sepapp. extensionality addr.
+  unfold array.
+  change (array_rec elem elemSize (v :: vs) addr) with
+    (sep (elem v addr) (array_rec elem elemSize vs (addr + elemSize))).
+  eapply iff1ToEq.
+  cancel. cbn [seps]. unfold iff1, emp.
+  replace (len (v :: vs)) with (len vs + 1) in *.
+  2: {
+    rewrite List.length_cons. lia.
+  }
+  intro m'; split; intros H; fwd.
+  - ssplit; try lia. reflexivity.
+  - ssplit; try lia. reflexivity.
+Qed.
+
+Lemma array_split(i: Z)[T: Type](elem: T -> Z -> mem -> Prop){elemSize: Z}
+  {Hsz: forall v, PredicateSize (elem v) elemSize}
+  (n: Z)(vs: list T):
+  (* TODO might need arithmetic preconditions *)
+  array elem n vs = sepapp (array elem i vs[:i]) (array elem (n-i) vs[i:]).
+Proof.
+  intros.
+Admitted.
+
 Section WithParams.
   Context {width: Z}.
 
@@ -229,84 +307,6 @@ Section WithParams.
     (addr: Z)(m: mem): Prop :=
     map.domain m = PropSet.of_list (List.seqz addr nbytes) /\
     P (get_seq addr nbytes m).
-
-  Lemma sepapp_assoc(P1 P2 P3: Z -> mem -> Prop){sz1 sz2: Z}
-    {Hsz1: PredicateSize P1 sz1}{Hsz2: PredicateSize P2 sz2}:
-    sepapp (sepapp P1 P2) P3 = sepapp P1 (sepapp P2 P3).
-  Proof.
-    unfold sepapp. extensionality addr.
-    rewrite sep_assoc_eq. rewrite Z.add_assoc.
-    reflexivity.
-  Qed.
-
-  Definition array_rec{T: Type}(elem: T -> Z -> mem -> Prop)(elemSize: Z):
-    list T -> Z -> mem -> Prop :=
-    fix rec xs start :=
-      match xs with
-      | nil => emp True
-      | cons h tl => sep (elem h start) (rec tl (start + elemSize))
-      end.
-
-  Definition array{T: Type}(elem: RepPredicate T)(n: Z){elemSize: Z}
-    {H: forall v, PredicateSize (elem v) elemSize}(vs: list T)(addr: Z): mem -> Prop :=
-    sep (emp (len vs = n)) (array_rec elem elemSize vs addr).
-
-  Global Instance array_PredicateSize{T: Type}(elem: T -> Z -> mem -> Prop)(n: Z)
-    (elemSize: Z)(H: forall v, PredicateSize (elem v) elemSize)
-    (vs: array_t T n):
-    PredicateSize (array elem n vs) (elemSize * n) := {}.
-
-  (*Global*) Hint Extern 1 (PredicateSize (array ?elem ?n ?vs) _) =>
-    lazymatch type of vs with
-    | list ?T => exact (@array_PredicateSize T elem n _ _ vs)
-    end
-    : typeclass_instances.
-
-  (* don't add this instance, otherwise terms that should be syntactically equal
-     will differ in which of the two instances they use!
-  Global Instance array_PredicateSize_list{T: Type}(elem: T -> Z -> mem -> Prop)(n: Z)
-    (elemSize: Z)(H: forall v, PredicateSize (elem v) elemSize)
-    (vs: list T):
-    PredicateSize (array elem n vs) (elemSize * n) := {}. *)
-
-  Lemma array_app{T: Type}(elem: T -> Z -> mem -> Prop){elemSize: Z}
-    {Hsz: forall v, PredicateSize (elem v) elemSize}
-    (n n1 n2: Z)(vs vs1 vs2: list T):
-    n = n1 + n2 ->
-    vs = vs1 ++ vs2 ->
-    array elem n vs = sepapp (array elem n1 vs1) (array elem n2 vs2).
-  Proof.
-    intros.
-  Abort.
-
-  Lemma array_cons{T: Type}(elem: T -> Z -> mem -> Prop){elemSize: Z}
-    {Hsz: forall v, PredicateSize (elem v) elemSize}
-    (n: Z)(v: T)(vs: list T):
-    array elem n (v :: vs) = sepapp (elem v) (array elem (n-1) vs).
-  Proof.
-    unfold sepapp. extensionality addr.
-    unfold array.
-    change (array_rec elem elemSize (v :: vs) addr) with
-      (sep (elem v addr) (array_rec elem elemSize vs (addr + elemSize))).
-    eapply iff1ToEq.
-    cancel. cbn [seps]. unfold iff1, emp.
-    replace (len (v :: vs)) with (len vs + 1) in *.
-    2: {
-      rewrite List.length_cons. lia.
-    }
-    intro m'; split; intros H; fwd.
-    - ssplit; try lia. reflexivity.
-    - ssplit; try lia. reflexivity.
-  Qed.
-
-  Lemma array_split(i: Z)[T: Type](elem: T -> Z -> mem -> Prop){elemSize: Z}
-    {Hsz: forall v, PredicateSize (elem v) elemSize}
-    (n: Z)(vs: list T):
-    (* TODO might need arithmetic preconditions *)
-    array elem n vs = sepapp (array elem i vs[:i]) (array elem (n-i) vs[i:]).
-  Proof.
-    intros.
-  Admitted.
 
   Definition uint(nbits: Z)(v: uint_t nbits (*=Z*)): Z -> mem -> Prop :=
     byteseq_predicate (nbits_to_nbytes nbits) (fun bs => LittleEndianList.le_combine bs = v).
@@ -2248,7 +2248,7 @@ Ltac purify :=
   | H: sep _ _ _ |- _ => purify_hyp H
   end.
 
-Inductive step: Type :=
+Inductive undoable_step: Type :=
 | unfold_step{V: Type}(pred: V -> Z -> mem -> Prop).
 
 Ltac unfold_pred pred :=
@@ -2295,51 +2295,369 @@ Ltac undo_step :=
       clear St
   end.
 
+(* marker for use in the conclusion: *)
+Definition focus(clause: Z -> mem -> Prop)(addr: Z) := clause.
+Notation "<< c >>@ a" := (focus c a)
+  (at level 8, c at level 200, a at level 0, format "<< c >>@ a").
+
+(* markers for use in the memory hypothesis: *)
+(* marks a clause which is an extension of the clause focused in the goal,
+   on the left & right, ie a super range of the focused range *)
+Definition lr_ext_range(clause: Z -> mem -> Prop)(start size: Z) := clause.
+(* marks a clause of which the clause focused in the goal is a prefix *)
+Definition r_ext_range(clause: Z -> mem -> Prop)(size: Z) := clause.
+Definition same_range(clause: Z -> mem -> Prop) := clause.
+
+(* Markers to encode "program counter" of step-by-step Ltac procedure.
+   If we packed several actions into one step, these markers would not be needed. *)
+Definition needs_to_match_memory_hyp(P: Prop) := P.
+Definition matches_memory_hyp(P: Prop) := P.
+
+Inductive advance_focus_result := FocusNotFound | FocusAdvanced | FocusAtEnd.
+
+(* Expects a term of the form (_ *+ (_ *+ ... _)),
+   returns a pair of type (advance_focus_result * (Z -> mem -> Prop)) *)
+Ltac advance_focus_in_sepapps t :=
+  lazymatch t with
+  | @sepapp ?hd ?tl ?hdSize ?Hsize =>
+      lazymatch hd with
+      | focus ?clause ?addr =>
+          let newAddr := eval cbn in (Z.add addr hdSize) in
+          lazymatch tl with
+          | @sepapp ?second ?tltl ?secondSize ?HSecondSize =>
+              constr:((FocusAdvanced,
+                        @sepapp clause (@sepapp (focus second newAddr)
+                                          tltl secondSize HSecondSize) hdSize Hsize))
+          | _ => constr:((FocusAdvanced,
+                           @sepapp clause (focus tl newAddr) hdSize Hsize))
+          end
+      | _ => lazymatch advance_focus_in_sepapps tl with
+             | (FocusNotFound, _) => constr:((FocusNotFound, t))
+             | (FocusAdvanced, ?tl') => constr:((FocusAdvanced, @sepapp hd tl' hdSize Hsize))
+             | (FocusAtEnd, ?tl') => constr:((FocusAtEnd, @sepapp hd tl' hdSize Hsize))
+             end
+      end
+  | focus ?clause ?addr => constr:((FocusAtEnd, clause))
+  | _ => constr:((FocusNotFound, t))
+  end.
+
+Ltac focus_first_in_sepapps t a :=
+  lazymatch t with
+  | @sepapp ?hd ?tl ?hdSize ?Hsize => constr:(@sepapp (focus hd a) tl hdSize Hsize)
+  | _ => constr:(focus t a)
+  end.
+
+Ltac focus_first_in_seps t :=
+  lazymatch t with
+  | @sep ?K ?V ?M (?hd ?hdAddr) ?tl =>
+      let hd' := focus_first_in_sepapps hd hdAddr in constr:(@sep K V M (hd' hdAddr) tl)
+  end.
+
+Ltac focus_first_in_goal :=
+  let t := lazymatch goal with
+           | |- ?t ?m /\ _ => t
+           | |- ?t ?m => t
+           end in
+  let t' := focus_first_in_seps t in change t with t'.
+
+(* Note: all sep clauses except the last one (frame) are expected to have an address,
+   ie to be of shape (f a) *)
+Ltac advance_focus_in_seps t :=
+  lazymatch t with
+  | @sep ?K ?V ?M (?hd ?hdAddr) ?tl =>
+      lazymatch tl with
+      | @sep _ _ _ _ _ =>
+          lazymatch advance_focus_in_sepapps hd with
+          | (FocusNotFound, _) =>
+              lazymatch advance_focus_in_seps tl with
+              | (FocusNotFound, _) => constr:((FocusNotFound, t))
+              | (FocusAdvanced, ?tl') => constr:((FocusAdvanced, @sep K V M (hd hdAddr) tl'))
+              | (FocusAtEnd, ?tl') => constr:((FocusAtEnd, @sep K V M (hd hdAddr) tl'))
+              end
+          | (FocusAdvanced, ?hd') => constr:((FocusAdvanced, @sep K V M (hd' hdAddr) tl))
+          | (FocusAtEnd, ?hd') =>
+              let tl' := focus_first_in_seps tl in
+              constr:((FocusAdvanced, @sep K V M (hd' hdAddr) tl'))
+          end
+      | ?Frame =>
+          lazymatch advance_focus_in_sepapps hd with
+          | (FocusNotFound, _) => constr:((FocusNotFound, t))
+          | (FocusAdvanced, ?hd') => constr:((FocusAdvanced, @sep K V M (hd' hdAddr) tl))
+          | (FocusAtEnd, ?hd') => constr:((FocusAtEnd, @sep K V M (hd' hdAddr) tl))
+          end
+      end
+  end.
+
+Ltac advance_focus_in_goal :=
+  let t := lazymatch goal with
+           | |- ?t ?m /\ _ => t
+           | |- ?t ?m => t
+           end in
+  lazymatch advance_focus_in_seps t with
+  | (FocusNotFound, _) => fail "focus not found"
+  | (_, ?t') => change t with t'
+  end.
+
+Ltac unfold_pred_at_focus :=
+  match goal with
+  | |- context C[focus (?pred ?v) ?addr] =>
+      let name := fresh "step0" in
+      pose (unfold_step pred) as name;
+      let h := head pred in
+      let u := eval unfold h in (pred v) in
+      let u' := focus_first_in_sepapps u addr in
+      let g := context C[u'] in
+      change g
+  end.
+
+Ltac get_predicate_size pred :=
+  let pf := constr:(_ : PredicateSize pred _) in
+  lazymatch type of pf with
+  | PredicateSize _ ?sz => sz
+  end.
+
+Ltac has_inductive_type e :=
+  let t := type of e in
+  tryif (let h := head t in is_ind h) then idtac
+  else tryif (let r := eval red in t in
+              let h := head r in
+              is_ind h) then idtac
+    else fail "type of" e "is not inductive".
+
+Ltac is_ground_head e :=
+  match e with
+  | _ => is_const e
+  | _ => is_constructor e
+  | _ => is_ind e
+  | _ => fail "term" e "is not ground"
+  end.
+
+Ltac is_ground_app e :=
+  lazymatch e with
+  | ?f ?a => is_ground_app f; is_ground_app a
+  | _ => is_ground_head e
+  end.
+
+Ltac is_cbv_safe e :=
+  has_inductive_type e;
+  is_ground_app e.
+
+(* returns a comparison (Eq | Lt | Gt) or fails if uncomparable *)
+Ltac compareZ a b :=
+  match constr:(Set) with
+  | _ => let __ := match constr:(Set) with
+                   | _ => assert_succeeds (constr_eq a b)
+                   end in
+         constr:(Eq)
+  | _ => let __ := match constr:(Set) with
+                   | _ => is_cbv_safe a; is_cbv_safe b
+                   end in
+         let r := eval cbv in (Z.compare a b) in constr:(r)
+  | _ => let __ := match constr:(Set) with
+                   | _ => assert_succeeds (assert (a < b) by lia)
+                   end in
+         constr:(Lt)
+  | _ => let __ := match constr:(Set) with
+                   | _ => assert_succeeds (assert (a = b) by lia)
+                   end in
+         constr:(Eq)
+  | _ => let __ := match constr:(Set) with
+                   | _ => assert_succeeds (assert (a > b) by lia)
+                   end in
+         constr:(Gt)
+  | _ => fail 1 "can't compare" a "and" b
+  end.
+
+(* returns true if a=b, false if a<>b, or fails if it is unclear *)
+Ltac eqZ a b :=
+  lazymatch compareZ a b with
+  | Eq => constr:(true)
+  | _ => constr:(false)
+  end.
+
+Global Hint Extern 1 (PredicateSize (same_range ?pred) _) =>
+         exact (_: PredicateSize pred _) : typeclass_instances.
+
+(* like array_split, but with id markers *)
+Lemma trim_array_r(i: Z)[T: Type](elem: T -> Z -> mem -> Prop){elemSize: Z}
+  {Hsz: forall v, PredicateSize (elem v) elemSize}
+  (n sz: Z)(vs: list T):
+  (* TODO might need arithmetic preconditions *)
+  r_ext_range (array elem n vs) sz = sepapp (same_range (array elem i vs[:i])) (array elem (n-i) vs[i:]).
+Proof.
+  intros. eapply array_split.
+Qed.
+
+Ltac step :=
+  lazymatch goal with
+  | |- needs_to_match_memory_hyp ?G =>
+      change (needs_to_match_memory_hyp G) with G;
+      focus_first_in_goal
+
+  | H: sep _ _ ?m |- ?SEPS ?m /\ ?Rest =>
+      lazymatch SEPS with
+      | context[focus ?pred ?start] =>
+          let size := get_predicate_size pred in
+          lazymatch type of H with (* cases apply in bottom-up order *)
+
+          (* if the focused clause in H and the focused clause in the goal already
+             have the same start address AND the same size: *)
+          | context[same_range ?pred'] =>
+              tryif syntactic_unify pred pred' then
+                change (same_range pred') with pred' in H;
+                advance_focus_in_goal
+              else
+                lazymatch pred' with
+                | array ?elem' ?L' ?vs' =>
+                    lazymatch pred with
+                    | array ?elem ?L ?vs =>
+                        tryif syntactic_unify elem elem' then
+                          tryif syntactic_unify vs vs' then
+                            tryif is_cbv_safe L; is_cbv_safe L' then
+                              let cL := eval cbv in L in
+                              let cL' := eval cbv in L' in
+                              tryif constr_eq cL cL'
+                              then change L with cL in *; change L' with cL' in *
+                              else fail "expected" pred "and" pred'
+                                     "to have same length, but they don't!"
+                            else fail "TODO: unify non-cbv-safe lengths"
+                          else fail "TODO: unify array values"
+                        else fail "TODO: support for arrays of different elements"
+                    | _ => unfold_pred_at_focus; (* also focuses on first sepapp clause *)
+                           change (same_range pred') with (r_ext_range pred' size) in H
+                    end
+                end
+
+          (* if the focused clause in H and the focused clause in the goal already
+             have the same start address, split the focused clause in H so that it
+             has the same length as the focused clause in the goal: *)
+          | context[r_ext_range ?pred' ?size'] =>
+              lazymatch eqZ size size' with
+              | true => change (r_ext_range pred' size') with (same_range pred') in H
+              | false =>
+                  lazymatch pred' with
+                  | array ?epred' ?L' ?vs' =>
+                      rewrite (trim_array_r size epred' L' size' vs') in H
+                  | _ => fail "TODO support for splitting non-array hyp"
+                  end
+              end
+
+          (* split the clause in H so that its start matches the start of the focused
+             clause in the goal: *)
+          | context[lr_ext_range ?pred' ?start' ?size'] =>
+              lazymatch eqZ start start' with
+              | true => change (lr_ext_range pred' start' size')
+                  with (r_ext_range pred' size') in H
+              | false =>
+                  lazymatch pred' with
+                  | array _ _ _ => fail "TODO: support for splitting array to match start"
+                  | _ => fail "TODO: support for splitting records in hyp"
+                  end
+              end
+
+          (* find and mark a clause of which the clause focused in the goal is a subrange: *)
+          | _ => match type of H with
+                 | context[sep (?pred' ?start') _] =>
+                     let size' := get_predicate_size pred' in
+                     assert_succeeds (
+                         assert (start' <= start /\ start+size <= start'+size')
+                         by (cbn; lia));
+                    change pred' with (lr_ext_range pred' start' size') in H
+                 end
+          end
+      end
+  end.
+
 (* not a Lemma because this kind of goal will be solved inline by sepcalls canceler *)
 Goal forall (bs: list (uint_t 8)) (R: mem -> Prop) a m (Rest: EthernetHeader_t -> Prop),
     sep (array (uint 8) 14 bs a) R m ->
-    exists h, sep (EthernetHeader h a) R m /\ Rest h.
+    exists h, needs_to_match_memory_hyp (sep (EthernetHeader h a) R m /\ Rest h).
 Proof.
   intros.
   purify.
   eexists (mkEthernetHeader _ _ _).
 
-  match goal with
-  | |- context[EthernetHeader ?h ?a] =>
-      pose proof (_ : PredicateSize (EthernetHeader h) _) as Hsz
-  end.
-  cbn in Hsz. (* --> clause in goal has same size as clause in hyp H *)
-  clear Hsz.
-
-  (* how to make sure we get folded EthernetHeader_rep in H rather than unfolded?
-     - fold at end
-     - "cast" function in H that takes goal, ignores it, but drives Ltac rewrites?
-
-     -> need good folder anyways?
-        fold using egg?
-        but how to seed the egraph? (triggers)
-   *)
+  step. step. step. step. step. step. step. step. step.
 
 (*
+  lazymatch goal with
+  | H: sep _ _ ?m |- ?SEPS ?m /\ ?Rest =>
+      lazymatch SEPS with
+      | context[focus ?pred ?start] =>
+          let size := get_predicate_size pred in
+          lazymatch type of H with (* cases apply in bottom-up order *)
 
-canceling_state PDone PTodo m := sep PDone PTodo m
+          (* if the focused clause in H and the focused clause in the goal already
+             have the same start address AND the same size: *)
+          | context[same_range ?pred'] =>
+              tryif syntactic_unify pred pred' then
+                change (same_range pred') with pred' in H;
+                advance_focus_in_goal
+              else
+                lazymatch pred' with
+                | array ?elem' ?L' ?vs' =>
+                    lazymatch pred with
+                    | array ?elem ?L ?vs =>
+                        tryif syntactic_unify elem elem' then
+                          tryif syntactic_unify vs vs' then
+                            tryif is_cbv_safe L; is_cbv_safe L' then
+                              let cL := eval cbv in L in
+                              let cL' := eval cbv in L' in
+                              tryif constr_eq cL cL'
+                              then change L with cL in *; change L' with cL' in *
+                              else fail "expected" pred "and" pred'
+                                     "to have same length, but they don't!"
+                            else fail "TODO: unify non-cbv-safe lengths"
+                          else fail "TODO: unify array values"
+                        else fail "TODO: support for arrays of different elements"
+                    | _ => unfold_pred_at_focus; (* also focuses on first sepapp clause *)
+                           change (same_range pred') with (r_ext_range pred' size) in H
+                    end
+                end
 
-both for hyp and conclusion? -> no, only for conclusion, leave hyp in same order
+          (* if the focused clause in H and the focused clause in the goal already
+             have the same start address, split the focused clause in H so that it
+             has the same length as the focused clause in the goal: *)
+          | context[r_ext_range ?pred' ?size'] =>
+              lazymatch eqZ size size' with
+              | true => change (r_ext_range pred' size') with (same_range pred') in H
+              | false =>
+                  lazymatch pred' with
+                  | array ?epred' ?L' ?vs' =>
+                      rewrite (trim_array_r size epred' L' size' vs') in H
+                  | _ => fail "TODO support for splitting non-array hyp"
+                  end
+              end
 
-how to record partial progress in canceling inside sepapp?
-*)
+          (* split the clause in H so that its start matches the start of the focused
+             clause in the goal: *)
+          | context[lr_ext_range ?pred' ?start' ?size'] =>
+              lazymatch eqZ start start' with
+              | true => change (lr_ext_range pred' start' size')
+                  with (r_ext_range pred' size') in H
+              | false =>
+                  lazymatch pred' with
+                  | array _ _ _ => fail "TODO: support for splitting array to match start"
+                  | _ => fail "TODO: support for splitting records in hyp"
+                  end
+              end
 
-  match goal with
-  | |- context[?folded ?v a] => unfold_pred folded
+          (* find and mark a clause of which the clause focused in the goal is a subrange: *)
+          | _ => match type of H with
+                 | context[sep (?pred' ?start') _] =>
+                     let size' := get_predicate_size pred' in
+                     assert_succeeds (
+                         assert (start' <= start /\ start+size <= start'+size')
+                         by (cbn; lia));
+                    change pred' with (lr_ext_range pred' start' size') in H
+                 end
+          end
+      end
   end.
-
-(*
-  let pred := constr:(EthernetHeader) in
-  let c := open_constr:(pred ltac:(constructor)) in
-  fold_in_goal c.
 *)
 
-  rewrite (array_split 6) in H.
+  unfold lr_ext_range in H.
+
   rewrite (array_split 6 _ (14 - 6) bs[6:]) in H.
   change (14 - 6 - 6) with 2 in H.
   rewrite (bytes_to_uint 2) in H.
