@@ -142,6 +142,9 @@ Definition temp_regs : list impvar := Eval compute in List.filter not_reserved (
 Definition saved_regs: list impvar := Eval compute in List.filter not_reserved (reg_class.all reg_class.saved).
 Definition arg_regs  : list impvar := Eval compute in List.filter not_reserved (reg_class.all reg_class.arg).
 
+
+(* ** Previous implementation: assign impvars in one scan over the events *)
+
 (* Register availability, split by how preferable they are.
    For simplicity, we use the argument registers *only* for argument passing and as spilling temporaries. *)
 Record av_regs := mk_av_regs {
@@ -209,6 +212,110 @@ Fixpoint process_intervals(corresp: list (srcvar * impvar))(av: av_regs)(l: list
       process_intervals corresp av rest
   | nil => corresp
   end.
+
+
+(* ** New implementation: Process source variables from shortest to longest lifetime *)
+
+(* varname, start time, live interval length *)
+Definition lifetime := (string * (Z * Z))%type.
+
+Definition non_overlapping: lifetime -> lifetime -> bool :=
+  fun '(_, (start1, len1)) '(_, (start2, len2)) =>
+    if start1 + len1 <? start2 then true else start2 + len2 <? start1.
+
+(* custom implementation because List.forallb is not short-circuiting *)
+Section ConflictFree.
+  Context (candidate: lifetime).
+  Fixpoint conflict_free(occ: list lifetime): bool :=
+    match occ with
+    | nil => true
+    | l :: tail => if non_overlapping candidate l then conflict_free tail else false
+    end.
+End ConflictFree.
+
+(* i-th element contains list of intervals during which i-th impvar is occupied *)
+Definition occupancy := list (list lifetime).
+
+Fixpoint assign_srcvar(occs: occupancy)(v: lifetime): occupancy :=
+  match occs with
+  | occ :: tail => if conflict_free v occ then ((v :: occ) :: tail)
+                   else occ :: assign_srcvar tail v
+  | nil => [ [v] ] (* start using next (so far unused) register or stack slot *)
+  end.
+
+Section Sorting.
+  Context {A: Type} (lt: A -> A -> bool).
+
+  Section WithA.
+    Context (a: A).
+    Fixpoint insert_into_sorted(l: list A): list A :=
+      match l with
+      | [] => [a]
+      | h :: t => if lt a h then a :: l else h :: (insert_into_sorted t)
+      end.
+  End WithA.
+
+  Definition sort: list A -> list A := List.fold_right insert_into_sorted nil.
+End Sorting.
+
+Definition compare_interval_length: lifetime -> lifetime -> bool :=
+  fun '(name1, (start1, len1)) '(name2, (start2, len2)) => Z.ltb len1 len2.
+
+Section IndexOf.
+  Context {A: Type} (predicate: A -> bool).
+  Fixpoint index_of(l: list A): Z :=
+    match l with
+    | [] => -1
+    | h :: t => if predicate h then 0 else
+                  let rec := index_of t in
+                  match rec with
+                  | Zneg _ => rec
+                  | _ => rec + 1
+                  end
+    end.
+End IndexOf.
+
+Goal index_of (Z.eqb 3) [4; 3; 1] = 1. cbv. reflexivity. Abort.
+Goal index_of (Z.eqb 3) [4; 4; 1] = -1. cbv. reflexivity. Abort.
+
+Fixpoint events_to_intervals(current_time: Z)(events: list event): list lifetime :=
+  match events with
+  | (varname, is_start) :: tail =>
+      let rec := events_to_intervals (current_time + 1) tail in
+      if is_start then
+        let len := 1 + index_of (fun '(varname', _) => String.eqb varname varname') tail in
+        (varname, (current_time, len)) :: rec
+      else rec
+  | nil => nil
+  end.
+
+(* We use registers x6 to x9, registers x18 to x31, and stack slots x32 and beyond *)
+Definition first_available_impvar := 6.
+Definition next_available_impvar(v: Z): Z :=
+  if Z.eqb v 9 then 18 else v + 1.
+
+Fixpoint add_corresp_of_impvar(impvarname: Z)(occ: list lifetime)
+  (corresp: list (srcvar * impvar)): list (srcvar * impvar) :=
+  match occ with
+  | (srcvarname, _) :: tail =>
+      (srcvarname, impvarname) :: add_corresp_of_impvar impvarname tail corresp
+  | nil => corresp
+  end.
+
+Fixpoint corresp_of_impvars(start_impvar: Z)(o: occupancy): list (srcvar * impvar) :=
+  match o with
+  | h :: t => add_corresp_of_impvar start_impvar h
+                (corresp_of_impvars (next_available_impvar start_impvar) t)
+  | nil => nil
+  end.
+
+Definition events_to_corresp(events: list event): list (srcvar * impvar) :=
+  let sorted_intervals := sort compare_interval_length (events_to_intervals 0 events) in
+  let occ := List.fold_left assign_srcvar sorted_intervals [] in
+  corresp_of_impvars first_available_impvar occ.
+
+
+(* ** Common: Applying a rename mapping (corresp) *)
 
 Definition rename_bcond(corresp: list (srcvar * impvar))(c: bcond): result bcond' :=
   match c with
@@ -370,7 +477,8 @@ End WithBugs.
 
 Definition regalloc_function: list srcvar * list srcvar * stmt -> result (list impvar * list impvar * stmt') :=
   fun '(args, rets, fbody) =>
-    let corresp := process_intervals [] initial_av_regs (intervals args fbody rets) in
+  (*let corresp := process_intervals [] initial_av_regs (intervals args fbody rets) in*)
+    let corresp := events_to_corresp (intervals args fbody rets) in
     fbody' <- rename corresp fbody;;
     args' <- lookups args corresp;;
     rets' <- lookups rets corresp;;
@@ -734,7 +842,7 @@ Proof.
   eapply defuel_loop_inv'; eassumption.
 Qed.
 
-Section RegAlloc.
+Section CheckerCorrect.
 
   Context {width} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
   Context {mem: map.map word byte}.
@@ -1045,4 +1153,4 @@ Section RegAlloc.
       eapply exec.skip. eauto.
   Qed.
 
-End RegAlloc.
+End CheckerCorrect.
