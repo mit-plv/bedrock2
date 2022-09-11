@@ -379,7 +379,7 @@ Section WithWordAndMem.
       - eapply flat_to_riscv_correct; eassumption.
     Qed.
 
-    Definition compile:
+    Definition composed_compile:
       string_keyed_map (list string * list string * cmd) ->
       result (list Instruction * string_keyed_map Z * Z) :=
       (compose_phases flatten_functions
@@ -387,37 +387,73 @@ Section WithWordAndMem.
       (compose_phases spill_functions
                       (riscvPhase compile_ext_call)))).
 
-    Lemma composed_compiler_correct: phase_correct SrcLang RiscvLang compile.
+    Lemma composed_compiler_correct: phase_correct SrcLang RiscvLang composed_compile.
     Proof.
-      unfold compile.
+      unfold composed_compile.
       exact (compose_phases_correct flattening_correct
             (compose_phases_correct regalloc_correct
             (compose_phases_correct spilling_correct
                                     riscv_phase_correct))).
     Qed.
 
+    Definition compile(funs: list (string * (list string * list string * cmd))):
+      result (list Instruction * list (string * Z) * Z) :=
+      match composed_compile (map.of_list funs) with
+      | Success (insts, pos, space) => Success (insts, map.tuples pos, space)
+      | Failure e => Failure e
+      end.
+
+    Definition valid_src_fun: (string * (list string * list string * cmd)) -> bool :=
+      fun '(name, (args, rets, body)) =>
+        andb (List.list_eqb String.eqb (List.dedup String.eqb args) args)
+             (List.list_eqb String.eqb (List.dedup String.eqb rets) rets).
+
+    Lemma valid_src_fun_correct: forall name f,
+        valid_src_fun (name, f) = true -> ExprImp.valid_fun f.
+    Proof.
+      unfold valid_src_fun, valid_fun. intros. destruct f as ((args & rets) & body).
+      fwd. split.
+      - rewrite <- Hp0. apply List.NoDup_dedup.
+      - rewrite <- Hp1. apply List.NoDup_dedup.
+    Qed.
+
+    Definition valid_src_funs: list (string * (list string * list string * cmd)) -> bool :=
+      List.forallb valid_src_fun.
+
+    Lemma valid_src_funs_correct fs:
+        valid_src_funs fs = true ->
+        ExprImp.valid_funs (map.of_list fs).
+    Proof.
+      unfold valid_funs. induction fs; intros.
+      - simpl in H0. rewrite map.get_empty in H0. discriminate.
+      - destruct a as (name & body). simpl in H0. rewrite map.get_put_dec in H0. fwd.
+        destruct_one_match_hyp.
+        + fwd. eapply valid_src_fun_correct. eassumption.
+        + eapply IHfs; eassumption.
+    Qed.
+
     (* restate composed_compiler_correct by unfolding definitions used to compose phases *)
     Lemma compiler_correct: forall
         (* input of compilation: *)
-        (functions: string_keyed_map (list string * list string * cmd))
+        (functions: list (string * (list string * list string * cmd)))
         (* output of compilation: *)
-        (instrs: list Instruction) (finfo: string_keyed_map Z) (req_stack_size: Z)
+        (instrs: list Instruction) (finfo: list (string * Z)) (req_stack_size: Z)
         (* function we choose to call: *)
         (fname: string)
         (* high-level initial state & post on final state: *)
         (t: trace) (mH: mem) (argvals: list word) (post: trace -> mem -> list word -> Prop),
-        ExprImp.valid_funs functions ->
+        valid_src_funs functions = true ->
         compile functions = Success (instrs, finfo, req_stack_size) ->
         (exists (argnames retnames: list string) (fbody: cmd) l,
-            map.get functions fname = Some (argnames, retnames, fbody) /\
+            map.get (map.of_list functions) fname = Some (argnames, retnames, fbody) /\
             map.of_list_zip argnames argvals = Some l /\
             forall mc,
-              Semantics.exec functions fbody t mH l mc
+              Semantics.exec (map.of_list functions) fbody t mH l mc
                 (fun t' m' l' mc' => exists retvals: list word,
                      map.getmany_of_list l' retnames = Some retvals /\
                      post t' m' retvals)) ->
         exists (f_rel_pos: Z),
-          map.get finfo fname = Some f_rel_pos /\
+          map.get (map.of_list finfo) fname = Some f_rel_pos /\
           forall (* low-level machine on which we're going to run the compiled program: *)
                  (initial: MetricRiscvMachine)
                  (* ghost vars that help describe the low-level machine: *)
@@ -441,9 +477,15 @@ Section WithWordAndMem.
       intros.
       pose proof (phase_preserves_post composed_compiler_correct) as C.
       unfold Call, SrcLang, RiscvLang, locals_based_call_spec, riscv_call in C.
-      match goal with H: _ |- _ => specialize C with (1 := H) end.
-      match goal with H: _ |- _ => specialize C with (1 := H) end.
-      match goal with H: _ |- _ => specialize C with (1 := H) end.
+      eapply valid_src_funs_correct in H.
+      specialize C with (1 := H).
+      assert (composed_compile (map.of_list functions) =
+                Success (instrs, map.of_list finfo, req_stack_size)) as H0'. {
+        clear -H0 string_keyed_map_ok. unfold compile in H0. fwd.
+        rewrite map.of_list_tuples. reflexivity.
+      }
+      specialize C with (1 := H0').
+      specialize C with (1 := H1).
       cbv iota in C.
       fwd. eauto 10.
     Qed.
@@ -457,13 +499,13 @@ Section WithWordAndMem.
       end.
 
     (* combines the above theorem with WeakestPrecondition soundness,
-       and makes `map.get finfo fname` a hypothesis rather than conclusion because
+       and makes `map.get (map.of_list finfo) fname` a hyp rather than conclusion because
        in concrete instantiations, users need to lookup that position themselves anyways *)
     Lemma compiler_correct_wp: forall
         (* input of compilation: *)
         (fs: list (string * (list string * list string * cmd)))
         (* output of compilation: *)
-        (instrs: list Instruction) (finfo: string_keyed_map Z) (req_stack_size: Z)
+        (instrs: list Instruction) (finfo: list (string * Z)) (req_stack_size: Z)
         (* function we choose to call: *)
         (fname: string) (f_rel_pos: Z)
         (* high-level initial state & post on final state: *)
@@ -472,11 +514,11 @@ Section WithWordAndMem.
         (stack_lo stack_hi ret_addr p_funcs: word) (Rdata Rexec: mem -> Prop)
         (* low-level machine on which we're going to run the compiled program: *)
         (initial: MetricRiscvMachine),
-        ExprImp.valid_funs (map.of_list fs) ->
+        valid_src_funs fs = true ->
         NoDup (map fst fs) ->
-        compile (map.of_list fs) = Success (instrs, finfo, req_stack_size) ->
+        compile fs = Success (instrs, finfo, req_stack_size) ->
         WeakestPrecondition.call fs fname t mH argvals post ->
-        map.get finfo fname = Some f_rel_pos ->
+        map.get (map.of_list finfo) fname = Some f_rel_pos ->
         req_stack_size <= word.unsigned (word.sub stack_hi stack_lo) / bytes_per_word ->
         word.unsigned (word.sub stack_hi stack_lo) mod bytes_per_word = 0 ->
         initial.(getPc) = word.add p_funcs (word.of_Z f_rel_pos) ->

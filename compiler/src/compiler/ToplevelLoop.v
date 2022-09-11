@@ -97,7 +97,7 @@ Section Pipeline1.
 
   Let init_sp := word.unsigned ml.(stack_pastend).
 
-  Local Notation source_env := (string_keyed_map (list string * list string * Syntax.cmd)).
+  Local Notation source_env := (list (string * (list string * list string * Syntax.cmd))).
 
   (* All riscv machine code, layed out from low to high addresses: *)
   (* 1) Initialize stack pointer *)
@@ -116,19 +116,19 @@ Section Pipeline1.
   (* 5) Code of the compiled functions *)
   Let functions_pos := word.add backjump_pos (word.of_Z 4).
 
-  Definition compile_prog(prog: source_env): result (list Instruction * string_keyed_map Z * Z) :=
+  Definition compile_prog(prog: source_env): result (list Instruction * list (string * Z) * Z) :=
     '(functions_insts, positions, required_stack_space) <- compile compile_ext_call prog;;
-    'init_fun_pos <- match map.get positions "init" with
+    'init_fun_pos <- match map.get (map.of_list positions) "init" with
                      | Some p => Success p
                      | None => error:("No function named" "init" "found")
                      end;;
-    'loop_fun_pos <- match map.get positions "loop" with
+    'loop_fun_pos <- match map.get (map.of_list positions) "loop" with
                      | Some p => Success p
                      | None => error:("No function named" "loop" "found")
                      end;;
     let to_prepend := init_sp_insts ++ init_insts init_fun_pos ++ loop_insts loop_fun_pos ++ backjump_insts in
     let adjust := Z.add (4 * Z.of_nat (length  to_prepend)) in
-    let positions := map.fold (fun m f p => map.put m f (adjust p)) map.empty positions in
+    let positions := List.map (fun '(name, p) => (name, (adjust p))) positions in
     Success (to_prepend ++ functions_insts, positions, required_stack_space).
 
   Context (spec: ProgramSpec).
@@ -136,14 +136,14 @@ Section Pipeline1.
   (* Holds each time before executing the loop body *)
   Definition ll_good(done: bool)(mach: MetricRiscvMachine): Prop :=
     exists (prog: source_env)
-           (functions_instrs: list Instruction) (positions: string_keyed_map Z)
+           (functions_instrs: list Instruction) (positions: list (string * Z))
            (required_stack_space: Z)
            (init_fun_pos loop_fun_pos: Z) (R: mem -> Prop),
       compile compile_ext_call prog = Success (functions_instrs, positions, required_stack_space) /\
       required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       ProgramSatisfiesSpec "init"%string "loop"%string prog spec /\
-      map.get positions "init"%string = Some init_fun_pos /\
-      map.get positions "loop"%string = Some loop_fun_pos /\
+      map.get (map.of_list positions) "init"%string = Some init_fun_pos /\
+      map.get (map.of_list positions) "loop"%string = Some loop_fun_pos /\
       exists mH,
         isReady spec mach.(getLog) mH /\ goodTrace spec mach.(getLog) /\
         mach.(getPc) = word.add loop_pos (word.of_Z (if done then 4 else 0)) /\
@@ -234,7 +234,8 @@ Section Pipeline1.
     pose proof sat.
     destruct sat.
     match goal with
-    | H: compile_prog srcprog = Success _ |- _ => pose proof H as CP; unfold compile_prog in H
+    | H: compile_prog srcprog = Success _ |- _ =>
+        pose proof H as CP; unfold compile_prog, compile in H
     end.
     remember instrs as instrs0.
     Simp.simp.
@@ -272,7 +273,11 @@ Section Pipeline1.
       3: solve_word_eq word_ok.
       3: eassumption.
       3: wwcancel.
-      { unfold compile, compose_phases, riscvPhase in E. fwd.
+      { match goal with
+        | H: composed_compile _ _ = Success _ |- _ => rename H into CE
+        end.
+        unfold composed_compile, compose_phases, riscvPhase in CE. fwd.
+        rewrite map.of_list_tuples in GetPos.
         eapply fun_pos_div4 in GetPos. solve_divisibleBy4. }
       { cbv. auto. }
       { wcancel_assumption. }
@@ -306,6 +311,7 @@ Section Pipeline1.
           exact HMem.
         - cbv beta. intros * _ HP. exists []. split. 1: reflexivity. exact HP.
       }
+      10: { unfold compile. rewrite_match. reflexivity. }
       all: try eassumption.
       { apply stack_length_divisible. }
       { cbn. clear CP.
@@ -362,7 +368,11 @@ Section Pipeline1.
         cbn [seps].
         reflexivity.
       }
-      + unfold compile, compose_phases, riscvPhase in E. fwd.
+      + match goal with
+        | H: composed_compile _ _ = Success _ |- _ => rename H into CE
+        end.
+        unfold composed_compile, compose_phases, riscvPhase in CE. fwd.
+        rewrite map.of_list_tuples in GetPos.
         eapply fun_pos_div4 in GetPos.
         destruct mlOk. solve_divisibleBy4.
       + do 2 rapply regs_initialized_put. eassumption.
@@ -372,7 +382,7 @@ Section Pipeline1.
       match goal with
       | _: map.get ?positions "loop"%string = Some ?z |- _ => rename z into f_loop_rel_pos
       end.
-      unfold compile_prog in CP. fwd.
+      unfold compile_prog, compile in CP. fwd.
       repeat match goal with
              | |- exists _, _  => eexists
              | |- _ /\ _ => split
@@ -380,6 +390,7 @@ Section Pipeline1.
              | |- _ => eassumption
              | |- _ => reflexivity
              end.
+      + unfold compile. rewrite_match. reflexivity.
       + destruct_RiscvMachine final. subst.
         subst loop_pos init_pos.
         solve_word_eq word_ok.
@@ -459,10 +470,11 @@ Section Pipeline1.
         3: reflexivity.
         3: eassumption.
         3: { subst loop_pos init_pos init_sp_pos init_sp_insts. wwcancel. }
-        { unfold compile, compose_phases, riscvPhase in *. fwd.
+        { unfold compile, composed_compile, compose_phases, riscvPhase in *. fwd.
           match goal with
           | H: map.get _ "loop"%string = Some _ |- _ => rename H into GetPos
           end.
+          rewrite map.of_list_tuples in GetPos.
           eapply fun_pos_div4 in GetPos. solve_divisibleBy4. }
         { cbv. auto. }
         { subst loop_pos init_pos init_sp_pos init_sp_insts.
@@ -528,9 +540,12 @@ Section Pipeline1.
         * eapply rearrange_footpr_subset. 1: eassumption.
           wwcancel.
         * match goal with
-          | H: map.get positions "loop"%string = Some _ |- _ => rename H into GetPos
+          | H: map.get _ "loop"%string = Some _ |- _ => rename H into GetPos
           end.
-          unfold compile, compose_phases, riscvPhase in *. fwd.
+          unfold compile, composed_compile, compose_phases, riscvPhase in *. fwd.
+          repeat match goal with
+                 | H: _ |- _ => rewrite map.of_list_tuples in H; move H at bottom
+                 end.
           apply_in_hyps (fun_pos_div4 (iset := iset)).
           remember (word.add
                (word.add

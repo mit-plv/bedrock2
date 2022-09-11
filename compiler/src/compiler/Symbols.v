@@ -1,4 +1,4 @@
-Require Import Coq.Strings.String Coq.Strings.HexString. 
+Require Import Coq.Strings.String Coq.Strings.HexString.
 Require Import Coq.Init.Byte coqutil.Byte.
 Require Import Coq.Lists.List.
 Require Import coqutil.Map.Interface.
@@ -6,7 +6,6 @@ Require Import coqutil.Map.Z_keyed_SortedListMap.
 Local Open Scope string_scope.
 Local Open Scope list_scope.
 Import ListNotations.
-Local Coercion String.list_byte_of_string : string >-> list.
 
 (* USAGE:
 Definition mysymbols := Symbols.symbols myfinfo.
@@ -14,11 +13,16 @@ Definition mysymbols := Symbols.symbols myfinfo.
 riscv64-elf-gcc -T mylinkerscript.lds -g -nostdlib /tmp/l.s -o /tmp/l
 *)
 
-Definition symbols {map : map.map string BinNums.Z} (finfo : map) : list byte := 
-  ".globl _start" ++ [x0a] ++
-  "_start:" ++ [x0a] ++
-  List.flat_map (A:=_*string) (fun '(a, s) =>
-    ".org " ++ HexString.of_Z a ++ [x0a] ++
-    ".local " ++ s ++ [x0a] ++
-    s ++ ":" ++ [x0a])
-  (SortedList.value (map.fold (fun m k v => map.put m v k) map.empty finfo)).
+Definition LF : string := String (Coq.Strings.Ascii.Ascii false true false true false false false false) "".
+
+Definition symbols_string (finfo : list (string * BinInt.Z)) : string :=
+  ".globl _start" ++ LF ++
+  "_start:" ++ LF ++
+  String.concat "" (List.map (fun '(a, s) =>
+    ".org " ++ HexString.of_Z a ++ LF ++
+    ".local " ++ s ++ LF ++
+    s ++ ":" ++ LF)%string
+    (SortedList.value (List.fold_right (fun '(k, v) m => map.put m v k) map.empty finfo))).
+
+Definition symbols (finfo : list (string * BinInt.Z)) : list byte :=
+  String.list_byte_of_string (symbols_string finfo).

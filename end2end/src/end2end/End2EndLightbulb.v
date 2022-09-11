@@ -76,13 +76,12 @@ Definition loop :=
   ("loop", ([]: list string, []: list string,
            (cmd.call ["err"] "lightbulb_loop" [expr.literal buffer_addr]))).
 
-Definition funimplsList := init :: loop :: lightbulb.function_impls.
-Definition prog := map.of_list funimplsList.
+Definition prog := init :: loop :: lightbulb.function_impls.
 
 (* Before running this command, it might be a good idea to do
    "Print Assumptions lightbulb_insts_unevaluated."
    and to check if there are any axioms which could block the computation. *)
-Definition lightbulb_compiled: list Decode.Instruction * SortedListString.map Z * Z.
+Definition lightbulb_compiled: list Decode.Instruction * list (string * Z) * Z.
   let r := eval cbv in (ToplevelLoop.compile_prog MMIO.compile_ext_call ml prog) in
   lazymatch r with
   | Success ?x => exact x
@@ -96,7 +95,7 @@ Definition lightbulb_insts: list Decode.Instruction.
   end.
 Defined.
 
-Definition function_positions: SortedListString.map Z.
+Definition function_positions: list (string * Z).
   let r := eval cbv delta [lightbulb_compiled] in lightbulb_compiled in
   lazymatch r with
   | (_, ?x, _) => exact x
@@ -123,7 +122,7 @@ Module PrintProgram.
   Set Printing Width 108.
 
   Goal True.
-    pose (SortedList.value function_positions) as symbols.
+    pose function_positions as symbols.
     cbv in symbols.
 
     pose lightbulb_insts as p.
@@ -145,25 +144,6 @@ Proof.
     specialize IHioh with (1 := H5). simp. clear H5.
     unfold SPI.mmio_event_abstraction_relation in *.
     destruct H3; simp; eexists; constructor; try eassumption; constructor.
-Qed.
-
-Lemma funs_valid: ExprImp.valid_funs (map.of_list funimplsList).
-Proof.
-  unfold ExprImp.valid_funs, ExprImp.valid_fun.
-  intros.
-  set (funnames := (List.map fst funimplsList)). cbv in funnames.
-  destruct (List.In_dec String.string_dec f funnames).
-  - subst funnames. simpl in i.
-    repeat destruct i as [i | i]; try contradiction; subst f; vm_compute in H; simp; split;
-      repeat constructor; intro C; simpl in C; intuition discriminate.
-  - exfalso. apply n; clear n.  change funnames with (List.map fst funimplsList).
-    clear funnames.
-    generalize dependent funimplsList. induction l; intros.
-    + simpl in H. discriminate.
-    + destruct a. unfold map.of_list in H. rewrite map.get_put_dec in H.
-      destruct_one_match_hyp.
-      * simp. subst. simpl. auto.
-      * simpl. right. eapply IHl. exact H.
 Qed.
 
 Arguments goodHlTrace {_}.
@@ -203,7 +183,7 @@ Proof.
   intros *. intro KB.
   specialize Q with (stack_size_in_bytes := stack_size_in_bytes).
   specialize_first Q mem0.
-  specialize_first Q funimplsList.
+  specialize_first Q prog.
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
   specialize_first Q open_constr:(eq_refl).
@@ -313,5 +293,5 @@ Proof.
        If this becomes a bottleneck, we'll have to do this in Gallina in the compile function. *)
     unfold lightbulb_insts. repeat (apply Forall_cons || apply Forall_nil).
     all: vm_compute; try intuition discriminate.
-  - exact funs_valid.
+  - vm_compute. reflexivity.
 Time Qed. (* takes more than 25s *)

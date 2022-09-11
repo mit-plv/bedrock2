@@ -543,30 +543,12 @@ Section Riscv.
   Notation program d := (array (instr d) (word.of_Z 4)) (only parsing).
 
   Definition funimplsList := softmul :: rpmul.rpmul :: nil.
-  Definition prog := map.of_list funimplsList.
 
-  Lemma funs_valid: ExprImp.valid_funs (map.of_list funimplsList).
-  Proof.
-    unfold ExprImp.valid_funs, ExprImp.valid_fun.
-    intros.
-    set (funnames := (List.map fst funimplsList)). cbv in funnames.
-    destruct (List.In_dec String.string_dec f funnames).
-    - subst funnames. simpl in i.
-      repeat destruct i as [i | i]; try contradiction; subst f; vm_compute in H; fwd; split;
-        repeat constructor; intro C; simpl in C; intuition discriminate.
-    - exfalso. apply n; clear n.  change funnames with (List.map fst funimplsList).
-      clear funnames.
-      generalize dependent funimplsList. induction l; intros.
-      + simpl in H. discriminate.
-      + destruct a. unfold map.of_list in H. rewrite map.get_put_dec in H.
-        destruct_one_match_hyp.
-        * fwd. subst. simpl. auto.
-        * simpl. right. eapply IHl. exact H.
-  Qed.
+  Definition mul_insts_result :=
+    @Pipeline.compile 32 BW32 SortedListString.map RV32I RV32I_bitwidth
+      (fun _ _ _ _ => []) funimplsList.
 
-  Definition mul_insts_result := Pipeline.compile (fun _ _ _ _ => []) prog.
-
-  Definition mul_insts_tuple: list Instruction * SortedListString.map Z * Z.
+  Definition mul_insts_tuple: list Instruction * list (string * Z) * Z.
     let r := eval vm_compute in mul_insts_result in
     match r with
     | Result.Success ?p => exact p
@@ -574,7 +556,7 @@ Section Riscv.
   Defined.
 
   Definition mul_insts: list Instruction := Eval compute in fst (fst mul_insts_tuple).
-  Definition mul_insts_fpos: SortedListString.map Z :=
+  Definition mul_insts_fpos: list (string * Z) :=
     Eval compute in snd (fst mul_insts_tuple).
   Definition mul_insts_req_stack: Z := Eval compute in snd (mul_insts_tuple).
 
@@ -798,7 +780,7 @@ Section Riscv.
              with (stack_lo := stack_start) (stack_hi := stack_pastend) (Rexec := emp True).
       5: {
         pose proof mul_insts_result_eq as P. unfold mul_insts_result in P.
-        exact P.
+        etransitivity. 2: exact P. reflexivity.
       }
       { clear C.
         unfold FlatToRiscvCommon.compiles_FlatToRiscv_correctly.
@@ -808,7 +790,7 @@ Section Riscv.
         end.
         contradiction. }
       { intros. reflexivity. }
-      { exact funs_valid. }
+      { vm_compute. reflexivity. }
       { constructor.
         - intro A. inversion A; try discriminate. eapply in_nil. eassumption.
         - constructor. 2: constructor. intro B. eapply in_nil. eassumption. }

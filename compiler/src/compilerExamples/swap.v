@@ -62,8 +62,6 @@ Definition main_stackalloc :=
 
 Definition allFuns: list Syntax.func := [swap; swap_swap; main_stackalloc; stacknondet; stackdisj; long1].
 
-Definition e := map.putmany_of_list allFuns map.empty.
-
 (* stack grows from high addreses to low addresses, first stack word will be written to
    (stack_pastend-8), next stack word to (stack_pastend-16) etc *)
 Definition stack_pastend: Z := 2048.
@@ -85,7 +83,7 @@ Local Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.
 Proof. reflexivity. Qed.
 
 Definition swap_asm: list Instruction.
-  let r := eval cbv in (compile compile_ext_call e) in set (res := r).
+  let r := eval cbv in (compile compile_ext_call allFuns) in set (res := r).
   match goal with
   | res := Success (?x, _, _) |- _ => exact x
   end.
