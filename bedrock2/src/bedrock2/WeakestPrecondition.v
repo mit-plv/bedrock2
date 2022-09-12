@@ -321,3 +321,20 @@ Notation "'fnspec!' name a0 .. an '/' g0 .. gn ',' '{ 'ensures' tr' mem' ':=' po
      g0 binder, gn binder,
      tr' name, mem' name,
      post at level 200).
+
+Notation "'fnspec!' name '/' g0 .. gn ',' '{' 'requires' tr mem := pre ';' 'ensures' tr' mem' ':=' post '}'" :=
+  (fun functions =>
+              (forall g0,
+                  .. (forall gn,
+                         (forall tr mem,
+                             pre%Z%sep ->
+                             WeakestPrecondition.call
+                               functions name tr mem nil
+                               (fun tr' mem' rets =>
+                                  rets = nil /\ post%Z%sep))) ..))
+    (at level 200,
+     name at level 0,
+     g0 binder, gn binder,
+     tr name, tr' name, mem name, mem' name,
+     pre at level 200,
+     post at level 200).
