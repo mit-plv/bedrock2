@@ -16,7 +16,8 @@ Makefile.coq.*
 .Makefile*.coq.*
 \#*\#
 
-/bedrock2/special/BytedumpTest.out
+*.out
+
 /bedrock2/special/stackloop
 /bedrock2/special/stackloop.c
 /bedrock2/special/TypecheckExprToCString.c
