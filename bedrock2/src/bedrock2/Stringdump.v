@@ -1,4 +1,4 @@
-(* Supports printing strings containing only \t, \n, and ASCII 32..126,
+(* Supports printing strings containing only \t, \n, \r, and ASCII 32..126,
    without surrounding quotes. Sample usage: See StringdumpDemo.v *)
 Require Coq.Strings.String Coq.Strings.Ascii.
 
@@ -21,10 +21,15 @@ Notation "" := String.EmptyString (only printing, format "") : stringdump_scope.
 Require Import Coq.Lists.List. Import ListNotations.
 Compute List.map Ascii.ascii_of_nat (List.seq 32 (127-32)). *)
 
-Notation "'	'" := (Ascii.Ascii true false false true false false false false) (only printing) : stringdumpchar_scope.
+
+Notation "'	'" := (Ascii.Ascii true false false true false false false false)
+  (only printing) : stringdumpchar_scope.
 
 Notation "'
 '" := (Coq.Strings.Ascii.Ascii false true false true false false false false)
+  (only printing) : stringdumpchar_scope.
+
+Notation "''" := (Ascii.Ascii true false true true false false false false)
   (only printing) : stringdumpchar_scope.
 
 Notation " " := (Ascii.Ascii false false false false false true false false)
