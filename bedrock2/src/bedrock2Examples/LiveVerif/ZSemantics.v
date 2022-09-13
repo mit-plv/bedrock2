@@ -341,9 +341,9 @@ Section WithParams.
 
   Axiom TODO: False.
 
-  Lemma bytes_to_uint: forall L (bs: array_t (uint_t 8) L),
+  Lemma bytes_to_uint: forall L nbits (bs: array_t (uint_t 8) L),
       len bs = L -> (* <-- Note: already asserted by LHS, but not by RHS *)
-      array (uint 8) L bs = uint (L * 8) (le_combine_z bs).
+      array (uint 8) L bs = uint nbits (le_combine_z bs).
   Proof.
     unfold array_t in *. intros.
     remember (Z.to_nat L) as nbytes eqn: E.
@@ -2465,6 +2465,15 @@ Ltac is_cbv_safe e :=
   has_inductive_type e;
   is_ground_app e.
 
+Ltac cbv_if_safe e :=
+  match constr:(Set) with
+  | _ => let __ := match constr:(Set) with
+                   | _ => is_cbv_safe e
+                   end in
+         eval cbv in e
+  | _ => e
+  end.
+
 Ltac symbolic_compare_prover :=
   (* Don't do this unfold because it exposes a Z.max that makes lia/zify choke:
      https://github.com/coq/coq/issues/16475 *)
@@ -2517,6 +2526,15 @@ Proof.
   intros. eapply array_split.
 Qed.
 
+Lemma focused_hyp_bytes_to_uint: forall L nbits (bs: array_t (uint_t 8) L),
+    len bs = L /\ (* <-- Note: already asserted by LHS, but not by RHS *)
+    nbits = L * 8 ->
+    same_range (array (uint 8) L bs) = same_range (uint nbits (le_combine_z bs)).
+Proof.
+  intros. destruct H as (H & E). subst nbits. unfold same_range.
+  apply bytes_to_uint. assumption.
+Qed.
+
 Ltac step :=
   lazymatch goal with
   | |- needs_to_match_memory_hyp ?G =>
@@ -2556,6 +2574,10 @@ Ltac step :=
                             else fail "TODO: unify non-cbv-safe lengths"
                           else fail "TODO: unify array values"
                         else fail "TODO: support for arrays of different elements"
+                    | uint ?nbits ?v =>
+                        rewrite (focused_hyp_bytes_to_uint L' nbits vs') in H
+                          by (* TODO more generic list solver *)
+                          (repeat rewrite List.len_from; lia)
                     | _ => unfold_pred_at_focus; (* also focuses on first sepapp clause *)
                            change (same_range pred') with (r_ext_range pred' size) in H
                     end
@@ -2570,7 +2592,8 @@ Ltac step :=
               | false =>
                   lazymatch pred' with
                   | array ?epred' ?L' ?vs' =>
-                      rewrite (trim_array_r size epred' L' size' vs') in H
+                      let csize := cbv_if_safe size in
+                      rewrite (trim_array_r csize epred' L' size' vs') in H
                   | _ => fail "TODO support for splitting non-array hyp"
                   end
               end
@@ -2620,103 +2643,7 @@ Proof.
   eexists (mkEthernetHeader _ _ _).
 
   step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step.
-
-  rewrite (bytes_to_uint 2) in H.
-  2: {
-
-    repeat rewrite List.len_from; lia.
-  }
-  change (2 * 8) with 16 in H.
-
-  step.
-
-(*
-  lazymatch goal with
-  | H: sep _ _ ?m |- ?SEPS ?m /\ ?Rest =>
-      lazymatch SEPS with
-      | context[focus ?pred ?start] =>
-          let size := get_predicate_size pred in
-          lazymatch type of H with (* cases apply in bottom-up order *)
-
-          (* if the focused clause in H and the focused clause in the goal already
-             have the same start address AND the same size: *)
-          | context[same_range ?pred'] =>
-              tryif syntactic_unify pred pred' then
-                change (same_range pred') with pred' in H;
-                advance_focus_in_goal
-              else
-                lazymatch pred' with
-                | array ?elem' ?L' ?vs' =>
-                    lazymatch pred with
-                    | array ?elem ?L ?vs =>
-                        tryif syntactic_unify elem elem' then
-                          tryif syntactic_unify vs vs' then
-                            tryif is_cbv_safe L; is_cbv_safe L' then
-                              let cL := eval cbv in L in
-                              let cL' := eval cbv in L' in
-                              tryif constr_eq cL cL'
-                              then change L with cL in *; change L' with cL' in *
-                              else fail "expected" pred "and" pred'
-                                     "to have same length, but they don't!"
-                            else fail "TODO: unify non-cbv-safe lengths"
-                          else fail "TODO: unify array values"
-                        else fail "TODO: support for arrays of different elements"
-                    | _ => unfold_pred_at_focus; (* also focuses on first sepapp clause *)
-                           change (same_range pred') with (r_ext_range pred' size) in H
-                    end
-                end
-
-          (* if the focused clause in H and the focused clause in the goal already
-             have the same start address, split the focused clause in H so that it
-             has the same length as the focused clause in the goal: *)
-          | context[r_ext_range ?pred' ?size'] =>
-              lazymatch eqZ size size' with
-              | true => change (r_ext_range pred' size') with (same_range pred') in H
-              | false =>
-                  lazymatch pred' with
-                  | array ?epred' ?L' ?vs' =>
-                      rewrite (trim_array_r size epred' L' size' vs') in H
-                  | _ => fail "TODO support for splitting non-array hyp"
-                  end
-              end
-
-          (* split the clause in H so that its start matches the start of the focused
-             clause in the goal (or if already split, move the focus in the hyp): *)
-          | context[lr_ext_range ?pred' ?start' ?size'] =>
-              lazymatch eqZ start start' with
-              | true => change (lr_ext_range pred' start' size')
-                  with (r_ext_range pred' size') in H
-              | false =>
-                  lazymatch pred' with
-                  | array _ _ _ => fail "TODO: support for splitting array to match start"
-                  | @sepapp ?hd ?tl ?hdSize ?Hsz =>
-                      lazymatch compareZ (start'+hdSize) start with
-                      | Lt => change (lr_ext_range pred' start' size') with
-                          (@sepapp hd (lr_ext_range tl (start'+hdSize) (size'-hdSize))
-                             hdSize Hsz) in H
-                      | Eq => change (lr_ext_range pred' start' size') with
-                          (@sepapp hd (r_ext_range tl (size'-hdSize)) hdSize Hsz) in H
-                      | Gt => fail "TODO support for splitting to match start"
-                      end
-                  | _ => fail "TODO: support for splitting things other than array or sepapp"
-                  end
-              end
-
-          (* find and mark a clause of which the clause focused in the goal is a subrange: *)
-          | _ => match type of H with
-                 | context[sep (?pred' ?start') _] =>
-                     let size' := get_predicate_size pred' in
-                     assert_succeeds (
-                         assert (start' <= start /\ start+size <= start'+size')
-                         by (cbn; lia));
-                    change pred' with (lr_ext_range pred' start' size') in H
-                 end
-          end
-      end
-  end.
-*)
-
+  step. step. step. step.
 
   (* TODO if "rep ?dstMAC" was a nested record as well that needs to be unfolded,
      how would we record it, given that we have no address?
