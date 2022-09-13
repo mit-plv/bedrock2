@@ -303,7 +303,7 @@ Section WithParams.
   Definition get_seq(start len: Z)(m: mem): list byte :=
     List.map (get_or_zero m) (addr_seq start len).
 
-  Definition byteseq_predicate{BW: Bitwidth width}(nbytes: Z)(P: list byte -> Prop)
+  Definition byteseq_predicate(nbytes: Z)(P: list byte -> Prop)
     (addr: Z)(m: mem): Prop :=
     map.domain m = PropSet.of_list (List.seqz addr nbytes) /\
     P (get_seq addr nbytes m).
@@ -314,8 +314,24 @@ Section WithParams.
   Definition value(sz: access_size): Z -> Z -> mem -> Prop :=
     uint (access_len sz).
 
+  (* Note: We could also provide one single generic instance like this one,
+     but that creates (nbits_to_nbytes nbits) terms everywhere, so we prefer
+     adding one instance per integer size, so that the size is in simplified
+     from the very beginning.
   Global Instance uint_PredicateSize(nbits: Z)(v: uint_t nbits):
-    PredicateSize (uint nbits v) (nbits_to_nbytes nbits) := {}.
+    PredicateSize (uint nbits v) (nbits_to_nbytes nbits) := {}. *)
+
+  Global Instance uint_8_PredicateSize(v: uint_t 8):
+    PredicateSize (uint 8 v) 1 := {}.
+  Global Instance uint_16_PredicateSize(v: uint_t 16):
+    PredicateSize (uint 16 v) 2 := {}.
+  Global Instance uint_32_PredicateSize(v: uint_t 32):
+    PredicateSize (uint 32 v) 4 := {}.
+  Global Instance uint_64_PredicateSize(v: uint_t 64):
+    PredicateSize (uint 64 v) 8 := {}.
+  Global Instance uint_width_PredicateSize(v: uint_t width):
+    PredicateSize (uint width v) width
+    | 50 (* higher cost so that concrete instances are preferred *) := {}.
 
   Fixpoint le_combine_z(bytes: list Z): Z :=
     match bytes with
@@ -2308,6 +2324,13 @@ Definition lr_ext_range(clause: Z -> mem -> Prop)(start size: Z) := clause.
 Definition r_ext_range(clause: Z -> mem -> Prop)(size: Z) := clause.
 Definition same_range(clause: Z -> mem -> Prop) := clause.
 
+Notation "<< c >>@ a ..+ sz" := (lr_ext_range c a sz)
+  (at level 8, c at level 200, a at level 0, sz at level 0, format "<< c >>@ a ..+ sz").
+Notation "<< c >>..+ sz" := (r_ext_range c sz)
+  (at level 8, c at level 200, sz at level 0, format "<< c >>..+ sz").
+Notation "<< c >>" := (same_range c)
+  (at level 8, c at level 200, format "<< c >>").
+
 (* Markers to encode "program counter" of step-by-step Ltac procedure.
    If we packed several actions into one step, these markers would not be needed. *)
 Definition needs_to_match_memory_hyp(P: Prop) := P.
@@ -2442,6 +2465,12 @@ Ltac is_cbv_safe e :=
   has_inductive_type e;
   is_ground_app e.
 
+Ltac symbolic_compare_prover :=
+  (* Don't do this unfold because it exposes a Z.max that makes lia/zify choke:
+     https://github.com/coq/coq/issues/16475 *)
+  (* unfold nbits_to_nbytes in *; *)
+  lia.
+
 (* returns a comparison (Eq | Lt | Gt) or fails if uncomparable *)
 Ltac compareZ a b :=
   match constr:(Set) with
@@ -2454,15 +2483,15 @@ Ltac compareZ a b :=
                    end in
          let r := eval cbv in (Z.compare a b) in constr:(r)
   | _ => let __ := match constr:(Set) with
-                   | _ => assert_succeeds (assert (a < b) by lia)
+                   | _ => assert_succeeds (assert (a < b) by symbolic_compare_prover)
                    end in
          constr:(Lt)
   | _ => let __ := match constr:(Set) with
-                   | _ => assert_succeeds (assert (a = b) by lia)
+                   | _ => assert_succeeds (assert (a = b) by symbolic_compare_prover)
                    end in
          constr:(Eq)
   | _ => let __ := match constr:(Set) with
-                   | _ => assert_succeeds (assert (a > b) by lia)
+                   | _ => assert_succeeds (assert (a > b) by symbolic_compare_prover)
                    end in
          constr:(Gt)
   | _ => fail 1 "can't compare" a "and" b
@@ -2517,7 +2546,11 @@ Ltac step :=
                               let cL := eval cbv in L in
                               let cL' := eval cbv in L' in
                               tryif constr_eq cL cL'
-                              then change L with cL in *; change L' with cL' in *
+                              then change (focus pred start) with
+                                          (focus (array elem cL vs) start);
+                                   change (same_range pred') with
+                                          (array elem' cL' vs') in H;
+                                   advance_focus_in_goal
                               else fail "expected" pred "and" pred'
                                      "to have same length, but they don't!"
                             else fail "TODO: unify non-cbv-safe lengths"
@@ -2543,7 +2576,7 @@ Ltac step :=
               end
 
           (* split the clause in H so that its start matches the start of the focused
-             clause in the goal: *)
+             clause in the goal (or if already split, move the focus in the hyp): *)
           | context[lr_ext_range ?pred' ?start' ?size'] =>
               lazymatch eqZ start start' with
               | true => change (lr_ext_range pred' start' size')
@@ -2551,7 +2584,16 @@ Ltac step :=
               | false =>
                   lazymatch pred' with
                   | array _ _ _ => fail "TODO: support for splitting array to match start"
-                  | _ => fail "TODO: support for splitting records in hyp"
+                  | @sepapp ?hd ?tl ?hdSize ?Hsz =>
+                      lazymatch compareZ (start'+hdSize) start with
+                      | Lt => change (lr_ext_range pred' start' size') with
+                          (@sepapp hd (lr_ext_range tl (start'+hdSize) (size'-hdSize))
+                             hdSize Hsz) in H
+                      | Eq => change (lr_ext_range pred' start' size') with
+                          (@sepapp hd (r_ext_range tl (size'-hdSize)) hdSize Hsz) in H
+                      | Gt => fail "TODO support for splitting to match start"
+                      end
+                  | _ => fail "TODO: support for splitting things other than array or sepapp"
                   end
               end
 
@@ -2577,7 +2619,17 @@ Proof.
   purify.
   eexists (mkEthernetHeader _ _ _).
 
-  step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step.
+
+  rewrite (bytes_to_uint 2) in H.
+  2: {
+
+    repeat rewrite List.len_from; lia.
+  }
+  change (2 * 8) with 16 in H.
+
+  step.
 
 (*
   lazymatch goal with
@@ -2630,7 +2682,7 @@ Proof.
               end
 
           (* split the clause in H so that its start matches the start of the focused
-             clause in the goal: *)
+             clause in the goal (or if already split, move the focus in the hyp): *)
           | context[lr_ext_range ?pred' ?start' ?size'] =>
               lazymatch eqZ start start' with
               | true => change (lr_ext_range pred' start' size')
@@ -2638,7 +2690,16 @@ Proof.
               | false =>
                   lazymatch pred' with
                   | array _ _ _ => fail "TODO: support for splitting array to match start"
-                  | _ => fail "TODO: support for splitting records in hyp"
+                  | @sepapp ?hd ?tl ?hdSize ?Hsz =>
+                      lazymatch compareZ (start'+hdSize) start with
+                      | Lt => change (lr_ext_range pred' start' size') with
+                          (@sepapp hd (lr_ext_range tl (start'+hdSize) (size'-hdSize))
+                             hdSize Hsz) in H
+                      | Eq => change (lr_ext_range pred' start' size') with
+                          (@sepapp hd (r_ext_range tl (size'-hdSize)) hdSize Hsz) in H
+                      | Gt => fail "TODO support for splitting to match start"
+                      end
+                  | _ => fail "TODO: support for splitting things other than array or sepapp"
                   end
               end
 
@@ -2656,15 +2717,6 @@ Proof.
   end.
 *)
 
-  unfold lr_ext_range in H.
-
-  rewrite (array_split 6 _ (14 - 6) bs[6:]) in H.
-  change (14 - 6 - 6) with 2 in H.
-  rewrite (bytes_to_uint 2) in H.
-  2: {
-    repeat rewrite List.len_from; lia.
-  }
-  change (2 * 8) with 16 in H.
 
   (* TODO if "rep ?dstMAC" was a nested record as well that needs to be unfolded,
      how would we record it, given that we have no address?
