@@ -369,9 +369,6 @@ Section WithParams.
   Definition uint(nbits: Z)(v: uint_t nbits (*=Z*)): Z -> mem -> Prop :=
     byteseq_predicate (nbits_to_nbytes nbits) (fun bs => LittleEndianList.le_combine bs = v).
 
-  Definition value(sz: access_size): Z -> Z -> mem -> Prop :=
-    uint (access_len sz).
-
   (* Note: We could also provide one single generic instance like this one,
      but that creates (nbits_to_nbytes nbits) terms everywhere, so we prefer
      adding one instance per integer size, so that the size is in simplified
@@ -472,8 +469,14 @@ Section WithParams.
      and sep already enforces bounds on v *)
   Lemma dexpr_load: forall m l e addr sz v R,
       dexpr m l e addr ->
-      sep (value sz v addr) R m ->
+      sep (uint match sz with
+                | access_size.one => 8
+                | access_size.two => 16
+                | access_size.four => 32
+                | access_size.word => width
+                end v addr) R m ->
       dexpr m l (expr.load sz e) v.
+  Proof.
   Admitted.
 
   (* TODO later: dexpr_inlinetable *)
@@ -517,7 +520,12 @@ Section WithParams.
   Qed.
 
   Lemma dexpr1_load: forall m l e addr sz v (R: mem -> Prop) (P: Prop),
-      dexpr1 m l e addr (sep (value sz v addr) R m /\ P) ->
+      dexpr1 m l e addr (sep (uint match sz with
+                                   | access_size.one => 8
+                                   | access_size.two => 16
+                                   | access_size.four => 32
+                                   | access_size.word => width
+                                   end v addr) R m /\ P) ->
       dexpr1 m l (expr.load sz e) v P.
   Proof.
     intros. inversion H. clear H. fwd. constructor. 2: assumption.
@@ -752,8 +760,18 @@ Section WithParams.
   Lemma wp_store0: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr m l ea a ->
       dexpr m l ev v ->
-      sep (value sz v_old a) R m ->
-      (forall m', sep (value sz v a) R m' -> wp_cmd fs rest t m' l post) ->
+      sep (uint match sz with
+                | access_size.one => 8
+                | access_size.two => 16
+                | access_size.four => 32
+                | access_size.word => width
+                end v_old a) R m ->
+      (forall m', sep (uint match sz with
+                       | access_size.one => 8
+                       | access_size.two => 16
+                       | access_size.four => 32
+                       | access_size.word => width
+                       end v a) R m' -> wp_cmd fs rest t m' l post) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Admitted.
 
@@ -765,8 +783,18 @@ Section WithParams.
   Lemma wp_store: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
         (dexpr1 m l ev v
-           (sep (value sz v_old a) R m /\
-              (forall m', sep (value sz v a) R m' -> wp_cmd fs rest t m' l post))) ->
+           (sep (uint match sz with
+                      | access_size.one => 8
+                      | access_size.two => 16
+                      | access_size.four => 32
+                      | access_size.word => width
+                      end v_old a) R m /\
+              (forall m', sep (uint match sz with
+                                    | access_size.one => 8
+                                    | access_size.two => 16
+                                    | access_size.four => 32
+                                    | access_size.word => width
+                                    end v a) R m' -> wp_cmd fs rest t m' l post))) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Admitted.
 
@@ -900,6 +928,89 @@ Section WithParams.
 
 End WithParams.
 
+Inductive head_of_implicit_facts: Prop :=
+| mk_head_of_implicit_facts.
+
+Ltac mark_as_implicit_facts H := eapply (conj mk_head_of_implicit_facts) in H.
+
+Declare Scope implicit_facts_scope.
+Open Scope implicit_facts_scope.
+
+Notation "(implicit facts)" := (head_of_implicit_facts /\ _) (only printing)
+  : implicit_facts_scope.
+
+Definition purify(R: mem -> Prop)(P: Prop): Prop := forall m, R m -> P.
+
+Lemma purify_sep: forall {RHead RTail: mem -> Prop} {PHead PTail: Prop},
+    purify RHead PHead ->
+    purify RTail PTail ->
+    purify (sep RHead RTail) (PHead /\ PTail).
+Admitted.
+
+Lemma purify_sep_skip_l: forall {RHead RTail: mem -> Prop} {PTail: Prop},
+    purify RTail PTail ->
+    purify (sep RHead RTail) PTail.
+Admitted.
+
+Lemma purify_sep_skip_r: forall {RHead RTail: mem -> Prop} {PHead: Prop},
+    purify RHead PHead ->
+    purify (sep RHead RTail) PHead.
+Admitted.
+
+Lemma purify_array{T: Type}: forall elem n (vs: list T) a elemSize
+    {Hsz: forall v, PredicateSize (elem v) elemSize},
+    purify (array elem n vs a) (len vs = n). (* TODO add bounds on a *)
+Proof.
+  unfold purify, array. intros. eapply sep_emp_l in H. apply H.
+Qed.
+
+#[export] Hint Resolve purify_array : purify.
+
+Lemma purify_scalar{width: Z}{BW: Bitwidth width}: forall a v nbits,
+    purify (uint nbits v a) (0 <= v < 2 ^ nbits /\ 0 <= a < 2 ^ width).
+    (* TODO a stronger bound would be: a + nbits_to_nbytes nbits < 2 ^ width *)
+Proof.
+  unfold purify, uint, byteseq_predicate. intros.
+  (* TODO byteseq_predicate should assert that address is in bounds *)
+Admitted.
+
+#[export] Hint Resolve purify_scalar : purify.
+
+Ltac purify_rec :=
+  lazymatch goal with
+  | |- purify ?clause ?E =>
+      is_evar E;
+      lazymatch clause with
+      | sep ?R1 ?R2 =>
+          is_evar E;
+          let HLeft := fresh in
+          let HRight := fresh in
+          tryif (eassert (purify R1 _) as HLeft by purify_rec) then
+            tryif (eassert (purify R2 _) as HRight by purify_rec) then
+              exact (purify_sep HLeft HRight)
+            else
+              refine (purify_sep_skip_r HLeft)
+          else
+            tryif (eassert (purify R2 _) as HRight by purify_rec) then
+              exact (purify_sep_skip_l HRight)
+            else
+              fail "can purify" clause
+      | _ => solve [eauto with purify]
+      end
+  | |- _ => fail "goal should be of form 'purify _ _'"
+  end.
+
+Ltac purify_hyp H :=
+  lazymatch type of H with
+  | ?R ?m => let HP := fresh H "P" in eassert (purify R _) as HP;
+             [ purify_rec | specialize (HP m H); mark_as_implicit_facts HP ]
+  end.
+
+Ltac purify :=
+  lazymatch goal with
+  | H: sep _ _ _ |- _ => purify_hyp H
+  end.
+
 Inductive sized_predicate: Type :=
 | mk_sized_predicate(p: Z -> mem -> Prop)(sz: Z)(Hsz: PredicateSize p sz).
 
@@ -997,19 +1108,18 @@ Ltac assert_scope_kind expected :=
   tryif constr_eq sk expected then idtac
   else fail "This snippet is only allowed in a" expected "block, but we're in a" sk "block".
 
-Declare Scope live_scope_prettier. (* prettier, but harder to debug *)
-(*Local Open Scope live_scope_prettier.*)
-
-Notation "'ready' 'for' 'next' 'command'" := (wp_cmd _ _ _ _ _ _)
-  (at level 0, only printing) : live_scope_prettier.
+Definition ready{P: Prop} := P.
 
 Notation "l" := (arguments_marker l)
   (at level 100, only printing) : live_scope.
 
 Ltac put_into_current_locals :=
   lazymatch goal with
-  | |- wp_cmd _ _ _ _ (?PUT ?l ?x ?v) _ =>
-    let is_decl := fail "determine" in
+  | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
+    let is_decl := lazymatch l with
+                   | context[x] => false
+                   | _ => true
+                   end in
     let i := string_to_ident x in
     let old_i := fresh i "_0" in
     lazymatch is_decl with
@@ -1040,22 +1150,6 @@ Ltac put_into_current_locals :=
     | false => try clear old_i
     end
   end.
-
-Ltac eval_dexpr_step :=
-  lazymatch goal with
-  | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_lazy_and
-(*| |- dexpr_bool3 _ _ (expr.lazy_or _ _)        _ _ _ _ => eapply dexpr_lazy_or*)
-  | |- dexpr_bool3 _ _ (expr.not _)              _ _ _ _ => eapply dexpr_not
-  | |- dexpr_bool3 _ _ (expr.op bopname.eq _ _)  _ _ _ _ => eapply dexpr_eq
-  | |- dexpr_bool3 _ _ (expr.op bopname.ltu _ _) _ _ _ _ => eapply dexpr_ltu
-(*| |- dexpr_bool3 _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)*)
-  | |- dexpr1 _ _ (expr.var _)     _ _ => eapply dexpr1_var; [reflexivity|lia| ]
-  | |- dexpr1 _ _ (expr.literal _) _ _ => eapply dexpr1_literal; [lia| ]
-  | |- dexpr1 _ _ (expr.op _ _ _)  _ _ => eapply dexpr1_binop_unf
-  | |- dexpr1 _ _ (expr.load _ _)  _ _ => eapply dexpr1_load
-  | |- _ => progress intros
-  end.
-
 
 Inductive undoable_step: Type :=
 | unfold_step{V: Type}(pred: V -> Z -> mem -> Prop).
@@ -1104,8 +1198,8 @@ Notation "<< c >>" := (same_range c)
 
 (* Markers to encode "program counter" of step-by-step Ltac procedure.
    If we packed several actions into one step, these markers would not be needed. *)
-Definition needs_to_match_memory_hyp(P: Prop) := P.
-Definition matches_memory_hyp(P: Prop) := P.
+Definition pre_canceling(P: Prop) := P.
+Definition pre_canceling_done(P: Prop) := P.
 
 Inductive advance_focus_result := FocusNotFound | FocusAdvanced | FocusAtEnd.
 
@@ -1149,6 +1243,8 @@ Ltac focus_first_in_seps t :=
 
 Ltac focus_first_in_goal :=
   let t := lazymatch goal with
+           | |- pre_canceling (?t ?m /\ _) => t
+           | |- pre_canceling (?t ?m) => t
            | |- ?t ?m /\ _ => t
            | |- ?t ?m => t
            end in
@@ -1184,12 +1280,15 @@ Ltac advance_focus_in_seps t :=
 
 Ltac advance_focus_in_goal :=
   let t := lazymatch goal with
+           | |- pre_canceling (?t ?m /\ _) => t
+           | |- pre_canceling (?t ?m) => t
            | |- ?t ?m /\ _ => t
            | |- ?t ?m => t
            end in
   lazymatch advance_focus_in_seps t with
   | (FocusNotFound, _) => fail "focus not found"
-  | (_, ?t') => change t with t'
+  | (FocusAdvanced, ?t') => change t with t'
+  | (FocusAtEnd, ?t') => change t with t'; change pre_canceling with pre_canceling_done
   end.
 
 Ltac unfold_pred_at_focus :=
@@ -1284,13 +1383,9 @@ Ltac eqZ a b :=
   | _ => constr:(false)
   end.
 
-Ltac step :=
+Ltac pre_cancel_step :=
   lazymatch goal with
-  | |- needs_to_match_memory_hyp ?G =>
-      change (needs_to_match_memory_hyp G) with G;
-      focus_first_in_goal
-
-  | H: sep _ _ ?m |- ?SEPS ?m /\ ?Rest =>
+  | H: sep _ _ ?m |- pre_canceling (?SEPS ?m /\ ?Rest) =>
       lazymatch SEPS with
       | context[focus ?pred ?start] =>
           let size := get_predicate_size pred in
@@ -1387,6 +1482,8 @@ Ltac step :=
                     change pred' with (lr_ext_range start' size' pred') in H
                  end
           end
+
+      | _ => focus_first_in_goal
       end
   end.
 
@@ -2016,11 +2113,7 @@ Ltac add_snippet s :=
   lazymatch s with
   | SAssign ?is_decl ?name ?val => eapply (wp_set _ name val) (* TODO validate is_decl *)
   | SStore ?sz ?addr ?val => eapply (wp_store _ sz addr val)
-  | SIf ?c =>
-      lazymatch goal with
-      | |- wp_cmd _ _ ?t ?m ?l _ =>
-          eapply (wp_if_bool_dexpr _ c)
-      end
+  | SIf ?c => eapply (wp_if_bool_dexpr _ c)
      (*
      | let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b; intro
      | let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b; intro
@@ -2055,16 +2148,49 @@ Ltac add_snippet s :=
   | SEmpty => prettify_goal
   end.
 
-Inductive head_of_implicit_facts: Prop :=
-| mk_head_of_implicit_facts.
+Ltac lia' := purify; lia.
 
-Ltac mark_as_implicit_facts H := eapply (conj mk_head_of_implicit_facts) in H.
-
-Declare Scope implicit_facts_scope.
-Open Scope implicit_facts_scope.
-
-Notation "(implicit facts)" := (head_of_implicit_facts /\ _) (only printing)
-  : implicit_facts_scope.
+Ltac step :=
+  lazymatch goal with
+  | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_lazy_and
+  | |- dexpr_bool3 _ _ (expr.lazy_or _ _)        _ _ _ _ => eapply dexpr_lazy_or
+  | |- dexpr_bool3 _ _ (expr.not _)              _ _ _ _ => eapply dexpr_not
+  | |- dexpr_bool3 _ _ (expr.op bopname.eq _ _)  _ _ _ _ => eapply dexpr_eq
+  | |- dexpr_bool3 _ _ (expr.op bopname.ltu _ _) _ _ _ _ => eapply dexpr_ltu
+(*| |- dexpr_bool3 _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)*)
+  | |- dexpr1 _ _ (expr.var _)     _ _ => eapply dexpr1_var; [reflexivity|lia'| ]
+  | |- dexpr1 _ _ (expr.literal _) _ _ => eapply dexpr1_literal; [lia'| ]
+  | |- dexpr1 _ _ (expr.op _ _ _)  _ _ => eapply dexpr1_binop_unf
+  | |- dexpr1 _ _ (expr.load _ _)  _ _ => eapply dexpr1_load
+  | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ => put_into_current_locals
+  | |- wp_cmd _ _ _ _ _ _ =>
+      lazymatch goal with
+      | |- ?G => change (@ready G)
+      end
+  | |- sep _ _ _ /\ _ =>
+      lazymatch goal with
+      | |- ?G => change (@pre_canceling G)
+      end
+  | |- pre_canceling _ => pre_cancel_step
+  | |- pre_canceling_done ?G =>
+      lazymatch G with
+      | _ /\ _ => split
+      | _ => idtac
+      end;
+      [ use_sep_assumption; reify_goal | .. ]
+  | |- iff1 (seps ?LHS) (seps ?RHS) =>
+      first
+        [ constr_eq LHS RHS; exact (iff1_refl _)
+        | cancel_step
+        | cancel_emp_l
+        | cancel_emp_r
+        | lazymatch goal with
+          | |- iff1 (seps (cons ?x nil)) _ => is_evar x
+          | |- iff1 _ (seps (cons ?x nil)) => is_evar x
+          end;
+          cbn [seps];
+          exact (iff1_refl _) ]
+  end.
 
 (* fail on notations that we don't want to destruct *)
 Ltac is_destructible_and T ::=
@@ -2089,13 +2215,15 @@ Ltac is_destructible_and T ::=
   | (Logic.and _ _) => idtac
   end.
 
-Ltac after_snippet :=
+Ltac after_snippet := repeat step.
+(*
   intros;
   fwd;
   (* leftover from word_simpl_step_in_hyps, TODO where to put? in fwd? *)
   repeat match goal with
          | H: ?x = ?y |- _ => is_var x; is_var y; subst x
          end.
+*)
 
 (* Note: An rhs_var appears in expressions and, in our setting, always has a corresponding
    var (of type word) bound in the current context, whereas an lhs_var may or may not be
@@ -2413,7 +2541,6 @@ Defined.
 *)
 Abort.
 
-Close Scope live_scope_prettier.
 Unset Implicit Arguments.
 
 Require Import FunctionalExtensionality.
@@ -2528,111 +2655,40 @@ Body: *pc = min( *pa, *pb )
 Post: (any @@ pa /\ any @@ pb /\ min(a,b) @@ pc) * R
 *)
 
-(*
-Inductive purify: (mem -> Prop) -> Prop -> Prop :=
-| purify_one: forall (R: mem -> Prop) (P: Prop), (forall m, R m -> P) -> purify R P
-| purify_cons: forall (RHead RTail: mem -> Prop) (PHead PTail: Prop),
-    (forall m, RHead m -> PHead) ->
-    purify RTail PTail ->
-    purify (sep RHead RTail) (PHead /\ PTail).
-
-Lemma apply_purify: forall (R: mem -> Prop) (P: Prop),
-    purify R P -> forall m, R m -> P.
-Proof.
-*)
-
-Definition purify(R: mem -> Prop)(P: Prop): Prop := forall m, R m -> P.
-
-Lemma purify_sep: forall {RHead RTail: mem -> Prop} {PHead PTail: Prop},
-    purify RHead PHead ->
-    purify RTail PTail ->
-    purify (sep RHead RTail) (PHead /\ PTail).
-Admitted.
-
-Lemma purify_sep_skip_l: forall {RHead RTail: mem -> Prop} {PTail: Prop},
-    purify RTail PTail ->
-    purify (sep RHead RTail) PTail.
-Admitted.
-
-Lemma purify_sep_skip_r: forall {RHead RTail: mem -> Prop} {PHead: Prop},
-    purify RHead PHead ->
-    purify (sep RHead RTail) PHead.
-Admitted.
-
-(*
-Lemma purify_scalar: forall a v nbits,
-    purify (v @@ a : UInt nbits) (0 <= v < 2 ^ nbits /\ 0 <= a < 2 ^ 32).
-Proof.
-Admitted.
-
-#[export] Hint Resolve purify_scalar : purify.
-*)
-
-Lemma purify_array{T: Type}: forall elem n (vs: list T) a elemSize
-    {Hsz: forall v, PredicateSize (elem v) elemSize},
-    purify (array elem n vs a) (len vs = n).
-Proof.
-  unfold purify, array. intros. eapply sep_emp_l in H. apply H.
-Qed.
-
-#[export] Hint Resolve purify_array : purify.
-
-Ltac purify_rec :=
-  lazymatch goal with
-  | |- purify (sep ?R1 ?R2) ?E =>
-      is_evar E;
-      let HLeft := fresh in
-      let HRight := fresh in
-      tryif (eassert (purify R1 _) as HLeft by purify_rec) then
-        tryif (eassert (purify R2 _) as HRight by purify_rec) then
-          exact (purify_sep HLeft HRight)
-        else
-          refine (purify_sep_skip_r HLeft)
-      else
-        tryif (eassert (purify R2 _) as HRight by purify_rec) then
-          exact (purify_sep_skip_l HRight)
-        else
-          fail "can't be purified"
-  | |- purify _ ?E => is_evar E; solve [eauto with purify]
-  | |- _ => fail "goal should be of form 'purify _ _'"
-  end.
-
-Ltac purify_hyp H :=
-  match type of H with
-  | ?R ?m => let HP := fresh H "P" in eassert (purify R _) as HP;
-             [ purify_rec | specialize (HP m H); mark_as_implicit_facts HP ]
-  end.
-
-Ltac purify :=
-  match goal with
-  | H: sep _ _ _ |- _ => purify_hyp H
-  end.
-
 Global Hint Extern 1 (PredicateSize (same_range ?pred) _) =>
          exact (_: PredicateSize pred _) : typeclass_instances.
+
+(* needed if v is of type Z rather than (uint_t ?nbits) *)
+Global Hint Extern 2 (PredicateSize (uint ?nbits ?v) _) =>
+  lazymatch nbits with
+  | 8 => exact (uint_8_PredicateSize v)
+  | 16 => exact (uint_16_PredicateSize v)
+  | 32 => exact (uint_32_PredicateSize v)
+  | 64 => exact (uint_64_PredicateSize v)
+  | _ => exact (uint_width_PredicateSize v)
+  end
+: typeclass_instances.
 
 (* not a Lemma because this kind of goal will be solved inline by sepcalls canceler *)
 Goal forall (bs: list (uint_t 8)) (R: mem -> Prop) a m (Rest: EthernetHeader_t -> Prop),
     sep (array (uint 8) 14 bs a) R m ->
-    exists h, needs_to_match_memory_hyp (sep (EthernetHeader h a) R m /\ Rest h).
+    exists h, pre_canceling (sep (EthernetHeader h a) R m /\ Rest h).
 Proof.
   intros.
   purify.
   eexists (mkEthernetHeader _ _ _).
 
   step. step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step.
-
-  (* TODO if "rep ?dstMAC" was a nested record as well that needs to be unfolded,
-     how would we record it, given that we have no address?
-     --> don't record address, only the predicate *)
-  split. 1: exact H. (* instantiates all evars *)
+  step. step. step. step. step. step.
 
   undo_step.
 
+  lazymatch type of H with
+  | context[EthernetHeader] => idtac
+  | _ => fail "folding failed"
+  end.
 Abort.
 
-(*
 Definition u_min_mem: {f: list string * list string * cmd &
   forall fs t m a b c pa pb pc (R: mem -> Prop),
     <{ * uint 32 a pa
@@ -2647,15 +2703,10 @@ Definition u_min_mem: {f: list string * list string * cmd &
 {                                                                          /**. .**/
   uintptr_t r = 0;                                                         /**.
 
-  purify.
-
- .**/
+(*Ltac after_snippet ::= idtac.*)  .**/
   if (load4(pa) < load4(pb)) {                                             /**.
 
-(* TODO new load lemmas
-  eval_dexpr_step.
-
-  eapply dexpr_load.
+(* step. step. step. step. step. step. step. step. step.
 
 .**/
     r = a;                                                                 /**. .**/
@@ -2669,7 +2720,7 @@ Defined.
 *)
 Abort.
 
-
+(*
 (* bs: first 4 bytes: operation, the only supported operation is 1 (squaring)
        next 4 bytes: number to be squared
    output: square-reply: 2, then the squared number *)
