@@ -362,7 +362,19 @@ Ltac pose_word_lemmas width word :=
 Ltac pose_basic_Z_lemmas :=
   pose proof Z.not_lt as z_not_lt;
   pose proof Z.not_le as z_not_le;
-  pose proof Z.le_refl_True as z_le_refl_True.
+  pose proof Z.le_refl_True as z_le_refl_True;
+  pose proof (Z.min_glb: forall n m p,
+    trigger! ((Z.min n m)) (p <= n -> p <= m -> p <= Z.min n m)) as z_min_glb;
+  pose proof (Z.min_l: forall n m,
+   trigger! ((Z.min n m)) (n <= m -> Z.min n m = n)) as z_min_l;
+  pose proof (Z.min_r: forall n m,
+   trigger! ((Z.min n m)) (m <= n -> Z.min n m = m)) as z_min_r;
+  pose proof (Z.max_lub: forall n m p,
+    trigger! ((Z.max n m)) (n <= p -> m <= p -> Z.max n m <= p)) as z_max_glb;
+  pose proof (Z.max_l: forall n m,
+   trigger! ((Z.max n m)) (m <= n -> Z.max n m = n)) as z_max_l;
+  pose proof (Z.max_r: forall n m,
+   trigger! ((Z.max n m)) (n <= m -> Z.max n m = m)) as z_max_r.
 
 Lemma consider_mod_bounds: forall a b,
     trigger! ((a mod b)) (consider! ((0 <= a < b))).
