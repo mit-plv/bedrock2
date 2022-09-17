@@ -978,9 +978,18 @@ Lemma purify_sep_skip_r: forall {RHead RTail: mem -> Prop} {PHead: Prop},
     purify (sep RHead RTail) PHead.
 Admitted.
 
-Lemma purify_array{T: Type}: forall elem n (vs: list T) a elemSize
+Lemma purify_array(*{width: Z}{BW: Bitwidth width}*){T: Type}:
+  forall elem n (vs: list T) a elemSize
     {Hsz: forall v, PredicateSize (elem v) elemSize},
-    purify (array elem n vs a) (len vs = n). (* TODO add bounds on a *)
+    purify (array elem n vs a)
+      (len vs = n). (*  /\
+       0 <= elemSize /\
+       0 <= a /\
+       a + n * elemSize <= (* TODO <= or < ? *) 2 ^ width). *)
+    (* Note: technically, an array of size exactly 2^width would fit into the memory,
+       but we disallow it so that all sizes fit into a register *)
+    (* TODO add bounds in array so that this lemma actually holds,
+       and also in sepapp to make sure array_split holds *)
 Proof.
   unfold purify, array. intros. eapply sep_emp_l in H. apply H.
 Qed.
@@ -2258,10 +2267,6 @@ Ltac step :=
       else after_if
   | |- True => constructor
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ => put_into_current_locals
-  | |- wp_cmd _ _ _ _ _ _ =>
-      lazymatch goal with
-      | |- ?G => change (@ready G)
-      end
   | |- sep _ _ _ /\ _ =>
       lazymatch goal with
       | |- ?G => change (@pre_canceling G)
@@ -2287,6 +2292,11 @@ Ltac step :=
           end;
           cbn [seps];
           exact (iff1_refl _) ]
+  | H: ?x = ?y |- _ => is_var x; is_var y; subst x
+  | |- wp_cmd _ _ _ _ _ _ =>
+      lazymatch goal with
+      | |- ?G => change (@ready G)
+      end
   end.
 
 (* fail on notations that we don't want to destruct *)
@@ -2403,6 +2413,8 @@ Notation "( e )" := e (in custom live_expr, e custom live_expr at level 100).
 
 (* Using the same precedences as https://en.cppreference.com/w/c/language/operator_precedence *)
 Notation "! x" := (expr.not x)
+  (in custom live_expr at level 2, x custom live_expr, right associativity, only parsing).
+Notation "- x" := (expr.op bopname.sub (expr.literal 0) x)
   (in custom live_expr at level 2, x custom live_expr, right associativity, only parsing).
 Infix "*" := (expr.op bopname.mul)
   (in custom live_expr at level 3, left associativity, only parsing).
@@ -2883,7 +2895,6 @@ Definition min3_mem: {f: list string * list string * cmd &
     }                                                                      /**. .**/
   }                                                                        /**.
 (* TODO: stepify after_if *)
-(* TODO: trace equality *)
 (* TODO: speed up postcondition proving *)                                      .**/
 }                                                                          /**.
 Defined.
@@ -2894,6 +2905,24 @@ Goal False.
   | existT _ f _ => f
   end in pose r).
 Abort.
+
+Definition shortcircuiting_and_or_test: {f: list string * list string * cmd &
+  forall fs t m a n vs (R: mem -> Prop),
+    0 <= n < 2 ^ 32 -> (* TODO can we sneak these into array? *)
+    0 <= a < 2 ^ 32 ->
+    <{ * array (uint 8) n vs a
+       * R }> m ->
+    vc_func fs f t m [|a; n|] (fun t' m' retvs => True)
+  }.                                                                            .**/
+{                                                                          /**. .**/
+  uintptr_t valid = -1;                                                    /**. .**/
+  if (n <= 4 && load4(a) == 1) {                                           /**.
+
+{ (* ltac1:(step).
+
+Close Scope implicit_facts_scope.
+
+*)Abort.
 
 (*
 (* bs: first 4 bytes: operation, the only supported operation is 1 (squaring)
