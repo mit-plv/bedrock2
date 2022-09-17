@@ -92,9 +92,6 @@ Proof.
     repeat split; (blia || assumption).
 Qed.
 
-Global Instance RV32I_bitwidth: FlatToRiscvCommon.bitwidth_iset 32 RV32I.
-Proof. reflexivity. Qed.
-
 Local Arguments Z.mul: simpl never.
 Local Arguments Z.add: simpl never.
 Local Arguments Z.of_nat: simpl never.
@@ -104,6 +101,7 @@ Local Arguments Z.sub: simpl never.
 Local Arguments Registers.reg_class.all: simpl never.
 
 Section MMIO1.
+  Context {iset : InstructionSet} {bitwidth_iset : FlatToRiscvCommon.bitwidth_iset 32 iset}.
   Context {word: Word.Interface.word 32}.
   Context {word_ok: word.ok word}.
   Context {word_riscv_ok: word.riscv_ok word}.
@@ -332,7 +330,10 @@ Section MMIO1.
       rewrite <-LittleEndian.split_eq, LittleEndian.combine_split.
       rewrite Z.mod_small by eapply EncodeBound.encode_range.
       rewrite DecodeEncode.decode_encode; cycle 1. {
-        unfold valid_instructions in *. cbn in *. eauto.
+        epose proof Registers.arg_range_Forall as HH.
+        rewrite E3 in HH.
+        repeat match goal with HH : Forall _ (_::_)|-_ => inversion HH; subst; clear HH end.
+        split; cbn; unfold Encode.verify_S, funct3_SW, opcode_STORE; ssplit; try Lia.lia.
       }
       repeat fwd.
 
@@ -471,7 +472,10 @@ Section MMIO1.
       rewrite <-LittleEndian.split_eq, LittleEndian.combine_split.
       rewrite Z.mod_small by (eapply EncodeBound.encode_range).
       rewrite DecodeEncode.decode_encode; cycle 1. {
-        unfold valid_instructions in *. cbn in *. eauto.
+        epose proof Registers.arg_range_Forall as HH.
+        rewrite E1 in HH.
+        repeat match goal with HH : Forall _ (_::_)|-_ => inversion HH; subst; clear HH end.
+        split; cbn; unfold Encode.verify_I, opcode_LOAD, funct3_LW; ssplit; try Lia.lia.
       }
 
       repeat fwd.
@@ -541,6 +545,6 @@ Section MMIO1.
         typeclasses eauto.
       }
       eauto 10.
-  Time Qed. (* takes ~30s *)
+  Time Qed. (* takes ~70s *)
 
 End MMIO1.

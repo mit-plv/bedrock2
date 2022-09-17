@@ -288,6 +288,9 @@ Section Connect.
     - rewrite N_Z_nat_conversions.Z2Nat.inj_pow; try blia. reflexivity.
   Qed.
 
+  #[export]
+  Instance BWM_RV32I : FlatToRiscvCommon.bitwidth_iset 32 RV32I. constructor. Defined.
+
   (* end to end, but still generic over the program *)
   Lemma end2end:
     (* Assumptions on the program logic level: *)
