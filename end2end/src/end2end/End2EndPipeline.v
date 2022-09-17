@@ -307,7 +307,7 @@ Section Connect.
     required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word ->
     word.unsigned (code_start ml) + Z.of_nat (Datatypes.length (instrencode instrs)) <=
       word.unsigned (code_pastend ml) ->
-    Forall (fun i : Instruction => verify i iset) instrs ->
+    Forall (fun i : Instruction => verify i iset \/ valid_InvalidInstruction i) instrs ->
     valid_src_funs funimplsList = true ->
     (* Assumptions on the Kami level: *)
     kami_mem_contains_bytes (instrencode instrs) ml.(code_start) memInit ->

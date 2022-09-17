@@ -83,7 +83,7 @@ Section Pipeline1.
 
   Lemma ptsto_bytes_to_program: forall instrs p_code,
       word.unsigned p_code mod 4 = 0 ->
-      Forall (fun i => verify i iset) instrs ->
+      Forall (fun i => verify i iset \/ valid_InvalidInstruction i) instrs ->
       iff1 (ptsto_bytes p_code (instrencode instrs))
            (program iset p_code instrs).
   Proof.
@@ -174,7 +174,7 @@ Section Pipeline1.
       required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word /\
       word.unsigned ml.(code_start) + Z.of_nat (List.length (instrencode instrs)) <=
         word.unsigned ml.(code_pastend) /\
-      Forall (fun i : Instruction => verify i iset) instrs /\
+      Forall (fun i => verify i iset \/ valid_InvalidInstruction i) instrs /\
       (imem ml.(code_start) ml.(code_pastend) instrs *
        mem_available ml.(heap_start) ml.(heap_pastend) *
        mem_available ml.(stack_start) ml.(stack_pastend))%sep initial.(getMem) /\
@@ -210,7 +210,7 @@ Section Pipeline1.
         specialize (M0 i_mem).
         destruct mlOk.
         destruct M0 as [v M0].
-        * apply ptsto_bytes_to_program; assumption.
+        * apply ptsto_bytes_to_program; try assumption.
         * unfold ptsto_bytes in Imem.
           eapply ptsto_bytes_range; try eassumption.
       + unfold imem in *.
