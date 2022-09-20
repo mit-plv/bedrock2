@@ -353,6 +353,7 @@ Section SepLog.
 
   Section cancel_lemmas.
     Let nth n xs := hd (@Some map map.empty) (skipn n xs).
+    Let nth' n xs := hd (@None map) (skipn n xs).
     Let remove_nth n (xs : list (option map)) := firstn n xs ++ tl (skipn n xs).
 
     Lemma dus_nth_to_head n xs: mmap.du (nth n xs) (mmap.dus (remove_nth n xs)) = mmap.dus xs.
@@ -372,6 +373,29 @@ Section SepLog.
       rewrite <-2mmap.du_assoc.
       f_equal.
       apply mmap.du_comm.
+    Qed.
+
+    Lemma dus_remove_nth: forall n oms mn m,
+        nth' n oms = Some mn ->
+        Some m = mmap.dus oms ->
+        exists m', Some m' = mmap.dus (remove_nth n oms) /\ Some m = map.du mn m'.
+    Proof.
+      induction n; intros.
+      - destruct oms; cbn in H; try discriminate H. subst.
+        rewrite mmap.dus_cons in H0. cbn. cbn in H0. fwd. eauto.
+      - destruct oms; try discriminate H.
+        change (remove_nth (S n) (o :: oms)) with (o :: remove_nth n oms).
+        rewrite mmap.dus_cons in H0.
+        change (nth' n oms = Some mn) in H.
+        specialize IHn with (1 := H).
+        pose proof H0 as B.
+        unfold mmap.du in H0. fwd. specialize (IHn _ eq_refl). fwd.
+        rewrite mmap.dus_cons.
+        rewrite IHnp1 in B. change (map.du mn m') with (mmap.du (Some mn) (Some m')) in B.
+        rewrite IHnp0 in B. rewrite (mmap.du_comm (Some mn)) in B.
+        rewrite <- mmap.du_assoc in B.
+        unfold mmap.du at 1 in B. fwd.
+        eexists. split. 1: reflexivity. rewrite map.du_comm. exact B.
     Qed.
 
     Lemma cancel_at: forall (i j: nat) (xs ys: list (option map)),
