@@ -296,6 +296,13 @@ Section ArrayLemmas.
     cancel. cbn [seps]. de_emp; lia.
   Qed.
 
+  Lemma array_merge(n1 n2: Z)(vs1 vs2: list T):
+    sepapp (array elem n1 vs1) (array elem n2 vs2) =
+      sepapp (pure_at (len vs1 = n1 /\ len vs2 = n2))
+             (array elem (n1 + n2) (vs1 ++ vs2)).
+  Proof.
+  Admitted.
+
 End ArrayLemmas.
 
 #[export] Hint Resolve purify_array : purify.
@@ -365,14 +372,16 @@ Section ScalarsLemmas.
   Context {mem: map.map word Byte.byte}{mem_ok: map.ok mem}.
 
   Lemma bytes_to_uint: forall L (bs: list Z),
-      len bs = L -> (* <-- Note: already asserted by LHS, but not by RHS *)
-      array (uint 8) L bs = uint (8 * L) (le_combine_z bs).
+      array (uint 8) L bs =
+      sepapp (pure_at (len bs = L /\ List.Forall (fun b => 0 <= b < 256) bs))
+             (uint (8 * L) (le_combine_z bs)).
   Proof.
-    intros. subst L.
+    intros.
     unfold array. unfold uint at 2. extensionality addr. unfold sepapp.
     unfold pure_at, pure_at_raw, range_ok.
     rewrite Z.add_0_r.
     rewrite length_le_split.
+    (*
     rewrite nbits_to_nbytes_8 by lia.
     rewrite Nat2Z.id.
     unfold le_combine_z.
@@ -380,26 +389,10 @@ Section ScalarsLemmas.
     rewrite List.map_length in P.
     rewrite P. clear P.
 
-    (* does not hold: LHS imposes bounds on each byte in bs,
-       whereas RHS doesn't!
-
---> add pure sidcondition
-eg pure_at (List.Forall (fun b => 0 <= b < 256) bs)
-with a sepapp just next to uint on RHS?
-
---> put all pure conditions in seps with bullet points?
-
---> "view" that permanently gives lia (and other tactics) access to the pure facts,
-    without each time calling purify?
-
-*)
-
-
     eapply assume_pure_of_sides_of_sep_eq.
     1,2: purify_rec.
     intros.
 
-(*
     remember (Z.to_nat L) as nbytes eqn: E.
     eapply (f_equal Z.of_nat) in E. rewrite Z2Nat.id in E by lia. subst L.
     revert nbytes bs E.
