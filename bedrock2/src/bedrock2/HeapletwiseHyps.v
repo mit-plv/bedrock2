@@ -142,7 +142,7 @@ End HeapletwiseHyps.
    only propositional_extensionality and functional_extensionality_dep *)
 
 
-Section PresentationWithSigmas. (* not sure if that works *)
+Section PresentationWithSigmas.
   Context{key value: Type} {mem: map.map key value} {mem_ok: map.ok mem}
     {key_eqb: key -> key -> bool} {key_eqb_spec: EqDecider key_eqb}.
 
@@ -155,17 +155,100 @@ Section PresentationWithSigmas. (* not sure if that works *)
     | mk_mem_hyp _ m _ => m
     end.
 
+  Lemma proj_mem_hyp{P: mem -> Prop}(M: mem_hyp P): P (proj_mem M).
+  Proof. destruct M as (m & HM). simpl. assumption. Qed.
+
   Definition Star(P Q: mem -> Prop)(m: mem): Prop :=
     exists (M1: mem_hyp P) (M2: mem_hyp Q),
       Some m = mmap.du (Some (proj_mem M1)) (Some (proj_mem M2)).
 
+  Lemma Star_empty_r: forall P, Star P (eq map.empty) = P.
+  Proof.
+    intros. extensionality m. apply propositional_extensionality.
+    unfold Star. split; intros; fwd.
+    - destruct M2 as (m2 & HM2). subst m2. simpl in H. rewrite map.du_empty_r in H.
+      inversion H. subst. destruct M1 as (m1 & HM1). simpl. assumption.
+    - unshelve (do 2 eexists).
+      + econstructor. eassumption.
+      + econstructor. reflexivity.
+      + simpl. rewrite map.du_empty_r. reflexivity.
+  Qed.
+
+  Fixpoint bigStar(Ps: list (mem -> Prop)): mem -> Prop :=
+    match Ps with
+    | nil => eq map.empty
+    | h :: nil => h
+    | h :: t => Star h (bigStar t)
+    end.
+
+  Fixpoint bigStar'(Ps: list (mem -> Prop)): mem -> Prop :=
+    match Ps with
+    | nil => eq map.empty
+    | h :: t => Star h (bigStar' t)
+    end.
+
+  Lemma bigStar_bigStar' Ps: bigStar Ps = bigStar' Ps.
+  Proof.
+    induction Ps.
+    - reflexivity.
+    - simpl (bigStar' _). rewrite <- IHPs. destruct Ps; try reflexivity.
+      simpl. symmetry. apply Star_empty_r.
+  Qed.
+
+  Definition Canceling(Ps: list (mem -> Prop))(oms: list (option mem)): Prop :=
+    forall m, Some m = mmap.dus oms -> bigStar Ps m.
+
+  Lemma Canceling_start: forall Ps oms m,
+      Some m = mmap.dus oms ->
+      Canceling Ps oms ->
+      bigStar Ps m.
+  Proof.
+    unfold Canceling. intros. apply H0. apply H.
+  Qed.
+
+  Lemma Canceling_done: Canceling [] [].
+  Proof.
+    unfold Canceling. simpl. intros. inversion H. reflexivity.
+  Qed.
+
+  Let nth n xs := hd (@None mem) (skipn n xs).
+  Let remove_nth n (xs : list (option mem)) := firstn n xs ++ tl (skipn n xs).
+
+  Lemma Cancel_head: forall n Ps (P: mem -> Prop) oms mn,
+      nth n oms = Some mn ->
+      P mn ->
+      Canceling Ps (remove_nth n oms) ->
+      Canceling (P :: Ps) oms.
+  Proof.
+    unfold Canceling. intros.
+    rewrite bigStar_bigStar'. simpl. rewrite <- bigStar_bigStar'.
+    pose proof dus_remove_nth as A. specialize A with (1 := H) (2 := H2).
+    fwd.
+    specialize H1 with (1 := Ap0).
+    unfold Star. unshelve (do 2 eexists).
+    - econstructor. eassumption.
+    - econstructor. eassumption.
+    - simpl. assumption.
+  Qed.
+
   Hypothesis foo: nat -> nat -> mem -> Prop.
+
+  Lemma mem_hyp_Star(P Q: mem -> Prop)(MP: mem_hyp P)(MQ: mem_hyp Q)(m: mem):
+    Some m = Some (proj_mem MP) \*/ Some (proj_mem MQ) ->
+    mem_hyp (Star P Q).
+  Proof.
+    econstructor. unfold Star. exists MP, MQ. eassumption.
+  Qed.
+
+  Ltac reify_dus e :=
+    lazymatch e with
+    | mmap.du ?h ?t => let rt := reify_dus t in constr:(cons h rt)
+    | _ => constr:(cons e nil)
+    end.
 
   Goal forall m v1 v2 v3 v4 (Rest: mem -> Prop),
       (Star (foo v1 1) (Star (Star (foo v2 2) (foo v3 3)) (foo v4 4))) m ->
-      exists R a1 a2 (A1: mem_hyp (foo a1 1)) (A2: mem_hyp (foo a2 2)) (A3: mem_hyp R),
-        Some m = mmap.du (Some (proj_mem A1))
-                         (mmap.du (Some (proj_mem A2)) (Some (proj_mem A3))).
+      exists R a4 a3, Star (foo a4 4) (Star (foo a3 3) R) m.
   Proof.
     intros.
     destruct H as (M1 & M2 & E).
@@ -175,5 +258,41 @@ Section PresentationWithSigmas. (* not sure if that works *)
     destruct HM2 as (M2 & M3 & E2). rewrite E2 in E. clear m2 E2.
 
     do 3 eexists.
-  Abort.
+
+    (* make goal a Canceling goal: *)
+    lazymatch goal with
+    | |- Star ?A (Star ?B ?C) ?m => change (bigStar [A; B; C] m)
+    end.
+    rewrite mmap.du_assoc in E.
+    match type of E with
+    | Some ?m = ?e => let r := reify_dus e in change (Some m = mmap.dus r) in E
+    end.
+    eapply Canceling_start. 1: exact E. clear E.
+
+(*
+  M1 : mem_hyp (foo v1 1)
+  M2 : mem_hyp (foo v2 2)
+  M3 : mem_hyp (foo v3 3)
+  M4 : mem_hyp (foo v4 4)
+  ============================
+  Canceling [foo ?a4 4; foo ?a3 3; ?R]
+    [Some (proj_mem M1); Some (proj_mem M2); Some (proj_mem M3); Some (proj_mem M4)]
+*)
+
+    (* Canceling steps: *)
+
+    eapply (Cancel_head 3). 1: reflexivity. 1: eapply proj_mem_hyp. cbn.
+
+    eapply (Cancel_head 2). 1: reflexivity. 1: eapply proj_mem_hyp. cbn.
+
+    (* now that all the callee's hyps are satisfied, we need to construct the frame,
+       and we use the same Canceling lemma for that as well: *)
+
+    eapply (Cancel_head 0 (_ :: _)). 1: reflexivity. 1: eapply proj_mem_hyp. cbn.
+
+    eapply (Cancel_head 0 nil). 1: reflexivity. 1: eapply proj_mem_hyp. cbn.
+
+    apply Canceling_done.
+  Qed.
+
 End PresentationWithSigmas.
