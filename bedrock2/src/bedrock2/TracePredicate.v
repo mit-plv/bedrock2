@@ -76,6 +76,48 @@ Section ListPred.
   Import Morphisms.
   Local Infix "+++" := concat (at level 60).
 
+  Section WithR.
+    Context {state} (R : state -> list T -> state -> Prop).
+
+    Inductive stateful : state -> state -> list T -> Prop :=
+      | stateful_empty s : stateful s s nil 
+      | stateful_step: forall s0 l1 s1 l2 s2,
+          stateful s0 s1 l1 ->
+          R s1 l2 s2 ->
+          stateful s0 s2 (l1 ;++ l2).
+
+    Lemma kleene_stateful s l s' (H : stateful s s' l) : kleene (fun l => exists s1 s2, R s1 l s2) l.
+    Proof.
+      induction H; try eapply kleene_empty.
+      eapply kleene_app; eauto.
+      rewrite <-app_nil_l.
+      eapply kleene_step; eauto using kleene_step, kleene_empty.
+    Qed.
+
+    Lemma stateful_singleton s l s' : R s l s' -> stateful s s' l.
+    Proof.
+      intros.
+      rewrite <-app_nil_r. econstructor; [econstructor|]. eauto.
+    Qed.
+
+    Lemma stateful_conseq : forall s0 s1 a, stateful s0 s1 a ->
+      forall s2 b, stateful s1 s2 b -> stateful s0 s2 (a ;++ b).
+    Proof.
+      intros.
+      revert dependent a. revert dependent b. induction 1; eauto; intros.
+      rewrite <-app_assoc; econstructor; eauto.
+    Qed.
+
+    Lemma stateful_app_r (P : list T -> Prop) :
+      forall s0 s1 a, (P +++ stateful s0 s1) a ->
+      forall s2 b, stateful s1 s2 b -> (P +++ stateful s0 s2) (b ++ a).
+    Proof.
+      induction 1. case H as (?&?&?&?); subst; intros.
+      rewrite app_assoc.
+      eapply concat_app; eauto using stateful_conseq.
+    Qed.
+  End WithR.
+
   Global Instance Proper_concat : Proper (pointwise_relation _ iff ==> pointwise_relation _ iff ==> pointwise_relation _ iff) concat.
   Proof. cbv [Proper respectful pointwise_relation] in *; firstorder idtac. Qed.
   Global Instance Proper_multiple : Proper (pointwise_relation _ iff ==> pointwise_relation _ (pointwise_relation _ iff)) multiple.

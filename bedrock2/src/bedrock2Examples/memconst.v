@@ -42,7 +42,7 @@ Section WithParameters.
   Require Import coqutil.Word.Properties coqutil.Map.Properties.
 
   Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.
-  Lemma memswap_ok ident bs functions :
+  Lemma memconst_ok ident bs functions :
     spec_of_memconst ident bs (memconst ident bs :: functions).
   Proof.
     cbv [spec_of_memconst memconst]; repeat straightline.
