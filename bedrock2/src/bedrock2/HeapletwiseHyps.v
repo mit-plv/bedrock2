@@ -3,6 +3,7 @@ Require Import Coq.Lists.List. Import ListNotations. Open Scope list_scope.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.Tactics.
+Require Import coqutil.Tactics.syntactic_unify.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.DisjointUnion.
 Require Import bedrock2.Map.SeparationLogic.
@@ -75,9 +76,22 @@ Section HeapletwiseHyps.
   Definition canceling(Ps: list (mem -> Prop))(oms: list (option mem)): Prop :=
     forall m, Some m = mmap.dus oms -> seps Ps m.
 
-  Lemma canceling_done: canceling [] [].
+  Lemma canceling_start: forall {Ps oms m},
+      Some m = mmap.dus oms ->
+      canceling Ps oms ->
+      seps Ps m.
+  Proof.
+    unfold canceling. intros. apply H0. apply H.
+  Qed.
+
+  Lemma canceling_done_empty: canceling [] [].
   Proof.
     unfold canceling. simpl. intros. inversion H. unfold emp. auto.
+  Qed.
+
+  Lemma canceling_done_frame: forall oms, canceling [fun m => Some m = mmap.dus oms] oms.
+  Proof.
+    unfold canceling. simpl. intros. assumption.
   Qed.
 
   (* Separate definitions to avoid simplifying user-defined expressions that
@@ -97,15 +111,15 @@ Section HeapletwiseHyps.
   Definition heaplets_remove_nth(n: nat)(xs : list (option mem)): list (option mem) :=
     heaplets_app (heaplets_firstn n xs) (heaplets_tl (heaplets_skipn n xs)).
 
-  Lemma cancel_head: forall n Ps (P: mem -> Prop) oms mn,
-      heaplets_nth n oms = Some mn ->
+  Lemma cancel_head: forall n {P: mem -> Prop} {Ps oms mn},
       P mn ->
+      heaplets_nth n oms = Some mn ->
       canceling Ps (heaplets_remove_nth n oms) ->
       canceling (P :: Ps) oms.
   Proof.
     unfold canceling. intros.
     eapply seps_cons.
-    pose proof dus_remove_nth as A. specialize A with (1 := H) (2 := H2).
+    pose proof dus_remove_nth as A. specialize A with (1 := H0) (2 := H2).
     fwd.
     specialize H1 with (1 := Ap0).
     unfold sep. do 2 eexists. ssplit. 2,3: eassumption.
@@ -113,6 +127,10 @@ Section HeapletwiseHyps.
     eapply map.disjointb_spec in E. auto.
   Qed.
 End HeapletwiseHyps.
+
+Ltac cbn_heaplets :=
+  cbn [heaplets_hd heaplets_tl heaplets_firstn heaplets_skipn
+       heaplets_app heaplets_nth heaplets_remove_nth].
 
 Ltac reify_dus e :=
   lazymatch e with
@@ -156,6 +174,41 @@ Ltac merge_du_step :=
   | H: Some ?m = mmap.du _ _ |- _ => rewrite H in *; clear m H
   end.
 
+Ltac start_canceling :=
+  rewrite ?sep_assoc_eq;
+  lazymatch goal with
+  | |- ?e ?m =>
+      let clauselist := reify_seps e in change (seps clauselist m)
+  end;
+  lazymatch goal with
+  | D: Some ?m = mmap.du _ _ |- _ ?m =>
+      rewrite ?mmap.du_assoc in D;
+      let e := lazymatch type of D with Some m = ?e => e end in
+      let memlist := reify_dus e in
+      change (Some m = mmap.dus memlist) in D;
+      eapply (canceling_start D);
+      clear D
+  end.
+
+Ltac index_of_Some_proj_mem M oms :=
+  lazymatch oms with
+  | cons (Some (proj_mem M)) _ => constr:(O)
+  | cons _ ?tl => let n := index_of_Some_proj_mem M tl in constr:(S n)
+  end.
+
+Ltac canceling_step :=
+  lazymatch goal with
+  | |- canceling (cons ?P ?Ps) ?oms =>
+      tryif is_evar P then fail "reached frame (or other evar)" else
+      let M := match goal with
+               | M: mem_hyp ?P' |- _ =>
+                   let __ := match constr:(Set) with _ => syntactic_unify P' P end in M
+               end in
+      let oms := lazymatch goal with |- canceling _ ?oms => oms end in
+      let n := index_of_Some_proj_mem M oms in
+      eapply (cancel_head n (proj_mem_hyp M)); [ reflexivity | cbn_heaplets ]
+  end.
+
 
 Section HeapletwiseHypsTests.
   Context {key value: Type} {mem: map.map key value} {mem_ok: map.ok mem}
@@ -170,32 +223,8 @@ Section HeapletwiseHypsTests.
     intros.
     repeat split_sep_step.
     repeat merge_du_step.
-
     do 3 eexists.
-
-
-    lazymatch goal with
-    | D: Some ?m = mmap.du _ _ |- _ ?m =>
-        rewrite ?mmap.du_assoc in D;
-        let memtree := lazymatch type of D with Some m = ?e => e end in
-        let memlist := reify_dus memtree in
-        rewrite ?sep_assoc_eq;
-        let clausetree := lazymatch goal with |- ?e m => e end in
-        let clauselist := reify_seps clausetree in
-        revert m D;
-
-        lazymatch goal with
-        | |- ?g => assert (g = canceling clauselist memlist)
-        end
-
-    end.
-    {
-      unfold canceling.
-      (* simpl. (* https://github.com/coq/coq/issues/5378 ? *) *)
-      cbn [seps mmap.dus].
-      reflexivity.
-    }
-    rewrite H. clear H.
+    start_canceling.
 
 (*
   M0 : mem_hyp (foo v1 1)
@@ -209,22 +238,8 @@ Section HeapletwiseHypsTests.
     Some (proj_mem M1); Some (proj_mem M2)]
 *)
 
-    (* canceling steps: *)
-
-    eapply (cancel_head 3). 1: reflexivity. 1: eapply proj_mem_hyp. cbn.
-
-    eapply (cancel_head 2). 1: reflexivity. 1: eapply proj_mem_hyp. cbn.
-
-    (* now that all the callee's hyps are satisfied, we need to construct the frame,
-       and we use the same canceling lemma for that as well: *)
-
-    eapply (cancel_head 0 (_ :: _)). 1: reflexivity. 1: eapply proj_mem_hyp. cbn.
-
-    eapply (cancel_head 0 (_ :: _)). 1: reflexivity. 1: eapply proj_mem_hyp. cbn.
-
-    eapply (cancel_head 0 nil). 1: reflexivity. 1: eapply proj_mem_hyp. cbn.
-
-    apply canceling_done.
+    repeat canceling_step.
+    eapply canceling_done_frame.
   Qed.
 
 End HeapletwiseHypsTests.
