@@ -322,6 +322,14 @@ Section HeapletwiseHypsTests.
     repeat clear_unused_mem_hyps_step.
 
     Fail rewrite PeanoNat.Nat.sub_diag in M0.
+    remember (foo (x - x + (x + x)) p3) as P.
+    rewrite PeanoNat.Nat.sub_diag in HeqP.
+    subst P.
+
+    Fail rewrite PeanoNat.Nat.add_0_l in M0, D.
+    revert M0 D.
+    rewrite PeanoNat.Nat.add_0_l.
+    intros.
 
   Abort.
 
