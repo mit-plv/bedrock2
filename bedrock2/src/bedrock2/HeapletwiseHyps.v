@@ -30,7 +30,7 @@ Section HeapletwiseHyps.
   Lemma proj_mem_hyp{P: mem -> Prop}(M: mem_hyp P): P (proj_mem M).
   Proof. destruct M as (m & HM). simpl. assumption. Qed.
 
-  Lemma sep_to_sep_and_sep: forall (P Q: mem -> Prop) m,
+  Lemma sep_to_unpacked_and_unpacked: forall (P Q: mem -> Prop) m,
       sep P Q m -> exists m1 m2, P m1 /\ Q m2 /\ Some m = mmap.du (Some m1) (Some m2).
   Proof.
     unfold sep, map.split. intros. fwd. do 2 eexists. ssplit.
@@ -39,7 +39,7 @@ Section HeapletwiseHyps.
     reflexivity.
   Qed.
 
-  Lemma sep_to_mem_hyp_and_sep: forall (P Q: mem -> Prop) m,
+  Lemma sep_to_mem_hyp_and_unpacked: forall (P Q: mem -> Prop) m,
       sep P Q m ->
       exists (M1: mem_hyp P) m2, Q m2 /\ Some m = mmap.du (Some (proj_mem M1)) (Some m2).
   Proof.
@@ -50,7 +50,7 @@ Section HeapletwiseHyps.
     reflexivity.
   Qed.
 
-  Lemma sep_to_sep_and_mem_hyp: forall (P Q: mem -> Prop) m,
+  Lemma sep_to_unpacked_and_mem_hyp: forall (P Q: mem -> Prop) m,
       sep P Q m ->
       exists m1 (M2: mem_hyp Q), P m1 /\ Some m = mmap.du (Some m1) (Some (proj_mem M2)).
   Proof.
@@ -126,6 +126,13 @@ Section HeapletwiseHyps.
     unfold map.split. unfold map.du in Ap1. fwd.
     eapply map.disjointb_spec in E. auto.
   Qed.
+
+  (* for home-made rewrite *)
+  Lemma subst_mem_eq(mSmall mBig: mem){rhsSmall: option mem}(C: option mem -> option mem):
+    Some mSmall = rhsSmall ->
+    Some mBig = C (Some mSmall) ->
+    Some mBig = C rhsSmall.
+  Proof. intros. rewrite H in H0. exact H0. Qed.
 End HeapletwiseHyps.
 
 Ltac cbn_heaplets :=
@@ -144,34 +151,54 @@ Ltac reify_seps e :=
   | _ => constr:(cons e nil)
   end.
 
+Ltac should_unpack P :=
+ lazymatch P with
+ | sep _ _ => constr:(true)
+ | (fun m => Some m = _) => constr:(true)
+ | _ => constr:(false)
+ end.
+
 Ltac split_sep_step :=
   let D := fresh "D" in
   lazymatch goal with
-  | H: sep (sep _ _) (sep _ _) _ |- _ =>
-      eapply sep_to_sep_and_sep in H;
-      let m1 := fresh "m0" in
-      let m2 := fresh "m0" in
-      destruct H as (m1 & m2 & ? & ? & D)
-  | H: sep _ (sep _ _) _ |- _ =>
-      eapply sep_to_mem_hyp_and_sep in H;
-      let M1 := fresh "M0" in
-      let m2 := fresh "m0" in
-      destruct H as (M1 & m2 & ? & D)
-  | H: sep (sep _ _) _ _ |- _ =>
-      eapply sep_to_sep_and_mem_hyp in H;
-      let m1 := fresh "m0" in
-      let M2 := fresh "M0" in
-      destruct H as (m1 & M2 & ? & D)
-  | H: sep _ _ _ |- _ =>
-      eapply sep_to_mem_hyp_and_mem_hyp in H;
-      let M1 := fresh "M0" in
-      let M2 := fresh "M0" in
-      destruct H as (M1 & M2 & D)
+  | H: sep ?P ?Q _ |- _ =>
+      let unpackP := should_unpack P in
+      let unpackQ := should_unpack Q in
+      lazymatch constr:((unpackP, unpackQ)) with
+      | (true, true) =>
+          eapply sep_to_unpacked_and_unpacked in H;
+          let m1 := fresh "m0" in
+          let m2 := fresh "m0" in
+          destruct H as (m1 & m2 & ? & ? & D)
+      | (false, true) =>
+          eapply sep_to_mem_hyp_and_unpacked in H;
+          let M1 := fresh "M0" in
+          let m2 := fresh "m0" in
+          destruct H as (M1 & m2 & ? & D)
+      | (true, false) =>
+          eapply sep_to_unpacked_and_mem_hyp in H;
+          let m1 := fresh "m0" in
+          let M2 := fresh "M0" in
+          destruct H as (m1 & M2 & ? & D)
+      | (false, false) =>
+          eapply sep_to_mem_hyp_and_mem_hyp in H;
+          let M1 := fresh "M0" in
+          let M2 := fresh "M0" in
+          destruct H as (M1 & M2 & D)
+      end
   end.
 
 Ltac merge_du_step :=
-  lazymatch reverse goal with
-  | H: Some ?m = mmap.du _ _ |- _ => rewrite H in *; clear m H
+  match reverse goal with
+  | E1: @Some ?Mem ?m = mmap.du ?o1 ?o2, E2: Some ?m' = ?rhs |- _ =>
+      lazymatch rhs with
+      | context C[Some m] =>
+          (* home-made rewrite *)
+          eapply (subst_mem_eq m m'
+                    (fun hole: option Mem => ltac:(let r := context C[hole] in exact r))
+                    E1) in E2;
+          clear m E1
+      end
   end.
 
 Ltac start_canceling :=
@@ -209,6 +236,13 @@ Ltac canceling_step :=
       eapply (cancel_head n (proj_mem_hyp M)); [ reflexivity | cbn_heaplets ]
   end.
 
+Ltac clear_unused_mem_hyps_step :=
+  match goal with
+  | HOld: Some ?mOld = mmap.du _ _, HNew: Some ?mNew = mmap.du _ _ |- _ =>
+      clear mOld HOld; rename mNew into mOld, HNew into HOld
+  | H: mem_hyp _ |- _ => clear H
+  end.
+
 
 Section HeapletwiseHypsTests.
   Context {key value: Type} {mem: map.map key value} {mem_ok: map.ok mem}
@@ -241,5 +275,57 @@ Section HeapletwiseHypsTests.
     repeat canceling_step.
     eapply canceling_done_frame.
   Qed.
+
+  Context (cmd: Type).
+  Context (wp: cmd -> mem -> (mem -> Prop) -> Prop).
+  Context (frobenicate: nat -> nat -> cmd).
+  (* sample callee: *)
+  Context (frobenicate_ok: forall (a1 a2 v1 v2: nat) (m: mem) (R: mem -> Prop)
+                                  (P: mem -> Prop),
+              sep (foo v1 a1) (sep (foo v2 a2) R) m /\
+              (forall m', sep (foo (v1 + v2) a1) (sep (foo (v1 - v2) a2) R) m' -> P m') ->
+              wp (frobenicate a1 a2) m P).
+
+  (* sample caller: *)
+  Goal forall (p1 p2 p3 x y: nat) (m: mem) (R: mem -> Prop),
+      sep (foo x p1) (sep (foo y p2) (sep (foo x p3) R)) m ->
+      wp (frobenicate p1 p3) m (fun m' =>
+        wp (frobenicate p3 p1) m' (fun m'' =>
+           sep (foo 0 p1) (sep (foo y p2) (sep (foo 0 p3) R)) m'')).
+  Proof.
+    intros.
+    repeat split_sep_step.
+    repeat merge_du_step.
+
+    eapply frobenicate_ok.
+    split. {
+      start_canceling.
+      repeat canceling_step.
+      eapply canceling_done_frame.
+    }
+    cbn [mmap.dus].
+    intros.
+    repeat split_sep_step.
+    repeat merge_du_step.
+    repeat clear_unused_mem_hyps_step.
+
+    eapply frobenicate_ok.
+    split. {
+      start_canceling.
+      repeat canceling_step.
+      eapply canceling_done_frame.
+    }
+    cbn [mmap.dus].
+    intros.
+    repeat split_sep_step.
+    repeat merge_du_step.
+    repeat clear_unused_mem_hyps_step.
+
+    Fail rewrite PeanoNat.Nat.sub_diag in M0.
+
+  Abort.
+
+  Let foo_pair(v1 v2 a1 a2: nat) := sep (foo v1 a1) (foo v2 a2).
+
 
 End HeapletwiseHypsTests.
