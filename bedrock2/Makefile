@@ -61,7 +61,7 @@ Makefile.coq.ex: force _CoqProject
 BYTEDUMP = COQFLAGS="$(ALLDEPFLAGS)" ../etc/bytedump.sh
 
 special/BytedumpTest.out: special/BytedumpTest.golden.bin noex
-	$(BYTEDUMP) bedrock2.Bytedump.allBytes > special/BytedumpTest.out.tmp
+	$(BYTEDUMP) bedrock2.PrintListByte.allBytes > special/BytedumpTest.out.tmp
 	hexdump < /dev/null && \
 		hexdump -C special/BytedumpTest.golden.bin > special/BytedumpTest.golden.hex && \
 		hexdump -C special/BytedumpTest.out.tmp > special/BytedumpTest.out.hex && \

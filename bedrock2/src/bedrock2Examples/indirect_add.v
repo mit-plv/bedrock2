@@ -56,16 +56,9 @@ Section WithParameters.
   Example link_both : spec_of_indirect_add_twice (indirect_add_twice::indirect_add::nil).
   Proof. auto using indirect_add_twice_ok, indirect_add_ok. Qed.
 
-  (* Print Assumptions link_swap_swap_swap_swap. *)
-  (* SortedList.* SortedListString.* *)
-
   (*
-  From bedrock2 Require Import ToCString Bytedump.
-  Local Open Scope bytedump_scope.
-  Goal True.
-    let c_code := eval cbv in (String.list_byte_of_string (c_module (indirect_add_twice::indirect_add::nil))) in
-    idtac c_code.
-  Abort.
+  From bedrock2 Require Import ToCString PrintString.
+  Goal True. print_string (c_module (indirect_add_twice::indirect_add::nil)). Abort.
   *)
 
   Definition indirect_add_three : Syntax.func :=

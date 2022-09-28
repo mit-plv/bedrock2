@@ -4,15 +4,14 @@ ulimit -s unlimited || true
 
 {
 coqtop -q -quiet $COQFLAGS 2>/dev/null << EOF
-Require ${1%.*}.
-Require Import bedrock2.Bytedump. Local Open Scope bytedump_scope.
+Require bedrock2.PrintListByte ${1%.*}.
 Local Set Printing Width 2147483647.
 Goal True.
   idtac "COQTOP_CRAP_ENDS_HERE".
-  let bs := eval cbv in ${1} in idtac bs.
+  PrintListByte.print_list_byte ${1}.
 Abort.
 EOF
-} | python -c '
+} | python3 -c '
 import os, sys
 needle = b"\nCOQTOP_CRAP_ENDS_HERE\n"
 waiting_on_coqbug_15373 = True

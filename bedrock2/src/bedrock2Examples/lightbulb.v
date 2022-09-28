@@ -650,25 +650,4 @@ Section WithParameters.
         eapply spi_xchg_ok;
         (eapply spi_write_ok || eapply spi_read_ok).
   Qed.
-
-
-  (* Print Assumptions link_lightbulb. *)
-
-  (*
-  From bedrock2 Require Import ToCString.
-  Goal True.
-    let c_code := eval cbv in ((* of_string *) (c_module function_impls)) in
-    pose c_code.
-  Abort.
-  *)
-
-  (*
-  From bedrock2 Require Import ToCString Byte Bytedump.
-  Local Open Scope bytedump_scope.
-  Set Printing Width 999999.
-  Goal True.
-    let c_code := eval cbv in (of_string (c_module [lan9250_init; lan9250_wait_for_boot; lightbulb_loop; lightbulb_handle; recvEthernet; lan9250_mac_write; lan9250_writeword; lan9250_readword; SPI.spi_xchg; SPI.spi_read; SPI.spi_write])) in
-    idtac c_code.
-  Abort.
-  *)
 End WithParameters.
