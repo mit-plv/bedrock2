@@ -6,6 +6,17 @@ Require Import Coq.Strings.String. Local Open Scope string_scope.
 Definition prelude := "#include <stdint.h>
 #include <string.h>
 
+static __attribute__((always_inline)) inline uintptr_t
+_br2_mulhuu(uintptr_t a, uintptr_t b) {
+#if (UINTPTR_MAX == (1LLU<<31) - 1 + (1LLU<<31))
+	return ((uint64_t)a * b) >> 32;
+#elif (UINTPTR_MAX == (1LLU<<63) - 1 + (1LLU<<63))
+	return ((__uint128_t)a * b) >> 64;
+#else
+#error ""32-bit or 64-bit uintptr_t required""
+#endif
+}
+
 // We use memcpy to work around -fstrict-aliasing.
 // A plain memcpy is enough on clang 10, but not on gcc 10, which fails
 // to infer the bounds on an integer loaded by memcpy.
@@ -44,7 +55,7 @@ Definition c_bop e1 op e2 :=
   | add => e1++"+"++e2
   | sub => e1++"-"++e2
   | mul => e1++"*"++e2
-  | mulhuu => "(uintptr_t)(sizeof(intptr_t) == 4 ? ((uint64_t)"++e1++"*"++e2++")>>32 : ((__uint128_t)"++e1++"*"++e2++")>>64)"
+  | mulhuu => "_br2_mulhuu(" ++ e1 ++ ", " ++ e2 ++ ")"
   | divu => e1++"/"++e2
   | remu => e1++"%"++e2
   | and => e1++"&"++e2
