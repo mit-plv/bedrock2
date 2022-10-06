@@ -56,7 +56,7 @@ Makefile.coq.noex: force _CoqProject
 
 Makefile.coq.ex: force _CoqProject
 	@echo "Generating Makefile.coq.ex"
-	@$(COQ_MAKEFILE) $(VS_EX) -o Makefile.coq.ex
+	@$(COQ_MAKEFILE) $(VS_EX) -arg -native-compiler -arg ondemand -o Makefile.coq.ex
 
 BYTEDUMP = COQFLAGS="$(ALLDEPFLAGS)" ../etc/bytedump.sh
 
