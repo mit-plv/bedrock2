@@ -33,12 +33,21 @@ Section HeapletwiseHyps.
     - eapply map.disjointb_spec in E. auto.
   Qed.
 
-  (* with mmap.du instead of map.split:
-  Definition wand(P1 P2: mem -> Prop): mem -> Prop :=
-    fun mdiff => forall m1 m2, Some m2 = mmap.du (Some m1) (Some mdiff) -> P1 m1 -> P2 m2. *)
+  Definition anymem: mem -> Prop := fun _ => True.
 
   Definition wand(P1 P2: mem -> Prop): mem -> Prop :=
     fun mdiff => forall m1 m2, map.split m2 mdiff m1 -> P1 m1 -> P2 m2.
+
+  (* with mmap.du instead of map.split: *)
+  Definition wand'(P1 P2: mem -> Prop): mem -> Prop :=
+    fun mdiff => forall m1 m2, Some m2 = mmap.du (Some mdiff) (Some m1) -> P1 m1 -> P2 m2.
+
+  Lemma wand_alt: wand = wand'.
+  Proof.
+    extensionality P. extensionality Q. extensionality m.
+    eapply propositional_extensionality. unfold wand, wand';
+      split; intros; eapply split_du in H0; eauto.
+  Qed.
 
   Lemma wand_adjoint: forall (P Q R: mem -> Prop),
       impl1 (sep P Q) R <-> impl1 P (wand Q R).
@@ -102,25 +111,65 @@ Section HeapletwiseHyps.
       exists m1 m2, P m1 /\ Q m2 /\ Some m = mmap.du (Some m1) (Some m2).
   Proof. exact sep_to_with_mem_and_with_mem. Qed.
 
-  Definition canceling(Ps: list (mem -> Prop))(oms: list (option mem)): Prop :=
-    forall m, Some m = mmap.dus oms -> seps Ps m.
+  Definition canceling(Ps: list (mem -> Prop))(oms: list (option mem))(Rest: Prop): Prop :=
+    (forall m, Some m = mmap.dus oms -> seps Ps m) /\ Rest.
 
-  Lemma canceling_start: forall {Ps oms m},
+  Lemma canceling_start_and: forall {Ps oms m Rest},
       Some m = mmap.dus oms ->
-      canceling Ps oms ->
+      canceling Ps oms Rest ->
+      seps Ps m /\ Rest.
+  Proof.
+    unfold canceling. intros. fwd. eauto.
+  Qed.
+
+  Lemma canceling_start_noand: forall {Ps oms m},
+      Some m = mmap.dus oms ->
+      canceling Ps oms True ->
       seps Ps m.
   Proof.
-    unfold canceling. intros. apply H0. apply H.
+    unfold canceling. intros. fwd. eauto.
   Qed.
 
-  Lemma canceling_done_empty: canceling [] [].
+  Lemma canceling_done_empty: canceling [] [] True.
   Proof.
-    unfold canceling. simpl. intros. inversion H. unfold emp. auto.
+    unfold canceling. simpl. intros. split. 2: constructor.
+    intros. inversion H. unfold emp. auto.
   Qed.
 
-  Lemma canceling_done_frame: forall oms, canceling [fun m => Some m = mmap.dus oms] oms.
+  Lemma canceling_done_anymem: forall {oms} {Rest: Prop},
+      Rest -> canceling [anymem] oms Rest.
   Proof.
-    unfold canceling. simpl. intros. assumption.
+    unfold canceling, anymem. simpl. intros. auto.
+  Qed.
+
+  (* used to instantiate the frame with a magic wand
+     (ramification trick to avoid evar scoping issues) *)
+  Lemma canceling_done_frame_wand: forall oms (calleePost callerPost: mem -> Prop),
+      let F := (wand calleePost callerPost) in
+      (forall mFrame, Some mFrame = mmap.dus oms -> F mFrame) ->
+      canceling [F] oms (forall m', sep calleePost F m' -> callerPost m').
+  Proof.
+    unfold canceling. cbn [seps]. intros. split. 1: assumption.
+    change (impl1 (sep calleePost (wand calleePost callerPost)) callerPost).
+    eapply wand_mp.
+  Qed.
+
+  (* used to instantiate the frame with an unfolded magic wand
+     (ramification trick to avoid evar scoping issues) *)
+  Lemma canceling_done_frame: forall oms (calleePost callerPost: mem -> Prop),
+      (forall mNew mModified,
+          Some mNew = mmap.du (mmap.dus oms) (Some mModified) ->
+          calleePost mModified -> callerPost mNew) ->
+      (* F is (wand calleePost callerPost) unfolded *)
+      let F := (fun mFrame => forall mModified mNew,
+                    Some mNew = mmap.du (Some mFrame) (Some mModified) ->
+                    calleePost mModified -> callerPost mNew) in
+      canceling [F] oms (forall m', sep calleePost F m' -> callerPost m').
+  Proof.
+    intros.
+    pose proof (canceling_done_frame_wand oms calleePost callerPost) as P.
+    rewrite wand_alt in P. eapply P. clear P F.
+    unfold wand'. intros. eapply H. 2: eassumption. rewrite <- H0. assumption.
   Qed.
 
   (* Separate definitions to avoid simplifying user-defined expressions that
@@ -140,13 +189,13 @@ Section HeapletwiseHyps.
   Definition heaplets_remove_nth(n: nat)(xs : list (option mem)): list (option mem) :=
     heaplets_app (heaplets_firstn n xs) (heaplets_tl (heaplets_skipn n xs)).
 
-  Lemma cancel_head: forall n {P: mem -> Prop} {Ps oms mn},
+  Lemma cancel_head: forall n {P: mem -> Prop} {Ps oms mn Rest},
       with_mem mn P ->
       heaplets_nth n oms = Some mn ->
-      canceling Ps (heaplets_remove_nth n oms) ->
-      canceling (P :: Ps) oms.
+      canceling Ps (heaplets_remove_nth n oms) Rest ->
+      canceling (P :: Ps) oms Rest.
   Proof.
-    unfold with_mem, canceling. intros.
+    unfold with_mem, canceling. intros. destruct H1 as [H1 HR]. split; [intros |exact HR].
     eapply seps_cons.
     pose proof dus_remove_nth as A. specialize A with (1 := H0) (2 := H2).
     fwd.
@@ -188,6 +237,17 @@ Ltac should_unpack P :=
  | _ => constr:(false)
  end.
 
+Ltac replace_with_new_mem_hyp H :=
+  lazymatch type of H with
+  | with_mem _ (?pred ?val ?addr) =>
+      lazymatch reverse goal with
+      | HOld: with_mem ?mOld (pred ?newval addr) |- _ =>
+          move H before HOld;
+          clear mOld HOld;
+          rename H into HOld
+      end
+  end.
+
 Ltac split_sep_step :=
   let D := fresh "D" in
   let m1 := fresh "m0" in
@@ -206,7 +266,9 @@ Ltac split_sep_step :=
       end;
       destruct H as (m1 & m2 & H1 & H2 & D);
       move m1 before parent_m; (* before in direction of movement == below *)
-      move m2 before m1
+      move m2 before m1;
+      try replace_with_new_mem_hyp H1;
+      try replace_with_new_mem_hyp H2
   end.
 
 Ltac merge_du_step :=
@@ -233,14 +295,14 @@ Ltac reify_disjointness_hyp :=
 
 Ltac start_canceling :=
   rewrite ?sep_assoc_eq;
+  (* TODO support multiple D's and a way to pick the right one *)
   lazymatch goal with
-  | |- ?e ?m =>
-      let clauselist := reify_seps e in change (seps clauselist m)
-  end;
-  lazymatch goal with
-  | D: Some ?m = mmap.dus _ |- _ ?m =>
-      eapply (canceling_start D);
-      clear D
+  | D: Some ?m = mmap.dus _ |- ?e ?m /\ ?Rest =>
+      let clauselist := reify_seps e in change (seps clauselist m /\ Rest);
+      eapply (canceling_start_and D)
+  | D: Some ?m = mmap.dus _ |- ?e ?m =>
+      let clauselist := reify_seps e in change (seps clauselist m);
+      eapply (canceling_start_noand D)
   end.
 
 Ltac index_of_Some m oms :=
@@ -251,14 +313,14 @@ Ltac index_of_Some m oms :=
 
 Ltac canceling_step :=
   lazymatch goal with
-  | |- canceling (cons ?P ?Ps) ?oms =>
+  | |- canceling (cons ?P ?Ps) ?oms ?Rest =>
       tryif is_evar P then fail "reached frame (or other evar)" else
       let H := match goal with
                | H: with_mem _ ?P' |- _ =>
                    let __ := match constr:(Set) with _ => syntactic_unify P' P end in H
                end in
       let m := lazymatch type of H with with_mem ?m _ => m end in
-      let oms := lazymatch goal with |- canceling _ ?oms => oms end in
+      let oms := lazymatch goal with |- canceling _ ?oms _ => oms end in
       let n := index_of_Some m oms in
       eapply (cancel_head n H); [ reflexivity | cbn_heaplets ]
   end.
@@ -268,16 +330,17 @@ Ltac clear_unused_mem_hyps_step :=
   | H: with_mem ?m _ |- _ => clear m H
   end.
 
-Ltac intros_after_mem_modification :=
-  cbn [mmap.dus];
+Ltac intro_step :=
   lazymatch goal with
-  | D: @Some ?mem ?m = mmap.dus _ |- forall (_: ?mem), _ =>
-      let mOld := fresh "mOld" in
-      rename m into mOld;
-      intro m;
-      intros;
-      move m before mOld;
-      clear D mOld
+  | m: ?mem, H: @with_mem ?mem _ _ |- forall (_: ?mem), _ =>
+      let m' := fresh "m0" in intro m'; move m' before m
+  | HOld: Some ?mOld = mmap.dus _ |- Some _ = mmap.du _ _ -> _ =>
+      let tmp := fresh "tmp" in
+      intro tmp; move tmp before HOld; clear mOld HOld; rename tmp into HOld;
+      cbn [mmap.dus] in HOld
+  | H: with_mem _ _ |- sep _ _ _ -> _ =>
+      let H' := fresh "H0" in
+      intro H'; move H' before H
   end.
 
 Section HeapletwiseHypsTests.
@@ -307,17 +370,19 @@ Section HeapletwiseHypsTests.
   H1 : m4 |= foo v4 4
   H4 : m5 |= Rest
   ============================
-  canceling [foo ?a4 4; foo ?a3 3; ?R] [Some m0; Some m6; Some m7; Some m4; Some m5]
+  canceling [foo ?a4 4; foo ?a3 3; ?R] [Some m0; Some m6; Some m7; Some m4; Some m5] True
 *)
 
     repeat canceling_step.
-    eapply canceling_done_frame.
+    eapply (canceling_done_anymem I).
   Qed.
 
   Context (cmd: Type).
   Context (wp: cmd -> mem -> (mem -> Prop) -> Prop).
   Context (frobenicate: nat -> nat -> cmd).
+
   (* sample callee: *)
+  (* TODO: state in more standard form without explicit P *)
   Context (frobenicate_ok: forall (a1 a2 v1 v2: nat) (m: mem) (R: mem -> Prop)
                                   (P: mem -> Prop),
               sep (foo v1 a1) (sep (foo v2 a2) R) m /\
@@ -337,101 +402,24 @@ Section HeapletwiseHypsTests.
     reify_disjointness_hyp.
 
     eapply frobenicate_ok.
-    split. {
-      start_canceling.
-      repeat canceling_step.
-      eapply canceling_done_frame.
-    }
-    intros_after_mem_modification.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
-    repeat clear_unused_mem_hyps_step.
-
-    eapply frobenicate_ok.
-    split. {
-      start_canceling.
-
-      (* if this was splitting memories, instantiating ?R with (eq the-split-memories),
-         we'd get evar scoping problems!
-         -> instantiate with mem predicates instead of eq?
-
-         -> trick like ramified frame rule?
-       *)
-
-      canceling_step.
-      canceling_step.
-      eapply canceling_done_frame.
-    }
-    intros_after_mem_modification.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
-    repeat clear_unused_mem_hyps_step.
-
-    rewrite PeanoNat.Nat.sub_diag in *.
-    rewrite PeanoNat.Nat.add_0_l in *.
-    rewrite PeanoNat.Nat.sub_0_l in *.
-
     start_canceling.
     repeat canceling_step.
-    eapply canceling_done_empty.
-  Qed.
-
-  Lemma frobenicate_ok_ramified: forall (a1 a2 v1 v2: nat) (m: mem) (P: mem -> Prop),
-      sep (foo v1 a1) (sep (foo v2 a2) (* <-- calleePre *)
-        (wand (sep (foo (v1 + v2) a1) (foo (v1 - v2) a2)) (* <-- calleePost *)
-              P (* <-- callerPost *))) m ->
-      wp (frobenicate a1 a2) m P.
-  Proof.
-    intros. eapply sep_assoc in H. eapply ramify_funspec_hyp in H. fwd.
-    eapply frobenicate_ok. split.
-    - eapply sep_assoc. eassumption.
-    - rewrite <- sep_assoc_eq. assumption.
-  Qed.
-
-  (* sample caller: *)
-  Goal forall (p1 p2 p3 x y: nat) (m: mem) (R: mem -> Prop),
-      sep (foo x p1) (sep (foo y p2) (sep (foo x p3) R)) m ->
-      wp (frobenicate p1 p3) m (fun m' =>
-        wp (frobenicate p3 p1) m' (fun m'' =>
-           sep (foo 0 p1) (sep (foo y p2) (sep (foo (x + x) p3) R)) m'')).
-  Proof.
-    intros.
+    rewrite <- sep_assoc_eq.
+    eapply canceling_done_frame.
+    repeat intro_step.
     repeat split_sep_step.
     repeat merge_du_step.
     reify_disjointness_hyp.
 
-    eapply frobenicate_ok_ramified. (* <- evars created for arguments, but not for frame! *)
+    eapply frobenicate_ok.
     start_canceling.
-    canceling_step.
-    canceling_step.
-    unfold wand.
-    unfold canceling.
-    unfold seps.
-    setoid_rewrite split_du.
-    unfold mmap.dus.
-    intros.
+    repeat canceling_step.
+    rewrite <- sep_assoc_eq.
+    eapply canceling_done_frame.
+    repeat intro_step.
     repeat split_sep_step.
     repeat merge_du_step.
     reify_disjointness_hyp.
-    repeat clear_unused_mem_hyps_step.
-    clear m.
-
-    eapply frobenicate_ok_ramified. (* <- evars created for arguments, but not for frame! *)
-    start_canceling.
-    canceling_step.
-    canceling_step.
-    unfold wand.
-    unfold canceling.
-    unfold seps.
-    setoid_rewrite split_du.
-    unfold mmap.dus.
-    intros.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
-    repeat clear_unused_mem_hyps_step.
 
     rewrite PeanoNat.Nat.sub_diag in *.
     rewrite PeanoNat.Nat.add_0_l in *.
@@ -457,49 +445,6 @@ Section HeapletwiseHypsTests.
     reify_disjointness_hyp.
 
     eapply frobenicate_ok.
-    split. { (* <-- actually, should not split, but canceling mechanism doesn't support
-      "seps m /\ Rest" format yet, and it might actually not be needed at all *)
-      start_canceling.
-      canceling_step.
-
-      (* need to modify hyps while canceling: *)
-      unfold foo_pair in H2.
-      unfold with_mem in H2.
-      split_sep_step.
-      replace [Some m2; Some m3] with [Some m1; Some m4; Some m3] by admit.
-      (* not literally, but implied by definition of canceling *)
-      clear m2 D.
-
-      (* now we can continue canceling: *)
-      canceling_step.
-
-      assert_fails (eapply canceling_done_frame).
-      (* PROBLEM: Would like to instantiate ?R
-         with (fun m => Some m = mmap.dus (Some m1) (Some m4))
-         but m1 and m4 are not in ?R's scope!
-
-  H0 : m0 |= foo x p1
-  H1 : m1 |= foo y p2
-  H4 : m4 |= foo x p3
-  H3 : m3 |= R
-  ============================
-  canceling [?R] [Some m1; Some m3]     *)
-
-  Abort.
-
-  (* sample caller where argument is a field: *)
-  Goal forall (p1 p2 p3 x y: nat) (m: mem) (R: mem -> Prop),
-      sep (foo x p1) (sep (foo_pair y x p2 p3) R) m ->
-      wp (frobenicate p1 p3) m (fun m' =>
-        wp (frobenicate p3 p1) m' (fun m'' =>
-           sep (foo 0 p1) (sep (foo_pair y (x + x) p2 p3) R) m'')).
-  Proof.
-    intros.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
-
-    eapply frobenicate_ok_ramified.
     start_canceling.
     canceling_step.
     unfold foo_pair in H2.
@@ -507,22 +452,15 @@ Section HeapletwiseHypsTests.
     split_sep_step.
     replace [Some m2; Some m3] with [Some m1; Some m4; Some m3] by admit.
     (* not literally, but implied by definition of canceling *)
-    clear m2 D.
+    repeat merge_du_step. cbn [mmap.dus] in D. reify_disjointness_hyp.
     canceling_step.
-    (* here, there's no frame left that we would need to instantiate with
-       (fun m => Some m = mmap.dus (Some m1) (Some m4))
-       which would violate evar scopes because m1 and m4 were introduced after the frame *)
-    unfold wand.
-    unfold canceling.
-    unfold seps.
-    setoid_rewrite split_du.
-    unfold mmap.dus.
-    intros.
+    rewrite <- sep_assoc_eq.
+    eapply canceling_done_frame. (* no need to instantiate frame with m1 and m4 which would
+                                    be too new *)
+    repeat intro_step.
     repeat split_sep_step.
     repeat merge_du_step.
     reify_disjointness_hyp.
-    repeat clear_unused_mem_hyps_step.
-    clear m.
 
     (* rest should work as well *)
   Abort.
