@@ -297,11 +297,11 @@ Ltac start_canceling :=
   rewrite ?sep_assoc_eq;
   (* TODO support multiple D's and a way to pick the right one *)
   lazymatch goal with
-  | D: Some ?m = mmap.dus _ |- ?e ?m /\ ?Rest =>
-      let clauselist := reify_seps e in change (seps clauselist m /\ Rest);
+  | D: Some ?m = mmap.dus _ |- sep ?eh ?et ?m /\ ?Rest =>
+      let clauselist := reify_seps (sep eh et) in change (seps clauselist m /\ Rest);
       eapply (canceling_start_and D)
-  | D: Some ?m = mmap.dus _ |- ?e ?m =>
-      let clauselist := reify_seps e in change (seps clauselist m);
+  | D: Some ?m = mmap.dus _ |- sep ?eh ?et ?m =>
+      let clauselist := reify_seps (sep eh et) in change (seps clauselist m);
       eapply (canceling_start_noand D)
   end.
 
@@ -341,17 +341,45 @@ Ltac intro_step :=
   | H: with_mem _ _ |- sep _ _ _ -> _ =>
       let H' := fresh "H0" in
       intro H'; move H' before H
+  | H: with_mem ?mOld (?pred ?oldVal ?addr) |- ?pred ?newVal ?addr ?mNew -> _ =>
+      let tmp := fresh "tmp" in
+      intro tmp;
+      move tmp before H;
+      clear H mOld;
+      rename tmp into H;
+      change (with_mem mNew (pred newVal addr)) in H
+  end.
+
+Ltac underscorify_except_last_hyp e :=
+  lazymatch type of e with
+  | forall _ _, _ => underscorify_except_last_hyp open_constr:(e _)
+  | _ => e
+  end.
+
+(* Given a goal of the form `?calleePre m -> WP args post` and a callee spec,
+   unifies the last hyp of the spec with `?calleePre m` and applies the spec.
+   (If Coq's eapply/unify/rapply was more powerful, this tactic would not be needed) *)
+Ltac apply_funspec spec :=
+  let p := underscorify_except_last_hyp spec in
+  lazymatch type of p with
+  | ?A -> ?B =>
+      let m := lazymatch A with
+               | context[sep _ _ ?m] => m
+               end in
+      let A' := eval pattern m in A in
+      let p' := open_constr:(p: A' -> B) in
+      exact p'
   end.
 
 Section HeapletwiseHypsTests.
   Context {key value: Type} {mem: map.map key value} {mem_ok: map.ok mem}
           {key_eqb: key -> key -> bool} {key_eqb_spec: EqDecider key_eqb}.
 
-  Hypothesis foo: nat -> nat -> mem -> Prop.
+  Hypothesis scalar: nat -> nat -> mem -> Prop.
 
   Goal forall m v1 v2 v3 v4 (Rest: mem -> Prop),
-      (sep (foo v1 1) (sep (sep (foo v2 2) (foo v3 3)) (sep (foo v4 4) Rest))) m ->
-      exists R a4 a3, sep (sep (foo a4 4) (foo a3 3)) R m.
+      (sep (scalar v1 1) (sep (sep (scalar v2 2) (scalar v3 3)) (sep (scalar v4 4) Rest))) m ->
+      exists R a4 a3, sep (sep (scalar a4 4) (scalar a3 3)) R m.
   Proof.
     intros.
     repeat split_sep_step.
@@ -364,13 +392,13 @@ Section HeapletwiseHypsTests.
   m, m0, m6, m7, m4, m5 : mem
   v1, v2, v3, v4 : nat
   Rest : mem -> Prop
-  H0 : m0 |= foo v1 1
-  H3 : m6 |= foo v2 2
-  H5 : m7 |= foo v3 3
-  H1 : m4 |= foo v4 4
+  H0 : m0 |= scalar v1 1
+  H3 : m6 |= scalar v2 2
+  H5 : m7 |= scalar v3 3
+  H1 : m4 |= scalar v4 4
   H4 : m5 |= Rest
   ============================
-  canceling [foo ?a4 4; foo ?a3 3; ?R] [Some m0; Some m6; Some m7; Some m4; Some m5] True
+  canceling [scalar ?a4 4; scalar ?a3 3; ?R] [Some m0; Some m6; Some m7; Some m4; Some m5] True
 *)
 
     repeat canceling_step.
@@ -396,16 +424,16 @@ Section HeapletwiseHypsTests.
 
   Context (frobenicate: nat -> nat -> cmd).
   Context (frobenicate_ok: forall (a1 a2 v1 v2: nat) (m: mem) (R: mem -> Prop),
-              sep (foo v1 a1) (sep (foo v2 a2) R) m ->
+              sep (scalar v1 a1) (sep (scalar v2 a2) R) m ->
               wp (frobenicate a1 a2) m (fun m' =>
-                   sep (foo (v1 + v2) a1) (sep (foo (v1 - v2) a2) R) m')).
+                   sep (scalar (v1 + v2) a1) (sep (scalar (v1 - v2) a2) R) m')).
 
   (* sample caller: *)
   Goal forall (p1 p2 p3 x y: nat) (m: mem) (R: mem -> Prop),
-      sep (foo x p1) (sep (foo y p2) (sep (foo x p3) R)) m ->
+      sep (scalar x p1) (sep (scalar y p2) (sep (scalar x p3) R)) m ->
       wp (frobenicate p1 p3) m (fun m' =>
         wp (frobenicate p3 p1) m' (fun m'' =>
-           sep (foo 0 p1) (sep (foo y p2) (sep (foo (x + x) p3) R)) m'')).
+           sep (scalar 0 p1) (sep (scalar y p2) (sep (scalar (x + x) p3) R)) m'')).
   Proof.
     intros.
     repeat split_sep_step.
@@ -441,14 +469,14 @@ Section HeapletwiseHypsTests.
     eapply canceling_done_empty.
   Qed.
 
-  Let foo_pair(v1 v2 a1 a2: nat) := sep (foo v1 a1) (foo v2 a2).
+  Let scalar_pair(v1 v2 a1 a2: nat) := sep (scalar v1 a1) (scalar v2 a2).
 
   (* sample caller where argument is a field: *)
   Goal forall (p1 p2 p3 x y: nat) (m: mem) (R: mem -> Prop),
-      sep (foo x p1) (sep (foo_pair y x p2 p3) R) m ->
+      sep (scalar x p1) (sep (scalar_pair y x p2 p3) R) m ->
       wp (frobenicate p1 p3) m (fun m' =>
         wp (frobenicate p3 p1) m' (fun m'' =>
-           sep (foo 0 p1) (sep (foo_pair y (x + x) p2 p3) R) m'')).
+           sep (scalar 0 p1) (sep (scalar_pair y (x + x) p2 p3) R) m'')).
   Proof.
     intros.
     repeat split_sep_step.
@@ -458,7 +486,7 @@ Section HeapletwiseHypsTests.
     eapply sep_call. 1: eapply frobenicate_ok.
     start_canceling.
     canceling_step.
-    unfold foo_pair in H2.
+    unfold scalar_pair in H2.
     unfold with_mem in H2.
     split_sep_step.
     replace [Some m2; Some m3] with [Some m1; Some m4; Some m3] by admit.
@@ -475,5 +503,105 @@ Section HeapletwiseHypsTests.
 
     (* rest should work as well *)
   Abort.
+
+  Context (aliasing_add: nat -> nat -> nat -> cmd).
+  Hypothesis aliasing_add_ok: forall a b c va vb vc (R: mem -> Prop) m,
+      sep (scalar va a) anymem m /\
+      sep (scalar vb b) anymem m /\
+      sep (scalar vc c) R m ->
+      wp (aliasing_add c a b) m (fun m' =>
+        sep (scalar (va + vb) c) R m').
+
+  Goal forall x y z vx vy vz (R: mem -> Prop) m,
+      sep (scalar vx x) (sep (scalar vy y) (sep (scalar vz z) R)) m ->
+      wp (aliasing_add x y z) m (fun m =>
+        wp (aliasing_add x y y) m (fun m =>
+          wp (aliasing_add x x z) m (fun m =>
+            wp (aliasing_add x x x) m (fun m =>
+              sep (scalar (vy + vy + vz + (vy + vy + vz)) x)
+                (sep (scalar vy y) (sep (scalar vz z) R)) m)))).
+  Proof.
+    clear frobenicate frobenicate_ok scalar_pair.
+    intros.
+    repeat split_sep_step.
+    repeat merge_du_step.
+    reify_disjointness_hyp.
+
+    eapply sep_call. 1: apply_funspec aliasing_add_ok.
+    cbv beta.
+    eapply and_assoc.
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_anymem.
+    eapply and_assoc.
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_anymem.
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_frame.
+    repeat intro_step.
+    repeat split_sep_step.
+    repeat merge_du_step.
+    reify_disjointness_hyp.
+
+    eapply sep_call. 1: apply_funspec aliasing_add_ok.
+    cbv beta.
+    eapply and_assoc.
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_anymem.
+    eapply and_assoc.
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_anymem.
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_frame.
+    repeat intro_step.
+    repeat split_sep_step.
+    repeat merge_du_step.
+    reify_disjointness_hyp.
+
+    eapply sep_call. 1: apply_funspec aliasing_add_ok.
+    cbv beta.
+    eapply and_assoc.
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_anymem.
+    eapply and_assoc.
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_anymem.
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_frame.
+    repeat intro_step.
+    repeat split_sep_step.
+    repeat merge_du_step.
+    reify_disjointness_hyp.
+
+    eapply sep_call. 1: apply_funspec aliasing_add_ok.
+    cbv beta.
+    eapply and_assoc.
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_anymem.
+    eapply and_assoc.
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_anymem.
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_frame.
+    repeat intro_step.
+    repeat split_sep_step.
+    repeat merge_du_step.
+    reify_disjointness_hyp.
+
+    start_canceling.
+    repeat canceling_step.
+    eapply canceling_done_empty.
+  Qed.
 
 End HeapletwiseHypsTests.
