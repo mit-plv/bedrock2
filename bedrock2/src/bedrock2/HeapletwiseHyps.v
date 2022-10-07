@@ -379,15 +379,26 @@ Section HeapletwiseHypsTests.
 
   Context (cmd: Type).
   Context (wp: cmd -> mem -> (mem -> Prop) -> Prop).
-  Context (frobenicate: nat -> nat -> cmd).
+  Hypothesis wp_weaken: forall c m (P Q: mem -> Prop),
+      wp c m P ->
+      (forall m', P m' -> Q m') ->
+      wp c m Q.
 
-  (* sample callee: *)
-  (* TODO: state in more standard form without explicit P *)
-  Context (frobenicate_ok: forall (a1 a2 v1 v2: nat) (m: mem) (R: mem -> Prop)
-                                  (P: mem -> Prop),
-              sep (foo v1 a1) (sep (foo v2 a2) R) m /\
-              (forall m', sep (foo (v1 + v2) a1) (sep (foo (v1 - v2) a2) R) m' -> P m') ->
-              wp (frobenicate a1 a2) m P).
+  Lemma sep_call: forall funcall m (calleePre calleePost callerPost: mem -> Prop),
+      (calleePre m -> wp funcall m (fun m' => calleePost m')) ->
+      (calleePre m /\ forall m', calleePost m' -> callerPost m') ->
+      wp funcall m callerPost.
+  Proof.
+    intros. fwd. eapply wp_weaken.
+    - eapply H. assumption.
+    - cbv beta. assumption.
+  Qed.
+
+  Context (frobenicate: nat -> nat -> cmd).
+  Context (frobenicate_ok: forall (a1 a2 v1 v2: nat) (m: mem) (R: mem -> Prop),
+              sep (foo v1 a1) (sep (foo v2 a2) R) m ->
+              wp (frobenicate a1 a2) m (fun m' =>
+                   sep (foo (v1 + v2) a1) (sep (foo (v1 - v2) a2) R) m')).
 
   (* sample caller: *)
   Goal forall (p1 p2 p3 x y: nat) (m: mem) (R: mem -> Prop),
@@ -401,7 +412,7 @@ Section HeapletwiseHypsTests.
     repeat merge_du_step.
     reify_disjointness_hyp.
 
-    eapply frobenicate_ok.
+    eapply sep_call. 1: eapply frobenicate_ok.
     start_canceling.
     repeat canceling_step.
     rewrite <- sep_assoc_eq.
@@ -411,7 +422,7 @@ Section HeapletwiseHypsTests.
     repeat merge_du_step.
     reify_disjointness_hyp.
 
-    eapply frobenicate_ok.
+    eapply sep_call. 1: eapply frobenicate_ok.
     start_canceling.
     repeat canceling_step.
     rewrite <- sep_assoc_eq.
@@ -444,7 +455,7 @@ Section HeapletwiseHypsTests.
     repeat merge_du_step.
     reify_disjointness_hyp.
 
-    eapply frobenicate_ok.
+    eapply sep_call. 1: eapply frobenicate_ok.
     start_canceling.
     canceling_step.
     unfold foo_pair in H2.
