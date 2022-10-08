@@ -4,8 +4,6 @@ name: Coq
 
 on:
   push:
-    branches-ignore:
-    - egraphs
   pull_request:
 
 jobs:

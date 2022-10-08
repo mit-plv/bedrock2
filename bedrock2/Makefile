@@ -15,7 +15,7 @@ DEPS_DIR ?= ../deps
 
 # Note: make does not interpret "\n", and this is intended
 DEPFLAGS_COQUTIL_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n
-DEPFLAGS_NL=-Q $(DEPS_DIR)/sponge/plugin/theories egg\n-I $(DEPS_DIR)/sponge/plugin/src\n
+DEPFLAGS_NL=
 CURFLAGS_NL=-Q src/bedrock2 bedrock2\n-Q src/bedrock2Examples bedrock2Examples\n
 
 EXTERNAL_DEPENDENCIES?=
