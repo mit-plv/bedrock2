@@ -114,6 +114,12 @@ Section HeapletwiseHyps.
   Definition canceling(Ps: list (mem -> Prop))(oms: list (option mem))(Rest: Prop): Prop :=
     (forall m, Some m = mmap.dus oms -> seps Ps m) /\ Rest.
 
+  Lemma canceling_equiv_heaplets: forall Ps oms1 oms2 Rest,
+      mmap.dus oms1 = mmap.dus oms2 ->
+      canceling Ps oms1 Rest ->
+      canceling Ps oms2 Rest.
+  Proof. unfold canceling. intros. rewrite <- H. assumption. Qed.
+
   Lemma canceling_start_and: forall {Ps oms m Rest},
       Some m = mmap.dus oms ->
       canceling Ps oms Rest ->
@@ -255,7 +261,7 @@ Ltac split_sep_step :=
   let H1 := fresh "H0" in
   let H2 := fresh "H0" in
   lazymatch goal with
-  | H: sep ?P ?Q ?parent_m |- _ =>
+  | H: @sep _ _ ?mem ?P ?Q ?parent_m |- _ =>
       let unpackP := should_unpack P in
       let unpackQ := should_unpack Q in
       lazymatch constr:((unpackP, unpackQ)) with
@@ -268,19 +274,29 @@ Ltac split_sep_step :=
       move m1 before parent_m; (* before in direction of movement == below *)
       move m2 before m1;
       try replace_with_new_mem_hyp H1;
-      try replace_with_new_mem_hyp H2
-  end.
-
-Ltac merge_du_step :=
-  match reverse goal with
-  | E1: @Some ?Mem ?m = mmap.du ?o1 ?o2, E2: Some ?m' = ?rhs |- _ =>
-      lazymatch rhs with
-      | context C[Some m] =>
-          (* home-made rewrite *)
-          eapply (subst_mem_eq m m'
-                    (fun hole: option Mem => ltac:(let r := context C[hole] in exact r))
-                    E1) in E2;
-          clear m E1
+      try replace_with_new_mem_hyp H2;
+      let E := match goal with
+               | E: @Some (@map.rep _ _ mem) ?mBig = ?rhs |- _ =>
+                   lazymatch rhs with
+                   | context C[Some parent_m] => E
+                   end
+               | |- _ => constr:(tt) (* in first sep destruct step, there's no E yet *)
+               end in
+      (* re-match, but this time lazily, to preserve error messages: *)
+      lazymatch type of E with
+      | @Some (@map.rep _ _ mem) ?mBig = ?rhs =>
+          lazymatch rhs with
+          | context C[Some parent_m] =>
+              (* home-made rewrite in hyp because we already have context C *)
+              eapply (subst_mem_eq parent_m mBig
+                        (fun hole: option mem =>
+                           ltac:(let r := context C[hole] in exact r))
+                        D) in E;
+              (* (Some parent_m) might also appear in below the line (if canceling) *)
+              rewrite ?D;
+              clear parent_m D
+          end
+      | unit => idtac
       end
   end.
 
@@ -291,7 +307,30 @@ Ltac reify_disjointness_hyp :=
       let e := lazymatch type of D with Some m = ?e => e end in
       let memlist := reify_dus e in
       change (Some m = mmap.dus memlist) in D
+  | D: Some ?m = mmap.dus ?oms |- _ =>
+      lazymatch oms with
+      | context[mmap.du _ _] =>
+          cbn [mmap.dus] in D
+          (* and next iteration will actually reify it *)
+      end
   end.
+
+Ltac rereify_canceling_heaplets :=
+  lazymatch goal with
+  | |- canceling _ ?oms _ =>
+      lazymatch oms with
+      | context[mmap.du _ _] => eapply canceling_equiv_heaplets
+      end
+  end;
+  [ cbn [mmap.dus];
+    rewrite ?mmap.du_assoc;
+    lazymatch goal with
+    | |- mmap.dus ?e = ?rhs =>
+        is_evar e;
+        let r := reify_dus rhs in unify e r
+    end;
+    reflexivity
+  | ].
 
 Ltac start_canceling :=
   rewrite ?sep_assoc_eq;
@@ -325,6 +364,23 @@ Ltac canceling_step :=
       eapply (cancel_head n H); [ reflexivity | cbn_heaplets ]
   end.
 
+Ltac canceling_done :=
+  lazymatch goal with
+  | |- canceling [] [] True => eapply canceling_done_empty
+  | |- canceling [anymem] _ _ => eapply canceling_done_anymem
+  | |- canceling [?e] _ _ =>
+      is_evar e;
+      (* expose frame evar *)
+      repeat match goal with
+        | |- context[sep ?a (sep ?b ?c)] =>
+            has_evar c;
+            rewrite <- (sep_assoc_eq a b c)
+        end;
+      (* TODO: currently, callee post must have specific shape matching
+         canceling_done_frame's conclusion, can we generalize it? *)
+      eapply canceling_done_frame
+  end.
+
 Ltac clear_unused_mem_hyps_step :=
   match goal with
   | H: with_mem ?m _ |- _ => clear m H
@@ -349,6 +405,23 @@ Ltac intro_step :=
       rename tmp into H;
       change (with_mem mNew (pred newVal addr)) in H
   end.
+
+Ltac and_step :=
+  lazymatch goal with
+  | |- (fun _ => _ /\ _) _ /\ _ => cbv beta
+  | |- (_ /\ _) /\ _ => eapply and_assoc
+  end.
+
+Ltac heapletwise_step :=
+  first
+    [ intro_step
+    | split_sep_step
+    | reify_disjointness_hyp
+    | and_step
+    | start_canceling
+    | rereify_canceling_heaplets
+    | canceling_step
+    | canceling_done ].
 
 Ltac underscorify_except_last_hyp e :=
   lazymatch type of e with
@@ -382,9 +455,7 @@ Section HeapletwiseHypsTests.
       exists R a4 a3, sep (sep (scalar a4 4) (scalar a3 3)) R m.
   Proof.
     intros.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
+    repeat heapletwise_step.
     do 3 eexists.
     start_canceling.
 
@@ -436,37 +507,18 @@ Section HeapletwiseHypsTests.
            sep (scalar 0 p1) (sep (scalar y p2) (sep (scalar (x + x) p3) R)) m'')).
   Proof.
     intros.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
+    repeat heapletwise_step.
 
     eapply sep_call. 1: eapply frobenicate_ok.
-    start_canceling.
-    repeat canceling_step.
-    rewrite <- sep_assoc_eq.
-    eapply canceling_done_frame.
-    repeat intro_step.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
-
+    repeat heapletwise_step.
     eapply sep_call. 1: eapply frobenicate_ok.
-    start_canceling.
-    repeat canceling_step.
-    rewrite <- sep_assoc_eq.
-    eapply canceling_done_frame.
-    repeat intro_step.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
+    repeat heapletwise_step.
 
     rewrite PeanoNat.Nat.sub_diag in *.
     rewrite PeanoNat.Nat.add_0_l in *.
     rewrite PeanoNat.Nat.sub_0_l in *.
 
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_empty.
+    repeat heapletwise_step.
   Qed.
 
   Let scalar_pair(v1 v2 a1 a2: nat) := sep (scalar v1 a1) (scalar v2 a2).
@@ -479,29 +531,26 @@ Section HeapletwiseHypsTests.
            sep (scalar 0 p1) (sep (scalar_pair y (x + x) p2 p3) R) m'')).
   Proof.
     intros.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
-
+    repeat heapletwise_step.
     eapply sep_call. 1: eapply frobenicate_ok.
-    start_canceling.
-    canceling_step.
+    repeat heapletwise_step.
+
+    (* unfolding/splitting hyp during cancellation: *)
     unfold scalar_pair in H2.
     unfold with_mem in H2.
-    split_sep_step.
-    replace [Some m2; Some m3] with [Some m1; Some m4; Some m3] by admit.
-    (* not literally, but implied by definition of canceling *)
-    repeat merge_du_step. cbn [mmap.dus] in D. reify_disjointness_hyp.
-    canceling_step.
-    rewrite <- sep_assoc_eq.
-    eapply canceling_done_frame. (* no need to instantiate frame with m1 and m4 which would
-                                    be too new *)
-    repeat intro_step.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
 
-    (* rest should work as well *)
+    repeat heapletwise_step.
+
+    eapply sep_call. 1: eapply frobenicate_ok.
+    repeat heapletwise_step.
+
+    rewrite PeanoNat.Nat.sub_diag in *.
+    rewrite PeanoNat.Nat.add_0_l in *.
+    rewrite PeanoNat.Nat.sub_0_l in *.
+
+    repeat heapletwise_step.
+
+    (* TODO refold scalar_pair after its update, and/or unfold scalar_pair in goal *)
   Abort.
 
   Context (aliasing_add: nat -> nat -> nat -> cmd).
@@ -523,85 +572,15 @@ Section HeapletwiseHypsTests.
   Proof.
     clear frobenicate frobenicate_ok scalar_pair.
     intros.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
-
+    repeat heapletwise_step.
     eapply sep_call. 1: apply_funspec aliasing_add_ok.
-    cbv beta.
-    eapply and_assoc.
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_anymem.
-    eapply and_assoc.
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_anymem.
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_frame.
-    repeat intro_step.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
-
+    repeat heapletwise_step.
     eapply sep_call. 1: apply_funspec aliasing_add_ok.
-    cbv beta.
-    eapply and_assoc.
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_anymem.
-    eapply and_assoc.
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_anymem.
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_frame.
-    repeat intro_step.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
-
+    repeat heapletwise_step.
     eapply sep_call. 1: apply_funspec aliasing_add_ok.
-    cbv beta.
-    eapply and_assoc.
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_anymem.
-    eapply and_assoc.
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_anymem.
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_frame.
-    repeat intro_step.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
-
+    repeat heapletwise_step.
     eapply sep_call. 1: apply_funspec aliasing_add_ok.
-    cbv beta.
-    eapply and_assoc.
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_anymem.
-    eapply and_assoc.
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_anymem.
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_frame.
-    repeat intro_step.
-    repeat split_sep_step.
-    repeat merge_du_step.
-    reify_disjointness_hyp.
-
-    start_canceling.
-    repeat canceling_step.
-    eapply canceling_done_empty.
+    repeat heapletwise_step.
   Qed.
 
 End HeapletwiseHypsTests.
