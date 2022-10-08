@@ -12,9 +12,3 @@
 [submodule "deps/coq-record-update"]
 	path = deps/coq-record-update
 	url = https://github.com/tchajed/coq-record-update.git
-[submodule "deps/sponge"]
-	path = deps/sponge
-	url = git@github.com:threonorm/sponge.git
-[submodule "deps/egg"]
-	path = deps/egg
-	url = git@github.com:samuelgruetter/egg.git

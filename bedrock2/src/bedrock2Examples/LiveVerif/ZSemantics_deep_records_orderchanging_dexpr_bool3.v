@@ -26,8 +26,6 @@ Require Import bedrock2.TacticError.
 Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
-Require Import egg.Loader.
-Require Import bedrock2.egg_lemmas.
 Require Import bedrock2.find_hyp.
 
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
@@ -708,17 +706,6 @@ Section WithParams.
   Definition arguments_marker(args: list Z): list Z := args.
 
 End WithParams.
-
-Ltac pose_ZWord_lemmas :=
-  pose proof wwrap_small as z_wwrap_small.
-
-Ltac egg_simpl_or_prove :=
-  pose_Prop_lemmas;
-  pose_ZWord_lemmas;
-  pose_basic_Z_lemmas;
-  pose_common_list_lemmas;
-  pose_zlist_lemmas;
-  repeat egg_step 3.
 
 (*
 TODO: once we have C notations for function signatures,
@@ -1446,7 +1433,13 @@ Ltac prove_concrete_post_pre :=
            | |- sep _ _ _ => ecancel_assumption
            end.
 
-Ltac prove_concrete_post := prove_concrete_post_pre; egg_simpl_or_prove.
+Create HintDb prove_post.
+
+Ltac prove_concrete_post :=
+  prove_concrete_post_pre;
+  try congruence;
+  try ZWords;
+  intuition (congruence || ZWords || eauto with prove_post).
 
 Ltac ret retnames :=
   lazymatch goal with
@@ -3076,7 +3069,7 @@ Definition memset: {f: list string * list string * cmd &
 {                                                                        /**. .**/
   uintptr_t i = 0;                                                       /**.
 
-Replace bs with (List.repeatz b i ++ bs[i:]) in (find! @sep) by egg_simpl_or_prove.
+Replace bs with (List.repeatz b i ++ bs[i:]) in (find! @sep) by prove_concrete_post.
 loop invariant above i.
 indep (find! (n = ??)).
 assert (0 <= i <= n) by ZWords.
