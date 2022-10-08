@@ -1,6 +1,6 @@
 (* Notations to display a list of separation logic predicates as a bullet point list *)
 
-Require Import coqutil.Map.Interface coqutil.Word.Interface.
+Require Import coqutil.Map.Interface.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 
@@ -35,7 +35,7 @@ Notation "LHS '=========' 'seps' 'iff' '=========' RHS" := (iff1 (seps LHS) (sep
    format " '[' LHS '//' '========='  'seps'  'iff'  '=========' '//' RHS ']'").
 
 Section NotationTests.
-  Context {width : BinInt.Z} {word : Word.Interface.word width}
+  Context {word : Type}
           {mem : map.map word Byte.byte}.
 
   (* local, just for testing, real definition is elsewhere *)
