@@ -309,6 +309,8 @@ Module mmap. Section __.
     unfold du. intros. fwd. f_equal. eapply map.du_inj_r; eassumption.
   Qed.
 
+  Definition split(m m1 m2: map): Prop :=
+    Some m = du (Some m1) (Some m2).
 End __. End mmap.
 
 Notation "a \*/ b" := (mmap.du a b) (at level 34, left associativity).
