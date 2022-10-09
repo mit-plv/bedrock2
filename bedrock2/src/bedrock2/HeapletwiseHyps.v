@@ -6,7 +6,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.syntactic_unify.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.DisjointUnion.
-Require Import bedrock2.Map.SeparationLogic.
+Require Import bedrock2.Map.SeparationLogic. Local Open Scope sep_scope.
 
 (* to mark hypotheses about heaplets *)
 Definition with_mem{mem: Type}(m: mem)(P: mem -> Prop): Prop := P m.
@@ -148,6 +148,19 @@ Section HeapletwiseHyps.
     unfold canceling, anymem. simpl. intros. auto.
   Qed.
 
+  Lemma canceling_done_frame_generic: forall oms (P: (mem -> Prop) -> Prop),
+      (* This hypothesis holds for all (P F) of the form
+         "forall m', (calleePost * F) m' -> callerPost m'"
+         even if it has some additional foralls and existentials that can't
+         be abstracted easily, so we'll prove this hyp with a generic Ltac *)
+      P (fun mFrame : mem => P (eq mFrame)) ->
+      (* This hypothesis verifies the rest of the program: *)
+      (forall mFrame, Some mFrame = mmap.dus oms -> P (eq mFrame)) ->
+      canceling [fun mFrame => P (eq mFrame)] oms (P (fun mFrame => P (eq mFrame))).
+  Proof.
+    intros. split; assumption.
+  Qed.
+
   (* used to instantiate the frame with a magic wand
      (ramification trick to avoid evar scoping issues) *)
   Lemma canceling_done_frame_wand: forall oms (calleePost callerPost: mem -> Prop),
@@ -261,6 +274,7 @@ Ltac split_sep_step :=
   let H1 := fresh "H0" in
   let H2 := fresh "H0" in
   lazymatch goal with
+  | H: with_mem ?m1 (eq ?m2) |- _ => unfold with_mem in H; subst m1
   | H: @sep _ _ ?mem ?P ?Q ?parent_m |- _ =>
       let unpackP := should_unpack P in
       let unpackQ := should_unpack Q in
@@ -297,6 +311,29 @@ Ltac split_sep_step :=
               clear parent_m D
           end
       | unit => idtac
+      end
+  end.
+
+(* usually already done by split_sep_step, but when introducing hyps from the
+   frame after a call, separate merging might still be needed: *)
+Ltac merge_du_step :=
+  match reverse goal with
+  | E1: @Some ?Mem ?m = ?rhs1, E2: Some ?m' = ?rhs2 |- _ =>
+      lazymatch rhs1 with
+      | mmap.du _ _ => idtac
+      | mmap.dus _ => cbn [mmap.dus] in E1
+      end;
+      lazymatch rhs2 with
+      | mmap.du _ _ => idtac
+      | mmap.dus _ => cbn [mmap.dus] in E2
+      end;
+      lazymatch rhs2 with
+      | context C[Some m] =>
+          (* home-made rewrite *)
+          eapply (subst_mem_eq m m'
+                    (fun hole: option Mem => ltac:(let r := context C[hole] in exact r))
+                    E1) in E2;
+          clear m E1
       end
   end.
 
@@ -368,17 +405,11 @@ Ltac canceling_done :=
   lazymatch goal with
   | |- canceling [] [] True => eapply canceling_done_empty
   | |- canceling [anymem] _ _ => eapply canceling_done_anymem
-  | |- canceling [?e] _ _ =>
-      is_evar e;
-      (* expose frame evar *)
-      repeat match goal with
-        | |- context[sep ?a (sep ?b ?c)] =>
-            has_evar c;
-            rewrite <- (sep_assoc_eq a b c)
-        end;
-      (* TODO: currently, callee post must have specific shape matching
-         canceling_done_frame's conclusion, can we generalize it? *)
-      eapply canceling_done_frame
+  | |- @canceling ?K ?V ?M [?R] ?oms ?P =>
+      is_evar R;
+      let P := lazymatch eval pattern R in P with ?f _ => f end in
+      eapply (canceling_done_frame_generic oms P);
+      [ clear; unfold sep; intros; fwd; eauto 20 | ]
   end.
 
 Ltac clear_unused_mem_hyps_step :=
@@ -390,6 +421,7 @@ Ltac intro_step :=
   lazymatch goal with
   | m: ?mem, H: @with_mem ?mem _ _ |- forall (_: ?mem), _ =>
       let m' := fresh "m0" in intro m'; move m' before m
+  | |- Some _ = mmap.dus _ -> _ => cbn [mmap.dus]
   | HOld: Some ?mOld = mmap.dus _ |- Some _ = mmap.du _ _ -> _ =>
       let tmp := fresh "tmp" in
       intro tmp; move tmp before HOld; clear mOld HOld; rename tmp into HOld;
@@ -416,6 +448,7 @@ Ltac heapletwise_step :=
   first
     [ intro_step
     | split_sep_step
+    | merge_du_step
     | reify_disjointness_hyp
     | and_step
     | start_canceling
@@ -423,40 +456,61 @@ Ltac heapletwise_step :=
     | canceling_step
     | canceling_done ].
 
-Ltac underscorify_except_last_hyp e :=
-  lazymatch type of e with
-  | forall _ _, _ => underscorify_except_last_hyp open_constr:(e _)
-  | _ => e
-  end.
-
-(* Given a goal of the form `?calleePre m -> WP args post` and a callee spec,
-   unifies the last hyp of the spec with `?calleePre m` and applies the spec.
-   (If Coq's eapply/unify/rapply was more powerful, this tactic would not be needed) *)
-Ltac apply_funspec spec :=
-  let p := underscorify_except_last_hyp spec in
-  lazymatch type of p with
-  | ?A -> ?B =>
-      let m := lazymatch A with
-               | context[sep _ _ ?m] => m
-               end in
-      let A' := eval pattern m in A in
-      let p' := open_constr:(p: A' -> B) in
-      exact p'
-  end.
-
 Section HeapletwiseHypsTests.
   Context {key value: Type} {mem: map.map key value} {mem_ok: map.ok mem}
           {key_eqb: key -> key -> bool} {key_eqb_spec: EqDecider key_eqb}.
 
   Hypothesis scalar: nat -> nat -> mem -> Prop.
 
+  Context (fname: Type).
+  Context (cmd: Type) (trace: Type) (locals: Type).
+  Context (cmd_call: fname -> list nat -> cmd).
+  Context (wp: cmd -> trace -> mem -> locals -> (trace -> mem -> locals -> Prop) -> Prop).
+
+  Context (call: fname -> trace -> mem -> list nat ->
+                 (trace -> mem -> list nat -> Prop) -> Prop).
+
+  Context (update_locals: locals -> list nat -> locals -> Prop).
+
+  (* each program logic needs to prove & apply a lemma to shoehorn its function specs
+     from the definition-site format into the use-site format: *)
+  Hypothesis wp_call: forall f t m args l
+      (calleePre: Prop)
+      (calleePost: trace -> mem -> list nat -> Prop)
+      (callerPost: trace -> mem -> locals -> Prop),
+      (* definition-site format: *)
+      (calleePre -> call f t m args calleePost) ->
+      (* use-site format: *)
+      (calleePre /\
+         forall t' m' l' rets,
+           calleePost t' m' rets -> update_locals l rets l' -> callerPost t' m' l') ->
+      (* conclusion: *)
+      wp (cmd_call f args) t m l callerPost.
+
+  Context (frobnicate: fname).
+  Context (frobnicate_ok: forall (a1 a2 v1 v2: nat) t m (R: mem -> Prop),
+              sep (scalar v1 a1) (sep (scalar v2 a2) R) m ->
+              call frobnicate t m [a1; a2] (fun t' m' rets =>
+                   exists d, rets = [d] /\ d <= v1 /\
+                   sep (scalar (v1 + v2 + d) a1) (sep (scalar (v1 - v2 - d) a2) R) m')).
+
+  Ltac program_logic_step :=
+    match goal with
+    | |- forall _, _ => intro
+    | H: with_mem _ (scalar ?v ?a) |- canceling (cons (scalar ?v' ?a) _) _ _ =>
+        replace v with v' in H by Lia.lia
+    | |- _ => progress fwd
+    | |- wp (cmd_call frobnicate _) _ _ _ _ => eapply wp_call; [eapply frobnicate_ok | ]
+    | |- exists _, _ => eexists
+    end.
+
+  Ltac step := first [ heapletwise_step | program_logic_step ].
+
   Goal forall m v1 v2 v3 v4 (Rest: mem -> Prop),
       (sep (scalar v1 1) (sep (sep (scalar v2 2) (scalar v3 3)) (sep (scalar v4 4) Rest))) m ->
       exists R a4 a3, sep (sep (scalar a4 4) (scalar a3 3)) R m.
   Proof.
-    intros.
-    repeat heapletwise_step.
-    do 3 eexists.
+    step. step. step. step. step. step. step. step. step. step. step. step. step. step. step.
     start_canceling.
 
 (*
@@ -476,111 +530,80 @@ Section HeapletwiseHypsTests.
     eapply (canceling_done_anymem I).
   Qed.
 
-  Context (cmd: Type).
-  Context (wp: cmd -> mem -> (mem -> Prop) -> Prop).
-  Hypothesis wp_weaken: forall c m (P Q: mem -> Prop),
-      wp c m P ->
-      (forall m', P m' -> Q m') ->
-      wp c m Q.
-
-  Lemma sep_call: forall funcall m (calleePre calleePost callerPost: mem -> Prop),
-      (calleePre m -> wp funcall m (fun m' => calleePost m')) ->
-      (calleePre m /\ forall m', calleePost m' -> callerPost m') ->
-      wp funcall m callerPost.
-  Proof.
-    intros. fwd. eapply wp_weaken.
-    - eapply H. assumption.
-    - cbv beta. assumption.
-  Qed.
-
-  Context (frobenicate: nat -> nat -> cmd).
-  Context (frobenicate_ok: forall (a1 a2 v1 v2: nat) (m: mem) (R: mem -> Prop),
-              sep (scalar v1 a1) (sep (scalar v2 a2) R) m ->
-              wp (frobenicate a1 a2) m (fun m' =>
-                   sep (scalar (v1 + v2) a1) (sep (scalar (v1 - v2) a2) R) m')).
-
   (* sample caller: *)
-  Goal forall (p1 p2 p3 x y: nat) (m: mem) (R: mem -> Prop),
+  Goal forall (p1 p2 p3 x y: nat) t (m: mem) l (R: mem -> Prop),
       sep (scalar x p1) (sep (scalar y p2) (sep (scalar x p3) R)) m ->
-      wp (frobenicate p1 p3) m (fun m' =>
-        wp (frobenicate p3 p1) m' (fun m'' =>
-           sep (scalar 0 p1) (sep (scalar y p2) (sep (scalar (x + x) p3) R)) m'')).
+      wp (cmd_call frobnicate [p1; p3]) t m l (fun t m l =>
+        wp (cmd_call frobnicate [p3; p1]) t m l (fun t m l =>
+           exists res,
+           sep (scalar 0 p1) (sep (scalar y p2) (sep (scalar res p3) R)) m)).
   Proof.
-    intros.
-    repeat heapletwise_step.
-
-    eapply sep_call. 1: eapply frobenicate_ok.
-    repeat heapletwise_step.
-    eapply sep_call. 1: eapply frobenicate_ok.
-    repeat heapletwise_step.
-
-    rewrite PeanoNat.Nat.sub_diag in *.
-    rewrite PeanoNat.Nat.add_0_l in *.
-    rewrite PeanoNat.Nat.sub_0_l in *.
-
-    repeat heapletwise_step.
+    repeat step.
   Qed.
 
   Let scalar_pair(v1 v2 a1 a2: nat) := sep (scalar v1 a1) (scalar v2 a2).
 
   (* sample caller where argument is a field: *)
-  Goal forall (p1 p2 p3 x y: nat) (m: mem) (R: mem -> Prop),
+  Goal forall (p1 p2 p3 x y: nat) t m l (R: mem -> Prop),
       sep (scalar x p1) (sep (scalar_pair y x p2 p3) R) m ->
-      wp (frobenicate p1 p3) m (fun m' =>
-        wp (frobenicate p3 p1) m' (fun m'' =>
-           sep (scalar 0 p1) (sep (scalar_pair y (x + x) p2 p3) R) m'')).
+      wp (cmd_call frobnicate [p1; p3]) t m l (fun t m l =>
+        wp (cmd_call frobnicate [p3; p1]) t m l (fun t m l =>
+           exists res, (* TODO: scalar_pair in postcondition *)
+           sep (scalar 0 p1) (sep (scalar y p2) (sep (scalar res p3) R)) m)).
   Proof.
-    intros.
-    repeat heapletwise_step.
-    eapply sep_call. 1: eapply frobenicate_ok.
-    repeat heapletwise_step.
+    repeat step.
 
     (* unfolding/splitting hyp during cancellation: *)
     unfold scalar_pair in H2.
     unfold with_mem in H2.
 
-    repeat heapletwise_step.
+    step. step. step. step. step.
+    step. (* <- instantiates the frame ?R with a P that gets passed itself as an argument,
+                see canceling_done_frame_generic *)
 
-    eapply sep_call. 1: eapply frobenicate_ok.
-    repeat heapletwise_step.
+    repeat step.
+  Qed.
 
-    rewrite PeanoNat.Nat.sub_diag in *.
-    rewrite PeanoNat.Nat.add_0_l in *.
-    rewrite PeanoNat.Nat.sub_0_l in *.
+(* sample unfolded spec of indirect_add:
 
-    repeat heapletwise_step.
+    forall (a b c va : word) (Ra : mem -> Prop) (vb : word)
+         (Rb : mem -> Prop) (vc : word) (Rc : mem -> Prop) (t : trace)
+         (m : mem),
+       (scalar a va ⋆ Ra)%sep m /\ (scalar b vb ⋆ Rb)%sep m /\ (scalar c vc ⋆ Rc)%sep m ->
+       call functions "indirect_add" t m [a; b; c]
+         (fun (t' : trace) (m' : mem) (rets : list word) =>
+          rets = [] /\ t = t' /\ (scalar a (word.add vb vc) ⋆ Ra)%sep m')
 
-    (* TODO refold scalar_pair after its update, and/or unfold scalar_pair in goal *)
-  Abort.
+*)
 
-  Context (aliasing_add: nat -> nat -> nat -> cmd).
-  Hypothesis aliasing_add_ok: forall a b c va vb vc (R: mem -> Prop) m,
+  Context (aliasing_add: fname).
+  Hypothesis aliasing_add_ok: forall a b c va vb vc (R: mem -> Prop) t m,
       sep (scalar va a) anymem m /\
       sep (scalar vb b) anymem m /\
       sep (scalar vc c) R m ->
-      wp (aliasing_add c a b) m (fun m' =>
+      call aliasing_add t m [c; a; b] (fun t' m' rets =>
         sep (scalar (va + vb) c) R m').
 
-  Goal forall x y z vx vy vz (R: mem -> Prop) m,
+  Goal forall x y z vx vy vz (R: mem -> Prop) t m l,
       sep (scalar vx x) (sep (scalar vy y) (sep (scalar vz z) R)) m ->
-      wp (aliasing_add x y z) m (fun m =>
-        wp (aliasing_add x y y) m (fun m =>
-          wp (aliasing_add x x z) m (fun m =>
-            wp (aliasing_add x x x) m (fun m =>
+      wp (cmd_call aliasing_add [x; y; z]) t m l (fun t m l =>
+        wp (cmd_call aliasing_add [x; y; y]) t m l (fun t m l =>
+          wp (cmd_call aliasing_add [x; x; z]) t m l (fun t m l =>
+            wp (cmd_call aliasing_add [x; x; x]) t m l (fun t m l =>
               sep (scalar (vy + vy + vz + (vy + vy + vz)) x)
                 (sep (scalar vy y) (sep (scalar vz z) R)) m)))).
   Proof.
-    clear frobenicate frobenicate_ok scalar_pair.
+    clear frobnicate frobnicate_ok scalar_pair.
     intros.
-    repeat heapletwise_step.
-    eapply sep_call. 1: apply_funspec aliasing_add_ok.
-    repeat heapletwise_step.
-    eapply sep_call. 1: apply_funspec aliasing_add_ok.
-    repeat heapletwise_step.
-    eapply sep_call. 1: apply_funspec aliasing_add_ok.
-    repeat heapletwise_step.
-    eapply sep_call. 1: apply_funspec aliasing_add_ok.
-    repeat heapletwise_step.
+    repeat step.
+    eapply wp_call. 1: eapply aliasing_add_ok.
+    repeat step.
+    eapply wp_call. 1: eapply aliasing_add_ok.
+    repeat step.
+    eapply wp_call. 1: eapply aliasing_add_ok.
+    repeat step.
+    eapply wp_call. 1: eapply aliasing_add_ok.
+    repeat step.
   Qed.
 
 End HeapletwiseHypsTests.
