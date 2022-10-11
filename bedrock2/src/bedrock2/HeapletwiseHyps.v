@@ -405,11 +405,14 @@ Ltac canceling_done :=
   lazymatch goal with
   | |- canceling [] [] True => eapply canceling_done_empty
   | |- canceling [anymem] _ _ => eapply canceling_done_anymem
-  | |- @canceling ?K ?V ?M [?R] ?oms ?P =>
+  | |- canceling [?R] ?oms ?P =>
       is_evar R;
       let P := lazymatch eval pattern R in P with ?f _ => f end in
-      eapply (canceling_done_frame_generic oms P);
-      [ clear; unfold sep; intros; fwd; eauto 20 | ]
+      lazymatch P with
+      | (fun _ => ?doesNotDependOnArg) => eapply canceling_done_anymem
+      | _ => eapply (canceling_done_frame_generic oms P);
+             [ clear; unfold sep; intros; fwd; eauto 20 | ]
+      end
   end.
 
 Ltac clear_unused_mem_hyps_step :=
@@ -577,12 +580,12 @@ Section HeapletwiseHypsTests.
 *)
 
   Context (aliasing_add: fname).
-  Hypothesis aliasing_add_ok: forall a b c va vb vc (R: mem -> Prop) t m,
-      sep (scalar va a) anymem m /\
-      sep (scalar vb b) anymem m /\
-      sep (scalar vc c) R m ->
+  Hypothesis aliasing_add_ok: forall a b c va vb vc (Ra Rb Rc: mem -> Prop) t m,
+      sep (scalar va a) Ra m /\
+      sep (scalar vb b) Rb m /\
+      sep (scalar vc c) Rc m ->
       call aliasing_add t m [c; a; b] (fun t' m' rets =>
-        sep (scalar (va + vb) c) R m').
+        sep (scalar (va + vb) c) Rc m').
 
   Goal forall x y z vx vy vz (R: mem -> Prop) t m l,
       sep (scalar vx x) (sep (scalar vy y) (sep (scalar vz z) R)) m ->
