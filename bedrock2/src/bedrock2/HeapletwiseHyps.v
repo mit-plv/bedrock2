@@ -335,6 +335,8 @@ Ltac merge_du_step :=
                     E1) in E2;
           clear m E1
       end
+  | H: Some ?m1 = Some ?m2 |- _ =>
+      is_var m1; is_var m2; apply Option.eq_of_eq_Some in H; subst m1
   end.
 
 Ltac reify_disjointness_hyp :=
@@ -344,8 +346,9 @@ Ltac reify_disjointness_hyp :=
       let e := lazymatch type of D with Some m = ?e => e end in
       let memlist := reify_dus e in
       change (Some m = mmap.dus memlist) in D
+  | H: map.split _ _ _ |- _ => eapply split_du in H
   | D: Some ?m = mmap.dus ?oms |- _ =>
-      lazymatch oms with
+      lazymatch oms with (* <-- fails the whole tactic if no match!! *)
       | context[mmap.du _ _] =>
           cbn [mmap.dus] in D
           (* and next iteration will actually reify it *)
@@ -356,9 +359,11 @@ Ltac rereify_canceling_heaplets :=
   lazymatch goal with
   | |- canceling _ ?oms _ =>
       lazymatch oms with
-      | context[mmap.du _ _] => eapply canceling_equiv_heaplets
+      | context[mmap.du _ _] => idtac
+      | context[mmap.dus _] => idtac
       end
   end;
+  eapply canceling_equiv_heaplets;
   [ cbn [mmap.dus];
     rewrite ?mmap.du_assoc;
     lazymatch goal with
@@ -411,7 +416,7 @@ Ltac canceling_done :=
       lazymatch P with
       | (fun _ => ?doesNotDependOnArg) => eapply canceling_done_anymem
       | _ => eapply (canceling_done_frame_generic oms P);
-             [ clear; unfold sep; intros; fwd; eauto 20 | ]
+             [ solve [clear; unfold sep; intros; fwd; eauto 20] | ]
       end
   end.
 

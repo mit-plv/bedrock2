@@ -16,11 +16,14 @@ Definition indirect_add_twice : func :=
 
 Require Import bedrock2.WeakestPrecondition.
 Require Import coqutil.Word.Interface coqutil.Map.Interface bedrock2.Map.SeparationLogic.
+Require Import coqutil.Tactics.fwd.
+Require Import bedrock2.Map.DisjointUnion.
+Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 
 Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
-Require Import bedrock2.ProgramLogic bedrock2.Scalars.
+Require Import bedrock2.ProgramLogic bedrock2.Scalars bedrock2.Array.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
@@ -31,15 +34,35 @@ Section WithParameters.
   Local Notation "m =* P" := (P%sep m) (at level 70, only parsing). (* experiment *)
   Instance spec_of_indirect_add : spec_of "indirect_add" :=
     fnspec! "indirect_add" a b c / va Ra vb Rb vc Rc,
-    { requires t m := m =* scalar a va * Ra /\ m =* scalar b vb * Rb /\ m =* scalar c vc * Rc;
-      ensures t' m' := t=t' /\ m' =* scalar a (word.add vb vc) * Ra }.
+    { requires t m :=
+        m =* scalar b vb * Rb /\
+        m =* scalar c vc * Rc /\
+        (* Note: the surviving frame needs to go last for heapletwise callers to work! *)
+        m =* scalar a va * Ra;
+      ensures t' m' :=
+        t = t' /\
+        m' =* scalar a (word.add vb vc) * Ra }.
   Instance spec_of_indirect_add_twice : spec_of "indirect_add_twice" :=
     fnspec! "indirect_add_twice" a b / va vb R,
     { requires t m := m =* scalar a va * scalar b vb * R;
       ensures t' m' := t=t' /\ m' =* scalar a (f va vb) * scalar b vb * R }.
 
   Lemma indirect_add_ok : program_logic_goal_for_function! indirect_add.
-  Proof. repeat straightline; []; eauto. Qed.
+  Proof.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    straightline.
+    repeat straightline.
+    eauto.
+    Qed.
 
   Lemma indirect_add_twice_ok : program_logic_goal_for_function! indirect_add_twice.
   Proof.
@@ -124,7 +147,9 @@ H4 : (scalar a0 x2 ⋆ (scalar c vc ⋆ Rc))%sep m2
      *)
 
     straightline_call.
-    { split; [exact H1|split]; ecancel_assumption. }
+    { split; [ecancel_assumption|].
+      split; [ecancel_assumption|].
+      exact H1. }
 
     repeat straightline.
     (*
@@ -134,70 +159,134 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
        but we really wanted to carry over H2,H3, and H4 as well *)
   Abort.
 
+  Lemma anybytes4_to_scalar: forall a (m: mem),
+      anybytes a 4 m -> exists v, with_mem m (scalar a v).
+  Proof.
+    intros.
+    eapply anybytes_to_array_1 in H. fwd.
+    eapply scalar_of_bytes in Hp0. 2: rewrite Hp1; reflexivity.
+    eauto.
+  Qed.
+
+  Lemma scalar_to_anybytes4: forall a (m: mem) v,
+      scalar a v m -> anybytes a 4 m.
+  Proof.
+    intros. eapply scalar_to_anybytes in H. exact H.
+  Qed.
+
+  Lemma sep_call: forall funs f t m args
+      (calleePre: Prop)
+      (calleePost callerPost: trace -> mem -> list word -> Prop),
+      (* definition-site format: *)
+      (calleePre -> call funs f t m args calleePost) ->
+      (* use-site format: *)
+      (calleePre /\ forall t' m' rets, calleePost t' m' rets -> callerPost t' m' rets) ->
+      (* conclusion: *)
+      call funs f t m args callerPost.
+  Proof.
+    intros. destruct H0. eapply WeakestPreconditionProperties.Proper_call; eauto.
+  Qed.
+
+  Ltac straightline_stackalloc ::= fail.
+  Ltac straightline_stackdealloc ::= fail.
+
+  Ltac straightline_call ::=
+    lazymatch goal with
+    | |- WeakestPrecondition.call ?functions ?callee _ _ _ _ =>
+        let callee_spec := lazymatch constr:(_:spec_of callee) with ?s => s end in
+        let Hcall := lazymatch goal with H: callee_spec functions |- _ => H end in
+        eapply sep_call; [ eapply Hcall | ]
+    end.
+
+  Ltac step := first [ heapletwise_step | straightline ].
+
   (* trying again with non-separating conjunction *)
   Lemma indirect_add_three'_ok : program_logic_goal_for_function! indirect_add_three'.
   Proof.
-    do 12 straightline.
-
-    assert (
-      id (fun m => (scalar out vout ⋆ R)%sep m /\ (scalar a va ⋆ Ra)%sep m /\  (scalar b vb ⋆ Rb)%sep m /\  (scalar c vc ⋆ Rc)%sep m) m) by (cbv [id]; eauto); clear H1 H2 H3 H4.
-
-
-    repeat straightline.
-    (* note: we want to introduce only one variable for stack contents
-     * and use it in a all separation-logic facts in the symbolic state *)
-
-    repeat match goal with
-           | H : _ |- _ =>
-               seprewrite_in_by scalar_of_bytes H
-                 ltac:(Lia.lia);
-                 let x := fresh "x" in
-                 set (word.of_Z _) as x in H; clearbody x; move x at top
-           end.
-    clear dependent mStack.
-
-    cbv [id] in *.
-    (*
-H7 : (scalar a0 x
-      ⋆ (fun m : mem =>
-         (scalar out vout ⋆ R) m /\
-         (scalar a va ⋆ Ra) m /\ (scalar b vb ⋆ Rb) m /\ (scalar c vc ⋆ Rc) m))%sep
-       m
-     *)
-    pose proof H7 as H7'.
-    eapply sep_and_r_fwd in H7; destruct H7 as [? H7].
-    eapply sep_and_r_fwd in H7; destruct H7 as [? H7].
-    eapply sep_and_r_fwd in H7; destruct H7 as [? H7].
+    repeat step.
+    lazymatch goal with
+    | H: anybytes _ _ _ |- _ => eapply anybytes4_to_scalar in H; destruct H as (? & H)
+    end.
+(*
+mCombined is the full memory, and its m subpart can be split in 4 different ways:
+  H3 : m0 |= scalar out vout
+  H4 : m1 |= R
+  D : m is split into m0, m1
+  H5 : m2 |= scalar a va
+  H6 : m3 |= Ra
+  D0 : m is split into m2, m3
+  H2 : m6 |= scalar b vb
+  H9 : m7 |= Rb
+  D2 : m is split into m6, m7
+  H7 : m4 |= scalar c vc
+  H8 : m5 |= Rc
+  D1 : m is split into m4, m5
+  H1 : mStack |= scalar a0 x
+  H10 : mCombined is split into m, mStack
+*)
+    straightline_call.
+    repeat step.
+    (* hint on how to split memory could probably be automated: *)
+    match goal with
+    | HS: with_mem ?ma (scalar a _), D: Some _ = ?dulist |- _ =>
+        lazymatch dulist with
+        | context[ma] => idtac
+        end;
+        rewrite D
+    end.
+    repeat step.
+    (* hint on how to split memory could probably be automated: *)
+    match goal with
+    | HS: with_mem ?mb (scalar b _), D: Some _ = ?dulist |- _ =>
+        lazymatch dulist with
+        | context[mb] => idtac
+        end;
+        rewrite D
+    end.
+    repeat step.
+    clear x H1 H10 mCombined mStack. (* TODO better cleaning *)
 
     straightline_call.
-    { split; [>|split]; ecancel_assumption. }
+    repeat step.
+    (* hint on how to split memory could probably be automated: *)
+    match goal with
+    | HS: with_mem ?mc (scalar c _), D: Some _ = ?dulist |- _ =>
+        lazymatch dulist with
+        | context[mc] => idtac
+        end;
+        rewrite D
+    end.
+    repeat step.
+    (* hint on how to split memory could probably be automated: *)
+    match goal with
+    | HS: with_mem ?mout (scalar out _), D: Some _ = ?dulist |- _ =>
+        lazymatch dulist with
+        | context[mout] => idtac
+        end;
+        rewrite D
+    end.
+    repeat step.
 
-    repeat straightline.
-
-    (*
-H9 : (scalar a0 (word.add va vb)
-      ⋆ (fun m : mem =>
-         (scalar out vout ⋆ R) m /\
-         (scalar a va ⋆ Ra) m /\ (scalar b vb ⋆ Rb) m /\ (scalar c vc ⋆ Rc) m))%sep
-       a2
-     *)
-    rename m into m'.
-    rename a2 into m.
-    eapply sep_and_r_fwd in H9; destruct H9 as [? H9].
-    eapply sep_and_r_fwd in H9; destruct H9 as [? H9].
-    eapply sep_and_r_fwd in H9; destruct H9 as [? H9].
-
-    straightline_call.
-    { split; [>|split]; try ecancel_assumption. }
-    repeat straightline.
-
-    (* casting scalar to bytes for stack deallocation *)
-    cbv [scalar truncated_word truncated_scalar littleendian ptsto_bytes.ptsto_bytes] in *.
-    rewrite !HList.tuple.to_list_of_list.
-    repeat match goal with H : _ |- _ => rewrite !HList.tuple.to_list_of_list in H end.
-    set ((LittleEndianList.le_split (bytes_per access_size.word) (word.unsigned (word.add va vb)))) as stackbytes in *.
-    assert (Datatypes.length stackbytes = 4%nat) by exact eq_refl.
-    repeat straightline; eauto.
+    match goal with
+    | H: with_mem _ (scalar _ (word.add va vb)) |- _ => eapply scalar_to_anybytes4 in H
+    end.
+    (* TODO automate *)
+    rename D4 into Di.
+    unfold mmap.dus in Di.
+    rewrite (mmap.du_comm (Some m8) (Some m1)) in Di.
+    rewrite <- mmap.du_assoc in Di.
+    unfold mmap.du in Di at 1. fwd.
+    do 2 eexists.
+    split; [eassumption | ].
+    split. {
+      eapply split_du. simpl. eassumption.
+    }
+    repeat step.
+    split; [reflexivity | ].
+    split; [reflexivity | ].
+    symmetry in E.
+    unfold g.
+    repeat step.
   Qed.
 
   (* let's see how this would look like with an alternate spec of [indirect_add] *)
@@ -242,6 +331,7 @@ H9 : (scalar a0 (word.add va vb)
     clear dependent mStack.
 
     straightline_call.
+    (*
     { split; [exact H1|split]; ecancel_assumption. }
     repeat straightline.
     rename a2 into m.
@@ -267,6 +357,7 @@ H15 : forall (va0 : word) (Ra : mem -> Prop),
     specialize (H15 _ _ ltac:(ecancel_assumption)).
 
     (* unrelated: stack deallocation proof, would need scalar-to-bytes lemma *)
+    *)
   Abort.
 
 End WithParameters.
