@@ -28,7 +28,12 @@ Inductive bbinop: Type :=
 
 Section Syntax.
   Context {varname: Type}.
-
+  Context {consttype: Type}.
+  Inductive operand: Type :=
+  | Var (v: varname)
+  | Const (c: consttype)
+  .
+  
   Inductive bcond: Type :=
     | CondBinary (op: bbinop) (x y: varname)
     | CondNez (x: varname)
@@ -40,8 +45,8 @@ Section Syntax.
     | SInlinetable(sz: Syntax.access_size)(x: varname)(t: list Byte.byte)(i: varname)
     | SStackalloc(x : varname)(nbytes: Z)(body: stmt)
     | SLit(x: varname)(v: Z)
-    | SOp(x: varname)(op: bopname)(y z: varname)
-    | SSet(x y: varname)
+    | SOp(x: varname)(op: bopname)(y z: operand)
+    | SSet(x: varname) (y: varname)
     | SIf(cond: bcond)(bThen bElse: stmt)
     | SLoop(body1: stmt)(cond: bcond)(body2: stmt)
     | SSeq(s1 s2: stmt)
@@ -110,8 +115,21 @@ Section Syntax.
       | SInlinetable _ x _ i => and (P_vars x) (P_vars i)
       | SStackalloc x n body => and (P_vars x) (rec body)
       | SLit x _ => P_vars x
-      | SOp x _ y z => and (P_vars x) (and (P_vars y) (P_vars z))
-      | SSet x y => and (P_vars x) (P_vars y)
+      | SOp x _ y z => let yVars := match y with
+                                    | Var vy => Some (P_vars vy)
+                                    | Const cy => None
+                                    end
+                       in let zVars := match z with
+                                       | Var vz => Some (P_vars vz)
+                                       | Const cz => None
+                                       end
+                          in match yVars, zVars with
+                             | None, None => P_vars x
+                             | Some py, None => and (P_vars x) py
+                             | None, Some pz => and (P_vars x) pz
+                             | Some py, Some pz => and (P_vars x) (and py pz)
+                             end
+      | SSet x y =>  and (P_vars x) (P_vars y)
       | SIf c s1 s2 => and (P_bcond c) (and (rec s1) (rec s2))
       | SLoop s1 c s2 => and (P_bcond c) (and (rec s1) (rec s2))
       | SSeq s1 s2 => and (rec s1) (rec s2)
@@ -164,6 +182,7 @@ Section Syntax.
              | |- andb _ _ = true => apply Bool.andb_true_iff
              | |- _ /\ _ => split
              | |- (_ <=? _)%nat = true => eapply Nat.leb_le
+             | y: operand |- _ => destruct y
              end;
       eauto using List.Forall_to_forallb, List.forallb_to_Forall.
   Qed.
@@ -179,7 +198,11 @@ Section Syntax.
       (forall x, P x -> Q x) ->
       forall s, Forall_vars_stmt P s -> Forall_vars_stmt Q s.
   Proof.
-    induction s; intros; simpl in *; intuition eauto using ForallVars_bcond_impl, Forall_impl.
+    induction s; intros; simpl in *;
+      repeat match goal with
+          | y : operand |- _ => destruct y
+          | _ => intuition eauto using ForallVars_bcond_impl, Forall_impl
+          end.
   Qed.
 End Syntax.
 
@@ -192,7 +215,7 @@ Section FlatImp1.
   Context {varname: Type} {varname_eqb: varname -> varname -> bool}.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
   Context {mem: map.map word byte} {locals: map.map varname word}
-          {env: map.map String.string (list varname * list varname * stmt varname)}.
+          {env: map.map String.string (list varname * list varname * stmt varname word)}.
   Context {ext_spec: ExtSpec}.
 
   Section WithEnv.
@@ -210,13 +233,11 @@ Section FlatImp1.
 
     Definition eval_bcond(st: locals)(cond: bcond varname): option bool :=
       match cond with
-      | CondBinary op x y =>
-        match map.get st x, map.get st y with
-        | Some mx, Some my => Some (eval_bbinop op mx my)
-        | _, _ => None
-        end
-      | CondNez x =>
-        match map.get st x with
+      | CondBinary op x y => match map.get st x, map.get st y with
+                             | Some mx, Some my => Some (eval_bbinop op mx my)
+                             | _, _ => None
+                             end
+      | CondNez x =>   match  map.get st x  with
         | Some mx => Some (negb (word.eqb mx (word.of_Z 0)))
         | None => None
         end
@@ -224,7 +245,7 @@ Section FlatImp1.
   End WithEnv.
 
   (* returns the set of modified vars *)
-  Fixpoint modVars(s: stmt varname): set varname :=
+  Fixpoint modVars(s: stmt varname word): set varname :=
     match s with
     | SLoad sz x y o => singleton_set x
     | SStore sz x y o => empty_set
@@ -259,7 +280,7 @@ Module exec.
     Context {varname: Type} {varname_eqb: varname -> varname -> bool}.
     Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
     Context {mem: map.map word byte} {locals: map.map varname word}
-            {env: map.map String.string (list varname * list varname * stmt varname)}.
+            {env: map.map String.string (list varname * list varname * stmt varname word)}.
     Context {ext_spec: ExtSpec}.
     Context {varname_eq_spec: EqDecider varname_eqb}
             {word_ok: word.ok word}
@@ -275,9 +296,15 @@ Module exec.
     (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
     Implicit Types post : trace -> mem -> locals -> metrics -> Prop.
 
+    Definition lookup_operand (l: locals) (o: operand) :=
+      match o with
+      | Var vo => map.get l vo
+      | Const co => Some co
+      end.
+    
     (* alternative semantics which allow non-determinism *)
     Inductive exec:
-      stmt varname ->
+      stmt varname word ->
       trace -> mem -> locals -> metrics ->
       (trace -> mem -> locals -> metrics -> Prop)
     -> Prop :=
@@ -351,8 +378,8 @@ Module exec.
              (addMetricInstructions 8 mc)) ->
         exec (SLit x v) t m l mc post
     | op: forall t m l mc x op y y' z z' post,
-        map.get l y = Some y' ->
-        map.get l z = Some z' ->
+        lookup_operand l y = Some y' ->
+        lookup_operand l z = Some z' ->
         post t m (map.put l x (interp_binop op y' z'))
              (addMetricLoads 2
              (addMetricInstructions 2 mc)) ->
@@ -595,7 +622,7 @@ Section FlatImp2.
   Context {varname_eqb: varname -> varname -> bool}.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
   Context {mem: map.map word byte} {locals: map.map varname word}
-          {env: map.map String.string (list varname * list varname * stmt varname)}.
+          {env: map.map String.string (list varname * list varname * stmt varname word)}.
   Context {ext_spec: ExtSpec}.
   Context {varname_eq_spec: EqDecider varname_eqb}
           {word_ok: word.ok word}
@@ -605,7 +632,7 @@ Section FlatImp2.
           {ext_spec_ok: ext_spec.ok ext_spec}.
 
   Definition SimState: Type := trace * mem * locals * MetricLog.
-  Definition SimExec(e: env)(c: stmt varname): SimState -> (SimState -> Prop) -> Prop :=
+  Definition SimExec(e: env)(c: stmt varname word): SimState -> (SimState -> Prop) -> Prop :=
     fun '(t, m, l, mc) post =>
       exec e c t m l mc (fun t' m' l' mc' => post (t', m', l', mc')).
 
