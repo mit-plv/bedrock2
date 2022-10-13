@@ -208,84 +208,58 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
     | H: anybytes _ _ _ |- _ => eapply anybytes4_to_scalar in H; destruct H as (? & H)
     end.
 (*
-mCombined is the full memory, and its m subpart can be split in 4 different ways:
+mCombined is the full memory, and its first split into mStack and the rest is unique,
+but that rest can be split in 4 different ways:
   H3 : m0 |= scalar out vout
   H4 : m1 |= R
-  D : m is split into m0, m1
   H5 : m2 |= scalar a va
   H6 : m3 |= Ra
-  D0 : m is split into m2, m3
   H2 : m6 |= scalar b vb
   H9 : m7 |= Rb
-  D2 : m is split into m6, m7
   H7 : m4 |= scalar c vc
   H8 : m5 |= Rc
-  D1 : m is split into m4, m5
   H1 : mStack |= scalar a0 x
-  H10 : mCombined is split into m, mStack
+  H10 : (((m4 \*/ m5) \=/ (m6 \*/ m7)) \=/ ((m2 \*/ m3) \=/ (m0 \*/ m1))) \*/ mStack =
+        mCombined
 *)
     straightline_call.
-    repeat step.
-    (* hint on how to split memory could probably be automated: *)
-    match goal with
-    | HS: with_mem ?ma (scalar a _), D: Some _ = ?dulist |- _ =>
-        lazymatch dulist with
-        | context[ma] => idtac
-        end;
-        rewrite D
-    end.
-    repeat step.
-    (* hint on how to split memory could probably be automated: *)
-    match goal with
-    | HS: with_mem ?mb (scalar b _), D: Some _ = ?dulist |- _ =>
-        lazymatch dulist with
-        | context[mb] => idtac
-        end;
-        rewrite D
-    end.
-    repeat step.
-    clear x H1 H10 mCombined mStack. (* TODO better cleaning *)
 
+    step. step. step. (* <-- note how this canceling step discards all aliased memory:
+       ((((m4 \*/ m5) \=/ (m6 \*/ m7)) \=/ ((m2 \*/ m3) \=/ (m0 \*/ m1))) \*/ mStack)
+       becomes
+       (m3 \*/ mStack) *)
+    step. step. step. step. step. step. step. step. step. step. step.
+    repeat step.
     straightline_call.
     repeat step.
-    (* hint on how to split memory could probably be automated: *)
-    match goal with
-    | HS: with_mem ?mc (scalar c _), D: Some _ = ?dulist |- _ =>
-        lazymatch dulist with
-        | context[mc] => idtac
-        end;
-        rewrite D
-    end.
-    repeat step.
-    (* hint on how to split memory could probably be automated: *)
-    match goal with
-    | HS: with_mem ?mout (scalar out _), D: Some _ = ?dulist |- _ =>
-        lazymatch dulist with
-        | context[mout] => idtac
-        end;
-        rewrite D
-    end.
-    repeat step.
+
+    clear m0 H3.
 
     match goal with
     | H: with_mem _ (scalar _ (word.add va vb)) |- _ => eapply scalar_to_anybytes4 in H
     end.
     (* TODO automate *)
-    rename D4 into Di.
-    unfold mmap.dus in Di.
-    rewrite (mmap.du_comm (Some m8) (Some m1)) in Di.
+    rename D0 into Di.
+    rewrite (mmap.du_comm m9 m1) in Di.
     rewrite <- mmap.du_assoc in Di.
+    pose proof Di as Dii.
     unfold mmap.du in Di at 1. fwd.
     do 2 eexists.
     split; [eassumption | ].
     split. {
       eapply split_du. simpl. eassumption.
     }
+    clear Di.
     repeat step.
+    rewrite <- E in Dii. (* <-- TODO why not automatic? *)
+    clear Dii.
     split; [reflexivity | ].
     split; [reflexivity | ].
     symmetry in E.
     unfold g.
+    repeat step.
+    symmetry in E.
+    start_canceling.
     repeat step.
   Qed.
 

@@ -30,6 +30,7 @@ Section HeapletwiseHyps.
   Lemma proj_mem_hyp{P: mem -> Prop}(M: mem_hyp P): P (proj_mem M).
   Proof. destruct M as (m & HM). simpl. assumption. Qed.
 
+(*
   Lemma sep_to_unpacked_and_unpacked: forall (P Q: mem -> Prop) m,
       sep P Q m -> exists m1 m2, P m1 /\ Q m2 /\ Some m = mmap.du (Some m1) (Some m2).
   Proof.
@@ -133,8 +134,10 @@ Section HeapletwiseHyps.
     Some mBig = C (Some mSmall) ->
     Some mBig = C rhsSmall.
   Proof. intros. rewrite H in H0. exact H0. Qed.
+*)
 End HeapletwiseHyps.
 
+(*
 Ltac cbn_heaplets :=
   cbn [heaplets_hd heaplets_tl heaplets_firstn heaplets_skipn
        heaplets_app heaplets_nth heaplets_remove_nth].
@@ -337,3 +340,4 @@ Section HeapletwiseHypsTests.
 
 
 End HeapletwiseHypsTests.
+*)

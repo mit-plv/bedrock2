@@ -14,23 +14,20 @@ Definition with_mem{mem: Type}(m: mem)(P: mem -> Prop): Prop := P m.
 Declare Scope heapletwise_scope.
 Open Scope heapletwise_scope.
 
-Notation "m |= P" := (with_mem m P) (at level 72) : heapletwise_scope.
+Set Ltac Backtrace.
 
-Notation "m 'is' 'split' 'into' m1 , .. , m2 , m3" :=
-  (Some m = mmap.dus (cons (Some m1) .. (cons (Some m2) (cons (Some m3) nil)) ..))
-  (at level 10, m1 at level 0, m2 at level 0, m3 at level 0)
-: heapletwise_scope.
+Notation "m |= P" := (with_mem m P) (at level 72) : heapletwise_scope.
 
 Section HeapletwiseHyps.
   Context {key value: Type} {mem: map.map key value} {mem_ok: map.ok mem}
           {key_eqb: key -> key -> bool} {key_eqb_spec: EqDecider key_eqb}.
 
   Lemma split_du: forall (m m1 m2: mem),
-      map.split m m1 m2 <-> Some m = mmap.du (Some m1) (Some m2).
+      map.split m m1 m2 <-> mmap.du m1 m2 = m.
   Proof.
-    unfold map.split, mmap.du, map.du. split; intros; fwd.
+    unfold map.split, mmap.du, map.du, mmap.of_option. split; intros; fwd.
     - eapply map.disjointb_spec in Hp1. rewrite Hp1. reflexivity.
-    - eapply map.disjointb_spec in E. auto.
+    - eapply map.disjointb_spec in E0. auto.
   Qed.
 
   Definition anymem: mem -> Prop := fun _ => True.
@@ -40,7 +37,8 @@ Section HeapletwiseHyps.
 
   (* with mmap.du instead of map.split: *)
   Definition wand'(P1 P2: mem -> Prop): mem -> Prop :=
-    fun mdiff => forall m1 m2, Some m2 = mmap.du (Some mdiff) (Some m1) -> P1 m1 -> P2 m2.
+    fun mdiff => forall m1 m2, mmap.du (mmap.Def mdiff) (mmap.Def m1) = mmap.Def m2 ->
+                               P1 m1 -> P2 m2.
 
   Lemma wand_alt: wand = wand'.
   Proof.
@@ -88,7 +86,7 @@ Section HeapletwiseHyps.
 
   Lemma sep_to_with_mem_and_with_mem: forall (P Q: mem -> Prop) m,
       sep P Q m ->
-      exists m1 m2, with_mem m1 P /\ with_mem m2 Q /\ Some m = mmap.du (Some m1) (Some m2).
+      exists m1 m2, with_mem m1 P /\ with_mem m2 Q /\ m1 \*/ m2 = m.
   Proof.
     unfold with_mem, sep, map.split. intros. fwd. do 2 eexists. ssplit.
     1,2: eassumption.
@@ -98,75 +96,140 @@ Section HeapletwiseHyps.
 
   Lemma sep_to_with_mem_and_unpacked: forall (P Q: mem -> Prop) m,
       sep P Q m ->
-      exists m1 m2, with_mem m1 P /\ Q m2 /\ Some m = mmap.du (Some m1) (Some m2).
+      exists m1 m2, with_mem m1 P /\ Q m2 /\ m1 \*/ m2 = m.
   Proof. exact sep_to_with_mem_and_with_mem. Qed.
 
   Lemma sep_to_unpacked_and_with_mem: forall (P Q: mem -> Prop) m,
       sep P Q m ->
-      exists m1 m2, P m1 /\ with_mem m2 Q /\ Some m = mmap.du (Some m1) (Some m2).
+      exists m1 m2, P m1 /\ with_mem m2 Q /\ m1 \*/ m2 = m.
   Proof. exact sep_to_with_mem_and_with_mem. Qed.
 
   Lemma sep_to_unpacked_and_unpacked: forall (P Q: mem -> Prop) m,
       sep P Q m ->
-      exists m1 m2, P m1 /\ Q m2 /\ Some m = mmap.du (Some m1) (Some m2).
+      exists m1 m2, P m1 /\ Q m2 /\ m1 \*/ m2 = m.
   Proof. exact sep_to_with_mem_and_with_mem. Qed.
 
-  Definition canceling(Ps: list (mem -> Prop))(oms: list (option mem))(Rest: Prop): Prop :=
-    (forall m, Some m = mmap.dus oms -> seps Ps m) /\ Rest.
+  Lemma merge_two_split_equations: forall {m} {om1 om2: mmap mem},
+      om1 = mmap.Def m ->
+      om2 = mmap.Def m ->
+      om1 \=/ om2 = mmap.Def m.
+  Proof.
+    unfold mmap.equal_union. intros. subst. destr (mmap.map__eqb m m); congruence.
+  Qed.
 
-  Lemma canceling_equiv_heaplets: forall Ps oms1 oms2 Rest,
-      mmap.dus oms1 = mmap.dus oms2 ->
-      canceling Ps oms1 Rest ->
-      canceling Ps oms2 Rest.
-  Proof. unfold canceling. intros. rewrite <- H. assumption. Qed.
+  Inductive mem_tree :=
+  | NLeaf(m: mem)
+  | NDisjointUnion(t1 t2: mem_tree)
+  | NEqualUnion(t1 t2: mem_tree).
 
-  Lemma canceling_start_and: forall {Ps oms m Rest},
-      Some m = mmap.dus oms ->
-      canceling Ps oms Rest ->
+  Lemma invert_Some_eq_equal_union: forall m (om1 om2: mmap mem),
+      mmap.equal_union om1 om2 = mmap.Def m ->
+      om1 = mmap.Def m /\ om2 = mmap.Def m.
+  Proof.
+    unfold mmap.equal_union. intros. fwd. auto.
+  Qed.
+
+  Fixpoint interp_mem_tree(t: mem_tree): mmap mem :=
+    match t with
+    | NLeaf m => mmap.Def m
+    | NDisjointUnion t1 t2 => mmap.du (interp_mem_tree t1) (interp_mem_tree t2)
+    | NEqualUnion t1 t2 => mmap.equal_union (interp_mem_tree t1) (interp_mem_tree t2)
+    end.
+
+  Fixpoint mem_tree_lookup(t: mem_tree)(path: list bool): option mem :=
+    match t with
+    | NLeaf m =>
+        match path with
+        | nil => Some m
+        | cons _ _ => None
+        end
+    | NDisjointUnion t1 t2 | NEqualUnion t1 t2 =>
+        match path with
+        | nil => None
+        | cons b rest => mem_tree_lookup (if b then t2 else t1) rest
+        end
+    end.
+
+  (* outer option is for Success/Failure, inner option is for whether the result
+     is empty *)
+  Fixpoint mem_tree_remove(t: mem_tree)(path: list bool): option (option mem_tree) :=
+    match t with
+    | NLeaf m =>
+        match path with
+        | nil => Some None
+        | cons _ _ => None
+        end
+    | NDisjointUnion t1 t2 =>
+        match path with
+        | nil => None (* can only remove leaves *)
+        | cons b rest =>
+            if b then
+              match mem_tree_remove t2 rest with
+              | Some (Some t2') => Some (Some (NDisjointUnion t1 t2'))
+              | Some None => Some (Some t1)
+              | None => None
+              end
+            else
+              match mem_tree_remove t1 rest with
+              | Some (Some t1') => Some (Some (NDisjointUnion t1' t2))
+              | Some None => Some (Some t2)
+              | None => None
+              end
+        end
+    | NEqualUnion t1 t2 =>
+        match path with
+        | nil => None (* can only remove leaves *)
+        | cons b rest =>
+            (* Note: only one subtree survives (and gets one leaf removed),
+               while the other subtree is completely discarded *)
+            mem_tree_remove (if b then t2 else t1) rest
+        end
+    end.
+
+  Definition canceling(Ps: list (mem -> Prop))(om: mmap mem)(Rest: Prop): Prop :=
+    (forall m, om = mmap.Def m -> seps Ps m) /\ Rest.
+
+  Lemma canceling_start_and: forall {Ps m om Rest},
+      om = mmap.Def m ->
+      canceling Ps om Rest ->
       seps Ps m /\ Rest.
   Proof.
     unfold canceling. intros. fwd. eauto.
   Qed.
 
-  Lemma canceling_start_noand: forall {Ps oms m},
-      Some m = mmap.dus oms ->
-      canceling Ps oms True ->
+  Lemma canceling_start_noand: forall {Ps m om},
+      om = mmap.Def m ->
+      canceling Ps om True ->
       seps Ps m.
   Proof.
     unfold canceling. intros. fwd. eauto.
   Qed.
 
-  Lemma canceling_done_empty: canceling [] [] True.
-  Proof.
-    unfold canceling. simpl. intros. split. 2: constructor.
-    intros. inversion H. unfold emp. auto.
-  Qed.
-
-  Lemma canceling_done_anymem: forall {oms} {Rest: Prop},
-      Rest -> canceling [anymem] oms Rest.
+  Lemma canceling_done_anymem: forall {om} {Rest: Prop},
+      Rest -> canceling [anymem] om Rest.
   Proof.
     unfold canceling, anymem. simpl. intros. auto.
   Qed.
 
-  Lemma canceling_done_frame_generic: forall oms (P: (mem -> Prop) -> Prop),
+  Lemma canceling_done_frame_generic: forall om (P: (mem -> Prop) -> Prop),
       (* This hypothesis holds for all (P F) of the form
          "forall m', (calleePost * F) m' -> callerPost m'"
          even if it has some additional foralls and existentials that can't
          be abstracted easily, so we'll prove this hyp with a generic Ltac *)
       P (fun mFrame : mem => P (eq mFrame)) ->
       (* This hypothesis verifies the rest of the program: *)
-      (forall mFrame, Some mFrame = mmap.dus oms -> P (eq mFrame)) ->
-      canceling [fun mFrame => P (eq mFrame)] oms (P (fun mFrame => P (eq mFrame))).
+      (forall mFrame, om = mmap.Def mFrame -> P (eq mFrame)) ->
+      canceling [fun mFrame => P (eq mFrame)] om (P (fun mFrame => P (eq mFrame))).
   Proof.
     intros. split; assumption.
   Qed.
 
   (* used to instantiate the frame with a magic wand
      (ramification trick to avoid evar scoping issues) *)
-  Lemma canceling_done_frame_wand: forall oms (calleePost callerPost: mem -> Prop),
+  Lemma canceling_done_frame_wand: forall om (calleePost callerPost: mem -> Prop),
       let F := (wand calleePost callerPost) in
-      (forall mFrame, Some mFrame = mmap.dus oms -> F mFrame) ->
-      canceling [F] oms (forall m', sep calleePost F m' -> callerPost m').
+      (forall mFrame, om = mmap.Def mFrame -> F mFrame) ->
+      canceling [F] om (forall m', sep calleePost F m' -> callerPost m').
   Proof.
     unfold canceling. cbn [seps]. intros. split. 1: assumption.
     change (impl1 (sep calleePost (wand calleePost callerPost)) callerPost).
@@ -175,71 +238,112 @@ Section HeapletwiseHyps.
 
   (* used to instantiate the frame with an unfolded magic wand
      (ramification trick to avoid evar scoping issues) *)
-  Lemma canceling_done_frame: forall oms (calleePost callerPost: mem -> Prop),
+  Lemma canceling_done_frame: forall om (calleePost callerPost: mem -> Prop),
       (forall mNew mModified,
-          Some mNew = mmap.du (mmap.dus oms) (Some mModified) ->
+          mmap.du om (mmap.Def mModified) = mmap.Def mNew ->
           calleePost mModified -> callerPost mNew) ->
       (* F is (wand calleePost callerPost) unfolded *)
       let F := (fun mFrame => forall mModified mNew,
-                    Some mNew = mmap.du (Some mFrame) (Some mModified) ->
+                    mmap.du (mmap.Def mFrame) (mmap.Def mModified) = mmap.Def mNew ->
                     calleePost mModified -> callerPost mNew) in
-      canceling [F] oms (forall m', sep calleePost F m' -> callerPost m').
+      canceling [F] om (forall m', sep calleePost F m' -> callerPost m').
   Proof.
     intros.
-    pose proof (canceling_done_frame_wand oms calleePost callerPost) as P.
+    pose proof (canceling_done_frame_wand om calleePost callerPost) as P.
     rewrite wand_alt in P. eapply P. clear P F.
-    unfold wand'. intros. eapply H. 2: eassumption. rewrite <- H0. assumption.
+    unfold wand'. intros. eapply H. 2: eassumption. rewrite H0. assumption.
   Qed.
 
-  (* Separate definitions to avoid simplifying user-defined expressions that
-     use the definitions from the standard library: *)
-  Definition heaplets_hd: list (option mem) -> option mem :=
-    Eval cbv delta in (@List.hd (option mem) None).
-  Definition heaplets_tl: list (option mem) -> list (option mem) :=
-    Eval cbv delta in (@List.tl (option mem)).
-  Definition heaplets_firstn: nat -> list (option mem) -> list (option mem) :=
-    Eval cbv delta in (@List.firstn (option mem)).
-  Definition heaplets_skipn: nat -> list (option mem) -> list (option mem) :=
-    Eval cbv delta in (@List.skipn (option mem)).
-  Definition heaplets_app: list (option mem) -> list (option mem) -> list (option mem) :=
-    Eval cbv delta in (@List.app (option mem)).
-  Definition heaplets_nth(n: nat)(xs: list (option mem)): option mem :=
-    heaplets_hd (skipn n xs).
-  Definition heaplets_remove_nth(n: nat)(xs : list (option mem)): list (option mem) :=
-    heaplets_app (heaplets_firstn n xs) (heaplets_tl (heaplets_skipn n xs)).
-
-  Lemma cancel_head: forall n {P: mem -> Prop} {Ps oms mn Rest},
-      with_mem mn P ->
-      heaplets_nth n oms = Some mn ->
-      canceling Ps (heaplets_remove_nth n oms) Rest ->
-      canceling (P :: Ps) oms Rest.
+  Lemma consume_mem_tree: forall {hs path m mFull},
+      mem_tree_lookup hs path = Some m ->
+      mem_tree_remove hs path = Some None ->
+      interp_mem_tree hs = mmap.Def mFull ->
+      m = mFull.
   Proof.
-    unfold with_mem, canceling. intros. destruct H1 as [H1 HR]. split; [intros |exact HR].
+    induction hs; simpl; intros; fwd.
+    - reflexivity.
+    - destruct b; fwd; destruct o; simpl in *; fwd; discriminate.
+    - eapply invert_Some_eq_equal_union in H1. fwd.
+      destruct b; fwd; eauto.
+  Qed.
+
+  Lemma split_mem_tree: forall {hs hs' path m mFull},
+      mem_tree_lookup hs path = Some m ->
+      mem_tree_remove hs path = Some (Some hs') ->
+      interp_mem_tree hs = mmap.Def mFull ->
+      mmap.du (interp_mem_tree hs') (mmap.Def m) = mmap.Def mFull.
+  Proof.
+    induction hs; simpl; intros; fwd.
+    - discriminate.
+    - unfold mmap.du in H1. fwd.
+      destruct b; fwd.
+      + destruct o; fwd; simpl.
+        * specialize IHhs2 with (1 := H) (2 := E1) (3 := eq_refl).
+          rewrite mmap.du_assoc. rewrite IHhs2.
+          rewrite E. exact H1.
+        * pose proof (consume_mem_tree H E1 E0). subst.
+          rewrite E. exact H1.
+      + destruct o; fwd; simpl.
+        * specialize IHhs1 with (1 := H) (2 := E1) (3 := eq_refl).
+          rewrite mmap.du_assoc.
+          rewrite (mmap.du_comm (interp_mem_tree hs2) m).
+          rewrite <- mmap.du_assoc.
+          rewrite IHhs1.
+          rewrite E0. exact H1.
+        * epose proof (consume_mem_tree H E1 E). subst.
+          rewrite E0. rewrite mmap.du_comm. exact H1.
+    - eapply invert_Some_eq_equal_union in H1. fwd.
+      destruct b; fwd; eauto.
+  Qed.
+
+  Lemma cancel_head: forall hs path {P: mem -> Prop} {Ps hs' m Rest},
+      with_mem m P ->
+      mem_tree_lookup hs path = Some m ->
+      mem_tree_remove hs path = Some (Some hs') ->
+      canceling Ps (interp_mem_tree hs') Rest ->
+      canceling (P :: Ps) (interp_mem_tree hs) Rest.
+  Proof.
+    unfold with_mem, canceling. intros. destruct H2 as [H2 HR]. split; [intros |exact HR].
     eapply seps_cons.
-    pose proof dus_remove_nth as A. specialize A with (1 := H0) (2 := H2).
-    fwd.
-    specialize H1 with (1 := Ap0).
-    unfold sep. do 2 eexists. ssplit. 2,3: eassumption.
-    unfold map.split. unfold map.du in Ap1. fwd.
-    eapply map.disjointb_spec in E. auto.
+    pose proof (split_mem_tree H0 H1 H3) as A.
+    unfold mmap.du in A. fwd.
+    specialize (H2 _ eq_refl).
+    eapply split_du in A.
+    eapply sep_comm.
+    exists m1, m. auto.
+  Qed.
+
+  Lemma canceling_last_step: forall hs path {P m} {Rest: Prop},
+      with_mem m P ->
+      mem_tree_lookup hs path = Some m ->
+      mem_tree_remove hs path = Some None ->
+      Rest ->
+      canceling [P] (interp_mem_tree hs) Rest.
+  Proof.
+    unfold canceling. simpl. intros. split. 2: assumption.
+    intros.
+    pose proof (consume_mem_tree H0 H1 H3) as A. subst. assumption.
   Qed.
 
   (* for home-made rewrite *)
-  Lemma subst_mem_eq(mSmall mBig: mem){rhsSmall: option mem}(C: option mem -> option mem):
-    Some mSmall = rhsSmall ->
-    Some mBig = C (Some mSmall) ->
-    Some mBig = C rhsSmall.
-  Proof. intros. rewrite H in H0. exact H0. Qed.
+  Lemma subst_mem_eq(mSmall mBig: mem){omSmall: mmap mem}(C: mmap mem -> mmap mem):
+    omSmall = mmap.Def mSmall ->
+    C (mmap.Def mSmall) = mmap.Def mBig ->
+    C omSmall = mmap.Def mBig.
+  Proof. intros. rewrite <- H in H0. exact H0. Qed.
 End HeapletwiseHyps.
 
-Ltac cbn_heaplets :=
-  cbn [heaplets_hd heaplets_tl heaplets_firstn heaplets_skipn
-       heaplets_app heaplets_nth heaplets_remove_nth].
-
-Ltac reify_dus e :=
+Ltac reify_mem_tree e :=
   lazymatch e with
-  | mmap.du ?h ?t => let rt := reify_dus t in constr:(cons h rt)
-  | _ => constr:(cons e nil)
+  | mmap.du ?e1 ?e2 =>
+      let t1 := reify_mem_tree e1 in
+      let t2 := reify_mem_tree e2 in
+      constr:(NDisjointUnion t1 t2)
+  | mmap.equal_union ?e1 ?e2 =>
+      let t1 := reify_mem_tree e1 in
+      let t2 := reify_mem_tree e2 in
+      constr:(NEqualUnion t1 t2)
+  | mmap.Def ?m => constr:(NLeaf m)
   end.
 
 Ltac reify_seps e :=
@@ -247,7 +351,6 @@ Ltac reify_seps e :=
   | sep ?h ?t => let rt := reify_seps t in constr:(cons h rt)
   | _ => constr:(cons e nil)
   end.
-
 
 Ltac should_unpack P :=
  lazymatch P with
@@ -290,24 +393,24 @@ Ltac split_sep_step :=
       try replace_with_new_mem_hyp H1;
       try replace_with_new_mem_hyp H2;
       let E := match goal with
-               | E: @Some (@map.rep _ _ mem) ?mBig = ?rhs |- _ =>
-                   lazymatch rhs with
-                   | context C[Some parent_m] => E
+               | E: ?om = mmap.Def ?mBig |- _ =>
+                   lazymatch om with
+                   | context C[mmap.Def parent_m] => E
                    end
                | |- _ => constr:(tt) (* in first sep destruct step, there's no E yet *)
                end in
       (* re-match, but this time lazily, to preserve error messages: *)
       lazymatch type of E with
-      | @Some (@map.rep _ _ mem) ?mBig = ?rhs =>
-          lazymatch rhs with
-          | context C[Some parent_m] =>
+      | ?om = mmap.Def ?mBig =>
+          lazymatch om with
+          | context C[mmap.Def parent_m] =>
               (* home-made rewrite in hyp because we already have context C *)
               eapply (subst_mem_eq parent_m mBig
-                        (fun hole: option mem =>
+                        (fun hole: mmap mem =>
                            ltac:(let r := context C[hole] in exact r))
                         D) in E;
               (* (Some parent_m) might also appear in below the line (if canceling) *)
-              rewrite ?D;
+              rewrite <-?D;
               clear parent_m D
           end
       | unit => idtac
@@ -318,106 +421,94 @@ Ltac split_sep_step :=
    frame after a call, separate merging might still be needed: *)
 Ltac merge_du_step :=
   match reverse goal with
-  | E1: @Some ?Mem ?m = ?rhs1, E2: Some ?m' = ?rhs2 |- _ =>
-      lazymatch rhs1 with
+  | E1: ?om1 = mmap.Def ?m, E2: ?om2 = mmap.Def ?m |- _ =>
+      let D := fresh "D" in
+      pose proof (merge_two_split_equations E1 E2) as D;
+      clear E1 E2
+  | H: map.split _ _ _ |- _ => eapply split_du in H
+  | E1: ?om1 = @mmap.Def _ _ ?Mem ?m, E2: ?om2 = mmap.Def ?m' |- _ =>
+      lazymatch om1 with
       | mmap.du _ _ => idtac
-      | mmap.dus _ => cbn [mmap.dus] in E1
+      | mmap.equal_union _ _ => idtac
       end;
-      lazymatch rhs2 with
+      lazymatch om2 with
       | mmap.du _ _ => idtac
-      | mmap.dus _ => cbn [mmap.dus] in E2
+      | mmap.equal_union _ _ => idtac
       end;
-      lazymatch rhs2 with
-      | context C[Some m] =>
+      lazymatch om2 with
+      | context C[mmap.Def m] =>
           (* home-made rewrite *)
           eapply (subst_mem_eq m m'
-                    (fun hole: option Mem => ltac:(let r := context C[hole] in exact r))
+                    (fun hole: mmap Mem => ltac:(let r := context C[hole] in exact r))
                     E1) in E2;
           clear m E1
       end
-  | H: Some ?m1 = Some ?m2 |- _ =>
-      is_var m1; is_var m2; apply Option.eq_of_eq_Some in H; subst m1
+  | H: mmap.Def ?m1 = mmap.Def ?m2 |- _ =>
+      is_var m1; is_var m2; apply mmap.eq_of_eq_Def in H; subst m1
   end.
-
-Ltac reify_disjointness_hyp :=
-  lazymatch goal with
-  | D: Some ?m = mmap.du _ _ |- _ =>
-      rewrite ?mmap.du_assoc in D;
-      let e := lazymatch type of D with Some m = ?e => e end in
-      let memlist := reify_dus e in
-      change (Some m = mmap.dus memlist) in D
-  | H: map.split _ _ _ |- _ => eapply split_du in H
-  | D: Some ?m = mmap.dus ?oms |- _ =>
-      lazymatch oms with (* <-- fails the whole tactic if no match!! *)
-      | context[mmap.du _ _] =>
-          cbn [mmap.dus] in D
-          (* and next iteration will actually reify it *)
-      end
-  end.
-
-Ltac rereify_canceling_heaplets :=
-  lazymatch goal with
-  | |- canceling _ ?oms _ =>
-      lazymatch oms with
-      | context[mmap.du _ _] => idtac
-      | context[mmap.dus _] => idtac
-      end
-  end;
-  eapply canceling_equiv_heaplets;
-  [ cbn [mmap.dus];
-    rewrite ?mmap.du_assoc;
-    lazymatch goal with
-    | |- mmap.dus ?e = ?rhs =>
-        is_evar e;
-        let r := reify_dus rhs in unify e r
-    end;
-    reflexivity
-  | ].
 
 Ltac start_canceling :=
   rewrite ?sep_assoc_eq;
-  (* TODO support multiple D's and a way to pick the right one *)
   lazymatch goal with
-  | D: Some ?m = mmap.dus _ |- sep ?eh ?et ?m /\ ?Rest =>
+  | D: _ = mmap.Def ?m |- sep ?eh ?et ?m /\ ?Rest =>
       let clauselist := reify_seps (sep eh et) in change (seps clauselist m /\ Rest);
       eapply (canceling_start_and D)
-  | D: Some ?m = mmap.dus _ |- sep ?eh ?et ?m =>
+  | D: _ = mmap.Def ?m |- sep ?eh ?et ?m =>
       let clauselist := reify_seps (sep eh et) in change (seps clauselist m);
       eapply (canceling_start_noand D)
   end.
 
-Ltac index_of_Some m oms :=
-  lazymatch oms with
-  | cons (Some m) _ => constr:(O)
-  | cons _ ?tl => let n := index_of_Some m tl in constr:(S n)
+Ltac path_in_mem_tree om m :=
+  lazymatch om with
+  | NLeaf m => constr:(@nil bool)
+  | NLeaf _ => fail "could not find" m "in" om
+  | NDisjointUnion ?t1 ?t2 =>
+      match constr:(O) with
+      | _ => let p := path_in_mem_tree t1 m in constr:(cons false p)
+      | _ => let p := path_in_mem_tree t2 m in constr:(cons true p)
+      | _ => fail 1 "could not find" m "in" om
+      end
+  | NEqualUnion ?t1 ?t2 =>
+      match constr:(O) with
+      | _ => let p := path_in_mem_tree t1 m in constr:(cons false p)
+      | _ => let p := path_in_mem_tree t2 m in constr:(cons true p)
+      | _ => fail 1 "could not find" m "in" om
+      end
+  | _ => fail "Expected a mem_tree, but got" om
   end.
 
 Ltac canceling_step :=
   lazymatch goal with
-  | |- canceling (cons ?P ?Ps) ?oms ?Rest =>
-      tryif is_evar P then fail "reached frame (or other evar)" else
-      let H := match goal with
-               | H: with_mem _ ?P' |- _ =>
-                   let __ := match constr:(Set) with _ => syntactic_unify P' P end in H
-               end in
-      let m := lazymatch type of H with with_mem ?m _ => m end in
-      let oms := lazymatch goal with |- canceling _ ?oms _ => oms end in
-      let n := index_of_Some m oms in
-      eapply (cancel_head n H); [ reflexivity | cbn_heaplets ]
-  end.
-
-Ltac canceling_done :=
-  lazymatch goal with
-  | |- canceling [] [] True => eapply canceling_done_empty
   | |- canceling [anymem] _ _ => eapply canceling_done_anymem
-  | |- canceling [?R] ?oms ?P =>
-      is_evar R;
-      let P := lazymatch eval pattern R in P with ?f _ => f end in
-      lazymatch P with
-      | (fun _ => ?doesNotDependOnArg) => eapply canceling_done_anymem
-      | _ => eapply (canceling_done_frame_generic oms P);
-             [ solve [clear; unfold sep; intros; fwd; eauto 20] | ]
-      end
+  | |- canceling (cons ?R ?Ps) ?om ?P =>
+      tryif is_evar R then
+        lazymatch Ps with
+        | nil =>
+            let P := lazymatch eval pattern R in P with ?f _ => f end in
+            lazymatch P with
+            | (fun _ => ?doesNotDependOnArg) => eapply canceling_done_anymem
+            | _ => eapply (canceling_done_frame_generic om P);
+                   [ solve [clear; unfold sep; intros; fwd; eauto 20] | ]
+            end
+        | cons _ _ => fail 1000 "frame evar must be last in list"
+        end
+      else
+        let H := match goal with
+                 | H: with_mem _ ?P' |- _ =>
+                     let __ := match constr:(Set) with _ => syntactic_unify P' R end in H
+                 end in
+        let m := lazymatch type of H with with_mem ?m _ => m end in
+        let hs := reify_mem_tree om in
+        let p := path_in_mem_tree hs m in
+        let lem := lazymatch Ps with
+                   | nil => open_constr:(canceling_last_step hs p H)
+                   | cons _ _ => open_constr:(cancel_head hs p H)
+                   end in
+        eapply lem;
+        [ reflexivity
+        | reflexivity
+        | cbn [interp_mem_tree] ]
+  | |- True => constructor
   end.
 
 Ltac clear_unused_mem_hyps_step :=
@@ -425,18 +516,21 @@ Ltac clear_unused_mem_hyps_step :=
   | H: with_mem ?m _ |- _ => clear m H
   end.
 
+(* can be overridden using ::= *)
+Ltac same_pred_and_addr P Q := fail "TODO".
+
 Ltac intro_step :=
   lazymatch goal with
   | m: ?mem, H: @with_mem ?mem _ _ |- forall (_: ?mem), _ =>
       let m' := fresh "m0" in intro m'; move m' before m
-  | |- Some _ = mmap.dus _ -> _ => cbn [mmap.dus]
-  | HOld: Some ?mOld = mmap.dus _ |- Some _ = mmap.du _ _ -> _ =>
+  | HOld: _ = mmap.Def ?mOld |- _ = mmap.Def _ -> _ =>
       let tmp := fresh "tmp" in
-      intro tmp; move tmp before HOld; clear mOld HOld; rename tmp into HOld;
-      cbn [mmap.dus] in HOld
+      intro tmp; move tmp before HOld; clear mOld HOld; rename tmp into HOld
   | H: with_mem _ _ |- sep _ _ _ -> _ =>
       let H' := fresh "H0" in
       intro H'; move H' before H
+
+  (* TODO use same_pred_and_addr *)
   | H: with_mem ?mOld (?pred ?oldVal ?addr) |- ?pred ?newVal ?addr ?mNew -> _ =>
       let tmp := fresh "tmp" in
       intro tmp;
@@ -457,12 +551,9 @@ Ltac heapletwise_step :=
     [ intro_step
     | split_sep_step
     | merge_du_step
-    | reify_disjointness_hyp
     | and_step
     | start_canceling
-    | rereify_canceling_heaplets
-    | canceling_step
-    | canceling_done ].
+    | canceling_step ].
 
 Section HeapletwiseHypsTests.
   Context {key value: Type} {mem: map.map key value} {mem_ok: map.ok mem}
@@ -518,24 +609,27 @@ Section HeapletwiseHypsTests.
       (sep (scalar v1 1) (sep (sep (scalar v2 2) (scalar v3 3)) (sep (scalar v4 4) Rest))) m ->
       exists R a4 a3, sep (sep (scalar a4 4) (scalar a3 3)) R m.
   Proof.
-    step. step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+    step. step. step. step. step. step. step. step. step. step. step. step. step. step.
     start_canceling.
 
 (*
-  m, m0, m6, m7, m4, m5 : mem
+  m, m0, m3, m5, m1, m4 : mem
   v1, v2, v3, v4 : nat
   Rest : mem -> Prop
   H0 : m0 |= scalar v1 1
-  H3 : m6 |= scalar v2 2
-  H5 : m7 |= scalar v3 3
-  H1 : m4 |= scalar v4 4
-  H4 : m5 |= Rest
+  H3 : m3 |= scalar v2 2
+  H5 : m5 |= scalar v3 3
+  H1 : m1 |= scalar v4 4
+  H4 : m4 |= Rest
+  D : m0 \*/ ((m3 \*/ m5) \*/ (m1 \*/ m4)) = m
   ============================
-  canceling [scalar ?a4 4; scalar ?a3 3; ?R] [Some m0; Some m6; Some m7; Some m4; Some m5] True
+  canceling [scalar ?a4 4; scalar ?a3 3; ?R] (m0 \*/ ((m3 \*/ m5) \*/ (m1 \*/ m4))) True
 *)
 
-    repeat canceling_step.
-    eapply (canceling_done_anymem I).
+    canceling_step.
+    canceling_step.
+    canceling_step.
+    step.
   Qed.
 
   (* sample caller: *)
@@ -565,9 +659,11 @@ Section HeapletwiseHypsTests.
     unfold scalar_pair in H2.
     unfold with_mem in H2.
 
-    step. step. step. step. step.
+    step. (* <-- substitutes (mmap.Def m2) both in D and in the goal *)
+    step.
     step. (* <- instantiates the frame ?R with a P that gets passed itself as an argument,
                 see canceling_done_frame_generic *)
+    step. step. step. step. step. step. step. step. step. step. step. step. step.
 
     repeat step.
   Qed.
@@ -613,5 +709,4 @@ Section HeapletwiseHypsTests.
     eapply wp_call. 1: eapply aliasing_add_ok.
     repeat step.
   Qed.
-
 End HeapletwiseHypsTests.
