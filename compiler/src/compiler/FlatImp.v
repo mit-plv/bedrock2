@@ -28,10 +28,10 @@ Inductive bbinop: Type :=
 
 Section Syntax.
   Context {varname: Type}.
-  Context {consttype: Type}.
+  
   Inductive operand: Type :=
   | Var (v: varname)
-  | Const (c: consttype)
+  | Const (c: Z)
   .
   
   Inductive bcond: Type :=
@@ -215,7 +215,7 @@ Section FlatImp1.
   Context {varname: Type} {varname_eqb: varname -> varname -> bool}.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
   Context {mem: map.map word byte} {locals: map.map varname word}
-          {env: map.map String.string (list varname * list varname * stmt varname word)}.
+          {env: map.map String.string (list varname * list varname * stmt varname)}.
   Context {ext_spec: ExtSpec}.
 
   Section WithEnv.
@@ -245,7 +245,7 @@ Section FlatImp1.
   End WithEnv.
 
   (* returns the set of modified vars *)
-  Fixpoint modVars(s: stmt varname word): set varname :=
+  Fixpoint modVars(s: stmt varname): set varname :=
     match s with
     | SLoad sz x y o => singleton_set x
     | SStore sz x y o => empty_set
@@ -280,7 +280,7 @@ Module exec.
     Context {varname: Type} {varname_eqb: varname -> varname -> bool}.
     Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
     Context {mem: map.map word byte} {locals: map.map varname word}
-            {env: map.map String.string (list varname * list varname * stmt varname word)}.
+            {env: map.map String.string (list varname * list varname * stmt varname)}.
     Context {ext_spec: ExtSpec}.
     Context {varname_eq_spec: EqDecider varname_eqb}
             {word_ok: word.ok word}
@@ -299,12 +299,12 @@ Module exec.
     Definition lookup_operand (l: locals) (o: operand) :=
       match o with
       | Var vo => map.get l vo
-      | Const co => Some co
+      | Const co => Some (word.of_Z co)
       end.
     
     (* alternative semantics which allow non-determinism *)
     Inductive exec:
-      stmt varname word ->
+      stmt varname ->
       trace -> mem -> locals -> metrics ->
       (trace -> mem -> locals -> metrics -> Prop)
     -> Prop :=
@@ -622,7 +622,7 @@ Section FlatImp2.
   Context {varname_eqb: varname -> varname -> bool}.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width}.
   Context {mem: map.map word byte} {locals: map.map varname word}
-          {env: map.map String.string (list varname * list varname * stmt varname word)}.
+          {env: map.map String.string (list varname * list varname * stmt varname)}.
   Context {ext_spec: ExtSpec}.
   Context {varname_eq_spec: EqDecider varname_eqb}
           {word_ok: word.ok word}
@@ -632,7 +632,7 @@ Section FlatImp2.
           {ext_spec_ok: ext_spec.ok ext_spec}.
 
   Definition SimState: Type := trace * mem * locals * MetricLog.
-  Definition SimExec(e: env)(c: stmt varname word): SimState -> (SimState -> Prop) -> Prop :=
+  Definition SimExec(e: env)(c: stmt varname): SimState -> (SimState -> Prop) -> Prop :=
     fun '(t, m, l, mc) post =>
       exec e c t m l mc (fun t' m' l' mc' => post (t', m', l', mc')).
 
