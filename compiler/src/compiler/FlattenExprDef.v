@@ -22,7 +22,7 @@ Section FlattenExpr1.
           {locals: map.map String.string word}
           {mem: map.map word byte}
           {ExprImp_env: map.map string (list string * list string * cmd)}
-          {FlatImp_env: map.map string (list string * list string * FlatImp.stmt string word)}
+          {FlatImp_env: map.map string (list string * list string * FlatImp.stmt string)}
           {ext_spec: ExtSpec}
           {NGstate: Type}
           {NG: NameGen String.string NGstate}.
