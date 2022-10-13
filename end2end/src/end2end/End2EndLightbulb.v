@@ -289,9 +289,6 @@ Proof.
 
   - vm_compute. intros. discriminate.
   - vm_compute. intros. discriminate.
-  - (* Here we prove that all > 700 instructions are valid, using Ltac.
-       If this becomes a bottleneck, we'll have to do this in Gallina in the compile function. *)
-    unfold lightbulb_insts. repeat (apply Forall_cons || apply Forall_nil).
-    all: left; vm_compute; try intuition discriminate.
   - vm_compute. reflexivity.
-Time Qed. (* takes more than 25s *)
+  - vm_compute. reflexivity.
+Time Qed. (* takes ca 2s *)
