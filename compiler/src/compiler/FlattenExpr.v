@@ -26,7 +26,7 @@ Section FlattenExpr1.
           {locals: map.map String.string word}
           {mem: map.map word Byte.byte}
           {ExprImp_env: map.map string (list string * list string * cmd)}
-          {FlatImp_env: map.map string (list string * list string * FlatImp.stmt string)}
+          {FlatImp_env: map.map string (list string * list string * FlatImp.stmt string word)}
           {ext_spec: ExtSpec}
           {NGstate: Type}
           {NG: NameGen String.string NGstate}
@@ -50,7 +50,7 @@ Section FlattenExpr1.
     end.
 
   (* We don't currently track code size, we just validate at the end that no immediates grew too big *)
-  Lemma flattenExpr_size: forall e s oResVar resVar ngs ngs',
+  Lemma flattenExpr_size: forall e (s: FlatImp.stmt string word) oResVar resVar ngs ngs',
     flattenExpr ngs oResVar e = (s, resVar, ngs') ->
     0 <= FlatImp.stmt_size s <= ExprImp.expr_size e.
   Proof.
@@ -62,7 +62,7 @@ Section FlattenExpr1.
       try blia.
   Qed.
 
-  Lemma flattenExprAsBoolExpr_size: forall e s bcond ngs ngs',
+  Lemma flattenExprAsBoolExpr_size: forall e (s: FlatImp.stmt string word) bcond ngs ngs',
       flattenExprAsBoolExpr ngs e = (s, bcond, ngs') ->
       0 <= FlatImp.stmt_size s <= ExprImp.expr_size e.
   Proof.
@@ -74,7 +74,7 @@ Section FlattenExpr1.
       end; try blia.
   Qed.
 
-  Lemma flattenExprs_size: forall es s resVars ngs ngs',
+  Lemma flattenExprs_size: forall es (s: FlatImp.stmt string word) resVars ngs ngs',
     flattenExprs ngs es = (s, resVars, ngs') ->
     0 <= FlatImp.stmt_size s <= ExprImp.exprs_size es.
   Proof.
@@ -84,7 +84,7 @@ Section FlattenExpr1.
     blia.
   Qed.
 
-  Lemma flattenExprs_resVarsLength: forall es s resVars ngs ngs',
+  Lemma flattenExprs_resVarsLength: forall es (s: FlatImp.stmt string word) resVars ngs ngs',
     flattenExprs ngs es = (s, resVars, ngs') ->
     List.length resVars = List.length es.
   Proof.
@@ -94,7 +94,7 @@ Section FlattenExpr1.
     assumption.
   Qed.
 
-  Lemma flattenCall_size: forall f args binds ngs ngs' s,
+  Lemma flattenCall_size: forall f args binds ngs ngs' (s: FlatImp.stmt string word),
       flattenCall ngs binds f args = (s, ngs') ->
       0 < FlatImp.stmt_size s <= ExprImp.cmd_size (Syntax.cmd.call binds f args).
   Proof.
@@ -108,7 +108,7 @@ Section FlattenExpr1.
     blia.
   Qed.
 
-  Lemma flattenInteract_size: forall f args binds ngs ngs' s,
+  Lemma flattenInteract_size: forall f args binds ngs ngs' (s: FlatImp.stmt string word),
       flattenInteract ngs binds f args = (s, ngs') ->
       0 <= FlatImp.stmt_size s <= ExprImp.cmd_size (Syntax.cmd.interact binds f args).
   Proof.
@@ -120,7 +120,7 @@ Section FlattenExpr1.
     blia.
   Qed.
 
-  Lemma flattenStmt_size: forall s s' ngs ngs',
+  Lemma flattenStmt_size: forall s (s': FlatImp.stmt string word) ngs ngs',
     flattenStmt ngs s = (s', ngs') ->
     0 <= FlatImp.stmt_size s' <= ExprImp.cmd_size s.
   Proof.
@@ -138,7 +138,7 @@ Section FlattenExpr1.
     try blia.
   Qed.
 
-  Lemma flattenExpr_freshVarUsage: forall e ngs ngs' oResVar s v,
+  Lemma flattenExpr_freshVarUsage: forall e ngs ngs' oResVar (s: FlatImp.stmt string word) v,
     flattenExpr ngs oResVar e = (s, v, ngs') ->
     subset (allFreshVars ngs') (allFreshVars ngs).
   Proof.
@@ -153,7 +153,7 @@ Section FlattenExpr1.
     set_solver.
   Qed.
 
-  Lemma flattenExprs_freshVarUsage: forall es ngs ngs' s vs,
+  Lemma flattenExprs_freshVarUsage: forall es ngs ngs' (s: FlatImp.stmt string word) vs,
     flattenExprs ngs es = (s, vs, ngs') ->
     subset (allFreshVars ngs') (allFreshVars ngs).
   Proof.
@@ -163,7 +163,7 @@ Section FlattenExpr1.
     set_solver.
   Qed.
 
-  Lemma flattenExprAsBoolExpr_freshVarUsage: forall e ngs ngs' s v,
+  Lemma flattenExprAsBoolExpr_freshVarUsage: forall e ngs ngs' (s: FlatImp.stmt string word) v,
     flattenExprAsBoolExpr ngs e = (s, v, ngs') ->
     subset (allFreshVars ngs') (allFreshVars ngs).
   Proof.
@@ -179,14 +179,14 @@ Section FlattenExpr1.
     set_solver.
   Qed.
 
-  Lemma flattenExpr_uses_Some_resVar: forall e s resVar1 resVar2 ngs ngs',
+  Lemma flattenExpr_uses_Some_resVar: forall e (s: FlatImp.stmt string word) resVar1 resVar2 ngs ngs',
       flattenExpr ngs (Some resVar1) e = (s, resVar2, ngs') ->
       resVar2 = resVar1.
   Proof.
     induction e; intros; simpl in *; simp; reflexivity.
   Qed.
 
-  Lemma flattenExpr_valid_resVar: forall e s oResVar ngs ngs' resVar,
+  Lemma flattenExpr_valid_resVar: forall e (s: FlatImp.stmt string word) oResVar ngs ngs' resVar,
       flattenExpr ngs oResVar e = (s, resVar, ngs') ->
       disjoint (union (ExprImp.allVars_expr e) (of_option oResVar)) (allFreshVars ngs) ->
       ~ resVar \in (allFreshVars ngs').
@@ -200,7 +200,7 @@ Section FlattenExpr1.
       try solve [set_solver].
   Qed.
 
-  Lemma flattenExpr_modVars_spec: forall e oResVar s ngs ngs' resVar,
+  Lemma flattenExpr_modVars_spec: forall e oResVar (s: FlatImp.stmt string word) ngs ngs' resVar,
     flattenExpr ngs oResVar e = (s, resVar, ngs') ->
     subset (FlatImp.modVars s) (union (of_option oResVar )
                                       (diff (allFreshVars ngs) (allFreshVars ngs'))).
@@ -219,7 +219,7 @@ Section FlattenExpr1.
     try solve [set_solver].
   Qed.
 
-  Lemma flattenExprs_modVars_spec: forall es s ngs ngs' resVars,
+  Lemma flattenExprs_modVars_spec: forall es (s: FlatImp.stmt string word) ngs ngs' resVars,
     flattenExprs ngs es = (s, resVars, ngs') ->
     subset (FlatImp.modVars s) (diff (allFreshVars ngs) (allFreshVars ngs')).
   Proof.
@@ -240,7 +240,7 @@ Section FlattenExpr1.
     try solve [set_solver].
   Qed.
 
-  Lemma flattenExprAsBoolExpr_modVars_spec: forall e s ngs ngs' cond,
+  Lemma flattenExprAsBoolExpr_modVars_spec: forall e (s: FlatImp.stmt string word) ngs ngs' cond,
     flattenExprAsBoolExpr ngs e = (s, cond, ngs') ->
     subset (FlatImp.modVars s) (diff (allFreshVars ngs) (allFreshVars ngs')).
   Proof.
@@ -260,13 +260,13 @@ Section FlattenExpr1.
     try solve [set_solver].
   Qed.
 
-  Lemma flattenStmt_modVars_spec: forall s ngs ngs' s',
+  Lemma flattenStmt_modVars_spec: forall s ngs ngs' (s': FlatImp.stmt string word),
       flattenStmt ngs s = (s', ngs') ->
       subset (FlatImp.modVars s') (union (ExprImp.modVars s)
                                          (diff (allFreshVars ngs) (allFreshVars ngs'))).
   Abort. (* hopefully not needed *)
 
-  Lemma flattenCall_freshVarUsage: forall f args binds ngs1 ngs2 s,
+  Lemma flattenCall_freshVarUsage: forall f args binds ngs1 ngs2 (s: FlatImp.stmt string word),
       flattenCall ngs1 binds f args = (s, ngs2) ->
       subset (allFreshVars ngs2) (allFreshVars ngs1).
   Proof.
@@ -274,7 +274,7 @@ Section FlattenExpr1.
     intros. simp. eauto using flattenExprs_freshVarUsage.
   Qed.
 
-  Lemma flattenInteract_freshVarUsage: forall args s' binds a ngs1 ngs2,
+  Lemma flattenInteract_freshVarUsage: forall args (s': FlatImp.stmt string word) binds a ngs1 ngs2,
       flattenInteract ngs1 binds a args = (s', ngs2) ->
       subset (allFreshVars ngs2) (allFreshVars ngs1).
   Proof.
@@ -282,7 +282,7 @@ Section FlattenExpr1.
     intros. simp. eauto using flattenExprs_freshVarUsage.
   Qed.
 
-  Lemma flattenStmt_freshVarUsage: forall s s' ngs1 ngs2,
+  Lemma flattenStmt_freshVarUsage: forall s (s': FlatImp.stmt string word) ngs1 ngs2,
     flattenStmt ngs1 s = (s', ngs2) ->
     subset (allFreshVars ngs2) (allFreshVars ngs1).
   Proof.
