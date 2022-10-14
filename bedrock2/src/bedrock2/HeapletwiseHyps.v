@@ -359,15 +359,29 @@ Ltac should_unpack P :=
  | _ => constr:(false)
  end.
 
-Ltac replace_with_new_mem_hyp H :=
-  lazymatch type of H with
-  | with_mem _ (?pred ?val ?addr) =>
-      lazymatch reverse goal with
-      | HOld: with_mem ?mOld (pred ?newval addr) |- _ =>
-          move H before HOld;
-          clear mOld HOld;
-          rename H into HOld
+(* can be overridden using ::= *)
+Ltac same_pred_and_addr P Q :=
+  lazymatch P with
+  | ?pred ?val1 ?addr =>
+      lazymatch Q with
+      | pred ?val2 addr => idtac
       end
+  end.
+
+(* given a new mem hyp H, replace the corresponding old mem hyp by H *)
+Ltac replace_with_new_mem_hyp H :=
+  let Pnew := lazymatch type of H with
+              | with_mem _ ?Pnew => Pnew
+              | ?Pnew ?m => let __ := match constr:(O) with
+                                      | _ => change (with_mem m Pnew) in H
+                                      end in Pnew
+              end in
+  match reverse goal with
+  | HOld: with_mem ?mOld ?Pold |- _ =>
+      same_pred_and_addr Pnew Pold;
+      move H before HOld;
+      clear mOld HOld;
+      rename H into HOld
   end.
 
 Ltac split_sep_step :=
@@ -516,9 +530,6 @@ Ltac clear_unused_mem_hyps_step :=
   | H: with_mem ?m _ |- _ => clear m H
   end.
 
-(* can be overridden using ::= *)
-Ltac same_pred_and_addr P Q := fail "TODO".
-
 Ltac intro_step :=
   lazymatch goal with
   | m: ?mem, H: @with_mem ?mem _ _ |- forall (_: ?mem), _ =>
@@ -529,15 +540,9 @@ Ltac intro_step :=
   | H: with_mem _ _ |- sep _ _ _ -> _ =>
       let H' := fresh "H0" in
       intro H'; move H' before H
-
-  (* TODO use same_pred_and_addr *)
-  | H: with_mem ?mOld (?pred ?oldVal ?addr) |- ?pred ?newVal ?addr ?mNew -> _ =>
-      let tmp := fresh "tmp" in
-      intro tmp;
-      move tmp before H;
-      clear H mOld;
-      rename tmp into H;
-      change (with_mem mNew (pred newVal addr)) in H
+  | |- ?Q ?mNew -> _ =>
+      let H := fresh "H0" in
+      replace_with_new_mem_hyp H
   end.
 
 Ltac and_step :=

@@ -198,6 +198,14 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
         eapply sep_call; [ eapply Hcall | ]
     end.
 
+  Ltac same_pred_and_addr P Q ::=
+    lazymatch P with
+    | ?pred ?addr ?val1 =>
+        lazymatch Q with
+        | pred addr ?val2 => idtac
+        end
+    end.
+
   Ltac step := first [ heapletwise_step | straightline ].
 
   (* trying again with non-separating conjunction *)
@@ -232,9 +240,6 @@ but that rest can be split in 4 different ways:
     repeat step.
     straightline_call.
     repeat step.
-
-    clear m0 H3.
-
     match goal with
     | H: with_mem _ (scalar _ (word.add va vb)) |- _ => eapply scalar_to_anybytes4 in H
     end.
@@ -251,15 +256,9 @@ but that rest can be split in 4 different ways:
     }
     clear Di.
     repeat step.
-    rewrite <- E in Dii. (* <-- TODO why not automatic? *)
-    clear Dii.
     split; [reflexivity | ].
     split; [reflexivity | ].
-    symmetry in E.
     unfold g.
-    repeat step.
-    symmetry in E.
-    start_canceling.
     repeat step.
   Qed.
 
