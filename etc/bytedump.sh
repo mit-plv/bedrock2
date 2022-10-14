@@ -2,8 +2,10 @@
 set -eu
 ulimit -s unlimited || true
 
+if [ -z "${COQBIN+x}" ]; then COQBIN=""; fi
+
 {
-coqtop -q -quiet $COQFLAGS 2>/dev/null << EOF
+${COQBIN}coqtop -q -quiet $COQFLAGS 2>/dev/null << EOF
 Require bedrock2.PrintListByte ${1%.*}.
 Local Set Printing Width 2147483647.
 Goal True.
