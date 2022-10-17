@@ -2,8 +2,8 @@
 set -eu
 ulimit -s unlimited || true
 
-{
-coqtop -q -quiet $COQFLAGS 2>/dev/null << EOF
+{ {
+coqtop -q -quiet $COQFLAGS 2>&1 1>&3 << EOF
 Require bedrock2.PrintListByte ${1%.*}.
 Local Set Printing Width 2147483647.
 Goal True.
@@ -12,7 +12,14 @@ Goal True.
   PrintListByte.print_list_byte ${1}.
 Abort.
 EOF
-} | python3 -c '#  strip header, detect \r\n or \n, convert to \n, strip last \n
+} | python3 -c '# process stderr
+import sys
+stderr = sys.stdin.read()
+if "\nError:" in stderr:
+    print(stderr, file=sys.stderr)
+    sys.exit(1)
+'
+} 3>&1 | python3 -c '#  strip header, detect \r\n or \n, convert to \n, strip last \n
 import os, sys # os.linesep is \n on cygwin but \r\n in cygwin coq on github ci
 b = b""
 while not b.endswith(b"COQBUG(15373)"):
