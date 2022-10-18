@@ -58,7 +58,7 @@ Makefile.coq.ex: force _CoqProject
 	@echo "Generating Makefile.coq.ex"
 	@$(COQ_MAKEFILE) $(VS_EX) -arg -native-compiler -arg ondemand -o Makefile.coq.ex
 
-BYTEDUMP = COQFLAGS="$(ALLDEPFLAGS)" ../etc/bytedump.sh
+BYTEDUMP = COQFLAGS="$(ALLDEPFLAGS)" ../etc/bytedump.py
 
 special/BytedumpTest.out: special/BytedumpTest.golden.bin noex
 	$(BYTEDUMP) bedrock2.PrintListByte.allBytes > special/BytedumpTest.out.tmp

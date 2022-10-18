@@ -1,5 +1,5 @@
 Require Import Ltac2.Ltac2 Ltac2.Printf Coq.Strings.Ascii.
-(* Usage: see etc/bytedump.sh and its invocation in bedrock2/Makefile *)
+(* Usage: see etc/bytedump.py and its invocation in bedrock2/Makefile *)
 
 Module Unsafe.
   (* 0.6s/10k *)
