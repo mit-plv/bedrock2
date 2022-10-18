@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, sys, subprocess
+import os, sys, shlex, subprocess
 try:
     from resource import RLIMIT_STACK, RLIM_INFINITY, setrlimit
     # tuple is (soft, hard)
@@ -18,9 +18,8 @@ if len(sys.argv) < 2 or is_help:
 # use os.fsencode to get bytes, as per https://stackoverflow.com/a/27185688/377022
 constant = os.fsencode(sys.argv[1])
 modpath = b".".join(constant.split(b".")[:-1])
-COQFLAGS = os.getenv("COQFLAGS", default="")
-# we could parse COQFLAGS into a list ourselves, but we let the shell do it instead
-p = subprocess.run(f"coqtop -q -quiet {COQFLAGS}", shell=True, capture_output=True, input=b"""
+COQFLAGS = shlex.split(os.getenv("COQFLAGS", default=""))
+p = subprocess.run(["coqtop", "-q", "-quiet"] + COQFLAGS, capture_output=True, input=b"""
 Require bedrock2.PrintListByte """ + modpath + b""".
 Local Set Printing Width 2147483647.
 Goal True.
