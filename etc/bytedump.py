@@ -1,41 +1,60 @@
-#/bin/sh
-set -eu
-ulimit -s unlimited || true
+#!/usr/bin/env python3
+import os, sys, subprocess
+try:
+    from resource import RLIMIT_STACK, RLIM_INFINITY, setrlimit
+    # tuple is (soft, hard)
+    setrlimit(RLIMIT_STACK, (RLIM_INFINITY, RLIM_INFINITY))
+except Exception as e:
+    print(e, file=sys.stderr)
 
-{ {
-coqtop -q -quiet $COQFLAGS 2>&1 1>&3 << EOF
-Require bedrock2.PrintListByte ${1%.*}.
+is_help = any(f in sys.argv[1:] for f in ('-h', '--help'))
+CONSTANT_NAME = "GALLINA_CONSTANT"
+USAGE = f"Usage: COQFLAGS=... {sys.argv[0]} {CONSTANT_NAME}"
+if len(sys.argv) < 2 or is_help:
+    print(USAGE, file=sys.stderr)
+    sys.exit(0 if is_help else 1)
+
+# we need stdin to be bytes in order to get stdout as bytes
+# use os.fsencode to get bytes, as per https://stackoverflow.com/a/27185688/377022
+constant = os.fsencode(sys.argv[1])
+modpath = b".".join(constant.split(b".")[:-1])
+COQFLAGS = os.getenv("COQFLAGS", default="")
+# we could parse COQFLAGS into a list ourselves, but we let the shell do it instead
+p = subprocess.run(f"coqtop -q -quiet {COQFLAGS}", shell=True, capture_output=True, input=b"""
+Require bedrock2.PrintListByte """ + modpath + b""".
 Local Set Printing Width 2147483647.
 Goal True.
   idtac "COQBUG(15373)".
   idtac "LINE_SEPARATOR_LOTTERY".
-  PrintListByte.print_list_byte ${1}.
+  PrintListByte.print_list_byte """ + constant + b""".
 Abort.
-EOF
-} | python3 -c '# process stderr
-import sys
-stderr = sys.stdin.read()
-if "\nError:" in stderr:
-    print(stderr, file=sys.stderr)
-    sys.exit(1)
-'
-} 3>&1 | python3 -c '#  strip header, detect \r\n or \n, convert to \n, strip last \n
-import os, sys # os.linesep is \n on cygwin but \r\n in cygwin coq on github ci
+""")
+if p.returncode != 0 or b"\nError:" in p.stderr:
+    sys.stderr.buffer.write(p.stderr)
+    sys.exit(p.returncode or 5)
+
+#  strip header, detect \r\n or \n, convert to \n, strip last \n
+# os.linesep is \n on cygwin but \r\n in cygwin coq on github ci
+stdout = p.stdout
+def read(n):
+    global stdout
+    r, stdout = stdout[:n], stdout[n:]
+    return r
+
 b = b""
 while not b.endswith(b"COQBUG(15373)"):
-	r = os.read(0, 1); b += r
+	r = read(1); b += r
 	if not r: print(f"{b!r}"); sys.exit(4)
 b = b""
 while not b.endswith(b"LINE_SEPARATOR_LOTTERY"):
-	r = os.read(0, 1); b += r
+	r = read(1); b += r
 	if not r: print(f"{b!r}"); sys.exit(3)
 linesep = b[:-len(b"LINE_SEPARATOR_LOTTERY")]
-os.read(0, len(linesep)) == linesep or sys.exit(2)
+read(len(linesep)) == linesep or sys.exit(2)
 b = b""
 while True:
-	r = os.read(0, 1); b += r
+	r = read(1); b += r
 	if not r: sys.exit(not b.endswith(b"\n"))
 	if b == linesep: b = b"\n"
 	os.write(1, b[-2:-1])
 	b = b[-1:]
-'
