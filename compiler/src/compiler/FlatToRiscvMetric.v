@@ -133,9 +133,11 @@ Section Proofs.
       subst;
       simp.
 
+    Optimize Proof. Optimize Heap.
     - (* SInteract *)
       exfalso. eapply no_ext_calls. eassumption.
 
+    Optimize Proof. Optimize Heap.
     - (* SCall *)
       lazymatch goal with
       | A: map.get map.empty _ = Some _ |- _ =>
@@ -144,10 +146,12 @@ Section Proofs.
       end.
       discriminate.
 
+    Optimize Proof. Optimize Heap.
     - (* SLoad *)
       unfold Memory.load, Memory.load_Z in *. simp. subst_load_bytes_for_eq.
       run1det. run1done.
 
+    Optimize Proof. Optimize Heap.
     - (* SStore *)
       simpl_MetricRiscvMachine_get_set.
       assert ((eq m * (program iset initialL_pc [[compile_store iset sz a v o]] * Rexec * R))%sep
@@ -164,6 +168,7 @@ Section Proofs.
       eapply preserve_subset_of_xAddrs. 1: assumption.
       ecancel_assumption.
 
+    Optimize Proof. Optimize Heap.
     - (* SInlinetable *)
       run1det.
       assert (map.get (map.put l x (word.add initialL_pc (word.of_Z 4))) i = Some index). {
@@ -181,6 +186,7 @@ Section Proofs.
       rewrite !map.put_put_same in *.
       run1done.
 
+    Optimize Proof. Optimize Heap.
     - (* SStackalloc *)
       assert (valid_register RegisterNames.sp) by (cbv; auto).
       specialize (stackalloc_always_0 x n body t mSmall l mc post). move stackalloc_always_0 at bottom.
@@ -216,6 +222,7 @@ Section Proofs.
       }
       assumption.
 
+    Optimize Proof. Optimize Heap.
     - (* SLit *)
       RunInstruction.get_runsTo_valid_for_free.
       eapply compile_lit_correct_full.
@@ -233,6 +240,7 @@ Section Proofs.
         specialize Hlit with (1 := HeqfinalMetrics);
         solve_MetricLog.
 
+    Optimize Proof. Optimize Heap.
     - (* SOp *)
       match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o
@@ -253,9 +261,11 @@ Section Proofs.
       rewrite reduce_eq_to_sub_and_lt.
       symmetry. apply map.put_put_same.
 
+    Optimize Proof. Optimize Heap.
     - (* SSet *)
       run1det. run1done.
 
+    Optimize Proof. Optimize Heap.
     - (* SIf/Then *)
       (* execute branch instruction, which will not jump *)
       eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
@@ -270,6 +280,7 @@ Section Proofs.
           simpl. intros. destruct_RiscvMachine middle. simp. subst.
           run1det. run1done.
 
+    Optimize Proof. Optimize Heap.
     - (* SIf/Else *)
       (* execute branch instruction, which will jump over then-branch *)
       eapply runsTo_det_step_with_valid_machine; simpl in *; subst.
@@ -284,6 +295,7 @@ Section Proofs.
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
+    Optimize Proof. Optimize Heap.
     - (* SLoop/again *)
       on hyp[(stmt_not_too_big body1); runsTo] do (fun H => rename H into IH1).
       on hyp[(stmt_not_too_big body2); runsTo] do (fun H => rename H into IH2).
@@ -326,6 +338,7 @@ Section Proofs.
               simpl in *; simp; repeat (simulate'; simpl_bools; simpl); try reflexivity. }
           { intro V. simpl in *. run1done. }
 
+    Optimize Proof. Optimize Heap.
     - (* SSeq *)
       on hyp[(stmt_not_too_big s1); runsTo] do (fun H => rename H into IH1).
       on hyp[(stmt_not_too_big s2); runsTo] do (fun H => rename H into IH2).
@@ -337,6 +350,7 @@ Section Proofs.
             try eassumption; IH_sidecondition.
         * simpl. intros. destruct_RiscvMachine middle. simp. subst. run1done.
 
+    Optimize Proof. Optimize Heap.
     - (* SSkip *)
       run1done.
   Qed.

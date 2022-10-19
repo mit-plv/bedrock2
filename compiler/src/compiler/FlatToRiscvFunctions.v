@@ -847,6 +847,8 @@ Section Proofs.
     }
     destruct RC as (ret_count & RC & ? & ?). subst retnames binds_count.
 
+    Optimize Proof. Optimize Heap.
+
     (* increase sp *)
     eapply runsToStep. {
       eapply (run_Addi iset RegisterNames.sp RegisterNames.sp);
@@ -910,6 +912,8 @@ Section Proofs.
            | m: _ |- _ => destruct_RiscvMachine m
            end.
     subst.
+
+    Optimize Proof. Optimize Heap.
 
     (* computed postcondition satisfies required postcondition: *)
     apply runsToDone.
@@ -1186,6 +1190,8 @@ Section Proofs.
           try subst m
         end.
 
+    Optimize Proof. Optimize Heap.
+
     repeat match goal with
            | H: forall _ _, map.get ?m _ = Some _ -> valid_FlatImp_var _ |- _ =>
              change (map.forall_keys valid_FlatImp_var m) in H
@@ -1322,6 +1328,7 @@ Section Proofs.
       assert (List.length newvalues =
               List.length (list_diff Z.eqb (modVars_as_list Z.eqb body)
                                      (List.firstn ret_count (reg_class.all reg_class.arg)))). {
+
         symmetry. eapply map.getmany_of_list_length. eassumption.
       }
       subst FL new_ra.
@@ -1330,7 +1337,7 @@ Section Proofs.
       wcancel_assumption.
     + reflexivity.
     + assumption.
-  Qed.
+  Qed. Optimize Heap.
 
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
@@ -1356,6 +1363,7 @@ Section Proofs.
       all: fwd.
     (*about this many lines should have been enough to prove this...*)
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SInteract".
       eapply runsTo_weaken.
       + unfold compiles_FlatToRiscv_correctly in *.
@@ -1370,6 +1378,7 @@ Section Proofs.
         destruct_products. subst.
         do 4 eexists; ssplit; eauto.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SCall".
       (* We have one "map.get e fname" from exec, one from fits_stack, make them match *)
       unfold good_e_impl, valid_FlatImp_fun in *.
@@ -1570,6 +1579,8 @@ Section Proofs.
         subst. reflexivity.
       }
 
+      Optimize Proof. Optimize Heap.
+
       specialize IHexec with (1 := Ext).
       specialize IHexec with (1 := GE).
       specialize IHexec with (6 := Mo').
@@ -1617,6 +1628,7 @@ Section Proofs.
       split; eauto 8 with map_hints.
       MetricsToRiscv.solve_MetricLog.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SLoad".
       progress unfold Memory.load, Memory.load_Z in *. fwd.
       subst_load_bytes_for_eq.
@@ -1627,6 +1639,7 @@ Section Proofs.
       inline_iff1.
       run1det. clear H0. (* <-- TODO this should not be needed *) run1done.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SStore".
       inline_iff1.
       simpl_MetricRiscvMachine_get_set.
@@ -1648,6 +1661,7 @@ Section Proofs.
       eapply preserve_subset_of_xAddrs. 1: assumption.
       ecancel_assumption.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SInlinetable".
       inline_iff1.
       run1det.
@@ -1668,6 +1682,7 @@ Section Proofs.
       }
       run1done.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SStackalloc".
       rename H1 into IHexec.
       assert (x <> RegisterNames.sp). {
@@ -1821,6 +1836,7 @@ Section Proofs.
           simpl_addrs.
           reflexivity.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SLit".
       inline_iff1.
       get_runsTo_valid_for_free.
@@ -1843,6 +1859,7 @@ Section Proofs.
         specialize Hlit with (1 := HeqfinalMetrics);
         MetricsToRiscv.solve_MetricLog.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SOp".
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
@@ -1866,6 +1883,7 @@ Section Proofs.
       rewrite map.put_put_same.
       eauto with map_hints.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SSet".
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
@@ -1874,6 +1892,7 @@ Section Proofs.
       inline_iff1.
       run1det. run1done.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SIf/Then".
       (* execute branch instruction, which will not jump *)
       eapply runsToStep.
@@ -1898,6 +1917,7 @@ Section Proofs.
 
           intros. destruct_RiscvMachine mid. fwd. run1done.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SIf/Else".
       (* execute branch instruction, which will jump over then-branch *)
       eapply runsToStep.
@@ -1923,6 +1943,7 @@ Section Proofs.
              computed post satisfies required post *)
           simpl. intros. destruct_RiscvMachine middle. fwd. subst. run1done.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SLoop".
       match goal with
       | H: context[FlatImpConstraints.uses_standard_arg_regs body1 -> _] |- _ => rename H into IH1
@@ -2003,6 +2024,7 @@ Section Proofs.
           simpl_MetricRiscvMachine_get_set.
           intros. destruct_RiscvMachine mid. fwd. run1done.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SSeq".
       on hyp[(FlatImpConstraints.uses_standard_arg_regs s1); runsTo]
          do (fun H => rename H into IH1).
@@ -2028,6 +2050,7 @@ Section Proofs.
           all: try safe_sidecond.
         * simpl. intros. destruct_RiscvMachine middle. fwd. run1done.
 
+    Optimize Proof. Optimize Heap.
     - idtac "Case compile_stmt_correct/SSkip".
       run1done.
   Qed. (* <-- takes a while *)
