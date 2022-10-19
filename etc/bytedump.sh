@@ -12,7 +12,6 @@ Goal True.
   PrintListByte.print_list_byte ${1}.
 Abort.
 EOF
-
 } | python3 -c '#  strip header, detect \r\n or \n, convert to \n, strip last \n
 import os, sys # os.linesep is \n on cygwin but \r\n in cygwin coq on github ci
 b = b""

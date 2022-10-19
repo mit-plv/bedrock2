@@ -45,7 +45,7 @@ Section Syntax.
     | SStackalloc(x : varname)(nbytes: Z)(body: stmt)
     | SLit(x: varname)(v: Z)
     | SOp(x: varname)(op: bopname)(y z: operand)
-    | SSet(x: varname) (y: varname)
+    | SSet(x y: varname)
     | SIf(cond: bcond)(bThen bElse: stmt)
     | SLoop(body1: stmt)(cond: bcond)(body2: stmt)
     | SSeq(s1 s2: stmt)
@@ -96,6 +96,12 @@ Section Syntax.
         list_union veq (modVars_as_list veq s1) (modVars_as_list veq s2)
     | SCall binds _ _ | SInteract binds _ _ => list_union veq binds []
     end.
+  
+  Definition Op_vars_gen{R: Type}(T: R)(P_vars: varname -> R)(op: operand): R :=
+    match op with
+    | Var v => (P_vars v)
+    | Const _ => T
+    end.
 
   Definition ForallVars_bcond_gen{R: Type}(and: R -> R -> R)(P: varname -> R)(cond: bcond): R :=
     match cond with
@@ -114,21 +120,9 @@ Section Syntax.
       | SInlinetable _ x _ i => and (P_vars x) (P_vars i)
       | SStackalloc x n body => and (P_vars x) (rec body)
       | SLit x _ => P_vars x
-      | SOp x _ y z => let yVars := match y with
-                                    | Var vy => Some (P_vars vy)
-                                    | Const cy => None
-                                    end
-                       in let zVars := match z with
-                                       | Var vz => Some (P_vars vz)
-                                       | Const cz => None
-                                       end
-                          in match yVars, zVars with
-                             | None, None => P_vars x
-                             | Some py, None => and (P_vars x) py
-                             | None, Some pz => and (P_vars x) pz
-                             | Some py, Some pz => and (P_vars x) (and py pz)
-                             end
-      | SSet x y =>  and (P_vars x) (P_vars y)
+      | SOp x _ y z => let op_vars_fun := Op_vars_gen T P_vars in
+                       and (P_vars x) (and (op_vars_fun y) (op_vars_fun z))
+      | SSet x y => and (P_vars x) (P_vars y)
       | SIf c s1 s2 => and (P_bcond c) (and (rec s1) (rec s2))
       | SLoop s1 c s2 => and (P_bcond c) (and (rec s1) (rec s2))
       | SSeq s1 s2 => and (rec s1) (rec s2)
@@ -182,6 +176,7 @@ Section Syntax.
              | |- _ /\ _ => split
              | |- (_ <=? _)%nat = true => eapply Nat.leb_le
              | y: operand |- _ => destruct y
+             | |- Op_vars_gen _ _ _ => simpl      
              end;
       eauto using List.Forall_to_forallb, List.forallb_to_Forall.
   Qed.
@@ -200,6 +195,7 @@ Section Syntax.
     induction s; intros; simpl in *;
       repeat match goal with
           | y : operand |- _ => destruct y
+          | |- Op_vars_gen _ _ _ => simpl
           | _ => intuition eauto using ForallVars_bcond_impl, Forall_impl
           end.
   Qed.
@@ -232,11 +228,13 @@ Section FlatImp1.
 
     Definition eval_bcond(st: locals)(cond: bcond varname): option bool :=
       match cond with
-      | CondBinary op x y => match map.get st x, map.get st y with
-                             | Some mx, Some my => Some (eval_bbinop op mx my)
-                             | _, _ => None
-                             end
-      | CondNez x =>   match  map.get st x  with
+      | CondBinary op x y =>
+        match map.get st x, map.get st y with
+        | Some mx, Some my => Some (eval_bbinop op mx my)
+        | _, _ => None
+        end
+      | CondNez x =>
+        match  map.get st x  with
         | Some mx => Some (negb (word.eqb mx (word.of_Z 0)))
         | None => None
         end

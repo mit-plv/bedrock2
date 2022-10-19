@@ -37,7 +37,7 @@ Section FlattenExpr1.
      If resVar is not None, the result will be stored there, otherwise a fresh var will
      be generated for the result if needed (not needed if e already is a var) *)
   Fixpoint flattenExpr(ngs: NGstate)(resVar: option String.string)(e: Syntax.expr):
-    (FlatImp.stmt String.string  * String.string * NGstate) :=
+    (FlatImp.stmt String.string * String.string * NGstate) :=
     match e with
     | Syntax.expr.literal n =>
         let '(x, ngs') := genFresh_if_needed resVar ngs in
@@ -71,8 +71,8 @@ Section FlattenExpr1.
         (FlatImp.SSeq sc (FlatImp.SIf (FlatImp.CondNez rc) s1 s2), r, ngs'''')
     end.
 
-  Definition flattenExprAsBoolExpr(ngs: NGstate)(e: Syntax.expr) :
-    (FlatImp.stmt string  * FlatImp.bcond string * NGstate) :=
+  Definition flattenExprAsBoolExpr(ngs: NGstate)(e: Syntax.expr):
+    (FlatImp.stmt string * FlatImp.bcond string * NGstate) :=
     let default := (* always correct, but in some cases we can do better *)
         (let '(stmt, x, ngs') := flattenExpr ngs None e in (stmt, FlatImp.CondNez x, ngs')) in
     match e with
@@ -95,7 +95,7 @@ Section FlattenExpr1.
      returned list, but we want to first invoke flattenExpr and then flattenExprs, which is
      the opposite order of what fold_right does. *)
   Fixpoint flattenExprs(ngs1: NGstate)(es: list Syntax.expr):
-    (FlatImp.stmt string  * list String.string * NGstate) :=
+    (FlatImp.stmt string * list String.string * NGstate) :=
     match es with
     | nil => (FlatImp.SSkip, nil, ngs1)
     | e :: rest => let '(ci, vi, ngs2) := flattenExpr ngs1 None e in
@@ -117,7 +117,7 @@ Section FlattenExpr1.
     (FlatImp.SSeq compute_args (FlatImp.SInteract binds a argvars), ngs).
 
   (* returns statement and new fresh name generator state *)
-  Fixpoint flattenStmt(ngs: NGstate)(s: Syntax.cmd): (FlatImp.stmt string  * NGstate) :=
+  Fixpoint flattenStmt(ngs: NGstate)(s: Syntax.cmd): (FlatImp.stmt string * NGstate) :=
     match s with
     | Syntax.cmd.store sz a v =>
         let '(sa, ra, ngs') := flattenExpr ngs None a in
@@ -147,7 +147,7 @@ Section FlattenExpr1.
     | Syntax.cmd.interact binds a args => flattenInteract ngs binds a args
     end.
 
-  Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt string  :=
+  Definition ExprImp2FlatImp(s: Syntax.cmd): FlatImp.stmt string :=
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
 
   Definition flatten_function: list string * list string * Syntax.cmd ->
