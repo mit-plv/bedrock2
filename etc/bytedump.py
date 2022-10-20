@@ -13,7 +13,7 @@ if len(sys.argv) != 2 or sys.argv[1] in ("-h", "--help"):
 COQFLAGS = shlex.split(os.getenv("COQFLAGS", default=""))
 # we need stdin to be bytes in order to get stdout as bytes
 # use os.fsencode to get bytes, as per https://stackoverflow.com/a/27185688/377022
-p = subprocess.run(["coqtop", "-q", "-quiet"] + COQFLAGS, stdout=PIPE, stderr=PIPE, input=os.fsencode(f"""
+p = subprocess.run(["coqtop", "-q", "-quiet"] + COQFLAGS, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=os.fsencode(f"""
 Require bedrock2.PrintListByte {sys.argv[1].rsplit(".", 1)[0]}.
 Local Set Printing Width 2147483647.
 Goal True.
