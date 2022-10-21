@@ -8,6 +8,7 @@ Require Import Coq.Program.Tactics.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.autoforward.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require coqutil.Map.SortedListString. (* for function env, other maps are kept abstract *)
 Require Import coqutil.Map.Z_keyed_SortedListMap.
 Require Import coqutil.Tactics.fwd.
@@ -121,15 +122,32 @@ Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
 Require Import coqutil.Datatypes.PropSet.
 
 Module map.
-  Section WithMap.
-    Context {key value} {map : map.map key value}.
+  Section WithTwoMaps.
+    Context {K V1 V2: Type}{M1: map.map K V1}{M2: map.map K V2}
+            {keqb: K -> K -> bool} {keqb_spec: EqDecider keqb}
+            {OK1: map.ok M1} {OK2: map.ok M2}.
 
-    Definition domain(m: map): set key :=
-      fun k => map.get m k <> None.
+    Lemma get_map_values: forall (f: V1 -> V2) x (m: M1),
+        map.get (map.map_values f m) x = match map.get m x with
+                                         | Some w => Some (f w)
+                                         | None => None
+                                         end.
+    Proof.
+      unfold map.map_values. intros *.
+      eapply map.fold_spec.
+      - rewrite 2map.get_empty. reflexivity.
+      - intros. rewrite 2map.get_put_dec. destr (keqb k x). 1: reflexivity. assumption.
+    Qed.
 
-    Context {ok : map.ok map}.
-    Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
-  End WithMap.
+    Lemma map_values_put: forall (f: V1 -> V2) x (m: M1) v,
+        map.map_values f (map.put m x v) = map.put (map.map_values f m) x (f v).
+    Proof.
+      intros. eapply map.map_ext. intros. rewrite get_map_values.
+      rewrite 2map.get_put_dec. destr (keqb x k). 1: reflexivity.
+      symmetry. apply get_map_values.
+    Qed.
+
+  End WithTwoMaps.
 End map.
 
 Module Z.
@@ -183,9 +201,19 @@ Global Hint Opaque uint_t array_t : typeclass_instances.
 Definition RepPredicate(T mem: Type) := T -> Z -> mem -> Prop.
 Existing Class RepPredicate.
 
+(* Concrete instances because we want to compute on them.
+   Note, though that the wp judgments still use word maps to guarantee the bounds,
+   and ZLocals is only used to keep track of the Zs representing the words in the locals. *)
+#[export] Instance ZLocals: map.map string Z := SortedListString.map Z.
+#[export] Instance ZLocals_ok: map.ok ZLocals := SortedListString.ok _.
+
 Section WithParams.
-  Context {width: Z} {word: word.word width} {mem: map.map word byte}
-    {locals: map.map string word} {mem_ok: map.ok mem} {locals_ok: map.ok locals}.
+  Context {width: Z} {word: word.word width} {word_ok: word.ok word}
+    {mem: map.map word byte} {mem_ok: map.ok mem}.
+
+  (* concrete instances because we want to compute on them *)
+  Instance locals: map.map string word := SortedListString.map word.
+  Instance locals_ok: map.ok locals := SortedListString.ok _.
 
   Definition wwrap{BW: Bitwidth width}(z: Z): Z := z mod 2 ^ width.
   Definition wswrap{BW: Bitwidth width}(z: Z): Z := (z + 2 ^ (width - 1)) - 2 ^ (width - 1).
@@ -245,24 +273,33 @@ Section WithParams.
 
   Import bedrock2.Syntax.
 
-  Axiom dexpr: mem -> locals -> expr -> Z -> Prop.
+  Definition unsigned_locals: locals -> ZLocals := map.map_values word.unsigned.
+
+  Inductive dexpr(m: mem)(l: locals)(e: expr)(v: Z): Prop :=
+    mk_dexpr(w: word)(_: WeakestPrecondition.dexpr m l e w)(_: word.unsigned w = v).
 
   (* TODO later also add dexpr_signed, whose range is -2^(width-1)..2^(width-1),
-     (so we'll have 3 interpreters: to unsigned, to signed, and to Prop,
+     (so we'll have 3 interpreters: to unsigned, to signed, and to bool,
      and each operator decides which one to invoke for its arguments *)
 
-  Axiom dexpr_range: forall m l e v, dexpr m l e v -> 0 <= v < 2 ^ width.
+  Lemma dexpr_range: forall m l e v, dexpr m l e v -> 0 <= v < 2 ^ width.
+  Proof. intros. inversion H. subst v. eapply word.unsigned_range. Qed.
 
   Lemma dexpr_literal: forall (m: mem) (l: locals) z,
       0 <= z < 2 ^ width ->
       dexpr m l (expr.literal z) z.
-  Admitted.
-
-  Lemma dexpr_var: forall m l x (v: word),
-      map.get l x = Some v ->
-      dexpr m l (expr.var x) (word.unsigned v).
   Proof.
-  Admitted.
+    intros. econstructor. 1: reflexivity. apply word.unsigned_of_Z_nowrap. assumption.
+  Qed.
+
+  Lemma dexpr_var: forall m (l: locals) (zl: ZLocals) x (v: Z),
+      unsigned_locals l = zl ->
+      map.get zl x = Some v ->
+      dexpr m l (expr.var x) v.
+  Proof.
+    unfold unsigned_locals. intros. subst zl. rewrite map.get_map_values in H0. fwd.
+    econstructor. 1: hnf; eauto. reflexivity.
+  Qed.
 
   (* Note: no conversion needed between v in sepclause and v returned,
      and sep already enforces bounds on v *)
@@ -309,12 +346,13 @@ Section WithParams.
     intros. constructor. 2: assumption. eapply dexpr_literal. assumption.
   Qed.
 
-  Lemma dexpr1_var: forall m l x (v: word) (P: Prop),
-      map.get l x = Some v ->
+  Lemma dexpr1_var: forall m (l: locals) (zl: ZLocals) x v (P: Prop),
+      unsigned_locals l = zl ->
+      map.get zl x = Some v ->
       P ->
-      dexpr1 m l (expr.var x) (word.unsigned v) P.
+      dexpr1 m l (expr.var x) v P.
   Proof.
-    intros. constructor. 2: assumption. eapply dexpr_var; assumption.
+    intros. constructor. 2: assumption. eapply dexpr_var; eassumption.
   Qed.
 
   Lemma dexpr1_load: forall m l e addr sz v (R: mem -> Prop) (P: Prop),
@@ -366,14 +404,10 @@ Section WithParams.
       Palways ->
       dexpr_bool3 m l e c Ptrue Pfalse Palways.
 
-  Definition save_mem_hyp(P: mem -> Prop)(m: mem): Prop := P m.
-  Definition new_mem_hyp(P: mem -> Prop)(m: mem): Prop := P m.
-
-  Lemma dexpr_not: forall m l e b (St Sf: mem -> Prop) (Pt Pf Pa: Prop),
+  Lemma dexpr_not: forall m l e b (Pt Pf Pa: Prop),
       dexpr_bool3 m l e b
-        (save_mem_hyp St m)
-        (save_mem_hyp Sf m)
-        (bool_expr_branches (negb b) (new_mem_hyp Sf m -> Pt) (new_mem_hyp St m -> Pf) Pa) ->
+        True True (* <-- can't use these because that would flip proving order *)
+        (bool_expr_branches (negb b) Pt Pf Pa) ->
       dexpr_bool3 m l (expr.not e) (negb b) Pt Pf Pa.
   Proof.
     intros. inversion H. clear H. subst.
@@ -386,8 +420,7 @@ Section WithParams.
       pose proof (dexpr_range _ _ _ _ H0). rewrite Z.mod_small by assumption.
       rewrite Z.mod_small by (destruct width_cases as [E | E]; rewrite E in *; better_lia).
       destruct_one_match; reflexivity.
-    - unfold save_mem_hyp in *.
-      destr (Z.eqb v 0); eauto.
+    - destr (Z.eqb v 0); eauto.
     - assumption.
   Qed.
 
@@ -420,15 +453,15 @@ Section WithParams.
       { assumption. }
   Qed.
 
-  Lemma dexpr_lazy_or: forall m l e1 e2 (b1 b2: bool) (Sff: mem -> Prop) (Pt Pf Pa: Prop),
+  Lemma dexpr_lazy_or: forall m l e1 e2 (b1 b2: bool) (Pt Pf Pa: Prop),
       dexpr_bool3 m l e1 b1
         True
-        (dexpr_bool3 m l e2 b2 True (save_mem_hyp Sff m) True)
-        (bool_expr_branches (orb b1 b2) Pt (new_mem_hyp Sff m -> Pf) Pa) ->
+        (dexpr_bool3 m l e2 b2 True True True)
+        (bool_expr_branches (orb b1 b2) Pt Pf Pa) ->
       dexpr_bool3 m l (expr.lazy_or e1 e2) (orb b1 b2) Pt Pf Pa.
   Proof.
     intros.
-    inversion H; subst. clear H. unfold bool_expr_branches, save_mem_hyp in *. fwd.
+    inversion H; subst. clear H. unfold bool_expr_branches in *. fwd.
     destruct (Z.eqb v 0) eqn: E.
     - cbn in *.
       inversion H2. subst. clear H2 H4.
@@ -537,23 +570,31 @@ Section WithParams.
     intros. unfold bool_expr_branches. destruct H; auto.
   Qed.
 
-  Definition trace := list (mem * string * list Z * (mem * list Z)).
+  Context {ext_spec: ExtSpec} {ext_spec_ok: ext_spec.ok ext_spec}.
 
-  Definition wp_cmd(fs: list (string * (list string * list string * cmd)))
-    (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop): Prop.
-  Admitted.
+  Inductive wp_cmd(fs: list (string * (list string * list string * cmd)))
+    (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop): Prop :=
+    mk_wp_cmd(_: WeakestPrecondition.cmd (WeakestPrecondition.call fs) c t m l post).
 
   Lemma weaken_wp_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
       wp_cmd fs c t m l post1 ->
       (forall t m l, post1 t m l -> post2 t m l) ->
       wp_cmd fs c t m l post2.
-  Admitted.
+  Proof.
+    intros. inversion H.
+    constructor. eapply WeakestPreconditionProperties.Proper_cmd.
+    3: eassumption. 2: assumption. eapply WeakestPreconditionProperties.Proper_call.
+  Qed.
 
   Lemma wp_set0: forall fs x e v t m l rest post,
       dexpr m l e v ->
       wp_cmd fs rest t m (map.put l x (word.of_Z v)) post ->
       wp_cmd fs (cmd.seq (cmd.set x e) rest) t m l post.
-  Admitted.
+  Proof.
+    intros. inversion H. inversion H0. econstructor.
+    cbn -[map.put]. eexists. split. 1: eassumption. unfold dlet.dlet. subst v.
+    rewrite word.of_Z_unsigned in *. assumption.
+  Qed.
 
   Lemma wp_store0: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr m l ea a ->
@@ -573,13 +614,16 @@ Section WithParams.
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Admitted.
 
-  Lemma wp_set: forall fs x e v t m l rest post,
-      dexpr1 m l e v (wp_cmd fs rest t m (map.put l x (word.of_Z v)) post) ->
+  Lemma wp_set: forall fs x e v t m l zl rest post,
+      unsigned_locals l = zl ->
+      dexpr1 m l e v (forall l', unsigned_locals l' = map.put zl x v ->
+                                 wp_cmd fs rest t m l' post) ->
       wp_cmd fs (cmd.seq (cmd.set x e) rest) t m l post.
-  Admitted.
+  Proof.
+    intros. inversion H0. eapply wp_set0. 1: eassumption.
+    eapply Hp. subst zl. unfold unsigned_locals.
 
-  Definition with_new_mem fs rest t (P: mem -> Prop) l post :=
-    forall m: mem, P m -> wp_cmd fs rest t m l post.
+  Admitted.
 
   Lemma wp_store: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
@@ -590,13 +634,13 @@ Section WithParams.
                       | access_size.four => 32
                       | access_size.word => width
                       end v_old a) R m /\
-                (with_new_mem fs rest t
-                   (sep (uint match sz with
+                (forall m,
+                    sep (uint match sz with
                               | access_size.one => 8
                               | access_size.two => 16
                               | access_size.four => 32
                               | access_size.word => width
-                              end v a) R) l post))) ->
+                              end v a) R m -> wp_cmd fs rest t m l post))) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Admitted.
 
@@ -647,72 +691,42 @@ Section WithParams.
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t m l post.
   Admitted.
 
-  (* The postcondition of the callee's spec will have a concrete shape that differs
-     from the postcondition that we pass to `call`, so when using this lemma, we have
-     to apply weakening for `call`, which generates two subgoals:
-     1) call f t m argvals ?mid
-     2) forall t' m' resvals, ?mid t' m' resvals -> the post of `call`
-     To solve 1), we will apply the callee's spec, but that means that if we make
-     changes to the context while solving the preconditions of the callee's spec,
-     these changes will not be visible in subgoal 2
-  Lemma wp_call: forall fs binds f argexprs rest t m l post,
-      wp_exprs m l argexprs (fun argvals =>
-        call fs f t m argvals (fun t' m' resvals =>
-          get_option (map.putmany_of_list_zip binds resvals l) (fun l' =>
-            wp_cmd fs rest t' m' l' post))) ->
-      wp_cmd fs (cmd.seq (cmd.call binds f argexprs) rest) t m l post.
-  Proof.
-  Admitted.
-
-     It's not clear whether a change to wp_call can fix this.
-     Right now, specs look like this:
-
-  Instance spec_of_foo : spec_of "foo" := fun functions =>
-    forall t m argvals ghosts,
-      NonmemHyps ->
-      (sepclause1 * ... * sepclauseN) m ->
-      WeakestPrecondition.call functions "foo" t m argvals
-        (fun t' m' rets => calleePost).
-
-  If I want to use spec_of_foo, I'll have a WeakestPrecondition.call goal with callerPost, and to
-  reconcile the callerPost with calleePost, I have to apply weakening/Proper for
-  WeakestPrecondition.call, which results in two sugoals:
-
-  1) WeakestPrecondition.call "foo" t m argvals ?mid
-  2) forall t' m' resvals, ?mid t' m' resvals -> callerPost
-
-  On 1), I will apply foo_ok (which proves spec_of_foo), so all hyps in spec_of_foo are proven
-  in a subgoal separate from subgoal 2), so changes made to the context won't be visible in
-  subgoal 2).
-
-  Easiest to use would be this one:
-
-  Instance spec_of_foo' : spec_of "foo" := fun functions =>
-    forall t m argvals ghosts callerPost,
-      seps [sepclause1; ...; sepclauseN; emp P1; ... emp PN;
-         emp (forall t' m' retvals,
-                  calleePost t' m' retvals ->
-                  callerPost t' m' retvals)] m ->
-      WeakestPrecondition.call functions "foo" t m argvals callerPost.
-
-  because it has weakening built in and creates only one subgoal, so all context modifications
-  remain visible.
-  And using some notations, this form might even become ergonomic. *)
-
   Lemma wp_skip: forall fs t m l (post: trace -> mem -> locals -> Prop),
       post t m l ->
       wp_cmd fs cmd.skip t m l post.
   Admitted.
 
-(*
+  Inductive wp_call(fs: list (string * (list string * list string * cmd)))
+    (fname: string)(t: trace)(m: mem)(args: list Z)(post: trace -> mem -> list Z -> Prop)
+    : Prop :=
+    mk_wp_call(argsw: list word)(_: List.map word.unsigned argsw = args)
+              (_: WeakestPrecondition.call fs fname t m argsw
+                    (fun t' m' retsw =>
+                       post t' m' (List.map word.unsigned retsw))).
+
   Definition vc_func fs '(innames, outnames, body) (t: trace) (m: mem) (argvs: list Z)
-                     (post : trace -> mem -> list Z -> Prop): Prop.
-    Admitted. TODO express using
-    WeakestPrecondition.call
-    exists l, map.of_list_zip innames argvs = Some l /\
+                     (post : trace -> mem -> list Z -> Prop): Prop :=
+    exists l, map.of_list_zip innames argvs = Some (unsigned_locals l) /\
       wp_cmd fs body t m l (fun t' m' l' =>
-        exists retvs, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
-*)
+        exists retvs, map.getmany_of_list (unsigned_locals l') outnames = Some retvs /\
+                        post t' m' retvs).
+
+  Lemma sep_call: forall funs f t m args
+      (calleePre: Prop)
+      (calleePost callerPost: trace -> mem -> list Z -> Prop),
+      (* definition-site format: *)
+      (calleePre -> wp_call funs f t m args calleePost) ->
+      (* use-site format: *)
+      (calleePre /\ forall t' m' rets, calleePost t' m' rets -> callerPost t' m' rets) ->
+      (* conclusion: *)
+      wp_call funs f t m args callerPost.
+  Proof.
+    intros. destruct H0. specialize (H H0). inversion H. econstructor.
+    1: eassumption.
+    eapply WeakestPreconditionProperties.Proper_call. 2: eassumption.
+    unfold Morphisms.pointwise_relation, Morphisms.pointwise_relation, Basics.impl.
+    intros t' m' l'. eapply H1.
+  Qed.
 
   Definition arguments_marker(args: list Z): list Z := args.
 
@@ -1672,18 +1686,6 @@ Ltac program_logic_step :=
   | |- dexpr1 _ _ (expr.op _ _ _)  _ _ => eapply dexpr1_binop_unf
   | |- dexpr1 _ _ (expr.load _ _)  _ _ => eapply dexpr1_load
   | |- bool_expr_branches _ _ _ _ => eapply BoolSpec_expr_branches; [ intro | intro | ]
-  | |- save_mem_hyp _ ?m =>
-      lazymatch goal with
-      | H: sep _ _ m |- _ => exact H
-      end
-  | |- new_mem_hyp ?P ?m -> ?Q =>
-      lazymatch goal with
-      | H: sep _ _ m |- _ => clear H; change (P m -> Q); intro
-      end
-  | |- with_new_mem _ _ _ _ _ _ =>
-      lazymatch goal with
-      | H: sep _ _ ?m |- _ => clear H m; intros ? ?
-      end
   | |- then_branch_marker ?G =>
       let H := lazymatch goal with H: temp_if_marker |- _ => H end in
       let n := fresh "Scope0" in
