@@ -127,10 +127,12 @@ Section Spilling.
     | SLit x n =>
       SLit (ires_reg x) n;;
       save_ires_reg x
-    | SOp x op y z =>
-      load_iarg_reg 1 y;; load_iarg_reg 2 z;;
-      SOp (ires_reg x) op (iarg_reg 1 y) (iarg_reg 2 z);;
-      save_ires_reg x
+    | SOp x op oy oz => match oy, oz with
+                        | Var y, Var z => load_iarg_reg 1 y;; load_iarg_reg 2 z;;  SOp (ires_reg x) op (Var (iarg_reg 1 y)) (Var (iarg_reg 2 z));; save_ires_reg x
+                        | Var y, _ => load_iarg_reg 1 y;; SOp (ires_reg x) op (Var (iarg_reg 1 y)) oz;; save_ires_reg x
+                        | _, Var z => load_iarg_reg 2 z;; SOp (ires_reg x) op oy (Var (iarg_reg 2 z));; save_ires_reg x
+                        | _, _     => s
+                        end
     | SSet x y => (* TODO could be optimized if exactly one is on the stack *)
       load_iarg_reg 1 y;;
       SSet (ires_reg x) (iarg_reg 1 y);;
@@ -167,7 +169,8 @@ Section Spilling.
     | SLoad _ x y _ | SStore _ x y _ | SInlinetable _ x _ y | SSet x y => Z.max x y
     | SStackalloc x n body => Z.max x (max_var body)
     | SLit x _ => x
-    | SOp x _ y z => Z.max x (Z.max y z)
+    | SOp x _ oy oz => let max_var_op := Op_vars_gen 0 (fun x => x) in
+                       Z.max x (Z.max (max_var_op oy) (max_var_op oz))
     | SIf c s1 s2 | SLoop s1 c s2 => Z.max (max_var_bcond c) (Z.max (max_var s1) (max_var s2))
     | SSeq s1 s2 => Z.max (max_var s1) (max_var s2)
     | SSkip => 0
@@ -224,6 +227,8 @@ Section Spilling.
              | H: _ /\ _ |- _ => destruct H
              | c: bcond _ |- _ => destruct c; simpl
              | |- _ /\ _ => split
+             | y: operand |- _ => destruct y
+             | H: Op_vars_gen _ _ _ |- _ => simpl in H; simpl
              end;
       eauto 4 with max_var_sound.
     all: eapply Forall_and;
@@ -364,9 +369,9 @@ Section Spilling.
         match type of IH with
         | ?P -> _ => let A := fresh in assert P as A by blia; specialize (IH A); clear A
         end
-      end;
-      eauto;
-      intuition try blia;
+      | H: Op_vars_gen _ _ _ |- _ => simpl in H; simpl
+      | y: operand |- _ => destruct y
+      end; eauto; intuition try blia;
       try eapply set_reg_range_to_vars_valid_vars;
       try eapply set_vars_to_reg_range_valid_vars;
       unfold a0, a7 in *;

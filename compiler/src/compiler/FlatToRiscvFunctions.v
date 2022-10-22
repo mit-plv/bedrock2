@@ -1851,7 +1851,9 @@ Section Proofs.
       inline_iff1.
       match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o
-      end;
+      end; repeat match goal with
+             | y : operand |- _ => destruct y; [ | admit] (* TODO *)
+           end;
       simpl in *; run1det;
       rewrite ?word.sru_ignores_hibits,
               ?word.slu_ignores_hibits,
@@ -1865,7 +1867,6 @@ Section Proofs.
       rewrite reduce_eq_to_sub_and_lt.
       rewrite map.put_put_same.
       eauto with map_hints.
-
     - idtac "Case compile_stmt_correct/SSet".
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
