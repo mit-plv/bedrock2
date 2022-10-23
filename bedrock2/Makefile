@@ -46,7 +46,7 @@ ex: Makefile.coq.ex $(VS_EX) noex
 	$(MAKE) -f Makefile.coq.ex
 
 all: noex ex test
-test: special/BytedumpTest.out typecheckExprToCString testStackLoop # typecheckExprToCString-32 typecheckExprToCString-64
+test: special/BytedumpTest.out typecheckExprToCString testStackLoop testStackNondet # typecheckExprToCString-32 typecheckExprToCString-64
 
 COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2 $(COQMF_ARGS)
 
@@ -76,6 +76,13 @@ special/stackloop: special/stackloop.c
 	$(CC) -O0 special/stackloop.c -o special/stackloop
 testStackLoop: special/stackloop
 	special/stackloop
+
+special/stacknondet.c: ex
+	$(BYTEDUMP) bedrock2Examples.stackalloc.stacknondet_c > special/stacknondet.c
+special/stacknondet: special/stacknondet.c
+	$(CC) special/stacknondet.c -o special/stacknondet
+testStackNondet: special/stacknondet
+	special/stacknondet
 
 special/TypecheckExprToCString.c: noex
 	$(BYTEDUMP) bedrock2.ToCStringExprTypecheckingTest.test > special/TypecheckExprToCString.c

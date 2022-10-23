@@ -116,7 +116,7 @@ Fixpoint c_cmd (indent : string) (c : cmd) : string :=
     => indent ++ "_br2_store(" ++ c_expr ea ++ ", " ++ c_expr ev ++ ", " ++ c_size s ++ ");" ++ LF
   | cmd.stackalloc x n body =>
     let tmp := "_br2_stackalloc_"++x in (* might shadow if not fresh, likely type error... *)
-    indent ++ "{ uint8_t "++tmp++"["++c_lit n++"]; "++x++" = (uintptr_t)&"++tmp++";"++LF++
+    indent ++ "{ uint8_t "++tmp++"["++c_lit n++"] = {0}; "++x++" = (uintptr_t)&"++tmp++";"++LF++
     c_cmd indent body ++
     indent ++ "}" ++ LF
   | cmd.set x ev =>

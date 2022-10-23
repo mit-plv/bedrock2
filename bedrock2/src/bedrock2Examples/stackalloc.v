@@ -9,7 +9,7 @@ Definition stacktrivial : Syntax.func :=
 Definition stacknondet : Syntax.func :=
   ("stacknondet", ([]:list String.string, ["a"; "b"], bedrock_func_body:(stackalloc 4 as t;
   a = (load4(t) >> $8);
-  store1(a+$3, $42);
+  store1(t, $42);
   b = (load4(t) >> $8)
 ))).
 
@@ -60,16 +60,60 @@ Section WithParameters.
       WeakestPrecondition.call functions
         "stacknondet" t m [] (fun t' m' rets => exists a b, rets = [a;b] /\ a = b /\ m'=m/\t'=t).
 
+  Add Ring wring : (Properties.word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (Properties.word.ring_morph (word := word)),
+       constants [Properties.word_cst]).
+
   Lemma stacknondet_ok : program_logic_goal_for_function! stacknondet.
   Proof.
     repeat straightline.
     set (R := eq m).
     pose proof (eq_refl : R m) as Hm.
     repeat straightline.
-    assert (sep R (scalar32 a (Interface.word.of_Z (LittleEndianList.le_combine stack))) m)
-      by admit.
+    repeat (destruct stack as [|?b stack]; try solve [cbn in H1; Lia.lia]; []);
+      clear H H0 H1 length_stack.
+    seprewrite_in_by @scalar32_of_bytes Hm reflexivity.
     repeat straightline.
-  Abort.
+    Import symmetry eplace.
+    seprewrite_in_by (symmetry! @scalar32_of_bytes) Hm reflexivity.
+    cbn [Array.array] in Hm.
+    Import Ring_tac.
+    repeat straightline.
+    assert ((Array.array ptsto (word.of_Z 1) a [(Byte.byte.of_Z (word.unsigned v0)); b0; b1; b2] ⋆ R)%sep m1).
+    { cbn [Array.array].
+      use_sep_assumption; cancel; Morphisms.f_equiv; f_equal; f_equal; ring. }
+    seprewrite_in_by @scalar32_of_bytes H0 reflexivity.
+    repeat straightline.
+    seprewrite_in_by (symmetry! @scalar32_of_bytes) H0 reflexivity.
+    repeat straightline.
+    set [Byte.byte.of_Z (word.unsigned v0); b0; b1; b2] as ss in *.
+    assert (length ss = Z.to_nat 4) by reflexivity.
+    repeat straightline.
+    cbn.
+    eexists; split; [exact eq_refl|].
+    subst R. subst m1.
+    eexists _, _; Tactics.ssplit; eauto.
+
+    subst v. subst v1. subst ss.
+    eapply Properties.word.unsigned_inj.
+    rewrite ?Properties.word.unsigned_sru_nowrap.
+    2,3: rewrite ?Properties.word.unsigned_of_Z_nowrap by Lia.lia; reflexivity.
+    rewrite ?Properties.word.unsigned_of_Z_nowrap; try Lia.lia.
+    2,3: eapply (LittleEndianList.le_combine_bound [_;_;_;_]).
+    repeat change [?a;?b;?c;?d] with ([a]++[b;c;d]).
+    rewrite 2LittleEndianList.le_combine_app, 2LittleEndianList.le_combine_1, 2Z.shiftr_lor; simpl Z.of_nat; f_equal.
+    rewrite 2Z.shiftr_div_pow2, 2Zdiv.Zdiv_small; eauto using Byte.byte.unsigned_range; Lia.lia.
+  Qed.
+
+  From bedrock2 Require Import ToCString PrintListByte.
+  Definition stacknondet_main : Syntax.func :=
+    ("main", ([]:list String.string, ["ret"], bedrock_func_body:(
+      unpack! a, b = stacknondet();
+      ret = a ^ b
+  ))).
+  Definition stacknondet_c := String.list_byte_of_string (c_module (stacknondet_main::stacknondet::nil)).
+  (* Goal True. print_list_byte stacknondet_c. Abort. *)
 
   Instance spec_of_stackdisj : spec_of "stackdisj" := fun functions => forall m t,
       WeakestPrecondition.call functions
@@ -85,9 +129,4 @@ Section WithParameters.
     all : try intuition congruence.
     match goal with |- _ <> _ => idtac end.
   Abort.
-
-  (*
-  From bedrock2 Require Import ToCString PrintString.
-  Goal True. print_string (c_module (stacknondet::nil)). Abort.
-  *)
 End WithParameters.
