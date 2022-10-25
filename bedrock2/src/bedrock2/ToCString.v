@@ -5,16 +5,14 @@ Require Import Coq.Strings.String. Local Open Scope string_scope.
 
 Definition prelude := "#include <stdint.h>
 #include <string.h>
+#include <assert.h>
 
-static __attribute__((always_inline)) inline uintptr_t
-_br2_mulhuu(uintptr_t a, uintptr_t b) {
-#if (UINTPTR_MAX == (1LLU<<31) - 1 + (1LLU<<31))
-	return ((uint64_t)a * b) >> 32;
-#elif (UINTPTR_MAX == (1LLU<<63) - 1 + (1LLU<<63))
-	return ((__uint128_t)a * b) >> 64;
-#else
-#error ""32-bit or 64-bit uintptr_t required""
-#endif
+static __attribute__((constructor)) void
+_br2_preconditions() {
+  static_assert(~(intptr_t)0 == -(intptr_t)1, ""two's complement"");
+  assert((""two's complement"", ~(intptr_t)0 == -(intptr_t)1));
+  assert((""little-endian"", 1 == *(unsigned char *)&(const uintptr_t){1}));
+  assert((""little-endian"", 1 == *(unsigned char *)&(const intptr_t){1}));
 }
 
 // We use memcpy to work around -fstrict-aliasing.
@@ -40,6 +38,34 @@ static __attribute__((always_inline)) inline void
 _br2_store(uintptr_t a, uintptr_t v, uintptr_t sz) {
   memcpy((void*)a, &v, sz);
 }
+
+static __attribute__((always_inline)) inline uintptr_t
+_br2_mulhuu(uintptr_t a, uintptr_t b) {
+#if (UINTPTR_MAX == (1LLU<<31) - 1 + (1LLU<<31))
+	return ((uint64_t)a * b) >> 32;
+#elif (UINTPTR_MAX == (1LLU<<63) - 1 + (1LLU<<63))
+	return ((__uint128_t)a * b) >> 64;
+#else
+#error ""32-bit or 64-bit uintptr_t required""
+#endif
+}
+
+static __attribute__((always_inline)) inline uintptr_t
+_br2_divu(uintptr_t a, uintptr_t b) {
+  if (!b) return -1;
+  return a/b;
+}
+
+static __attribute__((always_inline)) inline uintptr_t
+_br2_remu(uintptr_t a, uintptr_t b) {
+  if (!b) return a;
+  return a%b;
+}
+
+static __attribute__((always_inline)) inline uintptr_t
+_br2_shamt(uintptr_t a) {
+  return a&(sizeof(uintptr_t)*8-1);
+}
 ".
 
 Definition LF : string := String (Coq.Strings.Ascii.Ascii false true false true false false false false) "".
@@ -56,14 +82,14 @@ Definition c_bop e1 op e2 :=
   | sub => e1++"-"++e2
   | mul => e1++"*"++e2
   | mulhuu => "_br2_mulhuu(" ++ e1 ++ ", " ++ e2 ++ ")"
-  | divu => e1++"/"++e2
-  | remu => e1++"%"++e2
+  | divu => "_br2_divu(" ++ e1 ++ ", " ++ e2 ++ ")"
+  | remu => "_br2_remu(" ++ e1 ++ ", " ++ e2 ++ ")"
   | and => e1++"&"++e2
   | or => e1++"|"++e2
   | xor => e1++"^"++e2
-  | sru => e1++">>"++e2
-  | slu => e1++"<<"++e2
-  | srs => "(uintptr_t)((intptr_t)"++e1++">>"++e2++")"
+  | sru => e1++">>"++"_br2_shamt"++e2
+  | slu => e1++"<<"++"_br2_shamt"++e2
+  | srs => "(uintptr_t)((intptr_t)"++e1++">>"++"_br2_shamt"++e2++")"
   | lts => "(uintptr_t)((intptr_t)"++e1++"<"++"(intptr_t)"++e2++")"
   | ltu => "(uintptr_t)("++e1++"<"++e2++")"
   | eq => "(uintptr_t)("++e1++"=="++e2++")"
