@@ -181,16 +181,7 @@ Definition c_decl (f : String.string * (list String.string * list String.string 
   end ++ ";".
 
 
-(* `globals` is a list of varnames that should be treated as global variables,
-   that is, they are removed from the list of local declarations, and it is
-   checked that they don't clash with local names *)
-Definition c_func_with_globals globals '(name, (args, rets, body)) :=
-  let name_clashes := list_intersect String.eqb
-    globals (name :: args ++ rets ++ cmd.mod_vars body) in
-  match name_clashes with
-  | cons _ _ => "#error ""In " ++ name ++ ", locals clash with globals (" ++
-                String.concat ", " name_clashes ++ ")"" " ++ LF
-  | _ =>
+Definition c_func '(name, (args, rets, body)) :=
   let decl_retvar_retrenames : string * option String.string * list (String.string * String.string) :=
   match rets with
   | nil => (fmt_c_decl "void" args name nil, None, nil)
@@ -205,25 +196,20 @@ Definition c_func_with_globals globals '(name, (args, rets, body)) :=
   let retrenames := snd decl_retvar_retrenames in
   let localvars : list String.string := List_uniq String.eqb (
       let allvars := (List.app (match retvar with None => nil | Some v => cons v nil end) (cmd.vars body)) in
-      (List_minus String.eqb allvars (List.app args globals))) in
+      (List_minus String.eqb allvars args)) in
   decl ++ " {" ++ LF ++
     let indent := "  " in
     (match localvars with nil => "" | _ => indent ++ "uintptr_t " ++ concat ", " (List.map c_var localvars) ++ ";" ++ LF end) ++
     c_cmd indent body ++
     concat "" (List.map (fun '(o, optr) => indent ++ "*" ++ c_var optr ++ " = " ++ c_var o ++ ";" ++ LF) retrenames) ++
     indent ++ "return" ++ (match retvar with None => "" | Some rv => " "++c_var rv end) ++ ";" ++ LF ++
-    "}" ++ LF
-  end.
+    "}" ++ LF.
 
-Definition c_func: func -> String.string := c_func_with_globals nil.
-
-Definition c_module_with_globals (globals: list String.string) (fs : list func) :=
+Definition c_module (fs : list func) :=
   match fs with
   | nil => "#error ""c_module nil"" "
   | cons main fs =>
     concat LF (prelude :: List.map (fun f => "static " ++ c_decl f) fs) ++ LF ++ LF ++
     c_func main ++ LF ++
-    concat LF (List.map (fun f => "static " ++ c_func_with_globals globals f) fs)
+    concat LF (List.map (fun f => "static " ++ c_func f) fs)
   end.
-
-Definition c_module : list func -> String.string := c_module_with_globals nil.
