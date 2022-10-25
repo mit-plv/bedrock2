@@ -44,7 +44,7 @@ _br2_mulhuu(uintptr_t a, uintptr_t b) {
 #if (UINTPTR_MAX == (1LLU<<31) - 1 + (1LLU<<31))
 	return ((uint64_t)a * b) >> 32;
 #elif (UINTPTR_MAX == (1LLU<<63) - 1 + (1LLU<<63))
-	return ((__uint128_t)a * b) >> 64;
+	return ((unsigned __int128)a * b) >> 64;
 #else
 #error ""32-bit or 64-bit uintptr_t required""
 #endif
