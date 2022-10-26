@@ -29,6 +29,7 @@ Require Import bedrock2.ident_to_string.
 Require Import bedrock2.find_hyp.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.ZWordMem.
+Require Import bedrock2.SepBulletPoints.
 
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
    used as the binder in the lambda being created *)
@@ -593,7 +594,8 @@ Section WithParams.
   Proof.
     intros. inversion H. inversion H0. econstructor.
     cbn -[map.put]. eexists. split. 1: eassumption. unfold dlet.dlet. subst v.
-    rewrite word.of_Z_unsigned in *. assumption.
+    rewrite word.of_Z_unsigned in H3. (* <- in Coq 8.16, "in *" works too, but not in 8.15 *)
+    assumption.
   Qed.
 
   Lemma wp_store0: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
@@ -990,7 +992,7 @@ Ltac start :=
   let fs := fresh "fs" in
   intro fs;
   let n := fresh "Scope0" in pose proof (mk_scope_marker FunctionBody) as n;
-  intros(*;
+  intros;
   (* since the arguments will get renamed, it is useful to have a list of their
      names, so that we can always see their current renamed names *)
   let arguments := fresh "arguments" in
@@ -1007,7 +1009,7 @@ Ltac start :=
     let kvs := eval unfold List.combine in (List.combine keys values) in
     exists (map.of_list kvs);
     split; [reflexivity| ]
-  end*).
+  end.
 
 (* Note: contrary to add_last_var_to_post, this one makes Post a goal rather
    than a hypothesis, because if it was a hypothesis, it wouldn't be possible
@@ -1966,6 +1968,7 @@ Local Open Scope bool_scope.
 Require Import coqutil.Datatypes.ZList.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
 Require Import coqutil.Word.Bitwidth32.
+Local Open Scope sep_bullets_scope.
 
 (* Note: If you re-import ZnWords after this, you'll get the old better_lia again *)
 Ltac better_lia ::=
@@ -2142,6 +2145,10 @@ Section WithMem.
 
   Context {word: word.word 32} {word_ok: word.ok word}.
   Context {mem: map.map word byte} {mem_ok: map.ok mem}.
+  Context {ext_spec: ExtSpec} {ext_spec_ok: ext_spec.ok ext_spec}.
+
+  Existing Instance locals.
+  Existing Instance locals_ok.
 
 Global Instance ARPPacket: RepPredicate ARPPacket_t mem :=
   ltac:(create_predicate).
@@ -2196,6 +2203,9 @@ Proof.
   step.
   eexists (mkEthernetHeader _ _ _).
   step.
+  unfold EthernetHeader.
+  unfold sepapp.
+
   (*
   step. step. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step.
