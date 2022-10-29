@@ -7,12 +7,11 @@ Definition prelude := "#include <stdint.h>
 #include <string.h>
 #include <assert.h>
 
-static __attribute__((constructor)) void
-_br2_preconditions() {
+static __attribute__((constructor)) void _br2_preconditions() {
   static_assert(~(intptr_t)0 == -(intptr_t)1, ""two's complement"");
-  assert((""two's complement"", ~(intptr_t)0 == -(intptr_t)1));
-  assert((""little-endian"", 1 == *(unsigned char *)&(const uintptr_t){1}));
-  assert((""little-endian"", 1 == *(unsigned char *)&(const intptr_t){1}));
+  assert(((void)""two's complement"", ~(intptr_t)0 == -(intptr_t)1));
+  assert(((void)""little-endian"", 1 == *(unsigned char *)&(const uintptr_t){1}));
+  assert(((void)""little-endian"", 1 == *(unsigned char *)&(const intptr_t){1}));
 }
 
 // We use memcpy to work around -fstrict-aliasing.
@@ -23,8 +22,8 @@ _br2_preconditions() {
 // on clang and sometimes on GCC, but other times GCC inlines individual
 // byte operations without reconstructing wider accesses.
 // The little-endian idiom below seems fast in gcc 9+ and clang 10.
-static __attribute__((always_inline)) inline uintptr_t
-_br2_load(uintptr_t a, uintptr_t sz) {
+static inline  __attribute__((always_inline, unused))
+uintptr_t _br2_load(uintptr_t a, uintptr_t sz) {
   switch (sz) {
   case 1: { uint8_t  r = 0; memcpy(&r, (void*)a, 1); return r; }
   case 2: { uint16_t r = 0; memcpy(&r, (void*)a, 2); return r; }
@@ -34,36 +33,36 @@ _br2_load(uintptr_t a, uintptr_t sz) {
   }
 }
 
-static __attribute__((always_inline)) inline void
-_br2_store(uintptr_t a, uintptr_t v, uintptr_t sz) {
+static inline __attribute__((always_inline, unused))
+void _br2_store(uintptr_t a, uintptr_t v, uintptr_t sz) {
   memcpy((void*)a, &v, sz);
 }
 
-static __attribute__((always_inline)) inline uintptr_t
-_br2_mulhuu(uintptr_t a, uintptr_t b) {
-#if (UINTPTR_MAX == (1LLU<<31) - 1 + (1LLU<<31))
-	return ((uint64_t)a * b) >> 32;
-#elif (UINTPTR_MAX == (1LLU<<63) - 1 + (1LLU<<63))
-	return ((unsigned __int128)a * b) >> 64;
-#else
-#error ""32-bit or 64-bit uintptr_t required""
-#endif
+static inline __attribute__((always_inline, unused))
+uintptr_t _br2_mulhuu(uintptr_t a, uintptr_t b) {
+  #if (UINTPTR_MAX == (UINTMAX_C(1)<<31) - 1 + (UINTMAX_C(1)<<31))
+	  return ((uint64_t)a * b) >> 32;
+  #elif (UINTPTR_MAX == (UINTMAX_C(1)<<63) - 1 + (UINTMAX_C(1)<<63))
+    return ((unsigned __int128)a * b) >> 64;
+  #else
+    #error ""32-bit or 64-bit uintptr_t required""
+  #endif
 }
 
-static __attribute__((always_inline)) inline uintptr_t
-_br2_divu(uintptr_t a, uintptr_t b) {
+static inline __attribute__((always_inline, unused))
+uintptr_t _br2_divu(uintptr_t a, uintptr_t b) {
   if (!b) return -1;
   return a/b;
 }
 
-static __attribute__((always_inline)) inline uintptr_t
-_br2_remu(uintptr_t a, uintptr_t b) {
+static inline __attribute__((always_inline, unused))
+uintptr_t _br2_remu(uintptr_t a, uintptr_t b) {
   if (!b) return a;
   return a%b;
 }
 
-static __attribute__((always_inline)) inline uintptr_t
-_br2_shamt(uintptr_t a) {
+static inline __attribute__((always_inline, unused))
+uintptr_t _br2_shamt(uintptr_t a) {
   return a&(sizeof(uintptr_t)*8-1);
 }
 ".
@@ -73,7 +72,7 @@ Definition LF : string := String (Coq.Strings.Ascii.Ascii false true false true 
 Definition c_var := @id string.
 Definition c_fun := @id string.
 
-Definition c_lit w := "(uintptr_t)" ++ DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "ULL".
+Definition c_lit w := "(uintptr_t)(UINTMAX_C(" ++ DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "))".
 Definition c_byte_withoutcast b := DecimalString.NilZero.string_of_uint (BinNatDef.N.to_uint (Byte.to_N b)).
 
 Definition c_bop e1 op e2 :=
