@@ -180,10 +180,16 @@ Section WeakestPrecondition.
     cbv [Proper respectful pointwise_relation Basics.impl]; ind_on (list (String.string * (list String.string * list String.string * Syntax.cmd.cmd)));
       cbn in *; intuition (try typeclasses eauto with core).
     destruct a.
-    destruct (String.eqb s a1); eauto.
-    eapply Proper_func;
+    destruct (String.eqb s a1); intuition eauto.
+    1: left; eapply Proper_func;
       cbv [Proper respectful pointwise_relation Basics.flip Basics.impl  WeakestPrecondition.func];
       eauto.
+    right.
+    cbv [WeakestPrecondition.execfunc] in *; destruct p as ((?&?)&?).
+    destruct H2 as (?&?&?).
+    eexists; split; eauto; intros.
+    eapply Semantics.exec.weaken; eauto; intros.
+    destruct H3 as (?&?&?); eauto.
   Qed.
 
   Global Instance Proper_program :
@@ -282,6 +288,11 @@ Section WeakestPrecondition.
     { eapply sound_args in H; t. }
   Qed.
 
+  Lemma exec_weaken_locals_of_list l E Z t m x mc post :
+    Semantics.exec.exec (map.of_list l) Z t m x mc post ->
+    List.Forall (fun '(k, v) => map.get E k = Some v) l ->
+    Semantics.exec.exec E Z t m x mc post.
+  Admitted.
 
   Section WithE.
     Context fs (E: env) (HE: List.Forall (fun '(k, v) => map.get E k = Some v) fs).
@@ -295,15 +306,23 @@ Section WeakestPrecondition.
       destruct x as [n' ((X&Y)&Z)]; t.
       destr (String.eqb n' n); t.
       eexists X, Y, Z; split; [assumption|].
-      eexists; eauto.
-      eexists; eauto.
-      intros.
-      eapply sound_cmd'.
-      eapply Proper_cmd; try eapply H0.
-      all : cbv [respectful pointwise_relation Basics.impl]; intros; cbv beta.
-      1: eapply IHf, Proper_call; eauto.
-      2: eassumption.
-      eauto using sound_getmany.
+      destruct H0; t. {
+        eexists; eauto.
+        eexists; eauto.
+        intros.
+        eapply sound_cmd'.
+        eapply Proper_cmd; try eapply H0.
+        all : cbv [respectful pointwise_relation Basics.impl]; intros; cbv beta.
+        1: eapply IHf, Proper_call; eauto.
+        2: eassumption.
+        eauto using sound_getmany. }
+      { eexists; eauto.
+        eexists; eauto.
+        intros.
+        eapply Semantics.exec.weaken.
+        { specialize (H1 mc'). inversion HE; subst.
+          eapply exec_weaken_locals_of_list; eauto. }
+        { cbv beta; intros; t; eauto. } }
     Qed.
 
     Lemma sound_cmd'' c t m l mc post

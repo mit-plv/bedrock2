@@ -210,7 +210,7 @@ Ltac straightline :=
     unfold1_call_goal; cbv match beta delta [call_body];
     lazymatch goal with |- if ?test then ?T else _ =>
       replace test with true by reflexivity; change T end;
-    cbv match beta delta [WeakestPrecondition.func]
+    left; cbv match beta delta [WeakestPrecondition.func]
   | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
     unfold1_cmd_goal; cbv beta match delta [cmd_body];
     let x := ident_of_string s in
