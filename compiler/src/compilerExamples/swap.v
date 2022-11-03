@@ -2,6 +2,7 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 Require bedrock2Examples.Demos.
 Require Import coqutil.Decidable.
+Require Import bedrock2.NotationsCustomEntry coqutil.Macros.WithBaseName.
 Require Import compiler.ExprImp.
 Require Import compiler.NameGen.
 Require Import compiler.Pipeline.
@@ -56,11 +57,10 @@ Notation RiscvMachine := MetricRiscvMachine.
 Local Existing Instance coqutil.Map.SortedListString.map.
 Local Existing Instance coqutil.Map.SortedListString.ok.
 
-Definition main_stackalloc :=
-  ("main", ([]: list String.string, []: list String.string,
-     cmd.stackalloc "x" 4 (cmd.stackalloc "y" 4 (cmd.call [] "swap_swap" [expr.var "x"; expr.var "y"])))).
+Definition main_stackalloc := func! {
+  stackalloc 4 as x; stackalloc 4 as y; swap_swap(x, y) }.
 
-Definition allFuns: list Syntax.func := [swap; swap_swap; main_stackalloc; stacknondet; stackdisj; long1].
+Definition allFuns := &[,swap; swap_swap; main_stackalloc; stacknondet; stackdisj; long1].
 
 (* stack grows from high addreses to low addresses, first stack word will be written to
    (stack_pastend-8), next stack word to (stack_pastend-16) etc *)

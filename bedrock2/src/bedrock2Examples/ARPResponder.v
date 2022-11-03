@@ -5,11 +5,7 @@ Require Import bedrock2.FE310CSemantics.
 Import Syntax BinInt String List.ListNotations ZArith.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition arp : bedrock_func :=
-    let ethbuf : String.string := "ethbuf" in
-    let buf : String.string := "buf" in
-    let len : String.string := "len" in
-  ("arp", ([ethbuf; len], [], bedrock_func_body:(
+Definition arp := func! (ethbuf, len) {
     require ( $(14+27) < len ) else { /*skip*/ };
     require ( (load1(ethbuf+$(14+0))== $0)
             & (load1(ethbuf+$(14+1)) == $1)
@@ -66,22 +62,13 @@ Definition arp : bedrock_func :=
     store1(ethbuf+$(6+5), $0xf5);
 
     /*skip*/
-))).
+}.
 
-Definition ipv4 : bedrock_func :=
-    let buf : String.string := "buf" in
-    let len : String.string := "len" in
-  ("ipv4", ([buf; len], [], bedrock_func_body:(
+Definition ipv4 := func! (buf, len) {
     /*skip*/
-))).
+}.
 
-Definition ethernet : bedrock_func :=
-    let ipv4 : String.string := "ipv4" in
-    let arp : String.string := "arp" in
-    let buf : String.string := "buf" in
-    let len : String.string := "len" in
-    let ethertype : String.string := "ethertype" in
-  ("ethernet", ((buf::len::nil), @nil String.string, bedrock_func_body:(
+Definition ethernet := func! (buf, len) {
     require ($14 < len) else { /*skip*/ } ;
     ethertype = (load1(buf + $12) << $8) | (load1(buf + $13));
     require ($(0x600-1) < ethertype) else { /*skip*/ };
@@ -90,11 +77,11 @@ Definition ethernet : bedrock_func :=
     } else if (ethertype == $0x0806) {
       arp(buf, len)
     }
-))).
+}.
 
-Require Import bedrock2.ToCString.
+Require Import bedrock2.ToCString coqutil.Macros.WithBaseName.
 Goal True.
-  let c_code := eval cbv in ((c_module (ethernet::arp::ipv4::nil))) in
+  let c_code := eval cbv in (c_module &[,ethernet; arp; ipv4]) in
       idtac
         (*
         c_code

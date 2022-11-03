@@ -13,43 +13,38 @@ Local Notation MMIOREAD := "MMIOREAD".
 Require bedrock2Examples.lightbulb_spec.
 Local Notation patience := lightbulb_spec.patience.
 
-Definition spi_write : function :=
-  let SPI_WRITE_ADDR := 0x10024048 in
-  ("spi_write", (["b"], ["busy"], bedrock_func_body:(
+Definition spi_write := func! (b) ~> busy {
     busy = ($-1);
     i = ($patience); while (i) { i = (i - $1);
-      io! busy = $MMIOREAD($SPI_WRITE_ADDR);
+      io! busy = $MMIOREAD($0x10024048);
       if !(busy >> $31) {
         i = (i^i)
       }
     };
     if !(busy >> $31) {
-      output! $MMIOWRITE($SPI_WRITE_ADDR, b);
+      output! $MMIOWRITE($0x10024048, b);
       busy = (busy ^ busy)
     }
-  ))).
+  }.
 
-Definition spi_read : function :=
-  let SPI_READ_ADDR := 0x1002404c in
-  ("spi_read", (nil, ("b"::"busy"::nil), bedrock_func_body:(
+Definition spi_read := func! () ~> (b, busy) {
     busy = ($-1);
     b = ($0x5a);
     i = ($patience); while (i) { i = (i - $1);
-      io! busy = $MMIOREAD($SPI_READ_ADDR);
+      io! busy = $MMIOREAD($0x1002404c);
       if !(busy >> $31) {
         b = (busy & $0xff);
         i = (i^i);
         busy = (busy ^ busy)
       }
     }
-  ))).
+  }.
 
-Definition spi_xchg : function :=
-  ("spi_xchg", ("b"::nil, "b"::"busy"::nil, bedrock_func_body:(
+Definition spi_xchg := func! (b) ~> (b, busy) {
     unpack! busy = spi_write(b);
     require !busy;
     unpack! b, busy = spi_read()
-  ))).
+  }.
 
 Require Import bedrock2.ProgramLogic.
 Require Import bedrock2.FE310CSemantics bedrock2.Semantics.

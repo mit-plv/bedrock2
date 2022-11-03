@@ -3,7 +3,7 @@ Require Import bedrock2.NotationsCustomEntry.
 Import Syntax Syntax.Coercions BinInt String List List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition memswap : func := ("memswap", (["x"; "y"; "n"], [], bedrock_func_body:(
+Definition memswap := func! (x, y, n) {
   while n {
     vx = load1(x);
     vy = load1(y);
@@ -16,7 +16,7 @@ Definition memswap : func := ("memswap", (["x"; "y"; "n"], [], bedrock_func_body
     $(cmd.unset "vx");
     $(cmd.unset "vy")
   }
-))).
+}.
 
 Require Import bedrock2.WeakestPrecondition bedrock2.Semantics bedrock2.ProgramLogic.
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.

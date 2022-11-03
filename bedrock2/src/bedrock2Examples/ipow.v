@@ -4,26 +4,23 @@ Import Syntax BinInt String List.ListNotations ZArith.
 Require Import coqutil.Z.Lia.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition ipow :=
-  ("ipow", (["x";"e"], (["ret"]:list String.string), bedrock_func_body:(
+Definition ipow := func! (x, e) ~> ret {
   ret = $1;
   while (e) {
     if (e & $1) { ret = ret * x };
     e = e >> $1;
     x = x * x
   }
-))).
+}.
 
 From bedrock2 Require Import Semantics BasicC64Semantics WeakestPrecondition ProgramLogic.
 From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
+Import Interface.word.
 
-#[global] Instance spec_of_ipow : spec_of "ipow" := fun functions =>
-  forall x e t m,
-    WeakestPrecondition.call functions
-      "ipow" t m [x; e]
-      (fun t' m' rets => t=t'/\ m=m' /\ exists v, rets = [v] /\ (
-        word.unsigned v = word.unsigned x ^ word.unsigned e mod 2^64)).
-
+#[export] Instance spec_of_ipow : spec_of "ipow" :=
+  fnspec! "ipow" x e ~> v,
+  { requires t m := True;
+    ensures t' m' := unsigned v = unsigned x ^ unsigned e mod 2^64 }.
 
 Module Z.
   Lemma pow_mod x n m (Hnz: m <> 0) : (x mod m)^n mod m = x^n mod m.
@@ -64,6 +61,7 @@ Ltac t :=
 Lemma ipow_ok : program_logic_goal_for_function! ipow.
 Proof.
   repeat straightline.
+  match goal with H : True |- _ => clear H end.
 
   refine ((Loops.tailrec
     (* types of ghost variables*) HList.polymorphic_list.nil

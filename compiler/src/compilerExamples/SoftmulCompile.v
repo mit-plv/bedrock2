@@ -3,7 +3,7 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Word.Bitwidth32.
 From bedrock2 Require Import Semantics BasicC32Semantics WeakestPrecondition ProgramLogic.
-From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
+From coqutil Require Import Word.Properties Word.Interface Tactics.letexists Macros.WithBaseName.
 Require Import riscv.Utility.MonadNotations.
 Require Import riscv.Utility.FreeMonad.
 Require Import riscv.Utility.RegisterNames.
@@ -542,7 +542,7 @@ Section Riscv.
 
   Notation program d := (array (instr d) (word.of_Z 4)) (only parsing).
 
-  Definition funimplsList := softmul :: rpmul.rpmul :: nil.
+  Definition funimplsList := &[, softmul; rpmul.rpmul].
 
   Definition mul_insts_result :=
     @Pipeline.compile 32 BW32 SortedListString.map RV32I RV32I_bitwidth

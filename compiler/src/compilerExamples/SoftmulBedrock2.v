@@ -8,8 +8,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 (* Variant of "ipow" implementing multiplication in terms of addition instead
 * of exponentiation in terms of multiplication. *)
 
-Definition softmul :=
-  ("softmul", (["inst"; "a_regs"], @nil String.string, bedrock_func_body:(
+Definition softmul := func! (inst, a_regs) {
   a = a_regs + ((inst>>$15)&$(Z.ones 5))<<$2;
   b = a_regs + ((inst>>$20)&$(Z.ones 5))<<$2;
   d = a_regs + ((inst>>$ 7)&$(Z.ones 5))<<$2;
@@ -17,7 +16,7 @@ Definition softmul :=
   b = load(b);
   unpack! c = rpmul(a, b);
   store(d, c)
-))).
+}.
 
 From bedrock2 Require Import Semantics BasicC32Semantics WeakestPrecondition ProgramLogic.
 From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.

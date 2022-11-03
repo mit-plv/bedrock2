@@ -21,13 +21,12 @@ Section WithParameters.
   Import Syntax BinInt String List.ListNotations ZArith.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-  Definition tf : bedrock_func :=
-    ("tf", (["buf"; "len"; "i"; "j"], [], bedrock_func_body:(
+  Definition tf := func! (buf, len, i, j) {
       require ( i < len ) else { /*skip*/ };
       store1(buf + i, $0);
       require ( j < len ) else { r = $-1 };
       r = load1(buf + j)
-    ))).
+    }.
 
     Local Infix "*" := sep : type_scope.
     Local Open Scope sep_scope.

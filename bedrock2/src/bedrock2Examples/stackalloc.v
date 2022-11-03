@@ -3,22 +3,20 @@ Require Import bedrock2.Syntax bedrock2.NotationsCustomEntry.
 Import Syntax.Coercions BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition stacktrivial : Syntax.func :=
-  ("stacktrivial", ([]:list String.string, [], bedrock_func_body:(stackalloc 4 as t; /*skip*/ ))).
+Definition stacktrivial := func! { stackalloc 4 as t; /*skip*/ }.
 
-Definition stacknondet : Syntax.func :=
-  ("stacknondet", ([]:list String.string, ["a"; "b"], bedrock_func_body:(stackalloc 4 as t;
+Definition stacknondet := func! () ~> (a, b) {
+  stackalloc 4 as t;
   a = (load4(t) >> $8);
   store1(t, $42);
   b = (load4(t) >> $8)
-))).
+}.
 
-Definition stackdisj : Syntax.func :=
-  ("stackdisj", ([]:list String.string, ["a"; "b"], bedrock_func_body:(
+Definition stackdisj := func! () ~> (a,b) {
   stackalloc 4 as a;
   stackalloc 4 as b;
   /*skip*/
-))).
+}.
 
 Require bedrock2.WeakestPrecondition.
 Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
@@ -36,6 +34,7 @@ Section WithParameters.
   Instance spec_of_stacktrivial : spec_of "stacktrivial" := fun functions => forall m t,
       WeakestPrecondition.call functions
         "stacktrivial" t m [] (fun t' m' rets => rets = [] /\ m'=m /\ t'=t).
+  From coqutil.Tactics Require Import reference_to_string .
 
   Lemma stacktrivial_ok : program_logic_goal_for_function! stacktrivial.
   Proof.
@@ -107,12 +106,11 @@ Section WithParameters.
   Qed.
 
   From bedrock2 Require Import ToCString PrintListByte.
-  Definition stacknondet_main : Syntax.func :=
-    ("main", ([]:list String.string, ["ret"], bedrock_func_body:(
+  Definition stacknondet_main := func! () ~> ret {
       unpack! a, b = stacknondet();
       ret = a ^ b
-  ))).
-  Definition stacknondet_c := String.list_byte_of_string (c_module (stacknondet_main::stacknondet::nil)).
+  }.
+  Definition stacknondet_c := String.list_byte_of_string (c_module (("main",stacknondet_main)::("stacknondet",stacknondet)::nil)).
   (* Goal True. print_list_byte stacknondet_c. Abort. *)
 
   Instance spec_of_stackdisj : spec_of "stackdisj" := fun functions => forall m t,

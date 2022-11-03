@@ -7,7 +7,7 @@ Definition prelude := "#include <stdint.h>
 #include <string.h>
 #include <assert.h>
 
-static __attribute__((constructor)) void _br2_preconditions() {
+static __attribute__((constructor)) void _br2_preconditions(void) {
   static_assert(~(intptr_t)0 == -(intptr_t)1, ""two's complement"");
   assert(((void)""two's complement"", ~(intptr_t)0 == -(intptr_t)1));
   assert(((void)""little-endian"", 1 == *(unsigned char *)&(const uintptr_t){1}));
@@ -196,7 +196,7 @@ Definition fmt_c_decl (rett : string) (args : list String.string) (name : String
   in
   (rett ++ " " ++ c_fun name ++ "(" ++ argstring ++ ")").
 
-Definition c_decl (f : String.string * (list String.string * list String.string * cmd)) :=
+Definition c_decl (f : String.string * func) :=
   let '(name, (args, rets, body)) := f in
   match rets with
   | nil => fmt_c_decl "void" args name nil
@@ -230,7 +230,7 @@ Definition c_func '(name, (args, rets, body)) :=
     indent ++ "return" ++ (match retvar with None => "" | Some rv => " "++c_var rv end) ++ ";" ++ LF ++
     "}" ++ LF.
 
-Definition c_module (fs : list func) :=
+Definition c_module (fs : list (String.string * func)) :=
   match fs with
   | nil => "#error ""c_module nil"" "
   | cons main fs =>

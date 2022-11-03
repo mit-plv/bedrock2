@@ -7,15 +7,14 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 (* Variant of "ipow" implementing multiplication in terms of addition instead
 * of exponentiation in terms of multiplication. *)
 
-Definition rpmul :=
-  ("rpmul", (["x";"e"], (["ret"]), bedrock_func_body:(
+Definition rpmul := func! (x, e) ~> ret {
   ret = $0;
   while (e) {
     if (e & $1) { ret = ret + x };
     e = e >> $1;
     x = x + x
   }
-))).
+}.
 
 From bedrock2 Require Import Semantics BasicC32Semantics WeakestPrecondition ProgramLogic.
 From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.

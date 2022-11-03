@@ -3,8 +3,7 @@ Require Import bedrock2.NotationsCustomEntry.
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition insertionsort : func :=
-  ("insertionsort", (["a"; "n"], [], bedrock_func_body:(
+Definition insertionsort := func! (a, n) {
   i = $0;
   while (i < n) {
     t = load4(a + $4*i);
@@ -23,7 +22,7 @@ Definition insertionsort : func :=
     coq:(cmd.unset "t");
     coq:(cmd.unset "j")
   }
-))).
+}.
 
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Tactics.Tactics.
@@ -707,8 +706,8 @@ Section WithParameters.
   Time Qed. (* 4.208 secs *)
 
   (*
-  From bedrock2 Require Import ToCString PrintString.
-  Goal True. print_string (c_module [insertionsort]). Abort.
+  From bedrock2 Require Import ToCString PrintString coqutil.Macros.WithBaseName.
+  Goal True. print_string (c_module &[,insertionsort]). Abort.
   *)
 (* append this driver code for a little test:
 #include <stdio.h>

@@ -5,8 +5,7 @@ Require Import coqutil.sanity.
 
 Local Open Scope Z_scope. Local Open Scope list_scope. Local Open Scope string_scope.
 
-Definition bsearch: func :=
-  ("bsearch", (["left"; "right"; "target"], ["left"], bedrock_func_body:(
+Definition bsearch := func! (left, right, target) ~> left {
   while (right - left) {
     mid = left + (((right-left) >> $4) << $3);
     if (load(mid) < target) {
@@ -16,11 +15,10 @@ Definition bsearch: func :=
     };
     coq:(cmd.unset "mid")
   }
-))).
+}.
 
 (* input_base is an address fixed at compile time *)
-Definition listsum (input_base: Z): func :=
-  ("listsum", ([], ["sumreg"], bedrock_func_body:(
+Definition listsum (input_base: Z) := func! () ~> sumreg {
   sumreg = $0;
   n = load4(input_base);
   i = $0;
@@ -29,11 +27,10 @@ Definition listsum (input_base: Z): func :=
     sumreg = sumreg + a;
     i = i + $1
   }
-))).
+}.
 
 (* input_base is an address fixed at compile time *)
-Definition fibonacci(n: Z): func :=
-  ("fibonacci", ([], ["b"], bedrock_func_body:(
+Definition fibonacci(n: Z) := func! () ~> b {
   a = $0;
   b = $1;
   i = $0;
@@ -43,10 +40,9 @@ Definition fibonacci(n: Z): func :=
     b = c;
     i = i + $1
   }
-))).
+}.
 
-Definition fibonacciServer (n_load_addr n_store_addr: Z): func :=
-  ("fibonacciserver", ([], ["b"], bedrock_func_body:(
+Definition fibonacciServer (n_load_addr n_store_addr: Z) := func! () ~> b {
   n = load4(n_load_addr);
   a = $0;
   b = $1;
@@ -62,13 +58,13 @@ Definition fibonacciServer (n_load_addr n_store_addr: Z): func :=
     b = $-1
   };
   store4(n_store_addr, b)
-))).
+}.
 
-Definition dummy: func := ("dummy", ([], [], cmd.skip)).
+Definition dummy := func! { /*skip*/ }.
 
-Definition allProgs: list func :=
+Definition allProgs: list (string*func) :=
   Eval unfold bsearch, listsum, fibonacci in
-    [bsearch; listsum 1024; fibonacci 6].
+    [("bsearch",bsearch); ("listsum1024",listsum 1024); ("fibonacci6",fibonacci 6)].
 
 (*
 Print allProgs.

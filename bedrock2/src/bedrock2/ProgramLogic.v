@@ -1,5 +1,5 @@
-Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
-From coqutil.Tactics Require Import letexists eabstract rdelta ident_of_string.
+From coqutil.Tactics Require Import letexists eabstract rdelta reference_to_string ident_of_string.
+Require Import bedrock2.Syntax.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.Loops.
@@ -49,21 +49,20 @@ Ltac assuming_correctness_of_in callees functions P :=
     let f_spec := lazymatch constr:(_:spec_of f) with ?x => x end in
     constr:(f_spec functions -> ltac:(let t := assuming_correctness_of_in callees functions P in exact t))
   end.
-Local Notation function_t := ((String.string * (list String.string * list String.string * Syntax.cmd.cmd))%type).
-Local Notation functions_t := (list function_t).
+Require Import String List coqutil.Macros.ident_to_string.
 
 Ltac program_logic_goal_for_function proc :=
-  let __ := constr:(proc : function_t) in
-  let fname := eval cbv in (fst proc) in
-  let callees := eval cbv in (callees (snd (snd proc))) in
+  let __ := constr:(proc : Syntax.func) in
+  constr_string_basename_of_constr_reference_cps ltac:(Tactics.head proc) ltac:(fun fname =>
   let spec := lazymatch constr:(_:spec_of fname) with ?s => s end in
-  constr:(forall functions : functions_t, ltac:(
-    let s := assuming_correctness_of_in callees functions (spec (cons proc functions)) in
-    exact s)).
-Definition program_logic_goal_for (_ : function_t) (P : Prop) := P.
+  exact (forall functions : list (string * Syntax.func), ltac:(
+    let callees := eval cbv in (callees (snd proc)) in
+    let s := assuming_correctness_of_in callees functions (spec (cons (fname, proc) functions)) in
+    exact s))).
+Definition program_logic_goal_for (_ : Syntax.func) (P : Prop) := P.
 
 Notation "program_logic_goal_for_function! proc" := (program_logic_goal_for proc ltac:(
-   let x := program_logic_goal_for_function proc in exact x))
+   program_logic_goal_for_function proc))
   (at level 10, only parsing).
 
 (* Users might want to override this with
@@ -73,15 +72,14 @@ Ltac normalize_body_of_function f := eval cbv in f.
 
 Ltac bind_body_of_function f_ :=
   let f := normalize_body_of_function f_ in
-  let fname := open_constr:(_) in
   let fargs := open_constr:(_) in
   let frets := open_constr:(_) in
   let fbody := open_constr:(_) in
-  let funif := open_constr:((fname, (fargs, frets, fbody))) in
+  let funif := open_constr:((fargs, frets, fbody)) in
   unify f funif;
   let G := lazymatch goal with |- ?G => G end in
   let P := lazymatch eval pattern f_ in G with ?P _ => P end in
-  change (bindcmd fbody (fun c : Syntax.cmd => P (fname, (fargs, frets, c))));
+  change (bindcmd fbody (fun c : Syntax.cmd => P (fargs, frets, c)));
   cbv beta iota delta [bindcmd]; intros.
 
 Ltac app_head e :=
@@ -213,10 +211,11 @@ Ltac straightline :=
     cbv match beta delta [WeakestPrecondition.func]
   | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
     unfold1_cmd_goal; cbv beta match delta [cmd_body];
-    let x := ident_of_string s in
-    ensure_free x;
-    (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
-    letexists _ as x; split; [solve [repeat straightline]|]
+    let __ := match s with String.String _ _ => idtac | String.EmptyString => idtac end in
+    ident_of_constr_string_cps s ltac:(fun x =>
+      ensure_free x;
+      (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
+      letexists _ as x; split; [solve [repeat straightline]|])
   | |- cmd _ ?c _ _ _ ?post =>
     let c := eval hnf in c in
     lazymatch c with
@@ -337,24 +336,3 @@ Ltac show_program :=
     let c' := eval cbv in c in
     change (@cmd width BW word mem locals ext_spec E (fst (c, c')) F G H I)
   end.
-
-Module ProofPrintingNotations.
-  Notation "'need!' y 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
-    (let x := v in ex_intro (fun y => Px /\ _) x (conj pfPx pfP))
-    (right associativity, at level 200, pfPx at next level,
-      format "'need!'  y  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP").
-  Notation "'need!' x 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
-    (let x := v in ex_intro (fun x => Px /\ _) x (conj pfPx pfP))
-    (only printing, right associativity, at level 200, pfPx at next level,
-      format "'need!'  x  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP").
-  Notation "'need!' y 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
-    (let x := v in ex_intro (fun y => Px /\ _) x (conj pfPx pfP))
-    (right associativity, at level 200, pfPx at next level,
-     format "'need!'  y  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP")
-    : type_scope.
-  Notation "'need!' x 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
-    (let x := v in ex_intro (fun x => Px /\ _) x (conj pfPx pfP))
-    (only printing, right associativity, at level 200, pfPx at next level,
-     format "'need!'  x  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP")
-    : type_scope.
-End ProofPrintingNotations.

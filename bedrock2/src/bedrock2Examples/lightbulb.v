@@ -1,6 +1,6 @@
 Require Import coqutil.Z.Lia.
 Require Import bedrock2.Syntax.
-Require Import bedrock2.NotationsCustomEntry.
+Require Import bedrock2.NotationsCustomEntry coqutil.Macros.WithBaseName.
 Require Import bedrock2.FE310CSemantics.
 Require Import coqutil.Macros.symmetry.
 Require Import coqutil.Byte.
@@ -20,8 +20,7 @@ Section WithParameters.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-  Definition lightbulb_loop :=
-    ("lightbulb_loop", (["p_addr"], ["err"], bedrock_func_body:(
+  Definition lightbulb_loop := func! (p_addr) ~> err {
       unpack! bytesWritten, err = recvEthernet(p_addr);
       if !err { (* success, packet *)
         unpack! err = lightbulb_handle(p_addr, bytesWritten);
@@ -29,10 +28,9 @@ Section WithParameters.
       } else if !(err ^ $1) { (* success, no packet *)
         err = $0
       }
-    ))).
+    }.
 
-  Definition recvEthernet :=
-    ("recvEthernet", (["buf"], ["num_bytes";"err"], bedrock_func_body:(
+  Definition recvEthernet := func! (buf) ~> (num_bytes, err) {
       num_bytes = $0;
       unpack! read, err = lan9250_readword(coq:(0x7C)); (* RX_FIFO_INF *)
       require !err else { err = $-1 };
@@ -53,10 +51,9 @@ Section WithParameters.
         if err { err = $-1; i = num_bytes }
         else { store4(buf + i, read); i = i + $4 }
       }
-      ))).
+    }.
 
-  Definition lightbulb_handle :=
-    ("lightbulb_handle", (["packet";"len"], ["r"], bedrock_func_body:(
+  Definition lightbulb_handle := func! (packet, len) ~> r {
       r = $42;
       require (r < len) else { r = $-1 };
 
@@ -82,14 +79,13 @@ Section WithParameters.
       output! MMIOWRITE(r, mmio_val | command << $23);
 
       r = $0
-    ))).
+    }.
 
-  Definition lightbulb_init : func :=
-    ("lightbulb_init", ([], [], bedrock_func_body:(
+  Definition lightbulb_init := func! {
       output! MMIOWRITE($0x10012038, coq:((Z.shiftl (0xf) 2)));
       output! MMIOWRITE($0x10012008, coq:((Z.shiftl 1 23)));
       unpack! err = lan9250_init()
-    ))).
+    }.
 
   Import Datatypes List.
   Local Notation bytes := (array scalar8 (word.of_Z 1)).
@@ -631,7 +627,7 @@ Section WithParameters.
   Import SPI.
 
   Definition function_impls :=
-    [lightbulb_init; lan9250_init; lan9250_wait_for_boot; lan9250_mac_write;
+    &[,lightbulb_init; lan9250_init; lan9250_wait_for_boot; lan9250_mac_write;
     lightbulb_loop; lightbulb_handle; recvEthernet;  lan9250_writeword; lan9250_readword;
     spi_xchg; spi_write; spi_read].
 

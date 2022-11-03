@@ -5,42 +5,35 @@ Import BinInt String ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
 Section MultipleReturnValues.
-  Example addsub : func :=
-    ("addsub", (["a";"b"], ["x";"y"], bedrock_func_body:(
+  Example addsub := func! (a, b) ~> (x, y) {
     x = a + b;
     y = a - b
-  ))).
+  }.
 
-  Example addsub_test : func :=
-    ("addsub_test", ([], ["ret"], bedrock_func_body:(
+  Example addsub_test := func! () ~> ret {
     unpack! ret, ret = addsub($14, $7);
     ret = ret - $7
-  ))).
+  }.
 End MultipleReturnValues.
 
-Require Import bedrock2.ToCString.
-
-Example addsub_c_string := Eval compute in c_func addsub.
-Example addsub_test_c_string := Eval compute in c_func addsub_test.
-
 (*
-Print addsub_c_string.
-Print addsub_test_c_string.
+Require Import bedrock2.ToCString coqutil.Macros.WithBaseName.
+Compute c_module &[,addsub_test; addsub].
 *)
 
 (*
-uintptr_t addsub(uintptr_t a, uintptr_t b, uintptr_t* _x) {
+uintptr_t addsub_test(void) {
+  uintptr_t ret;
+  ret = addsub((uintptr_t)(UINTMAX_C(14)), (uintptr_t)(UINTMAX_C(7)), &ret);
+  ret = (ret)-((uintptr_t)(UINTMAX_C(7)));
+  return ret;
+}
+
+static uintptr_t addsub(uintptr_t a, uintptr_t b, uintptr_t* _x) {
   uintptr_t x, y;
   x = (a)+(b);
   y = (a)-(b);
   *_x = x;
   return y;
-}
-
-uintptr_t addsub_test() {
-  uintptr_t ret;
-  ret = addsub(14ULL, 7ULL, &ret);
-  ret = (ret)-(7ULL);
-  return ret;
 }
 *)

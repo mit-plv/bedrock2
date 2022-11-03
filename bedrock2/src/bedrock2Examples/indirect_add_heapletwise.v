@@ -3,16 +3,14 @@ Require Import bedrock2.NotationsCustomEntry.
 Import Syntax Syntax.Coercions BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition indirect_add : func :=
-  ("indirect_add", (["a"; "b"; "c"], [], bedrock_func_body:(
+Definition indirect_add := func! (a, b, c) {
   store(a, load(b) + load(c))
-))).
+}.
 
-Definition indirect_add_twice : func :=
-  ("indirect_add_twice", (["a";"b"], [], bedrock_func_body:(
+Definition indirect_add_twice := func! (a, b) {
   indirect_add(a, a, b);
   indirect_add(a, a, b)
-))).
+}.
 
 Require Import bedrock2.WeakestPrecondition.
 Require Import coqutil.Word.Interface coqutil.Map.Interface bedrock2.Map.SeparationLogic.
@@ -76,19 +74,18 @@ Section WithParameters.
     { split; trivial. split; trivial. cbv [f]. ecancel_assumption. }
   Qed.
 
-  Example link_both : spec_of_indirect_add_twice (indirect_add_twice::indirect_add::nil).
+  Example link_both : spec_of_indirect_add_twice (("indirect_add_twice",indirect_add_twice)::("indirect_add",indirect_add)::nil).
   Proof. auto using indirect_add_twice_ok, indirect_add_ok. Qed.
 
   (*
-  From bedrock2 Require Import ToCString PrintString.
-  Goal True. print_string (c_module (indirect_add_twice::indirect_add::nil)). Abort.
+  Require Import bedrock2.ToCString bedrock2.PrintString coqutil.Macros.WithBaseName.
+  Goal True. print_string (c_module &[,indirect_add_twice; indirect_add]). Abort.
   *)
 
-  Definition indirect_add_three : Syntax.func :=
-    ("indirect_add_three", (["a";"b";"c"], [], bedrock_func_body:(
+  Definition indirect_add_three := func! (a, b, c) {
     indirect_add(a, a, b);
     indirect_add(a, a, c)
-  ))).
+  }.
 
   Definition g (a b c : word) := word.add (word.add a b) c.
   Instance spec_of_indirect_add_three : spec_of "indirect_add_three" :=
@@ -108,12 +105,11 @@ Section WithParameters.
     { split; trivial. split; trivial. cbv [g]. ecancel_assumption. }
   Qed.
 
-  Definition indirect_add_three' : Syntax.func :=
-    ("indirect_add_three'", (["out";"a";"b";"c"], [], bedrock_func_body:(
+  Definition indirect_add_three' := func! (out, a, b, c) {
     stackalloc 4 as v;
     indirect_add(v, a, b);
     indirect_add(out, v, c)
-  ))).
+  }.
 
   Instance spec_of_indirect_add_three' : spec_of "indirect_add_three'" :=
     fnspec! "indirect_add_three'" out a b c / vout va vb vc Ra Rb Rc R,

@@ -3,18 +3,16 @@ Require Import bedrock2.NotationsCustomEntry.
 Import Syntax Syntax.Coercions BinInt String List List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition memequal : func := ("memequal", (["x"; "y"; "n"], ["r"], bedrock_func_body:(
+Definition memequal := func! (x,y,n) ~> r {
   r = $0;
   while n {
     r = r | (load1(x) ^ load1(y));
-
     x = x + $1;
     y = y + $1;
     n = n - $1
   };
   r = r == $0
-))).
-
+}.
 
 Require Import bedrock2.WeakestPrecondition bedrock2.Semantics bedrock2.ProgramLogic.
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.

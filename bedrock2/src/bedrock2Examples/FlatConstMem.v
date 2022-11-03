@@ -4,12 +4,11 @@ Require Import bedrock2.FE310CSemantics.
 Import Syntax BinInt String Datatypes List List.ListNotations ZArith.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition silly1 : func :=
-  ("silly1", (["a"], ["c"], bedrock_func_body:(
-      b = load4(a + $16);
-      store4(a + $14, b);
-      c = load4(a + $16)
-  ))).
+Definition silly1 := func! (a) ~> c {
+  b = load4(a + $16);
+  store4(a + $14, b);
+  c = load4(a + $16)
+}.
 
 Require Import coqutil.Macros.symmetry.
 
@@ -38,7 +37,7 @@ Section WithParameters.
   Local Instance spec_of_silly1 : spec_of "silly1" := fun functions =>
       forall t m a bs R, Z.of_nat (length bs) = 32 ->
       (sep (eq (map.of_list_word_at a bs)) R) m ->
-      WeakestPrecondition.call functions silly1 t m [a]
+      WeakestPrecondition.call functions "silly1" t m [a]
       (fun T M rets => True).
 
   Ltac ring_simplify_unsigned_goal :=
