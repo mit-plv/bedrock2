@@ -115,10 +115,10 @@ Section FlatToRiscv1.
     | Syntax.bopname.ltu => [[Sltu rd rs1 rs2]]
     | Syntax.bopname.eq  => [[Sub rd rs1 rs2; Seqz rd rd]]
     end.
-  Definition compile_op(rd: Z)(op: Syntax.bopname)(op1 op2: operand): list Instruction :=
-    match op1, op2 with
-    | Var v1, Var v2 => compile_op_register rd op v1 v2 
-    | _, _ => []
+  Definition compile_op(rd: Z)(op: Syntax.bopname)(op1 : Z)(op2: operand): list Instruction :=
+    match  op2 with
+    | Var v2 => compile_op_register rd op op1 v2 
+    | _ => []
     end.
   
   Definition compile_lit_12bit(rd: Z)(v: Z): list Instruction :=
