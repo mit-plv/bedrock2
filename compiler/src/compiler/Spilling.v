@@ -127,12 +127,12 @@ Section Spilling.
     | SLit x n =>
       SLit (ires_reg x) n;;
       save_ires_reg x
-    | SOp x op oy oz => match oy, oz with
-                        | Var y, Var z => load_iarg_reg 1 y;; load_iarg_reg 2 z;;  SOp (ires_reg x) op (Var (iarg_reg 1 y)) (Var (iarg_reg 2 z));; save_ires_reg x
-                        | Var y, _ => load_iarg_reg 1 y;; SOp (ires_reg x) op (Var (iarg_reg 1 y)) oz;; save_ires_reg x
-                        | _, Var z => load_iarg_reg 2 z;; SOp (ires_reg x) op oy (Var (iarg_reg 2 z));; save_ires_reg x
-                        | _, _     => s
-                        end
+    | SOp x op y oz => 
+      load_iarg_reg 1 y;; 
+      match oz with 
+      | Var z => load_iarg_reg 2 z;; SOp (ires_reg x) op (iarg_reg 1 y) (Var (iarg_reg 2 z))
+      | Const _ =>  SOp (ires_reg x) op (iarg_reg 1 y) oz
+      end;; save_ires_reg x
     | SSet x y => (* TODO could be optimized if exactly one is on the stack *)
       load_iarg_reg 1 y;;
       SSet (ires_reg x) (iarg_reg 1 y);;
@@ -169,8 +169,8 @@ Section Spilling.
     | SLoad _ x y _ | SStore _ x y _ | SInlinetable _ x _ y | SSet x y => Z.max x y
     | SStackalloc x n body => Z.max x (max_var body)
     | SLit x _ => x
-    | SOp x _ oy oz => let max_var_op := Op_vars_gen 0 (fun x => x) in
-                       Z.max x (Z.max (max_var_op oy) (max_var_op oz))
+    | SOp x _ y oz => let max_var_op := Op_vars_gen 0 (fun x => x) in
+                       Z.max x (Z.max y (max_var_op oz))
     | SIf c s1 s2 | SLoop s1 c s2 => Z.max (max_var_bcond c) (Z.max (max_var s1) (max_var s2))
     | SSeq s1 s2 => Z.max (max_var s1) (max_var s2)
     | SSkip => 0
@@ -351,15 +351,17 @@ Section Spilling.
       valid_vars_src m s ->
       valid_vars_tgt (spill_stmt s).
   Proof.
+    
     unfold valid_vars_src, valid_vars_tgt.
     induction s; simpl; intros;
       repeat match goal with
              | c: bcond Z |- _ => destr c
+             | z: operand |- _ => destruct z
              | |- context[Z.leb ?x ?y] => destr (Z.leb x y)
              | |- _ => progress simpl
              | |- _ => progress unfold spill_tmp, sp, fp, ires_reg, iarg_reg, iarg_reg, ires_reg,
                          spill_bcond, max_var_bcond, ForallVars_bcond, prepare_bcond,
-                         load_iarg_reg, load_iarg_reg, save_ires_reg, stack_loc in *
+                         load_iarg_reg, load_iarg_reg, save_ires_reg, stack_loc, Op_vars_gen in *
              end;
       try blia;
       fwd;
@@ -369,9 +371,7 @@ Section Spilling.
         match type of IH with
         | ?P -> _ => let A := fresh in assert P as A by blia; specialize (IH A); clear A
         end
-      | H: Op_vars_gen _ _ _ |- _ => simpl in H; simpl
-      | y: operand |- _ => destruct y
-      end; eauto; intuition try blia;
+      end; eauto;   intuition try blia;
       try eapply set_reg_range_to_vars_valid_vars;
       try eapply set_vars_to_reg_range_valid_vars;
       unfold a0, a7 in *;
@@ -1698,18 +1698,23 @@ Section Spilling.
       + eassumption.
       + blia.
     - (* exec.op *)
+      unfold exec.lookup_op_locals, Op_vars_gen in *.
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
-      clear mc2 H3. intros.
-      eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
-      clear mc2 H2. intros.
-      eapply exec.seq_cps.
-      eapply exec.op.
-      1: eapply get_iarg_reg_1; eauto with zarith.
-      1: apply map.get_put_same.
-      eapply save_ires_reg_correct.
-      + eassumption.
-      + eassumption.
-      + blia.
+      clear mc2 H3. intros. destruct_one_match; fwd.
+      {
+        eapply exec.seq_cps. eapply exec.seq_cps.  eapply load_iarg_reg_correct; (blia || eassumption || idtac).
+        clear mc2 H2. intros.
+        eapply exec.op.
+        { eapply get_iarg_reg_1; eauto with zarith. }
+        { unfold exec.lookup_op_locals in *. apply map.get_put_same. }
+        { eapply save_ires_reg_correct; (eassumption || blia). }
+      }
+      {
+        eapply exec.seq_cps. eapply exec.op.
+        { apply map.get_put_same. }
+        { unfold exec.lookup_op_locals in *. reflexivity. }
+        { eapply save_ires_reg_correct; (eassumption || blia). }
+      }
     - (* exec.set *)
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H2. intros.

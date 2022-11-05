@@ -35,7 +35,7 @@ Fixpoint live(s: stmt)(used_after: list srcvar): list srcvar :=
   | SStore _ a x _ => list_union String.eqb [a; x] used_after
   | SStackalloc x _ body => list_diff String.eqb (live body used_after) [x]
   | SLit x _ => list_diff String.eqb used_after [x]
-  | SOp x _ y z => list_union String.eqb (Op_get_var y ++ Op_get_var z) (list_diff String.eqb used_after [x])
+  | SOp x _ y z => list_union String.eqb ([y] ++ Op_get_var z) (list_diff String.eqb used_after [x])
   | SIf c s1 s2 => list_union String.eqb
                               (list_union String.eqb (live s1 used_after) (live s2 used_after))
                               (accessed_vars_bcond c)
@@ -87,7 +87,10 @@ Fixpoint events(s: stmt)(after: list event): list event :=
   | SStore _ a x _ => end_event a ++ end_event x ++ after
   | SStackalloc x _ body => start_event x ++ events body after
   | SLit x _ => start_event x ++ after
-  | SOp x _ y z => end_event y ++ end_event z ++ start_event x ++ after
+  | SOp x _ y z => end_event y ++ (match z with
+                                   | Const cz => []
+                                   | Var vz => end_event vz
+                                   end) ++ start_event x ++ after
   | SIf c s1 s2 => bcond_events c (events s1 (events s2 after))
   | SSeq s1 s2 => events s1 (events s2 after)
   | SLoop s1 c s2 =>
@@ -329,6 +332,12 @@ Definition rename_bcond(corresp: list (srcvar * impvar))(c: bcond): result bcond
     Success (CondNez y')
   end.
 
+Definition lookup_op_corresp (op: @operand srcvar) (corresp: list (srcvar * impvar)): result (@operand impvar)  :=
+  match op with
+  | Const cp => Success (Const cp)
+  | Var vp  => (lp <- lookup vp corresp;; Success (Var lp))
+  end.
+
 Fixpoint rename(corresp: list (srcvar * impvar))(s: stmt): result stmt' :=
   match s with
   | SLoad sz x y ofs =>
@@ -353,7 +362,7 @@ Fixpoint rename(corresp: list (srcvar * impvar))(s: stmt): result stmt' :=
   | SOp x op y z =>
     x' <- lookup x corresp;;
     y' <- lookup y corresp;;
-    z' <- lookup z corresp;;
+    z' <- lookup_op_corresp z corresp;;
     Success (SOp x' op y' z')
   | SSet x y =>
     x' <- lookup x corresp;;
@@ -437,7 +446,7 @@ Fixpoint regalloc
     Success (corresp, av, SLit x' z)
   | SOp x op y z =>
     y' <- lookup y corresp;;
-    z' <- lookup z corresp;;
+    z' <- lookup_op_corresp z corresp;;
     let '(x', corresp, av) := assign_lhs x corresp av in
     Success (corresp, av, SOp x' op y' z')
   | SSet x y =>
@@ -575,6 +584,20 @@ Definition assert_in(y: srcvar)(y': impvar)(m: list (srcvar * impvar)): result u
                    "did not contain the pair" (y, y'))
   end.
 
+Definition assert_in_op (y: @operand srcvar) (y': @operand impvar) (m: list (srcvar * impvar)): result unit :=
+  match y, y' with
+  | Var vy, Var vy' => assert_in vy vy' m
+  | Const cy, Const cy' => match Z.eqb cy cy' with
+                           | true => Success tt
+                           | false => error:("The register allocator replaced source constant" cy
+                                             "by target constant" cy')
+                           end
+  | _, _ => error:("The register allocator replaced a source variable/constant" y
+                   "by target constant/variable" y')
+  end.                  
+                    
+                       
+
 Definition assert_ins(args: list srcvar)(args': list impvar)(m: list (srcvar * impvar)): result unit :=
   assert (Nat.eqb (List.length args) (List.length args'))
          error:("Register allocation checker got a source variable list" args
@@ -661,7 +684,7 @@ Fixpoint check(m: list (srcvar * impvar))(s: stmt)(s': stmt'){struct s}: result 
     Success (assignment m x x')
   | SOp x op y z, SOp x' op' y' z' =>
     assert_in y y' m;;
-    assert_in z z' m;;
+    assert_in_op z z' m;;
     assert (bopname_beq op op') err;;
     Success (assignment m x x')
   | SSet x y, SSet x' y' =>
@@ -991,6 +1014,8 @@ Section CheckerCorrect.
         eapply find_none in E1. 2: eassumption.
         simpl in E1. rewrite String.eqb_refl, Z.eqb_refl in E1. discriminate.
   Qed.
+
+  
 
   Lemma putmany_of_list_zip_states_compat: forall binds binds' resvals lL lH l' corresp corresp',
       map.putmany_of_list_zip binds resvals lH = Some l' ->

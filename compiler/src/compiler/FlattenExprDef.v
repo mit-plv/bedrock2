@@ -62,7 +62,7 @@ Section FlattenExpr1.
         let '(x, ngs''') := genFresh_if_needed resVar ngs'' in
         (FlatImp.SSeq s1
           (FlatImp.SSeq s2
-            (FlatImp.SOp x op (FlatImp.Var r1) (FlatImp.Var r2))), x, ngs''')
+            (FlatImp.SOp x op r1 (FlatImp.Var r2))), x, ngs''')
     | Syntax.expr.ite c e1 e2 =>
         let '(sc, rc, ngs') := flattenExpr ngs None c in
         let '(r, ngs'') := genFresh_if_needed resVar ngs' in

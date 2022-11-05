@@ -45,7 +45,7 @@ Section Syntax.
     | SInlinetable(sz: Syntax.access_size)(x: varname)(t: list Byte.byte)(i: varname)
     | SStackalloc(x : varname)(nbytes: Z)(body: stmt)
     | SLit(x: varname)(v: Z)
-    | SOp(x: varname)(op: bopname)(y z: operand)
+    | SOp(x: varname)(op: bopname)(y: varname)(z: operand)
     | SSet(x y: varname)
     | SIf(cond: bcond)(bThen bElse: stmt)
     | SLoop(body1: stmt)(cond: bcond)(body2: stmt)
@@ -122,7 +122,7 @@ Section Syntax.
       | SStackalloc x n body => and (P_vars x) (rec body)
       | SLit x _ => P_vars x
       | SOp x _ y z => let op_vars_fun := Op_vars_gen T P_vars in
-                       and (P_vars x) (and (op_vars_fun y) (op_vars_fun z))
+                       and (P_vars x) (and (P_vars y) (op_vars_fun z))
       | SSet x y => and (P_vars x) (P_vars y)
       | SIf c s1 s2 => and (P_bcond c) (and (rec s1) (rec s2))
       | SLoop s1 c s2 => and (P_bcond c) (and (rec s1) (rec s2))
@@ -294,7 +294,7 @@ Module exec.
     (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
     Implicit Types post : trace -> mem -> locals -> metrics -> Prop.
 
-    Definition lookup_operand (l: locals) (o: operand) :=
+    Definition lookup_op_locals (l: locals) (o: operand) :=
       match o with
       | Var vo => map.get l vo
       | Const co => Some (word.of_Z co)
@@ -376,8 +376,8 @@ Module exec.
              (addMetricInstructions 8 mc)) ->
         exec (SLit x v) t m l mc post
     | op: forall t m l mc x op y y' z z' post,
-        lookup_operand l y = Some y' ->
-        lookup_operand l z = Some z' ->
+        map.get l y = Some y' ->
+        lookup_op_locals l z = Some z' ->
         post t m (map.put l x (interp_binop op y' z'))
              (addMetricLoads 2
              (addMetricInstructions 2 mc)) ->
