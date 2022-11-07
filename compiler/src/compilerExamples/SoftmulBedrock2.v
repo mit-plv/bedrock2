@@ -5,16 +5,11 @@ Require Import coqutil.Z.Lia.
 Require Import bedrock2Examples.rpmul.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-(* Variant of "ipow" implementing multiplication in terms of addition instead
-* of exponentiation in terms of multiplication. *)
-
 Definition softmul := func! (inst, a_regs) {
-  a = a_regs + ((inst>>$15)&$(Z.ones 5))<<$2;
-  b = a_regs + ((inst>>$20)&$(Z.ones 5))<<$2;
-  d = a_regs + ((inst>>$ 7)&$(Z.ones 5))<<$2;
-  a = load(a);
-  b = load(b);
-  unpack! c = rpmul(a, b);
+  a = a_regs + (inst>>$15 & $31)<<$2;
+  b = a_regs + (inst>>$20 & $31)<<$2;
+  d = a_regs + (inst>>$07 & $31)<<$2;
+  unpack! c = rpmul(load(a), load(b));
   store(d, c)
 }.
 
@@ -97,19 +92,14 @@ Proof.
   change (31) with (Z.ones 5) in *.
   rewrite !Z.land_ones in * by better_lia.
 
-  eexists; split.
+  eexists; split; cbv [dexprs list_map list_map_body].
   { eexists; split; repeat straightline.
     eexists; split; repeat straightline.
-    eapply Scalars.load_word_of_sep.
-    match goal with
-    | |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (sep (a :-> v : Scalars.scalar) b m)
-    end.
-    scancel_asm. }
-
-  repeat straightline.
-
-  eexists; split.
-  { eexists; split; repeat straightline.
+    { eapply Scalars.load_word_of_sep.
+      match goal with
+      | |- (Scalars.scalar ?a ?v * ?b)%sep ?m => change (sep (a :-> v : Scalars.scalar) b m)
+      end.
+      scancel_asm. }
     eexists; split; repeat straightline.
     eapply Scalars.load_word_of_sep.
     match goal with
