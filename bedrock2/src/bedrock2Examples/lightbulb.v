@@ -193,22 +193,21 @@ Section WithParameters.
     { subst addr val; cbv [isMMIOAddr];
       rewrite !word.unsigned_of_Z; split; trivial.
       cbv -[Z.le Z.lt]. blia. }
-    1: repeat straightline; split; trivial.
+    repeat straightline.
 
-    1: repeat (eauto || straightline || split_if || eapply interact_nomem || trans_ltu).
+    repeat (eauto || straightline || split_if || eapply interact_nomem || trans_ltu).
 
-    1: letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
+    letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr0 val0; cbv [isMMIOAddr];
       rewrite !word.unsigned_of_Z; split; trivial.
       cbv -[Z.le Z.lt]. blia. }
-    1: repeat straightline; split; trivial.
+    repeat straightline.
 
-    1: repeat (eauto || straightline || split_if || eapply interact_nomem || trans_ltu).
+    repeat (eauto || straightline || split_if || eapply interact_nomem || trans_ltu).
 
     straightline_call; repeat straightline.
     eexists; split; trivial.
 
-    eexists; split.
     1: repeat (eapply align_trace_cons || exact (eq_sym (List.app_nil_l _)) || eapply align_trace_app).
 
     eexists; split; cbv [mmio_trace_abstraction_relation].
@@ -229,7 +228,6 @@ Section WithParameters.
   Proof.
     repeat (match goal with H : or _ _ |- _ => destruct H; intuition idtac end
           || straightline || straightline_call || split_if || ecancel_assumption || eauto || blia).
-    all : eexists; split; [solve[eauto]|].
     all : split; [shelve|].
     all : eexists; split.
     all: repeat (eapply align_trace_cons || exact (eq_sym (List.app_nil_l _)) || eapply align_trace_app).
@@ -276,15 +274,12 @@ Section WithParameters.
   Lemma lightbulb_handle_ok : program_logic_goal_for_function! lightbulb_handle.
   Proof.
     repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).
-    all : subst r; try subst r0; replace (word.unsigned (word.of_Z 42)) with 42 in *.
-    2,4: rewrite word.unsigned_of_Z; exact eq_refl.
-
-    2: { eexists; split; [solve[eauto]|].
-      split; [solve[eauto]|].
+    all : subst r; replace (word.unsigned (word.of_Z 42)) with 42 in * by ZnWords.ZnWords.
+    2: {
       eexists nil; split; eauto.
       eexists nil; split; cbv [mmio_trace_abstraction_relation]; eauto using List.Forall2_refl.
       right; repeat split; eauto.
-      { intros (?&?&?). blia. }
+      { intros (?&?&?). ZnWords.ZnWords. }
       intros HX; rewrite ?word.unsigned_of_Z in HX; inversion HX. }
 
     seplog_use_array_load1 H 12.
@@ -297,18 +292,16 @@ Section WithParameters.
     { subst addr r; cbv [isMMIOAddr];
       rewrite !word.unsigned_of_Z; split; trivial.
       cbv -[Z.le Z.lt]. blia. }
-    1: repeat straightline; split; trivial.
+    1: repeat straightline.
     1: repeat straightline; eapply interact_nomem; repeat straightline.
     1: letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { subst addr r; cbv [isMMIOAddr];
       rewrite !word.unsigned_of_Z; split; trivial.
       cbv -[Z.le Z.lt]. blia. }
-    1: repeat straightline; split; trivial.
+    1: repeat straightline.
 
     1: repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).
 
-    all : eexists; split; [solve[eauto]|].
-    all : split; [solve[eauto]|].
     all : eexists; split.
     all: repeat (eapply align_trace_cons || exact (eq_sym (List.app_nil_l _))).
     all : eexists; split.
@@ -436,7 +429,6 @@ Section WithParameters.
           left.
           repeat straightline.
           { subst br0. rewrite word.unsigned_ltu, Z.ltb_irrefl, word.unsigned_of_Z; exact eq_refl. }
-          split; eauto.
           eexists; split; eauto.
           split; eauto.
           eexists; split.
@@ -515,7 +507,7 @@ Section WithParameters.
             1: eapply (LittleEndianList.le_combine_split 4).
             eapply Properties.word.wrap_unsigned. } } }
 
-      { split; eauto. eexists; split; eauto. split; eauto. exists nil; split; eauto.
+      { eexists; split; eauto. split; eauto. exists nil; split; eauto.
         eexists; split; [constructor|].
         left. split; eauto.
         enough (Hlen : length x7 = 0%nat) by (destruct x7; try solve[inversion Hlen]; exact eq_refl).
@@ -584,8 +576,7 @@ Section WithParameters.
           rewrite ?Znat.Z2Nat.id by eapply word.unsigned_range; blia. }
         right. right. split; eauto using TracePredicate.any_app_more. } }
 
-    all: repeat letexists; split; repeat straightline;
-      eexists _, _; split; [ exact eq_refl | ].
+    all: repeat letexists; split; repeat straightline.
     all: eexists; split;
       [repeat match goal with |- context [?x] => match type of x with list _ => subst x end end;
       rewrite ?List.app_assoc; eauto|].

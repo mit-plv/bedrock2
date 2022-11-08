@@ -87,7 +87,6 @@ Proof.
       { ZnWordsL. }
       { cleanup_for_ZModArith. reflexivity. }
       split; repeat straightline.
-      2:split; repeat straightline.
       2: SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       { ZnWordsL. }
       { ZnWords. }
@@ -103,7 +102,7 @@ Proof.
       { cleanup_for_ZModArith. reflexivity. }
       split.
       { ZnWordsL. }
-      repeat straightline; split; trivial.
+      repeat straightline.
       subst x5. SeparationLogic.seprewrite_in (symmetry! @array_address_inbounds) H6.
       { ZnWords. }
       { ZnWords. }
@@ -121,6 +120,4 @@ Proof.
   all:fail "remaining subgoals".
 Qed.
 (* Print Assumptions bsearch_ok. *)
-(* SortedListString.string_strict_order *)
-(* reconstruct_enforce *)
-(* SortedListMap *)
+(* Closed under the global context *)

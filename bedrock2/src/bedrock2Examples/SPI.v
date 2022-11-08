@@ -134,11 +134,10 @@ Section WithParameters.
     {
       cbv [isMMIOAddr addr].
       ZnWords. }
-    repeat straightline. split; trivial.
+    repeat straightline.
     letexists. split.
-    { repeat straightline. exact eq_refl. }
-    (* evaluate condition then split if *) letexists; split; [solve[repeat straightline]|split].
-    all: intros.
+    { repeat straightline. }
+    split; intros.
     { (* CASE if-condition was true (word.unsigned v0 <> 0), i.e. NOP, loop exit depends on whether timeout *)
     repeat straightline. (* <-- does split on a postcondition of the form
                         (word.unsigned br <> 0 -> loop invariant still holds) /\
@@ -161,7 +160,6 @@ Section WithParameters.
         { ZnWords. } }
     { (* SUBCASE loop condition was false (exit loop because of timeout *)
       letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
-      split; eauto.
       subst t0.
       eexists (_ ;++ cons _ nil); split.
       { rewrite <-app_assoc; cbn [app]; f_equal. }
@@ -188,9 +186,8 @@ Section WithParameters.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { cbv [isMMIOAddr]. ZnWords. }
-    repeat straightline. split; trivial.
     repeat straightline.
-    split; trivial. subst t0.
+    subst t0.
     eexists (_ ;++ cons _ (cons _ nil)). split.
     { rewrite <-app_assoc. cbn [app]. f_equal. }
     eexists. split.
@@ -245,8 +242,7 @@ Section WithParameters.
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *; repeat straightline.
     { exact (Z.lt_wf 0). }
     { exfalso. ZnWords. }
-    { split; trivial.
-      subst i. rewrite word.unsigned_of_Z.
+    { subst i. rewrite word.unsigned_of_Z.
       split; [inversion 1|].
       split; trivial.
       subst b; rewrite byte.unsigned_of_Z; cbv [byte.wrap];
@@ -279,7 +275,6 @@ Section WithParameters.
           { ZnWords. }
           { ZnWords. } }
       { letexists; split; repeat straightline.
-        split; trivial.
         eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
         eexists. split.
         { econstructor; try eassumption; right; eauto. }

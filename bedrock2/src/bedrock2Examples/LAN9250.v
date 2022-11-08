@@ -308,7 +308,6 @@ Section WithParameters.
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
       cbv -[Z.le Z.lt]. blia. }
-    repeat straightline; split; trivial.
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
@@ -316,7 +315,6 @@ Section WithParameters.
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
       cbv -[Z.le Z.lt]. blia. }
-    repeat straightline; split; trivial.
     repeat straightline.
 
     straightline_call.
@@ -366,8 +364,8 @@ Section WithParameters.
     straightline_call.
     1: {
       match goal with |- word.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
-      subst data4 data3 data2 data1.
       pose proof word.unsigned_range v.
+      repeat match goal with x := _ |- _ => subst x end.
       Z.div_mod_to_equations. blia.
     }
 
@@ -661,11 +659,9 @@ Section WithParameters.
     all: try (eexists _, _; split; trivial).
     all: try (exact eq_refl).
     all: auto.
-    1,2: subst addr.
-    3,4: subst addr0.
-    16,17:subst addr1.
-    18,19:subst addr3.
-    1,2,3,4,16,17,18,19: cbv [isMMIOAddr SPI_CSMODE_ADDR];
+    1,2,3,4,16,17,18,19: 
+      repeat match goal with x := _ |- _ => subst x end;
+      cbv [isMMIOAddr SPI_CSMODE_ADDR];
       rewrite !word.unsigned_of_Z; cbv [word.wrap];
       trivial; cbv -[Z.le Z.lt]; blia.
 
@@ -793,7 +789,6 @@ Section WithParameters.
     repeat (straightline || esplit).
     straightline_call; [ZnWords|]; repeat (intuition idtac; repeat straightline).
     { eexists; split; repeat (straightline; intuition idtac; eauto).
-      eexists; Tactics.ssplit; eauto.
       subst a. rewrite app_assoc.
       eexists; Tactics.ssplit; eauto.
       eexists; Tactics.ssplit; try mmio_trace_abstraction; eauto using any_app_more. }

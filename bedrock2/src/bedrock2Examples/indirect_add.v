@@ -48,7 +48,7 @@ Section WithParameters.
     straightline_call.
     { split; [ecancel_assumption|]. split; ecancel_assumption. }
     repeat straightline.
-    { split; trivial. split; trivial. cbv [f]. ecancel_assumption. }
+    cbv [f]. ecancel_assumption.
   Qed.
 
   Example link_both : spec_of_indirect_add_twice (("indirect_add_twice",indirect_add_twice)::("indirect_add",indirect_add)::nil).
@@ -79,7 +79,7 @@ Section WithParameters.
     straightline_call.
     { split; [ecancel_assumption|]. split; ecancel_assumption. }
     repeat straightline.
-    { split; trivial. split; trivial. cbv [g]. ecancel_assumption. }
+    cbv [g]. ecancel_assumption.
   Qed.
 
   Definition indirect_add_three' := func! (out, a, b, c) {
@@ -207,7 +207,7 @@ H9 : (scalar a0 (word.add va vb)
 
   Lemma indirect_add_gen_ok : program_logic_goal_for_function! indirect_add.
   Proof.
-    repeat straightline; []; split; [>|split]; trivial; [].
+    repeat straightline.
     (* This goal is unprovable as shown.
        It could be made provable by revealing how the memory was updated
          by modifying the straightline rule for store.

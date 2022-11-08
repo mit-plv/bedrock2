@@ -1,4 +1,4 @@
-From coqutil.Tactics Require Import letexists eabstract rdelta reference_to_string ident_of_string.
+From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
@@ -82,17 +82,11 @@ Ltac bind_body_of_function f_ :=
   change (bindcmd fbody (fun c : Syntax.cmd => P (fargs, frets, c)));
   cbv beta iota delta [bindcmd]; intros.
 
-Ltac app_head e :=
-  match e with
-  | ?f ?a => app_head f
-  | _ => e
-  end.
-
 (* note: f might have some implicit parameters (eg a record of constants) *)
 Ltac enter f :=
   cbv beta delta [program_logic_goal_for]; intros;
   bind_body_of_function f;
-  lazymatch goal with |- ?s _ => cbv beta delta [s] end.
+  lazymatch goal with |- ?s ?p => let s := rdelta s in change (s p); cbv beta end.
 
 Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
@@ -157,7 +151,7 @@ Ltac straightline_stackalloc :=
   let Hm' := fresh Hm in
   let Htmp := fresh in
   let Pm := match type of Hm with ?P m => P end in
-  assert_fails (idtac; match goal with Halready : (Separation.sep Pm (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a _) mCombined) |- _ => idtac end);
+  assert_fails (assert (Separation.sep Pm (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a _) mCombined) as _ by ecancel_assumption);
   rename Hm into Hm';
   let stack := fresh "stack" in
   let stack_length := fresh "length_" stack in (* MUST remain in context for deallocation *)
@@ -195,10 +189,40 @@ Ltac straightline_stackdealloc :=
 
 Ltac rename_to_different H :=
   idtac;
-  let G := fresh H in
+  let G := fresh H "'0" in
   rename H into G.
 Ltac ensure_free H :=
   try rename_to_different H.
+
+Ltac eq_uniq_step :=
+  match goal with
+  | |- ?x = ?y =>
+      let x := rdelta x in
+      let y := rdelta y in
+      first [ is_evar x | is_evar y | constr_eq x y ]; exact eq_refl
+  | |- ?lhs = ?rhs =>
+      let lh := head lhs in
+      is_constructor lh;
+      let rh := head rhs in
+      constr_eq lh rh;
+      f_equal (* NOTE: this is not sound, we really want just one f_equal application not a heuristic tactic *)
+  end.
+Ltac eq_uniq := repeat eq_uniq_step.
+
+Ltac fwd_uniq_step :=
+  match goal with
+  | |- exists x : ?T, _ =>
+      let ev := open_constr:(match _ return T with x => x end) in
+      eexists ev;
+      let rec f :=
+        tryif has_evar ev
+        then fwd_uniq_step
+        else idtac
+      in f
+  | |- _ /\ _ => split; [ solve [repeat fwd_uniq_step; eq_uniq] | ]
+  | _ => solve [ eq_uniq ]
+  end.
+Ltac fwd_uniq := repeat fwd_uniq_step.
 
 Ltac straightline :=
   match goal with
@@ -275,6 +299,7 @@ Ltac straightline :=
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
   | |- exists l', Interface.map.putmany_of_list_zip ?ks ?vs ?l = Some l' /\ _ =>
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
+  | _ => fwd_uniq_step
   | |- exists x, ?P /\ ?Q =>
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
@@ -301,6 +326,8 @@ Ltac straightline :=
       end
   | |- _ => straightline_stackalloc
   | |- _ => straightline_stackdealloc
+  | |- context[sep (sep _ _) _] => progress (flatten_seps_in_goal; cbn [seps])
+  | H : context[sep (sep _ _) _] |- _ => progress (flatten_seps_in H; cbn [seps] in H)
   end.
 
 (* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
@@ -336,3 +363,16 @@ Ltac show_program :=
     let c' := eval cbv in c in
     change (@cmd width BW word mem locals ext_spec E (fst (c, c')) F G H I)
   end.
+
+Ltac subst_words :=
+  repeat match goal with x := _ : coqutil.Word.Interface.word.rep |- _ => subst x end.
+
+Require Import coqutil.Tactics.eplace Coq.setoid_ring.Ring_tac.
+Ltac ring_simplify_words :=
+  subst_words;
+  repeat match goal with H : context [?w] |- _ =>
+    let __ := constr:(w : Interface.word.rep) in
+    progress eplace w with _ in H by (ring_simplify; reflexivity) end;
+  repeat match goal with |- context [?w] =>
+    let __ := constr:(w : Interface.word.rep) in
+    progress eplace w with _ by (ring_simplify; reflexivity) end.

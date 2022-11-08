@@ -59,7 +59,7 @@ Section WithParameters.
   Definition eval : list word -> Z :=
     List.fold_right (fun a s => word.unsigned a + 2^32*s) 0.
 
-  Instance spec_of_swap : spec_of "uint128_add" :=
+  Instance spec_of_uint128_add : spec_of "uint128_add" :=
     fnspec! "uint128_add" ps pa pb / a b s R ~> c,
     { requires t m :=
         m =*> array32 pa a     /\ length a = 4 /\
@@ -86,7 +86,7 @@ Section WithParameters.
         let x := fresh l "_0" in destruct l as [(*nil*)|x l]; invert H
     end; unfold array in *.
 
-    repeat straightline; fwd_uniq.
+    repeat straightline.
     (* exfalso; clear dependent mem. *)
     clear dependent pa; clear dependent pb. clear -H5 mem_ok word_ok.
 
@@ -95,7 +95,7 @@ Section WithParameters.
     (* repeat match goal with x := _ |- _ => subst x end. *)
 
     repeat match goal with
-    | c := if word.ltu ?s _ then _ else _ |- _ =>
+    | c := if word.ltu _ _ then _ else _ |- _ =>
         let H := fresh "H" c in
         pose proof (ltu_as_carry _ _ : word.unsigned c = _) as H;
         move H before c; clearbody c; move c before word_ok

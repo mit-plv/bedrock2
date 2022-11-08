@@ -80,7 +80,7 @@ Section WithParameters.
           repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec, ?map.get_empty; cbn -[String.eqb]).
           repeat (destruct String.eqb; trivial). } }
       { eapply Wf_nat.lt_wf. }
-      { cbn; ssplit; eauto. }
+      { cbn; ssplit; try ecancel_assumption; eauto. }
       { intros ?v ?xs ?ys ?R ?t ?m ?x ?y ?n.
         repeat straightline.
         cbn in localsmap.
@@ -88,7 +88,7 @@ Section WithParameters.
         { rewrite ?Properties.map.get_put_dec. exists n0; cbn. auto. }
         split; cycle 1.
         { intros Ht; rewrite Ht in *.
-          intuition idtac; destruct xs0, ys0; cbn in *; try discriminate; eauto. }
+          intuition idtac; destruct xs0, ys0; cbn in *; try discriminate; try ecancel_assumption; eauto. }
 
         intros Ht.
         destruct xs0 as [|hxs xs0] in *, ys0 as [|hys ys0] in *;
