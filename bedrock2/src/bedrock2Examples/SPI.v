@@ -7,35 +7,30 @@ Require Import coqutil.Byte.
 Import BinInt String List.ListNotations ZArith.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
 
-Local Notation MMIOWRITE := "MMIOWRITE".
-Local Notation MMIOREAD := "MMIOREAD".
-
 Require bedrock2Examples.lightbulb_spec.
 Local Notation patience := lightbulb_spec.patience.
 
 Definition spi_write := func! (b) ~> busy {
-    busy = ($-1);
-    i = ($patience); while (i) { i = (i - $1);
-      io! busy = $MMIOREAD($0x10024048);
-      if !(busy >> $31) {
-        i = (i^i)
-      }
+    busy = $-1;
+    i = $patience; while i { i = i - $1;
+      io! busy = MMIOREAD($0x10024048);
+      if !(busy >> $31) { i = i^i }
     };
     if !(busy >> $31) {
-      output! $MMIOWRITE($0x10024048, b);
+      output! MMIOWRITE($0x10024048, b);
       busy = (busy ^ busy)
     }
   }.
 
 Definition spi_read := func! () ~> (b, busy) {
-    busy = ($-1);
-    b = ($0x5a);
-    i = ($patience); while (i) { i = (i - $1);
-      io! busy = $MMIOREAD($0x1002404c);
+    busy = $-1;
+    b = $0x5a;
+    i = $patience; while i { i = i - $1;
+      io! busy = MMIOREAD($0x1002404c);
       if !(busy >> $31) {
-        b = (busy & $0xff);
-        i = (i^i);
-        busy = (busy ^ busy)
+        b = busy & $0xff;
+        i = i^i;
+        busy = i
       }
     }
   }.
@@ -345,7 +340,7 @@ Section WithParameters.
           clear. Z.div_mod_to_equations. blia. }
         (* tag:symex *)
         { right; split.
-          { subst busy. rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent; exact eq_refl. }
+          { subst_words. rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent; exact eq_refl. }
           eexists x3, (cons _ nil); split; cbn [app]; eauto.
           split; eauto.
           eexists; split; cbv [one]; trivial.
