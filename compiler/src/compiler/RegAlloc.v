@@ -585,15 +585,21 @@ Definition assert_in(y: srcvar)(y': impvar)(m: list (srcvar * impvar)): result u
   end.
 
 Definition assert_in_op (y: @operand srcvar) (y': @operand impvar) (m: list (srcvar * impvar)): result unit :=
-  match y, y' with
-  | Var vy, Var vy' => assert_in vy vy' m
-  | Const cy, Const cy' => match Z.eqb cy cy' with
-                           | true => Success tt
-                           | false => error:("The register allocator replaced source constant" cy
+  match y' with
+  | Var vy' => match y with
+               | Var vy => assert_in vy vy' m
+               | Const cy => error:("The register allocator replaced source constant" cy
+                                    "by target variable" vy')
+               end
+  | Const cy' => match y with
+                 | Var vy => error:("The register allocator replaced source variable" vy
+                                      "by target constant" cy')
+                 | Const cy => match Z.eqb cy cy' with
+                               | true => Success tt
+                               | false => error:("The register allocator replaced source constant" cy
                                              "by target constant" cy')
-                           end
-  | _, _ => error:("The register allocator replaced a source variable/constant" y
-                   "by target constant/variable" y')
+                               end
+                 end
   end.                  
                     
                        
@@ -885,6 +891,27 @@ Section CheckerCorrect.
         map.get st x = Some w ->
         map.get st' x' = Some w.
 
+  Definition states_compat_op(st: srcLocals)(corresp: list (srcvar * impvar))(st': impLocals) :=
+    forall (x: @operand srcvar) (x': @operand impvar),
+      assert_in_op x x' corresp = Success tt ->
+      forall w,
+        exec.lookup_op_locals st x = Some w ->
+        exec.lookup_op_locals st' x' = Some w.
+
+  Lemma states_compat_then_op:
+    forall st corresp st', states_compat st corresp st' -> states_compat_op st corresp st'.
+  Proof.
+    intros. unfold states_compat_op. destruct x, x'; unfold assert_in_op; unfold exec.lookup_op_locals; unfold states_compat in H.
+    { apply H. }
+    { intros. discriminate H0. }
+    { intros. discriminate H0. }
+    { destruct (c =? c0) eqn:Ec; try apply Z.eqb_eq in Ec; intros.
+      { rewrite <- Ec. apply H1. }
+      { discriminate H0. }
+    }
+  Qed.
+       
+      
   Definition precond(corresp: list (srcvar * impvar))(s: stmt)(s': stmt'): list (srcvar * impvar) :=
     match s, s' with
     | SLoop s1 c s2, SLoop s1' c' s2' => loop_inv corresp s1 s2 s1' s2'
@@ -963,6 +990,13 @@ Section CheckerCorrect.
       map.get lL y' = Some v.
   Proof. unfold states_compat. eauto. Qed.
 
+  Lemma states_compat_get_op: forall corresp lL lH y y' v,
+      states_compat_op lH corresp lL ->
+      assert_in_op y y' corresp = Success tt ->
+      exec.lookup_op_locals lH y = Some v ->
+      exec.lookup_op_locals lL y' = Some v.
+  Proof. unfold states_compat_op. eauto. Qed.
+  
   Lemma states_compat_getmany: forall corresp lL lH ys ys' vs,
       states_compat lH corresp lL ->
       assert_ins ys ys' corresp = Success tt ->
@@ -1049,10 +1083,12 @@ Section CheckerCorrect.
     unfold assert_ins, assert. intros. fwd. assumption.
   Qed.
 
+      
   Hint Constructors exec.exec : checker_hints.
   Hint Resolve states_compat_get : checker_hints.
   Hint Resolve states_compat_put : checker_hints.
-
+  Hint Resolve states_compat_get_op : checker_hints.
+  Hint Resolve states_compat_then_op : checker_hints. 
   Lemma checker_correct: forall (e: srcEnv) (e': impEnv) s t m lH mc post,
       check_funcs e e' = Success tt ->
       exec e s t m lH mc post ->
@@ -1125,9 +1161,11 @@ Section CheckerCorrect.
     - (* Case exec.lit *)
       eauto 10 with checker_hints.
     - (* Case exec.op *)
-      eauto 10 with checker_hints.
+      eauto 10 with checker_hints. 
+ 
     - (* Case exec.set *)
       eauto 10 with checker_hints.
+
     - (* Case exec.if_true *)
       eapply exec.if_true. 1: eauto using states_compat_eval_bcond.
       eapply exec.weaken.
