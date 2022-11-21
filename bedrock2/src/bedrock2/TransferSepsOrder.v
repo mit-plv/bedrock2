@@ -21,7 +21,7 @@ Require Import bedrock2.Array.
 Require Export bedrock2.ZnWords.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Export bedrock2.SepClause.
-Export List.ListNotations. Open Scope list_scope.
+Import List.ListNotations. Local Open Scope list_scope.
 
 Section TransferSepsOrder.
   Context {width : Z} {word : Word.Interface.word width} {word_ok: word.ok word}

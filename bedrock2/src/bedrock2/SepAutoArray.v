@@ -8,6 +8,7 @@ Require Import bedrock2.Array.
 Require Import bedrock2.groundcbv.
 Require Import bedrock2.TransferSepsOrder.
 Require Import bedrock2.SepCalls.
+Import List.ListNotations. Local Open Scope list_scope.
 
 Section SepLog.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
