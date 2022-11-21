@@ -1,34 +1,9 @@
-Require Import Coq.ZArith.ZArith Coq.micromega.Lia.
+Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import bedrock2.cancel_addsub.
+Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 Require Import Ltac2.Ltac2.
-Local Open Scope Z_scope.
-
-Declare Scope word_scope.
-Local Open Scope word_scope.
-
-Local Infix "^+" := word.add  (at level 50, left associativity) : word_scope.
-Local Infix "^-" := word.sub  (at level 50, left associativity) : word_scope.
-Local Infix "^*" := word.mul  (at level 40, left associativity) : word_scope.
-Local Infix "^<<" := word.slu  (at level 37, left associativity) : word_scope.
-Local Infix "^>>" := word.sru  (at level 37, left associativity) : word_scope.
-
-(* to be used once at top-level for each Prop,
-   potentially with pf=eq_refl but P1<>P2 (but convertible) *)
-Lemma rew_Prop: forall (P1 P2: Prop) (pf: P1 = P2), P1 -> P2.
-Proof. intros. subst. assumption. Qed.
-
-(* word expressions:
-   1) Just simplify non-word subterms, no posing of equations yet
-   2) ring_simplify
-   3) shallow pass over ring-simplified expression to pose unsigned equations
-      (where shallow means not entering into non-word subterms)
-*)
-
-
-(* returns (pf, rhs, pfU, rhsU) where
-   pf is a constr of type `e = rhs`
-   pfU: word.unsigned e = rhsU *)
-Ltac2 rzify_word(wrd: constr)(wok: constr)(e: constr) := (e, e).
 
 (*
 eg
@@ -37,6 +12,41 @@ eg
 then if new1 and new2 both are constants:
 let r := eval cbv in (Z.div new1 new2) and return r even though that differs from the rhs of the conclusion of f_equal2
 
+
+Ltac bottom_up_simpl e :=
+  let isZ := match! e with
+             | Z.add _ _ => true
+             | Z.sub _ _ => true
+             | Z.opp _ => true
+             | _ => false
+             end in
+  if isZ then
+    let e' := cancel_addsub_unproven 'Z.add 'Z.sub 'Z.opp e in
+    if Constr.equal e e' then (e, mkApp '@eq_refl [| 'Z;  e |])
+    else (e', constr:(ltac:(ring) : $e = $e'))
+  else
+    let isWord := match! e with
+                  | word.add _ _ => true
+                  | word.sub _ _ => true
+                  | word.opp _ _ => true
+                  | _ => false
+                  end in
+    if isWord then
+      let e' := cancel_addsub_unproven '@word.add '@word.sub '@word.opp e in
+      if Constr.equal e e' then (e, mkApp '@eq_refl [| '(@word.rep _ _);  e |])
+      else (e', constr:(ltac:(ring) : $e = $e'))
+    else
+      match! e with
+      | ?f ?a =>
+          let (f', eq1) := cancel_addsub f in
+          let (a', eq2) := cancel_addsub a in
+          (mkApp f' [| a' |],
+           (* mkApp '@combine_app_eq [| '_; '_; f; f'; a; a'; eq1; eq2 |]
+              doesn't work and creates evars for _ that are never instantiated
+              instead of holes that are instantiated on typechecking *)
+           constr:(combine_app_eq _ _ $f $f' $a $a' $eq1 $eq2))
+      | _ => (e, constr:(eq_refl $e))
+      end.
 *)
 
 Set Default Proof Mode "Classic".

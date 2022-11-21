@@ -1,21 +1,11 @@
-Require Import Coq.ZArith.ZArith. Open Scope Z_scope.
+Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import bedrock2.ZnWords.
 Require Import coqutil.Word.Interface.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Datatypes.Inhabited.
-Open Scope Z_scope.
+Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 
 Local Hint Mode Word.Interface.word - : typeclass_instances.
-
-Infix "^+" := word.add  (at level 50, left associativity).
-Infix "^-" := word.sub  (at level 50, left associativity).
-Infix "^*" := word.mul  (at level 40, left associativity).
-Infix "^<<" := word.slu  (at level 37, left associativity).
-Infix "^>>" := word.sru  (at level 37, left associativity).
-Notation "/[ x ]" := (word.of_Z x)       (* squeeze a Z into a word (beat it with a / to make it smaller) *)
-  (format "/[ x ]").
-Notation "\[ x ]" := (word.unsigned x)   (* \ is the open (removed) lid of the modulo box imposed by words, *)
-  (format "\[ x ]").                     (* let a word fly into the large Z space *)
 Notation len := List.length.
 Coercion Z.of_nat : nat >-> Z.
 

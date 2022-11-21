@@ -24,21 +24,18 @@ Import WordRingAutorewr HypAutorewr ListNoSCAutorewr
        PushPullIfAutorewr LiaSCAutorewr ZnWordsSCAutorewr.
 Require Import bedrock2.SepBulletPoints.
 Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
-Require Import bedrock2.OperatorOverloading.
+Require Import coqutil.Datatypes.ZList.
+Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 
 Section LiveVerif.
-  Import Syntax BinInt String List.ListNotations ZArith.
+  Import Syntax BinInt String ZArith.
   Context {word: word.word 32} {mem: map.map word byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Local Set Implicit Arguments.
   Local Open Scope string_scope. Local Open Scope Z_scope.
-  (* Not a Definition because if the Z.of_nat is visible, lia knows it's positive *)
-  Notation "'len' l" := (Z.of_nat (List.length l)) (at level 10).
   Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per 32 sz)) (at level 10).
-  Local Open Scope oo_scope.
-  Local Open Scope list_index_scope.
-  Local Open Scope conversion_parse_scope.
-  Local Open Scope conversion_print_scope.
+  Import ZList.List.ZIndexNotations.
+  Local Open Scope zlist_scope.
   Local Open Scope sep_bullets_scope.
 
   Add Ring wring : (Properties.word.ring_theory (word := word))

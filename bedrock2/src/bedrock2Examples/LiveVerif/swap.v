@@ -1,5 +1,6 @@
 (* -*- eval: (load-file "live_verif_setup.el"); -*- *)
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Byte coqutil.Datatypes.HList.
 Require Import coqutil.Datatypes.PropSet.
@@ -25,8 +26,6 @@ Require Import bedrock2.TacticError.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
-Require Import bedrock2.OperatorOverloading.
-Local Open Scope oo_scope.
 Close Scope sepcl_scope.
 
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
@@ -60,7 +59,7 @@ Section SepLog.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Lemma load_of_sep_cps: forall sz addr value (R: mem -> Prop) m (post: word -> Prop),
-      (truncated_word sz addr value * R) m /\ post (truncate_word sz value) ->
+      sep (truncated_word sz addr value) R m /\ post (truncate_word sz value) ->
       get_option (Memory.load sz m addr) post.
   Proof.
     intros. destruct H. eapply load_of_sep in H. rewrite H.
@@ -68,7 +67,7 @@ Section SepLog.
   Qed.
 
   Lemma load_word_of_sep_cps: forall addr value (R: mem -> Prop) m (post: word -> Prop),
-      (addr ~> value * R) m /\ post value ->
+      sep (scalar addr value) R m /\ post value ->
       get_option (Memory.load Syntax.access_size.word m addr) post.
   Proof.
     intros. destruct H. eapply load_word_of_sep in H. rewrite H.
@@ -77,8 +76,8 @@ Section SepLog.
 
   Lemma store_truncated_word_of_sep_cps:
     forall (addr oldvalue newvalue: word) sz (R: mem -> Prop) m (post: mem -> Prop),
-      (truncated_word sz addr oldvalue * R) m /\
-      (forall m', (truncated_word sz addr newvalue * R) m' -> post m') ->
+      sep (truncated_word sz addr oldvalue) R m /\
+      (forall m', sep (truncated_word sz addr newvalue) R m' -> post m') ->
       get_option (Memory.store sz m addr newvalue) post.
   Proof.
     intros. destruct H. eapply Scalars.store_of_sep in H. 2: eassumption.
@@ -87,8 +86,8 @@ Section SepLog.
 
   Lemma store_byte_of_sep_cps: forall (addr: word) (oldvalue: byte) (newvalue: word)
                                       (R: mem -> Prop) (m: mem) (post: mem -> Prop),
-      (ptsto addr oldvalue * R) m /\
-      (forall m', (ptsto addr (byte.of_Z (word.unsigned newvalue)) * R) m' -> post m') ->
+      sep (ptsto addr oldvalue) R m /\
+      (forall m', sep (ptsto addr (byte.of_Z (word.unsigned newvalue))) R m' -> post m') ->
       get_option (Memory.store access_size.one m addr newvalue) post.
   Proof.
     intros. destruct H. eapply store_one_of_sep in H. 2: eassumption.
@@ -97,8 +96,8 @@ Section SepLog.
 
   Lemma store_word_of_sep_cps:
     forall (addr oldvalue newvalue: word) (R: mem -> Prop) m (post: mem -> Prop),
-      (scalar addr oldvalue * R) m /\
-      (forall m', (scalar addr newvalue * R) m' -> post m') ->
+      sep (scalar addr oldvalue) R m /\
+      (forall m', sep (scalar addr newvalue) R m' -> post m') ->
       get_option (Memory.store access_size.word m addr newvalue) post.
   Proof.
     intros. eapply store_truncated_word_of_sep_cps. eassumption.
@@ -940,7 +939,7 @@ Section MergingAnd.
       nth i Ps1 = seps l1 m ->
       nth j Ps2 = seps l2 m ->
       (if b then ands Ps1 else ands Ps2) ->
-      seps [| seps (if b then l1 else l2) |] m /\
+      seps (seps (if b then l1 else l2) :: nil) m /\
         if b then ands (remove_nth i Ps1) else ands (remove_nth j Ps2).
   Proof.
     intros. eapply merge_ands_at_indices in H1; [ | eassumption.. ].
@@ -1002,11 +1001,11 @@ Section MergingSep.
   Qed.
 
   Lemma merge_seps_done (m: mem) (Qs: list (mem -> Prop)) (b: bool):
-    seps ((seps (if b then [] else [])) :: Qs) m ->
+    seps ((seps (if b then nil else nil)) :: Qs) m ->
     seps Qs m.
   Proof.
     intros.
-    pose proof (seps'_iff1_seps (seps (if b then [] else []) :: Qs)) as A.
+    pose proof (seps'_iff1_seps (seps (if b then nil else nil) :: Qs)) as A.
     eapply iff1ToEq in A.
     rewrite <- A in H. cbn [seps'] in H. clear A.
     pose proof (seps'_iff1_seps Qs) as A.
@@ -1686,8 +1685,8 @@ Definition u_min: {f: list string * list string * cmd &
     R m ->
     vc_func fs f t m [| a; b |] (fun t' m' retvs =>
       t' = t /\ R m' /\
-      (word.unsigned a <  word.unsigned b /\ retvs = [a] \/
-       word.unsigned b <= word.unsigned a /\ retvs = [b])
+      (word.unsigned a <  word.unsigned b /\ retvs = [|a|] \/
+       word.unsigned b <= word.unsigned a /\ retvs = [|b|])
   )}.                                                                           .**/
 {                                                                          /**. .**/
   uintptr_t r = 0;                                                         /**. .**/
@@ -1724,7 +1723,7 @@ Hint Resolve word__ltu_wf | 4 : wf_of_type.
 Section WithNonmaximallyInsertedA.
   Context [A: Type].
 
-  Lemma List__repeat_0: forall (a: A), List.repeat a 0 = [].
+  Lemma List__repeat_0: forall (a: A), List.repeat a 0 = nil.
   Proof. intros. reflexivity. Qed.
 End WithNonmaximallyInsertedA.
 
@@ -1750,6 +1749,21 @@ Ltac word_simpl_step_in_goal ::=
 
 Require Import coqutil.Tactics.syntactic_unify.
 
+(* TODO replace by more general simplifier which also folds list updates written as
+   a singleton between ++ *)
+Ltac list_simpl_in_hyps :=
+  unfold List.upd, List.upds in * |-;
+  repeat (repeat word_simpl_step_in_hyps;
+          repeat match goal with
+                 | H:_ |- _ => rewrite_db fwd_rewrites in H
+                 end).
+
+Ltac list_simpl_in_goal :=
+  unfold List.upd, List.upds;
+  repeat (repeat word_simpl_step_in_goal; try rewrite_db fwd_rewrites).
+
+Ltac list_simpl_in_all := list_simpl_in_hyps; list_simpl_in_goal.
+
 Ltac solve_list_eq :=
   list_simpl_in_goal; try syntactic_exact_deltavar (@eq_refl _ _).
 
@@ -1774,12 +1788,12 @@ Tactic Notation "loop" "invariant" "above" ident(i) :=
 
 Definition memset: {f: list string * list string * cmd &
   forall fs t m (a b n: word) (bs: list byte) (R: mem -> Prop),
-    <{ * a --> bs
+    <{ * array ptsto /[1] a bs
        * R }> m ->
     word.unsigned n = Z.of_nat (List.length bs) ->
     vc_func fs f t m [| a; b; n |] (fun t' m' retvs =>
       t' = t /\
-      <{ * a --> List.repeat (byte.of_Z (word.unsigned b)) (List.length bs)
+      <{ * array ptsto /[1] a (List.repeatz (byte.of_Z \[b]) (len bs))
          * R }> m' /\
       retvs = nil)
   }.
@@ -1787,14 +1801,28 @@ Definition memset: {f: list string * list string * cmd &
 {                                                                        /**. .**/
   uintptr_t i = 0;                                                       /**.
 
-Replace bs with (repeat (b to byte) (i to nat) ++ bs[i to nat :]) in H by solve_list_eq.
-loop invariant above i.
-move H0 before R. (* not strictly needed *)
-assert (0 <= i to Z <= n to Z) by ZnWords.
-clearbody i.
-.**/
-  while (i < n) /* decreases (n - i) */ {                                /**. .**/
+  replace bs with (List.repeatz (byte.of_Z \[b]) \[i] ++ bs[\[i]:]) in H.
+  2: {
+    (* TODO replace by bottom-up simplifier *)
+    let i' := rdelta_var i in change i with i'.
+    rewrite word.unsigned_of_Z_nowrap by lia.
+    change bs[0:] with bs.
+    change (List.repeatz (byte.of_Z \[b]) 0) with (@nil byte).
+    change (nil ++ bs) with bs.
+    syntactic_exact_deltavar (@eq_refl _ _).
+  }
+
+  loop invariant above i.
+  move H0 before R. (* not strictly needed *)
+  assert (0 <= \[i] <= \[n]) by ZnWords.
+  clearbody i.
+
+  .**/
+  while (i < n) /* decreases (n ^- i) */ {                               /**. .**/
     store1(a + i, b);                                                    /**.
+
+Abort.
+(* TODO: convert to heapletwise
 
 (* TODO: automate prettification steps below *)
 rewrite Z.div_1_r in *.
@@ -1959,7 +1987,7 @@ Proof. unfold foo. intros. ring. Qed.
 
 About test.
 (* test : forall a b : word, foo a b = foo b a *)
-
+*)
 End LiveVerif.
 
 About test.
