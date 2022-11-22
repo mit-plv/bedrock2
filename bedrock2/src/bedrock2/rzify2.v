@@ -5,6 +5,9 @@ Require Import bedrock2.cancel_addsub.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 Require Import Ltac2.Ltac2.
 
+(* to encode a record as a function in Ltac1, we define its field names: *)
+Inductive res_field_name := NewTerm | EqProof | DidSomething | IsConvertible.
+
 (*
 eg
 
@@ -12,6 +15,9 @@ eg
 then if new1 and new2 both are constants:
 let r := eval cbv in (Z.div new1 new2) and return r even though that differs from the rhs of the conclusion of f_equal2
 
+
+local action:
+given a term with already simplified subterms, produce new simplified term and equality proof
 
 Ltac bottom_up_simpl e :=
   let isZ := match! e with
