@@ -420,7 +420,8 @@ Section WithParameters.
         [> tac; try [> exact k ] | ];
       cbv delta [and_weaken_left] (* drop cast *);
       (* did tac solve the goal? *)
-      tryif let A := match A with (?A:_) => A | _ => A end in is_evar A
+      (* "match A with ?A" strips outer casts *)
+      tryif match A with ?A => is_evar A end
       then simple notypeclasses refine (conj I _)
       else idtac.
   Tactic Notation "on_left" tactic3(tac) := on_left tac.
