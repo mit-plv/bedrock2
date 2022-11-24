@@ -192,6 +192,33 @@ Ltac expr_kind e :=
   | _ => OtherExpr
   end.
 
+Ltac non_ring_expr_size e :=
+  lazymatch e with
+  | Zneg _ => uconstr:(2)
+  | _ => lazymatch isZcst e with
+         | true => uconstr:(1)
+         | false => uconstr:(2)
+         end
+  end.
+
+Ltac ring_expr_size e :=
+  let r1 x :=
+    let s := ring_expr_size x in uconstr:(1 + s) in
+  let r2 x y :=
+    let s1 := ring_expr_size x in let s2 := ring_expr_size y in uconstr:(1 + s1 + s2) in
+  lazymatch e with
+  | Z.add ?x ?y => r2 x y
+  | Z.sub ?x ?y => r2 x y
+  | Z.mul ?x ?y => r2 x y
+  | Z.opp ?x => r1 x
+  | word.add ?x ?y => r2 x y
+  | word.sub ?x ?y => r2 x y
+  | word.mul ?x ?y => r2 x y
+  | word.opp ?x => r1 x
+  | word.of_Z ?x => non_ring_expr_size x
+  | _ => non_ring_expr_size e
+  end.
+
 Ltac local_ring_simplify parent e0 :=
   let e := constr:(e0) in (* <-- can't match on uconstr => quadratic retypechecking!*)
   lazymatch expr_kind e with
@@ -200,19 +227,97 @@ Ltac local_ring_simplify parent e0 :=
          let x := fresh "x" in
          let pf := constr:(ltac:(intro x; progress ring_simplify; subst x; reflexivity)
                             : let x := rhs in e = x) in
-         res_rewrite rhs pf
+         let sz1 := ring_expr_size e in
+         let sz2 := ring_expr_size rhs in
+         let is_shrinking := eval cbv in (Z.ltb sz2 sz1) in
+         lazymatch is_shrinking with
+         | true => res_rewrite rhs pf
+         | false => fail "ring_simplify does not shrink the expression size"
+         end
   end.
 
-Ltac local_zdiv_simpl e :=
-  lazymatch constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
-  | Z.div ?x ?y =>
+Ltac is_unary_Z_op op :=
+  lazymatch op with
+  | Z.of_nat => idtac
+  | Z.to_nat => idtac
+  | Z.succ => idtac
+  | Z.pred => idtac
+  | Z.opp => idtac
+  | Z.log2 => idtac
+  | Z.log2_up => idtac
+  end.
+
+Ltac is_unary_nat_op op :=
+  lazymatch op with
+  | Nat.succ => idtac
+  | Nat.pred => idtac
+  end.
+
+Ltac is_binary_Z_op op :=
+  lazymatch op with
+  | Z.add => idtac
+  | Z.sub => idtac
+  | Z.mul => idtac
+  | Z.div => idtac
+  | Z.modulo => idtac
+  | Z.quot => idtac
+  | Z.rem => idtac
+  | Z.pow => idtac
+  | Z.shiftl => idtac
+  | Z.shiftr => idtac
+  | Z.land => idtac
+  | Z.lor => idtac
+  | Z.lxor => idtac
+  | Z.ldiff => idtac
+  | Z.clearbit => idtac
+  | Z.setbit => idtac
+  | Z.min => idtac
+  | Z.max => idtac
+  end.
+
+Ltac is_binary_nat_op op :=
+  lazymatch op with
+  | Nat.add => idtac
+  | Nat.sub => idtac
+  | Nat.mul => idtac
+  | Nat.div => idtac
+  | Nat.min => idtac
+  | Nat.max => idtac
+  end.
+
+Ltac local_ground_number_simpl e :=
+  match constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
+  | ?f ?x ?y =>
+      let __ := match constr:(Set) with
+                | _ => is_const f; is_binary_Z_op f
+                end in
       lazymatch isZcst x with
-      | true =>
-          lazymatch isZcst y with
-          | true =>
-              let v := eval cbv in (Z.div x y) in
-                res_convertible v
-          end
+      | true => lazymatch isZcst y with
+                | true => let v := eval cbv in e in res_convertible v
+                end
+      end
+  | ?f ?x ?y =>
+      let __ := match constr:(Set) with
+                | _ => is_const f; is_binary_nat_op f
+                end in
+      lazymatch isnatcst x with
+      | true => lazymatch isnatcst y with
+                | true => let v := eval cbv in e in res_convertible v
+                end
+      end
+  | ?f ?x =>
+      let __ := match constr:(Set) with
+                | _ => is_const f; is_unary_Z_op f
+                end in
+      lazymatch isZcst x with
+      | true => let v := eval cbv in e in res_convertible v
+      end
+  | ?f ?x =>
+      let __ := match constr:(Set) with
+                | _ => is_const f; is_unary_nat_op f
+                end in
+      lazymatch isnatcst x with
+      | true => let v := eval cbv in e in res_convertible v
       end
   end.
 
@@ -250,7 +355,7 @@ Ltac local_simpl_hook parent_kind e :=
   match constr:(Set) with
   | _ => local_zlist_simpl e
   | _ => local_ring_simplify parent_kind e
-  | _ => local_zdiv_simpl e
+  | _ => local_ground_number_simpl e
   | _ => local_word_simpl e
   | _ => res_nothing_to_simpl e
   end.
@@ -351,6 +456,8 @@ Ltac bottom_up_simpl_in_goal :=
       eapply (rew_Prop_goal t t' pf)
   end.
 
+Local Hint Mode Word.Interface.word - : typeclass_instances.
+
 Section Tests.
   Set Ltac Backtrace.
 
@@ -368,14 +475,13 @@ Section Tests.
 
   Goal forall (n b: Z) (bs: list Z),
       Q (List.repeatz b (n - n) ++ bs[2/4:] ++
-           List.repeatz b (word.unsigned (word := word) (word.of_Z 0))) = Q bs.
+           List.repeatz b (word.unsigned (word.of_Z 0))) = Q bs.
   Proof.
     intros. bottom_up_simpl_in_goal. reflexivity.
   Qed.
 
   Goal forall (byte_of_Z: Z -> Byte.byte) (b: word) (bs: list Byte.byte),
-      List.repeatz (byte_of_Z \[b]) \[word.of_Z (word := word) 0] ++
-        bs[\[word.of_Z (word := word) 0]:] = bs.
+      List.repeatz (byte_of_Z \[b]) \[/[0]] ++ bs[\[/[0]]:] = bs.
   Proof.
     intros. bottom_up_simpl_in_goal. reflexivity.
   Qed.
@@ -383,6 +489,31 @@ Section Tests.
   Goal forall a: word, P (word.unsigned (a ^+ word.of_Z 8 ^- a) / 4) -> P 2.
   Proof.
     intros. bottom_up_simpl_in_hyp H. exact H.
+  Qed.
+
+  Goal forall a b: Z, (a + a, a + 1) = (2 * a, 1 + b) -> (2 * a, a + 1) = (2 * a, 1 + b).
+  Proof.
+    (* should not do simplifications that only reorder / don't decrease the size *)
+    intros. bottom_up_simpl_in_hyp H.
+    exact H.
+  Abort.
+
+  Goal forall mtvec_base: Z,
+      (word.add (word.add (word.mul (word.of_Z 4) (word.of_Z mtvec_base)) (word.of_Z 144))
+         (word.of_Z (4 * Z.of_nat (S (Z.to_nat (word.unsigned (word.sub (word.add
+            (word.mul (word.of_Z 4) (word.of_Z (Z.of_nat 29))) (word.add
+               (word.mul (word.of_Z 4) (word.of_Z mtvec_base)) (word.of_Z 28)))
+                  (word.add (word.mul (word.of_Z 4) (word.of_Z mtvec_base))
+                     (word.of_Z 144))) / 4)))))) = /[4] ^* /[mtvec_base] ^+ /[148].
+  Proof.
+    intros. bottom_up_simpl_in_goal. reflexivity.
+  Qed.
+
+  Goal forall (stack_hi: Z) (f: word -> Z),
+      f (word.add (word.of_Z stack_hi) (word.of_Z (-128))) =
+      f (word.sub (word.of_Z stack_hi) (word.of_Z 128)).
+  Proof.
+    intros. bottom_up_simpl_in_goal. reflexivity.
   Qed.
 
   (** ** Not supported yet: *)
