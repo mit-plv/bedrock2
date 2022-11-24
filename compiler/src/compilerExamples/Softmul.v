@@ -39,7 +39,17 @@ Require Import compilerExamples.SoftmulBedrock2.
 Require Import compilerExamples.SoftmulCompile.
 Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Require Import bedrock2.SepBulletPoints.
+Require Import bedrock2.bottom_up_simpl_ltac1.
 Local Open Scope sep_bullets_scope. Undelimit Scope sep_scope.
+
+(* TODO traverse hyps linearly in Ltac2 *)
+Ltac word_simpl_step_in_hyps ::=
+  match goal with
+  | H: ?x = ?y |- _ => is_var x; is_var y; subst x
+  | H: _ |- _ => (* has builtin progress *) bottom_up_simpl_in_hyp H
+  end.
+
+Ltac word_simpl_step_in_goal ::= bottom_up_simpl_in_goal.
 
 Ltac assertZcst x :=
   let x' := rdelta x in lazymatch isZcst x' with true => idtac end.
@@ -1255,7 +1265,6 @@ Section Riscv.
       { ZnWords. }
       { repeat step. }
       autorewrite with rew_word_morphism. repeat word_simpl_step_in_goal.
-
       unfold handler_insts, asm_handler_insts in ML.
       rewrite !(array_app (E := Instruction)) in ML.
       repeat match type of ML with
@@ -1288,6 +1297,16 @@ Ltac subst_evars :=
         apply_in_hyps @map.getmany_of_list_length.
         symmetry. assumption.
       }
+      (* needed because contrary to the previous word_simpl_step implementation,
+         bottom_up_simpl doesn't recurse under binders, and we need to apply
+         the same simplifications to both pre- and postcondition of callee
+         correctness lemma, but the postcondition is under additional binders *)
+      match goal with
+      | H: context[seps ?l] |- _ =>
+          set (Frame := l) in H;
+          bottom_up_simpl_in_hyp H;
+          subst Frame
+      end.
       pop_split_sepclause_stack mNew.
       transfer_sep_order.
       repeat (repeat word_simpl_step_in_hyps; fwd).
