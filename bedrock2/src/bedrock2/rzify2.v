@@ -154,15 +154,23 @@ Ltac chain_res r1 r2 :=
   | false => r2
   end.
 
-Ltac sidecond := xlia zchecker.
+Ltac bottomup_simpl_sidecond_hook := lia. (* OR xlia zchecker if already zified *)
 
 (* local_X_simpl tactics:
    Given a term with already simplified subterms, produce new simplified term and
    equality proof (or set flag indicating that it's convertible).
    Failing means no simplification opportunity. *)
 
+Goal forall (f: Z -> Z), True.
+  intros.
+  let t := uconstr:(f 1) in
+  lazymatch constr:(t) with (* <-- constr:() is needed because we can't match on uconstr *)
+  | ?a ?b => idtac a
+  end.
+Abort.
+
 Ltac local_zlist_simpl e :=
-  match e with
+  match constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
   | List.from Z0 ?l => res_convertible l
   | @List.repeatz ?A _ Z0 => res_convertible uconstr:(@nil A)
   | List.app nil ?xs => res_convertible xs
@@ -184,7 +192,8 @@ Ltac expr_kind e :=
   | _ => OtherExpr
   end.
 
-Ltac local_ring_simplify parent e :=
+Ltac local_ring_simplify parent e0 :=
+  let e := constr:(e0) in (* <-- can't match on uconstr => quadratic retypechecking!*)
   lazymatch expr_kind e with
   | parent => fail "nothing to do here because parent will be ring_simplified too"
   | _ => let rhs := open_constr:(_) in
@@ -192,6 +201,19 @@ Ltac local_ring_simplify parent e :=
          let pf := constr:(ltac:(intro x; progress ring_simplify; subst x; reflexivity)
                             : let x := rhs in e = x) in
          res_rewrite rhs pf
+  end.
+
+Ltac local_zdiv_simpl e :=
+  lazymatch constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
+  | Z.div ?x ?y =>
+      lazymatch isZcst x with
+      | true =>
+          lazymatch isZcst y with
+          | true =>
+              let v := eval cbv in (Z.div x y) in
+                res_convertible v
+          end
+      end
   end.
 
 Goal forall (a b c: Z), a + b - 2 * a = c -> -a + b = c.
@@ -217,10 +239,19 @@ Proof.
       idtac e).
 Abort.
 
+Ltac local_word_simpl e :=
+  lazymatch constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
+  | @word.unsigned ?wi ?wo (word.of_Z ?x) =>
+      res_rewrite x (@word.unsigned_of_Z_nowrap wi wo _ x
+                       ltac:(bottomup_simpl_sidecond_hook))
+  end.
+
 Ltac local_simpl_hook parent_kind e :=
   match constr:(Set) with
   | _ => local_zlist_simpl e
   | _ => local_ring_simplify parent_kind e
+  | _ => local_zdiv_simpl e
+  | _ => local_word_simpl e
   | _ => res_nothing_to_simpl e
   end.
 
@@ -292,6 +323,34 @@ with bottom_up_simpl_app e parent_kind f a :=
   let r' := local_simpl_hook parent_kind e' in
   chain_res r r'.
 
+Lemma rew_Prop_hyp: forall (P1 P2: Prop) (pf: P1 = P2), P1 -> P2.
+Proof. intros. subst. assumption. Qed.
+
+Lemma rew_Prop_goal: forall (P1 P2: Prop) (pf: P1 = P2), P2 -> P1.
+Proof. intros. subst. assumption. Qed.
+
+Ltac bottom_up_simpl_in_hyp H :=
+  let t := type of H in
+  let r := bottom_up_simpl OtherExpr t in
+  lazymatch r DidSomething with
+  | false => fail "nothing to simplify"
+  | true =>
+      let pf := r EqProof in
+      let t' := r NewTerm in
+      eapply (rew_Prop_hyp t t' pf) in H
+  end.
+
+Ltac bottom_up_simpl_in_goal :=
+  let t := lazymatch goal with |- ?g => g end in
+  let r := bottom_up_simpl OtherExpr t in
+  lazymatch r DidSomething with
+  | false => fail "nothing to simplify"
+  | true =>
+      let pf := r EqProof in
+      let t' := r NewTerm in
+      eapply (rew_Prop_goal t t' pf)
+  end.
+
 Section Tests.
   Set Ltac Backtrace.
 
@@ -307,28 +366,24 @@ Section Tests.
 
   Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
 
-  (*   List.repeatz (byte.of_Z \[b]) \[/[0]] ++ bs[\[/[0]]:] = bs *)
+  Goal forall (n b: Z) (bs: list Z),
+      Q (List.repeatz b (n - n) ++ bs[2/4:] ++
+           List.repeatz b (word.unsigned (word := word) (word.of_Z 0))) = Q bs.
+  Proof.
+    intros. bottom_up_simpl_in_goal. reflexivity.
+  Qed.
 
-  Goal forall (b: Z) (bs: list Z), True.
-    intros.
-    let e := constr:(Q (List.repeatz b 0 ++ bs[0:])) in
-    let r := bottom_up_simpl OtherExpr e in
-    let e' := r NewTerm in
-    let pf := r EqProof in
-    idtac e'; idtac pf.
-    (* TODO why is (nil ++ _) not simplified? *)
-  Abort.
-
-  (*
-
-  (** ** Should work: *)
+  Goal forall (byte_of_Z: Z -> Byte.byte) (b: word) (bs: list Byte.byte),
+      List.repeatz (byte_of_Z \[b]) \[word.of_Z (word := word) 0] ++
+        bs[\[word.of_Z (word := word) 0]:] = bs.
+  Proof.
+    intros. bottom_up_simpl_in_goal. reflexivity.
+  Qed.
 
   Goal forall a: word, P (word.unsigned (a ^+ word.of_Z 8 ^- a) / 4) -> P 2.
   Proof.
-    intros.
-    ring_simplify ((a ^+ word.of_Z 8 ^- a)) in H.
-  Abort.
-
+    intros. bottom_up_simpl_in_hyp H. exact H.
+  Qed.
 
   (** ** Not supported yet: *)
 
@@ -356,5 +411,5 @@ Section Tests.
     ring_simplify in H.
     assumption.
   Abort.
-*)
+
 End Tests.
