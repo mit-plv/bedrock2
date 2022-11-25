@@ -26,6 +26,7 @@ Require Import bedrock2.TacticError.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
+Require Import bedrock2.bottom_up_simpl_ltac1.
 Close Scope sepcl_scope.
 
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
@@ -1751,21 +1752,6 @@ Ltac word_simpl_step_in_goal ::=
 
 Require Import coqutil.Tactics.syntactic_unify.
 
-(* make t1 a constr instead of pattern because typeclass-based notations
-   don't work in patterns *)
-Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" ident(H) :=
-  replace t1 with t2 in H.
-Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" "*" :=
-  replace t1 with t2 in *.
-Tactic Notation "Replace" constr(t1) "with" constr(t2) :=
-  replace t1 with t2.
-Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" ident(H) "by" tactic(tac) :=
-  replace t1 with t2 in H by tac.
-Tactic Notation "Replace" constr(t1) "with" constr(t2) "in" "*" "by" tactic(tac) :=
-  replace t1 with t2 in * by tac.
-Tactic Notation "Replace" constr(t1) "with" constr(t2) "by" tactic(tac) :=
-  replace t1 with t2 by tac.
-
 Tactic Notation "loop" "invariant" "above" ident(i) :=
   let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
   move n after i.
@@ -1785,16 +1771,10 @@ Definition memset: {f: list string * list string * cmd &
 {                                                                        /**. .**/
   uintptr_t i = 0;                                                       /**.
 
-  replace bs with (List.repeatz (byte.of_Z \[b]) \[i] ++ bs[\[i]:]) in H.
-  2: {
-    (* TODO replace by bottom-up simplifier *)
-    let i' := rdelta_var i in change i with i'.
-    rewrite word.unsigned_of_Z_nowrap by lia.
-    change bs[0:] with bs.
-    change (List.repeatz (byte.of_Z \[b]) 0) with (@nil byte).
-    change (nil ++ bs) with bs.
-    syntactic_exact_deltavar (@eq_refl _ _).
-  }
+  replace bs with (List.repeatz (byte.of_Z \[b]) \[i] ++ bs[\[i]:]) in H
+      by (subst i; (* TODO heurisits for when to inline vars *)
+          bottom_up_simpl_in_goal;
+          syntactic_exact_deltavar (@eq_refl _ _)).
 
   loop invariant above i.
   move H0 before R. (* not strictly needed *)
