@@ -1309,6 +1309,8 @@ Inductive snippet :=
 | SRet(xs: list string)
 | SEmpty.
 
+Ltac word_simpl_step_in_goal := fail "should be overridden below".
+
 Ltac assign is_decl name val :=
   eapply (wp_set _ name val);
   eval_expr;
@@ -1748,24 +1750,6 @@ Ltac word_simpl_step_in_goal ::=
   end.
 
 Require Import coqutil.Tactics.syntactic_unify.
-
-(* TODO replace by more general simplifier which also folds list updates written as
-   a singleton between ++ *)
-Ltac list_simpl_in_hyps :=
-  unfold List.upd, List.upds in * |-;
-  repeat (repeat word_simpl_step_in_hyps;
-          repeat match goal with
-                 | H:_ |- _ => rewrite_db fwd_rewrites in H
-                 end).
-
-Ltac list_simpl_in_goal :=
-  unfold List.upd, List.upds;
-  repeat (repeat word_simpl_step_in_goal; try rewrite_db fwd_rewrites).
-
-Ltac list_simpl_in_all := list_simpl_in_hyps; list_simpl_in_goal.
-
-Ltac solve_list_eq :=
-  list_simpl_in_goal; try syntactic_exact_deltavar (@eq_refl _ _).
 
 (* make t1 a constr instead of pattern because typeclass-based notations
    don't work in patterns *)

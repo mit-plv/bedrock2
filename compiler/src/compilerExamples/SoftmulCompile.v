@@ -669,18 +669,6 @@ Section Riscv.
     eapply softmul_ok. eapply rpmul.rpmul_ok.
   Qed.
 
-  Lemma unfoldn_word_seq_add: forall n m (start: word),
-      List.unfoldn (word.add (word.of_Z 1)) (n + m) start =
-      List.unfoldn (word.add (word.of_Z 1)) n start ++
-      List.unfoldn (word.add (word.of_Z 1)) m (word.add start (word.of_Z (Z.of_nat n))).
-  Proof.
-    induction n; intros.
-    - word_simpl_step_in_goal. reflexivity.
-    - cbn -[Z.of_nat]. f_equal. eqapply (IHn m (word.add start (word.of_Z 1))).
-      + f_equal. ring.
-      + f_equal; f_equal; ZnWords.
-  Qed.
-
   Import FunctionalExtensionality PropExtensionality.
 
   Lemma of_list_app_eq[E: Type]: forall (l1 l2: list E),
