@@ -196,12 +196,8 @@ Proof.
     repeat word_simpl_step_in_goal.
     repeat word_simpl_step_in_hyps.
     (* TODO why doesn't word_simpl canonicalize this? *)
-    replace (word.sub (word.of_Z stack_hi) (word.of_Z 256))
-      with (word.of_Z (word := word) (stack_hi - 256)) by ring.
-    replace (word.sub (word.of_Z stack_hi) (word.of_Z 128))
+    replace (word.add (word.of_Z (stack_hi - 256)) (word.of_Z 128))
       with (word.of_Z (word := word) (stack_hi - 128)) by ring.
-    replace (word.mul (word.of_Z 4) (word.of_Z mtvec_base))
-      with (word.of_Z (word := word) (mtvec_base * 4)) by ring.
     scancel_asm.
     pose proof (ws2bs_length 4 stacktrash).
     listZnWords.

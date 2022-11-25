@@ -43,13 +43,13 @@ Require Import bedrock2.bottom_up_simpl_ltac1.
 Local Open Scope sep_bullets_scope. Undelimit Scope sep_scope.
 
 (* TODO traverse hyps linearly in Ltac2 *)
-Ltac word_simpl_step_in_hyps ::=
+Ltac word_simpl_step_in_hyps :=
   match goal with
   | H: ?x = ?y |- _ => is_var x; is_var y; subst x
   | H: _ |- _ => (* has builtin progress *) bottom_up_simpl_in_hyp H
   end.
 
-Ltac word_simpl_step_in_goal ::= bottom_up_simpl_in_goal.
+Ltac word_simpl_step_in_goal := bottom_up_simpl_in_goal.
 
 Ltac assertZcst x :=
   let x' := rdelta x in lazymatch isZcst x' with true => idtac end.

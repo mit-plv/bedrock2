@@ -9,7 +9,6 @@ Require Export coqutil.Tactics.fwd.
 Require Export bedrock2.Lift1Prop.
 Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Export bedrock2.ZnWords.
-Require Export bedrock2.WordSimpl.
 Require Export bedrock2.SepCallsExports.
 Require Export bedrock2.TransferSepsOrder.
 
