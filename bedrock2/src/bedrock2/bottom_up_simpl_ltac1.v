@@ -2,6 +2,7 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Datatypes.ZList.
+Require Import coqutil.Tactics.foreach_hyp.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 
 (* to encode a record as a function in Ltac1, we define its field names: *)
@@ -445,6 +446,16 @@ Ltac bottom_up_simpl_in_hyp H :=
       eapply (rew_Prop_hyp t t' pf) in H
   end.
 
+Ltac bottom_up_simpl_in_hyp_of_type H t :=
+  let r := bottom_up_simpl OtherExpr t in
+  lazymatch r DidSomething with
+  | false => idtac (* don't force progress *)
+  | true =>
+      let pf := r EqProof in
+      let t' := r NewTerm in
+      eapply (rew_Prop_hyp t t' pf) in H
+  end.
+
 Ltac bottom_up_simpl_in_goal :=
   let t := lazymatch goal with |- ?g => g end in
   let r := bottom_up_simpl OtherExpr t in
@@ -455,6 +466,8 @@ Ltac bottom_up_simpl_in_goal :=
       let t' := r NewTerm in
       eapply (rew_Prop_goal t t' pf)
   end.
+
+Ltac bottom_up_simpl_in_hyps := foreach_hyp bottom_up_simpl_in_hyp_of_type.
 
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
@@ -496,6 +509,11 @@ Section Tests.
     (* should not do simplifications that only reorder / don't decrease the size *)
     intros. bottom_up_simpl_in_hyp H.
     exact H.
+  Abort.
+
+  Goal forall a b c: Z, a + a + a = b -> a + a + a = c -> b = c.
+  Proof.
+    intros. bottom_up_simpl_in_hyps. rewrite <- H, H0. reflexivity.
   Abort.
 
   Goal forall mtvec_base: Z,
