@@ -23,6 +23,7 @@ Require Import bedrock2.ArrayCasts.
 Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Require Import bedrock2.SepBulletPoints.
 Local Open Scope sep_bullets_scope. Undelimit Scope sep_scope.
+Require Import bedrock2.bottom_up_simpl_ltac1.
 
 Definition softmul_binary: list byte := Pipeline.instrencode handler_insts.
 
@@ -69,7 +70,7 @@ Proof.
     rewrite IHForall. clear IHForall.
     rewrite LittleEndian.to_list_split.
     rewrite LittleEndianList.length_le_split.
-    repeat word_simpl_step_in_goal.
+    bottom_up_simpl_in_goal.
     cancel.
     cbn [seps].
     unfold instr, idecode, truncated_scalar, littleendian, ptsto_bytes.ptsto_bytes.
@@ -163,7 +164,7 @@ Proof.
     1: eapply Sp.
     1: solve [solve_split_sepclause_sidecond_or_pose_err].
     1: clear Sp. (* because there's no "after the call" where we want to merge *)
-    1: repeat word_simpl_step_in_goal.
+    1: bottom_up_simpl_in_goal.
     1: rewrite (@List.skipn_all2 _ 256%nat) by listZnWords.
     1: impl_ecancel_step_without_splitting.
     1: impl_ecancel_step_without_splitting.
@@ -193,8 +194,7 @@ Proof.
                (word.of_Z (stack_hi - 256))).
     flatten_seps_in_goal. cbn [seps].
     rewrite Hp6p3_emp0.
-    repeat word_simpl_step_in_goal.
-    repeat word_simpl_step_in_hyps.
+    bottom_up_simpl_in_goal. bottom_up_simpl_in_hyps.
     (* TODO why doesn't word_simpl canonicalize this? *)
     replace (word.add (word.of_Z (stack_hi - 256)) (word.of_Z 128))
       with (word.of_Z (word := word) (stack_hi - 128)) by ring.
