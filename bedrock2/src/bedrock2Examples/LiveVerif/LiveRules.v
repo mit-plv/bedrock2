@@ -269,6 +269,32 @@ Section WithParams.
       reflexivity.
   Qed.
 
+  Lemma dexpr_bool3_ltu: forall m l e1 e2 v1 v2 (Pt Pf Pa: Prop),
+      dexpr1 m l e1 v1 (dexpr1 m l e2 v2 (bool_expr_branches (word.ltu v1 v2) Pt Pf Pa)) ->
+      dexpr_bool3 m l (expr.op bopname.ltu e1 e2) (word.ltu v1 v2) Pt Pf Pa.
+  Proof.
+    intros. inversion H. clear H. inversion Hp. clear Hp.
+    econstructor.
+    - eapply dexpr_binop; eassumption.
+    - cbn. destruct_one_match;
+        rewrite word.unsigned_eqb, ?word.unsigned_of_Z_1, ?word.unsigned_of_Z_0;
+        reflexivity.
+    - assumption.
+  Qed.
+
+  Lemma dexpr_bool3_eq: forall m l e1 e2 v1 v2 (Pt Pf Pa: Prop),
+      dexpr1 m l e1 v1 (dexpr1 m l e2 v2 (bool_expr_branches (word.eqb v1 v2) Pt Pf Pa)) ->
+      dexpr_bool3 m l (expr.op bopname.eq e1 e2) (word.eqb v1 v2) Pt Pf Pa.
+  Proof.
+    intros. inversion H. clear H. inversion Hp. clear Hp.
+    econstructor.
+    - eapply dexpr_binop; eassumption.
+    - cbn. destruct_one_match;
+        rewrite word.unsigned_eqb, ?word.unsigned_of_Z_1, ?word.unsigned_of_Z_0;
+        reflexivity.
+    - assumption.
+  Qed.
+
   Lemma WP_weaken_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
       WeakestPrecondition.cmd (call fs) c t m l post1 ->
       (forall t m l, post1 t m l -> post2 t m l) ->
