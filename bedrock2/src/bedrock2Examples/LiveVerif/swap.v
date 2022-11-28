@@ -13,6 +13,7 @@ Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Map.OfListWo
 Require coqutil.Map.SortedListString. (* for function env, other maps are kept abstract *)
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Tactics.fwd.
+Require Import coqutil.Tactics.syntactic_unify.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
@@ -52,59 +53,6 @@ Fixpoint ands(Ps: list Prop): Prop :=
 Lemma ands_nil: ands nil. Proof. cbn. auto. Qed.
 Lemma ands_cons: forall [P: Prop] [Ps: list Prop], P -> ands Ps -> ands (P :: Ps).
 Proof. cbn. auto. Qed.
-
-Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
-| mk_get_option: forall (a: A) (post: A -> Prop), post a -> get_option (Some a) post.
-
-Section SepLog.
-  Context {width: Z} {word: word.word width} {mem: map.map word byte}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
-
-  Lemma load_of_sep_cps: forall sz addr value (R: mem -> Prop) m (post: word -> Prop),
-      sep (truncated_word sz addr value) R m /\ post (truncate_word sz value) ->
-      get_option (Memory.load sz m addr) post.
-  Proof.
-    intros. destruct H. eapply load_of_sep in H. rewrite H.
-    constructor. assumption.
-  Qed.
-
-  Lemma load_word_of_sep_cps: forall addr value (R: mem -> Prop) m (post: word -> Prop),
-      sep (scalar addr value) R m /\ post value ->
-      get_option (Memory.load Syntax.access_size.word m addr) post.
-  Proof.
-    intros. destruct H. eapply load_word_of_sep in H. rewrite H.
-    constructor. assumption.
-  Qed.
-
-  Lemma store_truncated_word_of_sep_cps:
-    forall (addr oldvalue newvalue: word) sz (R: mem -> Prop) m (post: mem -> Prop),
-      sep (truncated_word sz addr oldvalue) R m /\
-      (forall m', sep (truncated_word sz addr newvalue) R m' -> post m') ->
-      get_option (Memory.store sz m addr newvalue) post.
-  Proof.
-    intros. destruct H. eapply Scalars.store_of_sep in H. 2: eassumption.
-    destruct H as (m1 & E & P). rewrite E. constructor. exact P.
-  Qed.
-
-  Lemma store_byte_of_sep_cps: forall (addr: word) (oldvalue: byte) (newvalue: word)
-                                      (R: mem -> Prop) (m: mem) (post: mem -> Prop),
-      sep (ptsto addr oldvalue) R m /\
-      (forall m', sep (ptsto addr (byte.of_Z (word.unsigned newvalue))) R m' -> post m') ->
-      get_option (Memory.store access_size.one m addr newvalue) post.
-  Proof.
-    intros. destruct H. eapply store_one_of_sep in H. 2: eassumption.
-    destruct H as (m1 & E & P). rewrite E. constructor. exact P.
-  Qed.
-
-  Lemma store_word_of_sep_cps:
-    forall (addr oldvalue newvalue: word) (R: mem -> Prop) m (post: mem -> Prop),
-      sep (scalar addr oldvalue) R m /\
-      (forall m', sep (scalar addr newvalue) R m' -> post m') ->
-      get_option (Memory.store access_size.word m addr newvalue) post.
-  Proof.
-    intros. eapply store_truncated_word_of_sep_cps. eassumption.
-  Qed.
-End SepLog.
 
 (*
 TODO: once we have C notations for function signatures,
@@ -203,8 +151,7 @@ Ltac start :=
   lazymatch goal with
   | |- vc_func _ ?f ?t ?m ?argvalues ?post =>
     let argnames := map_with_ltac varconstr_to_string argvalues in
-    unify eargnames argnames;
-    move arguments before n
+    unify eargnames argnames
   end;
   unfold vc_func;
   lazymatch goal with
@@ -537,8 +484,13 @@ Section MergingSep.
 
 End MergingSep.
 
-Lemma push_if_into_arg{A B: Type}(f: A -> B)(a1 a2: A)(cond: bool):
+Lemma push_if_into_arg1{A B: Type}(f: A -> B)(a1 a2: A)(cond: bool):
   (if cond then f a1 else f a2) = f (if cond then a1 else a2).
+Proof. destruct cond; reflexivity. Qed.
+
+Lemma push_if_into_arg2{A1 A2 B: Type}(f: A1 -> A2 -> B)(a1 a1': A1)(a2 a2': A2)(cond: bool):
+  (if cond then f a1 a2 else f a1' a2') =
+    f (if cond then a1 else a1') (if cond then a2 else a2').
 Proof. destruct cond; reflexivity. Qed.
 
 Lemma push_if_into_cons_tuple_same_key(cond: bool)(k: string)(v1 v2: Z) t1 t2:
@@ -690,9 +642,10 @@ Ltac after_if :=
     end;
   lazymatch goal with
   | H: ?l = _ |- wp_cmd _ _ _ _ ?l _ =>
-      repeat (rewrite ?push_if_into_arg,
-                      ?push_if_into_cons_tuple_same_key,
-                      ?if_same in H);
+      repeat (rewrite ?push_if_into_cons_tuple_same_key,
+                      ?if_same,
+                      ?push_if_into_arg1,
+                      ?push_if_into_arg2 in H);
       subst l
   end;
   letbind_locals 0%nat.
@@ -777,6 +730,8 @@ Ltac prove_concrete_post :=
   try ZnWords;
   intuition (congruence || ZnWords || eauto with prove_post).
 
+Definition final_postcond_marker(P: Prop) := P.
+
 Ltac ret retnames :=
   lazymatch goal with
   | B: scope_marker ?sk |- _ =>
@@ -792,7 +747,11 @@ Ltac ret retnames :=
   lazymatch goal with
   | |- exists _, map.getmany_of_list _ ?eretnames = Some _ /\ _ =>
     unify eretnames retnames;
-    eexists; split; [reflexivity|cbn [PrimitivePair.pair._1 PrimitivePair.pair._2]]
+    eexists; split;
+    [ reflexivity
+    | lazymatch goal with
+      | |- ?G => change (final_postcond_marker G)
+      end ]
   end.
 
 Ltac close_block :=
@@ -801,7 +760,6 @@ Ltac close_block :=
       lazymatch sk with
       | ElseBranch =>
           eapply wp_skip;
-          eexists; split; [ reflexivity | ];
           package_context
       | LoopBody =>
           eapply wp_skip;
@@ -809,6 +767,7 @@ Ltac close_block :=
       | FunctionBody =>
           lazymatch goal with
           | |- @ready ?g => change g
+          | |- @final_postcond_marker ?g => change g
           | |- _ => idtac
           end;
           lazymatch goal with
@@ -819,13 +778,6 @@ Ltac close_block :=
       | _ => fail "Can't end a block here"
       end
   | _ => fail "no scope marker found"
-  end.
-
-Ltac prettify_goal :=
-  lazymatch goal with
-  | |- _ =>
-      cbv beta in *;
-      after_if
   end.
 
 Ltac add_snippet s :=
@@ -862,22 +814,29 @@ Ltac add_snippet s :=
   | SStart => start
   | SEnd => close_block
   | SRet ?retnames => ret retnames
-  | SEmpty => prettify_goal
+  | SEmpty => idtac
   end.
 
 Ltac lia' := (*purify; TODO needs hypothesis-wise purify*) lia.
 
-(*
+Lemma BoolSpec_expr_branches{Bt Bf: Prop}{b: bool}{H: BoolSpec Bt Bf b}(Pt Pf Pa: Prop):
+  (Bt -> Pt) ->
+  (Bf -> Pf) ->
+  Pa ->
+  bool_expr_branches b Pt Pf Pa.
+Proof.
+  intros. unfold bool_expr_branches. destruct H; auto.
+Qed.
+
 Ltac program_logic_step :=
   lazymatch goal with
-  | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_lazy_and
-  | |- dexpr_bool3 _ _ (expr.lazy_or _ _)        _ _ _ _ => eapply dexpr_lazy_or
-  | |- dexpr_bool3 _ _ (expr.not _)              _ _ _ _ => eapply dexpr_not
-  | |- dexpr_bool3 _ _ (expr.op bopname.eq _ _)  _ _ _ _ => eapply dexpr_eq
-  | |- dexpr_bool3 _ _ (expr.op bopname.ltu _ _) _ _ _ _ => eapply dexpr_ltu
-(*| |- dexpr_bool3 _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)*)
-  | |- dexpr1 _ _ (expr.var _)     _ _ => eapply dexpr1_var; [reflexivity|lia'| ]
-  | |- dexpr1 _ _ (expr.literal _) _ _ => eapply dexpr1_literal; [lia'| ]
+  | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_bool3_lazy_and
+  | |- dexpr_bool3 _ _ (expr.lazy_or _ _)        _ _ _ _ => eapply dexpr_bool3_lazy_or
+  | |- dexpr_bool3 _ _ (expr.not _)              _ _ _ _ => eapply dexpr_bool3_not
+  | |- dexpr_bool3 _ _ (expr.op bopname.eq _ _)  _ _ _ _ => eapply dexpr_bool3_eq
+  | |- dexpr_bool3 _ _ (expr.op bopname.ltu _ _) _ _ _ _ => eapply dexpr_bool3_ltu
+  | |- dexpr1 _ _ (expr.var _)     _ _ => eapply dexpr1_var; [reflexivity| ]
+  | |- dexpr1 _ _ (expr.literal _) _ _ => eapply dexpr1_literal
   | |- dexpr1 _ _ (expr.op _ _ _)  _ _ => eapply dexpr1_binop_unf
   | |- dexpr1 _ _ (expr.load _ _)  _ _ => eapply dexpr1_load
   | |- bool_expr_branches _ _ _ _ => eapply BoolSpec_expr_branches; [ intro | intro | ]
@@ -916,7 +875,6 @@ Ltac program_logic_step :=
           end;
           cbn [seps];
           exact (iff1_refl _) ]
-  | H: ?x = ?y |- _ => is_var x; is_var y; subst x
   | |- wp_cmd _ _ _ _ _ _ =>
       lazymatch goal with
       | |- ?G => change (@ready G)
@@ -971,6 +929,7 @@ Proof.
 Ltac step_is_done :=
   match goal with
   | |- @ready _ => idtac
+  | |- @final_postcond_marker _ => idtac
   | |- after_if _ _ ?Q1 ?Q2 _ _ => is_evar Q1
   | |- after_if _ _ ?Q1 ?Q2 _ _ => is_evar Q2
   end.
@@ -990,6 +949,7 @@ Ltac run_steps_hook := run_steps.
   repeat match goal with
          | H: ?x = ?y |- _ => is_var x; is_var y; subst x
          end.
+*)
 
 (* Note: An rhs_var appears in expressions and, in our setting, always has a corresponding
    var (of type word) bound in the current context, whereas an lhs_var may or may not be
@@ -1187,12 +1147,6 @@ Ltac2 step () := ltac1:(step).
 
 Ltac2 Notation "step" := step ().
 
-Section LiveVerif.
-
-  Context {word: word.word 32} {mem: map.map word byte}
-    (* TODO concrete locals? *)
-    {locals: map.map string word} {mem_ok: map.ok mem} {locals_ok: map.ok locals}.
-
 Comments C_STARTS_HERE
 /**.
 
@@ -1211,39 +1165,14 @@ Definition u_min: {f: list string * list string * cmd &
   } else {                                                                 /**. .**/
     r = b;                                                                 /**. .**/
   }                                                                        /**. .**/
-                                                                           /**. .**/
   return r;                                                                /**. .**/
 }                                                                          /**.
 Defined.
 
-Close Scope live_scope_prettier.
-Unset Implicit Arguments.
-
-  Require Import FunctionalExtensionality.
-  Require Import Coq.Logic.PropExtensionality.
-
-  Lemma word__ltu_wf: well_founded (fun x y: word => word.unsigned x < word.unsigned y).
-  Proof.
-    epose proof (well_founded_ltof _ (fun (w: word) => Z.to_nat (word.unsigned w))) as P.
-    unfold ltof in P.
-    eqapply P.
-    extensionality a. extensionality b. eapply propositional_extensionality.
-    split; ZnWords.
-  Qed.
-
 (* Assigns default well_founded relations to types.
    Use lower costs to override existing entries. *)
 Create HintDb wf_of_type.
-Hint Resolve word__ltu_wf | 4 : wf_of_type.
-
-Section WithNonmaximallyInsertedA.
-  Context [A: Type].
-
-  Lemma List__repeat_0: forall (a: A), List.repeat a 0 = nil.
-  Proof. intros. reflexivity. Qed.
-End WithNonmaximallyInsertedA.
-
-Require Import coqutil.Tactics.syntactic_unify.
+Hint Resolve word.well_founded_lt_unsigned | 4 : wf_of_type.
 
 Tactic Notation "loop" "invariant" "above" ident(i) :=
   let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
@@ -1264,22 +1193,22 @@ Definition memset: {f: list string * list string * cmd &
 {                                                                        /**. .**/
   uintptr_t i = 0;                                                       /**.
 
-  replace bs with (List.repeatz (byte.of_Z \[b]) \[i] ++ bs[\[i]:]) in H
+ltac1:(replace bs with (List.repeatz (byte.of_Z \[b]) \[i] ++ bs[\[i]:]) in H1
       by (subst i; (* TODO heurisits for when to inline vars *)
           bottom_up_simpl_in_goal;
-          syntactic_exact_deltavar (@eq_refl _ _)).
+          syntactic_exact_deltavar (@eq_refl _ _))).
 
-  loop invariant above i.
+  ltac1:(loop invariant above i).
   move H0 before R. (* not strictly needed *)
-  assert (0 <= \[i] <= \[n]) by ZnWords.
-  clearbody i.
+  assert (0 <= \[i] <= \[n]) by ltac1:(ZnWords).
+  Std.clearbody [ @i ].
+
+Abort.
+(* TODO: convert to heapletwise
 
   .**/
   while (i < n) /* decreases (n ^- i) */ {                               /**. .**/
     store1(a + i, b);                                                    /**.
-
-Abort.
-(* TODO: convert to heapletwise
 
 (* TODO: automate prettification steps below *)
 rewrite Z.div_1_r in *.
@@ -1447,16 +1376,4 @@ About test.
 *)
 End LiveVerif.
 
-About test.
-(*
-test :
-forall
-  {word : word
-            (BinNums.Zpos
-               (BinNums.xO (BinNums.xO (BinNums.xO (BinNums.xO (BinNums.xO BinNums.xH))))))},
-word.ok word -> forall a b : word, foo a b = foo b a
- *)
-
 Comments !EOF .**/ //.
-*)
-*)
