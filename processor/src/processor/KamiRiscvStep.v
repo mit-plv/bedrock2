@@ -3412,7 +3412,6 @@ Section Equiv.
       end.
       { exfalso; subst v v0 rs1 rs2.
         regs_get_red E.
-        cbv [reg_eqb MachineWidth_XLEN word.eqb word wordW KamiWord.word] in E.
         apply N2Z.inj, wordToN_inj in e1; auto.
       }
       { cbv [negb].
@@ -3438,19 +3437,15 @@ Section Equiv.
       { apply pc_related_plus4; red; eauto. }
       { exfalso; subst v v0 rs1 rs2.
         regs_get_red E.
-        cbv [reg_eqb MachineWidth_XLEN word.eqb word wordW KamiWord.word] in E.
         congruence.
       }
     }
 
     { (* blt(lt) *)
       cbv [evalBinBitBool].
-      cbv [signed_less_than
-             MachineWidth_XLEN
-             word.lts word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
-      destruct (wslt_dec _ _); [|discriminate].
+      destruct (wslt_dec _ _); [|exfalso; apply n; apply E].
       subst addr sbimm12.
       split. {
         apply AddrAligned_consistent. rewrite E0. reflexivity.
@@ -3467,23 +3462,19 @@ Section Equiv.
 
     { (* blt(not lt) *)
       cbv [evalBinBitBool].
-      cbv [signed_less_than
-             MachineWidth_XLEN
-             word.lts word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
-      destruct (wslt_dec _ _); [discriminate|].
+      destruct (wslt_dec _ _).
+      { exfalso. eapply Z.le_ngt in E. apply E. apply w. }
       apply pc_related_plus4; red; eauto.
     }
 
     { (* bge(ge) *)
       cbv [evalBinBitBool].
-      cbv [signed_less_than
-             MachineWidth_XLEN
-             word.lts word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
-      destruct (wslt_dec _ _); [discriminate|].
+      destruct (wslt_dec _ _).
+      { exfalso. eapply Z.le_ngt in E. apply E. apply w. }
       subst addr sbimm12.
       split. {
         apply AddrAligned_consistent. rewrite E0. reflexivity.
@@ -3500,22 +3491,26 @@ Section Equiv.
 
     { (* bge(not ge) *)
       cbv [evalBinBitBool].
-      cbv [signed_less_than
-             MachineWidth_XLEN
-             word.lts word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
-      destruct (wslt_dec _ _); [|discriminate].
+      destruct (wslt_dec _ _); [|exfalso; apply n; apply E].
       apply pc_related_plus4; red; eauto.
     }
 
     { (* bltu(ltu) *)
       cbv [evalBinBitBool].
-      cbv [ltu MachineWidth_XLEN
-               word.ltu word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
-      destruct (wlt_dec _ _); [|discriminate].
+      destruct (wlt_dec _ _).
+      2: {
+        exfalso.
+        lazymatch type of E with
+        | word.unsigned ?x < word.unsigned ?y =>
+            change (Z.of_N (wordToN x) < Z.of_N (wordToN y)) in E
+        end.
+        eapply N2Z.inj_lt in E.
+        apply n. apply E.
+      }
       subst addr sbimm12.
       split. {
         apply AddrAligned_consistent. rewrite E0. reflexivity.
@@ -3532,21 +3527,31 @@ Section Equiv.
 
     { (* bltu(not ltu) *)
       cbv [evalBinBitBool].
-      cbv [ltu MachineWidth_XLEN
-               word.ltu word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
-      destruct (wlt_dec _ _); [discriminate|].
+      destruct (wlt_dec _ _). {
+        exfalso.
+        lazymatch type of E with
+        | word.unsigned ?x <= word.unsigned ?y =>
+            change (Z.of_N (wordToN x) <= Z.of_N (wordToN y)) in E
+        end.
+        eapply N2Z.inj_le in E. eapply N.lt_nge in w. apply w. apply E.
+      }
       apply pc_related_plus4; red; eauto.
     }
 
     { (* bgeu(geu) *)
       cbv [evalBinBitBool].
-      cbv [ltu MachineWidth_XLEN
-               word.ltu word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
-      destruct (wlt_dec _ _); [discriminate|].
+      destruct (wlt_dec _ _). {
+        exfalso.
+        lazymatch type of E with
+        | word.unsigned ?x <= word.unsigned ?y =>
+            change (Z.of_N (wordToN x) <= Z.of_N (wordToN y)) in E
+        end.
+        eapply N2Z.inj_le in E. eapply N.lt_nge in w. apply w. apply E.
+      }
       subst addr sbimm12.
       split. {
         apply AddrAligned_consistent. rewrite E0. reflexivity.
@@ -3563,11 +3568,10 @@ Section Equiv.
 
     { (* bgeu(not geu) *)
       cbv [evalBinBitBool].
-      cbv [ltu MachineWidth_XLEN
-               word.ltu word wordW KamiWord.word] in E.
       subst v v0 rs1 rs2.
       regs_get_red E.
-      destruct (wlt_dec _ _); [|discriminate].
+      destruct (wlt_dec _ _).
+      2: { exfalso. apply n. eapply N2Z.inj_lt. apply E. }
       apply pc_related_plus4; red; eauto.
     }
 

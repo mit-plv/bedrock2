@@ -43,23 +43,15 @@ Section WithParameters.
   Definition nth(l: list word)(n: nat): word := List.nth n l (word.of_Z 0).
 
   Definition Sorted(l: list word): Prop :=
-    forall i j: nat, (i < j < List.length l)%nat -> word.ltu (nth l j) (nth l i) = false.
-
-  Fixpoint Sorted0(l: list word): Prop :=
-    match l with
-    | nil => True
-    | x :: tl1 => match tl1 with
-                  | y :: tl2 => word.ltu y x = false /\ Sorted0 tl1
-                  | nil => True
-                  end
-    end.
+    forall i j: nat, (i < j < List.length l)%nat ->
+                     word.unsigned (nth l i) <= word.unsigned (nth l j).
 
   Lemma Sorted_nil: Sorted [].
   Proof. intros i j (? & A). inversion A. Qed.
 
   Lemma Sorted_snoc: forall l a,
       Sorted l ->
-      (forall k, (k < List.length l)%nat -> word.ltu a (nth l k) = false) ->
+      (forall k, (k < List.length l)%nat -> word.unsigned (nth l k) <= word.unsigned a) ->
       Sorted (l ++ [a]).
   Proof.
     unfold Sorted. intros. rewrite List.app_length in *. cbn in *.
@@ -71,19 +63,10 @@ Section WithParameters.
       apply H0. Lia.lia.
   Qed.
 
-  (* TODO define word.leu and move to coqutil *)
-  Lemma word__leu_trans: forall (a b c: word),
-      word.ltu b a = false ->
-      word.ltu c b = false ->
-      word.ltu c a = false.
-  Proof.
-    intros *. rewrite ?word.unsigned_ltu, ?Z.ltb_ge. Lia.lia.
-  Qed.
-
   Lemma Sorted_insert: forall left a1 a2 right,
       Sorted (left ++ a2 :: right) ->
-      (forall k, (k < List.length left)%nat -> word.ltu a1 (nth left k) = false) ->
-      word.ltu a2 a1 = false ->
+      (forall k, (k < List.length left)%nat -> word.unsigned (nth left k) <= word.unsigned a1) ->
+      word.unsigned a1 <= word.unsigned a2 ->
       Sorted (left ++ [a1; a2] ++ right).
   Proof.
     unfold Sorted, nth in *.
@@ -109,7 +92,7 @@ Section WithParameters.
       rewrite <- List.app_assoc.
       assert (i < List.length left \/ i = List.length left)%nat as C by Lia.lia. destruct C as [C | C].
       + rewrite List.app_nth1 by Lia.lia.
-        eapply word__leu_trans. 2: eassumption. apply H0. assumption.
+        etransitivity. 2: eassumption. apply H0. assumption.
       + subst i. change (left ++ [a1] ++ a2 :: right) with (left ++ a1 :: a2 :: right).
         rewrite List.nth_middle. assumption.
     - rename j into j0. destruct j0 as [|j]. 1: exfalso; Lia.lia.
@@ -135,20 +118,20 @@ Section WithParameters.
       + assert (i < j < Datatypes.length left + S (Datatypes.length right))%nat as A by Lia.lia.
         specialize H with (1 := A). clear A.
         subst i. rewrite List.nth_middle. rewrite List.nth_middle in H.
-        eapply word__leu_trans; eassumption.
+        etransitivity; eassumption.
       + subst i. change (left ++ a1 :: a2 :: right) with (left ++ [a1] ++ a2 :: right).
         rewrite List.app_assoc.
         replace (Datatypes.length left + 1)%nat with (List.length (left ++ [a1])). 2: {
           rewrite List.app_length. reflexivity.
         }
         rewrite List.nth_middle.
-        replace a2 with (List.nth (List.length left) (left ++ a2 :: right) (word.of_Z 0)) at 2. 2: {
+        replace a2 with (List.nth (List.length left) (left ++ a2 :: right) (word.of_Z 0)) at 1. 2: {
           apply List.nth_middle.
         }
         apply H. Lia.lia.
       + change (left ++ a2 :: right) with (left ++ [a2] ++ right).
         rewrite List.app_assoc.
-        rewrite List.app_nth2; rewrite List.app_length; cbn. 2: Lia.lia.
+        rewrite List.app_nth2 with (n := j); rewrite List.app_length; cbn. 2: Lia.lia.
         replace (left ++ a1 :: a2 :: right) with ((left ++ [a1; a2]) ++ right). 2: {
           rewrite <- List.app_assoc. reflexivity.
         }
@@ -310,15 +293,15 @@ Section WithParameters.
             (List.length remSorted = remSortedLen /\
              i0 = i /\ a = addr /\ n0 = n /\ e0 = e /\ sorted = seenSorted ++ remSorted /\
              word.unsigned j + Z.of_nat remSortedLen = word.unsigned i /\
-             (forall k: nat, (k < List.length seenSorted)%nat -> word.ltu e (nth sorted k) = false) /\
+             (forall k: nat, (k < List.length seenSorted)%nat -> word.unsigned (nth sorted k) <= word.unsigned e) /\
              (array scalar32 (word.of_Z 4) (word.add addr (word.mul (word.of_Z 4) j)) remSorted *
               scalar32 (word.add addr (word.mul (word.of_Z 4) i)) e * R) m)
             (fun T M A I J N E => T = t /\ I = i /\ N = n /\ e = E /\ a = A /\
               word.unsigned J <= word.unsigned i /\
               List.length remSorted = remSortedLen /\
               sorted = seenSorted ++ remSorted /\
-              word.ltu (nth (sorted ++ [e]) (Z.to_nat (word.unsigned J))) e = false /\
-              (forall k: nat, (k < Z.to_nat (word.unsigned J))%nat -> word.ltu e (nth sorted k) = false) /\
+              word.unsigned e <= word.unsigned (nth (sorted ++ [e]) (Z.to_nat (word.unsigned J))) /\
+              (forall k: nat, (k < Z.to_nat (word.unsigned J))%nat -> word.unsigned (nth sorted k) <= word.unsigned e) /\
               (array scalar32 (word.of_Z 4)
                      (word.add addr (word.mul (word.of_Z 4)
                                               (word.of_Z (word.unsigned i - Z.of_nat remSortedLen))))
@@ -431,8 +414,7 @@ Section WithParameters.
             unfold nth in *.
             destruct D as [D | D].
             - auto.
-            - subst k. rewrite List.nth_middle.
-              rewrite word.unsigned_ltu. apply Z.ltb_ge. ZnWords. }
+            - subst k. rewrite List.nth_middle. Lia.lia. }
           subst j.
           use_sep_assumption. cancel.
           cancel_seps_at_indices 1%nat 0%nat. {
@@ -546,7 +528,6 @@ Section WithParameters.
             rewrite word.unsigned_of_Z_1 in HC. discriminate HC.
           }
           clear HC.
-          rewrite word.unsigned_ltu in E. apply Z.ltb_ge in E.
           destruct StoShiftLen as [|toShiftLen]; repeat straightline_cleanup. 2: {
             exfalso. ZnWords.
           }
@@ -560,7 +541,6 @@ Section WithParameters.
           exfalso. rewrite word.unsigned_of_Z_0 in HC. apply HC. reflexivity.
         }
         clear HC.
-        rewrite word.unsigned_ltu in E. apply Z.ltb_lt in E.
         destruct StoShiftLen as [|toShiftLen]; repeat straightline_cleanup. {
           exfalso. ZnWords.
         }
@@ -659,7 +639,7 @@ Section WithParameters.
           ecancel_done.
         }
         { match goal with
-          | H: word.ltu _ _ = false |- _ => rename H into HLt; move HLt at bottom
+          | H: word.unsigned _ <= word.unsigned _ |- _ => rename H into HLt; move HLt at bottom
           end.
           unfold nth in HLt. rewrite Znat.Nat2Z.id in HLt. rewrite <- List.app_assoc in HLt.
           destruct toShift as [|e' toShift]; cycle 1.
