@@ -1,5 +1,6 @@
+Require Import Coq.Strings.String.
 (* Almost everyone importing this file will need strings in their error messages *)
-Require Import Coq.Strings.String. Open Scope string_scope.
+Export Coq.Strings.String.StringSyntax.
 
 (* TODO The definition of dlist could/should be shared with compiler.util.Result *)
 Inductive dlist: Type :=
@@ -24,11 +25,11 @@ Notation "x" := (tactic_error x)
   (at level 0, x custom ne_space_sep_dlist at level 0, only printing)
 : tactic_error_scope. *)
 
-Notation "x !" := (tactic_error x)
+Notation "x !" := (tactic_error x%string)
   (at level 0, x custom ne_space_sep_dlist at level 0, format "'[' x  ! ']'", only printing)
 : tactic_error_scope.
 
-Notation "'Error:(' msg )" := (mk_tactic_error msg)
+Notation "'Error:(' msg )" := (mk_tactic_error msg%string)
   (at level 0, msg custom ne_space_sep_dlist at level 0, format "'Error:(' msg )")
   : tactic_error_scope.
 

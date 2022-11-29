@@ -1512,29 +1512,6 @@ Open Scope implicit_facts_scope.
 Notation "(implicit facts)" := (head_of_implicit_facts /\ _) (only printing)
   : implicit_facts_scope.
 
-(* fail on notations that we don't want to destruct *)
-Ltac is_destructible_and T ::=
-  lazymatch T with
-  | (Logic.and (N.le     _ ?y) (N.le     ?y _)) => fail
-  | (Logic.and (Z.le     _ ?y) (Z.le     ?y _)) => fail
-  | (Logic.and (Peano.le _ ?y) (Peano.le ?y _)) => fail
-  | (Logic.and (Pos.le   _ ?y) (Pos.le   ?y _)) => fail
-  | (Logic.and (N.le     _ ?y) (N.lt     ?y _)) => fail
-  | (Logic.and (Z.le     _ ?y) (Z.lt     ?y _)) => fail
-  | (Logic.and (Peano.le _ ?y) (Peano.lt ?y _)) => fail
-  | (Logic.and (Pos.le   _ ?y) (Pos.lt   ?y _)) => fail
-  | (Logic.and (N.lt     _ ?y) (N.le     ?y _)) => fail
-  | (Logic.and (Z.lt     _ ?y) (Z.le     ?y _)) => fail
-  | (Logic.and (Peano.lt _ ?y) (Peano.le ?y _)) => fail
-  | (Logic.and (Pos.lt   _ ?y) (Pos.le   ?y _)) => fail
-  | (Logic.and (N.lt     _ ?y) (N.lt     ?y _)) => fail
-  | (Logic.and (Z.lt     _ ?y) (Z.lt     ?y _)) => fail
-  | (Logic.and (Peano.lt _ ?y) (Peano.lt ?y _)) => fail
-  | (Logic.and (Pos.lt   _ ?y) (Pos.lt   ?y _)) => fail
-  | (Logic.and head_of_implicit_facts _) => fail
-  | (Logic.and _ _) => idtac
-  end.
-
 Ltac after_snippet :=
   intros;
   fwd;

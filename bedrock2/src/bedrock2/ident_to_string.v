@@ -45,10 +45,12 @@ Ltac2 string_to_coq(s: string) :=
 
 Ltac2 ident_to_coq(i: ident) := string_to_coq (Ident.to_string i).
 
+Ltac2 Type exn ::= [ Not_a_Var (constr) ].
+
 Ltac2 varconstr_to_coq(c: constr) :=
   match Constr.Unsafe.kind c with
   | Constr.Unsafe.Var i => ident_to_coq i
-  | _ => Control.throw_invalid_argument "not a Constr.Unsafe.Var"
+  | _ => Control.throw (Not_a_Var c)
   end.
 
 (* Test:

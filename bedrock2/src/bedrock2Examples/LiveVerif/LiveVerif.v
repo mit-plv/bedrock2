@@ -1,12 +1,10 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
-Require Import coqutil.Z.Lia.
-Require Import coqutil.Byte coqutil.Datatypes.HList.
-Require Import coqutil.Datatypes.PropSet.
 Require Import coqutil.Datatypes.Inhabited.
-Require Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.rewr coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require coqutil.Map.SortedListString. (* for function env, other maps are kept abstract *)
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Byte.
 Require Import coqutil.Tactics.fwd.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
@@ -14,29 +12,32 @@ Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Arr
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.groundcbv.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
-Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic bedrock2.Loops.
 Require Import coqutil.Word.Bitwidth32.
 Require coqutil.Datatypes.String coqutil.Map.SortedList coqutil.Map.SortedListString.
-Require Import bedrock2Examples.LiveVerif.string_to_ident.
-Require Import bedrock2.ident_to_string.
-Require Import bedrock2.autorew.
-Import WordRingAutorewr HypAutorewr ListNoSCAutorewr
-       PushPullIfAutorewr LiaSCAutorewr ZnWordsSCAutorewr.
 Require Import bedrock2.SepBulletPoints.
-Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Require Import coqutil.Datatypes.ZList.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
+Require Import bedrock2.find_hyp.
+Require Import bedrock2.HeapletwiseHyps.
+Require Import bedrock2.bottom_up_simpl_ltac1.
+Require Import bedrock2Examples.LiveVerif.LiveRules.
+Require Import bedrock2Examples.LiveVerif.PackageContext.
+Require Import bedrock2Examples.LiveVerif.LiveTactics.
+Require Import bedrock2Examples.LiveVerif.LiveParsing.
+Require Import Ltac2.Ltac2.
+
+Local Set Ltac Backtrace.
+Local Set Ltac2 Backtrace.
 
 Section LiveVerif.
-  Import Syntax BinInt String ZArith.
-  Context {word: word.word 32} {mem: map.map word byte}.
+  Import Coq.Strings.String.
+  Context {word: word.word 32} {mem: map.map word Byte.byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
-  Local Set Implicit Arguments.
   Local Open Scope string_scope. Local Open Scope Z_scope.
-  Notation "'bytetuple' sz" := (HList.tuple byte (@Memory.bytes_per 32 sz)) (at level 10).
   Import ZList.List.ZIndexNotations.
   Local Open Scope zlist_scope.
   Local Open Scope sep_bullets_scope.
+  Local Open Scope live_scope.
 
   Add Ring wring : (Properties.word.ring_theory (word := word))
         ((*This preprocessing is too expensive to be always run, especially if
@@ -58,4 +59,4 @@ Section LiveVerif.
   Arguments locals: simpl never.
   Arguments env: simpl never.
 
-  Ltac fwd_rewrites ::= autorew_in_hyps.
+  Local Set Default Goal Selector "all".

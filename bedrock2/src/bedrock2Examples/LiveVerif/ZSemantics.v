@@ -1732,28 +1732,6 @@ Ltac program_logic_step :=
 
 Ltac step := first [ heapletwise_step | program_logic_step ].
 
-(* fail on notations that we don't want to destruct *)
-Ltac is_destructible_and T ::=
-  lazymatch T with
-  | (Logic.and (N.le     _ ?y) (N.le     ?y _)) => fail
-  | (Logic.and (Z.le     _ ?y) (Z.le     ?y _)) => fail
-  | (Logic.and (Peano.le _ ?y) (Peano.le ?y _)) => fail
-  | (Logic.and (Pos.le   _ ?y) (Pos.le   ?y _)) => fail
-  | (Logic.and (N.le     _ ?y) (N.lt     ?y _)) => fail
-  | (Logic.and (Z.le     _ ?y) (Z.lt     ?y _)) => fail
-  | (Logic.and (Peano.le _ ?y) (Peano.lt ?y _)) => fail
-  | (Logic.and (Pos.le   _ ?y) (Pos.lt   ?y _)) => fail
-  | (Logic.and (N.lt     _ ?y) (N.le     ?y _)) => fail
-  | (Logic.and (Z.lt     _ ?y) (Z.le     ?y _)) => fail
-  | (Logic.and (Peano.lt _ ?y) (Peano.le ?y _)) => fail
-  | (Logic.and (Pos.lt   _ ?y) (Pos.le   ?y _)) => fail
-  | (Logic.and (N.lt     _ ?y) (N.lt     ?y _)) => fail
-  | (Logic.and (Z.lt     _ ?y) (Z.lt     ?y _)) => fail
-  | (Logic.and (Peano.lt _ ?y) (Peano.lt ?y _)) => fail
-  | (Logic.and (Pos.lt   _ ?y) (Pos.lt   ?y _)) => fail
-  | (Logic.and _ _) => idtac
-  end.
-
 (* If t1 solves the first goal, t2 will be run on the second (now first) goal,
    so t2 can do operations that only became possible because of t1's evar instantiations.
    Requires `Set Default Goal Selector "all".` *)
