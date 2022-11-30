@@ -60,3 +60,5 @@ Section LiveVerif.
   Arguments env: simpl never.
 
   Local Set Default Goal Selector "all".
+
+  Local Arguments after_if {width BW word mem locals ext_spec fs b Q1 Q2 rest post}.

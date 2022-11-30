@@ -145,9 +145,3 @@ Notation "} 'else' {" := SElse (in custom snippet at level 0).
 
 Notation "'while' ( e ) /* 'decreases' m */ {" :=
   (SWhile e m) (in custom snippet at level 0, e custom live_expr, m constr at level 0).
-
-(* TODO: once we have C notations for function signatures,
-put vernac between /*.   .*/ and ltac between /**.  .**/ so that
-only Ltac gets hidden *)
-Notation "'C_STARTS_HERE' /* *" := True (only parsing).
-Notation "'!EOF' '.*' '*/' //" := True (only parsing).

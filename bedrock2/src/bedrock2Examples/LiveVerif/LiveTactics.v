@@ -253,6 +253,12 @@ Proof.
   intros. unfold bool_expr_branches. destruct H; auto.
 Qed.
 
+Ltac cleanup :=
+  match goal with
+  | x := _ |- _ => clear x
+  | H: ?T |- _ => is_destructible_and T; let H' := fresh H in destruct H as (H & H')
+  end.
+
 Ltac program_logic_step :=
   lazymatch goal with
   | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_bool3_lazy_and
@@ -301,9 +307,10 @@ Ltac program_logic_step :=
           cbn [seps];
           exact (iff1_refl _) ]
   | |- wp_cmd _ _ _ _ _ _ =>
-      lazymatch goal with
-      | |- ?G => change (@ready G)
-      end
+      first [ cleanup
+            | lazymatch goal with
+              | |- ?G => change (@ready G)
+              end ]
   end.
 
 Ltac step := first [ heapletwise_step | program_logic_step ].
@@ -326,6 +333,10 @@ Ltac run_steps_hook := run_steps.
 
 Require Import Ltac2.Ltac2.
 
+Ltac2 step () := ltac1:(step).
+
+Ltac2 Notation "step" := step ().
+
 Ltac2 add_snippet(s: constr) := ltac1:(s |- add_snippet s) (Ltac1.of_constr s).
 Ltac2 run_steps_hook () := ltac1:(run_steps_hook).
 
@@ -339,7 +350,34 @@ Ltac2 next_snippet(s: unit -> constr) :=
   end.
 
 Ltac2 Notation ".*" s(thunk(constr)) "*" := next_snippet s.
+Ltac2 Notation "#*" s(thunk(constr)) "*" := next_snippet s.
 
-Ltac2 step () := ltac1:(step).
+(* One return value: *)
+Notation ".* */ 'uintptr_t' f ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /**# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post" :=
+{ f : list String.string * list String.string * cmd &
+  forall fs t1 m1, (forall a1, .. (forall an, (forall g1, .. (forall gn, pre ->
+    vc_func fs f t1 m1 (cons a1 .. (cons an nil) ..)
+      (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post)) .. )) .. ) }
+(at level 200,
+ f name,
+ a1 closed binder, an closed binder,
+ g1 closed binder, gn closed binder,
+ t1 name, t2 name, m1 name, m2 name, r name,
+ pre at level 200,
+ post at level 200).
 
-Ltac2 Notation "step" := step ().
+(* No return value: *)
+Notation ".* */ 'void' f ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /**# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post" :=
+{ f : list String.string * list String.string * cmd &
+  forall fs t1 m1, (forall a1, .. (forall an, (forall g1, .. (forall gn, pre ->
+    vc_func fs f t1 m1 (cons a1 .. (cons an nil) ..)
+      (fun t2 m2 retvs => retvs = nil /\ post)) .. )) .. ) }
+(at level 200,
+ f name,
+ a1 closed binder, an closed binder,
+ g1 closed binder, gn closed binder,
+ t1 name, t2 name, m1 name, m2 name,
+ pre at level 200,
+ post at level 200).
+
+Notation ".* */ //" := True (only parsing).

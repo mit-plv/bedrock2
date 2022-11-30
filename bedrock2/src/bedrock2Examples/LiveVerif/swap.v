@@ -4,17 +4,14 @@ Require Import coqutil.Tactics.syntactic_unify.
 
 Load LiveVerif.
 
-Comments C_STARTS_HERE
-/**.
+Definition u_min: .**/
 
-Definition u_min: {f: list string * list string * cmd &
-  forall fs t m a b (R: mem -> Prop),
-    R m ->
-    vc_func fs f t m [| a; b |] (fun t' m' retvs =>
-      t' = t /\ R m' /\
-      (word.unsigned a <  word.unsigned b /\ retvs = [|a|] \/
-       word.unsigned b <= word.unsigned a /\ retvs = [|b|])
-  )}.                                                                           .**/
+uintptr_t u_min(uintptr_t a, uintptr_t b) /**#
+   ghost_args := (R: mem -> Prop);
+   requires t m := R m;
+   ensures t' m' retv := t' = t /\ R m' /\
+                         (\[a] < \[b] /\ retv = a \/
+                         \[b] <= \[a] /\ retv = b). #**/
 {                                                                          /**. .**/
   uintptr_t r = 0;                                                         /**. .**/
   if (a < b) {                                                             /**. .**/
@@ -35,20 +32,18 @@ Tactic Notation "loop" "invariant" "above" ident(i) :=
   let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
   move n after i.
 
-Definition memset: {f: list string * list string * cmd &
-  forall fs t m (a b n: word) (bs: list byte) (R: mem -> Prop),
-    <{ * array ptsto /[1] a bs
-       * R }> m ->
-    word.unsigned n = Z.of_nat (List.length bs) ->
-    vc_func fs f t m [| a; b; n |] (fun t' m' retvs =>
-      t' = t /\
-      <{ * array ptsto /[1] a (List.repeatz (byte.of_Z \[b]) (len bs))
-         * R }> m' /\
-      retvs = nil)
-  }.
-.**/
-{                                                                        /**. .**/
-  uintptr_t i = 0;                                                       /**.
+Definition memset: .**/
+
+void memset(uintptr_t a, uintptr_t b, uintptr_t n) /**#
+   ghost_args := (bs: list byte) (R: mem -> Prop);
+   requires t m := <{ * array ptsto /[1] a bs
+                      * R }> m /\
+                   \[n] = len bs;
+   ensures t' m' := t' = t /\
+       <{ * array ptsto /[1] a (List.repeatz (byte.of_Z \[b]) (len bs))
+          * R }> m'. #**/
+{                                                                          /**. .**/
+  uintptr_t i = 0;                                                         /**.
 
 ltac1:(replace bs with (List.repeatz (byte.of_Z \[b]) \[i] ++ bs[\[i]:]) in H1
       by (subst i; (* TODO heurisits for when to inline vars *)
@@ -61,9 +56,7 @@ ltac1:(replace bs with (List.repeatz (byte.of_Z \[b]) \[i] ++ bs[\[i]:]) in H1
   Std.clearbody [ @i ].
 
 Abort.
-(* TODO: convert to heapletwise
-
-  .**/
+(* TODO: convert to heapletwise                                               .**/
   while (i < n) /* decreases (n ^- i) */ {                               /**. .**/
     store1(a + i, b);                                                    /**.
 
@@ -231,6 +224,4 @@ Proof. unfold foo. intros. ring. Qed.
 About test.
 (* test : forall a b : word, foo a b = foo b a *)
 *)
-End LiveVerif.
-
-Comments !EOF .**/ //.
+End LiveVerif. Comments .**/ //.
