@@ -1,4 +1,5 @@
 (* -*- eval: (load-file "live_verif_setup.el"); -*- *)
+Require Import bedrock2Examples.LiveVerif.LiveVerifLib.
 Require Import coqutil.Sorting.Permutation.
 Require Import coqutil.Tactics.syntactic_unify.
 
