@@ -1,4 +1,5 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+Require Import Coq.Strings.String.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
@@ -21,7 +22,57 @@ Require Import bedrock2Examples.LiveVerif.LiveRules.
 Require Import bedrock2Examples.LiveVerif.PackageContext.
 Require Import bedrock2Examples.LiveVerif.LiveSnippet.
 
+Definition functions_correct
+  (* universally quantified abstract function list containing all functions: *)
+  (qfs: list (string * func)):
+  (* subset of functions for which to assert correctness, along with their specs: *)
+  list ((string * func) * (* name and impl *)
+        (list (string * func) -> Prop) (* spec_of *))
+  -> Prop := List.Forall (fun '(name_and_impl, spec) => spec (cons name_and_impl qfs)).
+
+Definition function_with_callees: Type :=
+  func * list ((string * func) * (* name and impl *)
+               (list (string * func) -> Prop) (* spec_of *)).
+
+Definition program_logic_goal_for(name: string)(f: function_with_callees)
+  {spec: bedrock2.ProgramLogic.spec_of name}: Prop :=
+  match f with
+  | (impl, callees) => forall functions,
+      functions_correct functions callees -> spec (cons (name, impl) functions)
+  end.
+
 Definition ready{P: Prop} := P.
+
+Ltac start :=
+  lazymatch goal with
+  | |- @program_logic_goal_for ?fname ?evar ?spec =>
+      lazymatch open_constr:((_, _): function_with_callees) with
+      | ?p => unify evar p
+      end;
+      subst evar;
+      unfold program_logic_goal_for, spec;
+      let fs := fresh "fs" in
+      intro fs;
+      let n := fresh "Scope0" in pose proof (mk_scope_marker FunctionBody) as n;
+      intros;
+      WeakestPrecondition.unfold1_call_goal;
+      cbv match beta delta [WeakestPrecondition.call_body];
+      lazymatch goal with
+      | |- if ?test then ?T else _ =>
+        replace test with true by reflexivity; change T
+      end;
+      eapply prove_func;
+      [ lazymatch goal with
+        | |- map.of_list_zip ?argnames_evar ?argvalues = Some ?locals_evar =>
+             let argnames := map_with_ltac varconstr_to_string argvalues in
+             unify argnames_evar argnames;
+             let kvs := eval unfold List.combine in (List.combine argnames argvalues) in
+             unify locals_evar (map.of_list kvs);
+             reflexivity
+        end
+      | ]
+  | |- _ => fail "goal needs to be of shape (@program_logic_goal_for ?fname ?evar ?spec)"
+  end.
 
 Ltac put_into_current_locals :=
   lazymatch goal with
@@ -59,33 +110,6 @@ Ltac put_into_current_locals :=
     | true => idtac
     | false => try clear old_i
     end
-  end.
-
-Ltac start :=
-  lazymatch goal with
-  | |- {_: prod (prod (list String.string) (list String.string)) Syntax.cmd & _ } => idtac
-  | |- _ => fail "goal needs to be of shape {_: list string * list string * Syntax.cmd & _ }"
-  end;
-  let eargnames := open_constr:(_: list String.string) in
-  refine (existT _ (eargnames, _, _) _);
-  let fs := fresh "fs" in
-  intro fs;
-  let n := fresh "Scope0" in pose proof (mk_scope_marker FunctionBody) as n;
-  intros;
-  (* since the arguments will get renamed, it is useful to have a list of their
-     names, so that we can always see their current renamed names *)
-  let arguments := fresh "arguments" in
-  lazymatch goal with
-  | |- vc_func _ ?f ?t ?m ?argvalues ?post =>
-    let argnames := map_with_ltac varconstr_to_string argvalues in
-    unify eargnames argnames
-  end;
-  unfold vc_func;
-  lazymatch goal with
-  | |- exists l, map.of_list_zip ?keys ?values = Some l /\ _ =>
-    let kvs := eval unfold List.combine in (List.combine keys values) in
-    exists (map.of_list kvs);
-    split; [reflexivity| ]
   end.
 
 Ltac clear_until_LoopInvariant_marker :=
@@ -181,6 +205,12 @@ Ltac ret retnames :=
       end ]
   end.
 
+Ltac strip_conss l :=
+  lazymatch l with
+  | cons _ ?t => strip_conss t
+  | _ => l
+  end.
+
 Ltac close_block :=
   lazymatch goal with
   | B: scope_marker ?sk |- _ =>
@@ -192,6 +222,12 @@ Ltac close_block :=
           eapply wp_skip;
           prove_concrete_post
       | FunctionBody =>
+          lazymatch goal with
+          | H: functions_correct ?fs ?l |- _ =>
+              let T := lazymatch type of l with list ?T => T end in
+              let e := strip_conss l in
+              unify e (@nil T)
+          end;
           lazymatch goal with
           | |- @ready ?g => change g
           | |- @final_postcond_marker ?g => change g
@@ -352,6 +388,7 @@ Ltac2 next_snippet(s: unit -> constr) :=
 Ltac2 Notation ".*" s(thunk(constr)) "*" := next_snippet s.
 Ltac2 Notation "#*" s(thunk(constr)) "*" := next_snippet s.
 
+(*
 (* One return value: *)
 Notation ".* */ 'uintptr_t' f ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /**# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post" :=
 { f : list String.string * list String.string * cmd &
@@ -379,5 +416,6 @@ Notation ".* */ 'void' f ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /*
  t1 name, t2 name, m1 name, m2 name,
  pre at level 200,
  post at level 200).
+*)
 
 Notation ".* */ //" := True (only parsing).

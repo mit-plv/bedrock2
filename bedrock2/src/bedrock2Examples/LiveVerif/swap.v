@@ -2,16 +2,19 @@
 Require Import coqutil.Sorting.Permutation.
 Require Import coqutil.Tactics.syntactic_unify.
 
+(* TODO remove and add c-compatible fnspec notation *)
+Require Import bedrock2.WeakestPrecondition.
+
 Load LiveVerif.
 
-Definition u_min: .**/
+#[export] Instance spec_of_u_min: ProgramLogic.spec_of "u_min" :=
+  fnspec! "u_min" a b / (R: mem -> Prop) ~> retv,
+    { requires t m := R m;
+      ensures t' m' := t' = t /\ R m' /\
+                       (\[a] < \[b] /\ retv = a \/
+                       \[b] <= \[a] /\ retv = b) }.
 
-uintptr_t u_min(uintptr_t a, uintptr_t b) /**#
-   ghost_args := (R: mem -> Prop);
-   requires t m := R m;
-   ensures t' m' retv := t' = t /\ R m' /\
-                         (\[a] < \[b] /\ retv = a \/
-                         \[b] <= \[a] /\ retv = b). #**/
+Derive u_min SuchThat (program_logic_goal_for "u_min" u_min) As u_min_ok.       .**/
 {                                                                          /**. .**/
   uintptr_t r = 0;                                                         /**. .**/
   if (a < b) {                                                             /**. .**/
@@ -32,16 +35,16 @@ Tactic Notation "loop" "invariant" "above" ident(i) :=
   let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
   move n after i.
 
-Definition memset: .**/
-
-void memset(uintptr_t a, uintptr_t b, uintptr_t n) /**#
-   ghost_args := (bs: list byte) (R: mem -> Prop);
-   requires t m := <{ * array ptsto /[1] a bs
+#[export] Instance spec_of_memset: ProgramLogic.spec_of "memset" :=
+  fnspec! "memset" a b n / (bs: list byte) (R: mem -> Prop),
+  {  requires t m := <{ * array ptsto /[1] a bs
                       * R }> m /\
-                   \[n] = len bs;
-   ensures t' m' := t' = t /\
+                     \[n] = len bs;
+     ensures t' m' := t' = t /\
        <{ * array ptsto /[1] a (List.repeatz (byte.of_Z \[b]) (len bs))
-          * R }> m'. #**/
+          * R }> m' }.
+
+Derive memset SuchThat (program_logic_goal_for "memset" memset) As memset_ok.   .**/
 {                                                                          /**. .**/
   uintptr_t i = 0;                                                         /**.
 
@@ -51,7 +54,7 @@ ltac1:(replace bs with (List.repeatz (byte.of_Z \[b]) \[i] ++ bs[\[i]:]) in H1
           syntactic_exact_deltavar (@eq_refl _ _))).
 
   ltac1:(loop invariant above i).
-  move H0 before R. (* not strictly needed *)
+  move H1 before R. (* not strictly needed *)
   assert (0 <= \[i] <= \[n]) by ltac1:(ZnWords).
   Std.clearbody [ @i ].
 

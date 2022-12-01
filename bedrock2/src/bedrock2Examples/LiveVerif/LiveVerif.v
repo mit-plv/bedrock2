@@ -22,8 +22,9 @@ Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.bottom_up_simpl_ltac1.
 Require Import bedrock2Examples.LiveVerif.LiveRules.
 Require Import bedrock2Examples.LiveVerif.PackageContext.
-Require Import bedrock2Examples.LiveVerif.LiveTactics.
+Require Import bedrock2Examples.LiveVerif.LiveProgramLogic.
 Require Import bedrock2Examples.LiveVerif.LiveParsing.
+Require Coq.derive.Derive.
 Require Import Ltac2.Ltac2.
 
 Local Set Ltac Backtrace.

@@ -501,10 +501,31 @@ Section WithParams.
       wp_cmd fs cmd.skip t m l post.
   Proof. intros. constructor. hnf. assumption. Qed.
 
-  Definition vc_func fs '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
-                     (post : trace -> mem -> list word -> Prop) :=
-    exists l, map.of_list_zip innames argvs = Some l /\
-      wp_cmd fs body t m l (fun t' m' l' =>
-        exists retvs, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
+  Lemma cpsify_getmany_of_list: forall retnames retvs (post: list word -> Prop) l,
+      map.getmany_of_list l retnames = Some retvs ->
+      post retvs ->
+      list_map (get l) retnames post.
+  Proof.
+    induction retnames; intros.
+    - cbn in *. inversion H. subst. assumption.
+    - cbn in *. fwd. unfold get. eexists. split. 1: eassumption.
+      eapply IHretnames; eassumption.
+  Qed.
+
+  Lemma prove_func: forall fs argnames retnames body t m argvals l post,
+      map.of_list_zip argnames argvals = Some l ->
+      wp_cmd fs body t m l (fun t' m' l' => exists retvals,
+                                map.getmany_of_list l' retnames = Some retvals /\
+                                  post t' m' retvals) ->
+      WeakestPrecondition.func (call fs) (argnames, retnames, body) t m argvals post.
+  Proof.
+    intros.
+    unfold func.
+    eexists. split. 1: eassumption.
+    eapply invert_wp_cmd.
+    eapply weaken_wp_cmd. 1: eassumption.
+    cbv beta. intros. fwd.
+    eapply cpsify_getmany_of_list; eassumption.
+  Qed.
 
 End WithParams.
