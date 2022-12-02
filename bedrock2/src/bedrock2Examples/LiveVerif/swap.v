@@ -3,19 +3,16 @@ Require Import bedrock2Examples.LiveVerif.LiveVerifLib.
 Require Import coqutil.Sorting.Permutation.
 Require Import coqutil.Tactics.syntactic_unify.
 
-(* TODO remove and add c-compatible fnspec notation *)
-Require Import bedrock2.WeakestPrecondition.
-
 Load LiveVerif.
 
-#[export] Instance spec_of_u_min: ProgramLogic.spec_of "u_min" :=
-  fnspec! "u_min" a b / (R: mem -> Prop) ~> retv,
-    { requires t m := R m;
-      ensures t' m' := t' = t /\ R m' /\
-                       (\[a] < \[b] /\ retv = a \/
-                       \[b] <= \[a] /\ retv = b) }.
+#[export] Instance spec_of_u_min: fnspec :=                                     .**/
 
-Derive u_min SuchThat (program_logic_goal_for "u_min" u_min) As u_min_ok.       .**/
+uintptr_t u_min (uintptr_t a, uintptr_t b) /**#
+  ghost_args := (R: mem -> Prop);
+  requires t m := R m;
+  ensures t' m' retv := t' = t /\ R m' /\
+      (\[a] < \[b] /\ retv = a \/ \[b] <= \[a] /\ retv = b) #**/           /**.
+Derive u_min SuchThat (fun_correct! u_min) As u_min_ok.                         .**/
 {                                                                          /**. .**/
   uintptr_t r = 0;                                                         /**. .**/
   if (a < b) {                                                             /**. .**/
@@ -36,16 +33,17 @@ Tactic Notation "loop" "invariant" "above" ident(i) :=
   let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
   move n after i.
 
-#[export] Instance spec_of_memset: ProgramLogic.spec_of "memset" :=
-  fnspec! "memset" a b n / (bs: list byte) (R: mem -> Prop),
-  {  requires t m := <{ * array ptsto /[1] a bs
-                      * R }> m /\
-                     \[n] = len bs;
-     ensures t' m' := t' = t /\
-       <{ * array ptsto /[1] a (List.repeatz (byte.of_Z \[b]) (len bs))
-          * R }> m' }.
+#[export] Instance spec_of_memset: fnspec :=                                    .**/
 
-Derive memset SuchThat (program_logic_goal_for "memset" memset) As memset_ok.   .**/
+void memset(uintptr_t a, uintptr_t b, uintptr_t n) /**#
+  ghost_args := (bs: list byte) (R: mem -> Prop);
+  requires t m := <{ * array ptsto /[1] a bs
+                     * R }> m /\
+                  \[n] = len bs;
+  ensures t' m' := t' = t /\
+       <{ * array ptsto /[1] a (List.repeatz (byte.of_Z \[b]) (len bs))
+          * R }> m' #**/                                                   /**.
+Derive memset SuchThat (fun_correct! memset) As memset_ok.                      .**/
 {                                                                          /**. .**/
   uintptr_t i = 0;                                                         /**.
 

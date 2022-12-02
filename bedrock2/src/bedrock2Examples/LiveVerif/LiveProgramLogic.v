@@ -15,6 +15,7 @@ Require Import bedrock2.groundcbv.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.TacticError. Local Open Scope Z_scope.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
+Require Import bedrock2.find_hyp.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.bottom_up_simpl_ltac1.
@@ -388,34 +389,73 @@ Ltac2 next_snippet(s: unit -> constr) :=
 Ltac2 Notation ".*" s(thunk(constr)) "*" := next_snippet s.
 Ltac2 Notation "#*" s(thunk(constr)) "*" := next_snippet s.
 
-(*
+(* for situations where we want to avoid repeating the function name *)
+Notation fnspec := (ProgramLogic.spec_of _) (only parsing).
+
+(* To work around https://github.com/coq/coq/issues/7903
+   Notations with binders and inline ltac:() don't work, so if the RHS of
+   a notation is b and contains binders as well as an occurrence of `ident_to_string x`
+   (which expands to ltac:()), we get errors that the binders are not found.
+   So instead of writing b, we can write (fun x: string => b) and replace
+   `ident_to_string x` by x in b, and then pass (fun x: string => b) to
+   with_ident_as_string, which reverts that replacement, ie it turns
+   (fun x: string => b) back into `b["x"/x]`. *)
+Ltac with_ident_as_string f :=
+  lazymatch f with
+  | fun x => _ => beta1 f (ident_to_string x)
+  end.
+
+(* same as above, but without beta1, beta1 removes casts *)
+Ltac with_ident_as_string_no_beta f :=
+  lazymatch f with
+  | fun x => _ => constr:(f (ident_to_string x))
+  end.
+
+(* Notations have (almost) the same RHS as the `fnspec!` notations in
+   bedrock2.WeakestPrecondition, but only allow 0 or 1 return value
+   (for C compatibility) and use a different syntax in the LHS (to match
+   C syntax and live verif comment markers) *)
+
 (* One return value: *)
-Notation ".* */ 'uintptr_t' f ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /**# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post" :=
-{ f : list String.string * list String.string * cmd &
-  forall fs t1 m1, (forall a1, .. (forall an, (forall g1, .. (forall gn, pre ->
-    vc_func fs f t1 m1 (cons a1 .. (cons an nil) ..)
-      (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post)) .. )) .. ) }
+Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /**# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* */ /* *" :=
+  (fun fname: String.string =>
+     (fun fs =>
+        (forall a1, .. (forall an, (forall g1, .. (forall gn,
+          (forall t1 m1, pre ->
+             WeakestPrecondition.call fs fname t1 m1 (cons a1 .. (cons an nil) ..)
+               (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post))) .. )) .. ))
+     : ProgramLogic.spec_of fname)
 (at level 200,
- f name,
+ fname name,
  a1 closed binder, an closed binder,
  g1 closed binder, gn closed binder,
  t1 name, t2 name, m1 name, m2 name, r name,
  pre at level 200,
- post at level 200).
+ post at level 200,
+ only parsing).
 
 (* No return value: *)
-Notation ".* */ 'void' f ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /**# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post" :=
-{ f : list String.string * list String.string * cmd &
-  forall fs t1 m1, (forall a1, .. (forall an, (forall g1, .. (forall gn, pre ->
-    vc_func fs f t1 m1 (cons a1 .. (cons an nil) ..)
-      (fun t2 m2 retvs => retvs = nil /\ post)) .. )) .. ) }
+Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /**# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 := post #* */ /* *" :=
+  (fun fname: String.string =>
+     (fun fs =>
+        (forall a1, .. (forall an, (forall g1, .. (forall gn,
+           (forall t1 m1, pre ->
+              WeakestPrecondition.call fs fname t1 m1 (cons a1 .. (cons an nil) ..)
+                (fun t2 m2 retvs => retvs = nil /\ post))) .. )) .. ))
+     : ProgramLogic.spec_of fname)
 (at level 200,
- f name,
+ fname name,
  a1 closed binder, an closed binder,
  g1 closed binder, gn closed binder,
  t1 name, t2 name, m1 name, m2 name,
  pre at level 200,
- post at level 200).
-*)
+ post at level 200,
+ only parsing).
+
+Notation ".* */ x" := ltac:(let r := with_ident_as_string_no_beta x in exact r)
+  (at level 200, only parsing).
+
+Notation "'fun_correct!' f" := (program_logic_goal_for (ident_to_string f) f)
+  (at level 10, f name, only parsing).
 
 Notation ".* */ //" := True (only parsing).
