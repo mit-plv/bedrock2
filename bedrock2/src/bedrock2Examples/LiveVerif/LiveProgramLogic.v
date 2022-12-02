@@ -26,14 +26,12 @@ Require Import bedrock2Examples.LiveVerif.LiveSnippet.
 Definition functions_correct
   (* universally quantified abstract function list containing all functions: *)
   (qfs: list (string * func)):
-  (* subset of functions for which to assert correctness, along with their specs: *)
-  list ((string * func) * (* name and impl *)
-        (list (string * func) -> Prop) (* spec_of *))
-  -> Prop := List.Forall (fun '(name_and_impl, spec) => spec (cons name_and_impl qfs)).
+  (* specs of a subset of functions for which to assert correctness *)
+  list (list (string * func) -> Prop (* spec_of mentioning function name *)) -> Prop :=
+  List.Forall (fun spec => spec qfs).
 
 Definition function_with_callees: Type :=
-  func * list ((string * func) * (* name and impl *)
-               (list (string * func) -> Prop) (* spec_of *)).
+  func * list (list (string * func) -> Prop (* spec_of mentioning function name *)).
 
 Definition program_logic_goal_for(name: string)(f: function_with_callees)
   {spec: bedrock2.ProgramLogic.spec_of name}: Prop :=

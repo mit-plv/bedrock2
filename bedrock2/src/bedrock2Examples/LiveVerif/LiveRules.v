@@ -501,6 +501,70 @@ Section WithParams.
       wp_cmd fs cmd.skip t m l post.
   Proof. intros. constructor. hnf. assumption. Qed.
 
+  Definition dexprs(m: mem)(l: locals): list expr -> list word -> Prop :=
+    List.Forall2 (dexpr m l).
+
+  Inductive dexprs1(m: mem)(l: locals)(es: list expr)(vs: list word)(P: Prop): Prop :=
+  | mk_dexprs1(Hde: dexprs m l es vs)(Hp: P).
+
+  Lemma dexprs1_nil: forall m l (P: Prop), P -> dexprs1 m l nil nil P.
+  Proof. intros. constructor. 1: constructor. assumption. Qed.
+
+  Lemma dexprs1_cons: forall m l e es v vs P,
+      dexpr1 m l e v (dexprs1 m l es vs P) ->
+      dexprs1 m l (cons e es) (cons v vs) P.
+  Proof.
+    intros.
+    inversion H; clear H. inversion Hp. clear Hp.
+    constructor. 2: assumption. constructor. 1: assumption. assumption.
+  Qed.
+
+  Lemma cpsify_dexprs: forall m l es vs (post: list word -> Prop),
+      dexprs m l es vs ->
+      post vs ->
+      list_map (WeakestPrecondition.expr m l) es post.
+  Proof.
+    induction es; intros.
+    - cbn in *. inversion H. subst. assumption.
+    - cbn in *. inversion H. subst. clear H.
+      inversion H3. clear H3. unfold WeakestPrecondition.dexpr in H.
+      eapply weaken_expr. 1: eassumption. intros. subst. eapply IHes; eassumption.
+  Qed.
+
+  Lemma wp_call0 fs t m l fname resnames es vs (post: trace -> mem -> locals -> Prop):
+      dexprs m l es vs ->
+      call fs fname t m vs (fun t' m' rets =>
+        exists l', map.putmany_of_list_zip resnames rets l = Some l' /\ post t' m' l') ->
+      wp_cmd fs (cmd.call resnames fname es) t m l post.
+  Proof.
+    intros.
+    constructor. cbn. exists vs. split. 2: assumption.
+    unfold WeakestPrecondition.dexprs. eapply cpsify_dexprs. 1: eassumption. reflexivity.
+  Qed.
+
+  Lemma wp_call: forall fs fname t m resnames arges argvs l
+      (calleePre: Prop)
+      (calleePost: trace -> mem -> list word -> Prop)
+      (callerPost: trace -> mem -> locals -> Prop),
+      (* definition-site format: *)
+      (calleePre -> WeakestPrecondition.call fs fname t m argvs calleePost) ->
+      (* use-site format: *)
+      dexprs1 m l arges argvs (calleePre /\
+         forall t' m' retvs, calleePost t' m' retvs ->
+           exists l', map.putmany_of_list_zip resnames retvs l = Some l' /\
+                        callerPost t' m' l') ->
+      (* conclusion: *)
+      wp_cmd fs (cmd.call resnames fname arges) t m l callerPost.
+  Proof.
+    intros. inversion H0. clear H0. destruct Hp as (Pre & Impl).
+    specialize (H Pre). clear Pre.
+    eapply wp_call0. 1: eassumption.
+    unshelve epose (env := _ : map.map string func).
+    1: eapply SortedListString.map.
+    assert (env_ok: map.ok env) by apply SortedListString.ok. clearbody env.
+    eapply WeakestPreconditionProperties.Proper_call. 2: eassumption. exact Impl.
+  Qed.
+
   Lemma cpsify_getmany_of_list: forall retnames retvs (post: list word -> Prop) l,
       map.getmany_of_list l retnames = Some retvs ->
       post retvs ->
