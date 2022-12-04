@@ -40,6 +40,19 @@ Definition program_logic_goal_for(name: string)(f: function_with_callees)
       functions_correct functions callees -> spec (cons (name, impl) functions)
   end.
 
+Definition nth_spec(specs: list (list (string * func) -> Prop))(n: nat) :=
+  Eval unfold List.nth in (List.nth n specs (fun _ => True)).
+
+Lemma nth_function_correct: forall fs n specs spec,
+    nth_spec specs n = spec ->
+    functions_correct fs specs ->
+    spec fs.
+Proof.
+  unfold functions_correct. intros. subst spec.
+  eapply (proj1 (List.Forall_nth_default' _ _ _ I)) in H0.
+  exact H0.
+Qed.
+
 Definition ready{P: Prop} := P.
 
 Ltac start :=
@@ -242,10 +255,81 @@ Ltac close_block :=
   | _ => fail "no scope marker found"
   end.
 
+(* Given a list l and an element e,
+   returns a suffix of l starting with e and e's index in l,
+   or if not found, returns l with all cons stripped, and the number of stripped cons *)
+Ltac suffix_and_index_of e l :=
+  lazymatch l with
+  | cons e _ => constr:((l, O))
+  | cons _ ?rest =>
+      lazymatch suffix_and_index_of e rest with
+      | (?s, ?n) => constr:((s, S n))
+      end
+  | _ => constr:((l, O))
+  end.
+
+Ltac is_evar_b x :=
+  match constr:(Set) with
+  | _ => let __ := match constr:(Set) with
+                   | _ => is_evar x
+                   end in
+         constr:(true)
+  | _ => constr:(false)
+  end.
+
+(* Given an element e and a list l ending in an evar, if e is in the list,
+   return its index, else instantiate the evar with the cons of e and a new evar
+   for the new tail, and also return the index of e *)
+Ltac index_of_or_else_add e l :=
+  lazymatch suffix_and_index_of e l with
+  | (?suffix, ?n) =>
+      lazymatch is_evar_b suffix with
+      | true =>
+          let new_tail := open_constr:(cons e _) in
+          let __ := match constr:(Set) with
+                    | _ => unify suffix new_tail
+                    end in n
+      | false => n
+      end
+  end.
+
+Goal exists x y, cons x (cons 22 y) = cons 33 (cons 22 (cons 11 nil)).
+  do 2 eexists.
+  lazymatch goal with
+  | |- ?xs = _ => lazymatch index_of_or_else_add 22 xs with 1%nat => idtac end
+  end.
+  lazymatch goal with
+  | |- ?xs = _ => lazymatch index_of_or_else_add 11 xs with 2%nat => idtac end
+  end.
+  lazymatch goal with
+  | |- ?xs = _ => lazymatch index_of_or_else_add 11 xs with 2%nat => idtac end
+  end.
+  reflexivity.
+Abort.
+
+Ltac call lhs fname arges :=
+  let resnames := lazymatch lhs with
+                  | Some (_, ?resname) => constr:(cons resname nil)
+                  | None => constr:(@nil String.string)
+                  end in
+  eapply (wp_call _ _ _ _ resnames arges);
+  [ let s := lazymatch constr:(_ : ProgramLogic.spec_of fname) with ?sp => sp end in
+    lazymatch goal with
+    | H: functions_correct ?fs ?l |- _ =>
+        let n := index_of_or_else_add s l in
+        eapply (nth_function_correct _ n) in H; [ | cbv [nth_spec]; reflexivity ];
+        unfold s in H;
+        eapply H
+    end
+  | ];
+  [ (* exactly one goal should be left, because spec may only have 1 precondition
+       (joined with /\) *) ].
+
 Ltac add_snippet s :=
   assert_no_error;
   lazymatch s with
   | SAssign ?is_decl ?name ?val => eapply (wp_set _ name val) (* TODO validate is_decl *)
+  | SCall ?lhs ?fname ?arges => call lhs fname arges
   | SStore ?sz ?addr ?val => eapply (wp_store _ sz addr val)
   | SIf ?c => eapply (wp_if_bool_dexpr _ c); pose proof mk_temp_if_marker
   | SElse =>
@@ -305,6 +389,8 @@ Ltac program_logic_step :=
   | |- dexpr1 _ _ (expr.literal _) _ _ => eapply dexpr1_literal
   | |- dexpr1 _ _ (expr.op _ _ _)  _ _ => eapply dexpr1_binop_unf
   | |- dexpr1 _ _ (expr.load _ _)  _ _ => eapply dexpr1_load
+  | |- dexprs1 _ _ (cons _ _) _ _ => eapply dexprs1_cons
+  | |- dexprs1 _ _ nil _ _ => eapply dexprs1_nil
   | |- bool_expr_branches _ _ _ _ => eapply BoolSpec_expr_branches; [ intro | intro | ]
   | |- then_branch_marker ?G =>
       let H := lazymatch goal with H: temp_if_marker |- _ => H end in
@@ -341,6 +427,9 @@ Ltac program_logic_step :=
           end;
           cbn [seps];
           exact (iff1_refl _) ]
+  | |- exists (l: @map.rep String.string (@word.rep _ _) _),
+         map.putmany_of_list_zip _ _ _ = Some _ /\ _ =>
+      eexists; split; [reflexivity| ]
   | |- wp_cmd _ _ _ _ _ _ =>
       first [ cleanup
             | lazymatch goal with

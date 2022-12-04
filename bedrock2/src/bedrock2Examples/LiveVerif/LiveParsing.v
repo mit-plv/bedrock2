@@ -3,6 +3,8 @@ Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import bedrock2.Syntax.
 Require Import bedrock2Examples.LiveVerif.LiveSnippet.
+Require Import coqutil.Tactics.reference_to_string.
+(* TODO consolidate with variants in coqutil: *)
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 
@@ -145,3 +147,22 @@ Notation "} 'else' {" := SElse (in custom snippet at level 0).
 
 Notation "'while' ( e ) /* 'decreases' m */ {" :=
   (SWhile e m) (in custom snippet at level 0, e custom live_expr, m constr at level 0).
+
+Require Import Ltac2.Ltac2.
+
+Ltac2 exact_basename_string_of_const_ref_constr(c: constr) :=
+  let ref := reference_of_constr c in
+  let s := ident_to_string.string_to_coq (Ident.to_string (List.last (Env.path ref))) in
+  exact $s.
+
+Declare Custom Entry function_name.
+Notation "x" :=
+  (match x with
+   | _ => ltac2:(exact_basename_string_of_const_ref_constr (Ltac2.Constr.pretype x))
+   end)
+  (in custom function_name at level 0, x constr at level 0, only parsing).
+
+(* In conflict with notation for SAssign:
+Notation "'uintptr_t' x = f ( ) ;" := (SCall (Some (true, x)) f nil)
+  (in custom snippet at level 0, x custom lhs_var at level 100, f custom function_name at level 100).
+ *)

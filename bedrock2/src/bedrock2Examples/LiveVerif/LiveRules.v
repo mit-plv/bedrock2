@@ -326,6 +326,15 @@ Section WithParams.
       wp_cmd fs c t m l post2.
   Proof. intros. constructor. inversion H. eapply WP_weaken_cmd; eassumption. Qed.
 
+  Lemma wp_seq: forall fs c1 c2 t m l post,
+      wp_cmd fs c1 t m l (fun t' m' l' => wp_cmd fs c2 t' m' l' post) ->
+      wp_cmd fs (cmd.seq c1 c2) t m l post.
+  Proof.
+    intros. constructor. cbn. inversion H. clear H.
+    eapply WP_weaken_cmd. 1: eassumption. cbv beta. intros.
+    inversion H. assumption.
+  Qed.
+
   Lemma wp_set0: forall fs x e v t m l rest post,
       dexpr m l e v ->
       wp_cmd fs rest t m (map.put l x v) post ->
@@ -542,22 +551,23 @@ Section WithParams.
     unfold WeakestPrecondition.dexprs. eapply cpsify_dexprs. 1: eassumption. reflexivity.
   Qed.
 
-  Lemma wp_call: forall fs fname t m resnames arges argvs l
+  Lemma wp_call: forall fs fname t m resnames arges argvs l rest
       (calleePre: Prop)
       (calleePost: trace -> mem -> list word -> Prop)
-      (callerPost: trace -> mem -> locals -> Prop),
+      (finalPost: trace -> mem -> locals -> Prop),
       (* definition-site format: *)
       (calleePre -> WeakestPrecondition.call fs fname t m argvs calleePost) ->
       (* use-site format: *)
       dexprs1 m l arges argvs (calleePre /\
          forall t' m' retvs, calleePost t' m' retvs ->
            exists l', map.putmany_of_list_zip resnames retvs l = Some l' /\
-                        callerPost t' m' l') ->
+                        wp_cmd fs rest t' m' l' finalPost) ->
       (* conclusion: *)
-      wp_cmd fs (cmd.call resnames fname arges) t m l callerPost.
+      wp_cmd fs (cmd.seq (cmd.call resnames fname arges) rest) t m l finalPost.
   Proof.
     intros. inversion H0. clear H0. destruct Hp as (Pre & Impl).
     specialize (H Pre). clear Pre.
+    eapply wp_seq.
     eapply wp_call0. 1: eassumption.
     unshelve epose (env := _ : map.map string func).
     1: eapply SortedListString.map.

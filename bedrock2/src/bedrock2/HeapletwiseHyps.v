@@ -540,7 +540,7 @@ Ltac intro_step :=
   | H: with_mem _ _ |- sep _ _ _ -> _ =>
       let H' := fresh "H0" in
       intro H'; move H' before H
-  | |- ?Q ?mNew -> _ =>
+  | |- ?Q ?mNew -> ?nondependent_body =>
       let H := fresh "H0" in
       replace_with_new_mem_hyp H
   end.

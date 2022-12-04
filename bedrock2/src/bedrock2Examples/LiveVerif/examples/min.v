@@ -20,16 +20,9 @@ Derive u_min SuchThat (fun_correct! u_min) As u_min_ok.                         
 }                                                                          /**.
 Defined.
 
-Lemma nth_function_correct: forall fs n specs spec default,
-    List.nth n specs default = spec ->
-    functions_correct fs specs ->
-    spec fs.
-Proof.
-  unfold functions_correct. intros.
-  Search List.Forall List.nth.
-Admitted.
-
 Definition minl: list Z -> Z := List.fold_right Z.min 0.
+
+Import LiveSnippet.
 
 #[export] Instance spec_of_u_min3: fnspec :=                                    .**/
 
@@ -40,24 +33,21 @@ uintptr_t u_min3 (uintptr_t a, uintptr_t b, uintptr_t c) /**#
       \[retv] = minl [| \[a]; \[b]; \[c] |] #**/                           /**.
 Derive u_min3 SuchThat (fun_correct! u_min3) As u_min3_ok.                      .**/
 {                                                                          /**.
-(*   uintptr_t r = u_min(a, b); *)
-  eapply wp_call.
-  { ltac1:(
-    let fname := constr:("u_min") in
-    let s := lazymatch constr:(_ : ProgramLogic.spec_of fname) with ?sp => sp end in
-    let s' := eval unfold s in s in
-    let new_callee_list := open_constr:(cons s _) in
-    lazymatch goal with
-    | H: functions_correct ?fs ?l |- _ =>
-        let callee_list_evar := strip_conss l in
-        unify callee_list_evar new_callee_list
-    end;
+  (* uintptr_t r = u_min(a, b); *)
+  ltac1:(add_snippet (SCall (Some (true, "r")) "u_min" [| live_expr:(a); live_expr:(b) |])).
+  ltac1:(repeat step).
+  (* TODO make start_canceling work if just one R, or better, specialcase memoryless
+     functions with m'=m in postcondition? *)
+  ltac1:(lazymatch goal with
+         | |- ?F ?m /\ ?Rest =>
+             let clauselist := reify_seps F in change (seps clauselist m /\ Rest);
+             eapply canceling_start_and; [reflexivity| ]
+         end).
+  step.
+  intros.
+  ltac1:(fwd).
+  step. step. step.
 
-    idtac s).
-    eapply (nth_function_correct _ O) in H. 2: cbn [List.nth]; reflexivity.
-    unfold spec_of_u_min in H.
-    eapply H.
-  }
 Abort.
 
 End LiveVerif. Comments .**/ //.
