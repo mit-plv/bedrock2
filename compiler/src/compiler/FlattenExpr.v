@@ -54,12 +54,22 @@ Section FlattenExpr1.
     flattenExpr ngs oResVar e = (s, resVar, ngs') ->
     0 <= FlatImp.stmt_size s <= ExprImp.expr_size e.
   Proof.
-    induction e; intros; destruct oResVar; simpl in *; simp; simpl;
+    induction e; intros; destruct oResVar;
+      try match goal with
+        | op: bopname |- _ => destruct op eqn:Eop
+        end;
+    simpl in *; simp; simpl;
+      repeat try match goal with
+        | H: match ?x with _ => _ end = _ |- _ => destruct x eqn:Ex
+        | |- _ => try unfold maybeFlattenImmediate in *; simpl
+        end;
       repeat match goal with
              | IH: _, H: _ |- _ => specialize IH with (1 := H)
              | |- context [?x / 4] => unique pose proof (Z.div_pos x 4)
              end;
       try blia.
+    1: { destruct e2 eqn: Ee2.
+         { destruct (literalFitsInBits true v 12) eqn:El. 
   Qed.
 
   Lemma flattenExprAsBoolExpr_size: forall e s bcond ngs ngs',
