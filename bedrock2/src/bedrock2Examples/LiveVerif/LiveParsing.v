@@ -8,49 +8,69 @@ Require Import coqutil.Tactics.reference_to_string.
 Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 
-(* Note: An rhs_var appears in expressions and, in our setting, always has a corresponding
-   var (of type word) bound in the current context, whereas an lhs_var may or may not be
-   bound in the current context, if not bound, a new entry will be added to current_locals. *)
+Require Import Ltac2.Ltac2.
 
-Declare Custom Entry rhs_var.
-Notation "x" :=
-  (match x with
-   | _ => ltac2:(exact_varconstr_as_string (Ltac2.Constr.pretype x))
-   end)
-  (in custom rhs_var at level 0, x constr at level 0, only parsing).
+Ltac2 exact_basename_string_of_ref_constr(c: constr) :=
+  let ref := reference_of_constr c in
+  let s := ident_to_string.string_to_coq (Ident.to_string (List.last (Env.path ref))) in
+  exact $s.
 
-Declare Custom Entry var_or_literal.
+Ltac exact_basename_string_of_ref_constr :=
+  ltac2:(c |- exact_basename_string_of_ref_constr (Option.get (Ltac1.to_constr c))).
+
+Declare Custom Entry bound_name_or_literal.
 Notation "x" :=
   (match x with
    | _ => ltac:(lazymatch isZcst x with
-                | true => refine (expr.literal _); exact x
-                | false => refine (expr.var _); exact_varconstr_as_string x
+                | true => exact x
+                | false => exact_basename_string_of_ref_constr x
                 end)
    end)
-  (in custom var_or_literal at level 0, x constr at level 0, only parsing).
+  (in custom bound_name_or_literal at level 0, x constr at level 0, only parsing).
 
-Declare Custom Entry lhs_var.
+Declare Custom Entry binder_name.
 Notation "x" := (ident_to_string x)
-  (in custom lhs_var at level 0, x constr at level 0, only parsing).
+  (in custom binder_name at level 0, x constr at level 0, only parsing).
 
-Declare Custom Entry rhs_var_list.
+Declare Custom Entry bound_name_or_literal_list.
 Notation "x" := (cons x nil)
-  (in custom rhs_var_list at level 0, x custom rhs_var at level 0, only parsing).
+  (in custom bound_name_or_literal_list at level 0, x custom bound_name_or_literal at level 0, only parsing).
 Notation "h , t" := (cons h t)
-  (in custom rhs_var_list at level 0,
-   h custom rhs_var at level 0,
-   t custom rhs_var_list at level 0,
+  (in custom bound_name_or_literal_list at level 0,
+   h custom bound_name_or_literal at level 0,
+   t custom bound_name_or_literal_list at level 0,
    only parsing).
 
 Declare Custom Entry live_expr.
 
-Notation "x" := x
-  (in custom live_expr at level 0, x custom var_or_literal at level 0, only parsing).
-
-Notation "live_expr:( e )" := e
+Notation "'live_expr:(' e ')'" := e
   (e custom live_expr at level 100, only parsing).
 
-Notation "( e )" := e (in custom live_expr, e custom live_expr at level 100).
+Notation "( e )" := e (in custom live_expr at level 1, e custom live_expr at level 100).
+
+(* Note: f can't be a literal, but the grammar has to allow it, because the
+   grammar factorizer that resolves between "start of expression" and "start of call"
+   only kicks in if we use the same entry (bound_name_or_literal) here as in the
+   base case of live_expr. *)
+Notation "f ()" := (RCall f nil)
+  (in custom live_expr at level 1, f custom bound_name_or_literal at level 1).
+Notation "f ( )" := (RCall f nil)
+  (in custom live_expr at level 1, f custom bound_name_or_literal at level 1).
+Notation "f '(' e1 ',' .. ',' en ')'" := (RCall f (cons e1 .. (cons en nil) ..))
+  (in custom live_expr at level 1,
+   f custom bound_name_or_literal at level 1,
+   e1 custom live_expr at level 100, en custom live_expr at level 100).
+
+Ltac cast_string_or_z_to_expr x :=
+  lazymatch type of x with
+  | String.string => exact (expr.var x)
+  | Z => exact (expr.literal x)
+  end.
+
+Notation "x" := (match x with
+                 | _ => ltac:(cast_string_or_z_to_expr x)
+                 end)
+  (in custom live_expr at level 1, x custom bound_name_or_literal at level 1, only parsing).
 
 (* Using the same precedences as https://en.cppreference.com/w/c/language/operator_precedence *)
 Notation "! x" := (expr.not x)
@@ -98,15 +118,29 @@ Notation "c ? e1 : e2" := (expr.ite c e1 e2)
   (in custom live_expr at level 13, right associativity, only parsing).
 
 Notation "load1( a )" := (expr.load access_size.one a)
-  (in custom live_expr at level 0, a custom live_expr at level 100, only parsing).
+  (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
 Notation "load2( a )" := (expr.load access_size.two a)
-  (in custom live_expr at level 0, a custom live_expr at level 100, only parsing).
+  (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
 Notation "load4( a )" := (expr.load access_size.four a)
-  (in custom live_expr at level 0, a custom live_expr at level 100, only parsing).
+  (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
 Notation  "load( a )" := (expr.load access_size.word a)
-  (in custom live_expr at level 0, a custom live_expr at level 100, only parsing).
+  (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
 
 Set Ltac2 Backtrace.
+
+Goal forall (word: Type) (x: word),
+    live_expr:(x) = expr.var "x".
+Proof. intros. reflexivity. Abort.
+
+Goal forall (word: Type) (x: word),
+    live_expr:(x + 3) = expr.op bopname.add (expr.var "x") (expr.literal 3).
+Proof. intros. reflexivity. Abort.
+
+Goal forall (word: Type) (x: word), live_expr:(x ( )) = RCall "x" nil.
+Proof. intros. reflexivity. Abort.
+
+Goal live_expr:(2 + 3) = expr.op bopname.add (expr.literal 2) (expr.literal 3).
+Proof. intros. reflexivity. Abort.
 
 Goal forall (word: Type) (x: word),
     live_expr:(x + 3) = expr.op bopname.add (expr.var "x") (expr.literal 3).
@@ -121,10 +155,32 @@ Declare Custom Entry snippet.
 
 Notation "*/ s /*" := s (s custom snippet at level 100).
 Notation "*/ /*" := SEmpty.
-Notation "x = e ;" := (SAssign false x e) (* rhs as in "already declared" (but still on lhs) *)
-  (in custom snippet at level 0, x custom rhs_var at level 100, e custom live_expr at level 100).
-Notation "'uintptr_t' x = e ;" := (SAssign true x e)
-  (in custom snippet at level 0, x custom lhs_var at level 100, e custom live_expr at level 100).
+
+Ltac coerce_expr_to_assignment_rhs e :=
+  lazymatch type of e with
+  | expr => exact (RExpr e)
+  | _ => exact e
+  end.
+
+Notation "'uintptr_t' x = r ;" := (SAssign true x ltac:(coerce_expr_to_assignment_rhs r))
+  (in custom snippet at level 0,
+   x custom binder_name at level 0, r custom live_expr at level 100,
+   only parsing).
+
+Notation "f () ;" := (SVoidCall f nil)
+  (in custom snippet at level 0, f custom bound_name_or_literal at level 1).
+Notation "f ( ) ;" := (SVoidCall f nil)
+  (in custom snippet at level 0, f custom bound_name_or_literal at level 1).
+Notation "f ( e1 , .. , en ) ;" := (SVoidCall f (cons e1 .. (cons en nil) ..))
+  (in custom snippet at level 0,
+   f custom bound_name_or_literal at level 1,
+   e1 custom live_expr at level 100, en custom live_expr at level 100).
+
+Notation "x = r ;" := (SAssign false x ltac:(coerce_expr_to_assignment_rhs r))
+  (in custom snippet at level 0,
+   x custom bound_name_or_literal at level 1, r custom live_expr at level 100,
+   only parsing).
+
 Notation "store1( a , v ) ;" := (SStore access_size.one a v)
   (in custom snippet at level 0,
    a custom live_expr at level 100, v custom live_expr at level 100).
@@ -137,8 +193,9 @@ Notation "store4( a , v ) ;" := (SStore access_size.four a v)
 Notation "store( a , v ) ;" := (SStore access_size.word a v)
   (in custom snippet at level 0,
    a custom live_expr at level 100, v custom live_expr at level 100).
+
 Notation "'return' l ;" := (SRet l)
-  (in custom snippet at level 0, l custom rhs_var_list at level 1).
+  (in custom snippet at level 0, l custom bound_name_or_literal_list at level 1).
 
 Notation "'if' ( e ) {" := (SIf e) (in custom snippet at level 0, e custom live_expr).
 Notation "{" := SStart (in custom snippet at level 0).
@@ -148,21 +205,44 @@ Notation "} 'else' {" := SElse (in custom snippet at level 0).
 Notation "'while' ( e ) /* 'decreases' m */ {" :=
   (SWhile e m) (in custom snippet at level 0, e custom live_expr, m constr at level 0).
 
-Require Import Ltac2.Ltac2.
-
-Ltac2 exact_basename_string_of_const_ref_constr(c: constr) :=
-  let ref := reference_of_constr c in
-  let s := ident_to_string.string_to_coq (Ident.to_string (List.last (Env.path ref))) in
-  exact $s.
-
-Declare Custom Entry function_name.
-Notation "x" :=
-  (match x with
-   | _ => ltac2:(exact_basename_string_of_const_ref_constr (Ltac2.Constr.pretype x))
-   end)
-  (in custom function_name at level 0, x constr at level 0, only parsing).
-
-(* In conflict with notation for SAssign:
-Notation "'uintptr_t' x = f ( ) ;" := (SCall (Some (true, x)) f nil)
-  (in custom snippet at level 0, x custom lhs_var at level 100, f custom function_name at level 100).
- *)
+Goal True.
+  pose */ /* as s.
+  pose */ S(); /*.
+  pose */ S( ); /*.
+  pose */ S ( ); /*.
+  pose */ O(3); /*.
+  pose */ O(1, 2); /*.
+  pose */ O(10, s, s); /*.
+  pose */ s = S(); /*.
+  pose */ s = S( ); /*.
+  pose */ s = S ( ); /*.
+  pose */ s = O(3); /*.
+  pose */ s = O(1, 2); /*.
+  pose */ s = O(10, s, s); /*.
+  pose */ uintptr_t s = S(); /*.
+  pose */ uintptr_t s = S( ); /*.
+  pose */ uintptr_t s = S ( ); /*.
+  pose */ uintptr_t s = O(3); /*.
+  pose */ uintptr_t s = O(1, 2); /*.
+  pose */ uintptr_t s = O(10, s, s); /*.
+  pose live_expr:(s << s) as x.
+  pose */ s = s; /*.
+  pose */ s = 12; /*.
+  pose */ s = (-12); /*.
+  pose */ s = -s; /*.
+  pose */ s = s + 1; /*.
+  pose */ s = s + (x << 2); /*.
+  pose */ s = (x + s) + (x << 2); /*.
+  pose */ s = x + x + x; /*.
+  pose */ s = (s << s); /*.
+  pose */ s = (s + x); /*.
+  pose */ s = load2(s + x); /*.
+  pose */ x = (x + 1); /*.
+  pose */ uintptr_t foo = x + x + x; /*.
+  pose */ uintptr_t newname = -s; /*.
+  pose */ uintptr_t s = (s << s); /*.
+  pose */ store1(x+4, s-1); /*.
+  pose */ store2(x, load2(s-1)); /*.
+  pose */ store4((x + x) * 4, s-1); /*.
+  pose */ store(x+4, s); /*.
+Abort.

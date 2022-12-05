@@ -307,6 +307,9 @@ Goal exists x y, cons x (cons 22 y) = cons 33 (cons 22 (cons 11 nil)).
   reflexivity.
 Abort.
 
+(* lhs:    option (bool (* is_decl *) * string (* varname *))
+   fname:  string
+   arges:  list expr *)
 Ltac call lhs fname arges :=
   let resnames := lazymatch lhs with
                   | Some (_, ?resname) => constr:(cons resname nil)
@@ -328,8 +331,12 @@ Ltac call lhs fname arges :=
 Ltac add_snippet s :=
   assert_no_error;
   lazymatch s with
-  | SAssign ?is_decl ?name ?val => eapply (wp_set _ name val) (* TODO validate is_decl *)
-  | SCall ?lhs ?fname ?arges => call lhs fname arges
+  | SAssign ?is_decl ?name ?rhs => (* TODO validate is_decl *)
+      lazymatch rhs with
+      | RCall ?fname ?arges => call (Some (is_decl, name)) fname arges
+      | RExpr ?e => eapply (wp_set _ name e)
+      end
+  | SVoidCall ?fname ?arges => call None fname arges
   | SStore ?sz ?addr ?val => eapply (wp_store _ sz addr val)
   | SIf ?c => eapply (wp_if_bool_dexpr _ c); pose proof mk_temp_if_marker
   | SElse =>

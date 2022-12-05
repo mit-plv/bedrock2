@@ -32,10 +32,10 @@ uintptr_t u_min3 (uintptr_t a, uintptr_t b, uintptr_t c) /**#
   ensures t' m' retv := t' = t /\ R m' /\
       \[retv] = minl [| \[a]; \[b]; \[c] |] #**/                           /**.
 Derive u_min3 SuchThat (fun_correct! u_min3) As u_min3_ok.                      .**/
-{                                                                          /**.
-  (* uintptr_t r = u_min(a, b); *)
-  ltac1:(add_snippet (SCall (Some (true, "r")) "u_min" [| live_expr:(a); live_expr:(b) |])).
-  ltac1:(repeat step).
+{                                                                          /**. .**/
+  uintptr_t r = u_min(a, b);                                               /**.
+
+  clear Error.
   (* TODO make start_canceling work if just one R, or better, specialcase memoryless
      functions with m'=m in postcondition? *)
   ltac1:(lazymatch goal with

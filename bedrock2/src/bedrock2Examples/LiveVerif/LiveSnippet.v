@@ -1,10 +1,13 @@
 Require Import Coq.Strings.String.
 Require Import bedrock2.Syntax.
 
+Inductive assignment_rhs :=
+| RCall(fname: string)(args: list Syntax.expr)
+| RExpr(e: Syntax.expr).
+
 Inductive snippet :=
-| SAssign(is_decl: bool)(x: string)(e: Syntax.expr)
-| SCall(lhs: option (bool (* is_decl *) * string (* varname *)))
-       (fname: string)(args: list Syntax.expr)
+| SAssign(is_decl: bool)(x: string)(r: assignment_rhs)
+| SVoidCall(fname: string)(args: list Syntax.expr)
 | SStore(sz: access_size)(addr val: Syntax.expr)
 | SIf(cond: Syntax.expr)
 | SElse
