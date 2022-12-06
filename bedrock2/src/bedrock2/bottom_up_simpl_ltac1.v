@@ -171,7 +171,7 @@ Ltac chain_res r1 r2 :=
   | false => r2
   end.
 
-Ltac bottomup_simpl_sidecond_hook := lia. (* OR xlia zchecker if already zified *)
+Ltac bottom_up_simpl_sidecond_hook := lia. (* OR xlia zchecker if already zified *)
 
 (* local_X_simpl tactics:
    Given a term with already simplified subterms, produce new simplified term and
@@ -370,7 +370,7 @@ Ltac local_word_simpl e :=
   lazymatch constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
   | @word.unsigned ?wi ?wo (word.of_Z ?x) =>
       res_rewrite x (@word.unsigned_of_Z_nowrap wi wo _ x
-                       ltac:(bottomup_simpl_sidecond_hook))
+                       ltac:(bottom_up_simpl_sidecond_hook))
   end.
 
 (* Can be customized with ::= *)

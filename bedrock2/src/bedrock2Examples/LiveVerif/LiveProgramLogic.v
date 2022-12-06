@@ -401,7 +401,7 @@ Ltac purify_heapletwise_hyp_of_type H t :=
 
 Ltac purify_heapletwise_hyps := foreach_hyp purify_heapletwise_hyp_of_type.
 
-Ltac bottomup_simpl_sidecond_hook ::= purify_heapletwise_hyps; lia.
+Ltac bottom_up_simpl_sidecond_hook ::= purify_heapletwise_hyps; lia.
 
 Ltac after_steps_simpl_hook := bottom_up_simpl_in_hyps.
 
