@@ -5,6 +5,21 @@ Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Tactics.foreach_hyp.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 
+(* needed for compatibility with simplification strategies that choose not
+   to simplify powers of 2 *)
+Ltac is_Z_const e :=
+  lazymatch e with
+  | Z.pow ?x ?y =>
+      lazymatch isZcst x with
+      | true => lazymatch isZcst with
+                | true => constr:(true)
+                | false => constr:(false)
+                end
+      | false => constr:(false)
+      end
+  | _ => isZcst e
+  end.
+
 (* to encode a record as a function in Ltac1, we define its field names: *)
 Inductive res_field_name :=
 | NewTerm (* constr or uconstr *)
@@ -196,7 +211,7 @@ Ltac expr_kind e :=
 Ltac non_ring_expr_size e :=
   lazymatch e with
   | Zneg _ => uconstr:(2)
-  | _ => lazymatch isZcst e with
+  | _ => lazymatch is_Z_const e with
          | true => uconstr:(1)
          | false => uconstr:(2)
          end
@@ -286,14 +301,19 @@ Ltac is_binary_nat_op op :=
   | Nat.max => idtac
   end.
 
-Ltac local_ground_number_simpl e :=
-  match constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
+Ltac local_ground_number_simpl e0 :=
+  let e := constr:(e0) in (* <-- can't match on uconstr => quadratic retypechecking!*)
+  match e with
   | ?f ?x ?y =>
       let __ := match constr:(Set) with
-                | _ => is_const f; is_binary_Z_op f
+                | _ => is_const f; is_binary_Z_op f;
+                       lazymatch e with
+                       | Z.pow 2 _ => fail (* don't simplify *)
+                       | _ => idtac
+                       end
                 end in
-      lazymatch isZcst x with
-      | true => lazymatch isZcst y with
+      lazymatch is_Z_const x with
+      | true => lazymatch is_Z_const y with
                 | true => let v := eval cbv in e in res_convertible v
                 end
       end
@@ -310,7 +330,7 @@ Ltac local_ground_number_simpl e :=
       let __ := match constr:(Set) with
                 | _ => is_const f; is_unary_Z_op f
                 end in
-      lazymatch isZcst x with
+      lazymatch is_Z_const x with
       | true => let v := eval cbv in e in res_convertible v
       end
   | ?f ?x =>
