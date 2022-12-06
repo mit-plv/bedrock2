@@ -18,7 +18,7 @@ Derive u_min SuchThat (fun_correct! u_min) As u_min_ok.                         
   }                                                                        /**. .**/
   return r;                                                                /**. .**/
 }                                                                          /**.
-Defined.
+Qed.
 
 Definition minl: list Z -> Z := List.fold_right Z.min 0.
 

@@ -17,6 +17,7 @@ Require Import coqutil.Word.Interface coqutil.Map.Interface bedrock2.Map.Separat
 Require Import coqutil.Tactics.fwd.
 Require Import bedrock2.Map.DisjointUnion.
 Require Import bedrock2.HeapletwiseHyps.
+Require Import bedrock2.PurifySep.
 Require Import bedrock2.Semantics bedrock2.FE310CSemantics.
 
 Require bedrock2.WeakestPreconditionProperties.
@@ -182,6 +183,10 @@ H15 : (scalar a0 (word.add va vb) ⋆ (scalar out vout ⋆ R))%sep a2
   Proof.
     intros. destruct H0. eapply WeakestPreconditionProperties.Proper_call; eauto.
   Qed.
+
+  Lemma purify_scalar: forall (a v: word), purify (scalar a v) True.
+  Proof. unfold purify. intros. constructor. Qed.
+  Hint Resolve purify_scalar: purify.
 
   Ltac straightline_stackalloc ::= fail.
   Ltac straightline_stackdealloc ::= fail.

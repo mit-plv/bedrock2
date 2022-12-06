@@ -4,7 +4,8 @@ Require Import coqutil.Word.Interface.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Datatypes.ZList. Import ZList.List.ZIndexNotations.
-Require Import bedrock2.Map.Separation.
+Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
+Require Import bedrock2.PurifySep.
 Require Import bedrock2.Array bedrock2.Scalars.
 
 (* PredTp equals `Z -> mem -> Prop` if the predicate takes any number of values
@@ -33,6 +34,14 @@ Definition array{width}{BW: Bitwidth width}{word: word width}
   (PredicateSize (@array ?width ?BW ?word ?mem ?T ?elem ?elemSize ?n)) =>
   exact (n * elemSize) : typeclass_instances.
 
+Lemma purify_array{width}{BW: Bitwidth width}{word: word width}{word_ok: word.ok word}
+  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}{T: Type} elem
+  {elemSize: PredicateSize elem}(n: Z)(vs: list T)(addr: word):
+  purify (array elem n vs addr) (len vs = n). (* TODO also n <= 2^width or n < 2^width? *)
+Proof.
+  unfold purify, array. intros. eapply sep_emp_l in H. apply H.
+Qed.
+#[export] Hint Resolve purify_array : purify.
 
 (* Type aliases that can inform proof automation, typeclass search,
    as well as humans on intended usage: *)
@@ -65,3 +74,11 @@ Definition uint{width}{BW: Bitwidth width}{word: word width}{mem: map.map word B
             end in
   exact sz
 : typeclass_instances.
+
+Lemma purify_uint{width}{BW: Bitwidth width}{word: word width}{word_ok: word.ok word}
+  {mem: map.map word Byte.byte}{mem_ok: map.ok mem} nbits v a:
+  purify (uint nbits v a) (0 <= v < 2 ^ nbits).
+Proof.
+  unfold purify, uint. intros. eapply sep_emp_l in H. apply proj1 in H. exact H.
+Qed.
+#[export] Hint Resolve purify_uint : purify.

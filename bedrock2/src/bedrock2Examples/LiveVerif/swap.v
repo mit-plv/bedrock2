@@ -1,7 +1,7 @@
 (* -*- eval: (load-file "live_verif_setup.el"); -*- *)
 Require Import bedrock2Examples.LiveVerif.LiveVerifLib.
-Require Import coqutil.Sorting.Permutation.
 Require Import coqutil.Tactics.syntactic_unify.
+Require Import bedrock2.Array. (* TODO replace by SepLib.array *)
 
 Load LiveVerif.
 
@@ -111,49 +111,6 @@ replace w1tmp with w1 in * by ZnWords. clear w1tmp.
 }                                                                        /**. .**/
                                                                          /**.
 Abort.
-
-Hint Extern 4 (Permutation _ _) =>
-  eauto using perm_nil, perm_skip, perm_swap, perm_trans
-: prove_post.
-
-Definition sort3: {f: list string * list string * cmd &
-  forall fs t (m: mem) (a: word) (vs: list word) R,
-    <{ * a --> vs
-       * R }> m ->
-    List.length vs = 3%nat ->
-    vc_func fs f t m [| a |] (fun t' m' retvs =>
-      exists v0 v1 v2,
-        t' = t /\
-        Permutation vs [| v0; v1; v2 |] /\
-        v0 to Z <= v1 to Z <= v2 to Z /\
-        <{ * a --> [| v0; v1; v2 |]
-           * R }> m'
-  )}. .**/
-{                                                                        /**. .**/
-  uintptr_t w0 = load(a);                                                /**. .**/
-  uintptr_t w1 = load(a+4);                                              /**. .**/
-  uintptr_t w2 = load(a+8);                                              /**. .**/
-  if (w1 <= w0 && w1 <= w2) {                                            /**. .**/
-    store(a, w1);                                                        /**. .**/
-    w1 = w0;                                                             /**. .**/
-  } else {                                                               /**. .**/
-    if (w2 <= w0 && w2 <= w1) {                                          /**. .**/
-      store(a, w2);                                                      /**. .**/
-      w2 = w0;                                                           /**. .**/
-    } else {                                                             /**. .**/
-    }                                                          /**. .**/ /**. .**/
-  }                                                            /**. .**/ /**. .**/
-  if (w2 < w1) {                                                         /**. .**/
-    store(a+4, w2);                                                      /**. .**/
-    store(a+8, w1);                                                      /**. .**/
-  } else {                                                               /**. .**/
-    store(a+4, w1);                                                      /**. .**/
-    store(a+8, w2);                                                      /**. .**/
-  }                                                            /**. .**/ /**. .**/
-}                                                                        /**.
-Defined.
-
-(* Print Assumptions sort3. *)
 
 (* TODO: write down postcondition only at end *)
 Definition swap_locals: {f: list string * list string * cmd &

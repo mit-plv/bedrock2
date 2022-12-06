@@ -8,7 +8,8 @@ Require Export coqutil.Byte.
 Require Export coqutil.Tactics.fwd.
 Require Export bedrock2.Syntax bedrock2.Semantics.
 Require Export bedrock2.Lift1Prop.
-Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
+Require Export bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
+Require Export bedrock2.Map.DisjointUnion.
 Require Export bedrock2.ZnWords.
 Require Export bedrock2.groundcbv.
 Require Export bedrock2.ptsto_bytes bedrock2.Scalars.
@@ -21,6 +22,7 @@ Require Export bedrock2.find_hyp.
 Require Export bedrock2.HeapletwiseHyps.
 Require Export bedrock2.bottom_up_simpl_ltac1.
 Require Export bedrock2.TacticError.
+Require Export bedrock2.SepLib.
 Require Export bedrock2Examples.LiveVerif.LiveRules.
 Require Export bedrock2Examples.LiveVerif.PackageContext.
 Require Export bedrock2Examples.LiveVerif.LiveProgramLogic.

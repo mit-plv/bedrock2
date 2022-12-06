@@ -48,11 +48,14 @@ Section PurifyLemmas.
 
   Lemma purify_emp: forall (P: Prop), purify (emp P) P.
   Proof. unfold purify, emp. intros * (_ & ?). assumption. Qed.
+
+  Lemma purify_eq: forall m: mem, purify (eq m) True.
+  Proof. unfold purify. intros. constructor. Qed.
 End PurifyLemmas.
 
 Create HintDb purify. (* To register lemmas concluding `purify P pureP` *)
 
-#[export] Hint Resolve purify_emp : purify.
+#[export] Hint Resolve purify_emp purify_eq : purify.
 
 Ltac purify_rec :=
   lazymatch goal with

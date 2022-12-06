@@ -6,6 +6,8 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.syntactic_unify.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.DisjointUnion.
+Require Import bedrock2.TacticError.
+Require Import bedrock2.PurifySep.
 Require Import bedrock2.Map.SeparationLogic. Local Open Scope sep_scope.
 
 (* to mark hypotheses about heaplets *)
@@ -359,6 +361,21 @@ Ltac should_unpack P :=
  | _ => constr:(false)
  end.
 
+Ltac purify_heapletwise_hyp H :=
+  unfold with_mem in H;
+  lazymatch type of H with
+  | ?P ?m =>
+      let g := open_constr:(purify P _) in
+      let pf := match constr:(Set) with
+                | _ => constr:(ltac:(eauto with purify) : g)
+                | _ => constr:(tt)
+               end in
+      lazymatch pf with
+      | tt => pose_err Error:(g "can't be solved by" "eauto with purify")
+      | _ => eapply pf in H
+      end
+  end.
+
 (* can be overridden using ::= *)
 Ltac same_pred_and_addr P Q :=
   lazymatch P with
@@ -376,13 +393,27 @@ Ltac replace_with_new_mem_hyp H :=
                                       | _ => change (with_mem m Pnew) in H
                                       end in Pnew
               end in
+  lazymatch Pnew with
+  | sep _ _ => fail "first destruct the sep"
+  | _ => idtac
+  end;
   match reverse goal with
   | HOld: with_mem ?mOld ?Pold |- _ =>
-      same_pred_and_addr Pnew Pold;
-      move H before HOld;
-      clear mOld HOld;
-      rename H into HOld
-  end.
+      tryif constr_eq HOld H then
+        fail (* bad choice of HOld: don't replace a hyp by itself *)
+      else (
+        same_pred_and_addr Pnew Pold;
+        move H before HOld;
+        purify_heapletwise_hyp HOld;
+        lazymatch goal with
+        | _: tactic_error _ |- _ => idtac
+        | |- _ =>
+            let HOld' := fresh HOld in
+            rename HOld into HOld';
+            clear mOld HOld;
+            rename H into HOld
+        end)
+    end.
 
 Ltac split_sep_step :=
   let D := fresh "D" in
@@ -525,11 +556,6 @@ Ltac canceling_step :=
   | |- True => constructor
   end.
 
-Ltac clear_unused_mem_hyps_step :=
-  match goal with
-  | H: with_mem ?m _ |- _ => clear m H
-  end.
-
 Ltac intro_step :=
   lazymatch goal with
   | m: ?mem, H: @with_mem ?mem _ _ |- forall (_: ?mem), _ =>
@@ -548,7 +574,7 @@ Ltac intro_step :=
 Ltac and_step :=
   lazymatch goal with
   | |- (fun _ => _ /\ _) _ /\ _ => cbv beta
-  | |- (_ /\ _) /\ _ => eapply and_assoc
+  | |- ?P /\ _ => is_destructible_and P; eapply and_assoc
   end.
 
 Ltac heapletwise_step :=
@@ -565,6 +591,10 @@ Section HeapletwiseHypsTests.
           {key_eqb: key -> key -> bool} {key_eqb_spec: EqDecider key_eqb}.
 
   Hypothesis scalar: nat -> nat -> mem -> Prop.
+
+  Lemma purify_scalar: forall v a, purify (scalar v a) True.
+  Proof. unfold purify. intros. constructor. Qed.
+  Hint Resolve purify_scalar: purify.
 
   Context (fname: Type).
   Context (cmd: Type) (trace: Type) (locals: Type).
@@ -649,6 +679,10 @@ Section HeapletwiseHypsTests.
   Qed.
 
   Let scalar_pair(v1 v2 a1 a2: nat) := sep (scalar v1 a1) (scalar v2 a2).
+
+  Lemma purify_scalar_pair: forall v1 v2 a1 a2, purify (scalar_pair v1 v2 a1 a2) True.
+  Proof. unfold purify. intros. constructor. Qed.
+  Hint Resolve purify_scalar_pair : purify.
 
   (* sample caller where argument is a field: *)
   Goal forall (p1 p2 p3 x y: nat) t m l (R: mem -> Prop),

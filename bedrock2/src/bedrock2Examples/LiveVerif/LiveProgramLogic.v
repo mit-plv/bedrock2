@@ -437,6 +437,7 @@ Ltac program_logic_step :=
   | |- exists (l: @map.rep String.string (@word.rep _ _) _),
          map.putmany_of_list_zip _ _ _ = Some _ /\ _ =>
       eexists; split; [reflexivity| ]
+  | |- _ /\ _ => split; [ZnWords (* TODO replace by better/faster tactic *) | ]
   | |- wp_cmd _ _ _ _ _ _ =>
       first [ cleanup
             | lazymatch goal with
@@ -455,9 +456,12 @@ Ltac step_is_done :=
   end.
 
 Ltac run_steps :=
-  tryif step_is_done then idtac
-  else tryif step then run_steps
-  else pose_err Error:("'step' should not fail here").
+  lazymatch goal with
+  | _: tactic_error _ |- _ => idtac
+  | |- _ => tryif step_is_done then idtac
+            else tryif step then run_steps
+            else pose_err Error:("The 'step' tactic should not fail here")
+  end.
 
 (* can be overridden with idtac for debugging *)
 Ltac run_steps_hook := run_steps.
@@ -546,7 +550,10 @@ Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /**#
  post at level 200,
  only parsing).
 
-Notation ".* */ x" := ltac:(let r := with_ident_as_string_no_beta x in exact r)
+Notation ".* */ x" :=
+  (match x with (* <-- typecheck x before passing it to Ltac, to get better error messages *)
+   | _ => ltac:(let r := with_ident_as_string_no_beta x in exact r)
+   end)
   (at level 200, only parsing).
 
 Notation "'fun_correct!' f" := (program_logic_goal_for (ident_to_string f) f)
