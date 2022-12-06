@@ -45,16 +45,21 @@ Section WithParams.
     intros. econstructor. hnf. eauto.
   Qed.
 
+  (* Notation instead of definition so that it auto-simplifies when applied to
+     a concrete sz *)
+  Notation access_size_to_nbits sz :=
+    match sz with
+    | access_size.one => 8
+    | access_size.two => 16
+    | access_size.four => 32
+    | access_size.word => width
+    end.
+
   (* Note: no conversion needed between v in sepclause and v returned,
      and sep already enforces bounds on v *)
   Lemma dexpr_load: forall m l e addr sz v R,
       dexpr m l e addr ->
-      sep (uint match sz with
-                | access_size.one => 8
-                | access_size.two => 16
-                | access_size.four => 32
-                | access_size.word => width
-                end v addr) R m ->
+      sep (uint (access_size_to_nbits sz) v addr) R m ->
       dexpr m l (expr.load sz e) (word.of_Z v).
   Proof.
     intros. constructor. hnf. inversion H; clear H. hnf in H1.
@@ -129,12 +134,7 @@ Section WithParams.
   Qed.
 
   Lemma dexpr1_load: forall m l e addr sz v (R: mem -> Prop) (P: Prop),
-      dexpr1 m l e addr (sep (uint match sz with
-                                   | access_size.one => 8
-                                   | access_size.two => 16
-                                   | access_size.four => 32
-                                   | access_size.word => width
-                                   end v addr) R m /\ P) ->
+      dexpr1 m l e addr (sep (uint (access_size_to_nbits sz) v addr) R m /\ P) ->
       dexpr1 m l (expr.load sz e) (word.of_Z v) P.
   Proof.
     intros. inversion H; clear H. fwd. constructor. 2: assumption.
@@ -347,24 +347,10 @@ Section WithParams.
   Lemma wp_store0: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr m l ea a ->
       dexpr m l ev v ->
-      0 <= word.unsigned v < 2 ^ match sz with
-                                 | access_size.one => 8
-                                 | access_size.two => 16
-                                 | access_size.four => 32
-                                 | access_size.word => width
-                                 end ->
-      sep (uint match sz with
-                | access_size.one => 8
-                | access_size.two => 16
-                | access_size.four => 32
-                | access_size.word => width
-                end v_old a) R m ->
-      (forall m', sep (uint match sz with
-                       | access_size.one => 8
-                       | access_size.two => 16
-                       | access_size.four => 32
-                       | access_size.word => width
-                       end (word.unsigned v) a) R m' -> wp_cmd fs rest t m' l post) ->
+      0 <= word.unsigned v < 2 ^ access_size_to_nbits sz ->
+      sep (uint (access_size_to_nbits sz) v_old a) R m ->
+      (forall m', sep (uint (access_size_to_nbits sz) (word.unsigned v) a) R m' ->
+                  wp_cmd fs rest t m' l post) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion H0; clear H0.
@@ -417,25 +403,11 @@ Section WithParams.
   Lemma wp_store: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
         (dexpr1 m l ev v
-           (0 <= word.unsigned v < 2 ^ match sz with
-                                       | access_size.one => 8
-                                       | access_size.two => 16
-                                       | access_size.four => 32
-                                       | access_size.word => width
-                                       end /\
-            sep (uint match sz with
-                      | access_size.one => 8
-                      | access_size.two => 16
-                      | access_size.four => 32
-                      | access_size.word => width
-                      end v_old a) R m /\
+           (0 <= word.unsigned v < 2 ^ access_size_to_nbits sz /\
+            sep (uint (access_size_to_nbits sz) v_old a) R m /\
             (forall m,
-                sep (uint match sz with
-                          | access_size.one => 8
-                          | access_size.two => 16
-                          | access_size.four => 32
-                          | access_size.word => width
-                          end (word.unsigned v) a) R m -> wp_cmd fs rest t m l post))) ->
+                sep (uint (access_size_to_nbits sz) (word.unsigned v) a) R m ->
+                wp_cmd fs rest t m l post))) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion Hp; clear Hp. destruct Hp0 as (B & H & C).
