@@ -1,4 +1,5 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+Require Import Coq.micromega.Lia.
 Require Import Coq.Strings.String.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Map.Interface.
@@ -7,6 +8,7 @@ Require Import coqutil.Tactics.syntactic_unify.
 Require Import coqutil.Tactics.destr.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.ltac_list_ops.
+Require Import coqutil.Tactics.foreach_hyp.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
@@ -18,6 +20,7 @@ Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.find_hyp.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.HeapletwiseHyps.
+Require Import bedrock2.PurifySep.
 Require Import bedrock2.bottom_up_simpl_ltac1.
 Require Import bedrock2Examples.LiveVerif.LiveRules.
 Require Import bedrock2Examples.LiveVerif.PackageContext.
@@ -385,6 +388,23 @@ Ltac cleanup :=
   | H: ?T |- _ => is_destructible_and T; let H' := fresh H in destruct H as (H & H')
   end.
 
+Ltac purify_heapletwise_pred H pred m :=
+  let HP := fresh H "P" in eassert (purify pred _) as HP by eauto with purify;
+  specialize (HP m H).
+
+Ltac purify_heapletwise_hyp_of_type H t :=
+  match t with
+  | ?R ?m => purify_heapletwise_pred H R m
+  | with_mem ?m ?R => purify_heapletwise_pred H R m
+  | _ => idtac
+  end.
+
+Ltac purify_heapletwise_hyps := foreach_hyp purify_heapletwise_hyp_of_type.
+
+Ltac bottomup_simpl_sidecond_hook ::= purify_heapletwise_hyps; lia.
+
+Ltac after_steps_simpl_hook := bottom_up_simpl_in_hyps.
+
 Ltac program_logic_step :=
   lazymatch goal with
   | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_bool3_lazy_and
@@ -440,7 +460,8 @@ Ltac program_logic_step :=
   | |- _ /\ _ => split; [ZnWords (* TODO replace by better/faster tactic *) | ]
   | |- wp_cmd _ _ _ _ _ _ =>
       first [ cleanup
-            | lazymatch goal with
+            | after_steps_simpl_hook;
+              lazymatch goal with
               | |- ?G => change (@ready G)
               end ]
   end.

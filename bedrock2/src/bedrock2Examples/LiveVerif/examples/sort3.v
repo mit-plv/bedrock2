@@ -28,10 +28,7 @@ As sort3_separate_args_ok.                                                    .*
   uintptr_t w1 = load(a1);                                               /**. .**/
   uintptr_t w2 = load(a2);                                               /**. .**/
   if (w1 <= w0 && w1 <= w2) {                                            /**. .**/
-    store(a0, w1);                                                       /**.
-    (* TODO: run bottom_up_simpl on each hypothesis and modify it
-       to substitute vars with a simple rhs such as w1 := /[in1], so
-       that (m6 |= uint 32 \[w1] a0) becomes (m6 |= uint 32 in1 a0) *)        .**/
+    store(a0, w1);                                                       /**. .**/
     w1 = w0;                                                             /**.
     (* TODO: merge heapletwise into one big sep                               .**/
   } else {                                                               /**. .**/

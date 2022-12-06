@@ -2,6 +2,7 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Datatypes.ZList.
+Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.foreach_hyp.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 
@@ -372,8 +373,27 @@ Ltac local_word_simpl e :=
                        ltac:(bottomup_simpl_sidecond_hook))
   end.
 
+(* Can be customized with ::= *)
+Ltac is_substitutable_rhs rhs :=
+  first [ is_var rhs
+        | is_const rhs
+        | lazymatch is_Z_const rhs with true => idtac end
+        | lazymatch rhs with
+          | word.of_Z ?x => is_substitutable_rhs x
+          | word.unsigned ?x => is_substitutable_rhs x
+          end ].
+
+Ltac local_subst_small_rhs e0 :=
+  let e := constr:(e0) in (* <-- can't match on uconstr => quadratic retypechecking!*)
+  let rhs := progress_rdelta_var e in
+  let __ := match constr:(Set) with
+            | _ => is_substitutable_rhs rhs
+            end in
+  res_convertible rhs.
+
 Ltac local_simpl_hook parent_kind e :=
   match constr:(Set) with
+  | _ => local_subst_small_rhs e
   | _ => local_zlist_simpl e
   | _ => local_ring_simplify parent_kind e
   | _ => local_ground_number_simpl e
@@ -457,6 +477,10 @@ Proof. intros. subst. assumption. Qed.
 
 Ltac bottom_up_simpl_in_hyp H :=
   let t := type of H in
+  lazymatch type of t with
+  | Prop => idtac
+  | _ => fail "not a Prop"
+  end;
   let r := bottom_up_simpl OtherExpr t in
   lazymatch r DidSomething with
   | false => fail "nothing to simplify"
@@ -467,17 +491,25 @@ Ltac bottom_up_simpl_in_hyp H :=
   end.
 
 Ltac bottom_up_simpl_in_hyp_of_type H t :=
-  let r := bottom_up_simpl OtherExpr t in
-  lazymatch r DidSomething with
-  | false => idtac (* don't force progress *)
-  | true =>
-      let pf := r EqProof in
-      let t' := r NewTerm in
-      eapply (rew_Prop_hyp t t' pf) in H
+  lazymatch type of t with
+  | Prop =>
+      let r := bottom_up_simpl OtherExpr t in
+      lazymatch r DidSomething with
+      | false => idtac (* don't force progress *)
+      | true =>
+          let pf := r EqProof in
+          let t' := r NewTerm in
+          eapply (rew_Prop_hyp t t' pf) in H
+      end
+  | _ =>  idtac (* don't force progress *)
   end.
 
 Ltac bottom_up_simpl_in_goal :=
   let t := lazymatch goal with |- ?g => g end in
+  lazymatch type of t with
+  | Prop => idtac
+  | _ => fail "not a Prop"
+  end;
   let r := bottom_up_simpl OtherExpr t in
   lazymatch r DidSomething with
   | false => fail "nothing to simplify"
