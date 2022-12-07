@@ -193,18 +193,19 @@ Section HeapletwiseHyps.
 
   Lemma canceling_start_and: forall {Ps m om Rest},
       om = mmap.Def m ->
-      canceling Ps om Rest ->
-      seps Ps m /\ Rest.
+      canceling (Tree.flatten Ps) om Rest ->
+      Tree.to_sep Ps m /\ Rest.
   Proof.
-    unfold canceling. intros. fwd. eauto.
+    unfold canceling. intros. fwd. split. 2: assumption.
+    eapply Tree.flatten_iff1_to_sep. eauto.
   Qed.
 
   Lemma canceling_start_noand: forall {Ps m om},
       om = mmap.Def m ->
-      canceling Ps om True ->
-      seps Ps m.
+      canceling (Tree.flatten Ps) om True ->
+      Tree.to_sep Ps m.
   Proof.
-    unfold canceling. intros. fwd. eauto.
+    unfold canceling. intros. fwd. eapply Tree.flatten_iff1_to_sep. eauto.
   Qed.
 
   Lemma canceling_done_anymem: forall {om} {Rest: Prop},
@@ -348,12 +349,6 @@ Ltac reify_mem_tree e :=
   | mmap.Def ?m => constr:(NLeaf m)
   end.
 
-Ltac reify_seps e :=
-  lazymatch e with
-  | sep ?h ?t => let rt := reify_seps t in constr:(cons h rt)
-  | _ => constr:(cons e nil)
-  end.
-
 Ltac should_unpack P :=
  lazymatch P with
  | sep _ _ => constr:(true)
@@ -493,15 +488,15 @@ Ltac merge_du_step :=
   end.
 
 Ltac start_canceling :=
-  rewrite ?sep_assoc_eq;
   lazymatch goal with
-  | D: _ = mmap.Def ?m |- sep ?eh ?et ?m /\ ?Rest =>
-      let clauselist := reify_seps (sep eh et) in change (seps clauselist m /\ Rest);
+  | D: _ = mmap.Def ?m |- sep ?P ?Q ?m /\ ?Rest =>
+      let clausetree := reify (sep P Q) in change (Tree.to_sep clausetree m /\ Rest);
       eapply (canceling_start_and D)
-  | D: _ = mmap.Def ?m |- sep ?eh ?et ?m =>
-      let clauselist := reify_seps (sep eh et) in change (seps clauselist m);
+  | D: _ = mmap.Def ?m |- sep ?P ?Q ?m =>
+      let clausetree := reify (sep P Q) in change (Tree.to_sep clausetree m);
       eapply (canceling_start_noand D)
-  end.
+  end;
+  cbn [Tree.flatten Tree.interp bedrock2.Map.SeparationLogic.app].
 
 Ltac path_in_mem_tree om m :=
   lazymatch om with
