@@ -58,6 +58,23 @@ Qed.
 
 Definition ready{P: Prop} := P.
 
+Ltac purify_heapletwise_pred H pred m :=
+  let HP := fresh H "P" in eassert (purify pred _) as HP by eauto with purify;
+  specialize (HP m H).
+
+Ltac purify_heapletwise_hyp_of_type H t :=
+  match t with
+  | ?R ?m => purify_heapletwise_pred H R m
+  | with_mem ?m ?R => purify_heapletwise_pred H R m
+  | _ => idtac
+  end.
+
+Ltac purify_heapletwise_hyps := foreach_hyp purify_heapletwise_hyp_of_type.
+
+Ltac bottom_up_simpl_sidecond_hook ::= purify_heapletwise_hyps; lia.
+
+Ltac after_steps_simpl_hook := bottom_up_simpl_in_hyps.
+
 Ltac start :=
   lazymatch goal with
   | |- @program_logic_goal_for ?fname ?evar ?spec =>
@@ -158,6 +175,8 @@ Ltac destruct_ifs :=
          end.
 
 Ltac prove_concrete_post_pre :=
+    purify_heapletwise_hyps;
+    let H := fresh "M" in collect_heaplets_into_one_sepclause H;
     repeat match goal with
            | H: List.length ?l = S _ |- _ =>
                is_var l; destruct l;
@@ -178,15 +197,13 @@ Ltac prove_concrete_post_pre :=
            end;
     cbn [List.app List.firstn List.nth] in *;
     repeat match goal with
-           | |- exists _, _ => eexists
            | |- _ /\ _ => split
            | |- ?x = ?x => reflexivity
            | |- sep _ _ _ => ecancel_assumption
            | H: _ \/ _ |- _ => destruct H (* <-- might become expensive... *)
+           | |- exists _, _ => eexists
            end;
-    try congruence;
-    try ZnWords;
-    intuition (congruence || ZnWords || eauto with prove_post).
+    try bottom_up_simpl_in_goal.
 
 Create HintDb prove_post.
 
@@ -226,13 +243,17 @@ Ltac strip_conss l :=
   | _ => l
   end.
 
+Ltac package_heapletwise_context :=
+  let H := fresh "M" in collect_heaplets_into_one_sepclause H;
+  package_context.
+
 Ltac close_block :=
   lazymatch goal with
   | B: scope_marker ?sk |- _ =>
       lazymatch sk with
       | ElseBranch =>
           eapply wp_skip;
-          package_context
+          package_heapletwise_context
       | LoopBody =>
           eapply wp_skip;
           prove_concrete_post
@@ -244,13 +265,11 @@ Ltac close_block :=
               unify e (@nil T)
           end;
           lazymatch goal with
-          | |- @ready ?g => change g
-          | |- @final_postcond_marker ?g => change g
-          | |- _ => idtac
+          | |- @ready ?g => change g; ret (@nil String.string)
+          | |- @final_postcond_marker ?g => idtac (* ret was already called *)
           end;
           lazymatch goal with
-          | |- wp_cmd _ _ _ _ _ _ => ret (@nil String.string)
-          | |- _ => idtac (* ret nonEmptyVarList was already called *)
+          | |- @final_postcond_marker ?g => change g
           end;
           prove_concrete_post
       | _ => fail "Can't end a block here"
@@ -345,10 +364,10 @@ Ltac add_snippet s :=
   | SElse =>
       assert_scope_kind ThenBranch;
       eapply wp_skip;
-      package_context
+      package_heapletwise_context
   | SWhile ?cond ?measure0 =>
       eapply (wp_while measure0 cond);
-      [ package_context
+      [ package_heapletwise_context
       | eauto with wf_of_type
       | repeat match goal with
           | H: sep _ _ ?M |- _ => clear M H
@@ -387,23 +406,6 @@ Ltac cleanup :=
   | x := _ |- _ => clear x
   | H: ?T |- _ => is_destructible_and T; let H' := fresh H in destruct H as (H & H')
   end.
-
-Ltac purify_heapletwise_pred H pred m :=
-  let HP := fresh H "P" in eassert (purify pred _) as HP by eauto with purify;
-  specialize (HP m H).
-
-Ltac purify_heapletwise_hyp_of_type H t :=
-  match t with
-  | ?R ?m => purify_heapletwise_pred H R m
-  | with_mem ?m ?R => purify_heapletwise_pred H R m
-  | _ => idtac
-  end.
-
-Ltac purify_heapletwise_hyps := foreach_hyp purify_heapletwise_hyp_of_type.
-
-Ltac bottom_up_simpl_sidecond_hook ::= purify_heapletwise_hyps; lia.
-
-Ltac after_steps_simpl_hook := bottom_up_simpl_in_hyps.
 
 Ltac program_logic_step :=
   lazymatch goal with

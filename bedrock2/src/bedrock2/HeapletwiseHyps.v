@@ -334,6 +334,16 @@ Section HeapletwiseHyps.
     C (mmap.Def mSmall) = mmap.Def mBig ->
     C omSmall = mmap.Def mBig.
   Proof. intros. rewrite <- H in H0. exact H0. Qed.
+
+  Lemma sep_from_disjointb: forall m1 m2 (P Q: mem -> Prop),
+      map.disjointb m1 m2 = true ->
+      P m1 ->
+      Q m2 ->
+      sep P Q (map.putmany m1 m2).
+  Proof.
+    intros. unfold sep, map.split. do 2 eexists. eapply map.disjointb_spec in H.
+    ssplit. 1: reflexivity. all: eassumption.
+  Qed.
 End HeapletwiseHyps.
 
 Ltac reify_mem_tree e :=
@@ -581,6 +591,30 @@ Ltac heapletwise_step :=
     | start_canceling
     | canceling_step ].
 
+Ltac collect_heaplets_into_one_sepclause M :=
+  lazymatch goal with
+  | D: _ = mmap.Def ?m |- _ =>
+      eassert (_ m) as M;
+      unfold mmap.du in D; unfold mmap.of_option, map.du in D; fwd;
+      repeat lazymatch goal with
+        | M: with_mem ?m _ |- _ ?m => exact M
+        | D: map.disjointb ?m1 ?m2 = true |- _ (map.putmany ?m1 ?m2) =>
+            eapply sep_from_disjointb; [exact D | | ]
+        end
+  end;
+  repeat match goal with
+    | H: with_mem _ _ |- _ => clear H
+    | H: map.disjointb _ _ = true |- _ => clear H
+    end;
+  lazymatch type of M with
+  | _ ?putmanys =>
+      let m := fresh "m0" in forget putmanys as m;
+      let mem := type of m in
+      repeat match goal with
+        | heaplet: mem |- _ => clear heaplet
+        end
+  end.
+
 Section HeapletwiseHypsTests.
   Context {key value: Type} {mem: map.map key value} {mem_ok: map.ok mem}
           {key_eqb: key -> key -> bool} {key_eqb_spec: EqDecider key_eqb}.
@@ -639,7 +673,15 @@ Section HeapletwiseHypsTests.
       (sep (scalar v1 1) (sep (sep (scalar v2 2) (scalar v3 3)) (sep (scalar v4 4) Rest))) m ->
       exists R a4 a3, sep (sep (scalar a4 4) (scalar a3 3)) R m.
   Proof.
-    step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+    step. step. step. step. step. step. step.
+    (* split seps into separate hyps: *)
+    step. step. step. step.
+    (* just for desting, join them back together: *)
+    let H := fresh in collect_heaplets_into_one_sepclause H.
+    (* and split again: *)
+    step. step. step. step.
+    (* existentials: *)
+    step. step. step.
     start_canceling.
 
 (*

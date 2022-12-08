@@ -15,7 +15,7 @@ void sort3_separate_args(uintptr_t a0, uintptr_t a1, uintptr_t a2) /**#
                      * uint 32 in2 a2
                      * R }> m;
   ensures t' m' := t' = t /\ exists out0 out1 out2,
-            <{ * uint 32 out0 a1
+            <{ * uint 32 out0 a0
                * uint 32 out1 a1
                * uint 32 out2 a2
                * R }> m' /\
@@ -29,24 +29,25 @@ As sort3_separate_args_ok.                                                    .*
   uintptr_t w2 = load(a2);                                               /**. .**/
   if (w1 <= w0 && w1 <= w2) {                                            /**. .**/
     store(a0, w1);                                                       /**. .**/
-    w1 = w0;                                                             /**.
-    (* TODO: merge heapletwise into one big sep                               .**/
+    w1 = w0;                                                             /**. .**/
   } else {                                                               /**. .**/
     if (w2 <= w0 && w2 <= w1) {                                          /**. .**/
-      store(a, w2);                                                      /**. .**/
+      store(a0, w2);                                                     /**. .**/
       w2 = w0;                                                           /**. .**/
     } else {                                                             /**. .**/
-    }                                                          /**. .**/ /**. .**/
-  }                                                            /**. .**/ /**. .**/
+    }                                                                    /**. .**/
+  }                                                                      /**. .**/
   if (w2 < w1) {                                                         /**. .**/
-    store(a+4, w2);                                                      /**. .**/
-    store(a+8, w1);                                                      /**. .**/
+    store(a1, w2);                                                       /**.
+(* TODO here we should also subst w2_0, w2_2 in the rhs of w2, and then
+   push down the if, and simplify the unsigned_of_Z *)                        .**/
+    store(a2, w1);                                                       /**. .**/
   } else {                                                               /**. .**/
-    store(a+4, w1);                                                      /**. .**/
-    store(a+8, w2);                                                      /**. .**/
-  }                                                            /**. .**/ /**. .**/
+    store(a1, w1);                                                       /**. .**/
+    store(a2, w2);                                                       /**. .**/
+  }                                                                      /**. .**/
 }                                                                        /**.
-Qed. *) Abort.
+Qed.
 
 #[export] Instance spec_of_sort3: fnspec :=                                   .**/
 

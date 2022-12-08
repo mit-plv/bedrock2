@@ -537,6 +537,9 @@ Ltac after_if :=
   | H: if ?b then ?thn else ?els |- _ =>
       clear H;
       assert_succeeds ( (* test if clearing H was justified because it's redundant: *)
+        (* TODO this isn't general enough, after "unfold ands", we might also need
+           to subst all locals and simplify unsigned_of_Z, so it would be better to
+           not package at all the Props that follow from the branching condition *)
         idtac;
         let sp := constr:(_: BoolSpec _ _ b) in
         lazymatch type of sp with
