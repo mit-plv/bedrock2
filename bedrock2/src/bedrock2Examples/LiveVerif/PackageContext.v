@@ -35,13 +35,8 @@ Declare Scope live_scope.
 Delimit Scope live_scope with live.
 Local Open Scope live_scope.
 
-(* Needed to know where the conditions (hypotheses) introduced by an if start,
-   will be replaced by (mk_scope_marker ThenBranch) in the then branch,
-   by (mk_scope_marker ElseBranch) in the else branch, and deleted in the
-   code after the if. *)
-Inductive temp_if_marker: Set := mk_temp_if_marker.
-
-Inductive scope_kind := FunctionBody | ThenBranch | ElseBranch | LoopBody | LoopInvariant.
+Inductive scope_kind :=
+  FunctionBody | IfCondition | ThenBranch | ElseBranch | LoopBody | LoopInvariant.
 Inductive scope_marker: scope_kind -> Set := mk_scope_marker sk : scope_marker sk.
 
 Notation "'____' sk '____'" := (scope_marker sk) (only printing) : live_scope.

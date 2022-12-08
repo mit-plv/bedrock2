@@ -360,7 +360,9 @@ Ltac add_snippet s :=
       end
   | SVoidCall ?fname ?arges => call None fname arges
   | SStore ?sz ?addr ?val => eapply (wp_store _ sz addr val)
-  | SIf ?c => eapply (wp_if_bool_dexpr _ c); pose proof mk_temp_if_marker
+  | SIf ?c => eapply (wp_if_bool_dexpr _ c);
+              let n := fresh "Scope0" in
+              pose proof (mk_scope_marker IfCondition) as n
   | SElse =>
       assert_scope_kind ThenBranch;
       eapply wp_skip;
@@ -422,26 +424,17 @@ Ltac program_logic_step :=
   | |- dexprs1 _ _ nil _ _ => eapply dexprs1_nil
   | |- bool_expr_branches _ _ _ _ => eapply BoolSpec_expr_branches; [ intro | intro | ]
   | |- then_branch_marker ?G =>
-      let H := lazymatch goal with H: temp_if_marker |- _ => H end in
       let n := fresh "Scope0" in
       pose proof (mk_scope_marker ThenBranch) as n;
-      move n before H;
-      clear H;
       change G
   | |- else_branch_marker ?G =>
-      let H := lazymatch goal with H: temp_if_marker |- _ => H end in
       let n := fresh "Scope0" in
       pose proof (mk_scope_marker ElseBranch) as n;
-      move n before H;
-      clear H;
       change G
-  | |- after_if ?fs ?b ?Q1 ?Q2 ?rest ?post =>
-      lazymatch goal with
-      | H: temp_if_marker |- _ => clear H
-      end;
+  | H: scope_marker IfCondition |- after_if ?fs ?b ?Q1 ?Q2 ?rest ?post =>
       tryif is_evar Q1 then idtac (* need to first complete then-branch *)
       else tryif is_evar Q2 then idtac (* need to first complete else-branch *)
-      else after_if
+      else (clear H; after_if)
   | |- True => constructor
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ => put_into_current_locals
   | |- iff1 (seps ?LHS) (seps ?RHS) =>
