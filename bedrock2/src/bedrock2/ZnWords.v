@@ -192,7 +192,13 @@ Ltac word_eqs_to_Z_eqs :=
 Ltac ZnWords_pre :=
   try eapply word.unsigned_inj;
   lazymatch goal with
-  | |- ?G => is_lia G
+  | |- ?G => is_lia G;
+             (* if there are evars in the goal, the preprocessing might affect the
+                evars or their evarcontexts in tricky ways that no one wants to
+                debug, so we should fail here, except if the goal is contradictory,
+                so we do exfalso *)
+             tryif has_evar G then exfalso else idtac
+
   end;
   (* if the word.ok lives in another ok record, that one will get cleared,
      so we first pose a word.ok, which will be recognized and not get cleared *)

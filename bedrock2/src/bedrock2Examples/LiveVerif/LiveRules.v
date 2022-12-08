@@ -45,16 +45,21 @@ Section WithParams.
     intros. econstructor. hnf. eauto.
   Qed.
 
+  (* Notation instead of definition so that it auto-simplifies when applied to
+     a concrete sz *)
+  Notation access_size_to_nbits sz :=
+    match sz with
+    | access_size.one => 8
+    | access_size.two => 16
+    | access_size.four => 32
+    | access_size.word => width
+    end.
+
   (* Note: no conversion needed between v in sepclause and v returned,
      and sep already enforces bounds on v *)
   Lemma dexpr_load: forall m l e addr sz v R,
       dexpr m l e addr ->
-      sep (uint match sz with
-                | access_size.one => 8
-                | access_size.two => 16
-                | access_size.four => 32
-                | access_size.word => width
-                end v addr) R m ->
+      sep (uint (access_size_to_nbits sz) v addr) R m ->
       dexpr m l (expr.load sz e) (word.of_Z v).
   Proof.
     intros. constructor. hnf. inversion H; clear H. hnf in H1.
@@ -129,12 +134,7 @@ Section WithParams.
   Qed.
 
   Lemma dexpr1_load: forall m l e addr sz v (R: mem -> Prop) (P: Prop),
-      dexpr1 m l e addr (sep (uint match sz with
-                                   | access_size.one => 8
-                                   | access_size.two => 16
-                                   | access_size.four => 32
-                                   | access_size.word => width
-                                   end v addr) R m /\ P) ->
+      dexpr1 m l e addr (sep (uint (access_size_to_nbits sz) v addr) R m /\ P) ->
       dexpr1 m l (expr.load sz e) (word.of_Z v) P.
   Proof.
     intros. inversion H; clear H. fwd. constructor. 2: assumption.
@@ -326,6 +326,15 @@ Section WithParams.
       wp_cmd fs c t m l post2.
   Proof. intros. constructor. inversion H. eapply WP_weaken_cmd; eassumption. Qed.
 
+  Lemma wp_seq: forall fs c1 c2 t m l post,
+      wp_cmd fs c1 t m l (fun t' m' l' => wp_cmd fs c2 t' m' l' post) ->
+      wp_cmd fs (cmd.seq c1 c2) t m l post.
+  Proof.
+    intros. constructor. cbn. inversion H. clear H.
+    eapply WP_weaken_cmd. 1: eassumption. cbv beta. intros.
+    inversion H. assumption.
+  Qed.
+
   Lemma wp_set0: forall fs x e v t m l rest post,
       dexpr m l e v ->
       wp_cmd fs rest t m (map.put l x v) post ->
@@ -338,24 +347,10 @@ Section WithParams.
   Lemma wp_store0: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr m l ea a ->
       dexpr m l ev v ->
-      0 <= word.unsigned v < 2 ^ match sz with
-                                 | access_size.one => 8
-                                 | access_size.two => 16
-                                 | access_size.four => 32
-                                 | access_size.word => width
-                                 end ->
-      sep (uint match sz with
-                | access_size.one => 8
-                | access_size.two => 16
-                | access_size.four => 32
-                | access_size.word => width
-                end v_old a) R m ->
-      (forall m', sep (uint match sz with
-                       | access_size.one => 8
-                       | access_size.two => 16
-                       | access_size.four => 32
-                       | access_size.word => width
-                       end (word.unsigned v) a) R m' -> wp_cmd fs rest t m' l post) ->
+      0 <= word.unsigned v < 2 ^ access_size_to_nbits sz ->
+      sep (uint (access_size_to_nbits sz) v_old a) R m ->
+      (forall m', sep (uint (access_size_to_nbits sz) (word.unsigned v) a) R m' ->
+                  wp_cmd fs rest t m' l post) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion H0; clear H0.
@@ -408,25 +403,11 @@ Section WithParams.
   Lemma wp_store: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
         (dexpr1 m l ev v
-           (0 <= word.unsigned v < 2 ^ match sz with
-                                       | access_size.one => 8
-                                       | access_size.two => 16
-                                       | access_size.four => 32
-                                       | access_size.word => width
-                                       end /\
-            sep (uint match sz with
-                      | access_size.one => 8
-                      | access_size.two => 16
-                      | access_size.four => 32
-                      | access_size.word => width
-                      end v_old a) R m /\
+           (0 <= word.unsigned v < 2 ^ access_size_to_nbits sz /\
+            sep (uint (access_size_to_nbits sz) v_old a) R m /\
             (forall m,
-                sep (uint match sz with
-                          | access_size.one => 8
-                          | access_size.two => 16
-                          | access_size.four => 32
-                          | access_size.word => width
-                          end (word.unsigned v) a) R m -> wp_cmd fs rest t m l post))) ->
+                sep (uint (access_size_to_nbits sz) (word.unsigned v) a) R m ->
+                wp_cmd fs rest t m l post))) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion Hp; clear Hp. destruct Hp0 as (B & H & C).
@@ -501,10 +482,96 @@ Section WithParams.
       wp_cmd fs cmd.skip t m l post.
   Proof. intros. constructor. hnf. assumption. Qed.
 
-  Definition vc_func fs '(innames, outnames, body) (t: trace) (m: mem) (argvs: list word)
-                     (post : trace -> mem -> list word -> Prop) :=
-    exists l, map.of_list_zip innames argvs = Some l /\
-      wp_cmd fs body t m l (fun t' m' l' =>
-        exists retvs, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
+  Definition dexprs(m: mem)(l: locals): list expr -> list word -> Prop :=
+    List.Forall2 (dexpr m l).
+
+  Inductive dexprs1(m: mem)(l: locals)(es: list expr)(vs: list word)(P: Prop): Prop :=
+  | mk_dexprs1(Hde: dexprs m l es vs)(Hp: P).
+
+  Lemma dexprs1_nil: forall m l (P: Prop), P -> dexprs1 m l nil nil P.
+  Proof. intros. constructor. 1: constructor. assumption. Qed.
+
+  Lemma dexprs1_cons: forall m l e es v vs P,
+      dexpr1 m l e v (dexprs1 m l es vs P) ->
+      dexprs1 m l (cons e es) (cons v vs) P.
+  Proof.
+    intros.
+    inversion H; clear H. inversion Hp. clear Hp.
+    constructor. 2: assumption. constructor. 1: assumption. assumption.
+  Qed.
+
+  Lemma cpsify_dexprs: forall m l es vs (post: list word -> Prop),
+      dexprs m l es vs ->
+      post vs ->
+      list_map (WeakestPrecondition.expr m l) es post.
+  Proof.
+    induction es; intros.
+    - cbn in *. inversion H. subst. assumption.
+    - cbn in *. inversion H. subst. clear H.
+      inversion H3. clear H3. unfold WeakestPrecondition.dexpr in H.
+      eapply weaken_expr. 1: eassumption. intros. subst. eapply IHes; eassumption.
+  Qed.
+
+  Lemma wp_call0 fs t m l fname resnames es vs (post: trace -> mem -> locals -> Prop):
+      dexprs m l es vs ->
+      call fs fname t m vs (fun t' m' rets =>
+        exists l', map.putmany_of_list_zip resnames rets l = Some l' /\ post t' m' l') ->
+      wp_cmd fs (cmd.call resnames fname es) t m l post.
+  Proof.
+    intros.
+    constructor. cbn. exists vs. split. 2: assumption.
+    unfold WeakestPrecondition.dexprs. eapply cpsify_dexprs. 1: eassumption. reflexivity.
+  Qed.
+
+  Lemma wp_call: forall fs fname t m resnames arges argvs l rest
+      (calleePre: Prop)
+      (calleePost: trace -> mem -> list word -> Prop)
+      (finalPost: trace -> mem -> locals -> Prop),
+      (* definition-site format: *)
+      (calleePre -> WeakestPrecondition.call fs fname t m argvs calleePost) ->
+      (* use-site format: *)
+      dexprs1 m l arges argvs (calleePre /\
+         forall t' m' retvs, calleePost t' m' retvs ->
+           exists l', map.putmany_of_list_zip resnames retvs l = Some l' /\
+                        wp_cmd fs rest t' m' l' finalPost) ->
+      (* conclusion: *)
+      wp_cmd fs (cmd.seq (cmd.call resnames fname arges) rest) t m l finalPost.
+  Proof.
+    intros. inversion H0. clear H0. destruct Hp as (Pre & Impl).
+    specialize (H Pre). clear Pre.
+    eapply wp_seq.
+    eapply wp_call0. 1: eassumption.
+    unshelve epose (env := _ : map.map string func).
+    1: eapply SortedListString.map.
+    assert (env_ok: map.ok env) by apply SortedListString.ok. clearbody env.
+    eapply WeakestPreconditionProperties.Proper_call. 2: eassumption. exact Impl.
+  Qed.
+
+  Lemma cpsify_getmany_of_list: forall retnames retvs (post: list word -> Prop) l,
+      map.getmany_of_list l retnames = Some retvs ->
+      post retvs ->
+      list_map (get l) retnames post.
+  Proof.
+    induction retnames; intros.
+    - cbn in *. inversion H. subst. assumption.
+    - cbn in *. fwd. unfold get. eexists. split. 1: eassumption.
+      eapply IHretnames; eassumption.
+  Qed.
+
+  Lemma prove_func: forall fs argnames retnames body t m argvals l post,
+      map.of_list_zip argnames argvals = Some l ->
+      wp_cmd fs body t m l (fun t' m' l' => exists retvals,
+                                map.getmany_of_list l' retnames = Some retvals /\
+                                  post t' m' retvals) ->
+      WeakestPrecondition.func (call fs) (argnames, retnames, body) t m argvals post.
+  Proof.
+    intros.
+    unfold func.
+    eexists. split. 1: eassumption.
+    eapply invert_wp_cmd.
+    eapply weaken_wp_cmd. 1: eassumption.
+    cbv beta. intros. fwd.
+    eapply cpsify_getmany_of_list; eassumption.
+  Qed.
 
 End WithParams.

@@ -274,7 +274,8 @@ Section WithParameters.
   Lemma lightbulb_handle_ok : program_logic_goal_for_function! lightbulb_handle.
   Proof.
     repeat (eauto || straightline || split_if || eapply interact_nomem || prove_ext_spec || trans_ltu).
-    all : subst r; replace (word.unsigned (word.of_Z 42)) with 42 in * by ZnWords.ZnWords.
+    all: subst r.
+    1: replace (word.unsigned (word.of_Z 42)) with 42 in * by ZnWords.ZnWords.
     2: {
       eexists nil; split; eauto.
       eexists nil; split; cbv [mmio_trace_abstraction_relation]; eauto using List.Forall2_refl.

@@ -6,6 +6,8 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.syntactic_unify.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.DisjointUnion.
+Require Import bedrock2.TacticError.
+Require Import bedrock2.PurifySep.
 Require Import bedrock2.Map.SeparationLogic. Local Open Scope sep_scope.
 
 (* to mark hypotheses about heaplets *)
@@ -191,18 +193,19 @@ Section HeapletwiseHyps.
 
   Lemma canceling_start_and: forall {Ps m om Rest},
       om = mmap.Def m ->
-      canceling Ps om Rest ->
-      seps Ps m /\ Rest.
+      canceling (Tree.flatten Ps) om Rest ->
+      Tree.to_sep Ps m /\ Rest.
   Proof.
-    unfold canceling. intros. fwd. eauto.
+    unfold canceling. intros. fwd. split. 2: assumption.
+    eapply Tree.flatten_iff1_to_sep. eauto.
   Qed.
 
   Lemma canceling_start_noand: forall {Ps m om},
       om = mmap.Def m ->
-      canceling Ps om True ->
-      seps Ps m.
+      canceling (Tree.flatten Ps) om True ->
+      Tree.to_sep Ps m.
   Proof.
-    unfold canceling. intros. fwd. eauto.
+    unfold canceling. intros. fwd. eapply Tree.flatten_iff1_to_sep. eauto.
   Qed.
 
   Lemma canceling_done_anymem: forall {om} {Rest: Prop},
@@ -331,6 +334,16 @@ Section HeapletwiseHyps.
     C (mmap.Def mSmall) = mmap.Def mBig ->
     C omSmall = mmap.Def mBig.
   Proof. intros. rewrite <- H in H0. exact H0. Qed.
+
+  Lemma sep_from_disjointb: forall m1 m2 (P Q: mem -> Prop),
+      map.disjointb m1 m2 = true ->
+      P m1 ->
+      Q m2 ->
+      sep P Q (map.putmany m1 m2).
+  Proof.
+    intros. unfold sep, map.split. do 2 eexists. eapply map.disjointb_spec in H.
+    ssplit. 1: reflexivity. all: eassumption.
+  Qed.
 End HeapletwiseHyps.
 
 Ltac reify_mem_tree e :=
@@ -346,18 +359,27 @@ Ltac reify_mem_tree e :=
   | mmap.Def ?m => constr:(NLeaf m)
   end.
 
-Ltac reify_seps e :=
-  lazymatch e with
-  | sep ?h ?t => let rt := reify_seps t in constr:(cons h rt)
-  | _ => constr:(cons e nil)
-  end.
-
 Ltac should_unpack P :=
  lazymatch P with
  | sep _ _ => constr:(true)
  | (fun m => Some m = _) => constr:(true)
  | _ => constr:(false)
  end.
+
+Ltac purify_heapletwise_hyp H :=
+  unfold with_mem in H;
+  lazymatch type of H with
+  | ?P ?m =>
+      let g := open_constr:(purify P _) in
+      let pf := match constr:(Set) with
+                | _ => constr:(ltac:(eauto with purify) : g)
+                | _ => constr:(tt)
+               end in
+      lazymatch pf with
+      | tt => pose_err Error:(g "can't be solved by" "eauto with purify")
+      | _ => eapply pf in H
+      end
+  end.
 
 (* can be overridden using ::= *)
 Ltac same_pred_and_addr P Q :=
@@ -376,13 +398,27 @@ Ltac replace_with_new_mem_hyp H :=
                                       | _ => change (with_mem m Pnew) in H
                                       end in Pnew
               end in
+  lazymatch Pnew with
+  | sep _ _ => fail "first destruct the sep"
+  | _ => idtac
+  end;
   match reverse goal with
   | HOld: with_mem ?mOld ?Pold |- _ =>
-      same_pred_and_addr Pnew Pold;
-      move H before HOld;
-      clear mOld HOld;
-      rename H into HOld
-  end.
+      tryif constr_eq HOld H then
+        fail (* bad choice of HOld: don't replace a hyp by itself *)
+      else (
+        same_pred_and_addr Pnew Pold;
+        move H before HOld;
+        purify_heapletwise_hyp HOld;
+        lazymatch goal with
+        | _: tactic_error _ |- _ => idtac
+        | |- _ =>
+            let HOld' := fresh HOld in
+            rename HOld into HOld';
+            clear mOld HOld;
+            rename H into HOld
+        end)
+    end.
 
 Ltac split_sep_step :=
   let D := fresh "D" in
@@ -462,15 +498,15 @@ Ltac merge_du_step :=
   end.
 
 Ltac start_canceling :=
-  rewrite ?sep_assoc_eq;
   lazymatch goal with
-  | D: _ = mmap.Def ?m |- sep ?eh ?et ?m /\ ?Rest =>
-      let clauselist := reify_seps (sep eh et) in change (seps clauselist m /\ Rest);
+  | D: _ = mmap.Def ?m |- sep ?P ?Q ?m /\ ?Rest =>
+      let clausetree := reify (sep P Q) in change (Tree.to_sep clausetree m /\ Rest);
       eapply (canceling_start_and D)
-  | D: _ = mmap.Def ?m |- sep ?eh ?et ?m =>
-      let clauselist := reify_seps (sep eh et) in change (seps clauselist m);
+  | D: _ = mmap.Def ?m |- sep ?P ?Q ?m =>
+      let clausetree := reify (sep P Q) in change (Tree.to_sep clausetree m);
       eapply (canceling_start_noand D)
-  end.
+  end;
+  cbn [Tree.flatten Tree.interp bedrock2.Map.SeparationLogic.app].
 
 Ltac path_in_mem_tree om m :=
   lazymatch om with
@@ -525,11 +561,6 @@ Ltac canceling_step :=
   | |- True => constructor
   end.
 
-Ltac clear_unused_mem_hyps_step :=
-  match goal with
-  | H: with_mem ?m _ |- _ => clear m H
-  end.
-
 Ltac intro_step :=
   lazymatch goal with
   | m: ?mem, H: @with_mem ?mem _ _ |- forall (_: ?mem), _ =>
@@ -540,7 +571,7 @@ Ltac intro_step :=
   | H: with_mem _ _ |- sep _ _ _ -> _ =>
       let H' := fresh "H0" in
       intro H'; move H' before H
-  | |- ?Q ?mNew -> _ =>
+  | |- ?Q ?mNew -> ?nondependent_body =>
       let H := fresh "H0" in
       replace_with_new_mem_hyp H
   end.
@@ -548,7 +579,7 @@ Ltac intro_step :=
 Ltac and_step :=
   lazymatch goal with
   | |- (fun _ => _ /\ _) _ /\ _ => cbv beta
-  | |- (_ /\ _) /\ _ => eapply and_assoc
+  | |- ?P /\ _ => is_destructible_and P; eapply and_assoc
   end.
 
 Ltac heapletwise_step :=
@@ -560,11 +591,39 @@ Ltac heapletwise_step :=
     | start_canceling
     | canceling_step ].
 
+Ltac collect_heaplets_into_one_sepclause M :=
+  lazymatch goal with
+  | D: _ = mmap.Def ?m |- _ =>
+      eassert (_ m) as M;
+      unfold mmap.du in D; unfold mmap.of_option, map.du in D; fwd;
+      repeat lazymatch goal with
+        | M: with_mem ?m _ |- _ ?m => exact M
+        | D: map.disjointb ?m1 ?m2 = true |- _ (map.putmany ?m1 ?m2) =>
+            eapply sep_from_disjointb; [exact D | | ]
+        end
+  end;
+  repeat match goal with
+    | H: with_mem _ _ |- _ => clear H
+    | H: map.disjointb _ _ = true |- _ => clear H
+    end;
+  lazymatch type of M with
+  | _ ?putmanys =>
+      let m := fresh "m0" in forget putmanys as m;
+      let mem := type of m in
+      repeat match goal with
+        | heaplet: mem |- _ => clear heaplet
+        end
+  end.
+
 Section HeapletwiseHypsTests.
   Context {key value: Type} {mem: map.map key value} {mem_ok: map.ok mem}
           {key_eqb: key -> key -> bool} {key_eqb_spec: EqDecider key_eqb}.
 
   Hypothesis scalar: nat -> nat -> mem -> Prop.
+
+  Lemma purify_scalar: forall v a, purify (scalar v a) True.
+  Proof. unfold purify. intros. constructor. Qed.
+  Hint Resolve purify_scalar: purify.
 
   Context (fname: Type).
   Context (cmd: Type) (trace: Type) (locals: Type).
@@ -614,7 +673,15 @@ Section HeapletwiseHypsTests.
       (sep (scalar v1 1) (sep (sep (scalar v2 2) (scalar v3 3)) (sep (scalar v4 4) Rest))) m ->
       exists R a4 a3, sep (sep (scalar a4 4) (scalar a3 3)) R m.
   Proof.
-    step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+    step. step. step. step. step. step. step.
+    (* split seps into separate hyps: *)
+    step. step. step. step.
+    (* just for desting, join them back together: *)
+    let H := fresh in collect_heaplets_into_one_sepclause H.
+    (* and split again: *)
+    step. step. step. step.
+    (* existentials: *)
+    step. step. step.
     start_canceling.
 
 (*
@@ -649,6 +716,10 @@ Section HeapletwiseHypsTests.
   Qed.
 
   Let scalar_pair(v1 v2 a1 a2: nat) := sep (scalar v1 a1) (scalar v2 a2).
+
+  Lemma purify_scalar_pair: forall v1 v2 a1 a2, purify (scalar_pair v1 v2 a1 a2) True.
+  Proof. unfold purify. intros. constructor. Qed.
+  Hint Resolve purify_scalar_pair : purify.
 
   (* sample caller where argument is a field: *)
   Goal forall (p1 p2 p3 x y: nat) t m l (R: mem -> Prop),

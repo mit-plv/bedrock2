@@ -2,8 +2,24 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Datatypes.ZList.
+Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.foreach_hyp.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
+
+(* needed for compatibility with simplification strategies that choose not
+   to simplify powers of 2 *)
+Ltac is_Z_const e :=
+  lazymatch e with
+  | Z.pow ?x ?y =>
+      lazymatch isZcst x with
+      | true => lazymatch isZcst with
+                | true => constr:(true)
+                | false => constr:(false)
+                end
+      | false => constr:(false)
+      end
+  | _ => isZcst e
+  end.
 
 (* to encode a record as a function in Ltac1, we define its field names: *)
 Inductive res_field_name :=
@@ -155,7 +171,7 @@ Ltac chain_res r1 r2 :=
   | false => r2
   end.
 
-Ltac bottomup_simpl_sidecond_hook := lia. (* OR xlia zchecker if already zified *)
+Ltac bottom_up_simpl_sidecond_hook := lia. (* OR xlia zchecker if already zified *)
 
 (* local_X_simpl tactics:
    Given a term with already simplified subterms, produce new simplified term and
@@ -196,7 +212,7 @@ Ltac expr_kind e :=
 Ltac non_ring_expr_size e :=
   lazymatch e with
   | Zneg _ => uconstr:(2)
-  | _ => lazymatch isZcst e with
+  | _ => lazymatch is_Z_const e with
          | true => uconstr:(1)
          | false => uconstr:(2)
          end
@@ -286,14 +302,19 @@ Ltac is_binary_nat_op op :=
   | Nat.max => idtac
   end.
 
-Ltac local_ground_number_simpl e :=
-  match constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
+Ltac local_ground_number_simpl e0 :=
+  let e := constr:(e0) in (* <-- can't match on uconstr => quadratic retypechecking!*)
+  match e with
   | ?f ?x ?y =>
       let __ := match constr:(Set) with
-                | _ => is_const f; is_binary_Z_op f
+                | _ => is_const f; is_binary_Z_op f;
+                       lazymatch e with
+                       | Z.pow 2 _ => fail (* don't simplify *)
+                       | _ => idtac
+                       end
                 end in
-      lazymatch isZcst x with
-      | true => lazymatch isZcst y with
+      lazymatch is_Z_const x with
+      | true => lazymatch is_Z_const y with
                 | true => let v := eval cbv in e in res_convertible v
                 end
       end
@@ -310,7 +331,7 @@ Ltac local_ground_number_simpl e :=
       let __ := match constr:(Set) with
                 | _ => is_const f; is_unary_Z_op f
                 end in
-      lazymatch isZcst x with
+      lazymatch is_Z_const x with
       | true => let v := eval cbv in e in res_convertible v
       end
   | ?f ?x =>
@@ -349,11 +370,30 @@ Ltac local_word_simpl e :=
   lazymatch constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
   | @word.unsigned ?wi ?wo (word.of_Z ?x) =>
       res_rewrite x (@word.unsigned_of_Z_nowrap wi wo _ x
-                       ltac:(bottomup_simpl_sidecond_hook))
+                       ltac:(bottom_up_simpl_sidecond_hook))
   end.
+
+(* Can be customized with ::= *)
+Ltac is_substitutable_rhs rhs :=
+  first [ is_var rhs
+        | is_const rhs
+        | lazymatch is_Z_const rhs with true => idtac end
+        | lazymatch rhs with
+          | word.of_Z ?x => is_substitutable_rhs x
+          | word.unsigned ?x => is_substitutable_rhs x
+          end ].
+
+Ltac local_subst_small_rhs e0 :=
+  let e := constr:(e0) in (* <-- can't match on uconstr => quadratic retypechecking!*)
+  let rhs := progress_rdelta_var e in
+  let __ := match constr:(Set) with
+            | _ => is_substitutable_rhs rhs
+            end in
+  res_convertible rhs.
 
 Ltac local_simpl_hook parent_kind e :=
   match constr:(Set) with
+  | _ => local_subst_small_rhs e
   | _ => local_zlist_simpl e
   | _ => local_ring_simplify parent_kind e
   | _ => local_ground_number_simpl e
@@ -437,6 +477,10 @@ Proof. intros. subst. assumption. Qed.
 
 Ltac bottom_up_simpl_in_hyp H :=
   let t := type of H in
+  lazymatch type of t with
+  | Prop => idtac
+  | _ => fail "not a Prop"
+  end;
   let r := bottom_up_simpl OtherExpr t in
   lazymatch r DidSomething with
   | false => fail "nothing to simplify"
@@ -447,17 +491,25 @@ Ltac bottom_up_simpl_in_hyp H :=
   end.
 
 Ltac bottom_up_simpl_in_hyp_of_type H t :=
-  let r := bottom_up_simpl OtherExpr t in
-  lazymatch r DidSomething with
-  | false => idtac (* don't force progress *)
-  | true =>
-      let pf := r EqProof in
-      let t' := r NewTerm in
-      eapply (rew_Prop_hyp t t' pf) in H
+  lazymatch type of t with
+  | Prop =>
+      let r := bottom_up_simpl OtherExpr t in
+      lazymatch r DidSomething with
+      | false => idtac (* don't force progress *)
+      | true =>
+          let pf := r EqProof in
+          let t' := r NewTerm in
+          eapply (rew_Prop_hyp t t' pf) in H
+      end
+  | _ =>  idtac (* don't force progress *)
   end.
 
 Ltac bottom_up_simpl_in_goal :=
   let t := lazymatch goal with |- ?g => g end in
+  lazymatch type of t with
+  | Prop => idtac
+  | _ => fail "not a Prop"
+  end;
   let r := bottom_up_simpl OtherExpr t in
   lazymatch r DidSomething with
   | false => fail "nothing to simplify"
