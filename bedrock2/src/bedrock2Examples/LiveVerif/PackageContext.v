@@ -518,29 +518,17 @@ Ltac merge_sep_pair_step :=
   end.
 
 Ltac after_if :=
-  repeat match goal with
-         | H: sep _ _ ?M |- _ => clear M H
-         end;
-  intros ? ? ? ?;
+  purify_heapletwise_hyps_instead_of_clearing;
+  intros ? ? ? ? ?;
   repeat pull_dlet_and_exists_step;
   repeat merge_and_pair constr_eqb merge_ands_at_indices_same_prop;
   repeat merge_and_pair neg_prop merge_ands_at_indices_neg_prop;
   repeat merge_and_pair same_lhs merge_ands_at_indices_same_lhs;
   repeat merge_and_pair seps_about_same_mem merge_ands_at_indices_seps_same_mem;
   repeat merge_sep_pair_step;
-  repeat match goal with
-  | H: if ?b then ?thn else ?els |- _ =>
-      clear H;
-      assert_succeeds ( (* test if clearing H was justified because it's redundant: *)
-        (* TODO this isn't general enough, after "unfold ands", we might also need
-           to subst all locals and simplify unsigned_of_Z, so it would be better to
-           not package at all the Props that follow from the branching condition *)
-        idtac;
-        let sp := constr:(_: BoolSpec _ _ b) in
-        lazymatch type of sp with
-        | BoolSpec ?Pt ?Pf _ =>
-            assert ((Pt -> thn) /\ (Pf -> els)) by (unfold ands; clear; intuition auto)
-        end)
+  cbn [seps] in *;
+  try match goal with
+    | H: if _ then ands nil else ands nil |- _ => clear H
     end;
   lazymatch goal with
   | H: ?l = _ |- wp_cmd _ _ _ _ ?l _ =>

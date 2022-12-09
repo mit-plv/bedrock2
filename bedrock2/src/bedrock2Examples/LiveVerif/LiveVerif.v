@@ -10,6 +10,7 @@ Section LiveVerif.
   Local Open Scope zlist_scope.
   Local Open Scope sep_bullets_scope.
   Local Open Scope live_scope.
+  Local Open Scope bool_scope.
 
   Add Ring wring : (Properties.word.ring_theory (word := word))
         ((*This preprocessing is too expensive to be always run, especially if

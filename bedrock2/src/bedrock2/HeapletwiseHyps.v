@@ -366,20 +366,35 @@ Ltac should_unpack P :=
  | _ => constr:(false)
  end.
 
-Ltac purify_heapletwise_hyp H :=
+Ltac purify_hyp_instead_of_clearing H :=
+  let tHOrig := type of H in
   unfold with_mem in H;
   lazymatch type of H with
   | ?P ?m =>
-      let g := open_constr:(purify P _) in
-      let pf := match constr:(Set) with
-                | _ => constr:(ltac:(eauto with purify) : g)
-                | _ => constr:(tt)
-               end in
-      lazymatch pf with
-      | tt => pose_err Error:(g "can't be solved by" "eauto with purify")
-      | _ => eapply pf in H
-      end
+      tryif is_var P then (
+        (* It's a frame, nothing to purify, so just clear.
+           If m is used elsewhere (eg in an (eq m) in a frame), we fail, so H remains. *)
+        clear H m
+      ) else (
+        let g := open_constr:(purify P _) in
+        let pf := match constr:(Set) with
+                  | _ => constr:(ltac:(eauto with purify) : g)
+                  | _ => constr:(tt)
+                 end in
+        lazymatch pf with
+        | tt => pose_err Error:(g "can't be solved by" "eauto with purify");
+                change tHOrig in H
+        | _ => eapply pf in H; try clear m
+        end
+      )
   end.
+
+Ltac purify_heapletwise_hyps_instead_of_clearing :=
+  repeat match goal with
+         | _: tactic_error _ |- _ => fail 1 (* pose at most one error *)
+         | D: DisjointUnion.mmap.du _ _ = DisjointUnion.mmap.Def _ |- _ => clear D
+         | H: with_mem _ _ |- _ => purify_hyp_instead_of_clearing H
+         end.
 
 (* can be overridden using ::= *)
 Ltac same_pred_and_addr P Q :=
@@ -409,15 +424,10 @@ Ltac replace_with_new_mem_hyp H :=
       else (
         same_pred_and_addr Pnew Pold;
         move H before HOld;
-        purify_heapletwise_hyp HOld;
-        lazymatch goal with
-        | _: tactic_error _ |- _ => idtac
-        | |- _ =>
-            let HOld' := fresh HOld in
-            rename HOld into HOld';
-            clear mOld HOld;
-            rename H into HOld
-        end)
+        purify_hyp_instead_of_clearing HOld;
+        let HOld' := fresh HOld in
+        rename HOld into HOld', H into HOld
+      )
     end.
 
 Ltac split_sep_step :=
@@ -427,7 +437,12 @@ Ltac split_sep_step :=
   let H1 := fresh "H0" in
   let H2 := fresh "H0" in
   lazymatch goal with
-  | H: with_mem ?m1 (eq ?m2) |- _ => unfold with_mem in H; subst m1
+  | H: with_mem ?m1 (eq ?m2) |- _ =>
+      match goal with
+      | H': with_mem m2 _ |- _ => move H' after H
+      | |- _ => idtac
+      end;
+      unfold with_mem in H; subst m1
   | H: @sep _ _ ?mem ?P ?Q ?parent_m |- _ =>
       let unpackP := should_unpack P in
       let unpackQ := should_unpack Q in
@@ -596,11 +611,13 @@ Ltac collect_heaplets_into_one_sepclause M :=
   | D: _ = mmap.Def ?m |- _ =>
       eassert (_ m) as M;
       unfold mmap.du in D; unfold mmap.of_option, map.du in D; fwd;
-      repeat lazymatch goal with
-        | M: with_mem ?m _ |- _ ?m => exact M
-        | D: map.disjointb ?m1 ?m2 = true |- _ (map.putmany ?m1 ?m2) =>
-            eapply sep_from_disjointb; [exact D | | ]
-        end
+      [ solve [ repeat lazymatch goal with
+                  | WM: with_mem ?m _ |- _ ?m => exact WM
+                  | D: map.disjointb ?m1 ?m2 = true |- _ (map.putmany ?m1 ?m2) =>
+                      eapply sep_from_disjointb; [exact D | | ]
+                  | |- ?g => fail 2 "no heaplet hypothesis for" g
+                  end ]
+      | ]
   end;
   repeat match goal with
     | H: with_mem _ _ |- _ => clear H

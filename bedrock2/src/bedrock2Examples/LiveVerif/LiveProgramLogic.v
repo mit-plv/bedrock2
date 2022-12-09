@@ -122,10 +122,19 @@ Ltac put_into_current_locals :=
     (* match again because there might have been a renaming *)
     lazymatch goal with
     | |- wp_cmd ?call ?c ?t ?m (map.put ?l ?x ?v) ?post =>
-        (* tradeoff between goal size blowup and not having to follow too many aliases *)
-        let v' := rdelta_var v in
-        pose (i := v');
-        change (wp_cmd call c t m (map.put l x i) post)
+        tryif (is_var v; lazymatch l with
+                         | context[(_, v)] => fail
+                         | _ => idtac
+                         end)
+        then (* v is a variable, but not a program variable, so we can rename it into x
+                instead of posing a new variable *)
+          rename v into i
+        else (
+          (* tradeoff between goal size blowup and not having to follow too many aliases *)
+          let v' := rdelta_var v in
+          pose (i := v');
+          change (wp_cmd call c t m (map.put l x i) post)
+        )
     end;
     lazymatch goal with
     | |- wp_cmd ?call ?c ?t ?m ?l ?post =>
@@ -406,6 +415,7 @@ Qed.
 Ltac cleanup :=
   match goal with
   | x := _ |- _ => clear x
+  | _: ?x = ?y |- _ => is_var x; is_var y; subst x
   | H: ?T |- _ => is_destructible_and T; let H' := fresh H in destruct H as (H & H')
   end.
 
@@ -449,6 +459,13 @@ Ltac program_logic_step :=
           end;
           cbn [seps];
           exact (iff1_refl _) ]
+  | |- forall t' m' (retvs: list ?word),
+      _ -> exists l', map.putmany_of_list_zip _ retvs ?l = Some l' /\ wp_cmd _ _ _ _ _ _
+    => (* after a function call *)
+      purify_heapletwise_hyps_instead_of_clearing;
+      let retvsname := fresh retvs in
+      intros ? ? retvsname (? & ? & ?);
+      subst retvsname
   | |- exists (l: @map.rep String.string (@word.rep _ _) _),
          map.putmany_of_list_zip _ _ _ = Some _ /\ _ =>
       eexists; split; [reflexivity| ]

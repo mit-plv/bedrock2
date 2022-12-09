@@ -417,8 +417,8 @@ Section WithParams.
   Definition then_branch_marker(P: Prop) := P.
   Definition else_branch_marker(P: Prop) := P.
   Definition after_if fs (b: bool) (Q1 Q2: trace -> mem -> locals -> Prop) rest post :=
-    forall t m l,
-      (if b then Q1 t m l else Q2 t m l) ->
+    forall t m l, let c := b in
+      (if c then Q1 t m l else Q2 t m l) ->
       wp_cmd fs rest t m l post.
 
   Lemma wp_if_bool_dexpr: forall fs c thn els rest t0 m0 l0 b Q1 Q2 post,

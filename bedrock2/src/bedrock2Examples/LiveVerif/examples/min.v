@@ -20,8 +20,6 @@ Derive u_min SuchThat (fun_correct! u_min) As u_min_ok.                         
 }                                                                          /**.
 Qed.
 
-Definition minl: list Z -> Z := List.fold_right Z.min 0.
-
 Import LiveSnippet.
 
 #[export] Instance spec_of_u_min3: fnspec :=                                    .**/
@@ -32,15 +30,13 @@ uintptr_t u_min3 (uintptr_t a, uintptr_t b, uintptr_t c) /**#
   (* TODO make start_canceling work if just one R, or better, specialcase memoryless
      functions with m'=m in postcondition? *)
   ensures t' m' retv := t' = t /\ sep (emp True) R m' /\
-      \[retv] = minl [| \[a]; \[b]; \[c] |] #**/                           /**.
+      \[retv] = Z.min \[a] (Z.min \[b] \[c]) #**/                          /**.
 Derive u_min3 SuchThat (fun_correct! u_min3) As u_min3_ok.                      .**/
 {                                                                          /**. .**/
-  uintptr_t r = u_min(a, b);                                               /**.
-
-  intros.
-  ltac1:(fwd).
-  step. step. step.
-
-Abort.
+  uintptr_t r = u_min(a, b);                                               /**. .**/
+  uintptr_t s = u_min(r, c);                                               /**. .**/
+  return s;                                                                /**. .**/
+}                                                                          /**.
+Qed.
 
 End LiveVerif. Comments .**/ //.
