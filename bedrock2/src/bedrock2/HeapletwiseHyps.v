@@ -366,6 +366,15 @@ Ltac should_unpack P :=
  | _ => constr:(false)
  end.
 
+Ltac clear_if_dup H :=
+  let t := type of H in
+  match goal with
+  | H': t |- _ => tryif constr_eq H H' then fail else clear H
+  | |- _ => idtac
+  end.
+
+(* Purify H, but if that leads to something non-interesting (just `True` or an already
+   known fact), clear H *)
 Ltac purify_hyp_instead_of_clearing H :=
   let tHOrig := type of H in
   unfold with_mem in H;
@@ -384,7 +393,10 @@ Ltac purify_hyp_instead_of_clearing H :=
         lazymatch pf with
         | tt => pose_err Error:(g "can't be solved by" "eauto with purify");
                 change tHOrig in H
-        | _ => eapply pf in H; try clear m
+        | _ => lazymatch g with
+               | purify _ True => clear H; try clear m
+               | purify _ _ => eapply pf in H; try clear m; clear_if_dup H
+               end
         end
       )
   end.
@@ -417,18 +429,18 @@ Ltac replace_with_new_mem_hyp H :=
   | sep _ _ => fail "first destruct the sep"
   | _ => idtac
   end;
-  match reverse goal with
-  | HOld: with_mem ?mOld ?Pold |- _ =>
-      tryif constr_eq HOld H then
-        fail (* bad choice of HOld: don't replace a hyp by itself *)
-      else (
-        same_pred_and_addr Pnew Pold;
-        move H before HOld;
-        purify_hyp_instead_of_clearing HOld;
-        let HOld' := fresh HOld in
-        rename HOld into HOld', H into HOld
-      )
-    end.
+  let HOld := match reverse goal with
+              | HOld: with_mem ?mOld ?Pold |- _ =>
+                  let __ := match constr:(Set) with
+                            | _ => tryif constr_eq HOld H then
+                                    fail (*bad choice of HOld: don't replace H by itself*)
+                                   else same_pred_and_addr Pnew Pold
+                            end in HOld
+              end in
+  move H before HOld;
+  purify_hyp_instead_of_clearing HOld;
+  (try let HOld' := fresh HOld in rename HOld into HOld' (* fails if HOld got cleared *));
+  rename H into HOld.
 
 Ltac split_sep_step :=
   let D := fresh "D" in

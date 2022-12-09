@@ -517,6 +517,13 @@ Ltac merge_sep_pair_step :=
       (eapply merge_seps_done in H; cbn [seps] in H)
   end.
 
+(* Note: Don't do this when some variables are local variables, because
+   we always want to keep local variables as let-bound context variables. *)
+Ltac subst_small_rhses :=
+  repeat match goal with
+    | x := ?rhs |- _ => is_substitutable_rhs rhs; subst x
+    end.
+
 Ltac after_if :=
   purify_heapletwise_hyps_instead_of_clearing;
   intros ? ? ? ? ?;
@@ -530,6 +537,7 @@ Ltac after_if :=
   try match goal with
     | H: if _ then ands nil else ands nil |- _ => clear H
     end;
+  subst_small_rhses;
   lazymatch goal with
   | H: ?l = _ |- wp_cmd _ _ _ _ ?l _ =>
       repeat (rewrite ?push_if_into_cons_tuple_same_key,

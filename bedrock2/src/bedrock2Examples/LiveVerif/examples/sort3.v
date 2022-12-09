@@ -36,12 +36,9 @@ As sort3_separate_args_ok.                                                    .*
       w2 = w0;                                                           /**. .**/
     } else {                                                             /**. .**/
     }                                                                    /**. .**/
-  }                                                                      /**.
-(* TODO subst all small rhses which are not in the locals map *)              .**/
+  }                                                                      /**. .**/
   if (w2 < w1) {                                                         /**. .**/
-    store(a1, w2);                                                       /**.
-(* TODO here we should also subst w2_0, w2_2 in the rhs of w2, and then
-   push down the if, and simplify the unsigned_of_Z *)                        .**/
+    store(a1, w2);                                                       /**. .**/
     store(a2, w1);                                                       /**. .**/
   } else {                                                               /**. .**/
     store(a1, w1);                                                       /**. .**/

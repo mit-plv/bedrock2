@@ -412,10 +412,18 @@ Proof.
   intros. unfold bool_expr_branches. destruct H; auto.
 Qed.
 
-Ltac cleanup :=
+Ltac cleanup_step :=
   match goal with
+  | x := ?rhs |- wp_cmd _ _ _ _ (map.of_list ?l) _ =>
+      is_substitutable_rhs rhs;
+      lazymatch l with
+      | context[(_, x)] => fail (* don't subst local variables *)
+      | _ => subst x
+      end
   | x := _ |- _ => clear x
-  | _: ?x = ?y |- _ => is_var x; is_var y; subst x
+  | _: ?x = ?y |- _ =>
+      first [ is_var x; is_substitutable_rhs y; subst x
+            | is_var y; is_substitutable_rhs x; subst y ]
   | H: ?T |- _ => is_destructible_and T; let H' := fresh H in destruct H as (H & H')
   end.
 
@@ -471,7 +479,7 @@ Ltac program_logic_step :=
       eexists; split; [reflexivity| ]
   | |- _ /\ _ => split; [ZnWords (* TODO replace by better/faster tactic *) | ]
   | |- wp_cmd _ _ _ _ _ _ =>
-      first [ cleanup
+      first [ cleanup_step
             | after_steps_simpl_hook;
               lazymatch goal with
               | |- ?G => change (@ready G)
