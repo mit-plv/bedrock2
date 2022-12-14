@@ -24,7 +24,9 @@ Module expr.
   Local Notation C0 := (expr.literal Z0).
   Local Notation C1 := (expr.literal (Zpos xH)).
 
-  Notation not e := (expr.op bopname.eq e C0) (only parsing).
+  (* Definition instead of Notation so that Ltac knows whether we meant "e == 0"
+     and can treat e as an integer, or "! e", can can tread e as a boolean *)
+  Definition not e := expr.op bopname.eq e C0.
 
   Notation to_bool e := (expr.op bopname.ltu C0 e) (only parsing).
 
