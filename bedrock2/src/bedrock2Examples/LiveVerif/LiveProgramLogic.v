@@ -106,6 +106,19 @@ Ltac start :=
   | |- _ => fail "goal needs to be of shape (@program_logic_goal_for ?fname ?evar ?spec)"
   end.
 
+Ltac normalize_locals :=
+  lazymatch goal with
+  | |- wp_cmd ?call ?c ?t ?m ?l ?post =>
+      let keys := eval lazy in (map.keys l) in
+      let values := eval hnf in
+        (match map.getmany_of_list l keys with
+         | Some vs => vs
+         | None => nil
+         end) in
+      let kvs := eval unfold List.combine in (List.combine keys values) in
+      change (wp_cmd call c t m (map.of_list kvs) post)
+  end.
+
 Ltac put_into_current_locals :=
   lazymatch goal with
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
@@ -136,17 +149,7 @@ Ltac put_into_current_locals :=
           change (wp_cmd call c t m (map.put l x i) post)
         )
     end;
-    lazymatch goal with
-    | |- wp_cmd ?call ?c ?t ?m ?l ?post =>
-        let keys := eval lazy in (map.keys l) in
-        let values := eval hnf in
-          (match map.getmany_of_list l keys with
-           | Some vs => vs
-           | None => nil
-           end) in
-        let kvs := eval unfold List.combine in (List.combine keys values) in
-        change (wp_cmd call c t m (map.of_list kvs) post)
-    end;
+    normalize_locals;
     lazymatch is_decl with
     | true => idtac
     | false => try clear old_i
@@ -256,6 +259,8 @@ Ltac package_heapletwise_context :=
   let H := fresh "M" in collect_heaplets_into_one_sepclause H;
   package_context.
 
+Ltac prove_loop_invariant := try solve [prove_concrete_post].
+
 Ltac close_block :=
   lazymatch goal with
   | B: scope_marker ?sk |- _ =>
@@ -265,7 +270,10 @@ Ltac close_block :=
           package_heapletwise_context
       | LoopBody =>
           eapply wp_skip;
-          prove_concrete_post
+          lazymatch goal with
+          | |- exists _, _ /\ _ => eexists; split
+          end;
+          prove_loop_invariant
       | FunctionBody =>
           lazymatch goal with
           | H: functions_correct ?fs ?l |- _ =>
@@ -391,12 +399,11 @@ Ltac add_snippet s :=
            loop body and after the loop *)
         (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
         intros;
-        fwd
-(* TODO;
+        destruct_loop_invariant;
         lazymatch goal with
         | |- exists b, dexpr_bool3 _ _ _ b _ _ _ => eexists
         | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
-        end*) ]
+        end ]
   | SStart => start
   | SEnd => close_block
   | SRet ?retnames => ret retnames
@@ -412,18 +419,22 @@ Proof.
   intros. unfold bool_expr_branches. destruct H; auto.
 Qed.
 
-Ltac cleanup_step :=
-  match goal with
-  | x := ?rhs |- wp_cmd _ _ _ _ (map.of_list ?l) _ =>
-      is_substitutable_rhs rhs;
+Ltac subst_unless_local_var x :=
+  lazymatch goal with
+  | |- wp_cmd _ _ _ _ (map.of_list ?l) _ =>
       lazymatch l with
       | context[(_, x)] => fail (* don't subst local variables *)
       | _ => subst x
       end
+  end.
+
+Ltac cleanup_step :=
+  match goal with
+  | x := ?rhs |- _ => is_substitutable_rhs rhs; subst_unless_local_var x
   | x := _ |- _ => clear x
   | _: ?x = ?y |- _ =>
-      first [ is_var x; is_substitutable_rhs y; subst x
-            | is_var y; is_substitutable_rhs x; subst y ]
+      first [ is_var x; is_substitutable_rhs y; subst_unless_local_var x
+            | is_var y; is_substitutable_rhs x; subst_unless_local_var y ]
   | H: ?T |- _ => is_destructible_and T; let H' := fresh H in destruct H as (H & H')
   end.
 
@@ -467,6 +478,7 @@ Ltac program_logic_step :=
           end;
           cbn [seps];
           exact (iff1_refl _) ]
+  | |- dlet _ (fun x => _) => make_fresh x; intro x
   | |- forall t' m' (retvs: list ?word),
       _ -> exists l', map.putmany_of_list_zip _ retvs ?l = Some l' /\ wp_cmd _ _ _ _ _ _
     => (* after a function call *)

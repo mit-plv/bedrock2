@@ -4,6 +4,7 @@ Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Tactics.syntactic_unify.
+Require Import bedrock2.find_hyp.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.ltac_list_ops.
@@ -21,6 +22,10 @@ Require Import bedrock2.bottom_up_simpl_ltac1.
 Require Import bedrock2Examples.LiveVerif.LiveRules.
 
 Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
+
+Lemma let_to_dlet{A: Type}(rhs: A)(body: A -> Prop):
+  (let x := rhs in body x) -> dlet rhs body.
+Proof. exact id. Qed.
 
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
    used as the binder in the lambda being created *)
@@ -392,10 +397,10 @@ Lemma push_if_into_arg2{A1 A2 B: Type}(f: A1 -> A2 -> B)(a1 a1': A1)(a2 a2': A2)
     f (if cond then a1 else a1') (if cond then a2 else a2').
 Proof. destruct cond; reflexivity. Qed.
 
-Lemma push_if_into_cons_tuple_same_key(cond: bool)(k: String.string)(v1 v2: Z) t1 t2:
-  (if cond then cons (k, v1) t1 else cons (k, v2) t2)
-  = cons (k, if cond then v1 else v2) (if cond then t1 else t2).
-Proof. destruct cond; reflexivity. Qed.
+Lemma push_if_into_cons_tuple_same_key(c: bool)(k: String.string)[V: Type](v1 v2: V) t1 t2:
+  (if c then cons (k, v1) t1 else cons (k, v2) t2)
+  = cons (k, if c then v1 else v2) (if c then t1 else t2).
+Proof. destruct c; reflexivity. Qed.
 
 Lemma if_same{A: Type}(cond: bool)(a: A): (if cond then a else a) = a.
 Proof. destruct cond; reflexivity. Qed.
@@ -547,3 +552,25 @@ Ltac after_if :=
       subst l
   end;
   letbind_locals 0%nat.
+
+Ltac destruct_loop_invariant_step :=
+  lazymatch goal with
+  | H: dlet _ (fun x => _) |- _ =>
+      make_fresh x;
+      lazymatch type of H with
+      | dlet ?rhs ?body =>
+          pose (x := rhs);
+          let t := beta1 body x in
+          change t in H
+      end
+  | H: exists x,  _ |- _ => make_fresh x; destruct H as [x H]
+  | H: _ /\ True |- _ => apply proj1 in H
+  | H: _ /\ _ |- _ =>
+      let t := type of H in is_destructible_and t; destruct H as [? H]
+  end.
+
+Ltac destruct_loop_invariant :=
+  repeat destruct_loop_invariant_step;
+  lazymatch goal with
+  | H: ?l = @map.of_list String.string (@word.rep _ _) _ _ |- _ => subst l
+  end.

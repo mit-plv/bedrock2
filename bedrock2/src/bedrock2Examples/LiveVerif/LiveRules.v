@@ -400,6 +400,11 @@ Section WithParams.
     intros. inversion H. eapply wp_set0; eassumption.
   Qed.
 
+  Lemma wp_unset: forall fs x t m l rest post,
+      wp_cmd fs rest t m (map.remove l x) post ->
+      wp_cmd fs (cmd.seq (cmd.unset x) rest) t m l post.
+  Proof. intros. constructor. inversion H. clear H. assumption. Qed.
+
   Lemma wp_store: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
         (dexpr1 m l ev v
