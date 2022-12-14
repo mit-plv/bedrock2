@@ -81,6 +81,9 @@ Module word.
     Lemma unsigned_if: forall (b: bool) (thn els : word),
         word.unsigned (if b then thn else els) = if b then word.unsigned thn else word.unsigned els.
     Proof. intros. destruct b; reflexivity. Qed.
+
+    Lemma unsigned_inj': forall x y: word, x <> y -> word.unsigned x <> word.unsigned y.
+    Proof. intros. intro C. apply H. apply word.unsigned_inj. exact C. Qed.
   End WithWord.
 End word.
 
@@ -187,6 +190,7 @@ Ltac pose_word_ok :=
 Ltac word_eqs_to_Z_eqs :=
   repeat  match goal with
           | H: @eq (@word.rep ?wi ?inst) _ _ |- _ => apply (f_equal (@word.unsigned wi inst)) in H
+          | H: not (@eq (@word.rep ?wi ?inst) _ _) |- _ => apply (@word.unsigned_inj' wi inst _) in H
           end.
 
 Ltac ZnWords_pre :=
