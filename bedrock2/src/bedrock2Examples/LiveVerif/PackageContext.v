@@ -1,4 +1,5 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
+Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Map.Interface.
@@ -405,10 +406,56 @@ Proof. destruct c; reflexivity. Qed.
 Lemma if_same{A: Type}(cond: bool)(a: A): (if cond then a else a) = a.
 Proof. destruct cond; reflexivity. Qed.
 
+Ltac2 rec copy_string(src: string)(dst: string)(index: int)(count: int) :=
+  if Int.equal count 0 then () else
+    (String.set dst index (String.get src index);
+     copy_string src dst (Int.add index 1) (Int.sub count 1)).
+
+Ltac2 append_quote_to_string(s: string) :=
+  let r := String.make (Int.add (String.length s) 1) (String.get "'" 0) in
+  copy_string s r 0 (String.length s);
+  r.
+
+Ltac2 append_quote_to_ident(i: ident) :=
+  Option.get (Ident.of_string (append_quote_to_string (Ident.to_string i))).
+
+Ltac2 is_fresh(x: ident) :=
+  match Control.case (fun _ => Control.hyp x) with
+  | Val _ => false
+  | Err _ => true
+  end.
+
+Ltac2 rec fresh'_from_existing_ident(i: ident) :=
+  let i' := append_quote_to_ident i in
+  if is_fresh i' then i' else fresh'_from_existing_ident i'.
+
+Ltac2 make_existing_ident_fresh(i: ident) :=
+  let i' := fresh'_from_existing_ident i in Std.rename [(i, i')].
+
+Ltac2 constr_to_ident(c: constr) :=
+  match Constr.Unsafe.kind c with
+  | Constr.Unsafe.Var i => i
+  | _ => Control.throw_invalid_argument "not a Constr.Unsafe.Var"
+  end.
+
+Ltac make_existing_ident_fresh :=
+  ltac2:(c |- make_existing_ident_fresh
+                (constr_to_ident (Option.get (Ltac1.to_constr c)))).
+
 Ltac is_fresh x := assert_succeeds (pose proof tt as x).
 
+(* Appends ' instead of increasing counters, which makes it easier to distinguish
+   old versions of local variables from the current ones, because C variable names
+   cannot contain '.
+   Note that in order to pass an ident from Ltac1 to Ltac2, we have to convert
+   it to a constr, which only works if the ident refers to an existing variable. *)
 Ltac make_fresh x :=
-  tryif is_fresh x then idtac else let x' := fresh x "_0" in rename x into x'.
+  tryif is_fresh x then idtac else make_existing_ident_fresh constr:(x).
+
+(* old:
+Ltac make_fresh x :=
+  tryif is_fresh x then idtac else let x' := fresh x "'" in rename x into x'.
+*)
 
 Ltac letbind_locals start_index :=
   lazymatch goal with

@@ -5,15 +5,6 @@ Require Import bedrock2.Array. (* TODO replace by SepLib.array *)
 
 Load LiveVerif.
 
-(* Assigns default well_founded relations to types.
-   Use lower costs to override existing entries. *)
-Create HintDb wf_of_type.
-Hint Resolve word.well_founded_lt_unsigned | 4 : wf_of_type.
-
-Tactic Notation "loop" "invariant" "above" ident(i) :=
-  let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
-  move n after i.
-
 #[export] Instance spec_of_memset: fnspec :=                                    .**/
 
 void memset(uintptr_t a, uintptr_t b, uintptr_t n) /**#
@@ -38,9 +29,12 @@ ltac1:(replace bs with (List.repeatz (byte.of_Z \[b]) \[i] ++ bs[\[i]:]) in H1
   assert (0 <= \[i] <= \[n]) by ltac1:(ZnWords).
   Std.clearbody [ @i ].
 
+  assert (purify (array ptsto /[1] a bs) True) by (unfold purify; auto).
+
+  (* TODO: convert to heapletwise *)                                          .**/
+  while (i < n) /* decreases (n ^- i) */ {                               /**.
 Abort.
-(* TODO: convert to heapletwise                                               .**/
-  while (i < n) /* decreases (n ^- i) */ {                               /**. .**/
+ (* .**/
     store1(a + i, b);                                                    /**.
 
 (* TODO: automate prettification steps below *)

@@ -1,6 +1,7 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import Coq.Strings.String.
+Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
@@ -122,16 +123,8 @@ Ltac normalize_locals :=
 Ltac put_into_current_locals :=
   lazymatch goal with
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
-    let is_decl := lazymatch l with
-                   | context[(x, _)] => false
-                   | _ => true
-                   end in
     let i := string_to_ident x in
-    let old_i := fresh i "_0" in
-    lazymatch is_decl with
-    | true => idtac
-    | false => rename i into old_i
-    end;
+    make_fresh i;
     (* match again because there might have been a renaming *)
     lazymatch goal with
     | |- wp_cmd ?call ?c ?t ?m (map.put ?l ?x ?v) ?post =>
@@ -149,11 +142,7 @@ Ltac put_into_current_locals :=
           change (wp_cmd call c t m (map.put l x i) post)
         )
     end;
-    normalize_locals;
-    lazymatch is_decl with
-    | true => idtac
-    | false => try clear old_i
-    end
+    normalize_locals
   end.
 
 Ltac clear_until_LoopInvariant_marker :=
@@ -282,7 +271,7 @@ Ltac close_block :=
               unify e (@nil T)
           end;
           lazymatch goal with
-          | |- @ready ?g => change g; ret (@nil String.string)
+          | |- wp_cmd _ _ _ _ _ _ => ret (@nil String.string)
           | |- @final_postcond_marker ?g => idtac (* ret was already called *)
           end;
           lazymatch goal with
@@ -367,10 +356,78 @@ Ltac call lhs fname arges :=
   [ (* exactly one goal should be left, because spec may only have 1 precondition
        (joined with /\) *) ].
 
+(* Assigns default well_founded relations to types.
+   Use lower costs to override existing entries. *)
+Create HintDb wf_of_type.
+
+#[export] Hint Resolve word.well_founded_lt_unsigned | 4 : wf_of_type.
+
+Lemma Z_lt_downto_0_wf: well_founded (fun n m : Z => 0 <= n < m).
+Proof. exact (Z.lt_wf 0). Qed.
+
+#[export] Hint Resolve Z_lt_downto_0_wf | 4 : wf_of_type.
+
+Ltac2 loop_invariant_above(i: ident) :=
+  Control.focus 1 1 (fun _ =>
+    let n := Fresh.in_goal (Option.get (Ident.of_string "Scope0")) in
+    (* TODO use `pose proof` once implemented https://github.com/coq/coq/issues/14289 *)
+    pose (mk_scope_marker LoopInvariant) as $n; Std.clearbody [ n ];
+    move $n after $i).
+
+Ltac2 Notation "loop" "invariant" "above" i(ident) := loop_invariant_above i.
+
+Tactic Notation "loop" "invariant" "above" ident(i) :=
+  let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
+  move n after i.
+
+Ltac while cond measure0 :=
+  eapply (wp_while measure0 cond);
+  [ package_heapletwise_context
+  | eauto with wf_of_type
+  | repeat match goal with
+      | H: sep _ _ ?M |- _ => clear M H
+      end;
+    clear_until_LoopInvariant_marker;
+    cbv beta iota delta [ands];
+    cbn [seps] in *;
+    (* Note: will also appear after loop, where we'll have to clear it,
+       but we have to pose it here because the foralls are shared between
+       loop body and after the loop *)
+    (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
+    intros;
+    destruct_loop_invariant;
+    lazymatch goal with
+    | |- exists b, dexpr_bool3 _ _ _ b _ _ _ => eexists
+    | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
+    end ].
+
+Ltac is_local_var name :=
+  lazymatch goal with
+  | |- wp_cmd _ _ _ _ (map.of_list ?l) _ =>
+      lazymatch l with
+      | context[(name, _)] => idtac
+      | _ => fail 0 name "needs to be declared first"
+      end
+  end.
+
+Ltac isnt_local_var name :=
+  lazymatch goal with
+  | |- wp_cmd _ _ _ _ (map.of_list ?l) _ =>
+      lazymatch l with
+      | context[(name, _)] => fail 0 name "has already been declared"
+      | _ => idtac
+      end
+  end.
+
 Ltac add_snippet s :=
   assert_no_error;
+  unfold ready;
   lazymatch s with
-  | SAssign ?is_decl ?name ?rhs => (* TODO validate is_decl *)
+  | SAssign ?is_decl ?name ?rhs =>
+      lazymatch is_decl with
+      | true => isnt_local_var name
+      | false => is_local_var name
+      end;
       lazymatch rhs with
       | RCall ?fname ?arges => call (Some (is_decl, name)) fname arges
       | RExpr ?e => eapply (wp_set _ name e)
@@ -384,26 +441,7 @@ Ltac add_snippet s :=
       assert_scope_kind ThenBranch;
       eapply wp_skip;
       package_heapletwise_context
-  | SWhile ?cond ?measure0 =>
-      eapply (wp_while measure0 cond);
-      [ package_heapletwise_context
-      | eauto with wf_of_type
-      | repeat match goal with
-          | H: sep _ _ ?M |- _ => clear M H
-          end;
-        clear_until_LoopInvariant_marker;
-        cbv beta iota delta [ands];
-        cbn [seps] in *;
-        (* Note: will also appear after loop, where we'll have to clear it,
-           but we have to pose it here because the foralls are shared between
-           loop body and after the loop *)
-        (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
-        intros;
-        destruct_loop_invariant;
-        lazymatch goal with
-        | |- exists b, dexpr_bool3 _ _ _ b _ _ _ => eexists
-        | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
-        end ]
+  | SWhile ?cond ?measure0 => while cond measure0
   | SStart => start
   | SEnd => close_block
   | SRet ?retnames => ret retnames
@@ -518,8 +556,6 @@ Ltac run_steps :=
 
 (* can be overridden with idtac for debugging *)
 Ltac run_steps_hook := run_steps.
-
-Require Import Ltac2.Ltac2.
 
 Ltac2 step () := ltac1:(step).
 

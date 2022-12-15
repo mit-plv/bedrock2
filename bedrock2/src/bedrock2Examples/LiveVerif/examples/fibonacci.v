@@ -4,27 +4,6 @@ Require Import coqutil.Tactics.let_binding_to_eq.
 
 Load LiveVerif.
 
-(* Assigns default well_founded relations to types.
-   Use lower costs to override existing entries. *)
-Create HintDb wf_of_type.
-(*Hint Resolve word.well_founded_lt_unsigned | 4 : wf_of_type.*)
-
-Lemma Z_lt_downto_0_wf: well_founded (fun n m : Z => 0 <= n < m).
-Proof. exact (Z.lt_wf 0). Qed.
-
-Hint Resolve Z_lt_downto_0_wf | 4 : wf_of_type.
-
-Import Ltac2.
-
-Ltac2 loop_invariant_above(i: ident) :=
-  Control.focus 1 1 (fun _ =>
-    let n := Fresh.in_goal (Option.get (Ident.of_string "Scope0")) in
-    (* TODO use `pose proof` once implemented https://github.com/coq/coq/issues/14289 *)
-    pose (mk_scope_marker LoopInvariant) as $n; Std.clearbody [ n ];
-    move $n after $i).
-
-Ltac2 Notation "loop" "invariant" "above" i(ident) := loop_invariant_above i.
-
 Fixpoint fib_nat(n: nat): nat :=
   match n with
   | O => O
@@ -36,12 +15,13 @@ Fixpoint fib_nat(n: nat): nat :=
 
 Definition fib(n: word): word := /[Z.of_nat (fib_nat (Z.to_nat \[n]))].
 
+Set Default Proof Mode "Classic".
+
 Lemma fib_recursion: forall n,
     0 < \[n] ->
     \[n] + 1 < 2 ^ 32 ->
     fib (n ^+ /[1]) = fib (n ^- /[1]) ^+ fib n.
 Proof.
-  Proof Mode "Classic".
   unfold fib. intros.
   replace (Z.to_nat \[n ^+ /[1]]) with (S (S (pred (Z.to_nat \[n])))) by ZnWords.
   replace (Z.to_nat \[n ^- /[1]]) with (pred (Z.to_nat \[n])) by ZnWords.
@@ -50,6 +30,8 @@ Proof.
   change (fib_nat (S (S m))) with (fib_nat m + fib_nat (S m))%nat.
   ZnWords.
 Qed.
+
+Set Default Proof Mode "Ltac2".
 
 #[export] Instance spec_of_fibonacci: fnspec :=                                 .**/
 
@@ -79,10 +61,9 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
     loop invariant above i.                                                     .**/
 
     while (i < n) /* decreases (\[n]-\[i]) */ {                            /**. .**/
-      uintptr_t tmp = a + b;                                               /**.
-      (* TODO don't fail if tmp is called t *)                                  .**/
+      uintptr_t t = a + b;                                                 /**. .**/
       a = b;                                                               /**. .**/
-      b = tmp;                                                             /**. .**/
+      b = t;                                                               /**. .**/
       i = i + 1;                                                           /**.
 
 {
@@ -150,7 +131,10 @@ Import syntactic_unify.
 
 { split; [reflexivity| ].
 
-split. { subst i. subst a_0 a_1 b_0 b_1 a b.
+split. {
+repeat match goal with
+       | x := _ |- _ => subst x
+       end.
 bottom_up_simpl_in_goal.
 rewrite fib_recursion by ZnWords.
 reflexivity.
