@@ -33,46 +33,6 @@ Section FlattenExpr1.
     | None => genFresh ngs
     end.
 
-  Definition literalFitsInBits(signed: bool)(lit: Z)(bitwidth: Z): bool :=
-    match signed with
-    | true =>  (- (Z.pow 2 (bitwidth - 1)) <=? lit) && (lit <? (Z.pow 2 (bitwidth - 1)))
-    | false => (0 <? lit) && (lit <? (Z.pow 2 bitwidth))
-    end.
-
-  Definition maybeFlattenImmediate(signed: bool)(bitwidth: Z)(op: bopname)(s1: FlatImp.stmt String.string)(r1: String.string)(e2: Syntax.expr)(resVar: String.string)(ngs: NGstate) : option (FlatImp.stmt String.string * String.string * NGstate) :=
-    match e2 with
-    | Syntax.expr.literal n => if literalFitsInBits signed n bitwidth then
-                                 Some (FlatImp.SSeq s1
-                                         (FlatImp.SOp resVar op r1 (FlatImp.Const n)), resVar, ngs)
-                               else
-                                 None
-    | _ => None
-    end.
-  
-  Definition flattenExprOp(op: bopname)(s1: FlatImp.stmt String.string)(r1: String.string)(e2: Syntax.expr)(resVar: String.string)(ngs: NGstate) :
-    option (FlatImp.stmt String.string * String.string * NGstate) :=
-    match op with
-    | Syntax.bopname.add
-    | Syntax.bopname.and
-    | Syntax.bopname.or
-    | Syntax.bopname.xor
-    | Syntax.bopname.ltu
-    | Syntax.bopname.lts => maybeFlattenImmediate true 12 op s1 r1 e2 resVar ngs  
-    | Syntax.bopname.srs
-    | Syntax.bopname.slu
-    | Syntax.bopname.sru => maybeFlattenImmediate false 5 op s1 r1 e2 resVar ngs 
-    | Syntax.bopname.sub => match e2 with
-                            | Syntax.expr.literal n => if literalFitsInBits true (-n) 12 then
-                                                          Some (FlatImp.SSeq s1
-                                                                  (FlatImp.SOp resVar Syntax.bopname.add r1 (FlatImp.Const (-n))), resVar, ngs)
-                                                       else
-                                                          None
-                            | _ => None
-                            end
-    | _ => None
-    end
-    .
-                                                                                            
   (* returns stmt and var into which result is saved, and new fresh name generator state.
      If resVar is not None, the result will be stored there, otherwise a fresh var will
      be generated for the result if needed (not needed if e already is a var) *)
@@ -96,17 +56,13 @@ Section FlattenExpr1.
         let '(s1, r1, ngs'') := flattenExpr ngs' (Some r1) index in
         let '(x, ngs''') := genFresh_if_needed resVar ngs'' in
         (FlatImp.SSeq s1 (FlatImp.SInlinetable sz x t r1), x, ngs''')
-    | Syntax.expr.op op e1 e2 =>  let '(s1, r1, ngs') := flattenExpr ngs None e1 in
-                                  let '(s2, r2, ngs'') := flattenExpr ngs' None e2 in
-                                  let '(x, ngs''') := genFresh_if_needed resVar ngs'' in
-                                  let maybeFlat := flattenExprOp op s1 r1 e2 x ngs''' in
-                                  match maybeFlat with
-                                  | Some s => s
-                                  | None => (FlatImp.SSeq s1
-                                              (FlatImp.SSeq s2
-                                                 (FlatImp.SOp x op r1 (FlatImp.Var r2))), x, ngs''')
-                                  end
-
+    | Syntax.expr.op op e1 e2 =>
+        let '(s1, r1, ngs') := flattenExpr ngs None e1 in
+        let '(s2, r2, ngs'') := flattenExpr ngs' None e2 in
+        let '(x, ngs''') := genFresh_if_needed resVar ngs'' in
+        (FlatImp.SSeq s1
+          (FlatImp.SSeq s2
+            (FlatImp.SOp x op r1 (FlatImp.Var r2))), x, ngs''')
     | Syntax.expr.ite c e1 e2 =>
         let '(sc, rc, ngs') := flattenExpr ngs None c in
         let '(r, ngs'') := genFresh_if_needed resVar ngs' in
@@ -114,7 +70,6 @@ Section FlattenExpr1.
         let '(s2, r2, ngs'''') := flattenExpr ngs''' (Some r) e2 in
         (FlatImp.SSeq sc (FlatImp.SIf (FlatImp.CondNez rc) s1 s2), r, ngs'''')
     end.
-       
 
   Definition flattenExprAsBoolExpr(ngs: NGstate)(e: Syntax.expr):
     (FlatImp.stmt string * FlatImp.bcond string * NGstate) :=
@@ -151,13 +106,13 @@ Section FlattenExpr1.
   (* TODO this is only useful if we also flatten the bodies of all functions *)
   Definition flattenCall(ngs: NGstate)(binds: list String.string)(f: String.string)
              (args: list Syntax.expr):
-    FlatImp.stmt string word * NGstate :=
+    FlatImp.stmt string * NGstate :=
     let '(compute_args, argvars, ngs) := flattenExprs ngs args in
     (FlatImp.SSeq compute_args (FlatImp.SCall binds f argvars), ngs).
 
   Definition flattenInteract(ngs: NGstate)(binds: list String.string)(a: String.string)
              (args: list Syntax.expr):
-    FlatImp.stmt string word * NGstate :=
+    FlatImp.stmt string * NGstate :=
     let '(compute_args, argvars, ngs) := flattenExprs ngs args in
     (FlatImp.SSeq compute_args (FlatImp.SInteract binds a argvars), ngs).
 
@@ -196,7 +151,7 @@ Section FlattenExpr1.
     fst (flattenStmt (freshNameGenState (ExprImp.allVars_cmd_as_list s)) s).
 
   Definition flatten_function: list string * list string * Syntax.cmd ->
-                               result (list string * list string * FlatImp.stmt string ) :=
+                               result (list string * list string * FlatImp.stmt string) :=
     fun '(argnames, retnames, body) =>
       let avoid := ListSet.list_union String.eqb
                                       (ListSet.list_union String.eqb argnames retnames)
