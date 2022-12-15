@@ -576,6 +576,47 @@ Ltac subst_small_rhses :=
     | x := ?rhs |- _ => is_substitutable_rhs rhs; subst x
     end.
 
+Ltac list_map_ignoring_failures f l :=
+  lazymatch l with
+  | nil => open_constr:(@nil _)
+  | cons ?h ?t =>
+      let r := list_map_ignoring_failures f t in
+      match constr:(Set) with
+      | _ => let h' := f h in constr:(cons h' r)
+      | _ => r
+      end
+  end.
+
+Ltac key_of_pair_if_not_in term pair :=
+  lazymatch pair with
+  | (?key, _) =>
+      lazymatch term with
+      | context[(key, _)] => fail
+      | _ => key
+      end
+  end.
+
+Ltac normalize_locals_expr l :=
+  let keys := eval lazy in (map.keys l) in
+  let values := eval hnf in
+    (match map.getmany_of_list l keys with
+     | Some vs => vs
+     | None => nil
+     end) in
+  let kvs := eval unfold List.combine in (List.combine keys values) in
+  constr:(map.of_list kvs).
+
+Ltac normalize_locals_wp :=
+  lazymatch goal with
+  | |- wp_cmd ?call ?c ?t ?m ?l ?post =>
+      let l' := normalize_locals_expr l in change (wp_cmd call c t m l' post)
+  end.
+
+Ltac normalize_locals_eq :=
+  lazymatch goal with
+  | |- ?l = ?r => let l' := normalize_locals_expr l in change (l' = r)
+  end.
+
 Ltac after_if :=
   purify_heapletwise_hyps_instead_of_clearing;
   intros ? ? ? ? ?;
@@ -591,11 +632,24 @@ Ltac after_if :=
     end;
   subst_small_rhses;
   lazymatch goal with
-  | H: ?l = _ |- wp_cmd _ _ _ _ ?l _ =>
-      repeat (rewrite ?push_if_into_cons_tuple_same_key,
-                      ?if_same,
-                      ?push_if_into_arg1,
-                      ?push_if_into_arg2 in H);
+  | H: ?l = (if _ then map.of_list ?l1 else map.of_list ?l2) |- wp_cmd _ _ _ _ ?l _ =>
+      (* common case: then branch and else branch modified locals in different ways *)
+      let only_in_l1 := list_map_ignoring_failures ltac:(key_of_pair_if_not_in l2) l1 in
+      let only_in_l2 := list_map_ignoring_failures ltac:(key_of_pair_if_not_in l1) l2 in
+      subst l;
+      eapply (wp_unset_many_after_if (List.app only_in_l1 only_in_l2));
+      [ normalize_locals_eq; reflexivity
+      | normalize_locals_eq; reflexivity
+      | repeat first [ rewrite push_if_into_cons_tuple_same_key
+                     | rewrite if_same
+                     | rewrite push_if_into_arg1
+                     | rewrite push_if_into_arg2 ];
+        reflexivity
+      | ]
+  | H: ?l = map.of_list _ |- wp_cmd _ _ _ _ ?l _ =>
+      (* special case: then branch and else branch modified locals in exactly the same
+         way, so `merge_and_pair constr_eqb merge_ands_at_indices_same_prop` already
+         got rid (or did not introduce at all) the if *)
       subst l
   end;
   letbind_locals 0%nat.

@@ -2,7 +2,7 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import Coq.Init.Byte.
 Require Import Coq.Strings.String.
-Require Import coqutil.Map.Interface.
+Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require coqutil.Map.SortedListString. (* for function env, other maps are kept abstract *)
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
 Require Import coqutil.Tactics.Tactics coqutil.Tactics.fwd.
@@ -326,6 +326,11 @@ Section WithParams.
       wp_cmd fs c t m l post2.
   Proof. intros. constructor. inversion H. eapply WP_weaken_cmd; eassumption. Qed.
 
+  Lemma wp_skip: forall fs t m l (post: trace -> mem -> locals -> Prop),
+      post t m l ->
+      wp_cmd fs cmd.skip t m l post.
+  Proof. intros. constructor. hnf. assumption. Qed.
+
   Lemma wp_seq: forall fs c1 c2 t m l post,
       wp_cmd fs c1 t m l (fun t' m' l' => wp_cmd fs c2 t' m' l' post) ->
       wp_cmd fs (cmd.seq c1 c2) t m l post.
@@ -405,6 +410,33 @@ Section WithParams.
       wp_cmd fs (cmd.seq (cmd.unset x) rest) t m l post.
   Proof. intros. constructor. inversion H. clear H. assumption. Qed.
 
+  Definition unset_many: list string -> cmd :=
+    List.fold_right (fun v c => (cmd.seq (cmd.unset v) c)) cmd.skip.
+
+  Lemma wp_unset_many0: forall fs t m vars l (post: trace -> mem -> locals -> Prop),
+      post t m (map.remove_many l vars) ->
+      wp_cmd fs (unset_many vars) t m l post.
+  Proof.
+    induction vars; intros.
+    - eapply wp_skip. assumption.
+    - eapply wp_unset. eapply IHvars. rewrite map.remove_many_remove_commute. assumption.
+  Qed.
+
+  Lemma wp_unset_many: forall vars fs t m l rest post,
+      wp_cmd fs rest t m (map.remove_many l vars) post ->
+      wp_cmd fs (cmd.seq (unset_many vars) rest) t m l post.
+  Proof. intros. eapply wp_seq. eapply wp_unset_many0. assumption. Qed.
+
+  Lemma wp_unset_many_after_if: forall vars (b: bool) fs t m l1 l2 l' l1' l2' rest post,
+      map.remove_many l1 vars = l1' ->
+      map.remove_many l2 vars = l2' ->
+      (if b then l1' else l2') = l' ->
+      wp_cmd fs rest t m l' post ->
+      wp_cmd fs (cmd.seq (unset_many vars) rest) t m (if b then l1 else l2) post.
+  Proof.
+    intros. eapply wp_unset_many. subst. destruct b; assumption.
+  Qed.
+
   Lemma wp_store: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
         (dexpr1 m l ev v
@@ -452,6 +484,9 @@ Section WithParams.
     all: intros * [(? & ?) | (? & ?)]; try (exfalso; congruence); eauto.
   Qed.
 
+  Definition after_loop: list (string * (list string * list string * cmd)) ->
+    cmd -> trace -> mem -> locals -> (trace -> mem -> locals -> Prop) -> Prop := wp_cmd.
+
   Lemma wp_while {measure : Type} (v0 : measure) (e: expr) (c: cmd) t (m: mem) l fs rest
     (invariant: measure -> trace -> mem -> locals -> Prop) {lt}
     {post : trace -> mem -> locals -> Prop}
@@ -462,7 +497,7 @@ Section WithParams.
       exists b, dexpr_bool3 m l e b
                   (wp_cmd fs c t m l
                       (fun t m l => exists v', invariant v' t m l /\ lt v' v))
-                  (wp_cmd fs rest t m l post)
+                  (after_loop fs rest t m l post)
                   True)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t m l post.
   Proof.
@@ -481,11 +516,6 @@ Section WithParams.
     - intro E. rewrite word.eqb_eq in H1. 1: eapply invert_wp_cmd; eapply H1.
       eapply word.unsigned_inj. rewrite word.unsigned_of_Z_0. exact E.
   Qed.
-
-  Lemma wp_skip: forall fs t m l (post: trace -> mem -> locals -> Prop),
-      post t m l ->
-      wp_cmd fs cmd.skip t m l post.
-  Proof. intros. constructor. hnf. assumption. Qed.
 
   Definition dexprs(m: mem)(l: locals): list expr -> list word -> Prop :=
     List.Forall2 (dexpr m l).

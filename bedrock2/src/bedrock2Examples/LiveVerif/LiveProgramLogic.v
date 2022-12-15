@@ -107,19 +107,6 @@ Ltac start :=
   | |- _ => fail "goal needs to be of shape (@program_logic_goal_for ?fname ?evar ?spec)"
   end.
 
-Ltac normalize_locals :=
-  lazymatch goal with
-  | |- wp_cmd ?call ?c ?t ?m ?l ?post =>
-      let keys := eval lazy in (map.keys l) in
-      let values := eval hnf in
-        (match map.getmany_of_list l keys with
-         | Some vs => vs
-         | None => nil
-         end) in
-      let kvs := eval unfold List.combine in (List.combine keys values) in
-      change (wp_cmd call c t m (map.of_list kvs) post)
-  end.
-
 Ltac put_into_current_locals :=
   lazymatch goal with
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
@@ -142,7 +129,7 @@ Ltac put_into_current_locals :=
           change (wp_cmd call c t m (map.put l x i) post)
         )
     end;
-    normalize_locals
+    normalize_locals_wp
   end.
 
 Ltac clear_until_LoopInvariant_marker :=
@@ -250,6 +237,14 @@ Ltac package_heapletwise_context :=
 
 Ltac prove_loop_invariant := try solve [prove_concrete_post].
 
+Ltac unset_loop_body_vars :=
+  lazymatch goal with
+  | |- wp_cmd _ _ _ _ (map.of_list ?l) ?post =>
+      let newvars := list_map_ignoring_failures ltac:(key_of_pair_if_not_in post) l in
+      eapply (wp_unset_many newvars);
+      normalize_locals_wp
+  end.
+
 Ltac close_block :=
   lazymatch goal with
   | B: scope_marker ?sk |- _ =>
@@ -258,6 +253,7 @@ Ltac close_block :=
           eapply wp_skip;
           package_heapletwise_context
       | LoopBody =>
+          unset_loop_body_vars;
           eapply wp_skip;
           lazymatch goal with
           | |- exists _, _ /\ _ => eexists; split
@@ -476,6 +472,23 @@ Ltac cleanup_step :=
   | H: ?T |- _ => is_destructible_and T; let H' := fresh H in destruct H as (H & H')
   end.
 
+Definition don't_know_how_to_prove_equal{A: Type} := @eq A.
+
+Ltac default_eq_prover :=
+  match goal with
+  | |- ?l = ?r => _syntactic_unify_deltavar l r; reflexivity
+  | |- _ => repeat match goal with
+              | x := _ |- _ => subst x
+              end;
+            try bottom_up_simpl_in_goal;
+            lazymatch goal with
+            | |- ?l = ?r => tryif constr_eq l r then reflexivity
+                            else change (don't_know_how_to_prove_equal l r)
+            end
+  end.
+
+Ltac eq_prover_hook := default_eq_prover.
+
 Ltac program_logic_step :=
   lazymatch goal with
   | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_bool3_lazy_and
@@ -502,6 +515,8 @@ Ltac program_logic_step :=
       tryif is_evar Q1 then idtac (* need to first complete then-branch *)
       else tryif is_evar Q2 then idtac (* need to first complete else-branch *)
       else (clear H; after_if)
+  | H: scope_marker LoopBody |- after_loop ?fs ?b ?Q1 ?Q2 ?rest ?post =>
+      clear H; unfold after_loop
   | |- True => constructor
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ => put_into_current_locals
   | |- iff1 (seps ?LHS) (seps ?RHS) =>
@@ -516,7 +531,7 @@ Ltac program_logic_step :=
           end;
           cbn [seps];
           exact (iff1_refl _) ]
-  | |- dlet _ (fun x => _) => make_fresh x; intro x
+  | |- dlet _ (fun x => _) => eapply let_to_dlet; make_fresh x; intro x
   | |- forall t' m' (retvs: list ?word),
       _ -> exists l', map.putmany_of_list_zip _ retvs ?l = Some l' /\ wp_cmd _ _ _ _ _ _
     => (* after a function call *)
@@ -527,13 +542,26 @@ Ltac program_logic_step :=
   | |- exists (l: @map.rep String.string (@word.rep _ _) _),
          map.putmany_of_list_zip _ _ _ = Some _ /\ _ =>
       eexists; split; [reflexivity| ]
-  | |- _ /\ _ => split; [ZnWords (* TODO replace by better/faster tactic *) | ]
-  | |- wp_cmd _ _ _ _ _ _ =>
-      first [ cleanup_step
-            | after_steps_simpl_hook;
+  | |- @eq (@map.rep string (@word.rep _ _) _) (map.of_list _) (map.of_list _) =>
+      (* doesn't make the goal unprovable because we keep tuple lists passed
+         to map.of_list sorted by key, and all values in the key-value tuples
+         are variables or evars *)
+      repeat f_equal
+  | |- _ => first
+      [ cleanup_step
+      | match goal with
+        | |- exists _, _ => eexists
+        (* We try ZnWords first because it also solves some goals of shape
+           (_ = _) and (_ /\ _) *)
+        | |- _ => ZnWords (* TODO replace by better/faster tactic *)
+        | |- _ = _ => eq_prover_hook
+        | |- ?P /\ ?Q => split
+        | |- wp_cmd _ _ _ _ _ _ =>
+              after_steps_simpl_hook;
               lazymatch goal with
               | |- ?G => change (@ready G)
-              end ]
+              end
+        end ]
   end.
 
 Ltac step := first [ heapletwise_step | program_logic_step ].
@@ -542,6 +570,7 @@ Ltac step_is_done :=
   match goal with
   | |- @ready _ => idtac
   | |- @final_postcond_marker _ => idtac
+  | |- don't_know_how_to_prove_equal _ _ => idtac
   | |- after_if _ _ ?Q1 ?Q2 _ _ => is_evar Q1
   | |- after_if _ _ ?Q1 ?Q2 _ _ => is_evar Q2
   end.
