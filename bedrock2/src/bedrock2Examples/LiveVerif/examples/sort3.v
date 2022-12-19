@@ -16,7 +16,12 @@ void sort3(uintptr_t a) /**#
             Permutation [| in1; in2; in3 |] [| out1; out2; out3 |] /\
             out1 <= out2 <= out3 #**/                                    /**.
 Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .**/
-{                                                                        /**. (* .**/
+{                                                                        /**. .**/
+  uintptr_t w1 = load(a+4);                                              /**.
+
+(*
+.**/
+
   uintptr_t w0 = load(a);                                                /**. .**/
   uintptr_t w1 = load(a+4);                                              /**. .**/
   uintptr_t w2 = load(a+8);                                              /**. .**/

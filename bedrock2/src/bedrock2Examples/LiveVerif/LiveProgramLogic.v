@@ -21,6 +21,7 @@ Require Import bedrock2Examples.LiveVerif.string_to_ident.
 Require Import bedrock2.find_hyp.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.HeapletwiseHyps.
+Require Import bedrock2.HeapletwiseAutoSplitMerge.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.bottom_up_simpl_ltac1.
 Require Import bedrock2Examples.LiveVerif.LiveRules.
@@ -564,7 +565,7 @@ Ltac program_logic_step :=
         end ]
   end.
 
-Ltac step := first [ heapletwise_step | program_logic_step ].
+Ltac step := first [ heapletwise_step | split_merge_step | program_logic_step ].
 
 Ltac step_is_done :=
   match goal with

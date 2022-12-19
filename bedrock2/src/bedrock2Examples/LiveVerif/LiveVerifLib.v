@@ -20,6 +20,7 @@ Require Export coqutil.Datatypes.ZList.
 Require Export bedrock2.WordNotations.
 Require Export bedrock2.find_hyp.
 Require Export bedrock2.HeapletwiseHyps.
+Require Export bedrock2.HeapletwiseAutoSplitMerge.
 Require Export bedrock2.bottom_up_simpl_ltac1.
 Require Export bedrock2.TacticError.
 Require Export bedrock2.SepLib.
