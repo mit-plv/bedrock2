@@ -194,6 +194,27 @@ Ltac local_zlist_simpl e :=
   | List.app ?xs nil => res_rewrite xs uconstr:(List.app_nil_r xs)
   end.
 
+Ltac concrete_list_lookup l n default :=
+  lazymatch l with
+  | cons ?h ?t =>
+      lazymatch eval cbv in (Z.compare 0 n) with
+      | Gt => default
+      | Eq => h
+      | Lt => let m := eval cbv in (Z.pred n) in
+              concrete_list_lookup t m default
+      end
+  | nil => default
+  end.
+
+Ltac local_concrete_list_access_simpl e :=
+  match constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
+  | @List.get ?A ?inh ?l ?i =>
+      lazymatch isZcst i with
+      | true => let x := concrete_list_lookup l i (@Inhabited.default A inh) in
+                res_convertible x
+      end
+  end.
+
 Inductive expr_kind := WordRingExpr | ZRingExpr | OtherExpr.
 
 Ltac expr_kind e :=
@@ -395,6 +416,7 @@ Ltac local_simpl_hook parent_kind e :=
   match constr:(Set) with
   | _ => local_subst_small_rhs e
   | _ => local_zlist_simpl e
+  | _ => local_concrete_list_access_simpl e
   | _ => local_ring_simplify parent_kind e
   | _ => local_ground_number_simpl e
   | _ => local_word_simpl e
@@ -504,6 +526,22 @@ Ltac bottom_up_simpl_in_hyp_of_type H t :=
   | _ =>  idtac (* don't force progress *)
   end.
 
+Ltac bottom_up_simpl_in_letbound_var x b _t :=
+  let r := bottom_up_simpl OtherExpr b in
+  match r DidSomething with
+  | true =>
+      let pf := r EqProof in
+      let b' := r NewTerm in
+      let y := fresh in rename x into y;
+      pose (x := b');
+      move x after y;
+      replace y with x in * by (subst x y; symmetry; exact pf);
+      clear y
+  | _ => idtac (* might get here because `r DidSomething = false` or because
+                  x appears in the type of other expressions and rewriting in the body of x
+                  would lead to ill-typed terms *)
+  end.
+
 Ltac bottom_up_simpl_in_goal :=
   let t := lazymatch goal with |- ?g => g end in
   lazymatch type of t with
@@ -520,6 +558,10 @@ Ltac bottom_up_simpl_in_goal :=
   end.
 
 Ltac bottom_up_simpl_in_hyps := foreach_hyp bottom_up_simpl_in_hyp_of_type.
+
+Ltac bottom_up_simpl_in_vars := foreach_var bottom_up_simpl_in_letbound_var.
+
+Ltac bottom_up_simpl_in_hyps_and_vars := bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars.
 
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
