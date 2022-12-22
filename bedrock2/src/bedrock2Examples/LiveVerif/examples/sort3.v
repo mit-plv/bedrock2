@@ -17,11 +17,6 @@ void sort3(uintptr_t a) /**#
             out1 <= out2 <= out3 #**/                                    /**.
 Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .**/
 {                                                                        /**. .**/
-  uintptr_t w1 = load(a+4);                                              /**.
-
-(*
-.**/
-
   uintptr_t w0 = load(a);                                                /**. .**/
   uintptr_t w1 = load(a+4);                                              /**. .**/
   uintptr_t w2 = load(a+8);                                              /**. .**/
@@ -33,15 +28,16 @@ Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .*
       store(a, w2);                                                      /**. .**/
       w2 = w0;                                                           /**. .**/
     } else {                                                             /**. .**/
-    }                                                          /**. .**/ /**. .**/
-  }                                                            /**. .**/ /**. .**/
+    }                                                                    /**. .**/
+  }                                                                      /**. .**/
   if (w2 < w1) {                                                         /**. .**/
     store(a+4, w2);                                                      /**. .**/
     store(a+8, w1);                                                      /**. .**/
   } else {                                                               /**. .**/
     store(a+4, w1);                                                      /**. .**/
     store(a+8, w2);                                                      /**. .**/
-  }                                                            /**. .**/ /**. .**/
+  }                                                                      /**.
+  (* TODO simplify List.upto/List.from/List.app in bottom_up_simpl            .**/
 }                                                                        /**.
 Qed. *) Abort.
 
