@@ -186,33 +186,96 @@ Goal forall (f: Z -> Z), True.
   end.
 Abort.
 
+(* inh: inhabited instance
+   l:   any number of cons followed by nil or an abstract tail
+   i:   fully simplified Z literal
+   Returns an element or a List.get with a smaller index *)
+Ltac convertible_list_get inh l i :=
+  lazymatch l with
+  | nil => constr:(@Inhabited.default _ inh)
+  | cons ?h ?t =>
+      lazymatch i with
+      | Z0 => h
+      | Zpos _ => let j := eval cbv in (Z.pred i) in convertible_list_get inh t j
+      | Zneg _ => constr:(@Inhabited.default _ inh)
+      end
+  | _ => constr:(@List.get _ inh l i)
+  end.
+
+(* l:   any number of cons followed by nil or an abstract tail
+   i:   fully simplified Z literal
+   Returns a prefix of l or a few cons followed by a List.upto with a smaller index,
+   eg (a :: b :: c :: l)[:5] --> a :: b :: c :: (l[:2]) *)
+Ltac convertible_list_upto i l :=
+  lazymatch l with
+  | nil => l
+  | @cons ?A ?h ?t =>
+      lazymatch i with
+      | Zpos _ => let j := eval cbv in (Z.pred i) in
+                  let r := convertible_list_upto j t in
+                  constr:(@cons A h r)
+      | _ => constr:(@nil A)
+      end
+  | _ => lazymatch i with
+         | Zpos _ => constr:(List.upto i l)
+         | Z0 => uconstr:(@nil _)
+         | Zneg _ => uconstr:(@nil _)
+         end
+  end.
+
+(* l:   any number of cons followed by nil or an abstract tail
+   i:   fully simplified Z literal
+   Returns a suffix of l or a List.from with a smaller index *)
+Ltac convertible_list_from i l :=
+  lazymatch l with
+  | nil => l
+  | @cons ?A ?h ?t =>
+      lazymatch i with
+      | Zpos _ => let j := eval cbv in (Z.pred i) in convertible_list_from j t
+      | _ => l
+      end
+  | _ => lazymatch i with
+         | Zpos _ => constr:(List.from i l)
+         | Z0 => l
+         | Zneg _ => l
+         end
+  end.
+
+(* only works if l1 is made up of just cons and nil *)
+Ltac append_concrete_list l1 l2 :=
+  lazymatch l1 with
+  | cons ?h ?t => let r := append_concrete_list t l2 in constr:(cons h r)
+  | nil => l2
+  end.
+
+Ltac is_concrete_enough i l is_nonpos_concrete_enough :=
+  lazymatch l with
+  | nil => isZcst i
+  | cons _ _ => isZcst i
+  | _ => lazymatch i with
+         | Z0 => is_nonpos_concrete_enough
+         | Zneg _ => is_nonpos_concrete_enough
+         | _ => constr:(false)
+         end
+  end.
+
 Ltac local_zlist_simpl e :=
   match constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
-  | List.from Z0 ?l => res_convertible l
-  | @List.repeatz ?A _ Z0 => res_convertible uconstr:(@nil A)
-  | List.app nil ?xs => res_convertible xs
-  | List.app ?xs nil => res_rewrite xs uconstr:(List.app_nil_r xs)
-  end.
-
-Ltac concrete_list_lookup l n default :=
-  lazymatch l with
-  | cons ?h ?t =>
-      lazymatch eval cbv in (Z.compare 0 n) with
-      | Gt => default
-      | Eq => h
-      | Lt => let m := eval cbv in (Z.pred n) in
-              concrete_list_lookup t m default
-      end
-  | nil => default
-  end.
-
-Ltac local_concrete_list_access_simpl e :=
-  match constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
   | @List.get ?A ?inh ?l ?i =>
-      lazymatch isZcst i with
-      | true => let x := concrete_list_lookup l i (@Inhabited.default A inh) in
-                res_convertible x
+      lazymatch is_concrete_enough i l false with
+      | true => let x := convertible_list_get inh l i in res_convertible x
       end
+  | List.from ?i ?l =>
+      lazymatch is_concrete_enough i l true with
+      | true => let l' := convertible_list_from i l in res_convertible l'
+      end
+  | List.upto ?i ?l =>
+      lazymatch is_concrete_enough i l true with
+      | true => let l' := convertible_list_upto i l in res_convertible l'
+      end
+  | @List.repeatz ?A _ Z0 => res_convertible uconstr:(@nil A)
+  | List.app ?xs nil => res_rewrite xs uconstr:(List.app_nil_r xs)
+  | List.app ?l1 ?l2 => let l := append_concrete_list l1 l2 in res_convertible l
   end.
 
 Inductive expr_kind := WordRingExpr | ZRingExpr | OtherExpr.
@@ -416,7 +479,6 @@ Ltac local_simpl_hook parent_kind e :=
   match constr:(Set) with
   | _ => local_subst_small_rhs e
   | _ => local_zlist_simpl e
-  | _ => local_concrete_list_access_simpl e
   | _ => local_ring_simplify parent_kind e
   | _ => local_ground_number_simpl e
   | _ => local_word_simpl e
@@ -580,17 +642,22 @@ Section Tests.
 
   Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
 
+  Ltac refl :=
+    lazymatch goal with
+    | |- ?x = ?x => reflexivity
+    end.
+
   Goal forall (n b: Z) (bs: list Z),
       Q (List.repeatz b (n - n) ++ bs[2/4:] ++
            List.repeatz b (word.unsigned (word.of_Z 0))) = Q bs.
   Proof.
-    intros. bottom_up_simpl_in_goal. reflexivity.
+    intros. bottom_up_simpl_in_goal. refl.
   Qed.
 
   Goal forall (byte_of_Z: Z -> Byte.byte) (b: word) (bs: list Byte.byte),
       List.repeatz (byte_of_Z \[b]) \[/[0]] ++ bs[\[/[0]]:] = bs.
   Proof.
-    intros. bottom_up_simpl_in_goal. reflexivity.
+    intros. bottom_up_simpl_in_goal. refl.
   Qed.
 
   Goal forall a: word, P (word.unsigned (a ^+ word.of_Z 8 ^- a) / 4) -> P 2.
@@ -607,7 +674,7 @@ Section Tests.
 
   Goal forall a b c: Z, a + a + a = b -> a + a + a = c -> b = c.
   Proof.
-    intros. bottom_up_simpl_in_hyps. rewrite <- H, H0. reflexivity.
+    intros. bottom_up_simpl_in_hyps. rewrite <- H, H0. refl.
   Abort.
 
   Goal forall mtvec_base: Z,
@@ -618,15 +685,27 @@ Section Tests.
                   (word.add (word.mul (word.of_Z 4) (word.of_Z mtvec_base))
                      (word.of_Z 144))) / 4)))))) = /[4] ^* /[mtvec_base] ^+ /[148].
   Proof.
-    intros. bottom_up_simpl_in_goal. reflexivity.
+    intros. bottom_up_simpl_in_goal. refl.
   Qed.
 
   Goal forall (stack_hi: Z) (f: word -> Z),
       f (word.add (word.of_Z stack_hi) (word.of_Z (-128))) =
       f (word.sub (word.of_Z stack_hi) (word.of_Z 128)).
   Proof.
-    intros. bottom_up_simpl_in_goal. reflexivity.
+    intros. bottom_up_simpl_in_goal. refl.
   Qed.
+
+  Goal forall (T: Type) (l: list T) (a b c: T),
+      (a :: b :: c :: l)[:5] = a :: b :: c :: l[:2].
+  Proof.
+    intros. bottom_up_simpl_in_goal. refl.
+  Abort.
+
+  Goal forall (A: Type) (l: list A) (x y z: A),
+      ([|x; y|] ++ l)[:2] ++ ([|x; y; z|] ++ l)[2:] = x :: y :: z :: l.
+  Proof.
+    intros. bottom_up_simpl_in_goal. refl.
+  Abort.
 
   (** ** Not supported yet: *)
 

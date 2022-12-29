@@ -37,7 +37,7 @@ Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .*
     store(a+4, w1);                                                      /**. .**/
     store(a+8, w2);                                                      /**. .**/
   }                                                                      /**.
-  (* TODO simplify List.upto/List.from/List.app in bottom_up_simpl            .**/
+  (* TODO simplify more if-pushing and unsigned_of_Z opportunities            .**/
 }                                                                        /**.
 Qed. *) Abort.
 
