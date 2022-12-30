@@ -41,7 +41,30 @@ Lemma purify_array{width}{BW: Bitwidth width}{word: word width}{word_ok: word.ok
 Proof.
   unfold purify, array. intros. eapply sep_emp_l in H. apply H.
 Qed.
-#[export] Hint Resolve purify_array : purify.
+#[export] Hint Resolve purify_array | 10 : purify.
+
+Lemma purify_array_and_elems{width}{BW: Bitwidth width}
+  {word: word width}{word_ok: word.ok word}
+  {mem: map.map word Byte.byte}{mem_ok: map.ok mem}{T: Type} elem
+  {elemSize: PredicateSize elem}{P: Prop}
+  (n: Z)(vs: list T)(addr: word):
+  purify (bedrock2.Array.array (fun a v => elem v a) (word.of_Z elemSize) addr vs) P ->
+  purify (array elem n vs addr) (len vs = n /\ P).
+Proof.
+  unfold purify, array. intros. eapply sep_emp_l in H0. split. 1: apply H0.
+  eapply H. apply H0.
+Qed.
+Ltac is_concrete_list l :=
+  lazymatch l with
+  | nil => idtac
+  | cons _ ?t => is_concrete_list t
+  end.
+#[export] Hint Extern 5 (purify (array ?elem ?n ?vs ?addr) _) =>
+  is_concrete_list vs;
+  eapply purify_array_and_elems;
+  unfold bedrock2.Array.array;
+  purify_rec
+: purify.
 
 (* Type aliases that can inform proof automation, typeclass search,
    as well as humans on intended usage: *)

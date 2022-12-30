@@ -331,15 +331,15 @@ Section MergingSep.
   (* Note: if the two predicates are at the same address, but have different footprints,
      you might not want to merge them, but first combine them with other sep clauses
      until they both have the same footprint *)
-  Lemma merge_seps_at_indices_same_addr_and_pred (m: mem) i j [V: Type] a (v1 v2: V)
+  Lemma merge_seps_at_indices_same_addr_and_pred (m: mem) i j [V: Type] a (v1 v2 v: V)
         (pred: V -> word -> mem -> Prop) (Ps1 Ps2 Qs: list (mem -> Prop)) (b: bool):
     nth i Ps1 = pred v1 a ->
     nth j Ps2 = pred v2 a ->
+    (if b then v1 else v2) = v ->
     seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
-    seps ((seps (if b then (remove_nth i Ps1) else (remove_nth j Ps2)))
-            :: pred (if b then v1 else v2) a :: Qs) m.
+    seps ((seps (if b then (remove_nth i Ps1) else (remove_nth j Ps2))) :: pred v a :: Qs) m.
   Proof.
-    intros. eapply (merge_seps_at_indices m i j) in H1; [ | eassumption.. ].
+    intros. subst v. eapply (merge_seps_at_indices m i j) in H2; [ | eassumption.. ].
     destruct b; assumption.
   Qed.
 
@@ -511,7 +511,11 @@ Ltac merge_pair H Ps Qs is_match lem := once (
       | (?j, ?Q) =>
           eapply (lem i j) in H;
           [ cbn [app firstn tl skipn] in H
-          | cbn [hd skipn]; reflexivity .. ]
+          | cbn [hd skipn];
+            repeat first [ rewrite if_same
+                         | rewrite push_if_into_arg1
+                         | rewrite push_if_into_arg2 ];
+            reflexivity .. ]
       end
   end).
 

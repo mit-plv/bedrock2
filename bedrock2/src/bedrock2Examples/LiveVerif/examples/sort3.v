@@ -36,9 +36,8 @@ Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .*
   } else {                                                               /**. .**/
     store(a+4, w1);                                                      /**. .**/
     store(a+8, w2);                                                      /**. .**/
-  }                                                                      /**.
-  (* TODO simplify more if-pushing and unsigned_of_Z opportunities            .**/
+  }                                                                      /**. .**/
 }                                                                        /**.
-Qed. *) Abort.
+Qed.
 
 End LiveVerif. Comments .**/ //.
