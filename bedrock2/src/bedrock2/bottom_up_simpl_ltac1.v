@@ -260,7 +260,7 @@ Ltac is_concrete_enough i l is_nonpos_concrete_enough :=
   end.
 
 Ltac local_zlist_simpl e :=
-  match constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
+  match e with
   | @List.get ?A ?inh ?l ?i =>
       lazymatch is_concrete_enough i l false with
       | true => let x := convertible_list_get inh l i in res_convertible x
@@ -320,8 +320,7 @@ Ltac ring_expr_size e :=
   | _ => non_ring_expr_size e
   end.
 
-Ltac local_ring_simplify parent e0 :=
-  let e := constr:(e0) in (* <-- can't match on uconstr => quadratic retypechecking!*)
+Ltac local_ring_simplify parent e :=
   lazymatch expr_kind e with
   | parent => fail "nothing to do here because parent will be ring_simplified too"
   | _ => let rhs := open_constr:(_) in
@@ -386,8 +385,7 @@ Ltac is_binary_nat_op op :=
   | Nat.max => idtac
   end.
 
-Ltac local_ground_number_simpl e0 :=
-  let e := constr:(e0) in (* <-- can't match on uconstr => quadratic retypechecking!*)
+Ltac local_ground_number_simpl e :=
   match e with
   | ?f ?x ?y =>
       let __ := match constr:(Set) with
@@ -451,7 +449,7 @@ Proof.
 Abort.
 
 Ltac local_word_simpl e :=
-  lazymatch constr:(e) with (* <-- can't match on uconstr => quadratic retypechecking!*)
+  lazymatch e with
   | @word.unsigned ?wi ?wo (word.of_Z ?x) =>
       res_rewrite x (@word.unsigned_of_Z_nowrap wi wo _ x
                        ltac:(bottom_up_simpl_sidecond_hook))
@@ -467,21 +465,27 @@ Ltac is_substitutable_rhs rhs :=
           | word.unsigned ?x => is_substitutable_rhs x
           end ].
 
-Ltac local_subst_small_rhs e0 :=
-  let e := constr:(e0) in (* <-- can't match on uconstr => quadratic retypechecking!*)
+Ltac local_subst_small_rhs e :=
   let rhs := progress_rdelta_var e in
   let __ := match constr:(Set) with
             | _ => is_substitutable_rhs rhs
             end in
   res_convertible rhs.
 
-Ltac local_simpl_hook parent_kind e :=
+Ltac local_nonring_nonground_Z_simpl e :=
+  lazymatch e with
+  | Z.div ?x 1 => res_rewrite x (Z.div_1_r x)
+  end.
+
+Ltac local_simpl_hook parent_kind e0 :=
+  let e := constr:(e0) in (* <-- can't match on uconstr => quadratic retypechecking!*)
   match constr:(Set) with
   | _ => local_subst_small_rhs e
   | _ => local_zlist_simpl e
   | _ => local_ring_simplify parent_kind e
   | _ => local_ground_number_simpl e
   | _ => local_word_simpl e
+  | _ => local_nonring_nonground_Z_simpl e
   | _ => res_nothing_to_simpl e
   end.
 

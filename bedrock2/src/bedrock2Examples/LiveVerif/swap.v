@@ -1,64 +1,39 @@
 (* -*- eval: (load-file "live_verif_setup.el"); -*- *)
 Require Import bedrock2Examples.LiveVerif.LiveVerifLib.
 Require Import coqutil.Tactics.syntactic_unify.
-Require Import bedrock2.Array. (* TODO replace by SepLib.array *)
 
 Load LiveVerif.
 
 #[export] Instance spec_of_memset: fnspec :=                                    .**/
 
 void memset(uintptr_t a, uintptr_t b, uintptr_t n) /**#
-  ghost_args := (bs: list byte) (R: mem -> Prop);
-  requires t m := <{ * array ptsto /[1] a bs
+  ghost_args := bs (R: mem -> Prop);
+  requires t m := <{ * array (uint 8) \[n] bs a
                      * R }> m /\
-                  \[n] = len bs;
+                  \[b] < 2 ^ 8;
   ensures t' m' := t' = t /\
-       <{ * array ptsto /[1] a (List.repeatz (byte.of_Z \[b]) (len bs))
+       <{ * array (uint 8) \[n] (List.repeatz \[b] (len bs)) a
           * R }> m' #**/                                                   /**.
 Derive memset SuchThat (fun_correct! memset) As memset_ok.                      .**/
 {                                                                          /**. .**/
   uintptr_t i = 0;                                                         /**.
 
-ltac1:(replace bs with (List.repeatz (byte.of_Z \[b]) \[i] ++ bs[\[i]:]) in H1
+  ltac1:(replace bs with (List.repeatz \[b] \[i] ++ bs[\[i]:]) in *
       by (subst i; (* TODO heurisits for when to inline vars *)
           bottom_up_simpl_in_goal;
           syntactic_exact_deltavar (@eq_refl _ _))).
-
   ltac1:(loop invariant above i).
-  move H1 before R. (* not strictly needed *)
+  lazy_match! goal with [ h: _ < 2 ^ 8 |- _ ] => move $h before R end.
   assert (0 <= \[i] <= \[n]) by ltac1:(ZnWords).
   Std.clearbody [ @i ].
+                                                                              .**/
+  while (i < n) /* decreases (n ^- i) */ {                               /**. .**/
+    store1(a + i, b);                                                    /**. .**/
+     i = i + 1;                                                          /**.
 
-  assert (purify (array ptsto /[1] a bs) True) by (unfold purify; auto).
-
-  (* TODO: convert to heapletwise *)                                          .**/
-  while (i < n) /* decreases (n ^- i) */ {                               /**.
 Abort.
- (* .**/
-    store1(a + i, b);                                                    /**.
 
-(* TODO: automate prettification steps below *)
-rewrite Z.div_1_r in *.
-rewrite List.repeat_length in *.
-Replace (S (i to nat) - i to nat + i to nat) with (i to nat + 1%nat) in * by ZnWords.
-
-.**/
-     i = i + 1;                                                          /**. .**/
-  }                                                                      /**.
-
-{
-  Replace ((i_0 + 1 to word) to nat) with (i_0 to nat + 1 to nat) by ZnWords.
-  rewrite List.repeat_app.
-  rewrite <- List.app_assoc.
-  assumption.
-}
-
-  fwd.
-  Replace (i to nat) with (List.length bs) in * by ZnWords.
-.**/
-}                                                                        /**.
-Defined.
-
+(*
 Goal False.
   let r := eval unfold memset in
   match memset with
