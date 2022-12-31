@@ -14,12 +14,18 @@ Section WithArguments.
   Context {mem :  map.map word (Init.Byte.byte : Type) }.
   Context {locals :  map.map string word }.
   Context {ext_spec : Semantics.ExtSpec}.
-  
+  Context (is5BitImmediate : Z -> bool).
+  Context (is12BitImmediate  : Z -> bool).
+  Local Hint Constructors exec: core. 
   Lemma useImmediateCorrect :
-    forall e st t m l mc post, exec e st t m l mc post -> exec e (useImmediate st) t m l mc post.
+    forall e st t m l mc post, exec e st t m l mc post -> exec e (useImmediate is5BitImmediate is12BitImmediate st) t m l mc post.
   Proof.
-    induction st; intros; simpl; try assumption.
-    destruct st1; simpl; destruct st2; simpl. 
+    intros.
+    induction H; simpl; eauto. 
+    11: { eapply exec.if_false. { assumption.  } {assumption. } }
+    
+      intros; simpl; try assumption.
+    destruct st1; simpl. destruct st2; simpl. 
   Qed.
 
 End WithArguments.
