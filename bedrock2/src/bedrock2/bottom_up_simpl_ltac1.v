@@ -283,13 +283,28 @@ Ltac local_zlist_simpl e :=
       lazymatch is_concrete_enough i l false with
       | true => let x := convertible_list_get inh l i in res_convertible x
       end
-  | List.from ?i ?l =>
+  | @List.from ?A ?i ?l =>
       lazymatch is_concrete_enough i l true with
       | true => let l' := convertible_list_from i l in res_convertible l'
+      | false =>
+          match l with
+          | List.from ?j ?ll =>
+              res_rewrite (List.from (Z.add j i) ll)
+                (List.from_from ll j i ltac:(bottom_up_simpl_sidecond_hook)
+                                       ltac:(bottom_up_simpl_sidecond_hook))
+          | _ => res_rewrite l
+                   (List.from_beginning l i ltac:(bottom_up_simpl_sidecond_hook))
+          | _ => res_rewrite (@nil A)
+                   (List.from_pastend l i ltac:(bottom_up_simpl_sidecond_hook))
+          end
       end
-  | List.upto ?i ?l =>
-      lazymatch is_concrete_enough i l true with
+  | @List.upto ?A ?i ?l =>
+      match is_concrete_enough i l true with
       | true => let l' := convertible_list_upto i l in res_convertible l'
+      | false => res_rewrite (@nil A)
+                   (List.upto_beginning l i ltac:(bottom_up_simpl_sidecond_hook))
+      | false => res_rewrite l
+                   (List.upto_pastend l i ltac:(bottom_up_simpl_sidecond_hook))
       end
   | @List.repeatz ?A _ Z0 => res_convertible uconstr:(@nil A)
   | List.app ?xs nil => res_rewrite xs uconstr:(List.app_nil_r xs)
