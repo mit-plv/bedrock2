@@ -1,4 +1,4 @@
-(* -*- eval: (load-file "../live_verif_setup.el"); -*- *)
+(* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib. Load LiveVerif.
 
 #[export] Instance spec_of_u_min: fnspec :=                                     .**/
