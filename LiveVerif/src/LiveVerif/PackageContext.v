@@ -16,11 +16,11 @@ Require Import bedrock2.ZnWords.
 Require Import bedrock2.groundcbv.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.TacticError. Local Open Scope Z_scope.
-Require Import bedrock2Examples.LiveVerif.string_to_ident.
+Require Import LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.bottom_up_simpl_ltac1.
-Require Import bedrock2Examples.LiveVerif.LiveRules.
+Require Import LiveVerif.LiveRules.
 
 Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
 

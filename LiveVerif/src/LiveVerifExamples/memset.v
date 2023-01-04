@@ -1,5 +1,5 @@
 (* -*- eval: (load-file "../live_verif_setup.el"); -*- *)
-Require Import bedrock2Examples.LiveVerif.LiveVerifLib.
+Require Import LiveVerif.LiveVerifLib.
 Require Import coqutil.Tactics.syntactic_unify.
 
 Load LiveVerif.
@@ -32,7 +32,6 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
      i = i + 1;                                                            /**. (* .**/
   }                                                                        /**.
 *)
-
 Abort.
 
 End LiveVerif. Comments .**/ //.

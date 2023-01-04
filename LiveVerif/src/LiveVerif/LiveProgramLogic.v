@@ -17,16 +17,16 @@ Require Import bedrock2.ZnWords.
 Require Import bedrock2.groundcbv.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.TacticError. Local Open Scope Z_scope.
-Require Import bedrock2Examples.LiveVerif.string_to_ident.
+Require Import LiveVerif.string_to_ident.
 Require Import bedrock2.find_hyp.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.HeapletwiseAutoSplitMerge.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.bottom_up_simpl_ltac1.
-Require Import bedrock2Examples.LiveVerif.LiveRules.
-Require Import bedrock2Examples.LiveVerif.PackageContext.
-Require Import bedrock2Examples.LiveVerif.LiveSnippet.
+Require Import LiveVerif.LiveRules.
+Require Import LiveVerif.PackageContext.
+Require Import LiveVerif.LiveSnippet.
 
 Definition functions_correct
   (* universally quantified abstract function list containing all functions: *)

@@ -8,25 +8,28 @@ Require Import Coq.Program.Tactics.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.autoforward.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require coqutil.Map.SortedListString. (* for function env, other maps are kept abstract *)
 Require Import coqutil.Map.Z_keyed_SortedListMap.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Word.Bitwidth.
+Require Import coqutil.Map.OfOptionListZ.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
-Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
+Require Import bedrock2.Map.DisjointUnion.
+Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.groundcbv.
-Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic.
 Require bedrock2.Loops.
 Require Import Coq.Strings.String.
 Require Import bedrock2.TacticError.
-Require Import bedrock2.SepBulletPoints.
-Require Import bedrock2Examples.LiveVerif.string_to_ident.
+Require Import LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.find_hyp.
-Require Import coqutil.Datatypes.ZList.
+Require Import bedrock2.HeapletwiseHyps.
+Require Import bedrock2.ZWordMem.
+Require Import bedrock2.SepBulletPoints.
 
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
    used as the binder in the lambda being created *)
@@ -37,6 +40,64 @@ Ltac vpattern_in x H :=
   end.
 Tactic Notation "vpattern" ident(x) "in" ident(H) := vpattern_in x H.
 
+
+Require Import coqutil.Tactics.syntactic_unify.
+
+Ltac fold_in_goal p :=
+  let h := head p in
+  let p' := eval cbv beta iota delta [h] in p in
+  match goal with
+  | |- context C[?x] =>
+    syntactic_unify p' x;
+    let g := context C[p] in
+    change g
+  end.
+
+Ltac fold_in_hyps p :=
+  let h := head p in
+  let p' := eval cbv beta iota delta [h] in p in
+  match goal with
+  | H: context C[?x] |- _ =>
+    syntactic_unify p' x;
+    let g := context C[p] in
+    change g in H
+  end.
+
+
+(* Given an equality proof of type (LHS = RHS), and a hypothesis H containing
+   a subterm of the form (marker LHS), replace (marker LHS) by markedRHS,
+   without adding any occurrence of marker into the proof term (we want to
+   keep proof terms marker-free).
+   (marker LHS) must be convertible to LHS, and RHS must be convertible to markedRHS. *)
+Ltac rewrite_in_hyp_at_marker E H marker markedRHS :=
+  lazymatch type of E with
+  | @eq ?T ?LHS ?RHS =>
+      lazymatch type of H with
+      | context C[marker LHS] =>
+          eapply (rewr.rew_zoom_fw E
+                    (fun x: T => ltac:(let r := context C[x] in exact r))) in H;
+          let u := context C[markedRHS] in change u in H
+      end
+  end.
+(*
+Ltac rewrite_in_hyp_at_marker E H marker :=
+  lazymatch type of E with
+  | ?LHS = ?RHS =>
+      lazymatch eval pattern (marker LHS) in H with
+      | ?F (marker LHS) =>
+          eapply (rewr.rew_zoom_fw E F) in H;
+          let t := beta1 F (marker RHS) in
+          change t in H
+      end
+  end.
+*)
+
+(* like `change t with u in H`, but fails if t not found, and only replaces
+   the first occurrence of t *)
+Ltac change1_in_hyp t u H :=
+  lazymatch type of H with
+  | context C[t] => let a := context C[u] in change a in H
+  end.
 
 Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
 
@@ -54,12 +115,6 @@ Proof. cbn. auto. Qed.
 Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
 | mk_get_option: forall (a: A) (post: A -> Prop), post a -> get_option (Some a) post.
 
-#[export] Instance mem: map.map Z byte := Zkeyed_map byte.
-#[export] Instance mem_ok: map.ok mem := Zkeyed_map_ok byte.
-
-#[export] Instance locals: map.map string Z := SortedListString.map Z.
-#[export] Instance locals_ok: map.ok locals := SortedListString.ok Z.
-
 #[export] Instance env: map.map String.string
                           (list String.string * list String.string * Syntax.cmd) :=
     SortedListString.map _.
@@ -68,19 +123,98 @@ Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
 Require Import coqutil.Datatypes.PropSet.
 
 Module map.
-  Section WithMap.
-    Context {key value} {map : map.map key value}.
+  Section WithTwoMaps.
+    Context {K V1 V2: Type}{M1: map.map K V1}{M2: map.map K V2}
+            {keqb: K -> K -> bool} {keqb_spec: EqDecider keqb}
+            {OK1: map.ok M1} {OK2: map.ok M2}.
 
-    Definition domain(m: map): set key :=
-      fun k => map.get m k <> None.
+    Lemma get_map_values: forall (f: V1 -> V2) x (m: M1),
+        map.get (map.map_values f m) x = match map.get m x with
+                                         | Some w => Some (f w)
+                                         | None => None
+                                         end.
+    Proof.
+      unfold map.map_values. intros *.
+      eapply map.fold_spec.
+      - rewrite 2map.get_empty. reflexivity.
+      - intros. rewrite 2map.get_put_dec. destr (keqb k x). 1: reflexivity. assumption.
+    Qed.
 
-    Context {ok : map.ok map}.
-    Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
-  End WithMap.
+    Lemma map_values_put: forall (f: V1 -> V2) x (m: M1) v,
+        map.map_values f (map.put m x v) = map.put (map.map_values f m) x (f v).
+    Proof.
+      intros. eapply map.map_ext. intros. rewrite get_map_values.
+      rewrite 2map.get_put_dec. destr (keqb x k). 1: reflexivity.
+      symmetry. apply get_map_values.
+    Qed.
+
+  End WithTwoMaps.
 End map.
 
+Module Z.
+  Lemma min_to_ltb_dec: forall a b, Z.min a b = if Z.ltb a b then a else b.
+  Proof. intros. destruct_one_match; lia. Qed.
+  Lemma min_to_leb_dec: forall a b, Z.min a b = if Z.leb a b then a else b.
+  Proof. intros. destruct_one_match; lia. Qed.
+  Lemma max_to_ltb_dec: forall a b, Z.max a b = if Z.ltb a b then b else a.
+  Proof. intros. destruct_one_match; lia. Qed.
+  Lemma max_to_leb_dec: forall a b, Z.max a b = if Z.leb a b then b else a.
+  Proof. intros. destruct_one_match; lia. Qed.
+End Z.
+
+Module List.
+  Section WithA.
+    Context [A: Type].
+    Fixpoint all_none(l: list (option A)): bool :=
+      match l with
+      | nil => true
+      | cons (Some _) _ => false
+      | cons None t => all_none t
+      end.
+  End WithA.
+
+  Inductive Forall3[A B C: Type](R: A -> B -> C -> Prop)
+    : list A -> list B -> list C -> Prop :=
+  | Forall3_nil: Forall3 R nil nil nil
+  | Forall3_cons: forall (x : A) (y : B) (z: C) lA lB lC,
+      R x y z -> Forall3 R lA lB lC -> Forall3 R (x :: lA) (y :: lB) (z :: lC).
+
+  Definition seqz(start len: Z): list Z :=
+    List.map Z.of_nat (List.seq (Z.to_nat start) (Z.to_nat len)).
+End List.
+
+Definition nbits_to_nbytes(nbits: Z): Z := (Z.max 0 nbits + 7) / 8.
+
+Lemma nbits_to_nbytes_nonneg: forall nbits, 0 <= nbits_to_nbytes nbits.
+Proof. intros. unfold nbits_to_nbytes. Z.to_euclidean_division_equations. lia. Qed.
+
+Import ZList.
+Import ZList.List.ZIndexNotations.
+Local Open Scope zlist_scope.
+
+(* Type aliases that can inform proof automation, typeclass search,
+   as well as humans on intended usage: *)
+Definition uint_t(nbits: Z) := Z.
+Definition array_t(tp: Type)(nElems: Z) := list tp.
+
+Global Hint Opaque uint_t array_t : typeclass_instances.
+
+Definition RepPredicate(T mem: Type) := T -> Z -> mem -> Prop.
+Existing Class RepPredicate.
+
+(* Concrete instances because we want to compute on them.
+   Note, though that the wp judgments still use word maps to guarantee the bounds,
+   and ZLocals is only used to keep track of the Zs representing the words in the locals. *)
+#[export] Instance ZLocals: map.map string Z := SortedListString.map Z.
+#[export] Instance ZLocals_ok: map.ok ZLocals := SortedListString.ok _.
+
 Section WithParams.
-  Context {width: Z}.
+  Context {width: Z} {word: word.word width} {word_ok: word.ok word}
+    {mem: map.map word byte} {mem_ok: map.ok mem}.
+
+  (* concrete instances because we want to compute on them *)
+  Instance locals: map.map string word := SortedListString.map word.
+  Instance locals_ok: map.ok locals := SortedListString.ok _.
 
   Definition wwrap{BW: Bitwidth width}(z: Z): Z := z mod 2 ^ width.
   Definition wswrap{BW: Bitwidth width}(z: Z): Z := (z + 2 ^ (width - 1)) - 2 ^ (width - 1).
@@ -114,81 +248,10 @@ Section WithParams.
   Lemma wwrap_small: forall a, 0 <= a < 2 ^ width -> wwrap a = a.
   Proof. intros. unfold wwrap. apply Z.mod_small. assumption. Qed.
 
-  (* Memory: *)
-
-  Definition addr_seq(start len: Z): list Z :=
-    List.map (fun ofs => wadd start (Z.of_nat ofs)) (List.seq 0 (Z.to_nat len)).
-
-  Definition remove_seq(start len: Z)(m: mem): mem :=
-    List.fold_right (fun addr acc => map.remove acc addr) m (addr_seq start len).
-
-  Definition get_or_zero(m: mem)(addr: Z): byte :=
-    match map.get m addr with
-    | Some b => b
-    | None => Byte.x00
-    end.
-
-  Definition get_seq(start len: Z)(m: mem): list byte :=
-    List.map (get_or_zero m) (addr_seq start len).
-
-  Definition littleendian(n v addr: Z)(m: mem): Prop :=
-    get_seq addr n m = LittleEndianList.le_split (Z.to_nat n) v /\
-    map.domain m = of_list (addr_seq addr n).
-
-  Definition value(sz: access_size): Z -> Z -> mem -> Prop :=
-    littleendian (access_len sz).
-
-  Definition PredicateSize{T: Type}(predicate: T -> Z -> mem -> Prop) := Z.
-  Existing Class PredicateSize.
-
-  Global Instance value_PredicateSize(sz: access_size): PredicateSize (value sz) :=
-    access_len sz.
-
-  Definition array{T: Type}(elem: T -> Z -> mem -> Prop){size: PredicateSize elem}:
-    list T -> Z -> mem -> Prop :=
-    fix rec xs start :=
-      match xs with
-      | nil => emp True
-      | cons h tl => sep (elem h start) (rec tl (wadd start size))
-      end.
-
-  Import ZList.List.ZIndexNotations.
-
-  (* or what if no constraints on lengths, and all lengths are inferred from
-     length facts in context?
-
-     -> how to cast byte list into encode_X ?
-
--> valid_sizes
-
-  (* Each encoder needs to have a value-independent (but potentially
-     parameter-dependent) length.
-     For example, the length of encode_scalar can depend on sz (parameter),
-     but not on v (value). *)
-  Class encode_length{T: Type}(encoder: T -> list byte)(l: Z): Prop := {
-      encode_length_proof: forall v, len (encoder v) = l
-    }.
-
-  Definition encode_scalar(sz: access_size): Z -> list byte :=
-    LittleEndianList.le_split (Z.to_nat (access_len sz)).
-
-  Instance encode_scalar_length sz: encode_length (encode_scalar sz) (access_len sz).
-  Proof.
-    constructor.
-    destruct sz; intros; try reflexivity.
-    unfold encode_scalar. rewrite LittleEndianList.length_le_split. simpl.
-    unfold bytes_per_word. destruct width_cases; subst width; reflexivity.
-  Qed.
-
-  Definition encode_array{T: Type}: (T -> list byte) -> list T -> list byte :=
-    @List.flat_map T byte.
-    List.concat
-
-  Definition enforce_length(l: Z)(vs: list byte): list byte :=
-  Definition encode_array{T: Type}: (T -> list byte) -> list T -> list byte :=
-    @List.flat_map T byte.
-    List.concat
-*)
+  Lemma const_in_bounds: forall c: Z,
+      andb (Z.leb 0 c) (Z.ltb c (2 ^ 32)) = true ->
+      0 <= c < 2 ^ width.
+  Proof. intros. destruct width_cases; subst width; lia. Qed.
 
   Definition interp_binop(bop : bopname): Z -> Z -> Z :=
     match bop with
@@ -211,32 +274,46 @@ Section WithParams.
 
   Import bedrock2.Syntax.
 
-  Axiom dexpr: mem -> locals -> expr -> Z -> Prop.
+  Definition unsigned_locals: locals -> ZLocals := map.map_values word.unsigned.
+
+  Inductive dexpr(m: mem)(l: locals)(e: expr)(v: Z): Prop :=
+    mk_dexpr(w: word)(_: WeakestPrecondition.dexpr m l e w)(_: word.unsigned w = v).
 
   (* TODO later also add dexpr_signed, whose range is -2^(width-1)..2^(width-1),
-     (so we'll have 3 interpreters: to unsigned, to signed, and to Prop,
+     (so we'll have 3 interpreters: to unsigned, to signed, and to bool,
      and each operator decides which one to invoke for its arguments *)
 
-  Axiom dexpr_range: forall m l e v, dexpr m l e v -> 0 <= v < 2 ^ width.
+  Lemma dexpr_range: forall m l e v, dexpr m l e v -> 0 <= v < 2 ^ width.
+  Proof. intros. inversion H. subst v. eapply word.unsigned_range. Qed.
 
   Lemma dexpr_literal: forall (m: mem) (l: locals) z,
       0 <= z < 2 ^ width ->
       dexpr m l (expr.literal z) z.
-  Admitted.
+  Proof.
+    intros. econstructor. 1: reflexivity. apply word.unsigned_of_Z_nowrap. assumption.
+  Qed.
 
-  Lemma dexpr_var: forall m l x (v: Z),
-      map.get l x = Some v ->
-      0 <= v < 2 ^ width ->
+  Lemma dexpr_var: forall m (l: locals) (zl: ZLocals) x (v: Z),
+      unsigned_locals l = zl ->
+      map.get zl x = Some v ->
       dexpr m l (expr.var x) v.
   Proof.
-  Admitted.
+    unfold unsigned_locals. intros. subst zl. rewrite map.get_map_values in H0. fwd.
+    econstructor. 1: hnf; eauto. reflexivity.
+  Qed.
 
   (* Note: no conversion needed between v in sepclause and v returned,
      and sep already enforces bounds on v *)
   Lemma dexpr_load: forall m l e addr sz v R,
       dexpr m l e addr ->
-      sep (value sz v addr) R m ->
+      sep (uint match sz with
+                | access_size.one => 8
+                | access_size.two => 16
+                | access_size.four => 32
+                | access_size.word => width
+                end v addr) R m ->
       dexpr m l (expr.load sz e) v.
+  Proof.
   Admitted.
 
   (* TODO later: dexpr_inlinetable *)
@@ -258,149 +335,314 @@ Section WithParams.
       dexpr m l (expr.ite e1 e2 e3) v.
   Admitted.
 
-  Inductive dexpr_bool_prop(m: mem)(l: locals)(e: expr): Prop -> Prop :=
-    mk_dexpr_bool_prop: forall b: Z,
-      dexpr m l e b ->
-      dexpr_bool_prop m l e (b <> 0).
+  (* Like dexpr, but with an additional P that needs to hold. P tags along
+     because it doesn't want to miss the updates to the symbolic state that
+     evaluating e might make. *)
+  Inductive dexpr1(m: mem)(l: locals)(e: expr)(v: Z)(P: Prop): Prop :=
+  | mk_dexpr1(Hde: dexpr m l e v)(Hp: P).
 
-  Lemma dexpr_not: forall m l e (P: Prop),
-      dexpr_bool_prop m l e P ->
-      dexpr_bool_prop m l (expr.not e) (~ P).
+  Lemma dexpr1_literal: forall (m: mem) (l: locals) z (P: Prop),
+      0 <= z < 2 ^ width -> P -> dexpr1 m l (expr.literal z) z P.
   Proof.
-    intros. inversion H. clear H. subst P.
-    eenough ((~ b <> 0) = _) as E. {
-      rewrite E. econstructor.
-      eapply dexpr_binop. 1: eassumption.
+    intros. constructor. 2: assumption. eapply dexpr_literal. assumption.
+  Qed.
+
+  Lemma dexpr1_var: forall m (l: locals) (zl: ZLocals) x v (P: Prop),
+      unsigned_locals l = zl ->
+      map.get zl x = Some v ->
+      P ->
+      dexpr1 m l (expr.var x) v P.
+  Proof.
+    intros. constructor. 2: assumption. eapply dexpr_var; eassumption.
+  Qed.
+
+  Lemma dexpr1_load: forall m l e addr sz v (R: mem -> Prop) (P: Prop),
+      dexpr1 m l e addr (sep (uint match sz with
+                                   | access_size.one => 8
+                                   | access_size.two => 16
+                                   | access_size.four => 32
+                                   | access_size.word => width
+                                   end v addr) R m /\ P) ->
+      dexpr1 m l (expr.load sz e) v P.
+  Proof.
+    intros. inversion H. clear H. fwd. constructor. 2: assumption.
+    eapply dexpr_load; eassumption.
+  Qed.
+
+  (* TODO later: dexpr1_inlinetable *)
+
+  Lemma dexpr1_binop: forall m l op e1 e2 (v1 v2: Z) P,
+      dexpr1 m l e1 v1 (dexpr1 m l e2 v2 P) ->
+      dexpr1 m l (expr.op op e1 e2) (interp_binop op v1 v2) P.
+  Proof.
+    intros.
+    inversion H. clear H. inversion Hp. clear Hp.
+    constructor. 2: assumption. eapply dexpr_binop; assumption.
+  Qed.
+
+  Definition dexpr1_binop_unf :=
+    ltac:(let T := type of dexpr1_binop in
+          let Tu := eval unfold interp_binop in T in
+          exact (dexpr1_binop: Tu)).
+
+  Definition bool_expr_branches(b: bool)(Pt Pf Pa: Prop): Prop :=
+    (if b then Pt else Pf) /\ Pa.
+
+  (* `dexpr_bool3 m l e c Ptrue Pfalse Palways` means "expression e evaluates to
+     boolean c and if c is true, Ptrue holds, if c is false, Pfalse holds, and
+     Palways always holds".
+     The three Props Ptrue, Pfalse, Palways are included so that changes made to
+     the symbolic state while evaluating e are still visible when continuing the
+     evaluation of the program as specified by the three Props.
+     They are split into three Props rather than one in order to propagate changes
+     to the symbolic state made while evaluating the condition of an if into the
+     then and else branches. *)
+  Inductive dexpr_bool3(m: mem)(l: locals)(e: expr): bool -> Prop -> Prop -> Prop -> Prop :=
+    mk_dexpr_bool_prop: forall (v: Z) (c: bool) (Ptrue Pfalse Palways: Prop),
+      dexpr m l e v ->
+      c = negb (Z.eqb v 0) ->
+      (if c then Ptrue else Pfalse) ->
+      Palways ->
+      dexpr_bool3 m l e c Ptrue Pfalse Palways.
+
+  Lemma dexpr_not: forall m l e b (Pt Pf Pa: Prop),
+      dexpr_bool3 m l e b
+        True True (* <-- can't use these because that would flip proving order *)
+        (bool_expr_branches (negb b) Pt Pf Pa) ->
+      dexpr_bool3 m l (expr.not e) (negb b) Pt Pf Pa.
+  Proof.
+    intros. inversion H. clear H. subst.
+    rewrite Bool.negb_involutive in *. unfold bool_expr_branches in *. fwd.
+    econstructor.
+    - eapply dexpr_binop. 1: eassumption.
       eapply dexpr_literal.
-      clear E.
-      destruct width_cases; subst width; better_lia.
-    }
-    cbn. unfold weq, wwrap.
-    apply PropExtensionality.propositional_extensionality.
-    pose proof (dexpr_range _ _ _ _ H0).
-    destruct_one_match; split; intros; intro C;
-      destruct width_cases; subst width; try better_lia.
+      destruct width_cases as [E | E]; rewrite E in *; better_lia.
+    - cbn. unfold weq, wwrap.
+      pose proof (dexpr_range _ _ _ _ H0). rewrite Z.mod_small by assumption.
+      rewrite Z.mod_small by (destruct width_cases as [E | E]; rewrite E in *; better_lia).
+      destruct_one_match; reflexivity.
+    - destr (Z.eqb v 0); eauto.
+    - assumption.
   Qed.
 
-  Lemma dexpr_lazy_and: forall m l e1 e2 (P1 P2: Prop),
-      dexpr_bool_prop m l e1 P1 ->
-      (P1 -> dexpr_bool_prop m l e2 P2) ->
-      dexpr_bool_prop m l (expr.lazy_and e1 e2) (P1 /\ P2).
+  (* note how each of Pt, Pf, Pa is only mentioned once in the hyp, and that Pt is
+     as deep down as possible, so that it can see all memory modifications once it
+     gets proven *)
+  Lemma dexpr_lazy_and: forall m l e1 e2 (b1 b2: bool) (Pt Pf Pa: Prop),
+      dexpr_bool3 m l e1 b1
+        (dexpr_bool3 m l e2 b2 Pt True True)
+        True
+        (bool_expr_branches (andb b1 b2) True Pf Pa) ->
+      dexpr_bool3 m l (expr.lazy_and e1 e2) (andb b1 b2) Pt Pf Pa.
   Proof.
     intros.
-    inversion H; subst. destr (Z.eqb b 0).
-    - replace (0 <> 0 /\ P2) with (0 <> 0).
-      2: solve [apply PropExtensionality.propositional_extensionality; intuition idtac].
-      eapply mk_dexpr_bool_prop.
-      eapply dexpr_ite. 1: eassumption.
-      rewrite Z.eqb_refl. eapply dexpr_literal.
-      destruct width_cases; subst width; better_lia.
-    - specialize (H0 E). inversion H0; subst.
-      eassert (dexpr_bool_prop m l (expr.lazy_and e1 e2) _) as A. {
-        eapply mk_dexpr_bool_prop.
-        eapply dexpr_ite. 1: eassumption.
-        destruct_one_match. 1: exfalso; congruence.
-        eapply dexpr_binop. 1: eapply dexpr_literal.
-        1: destruct width_cases; subst width; better_lia.
-        eassumption.
-      }
-      eqapply A.
-      cbn. unfold wltu, wwrap. rewrite Zmod_0_l.
-      eapply dexpr_range in H2.
-      rewrite Z.mod_small by eassumption.
-      destruct_one_match; apply PropExtensionality.propositional_extensionality; split; lia.
+    inversion H; subst. clear H. unfold bool_expr_branches in *. fwd.
+    destruct (Z.eqb v 0) eqn: E.
+    - econstructor; [eapply dexpr_ite; [eassumption | rewrite E ] | auto .. ].
+      1: eapply dexpr_literal. 1: eapply const_in_bounds. all: reflexivity.
+    - cbn in *. subst.
+      inversion H2. clear H2 H5. subst.
+      econstructor.
+      1: eapply dexpr_ite. 1: eassumption. 1: rewrite E.
+      1: eapply dexpr_binop. 1: eapply dexpr_literal. 1: eapply const_in_bounds.
+      2: eassumption. 1: reflexivity.
+      { cbn. unfold wltu, wwrap. rewrite Zmod_0_l.
+        apply_in_hyps dexpr_range.
+        rewrite Z.mod_small by eassumption.
+        destruct_one_match; lia. }
+      { destruct_one_match; auto. }
+      { assumption. }
   Qed.
 
-  Lemma dexpr_lazy_or: forall m l e1 e2 (P1 P2: Prop),
-      dexpr_bool_prop m l e1 P1 ->
-      (~P1 -> dexpr_bool_prop m l e2 P2) ->
-      dexpr_bool_prop m l (expr.lazy_or e1 e2) (P1 \/ P2).
+  Lemma dexpr_lazy_or: forall m l e1 e2 (b1 b2: bool) (Pt Pf Pa: Prop),
+      dexpr_bool3 m l e1 b1
+        True
+        (dexpr_bool3 m l e2 b2 True True True)
+        (bool_expr_branches (orb b1 b2) Pt Pf Pa) ->
+      dexpr_bool3 m l (expr.lazy_or e1 e2) (orb b1 b2) Pt Pf Pa.
   Proof.
     intros.
-    inversion H; subst. clear H. destr (Z.eqb b 0).
-    - specialize (H0 ltac:(Lia.lia)). inversion H0; subst. clear H0.
-      eassert (dexpr_bool_prop m l (expr.lazy_or e1 e2) _) as A. {
-        eapply mk_dexpr_bool_prop.
-        eapply dexpr_ite. 1: eassumption.
-        rewrite Z.eqb_refl.
-        eapply dexpr_binop. 1: eapply dexpr_literal.
-        1: destruct width_cases; subst width; better_lia.
-        eassumption.
-      }
-      eqapply A.
-      cbn. unfold wltu, wwrap.
-      rewrite Zmod_0_l.
+    inversion H; subst. clear H. unfold bool_expr_branches in *. fwd.
+    destruct (Z.eqb v 0) eqn: E.
+    - cbn in *.
+      inversion H2. subst. clear H2 H4.
+      econstructor. 1: eapply dexpr_ite. 1: eassumption. 1: rewrite E.
+      1: eapply dexpr_binop. 1: eapply dexpr_literal. 1: eapply const_in_bounds; reflexivity.
+      1: eassumption.
+      1: cbn.
+      2: destruct (Z.eqb v0 0); cbn; auto. 2: assumption.
+      unfold wltu, wwrap. rewrite Zmod_0_l.
       eapply dexpr_range in H.
       rewrite Z.mod_small by eassumption.
-      destruct_one_match; apply PropExtensionality.propositional_extensionality; split; lia.
-    - unshelve erewrite (_: (b <> 0 \/ P2) = _); cycle 2. {
-        eapply mk_dexpr_bool_prop.
-        eapply dexpr_ite. 1: eassumption.
-        destruct_one_match. 1: exfalso; congruence.
-        eapply dexpr_literal.
-        destruct width_cases; subst width; better_lia.
-      }
-      solve [apply PropExtensionality.propositional_extensionality; intuition Lia.lia].
+      destruct_one_match; lia.
+    - cbn in *.
+      econstructor. 3,4: eassumption.
+      1: eapply dexpr_ite. 1: eassumption. 1: rewrite E.
+      1: eapply dexpr_literal. 1: eapply const_in_bounds; reflexivity.
+      reflexivity.
   Qed.
 
-  Lemma dexpr_ltu_prop: forall m l e1 e2 v1 v2,
+  Lemma dexpr_ltu_old: forall m l e1 e2 v1 v2 (Pt Pf Pa: Prop),
       dexpr m l e1 v1 ->
       dexpr m l e2 v2 ->
-      dexpr_bool_prop m l (expr.op bopname.ltu e1 e2) (v1 < v2).
+      (v1 < v2 -> Pt) ->
+      (v2 <= v1 -> Pf) ->
+      Pa ->
+      dexpr_bool3 m l (expr.op bopname.ltu e1 e2) (Z.ltb v1 v2) Pt Pf Pa.
   Proof.
     intros.
-    unshelve erewrite (_: (v1 < v2) = _); cycle 2. {
-      eapply mk_dexpr_bool_prop.
-      eapply dexpr_binop; eassumption.
-    }
-    eapply dexpr_range in H.
-    eapply dexpr_range in H0.
-    apply PropExtensionality.propositional_extensionality; cbn; unfold wltu, wwrap.
-    rewrite 2Z.mod_small by eassumption.
-    destr ((v1 <? v2)%Z); split; Lia.lia.
+    econstructor.
+    - eapply dexpr_binop; eassumption.
+    - eapply dexpr_range in H.
+      eapply dexpr_range in H0.
+      cbn; unfold wltu, wwrap.
+      rewrite 2Z.mod_small by eassumption.
+      destr ((v1 <? v2)%Z); split; Lia.lia.
+    - destruct_one_match; auto.
+    - assumption.
   Qed.
 
-  Lemma dexpr_eq_prop: forall m l e1 e2 v1 v2,
+  Lemma dexpr_eq_old: forall m l e1 e2 v1 v2 (Pt Pf Pa: Prop),
       dexpr m l e1 v1 ->
       dexpr m l e2 v2 ->
-      dexpr_bool_prop m l (expr.op bopname.eq e1 e2) (v1 = v2).
+      (v1 = v2 -> Pt) ->
+      (v1 <> v2 -> Pf) ->
+      Pa ->
+      dexpr_bool3 m l (expr.op bopname.eq e1 e2) (Z.eqb v1 v2) Pt Pf Pa.
   Proof.
     intros.
-    unshelve erewrite (_: (v1 = v2) = _); cycle 2. {
-      eapply mk_dexpr_bool_prop.
-      eapply dexpr_binop; eassumption.
-    }
-    cbn. unfold weq, wwrap.
-    eapply dexpr_range in H.
-    eapply dexpr_range in H0.
-    rewrite 2Z.mod_small by eassumption.
-    apply PropExtensionality.propositional_extensionality.
-    destr ((v1 =? v2)%Z); split; Lia.lia.
+    econstructor.
+    - eapply dexpr_binop; eassumption.
+    - cbn. unfold weq, wwrap.
+      eapply dexpr_range in H.
+      eapply dexpr_range in H0.
+      rewrite 2Z.mod_small by eassumption.
+      destr ((v1 =? v2)%Z); split; Lia.lia.
+    - destruct_one_match; auto.
+    - assumption.
   Qed.
 
-  Definition trace := list (mem * string * list Z * (mem * list Z)).
+  (* TODO maybe avoid factor the lemmas for binary bool ops into one by using
+     this definition?
+  Definition interp_binop_bool(bop : bopname): Z -> Z -> bool :=
+    match bop with
+    | bopname.lts =>
+    | bopname.ltu =>
+    | bopname.eq =>
+    | _ => ??
+    end. *)
 
-  Definition wp_cmd(fs: list (string * (list string * list string * cmd)))
-    (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop): Prop.
-  Admitted.
+  Lemma dexpr_ltu: forall m l e1 e2 v1 v2 (Pt Pf Pa: Prop),
+      dexpr1 m l e1 v1 (dexpr1 m l e2 v2 (bool_expr_branches (Z.ltb v1 v2) Pt Pf Pa)) ->
+      dexpr_bool3 m l (expr.op bopname.ltu e1 e2) (Z.ltb v1 v2) Pt Pf Pa.
+  Proof.
+    intros. inversion H. clear H. inversion Hp. clear Hp. destruct Hp0.
+    econstructor.
+    - eapply dexpr_binop; eassumption.
+    - apply_in_hyps dexpr_range.
+      cbn; unfold wltu, wwrap.
+      rewrite 2Z.mod_small by eassumption.
+      destr ((v1 <? v2)%Z); split; Lia.lia.
+    - destruct_one_match; auto.
+    - assumption.
+  Qed.
+
+  Lemma dexpr_eq: forall m l e1 e2 v1 v2 (Pt Pf Pa: Prop),
+      dexpr1 m l e1 v1 (dexpr1 m l e2 v2 (bool_expr_branches (Z.eqb v1 v2) Pt Pf Pa)) ->
+      dexpr_bool3 m l (expr.op bopname.eq e1 e2) (Z.eqb v1 v2) Pt Pf Pa.
+  Proof.
+    intros. inversion H. clear H. inversion Hp. clear Hp. destruct Hp0.
+    econstructor.
+    - eapply dexpr_binop; eassumption.
+    - cbn. unfold weq, wwrap.
+      apply_in_hyps dexpr_range.
+      rewrite 2Z.mod_small by eassumption.
+      destr ((v1 =? v2)%Z); split; Lia.lia.
+    - destruct_one_match; auto.
+    - assumption.
+  Qed.
+
+  Lemma BoolSpec_expr_branches{Bt Bf: Prop}{b: bool}{H: BoolSpec Bt Bf b}(Pt Pf Pa: Prop):
+      (Bt -> Pt) ->
+      (Bf -> Pf) ->
+      Pa ->
+      bool_expr_branches b Pt Pf Pa.
+  Proof.
+    intros. unfold bool_expr_branches. destruct H; auto.
+  Qed.
+
+  Context {ext_spec: ExtSpec} {ext_spec_ok: ext_spec.ok ext_spec}.
+
+  Inductive wp_cmd(fs: list (string * (list string * list string * cmd)))
+    (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop): Prop :=
+    mk_wp_cmd(_: WeakestPrecondition.cmd (WeakestPrecondition.call fs) c t m l post).
 
   Lemma weaken_wp_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
       wp_cmd fs c t m l post1 ->
       (forall t m l, post1 t m l -> post2 t m l) ->
       wp_cmd fs c t m l post2.
+  Proof.
+    intros. inversion H.
+    constructor. eapply WeakestPreconditionProperties.Proper_cmd.
+    3: eassumption. 2: assumption. eapply WeakestPreconditionProperties.Proper_call.
+  Qed.
+
+  Lemma wp_set0: forall fs x e v t m l rest post,
+      dexpr m l e v ->
+      wp_cmd fs rest t m (map.put l x (word.of_Z v)) post ->
+      wp_cmd fs (cmd.seq (cmd.set x e) rest) t m l post.
+  Proof.
+    intros. inversion H. inversion H0. econstructor.
+    cbn -[map.put]. eexists. split. 1: eassumption. unfold dlet.dlet. subst v.
+    rewrite word.of_Z_unsigned in H3. (* <- in Coq 8.16, "in *" works too, but not in 8.15 *)
+    assumption.
+  Qed.
+
+  Lemma wp_store0: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
+      dexpr m l ea a ->
+      dexpr m l ev v ->
+      sep (uint match sz with
+                | access_size.one => 8
+                | access_size.two => 16
+                | access_size.four => 32
+                | access_size.word => width
+                end v_old a) R m ->
+      (forall m', sep (uint match sz with
+                       | access_size.one => 8
+                       | access_size.two => 16
+                       | access_size.four => 32
+                       | access_size.word => width
+                       end v a) R m' -> wp_cmd fs rest t m' l post) ->
+      wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Admitted.
 
-  Lemma wp_set: forall fs x e v t m l rest post,
-      dexpr m l e v ->
-      wp_cmd fs rest t m (map.put l x v) post ->
+  Lemma wp_set: forall fs x e v t m l zl rest post,
+      unsigned_locals l = zl ->
+      dexpr1 m l e v (forall l', unsigned_locals l' = map.put zl x v ->
+                                 wp_cmd fs rest t m l' post) ->
       wp_cmd fs (cmd.seq (cmd.set x e) rest) t m l post.
+  Proof.
+    intros. inversion H0. eapply wp_set0. 1: eassumption.
+    eapply Hp. subst zl. unfold unsigned_locals.
+
   Admitted.
 
   Lemma wp_store: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
-      dexpr m l ea a ->
-      dexpr m l ev v ->
-      sep (value sz v_old a) R m ->
-      (forall m', sep (value sz v a) R m' -> wp_cmd fs rest t m' l post) ->
+      dexpr1 m l ea a
+        (dexpr1 m l ev v
+           (sep (uint match sz with
+                      | access_size.one => 8
+                      | access_size.two => 16
+                      | access_size.four => 32
+                      | access_size.word => width
+                      end v_old a) R m /\
+                (forall m,
+                    sep (uint match sz with
+                              | access_size.one => 8
+                              | access_size.two => 16
+                              | access_size.four => 32
+                              | access_size.word => width
+                              end v a) R m -> wp_cmd fs rest t m l post))) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Admitted.
 
@@ -414,63 +656,26 @@ Section WithParams.
       wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Admitted.
 
-  Definition sorted_varnames(l: locals): list string :=
-    match l with
-    | SortedList.Build_rep tuples pf => List.map fst tuples
-    end.
+  Definition then_branch_marker(P: Prop) := P.
+  Definition else_branch_marker(P: Prop) := P.
+  Definition after_if fs (b: bool) (Q1 Q2: trace -> mem -> locals -> Prop) rest post :=
+    forall t m l,
+      (if b then Q1 t m l else Q2 t m l) ->
+      wp_cmd fs rest t m l post.
 
-  Lemma wp_if: forall fs c l thn els rest b Q1 Q2 t m post,
-      dexpr m l c b ->
-      (b <> 0 -> wp_cmd fs thn t m l (fun t' m' l' =>
-                   sorted_varnames l' = sorted_varnames l /\ Q1 t' m' l')) ->
-      (b =  0 -> wp_cmd fs els t m l (fun t' m' l' =>
-                   sorted_varnames l' = sorted_varnames l /\ Q2 t' m' l')) ->
-      (forall t' m' l', sorted_varnames l' = sorted_varnames l ->
-                        (b <> 0 /\ Q1 t' m' l' \/
-                         b =  0 /\ Q2 t' m' l') ->
-                        wp_cmd fs rest  t' m' l' post) ->
-      wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t m l post.
-  Proof.
-    intros. eapply wp_if0. 1: exact H. all: clear H; eauto.
-    cbv beta in *.
-    intros * [? | ?]; fwd; eapply H2; eauto.
-  Qed.
-
-  Lemma wp_if_bool_dexpr_with_varnames: forall fs c thn els rest t0 m0 l0 P Q1 Q2 post,
-      dexpr_bool_prop m0 l0 c P ->
-      (P  -> wp_cmd fs thn t0 m0 l0 (fun t m l =>
-               sorted_varnames l = sorted_varnames l0 /\ Q1 t m l)) ->
-      (~P -> wp_cmd fs els t0 m0 l0 (fun t m l =>
-               sorted_varnames l = sorted_varnames l0 /\ Q2 t m l)) ->
-      (forall (cond0: bool) t m l,
-          sorted_varnames l = sorted_varnames l0 ->
-          (* (if cond0 then P else ~P) -> <-- already added to Q1/Q2 by automation *)
-          (if cond0 then Q1 t m l else Q2 t m l) ->
-          wp_cmd fs rest t m l post) ->
+  Lemma wp_if_bool_dexpr: forall fs c thn els rest t0 m0 l0 b Q1 Q2 post,
+      dexpr_bool3 m0 l0 c b
+        (then_branch_marker (wp_cmd fs thn t0 m0 l0 Q1))
+        (else_branch_marker (wp_cmd fs els t0 m0 l0 Q2))
+        (after_if fs b Q1 Q2 rest post) ->
       wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t0 m0 l0 post.
   Proof.
-    intros. inversion H. subst P. clear H. eapply wp_if.
-    1,2: eassumption.
-    { intro E. subst b. eapply H1. intro C. apply C. reflexivity. }
-    intros. destruct H4 as [(Ne & P) | (E & P)];
-      [eapply (H2 true)| eapply (H2 false)]; assumption.
-  Qed.
-
-  Lemma wp_if_bool_dexpr: forall fs c thn els rest t0 m0 l0 P Q1 Q2 post,
-      dexpr_bool_prop m0 l0 c P ->
-      (P  -> wp_cmd fs thn t0 m0 l0 Q1) ->
-      (~P -> wp_cmd fs els t0 m0 l0 Q2) ->
-      (forall (cond0: bool) t m l,
-          (* (if cond0 then P else ~P) -> <-- already added to Q1/Q2 by automation *)
-          (if cond0 then Q1 t m l else Q2 t m l) ->
-          wp_cmd fs rest t m l post) ->
-      wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t0 m0 l0 post.
-  Proof.
-    intros. inversion H. subst P. clear H. eapply wp_if0.
-    1,2: eassumption.
-    { intro E. subst b. eapply H1. intro C. apply C. reflexivity. }
-    intros *. intros [(Ne & P) | (E & P)];
-      [eapply (H2 true)| eapply (H2 false)]; assumption.
+    intros. inversion H. subst. clear H.
+    unfold then_branch_marker, else_branch_marker, after_if in *.
+    destr (Z.eqb v 0);
+      (eapply wp_if0; [eassumption |intro C; try congruence; cbn in *; eauto ..]).
+    all: intros * [(? & ?) | (? & ?)]; try (exfalso; congruence); eauto.
+    Unshelve. all: try assumption.
   Qed.
 
   Lemma wp_while {measure : Type} (v0 : measure) (e: expr) (c: cmd) t (m: mem) l fs rest
@@ -480,79 +685,123 @@ Section WithParams.
     (Hwf : well_founded lt)
     (Hbody : forall v t m l,
       invariant v t m l ->
-      exists P, dexpr_bool_prop m l e P /\
-         (P -> wp_cmd fs c t m l
-                      (fun t m l => exists v', invariant v' t m l /\ lt v' v)) /\
-         (~P -> wp_cmd fs rest t m l post))
+      exists b, dexpr_bool3 m l e b
+                  (wp_cmd fs c t m l
+                      (fun t m l => exists v', invariant v' t m l /\ lt v' v))
+                  (wp_cmd fs rest t m l post)
+                  True)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t m l post.
   Admitted.
-
-  (* The postcondition of the callee's spec will have a concrete shape that differs
-     from the postcondition that we pass to `call`, so when using this lemma, we have
-     to apply weakening for `call`, which generates two subgoals:
-     1) call f t m argvals ?mid
-     2) forall t' m' resvals, ?mid t' m' resvals -> the post of `call`
-     To solve 1), we will apply the callee's spec, but that means that if we make
-     changes to the context while solving the preconditions of the callee's spec,
-     these changes will not be visible in subgoal 2
-  Lemma wp_call: forall fs binds f argexprs rest t m l post,
-      wp_exprs m l argexprs (fun argvals =>
-        call fs f t m argvals (fun t' m' resvals =>
-          get_option (map.putmany_of_list_zip binds resvals l) (fun l' =>
-            wp_cmd fs rest t' m' l' post))) ->
-      wp_cmd fs (cmd.seq (cmd.call binds f argexprs) rest) t m l post.
-  Proof.
-  Admitted.
-
-     It's not clear whether a change to wp_call can fix this.
-     Right now, specs look like this:
-
-  Instance spec_of_foo : spec_of "foo" := fun functions =>
-    forall t m argvals ghosts,
-      NonmemHyps ->
-      (sepclause1 * ... * sepclauseN) m ->
-      WeakestPrecondition.call functions "foo" t m argvals
-        (fun t' m' rets => calleePost).
-
-  If I want to use spec_of_foo, I'll have a WeakestPrecondition.call goal with callerPost, and to
-  reconcile the callerPost with calleePost, I have to apply weakening/Proper for
-  WeakestPrecondition.call, which results in two sugoals:
-
-  1) WeakestPrecondition.call "foo" t m argvals ?mid
-  2) forall t' m' resvals, ?mid t' m' resvals -> callerPost
-
-  On 1), I will apply foo_ok (which proves spec_of_foo), so all hyps in spec_of_foo are proven
-  in a subgoal separate from subgoal 2), so changes made to the context won't be visible in
-  subgoal 2).
-
-  Easiest to use would be this one:
-
-  Instance spec_of_foo' : spec_of "foo" := fun functions =>
-    forall t m argvals ghosts callerPost,
-      seps [sepclause1; ...; sepclauseN; emp P1; ... emp PN;
-         emp (forall t' m' retvals,
-                  calleePost t' m' retvals ->
-                  callerPost t' m' retvals)] m ->
-      WeakestPrecondition.call functions "foo" t m argvals callerPost.
-
-  because it has weakening built in and creates only one subgoal, so all context modifications
-  remain visible.
-  And using some notations, this form might even become ergonomic. *)
 
   Lemma wp_skip: forall fs t m l (post: trace -> mem -> locals -> Prop),
       post t m l ->
       wp_cmd fs cmd.skip t m l post.
   Admitted.
 
+  Inductive wp_call(fs: list (string * (list string * list string * cmd)))
+    (fname: string)(t: trace)(m: mem)(args: list Z)(post: trace -> mem -> list Z -> Prop)
+    : Prop :=
+    mk_wp_call(argsw: list word)(_: List.map word.unsigned argsw = args)
+              (_: WeakestPrecondition.call fs fname t m argsw
+                    (fun t' m' retsw =>
+                       post t' m' (List.map word.unsigned retsw))).
+
   Definition vc_func fs '(innames, outnames, body) (t: trace) (m: mem) (argvs: list Z)
-                     (post : trace -> mem -> list Z -> Prop) :=
-    exists l, map.of_list_zip innames argvs = Some l /\
+                     (post : trace -> mem -> list Z -> Prop): Prop :=
+    exists l, map.of_list_zip innames argvs = Some (unsigned_locals l) /\
       wp_cmd fs body t m l (fun t' m' l' =>
-        exists retvs, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
+        exists retvs, map.getmany_of_list (unsigned_locals l') outnames = Some retvs /\
+                        post t' m' retvs).
+
+  Lemma sep_call: forall funs f t m args
+      (calleePre: Prop)
+      (calleePost callerPost: trace -> mem -> list Z -> Prop),
+      (* definition-site format: *)
+      (calleePre -> wp_call funs f t m args calleePost) ->
+      (* use-site format: *)
+      (calleePre /\ forall t' m' rets, calleePost t' m' rets -> callerPost t' m' rets) ->
+      (* conclusion: *)
+      wp_call funs f t m args callerPost.
+  Proof.
+    intros. destruct H0. specialize (H H0). inversion H. econstructor.
+    1: eassumption.
+    eapply WeakestPreconditionProperties.Proper_call. 2: eassumption.
+    unfold Morphisms.pointwise_relation, Morphisms.pointwise_relation, Basics.impl.
+    intros t' m' l'. eapply H1.
+  Qed.
 
   Definition arguments_marker(args: list Z): list Z := args.
 
 End WithParams.
+
+Section RearrangeSepapp.
+Context {width: Z} {word: word.word width} {word_ok: word.ok word}
+        {mem: map.map word byte} {mem_ok: map.ok mem}.
+
+Inductive sized_predicate: Type :=
+| mk_sized_predicate(p: Z -> mem -> Prop)(sz: PredicateSize p).
+
+Definition sized_emp := mk_sized_predicate (pure_at True) 0.
+
+Definition sepapp_sized_predicates(sp1 sp2: sized_predicate): sized_predicate :=
+  match sp1, sp2 with
+  | mk_sized_predicate p1 sz1, mk_sized_predicate p2 sz2 =>
+      mk_sized_predicate (@sepapp _ _ mem p1 p2 sz1) (sz1 + sz2)
+  end.
+
+Definition proj_sized_predicate(sp: sized_predicate): Z -> mem -> Prop :=
+  match sp with
+  | mk_sized_predicate p _ => p
+  end.
+
+Definition sepapps(l: list sized_predicate): Z -> mem -> Prop :=
+  proj_sized_predicate (List.fold_left sepapp_sized_predicates l sized_emp).
+
+Definition interp_sepapp_tree(t: Tree.Tree sized_predicate): Z -> mem -> Prop :=
+  proj_sized_predicate (Tree.interp id sepapp_sized_predicates t).
+
+Lemma flatten_eq_interp_sepapp_tree_aux(t : Tree.Tree sized_predicate):
+  forall sp0: sized_predicate,
+    match List.fold_left sepapp_sized_predicates (Tree.flatten t) sp0,
+          sepapp_sized_predicates sp0 (Tree.interp id sepapp_sized_predicates t) with
+    | mk_sized_predicate p1 sz1, mk_sized_predicate p2 sz2 =>
+        p1 = p2 /\ sz1 = sz2
+    end.
+Proof.
+  induction t; intros.
+  - simpl. destruct sp0. destruct a. simpl. auto.
+  - simpl. change @app with @List.app.
+    rewrite List.fold_left_app.
+    specialize (IHt1 sp0).
+    specialize (IHt2 (List.fold_left sepapp_sized_predicates (Tree.flatten t1) sp0)).
+    destruct_one_match.
+    destr sp0.
+    destr (List.fold_left sepapp_sized_predicates (Tree.flatten t1)
+             (mk_sized_predicate p0 sz0)).
+    destr (Tree.interp id sepapp_sized_predicates t1).
+    destr (Tree.interp id sepapp_sized_predicates t2).
+    simpl in *.
+    fwd. subst. rewrite <- sepapp_assoc. rewrite Z.add_assoc. split; reflexivity.
+Qed.
+
+Lemma flatten_eq_interp_sepapp_tree(t : Tree.Tree sized_predicate):
+  sepapps (Tree.flatten t) = interp_sepapp_tree t.
+Proof.
+  unfold sepapps, interp_sepapp_tree, proj_sized_predicate.
+  pose proof (flatten_eq_interp_sepapp_tree_aux t sized_emp) as P.
+  unfold sized_emp in *. do 2 destruct_one_match. simpl in P. apply proj1 in P.
+  subst. (* TODO *)
+Admitted.
+
+Lemma interp_sepapp_tree_eq_of_flatten_eq(LHS RHS : Tree.Tree sized_predicate):
+  Tree.flatten LHS = Tree.flatten RHS ->
+  interp_sepapp_tree LHS = interp_sepapp_tree RHS.
+Proof. intros. rewrite <-2flatten_eq_interp_sepapp_tree. f_equal. assumption. Qed.
+
+End RearrangeSepapp.
+
+Ltac pose_ZWord_lemmas :=
+  pose proof wwrap_small as z_wwrap_small.
 
 (*
 TODO: once we have C notations for function signatures,
@@ -566,8 +815,15 @@ Declare Scope live_scope.
 Delimit Scope live_scope with live.
 Local Open Scope live_scope.
 
+(* Needed to know where the conditions (hypotheses) introduced by an if start,
+   will be replaced by (mk_scope_marker ThenBranch) in the then branch,
+   by (mk_scope_marker ElseBranch) in the else branch, and deleted in the
+   code after the if. *)
+Inductive temp_if_marker: Set := mk_temp_if_marker.
+
 Inductive scope_kind := FunctionBody | ThenBranch | ElseBranch | LoopBody | LoopInvariant.
 Inductive scope_marker: scope_kind -> Set := mk_scope_marker sk : scope_marker sk.
+
 Notation "'____' sk '____'" := (scope_marker sk) (only printing) : live_scope.
 
 Ltac assert_scope_kind expected :=
@@ -578,18 +834,18 @@ Ltac assert_scope_kind expected :=
   tryif constr_eq sk expected then idtac
   else fail "This snippet is only allowed in a" expected "block, but we're in a" sk "block".
 
-Declare Scope live_scope_prettier. (* prettier, but harder to debug *)
-(*Local Open Scope live_scope_prettier.*)
-
-Notation "'ready' 'for' 'next' 'command'" := (wp_cmd _ _ _ _ _ _)
-  (at level 0, only printing) : live_scope_prettier.
+Definition ready{P: Prop} := P.
 
 Notation "l" := (arguments_marker l)
   (at level 100, only printing) : live_scope.
 
-Ltac put_into_current_locals is_decl :=
+Ltac put_into_current_locals :=
   lazymatch goal with
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
+    let is_decl := lazymatch l with
+                   | context[(x, _)] => false
+                   | _ => true
+                   end in
     let i := string_to_ident x in
     let old_i := fresh i "_0" in
     lazymatch is_decl with
@@ -621,22 +877,110 @@ Ltac put_into_current_locals is_decl :=
     end
   end.
 
-Ltac eval_dexpr_step :=
+Inductive undoable_step: Type :=
+| unfold_step{V mem: Type}(pred: V -> Z -> mem -> Prop).
+
+Ltac unfold_pred pred :=
+  let name := fresh "step0" in
+  pose (unfold_step pred) as name;
+  let h := head pred in
+  repeat match goal with
+    | H: context C[pred ?v] |- _ =>
+        let u := eval unfold h in (pred v) in
+        let t := context C[u] in
+        change t in H
+    | |- context C[pred ?v] =>
+        let u := eval unfold h in (pred v) in
+        let t := context C[u] in
+        change t
+    end.
+
+Ltac undo_step :=
   lazymatch goal with
-  | |- dexpr_bool_prop _ _ (expr.lazy_and _ _) _ => eapply dexpr_lazy_and; [ |intro]
-  | |- dexpr_bool_prop _ _ (expr.lazy_or _ _) _ => eapply dexpr_lazy_or; [ |intro]
-  | |- dexpr_bool_prop _ _ (expr.not _) _ => eapply dexpr_not
-  | |- dexpr_bool_prop _ _ (expr.op bopname.eq _ _) _ => eapply dexpr_eq_prop
-  | |- dexpr_bool_prop _ _ (expr.op bopname.ltu _ _) _ => eapply dexpr_ltu_prop
-  | |- dexpr_bool_prop _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)
-  | |- dexpr _ _ (expr.var _) _ => eapply dexpr_var; [reflexivity|lia]
-  | |- dexpr _ _ (expr.literal _) _ => eapply dexpr_literal; lia
-  | |- dexpr _ _ (expr.op _ _ _) _ => eapply dexpr_binop_unf
-  | |- dexpr _ _ (expr.load _ _) => eapply dexpr_load
-  | |- dexpr _ _ (expr.ite _ _ _) _ => eapply dexpr_ite
+  | St := unfold_step ?pred |- _ =>
+      repeat (let c := open_constr:(pred ltac:(constructor)) in fold_in_hyps c);
+      clear St
   end.
 
-Ltac eval_dexpr := repeat eval_dexpr_step.
+Ltac get_predicate_size pred :=
+  let pf := constr:(_ : PredicateSize pred _) in
+  lazymatch type of pf with
+  | PredicateSize _ ?sz => sz
+  end.
+
+Ltac has_inductive_type e :=
+  let t := type of e in
+  tryif (let h := head t in is_ind h) then idtac
+  else tryif (let r := eval red in t in
+              let h := head r in
+              is_ind h) then idtac
+    else fail "type of" e "is not inductive".
+
+Ltac is_ground_head e :=
+  match e with
+  | _ => is_const e
+  | _ => is_constructor e
+  | _ => is_ind e
+  | _ => fail "term" e "is not ground"
+  end.
+
+Ltac is_ground_app e :=
+  lazymatch e with
+  | ?f ?a => is_ground_app f; is_ground_app a
+  | _ => is_ground_head e
+  end.
+
+Ltac is_cbv_safe e :=
+  has_inductive_type e;
+  is_ground_app e.
+
+Ltac cbv_if_safe e :=
+  match constr:(Set) with
+  | _ => let __ := match constr:(Set) with
+                   | _ => is_cbv_safe e
+                   end in
+         eval cbv in e
+  | _ => e
+  end.
+
+Ltac symbolic_compare_prover :=
+  (* Don't do this unfold because it exposes a Z.max that makes lia/zify choke:
+     https://github.com/coq/coq/issues/16475 *)
+  (* unfold nbits_to_nbytes in *; *)
+  lia.
+
+(* returns a comparison (Eq | Lt | Gt) or fails if uncomparable *)
+Ltac compareZ a b :=
+  match constr:(Set) with
+  | _ => let __ := match constr:(Set) with
+                   | _ => assert_succeeds (constr_eq a b)
+                   end in
+         constr:(Eq)
+  | _ => let __ := match constr:(Set) with
+                   | _ => is_cbv_safe a; is_cbv_safe b
+                   end in
+         let r := eval cbv in (Z.compare a b) in constr:(r)
+  | _ => let __ := match constr:(Set) with
+                   | _ => assert_succeeds (assert (a < b) by symbolic_compare_prover)
+                   end in
+         constr:(Lt)
+  | _ => let __ := match constr:(Set) with
+                   | _ => assert_succeeds (assert (a = b) by symbolic_compare_prover)
+                   end in
+         constr:(Eq)
+  | _ => let __ := match constr:(Set) with
+                   | _ => assert_succeeds (assert (a > b) by symbolic_compare_prover)
+                   end in
+         constr:(Gt)
+  | _ => fail 1 "can't compare" a "and" b
+  end.
+
+(* returns true if a=b, false if a<>b, or fails if it is unclear *)
+Ltac eqZ a b :=
+  lazymatch compareZ a b with
+  | Eq => constr:(true)
+  | _ => constr:(false)
+  end.
 
 Ltac start :=
   lazymatch goal with
@@ -762,11 +1106,23 @@ Ltac add_last_var_to_post Post :=
          end
   end.
 
+Ltac fold_seps P :=
+  lazymatch P with
+  | sep ?hd ?tl => let r := fold_seps tl in constr:(cons hd r)
+  | _ => constr:(cons P nil)
+  end.
+
+Ltac fold_seps_in_hyp H :=
+  lazymatch type of H with
+  | ?P ?m => let l := fold_seps P in change (seps l m) in H
+  end.
+
 Ltac package_context :=
   lazymatch goal with
   | H: _ ?m |- ?E ?t ?m ?l =>
       (* always package sep log assertion, even if memory was not changed in current block *)
-      move H at bottom
+      move H at bottom;
+      fold_seps_in_hyp H
   | |- ?E ?t ?m ?l => fail "No separation logic hypothesis about" m "found"
   end;
   let Post := fresh "Post" in
@@ -903,8 +1259,8 @@ Section MergingAnd.
 End MergingAnd.
 
 Section MergingSep.
-  Context {width: Z} {word: word.word width}
-          {word_ok: word.ok word} {mem: map.map word byte} {ok: map.ok mem}.
+  Context {width: Z} {word: word.word width} {mem: map.map word byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
   Local Set Warnings "-notation-overridden".
   Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
@@ -929,17 +1285,16 @@ Section MergingSep.
       eapply iff1ToEq in A. rewrite <- A in H1. ecancel_assumption.
   Qed.
 
-(*
   (* Note: if the two predicates are at the same address, but have different footprints,
      you might not want to merge them, but first combine them with other sep clauses
      until they both have the same footprint *)
   Lemma merge_seps_at_indices_same_addr_and_pred (m: mem) i j [V: Type] a (v1 v2: V)
-        (pred: sep_predicate mem V) (Ps1 Ps2 Qs: list (mem -> Prop)) (b: bool):
-    nth i Ps1 = pred a v1 ->
-    nth j Ps2 = pred a v2 ->
+        (pred: V -> Z -> mem -> Prop) (Ps1 Ps2 Qs: list (mem -> Prop)) (b: bool):
+    nth i Ps1 = pred v1 a ->
+    nth j Ps2 = pred v2 a ->
     seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
     seps ((seps (if b then (remove_nth i Ps1) else (remove_nth j Ps2)))
-            :: pred a (if b then v1 else v2) :: Qs) m.
+            :: pred (if b then v1 else v2) a :: Qs) m.
   Proof.
     intros. eapply (merge_seps_at_indices m i j) in H1; [ | eassumption.. ].
     destruct b; assumption.
@@ -957,11 +1312,11 @@ Section MergingSep.
   Qed.
 
   Lemma merge_seps_done (m: mem) (Qs: list (mem -> Prop)) (b: bool):
-    seps ((seps (if b then [] else [])) :: Qs) m ->
+    seps ((seps (if b then nil else nil)) :: Qs) m ->
     seps Qs m.
   Proof.
     intros.
-    pose proof (seps'_iff1_seps (seps (if b then [] else []) :: Qs)) as A.
+    pose proof (seps'_iff1_seps (seps (if b then nil else nil) :: Qs)) as A.
     eapply iff1ToEq in A.
     rewrite <- A in H. cbn [seps'] in H. clear A.
     pose proof (seps'_iff1_seps Qs) as A.
@@ -971,7 +1326,7 @@ Section MergingSep.
   Qed.
 
   Lemma expose_addr_of_then_in_else:
-    forall (m: mem) (a: word) v (Ps1 Ps2 Rs Qs: list (mem -> Prop)) (b: bool),
+    forall (m: mem) (a: Z) v (Ps1 Ps2 Rs Qs: list (mem -> Prop)) (b: bool),
     impl1 (seps Ps2) (seps ((v a) :: Rs)) ->
     seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
     seps ((seps (if b then Ps1 else ((v a) :: Rs))) :: Qs) m.
@@ -988,7 +1343,7 @@ Section MergingSep.
       }
       eapply A. assumption.
   Qed.
-*)
+
 End MergingSep.
 
 Lemma push_if_into_arg{A B: Type}(f: A -> B)(a1 a2: A)(cond: bool):
@@ -1083,9 +1438,9 @@ Ltac same_lhs P Q :=
 
 Ltac same_addr_and_pred P Q :=
   lazymatch P with
-  | ?pred ?addr ?valueP =>
+  | ?pred ?valueP ?addr =>
       lazymatch Q with
-      | pred addr ?valueQ => constr:(true)
+      | pred ?valueQ addr => constr:(true)
       | _ => constr:(false)
       end
   | _ => constr:(false)
@@ -1112,19 +1467,19 @@ Ltac constr_eqb x y :=
   | _ => constr:(false)
   end.
 
-Ltac merge_sep_pair_step := idtac. (*
+Ltac merge_sep_pair_step :=
   lazymatch goal with
   | H: seps ((seps (if ?b then ?Ps else ?Qs)) :: ?Rs) ?m |- _ =>
       merge_pair H Ps Qs constr_eqb (merge_seps_at_indices_same m) ||
       merge_pair H Ps Qs same_addr_and_pred (merge_seps_at_indices_same_addr_and_pred m) ||
       (eapply merge_seps_done in H; cbn [seps] in H)
-  end. *)
+  end.
 
 Ltac after_if :=
   repeat match goal with
          | H: sep _ _ ?M |- _ => clear M H
          end;
-  intros;
+  intros ? ? ? ?;
   repeat pull_dlet_and_exists_step;
   repeat merge_and_pair constr_eqb merge_ands_at_indices_same_prop;
   repeat merge_and_pair neg_prop merge_ands_at_indices_neg_prop;
@@ -1132,8 +1487,16 @@ Ltac after_if :=
   repeat merge_and_pair seps_about_same_mem merge_ands_at_indices_seps_same_mem;
   repeat merge_sep_pair_step;
   repeat match goal with
-  | H: if _ then ands nil else ands nil |- _ => clear H
-  end;
+  | H: if ?b then ?thn else ?els |- _ =>
+      clear H;
+      assert_succeeds ( (* test if clearing H was justified because it's redundant: *)
+        idtac;
+        let sp := constr:(_: BoolSpec _ _ b) in
+        lazymatch type of sp with
+        | BoolSpec ?Pt ?Pf _ =>
+            assert ((Pt -> thn) /\ (Pf -> els)) by (unfold ands; clear; intuition auto)
+        end)
+    end;
   lazymatch goal with
   | H: ?l = _ |- wp_cmd _ _ _ _ ?l _ =>
       repeat (rewrite ?push_if_into_arg,
@@ -1153,44 +1516,6 @@ Inductive snippet :=
 | SEnd
 | SRet(xs: list string)
 | SEmpty.
-
-Ltac assign is_decl name val :=
-  eapply (wp_set _ name val);
-  eval_dexpr;
-  [.. (* maybe some unsolved side conditions *)
-  | try ((* to simplify value that will become bound with :=, at which point
-            rewrites will not apply any more *)
-         (*repeat word_simpl_step_in_goal;*)
-         put_into_current_locals is_decl) ].
-
-Ltac store sz addr val :=
-  eapply (wp_store _ sz addr val);
-  eval_dexpr;
-  [.. (* maybe some unsolved side conditions *)
-  | (*lazymatch goal with
-    | |- get_option (Memory.store access_size.one _ _ _) _ =>
-        eapply store_byte_of_sep_cps; after_mem_modifying_lemma
-    | |- get_option (Memory.store access_size.word _ _ _) _ =>
-        eapply store_word_of_sep_cps; after_mem_modifying_lemma
-    | |- get_option (Memory.store ?sz _ _ _) _ =>
-        fail 10000 "storing" sz "not yet supported"
-    | |- _ => pose_err Error:("eval_dexpr_step should not fail on this goal")
-    end *) ].
-
-Ltac cond c :=
-  lazymatch goal with
-  | |- wp_cmd _ _ ?t ?m ?l _ =>
-    eapply (wp_if_bool_dexpr _ c);
-    [ eval_dexpr
-    | let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b; intro
-    | let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b; intro
-    | ]
-  end.
-
-Ltac els :=
-  assert_scope_kind ThenBranch;
-  eapply wp_skip;
-  package_context.
 
 Ltac clear_until_LoopInvariant_marker :=
   repeat match goal with
@@ -1214,42 +1539,12 @@ Ltac expect_and_clear_last_marker expected :=
         fail "Assertion failure: Expected last marker to be" expected "but got" sk
   end.
 
-Ltac while cond measure0 :=
-  eapply (wp_while measure0 cond);
-  [ package_context
-  | eauto with wf_of_type
-  | repeat match goal with
-           | H: sep _ _ ?M |- _ => clear M H
-           end;
-    clear_until_LoopInvariant_marker;
-    cbv beta iota delta [ands];
-    cbn [seps] in *;
-    (* Note: will also appear after loop, where we'll have to clear it,
-       but we have to pose it here because the foralls are shared between
-       loop body and after the loop *)
-    (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
-    intros;
-    fwd;
-    lazymatch goal with
-    | |- exists P, dexpr_bool_prop _ _ _ P /\
-                   (P -> wp_cmd _ _ _ _ _ _) /\
-                   (~P -> wp_cmd _ _ _ _ _ _) => idtac
-    | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
-    end;
-    eexists;
-    split;
-    [ (* evaluate condition *)
-      repeat eval_dexpr_step
-    | split; intros;
-      [ (* loop body *)
-      | (* after loop *)
-        expect_and_clear_last_marker LoopBody ]
-    ] ].
-
-Ltac destruct_bool_vars :=
+Ltac destruct_ifs :=
   repeat match goal with
          | H: context[if ?b then _ else _] |- _ =>
-             is_var b; let t := type of b in constr_eq t bool; destruct b
+             let t := type of b in constr_eq t bool; destr b
+         | |- context[if ?b then _ else _] =>
+             let t := type of b in constr_eq t bool; destr b
          end.
 
 Ltac ZWords := unfold wwrap, wswrap in *; better_lia.
@@ -1268,7 +1563,8 @@ Ltac prove_concrete_post_pre :=
     repeat match goal with
            | x := _ |- _ => subst x
            end;
-    destruct_bool_vars;
+    rewrite ?Z.min_to_leb_dec, ?Z.max_to_leb_dec in *; (* <-- TODO make less ad-hoc *)
+    destruct_ifs;
     repeat match goal with
            | H: ands (_ :: _) |- _ => destruct H
            | H: ands nil |- _ => clear H
@@ -1279,15 +1575,17 @@ Ltac prove_concrete_post_pre :=
            | |- _ /\ _ => split
            | |- ?x = ?x => reflexivity
            | |- sep _ _ _ => ecancel_assumption
-           end.
+           | H: _ \/ _ |- _ => destruct H (* <-- might become expensive... *)
+           end;
+    try lia.
 
 Create HintDb prove_post.
 
 Ltac prove_concrete_post :=
   prove_concrete_post_pre;
   try congruence;
-  try ZWords;
-  intuition (congruence || ZWords || eauto with prove_post).
+  try ZnWords;
+  intuition (congruence || ZnWords || eauto with prove_post).
 
 Ltac ret retnames :=
   lazymatch goal with
@@ -1305,7 +1603,7 @@ Ltac ret retnames :=
   | |- exists _, map.getmany_of_list _ ?eretnames = Some _ /\ _ =>
     unify eretnames retnames
   end;
-  eexists; split; [reflexivity|].
+  eexists; split; [reflexivity| ].
 
 Ltac close_block :=
   lazymatch goal with
@@ -1318,6 +1616,10 @@ Ltac close_block :=
           eapply wp_skip;
           prove_concrete_post
       | FunctionBody =>
+          lazymatch goal with
+          | |- @ready ?g => change g
+          | |- _ => idtac
+          end;
           lazymatch goal with
           | |- wp_cmd _ _ _ _ _ _ => ret (@nil string)
           | |- _ => idtac (* ret nonEmptyVarList was already called *)
@@ -1338,23 +1640,142 @@ Ltac prettify_goal :=
 Ltac add_snippet s :=
   assert_no_error;
   lazymatch s with
-  | SAssign ?is_decl ?y ?e => assign is_decl y e
-  | SStore ?sz ?addr ?val => store sz addr val
-  | SIf ?e => cond e
-  | SElse => els
-  | SWhile ?cond ?measure0 => while cond measure0
+  | SAssign ?is_decl ?name ?val => eapply (wp_set _ name val) (* TODO validate is_decl *)
+  | SStore ?sz ?addr ?val => eapply (wp_store _ sz addr val)
+  | SIf ?c => eapply (wp_if_bool_dexpr _ c); pose proof mk_temp_if_marker
+  | SElse =>
+      assert_scope_kind ThenBranch;
+      eapply wp_skip;
+      package_context
+  | SWhile ?cond ?measure0 =>
+      eapply (wp_while measure0 cond);
+      [ package_context
+      | eauto with wf_of_type
+      | repeat match goal with
+          | H: sep _ _ ?M |- _ => clear M H
+          end;
+        clear_until_LoopInvariant_marker;
+        cbv beta iota delta [ands];
+        cbn [seps] in *;
+        (* Note: will also appear after loop, where we'll have to clear it,
+           but we have to pose it here because the foralls are shared between
+           loop body and after the loop *)
+        (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
+        intros;
+        fwd;
+        lazymatch goal with
+        | |- exists b, dexpr_bool3 _ _ _ b _ _ _ => eexists
+        | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
+        end ]
   | SStart => start
   | SEnd => close_block
   | SRet ?retnames => ret retnames
   | SEmpty => prettify_goal
   end.
 
-Ltac after_snippet :=
+Ltac lia' := (*purify; TODO needs hypothesis-wise purify*) lia.
+
+Ltac program_logic_step :=
+  lazymatch goal with
+  | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_lazy_and
+  | |- dexpr_bool3 _ _ (expr.lazy_or _ _)        _ _ _ _ => eapply dexpr_lazy_or
+  | |- dexpr_bool3 _ _ (expr.not _)              _ _ _ _ => eapply dexpr_not
+  | |- dexpr_bool3 _ _ (expr.op bopname.eq _ _)  _ _ _ _ => eapply dexpr_eq
+  | |- dexpr_bool3 _ _ (expr.op bopname.ltu _ _) _ _ _ _ => eapply dexpr_ltu
+(*| |- dexpr_bool3 _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)*)
+  | |- dexpr1 _ _ (expr.var _)     _ _ => eapply dexpr1_var; [reflexivity|lia'| ]
+  | |- dexpr1 _ _ (expr.literal _) _ _ => eapply dexpr1_literal; [lia'| ]
+  | |- dexpr1 _ _ (expr.op _ _ _)  _ _ => eapply dexpr1_binop_unf
+  | |- dexpr1 _ _ (expr.load _ _)  _ _ => eapply dexpr1_load
+  | |- bool_expr_branches _ _ _ _ => eapply BoolSpec_expr_branches; [ intro | intro | ]
+  | |- then_branch_marker ?G =>
+      let H := lazymatch goal with H: temp_if_marker |- _ => H end in
+      let n := fresh "Scope0" in
+      pose proof (mk_scope_marker ThenBranch) as n;
+      move n before H;
+      clear H;
+      change G
+  | |- else_branch_marker ?G =>
+      let H := lazymatch goal with H: temp_if_marker |- _ => H end in
+      let n := fresh "Scope0" in
+      pose proof (mk_scope_marker ElseBranch) as n;
+      move n before H;
+      clear H;
+      change G
+  | |- after_if ?fs ?b ?Q1 ?Q2 ?rest ?post =>
+      lazymatch goal with
+      | H: temp_if_marker |- _ => clear H
+      end;
+      tryif is_evar Q1 then idtac (* need to first complete then-branch *)
+      else tryif is_evar Q2 then idtac (* need to first complete else-branch *)
+      else after_if
+  | |- True => constructor
+  | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ => put_into_current_locals
+  | |- iff1 (seps ?LHS) (seps ?RHS) =>
+      first
+        [ constr_eq LHS RHS; exact (iff1_refl _)
+        | cancel_step
+        | cancel_emp_l
+        | cancel_emp_r
+        | lazymatch goal with
+          | |- iff1 (seps (cons ?x nil)) _ => is_evar x
+          | |- iff1 _ (seps (cons ?x nil)) => is_evar x
+          end;
+          cbn [seps];
+          exact (iff1_refl _) ]
+  | H: ?x = ?y |- _ => is_var x; is_var y; subst x
+  | |- wp_cmd _ _ _ _ _ _ =>
+      lazymatch goal with
+      | |- ?G => change (@ready G)
+      end
+  end.
+
+Ltac step := first [ heapletwise_step | program_logic_step ].
+
+(* If t1 solves the first goal, t2 will be run on the second (now first) goal,
+   so t2 can do operations that only became possible because of t1's evar instantiations.
+   Requires `Set Default Goal Selector "all".` *)
+Ltac run2on1stGoal :=
+  ltac2:(t1 t2 |- Control.focus 1 1 (fun _ => (Ltac1.run t1));
+                  Control.focus 1 1 (fun _ => (Ltac1.run t2))).
+
+(*
+Set Default Goal Selector "all".
+
+Ltac t :=
+  lazymatch goal with
+  | |- ?G => idtac G
+  end.
+
+Goal forall (a b: nat), a = b -> a = b /\ b = a /\ (a + b = b + a)%nat.
+Proof.
+  intros. repeat split.
+  run2on1stGoal ltac:(idtac; t; try assumption) ltac:(idtac; t; symmetry).
+*)
+
+Ltac step_is_done :=
+  match goal with
+  | |- @ready _ => idtac
+  | |- after_if _ _ ?Q1 ?Q2 _ _ => is_evar Q1
+  | |- after_if _ _ ?Q1 ?Q2 _ _ => is_evar Q2
+  end.
+
+Ltac run_steps :=
+  tryif step_is_done then idtac
+  else tryif step then run_steps
+  else pose_err Error:("'step' should not fail here").
+
+(* can be overridden with idtac for debugging *)
+Ltac run_steps_hook := run_steps.
+
+(*
+  intros;
   fwd;
   (* leftover from word_simpl_step_in_hyps, TODO where to put? in fwd? *)
   repeat match goal with
          | H: ?x = ?y |- _ => is_var x; is_var y; subst x
          end.
+*)
 
 (* Note: An rhs_var appears in expressions and, in our setting, always has a corresponding
    var (of type word) bound in the current context, whereas an lhs_var may or may not be
@@ -1401,7 +1822,9 @@ Notation "live_expr:( e )" := e
 Notation "( e )" := e (in custom live_expr, e custom live_expr at level 100).
 
 (* Using the same precedences as https://en.cppreference.com/w/c/language/operator_precedence *)
-Notation "! x" := (expr.op bopname.eq x (expr.literal 0))
+Notation "! x" := (expr.not x)
+  (in custom live_expr at level 2, x custom live_expr, right associativity, only parsing).
+Notation "- x" := (expr.op bopname.sub (expr.literal 0) x)
   (in custom live_expr at level 2, x custom live_expr, right associativity, only parsing).
 Infix "*" := (expr.op bopname.mul)
   (in custom live_expr at level 3, left associativity, only parsing).
@@ -1419,13 +1842,13 @@ Infix ">>" := (expr.op bopname.sru)
   (in custom live_expr at level 5, left associativity, only parsing).
 Infix "<" := (expr.op bopname.ltu)
   (in custom live_expr at level 6, no associativity, only parsing).
-Notation "a <= b" := (expr.op bopname.eq (expr.op bopname.ltu b a) (expr.literal 0))
+Notation "a <= b" := (expr.not (expr.op bopname.ltu b a))
   (in custom live_expr at level 6, a custom live_expr, b custom live_expr,
    no associativity, only parsing).
 Notation "a > b" := (expr.op bopname.ltu b a)
   (in custom live_expr at level 6, a custom live_expr, b custom live_expr,
    no associativity, only parsing).
-Notation "a >= b" := (expr.op bopname.eq (expr.op bopname.ltu a b) (expr.literal 0))
+Notation "a >= b" := (expr.not (expr.op bopname.ltu a b))
   (in custom live_expr at level 6, a custom live_expr, b custom live_expr,
    no associativity, only parsing).
 Infix "==" := (expr.op bopname.eq)
@@ -1492,8 +1915,6 @@ Notation "} 'else' {" := SElse (in custom snippet at level 0).
 Notation "'while' ( e ) /* 'decreases' m */ {" :=
   (SWhile e m) (in custom snippet at level 0, e custom live_expr, m constr at level 0).
 
-Tactic Notation "#" constr(s) := add_snippet s; after_snippet.
-
 Set Ltac Backtrace.
 
 (* COQBUG (performance) https://github.com/coq/coq/issues/10743#issuecomment-530673037
@@ -1520,11 +1941,12 @@ Require Import coqutil.Sorting.Permutation.
 
 Import Syntax BinInt String List.ListNotations ZArith.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
+Local Open Scope bool_scope.
 
 Require Import coqutil.Datatypes.ZList.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
 Require Import coqutil.Word.Bitwidth32.
-Open Scope sep_bullets_scope.
+Local Open Scope sep_bullets_scope.
 
 (* Note: If you re-import ZnWords after this, you'll get the old better_lia again *)
 Ltac better_lia ::=
@@ -1532,26 +1954,66 @@ Ltac better_lia ::=
   adhoc_lia_performance_fixes;
   Lia.lia.
 
-Local Set Default Goal Selector "1".
+Local Set Default Goal Selector "all".
 
-Tactic Notation ".*" constr(s) "*" := add_snippet s; after_snippet.
+Tactic Notation ".*" constr(s) "*" :=
+  run2on1stGoal ltac:(idtac; add_snippet s; run_steps_hook) ltac:(idtac; run_steps_hook).
+
+Require Import Ltac2.Ltac2.
+
+Ltac2 add_snippet(s: constr) := ltac1:(s |- add_snippet s) (Ltac1.of_constr s).
+Ltac2 run_steps_hook () := ltac1:(run_steps_hook).
+
+Ltac2 next_snippet(s: unit -> constr) :=
+  match Control.case (fun _ => Control.focus 1 2 (fun _ => ())) with
+  | Val _ => (* there are >= 2 open goals *)
+      Control.focus 1 1 (fun _ => add_snippet (s ()); run_steps_hook ());
+      Control.focus 1 1 run_steps_hook
+  | Err _ => (* at most 1 open goal *)
+      Control.focus 1 1 (fun _ => add_snippet (s ()); run_steps_hook ())
+  end.
+
+Ltac2 Notation ".*" s(thunk(constr)) "*" := next_snippet s.
+
+Ltac2 step () := ltac1:(step).
+
+Ltac2 Notation "step" := step ().
+
+Section LiveVerif.
+
+  Context {word: word.word 32} {mem: map.map word byte}
+    (* TODO concrete locals? *)
+    {locals: map.map string word} {mem_ok: map.ok mem} {locals_ok: map.ok locals}.
 
 Comments C_STARTS_HERE
 /**.
 
+(*
 Definition u_min: {f: list string * list string * cmd &
   forall fs t m a b (R: mem -> Prop),
     R m ->
     0 <= a < 2 ^ 32 ->
     0 <= b < 2 ^ 32 ->
     vc_func fs f t m [|a; b|] (fun t' m' retvs =>
-      t' = t /\ R m' /\
-      (a < b /\ retvs = [|a|] \/
-       b <= a /\ retvs = [|b|])
+      t' = t /\ R m' /\ retvs = [| if a <? b then a else b |]
   )}.                                                                           .**/
 {                                                                          /**. .**/
   uintptr_t r = 0;                                                         /**. .**/
-  if (a < b) {                                                             /**. .**/
+
+  if (! (a < b && b < 10)) {                                                   /**.
+
+  if (a < b && b < 10) {                                                   /**.
+
+  match goal with
+  | |- bool_expr_branches _ _ _ _ =>
+      eapply BoolSpec_expr_branches;
+      [ once (typeclasses eauto)
+      | .. ]
+  end.
+
+
+
+.**/
     r = a;                                                                 /**. .**/
   } else {                                                                 /**. .**/
     r = b;                                                                 /**. .**/
@@ -1560,12 +2022,15 @@ Definition u_min: {f: list string * list string * cmd &
   return r;                                                                /**. .**/
 }                                                                          /**.
 Defined.
+*)
+End LiveVerif.
 
-Close Scope live_scope_prettier.
 Unset Implicit Arguments.
 
 Require Import FunctionalExtensionality.
 Require Import Coq.Logic.PropExtensionality.
+
+Set Default Proof Mode "Classic".
 
 Lemma wltu_wf: well_founded (fun x y: Z => wwrap x < wwrap y).
 Proof.
@@ -1588,93 +2053,20 @@ Section WithNonmaximallyInsertedA.
   Proof. intros. reflexivity. Qed.
 End WithNonmaximallyInsertedA.
 
-(* Type aliases that can inform proof automation as well as humans on intended usage: *)
-Definition uint_t(nbits: Z) := Z.
-Definition array_t(tp: Type)(nElems: Z) := list tp.
-
-Definition nbits_to_nbytes(nbits: Z): Z := (Z.max 0 nbits + 7) / 8.
-
-Definition encode_uint(nbits: Z): Z -> list byte :=
-  LittleEndianList.le_split (Z.to_nat (nbits_to_nbytes nbits)).
-
-Definition sized_uint(nbits: Z)(v: Z): Prop := 0 <= v < 2 ^ nbits.
-
-Lemma encode_uint_length: forall nbits v, len (encode_uint nbits v) = nbits_to_nbytes nbits.
-Proof.
-  unfold encode_uint. intros. rewrite LittleEndianList.length_le_split. simpl.
-  unfold nbits_to_nbytes. Z.to_euclidean_division_equations. lia.
-Qed.
-
-Definition encode_array{T: Type}: (T -> list byte) -> list T -> list byte :=
-  @List.flat_map T byte.
-
-
-Definition MAC := array_t (uint_t 8) 6.
-Definition IPv4 := array_t (uint_t 8) 4.
-
-
 (* ARP responder example *)
 
-Record EthernetPacket{Payload: Type} := mkEthernetPacket {
-  dstMAC: MAC;
-  srcMAC: MAC;
-  etherType: uint_t 16;
-  payload: Payload;
-  (* Note: payload is followed by padding (if too small) and by CRC, but they are at
-     variable positions, so we don't include them here) *)
-}.
-Arguments EthernetPacket: clear implicits.
+Definition MAC := array_t (uint_t 8) 6.
+Global Hint Extern 1 (RepPredicate MAC _) =>
+   exact (array (uint 8) 6) : typeclass_instances.
 
-(* TODO this could be derived using Ltac *)
-Definition encode_EthernetPacket{Payload: Type}
-  (encode_payload: Payload -> list byte)(p: EthernetPacket Payload): list byte :=
-  encode_array (encode_uint 8) (dstMAC p) ++
-  encode_array (encode_uint 8) (srcMAC p) ++
-  encode_uint 16 (etherType p) ++
-  encode_payload (payload p).
-
-(*
-Definition sized_EthernetPacket{Payload: Type}(sized_payload: Payload -> Prop): Prop :=
-  sized_array (sized_scalar access_size.one) 6 (dstMAC p) /\
-  sized_array (sized_scalar access_size.one) 6 (srcMAC p) /\
-  sized_scalar access_size.two (etherType p) /\
-  sized_payload (payload p).
-
-Lemma cast_bytes_to_EthernetPacket:
-  exists (p: EthernetPacket Payload)
-
-Lemma cast_Ethernet_payload:
-  encode_EthernetPacket encode_payload1 p =
-  encode_EthernetPacket encode_payload2
-
-EthernetPacket Payload1
-EthernetPacket Payload2
-
-Lemma cast_EthernetBytes_to_EthernetARP:
-
-
-Definition EthernetPacket_spec{Payload: Type}(Payload_spec: TypeSpec Payload) := TStruct [
-  FField (@dstMAC Payload) TODO (TTuple 6 1 byte_spec);
-  FField (@srcMAC Payload) TODO (TTuple 6 1 byte_spec);
-  FField (@etherType Payload) TODO (TValue access_size.two (@BEBytesToWord 2));
-  FField (@payload Payload) TODO Payload_spec
-].
-
-(* Note: At the moment we want to allow any padding and crc, so we use an isXxx predicate rather
-   than an encodeXxx function *)
-Definition isEthernetPacket{P: Type}(payloadOk: P -> list byte -> Prop)(p: EthernetPacket P)(bs: list byte) :=
-  exists data padding crc,
-    bs = encodeMAC p.(srcMAC) ++ encodeMAC p.(dstMAC) ++ tuple.to_list p.(etherType)
-         ++ data ++ padding ++ encodeCRC crc /\
-    payloadOk p.(payload) data /\
-    46 <= Z.of_nat (List.length (data ++ padding)) <= 1500.
-    (* TODO could/should also verify CRC *)
-*)
+Definition IPv4 := array_t (uint_t 8) 4.
+Global Hint Extern 1 (RepPredicate IPv4 _) =>
+  exact (array (uint 8) 4) : typeclass_instances.
 
 Definition ARPOperationRequest: Z := 1.
 Definition ARPOperationReply: Z := 2.
 
-Record ARPPacket := mkARPPacket {
+Record ARPPacket_t := mkARPPacket {
   htype: uint_t 16; (* hardware type *)
   ptype: uint_t 16; (* protocol type *)
   hlen: uint_t 8;   (* hardware address length (6 for MAC addresses) *)
@@ -1686,129 +2078,256 @@ Record ARPPacket := mkARPPacket {
   tpa: IPv4; (* target protocol address *)
 }.
 
-Ltac encoder tp :=
-  lazymatch tp with
-  | uint_t ?nbits => constr:(encode_uint nbits)
-  | array_t ?E _ => let e := encoder E in constr:(@encode_array E e)
-  | ?alias => let u := eval unfold alias in alias in encoder u
-  end.
+Record EthernetHeader_t := mkEthernetHeader {
+  dstMAC: MAC;
+  srcMAC: MAC;
+  etherType: uint_t 16;
+}.
 
-Ltac more_than_one_hyp :=
+(* TODO move to coqutil *)
+Global Instance Bool_eqb_spec: EqDecider Bool.eqb.
+Proof. intros. destruct x; destruct y; constructor; congruence. Qed.
+
+Global Hint Extern 1 (RepPredicate (uint_t ?nbits) _) =>
+  exact (uint nbits) : typeclass_instances.
+
+Global Hint Extern 1 (RepPredicate (array_t ?T ?n) _) =>
+ exact (@array T _ n _ _) : typeclass_instances.
+
+Ltac create_predicate_rec refine_already_introd :=
   lazymatch goal with
-  | x: _, y: _ |- _ => idtac
+  | |- forall (lastField: ?T), Z -> ?mem -> Prop =>
+      let f := fresh lastField in
+      intro f;
+      refine_already_introd;
+      match constr:(_ : RepPredicate T mem) with
+      | ?p => exact (p f)
+      end
+  | |- forall (name: ?T), _ =>
+      let f := fresh name in
+      intro f;
+      match constr:(_ : RepPredicate T _ (* TODO get mem? *)) with
+      | ?p => create_predicate_rec ltac:(refine_already_introd; refine (sepapp (p f) _))
+      end
   end.
 
-Ltac is_ind_b tp :=
-  match constr:(Set) with
-  | _ => let __ := match constr:(Set) with _ => is_ind tp end in constr:(true)
-  | _ => constr:(false)
+Ltac create_predicate :=
+  match goal with
+  | |- ?G => let t := constr:(ltac:(
+                let p := fresh in intro p; case p; create_predicate_rec idtac) : G) in
+             let t' := eval cbv beta in t in
+             exact t'
   end.
 
-Ltac type_size tp :=
-  lazymatch tp with
-  | uint_t ?nbits => constr:(nbits_to_nbytes nbits)
-  | array_t ?E ?n => let s := type_size E in constr:(Z.mul n s)
-  | _ => lazymatch is_ind_b tp with
-         | true =>
-             let res := open_constr:(_) in
-             let __ := constr:(fun p: tp => ltac:(
-               clear -p; destruct p; [];
-               let s := type_size_from_ctx in
-               unify res s;
-               exact tt)) in
-             res
-         | false => let u := eval unfold tp in tp in type_size u
-         end
+Section WithMem.
+
+  Context {word: word.word 32} {word_ok: word.ok word}.
+  Context {mem: map.map word byte} {mem_ok: map.ok mem}.
+  Context {ext_spec: ExtSpec} {ext_spec_ok: ext_spec.ok ext_spec}.
+
+  Existing Instance locals.
+  Existing Instance locals_ok.
+
+Global Instance ARPPacket: RepPredicate ARPPacket_t mem :=
+  ltac:(create_predicate).
+
+Global Instance EthernetHeader: RepPredicate EthernetHeader_t mem :=
+  ltac:(create_predicate).
+
+(* New Feature TODO:
+   Allow "breakpoints" /**. .**/ anywhere inside expressions,
+   and allow removing /**. .**/ between statements.
+
+eg
+   a + /**. .**/ b
+but also
+   call1(args1); call2(args2)
+*)
+
+(* TODO: min function where both args and res could all be aliased,
+   can we do it with several hyps about mem, or with and1?
+
+Pre: (a @@ pa * Ra /\ b @@ pb * Rb /\ c @@ Rc)
+Body: *pc = min( *pa, *pb )
+Post: (min(a,b) @@ pc * Rc)
+*)
+
+(*
+(* needed if v is of type Z rather than (uint_t ?nbits) *)
+Global Hint Extern 2 (PredicateSize (uint ?nbits ?v) _) =>
+  lazymatch nbits with
+  | 8 => exact (uint_8_PredicateSize v)
+  | 16 => exact (uint_16_PredicateSize v)
+  | 32 => exact (uint_32_PredicateSize v)
+  | 64 => exact (uint_64_PredicateSize v)
+  | _ => exact (uint_width_PredicateSize v)
   end
-with type_size_from_ctx :=
-  lazymatch goal with
-  | x: ?T |- _ =>
-      let __ := match constr:(Set) with _ => clear x end in
-      let sT := type_size T in
-      let sRest := type_size_from_ctx in
-      constr:(sRest + sT)
-  | |- _ => constr:(0)
-  end.
+: typeclass_instances.
 
-Example arp_packet_size_test: ARPPacket -> Z.
-  intro p.
-  destruct p.
-  repeat lazymatch reverse goal with
-         | x: ?T |- _ =>
-             let s := type_size T in
-             tryif more_than_one_hyp then (refine (s + _); clear x) else exact s
-         end.
-Defined.
+(* Needed if a and b are of type (uint_t ?nbits) instead of Z *)
+#[export] Hint Extern 5 (BoolSpec _ _ (?zOp ?a ?b)) =>
+  lazymatch constr:(fun x y: Z => _ : BoolSpec _ _ (zOp x y)) with
+  | (fun _ _ => ?s _ _) => exact (s a b)
+  end
+: typeclass_instances.
+*)
 
-(* Note: clears more than `clear` without arguments clears *)
-Ltac clear_all :=
-  repeat match goal with
-    | x: _ |- _ => clear x
-    end.
-
-Notation sizeof tp :=
-  ltac:(clear_all; let r := type_size tp in let r' := eval cbv in r in exact r')
-  (only parsing).
-
-Goal sizeof ARPPacket = 28. reflexivity. Abort.
-
-Definition encode_ARPPacket(p: ARPPacket): list byte.
-  clear -p.
-  (*refine (let (_, _, _, _, _, _, _, _, _) := p in _). clear p.*)
-  (* refine (match p with mkARPPacket _ _ _ _ _ _ _ _ _ => _ end). clear p. *)
-  destruct p.
-  repeat lazymatch reverse goal with
-         | x: ?T |- _ =>
-             let e := encoder T in
-             tryif more_than_one_hyp then (refine (e x ++ _); clear x) else exact (e x)
-         end.
-Defined.
-
-Goal True.
-  let r := eval unfold encode_ARPPacket in encode_ARPPacket in pose r.
-Abort.
-
-Definition encode_ARPPacket'(p: ARPPacket): list byte :=
-  encode_uint 16 (htype p) ++
-  encode_uint 16 (ptype p) ++
-  encode_uint 8 (hlen p) ++
-  encode_uint 8 (plen p) ++
-  encode_uint 16 (oper p) ++
-  encode_array (encode_uint 8) (sha p) ++
-  encode_array (encode_uint 8) (spa p) ++
-  encode_array (encode_uint 8) (tha p) ++
-  encode_array (encode_uint 8) (tpa p).
-
-Ltac size_check tp v :=
-  lazymatch tp with
-  | uint_t ?nbits => constr:(0 <= v < 2 ^ nbits)
-  | array_t ?E ?n => constr:(len v = n /\ List.Forall (fun (e: E) => ltac:(
-      let r := size_check E e in exact r)) v)
-  | ?alias => let u := eval unfold alias in alias in size_check u v
-  end.
-
-Definition sized_ARPPacket(p: ARPPacket): Prop.
-  clear -p.
-  destruct p.
-  repeat lazymatch reverse goal with
-         | x: ?T |- _ =>
-             let c := size_check T x in
-             tryif more_than_one_hyp then (refine (c /\ _); clear x) else exact c
-         end.
-Defined.
-
-Goal True.
-  let r := eval unfold sized_ARPPacket in sized_ARPPacket in pose r.
-Abort.
-
-Lemma cast_bytes_to_ARPPacket: forall (bs: list byte),
-    len bs = sizeof ARPPacket ->
-    exists (p: ARPPacket), encode_ARPPacket p = bs /\ sized_ARPPacket p.
+(* not a Lemma because this kind of goal will be solved inline by sepcalls canceler *)
+Goal forall (bs: list (uint_t 8)) (R: mem -> Prop) a m (Rest: EthernetHeader_t -> Prop),
+    sep (array (uint 8) 14 bs a) R m ->
+    exists h, sep (EthernetHeader h a) R m /\ Rest h.
 Proof.
   intros.
-  unshelve eexists. 1: constructor; shelve.
-  unfold encode_ARPPacket, sized_ARPPacket.
-  (* --> need to instantiate goals with decoders *)
+  step.
+  eexists (mkEthernetHeader _ _ _).
+  step.
+  unfold EthernetHeader.
+  unfold sepapp.
+
+  (*
+  step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step.
+  { step. }
+
+  undo_step.
+
+  lazymatch type of H with
+  | context[EthernetHeader] => idtac
+  | _ => fail "folding failed"
+  end.
+  *)
+Abort.
+
+Set Default Proof Mode "Ltac2".
+
+(* TODO preserve order of memory hyps *)
+(* TODO always put var m at beginning of then/else branch scope so that it doesn't
+   move later *)
+
+(*
+Definition min3_mem: {f: list string * list string * cmd &
+  forall fs t m a b c old_r pa pb pc pr (R: mem -> Prop),
+    <{ * uint 32 a pa
+       * uint 32 b pb
+       * uint 32 c pc
+       * uint 32 old_r pr
+       * R }> m ->
+    vc_func fs f t m [|pa; pb; pc; pr|] (fun t' m' retvs =>
+      t' = t /\ retvs = nil /\
+      <{ * uint 32 a pa
+         * uint 32 b pb
+         * uint 32 c pc
+         * uint 32 (Z.min a (Z.min b c)) pr
+         * R }> m'
+  )}.                                                                           .**/
+{                                                                          /**. .**/
+  if (load4(pa) <= load4(pb) && load4(pa) <= load4(pc)) {                  /**. .**/
+    store4(pr, load4(pa));                                                 /**. .**/
+  } else {                                                                 /**. .**/
+    if (load4(pb) <= load4(pa) && load4(pb) <= load4(pc)) {                /**. .**/
+      store4(pr, load4(pb));                                               /**. .**/
+    } else {                                                               /**. .**/
+      store4(pr, load4(pc));                                               /**. .**/
+    }                                                                      /**. .**/
+  }                                                                        /**.
+(* TODO: stepify after_if *)
+(* TODO: speed up postcondition proving *)                                      .**/
+}                                                                          /**.
+Defined.
+
+Goal False.
+  ltac1:(let r := eval unfold min3_mem in
+  match min3_mem with
+  | existT _ f _ => f
+  end in pose r).
+Abort.
+
+Definition shortcircuiting_and_or_test: {f: list string * list string * cmd &
+  forall fs t m a n vs (R: mem -> Prop),
+    0 <= n < 2 ^ 32 -> (* TODO can we sneak these into array? *)
+    0 <= a < 2 ^ 32 ->
+    <{ * array (uint 8) n vs a
+       * R }> m ->
+    vc_func fs f t m [|a; n|] (fun t' m' retvs => True)
+  }.                                                                            .**/
+{                                                                          /**. .**/
+  uintptr_t valid = -1;                                                    /**. .**/
+  if (n <= 4 && load4(a) == 1) {                                           /**.
+
+{ (* ltac1:(step).
+
+Close Scope implicit_facts_scope.
+
+*)Abort.
+
+(*
+(* bs: first 4 bytes: operation, the only supported operation is 1 (squaring)
+       next 4 bytes: number to be squared
+   output: square-reply: 2, then the squared number *)
+Definition variable_size_add: {f: list string * list string * cmd &
+  forall fs t m (a n: Z) (bs: list Z) (R: mem -> Prop),
+    0 <= a < 2 ^ 32 ->
+    0 <= n < 2 ^ 32 ->
+    <{ * array_old (value access_size.one) bs a
+       * R }> m ->
+    len bs = n ->
+    vc_func fs f t m [| a; n |] (fun t' m' retvs => True)
+      (* TODO can we infer a reasonable postcondition on-the-go? *)
+  }.
+.**/
+{                                                                        /**.
+
+
+    eapply (wp_if_bool_dexpr _ live_expr:(n == 8 && load4(a) == 1)).
+
+    eval_dexpr_step.
+    eval_dexpr_step.
+    eval_dexpr_step.
+    eval_dexpr_step.
+
+(*
+ .**/
+  if (n == 8 && load4(a) == 1) {                                         /**.
+*)
+Abort.
+
+
+Definition arp: {f: list string * list string * cmd &
+  forall fs t m (a n: Z) (bs: list Z) (R: mem -> Prop),
+    0 <= a < 2 ^ 32 ->
+    0 <= n < 2 ^ 32 ->
+    <{ * bs @@ a : Array (UInt 8) n
+       * R }> m ->
+    vc_func fs f t m [| a; n |] (fun t' m' retvs => True)
+      (* TODO can we infer a reasonable postcondition on-the-go? *)
+  }.
+.**/
+{                                                                        /**. .**/
+  uintptr_t doReply = 0;                                                 /**. .**/
+
+  if (n == 64) {                                                         /**.
+
+rename H1 into Hm.
+eapply (bytearray_to_record (EthernetPacket ARPPacket)) in Hm.
+(* TODO n is bound using =, but doReply is bound using :=, consolidate? *)
+2: subst n; reflexivity.
+destruct Hm as (p & Hm).
+split_off_field a "etherType" Hm.
+split_off_field a "payload" Hm.
+split_off_field (a+14) "htype" Hm.
+(*
+Close Scope sep_bullets_scope. {
+Undelimit Scope sep_scope. {
+*)
+
+(*
+      if ((load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP_LE) &
+          (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE_LE) &
+          (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE_LE) &
+          (load1(ethbuf @ (@payload ARPPacket) @ hlen) == HLEN) &
+          (load1(ethbuf @ (@payload ARPPacket) @ plen) == PLEN) &
+          (load1(ethbuf @ (@payload ARPPacket) @ oper) == OPER_REQUEST)) /*split*/ { /*$.
+*)
 Abort.
 
 #[export] Hint Rewrite List__repeat_0 : fwd_rewrites.
@@ -1838,12 +2357,12 @@ Definition memset: {f: list string * list string * cmd &
     0 <= a < 2 ^ 32 ->
     0 <= b < 2 ^ 8 ->
     0 <= n < 2 ^ 32 ->
-    <{ * array (value access_size.one) bs a
+    <{ * array_old (value access_size.one) bs a
        * R }> m ->
     n = len bs ->
     vc_func fs f t m [| a; b; n |] (fun t' m' retvs =>
       t' = t /\
-      <{ * array (value access_size.one) (List.repeatz b n) a
+      <{ * array_old (value access_size.one) (List.repeatz b n) a
          * R }> m' /\
       retvs = nil)
   }.
@@ -2042,19 +2561,7 @@ word.ok word -> forall a b : word, foo a b = foo b a
 
 Comments !EOF .**/ //.
 
-
-  Fixpoint remove_seq_nat(start: Z)(len: nat)(m: mem): mem :=
-    match len with
-    | O => m
-    | S n => map.remove (remove_seq_nat (wadd start 1) n m) start
-    end.
-
-  Definition remove_seq(start len: Z): mem -> mem := remove_seq_nat start (Z.to_nat len).
-
-  Definition get_seq(start len: Z)(m: mem): list byte :=
-    List.map (fun ofs => get_or_zero (wadd start (Z.of_nat ofs)) m)
-             (List.seq 0 (Z.to_nat len)).
-
-  Definition has_seq(start len: Z)(m: mem): Prop :=
-    List.Foral
 *)
+*)
+*)
+End WithMem.

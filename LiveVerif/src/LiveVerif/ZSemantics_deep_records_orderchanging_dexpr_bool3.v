@@ -8,7 +8,6 @@ Require Import Coq.Program.Tactics.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.autoforward.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require coqutil.Map.SortedListString. (* for function env, other maps are kept abstract *)
 Require Import coqutil.Map.Z_keyed_SortedListMap.
 Require Import coqutil.Tactics.fwd.
@@ -16,20 +15,18 @@ Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.OfOptionListZ.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
-Require Import bedrock2.Map.DisjointUnion.
-Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
+Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.groundcbv.
+Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic.
 Require bedrock2.Loops.
 Require Import Coq.Strings.String.
 Require Import bedrock2.TacticError.
-Require Import bedrock2Examples.LiveVerif.string_to_ident.
+Require Import bedrock2.SepBulletPoints.
+Require Import LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.find_hyp.
-Require Import bedrock2.HeapletwiseHyps.
-Require Import bedrock2.ZWordMem.
-Require Import bedrock2.SepBulletPoints.
 
 (* `vpattern x in H` is like `pattern x in H`, but x must be a variable and is
    used as the binder in the lambda being created *)
@@ -40,64 +37,6 @@ Ltac vpattern_in x H :=
   end.
 Tactic Notation "vpattern" ident(x) "in" ident(H) := vpattern_in x H.
 
-
-Require Import coqutil.Tactics.syntactic_unify.
-
-Ltac fold_in_goal p :=
-  let h := head p in
-  let p' := eval cbv beta iota delta [h] in p in
-  match goal with
-  | |- context C[?x] =>
-    syntactic_unify p' x;
-    let g := context C[p] in
-    change g
-  end.
-
-Ltac fold_in_hyps p :=
-  let h := head p in
-  let p' := eval cbv beta iota delta [h] in p in
-  match goal with
-  | H: context C[?x] |- _ =>
-    syntactic_unify p' x;
-    let g := context C[p] in
-    change g in H
-  end.
-
-
-(* Given an equality proof of type (LHS = RHS), and a hypothesis H containing
-   a subterm of the form (marker LHS), replace (marker LHS) by markedRHS,
-   without adding any occurrence of marker into the proof term (we want to
-   keep proof terms marker-free).
-   (marker LHS) must be convertible to LHS, and RHS must be convertible to markedRHS. *)
-Ltac rewrite_in_hyp_at_marker E H marker markedRHS :=
-  lazymatch type of E with
-  | @eq ?T ?LHS ?RHS =>
-      lazymatch type of H with
-      | context C[marker LHS] =>
-          eapply (rewr.rew_zoom_fw E
-                    (fun x: T => ltac:(let r := context C[x] in exact r))) in H;
-          let u := context C[markedRHS] in change u in H
-      end
-  end.
-(*
-Ltac rewrite_in_hyp_at_marker E H marker :=
-  lazymatch type of E with
-  | ?LHS = ?RHS =>
-      lazymatch eval pattern (marker LHS) in H with
-      | ?F (marker LHS) =>
-          eapply (rewr.rew_zoom_fw E F) in H;
-          let t := beta1 F (marker RHS) in
-          change t in H
-      end
-  end.
-*)
-
-(* like `change t with u in H`, but fails if t not found, and only replaces
-   the first occurrence of t *)
-Ltac change1_in_hyp t u H :=
-  lazymatch type of H with
-  | context C[t] => let a := context C[u] in change a in H
-  end.
 
 Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
 
@@ -115,6 +54,12 @@ Proof. cbn. auto. Qed.
 Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
 | mk_get_option: forall (a: A) (post: A -> Prop), post a -> get_option (Some a) post.
 
+#[export] Instance mem: map.map Z byte := Zkeyed_map byte.
+#[export] Instance mem_ok: map.ok mem := Zkeyed_map_ok byte.
+
+#[export] Instance locals: map.map string Z := SortedListString.map Z.
+#[export] Instance locals_ok: map.ok locals := SortedListString.ok Z.
+
 #[export] Instance env: map.map String.string
                           (list String.string * list String.string * Syntax.cmd) :=
     SortedListString.map _.
@@ -123,44 +68,16 @@ Inductive get_option{A: Type}: option A -> (A -> Prop) -> Prop :=
 Require Import coqutil.Datatypes.PropSet.
 
 Module map.
-  Section WithTwoMaps.
-    Context {K V1 V2: Type}{M1: map.map K V1}{M2: map.map K V2}
-            {keqb: K -> K -> bool} {keqb_spec: EqDecider keqb}
-            {OK1: map.ok M1} {OK2: map.ok M2}.
+  Section WithMap.
+    Context {key value} {map : map.map key value}.
 
-    Lemma get_map_values: forall (f: V1 -> V2) x (m: M1),
-        map.get (map.map_values f m) x = match map.get m x with
-                                         | Some w => Some (f w)
-                                         | None => None
-                                         end.
-    Proof.
-      unfold map.map_values. intros *.
-      eapply map.fold_spec.
-      - rewrite 2map.get_empty. reflexivity.
-      - intros. rewrite 2map.get_put_dec. destr (keqb k x). 1: reflexivity. assumption.
-    Qed.
+    Definition domain(m: map): set key :=
+      fun k => map.get m k <> None.
 
-    Lemma map_values_put: forall (f: V1 -> V2) x (m: M1) v,
-        map.map_values f (map.put m x v) = map.put (map.map_values f m) x (f v).
-    Proof.
-      intros. eapply map.map_ext. intros. rewrite get_map_values.
-      rewrite 2map.get_put_dec. destr (keqb x k). 1: reflexivity.
-      symmetry. apply get_map_values.
-    Qed.
-
-  End WithTwoMaps.
+    Context {ok : map.ok map}.
+    Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
+  End WithMap.
 End map.
-
-Module Z.
-  Lemma min_to_ltb_dec: forall a b, Z.min a b = if Z.ltb a b then a else b.
-  Proof. intros. destruct_one_match; lia. Qed.
-  Lemma min_to_leb_dec: forall a b, Z.min a b = if Z.leb a b then a else b.
-  Proof. intros. destruct_one_match; lia. Qed.
-  Lemma max_to_ltb_dec: forall a b, Z.max a b = if Z.ltb a b then b else a.
-  Proof. intros. destruct_one_match; lia. Qed.
-  Lemma max_to_leb_dec: forall a b, Z.max a b = if Z.leb a b then b else a.
-  Proof. intros. destruct_one_match; lia. Qed.
-End Z.
 
 Module List.
   Section WithA.
@@ -179,8 +96,6 @@ Module List.
   | Forall3_cons: forall (x : A) (y : B) (z: C) lA lB lC,
       R x y z -> Forall3 R lA lB lC -> Forall3 R (x :: lA) (y :: lB) (z :: lC).
 
-  Definition seqz(start len: Z): list Z :=
-    List.map Z.of_nat (List.seq (Z.to_nat start) (Z.to_nat len)).
 End List.
 
 Definition nbits_to_nbytes(nbits: Z): Z := (Z.max 0 nbits + 7) / 8.
@@ -188,33 +103,8 @@ Definition nbits_to_nbytes(nbits: Z): Z := (Z.max 0 nbits + 7) / 8.
 Lemma nbits_to_nbytes_nonneg: forall nbits, 0 <= nbits_to_nbytes nbits.
 Proof. intros. unfold nbits_to_nbytes. Z.to_euclidean_division_equations. lia. Qed.
 
-Import ZList.
-Import ZList.List.ZIndexNotations.
-Local Open Scope zlist_scope.
-
-(* Type aliases that can inform proof automation, typeclass search,
-   as well as humans on intended usage: *)
-Definition uint_t(nbits: Z) := Z.
-Definition array_t(tp: Type)(nElems: Z) := list tp.
-
-Global Hint Opaque uint_t array_t : typeclass_instances.
-
-Definition RepPredicate(T mem: Type) := T -> Z -> mem -> Prop.
-Existing Class RepPredicate.
-
-(* Concrete instances because we want to compute on them.
-   Note, though that the wp judgments still use word maps to guarantee the bounds,
-   and ZLocals is only used to keep track of the Zs representing the words in the locals. *)
-#[export] Instance ZLocals: map.map string Z := SortedListString.map Z.
-#[export] Instance ZLocals_ok: map.ok ZLocals := SortedListString.ok _.
-
 Section WithParams.
-  Context {width: Z} {word: word.word width} {word_ok: word.ok word}
-    {mem: map.map word byte} {mem_ok: map.ok mem}.
-
-  (* concrete instances because we want to compute on them *)
-  Instance locals: map.map string word := SortedListString.map word.
-  Instance locals_ok: map.ok locals := SortedListString.ok _.
+  Context {width: Z}.
 
   Definition wwrap{BW: Bitwidth width}(z: Z): Z := z mod 2 ^ width.
   Definition wswrap{BW: Bitwidth width}(z: Z): Z := (z + 2 ^ (width - 1)) - 2 ^ (width - 1).
@@ -253,6 +143,89 @@ Section WithParams.
       0 <= c < 2 ^ width.
   Proof. intros. destruct width_cases; subst width; lia. Qed.
 
+  (* Memory: *)
+
+  Lemma sep_assoc_eq: forall (p q r: mem -> Prop),
+      sep (sep p q) r = sep p (sep q r).
+  Proof.
+    intros. eapply iff1ToEq. eapply sep_assoc.
+  Qed.
+
+  Definition addr_seq(start len: Z): list Z :=
+    List.map (fun ofs => wadd start (Z.of_nat ofs)) (List.seq 0 (Z.to_nat len)).
+
+  Definition remove_seq(start len: Z)(m: mem): mem :=
+    List.fold_right (fun addr acc => map.remove acc addr) m (addr_seq start len).
+
+  Definition get_or_zero(m: mem)(addr: Z): byte :=
+    match map.get m addr with
+    | Some b => b
+    | None => Byte.x00
+    end.
+
+  Definition get_seq(start len: Z)(m: mem): list byte :=
+    List.map (get_or_zero m) (addr_seq start len).
+
+  Definition littleendian(nbits v addr: Z)(m: mem): Prop :=
+    LittleEndianList.le_combine (get_seq addr (nbits_to_nbytes nbits) m) = v /\
+    map.domain m = of_list (addr_seq addr (nbits_to_nbytes nbits)).
+
+  Definition value(sz: access_size): Z -> Z -> mem -> Prop :=
+    littleendian (access_len sz).
+
+  Definition PredicateSize{T: Type}(predicate: T -> Z -> mem -> Prop) := Z.
+  Existing Class PredicateSize.
+
+  Global Instance value_PredicateSize(sz: access_size): PredicateSize (value sz) :=
+    access_len sz.
+
+  Definition array_old{T: Type}(elem: T -> Z -> mem -> Prop){size: PredicateSize elem}:
+    list T -> Z -> mem -> Prop :=
+    fix rec xs start :=
+      match xs with
+      | nil => emp True
+      | cons h tl => sep (elem h start) (rec tl (wadd start size))
+      end.
+
+  Import ZList.
+  Import ZList.List.ZIndexNotations.
+
+  (* or what if no constraints on lengths, and all lengths are inferred from
+     length facts in context?
+
+     -> how to cast byte list into encode_X ?
+
+-> valid_sizes
+
+  (* Each encoder needs to have a value-independent (but potentially
+     parameter-dependent) length.
+     For example, the length of encode_scalar can depend on sz (parameter),
+     but not on v (value). *)
+  Class encode_length{T: Type}(encoder: T -> list byte)(l: Z): Prop := {
+      encode_length_proof: forall v, len (encoder v) = l
+    }.
+
+  Definition encode_scalar(sz: access_size): Z -> list byte :=
+    LittleEndianList.le_split (Z.to_nat (access_len sz)).
+
+  Instance encode_scalar_length sz: encode_length (encode_scalar sz) (access_len sz).
+  Proof.
+    constructor.
+    destruct sz; intros; try reflexivity.
+    unfold encode_scalar. rewrite LittleEndianList.length_le_split. simpl.
+    unfold bytes_per_word. destruct width_cases; subst width; reflexivity.
+  Qed.
+
+  Definition encode_array{T: Type}: (T -> list byte) -> list T -> list byte :=
+    @List.flat_map T byte.
+    List.concat
+
+  Definition enforce_length(l: Z)(vs: list byte): list byte :=
+  Definition encode_array{T: Type}: (T -> list byte) -> list T -> list byte :=
+    @List.flat_map T byte.
+    List.concat
+*)
+
   Definition interp_binop(bop : bopname): Z -> Z -> Z :=
     match bop with
     | bopname.add => wadd
@@ -274,46 +247,32 @@ Section WithParams.
 
   Import bedrock2.Syntax.
 
-  Definition unsigned_locals: locals -> ZLocals := map.map_values word.unsigned.
-
-  Inductive dexpr(m: mem)(l: locals)(e: expr)(v: Z): Prop :=
-    mk_dexpr(w: word)(_: WeakestPrecondition.dexpr m l e w)(_: word.unsigned w = v).
+  Axiom dexpr: mem -> locals -> expr -> Z -> Prop.
 
   (* TODO later also add dexpr_signed, whose range is -2^(width-1)..2^(width-1),
-     (so we'll have 3 interpreters: to unsigned, to signed, and to bool,
+     (so we'll have 3 interpreters: to unsigned, to signed, and to Prop,
      and each operator decides which one to invoke for its arguments *)
 
-  Lemma dexpr_range: forall m l e v, dexpr m l e v -> 0 <= v < 2 ^ width.
-  Proof. intros. inversion H. subst v. eapply word.unsigned_range. Qed.
+  Axiom dexpr_range: forall m l e v, dexpr m l e v -> 0 <= v < 2 ^ width.
 
   Lemma dexpr_literal: forall (m: mem) (l: locals) z,
       0 <= z < 2 ^ width ->
       dexpr m l (expr.literal z) z.
-  Proof.
-    intros. econstructor. 1: reflexivity. apply word.unsigned_of_Z_nowrap. assumption.
-  Qed.
+  Admitted.
 
-  Lemma dexpr_var: forall m (l: locals) (zl: ZLocals) x (v: Z),
-      unsigned_locals l = zl ->
-      map.get zl x = Some v ->
+  Lemma dexpr_var: forall m l x (v: Z),
+      map.get l x = Some v ->
+      0 <= v < 2 ^ width ->
       dexpr m l (expr.var x) v.
   Proof.
-    unfold unsigned_locals. intros. subst zl. rewrite map.get_map_values in H0. fwd.
-    econstructor. 1: hnf; eauto. reflexivity.
-  Qed.
+  Admitted.
 
   (* Note: no conversion needed between v in sepclause and v returned,
      and sep already enforces bounds on v *)
   Lemma dexpr_load: forall m l e addr sz v R,
       dexpr m l e addr ->
-      sep (uint match sz with
-                | access_size.one => 8
-                | access_size.two => 16
-                | access_size.four => 32
-                | access_size.word => width
-                end v addr) R m ->
+      sep (value sz v addr) R m ->
       dexpr m l (expr.load sz e) v.
-  Proof.
   Admitted.
 
   (* TODO later: dexpr_inlinetable *)
@@ -347,22 +306,17 @@ Section WithParams.
     intros. constructor. 2: assumption. eapply dexpr_literal. assumption.
   Qed.
 
-  Lemma dexpr1_var: forall m (l: locals) (zl: ZLocals) x v (P: Prop),
-      unsigned_locals l = zl ->
-      map.get zl x = Some v ->
+  Lemma dexpr1_var: forall m l x (v: Z) (P: Prop),
+      map.get l x = Some v ->
+      0 <= v < 2 ^ width ->
       P ->
       dexpr1 m l (expr.var x) v P.
   Proof.
-    intros. constructor. 2: assumption. eapply dexpr_var; eassumption.
+    intros. constructor. 2: assumption. eapply dexpr_var; assumption.
   Qed.
 
   Lemma dexpr1_load: forall m l e addr sz v (R: mem -> Prop) (P: Prop),
-      dexpr1 m l e addr (sep (uint match sz with
-                                   | access_size.one => 8
-                                   | access_size.two => 16
-                                   | access_size.four => 32
-                                   | access_size.word => width
-                                   end v addr) R m /\ P) ->
+      dexpr1 m l e addr (sep (value sz v addr) R m /\ P) ->
       dexpr1 m l (expr.load sz e) v P.
   Proof.
     intros. inversion H. clear H. fwd. constructor. 2: assumption.
@@ -405,23 +359,20 @@ Section WithParams.
       Palways ->
       dexpr_bool3 m l e c Ptrue Pfalse Palways.
 
-  Lemma dexpr_not: forall m l e b (Pt Pf Pa: Prop),
-      dexpr_bool3 m l e b
-        True True (* <-- can't use these because that would flip proving order *)
-        (bool_expr_branches (negb b) Pt Pf Pa) ->
+  Lemma dexpr_not: forall m l e b Pt Pf Pa,
+      dexpr_bool3 m l e b Pf Pt Pa -> (* <- wrong execution order (else before then) *)
       dexpr_bool3 m l (expr.not e) (negb b) Pt Pf Pa.
   Proof.
     intros. inversion H. clear H. subst.
-    rewrite Bool.negb_involutive in *. unfold bool_expr_branches in *. fwd.
     econstructor.
     - eapply dexpr_binop. 1: eassumption.
       eapply dexpr_literal.
-      destruct width_cases as [E | E]; rewrite E in *; better_lia.
+      destruct width_cases; subst width; better_lia.
     - cbn. unfold weq, wwrap.
       pose proof (dexpr_range _ _ _ _ H0). rewrite Z.mod_small by assumption.
-      rewrite Z.mod_small by (destruct width_cases as [E | E]; rewrite E in *; better_lia).
+      rewrite Z.mod_small by (destruct width_cases; subst width; try better_lia).
       destruct_one_match; reflexivity.
-    - destr (Z.eqb v 0); eauto.
+    - destr (Z.eqb v 0); assumption.
     - assumption.
   Qed.
 
@@ -454,11 +405,12 @@ Section WithParams.
       { assumption. }
   Qed.
 
-  Lemma dexpr_lazy_or: forall m l e1 e2 (b1 b2: bool) (Pt Pf Pa: Prop),
+  Lemma dexpr_lazy_or: forall m l e1 e2 (b1 b2: bool) (Pt Pf Pa: Prop) (Bt Bf: Prop),
       dexpr_bool3 m l e1 b1
         True
-        (dexpr_bool3 m l e2 b2 True True True)
-        (bool_expr_branches (orb b1 b2) Pt Pf Pa) ->
+        (dexpr_bool3 m l e2 b2 True Pf True)
+        (bool_expr_branches (orb b1 b2) Pt True Pa) ->
+      (* wrong execution order: Pf, Pt, Pa, ie else-branch comes before then-branch ?? *)
       dexpr_bool3 m l (expr.lazy_or e1 e2) (orb b1 b2) Pt Pf Pa.
   Proof.
     intros.
@@ -466,21 +418,35 @@ Section WithParams.
     destruct (Z.eqb v 0) eqn: E.
     - cbn in *.
       inversion H2. subst. clear H2 H4.
-      econstructor. 1: eapply dexpr_ite. 1: eassumption. 1: rewrite E.
+      econstructor; [eapply dexpr_ite; [eassumption | rewrite E ] | auto ..].
+(*
+      { destr (Z.eqb v0 0); cbn in *.
       1: eapply dexpr_binop. 1: eapply dexpr_literal. 1: eapply const_in_bounds; reflexivity.
       1: eassumption.
-      1: cbn.
-      2: destruct (Z.eqb v0 0); cbn; auto. 2: assumption.
-      unfold wltu, wwrap. rewrite Zmod_0_l.
-      eapply dexpr_range in H.
+      cbn.
+
+      1: eapply dexpr_binop. 1: eapply dexpr_literal. 1: eapply const_in_bounds.
+      2: eassumption. 1: reflexivity. cbn.
+      cbn. unfold wltu, wwrap. rewrite Zmod_0_l.
+      eapply dexpr_range in H1.
+      rewrite Z.mod_small by eassumption.
+      destruct_one_match; lia.
+    - cbn in *. subst.
+      inversion H2. subst. clear H2 H5.
+      econstructor; [eapply dexpr_ite; [eassumption | rewrite E ] | auto ..].
+      1: eapply dexpr_binop. 1: eapply dexpr_literal. 1: eapply const_in_bounds; reflexivity.
+      1: eassumption.
+      cbn.
+      cbn. unfold wltu, wwrap. rewrite Zmod_0_l.
+      eapply dexpr_range in H1.
       rewrite Z.mod_small by eassumption.
       destruct_one_match; lia.
     - cbn in *.
-      econstructor. 3,4: eassumption.
-      1: eapply dexpr_ite. 1: eassumption. 1: rewrite E.
-      1: eapply dexpr_literal. 1: eapply const_in_bounds; reflexivity.
-      reflexivity.
+      econstructor; [eapply dexpr_ite; [eassumption | rewrite E ] | auto ..].
+      1: eapply dexpr_literal. 1: eapply const_in_bounds. all: reflexivity.
   Qed.
+*)
+  Abort.
 
   Lemma dexpr_ltu_old: forall m l e1 e2 v1 v2 (Pt Pf Pa: Prop),
       dexpr m l e1 v1 ->
@@ -562,7 +528,8 @@ Section WithParams.
     - assumption.
   Qed.
 
-  Lemma BoolSpec_expr_branches{Bt Bf: Prop}{b: bool}{H: BoolSpec Bt Bf b}(Pt Pf Pa: Prop):
+  Lemma BoolSpec_expr_branches: forall (b: bool) (Pt Pf Pa: Prop) (Bt Bf: Prop),
+      BoolSpec Bt Bf b ->
       (Bt -> Pt) ->
       (Bf -> Pf) ->
       Pa ->
@@ -571,78 +538,42 @@ Section WithParams.
     intros. unfold bool_expr_branches. destruct H; auto.
   Qed.
 
-  Context {ext_spec: ExtSpec} {ext_spec_ok: ext_spec.ok ext_spec}.
+  Definition trace := list (mem * string * list Z * (mem * list Z)).
 
-  Inductive wp_cmd(fs: list (string * (list string * list string * cmd)))
-    (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop): Prop :=
-    mk_wp_cmd(_: WeakestPrecondition.cmd (WeakestPrecondition.call fs) c t m l post).
+  Definition wp_cmd(fs: list (string * (list string * list string * cmd)))
+    (c: cmd)(t: trace)(m: mem)(l: locals)(post: trace -> mem -> locals -> Prop): Prop.
+  Admitted.
 
   Lemma weaken_wp_cmd: forall fs c t m l (post1 post2: _->_->_->Prop),
       wp_cmd fs c t m l post1 ->
       (forall t m l, post1 t m l -> post2 t m l) ->
       wp_cmd fs c t m l post2.
-  Proof.
-    intros. inversion H.
-    constructor. eapply WeakestPreconditionProperties.Proper_cmd.
-    3: eassumption. 2: assumption. eapply WeakestPreconditionProperties.Proper_call.
-  Qed.
+  Admitted.
 
   Lemma wp_set0: forall fs x e v t m l rest post,
       dexpr m l e v ->
-      wp_cmd fs rest t m (map.put l x (word.of_Z v)) post ->
+      wp_cmd fs rest t m (map.put l x v) post ->
       wp_cmd fs (cmd.seq (cmd.set x e) rest) t m l post.
-  Proof.
-    intros. inversion H. inversion H0. econstructor.
-    cbn -[map.put]. eexists. split. 1: eassumption. unfold dlet.dlet. subst v.
-    rewrite word.of_Z_unsigned in H3. (* <- in Coq 8.16, "in *" works too, but not in 8.15 *)
-    assumption.
-  Qed.
+  Admitted.
 
   Lemma wp_store0: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr m l ea a ->
       dexpr m l ev v ->
-      sep (uint match sz with
-                | access_size.one => 8
-                | access_size.two => 16
-                | access_size.four => 32
-                | access_size.word => width
-                end v_old a) R m ->
-      (forall m', sep (uint match sz with
-                       | access_size.one => 8
-                       | access_size.two => 16
-                       | access_size.four => 32
-                       | access_size.word => width
-                       end v a) R m' -> wp_cmd fs rest t m' l post) ->
+      sep (value sz v_old a) R m ->
+      (forall m', sep (value sz v a) R m' -> wp_cmd fs rest t m' l post) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Admitted.
 
-  Lemma wp_set: forall fs x e v t m l zl rest post,
-      unsigned_locals l = zl ->
-      dexpr1 m l e v (forall l', unsigned_locals l' = map.put zl x v ->
-                                 wp_cmd fs rest t m l' post) ->
+  Lemma wp_set: forall fs x e v t m l rest post,
+      dexpr1 m l e v (wp_cmd fs rest t m (map.put l x v) post) ->
       wp_cmd fs (cmd.seq (cmd.set x e) rest) t m l post.
-  Proof.
-    intros. inversion H0. eapply wp_set0. 1: eassumption.
-    eapply Hp. subst zl. unfold unsigned_locals.
-
   Admitted.
 
   Lemma wp_store: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
         (dexpr1 m l ev v
-           (sep (uint match sz with
-                      | access_size.one => 8
-                      | access_size.two => 16
-                      | access_size.four => 32
-                      | access_size.word => width
-                      end v_old a) R m /\
-                (forall m,
-                    sep (uint match sz with
-                              | access_size.one => 8
-                              | access_size.two => 16
-                              | access_size.four => 32
-                              | access_size.word => width
-                              end v a) R m -> wp_cmd fs rest t m l post))) ->
+           (sep (value sz v_old a) R m /\
+              (forall m', sep (value sz v a) R m' -> wp_cmd fs rest t m' l post))) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Admitted.
 
@@ -656,24 +587,40 @@ Section WithParams.
       wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t m l post.
   Admitted.
 
-  Definition then_branch_marker(P: Prop) := P.
-  Definition else_branch_marker(P: Prop) := P.
-  Definition after_if fs (b: bool) (Q1 Q2: trace -> mem -> locals -> Prop) rest post :=
-    forall t m l,
-      (if b then Q1 t m l else Q2 t m l) ->
-      wp_cmd fs rest t m l post.
+  Definition sorted_varnames(l: locals): list string :=
+    match l with
+    | SortedList.Build_rep tuples pf => List.map fst tuples
+    end.
+
+  Lemma wp_if: forall fs c l thn els rest b Q1 Q2 t m post,
+      dexpr m l c b ->
+      (b <> 0 -> wp_cmd fs thn t m l (fun t' m' l' =>
+                   sorted_varnames l' = sorted_varnames l /\ Q1 t' m' l')) ->
+      (b =  0 -> wp_cmd fs els t m l (fun t' m' l' =>
+                   sorted_varnames l' = sorted_varnames l /\ Q2 t' m' l')) ->
+      (forall t' m' l', sorted_varnames l' = sorted_varnames l ->
+                        (b <> 0 /\ Q1 t' m' l' \/
+                         b =  0 /\ Q2 t' m' l') ->
+                        wp_cmd fs rest  t' m' l' post) ->
+      wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t m l post.
+  Proof.
+    intros. eapply wp_if0. 1: exact H. all: clear H; eauto.
+    cbv beta in *.
+    intros * [? | ?]; fwd; eapply H2; eauto.
+  Qed.
 
   Lemma wp_if_bool_dexpr: forall fs c thn els rest t0 m0 l0 b Q1 Q2 post,
       dexpr_bool3 m0 l0 c b
-        (then_branch_marker (wp_cmd fs thn t0 m0 l0 Q1))
-        (else_branch_marker (wp_cmd fs els t0 m0 l0 Q2))
-        (after_if fs b Q1 Q2 rest post) ->
+        (wp_cmd fs thn t0 m0 l0 Q1)
+        (wp_cmd fs els t0 m0 l0 Q2)
+        (forall t m l,
+            (if b then Q1 t m l else Q2 t m l) ->
+            wp_cmd fs rest t m l post) ->
       wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t0 m0 l0 post.
   Proof.
     intros. inversion H. subst. clear H.
-    unfold then_branch_marker, else_branch_marker, after_if in *.
     destr (Z.eqb v 0);
-      (eapply wp_if0; [eassumption |intro C; try congruence; cbn in *; eauto ..]).
+      (eapply wp_if0; [eassumption|intro C; try congruence; cbn in *; eauto ..]).
     all: intros * [(? & ?) | (? & ?)]; try (exfalso; congruence); eauto.
     Unshelve. all: try assumption.
   Qed.
@@ -693,115 +640,72 @@ Section WithParams.
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t m l post.
   Admitted.
 
+  (* The postcondition of the callee's spec will have a concrete shape that differs
+     from the postcondition that we pass to `call`, so when using this lemma, we have
+     to apply weakening for `call`, which generates two subgoals:
+     1) call f t m argvals ?mid
+     2) forall t' m' resvals, ?mid t' m' resvals -> the post of `call`
+     To solve 1), we will apply the callee's spec, but that means that if we make
+     changes to the context while solving the preconditions of the callee's spec,
+     these changes will not be visible in subgoal 2
+  Lemma wp_call: forall fs binds f argexprs rest t m l post,
+      wp_exprs m l argexprs (fun argvals =>
+        call fs f t m argvals (fun t' m' resvals =>
+          get_option (map.putmany_of_list_zip binds resvals l) (fun l' =>
+            wp_cmd fs rest t' m' l' post))) ->
+      wp_cmd fs (cmd.seq (cmd.call binds f argexprs) rest) t m l post.
+  Proof.
+  Admitted.
+
+     It's not clear whether a change to wp_call can fix this.
+     Right now, specs look like this:
+
+  Instance spec_of_foo : spec_of "foo" := fun functions =>
+    forall t m argvals ghosts,
+      NonmemHyps ->
+      (sepclause1 * ... * sepclauseN) m ->
+      WeakestPrecondition.call functions "foo" t m argvals
+        (fun t' m' rets => calleePost).
+
+  If I want to use spec_of_foo, I'll have a WeakestPrecondition.call goal with callerPost, and to
+  reconcile the callerPost with calleePost, I have to apply weakening/Proper for
+  WeakestPrecondition.call, which results in two sugoals:
+
+  1) WeakestPrecondition.call "foo" t m argvals ?mid
+  2) forall t' m' resvals, ?mid t' m' resvals -> callerPost
+
+  On 1), I will apply foo_ok (which proves spec_of_foo), so all hyps in spec_of_foo are proven
+  in a subgoal separate from subgoal 2), so changes made to the context won't be visible in
+  subgoal 2).
+
+  Easiest to use would be this one:
+
+  Instance spec_of_foo' : spec_of "foo" := fun functions =>
+    forall t m argvals ghosts callerPost,
+      seps [sepclause1; ...; sepclauseN; emp P1; ... emp PN;
+         emp (forall t' m' retvals,
+                  calleePost t' m' retvals ->
+                  callerPost t' m' retvals)] m ->
+      WeakestPrecondition.call functions "foo" t m argvals callerPost.
+
+  because it has weakening built in and creates only one subgoal, so all context modifications
+  remain visible.
+  And using some notations, this form might even become ergonomic. *)
+
   Lemma wp_skip: forall fs t m l (post: trace -> mem -> locals -> Prop),
       post t m l ->
       wp_cmd fs cmd.skip t m l post.
   Admitted.
 
-  Inductive wp_call(fs: list (string * (list string * list string * cmd)))
-    (fname: string)(t: trace)(m: mem)(args: list Z)(post: trace -> mem -> list Z -> Prop)
-    : Prop :=
-    mk_wp_call(argsw: list word)(_: List.map word.unsigned argsw = args)
-              (_: WeakestPrecondition.call fs fname t m argsw
-                    (fun t' m' retsw =>
-                       post t' m' (List.map word.unsigned retsw))).
-
   Definition vc_func fs '(innames, outnames, body) (t: trace) (m: mem) (argvs: list Z)
-                     (post : trace -> mem -> list Z -> Prop): Prop :=
-    exists l, map.of_list_zip innames argvs = Some (unsigned_locals l) /\
+                     (post : trace -> mem -> list Z -> Prop) :=
+    exists l, map.of_list_zip innames argvs = Some l /\
       wp_cmd fs body t m l (fun t' m' l' =>
-        exists retvs, map.getmany_of_list (unsigned_locals l') outnames = Some retvs /\
-                        post t' m' retvs).
-
-  Lemma sep_call: forall funs f t m args
-      (calleePre: Prop)
-      (calleePost callerPost: trace -> mem -> list Z -> Prop),
-      (* definition-site format: *)
-      (calleePre -> wp_call funs f t m args calleePost) ->
-      (* use-site format: *)
-      (calleePre /\ forall t' m' rets, calleePost t' m' rets -> callerPost t' m' rets) ->
-      (* conclusion: *)
-      wp_call funs f t m args callerPost.
-  Proof.
-    intros. destruct H0. specialize (H H0). inversion H. econstructor.
-    1: eassumption.
-    eapply WeakestPreconditionProperties.Proper_call. 2: eassumption.
-    unfold Morphisms.pointwise_relation, Morphisms.pointwise_relation, Basics.impl.
-    intros t' m' l'. eapply H1.
-  Qed.
+        exists retvs, map.getmany_of_list l' outnames = Some retvs /\ post t' m' retvs).
 
   Definition arguments_marker(args: list Z): list Z := args.
 
 End WithParams.
-
-Section RearrangeSepapp.
-Context {width: Z} {word: word.word width} {word_ok: word.ok word}
-        {mem: map.map word byte} {mem_ok: map.ok mem}.
-
-Inductive sized_predicate: Type :=
-| mk_sized_predicate(p: Z -> mem -> Prop)(sz: PredicateSize p).
-
-Definition sized_emp := mk_sized_predicate (pure_at True) 0.
-
-Definition sepapp_sized_predicates(sp1 sp2: sized_predicate): sized_predicate :=
-  match sp1, sp2 with
-  | mk_sized_predicate p1 sz1, mk_sized_predicate p2 sz2 =>
-      mk_sized_predicate (@sepapp _ _ mem p1 p2 sz1) (sz1 + sz2)
-  end.
-
-Definition proj_sized_predicate(sp: sized_predicate): Z -> mem -> Prop :=
-  match sp with
-  | mk_sized_predicate p _ => p
-  end.
-
-Definition sepapps(l: list sized_predicate): Z -> mem -> Prop :=
-  proj_sized_predicate (List.fold_left sepapp_sized_predicates l sized_emp).
-
-Definition interp_sepapp_tree(t: Tree.Tree sized_predicate): Z -> mem -> Prop :=
-  proj_sized_predicate (Tree.interp id sepapp_sized_predicates t).
-
-Lemma flatten_eq_interp_sepapp_tree_aux(t : Tree.Tree sized_predicate):
-  forall sp0: sized_predicate,
-    match List.fold_left sepapp_sized_predicates (Tree.flatten t) sp0,
-          sepapp_sized_predicates sp0 (Tree.interp id sepapp_sized_predicates t) with
-    | mk_sized_predicate p1 sz1, mk_sized_predicate p2 sz2 =>
-        p1 = p2 /\ sz1 = sz2
-    end.
-Proof.
-  induction t; intros.
-  - simpl. destruct sp0. destruct a. simpl. auto.
-  - simpl. change @app with @List.app.
-    rewrite List.fold_left_app.
-    specialize (IHt1 sp0).
-    specialize (IHt2 (List.fold_left sepapp_sized_predicates (Tree.flatten t1) sp0)).
-    destruct_one_match.
-    destr sp0.
-    destr (List.fold_left sepapp_sized_predicates (Tree.flatten t1)
-             (mk_sized_predicate p0 sz0)).
-    destr (Tree.interp id sepapp_sized_predicates t1).
-    destr (Tree.interp id sepapp_sized_predicates t2).
-    simpl in *.
-    fwd. subst. rewrite <- sepapp_assoc. rewrite Z.add_assoc. split; reflexivity.
-Qed.
-
-Lemma flatten_eq_interp_sepapp_tree(t : Tree.Tree sized_predicate):
-  sepapps (Tree.flatten t) = interp_sepapp_tree t.
-Proof.
-  unfold sepapps, interp_sepapp_tree, proj_sized_predicate.
-  pose proof (flatten_eq_interp_sepapp_tree_aux t sized_emp) as P.
-  unfold sized_emp in *. do 2 destruct_one_match. simpl in P. apply proj1 in P.
-  subst. (* TODO *)
-Admitted.
-
-Lemma interp_sepapp_tree_eq_of_flatten_eq(LHS RHS : Tree.Tree sized_predicate):
-  Tree.flatten LHS = Tree.flatten RHS ->
-  interp_sepapp_tree LHS = interp_sepapp_tree RHS.
-Proof. intros. rewrite <-2flatten_eq_interp_sepapp_tree. f_equal. assumption. Qed.
-
-End RearrangeSepapp.
-
-Ltac pose_ZWord_lemmas :=
-  pose proof wwrap_small as z_wwrap_small.
 
 (*
 TODO: once we have C notations for function signatures,
@@ -814,12 +718,6 @@ Notation "'!EOF' '.*' '*/' //" := True (only parsing).
 Declare Scope live_scope.
 Delimit Scope live_scope with live.
 Local Open Scope live_scope.
-
-(* Needed to know where the conditions (hypotheses) introduced by an if start,
-   will be replaced by (mk_scope_marker ThenBranch) in the then branch,
-   by (mk_scope_marker ElseBranch) in the else branch, and deleted in the
-   code after the if. *)
-Inductive temp_if_marker: Set := mk_temp_if_marker.
 
 Inductive scope_kind := FunctionBody | ThenBranch | ElseBranch | LoopBody | LoopInvariant.
 Inductive scope_marker: scope_kind -> Set := mk_scope_marker sk : scope_marker sk.
@@ -834,18 +732,18 @@ Ltac assert_scope_kind expected :=
   tryif constr_eq sk expected then idtac
   else fail "This snippet is only allowed in a" expected "block, but we're in a" sk "block".
 
-Definition ready{P: Prop} := P.
+Declare Scope live_scope_prettier. (* prettier, but harder to debug *)
+(*Local Open Scope live_scope_prettier.*)
+
+Notation "'ready' 'for' 'next' 'command'" := (wp_cmd _ _ _ _ _ _)
+  (at level 0, only printing) : live_scope_prettier.
 
 Notation "l" := (arguments_marker l)
   (at level 100, only printing) : live_scope.
 
-Ltac put_into_current_locals :=
+Ltac put_into_current_locals is_decl :=
   lazymatch goal with
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
-    let is_decl := lazymatch l with
-                   | context[(x, _)] => false
-                   | _ => true
-                   end in
     let i := string_to_ident x in
     let old_i := fresh i "_0" in
     lazymatch is_decl with
@@ -877,110 +775,22 @@ Ltac put_into_current_locals :=
     end
   end.
 
-Inductive undoable_step: Type :=
-| unfold_step{V mem: Type}(pred: V -> Z -> mem -> Prop).
-
-Ltac unfold_pred pred :=
-  let name := fresh "step0" in
-  pose (unfold_step pred) as name;
-  let h := head pred in
-  repeat match goal with
-    | H: context C[pred ?v] |- _ =>
-        let u := eval unfold h in (pred v) in
-        let t := context C[u] in
-        change t in H
-    | |- context C[pred ?v] =>
-        let u := eval unfold h in (pred v) in
-        let t := context C[u] in
-        change t
-    end.
-
-Ltac undo_step :=
+Ltac eval_dexpr_step :=
   lazymatch goal with
-  | St := unfold_step ?pred |- _ =>
-      repeat (let c := open_constr:(pred ltac:(constructor)) in fold_in_hyps c);
-      clear St
+  | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_lazy_and
+(*| |- dexpr_bool3 _ _ (expr.lazy_or _ _)        _ _ _ _ => eapply dexpr_lazy_or*)
+  | |- dexpr_bool3 _ _ (expr.not _)              _ _ _ _ => eapply dexpr_not
+  | |- dexpr_bool3 _ _ (expr.op bopname.eq _ _)  _ _ _ _ => eapply dexpr_eq
+  | |- dexpr_bool3 _ _ (expr.op bopname.ltu _ _) _ _ _ _ => eapply dexpr_ltu
+(*| |- dexpr_bool3 _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)*)
+  | |- dexpr1 _ _ (expr.var _)     _ _ => eapply dexpr1_var; [reflexivity|lia| ]
+  | |- dexpr1 _ _ (expr.literal _) _ _ => eapply dexpr1_literal; [lia| ]
+  | |- dexpr1 _ _ (expr.op _ _ _)  _ _ => eapply dexpr1_binop_unf
+  | |- dexpr1 _ _ (expr.load _ _)  _ _ => eapply dexpr1_load
+  | |- _ => progress intros
   end.
 
-Ltac get_predicate_size pred :=
-  let pf := constr:(_ : PredicateSize pred _) in
-  lazymatch type of pf with
-  | PredicateSize _ ?sz => sz
-  end.
-
-Ltac has_inductive_type e :=
-  let t := type of e in
-  tryif (let h := head t in is_ind h) then idtac
-  else tryif (let r := eval red in t in
-              let h := head r in
-              is_ind h) then idtac
-    else fail "type of" e "is not inductive".
-
-Ltac is_ground_head e :=
-  match e with
-  | _ => is_const e
-  | _ => is_constructor e
-  | _ => is_ind e
-  | _ => fail "term" e "is not ground"
-  end.
-
-Ltac is_ground_app e :=
-  lazymatch e with
-  | ?f ?a => is_ground_app f; is_ground_app a
-  | _ => is_ground_head e
-  end.
-
-Ltac is_cbv_safe e :=
-  has_inductive_type e;
-  is_ground_app e.
-
-Ltac cbv_if_safe e :=
-  match constr:(Set) with
-  | _ => let __ := match constr:(Set) with
-                   | _ => is_cbv_safe e
-                   end in
-         eval cbv in e
-  | _ => e
-  end.
-
-Ltac symbolic_compare_prover :=
-  (* Don't do this unfold because it exposes a Z.max that makes lia/zify choke:
-     https://github.com/coq/coq/issues/16475 *)
-  (* unfold nbits_to_nbytes in *; *)
-  lia.
-
-(* returns a comparison (Eq | Lt | Gt) or fails if uncomparable *)
-Ltac compareZ a b :=
-  match constr:(Set) with
-  | _ => let __ := match constr:(Set) with
-                   | _ => assert_succeeds (constr_eq a b)
-                   end in
-         constr:(Eq)
-  | _ => let __ := match constr:(Set) with
-                   | _ => is_cbv_safe a; is_cbv_safe b
-                   end in
-         let r := eval cbv in (Z.compare a b) in constr:(r)
-  | _ => let __ := match constr:(Set) with
-                   | _ => assert_succeeds (assert (a < b) by symbolic_compare_prover)
-                   end in
-         constr:(Lt)
-  | _ => let __ := match constr:(Set) with
-                   | _ => assert_succeeds (assert (a = b) by symbolic_compare_prover)
-                   end in
-         constr:(Eq)
-  | _ => let __ := match constr:(Set) with
-                   | _ => assert_succeeds (assert (a > b) by symbolic_compare_prover)
-                   end in
-         constr:(Gt)
-  | _ => fail 1 "can't compare" a "and" b
-  end.
-
-(* returns true if a=b, false if a<>b, or fails if it is unclear *)
-Ltac eqZ a b :=
-  lazymatch compareZ a b with
-  | Eq => constr:(true)
-  | _ => constr:(false)
-  end.
+Ltac eval_dexpr := repeat eval_dexpr_step.
 
 Ltac start :=
   lazymatch goal with
@@ -1106,23 +916,11 @@ Ltac add_last_var_to_post Post :=
          end
   end.
 
-Ltac fold_seps P :=
-  lazymatch P with
-  | sep ?hd ?tl => let r := fold_seps tl in constr:(cons hd r)
-  | _ => constr:(cons P nil)
-  end.
-
-Ltac fold_seps_in_hyp H :=
-  lazymatch type of H with
-  | ?P ?m => let l := fold_seps P in change (seps l m) in H
-  end.
-
 Ltac package_context :=
   lazymatch goal with
   | H: _ ?m |- ?E ?t ?m ?l =>
       (* always package sep log assertion, even if memory was not changed in current block *)
-      move H at bottom;
-      fold_seps_in_hyp H
+      move H at bottom
   | |- ?E ?t ?m ?l => fail "No separation logic hypothesis about" m "found"
   end;
   let Post := fresh "Post" in
@@ -1259,8 +1057,8 @@ Section MergingAnd.
 End MergingAnd.
 
 Section MergingSep.
-  Context {width: Z} {word: word.word width} {mem: map.map word byte}.
-  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {width: Z} {word: word.word width}
+          {word_ok: word.ok word} {mem: map.map word byte} {ok: map.ok mem}.
 
   Local Set Warnings "-notation-overridden".
   Local Infix "++" := SeparationLogic.app. Local Infix "++" := app : list_scope.
@@ -1285,16 +1083,17 @@ Section MergingSep.
       eapply iff1ToEq in A. rewrite <- A in H1. ecancel_assumption.
   Qed.
 
+(*
   (* Note: if the two predicates are at the same address, but have different footprints,
      you might not want to merge them, but first combine them with other sep clauses
      until they both have the same footprint *)
   Lemma merge_seps_at_indices_same_addr_and_pred (m: mem) i j [V: Type] a (v1 v2: V)
-        (pred: V -> Z -> mem -> Prop) (Ps1 Ps2 Qs: list (mem -> Prop)) (b: bool):
-    nth i Ps1 = pred v1 a ->
-    nth j Ps2 = pred v2 a ->
+        (pred: sep_predicate mem V) (Ps1 Ps2 Qs: list (mem -> Prop)) (b: bool):
+    nth i Ps1 = pred a v1 ->
+    nth j Ps2 = pred a v2 ->
     seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
     seps ((seps (if b then (remove_nth i Ps1) else (remove_nth j Ps2)))
-            :: pred (if b then v1 else v2) a :: Qs) m.
+            :: pred a (if b then v1 else v2) :: Qs) m.
   Proof.
     intros. eapply (merge_seps_at_indices m i j) in H1; [ | eassumption.. ].
     destruct b; assumption.
@@ -1312,11 +1111,11 @@ Section MergingSep.
   Qed.
 
   Lemma merge_seps_done (m: mem) (Qs: list (mem -> Prop)) (b: bool):
-    seps ((seps (if b then nil else nil)) :: Qs) m ->
+    seps ((seps (if b then [] else [])) :: Qs) m ->
     seps Qs m.
   Proof.
     intros.
-    pose proof (seps'_iff1_seps (seps (if b then nil else nil) :: Qs)) as A.
+    pose proof (seps'_iff1_seps (seps (if b then [] else []) :: Qs)) as A.
     eapply iff1ToEq in A.
     rewrite <- A in H. cbn [seps'] in H. clear A.
     pose proof (seps'_iff1_seps Qs) as A.
@@ -1326,7 +1125,7 @@ Section MergingSep.
   Qed.
 
   Lemma expose_addr_of_then_in_else:
-    forall (m: mem) (a: Z) v (Ps1 Ps2 Rs Qs: list (mem -> Prop)) (b: bool),
+    forall (m: mem) (a: word) v (Ps1 Ps2 Rs Qs: list (mem -> Prop)) (b: bool),
     impl1 (seps Ps2) (seps ((v a) :: Rs)) ->
     seps ((seps (if b then Ps1 else Ps2)) :: Qs) m ->
     seps ((seps (if b then Ps1 else ((v a) :: Rs))) :: Qs) m.
@@ -1343,7 +1142,7 @@ Section MergingSep.
       }
       eapply A. assumption.
   Qed.
-
+*)
 End MergingSep.
 
 Lemma push_if_into_arg{A B: Type}(f: A -> B)(a1 a2: A)(cond: bool):
@@ -1438,9 +1237,9 @@ Ltac same_lhs P Q :=
 
 Ltac same_addr_and_pred P Q :=
   lazymatch P with
-  | ?pred ?valueP ?addr =>
+  | ?pred ?addr ?valueP =>
       lazymatch Q with
-      | pred ?valueQ addr => constr:(true)
+      | pred addr ?valueQ => constr:(true)
       | _ => constr:(false)
       end
   | _ => constr:(false)
@@ -1467,19 +1266,19 @@ Ltac constr_eqb x y :=
   | _ => constr:(false)
   end.
 
-Ltac merge_sep_pair_step :=
+Ltac merge_sep_pair_step := idtac. (*
   lazymatch goal with
   | H: seps ((seps (if ?b then ?Ps else ?Qs)) :: ?Rs) ?m |- _ =>
       merge_pair H Ps Qs constr_eqb (merge_seps_at_indices_same m) ||
       merge_pair H Ps Qs same_addr_and_pred (merge_seps_at_indices_same_addr_and_pred m) ||
       (eapply merge_seps_done in H; cbn [seps] in H)
-  end.
+  end. *)
 
 Ltac after_if :=
   repeat match goal with
          | H: sep _ _ ?M |- _ => clear M H
          end;
-  intros ? ? ? ?;
+  intros;
   repeat pull_dlet_and_exists_step;
   repeat merge_and_pair constr_eqb merge_ands_at_indices_same_prop;
   repeat merge_and_pair neg_prop merge_ands_at_indices_neg_prop;
@@ -1487,16 +1286,8 @@ Ltac after_if :=
   repeat merge_and_pair seps_about_same_mem merge_ands_at_indices_seps_same_mem;
   repeat merge_sep_pair_step;
   repeat match goal with
-  | H: if ?b then ?thn else ?els |- _ =>
-      clear H;
-      assert_succeeds ( (* test if clearing H was justified because it's redundant: *)
-        idtac;
-        let sp := constr:(_: BoolSpec _ _ b) in
-        lazymatch type of sp with
-        | BoolSpec ?Pt ?Pf _ =>
-            assert ((Pt -> thn) /\ (Pf -> els)) by (unfold ands; clear; intuition auto)
-        end)
-    end;
+  | H: if _ then ands nil else ands nil |- _ => clear H
+  end;
   lazymatch goal with
   | H: ?l = _ |- wp_cmd _ _ _ _ ?l _ =>
       repeat (rewrite ?push_if_into_arg,
@@ -1516,6 +1307,48 @@ Inductive snippet :=
 | SEnd
 | SRet(xs: list string)
 | SEmpty.
+
+Ltac assign is_decl name val :=
+  eapply (wp_set _ name val);
+  eval_dexpr;
+  [.. (* maybe some unsolved side conditions *)
+  | try ((* to simplify value that will become bound with :=, at which point
+            rewrites will not apply any more *)
+         (*repeat word_simpl_step_in_goal;*)
+         put_into_current_locals is_decl) ].
+
+Ltac store sz addr val :=
+  eapply (wp_store _ sz addr val);
+  eval_dexpr;
+  [.. (* maybe some unsolved side conditions *)
+  | (*lazymatch goal with
+    | |- get_option (Memory.store access_size.one _ _ _) _ =>
+        eapply store_byte_of_sep_cps; after_mem_modifying_lemma
+    | |- get_option (Memory.store access_size.word _ _ _) _ =>
+        eapply store_word_of_sep_cps; after_mem_modifying_lemma
+    | |- get_option (Memory.store ?sz _ _ _) _ =>
+        fail 10000 "storing" sz "not yet supported"
+    | |- _ => pose_err Error:("eval_dexpr_step should not fail on this goal")
+    end *) ].
+
+Ltac cond c :=
+  lazymatch goal with
+  | |- wp_cmd _ _ ?t ?m ?l _ =>
+    eapply (wp_if_bool_dexpr _ c); eval_dexpr
+  end.
+
+(*
+-    [ eval_dexpr
+-    | once (typeclasses eauto)
+-    | let b := fresh "Scope0" in pose proof (mk_scope_marker ThenBranch) as b; intro
+-    | let b := fresh "Scope0" in pose proof (mk_scope_marker ElseBranch) as b; intro
+-    | ]
+*)
+
+Ltac els :=
+  assert_scope_kind ThenBranch;
+  eapply wp_skip;
+  package_context.
 
 Ltac clear_until_LoopInvariant_marker :=
   repeat match goal with
@@ -1539,11 +1372,35 @@ Ltac expect_and_clear_last_marker expected :=
         fail "Assertion failure: Expected last marker to be" expected "but got" sk
   end.
 
+Ltac while cond measure0 :=
+  eapply (wp_while measure0 cond);
+  [ package_context
+  | eauto with wf_of_type
+  | repeat match goal with
+           | H: sep _ _ ?M |- _ => clear M H
+           end;
+    clear_until_LoopInvariant_marker;
+    cbv beta iota delta [ands];
+    cbn [seps] in *;
+    (* Note: will also appear after loop, where we'll have to clear it,
+       but we have to pose it here because the foralls are shared between
+       loop body and after the loop *)
+    (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
+    intros;
+    fwd;
+    lazymatch goal with
+    | |- exists b, dexpr_bool3 _ _ _ b _ _ _ => idtac
+    | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
+    end;
+    eexists;
+    (* evaluate condition *)
+    repeat eval_dexpr_step
+    (* TODO: loop body & after loop *)
+  ].
+
 Ltac destruct_ifs :=
   repeat match goal with
          | H: context[if ?b then _ else _] |- _ =>
-             let t := type of b in constr_eq t bool; destr b
-         | |- context[if ?b then _ else _] =>
              let t := type of b in constr_eq t bool; destr b
          end.
 
@@ -1563,7 +1420,6 @@ Ltac prove_concrete_post_pre :=
     repeat match goal with
            | x := _ |- _ => subst x
            end;
-    rewrite ?Z.min_to_leb_dec, ?Z.max_to_leb_dec in *; (* <-- TODO make less ad-hoc *)
     destruct_ifs;
     repeat match goal with
            | H: ands (_ :: _) |- _ => destruct H
@@ -1575,17 +1431,15 @@ Ltac prove_concrete_post_pre :=
            | |- _ /\ _ => split
            | |- ?x = ?x => reflexivity
            | |- sep _ _ _ => ecancel_assumption
-           | H: _ \/ _ |- _ => destruct H (* <-- might become expensive... *)
-           end;
-    try lia.
+           end.
 
 Create HintDb prove_post.
 
 Ltac prove_concrete_post :=
   prove_concrete_post_pre;
   try congruence;
-  try ZnWords;
-  intuition (congruence || ZnWords || eauto with prove_post).
+  try ZWords;
+  intuition (congruence || ZWords || eauto with prove_post).
 
 Ltac ret retnames :=
   lazymatch goal with
@@ -1603,7 +1457,7 @@ Ltac ret retnames :=
   | |- exists _, map.getmany_of_list _ ?eretnames = Some _ /\ _ =>
     unify eretnames retnames
   end;
-  eexists; split; [reflexivity| ].
+  eexists; split; [reflexivity|].
 
 Ltac close_block :=
   lazymatch goal with
@@ -1616,10 +1470,6 @@ Ltac close_block :=
           eapply wp_skip;
           prove_concrete_post
       | FunctionBody =>
-          lazymatch goal with
-          | |- @ready ?g => change g
-          | |- _ => idtac
-          end;
           lazymatch goal with
           | |- wp_cmd _ _ _ _ _ _ => ret (@nil string)
           | |- _ => idtac (* ret nonEmptyVarList was already called *)
@@ -1640,142 +1490,35 @@ Ltac prettify_goal :=
 Ltac add_snippet s :=
   assert_no_error;
   lazymatch s with
-  | SAssign ?is_decl ?name ?val => eapply (wp_set _ name val) (* TODO validate is_decl *)
-  | SStore ?sz ?addr ?val => eapply (wp_store _ sz addr val)
-  | SIf ?c => eapply (wp_if_bool_dexpr _ c); pose proof mk_temp_if_marker
-  | SElse =>
-      assert_scope_kind ThenBranch;
-      eapply wp_skip;
-      package_context
-  | SWhile ?cond ?measure0 =>
-      eapply (wp_while measure0 cond);
-      [ package_context
-      | eauto with wf_of_type
-      | repeat match goal with
-          | H: sep _ _ ?M |- _ => clear M H
-          end;
-        clear_until_LoopInvariant_marker;
-        cbv beta iota delta [ands];
-        cbn [seps] in *;
-        (* Note: will also appear after loop, where we'll have to clear it,
-           but we have to pose it here because the foralls are shared between
-           loop body and after the loop *)
-        (let n := fresh "Scope0" in pose proof (mk_scope_marker LoopBody) as n);
-        intros;
-        fwd;
-        lazymatch goal with
-        | |- exists b, dexpr_bool3 _ _ _ b _ _ _ => eexists
-        | |- _ => fail "assertion failure: hypothesis of wp_while has unexpected shape"
-        end ]
+  | SAssign ?is_decl ?y ?e => assign is_decl y e
+  | SStore ?sz ?addr ?val => store sz addr val
+  | SIf ?e => cond e
+  | SElse => els
+  | SWhile ?cond ?measure0 => while cond measure0
   | SStart => start
   | SEnd => close_block
   | SRet ?retnames => ret retnames
   | SEmpty => prettify_goal
   end.
 
-Ltac lia' := (*purify; TODO needs hypothesis-wise purify*) lia.
+Inductive head_of_implicit_facts: Prop :=
+| mk_head_of_implicit_facts.
 
-Ltac program_logic_step :=
-  lazymatch goal with
-  | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_lazy_and
-  | |- dexpr_bool3 _ _ (expr.lazy_or _ _)        _ _ _ _ => eapply dexpr_lazy_or
-  | |- dexpr_bool3 _ _ (expr.not _)              _ _ _ _ => eapply dexpr_not
-  | |- dexpr_bool3 _ _ (expr.op bopname.eq _ _)  _ _ _ _ => eapply dexpr_eq
-  | |- dexpr_bool3 _ _ (expr.op bopname.ltu _ _) _ _ _ _ => eapply dexpr_ltu
-(*| |- dexpr_bool3 _ _ _ _ => eapply mk_dexpr_bool_prop (* fallback *)*)
-  | |- dexpr1 _ _ (expr.var _)     _ _ => eapply dexpr1_var; [reflexivity|lia'| ]
-  | |- dexpr1 _ _ (expr.literal _) _ _ => eapply dexpr1_literal; [lia'| ]
-  | |- dexpr1 _ _ (expr.op _ _ _)  _ _ => eapply dexpr1_binop_unf
-  | |- dexpr1 _ _ (expr.load _ _)  _ _ => eapply dexpr1_load
-  | |- bool_expr_branches _ _ _ _ => eapply BoolSpec_expr_branches; [ intro | intro | ]
-  | |- then_branch_marker ?G =>
-      let H := lazymatch goal with H: temp_if_marker |- _ => H end in
-      let n := fresh "Scope0" in
-      pose proof (mk_scope_marker ThenBranch) as n;
-      move n before H;
-      clear H;
-      change G
-  | |- else_branch_marker ?G =>
-      let H := lazymatch goal with H: temp_if_marker |- _ => H end in
-      let n := fresh "Scope0" in
-      pose proof (mk_scope_marker ElseBranch) as n;
-      move n before H;
-      clear H;
-      change G
-  | |- after_if ?fs ?b ?Q1 ?Q2 ?rest ?post =>
-      lazymatch goal with
-      | H: temp_if_marker |- _ => clear H
-      end;
-      tryif is_evar Q1 then idtac (* need to first complete then-branch *)
-      else tryif is_evar Q2 then idtac (* need to first complete else-branch *)
-      else after_if
-  | |- True => constructor
-  | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ => put_into_current_locals
-  | |- iff1 (seps ?LHS) (seps ?RHS) =>
-      first
-        [ constr_eq LHS RHS; exact (iff1_refl _)
-        | cancel_step
-        | cancel_emp_l
-        | cancel_emp_r
-        | lazymatch goal with
-          | |- iff1 (seps (cons ?x nil)) _ => is_evar x
-          | |- iff1 _ (seps (cons ?x nil)) => is_evar x
-          end;
-          cbn [seps];
-          exact (iff1_refl _) ]
-  | H: ?x = ?y |- _ => is_var x; is_var y; subst x
-  | |- wp_cmd _ _ _ _ _ _ =>
-      lazymatch goal with
-      | |- ?G => change (@ready G)
-      end
-  end.
+Ltac mark_as_implicit_facts H := eapply (conj mk_head_of_implicit_facts) in H.
 
-Ltac step := first [ heapletwise_step | program_logic_step ].
+Declare Scope implicit_facts_scope.
+Open Scope implicit_facts_scope.
 
-(* If t1 solves the first goal, t2 will be run on the second (now first) goal,
-   so t2 can do operations that only became possible because of t1's evar instantiations.
-   Requires `Set Default Goal Selector "all".` *)
-Ltac run2on1stGoal :=
-  ltac2:(t1 t2 |- Control.focus 1 1 (fun _ => (Ltac1.run t1));
-                  Control.focus 1 1 (fun _ => (Ltac1.run t2))).
+Notation "(implicit facts)" := (head_of_implicit_facts /\ _) (only printing)
+  : implicit_facts_scope.
 
-(*
-Set Default Goal Selector "all".
-
-Ltac t :=
-  lazymatch goal with
-  | |- ?G => idtac G
-  end.
-
-Goal forall (a b: nat), a = b -> a = b /\ b = a /\ (a + b = b + a)%nat.
-Proof.
-  intros. repeat split.
-  run2on1stGoal ltac:(idtac; t; try assumption) ltac:(idtac; t; symmetry).
-*)
-
-Ltac step_is_done :=
-  match goal with
-  | |- @ready _ => idtac
-  | |- after_if _ _ ?Q1 ?Q2 _ _ => is_evar Q1
-  | |- after_if _ _ ?Q1 ?Q2 _ _ => is_evar Q2
-  end.
-
-Ltac run_steps :=
-  tryif step_is_done then idtac
-  else tryif step then run_steps
-  else pose_err Error:("'step' should not fail here").
-
-(* can be overridden with idtac for debugging *)
-Ltac run_steps_hook := run_steps.
-
-(*
+Ltac after_snippet :=
   intros;
   fwd;
   (* leftover from word_simpl_step_in_hyps, TODO where to put? in fwd? *)
   repeat match goal with
          | H: ?x = ?y |- _ => is_var x; is_var y; subst x
          end.
-*)
 
 (* Note: An rhs_var appears in expressions and, in our setting, always has a corresponding
    var (of type word) bound in the current context, whereas an lhs_var may or may not be
@@ -1822,9 +1565,7 @@ Notation "live_expr:( e )" := e
 Notation "( e )" := e (in custom live_expr, e custom live_expr at level 100).
 
 (* Using the same precedences as https://en.cppreference.com/w/c/language/operator_precedence *)
-Notation "! x" := (expr.not x)
-  (in custom live_expr at level 2, x custom live_expr, right associativity, only parsing).
-Notation "- x" := (expr.op bopname.sub (expr.literal 0) x)
+Notation "! x" := (expr.op bopname.eq x (expr.literal 0))
   (in custom live_expr at level 2, x custom live_expr, right associativity, only parsing).
 Infix "*" := (expr.op bopname.mul)
   (in custom live_expr at level 3, left associativity, only parsing).
@@ -1842,13 +1583,13 @@ Infix ">>" := (expr.op bopname.sru)
   (in custom live_expr at level 5, left associativity, only parsing).
 Infix "<" := (expr.op bopname.ltu)
   (in custom live_expr at level 6, no associativity, only parsing).
-Notation "a <= b" := (expr.not (expr.op bopname.ltu b a))
+Notation "a <= b" := (expr.op bopname.eq (expr.op bopname.ltu b a) (expr.literal 0))
   (in custom live_expr at level 6, a custom live_expr, b custom live_expr,
    no associativity, only parsing).
 Notation "a > b" := (expr.op bopname.ltu b a)
   (in custom live_expr at level 6, a custom live_expr, b custom live_expr,
    no associativity, only parsing).
-Notation "a >= b" := (expr.not (expr.op bopname.ltu a b))
+Notation "a >= b" := (expr.op bopname.eq (expr.op bopname.ltu a b) (expr.literal 0))
   (in custom live_expr at level 6, a custom live_expr, b custom live_expr,
    no associativity, only parsing).
 Infix "==" := (expr.op bopname.eq)
@@ -1915,6 +1656,8 @@ Notation "} 'else' {" := SElse (in custom snippet at level 0).
 Notation "'while' ( e ) /* 'decreases' m */ {" :=
   (SWhile e m) (in custom snippet at level 0, e custom live_expr, m constr at level 0).
 
+Tactic Notation "#" constr(s) := add_snippet s; after_snippet.
+
 Set Ltac Backtrace.
 
 (* COQBUG (performance) https://github.com/coq/coq/issues/10743#issuecomment-530673037
@@ -1937,16 +1680,112 @@ Ltac adhoc_lia_performance_fixes :=
   cond_hyp_factor;
   subst.
 
+(* If we use dexpr_bool_prop, but want to get derive a provably deterministic spec
+   from the Props generated by dexpr_bool_prop, can that work? *)
+
+Local Open Scope Z_scope.
+
+Existing Class Bool.reflect.
+Global Existing Instance Z.leb_spec0.
+Global Existing Instance BinInt.Z.eqb_spec.
+
+Global Instance reflect_and(P1 P2: Prop)(b1 b2: bool)
+  {r1: Bool.reflect P1 b1}{r2: Bool.reflect P2 b2}: Bool.reflect (P1 /\ P2) (b1 && b2).
+Proof.
+  destruct r1; destruct r2; constructor; intuition auto.
+Qed.
+
+(* not as general as it could be, requires reproving all lemmas previously proven
+   for regular if
+Definition ite(P: Prop){b: bool}{r: Bool.reflect P b}{A: Type}(thn els: A): A :=
+  if b then thn else els.
+*)
+
+(* P and r are not involved in the computation at all, they are only there to
+   help infer b. *)
+Definition dec(P: Prop){b: bool}{r: Bool.reflect P b}: bool := b.
+
+Notation "'If' c 'then' a 'else' b" := (if dec c then a else b) (at level 200).
+
+Goal forall (a b c: Z), True.
+  intros.
+  pose (If a = b then 1 else 2).
+  pose (If a <= c then a else c).
+  pose (If a <= b <= c then 1 else 0).
+Abort.
+
+
+(* BoolSpec disadvantage: could allow unwanted instances like this one: *)
+Goal forall a b: Z, BoolSpec (a < b + 3) (b < a + 3) (a <? b)%Z.
+  intros. destr (a <? b)%Z; constructor; lia.
+Abort.
+
+(* BoolSpec advantage: allows two different Props, eg for
+Z.leb_spec : forall x y : Z, BoolSpec (x <= y) (y < x) (x <=? y)
+the false case results in (y < x), which is nicer than (~ x <= y). *)
+
+(* Mutually exclusive BoolSpec
+   XBoolSpec P Q b essentially says Bool.reflect P b and Q is a prettier version of ~P
+Inductive XBoolSpec (P Q : Prop) : bool -> Prop :=
+| XBoolSpecT : P -> ~Q -> XBoolSpec P Q true
+| XBoolSpecF : ~P -> Q -> XBoolSpec P Q false.
+(* destructing this one leads to both P and ~Q, or both ~P and Q, which is redundant *)
+*)
+
+Global Instance andb_BoolSpec(Pt Pf Qt Qf: Prop)(p q: bool)
+  {sp: BoolSpec Pt Pf p}{sq: BoolSpec Qt Qf q}: BoolSpec (Pt /\ Qt) (Pf \/ Qf) (p && q).
+Proof.
+  destruct sp; destruct sq; constructor; intuition auto.
+Qed.
+
+Global Instance orb_BoolSpec(Pt Pf Qt Qf: Prop)(p q: bool)
+  {sp: BoolSpec Pt Pf p}{sq: BoolSpec Qt Qf q}: BoolSpec (Pt \/ Qt) (Pf /\ Qf) (p || q).
+Proof.
+  destruct sp; destruct sq; constructor; intuition auto.
+Qed.
+
+(* might lead to cyclic typeclass search if the Props are inputs and the bool is an output,
+   might need a Hint Extern with an Ltac that checks that p is not an evar *)
+Global Instance negb_BoolSpec(Pt Pf: Prop)(p: bool){sp: BoolSpec Pt Pf p}:
+  BoolSpec Pt Pf p -> BoolSpec Pf Pt (negb p).
+Proof.
+  destruct sp; constructor; intuition auto.
+Qed.
+
+(*
+Class XBoolSpec(P Q: Prop)(b: bool): Prop := {
+  boolSpec: BoolSpec P Q b;
+  XBoolSpec_exclusive: P <-> ~Q;
+}.
+*)
+
+(* TODO plan for bools:
+   evaluating if/loop conditions returns bool instead of Prop, but the wp_if/wp_loop
+   lemmas infer a BoolSpec to use (PTrue -> thenbranchexecution) and
+   (PFalse -> elsebranchexecution), and the (if _ then _ else _) expressions use the boolean
+   expression (no special Prop-consuming upper-case If), because these ifs should only
+   be visible in states not displayed to the user, and in computed postconditions, which,
+   at the moment, only need to be deterministic and not depend on too many inputs, but
+   not particularly "nice".
+   Later maybe add notation dec and If notation:
+
+*)
+Module decAlt.
+  Class PrettyNegation(P Q: Prop): Prop := {
+    prettyNegation_spec: P <-> ~Q;
+  }.
+  Definition dec(P: Prop){notP: Prop}{_: PrettyNegation P notP}{b: bool}{r: BoolSpec P notP b}: bool := b.
+End decAlt.
+
 Require Import coqutil.Sorting.Permutation.
 
 Import Syntax BinInt String List.ListNotations ZArith.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-Local Open Scope bool_scope.
 
 Require Import coqutil.Datatypes.ZList.
 Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
 Require Import coqutil.Word.Bitwidth32.
-Local Open Scope sep_bullets_scope.
+Open Scope sep_bullets_scope.
 
 (* Note: If you re-import ZnWords after this, you'll get the old better_lia again *)
 Ltac better_lia ::=
@@ -1954,41 +1793,13 @@ Ltac better_lia ::=
   adhoc_lia_performance_fixes;
   Lia.lia.
 
-Local Set Default Goal Selector "all".
+Local Set Default Goal Selector "1".
 
-Tactic Notation ".*" constr(s) "*" :=
-  run2on1stGoal ltac:(idtac; add_snippet s; run_steps_hook) ltac:(idtac; run_steps_hook).
-
-Require Import Ltac2.Ltac2.
-
-Ltac2 add_snippet(s: constr) := ltac1:(s |- add_snippet s) (Ltac1.of_constr s).
-Ltac2 run_steps_hook () := ltac1:(run_steps_hook).
-
-Ltac2 next_snippet(s: unit -> constr) :=
-  match Control.case (fun _ => Control.focus 1 2 (fun _ => ())) with
-  | Val _ => (* there are >= 2 open goals *)
-      Control.focus 1 1 (fun _ => add_snippet (s ()); run_steps_hook ());
-      Control.focus 1 1 run_steps_hook
-  | Err _ => (* at most 1 open goal *)
-      Control.focus 1 1 (fun _ => add_snippet (s ()); run_steps_hook ())
-  end.
-
-Ltac2 Notation ".*" s(thunk(constr)) "*" := next_snippet s.
-
-Ltac2 step () := ltac1:(step).
-
-Ltac2 Notation "step" := step ().
-
-Section LiveVerif.
-
-  Context {word: word.word 32} {mem: map.map word byte}
-    (* TODO concrete locals? *)
-    {locals: map.map string word} {mem_ok: map.ok mem} {locals_ok: map.ok locals}.
+Tactic Notation ".*" constr(s) "*" := add_snippet s; after_snippet.
 
 Comments C_STARTS_HERE
 /**.
 
-(*
 Definition u_min: {f: list string * list string * cmd &
   forall fs t m a b (R: mem -> Prop),
     R m ->
@@ -2002,6 +1813,7 @@ Definition u_min: {f: list string * list string * cmd &
 
   if (! (a < b && b < 10)) {                                                   /**.
 
+(*
   if (a < b && b < 10) {                                                   /**.
 
   match goal with
@@ -2023,14 +1835,13 @@ Definition u_min: {f: list string * list string * cmd &
 }                                                                          /**.
 Defined.
 *)
-End LiveVerif.
+Abort.
 
+Close Scope live_scope_prettier.
 Unset Implicit Arguments.
 
 Require Import FunctionalExtensionality.
 Require Import Coq.Logic.PropExtensionality.
-
-Set Default Proof Mode "Classic".
 
 Lemma wltu_wf: well_founded (fun x y: Z => wwrap x < wwrap y).
 Proof.
@@ -2053,86 +1864,955 @@ Section WithNonmaximallyInsertedA.
   Proof. intros. reflexivity. Qed.
 End WithNonmaximallyInsertedA.
 
+Inductive NestedType: Type :=
+| UInt(nbits: Z)
+| TRecord(fields: NestedFields)
+| TArray(tp: NestedType)(L: N) (* length of array is needed for type_size *)
+with NestedField :=
+| FField(name: string)(tp: NestedType)
+with NestedFields :=
+| FSnoc(rest: NestedFields)(f: NestedField) (* snoc to match structure of stdlib pairs *)
+| FSingle(f: NestedField).
+
+(* we often need to write (TRecord SomeFields) instead of MyDefinitionOfTRecordSomeFields
+   to make typechecking work, so we just write SomeFields and let coercions insert the
+   TRecord *)
+Coercion TRecord : NestedFields >-> NestedType.
+
+Notation Array tp L := (TArray tp (Z.to_N L)).
+
+Scheme NestedType_mut   := Induction for NestedType   Sort Prop
+with   NestedField_mut  := Induction for NestedField  Sort Prop
+with   NestedFields_mut := Induction for NestedFields Sort Prop.
+Combined Scheme NestedType_mutind from NestedType_mut, NestedField_mut, NestedFields_mut.
+
+(* Type aliases that can inform proof automation as well as humans on intended usage: *)
+Definition uint_t(nbits: Z) := Z.
+Definition array_t(tp: Type)(nElems: Z) := list tp.
+
+(* custom induction principle based on depth?
+   fold over field list right-to-left, but over arrays left-to-right? *)
+
+(* too many dependent types, and we want standard lists rather than VArray of a list of
+   NestedValue for better compatibility with code that's not interested in records, but
+   still wants to use array splitting/merging functionality
+Inductive NestedValue: NestedType -> Type :=
+| VUInt(nbits: Z)(v: Z): NestedValue (UInt nbits)
+| VRecord( ...
+| VArray *)
+
+Fixpoint interp_type(t: NestedType): Type :=
+  match t with
+  | UInt nbits => uint_t nbits
+  | TRecord fields => interp_fields fields
+  | TArray tp L => array_t (interp_type tp) (Z.of_N L)
+  end
+with interp_field(field: NestedField): Type :=
+  match field with
+  | FField _ tp => interp_type tp
+  end
+with interp_fields(fields: NestedFields): Type :=
+  match fields with
+  | FSnoc rest f => prod (interp_fields rest) (interp_field f)
+  | FSingle f => interp_field f
+  end.
+
+(* We need separate inductives for types and presences because in an array, the type of
+   each field must be the same, but the presence of each field can be different.
+
+   The split_off function needs to destruct both a NestedType tp and a (type_presence tp),
+   and if we use an `Inductive type_presence: NestedType -> Type`, the dependent pattern
+   matching becomes too cumbersome, so we prefer a
+   `Fixpoint type_presence: NestedType -> Type` *)
+
+Definition field_presence(f: NestedField): Type := bool.
+
+Fixpoint fields_presence(fields: NestedFields): Type :=
+  match fields with
+  | FSnoc rest f => prod (fields_presence rest) (field_presence f)
+  | FSingle f => (field_presence f)
+  end.
+
+Definition type_presence(t: NestedType): Type :=
+  match t with
+  | UInt nbits => unit
+  | TRecord fields => fields_presence fields
+  | TArray tp L => list bool
+  end.
+
+Section WithPresence.
+  Context (b: bool).
+
+  Definition const_field_presence(f: NestedField): field_presence f := b.
+
+  Fixpoint const_fields_presence(fs: NestedFields): fields_presence fs :=
+    match fs with
+    | FSnoc rest f => (const_fields_presence rest, b)
+    | FSingle f => b
+    end.
+
+  Definition const_type_presence(t: NestedType): type_presence t :=
+    match t with
+    | UInt nbits => tt
+    | TRecord fields => const_fields_presence fields
+    | TArray tp L => List.repeatz b (Z.of_N L)
+    end.
+End WithPresence.
+
+Definition all_present: forall tp: NestedType, type_presence tp :=
+  const_type_presence true.
+Definition all_absent: forall tp: NestedType, type_presence tp :=
+  const_type_presence false.
+
+Local Open Scope bool_scope.
+
+(*
+Fixpoint type_presence_eqb{tp: NestedType}:
+  type_presence tp -> type_presence tp -> bool :=
+  match tp with
+  | UInt nbits => Bool.eqb
+  | TRecord fields => @fields_presence_eqb fields
+  | TArray tE L => List.list_eqb (@type_presence_eqb tE)
+  end
+with field_presence_eqb{f: NestedField}:
+  field_presence f -> field_presence f -> bool :=
+  match f with
+  | FField _ tp => @type_presence_eqb tp
+  end
+with fields_presence_eqb{fs: NestedFields}:
+  fields_presence fs -> fields_presence fs -> bool :=
+  match fs with
+  | FSnoc rest f => fun '(p_rest1, p_f1) '(p_rest2, p_f2) =>
+      (fields_presence_eqb p_rest1 p_rest2) && (field_presence_eqb p_f1 p_f2)
+  | FSingle f => @field_presence_eqb f
+  end.
+*)
+
+Definition bool_sub(p1 p2: bool): option bool :=
+  if p1 then if p2 then Some false else Some true
+  else if p2 then None else Some false.
+
+Definition bool_list_sub: list bool -> list bool -> option (list bool) :=
+  fix rec ps1 ps2 :=
+    match ps1, ps2 with
+    | cons p1 rest1, cons p2 rest2 =>
+        match bool_sub p1 p2 with
+        | Some p3 =>
+            match rec rest1 rest2 with
+            | Some rest3 => Some (cons p3 rest3)
+            | None => None
+            end
+        | None => None
+        end
+    | nil, nil => Some nil
+    | _, _ => None
+    end.
+
+Fixpoint fields_presence_sub{fs: NestedFields}:
+  fields_presence fs -> fields_presence fs -> option (fields_presence fs) :=
+  match fs with
+  | FSnoc rest f => fun '(p_rest1, p_f1) '(p_rest2, p_f2) =>
+      match fields_presence_sub p_rest1 p_rest2 with
+      | Some p_rest3 => match bool_sub p_f1 p_f2 with
+                      | Some p_f3 => Some (p_rest3, p_f3)
+                      | None => None
+                      end
+      | None => None
+      end
+  | FSingle f => bool_sub
+  end.
+
+(* type presence subtraction, returns None if trying to subtract presence from absence *)
+Definition type_presence_sub{tp: NestedType}:
+  type_presence tp -> type_presence tp -> option (type_presence tp) :=
+  match tp with
+  | UInt nbits => fun _ _ => Some tt
+  | TRecord fields => @fields_presence_sub fields
+  | TArray tE L => bool_list_sub
+  end.
+
+Fixpoint type_size(tp: NestedType): Z :=
+  match tp with
+  | UInt nbits => nbits_to_nbytes nbits
+  | TRecord fields => fields_size fields
+  | TArray tp L => type_size tp * Z.of_N L
+  end
+with field_size(field: NestedField): Z :=
+  match field with
+  | FField _ tp => type_size tp
+  end
+with fields_size(fields: NestedFields): Z :=
+  match fields with
+  | FSnoc rest f => fields_size rest + field_size f
+  | FSingle f => field_size f
+  end.
+
+Lemma type_size_nonneg_induction:
+  (forall tp, 0 <= type_size tp) /\
+  (forall f, 0 <= field_size f) /\
+  (forall fs, 0 <= fields_size fs).
+Proof.
+  eapply NestedType_mutind; simpl; intros; eauto using nbits_to_nbytes_nonneg; try lia.
+Qed.
+
+Definition type_size_nonneg := proj1 type_size_nonneg_induction.
+Definition field_size_nonneg := proj1 (proj2 type_size_nonneg_induction).
+Definition fields_size_nonneg := proj2 (proj2 type_size_nonneg_induction).
+
+
 (* ARP responder example *)
 
-Definition MAC := array_t (uint_t 8) 6.
-Global Hint Extern 1 (RepPredicate MAC _) =>
-   exact (array (uint 8) 6) : typeclass_instances.
-
-Definition IPv4 := array_t (uint_t 8) 4.
-Global Hint Extern 1 (RepPredicate IPv4 _) =>
-  exact (array (uint 8) 4) : typeclass_instances.
+Definition MAC := TArray (UInt 8) 6.
+Definition IPv4 := TArray (UInt 8) 4.
 
 Definition ARPOperationRequest: Z := 1.
 Definition ARPOperationReply: Z := 2.
 
-Record ARPPacket_t := mkARPPacket {
-  htype: uint_t 16; (* hardware type *)
-  ptype: uint_t 16; (* protocol type *)
-  hlen: uint_t 8;   (* hardware address length (6 for MAC addresses) *)
-  plen: uint_t 8;   (* protocol address length (4 for IPv4 addresses) *)
-  oper: uint_t 16;
-  sha: MAC;  (* sender hardware address *)
-  spa: IPv4; (* sender protocol address *)
-  tha: MAC;  (* target hardware address *)
-  tpa: IPv4; (* target protocol address *)
-}.
+Declare Custom Entry record_field.
+Notation "s : t" := (FField s t)
+  (in custom record_field at level 1, s constr at level 0, t constr at level 99).
 
-Record EthernetHeader_t := mkEthernetHeader {
-  dstMAC: MAC;
-  srcMAC: MAC;
-  etherType: uint_t 16;
-}.
+Notation "<{ f1 ; f2 ; .. ; fn }>" := (FSnoc .. (FSnoc (FSingle f1) f2) .. fn)
+  (f1 custom record_field at level 1, f2 custom record_field at level 1,
+   fn custom record_field at level 1).
+
+Definition ARPPacket := <{
+  "htype": UInt 16; (* hardware type *)
+  "ptype": UInt 16; (* protocol type *)
+  "hlen": UInt 8;   (* hardware address length (6 for MAC addresses) *)
+  "plen": UInt 8;   (* protocol address length (4 for IPv4 addresses) *)
+  "oper": UInt 16;  (* operation *)
+  "sha": MAC;       (* sender hardware address *)
+  "spa": IPv4;      (* sender protocol address *)
+  "tha": MAC;       (* target hardware address *)
+  "tpa": IPv4       (* target protocol address *)
+}>.
+
+Definition EthernetPacket(Payload: NestedType) := <{
+  "dstMAC": MAC;
+  "srcMAC": MAC;
+  "etherType": UInt 16;
+  "payload": Payload;
+  "padding": Array (UInt 8) (Z.max 0 (64 - 12 - 2 - type_size Payload - 4));
+  "crc": UInt 32
+}>.
+
+Goal True.
+  pose (interp_type ARPPacket) as r.
+  cbn in r.
+Abort.
+
+Fixpoint lookup_type_in_fields(fs: NestedFields)(s: string): NestedType :=
+  match fs with
+  | FSnoc rest (FField name tp) => if String.eqb s name then tp
+                                  else lookup_type_in_fields rest s
+  | FSingle (FField name tp) => if String.eqb s name then tp
+                                else UInt 0
+  end.
+
+Definition lookup_type_in_type(tp: NestedType)(s: string): NestedType :=
+  match tp  with
+  | UInt nbits => UInt 0
+  | TRecord fields => lookup_type_in_fields fields s
+  | TArray tE L => UInt 0
+  end.
+
+Fixpoint lookup_in_fields(fs: NestedFields):
+  interp_fields fs -> forall s: string, interp_type (lookup_type_in_fields fs s) :=
+  match fs with
+  | FSnoc rest (FField name tp) => fun '(v_rest, v_f) s =>
+      if String.eqb s name
+        as b return interp_type (if b then tp else lookup_type_in_fields rest s)
+      then v_f else lookup_in_fields rest v_rest s
+  | FSingle (FField name tp) => fun v s =>
+      if String.eqb s name
+        as b return interp_type (if b then tp else UInt 0)
+      then v else 0
+  end.
+
+Definition lookup_in_type(tp: NestedType):
+  interp_type tp -> forall s: string, interp_type (lookup_type_in_type tp s) :=
+  match tp with
+  | UInt _ => fun v s => 0
+  | TRecord fields => lookup_in_fields fields
+  | TArray _ _ => fun v s => 0
+  end.
+
+Ltac annot_with_simplified_type x :=
+  let x' := eval cbv beta in x in (* get rid of previous annotation if nested path *)
+  let t := type of x' in
+  let t' := eval cbn in t in
+  exact (x': t').
+
+Notation "a ~> f" := (lookup_in_type _ a f%string)
+  (at level 8 (* same level as a[i] notation *), left associativity, f at level 0,
+   format "a ~> f"(*, only printing*)).
+
+(*
+Notation "a ~> f" := (ltac:(annot_with_simplified_type (lookup_in_type _ a f%string)))
+  (at level 8 (* same level as a[i] notation *), left associativity, f at level 0,
+   only parsing).
+*)
+
+Goal forall p: interp_type ARPPacket, False.
+  intros.
+  pose (p~>"foo").
+  pose (p~>"sha").
+  pose (p~>"sha"[3]).
+Abort.
+
+Fixpoint has_field(fs: NestedFields)(s: string): bool :=
+  match fs with
+  | FSnoc rest (FField name tp) => if String.eqb s name then true else has_field rest s
+  | FSingle (FField name tp) => String.eqb s name
+  end.
+
+(* Designed to be computable, and only returns Some if the field name occurs
+   exactly once *)
+Fixpoint get_field_presence{fs: NestedFields}:
+  fields_presence fs -> string -> option bool :=
+  match fs as fs return fields_presence fs -> string -> option bool with
+  | FSnoc rest (FField name tp) => fun '(pr_rest, pr_f) s =>
+      if String.eqb s name then
+        if has_field rest s then None else Some pr_f
+      else get_field_presence pr_rest s
+  | FSingle (FField name tp) => fun pr s =>
+      if String.eqb s name then Some pr else None
+  end.
+
+(* Computable, but we will use it symbolically because that's more readable
+   "all_present minus field1 minus field2" rather than "(true, false, false, true)" *)
+Fixpoint remove_from_fields_presence{fs: NestedFields}:
+  fields_presence fs -> string -> fields_presence fs :=
+  match fs as fs return fields_presence fs -> string -> fields_presence fs with
+  | FSnoc rest (FField name tp) => fun '(pr_rest, pr_f) s =>
+      if String.eqb s name then (pr_rest, false)
+      else (remove_from_fields_presence pr_rest s, pr_f)
+  | FSingle (FField name tp) => fun pr s =>
+      if String.eqb s name then false else pr
+  end.
+
+Definition removable_in(tp: NestedType): Type :=
+  match tp with
+  | UInt _ => Empty_set
+  | TRecord fields => string
+  | TArray _ _ => Z (* TODO also allow ranges rather than just one index at a time *)
+  end.
+
+Definition remove_from_type_presence{tp: NestedType}:
+  type_presence tp -> removable_in tp -> type_presence tp :=
+  match tp with
+  | UInt _ => fun pr _ => pr
+  | TRecord fields => @remove_from_fields_presence fields
+  | TArray tE L => fun pr i => List.set pr i false
+  end.
+
+Fixpoint offset_of_field(fs: NestedFields)(s: string): Z :=
+  match fs with
+  | FSnoc rest (FField name tp) =>
+      if String.eqb s name then fields_size rest else offset_of_field rest s
+  | FSingle (FField name tp) =>
+      if String.eqb s name then 0 else -1
+  end.
+
+Fixpoint offset_to_field(fs: NestedFields)(ofs: Z): string :=
+  match fs with
+  | FSnoc rest (FField name tp) =>
+      if fields_size rest <=? ofs then name else offset_to_field rest ofs
+  | FSingle (FField name tp) => name
+  end.
+
+(* TODO decide later if we also want presence infrastructure for arrays
+
+Definition remove_index_from_array_presence(pr: list bool)(i: Z): list bool :=
+  List.set pr i false.
+
+Definition remove_range_from_array_presence(pr: list bool)(i
+*)
+
+(*
+Notations to indicate what has been removed:
+record TMyType-"field1"-"arrayfield" ...
+
+to dig out path ->a->b
+  record MyType all_present v addr1
+= record MyType -"a" v addr1 * record TA v~>"a" addr2
+                             = record TA-"b" v~>"a" addr2 * record TB v~>"a"~>"b" addr3
+
+
+record (TArray ...)-[i]-[j:k]-[i1:][:n]-[:n1]-[n2:] ...
+
+loop invariants:
+
+a |-> xs1 * p |-> x * (p+4) |-> xs2
+
+a |-> (xs1 ++ [|x|] ++ xs2)
+
+a+4*i |-> x * (xs1 ++ [|x|] ++ xs2) @@ a : (array (UInt 32) n)-[i]
+p=a+4*i
+
+a+4*i |-> x * (xs1 ++ [|??|] ++ xs2) @@ a : (array (UInt 32) n)-[i]
+p=a+4*i
+where ?? := opaque default
+
+*)
+
+Fixpoint type_eqb(tp1 tp2: NestedType): bool :=
+  match tp1, tp2 with
+  | UInt nbits1, UInt nbits2 => nbits1 =? nbits2
+  | TRecord fs1, TRecord fs2 => fields_eqb fs1 fs2
+  | TArray tE1 L1, TArray tE2 L2 => type_eqb tE1 tE2 && N.eqb L1 L2
+  | _, _ => false
+  end
+with field_eqb(f1 f2: NestedField): bool :=
+  match f1, f2 with
+  | FField name1 tp1, FField name2 tp2 => String.eqb name1 name2 && type_eqb tp1 tp2
+  end
+with fields_eqb(fs1 fs2: NestedFields): bool :=
+  match fs1, fs2 with
+  | FSnoc rest1 f1, FSnoc rest2 f2 => fields_eqb rest1 rest2 && field_eqb f1 f2
+  | FSingle f1, FSingle f2 => field_eqb f1 f2
+  | _, _ => false
+  end.
 
 (* TODO move to coqutil *)
 Global Instance Bool_eqb_spec: EqDecider Bool.eqb.
 Proof. intros. destruct x; destruct y; constructor; congruence. Qed.
 
-Global Hint Extern 1 (RepPredicate (uint_t ?nbits) _) =>
-  exact (uint nbits) : typeclass_instances.
+Lemma lt_proofs_unique: forall (a b: Z) (pf1 pf2: a < b), pf1 = pf2.
+Proof.
+  unfold Z.lt. intros. eapply Eqdep_dec.UIP_dec.
+  intros. destruct x; destruct y; constructor; congruence.
+Qed.
 
-Global Hint Extern 1 (RepPredicate (array_t ?T ?n) _) =>
- exact (@array T _ n _ _) : typeclass_instances.
+Lemma type_eqb_induction: EqDecider type_eqb /\ EqDecider field_eqb /\ EqDecider fields_eqb.
+Proof.
+  eapply NestedType_mutind.
+  - destruct y; simpl; try (constructor; congruence).
+    destr (Z.eqb nbits nbits0); constructor; congruence.
+  - destruct y; simpl; try (constructor; congruence).
+    specialize (H fields0). destruct H; constructor; congruence.
+  - destruct y; simpl; try (constructor; congruence).
+    specialize (H y). destr H; try (constructor; congruence).
+    destr (N.eqb L L0); try (constructor; congruence).
+  - destruct y; simpl; try (constructor; congruence).
+    specialize (H tp0).
+    destr (String.eqb name name0); try (constructor; congruence).
+    destr H; try (constructor; congruence).
+  - destruct y; simpl; try (constructor; congruence).
+    specialize (H y). destr H; try (constructor; congruence).
+    specialize (H0 f0). destr H0; try (constructor; congruence).
+  - destruct y; simpl; try (constructor; congruence).
+    specialize (H f0). destr H; try (constructor; congruence).
+Qed.
 
-Ltac create_predicate_rec refine_already_introd :=
-  lazymatch goal with
-  | |- forall (lastField: ?T), Z -> ?mem -> Prop =>
-      let f := fresh lastField in
-      intro f;
-      refine_already_introd;
-      match constr:(_ : RepPredicate T mem) with
-      | ?p => exact (p f)
-      end
-  | |- forall (name: ?T), _ =>
-      let f := fresh name in
-      intro f;
-      match constr:(_ : RepPredicate T _ (* TODO get mem? *)) with
-      | ?p => create_predicate_rec ltac:(refine_already_introd; refine (sepapp (p f) _))
-      end
+Global Instance type_eqb_spec: EqDecider type_eqb := proj1 type_eqb_induction.
+Global Instance field_eqb_spec: EqDecider field_eqb := proj1 (proj2 type_eqb_induction).
+Global Instance fields_eqb_spec: EqDecider fields_eqb := proj2 (proj2 type_eqb_induction).
+
+Scheme NestedType_mutT   := Induction for NestedType   Sort Type
+with   NestedField_mutT  := Induction for NestedField  Sort Type
+with   NestedFields_mutT := Induction for NestedFields Sort Type.
+Arguments NestedType_mutT P P0 P1 : rename. (* https://github.com/coq/coq/issues/15985 *)
+Combined Scheme NestedType_mutindT from NestedType_mutT, NestedField_mutT, NestedFields_mutT.
+Arguments NestedType_mutindT P P0 P1 : rename.
+
+Scheme NestedType_mutS   := Induction for NestedType   Sort Set
+with   NestedField_mutS  := Induction for NestedField  Sort Set
+with   NestedFields_mutS := Induction for NestedFields Sort Set.
+Arguments NestedType_mutS P P0 P1 : rename. (* https://github.com/coq/coq/issues/15985 *)
+
+(* TODO maybe we should return defaults that have the correct size? *)
+Definition interp_type_inhabited_induction:
+  (forall tp: NestedType, inhabited (interp_type tp)) *
+  ((forall f: NestedField, inhabited (interp_field f)) *
+   (forall fs: NestedFields, inhabited (interp_fields fs))).
+  eapply NestedType_mutindT; simpl; try typeclasses eauto.
+  intros. econstructor. exact (default, default).
+Defined.
+
+Global Instance interp_type_inhabited: forall tp: NestedType, inhabited (interp_type tp) :=
+  fst interp_type_inhabited_induction.
+Global Instance interp_field_inhabited: forall f: NestedField, inhabited (interp_field f) :=
+  fst (snd interp_type_inhabited_induction).
+Global Instance interp_fields_inhabited: forall fs: NestedFields, inhabited (interp_fields fs) :=
+  snd (snd interp_type_inhabited_induction).
+
+Definition type_eq_dec: forall tp1 tp2: NestedType, { tp1 = tp2 } + { tp1 <> tp2 }.
+  pose proof NestedType_mutS as A.
+  specialize A with
+     (P := fun tp1 => forall tp2, { tp1 = tp2 } + { tp1 <> tp2 })
+     (P0 := fun f1 => forall f2, { f1 = f2 } + { f1 <> f2 })
+     (P1 := fun fs1 => forall fs2, { fs1 = fs2 } + { fs1 <> fs2 }).
+  cbn beta in A.
+  eapply A; clear A.
+  - destruct tp2; try (right; congruence).
+    destruct (Z.eq_dec nbits nbits0); [left|right]; congruence.
+  - destruct tp2; try (right; congruence).
+    specialize (H fields0).
+    destruct H; [left|right]; congruence.
+  - destruct tp2; try (right; congruence).
+    specialize (H tp2). destruct H; try (right; congruence).
+    destruct (N.eq_dec L L0); [left|right]; congruence.
+  - destruct f2.
+    specialize (H tp0). destruct H; try (right; congruence).
+    destruct (String.string_dec name name0); [left|right]; congruence.
+  - destruct fs2; try (right; congruence).
+    specialize (H fs2). destruct H; try (right; congruence).
+    specialize (H0 f0). destruct H0; [left|right]; congruence.
+  - destruct fs2; try (right; congruence).
+    specialize (H f0). destruct H; [left|right]; congruence.
+Defined.
+
+(* Note: This does not compute, because BoolSpecs are opaque! *)
+Definition ocast(tp1 tp2: NestedType)(v: interp_type tp1): option (interp_type tp2).
+  destruct (type_eqb tp1 tp2) eqn: E.
+  - fwd. exact (Some v).
+  - exact None.
+Abort.
+
+Definition ocast(tp1 tp2: NestedType)(v: interp_type tp1): option (interp_type tp2) :=
+  match type_eq_dec tp1 tp2 with
+  | left pf => Some (eq_rect tp1 interp_type v tp2 pf)
+  | right pf => None
   end.
 
-Ltac create_predicate :=
-  match goal with
-  | |- ?G => let t := constr:(ltac:(
-                let p := fresh in intro p; case p; create_predicate_rec idtac) : G) in
-             let t' := eval cbv beta in t in
-             exact t'
+Lemma ocast_diff: forall tp1 tp2 v, tp1 <> tp2 -> ocast tp1 tp2 v = None.
+Proof.
+  intros. unfold ocast. destruct (type_eq_dec tp1 tp2); congruence.
+Qed.
+
+Lemma ocast_same_eq: forall tp1 tp2 v (pf: tp1 = tp2),
+    ocast tp1 tp2 v = Some (eq_rect tp1 interp_type v tp2 pf).
+Proof.
+  intros. unfold ocast.
+  destruct (type_eq_dec tp1 tp2). 2: congruence.
+  f_equal. f_equal. eapply Eqdep_dec.UIP_dec. eapply type_eq_dec.
+Qed.
+
+Lemma ocast_same: forall tp v, ocast tp tp v = Some v.
+Proof.
+  intros. rewrite (ocast_same_eq _ _ _ eq_refl). reflexivity.
+Qed.
+
+(* like eq_rect, but more implicit arguments, and argument order that works better for
+   inference *)
+Definition cast{T: Type}{t1 t2: T}(f: T -> Type)(pf: t1 = t2)(x: f t1): f t2 :=
+  eq_rect t1 f x t2 pf.
+
+Definition toplevel_elem_count(tp: NestedType): N :=
+  match tp with
+  | UInt _ => 1
+  | TRecord _ => 1
+  | TArray _ L => L
   end.
 
-Section WithMem.
+(*
+Section SplitOff.
+  (* tp1 with holes as described in pr1, located at addr1, is what we want to split off *)
+  Context (addr1: Z) (tp1: NestedType) (pr1: type_presence tp1).
 
-  Context {word: word.word 32} {word_ok: word.ok word}.
-  Context {mem: map.map word byte} {mem_ok: map.ok mem}.
-  Context {ext_spec: ExtSpec} {ext_spec_ok: ext_spec.ok ext_spec}.
+  Fixpoint split_off_from_type(addr2: Z)(tp2: NestedType):
+    type_presence tp2 -> interp_type tp2 -> option (type_presence tp2 * interp_type tp1) :=
+    match type_eq_dec tp2 tp1 with
+    | left pf => fun pr2 v =>
+        match type_presence_sub (cast type_presence pf pr2) pr1 with
+        | Some pr2' => if addr1 =? addr2 then
+                         Some (eq_rect_r type_presence pr2' pf,
+                               eq_rect tp2 interp_type v tp1 pf)
+                       else None
+        | None => None
+        end
+    | right _ =>
+        match tp2 as tp2 return type_presence tp2 -> interp_type tp2 -> option (type_presence tp2 * interp_type tp1) with
+        | UInt nbits => fun pr2 v => None
+        | TRecord fields => split_off_from_fields addr2 fields
+        | TArray tE L2 =>
+            let i := (addr1 - addr2)/type_size tE in
+            match type_eq_dec (TArray tE (toplevel_elem_count tp1)) tp1
+            with
+            | left pf => fun pr2 v => (* according to types, a subarray is requested *)
+                if ((addr1 - addr2) mod (type_size tE) =? 0) then
+                  let pr2slice := pr2[i:][: Z.of_N (toplevel_elem_count tp1)] in
+                  match @type_presence_sub (TArray tE (toplevel_elem_count tp1))
+                          pr2slice (cast type_presence (eq_sym pf) pr1)
+                  with
+                  | Some pr2slice' => Some (
+                      pr2[:i] ++ pr2slice' ++ pr2[i + Z.of_N (toplevel_elem_count tp1) :],
+                      cast interp_type pf v[i:][:Z.of_N (toplevel_elem_count tp1)])
+                  | None => None
+                  end
+                else None
+            | right _ =>
+                match type_eq_dec tE tp1 with
+                | left pf => fun pr2 v => (* according to types, 1 array element requested *)
+                    if ((addr1 - addr2) mod (type_size tE) =? 0) then
+                      match type_presence_sub pr2[i] (cast type_presence (eq_sym pf) pr1)
+                      with
+                      | Some pr2i' => Some (pr2[:i] ++ [| pr2i' |] ++ pr2[i + 1 :],
+                                           cast interp_type pf v[i])
+                      | None => None
+                      end
+                    else None
+                | right _ => fun pr2 v => (* according to types, the only remaining
+                       possibility is that a subpart of an array element is requested *)
+                    match split_off_from_type (addr2 + i * type_size tE) tE pr2[i] v[i] with
+                    | Some (pr2i', res) => Some(pr2[:i] ++ [| pr2i' |] ++ pr2[i + 1 :], res)
+                    | None => None
+                    end
+                end
+            end
+        end
+    end
+  with split_off_from_field(addr2: Z)(f2: NestedField)
+    : field_presence f2 -> interp_field f2 -> option (field_presence f2 * interp_type tp1) :=
+    match f2 with
+    | FField name tp => split_off_from_type addr2 tp
+    end
+  with split_off_from_fields(addr2: Z)(fs2: NestedFields)
+    : fields_presence fs2 -> interp_fields fs2 ->
+      option (fields_presence fs2 * interp_type tp1) :=
+    match fs2 with
+    | FSnoc rest f2 => fun '(pr2_rest, pr2_f) '(v_rest, v_f) =>
+        if addr1 <? addr2 + fields_size rest then
+          match split_off_from_fields addr2 rest pr2_rest v_rest with
+          | Some (pr2_rest', res) => Some ((pr2_rest', pr2_f), res)
+          | None => None
+          end
+        else
+          match split_off_from_field (addr2 + fields_size rest) f2 pr2_f v_f with
+          | Some (pr2_f', res) => Some ((pr2_rest, pr2_f'), res)
+          | None => None
+          end
+    | FSingle f2 => split_off_from_field addr2 f2
+  end.
+End SplitOff.
+*)
 
-  Existing Instance locals.
-  Existing Instance locals_ok.
+(* if the type has holes, any values should be accepted for the holes,
+   so we can't use a judgment of the form "decode bytes = value", but
+   we have to use a relation *)
 
-Global Instance ARPPacket: RepPredicate ARPPacket_t mem :=
-  ltac:(create_predicate).
+Definition unnamed_field_rep{tp: NestedType}
+  (type_rep: type_presence tp -> interp_type tp -> list (option byte) -> Prop)
+  (present: bool)(v: interp_type tp)(bso: list (option byte)): Prop :=
+  if present then type_rep (all_present tp) v bso
+  else bso = List.repeatz None (type_size tp).
 
-Global Instance EthernetHeader: RepPredicate EthernetHeader_t mem :=
-  ltac:(create_predicate).
+Fixpoint type_rep(tp: NestedType):
+  type_presence tp -> interp_type tp -> list (option byte) -> Prop :=
+  match tp as tp0 return type_presence tp0 -> interp_type tp0 -> list (option byte) -> Prop
+  with
+  | UInt nbits => fun (_: unit) (v: Z) bso =>
+      len bso = nbits_to_nbytes nbits /\
+      exists bs, List.map Some bs = bso /\ LittleEndianList.le_combine bs = v
+  | TRecord fields => fields_rep fields
+  | TArray tE L => fun presence vs bso =>
+      exists chunks, len chunks = Z.of_N L /\ List.concat chunks = bso /\
+        List.Forall3 (unnamed_field_rep (type_rep tE)) presence vs chunks
+  end
+with field_rep(f: NestedField):
+  field_presence f -> interp_field f -> list (option byte) -> Prop :=
+  match f with
+  | FField _ tE => unnamed_field_rep (type_rep tE)
+  end
+with fields_rep(fs: NestedFields):
+  fields_presence fs -> interp_fields fs -> list (option byte) -> Prop :=
+  match fs with
+  | FSnoc rest f => fun '(p_rest, p_f) '(v_rest, v_f) bso =>
+      exists bso_rest bso_f, bso = bso_rest ++ bso_f /\
+                             fields_rep rest p_rest v_rest bso_rest /\
+                             field_rep f p_f v_f bso_f
+  | FSingle f => field_rep f
+  end.
+
+Lemma cast_bytes_induction:
+  (forall tp bs, len bs = type_size tp -> exists v: interp_type tp,
+     type_rep tp (const_type_presence true tp) v (List.map Some bs)) /\
+  (forall f bs, len bs = field_size f -> exists v: interp_field f,
+     field_rep f (const_field_presence true f) v (List.map Some bs)) /\
+  (forall fs bs, len bs = fields_size fs -> exists v: interp_fields fs,
+     fields_rep fs (const_fields_presence true fs) v (List.map Some bs)).
+Proof.
+  eapply NestedType_mutind;
+    cbn [interp_type type_rep type_size
+         interp_field field_rep field_size
+         interp_fields fields_rep fields_size];
+    intros.
+  - eexists. rewrite List.map_length. split. 1: assumption.
+    simpl. eexists. split; reflexivity.
+  - eauto.
+  - revert H0. unfold array_t. cbn. unfold List.repeatz.
+    replace (Z.to_nat (Z.of_N L)) with (N.to_nat L) by lia.
+    set (n := N.to_nat L).
+    replace (Z.of_N L) with (Z.of_nat n) by lia. clearbody n. clear L.
+    revert bs.
+    induction n; intros.
+    + change (Z.of_nat 0) with 0 in *. rewrite Z.mul_0_r in *.
+      destruct bs. 2: discriminate. clear H0.
+      exists nil, nil. ssplit; constructor.
+    + specialize (H (List.upto (type_size tp) bs)).
+      destruct H as (v & H). {
+        apply List.len_upto. pose proof (type_size_nonneg tp). lia.
+      }
+      specialize (IHn (List.from (type_size tp) bs)).
+      destruct IHn as (vs & chunks & IH1 & IH2 & IH3). {
+        pose proof (type_size_nonneg tp).
+        rewrite List.len_from; lia.
+      }
+      exists (v :: vs), ((List.map Some (List.upto (type_size tp) bs)) :: chunks).
+      ssplit.
+      * cbn [List.length]. lia.
+      * cbn. rewrite IH2. rewrite <- List.map_app. f_equal.
+        rewrite List.upto_canon. rewrite (List.from_canon bs (type_size tp)).
+        rewrite List.merge_adjacent_slices. 2: pose proof (type_size_nonneg tp); lia.
+        rewrite <- List.upto_canon.
+        (* TODO add to ZList *)
+        unfold List.upto.
+        replace (Z.to_nat (Z.of_nat (List.length bs))) with (List.length bs) by lia.
+        apply List.firstn_all.
+      * cbn. constructor; assumption.
+  - simpl. eauto.
+  - specialize (H (List.upto (fields_size rest) bs)).
+    pose proof (fields_size_nonneg rest).
+    pose proof (field_size_nonneg f).
+    destruct H as (v_rest & IHrest). {
+      apply List.len_upto. lia.
+    }
+    specialize (H0 (List.from (fields_size rest) bs)).
+    destruct H0 as (v_f & IHf). {
+      rewrite List.len_from; lia.
+    }
+    change (const_fields_presence true (FSnoc rest f))
+             with (const_fields_presence true rest, const_field_presence true f).
+    eexists (_, _).
+    eexists _, _.
+    ssplit. 2,3: eassumption.
+    rewrite <- List.map_app. f_equal.
+    rewrite List.upto_canon. rewrite (List.from_canon bs (fields_size rest)).
+    rewrite List.merge_adjacent_slices by lia.
+    rewrite <- List.upto_canon.
+    (* TODO add to ZList *)
+    unfold List.upto.
+    replace (Z.to_nat (Z.of_nat (List.length bs))) with (List.length bs) by lia.
+    symmetry. apply List.firstn_all.
+  - eauto.
+Qed.
+
+Definition record(tp: NestedType)(pr: type_presence tp)(v: interp_type tp)
+  (addr: Z)(m: mem): Prop :=
+  exists bso, m = map.of_olist_Z_at addr bso /\ type_rep tp pr v bso.
+
+Definition record_field(f: NestedField)(pr: field_presence f)(v: interp_field f)
+  (addr: Z)(m: mem): Prop :=
+  exists bso, m = map.of_olist_Z_at addr bso /\ field_rep f pr v bso.
+
+Definition record_fields(fs: NestedFields)(pr: fields_presence fs)(v: interp_fields fs)
+  (addr: Z)(m: mem): Prop :=
+  exists bso, m = map.of_olist_Z_at addr bso /\ fields_rep fs pr v bso.
+
+Declare Custom Entry type_with_presence.
+
+Notation "tp" := (all_present tp)
+  (in custom type_with_presence at level 2, tp constr at level 11).
+Notation "pr - fld" := (remove_from_type_presence pr fld)
+  (left associativity, in custom type_with_presence at level 3, fld constr at level 0,
+   format "pr  - fld").
+
+Notation "v @@ a : pr" := (record _ pr v a)
+  (at level 25, a at level 99, pr custom type_with_presence at level 3).
+
+Goal forall (p: interp_type ARPPacket) (addr: Z) (ws: list Z), True.
+Proof.
+  intros.
+  pose (record ARPPacket (all_present _) p addr) as c1.
+  pose (record ARPPacket (remove_from_fields_presence (all_present ARPPacket) "tha") p addr) as c2.
+  pose (record ARPPacket (remove_from_fields_presence (remove_from_fields_presence (all_present ARPPacket) "tha") "sha") p addr) as c3.
+  pose (record (TArray (UInt 32) 12) (all_present _) ws addr) as c4.
+  pose (seps [|c1; c2; c3; c4|]) as c5.
+  subst c1 c2 c3 c4. cbn [seps] in c5.
+Abort.
+
+Axiom TODO: False.
+
+Lemma invert_bytearray: forall (bs: list Z) addr m n,
+    (bs @@ addr : Array (UInt 8) n) m ->
+    m = map.of_olist_Z_at addr (List.map Some (List.map byte.of_Z bs)) /\
+    len bs = Z.max 0 n.
+Proof.
+Admitted.
+
+Lemma bytearray_to_record: forall tp (bs: list Z) n addr R m,
+    sep (bs @@ addr : Array (UInt 8) n) R m ->
+    n = (type_size tp) ->
+    exists (v: interp_type tp), sep (v @@ addr : tp) R m.
+Proof.
+  intros. subst. destruct H as (m1 & m2 & Sp & Hm1 & Hm2).
+  pose proof (proj1 cast_bytes_induction) as P.
+  specialize (P tp (List.map byte.of_Z bs)). rewrite List.map_length in P.
+  eapply invert_bytearray in Hm1. destruct Hm1 as (A & B).
+  pose proof (type_size_nonneg tp).
+  specialize (P ltac:(lia)). destruct P as (v & P). exists v.
+  exists m1, m2. ssplit; try assumption.
+  unfold record. eexists. split. 2: exact P. exact A.
+Qed.
+
+Lemma record_UInt_present: forall v a nbits,
+    record (UInt nbits) (all_present _) v a = littleendian nbits v a.
+Proof.
+  unfold record, littleendian. intros. extensionality m. unfold type_rep.
+  eapply propositional_extensionality; split; intros.
+  - fwd. split.
+    + f_equal. case TODO.
+    + case TODO.
+  - fwd. eexists. ssplit. 3: eexists. 3: split. 3: reflexivity. 3: reflexivity.
+    + case TODO.
+    + case TODO.
+Qed.
+
+(* Note: If target address points to the i-th element of an array which is a field
+   of the record we're looking at, and i is symbolic, the whole target address expression
+   is symbolic, and we can't compute on it, even if we first symbolically subtract
+   the base address from it. *)
+
+Lemma record_fields_single: forall f pr v a,
+    record_fields (FSingle f) pr v a = record_field f pr v a.
+Proof.
+  intros. unfold record_fields, record_field. reflexivity.
+Qed.
+
+(* TODO maybe use lemmas like this one as the definition instead of going through
+   list (option byte) ? *)
+Lemma record_fields_snoc: forall fs f (pr_fs: fields_presence fs) (pr_f: field_presence f)
+                                 (v_fs: interp_fields fs) (v_f: interp_field f) a,
+    record_fields (FSnoc fs f) (pr_fs, pr_f) (v_fs, v_f) a =
+    sep (record_fields fs pr_fs v_fs a)
+        (record_field f pr_f v_f (a + fields_size fs)).
+Proof.
+  intros. eapply iff1ToEq. intro m. unfold record_fields, record_field.
+  unfold sep.
+  split; intros; fwd.
+  - simpl in Hp1. fwd. do 2 eexists. ssplit. 2,3: eexists; split. 2,4: reflexivity.
+    2,3: eassumption. case TODO.
+  - eexists. split. 2: eexists _, _. 2: split. 2: reflexivity.
+    2: split; eassumption.
+    case TODO.
+Qed.
+
+Lemma record_field_present: forall name tp v a,
+    record_field (FField name tp) true v a = record tp (all_present tp) v a.
+Proof.
+  intros. unfold record_field, record. reflexivity.
+Qed.
+
+Lemma record_field_absent: forall name tp v a,
+    record_field (FField name tp) false v a = emp True.
+Proof.
+  intros. eapply iff1ToEq. intro m. unfold record_field, emp. split; intros; fwd.
+  - change (field_rep (FField name tp))
+      with (unnamed_field_rep (type_rep tp)) in Hp1.
+    simpl in Hp1. subst bso.
+    case TODO.
+  - exists (List.repeatz None (type_size tp)). split.
+    + case TODO.
+    + reflexivity.
+Qed.
+
+Lemma split_off_field: forall name fs (v: interp_fields fs) pr a,
+    get_field_presence pr name = Some true ->
+    iff1 (record_fields fs pr v a)
+         (sep (record_fields fs (remove_from_fields_presence pr name) v a)
+              (record (lookup_type_in_fields fs name) (all_present _)
+                 (lookup_in_fields _ v name) (a + offset_of_field fs name))).
+Proof.
+  induction fs; intros.
+  - destruct f. simpl in *. destruct v as (v_rest & v_f).
+    destruct pr as (pr_rest & pr_f).
+    unfold field_presence in pr_f. destruct_one_match.
+    + destruct_one_match_hyp. 1: discriminate.
+      fwd. rewrite 2record_fields_snoc. rewrite record_field_present.
+      rewrite record_field_absent. rewrite sep_emp_True_r. reflexivity.
+    + rewrite 2record_fields_snoc. cancel. cbn [seps].
+      eapply IHfs. assumption.
+  - destruct f. simpl in *. unfold field_presence in pr. destruct_one_match.
+    2: discriminate.
+    fwd. rewrite 2record_fields_single. rewrite record_field_present.
+    rewrite record_field_absent. rewrite sep_emp_True_l. rewrite Z.add_0_r. reflexivity.
+Qed.
+
+Lemma split_off_field_from_type_by_addr: forall fs (pr: type_presence (TRecord fs)) name
+                              (v: interp_type (TRecord fs)) aBase aTgt aTgt',
+    (* not strictly needed, only to determine name: *)
+    offset_to_field fs (aTgt-aBase) = name ->
+    get_field_presence pr name = Some true ->
+    (* aTgt' is aTgt rounded-down to field boundaries *)
+    aBase + offset_of_field fs name = aTgt' ->
+    (record (TRecord fs) pr v aBase) =
+      sep (record (TRecord fs) (remove_from_type_presence pr name) v aBase)
+          (record (lookup_type_in_fields fs name) (all_present _) v~>name aTgt').
+Proof.
+  intros. eapply iff1ToEq. subst aTgt'.
+  change (record (TRecord fs) pr v aBase) with (record_fields fs pr v aBase).
+  change (record (TRecord fs) (remove_from_type_presence pr name) v aBase) with
+         (record_fields fs (remove_from_fields_presence pr name) v aBase).
+  etransitivity.
+  1: eapply split_off_field. 1: eassumption. cancel.
+  cbn [seps]. reflexivity.
+Qed.
+
+Lemma split_off_field_from_type_by_name: forall fs (pr: type_presence (TRecord fs)) name
+                              (v: interp_type (TRecord fs)) aBase R,
+    get_field_presence pr name = Some true ->
+    sep (record (TRecord fs) pr v aBase) R =
+    sep (record (TRecord fs) (remove_from_type_presence pr name) v aBase)
+        (sep (record (lookup_type_in_fields fs name) (all_present _) v~>name
+                     (aBase + offset_of_field fs name)) R).
+Proof.
+  intros. eapply iff1ToEq.
+  change (record (TRecord fs) pr v aBase) with (record_fields fs pr v aBase).
+  change (record (TRecord fs) (remove_from_type_presence pr name) v aBase) with
+         (record_fields fs (remove_from_fields_presence pr name) v aBase).
+  cancel. cbn [seps].
+  etransitivity.
+  1: eapply split_off_field. 1: eassumption. cancel.
+  cbn [seps]. reflexivity.
+Qed.
+
+(*
+Lemma merge_back_field_into_type_by_name: forall fs (pr: type_presence (TRecord fs)) name
+                (v: interp_type (TRecord fs)) vFieldNew aBase R,
+    get_field_presence pr name = Some false ->
+    sep (record (TRecord fs) pr v aBase)
+        (sep (record tp2 (all_present tp2) vFieldNew aField) R) =
+    sep (record (TRecord fs) (updateTODO pr vFieldNew) v aBase).
+*)
+
+Ltac split_off_field baseAddr name Hm :=
+  let P := fresh "P" in
+  match type of Hm with
+  | context[sep (record (TRecord ?fs) ?pr ?v baseAddr) ?R] =>
+      pose proof (split_off_field_from_type_by_name fs pr name v baseAddr R eq_refl) as P
+  end;
+  lazymatch type of P with
+  | ?A = sep ?A' (sep (record ?tp (all_present ?tp) ?v ?addr) ?R) =>
+      let addr' := eval cbn in addr in
+      let tp' := eval cbn in tp in
+      change (A = sep A' (sep (record tp' (all_present tp') v addr') R)) in P
+  end;
+  rewrite P in Hm;
+  clear P.
+
+(* instead of (list (option byte)), use (map Z byte) starting at index 0 and
+   shift the keys?
+
+but byte lists do appear when casting from byte arrays to records
+
+for casting byte buffer to record:
+decode taking (list byte), no holes
+
+
+ *)
+
 
 (* New Feature TODO:
    Allow "breakpoints" /**. .**/ anywhere inside expressions,
@@ -2147,120 +2827,116 @@ but also
 (* TODO: min function where both args and res could all be aliased,
    can we do it with several hyps about mem, or with and1?
 
-Pre: (a @@ pa * Ra /\ b @@ pb * Rb /\ c @@ Rc)
+Pre:  (a @@ pa /\ b @@ pb /\ c @@ pc) * R
 Body: *pc = min( *pa, *pb )
-Post: (min(a,b) @@ pc * Rc)
+Post: (any @@ pa /\ any @@ pb /\ min(a,b) @@ pc) * R
 *)
 
 (*
-(* needed if v is of type Z rather than (uint_t ?nbits) *)
-Global Hint Extern 2 (PredicateSize (uint ?nbits ?v) _) =>
-  lazymatch nbits with
-  | 8 => exact (uint_8_PredicateSize v)
-  | 16 => exact (uint_16_PredicateSize v)
-  | 32 => exact (uint_32_PredicateSize v)
-  | 64 => exact (uint_64_PredicateSize v)
-  | _ => exact (uint_width_PredicateSize v)
-  end
-: typeclass_instances.
+Inductive purify: (mem -> Prop) -> Prop -> Prop :=
+| purify_one: forall (R: mem -> Prop) (P: Prop), (forall m, R m -> P) -> purify R P
+| purify_cons: forall (RHead RTail: mem -> Prop) (PHead PTail: Prop),
+    (forall m, RHead m -> PHead) ->
+    purify RTail PTail ->
+    purify (sep RHead RTail) (PHead /\ PTail).
 
-(* Needed if a and b are of type (uint_t ?nbits) instead of Z *)
-#[export] Hint Extern 5 (BoolSpec _ _ (?zOp ?a ?b)) =>
-  lazymatch constr:(fun x y: Z => _ : BoolSpec _ _ (zOp x y)) with
-  | (fun _ _ => ?s _ _) => exact (s a b)
-  end
-: typeclass_instances.
-*)
-
-(* not a Lemma because this kind of goal will be solved inline by sepcalls canceler *)
-Goal forall (bs: list (uint_t 8)) (R: mem -> Prop) a m (Rest: EthernetHeader_t -> Prop),
-    sep (array (uint 8) 14 bs a) R m ->
-    exists h, sep (EthernetHeader h a) R m /\ Rest h.
+Lemma apply_purify: forall (R: mem -> Prop) (P: Prop),
+    purify R P -> forall m, R m -> P.
 Proof.
-  intros.
-  step.
-  eexists (mkEthernetHeader _ _ _).
-  step.
-  unfold EthernetHeader.
-  unfold sepapp.
+*)
 
-  (*
-  step. step. step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step.
-  { step. }
+Definition purify(R: mem -> Prop)(P: Prop): Prop := forall m, R m -> P.
 
-  undo_step.
+Lemma purify_sep: forall {RHead RTail: mem -> Prop} {PHead PTail: Prop},
+    purify RHead PHead ->
+    purify RTail PTail ->
+    purify (sep RHead RTail) (PHead /\ PTail).
+Admitted.
 
-  lazymatch type of H with
-  | context[EthernetHeader] => idtac
-  | _ => fail "folding failed"
+Lemma purify_sep_skip_l: forall {RHead RTail: mem -> Prop} {PTail: Prop},
+    purify RTail PTail ->
+    purify (sep RHead RTail) PTail.
+Admitted.
+
+Lemma purify_sep_skip_r: forall {RHead RTail: mem -> Prop} {PHead: Prop},
+    purify RHead PHead ->
+    purify (sep RHead RTail) PHead.
+Admitted.
+
+Lemma purify_scalar: forall a v nbits,
+    purify (v @@ a : UInt nbits) (0 <= v < 2 ^ nbits /\ 0 <= a < 2 ^ 32).
+Proof.
+Admitted.
+
+#[export] Hint Resolve purify_scalar : purify.
+
+Ltac purify_rec :=
+  lazymatch goal with
+  | |- purify (sep ?R1 ?R2) ?E =>
+      is_evar E;
+      let HLeft := fresh in
+      let HRight := fresh in
+      tryif (eassert (purify R1 _) as HLeft by purify_rec) then
+        tryif (eassert (purify R2 _) as HRight by purify_rec) then
+          exact (purify_sep HLeft HRight)
+        else
+          refine (purify_sep_skip_r HLeft)
+      else
+        tryif (eassert (purify R2 _) as HRight by purify_rec) then
+          exact (purify_sep_skip_l HRight)
+        else
+          fail "can't be purified"
+  | |- purify _ ?E => is_evar E; solve [eauto with purify]
+  | |- _ => fail "goal should be of form 'purify _ _'"
   end.
-  *)
-Abort.
 
-Set Default Proof Mode "Ltac2".
+Ltac purify_hyp H :=
+  match type of H with
+  | ?R ?m => let HP := fresh H "P" in eassert (purify R _) as HP;
+             [ purify_rec | specialize (HP m H); mark_as_implicit_facts HP ]
+  end.
 
-(* TODO preserve order of memory hyps *)
-(* TODO always put var m at beginning of then/else branch scope so that it doesn't
-   move later *)
+Ltac purify :=
+  match goal with
+  | H: sep _ _ _ |- _ => purify_hyp H
+  end.
 
-(*
-Definition min3_mem: {f: list string * list string * cmd &
-  forall fs t m a b c old_r pa pb pc pr (R: mem -> Prop),
-    <{ * uint 32 a pa
-       * uint 32 b pb
-       * uint 32 c pc
-       * uint 32 old_r pr
+Definition u_min_mem: {f: list string * list string * cmd &
+  forall fs t m a b c pa pb pc (R: mem -> Prop),
+    <{ * a @@ pa : UInt 32
+       * b @@ pb : UInt 32
+       * c @@ pc : UInt 32
        * R }> m ->
-    vc_func fs f t m [|pa; pb; pc; pr|] (fun t' m' retvs =>
-      t' = t /\ retvs = nil /\
-      <{ * uint 32 a pa
-         * uint 32 b pb
-         * uint 32 c pc
-         * uint 32 (Z.min a (Z.min b c)) pr
-         * R }> m'
+    vc_func fs f t m [|pa; pb; pc|] (fun t' m' retvs =>
+      t' = t /\ R m' /\
+      (a < b /\ retvs = [|a|] \/
+       b <= a /\ retvs = [|b|])
   )}.                                                                           .**/
 {                                                                          /**. .**/
-  if (load4(pa) <= load4(pb) && load4(pa) <= load4(pc)) {                  /**. .**/
-    store4(pr, load4(pa));                                                 /**. .**/
+  uintptr_t r = 0;                                                         /**.
+
+  purify.
+
+ .**/
+  if (load4(pa) < load4(pb)) {                                             /**.
+
+(* TODO new load lemmas
+  eval_dexpr_step.
+
+  eapply dexpr_load.
+
+.**/
+    r = a;                                                                 /**. .**/
   } else {                                                                 /**. .**/
-    if (load4(pb) <= load4(pa) && load4(pb) <= load4(pc)) {                /**. .**/
-      store4(pr, load4(pb));                                               /**. .**/
-    } else {                                                               /**. .**/
-      store4(pr, load4(pc));                                               /**. .**/
-    }                                                                      /**. .**/
-  }                                                                        /**.
-(* TODO: stepify after_if *)
-(* TODO: speed up postcondition proving *)                                      .**/
+    r = b;                                                                 /**. .**/
+  }                                                                        /**. .**/
+                                                                           /**. .**/
+  return r;                                                                /**. .**/
 }                                                                          /**.
 Defined.
-
-Goal False.
-  ltac1:(let r := eval unfold min3_mem in
-  match min3_mem with
-  | existT _ f _ => f
-  end in pose r).
+*)
 Abort.
 
-Definition shortcircuiting_and_or_test: {f: list string * list string * cmd &
-  forall fs t m a n vs (R: mem -> Prop),
-    0 <= n < 2 ^ 32 -> (* TODO can we sneak these into array? *)
-    0 <= a < 2 ^ 32 ->
-    <{ * array (uint 8) n vs a
-       * R }> m ->
-    vc_func fs f t m [|a; n|] (fun t' m' retvs => True)
-  }.                                                                            .**/
-{                                                                          /**. .**/
-  uintptr_t valid = -1;                                                    /**. .**/
-  if (n <= 4 && load4(a) == 1) {                                           /**.
-
-{ (* ltac1:(step).
-
-Close Scope implicit_facts_scope.
-
-*)Abort.
-
-(*
 (* bs: first 4 bytes: operation, the only supported operation is 1 (squaring)
        next 4 bytes: number to be squared
    output: square-reply: 2, then the squared number *)
@@ -2310,6 +2986,7 @@ Definition arp: {f: list string * list string * cmd &
 rename H1 into Hm.
 eapply (bytearray_to_record (EthernetPacket ARPPacket)) in Hm.
 (* TODO n is bound using =, but doReply is bound using :=, consolidate? *)
+(*
 2: subst n; reflexivity.
 destruct Hm as (p & Hm).
 split_off_field a "etherType" Hm.
@@ -2320,7 +2997,6 @@ Close Scope sep_bullets_scope. {
 Undelimit Scope sep_scope. {
 *)
 
-(*
       if ((load2(ethbuf @ (@etherType ARPPacket)) == ETHERTYPE_ARP_LE) &
           (load2(ethbuf @ (@payload ARPPacket) @ htype) == HTYPE_LE) &
           (load2(ethbuf @ (@payload ARPPacket) @ ptype) == PTYPE_LE) &
@@ -2376,9 +3052,11 @@ indep (find! (n = ??)).
 assert (0 <= i <= n) by ZWords.
 clearbody i.
 
+(*
 .**/
   while (i < n) /* decreases (n - i) */ {                                /**. .**/
     store1(a + i, b);                                                    /**.
+*)
 
 Abort.
 (*
@@ -2561,7 +3239,19 @@ word.ok word -> forall a b : word, foo a b = foo b a
 
 Comments !EOF .**/ //.
 
+
+  Fixpoint remove_seq_nat(start: Z)(len: nat)(m: mem): mem :=
+    match len with
+    | O => m
+    | S n => map.remove (remove_seq_nat (wadd start 1) n m) start
+    end.
+
+  Definition remove_seq(start len: Z): mem -> mem := remove_seq_nat start (Z.to_nat len).
+
+  Definition get_seq(start len: Z)(m: mem): list byte :=
+    List.map (fun ofs => get_or_zero (wadd start (Z.of_nat ofs)) m)
+             (List.seq 0 (Z.to_nat len)).
+
+  Definition has_seq(start len: Z)(m: mem): Prop :=
+    List.Foral
 *)
-*)
-*)
-End WithMem.

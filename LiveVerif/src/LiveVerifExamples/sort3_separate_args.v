@@ -1,6 +1,6 @@
 (* -*- eval: (load-file "../live_verif_setup.el"); -*- *)
 Require Import coqutil.Sorting.Permutation.
-Require Import bedrock2Examples.LiveVerif.LiveVerifLib. Load LiveVerif.
+Require Import LiveVerif.LiveVerifLib. Load LiveVerif.
 
 Hint Extern 4 (Permutation _ _) =>
   eauto using perm_nil, perm_skip, perm_swap, perm_trans

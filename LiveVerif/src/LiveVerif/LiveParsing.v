@@ -2,10 +2,10 @@ Require Import Coq.setoid_ring.InitialRing. (* for isZcst *)
 Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import bedrock2.Syntax.
-Require Import bedrock2Examples.LiveVerif.LiveSnippet.
+Require Import LiveVerif.LiveSnippet.
 Require Import coqutil.Tactics.reference_to_string.
 (* TODO consolidate with variants in coqutil: *)
-Require Import bedrock2Examples.LiveVerif.string_to_ident.
+Require Import LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 
 Require Import Ltac2.Ltac2.

@@ -1,5 +1,5 @@
 (* -*- eval: (load-file "../live_verif_setup.el"); -*- *)
-Require Import bedrock2Examples.LiveVerif.LiveVerifLib.
+Require Import LiveVerif.LiveVerifLib.
 
 Load LiveVerif.
 
