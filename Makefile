@@ -31,7 +31,6 @@ ifneq ($(EXTERNAL_DEPENDENCIES),1)
 
 ifneq ($(EXTERNAL_COQUTIL),1)
 bedrock2_noex: coqutil
-LiveVerif_noex: coqutil
 riscv-coq: coqutil
 install: install_coqutil
 endif
@@ -117,7 +116,7 @@ install_bedrock2_noex:
 install_bedrock2_ex:
 	$(MAKE) -C $(ABS_ROOT_DIR)/bedrock2 install_ex
 
-LiveVerif_noex:
+LiveVerif_noex: bedrock2_noex
 	$(MAKE) -C $(ABS_ROOT_DIR)/LiveVerif noex
 
 LiveVerif_ex: LiveVerif_noex
