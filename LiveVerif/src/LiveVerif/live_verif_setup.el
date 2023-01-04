@@ -49,9 +49,6 @@
 
 (setq hs-set-up-overlay #'lv-hs-set-up-overlay)
 
-;; hs-toggle-hiding
-;; (local-set-key (kbd "C-c C-k") hs-hide-block)
-
 (defun lv-toggle-hiding ()
   (interactive)
   (hs-life-goes-on
@@ -63,3 +60,14 @@
 (local-set-key (kbd "<backtab>") #'lv-toggle-hiding)
 (local-set-key (kbd "<S-tab>") #'lv-toggle-hiding)
 (local-set-key (kbd "<S-iso-lefttab>") #'lv-toggle-hiding)
+
+(local-set-key (kbd "C-c C-k") (lambda ()
+    (interactive)
+    (let* ((line (thing-at-point 'line t))
+           (n (string-match-p "[^ ]" line)))
+      (insert (make-string (max 0 (- 75 (current-column))) ?\s))
+      (insert "/**.")
+      (proof-goto-point)
+      (insert " .**/")
+      (newline)
+      (if n (insert (make-string n ?\s))))))
