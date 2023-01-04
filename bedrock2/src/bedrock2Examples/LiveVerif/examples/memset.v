@@ -26,10 +26,12 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
   lazy_match! goal with [ h: _ < 2 ^ 8 |- _ ] => move $h before R end.
   assert (0 <= \[i] <= \[n]) by ltac1:(ZnWords).
   Std.clearbody [ @i ].
-                                                                              .**/
-  while (i < n) /* decreases (n ^- i) */ {                               /**. .**/
-    store1(a + i, b);                                                    /**. .**/
-     i = i + 1;                                                          /**.
+                                                                                .**/
+  while (i < n) /* decreases (n ^- i) */ {                                 /**. .**/
+    store1(a + i, b);                                                      /**. .**/
+     i = i + 1;                                                            /**. (* .**/
+  }                                                                        /**.
+*)
 
 Abort.
 

@@ -2,6 +2,7 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Datatypes.ZList.
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.foreach_hyp.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
@@ -12,7 +13,7 @@ Ltac is_Z_const e :=
   lazymatch e with
   | Z.pow ?x ?y =>
       lazymatch isZcst x with
-      | true => lazymatch isZcst with
+      | true => lazymatch isZcst y with
                 | true => constr:(true)
                 | false => constr:(false)
                 end
@@ -63,6 +64,23 @@ Ltac lift_res1 original f r :=
       | true => res_convertible uconstr:(f t)
       | false => let pf := r EqProof in
                  res_rewrite uconstr:(f t) uconstr:(@f_equal _ _ f _ t pf)
+      end
+  | false => res_nothing_to_simpl original
+  end.
+
+(* original: term of shape (f (g a))
+   f: constr
+   g: constr
+   r: result whose lhs is a *)
+Ltac lift_res11 original f g r :=
+  lazymatch r DidSomething with
+  | true =>
+      let t := r NewTerm in
+      lazymatch r IsConvertible with
+      | true => res_convertible uconstr:(f (g t))
+      | false => let pf := r EqProof in
+                 res_rewrite uconstr:(f (g t))
+                             uconstr:(@f_equal _ _ (fun x => f (g x)) _ t pf)
       end
   | false => res_nothing_to_simpl original
   end.
@@ -276,6 +294,15 @@ Ltac local_zlist_simpl e :=
   | @List.repeatz ?A _ Z0 => res_convertible uconstr:(@nil A)
   | List.app ?xs nil => res_rewrite xs uconstr:(List.app_nil_r xs)
   | List.app ?l1 ?l2 => let l := append_concrete_list l1 l2 in res_convertible l
+  (* TODO Doesn't do anything for ((xs ++ ys) ++ zs)[i:] if i points into ys,
+     and the subtraction created by from_app_discard_l should be simplified
+     immediately rather than only in the next outermost iteration *)
+  | List.from ?i (List.app ?l1 ?l2) =>
+      res_rewrite (List.from (i - Z.of_nat (length l1)) l2)
+                  (List.from_app_discard_l l1 l2 i ltac:(bottom_up_simpl_sidecond_hook))
+  | List.upto ?i (List.app ?l1 ?l2) =>
+      res_rewrite (List.upto i l1)
+                  (List.upto_app_discard_r l1 l2 i ltac:(bottom_up_simpl_sidecond_hook))
   end.
 
 Inductive expr_kind := WordRingExpr | ZRingExpr | OtherExpr.
@@ -320,18 +347,23 @@ Ltac ring_expr_size e :=
   | _ => non_ring_expr_size e
   end.
 
+Ltac ring_simplify_res e :=
+  let rhs := open_constr:(_) in
+  let x := fresh "x" in
+  let pf := constr:(ltac:(intro x; progress ring_simplify; subst x; reflexivity)
+                     : let x := rhs in e = x) in
+  res_rewrite rhs pf.
+
 Ltac local_ring_simplify parent e :=
   lazymatch expr_kind e with
   | parent => fail "nothing to do here because parent will be ring_simplified too"
-  | _ => let rhs := open_constr:(_) in
-         let x := fresh "x" in
-         let pf := constr:(ltac:(intro x; progress ring_simplify; subst x; reflexivity)
-                            : let x := rhs in e = x) in
+  | _ => let r := ring_simplify_res e in
+         let rhs := r NewTerm in
          let sz1 := ring_expr_size e in
          let sz2 := ring_expr_size rhs in
          let is_shrinking := eval cbv in (Z.ltb sz2 sz1) in
          lazymatch is_shrinking with
-         | true => res_rewrite rhs pf
+         | true => r
          | false => fail "ring_simplify does not shrink the expression size"
          end
   end.
@@ -509,7 +541,110 @@ treat push-down separately:
 and don't treat them as push-down, but as "compute len/unsigned of given expression
 in a bottom-up way"
 
+OR treat them as "local_simpl has access to an API to indicate how/where to continue
+simplifying the new term"?
+
+(would also work for (xs ++ ys)[i:] = xs[i:] ++ ys[i - len xs :],
+where we have to indicate that (i - len xs) might need further simplification
+
+set, app, repeatz, from, upto
+
+    Lemma len_set: forall (l: list A) i x, 0 <= i < len l -> len (set l i x) = len l.
+    Lemma len_app: forall (l1 l2: list A), len (l1 ++ l2) = len l1 + len l2.
+    Lemma len_repeatz: forall (x: A) (n: Z), 0 <= n -> len (repeatz x n) = n.
+    Lemma len_from: forall (l: list A) i, 0 <= i <= len l -> len (from i l) = len l - i.
+    Lemma len_upto: forall (l: list A) i, 0 <= i <= len l -> len (upto i l) = i.
+
+pre-order vs post-order traversal:
+len lemmas need to be applied before descending recursively, while others
+need to be applied after descending recursively
+
+some need intertwined application:
+len_from should first simplify i (so that it's already simplified in the sidecond solving),
+then simplify (len l) in a reusable way so that it appears simplified in the sidecondition
+and in the rhs, and then apply len_from, and then simplify locally the rhs
+(simplified_len_l - simplified_i)
+
 *)
+
+Section SimplLen.
+  Import List.ZIndexNotations. Local Open Scope zlist_scope.
+  Context [A: Type].
+
+  Lemma simpl_len_from: forall (l: list A) i i' n r,
+      i = i' ->
+      len l = n ->
+      0 <= i' <= n ->
+      n - i' = r ->
+      len l[i:] = r.
+  Proof. intros. subst. eapply List.len_from. assumption. Qed.
+
+  Lemma simpl_len_from_pastend: forall (l: list A) i i' n,
+      i = i' ->
+      len l = n ->
+      n <= i' ->
+      len l[i:] = 0.
+  Proof. intros. subst. rewrite List.from_pastend by assumption. reflexivity. Qed.
+
+  Lemma simpl_len_from_negative: forall (l: list A) i i' n,
+      i = i' ->
+      len l = n ->
+      i' <= 0 ->
+      len l[i:] = n.
+  Proof.
+    intros. subst. unfold List.from. replace (Z.to_nat i') with O by lia. reflexivity.
+  Qed.
+
+  Lemma simpl_len_upto: forall (l: list A) i i' n,
+      i = i' ->
+      len l = n ->
+      0 <= i' <= n ->
+      len l[:i] = i'.
+  Proof. intros. subst. eapply List.len_upto. assumption. Qed.
+
+  Lemma simpl_len_upto_pastend: forall (l: list A) i i' n,
+      i = i' ->
+      len l = n ->
+      n <= i' ->
+      len l[:i] = n.
+  Proof. intros. subst. rewrite List.upto_pastend by assumption. reflexivity. Qed.
+
+  Lemma simpl_len_upto_negative: forall (l: list A) i i' n,
+      i = i' ->
+      len l = n ->
+      i' <= 0 ->
+      len l[:i] = 0.
+  Proof.
+    intros. subst. unfold List.upto. replace (Z.to_nat i') with O by lia. reflexivity.
+  Qed.
+
+  Lemma simpl_len_app: forall (l1 l2: list A) n,
+      len l1 + len l2 = n ->
+      len (l1 ++ l2) = n.
+  Proof. intros. subst. eapply List.len_app. Qed.
+
+  Lemma simpl_len_set: forall (l: list A) i i' n x,
+      i = i' ->
+      len l = n ->
+      0 <= i' < n ->
+      len l[i := x] = n.
+  Proof. intros. subst. eapply List.len_set. assumption. Qed.
+
+  Lemma simpl_len_repeatz: forall (x: A) (n n': Z),
+      n = n' ->
+      0 <= n' ->
+      len (List.repeatz x n) = n'.
+  Proof. intros. subst. eapply List.len_repeatz. assumption. Qed.
+
+  Lemma simpl_len_repeatz_max: forall (x: A) (n n': Z),
+      n = n' ->
+      len (List.repeatz x n) = Z.max n' 0.
+  Proof.
+    intros. subst n'. destr (n <? 0).
+    - unfold List.repeatz. replace (Z.to_nat n) with O by lia. simpl. lia.
+    - replace (Z.max n 0) with n by lia. eapply List.len_repeatz. assumption.
+  Qed.
+End SimplLen.
 
 Ltac bottom_up_simpl parent_kind e :=
   lazymatch e with
@@ -525,6 +660,7 @@ Ltac bottom_up_simpl parent_kind e :=
       bottom_up_simpl_app2 e parent_kind WordRingExpr (@word.mul wi wo) x y
   | @word.opp ?wi ?wo ?x    =>
       bottom_up_simpl_app1 e parent_kind WordRingExpr (@word.opp wi wo) x
+  | Z.of_nat (@List.length ?A ?l) => simpl_len e A l
   | ?f1 ?a1 =>
       lazymatch f1 with
       | ?f2 ?a2 =>
@@ -555,7 +691,90 @@ with bottom_up_simpl_app e parent_kind f a :=
   let r := lift_res_app e r1 r2 in
   let e' := r NewTerm in
   let r' := local_simpl_hook parent_kind e' in
-  chain_res r r'.
+  chain_res r r'
+with simpl_len e A x := (* e must be (len x) *)
+  lazymatch x with
+  | List.from ?i ?l =>
+      let r_i := bottom_up_simpl OtherExpr i in
+      let i' := r_i NewTerm in
+      let pf_i := r_i EqProof in
+      let r_len_l := bottom_up_simpl OtherExpr (Z.of_nat (List.length l)) in
+      let len_l' := r_len_l NewTerm in
+      let pf_len_l := r_len_l EqProof in
+      match constr:(Set) with
+      | _ => (* Case: index i is within bounds *)
+          let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): 0 <= i' <= len_l') in
+          let r_diff := ring_simplify_res (Z.sub len_l' i') in
+          let diff := r_diff NewTerm in
+          let pf_diff := r_diff EqProof in
+          res_rewrite r_diff
+            uconstr:(@simpl_len_from A l i i' len_l' diff pf_i pf_len_l sidecond pf_diff)
+      | _ => (* Case: index i is too big *)
+          let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): len_l' <= i') in
+          res_rewrite Z0
+            uconstr:(simpl_len_from_pastend A i i' len_l' pf_i pf_len_l sidecond)
+      | _ => (* Case: index i is too small *)
+          let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): i' <= 0) in
+          res_rewrite len_l'
+            uconstr:(simpl_len_from_negative A i i' len_l' pf_i pf_len_l sidecond)
+      | _ => (* Case: unknown whether index is is within bounds, so the List.from remains *)
+          let r_l := bottom_up_simpl OtherExpr l in
+          let l' := r_l NewTerm in
+          let r := lift_res2 x (@List.from A) r_i r_l in
+          lift_res11 e Z.of_nat (@List.length A) r
+      end
+  | List.upto ?i ?l =>
+      let r_i := bottom_up_simpl OtherExpr i in
+      let i' := r_i NewTerm in
+      let pf_i := r_i EqProof in
+      let r_len_l := bottom_up_simpl OtherExpr (Z.of_nat (List.length l)) in
+      let len_l' := r_len_l NewTerm in
+      let pf_len_l := r_len_l EqProof in
+      match constr:(Set) with
+      | _ => (* Case: index i is within bounds *)
+          let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): 0 <= i' <= len_l') in
+          res_rewrite i' uconstr:(@simpl_len_upto A l i i' len_l' pf_i pf_len_l sidecond)
+      | _ => (* Case: index i is too big *)
+          let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): len_l' <= i') in
+          res_rewrite len_l'
+            uconstr:(simpl_len_upto_pastend A i i' len_l' pf_i pf_len_l sidecond)
+      | _ => (* Case: index i is too small *)
+          let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): i' <= 0) in
+          res_rewrite Z0
+            uconstr:(simpl_len_upto_negative A i i' len_l' pf_i pf_len_l sidecond)
+      | _ => (* Case: unknown whether index is is within bounds, so the List.upto remains *)
+          let r_l := bottom_up_simpl OtherExpr l in
+          let l' := r_l NewTerm in
+          let r := lift_res2 x (@List.upto A) r_i r_l in
+          lift_res11 e Z.of_nat (@List.length A) r
+      end
+
+(* TODO
+  Lemma simpl_len_app: forall (l1 l2: list A) n,
+      len l1 + len l2 = n ->
+      len (l1 ++ l2) = n.
+  Lemma simpl_len_set: forall (l: list A) i i' n x,
+      i = i' ->
+      len l = n ->
+      0 <= i' < n ->
+      len l[i := x] = n.
+*)
+
+  | List.repeatz ?a ?n =>
+      let r_n := bottom_up_simpl OtherExpr n in
+      let n' := r_n NewTerm in
+      let pf_n := r_n EqProof in
+      match constr:(Set) with
+      | _ => (* Case: n is provably nonnegative *)
+          let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): 0 <= n') in
+          res_rewrite n' uconstr:(@simpl_len_repeatz A a n n' pf_n sidecond)
+      | _ => (* Case: n might be negative *)
+          res_rewrite (Z.max n' Z0) uconstr:(@simpl_len_repeatz_max A a n n' pf_n)
+      end
+  | _ =>
+      let r := bottom_up_simpl OtherExpr x in
+      lift_res11 e Z.of_nat (@List.length A) r
+  end.
 
 Lemma rew_Prop_hyp: forall (P1 P2: Prop) (pf: P1 = P2), P1 -> P2.
 Proof. intros. subst. assumption. Qed.
