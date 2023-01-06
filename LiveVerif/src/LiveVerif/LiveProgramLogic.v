@@ -636,6 +636,8 @@ Ltac with_ident_as_string_no_beta f :=
    (for C compatibility) and use a different syntax in the LHS (to match
    C syntax and live verif comment markers) *)
 
+Declare Custom Entry funspec.
+
 (* One return value: *)
 Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /**# 'ghost_args' := g1 .. gn ; 'requires' t1 m1 := pre ; 'ensures' t2 m2 r := post #* */ /* *" :=
   (fun fname: String.string =>
@@ -645,13 +647,13 @@ Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an )
              WeakestPrecondition.call fs fname t1 m1 (cons a1 .. (cons an nil) ..)
                (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post))) .. )) .. ))
      : ProgramLogic.spec_of fname)
-(at level 200,
+(in custom funspec at level 1,
  fname name,
  a1 closed binder, an closed binder,
  g1 closed binder, gn closed binder,
  t1 name, t2 name, m1 name, m2 name, r name,
- pre at level 200,
- post at level 200,
+ pre constr at level 200,
+ post constr at level 200,
  only parsing).
 
 (* No return value: *)
@@ -663,20 +665,20 @@ Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /**#
               WeakestPrecondition.call fs fname t1 m1 (cons a1 .. (cons an nil) ..)
                 (fun t2 m2 retvs => retvs = nil /\ post))) .. )) .. ))
      : ProgramLogic.spec_of fname)
-(at level 200,
+(in custom funspec at level 1,
  fname name,
  a1 closed binder, an closed binder,
  g1 closed binder, gn closed binder,
  t1 name, t2 name, m1 name, m2 name,
- pre at level 200,
- post at level 200,
+ pre constr at level 200,
+ post constr at level 200,
  only parsing).
 
 Notation ".* */ x" :=
   (match x with (* <-- typecheck x before passing it to Ltac, to get better error messages *)
    | _ => ltac:(let r := with_ident_as_string_no_beta x in exact r)
    end)
-  (at level 200, only parsing).
+  (at level 200, x custom funspec at level 1, only parsing).
 
 Notation "'fun_correct!' f" := (program_logic_goal_for (ident_to_string f) f)
   (at level 10, f name, only parsing).

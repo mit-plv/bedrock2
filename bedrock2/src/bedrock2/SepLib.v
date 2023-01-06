@@ -105,3 +105,21 @@ Proof.
   unfold purify, uint. intros. eapply sep_emp_l in H. apply proj1 in H. exact H.
 Qed.
 #[export] Hint Resolve purify_uint : purify.
+
+
+Definition uintptr{width}{BW: Bitwidth width}{word: word width}{mem: map.map word Byte.byte}
+                  (v a: word): mem -> Prop := scalar a v.
+
+#[export] Hint Extern 1 (PredicateSize (@uintptr ?width ?BW ?word ?mem)) =>
+  let sz := lazymatch isZcst width with
+            | true => eval cbv in (nbits_to_nbytes width)
+            | false => constr:(nbits_to_nbytes width)
+            end in
+  exact sz
+: typeclass_instances.
+
+Lemma purify_uintptr{width}{BW: Bitwidth width}{word: word width}
+  {mem: map.map word Byte.byte} v a:
+  purify (uintptr v a) True.
+Proof. unfold purify. intros. constructor. Qed.
+#[export] Hint Resolve purify_uint : purify.

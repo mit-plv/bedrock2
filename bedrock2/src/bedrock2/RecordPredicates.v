@@ -28,7 +28,19 @@ Global Hint Extern 1 (RepPredicate (uint_t ?nbits)) =>
   exact (uint nbits) : typeclass_instances.
 
 Global Hint Extern 1 (RepPredicate (array_t ?T ?n)) =>
- exact (@array T _ n _ _) : typeclass_instances.
+  match constr:(_: RepPredicate T) with
+  | ?elem => exact (array elem n)
+  end
+: typeclass_instances.
+
+Global Hint Extern 1 (RepPredicate (@word.rep ?width ?word)) =>
+  exact (@uintptr width _ word _) : typeclass_instances.
+
+Goal forall width (BW: Bitwidth width) (word: word width) (mem: map.map word Byte.byte)
+            (n: Z),
+  RepPredicate (array_t word n).
+  intros. typeclasses eauto.
+Abort.
 
 Ltac create_predicate_rec refine_already_introd :=
   lazymatch goal with
