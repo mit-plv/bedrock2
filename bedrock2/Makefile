@@ -48,7 +48,7 @@ ex: Makefile.coq.ex $(VS_EX) noex
 all: noex ex test
 test: special/BytedumpTest.out typecheckExprToCString testStackLoop testStackNondet # typecheckExprToCString-32 typecheckExprToCString-64
 
-COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = bedrock2 $(COQMF_ARGS)
+COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject -docroot bedrock2 $(COQMF_ARGS)
 
 Makefile.coq.noex: force _CoqProject
 	@echo "Generating Makefile.coq.noex"

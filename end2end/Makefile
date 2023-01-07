@@ -48,7 +48,7 @@ ALL_VS := $(shell find $(SRCDIR) -type f -name '*.v')
 all0: Makefile.coq.all $(ALL_VS)
 	$(MAKE) -f Makefile.coq.all
 
-COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = end2end $(COQMF_ARGS)
+COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject -docroot end2end $(COQMF_ARGS)
 
 Makefile.coq.all: force _CoqProject
 	@echo "Generating Makefile.coq.all"

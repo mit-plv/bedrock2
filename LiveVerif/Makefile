@@ -47,7 +47,7 @@ ex: Makefile.coq.ex $(VS_EX) noex
 
 all: noex ex
 
-COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject INSTALLDEFAULTROOT = LiveVerif $(COQMF_ARGS)
+COQ_MAKEFILE := $(COQBIN)coq_makefile -f _CoqProject -docroot LiveVerif $(COQMF_ARGS)
 
 Makefile.coq.noex: force _CoqProject
 	@echo "Generating Makefile.coq.noex"
