@@ -22,6 +22,7 @@ jobs:
         repo_name: 'bedrock2'
         branch_name: 'master'
         check_name: 'build (master)'
+        github_token: ${{ secrets.GITHUB_TOKEN }}
     - run: echo "This step runs after the python script"
     - run: git fetch origin master
     - run: git log --oneline --max-count=10
