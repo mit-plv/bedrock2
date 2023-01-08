@@ -553,6 +553,7 @@ Ltac program_logic_step :=
       repeat f_equal
   | |- _ => first
       [ cleanup_step
+      | progress autounfold with live_always_unfold in *
       | match goal with
         | |- exists _, _ => eexists
         (* We try ZnWords first because it also solves some goals of shape

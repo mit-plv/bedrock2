@@ -494,6 +494,21 @@ Ltac split_sep_step :=
       end
   end.
 
+Ltac destruct_ex1_step :=
+  lazymatch goal with
+  | H: with_mem ?m (ex1 (fun name => _)) |- _ =>
+      let x := fresh name in
+      destruct H as [x H]
+  end.
+
+Ltac destruct_emp_step :=
+  lazymatch goal with
+  | H: with_mem ?m (emp ?P), D: _ = mmap.Def _ |- _ =>
+      destruct H as [? H];
+      subst m;
+      rewrite ?mmap.du_empty_l, ?mmap.du_empty_r in D
+  end.
+
 (* usually already done by split_sep_step, but when introducing hyps from the
    frame after a call, separate merging might still be needed: *)
 Ltac merge_du_step :=
@@ -613,6 +628,8 @@ Ltac heapletwise_step :=
   first
     [ intro_step
     | split_sep_step
+    | destruct_ex1_step
+    | destruct_emp_step
     | merge_du_step
     | and_step
     | start_canceling

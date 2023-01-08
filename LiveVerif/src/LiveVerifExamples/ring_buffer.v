@@ -19,6 +19,8 @@ Definition ring_buffer(cap: Z)(vs: list word)(addr: word): mem -> Prop :=
         (emp (capacity b = cap /\ n_elems b = len vs /\
              (data b ++ data b)[dequeue_pos b : dequeue_pos b + n_elems b] = vs))).
 
+Hint Unfold ring_buffer : live_always_unfold.
+
 #[export] Instance spec_of_ring_buf_enq: fnspec :=                              .**/
 
 void ring_buf_enq(uintptr_t b_addr, uintptr_t v) /**#
@@ -30,7 +32,22 @@ void ring_buf_enq(uintptr_t b_addr, uintptr_t v) /**#
        <{ * ring_buffer cap (vs ++ [|v|]) b_addr
           * R }> m' #**/                                                   /**.
 Derive ring_buf_enq SuchThat (fun_correct! ring_buf_enq) As ring_buf_enq_ok.    .**/
-{                                                                          /**.
+{                                                                          /**. .**/
+  uintptr_t i = (load4(b_addr+4) + load4(b_addr+8)) % load4(b_addr);       /**.
+
+  clear Error.
+  unfold raw_ring_buffer in *|-.
+  (* TODO maybe create_predicate should not have created a match, but
+     should be using projections as well? *)
+
+  (* TODO support &p->field notation, which would allow writing
+  uintptr_t i = (load4(&b_addr->dequeue_pos) + load4(&b_addr->n_elems))
+                % load4(&b_addr->capacity);
+
+  store4(&b_addr->data +
+  store4(b_addr + 12 + load4(b_addr
+*)
+
 Abort.
 
 End LiveVerif. Comments .**/ //.
