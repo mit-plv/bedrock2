@@ -37,8 +37,6 @@ Derive ring_buf_enq SuchThat (fun_correct! ring_buf_enq) As ring_buf_enq_ok.    
 
   clear Error.
   unfold raw_ring_buffer in *|-.
-  (* TODO maybe create_predicate should not have created a match, but
-     should be using projections as well? *)
 
   (* TODO support &p->field notation, which would allow writing
   uintptr_t i = (load4(&b_addr->dequeue_pos) + load4(&b_addr->n_elems))

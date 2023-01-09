@@ -61,14 +61,6 @@ Ltac create_predicate_rec refine_already_introd :=
       end
   end.
 
-Ltac create_predicate :=
-  match goal with
-  | |- ?G => let t := constr:(ltac:(
-                let p := fresh in intro p; case p; create_predicate_rec idtac) : G) in
-             let t' := eval cbv beta in t in
-             exact t'
-  end.
-
 (* Given a match expression of the form
    (match r with {| field1 := x1; ... fieldN := xn |} => body end),
    returns a proof that this expression equals
@@ -81,24 +73,21 @@ Ltac replace_match_by_projections_proof m :=
                : m = _)
   end.
 
-(* Given a goal of the form
-   PredicateSize (match r with {| field1 := x1; ... fieldN := xn |} => body end),
-   invoke typeclass search for
-   PredicateSize body[field1 r/x1, ... fieldN r/xn]
-   instead. *)
-Ltac tc_search_PredicateSize_of_projections_instead_of_match :=
-  lazymatch goal with
-  | |- PredicateSize ?m =>
-      let p := replace_match_by_projections_proof m in
-      lazymatch type of p with
-      | m = ?m' => lazymatch constr:(_ : PredicateSize m') with
-                   | ?s => exact s
-                   end
-      end
-  end.
+Ltac create_predicate :=
+  let G := lazymatch goal with |- ?G => G end in
+  let t := constr:(ltac:(
+             let p := fresh in intro p; case p; create_predicate_rec idtac) : G) in
+  lazymatch constr:(ltac:(
+    let p := fresh in intro p;
+    let m := eval cbv beta in (t p) in
+    let pf := replace_match_by_projections_proof m in
+    lazymatch type of pf with
+    | m = ?m' => exact m'
+    end))
+  with ?x => exact x end.
 
 #[export] Hint Extern 20 (PredicateSize ?p) =>
-  let h := head p in unfold h; tc_search_PredicateSize_of_projections_instead_of_match
+  let h := head p in unfold h; typeclasses eauto
 : typeclass_instances.
 
 Module Examples_TODO_move.
