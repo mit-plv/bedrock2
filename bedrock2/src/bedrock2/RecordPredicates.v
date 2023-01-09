@@ -5,22 +5,10 @@ Require Import coqutil.Tactics.RecordEta.
 Require Import coqutil.Tactics.Tactics.
 Require Import bedrock2.Map.Separation.
 Require Import bedrock2.SepLib.
+Require Export bedrock2.sepapp.
 
 (* Note: Not using a Section here because `Hint Extern` declared inside a Section cannot
    be exported) *)
-
-Definition sepapp{width: Z}{BW: Bitwidth width}{word: word.word width}
-  {mem: map.map word Byte.byte}
-  (P1 P2: word -> mem -> Prop){P1size: PredicateSize P1}: word -> mem -> Prop :=
-  fun addr => sep (P1 addr) (P2 (word.add addr (word.of_Z P1size))).
-
-#[export] Hint Extern 1 (PredicateSize (sepapp ?P1 ?P2)) =>
-  lazymatch constr:(_: PredicateSize P1) with
-  | ?sz1 => lazymatch constr:(_: PredicateSize P2) with
-            | ?sz2 => exact (Z.add sz1 sz2)
-            end
-  end
-: typeclass_instances.
 
 Definition RepPredicate{width: Z}{BW: Bitwidth width}{word: word.word width}
   {mem: map.map word Byte.byte}(T: Type) := T -> word -> mem -> Prop.

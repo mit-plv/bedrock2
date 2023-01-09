@@ -38,6 +38,8 @@ Derive ring_buf_enq SuchThat (fun_correct! ring_buf_enq) As ring_buf_enq_ok.    
   clear Error.
   unfold raw_ring_buffer in *|-.
 
+  (* interp_sepapp_tree semi-reification to expose one field *)
+
   (* TODO support &p->field notation, which would allow writing
   uintptr_t i = (load4(&b_addr->dequeue_pos) + load4(&b_addr->n_elems))
                 % load4(&b_addr->capacity);
