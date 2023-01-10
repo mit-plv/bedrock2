@@ -1,11 +1,7 @@
 Require Import Coq.Strings.String.
 (* Almost everyone importing this file will need strings in their error messages *)
 Export Coq.Strings.String.StringSyntax.
-
-(* TODO The definition of dlist could/should be shared with compiler.util.Result *)
-Inductive dlist: Type :=
-| dnil
-| dcons{T: Type}(head: T)(tail: dlist).
+Require Import coqutil.Datatypes.dlist.
 
 Declare Custom Entry ne_space_sep_dlist.
 Notation "x" := (dcons x dnil)
