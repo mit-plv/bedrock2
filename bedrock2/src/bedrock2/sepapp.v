@@ -106,8 +106,10 @@ Section Reassociate_sepapp.
     unfold sepapps, interp_sepapp_tree, proj_sized_predicate.
     pose proof (flatten_eq_interp_sepapp_tree_aux t sized_emp) as P.
     unfold sized_emp in *. do 2 destruct_one_match. simpl in P. apply proj1 in P.
-    subst. (* TODO *)
-  Admitted.
+    subst.
+    extensionality a. unfold sepapp. eapply iff1ToEq.
+    rewrite word.add_0_r. eapply sep_emp_True_l.
+  Qed.
 
   Lemma interp_sepapp_tree_eq_of_flatten_eq(LHS RHS : Tree.Tree sized_predicate):
     Tree.flatten LHS = Tree.flatten RHS ->

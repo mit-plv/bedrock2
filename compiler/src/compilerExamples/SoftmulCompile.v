@@ -435,7 +435,7 @@ Section Riscv.
     induction l; cbn [array]; intros; [reflexivity|].
     rename a0 into addr.
     eapply Proper_sep_impl1.
-    - specialize (H O). cbn in H. specialize (H _ eq_refl). rewrite add_0_r in H.
+    - specialize (H O). cbn in H. specialize (H _ eq_refl). rewrite word.add_0_r in H.
       exact H.
     - eapply IHl. cbv zeta. intros.
       specialize (H (S i)). cbn -[Z.of_nat] in H. specialize (H _ H0).

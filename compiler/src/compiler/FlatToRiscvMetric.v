@@ -173,7 +173,7 @@ Section Proofs.
       assert (Memory.load sz initialL_mem
                           (word.add (word.add (word.add initialL_pc (word.of_Z 4)) index) (word.of_Z 0))
               = Some v). {
-        rewrite add_0_r.
+        rewrite word.add_0_r.
         eapply load_from_compile_byte_list. 1: eassumption.
         wcancel_assumption.
       }

@@ -1656,7 +1656,7 @@ Section Proofs.
       }
       run1det.
       assert (Memory.load sz initialL_mem (program_base + !pos + !4 + index + !0) = Some v). {
-        rewrite add_0_r.
+        rewrite word.add_0_r.
         eapply load_from_compile_byte_list. 1: eassumption.
         wcancel_assumption.
       }

@@ -383,7 +383,7 @@ Section FlattenExpr1.
       eapply @FlatImp.exec.seq.
       + eapply IHe; try eassumption. maps.
       + intros. simpl in *. simp.
-        eapply @FlatImp.exec.load; t_safe; rewrite ?add_0_r; try eassumption; solve_MetricLog.
+        eapply @FlatImp.exec.load; t_safe; rewrite ?word.add_0_r; try eassumption; solve_MetricLog.
 
     - (* expr.inlinetable *)
       repeat match goal with
@@ -730,7 +730,7 @@ Section FlattenExpr1.
         eapply @FlatImp.exec.seq.
         * eapply flattenExpr_correct_with_modVars; try eassumption; maps.
         * intros. simpl in *. simp.
-          eapply @FlatImp.exec.store; rewrite ?add_0_r; try eassumption.
+          eapply @FlatImp.exec.store; rewrite ?word.add_0_r; try eassumption.
           { eapply flattenExpr_valid_resVar in E; maps. }
           { repeat eexists; repeat (split || eassumption || solve_MetricLog); maps. }
 
@@ -895,7 +895,7 @@ Section FlattenExpr1.
           -- eassumption.
           -- do 2 eexists. ssplit; try eassumption.
              ++ simple eapply map.only_differ_putmany; eassumption.
-             ++ solve_MetricLog. 
+             ++ solve_MetricLog.
 
     - (* interact *)
       unfold flattenInteract in *. simp.
