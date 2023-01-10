@@ -12,8 +12,8 @@
 .lia.cache
 .nia.cache
 .coqdeps.d
-Makefile.coq.*
-.Makefile*.coq.*
+Makefile.coq*
+.Makefile*.coq*
 \#*\#
 
 *.out
