@@ -65,10 +65,7 @@ clean:: Makefile.coq.all
 install::
 	$(MAKE) -f Makefile.coq.all install
 
-admits.txt: all0 PrintAdmits.v
-	$(COQBIN)coqc $(ALLDEPFLAGS) PrintAdmits.v > admits.txt
-
-admitsCount: count_admits.py admits.txt
-	python3 count_admits.py admits.txt admits_archive
+admitsCount: all0 count_admits.py
+	python3 count_admits.py admits.out admits_archive
 
 all: all0 admitsCount
