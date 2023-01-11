@@ -15,7 +15,7 @@ Require Import riscv.Spec.Machine.
 Require Import riscv.Platform.Memory.
 Require Import riscv.Spec.CSRFile.
 Require Import riscv.Utility.Utility.
-Require Import riscv.Utility.RecordSetters.
+Require Import coqutil.Datatypes.RecordSetters.
 Require Import coqutil.Decidable.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Map.Interface.
