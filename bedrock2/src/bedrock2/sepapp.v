@@ -38,6 +38,8 @@ Section Reassociate_sepapp.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}
     {mem: map.map word byte} {mem_ok: map.ok mem}.
 
+  Import List.ListNotations. Local Open Scope list_scope.
+
   Lemma sep_assoc_eq: forall (p q r: mem -> Prop),
       sep (sep p q) r = sep p (sep q r).
   Proof.
@@ -70,8 +72,36 @@ Section Reassociate_sepapp.
     | mk_sized_predicate p _ => p
     end.
 
+  Definition proj_size(sp: sized_predicate): Z :=
+    match sp with
+    | mk_sized_predicate _ sz => sz
+    end.
+
   Definition sepapps(l: list sized_predicate): word -> mem -> Prop :=
     proj_sized_predicate (List.fold_left sepapp_sized_predicates l sized_emp).
+
+  Definition sepapps_size(l: list sized_predicate): Z :=
+    List.fold_left Z.add (List.map proj_size l) 0.
+
+  Lemma expose_nth_sepapp: forall l n a P sz,
+      List.nth_error l n = Some (mk_sized_predicate P sz) ->
+      sepapps l a = sep (P (word.add a (word.of_Z (sepapps_size (List.firstn n l)))))
+                        (sepapps (List.firstn n l ++
+                                  cons (mk_sized_predicate (hole sz) sz)
+                                  (List.skipn (S n) l)) a).
+  Proof.
+    intros.
+  Admitted.
+
+  Lemma merge_back_nth_sepapp: forall l n ofs a P sz,
+      List.nth_error l n = Some (mk_sized_predicate (hole sz) sz) ->
+      sepapps_size (List.firstn n l) = ofs ->
+      sep (P (word.add a (word.of_Z ofs))) (sepapps l a) =
+        (sepapps (List.firstn n l ++ cons (mk_sized_predicate P sz) (List.skipn (S n) l)) a).
+  Proof.
+    intros. rewrite (expose_nth_sepapp l n a (hole sz) sz). 2: assumption.
+    unfold hole at 1.
+  Admitted.
 
   Definition interp_sepapp_tree(t: Tree.Tree sized_predicate): word -> mem -> Prop :=
     proj_sized_predicate (Tree.interp id sepapp_sized_predicates t).
