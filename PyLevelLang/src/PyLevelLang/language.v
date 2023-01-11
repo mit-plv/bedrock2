@@ -2,10 +2,15 @@
    (psvenk, 2023-01-09) *)
 (* Changed records, started filling out elaborate 
    (mhulse, 2023-01-10) *)
+(* Further work on elaborator, misc updates
+   (psvenk, 2023-01-11) *)
 
 Require Import String.
 Require Import ZArith.
 Require Import List.
+Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Datatypes.Result.
+Import ResultMonadNotations.
 
 Inductive type : Type :=
   | TInt
@@ -14,6 +19,10 @@ Inductive type : Type :=
   | TPair (t1 t2 : type)
   | TList (t : type)
   | TEmpty. (* "Empty" type: its only value should be the empty tuple () *)
+
+Scheme Equality for type. (* creates type_beq and type_eq_dec *)
+
+Notation "t1 == t2" := (type_beq t1 t2) (at level 70).
 
 (* Construct a "record" type using a list of types *)
 Fixpoint TRecord (l : list type) : type :=
@@ -30,14 +39,15 @@ Inductive pexpr : Type :=
   | PEInt (n : Z)
   | PEBool (b : bool)
   | PEString (s : string)
-  | PEPair (e1 e2 : pexpr)
+  | PEPair (p1 p2 : pexpr)
   | PEFst (p: pexpr)
   | PESnd (p: pexpr)
-  | PEList (es : list pexpr)
+  | PENil (t : type)
+  | PEList (ps : list pexpr)
   | PERange (lo hi : pexpr)
-  | PEFlatmap (e1 : pexpr) (x : string) (e2 : pexpr)
-  | PEIf (e1 e2 e3 : pexpr)
-  | PELet (x : string) (e1 e2 : pexpr).
+  | PEFlatmap (p1 : pexpr) (x : string) (p2 : pexpr)
+  | PEIf (p1 p2 p3 : pexpr)
+  | PELet (x : string) (p1 p2 : pexpr).
 
 (* Typed expressions. Most of the type checking is enforced in the GADT itself
    via Coq's type system, but some of it needs to be done in the [elaborate]
@@ -74,78 +84,102 @@ Inductive command : Type :=
 (* Takes an integer n and a natural number c' and returns a 
    list of TInt expressions corresponding to [n, n + c) *)
 Fixpoint EIntRange (s : Z)  (c: nat) : list (expr TInt) :=
-  match ct with
+  match c with
   | 0 => nil
   | S c' => EInt s :: EIntRange (s + 1) c'
   end.
 
-(* clips an integer to be positive, then turns it into a natural *)
-Definition znatclip (n : Z) : nat := Z.to_nat (Z.max n 0).
+Fixpoint interp_type (t: type) :=
+  match t with
+  | TInt => Z
+  | TBool => bool
+  | TString => string
+  | TPair t1 t2 => prod (interp_type t1) (interp_type t2)
+  | TList u => list (interp_type u)
+  | TEmpty => unit
+  end.
 
-(* Type checks a [pexpr] and possibly emits a typed expression
-   Checks scoping and field names/indices (for records) *)
-(* TODO: take context into account for variables, locations, and let expressions *)   
-Theorem elaborate : pexpr -> option {t & expr t}.
-Proof. 
-  intro p.
-  induction p.
+(* Casts one type to another, provided that they are equal
+   https://stackoverflow.com/a/52518299 *)
+Definition cast {T1 T2 : Type} (H : T1 = T2) (x : T1) : T2 :=
+  eq_rect T1 (fun T3 : Type => T3) x T2 H.
 
-  (* PEVar x *)
-  - admit.
+Section WithMap.
+  (* abstract all functions in this section over the implementation of the map,
+     and over its spec (map.ok) *)
+  Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
+  (* Type checks a [pexpr] and possibly emits a typed expression
+     Checks scoping and field names/indices (for records) *)
+  (* TODO: make casting work *)
+  (* TODO: take context into account for variables, locations, and flatmap and
+     let expressions *)   
+  Fixpoint elaborate (p : pexpr) : result {t & expr t}.
+  Proof. 
+    refine (
+    match p with
+    | PEVar x => _
+    | PELoc l => _
+    | PEInt n =>
+        Success (existT _ _ (EInt n))
+    | PEBool b =>
+        Success (existT _ _ (EBool b))
+    | PEString s =>
+        Success (existT _ _ (EString s))
+    | PEPair p1 p2 =>
+        '(existT _ t1 e1) <- elaborate p1 ;;
+        '(existT _ t2 e2) <- elaborate p2 ;;
+        Success (existT _ _ (EPair t1 t2 e1 e2))
+    | PEFst p' =>
+        '(existT _ t' e') <- elaborate p' ;;
+        match e' with
+        | EPair t1 t2 e1 e2 =>
+            Success (existT _ _ (EFst _ _ (EPair t1 t2 e1 e2)))
+        | _ => error:("PEFst applied to non-pair")
+        end
+    | PESnd p' =>
+        '(existT _ t' e') <- elaborate p' ;;
+        match e' with
+        | EPair t1 t2 e1 e2 =>
+            Success (existT _ _ (ESnd _ _ (EPair t1 t2 e1 e2)))
+        | _ => error:("PESnd applied to non-pair")
+        end
+    | PENil t =>
+        Success (existT _ _ (EList t nil))
+    | PEList ps =>
+        match ps with
+        | nil => error:("PEList with empty list (use PENil)")
+        | p' :: ps' =>
+            '(existT _ t' e') <- elaborate p' ;;
+            match ps' with
+            | nil =>
+                Success (existT _ _ (EList t' (e' :: nil)))
+            | _ =>
+                '(existT _ _ e'') <- elaborate (PEList ps') ;;
+                match e'' with
+                | EList t'' es' =>
+                    if t' == t''
+                    then Success (existT _ _ (EList t' (cast _ (cast _ e' :: es'))))
+                    else error:("PEList with mismatched types")
+                | _ => error:("Cons with non-list (unreachable)")
+                end
+            end
+        end
+    | PERange lo hi =>
+        '(existT _ t_lo e_lo) <- elaborate lo ;;
+        '(existT _ t_hi e_hi) <- elaborate hi ;;
+        if andb (t_lo == TInt) (t_hi == TInt)
+        then Success (existT _ _ (ERange (cast _ e_lo) (cast _ e_hi)))
+        else error:("PERange with non-integer(s)")
+    | _ => _
+    end).
 
-  (* PELoc l *)
-  - admit.
-
-  (* PEInt n *)
-  - exact (Some (existT expr TInt (EInt n))).
-
-  (* PEBool n *)
-  - exact (Some (existT expr TBool (EBool b))).
-
-  (* PEString s *)
-  - exact (Some (existT expr TString (EString s))).
-
-  (* PEPair e1 e2 *)
-  - exact (match IHp1, IHp2 with
-           | Some (existT _ t1 e1'), Some (existT _ t2 e2') 
-               => Some (existT expr (TPair t1 t2) (EPair t1 t2 e1' e2'))
-           | _, _ => None
-           end).
-
-  (* PEFst p *)
-  - exact (match IHp with
-           | Some (existT _ tp (EPair t1 t2 e1 e2)) => Some (existT expr t1 e1)
-           | _ => None
-           end).
-
-  (* PESnd p *)
-  - exact (match IHp with
-           | Some (existT _ tp (EPair t1 t2 e1 e2)) => Some (existT expr t2 e2)
-           | _ => None
-           end).
-
-  (* PEList es *)
-  - induction
-
-  (* PERange lo hi *)
-  - exact (match IHp1, IHp2 with
-           | Some (existT _ TInt (EInt lo)), Some (existT _ TInt (EInt hi))
-               => Some (existT expr (TList TInt) (EList TInt (EIntRange lo (znatclip (hi - lo)))))
-           | _, _ => None
-           end).
-
-  (* PEFlatmap e1 x e2 *)
-  - admit.
-
-  (* PEIf e1 e2 e3 *)
-  - exact (match IHp1 with
-           | Some (existT _ TBool (EBool b)) => match b with 
-                                                | true => IHp2 
-                                                | false => IHp3
-                                                end
-           | _ => None
-           end).
-
-  (* PELet x e1 e2 *)
-  - admit.
-Admitted.
+    - admit.
+    - admit.
+    - admit.
+    - admit.
+    - admit.
+    - admit.
+    - admit.
+    - admit.
+  Admitted.
+End WithMap.
