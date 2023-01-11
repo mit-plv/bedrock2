@@ -1,6 +1,5 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
-Require Import bedrock2.RecordPredicates.
 
 Load LiveVerif.
 

@@ -3,6 +3,7 @@ Require Import Coq.micromega.Lia.
 Require Import Coq.Strings.String.
 Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
 Require Import coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
 Require Import coqutil.Tactics.syntactic_unify.
@@ -349,7 +350,8 @@ Ltac call lhs fname arges :=
     | H: functions_correct ?fs ?l |- _ =>
         let n := index_of_or_else_add s l in
         eapply (nth_function_correct _ n) in H; [ | cbv [nth_spec]; reflexivity ];
-        unfold s in H;
+        let h := head s in
+        unfold h in H;
         eapply H
     end
   | ];
@@ -432,7 +434,7 @@ Ltac add_snippet s :=
       | RCall ?fname ?arges => call (Some (is_decl, name)) fname arges
       | RExpr ?e => eapply (wp_set _ name e)
       end
-  | SVoidCall ?fname ?arges => call None fname arges
+  | SVoidCall ?fname ?arges => call (@None (prod bool string)) fname arges
   | SStore ?sz ?addr ?val => eapply (wp_store _ sz addr val)
   | SIf ?c => eapply (wp_if_bool_dexpr _ c);
               let n := fresh "Scope0" in
