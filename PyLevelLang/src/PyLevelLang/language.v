@@ -1,10 +1,3 @@
-(* First attempt at translating high-level language specification into Coq
-   (psvenk, 2023-01-09) *)
-(* Changed records, started filling out elaborate 
-   (mhulse, 2023-01-10) *)
-(* Further work on elaborator, misc updates
-   (psvenk, 2023-01-11) *)
-
 Require Import String.
 Require Import ZArith.
 Require Import List.
@@ -22,7 +15,8 @@ Inductive type : Type :=
 
 Scheme Equality for type. (* creates type_beq and type_eq_dec *)
 
-Notation "t1 == t2" := (type_beq t1 t2) (at level 70).
+Declare Scope pylevel_scope. Local Open Scope pylevel_scope.
+Notation "t1 =? t2" := (type_beq t1 t2) (at level 70) : pylevel_scope.
 
 (* Construct a "record" type using a list of types *)
 Fixpoint TRecord (l : list type) : type :=
@@ -157,7 +151,7 @@ Section WithMap.
                 '(existT _ _ e'') <- elaborate (PEList ps') ;;
                 match e'' with
                 | EList t'' es' =>
-                    if t' == t''
+                    if t' =? t''
                     then Success (existT _ _ (EList t' (cast _ (cast _ e' :: es'))))
                     else error:("PEList with mismatched types")
                 | _ => error:("Cons with non-list (unreachable)")
@@ -167,7 +161,7 @@ Section WithMap.
     | PERange lo hi =>
         '(existT _ t_lo e_lo) <- elaborate lo ;;
         '(existT _ t_hi e_hi) <- elaborate hi ;;
-        if andb (t_lo == TInt) (t_hi == TInt)
+        if andb (t_lo =? TInt) (t_hi =? TInt)
         then Success (existT _ _ (ERange (cast _ e_lo) (cast _ e_hi)))
         else error:("PERange with non-integer(s)")
     | _ => _
