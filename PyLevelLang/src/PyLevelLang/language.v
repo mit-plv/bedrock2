@@ -142,18 +142,18 @@ Section WithMap.
         Success (existT _ _ (EPair t1 t2 e1 e2))
     | PEFst p' =>
         '(existT _ t' e') <- elaborate G p' ;;
-        (match t' as t'' return t' = t'' -> _ with
-         | TPair t1 t2 => fun H =>
-             Success (existT _ _ (EFst _ _ (cast H _ e')))
-         | _ => fun _ => error:("PEFst applied to non-pair")
-         end) (eq_refl _)
+        match t' as t'' return expr t'' -> _ with
+        | TPair t1 t2 => fun e' =>
+            Success (existT _ _ (EFst _ _ e'))
+        | _ => fun _ => error:("PEFst applied to non-pair")
+        end e'
     | PESnd p' =>
         '(existT _ t' e') <- elaborate G p' ;;
-        (match t' as t'' return t' = t'' -> _ with
-         | TPair t1 t2 => fun H =>
-             Success (existT _ _ (ESnd _ _ (cast H _ e')))
-         | _ => fun _ => error:("PESnd applied to non-pair")
-         end) (eq_refl _)
+        match t' as t'' return expr t'' -> _ with
+        | TPair t1 t2 => fun e' =>
+            Success (existT _ _ (ESnd _ _ e'))
+        | _ => fun _ => error:("PESnd applied to non-pair")
+        end e'
     | PENil t =>
         Success (existT _ _ (ENil t))
     | PECons p1 p2 =>
@@ -182,28 +182,28 @@ Section WithMap.
            will be assigned to `x` *)
         let G' := map.put G x (t1, false) in
         '(existT _ t2 e2) <- elaborate G' p2 ;;
-        (match t1 as t1' return t1 = t1' -> _ with
-         | TList t' => fun H1 =>
-             match type_eq_dec t2 (TList t') with
-             | left H2 =>
-                 Success (existT _ _ (EFlatmap t' (cast H1 _ e1) x (cast H2 _ e2)))
-             | _ => error:("PEFlatmap with mismatched types")
-             end
-         | _ => fun _ => error:("PEFlatmap with non-list")
-         end) (eq_refl _)
+        match t1 as t1' return expr t1' -> _ with
+        | TList t' => fun e1 =>
+            match type_eq_dec t2 (TList t') with
+            | left H2 =>
+                Success (existT _ _ (EFlatmap t' e1 x (cast H2 _ e2)))
+            | _ => error:("PEFlatmap with mismatched types")
+            end
+        | _ => fun _ => error:("PEFlatmap with non-list")
+        end e1
     | PEIf p1 p2 p3 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         '(existT _ t2 e2) <- elaborate G p2 ;;
         '(existT _ t3 e3) <- elaborate G p3 ;;
-        (match t1 as t' return t1 = t' -> _ with
-         | TBool => fun Hbool =>
-             match type_eq_dec t3 t2 with
-             | left H =>
-                 Success (existT _ _ (EIf t2 (cast Hbool _ e1) e2 (cast H _ e3)))
-             | _ => error:("PEIf with mismatched types")
-             end
-         | _ => fun _ => error:("PEIf with non-boolean condition")
-         end) (eq_refl _)
+        match t1 as t' return expr t' -> _ with
+        | TBool => fun e1 =>
+            match type_eq_dec t3 t2 with
+            | left H =>
+                Success (existT _ _ (EIf t2 e1 e2 (cast H _ e3)))
+            | _ => error:("PEIf with mismatched types")
+            end
+        | _ => fun _ => error:("PEIf with non-boolean condition")
+        end e1
     | PELet x p1 p2 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         (* We use `default_val` beause we don't yet care what specific value
