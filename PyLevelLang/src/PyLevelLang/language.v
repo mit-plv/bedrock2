@@ -37,7 +37,7 @@ Inductive pexpr : Type :=
   | PEFst (p: pexpr)
   | PESnd (p: pexpr)
   | PENil (t : type)
-  | PEList (ps : list pexpr)
+  | PECons (p1 p2 : pexpr)
   | PERange (lo hi : pexpr)
   | PEFlatmap (p1 : pexpr) (x : string) (p2 : pexpr)
   | PEIf (p1 p2 p3 : pexpr)
@@ -58,7 +58,8 @@ Inductive expr : type -> Type :=
   | EPair (t1 t2 : type) (e1 : expr t1) (e2 : expr t2) : expr (TPair t1 t2)
   | EFst (t1 t2 : type) (e : expr (TPair t1 t2)) : expr t1
   | ESnd (t1 t2 : type) (e : expr (TPair t1 t2)) : expr t2
-  | EList (t : type) (es : list (expr t)) : expr (TList t)
+  | ENil (t : type) : expr (TList t)
+  | ECons (t : type) (e1 : expr t) (e2 : expr (TList t)) : expr (TList t)
   | ERange (lo hi : expr TInt) : expr (TList TInt)
   | ELet (t1 t2 : type) (x : string) (e1 : expr t1) (e2 : expr t2) : expr t2
   | EIf (t : type) (e1 : expr TBool) (e2 e3 : expr t) : expr t
@@ -95,8 +96,8 @@ Fixpoint interp_type (t: type) :=
 
 (* Casts one type to another, provided that they are equal
    https://stackoverflow.com/a/52518299 *)
-Definition cast {T1 T2 : Type} (H : T1 = T2) (x : T1) : T2 :=
-  eq_rect T1 (fun T3 : Type => T3) x T2 H.
+Definition cast {T : Type} {T1 T2 : T} (H : T1 = T2) (f: T -> Type) (x : f T1) : f T2 :=
+  eq_rect T1 (fun T3 : T => f T3) x T2 H.
 
 Section WithMap.
   (* abstract all functions in this section over the implementation of the map,
@@ -125,45 +126,40 @@ Section WithMap.
         Success (existT _ _ (EPair t1 t2 e1 e2))
     | PEFst p' =>
         '(existT _ t' e') <- elaborate p' ;;
-        match e' with
-        | EPair t1 t2 e1 e2 =>
-            Success (existT _ _ (EFst _ _ (EPair t1 t2 e1 e2)))
+        match t' with
+        | TPair t1 t2 =>
+            Success (existT _ _ (EFst _ _ (cast _ _ e')))
         | _ => error:("PEFst applied to non-pair")
         end
     | PESnd p' =>
         '(existT _ t' e') <- elaborate p' ;;
-        match e' with
-        | EPair t1 t2 e1 e2 =>
-            Success (existT _ _ (ESnd _ _ (EPair t1 t2 e1 e2)))
+        match t' with
+        | TPair t1 t2 =>
+            Success (existT _ _ (ESnd _ _ (cast _ _ e')))
         | _ => error:("PESnd applied to non-pair")
         end
     | PENil t =>
-        Success (existT _ _ (EList t nil))
-    | PEList ps =>
-        match ps with
-        | nil => error:("PEList with empty list (use PENil)")
-        | p' :: ps' =>
-            '(existT _ t' e') <- elaborate p' ;;
-            match ps' with
-            | nil =>
-                Success (existT _ _ (EList t' (e' :: nil)))
-            | _ =>
-                '(existT _ _ e'') <- elaborate (PEList ps') ;;
-                match e'' with
-                | EList t'' es' =>
-                    if t' =? t''
-                    then Success (existT _ _ (EList t' (cast _ (cast _ e' :: es'))))
-                    else error:("PEList with mismatched types")
-                | _ => error:("Cons with non-list (unreachable)")
-                end
+        Success (existT _ _ (ENil t))
+    | PECons p1 p2 =>
+        '(existT _ t1 e1) <- elaborate p1 ;;
+        '(existT _ t2 e2) <- elaborate p2 ;;
+        match t2 with
+        | TList _ =>
+            match type_eq_dec t2 (TList t1) with
+            | left pf =>
+                Success (existT _ _ (ECons t1 e1 (cast pf _ e2)))
+            | _ => error:("PECons with mismatched types")
             end
+        | _ => error:("PECons with non-list")
         end
     | PERange lo hi =>
         '(existT _ t_lo e_lo) <- elaborate lo ;;
         '(existT _ t_hi e_hi) <- elaborate hi ;;
-        if andb (t_lo =? TInt) (t_hi =? TInt)
-        then Success (existT _ _ (ERange (cast _ e_lo) (cast _ e_hi)))
-        else error:("PERange with non-integer(s)")
+        match type_eq_dec t_lo TInt, type_eq_dec t_hi TInt with
+        | left pf_lo, left pf_hi =>
+            Success (existT _ _ (ERange (cast pf_lo _ e_lo) (cast pf_hi _ e_hi)))
+        | _, _ => error:("PERange with non-integer(s)")
+        end
     | _ => _
     end).
 
