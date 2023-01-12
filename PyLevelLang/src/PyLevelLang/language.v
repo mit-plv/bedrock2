@@ -91,24 +91,15 @@ Definition cast {T : Type} {T1 T2 : T} (H : T1 = T2) (f: T -> Type) (x : f T1) :
   f T2 :=
   eq_rect T1 f x T2 H.
 
-Fixpoint default_val (t : type) : interp_type t.
-Proof.
-  refine (
-  match t with
-  | TInt => cast _ id 0%Z
-  | TBool => cast _ id false
-  | TString => cast _ id EmptyString
-  | TPair t1 t2 => cast _ id (default_val t1, default_val t2)
-  | TList t' => cast _ id nil
+Fixpoint default_val (t : type) : interp_type t :=
+  match t as t' return interp_type t' with
+  | TInt => 0%Z
+  | TBool => false
+  | TString => EmptyString
+  | TPair t1 t2 => (default_val t1, default_val t2)
+  | TList t' => nil
   | TEmpty => tt
-  end
-  ).
-  - trivial.
-  - trivial.
-  - trivial.
-  - trivial.
-  - trivial.
-Defined.
+  end.
 
 Section WithMap.
   (* abstract all functions in this section over the implementation of the map,
