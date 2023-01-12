@@ -44,7 +44,7 @@ Inductive pexpr : Type :=
   | PELet (x : string) (p1 p2 : pexpr).
 
 (* Typed expressions. Most of the type checking is enforced in the GADT itself
-   via Coq's type system, but some of it needs to be done in the [elaborate]
+   via Coq's type system, but some of it needs to be done in the `elaborate`
    function below *)
 Inductive expr : type -> Type :=
   | EVar (t : type) (x : string) : expr t
@@ -76,15 +76,7 @@ Inductive command : Type :=
 
 
 (* A few helper functions *)
-(* Takes an integer n and a natural number c' and returns a 
-   list of TInt expressions corresponding to [n, n + c) *)
-Fixpoint EIntRange (s : Z)  (c: nat) : list (expr TInt) :=
-  match c with
-  | 0 => nil
-  | S c' => EInt s :: EIntRange (s + 1) c'
-  end.
-
-Fixpoint interp_type (t: type) :=
+Fixpoint interp_type (t : type) :=
   match t with
   | TInt => Z
   | TBool => bool
@@ -93,6 +85,8 @@ Fixpoint interp_type (t: type) :=
   | TList u => list (interp_type u)
   | TEmpty => unit
   end.
+
+Fixpoint default_val (t : type) : interp_type t. Admitted.
 
 (* Casts one type to another, provided that they are equal
    https://stackoverflow.com/a/52518299 *)
@@ -103,16 +97,26 @@ Section WithMap.
   (* abstract all functions in this section over the implementation of the map,
      and over its spec (map.ok) *)
   Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
-  (* Type checks a [pexpr] and possibly emits a typed expression
+  (* Type checks a `pexpr` and possibly emits a typed expression
      Checks scoping and field names/indices (for records) *)
   (* TODO: take context into account for variables, locations, and flatmap and
      let expressions *)   
-  Fixpoint elaborate (p : pexpr) : result {t & expr t}.
+  Fixpoint elaborate (l : locals) (p : pexpr) : result {t & expr t}.
   Proof. 
     refine (
     match p with
-    | PEVar x => _
-    | PELoc l => _
+    | PEVar x =>
+        match map.get l x with
+        | Some (existT _ t _) =>
+            Success (existT _ _ (EVar t x))
+        | None => error:("PEVar with undefined variable")
+        end
+    | PELoc loc =>
+        match map.get l loc with
+        | Some (existT _ t _) =>
+            Success (existT _ _ (ELoc t loc))
+        | None => error:("PELoc with uninitialized location")
+        end
     | PEInt n =>
         Success (existT _ _ (EInt n))
     | PEBool b =>
@@ -120,28 +124,28 @@ Section WithMap.
     | PEString s =>
         Success (existT _ _ (EString s))
     | PEPair p1 p2 =>
-        '(existT _ t1 e1) <- elaborate p1 ;;
-        '(existT _ t2 e2) <- elaborate p2 ;;
+        '(existT _ t1 e1) <- elaborate l p1 ;;
+        '(existT _ t2 e2) <- elaborate l p2 ;;
         Success (existT _ _ (EPair t1 t2 e1 e2))
     | PEFst p' =>
-        '(existT _ t' e') <- elaborate p' ;;
+        '(existT _ t' e') <- elaborate l p' ;;
         (match t' as t'' return t' = t'' -> _ with
-         | TPair t1 t2 =>
-             fun H => Success (existT _ _ (EFst _ _ (cast H _ e')))
+         | TPair t1 t2 => fun H =>
+             Success (existT _ _ (EFst _ _ (cast H _ e')))
          | _ => fun _ => error:("PEFst applied to non-pair")
          end) (eq_refl _)
     | PESnd p' =>
-        '(existT _ t' e') <- elaborate p' ;;
+        '(existT _ t' e') <- elaborate l p' ;;
         (match t' as t'' return t' = t'' -> _ with
-         | TPair t1 t2 =>
-             fun H => Success (existT _ _ (ESnd _ _ (cast H _ e')))
+         | TPair t1 t2 => fun H =>
+             Success (existT _ _ (ESnd _ _ (cast H _ e')))
          | _ => fun _ => error:("PESnd applied to non-pair")
          end) (eq_refl _)
     | PENil t =>
         Success (existT _ _ (ENil t))
     | PECons p1 p2 =>
-        '(existT _ t1 e1) <- elaborate p1 ;;
-        '(existT _ t2 e2) <- elaborate p2 ;;
+        '(existT _ t1 e1) <- elaborate l p1 ;;
+        '(existT _ t2 e2) <- elaborate l p2 ;;
         match t2 with
         | TList _ =>
             match type_eq_dec t2 (TList t1) with
@@ -152,22 +156,48 @@ Section WithMap.
         | _ => error:("PECons with non-list")
         end
     | PERange lo hi =>
-        '(existT _ t_lo e_lo) <- elaborate lo ;;
-        '(existT _ t_hi e_hi) <- elaborate hi ;;
+        '(existT _ t_lo e_lo) <- elaborate l lo ;;
+        '(existT _ t_hi e_hi) <- elaborate l hi ;;
         match type_eq_dec t_lo TInt, type_eq_dec t_hi TInt with
         | left Hlo, left Hhi =>
             Success (existT _ _ (ERange (cast Hlo _ e_lo) (cast Hhi _ e_hi)))
         | _, _ => error:("PERange with non-integer(s)")
         end
-    | PEFlatmap p1 x p2 => _
-    | PEIf p1 p2 p3 => _
-    | PELet x p1 p2 => _
+    | PEFlatmap p1 x p2 =>
+        '(existT _ t1 e1) <- elaborate l p1 ;;
+        (* We use `default_val` beause we don't yet care what specific value
+           will be assigned to `x` *)
+        let l' := map.put l x (existT _ t1 (default_val t1)) in
+        '(existT _ t2 e2) <- elaborate l' p2 ;;
+        (match t1 as t1' return t1 = t1' -> _ with
+         | TList t' => fun H1 =>
+             match type_eq_dec t2 (TList t') with
+             | left H2 =>
+                 Success (existT _ _ (EFlatmap t' (cast H1 _ e1) x (cast H2 _ e2)))
+             | _ => error:("PEFlatmap with mismatched types")
+             end
+         | _ => fun _ => error:("PEFlatmap with non-list")
+         end) (eq_refl _)
+    | PEIf p1 p2 p3 =>
+        '(existT _ t1 e1) <- elaborate l p1 ;;
+        '(existT _ t2 e2) <- elaborate l p2 ;;
+        '(existT _ t3 e3) <- elaborate l p3 ;;
+        (match t1 as t' return t1 = t' -> _ with
+         | TBool => fun Hbool =>
+             match type_eq_dec t3 t2 with
+             | left H =>
+                 Success (existT _ _ (EIf t2 (cast Hbool _ e1) e2 (cast H _ e3)))
+             | _ => error:("PEIf with mismatched types")
+             end
+         | _ => fun _ => error:("PEIf with non-boolean condition")
+         end) (eq_refl _)
+    | PELet x p1 p2 =>
+        '(existT _ t1 e1) <- elaborate l p1 ;;
+        (* We use `default_val` beause we don't yet care what specific value
+           will be assigned to `x` *)
+        let l' := map.put l x (existT _ t1 (default_val t1)) in
+        '(existT _ t2 e2) <- elaborate l' p2 ;;
+        Success (existT _ _ (ELet t1 t2 x e1 e2))
     end).
-
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-  Admitted.
+  Defined.
 End WithMap.
