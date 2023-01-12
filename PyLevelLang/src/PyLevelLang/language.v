@@ -29,7 +29,6 @@ Fixpoint TRecord (l : list type) : type :=
 (* "Pre-expression": untyped expressions from surface-level parsing. *)
 Inductive pexpr : Type :=
   | PEVar (x : string)
-  | PELoc (l : string)
   | PEInt (n : Z)
   | PEBool (b : bool)
   | PEString (s : string)
@@ -88,8 +87,9 @@ Fixpoint interp_type (t : type) :=
 
 (* Casts one type to another, provided that they are equal
    https://stackoverflow.com/a/52518299 *)
-Definition cast {T : Type} {T1 T2 : T} (H : T1 = T2) (f: T -> Type) (x : f T1) : f T2 :=
-  eq_rect T1 (fun T3 : T => f T3) x T2 H.
+Definition cast {T : Type} {T1 T2 : T} (H : T1 = T2) (f: T -> Type) (x : f T1) :
+  f T2 :=
+  eq_rect T1 f x T2 H.
 
 Fixpoint default_val (t : type) : interp_type t.
 Proof.
@@ -113,24 +113,22 @@ Defined.
 Section WithMap.
   (* abstract all functions in this section over the implementation of the map,
      and over its spec (map.ok) *)
+  Context {tenv: map.map string (type * bool)} {tenv_ok: map.ok tenv}.
   Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
+
   (* Type checks a `pexpr` and possibly emits a typed expression
      Checks scoping and field names/indices (for records) *)
-  Fixpoint elaborate (l : locals) (p : pexpr) : result {t & expr t}.
-  Proof. 
+  Fixpoint elaborate (G : tenv) (p : pexpr) : result {t & expr t}.
+  Proof.
     refine (
     match p with
     | PEVar x =>
-        match map.get l x with
-        | Some (existT _ t _) =>
+        match map.get G x with
+        | Some (t, false) =>
             Success (existT _ _ (EVar t x))
+        | Some (t, true) =>
+            Success (existT _ _ (ELoc t x))
         | None => error:("PEVar with undefined variable")
-        end
-    | PELoc loc =>
-        match map.get l loc with
-        | Some (existT _ t _) =>
-            Success (existT _ _ (ELoc t loc))
-        | None => error:("PELoc with uninitialized location")
         end
     | PEInt n =>
         Success (existT _ _ (EInt n))
@@ -139,18 +137,18 @@ Section WithMap.
     | PEString s =>
         Success (existT _ _ (EString s))
     | PEPair p1 p2 =>
-        '(existT _ t1 e1) <- elaborate l p1 ;;
-        '(existT _ t2 e2) <- elaborate l p2 ;;
+        '(existT _ t1 e1) <- elaborate G p1 ;;
+        '(existT _ t2 e2) <- elaborate G p2 ;;
         Success (existT _ _ (EPair t1 t2 e1 e2))
     | PEFst p' =>
-        '(existT _ t' e') <- elaborate l p' ;;
+        '(existT _ t' e') <- elaborate G p' ;;
         (match t' as t'' return t' = t'' -> _ with
          | TPair t1 t2 => fun H =>
              Success (existT _ _ (EFst _ _ (cast H _ e')))
          | _ => fun _ => error:("PEFst applied to non-pair")
          end) (eq_refl _)
     | PESnd p' =>
-        '(existT _ t' e') <- elaborate l p' ;;
+        '(existT _ t' e') <- elaborate G p' ;;
         (match t' as t'' return t' = t'' -> _ with
          | TPair t1 t2 => fun H =>
              Success (existT _ _ (ESnd _ _ (cast H _ e')))
@@ -159,8 +157,8 @@ Section WithMap.
     | PENil t =>
         Success (existT _ _ (ENil t))
     | PECons p1 p2 =>
-        '(existT _ t1 e1) <- elaborate l p1 ;;
-        '(existT _ t2 e2) <- elaborate l p2 ;;
+        '(existT _ t1 e1) <- elaborate G p1 ;;
+        '(existT _ t2 e2) <- elaborate G p2 ;;
         match t2 with
         | TList _ =>
             match type_eq_dec t2 (TList t1) with
@@ -171,19 +169,19 @@ Section WithMap.
         | _ => error:("PECons with non-list")
         end
     | PERange lo hi =>
-        '(existT _ t_lo e_lo) <- elaborate l lo ;;
-        '(existT _ t_hi e_hi) <- elaborate l hi ;;
+        '(existT _ t_lo e_lo) <- elaborate G lo ;;
+        '(existT _ t_hi e_hi) <- elaborate G hi ;;
         match type_eq_dec t_lo TInt, type_eq_dec t_hi TInt with
         | left Hlo, left Hhi =>
             Success (existT _ _ (ERange (cast Hlo _ e_lo) (cast Hhi _ e_hi)))
         | _, _ => error:("PERange with non-integer(s)")
         end
     | PEFlatmap p1 x p2 =>
-        '(existT _ t1 e1) <- elaborate l p1 ;;
+        '(existT _ t1 e1) <- elaborate G p1 ;;
         (* We use `default_val` beause we don't yet care what specific value
            will be assigned to `x` *)
-        let l' := map.put l x (existT _ t1 (default_val t1)) in
-        '(existT _ t2 e2) <- elaborate l' p2 ;;
+        let G' := map.put G x (t1, false) in
+        '(existT _ t2 e2) <- elaborate G' p2 ;;
         (match t1 as t1' return t1 = t1' -> _ with
          | TList t' => fun H1 =>
              match type_eq_dec t2 (TList t') with
@@ -194,9 +192,9 @@ Section WithMap.
          | _ => fun _ => error:("PEFlatmap with non-list")
          end) (eq_refl _)
     | PEIf p1 p2 p3 =>
-        '(existT _ t1 e1) <- elaborate l p1 ;;
-        '(existT _ t2 e2) <- elaborate l p2 ;;
-        '(existT _ t3 e3) <- elaborate l p3 ;;
+        '(existT _ t1 e1) <- elaborate G p1 ;;
+        '(existT _ t2 e2) <- elaborate G p2 ;;
+        '(existT _ t3 e3) <- elaborate G p3 ;;
         (match t1 as t' return t1 = t' -> _ with
          | TBool => fun Hbool =>
              match type_eq_dec t3 t2 with
@@ -207,11 +205,11 @@ Section WithMap.
          | _ => fun _ => error:("PEIf with non-boolean condition")
          end) (eq_refl _)
     | PELet x p1 p2 =>
-        '(existT _ t1 e1) <- elaborate l p1 ;;
+        '(existT _ t1 e1) <- elaborate G p1 ;;
         (* We use `default_val` beause we don't yet care what specific value
            will be assigned to `x` *)
-        let l' := map.put l x (existT _ t1 (default_val t1)) in
-        '(existT _ t2 e2) <- elaborate l' p2 ;;
+        let G' := map.put G x (t1, false) in
+        '(existT _ t2 e2) <- elaborate G' p2 ;;
         Success (existT _ _ (ELet t1 t2 x e1 e2))
     end).
   Defined.
