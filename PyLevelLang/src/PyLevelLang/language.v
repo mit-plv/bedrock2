@@ -1,7 +1,7 @@
 Require Import String.
 Require Import ZArith.
 Require Import List.
-Require Import coqutil.Map.Interface coqutil.Map.Properties.
+Require Import coqutil.Map.Interface coqutil.Map.SortedListString.
 Require Import coqutil.Datatypes.Result.
 Import ResultMonadNotations.
 
@@ -231,3 +231,28 @@ Section WithMap.
         end
     end.
 End WithMap.
+
+Section Examples.
+  Instance tenv : map.map string (type * bool) := SortedListString.map _.
+  Instance tenv_ok : map.ok tenv := SortedListString.ok _.
+
+  Definition ex1 : pexpr :=
+    PECons (PEInt 1) (PECons (PEInt 2) (PECons (PEInt 3) (PECons (PEInt 4) (PENil TInt)))).
+  Compute (elaborate map.empty ex1).
+
+  Definition ex2 : pexpr :=
+    PECons (PEString "a") (PECons (PEInt 2) (PECons (PEInt 3) (PECons (PEInt 4) (PENil TInt)))).
+  Compute (elaborate map.empty ex2).
+
+  Definition ex3 : pexpr :=
+    PEFst (PELet "x" (PEInt 42) (PEPair (PEVar "x") (PEVar "x"))).
+  Compute (elaborate map.empty ex3).
+
+  Definition ex4 : pexpr :=
+    PEFst (PELet "x" (PEInt 42) (PEPair (PEVar "x") (PEVar "y"))).
+  Compute (elaborate map.empty ex4).
+
+  Definition ex5 : pexpr :=
+    PEPair (PEInt 42) (PEPair (PEBool true) (PEString "hello")).
+  Compute (elaborate map.empty ex5).
+End Examples.
