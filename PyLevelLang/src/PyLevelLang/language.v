@@ -27,21 +27,26 @@ Fixpoint TRecord (l : list type) : type :=
   end.
 
 (* Unary operators *)
-Inductive unop : type -> Type :=
-  | ONeg : unop TInt
-  | ONot : unop TBool.
+Inductive unop : type -> type -> Type :=
+  | ONeg : unop TInt TInt
+  | ONot : unop TBool TBool
+  | OLength : forall t, unop (TList t) TInt
+  | OLengthString : unop TString TInt.
 
 (* Binary operators *)
-Inductive binop : type -> Type :=
-  | OPlus : binop TInt
-  | OMinus : binop TInt
-  | OTimes : binop TInt
-  | ODiv : binop TInt
-  | OMod : binop TInt
-  | OAnd : binop TBool
-  | OOr : binop TBool
-  | OConcatString : binop TString
-  | OConcatList : forall t, binop (TList t).
+Inductive binop : type -> type -> type -> Type :=
+  | OPlus : binop TInt TInt TInt
+  | OMinus : binop TInt TInt TInt
+  | OTimes : binop TInt TInt TInt
+  | ODiv : binop TInt TInt TInt (* TODO: support option types? *)
+  | OMod : binop TInt TInt TInt
+  | OAnd : binop TBool TBool TBool
+  | OOr : binop TBool TBool TBool
+  | OConcat : forall t, binop (TList t) (TList t) (TList t)
+  | OConcatString : binop TString TString TString
+  | OLess : binop TInt TInt TBool
+  | OEq : forall t, binop t t TBool
+  | ORepeat : forall t, binop TInt t (TList t).
 
 (* "Pre-expression": untyped expressions from surface-level parsing. *)
 Inductive pexpr : Type :=
@@ -58,8 +63,8 @@ Inductive pexpr : Type :=
   | PEFlatmap (p1 : pexpr) (x : string) (p2 : pexpr)
   | PEIf (p1 p2 p3 : pexpr)
   | PELet (x : string) (p1 p2 : pexpr)
-  | PEUnop (t : type) (o : unop t) (p : pexpr)
-  | PEBinop (t : type) (o : binop t) (p1 p2 : pexpr).
+  | PEUnop (t1 t2 : type) (o : unop t1 t2) (p : pexpr)
+  | PEBinop (t1 t2 t3 : type) (o : binop t1 t2 t3) (p1 p2 : pexpr).
 
 (* Typed expressions. Most of the type checking is enforced in the GADT itself
    via Coq's type system, but some of it needs to be done in the `elaborate`
@@ -80,8 +85,8 @@ Inductive expr : type -> Type :=
       : expr (TList t)
   | EIf (t : type) (e1 : expr TBool) (e2 e3 : expr t) : expr t
   | ELet (t1 t2 : type) (x : string) (e1 : expr t1) (e2 : expr t2) : expr t2
-  | EUnop (t : type) (o : unop t) (e : expr t) : expr t
-  | EBinop (t : type) (o : binop t) (e1 e2 : expr t) : expr t.
+  | EUnop (t1 t2 : type) (o : unop t1 t2) (e : expr t1) : expr t2
+  | EBinop (t1 t2 t3 : type) (o : binop t1 t2 t3) (e1 : expr t1) (e2: expr t2) : expr t3.
 
 Inductive command : Type :=
   | CSkip
@@ -214,20 +219,20 @@ Section WithMap.
         let G' := map.put G x (t1, false) in
         '(existT _ t2 e2) <- elaborate G' p2 ;;
         Success (existT _ _ (ELet t1 t2 x e1 e2))
-    | PEUnop t o p' =>
+    | PEUnop t1 t2 o p' =>
         '(existT _ t' e') <- elaborate G p' ;;
-        match type_eq_dec t' t with
+        match type_eq_dec t' t1 with
         | left H =>
-            Success (existT _ _ (EUnop t o (cast H _ e')))
-        | _ => error:("PEUnop with mismatched types")
+            Success (existT _ _ (EUnop t1 t2 o (cast H _ e')))
+        | _ => error:("PEUnop" o "with mismatched types")
         end
-    | PEBinop t o p1 p2 =>
-        '(existT _ t1 e1) <- elaborate G p1 ;;
-        '(existT _ t2 e2) <- elaborate G p2 ;;
-        match type_eq_dec t1 t, type_eq_dec t2 t with
+    | PEBinop t1 t2 t3 o p1 p2 =>
+        '(existT _ t1' e1) <- elaborate G p1 ;;
+        '(existT _ t2' e2) <- elaborate G p2 ;;
+        match type_eq_dec t1' t1, type_eq_dec t2' t2 with
         | left H1, left H2 =>
-            Success (existT _ _ (EBinop t o (cast H1 _ e1) (cast H2 _ e2)))
-        | _, _ => error:("PEBinop with mismatched types")
+            Success (existT _ _ (EBinop t1 t2 t3 o (cast H1 _ e1) (cast H2 _ e2)))
+        | _, _ => error:("PEBinop" o "with mismatched types")
         end
     end.
 End WithMap.
