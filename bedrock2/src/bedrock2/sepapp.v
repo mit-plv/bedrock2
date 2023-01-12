@@ -67,7 +67,7 @@ Section Reassociate_sepapp.
         mk_sized_predicate (@sepapp _ _ _ mem p1 p2 sz1) (sz1 + sz2)
     end.
 
-  Definition proj_sized_predicate(sp: sized_predicate): word -> mem -> Prop :=
+  Definition proj_predicate(sp: sized_predicate): word -> mem -> Prop :=
     match sp with
     | mk_sized_predicate p _ => p
     end.
@@ -78,10 +78,37 @@ Section Reassociate_sepapp.
     end.
 
   Definition sepapps(l: list sized_predicate): word -> mem -> Prop :=
-    proj_sized_predicate (List.fold_left sepapp_sized_predicates l sized_emp).
+    proj_predicate (List.fold_right sepapp_sized_predicates sized_emp l).
 
   Definition sepapps_size(l: list sized_predicate): Z :=
-    List.fold_left Z.add (List.map proj_size l) 0.
+    List.fold_right Z.add 0 (List.map proj_size l).
+
+  Lemma sepapps_nil: forall a, sepapps nil a = emp True.
+  Proof. intros. reflexivity. Qed.
+
+  Lemma sepapps_cons: forall p l a,
+      sepapps (cons p l) a = sep (proj_predicate p a)
+                                 (sepapps l (word.add a (word.of_Z (proj_size p)))).
+  Proof.
+    intros. unfold sepapps. destruct p as [P sz]. simpl.
+    destruct (List.fold_right sepapp_sized_predicates sized_emp l). simpl.
+    unfold sepapp. reflexivity.
+  Qed.
+
+  Lemma sepapps_app: forall l1 l2 a,
+      sepapps (l1 ++ l2) a = sep (sepapps l1 a)
+                                 (sepapps l2 (word.add a (word.of_Z (sepapps_size l1)))).
+  Proof.
+    induction l1; intros; simpl.
+    - rewrite sepapps_nil. eapply iff1ToEq. rewrite sep_emp_True_l.
+      change (sepapps_size nil) with 0. rewrite word.add_0_r. reflexivity.
+    - rewrite 2sepapps_cons. rewrite IHl1.
+      rewrite sep_assoc_eq.
+      f_equal. f_equal. f_equal.
+      change (sepapps_size (a :: l1)) with (proj_size a + sepapps_size l1).
+      rewrite word.ring_morph_add.
+      symmetry. apply word.add_assoc.
+  Qed.
 
   Lemma expose_nth_sepapp: forall l n a P sz,
       List.nth_error l n = Some (mk_sized_predicate P sz) ->
@@ -90,21 +117,24 @@ Section Reassociate_sepapp.
                                   cons (mk_sized_predicate (hole sz) sz)
                                   (List.skipn (S n) l)) a).
   Proof.
-    intros.
-  Admitted.
+    intros. rewrite (List.nth_error_expose _ _ _ H) at 1.
+    rewrite ?sepapps_app, ?sepapps_cons. eapply iff1ToEq.
+    cbn [proj_predicate proj_size]. unfold hole. cancel.
+  Qed.
 
-  Lemma merge_back_nth_sepapp: forall l n ofs a P sz,
+  Lemma merge_back_nth_sepapp: forall l n a P sz,
       List.nth_error l n = Some (mk_sized_predicate (hole sz) sz) ->
-      sepapps_size (List.firstn n l) = ofs ->
-      sep (P (word.add a (word.of_Z ofs))) (sepapps l a) =
+      sep (P (word.add a (word.of_Z (sepapps_size (List.firstn n l))))) (sepapps l a) =
         (sepapps (List.firstn n l ++ cons (mk_sized_predicate P sz) (List.skipn (S n) l)) a).
   Proof.
-    intros. rewrite (expose_nth_sepapp l n a (hole sz) sz). 2: assumption.
-    unfold hole at 1.
-  Admitted.
+    intros. rewrite (List.nth_error_expose _ _ _ H) at 2.
+    rewrite ?sepapps_app, ?sepapps_cons. eapply iff1ToEq.
+    cbn [proj_predicate proj_size]. unfold hole. cancel.
+  Qed.
 
+(* Not sure if needed at all
   Definition interp_sepapp_tree(t: Tree.Tree sized_predicate): word -> mem -> Prop :=
-    proj_sized_predicate (Tree.interp id sepapp_sized_predicates t).
+    proj_predicate (Tree.interp id sepapp_sized_predicates t).
 
   Lemma flatten_eq_interp_sepapp_tree_aux(t: Tree.Tree sized_predicate):
     forall sp0: sized_predicate,
@@ -133,7 +163,7 @@ Section Reassociate_sepapp.
   Lemma flatten_eq_interp_sepapp_tree(t : Tree.Tree sized_predicate):
     sepapps (Tree.flatten t) = interp_sepapp_tree t.
   Proof.
-    unfold sepapps, interp_sepapp_tree, proj_sized_predicate.
+    unfold sepapps, interp_sepapp_tree, proj_predicate.
     pose proof (flatten_eq_interp_sepapp_tree_aux t sized_emp) as P.
     unfold sized_emp in *. do 2 destruct_one_match. simpl in P. apply proj1 in P.
     subst.
@@ -145,5 +175,6 @@ Section Reassociate_sepapp.
     Tree.flatten LHS = Tree.flatten RHS ->
     interp_sepapp_tree LHS = interp_sepapp_tree RHS.
   Proof. intros. rewrite <-2flatten_eq_interp_sepapp_tree. f_equal. assumption. Qed.
+*)
 
 End Reassociate_sepapp.
