@@ -108,10 +108,8 @@ Section WithMap.
   Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
 
   (* Type checks a `pexpr` and possibly emits a typed expression
-     Checks scoping and field names/indices (for records) *)
-  Fixpoint elaborate (G : tenv) (p : pexpr) : result {t & expr t}.
-  Proof.
-    refine (
+     Checks scoping for variables/locations *)
+  Fixpoint elaborate (G : tenv) (p : pexpr) : result {t & expr t} :=
     match p with
     | PEVar x =>
         match map.get G x with
@@ -202,6 +200,5 @@ Section WithMap.
         let G' := map.put G x (t1, false) in
         '(existT _ t2 e2) <- elaborate G' p2 ;;
         Success (existT _ _ (ELet t1 t2 x e1 e2))
-    end).
-  Defined.
+    end.
 End WithMap.
