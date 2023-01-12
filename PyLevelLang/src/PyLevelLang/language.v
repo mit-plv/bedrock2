@@ -82,16 +82,33 @@ Fixpoint interp_type (t : type) :=
   | TBool => bool
   | TString => string
   | TPair t1 t2 => prod (interp_type t1) (interp_type t2)
-  | TList u => list (interp_type u)
+  | TList t' => list (interp_type t')
   | TEmpty => unit
   end.
-
-Fixpoint default_val (t : type) : interp_type t. Admitted.
 
 (* Casts one type to another, provided that they are equal
    https://stackoverflow.com/a/52518299 *)
 Definition cast {T : Type} {T1 T2 : T} (H : T1 = T2) (f: T -> Type) (x : f T1) : f T2 :=
   eq_rect T1 (fun T3 : T => f T3) x T2 H.
+
+Fixpoint default_val (t : type) : interp_type t.
+Proof.
+  refine (
+  match t with
+  | TInt => cast _ id 0%Z
+  | TBool => cast _ id false
+  | TString => cast _ id EmptyString
+  | TPair t1 t2 => cast _ id (default_val t1, default_val t2)
+  | TList t' => cast _ id nil
+  | TEmpty => tt
+  end
+  ).
+  - trivial.
+  - trivial.
+  - trivial.
+  - trivial.
+  - trivial.
+Defined.
 
 Section WithMap.
   (* abstract all functions in this section over the implementation of the map,
@@ -99,8 +116,6 @@ Section WithMap.
   Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
   (* Type checks a `pexpr` and possibly emits a typed expression
      Checks scoping and field names/indices (for records) *)
-  (* TODO: take context into account for variables, locations, and flatmap and
-     let expressions *)   
   Fixpoint elaborate (l : locals) (p : pexpr) : result {t & expr t}.
   Proof. 
     refine (
