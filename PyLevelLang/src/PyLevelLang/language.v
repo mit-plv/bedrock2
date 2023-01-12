@@ -105,7 +105,6 @@ Section WithMap.
   Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
   (* Type checks a [pexpr] and possibly emits a typed expression
      Checks scoping and field names/indices (for records) *)
-  (* TODO: make casting work *)
   (* TODO: take context into account for variables, locations, and flatmap and
      let expressions *)   
   Fixpoint elaborate (p : pexpr) : result {t & expr t}.
@@ -126,18 +125,18 @@ Section WithMap.
         Success (existT _ _ (EPair t1 t2 e1 e2))
     | PEFst p' =>
         '(existT _ t' e') <- elaborate p' ;;
-        match t' with
-        | TPair t1 t2 =>
-            Success (existT _ _ (EFst _ _ (cast _ _ e')))
-        | _ => error:("PEFst applied to non-pair")
-        end
+        (match t' as t'' return t' = t'' -> _ with
+         | TPair t1 t2 =>
+             fun H => Success (existT _ _ (EFst _ _ (cast H _ e')))
+         | _ => fun _ => error:("PEFst applied to non-pair")
+         end) (eq_refl _)
     | PESnd p' =>
         '(existT _ t' e') <- elaborate p' ;;
-        match t' with
-        | TPair t1 t2 =>
-            Success (existT _ _ (ESnd _ _ (cast _ _ e')))
-        | _ => error:("PESnd applied to non-pair")
-        end
+        (match t' as t'' return t' = t'' -> _ with
+         | TPair t1 t2 =>
+             fun H => Success (existT _ _ (ESnd _ _ (cast H _ e')))
+         | _ => fun _ => error:("PESnd applied to non-pair")
+         end) (eq_refl _)
     | PENil t =>
         Success (existT _ _ (ENil t))
     | PECons p1 p2 =>
@@ -146,8 +145,8 @@ Section WithMap.
         match t2 with
         | TList _ =>
             match type_eq_dec t2 (TList t1) with
-            | left pf =>
-                Success (existT _ _ (ECons t1 e1 (cast pf _ e2)))
+            | left H =>
+                Success (existT _ _ (ECons t1 e1 (cast H _ e2)))
             | _ => error:("PECons with mismatched types")
             end
         | _ => error:("PECons with non-list")
@@ -156,16 +155,15 @@ Section WithMap.
         '(existT _ t_lo e_lo) <- elaborate lo ;;
         '(existT _ t_hi e_hi) <- elaborate hi ;;
         match type_eq_dec t_lo TInt, type_eq_dec t_hi TInt with
-        | left pf_lo, left pf_hi =>
-            Success (existT _ _ (ERange (cast pf_lo _ e_lo) (cast pf_hi _ e_hi)))
+        | left Hlo, left Hhi =>
+            Success (existT _ _ (ERange (cast Hlo _ e_lo) (cast Hhi _ e_hi)))
         | _, _ => error:("PERange with non-integer(s)")
         end
-    | _ => _
+    | PEFlatmap p1 x p2 => _
+    | PEIf p1 p2 p3 => _
+    | PELet x p1 p2 => _
     end).
 
-    - admit.
-    - admit.
-    - admit.
     - admit.
     - admit.
     - admit.
