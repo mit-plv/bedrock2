@@ -49,9 +49,6 @@ Inductive expr : type -> Type :=
   | EVar (t : type) (x : string) : expr t
   | ELoc (t : type) (l : string) : expr t
   | EInt (n : Z) : expr TInt
-  (* TODO: ultimately use a more efficient implementation than Z for arbitrarily
-     large integers; this can probably be taken care of by compiling to
-     Bedrock *)
   | EBool (b : bool) : expr TBool
   | EString (s : string) : expr TString
   | EPair (t1 t2 : type) (e1 : expr t1) (e2 : expr t2) : expr (TPair t1 t2)
@@ -167,8 +164,6 @@ Section WithMap.
         end
     | PEFlatmap p1 x p2 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
-        (* We use `default_val` beause we don't yet care what specific value
-           will be assigned to `x` *)
         let G' := map.put G x (t1, false) in
         '(existT _ t2 e2) <- elaborate G' p2 ;;
         match t1 as t1' return expr t1' -> _ with
@@ -195,8 +190,6 @@ Section WithMap.
         end e1
     | PELet x p1 p2 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
-        (* We use `default_val` beause we don't yet care what specific value
-           will be assigned to `x` *)
         let G' := map.put G x (t1, false) in
         '(existT _ t2 e2) <- elaborate G' p2 ;;
         Success (existT _ _ (ELet t1 t2 x e1 e2))
