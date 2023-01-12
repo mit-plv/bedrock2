@@ -9,7 +9,7 @@ Import ListNotations.
 
 (* USAGE:
 Definition mysymbols := Symbols.symbols myfinfo.
-./etc/bytedump.sh MyRepo.MyFile.mysymbols > /tmp/l.s
+./etc/bytedump.py MyRepo.MyFile.mysymbols > /tmp/l.s
 riscv64-elf-gcc -T mylinkerscript.lds -g -nostdlib /tmp/l.s -o /tmp/l
 *)
 

@@ -10,7 +10,7 @@ Module map. Section __.
 
   Lemma split_alt: forall {m m1 m2: map}, map.split m m1 m2 <-> mmap.split m m1 m2.
   Proof.
-    unfold map.split, mmap.split, mmap.du, map.du. split; intros; fwd.
+    unfold map.split, mmap.split, mmap.du, map.du, mmap.of_option. split; intros; fwd.
     - eapply map.disjointb_spec in Hp1. rewrite Hp1. reflexivity.
     - split. 1: reflexivity. eapply map.disjointb_spec. assumption.
   Qed.

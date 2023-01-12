@@ -1,5 +1,5 @@
-Require Import coqutil.Macros.subst coqutil.Macros.unique bedrock2.Syntax.
-From coqutil.Tactics Require Import letexists eabstract rdelta ident_of_string.
+From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
+Require Import bedrock2.Syntax.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.Loops.
@@ -49,21 +49,20 @@ Ltac assuming_correctness_of_in callees functions P :=
     let f_spec := lazymatch constr:(_:spec_of f) with ?x => x end in
     constr:(f_spec functions -> ltac:(let t := assuming_correctness_of_in callees functions P in exact t))
   end.
-Local Notation function_t := ((String.string * (list String.string * list String.string * Syntax.cmd.cmd))%type).
-Local Notation functions_t := (list function_t).
+Require Import String List coqutil.Macros.ident_to_string.
 
 Ltac program_logic_goal_for_function proc :=
-  let __ := constr:(proc : function_t) in
-  let fname := eval cbv in (fst proc) in
-  let callees := eval cbv in (callees (snd (snd proc))) in
+  let __ := constr:(proc : Syntax.func) in
+  constr_string_basename_of_constr_reference_cps ltac:(Tactics.head proc) ltac:(fun fname =>
   let spec := lazymatch constr:(_:spec_of fname) with ?s => s end in
-  constr:(forall functions : functions_t, ltac:(
-    let s := assuming_correctness_of_in callees functions (spec (cons proc functions)) in
-    exact s)).
-Definition program_logic_goal_for (_ : function_t) (P : Prop) := P.
+  exact (forall functions : list (string * Syntax.func), ltac:(
+    let callees := eval cbv in (callees (snd proc)) in
+    let s := assuming_correctness_of_in callees functions (spec (cons (fname, proc) functions)) in
+    exact s))).
+Definition program_logic_goal_for (_ : Syntax.func) (P : Prop) := P.
 
 Notation "program_logic_goal_for_function! proc" := (program_logic_goal_for proc ltac:(
-   let x := program_logic_goal_for_function proc in exact x))
+   program_logic_goal_for_function proc))
   (at level 10, only parsing).
 
 (* Users might want to override this with
@@ -73,28 +72,21 @@ Ltac normalize_body_of_function f := eval cbv in f.
 
 Ltac bind_body_of_function f_ :=
   let f := normalize_body_of_function f_ in
-  let fname := open_constr:(_) in
   let fargs := open_constr:(_) in
   let frets := open_constr:(_) in
   let fbody := open_constr:(_) in
-  let funif := open_constr:((fname, (fargs, frets, fbody))) in
+  let funif := open_constr:((fargs, frets, fbody)) in
   unify f funif;
   let G := lazymatch goal with |- ?G => G end in
   let P := lazymatch eval pattern f_ in G with ?P _ => P end in
-  change (bindcmd fbody (fun c : Syntax.cmd => P (fname, (fargs, frets, c))));
+  change (bindcmd fbody (fun c : Syntax.cmd => P (fargs, frets, c)));
   cbv beta iota delta [bindcmd]; intros.
-
-Ltac app_head e :=
-  match e with
-  | ?f ?a => app_head f
-  | _ => e
-  end.
 
 (* note: f might have some implicit parameters (eg a record of constants) *)
 Ltac enter f :=
   cbv beta delta [program_logic_goal_for]; intros;
   bind_body_of_function f;
-  lazymatch goal with |- ?s _ => cbv beta delta [s] end.
+  lazymatch goal with |- ?s ?p => let s := rdelta s in change (s p); cbv beta end.
 
 Require coqutil.Map.SortedList. (* special-case eq_refl *)
 
@@ -159,7 +151,7 @@ Ltac straightline_stackalloc :=
   let Hm' := fresh Hm in
   let Htmp := fresh in
   let Pm := match type of Hm with ?P m => P end in
-  assert_fails (idtac; match goal with Halready : (Separation.sep Pm (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a _) mCombined) |- _ => idtac end);
+  assert_fails (assert (Separation.sep Pm (Array.array Separation.ptsto (Interface.word.of_Z (BinNums.Zpos BinNums.xH)) a _) mCombined) as _ by ecancel_assumption);
   rename Hm into Hm';
   let stack := fresh "stack" in
   let stack_length := fresh "length_" stack in (* MUST remain in context for deallocation *)
@@ -197,10 +189,40 @@ Ltac straightline_stackdealloc :=
 
 Ltac rename_to_different H :=
   idtac;
-  let G := fresh H in
+  let G := fresh H "'0" in
   rename H into G.
 Ltac ensure_free H :=
   try rename_to_different H.
+
+Ltac eq_uniq_step :=
+  match goal with
+  | |- ?x = ?y =>
+      let x := rdelta x in
+      let y := rdelta y in
+      first [ is_evar x | is_evar y | constr_eq x y ]; exact eq_refl
+  | |- ?lhs = ?rhs =>
+      let lh := head lhs in
+      is_constructor lh;
+      let rh := head rhs in
+      constr_eq lh rh;
+      f_equal (* NOTE: this is not sound, we really want just one f_equal application not a heuristic tactic *)
+  end.
+Ltac eq_uniq := repeat eq_uniq_step.
+
+Ltac fwd_uniq_step :=
+  match goal with
+  | |- exists x : ?T, _ =>
+      let ev := open_constr:(match _ return T with x => x end) in
+      eexists ev;
+      let rec f :=
+        tryif has_evar ev
+        then fwd_uniq_step
+        else idtac
+      in f
+  | |- _ /\ _ => split; [ solve [repeat fwd_uniq_step; eq_uniq] | ]
+  | _ => solve [ eq_uniq ]
+  end.
+Ltac fwd_uniq := repeat fwd_uniq_step.
 
 Ltac straightline :=
   match goal with
@@ -213,10 +235,11 @@ Ltac straightline :=
     cbv match beta delta [WeakestPrecondition.func]
   | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
     unfold1_cmd_goal; cbv beta match delta [cmd_body];
-    let x := ident_of_string s in
-    ensure_free x;
-    (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
-    letexists _ as x; split; [solve [repeat straightline]|]
+    let __ := match s with String.String _ _ => idtac | String.EmptyString => idtac end in
+    ident_of_constr_string_cps s ltac:(fun x =>
+      ensure_free x;
+      (* NOTE: keep this consistent with the [exists _, _ /\ _] case far below *)
+      letexists _ as x; split; [solve [repeat straightline]|])
   | |- cmd _ ?c _ _ _ ?post =>
     let c := eval hnf in c in
     lazymatch c with
@@ -276,6 +299,7 @@ Ltac straightline :=
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
   | |- exists l', Interface.map.putmany_of_list_zip ?ks ?vs ?l = Some l' /\ _ =>
     letexists; split; [exact eq_refl|] (* TODO: less unification here? *)
+  | _ => fwd_uniq_step
   | |- exists x, ?P /\ ?Q =>
     let x := fresh x in refine (let x := _ in ex_intro (fun x => P /\ Q) x _);
                         split; [solve [repeat straightline]|]
@@ -302,6 +326,8 @@ Ltac straightline :=
       end
   | |- _ => straightline_stackalloc
   | |- _ => straightline_stackdealloc
+  | |- context[sep (sep _ _) _] => progress (flatten_seps_in_goal; cbn [seps])
+  | H : context[sep (sep _ _) _] |- _ => progress (flatten_seps_in H; cbn [seps] in H)
   end.
 
 (* TODO: once we can automatically prove some calls, include the success-only version of this in [straightline] *)
@@ -338,23 +364,15 @@ Ltac show_program :=
     change (@cmd width BW word mem locals ext_spec E (fst (c, c')) F G H I)
   end.
 
-Module ProofPrintingNotations.
-  Notation "'need!' y 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
-    (let x := v in ex_intro (fun y => Px /\ _) x (conj pfPx pfP))
-    (right associativity, at level 200, pfPx at next level,
-      format "'need!'  y  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP").
-  Notation "'need!' x 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
-    (let x := v in ex_intro (fun x => Px /\ _) x (conj pfPx pfP))
-    (only printing, right associativity, at level 200, pfPx at next level,
-      format "'need!'  x  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP").
-  Notation "'need!' y 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
-    (let x := v in ex_intro (fun y => Px /\ _) x (conj pfPx pfP))
-    (right associativity, at level 200, pfPx at next level,
-     format "'need!'  y  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP")
-    : type_scope.
-  Notation "'need!' x 's.t.' Px 'let' x ':=' v 'using' pfPx 'in' pfP" :=
-    (let x := v in ex_intro (fun x => Px /\ _) x (conj pfPx pfP))
-    (only printing, right associativity, at level 200, pfPx at next level,
-     format "'need!'  x  's.t.'  Px  '/' 'let'  x  ':='  v  'using'  pfPx  'in'  '/' pfP")
-    : type_scope.
-End ProofPrintingNotations.
+Ltac subst_words :=
+  repeat match goal with x := _ : coqutil.Word.Interface.word.rep |- _ => subst x end.
+
+Require Import coqutil.Tactics.eplace Coq.setoid_ring.Ring_tac.
+Ltac ring_simplify_words :=
+  subst_words;
+  repeat match goal with H : context [?w] |- _ =>
+    let __ := constr:(w : Interface.word.rep) in
+    progress eplace w with _ in H by (ring_simplify; reflexivity) end;
+  repeat match goal with |- context [?w] =>
+    let __ := constr:(w : Interface.word.rep) in
+    progress eplace w with _ by (ring_simplify; reflexivity) end.

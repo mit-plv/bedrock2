@@ -4,12 +4,11 @@ Require Import bedrock2.FE310CSemantics.
 Import Syntax BinInt String Datatypes List List.ListNotations ZArith.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition silly1 : func :=
-  ("silly1", (["a"], ["c"], bedrock_func_body:(
-      b = load4(a + $16);
-      store4(a + $14, b);
-      c = load4(a + $16)
-  ))).
+Definition silly1 := func! (a) ~> c {
+  b = load4(a + $16);
+  store4(a + $14, b);
+  c = load4(a + $16)
+}.
 
 Require Import coqutil.Macros.symmetry.
 
@@ -38,7 +37,7 @@ Section WithParameters.
   Local Instance spec_of_silly1 : spec_of "silly1" := fun functions =>
       forall t m a bs R, Z.of_nat (length bs) = 32 ->
       (sep (eq (map.of_list_word_at a bs)) R) m ->
-      WeakestPrecondition.call functions silly1 t m [a]
+      WeakestPrecondition.call functions "silly1" t m [a]
       (fun T M rets => True).
 
   Ltac ring_simplify_unsigned_goal :=
@@ -421,7 +420,8 @@ Section WithParameters.
         [> tac; try [> exact k ] | ];
       cbv delta [and_weaken_left] (* drop cast *);
       (* did tac solve the goal? *)
-      tryif let A := match A with (?A:_) => A | _ => A end in is_evar A
+      (* "match A with ?A" strips outer casts *)
+      tryif match A with ?A => is_evar A end
       then simple notypeclasses refine (conj I _)
       else idtac.
   Tactic Notation "on_left" tactic3(tac) := on_left tac.

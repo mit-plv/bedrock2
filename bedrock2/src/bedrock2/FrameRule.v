@@ -153,15 +153,17 @@ Section semantics.
       intros.
       rename mCombined into mCombinedBig.
       specialize H1 with (1 := H3).
-      specialize (H1 (mmap.force (mmap.du (Some mSmall) (Some mStack)))).
+      specialize (H1 (mmap.force (mmap.du (mmap.Def mSmall) (mmap.Def mStack)))).
       eapply map.split_alt in H4. pose proof H4 as D0. unfold mmap.split in D0.
       rewrite H2 in D0.
-      rewrite (mmap.du_comm (Some mSmall) (Some mAdd)) in D0.
-      rewrite mmap.du_assoc in D0. unfold mmap.du at 1 in D0. fwd.
-      change (Some mCombinedBig = mmap.du (Some mAdd) (Some r)) in D0.
+      rewrite (mmap.du_comm (mmap.Def mSmall) (mmap.Def mAdd)) in D0.
+      rewrite mmap.du_assoc in D0. unfold mmap.du at 1 in D0.
+      unfold mmap.of_option in D0. fwd. rename r into mCombinedBig.
+      symmetry in E0. rename E0 into D0.
       eapply exec.weaken. 1: eapply H1.
       { simpl. eapply map.split_alt. unfold mmap.split. symmetry. assumption. }
-      { unfold mmap.split. simpl. rewrite map.du_comm. exact D0. }
+      { unfold mmap.split. simpl. rewrite map.du_comm. unfold mmap.of_option.
+        rewrite <- D0. reflexivity. }
       cbv beta. intros. fwd.
       move D0 at bottom.
       repeat match reverse goal with
@@ -173,9 +175,9 @@ Section semantics.
                  move F at bottom
              end.
       rewrite D1 in D2. clear D1 mBig. rewrite D4 in D3. clear D4 mSmall'.
-      rewrite mmap.du_assoc in D3. rewrite (mmap.du_comm (Some mStack')) in D3.
+      rewrite mmap.du_assoc in D3. rewrite (mmap.du_comm mStack') in D3.
       rewrite <- mmap.du_assoc in D3.
-      eexists (mmap.force (mmap.du (Some mSmall'0) (Some mAdd))). exists mStack'. ssplit.
+      eexists (mmap.force (mmap.du mSmall'0 mAdd)). exists mStack'. ssplit.
       1: eassumption.
       { simpl. eapply map.split_alt. unfold mmap.split.
         rewrite D3. f_equal. unfold mmap.du at 1 in D3. fwd. simpl in E0. rewrite E0.
@@ -200,11 +202,12 @@ Section semantics.
     { (* interact *)
       eapply map.split_alt in H. pose proof H3 as A.
       unfold mmap.split in H3, H. rewrite H in H3.
-      rewrite mmap.du_assoc in H3. rewrite (mmap.du_comm (Some mGive)) in H3.
+      rewrite mmap.du_assoc in H3. rewrite (mmap.du_comm mGive) in H3.
       rewrite <- mmap.du_assoc in H3.
-      assert (exists mKeepBig, Some mKeepBig = mmap.du (Some mKeep) (Some mAdd)) as Sp0. {
-        exists (mmap.force (map.du mKeep mAdd)).
-        unfold mmap.du in H3 at 1. fwd. simpl in E. rewrite E. reflexivity.
+      assert (exists mKeepBig, mmap.Def mKeepBig = mmap.du mKeep mAdd) as Sp0. {
+        exists (mmap.force (mmap.du mKeep mAdd)).
+        unfold mmap.du in H3 at 1. unfold mmap.of_option in *.
+        fwd. simpl in E. unfold mmap.of_option in E. fwd. reflexivity.
       }
       destruct Sp0 as (mKeepBig & Sp0).
       assert (mmap.split mBig mKeepBig mGive) as Sp.
@@ -218,9 +221,9 @@ Section semantics.
       intros.
       eapply map.split_alt in H2. unfold mmap.split in *.
       assert (exists mSmall', mmap.split mSmall' mKeep mReceive) as Sp1. {
-        exists (mmap.force (map.du mKeep mReceive)).
+        exists (mmap.force (mmap.du mKeep mReceive)).
         eapply map.split_alt. rewrite Sp0 in H2.
-        rewrite mmap.du_assoc in H2. rewrite (mmap.du_comm (Some mAdd)) in H2.
+        rewrite mmap.du_assoc in H2. rewrite (mmap.du_comm mAdd) in H2.
         rewrite <- mmap.du_assoc in H2.
         unfold mmap.du at 1 in H2. fwd.
         eapply map.split_alt. unfold mmap.split. simpl in E. simpl. rewrite E. reflexivity.
@@ -230,7 +233,7 @@ Section semantics.
       2: { eapply map.split_alt. exact Sp1. }
       rewrite Sp0 in H2.
       unfold mmap.split in Sp1. rewrite Sp1. rewrite mmap.du_assoc in H2.
-      rewrite (mmap.du_comm (Some mAdd)) in H2. rewrite <- mmap.du_assoc in H2.
+      rewrite (mmap.du_comm mAdd) in H2. rewrite <- mmap.du_assoc in H2.
       exact H2.
     }
   Qed.

@@ -23,7 +23,7 @@ Section KamiWordFacts.
     generalize (#w); intro.
     specialize (NatLib.zero_lt_pow2 a).
     generalize (NatLib.pow2 a); intros.
-    pose proof Zdiv.div_Zdiv n n0 ltac:(blia).
+    pose proof Nat2Z.inj_div n n0.
     pose proof Znat.N2Z.inj_div (BinNat.N.of_nat n) (BinNat.N.of_nat n0).
     rewrite Znat.nat_N_Z in *.
     blia.
@@ -205,7 +205,7 @@ Section KamiWordFacts.
     generalize (#w); intro.
     remember (NatLib.pow2 a) as pa eqn:Ha.
     pose proof NatLib.pow2_zero a.
-    pose proof mod_Zmod n pa ltac:(blia).
+    pose proof Nat2Z.inj_mod n pa.
     pose proof Znat_N2Z_inj_mod (BinNat.N.of_nat n) (BinNat.N.of_nat pa) ltac:(blia).
     rewrite Znat.nat_N_Z in *.
     blia.

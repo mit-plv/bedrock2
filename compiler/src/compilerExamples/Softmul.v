@@ -9,7 +9,7 @@ Require Import riscv.Spec.Machine.
 Require Import riscv.Platform.Memory.
 Require Import riscv.Spec.CSRFile.
 Require Import riscv.Utility.Utility.
-Require Import riscv.Utility.RecordSetters.
+Require Import coqutil.Datatypes.RecordSetters.
 Require Import coqutil.Decidable.
 Require Import Coq.micromega.Lia.
 Require Import coqutil.Map.Interface coqutil.Map.OfFunc.
@@ -39,6 +39,7 @@ Require Import compilerExamples.SoftmulBedrock2.
 Require Import compilerExamples.SoftmulCompile.
 Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Require Import bedrock2.SepBulletPoints.
+Require Import bedrock2.bottom_up_simpl_ltac1.
 Local Open Scope sep_bullets_scope. Undelimit Scope sep_scope.
 
 Ltac assertZcst x :=
@@ -899,7 +900,7 @@ Section Riscv.
       | Machine.storeWord Execute _ _ =>
           eapply interpret_storeWord;
           after_mem_modifying_lemma;
-          repeat (repeat word_simpl_step_in_hyps; fwd)
+          repeat (bottom_up_simpl_in_hyps; fwd)
       | getRegister ?r =>
         lazymatch r with
         | 0 => eapply interpret_getRegister0
@@ -933,7 +934,7 @@ Section Riscv.
     | |- mcomp_sat (run1 idecode) _ _ =>
         eapply build_fetch_one_instr; try record.simp; cbn_MachineWidth;
         [ scancel_asm
-        | repeat word_simpl_step_in_goal;
+        | bottom_up_simpl_in_goal;
           lazymatch goal with
           | |- context[Execute.execute ?x] =>
               first [ let x' := eval hnf in x in let h := head x' in is_constructor h;
@@ -970,7 +971,7 @@ Section Riscv.
       runsTo (mcomp_sat (run1 idecode)) initial post.
   Proof.
     induction n; intros.
-    - repeat word_simpl_step_in_hyps.
+    - bottom_up_simpl_in_hyps.
       destruct oldvals. 2: discriminate.
       destruct vals. 2: discriminate.
       match goal with
@@ -988,7 +989,7 @@ Section Riscv.
       assert (0 < start < 32) by lia.
       eapply runsToStep_cps. repeat step.
       subst stackaddr.
-      repeat (repeat word_simpl_step_in_hyps; fwd).
+      repeat (bottom_up_simpl_in_hyps; fwd).
       cbn [List.skipn List.map] in *.
       eapply IHn with (start := 1 + start) (oldvals := oldvals); try record.simp.
       + reflexivity.
@@ -1077,8 +1078,8 @@ Section Riscv.
       subst stackaddr.
       eapply interpret_loadWord. scancel_asm. clear_split_sepclause_stack.
       repeat step.
-      repeat word_simpl_step_in_goal. cbn [List.nth List.length] in *.
-      repeat (repeat word_simpl_step_in_hyps; fwd).
+      bottom_up_simpl_in_goal. cbn [List.nth List.length] in *.
+      repeat (bottom_up_simpl_in_hyps; fwd).
       cbn [List.map] in *.
       eapply IHn with (start := 1 + start) (vals := vals); try record.simp.
       + congruence.
@@ -1254,8 +1255,7 @@ Section Riscv.
       { repeat step. }
       { ZnWords. }
       { repeat step. }
-      autorewrite with rew_word_morphism. repeat word_simpl_step_in_goal.
-
+      autorewrite with rew_word_morphism. bottom_up_simpl_in_goal.
       unfold handler_insts, asm_handler_insts in ML.
       rewrite !(array_app (E := Instruction)) in ML.
       repeat match type of ML with
@@ -1277,7 +1277,7 @@ Ltac subst_evars :=
          end.
 
       set_evars_goal.
-      repeat (repeat word_simpl_step_in_hyps; fwd).
+      repeat (bottom_up_simpl_in_hyps; fwd).
       flatten_seps_in ML. cbn [seps] in ML.
       subst_evars.
       scancel_asm. split. 1: listZnWords.
@@ -1288,9 +1288,19 @@ Ltac subst_evars :=
         apply_in_hyps @map.getmany_of_list_length.
         symmetry. assumption.
       }
+      (* needed because contrary to the previous word_simpl_step implementation,
+         bottom_up_simpl doesn't recurse under binders, and we need to apply
+         the same simplifications to both pre- and postcondition of callee
+         correctness lemma, but the postcondition is under additional binders *)
+      match goal with
+      | H: context[seps ?l] |- _ =>
+          set (Frame := l) in H;
+          bottom_up_simpl_in_hyp H;
+          subst Frame
+      end.
       pop_split_sepclause_stack mNew.
       transfer_sep_order.
-      repeat (repeat word_simpl_step_in_hyps; fwd).
+      repeat (bottom_up_simpl_in_hyps; fwd).
 
       (* TODO to get splitting/merging work for the program as well, we need
          rewrite_ith_in_lhs_of_impl1 to also perform the cancelling, so that
@@ -1326,7 +1336,7 @@ Ltac subst_evars :=
                                              change (List.length l) with n
              end.
       autorewrite with rew_word_morphism in *.
-      repeat (repeat word_simpl_step_in_goal; fwd).
+      bottom_up_simpl_in_goal.
 
       scancel_asm. split. 1: listZnWords.
       clear ML m m_1.
@@ -1354,10 +1364,10 @@ Ltac subst_evars :=
         rewrite ?map.get_put_diff in OD by compareZconsts.
         rewrite map.get_put_same in OD. symmetry in OD. exact OD. }
       { ZnWords. }
-      autorewrite with rew_word_morphism. repeat word_simpl_step_in_goal.
+      autorewrite with rew_word_morphism. bottom_up_simpl_in_goal.
       scancel_asm. split. 1: listZnWords.
 
-      repeat word_simpl_step_in_goal.
+      bottom_up_simpl_in_goal.
       match goal with
       | |- runsTo _ ?mach _ => eassert (Gsp: map.get (regs mach) RegisterNames.sp = Some _)
       end.
@@ -1662,7 +1672,7 @@ Ltac subst_evars :=
                                                  change (List.length l) with n
                  end.
           autorewrite with rew_word_morphism.
-          repeat (repeat word_simpl_step_in_goal; repeat word_simpl_step_in_hyps; fwd).
+          repeat (bottom_up_simpl_in_goal; bottom_up_simpl_in_hyps; fwd).
           replace (pc initialH) with (pc initialL) in *.
           cbn [seps] in ML. use_sep_assumption.
           cancel.

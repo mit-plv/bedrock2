@@ -5,16 +5,13 @@ Require Import Coq.Strings.String. Local Open Scope string_scope.
 
 Definition prelude := "#include <stdint.h>
 #include <string.h>
+#include <assert.h>
 
-static __attribute__((always_inline)) inline uintptr_t
-_br2_mulhuu(uintptr_t a, uintptr_t b) {
-#if (UINTPTR_MAX == (1LLU<<31) - 1 + (1LLU<<31))
-	return ((uint64_t)a * b) >> 32;
-#elif (UINTPTR_MAX == (1LLU<<63) - 1 + (1LLU<<63))
-	return ((__uint128_t)a * b) >> 64;
-#else
-#error ""32-bit or 64-bit uintptr_t required""
-#endif
+static __attribute__((constructor)) void _br2_preconditions(void) {
+  static_assert(~(intptr_t)0 == -(intptr_t)1, ""two's complement"");
+  assert(((void)""two's complement"", ~(intptr_t)0 == -(intptr_t)1));
+  assert(((void)""little-endian"", 1 == *(unsigned char *)&(const uintptr_t){1}));
+  assert(((void)""little-endian"", 1 == *(unsigned char *)&(const intptr_t){1}));
 }
 
 // We use memcpy to work around -fstrict-aliasing.
@@ -25,8 +22,8 @@ _br2_mulhuu(uintptr_t a, uintptr_t b) {
 // on clang and sometimes on GCC, but other times GCC inlines individual
 // byte operations without reconstructing wider accesses.
 // The little-endian idiom below seems fast in gcc 9+ and clang 10.
-static __attribute__((always_inline)) inline uintptr_t
-_br2_load(uintptr_t a, uintptr_t sz) {
+static inline  __attribute__((always_inline, unused))
+uintptr_t _br2_load(uintptr_t a, uintptr_t sz) {
   switch (sz) {
   case 1: { uint8_t  r = 0; memcpy(&r, (void*)a, 1); return r; }
   case 2: { uint16_t r = 0; memcpy(&r, (void*)a, 2); return r; }
@@ -36,9 +33,37 @@ _br2_load(uintptr_t a, uintptr_t sz) {
   }
 }
 
-static __attribute__((always_inline)) inline void
-_br2_store(uintptr_t a, uintptr_t v, uintptr_t sz) {
+static inline __attribute__((always_inline, unused))
+void _br2_store(uintptr_t a, uintptr_t v, uintptr_t sz) {
   memcpy((void*)a, &v, sz);
+}
+
+static inline __attribute__((always_inline, unused))
+uintptr_t _br2_mulhuu(uintptr_t a, uintptr_t b) {
+  #if (UINTPTR_MAX == (UINTMAX_C(1)<<31) - 1 + (UINTMAX_C(1)<<31))
+	  return ((uint64_t)a * b) >> 32;
+  #elif (UINTPTR_MAX == (UINTMAX_C(1)<<63) - 1 + (UINTMAX_C(1)<<63))
+    return ((unsigned __int128)a * b) >> 64;
+  #else
+    #error ""32-bit or 64-bit uintptr_t required""
+  #endif
+}
+
+static inline __attribute__((always_inline, unused))
+uintptr_t _br2_divu(uintptr_t a, uintptr_t b) {
+  if (!b) return -1;
+  return a/b;
+}
+
+static inline __attribute__((always_inline, unused))
+uintptr_t _br2_remu(uintptr_t a, uintptr_t b) {
+  if (!b) return a;
+  return a%b;
+}
+
+static inline __attribute__((always_inline, unused))
+uintptr_t _br2_shamt(uintptr_t a) {
+  return a&(sizeof(uintptr_t)*8-1);
 }
 ".
 
@@ -47,7 +72,7 @@ Definition LF : string := String (Coq.Strings.Ascii.Ascii false true false true 
 Definition c_var := @id string.
 Definition c_fun := @id string.
 
-Definition c_lit w := "(uintptr_t)" ++ DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "ULL".
+Definition c_lit w := "(uintptr_t)(UINTMAX_C(" ++ DecimalString.NilZero.string_of_int (BinInt.Z.to_int w) ++ "))".
 Definition c_byte_withoutcast b := DecimalString.NilZero.string_of_uint (BinNatDef.N.to_uint (Byte.to_N b)).
 
 Definition c_bop e1 op e2 :=
@@ -56,14 +81,14 @@ Definition c_bop e1 op e2 :=
   | sub => e1++"-"++e2
   | mul => e1++"*"++e2
   | mulhuu => "_br2_mulhuu(" ++ e1 ++ ", " ++ e2 ++ ")"
-  | divu => e1++"/"++e2
-  | remu => e1++"%"++e2
+  | divu => "_br2_divu(" ++ e1 ++ ", " ++ e2 ++ ")"
+  | remu => "_br2_remu(" ++ e1 ++ ", " ++ e2 ++ ")"
   | and => e1++"&"++e2
   | or => e1++"|"++e2
   | xor => e1++"^"++e2
-  | sru => e1++">>"++e2
-  | slu => e1++"<<"++e2
-  | srs => "(uintptr_t)((intptr_t)"++e1++">>"++e2++")"
+  | sru => e1++">>"++"_br2_shamt"++e2
+  | slu => e1++"<<"++"_br2_shamt"++e2
+  | srs => "(uintptr_t)((intptr_t)"++e1++">>"++"_br2_shamt"++e2++")"
   | lts => "(uintptr_t)((intptr_t)"++e1++"<"++"(intptr_t)"++e2++")"
   | ltu => "(uintptr_t)("++e1++"<"++e2++")"
   | eq => "(uintptr_t)("++e1++"=="++e2++")"
@@ -116,7 +141,7 @@ Fixpoint c_cmd (indent : string) (c : cmd) : string :=
     => indent ++ "_br2_store(" ++ c_expr ea ++ ", " ++ c_expr ev ++ ", " ++ c_size s ++ ");" ++ LF
   | cmd.stackalloc x n body =>
     let tmp := "_br2_stackalloc_"++x in (* might shadow if not fresh, likely type error... *)
-    indent ++ "{ uint8_t "++tmp++"["++c_lit n++"]; "++x++" = (uintptr_t)&"++tmp++";"++LF++
+    indent ++ "{ uint8_t "++tmp++"["++c_lit n++"] = {0}; "++x++" = (uintptr_t)&"++tmp++";"++LF++
     c_cmd indent body ++
     indent ++ "}" ++ LF
   | cmd.set x ev =>
@@ -171,7 +196,7 @@ Definition fmt_c_decl (rett : string) (args : list String.string) (name : String
   in
   (rett ++ " " ++ c_fun name ++ "(" ++ argstring ++ ")").
 
-Definition c_decl (f : String.string * (list String.string * list String.string * cmd)) :=
+Definition c_decl (f : String.string * func) :=
   let '(name, (args, rets, body)) := f in
   match rets with
   | nil => fmt_c_decl "void" args name nil
@@ -181,16 +206,7 @@ Definition c_decl (f : String.string * (list String.string * list String.string 
   end ++ ";".
 
 
-(* `globals` is a list of varnames that should be treated as global variables,
-   that is, they are removed from the list of local declarations, and it is
-   checked that they don't clash with local names *)
-Definition c_func_with_globals globals '(name, (args, rets, body)) :=
-  let name_clashes := list_intersect String.eqb
-    globals (name :: args ++ rets ++ cmd.mod_vars body) in
-  match name_clashes with
-  | cons _ _ => "#error ""In " ++ name ++ ", locals clash with globals (" ++
-                String.concat ", " name_clashes ++ ")"" " ++ LF
-  | _ =>
+Definition c_func '(name, (args, rets, body)) :=
   let decl_retvar_retrenames : string * option String.string * list (String.string * String.string) :=
   match rets with
   | nil => (fmt_c_decl "void" args name nil, None, nil)
@@ -205,25 +221,20 @@ Definition c_func_with_globals globals '(name, (args, rets, body)) :=
   let retrenames := snd decl_retvar_retrenames in
   let localvars : list String.string := List_uniq String.eqb (
       let allvars := (List.app (match retvar with None => nil | Some v => cons v nil end) (cmd.vars body)) in
-      (List_minus String.eqb allvars (List.app args globals))) in
+      (List_minus String.eqb allvars args)) in
   decl ++ " {" ++ LF ++
     let indent := "  " in
     (match localvars with nil => "" | _ => indent ++ "uintptr_t " ++ concat ", " (List.map c_var localvars) ++ ";" ++ LF end) ++
     c_cmd indent body ++
     concat "" (List.map (fun '(o, optr) => indent ++ "*" ++ c_var optr ++ " = " ++ c_var o ++ ";" ++ LF) retrenames) ++
     indent ++ "return" ++ (match retvar with None => "" | Some rv => " "++c_var rv end) ++ ";" ++ LF ++
-    "}" ++ LF
-  end.
+    "}" ++ LF.
 
-Definition c_func: func -> String.string := c_func_with_globals nil.
-
-Definition c_module_with_globals (globals: list String.string) (fs : list func) :=
+Definition c_module (fs : list (String.string * func)) :=
   match fs with
   | nil => "#error ""c_module nil"" "
   | cons main fs =>
     concat LF (prelude :: List.map (fun f => "static " ++ c_decl f) fs) ++ LF ++ LF ++
     c_func main ++ LF ++
-    concat LF (List.map (fun f => "static " ++ c_func_with_globals globals f) fs)
+    concat LF (List.map (fun f => "static " ++ c_func f) fs)
   end.
-
-Definition c_module : list func -> String.string := c_module_with_globals nil.

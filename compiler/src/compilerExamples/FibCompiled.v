@@ -25,7 +25,7 @@ Import Utility.
 Section FibCompiled.
 
   Definition fib_ExprImp nl ns: cmd := Eval cbv in
-    snd (snd (Demos.fibonacciServer nl ns)).
+    snd (Demos.fibonacciServer nl ns).
 
   Notation RiscvMachine := MetricRiscvMachine.
 

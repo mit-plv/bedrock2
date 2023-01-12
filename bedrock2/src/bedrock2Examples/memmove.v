@@ -29,8 +29,7 @@ Section WithParameters.
       ensures t' m := m =* s$@dst * R /\ t=t' }.
 
 
-  Definition memmove : Syntax.func :=
-    ("memmove", (["dst"; "src"; "n"], [], bedrock_func_body:(
+  Definition memmove := func! (dst, src, n) {
     x = src-dst;
     require x;
     if x < x+n {
@@ -50,7 +49,7 @@ Section WithParameters.
         n = n - $1
       }
     }
-  ))).
+  }.
 
 
   Context {word_ok: word.ok word} {mem_ok: map.ok mem} {locals_ok : map.ok locals}

@@ -18,7 +18,6 @@ Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.Array.
 Require Import bedrock2.ZnWords.
-Require Import bedrock2.WordSimpl.
 Import List.ListNotations. Open Scope list_scope. (* TODO remove *)
 Require Import bedrock2.SepCalls.
 Require Import bedrock2.TransferSepsOrder.

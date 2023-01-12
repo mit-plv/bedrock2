@@ -4,7 +4,6 @@
 [submodule "deps/coqutil"]
 	path = deps/coqutil
 	url = https://github.com/mit-plv/coqutil.git
-	branch = tested
 [submodule "deps/kami"]
 	path = deps/kami
 	url = https://github.com/mit-plv/kami.git

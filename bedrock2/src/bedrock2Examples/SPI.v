@@ -7,49 +7,39 @@ Require Import coqutil.Byte.
 Import BinInt String List.ListNotations ZArith.
 Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_scope.
 
-Local Notation MMIOWRITE := "MMIOWRITE".
-Local Notation MMIOREAD := "MMIOREAD".
-
 Require bedrock2Examples.lightbulb_spec.
 Local Notation patience := lightbulb_spec.patience.
 
-Definition spi_write : function :=
-  let SPI_WRITE_ADDR := 0x10024048 in
-  ("spi_write", (["b"], ["busy"], bedrock_func_body:(
-    busy = ($-1);
-    i = ($patience); while (i) { i = (i - $1);
-      io! busy = $MMIOREAD($SPI_WRITE_ADDR);
-      if !(busy >> $31) {
-        i = (i^i)
-      }
+Definition spi_write := func! (b) ~> busy {
+    busy = $-1;
+    i = $patience; while i { i = i - $1;
+      io! busy = MMIOREAD($0x10024048);
+      if !(busy >> $31) { i = i^i }
     };
     if !(busy >> $31) {
-      output! $MMIOWRITE($SPI_WRITE_ADDR, b);
+      output! MMIOWRITE($0x10024048, b);
       busy = (busy ^ busy)
     }
-  ))).
+  }.
 
-Definition spi_read : function :=
-  let SPI_READ_ADDR := 0x1002404c in
-  ("spi_read", (nil, ("b"::"busy"::nil), bedrock_func_body:(
-    busy = ($-1);
-    b = ($0x5a);
-    i = ($patience); while (i) { i = (i - $1);
-      io! busy = $MMIOREAD($SPI_READ_ADDR);
+Definition spi_read := func! () ~> (b, busy) {
+    busy = $-1;
+    b = $0x5a;
+    i = $patience; while i { i = i - $1;
+      io! busy = MMIOREAD($0x1002404c);
       if !(busy >> $31) {
-        b = (busy & $0xff);
-        i = (i^i);
-        busy = (busy ^ busy)
+        b = busy & $0xff;
+        i = i^i;
+        busy = i
       }
     }
-  ))).
+  }.
 
-Definition spi_xchg : function :=
-  ("spi_xchg", ("b"::nil, "b"::"busy"::nil, bedrock_func_body:(
+Definition spi_xchg := func! (b) ~> (b, busy) {
     unpack! busy = spi_write(b);
     require !busy;
     unpack! b, busy = spi_read()
-  ))).
+  }.
 
 Require Import bedrock2.ProgramLogic.
 Require Import bedrock2.FE310CSemantics bedrock2.Semantics.
@@ -139,11 +129,10 @@ Section WithParameters.
     {
       cbv [isMMIOAddr addr].
       ZnWords. }
-    repeat straightline. split; trivial.
+    repeat straightline.
     letexists. split.
-    { repeat straightline. exact eq_refl. }
-    (* evaluate condition then split if *) letexists; split; [solve[repeat straightline]|split].
-    all: intros.
+    { repeat straightline. }
+    split; intros.
     { (* CASE if-condition was true (word.unsigned v0 <> 0), i.e. NOP, loop exit depends on whether timeout *)
     repeat straightline. (* <-- does split on a postcondition of the form
                         (word.unsigned br <> 0 -> loop invariant still holds) /\
@@ -166,7 +155,6 @@ Section WithParameters.
         { ZnWords. } }
     { (* SUBCASE loop condition was false (exit loop because of timeout *)
       letexists; split; [solve[repeat straightline]|split]; repeat straightline; try contradiction.
-      split; eauto.
       subst t0.
       eexists (_ ;++ cons _ nil); split.
       { rewrite <-app_assoc; cbn [app]; f_equal. }
@@ -193,9 +181,8 @@ Section WithParameters.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
     { cbv [isMMIOAddr]. ZnWords. }
-    repeat straightline. split; trivial.
     repeat straightline.
-    split; trivial. subst t0.
+    subst t0.
     eexists (_ ;++ cons _ (cons _ nil)). split.
     { rewrite <-app_assoc. cbn [app]. f_equal. }
     eexists. split.
@@ -250,8 +237,7 @@ Section WithParameters.
            PrimitivePair.pair._1 PrimitivePair.pair._2] in *; repeat straightline.
     { exact (Z.lt_wf 0). }
     { exfalso. ZnWords. }
-    { split; trivial.
-      subst i. rewrite word.unsigned_of_Z.
+    { subst i. rewrite word.unsigned_of_Z.
       split; [inversion 1|].
       split; trivial.
       subst b; rewrite byte.unsigned_of_Z; cbv [byte.wrap];
@@ -284,7 +270,6 @@ Section WithParameters.
           { ZnWords. }
           { ZnWords. } }
       { letexists; split; repeat straightline.
-        split; trivial.
         eexists (x2 ;++ cons _ nil); split; cbn [app]; eauto.
         eexists. split.
         { econstructor; try eassumption; right; eauto. }
@@ -355,7 +340,7 @@ Section WithParameters.
           clear. Z.div_mod_to_equations. blia. }
         (* tag:symex *)
         { right; split.
-          { subst busy. rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent; exact eq_refl. }
+          { subst_words. rewrite Properties.word.unsigned_xor_nowrap, Z.lxor_nilpotent; exact eq_refl. }
           eexists x3, (cons _ nil); split; cbn [app]; eauto.
           split; eauto.
           eexists; split; cbv [one]; trivial.

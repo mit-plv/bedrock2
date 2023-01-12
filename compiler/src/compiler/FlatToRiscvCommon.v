@@ -795,7 +795,7 @@ Section FlatToRiscv1.
              }
              apply (f_equal word.of_Z) in F.
              rewrite (word.of_Z_unsigned (word.sub k addr)) in F.
-             rewrite <- add_0_r at 1. change (Z.of_nat 0) with 0 in F. rewrite <- F.
+             rewrite <- word.add_0_r at 1. change (Z.of_nat 0) with 0 in F. rewrite <- F.
              ring.
           -- f_equal.
              pose proof word.unsigned_range (word.sub k addr).

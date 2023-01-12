@@ -343,7 +343,7 @@ Section MMIO1.
       replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto).
       replace (map.get initialL_regs z2) with (Some x0) by (symmetry; unfold map.extends in *; eauto).
 
-      cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
+      cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite word.add_0_r.
       unshelve erewrite (_ : _ = None); [eapply storeWord_in_MMIO_is_None; eauto|].
 
       cbv [MinimalMMIO.nonmem_store FE310_mmio].
@@ -485,7 +485,7 @@ Section MMIO1.
       replace (map.get initialL_regs z1) with (Some x) by (symmetry; unfold map.extends in *; eauto).
 
       split; try discriminate.
-      cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite add_0_r.
+      cbv [Utility.add Utility.ZToReg MachineWidth_XLEN]; rewrite word.add_0_r.
       unshelve erewrite (_ : _ = None); [eapply loadWord_in_MMIO_is_None|]; eauto.
 
       cbv [MinimalMMIO.nonmem_load FE310_mmio].

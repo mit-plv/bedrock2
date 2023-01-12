@@ -188,45 +188,70 @@ Module mmap. Section __.
   Context {key value} {map : map.map key value} {ok: map.ok map}.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
 
-  Definition defined(mm: option map): Prop := exists m, mm = Some m.
+  Inductive mmap :=
+  | Def(m: map)
+  | Undef.
 
-  Definition force(mm: option map): map :=
-    match mm with
-    | Some m => m
-    | None => map.empty
+  Axiom map__eqb: map -> map -> bool.
+  Global Instance map_eqb_spec: EqDecider map__eqb. Admitted.
+
+  Definition equal_union(om1 om2: mmap): mmap :=
+    match om1, om2 with
+    | Def m1, Def m2 =>
+        if map__eqb m1 m2 then Def m1 else Undef
+    | _, _ => Undef
     end.
 
+  Definition defined(mm: mmap): Prop := exists m, mm = Def m.
+
+  Definition force(mm: mmap): map :=
+    match mm with
+    | Def m => m
+    | Undef => map.empty
+    end.
+
+  Definition of_option(om: option map): mmap :=
+    match om with
+    | Some m => Def m
+    | None => Undef
+    end.
+
+  Lemma eq_of_eq_Def: forall m1 m2, Def m1 = Def m2 -> m1 = m2.
+  Proof. intros. congruence. Qed.
+
   (* disjoint union *)
-  Definition du(a b: option map): option map :=
+  Definition du(a b: mmap): mmap :=
     match a, b with
-    | Some a, Some b => map.du a b
-    | _, _ => None
+    | Def a, Def b => of_option (map.du a b)
+    | _, _ => Undef
     end.
 
   (* disjoint-unions *)
-  Definition dus'(l: list (option map)): option map := List.fold_right du (Some map.empty) l.
+  Definition dus'(l: list mmap): mmap := List.fold_right du (Def map.empty) l.
 
-  Fixpoint dus (xs : list (option map)) : option map :=
+  Fixpoint dus (xs : list mmap) : mmap :=
     match xs with
     | [x] => x
     | x :: xs => du x (dus xs)
-    | nil => Some map.empty
+    | nil => Def map.empty
     end.
 
   Lemma du_comm: forall p q, du p q = du q p.
   Proof.
-    intros. unfold du. destruct p; destruct q; try reflexivity.
-    apply map.du_comm.
+    intros. unfold du, of_option. destruct p; destruct q; try reflexivity.
+    rewrite map.du_comm. reflexivity.
   Qed.
 
-  Lemma du_empty_l: forall mm, du (Some map.empty) mm = mm.
+  Lemma du_empty_l: forall mm, du (Def map.empty) mm = mm.
   Proof.
-    intros. unfold du. destruct mm as [m|]. 2: reflexivity. eapply map.du_empty_l.
+    intros. unfold du. destruct mm as [m|]. 2: reflexivity. rewrite map.du_empty_l.
+    reflexivity.
   Qed.
 
-  Lemma du_empty_r: forall mm, du mm (Some map.empty) = mm.
+  Lemma du_empty_r: forall mm, du mm (Def map.empty) = mm.
   Proof.
-    intros. unfold du. destruct mm as [m|]. 2: reflexivity. eapply map.du_empty_r.
+    intros. unfold du. destruct mm as [m|]. 2: reflexivity. rewrite map.du_empty_r.
+    reflexivity.
   Qed.
 
   Lemma du_assoc: forall p q r, du (du p q) r = du p (du q r).
@@ -235,7 +260,7 @@ Module mmap. Section __.
     destruct p as [p|]. 2: reflexivity.
     destruct q as [q|]. 2: reflexivity.
     destruct r as [r|]. 2: destruct (map.du p q); reflexivity.
-    unfold map.du.
+    unfold map.du, of_option.
     destr (map.disjointb p q).
     - eapply map.disjointb_spec in E.
       destr (map.disjointb q r).
@@ -288,11 +313,11 @@ Module mmap. Section __.
       reflexivity.
   Qed.
 
-  Lemma dus_cons: forall (P: option map) (Ps: list (option map)),
+  Lemma dus_cons: forall (P: mmap) (Ps: list mmap),
       dus (P :: Ps) = du P (dus Ps).
   Proof. intros. rewrite <-! dus'_dus. reflexivity. Qed.
 
-  Lemma dus_app: forall Ps Qs : list (option map),
+  Lemma dus_app: forall Ps Qs : list mmap,
       dus (Ps ++ Qs) = du (dus Ps) (dus Qs).
   Proof.
     induction Ps; intros.
@@ -301,19 +326,25 @@ Module mmap. Section __.
       symmetry. apply du_assoc.
   Qed.
 
-  Lemma du_inj_r: forall (R P1 P2: option map) (m: map),
-      du R P1 = Some m ->
-      du R P2 = Some m ->
+  Lemma du_inj_r: forall (R P1 P2: mmap) (m: map),
+      du R P1 = Def m ->
+      du R P2 = Def m ->
       P1 = P2.
   Proof.
-    unfold du. intros. fwd. f_equal. eapply map.du_inj_r; eassumption.
+    unfold du, of_option. intros. fwd. f_equal. eapply map.du_inj_r; eassumption.
   Qed.
 
   Definition split(m m1 m2: map): Prop :=
-    Some m = du (Some m1) (Some m2).
+    Def m = du (Def m1) (Def m2).
 End __. End mmap.
 
-Notation "a \*/ b" := (mmap.du a b) (at level 34, left associativity).
+Arguments mmap.mmap {_ _} _.
+Notation mmap := mmap.mmap.
+
+Coercion mmap.Def : map.rep >-> mmap.
+
+Notation "a \*/ b" := (mmap.du a b) (at level 34, no associativity).
+Notation "a \=/ b" := (mmap.equal_union a b) (at level 34, no associativity).
 
 Module Tree.
   Inductive t(A: Type): Type :=
@@ -339,24 +370,24 @@ Section SepLog.
   Context {key value} {map : map.map key value} {ok: map.ok map}.
   Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}.
 
-  Definition tree_to_du: Tree.t (option map) -> option map := Tree.interp id mmap.du.
+  Definition tree_to_du: Tree.t (mmap map) -> (mmap map) := Tree.interp id mmap.du.
 
-  Lemma dus_flatten: forall t: Tree.t (option map),
+  Lemma dus_flatten: forall t: Tree.t (mmap map),
       mmap.dus (Tree.flatten t) = tree_to_du t.
   Proof.
     induction t; [reflexivity|].
     simpl. rewrite mmap.dus_app. rewrite IHt1, IHt2. reflexivity.
   Qed.
 
-  Lemma tree_to_du_eq_of_flatten_eq: forall LHS RHS : Tree.t (option map),
+  Lemma tree_to_du_eq_of_flatten_eq: forall LHS RHS : Tree.t (mmap map),
       mmap.dus (Tree.flatten LHS) = mmap.dus (Tree.flatten RHS) ->
       tree_to_du LHS = tree_to_du RHS.
   Proof. intros. rewrite! dus_flatten in H. exact H. Qed.
 
   Section cancel_lemmas.
-    Let nth n xs := hd (@Some map map.empty) (skipn n xs).
-    Let nth' n xs := hd (@None map) (skipn n xs).
-    Let remove_nth n (xs : list (option map)) := firstn n xs ++ tl (skipn n xs).
+    Let nth n xs := hd (@mmap.Def _ _ map map.empty) (skipn n xs).
+    Let nth' n xs := hd (@mmap.Undef _ _ map) (skipn n xs).
+    Let remove_nth n (xs : list (mmap map)) := firstn n xs ++ tl (skipn n xs).
 
     Lemma dus_nth_to_head n xs: mmap.du (nth n xs) (mmap.dus (remove_nth n xs)) = mmap.dus xs.
     Proof.
@@ -378,29 +409,30 @@ Section SepLog.
     Qed.
 
     Lemma dus_remove_nth: forall n oms mn m,
-        nth' n oms = Some mn ->
-        Some m = mmap.dus oms ->
-        exists m', Some m' = mmap.dus (remove_nth n oms) /\ Some m = map.du mn m'.
+        nth' n oms = mmap.Def mn ->
+        mmap.Def m = mmap.dus oms ->
+        exists m', mmap.Def m' = mmap.dus (remove_nth n oms) /\ mmap.Def m = mmap.du mn m'.
     Proof.
       induction n; intros.
       - destruct oms; cbn in H; try discriminate H. subst.
         rewrite mmap.dus_cons in H0. cbn. cbn in H0. fwd. eauto.
       - destruct oms; try discriminate H.
-        change (remove_nth (S n) (o :: oms)) with (o :: remove_nth n oms).
+        change (remove_nth (S n) (m0 :: oms)) with (m0 :: remove_nth n oms).
         rewrite mmap.dus_cons in H0.
-        change (nth' n oms = Some mn) in H.
+        change (nth' n oms = mmap.Def mn) in H.
         specialize IHn with (1 := H).
         pose proof H0 as B.
-        unfold mmap.du in H0. fwd. specialize (IHn _ eq_refl). fwd.
+        unfold mmap.du in H0. fwd. specialize (IHn _ eq_refl).
+        unfold mmap.of_option in *. fwd.
         rewrite mmap.dus_cons.
-        rewrite IHnp1 in B. change (map.du mn m') with (mmap.du (Some mn) (Some m')) in B.
-        rewrite IHnp0 in B. rewrite (mmap.du_comm (Some mn)) in B.
+        rewrite IHnp1 in B. change (map.du mn m') with (mmap.du (Def mn) (Def m')) in B.
+        rewrite IHnp0 in B. rewrite (mmap.du_comm (mmap.Def mn)) in B.
         rewrite <- mmap.du_assoc in B.
         unfold mmap.du at 1 in B. fwd.
-        eexists. split. 1: reflexivity. rewrite map.du_comm. exact B.
+        eexists. split. 1: reflexivity. rewrite mmap.du_comm. exact B.
     Qed.
 
-    Lemma cancel_at: forall (i j: nat) (xs ys: list (option map)),
+    Lemma cancel_at: forall (i j: nat) (xs ys: list (mmap map)),
         nth i xs = nth j ys ->
         mmap.dus (remove_nth i xs) = mmap.dus (remove_nth j ys) ->
         mmap.dus xs = mmap.dus ys.
@@ -411,7 +443,7 @@ Section SepLog.
       f_equal; assumption.
     Qed.
 
-    Lemma cancel_at_bw: forall (i j: nat) (xs ys: list (option map)),
+    Lemma cancel_at_bw: forall (i j: nat) (xs ys: list (mmap map)),
         mmap.defined (mmap.dus xs) ->
         nth i xs = nth j ys ->
         mmap.dus xs = mmap.dus ys ->
@@ -424,7 +456,7 @@ Section SepLog.
       congruence.
     Qed.
 
-    Lemma cancel_at_eq: forall (i j: nat) (xs ys: list (option map)),
+    Lemma cancel_at_eq: forall (i j: nat) (xs ys: list (mmap map)),
         mmap.defined (mmap.dus xs) ->
         nth i xs = nth j ys ->
         (mmap.dus (remove_nth i xs) = mmap.dus (remove_nth j ys)) =

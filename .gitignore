@@ -12,14 +12,16 @@
 .lia.cache
 .nia.cache
 .coqdeps.d
-Makefile.coq.*
-.Makefile*.coq.*
+Makefile.coq*
+.Makefile*.coq*
 \#*\#
 
 *.out
 
 /bedrock2/special/stackloop
 /bedrock2/special/stackloop.c
+/bedrock2/special/stacknondet
+/bedrock2/special/stacknondet.c
 /bedrock2/special/TypecheckExprToCString.c
 
 /processor/integration/program.hex

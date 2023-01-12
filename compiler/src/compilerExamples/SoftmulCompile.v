@@ -3,7 +3,7 @@ Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import coqutil.Word.Bitwidth32.
 From bedrock2 Require Import Semantics BasicC32Semantics WeakestPrecondition ProgramLogic.
-From coqutil Require Import Word.Properties Word.Interface Tactics.letexists.
+From coqutil Require Import Word.Properties Word.Interface Tactics.letexists Macros.WithBaseName.
 Require Import riscv.Utility.MonadNotations.
 Require Import riscv.Utility.FreeMonad.
 Require Import riscv.Utility.RegisterNames.
@@ -15,7 +15,7 @@ Require Import riscv.Spec.Machine.
 Require Import riscv.Platform.Memory.
 Require Import riscv.Spec.CSRFile.
 Require Import riscv.Utility.Utility.
-Require Import riscv.Utility.RecordSetters.
+Require Import coqutil.Datatypes.RecordSetters.
 Require Import coqutil.Decidable.
 Require Import coqutil.Z.Lia.
 Require Import coqutil.Map.Interface.
@@ -435,7 +435,7 @@ Section Riscv.
     induction l; cbn [array]; intros; [reflexivity|].
     rename a0 into addr.
     eapply Proper_sep_impl1.
-    - specialize (H O). cbn in H. specialize (H _ eq_refl). rewrite add_0_r in H.
+    - specialize (H O). cbn in H. specialize (H _ eq_refl). rewrite word.add_0_r in H.
       exact H.
     - eapply IHl. cbv zeta. intros.
       specialize (H (S i)). cbn -[Z.of_nat] in H. specialize (H _ H0).
@@ -542,7 +542,7 @@ Section Riscv.
 
   Notation program d := (array (instr d) (word.of_Z 4)) (only parsing).
 
-  Definition funimplsList := softmul :: rpmul.rpmul :: nil.
+  Definition funimplsList := &[, softmul; rpmul.rpmul].
 
   Definition mul_insts_result :=
     @Pipeline.compile 32 BW32 SortedListString.map RV32I RV32I_bitwidth
@@ -667,18 +667,6 @@ Section Riscv.
   Lemma link_softmul_bedrock2: spec_of_softmul funimplsList.
   Proof.
     eapply softmul_ok. eapply rpmul.rpmul_ok.
-  Qed.
-
-  Lemma unfoldn_word_seq_add: forall n m (start: word),
-      List.unfoldn (word.add (word.of_Z 1)) (n + m) start =
-      List.unfoldn (word.add (word.of_Z 1)) n start ++
-      List.unfoldn (word.add (word.of_Z 1)) m (word.add start (word.of_Z (Z.of_nat n))).
-  Proof.
-    induction n; intros.
-    - word_simpl_step_in_goal. reflexivity.
-    - cbn -[Z.of_nat]. f_equal. eqapply (IHn m (word.add start (word.of_Z 1))).
-      + f_equal. ring.
-      + f_equal; f_equal; ZnWords.
   Qed.
 
   Import FunctionalExtensionality PropExtensionality.

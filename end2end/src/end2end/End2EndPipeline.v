@@ -15,6 +15,7 @@ Require riscv.Platform.Memory.
 Require Import riscv.Spec.PseudoInstructions.
 Require Import riscv.Proofs.EncodeBound.
 Require Import riscv.Proofs.DecodeEncode.
+Require Import riscv.Utility.bverify.
 Require Import riscv.Platform.Run.
 Require Import riscv.Utility.MkMachineWidth.
 Require Import riscv.Utility.Monads. Import MonadNotations.
@@ -307,7 +308,7 @@ Section Connect.
     required_stack_space <= word.unsigned (word.sub (stack_pastend ml) (stack_start ml)) / bytes_per_word ->
     word.unsigned (code_start ml) + Z.of_nat (Datatypes.length (instrencode instrs)) <=
       word.unsigned (code_pastend ml) ->
-    Forall (fun i : Instruction => verify i iset \/ valid_InvalidInstruction i) instrs ->
+    bvalidInstructions iset instrs = true ->
     valid_src_funs funimplsList = true ->
     (* Assumptions on the Kami level: *)
     kami_mem_contains_bytes (instrencode instrs) ml.(code_start) memInit ->

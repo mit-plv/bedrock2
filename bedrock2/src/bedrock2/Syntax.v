@@ -24,7 +24,9 @@ Module expr.
   Local Notation C0 := (expr.literal Z0).
   Local Notation C1 := (expr.literal (Zpos xH)).
 
-  Notation not e := (expr.op bopname.eq e C0) (only parsing).
+  (* Definition instead of Notation so that Ltac knows whether we meant "e == 0"
+     and can treat e as an integer, or "! e", can can tread e as a boolean *)
+  Definition not e := expr.op bopname.eq e C0.
 
   Notation to_bool e := (expr.op bopname.ltu C0 e) (only parsing).
 
@@ -51,15 +53,10 @@ Module cmd.
   | interact (binds : list String.string) (action : String.string) (args: list expr).
 End cmd. Notation cmd := cmd.cmd.
 
-Definition func : Type := String.string * (list String.string * list String.string * cmd).
-#[deprecated(note="Use bedrock2.Syntax.func instead.")]
-Notation function := func.
-#[deprecated(note="Use bedrock2.Syntax.func instead.")]
-Notation bedrock_func := func.
+Definition func : Type := (list String.string * list String.string * cmd).
 
 Module Coercions.
   Import String.
   Coercion expr.var : string >-> expr.
   Coercion expr.literal : Z >-> expr.
-  Coercion name_of_func (f : func) := fst f.
 End Coercions.

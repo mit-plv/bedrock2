@@ -1,6 +1,6 @@
 # This file can be used to print the flags Makefile.coq.ex pass
 # Example: coqtop $(make -f Makefile.coqflags)
-# Example: env COQFLAGS="$(make -f Makefile.coqflags)" ../etc/bytedump.sh bedrock2.ToCStringExprTypecheckingTest.test
+# Example: env COQFLAGS="$(make -f Makefile.coqflags)" ../etc/bytedump.py bedrock2.ToCStringExprTypecheckingTest.test
 .PHONY: all print_coqc
 -include Makefile.coq.ex.conf
 print_coqc:

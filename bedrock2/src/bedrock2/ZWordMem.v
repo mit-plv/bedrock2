@@ -8,6 +8,7 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwi
 Require Import coqutil.Word.LittleEndianList.
 Require Import coqutil.Map.OfListWord.
 Require Import bedrock2.Lift1Prop.
+Require Import bedrock2.ZnWords.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.PurifySep.
 
@@ -40,7 +41,7 @@ Undelimit Scope sep_scope.
 (* PredTp equals `Z -> mem -> Prop` if the predicate takes any number of values
    and its size depends on these values.
    PredTp equals `V1 -> ... -> Vn -> Z -> mem -> Prop` for some `V1..Vn` if the
-   predicate takes one `n` values, but its size does not depend on these values. *)
+   predicate takes `n` values, but its size does not depend on these values. *)
 Definition PredicateSize{PredTp: Type}(pred: PredTp) := Z.
 Existing Class PredicateSize.
 
@@ -371,49 +372,86 @@ Section ScalarsLemmas.
   Context {width}{BW: Bitwidth width}{word: word width}{word_ok: word.ok word}.
   Context {mem: map.map word Byte.byte}{mem_ok: map.ok mem}.
 
-  Lemma bytes_to_uint: forall L (bs: list Z),
-      array (uint 8) L bs =
-      sepapp (pure_at (len bs = L /\ List.Forall (fun b => 0 <= b < 256) bs))
-             (uint (8 * L) (le_combine_z bs)).
+  (* Note: rhs is weaker because it doesn't guarantee len bs = L nor that all
+     bs are between 0 and 256, so sometimes, one might want to keep the array
+     statement around, and pose a new hypothesis about the same memory with the uint *)
+  Lemma bytes_to_uint: forall L (bs: list Z) addr,
+      impl1 (array (uint 8) L bs addr) (uint (8 * L) (le_combine_z bs) addr).
   Proof.
     intros.
-    unfold array. unfold uint at 2. extensionality addr. unfold sepapp.
+    unfold array, impl1. unfold uint at 2. unfold sepapp.
     unfold pure_at, pure_at_raw, range_ok.
+    intro m.
     rewrite Z.add_0_r.
     rewrite length_le_split.
-    (*
-    rewrite nbits_to_nbytes_8 by lia.
-    rewrite Nat2Z.id.
-    unfold le_combine_z.
-    pose proof (split_le_combine (List.map Byte.byte.of_Z bs)) as P.
-    rewrite List.map_length in P.
-    rewrite P. clear P.
-
-    eapply assume_pure_of_sides_of_sep_eq.
-    1,2: purify_rec.
     intros.
-
-    remember (Z.to_nat L) as nbytes eqn: E.
-    eapply (f_equal Z.of_nat) in E. rewrite Z2Nat.id in E by lia. subst L.
-    revert nbytes bs E.
-    induction nbytes; intros;
-      extensionality addr; extensionality m;
-      apply PropExtensionality.propositional_extensionality.
-    - unfold array. unfold uint, byteseq_predicate. simpl in E.
-      rewrite <- E.
-      destruct bs; try discriminate.
-      simpl. change (nbits_to_nbytes 0) with 0 in *.
-      split; intros.
-      + eapply sep_emp_l in H. fwd.
-        case TODO.
-      + fwd. eapply sep_emp_l.
-        case TODO.
-    - destruct bs; try discriminate.
-      rewrite array_cons.
-      replace (len (u :: bs) - 1) with (len bs) by (rewrite List.length_cons; lia).
-      rewrite IHnbytes by (rewrite List.length_cons in *; lia).
-*)
-  Abort.
+    repeat (rewrite ?sep_assoc_eq in H; eapply sep_emp_l in H; destruct H as (? & H)).
+    fwd.
+    rewrite nbits_to_nbytes_8 by lia.
+    rewrite ?sep_assoc_eq. eapply sep_emp_l. split; [assumption | ].
+    rewrite ?sep_assoc_eq. eapply sep_emp_l. split. {
+      clear -H word_ok mem_ok.
+      revert m addr H. induction bs; intros.
+      - unfold le_combine_z, le_combine. simpl. lia.
+      - unfold le_combine_z. rewrite List.len_cons.
+        rewrite List.map_cons. unfold le_combine. fold le_combine.
+        simpl in H. unfold sepapp in H.
+        destruct H as (m1 & m2 & Sp & H1 & H2).
+        eapply purify_uint in H1. fwd.
+        specialize (IHbs _ _ H2).
+        rewrite Byte.byte.unsigned_of_Z.
+        unfold Byte.byte.wrap. rewrite Z.mod_small by assumption.
+        unfold le_combine_z in *.
+        rewrite BitOps.or_to_plus.
+        2: {
+          eapply Z.bits_inj_0.
+          intro i.
+          rewrite Z.land_spec.
+          assert (i < 0 \/ 0 <= i < 8 \/ 8 <= i) as C by lia.
+          destruct C as [C | [C | C ] ].
+          - rewrite Z.testbit_neg_r by assumption. reflexivity.
+          - rewrite Z.shiftl_spec by lia.
+            rewrite (Z.testbit_neg_r _ (i - 8)) by lia.
+            apply Bool.andb_false_r.
+          - rewrite (@prove_Zeq_bitwise.testbit_above 8) by lia. reflexivity.
+        }
+        rewrite Z.shiftl_mul_pow2 by lia.
+        replace (8 * (1 + len bs)) with (8 + 8 * len bs) by lia.
+        rewrite Z.pow_add_r by lia. lia.
+    }
+    rewrite ?sep_assoc_eq. eapply sep_emp_l. split. 1: lia.
+    unfold le_combine_z.
+    replace (Z.to_nat (len bs)) with (length (List.map Byte.byte.of_Z bs)).
+    2: {
+      rewrite List.map_length. lia.
+    }
+    rewrite split_le_combine.
+    revert addr m H0 H2p0 H2p1 H. clear H1p1.
+    induction bs; intros.
+    - simpl. unfold array_raw, pure_at_raw, emp in H. fwd.
+      unfold bytearray. symmetry. eapply map.of_list_word_nil.
+    - unfold bytearray in *. cbn.
+      rewrite map.of_list_word_at_cons.
+      unfold array_raw, sepapp in H. destruct H as (m1 & m2 & Sp & Hm1 & Hm2).
+      unfold uint, sepapp, pure_at, pure_at_raw, range_ok in Hm1.
+      repeat (rewrite ?sep_assoc_eq in Hm1; eapply sep_emp_l in Hm1;
+              destruct Hm1 as (? & Hm1)).
+      change (Z.to_nat (nbits_to_nbytes 8)) with 1%nat in Hm1.
+      unfold le_split, bytearray in Hm1.
+      rewrite map.of_list_word_singleton in Hm1.
+      unfold map.split in Sp. fwd. subst m1.
+      rewrite map.putmany_comm by assumption.
+      rewrite <- map.put_putmany_commute.
+      rewrite map.putmany_empty_r. rewrite Z.add_0_r. f_equal.
+      rewrite List.len_cons in *.
+      replace (word.add (word.of_Z addr) (word.of_Z 1)) with
+        (word.of_Z (word := word) (addr + 1)).
+      2: {
+        eapply word.unsigned_inj.
+        destruct width_cases as [E | E]; rewrite E in *; ZnWords.
+      }
+      eapply IHbs; try lia. exact Hm2.
+  Qed.
 
 End ScalarsLemmas.
 Declare Scope sepapp_scope.

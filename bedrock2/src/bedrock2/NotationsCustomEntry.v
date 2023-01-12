@@ -155,9 +155,50 @@ Notation "'require' e 'else' { c1 } ; c2" := (require_is_not_available_inside_co
 Notation "'require' '!' e 'else' { c1 } ; c2" := (require_is_not_available_inside_conditionals_and_loops)
   (in custom bedrock_cmd at level 0, e custom bedrock_expr at level 1, c2 at level 999,
   only parsing, format "'[v' 'require' '!'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_nontail.
+
+Declare Custom Entry bedrock_cmd_in_braces.
+Notation "bedrock_cmd_in_braces:( c )" := c (c custom bedrock_cmd_in_braces, format "'bedrock_cmd_in_braces:(' '/  ' c '/ ' ')'").
+Notation "coq:( c )"         := c (in custom bedrock_cmd_in_braces, c constr, format "'coq:(' c ')'").
+Notation "$ c"               := c (in custom bedrock_cmd_in_braces at level 0, c constr at level 0, format "'$' c").
+Notation "{ c }" := c             (in custom bedrock_cmd_in_braces, c custom bedrock_cmd).
+
+Import Coq.Lists.List.ListNotations. Local Open Scope list_scope.
+Delimit Scope bedrock_tail with bedrock_tail.
+Notation "'func!' ( xs ) ~> ( ys ) c" := ((xs, ys, c%bedrock_tail) : func)
+  (only parsing, at level 10, xs custom bedrock_call_lhs, ys custom bedrock_call_lhs, c custom bedrock_cmd_in_braces).
+Notation "'func!' ( xs ) ~> y c" := ((xs, [y], c%bedrock_tail) : func)
+  (only parsing, at level 10, xs custom bedrock_call_lhs, y custom bedrock_ident, c custom bedrock_cmd_in_braces).
+Notation "'func!' ( xs ) ~> ( ) c" := ((xs, [], c%bedrock_tail) : func)
+  (only parsing, at level 10, xs custom bedrock_call_lhs, c custom bedrock_cmd_in_braces).
+Notation "'func!' ( xs ) ~> () c" := ((xs, [], c%bedrock_tail) : func)
+  (only parsing, at level 10, xs custom bedrock_call_lhs, c custom bedrock_cmd_in_braces).
+Notation "'func!' ( xs ) c" := ((xs, [], c%bedrock_tail) : func)
+  (only parsing, at level 10, xs custom bedrock_call_lhs, c custom bedrock_cmd_in_braces).
+Notation "'func!' ( ) ~> ( ys ) c" := (([], ys, c%bedrock_tail) : func)
+  (only parsing, at level 10, ys custom bedrock_call_lhs, c custom bedrock_cmd_in_braces).
+Notation "'func!' () ~> ( ys ) c" := (([], ys, c%bedrock_tail) : func)
+  (only parsing, at level 10, ys custom bedrock_call_lhs, c custom bedrock_cmd_in_braces).
+Notation "'func!' ( ) ~> y c" := (([], [y], c%bedrock_tail) : func)
+  (only parsing, at level 10, y custom bedrock_ident, c custom bedrock_cmd_in_braces).
+Notation "'func!' () ~> y c" := (([], [y], c%bedrock_tail) : func)
+  (only parsing, at level 10, y custom bedrock_ident, c custom bedrock_cmd_in_braces).
+Notation "'func!' ( ) ~> ( ) c" := (([], [], c%bedrock_tail) : func)
+  (only parsing, at level 10, c custom bedrock_cmd_in_braces).
+Notation "'func!' () ~> ( ) c" := (([], [], c%bedrock_tail) : func)
+  (only parsing, at level 10, c custom bedrock_cmd_in_braces).
+Notation "'func!' () ~> () c" := (([], [], c%bedrock_tail) : func)
+  (only parsing, at level 10, c custom bedrock_cmd_in_braces).
+Notation "'func!' ( ) ~> () c" := (([], [], c%bedrock_tail) : func)
+  (only parsing, at level 10, c custom bedrock_cmd_in_braces).
+Notation "'func!' ( ) c" := (([], [], c%bedrock_tail) : func)
+  (only parsing, at level 10, c custom bedrock_cmd_in_braces).
+Notation "'func!' () c" := (([], [], c%bedrock_tail) : func)
+  (only parsing, at level 10, c custom bedrock_cmd_in_braces).
+Notation "'func!' c" := (([], [], c%bedrock_tail) : func)
+  (only parsing, at level 10, c custom bedrock_cmd_in_braces).
+
 Undelimit Scope bedrock_tail.
 Undelimit Scope bedrock_nontail.
-
 
 Module test.
   Local Notation "1" := (bedrock_expr:($1)) (in custom bedrock_expr at level 0).
@@ -167,6 +208,19 @@ Module test.
   Local Open Scope string_scope.
 
   Goal True.
+
+  pose (func! (x,y) ~> (z,t) { /*skip*/ }).
+  pose (func! (x,y) ~> z { /*skip*/ }).
+  pose (func! (x,y) ~> ( ) { /*skip*/ }).
+  pose (func! (x,y) ~> () { /*skip*/ }).
+  pose (func! (x,y) { /*skip*/ }).
+  pose (func! ( ) ~> (x,y) { /*skip*/ }).
+  pose (func! () ~> (x,y) { /*skip*/ }).
+  pose (func! ( ) ~> ( ) { /*skip*/ }).
+  pose (func! ( ) ~> () { /*skip*/ }).
+  pose (func! () ~> ( ) { /*skip*/ }).
+  pose (func! () ~> () { /*skip*/ }).
+  pose (func! { /*skip*/ }).
 
   pose (cons "a" (cons "b" nil)).
   pose (cons (expr.var "a") (cons (expr.var "b") nil)).

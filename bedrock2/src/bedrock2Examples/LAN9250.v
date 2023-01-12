@@ -14,8 +14,7 @@ Local Open Scope Z_scope. Local Open Scope string_scope. Local Open Scope list_s
 Local Notation MMIOWRITE := "MMIOWRITE".
 Local Notation MMIOREAD := "MMIOREAD".
 
-Definition lan9250_readword : function :=
-  ("lan9250_readword", (("addr"::nil), ("ret"::"err"::nil), bedrock_func_body:(
+Definition lan9250_readword := func! (addr) ~> (ret, err) {
     SPI_CSMODE_ADDR = ($0x10024018);
     io! ret = MMIOREAD(SPI_CSMODE_ADDR);
     ret = (ret | $2);
@@ -38,10 +37,9 @@ Definition lan9250_readword : function :=
     io! addr = $MMIOREAD(SPI_CSMODE_ADDR);
     addr = (addr & coq:(Z.lnot 2));
     output! $MMIOWRITE(SPI_CSMODE_ADDR, addr)
-  ))).
+  }.
 
-Definition lan9250_writeword : function :=
-  ("lan9250_writeword", (("addr"::"data"::nil), ("err"::nil), bedrock_func_body:(
+Definition lan9250_writeword := func! (addr, data) ~> err {
     SPI_CSMODE_ADDR = $0x10024018;
     io! ret = $MMIOREAD(SPI_CSMODE_ADDR);
     ret = (ret | $2);
@@ -65,24 +63,22 @@ Definition lan9250_writeword : function :=
     io! addr = $MMIOREAD(SPI_CSMODE_ADDR);
     addr = (addr & coq:(Z.lnot 2));
     output! $MMIOWRITE(SPI_CSMODE_ADDR, addr)
-  ))).
+  }.
 
 Definition MAC_CSR_DATA : Z := 0x0A8.
 Definition MAC_CSR_CMD : Z := 0x0A4.
 Definition BYTE_TEST : Z := 0x64.
 
-Definition lan9250_mac_write : function :=
-  ("lan9250_mac_write", (("addr"::"data"::nil), ("err"::nil), bedrock_func_body:(
+Definition lan9250_mac_write := func! (addr, data) ~> err {
     unpack! err = lan9250_writeword($MAC_CSR_DATA, data);
     require !err;
 unpack! err = lan9250_writeword($MAC_CSR_CMD, coq:(Z.shiftl 1 31)|addr);
     require !err;
           unpack! data, err = lan9250_readword($BYTE_TEST)
           (* while (lan9250_readword(0xA4) >> 31) { } // Wait until BUSY (= MAX_CSR_CMD >> 31) goes low *)
-  ))).
+  }.
 
-Definition lan9250_wait_for_boot : function :=
-  ("lan9250_wait_for_boot", (nil, ("err"::nil), bedrock_func_body:(
+Definition lan9250_wait_for_boot := func! () ~> err {
   err = ($0);
   byteorder = ($0);
   i = ($lightbulb_spec.patience); while (i) { i = (i - $1);
@@ -91,11 +87,10 @@ Definition lan9250_wait_for_boot : function :=
     else if (byteorder == $0x87654321) { i = (i^i) }
     else { err = ($-1) }
   }
-  ))).
+}.
 
-Definition lan9250_init : function :=
-  ("lan9250_init", (nil, ("err"::nil), bedrock_func_body:(
-          unpack! err = lan9250_wait_for_boot();
+Definition lan9250_init := func! () ~> err {
+    unpack! err = lan9250_wait_for_boot();
     require !err;
           unpack! hw_cfg, err = lan9250_readword($lightbulb_spec.HW_CFG);
     require !err;
@@ -108,10 +103,9 @@ Definition lan9250_init : function :=
         unpack! err = lan9250_mac_write($1, coq:(Z.lor (Z.shiftl 1 20) (Z.lor (Z.shiftl 1 18) (Z.lor (Z.shiftl 1 3) (Z.shiftl 1 2)))));
     require !err;
           unpack! err = lan9250_writeword($0x070, coq:(Z.lor (Z.shiftl 1 2) (Z.shiftl 1 1)))
-  ))).
+  }.
 
-Definition lan9250_tx : function :=
-  ("lan9250_tx", (("p"::"l"::nil), ("err"::nil), bedrock_func_body:(
+Definition lan9250_tx := func! (p, l) ~> err {
   (* A: first segment, last segment, length *)
   unpack! err = lan9250_writeword($lightbulb_spec.TX_DATA_FIFO, $(2^13)|$(2^12)|l);
   require !err;
@@ -124,7 +118,7 @@ Definition lan9250_tx : function :=
     p = p + $4;
     l = l - $4
   }}
-  ))).
+}.
 
 Require Import bedrock2.ProgramLogic.
 Require Import bedrock2.FE310CSemantics.
@@ -314,7 +308,6 @@ Section WithParameters.
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
       cbv -[Z.le Z.lt]. blia. }
-    repeat straightline; split; trivial.
     repeat straightline.
     eapply WeakestPreconditionProperties.interact_nomem; repeat straightline.
     letexists; letexists; split; [exact eq_refl|]; split; [split; trivial|].
@@ -322,7 +315,6 @@ Section WithParameters.
       rewrite !word.unsigned_of_Z; cbv [word.wrap].
       split; [|exact eq_refl]; clear.
       cbv -[Z.le Z.lt]. blia. }
-    repeat straightline; split; trivial.
     repeat straightline.
 
     straightline_call.
@@ -372,8 +364,8 @@ Section WithParameters.
     straightline_call.
     1: {
       match goal with |- word.unsigned ?x < _ => let H := unsigned.zify_expr x in rewrite H end.
-      subst data4 data3 data2 data1.
       pose proof word.unsigned_range v.
+      repeat match goal with x := _ |- _ => subst x end.
       Z.div_mod_to_equations. blia.
     }
 
@@ -667,11 +659,9 @@ Section WithParameters.
     all: try (eexists _, _; split; trivial).
     all: try (exact eq_refl).
     all: auto.
-    1,2: subst addr.
-    3,4: subst addr0.
-    16,17:subst addr1.
-    18,19:subst addr3.
-    1,2,3,4,16,17,18,19: cbv [isMMIOAddr SPI_CSMODE_ADDR];
+    1,2,3,4,16,17,18,19: 
+      repeat match goal with x := _ |- _ => subst x end;
+      cbv [isMMIOAddr SPI_CSMODE_ADDR];
       rewrite !word.unsigned_of_Z; cbv [word.wrap];
       trivial; cbv -[Z.le Z.lt]; blia.
 
@@ -799,7 +789,6 @@ Section WithParameters.
     repeat (straightline || esplit).
     straightline_call; [ZnWords|]; repeat (intuition idtac; repeat straightline).
     { eexists; split; repeat (straightline; intuition idtac; eauto).
-      eexists; Tactics.ssplit; eauto.
       subst a. rewrite app_assoc.
       eexists; Tactics.ssplit; eauto.
       eexists; Tactics.ssplit; try mmio_trace_abstraction; eauto using any_app_more. }

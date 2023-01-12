@@ -439,9 +439,9 @@ Ltac reify_goal :=
     change (Lift1Prop.impl1 (Tree.to_sep LHS) (Tree.to_sep RHS));
     eapply Tree.impl1_to_sep_of_impl1_flatten
   end;
-  cbn [Tree.flatten Tree.interp app].
+  cbv [Tree.flatten Tree.interp app].
 
-(* Given `H: seplogformula m`, first cbns away all occurrences of `seps` in H,
+(* Given `H: seplogformula m`, first cbvs away all occurrences of `seps` in H,
    and then flattens the formula into a list of sep clauses, resulting in an
    `H: seps [...] m` *)
 Ltac flatten_seps_in H :=
@@ -451,17 +451,17 @@ Ltac flatten_seps_in H :=
     let E := fresh "E" in
     eassert (@iff1 tmem nested _) as E;
     [ (* from `nested` to `Tree.to_sep tree` *)
-      let stars := eval cbn[seps] in nested in
+      let stars := eval cbv [seps] in nested in
       let tree := reify stars in
       transitivity (Tree.to_sep tree); [
-        cbn [seps Tree.to_sep Tree.interp]; iff1_syntactic_reflexivity
+        cbv [seps Tree.to_sep Tree.interp]; iff1_syntactic_reflexivity
       |];
       (* from `Tree.to_sep tree` to `seps (Tree.flatten tree)` *)
       transitivity (seps (Tree.flatten tree)); [
         exact (iff1_sym (Tree.flatten_iff1_to_sep tree))
       |];
       (* from `seps (Tree.flatten tree)` to `seps clauses` *)
-      cbn [SeparationLogic.Tree.flatten SeparationLogic.Tree.interp SeparationLogic.app];
+      cbv [SeparationLogic.Tree.flatten SeparationLogic.Tree.interp SeparationLogic.app];
       iff1_syntactic_reflexivity
     | let HNew := fresh in pose proof (proj1 (E m) H) as HNew;
       move HNew before H;
@@ -473,7 +473,7 @@ Ltac flatten_seps_in H :=
    `seps` in H, and then flattens the formula into a list of sep clauses, resulting
    in a goal of shape `seps [...] m` *)
 Ltac flatten_seps_in_goal :=
-  cbn [seps];
+  cbv [seps];
   lazymatch goal with
   | |- ?nested ?m /\ ?C =>
       let xs := reify nested in
@@ -484,14 +484,14 @@ Ltac flatten_seps_in_goal :=
       change (Tree.to_sep xs m);
       eapply Tree.flatten_iff1_to_sep
   end;
-  cbn [Tree.flatten Tree.interp app].
+  cbv [Tree.flatten Tree.interp app].
 
 Ltac cancel_emp_l :=
   lazymatch goal with
   | |- Lift1Prop.iff1 (@seps ?K ?V ?M ?LHS) (seps ?RHS) =>
     let i := find_constr_eq LHS constr:(@emp K V M True) in
     simple refine (cancel_emp_at_index_l i LHS RHS _ _);
-    cbn [firstn skipn app hd tl];
+    cbv [firstn skipn app hd tl];
     [syntactic_exact_deltavar (@eq_refl _ _)|]
   end.
 
@@ -500,7 +500,7 @@ Ltac cancel_emp_r :=
   | |- Lift1Prop.iff1 (seps ?LHS) (@seps ?K ?V ?M ?RHS) =>
     let j := find_constr_eq RHS constr:(@emp K V M True) in
     simple refine (cancel_emp_at_index_r j LHS RHS _ _);
-    cbn [firstn skipn app hd tl];
+    cbv [firstn skipn app hd tl];
     [syntactic_exact_deltavar (@eq_refl _ _)|]
   end.
 
@@ -511,7 +511,7 @@ Ltac cancel_emp_impl :=
     let j := find_constr_eq RHS constr:(@emp K V M True) in
     (*TODO: replace lemma*)
     simple refine (cancel_emp_at_index_impl j LHS RHS _ _);
-    cbn [firstn skipn app hd tl];
+    cbv [firstn skipn app hd tl];
     (*TODO: use more complicated solver here?*)
     [syntactic_exact_deltavar (@eq_refl _ _)|]
   end.
@@ -523,7 +523,7 @@ Ltac cancel_seps_at_indices i j :=
   lazymatch goal with
   | |- Lift1Prop.iff1 (seps ?LHS) (seps ?RHS) =>
     simple refine (cancel_seps_at_indices i j LHS RHS _ _);
-    cbn [firstn skipn app hd tl]
+    cbv [firstn skipn app hd tl]
   end.
 
 
@@ -537,7 +537,7 @@ Ltac cancel_seps_at_indices_by_implication i j :=
   lazymatch goal with
   | |- Lift1Prop.impl1 (seps ?LHS) (seps ?RHS) =>
     simple refine (cancel_seps_at_indices_by_implication i j LHS RHS _ _);
-    cbn [firstn skipn app hd tl]
+    cbv [firstn skipn app hd tl]
   end.
 
 (*TODO: performance*)
@@ -556,7 +556,7 @@ Ltac cancel_step := once (
       assert_fails (has_evar y); (* <-- different from ecancel_step *)
       let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
       let i := find_constr_eq LHS y in (* <-- different from ecancel_step *)
-      cancel_seps_at_indices i j; [syntactic_exact_deltavar (@eq_refl _ _)|]).
+      cancel_seps_at_indices i j; [exact eq_refl|]). (* already unified using constr_eq *)
 
 Ltac ecancel_step :=
       let RHS := lazymatch goal with |- Lift1Prop.iff1 _ (seps ?RHS) => RHS end in
@@ -566,7 +566,7 @@ Ltac ecancel_step :=
       assert_fails (idtac; let y := rdelta_var y in is_evar y);
       let LHS := lazymatch goal with |- Lift1Prop.iff1 (seps ?LHS) _ => LHS end in
       let i := find_syntactic_unify_deltavar LHS y in (* <-- multi-success! *)
-      cancel_seps_at_indices i j; [syntactic_exact_deltavar (@eq_refl _ _)|].
+      cancel_seps_at_indices i j; [exact eq_refl|]. (* already unified using syntactic_unify *)
 
 (* TODO: eventually replace ecancel_step? Probably not since implication is too agressive.*)
 (*TODO: performance. I've replaced the deltavar stuff with heavier operations  *)
@@ -581,7 +581,7 @@ Ltac ecancel_step_by_implication :=
       cancel_seps_at_indices_by_implication i j; [solve [auto 1 with nocore ecancel_impl]|].
 
 Ltac ecancel_done :=
-  cbn [seps];
+  cbv [seps];
   syntactic_exact_deltavar
     (@RelationClasses.reflexivity _ _
         (@RelationClasses.Equivalence_Reflexive _ _ (@Equivalence_iff1 _)) _).
@@ -591,7 +591,7 @@ Ltac ecancel_done :=
    because [syntactic_exact_deltavar] calls [unify], which gives no details about evar
    scoping problems, while the [exact] called below does give details *)
 Ltac ecancel_done' :=
-  cbn [seps];
+  cbv [seps];
   match goal with
   | |- iff1 ?x ?y => first [is_evar x | is_evar y | constr_eq x y]
   end;
@@ -621,7 +621,7 @@ Ltac ecancel :=
   lazymatch goal with
   | [|- impl1 _ _] =>
      repeat ecancel_step_by_implication;
-     (solve [ cbn [seps]; exact impl1_refl ])
+     (solve [ cbv [seps]; exact impl1_refl ])
   | [|- iff1 _ _] =>
     repeat ecancel_step;
     solve [ ecancel_done ]
@@ -674,7 +674,7 @@ Ltac use_sep_assumption :=
 Ltac seplog :=
   use_sep_assumption;
   cancel;
-  try solve [ repeat ecancel_step; cbn [seps]; exact (RelationClasses.reflexivity _) ].
+  try solve [ repeat ecancel_step; cbv [seps]; exact (RelationClasses.reflexivity _) ].
 
 Ltac seprewrite0_in Hrw H :=
   let lemma_lhs := lazymatch type of Hrw with @Lift1Prop.iff1 _ ?lhs _ => lhs end in
@@ -777,8 +777,8 @@ Ltac extract_ex1_step_in H :=
       lazymatch find_in_list ltac:(is_ex1) xs with
       | (?j, ex1 ?Q) =>
           apply extract_ex1_in_hyp_at_index with (i := j) (P := Q) in H;
-          [ cbn [firstn skipn app hd tl] in H
-          | cbn [firstn skipn app hd tl]; syntactic_exact_deltavar (@eq_refl _ _) ];
+          [ cbv [firstn skipn app hd tl] in H
+          | cbv [firstn skipn app hd tl]; syntactic_exact_deltavar (@eq_refl _ _) ];
           let name := lazymatch Q with
                       | fun e => _ => fresh e
                       | _ => fresh "e"
@@ -793,8 +793,8 @@ Ltac extract_emp_step_in H :=
       lazymatch find_in_list ltac:(is_emp) xs with
       | (?j, emp ?Q) =>
           apply extract_emp_in_hyp_at_index with (i := j) (P := Q) in H;
-          [ cbn [firstn skipn app hd tl] in H
-          | cbn [firstn skipn app hd tl]; syntactic_exact_deltavar (@eq_refl _ _) ];
+          [ cbv [firstn skipn app hd tl] in H
+          | cbv [firstn skipn app hd tl]; syntactic_exact_deltavar (@eq_refl _ _) ];
           let name := fresh H "_emp0" in
           destruct H as [name H]
       end
@@ -806,7 +806,7 @@ Ltac extract_ex1_and_emp_in0 H :=
                | flatten_seps_in H ].
 
 Ltac extract_ex1_and_emp_in H :=
-  extract_ex1_and_emp_in0 H; cbn [seps] in H.
+  extract_ex1_and_emp_in0 H; cbv [seps] in H.
 
 Ltac extract_ex1_and_emp_in_hyps :=
   repeat match goal with
@@ -819,14 +819,14 @@ Ltac extract_ex1_step_in_goal :=
       lazymatch find_in_list ltac:(is_ex1) xs with
       | (?j, ex1 _) =>
           eapply (extract_ex1_in_goal_with_and_at_index j);
-          cbn [firstn skipn app hd tl];
+          cbv [firstn skipn app hd tl];
           [ syntactic_exact_deltavar (@eq_refl _ _) | ]
       end
   | |- seps ?xs _ =>
       lazymatch find_in_list ltac:(is_ex1) xs with
       | (?j, ex1 _) =>
           eapply (extract_ex1_in_goal_at_index j);
-          cbn [firstn skipn app hd tl];
+          cbv [firstn skipn app hd tl];
           [ syntactic_exact_deltavar (@eq_refl _ _) | ]
       end
   end.
@@ -837,14 +837,14 @@ Ltac extract_emp_step_in_goal :=
       lazymatch find_in_list_bw ltac:(is_emp) xs with
       | (?j, emp _) =>
           eapply (extract_emp_in_goal_at_index j);
-          cbn [firstn skipn app hd tl];
+          cbv [firstn skipn app hd tl];
           [ syntactic_exact_deltavar (@eq_refl _ _) | ]
       end
   | |- seps ?xs _  /\ _ =>
       lazymatch find_in_list_bw ltac:(is_emp) xs with
       | (?j, emp _) =>
           eapply (extract_emp_in_goal_with_and_at_index j);
-          cbn [firstn skipn app hd tl];
+          cbv [firstn skipn app hd tl];
           [ syntactic_exact_deltavar (@eq_refl _ _) | ]
       end
   end.
@@ -854,7 +854,7 @@ Ltac extract_ex1_and_emp_in_goal0 :=
   repeat extract_emp_step_in_goal.
 
 Ltac extract_ex1_and_emp_in_goal :=
-   extract_ex1_and_emp_in_goal0; cbn [seps].
+   extract_ex1_and_emp_in_goal0; cbv [seps].
 
 Section Tests.
   Context {key value} {map : map key value} {ok : ok map}.

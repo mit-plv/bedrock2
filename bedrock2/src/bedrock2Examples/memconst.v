@@ -3,14 +3,13 @@ Require Import bedrock2.NotationsCustomEntry.
 Import Syntax Syntax.Coercions BinInt String List List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition memconst ident bs : func :=
-  (String.append "memconst_" ident, (["p"], [], bedrock_func_body:(
+Definition memconst bs := func! (p) {
     i = $0; while i < $(Z.of_nat (length bs)) {
       store1(p, $(expr.inlinetable access_size.one bs "i"));
       p = p + $1;
       i = i + $1
     }
-  ))).
+  }.
 
 Require Import bedrock2.WeakestPrecondition bedrock2.Semantics bedrock2.ProgramLogic.
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
@@ -30,7 +29,7 @@ Section WithParameters.
   Import ProgramLogic.Coercions.
 
   Global Instance spec_of_memconst ident bs : spec_of "memconst" :=
-    fnspec! (memconst ident bs) (p : word) / (ds : list byte) (R : mem -> Prop),
+    fnspec! ident (p : word) / (ds : list byte) (R : mem -> Prop),
     { requires t m := m =* ds$@p * R /\ length ds = length bs :>Z /\ length bs < 2^width ;
       ensures t' m := m =* bs$@p * R /\ t=t' }.
 
@@ -43,7 +42,7 @@ Section WithParameters.
 
   Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.
   Lemma memconst_ok ident bs functions :
-    spec_of_memconst ident bs (memconst ident bs :: functions).
+    spec_of_memconst ident bs ((ident, memconst bs) :: functions).
   Proof.
     cbv [spec_of_memconst memconst]; repeat straightline.
     unfold1_call_goal; cbv beta match delta [call_body]; rewrite String.eqb_refl.

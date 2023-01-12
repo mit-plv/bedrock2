@@ -3,7 +3,7 @@ Require Import bedrock2.NotationsCustomEntry.
 Import Syntax Syntax.Coercions BinInt String List List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 
-Definition memswap : func := ("memswap", (["x"; "y"; "n"], [], bedrock_func_body:(
+Definition memswap := func! (x, y, n) {
   while n {
     vx = load1(x);
     vy = load1(y);
@@ -16,7 +16,7 @@ Definition memswap : func := ("memswap", (["x"; "y"; "n"], [], bedrock_func_body
     $(cmd.unset "vx");
     $(cmd.unset "vy")
   }
-))).
+}.
 
 Require Import bedrock2.WeakestPrecondition bedrock2.Semantics bedrock2.ProgramLogic.
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
@@ -80,7 +80,7 @@ Section WithParameters.
           repeat (rewrite ?map.get_put_dec, ?map.get_remove_dec, ?map.get_empty; cbn -[String.eqb]).
           repeat (destruct String.eqb; trivial). } }
       { eapply Wf_nat.lt_wf. }
-      { cbn; ssplit; eauto. }
+      { cbn; ssplit; try ecancel_assumption; eauto. }
       { intros ?v ?xs ?ys ?R ?t ?m ?x ?y ?n.
         repeat straightline.
         cbn in localsmap.
@@ -88,7 +88,7 @@ Section WithParameters.
         { rewrite ?Properties.map.get_put_dec. exists n0; cbn. auto. }
         split; cycle 1.
         { intros Ht; rewrite Ht in *.
-          intuition idtac; destruct xs0, ys0; cbn in *; try discriminate; eauto. }
+          intuition idtac; destruct xs0, ys0; cbn in *; try discriminate; try ecancel_assumption; eauto. }
 
         intros Ht.
         destruct xs0 as [|hxs xs0] in *, ys0 as [|hys ys0] in *;
