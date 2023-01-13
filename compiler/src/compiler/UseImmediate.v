@@ -21,12 +21,13 @@ Section WithArguments.
     forall e st t m l mc post, exec e st t m l mc post -> exec e (useImmediate is5BitImmediate is12BitImmediate st) t m l mc post.
   Proof.
     intros.
-    induction H; simpl; eauto. 
-    11: { eapply exec.if_false. { assumption.  } {assumption. } }
-    
-      intros; simpl; try assumption.
-    destruct st1; simpl. destruct st2; simpl. 
-  Qed.
+    induction H; simpl; eauto.
+
+    destruct (useImmediate is5BitImmediate is12BitImmediate s1) eqn:Es1; destruct (useImmediate is5BitImmediate is12BitImmediate s2) eqn:Es2; try eauto.
+    { eapply exec.load.}
+  Abort.
+ (*   destruct st1; simpl. destruct st2; simpl. 
+  Qed. *)
 
 End WithArguments.
     

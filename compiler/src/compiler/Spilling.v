@@ -169,8 +169,11 @@ Section Spilling.
     | SLoad _ x y _ | SStore _ x y _ | SInlinetable _ x _ y | SSet x y => Z.max x y
     | SStackalloc x n body => Z.max x (max_var body)
     | SLit x _ => x
-    | SOp x _ y oz => let max_var_op := Op_vars_gen 0 (fun x => x) in
-                       Z.max x (Z.max y (max_var_op oz))
+    | SOp x _ y oz => let vz := match oz with
+                                | Var v => v
+                                | Const _ => 0
+                                end
+                      in Z.max x (Z.max y vz)
     | SIf c s1 s2 | SLoop s1 c s2 => Z.max (max_var_bcond c) (Z.max (max_var s1) (max_var s2))
     | SSeq s1 s2 => Z.max (max_var s1) (max_var s2)
     | SSkip => 0
@@ -228,7 +231,6 @@ Section Spilling.
              | c: bcond _ |- _ => destruct c; simpl
              | |- _ /\ _ => split
              | y: operand |- _ => destruct y
-             | H: Op_vars_gen _ _ _ |- _ => simpl in H; simpl
              end;
       eauto 4 with max_var_sound.
     all: eapply Forall_and;
@@ -361,7 +363,7 @@ Section Spilling.
              | |- _ => progress simpl
              | |- _ => progress unfold spill_tmp, sp, fp, ires_reg, iarg_reg, iarg_reg, ires_reg,
                          spill_bcond, max_var_bcond, ForallVars_bcond, prepare_bcond,
-                         load_iarg_reg, load_iarg_reg, save_ires_reg, stack_loc, Op_vars_gen in *
+                         load_iarg_reg, load_iarg_reg, save_ires_reg, stack_loc in *
              end;
       try blia;
       fwd;
@@ -1698,7 +1700,7 @@ Section Spilling.
       + eassumption.
       + blia.
     - (* exec.op *)
-      unfold exec.lookup_op_locals, Op_vars_gen in *.
+      unfold exec.lookup_op_locals in *.
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H3. intros. destruct_one_match; fwd.
       {

@@ -6,7 +6,7 @@ Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.Syntax.
 Require Import coqutil.Tactics.fwd.
 Require Import String.
- 
+Open Scope string_scope. (* Only used for examples. *) 
 Open Scope Z_scope.
 
 
