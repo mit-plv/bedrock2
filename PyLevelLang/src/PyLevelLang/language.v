@@ -104,13 +104,13 @@ Inductive pexpr : Type :=
 Inductive expr : type -> Type :=
   | EVar (t : type) (x : string) : expr t
   | ELoc (t : type) (l : string) : expr t
-  | EConst (t : type) (c : const t) : expr t
-  | EUnop (t1 t2 : type) (o : unop t1 t2) (e : expr t1) : expr t2
-  | EBinop (t1 t2 t3 : type) (o : binop t1 t2 t3) (e1 : expr t1) (e2: expr t2) : expr t3
-  | EFlatmap (t : type) (e1 : expr (TList t)) (x : string) (e2 : expr (TList t))
+  | EConst {t : type} (c : const t) : expr t
+  | EUnop {t1 t2 : type} (o : unop t1 t2) (e : expr t1) : expr t2
+  | EBinop {t1 t2 t3 : type} (o : binop t1 t2 t3) (e1 : expr t1) (e2: expr t2) : expr t3
+  | EFlatmap {t : type} (e1 : expr (TList t)) (x : string) (e2 : expr (TList t))
       : expr (TList t)
-  | EIf (t : type) (e1 : expr TBool) (e2 e3 : expr t) : expr t
-  | ELet (t1 t2 : type) (x : string) (e1 : expr t1) (e2 : expr t2) : expr t2.
+  | EIf {t : type} (e1 : expr TBool) (e2 e3 : expr t) : expr t
+  | ELet {t1 t2 : type} (x : string) (e1 : expr t1) (e2 : expr t2) : expr t2.
 
 Inductive command : Type :=
   | CSkip
@@ -312,19 +312,19 @@ Section WithMap.
         | None => error:("PEVar with undefined variable")
         end
     | PEConst c =>
-        Success (existT _ _ (EConst _ c))
+        Success (existT _ _ (EConst c))
     | PESingleton p' =>
         '(existT _ t' e') <- elaborate G p' ;;
-        Success (existT _ _ (EBinop _ _ _ (OCons _) e' (EConst _ (CNil t'))))
+        Success (existT _ _ (EBinop (OCons _) e' (EConst (CNil t'))))
     | PEUnop po p1 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         '(existT _ t2 o) <- elaborate_unop po t1 ;;
-        Success (existT _ _ (EUnop t1 t2 o e1))
+        Success (existT _ _ (EUnop o e1))
     | PEBinop po p1 p2 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         '(existT _ t2 e2) <- elaborate G p2 ;;
         '(existT _ t3 o) <- elaborate_binop po t1 t2 ;;
-        Success (existT _ _ (EBinop t1 t2 t3 o e1 e2))
+        Success (existT _ _ (EBinop o e1 e2))
     | PEFlatmap p1 x p2 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         let G' := map.put G x (t1, false) in
@@ -333,7 +333,7 @@ Section WithMap.
         | TList t' => fun e1 =>
             match type_eq_dec t2 (TList t') with
             | left H2 =>
-                Success (existT _ _ (EFlatmap t' e1 x (cast H2 _ e2)))
+                Success (existT _ _ (EFlatmap e1 x (cast H2 _ e2)))
             | _ => error:("PEFlatmap with mismatched types")
             end
         | _ => fun _ => error:("PEFlatmap with non-list")
@@ -346,7 +346,7 @@ Section WithMap.
         | TBool => fun e1 =>
             match type_eq_dec t3 t2 with
             | left H =>
-                Success (existT _ _ (EIf t2 e1 e2 (cast H _ e3)))
+                Success (existT _ _ (EIf e1 e2 (cast H _ e3)))
             | _ => error:("PEIf with mismatched types")
             end
         | _ => fun _ => error:("PEIf with non-boolean condition")
@@ -355,7 +355,7 @@ Section WithMap.
         '(existT _ t1 e1) <- elaborate G p1 ;;
         let G' := map.put G x (t1, false) in
         '(existT _ t2 e2) <- elaborate G' p2 ;;
-        Success (existT _ _ (ELet t1 t2 x e1 e2))
+        Success (existT _ _ (ELet x e1 e2))
     end.
 End WithMap.
 
