@@ -13,7 +13,7 @@ DEPS_DIR ?= ../deps
 # Note: make does not interpret "\n", and this is intended
 DEPFLAGS_COQUTIL_NL=-Q $(DEPS_DIR)/coqutil/src/coqutil coqutil\n
 DEPFLAGS_NL=
-CURFLAGS_NL=-Q ../bedrock2/src/bedrock2 bedrock2\n
+CURFLAGS_NL=-Q ../bedrock2/src/bedrock2 bedrock2\n-Q src/PyLevelLang PyLevelLang\n
 
 EXTERNAL_DEPENDENCIES?=
 EXTERNAL_COQUTIL?=
