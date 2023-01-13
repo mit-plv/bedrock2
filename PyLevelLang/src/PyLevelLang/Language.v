@@ -2,6 +2,12 @@ Require Export String.
 Require Export ZArith.
 Require Export List.
 
+(* Casts one type to another, provided that they are equal
+   https://stackoverflow.com/a/52518299 *)
+Definition cast {T : Type} {T1 T2 : T} (H : T1 = T2) (f: T -> Type) (x : f T1) :
+  f T2 :=
+  eq_rect T1 f x T2 H.
+
 Inductive type : Type :=
   | TInt
   | TBool

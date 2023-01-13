@@ -1,6 +1,6 @@
 Require Import PyLevelLang.Language.
 Require Import coqutil.Map.Interface.
-Require Import PyLevelLang.Elaborate.
+Require Import coqutil.Map.Interface coqutil.Map.SortedListString.
 
 Local Open Scope Z_scope.
 

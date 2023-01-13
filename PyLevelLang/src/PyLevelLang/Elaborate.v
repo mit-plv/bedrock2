@@ -3,12 +3,6 @@ Require Import coqutil.Map.Interface coqutil.Map.SortedListString.
 Require Import coqutil.Datatypes.Result.
 Import ResultMonadNotations.
 
-(* Casts one type to another, provided that they are equal
-   https://stackoverflow.com/a/52518299 *)
-Definition cast {T : Type} {T1 T2 : T} (H : T1 = T2) (f: T -> Type) (x : f T1) :
-  f T2 :=
-  eq_rect T1 f x T2 H.
-
 Definition elaborate_unop (po : punop) (t1 : type) : result {t2 & unop t1 t2} :=
   match po with
   | PONeg =>
