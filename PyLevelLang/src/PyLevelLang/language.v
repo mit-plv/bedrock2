@@ -26,6 +26,13 @@ Fixpoint TRecord (l : list type) : type :=
   | t :: ts => TPair t (TRecord ts)
   end.
 
+(* Constants *)
+Inductive const : type -> Type :=
+  | CInt (n : Z) : const TInt
+  | CBool (b : bool) : const TBool
+  | CString (s : string) : const TString
+  | CNil (t : type) : const (TList t).
+
 (* Unary operators *)
 Inductive unop : type -> type -> Type :=
   | ONeg : unop TInt TInt
@@ -51,13 +58,10 @@ Inductive binop : type -> type -> type -> Type :=
 (* "Pre-expression": untyped expressions from surface-level parsing. *)
 Inductive pexpr : Type :=
   | PEVar (x : string)
-  | PEInt (n : Z)
-  | PEBool (b : bool)
-  | PEString (s : string)
+  | PEConst {t : type} (c : const t)
   | PEPair (p1 p2 : pexpr)
   | PEFst (p: pexpr)
   | PESnd (p: pexpr)
-  | PENil (t : type)
   | PESingleton (p : pexpr)
   | PECons (p1 p2 : pexpr)
   | PERange (lo hi : pexpr)
@@ -73,13 +77,10 @@ Inductive pexpr : Type :=
 Inductive expr : type -> Type :=
   | EVar (t : type) (x : string) : expr t
   | ELoc (t : type) (l : string) : expr t
-  | EInt (n : Z) : expr TInt
-  | EBool (b : bool) : expr TBool
-  | EString (s : string) : expr TString
+  | EConst (t : type) (c : const t) : expr t
   | EPair (t1 t2 : type) (e1 : expr t1) (e2 : expr t2) : expr (TPair t1 t2)
   | EFst (t1 t2 : type) (e : expr (TPair t1 t2)) : expr t1
   | ESnd (t1 t2 : type) (e : expr (TPair t1 t2)) : expr t2
-  | ENil (t : type) : expr (TList t)
   | ECons (t : type) (e1 : expr t) (e2 : expr (TList t)) : expr (TList t)
   | ERange (lo hi : expr TInt) : expr (TList TInt)
   | EFlatmap (t : type) (e1 : expr (TList t)) (x : string) (e2 : expr (TList t))
@@ -92,10 +93,10 @@ Inductive expr : type -> Type :=
 Inductive command : Type :=
   | CSkip
   | CSeq (c1 c2 : command)
-  | CLet (t: type) (x : string) (e : expr t) (c : command)
+  | CLet (t : type) (x : string) (e : expr t) (c : command)
   | CLetMut (t : type) (l : string) (e : expr t) (c : command)
   | CIf (e : expr TBool) (c1 c2 : command)
-  | CForeach (t: type) (x : string) (e : expr (TList t)) (c : command).
+  | CForeach (t : type) (x : string) (e : expr (TList t)) (c : command).
 
 
 (* A few helper functions *)
@@ -143,12 +144,8 @@ Section WithMap.
             Success (existT _ _ (ELoc t x))
         | None => error:("PEVar with undefined variable")
         end
-    | PEInt n =>
-        Success (existT _ _ (EInt n))
-    | PEBool b =>
-        Success (existT _ _ (EBool b))
-    | PEString s =>
-        Success (existT _ _ (EString s))
+    | PEConst c =>
+        Success (existT _ _ (EConst _ c))
     | PEPair p1 p2 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         '(existT _ t2 e2) <- elaborate G p2 ;;
@@ -167,11 +164,9 @@ Section WithMap.
             Success (existT _ _ (ESnd _ _ e'))
         | _ => fun _ => error:("PESnd applied to non-pair")
         end e'
-    | PENil t =>
-        Success (existT _ _ (ENil t))
     | PESingleton p' =>
         '(existT _ t' e') <- elaborate G p' ;;
-        Success (existT _ _ (ECons t' e' (ENil t')))
+        Success (existT _ _ (ECons t' e' (EConst _ (CNil t'))))
     | PECons p1 p2 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         '(existT _ t2 e2) <- elaborate G p2 ;;
@@ -246,22 +241,30 @@ Section Examples.
   Instance tenv_ok : map.ok tenv := SortedListString.ok _.
 
   Definition ex1 : pexpr :=
-    PECons (PEInt 1) (PECons (PEInt 2) (PECons (PEInt 3) (PECons (PEInt 4) (PENil TInt)))).
+    PECons (PEConst (CInt 1)) (
+      PECons (PEConst (CInt 2)) (
+        PECons (PEConst (CInt 3)) (
+          PECons (PEConst (CInt 4)) (
+            PEConst (CNil TInt))))).
   Compute (elaborate map.empty ex1).
 
   Definition ex2 : pexpr :=
-    PECons (PEString "a") (PECons (PEInt 2) (PECons (PEInt 3) (PECons (PEInt 4) (PENil TInt)))).
+    PECons (PEConst (CString "a")) (
+      PECons (PEConst (CInt 2)) (
+        PECons (PEConst (CInt 3)) (
+          PECons (PEConst (CInt 4)) (
+            PEConst (CNil TInt))))).
   Compute (elaborate map.empty ex2).
 
   Definition ex3 : pexpr :=
-    PEFst (PELet "x" (PEInt 42) (PEPair (PEVar "x") (PEVar "x"))).
+    PEFst (PELet "x" (PEConst (CInt 42)) (PEPair (PEVar "x") (PEVar "x"))).
   Compute (elaborate map.empty ex3).
 
   Definition ex4 : pexpr :=
-    PEFst (PELet "x" (PEInt 42) (PEPair (PEVar "x") (PEVar "y"))).
+    PEFst (PELet "x" (PEConst (CInt 42)) (PEPair (PEVar "x") (PEVar "y"))).
   Compute (elaborate map.empty ex4).
 
   Definition ex5 : pexpr :=
-    PEPair (PEInt 42) (PEPair (PEBool true) (PEString "hello")).
+    PEPair (PEConst (CInt 42)) (PEPair (PEConst (CBool true)) (PEConst (CString "hello"))).
   Compute (elaborate map.empty ex5).
 End Examples.
