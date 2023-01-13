@@ -97,12 +97,6 @@ Section Syntax.
     | SCall binds _ _ | SInteract binds _ _ => list_union veq binds []
     end.
   
-  Definition Op_vars_gen{R: Type}(T: R)(P_vars: varname -> R)(op: operand): R :=
-    match op with
-    | Var v => (P_vars v)
-    | Const _ => T
-    end.
-
   Definition ForallVars_bcond_gen{R: Type}(and: R -> R -> R)(P: varname -> R)(cond: bcond): R :=
     match cond with
     | CondBinary _ x y => and (P x) (P y)
@@ -120,8 +114,11 @@ Section Syntax.
       | SInlinetable _ x _ i => and (P_vars x) (P_vars i)
       | SStackalloc x n body => and (P_vars x) (rec body)
       | SLit x _ => P_vars x
-      | SOp x _ y z => let op_vars_fun := Op_vars_gen T P_vars in
-                       and (P_vars x) (and (P_vars y) (op_vars_fun z))
+      | SOp x _ y z => let op_z := match z with
+                                   | Var v => P_vars v
+                                   | Const _ => T
+                                   end in
+                       and (P_vars x) (and (P_vars y) (op_z))
       | SSet x y => and (P_vars x) (P_vars y)
       | SIf c s1 s2 => and (P_bcond c) (and (rec s1) (rec s2))
       | SLoop s1 c s2 => and (P_bcond c) (and (rec s1) (rec s2))
@@ -175,8 +172,7 @@ Section Syntax.
              | |- andb _ _ = true => apply Bool.andb_true_iff
              | |- _ /\ _ => split
              | |- (_ <=? _)%nat = true => eapply Nat.leb_le
-             | y: operand |- _ => destruct y
-             | |- Op_vars_gen _ _ _ => simpl      
+             | y: operand |- _ => destruct y   
              end;
       eauto using List.Forall_to_forallb, List.forallb_to_Forall.
   Qed.
@@ -195,7 +191,6 @@ Section Syntax.
     induction s; intros; simpl in *;
       repeat match goal with
           | y : operand |- _ => destruct y
-          | |- Op_vars_gen _ _ _ => simpl
           | _ => intuition eauto using ForallVars_bcond_impl, Forall_impl
           end.
   Qed.

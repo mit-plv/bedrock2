@@ -25,7 +25,6 @@ Definition accessed_vars_bcond(c: bcond): list srcvar :=
   | CondNez x => [x]
   end.
 
-Definition Op_get_var(op: operand): list srcvar := Op_vars_gen [] (fun x => [x]) op.
 Fixpoint live(s: stmt)(used_after: list srcvar): list srcvar :=
   match s with
   | SSet x y
@@ -35,7 +34,12 @@ Fixpoint live(s: stmt)(used_after: list srcvar): list srcvar :=
   | SStore _ a x _ => list_union String.eqb [a; x] used_after
   | SStackalloc x _ body => list_diff String.eqb (live body used_after) [x]
   | SLit x _ => list_diff String.eqb used_after [x]
-  | SOp x _ y z => list_union String.eqb ([y] ++ Op_get_var z) (list_diff String.eqb used_after [x])
+                          
+  | SOp x _ y z => let var_z := match z with
+                                | Var vz => [vz]
+                                | Const _ => []
+                                end in
+                   list_union String.eqb ([y] ++ var_z) (list_diff String.eqb used_after [x])
   | SIf c s1 s2 => list_union String.eqb
                               (list_union String.eqb (live s1 used_after) (live s2 used_after))
                               (accessed_vars_bcond c)
