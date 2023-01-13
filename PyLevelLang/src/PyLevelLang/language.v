@@ -33,14 +33,43 @@ Inductive const : type -> Type :=
   | CString (s : string) : const TString
   | CNil (t : type) : const (TList t).
 
-(* Unary operators *)
+(* Unary operators (untyped) *)
+Inductive punop : Type :=
+  | PONeg
+  | PONot
+  | POLength
+  | POLengthString
+  | POFst
+  | POSnd.
+
+(* Unary operators (typed) *)
 Inductive unop : type -> type -> Type :=
   | ONeg : unop TInt TInt
   | ONot : unop TBool TBool
   | OLength : forall t, unop (TList t) TInt
-  | OLengthString : unop TString TInt.
+  | OLengthString : unop TString TInt
+  | OFst : forall t1 t2, unop (TPair t1 t2) t1
+  | OSnd : forall t1 t2, unop (TPair t1 t2) t2.
 
-(* Binary operators *)
+(* Binary operators (untyped) *)
+Inductive pbinop : Type :=
+  | POPlus
+  | POMinus
+  | POTimes
+  | PODiv
+  | POMod
+  | POAnd
+  | POOr
+  | POConcat
+  | POConcatString
+  | POLess
+  | POEq
+  | PORepeat
+  | POPair
+  | POCons
+  | PORange.
+
+(* Binary operators (typed) *)
 Inductive binop : type -> type -> type -> Type :=
   | OPlus : binop TInt TInt TInt
   | OMinus : binop TInt TInt TInt
@@ -53,23 +82,21 @@ Inductive binop : type -> type -> type -> Type :=
   | OConcatString : binop TString TString TString
   | OLess : binop TInt TInt TBool
   | OEq : forall t, binop t t TBool
-  | ORepeat : forall t, binop TInt t (TList t).
+  | ORepeat : forall t, binop TInt t (TList t)
+  | OPair : forall t1 t2, binop t1 t2 (TPair t1 t2)
+  | OCons : forall t, binop t (TList t) (TList t)
+  | ORange : binop TInt TInt (TList TInt).
 
 (* "Pre-expression": untyped expressions from surface-level parsing. *)
 Inductive pexpr : Type :=
   | PEVar (x : string)
   | PEConst {t : type} (c : const t)
-  | PEPair (p1 p2 : pexpr)
-  | PEFst (p: pexpr)
-  | PESnd (p: pexpr)
   | PESingleton (p : pexpr)
-  | PECons (p1 p2 : pexpr)
-  | PERange (lo hi : pexpr)
+  | PEUnop (po : punop) (p : pexpr)
+  | PEBinop (po : pbinop) (p1 p2 : pexpr)
   | PEFlatmap (p1 : pexpr) (x : string) (p2 : pexpr)
   | PEIf (p1 p2 p3 : pexpr)
-  | PELet (x : string) (p1 p2 : pexpr)
-  | PEUnop (t1 t2 : type) (o : unop t1 t2) (p : pexpr)
-  | PEBinop (t1 t2 t3 : type) (o : binop t1 t2 t3) (p1 p2 : pexpr).
+  | PELet (x : string) (p1 p2 : pexpr).
 
 (* Typed expressions. Most of the type checking is enforced in the GADT itself
    via Coq's type system, but some of it needs to be done in the `elaborate`
@@ -78,17 +105,12 @@ Inductive expr : type -> Type :=
   | EVar (t : type) (x : string) : expr t
   | ELoc (t : type) (l : string) : expr t
   | EConst (t : type) (c : const t) : expr t
-  | EPair (t1 t2 : type) (e1 : expr t1) (e2 : expr t2) : expr (TPair t1 t2)
-  | EFst (t1 t2 : type) (e : expr (TPair t1 t2)) : expr t1
-  | ESnd (t1 t2 : type) (e : expr (TPair t1 t2)) : expr t2
-  | ECons (t : type) (e1 : expr t) (e2 : expr (TList t)) : expr (TList t)
-  | ERange (lo hi : expr TInt) : expr (TList TInt)
+  | EUnop (t1 t2 : type) (o : unop t1 t2) (e : expr t1) : expr t2
+  | EBinop (t1 t2 t3 : type) (o : binop t1 t2 t3) (e1 : expr t1) (e2: expr t2) : expr t3
   | EFlatmap (t : type) (e1 : expr (TList t)) (x : string) (e2 : expr (TList t))
       : expr (TList t)
   | EIf (t : type) (e1 : expr TBool) (e2 e3 : expr t) : expr t
-  | ELet (t1 t2 : type) (x : string) (e1 : expr t1) (e2 : expr t2) : expr t2
-  | EUnop (t1 t2 : type) (o : unop t1 t2) (e : expr t1) : expr t2
-  | EBinop (t1 t2 t3 : type) (o : binop t1 t2 t3) (e1 : expr t1) (e2: expr t2) : expr t3.
+  | ELet (t1 t2 : type) (x : string) (e1 : expr t1) (e2 : expr t2) : expr t2.
 
 Inductive command : Type :=
   | CSkip
@@ -126,6 +148,151 @@ Fixpoint default_val (t : type) : interp_type t :=
   | TEmpty => tt
   end.
 
+Definition elaborate_unop (po : punop) (t1 : type) : result {t2 & unop t1 t2} :=
+  match po with
+  | PONeg =>
+      match t1 with
+      | TInt =>
+          Success (existT _ _ ONeg)
+      | _ => error:("PONeg with wrong type")
+      end
+  | PONot =>
+      match t1 with
+      | TBool =>
+          Success (existT _ _ ONot)
+      | _ => error:("PONot with wrong type")
+      end
+  | POLength =>
+      match t1 with
+      | TList t =>
+          Success (existT _ _ (OLength t))
+      | _ => error:("POLength with wrong type")
+      end
+  | POLengthString =>
+      match t1 with
+      | TString =>
+          Success (existT _ _ OLengthString)
+      | _ => error:("POLengthString with wrong type")
+      end
+  | POFst =>
+      match t1 with
+      | TPair t1' t2' =>
+          Success (existT _ _ (OFst t1' t2'))
+      | _ => error:("POFst with wrong type")
+      end
+  | POSnd =>
+      match t1 with
+      | TPair t1' t2' =>
+          Success (existT _ _ (OSnd t1' t2'))
+      | _ => error:("POSnd with wrong type")
+      end
+  end.
+
+Definition elaborate_binop (po : pbinop) (t1 : type) (t2 : type) :
+  result {t3 & binop t1 t2 t3} :=
+  match po with
+  | POPlus =>
+      match t1, t2 with
+      | TInt, TInt =>
+          Success (existT _ _ OPlus)
+      | _, _ => error:("POPlus with wrong types")
+      end
+  | POMinus =>
+      match t1, t2 with
+      | TInt, TInt =>
+          Success (existT _ _ OMinus)
+      | _, _ => error:("POMinus with wrong types")
+      end
+  | POTimes =>
+      match t1, t2 with
+      | TInt, TInt =>
+          Success (existT _ _ OTimes)
+      | _, _ => error:("POTimes with wrong types")
+      end
+  | PODiv =>
+      match t1, t2 with
+      | TInt, TInt =>
+          Success (existT _ _ ODiv)
+      | _, _ => error:("PODiv with wrong types")
+      end
+  | POMod =>
+      match t1, t2 with
+      | TInt, TInt =>
+          Success (existT _ _ OMod)
+      | _, _ => error:("POMod with wrong types")
+      end
+  | POAnd =>
+      match t1, t2 with
+      | TBool, TBool =>
+          Success (existT _ _ OAnd)
+      | _, _ => error:("POAnd with wrong types")
+      end
+  | POOr =>
+      match t1, t2 with
+      | TBool, TBool =>
+          Success (existT _ _ OOr)
+      | _, _ => error:("POOr with wrong types")
+      end
+  | POConcat =>
+      match t1, t2 with
+      | TList t1, TList t2 =>
+          match type_eq_dec t1 t2 with
+          | left H =>
+              let o : binop (TList t1) (TList t2) _ :=
+                cast H (fun t => binop _ (TList t) _) (OConcat t1) in
+              Success (existT _ _ o)
+          | _ => error:("POConcat with mismatched types")
+          end
+      | _, _ => error:("POConcat with wrong types")
+      end
+  | POConcatString =>
+      match t1, t2 with
+      | TString, TString =>
+          Success (existT _ _ OConcatString)
+      | _, _ => error:("POConcatString with wrong types")
+      end
+  | POLess =>
+      match t1, t2 with
+      | TInt, TInt =>
+          Success (existT _ _ OLess)
+      | _, _ => error:("POLess with wrong types")
+      end
+  | POEq =>
+      match type_eq_dec t1 t2 with
+      | left H =>
+          let o : binop t1 t2 _ :=
+            cast H (fun t => binop _ t _) (OEq t1) in
+          Success (existT _ _ o)
+      | _ => error:("POEq with wrong types")
+      end
+  | PORepeat =>
+      match t1 with
+      | TInt =>
+          Success (existT _ _ (ORepeat t2))
+      | _ => error:("PORepeat with wrong type")
+      end
+  | POPair =>
+      Success (existT _ _ (OPair t1 t2))
+  | POCons =>
+      match t2 with
+      | TList t2 =>
+          match type_eq_dec t1 t2 with
+          | left H =>
+              let o : binop t1 (TList t2) _ :=
+                cast H (fun t => binop _ (TList t) _) (OCons t1) in
+              Success (existT _ _ o)
+          | _ => error:("POCons with mismatched types")
+          end
+      | _ => error:("POCons with wrong types")
+      end
+  | PORange =>
+      match t1, t2 with
+      | TInt, TInt =>
+          Success (existT _ _ ORange)
+      | _, _ => error:("PORange with wrong types")
+      end
+  end.
+
 Section WithMap.
   (* abstract all functions in this section over the implementation of the map,
      and over its spec (map.ok) *)
@@ -146,47 +313,18 @@ Section WithMap.
         end
     | PEConst c =>
         Success (existT _ _ (EConst _ c))
-    | PEPair p1 p2 =>
-        '(existT _ t1 e1) <- elaborate G p1 ;;
-        '(existT _ t2 e2) <- elaborate G p2 ;;
-        Success (existT _ _ (EPair t1 t2 e1 e2))
-    | PEFst p' =>
-        '(existT _ t' e') <- elaborate G p' ;;
-        match t' as t'' return expr t'' -> _ with
-        | TPair t1 t2 => fun e' =>
-            Success (existT _ _ (EFst _ _ e'))
-        | _ => fun _ => error:("PEFst applied to non-pair")
-        end e'
-    | PESnd p' =>
-        '(existT _ t' e') <- elaborate G p' ;;
-        match t' as t'' return expr t'' -> _ with
-        | TPair t1 t2 => fun e' =>
-            Success (existT _ _ (ESnd _ _ e'))
-        | _ => fun _ => error:("PESnd applied to non-pair")
-        end e'
     | PESingleton p' =>
         '(existT _ t' e') <- elaborate G p' ;;
-        Success (existT _ _ (ECons t' e' (EConst _ (CNil t'))))
-    | PECons p1 p2 =>
+        Success (existT _ _ (EBinop _ _ _ (OCons _) e' (EConst _ (CNil t'))))
+    | PEUnop po p1 =>
+        '(existT _ t1 e1) <- elaborate G p1 ;;
+        '(existT _ t2 o) <- elaborate_unop po t1 ;;
+        Success (existT _ _ (EUnop t1 t2 o e1))
+    | PEBinop po p1 p2 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         '(existT _ t2 e2) <- elaborate G p2 ;;
-        match t2 with
-        | TList _ =>
-            match type_eq_dec t2 (TList t1) with
-            | left H =>
-                Success (existT _ _ (ECons t1 e1 (cast H _ e2)))
-            | _ => error:("PECons with mismatched types")
-            end
-        | _ => error:("PECons with non-list")
-        end
-    | PERange lo hi =>
-        '(existT _ t_lo e_lo) <- elaborate G lo ;;
-        '(existT _ t_hi e_hi) <- elaborate G hi ;;
-        match type_eq_dec t_lo TInt, type_eq_dec t_hi TInt with
-        | left Hlo, left Hhi =>
-            Success (existT _ _ (ERange (cast Hlo _ e_lo) (cast Hhi _ e_hi)))
-        | _, _ => error:("PERange with non-integer(s)")
-        end
+        '(existT _ t3 o) <- elaborate_binop po t1 t2 ;;
+        Success (existT _ _ (EBinop t1 t2 t3 o e1 e2))
     | PEFlatmap p1 x p2 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         let G' := map.put G x (t1, false) in
@@ -218,21 +356,6 @@ Section WithMap.
         let G' := map.put G x (t1, false) in
         '(existT _ t2 e2) <- elaborate G' p2 ;;
         Success (existT _ _ (ELet t1 t2 x e1 e2))
-    | PEUnop t1 t2 o p' =>
-        '(existT _ t' e') <- elaborate G p' ;;
-        match type_eq_dec t' t1 with
-        | left H =>
-            Success (existT _ _ (EUnop t1 t2 o (cast H _ e')))
-        | _ => error:("PEUnop" o "with mismatched types")
-        end
-    | PEBinop t1 t2 t3 o p1 p2 =>
-        '(existT _ t1' e1) <- elaborate G p1 ;;
-        '(existT _ t2' e2) <- elaborate G p2 ;;
-        match type_eq_dec t1' t1, type_eq_dec t2' t2 with
-        | left H1, left H2 =>
-            Success (existT _ _ (EBinop t1 t2 t3 o (cast H1 _ e1) (cast H2 _ e2)))
-        | _, _ => error:("PEBinop" o "with mismatched types")
-        end
     end.
 End WithMap.
 
@@ -241,30 +364,31 @@ Section Examples.
   Instance tenv_ok : map.ok tenv := SortedListString.ok _.
 
   Definition ex1 : pexpr :=
-    PECons (PEConst (CInt 1)) (
-      PECons (PEConst (CInt 2)) (
-        PECons (PEConst (CInt 3)) (
-          PECons (PEConst (CInt 4)) (
-            PEConst (CNil TInt))))).
+    PEBinop POCons (PEConst (CInt 1)) (
+      PEBinop POCons (PEConst (CInt 2)) (
+        PEBinop POCons (PEConst (CInt 3)) (
+          PESingleton (PEConst (CInt 4))))).
   Compute (elaborate map.empty ex1).
 
   Definition ex2 : pexpr :=
-    PECons (PEConst (CString "a")) (
-      PECons (PEConst (CInt 2)) (
-        PECons (PEConst (CInt 3)) (
-          PECons (PEConst (CInt 4)) (
-            PEConst (CNil TInt))))).
+    PEBinop POCons (PEConst (CString "a")) (
+      PEBinop POCons (PEConst (CInt 2)) (
+        PEBinop POCons (PEConst (CInt 3)) (
+          PESingleton (PEConst (CInt 4))))).
   Compute (elaborate map.empty ex2).
 
   Definition ex3 : pexpr :=
-    PEFst (PELet "x" (PEConst (CInt 42)) (PEPair (PEVar "x") (PEVar "x"))).
+    PEUnop POFst (PELet "x" (
+      PEConst (CInt 42)) (PEBinop POPair (PEVar "x") (PEVar "x"))).
   Compute (elaborate map.empty ex3).
 
   Definition ex4 : pexpr :=
-    PEFst (PELet "x" (PEConst (CInt 42)) (PEPair (PEVar "x") (PEVar "y"))).
+    PEUnop POFst (PELet "x" (
+      PEConst (CInt 42)) (PEBinop POPair (PEVar "x") (PEVar "y"))).
   Compute (elaborate map.empty ex4).
 
   Definition ex5 : pexpr :=
-    PEPair (PEConst (CInt 42)) (PEPair (PEConst (CBool true)) (PEConst (CString "hello"))).
+    PEBinop POPair (PEConst (CInt 42)) (
+      PEBinop POPair (PEConst (CBool true)) (PEConst (CString "hello"))).
   Compute (elaborate map.empty ex5).
 End Examples.
