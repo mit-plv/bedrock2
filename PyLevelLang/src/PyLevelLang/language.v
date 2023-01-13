@@ -58,6 +58,7 @@ Inductive pexpr : Type :=
   | PEFst (p: pexpr)
   | PESnd (p: pexpr)
   | PENil (t : type)
+  | PESingleton (p : pexpr)
   | PECons (p1 p2 : pexpr)
   | PERange (lo hi : pexpr)
   | PEFlatmap (p1 : pexpr) (x : string) (p2 : pexpr)
@@ -168,6 +169,9 @@ Section WithMap.
         end e'
     | PENil t =>
         Success (existT _ _ (ENil t))
+    | PESingleton p' =>
+        '(existT _ t' e') <- elaborate G p' ;;
+        Success (existT _ _ (ECons t' e' (ENil t')))
     | PECons p1 p2 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         '(existT _ t2 e2) <- elaborate G p2 ;;
