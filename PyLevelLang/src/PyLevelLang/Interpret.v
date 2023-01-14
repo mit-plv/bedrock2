@@ -1,5 +1,4 @@
 Require Import PyLevelLang.Language.
-Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Interface coqutil.Map.SortedListString.
 
 Local Open Scope Z_scope.
@@ -37,7 +36,7 @@ Definition proj_expected (t_expected : type) (v : {t_actual & interp_type t_actu
   | _ => default_val t_expected
   end.
 
-Definition compare_values {t : type} : interp_type t -> interp_type t -> bool :=
+Definition eqb_values {t : type} : interp_type t -> interp_type t -> bool :=
   match t with
   | TInt => Z.eqb
   | TString => String.eqb
@@ -45,8 +44,30 @@ Definition compare_values {t : type} : interp_type t -> interp_type t -> bool :=
   | _ => fun _ _ => false
   end.
 
+
 Section WithMap.
   Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
+
+  Definition interp_binop (l : locals) {t1 t2 t3: type} (o : binop t1 t2 t3) : 
+    interp_type t1 -> interp_type t2 -> interp_type t3 := 
+    match o in binop t1 t2 t3 return interp_type t1 -> interp_type t2 -> interp_type t3 with 
+    | OPlus =>  Z.add
+    | OMinus => Z.sub
+    | OTimes => Z.mul
+    | ODiv => Z.div
+    | OMod => Z.modulo
+    | OAnd => andb
+    | OOr => orb
+    | OConcat _ => fun a b => app a b
+    | OConcatString => String.append
+    | OLess => Z.leb
+    | OEq _ => eqb_values
+    | ORepeat _ => fun n x => repeat x (Z.to_nat n)
+    | OPair _ _ => pair
+    | OCons _ => cons
+    | ORange => fun s e => eval_range s (Z.to_nat (e - s))
+    end.
+
 
   Fixpoint interp_expr (l : locals) {t : type} (e : expr t) : interp_type t :=
     match e in (expr t0) return (interp_type t0) with
@@ -72,26 +93,7 @@ Section WithMap.
                     | OFst _ _ => fun e1 => fst (interp_expr l e1)
                     | OSnd _ _ => fun e1 => snd (interp_expr l e1)
                     end e1
-    | EBinop o e1 e2 => match o in binop t1 t2 t3 return expr t1 -> expr t2 -> interp_type t3 with
-                        | OPlus => fun e1 e2 => interp_expr l e1 + interp_expr l e2
-                        | OMinus => fun e1 e2 => interp_expr l e1 - interp_expr l e2
-                        | OTimes => fun e1 e2 => interp_expr l e1 * interp_expr l e2
-                        | ODiv => fun e1 e2 => interp_expr l e1 / interp_expr l e2
-                        | OMod => fun e1 e2 => Zmod (interp_expr l e1) (interp_expr l e2)
-                        | OAnd => fun e1 e2 => andb (interp_expr l e1) (interp_expr l e2)
-                        | OOr => fun e1 e2 => orb (interp_expr l e1) (interp_expr l e2)
-                        | OConcat _ => fun e1 e2 => app (interp_expr l e1) (interp_expr l e2)
-                        | OConcatString => fun e1 e2 => String.append (interp_expr l e1) (interp_expr l e2)
-                        | OLess => fun e1 e2 => (interp_expr l e1) <? (interp_expr l e2)
-                        | OEq _ => fun e1 e2 => compare_values (interp_expr l e1) (interp_expr l e2)
-                        | ORepeat _ => fun e1 e2 => repeat (interp_expr l e2) (Z.to_nat (interp_expr l e1))
-                        | OPair _ _ => fun e1 e2 => (interp_expr l e1, interp_expr l e2)
-                        | OCons _ => fun e1 e2 => interp_expr l e1 :: interp_expr l e2
-                        | ORange => fun e1 e2 => 
-                            let lo := interp_expr l e1 in 
-                            let hi := interp_expr l e2 in 
-                            eval_range lo (Z.to_nat (hi - lo))
-                        end e1 e2
+    | EBinop o e1 e2 => interp_binop l o (interp_expr l e1) (interp_expr l e2)
     | EFlatmap e1 x e2 => 
         flat_map (fun y => interp_expr (map.put l x (existT _ _ y)) e1) 
         (interp_expr l e2)
