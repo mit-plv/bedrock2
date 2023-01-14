@@ -48,9 +48,38 @@ Definition eqb_values {t : type} : interp_type t -> interp_type t -> bool :=
 Section WithMap.
   Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
 
+  Definition get_local (l : locals) {t : type} (x : string) : interp_type t :=
+    match map.get l x with
+    | Some v => proj_expected _ v
+    | None => default_val _
+    end.
+
+  Definition set_local (l : locals) {t : type} (x : string) (v : interp_type t) :
+    locals := map.put l x (existT _ _ v).
+
+  Definition interp_const {t : type} (c : const t) : interp_type t :=
+    match c with
+    | CInt n => n
+    | CBool b => b
+    | CString s => s
+    | CNil t => nil
+    end.
+
+  Definition interp_unop (l : locals) {t1 t2 : type} (o : unop t1 t2) :
+    interp_type t1 -> interp_type t2 :=
+    match o in unop t1 t2 return interp_type t1 -> interp_type t2 with
+    | ONeg => Z.sub 0
+    | ONot => negb
+    | OLength _ => fun x => Z.of_nat (length x)
+    | OLengthString => fun x => Z.of_nat (String.length x)
+    | OFst _ _ => fst
+    | OSnd _ _ => snd
+    end.
+
   Definition interp_binop (l : locals) {t1 t2 t3: type} (o : binop t1 t2 t3) : 
     interp_type t1 -> interp_type t2 -> interp_type t3 := 
-    match o in binop t1 t2 t3 return interp_type t1 -> interp_type t2 -> interp_type t3 with 
+    match o in binop t1 t2 t3 
+    return interp_type t1 -> interp_type t2 -> interp_type t3 with 
     | OPlus =>  Z.add
     | OMinus => Z.sub
     | OTimes => Z.mul
@@ -68,68 +97,48 @@ Section WithMap.
     | ORange => fun s e => eval_range s (Z.to_nat (e - s))
     end.
 
-
   Fixpoint interp_expr (l : locals) {t : type} (e : expr t) : interp_type t :=
     match e in (expr t0) return (interp_type t0) with
-    | EVar _ x => match map.get l x with
-                  | None => default_val _
-                  | Some v => proj_expected _ v
-                  end
-    | ELoc _ x => match map.get l x with
-                  | None => default_val _
-                  | Some v => proj_expected _ v
-                  end
-    | EConst c => match c with
-                  | CInt n => n
-                  | CBool b => b
-                  | CString s => s
-                  | CNil t => nil
-                  end
-    | EUnop o e1 => match o in unop t1 t2 return expr t1 -> interp_type t2 with
-                    | ONeg => fun e1 => - (interp_expr l e1)
-                    | ONot => fun e1 => negb (interp_expr l e1)
-                    | OLength _ => fun e1 => Z.of_nat (length (interp_expr l e1))
-                    | OLengthString => fun e1 => Z.of_nat (String.length (interp_expr l e1))
-                    | OFst _ _ => fun e1 => fst (interp_expr l e1)
-                    | OSnd _ _ => fun e1 => snd (interp_expr l e1)
-                    end e1
+    | EVar _ x => get_local l x
+    | ELoc _ x => get_local l x
+    | EConst c => interp_const c
+    | EUnop o e1 => interp_unop l o (interp_expr l e1)
     | EBinop o e1 e2 => interp_binop l o (interp_expr l e1) (interp_expr l e2)
-    | EFlatmap e1 x e2 => 
-        flat_map (fun y => interp_expr (map.put l x (existT _ _ y)) e1) 
-        (interp_expr l e2)
+    | EFlatmap e1 x e2 => flat_map (fun y => interp_expr (set_local l x y) e1) (interp_expr l e2)
     | EIf e1 e2 e3 => match interp_expr l e1 with
                       | true => interp_expr l e2
                       | false => interp_expr l e3
                       end
-    | ELet x e1 e2 => 
-        interp_expr (map.put l x (existT _ _ (interp_expr l e1))) e2
+    | ELet x e1 e2 => interp_expr (set_local l x (interp_expr l e1)) e2
     end.
 
 End WithMap.
 
 Section Examples.
-  Instance locals : map.map string {t & interp_type t} := SortedListString.map _.
-  Instance locals_ok : map.ok locals := SortedListString.ok _.
 
-  Definition ex1 : expr (TList TInt) :=
-      (EBinop (OCons _) (EConst (CInt 1))
-        (EBinop (OCons _) (EConst (CInt 2))
-          (EBinop (OCons _) (EConst (CInt 3))
-            (EBinop (OCons _) (EConst (CInt 4))
-              (EConst (CNil _)))))).
-  Goal interp_expr map.empty ex1 = 1 :: 2 :: 3 :: 4 :: nil.
-  reflexivity. Qed.
+Instance locals : map.map string {t & interp_type t} := SortedListString.map _.
+Instance locals_ok : map.ok locals := SortedListString.ok _.
 
-  Definition ex2 : expr TInt:= 
-      (EUnop (OFst _ _) (ELet "x"
-        (EConst (CInt 42)) (EBinop (OPair _ _) (EVar TInt "x") (EVar TInt "x")))).
-  Goal interp_expr map.empty ex2 = 42.
-  reflexivity. Qed.
+Definition ex1 : expr (TList TInt) :=
+  (EBinop (OCons _) (EConst (CInt 1))
+  (EBinop (OCons _) (EConst (CInt 2))
+  (EBinop (OCons _) (EConst (CInt 3))
+  (EBinop (OCons _) (EConst (CInt 4))
+  (EConst (CNil _)))))).
+Goal interp_expr map.empty ex1 = 1 :: 2 :: 3 :: 4 :: nil.
+reflexivity. Qed.
 
-  Local Open Scope string_scope.
-  Definition ex3 : expr (TPair TInt (TPair TBool TString)) :=
-      (EBinop (OPair _ _) (EConst (CInt 42))
-        (EBinop (OPair _ _) (EConst (CBool true)) (EConst (CString "hello")))).
-  Goal interp_expr map.empty ex3 = (42, (true, "hello")).
-  reflexivity. Qed.
+Definition ex2 : expr TInt:= 
+  (EUnop (OFst _ _) (ELet "x"
+  (EConst (CInt 42)) (EBinop (OPair _ _) (EVar TInt "x") (EVar TInt "x")))).
+Goal interp_expr map.empty ex2 = 42.
+reflexivity. Qed.
+
+Local Open Scope string_scope.
+Definition ex3 : expr (TPair TInt (TPair TBool TString)) :=
+  (EBinop (OPair _ _) (EConst (CInt 42))
+  (EBinop (OPair _ _) (EConst (CBool true)) (EConst (CString "hello")))).
+Goal interp_expr map.empty ex3 = (42, (true, "hello")).
+reflexivity. Qed.
+
 End Examples.
