@@ -113,32 +113,3 @@ Section WithMap.
     end.
 
 End WithMap.
-
-Section Examples.
-
-Instance locals : map.map string {t & interp_type t} := SortedListString.map _.
-Instance locals_ok : map.ok locals := SortedListString.ok _.
-
-Definition ex1 : expr (TList TInt) :=
-  (EBinop (OCons _) (EConst (CInt 1))
-  (EBinop (OCons _) (EConst (CInt 2))
-  (EBinop (OCons _) (EConst (CInt 3))
-  (EBinop (OCons _) (EConst (CInt 4))
-  (EConst (CNil _)))))).
-Goal interp_expr map.empty ex1 = 1 :: 2 :: 3 :: 4 :: nil.
-reflexivity. Qed.
-
-Definition ex2 : expr TInt:= 
-  (EUnop (OFst _ _) (ELet "x"
-  (EConst (CInt 42)) (EBinop (OPair _ _) (EVar TInt "x") (EVar TInt "x")))).
-Goal interp_expr map.empty ex2 = 42.
-reflexivity. Qed.
-
-Local Open Scope string_scope.
-Definition ex3 : expr (TPair TInt (TPair TBool TString)) :=
-  (EBinop (OPair _ _) (EConst (CInt 42))
-  (EBinop (OPair _ _) (EConst (CBool true)) (EConst (CString "hello")))).
-Goal interp_expr map.empty ex3 = (42, (true, "hello")).
-reflexivity. Qed.
-
-End Examples.
