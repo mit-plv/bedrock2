@@ -46,7 +46,7 @@ Section WithParameters.
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
-  Require Import coqutil.Word.Properties coqutil.Map.Properties.
+  Import coqutil.Word.Properties coqutil.Map.Properties.
 
   Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.
   Lemma memswap_ok : program_logic_goal_for_function! memswap.
@@ -92,7 +92,7 @@ Section WithParameters.
 
         intros Ht.
         destruct xs0 as [|hxs xs0] in *, ys0 as [|hys ys0] in *;
-          cbn [length Array.array] in *; try (cbn in *; congruence); []; 
+          cbn [length Array.array] in *; try (cbn in *; congruence); [];
 
         repeat straightline.
         eapply WeakestPreconditionProperties.dexpr_expr.

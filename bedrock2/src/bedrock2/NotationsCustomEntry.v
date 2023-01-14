@@ -82,7 +82,7 @@ Notation "'if' '!' e { c1 }"           := (cond e skip c1)  (in custom bedrock_c
 (* DRAFT: *)
 Notation "'stackalloc' z 'as' x ; c" := (stackalloc (ident_to_string! x) z c)
   (in custom bedrock_cmd at level 0,  x ident, z constr, c at level 999,
-   format "'[v' 'stackalloc'  z  as  x ;  '//' c ']'").
+   only parsing).
 Notation "'stackalloc' z 'as' $ x ; c" := (cmd.stackalloc x z c)
   (in custom bedrock_cmd at level 0,  x constr at level 0, z constr, c at level 999,
    format "'[v' 'stackalloc'  z  as  '$' x ;  '//' c ']'").
@@ -129,7 +129,7 @@ Notation "unpack! lhs = f args" :=  (call lhs f args) (in custom bedrock_cmd at 
 Notation "( lhs ) = f args" :=  (call lhs f args) (in custom bedrock_cmd at level 0, lhs custom bedrock_call_lhs , f custom bedrock_ident, args custom bedrock_args ,
   format "'(' lhs ')'  =  f args").
 Notation "f args" :=  (call nil (ident_to_string! f) args) (in custom bedrock_cmd at level 0,
-  f ident, args custom bedrock_args, format "f args").
+  f ident, args custom bedrock_args, only parsing).
 Notation "$ f args" :=  (call nil f args) (in custom bedrock_cmd at level 0,
   f constr at level 0, args custom bedrock_args, format "'$' f args").
 
@@ -145,16 +145,16 @@ Notation "'require' '!' e ; c2" := (cond e skip c2) (in custom bedrock_cmd at le
   e custom bedrock_expr at level 1, c2 at level 999, format "'[v' 'require' '!'  e ; '//' c2 ']'") : bedrock_tail.
 Notation "'require' e 'else' { c1 } ; c2" := (cond e c2 c1) (in custom bedrock_cmd at level 0,
   e custom bedrock_expr at level 1, c2 at level 999,
-  only parsing, format "'[v' 'require'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_tail.
+  only parsing) : bedrock_tail.
 Notation "'require' '!' e 'else' { c1 } ; c2" := (cond e c1 c2) (in custom bedrock_cmd at level 0,
   e custom bedrock_expr at level 1, c2 at level 999,
-  only parsing, format "'[v' 'require' '!'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_tail.
+  only parsing) : bedrock_tail.
 Notation "'require' e 'else' { c1 } ; c2" := (require_is_not_available_inside_conditionals_and_loops)
   (in custom bedrock_cmd at level 0, e custom bedrock_expr at level 1, c2 at level 999,
-  only parsing, format "'[v' 'require'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_nontail.
+  only parsing) : bedrock_nontail.
 Notation "'require' '!' e 'else' { c1 } ; c2" := (require_is_not_available_inside_conditionals_and_loops)
   (in custom bedrock_cmd at level 0, e custom bedrock_expr at level 1, c2 at level 999,
-  only parsing, format "'[v' 'require' '!'  e  'else'  {  '/  ' c1 '/' } ; '//' c2 ']'") : bedrock_nontail.
+  only parsing) : bedrock_nontail.
 
 Declare Custom Entry bedrock_cmd_in_braces.
 Notation "bedrock_cmd_in_braces:( c )" := c (c custom bedrock_cmd_in_braces, format "'bedrock_cmd_in_braces:(' '/  ' c '/ ' ')'").

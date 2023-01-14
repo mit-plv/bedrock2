@@ -6,6 +6,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 Require Import bedrock2.WeakestPrecondition bedrock2.Semantics bedrock2.ProgramLogic.
 Require Import coqutil.Word.Interface coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface bedrock2.Map.SeparationLogic.
+Require Import coqutil.Macros.symmetry.
 Require Import bedrock2.ZnWords.
 Import Coq.Init.Byte coqutil.Byte.
 Local Notation string := String.string.
@@ -57,7 +58,7 @@ Section WithParameters.
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
-  Require Import coqutil.Word.Properties coqutil.Map.Properties.
+  Import coqutil.Word.Properties coqutil.Map.Properties.
 
   Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.
   Lemma memmove_ok : program_logic_goal_for_function! memmove.
@@ -251,7 +252,7 @@ Section WithParameters.
         HList.polymorphic_list.nil))))
         ["dst";"src";"n";"x"])
         (fun (v:nat) s mRs d mRd t m dst src n _x => PrimitivePair.pair.mk (
-          n <= x /\ map.split m (s$@(word.sub src (word.sub n (word.of_Z 1)))) mRs /\ 
+          n <= x /\ map.split m (s$@(word.sub src (word.sub n (word.of_Z 1)))) mRs /\
                     map.split m (d$@(word.sub dst (word.sub n (word.of_Z 1)))) mRd /\
           x = word.sub src dst /\ v=n :> Z /\ length s = n :> Z /\ length d = n :> Z
         )
@@ -373,7 +374,6 @@ Section WithParameters.
         { cbn. intuition idtac. eexists _, _; ssplit; eauto. f_equal. ZnWords. } }
   Qed.
 
-  Require Import coqutil.Macros.symmetry.
   Local Notation "xs $@ a" := (Array.array ptsto (word.of_Z 1) a xs) (at level 10, format "xs $@ a").
   Global Instance spec_of_memmove_array : spec_of "memmove" :=
     fnspec! "memmove" (dst src n : word) / (d s : list byte) (R Rs : mem -> Prop),

@@ -215,9 +215,9 @@ Module Syscalls.
      so we will have syscalls with 4 word arguments and 3 word return values *)
 
   Section WithMem.
+    Import Word.Interface.
     Context {word: word.word 32} {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
     Context {word_ok: word.ok word}.
-    Import Word.Interface.
 
     Definition Event: Type := (mem * SyscallAction * list word) * (mem * list word).
 

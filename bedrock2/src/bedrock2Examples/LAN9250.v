@@ -126,6 +126,7 @@ Require Import coqutil.Word.Interface.
 Require Import Coq.Lists.List. Import ListNotations.
 Require Import bedrock2.TracePredicate. Import TracePredicateNotations.
 Require bedrock2Examples.lightbulb_spec.
+Require Import bedrock2.ZnWords.
 
 Import coqutil.Map.Interface.
 Import lightbulb_spec.
@@ -659,7 +660,7 @@ Section WithParameters.
     all: try (eexists _, _; split; trivial).
     all: try (exact eq_refl).
     all: auto.
-    1,2,3,4,16,17,18,19: 
+    1,2,3,4,16,17,18,19:
       repeat match goal with x := _ |- _ => subst x end;
       cbv [isMMIOAddr SPI_CSMODE_ADDR];
       rewrite !word.unsigned_of_Z; cbv [word.wrap];
@@ -766,8 +767,6 @@ Section WithParameters.
     all : try (Z.div_mod_to_equations; blia).
   Qed.
 
-  Require Import bedrock2.ZnWords.
-
   Import WeakestPrecondition SeparationLogic Array Scalars ProgramLogic.Coercions.
   Global Instance spec_of_lan9250_tx : ProgramLogic.spec_of "lan9250_tx" :=
     fnspec! "lan9250_tx" p l / bs R ~> err,
@@ -784,7 +783,7 @@ Section WithParameters.
 
   Lemma lan9250_tx_ok : program_logic_goal_for_function! lan9250_tx.
   Proof.
-    
+
     repeat (subst || straightline || straightline_call || ZnWords || intuition eauto || esplit).
     repeat (straightline || esplit).
     straightline_call; [ZnWords|]; repeat (intuition idtac; repeat straightline).
@@ -845,7 +844,7 @@ Section WithParameters.
       seprewrite_in @scalar32_of_bytes H15.
       { autoforward with typeclass_instances in E.
         rewrite firstn_length. ZnWords. }
-        
+
       eexists; split; repeat straightline.
       straightline_call; repeat straightline.
       { ZnWords. }
@@ -853,7 +852,7 @@ Section WithParameters.
       seprewrite_in (symmetry! @scalar32_of_bytes) H15.
       { autoforward with typeclass_instances in E.
         rewrite firstn_length. ZnWords. }
- 
+
       rename x5 into err.
       eexists; split; repeat straightline; intuition idtac.
       { seprewrite_in (symmetry! @array_append) H15.
@@ -861,7 +860,7 @@ Section WithParameters.
         repeat straightline.
         left; repeat t.
         subst l br.
-        rewrite word.unsigned_ltu; rewrite ?word.unsigned_of_Z; cbn; ZnWords. } 
+        rewrite word.unsigned_ltu; rewrite ?word.unsigned_of_Z; cbn; ZnWords. }
 
       autoforward with typeclass_instances in E.
       repeat straightline.

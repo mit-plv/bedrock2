@@ -57,6 +57,7 @@ Section Riscv.
   Definition metricsMax := metricsOp metricMax.
 End Riscv.
 
+Declare Scope MetricH_scope.
 Bind Scope MetricH_scope with MetricLog.
 Delimit Scope MetricH_scope with metricsH.
 

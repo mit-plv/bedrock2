@@ -38,7 +38,7 @@ Section WithParameters.
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
-  Require Import coqutil.Word.Properties coqutil.Map.Properties.
+  Import coqutil.Word.Properties coqutil.Map.Properties.
 
   Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.
   Lemma memconst_ok ident bs functions :
