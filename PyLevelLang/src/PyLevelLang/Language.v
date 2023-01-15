@@ -2,6 +2,12 @@ Require Export String.
 Require Export ZArith.
 Require Export List.
 
+(* Casts one type to another, provided that they are equal
+   https://stackoverflow.com/a/52518299 *)
+Definition cast {T : Type} {T1 T2 : T} (H : T1 = T2) (f: T -> Type) (x : f T1) :
+  f T2 :=
+  eq_rect T1 f x T2 H.
+
 Inductive type : Type :=
   | TInt
   | TBool
@@ -9,6 +15,13 @@ Inductive type : Type :=
   | TPair (t1 t2 : type)
   | TList (t : type)
   | TEmpty. (* "Empty" type: its only value should be the empty tuple () *)
+
+(* Types whose values can be compared *)
+Definition can_eq (t : type) : bool :=
+  match t with
+  | TInt | TBool | TString | TEmpty => true
+  | _ => false
+  end.
 
 Scheme Equality for type. (* creates type_beq and type_eq_dec *)
 

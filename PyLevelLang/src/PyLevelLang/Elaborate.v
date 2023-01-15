@@ -3,12 +3,6 @@ Require Import coqutil.Map.Interface coqutil.Map.SortedListString.
 Require Import coqutil.Datatypes.Result.
 Import ResultMonadNotations.
 
-(* Casts one type to another, provided that they are equal
-   https://stackoverflow.com/a/52518299 *)
-Definition cast {T : Type} {T1 T2 : T} (H : T1 = T2) (f: T -> Type) (x : f T1) :
-  f T2 :=
-  eq_rect T1 f x T2 H.
-
 Definition elaborate_unop (po : punop) (t1 : type) : result {t2 & unop t1 t2} :=
   match po with
   | PONeg =>
@@ -119,12 +113,12 @@ Definition elaborate_binop (po : pbinop) (t1 : type) (t2 : type) :
       | _, _ => error:("POLess with wrong types")
       end
   | POEq =>
-      match type_eq_dec t1 t2 with
-      | left H =>
+      match can_eq t1, type_eq_dec t1 t2 with
+      | true, left H =>
           let o : binop t1 t2 _ :=
             cast H (fun t => binop _ t _) (OEq t1) in
           Success (existT _ _ o)
-      | _ => error:("POEq with wrong types")
+      | _, _ => error:("POEq with wrong types")
       end
   | PORepeat =>
       match t1 with
@@ -218,54 +212,3 @@ Section WithMap.
         Success (existT _ _ (ELet x e1 e2))
     end.
 End WithMap.
-
-Section Examples.
-  Instance tenv : map.map string (type * bool) := SortedListString.map _.
-  Instance tenv_ok : map.ok tenv := SortedListString.ok _.
-
-  Definition ex1 : pexpr :=
-    PEBinop POCons (PEConst (CInt 1))
-      (PEBinop POCons (PEConst (CInt 2))
-        (PEBinop POCons (PEConst (CInt 3))
-          (PESingleton (PEConst (CInt 4))))).
-  Goal elaborate map.empty ex1 =
-    Success (existT _ _
-      (EBinop (OCons _) (EConst (CInt 1))
-        (EBinop (OCons _) (EConst (CInt 2))
-          (EBinop (OCons _) (EConst (CInt 3))
-            (EBinop (OCons _) (EConst (CInt 4))
-              (EConst (CNil _))))))).
-  reflexivity. Qed.
-
-  Definition ex2 : pexpr :=
-    PEBinop POCons (PEConst (CString "a")) (
-      PEBinop POCons (PEConst (CInt 2)) (
-        PEBinop POCons (PEConst (CInt 3)) (
-          PESingleton (PEConst (CInt 4))))).
-  Goal elaborate map.empty ex2 = error:("POCons with mismatched types").
-  easy. Qed.
-
-  Definition ex3 : pexpr :=
-    PEUnop POFst (PELet "x"
-      (PEConst (CInt 42)) (PEBinop POPair (PEVar "x") (PEVar "x"))).
-  Goal elaborate map.empty ex3 =
-    Success (existT _ _
-      (EUnop (OFst _ _) (ELet "x"
-        (EConst (CInt 42)) (EBinop (OPair _ _) (EVar TInt "x") (EVar TInt "x"))))).
-  easy. Qed.
-
-  Definition ex4 : pexpr :=
-    PEUnop POFst (PELet "x"
-      (PEConst (CInt 42)) (PEBinop POPair (PEVar "x") (PEVar "y"))).
-  Goal elaborate map.empty ex4 = error:("PEVar with undefined variable").
-  easy. Qed.
-
-  Definition ex5 : pexpr :=
-    PEBinop POPair (PEConst (CInt 42))
-      (PEBinop POPair (PEConst (CBool true)) (PEConst (CString "hello"))).
-  Goal elaborate map.empty ex5 =
-    Success (existT _ _
-      (EBinop (OPair _ _) (EConst (CInt 42))
-        (EBinop (OPair _ _) (EConst (CBool true)) (EConst (CString "hello"))))).
-  easy. Qed.
-End Examples.
