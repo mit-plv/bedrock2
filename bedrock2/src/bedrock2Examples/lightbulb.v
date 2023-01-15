@@ -11,6 +11,7 @@ From coqutil Require Import Word.Interface Map.Interface.
 From coqutil.Tactics Require Import letexists eabstract.
 From bedrock2 Require Import FE310CSemantics Semantics WeakestPrecondition ProgramLogic Array Scalars.
 From bedrock2.Map Require Import Separation SeparationLogic.
+Require bedrock2.SepAutoArray bedrock2.SepCalls.
 Import ZArith.
 Local Open Scope Z_scope.
 
@@ -153,7 +154,7 @@ Section WithParameters.
           BootSeq _ ioh
         ).
 
-  Require Import bedrock2.AbsintWordToZ.
+  Import bedrock2.AbsintWordToZ.
   Import WeakestPreconditionProperties.
 
   Local Ltac seplog_use_array_load1 H i :=
@@ -366,8 +367,8 @@ Section WithParameters.
          morphism (Properties.word.ring_morph (word := word)),
          constants [Properties.word_cst]).
 
-  Require Import bedrock2.ZnWords.
-  Require Import bedrock2.SepAutoArray bedrock2.SepCalls.
+  Import bedrock2.ZnWords.
+  Import bedrock2.SepAutoArray bedrock2.SepCalls.
 
   Lemma recvEthernet_ok : program_logic_goal_for_function! recvEthernet.
   Proof.

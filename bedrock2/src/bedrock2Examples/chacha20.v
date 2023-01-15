@@ -6,9 +6,9 @@ Require Import coqutil.Macros.ident_to_string.
 Section chacha20.
   Import bedrock2.Syntax Syntax.Coercions NotationsCustomEntry.
 
-  Local Notation "x <<<= n" := (cmd.set (ident_to_string! x) (expr.op bopname.slu (ident_to_string! x) n)) (in custom bedrock_cmd at level 0, x ident, n bigint).
-  Local Notation "x ^= e" := (cmd.set (ident_to_string! x) (expr.op bopname.xor (ident_to_string! x) e)) (in custom bedrock_cmd at level 0, x ident, e custom bedrock_expr).
-  Local Notation "x += e" := (cmd.set (ident_to_string! x) (expr.op bopname.add (ident_to_string! x) e)) (in custom bedrock_cmd at level 0, x ident, e custom bedrock_expr).
+  Local Notation "x <<<= n" := (cmd.set (ident_to_string! x) (expr.op bopname.slu (ident_to_string! x) n)) (in custom bedrock_cmd at level 0, x ident, n bigint, only parsing).
+  Local Notation "x ^= e" := (cmd.set (ident_to_string! x) (expr.op bopname.xor (ident_to_string! x) e)) (in custom bedrock_cmd at level 0, x ident, e custom bedrock_expr, only parsing).
+  Local Notation "x += e" := (cmd.set (ident_to_string! x) (expr.op bopname.add (ident_to_string! x) e)) (in custom bedrock_cmd at level 0, x ident, e custom bedrock_expr, only parsing).
 
   Definition chacha20_quarter := func! (a, b, c, d) ~> (a, b, c, d) {
       a += b; d ^= a; d <<<= 16;
@@ -20,7 +20,7 @@ Section chacha20.
   Local Notation "'xorout' o x" := (
       let addr := bedrock_expr:(out+coq:(expr.literal(4*o))) in
       bedrock_cmd:(store4($addr, load4($addr)^$(expr.var (x)))))
-      (in custom bedrock_cmd at level 0, o bigint, x custom bedrock_expr).
+      (in custom bedrock_cmd at level 0, o bigint, x custom bedrock_expr, only parsing).
 
   Definition chacha20_block := func! (out, key, nonce, countervalue) {
       x0 = $0x61707865;   x1 = $0x3320646e;   x2 = $0x79622d32;    x3 = $0x6b206574;

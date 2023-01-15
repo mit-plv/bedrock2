@@ -43,7 +43,7 @@ Section WithParameters.
     {ext_spec_ok : ext_spec.ok ext_spec}.
 
   Import coqutil.Tactics.letexists coqutil.Tactics.Tactics coqutil.Tactics.autoforward.
-  Require Import coqutil.Word.Properties coqutil.Map.Properties.
+  Import coqutil.Word.Properties coqutil.Map.Properties.
 
   Local Ltac ZnWords := destruct width_cases; bedrock2.ZnWords.ZnWords.
   Lemma memequal_ok : program_logic_goal_for_function! memequal.
@@ -62,7 +62,7 @@ Section WithParameters.
         v=n :> Z /\ length xs = n :> Z /\ length ys = n :> Z
       )
       (fun                     T M (X Y N R : word) => m = M /\ t = T /\
-        exists z, R = Z.lor r z :> Z /\ (z  = 0 :>Z <-> xs  = ys) 
+        exists z, R = Z.lor r z :> Z /\ (z  = 0 :>Z <-> xs  = ys)
       ))
       lt
       _ _ _ _ _ _ _ _ _);
@@ -95,7 +95,7 @@ Section WithParameters.
 
         intros Ht.
         destruct xs0 as [|hxs xs0] in *, ys0 as [|hys ys0] in *;
-          cbn [length Array.array] in *; try (cbn in *; congruence); []; 
+          cbn [length Array.array] in *; try (cbn in *; congruence); [];
 
         repeat straightline.
         eapply WeakestPreconditionProperties.dexpr_expr.

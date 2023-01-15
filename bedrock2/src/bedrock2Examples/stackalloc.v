@@ -26,6 +26,8 @@ Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 Require Import coqutil.Word.Interface.
+From coqutil.Tactics Require Import reference_to_string .
+From bedrock2 Require ToCString PrintListByte.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
@@ -34,7 +36,6 @@ Section WithParameters.
   Instance spec_of_stacktrivial : spec_of "stacktrivial" := fun functions => forall m t,
       WeakestPrecondition.call functions
         "stacktrivial" t m [] (fun t' m' rets => rets = [] /\ m'=m /\ t'=t).
-  From coqutil.Tactics Require Import reference_to_string .
 
   Lemma stacktrivial_ok : program_logic_goal_for_function! stacktrivial.
   Proof.
@@ -105,7 +106,7 @@ Section WithParameters.
     rewrite 2Z.shiftr_div_pow2, 2Zdiv.Zdiv_small; eauto using Byte.byte.unsigned_range; Lia.lia.
   Qed.
 
-  From bedrock2 Require Import ToCString PrintListByte.
+  Import ToCString PrintListByte.
   Definition stacknondet_main := func! () ~> ret {
       unpack! a, b = stacknondet();
       ret = a ^ b

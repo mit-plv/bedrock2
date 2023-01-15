@@ -9,6 +9,7 @@ Require Import coqutil.Tactics.fwd.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.DisjointUnion.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.SepLib.
+Require Import bedrock2.sepapp.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.bottom_up_simpl_ltac1.
@@ -20,6 +21,15 @@ Local Open Scope Z_scope.
 Section SepLog.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+
+  (* Different kinds of splitting/merging back:
+     a) single array element
+     b) subarray
+     c) record field in a sepapp
+     d) unfolding/folding the name of a record predicate
+
+     Note that c) and d) are separate because if we access two fields of the
+     same record, step d) happens once, but step c) happens twice *)
 
   Lemma split_off_elem_from_array{E: Type}{inh: inhabited E}:
     forall a a' elem {elemSize: PredicateSize elem} n i,
@@ -39,6 +49,30 @@ Section SepLog.
           array elem n (vs1 ++ [|v|] ++ vs2) a m).
   Proof.
   Admitted.
+
+  Lemma split_off_field_from_sepapps: forall n a a' sz ofs,
+      word.unsigned (word.sub a' a) = ofs -> (* <- ring proof *)
+      (forall l P,
+          sepapps_size (List.firstn n l) = ofs -> (* <- determines ofs *)
+          List.nth_error l n = Some (mk_sized_predicate P sz) ->
+          sepapps l a = sep (P a')
+                          (sepapps (List.firstn n l ++
+                                      cons (mk_sized_predicate (hole sz) sz)
+                                      (List.skipn (S n) l)) a)) /\
+      (forall l P,
+          sepapps_size (List.firstn n l) = ofs -> (* <- should be eq_refl *)
+          List.nth_error l n = Some (mk_sized_predicate (hole sz) sz) ->
+          sep (P a') (sepapps l a) =
+            (sepapps (List.firstn n l ++
+                        cons (mk_sized_predicate P sz)
+                        (List.skipn (S n) l)) a)).
+  Proof.
+    intros. split; intros; subst.
+    - rewrite (expose_nth_sepapp l n a P sz H1). f_equal. f_equal.
+      rewrite H0. destruct width_cases; subst width; ZnWords.
+    - rewrite <- (merge_back_nth_sepapp l n a P sz H1). f_equal. f_equal.
+      rewrite H0. destruct width_cases; subst width; ZnWords.
+  Qed.
 
 (* alternative way of expressing "1 past a'":
   Lemma split_off_elem_from_array{E: Type}{inh: inhabited E}:

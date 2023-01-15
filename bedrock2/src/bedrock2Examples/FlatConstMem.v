@@ -25,6 +25,7 @@ Import Map.Interface Interface.map OfFunc.map OfListWord.map.
 Require Import bedrock2.AbsintWordToZ.
 Require Import bedrock2.groundcbv.
 Require Import coqutil.Tactics.rewr.
+Require Import AdmitAxiom.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
@@ -529,7 +530,6 @@ Ltac simpl_lengths := repeat simpl_lengths_step.
 
     repeat match goal with x := _ : word.rep |- _ => subst x end.
     set_evars.
-    Require Import AdmitAxiom.
     replace (length l1 = 4%nat) with (Z.of_nat (length l1) = 4) by case proof_admitted.
 
     match goal with |- context[?P m] =>

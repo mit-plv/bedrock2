@@ -27,6 +27,7 @@ Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import Tactics letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 Require Import coqutil.Word.Interface.
+From coqutil Require Import rdelta.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
@@ -52,8 +53,6 @@ Section WithParameters.
     fnspec! "swap" a_addr b_addr / a R,
     { requires t m := m =* scalar a_addr a * R /\ b_addr = a_addr;
       ensures T M :=  M =* scalar a_addr a * R /\ T = t }.
-
-  From coqutil Require Import rdelta.
 
   Lemma swap_same_ok :
     let spec_of_swap := spec_of_swap_same in
