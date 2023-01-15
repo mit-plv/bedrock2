@@ -105,10 +105,7 @@ Section WithMap.
     | EUnop o e1 => interp_unop l o (interp_expr l e1)
     | EBinop o e1 e2 => interp_binop l o (interp_expr l e1) (interp_expr l e2)
     | EFlatmap e1 x e2 => flat_map (fun y => interp_expr (set_local l x y) e1) (interp_expr l e2)
-    | EIf e1 e2 e3 => match interp_expr l e1 with
-                      | true => interp_expr l e2
-                      | false => interp_expr l e3
-                      end
+    | EIf e1 e2 e3 => if interp_expr l e1 then interp_expr l e2 else interp_expr l e3
     | ELet x e1 e2 => interp_expr (set_local l x (interp_expr l e1)) e2
     end.
 
