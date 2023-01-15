@@ -113,12 +113,12 @@ Definition elaborate_binop (po : pbinop) (t1 : type) (t2 : type) :
       | _, _ => error:("POLess with wrong types")
       end
   | POEq =>
-      match type_eq_dec t1 t2 with
-      | left H =>
+      match can_eq t1, type_eq_dec t1 t2 with
+      | true, left H =>
           let o : binop t1 t2 _ :=
             cast H (fun t => binop _ t _) (OEq t1) in
           Success (existT _ _ o)
-      | _ => error:("POEq with wrong types")
+      | _, _ => error:("POEq with wrong types")
       end
   | PORepeat =>
       match t1 with

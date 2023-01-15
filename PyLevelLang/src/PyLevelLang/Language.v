@@ -16,6 +16,13 @@ Inductive type : Type :=
   | TList (t : type)
   | TEmpty. (* "Empty" type: its only value should be the empty tuple () *)
 
+(* Types whose values can be compared *)
+Definition can_eq (t : type) : bool :=
+  match t with
+  | TInt | TBool | TString | TEmpty => true
+  | _ => false
+  end.
+
 Scheme Equality for type. (* creates type_beq and type_eq_dec *)
 
 Declare Scope pylevel_scope. Local Open Scope pylevel_scope.

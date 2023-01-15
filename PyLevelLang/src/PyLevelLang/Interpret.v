@@ -41,6 +41,7 @@ Definition eqb_values {t : type} : interp_type t -> interp_type t -> bool :=
   | TInt => Z.eqb
   | TString => String.eqb
   | TBool => Bool.eqb
+  | TEmpty => fun _ _ => true
   | _ => fun _ _ => false
   end.
 
