@@ -3,155 +3,120 @@ Require Import coqutil.Map.Interface coqutil.Map.SortedListString.
 Require Import coqutil.Datatypes.Result.
 Import ResultMonadNotations.
 
-Definition elaborate_unop (po : punop) (t1 : type) : result {t2 & unop t1 t2} :=
-  match po with
-  | PONeg =>
-      match t1 with
-      | TInt =>
-          Success (existT _ _ ONeg)
-      | _ => error:("PONeg with wrong type")
-      end
-  | PONot =>
-      match t1 with
-      | TBool =>
-          Success (existT _ _ ONot)
-      | _ => error:("PONot with wrong type")
-      end
-  | POLength =>
-      match t1 with
-      | TList t =>
-          Success (existT _ _ (OLength t))
-      | _ => error:("POLength with wrong type")
-      end
-  | POLengthString =>
-      match t1 with
-      | TString =>
-          Success (existT _ _ OLengthString)
-      | _ => error:("POLengthString with wrong type")
-      end
-  | POFst =>
-      match t1 with
-      | TPair t1' t2' =>
-          Success (existT _ _ (OFst t1' t2'))
-      | _ => error:("POFst with wrong type")
-      end
-  | POSnd =>
-      match t1 with
-      | TPair t1' t2' =>
-          Success (existT _ _ (OSnd t1' t2'))
-      | _ => error:("POSnd with wrong type")
-      end
-  end.
-
-Definition elaborate_binop (po : pbinop) (t1 : type) (t2 : type) :
-  result {t3 & binop t1 t2 t3} :=
-  match po with
-  | POPlus =>
-      match t1, t2 with
-      | TInt, TInt =>
-          Success (existT _ _ OPlus)
-      | _, _ => error:("POPlus with wrong types")
-      end
-  | POMinus =>
-      match t1, t2 with
-      | TInt, TInt =>
-          Success (existT _ _ OMinus)
-      | _, _ => error:("POMinus with wrong types")
-      end
-  | POTimes =>
-      match t1, t2 with
-      | TInt, TInt =>
-          Success (existT _ _ OTimes)
-      | _, _ => error:("POTimes with wrong types")
-      end
-  | PODiv =>
-      match t1, t2 with
-      | TInt, TInt =>
-          Success (existT _ _ ODiv)
-      | _, _ => error:("PODiv with wrong types")
-      end
-  | POMod =>
-      match t1, t2 with
-      | TInt, TInt =>
-          Success (existT _ _ OMod)
-      | _, _ => error:("POMod with wrong types")
-      end
-  | POAnd =>
-      match t1, t2 with
-      | TBool, TBool =>
-          Success (existT _ _ OAnd)
-      | _, _ => error:("POAnd with wrong types")
-      end
-  | POOr =>
-      match t1, t2 with
-      | TBool, TBool =>
-          Success (existT _ _ OOr)
-      | _, _ => error:("POOr with wrong types")
-      end
-  | POConcat =>
-      match t1, t2 with
-      | TList t1, TList t2 =>
-          match type_eq_dec t1 t2 with
-          | left H =>
-              let o : binop (TList t1) (TList t2) _ :=
-                cast H (fun t => binop _ (TList t) _) (OConcat t1) in
-              Success (existT _ _ o)
-          | _ => error:("POConcat with mismatched types")
-          end
-      | _, _ => error:("POConcat with wrong types")
-      end
-  | POConcatString =>
-      match t1, t2 with
-      | TString, TString =>
-          Success (existT _ _ OConcatString)
-      | _, _ => error:("POConcatString with wrong types")
-      end
-  | POLess =>
-      match t1, t2 with
-      | TInt, TInt =>
-          Success (existT _ _ OLess)
-      | _, _ => error:("POLess with wrong types")
-      end
-  | POEq =>
-      match can_eq t1, type_eq_dec t1 t2 with
-      | true, left H =>
-          let o : binop t1 t2 _ :=
-            cast H (fun t => binop _ t _) (OEq t1) in
-          Success (existT _ _ o)
-      | _, _ => error:("POEq with wrong types")
-      end
-  | PORepeat =>
-      match t1 with
-      | TInt =>
-          Success (existT _ _ (ORepeat t2))
-      | _ => error:("PORepeat with wrong type")
-      end
-  | POPair =>
-      Success (existT _ _ (OPair t1 t2))
-  | POCons =>
-      match t2 with
-      | TList t2 =>
-          match type_eq_dec t1 t2 with
-          | left H =>
-              let o : binop t1 (TList t2) _ :=
-                cast H (fun t => binop _ (TList t) _) (OCons t1) in
-              Success (existT _ _ o)
-          | _ => error:("POCons with mismatched types")
-          end
-      | _ => error:("POCons with wrong types")
-      end
-  | PORange =>
-      match t1, t2 with
-      | TInt, TInt =>
-          Success (existT _ _ ORange)
-      | _, _ => error:("PORange with wrong types")
-      end
+(* Casts an expression `e` from `expr t2` to `expr t1`, if the two types are
+   equal *)
+Definition enforce_type (t1 : type) {t2 : type} (e : expr t2) : result (expr t1) :=
+  match type_eq_dec t2 t1 with
+  | left H => Success (cast H expr e)
+  | _ => error:(e "has type" t2 "but expected" t1)
   end.
 
 Section WithMap.
   (* abstract all functions in this section over the implementation of the map,
      and over its spec (map.ok) *)
-  Context {tenv: map.map string (type * bool)} {tenv_ok: map.ok tenv}.
+  Context {tenv : map.map string (type * bool)} {tenv_ok: map.ok tenv}.
+
+  Section ElaborateOperators.
+    Context {elaborate : tenv -> pexpr -> result {t & expr t}}.
+
+    Definition elaborate_unop (G : tenv) (po : punop) (p1 : pexpr) :
+      result {t & expr t} :=
+      '(existT _ t1 e1) <- elaborate G p1 ;;
+      match po with
+      | PONeg =>
+          e1' <- enforce_type TInt e1 ;;
+          Success (existT _ _ (EUnop ONeg e1'))
+      | PONot =>
+          e1' <- enforce_type TBool e1 ;;
+          Success (existT _ _ (EUnop ONot e1'))
+      | POLength =>
+          match t1 as t' return expr t' -> _ with
+          | TList _ => fun e1 =>
+              Success (existT _ _ (EUnop (OLength _) e1))
+          | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
+          end e1
+      | POLengthString =>
+          e1' <- enforce_type TString e1 ;;
+          Success (existT _ _ (EUnop OLengthString e1'))
+      | POFst =>
+          match t1 as t' return expr t' -> _ with
+          | TPair _ _ => fun e1 =>
+              Success (existT _ _ (EUnop (OFst _ _) e1))
+          | _ => fun _ => error:(e1 "has type" t1 "but expected" TPair)
+          end e1
+      | POSnd =>
+          match t1 as t' return expr t' -> _ with
+          | TPair _ _ => fun e1 =>
+              Success (existT _ _ (EUnop (OSnd _ _) e1))
+          | _ => fun _ => error:(e1 "has type" t1 "but expected" TPair)
+          end e1
+      end.
+
+    Definition elaborate_binop (G : tenv) (po : pbinop) (p1 : pexpr) (p2 : pexpr) :
+      result {t & expr t} :=
+      '(existT _ t1 e1) <- elaborate G p1 ;;
+      '(existT _ t2 e2) <- elaborate G p2 ;;
+      match po with
+      | POPlus =>
+          e1' <- enforce_type TInt e1 ;;
+          e2' <- enforce_type TInt e2 ;;
+          Success (existT _ _ (EBinop OPlus e1' e2'))
+      | POMinus =>
+          e1' <- enforce_type TInt e1 ;;
+          e2' <- enforce_type TInt e2 ;;
+          Success (existT _ _ (EBinop OMinus e1' e2'))
+      | POTimes =>
+          e1' <- enforce_type TInt e1 ;;
+          e2' <- enforce_type TInt e2 ;;
+          Success (existT _ _ (EBinop OTimes e1' e2'))
+      | PODiv =>
+          e1' <- enforce_type TInt e1 ;;
+          e2' <- enforce_type TInt e2 ;;
+          Success (existT _ _ (EBinop ODiv e1' e2'))
+      | POMod =>
+          e1' <- enforce_type TInt e1 ;;
+          e2' <- enforce_type TInt e2 ;;
+          Success (existT _ _ (EBinop OMod e1' e2'))
+      | POAnd =>
+          e1' <- enforce_type TBool e1 ;;
+          e2' <- enforce_type TBool e2 ;;
+          Success (existT _ _ (EBinop OAnd e1' e2'))
+      | POOr =>
+          e1' <- enforce_type TBool e1 ;;
+          e2' <- enforce_type TBool e2 ;;
+          Success (existT _ _ (EBinop OOr e1' e2'))
+      | POConcat =>
+          match t1 as t' return expr t' -> _ with
+          | TList t1 => fun e1 =>
+              e2' <- enforce_type (TList t1) e2 ;;
+              Success (existT _ _ (EBinop (OConcat _) e1 e2'))
+          | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
+          end e1
+      | POConcatString =>
+          e1' <- enforce_type TString e1 ;;
+          e2' <- enforce_type TString e2 ;;
+          Success (existT _ _ (EBinop OConcatString e1' e2'))
+      | POLess =>
+          e1' <- enforce_type TInt e1 ;;
+          e2' <- enforce_type TInt e2 ;;
+          Success (existT _ _ (EBinop OLess e1' e2'))
+      | POEq =>
+          e2' <- enforce_type t1 e2 ;;
+          Success (existT _ _ (EBinop (OEq _) e1 e2'))
+      | PORepeat =>
+          e1' <- enforce_type TInt e1 ;;
+          Success (existT _ _ (EBinop (ORepeat _) e1' e2))
+      | POPair =>
+          Success (existT _ _ (EBinop (OPair _ _) e1 e2))
+      | POCons =>
+          e2' <- enforce_type (TList t1) e2 ;;
+          Success (existT _ _ (EBinop (OCons _) e1 e2'))
+      | PORange =>
+          e1' <- enforce_type TInt e1 ;;
+          e2' <- enforce_type TInt e2 ;;
+          Success (existT _ _ (EBinop ORange e1' e2'))
+      end.
+  End ElaborateOperators.
 
   (* Type checks a `pexpr` and possibly emits a typed expression
      Checks scoping for variables/locations *)
@@ -163,7 +128,7 @@ Section WithMap.
             Success (existT _ _ (EVar t x))
         | Some (t, true) =>
             Success (existT _ _ (ELoc t x))
-        | None => error:("PEVar with undefined variable")
+        | None => error:("Undefined variable" x)
         end
     | PEConst c =>
         Success (existT _ _ (EConst c))
@@ -171,40 +136,26 @@ Section WithMap.
         '(existT _ t' e') <- elaborate G p' ;;
         Success (existT _ _ (EBinop (OCons _) e' (EConst (CNil t'))))
     | PEUnop po p1 =>
-        '(existT _ t1 e1) <- elaborate G p1 ;;
-        '(existT _ t2 o) <- elaborate_unop po t1 ;;
-        Success (existT _ _ (EUnop o e1))
+        @elaborate_unop elaborate G po p1
     | PEBinop po p1 p2 =>
-        '(existT _ t1 e1) <- elaborate G p1 ;;
-        '(existT _ t2 e2) <- elaborate G p2 ;;
-        '(existT _ t3 o) <- elaborate_binop po t1 t2 ;;
-        Success (existT _ _ (EBinop o e1 e2))
+        @elaborate_binop elaborate G po p1 p2
     | PEFlatmap p1 x p2 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         let G' := map.put G x (t1, false) in
         '(existT _ t2 e2) <- elaborate G' p2 ;;
         match t1 as t1' return expr t1' -> _ with
-        | TList t' => fun e1 =>
-            match type_eq_dec t2 (TList t') with
-            | left H2 =>
-                Success (existT _ _ (EFlatmap e1 x (cast H2 _ e2)))
-            | _ => error:("PEFlatmap with mismatched types")
-            end
-        | _ => fun _ => error:("PEFlatmap with non-list")
+        | TList t1 => fun e1 =>
+            e2' <- enforce_type (TList t1) e2 ;;
+            Success (existT _ _ (EFlatmap e1 x e2'))
+        | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
         end e1
     | PEIf p1 p2 p3 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         '(existT _ t2 e2) <- elaborate G p2 ;;
         '(existT _ t3 e3) <- elaborate G p3 ;;
-        match t1 as t' return expr t' -> _ with
-        | TBool => fun e1 =>
-            match type_eq_dec t3 t2 with
-            | left H =>
-                Success (existT _ _ (EIf e1 e2 (cast H _ e3)))
-            | _ => error:("PEIf with mismatched types")
-            end
-        | _ => fun _ => error:("PEIf with non-boolean condition")
-        end e1
+        e1' <- enforce_type TBool e1 ;;
+        e3' <- enforce_type t2 e3 ;;
+        Success (existT _ _ (EIf e1' e2 e3'))
     | PELet x p1 p2 =>
         '(existT _ t1 e1) <- elaborate G p1 ;;
         let G' := map.put G x (t1, false) in

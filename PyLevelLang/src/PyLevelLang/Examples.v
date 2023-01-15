@@ -32,7 +32,8 @@ Section Examples.
             (EBinop (OCons _) (EConst (CInt 4))
               (EConst (CNil _))))))).
   reflexivity. Qed.
-  Goal elaborate_interpret map.empty ex1 = Success (existT _ (TList TInt) (1 ::  2 :: 3 :: 4 :: nil)).
+  Goal elaborate_interpret map.empty ex1 =
+    Success (existT _ (TList TInt) (1 ::  2 :: 3 :: 4 :: nil)).
   reflexivity. Qed.
 
   Definition ex2 : pexpr :=
@@ -40,18 +41,34 @@ Section Examples.
       PEBinop POCons (PEConst (CInt 2)) (
         PEBinop POCons (PEConst (CInt 3)) (
           PESingleton (PEConst (CInt 4))))).
-  Goal elaborate map.empty ex2 = error:("POCons with mismatched types").
+  Goal elaborate map.empty ex2 = error:(
+    (EBinop (OCons TInt) (EConst (CInt 2))
+      (EBinop (OCons TInt) (EConst (CInt 3))
+        (EBinop (OCons TInt) (EConst (CInt 4))
+          (EConst (CNil TInt)))))
+    "has type" 
+    (TList TInt)
+    "but expected"
+    (TList TString)).
   reflexivity. Qed.
-  Goal elaborate_interpret map.empty ex2 = error:("POCons with mismatched types").
+  Goal elaborate_interpret map.empty ex2 = error:(
+    (EBinop (OCons TInt) (EConst (CInt 2))
+      (EBinop (OCons TInt) (EConst (CInt 3))
+        (EBinop (OCons TInt) (EConst (CInt 4))
+          (EConst (CNil TInt)))))
+    "has type" 
+    (TList TInt)
+    "but expected"
+    (TList TString)).
   reflexivity. Qed.
 
   Definition ex3 : pexpr :=
-    PEUnop POFst (PELet "x"
-      (PEConst (CInt 42)) (PEBinop POPair (PEVar "x") (PEVar "x"))).
+    PEUnop POFst (PELet "x" (PEConst (CInt 42))
+      (PEBinop POPair (PEVar "x") (PEVar "x"))).
   Goal elaborate map.empty ex3 =
     Success (existT _ _
-      (EUnop (OFst _ _) (ELet "x"
-        (EConst (CInt 42)) (EBinop (OPair _ _) (EVar TInt "x") (EVar TInt "x"))))).
+      (EUnop (OFst _ _) (ELet "x" (EConst (CInt 42))
+        (EBinop (OPair _ _) (EVar TInt "x") (EVar TInt "x"))))).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex3 = Success (existT _ TInt 42).
   reflexivity. Qed.
@@ -59,9 +76,9 @@ Section Examples.
   Definition ex4 : pexpr :=
     PEUnop POFst (PELet "x"
       (PEConst (CInt 42)) (PEBinop POPair (PEVar "x") (PEVar "y"))).
-  Goal elaborate map.empty ex4 = error:("PEVar with undefined variable").
+  Goal elaborate map.empty ex4 = error:("Undefined variable" "y").
   reflexivity. Qed.
-  Goal elaborate_interpret map.empty ex4 = error:("PEVar with undefined variable").
+  Goal elaborate_interpret map.empty ex4 = error:("Undefined variable" "y").
   reflexivity. Qed.
 
   Definition ex5 : pexpr :=
@@ -72,6 +89,7 @@ Section Examples.
       (EBinop (OPair _ _) (EConst (CInt 42))
         (EBinop (OPair _ _) (EConst (CBool true)) (EConst (CString "hello"))))).
   reflexivity. Qed.
-  Goal elaborate_interpret map.empty ex5 = Success (existT _ (TPair TInt (TPair TBool TString)) (42, (true, "hello"))).
+  Goal elaborate_interpret map.empty ex5 =
+    Success (existT _ (TPair TInt (TPair TBool TString)) (42, (true, "hello"))).
   reflexivity. Qed.
 End Examples.
