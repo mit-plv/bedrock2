@@ -1,7 +1,7 @@
 Require Import PyLevelLang.Language.
 Require Import PyLevelLang.Elaborate.
 Require Import PyLevelLang.Interpret.
-Require Import coqutil.Map.Interface coqutil.Map.SortedListString.
+Require Import coqutil.Map.Interface coqutil.Map.SortedListString coqutil.Map.Properties.
 Require Import coqutil.Datatypes.Result.
 Import ResultMonadNotations.
 
@@ -12,11 +12,9 @@ Section Examples.
   Instance locals : map.map string {t & interp_type t} := SortedListString.map _.
   Instance locals_ok : map.ok locals := SortedListString.ok _.
 
-  Definition elaborate_interpret (p : pexpr) : result {t & interp_type t} :=
-    match elaborate map.empty p with
-    | Success v => Success (existT _ _ (interp_expr map.empty (projT2 v)))
-    | Failure e => Failure e
-    end.
+  Definition elaborate_interpret (l : locals) (p : pexpr) : result {t & interp_type t} :=
+    e <- elaborate (map.map_values (fun x => (projT1 x, true)) l) p;;
+    Success (existT _ _ (interp_expr l (projT2 e))).
 
   Local Open Scope Z_scope.
   Local Open Scope string_scope.
@@ -34,7 +32,7 @@ Section Examples.
             (EBinop (OCons _) (EConst (CInt 4))
               (EConst (CNil _))))))).
   reflexivity. Qed.
-  Goal elaborate_interpret ex1 = Success (existT _ (TList TInt) (1 ::  2 :: 3 :: 4 :: nil)).
+  Goal elaborate_interpret map.empty ex1 = Success (existT _ (TList TInt) (1 ::  2 :: 3 :: 4 :: nil)).
   reflexivity. Qed.
 
   Definition ex2 : pexpr :=
@@ -44,7 +42,7 @@ Section Examples.
           PESingleton (PEConst (CInt 4))))).
   Goal elaborate map.empty ex2 = error:("POCons with mismatched types").
   reflexivity. Qed.
-  Goal elaborate_interpret ex2 = error:("POCons with mismatched types").
+  Goal elaborate_interpret map.empty ex2 = error:("POCons with mismatched types").
   reflexivity. Qed.
 
   Definition ex3 : pexpr :=
@@ -55,7 +53,7 @@ Section Examples.
       (EUnop (OFst _ _) (ELet "x"
         (EConst (CInt 42)) (EBinop (OPair _ _) (EVar TInt "x") (EVar TInt "x"))))).
   reflexivity. Qed.
-  Goal elaborate_interpret ex3 = Success (existT _ TInt 42).
+  Goal elaborate_interpret map.empty ex3 = Success (existT _ TInt 42).
   reflexivity. Qed.
 
   Definition ex4 : pexpr :=
@@ -63,7 +61,7 @@ Section Examples.
       (PEConst (CInt 42)) (PEBinop POPair (PEVar "x") (PEVar "y"))).
   Goal elaborate map.empty ex4 = error:("PEVar with undefined variable").
   reflexivity. Qed.
-  Goal elaborate_interpret ex4 = error:("PEVar with undefined variable").
+  Goal elaborate_interpret map.empty ex4 = error:("PEVar with undefined variable").
   reflexivity. Qed.
 
   Definition ex5 : pexpr :=
@@ -74,6 +72,6 @@ Section Examples.
       (EBinop (OPair _ _) (EConst (CInt 42))
         (EBinop (OPair _ _) (EConst (CBool true)) (EConst (CString "hello"))))).
   reflexivity. Qed.
-  Goal elaborate_interpret ex5 = Success (existT _ (TPair TInt (TPair TBool TString)) (42, (true, "hello"))).
+  Goal elaborate_interpret map.empty ex5 = Success (existT _ (TPair TInt (TPair TBool TString)) (42, (true, "hello"))).
   reflexivity. Qed.
 End Examples.
