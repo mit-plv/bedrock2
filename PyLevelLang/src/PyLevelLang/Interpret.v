@@ -64,6 +64,7 @@ Section WithMap.
     | CBool b => b
     | CString s => s
     | CNil t => nil
+    | CEmpty => tt
     end.
 
   Definition interp_unop (l : locals) {t1 t2 : type} (o : unop t1 t2) :

@@ -92,4 +92,22 @@ Section Examples.
   Goal elaborate_interpret map.empty ex5 =
     Success (existT _ (TPair TInt (TPair TBool TString)) (42, (true, "hello"))).
   reflexivity. Qed.
+
+  Definition ex6 : pexpr :=
+    PERecord
+      (PEConst (CBool false)
+      :: PEConst (CString "abc")
+      :: PEConst (CInt (-2))
+      :: nil).
+  Goal elaborate map.empty ex6 =
+    Success (existT _ _
+      (EBinop (OPair _ _) (EConst (CBool false))
+        (EBinop (OPair _ _) (EConst (CString "abc"))
+          (EBinop (OPair _ _) (EConst (CInt (-2)))
+            (EConst CEmpty))))).
+  reflexivity. Qed.
+  Goal elaborate_interpret map.empty ex6 =
+    Success (existT _ (TPair TBool (TPair TString (TPair TInt TEmpty)))
+      (false, ("abc", (-2, tt)))).
+  reflexivity. Qed.
 End Examples.

@@ -16,7 +16,7 @@ Section WithMap.
      and over its spec (map.ok) *)
   Context {tenv : map.map string (type * bool)} {tenv_ok: map.ok tenv}.
 
-  Section ElaborateOperators.
+  Section ElaborateHelpers.
     Context {elaborate : tenv -> pexpr -> result {t & expr t}}.
 
     Definition elaborate_unop (G : tenv) (po : punop) (p1 : pexpr) :
@@ -116,7 +116,18 @@ Section WithMap.
           e2' <- enforce_type TInt e2 ;;
           Success (existT _ _ (EBinop ORange e1' e2'))
       end.
-  End ElaborateOperators.
+
+    Fixpoint elaborate_record (G : tenv) (ps : list pexpr) :
+      result {t & expr t} :=
+      match ps with
+      | nil =>
+          Success (existT _ _ (EConst CEmpty))
+      | p :: ps =>
+          '(existT _ _ p1) <- elaborate G p ;;
+          '(existT _ _ p2) <- elaborate_record G ps ;;
+          Success (existT _ _ (EBinop (OPair _ _) p1 p2))
+      end.
+  End ElaborateHelpers.
 
   (* Type checks a `pexpr` and possibly emits a typed expression
      Checks scoping for variables/locations *)
@@ -161,5 +172,7 @@ Section WithMap.
         let G' := map.put G x (t1, false) in
         '(existT _ t2 e2) <- elaborate G' p2 ;;
         Success (existT _ _ (ELet x e1 e2))
+    | PERecord ps =>
+        @elaborate_record elaborate G ps
     end.
 End WithMap.

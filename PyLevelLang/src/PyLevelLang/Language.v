@@ -28,20 +28,13 @@ Scheme Equality for type. (* creates type_beq and type_eq_dec *)
 Declare Scope pylevel_scope. Local Open Scope pylevel_scope.
 Notation "t1 =? t2" := (type_beq t1 t2) (at level 70) : pylevel_scope.
 
-(* Construct a "record" type using a list of types *)
-Fixpoint TRecord (l : list type) : type :=
-  match l with
-  (* This creates the issue of having the empty type as the last element *)
-  | nil => TEmpty
-  | t :: ts => TPair t (TRecord ts)
-  end.
-
 (* Constants *)
 Inductive const : type -> Type :=
   | CInt (n : Z) : const TInt
   | CBool (b : bool) : const TBool
   | CString (s : string) : const TString
-  | CNil (t : type) : const (TList t).
+  | CNil (t : type) : const (TList t)
+  | CEmpty : const TEmpty.
 
 (* Unary operators (untyped) *)
 Inductive punop : Type :=
@@ -106,7 +99,8 @@ Inductive pexpr : Type :=
   | PEBinop (po : pbinop) (p1 p2 : pexpr)
   | PEFlatmap (p1 : pexpr) (x : string) (p2 : pexpr)
   | PEIf (p1 p2 p3 : pexpr)
-  | PELet (x : string) (p1 p2 : pexpr).
+  | PELet (x : string) (p1 p2 : pexpr)
+  | PERecord (ps : list pexpr).
 
 (* Typed expressions. Most of the type checking is enforced in the GADT itself
    via Coq's type system, but some of it needs to be done in the `elaborate`
