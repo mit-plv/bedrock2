@@ -192,10 +192,10 @@ Section WithMap.
         elaborate_binop elaborate G po p1 p2
     | PEFlatmap p1 x p2 =>
         '(existT _ t1 e1) <- elaborate G p1;;
-        let G' := map.put G x (t1, false) in
-        '(existT _ t2 e2) <- elaborate G' p2;;
-        match t1 as t1' return expr t1' -> _ with
+        match t1 as t' return expr t' -> _ with
         | TList t1 => fun e1 =>
+            let G' := map.put G x (t1, false) in
+            '(existT _ t2 e2) <- elaborate G' p2;;
             e2' <- enforce_type (TList t1) e2;;
             Success (existT _ _ (EFlatmap e1 x e2'))
         | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
