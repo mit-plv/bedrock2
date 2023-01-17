@@ -121,10 +121,18 @@ Inductive expr : type -> Type :=
   | EIf {t : type} (e1 : expr TBool) (e2 e3 : expr t) : expr t
   | ELet {t1 t2 : type} (x : string) (e1 : expr t1) (e2 : expr t2) : expr t2.
 
+Inductive pcommand : Type :=
+  | PCSkip
+  | PCSeq (pc1 pc2 : pcommand)
+  | PCLet (x : string) (p : pexpr) (pc : pcommand)
+  | PCLetMut (l : string) (p : pexpr) (pc : pcommand)
+  | PCIf (p : pexpr) (pc1 pc2 : pcommand)
+  | PCForeach (x : string) (p : pexpr) (pc : pcommand).
+
 Inductive command : Type :=
   | CSkip
   | CSeq (c1 c2 : command)
-  | CLet (t : type) (x : string) (e : expr t) (c : command)
-  | CLetMut (t : type) (l : string) (e : expr t) (c : command)
+  | CLet {t : type} (x : string) (e : expr t) (c : command)
+  | CLetMut {t : type} (l : string) (e : expr t) (c : command)
   | CIf (e : expr TBool) (c1 c2 : command)
-  | CForeach (t : type) (x : string) (e : expr (TList t)) (c : command).
+  | CForeach {t : type} (x : string) (e : expr (TList t)) (c : command).

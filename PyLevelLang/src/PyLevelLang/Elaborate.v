@@ -217,4 +217,39 @@ Section WithMap.
     | PEProj p s =>
         elaborate_proj elaborate G p s
     end.
+
+  Fixpoint elaborate_command (G : tenv) (pc : pcommand) : result command :=
+    match pc with
+    | PCSkip =>
+        Success CSkip
+    | PCSeq pc1 pc2 =>
+        c1 <- elaborate_command G pc1;;
+        c2 <- elaborate_command G pc2;;
+        Success (CSeq c1 c2)
+    | PCLet x p pc =>
+        '(existT _ t e) <- elaborate G p;;
+        let G' := map.put G x (t, false) in
+        c <- elaborate_command G pc;;
+        Success (CLet x e c)
+    | PCLetMut l p pc =>
+        '(existT _ t e) <- elaborate G p;;
+        let G' := map.put G l (t, true) in
+        c <- elaborate_command G pc;;
+        Success (CLetMut l e c)
+    | PCIf p pc1 pc2 =>
+        '(existT _ _ e) <- elaborate G p;;
+        e' <- enforce_type TBool e;;
+        c1 <- elaborate_command G pc1;;
+        c2 <- elaborate_command G pc2;;
+        Success (CIf e' c1 c2)
+    | PCForeach x p pc =>
+        '(existT _ t e) <- elaborate G p;;
+        match t as t' return expr t' -> _ with
+        | TList t => fun e =>
+            let G' := map.put G x (t, false) in
+            c <- elaborate_command G' pc;;
+            Success (CForeach x e c)
+        | _ => fun _ => error:(e "has type" t "but expected" TList)
+        end e
+    end.
 End WithMap.
