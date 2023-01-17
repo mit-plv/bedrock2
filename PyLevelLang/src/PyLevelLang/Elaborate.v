@@ -38,18 +38,6 @@ Section WithMap.
       | POLengthString =>
           e1' <- enforce_type TString e1;;
           Success (existT _ _ (EUnop OLengthString e1'))
-      | POFst =>
-          match t1 as t' return expr t' -> _ with
-          | TPair _ _ => fun e1 =>
-              Success (existT _ _ (EUnop (OFst _ _) e1))
-          | _ => fun _ => error:(e1 "has type" t1 "but expected" TPair)
-          end e1
-      | POSnd =>
-          match t1 as t' return expr t' -> _ with
-          | TPair _ _ => fun e1 =>
-              Success (existT _ _ (EUnop (OSnd _ _) e1))
-          | _ => fun _ => error:(e1 "has type" t1 "but expected" TPair)
-          end e1
       end.
 
     (* Helper function to enforce `can_eq` in type system *)
@@ -132,7 +120,10 @@ Section WithMap.
           e1' <- enforce_type TInt e1;;
           Success (existT _ _ (EBinop (ORepeat _) e1' e2))
       | POPair =>
-          Success (existT _ _ (EBinop (OPair _ _) e1 e2))
+          Success (existT _ _
+            (EBinop (OPair "0" _ _) e1
+              (EBinop (OPair "1" _ _) e2
+                (EConst CEmpty))))
       | POCons =>
           e2' <- enforce_type (TList t1) e2;;
           Success (existT _ _ (EBinop (OCons _) e1 e2'))
@@ -150,7 +141,7 @@ Section WithMap.
       | (s, p) :: xs =>
           '(existT _ _ e1) <- elaborate G p;;
           '(existT _ _ e2) <- elaborate_record G xs;;
-          Success (existT _ _ (EBinop (OPair' s _ _) e1 e2))
+          Success (existT _ _ (EBinop (OPair s _ _) e1 e2))
       end.
 
     Definition elaborate_proj (G : tenv) (p : pexpr) (s : string) :
@@ -158,11 +149,12 @@ Section WithMap.
       '(existT _ t e) <- elaborate G p;;
       let fix project {t : type} (e : expr t) (s : string) : result {t & expr t} :=
         match t as t' return expr t' -> _ with
-        | TPair' s' _ _ => fun e =>
+        | TPair s' _ _ => fun e =>
             if string_dec s s' then
-                Success (existT _ _ (EUnop (OFst' s' _ _) e))
+                Success (existT _ _ (EUnop (OFst s' _ _) e))
             else
-                project (EUnop (OSnd' s' _ _) e) s
+                project (EUnop (OSnd s' _ _) e) s
+        | TEmpty => fun _ => error:("Field" s "not found in record")
         | _ => fun _ => error:(e "has type" t "but expected" TPair)
         end e
       in

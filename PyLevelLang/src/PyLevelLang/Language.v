@@ -12,10 +12,9 @@ Inductive type : Type :=
   | TInt
   | TBool
   | TString
-  | TPair (t1 t2 : type)
-  | TPair' (s : string) (t1 t2 : type) (* For records *)
-  | TList (t : type)
-  | TEmpty. (* "Empty" type: its only value should be the empty tuple () *)
+  | TPair (s : string) (t1 t2 : type) (* s = label of t1 in a record *)
+  | TEmpty (* "Empty" type: its only value should be the empty tuple () *)
+  | TList (t : type).
 
 (* Types whose values can be compared *)
 Definition can_eq (t : type) : bool :=
@@ -42,9 +41,7 @@ Inductive punop : Type :=
   | PONeg
   | PONot
   | POLength
-  | POLengthString
-  | POFst
-  | POSnd.
+  | POLengthString.
 
 (* Unary operators (typed) *)
 Inductive unop : type -> type -> Type :=
@@ -52,10 +49,8 @@ Inductive unop : type -> type -> Type :=
   | ONot : unop TBool TBool
   | OLength : forall t, unop (TList t) TInt
   | OLengthString : unop TString TInt
-  | OFst : forall t1 t2, unop (TPair t1 t2) t1
-  | OSnd : forall t1 t2, unop (TPair t1 t2) t2
-  | OFst' : forall s t1 t2, unop (TPair' s t1 t2) t1
-  | OSnd' : forall s t1 t2, unop (TPair' s t1 t2) t2.
+  | OFst : forall s t1 t2, unop (TPair s t1 t2) t1
+  | OSnd : forall s t1 t2, unop (TPair s t1 t2) t2.
 
 (* Binary operators (untyped) *)
 Inductive pbinop : Type :=
@@ -89,8 +84,7 @@ Inductive binop : type -> type -> type -> Type :=
   | OLess : binop TInt TInt TBool
   | OEq : forall t, can_eq t = true -> binop t t TBool
   | ORepeat : forall t, binop TInt t (TList t)
-  | OPair : forall t1 t2, binop t1 t2 (TPair t1 t2)
-  | OPair' : forall s t1 t2, binop t1 t2 (TPair' s t1 t2)
+  | OPair : forall s t1 t2, binop t1 t2 (TPair s t1 t2)
   | OCons : forall t, binop t (TList t) (TList t)
   | ORange : binop TInt TInt (TList TInt).
 

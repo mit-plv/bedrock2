@@ -63,19 +63,21 @@ Section Examples.
   reflexivity. Qed.
 
   Definition ex3 : pexpr :=
-    PEUnop POFst (PELet "x" (PEConst (CInt 42))
-      (PEBinop POPair (PEVar "x") (PEVar "x"))).
+    PEProj (PELet "x" (PEConst (CInt 42))
+      (PEBinop POPair (PEVar "x") (PEVar "x"))) "0".
   Goal elaborate map.empty ex3 =
     Success (existT _ _
-      (EUnop (OFst _ _) (ELet "x" (EConst (CInt 42))
-        (EBinop (OPair _ _) (EVar TInt "x") (EVar TInt "x"))))).
+      (EUnop (OFst _ _ _) (ELet "x" (EConst (CInt 42))
+        (EBinop (OPair "0" _ _) (EVar TInt "x")
+          (EBinop (OPair "1" _ _) (EVar TInt "x")
+            (EConst CEmpty)))))).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex3 = Success (existT _ TInt 42).
   reflexivity. Qed.
 
   Definition ex4 : pexpr :=
-    PEUnop POFst (PELet "x"
-      (PEConst (CInt 42)) (PEBinop POPair (PEVar "x") (PEVar "y"))).
+    PEProj (PELet "x" (PEConst (CInt 42))
+      (PEBinop POPair (PEVar "x") (PEVar "y"))) "0".
   Goal elaborate map.empty ex4 = error:("Undefined variable" "y").
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex4 = error:("Undefined variable" "y").
@@ -86,11 +88,22 @@ Section Examples.
       (PEBinop POPair (PEConst (CBool true)) (PEConst (CString "hello"))).
   Goal elaborate map.empty ex5 =
     Success (existT _ _
-      (EBinop (OPair _ _) (EConst (CInt 42))
-        (EBinop (OPair _ _) (EConst (CBool true)) (EConst (CString "hello"))))).
+      (EBinop (OPair "0" _ _) (EConst (CInt 42))
+        (EBinop (OPair "1" _ _)
+          (EBinop (OPair "0" _ _) (EConst (CBool true))
+            (EBinop (OPair "1" _ _) (EConst (CString "hello"))
+              (EConst CEmpty)))
+          (EConst CEmpty)))).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex5 =
-    Success (existT _ (TPair TInt (TPair TBool TString)) (42, (true, "hello"))).
+    Success (existT _
+      (TPair "0" TInt
+        (TPair "1"
+          (TPair "0" TBool
+            (TPair "1" TString
+              TEmpty))
+          TEmpty))
+      (42, ((true, ("hello", tt)), tt))).
   reflexivity. Qed.
 
   Definition ex6 : pexpr :=
@@ -101,16 +114,16 @@ Section Examples.
       :: nil).
   Goal elaborate map.empty ex6 =
     Success (existT _ _
-      (EBinop (OPair' "bool" _ _) (EConst (CBool false))
-        (EBinop (OPair' "string" _ _) (EConst (CString "abc"))
-          (EBinop (OPair' "int" _ _) (EConst (CInt (-2)))
+      (EBinop (OPair "bool" _ _) (EConst (CBool false))
+        (EBinop (OPair "string" _ _) (EConst (CString "abc"))
+          (EBinop (OPair "int" _ _) (EConst (CInt (-2)))
             (EConst CEmpty))))).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex6 =
     Success (existT _
-      (TPair' "bool" TBool
-        (TPair' "string" TString
-          (TPair' "int" TInt TEmpty)))
+      (TPair "bool" TBool
+        (TPair "string" TString
+          (TPair "int" TInt TEmpty)))
       (false, ("abc", (-2, tt)))).
   reflexivity. Qed.
 
@@ -122,10 +135,10 @@ Section Examples.
     "b".
   Goal elaborate map.empty ex7 =
     Success (existT _ _
-      (EUnop (OFst' _ _ _)
-        (EUnop (OSnd' _ _ _)
-          (EBinop (OPair' "a" _ _) (EConst (CBool true))
-            (EBinop (OPair' "b" _ _) (EConst (CInt 50))
+      (EUnop (OFst _ _ _)
+        (EUnop (OSnd _ _ _)
+          (EBinop (OPair "a" _ _) (EConst (CBool true))
+            (EBinop (OPair "b" _ _) (EConst (CInt 50))
               (EConst CEmpty)))))).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex7 =
