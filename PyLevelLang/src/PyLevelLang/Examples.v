@@ -110,4 +110,18 @@ Section Examples.
     Success (existT _ (TPair TBool (TPair TString (TPair TInt TEmpty)))
       (false, ("abc", (-2, tt)))).
   reflexivity. Qed.
+
+  Definition ex7 : pexpr :=
+    PEProj (PERecord (PEConst (CBool true) :: PEConst (CInt 50) :: nil)) 1.
+  Goal elaborate map.empty ex7 =
+    Success (existT _ _
+      (EUnop (OFst _ _)
+        (EUnop (OSnd _ _)
+          (EBinop (OPair _ _) (EConst (CBool true))
+            (EBinop (OPair _ _) (EConst (CInt 50))
+              (EConst CEmpty)))))).
+  reflexivity. Qed.
+  Goal elaborate_interpret map.empty ex7 =
+    Success (existT _ TInt 50).
+  reflexivity. Qed.
 End Examples.

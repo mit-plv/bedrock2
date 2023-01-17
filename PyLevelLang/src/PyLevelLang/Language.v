@@ -100,7 +100,8 @@ Inductive pexpr : Type :=
   | PEFlatmap (p1 : pexpr) (x : string) (p2 : pexpr)
   | PEIf (p1 p2 p3 : pexpr)
   | PELet (x : string) (p1 p2 : pexpr)
-  | PERecord (ps : list pexpr).
+  | PERecord (ps : list pexpr)
+  | PEProj (p : pexpr) (i : nat).
 
 (* Typed expressions. Most of the type checking is enforced in the GADT itself
    via Coq's type system, but some of it needs to be done in the `elaborate`
