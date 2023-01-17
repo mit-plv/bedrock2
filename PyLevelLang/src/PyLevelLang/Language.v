@@ -84,7 +84,7 @@ Inductive binop : type -> type -> type -> Type :=
   | OConcat : forall t, binop (TList t) (TList t) (TList t)
   | OConcatString : binop TString TString TString
   | OLess : binop TInt TInt TBool
-  | OEq : forall t, binop t t TBool
+  | OEq : forall t, can_eq t = true -> binop t t TBool
   | ORepeat : forall t, binop TInt t (TList t)
   | OPair : forall t1 t2, binop t1 t2 (TPair t1 t2)
   | OCons : forall t, binop t (TList t) (TList t)

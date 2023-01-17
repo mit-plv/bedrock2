@@ -124,4 +124,18 @@ Section Examples.
   Goal elaborate_interpret map.empty ex7 =
     Success (existT _ TInt 50).
   reflexivity. Qed.
+
+  Definition ex8 : pexpr :=
+    PEBinop POEq (PEConst (CBool true)) (PEConst (CInt 5)).
+  Goal elaborate map.empty ex8 =
+    error:((EConst (CInt 5)) "has type" TInt "but expected" TBool).
+  reflexivity. Qed.
+
+  Definition ex9 : pexpr :=
+    PEBinop POEq (PEConst (CBool true)) (PEConst (CBool false)).
+  Goal elaborate map.empty ex9 =
+    Success (existT _ _
+      (EBinop (OEq TBool eq_refl)
+        (EConst (CBool true)) (EConst (CBool false)))).
+  reflexivity. Qed.
 End Examples.

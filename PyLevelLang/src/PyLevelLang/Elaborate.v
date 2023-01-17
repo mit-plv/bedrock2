@@ -52,7 +52,32 @@ Section WithMap.
           end e1
       end.
 
-    Definition elaborate_binop (G : tenv) (po : pbinop) (p1 : pexpr) (p2 : pexpr) :
+    (* Helper function to enforce `can_eq` in type system *)
+    Definition construct_eq' {t : type} (e1 e2 : expr t) :
+      if can_eq t then expr TBool else unit.
+    Proof.
+      refine (
+          match t as t'
+          return expr t' -> expr t' -> if can_eq t' then expr TBool else unit
+          with
+          | TInt | TBool | TString | TEmpty => fun e1 e2 =>
+              EBinop (OEq _ _) e1 e2
+          | _ => fun _ _ =>
+              tt
+          end e1 e2
+        ); easy.
+    Defined.
+
+    Definition construct_eq {t: type} (e1 e2 : expr t) : result {t & expr t}.
+    Proof.
+      destruct (can_eq t) eqn : H.
+      - pose (e := construct_eq' e1 e2).
+        rewrite H in e.
+        exact (Success (existT _ _ e)).
+      - exact error:(e1 "has type" t "which does not support equality").
+    Defined.
+
+    Definition elaborate_binop (G : tenv) (po : pbinop) (p1 p2 : pexpr) :
       result {t & expr t} :=
       '(existT _ t1 e1) <- elaborate G p1;;
       '(existT _ t2 e2) <- elaborate G p2;;
@@ -102,7 +127,7 @@ Section WithMap.
           Success (existT _ _ (EBinop OLess e1' e2'))
       | POEq =>
           e2' <- enforce_type t1 e2;;
-          Success (existT _ _ (EBinop (OEq _) e1 e2'))
+          construct_eq e1 e2'
       | PORepeat =>
           e1' <- enforce_type TInt e1;;
           Success (existT _ _ (EBinop (ORepeat _) e1' e2))

@@ -36,14 +36,18 @@ Definition proj_expected (t_expected : type) (v : {t_actual & interp_type t_actu
   | _ => default_val t_expected
   end.
 
-Definition eqb_values {t : type} : interp_type t -> interp_type t -> bool :=
-  match t with
-  | TInt => Z.eqb
-  | TString => String.eqb
-  | TBool => Bool.eqb
-  | TEmpty => fun _ _ => true
-  | _ => fun _ _ => false
-  end.
+Definition eqb_values {t : type} (H : can_eq t = true) :
+  interp_type t -> interp_type t -> bool.
+Proof.
+  refine (
+  match t as t' return can_eq t' = true -> interp_type t' -> interp_type t' -> bool with
+  | TInt => fun _ => Z.eqb
+  | TString => fun _ => String.eqb
+  | TBool => fun _ => Bool.eqb
+  | TEmpty => fun _ => fun _ _ => true
+  | _ => _
+  end H); easy.
+Defined.
 
 
 Section WithMap.
@@ -92,7 +96,7 @@ Section WithMap.
     | OConcat _ => fun a b => app a b
     | OConcatString => String.append
     | OLess => Z.leb
-    | OEq _ => eqb_values
+    | OEq _ H => eqb_values H
     | ORepeat _ => fun n x => repeat x (Z.to_nat n)
     | OPair _ _ => pair
     | OCons _ => cons
