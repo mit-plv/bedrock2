@@ -21,13 +21,13 @@ Section WithMap.
 
     Definition elaborate_unop (G : tenv) (po : punop) (p1 : pexpr) :
       result {t & expr t} :=
-      '(existT _ t1 e1) <- elaborate G p1 ;;
+      '(existT _ t1 e1) <- elaborate G p1;;
       match po with
       | PONeg =>
-          e1' <- enforce_type TInt e1 ;;
+          e1' <- enforce_type TInt e1;;
           Success (existT _ _ (EUnop ONeg e1'))
       | PONot =>
-          e1' <- enforce_type TBool e1 ;;
+          e1' <- enforce_type TBool e1;;
           Success (existT _ _ (EUnop ONot e1'))
       | POLength =>
           match t1 as t' return expr t' -> _ with
@@ -36,7 +36,7 @@ Section WithMap.
           | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
           end e1
       | POLengthString =>
-          e1' <- enforce_type TString e1 ;;
+          e1' <- enforce_type TString e1;;
           Success (existT _ _ (EUnop OLengthString e1'))
       | POFst =>
           match t1 as t' return expr t' -> _ with
@@ -54,66 +54,66 @@ Section WithMap.
 
     Definition elaborate_binop (G : tenv) (po : pbinop) (p1 : pexpr) (p2 : pexpr) :
       result {t & expr t} :=
-      '(existT _ t1 e1) <- elaborate G p1 ;;
-      '(existT _ t2 e2) <- elaborate G p2 ;;
+      '(existT _ t1 e1) <- elaborate G p1;;
+      '(existT _ t2 e2) <- elaborate G p2;;
       match po with
       | POPlus =>
-          e1' <- enforce_type TInt e1 ;;
-          e2' <- enforce_type TInt e2 ;;
+          e1' <- enforce_type TInt e1;;
+          e2' <- enforce_type TInt e2;;
           Success (existT _ _ (EBinop OPlus e1' e2'))
       | POMinus =>
-          e1' <- enforce_type TInt e1 ;;
-          e2' <- enforce_type TInt e2 ;;
+          e1' <- enforce_type TInt e1;;
+          e2' <- enforce_type TInt e2;;
           Success (existT _ _ (EBinop OMinus e1' e2'))
       | POTimes =>
-          e1' <- enforce_type TInt e1 ;;
-          e2' <- enforce_type TInt e2 ;;
+          e1' <- enforce_type TInt e1;;
+          e2' <- enforce_type TInt e2;;
           Success (existT _ _ (EBinop OTimes e1' e2'))
       | PODiv =>
-          e1' <- enforce_type TInt e1 ;;
-          e2' <- enforce_type TInt e2 ;;
+          e1' <- enforce_type TInt e1;;
+          e2' <- enforce_type TInt e2;;
           Success (existT _ _ (EBinop ODiv e1' e2'))
       | POMod =>
-          e1' <- enforce_type TInt e1 ;;
-          e2' <- enforce_type TInt e2 ;;
+          e1' <- enforce_type TInt e1;;
+          e2' <- enforce_type TInt e2;;
           Success (existT _ _ (EBinop OMod e1' e2'))
       | POAnd =>
-          e1' <- enforce_type TBool e1 ;;
-          e2' <- enforce_type TBool e2 ;;
+          e1' <- enforce_type TBool e1;;
+          e2' <- enforce_type TBool e2;;
           Success (existT _ _ (EBinop OAnd e1' e2'))
       | POOr =>
-          e1' <- enforce_type TBool e1 ;;
-          e2' <- enforce_type TBool e2 ;;
+          e1' <- enforce_type TBool e1;;
+          e2' <- enforce_type TBool e2;;
           Success (existT _ _ (EBinop OOr e1' e2'))
       | POConcat =>
           match t1 as t' return expr t' -> _ with
           | TList t1 => fun e1 =>
-              e2' <- enforce_type (TList t1) e2 ;;
+              e2' <- enforce_type (TList t1) e2;;
               Success (existT _ _ (EBinop (OConcat _) e1 e2'))
           | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
           end e1
       | POConcatString =>
-          e1' <- enforce_type TString e1 ;;
-          e2' <- enforce_type TString e2 ;;
+          e1' <- enforce_type TString e1;;
+          e2' <- enforce_type TString e2;;
           Success (existT _ _ (EBinop OConcatString e1' e2'))
       | POLess =>
-          e1' <- enforce_type TInt e1 ;;
-          e2' <- enforce_type TInt e2 ;;
+          e1' <- enforce_type TInt e1;;
+          e2' <- enforce_type TInt e2;;
           Success (existT _ _ (EBinop OLess e1' e2'))
       | POEq =>
-          e2' <- enforce_type t1 e2 ;;
+          e2' <- enforce_type t1 e2;;
           Success (existT _ _ (EBinop (OEq _) e1 e2'))
       | PORepeat =>
-          e1' <- enforce_type TInt e1 ;;
+          e1' <- enforce_type TInt e1;;
           Success (existT _ _ (EBinop (ORepeat _) e1' e2))
       | POPair =>
           Success (existT _ _ (EBinop (OPair _ _) e1 e2))
       | POCons =>
-          e2' <- enforce_type (TList t1) e2 ;;
+          e2' <- enforce_type (TList t1) e2;;
           Success (existT _ _ (EBinop (OCons _) e1 e2'))
       | PORange =>
-          e1' <- enforce_type TInt e1 ;;
-          e2' <- enforce_type TInt e2 ;;
+          e1' <- enforce_type TInt e1;;
+          e2' <- enforce_type TInt e2;;
           Success (existT _ _ (EBinop ORange e1' e2'))
       end.
 
@@ -123,8 +123,8 @@ Section WithMap.
       | nil =>
           Success (existT _ _ (EConst CEmpty))
       | p :: ps =>
-          '(existT _ _ p1) <- elaborate G p ;;
-          '(existT _ _ p2) <- elaborate_record G ps ;;
+          '(existT _ _ p1) <- elaborate G p;;
+          '(existT _ _ p2) <- elaborate_record G ps;;
           Success (existT _ _ (EBinop (OPair _ _) p1 p2))
       end.
   End ElaborateHelpers.
@@ -144,33 +144,33 @@ Section WithMap.
     | PEConst c =>
         Success (existT _ _ (EConst c))
     | PESingleton p' =>
-        '(existT _ t' e') <- elaborate G p' ;;
+        '(existT _ t' e') <- elaborate G p';;
         Success (existT _ _ (EBinop (OCons _) e' (EConst (CNil t'))))
     | PEUnop po p1 =>
         @elaborate_unop elaborate G po p1
     | PEBinop po p1 p2 =>
         @elaborate_binop elaborate G po p1 p2
     | PEFlatmap p1 x p2 =>
-        '(existT _ t1 e1) <- elaborate G p1 ;;
+        '(existT _ t1 e1) <- elaborate G p1;;
         let G' := map.put G x (t1, false) in
-        '(existT _ t2 e2) <- elaborate G' p2 ;;
+        '(existT _ t2 e2) <- elaborate G' p2;;
         match t1 as t1' return expr t1' -> _ with
         | TList t1 => fun e1 =>
-            e2' <- enforce_type (TList t1) e2 ;;
+            e2' <- enforce_type (TList t1) e2;;
             Success (existT _ _ (EFlatmap e1 x e2'))
         | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
         end e1
     | PEIf p1 p2 p3 =>
-        '(existT _ t1 e1) <- elaborate G p1 ;;
-        '(existT _ t2 e2) <- elaborate G p2 ;;
-        '(existT _ t3 e3) <- elaborate G p3 ;;
-        e1' <- enforce_type TBool e1 ;;
-        e3' <- enforce_type t2 e3 ;;
+        '(existT _ t1 e1) <- elaborate G p1;;
+        '(existT _ t2 e2) <- elaborate G p2;;
+        '(existT _ t3 e3) <- elaborate G p3;;
+        e1' <- enforce_type TBool e1;;
+        e3' <- enforce_type t2 e3;;
         Success (existT _ _ (EIf e1' e2 e3'))
     | PELet x p1 p2 =>
-        '(existT _ t1 e1) <- elaborate G p1 ;;
+        '(existT _ t1 e1) <- elaborate G p1;;
         let G' := map.put G x (t1, false) in
-        '(existT _ t2 e2) <- elaborate G' p2 ;;
+        '(existT _ t2 e2) <- elaborate G' p2;;
         Success (existT _ _ (ELet x e1 e2))
     | PERecord ps =>
         @elaborate_record elaborate G ps
