@@ -14,10 +14,10 @@ Definition enforce_type (t1 : type) {t2 : type} (e : expr t2) : result (expr t1)
 Section WithMap.
   (* abstract all functions in this section over the implementation of the map,
      and over its spec (map.ok) *)
-  Context {tenv : map.map string (type * bool)} {tenv_ok: map.ok tenv}.
+  Context {tenv : map.map string (type * bool)} {tenv_ok : map.ok tenv}.
 
   Section ElaborateHelpers.
-    Context {elaborate : tenv -> pexpr -> result {t & expr t}}.
+    Context (elaborate : tenv -> pexpr -> result {t & expr t}).
 
     Definition elaborate_unop (G : tenv) (po : punop) (p1 : pexpr) :
       result {t & expr t} :=
@@ -189,9 +189,9 @@ Section WithMap.
         '(existT _ t' e') <- elaborate G p';;
         Success (existT _ _ (EBinop (OCons _) e' (EConst (CNil t'))))
     | PEUnop po p1 =>
-        @elaborate_unop elaborate G po p1
+        elaborate_unop elaborate G po p1
     | PEBinop po p1 p2 =>
-        @elaborate_binop elaborate G po p1 p2
+        elaborate_binop elaborate G po p1 p2
     | PEFlatmap p1 x p2 =>
         '(existT _ t1 e1) <- elaborate G p1;;
         let G' := map.put G x (t1, false) in
@@ -215,8 +215,8 @@ Section WithMap.
         '(existT _ t2 e2) <- elaborate G' p2;;
         Success (existT _ _ (ELet x e1 e2))
     | PERecord ps =>
-        @elaborate_record elaborate G ps
+        elaborate_record elaborate G ps
     | PEProj p i =>
-        @elaborate_proj elaborate G p i
+        elaborate_proj elaborate G p i
     end.
 End WithMap.
