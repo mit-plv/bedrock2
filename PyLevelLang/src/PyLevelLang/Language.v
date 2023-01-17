@@ -13,6 +13,7 @@ Inductive type : Type :=
   | TBool
   | TString
   | TPair (t1 t2 : type)
+  | TPair' (s : string) (t1 t2 : type) (* For records *)
   | TList (t : type)
   | TEmpty. (* "Empty" type: its only value should be the empty tuple () *)
 
@@ -52,7 +53,9 @@ Inductive unop : type -> type -> Type :=
   | OLength : forall t, unop (TList t) TInt
   | OLengthString : unop TString TInt
   | OFst : forall t1 t2, unop (TPair t1 t2) t1
-  | OSnd : forall t1 t2, unop (TPair t1 t2) t2.
+  | OSnd : forall t1 t2, unop (TPair t1 t2) t2
+  | OFst' : forall s t1 t2, unop (TPair' s t1 t2) t1
+  | OSnd' : forall s t1 t2, unop (TPair' s t1 t2) t2.
 
 (* Binary operators (untyped) *)
 Inductive pbinop : Type :=
@@ -87,6 +90,7 @@ Inductive binop : type -> type -> type -> Type :=
   | OEq : forall t, can_eq t = true -> binop t t TBool
   | ORepeat : forall t, binop TInt t (TList t)
   | OPair : forall t1 t2, binop t1 t2 (TPair t1 t2)
+  | OPair' : forall s t1 t2, binop t1 t2 (TPair' s t1 t2)
   | OCons : forall t, binop t (TList t) (TList t)
   | ORange : binop TInt TInt (TList TInt).
 
@@ -100,8 +104,8 @@ Inductive pexpr : Type :=
   | PEFlatmap (p1 : pexpr) (x : string) (p2 : pexpr)
   | PEIf (p1 p2 p3 : pexpr)
   | PELet (x : string) (p1 p2 : pexpr)
-  | PERecord (ps : list pexpr)
-  | PEProj (p : pexpr) (i : nat).
+  | PERecord (xs : list (string * pexpr))
+  | PEProj (p : pexpr) (s : string).
 
 (* Typed expressions. Most of the type checking is enforced in the GADT itself
    via Coq's type system, but some of it needs to be done in the `elaborate`

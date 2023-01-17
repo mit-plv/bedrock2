@@ -142,33 +142,31 @@ Section WithMap.
           Success (existT _ _ (EBinop ORange e1' e2'))
       end.
 
-    Fixpoint elaborate_record (G : tenv) (ps : list pexpr) :
+    Fixpoint elaborate_record (G : tenv) (xs : list (string * pexpr)) :
       result {t & expr t} :=
-      match ps with
+      match xs with
       | nil =>
           Success (existT _ _ (EConst CEmpty))
-      | p :: ps =>
+      | (s, p) :: xs =>
           '(existT _ _ e1) <- elaborate G p;;
-          '(existT _ _ e2) <- elaborate_record G ps;;
-          Success (existT _ _ (EBinop (OPair _ _) e1 e2))
+          '(existT _ _ e2) <- elaborate_record G xs;;
+          Success (existT _ _ (EBinop (OPair' s _ _) e1 e2))
       end.
 
-    Definition elaborate_proj (G : tenv) (p : pexpr) (i : nat) :
+    Definition elaborate_proj (G : tenv) (p : pexpr) (s : string) :
       result {t & expr t} :=
       '(existT _ t e) <- elaborate G p;;
-      let fix project {t : type} (e : expr t) (i : nat) : result {t & expr t} :=
+      let fix project {t : type} (e : expr t) (s : string) : result {t & expr t} :=
         match t as t' return expr t' -> _ with
-        | TPair _ _ => fun e =>
-            match i with
-            | O =>
-                Success (existT _ _ (EUnop (OFst _ _) e))
-            | S i' =>
-                project (EUnop (OSnd _ _) e) i'
-            end
+        | TPair' s' _ _ => fun e =>
+            if string_dec s s' then
+                Success (existT _ _ (EUnop (OFst' s' _ _) e))
+            else
+                project (EUnop (OSnd' s' _ _) e) s
         | _ => fun _ => error:(e "has type" t "but expected" TPair)
         end e
       in
-      project e i.
+      project e s.
   End ElaborateHelpers.
 
   (* Type checks a `pexpr` and possibly emits a typed expression
@@ -216,7 +214,7 @@ Section WithMap.
         Success (existT _ _ (ELet x e1 e2))
     | PERecord ps =>
         elaborate_record elaborate G ps
-    | PEProj p i =>
-        elaborate_proj elaborate G p i
+    | PEProj p s =>
+        elaborate_proj elaborate G p s
     end.
 End WithMap.

@@ -95,30 +95,37 @@ Section Examples.
 
   Definition ex6 : pexpr :=
     PERecord
-      (PEConst (CBool false)
-      :: PEConst (CString "abc")
-      :: PEConst (CInt (-2))
+      (("bool", PEConst (CBool false))
+      :: ("string", PEConst (CString "abc"))
+      :: ("int", PEConst (CInt (-2)))
       :: nil).
   Goal elaborate map.empty ex6 =
     Success (existT _ _
-      (EBinop (OPair _ _) (EConst (CBool false))
-        (EBinop (OPair _ _) (EConst (CString "abc"))
-          (EBinop (OPair _ _) (EConst (CInt (-2)))
+      (EBinop (OPair' "bool" _ _) (EConst (CBool false))
+        (EBinop (OPair' "string" _ _) (EConst (CString "abc"))
+          (EBinop (OPair' "int" _ _) (EConst (CInt (-2)))
             (EConst CEmpty))))).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex6 =
-    Success (existT _ (TPair TBool (TPair TString (TPair TInt TEmpty)))
+    Success (existT _
+      (TPair' "bool" TBool
+        (TPair' "string" TString
+          (TPair' "int" TInt TEmpty)))
       (false, ("abc", (-2, tt)))).
   reflexivity. Qed.
 
   Definition ex7 : pexpr :=
-    PEProj (PERecord (PEConst (CBool true) :: PEConst (CInt 50) :: nil)) 1.
+    PEProj (PERecord
+      (("a", PEConst (CBool true))
+      :: ("b", PEConst (CInt 50))
+      :: nil))
+    "b".
   Goal elaborate map.empty ex7 =
     Success (existT _ _
-      (EUnop (OFst _ _)
-        (EUnop (OSnd _ _)
-          (EBinop (OPair _ _) (EConst (CBool true))
-            (EBinop (OPair _ _) (EConst (CInt 50))
+      (EUnop (OFst' _ _ _)
+        (EUnop (OSnd' _ _ _)
+          (EBinop (OPair' "a" _ _) (EConst (CBool true))
+            (EBinop (OPair' "b" _ _) (EConst (CInt 50))
               (EConst CEmpty)))))).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex7 =
