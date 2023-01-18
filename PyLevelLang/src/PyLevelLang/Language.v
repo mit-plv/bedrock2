@@ -106,7 +106,7 @@ Inductive pexpr : Type :=
    function below *)
 Inductive expr : type -> Type :=
   | EVar (t : type) (x : string) : expr t
-  | ELoc (t : type) (l : string) : expr t
+  | ELoc (t : type) (x : string) : expr t
   | EConst {t : type} (c : const t) : expr t
   | EUnop {t1 t2 : type} (o : unop t1 t2) (e : expr t1) : expr t2
   | EBinop {t1 t2 t3 : type} (o : binop t1 t2 t3) (e1 : expr t1) (e2: expr t2) : expr t3
@@ -119,7 +119,8 @@ Inductive pcommand : Type :=
   | PCSkip
   | PCSeq (pc1 pc2 : pcommand)
   | PCLet (x : string) (p : pexpr) (pc : pcommand)
-  | PCLetMut (l : string) (p : pexpr) (pc : pcommand)
+  | PCLetMut (x : string) (p : pexpr) (pc : pcommand)
+  | PCGets (x : string) (p : pexpr)
   | PCIf (p : pexpr) (pc1 pc2 : pcommand)
   | PCForeach (x : string) (p : pexpr) (pc : pcommand).
 
@@ -127,6 +128,7 @@ Inductive command : Type :=
   | CSkip
   | CSeq (c1 c2 : command)
   | CLet {t : type} (x : string) (e : expr t) (c : command)
-  | CLetMut {t : type} (l : string) (e : expr t) (c : command)
+  | CLetMut {t : type} (x : string) (e : expr t) (c : command)
+  | CGets {t : type} (x : string) (e : expr t)
   | CIf (e : expr TBool) (c1 c2 : command)
   | CForeach {t : type} (x : string) (e : expr (TList t)) (c : command).

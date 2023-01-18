@@ -220,14 +220,38 @@ Section WithMap.
         Success (CSeq c1 c2)
     | PCLet x p pc =>
         '(existT _ t e) <- elaborate G p;;
-        let G' := map.put G x (t, false) in
-        c <- elaborate_command G pc;;
-        Success (CLet x e c)
-    | PCLetMut l p pc =>
+        match map.get G x with
+        | Some (_, true) =>
+            error:("Variable" x "already defined as mutable")
+        | Some (_, false) | None =>
+            (* If already defined as immutable, shadow that variable *)
+            let G' := map.put G x (t, false) in
+            c <- elaborate_command G pc;;
+            Success (CLet x e c)
+        end
+    | PCLetMut x p pc =>
         '(existT _ t e) <- elaborate G p;;
-        let G' := map.put G l (t, true) in
-        c <- elaborate_command G pc;;
-        Success (CLetMut l e c)
+        match map.get G x with
+        | Some (_, true) =>
+            error:("Mutable variable" x "already defined")
+        | Some (_, false) =>
+            error:("Variable" x "already defined as immutable")
+        | None =>
+            let G' := map.put G x (t, true) in
+            c <- elaborate_command G pc;;
+            Success (CLetMut x e c)
+        end
+    | PCGets x p =>
+        '(existT _ t e) <- elaborate G p;;
+        match map.get G x with
+        | Some (t', true) =>
+            e' <- enforce_type t' e;;
+            Success (CGets x e')
+        | Some (_, false) =>
+            error:("Variable" x "is not mutable")
+        | None =>
+            error:("Undefined variable" x)
+        end
     | PCIf p pc1 pc2 =>
         '(existT _ _ e) <- elaborate G p;;
         e' <- enforce_type TBool e;;
