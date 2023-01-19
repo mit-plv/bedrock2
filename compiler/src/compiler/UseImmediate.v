@@ -16,7 +16,7 @@ Section WithArguments.
   Context {ext_spec : Semantics.ExtSpec}.
   Context (is5BitImmediate : Z -> bool).
   Context (is12BitImmediate  : Z -> bool).
-  Local Hint Constructors exec: core. 
+  Local Hint Constructors exec: core.
   Lemma useImmediateCorrect :
     forall e st t m l mc post, exec e st t m l mc post -> exec e (useImmediate is5BitImmediate is12BitImmediate st) t m l mc post.
   Proof.
@@ -24,11 +24,10 @@ Section WithArguments.
     induction H; simpl; eauto.
 
     destruct (useImmediate is5BitImmediate is12BitImmediate s1) eqn:Es1; destruct (useImmediate is5BitImmediate is12BitImmediate s2) eqn:Es2; try eauto.
-    { eapply exec.load.}
-  Abort.
- (*   destruct st1; simpl. destruct st2; simpl. 
-  Qed. *)
 
+    destruct z eqn:Ez; destruct op eqn:Eop; try eauto.
+    { destruct (is12BitImmediate v) eqn:Ev.
+      { destruct (x =? v0)%string eqn:Exv0.
+        { eapply exec.op.
+          2: { simpl. reflexivity. }
 End WithArguments.
-    
-  
