@@ -210,24 +210,34 @@ Section WithMap.
         elaborate_proj elaborate G p s
     end.
 
-  Fixpoint elaborate_command (G : tenv) (pc : pcommand) : result command :=
+  Fixpoint elaborate_command (G : tenv) (pc : pcommand)
+    : result (tenv * command) :=
     match pc with
     | PCSkip =>
-        Success CSkip
+        Success (G, CSkip)
     | PCSeq pc1 pc2 =>
-        c1 <- elaborate_command G pc1;;
-        c2 <- elaborate_command G pc2;;
-        Success (CSeq c1 c2)
+        '(G', c1) <- elaborate_command G pc1;;
+        '(G'', c2) <- elaborate_command G' pc2;;
+        Success (G'', CSeq c1 c2)
     | PCLet x p pc =>
         '(existT _ t e) <- elaborate G p;;
         match map.get G x with
         | Some (_, true) =>
             error:("Variable" x "already defined as mutable")
-        | Some (_, false) | None =>
+        | Some (t', false) =>
             (* If already defined as immutable, shadow that variable *)
             let G' := map.put G x (t, false) in
-            c <- elaborate_command G pc;;
-            Success (CLet x e c)
+            '(G'', c) <- elaborate_command G' pc;;
+            (* Keep any changes made to `G` as a result of `c`, but restore `x`
+             * to what it was before *)
+            let G''' := map.put G'' x (t', false) in
+            Success (G''', CLet x e c)
+        | None =>
+            let G' := map.put G x (t, false) in
+            '(G'', c) <- elaborate_command G' pc;;
+            (* Idem *)
+            let G''' := map.remove G'' x in
+            Success (G''', CLet x e c)
         end
     | PCLetMut x p pc =>
         '(existT _ t e) <- elaborate G p;;
@@ -238,15 +248,17 @@ Section WithMap.
             error:("Variable" x "already defined as immutable")
         | None =>
             let G' := map.put G x (t, true) in
-            c <- elaborate_command G pc;;
-            Success (CLetMut x e c)
+            '(G'', c) <- elaborate_command G' pc;;
+            (* `x` goes out of scope *)
+            let G''' := map.remove G'' x in
+            Success (G''', CLetMut x e c)
         end
     | PCGets x p =>
         '(existT _ t e) <- elaborate G p;;
         match map.get G x with
         | Some (t', true) =>
             e' <- enforce_type t' e;;
-            Success (CGets x e')
+            Success (G, CGets x e')
         | Some (_, false) =>
             error:("Variable" x "is not mutable")
         | None =>
@@ -255,16 +267,18 @@ Section WithMap.
     | PCIf p pc1 pc2 =>
         '(existT _ _ e) <- elaborate G p;;
         e' <- enforce_type TBool e;;
-        c1 <- elaborate_command G pc1;;
-        c2 <- elaborate_command G pc2;;
-        Success (CIf e' c1 c2)
+        (* We don't care about changes to G because variables defined in
+         * branches go out of scope at the end of the if statement *)
+        '(_, c1) <- elaborate_command G pc1;;
+        '(_, c2) <- elaborate_command G pc2;;
+        Success (G, CIf e' c1 c2)
     | PCForeach x p pc =>
         '(existT _ t e) <- elaborate G p;;
         match t as t' return expr t' -> _ with
         | TList t => fun e =>
             let G' := map.put G x (t, false) in
-            c <- elaborate_command G' pc;;
-            Success (CForeach x e c)
+            '(_, c) <- elaborate_command G' pc;;
+            Success (G, CForeach x e c)
         | _ => fun _ => error:(e "has type" t "but expected" TList)
         end e
     end.
