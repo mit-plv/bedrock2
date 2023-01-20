@@ -105,8 +105,7 @@ Section WithMap.
 
   Fixpoint interp_expr (l : locals) {t : type} (e : expr t) : interp_type t :=
     match e in (expr t0) return (interp_type t0) with
-    | EVar _ x => get_local l x
-    | ELoc _ x => get_local l x
+    | EVar _ x | ELoc _ x => get_local l x
     | EConst c => interp_const c
     | EUnop o e1 => interp_unop l o (interp_expr l e1)
     | EBinop o e1 e2 => interp_binop l o (interp_expr l e1) (interp_expr l e2)
