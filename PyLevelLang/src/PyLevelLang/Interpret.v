@@ -115,4 +115,17 @@ Section WithMap.
     | ELet x e1 e2 => interp_expr (set_local l x (interp_expr l e1)) e2
     end.
 
+  Fixpoint interp_command (l : locals) (c : command) : locals :=
+    match c with
+    | CSkip => l
+    | CSeq c1 c2 => interp_command (interp_command l c1) c2
+    | CLet x e c1 | CLetMut x e c1 => let l' := interp_command (set_local l x (interp_expr l e)) c1
+                                      in match map.get l x with
+                                         | None => l' (* map.remove l' x *)
+                                         | Some v => set_local l' x (projT2 v)
+                                         end
+    | CGets x e => set_local l x (interp_expr l e)
+    | CIf e c1 c2 => if interp_expr l e then interp_command l c1 else interp_command l c2
+    | CForeach x e c1 => fold_left (fun l' v => interp_command (set_local l' x v) c1) (interp_expr l e) l
+    end.
 End WithMap.
