@@ -23,11 +23,10 @@ Section WithArguments.
     intros.
     induction H; simpl; eauto.
 
-    destruct (useImmediate is5BitImmediate is12BitImmediate s1) eqn:Es1; destruct (useImmediate is5BitImmediate is12BitImmediate s2) eqn:Es2; try eauto.
+    destr (useImmediate is5BitImmediate is12BitImmediate s1); destr (useImmediate is5BitImmediate is12BitImmediate s2); try eauto.
+    destr (map.get l y); destr z; destr op; progress inversion IHexec.
+    { destr (is12BitImmediate v).
+      { destr (x =? v0)%string.
+        { specialize H1 with (t' :=  t) (m' := m) (l' := (map.put l v0 (word.of_Z v))) (mc' := (MetricLogging.addMetricLoads 8 (MetricLogging.addMetricInstructions 8 mc))). apply H0 in H9. clear H2 H3 H4 H5 H6 H7 H8.
 
-    destruct z eqn:Ez; destruct op eqn:Eop; try eauto.
-    { destruct (is12BitImmediate v) eqn:Ev.
-      { destruct (x =? v0)%string eqn:Exv0.
-        { eapply exec.op.
-          2: { simpl. reflexivity. }
 End WithArguments.
