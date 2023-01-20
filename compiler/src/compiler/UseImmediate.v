@@ -27,6 +27,6 @@ Section WithArguments.
     destr (map.get l y); destr z; destr op; progress inversion IHexec.
     { destr (is12BitImmediate v).
       { destr (x =? v0)%string.
-        { specialize H1 with (t' :=  t) (m' := m) (l' := (map.put l v0 (word.of_Z v))) (mc' := (MetricLogging.addMetricLoads 8 (MetricLogging.addMetricInstructions 8 mc))). apply H0 in H9. clear H2 H3 H4 H5 H6 H7 H8.
+        { specialize H1 with (t' :=  t) (m' := m) (l' := (map.put l v0 (word.of_Z v))) (mc' := (MetricLogging.addMetricLoads 8 (MetricLogging.addMetricInstructions 8 mc))). clear H2 H3 H4 H5 H6 H7 H8. apply H0 in H9 as H2. apply H1 in H9 as H3.
 
 End WithArguments.
