@@ -120,7 +120,7 @@ Section WithMap.
     | CSeq c1 c2 => interp_command (interp_command l c1) c2
     | CLet x e c1 | CLetMut x e c1 => let l' := interp_command (set_local l x (interp_expr l e)) c1
                                       in match map.get l x with
-                                         | None => l' (* map.remove l' x *)
+                                         | None => map.remove l' x
                                          | Some v => set_local l' x (projT2 v)
                                          end
     | CGets x e => set_local l x (interp_expr l e)
