@@ -24,41 +24,40 @@ Section WithArgs.
     | SLoop s1 c s2 => SLoop (useImmediate s1) c (useImmediate s2)
     | SStackalloc v1 sz1 s => SStackalloc v1 sz1 (useImmediate s)
     | SSeq s1 s2 =>
-        let used1 := useImmediate s1 in
-        let used2 := useImmediate s2 in
-        let default := SSeq used1 used2 in
-        match used1, used2 with
+        let default := SSeq (useImmediate s1) (useImmediate s2) in
+        match s1, s2 with
         (*
         | SSkip, _ => used2
         | _, SSkip => used1 *)
         | SLit v1 l1, SOp v2 op v2a (Var v2b) =>
+
             match op with
             | Syntax.bopname.add
             | Syntax.bopname.and
             | Syntax.bopname.or
             | Syntax.bopname.xor => if (is12BitImmediate l1) then
                                       if eqb v1 v2b then
-                                        SOp v2 op v2a (Const l1)
+                                        SSeq s1 (SOp v2 op v2a (Const l1))
                                       else if eqb v1 v2a then
-                                             SOp v2 op v2b (Const l1)
+                                             SSeq s1 (SOp v2 op v2b (Const l1))
                                            else default
                                     else default
             | Syntax.bopname.ltu
             | Syntax.bopname.lts => if (is12BitImmediate l1) then
                                       if eqb v1 v2b then
-                                        SOp v2 op v2a (Const l1)
+                                        SSeq s1 (SOp v2 op v2a (Const l1))
                                       else default
                                     else default
             | Syntax.bopname.srs
             | Syntax.bopname.sru
             | Syntax.bopname.slu => if (is5BitImmediate l1) then
                                       if eqb v1 v2b then
-                                        SOp v2 op v2a (Const l1)
+                                        SSeq s1 (SOp v2 op v2a (Const l1))
                                       else default
                                     else default
             | Syntax.bopname.sub => if (is12BitImmediate (-l1)) then
                                       if eqb v1 v2b then
-                                        SOp v2 Syntax.bopname.add v2a (Const (-l1))
+                                        SSeq s1 (SOp v2 Syntax.bopname.add v2a (Const (-l1)))
                                       else default
                                     else default
             | _ => default
@@ -132,7 +131,9 @@ Definition useImmOnFlats'' (t: (list string * list string * stmt string)) : (lis
 Definition immediateExs'' := map useImmOnFlats'' unwrappedFlattenExs.
 
 Compute unwrappedFlattenExs.
+(* For now, ex2 shouldn't be touched by this optimization, but could be touched after an earlier pass where superfluous SSkip's are removed. *)
 Compute immediateExs. (* All constants are small enough. *)
 Compute immediateExs'. (* is5BitImmediate is true only for < 16. *)
 Compute immediateExs''. (* is12BitImmediate is true only for < 16. *)
+
 *)
