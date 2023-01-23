@@ -17,6 +17,12 @@ Section WithArguments.
   Context (is5BitImmediate : Z -> bool).
   Context (is12BitImmediate  : Z -> bool).
   Local Hint Constructors exec: core.
+
+  Add Ring wring : (word.ring_theory (word := word))
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (word.ring_morph (word := word)),
+        constants [word_cst]).
+
   Lemma useImmediateCorrect :
     forall e st t m l mc post, exec e st t m l mc post -> exec e (useImmediate is5BitImmediate is12BitImmediate st) t m l mc post.
   Proof.
@@ -36,7 +42,25 @@ Section WithArguments.
                { inversion H.  clear H1 H3 H2 H4 H5 H6 H7.  specialize H0 with (t' := t) (m' := m) (l' := (map.put l y (word.of_Z v))) (mc' := (MetricLogging.addMetricLoads 8 (MetricLogging.addMetricInstructions 8 mc))). apply H0 in H8.  clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite map.get_put_same in H10. fwd. eapply exec.op.
                  { apply H11. }
                  { simpl. reflexivity. }
-                 { idtac. progress simpl in *.  Search word.add. apply H12. }
+                 { idtac. progress simpl in *. progress replace (word.add z' (word.of_Z v))  with  (word.add (word.of_Z v) z') by ring. apply H12. }
+               }
+               { inversion H. clear H1 H3 H2 H4 H5 H6 H7. specialize H0 with (t' := t) (m' := m) (l' := (map.put l x (word.of_Z v))) (mc' := (MetricLogging.addMetricLoads 8 (MetricLogging.addMetricInstructions 8 mc))). apply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+                 { apply H10. }
+                 { apply H11. }
+                 { apply H12. }
+               }
+             }
+           }
+           {
+             inversion H. clear H1 H2 H3 H4 H5 H6 H7. specialize H0 with (t' := t) (m' := m) (l' := (map.put l x (word.of_Z v))) (mc' := (MetricLogging.addMetricLoads 8 (MetricLogging.addMetricInstructions 8 mc))). apply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+             { apply H10. }
+             { apply H11. }
+             { apply H12. }
+           }
+         }
+         {
+                 simpl in H11. progress fwd.
+              Search word.add "ring".  Print word.add_comm. Search word.add. apply H12. }
 
 
 
