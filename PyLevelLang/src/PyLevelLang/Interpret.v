@@ -8,7 +8,7 @@ Fixpoint interp_type (t : type) :=
   | TInt => Z
   | TBool => bool
   | TString => string
-  | TPair t1 t2 => prod (interp_type t1) (interp_type t2)
+  | TPair _ t1 t2 => prod (interp_type t1) (interp_type t2)
   | TList t' => list (interp_type t')
   | TEmpty => unit
   end.
@@ -18,7 +18,7 @@ Fixpoint default_val (t : type) : interp_type t :=
   | TInt => 0
   | TBool => false
   | TString => EmptyString
-  | TPair t1 t2 => (default_val t1, default_val t2)
+  | TPair _ t1 t2 => (default_val t1, default_val t2)
   | TList t' => nil
   | TEmpty => tt
   end.
@@ -36,14 +36,18 @@ Definition proj_expected (t_expected : type) (v : {t_actual & interp_type t_actu
   | _ => default_val t_expected
   end.
 
-Definition eqb_values {t : type} : interp_type t -> interp_type t -> bool :=
-  match t with
-  | TInt => Z.eqb
-  | TString => String.eqb
-  | TBool => Bool.eqb
-  | TEmpty => fun _ _ => true
-  | _ => fun _ _ => false
-  end.
+Definition eqb_values {t : type} (H : can_eq t = true) :
+  interp_type t -> interp_type t -> bool.
+Proof.
+  refine (
+  match t as t' return can_eq t' = true -> interp_type t' -> interp_type t' -> bool with
+  | TInt => fun _ => Z.eqb
+  | TString => fun _ => String.eqb
+  | TBool => fun _ => Bool.eqb
+  | TEmpty => fun _ => fun _ _ => true
+  | _ => _
+  end H); easy.
+Defined.
 
 
 Section WithMap.
@@ -64,6 +68,7 @@ Section WithMap.
     | CBool b => b
     | CString s => s
     | CNil t => nil
+    | CEmpty => tt
     end.
 
   Definition interp_unop (l : locals) {t1 t2 : type} (o : unop t1 t2) :
@@ -73,8 +78,8 @@ Section WithMap.
     | ONot => negb
     | OLength _ => fun x => Z.of_nat (length x)
     | OLengthString => fun x => Z.of_nat (String.length x)
-    | OFst _ _ => fst
-    | OSnd _ _ => snd
+    | OFst _ _ _ => fst
+    | OSnd _ _ _ => snd
     end.
 
   Definition interp_binop (l : locals) {t1 t2 t3: type} (o : binop t1 t2 t3) : 
@@ -91,9 +96,9 @@ Section WithMap.
     | OConcat _ => fun a b => app a b
     | OConcatString => String.append
     | OLess => Z.leb
-    | OEq _ => eqb_values
+    | OEq _ H => eqb_values H
     | ORepeat _ => fun n x => repeat x (Z.to_nat n)
-    | OPair _ _ => pair
+    | OPair _ _ _ => pair
     | OCons _ => cons
     | ORange => fun s e => eval_range s (Z.to_nat (e - s))
     end.
