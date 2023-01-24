@@ -569,6 +569,22 @@ Ltac path_in_mem_tree om m :=
   | _ => fail "Expected a mem_tree, but got" om
   end.
 
+Ltac cancel_head_with_hyp H :=
+  lazymatch goal with
+  | |- canceling (cons _ ?Ps) ?om _ =>
+      let m := lazymatch type of H with with_mem ?m _ => m end in
+      let hs := reify_mem_tree om in
+      let p := path_in_mem_tree hs m in
+      let lem := lazymatch Ps with
+                 | nil => open_constr:(canceling_last_step hs p H)
+                 | cons _ _ => open_constr:(cancel_head hs p H)
+                 end in
+      eapply lem;
+      [ reflexivity
+      | reflexivity
+      | cbn [interp_mem_tree] ]
+  end.
+
 Ltac canceling_step :=
   lazymatch goal with
   | |- canceling [anymem] _ _ => eapply canceling_done_anymem
@@ -589,17 +605,7 @@ Ltac canceling_step :=
                  | H: with_mem _ ?P' |- _ =>
                      let __ := match constr:(Set) with _ => syntactic_unify P' R end in H
                  end in
-        let m := lazymatch type of H with with_mem ?m _ => m end in
-        let hs := reify_mem_tree om in
-        let p := path_in_mem_tree hs m in
-        let lem := lazymatch Ps with
-                   | nil => open_constr:(canceling_last_step hs p H)
-                   | cons _ _ => open_constr:(cancel_head hs p H)
-                   end in
-        eapply lem;
-        [ reflexivity
-        | reflexivity
-        | cbn [interp_mem_tree] ]
+        cancel_head_with_hyp H
   | |- True => constructor
   end.
 
