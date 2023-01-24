@@ -124,7 +124,7 @@ Ltac split_range_from_hyp_default :=
   | |- split_range_from_hyp ?start ?size (with_mem ?m ?P) ?H ?g =>
       let pf := fresh in
       lazymatch P with
-      | array ?elem ?n ?vs ?start' =>
+      | @array _ _ _ _ _ ?elem (*must match:*)size ?n ?vs ?start' =>
           unshelve epose proof (split_off_elem_from_array start' start elem n _ _ _) as pf;
           [ (* i *)
           | ZnWords
