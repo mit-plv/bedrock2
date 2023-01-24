@@ -47,10 +47,7 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
                replace (\[i' ^+ /[1]]) with (\[i'] + 1) by ZnWords;
                reflexivity).
                                                                                 .**/
-  }                                                                        /**.
-
-  ltac1:(replace \[i] with \[n] in * by ZnWords).
-                                                                                .**/
+  }                                                                        /**. .**/
 }                                                                          /**.
 Qed.
 
