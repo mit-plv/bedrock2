@@ -17,25 +17,25 @@ void sort3(uintptr_t a) /**#
             out1 <= out2 <= out3 #**/                                    /**.
 Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .**/
 {                                                                        /**. .**/
-  uintptr_t w0 = load(a);                                                /**. .**/
-  uintptr_t w1 = load(a+4);                                              /**. .**/
-  uintptr_t w2 = load(a+8);                                              /**. .**/
+  uintptr_t w0 = load32(a);                                              /**. .**/
+  uintptr_t w1 = load32(a+4);                                            /**. .**/
+  uintptr_t w2 = load32(a+8);                                            /**. .**/
   if (w1 <= w0 && w1 <= w2) {                                            /**. .**/
-    store(a, w1);                                                        /**. .**/
+    store32(a, w1);                                                      /**. .**/
     w1 = w0;                                                             /**. .**/
   } else {                                                               /**. .**/
     if (w2 <= w0 && w2 <= w1) {                                          /**. .**/
-      store(a, w2);                                                      /**. .**/
+      store32(a, w2);                                                    /**. .**/
       w2 = w0;                                                           /**. .**/
     } else {                                                             /**. .**/
     }                                                                    /**. .**/
   }                                                                      /**. .**/
   if (w2 < w1) {                                                         /**. .**/
-    store(a+4, w2);                                                      /**. .**/
-    store(a+8, w1);                                                      /**. .**/
+    store32(a+4, w2);                                                    /**. .**/
+    store32(a+8, w1);                                                    /**. .**/
   } else {                                                               /**. .**/
-    store(a+4, w1);                                                      /**. .**/
-    store(a+8, w2);                                                      /**. .**/
+    store32(a+4, w1);                                                    /**. .**/
+    store32(a+8, w2);                                                    /**. .**/
   }                                                                      /**. .**/
 }                                                                        /**.
 Qed.
