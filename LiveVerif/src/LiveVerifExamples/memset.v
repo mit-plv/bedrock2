@@ -31,7 +31,7 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
   Std.clearbody [ @i ].
                                                                                 .**/
   while (i < n) /* decreases (n ^- i) */ {                                 /**. .**/
-    store1(a + i, b);                                                      /**. .**/
+    store8(a + i, b);                                                      /**. .**/
      i = i + 1;                                                            /**.
 
      (* TODO if canceling is on same range with different values, assert
