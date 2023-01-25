@@ -40,8 +40,7 @@ Inductive const : type -> Type :=
 Inductive punop : Type :=
   | PONeg
   | PONot
-  | POLength
-  | POLengthString.
+  | POLength.
 
 (* Unary operators (typed) *)
 Inductive unop : type -> type -> Type :=
@@ -62,7 +61,6 @@ Inductive pbinop : Type :=
   | POAnd
   | POOr
   | POConcat
-  | POConcatString
   | POLess
   | POEq
   | PORepeat
@@ -83,7 +81,7 @@ Inductive binop : type -> type -> type -> Type :=
   | OConcatString : binop TString TString TString
   | OLess : binop TInt TInt TBool
   | OEq : forall t, can_eq t = true -> binop t t TBool
-  | ORepeat : forall t, binop TInt t (TList t)
+  | ORepeat : forall t, binop (TList t) TInt (TList t)
   | OPair : forall s t1 t2, binop t1 t2 (TPair s t1 t2)
   | OCons : forall t, binop t (TList t) (TList t)
   | ORange : binop TInt TInt (TList TInt).
