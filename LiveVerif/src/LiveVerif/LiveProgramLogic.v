@@ -479,6 +479,10 @@ Ltac cleanup_step :=
   end.
 
 Definition don't_know_how_to_prove_equal{A: Type} := @eq A.
+Notation "'don't_know_how_to_prove_equal' x y" :=
+  (don't_know_how_to_prove_equal x y)
+  (only printing, at level 10, x at level 0, y at level 0,
+   format "don't_know_how_to_prove_equal '//' x '//' y").
 
 Ltac default_eq_prover :=
   match goal with

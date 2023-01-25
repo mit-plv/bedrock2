@@ -266,6 +266,8 @@ Lemma rew_with_mem{mem: Type}: forall (P1 P2: mem -> Prop) (m: mem),
     with_mem m P1 -> with_mem m P2.
 Proof. intros. subst. assumption. Qed.
 
+Ltac sepclause_equality_hook := syntactic_f_equal_with_ZnWords.
+
 Ltac split_merge_step :=
   lazymatch goal with
   | |- canceling (cons (?P ?start) _) ?m _ =>
@@ -282,10 +284,11 @@ Ltac split_merge_step :=
           then (
             change g;
             let P := lazymatch goal with | |- canceling (cons ?P _) _ _ => P end in
-            eapply (rew_with_mem (P' start') P mH) in H;
-            [ | syntactic_f_equal_with_ZnWords ]
+            eapply (rew_with_mem (P' start') P mH) in H (* <-- leaves 2 open goals *)
           ) else change (split_range_from_hyp start size _ H g)
       end
   | |- split_range_from_hyp ?start ?size ?tH ?H ?g => split_range_from_hyp_hook
+  | |- @eq (@map.rep (@word.rep _ _) Init.Byte.byte _ -> Prop) _ _ =>
+      syntactic_f_equal_with_ZnWords
   | H: merge_step _ |- _ => merge_step_in_hyp H
   end.
