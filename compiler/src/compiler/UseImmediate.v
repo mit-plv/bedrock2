@@ -22,6 +22,28 @@ Section WithArguments.
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := word)),
         constants [word_cst]).
+  Search word.add.
+  Print word.unsigned_inj.
+  Lemma word_and_comm:
+    forall {width: Z} {word: Interface.word width},
+      word.ok word -> forall x y : word, word.and x y = word.and y x.
+  Proof.
+    intros. eapply word.unsigned_inj. rewrite word.unsigned_and_nowrap. rewrite word.unsigned_and_nowrap. apply Z.land_comm.
+  Qed.
+
+  Lemma word_or_comm:
+    forall {width: Z} {word: Interface.word width},
+      word.ok word -> forall x y : word, word.or x y = word.or y x.
+  Proof.
+    intros. eapply word.unsigned_inj. rewrite word.unsigned_or_nowrap. rewrite word.unsigned_or_nowrap. apply Z.lor_comm.
+  Qed.
+
+  Lemma word_xor_comm:
+    forall {width: Z} {word: Interface.word width},
+      word.ok word -> forall x y : word, word.xor x y = word.xor y x.
+  Proof.
+    intros. eapply word.unsigned_inj. rewrite word.unsigned_xor_nowrap. rewrite word.unsigned_xor_nowrap. apply Z.lxor_comm.
+  Qed.
 
   Lemma useImmediateCorrect :
     forall e st t m l mc post, exec e st t m l mc post -> exec e (useImmediate is5BitImmediate is12BitImmediate st) t m l mc post.
@@ -119,27 +141,7 @@ Section WithArguments.
                  { simpl. reflexivity. }
                  { progress simpl in *. replace (word.and z' (word.of_Z v))  with  (word.and (word.of_Z v) z').
                    { apply H12. }
-                   { Search word.and. induction (word.of_Z v).
-(*
-                     Tried to add
-Hint Rewrite
-       unsigned_of_Z signed_of_Z of_Z_unsigned unsigned_add unsigned_sub unsigned_opp unsigned_or unsigned_and unsigned_xor unsigned_not unsigned_ndn unsigned_mul signed_mulhss signed_mulhsu unsigned_mulhuu unsigned_divu signed_divs unsigned_modu signed_mods unsigned_slu unsigned_sru signed_srs unsigned_eqb unsigned_ltu signed_lts
-       using trivial
-  : word_laws.
-
-from coqutil/Word/Properties.v with attempt at trying to copy over
-  Ltac bitwise :=
-      autorewrite with word_laws;
-      unfold wrap;
-      generalize_wrap_unsigned;
-      Z.bitblast. and using bitwise, based on proof of unsigned_and_wrap in Properties.v.
-
-
-Using Search word.and also seems to turn up Word.build_ok which has something like word.unsigned (word.and x y) =
-   wrap (Z.land (word.unsigned x) (word.unsigned y))) but mixed with a lot of other propositions in an implies chain.
-
-Also tried `induction (word.of_Z v)` and got error "Unable to satisfy the following constraints: ?word : "Interface.word ?width"
-                    *)
+                   { apply word_and_comm. assumption.  }
                  }
                }
                { inversion H. clear H1 H3 H2 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
@@ -156,12 +158,199 @@ Also tried `induction (word.of_Z v)` and got error "Unable to satisfy the follow
              { apply H12. }
            }
          }
-
-
-
-
-
-                 ((Search exec.exec.
-    (* 2: { inversion IHexec. clear H H1 H2 H3 H4 H5 H6 IHexec.  specialize H0 with (t' := t) (m' := m) (l' := (map.put l x (word.of_Z v))) (mc' := (MetricLogging.addMetricLoads 8 (MetricLogging.addMetricInstructions 8 mc))). apply H0 in H7. clear H0. *)
+         { destr (is12BitImmediate v); clear E.
+           { destr ((x =? v0)%string).
+             { inversion H. clear H1 H2 H3 H4 H5 H6 H7.  eapply H0 in H8. clear H0. apply exec.seq_cps.  apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite  map.get_put_same in H11. fwd. eapply exec.op.
+               { apply H10. }
+               { simpl. reflexivity. }
+               { apply H12. }
+             }
+             { destr ((x =? y)%string).
+               { inversion H.  clear H1 H3 H2 H4 H5 H6 H7.  eapply H0 in H8.  clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite map.get_put_same in H10. fwd. eapply exec.op.
+                 { apply H11. }
+                 { simpl. reflexivity. }
+                 { progress simpl in *. replace (word.or z' (word.of_Z v))  with  (word.or (word.of_Z v) z').
+                   { apply H12. }
+                   { apply word_or_comm. assumption.  }
+                 }
+               }
+               { inversion H. clear H1 H3 H2 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+                 { apply H10. }
+                 { apply H11. }
+                 { apply H12. }
+               }
+             }
+           }
+           {
+             inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+             { apply H10. }
+             { apply H11. }
+             { apply H12. }
+           }
+         }
+          { destr (is12BitImmediate v); clear E.
+           { destr ((x =? v0)%string).
+             { inversion H. clear H1 H2 H3 H4 H5 H6 H7.  eapply H0 in H8. clear H0. apply exec.seq_cps.  apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite  map.get_put_same in H11. fwd. eapply exec.op.
+               { apply H10. }
+               { simpl. reflexivity. }
+               { apply H12. }
+             }
+             { destr ((x =? y)%string).
+               { inversion H.  clear H1 H3 H2 H4 H5 H6 H7.  eapply H0 in H8.  clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite map.get_put_same in H10. fwd. eapply exec.op.
+                 { apply H11. }
+                 { simpl. reflexivity. }
+                 { progress simpl in *. replace (word.xor z' (word.of_Z v))  with  (word.xor (word.of_Z v) z').
+                   { apply H12. }
+                   { apply word_xor_comm. assumption.  }
+                 }
+               }
+               { inversion H. clear H1 H3 H2 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+                 { apply H10. }
+                 { apply H11. }
+                 { apply H12. }
+               }
+             }
+           }
+           {
+             inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+             { apply H10. }
+             { apply H11. }
+             { apply H12. }
+           }
+          }
+          {
+            destr (is5BitImmediate v).
+            {
+              destr (x=?v0)%string.
+              {
+                inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite map.get_put_same in H11. fwd. eapply exec.op.
+                { apply H10. }
+                { simpl. reflexivity. }
+                { apply H12. }
+              }
+              {
+                inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+                { apply H10. }
+                { apply H11. }
+                { apply H12. }
+              }
+            }
+            {
+              inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+              { apply H10. }
+              { apply H11. }
+              { apply H12. }
+            }
+          }
+          {
+            destr (is5BitImmediate v).
+            {
+              destr (x=?v0)%string.
+              {
+                inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite map.get_put_same in H11. fwd. eapply exec.op.
+                { apply H10. }
+                { simpl. reflexivity. }
+                { apply H12. }
+              }
+              {
+                inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+                { apply H10. }
+                { apply H11. }
+                { apply H12. }
+              }
+            }
+            {
+              inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+              { apply H10. }
+              { apply H11. }
+              { apply H12. }
+            }
+          }
+          {
+            destr (is5BitImmediate v).
+            {
+              destr (x=?v0)%string.
+              {
+                inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite map.get_put_same in H11. fwd. eapply exec.op.
+                { apply H10. }
+                { simpl. reflexivity. }
+                { apply H12. }
+              }
+              {
+                inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+                { apply H10. }
+                { apply H11. }
+                { apply H12. }
+              }
+            }
+            {
+              inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+              { apply H10. }
+              { apply H11. }
+              { apply H12. }
+            }
+          }
+          {
+            destr (is12BitImmediate v).
+            {
+              destr (x=?v0)%string.
+              {
+                inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite map.get_put_same in H11. fwd. eapply exec.op.
+                { apply H10. }
+                { simpl. reflexivity. }
+                { apply H12. }
+              }
+              {
+                inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+                { apply H10. }
+                { apply H11. }
+                { apply H12. }
+              }
+            }
+            {
+              inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+              { apply H10. }
+              { apply H11. }
+              { apply H12. }
+            }
+          }
+          {
+            destr (is12BitImmediate v).
+            {
+              destr (x=?v0)%string.
+              {
+                inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite map.get_put_same in H11. fwd. eapply exec.op.
+                { apply H10. }
+                { simpl. reflexivity. }
+                { apply H12. }
+              }
+              {
+                inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+                { apply H10. }
+                { apply H11. }
+                { apply H12. }
+              }
+            }
+            {
+              inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+              { apply H10. }
+              { apply H11. }
+              { apply H12. }
+            }
+          }
+          {
+            inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
+            { apply H10. }
+            { apply H11. }
+            { apply H12. }
+          }
+       }
+       {
+         inversion H. clear H1 H2 H3 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. fwd. eapply exec.op.
+         { apply H10. }
+         { simpl. reflexivity. }
+         { apply H12. }
+       }
+Qed.
 
 End WithArguments.
