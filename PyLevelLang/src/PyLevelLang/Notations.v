@@ -3,6 +3,8 @@ Require Import PyLevelLang.Elaborate.
 Require Import PyLevelLang.Interpret.
 Require Import coqutil.Map.Interface coqutil.Map.SortedListString coqutil.Map.Properties.
 Require Import coqutil.Datatypes.Result.
+Require Import Coq.Lists.List.
+Import ListNotations.
 Import ResultMonadNotations.
 
 (* Set Printing All. *)
@@ -12,6 +14,7 @@ Declare Scope pylevel_scope.
 
 Local Open Scope Z_scope.
 Local Open Scope string_scope.
+Local Open Scope list_scope.
 
 Local Open Scope pylevel_scope.
 
@@ -75,8 +78,8 @@ Notation "( x , y )"          := (PEBinop POPair x y)
     y custom pylevel at level 99, left associativity) : pylevel_scope.
 Notation "x :: y"             := (PEBinop POCons x y)
    (in custom pylevel at level 55, right associativity) : pylevel_scope.
-Notation "'range' x 'to' y"  := (PEBinop PORange x y)
-   (in custom pylevel at level 99, left associativity) : pylevel_scope.
+Notation "'range(' x ',' y ')'"  := (PEBinop PORange x y)
+   (in custom pylevel at level 10, left associativity) : pylevel_scope.
 
 Notation "[ x , .. , y , z ]"   := (PEBinop POCons x .. (PEBinop POCons y (PESingleton z)) ..)
    (in custom pylevel at level 0, left associativity) : pylevel_scope.
@@ -174,7 +177,7 @@ Section Examples.
   Goal elaborate_interpret map.empty <{ if !(1 == 2) then 5 else 98+1 }> = Success (existT _ (TInt) (5)).
   Proof. reflexivity. Abort.
 
-  Goal elaborate_interpret map.empty <{ range 3 to 5 }> = Success (existT _ (TList TInt) (3 :: 4 :: nil)).
+  Goal elaborate_interpret map.empty <{ range(3, 5) }> = Success (existT _ (TList TInt) (3 :: 4 :: nil)).
   Proof. reflexivity. Abort.
 
   Goal elaborate_interpret map.empty <{ flatmap [1, 2] "x" ["x"]}> = Success (existT _ (TList TInt) (1 :: 2 :: nil)).
@@ -182,6 +185,10 @@ Section Examples.
 
   Goal elaborate_interpret map.empty <{ flatmap [1] "x" ["x"] }> = Success (existT _ (TList TInt) (1 :: nil)).
   reflexivity.  Abort.
+
+  Goal elaborate_interpret map.empty <{ flatmap range(1, 10) "x" ["x"*"x"] }>
+     = Success (existT interp_type (TList TInt) [1; 4; 9; 16; 25; 36; 49; 64; 81]).
+  Proof. reflexivity. Abort.
 
 End Examples.
 
