@@ -435,7 +435,8 @@ Ltac add_snippet s :=
       | RExpr ?e => eapply (wp_set _ name e)
       end
   | SVoidCall ?fname ?arges => call (@None (prod bool string)) fname arges
-  | SStore ?sz ?addr ?val => eapply (wp_store _ sz addr val)
+  | SStore access_size.word ?addr ?val => eapply (wp_store_uintptr _ addr val)
+  | SStore ?sz ?addr ?val => eapply (wp_store_uint _ sz addr val)
   | SIf ?c => eapply (wp_if_bool_dexpr _ c);
               let n := fresh "Scope0" in
               pose proof (mk_scope_marker IfCondition) as n
@@ -509,7 +510,8 @@ Ltac program_logic_step :=
   | |- dexpr1 _ _ (expr.var _)     _ _ => eapply dexpr1_var; [reflexivity| ]
   | |- dexpr1 _ _ (expr.literal _) _ _ => eapply dexpr1_literal
   | |- dexpr1 _ _ (expr.op _ _ _)  _ _ => eapply dexpr1_binop_unf
-  | |- dexpr1 _ _ (expr.load _ _)  _ _ => eapply dexpr1_load
+  | |- dexpr1 _ _ (expr.load access_size.word _)  _ _ => eapply dexpr1_load_uintptr
+  | |- dexpr1 _ _ (expr.load _ _)  _ _ => eapply dexpr1_load_uint
   | |- dexprs1 _ _ (cons _ _) _ _ => eapply dexprs1_cons
   | |- dexprs1 _ _ nil _ _ => eapply dexprs1_nil
   | |- bool_expr_branches _ _ _ _ => eapply BoolSpec_expr_branches; [ intro | intro | ]

@@ -57,7 +57,28 @@ Section WithParams.
 
   (* Note: no conversion needed between v in sepclause and v returned,
      and sep already enforces bounds on v *)
-  Lemma dexpr_load: forall m l e addr sz v R,
+  Lemma dexpr_load_uintptr: forall m l e addr v R,
+      dexpr m l e addr ->
+      sep (uintptr v addr) R m ->
+      dexpr m l (expr.load access_size.word e) v.
+  Proof.
+    intros. constructor. hnf. inversion H; clear H. hnf in H1.
+    eapply weaken_expr. 1: eassumption.
+    intros. subst v0. hnf. eexists. split; [ | reflexivity].
+    unfold uintptr, Scalars.scalar in *.
+    rewrite Scalars.load_of_sep with (value := v) (R := R). 2: assumption.
+    unfold Scalars.truncate_word, Scalars.truncate_Z.
+    rewrite Z.land_ones by lia. f_equal.
+    unfold bytes_per, bytes_per_word.
+    destruct width_cases as [E|E]; subst width;
+      try change (2 ^ _) with (2 ^ 32);
+      try change (2 ^ _) with (2 ^ 64);
+      ZnWords.
+  Qed.
+
+  (* Note: no conversion needed between v in sepclause and v returned,
+     and sep already enforces bounds on v *)
+  Lemma dexpr_load_uint: forall m l e addr sz v R,
       dexpr m l e addr ->
       sep (uint (access_size_to_nbits sz) v addr) R m ->
       dexpr m l (expr.load sz e) (word.of_Z v).
@@ -133,12 +154,20 @@ Section WithParams.
     intros. constructor. 2: assumption. eapply dexpr_var; eassumption.
   Qed.
 
-  Lemma dexpr1_load: forall m l e addr sz v (R: mem -> Prop) (P: Prop),
+  Lemma dexpr1_load_uintptr: forall m l e addr v (R: mem -> Prop) (P: Prop),
+      dexpr1 m l e addr (sep (uintptr v addr) R m /\ P) ->
+      dexpr1 m l (expr.load access_size.word e) v P.
+  Proof.
+    intros. inversion H; clear H. fwd. constructor. 2: assumption.
+    eapply dexpr_load_uintptr; eassumption.
+  Qed.
+
+  Lemma dexpr1_load_uint: forall m l e addr sz v (R: mem -> Prop) (P: Prop),
       dexpr1 m l e addr (sep (uint (access_size_to_nbits sz) v addr) R m /\ P) ->
       dexpr1 m l (expr.load sz e) (word.of_Z v) P.
   Proof.
     intros. inversion H; clear H. fwd. constructor. 2: assumption.
-    eapply dexpr_load; eassumption.
+    eapply dexpr_load_uint; eassumption.
   Qed.
 
   (* TODO later: dexpr1_inlinetable *)
@@ -349,7 +378,24 @@ Section WithParams.
     cbn -[map.put]. eexists. split. 1: eassumption. unfold dlet.dlet. assumption.
   Qed.
 
-  Lemma wp_store0: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
+  Lemma wp_store_uintptr0: forall fs ea ev a v v_old R t m l rest (post: _->_->_->Prop),
+      dexpr m l ea a ->
+      dexpr m l ev v ->
+      sep (uintptr v_old a) R m ->
+      (forall m', sep (uintptr v a) R m' -> wp_cmd fs rest t m' l post) ->
+      wp_cmd fs (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
+  Proof.
+    intros. inversion H; clear H. inversion H0; clear H0.
+    constructor. hnf.
+    eexists. split. 1: eassumption.
+    eexists. split. 1: eassumption.
+    unfold store.
+    unfold uintptr, Scalars.scalar in *.
+    eapply Scalars.store_of_sep. 1: eassumption.
+    intros. eapply H2. assumption.
+  Qed.
+
+  Lemma wp_store_uint0: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr m l ea a ->
       dexpr m l ev v ->
       0 <= word.unsigned v < 2 ^ access_size_to_nbits sz ->
@@ -437,7 +483,18 @@ Section WithParams.
     intros. eapply wp_unset_many. subst. destruct b; assumption.
   Qed.
 
-  Lemma wp_store: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
+  Lemma wp_store_uintptr: forall fs ea ev a v v_old R t m l rest (post: _->_->_->Prop),
+      dexpr1 m l ea a
+        (dexpr1 m l ev v
+           (sep (uintptr v_old a) R m /\
+            (forall m, sep (uintptr v a) R m -> wp_cmd fs rest t m l post))) ->
+      wp_cmd fs (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
+  Proof.
+    intros. inversion H; clear H. inversion Hp; clear Hp. destruct Hp0 as (H & C).
+    eapply wp_store_uintptr0; eassumption.
+  Qed.
+
+  Lemma wp_store_uint: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
         (dexpr1 m l ev v
            (0 <= word.unsigned v < 2 ^ access_size_to_nbits sz /\
@@ -448,7 +505,7 @@ Section WithParams.
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion Hp; clear Hp. destruct Hp0 as (B & H & C).
-    eapply wp_store0; eassumption.
+    eapply wp_store_uint0; eassumption.
   Qed.
 
   Definition then_branch_marker(P: Prop) := P.

@@ -24,25 +24,25 @@ void sort3_separate_args(uintptr_t a0, uintptr_t a1, uintptr_t a2) /**#
 Derive sort3_separate_args SuchThat (fun_correct! sort3_separate_args)
 As sort3_separate_args_ok.                                                    .**/
 {                                                                        /**. .**/
-  uintptr_t w0 = load(a0);                                               /**. .**/
-  uintptr_t w1 = load(a1);                                               /**. .**/
-  uintptr_t w2 = load(a2);                                               /**. .**/
+  uintptr_t w0 = load32(a0);                                             /**. .**/
+  uintptr_t w1 = load32(a1);                                             /**. .**/
+  uintptr_t w2 = load32(a2);                                             /**. .**/
   if (w1 <= w0 && w1 <= w2) {                                            /**. .**/
-    store(a0, w1);                                                       /**. .**/
+    store32(a0, w1);                                                     /**. .**/
     w1 = w0;                                                             /**. .**/
   } else {                                                               /**. .**/
     if (w2 <= w0 && w2 <= w1) {                                          /**. .**/
-      store(a0, w2);                                                     /**. .**/
+      store32(a0, w2);                                                   /**. .**/
       w2 = w0;                                                           /**. .**/
     } else {                                                             /**. .**/
     }                                                                    /**. .**/
   }                                                                      /**. .**/
   if (w2 < w1) {                                                         /**. .**/
-    store(a1, w2);                                                       /**. .**/
-    store(a2, w1);                                                       /**. .**/
+    store32(a1, w2);                                                     /**. .**/
+    store32(a2, w1);                                                     /**. .**/
   } else {                                                               /**. .**/
-    store(a1, w1);                                                       /**. .**/
-    store(a2, w2);                                                       /**. .**/
+    store32(a1, w1);                                                     /**. .**/
+    store32(a2, w2);                                                     /**. .**/
   }                                                                      /**. .**/
 }                                                                        /**.
 Qed.
