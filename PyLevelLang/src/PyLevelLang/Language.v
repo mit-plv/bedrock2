@@ -40,8 +40,7 @@ Inductive const : type -> Type :=
 Inductive punop : Type :=
   | PONeg
   | PONot
-  | POLength
-  | POLengthString.
+  | POLength.
 
 (* Unary operators (typed) *)
 Inductive unop : type -> type -> Type :=
@@ -62,7 +61,6 @@ Inductive pbinop : Type :=
   | POAnd
   | POOr
   | POConcat
-  | POConcatString
   | POLess
   | POEq
   | PORepeat

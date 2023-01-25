@@ -33,11 +33,10 @@ Section WithMap.
           match t1 as t' return expr t' -> _ with
           | TList _ => fun e1 =>
               Success (existT _ _ (EUnop (OLength _) e1))
-          | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
+          | TString => fun e1 =>
+              Success (existT _ _ (EUnop OLengthString e1))
+          | _ => fun _ => error:(e1 "has type" t1 "but expected" TList "or" TString)
           end e1
-      | POLengthString =>
-          e1' <- enforce_type TString e1;;
-          Success (existT _ _ (EUnop OLengthString e1'))
       end.
 
     (* Helper function to enforce `can_eq` in type system *)
@@ -103,12 +102,11 @@ Section WithMap.
           | TList t1 => fun e1 =>
               e2' <- enforce_type (TList t1) e2;;
               Success (existT _ _ (EBinop (OConcat _) e1 e2'))
-          | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
+          | TString => fun e1 =>
+              e2' <- enforce_type TString e2;;
+              Success (existT _ _ (EBinop OConcatString e1 e2'))
+          | _ => fun _ => error:(e1 "has type" t1 "but expected" TList "or" TString)
           end e1
-      | POConcatString =>
-          e1' <- enforce_type TString e1;;
-          e2' <- enforce_type TString e2;;
-          Success (existT _ _ (EBinop OConcatString e1' e2'))
       | POLess =>
           e1' <- enforce_type TInt e1;;
           e2' <- enforce_type TInt e2;;
