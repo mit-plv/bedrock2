@@ -71,7 +71,7 @@ Section WithMap.
     | CEmpty => tt
     end.
 
-  Definition interp_unop (l : locals) {t1 t2 : type} (o : unop t1 t2) :
+  Definition interp_unop {t1 t2 : type} (o : unop t1 t2) :
     interp_type t1 -> interp_type t2 :=
     match o in unop t1 t2 return interp_type t1 -> interp_type t2 with
     | ONeg => Z.sub 0
@@ -82,7 +82,7 @@ Section WithMap.
     | OSnd _ _ _ => snd
     end.
 
-  Definition interp_binop (l : locals) {t1 t2 t3: type} (o : binop t1 t2 t3) : 
+  Definition interp_binop {t1 t2 t3: type} (o : binop t1 t2 t3) : 
     interp_type t1 -> interp_type t2 -> interp_type t3 := 
     match o in binop t1 t2 t3 
     return interp_type t1 -> interp_type t2 -> interp_type t3 with 
@@ -107,8 +107,8 @@ Section WithMap.
     match e in (expr t0) return (interp_type t0) with
     | EVar _ x | ELoc _ x => get_local l x
     | EConst c => interp_const c
-    | EUnop o e1 => interp_unop l o (interp_expr l e1)
-    | EBinop o e1 e2 => interp_binop l o (interp_expr l e1) (interp_expr l e2)
+    | EUnop o e1 => interp_unop o (interp_expr l e1)
+    | EBinop o e1 e2 => interp_binop o (interp_expr l e1) (interp_expr l e2)
     | EFlatmap e1 x e2 => flat_map (fun y => interp_expr (set_local l x y) e1) (interp_expr l e2)
     | EIf e1 e2 e3 => if interp_expr l e1 then interp_expr l e2 else interp_expr l e3
     | ELet x e1 e2 => interp_expr (set_local l x (interp_expr l e1)) e2
