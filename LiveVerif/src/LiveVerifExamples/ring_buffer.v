@@ -32,7 +32,7 @@ void ring_buf_enq(uintptr_t b_addr, uintptr_t v) /**#
           * R }> m' #**/                                                   /**.
 Derive ring_buf_enq SuchThat (fun_correct! ring_buf_enq) As ring_buf_enq_ok.    .**/
 {                                                                          /**. .**/
-  uintptr_t i = (load4(b_addr+4) + load4(b_addr+8)) % load4(b_addr);       /**.
+  uintptr_t i = (load32(b_addr+4) + load32(b_addr+8)) % load32(b_addr);       /**.
 
   clear Error.
   unfold raw_ring_buffer in *|-.
@@ -40,11 +40,11 @@ Derive ring_buf_enq SuchThat (fun_correct! ring_buf_enq) As ring_buf_enq_ok.    
   (* interp_sepapp_tree semi-reification to expose one field *)
 
   (* TODO support &p->field notation, which would allow writing
-  uintptr_t i = (load4(&b_addr->dequeue_pos) + load4(&b_addr->n_elems))
-                % load4(&b_addr->capacity);
+  uintptr_t i = (load32(&b_addr->dequeue_pos) + load32(&b_addr->n_elems))
+                % load32(&b_addr->capacity);
 
-  store4(&b_addr->data +
-  store4(b_addr + 12 + load4(b_addr
+  store32(&b_addr->data +
+  store32(b_addr + 12 + load32(b_addr
 *)
 
 Abort.

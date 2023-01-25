@@ -112,19 +112,12 @@ Ltac is_subrange start size start' size' :=
   assert_succeeds (idtac;
     assert (word.unsigned (word.sub start start') + size <= size') by ZnWords).
 
-Ltac find_superrange_hyp start size :=
-  match goal with
-  | H: with_mem _ (?P' ?start') |- _ =>
-      let size' := lazymatch constr:(_: PredicateSize P') with ?s => s end in
-      let __ := match constr:(Set) with _ => is_subrange start size start' size' end in H
-  end.
-
 Ltac split_range_from_hyp_default :=
   lazymatch goal with
   | |- split_range_from_hyp ?start ?size (with_mem ?m ?P) ?H ?g =>
       let pf := fresh in
       lazymatch P with
-      | array ?elem ?n ?vs ?start' =>
+      | @array _ _ _ _ _ ?elem (*must match:*)size ?n ?vs ?start' =>
           unshelve epose proof (split_off_elem_from_array start' start elem n _ _ _) as pf;
           [ (* i *)
           | ZnWords
@@ -254,6 +247,27 @@ Ltac merge_step_in_hyp H :=
   eapply canceling_done_in_hyp in H;
   destruct H as (?m & ?D & ?H).
 
+Lemma f_equal_fun[A B: Type]: forall (f g: A -> B) (x: A), f = g -> f x = g x.
+Proof. intros. subst. reflexivity. Qed.
+
+Ltac syntactic_f_equal_step_with_ZnWords :=
+  lazymatch goal with
+  | |- ?x = ?x => reflexivity
+  | |- @eq (@word.rep _ _) _ _ => ZnWords
+  | |- @eq Z _ _ => ZnWords
+  | |- ?f ?a = ?f ?b => eapply (@f_equal _ _ f a b)
+  | |- ?f ?x = ?g ?x => eapply (f_equal_fun f g x)
+  end.
+
+Ltac syntactic_f_equal_with_ZnWords := solve [repeat syntactic_f_equal_step_with_ZnWords].
+
+Lemma rew_with_mem{mem: Type}: forall (P1 P2: mem -> Prop) (m: mem),
+    P1 = P2 ->
+    with_mem m P1 -> with_mem m P2.
+Proof. intros. subst. assumption. Qed.
+
+Ltac sepclause_equality_hook := syntactic_f_equal_with_ZnWords.
+
 Ltac split_merge_step :=
   lazymatch goal with
   | |- canceling (cons (?P ?start) _) ?m _ =>
@@ -261,8 +275,20 @@ Ltac split_merge_step :=
       let g := lazymatch goal with |- ?x => x end in
       change (find_superrange_hyp start size g)
   | |- find_superrange_hyp ?start ?size ?g =>
-      let H := find_superrange_hyp start size in
-      change (split_range_from_hyp start size _ H g)
+      match goal with
+      | H: with_mem ?mH (?P' ?start') |- _ =>
+          let size' := lazymatch constr:(_: PredicateSize P') with ?s => s end in
+          is_subrange start size start' size';
+          tryif assert_succeeds (idtac;
+            assert (size = size') by ZnWords)
+          then (
+            change g;
+            let P := lazymatch goal with | |- canceling (cons ?P _) _ _ => P end in
+            eapply (rew_with_mem (P' start') P mH) in H (* <-- leaves 2 open goals *)
+          ) else change (split_range_from_hyp start size _ H g)
+      end
   | |- split_range_from_hyp ?start ?size ?tH ?H ?g => split_range_from_hyp_hook
+  | |- @eq (@map.rep (@word.rep _ _) Init.Byte.byte _ -> Prop) _ _ =>
+      syntactic_f_equal_with_ZnWords
   | H: merge_step _ |- _ => merge_step_in_hyp H
   end.

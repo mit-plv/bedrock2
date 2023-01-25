@@ -122,4 +122,4 @@ Lemma purify_uintptr{width}{BW: Bitwidth width}{word: word width}
   {mem: map.map word Byte.byte} v a:
   purify (uintptr v a) True.
 Proof. unfold purify. intros. constructor. Qed.
-#[export] Hint Resolve purify_uint : purify.
+#[export] Hint Resolve purify_uintptr : purify.
