@@ -117,11 +117,11 @@ Infix "||" := expr.lazy_or
 Notation "c ? e1 : e2" := (expr.ite c e1 e2)
   (in custom live_expr at level 13, right associativity, only parsing).
 
-Notation "load1( a )" := (expr.load access_size.one a)
+Notation "load8( a )" := (expr.load access_size.one a)
   (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
-Notation "load2( a )" := (expr.load access_size.two a)
+Notation "load16( a )" := (expr.load access_size.two a)
   (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
-Notation "load4( a )" := (expr.load access_size.four a)
+Notation "load32( a )" := (expr.load access_size.four a)
   (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
 Notation  "load( a )" := (expr.load access_size.word a)
   (in custom live_expr at level 1, a custom live_expr at level 100, only parsing).
@@ -181,13 +181,13 @@ Notation "x = r ;" := (SAssign false x ltac:(coerce_expr_to_assignment_rhs r))
    x custom bound_name_or_literal at level 1, r custom live_expr at level 100,
    only parsing).
 
-Notation "store1( a , v ) ;" := (SStore access_size.one a v)
+Notation "store8( a , v ) ;" := (SStore access_size.one a v)
   (in custom snippet at level 0,
    a custom live_expr at level 100, v custom live_expr at level 100).
-Notation "store2( a , v ) ;" := (SStore access_size.two a v)
+Notation "store16( a , v ) ;" := (SStore access_size.two a v)
   (in custom snippet at level 0,
    a custom live_expr at level 100, v custom live_expr at level 100).
-Notation "store4( a , v ) ;" := (SStore access_size.four a v)
+Notation "store32( a , v ) ;" := (SStore access_size.four a v)
   (in custom snippet at level 0,
    a custom live_expr at level 100, v custom live_expr at level 100).
 Notation "store( a , v ) ;" := (SStore access_size.word a v)
@@ -236,13 +236,13 @@ Goal True.
   pose */ s = x + x + x; /*.
   pose */ s = (s << s); /*.
   pose */ s = (s + x); /*.
-  pose */ s = load2(s + x); /*.
+  pose */ s = load16(s + x); /*.
   pose */ x = (x + 1); /*.
   pose */ uintptr_t foo = x + x + x; /*.
   pose */ uintptr_t newname = -s; /*.
   pose */ uintptr_t s = (s << s); /*.
-  pose */ store1(x+4, s-1); /*.
-  pose */ store2(x, load2(s-1)); /*.
-  pose */ store4((x + x) * 4, s-1); /*.
+  pose */ store8(x+4, s-1); /*.
+  pose */ store16(x, load16(s-1)); /*.
+  pose */ store32((x + x) * 4, s-1); /*.
   pose */ store(x+4, s); /*.
 Abort.

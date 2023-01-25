@@ -16,9 +16,9 @@ void swap(uintptr_t a_addr, uintptr_t b_addr) /**#
           * R }> m' #**/                                                   /**.
 Derive swap SuchThat (fun_correct! swap) As swap_ok.                            .**/
 {                                                                          /**. .**/
-  uintptr_t t = load(a_addr);                                              /**. .**/
-  store(a_addr, load(b_addr));                                             /**. .**/
-  store(b_addr, t);                                                        /**. .**/
+  uintptr_t t = load32(a_addr);                                            /**. .**/
+  store32(a_addr, load32(b_addr));                                         /**. .**/
+  store32(b_addr, t);                                                      /**. .**/
 }                                                                          /**.
 Qed.
 
