@@ -28,7 +28,14 @@ Scheme Equality for type. (* creates type_beq and type_eq_dec *)
 Declare Scope pylevel_scope. Local Open Scope pylevel_scope.
 Notation "t1 =? t2" := (type_beq t1 t2) (at level 70) : pylevel_scope.
 
-(* Constants *)
+(* Untyped Constants *)
+Inductive pconst : Type :=
+  | PCInt (n : Z)
+  | PCBool (b : bool)
+  | PCString (s : string)
+  | PCNil (t : type).
+
+(* Typed Constants *)
 Inductive const : type -> Type :=
   | CInt (n : Z) : const TInt
   | CBool (b : bool) : const TBool
@@ -89,7 +96,7 @@ Inductive binop : type -> type -> type -> Type :=
 (* "Pre-expression": untyped expressions from surface-level parsing. *)
 Inductive pexpr : Type :=
   | PEVar (x : string)
-  | PEConst {t : type} (c : const t)
+  | PEConst (c : pconst)
   | PESingleton (p : pexpr)
   | PEUnop (po : punop) (p : pexpr)
   | PEBinop (po : pbinop) (p1 p2 : pexpr)

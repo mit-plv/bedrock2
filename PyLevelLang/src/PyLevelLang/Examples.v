@@ -20,10 +20,10 @@ Section Examples.
   Local Open Scope string_scope.
 
   Definition ex1 : pexpr :=
-    PEBinop POCons (PEConst (CInt 1))
-      (PEBinop POCons (PEConst (CInt 2))
-        (PEBinop POCons (PEConst (CInt 3))
-          (PESingleton (PEConst (CInt 4))))).
+    PEBinop POCons (PEConst (PCInt 1))
+      (PEBinop POCons (PEConst (PCInt 2))
+        (PEBinop POCons (PEConst (PCInt 3))
+          (PESingleton (PEConst (PCInt 4))))).
   Goal elaborate map.empty ex1 =
     Success (existT _ _
       (EBinop (OCons _) (EConst (CInt 1))
@@ -37,10 +37,10 @@ Section Examples.
   reflexivity. Qed.
 
   Definition ex2 : pexpr :=
-    PEBinop POCons (PEConst (CString "a")) (
-      PEBinop POCons (PEConst (CInt 2)) (
-        PEBinop POCons (PEConst (CInt 3)) (
-          PESingleton (PEConst (CInt 4))))).
+    PEBinop POCons (PEConst (PCString "a")) (
+      PEBinop POCons (PEConst (PCInt 2)) (
+        PEBinop POCons (PEConst (PCInt 3)) (
+          PESingleton (PEConst (PCInt 4))))).
   Goal elaborate map.empty ex2 = error:(
     (EBinop (OCons TInt) (EConst (CInt 2))
       (EBinop (OCons TInt) (EConst (CInt 3))
@@ -63,7 +63,7 @@ Section Examples.
   reflexivity. Qed.
 
   Definition ex3 : pexpr :=
-    PEProj (PELet "x" (PEConst (CInt 42))
+    PEProj (PELet "x" (PEConst (PCInt 42))
       (PEBinop POPair (PEVar "x") (PEVar "x"))) "0".
   Goal elaborate map.empty ex3 =
     Success (existT _ _
@@ -76,7 +76,7 @@ Section Examples.
   reflexivity. Qed.
 
   Definition ex4 : pexpr :=
-    PEProj (PELet "x" (PEConst (CInt 42))
+    PEProj (PELet "x" (PEConst (PCInt 42))
       (PEBinop POPair (PEVar "x") (PEVar "y"))) "0".
   Goal elaborate map.empty ex4 = error:("Undefined variable" "y").
   reflexivity. Qed.
@@ -84,8 +84,8 @@ Section Examples.
   reflexivity. Qed.
 
   Definition ex5 : pexpr :=
-    PEBinop POPair (PEConst (CInt 42))
-      (PEBinop POPair (PEConst (CBool true)) (PEConst (CString "hello"))).
+    PEBinop POPair (PEConst (PCInt 42))
+      (PEBinop POPair (PEConst (PCBool true)) (PEConst (PCString "hello"))).
   Goal elaborate map.empty ex5 =
     Success (existT _ _
       (EBinop (OPair "0" _ _) (EConst (CInt 42))
@@ -108,9 +108,9 @@ Section Examples.
 
   Definition ex6 : pexpr :=
     PERecord
-      (("bool", PEConst (CBool false))
-      :: ("string", PEConst (CString "abc"))
-      :: ("int", PEConst (CInt (-2)))
+      (("bool", PEConst (PCBool false))
+      :: ("string", PEConst (PCString "abc"))
+      :: ("int", PEConst (PCInt (-2)))
       :: nil).
   Goal elaborate map.empty ex6 =
     Success (existT _ _
@@ -129,8 +129,8 @@ Section Examples.
 
   Definition ex7 : pexpr :=
     PEProj (PERecord
-      (("a", PEConst (CBool true))
-      :: ("b", PEConst (CInt 50))
+      (("a", PEConst (PCBool true))
+      :: ("b", PEConst (PCInt 50))
       :: nil))
     "b".
   Goal elaborate map.empty ex7 =
@@ -146,13 +146,13 @@ Section Examples.
   reflexivity. Qed.
 
   Definition ex8 : pexpr :=
-    PEBinop POEq (PEConst (CBool true)) (PEConst (CInt 5)).
+    PEBinop POEq (PEConst (PCBool true)) (PEConst (PCInt 5)).
   Goal elaborate map.empty ex8 =
     error:((EConst (CInt 5)) "has type" TInt "but expected" TBool).
   reflexivity. Qed.
 
   Definition ex9 : pexpr :=
-    PEBinop POEq (PEConst (CBool true)) (PEConst (CBool false)).
+    PEBinop POEq (PEConst (PCBool true)) (PEConst (PCBool false)).
   Goal elaborate map.empty ex9 =
     Success (existT _ _
       (EBinop (OEq TBool eq_refl)

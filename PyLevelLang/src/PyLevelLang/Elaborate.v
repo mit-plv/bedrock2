@@ -19,6 +19,18 @@ Section WithMap.
   Section ElaborateHelpers.
     Context (elaborate : tenv -> pexpr -> result {t & expr t}).
 
+    Definition elaborate_const (G : tenv) (pc : pconst) : result {t & expr t} :=
+      match pc with
+      | PCInt z =>
+          Success (existT _ _ (EConst (CInt z)))
+      | PCBool b =>
+          Success (existT _ _ (EConst (CBool b)))
+      | PCString s =>
+          Success (existT _ _ (EConst (CString s)))
+      | PCNil t =>
+          Success (existT _ _ (EConst (CNil t)))
+      end.
+
     Definition elaborate_unop (G : tenv) (po : punop) (p1 : pexpr) :
       result {t & expr t} :=
       '(existT _ t1 e1) <- elaborate G p1;;
@@ -176,7 +188,7 @@ Section WithMap.
         | None => error:("Undefined variable" x)
         end
     | PEConst c =>
-        Success (existT _ _ (EConst c))
+        elaborate_const G c
     | PESingleton p' =>
         '(existT _ t' e') <- elaborate G p';;
         Success (existT _ _ (EBinop (OCons _) e' (EConst (CNil t'))))
