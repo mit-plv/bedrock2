@@ -22,8 +22,7 @@ Section WithArguments.
       (preprocess [autorewrite with rew_word_morphism],
        morphism (word.ring_morph (word := word)),
         constants [word_cst]).
-  Search word.add.
-  Print word.unsigned_inj.
+
   Lemma word_and_comm:
     forall {width: Z} {word: Interface.word width},
       word.ok word -> forall x y : word, word.and x y = word.and y x.
@@ -64,7 +63,7 @@ Section WithArguments.
                { inversion H.  clear H1 H3 H2 H4 H5 H6 H7.  eapply H0 in H8.  clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite map.get_put_same in H10. fwd. eapply exec.op.
                  { apply H11. }
                  { simpl. reflexivity. }
-                 { progress simpl in *. progress replace (word.add z' (word.of_Z v))  with  (word.add (word.of_Z v) z') by ring. apply H12. }
+                 { simpl in *. replace (word.add z' (word.of_Z v))  with  (word.add (word.of_Z v) z') by ring. apply H12. }
                }
                { inversion H. clear H1 H3 H2 H4 H5 H6 H7. eapply H0 in H8. clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. eapply exec.op.
                  { apply H10. }
@@ -139,7 +138,7 @@ Section WithArguments.
                { inversion H.  clear H1 H3 H2 H4 H5 H6 H7.  eapply H0 in H8.  clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite map.get_put_same in H10. fwd. eapply exec.op.
                  { apply H11. }
                  { simpl. reflexivity. }
-                 { progress simpl in *. replace (word.and z' (word.of_Z v))  with  (word.and (word.of_Z v) z').
+                 { simpl in *. replace (word.and z' (word.of_Z v))  with  (word.and (word.of_Z v) z').
                    { apply H12. }
                    { apply word_and_comm. assumption.  }
                  }
@@ -169,7 +168,7 @@ Section WithArguments.
                { inversion H.  clear H1 H3 H2 H4 H5 H6 H7.  eapply H0 in H8.  clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite map.get_put_same in H10. fwd. eapply exec.op.
                  { apply H11. }
                  { simpl. reflexivity. }
-                 { progress simpl in *. replace (word.or z' (word.of_Z v))  with  (word.or (word.of_Z v) z').
+                 { simpl in *. replace (word.or z' (word.of_Z v))  with  (word.or (word.of_Z v) z').
                    { apply H12. }
                    { apply word_or_comm. assumption.  }
                  }
@@ -199,7 +198,7 @@ Section WithArguments.
                { inversion H.  clear H1 H3 H2 H4 H5 H6 H7.  eapply H0 in H8.  clear H0. apply exec.seq_cps. apply exec.lit. inversion H8. clear H0 H1 H2 H3 H4 H5 H6 H7 H9. simpl in H11. rewrite map.get_put_same in H10. fwd. eapply exec.op.
                  { apply H11. }
                  { simpl. reflexivity. }
-                 { progress simpl in *. replace (word.xor z' (word.of_Z v))  with  (word.xor (word.of_Z v) z').
+                 { simpl in *. replace (word.xor z' (word.of_Z v))  with  (word.xor (word.of_Z v) z').
                    { apply H12. }
                    { apply word_xor_comm. assumption.  }
                  }
