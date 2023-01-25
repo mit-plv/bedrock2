@@ -115,8 +115,12 @@ Section WithMap.
           e2' <- enforce_type t1 e2;;
           construct_eq e1 e2'
       | PORepeat =>
-          e1' <- enforce_type TInt e1;;
-          Success (existT _ _ (EBinop (ORepeat _) e1' e2))
+          match t1 as t' return expr t' -> _ with
+          | TList t1 => fun e1 =>
+              e2' <- enforce_type TInt e2;;
+              Success (existT _ _ (EBinop (ORepeat _) e1 e2'))
+          | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
+          end e1
       | POPair =>
           Success (existT _ _
             (EBinop (OPair "0" _ _) e1
