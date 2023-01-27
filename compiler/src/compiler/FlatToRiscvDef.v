@@ -95,8 +95,20 @@ Section FlatToRiscv1.
     | access_size.four => Sw
     | access_size.word => if bitwidth iset =? 32 then Sw else Sd
     end.
+  Definition compile_op_imm(rd: Z)(op: Syntax.bopname)(rs1: Z)(c2: Z): list Instruction :=
+    match op with
+    | Syntax.bopname.add => [[Addi rd rs1 c2]]
+    | Syntax.bopname.and => [[Andi rd rs1 c2]]
+    | Syntax.bopname.or  => [[Ori  rd rs1 c2]]
+    | Syntax.bopname.xor => [[Xori rd rs1 c2]]
+    | Syntax.bopname.sru => [[Srli rd rs1 c2]]
+    | Syntax.bopname.slu => [[Slli rd rs1 c2]]
+    | Syntax.bopname.srs => [[Srai rd rs1 c2]]
+    | Syntax.bopname.lts => [[Slti rd rs1 c2]]
+    | Syntax.bopname.ltu => [[Sltiu rd rs1 c2]]
+    | _ => []
+    end.
 
-  
   Definition compile_op_register(rd: Z)(op: Syntax.bopname)(rs1 rs2: Z): list Instruction :=
     match op with
     | Syntax.bopname.add => [[Add rd rs1 rs2]]
@@ -117,10 +129,10 @@ Section FlatToRiscv1.
     end.
   Definition compile_op(rd: Z)(op: Syntax.bopname)(op1 : Z)(op2: operand): list Instruction :=
     match  op2 with
-    | Var v2 => compile_op_register rd op op1 v2 
-    | _ => []
+    | Var v2 => compile_op_register rd op op1 v2
+    | Const c2 => compile_op_imm rd op op1 c2
     end.
-  
+
   Definition compile_lit_12bit(rd: Z)(v: Z): list Instruction :=
     [[ Addi rd Register0 (signExtend 12 v) ]].
 
