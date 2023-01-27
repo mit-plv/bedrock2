@@ -32,12 +32,12 @@ Derive swap_bc SuchThat (fun_correct! swap_bc) As swap_bc_ok.                   
   unfold foo in *|-.
 
   ltac1:(
-    let a' := constr:(p ^+ /[4]) in
-    let sz := constr:(4) in
-    let H := constr:(H1) in
-    lazymatch type of H with
-    | with_mem _ (sepapps _ ?a) =>
-        unshelve epose proof (split_off_field_from_sepapps 1 a a' sz _ _)
+    lazymatch goal with
+    | |- split_range_from_hyp ?a' ?sz _ ?H _ =>
+        lazymatch type of H with
+        | with_mem _ (sepapps _ ?a) =>
+            unshelve epose proof (split_off_field_from_sepapps 1 a a' sz _ _)
+        end
     end).
 
   Focus 3.
