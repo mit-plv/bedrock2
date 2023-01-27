@@ -71,7 +71,7 @@ Section WithMap.
     | CEmpty => tt
     end.
 
-  Definition interp_unop (l : locals) {t1 t2 : type} (o : unop t1 t2) :
+  Definition interp_unop {t1 t2 : type} (o : unop t1 t2) :
     interp_type t1 -> interp_type t2 :=
     match o in unop t1 t2 return interp_type t1 -> interp_type t2 with
     | ONeg => Z.sub 0
@@ -82,7 +82,7 @@ Section WithMap.
     | OSnd _ _ _ => snd
     end.
 
-  Definition interp_binop (l : locals) {t1 t2 t3: type} (o : binop t1 t2 t3) : 
+  Definition interp_binop {t1 t2 t3: type} (o : binop t1 t2 t3) : 
     interp_type t1 -> interp_type t2 -> interp_type t3 := 
     match o in binop t1 t2 t3 
     return interp_type t1 -> interp_type t2 -> interp_type t3 with 
@@ -97,7 +97,7 @@ Section WithMap.
     | OConcatString => String.append
     | OLess => Z.leb
     | OEq _ H => eqb_values H
-    | ORepeat _ => fun n x => repeat x (Z.to_nat n)
+    | ORepeat _ => fun l n => concat (repeat l (Z.to_nat n))
     | OPair _ _ _ => pair
     | OCons _ => cons
     | ORange => fun s e => eval_range s (Z.to_nat (e - s))
@@ -105,14 +105,26 @@ Section WithMap.
 
   Fixpoint interp_expr (l : locals) {t : type} (e : expr t) : interp_type t :=
     match e in (expr t0) return (interp_type t0) with
-    | EVar _ x => get_local l x
-    | ELoc _ x => get_local l x
+    | EVar _ x | ELoc _ x => get_local l x
     | EConst c => interp_const c
-    | EUnop o e1 => interp_unop l o (interp_expr l e1)
-    | EBinop o e1 e2 => interp_binop l o (interp_expr l e1) (interp_expr l e2)
-    | EFlatmap e1 x e2 => flat_map (fun y => interp_expr (set_local l x y) e1) (interp_expr l e2)
+    | EUnop o e1 => interp_unop o (interp_expr l e1)
+    | EBinop o e1 e2 => interp_binop o (interp_expr l e1) (interp_expr l e2)
+    | EFlatmap l1 x fn => flat_map (fun y => interp_expr (set_local l x y) fn) (interp_expr l l1)
     | EIf e1 e2 e3 => if interp_expr l e1 then interp_expr l e2 else interp_expr l e3
     | ELet x e1 e2 => interp_expr (set_local l x (interp_expr l e1)) e2
     end.
 
+  Fixpoint interp_command (l : locals) (c : command) : locals :=
+    match c with
+    | CSkip => l
+    | CSeq c1 c2 => interp_command (interp_command l c1) c2
+    | CLet x e c1 | CLetMut x e c1 => let l' := interp_command (set_local l x (interp_expr l e)) c1
+                                      in match map.get l x with
+                                         | None => map.remove l' x
+                                         | Some v => set_local l' x (projT2 v)
+                                         end
+    | CGets x e => set_local l x (interp_expr l e)
+    | CIf e c1 c2 => if interp_expr l e then interp_command l c1 else interp_command l c2
+    | CForeach x e c1 => fold_left (fun l' v => interp_command (set_local l' x v) c1) (interp_expr l e) l
+    end.
 End WithMap.

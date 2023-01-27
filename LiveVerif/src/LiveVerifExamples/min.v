@@ -23,8 +23,6 @@ Derive u_min SuchThat (fun_correct! u_min) As u_min_ok.                         
 }                                                                          /**.
 Qed.
 
-Import LiveSnippet.
-
 #[export] Instance spec_of_u_min3: fnspec :=                                    .**/
 
 uintptr_t u_min3 (uintptr_t a, uintptr_t b, uintptr_t c) /**#
