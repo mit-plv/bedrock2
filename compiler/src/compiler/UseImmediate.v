@@ -62,15 +62,27 @@ Section WithArguments.
   Lemma useImmediateCorrect :
     forall e st t m l mc post, exec e st t m l mc post -> exec e (useImmediate is5BitImmediate is12BitImmediate st) t m l mc post.
   Proof.
-    intros.
-    induction H; simpl in *; eauto.
-    destr s1; destr s2; eauto; simpl in *. clear IHexec H1.
-    destr z; repeat destr_exec; eauto; inversion_exec; clear H1 H2 H3 H4 H5 H6 H7; eapply H0 in H8; clear H0; repeat apply_exec; inversion_exec; clear H0 H1 H2 H3 H4 H5 H6 H7 H9; simpl in *; try rewrite map.get_put_same in H10; try rewrite map.get_put_same in H11; fwd; eapply exec.op; try eassumption; try reflexivity; simpl in *; try assumption.
-    { replace (word.add z' (word.of_Z v))  with  (word.add (word.of_Z v) z') by ring. assumption. }
-    { replace (word.add y' (word.of_Z (- v)))  with  (word.sub  y' (word.of_Z v)) by ring. assumption. }
-    { rewrite word_and_comm. assumption. }
-    { rewrite word_or_comm. assumption. }
-    { rewrite word_xor_comm. assumption. }
-Qed.
+  intros;
+  match goal with
+  | [ H: exec _ _ _ _ _ _ _  |- _ ] => induction H
+  end;
+  simpl in *; repeat destr_exec; eauto; inversion_exec;
+  match goal with
+  | [ H: ?P _ _ _ _, H0: forall t m l mc, ?P t m l mc -> _ |- _ ] => apply H0 in H; inversion H
+  end;
+  repeat apply_exec;
+  simpl in *;
+  match goal with
+  | [ H: map.get (map.put _ ?x _) ?x = _ |- _ ] => rewrite map.get_put_same in H; fwd
+  end;
+  eapply exec.op;  simpl;
+  eauto.
+
+  { replace (word.add z' (word.of_Z v))  with  (word.add (word.of_Z v) z') by ring. assumption. }
+  { replace (word.add y' (word.of_Z (- v)))  with  (word.sub  y' (word.of_Z v)) by ring. assumption. }
+  { rewrite word_and_comm. assumption. }
+  { rewrite word_or_comm. assumption. }
+  { rewrite word_xor_comm. assumption. }
+  Qed.
 
 End WithArguments.
