@@ -187,8 +187,8 @@ Section WithMap.
             Success (existT _ _ (ELoc t x))
         | None => error:("Undefined variable" x)
         end
-    | PEConst c =>
-        elaborate_const G c
+    | PEConst pc =>
+        elaborate_const G pc
     | PESingleton p' =>
         '(existT _ t' e') <- elaborate G p';;
         Success (existT _ _ (EBinop (OCons _) e' (EConst (CNil t'))))

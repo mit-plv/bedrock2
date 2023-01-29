@@ -96,7 +96,7 @@ Inductive binop : type -> type -> type -> Type :=
 (* "Pre-expression": untyped expressions from surface-level parsing. *)
 Inductive pexpr : Type :=
   | PEVar (x : string)
-  | PEConst (c : pconst)
+  | PEConst (pc : pconst)
   | PESingleton (p : pexpr)
   | PEUnop (po : punop) (p : pexpr)
   | PEBinop (po : pbinop) (p1 p2 : pexpr)
