@@ -11,6 +11,22 @@ Definition enforce_type (t1 : type) {t2 : type} (e : expr t2) : result (expr t1)
   | _ => error:(e "has type" t2 "but expected" t1)
   end.
 
+(* `enforce_type` preserves equality
+ * (`existT` needs to be used for the statement to typecheck) *)
+Lemma enforce_type_eq :
+  forall t t', t = t' -> forall (e : expr t) (e' : expr t'),
+  enforce_type t' e = Success e' ->
+  existT expr t e = existT expr t' e'.
+Proof.
+  intros t t' H1 e e' H2.
+  unfold enforce_type in H2.
+  destruct type_eq_dec as [H3 |]; try easy.
+  unfold cast in H2.
+  injection H2 as [= <-].
+  unfold eq_rect.
+  now destruct H3.
+Qed.
+
 Section WithMap.
   (* abstract all functions in this section over the implementation of the map,
      and over its spec (map.ok) *)
