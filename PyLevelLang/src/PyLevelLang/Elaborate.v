@@ -298,4 +298,228 @@ Section WithMap.
         | _ => fun _ => error:(e "has type" t "but expected" TList)
         end e
     end.
+
+  (* Well-formedness judgement for `expr`s, stating that an `expr` has no free
+   * variables *)
+  Inductive wf : tenv -> forall {t : type}, expr t -> Prop :=
+    | wf_EVar G t (x : string) :
+        map.get G x = Some (t, false) -> wf G (EVar t x)
+    | wf_ELoc G t (x : string) :
+        map.get G x = Some (t, true) -> wf G (ELoc t x)
+    | wf_EConst G {t} (c : const t) : wf G (EConst c)
+    | wf_EUnop G {t1 t2} (o : unop t1 t2) (e : expr t1) :
+        wf G e -> wf G (EUnop o e)
+    | wf_EBinop G {t1 t2 t3} (o : binop t1 t2 t3)
+        (e1 : expr t1) (e2 : expr t2) :
+        wf G e1 -> wf G e2 -> wf G (EBinop o e1 e2)
+    | wf_EFlatmap G {t} (e1 : expr (TList t)) (x : string)
+        (e2 : expr (TList t)) :
+        wf G e1 -> wf (map.put G x (t, false)) e2 -> wf G (EFlatmap e1 x e2)
+    | wf_EIf G {t} (e1 : expr TBool) (e2 e3 : expr t) :
+        wf G e1 -> wf G e2 -> wf G e3 -> wf G (EIf e1 e2 e3)
+    | wf_ELet G {t1 t2} (x : string) (e1 : expr t1) (e2 : expr t2) :
+        wf G e1 -> wf (map.put G x (t1, false)) e2 -> wf G (ELet x e1 e2).
+
+  Lemma elaborate_wf :
+    forall p G t e, elaborate G p = Success (existT expr t e) -> wf G e.
+  Proof.
+    intro p.
+    induction p; intros G t e H; unfold elaborate in H; fold elaborate in H.
+    - (* PEVar x *)
+      destruct (map.get G x) as [[t' [|]] |] eqn : Hmap.
+      + (* Some (t', true) *)
+        injection H as [= H' H]. rewrite H' in H.
+        injection H as H. rewrite <- H.
+        apply wf_ELoc. now rewrite Hmap, H'.
+      + (* Some (t', false) *)
+        injection H as [= H' H]. rewrite H' in H.
+        injection H as [= <-].
+        apply wf_EVar. now rewrite Hmap, H'.
+      + (* None *)
+        discriminate H.
+    - (* PEConst pc *)
+      destruct pc; unfold elaborate_const in H.
+      all: injection H as [= _ H].
+      all: destruct t; try easy.
+      all: repeat injection H as [= <-].
+      all: apply wf_EConst.
+    - (* PESingleton p *)
+      destruct (elaborate G p) as [[t' e'] |] eqn : H'; try easy.
+      inversion H.
+      apply wf_EBinop.
+      * now apply IHp.
+      * apply wf_EConst.
+    - (* PEUnop po p *)
+      destruct po; unfold elaborate_unop in H.
+      all: destruct (elaborate G p) as [[t1 e1] |] eqn : H1; try easy.
+      all: try (
+        destruct (enforce_type _ e1) as [e1' |] eqn : H1'; try easy;
+        inversion H;
+        apply wf_EUnop;
+        apply IHp; rewrite H1;
+        enough (existT expr _ e1 = existT expr _ e1');
+        now rewrite <- H0 || apply enforce_type_eq;
+        destruct t1 || exact H1'
+      ).
+      + (* POLength *)
+        destruct t1; try easy; inversion H; apply wf_EUnop, IHp, H1.
+    - (* PEBinop po p1 p2 *)
+      destruct po; unfold elaborate_binop in H.
+      all: destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
+      all: destruct (elaborate G p2) as [[t2 e2] |] eqn : H2; try easy.
+      all: try (
+        destruct (enforce_type _ e1) as [e1' |] eqn : H1'; try easy;
+        destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy;
+        inversion H;
+        apply wf_EBinop; (
+          apply IHp1; rewrite H1;
+          enough (existT expr _ e1 = existT expr _ e1');
+          now rewrite <- H0 || apply enforce_type_eq;
+          destruct t1 || exact H1'
+        ) || (
+          apply IHp2; rewrite H2;
+          enough (existT expr _ e2 = existT expr _ e2');
+          now rewrite <- H0 || apply enforce_type_eq;
+          destruct t2 || exact H2'
+        )
+      ).
+      + (* POConcat *)
+        destruct t1; try easy;
+        destruct t2; try easy.
+        * inversion H.
+          apply wf_EBinop.
+          -- now apply IHp1.
+          -- now apply IHp2.
+        * destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
+          inversion H.
+          apply wf_EBinop.
+          -- now apply IHp1.
+          -- apply IHp2. rewrite H2.
+             enough (existT expr _ e2 = existT expr _ e2').
+             { now rewrite <- H0. }
+             apply enforce_type_eq.
+             ++ admit.
+             ++ exact H2'.
+      + (* POEq *)
+        destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
+        unfold construct_eq in H.
+        destruct t1; try easy.
+        all:
+          inversion H;
+          apply wf_EBinop; (
+            now apply IHp1
+          ) || (
+            apply IHp2; rewrite H2;
+            enough (existT expr _ e2 = existT expr _ e2');
+            now rewrite <- H0 || apply enforce_type_eq;
+            destruct t2 || exact H2'
+          ).
+      + (* PORepeat *)
+        destruct t1; try easy.
+        destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
+        inversion H.
+        apply wf_EBinop.
+        * now apply IHp1.
+        * apply IHp2. rewrite H2.
+          enough (existT expr _ e2 = existT expr _ e2').
+          { now rewrite <- H0. }
+          apply enforce_type_eq.
+          -- now destruct t2.
+          -- exact H2'.
+      + (* POPair *)
+        inversion H.
+        apply wf_EBinop.
+        * now apply IHp1.
+        * apply wf_EBinop.
+          -- now apply IHp2.
+          -- apply wf_EConst.
+      + (* POCons *)
+        destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
+        inversion H.
+        apply wf_EBinop.
+        * now apply IHp1.
+        * apply IHp2. rewrite H2.
+          enough (existT expr _ e2 = existT expr _ e2').
+          { now rewrite <- H0. }
+          apply enforce_type_eq.
+          -- admit.
+          -- exact H2'.
+    - (* PEFlatmap p1 x p2 *)
+      destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
+      destruct t1; try easy.
+      destruct (elaborate (map.put G x (t1, false)) p2) as [[t2 e2] |] eqn : H2;
+          try easy.
+      destruct (enforce_type (TList t1) e2) as [e2' |] eqn : H2'; try easy.
+      inversion H.
+      apply wf_EFlatmap.
+      + now apply IHp1.
+      + apply IHp2. rewrite H2.
+        enough (existT expr t2 e2 = existT expr (TList t1) e2').
+        { now rewrite <- H0. }
+        apply enforce_type_eq.
+        * admit.
+        * exact H2'.
+    - (* PEIf p1 p2 p3 *)
+      destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
+      destruct (elaborate G p2) as [[t2 e2] |] eqn : H2; try easy.
+      destruct (elaborate G p3) as [[t3 e3] |] eqn : H3; try easy.
+      destruct (enforce_type TBool e1) as [e1' |] eqn : H1'; try easy.
+      destruct (enforce_type t2 e3) as [e3' |] eqn : H3'; try easy.
+      inversion H.
+      apply wf_EIf.
+      + apply IHp1.
+        rewrite H1.
+        enough (existT expr t1 e1 = existT expr TBool e1').
+        { now rewrite <- H0. }
+        apply enforce_type_eq.
+        * now destruct t1.
+        * exact H1'.
+      + apply IHp2, H2.
+      + apply IHp3.
+        rewrite H3.
+        enough (existT expr t3 e3 = existT expr t2 e3').
+        { now rewrite <- H0. }
+        apply enforce_type_eq.
+        * admit.
+        * exact H3'.
+    - (* PELet x p1 p2 *)
+      destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
+      destruct (elaborate (map.put G x (t1, false)) p2) as [[t2 e2] |] eqn : H2;
+          try easy.
+      inversion H.
+      apply wf_ELet.
+      + now apply IHp1.
+      + apply IHp2, H2.
+    - (* PERecord xs *)
+      induction xs as [| [s p] xs]; unfold elaborate_record in H.
+      + (* nil *)
+        inversion H.
+        apply wf_EConst.
+      + (* (s, p) :: xs *)
+        destruct (elaborate G p) as [[t1 e1] |]; try easy.
+        assert (elaborate_record elaborate G xs =
+          (fix elaborate_record
+             (G0 : tenv) (xs0 : list (string * pexpr)) {struct xs0} :
+               result {t0 : type & expr t0} :=
+             match xs0 with
+             | nil =>
+                 Success (existT (fun t0 : type => expr t0) TEmpty (EConst CEmpty))
+             | (s0, p1) :: xs1 =>
+                 ' (existT _ x e0) <- elaborate G0 p1;;
+                 ' (existT _ x0 e2) <- elaborate_record G0 xs1;;
+                 Success
+                   (existT (fun t0 : type => expr t0) (TPair s0 x x0)
+                      (EBinop (OPair s0 x x0) e0 e2))
+             end) G xs
+        ).
+        { easy. }
+        rewrite <- H0 in H. clear H0.
+        destruct (elaborate_record elaborate G xs) as [[t2 e2] |]; try easy.
+        inversion H.
+        apply wf_EBinop.
+        * admit.
+        * admit.
+    - (* PEProj p s *)
+      admit.
+  Admitted.
 End WithMap.
