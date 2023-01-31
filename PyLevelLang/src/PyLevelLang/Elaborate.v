@@ -13,8 +13,8 @@ Definition enforce_type (t1 : type) {t2 : type} (e : expr t2) : result (expr t1)
 
 (* `enforce_type` preserves equality
  * (`existT` needs to be used for the statement to typecheck) *)
-Lemma enforce_type_eq :
-  forall t t', t = t' -> forall (e : expr t) (e' : expr t'),
+Lemma enforce_type_eq : forall t t',
+  t = t' -> forall (e : expr t) (e' : expr t'),
   enforce_type t' e = Success e' ->
   existT expr t e = existT expr t' e'.
 Proof.
@@ -174,21 +174,22 @@ Section WithMap.
           Success (existT _ _ (EBinop (OPair s _ _) e1 e2))
       end.
 
+    Fixpoint project (t : type) (e : expr t) (s : string) :
+      result {t & expr t} :=
+      match t as t' return expr t' -> _ with
+      | TPair s' _ _ => fun e =>
+          if string_dec s s' then
+          Success (existT _ _ (EUnop (OFst s' _ _) e))
+          else
+          project _ (EUnop (OSnd s' _ _) e) s
+      | TEmpty => fun _ => error:("Field" s "not found in record")
+      | _ => fun _ => error:(e "has type" t "but expected" TPair)
+      end e.
+
     Definition elaborate_proj (G : tenv) (p : pexpr) (s : string) :
       result {t & expr t} :=
       '(existT _ t e) <- elaborate G p;;
-      let fix project {t : type} (e : expr t) (s : string) : result {t & expr t} :=
-        match t as t' return expr t' -> _ with
-        | TPair s' _ _ => fun e =>
-            if string_dec s s' then
-                Success (existT _ _ (EUnop (OFst s' _ _) e))
-            else
-                project (EUnop (OSnd s' _ _) e) s
-        | TEmpty => fun _ => error:("Field" s "not found in record")
-        | _ => fun _ => error:(e "has type" t "but expected" TPair)
-        end e
-      in
-      project e s.
+      project t e s.
   End ElaborateHelpers.
 
   (* Type checks a `pexpr` and possibly emits a typed expression
@@ -320,10 +321,9 @@ Section WithMap.
     | wf_ELet G {t1 t2} (x : string) (e1 : expr t1) (e2 : expr t2) :
         wf G e1 -> wf (map.put G x (t1, false)) e2 -> wf G (ELet x e1 e2).
 
-  Lemma elaborate_wf :
-    forall p G t e, elaborate G p = Success (existT expr t e) -> wf G e.
+  Fixpoint elaborate_wf (p : pexpr) : forall G t e,
+    elaborate G p = Success (existT expr t e) -> wf G e.
   Proof.
-    intro p.
     induction p; intros G t e H; unfold elaborate in H; fold elaborate in H.
     - (* PEVar x *)
       destruct (map.get G x) as [[t' [|]] |] eqn : Hmap.
@@ -491,12 +491,13 @@ Section WithMap.
       + now apply IHp1.
       + apply IHp2, H2.
     - (* PERecord xs *)
-      induction xs as [| [s p] xs]; unfold elaborate_record in H.
+      revert G t e H.
+      induction xs as [| [s p]]; intros G t e H.
       + (* nil *)
-        inversion H.
-        apply wf_EConst.
+        inversion H. apply wf_EConst.
       + (* (s, p) :: xs *)
-        destruct (elaborate G p) as [[t1 e1] |]; try easy.
+        unfold elaborate_record in H.
+        destruct (elaborate G p) as [[t1 e1] |] eqn : H1; try easy.
         assert (elaborate_record elaborate G xs =
           (fix elaborate_record
              (G0 : tenv) (xs0 : list (string * pexpr)) {struct xs0} :
@@ -514,12 +515,20 @@ Section WithMap.
         ).
         { easy. }
         rewrite <- H0 in H. clear H0.
-        destruct (elaborate_record elaborate G xs) as [[t2 e2] |]; try easy.
+        destruct (elaborate_record elaborate G xs) as [[t2 e2] |] eqn : H2; try easy.
         inversion H.
         apply wf_EBinop.
-        * admit.
-        * admit.
+        * apply elaborate_wf in H1. exact H1.
+        * apply IHxs. exact H2.
     - (* PEProj p s *)
-      admit.
+      unfold elaborate_proj in H.
+      destruct (elaborate G p) as [[t0 e0] |] eqn: H0; try easy.
+      unfold project in H.
+      induction t0; try easy.
+      destruct (string_dec s s0).
+      + inversion H.
+        apply wf_EUnop.
+        apply IHp, H0.
+      + admit.
   Admitted.
 End WithMap.
