@@ -25,136 +25,184 @@ Section WithMap.
      and over its spec (map.ok) *)
   Context {tenv : map.map string (type * bool)} {tenv_ok : map.ok tenv}.
 
-  Section ElaborateHelpers.
+  (* Well-formedness judgement for `expr`s, stating that an `expr` has no free
+   * variables and variables are used with correct types *)
+  Inductive wf : tenv -> forall {t : type}, expr t -> Prop :=
+    | wf_EVar G t (x : string) :
+        map.get G x = Some (t, false) -> wf G (EVar t x)
+    | wf_ELoc G t (x : string) :
+        map.get G x = Some (t, true) -> wf G (ELoc t x)
+    | wf_EConst G {t} (c : const t) : wf G (EConst c)
+    | wf_EUnop G {t1 t2} (o : unop t1 t2) (e : expr t1) :
+        wf G e -> wf G (EUnop o e)
+    | wf_EBinop G {t1 t2 t3} (o : binop t1 t2 t3)
+        (e1 : expr t1) (e2 : expr t2) :
+        wf G e1 -> wf G e2 -> wf G (EBinop o e1 e2)
+    | wf_EFlatmap G {t} (e1 : expr (TList t)) (x : string)
+        (e2 : expr (TList t)) :
+        wf G e1 -> wf (map.put G x (t, false)) e2 -> wf G (EFlatmap e1 x e2)
+    | wf_EIf G {t} (e1 : expr TBool) (e2 e3 : expr t) :
+        wf G e1 -> wf G e2 -> wf G e3 -> wf G (EIf e1 e2 e3)
+    | wf_ELet G {t1 t2} (x : string) (e1 : expr t1) (e2 : expr t2) :
+        wf G e1 -> wf (map.put G x (t1, false)) e2 -> wf G (ELet x e1 e2).
+
+  Definition elaborate_const (pc : pconst) : result {t & expr t} :=
+    match pc with
+    | PCInt z =>
+        Success (existT _ _ (EConst (CInt z)))
+    | PCBool b =>
+        Success (existT _ _ (EConst (CBool b)))
+    | PCString s =>
+        Success (existT _ _ (EConst (CString s)))
+    | PCNil t =>
+        Success (existT _ _ (EConst (CNil t)))
+    end.
+
+  Definition elaborate_unop (po : punop) {t1 : type} (e1 : expr t1) :
+    result {t & expr t} :=
+    match po with
+    | PONeg =>
+        e1' <- enforce_type TInt e1;;
+        Success (existT _ _ (EUnop ONeg e1'))
+    | PONot =>
+        e1' <- enforce_type TBool e1;;
+        Success (existT _ _ (EUnop ONot e1'))
+    | POLength =>
+        match t1 as t' return expr t' -> _ with
+        | TList _ => fun e1 =>
+            Success (existT _ _ (EUnop (OLength _) e1))
+        | TString => fun e1 =>
+            Success (existT _ _ (EUnop OLengthString e1))
+        | _ => fun _ =>
+            error:(e1 "has type" t1 "but expected" TList "or" TString)
+        end e1
+    end.
+
+  (* Helper function to enforce `can_eq` in type system *)
+  Definition construct_eq' {t : type} (e1 e2 : expr t) :
+    if can_eq t then expr TBool else unit.
+  Proof.
+    refine (
+        match t as t'
+        return expr t' -> expr t' -> if can_eq t' then expr TBool else unit
+        with
+        | TInt | TBool | TString | TEmpty => fun e1 e2 =>
+            EBinop (OEq _ _) e1 e2
+        | _ => fun _ _ =>
+            tt
+        end e1 e2
+      ); easy.
+  Defined.
+
+  Definition construct_eq {t: type} (e1 e2 : expr t) : result {t & expr t}.
+  Proof.
+    destruct (can_eq t) eqn : H.
+    - pose (e := construct_eq' e1 e2).
+      rewrite H in e.
+      exact (Success (existT _ _ e)).
+    - exact error:(e1 "has type" t "which does not support equality").
+  Defined.
+
+  Definition elaborate_binop (po : pbinop)
+    {t1 t2 : type} (e1 : expr t1) (e2 : expr t2) :
+    result {t & expr t} :=
+    match po with
+    | POPlus =>
+        e1' <- enforce_type TInt e1;;
+        e2' <- enforce_type TInt e2;;
+        Success (existT _ _ (EBinop OPlus e1' e2'))
+    | POMinus =>
+        e1' <- enforce_type TInt e1;;
+        e2' <- enforce_type TInt e2;;
+        Success (existT _ _ (EBinop OMinus e1' e2'))
+    | POTimes =>
+        e1' <- enforce_type TInt e1;;
+        e2' <- enforce_type TInt e2;;
+        Success (existT _ _ (EBinop OTimes e1' e2'))
+    | PODiv =>
+        e1' <- enforce_type TInt e1;;
+        e2' <- enforce_type TInt e2;;
+        Success (existT _ _ (EBinop ODiv e1' e2'))
+    | POMod =>
+        e1' <- enforce_type TInt e1;;
+        e2' <- enforce_type TInt e2;;
+        Success (existT _ _ (EBinop OMod e1' e2'))
+    | POAnd =>
+        e1' <- enforce_type TBool e1;;
+        e2' <- enforce_type TBool e2;;
+        Success (existT _ _ (EBinop OAnd e1' e2'))
+    | POOr =>
+        e1' <- enforce_type TBool e1;;
+        e2' <- enforce_type TBool e2;;
+        Success (existT _ _ (EBinop OOr e1' e2'))
+    | POConcat =>
+        match t1 as t' return expr t' -> _ with
+        | TList t1 => fun e1 =>
+            e2' <- enforce_type (TList t1) e2;;
+            Success (existT _ _ (EBinop (OConcat _) e1 e2'))
+        | TString => fun e1 =>
+            e2' <- enforce_type TString e2;;
+            Success (existT _ _ (EBinop OConcatString e1 e2'))
+        | _ => fun _ =>
+            error:(e1 "has type" t1 "but expected" TList "or" TString)
+        end e1
+    | POLess =>
+        e1' <- enforce_type TInt e1;;
+        e2' <- enforce_type TInt e2;;
+        Success (existT _ _ (EBinop OLess e1' e2'))
+    | POEq =>
+        e2' <- enforce_type t1 e2;;
+        construct_eq e1 e2'
+    | PORepeat =>
+        match t1 as t' return expr t' -> _ with
+        | TList t1 => fun e1 =>
+            e2' <- enforce_type TInt e2;;
+            Success (existT _ _ (EBinop (ORepeat _) e1 e2'))
+        | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
+        end e1
+    | POPair =>
+        Success (existT _ _
+          (EBinop (OPair "0" _ _) e1
+            (EBinop (OPair "1" _ _) e2
+              (EConst CEmpty))))
+    | POCons =>
+        e2' <- enforce_type (TList t1) e2;;
+        Success (existT _ _ (EBinop (OCons _) e1 e2'))
+    | PORange =>
+        e1' <- enforce_type TInt e1;;
+        e2' <- enforce_type TInt e2;;
+        Success (existT _ _ (EBinop ORange e1' e2'))
+    end.
+
+  Fixpoint elaborate_proj {t : type} (e : expr t) (s : string) :
+    result {t & expr t} :=
+    match t as t' return expr t' -> _ with
+    | TPair s' _ _ => fun e =>
+        if string_dec s s' then
+        Success (existT _ _ (EUnop (OFst s' _ _) e))
+        else
+        elaborate_proj (EUnop (OSnd s' _ _) e) s
+    | TEmpty => fun _ => error:("Field" s "not found in record")
+    | _ => fun _ => error:(e "has type" t "but expected" TPair)
+    end e.
+
+  Lemma elaborate_proj_wf {t : type} (e : expr t) (s : string) : forall G t' e',
+    wf G e -> elaborate_proj e s = Success (existT expr t' e') -> wf G e'.
+  Proof.
+    induction t; try easy.
+    intros G t' e' He H.
+    unfold elaborate_proj in H.
+    destruct string_dec.
+    - inversion H.
+      now apply wf_EUnop.
+    - fold @elaborate_proj in H.
+      apply IHt2 with (G := G) in H.
+      + exact H.
+      + now apply wf_EUnop.
+  Qed.
+
+  Section ElaborateRecord.
     Context (elaborate : tenv -> pexpr -> result {t & expr t}).
-
-    Definition elaborate_const (G : tenv) (pc : pconst) : result {t & expr t} :=
-      match pc with
-      | PCInt z =>
-          Success (existT _ _ (EConst (CInt z)))
-      | PCBool b =>
-          Success (existT _ _ (EConst (CBool b)))
-      | PCString s =>
-          Success (existT _ _ (EConst (CString s)))
-      | PCNil t =>
-          Success (existT _ _ (EConst (CNil t)))
-      end.
-
-    Definition elaborate_unop (G : tenv) (po : punop) (p1 : pexpr) :
-      result {t & expr t} :=
-      '(existT _ t1 e1) <- elaborate G p1;;
-      match po with
-      | PONeg =>
-          e1' <- enforce_type TInt e1;;
-          Success (existT _ _ (EUnop ONeg e1'))
-      | PONot =>
-          e1' <- enforce_type TBool e1;;
-          Success (existT _ _ (EUnop ONot e1'))
-      | POLength =>
-          match t1 as t' return expr t' -> _ with
-          | TList _ => fun e1 =>
-              Success (existT _ _ (EUnop (OLength _) e1))
-          | TString => fun e1 =>
-              Success (existT _ _ (EUnop OLengthString e1))
-          | _ => fun _ => error:(e1 "has type" t1 "but expected" TList "or" TString)
-          end e1
-      end.
-
-    (* Helper function to enforce `can_eq` in type system *)
-    Definition construct_eq' {t : type} (e1 e2 : expr t) :
-      if can_eq t then expr TBool else unit.
-    Proof.
-      refine (
-          match t as t'
-          return expr t' -> expr t' -> if can_eq t' then expr TBool else unit
-          with
-          | TInt | TBool | TString | TEmpty => fun e1 e2 =>
-              EBinop (OEq _ _) e1 e2
-          | _ => fun _ _ =>
-              tt
-          end e1 e2
-        ); easy.
-    Defined.
-
-    Definition construct_eq {t: type} (e1 e2 : expr t) : result {t & expr t}.
-    Proof.
-      destruct (can_eq t) eqn : H.
-      - pose (e := construct_eq' e1 e2).
-        rewrite H in e.
-        exact (Success (existT _ _ e)).
-      - exact error:(e1 "has type" t "which does not support equality").
-    Defined.
-
-    Definition elaborate_binop (G : tenv) (po : pbinop) (p1 p2 : pexpr) :
-      result {t & expr t} :=
-      '(existT _ t1 e1) <- elaborate G p1;;
-      '(existT _ t2 e2) <- elaborate G p2;;
-      match po with
-      | POPlus =>
-          e1' <- enforce_type TInt e1;;
-          e2' <- enforce_type TInt e2;;
-          Success (existT _ _ (EBinop OPlus e1' e2'))
-      | POMinus =>
-          e1' <- enforce_type TInt e1;;
-          e2' <- enforce_type TInt e2;;
-          Success (existT _ _ (EBinop OMinus e1' e2'))
-      | POTimes =>
-          e1' <- enforce_type TInt e1;;
-          e2' <- enforce_type TInt e2;;
-          Success (existT _ _ (EBinop OTimes e1' e2'))
-      | PODiv =>
-          e1' <- enforce_type TInt e1;;
-          e2' <- enforce_type TInt e2;;
-          Success (existT _ _ (EBinop ODiv e1' e2'))
-      | POMod =>
-          e1' <- enforce_type TInt e1;;
-          e2' <- enforce_type TInt e2;;
-          Success (existT _ _ (EBinop OMod e1' e2'))
-      | POAnd =>
-          e1' <- enforce_type TBool e1;;
-          e2' <- enforce_type TBool e2;;
-          Success (existT _ _ (EBinop OAnd e1' e2'))
-      | POOr =>
-          e1' <- enforce_type TBool e1;;
-          e2' <- enforce_type TBool e2;;
-          Success (existT _ _ (EBinop OOr e1' e2'))
-      | POConcat =>
-          match t1 as t' return expr t' -> _ with
-          | TList t1 => fun e1 =>
-              e2' <- enforce_type (TList t1) e2;;
-              Success (existT _ _ (EBinop (OConcat _) e1 e2'))
-          | TString => fun e1 =>
-              e2' <- enforce_type TString e2;;
-              Success (existT _ _ (EBinop OConcatString e1 e2'))
-          | _ => fun _ => error:(e1 "has type" t1 "but expected" TList "or" TString)
-          end e1
-      | POLess =>
-          e1' <- enforce_type TInt e1;;
-          e2' <- enforce_type TInt e2;;
-          Success (existT _ _ (EBinop OLess e1' e2'))
-      | POEq =>
-          e2' <- enforce_type t1 e2;;
-          construct_eq e1 e2'
-      | PORepeat =>
-          match t1 as t' return expr t' -> _ with
-          | TList t1 => fun e1 =>
-              e2' <- enforce_type TInt e2;;
-              Success (existT _ _ (EBinop (ORepeat _) e1 e2'))
-          | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
-          end e1
-      | POPair =>
-          Success (existT _ _
-            (EBinop (OPair "0" _ _) e1
-              (EBinop (OPair "1" _ _) e2
-                (EConst CEmpty))))
-      | POCons =>
-          e2' <- enforce_type (TList t1) e2;;
-          Success (existT _ _ (EBinop (OCons _) e1 e2'))
-      | PORange =>
-          e1' <- enforce_type TInt e1;;
-          e2' <- enforce_type TInt e2;;
-          Success (existT _ _ (EBinop ORange e1' e2'))
-      end.
 
     Fixpoint elaborate_record (G : tenv) (xs : list (string * pexpr)) :
       result {t & expr t} :=
@@ -166,24 +214,7 @@ Section WithMap.
           '(existT _ _ e2) <- elaborate_record G xs;;
           Success (existT _ _ (EBinop (OPair s _ _) e1 e2))
       end.
-
-    Fixpoint project {t : type} (e : expr t) (s : string) :
-      result {t & expr t} :=
-      match t as t' return expr t' -> _ with
-      | TPair s' _ _ => fun e =>
-          if string_dec s s' then
-          Success (existT _ _ (EUnop (OFst s' _ _) e))
-          else
-          project (EUnop (OSnd s' _ _) e) s
-      | TEmpty => fun _ => error:("Field" s "not found in record")
-      | _ => fun _ => error:(e "has type" t "but expected" TPair)
-      end e.
-
-    Definition elaborate_proj (G : tenv) (p : pexpr) (s : string) :
-      result {t & expr t} :=
-      '(existT _ t e) <- elaborate G p;;
-      project e s.
-  End ElaborateHelpers.
+  End ElaborateRecord.
 
   (* Type checks a `pexpr` and possibly emits a typed expression
      Checks scoping for variables/locations *)
@@ -198,14 +229,17 @@ Section WithMap.
         | None => error:("Undefined variable" x)
         end
     | PEConst pc =>
-        elaborate_const G pc
+        elaborate_const pc
     | PESingleton p' =>
         '(existT _ t' e') <- elaborate G p';;
         Success (existT _ _ (EBinop (OCons _) e' (EConst (CNil t'))))
     | PEUnop po p1 =>
-        elaborate_unop elaborate G po p1
+        '(existT _ t1 e1) <- elaborate G p1;;
+        elaborate_unop po e1
     | PEBinop po p1 p2 =>
-        elaborate_binop elaborate G po p1 p2
+        '(existT _ t1 e1) <- elaborate G p1;;
+        '(existT _ t2 e2) <- elaborate G p2;;
+        elaborate_binop po e1 e2
     | PEFlatmap p1 x p2 =>
         '(existT _ t1 e1) <- elaborate G p1;;
         match t1 as t' return expr t' -> _ with
@@ -231,7 +265,8 @@ Section WithMap.
     | PERecord ps =>
         elaborate_record elaborate G ps
     | PEProj p s =>
-        elaborate_proj elaborate G p s
+      '(existT _ t e) <- elaborate G p;;
+        elaborate_proj e s
     end.
 
   Fixpoint elaborate_command (G : tenv) (pc : pcommand) : result command :=
@@ -292,42 +327,6 @@ Section WithMap.
         | _ => fun _ => error:(e "has type" t "but expected" TList)
         end e
     end.
-
-  (* Well-formedness judgement for `expr`s, stating that an `expr` has no free
-   * variables and variables are used with correct types *)
-  Inductive wf : tenv -> forall {t : type}, expr t -> Prop :=
-    | wf_EVar G t (x : string) :
-        map.get G x = Some (t, false) -> wf G (EVar t x)
-    | wf_ELoc G t (x : string) :
-        map.get G x = Some (t, true) -> wf G (ELoc t x)
-    | wf_EConst G {t} (c : const t) : wf G (EConst c)
-    | wf_EUnop G {t1 t2} (o : unop t1 t2) (e : expr t1) :
-        wf G e -> wf G (EUnop o e)
-    | wf_EBinop G {t1 t2 t3} (o : binop t1 t2 t3)
-        (e1 : expr t1) (e2 : expr t2) :
-        wf G e1 -> wf G e2 -> wf G (EBinop o e1 e2)
-    | wf_EFlatmap G {t} (e1 : expr (TList t)) (x : string)
-        (e2 : expr (TList t)) :
-        wf G e1 -> wf (map.put G x (t, false)) e2 -> wf G (EFlatmap e1 x e2)
-    | wf_EIf G {t} (e1 : expr TBool) (e2 e3 : expr t) :
-        wf G e1 -> wf G e2 -> wf G e3 -> wf G (EIf e1 e2 e3)
-    | wf_ELet G {t1 t2} (x : string) (e1 : expr t1) (e2 : expr t2) :
-        wf G e1 -> wf (map.put G x (t1, false)) e2 -> wf G (ELet x e1 e2).
-
-  Lemma project_wf {t : type} (e : expr t) (s : string) : forall G t' e',
-    wf G e -> project e s = Success (existT expr t' e') -> wf G e'.
-  Proof.
-    induction t; try easy.
-    intros G t' e' He H.
-    unfold project in H.
-    destruct string_dec.
-    - inversion H.
-      now apply wf_EUnop.
-    - fold (@project t2) in H.
-      apply IHt2 with (G := G) in H.
-      + exact H.
-      + now apply wf_EUnop.
-  Qed.
 
   Fixpoint elaborate_wf (p : pexpr) : forall G t e,
     elaborate G p = Success (existT expr t e) -> wf G e.
@@ -523,7 +522,7 @@ Section WithMap.
     - (* PEProj p s *)
       unfold elaborate_proj in H.
       destruct (elaborate G p) as [[t0 e0] |] eqn: H0; try easy.
-      apply project_wf with (e := e0) (s := s).
+      apply elaborate_proj_wf with (e := e0) (s := s).
       + now apply IHp.
       + exact H.
   Qed.
