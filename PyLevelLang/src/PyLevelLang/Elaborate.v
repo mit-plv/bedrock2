@@ -294,7 +294,7 @@ Section WithMap.
     end.
 
   (* Well-formedness judgement for `expr`s, stating that an `expr` has no free
-   * variables *)
+   * variables and variables are used with correct types *)
   Inductive wf : tenv -> forall {t : type}, expr t -> Prop :=
     | wf_EVar G t (x : string) :
         map.get G x = Some (t, false) -> wf G (EVar t x)
