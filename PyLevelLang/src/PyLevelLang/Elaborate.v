@@ -167,14 +167,14 @@ Section WithMap.
           Success (existT _ _ (EBinop (OPair s _ _) e1 e2))
       end.
 
-    Fixpoint project (t : type) (e : expr t) (s : string) :
+    Fixpoint project {t : type} (e : expr t) (s : string) :
       result {t & expr t} :=
       match t as t' return expr t' -> _ with
       | TPair s' _ _ => fun e =>
           if string_dec s s' then
           Success (existT _ _ (EUnop (OFst s' _ _) e))
           else
-          project _ (EUnop (OSnd s' _ _) e) s
+          project (EUnop (OSnd s' _ _) e) s
       | TEmpty => fun _ => error:("Field" s "not found in record")
       | _ => fun _ => error:(e "has type" t "but expected" TPair)
       end e.
@@ -182,7 +182,7 @@ Section WithMap.
     Definition elaborate_proj (G : tenv) (p : pexpr) (s : string) :
       result {t & expr t} :=
       '(existT _ t e) <- elaborate G p;;
-      project t e s.
+      project e s.
   End ElaborateHelpers.
 
   (* Type checks a `pexpr` and possibly emits a typed expression
@@ -313,6 +313,21 @@ Section WithMap.
         wf G e1 -> wf G e2 -> wf G e3 -> wf G (EIf e1 e2 e3)
     | wf_ELet G {t1 t2} (x : string) (e1 : expr t1) (e2 : expr t2) :
         wf G e1 -> wf (map.put G x (t1, false)) e2 -> wf G (ELet x e1 e2).
+
+  Lemma project_wf {t : type} (e : expr t) (s : string) : forall G t' e',
+    wf G e -> project e s = Success (existT expr t' e') -> wf G e'.
+  Proof.
+    induction t; try easy.
+    intros G t' e' He H.
+    unfold project in H.
+    destruct string_dec.
+    - inversion H.
+      now apply wf_EUnop.
+    - fold (@project t2) in H.
+      apply IHt2 with (G := G) in H.
+      + exact H.
+      + now apply wf_EUnop.
+  Qed.
 
   Fixpoint elaborate_wf (p : pexpr) : forall G t e,
     elaborate G p = Success (existT expr t e) -> wf G e.
@@ -508,12 +523,8 @@ Section WithMap.
     - (* PEProj p s *)
       unfold elaborate_proj in H.
       destruct (elaborate G p) as [[t0 e0] |] eqn: H0; try easy.
-      unfold project in H.
-      induction t0; try easy.
-      destruct (string_dec s s0).
-      + inversion H.
-        apply wf_EUnop.
-        apply IHp, H0.
-      + admit.
-  Admitted.
+      apply project_wf with (e := e0) (s := s).
+      + now apply IHp.
+      + exact H.
+  Qed.
 End WithMap.
