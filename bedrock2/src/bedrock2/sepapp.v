@@ -7,6 +7,7 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwi
 Require Import coqutil.Map.Interface.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.SepLib.
+Require Import bedrock2.PurifySep.
 
 Definition sepapp{width: Z}{BW: Bitwidth width}{word: word.word width}
   {mem: map.map word Byte.byte}
@@ -80,6 +81,11 @@ Section Reassociate_sepapp.
 
   Definition sepapps(l: list sized_predicate): word -> mem -> Prop :=
     proj_predicate (List.fold_right sepapp_sized_predicates sized_emp l).
+
+  (* Could be made stronger, but probably better to purify before a record
+     has been unfolded into sepapps *)
+  Lemma purify_sepapps: forall l a, purify (sepapps l a) True.
+  Proof. unfold purify. intros. constructor. Qed.
 
   Definition sepapps_size(l: list sized_predicate): Z :=
     List.fold_right Z.add 0 (List.map proj_size l).
@@ -179,3 +185,5 @@ Section Reassociate_sepapp.
 *)
 
 End Reassociate_sepapp.
+
+#[export] Hint Resolve purify_sepapps: purify.

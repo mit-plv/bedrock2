@@ -138,7 +138,51 @@ End SepLog.
 Definition find_superrange_hyp{word: Type}(start: word)(size: Z)(tGoal: Prop) := tGoal.
 Definition split_range_from_hyp{word: Type}(start: word)(size: Z)(tHyp: Prop)
   (H: tHyp)(tGoal: Prop) := tGoal.
+
 Definition merge_step(P: Prop) := P.
+
+Inductive fold_step{SomeRecordType word mem: Type}
+  (pred: SomeRecordType -> word -> mem -> Prop) := mk_fold_step.
+
+Ltac fold_in_hyps p :=
+  let h := head p in
+  let p' := eval cbv beta iota delta [h] in p in
+  idtac p';
+  match goal with
+  | H: context C[?x] |- _ =>
+    syntactic_unify p' x;
+    let g := context C[p] in
+    change g in H
+  end.
+
+Ltac prepend_reversed l acc :=
+  lazymatch l with
+  | nil => acc
+  | cons ?h ?t => prepend_reversed t (cons h acc)
+  end.
+
+Ltac list_reverse l := prepend_reversed l open_constr:(@nil _).
+
+(* Given
+   c: record_constructor ?arg1 ... ?argN
+   l: [| mk_sized_predicate (predN vN) sizeN; ...; mk_sized_predicate (pred1 v1) size1 |]
+   instantiates the evars ?arg1 ... ?argN with v1 ... vN *)
+Ltac instantiate_constructor_with_reversed_sepapps c l :=
+  lazymatch l with
+  | cons (mk_sized_predicate (?pred ?v) ?size) ?l' =>
+      lazymatch c with
+      | ?c' ?e => unify e v; instantiate_constructor_with_reversed_sepapps c' l'
+      end
+  | nil => idtac
+  end.
+
+(* Given
+   c: record_constructor ?arg1 ... ?argN
+   l: [| mk_sized_predicate (pred1 v1) size1; ...; mk_sized_predicate (predN vN) sizeN |]
+   instantiates the evars ?arg1 ... ?argN with v1 ... vN *)
+Ltac instantiate_constructor_with_sepapps c l :=
+  let lrev := list_reverse l in
+  instantiate_constructor_with_reversed_sepapps c lrev.
 
 Ltac concrete_list_length_err l :=
   lazymatch l with
@@ -174,7 +218,10 @@ Ltac split_range_from_hyp_default :=
       lazymatch P with
       | sepapps _ _ => idtac
       | array _ _ _ _ => idtac
-      | _ => let h := head P in unfold h in H
+      | _ => let h := head P in unfold h in H;
+             lazymatch P with
+             | ?pred ?v ?addr => pose proof (mk_fold_step pred)
+             end
       end;
       let pf := fresh in
       lazymatch type of H with
@@ -388,4 +435,11 @@ Ltac split_merge_step :=
   | |- @eq (@map.rep (@word.rep _ _) Init.Byte.byte _ -> Prop) _ _ =>
       syntactic_f_equal_with_ZnWords
   | H: merge_step _ |- _ => merge_step_in_hyp H
+  | H: @fold_step ?R _ _ ?pred |- _ =>
+      let c := lazymatch open_constr:(ltac:(constructor) : R) with ?c => c end in
+      lazymatch goal with
+      | H: with_mem ?m (sepapps ?l ?a) |- _ =>
+          instantiate_constructor_with_sepapps c l;
+          change (with_mem m (pred c a)) in H
+      end
   end.

@@ -498,7 +498,9 @@ Ltac default_eq_prover :=
             end
   end.
 
-Ltac eq_prover_hook := default_eq_prover.
+Ltac eq_prover_hook :=
+  default_eq_prover;
+  try reflexivity. (* <-- might lead to trouble, TODO make less aggressive *)
 
 Ltac program_logic_step :=
   lazymatch goal with
