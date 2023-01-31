@@ -7,6 +7,7 @@ Section LiveVerif.
   Local Open Scope word_scope.
   Local Open Scope string_scope. Local Open Scope Z_scope.
   Import ZList.List.ZIndexNotations.
+  Import DoubleBraceUpdate.
   Local Open Scope zlist_scope.
   Local Open Scope sep_bullets_scope.
   Local Open Scope live_scope.

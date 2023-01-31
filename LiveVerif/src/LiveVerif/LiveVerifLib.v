@@ -26,6 +26,7 @@ Require Export bedrock2.TacticError.
 Require Export bedrock2.SepLib.
 Require Export bedrock2.PurifySep.
 Require Export bedrock2.RecordPredicates.
+Require Export coqutil.Datatypes.RecordSetters.
 Require Export LiveVerif.LiveRules.
 Require Export LiveVerif.PackageContext.
 Require Export LiveVerif.LiveProgramLogic.

@@ -11,6 +11,7 @@ Require Import coqutil.Tactics.destr.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.foreach_hyp.
+Require Import coqutil.Datatypes.RecordSetters.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
@@ -78,8 +79,6 @@ Ltac bottom_up_simpl_sidecond_hook ::=
   purify_heapletwise_hyps;
   try bottom_up_simpl_in_goal;
   lia.
-
-Ltac after_steps_simpl_hook := repeat bottom_up_simpl_in_hyps_and_vars.
 
 Ltac start :=
   lazymatch goal with
@@ -502,6 +501,8 @@ Ltac eq_prover_hook :=
   default_eq_prover;
   try reflexivity. (* <-- might lead to trouble, TODO make less aggressive *)
 
+Ltac simpl_hook := repeat bottom_up_simpl_in_hyps_and_vars; try record.simp.
+
 Ltac program_logic_step :=
   lazymatch goal with
   | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_bool3_lazy_and
@@ -563,15 +564,17 @@ Ltac program_logic_step :=
   | |- _ => first
       [ cleanup_step
       | progress autounfold with live_always_unfold in *
-      | match goal with
+      | lazymatch goal with
         | |- exists _, _ => eexists
+        end
+      | progress simpl_hook
+      | match goal with
         (* We try ZnWords first because it also solves some goals of shape
            (_ = _) and (_ /\ _) *)
         | |- _ => ZnWords (* TODO replace by better/faster tactic *)
         | |- _ = _ => eq_prover_hook
         | |- ?P /\ ?Q => split
         | |- wp_cmd _ _ _ _ _ _ =>
-              after_steps_simpl_hook;
               lazymatch goal with
               | |- ?G => change (@ready G)
               end
@@ -658,9 +661,10 @@ Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an )
   (fun fname: String.string =>
      (fun fs =>
         (forall a1, .. (forall an, (forall g1, .. (forall gn,
-          (forall t1 m1, pre ->
-             WeakestPrecondition.call fs fname t1 m1 (cons a1 .. (cons an nil) ..)
-               (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post))) .. )) .. ))
+           (forall t1 m1, pre ->
+              WeakestPrecondition.call fs fname t1 m1
+                (@cons (@word.rep _ _) a1 .. (@cons (@word.rep _ _) an nil) ..)
+                (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post))) .. )) .. ))
      : ProgramLogic.spec_of fname)
 (in custom funspec at level 1,
  fname name,
@@ -677,7 +681,8 @@ Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /**#
      (fun fs =>
         (forall a1, .. (forall an, (forall g1, .. (forall gn,
            (forall t1 m1, pre ->
-              WeakestPrecondition.call fs fname t1 m1 (cons a1 .. (cons an nil) ..)
+              WeakestPrecondition.call fs fname t1 m1
+                (@cons (@word.rep _ _) a1 .. (@cons (@word.rep _ _) an nil) ..)
                 (fun t2 m2 retvs => retvs = nil /\ post))) .. )) .. ))
      : ProgramLogic.spec_of fname)
 (in custom funspec at level 1,

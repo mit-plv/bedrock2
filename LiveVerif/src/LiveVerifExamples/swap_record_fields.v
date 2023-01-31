@@ -1,7 +1,6 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
 Require Import LiveVerifExamples.swap.
-Require Import coqutil.Datatypes.RecordSetters. Import DoubleBraceUpdate.
 
 Record foo_t := {
   fieldA: uint_t 32;
@@ -9,8 +8,6 @@ Record foo_t := {
   fieldC: uint_t 32;
   fieldD: uint_t 32;
 }.
-
-Require Import Coq.Logic.FunctionalExtensionality.
 
 Load LiveVerif.
 
