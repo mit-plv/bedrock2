@@ -13,18 +13,11 @@ Definition enforce_type (t1 : type) {t2 : type} (e : expr t2) : result (expr t1)
 
 (* `enforce_type` preserves equality
  * (`existT` needs to be used for the statement to typecheck) *)
-Lemma enforce_type_eq : forall t t',
-  t = t' -> forall (e : expr t) (e' : expr t'),
+Lemma enforce_type_eq {t t'} (e : expr t) (e' : expr t') :
   enforce_type t' e = Success e' ->
   existT expr t e = existT expr t' e'.
 Proof.
-  intros t t' H1 e e' H2.
-  unfold enforce_type in H2.
-  destruct type_eq_dec as [H3 |]; try easy.
-  unfold cast in H2.
-  injection H2 as [= <-].
-  unfold eq_rect.
-  now destruct H3.
+  cbv [enforce_type]; case type_eq_dec eqn:E; inversion_clear 1; subst; trivial.
 Qed.
 
 Section WithMap.
@@ -391,15 +384,12 @@ Section WithMap.
           -- now apply IHp1.
           -- now apply IHp2.
         * destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
-          inversion H.
+          inversion_clear H.
           apply wf_EBinop.
           -- now apply IHp1.
           -- apply IHp2. rewrite H2.
-             enough (existT expr _ e2 = existT expr _ e2').
-             { now rewrite <- H0. }
-             apply enforce_type_eq.
-             ++ admit.
-             ++ exact H2'.
+             f_equal.
+             apply enforce_type_eq; auto.
       + (* POEq *)
         destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
         unfold construct_eq in H.
@@ -424,8 +414,7 @@ Section WithMap.
           enough (existT expr _ e2 = existT expr _ e2').
           { now rewrite <- H0. }
           apply enforce_type_eq.
-          -- now destruct t2.
-          -- exact H2'.
+          now destruct t2.
       + (* POPair *)
         inversion H.
         apply wf_EBinop.
@@ -442,8 +431,7 @@ Section WithMap.
           enough (existT expr _ e2 = existT expr _ e2').
           { now rewrite <- H0. }
           apply enforce_type_eq.
-          -- admit.
-          -- exact H2'.
+          exact H2'.
     - (* PEFlatmap p1 x p2 *)
       destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
       destruct t1; try easy.
@@ -457,8 +445,7 @@ Section WithMap.
         enough (existT expr t2 e2 = existT expr (TList t1) e2').
         { now rewrite <- H0. }
         apply enforce_type_eq.
-        * admit.
-        * exact H2'.
+        exact H2'.
     - (* PEIf p1 p2 p3 *)
       destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
       destruct (elaborate G p2) as [[t2 e2] |] eqn : H2; try easy.
@@ -472,16 +459,14 @@ Section WithMap.
         enough (existT expr t1 e1 = existT expr TBool e1').
         { now rewrite <- H0. }
         apply enforce_type_eq.
-        * now destruct t1.
-        * exact H1'.
+        exact H1'.
       + apply IHp2, H2.
       + apply IHp3.
         rewrite H3.
         enough (existT expr t3 e3 = existT expr t2 e3').
         { now rewrite <- H0. }
         apply enforce_type_eq.
-        * admit.
-        * exact H3'.
+        exact H3'.
     - (* PELet x p1 p2 *)
       destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
       destruct (elaborate (map.put G x (t1, false)) p2) as [[t2 e2] |] eqn : H2;
