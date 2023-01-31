@@ -4,6 +4,7 @@ Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Datatypes.Inhabited.
+Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.syntactic_unify.
 Require Import coqutil.Tactics.fwd.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.DisjointUnion.
@@ -50,27 +51,64 @@ Section SepLog.
   Proof.
   Admitted.
 
-  Lemma split_off_field_from_sepapps: forall n a a' sz ofs,
-      word.unsigned (word.sub a' a) = ofs -> (* <- ring proof *)
-      (forall l P,
-          sepapps_size (List.firstn n l) = ofs -> (* <- determines ofs *)
-          List.nth_error l n = Some (mk_sized_predicate P sz) ->
-          sepapps l a = sep (P a')
-                          (sepapps (List.firstn n l ++
-                                      cons (mk_sized_predicate (hole sz) sz)
-                                      (List.skipn (S n) l)) a)) /\
-      (forall l P,
-          sepapps_size (List.firstn n l) = ofs -> (* <- should be eq_refl *)
-          List.nth_error l n = Some (mk_sized_predicate (hole sz) sz) ->
-          sep (P a') (sepapps l a) =
-            (sepapps (List.firstn n l ++
-                        cons (mk_sized_predicate P sz)
-                        (List.skipn (S n) l)) a)).
+  (* does not depend on any library functions so that we can safely cbn it *)
+  Fixpoint sepapps_offset(n: nat)(l: list sized_predicate): Z :=
+    match n with
+    | O => 0
+    | S n' =>
+        match l with
+        | nil => 0
+        | cons (mk_sized_predicate _ sz) t => Z.add sz (sepapps_offset n' t)
+        end
+    end.
+
+  Lemma sepapps_offset_spec: forall n l,
+      sepapps_offset n l = sepapps_size (List.firstn n l).
   Proof.
-    intros. split; intros; subst.
-    - rewrite (expose_nth_sepapp l n a P sz H1). f_equal. f_equal.
+    induction n; intros.
+    - reflexivity.
+    - destruct l. 1: reflexivity. simpl. destruct s. rewrite IHn. reflexivity.
+  Qed.
+
+  (* does not depend on any library functions so that we can safely cbn it *)
+  Fixpoint sepapps_replace(l: list sized_predicate)(n: nat)(p: sized_predicate) :=
+    match l with
+    | cons h t =>
+        match n with
+        | O => cons p t
+        | S n' => cons h (sepapps_replace t n' p)
+        end
+    | nil => cons p nil
+    end.
+
+  Lemma sepapps_replace_spec: forall l n p,
+      sepapps_replace l n p = List.firstn n l ++ cons p (List.skipn (S n) l).
+  Proof.
+    induction l; intros; destruct n; try reflexivity.
+    simpl. rewrite IHl. reflexivity.
+  Qed.
+
+  Lemma split_off_field_from_sepapps: forall a a' sz ofs n,
+      word.unsigned (word.sub a' a) = ofs -> (* <- simplify lhs, then reflexivity
+                                                determines ofs *)
+      (forall l P m,
+          sepapps_offset n l = ofs -> (* <- determines n *)
+          List.nth_error l n = Some (mk_sized_predicate P sz) ->
+          sepapps l a m ->
+          sep (P a')
+              (sepapps (sepapps_replace l n (mk_sized_predicate (hole sz) sz)) a) m) /\
+      (forall l P m,
+          sepapps_offset n l = ofs -> (* <- should be eq_refl *)
+          List.nth_error l n = Some (mk_sized_predicate (hole sz) sz) ->
+          sep (P a') (sepapps l a) m ->
+          sepapps (sepapps_replace l n (mk_sized_predicate P sz)) a m).
+  Proof.
+    intros. split; intros; subst;
+      rewrite sepapps_offset_spec in H0;
+      rewrite sepapps_replace_spec.
+    - rewrite (expose_nth_sepapp l n a P sz H1) in H2. eqapply H2. f_equal.
       rewrite H0. destruct width_cases; subst width; ZnWords.
-    - rewrite <- (merge_back_nth_sepapp l n a P sz H1). f_equal. f_equal.
+    - rewrite <- (merge_back_nth_sepapp l n a P sz H1). eqapply H2. f_equal.
       rewrite H0. destruct width_cases; subst width; ZnWords.
   Qed.
 
@@ -100,34 +138,69 @@ End SepLog.
 Definition find_superrange_hyp{word: Type}(start: word)(size: Z)(tGoal: Prop) := tGoal.
 Definition split_range_from_hyp{word: Type}(start: word)(size: Z)(tHyp: Prop)
   (H: tHyp)(tGoal: Prop) := tGoal.
-
 Definition merge_step(P: Prop) := P.
 
-(* Is start..start+size a subrange of start'..start'+size' ?
-   Assumes 0<=size<2^width and 0<=size'<2^width.
-   Both ranges may wrap around. *)
-Ltac is_subrange start size start' size' :=
-  (* we do the comparison in a different coordinate system, namely relative to start',
-     ie we shift (with wrapping) all points so that start' corresponds to zero *)
-  assert_succeeds (idtac;
-    assert (word.unsigned (word.sub start start') + size <= size') by ZnWords).
+Ltac concrete_list_length_err l :=
+  lazymatch l with
+  | nil => constr:(Some O)
+  | cons _ ?t =>
+      lazymatch concrete_list_length_err t with
+      | Some ?r => constr:(Some (S r))
+      | None => constr:(@None nat)
+      end
+  end.
+
+Ltac pick_nat n :=
+  multimatch n with
+  | S ?m => constr:(m)
+  | S ?m => pick_nat m
+  end.
+
+Ltac find_field_index_from_offset :=
+  lazymatch goal with
+  | |- sepapps_offset ?i_ev ?l = ?ofs =>
+      tryif is_evar i_ev then
+        lazymatch concrete_list_length_err l with
+        | Some ?n => once (let i := pick_nat n in unify i_ev i; reflexivity)
+        | None => fail 1000 l "is not a concrete list"
+        end
+      else
+        fail 1000 i_ev "is not an evar"
+  end.
 
 Ltac split_range_from_hyp_default :=
   lazymatch goal with
   | |- split_range_from_hyp ?start ?size (with_mem ?m ?P) ?H ?g =>
-      let pf := fresh in
       lazymatch P with
-      | @array _ _ _ _ _ ?elem (*must match:*)size ?n ?vs ?start' =>
+      | sepapps _ _ => idtac
+      | array _ _ _ _ => idtac
+      | _ => let h := head P in unfold h in H
+      end;
+      let pf := fresh in
+      lazymatch type of H with
+      | with_mem _ (@array _ _ _ _ _ ?elem (*must match:*)size ?n ?vs ?start') =>
           unshelve epose proof (split_off_elem_from_array start' start elem n _ _ _) as pf;
           [ (* i *)
           | ZnWords
           | bottom_up_simpl_in_goal; reflexivity
-          | (* remaining goal *) ]
-      end;
-      change g;
-      eapply (proj1 pf) in H;
-      eapply proj2 in pf;
-      let t := type of pf in change (merge_step t) in pf
+          | change g;
+            eapply (proj1 pf) in H;
+            eapply proj2 in pf;
+            let t := type of pf in change (merge_step t) in pf ]
+      | with_mem _ (sepapps _ ?start') =>
+          unshelve epose proof (split_off_field_from_sepapps start' start size _ _ _) as pf;
+          [ (* offset: dependent evar will be determined by second subgoal *)
+          | (* n (index of field): determined later below *)
+          | (* address difference equals offset *)
+            bottom_up_simpl_in_goal; reflexivity
+          | change g;
+            eapply (proj1 pf) in H;
+            [ eapply proj2 in pf
+            | find_field_index_from_offset
+            | reflexivity ];
+            cbn [sepapps_replace] in H;
+            let t := type of pf in change (merge_step t) in pf ]
+      end
   end.
 
 Ltac split_range_from_hyp_hook := split_range_from_hyp_default.
@@ -242,6 +315,21 @@ Ltac canceling_step_in_hyp C :=
   end.
 
 Ltac merge_step_in_hyp H :=
+  lazymatch type of H with
+  (* Special case for records: Need to solve sideconditions SC1 and SC2 (using eq_refl).
+     Match for proj2 of split_off_field_from_sepapps: *)
+  | merge_step (forall l P m,
+          sepapps_offset ?n l = ?ofs -> (* <-SC1 *)
+          List.nth_error l ?n = Some (mk_sized_predicate (hole ?sz) ?sz) -> (* <-SC2 *)
+          sep (P (word.add ?p (word.of_Z ?ofs))) (sepapps l ?p) m ->
+          sepapps (sepapps_replace l ?n (mk_sized_predicate P ?sz)) ?p m) =>
+      lazymatch goal with
+      | _: with_mem _ (sepapps ?l p) |- _ =>
+          specialize (H l); specialize H with (1 := eq_refl) (2 := eq_refl);
+          cbn [sepapps_replace] in H
+      end
+  | _ => idtac
+  end;
   start_canceling_in_hyp H;
   repeat canceling_step_in_hyp H;
   eapply canceling_done_in_hyp in H;
@@ -267,6 +355,15 @@ Lemma rew_with_mem{mem: Type}: forall (P1 P2: mem -> Prop) (m: mem),
 Proof. intros. subst. assumption. Qed.
 
 Ltac sepclause_equality_hook := syntactic_f_equal_with_ZnWords.
+
+(* Is start..start+size a subrange of start'..start'+size' ?
+   Assumes 0<=size<2^width and 0<=size'<2^width.
+   Both ranges may wrap around. *)
+Ltac is_subrange start size start' size' :=
+  (* we do the comparison in a different coordinate system, namely relative to start',
+     ie we shift (with wrapping) all points so that start' corresponds to zero *)
+  assert_succeeds (idtac;
+    assert (word.unsigned (word.sub start start') + size <= size') by ZnWords).
 
 Ltac split_merge_step :=
   lazymatch goal with

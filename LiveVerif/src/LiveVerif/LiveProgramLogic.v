@@ -547,7 +547,6 @@ Ltac program_logic_step :=
   | |- forall t' m' (retvs: list ?word),
       _ -> exists l', map.putmany_of_list_zip _ retvs ?l = Some l' /\ wp_cmd _ _ _ _ _ _
     => (* after a function call *)
-      purify_heapletwise_hyps_instead_of_clearing;
       let retvsname := fresh retvs in
       intros ? ? retvsname (? & ? & ?);
       subst retvsname
@@ -577,7 +576,12 @@ Ltac program_logic_step :=
         end ]
   end.
 
-Ltac step := first [ heapletwise_step | split_merge_step | program_logic_step ].
+Ltac step0 :=
+  first [ heapletwise_step | split_merge_step | program_logic_step ].
+
+Ltac step :=
+  assert_no_error; (* <-- useful when debugging with `step. step. step. ...` *)
+  step0.
 
 Ltac step_is_done :=
   match goal with

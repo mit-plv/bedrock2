@@ -14,6 +14,12 @@ Require Import Coq.Logic.FunctionalExtensionality.
 
 Load LiveVerif.
 
+(* Could be made stronger, but probably better to purify before a record
+   has been unfolded into sepapps *)
+Lemma purify_sepapps: forall l a, purify (sepapps l a) True.
+Proof. unfold purify. intros. constructor. Qed.
+Hint Resolve purify_sepapps: purify.
+
 Instance foo: RepPredicate foo_t := ltac:(create_predicate).
 
 #[export] Instance spec_of_swap_bc: fnspec :=                                   .**/
@@ -26,23 +32,28 @@ void swap_bc(uintptr_t p) /**#
        <{ * foo f{{fieldB := fieldC f; fieldC := fieldB f}} p
           * R }> m' #**/                                                   /**.
 Derive swap_bc SuchThat (fun_correct! swap_bc) As swap_bc_ok.                   .**/
-{                                                                          /**. .**/
+{                                                                          /**.
+Ltac run_steps_hook ::= idtac.
+.**/
   swap(p+4, p+8);                                                          /**.
 
-  unfold foo in *|-.
+step. step. step. step. step.
+step. step. step. step. step.
+step. step.
 
-  ltac1:(
-    lazymatch goal with
-    | |- split_range_from_hyp ?a' ?sz _ ?H _ =>
-        lazymatch type of H with
-        | with_mem _ (sepapps _ ?a) =>
-            unshelve epose proof (split_off_field_from_sepapps 1 a a' sz _ _)
-        end
-    end).
+(* here: remember fold_step *) step. step. step.
+step. step. step. step. step.
+step. step. step. step. step.
 
-  Focus 3.
+step. step. step. step. step.
+step. step. step.
 
-Abort.
+ltac1:(change (m |= foo {| fieldA := fieldA f; fieldB := fieldC f; fieldC := fieldB f; fieldD := fieldD f |} p) in H0).
+
+.**/ } /**.
+step. step. step. step. { step. step. step. }
+reflexivity.
+Qed.
 
   (* TODO: example where a loop uses a pointer to an element of an array inside a record
      instead of an index i into the array

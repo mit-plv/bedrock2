@@ -34,6 +34,11 @@ Definition hole{key value}{mem: map.map key value}(n: Z)(addr: key): mem -> Prop
 #[export] Hint Extern 1 (PredicateSize (hole ?n)) => exact n : typeclass_instances.
 #[export] Hint Opaque hole : typeclass_instances.
 
+(* pair of a predicate and its size, used as tree leaves *)
+Inductive sized_predicate{width: Z}{BW: Bitwidth width}{word: word.word width}
+  {mem: map.map word Byte.byte}: Type :=
+| mk_sized_predicate(p: word -> mem -> Prop)(sz: PredicateSize p).
+
 Section Reassociate_sepapp.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}
     {mem: map.map word byte} {mem_ok: map.ok mem}.
@@ -54,10 +59,6 @@ Section Reassociate_sepapp.
     rewrite sep_assoc_eq. rewrite <- word.add_assoc, word.ring_morph_add.
     reflexivity.
   Qed.
-
-  (* pair of a predicate and its size, used as tree leaves *)
-  Inductive sized_predicate: Type :=
-  | mk_sized_predicate(p: word -> mem -> Prop)(sz: PredicateSize p).
 
   Definition sized_emp := mk_sized_predicate (fun a => emp True) 0.
 

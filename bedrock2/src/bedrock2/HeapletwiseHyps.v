@@ -404,7 +404,6 @@ Ltac purify_hyp_instead_of_clearing H :=
 Ltac purify_heapletwise_hyps_instead_of_clearing :=
   repeat match goal with
          | _: tactic_error _ |- _ => fail 1 (* pose at most one error *)
-         | D: DisjointUnion.mmap.du _ _ = DisjointUnion.mmap.Def _ |- _ => clear D
          | H: with_mem _ _ |- _ => purify_hyp_instead_of_clearing H
          end.
 
