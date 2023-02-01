@@ -287,17 +287,19 @@ Section WithMap.
     end.
 
   Lemma elaborate_record_wf (xs : list (string * {t & expr t})) : forall G t' e',
+    Forall (fun '(s, existT _ t e) => wf G e) xs ->
     elaborate_record xs = Success (existT expr t' e') -> wf G e'.
   Proof.
-    induction xs as [| [s [t1 e1]]]; intros G t' e' H.
+    induction xs as [| [s [t1 e1]]]; intros G t' e' Hxs H.
     - inversion H. apply wf_EConst.
     - inversion H.
       destruct elaborate_record as [[t2 e2] |]; try easy.
       injection H1 as [= H2 H1].
       apply existT_wf with (G := G) in H1; [easy | apply wf_EBinop].
-      + admit.
-      + now apply IHxs.
-  Admitted.
+      + now apply Forall_inv in Hxs.
+      + apply Forall_inv_tail in Hxs.
+        now apply IHxs.
+  Qed.
 
   Fixpoint elaborate_proj {t : type} (e : expr t) (s : string) :
     result {t & expr t} :=
@@ -524,7 +526,20 @@ Section WithMap.
       + apply IHp2, H2.
     - (* PERecord xs *)
       destruct List.all_success as [xs' |] eqn : H'; try easy.
-      now apply elaborate_record_wf with (xs := xs').
+      apply elaborate_record_wf with (xs := xs'); try easy.
+      clear H. revert xs H'.
+      induction xs' as [| [s' [t' e']]]; try easy. intros xs H'.
+      apply Forall_cons.
+      all:
+        destruct xs as [| [s p]]; try easy;
+        simpl in H';
+        destruct (elaborate G p) as [x |] eqn : H1; try easy;
+        destruct List.all_success as [xs0 |] eqn : H2; try easy;
+        injection H' as [= _ H3 H4].
+      + rewrite H3 in H1.
+        now apply elaborate_wf in H1.
+      + rewrite H4 in H2.
+        now apply IHxs' in H2.
     - (* PEProj p s *)
       unfold elaborate_proj in H.
       destruct (elaborate G p) as [[t0 e0] |] eqn : H0; try easy.
