@@ -11,13 +11,24 @@ Definition enforce_type (t1 : type) {t2 : type} (e : expr t2) : result (expr t1)
   | _ => error:(e "has type" t2 "but expected" t1)
   end.
 
+(* `enforce_type` preserves any predicate on expressions *)
+Lemma enforce_type_pred {t t'} (e : expr t) (e' : expr t')
+  (P : forall t, expr t -> Prop) :
+  P t e
+  -> enforce_type t' e = Success e' -> P t' e'.
+Proof.
+  intro H.
+  cbv [enforce_type]; case type_eq_dec eqn:E; inversion_clear 1; subst; trivial.
+Qed.
+
 (* `enforce_type` preserves equality
  * (`existT` needs to be used for the statement to typecheck) *)
 Lemma enforce_type_eq {t t'} (e : expr t) (e' : expr t') :
   enforce_type t' e = Success e' ->
   existT expr t e = existT expr t' e'.
 Proof.
-  cbv [enforce_type]; case type_eq_dec eqn:E; inversion_clear 1; subst; trivial.
+  intro H.
+  now apply enforce_type_pred with (e := e) (e' := e').
 Qed.
 
 Section WithMap.
@@ -46,6 +57,14 @@ Section WithMap.
     | wf_ELet G {t1 t2} (x : string) (e1 : expr t1) (e2 : expr t2) :
         wf G e1 -> wf (map.put G x (t1, false)) e2 -> wf G (ELet x e1 e2).
 
+  (* `enforce_type` preserves well-formedness *)
+  Lemma enforce_type_wf {t t'} (e : expr t) (e' : expr t') : forall G,
+    wf G e -> enforce_type t' e = Success e' -> wf G e'.
+  Proof.
+    intros G H He.
+    now apply enforce_type_pred with (e := e).
+  Qed.
+
   Definition elaborate_const (pc : pconst) : result {t & expr t} :=
     match pc with
     | PCInt z =>
@@ -58,25 +77,50 @@ Section WithMap.
         Success (existT _ _ (EConst (CNil t)))
     end.
 
-  Definition elaborate_unop (po : punop) {t1 : type} (e1 : expr t1) :
+  Lemma elaborate_const_wf (pc : pconst) : forall G t e,
+    elaborate_const pc = Success (existT expr t e) -> wf G e.
+  Proof.
+    intros G t e H. destruct pc; unfold elaborate_const in H.
+    all:
+      injection H as [= _ H];
+      destruct t; try easy;
+      repeat injection H as [= <-];
+      apply wf_EConst.
+  Qed.
+
+  Definition elaborate_unop (po : punop) {t : type} (e : expr t) :
     result {t & expr t} :=
     match po with
     | PONeg =>
-        e1' <- enforce_type TInt e1;;
-        Success (existT _ _ (EUnop ONeg e1'))
+        e' <- enforce_type TInt e;;
+        Success (existT _ _ (EUnop ONeg e'))
     | PONot =>
-        e1' <- enforce_type TBool e1;;
-        Success (existT _ _ (EUnop ONot e1'))
+        e' <- enforce_type TBool e;;
+        Success (existT _ _ (EUnop ONot e'))
     | POLength =>
-        match t1 as t' return expr t' -> _ with
-        | TList _ => fun e1 =>
-            Success (existT _ _ (EUnop (OLength _) e1))
-        | TString => fun e1 =>
-            Success (existT _ _ (EUnop OLengthString e1))
+        match t as t' return expr t' -> _ with
+        | TList _ => fun e =>
+            Success (existT _ _ (EUnop (OLength _) e))
+        | TString => fun e =>
+            Success (existT _ _ (EUnop OLengthString e))
         | _ => fun _ =>
-            error:(e1 "has type" t1 "but expected" TList "or" TString)
-        end e1
+            error:(e "has type" t "but expected" TList "or" TString)
+        end e
     end.
+
+  Lemma elaborate_unop_wf (po : punop) {t : type} (e : expr t) : forall G t' e',
+    wf G e -> elaborate_unop po e = Success (existT expr t' e') -> wf G e'.
+  Proof.
+    intros G t0 e0 He H.
+    destruct po; unfold elaborate_unop in H.
+    all: try (
+      destruct (enforce_type _ e) as [e' |] eqn : H'; try easy;
+      inversion H;
+      apply wf_EUnop; now apply enforce_type_wf with (G := G) in H'
+    ).
+    - (* POLength *)
+      destruct t; try easy; inversion H; now apply wf_EUnop.
+  Qed.
 
   (* Helper function to enforce `can_eq` in type system *)
   Definition construct_eq' {t : type} (e1 e2 : expr t) :
@@ -174,6 +218,47 @@ Section WithMap.
         Success (existT _ _ (EBinop ORange e1' e2'))
     end.
 
+  Lemma elaborate_binop_wf (po : pbinop)
+    {t1 t2 : type} (e1 : expr t1) (e2 : expr t2) : forall G t' e',
+    wf G e1 -> wf G e2 ->
+    elaborate_binop po e1 e2 = Success (existT expr t' e') -> wf G e'.
+  Proof.
+    intros G t0 e0 H1 H2 H.
+    destruct po; unfold elaborate_binop in H.
+    all: try (
+      destruct (enforce_type _ e1) as [e1' |] eqn : H1'; try easy;
+      destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy;
+      inversion H;
+      apply wf_EBinop; now apply enforce_type_wf with (G := G) in H1', H2'
+    ).
+    - (* POConcat *)
+      destruct t1; try easy;
+      destruct t2; try easy.
+      + inversion H.
+        now apply wf_EBinop.
+      + destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
+        inversion H.
+        apply wf_EBinop; now apply enforce_type_wf with (G := G) in H2'.
+    - (* POEq *)
+      destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
+      destruct t1; try easy.
+      all:
+        inversion H;
+        apply wf_EBinop; now apply enforce_type_wf with (G := G) in H2'.
+    - (* PORepeat *)
+      destruct t1; try easy.
+      destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
+      inversion H.
+      apply wf_EBinop; now apply enforce_type_wf with (G := G) in H2'.
+    - (* POPair *)
+      inversion H.
+      repeat apply wf_EBinop; now try apply wf_EConst.
+    - (* POCons *)
+      destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
+      inversion H.
+      apply wf_EBinop; now apply enforce_type_wf with (G := G) in H2'.
+  Qed.
+
   Fixpoint elaborate_proj {t : type} (e : expr t) (s : string) :
     result {t & expr t} :=
     match t as t' return expr t' -> _ with
@@ -233,9 +318,9 @@ Section WithMap.
     | PESingleton p' =>
         '(existT _ t' e') <- elaborate G p';;
         Success (existT _ _ (EBinop (OCons _) e' (EConst (CNil t'))))
-    | PEUnop po p1 =>
-        '(existT _ t1 e1) <- elaborate G p1;;
-        elaborate_unop po e1
+    | PEUnop po p =>
+        '(existT _ t e) <- elaborate G p;;
+        elaborate_unop po e
     | PEBinop po p1 p2 =>
         '(existT _ t1 e1) <- elaborate G p1;;
         '(existT _ t2 e2) <- elaborate G p2;;
@@ -345,11 +430,7 @@ Section WithMap.
       + (* None *)
         discriminate H.
     - (* PEConst pc *)
-      destruct pc; unfold elaborate_const in H.
-      all: injection H as [= _ H].
-      all: destruct t; try easy.
-      all: repeat injection H as [= <-].
-      all: apply wf_EConst.
+      now apply elaborate_const_wf with (pc := pc).
     - (* PESingleton p *)
       destruct (elaborate G p) as [[t' e'] |] eqn : H'; try easy.
       inversion H.
@@ -357,95 +438,17 @@ Section WithMap.
       * now apply IHp.
       * apply wf_EConst.
     - (* PEUnop po p *)
-      destruct po; unfold elaborate_unop in H.
-      all: destruct (elaborate G p) as [[t1 e1] |] eqn : H1; try easy.
-      all: try (
-        destruct (enforce_type _ e1) as [e1' |] eqn : H1'; try easy;
-        inversion H;
-        apply wf_EUnop;
-        apply IHp; rewrite H1;
-        enough (existT expr _ e1 = existT expr _ e1');
-        now rewrite <- H0 || apply enforce_type_eq;
-        destruct t1 || exact H1'
-      ).
-      + (* POLength *)
-        destruct t1; try easy; inversion H; apply wf_EUnop, IHp, H1.
+      destruct (elaborate G p) as [[t' e'] |] eqn : H'; try easy.
+      apply elaborate_unop_wf with (po := po) (e := e').
+      + now apply IHp.
+      + easy.
     - (* PEBinop po p1 p2 *)
-      destruct po; unfold elaborate_binop in H.
-      all: destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
-      all: destruct (elaborate G p2) as [[t2 e2] |] eqn : H2; try easy.
-      all: try (
-        destruct (enforce_type _ e1) as [e1' |] eqn : H1'; try easy;
-        destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy;
-        inversion H;
-        apply wf_EBinop; (
-          apply IHp1; rewrite H1;
-          enough (existT expr _ e1 = existT expr _ e1');
-          now rewrite <- H0 || apply enforce_type_eq;
-          destruct t1 || exact H1'
-        ) || (
-          apply IHp2; rewrite H2;
-          enough (existT expr _ e2 = existT expr _ e2');
-          now rewrite <- H0 || apply enforce_type_eq;
-          destruct t2 || exact H2'
-        )
-      ).
-      + (* POConcat *)
-        destruct t1; try easy;
-        destruct t2; try easy.
-        * inversion H.
-          apply wf_EBinop.
-          -- now apply IHp1.
-          -- now apply IHp2.
-        * destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
-          inversion_clear H.
-          apply wf_EBinop.
-          -- now apply IHp1.
-          -- apply IHp2. rewrite H2.
-             f_equal.
-             apply enforce_type_eq; auto.
-      + (* POEq *)
-        destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
-        unfold construct_eq in H.
-        destruct t1; try easy.
-        all:
-          inversion H;
-          apply wf_EBinop; (
-            now apply IHp1
-          ) || (
-            apply IHp2; rewrite H2;
-            enough (existT expr _ e2 = existT expr _ e2');
-            now rewrite <- H0 || apply enforce_type_eq;
-            destruct t2 || exact H2'
-          ).
-      + (* PORepeat *)
-        destruct t1; try easy.
-        destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
-        inversion H.
-        apply wf_EBinop.
-        * now apply IHp1.
-        * apply IHp2. rewrite H2.
-          enough (existT expr _ e2 = existT expr _ e2').
-          { now rewrite <- H0. }
-          apply enforce_type_eq.
-          now destruct t2.
-      + (* POPair *)
-        inversion H.
-        apply wf_EBinop.
-        * now apply IHp1.
-        * apply wf_EBinop.
-          -- now apply IHp2.
-          -- apply wf_EConst.
-      + (* POCons *)
-        destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
-        inversion H.
-        apply wf_EBinop.
-        * now apply IHp1.
-        * apply IHp2. rewrite H2.
-          enough (existT expr _ e2 = existT expr _ e2').
-          { now rewrite <- H0. }
-          apply enforce_type_eq.
-          exact H2'.
+      destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
+      destruct (elaborate G p2) as [[t2 e2] |] eqn : H2; try easy.
+      apply elaborate_binop_wf with (po := po) (e1 := e1) (e2 := e2).
+      + now apply IHp1.
+      + now apply IHp2.
+      + easy.
     - (* PEFlatmap p1 x p2 *)
       destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
       destruct t1; try easy.
@@ -521,7 +524,7 @@ Section WithMap.
         * apply IHxs. exact H2.
     - (* PEProj p s *)
       unfold elaborate_proj in H.
-      destruct (elaborate G p) as [[t0 e0] |] eqn: H0; try easy.
+      destruct (elaborate G p) as [[t0 e0] |] eqn : H0; try easy.
       apply elaborate_proj_wf with (e := e0) (s := s).
       + now apply IHp.
       + exact H.
