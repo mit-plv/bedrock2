@@ -28,15 +28,15 @@ Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .*
       store32(a, w2);                                                    /**. .**/
       w2 = w0;                                                           /**. .**/
     } else {                                                             /**. .**/
-    }                                                                    /**. .**/
-  }                                                                      /**. .**/
+    } /**. end if.                                                            .**/
+  } /**. end if.                                                              .**/
   if (w2 < w1) {                                                         /**. .**/
     store32(a+4, w2);                                                    /**. .**/
     store32(a+8, w1);                                                    /**. .**/
   } else {                                                               /**. .**/
     store32(a+4, w1);                                                    /**. .**/
     store32(a+8, w2);                                                    /**. .**/
-  }                                                                      /**. .**/
+  } /**. end if.                                                              .**/
 }                                                                        /**.
 Qed.
 

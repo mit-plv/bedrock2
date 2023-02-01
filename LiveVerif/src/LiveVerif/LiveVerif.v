@@ -32,8 +32,9 @@ Section LiveVerif.
   Arguments locals: simpl never.
   Arguments env: simpl never.
 
-  Local Set Default Goal Selector "all".
+  Local Set Default Goal Selector "1".
   Local Set Ltac Backtrace.
   Local Set Ltac2 Backtrace.
 
   Local Arguments after_if {width BW word mem locals ext_spec fs b Q1 Q2 rest post}.
+  Local Arguments after_loop {width BW word mem locals ext_spec fs c t m l post}.

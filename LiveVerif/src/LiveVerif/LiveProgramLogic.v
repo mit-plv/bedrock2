@@ -1,7 +1,6 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import Coq.Strings.String.
-Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Map.Interface.
@@ -368,15 +367,6 @@ Proof. exact (Z.lt_wf 0). Qed.
 
 #[export] Hint Resolve Z_lt_downto_0_wf | 4 : wf_of_type.
 
-Ltac2 loop_invariant_above(i: ident) :=
-  Control.focus 1 1 (fun _ =>
-    let n := Fresh.in_goal (Option.get (Ident.of_string "Scope0")) in
-    (* TODO use `pose proof` once implemented https://github.com/coq/coq/issues/14289 *)
-    pose (mk_scope_marker LoopInvariant) as $n; Std.clearbody [ n ];
-    move $n after $i).
-
-Ltac2 Notation "loop" "invariant" "above" i(ident) := loop_invariant_above i.
-
 Tactic Notation "loop" "invariant" "above" ident(i) :=
   let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
   move n after i.
@@ -420,9 +410,7 @@ Ltac isnt_local_var name :=
       end
   end.
 
-Ltac add_snippet s :=
-  assert_no_error;
-  unfold ready;
+Ltac add_regular_snippet s :=
   lazymatch s with
   | SAssign ?is_decl ?name ?rhs =>
       lazymatch is_decl with
@@ -444,10 +432,53 @@ Ltac add_snippet s :=
       eapply wp_skip;
       package_heapletwise_context
   | SWhile ?cond ?measure0 => while cond measure0
-  | SStart => start
+  | SStart => fail "SStart can only be used to start a function"
   | SEnd => close_block
   | SRet ?retnames => ret retnames
   | SEmpty => idtac
+  end.
+
+Ltac add_snippet s :=
+  assert_no_error;
+  lazymatch goal with
+  | |- @ready _ => unfold ready; add_regular_snippet s
+  | |- program_logic_goal_for _ _ =>
+      lazymatch s with
+      | SStart => start
+      | _ => fail "expected {, but got" s
+      end
+  | |- final_postcond_marker _ =>
+      lazymatch s with
+      | SEnd => close_block
+      | _ => fail "expected }, but got" s
+      end
+  | |- _ => fail "can't add snippet in non-ready goal"
+  end.
+
+Ltac end_if_comment :=
+  lazymatch goal with
+  | |- after_if _ _ ?Q1 ?Q2 _ _ =>
+      tryif is_evar Q1 then
+        fail "can't end if yet because" Q1 "not yet instantiated"
+      else
+        tryif is_evar Q2 then
+          fail "can't end if yet because" Q2 "not yet instantiated"
+        else
+          lazymatch goal with
+          | H: scope_marker IfCondition |- _ => clear H; after_if
+          | |- _ => let t := constr:(scope_marker IfCondition) in fail "missing" t
+          end
+  | _ => fail "expected after_if goal"
+  end.
+
+Ltac end_while_comment :=
+  lazymatch goal with
+  | |- after_loop ?fs ?rest ?t ?m ?l ?post =>
+      lazymatch goal with
+      | H: scope_marker LoopBody |- _ => clear H; unfold after_loop
+      | |- _ => let t := constr:(scope_marker LoopBody) in fail "missing" t
+      end
+  | _ => fail "expected after_loop goal"
   end.
 
 Lemma BoolSpec_expr_branches{Bt Bf: Prop}{b: bool}{H: BoolSpec Bt Bf b}(Pt Pf Pa: Prop):
@@ -526,12 +557,6 @@ Ltac program_logic_step :=
       let n := fresh "Scope0" in
       pose proof (mk_scope_marker ElseBranch) as n;
       change G
-  | H: scope_marker IfCondition |- after_if ?fs ?b ?Q1 ?Q2 ?rest ?post =>
-      tryif is_evar Q1 then idtac (* need to first complete then-branch *)
-      else tryif is_evar Q2 then idtac (* need to first complete else-branch *)
-      else (clear H; after_if)
-  | H: scope_marker LoopBody |- after_loop ?fs ?b ?Q1 ?Q2 ?rest ?post =>
-      clear H; unfold after_loop
   | |- True => constructor
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ => put_into_current_locals
   | |- iff1 (seps ?LHS) (seps ?RHS) =>
@@ -589,12 +614,12 @@ Ltac step :=
   step0.
 
 Ltac step_is_done :=
-  match goal with
+  lazymatch goal with
   | |- @ready _ => idtac
   | |- @final_postcond_marker _ => idtac
   | |- don't_know_how_to_prove_equal _ _ => idtac
-  | |- after_if _ _ ?Q1 ?Q2 _ _ => is_evar Q1
-  | |- after_if _ _ ?Q1 ?Q2 _ _ => is_evar Q2
+  | |- after_if _ _ _ _ _ _ => idtac
+  | |- after_loop _ _ _ _ _ _ => idtac
   end.
 
 Ltac run_steps :=
@@ -608,24 +633,16 @@ Ltac run_steps :=
 (* can be overridden with idtac for debugging *)
 Ltac run_steps_hook := run_steps.
 
-Ltac2 step () := ltac1:(step).
+Ltac next_snippet s := add_snippet s; run_steps_hook.
 
-Ltac2 Notation "step" := step ().
+Tactic Notation ".*" constr(s) "*" := next_snippet s.
 
-Ltac2 add_snippet(s: constr) := ltac1:(s |- add_snippet s) (Ltac1.of_constr s).
-Ltac2 run_steps_hook () := ltac1:(run_steps_hook).
+(* mandatory "end if." comment after closing brace, triggers unpacking of merged
+   then/else postcondition *)
+Tactic Notation "end" "if" := end_if_comment; run_steps_hook.
 
-Ltac2 next_snippet(s: unit -> constr) :=
-  match Control.case (fun _ => Control.focus 1 2 (fun _ => ())) with
-  | Val _ => (* there are >= 2 open goals *)
-      Control.focus 1 1 (fun _ => add_snippet (s ()); run_steps_hook ());
-      Control.focus 1 1 run_steps_hook
-  | Err _ => (* at most 1 open goal *)
-      Control.focus 1 1 (fun _ => add_snippet (s ()); run_steps_hook ())
-  end.
-
-Ltac2 Notation ".*" s(thunk(constr)) "*" := next_snippet s.
-Ltac2 Notation "#*" s(thunk(constr)) "*" := next_snippet s.
+(* mandatory "end while." comment after closing brace, triggers some cleanup *)
+Tactic Notation "end" "while" := end_while_comment; run_steps_hook.
 
 (* for situations where we want to avoid repeating the function name *)
 Notation fnspec := (ProgramLogic.spec_of _) (only parsing).

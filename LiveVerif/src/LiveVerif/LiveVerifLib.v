@@ -32,4 +32,3 @@ Require Export LiveVerif.PackageContext.
 Require Export LiveVerif.LiveProgramLogic.
 Require Export LiveVerif.LiveParsing.
 Require Coq.derive.Derive.
-Require Export Ltac2.Ltac2.
