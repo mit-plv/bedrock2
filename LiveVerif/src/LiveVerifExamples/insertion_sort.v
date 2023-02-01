@@ -75,7 +75,7 @@ Qed. *)
 void insertion_sort(uintptr_t p, uintptr_t n) /**#
   ghost_args := (R: mem -> Prop) (arr : list Z);
   requires t m := sep (array (uint 32) \[n] arr p) R m;
-  ensures t' m' := t' = t /\ 
+  ensures t' m' := t' = t /\
             sep (array (uint 32) \[n] (sort arr) p) R m' #**/ /**.
 Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_ok.
 (* open function *)
@@ -84,34 +84,30 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
   .**/ uintptr_t i = 0; /**.
 
   (* invariants - true at the beginning of the loop *)
-  assert (0 <= \[i] <= \[n]) by ltac1:(ZnWords).
-  assert (len arr = \[n]-\[i]) as lenArrR by
-    ltac1:(bottom_up_simpl_sidecond_hook).
-  assert (len (sort nil) = \[i]) as lenArrL by (
-    ltac1:(bottom_up_simpl_in_goal);
-    rewrite sort_nil; auto).
-  ltac1:(replace arr with ((sort nil) ++ arr) in H1 by
+  assert (0 <= \[i] <= \[n]) by ZnWords.
+  assert (len arr = \[n]-\[i]) as lenArrR by bottom_up_simpl_sidecond_hook.
+  assert (len (sort nil) = \[i]) as lenArrL by
+      (bottom_up_simpl_in_goal; rewrite sort_nil; auto).
+  replace arr with ((sort nil) ++ arr) in H1 by
     (rewrite sort_nil;
     rewrite List.app_nil_l;
-    auto)).
+    auto).
 
   (* assign some names so we can generalize *)
-  ltac1:(set (arrL := nil) in * |-);
-  ltac1:(set (arrR := arr) in * |-);
+  set (arrL := nil) in * |-;
+  set (arrR := arr) in * |-;
   assert (arr = arrL ++ arrR) as HarrSplit by (subst arrL arrR; auto).
 
   (* generalize *)
-  ltac1:(loop invariant above arrL);
-  Std.clearbody [ @i; @arrL; @arrR ].
+  loop invariant above arrL;
+  clearbody i arrL arrR.
 
   .**/ while (i < n) /* decreases (n ^- i) */ { /**.
-
-    (* target goal 1 only *) {
 
     (* claim: if we're in the loop, the array is not empty,
        so we can pull an element *)
     destruct arrR as [ | x arrR' ].
-    { simpl in *; ltac1:(exfalso; ZnWords). }
+    { simpl in *; exfalso; ZnWords. }
 
     (* structure it so we can call insert *)
     rewrite List.assoc_app_cons in *.
@@ -124,16 +120,14 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
       rewrite <- ? sort_preserves_length in *;
       rewrite ? List.len_app in *;
       rewrite <- ? sort_preserves_length in *;
-      ltac1:(ZnWords)).
+      ZnWords).
 
   (* at this point we can now close the loop *)
   (* because the lengths of left side and right side have been established *)
-  .**/ } /**.
-
-(* close goal 1 *) }
+  .**/ } /**. end while.
 
 (* at the end of the loop now. arrR should be empty. *)
-  assert (len arrR = 0) by ltac1:(ZnWords).
+  assert (len arrR = 0) by ZnWords.
   assert (arrR = nil) by (destruct arrR; try discriminate; auto).
   subst.
 
