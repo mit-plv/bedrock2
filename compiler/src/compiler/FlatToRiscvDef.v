@@ -95,6 +95,7 @@ Section FlatToRiscv1.
     | access_size.four => Sw
     | access_size.word => if bitwidth iset =? 32 then Sw else Sd
     end.
+
   Definition compile_op_imm(rd: Z)(op: Syntax.bopname)(rs1: Z)(c2: Z): list Instruction :=
     match op with
     | Syntax.bopname.add => [[Addi rd rs1 c2]]
@@ -106,7 +107,7 @@ Section FlatToRiscv1.
     | Syntax.bopname.srs => [[Srai rd rs1 c2]]
     | Syntax.bopname.lts => [[Slti rd rs1 c2]]
     | Syntax.bopname.ltu => [[Sltiu rd rs1 c2]]
-    | _ => []
+    | _ => [InvalidInstruction (-1)]
     end.
 
   Definition compile_op_register(rd: Z)(op: Syntax.bopname)(rs1 rs2: Z): list Instruction :=
