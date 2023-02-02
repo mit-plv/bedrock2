@@ -38,9 +38,6 @@ Derive malloc_node SuchThat (fun_correct! malloc_node) As malloc_node_ok. .**/
 { /**. .**/
   uintptr_t r = malloc(2);   /**.
 
-  destruct H0 as [words Hwords].
-  step.
-  step.
   unfold array in *.
   unfold with_mem in *.  (* TODO: can't this be automatically done in step? *)
   step.
@@ -51,9 +48,9 @@ Derive malloc_node SuchThat (fun_correct! malloc_node) As malloc_node_ok. .**/
       let H' := fresh "Hlen" in
       rename H into H'
   end.
-  destruct words; [discriminate Hlen | idtac].
-  destruct words; [discriminate Hlen | idtac].
-  destruct words; [idtac | simpl in Hlen; lia].
+  destruct anyData; [discriminate Hlen | idtac].
+  destruct anyData; [discriminate Hlen | idtac].
+  destruct anyData; [idtac | simpl in Hlen; lia].
   simpl in H4.
   unfold with_mem in *.
   step.
@@ -61,16 +58,14 @@ Derive malloc_node SuchThat (fun_correct! malloc_node) As malloc_node_ok. .**/
   change (m2 |= R) in H2.
   .**/ return r; /**.
 
-Ltac run_steps_hook ::= idtac.
- .**/
-} /**.
-
   unfold node.
   unfold sepapps.
   simpl.
   unfold sepapp.
+ .**/
+} /**.
   instantiate (1 := {| data := _; next := _ |}).
-  eassumption.
+  all: reflexivity.
 Qed.
 
 (*

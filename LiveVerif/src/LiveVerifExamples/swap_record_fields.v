@@ -26,6 +26,8 @@ Derive swap_bc SuchThat (fun_correct! swap_bc) As swap_bc_ok.                   
 {                                                                          /**. .**/
   swap(p+4, p+8);                                                          /**. .**/
 } /**.
+reflexivity. (* TODO automate, but don't use reflexivity in the library, because
+  especially on unprovable goals with evars, it can run forever *)
 Qed.
 
   (* TODO: example where a loop uses a pointer to an element of an array inside a record

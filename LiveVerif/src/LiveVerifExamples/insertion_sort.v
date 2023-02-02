@@ -111,8 +111,11 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
 
     (* structure it so we can call insert *)
     rewrite List.assoc_app_cons in *.
+
     .**/ insert(p,n,i); /**.
-    { assumption. }
+    { (* Note: not proven automatically because evars are not yet determined
+         when this equality is encountered. *)
+      assumption. }
 
     .**/ i = i+1; /**.
     assert (len arrR' = \[n]-\[i]) by (

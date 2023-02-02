@@ -316,6 +316,15 @@ Section HeapletwiseHyps.
     exists m1, m. auto.
   Qed.
 
+  Lemma cancel_pure_head: forall {P: Prop} {Ps om Rest},
+      P ->
+      canceling Ps om Rest ->
+      canceling (emp P :: Ps) om Rest.
+  Proof.
+    unfold canceling. intros. destruct H0 as [H2 HR]. split; [intros |exact HR].
+    eapply seps_cons. eapply sep_emp_l. eauto.
+  Qed.
+
   Lemma canceling_last_step: forall hs path {P m} {Rest: Prop},
       with_mem m P ->
       mem_tree_lookup hs path = Some m ->
@@ -600,11 +609,15 @@ Ltac canceling_step :=
         | cons _ _ => fail 1000 "frame evar must be last in list"
         end
       else
-        let H := match goal with
+        lazymatch R with
+        | emp _ => eapply cancel_pure_head
+        | _ => let H :=
+                 match goal with
                  | H: with_mem _ ?P' |- _ =>
                      let __ := match constr:(Set) with _ => syntactic_unify P' R end in H
                  end in
-        cancel_head_with_hyp H
+               cancel_head_with_hyp H
+        end
   | |- True => constructor
   end.
 
@@ -703,7 +716,7 @@ Section HeapletwiseHypsTests.
 
   Context (frobnicate: fname).
   Context (frobnicate_ok: forall (a1 a2 v1 v2: nat) t m (R: mem -> Prop),
-              sep (scalar v1 a1) (sep (scalar v2 a2) R) m ->
+              sep (sep (emp True) (scalar v1 a1)) (sep (scalar v2 a2) R) m ->
               call frobnicate t m [a1; a2] (fun t' m' rets =>
                    exists d, rets = [d] /\ d <= v1 /\
                    sep (scalar (v1 + v2 + d) a1) (sep (scalar (v1 - v2 - d) a2) R) m')).

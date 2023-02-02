@@ -506,7 +506,7 @@ Ltac cleanup_step :=
   | _: ?x = ?y |- _ =>
       first [ is_var x; is_substitutable_rhs y; subst_unless_local_var x
             | is_var y; is_substitutable_rhs x; subst_unless_local_var y ]
-  | H: ?T |- _ => is_destructible_and T; let H' := fresh H in destruct H as (H & H')
+  | |- _ => progress fwd
   end.
 
 Definition don't_know_how_to_prove_equal{A: Type} := @eq A.
@@ -518,6 +518,7 @@ Notation "'don't_know_how_to_prove_equal' x y" :=
 Ltac default_eq_prover :=
   match goal with
   | |- ?l = ?r => _syntactic_unify_deltavar l r; reflexivity
+  | H: ?l = ?r |- ?l = ?r => exact H
   | |- _ => repeat match goal with
               | x := _ |- _ => subst x
               end;
@@ -528,9 +529,7 @@ Ltac default_eq_prover :=
             end
   end.
 
-Ltac eq_prover_hook :=
-  default_eq_prover;
-  try reflexivity. (* <-- might lead to trouble, TODO make less aggressive *)
+Ltac eq_prover_hook := default_eq_prover.
 
 Ltac simpl_hook := repeat bottom_up_simpl_in_hyps_and_vars; try record.simp.
 
