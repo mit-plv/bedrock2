@@ -1332,6 +1332,9 @@ Section Proofs.
     + assumption.
   Qed.
 
+
+  Ltac run_and_done := run1det; run1done.
+
   Lemma compile_stmt_correct:
     (forall resvars extcall argvars,
         compiles_FlatToRiscv_correctly compile_ext_call
@@ -1848,25 +1851,45 @@ Section Proofs.
         unfold valid_FlatImp_var, RegisterNames.sp in *.
         blia.
       }
-      inline_iff1.
+      inline_iff1;
       match goal with
-      | o: Syntax.bopname.bopname |- _ => destruct o
-      end; repeat match goal with
-             | y : operand |- _ => destruct y; [ | admit] (* TODO *)
-           end;
-      simpl in *; run1det;
-      rewrite ?word.sru_ignores_hibits,
-              ?word.slu_ignores_hibits,
-              ?word.srs_ignores_hibits,
-              ?word.mulhuu_simpl,
-              ?word.divu0_simpl,
-              ?word.modu0_simpl in *.
-      all: try solve [run1done].
-      (* bopname.eq requires two instructions *)
-      run1det. run1done.
-      rewrite reduce_eq_to_sub_and_lt.
-      rewrite map.put_put_same.
-      eauto with map_hints.
+      | op: Syntax.bopname.bopname |- _ =>
+          destruct op eqn:Eop;
+          match goal with
+          | H: ?x = Syntax.bopname.add, y: operand |- _ =>
+              destr y; simpl in *; run1det; run1done; fwd; eauto 8 with map_hints
+          | H: ?x = Syntax.bopname.or, y: operand |- _ =>
+              destr y; simpl in *; run1det; run1done; fwd; eauto 8 with map_hints
+          | H: ?x = Syntax.bopname.xor, y: operand |- _ =>
+              destr y; simpl in *; run1det; run1done; fwd; eauto 8 with map_hints
+          | H: ?x = Syntax.bopname.and, y: operand |- _ =>
+              destr y; simpl in *; run1det; run1done; fwd; eauto 8 with map_hints
+          | H: ?x = Syntax.bopname.ltu, y: operand |- _ =>
+              destr y; simpl in *; run1det; run1done; fwd; eauto 8 with map_hints
+          | H: ?x = Syntax.bopname.lts, y: operand |- _ =>
+              destr y; simpl in *; run1det; run1done; fwd; eauto 8 with map_hints
+          | H: ?x = Syntax.bopname.sru, y: operand |- _ =>
+              destr y; simpl in *; run1det; run1done; [rewrite word.sru_ignores_hibits; eauto 8 with map_hints | fwd; eauto 8 with map_hints ]
+          | H: ?x = Syntax.bopname.slu, y: operand |- _ =>
+              destr y; simpl in *; run1det; run1done; [rewrite word.slu_ignores_hibits; eauto 8 with map_hints | fwd; eauto 8 with map_hints ]
+          | H: ?x = Syntax.bopname.srs, y: operand |- _ =>
+              destr y; simpl in *; run1det; run1done; [rewrite word.srs_ignores_hibits; eauto 8 with map_hints | fwd; eauto 8 with map_hints ]
+          | H: ?x = Syntax.bopname.sub, y: operand |- _ =>
+              destr y; simpl in *; [ run1det; run1done | admit ]
+          | H: ?x = Syntax.bopname.mul, y: operand |- _ =>
+              destr y; simpl in *; [ run1det; run1done | admit ]
+          | H: ?x = Syntax.bopname.mulhuu, y: operand |- _ =>
+              destr y; simpl in *; [ run1det; run1done; rewrite word.mulhuu_simpl; eauto 8 with map_hints  | admit ]
+
+          | H: ?x = Syntax.bopname.divu, y: operand |- _ =>
+              destr y; simpl in *; [ run1det; run1done; rewrite word.divu0_simpl; eauto 8 with map_hints | admit ]
+          | H: ?x = Syntax.bopname.remu, y: operand |- _ =>
+              destr y; simpl in *; [ run1det; run1done; rewrite word.modu0_simpl; eauto 8 with map_hints | admit ]
+          | H: ?x = Syntax.bopname.eq, y: operand |- _ =>
+              destr y; simpl in *; [ run1det; run1det; run1done; rewrite reduce_eq_to_sub_and_lt; rewrite map.put_put_same; eauto 8 with map_hints | admit ]
+          end
+      end.
+
     - idtac "Case compile_stmt_correct/SSet".
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
