@@ -7,6 +7,7 @@ Section LiveVerif.
   Local Open Scope word_scope.
   Local Open Scope string_scope. Local Open Scope Z_scope.
   Import ZList.List.ZIndexNotations.
+  Import DoubleBraceUpdate.
   Local Open Scope zlist_scope.
   Local Open Scope sep_bullets_scope.
   Local Open Scope live_scope.
@@ -31,8 +32,9 @@ Section LiveVerif.
   Arguments locals: simpl never.
   Arguments env: simpl never.
 
-  Local Set Default Goal Selector "all".
+  Local Set Default Goal Selector "1".
   Local Set Ltac Backtrace.
   Local Set Ltac2 Backtrace.
 
   Local Arguments after_if {width BW word mem locals ext_spec fs b Q1 Q2 rest post}.
+  Local Arguments after_loop {width BW word mem locals ext_spec fs c t m l post}.

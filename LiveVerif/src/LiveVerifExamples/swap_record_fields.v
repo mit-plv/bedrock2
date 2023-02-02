@@ -1,7 +1,6 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
 Require Import LiveVerifExamples.swap.
-Require Import coqutil.Datatypes.RecordSetters. Import DoubleBraceUpdate.
 
 Record foo_t := {
   fieldA: uint_t 32;
@@ -9,8 +8,6 @@ Record foo_t := {
   fieldC: uint_t 32;
   fieldD: uint_t 32;
 }.
-
-Require Import Coq.Logic.FunctionalExtensionality.
 
 Load LiveVerif.
 
@@ -27,22 +24,11 @@ void swap_bc(uintptr_t p) /**#
           * R }> m' #**/                                                   /**.
 Derive swap_bc SuchThat (fun_correct! swap_bc) As swap_bc_ok.                   .**/
 {                                                                          /**. .**/
-  swap(p+4, p+8);                                                          /**.
-
-  unfold foo in *|-.
-
-  ltac1:(
-    let a' := constr:(p ^+ /[4]) in
-    let sz := constr:(4) in
-    let H := constr:(H1) in
-    lazymatch type of H with
-    | with_mem _ (sepapps _ ?a) =>
-        unshelve epose proof (split_off_field_from_sepapps 1 a a' sz _ _)
-    end).
-
-  Focus 3.
-
-Abort.
+  swap(p+4, p+8);                                                          /**. .**/
+} /**.
+reflexivity. (* TODO automate, but don't use reflexivity in the library, because
+  especially on unprovable goals with evars, it can run forever *)
+Qed.
 
   (* TODO: example where a loop uses a pointer to an element of an array inside a record
      instead of an index i into the array

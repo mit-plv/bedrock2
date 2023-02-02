@@ -34,8 +34,6 @@ Proof.
   ZnWords.
 Qed.
 
-Set Default Proof Mode "Ltac2".
-
 #[export] Instance spec_of_fibonacci: fnspec :=                                 .**/
 
 uintptr_t fibonacci(uintptr_t n) /**#
@@ -51,15 +49,14 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
     b = 1;                                                                 /**. .**/
     uintptr_t i = 1;                                                       /**.
 
-    1: ltac1:(
-    let_bindings_to_eqs;
+    let_bindings_to_eqs.
     replace /[0] with (fib (i ^- /[1])) in Ha by
-        (subst; unfold fib; bottom_up_simpl_in_goal; reflexivity);
+        (subst; unfold fib; bottom_up_simpl_in_goal; reflexivity).
     replace /[1] with (fib i) in Hb by
-        (subst; unfold fib; bottom_up_simpl_in_goal; reflexivity);
-    assert (1 <= \[i] <= \[n]) by ZnWords;
-    eqs_to_let_bindings;
-    clearbody i; move b after a).
+        (subst; unfold fib; bottom_up_simpl_in_goal; reflexivity).
+    assert (1 <= \[i] <= \[n]) by ZnWords.
+    eqs_to_let_bindings.
+    clearbody i; move b after a.
 
     loop invariant above i.                                                     .**/
 
@@ -68,13 +65,12 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
       a = b;                                                               /**. .**/
       b = t;                                                               /**. .**/
       i = i + 1;                                                           /**. .**/
-    }                                                                      /**.
-    1: ltac1:(rewrite fib_recursion by ZnWords; reflexivity).                   .**/
-  }                                                                        /**. .**/
+    } /**. rewrite fib_recursion by ZnWords; reflexivity. end while.            .**/
+  } /**. end if.                                                                .**/
   return b;                                                                /**. .**/
 }                                                                          /**.
-{ unfold fib. ltac1:(bottom_up_simpl_in_goal; reflexivity). }
-{ ltac1:(replace i with n by ZnWords). reflexivity. }
+{ unfold fib. bottom_up_simpl_in_goal. reflexivity. }
+{ replace i with n by ZnWords. reflexivity. }
 Qed.
 
 End LiveVerif. Comments .**/ //.

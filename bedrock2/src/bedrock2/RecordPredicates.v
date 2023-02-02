@@ -80,44 +80,6 @@ Ltac create_predicate :=
   let h := head p in unfold h; typeclasses eauto
 : typeclass_instances.
 
-Module Examples_TODO_move.
-
-Definition MAC := array_t (uint_t 8) 6.
-#[export] Hint Extern 1 (RepPredicate MAC) =>
-   exact (array (uint 8) 6) : typeclass_instances.
-
-Definition IPv4 := array_t (uint_t 8) 4.
-#[export] Hint Extern 1 (RepPredicate IPv4) =>
-  exact (array (uint 8) 4) : typeclass_instances.
-
-Definition ARPOperationRequest: Z := 1.
-Definition ARPOperationReply: Z := 2.
-
-Record ARPPacket_t := mkARPPacket {
-  htype: uint_t 16; (* hardware type *)
-  ptype: uint_t 16; (* protocol type *)
-  hlen: uint_t 8;   (* hardware address length (6 for MAC addresses) *)
-  plen: uint_t 8;   (* protocol address length (4 for IPv4 addresses) *)
-  oper: uint_t 16;
-  sha: MAC;  (* sender hardware address *)
-  spa: IPv4; (* sender protocol address *)
-  tha: MAC;  (* target hardware address *)
-  tpa: IPv4; (* target protocol address *)
-}.
-
-Record EthernetHeader_t := mkEthernetHeader {
-  dstMAC: MAC;
-  srcMAC: MAC;
-  etherType: uint_t 16;
-}.
-
-Record var_size_foo_t := {
-  foo_size: uint_t 32;
-  foo_stuff: uint_t 16;
-  foo_payload: array_t (uint_t 8) foo_size;
-  foo_trailer: uint_t 16;
-}.
-
 Ltac is_ground_Z x :=
   lazymatch x with
   | ?op ?a ?b =>
@@ -168,37 +130,75 @@ Ltac sepapps_size_with_ground_acc acc l :=
   let sz := sepapps_size_with_ground_acc Z0 l in exact sz
 : typeclass_instances.
 
-Section WithMem.
-  Local Open Scope Z_scope.
-  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
-  Context {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
+Module Examples_TODO_move.
 
-  Instance ARPPacket: RepPredicate ARPPacket_t :=
-    ltac:(create_predicate).
+  Definition MAC := array_t (uint_t 8) 6.
+  #[export] Hint Extern 1 (RepPredicate MAC) =>
+     exact (array (uint 8) 6) : typeclass_instances.
 
-  Goal forall p, (_ : PredicateSize (ARPPacket p)) = 28. intros. reflexivity. Abort.
+  Definition IPv4 := array_t (uint_t 8) 4.
+  #[export] Hint Extern 1 (RepPredicate IPv4) =>
+    exact (array (uint 8) 4) : typeclass_instances.
 
-  Instance EthernetHeader: RepPredicate EthernetHeader_t :=
-    ltac:(create_predicate).
+  Definition ARPOperationRequest: Z := 1.
+  Definition ARPOperationReply: Z := 2.
 
-  Goal forall p, (_ : PredicateSize (EthernetHeader p)) = 14. intros. reflexivity. Abort.
+  Record ARPPacket_t := mkARPPacket {
+    htype: uint_t 16; (* hardware type *)
+    ptype: uint_t 16; (* protocol type *)
+    hlen: uint_t 8;   (* hardware address length (6 for MAC addresses) *)
+    plen: uint_t 8;   (* protocol address length (4 for IPv4 addresses) *)
+    oper: uint_t 16;
+    sha: MAC;  (* sender hardware address *)
+    spa: IPv4; (* sender protocol address *)
+    tha: MAC;  (* target hardware address *)
+    tpa: IPv4; (* target protocol address *)
+  }.
 
-  Instance var_size_foo: RepPredicate var_size_foo_t :=
-    ltac:(create_predicate).
+  Record EthernetHeader_t := mkEthernetHeader {
+    dstMAC: MAC;
+    srcMAC: MAC;
+    etherType: uint_t 16;
+  }.
 
-  Goal forall p, (_ : PredicateSize (var_size_foo p)) = 6 + (foo_size p * 1 + 2).
-  Proof. intros. reflexivity. Abort.
+  Record var_size_foo_t := {
+    foo_size: uint_t 32;
+    foo_stuff: uint_t 16;
+    foo_payload: array_t (uint_t 8) foo_size;
+    foo_trailer: uint_t 16;
+  }.
 
-  (* not a Lemma because this kind of goal will be solved inline by sepcalls canceler *)
-  Goal forall (bs: list (uint_t 8)) (R: mem -> Prop) a m (Rest: EthernetHeader_t -> Prop),
-      sep (array (uint 8) 14 bs a) R m ->
-      exists h, sep (EthernetHeader h a) R m /\ Rest h.
-  Proof.
-    intros.
-    eexists (mkEthernetHeader _ _ _).
-    unfold EthernetHeader.
-    unfold sepapp.
-  Abort.
+  Section WithMem.
+    Local Open Scope Z_scope.
+    Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
+    Context {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
 
-End WithMem.
+    Instance ARPPacket: RepPredicate ARPPacket_t :=
+      ltac:(create_predicate).
+
+    Goal forall p, (_ : PredicateSize (ARPPacket p)) = 28. intros. reflexivity. Abort.
+
+    Instance EthernetHeader: RepPredicate EthernetHeader_t :=
+      ltac:(create_predicate).
+
+    Goal forall p, (_ : PredicateSize (EthernetHeader p)) = 14. intros. reflexivity. Abort.
+
+    Instance var_size_foo: RepPredicate var_size_foo_t :=
+      ltac:(create_predicate).
+
+    Goal forall p, (_ : PredicateSize (var_size_foo p)) = 6 + (foo_size p * 1 + 2).
+    Proof. intros. reflexivity. Abort.
+
+    (* not a Lemma because this kind of goal will be solved inline by sepcalls canceler *)
+    Goal forall (bs: list (uint_t 8)) (R: mem -> Prop) a m (Rest: EthernetHeader_t -> Prop),
+        sep (array (uint 8) 14 bs a) R m ->
+        exists h, sep (EthernetHeader h a) R m /\ Rest h.
+    Proof.
+      intros.
+      eexists (mkEthernetHeader _ _ _).
+      unfold EthernetHeader.
+      unfold sepapp.
+    Abort.
+
+  End WithMem.
 End Examples_TODO_move.

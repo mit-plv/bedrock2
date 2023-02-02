@@ -7,6 +7,7 @@ Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwi
 Require Import coqutil.Map.Interface.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic.
 Require Import bedrock2.SepLib.
+Require Import bedrock2.PurifySep.
 
 Definition sepapp{width: Z}{BW: Bitwidth width}{word: word.word width}
   {mem: map.map word Byte.byte}
@@ -34,6 +35,11 @@ Definition hole{key value}{mem: map.map key value}(n: Z)(addr: key): mem -> Prop
 #[export] Hint Extern 1 (PredicateSize (hole ?n)) => exact n : typeclass_instances.
 #[export] Hint Opaque hole : typeclass_instances.
 
+(* pair of a predicate and its size, used as tree leaves *)
+Inductive sized_predicate{width: Z}{BW: Bitwidth width}{word: word.word width}
+  {mem: map.map word Byte.byte}: Type :=
+| mk_sized_predicate(p: word -> mem -> Prop)(sz: PredicateSize p).
+
 Section Reassociate_sepapp.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}
     {mem: map.map word byte} {mem_ok: map.ok mem}.
@@ -55,10 +61,6 @@ Section Reassociate_sepapp.
     reflexivity.
   Qed.
 
-  (* pair of a predicate and its size, used as tree leaves *)
-  Inductive sized_predicate: Type :=
-  | mk_sized_predicate(p: word -> mem -> Prop)(sz: PredicateSize p).
-
   Definition sized_emp := mk_sized_predicate (fun a => emp True) 0.
 
   Definition sepapp_sized_predicates(sp1 sp2: sized_predicate): sized_predicate :=
@@ -79,6 +81,11 @@ Section Reassociate_sepapp.
 
   Definition sepapps(l: list sized_predicate): word -> mem -> Prop :=
     proj_predicate (List.fold_right sepapp_sized_predicates sized_emp l).
+
+  (* Could be made stronger, but probably better to purify before a record
+     has been unfolded into sepapps *)
+  Lemma purify_sepapps: forall l a, purify (sepapps l a) True.
+  Proof. unfold purify. intros. constructor. Qed.
 
   Definition sepapps_size(l: list sized_predicate): Z :=
     List.fold_right Z.add 0 (List.map proj_size l).
@@ -178,3 +185,5 @@ Section Reassociate_sepapp.
 *)
 
 End Reassociate_sepapp.
+
+#[export] Hint Resolve purify_sepapps: purify.

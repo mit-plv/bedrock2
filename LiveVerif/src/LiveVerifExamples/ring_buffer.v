@@ -34,7 +34,6 @@ Derive ring_buf_enq SuchThat (fun_correct! ring_buf_enq) As ring_buf_enq_ok.    
 {                                                                          /**. .**/
   uintptr_t i = (load32(b_addr+4) + load32(b_addr+8)) % load32(b_addr);       /**.
 
-  clear Error.
   unfold raw_ring_buffer in *|-.
 
   (* interp_sepapp_tree semi-reification to expose one field *)

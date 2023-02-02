@@ -1,7 +1,6 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
 Require Import Coq.Strings.String.
-Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Map.Interface.
@@ -11,6 +10,7 @@ Require Import coqutil.Tactics.destr.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.foreach_hyp.
+Require Import coqutil.Datatypes.RecordSetters.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
@@ -78,8 +78,6 @@ Ltac bottom_up_simpl_sidecond_hook ::=
   purify_heapletwise_hyps;
   try bottom_up_simpl_in_goal;
   lia.
-
-Ltac after_steps_simpl_hook := repeat bottom_up_simpl_in_hyps_and_vars.
 
 Ltac start :=
   lazymatch goal with
@@ -369,15 +367,6 @@ Proof. exact (Z.lt_wf 0). Qed.
 
 #[export] Hint Resolve Z_lt_downto_0_wf | 4 : wf_of_type.
 
-Ltac2 loop_invariant_above(i: ident) :=
-  Control.focus 1 1 (fun _ =>
-    let n := Fresh.in_goal (Option.get (Ident.of_string "Scope0")) in
-    (* TODO use `pose proof` once implemented https://github.com/coq/coq/issues/14289 *)
-    pose (mk_scope_marker LoopInvariant) as $n; Std.clearbody [ n ];
-    move $n after $i).
-
-Ltac2 Notation "loop" "invariant" "above" i(ident) := loop_invariant_above i.
-
 Tactic Notation "loop" "invariant" "above" ident(i) :=
   let n := fresh "Scope0" in pose proof (mk_scope_marker LoopInvariant) as n;
   move n after i.
@@ -421,9 +410,7 @@ Ltac isnt_local_var name :=
       end
   end.
 
-Ltac add_snippet s :=
-  assert_no_error;
-  unfold ready;
+Ltac add_regular_snippet s :=
   lazymatch s with
   | SAssign ?is_decl ?name ?rhs =>
       lazymatch is_decl with
@@ -445,10 +432,53 @@ Ltac add_snippet s :=
       eapply wp_skip;
       package_heapletwise_context
   | SWhile ?cond ?measure0 => while cond measure0
-  | SStart => start
+  | SStart => fail "SStart can only be used to start a function"
   | SEnd => close_block
   | SRet ?retnames => ret retnames
   | SEmpty => idtac
+  end.
+
+Ltac add_snippet s :=
+  assert_no_error;
+  lazymatch goal with
+  | |- @ready _ => unfold ready; add_regular_snippet s
+  | |- program_logic_goal_for _ _ =>
+      lazymatch s with
+      | SStart => start
+      | _ => fail "expected {, but got" s
+      end
+  | |- final_postcond_marker _ =>
+      lazymatch s with
+      | SEnd => close_block
+      | _ => fail "expected }, but got" s
+      end
+  | |- _ => fail "can't add snippet in non-ready goal"
+  end.
+
+Ltac end_if_comment :=
+  lazymatch goal with
+  | |- after_if _ _ ?Q1 ?Q2 _ _ =>
+      tryif is_evar Q1 then
+        fail "can't end if yet because" Q1 "not yet instantiated"
+      else
+        tryif is_evar Q2 then
+          fail "can't end if yet because" Q2 "not yet instantiated"
+        else
+          lazymatch goal with
+          | H: scope_marker IfCondition |- _ => clear H; after_if
+          | |- _ => let t := constr:(scope_marker IfCondition) in fail "missing" t
+          end
+  | _ => fail "expected after_if goal"
+  end.
+
+Ltac end_while_comment :=
+  lazymatch goal with
+  | |- after_loop ?fs ?rest ?t ?m ?l ?post =>
+      lazymatch goal with
+      | H: scope_marker LoopBody |- _ => clear H; unfold after_loop
+      | |- _ => let t := constr:(scope_marker LoopBody) in fail "missing" t
+      end
+  | _ => fail "expected after_loop goal"
   end.
 
 Lemma BoolSpec_expr_branches{Bt Bf: Prop}{b: bool}{H: BoolSpec Bt Bf b}(Pt Pf Pa: Prop):
@@ -476,7 +506,7 @@ Ltac cleanup_step :=
   | _: ?x = ?y |- _ =>
       first [ is_var x; is_substitutable_rhs y; subst_unless_local_var x
             | is_var y; is_substitutable_rhs x; subst_unless_local_var y ]
-  | H: ?T |- _ => is_destructible_and T; let H' := fresh H in destruct H as (H & H')
+  | |- _ => progress fwd
   end.
 
 Definition don't_know_how_to_prove_equal{A: Type} := @eq A.
@@ -488,6 +518,7 @@ Notation "'don't_know_how_to_prove_equal' x y" :=
 Ltac default_eq_prover :=
   match goal with
   | |- ?l = ?r => _syntactic_unify_deltavar l r; reflexivity
+  | H: ?l = ?r |- ?l = ?r => exact H
   | |- _ => repeat match goal with
               | x := _ |- _ => subst x
               end;
@@ -499,6 +530,8 @@ Ltac default_eq_prover :=
   end.
 
 Ltac eq_prover_hook := default_eq_prover.
+
+Ltac simpl_hook := repeat bottom_up_simpl_in_hyps_and_vars; try record.simp.
 
 Ltac program_logic_step :=
   lazymatch goal with
@@ -523,12 +556,6 @@ Ltac program_logic_step :=
       let n := fresh "Scope0" in
       pose proof (mk_scope_marker ElseBranch) as n;
       change G
-  | H: scope_marker IfCondition |- after_if ?fs ?b ?Q1 ?Q2 ?rest ?post =>
-      tryif is_evar Q1 then idtac (* need to first complete then-branch *)
-      else tryif is_evar Q2 then idtac (* need to first complete else-branch *)
-      else (clear H; after_if)
-  | H: scope_marker LoopBody |- after_loop ?fs ?b ?Q1 ?Q2 ?rest ?post =>
-      clear H; unfold after_loop
   | |- True => constructor
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ => put_into_current_locals
   | |- iff1 (seps ?LHS) (seps ?RHS) =>
@@ -547,7 +574,6 @@ Ltac program_logic_step :=
   | |- forall t' m' (retvs: list ?word),
       _ -> exists l', map.putmany_of_list_zip _ retvs ?l = Some l' /\ wp_cmd _ _ _ _ _ _
     => (* after a function call *)
-      purify_heapletwise_hyps_instead_of_clearing;
       let retvsname := fresh retvs in
       intros ? ? retvsname (? & ? & ?);
       subst retvsname
@@ -562,30 +588,37 @@ Ltac program_logic_step :=
   | |- _ => first
       [ cleanup_step
       | progress autounfold with live_always_unfold in *
-      | match goal with
+      | lazymatch goal with
         | |- exists _, _ => eexists
+        end
+      | progress simpl_hook
+      | match goal with
         (* We try ZnWords first because it also solves some goals of shape
            (_ = _) and (_ /\ _) *)
         | |- _ => ZnWords (* TODO replace by better/faster tactic *)
         | |- _ = _ => eq_prover_hook
         | |- ?P /\ ?Q => split
         | |- wp_cmd _ _ _ _ _ _ =>
-              after_steps_simpl_hook;
               lazymatch goal with
               | |- ?G => change (@ready G)
               end
         end ]
   end.
 
-Ltac step := first [ heapletwise_step | split_merge_step | program_logic_step ].
+Ltac step0 :=
+  first [ heapletwise_step | split_merge_step | program_logic_step ].
+
+Ltac step :=
+  assert_no_error; (* <-- useful when debugging with `step. step. step. ...` *)
+  step0.
 
 Ltac step_is_done :=
-  match goal with
+  lazymatch goal with
   | |- @ready _ => idtac
   | |- @final_postcond_marker _ => idtac
   | |- don't_know_how_to_prove_equal _ _ => idtac
-  | |- after_if _ _ ?Q1 ?Q2 _ _ => is_evar Q1
-  | |- after_if _ _ ?Q1 ?Q2 _ _ => is_evar Q2
+  | |- after_if _ _ _ _ _ _ => idtac
+  | |- after_loop _ _ _ _ _ _ => idtac
   end.
 
 Ltac run_steps :=
@@ -599,24 +632,16 @@ Ltac run_steps :=
 (* can be overridden with idtac for debugging *)
 Ltac run_steps_hook := run_steps.
 
-Ltac2 step () := ltac1:(step).
+Ltac next_snippet s := add_snippet s; run_steps_hook.
 
-Ltac2 Notation "step" := step ().
+Tactic Notation ".*" constr(s) "*" := next_snippet s.
 
-Ltac2 add_snippet(s: constr) := ltac1:(s |- add_snippet s) (Ltac1.of_constr s).
-Ltac2 run_steps_hook () := ltac1:(run_steps_hook).
+(* mandatory "end if." comment after closing brace, triggers unpacking of merged
+   then/else postcondition *)
+Tactic Notation "end" "if" := end_if_comment; run_steps_hook.
 
-Ltac2 next_snippet(s: unit -> constr) :=
-  match Control.case (fun _ => Control.focus 1 2 (fun _ => ())) with
-  | Val _ => (* there are >= 2 open goals *)
-      Control.focus 1 1 (fun _ => add_snippet (s ()); run_steps_hook ());
-      Control.focus 1 1 run_steps_hook
-  | Err _ => (* at most 1 open goal *)
-      Control.focus 1 1 (fun _ => add_snippet (s ()); run_steps_hook ())
-  end.
-
-Ltac2 Notation ".*" s(thunk(constr)) "*" := next_snippet s.
-Ltac2 Notation "#*" s(thunk(constr)) "*" := next_snippet s.
+(* mandatory "end while." comment after closing brace, triggers some cleanup *)
+Tactic Notation "end" "while" := end_while_comment; run_steps_hook.
 
 (* for situations where we want to avoid repeating the function name *)
 Notation fnspec := (ProgramLogic.spec_of _) (only parsing).
@@ -652,9 +677,10 @@ Notation "'uintptr_t' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an )
   (fun fname: String.string =>
      (fun fs =>
         (forall a1, .. (forall an, (forall g1, .. (forall gn,
-          (forall t1 m1, pre ->
-             WeakestPrecondition.call fs fname t1 m1 (cons a1 .. (cons an nil) ..)
-               (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post))) .. )) .. ))
+           (forall t1 m1, pre ->
+              WeakestPrecondition.call fs fname t1 m1
+                (@cons (@word.rep _ _) a1 .. (@cons (@word.rep _ _) an nil) ..)
+                (fun t2 m2 retvs => exists r, retvs = cons r nil /\ post))) .. )) .. ))
      : ProgramLogic.spec_of fname)
 (in custom funspec at level 1,
  fname name,
@@ -671,7 +697,8 @@ Notation "'void' fname ( 'uintptr_t' a1 , 'uintptr_t' .. , 'uintptr_t' an ) /**#
      (fun fs =>
         (forall a1, .. (forall an, (forall g1, .. (forall gn,
            (forall t1 m1, pre ->
-              WeakestPrecondition.call fs fname t1 m1 (cons a1 .. (cons an nil) ..)
+              WeakestPrecondition.call fs fname t1 m1
+                (@cons (@word.rep _ _) a1 .. (@cons (@word.rep _ _) an nil) ..)
                 (fun t2 m2 retvs => retvs = nil /\ post))) .. )) .. ))
      : ProgramLogic.spec_of fname)
 (in custom funspec at level 1,
