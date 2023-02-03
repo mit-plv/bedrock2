@@ -8,6 +8,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.syntactic_unify.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.fold_hyps.
+Require Import coqutil.Datatypes.RecordSetters.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.DisjointUnion.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.SepLib.
@@ -223,6 +224,7 @@ Ltac split_range_from_hyp_default :=
       | sepapps _ _ => idtac
       | array _ _ _ _ => idtac
       | _ => let h := head P in unfold h in H;
+             record.simp_hyp H;
              lazymatch P with
              | ?pred ?v ?addr => pose proof (mk_fold_step pred)
              end
