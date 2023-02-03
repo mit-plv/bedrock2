@@ -52,8 +52,12 @@ Ltac run_steps_hook ::= run_steps.
   } else {                                                               /**. .**/
     store32(a+4, w1);                                                    /**. .**/
     store32(a+8, w2);                                                    /**. .**/
-  } /**. end if. (*                                                           .**/
-}         TODO don't loop infinitely here!                               /**.
-Qed.*) Abort.
+  } /**. end if.
+
+Ltac allow_all_substs ::= constr:(false).
+Ltac allow_all_splits ::= constr:(false).                                     .**/
+}                                                                        /**.
+(* TODO make merge_steps work *)
+Abort.
 
 End LiveVerif. Comments .**/ //.

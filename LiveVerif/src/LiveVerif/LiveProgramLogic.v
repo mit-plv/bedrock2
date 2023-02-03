@@ -165,6 +165,9 @@ Ltac destruct_ifs :=
              let t := type of b in constr_eq t bool; destr b
          end.
 
+Ltac allow_all_substs := constr:(true). (* TODO default to false *)
+Ltac allow_all_splits := constr:(true). (* TODO default to false *)
+
 Ltac prove_concrete_post_pre :=
     purify_heapletwise_hyps;
     let H := fresh "M" in collect_heaplets_into_one_sepclause H;
@@ -178,10 +181,16 @@ Ltac prove_concrete_post_pre :=
                [ clear H
                | discriminate H ]
            end;
-    repeat match goal with
-           | x := _ |- _ => subst x
-           end;
-    destruct_ifs;
+    lazymatch allow_all_substs with
+    | true => repeat match goal with
+                | x := _ |- _ => subst x
+                end
+    | false => idtac
+    end;
+    lazymatch allow_all_splits with
+    | true => destruct_ifs
+    | false => idtac
+    end;
     repeat match goal with
            | H: ands (_ :: _) |- _ => destruct H
            | H: ands nil |- _ => clear H
@@ -191,7 +200,10 @@ Ltac prove_concrete_post_pre :=
            | |- _ /\ _ => split
            | |- ?x = ?x => reflexivity
            | |- sep _ _ _ => ecancel_assumption
-           | H: _ \/ _ |- _ => destruct H (* <-- might become expensive... *)
+           | H: _ \/ _ |- _ =>
+               lazymatch allow_all_splits with
+               | true => destruct H
+               end
            | |- exists _, _ => eexists
            end;
     try bottom_up_simpl_in_goal.
