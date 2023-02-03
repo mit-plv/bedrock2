@@ -605,8 +605,22 @@ Ltac program_logic_step :=
         end ]
   end.
 
+(* needs to run before merging because before merging, some interesting hypotheses
+   are exposed that will get purified into useful facts to prove sideconditions *)
+Ltac program_logic_step_before_merging :=
+  match goal with
+  | |- ?P /\ _ =>
+      Lia.is_lia P;
+      split;
+      [ purify_heapletwise_hyps; try bottom_up_simpl_in_goal; Lia.lia | ]
+  | |- _ => progress bottom_up_simpl_in_hyps (* TODO too expensive to run so early *)
+  end.
+
 Ltac step0 :=
-  first [ heapletwise_step | split_merge_step | program_logic_step ].
+  first [ heapletwise_step
+        | program_logic_step_before_merging
+        | split_merge_step
+        | program_logic_step ].
 
 Ltac step :=
   assert_no_error; (* <-- useful when debugging with `step. step. step. ...` *)

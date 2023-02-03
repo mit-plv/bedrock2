@@ -49,3 +49,9 @@ Ltac assert_no_error :=
   | _: tactic_error _ |- _ => fail "You need to fix the error before continuing"
   | |- _ => idtac
   end.
+
+Ltac test_error e :=
+  let expected := type of e in
+  lazymatch goal with
+  | H: tactic_error ?l |- _ => unify (tactic_error l) expected
+  end.

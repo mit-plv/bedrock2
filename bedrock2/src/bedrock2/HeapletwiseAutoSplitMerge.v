@@ -7,11 +7,13 @@ Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.syntactic_unify.
 Require Import coqutil.Tactics.fwd.
+Require Import coqutil.Tactics.fold_hyps.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.DisjointUnion.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.sepapp.
 Require Import bedrock2.ZnWords.
+Require Import bedrock2.TacticError.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.bottom_up_simpl_ltac1.
 
@@ -95,20 +97,22 @@ Section SepLog.
           sepapps_offset n l = ofs -> (* <- determines n *)
           List.nth_error l n = Some (mk_sized_predicate P sz) ->
           sepapps l a m ->
-          sep (P a')
-              (sepapps (sepapps_replace l n (mk_sized_predicate (hole sz) sz)) a) m) /\
+          sep (sepapps (sepapps_replace l n (mk_sized_predicate (hole sz) sz)) a)
+              (P a') m) /\
       (forall l P m,
           sepapps_offset n l = ofs -> (* <- should be eq_refl *)
           List.nth_error l n = Some (mk_sized_predicate (hole sz) sz) ->
-          sep (P a') (sepapps l a) m ->
+          sep (sepapps l a) (P a') m ->
           sepapps (sepapps_replace l n (mk_sized_predicate P sz)) a m).
   Proof.
     intros. split; intros; subst;
       rewrite sepapps_offset_spec in H0;
       rewrite sepapps_replace_spec.
-    - rewrite (expose_nth_sepapp l n a P sz H1) in H2. eqapply H2. f_equal.
+    - rewrite (expose_nth_sepapp l n a P sz H1) in H2.
+      eapply SeparationLogic.sep_comm. eqapply H2. f_equal.
       rewrite H0. destruct width_cases; subst width; ZnWords.
-    - rewrite <- (merge_back_nth_sepapp l n a P sz H1). eqapply H2. f_equal.
+    - rewrite <- (merge_back_nth_sepapp l n a P sz H1).
+      eapply SeparationLogic.sep_comm. eqapply H2. f_equal.
       rewrite H0. destruct width_cases; subst width; ZnWords.
   Qed.
 
@@ -368,7 +372,7 @@ Ltac merge_step_in_hyp H :=
   | merge_step (forall l P m,
           sepapps_offset ?n l = ?ofs -> (* <-SC1 *)
           List.nth_error l ?n = Some (mk_sized_predicate (hole ?sz) ?sz) -> (* <-SC2 *)
-          sep (P (word.add ?p (word.of_Z ?ofs))) (sepapps l ?p) m ->
+          sep (sepapps l ?p) (P ?p_plus_ofs) m ->
           sepapps (sepapps_replace l ?n (mk_sized_predicate P ?sz)) ?p m) =>
       lazymatch goal with
       | _: with_mem _ (sepapps ?l p) |- _ =>
@@ -403,14 +407,43 @@ Proof. intros. subst. assumption. Qed.
 
 Ltac sepclause_equality_hook := syntactic_f_equal_with_ZnWords.
 
-(* Is start..start+size a subrange of start'..start'+size' ?
+(* Returns a Prop claiming that start..start+size is a subrange of start'..start'+size'.
    Assumes 0<=size<2^width and 0<=size'<2^width.
    Both ranges may wrap around. *)
+Ltac is_subrange_claim start size start' size' :=
+  constr:(word.unsigned (word.sub start start') + size <= size').
+
 Ltac is_subrange start size start' size' :=
-  (* we do the comparison in a different coordinate system, namely relative to start',
-     ie we shift (with wrapping) all points so that start' corresponds to zero *)
-  assert_succeeds (idtac;
-    assert (word.unsigned (word.sub start start') + size <= size') by ZnWords).
+  let c := is_subrange_claim start size start' size' in
+  assert_succeeds (idtac; assert c by ZnWords).
+
+Inductive PredicateSizeNotFound := .
+
+Ltac get_predicate_size_or_pose_err P :=
+  let t := constr:(PredicateSize P) in
+  match constr:(Set) with
+  | _ => lazymatch constr:(_: t) with ?s => s end
+  | _ => let __ := match constr:(Set) with
+                   | _ => pose_err Error:("typeclasses eauto" "should find" t)
+                   end in constr:(PredicateSizeNotFound)
+  end.
+
+Ltac gather_is_subrange_claims_into_error start size :=
+  fold_hyps_upwards_cont
+    (fun res h tp =>
+       lazymatch tp with
+       | with_mem ?m (?P' ?start') =>
+          lazymatch get_predicate_size_or_pose_err P' with
+          | PredicateSizeNotFound => fail "can't find PredicateSize for" P'
+          | ?size' =>
+              let c := is_subrange_claim start size start' size' in
+              constr:(cons c res)
+          end
+       | _ => res
+       end)
+    (@nil Prop)
+    (fun r => pose_err
+                Error:("Exactly one of the following subrange claims should hold:" r)).
 
 Ltac split_merge_step :=
   lazymatch goal with
@@ -421,25 +454,30 @@ Ltac split_merge_step :=
   | |- find_superrange_hyp ?start ?size ?g =>
       match goal with
       | H: with_mem ?mH (?P' ?start') |- _ =>
-          let size' := lazymatch constr:(_: PredicateSize P') with ?s => s end in
-          is_subrange start size start' size';
-          tryif assert_succeeds (idtac;
-            assert (size = size') by ZnWords)
-          then (
-            change g;
-            let P := lazymatch goal with | |- canceling (cons ?P _) _ _ => P end in
-            eapply (rew_with_mem (P' start') P mH) in H (* <-- leaves 2 open goals *)
-          ) else change (split_range_from_hyp start size _ H g)
+          lazymatch get_predicate_size_or_pose_err P' with
+          | PredicateSizeNotFound => idtac
+          | ?size' =>
+              is_subrange start size start' size';
+              tryif assert_succeeds (idtac;
+                assert (size = size') by ZnWords)
+              then (
+                change g;
+                let P := lazymatch goal with | |- canceling (cons ?P _) _ _ => P end in
+                eapply (rew_with_mem (P' start') P mH) in H (* <-- leaves 2 open goals *)
+              ) else change (split_range_from_hyp start size _ H g)
+          end
+      | _ => gather_is_subrange_claims_into_error start size
       end
   | |- split_range_from_hyp ?start ?size ?tH ?H ?g => split_range_from_hyp_hook
   | |- @eq (@map.rep (@word.rep _ _) Init.Byte.byte _ -> Prop) _ _ =>
       syntactic_f_equal_with_ZnWords
   | H: merge_step _ |- _ => merge_step_in_hyp H
-  | H: @fold_step ?R _ _ ?pred |- _ =>
+  | F: @fold_step ?R _ _ ?pred |- _ =>
       let c := lazymatch open_constr:(ltac:(constructor) : R) with ?c => c end in
       lazymatch goal with
       | H: with_mem ?m (sepapps ?l ?a) |- _ =>
           instantiate_constructor_with_sepapps c l;
           change (with_mem m (pred c a)) in H
-      end
+      end;
+      clear F
   end.
