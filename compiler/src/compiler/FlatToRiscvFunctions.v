@@ -1875,7 +1875,7 @@ Section Proofs.
           | H: ?x = Syntax.bopname.srs, y: operand |- _ =>
               destr y; simpl in *; run1det; run1done; [rewrite word.srs_ignores_hibits; eauto 8 with map_hints | fwd; eauto 8 with map_hints ]
           | H: ?x = Syntax.bopname.sub, y: operand |- _ =>
-              destr y; simpl in *; [ run1det; run1done | admit ]
+              destr y; simpl in *; [ run1det; run1done | ]
           | H: ?x = Syntax.bopname.mul, y: operand |- _ =>
               destr y; simpl in *; [ run1det; run1done | admit ]
           | H: ?x = Syntax.bopname.mulhuu, y: operand |- _ =>
@@ -1889,7 +1889,50 @@ Section Proofs.
               destr y; simpl in *; [ run1det; run1det; run1done; rewrite reduce_eq_to_sub_and_lt; rewrite map.put_put_same; eauto 8 with map_hints | admit ]
           end
       end.
+      { eapply runsTo_det_step_with_valid_machine;
+          [ assumption
+          | simulate';
+            match goal with
+            | |- ?mid = ?RHS => is_evar mid; simpl; reflexivity
+            | |- _ => idtac
+            end
+          | intros ].
 
+        { replace ((xframe *
+             (ptsto_instr iset (program_base + !pos)
+                (InvalidInstruction (-1)) * emp True) *
+             functions program_base e_pos e_impl * dframe *
+             eq m *
+             word_array
+               (p_sp -
+                !(bytes_per_word * #(Datatypes.length stack_trash)))
+               stack_trash * word_array p_sp frame_trash)%sep ) with ((
+             (ptsto_instr iset (program_base + !pos)
+                (InvalidInstruction (-1)) * emp True) *
+             functions program_base e_pos e_impl * dframe *
+             eq m *
+             word_array
+               (p_sp -
+                !(bytes_per_word * #(Datatypes.length stack_trash)))
+               stack_trash * word_array p_sp frame_trash * xframe)%sep ) in H12p6p2.
+          2: { rewrite sep_comm with (q := xframe%sep) (p := ((ptsto_instr iset (program_base + !pos)        (InvalidInstruction (-1)) * emp True) *
+             functions program_base e_pos e_impl * dframe *
+             eq m *
+             word_array
+               (p_sp -
+                !(bytes_per_word * #(Datatypes.length stack_trash)))
+               stack_trash * word_array p_sp frame_trash)%sep).
+          Search sep.
+        (*invert_ptsto_instr:
+  forall {width : Z} {word : Interface.word width},
+  word.ok word ->
+  forall mem : map.map word byte,
+  map.ok mem ->
+  forall (iset : InstructionSet) (addr : word)
+    (instr : Instruction) (R : mem -> Prop) (m : mem),
+  (ptsto_instr iset addr instr * R)%sep m ->
+  (Encode.verify instr iset \/ valid_InvalidInstruction instr) /\
+  word.unsigned addr mod 4 = 0 *)
     - idtac "Case compile_stmt_correct/SSet".
       assert (x <> RegisterNames.sp). {
         unfold valid_FlatImp_var, RegisterNames.sp in *.
