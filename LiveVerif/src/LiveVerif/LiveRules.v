@@ -514,16 +514,18 @@ Section WithParams.
     forall t m l, let c := b in
       (if c then Q1 t m l else Q2 t m l) ->
       wp_cmd fs rest t m l post.
+  Definition pop_scope_marker(P: Prop) := P.
 
   Lemma wp_if_bool_dexpr: forall fs c thn els rest t0 m0 l0 b Q1 Q2 post,
       dexpr_bool3 m0 l0 c b
         (then_branch_marker (wp_cmd fs thn t0 m0 l0 Q1))
         (else_branch_marker (wp_cmd fs els t0 m0 l0 Q2))
-        (after_if fs b Q1 Q2 rest post) ->
+        (pop_scope_marker (after_if fs b Q1 Q2 rest post)) ->
       wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t0 m0 l0 post.
   Proof.
     intros. inversion H. subst. clear H.
-    unfold then_branch_marker, else_branch_marker, after_if, bool_expr_branches in *.
+    unfold then_branch_marker, else_branch_marker, pop_scope_marker,
+      after_if, bool_expr_branches in *.
     destruct H2.
     destr (word.eqb v (word.of_Z 0));
       (eapply wp_if0;
@@ -554,7 +556,7 @@ Section WithParams.
       exists b, dexpr_bool3 m l e b
                   (wp_cmd fs c t m l
                       (fun t m l => exists v', invariant v' t m l /\ lt v' v))
-                  (after_loop fs rest t m l post)
+                  (pop_scope_marker (after_loop fs rest t m l post))
                   True)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t m l post.
   Proof.

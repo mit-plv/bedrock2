@@ -65,8 +65,9 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
       a = b;                                                               /**. .**/
       b = t;                                                               /**. .**/
       i = i + 1;                                                           /**. .**/
-    } /**. rewrite fib_recursion by ZnWords; reflexivity. end while.            .**/
-  } /**. end if.                                                                .**/
+    }                                                                      /**.
+    rewrite fib_recursion by ZnWords; reflexivity.                              .**/
+  }                                                                        /**. .**/
   return b;                                                                /**. .**/
 }                                                                          /**.
 { unfold fib. bottom_up_simpl_in_goal. reflexivity. }

@@ -451,7 +451,6 @@ Ltac add_regular_snippet s :=
   end.
 
 Ltac add_snippet s :=
-  assert_no_error;
   lazymatch goal with
   | |- @ready _ => unfold ready; add_regular_snippet s
   | |- program_logic_goal_for _ _ =>
@@ -467,7 +466,7 @@ Ltac add_snippet s :=
   | |- _ => fail "can't add snippet in non-ready goal"
   end.
 
-Ltac end_if_comment :=
+Ltac after_if_cleanup :=
   lazymatch goal with
   | |- after_if _ _ ?Q1 ?Q2 _ _ =>
       tryif is_evar Q1 then
@@ -476,20 +475,13 @@ Ltac end_if_comment :=
         tryif is_evar Q2 then
           fail "can't end if yet because" Q2 "not yet instantiated"
         else
-          lazymatch goal with
-          | H: scope_marker IfCondition |- _ => clear H; after_if
-          | |- _ => let t := constr:(scope_marker IfCondition) in fail "missing" t
-          end
+          after_if
   | _ => fail "expected after_if goal"
   end.
 
-Ltac end_while_comment :=
+Ltac after_loop_cleanup :=
   lazymatch goal with
-  | |- after_loop ?fs ?rest ?t ?m ?l ?post =>
-      lazymatch goal with
-      | H: scope_marker LoopBody |- _ => clear H; unfold after_loop
-      | |- _ => let t := constr:(scope_marker LoopBody) in fail "missing" t
-      end
+  | |- after_loop ?fs ?rest ?t ?m ?l ?post => unfold after_loop
   | _ => fail "expected after_loop goal"
   end.
 
@@ -568,6 +560,14 @@ Ltac program_logic_step :=
       let n := fresh "Scope0" in
       pose proof (mk_scope_marker ElseBranch) as n;
       change G
+  | |- pop_scope_marker (after_loop ?fs ?rest ?t ?m ?l ?post) =>
+      lazymatch goal with
+      | H: scope_marker LoopBody |- pop_scope_marker ?g => clear H; change g
+      end
+  | |- pop_scope_marker (after_if _ _ _ _ _ _) =>
+      lazymatch goal with
+      | H: scope_marker IfCondition |- pop_scope_marker ?g => clear H; change g
+      end
   | |- True => constructor
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ => put_into_current_locals
   | |- iff1 (seps ?LHS) (seps ?RHS) =>
@@ -658,16 +658,24 @@ Ltac run_steps :=
 (* can be overridden with idtac for debugging *)
 Ltac run_steps_hook := run_steps.
 
-Ltac next_snippet s := add_snippet s; run_steps_hook.
+Ltac next_snippet s :=
+  assert_no_error;
+  lazymatch goal with
+  | |- after_if _ _ ?Q1 ?Q2 _ _ => after_if_cleanup; run_steps_hook
+  | |- after_loop ?fs ?rest ?t ?m ?l ?post => after_loop_cleanup; run_steps_hook
+  | |- _ => idtac
+  end;
+  add_snippet s;
+  run_steps_hook.
 
 Tactic Notation ".*" constr(s) "*" := next_snippet s.
 
-(* mandatory "end if." comment after closing brace, triggers unpacking of merged
+(* optional "end if." comment after closing brace, triggers unpacking of merged
    then/else postcondition *)
-Tactic Notation "end" "if" := end_if_comment; run_steps_hook.
+Tactic Notation "end" "if" := after_if_cleanup; run_steps_hook.
 
-(* mandatory "end while." comment after closing brace, triggers some cleanup *)
-Tactic Notation "end" "while" := end_while_comment; run_steps_hook.
+(* optional "end while." comment after closing brace, triggers some cleanup *)
+Tactic Notation "end" "while" := after_loop_cleanup; run_steps_hook.
 
 (* for situations where we want to avoid repeating the function name *)
 Notation fnspec := (ProgramLogic.spec_of _) (only parsing).
