@@ -410,12 +410,12 @@ Ltac sepclause_equality_hook := syntactic_f_equal_with_ZnWords.
 (* Returns a Prop claiming that start..start+size is a subrange of start'..start'+size'.
    Assumes 0<=size<2^width and 0<=size'<2^width.
    Both ranges may wrap around. *)
-Ltac is_subrange_claim start size start' size' :=
-  constr:(word.unsigned (word.sub start start') + size <= size').
+Definition subrange{width: Z}{word: word.word width}(start: word)(size: Z)
+  (start': word)(size': Z) := word.unsigned (word.sub start start') + size <= size'.
 
 Ltac is_subrange start size start' size' :=
-  let c := is_subrange_claim start size start' size' in
-  assert_succeeds (idtac; assert c by ZnWords).
+  assert_succeeds (idtac; assert (subrange start size start' size') by
+                     (unfold subrange; ZnWords)).
 
 Inductive PredicateSizeNotFound := .
 
@@ -436,8 +436,7 @@ Ltac gather_is_subrange_claims_into_error start size :=
           lazymatch get_predicate_size_or_pose_err P' with
           | PredicateSizeNotFound => fail "can't find PredicateSize for" P'
           | ?size' =>
-              let c := is_subrange_claim start size start' size' in
-              constr:(cons c res)
+              constr:(cons (subrange start size start' size') res)
           end
        | _ => res
        end)
