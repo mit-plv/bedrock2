@@ -55,12 +55,12 @@ Notation "'for' x 'in' p : c 'end'"  := (PCForeach x p c)
    (in custom py_comm at level 80, p custom py_expr, c custom py_comm) : pylevel_scope.
 
 (* Type parsing (Types are prefixed with @ so they do not become keywords and pollute the namespace *)
-Notation "@ 'int'"         := TInt (in custom py_type at level 99) : pylevel_scope.
-Notation "@ 'bool'"        := TBool (in custom py_type at level 99) : pylevel_scope.
-Notation "@ 'string'"      := TString (in custom py_type at level 99) : pylevel_scope.
-Notation "@ 'pair' s x y"  := (TPair s%string x y) (in custom py_type at level 99) : pylevel_scope.
-Notation "@ 'empty'"       := TEmpty (in custom py_type at level 99) : pylevel_scope.
-Notation "@ 'list' t"      := (TList t) (in custom py_type at level 99) : pylevel_scope.
+Notation Int    := TInt.
+Notation Bool   := TBool.
+Notation String := TString.
+Notation Pair   := TPair.
+Notation Unit   := TEmpty.
+Notation List   := TList.
 
 
 (* Expression parsing *)
