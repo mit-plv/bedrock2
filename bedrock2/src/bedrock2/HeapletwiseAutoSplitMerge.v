@@ -446,7 +446,7 @@ Ltac gather_is_subrange_claims_into_error start size :=
     (fun r => pose_err
                 Error:("Exactly one of the following subrange claims should hold:" r)).
 
-Ltac split_merge_step :=
+Ltac split_step :=
   lazymatch goal with
   | |- canceling (cons (?P ?start) _) ?m _ =>
       let size := lazymatch constr:(_: PredicateSize P) with ?s => s end in
@@ -472,6 +472,10 @@ Ltac split_merge_step :=
   | |- split_range_from_hyp ?start ?size ?tH ?H ?g => split_range_from_hyp_hook
   | |- @eq (@map.rep (@word.rep _ _) Init.Byte.byte _ -> Prop) _ _ =>
       syntactic_f_equal_with_ZnWords
+  end.
+
+Ltac merge_step :=
+  lazymatch goal with
   | H: merge_step _ |- _ => merge_step_in_hyp H
   | F: @fold_step ?R _ _ ?pred |- _ =>
       let c := lazymatch open_constr:(ltac:(constructor) : R) with ?c => c end in

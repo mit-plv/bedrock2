@@ -31,7 +31,7 @@ step. step.
   2: eapply PropExtensionality.propositional_extensionality; intuition auto.
   eapply iff1ToEq. ecancel.
 }
-step. step. step. step.
+step. step. step. step. step.
 
 Ltac run_steps_hook ::= run_steps.
 

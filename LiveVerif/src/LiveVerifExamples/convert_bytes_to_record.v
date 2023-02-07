@@ -32,23 +32,8 @@ void swap_barAB(uintptr_t p) /**#
           * R }> m' #**/                                                   /**.
 Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          .**/
 {                                                                          /**. .**/
-  uintptr_t tmp = load16(p+2);                                             /**.
-
-Ltac run_steps_hook ::= idtac.
-
- .**/
-  store16(p+2, load16(p));                                                 /**.
-
-(* TODO: add markers that trigger simpl_hook once before solving preconditions,
-   and once after the call (around the wp_cmd) *)
-step. step. step. step. step. step. step. step. step. step. step. step.
-(* here: precondition solving of store, first run simpl_hook *)
-(* bottom_up_simpl_in_goal. already done in step *)
-step. step. step. step. step. step. step. step. step. step. step. step. step. step. step.
-(* here: step runs simpl_hook *)
-step. step. step. step. step.
-
-Ltac run_steps_hook ::= run_steps.                                              .**/
+  uintptr_t tmp = load16(p+2);                                             /**. .**/
+  store16(p+2, load16(p));                                                 /**. .**/
   store16(p, tmp);                                                         /**. .**/
 }                                                                          /**.
 reflexivity.

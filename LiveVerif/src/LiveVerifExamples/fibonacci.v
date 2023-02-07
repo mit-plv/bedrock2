@@ -64,8 +64,7 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
       uintptr_t t = a + b;                                                 /**. .**/
       a = b;                                                               /**. .**/
       b = t;                                                               /**. .**/
-      i = i + 1;                                                           /**.
-Time .**/
+      i = i + 1;                                                           /**. .**/
     }                                                                      /**.
     rewrite fib_recursion by ZnWords; reflexivity.                              .**/
   }                                                                        /**. .**/

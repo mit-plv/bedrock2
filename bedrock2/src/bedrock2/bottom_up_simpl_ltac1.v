@@ -863,6 +863,9 @@ Ltac bottom_up_simpl_in_vars := foreach_var bottom_up_simpl_in_letbound_var.
 
 Ltac bottom_up_simpl_in_hyps_and_vars := bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars.
 
+Ltac bottom_up_simpl_in_all :=
+  bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars; try bottom_up_simpl_in_goal.
+
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
 Section Tests.

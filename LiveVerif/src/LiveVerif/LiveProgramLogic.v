@@ -168,6 +168,15 @@ Ltac destruct_ifs :=
 Ltac allow_all_substs := constr:(true). (* TODO default to false *)
 Ltac allow_all_splits := constr:(true). (* TODO default to false *)
 
+Ltac default_simpl_in_all :=
+  repeat bottom_up_simpl_in_all; try record.simp.
+Ltac default_simpl_in_hyps :=
+  repeat bottom_up_simpl_in_hyps_and_vars; try record.simp_hyps.
+
+Ltac precond_simpl_hook := default_simpl_in_all.
+Ltac after_command_simpl_hook := default_simpl_in_hyps.
+Ltac concrete_post_simpl_hook := default_simpl_in_all.
+
 Ltac prove_concrete_post_pre :=
     purify_heapletwise_hyps;
     let H := fresh "M" in collect_heaplets_into_one_sepclause H;
@@ -206,7 +215,7 @@ Ltac prove_concrete_post_pre :=
                end
            | |- exists _, _ => eexists
            end;
-    try bottom_up_simpl_in_goal.
+    concrete_post_simpl_hook.
 
 Create HintDb prove_post.
 
@@ -364,9 +373,8 @@ Ltac call lhs fname arges :=
         unfold h in H;
         eapply H
     end
-  | ];
-  [ (* exactly one goal should be left, because spec may only have 1 precondition
-       (joined with /\) *) ].
+  | (* one dexprs1 goal containing argument evaluation, precondition, and continuation
+       after the call *) ].
 
 (* Assigns default well_founded relations to types.
    Use lower costs to override existing entries. *)
@@ -535,9 +543,7 @@ Ltac default_eq_prover :=
 
 Ltac eq_prover_hook := default_eq_prover.
 
-Ltac simpl_hook := repeat bottom_up_simpl_in_hyps_and_vars; try record.simp.
-
-Ltac program_logic_step :=
+Ltac conclusion_shape_based_step :=
   lazymatch goal with
   | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_bool3_lazy_and
   | |- dexpr_bool3 _ _ (expr.lazy_or _ _)        _ _ _ _ => eapply dexpr_bool3_lazy_or
@@ -559,6 +565,10 @@ Ltac program_logic_step :=
   | |- else_branch_marker ?G =>
       let n := fresh "Scope0" in
       pose proof (mk_scope_marker ElseBranch) as n;
+      change G
+  | |- loop_body_marker ?G =>
+      (* (mk_scope_marker LoopBody) is already posed by while tactic,
+         nothing to do here at the moment *)
       change G
   | |- pop_scope_marker (after_loop ?fs ?rest ?t ?m ?l ?post) =>
       lazymatch goal with
@@ -584,7 +594,8 @@ Ltac program_logic_step :=
           exact (iff1_refl _) ]
   | |- dlet _ (fun x => _) => eapply let_to_dlet; make_fresh x; intro x
   | |- forall t' m' (retvs: list ?word),
-      _ -> exists l', map.putmany_of_list_zip _ retvs ?l = Some l' /\ wp_cmd _ _ _ _ _ _
+      _ -> exists l', map.putmany_of_list_zip _ retvs ?l = Some l' /\
+                        after_command _ _ _ _ _ _
     => (* after a function call *)
       let retvsname := fresh retvs in
       intros ? ? retvsname (? & ? & ?);
@@ -597,42 +608,53 @@ Ltac program_logic_step :=
          to map.of_list sorted by key, and all values in the key-value tuples
          are variables or evars *)
       repeat f_equal
-  | |- _ => first
+  end.
+
+Ltac final_program_logic_step :=
+  first
       [ cleanup_step
       | progress autounfold with live_always_unfold in *
       | lazymatch goal with
         | |- exists _, _ => eexists
         end
-      | progress simpl_hook
       | match goal with
         (* We try ZnWords first because it also solves some goals of shape
            (_ = _) and (_ /\ _) *)
-        | |- _ => ZnWords (* TODO replace by better/faster tactic *)
+        | |- _ =>
+            purify_heapletwise_hyps;
+            ZnWords (* TODO replace by better/faster tactic *)
         | |- _ = _ => eq_prover_hook
         | |- ?P /\ ?Q => split
         | |- wp_cmd _ _ _ _ _ _ =>
               lazymatch goal with
               | |- ?G => change (@ready G)
               end
-        end ]
-  end.
+        end ].
 
 (* needs to run before merging because before merging, some interesting hypotheses
    are exposed that will get purified into useful facts to prove sideconditions *)
 Ltac program_logic_step_before_merging :=
-  match goal with
-  | |- ?P /\ _ =>
-      Lia.is_lia P;
-      split;
-      [ purify_heapletwise_hyps; try bottom_up_simpl_in_goal; Lia.lia | ]
-  | |- _ => progress bottom_up_simpl_in_hyps (* TODO too expensive to run so early *)
+  lazymatch goal with
+  | |- precond ?G =>
+      change G; precond_simpl_hook
+  | |- after_command ?fs ?rest ?t ?m ?l ?post =>
+      change (wp_cmd fs rest t m l post); after_command_simpl_hook
+  end.
+
+Ltac merge_step' :=
+  (* match to make sure we don't merge too early, but only once the wp_cmd
+     of the remainder of the program shows up *)
+  lazymatch goal with
+  | |- wp_cmd ?fs ?rest ?t ?m ?l ?post => merge_step
   end.
 
 Ltac step0 :=
   first [ heapletwise_step
+        | conclusion_shape_based_step
         | program_logic_step_before_merging
-        | split_merge_step
-        | program_logic_step ].
+        | split_step
+        | merge_step'
+        | final_program_logic_step ].
 
 Ltac step :=
   assert_no_error; (* <-- useful when debugging with `step. step. step. ...` *)
