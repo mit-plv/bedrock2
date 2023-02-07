@@ -28,20 +28,20 @@ Scheme Equality for type. (* creates type_beq and type_eq_dec *)
 Declare Scope pylevel_scope. Local Open Scope pylevel_scope.
 Notation "t1 =? t2" := (type_beq t1 t2) (at level 70) : pylevel_scope.
 
-(* Untyped Constants *)
-Inductive pconst : Type :=
-  | PCInt (n : Z)
-  | PCBool (b : bool)
-  | PCString (s : string)
-  | PCNil (t : type).
+(* Primitive literals (untyped) *)
+Inductive patom : Type :=
+  | PAInt (n : Z)
+  | PABool (b : bool)
+  | PAString (s : string)
+  | PANil (t : type).
 
-(* Typed Constants *)
-Inductive const : type -> Type :=
-  | CInt (n : Z) : const TInt
-  | CBool (b : bool) : const TBool
-  | CString (s : string) : const TString
-  | CNil (t : type) : const (TList t)
-  | CEmpty : const TEmpty.
+(* Primitive literals (typed) *)
+Inductive atom : type -> Type :=
+  | AInt (n : Z) : atom TInt
+  | ABool (b : bool) : atom TBool
+  | AString (s : string) : atom TString
+  | ANil (t : type) : atom (TList t)
+  | AEmpty : atom TEmpty.
 
 (* Unary operators (untyped) *)
 Inductive punop : Type :=
@@ -96,7 +96,7 @@ Inductive binop : type -> type -> type -> Type :=
 (* "Pre-expression": untyped expressions from surface-level parsing. *)
 Inductive pexpr : Type :=
   | PEVar (x : string)
-  | PEConst (pc : pconst)
+  | PEAtom (pa : patom)
   | PESingleton (p : pexpr)
   | PEUnop (po : punop) (p : pexpr)
   | PEBinop (po : pbinop) (p1 p2 : pexpr)
@@ -112,7 +112,7 @@ Inductive pexpr : Type :=
 Inductive expr : type -> Type :=
   | EVar (t : type) (x : string) : expr t
   | ELoc (t : type) (x : string) : expr t
-  | EConst {t : type} (c : const t) : expr t
+  | EAtom {t : type} (a : atom t) : expr t
   | EUnop {t1 t2 : type} (o : unop t1 t2) (e : expr t1) : expr t2
   | EBinop {t1 t2 t3 : type} (o : binop t1 t2 t3) (e1 : expr t1) (e2: expr t2) : expr t3
   | EFlatmap {t : type} (e1 : expr (TList t)) (x : string) (e2 : expr (TList t))

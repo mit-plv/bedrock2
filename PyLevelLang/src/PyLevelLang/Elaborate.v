@@ -43,7 +43,7 @@ Section WithMap.
         map.get G x = Some (t, false) -> wf G (EVar t x)
     | wf_ELoc G t (x : string) :
         map.get G x = Some (t, true) -> wf G (ELoc t x)
-    | wf_EConst G {t} (c : const t) : wf G (EConst c)
+    | wf_EAtom G {t} (a : atom t) : wf G (EAtom a)
     | wf_EUnop G {t1 t2} (o : unop t1 t2) (e : expr t1) :
         wf G e -> wf G (EUnop o e)
     | wf_EBinop G {t1 t2 t3} (o : binop t1 t2 t3)
@@ -65,27 +65,27 @@ Section WithMap.
     now apply enforce_type_pred with (e := e).
   Qed.
 
-  Definition elaborate_const (pc : pconst) : result {t & expr t} :=
-    match pc with
-    | PCInt z =>
-        Success (existT _ _ (EConst (CInt z)))
-    | PCBool b =>
-        Success (existT _ _ (EConst (CBool b)))
-    | PCString s =>
-        Success (existT _ _ (EConst (CString s)))
-    | PCNil t =>
-        Success (existT _ _ (EConst (CNil t)))
+  Definition elaborate_atom (pa : patom) : result {t & expr t} :=
+    match pa with
+    | PAInt z =>
+        Success (existT _ _ (EAtom (AInt z)))
+    | PABool b =>
+        Success (existT _ _ (EAtom (ABool b)))
+    | PAString s =>
+        Success (existT _ _ (EAtom (AString s)))
+    | PANil t =>
+        Success (existT _ _ (EAtom (ANil t)))
     end.
 
-  Lemma elaborate_const_wf (pc : pconst) : forall G t e,
-    elaborate_const pc = Success (existT expr t e) -> wf G e.
+  Lemma elaborate_atom_wf (pa : patom) : forall G t e,
+    elaborate_atom pa = Success (existT expr t e) -> wf G e.
   Proof.
-    intros G t e H. destruct pc; unfold elaborate_const in H.
+    intros G t e H. destruct pa; unfold elaborate_atom in H.
     all:
       injection H as [= _ H];
       destruct t; try easy;
       repeat injection H as [= <-];
-      apply wf_EConst.
+      apply wf_EAtom.
   Qed.
 
   Definition elaborate_unop (po : punop) {t : type} (e : expr t) :
@@ -208,7 +208,7 @@ Section WithMap.
         Success (existT _ _
           (EBinop (OPair "0" _ _) e1
             (EBinop (OPair "1" _ _) e2
-              (EConst CEmpty))))
+              (EAtom AEmpty))))
     | POCons =>
         e2' <- enforce_type (TList t1) e2;;
         Success (existT _ _ (EBinop (OCons _) e1 e2'))
@@ -252,7 +252,7 @@ Section WithMap.
       apply wf_EBinop; now apply enforce_type_wf with (G := G) in H2'.
     - (* POPair *)
       inversion H.
-      repeat apply wf_EBinop; now try apply wf_EConst.
+      repeat apply wf_EBinop; now try apply wf_EAtom.
     - (* POCons *)
       destruct (enforce_type _ e2) as [e2' |] eqn : H2'; try easy.
       inversion H.
@@ -293,7 +293,7 @@ Section WithMap.
       result {t & expr t} :=
       match xs with
       | nil =>
-          Success (existT _ _ (EConst CEmpty))
+          Success (existT _ _ (EAtom AEmpty))
       | (s, p) :: xs =>
           '(existT _ _ e1) <- elaborate G p;;
           '(existT _ _ e2) <- elaborate_record G xs;;
@@ -313,11 +313,11 @@ Section WithMap.
             Success (existT _ _ (ELoc t x))
         | None => error:("Undefined variable" x)
         end
-    | PEConst pc =>
-        elaborate_const pc
+    | PEAtom pa =>
+        elaborate_atom pa
     | PESingleton p' =>
         '(existT _ t' e') <- elaborate G p';;
-        Success (existT _ _ (EBinop (OCons _) e' (EConst (CNil t'))))
+        Success (existT _ _ (EBinop (OCons _) e' (EAtom (ANil t'))))
     | PEUnop po p =>
         '(existT _ t e) <- elaborate G p;;
         elaborate_unop po e
@@ -429,14 +429,14 @@ Section WithMap.
         apply wf_EVar. now rewrite Hmap, H'.
       + (* None *)
         discriminate H.
-    - (* PEConst pc *)
-      now apply elaborate_const_wf with (pc := pc).
+    - (* PEAtom pa *)
+      now apply elaborate_atom_wf with (pa := pa).
     - (* PESingleton p *)
       destruct (elaborate G p) as [[t' e'] |] eqn : H'; try easy.
       inversion H.
       apply wf_EBinop.
       * now apply IHp.
-      * apply wf_EConst.
+      * apply wf_EAtom.
     - (* PEUnop po p *)
       destruct (elaborate G p) as [[t' e'] |] eqn : H'; try easy.
       apply elaborate_unop_wf with (po := po) (e := e').
@@ -496,7 +496,7 @@ Section WithMap.
       revert G t e H.
       induction xs as [| [s p]]; intros G t e H.
       + (* nil *)
-        inversion H. apply wf_EConst.
+        inversion H. apply wf_EAtom.
       + (* (s, p) :: xs *)
         unfold elaborate_record in H.
         destruct (elaborate G p) as [[t1 e1] |] eqn : H1; try easy.
@@ -506,7 +506,7 @@ Section WithMap.
                result {t0 : type & expr t0} :=
              match xs0 with
              | nil =>
-                 Success (existT (fun t0 : type => expr t0) TEmpty (EConst CEmpty))
+                 Success (existT (fun t0 : type => expr t0) TEmpty (EAtom AEmpty))
              | (s0, p1) :: xs1 =>
                  ' (existT _ x e0) <- elaborate G0 p1;;
                  ' (existT _ x0 e2) <- elaborate_record G0 xs1;;
