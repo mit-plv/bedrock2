@@ -26,11 +26,6 @@ Coercion PEAtom : patom >-> pexpr.
 
 Notation "<{ e }>"       := (e : pcommand) (at level 0, e custom py_comm at level 99, only parsing) : pylevel_scope.
 Notation "<{ e }>"       := e (at level 0, e custom py_comm at level 99, only printing) : pylevel_scope.
-(*
-Notation "<{ e }>"       := (e : pexpr) (at level 0, e custom py_expr at level 99, only parsing) : pylevel_scope.
-Notation "<{ e }>"       := e (at level 0, e custom py_expr at level 99, only printing) : pylevel_scope.
- *)
-
 Notation "<[ e ]>"       := e (in custom py_expr at level 0, e constr at level 200) : pylevel_scope.
 Notation "<[ e ]>"       := e (in custom py_comm at level 0, e constr at level 200) : pylevel_scope.
 Notation "<[ e ]>"       := e (in custom py_type at level 0, e constr at level 200) : pylevel_scope.
@@ -46,10 +41,8 @@ Notation "x"             := x (in custom py_type at level 0, x constr at level 0
 (* Command parsing *)
 Notation "'skip'"                     := (PCSkip)
    (in custom py_comm at level 0) : pylevel_scope.
-Notation "c ; "                    := c
-   (in custom py_comm at level 90) : pylevel_scope.
 Notation "c1 ; c2"                    := (PCSeq c1 c2)
-   (in custom py_comm at level 90, c1 custom py_comm, c2 custom py_comm) : pylevel_scope.
+   (in custom py_comm at level 90, right associativity, c1 custom py_comm, c2 custom py_comm) : pylevel_scope.
 Notation "'let' x := p 'in' c"        := (PCLet x p c)
    (in custom py_comm at level 100, p custom py_expr, c custom py_comm) : pylevel_scope.
 Notation "'let' 'mut' x := p 'in' c"    := (PCLetMut x%string p c)
@@ -58,7 +51,7 @@ Notation "x <- p"                     := (PCGets x p)
    (in custom py_comm at level 50, p custom py_expr) : pylevel_scope.
 Notation "'if' p 'then' c1 'else' c2 'end'" := (PCIf p c1 c2)
    (in custom py_comm at level 80, p custom py_expr, c1 custom py_comm, c2 custom py_comm) : pylevel_scope.
-Notation "'for' 'each' x 'in' p : c 'end'"  := (PCForeach x p c)
+Notation "'for' x 'in' p : c 'end'"  := (PCForeach x p c)
    (in custom py_comm at level 80, p custom py_expr, c custom py_comm) : pylevel_scope.
 
 (* Type parsing (Types are prefixed with @ so they do not become keywords and pollute the namespace *)
@@ -140,7 +133,6 @@ Notation "'let' x := p1 'in' p2"       := (PELet x p1 p2)
 
 Section Tests.
    Goal <{ skip }> = PCSkip. reflexivity. Abort.
-   Goal <{ skip; }> = PCSkip. reflexivity. Abort.
    Goal <{ skip; skip }> = PCSeq PCSkip PCSkip. reflexivity. Abort.
 
    Goal <{ "x" <- 0 }> = PCGets "x" (PEAtom 0). reflexivity. Abort.
@@ -190,32 +182,38 @@ Section Tests.
       (PEBinop POCons (PEBinop POCons 2 (PESingleton 4)) (PANil (TList TInt))).
    reflexivity. Abort.
 
-   (* TODO Is this how the precedence should be for let? *)
    Goal <{ let "x" := 3 + 4 in "y" <- "x"+1; "z" <- 5+"x" }> =
       (PCLet "x" (PEBinop POPlus 3 4)
          (PCSeq (PCGets "y" (PEBinop POPlus "x" 1))
                 (PCGets "z" (PEBinop POPlus 5 "x")))).
    reflexivity. Abort.
 
+   Goal <{ let "x" := 3 + 4 in
+               let "y" := "x" + 1 in
+                  "z" <- "x" + "y" - 1 }> =
+      (PCLet "x" (PEBinop POPlus 3 4)
+         (PCLet "y" (PEBinop POPlus "x" 1)
+                (PCGets "z" (PEBinop POMinus (PEBinop POPlus "x" "y") 1)))).
+   reflexivity. Abort.
+
    Goal <{ (let mut "x" := 3 in "y" <- "x" + 1);
            "x" <- "y" * 2;
            skip }> =
-           PCSeq (
-             PCSeq (PCLetMut "x" 3 (PCGets "y" (PEBinop POPlus "x" 1)))
-                   (PCGets "x" (PEBinop POTimes "y" 2))
-                 )
-             PCSkip.
+           PCSeq
+               (PCLetMut "x" 3 (PCGets "y" (PEBinop POPlus "x" 1)))
+               (PCSeq
+                  (PCGets "x" (PEBinop POTimes "y" 2))
+                  PCSkip).
    reflexivity. Abort.
 
-
-   Goal <{ if 3 == 3 then "y" <- 0+1 else "y" <- 0+10; "a" <- 0; end }> =
+   Goal <{ if 3 == 3 then "y" <- 0+1 else "y" <- 0+10; "a" <- 0 end }> =
       PCIf (PEBinop POEq 3 3)
            (PCGets "y" (PEBinop POPlus 0 1))
            (PCSeq (PCGets "y" (PEBinop POPlus 0 10))
                   (PCGets "a" 0)).
    reflexivity. Abort.
 
-   Goal <{ for each "x" in [1,2]++[3]:
+   Goal <{ for "x" in [1,2]++[3]:
              "a" <- "x"*2;
              "b" <- "x"+1
            end;
@@ -256,13 +254,13 @@ Section Examples.
        | Failure e => Failure e
        end.
 
-  Goal run_program (init_locals ["a"]) <{ "a" <- 5; }> = Success [("a", existT interp_type TInt 5)].
+  Goal run_program (init_locals ["a"]) <{ "a" <- 5 }> = Success [("a", existT interp_type TInt 5)].
   reflexivity.  Abort.
 
   Goal run_program (init_locals ["a"]) <{
      let "b" := 100 in
      "a" <- 5 + "b";
-     "a" <- "a" + 1;
+     "a" <- "a" + 1
   }> = Success [("a", existT interp_type TInt 106)].
   reflexivity.  Abort.
 
@@ -277,7 +275,7 @@ Section Examples.
      "x" <- 5;
      (let "y" := ("x" - 2) in
          "x" <- "y" * 100
-     );
+     )
   }> = Success [("x", existT interp_type TInt 300)].
   reflexivity. Abort.
 
@@ -325,11 +323,11 @@ Section Examples.
 
   Definition isSquare (n : Z) : pcommand := <{
      let "n" := n in
-     for each "x" in range(0, "n"+1):
+     for "x" in range(0, "n"+1):
          if "x"*"x" == "n"
            then "ans" <- true
            else skip
-           end;
+           end
      end
      }>.
 
