@@ -57,6 +57,26 @@ Section WithMap.
     | wf_ELet G {t1 t2} (x : string) (e1 : expr t1) (e2 : expr t2) :
         wf G e1 -> wf (map.put G x (t1, false)) e2 -> wf G (ELet x e1 e2).
 
+  (* Same, but for commands *)
+  Inductive wf_command : tenv -> command -> Prop :=
+    | wf_CSkip G : wf_command G CSkip
+    | wf_CSeq G (c1 c2 : command) :
+        wf_command G c1 -> wf_command G c2 -> wf_command G (CSeq c1 c2)
+    | wf_CLet G {t} (x : string) (e : expr t) (c : command) :
+        wf G e -> wf_command (map.put G x (t, false)) c ->
+        wf_command G (CLet x e c)
+    | wf_CLetMut G {t} (x : string) (e : expr t) (c : command) :
+        wf G e -> wf_command (map.put G x (t, true)) c ->
+        wf_command G (CLetMut x e c)
+    | wf_CGets G {t} (x : string) (e : expr t) :
+        wf G e -> map.get G x = Some (t, true) -> wf_command G (CGets x e)
+    | wf_CIf G (e : expr TBool) (c1 c2 : command) :
+        wf G e -> wf_command G c1 -> wf_command G c2 ->
+        wf_command G (CIf e c1 c2)
+    | wf_CForeach G {t} (x : string) (e : expr (TList t)) (c : command) :
+        wf G e -> wf_command (map.put G x (t, false)) c ->
+        wf_command G (CForeach x e c).
+
   (* `enforce_type` preserves well-formedness *)
   Lemma enforce_type_wf {t t'} (e : expr t) (e' : expr t') : forall G,
     wf G e -> enforce_type t' e = Success e' -> wf G e'.
@@ -354,65 +374,6 @@ Section WithMap.
         elaborate_proj e s
     end.
 
-  Fixpoint elaborate_command (G : tenv) (pc : pcommand) : result command :=
-    match pc with
-    | PCSkip =>
-        Success CSkip
-    | PCSeq pc1 pc2 =>
-        c1 <- elaborate_command G pc1;;
-        c2 <- elaborate_command G pc2;;
-        Success (CSeq c1 c2)
-    | PCLet x p pc =>
-        '(existT _ t e) <- elaborate G p;;
-        match map.get G x with
-        | Some (_, true) =>
-            error:("Variable" x "already defined as mutable")
-        | Some (_, false) | None =>
-            (* If already defined as immutable, shadow that variable *)
-            let G' := map.put G x (t, false) in
-            c <- elaborate_command G pc;;
-            Success (CLet x e c)
-        end
-    | PCLetMut x p pc =>
-        '(existT _ t e) <- elaborate G p;;
-        match map.get G x with
-        | Some (_, true) =>
-            error:("Mutable variable" x "already defined")
-        | Some (_, false) =>
-            error:("Variable" x "already defined as immutable")
-        | None =>
-            let G' := map.put G x (t, true) in
-            c <- elaborate_command G pc;;
-            Success (CLetMut x e c)
-        end
-    | PCGets x p =>
-        '(existT _ t e) <- elaborate G p;;
-        match map.get G x with
-        | Some (t', true) =>
-            e' <- enforce_type t' e;;
-            Success (CGets x e')
-        | Some (_, false) =>
-            error:("Variable" x "is not mutable")
-        | None =>
-            error:("Undefined variable" x)
-        end
-    | PCIf p pc1 pc2 =>
-        '(existT _ _ e) <- elaborate G p;;
-        e' <- enforce_type TBool e;;
-        c1 <- elaborate_command G pc1;;
-        c2 <- elaborate_command G pc2;;
-        Success (CIf e' c1 c2)
-    | PCForeach x p pc =>
-        '(existT _ t e) <- elaborate G p;;
-        match t as t' return expr t' -> _ with
-        | TList t => fun e =>
-            let G' := map.put G x (t, false) in
-            c <- elaborate_command G' pc;;
-            Success (CForeach x e c)
-        | _ => fun _ => error:(e "has type" t "but expected" TList)
-        end e
-    end.
-
   Fixpoint elaborate_wf (p : pexpr) : forall G t e,
     elaborate G p = Success (existT expr t e) -> wf G e.
   Proof.
@@ -528,5 +489,121 @@ Section WithMap.
       apply elaborate_proj_wf with (e := e0) (s := s).
       + now apply IHp.
       + exact H.
+  Qed.
+
+  Fixpoint elaborate_command (G : tenv) (pc : pcommand) : result command :=
+    match pc with
+    | PCSkip =>
+        Success CSkip
+    | PCSeq pc1 pc2 =>
+        c1 <- elaborate_command G pc1;;
+        c2 <- elaborate_command G pc2;;
+        Success (CSeq c1 c2)
+    | PCLet x p pc =>
+        '(existT _ t e) <- elaborate G p;;
+        match map.get G x with
+        | Some (_, true) =>
+            error:("Variable" x "already defined as mutable")
+        | Some (_, false) | None =>
+            (* If already defined as immutable, shadow that variable *)
+            let G' := map.put G x (t, false) in
+            c <- elaborate_command G' pc;;
+            Success (CLet x e c)
+        end
+    | PCLetMut x p pc =>
+        '(existT _ t e) <- elaborate G p;;
+        match map.get G x with
+        | Some (_, true) =>
+            error:("Mutable variable" x "already defined")
+        | Some (_, false) =>
+            error:("Variable" x "already defined as immutable")
+        | None =>
+            let G' := map.put G x (t, true) in
+            c <- elaborate_command G' pc;;
+            Success (CLetMut x e c)
+        end
+    | PCGets x p =>
+        '(existT _ t e) <- elaborate G p;;
+        match map.get G x with
+        | Some (t', true) =>
+            e' <- enforce_type t' e;;
+            Success (CGets x e')
+        | Some (_, false) =>
+            error:("Variable" x "is not mutable")
+        | None =>
+            error:("Undefined variable" x)
+        end
+    | PCIf p pc1 pc2 =>
+        '(existT _ _ e) <- elaborate G p;;
+        e' <- enforce_type TBool e;;
+        c1 <- elaborate_command G pc1;;
+        c2 <- elaborate_command G pc2;;
+        Success (CIf e' c1 c2)
+    | PCForeach x p pc =>
+        '(existT _ t e) <- elaborate G p;;
+        match t as t' return expr t' -> _ with
+        | TList t => fun e =>
+            let G' := map.put G x (t, false) in
+            c <- elaborate_command G' pc;;
+            Success (CForeach x e c)
+        | _ => fun _ => error:(e "has type" t "but expected" TList)
+        end e
+    end.
+
+  Lemma elaborate_command_wf (pc : pcommand) : forall G c,
+    elaborate_command G pc = Success c -> wf_command G c.
+  Proof.
+    induction pc; intros G c H;
+    unfold elaborate_command in H; fold elaborate_command in H.
+    - (* PCSkip *)
+      inversion H.
+      apply wf_CSkip.
+    - (* PCSeq pc1 pc2 *)
+      destruct (elaborate_command G pc1) as [c1 |] eqn:H1; try easy.
+      destruct (elaborate_command G pc2) as [c2 |] eqn:H2; try easy.
+      inversion H.
+      now apply wf_CSeq; [apply IHpc1 | apply IHpc2].
+    - (* PCLet x p pc *)
+      destruct (elaborate G p) as [[t e] |] eqn:He; try easy.
+      destruct (map.get G x) as [[t' [|]] |] eqn : Hmap; try easy;
+      destruct (elaborate_command _ pc) as [c' |] eqn:H'; try easy;
+      inversion H;
+      apply wf_CLet;
+      eapply elaborate_wf, He || now apply IHpc.
+    - (* PCLetMut x p pc *)
+      destruct (elaborate G p) as [[t e] |] eqn:He; try easy.
+      destruct (map.get G x) as [[t' [|]] |] eqn : Hmap; try easy;
+      destruct (elaborate_command _ pc) as [c' |] eqn:H'; try easy;
+      inversion H;
+      apply wf_CLetMut;
+      eapply elaborate_wf, He || now apply IHpc.
+    - (* PCGets x p *)
+      destruct (elaborate G p) as [[t e] |] eqn:He; try easy.
+      destruct (map.get G x) as [[t' [|]] |] eqn : Hmap; try easy.
+      destruct (enforce_type t' e) as [e' |] eqn : He'; try easy.
+      inversion H.
+      apply wf_CGets.
+      + eapply enforce_type_pred, He'.
+        eapply elaborate_wf, He.
+      + easy.
+    - (* PCIf p pc1 pc2 *)
+      destruct (elaborate G p) as [[t e] |] eqn:He; try easy.
+      destruct (enforce_type TBool e) as [e' |] eqn : He'; try easy.
+      destruct (elaborate_command G pc1) as [c1 |] eqn:H1; try easy.
+      destruct (elaborate_command G pc2) as [c2 |] eqn:H2; try easy.
+      inversion H.
+      apply wf_CIf.
+      + eapply enforce_type_pred, He'.
+        eapply elaborate_wf, He.
+      + now apply IHpc1.
+      + now apply IHpc2.
+    - (* PCForeach x p pc *)
+      destruct (elaborate G p) as [[t e] |] eqn:He; try easy.
+      destruct t; try easy.
+      destruct (elaborate_command _ pc) as [c' |] eqn:H'; try easy.
+      inversion H.
+      apply wf_CForeach.
+      + eapply elaborate_wf, He.
+      + now apply IHpc.
   Qed.
 End WithMap.
