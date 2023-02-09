@@ -17,6 +17,7 @@ Require Import bedrock2.ZnWords.
 Require Import bedrock2.TacticError.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.bottom_up_simpl_ltac1.
+Require Import bedrock2.Map.SeparationLogic.
 
 Import ZList.List.ZIndexNotations.
 Local Open Scope zlist_scope.
@@ -37,21 +38,132 @@ Section SepLog.
 
   Lemma split_off_elem_from_array{E: Type}{inh: inhabited E}:
     forall a a' elem {elemSize: PredicateSize elem} n i,
-      (word.unsigned (word.sub a' a)) mod elemSize = 0 ->
+      (* to be solved by reflexivity (instantiates i): *)
       word.unsigned (word.sub a' a) / elemSize = i ->
+      (* to be solved by ZnWords: *)
+      ((word.unsigned (word.sub a' a)) mod elemSize = 0 /\ 0 <= i < n) ->
+      (* split direction: *)
       (forall (vs: list E) m,
           array elem n vs a m ->
           sep (elem vs[i] a')
               (sep (array elem i vs[:i] a)
-                   (array elem (n-i-1) vs[i+1:]
+                  (array elem (n-i-1) vs[i+1:]
                       (word.add a' (word.of_Z elemSize)))) m) /\
+      (* merge direction: *)
       (forall vs1 vs2 v m,
           sep (array elem i vs1 a)
               (sep (elem v a')
-                   (array elem (n-i-1) vs2
+                  (array elem (n-i-1) vs2
                       (word.add a' (word.of_Z elemSize)))) m ->
           array elem n (vs1 ++ [|v|] ++ vs2) a m).
   Proof.
+    split; intros.
+    {
+      unfold array in *.
+
+      (* TODO: should use an automation to pull out all emp facts *)
+      rewrite sep_emp_l in H1.
+      destruct H1.
+
+      (* obviously true statement *)
+      rewrite List.len_upto by ZnWords.
+      rewrite List.len_from by ZnWords.
+
+      (* TODO: should prove as a ZList lemma *)
+      assert (vs = vs[:i] ++ [|vs[i]|] ++ vs[i+1:]).
+      {
+        rewrite List.upto_canon.
+        rewrite (List.from_canon vs).
+        replace ([|vs[i]|]) with (vs[i:i+1]) by admit.
+        rewrite List.merge_adjacent_slices by admit.
+        rewrite List.merge_adjacent_slices by admit.
+        admit.
+      }
+      rewrite H3 in *.
+      apply Array.array_append in H2.
+      simpl in H2. (* this simplfies so vs[i] gets pulled out *)
+      (* this math stuff should probably be proven as a separate lemma *)
+      assert (a' = (word.add a (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vs[:i])))) by admit.
+      rewrite <- H3.
+      rewrite <- H4 in H2.
+
+      (* at this point should be able to match H4 with goal
+         modulo ordering and obviously True statements *)
+      (* TODO: can this be a standard tactic? *)
+      repeat match goal with
+             | |- context[emp ?P] =>
+                 assert_fails (idtac; unify P True);
+                 replace P with True;
+                 [ | eapply PropExtensionality.propositional_extensionality;
+                     split; intros; [ |constructor] ]
+             end.
+      { use_sep_assumption. cancel. }
+      { replace (len vs) with n by congruence. ZnWords. }
+      { auto. }
+    }
+    {
+      (* TODO: should use an automation to pull out all emp facts *)
+      unfold array in H1.
+      rewrite sep_assoc_eq in H1.
+      rewrite sep_emp_l in H1.
+      destruct H1.
+      rewrite <- sep_assoc_eq in H2.
+      apply sep_comm in H2.
+      rewrite sep_assoc_eq in H2.
+      rewrite sep_emp_l in H2.
+      destruct H2.
+      
+      unfold array.
+      rewrite sep_emp_l.
+      split.
+      { simpl. rewrite List.app_length. simpl. ZnWords. }
+
+      apply Array.array_append.
+      simpl.
+
+      apply sep_comm in H3.
+      rewrite sep_assoc_eq in H3.
+
+      (* this math stuff should probably be proven as a separate lemma *)
+      assert (a' = (word.add a (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vs1)))) by admit.
+      rewrite <- H4.
+
+      use_sep_assumption.
+      cancel.
+    }
+  Admitted.
+
+  Lemma split_off_subarray_from_array{E: Type}{inh: inhabited E}:
+    (* a = start of the entire array. a' = start of the subarray (i). a'' = past end of the subarray (j, exclusive). *)
+    forall a a' a'' elem {elemSize: PredicateSize elem} n i j,
+      (word.unsigned (word.sub a' a)) mod elemSize = 0 ->
+      word.unsigned (word.sub a' a) / elemSize = i ->
+      (word.unsigned (word.sub a'' a)) mod elemSize = 0 ->
+      word.unsigned (word.sub a'' a) / elemSize = j ->
+      0 <= i /\ i <= j < n ->
+
+      (forall (vs: list E) m,
+        array elem n vs a m ->
+
+        (* first part *)
+        sep (array elem i vs[:i] a)
+        (* middle subarray part *)
+          (sep (array elem (j-i) vs[i:j] a')
+        (* final part *)
+            (array elem (n-j) vs[j:] a'')) m)
+
+      /\
+
+      (forall vsl vsr vsm m,
+        (* first part *)
+        sep (array elem i vsl a)
+        (* middle subarray part *)
+          (sep (array elem (j-i) vsm a')
+        (* final part *)
+            (array elem (n-j) vsr a'')) m  ->
+        
+        array elem n (vsl ++ vsm ++ vsr) a m
+      ).
   Admitted.
 
   (* does not depend on any library functions so that we can safely cbn it *)
