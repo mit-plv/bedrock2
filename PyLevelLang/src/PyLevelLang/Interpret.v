@@ -118,13 +118,11 @@ Section WithMap.
     match c with
     | CSkip => l
     | CSeq c1 c2 => interp_command (interp_command l c1) c2
-    | CLet x e c1 | CLetMut x e c1 => let l' := interp_command (set_local l x (interp_expr l e)) c1
-                                      in match map.get l x with
-                                         | None => map.remove l' x
-                                         | Some v => set_local l' x (projT2 v)
-                                         end
+    | CLet x e c1 | CLetMut x e c1 => let l' := interp_command (set_local l x (interp_expr l e)) c1 in
+                                      map.update l' x (map.get l x)
     | CGets x e => set_local l x (interp_expr l e)
     | CIf e c1 c2 => if interp_expr l e then interp_command l c1 else interp_command l c2
-    | CForeach x e c1 => fold_left (fun l' v => interp_command (set_local l' x v) c1) (interp_expr l e) l
+    | CForeach x e c1 => let l' := fold_left (fun l' v => interp_command (set_local l' x v) c1) (interp_expr l e) l in
+                         map.update l' x (map.get l x)
     end.
 End WithMap.
