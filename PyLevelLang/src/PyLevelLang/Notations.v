@@ -4,13 +4,13 @@ Require Import PyLevelLang.Interpret.
 Require Import coqutil.Map.Interface coqutil.Map.SortedListString coqutil.Map.Properties.
 Require Import coqutil.Datatypes.Result.
 Require Import Coq.Lists.List.
+Require Import Lia.
 Import ListNotations.
 Import ResultMonadNotations.
 
 Declare Scope pylevel_scope.
 Declare Custom Entry py_expr.
 Declare Custom Entry py_comm.
-Declare Custom Entry py_type.
 
 Local Open Scope Z_scope.
 Local Open Scope string_scope.
@@ -28,13 +28,10 @@ Notation "<{ e }>"       := (e : pcommand) (at level 0, e custom py_comm at leve
 Notation "<{ e }>"       := e (at level 0, e custom py_comm at level 99, only printing) : pylevel_scope.
 Notation "<[ e ]>"       := e (in custom py_expr at level 0, e constr at level 200) : pylevel_scope.
 Notation "<[ e ]>"       := e (in custom py_comm at level 0, e constr at level 200) : pylevel_scope.
-Notation "<[ e ]>"       := e (in custom py_type at level 0, e constr at level 200) : pylevel_scope.
 Notation "( x )"         := x (in custom py_expr at level 0, x custom py_expr at level 99) : pylevel_scope.
 Notation "( x )"         := x (in custom py_comm at level 0, x custom py_comm at level 99) : pylevel_scope.
-Notation "( x )"         := x (in custom py_type at level 0, x custom py_type at level 99) : pylevel_scope.
 Notation "x"             := x (in custom py_expr at level 0, x constr at level 0) : pylevel_scope.
 Notation "x"             := x (in custom py_comm at level 0, x constr at level 0) : pylevel_scope.
-Notation "x"             := x (in custom py_type at level 0, x constr at level 0) : pylevel_scope.
 
 (* TODO Allow string constants (which are different from vars) *)
 
@@ -118,8 +115,8 @@ Notation "[ x , .. , y , z ]"   := (PEBinop POCons x .. (PEBinop POCons y (PESin
    (in custom py_expr at level 0, left associativity) : pylevel_scope.
 Notation "[ x ]"                := (PESingleton x)
    (in custom py_expr at level 0) : pylevel_scope.
-Notation "'nil(' t ')'"        := (PANil t)
-   (in custom py_expr at level 10, t custom py_type) : pylevel_scope.
+Notation "'nil[' t ']'"        := (PANil t)
+   (in custom py_expr at level 10, t constr) : pylevel_scope.
 
 
 (* Other pexpr *)
@@ -172,13 +169,14 @@ Section Tests.
       (PEBinop POCons 1 (PEBinop POCons 2 (PEBinop POCons 3 (PESingleton 4)))).
    reflexivity. Abort.
 
-   Goal <{ "_" <- 3 :: 4 :: nil(@int) }> = PCGets "_"
+   Goal <{ "_" <- 3 :: 4 :: nil[Int] }> = PCGets "_"
       (PEBinop POCons 3 (PEBinop POCons 4 (PANil TInt))).
    reflexivity. Abort.
-   Goal <{ "_" <- true :: false :: nil(@bool) }> = PCGets "_"
+   Goal <{ "_" <- true :: false :: nil[Bool] }> = PCGets "_"
       (PEBinop POCons true (PEBinop POCons false (PANil TBool))).
    reflexivity. Abort.
-   Goal <{ "_" <- [2,4] :: nil(@list @int) }> = PCGets "_"
+
+   Goal <{ "_" <- [2,4] :: nil[List Int] }> = PCGets "_"
       (PEBinop POCons (PEBinop POCons 2 (PESingleton 4)) (PANil (TList TInt))).
    reflexivity. Abort.
 
@@ -242,10 +240,10 @@ Section Examples.
   Definition set_local (l : locals) {t : type} (x : string) (v : interp_type t) :
     locals := map.put l x (existT _ _ v).
 
-  Fixpoint init_locals (vars : list string) :=
+  Fixpoint init_locals (vars : list (string * type)) :=
      match vars with
      | [] => map.empty
-     | x :: xs => @set_local (init_locals xs) TInt x(0)
+     | (x, t) :: xs => @set_local (init_locals xs) t x (default_val t)
      end.
 
   Definition run_program (init : locals) (pc : pcommand) :=
@@ -254,24 +252,24 @@ Section Examples.
        | Failure e => Failure e
        end.
 
-  Goal run_program (init_locals ["a"]) <{ "a" <- 5 }> = Success [("a", existT interp_type TInt 5)].
+  Goal run_program (init_locals [("a", TInt)]) <{ "a" <- 5 }> = Success [("a", existT interp_type TInt 5)].
   reflexivity.  Abort.
 
-  Goal run_program (init_locals ["a"]) <{
+  Goal run_program (init_locals [("a", TInt)]) <{
      let "b" := 100 in
      "a" <- 5 + "b";
      "a" <- "a" + 1
   }> = Success [("a", existT interp_type TInt 106)].
   reflexivity.  Abort.
 
-  Goal run_program (init_locals ["y"]) <{
+  Goal run_program (init_locals [("y", TInt)]) <{
      let mut "a" := 2 in
      "a" <- (let "x" := 5 in "x"*"a");
      "y" <- "a"
   }> = Success [("y", existT interp_type TInt 10)].
   reflexivity. Abort.
 
-  Goal run_program (init_locals ["x"]) <{
+  Goal run_program (init_locals [("x", TInt)]) <{
      "x" <- 5;
      (let "y" := ("x" - 2) in
          "x" <- "y" * 100
@@ -279,45 +277,76 @@ Section Examples.
   }> = Success [("x", existT interp_type TInt 300)].
   reflexivity. Abort.
 
-  Goal run_program (init_locals ["o"]) <{
+  Goal run_program (init_locals [("o", TInt)]) <{
      "o" <- let "x" := 2 in "x"
   }> = Success [("o", existT _ TInt 2)].
   Proof. reflexivity. Abort.
 
-  Goal run_program (init_locals ["o"]) <{
+  Goal run_program (init_locals [("o", TInt)]) <{
      "o" <- let "x" := 2 in "x"+3*100
   }> = Success [("o", existT _ TInt 302)].
   Proof. reflexivity. Abort.
 
-  Goal run_program (@set_local map.empty TBool "o" false) <{
+  Goal run_program (init_locals [("o", TBool)]) <{
      "o" <- ! (1 == 1)
   }> = Success [("o", existT _ TBool false)].
   Proof. reflexivity. Abort.
 
-  Goal run_program (init_locals ["o"]) <{
+  Goal run_program (init_locals [("o", TInt)]) <{
      "o" <- if !(1 == 2) then 5 else 98+1
   }> = Success [("o", existT _ TInt 5)].
   Proof. reflexivity. Abort.
 
-  Goal run_program (@set_local map.empty (TList TInt) "o" []) <{
+  Goal run_program (init_locals [("o", TList TInt)]) <{
      "o" <- range(3, 5)
   }> = Success [("o", existT _ (TList TInt) (3 :: 4 :: nil))].
   Proof. reflexivity. Abort.
 
-  Goal run_program (@set_local map.empty (TList TInt) "o" []) <{
+  Goal run_program (init_locals [("o", TList TInt)]) <{
      "o" <- flatmap [1, 2] "x" ["x"]
   }> = Success [("o", existT _ (TList TInt) (1 :: 2 :: nil))].
   reflexivity. Abort.
 
-  Goal run_program (@set_local map.empty (TList TInt) "o" []) <{
+  Goal run_program (init_locals [("o", TList TInt)]) <{
      "o" <- flatmap [1] "x" ["x"]
   }> = Success [("o", existT _ (TList TInt) (1 :: nil))].
   reflexivity.  Abort.
 
-  Goal run_program (@set_local map.empty (TList TInt) "o" []) <{
+  Goal run_program (init_locals [("o", TList TInt)]) <{
      "o" <- flatmap range(1, 10) "x" ["x"*"x"] }>
      = Success [("o", existT interp_type (TList TInt) [1; 4; 9; 16; 25; 36; 49; 64; 81])].
   Proof. reflexivity. Abort.
+
+   Definition isEven (n : Z) : pcommand := <{
+      let "n" := n in
+      if "n" % 2 == 0
+         then "ans" <- true
+         else skip
+      end
+      }>.
+
+   Goal run_program (init_locals [("ans", TBool)])
+      (isEven 4) = Success [("ans", existT interp_type TBool true)].
+   Proof. reflexivity. Abort.
+
+   Goal run_program (init_locals [("ans", TBool)])
+      (isEven 3) = Success [("ans", existT interp_type TBool false)].
+   Proof. reflexivity. Abort.
+
+   Theorem is_even_correct : forall (n : Z),
+      (exists k, 2*k = n) ->
+      run_program (@set_local map.empty TBool "ans" false)
+      (isEven n) = Success [("ans", existT interp_type TBool true)].
+   Proof.
+      intros n [k k2]. subst.
+      unfold run_program.
+      simpl.
+
+      destruct k;
+         try rewrite Zmod_even;
+         reflexivity.
+   Qed.
+
 
   (* Program which test whether a number is square or not *)
 
@@ -331,31 +360,31 @@ Section Examples.
      end
      }>.
 
-   Goal run_program (@set_local map.empty TBool "ans" false)
+   Goal run_program (init_locals [("ans", TBool)])
       (isSquare 4) = Success [("ans", existT interp_type TBool true)].
    Proof. reflexivity. Abort.
 
-   Goal run_program (@set_local map.empty TBool "ans" false)
+   Goal run_program (init_locals [("ans", TBool)])
       (isSquare 25) = Success [("ans", existT interp_type TBool true)].
    Proof. reflexivity. Abort.
 
-   Goal run_program (@set_local map.empty TBool "ans" false)
+   Goal run_program (init_locals [("ans", TBool)])
       (isSquare (11*11 )) = Success [("ans", existT interp_type TBool true)].
    Proof. reflexivity. Abort.
 
-   Goal run_program (@set_local map.empty TBool "ans" false)
+   Goal run_program (init_locals [("ans", TBool)])
       (isSquare 0) = Success [("ans", existT interp_type TBool true)].
    Proof. reflexivity. Abort.
 
-   Goal run_program (@set_local map.empty TBool "ans" false)
+   Goal run_program (init_locals [("ans", TBool)])
       (isSquare 2) = Success [("ans", existT interp_type TBool false)].
    Proof. reflexivity. Abort.
 
-   Goal run_program (@set_local map.empty TBool "ans" false)
+   Goal run_program (init_locals [("ans", TBool)])
       (isSquare 13) = Success [("ans", existT interp_type TBool false)].
    Proof. reflexivity. Abort.
 
-   Goal run_program (@set_local map.empty TBool "ans" false)
+   Goal run_program (init_locals [("ans", TBool)])
       (isSquare (-2)) = Success [("ans", existT interp_type TBool false)].
    Proof. reflexivity. Abort.
 
