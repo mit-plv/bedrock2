@@ -20,9 +20,9 @@ Local Open Scope pylevel_scope.
 
 Coercion PEVar : string >-> pexpr.
 
-Coercion PCInt : Z >-> pconst.
-Coercion PCBool : bool >-> pconst.
-Coercion PEConst : pconst >-> pexpr.
+Coercion PAInt : Z >-> patom.
+Coercion PABool : bool >-> patom.
+Coercion PEAtom : patom >-> pexpr.
 
 Notation "<{ e }>"       := (e : pexpr) (at level 0, e custom pylevel at level 99, only parsing) : pylevel_scope.
 Notation "<{ e }>"       := e (at level 0, e custom pylevel at level 99, only printing) : pylevel_scope.
@@ -85,7 +85,7 @@ Notation "[ x , .. , y , z ]"   := (PEBinop POCons x .. (PEBinop POCons y (PESin
    (in custom pylevel at level 0, left associativity) : pylevel_scope.
 Notation "[ x ]"                := (PESingleton x)
    (in custom pylevel at level 0) : pylevel_scope.
-Notation "'nil(' t ')'"        := (PCNil t)
+Notation "'nil(' t ')'"        := (PANil t)
    (in custom pylevel at level 10) : pylevel_scope.
 
 
@@ -120,7 +120,7 @@ Section Tests.
    Goal <{ [ 1 ] }> = PESingleton 1.
    reflexivity. Abort.
 
-   Goal <{ true }> = PEConst (PCBool true).
+   Goal <{ true }> = PEAtom (PABool true).
    reflexivity. Abort.
 
    Goal <{ 1 :: 2 :: [3, 4] }> = PEBinop POCons 1 (PEBinop POCons 2 (PEBinop POCons 3 (PESingleton 4))).

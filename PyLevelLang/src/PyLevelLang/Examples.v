@@ -20,42 +20,42 @@ Section Examples.
   Local Open Scope string_scope.
 
   Definition ex1 : pexpr :=
-    PEBinop POCons (PEConst (PCInt 1))
-      (PEBinop POCons (PEConst (PCInt 2))
-        (PEBinop POCons (PEConst (PCInt 3))
-          (PESingleton (PEConst (PCInt 4))))).
+    PEBinop POCons (PEAtom (PAInt 1))
+      (PEBinop POCons (PEAtom (PAInt 2))
+        (PEBinop POCons (PEAtom (PAInt 3))
+          (PESingleton (PEAtom (PAInt 4))))).
   Goal elaborate map.empty ex1 =
     Success (existT _ _
-      (EBinop (OCons _) (EConst (CInt 1))
-        (EBinop (OCons _) (EConst (CInt 2))
-          (EBinop (OCons _) (EConst (CInt 3))
-            (EBinop (OCons _) (EConst (CInt 4))
-              (EConst (CNil _))))))).
+      (EBinop (OCons _) (EAtom (AInt 1))
+        (EBinop (OCons _) (EAtom (AInt 2))
+          (EBinop (OCons _) (EAtom (AInt 3))
+            (EBinop (OCons _) (EAtom (AInt 4))
+              (EAtom (ANil _))))))).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex1 =
     Success (existT _ (TList TInt) (1 ::  2 :: 3 :: 4 :: nil)).
   reflexivity. Qed.
 
   Definition ex2 : pexpr :=
-    PEBinop POCons (PEConst (PCString "a")) (
-      PEBinop POCons (PEConst (PCInt 2)) (
-        PEBinop POCons (PEConst (PCInt 3)) (
-          PESingleton (PEConst (PCInt 4))))).
+    PEBinop POCons (PEAtom (PAString "a")) (
+      PEBinop POCons (PEAtom (PAInt 2)) (
+        PEBinop POCons (PEAtom (PAInt 3)) (
+          PESingleton (PEAtom (PAInt 4))))).
   Goal elaborate map.empty ex2 = error:(
-    (EBinop (OCons TInt) (EConst (CInt 2))
-      (EBinop (OCons TInt) (EConst (CInt 3))
-        (EBinop (OCons TInt) (EConst (CInt 4))
-          (EConst (CNil TInt)))))
+    (EBinop (OCons TInt) (EAtom (AInt 2))
+      (EBinop (OCons TInt) (EAtom (AInt 3))
+        (EBinop (OCons TInt) (EAtom (AInt 4))
+          (EAtom (ANil TInt)))))
     "has type" 
     (TList TInt)
     "but expected"
     (TList TString)).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex2 = error:(
-    (EBinop (OCons TInt) (EConst (CInt 2))
-      (EBinop (OCons TInt) (EConst (CInt 3))
-        (EBinop (OCons TInt) (EConst (CInt 4))
-          (EConst (CNil TInt)))))
+    (EBinop (OCons TInt) (EAtom (AInt 2))
+      (EBinop (OCons TInt) (EAtom (AInt 3))
+        (EBinop (OCons TInt) (EAtom (AInt 4))
+          (EAtom (ANil TInt)))))
     "has type" 
     (TList TInt)
     "but expected"
@@ -63,20 +63,20 @@ Section Examples.
   reflexivity. Qed.
 
   Definition ex3 : pexpr :=
-    PEProj (PELet "x" (PEConst (PCInt 42))
+    PEProj (PELet "x" (PEAtom (PAInt 42))
       (PEBinop POPair (PEVar "x") (PEVar "x"))) "0".
   Goal elaborate map.empty ex3 =
     Success (existT _ _
-      (EUnop (OFst _ _ _) (ELet "x" (EConst (CInt 42))
+      (EUnop (OFst _ _ _) (ELet "x" (EAtom (AInt 42))
         (EBinop (OPair "0" _ _) (EVar TInt "x")
           (EBinop (OPair "1" _ _) (EVar TInt "x")
-            (EConst CEmpty)))))).
+            (EAtom AEmpty)))))).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex3 = Success (existT _ TInt 42).
   reflexivity. Qed.
 
   Definition ex4 : pexpr :=
-    PEProj (PELet "x" (PEConst (PCInt 42))
+    PEProj (PELet "x" (PEAtom (PAInt 42))
       (PEBinop POPair (PEVar "x") (PEVar "y"))) "0".
   Goal elaborate map.empty ex4 = error:("Undefined variable" "y").
   reflexivity. Qed.
@@ -84,16 +84,16 @@ Section Examples.
   reflexivity. Qed.
 
   Definition ex5 : pexpr :=
-    PEBinop POPair (PEConst (PCInt 42))
-      (PEBinop POPair (PEConst (PCBool true)) (PEConst (PCString "hello"))).
+    PEBinop POPair (PEAtom (PAInt 42))
+      (PEBinop POPair (PEAtom (PABool true)) (PEAtom (PAString "hello"))).
   Goal elaborate map.empty ex5 =
     Success (existT _ _
-      (EBinop (OPair "0" _ _) (EConst (CInt 42))
+      (EBinop (OPair "0" _ _) (EAtom (AInt 42))
         (EBinop (OPair "1" _ _)
-          (EBinop (OPair "0" _ _) (EConst (CBool true))
-            (EBinop (OPair "1" _ _) (EConst (CString "hello"))
-              (EConst CEmpty)))
-          (EConst CEmpty)))).
+          (EBinop (OPair "0" _ _) (EAtom (ABool true))
+            (EBinop (OPair "1" _ _) (EAtom (AString "hello"))
+              (EAtom AEmpty)))
+          (EAtom AEmpty)))).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex5 =
     Success (existT _
@@ -108,16 +108,16 @@ Section Examples.
 
   Definition ex6 : pexpr :=
     PERecord
-      (("bool", PEConst (PCBool false))
-      :: ("string", PEConst (PCString "abc"))
-      :: ("int", PEConst (PCInt (-2)))
+      (("bool", PEAtom (PABool false))
+      :: ("string", PEAtom (PAString "abc"))
+      :: ("int", PEAtom (PAInt (-2)))
       :: nil).
   Goal elaborate map.empty ex6 =
     Success (existT _ _
-      (EBinop (OPair "bool" _ _) (EConst (CBool false))
-        (EBinop (OPair "string" _ _) (EConst (CString "abc"))
-          (EBinop (OPair "int" _ _) (EConst (CInt (-2)))
-            (EConst CEmpty))))).
+      (EBinop (OPair "bool" _ _) (EAtom (ABool false))
+        (EBinop (OPair "string" _ _) (EAtom (AString "abc"))
+          (EBinop (OPair "int" _ _) (EAtom (AInt (-2)))
+            (EAtom AEmpty))))).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex6 =
     Success (existT _
@@ -129,33 +129,33 @@ Section Examples.
 
   Definition ex7 : pexpr :=
     PEProj (PERecord
-      (("a", PEConst (PCBool true))
-      :: ("b", PEConst (PCInt 50))
+      (("a", PEAtom (PABool true))
+      :: ("b", PEAtom (PAInt 50))
       :: nil))
     "b".
   Goal elaborate map.empty ex7 =
     Success (existT _ _
       (EUnop (OFst _ _ _)
         (EUnop (OSnd _ _ _)
-          (EBinop (OPair "a" _ _) (EConst (CBool true))
-            (EBinop (OPair "b" _ _) (EConst (CInt 50))
-              (EConst CEmpty)))))).
+          (EBinop (OPair "a" _ _) (EAtom (ABool true))
+            (EBinop (OPair "b" _ _) (EAtom (AInt 50))
+              (EAtom AEmpty)))))).
   reflexivity. Qed.
   Goal elaborate_interpret map.empty ex7 =
     Success (existT _ TInt 50).
   reflexivity. Qed.
 
   Definition ex8 : pexpr :=
-    PEBinop POEq (PEConst (PCBool true)) (PEConst (PCInt 5)).
+    PEBinop POEq (PEAtom (PABool true)) (PEAtom (PAInt 5)).
   Goal elaborate map.empty ex8 =
-    error:((EConst (CInt 5)) "has type" TInt "but expected" TBool).
+    error:((EAtom (AInt 5)) "has type" TInt "but expected" TBool).
   reflexivity. Qed.
 
   Definition ex9 : pexpr :=
-    PEBinop POEq (PEConst (PCBool true)) (PEConst (PCBool false)).
+    PEBinop POEq (PEAtom (PABool true)) (PEAtom (PABool false)).
   Goal elaborate map.empty ex9 =
     Success (existT _ _
       (EBinop (OEq TBool eq_refl)
-        (EConst (CBool true)) (EConst (CBool false)))).
+        (EAtom (ABool true)) (EAtom (ABool false)))).
   reflexivity. Qed.
 End Examples.
