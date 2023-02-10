@@ -82,7 +82,7 @@ Section SepLog.
       assert (a' = (word.add a (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vs[:i])))).
       {
         rewrite H3.
-        rewrite List.len_upto; 
+        rewrite List.len_upto;
           destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
       }
       rewrite <- H4 in H2.
@@ -112,7 +112,7 @@ Section SepLog.
       rewrite sep_assoc_eq in H2.
       rewrite sep_emp_l in H2.
       destruct H2.
-      
+
       unfold array.
       rewrite sep_emp_l.
       split.
@@ -168,7 +168,7 @@ Section SepLog.
         (* final part *)
             (array elem (n-i-size) vsr
               (word.add a' (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * size))))) m  ->
-        
+
         array elem n (vsl ++ vsm ++ vsr) a m
       ).
   Proof.
@@ -425,8 +425,8 @@ Ltac split_range_from_hyp_default :=
       | with_mem _ (@array _ _ _ _ _ ?elem (*must match:*)size ?n ?vs ?start') =>
           unshelve epose proof (split_off_elem_from_array start' start elem n _ _ _) as pf;
           [ (* i *)
-          | ZnWords
           | bottom_up_simpl_in_goal; reflexivity
+          | ZnWords
           | change g;
             eapply (proj1 pf) in H;
             eapply proj2 in pf;
