@@ -18,11 +18,8 @@ void sort3(uintptr_t a) /**#
 Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .**/
 {                                                                        /**. .**/
   uintptr_t w0 = load32(a);                                              /**. .**/
-  uintptr_t w1 = load32(a+4);                                            /**.
-Ltac run_steps_hook ::= idtac.
-
- .**/
-  uintptr_t w2 = load32(a+8);                                            /**.
+  uintptr_t w1 = load32(a+4);                                            /**. .**/
+  uintptr_t w2 = load32(a+8);                                            /*?.
 
 step. step. step. step. step.
 step. step.
@@ -32,8 +29,6 @@ step. step.
   eapply iff1ToEq. ecancel.
 }
 step. step. step. step. step.
-
-Ltac run_steps_hook ::= run_steps.
 
 .**/
   if (w1 <= w0 && w1 <= w2) {                                            /**. .**/
