@@ -72,7 +72,7 @@ Section SepLog.
       (* TODO: should prove as a ZList lemma *)
       assert (vs = vs[:i] ++ [|vs[i]|] ++ vs[i+1:]).
       {
-        apply (List.list_split3 vs i).
+        apply (List.expose_nth vs i).
         ZnWords.
       }
       rewrite H3 in * |-.
@@ -156,7 +156,7 @@ Section SepLog.
           (sep (array elem size vs[i:i+size] a')
         (* final part *)
             (array elem (n-i-size) vs[i+size:]
-              (word.add a' (word.of_Z (elemSize * size))))) m)
+              (word.add a' (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * size))))) m)
 
       /\
 
@@ -167,11 +167,83 @@ Section SepLog.
           (sep (array elem size vsm a')
         (* final part *)
             (array elem (n-i-size) vsr
-              (word.add a' (word.of_Z (elemSize * size))))) m  ->
+              (word.add a' (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * size))))) m  ->
         
         array elem n (vsl ++ vsm ++ vsr) a m
       ).
-  Admitted.
+  Proof.
+    split; intros.
+    {
+      unfold array in *.
+      repeat heapletwise_step; unfold with_mem in *.
+
+      rewrite List.len_upto by ZnWords.
+      rewrite List.len_sized_slice by ZnWords.
+      rewrite List.from_canon with (i := i+size).
+      rewrite List.len_indexed_slice with (i := i+size) (j := len vs) by ZnWords.
+
+      assert (vs = vs[:i] ++ vs[i:i+size] ++ vs[i+size:len vs]).
+      {
+        rewrite List.merge_adjacent_slices.
+        - rewrite <- List.from_canon.
+          apply List.split_at_index.
+          ZnWords.
+        - ZnWords.
+      }
+
+      rewrite H4 in H6.
+      apply Array.array_append in H6.
+      heapletwise_step.
+      apply Array.array_append in H8.
+      heapletwise_step.
+      rewrite List.len_sized_slice in * by ZnWords.
+
+      assert (a' = word.add a
+              (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vs[:i]))).
+      {
+        rewrite List.len_upto by ZnWords.
+        destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
+      }
+      rewrite <- H8 in *.
+
+      repeat match goal with
+             | |- context[emp ?P] =>
+                 assert_fails (idtac; unify P True);
+                 replace P with True;
+                 [ | eapply PropExtensionality.propositional_extensionality;
+                     split; intros; [ |constructor] ]
+             end; auto; try ZnWords.
+      collect_heaplets_into_one_sepclause m'.
+      use_sep_assumption.
+      cancel.
+    }
+    {
+      unfold array in *.
+      do 8 heapletwise_step.
+      rewrite sep_emp_l.
+      split.
+      { rewrite 2 List.app_length. ZnWords. }
+
+      apply Array.array_append.
+      collect_heaplets_into_one_sepclause m'.
+      heapletwise_step.
+      rewrite <- H7 in H8.
+      apply Array.array_append in H8.
+      change (m2 |= Array.array (fun (a : word) (v : E) => elem v a)
+        (word.of_Z elemSize) a' (vsm ++ vsr)) in H8.
+      collect_heaplets_into_one_sepclause m'.
+
+      assert (a' = word.add a
+              (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vsl))).
+      {
+        destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
+      }
+      rewrite H5 in *.
+
+      use_sep_assumption.
+      cancel.
+    }
+  Qed.
 
   (* does not depend on any library functions so that we can safely cbn it *)
   Fixpoint sepapps_offset(n: nat)(l: list sized_predicate): Z :=
