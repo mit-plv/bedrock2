@@ -72,12 +72,8 @@ Section SepLog.
       (* TODO: should prove as a ZList lemma *)
       assert (vs = vs[:i] ++ [|vs[i]|] ++ vs[i+1:]).
       {
-        rewrite List.upto_canon.
-        rewrite (List.from_canon vs).
-        replace ([|vs[i]|]) with (vs[i:i+1]) by admit.
-        rewrite List.merge_adjacent_slices by admit.
-        rewrite List.merge_adjacent_slices by admit.
-        admit.
+        apply (List.list_split3 vs i).
+        ZnWords.
       }
       rewrite H3 in * |-.
       apply Array.array_append in H2.
@@ -139,7 +135,7 @@ Section SepLog.
       use_sep_assumption.
       cancel.
     }
-  Admitted.
+  Qed.
 
   Lemma split_off_subarray_from_array{E: Type}{inh: inhabited E}:
     (* a = start of the entire array. a' = start of the subarray (i). *)
