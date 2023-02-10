@@ -416,7 +416,7 @@ Section WithMap.
   Fixpoint elaborate_wf (p : pexpr) : forall G t e,
     elaborate G p = Success (existT expr t e) -> wf G e.
   Proof.
-    induction p; intros G t e H; unfold elaborate in H; fold elaborate in H.
+    destruct p; intros G t e H; unfold elaborate in H; fold elaborate in H.
     - (* PEVar x *)
       destruct (map.get G x) as [[t' [|]] |] eqn : Hmap.
       + (* Some (t', true) *)
@@ -435,19 +435,19 @@ Section WithMap.
       destruct (elaborate G p) as [[t' e'] |] eqn : H'; try easy.
       inversion H.
       apply wf_EBinop.
-      * now apply IHp.
+      * eapply elaborate_wf. eassumption.
       * apply wf_EConst.
     - (* PEUnop po p *)
       destruct (elaborate G p) as [[t' e'] |] eqn : H'; try easy.
       apply elaborate_unop_wf with (po := po) (e := e').
-      + now apply IHp.
+      + eapply elaborate_wf. eassumption.
       + easy.
     - (* PEBinop po p1 p2 *)
       destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
       destruct (elaborate G p2) as [[t2 e2] |] eqn : H2; try easy.
       apply elaborate_binop_wf with (po := po) (e1 := e1) (e2 := e2).
-      + now apply IHp1.
-      + now apply IHp2.
+      + eapply elaborate_wf. eassumption.
+      + eapply elaborate_wf. eassumption.
       + easy.
     - (* PEFlatmap p1 x p2 *)
       destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
@@ -457,8 +457,8 @@ Section WithMap.
       destruct (enforce_type (TList t1) e2) as [e2' |] eqn : H2'; try easy.
       inversion H.
       apply wf_EFlatmap.
-      + now apply IHp1.
-      + apply IHp2. rewrite H2.
+      + eapply elaborate_wf. eassumption.
+      + eapply elaborate_wf. rewrite H2.
         enough (existT expr t2 e2 = existT expr (TList t1) e2').
         { now rewrite <- H0. }
         apply enforce_type_eq.
@@ -471,14 +471,14 @@ Section WithMap.
       destruct (enforce_type t2 e3) as [e3' |] eqn : H3'; try easy.
       inversion H.
       apply wf_EIf.
-      + apply IHp1.
+      + eapply elaborate_wf.
         rewrite H1.
         enough (existT expr t1 e1 = existT expr TBool e1').
         { now rewrite <- H0. }
         apply enforce_type_eq.
         exact H1'.
-      + apply IHp2, H2.
-      + apply IHp3.
+      + eapply elaborate_wf. eassumption.
+      + eapply elaborate_wf.
         rewrite H3.
         enough (existT expr t3 e3 = existT expr t2 e3').
         { now rewrite <- H0. }
@@ -490,8 +490,8 @@ Section WithMap.
           try easy.
       inversion H.
       apply wf_ELet.
-      + now apply IHp1.
-      + apply IHp2, H2.
+      + eapply elaborate_wf. eassumption.
+      + eapply elaborate_wf. eassumption.
     - (* PERecord xs *)
       revert G t e H.
       induction xs as [| [s p]]; intros G t e H.
@@ -526,7 +526,8 @@ Section WithMap.
       unfold elaborate_proj in H.
       destruct (elaborate G p) as [[t0 e0] |] eqn : H0; try easy.
       apply elaborate_proj_wf with (e := e0) (s := s).
-      + now apply IHp.
+      + eapply elaborate_wf. eassumption.
       + exact H.
   Qed.
+
 End WithMap.
