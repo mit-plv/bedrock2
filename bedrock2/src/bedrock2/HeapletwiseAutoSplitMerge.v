@@ -79,12 +79,16 @@ Section SepLog.
         rewrite List.merge_adjacent_slices by admit.
         admit.
       }
-      rewrite H3 in *.
+      rewrite H3 in * |-.
       apply Array.array_append in H2.
       simpl in H2. (* this simplfies so vs[i] gets pulled out *)
       (* this math stuff should probably be proven as a separate lemma *)
-      assert (a' = (word.add a (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vs[:i])))) by admit.
-      rewrite <- H3.
+      assert (a' = (word.add a (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vs[:i])))).
+      {
+        rewrite H3.
+        rewrite List.len_upto; 
+          destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
+      }
       rewrite <- H4 in H2.
 
       (* at this point should be able to match H4 with goal
@@ -125,7 +129,11 @@ Section SepLog.
       rewrite sep_assoc_eq in H3.
 
       (* this math stuff should probably be proven as a separate lemma *)
-      assert (a' = (word.add a (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vs1)))) by admit.
+      assert (a' = (word.add a (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vs1)))).
+      {
+        rewrite H1.
+        destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
+      }
       rewrite <- H4.
 
       use_sep_assumption.
@@ -134,13 +142,14 @@ Section SepLog.
   Admitted.
 
   Lemma split_off_subarray_from_array{E: Type}{inh: inhabited E}:
-    (* a = start of the entire array. a' = start of the subarray (i). a'' = past end of the subarray (j, exclusive). *)
-    forall a a' a'' elem {elemSize: PredicateSize elem} n i j,
+    (* a = start of the entire array. a' = start of the subarray (i). *)
+    (* size = number of elements to split off *)
+    forall a a' elem {elemSize: PredicateSize elem} n i (size: Z),
       (word.unsigned (word.sub a' a)) mod elemSize = 0 ->
       word.unsigned (word.sub a' a) / elemSize = i ->
-      (word.unsigned (word.sub a'' a)) mod elemSize = 0 ->
-      word.unsigned (word.sub a'' a) / elemSize = j ->
-      0 <= i /\ i <= j < n ->
+      0 < size ->
+      0 <= i < n ->
+      0 <= i+size < n ->
 
       (forall (vs: list E) m,
         array elem n vs a m ->
@@ -148,9 +157,10 @@ Section SepLog.
         (* first part *)
         sep (array elem i vs[:i] a)
         (* middle subarray part *)
-          (sep (array elem (j-i) vs[i:j] a')
+          (sep (array elem size vs[i:i+size] a')
         (* final part *)
-            (array elem (n-j) vs[j:] a'')) m)
+            (array elem (n-i-size) vs[i+size:]
+              (word.add a' (word.of_Z (elemSize * size))))) m)
 
       /\
 
@@ -158,9 +168,10 @@ Section SepLog.
         (* first part *)
         sep (array elem i vsl a)
         (* middle subarray part *)
-          (sep (array elem (j-i) vsm a')
+          (sep (array elem size vsm a')
         (* final part *)
-            (array elem (n-j) vsr a'')) m  ->
+            (array elem (n-i-size) vsr
+              (word.add a' (word.of_Z (elemSize * size))))) m  ->
         
         array elem n (vsl ++ vsm ++ vsr) a m
       ).
