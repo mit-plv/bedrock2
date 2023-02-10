@@ -140,12 +140,14 @@ Section SepLog.
   Lemma split_off_subarray_from_array{E: Type}{inh: inhabited E}:
     (* a = start of the entire array. a' = start of the subarray (i). *)
     (* size = number of elements to split off *)
-    forall a a' elem {elemSize: PredicateSize elem} n i (size: Z),
-      (word.unsigned (word.sub a' a)) mod elemSize = 0 ->
+    forall a a' elem {elemSize: PredicateSize elem} n (nbytes: Z) i (size: Z),
       word.unsigned (word.sub a' a) / elemSize = i ->
-      0 < size ->
-      0 <= i < n ->
-      0 <= i+size < n ->
+      nbytes / elemSize = size ->
+
+      (word.unsigned (word.sub a' a)) mod elemSize = 0 /\
+      nbytes mod elemSize = 0 /\
+      0 <= size /\
+      0 <= i /\ i+size <= n ->
 
       (forall (vs: list E) m,
         array elem n vs a m ->
@@ -172,6 +174,10 @@ Section SepLog.
         array elem n (vsl ++ vsm ++ vsr) a m
       ).
   Proof.
+    (* TODO delete assert and adapt proof to new statement *)
+    assert (
+    forall a a' elem {elemSize: PredicateSize elem} n i (size: Z), (word.unsigned (word.sub a' a)) mod elemSize = 0 -> word.unsigned (word.sub a' a) / elemSize = i -> 0 < size -> 0 <= i < n -> 0 <= i+size < n -> (forall (vs: list E) m, array elem n vs a m -> (* first part *) sep (array elem i vs[:i] a) (* middle subarray part *) (sep (array elem size vs[i:i+size] a') (* final part *) (array elem (n-i-size) vs[i+size:] (word.add a' (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * size))))) m) /\ (forall vsl vsr vsm m, (* first part *) sep (array elem i vsl a) (* middle subarray part *) (sep (array elem size vsm a') (* final part *) (array elem (n-i-size) vsr (word.add a' (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * size))))) m  -> array elem n (vsl ++ vsm ++ vsr) a m)). {
+
     split; intros.
     {
       unfold array in *.
@@ -243,7 +249,8 @@ Section SepLog.
       use_sep_assumption.
       cancel.
     }
-  Qed.
+    }
+  Admitted.
 
   (* does not depend on any library functions so that we can safely cbn it *)
   Fixpoint sepapps_offset(n: nat)(l: list sized_predicate): Z :=
@@ -423,7 +430,8 @@ Ltac split_range_from_hyp_default :=
       let pf := fresh in
       lazymatch type of H with
       | with_mem _ (@array _ _ _ _ _ ?elem (*must match:*)size ?n ?vs ?start') =>
-          unshelve epose proof (split_off_elem_from_array start' start elem n _ _ _) as pf;
+          unshelve epose proof
+            (split_off_elem_from_array start' start elem n _ _ _) as pf;
           [ (* i *)
           | bottom_up_simpl_in_goal; reflexivity
           | ZnWords
@@ -431,8 +439,21 @@ Ltac split_range_from_hyp_default :=
             eapply (proj1 pf) in H;
             eapply proj2 in pf;
             let t := type of pf in change (merge_step t) in pf ]
+      | with_mem _ (@array _ _ _ _ _ ?elem ?elemSize ?n ?vs ?start') =>
+          unshelve epose proof
+            (split_off_subarray_from_array start' start elem n size _ _ _ _ _) as pf;
+          [ (* index of first element *)
+          | (* number of elements to split off *)
+          | bottom_up_simpl_in_goal; reflexivity
+          | bottom_up_simpl_in_goal; reflexivity
+          | ZnWords
+          | change g;
+            eapply (proj1 pf) in H;
+            eapply proj2 in pf;
+            let t := type of pf in change (merge_step t) in pf ]
       | with_mem _ (sepapps _ ?start') =>
-          unshelve epose proof (split_off_field_from_sepapps start' start size _ _ _) as pf;
+          unshelve epose proof
+            (split_off_field_from_sepapps start' start size _ _ _) as pf;
           [ (* offset: dependent evar will be determined by second subgoal *)
           | (* n (index of field): determined later below *)
           | (* address difference equals offset *)

@@ -522,6 +522,8 @@ Ltac local_subst_small_rhs e :=
 Ltac local_nonring_nonground_Z_simpl e :=
   lazymatch e with
   | Z.div ?x 1 => res_rewrite x (Z.div_1_r x)
+  | Z.div (Z.mul ?x ?y) ?y =>
+      res_rewrite x (Z.div_mul x y ltac:(bottom_up_simpl_sidecond_hook))
   end.
 
 Ltac local_simpl_hook parent_kind e0 :=
