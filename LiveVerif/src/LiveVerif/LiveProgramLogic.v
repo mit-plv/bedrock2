@@ -543,80 +543,315 @@ Ltac default_eq_prover :=
 
 Ltac eq_prover_hook := default_eq_prover.
 
-Ltac conclusion_shape_based_step :=
+Ltac eval_dexpr_bool3_step e :=
+  lazymatch e with
+  | expr.lazy_and _ _       => eapply dexpr_bool3_lazy_and
+  | expr.lazy_or _ _        => eapply dexpr_bool3_lazy_or
+  | expr.not _              => eapply dexpr_bool3_not
+  | expr.op bopname.eq _ _  => eapply dexpr_bool3_eq
+  | expr.op bopname.ltu _ _ => eapply dexpr_bool3_ltu
+  | _ => fail 1000 "expression" e "not yet supported"
+  end.
+
+Ltac eval_dexpr1_step e :=
+  lazymatch e with
+  | expr.var _ => eapply dexpr1_var; [reflexivity| ]
+  | expr.literal _ => eapply dexpr1_literal
+  | expr.op _ _ _ => eapply dexpr1_binop_unf
+  | expr.load access_size.word _ => eapply dexpr1_load_uintptr
+  | expr.load _ _ => eapply dexpr1_load_uint
+  end.
+
+Ltac conclusion_shape_based_step logger :=
   lazymatch goal with
-  | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_bool3_lazy_and
-  | |- dexpr_bool3 _ _ (expr.lazy_or _ _)        _ _ _ _ => eapply dexpr_bool3_lazy_or
-  | |- dexpr_bool3 _ _ (expr.not _)              _ _ _ _ => eapply dexpr_bool3_not
-  | |- dexpr_bool3 _ _ (expr.op bopname.eq _ _)  _ _ _ _ => eapply dexpr_bool3_eq
-  | |- dexpr_bool3 _ _ (expr.op bopname.ltu _ _) _ _ _ _ => eapply dexpr_bool3_ltu
-  | |- dexpr1 _ _ (expr.var _)     _ _ => eapply dexpr1_var; [reflexivity| ]
-  | |- dexpr1 _ _ (expr.literal _) _ _ => eapply dexpr1_literal
-  | |- dexpr1 _ _ (expr.op _ _ _)  _ _ => eapply dexpr1_binop_unf
-  | |- dexpr1 _ _ (expr.load access_size.word _)  _ _ => eapply dexpr1_load_uintptr
-  | |- dexpr1 _ _ (expr.load _ _)  _ _ => eapply dexpr1_load_uint
-  | |- dexprs1 _ _ (cons _ _) _ _ => eapply dexprs1_cons
-  | |- dexprs1 _ _ nil _ _ => eapply dexprs1_nil
-  | |- bool_expr_branches _ _ _ _ => eapply BoolSpec_expr_branches; [ intro | intro | ]
+  | |- dexpr_bool3 _ _ ?e _ _ _ _ =>
+      logger ltac:(fun _ => idtac "Evaluating expression" e);
+      eval_dexpr_bool3_step e
+  | |- dexpr1 _ _ ?e _ _ =>
+      logger ltac:(fun _ => idtac "Evaluating expression" e);
+      eval_dexpr1_step e
+  | |- dexprs1 _ _ (cons _ _) _ _ =>
+      logger ltac:(fun _ => idtac "Evaluating expression list");
+      eapply dexprs1_cons
+  | |- dexprs1 _ _ nil _ _ =>
+      logger ltac:(fun _ => idtac "Done evaluating expression list");
+      eapply dexprs1_nil
+  | |- bool_expr_branches _ _ _ _ =>
+      logger ltac:(fun _ => idtac "Splitting bool_expr_branches into three subgoals");
+      eapply BoolSpec_expr_branches; [ intro | intro | ]
   | |- then_branch_marker ?G =>
+      logger ltac:(fun _ => idtac "Starting `then` branch");
       let n := fresh "Scope0" in
       pose proof (mk_scope_marker ThenBranch) as n;
       change G
   | |- else_branch_marker ?G =>
+      logger ltac:(fun _ => idtac "Starting `else` branch");
       let n := fresh "Scope0" in
       pose proof (mk_scope_marker ElseBranch) as n;
       change G
   | |- loop_body_marker ?G =>
+      logger ltac:(fun _ => idtac "Starting loop body");
       (* (mk_scope_marker LoopBody) is already posed by while tactic,
          nothing to do here at the moment *)
       change G
   | |- pop_scope_marker (after_loop ?fs ?rest ?t ?m ?l ?post) =>
+      logger ltac:(fun _ => idtac "Removing loop body marker after loop");
       lazymatch goal with
       | H: scope_marker LoopBody |- pop_scope_marker ?g => clear H; change g
       end
   | |- pop_scope_marker (after_if _ _ _ _ _ _) =>
+      logger ltac:(fun _ => idtac "Removing IfCondition marker after if");
       lazymatch goal with
       | H: scope_marker IfCondition |- pop_scope_marker ?g => clear H; change g
       end
-  | |- True => constructor
-  | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ => put_into_current_locals
-  | |- iff1 (seps ?LHS) (seps ?RHS) =>
-      first
-        [ constr_eq LHS RHS; exact (iff1_refl _)
-        | cancel_step
-        | cancel_emp_l
-        | cancel_emp_r
-        | lazymatch goal with
-          | |- iff1 (seps (cons ?x nil)) _ => is_evar x
-          | |- iff1 _ (seps (cons ?x nil)) => is_evar x
-          end;
-          cbn [seps];
-          exact (iff1_refl _) ]
-  | |- dlet _ (fun x => _) => eapply let_to_dlet; make_fresh x; intro x
+  | |- True =>
+      logger ltac:(fun _ => idtac "constructor");
+      constructor
+  | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
+      logger ltac:(fun _ => idtac "put_into_current_locals");
+      put_into_current_locals
+  | |- dlet _ (fun x => _) =>
+      logger ltac:(fun _ => idtac "introducing dlet");
+      eapply let_to_dlet; make_fresh x; intro x
   | |- forall t' m' (retvs: list ?word),
       _ -> exists l', map.putmany_of_list_zip _ retvs ?l = Some l' /\
-                        after_command _ _ _ _ _ _
-    => (* after a function call *)
+                        after_command _ _ _ _ _ _ =>
+      logger ltac:(fun _ => idtac "intro new state after function call");
       let retvsname := fresh retvs in
       intros ? ? retvsname (? & ? & ?);
       subst retvsname
   | |- exists (l: @map.rep String.string (@word.rep _ _) _),
-         map.putmany_of_list_zip _ _ _ = Some _ /\ _ =>
+      map.putmany_of_list_zip _ _ _ = Some _ /\ _ =>
+      logger ltac:(fun _ => idtac "put return values of function call into locals map");
       eexists; split; [reflexivity| ]
   | |- @eq (@map.rep string (@word.rep _ _) _) (map.of_list _) (map.of_list _) =>
+      logger ltac:(fun _ => idtac "proving equality between two locals maps");
       (* doesn't make the goal unprovable because we keep tuple lists passed
          to map.of_list sorted by key, and all values in the key-value tuples
          are variables or evars *)
       repeat f_equal
   end.
 
-Ltac final_program_logic_step :=
+Import Ltac2 Ltac2.Printf.
+
+Ltac2 and_then_if_success(f: unit -> unit)(k: unit -> unit) :=
+  match Control.case f with
+  | Val _ => k ()
+  | Err e => Control.throw e
+  end.
+
+(* f solves the goal, but the message is still printed: *)
+Goal True.
+  and_then_if_success (fun _ => constructor) (fun _ => printf "constructor succeeded").
+Abort.
+
+(* f opens two subgoals, but the message is printed exactly once: *)
+Goal True \/ True -> True.
+  intros.
+  printf "start";
+    and_then_if_success (fun _ => destruct H) (fun _ => printf "destruct H succeeded").
+Abort.
+
+(* inspecting the goal in the continuation fails because not focussed: *)
+Goal forall a b: nat, a = b \/ b = a -> True.
+  intros.
+  Fail
+  and_then_if_success (fun _ => destruct H) (fun _ =>
+    lazy_match! goal with
+    | [ _: ?t |- _ ] => printf "%t" t
+    end).
+Abort.
+
+Goal forall a b: nat, a = b \/ b = a -> True.
+  intros.
+  Fail let b := constr:(true) in
+  and_then_if_success (fun _ => destruct H) (fun _ =>
+    lazy_match! b with
+    | true => printf "yes"
+    | false => printf "no"
+    end).
+Abort.
+
+(* Two flags that can be easily distinguished in Ltac1 as well as in Ltac2,
+   without the need to focus on a goal in Ltac2.
+   (Note that in Ltac2, `match!` and `lazy_match!` need to be on a focused goal,
+   whereas `match Constr.Unsafe.kind ... with` also works when not focused) *)
+Inductive logging_active: Set := logging_inactive.
+
+Tactic Notation "if_logging" constr(logging_flag) tactic0(f) :=
+  lazymatch logging_flag with
+  | logging_active => f tt
+  | logging_inactive => idtac
+  end.
+
+Ltac2 if_logging(logging_flag: constr)(f: unit -> unit) :=
+  match Constr.Unsafe.kind logging_flag with
+  | Constr.Unsafe.Constructor _ _ => f ()
+  | Constr.Unsafe.Ind _ _ => ()
+  | _ => Control.throw_invalid_argument "not a constructor or inductive"
+  end.
+
+Ltac2 is_logging_active(flag: constr) :=
+  match Constr.Unsafe.kind flag with
+  | Constr.Unsafe.Constructor _ _ => false
+  | Constr.Unsafe.Ind _ _ => true
+  | _ => Control.throw_invalid_argument "not a constructor or inductive"
+  end.
+
+Goal forall a b: nat, a = b \/ b = a -> True.
+  intros.
+  let b := constr:(logging_active) in
+  and_then_if_success (fun _ => destruct H) (fun _ =>
+    match Constr.Unsafe.kind b with
+    | Constr.Unsafe.Constructor _ _ => printf "constructor"
+    | _ => printf "not a constructor"
+    end).
+Abort.
+
+(*
+Ltac2 ltac1_thunk_to_ltac2(f1: Ltac1.t)(dummy2: unit) := ltac1:(f |- f tt) f1.
+*)
+Ltac2 ltac1_thunk_to_ltac2(f1: Ltac1.t)(dummy2: unit) := ltac1:(f d |- f d) f1 (Ltac1.of_constr (constr:(tt))).
+
+Ltac2 Eval ltac1_thunk_to_ltac2.
+
+Ltac _and_then_if_success :=
+  ltac2:(f1 k1 |- and_then_if_success (ltac1_thunk_to_ltac2 f1) (ltac1_thunk_to_ltac2 k1)).
+
+Tactic Notation "and_then_if_success" tactic0(f) tactic0(k) :=
+  _and_then_if_success f k.
+
+
+Set Default Proof Mode "Classic".
+
+Goal False -> False.
+  intros.
+first [
+  match goal with
+  | |- _ => idtac "trying constructor"; constructor
+  | |- _ => progress idtac (*idtac "trying assumption"; assumption*)
+  end
+| idtac ].
+
+Ltac ltac_identity x := x.
+
+Ltac run_logger_thunk' f := f ltac_identity.
+
+let logger := run_logger_thunk' in
+idtac "start";
+assumption; logger ltac:(fun _ => idtac "ok").
+Abort.
+
+Goal True \/ True -> True.
+  intros.
+
+let logger := run_logger_thunk' in
+idtac "start";
+destruct H;
+logger ltac:(fun _ => idtac "ok1");
+logger ltac:(fun _ => idtac "ok2");
+let r := constr:(tt) in idtac "here" r;
+logger ltac:(fun _ => idtac "ok3").
+
+Abort.
+
+
+
+
+(* f solves the goal, but the message is still printed (no??): *)
+Goal True.
+  let logger := run_logger_thunk in
+  idtac "start"; and_then_if_success (fun _ => constructor) (fun _ => logger ltac:(fun _ => idtac "constructor succeeded")).
+
+make logger inspectable for ltac2?
+
+(logger f) either applies f to tt or doesn't
+
+use it to set a mutable boolean?
+
+
+  idtac "start"; and_then_if_success (fun _ => constructor) (fun _ => idtac "constructor succeeded").
+
+Abort.
+*)
+
+(* f opens two subgoals, but the message is printed exactly once: *)
+Goal True \/ True -> True.
+  intros.
+  printf "start";
+    and_then_if_success (fun _ => destruct H) (fun _ => printf "destruct H succeeded").
+Abort.
+
+(* inspecting the goal in the continuation fails because not focussed: *)
+Goal forall a b: nat, a = b \/ b = a -> True.
+  intros.
+  Fail
+  and_then_if_success (fun _ => destruct H) (fun _ =>
+    lazy_match! goal with
+    | [ _: ?t |- _ ] => printf "%t" t
+    end).
+Abort.
+
+Set Default Proof Mode "Classic".
+
+Goal forall a b: nat, a = b \/ b = a -> True.
+Proof.
+  intros.
+  idtac "start".
+
+  let __ := match constr:(Set) with
+            | _ => constructor
+            end in
+  idtac "hi".
+
+(*
+  let __ := match constr:(Set) with
+            | _ => destruct H
+            end in
+  idtac "hi".
+
+
+  let logger := run_logger_thunk in
+  constructor;
+  let n := numgoals in
+  logger ltac:(fun _ => idtac "constructor worked");
+  idtac n;
+  guard n = 0.
+
+--> ltac2 Control.case ?
+
+  let logger := run_logger_thunk in
+  constructor; let n := numgoals in guard n = 0; idtac n;
+  logger ltac:(fun _ => idtac "constructor worked").
+
+  constructor; idtac "hi".
+  constructor; let n := numgoals in guard n = 0; idtac "hi".
+
+let logger := run_logger_thunk in
+  tryif constructor then logger ltac:(fun _ => idtac "destruct worked") else idtac "nope".
+
+let logger := run_logger_thunk in
+  tryif destruct H then logger ltac:(fun _ => idtac "destruct worked") else idtac "nope".
+
+  tryif destruct H then
+    lazymatch goal with
+    | A: ?x = ?y |- _ => idtac x
+    end
+  else idtac "nope".
+
+  2: {
+*)
+
+Ltac final_program_logic_step logger :=
   first
-      [ cleanup_step
-      | progress autounfold with live_always_unfold in *
+      [ cleanup_step;
+        logger ltac:(fun _ => idtac "cleanup_step")
+      | progress autounfold with live_always_unfold in *;
+        logger ltac:(fun _ => idtac "progress autounfold with live_always_unfold in *");
       | lazymatch goal with
         | |- exists _, _ => eexists
-        end
+        end;
+        logger ltac:(fun _ => idtac "eexists");
       | match goal with
         (* We try ZnWords first because it also solves some goals of shape
            (_ = _) and (_ /\ _) *)
@@ -648,17 +883,17 @@ Ltac merge_step' :=
   | |- wp_cmd ?fs ?rest ?t ?m ?l ?post => merge_step
   end.
 
-Ltac step0 :=
+Ltac step0 logger :=
   first [ heapletwise_step
-        | conclusion_shape_based_step
-        | program_logic_step_before_merging
+        | conclusion_shape_based_step logger
+        | program_logic_step_before_merging logger
         | split_step
         | merge_step'
         | final_program_logic_step ].
 
 Ltac step :=
   assert_no_error; (* <-- useful when debugging with `step. step. step. ...` *)
-  step0.
+  step0 run_logger_thunk.
 
 Ltac step_is_done :=
   lazymatch goal with
@@ -673,7 +908,7 @@ Ltac run_steps :=
   lazymatch goal with
   | _: tactic_error _ |- _ => idtac
   | |- _ => tryif step_is_done then idtac
-            else tryif step then run_steps
+            else tryif step0 ignore_logger_thunk then run_steps
             else pose_err Error:("The 'step' tactic should not fail here")
   end.
 

@@ -10,7 +10,12 @@ Notation "h t" := (dcons h t)
   (in custom ne_space_sep_dlist at level 0,
    h constr at level 0, t custom ne_space_sep_dlist at level 0).
 
+(* Intended to be used with (pose proof (mk_tactic_error msg)), so that it
+   displays "ErrorHypName: msg", so the error needs to appear in the type *)
 Inductive tactic_error(msg: dlist): Prop := mk_tactic_error.
+
+(* Intended to be printed with idtac, so we only need term-level notations *)
+Inductive tactic_info := mk_tactic_info(msg: dlist).
 
 Declare Scope tactic_error_scope.
 Open Scope tactic_error_scope.
@@ -29,6 +34,15 @@ Notation "'Error:(' msg )" := (mk_tactic_error msg%string)
   (at level 0, msg custom ne_space_sep_dlist at level 0, format "'Error:(' msg )")
   : tactic_error_scope.
 
+Notation "'Info:(' msg )" := (mk_tactic_info msg%string)
+  (at level 0, msg custom ne_space_sep_dlist at level 0, only parsing)
+  : tactic_error_scope.
+
+Notation "'Info:' msg" := (mk_tactic_info msg%string)
+  (at level 0, msg custom ne_space_sep_dlist at level 0, format "'Info:'  msg",
+   only printing)
+  : tactic_error_scope.
+
 Ltac pose_err_silent e := let n := fresh "Error" in pose proof e as n.
 
 Ltac pose_err e :=
@@ -42,6 +56,27 @@ Goal False.
   pose_err_silent Error:("Here's a very long" (cons "really long" (cons "error message that" (cons "will take mooooooooooooooooooore than one line" nil))) "to display and I wonder how it will be rendered").
   pose_err_silent Error:(4 "is not a" bool).
   pose_err_silent Error:("just one string").
+  pose Info:("Test" 1 "info message").
+  let r := constr:(Info:("one string")) in idtac (*r*).
+Abort.
+
+(* Alternative way of optionally printing info messages with nicer output
+   but less nice usage: *)
+
+Ltac run_logger_thunk f := f tt.
+Ltac ignore_logger_thunk f := idtac.
+
+Ltac sample_tactic logger :=
+  lazymatch goal with
+  | va: nat, vb: nat |- _ =>
+      logger ltac:(fun _ => idtac "Going to clear" va "and" vb);
+      clear va vb
+  end.
+
+Goal forall a b: nat, True.
+  intros.
+  (* sample_tactic run_logger_thunk. *)
+  sample_tactic ignore_logger_thunk.
 Abort.
 
 Ltac assert_no_error :=
