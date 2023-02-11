@@ -60,80 +60,45 @@ Section SepLog.
     split; intros.
     {
       unfold array in *.
-
-      (* TODO: should use an automation to pull out all emp facts *)
-      rewrite sep_emp_l in H1.
-      destruct H1.
-
-      (* obviously true statement *)
+      do 3 heapletwise_step.
       rewrite List.len_upto by ZnWords.
       rewrite List.len_from by ZnWords.
 
-      (* TODO: should prove as a ZList lemma *)
-      assert (vs = vs[:i] ++ [|vs[i]|] ++ vs[i+1:]).
-      {
-        apply (List.expose_nth vs i).
-        ZnWords.
-      }
-      rewrite H3 in * |-.
-      apply Array.array_append in H2.
-      simpl in H2. (* this simplfies so vs[i] gets pulled out *)
-      (* this math stuff should probably be proven as a separate lemma *)
-      assert (a' = (word.add a (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vs[:i])))).
-      {
-        rewrite H3.
-        rewrite List.len_upto;
-          destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
-      }
-      rewrite <- H4 in H2.
+      assert (vs = vs[:i] ++ [|vs[i]|] ++ vs[i+1:]) as Hexposed by
+        (apply (List.expose_nth vs i); ZnWords).
+      rewrite Hexposed in H3.
 
-      (* at this point should be able to match H4 with goal
-         modulo ordering and obviously True statements *)
-      (* TODO: can this be a standard tactic? *)
-      repeat match goal with
-             | |- context[emp ?P] =>
-                 assert_fails (idtac; unify P True);
-                 replace P with True;
-                 [ | eapply PropExtensionality.propositional_extensionality;
-                     split; intros; [ |constructor] ]
-             end.
-      { use_sep_assumption. cancel. }
-      { replace (len vs) with n by congruence. ZnWords. }
-      { auto. }
+      apply Array.array_append in H3.
+      heapletwise_step.
+      simpl in H4.
+      unfold with_mem in H4.
+      heapletwise_step.
+
+      assert (a' = (word.add a
+        (word.of_Z (word.unsigned (width := width)
+          (word.of_Z elemSize) * len vs[:i])))) as Ha' by
+        (rewrite List.len_upto;
+          destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+      rewrite <- Ha' in *; clear Ha'.
+      repeat heapletwise_step; ZnWords.
     }
     {
-      (* TODO: should use an automation to pull out all emp facts *)
-      unfold array in H1.
-      rewrite sep_assoc_eq in H1.
-      rewrite sep_emp_l in H1.
-      destruct H1.
-      rewrite <- sep_assoc_eq in H2.
-      apply sep_comm in H2.
-      rewrite sep_assoc_eq in H2.
-      rewrite sep_emp_l in H2.
-      destruct H2.
+      unfold array in *.
+      do 6 heapletwise_step.
 
-      unfold array.
-      rewrite sep_emp_l.
-      split.
-      { simpl. rewrite List.app_length. simpl. ZnWords. }
+      epose proof (Array.array_append) as Happ.
+      eapply iff1ToEq in Happ.
+      rewrite Happ; clear Happ; simpl.
 
-      apply Array.array_append.
-      simpl.
+      assert (a' = (word.add a
+        (word.of_Z (word.unsigned (width := width)
+          (word.of_Z elemSize) * len vs1)))) as Ha' by
+        (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+      rewrite <- Ha' in *; clear Ha'.
 
-      apply sep_comm in H3.
-      rewrite sep_assoc_eq in H3.
-
-      (* this math stuff should probably be proven as a separate lemma *)
-      assert (a' = (word.add a (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vs1)))).
-      {
-        rewrite H1.
-        destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
-      }
-      rewrite <- H4.
-
-      use_sep_assumption.
-      cancel.
+      repeat heapletwise_step.
+      rewrite List.app_length; simpl. 
+      destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
     }
   Qed.
 
@@ -174,10 +139,6 @@ Section SepLog.
         array elem n (vsl ++ vsm ++ vsr) a m
       ).
   Proof.
-    (* TODO delete assert and adapt proof to new statement *)
-    assert (
-    forall a a' elem {elemSize: PredicateSize elem} n i (size: Z), (word.unsigned (word.sub a' a)) mod elemSize = 0 -> word.unsigned (word.sub a' a) / elemSize = i -> 0 < size -> 0 <= i < n -> 0 <= i+size < n -> (forall (vs: list E) m, array elem n vs a m -> (* first part *) sep (array elem i vs[:i] a) (* middle subarray part *) (sep (array elem size vs[i:i+size] a') (* final part *) (array elem (n-i-size) vs[i+size:] (word.add a' (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * size))))) m) /\ (forall vsl vsr vsm m, (* first part *) sep (array elem i vsl a) (* middle subarray part *) (sep (array elem size vsm a') (* final part *) (array elem (n-i-size) vsr (word.add a' (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * size))))) m  -> array elem n (vsl ++ vsm ++ vsr) a m)). {
-
     split; intros.
     {
       unfold array in *.
@@ -188,7 +149,7 @@ Section SepLog.
       rewrite List.from_canon with (i := i+size).
       rewrite List.len_indexed_slice with (i := i+size) (j := len vs) by ZnWords.
 
-      assert (vs = vs[:i] ++ vs[i:i+size] ++ vs[i+size:len vs]).
+      assert (vs = vs[:i] ++ vs[i:i+size] ++ vs[i+size:len vs]) as Hsplit.
       {
         rewrite List.merge_adjacent_slices.
         - rewrite <- List.from_canon.
@@ -196,61 +157,43 @@ Section SepLog.
           ZnWords.
         - ZnWords.
       }
-
-      rewrite H4 in H6.
-      apply Array.array_append in H6.
+      rewrite Hsplit in H4; clear Hsplit.
+      apply Array.array_append in H4.
       heapletwise_step.
-      apply Array.array_append in H8.
+      apply Array.array_append in H5.
       heapletwise_step.
       rewrite List.len_sized_slice in * by ZnWords.
 
-      assert (a' = word.add a
-              (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vs[:i]))).
-      {
-        rewrite List.len_upto by ZnWords.
-        destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
-      }
-      rewrite <- H8 in *.
-
-      repeat match goal with
-             | |- context[emp ?P] =>
-                 assert_fails (idtac; unify P True);
-                 replace P with True;
-                 [ | eapply PropExtensionality.propositional_extensionality;
-                     split; intros; [ |constructor] ]
-             end; auto; try ZnWords.
-      collect_heaplets_into_one_sepclause m'.
-      use_sep_assumption.
-      cancel.
+      replace (word.add a
+               (word.of_Z (word.unsigned (width := width)
+                 (word.of_Z elemSize) * len vs[:i]))) with a' in * by
+        (rewrite List.len_upto by ZnWords;
+          destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+      repeat heapletwise_step; ZnWords.
     }
     {
       unfold array in *.
       do 8 heapletwise_step.
-      rewrite sep_emp_l.
-      split.
-      { rewrite 2 List.app_length. ZnWords. }
 
-      apply Array.array_append.
+      epose proof (Array.array_append) as Happ.
+      eapply iff1ToEq in Happ.
+      rewrite Happ; clear Happ.
+
+      rewrite <- H5 in H6.
+      epose proof (Array.array_append) as Happ.
+      eapply iff1ToEq in Happ.
+      rewrite Happ; clear Happ.
+
+      replace (word.add a
+               (word.of_Z (word.unsigned (width := width)
+                 (word.of_Z elemSize) * len vsl))) with a' in * by
+        (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+
       collect_heaplets_into_one_sepclause m'.
-      heapletwise_step.
-      rewrite <- H7 in H8.
-      apply Array.array_append in H8.
-      change (m2 |= Array.array (fun (a : word) (v : E) => elem v a)
-        (word.of_Z elemSize) a' (vsm ++ vsr)) in H8.
-      collect_heaplets_into_one_sepclause m'.
-
-      assert (a' = word.add a
-              (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * len vsl))).
-      {
-        destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
-      }
-      rewrite H5 in *.
-
-      use_sep_assumption.
-      cancel.
+      repeat heapletwise_step.
+      rewrite 2 List.app_length; ZnWords.
     }
-    }
-  Admitted.
+  Qed.
 
   (* does not depend on any library functions so that we can safely cbn it *)
   Fixpoint sepapps_offset(n: nat)(l: list sized_predicate): Z :=
