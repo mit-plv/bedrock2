@@ -95,7 +95,7 @@ Section WithMap.
     end.
 
   Lemma constant_folding_correct {t : type} (l : locals) (e : expr t) 
-    : interp_expr l e = interp_expr l (constant_folding e).
+    :  interp_expr l (constant_folding e) = interp_expr l e.
   Proof.
     generalize dependent l.
     induction e; intros; simpl; try easy.
@@ -103,14 +103,14 @@ Section WithMap.
       Ltac transforms := repeat (rewrite reify_correct || rewrite listify_correct || reflexivity).
 
     - destruct o; simpl; destruct (as_const (constant_folding e)) eqn:H;
-      rewrite IHe;
+      rewrite <- IHe;
       try rewrite (as_const_correct l (constant_folding e) _ H);
       transforms.
 
     - destruct o; simpl; try easy;
       destruct (as_const (constant_folding e1)) eqn:H1;
       destruct (as_const (constant_folding e2)) eqn:H2;
-      rewrite IHe1, IHe2;
+      rewrite <- IHe1, <- IHe2;
       simpl;
       try rewrite (as_const_correct l (constant_folding e1) _ H1);
       try rewrite (as_const_correct l (constant_folding e2) _ H2);
@@ -151,11 +151,11 @@ Section WithMap.
     end.
 
   Lemma branch_elim_correct {t : type} (l : locals) (e : expr t) 
-    : interp_expr l e = interp_expr l (branch_elim e).
+    : interp_expr l (branch_elim e) = interp_expr l e.
   Proof.
     generalize dependent l.
     induction e; simpl; intros; 
-    try rewrite IHe; try rewrite IHe1; try rewrite IHe2; try rewrite IHe3; 
+    try rewrite <- IHe; try rewrite <- IHe1; try rewrite <- IHe2; try rewrite <- IHe3; 
     try reflexivity.
 
     - assert (H:(fun y : interp_type t => interp_expr (set_local l x y) (branch_elim e2)) 
