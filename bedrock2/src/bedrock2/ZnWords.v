@@ -114,7 +114,6 @@ Ltac wordOps_to_ZModArith_getEq t :=
   | context[@word.eqb ?wi ?wo ?x ?y] => constr:(@word.unsigned_eqb wi wo _ x y)
   | context[@word.ltu ?wi ?wo ?x ?y] => constr:(@word.unsigned_ltu wi wo _ x y)
   | context[@word.lts ?wi ?wo ?x ?y] => constr:(@word.signed_lts wi wo _ x y)
-  | context[@word.unsigned ?wi ?wo (if ?b then ?thn else ?els)] => constr:(@word.unsigned_if wi wo _ b thn els)
   | context[Z.shiftr ?a ?n] => constr:(Z.shiftr_div_pow2 a n)
   | context[Z.shiftl ?a ?n] => constr:(Z.shiftl_mul_pow2 a n)
   end.
