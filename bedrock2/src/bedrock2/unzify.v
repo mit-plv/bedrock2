@@ -2,6 +2,7 @@
 
 Require Import Coq.ZArith.ZArith Coq.micromega.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Z.Lia.
 Require Import coqutil.Tactics.foreach_hyp.
 Local Open Scope Z_scope.
 
@@ -20,7 +21,7 @@ Module Import word.
   Section WithWord.
     Context {width} {word : word.word width} {word_ok : word.ok word}.
 
-    Lemma modulus_nonzero: 2 ^ width <> 0.
+    Lemma modulus_nonzero: 2 ^ width <> 0. (* TODO move next to word.modulus_pos *)
     Proof. eapply Z.pow_nonzero. 2: eapply word.width_nonneg. cbv. discriminate. Qed.
 
     Lemma unsigned_range_eq{z}{x: word}: word.unsigned x = z -> 0 <= z < 2 ^ width.
@@ -224,14 +225,59 @@ with zify_impl wok e x y :=
 Lemma rew_Prop_hyp: forall (P1 P2: Prop) (pf: P1 = P2), P1 -> P2.
 Proof. intros. subst. assumption. Qed.
 
+Lemma rew_Prop_goal: forall (P1 P2: Prop) (pf: P1 = P2), P2 -> P1.
+Proof. intros. subst. assumption. Qed.
+
 Inductive zified_hyps_start_here: Prop := mk_zified_hyps_start_here.
 
-Ltac zify_hyp wok h tp :=
-  let pf := zify_term wok tp in
-  lazymatch pf with
-  | eq_refl => idtac
-  | _ => let hf := fresh h "Z" in pose proof (rew_Prop_hyp _ _ pf h) as hf
+(* TODO detection of word equal and not equal should also take place under
+   logical connectives, but using equality and functional extensionality,
+   or using <-> in f_equal-like (morphism) lemmas? *)
+Ltac zify_hyp wok h0 tp0 :=
+  lazymatch tp0 with
+  | @eq (@word.rep _ _) _ _ =>
+      let h := constr:(f_equal word.unsigned h0) in
+      let tp := type of h in
+      let pf := zify_term wok tp in
+      let hf := fresh h0 "Z" in pose proof (rew_Prop_hyp _ _ pf h) as hf
+  | not (@eq (@word.rep _ _) _ _) =>
+      let h := constr:(word.unsigned_inj' _ _ h0) in
+      let tp := type of h in
+      let pf := zify_term wok tp in
+      let hf := fresh h0 "Z" in pose proof (rew_Prop_hyp _ _ pf h) as hf
+  | _ =>
+      let pf := zify_term wok tp0 in
+      lazymatch pf with
+      | eq_refl => idtac
+      | _ => let hf := fresh h0 "Z" in pose proof (rew_Prop_hyp _ _ pf h0) as hf
+      end
   end.
+
+Ltac hyp_is_evar_free h tp :=
+  tryif has_evar tp then fail "hypothesis" h "is not evar-free" else idtac.
+
+Ltac hyps_are_evar_free := foreach_hyp hyp_is_evar_free.
+
+Ltac goal_is_evar_free :=
+  lazymatch goal with
+  | |- ?G => tryif has_evar G then fail "the goal is not evar-free" else idtac
+  end.
+
+Ltac assert_no_evars := hyps_are_evar_free; goal_is_evar_free.
+
+Goal (forall a: nat, a = a) -> forall b: nat, exists c, c = b.
+Proof.
+  intros.
+  assert_succeeds (idtac; assert_no_evars).
+  eexists.
+  assert_fails (idtac; goal_is_evar_free).
+  assert_succeeds (idtac; hyps_are_evar_free).
+  match goal with
+  | |- ?x = _ => specialize (H x)
+  end.
+  assert_fails (idtac; hyps_are_evar_free).
+  assert_fails (idtac; assert_no_evars).
+Abort.
 
 Ltac get_word_instance :=
   lazymatch goal with
@@ -246,6 +292,26 @@ Ltac get_word_ok :=
   let wo := get_word_instance in
   lazymatch constr:(_ : word.ok wo) with
   | ?wok => wok
+  end.
+
+Ltac zify_goal :=
+  lazymatch goal with
+  | |- @eq (@word.rep _ _) _ _ => eapply word.unsigned_inj
+  | |- _ <> _ => intro
+  | |- _ => idtac
+  end;
+  (* if there are evars in the goal, the preprocessing might affect the
+     evars or their evarcontexts in tricky ways that no one wants to
+     debug, so we should fail here.
+     TODO but maybe it would be handy to use this tactic even when there
+     are evars, especially for contradictory goals? *)
+  assert_no_evars;
+  lazymatch goal with
+  | |- ?G =>
+      is_lia G;
+      let wok := get_word_ok in
+      let pf := zify_term wok G in
+      eapply (rew_Prop_goal _ _ pf)
   end.
 
 Require Import Ltac2.Ltac2.
@@ -339,7 +405,7 @@ Section Tests.
     word.unsigned (word.sub right left0) = 8 * Z.of_nat (Datatypes.length xs + 0) ->
     forall (x : list word) (x1 x2 : word),
     word.unsigned (word.sub x2 x1) = 8 * Z.of_nat (Datatypes.length x) ->
-    word.unsigned (word.sub x2 x1) <> 0 ->
+    word.sub x2 x1 <> word.of_Z 0 ->
     word.unsigned
       (word.sub x2
          (word.add
@@ -352,7 +418,9 @@ Section Tests.
            (word.of_Z 4)) (word.of_Z 3))) x1) / word.unsigned (word.of_Z 8)))).
   Proof.
     intros.
+    (* Require Import bedrock2.ZnWords. Time ZnWords. *)
     zify_hyps.
+    zify_goal.
     unzify.
   Abort.
 End Tests.
