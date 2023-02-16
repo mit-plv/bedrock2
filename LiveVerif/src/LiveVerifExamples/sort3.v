@@ -19,7 +19,18 @@ Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .*
 {                                                                        /**. .**/
   uintptr_t w0 = load32(a);                                              /**. .**/
   uintptr_t w1 = load32(a+4);                                            /**. .**/
-  uintptr_t w2 = load32(a+8);                                            /**. .**/
+  uintptr_t w2 = load32(a+8);                                            /*?.
+
+step. step. step. step. step.
+step. step.
+2: {
+  unfold array. simpl. replace (1 = 1) with True.
+  2: eapply PropExtensionality.propositional_extensionality; intuition auto.
+  eapply iff1ToEq. ecancel.
+}
+step. step. step. step. step.
+
+.**/
   if (w1 <= w0 && w1 <= w2) {                                            /**. .**/
     store32(a, w1);                                                      /**. .**/
     w1 = w0;                                                             /**. .**/
@@ -36,8 +47,12 @@ Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .*
   } else {                                                               /**. .**/
     store32(a+4, w1);                                                    /**. .**/
     store32(a+8, w2);                                                    /**. .**/
-  } /**. end if.                                                              .**/
+  } /**. end if.
+
+Ltac allow_all_substs ::= constr:(false).
+Ltac allow_all_splits ::= constr:(false).                                     .**/
 }                                                                        /**.
-Qed.
+(* TODO make merge_steps work *)
+Abort.
 
 End LiveVerif. Comments .**/ //.

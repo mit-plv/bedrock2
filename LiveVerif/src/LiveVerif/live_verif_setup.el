@@ -71,3 +71,11 @@
       (insert " .**/")
       (newline)
       (if n (insert (make-string n ?\s))))))
+
+(local-set-key (kbd "C-c C-i") (lambda ()
+    (interactive)
+    (progn
+      (unless (or (eq (char-before) 32) (eq (char-before) 10)) (insert " "))
+      (insert "step.")
+      (unless (or (eq (char-after) 32) (eq (char-after) 10) (eq (char-after) nil)) (insert " "))
+      (proof-goto-point))))

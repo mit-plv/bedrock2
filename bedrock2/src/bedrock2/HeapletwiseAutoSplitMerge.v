@@ -7,13 +7,17 @@ Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.syntactic_unify.
 Require Import coqutil.Tactics.fwd.
+Require Import coqutil.Tactics.fold_hyps.
+Require Import coqutil.Datatypes.RecordSetters.
 Require Import bedrock2.Lift1Prop bedrock2.Map.Separation bedrock2.Map.DisjointUnion.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.SepLib.
 Require Import bedrock2.sepapp.
 Require Import bedrock2.ZnWords.
+Require Import bedrock2.TacticError.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.bottom_up_simpl_ltac1.
+Require Import bedrock2.Map.SeparationLogic.
 
 Import ZList.List.ZIndexNotations.
 Local Open Scope zlist_scope.
@@ -34,22 +38,162 @@ Section SepLog.
 
   Lemma split_off_elem_from_array{E: Type}{inh: inhabited E}:
     forall a a' elem {elemSize: PredicateSize elem} n i,
-      (word.unsigned (word.sub a' a)) mod elemSize = 0 ->
+      (* to be solved by reflexivity (instantiates i): *)
       word.unsigned (word.sub a' a) / elemSize = i ->
+      (* to be solved by ZnWords: *)
+      ((word.unsigned (word.sub a' a)) mod elemSize = 0 /\ 0 <= i < n) ->
+      (* split direction: *)
       (forall (vs: list E) m,
           array elem n vs a m ->
           sep (elem vs[i] a')
               (sep (array elem i vs[:i] a)
-                   (array elem (n-i-1) vs[i+1:]
+                  (array elem (n-i-1) vs[i+1:]
                       (word.add a' (word.of_Z elemSize)))) m) /\
+      (* merge direction: *)
       (forall vs1 vs2 v m,
           sep (array elem i vs1 a)
               (sep (elem v a')
-                   (array elem (n-i-1) vs2
+                  (array elem (n-i-1) vs2
                       (word.add a' (word.of_Z elemSize)))) m ->
           array elem n (vs1 ++ [|v|] ++ vs2) a m).
   Proof.
-  Admitted.
+    split; intros.
+    {
+      unfold array in *.
+      do 3 heapletwise_step.
+      rewrite List.len_upto by ZnWords.
+      rewrite List.len_from by ZnWords.
+
+      assert (vs = vs[:i] ++ [|vs[i]|] ++ vs[i+1:]) as Hexposed by
+        (apply (List.expose_nth vs i); ZnWords).
+      rewrite Hexposed in H3.
+
+      apply Array.array_append in H3.
+      heapletwise_step.
+      simpl in H4.
+      unfold with_mem in H4.
+      heapletwise_step.
+
+      assert (a' = (word.add a
+        (word.of_Z (word.unsigned (width := width)
+          (word.of_Z elemSize) * len vs[:i])))) as Ha' by
+        (rewrite List.len_upto;
+          destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+      rewrite <- Ha' in *; clear Ha'.
+      repeat heapletwise_step; ZnWords.
+    }
+    {
+      unfold array in *.
+      do 6 heapletwise_step.
+
+      epose proof (Array.array_append) as Happ.
+      eapply iff1ToEq in Happ.
+      rewrite Happ; clear Happ; simpl.
+
+      assert (a' = (word.add a
+        (word.of_Z (word.unsigned (width := width)
+          (word.of_Z elemSize) * len vs1)))) as Ha' by
+        (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+      rewrite <- Ha' in *; clear Ha'.
+
+      repeat heapletwise_step.
+      rewrite List.app_length; simpl. 
+      destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
+    }
+  Qed.
+
+  Lemma split_off_subarray_from_array{E: Type}{inh: inhabited E}:
+    (* a = start of the entire array. a' = start of the subarray (i). *)
+    (* size = number of elements to split off *)
+    forall a a' elem {elemSize: PredicateSize elem} n (nbytes: Z) i (size: Z),
+      word.unsigned (word.sub a' a) / elemSize = i ->
+      nbytes / elemSize = size ->
+
+      (word.unsigned (word.sub a' a)) mod elemSize = 0 /\
+      nbytes mod elemSize = 0 /\
+      0 <= size /\
+      0 <= i /\ i+size <= n ->
+
+      (forall (vs: list E) m,
+        array elem n vs a m ->
+
+        (* first part *)
+        sep (array elem i vs[:i] a)
+        (* middle subarray part *)
+          (sep (array elem size vs[i:i+size] a')
+        (* final part *)
+            (array elem (n-i-size) vs[i+size:]
+              (word.add a' (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * size))))) m)
+
+      /\
+
+      (forall vsl vsr vsm m,
+        (* first part *)
+        sep (array elem i vsl a)
+        (* middle subarray part *)
+          (sep (array elem size vsm a')
+        (* final part *)
+            (array elem (n-i-size) vsr
+              (word.add a' (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * size))))) m  ->
+
+        array elem n (vsl ++ vsm ++ vsr) a m
+      ).
+  Proof.
+    split; intros.
+    {
+      unfold array in *.
+      repeat heapletwise_step; unfold with_mem in *.
+
+      rewrite List.len_upto by ZnWords.
+      rewrite List.len_sized_slice by ZnWords.
+      rewrite List.from_canon with (i := i+size).
+      rewrite List.len_indexed_slice with (i := i+size) (j := len vs) by ZnWords.
+
+      assert (vs = vs[:i] ++ vs[i:i+size] ++ vs[i+size:len vs]) as Hsplit.
+      {
+        rewrite List.merge_adjacent_slices.
+        - rewrite <- List.from_canon.
+          apply List.split_at_index.
+          ZnWords.
+        - ZnWords.
+      }
+      rewrite Hsplit in H4; clear Hsplit.
+      apply Array.array_append in H4.
+      heapletwise_step.
+      apply Array.array_append in H5.
+      heapletwise_step.
+      rewrite List.len_sized_slice in * by ZnWords.
+
+      replace (word.add a
+               (word.of_Z (word.unsigned (width := width)
+                 (word.of_Z elemSize) * len vs[:i]))) with a' in * by
+        (rewrite List.len_upto by ZnWords;
+          destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+      repeat heapletwise_step; ZnWords.
+    }
+    {
+      unfold array in *.
+      do 8 heapletwise_step.
+
+      epose proof (Array.array_append) as Happ.
+      eapply iff1ToEq in Happ.
+      rewrite Happ; clear Happ.
+
+      rewrite <- H5 in H6.
+      epose proof (Array.array_append) as Happ.
+      eapply iff1ToEq in Happ.
+      rewrite Happ; clear Happ.
+
+      replace (word.add a
+               (word.of_Z (word.unsigned (width := width)
+                 (word.of_Z elemSize) * len vsl))) with a' in * by
+        (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+
+      collect_heaplets_into_one_sepclause m'.
+      repeat heapletwise_step.
+      rewrite 2 List.app_length; ZnWords.
+    }
+  Qed.
 
   (* does not depend on any library functions so that we can safely cbn it *)
   Fixpoint sepapps_offset(n: nat)(l: list sized_predicate): Z :=
@@ -95,20 +239,22 @@ Section SepLog.
           sepapps_offset n l = ofs -> (* <- determines n *)
           List.nth_error l n = Some (mk_sized_predicate P sz) ->
           sepapps l a m ->
-          sep (P a')
-              (sepapps (sepapps_replace l n (mk_sized_predicate (hole sz) sz)) a) m) /\
+          sep (sepapps (sepapps_replace l n (mk_sized_predicate (hole sz) sz)) a)
+              (P a') m) /\
       (forall l P m,
           sepapps_offset n l = ofs -> (* <- should be eq_refl *)
           List.nth_error l n = Some (mk_sized_predicate (hole sz) sz) ->
-          sep (P a') (sepapps l a) m ->
+          sep (sepapps l a) (P a') m ->
           sepapps (sepapps_replace l n (mk_sized_predicate P sz)) a m).
   Proof.
     intros. split; intros; subst;
       rewrite sepapps_offset_spec in H0;
       rewrite sepapps_replace_spec.
-    - rewrite (expose_nth_sepapp l n a P sz H1) in H2. eqapply H2. f_equal.
+    - rewrite (expose_nth_sepapp l n a P sz H1) in H2.
+      eapply SeparationLogic.sep_comm. eqapply H2. f_equal.
       rewrite H0. destruct width_cases; subst width; ZnWords.
-    - rewrite <- (merge_back_nth_sepapp l n a P sz H1). eqapply H2. f_equal.
+    - rewrite <- (merge_back_nth_sepapp l n a P sz H1).
+      eapply SeparationLogic.sep_comm. eqapply H2. f_equal.
       rewrite H0. destruct width_cases; subst width; ZnWords.
   Qed.
 
@@ -219,6 +365,7 @@ Ltac split_range_from_hyp_default :=
       | sepapps _ _ => idtac
       | array _ _ _ _ => idtac
       | _ => let h := head P in unfold h in H;
+             record.simp_hyp H;
              lazymatch P with
              | ?pred ?v ?addr => pose proof (mk_fold_step pred)
              end
@@ -226,16 +373,30 @@ Ltac split_range_from_hyp_default :=
       let pf := fresh in
       lazymatch type of H with
       | with_mem _ (@array _ _ _ _ _ ?elem (*must match:*)size ?n ?vs ?start') =>
-          unshelve epose proof (split_off_elem_from_array start' start elem n _ _ _) as pf;
+          unshelve epose proof
+            (split_off_elem_from_array start' start elem n _ _ _) as pf;
           [ (* i *)
-          | ZnWords
           | bottom_up_simpl_in_goal; reflexivity
+          | ZnWords
+          | change g;
+            eapply (proj1 pf) in H;
+            eapply proj2 in pf;
+            let t := type of pf in change (merge_step t) in pf ]
+      | with_mem _ (@array _ _ _ _ _ ?elem ?elemSize ?n ?vs ?start') =>
+          unshelve epose proof
+            (split_off_subarray_from_array start' start elem n size _ _ _ _ _) as pf;
+          [ (* index of first element *)
+          | (* number of elements to split off *)
+          | bottom_up_simpl_in_goal; reflexivity
+          | bottom_up_simpl_in_goal; reflexivity
+          | ZnWords
           | change g;
             eapply (proj1 pf) in H;
             eapply proj2 in pf;
             let t := type of pf in change (merge_step t) in pf ]
       | with_mem _ (sepapps _ ?start') =>
-          unshelve epose proof (split_off_field_from_sepapps start' start size _ _ _) as pf;
+          unshelve epose proof
+            (split_off_field_from_sepapps start' start size _ _ _) as pf;
           [ (* offset: dependent evar will be determined by second subgoal *)
           | (* n (index of field): determined later below *)
           | (* address difference equals offset *)
@@ -368,7 +529,7 @@ Ltac merge_step_in_hyp H :=
   | merge_step (forall l P m,
           sepapps_offset ?n l = ?ofs -> (* <-SC1 *)
           List.nth_error l ?n = Some (mk_sized_predicate (hole ?sz) ?sz) -> (* <-SC2 *)
-          sep (P (word.add ?p (word.of_Z ?ofs))) (sepapps l ?p) m ->
+          sep (sepapps l ?p) (P ?p_plus_ofs) m ->
           sepapps (sepapps_replace l ?n (mk_sized_predicate P ?sz)) ?p m) =>
       lazymatch goal with
       | _: with_mem _ (sepapps ?l p) |- _ =>
@@ -403,16 +564,44 @@ Proof. intros. subst. assumption. Qed.
 
 Ltac sepclause_equality_hook := syntactic_f_equal_with_ZnWords.
 
-(* Is start..start+size a subrange of start'..start'+size' ?
+(* Returns a Prop claiming that start..start+size is a subrange of start'..start'+size'.
    Assumes 0<=size<2^width and 0<=size'<2^width.
    Both ranges may wrap around. *)
-Ltac is_subrange start size start' size' :=
-  (* we do the comparison in a different coordinate system, namely relative to start',
-     ie we shift (with wrapping) all points so that start' corresponds to zero *)
-  assert_succeeds (idtac;
-    assert (word.unsigned (word.sub start start') + size <= size') by ZnWords).
+Definition subrange{width: Z}{word: word.word width}(start: word)(size: Z)
+  (start': word)(size': Z) := word.unsigned (word.sub start start') + size <= size'.
 
-Ltac split_merge_step :=
+Ltac is_subrange start size start' size' :=
+  assert_succeeds (idtac; assert (subrange start size start' size') by
+                     (unfold subrange; ZnWords)).
+
+Inductive PredicateSizeNotFound := .
+
+Ltac get_predicate_size_or_pose_err P :=
+  let t := constr:(PredicateSize P) in
+  match constr:(Set) with
+  | _ => lazymatch constr:(_: t) with ?s => s end
+  | _ => let __ := match constr:(Set) with
+                   | _ => pose_err Error:("typeclasses eauto" "should find" t)
+                   end in constr:(PredicateSizeNotFound)
+  end.
+
+Ltac gather_is_subrange_claims_into_error start size :=
+  fold_hyps_upwards_cont
+    (fun res h tp =>
+       lazymatch tp with
+       | with_mem ?m (?P' ?start') =>
+          lazymatch get_predicate_size_or_pose_err P' with
+          | PredicateSizeNotFound => fail "can't find PredicateSize for" P'
+          | ?size' =>
+              constr:(cons (subrange start size start' size') res)
+          end
+       | _ => res
+       end)
+    (@nil Prop)
+    (fun r => pose_err
+                Error:("Exactly one of the following subrange claims should hold:" r)).
+
+Ltac split_step :=
   lazymatch goal with
   | |- canceling (cons (?P ?start) _) ?m _ =>
       let size := lazymatch constr:(_: PredicateSize P) with ?s => s end in
@@ -421,25 +610,34 @@ Ltac split_merge_step :=
   | |- find_superrange_hyp ?start ?size ?g =>
       match goal with
       | H: with_mem ?mH (?P' ?start') |- _ =>
-          let size' := lazymatch constr:(_: PredicateSize P') with ?s => s end in
-          is_subrange start size start' size';
-          tryif assert_succeeds (idtac;
-            assert (size = size') by ZnWords)
-          then (
-            change g;
-            let P := lazymatch goal with | |- canceling (cons ?P _) _ _ => P end in
-            eapply (rew_with_mem (P' start') P mH) in H (* <-- leaves 2 open goals *)
-          ) else change (split_range_from_hyp start size _ H g)
+          lazymatch get_predicate_size_or_pose_err P' with
+          | PredicateSizeNotFound => idtac
+          | ?size' =>
+              is_subrange start size start' size';
+              tryif assert_succeeds (idtac;
+                assert (size = size') by ZnWords)
+              then (
+                change g;
+                let P := lazymatch goal with | |- canceling (cons ?P _) _ _ => P end in
+                eapply (rew_with_mem (P' start') P mH) in H (* <-- leaves 2 open goals *)
+              ) else change (split_range_from_hyp start size _ H g)
+          end
+      | _ => gather_is_subrange_claims_into_error start size
       end
   | |- split_range_from_hyp ?start ?size ?tH ?H ?g => split_range_from_hyp_hook
   | |- @eq (@map.rep (@word.rep _ _) Init.Byte.byte _ -> Prop) _ _ =>
       syntactic_f_equal_with_ZnWords
+  end.
+
+Ltac merge_step :=
+  lazymatch goal with
   | H: merge_step _ |- _ => merge_step_in_hyp H
-  | H: @fold_step ?R _ _ ?pred |- _ =>
+  | F: @fold_step ?R _ _ ?pred |- _ =>
       let c := lazymatch open_constr:(ltac:(constructor) : R) with ?c => c end in
       lazymatch goal with
       | H: with_mem ?m (sepapps ?l ?a) |- _ =>
           instantiate_constructor_with_sepapps c l;
           change (with_mem m (pred c a)) in H
-      end
+      end;
+      clear F
   end.

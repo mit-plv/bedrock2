@@ -522,6 +522,8 @@ Ltac local_subst_small_rhs e :=
 Ltac local_nonring_nonground_Z_simpl e :=
   lazymatch e with
   | Z.div ?x 1 => res_rewrite x (Z.div_1_r x)
+  | Z.div (Z.mul ?x ?y) ?y =>
+      res_rewrite x (Z.div_mul x y ltac:(bottom_up_simpl_sidecond_hook))
   end.
 
 Ltac local_simpl_hook parent_kind e0 :=
@@ -862,6 +864,9 @@ Ltac bottom_up_simpl_in_hyps := foreach_hyp bottom_up_simpl_in_hyp_of_type.
 Ltac bottom_up_simpl_in_vars := foreach_var bottom_up_simpl_in_letbound_var.
 
 Ltac bottom_up_simpl_in_hyps_and_vars := bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars.
+
+Ltac bottom_up_simpl_in_all :=
+  bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars; try bottom_up_simpl_in_goal.
 
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 

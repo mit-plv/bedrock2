@@ -444,8 +444,16 @@ Section WithParams.
       (eapply WP_weaken_cmd; [eauto|intros; eauto using invert_wp_cmd]).
   Qed.
 
+  Definition precond(P: Prop) := P.
+
+  Definition after_command: list (string * (list string * list string * cmd)) ->
+    cmd -> trace -> mem -> locals -> (trace -> mem -> locals -> Prop) -> Prop := wp_cmd.
+
+  Definition after_loop: list (string * (list string * list string * cmd)) ->
+    cmd -> trace -> mem -> locals -> (trace -> mem -> locals -> Prop) -> Prop := wp_cmd.
+
   Lemma wp_set: forall fs x e v t m l rest post,
-      dexpr1 m l e v (wp_cmd fs rest t m (map.put l x v) post) ->
+      dexpr1 m l e v (after_command fs rest t m (map.put l x v) post) ->
       wp_cmd fs (cmd.seq (cmd.set x e) rest) t m l post.
   Proof.
     intros. inversion H. eapply wp_set0; eassumption.
@@ -487,7 +495,7 @@ Section WithParams.
       dexpr1 m l ea a
         (dexpr1 m l ev v
            (sep (uintptr v_old a) R m /\
-            (forall m, sep (uintptr v a) R m -> wp_cmd fs rest t m l post))) ->
+            (forall m, sep (uintptr v a) R m -> after_command fs rest t m l post))) ->
       wp_cmd fs (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion Hp; clear Hp. destruct Hp0 as (H & C).
@@ -496,12 +504,12 @@ Section WithParams.
 
   Lemma wp_store_uint: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
-        (dexpr1 m l ev v
+        (dexpr1 m l ev v (precond
            (0 <= word.unsigned v < 2 ^ access_size_to_nbits sz /\
             sep (uint (access_size_to_nbits sz) v_old a) R m /\
             (forall m,
                 sep (uint (access_size_to_nbits sz) (word.unsigned v) a) R m ->
-                wp_cmd fs rest t m l post))) ->
+                after_command fs rest t m l post)))) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion Hp; clear Hp. destruct Hp0 as (B & H & C).
@@ -514,16 +522,18 @@ Section WithParams.
     forall t m l, let c := b in
       (if c then Q1 t m l else Q2 t m l) ->
       wp_cmd fs rest t m l post.
+  Definition pop_scope_marker(P: Prop) := P.
 
   Lemma wp_if_bool_dexpr: forall fs c thn els rest t0 m0 l0 b Q1 Q2 post,
       dexpr_bool3 m0 l0 c b
         (then_branch_marker (wp_cmd fs thn t0 m0 l0 Q1))
         (else_branch_marker (wp_cmd fs els t0 m0 l0 Q2))
-        (after_if fs b Q1 Q2 rest post) ->
+        (pop_scope_marker (after_if fs b Q1 Q2 rest post)) ->
       wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t0 m0 l0 post.
   Proof.
     intros. inversion H. subst. clear H.
-    unfold then_branch_marker, else_branch_marker, after_if, bool_expr_branches in *.
+    unfold then_branch_marker, else_branch_marker, pop_scope_marker,
+      after_if, bool_expr_branches in *.
     destruct H2.
     destr (word.eqb v (word.of_Z 0));
       (eapply wp_if0;
@@ -541,8 +551,7 @@ Section WithParams.
     all: intros * [(? & ?) | (? & ?)]; try (exfalso; congruence); eauto.
   Qed.
 
-  Definition after_loop: list (string * (list string * list string * cmd)) ->
-    cmd -> trace -> mem -> locals -> (trace -> mem -> locals -> Prop) -> Prop := wp_cmd.
+  Definition loop_body_marker(P: Prop) := P.
 
   Lemma wp_while {measure : Type} (v0 : measure) (e: expr) (c: cmd) t (m: mem) l fs rest
     (invariant: measure -> trace -> mem -> locals -> Prop) {lt}
@@ -552,9 +561,9 @@ Section WithParams.
     (Hbody : forall v t m l,
       invariant v t m l ->
       exists b, dexpr_bool3 m l e b
-                  (wp_cmd fs c t m l
-                      (fun t m l => exists v', invariant v' t m l /\ lt v' v))
-                  (after_loop fs rest t m l post)
+                  (loop_body_marker (wp_cmd fs c t m l
+                      (fun t m l => exists v', invariant v' t m l /\ lt v' v)))
+                  (pop_scope_marker (after_loop fs rest t m l post))
                   True)
     : wp_cmd fs (cmd.seq (cmd.while e c) rest) t m l post.
   Proof.
@@ -622,10 +631,10 @@ Section WithParams.
       (* definition-site format: *)
       (calleePre -> WeakestPrecondition.call fs fname t m argvs calleePost) ->
       (* use-site format: *)
-      dexprs1 m l arges argvs (calleePre /\
+      dexprs1 m l arges argvs (precond (calleePre /\
          forall t' m' retvs, calleePost t' m' retvs ->
            exists l', map.putmany_of_list_zip resnames retvs l = Some l' /\
-                        wp_cmd fs rest t' m' l' finalPost) ->
+                        after_command fs rest t' m' l' finalPost)) ->
       (* conclusion: *)
       wp_cmd fs (cmd.seq (cmd.call resnames fname arges) rest) t m l finalPost.
   Proof.

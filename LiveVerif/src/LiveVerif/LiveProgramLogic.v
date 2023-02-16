@@ -25,6 +25,7 @@ Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.HeapletwiseAutoSplitMerge.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.bottom_up_simpl_ltac1.
+Require Import bedrock2.Logging.
 Require Import LiveVerif.LiveRules.
 Require Import LiveVerif.PackageContext.
 Require Import LiveVerif.LiveSnippet.
@@ -165,6 +166,18 @@ Ltac destruct_ifs :=
              let t := type of b in constr_eq t bool; destr b
          end.
 
+Ltac allow_all_substs := constr:(true). (* TODO default to false *)
+Ltac allow_all_splits := constr:(true). (* TODO default to false *)
+
+Ltac default_simpl_in_all :=
+  repeat bottom_up_simpl_in_all; try record.simp.
+Ltac default_simpl_in_hyps :=
+  repeat bottom_up_simpl_in_hyps_and_vars; try record.simp_hyps.
+
+Ltac precond_simpl_hook := default_simpl_in_all.
+Ltac after_command_simpl_hook := default_simpl_in_hyps.
+Ltac concrete_post_simpl_hook := default_simpl_in_all.
+
 Ltac prove_concrete_post_pre :=
     purify_heapletwise_hyps;
     let H := fresh "M" in collect_heaplets_into_one_sepclause H;
@@ -178,10 +191,16 @@ Ltac prove_concrete_post_pre :=
                [ clear H
                | discriminate H ]
            end;
-    repeat match goal with
-           | x := _ |- _ => subst x
-           end;
-    destruct_ifs;
+    lazymatch allow_all_substs with
+    | true => repeat match goal with
+                | x := _ |- _ => subst x
+                end
+    | false => idtac
+    end;
+    lazymatch allow_all_splits with
+    | true => destruct_ifs
+    | false => idtac
+    end;
     repeat match goal with
            | H: ands (_ :: _) |- _ => destruct H
            | H: ands nil |- _ => clear H
@@ -191,10 +210,13 @@ Ltac prove_concrete_post_pre :=
            | |- _ /\ _ => split
            | |- ?x = ?x => reflexivity
            | |- sep _ _ _ => ecancel_assumption
-           | H: _ \/ _ |- _ => destruct H (* <-- might become expensive... *)
+           | H: _ \/ _ |- _ =>
+               lazymatch allow_all_splits with
+               | true => destruct H
+               end
            | |- exists _, _ => eexists
            end;
-    try bottom_up_simpl_in_goal.
+    concrete_post_simpl_hook.
 
 Create HintDb prove_post.
 
@@ -352,9 +374,8 @@ Ltac call lhs fname arges :=
         unfold h in H;
         eapply H
     end
-  | ];
-  [ (* exactly one goal should be left, because spec may only have 1 precondition
-       (joined with /\) *) ].
+  | (* one dexprs1 goal containing argument evaluation, precondition, and continuation
+       after the call *) ].
 
 (* Assigns default well_founded relations to types.
    Use lower costs to override existing entries. *)
@@ -439,7 +460,6 @@ Ltac add_regular_snippet s :=
   end.
 
 Ltac add_snippet s :=
-  assert_no_error;
   lazymatch goal with
   | |- @ready _ => unfold ready; add_regular_snippet s
   | |- program_logic_goal_for _ _ =>
@@ -455,7 +475,7 @@ Ltac add_snippet s :=
   | |- _ => fail "can't add snippet in non-ready goal"
   end.
 
-Ltac end_if_comment :=
+Ltac after_if_cleanup :=
   lazymatch goal with
   | |- after_if _ _ ?Q1 ?Q2 _ _ =>
       tryif is_evar Q1 then
@@ -464,20 +484,13 @@ Ltac end_if_comment :=
         tryif is_evar Q2 then
           fail "can't end if yet because" Q2 "not yet instantiated"
         else
-          lazymatch goal with
-          | H: scope_marker IfCondition |- _ => clear H; after_if
-          | |- _ => let t := constr:(scope_marker IfCondition) in fail "missing" t
-          end
+          after_if
   | _ => fail "expected after_if goal"
   end.
 
-Ltac end_while_comment :=
+Ltac after_loop_cleanup :=
   lazymatch goal with
-  | |- after_loop ?fs ?rest ?t ?m ?l ?post =>
-      lazymatch goal with
-      | H: scope_marker LoopBody |- _ => clear H; unfold after_loop
-      | |- _ => let t := constr:(scope_marker LoopBody) in fail "missing" t
-      end
+  | |- after_loop ?fs ?rest ?t ?m ?l ?post => unfold after_loop
   | _ => fail "expected after_loop goal"
   end.
 
@@ -531,86 +544,169 @@ Ltac default_eq_prover :=
 
 Ltac eq_prover_hook := default_eq_prover.
 
-Ltac simpl_hook := repeat bottom_up_simpl_in_hyps_and_vars; try record.simp.
+Ltac eval_dexpr_bool3_step e :=
+  lazymatch e with
+  | expr.lazy_and _ _       => eapply dexpr_bool3_lazy_and
+  | expr.lazy_or _ _        => eapply dexpr_bool3_lazy_or
+  | expr.not _              => eapply dexpr_bool3_not
+  | expr.op bopname.eq _ _  => eapply dexpr_bool3_eq
+  | expr.op bopname.ltu _ _ => eapply dexpr_bool3_ltu
+  | _ => fail 1000 "expression" e "not yet supported"
+  end.
 
-Ltac program_logic_step :=
+Ltac eval_dexpr1_step e :=
+  lazymatch e with
+  | expr.var _ => eapply dexpr1_var; [reflexivity| ]
+  | expr.literal _ => eapply dexpr1_literal
+  | expr.op _ _ _ => eapply dexpr1_binop_unf
+  | expr.load access_size.word _ => eapply dexpr1_load_uintptr
+  | expr.load _ _ => eapply dexpr1_load_uint
+  end.
+
+Ltac conclusion_shape_based_step logger :=
   lazymatch goal with
-  | |- dexpr_bool3 _ _ (expr.lazy_and _ _)       _ _ _ _ => eapply dexpr_bool3_lazy_and
-  | |- dexpr_bool3 _ _ (expr.lazy_or _ _)        _ _ _ _ => eapply dexpr_bool3_lazy_or
-  | |- dexpr_bool3 _ _ (expr.not _)              _ _ _ _ => eapply dexpr_bool3_not
-  | |- dexpr_bool3 _ _ (expr.op bopname.eq _ _)  _ _ _ _ => eapply dexpr_bool3_eq
-  | |- dexpr_bool3 _ _ (expr.op bopname.ltu _ _) _ _ _ _ => eapply dexpr_bool3_ltu
-  | |- dexpr1 _ _ (expr.var _)     _ _ => eapply dexpr1_var; [reflexivity| ]
-  | |- dexpr1 _ _ (expr.literal _) _ _ => eapply dexpr1_literal
-  | |- dexpr1 _ _ (expr.op _ _ _)  _ _ => eapply dexpr1_binop_unf
-  | |- dexpr1 _ _ (expr.load access_size.word _)  _ _ => eapply dexpr1_load_uintptr
-  | |- dexpr1 _ _ (expr.load _ _)  _ _ => eapply dexpr1_load_uint
-  | |- dexprs1 _ _ (cons _ _) _ _ => eapply dexprs1_cons
-  | |- dexprs1 _ _ nil _ _ => eapply dexprs1_nil
-  | |- bool_expr_branches _ _ _ _ => eapply BoolSpec_expr_branches; [ intro | intro | ]
+  | |- dexpr_bool3 _ _ ?e _ _ _ _ =>
+      logger ltac:(fun _ => idtac "Evaluating expression" e);
+      eval_dexpr_bool3_step e
+  | |- dexpr1 _ _ ?e _ _ =>
+      logger ltac:(fun _ => idtac "Evaluating expression" e);
+      eval_dexpr1_step e
+  | |- dexprs1 _ _ (cons _ _) _ _ =>
+      logger ltac:(fun _ => idtac "Evaluating expression list");
+      eapply dexprs1_cons
+  | |- dexprs1 _ _ nil _ _ =>
+      logger ltac:(fun _ => idtac "Done evaluating expression list");
+      eapply dexprs1_nil
+  | |- bool_expr_branches _ _ _ _ =>
+      logger ltac:(fun _ => idtac "Splitting bool_expr_branches into three subgoals");
+      eapply BoolSpec_expr_branches; [ intro | intro | ]
   | |- then_branch_marker ?G =>
+      logger ltac:(fun _ => idtac "Starting `then` branch");
       let n := fresh "Scope0" in
       pose proof (mk_scope_marker ThenBranch) as n;
       change G
   | |- else_branch_marker ?G =>
+      logger ltac:(fun _ => idtac "Starting `else` branch");
       let n := fresh "Scope0" in
       pose proof (mk_scope_marker ElseBranch) as n;
       change G
-  | |- True => constructor
-  | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ => put_into_current_locals
-  | |- iff1 (seps ?LHS) (seps ?RHS) =>
-      first
-        [ constr_eq LHS RHS; exact (iff1_refl _)
-        | cancel_step
-        | cancel_emp_l
-        | cancel_emp_r
-        | lazymatch goal with
-          | |- iff1 (seps (cons ?x nil)) _ => is_evar x
-          | |- iff1 _ (seps (cons ?x nil)) => is_evar x
-          end;
-          cbn [seps];
-          exact (iff1_refl _) ]
-  | |- dlet _ (fun x => _) => eapply let_to_dlet; make_fresh x; intro x
+  | |- loop_body_marker ?G =>
+      logger ltac:(fun _ => idtac "Starting loop body");
+      (* (mk_scope_marker LoopBody) is already posed by while tactic,
+         nothing to do here at the moment *)
+      change G
+  | |- pop_scope_marker (after_loop ?fs ?rest ?t ?m ?l ?post) =>
+      logger ltac:(fun _ => idtac "Removing loop body marker after loop");
+      lazymatch goal with
+      | H: scope_marker LoopBody |- pop_scope_marker ?g => clear H; change g
+      end
+  | |- pop_scope_marker (after_if _ _ _ _ _ _) =>
+      logger ltac:(fun _ => idtac "Removing IfCondition marker after if");
+      lazymatch goal with
+      | H: scope_marker IfCondition |- pop_scope_marker ?g => clear H; change g
+      end
+  | |- True =>
+      logger ltac:(fun _ => idtac "constructor");
+      constructor
+  | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
+      logger ltac:(fun _ => idtac "put_into_current_locals");
+      put_into_current_locals
+  | |- dlet _ (fun x => _) =>
+      logger ltac:(fun _ => idtac "introducing dlet");
+      eapply let_to_dlet; make_fresh x; intro x
   | |- forall t' m' (retvs: list ?word),
-      _ -> exists l', map.putmany_of_list_zip _ retvs ?l = Some l' /\ wp_cmd _ _ _ _ _ _
-    => (* after a function call *)
+      _ -> exists l', map.putmany_of_list_zip _ retvs ?l = Some l' /\
+                        after_command _ _ _ _ _ _ =>
+      logger ltac:(fun _ => idtac "intro new state after function call");
       let retvsname := fresh retvs in
       intros ? ? retvsname (? & ? & ?);
       subst retvsname
   | |- exists (l: @map.rep String.string (@word.rep _ _) _),
-         map.putmany_of_list_zip _ _ _ = Some _ /\ _ =>
+      map.putmany_of_list_zip _ _ _ = Some _ /\ _ =>
+      logger ltac:(fun _ => idtac "put return values of function call into locals map");
       eexists; split; [reflexivity| ]
   | |- @eq (@map.rep string (@word.rep _ _) _) (map.of_list _) (map.of_list _) =>
+      logger ltac:(fun _ => idtac "proving equality between two locals maps");
       (* doesn't make the goal unprovable because we keep tuple lists passed
          to map.of_list sorted by key, and all values in the key-value tuples
          are variables or evars *)
       repeat f_equal
-  | |- _ => first
-      [ cleanup_step
-      | progress autounfold with live_always_unfold in *
+  end.
+
+Ltac final_program_logic_step logger :=
+  (* Note: Here, the logger has to be invoked *after* the tactic, because we only
+     find out whether it's the right one by running it.
+     To make sure that the logger is run exactly once, the thunk should only contain
+     and idtac taking a string. *)
+  first
+      [ cleanup_step;
+        logger ltac:(fun _ => idtac "cleanup_step")
+      | progress autounfold with live_always_unfold in *;
+        logger ltac:(fun _ => idtac "progress autounfold with live_always_unfold in *")
       | lazymatch goal with
         | |- exists _, _ => eexists
-        end
-      | progress simpl_hook
+        end;
+        logger ltac:(fun _ => idtac "eexists")
       | match goal with
         (* We try ZnWords first because it also solves some goals of shape
            (_ = _) and (_ /\ _) *)
-        | |- _ => ZnWords (* TODO replace by better/faster tactic *)
-        | |- _ = _ => eq_prover_hook
-        | |- ?P /\ ?Q => split
+        | |- _ =>
+            purify_heapletwise_hyps;
+            ZnWords; (* TODO replace by better/faster tactic *)
+            logger ltac:(fun _ => idtac "purify_heapletwise_hyps; ZnWords")
+        | |- _ = _ =>
+            eq_prover_hook;
+            logger ltac:(fun _ => idtac "eq_prover_hook")
+        | |- ?P /\ ?Q =>
+            split;
+            logger ltac:(fun _ => idtac "split")
         | |- wp_cmd _ _ _ _ _ _ =>
               lazymatch goal with
               | |- ?G => change (@ready G)
-              end
-        end ]
+              end;
+              logger ltac:(fun _ => idtac "ready")
+        end ].
+
+(* needs to run before merging because before merging, some interesting hypotheses
+   are exposed that will get purified into useful facts to prove sideconditions *)
+Ltac program_logic_step_before_merging logger :=
+  lazymatch goal with
+  | |- precond ?G =>
+      logger ltac:(fun _ => idtac "precond_simpl_hook");
+      change G; precond_simpl_hook
+  | |- after_command ?fs ?rest ?t ?m ?l ?post =>
+      logger ltac:(fun _ => idtac "after_command_simpl_hook");
+      change (wp_cmd fs rest t m l post); after_command_simpl_hook
   end.
 
-Ltac step0 :=
-  first [ heapletwise_step | split_merge_step | program_logic_step ].
+Ltac heapletwise_step' logger :=
+  heapletwise_step;
+  logger ltac:(fun _ => idtac "heapletwise_step").
+
+Ltac split_step' logger :=
+  split_step;
+  logger ltac:(fun _ => idtac "split_step").
+
+Ltac merge_step' logger :=
+  (* match to make sure we don't merge too early, but only once the wp_cmd
+     of the remainder of the program shows up *)
+  lazymatch goal with
+  | |- wp_cmd ?fs ?rest ?t ?m ?l ?post =>
+      merge_step;
+      logger ltac:(fun _ => idtac "merge_step")
+  end.
+
+Ltac step0 logger :=
+  first [ heapletwise_step' logger
+        | conclusion_shape_based_step logger
+        | program_logic_step_before_merging logger
+        | split_step' logger
+        | merge_step' logger
+        | final_program_logic_step logger ].
 
 Ltac step :=
   assert_no_error; (* <-- useful when debugging with `step. step. step. ...` *)
-  step0.
+  step0 run_logger_thunk.
 
 Ltac step_is_done :=
   lazymatch goal with
@@ -625,23 +721,35 @@ Ltac run_steps :=
   lazymatch goal with
   | _: tactic_error _ |- _ => idtac
   | |- _ => tryif step_is_done then idtac
-            else tryif step then run_steps
+            else tryif step0 ignore_logger_thunk then run_steps
             else pose_err Error:("The 'step' tactic should not fail here")
   end.
 
-(* can be overridden with idtac for debugging *)
-Ltac run_steps_hook := run_steps.
+(* If really needed, this hook can be overridden with idtac for debugging,
+   but the preferred way is to use /*?. instead of /**. *)
+Ltac run_steps_internal_hook := run_steps.
 
-Ltac next_snippet s := add_snippet s; run_steps_hook.
+Ltac next_snippet s :=
+  assert_no_error;
+  lazymatch goal with
+  | |- after_if _ _ ?Q1 ?Q2 _ _ => after_if_cleanup; run_steps_internal_hook
+  | |- after_loop ?fs ?rest ?t ?m ?l ?post => after_loop_cleanup; run_steps_internal_hook
+  | |- _ => idtac
+  end;
+  add_snippet s.
 
-Tactic Notation ".*" constr(s) "*" := next_snippet s.
+(* Standard usage:   .**/ snippet /**.    *)
+Tactic Notation ".*" constr(s) "*" := next_snippet s; run_steps_internal_hook.
 
-(* mandatory "end if." comment after closing brace, triggers unpacking of merged
+(* Debug mode (doesn't run verification steps):   .**/ snippet /*?.   *)
+Tactic Notation ".*" constr(s) "?" := next_snippet s.
+
+(* optional "end if." comment after closing brace, triggers unpacking of merged
    then/else postcondition *)
-Tactic Notation "end" "if" := end_if_comment; run_steps_hook.
+Tactic Notation "end" "if" := after_if_cleanup; run_steps_internal_hook.
 
-(* mandatory "end while." comment after closing brace, triggers some cleanup *)
-Tactic Notation "end" "while" := end_while_comment; run_steps_hook.
+(* optional "end while." comment after closing brace, triggers some cleanup *)
+Tactic Notation "end" "while" := after_loop_cleanup; run_steps_internal_hook.
 
 (* for situations where we want to avoid repeating the function name *)
 Notation fnspec := (ProgramLogic.spec_of _) (only parsing).

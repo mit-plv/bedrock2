@@ -12,7 +12,6 @@ Require Import coqutil.Tactics.ltac_list_ops.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
-Require Import bedrock2.ZnWords.
 Require Import bedrock2.groundcbv.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.TacticError. Local Open Scope Z_scope.

@@ -3,21 +3,41 @@ Require Import LiveVerif.LiveVerifLib.
 
 Load LiveVerif.
 
-Record bar_t(n: Z) := {
+(* TODO can/should we use Z for n? But then, how to carry 0<=n hypothesis around? *)
+Record bar_t{n: N} := {
   barA: uint_t 16;
   barB: uint_t 16;
   barC: word;
-  barPayload: array_t (uint_t 32) n;
+  barPayload: array_t (uint_t 32) (Z.of_N n);
 }.
+Arguments bar_t: clear implicits.
 
-Instance bar(n: uint_t 32): RepPredicate (bar_t n) := ltac:(create_predicate).
+Instance bar(n: N): RepPredicate (bar_t n) := ltac:(create_predicate).
 
 Record foo_t := {
   foobar_n: uint_t 32;
-  foobar: bar_t foobar_n;
+  foobar: bar_t (Z.to_N foobar_n);
 }.
 
 Instance foo: RepPredicate foo_t := ltac:(create_predicate).
+
+#[export] Instance spec_of_swap_barAB: fnspec :=                                .**/
+
+void swap_barAB(uintptr_t p) /**#
+  ghost_args := n b (R: mem -> Prop);
+  requires t m := <{ * bar n b p
+                     * R }> m;
+  ensures t' m' := t' = t /\
+       <{ * bar n b{{ barA := barB b; barB := barA b }} p
+          * R }> m' #**/                                                   /**.
+Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          .**/
+{                                                                          /**. .**/
+  uintptr_t tmp = load16(p+2);                                             /**. .**/
+  store16(p+2, load16(p));                                                 /**. .**/
+  store16(p, tmp);                                                         /**. .**/
+}                                                                          /**.
+reflexivity.
+Qed.
 
 #[export] Instance spec_of_init_foo: fnspec :=                                  .**/
 
