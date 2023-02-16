@@ -1,6 +1,6 @@
 Require Import PyLevelLang.Language.
 Require Import PyLevelLang.Interpret.
-Require Import coqutil.Map.Interface coqutil.Map.SortedListString.
+Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Tactics.Tactics.
 Require Import Coq.Lists.List.
 From Coq Require Import FunctionalExtensionality.
 
@@ -70,60 +70,81 @@ Section WithMap.
       injection H as H. rewrite <- H. simpl. rewrite IHe1 with (c:=i), IHe2 with (c:=i0); easy.
   Qed.
 
-
-  Fixpoint constant_folding {t : type} (e : expr t) : expr t :=
+  Fixpoint constant_folding' {t : type} (e : expr t) : expr t * option (interp_type t) :=
     match e with
-    | EVar _ x => EVar _ x
-    | ELoc _ x => ELoc _ x
-    | EAtom a => EAtom a
-    | EUnop o e1 => 
-        let e1' := constant_folding e1 in 
-        match as_const e1' with
-        | Some c => reify _ (interp_unop o c)
-        | _ => EUnop o e1'
+    | EVar _ x => (EVar _ x, None)
+    | ELoc _ x => (ELoc _ x, None)
+    | EAtom a => (EAtom a, Some (interp_atom a))
+    | EUnop o e1 =>
+        let (e1', v) := constant_folding' e1 in
+        match v with
+        | Some v' => let r := interp_unop o v' in (reify _ r, Some r)
+        | _ => (EUnop o e1', None)
         end
-    | EBinop o e1 e2 => 
-        let e1' := constant_folding e1 in
-        let e2' := constant_folding e2 in
-        match as_const e1', as_const e2' with
-        | Some c1, Some c2 => reify _ (interp_binop o c1 c2)
-        | _, _ => EBinop o e1' e2'
+    | EBinop o e1 e2 =>
+        let (e1', v1) := constant_folding' e1 in
+        let (e2', v2) := constant_folding' e2 in
+        match v1, v2 with
+        | Some v1', Some v2' => let r := interp_binop o v1' v2' in (reify _ r, Some r)
+        | _, _ => (EBinop o e1' e2', None)
         end
-    | EFlatmap e1 x e2 => EFlatmap (constant_folding e1) x (constant_folding e2)
-    | EIf e1 e2 e3 =>  EIf (constant_folding e1) (constant_folding e2) (constant_folding e3)
-    | ELet x e1 e2 => ELet x (constant_folding e1) (constant_folding e2)
+    | EFlatmap e1 x e2 => (EFlatmap (fst (constant_folding' e1)) x (fst (constant_folding' e2)), None)
+    | EIf e1 e2 e3 => (EIf (fst (constant_folding' e1)) (fst (constant_folding' e2)) (fst (constant_folding' e3)), None)
+    | ELet x e1 e2 => (ELet x (fst (constant_folding' e1)) (fst (constant_folding' e2)), None)
     end.
 
-  Lemma constant_folding_correct {t : type} (l : locals) (e : expr t) 
-    :  interp_expr l (constant_folding e) = interp_expr l e.
+  Lemma constant_folding'_snd_correct {t : type} (l : locals) (e : expr t) :
+    forall c, snd (constant_folding' e) = Some c -> interp_expr l e = c.
   Proof.
     generalize dependent l.
     induction e; intros; simpl; try easy.
 
-      Ltac transforms := repeat (rewrite reify_correct || rewrite listify_correct || reflexivity).
+    - inversion H. reflexivity.
 
-    - destruct o; simpl; destruct (as_const (constant_folding e)) eqn:H;
-      rewrite <- IHe;
-      try rewrite (as_const_correct l (constant_folding e) _ H);
-      transforms.
+    - simpl in H.
+      destruct (constant_folding' e). destruct o0; inversion H.
+      rewrite (IHe l i); easy.
 
-    - destruct o; simpl; try easy;
-      destruct (as_const (constant_folding e1)) eqn:H1;
-      destruct (as_const (constant_folding e2)) eqn:H2;
-      rewrite <- IHe1, <- IHe2;
-      simpl;
-      try rewrite (as_const_correct l (constant_folding e1) _ H1);
-      try rewrite (as_const_correct l (constant_folding e2) _ H2);
-      try transforms;
-      try rewrite map_map;
-      try rewrite (functional_extensionality (fun x => interp_expr l (reify t x)) (fun x => x) (reify_correct t l));
-      try rewrite map_id;
+    - simpl in H.
+      destruct (constant_folding' e1). destruct (constant_folding' e2). destruct o0; destruct o1; inversion H.
+      rewrite (IHe1 l i), (IHe2 l i0); easy.
+  Qed.
+
+  Definition constant_folding {t : type} (e : expr t) : expr t := fst (constant_folding' e).
+
+  Lemma constant_folding_correct {t : type} (l : locals) (e : expr t) :
+    interp_expr l (constant_folding e) = interp_expr l e.
+  Proof.
+    generalize dependent l.
+    unfold constant_folding.
+    induction e; intros; simpl; try easy.
+
+    - destruct (constant_folding' e) eqn:E. destruct o0; simpl.
+      + rewrite reify_correct.
+        f_equal.
+        simpl in IHe.
+        rewrite (constant_folding'_snd_correct l e i); try easy.
+        rewrite E. reflexivity.
+      + simpl in IHe. rewrite IHe. reflexivity.
+
+    - destruct (constant_folding' e1) eqn:E1. destruct (constant_folding' e2) eqn:E2. destruct o0; destruct o1; simpl.
+      + rewrite reify_correct.
+        f_equal.
+        * simpl in IHe1.
+          rewrite (constant_folding'_snd_correct l e1 i); try easy. rewrite E1. reflexivity.
+        * simpl in IHe2.
+          rewrite (constant_folding'_snd_correct l e2 i0); try easy. rewrite E2. reflexivity.
+
+      + rewrite IHe1, IHe2. reflexivity.
+      + rewrite IHe1, IHe2. reflexivity.
+      + rewrite IHe1, IHe2. reflexivity.
+
+    - rewrite IHe1.
+      assert (H: (fun y : interp_type t => interp_expr (set_local l x y) (fst (constant_folding' e2)))
+      = (fun y : interp_type t => interp_expr (set_local l x y) e2)).
+      { apply functional_extensionality. intros. apply IHe2. }
+      rewrite <- H.
       reflexivity.
-
-    - assert (H : (fun y : interp_type t => interp_expr (set_local l x y) (constant_folding e2)) 
-              = (fun y => interp_expr (set_local l x y) e2)).
-      { apply functional_extensionality. intros. rewrite IHe2. reflexivity. }
-      rewrite IHe1, H. reflexivity.
 
     - rewrite IHe1, IHe2, IHe3. reflexivity.
 
@@ -167,4 +188,104 @@ Section WithMap.
       destruct i; rewrite (as_const_correct l (branch_elim e1) _ H); reflexivity.
   Qed.
 
+  Fixpoint is_name_used {t : type} (x : string) (e : expr t) : bool :=
+    match e with
+    | EVar _ x' => eqb x' x
+    | ELoc _ x' => eqb x' x
+    | EAtom _ => false
+    | EUnop _ e1 => is_name_used x e1
+    | EBinop _ e1 e2 => is_name_used x e1 || is_name_used x e2
+    | EFlatmap e1 x' e2 => eqb x' x || is_name_used x e1 || is_name_used x e2
+    | EIf e1 e2 e3 => is_name_used x e1 || is_name_used x e2 || is_name_used x e3
+    | ELet x' e1 e2 => eqb x' x || is_name_used x e1 || is_name_used x e2
+    end.
+
+  Lemma set_local_comm_diff {tx ty : type} (x y : string) (vx : interp_type tx) (vy : interp_type ty) (l : locals)
+    : x <> y -> set_local (set_local l y vy) x vx = set_local (set_local l x vx) y vy.
+  Proof.
+    unfold set_local.
+    intros.
+    apply map.map_ext.
+    intros.
+    rewrite 4 map.get_put_dec.
+    repeat destruct_one_match; try rewrite map.get_put_diff; tauto.
+  Qed.
+
+  Lemma is_name_used_correct {t : type} {t' : type} (l : locals) (e : expr t) (x : string):
+    forall y : interp_type t', is_name_used x e = false -> interp_expr l e = interp_expr (set_local l x y) e.
+  Proof.
+    generalize dependent l.
+    induction e; intros; simpl in H; simpl.
+    
+    - unfold get_local, set_local.
+      rewrite map.get_put_diff; try easy. 
+      apply eqb_neq, H.
+
+    - unfold get_local, set_local.
+      rewrite map.get_put_diff; try easy.
+      apply eqb_neq, H.
+
+    - reflexivity.
+
+    - rewrite <- IHe; easy.
+
+    - rewrite <- IHe1, <- IHe2; destruct (is_name_used x e2); destruct (is_name_used x e1); try easy.
+
+    - destruct (is_name_used x e1); destruct (is_name_used x e2); destruct (eqb x0 x) eqn:Hx; simpl in H; try easy.
+      assert (Hf:(fun y0 : interp_type t => interp_expr (set_local l x0 y0) e2)
+              = (fun y0 : interp_type t => interp_expr (set_local (set_local l x y) x0 y0) e2)).
+              { apply functional_extensionality. intros. rewrite set_local_comm_diff.
+                + apply IHe2. reflexivity.
+                + apply eqb_neq, Hx.
+              }
+              rewrite Hf. rewrite <- IHe1; easy. 
+
+    - rewrite <- IHe1, <- IHe2, <- IHe3;
+      destruct (is_name_used x e1); 
+      destruct (is_name_used x e2);
+      destruct (is_name_used x e3);
+      easy.
+
+    - rewrite set_local_comm_diff;
+      destruct (is_name_used x e1); 
+      destruct (is_name_used x e2);
+      destruct (eqb x0 x) eqn:Hx;
+      try easy.
+      + rewrite <- IHe1, <- IHe2; easy.
+      + apply eqb_neq, Hx.
+  Qed.
+
+  Fixpoint unused_name_elim {t : type} (e : expr t) : expr t :=
+    match e with
+    | EVar _ x => EVar _ x
+    | ELoc _ x => ELoc _ x
+    | EAtom a => EAtom a
+    | EUnop o e1 => EUnop o (unused_name_elim e1)
+    | EBinop o e1 e2 => EBinop o (unused_name_elim e1) (unused_name_elim e2)
+    | EFlatmap e1 x e2 => EFlatmap (unused_name_elim e1) x (unused_name_elim e2)
+    | EIf e1 e2 e3 => EIf (unused_name_elim e1) (unused_name_elim e2) (unused_name_elim e3)
+    | ELet x e1 e2 => if is_name_used x e2 then ELet x (unused_name_elim e1) (unused_name_elim e2) else unused_name_elim e2
+    end.
+  
+  Lemma unused_name_elim_correct {t : type} (l : locals) (e : expr t) 
+    : interp_expr l (unused_name_elim e) = interp_expr l e.
+  Proof.
+    generalize dependent l.
+    induction e; try easy; intros; simpl.
+
+    - rewrite IHe. reflexivity.
+
+    - rewrite IHe1, IHe2. reflexivity.
+
+    - assert (H:(fun y : interp_type t => interp_expr (set_local l x y) (unused_name_elim e2)) 
+              = (fun y => interp_expr (set_local l x y) e2)).
+      { apply functional_extensionality. intros. rewrite IHe2. reflexivity. }
+      rewrite IHe1, H. reflexivity.
+
+    - rewrite IHe1, IHe2, IHe3. reflexivity.
+
+    - destruct (is_name_used x e2) eqn:E.
+      + simpl. rewrite IHe1, IHe2. reflexivity.
+      + rewrite <- is_name_used_correct; easy.
+  Qed.
 End WithMap.
