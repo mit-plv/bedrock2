@@ -1889,126 +1889,33 @@ Section Proofs.
               destr y; simpl in *; [ run1det; run1det; run1done; rewrite reduce_eq_to_sub_and_lt; rewrite map.put_put_same; eauto 8 with map_hints |  ]
           end
       end.
-       {
+      all:
+        match goal with
+        | H: context[InvalidInstruction (-1)] |- _ =>
         assert (Encode.verify (InvalidInstruction (-1)) iset \/
-                  valid_InvalidInstruction (InvalidInstruction (-1))).
-        {
-           eapply invert_ptsto_instr.
-           ecancel_assumption.
-        }
-        assert False.
-        {
-          destruct H6.
-          {
-            unfold Encode.verify in H6. simpl in H6. destruct H6. assumption.
+                  valid_InvalidInstruction (InvalidInstruction (-1)))
+        end.
+      all:
+        try match goal with
+        | H : _ |- Encode.verify (InvalidInstruction (-1)) iset \/
+            valid_InvalidInstruction (InvalidInstruction (-1))
+          => eapply invert_ptsto_instr; ecancel_assumption
+          end.
+      all:
+        match goal with
+        | H: Encode.verify (InvalidInstruction (-1)) iset \/
+               valid_InvalidInstruction (InvalidInstruction (-1)) |- _ => exfalso; destruct H; [ unfold Encode.verify in H; simpl in H; destruct H; assumption | unfold valid_InvalidInstruction in H; fwd]
+                                                                             end.
+      all:
+        match goal with
+        | H: 0 <= -1 < 2^32 |- False => destruct H
+        end.
+      all:
+        match goal with
+        | H: 0 <= -1 |- False => destruct H; simpl; reflexivity
+        end.
 
-          }
-          {
-            unfold valid_InvalidInstruction in H6. fwd. destruct H6p0. destruct H6. destruct H0. simpl. reflexivity.
-          }
-        }
-        contradiction.
-       }
-        {
-        assert (Encode.verify (InvalidInstruction (-1)) iset \/
-                  valid_InvalidInstruction (InvalidInstruction (-1))).
-        {
-           eapply invert_ptsto_instr.
-           ecancel_assumption.
-        }
-        assert False.
-        {
-          destruct H6.
-          {
-            unfold Encode.verify in H6. simpl in H6. destruct H6. assumption.
 
-          }
-          {
-            unfold valid_InvalidInstruction in H6. fwd. destruct H6p0. destruct H6. destruct H0. simpl. reflexivity.
-          }
-        }
-        contradiction.
-        }
-         {
-        assert (Encode.verify (InvalidInstruction (-1)) iset \/
-                  valid_InvalidInstruction (InvalidInstruction (-1))).
-        {
-           eapply invert_ptsto_instr.
-           ecancel_assumption.
-        }
-        assert False.
-        {
-          destruct H6.
-          {
-            unfold Encode.verify in H6. simpl in H6. destruct H6. assumption.
-
-          }
-          {
-            unfold valid_InvalidInstruction in H6. fwd. destruct H6p0. destruct H6. destruct H0. simpl. reflexivity.
-          }
-        }
-        contradiction.
-         }
-          {
-        assert (Encode.verify (InvalidInstruction (-1)) iset \/
-                  valid_InvalidInstruction (InvalidInstruction (-1))).
-        {
-           eapply invert_ptsto_instr.
-           ecancel_assumption.
-        }
-        assert False.
-        {
-          destruct H6.
-          {
-            unfold Encode.verify in H6. simpl in H6. destruct H6. assumption.
-
-          }
-          {
-            unfold valid_InvalidInstruction in H6. fwd. destruct H6p0. destruct H6. destruct H0. simpl. reflexivity.
-          }
-        }
-        contradiction.
-          }
-           {
-        assert (Encode.verify (InvalidInstruction (-1)) iset \/
-                  valid_InvalidInstruction (InvalidInstruction (-1))).
-        {
-           eapply invert_ptsto_instr.
-           ecancel_assumption.
-        }
-        assert False.
-        {
-          destruct H6.
-          {
-            unfold Encode.verify in H6. simpl in H6. destruct H6. assumption.
-
-          }
-          {
-            unfold valid_InvalidInstruction in H6. fwd. destruct H6p0. destruct H6. destruct H0. simpl. reflexivity.
-          }
-        }
-        contradiction.
-        }
-      {
-        assert (Encode.verify (InvalidInstruction (-1)) iset \/
-                  valid_InvalidInstruction (InvalidInstruction (-1))).
-        {
-           eapply invert_ptsto_instr.
-           ecancel_assumption.
-        }
-        assert False.
-        {
-          destruct H6.
-          {
-            unfold Encode.verify in H6. simpl in H6. destruct H6. assumption.
-
-          }
-          {
-            unfold valid_InvalidInstruction in H6. fwd. destruct H6p0. destruct H6. destruct H0. simpl. reflexivity.
-          }
-        }
-        contradiction.
-      }
 
     - idtac "Case compile_stmt_correct/SSet".
       assert (x <> RegisterNames.sp). {

@@ -22,25 +22,7 @@ Section WithArguments.
        morphism (word.ring_morph (word := word)),
         constants [word_cst]).
 
-  Lemma word_and_comm:
-     forall x y : word, word.and x y = word.and y x.
-  Proof.
-    intros. eapply word.unsigned_inj. rewrite word.unsigned_and_nowrap. rewrite word.unsigned_and_nowrap. apply Z.land_comm.
-  Qed.
-
-  Lemma word_or_comm:
-    forall x y : word, word.or x y = word.or y x.
-  Proof.
-    intros. eapply word.unsigned_inj. rewrite word.unsigned_or_nowrap. rewrite word.unsigned_or_nowrap. apply Z.lor_comm.
-  Qed.
-
-  Lemma word_xor_comm:
-    forall x y : word, word.xor x y = word.xor y x.
-  Proof.
-    intros. eapply word.unsigned_inj. rewrite word.unsigned_xor_nowrap. rewrite word.unsigned_xor_nowrap. apply Z.lxor_comm.
-  Qed.
-
-
+  Search (word.xor ?x ?y = word.xor ?y ?x).
   Ltac destr_exec :=
     match goal with
     | [ |- exec _ (match ?x with | _ => _ end) _ _ _ _ _ ] => destr x
@@ -77,12 +59,11 @@ Section WithArguments.
   end;
   eapply exec.op;  simpl;
   eauto.
-
-  { replace (word.add z' (word.of_Z v))  with  (word.add (word.of_Z v) z') by ring. assumption. }
+  { rewrite word.add_comm. assumption. }
   { replace (word.add y' (word.of_Z (- v)))  with  (word.sub  y' (word.of_Z v)) by ring. assumption. }
-  { rewrite word_and_comm. assumption. }
-  { rewrite word_or_comm. assumption. }
-  { rewrite word_xor_comm. assumption. }
+  { rewrite word.and_comm. assumption. }
+  { rewrite word.or_comm. assumption. }
+  { rewrite word.xor_comm. assumption. }
   Qed.
 
 End WithArguments.
