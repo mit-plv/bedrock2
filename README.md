@@ -13,12 +13,6 @@ Currently, the only data type is word (32-bit or 64-bit), and the memory is a pa
 "Records" are supported as a notation for memory access with an offset.
 
 
-### Work-in-progress features
-
-The following features will be added soon:
-*    Register allocation (spilling if more local variables are needed than registers are available)
-
-
 ### Non-features
 
 It is a design decision to *not* support the following features:
@@ -77,29 +71,31 @@ Through a set of blue wires (using SPI), the FPGA is connected to an ethernet ca
 
 ### Code Overview
 
-Throughout the compiler, we use _postcondition-style semantics_, i.e. judgments of the form `exec c s P`, meaning "if we execude command `c` from starting state `s`, all possible final states satisfy the postcondition `P`, and none of the (nondeterministic) execution branches will fail.
+Throughout the compiler, we use (big-step) [omnisemantics](https://dl.acm.org/doi/10.1145/3579834), i.e. judgments of the form `exec c s P`, meaning "if we execude command `c` from starting state `s`, all possible final states satisfy the postcondition `P`, and none of the (nondeterministic) execution branches will fail.
 
 Here's a list of files that might be interesting to step through in your IDE:
-* The postcondition style semantics of the bedrock2 language are in `bedrock2.Semantics`. You might also want to look at `compiler.FlatImp`, a flattened version of it, written down in more traditional syntax.
+* The big-step omnisemantics of the bedrock2 language are in `bedrock2.Semantics`. You might also want to look at `compiler.FlatImp`, a flattened version of it, written down in more traditional syntax.
 * `bedrock2.WeakestPrecondition` contains the verification condition generator used by the program logic.
 * `bedrock2Examples.swap` is a small program logic proof.
-* `bedrock2.WeakestPreconditionProperties.sound_cmd` is not interesting, but confirms that the weakest precondition generator agrees with the postcondition style semantics`.
+* `bedrock2.WeakestPreconditionProperties.sound_cmd` is not interesting, but confirms that the weakest precondition generator agrees with the bigstep omnisemantics formulation.
 * `compilerExamples.MMIO` shows how to instantiate external calls (which are kept abstract throughout the compiler) with memory-mapped I/O (MMIO).
-* To see how we connect the postcondition style to the traditional small-step semantics of Kami, you might want to start at `processor.KamiRiscv.riscv_to_kamiImplProcessor`, then look at `processor.KamiRiscvStep.kamiStep_sound`, and `compiler.CompilerInvariant.compiler_invariant_proofs` proves the assumptions made by `processor.KamiRiscv.riscv_to_kamiImplProcessor`, by using a "low level invariant" `ll_inv`, defined in `compiler.ToplevelLoop`, which says, "the current riscv state is a finite numer of steps away from a good state, where good state means a riscv state that is related to a bedrock2 state that can be observed at the end of an iteration of the toplevel event loop". Note that this "finite number of steps" might be different for each nondeterministic execution branch, so we can't just state it as `exists numberOfSteps, ...`. Instead, we use `riscv.Utility.runsToNonDet.runsTo` (that we write as ◊ in papers).
-* The semantics of each riscv instruction is defined in terms of the primitives given in `riscv.Spec.Machine.RiscvProgram`.
-* The function that executes a riscv instruction from the basic I extension is in `riscv.Spec.ExecuteI`, but since it has been translated from Haskell and Coq's beautify option is [broken](https://github.com/coq/coq/issues/11129), the Coq code is not very readable, so you have to read [ExecuteI.hs](https://github.com/mit-plv/riscv-semantics/blob/master/src/Spec/ExecuteI.hs) form the Haskell spec instead, or to import the `MonadNotations` and do `Print ExecuteI.execute` inside Coq to read it.
-* To see how we instaniate this generic `RiscvProgram` monad into something that does postcondition style, you can look at `riscv.Platform.MinimalMMIO`.
+* To see how we connect omnisemantics to the traditional small-step semantics of Kami, you might want to start at `processor.KamiRiscv.riscv_to_kamiImplProcessor`, then look at `processor.KamiRiscvStep.kamiStep_sound`, and `compiler.CompilerInvariant.compiler_invariant_proofs` proves the assumptions made by `processor.KamiRiscv.riscv_to_kamiImplProcessor`, by using a "low level invariant" `ll_inv`, defined in `compiler.ToplevelLoop`, which says, "the current RISC-V state is a finite numer of steps away from a good state, where good state means a RISC-V state that is related to a bedrock2 state that can be observed at the end of an iteration of the toplevel event loop". Note that this "finite number of steps" might be different for each nondeterministic execution branch, so we can't just state it as `exists numberOfSteps, ...`. Instead, we use `riscv.Utility.runsToNonDet.runsTo` (that we write as ◊ in papers).
+* The semantics of each RISC-V instruction is defined in terms of the primitives given in `riscv.Spec.Machine.RiscvProgram`.
+* The function that executes a RISC-V instruction from the basic I extension is in `riscv.Spec.ExecuteI`, but since it has been translated from Haskell and Coq's beautify option is [broken](https://github.com/coq/coq/issues/11129), the Coq code is not very readable, so you have to read [ExecuteI.hs](https://github.com/mit-plv/riscv-semantics/blob/master/src/Spec/ExecuteI.hs) from the Haskell spec instead, or import the `MonadNotations` and do `Print ExecuteI.execute` inside Coq to read it.
+* To see how we instaniate this generic `RiscvProgram` monad with small-step omnisemantics, you can look at `riscv.Platform.MinimalMMIO`.
 
 
 ### Compiler Overview
 
-Here are the names of the languages and the compiler phases between them:
+Here are the names of the languages and the compiler phases between them (see `compiler.Pipeline` for more details):
 
 ```
 Syntax.cmd
   ↓ FlattenExpr
 FlatImp.stmt string
-  ↓ RegRename
+  ↓ RegAlloc
+FlatImp.stmt Z
+  ↓ Spilling
 FlatImp.stmt Z
   ↓ FlatToRiscv
 list Instruction
@@ -120,8 +116,8 @@ Output:
 -    Compiled functions as list of instructions
 -    Relative position of main function
 
-Correctness theorem: `compiler.PipelineWithRename.compiler_correct`:
--    If all high-level executions satisfy `post`, running the compiled program from a "good" initial RISC-V machine leads only to machines whose memory and I/O trace satisfy `post`.
+Correctness theorem: `compiler.Pipeline.compiler_correct`:
+-    If all high-level executions satisfy `post`, running the compiled functions from a "good" initial RISC-V machine leads only to machines whose memory and I/O trace satisfy `post`.
 
 
 #### 2) The event loop interface:
