@@ -162,7 +162,6 @@ Ltac default_simpl_in_all :=
 Ltac default_simpl_in_hyps :=
   repeat bottom_up_simpl_in_hyps_and_vars; try record.simp_hyps.
 
-Ltac precond_simpl_hook := default_simpl_in_all.
 Ltac after_command_simpl_hook := default_simpl_in_hyps.
 Ltac concrete_post_simpl_hook := default_simpl_in_all.
 
@@ -659,9 +658,6 @@ Ltac final_program_logic_step logger :=
    are exposed that will get purified into useful facts to prove sideconditions *)
 Ltac program_logic_step_before_merging logger :=
   lazymatch goal with
-  | |- precond ?G =>
-      logger ltac:(fun _ => idtac "precond_simpl_hook");
-      change G; precond_simpl_hook
   | |- after_command ?fs ?rest ?t ?m ?l ?post =>
       logger ltac:(fun _ => idtac "after_command_simpl_hook");
       change (wp_cmd fs rest t m l post); after_command_simpl_hook
