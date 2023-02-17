@@ -24,6 +24,7 @@ Require Import bedrock2.ident_to_string.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.HeapletwiseAutoSplitMerge.
 Require Import bedrock2.PurifySep.
+Require Import bedrock2.PurifyHeapletwise.
 Require Import bedrock2.bottom_up_simpl_ltac1.
 Require Import bedrock2.Logging.
 Require Import LiveVerif.LiveRules.
@@ -61,19 +62,6 @@ Proof.
 Qed.
 
 Definition ready{P: Prop} := P.
-
-Ltac purify_heapletwise_pred H pred m :=
-  let HP := fresh H "P" in eassert (purify pred _) as HP by eauto with purify;
-  specialize (HP m H).
-
-Ltac purify_heapletwise_hyp_of_type H t :=
-  match t with
-  | ?R ?m => purify_heapletwise_pred H R m
-  | with_mem ?m ?R => purify_heapletwise_pred H R m
-  | _ => idtac
-  end.
-
-Ltac purify_heapletwise_hyps := foreach_hyp purify_heapletwise_hyp_of_type.
 
 Ltac bottom_up_simpl_sidecond_hook ::=
   purify_heapletwise_hyps;

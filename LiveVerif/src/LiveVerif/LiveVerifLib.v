@@ -25,6 +25,7 @@ Require Export bedrock2.bottom_up_simpl_ltac1.
 Require Export bedrock2.TacticError.
 Require Export bedrock2.SepLib.
 Require Export bedrock2.PurifySep.
+Require Export bedrock2.PurifyHeapletwise.
 Require Export bedrock2.RecordPredicates.
 Require Export coqutil.Datatypes.RecordSetters.
 Require Export LiveVerif.LiveRules.
