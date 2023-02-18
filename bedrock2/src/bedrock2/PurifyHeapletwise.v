@@ -4,7 +4,7 @@ Require Import bedrock2.PurifySep.
 Require Import bedrock2.HeapletwiseHyps.
 
 Ltac purify_heapletwise_pred H pred m :=
-  let HP := fresh H "P" in eassert (purify pred _) as HP by eauto with purify;
+  let HP := fresh "__pure_" H in eassert (purify pred _) as HP by eauto with purify;
   specialize (HP m H).
 
 Ltac purify_heapletwise_hyp_of_type H t :=
@@ -36,3 +36,5 @@ Ltac2 collect_purified_hyp_types () :=
 Ltac2 unpurify () :=
   let l := collect_purified_hyp_types () in
   foreach_hyp (fun h tp => if List.exist (Constr.equal tp) l then clear $h else ()).
+
+Ltac unpurify := ltac2:(unpurify ()).

@@ -7,14 +7,13 @@ Require Import coqutil.Tactics.foreach_hyp.
 Local Open Scope Z_scope.
 
 (* returns the name of the newly added or already existing hyp *)
-Ltac unique_pose_proof_name pf :=
+Ltac unique_pose_proof_name newname pf :=
   let t := type of pf in
   lazymatch goal with
   | H: t |- _ => H
-  | |- _ => let H := fresh in
-            let __ := match constr:(Set) with
-                      | _ => pose proof pf as H
-                      end in H
+  | |- _ => let __ := match constr:(Set) with
+                      | _ => pose proof pf as newname
+                      end in newname
   end.
 
 Module Import word.
@@ -138,7 +137,8 @@ Ltac zify_unsigned wok e :=
 with zify_unsigned_app2 wok lem x y :=
   let px := zify_unsigned wok x in
   let py := zify_unsigned wok y in
-  unique_pose_proof_name (lem _ _ _ _ px py).
+  let n := fresh "__Z_B0" in
+  unique_pose_proof_name n (lem _ _ _ _ px py).
 
 Ltac zify_of_nat e :=
   lazymatch isnatcst e with
@@ -157,7 +157,8 @@ Ltac zify_of_nat e :=
 with zify_of_nat_app2 lem x y :=
   let px := zify_of_nat x in
   let py := zify_of_nat y in
-  unique_pose_proof_name (lem _ _ _ _ px py).
+  let n := fresh "__Z_B0" in
+  unique_pose_proof_name n (lem _ _ _ _ px py).
 
 Lemma f_equal_impl: forall P P' Q Q': Prop, P = P' -> Q = Q' -> (P -> Q) = (P' -> Q').
 Proof. congruence. Qed.
@@ -239,17 +240,17 @@ Ltac zify_hyp wok h0 tp0 :=
       let h := constr:(f_equal word.unsigned h0) in
       let tp := type of h in
       let pf := zify_term wok tp in
-      let hf := fresh h0 "Z" in pose proof (rew_Prop_hyp _ _ pf h) as hf
+      let hf := fresh "__Z_" h0 in pose proof (rew_Prop_hyp _ _ pf h) as hf
   | not (@eq (@word.rep _ _) _ _) =>
       let h := constr:(word.unsigned_inj' _ _ h0) in
       let tp := type of h in
       let pf := zify_term wok tp in
-      let hf := fresh h0 "Z" in pose proof (rew_Prop_hyp _ _ pf h) as hf
+      let hf := fresh "__Z_" h0 in pose proof (rew_Prop_hyp _ _ pf h) as hf
   | _ =>
       let pf := zify_term wok tp0 in
       lazymatch pf with
       | eq_refl => idtac
-      | _ => let hf := fresh h0 "Z" in pose proof (rew_Prop_hyp _ _ pf h0) as hf
+      | _ => let hf := fresh "__Z_" h0 in pose proof (rew_Prop_hyp _ _ pf h0) as hf
       end
   end.
 

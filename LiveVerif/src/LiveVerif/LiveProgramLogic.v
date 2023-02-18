@@ -158,9 +158,9 @@ Ltac allow_all_substs := constr:(true). (* TODO default to false *)
 Ltac allow_all_splits := constr:(true). (* TODO default to false *)
 
 Ltac default_simpl_in_all :=
-  repeat bottom_up_simpl_in_all; try record.simp.
+  repeat bottom_up_simpl_in_all_unless__; try record.simp.
 Ltac default_simpl_in_hyps :=
-  repeat bottom_up_simpl_in_hyps_and_vars; try record.simp_hyps.
+  repeat bottom_up_simpl_in_hyps_and_vars_unless__; try record.simp_hyps.
 
 Ltac after_command_simpl_hook := default_simpl_in_hyps.
 Ltac concrete_post_simpl_hook := default_simpl_in_all.
@@ -651,7 +651,9 @@ Ltac final_program_logic_step logger :=
               lazymatch goal with
               | |- ?G => change (@ready G)
               end;
-              logger ltac:(fun _ => idtac "ready")
+              after_command_simpl_hook;
+              unpurify;
+              logger ltac:(fun _ => idtac "after_command_simpl_hook; unpurify and ready")
         end ].
 
 (* needs to run before merging because before merging, some interesting hypotheses
@@ -659,8 +661,8 @@ Ltac final_program_logic_step logger :=
 Ltac program_logic_step_before_merging logger :=
   lazymatch goal with
   | |- after_command ?fs ?rest ?t ?m ?l ?post =>
-      logger ltac:(fun _ => idtac "after_command_simpl_hook");
-      change (wp_cmd fs rest t m l post); after_command_simpl_hook
+      logger ltac:(fun _ => idtac "purify_heapletwise_hyps (before merging)");
+      change (wp_cmd fs rest t m l post); purify_heapletwise_hyps
   end.
 
 Ltac heapletwise_step' logger :=

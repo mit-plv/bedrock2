@@ -5,6 +5,7 @@ Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.foreach_hyp.
+Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
 
 (* needed for compatibility with simplification strategies that choose not
@@ -799,6 +800,21 @@ Proof. intros. subst. assumption. Qed.
 Lemma rew_Prop_goal: forall (P1 P2: Prop) (pf: P1 = P2), P2 -> P1.
 Proof. intros. subst. assumption. Qed.
 
+Ltac2 starts_with_double_underscore(i: ident) :=
+  let s := Ident.to_string i in
+  if Int.le 2 (String.length s) then
+    if Int.equal (Char.to_int (String.get s 0)) 95 then
+      Int.equal (Char.to_int (String.get s 1)) 95
+    else false
+  else false.
+
+Ltac _starts_with_double_underscore :=
+  ltac2:(i |- if starts_with_double_underscore (Option.get (Ltac1.to_ident i)) then ()
+              else Control.backtrack_tactic_failure "identifier does not start with __").
+
+Tactic Notation "starts_with_double_underscore" ident(i) :=
+  _starts_with_double_underscore i.
+
 Ltac bottom_up_simpl_in_hyp H :=
   let t := type of H in
   lazymatch type of t with
@@ -828,6 +844,9 @@ Ltac bottom_up_simpl_in_hyp_of_type H t :=
   | _ =>  idtac (* don't force progress *)
   end.
 
+Ltac bottom_up_simpl_in_hyp_of_type_unless__ H t :=
+  tryif starts_with_double_underscore H then idtac else bottom_up_simpl_in_hyp_of_type H t.
+
 Ltac bottom_up_simpl_in_letbound_var x b _t :=
   let r := bottom_up_simpl OtherExpr b in
   match r DidSomething with
@@ -844,6 +863,10 @@ Ltac bottom_up_simpl_in_letbound_var x b _t :=
                   would lead to ill-typed terms *)
   end.
 
+Ltac bottom_up_simpl_in_letbound_var_unless__ x b _t :=
+  tryif starts_with_double_underscore x then idtac
+  else bottom_up_simpl_in_letbound_var x b _t.
+
 Ltac bottom_up_simpl_in_goal :=
   let t := lazymatch goal with |- ?g => g end in
   lazymatch type of t with
@@ -859,19 +882,37 @@ Ltac bottom_up_simpl_in_goal :=
       eapply (rew_Prop_goal t t' pf)
   end.
 
-Ltac bottom_up_simpl_in_hyps := foreach_hyp bottom_up_simpl_in_hyp_of_type.
+Ltac bottom_up_simpl_in_hyps :=
+  foreach_hyp bottom_up_simpl_in_hyp_of_type.
+Ltac bottom_up_simpl_in_hyps_unless__ :=
+  foreach_hyp bottom_up_simpl_in_hyp_of_type_unless__.
 
-Ltac bottom_up_simpl_in_vars := foreach_var bottom_up_simpl_in_letbound_var.
+Ltac bottom_up_simpl_in_vars :=
+  foreach_var bottom_up_simpl_in_letbound_var.
+Ltac bottom_up_simpl_in_vars_unless__ :=
+  foreach_var bottom_up_simpl_in_letbound_var_unless__.
 
-Ltac bottom_up_simpl_in_hyps_and_vars := bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars.
+Ltac bottom_up_simpl_in_hyps_and_vars :=
+  bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars.
+Ltac bottom_up_simpl_in_hyps_and_vars_unless__ :=
+  bottom_up_simpl_in_hyps_unless__; bottom_up_simpl_in_vars_unless__.
 
 Ltac bottom_up_simpl_in_all :=
-  bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars; try bottom_up_simpl_in_goal.
+  bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars;
+  try bottom_up_simpl_in_goal.
+Ltac bottom_up_simpl_in_all_unless__ :=
+  bottom_up_simpl_in_hyps_unless__; bottom_up_simpl_in_vars_unless__;
+  try bottom_up_simpl_in_goal.
 
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
 Section Tests.
   Set Ltac Backtrace.
+
+  Goal forall a: Z, a = a + 0 -> a = a + 0 -> True.
+    intros ? __pure_E E.
+    bottom_up_simpl_in_all_unless__.
+  Abort.
 
   Context {word: word.word 32} {word_ok: word.ok word}.
 
