@@ -642,6 +642,11 @@ Section SimplLen.
     intros. subst. unfold List.upto. replace (Z.to_nat i') with O by lia. reflexivity.
   Qed.
 
+  Lemma simpl_len_cons: forall a (l: list A) n,
+      1 + len l = n ->
+      len (cons a l) = n.
+  Proof. intros. subst. rewrite List.length_cons. lia. Qed.
+
   Lemma simpl_len_app: forall (l1 l2: list A) n,
       len l1 + len l2 = n ->
       len (l1 ++ l2) = n.
@@ -669,6 +674,17 @@ Section SimplLen.
     - replace (Z.max n 0) with n by lia. eapply List.len_repeatz. assumption.
   Qed.
 End SimplLen.
+
+Ltac concrete_list_length_err l :=
+  lazymatch l with
+  | nil => constr:(Some O)
+  | cons _ ?t =>
+      lazymatch concrete_list_length_err t with
+      | Some ?r => constr:(Some (S r))
+      | None => constr:(@None nat)
+      end
+  | _ => constr:(@None nat)
+  end.
 
 Ltac bottom_up_simpl parent_kind e :=
   lazymatch e with
@@ -722,7 +738,7 @@ with simpl_len e A x := (* e must be (len x) *)
       let r_i := bottom_up_simpl OtherExpr i in
       let i' := r_i NewTerm in
       let pf_i := r_i EqProof in
-      let r_len_l := bottom_up_simpl OtherExpr (Z.of_nat (List.length l)) in
+      let r_len_l := simpl_len (Z.of_nat (List.length l)) A l in
       let len_l' := r_len_l NewTerm in
       let pf_len_l := r_len_l EqProof in
       match constr:(Set) with
@@ -751,7 +767,7 @@ with simpl_len e A x := (* e must be (len x) *)
       let r_i := bottom_up_simpl OtherExpr i in
       let i' := r_i NewTerm in
       let pf_i := r_i EqProof in
-      let r_len_l := bottom_up_simpl OtherExpr (Z.of_nat (List.length l)) in
+      let r_len_l := simpl_len (Z.of_nat (List.length l)) A l in
       let len_l' := r_len_l NewTerm in
       let pf_len_l := r_len_l EqProof in
       match constr:(Set) with
@@ -771,6 +787,19 @@ with simpl_len e A x := (* e must be (len x) *)
           let l' := r_l NewTerm in
           let r := lift_res2 x (@List.upto A) r_i r_l in
           lift_res11 e Z.of_nat (@List.length A) r
+      end
+  | nil => res_convertible Z0
+  | cons ?h ?t =>
+      lazymatch concrete_list_length_err t with
+      | Some ?n => let z := eval cbv in (Z.of_nat (S n)) in res_convertible z
+      | None =>
+          let r_len_t := simpl_len (Z.of_nat (List.length t)) A t in
+          let len_t := r_len_t NewTerm in
+          let pf_len_t := r_len_t EqProof in
+          let r_oneplus := ring_simplify_res_or_nothing_to_simpl (Z.add 1 len_t) in
+          let oneplus := r_oneplus NewTerm in
+          let pf_oneplus := r_oneplus EqProof in
+          res_rewrite oneplus uconstr:(@simpl_len_cons A h t oneplus pf_oneplus)
       end
 
 (* TODO
