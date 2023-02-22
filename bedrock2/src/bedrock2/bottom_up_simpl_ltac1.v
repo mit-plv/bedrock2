@@ -363,17 +363,23 @@ Ltac ring_expr_size e :=
   | _ => non_ring_expr_size e
   end.
 
-Ltac ring_simplify_res e :=
+Ltac ring_simplify_res_forcing_progress e :=
   let rhs := open_constr:(_) in
   let x := fresh "x" in
   let pf := constr:(ltac:(intro x; progress ring_simplify; subst x; reflexivity)
                      : let x := rhs in e = x) in
   res_rewrite rhs pf.
 
+Ltac ring_simplify_res_or_nothing_to_simpl e :=
+  match constr:(Set) with
+  | _ => ring_simplify_res_forcing_progress e
+  | _ => res_nothing_to_simpl e
+  end.
+
 Ltac local_ring_simplify parent e :=
   lazymatch expr_kind e with
   | parent => fail "nothing to do here because parent will be ring_simplified too"
-  | _ => let r := ring_simplify_res e in
+  | _ => let r := ring_simplify_res_forcing_progress e in
          let rhs := r NewTerm in
          let sz1 := ring_expr_size e in
          let sz2 := ring_expr_size rhs in
@@ -722,19 +728,19 @@ with simpl_len e A x := (* e must be (len x) *)
       match constr:(Set) with
       | _ => (* Case: index i is within bounds *)
           let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): 0 <= i' <= len_l') in
-          let r_diff := ring_simplify_res (Z.sub len_l' i') in
+          let r_diff := ring_simplify_res_or_nothing_to_simpl (Z.sub len_l' i') in
           let diff := r_diff NewTerm in
           let pf_diff := r_diff EqProof in
-          res_rewrite r_diff
+          res_rewrite diff
             uconstr:(@simpl_len_from A l i i' len_l' diff pf_i pf_len_l sidecond pf_diff)
       | _ => (* Case: index i is too big *)
           let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): len_l' <= i') in
           res_rewrite Z0
-            uconstr:(simpl_len_from_pastend A i i' len_l' pf_i pf_len_l sidecond)
+            uconstr:(@simpl_len_from_pastend A i i' len_l' pf_i pf_len_l sidecond)
       | _ => (* Case: index i is too small *)
           let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): i' <= 0) in
           res_rewrite len_l'
-            uconstr:(simpl_len_from_negative A i i' len_l' pf_i pf_len_l sidecond)
+            uconstr:(@simpl_len_from_negative A i i' len_l' pf_i pf_len_l sidecond)
       | _ => (* Case: unknown whether index is is within bounds, so the List.from remains *)
           let r_l := bottom_up_simpl OtherExpr l in
           let l' := r_l NewTerm in
@@ -755,11 +761,11 @@ with simpl_len e A x := (* e must be (len x) *)
       | _ => (* Case: index i is too big *)
           let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): len_l' <= i') in
           res_rewrite len_l'
-            uconstr:(simpl_len_upto_pastend A i i' len_l' pf_i pf_len_l sidecond)
+            uconstr:(@simpl_len_upto_pastend A i i' len_l' pf_i pf_len_l sidecond)
       | _ => (* Case: index i is too small *)
           let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): i' <= 0) in
           res_rewrite Z0
-            uconstr:(simpl_len_upto_negative A i i' len_l' pf_i pf_len_l sidecond)
+            uconstr:(@simpl_len_upto_negative A i i' len_l' pf_i pf_len_l sidecond)
       | _ => (* Case: unknown whether index is is within bounds, so the List.upto remains *)
           let r_l := bottom_up_simpl OtherExpr l in
           let l' := r_l NewTerm in
