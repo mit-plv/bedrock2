@@ -1,7 +1,10 @@
 Require Import Ltac2.Ltac2.
+Require Import Coq.micromega.Lia.
 Require Import coqutil.Tactics.fold_hyps coqutil.Tactics.foreach_hyp.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.HeapletwiseHyps.
+Require Import bedrock2.ident_starts_with.
+Require Import bedrock2.unzify.
 
 Ltac purify_heapletwise_pred H pred m :=
   let HP := fresh "__pure_" H in eassert (purify pred _) as HP by eauto with purify;
@@ -16,25 +19,17 @@ Ltac purify_heapletwise_hyp_of_type H t :=
 
 Ltac purify_heapletwise_hyps := foreach_hyp purify_heapletwise_hyp_of_type.
 
-Ltac2 purified_type_of_pred(p: constr) :=
-  let pf := constr:(ltac:(eauto with purify) : purify $p _) in
-  lazy_match! Constr.type pf with
-  | purify _ ?t => t
-  end.
+Inductive derivability_test_marker: Prop := mk_derivability_test_marker.
 
-Ltac2 purified_type t :=
-  match! t with
-  | ?r ?m => [ purified_type_of_pred r ]
-  | with_mem ?m ?r => [ purified_type_of_pred r ]
-  | _ => []
-  end.
+Ltac clear_pure_hyp_if_derivable h tp :=
+  tryif ident_starts_with __pure_ h then
+    tryif assert_succeeds (idtac; assert tp by (zify_goal; xlia zchecker))
+    then clear h else idtac
+  else idtac.
 
-Ltac2 collect_purified_hyp_types () :=
-  fold_hyps_upwards (fun (l: constr list) h tp => List.append (purified_type tp) l) [].
-
-(* clears all hypotheses that are derivable by purify_heapletwise_hyps *)
-Ltac2 unpurify () :=
-  let l := collect_purified_hyp_types () in
-  foreach_hyp (fun h tp => if List.exist (Constr.equal tp) l then clear $h else ()).
-
-Ltac unpurify := ltac2:(unpurify ()).
+Ltac unpurify :=
+  pose proof mk_derivability_test_marker;
+  purify_heapletwise_hyps;
+  zify_hyps_upto_marker derivability_test_marker;
+  foreach_hyp_downto_marker derivability_test_marker clear_pure_hyp_if_derivable;
+  clear_upto_marker derivability_test_marker.

@@ -26,6 +26,7 @@ Require Import bedrock2.HeapletwiseAutoSplitMerge.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.PurifyHeapletwise.
 Require Import bedrock2.bottom_up_simpl_ltac1.
+Require Import bedrock2.ident_starts_with.
 Require Import bedrock2.Logging.
 Require Import LiveVerif.LiveRules.
 Require Import LiveVerif.PackageContext.
@@ -157,10 +158,15 @@ Ltac destruct_ifs :=
 Ltac allow_all_substs := constr:(true). (* TODO default to false *)
 Ltac allow_all_splits := constr:(true). (* TODO default to false *)
 
-Ltac default_simpl_in_all :=
-  repeat bottom_up_simpl_in_all_unless__; try record.simp.
 Ltac default_simpl_in_hyps :=
-  repeat bottom_up_simpl_in_hyps_and_vars_unless__; try record.simp_hyps.
+  repeat (bottom_up_simpl_in_hyps_if
+            ltac:(fun h t => tryif ident_starts_with __ h then fail else idtac);
+          bottom_up_simpl_in_vars_if
+            ltac:(fun h b t => tryif ident_starts_with __ h then fail else idtac));
+  try record.simp_hyps.
+
+Ltac default_simpl_in_all :=
+  default_simpl_in_hyps; try bottom_up_simpl_in_goal; try record.simp_goal.
 
 Ltac after_command_simpl_hook := default_simpl_in_hyps.
 Ltac concrete_post_simpl_hook := default_simpl_in_all.
@@ -662,7 +668,13 @@ Ltac program_logic_step_before_merging logger :=
   lazymatch goal with
   | |- after_command ?fs ?rest ?t ?m ?l ?post =>
       logger ltac:(fun _ => idtac "purify_heapletwise_hyps (before merging)");
-      change (wp_cmd fs rest t m l post); purify_heapletwise_hyps
+      change (wp_cmd fs rest t m l post);
+      purify_heapletwise_hyps;
+      (* to make them more usable for lia (though our zify would do that too),
+         to make them more readable while debugging,
+         and for those that are trivial (eg len [|a; b|] = 2), to make their
+         triviality more obvious so that they will get cleared for being trivial *)
+      bottom_up_simpl_in_hyps_if ltac:(fun h tp => ident_starts_with __pure_ h)
   end.
 
 Ltac heapletwise_step' logger :=

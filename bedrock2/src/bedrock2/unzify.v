@@ -254,32 +254,6 @@ Ltac zify_hyp wok h0 tp0 :=
       end
   end.
 
-Ltac hyp_is_evar_free h tp :=
-  tryif has_evar tp then fail "hypothesis" h "is not evar-free" else idtac.
-
-Ltac hyps_are_evar_free := foreach_hyp hyp_is_evar_free.
-
-Ltac goal_is_evar_free :=
-  lazymatch goal with
-  | |- ?G => tryif has_evar G then fail "the goal is not evar-free" else idtac
-  end.
-
-Ltac assert_no_evars := hyps_are_evar_free; goal_is_evar_free.
-
-Goal (forall a: nat, a = a) -> forall b: nat, exists c, c = b.
-Proof.
-  intros.
-  assert_succeeds (idtac; assert_no_evars).
-  eexists.
-  assert_fails (idtac; goal_is_evar_free).
-  assert_succeeds (idtac; hyps_are_evar_free).
-  match goal with
-  | |- ?x = _ => specialize (H x)
-  end.
-  assert_fails (idtac; hyps_are_evar_free).
-  assert_fails (idtac; assert_no_evars).
-Abort.
-
 Ltac get_word_instance :=
   lazymatch goal with
   | inst: word.word _ |- _ => inst
@@ -301,12 +275,6 @@ Ltac zify_goal :=
   | |- _ <> _ => intro
   | |- _ => idtac
   end;
-  (* if there are evars in the goal, the preprocessing might affect the
-     evars or their evarcontexts in tricky ways that no one wants to
-     debug, so we should fail here.
-     TODO but maybe it would be handy to use this tactic even when there
-     are evars, especially for contradictory goals? *)
-  assert_no_evars;
   lazymatch goal with
   | |- ?G =>
       is_lia G;
@@ -318,44 +286,22 @@ Ltac zify_goal :=
 Require Import Ltac2.Ltac2.
 Set Default Proof Mode "Classic".
 
-(* Same signatures as in https://ocaml.org/p/batteries/3.6.0/doc/BatList/index.html *)
-(* TODO: upstream to Coq *)
-Module List.
-  Ltac2 rec take_while(p: 'a -> bool)(xs: 'a list) :=
-    match xs with
-    | [] => []
-    | h :: t => if p h then h :: take_while p t else []
-    end.
-
-  Ltac2 rec drop_while(p: 'a -> bool)(xs: 'a list) :=
-    match xs with
-    | [] => []
-    | h :: t => if p h then drop_while p t else xs
-    end.
-
-  (* same as (take_while p xs, drop_while p xs) but done in one pass *)
-  Ltac2 rec span(p: 'a -> bool)(xs: 'a list) :=
-    match xs with
-    | [] => ([], [])
-    | h :: t => if p h then let (tk, dr) := span p t in (h :: tk, dr) else ([], xs)
-    end.
-End List.
+(* hs: reversed hypothesis list (head is bottom-most hyp added last) *)
+Ltac2 rec apply_range_bounding_lemma_in_hyplist(hs: (ident * constr option * constr) list) :=
+  match hs with
+  | [] => Control.throw_invalid_argument "No zified_hyps_start_here marker found"
+  | p :: rest =>
+      let (h, rhs, tp) := p in
+      if Constr.equal tp 'zified_hyps_start_here then () (* done *) else
+        lazy_match! tp with
+        | word.unsigned _ = _ => eapply word.unsigned_range_eq in $h
+        | Z.of_nat _ = _ => eapply Z_of_nat_range_eq in $h
+        | _ => ()
+        end
+  end.
 
 Ltac2 apply_range_bounding_lemma_in_eqs () :=
-  match List.drop_while
-          (fun p => let (h, rhs, tp) := p in
-                    Bool.neg (Constr.equal tp 'zified_hyps_start_here))
-          (Control.hyps ())
-  with
-  | marker :: hs =>
-      List.iter (fun p => let (h, rhs, tp) := p in
-                          lazy_match! tp with
-                          | word.unsigned _ = _ => eapply word.unsigned_range_eq in $h
-                          | Z.of_nat _ = _ => eapply Z_of_nat_range_eq in $h
-                          | _ => ()
-                          end) hs
-  | [] => Control.throw_invalid_argument "No zified_hyps_start_here marker found"
-  end.
+  apply_range_bounding_lemma_in_hyplist (List.rev (Control.hyps ())).
 
 Ltac apply_range_bounding_lemma_in_eqs := ltac2:(apply_range_bounding_lemma_in_eqs ()).
 
@@ -363,6 +309,12 @@ Ltac zify_hyps :=
   pose proof mk_zified_hyps_start_here;
   let wok := get_word_ok in
   foreach_hyp (zify_hyp wok);
+  apply_range_bounding_lemma_in_eqs.
+
+Ltac zify_hyps_upto_marker marker :=
+  pose proof mk_zified_hyps_start_here;
+  let wok := get_word_ok in
+  foreach_hyp_upto_marker marker (zify_hyp wok);
   apply_range_bounding_lemma_in_eqs.
 
 (* TODO: matching should look into rhs (:= and =) of variables to detect patterns like
@@ -378,18 +330,20 @@ Ltac zify_hyps :=
    Goal is not yet zified, but each goal will be zified using the same rewrites,
    so that the goal's subterms match the terms appearing in the zified hypotheses. *)
 
-Ltac unzify :=
+Ltac clear_upto_marker marker :=
   lazymatch goal with
-  | H: zified_hyps_start_here |- _ =>
+  | H: marker |- _ =>
       repeat lazymatch goal with
         | A: ?T |- _ => lazymatch T with
-                        | zified_hyps_start_here => fail (* done *)
+                        | marker => fail (* done *)
                         | _ => clear A
                         end
         end;
       clear H
-  | |- _ => fail "no zified_hyps_start_here marker found"
+  | |- _ => fail "marker not found found"
   end.
+
+Ltac unzify := clear_upto_marker zified_hyps_start_here.
 
 Goal forall (a b: nat), Z.of_nat (a + b) = Z.of_nat (a + 0) + Z.of_nat (0 + b).
 Proof.
