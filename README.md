@@ -8,10 +8,8 @@ No code is shared between bedrock and bedrock2.
 
 ### Current Features
 
-The source language is a "C-like" language called ExprImp. It is an imperative language with expressions.
+The source language is a "C-like" language. It is an imperative language with expressions.
 Currently, the only data type is word (32-bit or 64-bit), and the memory is a partial map from words to bytes.
-"Records" are supported as a notation for memory access with an offset.
-
 
 ### Non-features
 
