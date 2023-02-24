@@ -24,7 +24,9 @@ Require Import bedrock2.ident_to_string.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.HeapletwiseAutoSplitMerge.
 Require Import bedrock2.PurifySep.
+Require Import bedrock2.PurifyHeapletwise.
 Require Import bedrock2.bottom_up_simpl_ltac1.
+Require Import bedrock2.ident_starts_with.
 Require Import bedrock2.Logging.
 Require Import LiveVerif.LiveRules.
 Require Import LiveVerif.PackageContext.
@@ -61,19 +63,6 @@ Proof.
 Qed.
 
 Definition ready{P: Prop} := P.
-
-Ltac purify_heapletwise_pred H pred m :=
-  let HP := fresh H "P" in eassert (purify pred _) as HP by eauto with purify;
-  specialize (HP m H).
-
-Ltac purify_heapletwise_hyp_of_type H t :=
-  match t with
-  | ?R ?m => purify_heapletwise_pred H R m
-  | with_mem ?m ?R => purify_heapletwise_pred H R m
-  | _ => idtac
-  end.
-
-Ltac purify_heapletwise_hyps := foreach_hyp purify_heapletwise_hyp_of_type.
 
 Ltac bottom_up_simpl_sidecond_hook ::=
   purify_heapletwise_hyps;
@@ -169,12 +158,16 @@ Ltac destruct_ifs :=
 Ltac allow_all_substs := constr:(true). (* TODO default to false *)
 Ltac allow_all_splits := constr:(true). (* TODO default to false *)
 
-Ltac default_simpl_in_all :=
-  repeat bottom_up_simpl_in_all; try record.simp.
 Ltac default_simpl_in_hyps :=
-  repeat bottom_up_simpl_in_hyps_and_vars; try record.simp_hyps.
+  repeat (bottom_up_simpl_in_hyps_if
+            ltac:(fun h t => tryif ident_starts_with __ h then fail else idtac);
+          bottom_up_simpl_in_vars_if
+            ltac:(fun h b t => tryif ident_starts_with __ h then fail else idtac));
+  try record.simp_hyps.
 
-Ltac precond_simpl_hook := default_simpl_in_all.
+Ltac default_simpl_in_all :=
+  default_simpl_in_hyps; try bottom_up_simpl_in_goal; try record.simp_goal.
+
 Ltac after_command_simpl_hook := default_simpl_in_hyps.
 Ltac concrete_post_simpl_hook := default_simpl_in_all.
 
@@ -664,19 +657,24 @@ Ltac final_program_logic_step logger :=
               lazymatch goal with
               | |- ?G => change (@ready G)
               end;
-              logger ltac:(fun _ => idtac "ready")
+              after_command_simpl_hook;
+              unpurify;
+              logger ltac:(fun _ => idtac "after_command_simpl_hook; unpurify and ready")
         end ].
 
 (* needs to run before merging because before merging, some interesting hypotheses
    are exposed that will get purified into useful facts to prove sideconditions *)
 Ltac program_logic_step_before_merging logger :=
   lazymatch goal with
-  | |- precond ?G =>
-      logger ltac:(fun _ => idtac "precond_simpl_hook");
-      change G; precond_simpl_hook
   | |- after_command ?fs ?rest ?t ?m ?l ?post =>
-      logger ltac:(fun _ => idtac "after_command_simpl_hook");
-      change (wp_cmd fs rest t m l post); after_command_simpl_hook
+      logger ltac:(fun _ => idtac "purify_heapletwise_hyps (before merging)");
+      change (wp_cmd fs rest t m l post);
+      purify_heapletwise_hyps;
+      (* to make them more usable for lia (though our zify would do that too),
+         to make them more readable while debugging,
+         and for those that are trivial (eg len [|a; b|] = 2), to make their
+         triviality more obvious so that they will get cleared for being trivial *)
+      bottom_up_simpl_in_hyps_if ltac:(fun h tp => ident_starts_with __pure_ h)
   end.
 
 Ltac heapletwise_step' logger :=

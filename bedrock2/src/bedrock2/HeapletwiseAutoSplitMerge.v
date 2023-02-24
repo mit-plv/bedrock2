@@ -97,7 +97,7 @@ Section SepLog.
       rewrite <- Ha' in *; clear Ha'.
 
       repeat heapletwise_step.
-      rewrite List.app_length; simpl. 
+      rewrite List.app_length; simpl.
       destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords.
     }
   Qed.
@@ -329,16 +329,6 @@ Ltac instantiate_constructor_with_reversed_sepapps c l :=
 Ltac instantiate_constructor_with_sepapps c l :=
   let lrev := list_reverse l in
   instantiate_constructor_with_reversed_sepapps c lrev.
-
-Ltac concrete_list_length_err l :=
-  lazymatch l with
-  | nil => constr:(Some O)
-  | cons _ ?t =>
-      lazymatch concrete_list_length_err t with
-      | Some ?r => constr:(Some (S r))
-      | None => constr:(@None nat)
-      end
-  end.
 
 Ltac pick_nat n :=
   multimatch n with

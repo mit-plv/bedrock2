@@ -2,25 +2,25 @@
 
 Require Import Coq.ZArith.ZArith Coq.micromega.Lia.
 Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Z.Lia.
 Require Import coqutil.Tactics.foreach_hyp.
 Local Open Scope Z_scope.
 
 (* returns the name of the newly added or already existing hyp *)
-Ltac unique_pose_proof_name pf :=
+Ltac unique_pose_proof_name newname pf :=
   let t := type of pf in
   lazymatch goal with
   | H: t |- _ => H
-  | |- _ => let H := fresh in
-            let __ := match constr:(Set) with
-                      | _ => pose proof pf as H
-                      end in H
+  | |- _ => let __ := match constr:(Set) with
+                      | _ => pose proof pf as newname
+                      end in newname
   end.
 
 Module Import word.
   Section WithWord.
     Context {width} {word : word.word width} {word_ok : word.ok word}.
 
-    Lemma modulus_nonzero: 2 ^ width <> 0.
+    Lemma modulus_nonzero: 2 ^ width <> 0. (* TODO move next to word.modulus_pos *)
     Proof. eapply Z.pow_nonzero. 2: eapply word.width_nonneg. cbv. discriminate. Qed.
 
     Lemma unsigned_range_eq{z}{x: word}: word.unsigned x = z -> 0 <= z < 2 ^ width.
@@ -137,7 +137,8 @@ Ltac zify_unsigned wok e :=
 with zify_unsigned_app2 wok lem x y :=
   let px := zify_unsigned wok x in
   let py := zify_unsigned wok y in
-  unique_pose_proof_name (lem _ _ _ _ px py).
+  let n := fresh "__Z_B0" in
+  unique_pose_proof_name n (lem _ _ _ _ px py).
 
 Ltac zify_of_nat e :=
   lazymatch isnatcst e with
@@ -156,7 +157,8 @@ Ltac zify_of_nat e :=
 with zify_of_nat_app2 lem x y :=
   let px := zify_of_nat x in
   let py := zify_of_nat y in
-  unique_pose_proof_name (lem _ _ _ _ px py).
+  let n := fresh "__Z_B0" in
+  unique_pose_proof_name n (lem _ _ _ _ px py).
 
 Lemma f_equal_impl: forall P P' Q Q': Prop, P = P' -> Q = Q' -> (P -> Q) = (P' -> Q').
 Proof. congruence. Qed.
@@ -224,13 +226,32 @@ with zify_impl wok e x y :=
 Lemma rew_Prop_hyp: forall (P1 P2: Prop) (pf: P1 = P2), P1 -> P2.
 Proof. intros. subst. assumption. Qed.
 
+Lemma rew_Prop_goal: forall (P1 P2: Prop) (pf: P1 = P2), P2 -> P1.
+Proof. intros. subst. assumption. Qed.
+
 Inductive zified_hyps_start_here: Prop := mk_zified_hyps_start_here.
 
-Ltac zify_hyp wok h tp :=
-  let pf := zify_term wok tp in
-  lazymatch pf with
-  | eq_refl => idtac
-  | _ => let hf := fresh h "Z" in pose proof (rew_Prop_hyp _ _ pf h) as hf
+(* TODO detection of word equal and not equal should also take place under
+   logical connectives, but using equality and functional extensionality,
+   or using <-> in f_equal-like (morphism) lemmas? *)
+Ltac zify_hyp wok h0 tp0 :=
+  lazymatch tp0 with
+  | @eq (@word.rep _ _) _ _ =>
+      let h := constr:(f_equal word.unsigned h0) in
+      let tp := type of h in
+      let pf := zify_term wok tp in
+      let hf := fresh "__Z_" h0 in pose proof (rew_Prop_hyp _ _ pf h) as hf
+  | not (@eq (@word.rep _ _) _ _) =>
+      let h := constr:(word.unsigned_inj' _ _ h0) in
+      let tp := type of h in
+      let pf := zify_term wok tp in
+      let hf := fresh "__Z_" h0 in pose proof (rew_Prop_hyp _ _ pf h) as hf
+  | _ =>
+      let pf := zify_term wok tp0 in
+      lazymatch pf with
+      | eq_refl => idtac
+      | _ => let hf := fresh "__Z_" h0 in pose proof (rew_Prop_hyp _ _ pf h0) as hf
+      end
   end.
 
 Ltac get_word_instance :=
@@ -248,47 +269,39 @@ Ltac get_word_ok :=
   | ?wok => wok
   end.
 
+Ltac zify_goal :=
+  lazymatch goal with
+  | |- @eq (@word.rep _ _) _ _ => eapply word.unsigned_inj
+  | |- _ <> _ => intro
+  | |- _ => idtac
+  end;
+  lazymatch goal with
+  | |- ?G =>
+      is_lia G;
+      let wok := get_word_ok in
+      let pf := zify_term wok G in
+      eapply (rew_Prop_goal _ _ pf)
+  end.
+
 Require Import Ltac2.Ltac2.
 Set Default Proof Mode "Classic".
 
-(* Same signatures as in https://ocaml.org/p/batteries/3.6.0/doc/BatList/index.html *)
-(* TODO: upstream to Coq *)
-Module List.
-  Ltac2 rec take_while(p: 'a -> bool)(xs: 'a list) :=
-    match xs with
-    | [] => []
-    | h :: t => if p h then h :: take_while p t else []
-    end.
-
-  Ltac2 rec drop_while(p: 'a -> bool)(xs: 'a list) :=
-    match xs with
-    | [] => []
-    | h :: t => if p h then drop_while p t else xs
-    end.
-
-  (* same as (take_while p xs, drop_while p xs) but done in one pass *)
-  Ltac2 rec span(p: 'a -> bool)(xs: 'a list) :=
-    match xs with
-    | [] => ([], [])
-    | h :: t => if p h then let (tk, dr) := span p t in (h :: tk, dr) else ([], xs)
-    end.
-End List.
+(* hs: reversed hypothesis list (head is bottom-most hyp added last) *)
+Ltac2 rec apply_range_bounding_lemma_in_hyplist(hs: (ident * constr option * constr) list) :=
+  match hs with
+  | [] => Control.throw_invalid_argument "No zified_hyps_start_here marker found"
+  | p :: rest =>
+      let (h, rhs, tp) := p in
+      if Constr.equal tp 'zified_hyps_start_here then () (* done *) else
+        lazy_match! tp with
+        | word.unsigned _ = _ => eapply word.unsigned_range_eq in $h
+        | Z.of_nat _ = _ => eapply Z_of_nat_range_eq in $h
+        | _ => ()
+        end
+  end.
 
 Ltac2 apply_range_bounding_lemma_in_eqs () :=
-  match List.drop_while
-          (fun p => let (h, rhs, tp) := p in
-                    Bool.neg (Constr.equal tp 'zified_hyps_start_here))
-          (Control.hyps ())
-  with
-  | marker :: hs =>
-      List.iter (fun p => let (h, rhs, tp) := p in
-                          lazy_match! tp with
-                          | word.unsigned _ = _ => eapply word.unsigned_range_eq in $h
-                          | Z.of_nat _ = _ => eapply Z_of_nat_range_eq in $h
-                          | _ => ()
-                          end) hs
-  | [] => Control.throw_invalid_argument "No zified_hyps_start_here marker found"
-  end.
+  apply_range_bounding_lemma_in_hyplist (List.rev (Control.hyps ())).
 
 Ltac apply_range_bounding_lemma_in_eqs := ltac2:(apply_range_bounding_lemma_in_eqs ()).
 
@@ -296,6 +309,12 @@ Ltac zify_hyps :=
   pose proof mk_zified_hyps_start_here;
   let wok := get_word_ok in
   foreach_hyp (zify_hyp wok);
+  apply_range_bounding_lemma_in_eqs.
+
+Ltac zify_hyps_upto_marker marker :=
+  pose proof mk_zified_hyps_start_here;
+  let wok := get_word_ok in
+  foreach_hyp_upto_marker marker (zify_hyp wok);
   apply_range_bounding_lemma_in_eqs.
 
 (* TODO: matching should look into rhs (:= and =) of variables to detect patterns like
@@ -311,18 +330,20 @@ Ltac zify_hyps :=
    Goal is not yet zified, but each goal will be zified using the same rewrites,
    so that the goal's subterms match the terms appearing in the zified hypotheses. *)
 
-Ltac unzify :=
+Ltac clear_upto_marker marker :=
   lazymatch goal with
-  | H: zified_hyps_start_here |- _ =>
+  | H: marker |- _ =>
       repeat lazymatch goal with
         | A: ?T |- _ => lazymatch T with
-                        | zified_hyps_start_here => fail (* done *)
+                        | marker => fail (* done *)
                         | _ => clear A
                         end
         end;
       clear H
-  | |- _ => fail "no zified_hyps_start_here marker found"
+  | |- _ => fail "marker not found found"
   end.
+
+Ltac unzify := clear_upto_marker zified_hyps_start_here.
 
 Goal forall (a b: nat), Z.of_nat (a + b) = Z.of_nat (a + 0) + Z.of_nat (0 + b).
 Proof.
@@ -339,7 +360,7 @@ Section Tests.
     word.unsigned (word.sub right left0) = 8 * Z.of_nat (Datatypes.length xs + 0) ->
     forall (x : list word) (x1 x2 : word),
     word.unsigned (word.sub x2 x1) = 8 * Z.of_nat (Datatypes.length x) ->
-    word.unsigned (word.sub x2 x1) <> 0 ->
+    word.sub x2 x1 <> word.of_Z 0 ->
     word.unsigned
       (word.sub x2
          (word.add
@@ -352,7 +373,9 @@ Section Tests.
            (word.of_Z 4)) (word.of_Z 3))) x1) / word.unsigned (word.of_Z 8)))).
   Proof.
     intros.
+    (* Require Import bedrock2.ZnWords. Time ZnWords. *)
     zify_hyps.
+    zify_goal.
     unzify.
   Abort.
 End Tests.

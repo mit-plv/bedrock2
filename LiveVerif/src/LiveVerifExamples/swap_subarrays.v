@@ -45,7 +45,7 @@ Derive swap_subarrays SuchThat (fun_correct! swap_subarrays) As
 
   step. step. step. step. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step. step.
-  step. step. step. step. step. step. step. step. step. step. step. step. step. step.
+  step. step. step. step. step. step. step. step. step. step. step. step. step.
 
   lazymatch goal with
   | |- after_command ?fs ?rest ?t ?m ?l ?post =>

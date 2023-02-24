@@ -36,7 +36,6 @@ jobs:
         if [ ! -z "$PPA" ]; then sudo add-apt-repository "$PPA" -y; fi
         sudo apt-get -o Acquire::Retries=30 update -q
         sudo apt-get -o Acquire::Retries=30 install ocaml-findlib $COQ_PACKAGE -y --allow-unauthenticated
-
     - name: echo build params
       run: |
         echo "::group::lscpu"
@@ -63,27 +62,8 @@ jobs:
         echo "::group::echo | coqtop"
         echo | coqtop
         echo "::endgroup::"
-
     - uses: actions/checkout@v3
       with:
         submodules: recursive
-
-    - name: Get changed files in the PyLevelLang folder
-      id: changed-PyLevelLang-files
-      uses: tj-actions/changed-files@v35
-      with:
-        files: PyLevelLang/**
-
-    - name: List all modified files in the PyLevelLang folder
-      run: |
-        for file in ${{ steps.changed-PyLevelLang-files.all_modified_files }}; do
-          echo "$file was modified"
-        done
-
-    - name: Run limited make on PR that only changed files in PyLevelLang
-      if: ${{ steps.changed-PyLevelLang-files.outputs.only_modified == 'true' && github.event_name == 'pull_request' }}
-      run: TIMED=1 make PyLevelLang
-
-    - name: Run full make
-      if: ${{ ! (steps.changed-PyLevelLang-files.outputs.only_modified == 'true' && github.event_name == 'pull_request') }}
+    - name: make
       run: TIMED=1 make

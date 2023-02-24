@@ -362,17 +362,23 @@ Ltac ring_expr_size e :=
   | _ => non_ring_expr_size e
   end.
 
-Ltac ring_simplify_res e :=
+Ltac ring_simplify_res_forcing_progress e :=
   let rhs := open_constr:(_) in
   let x := fresh "x" in
   let pf := constr:(ltac:(intro x; progress ring_simplify; subst x; reflexivity)
                      : let x := rhs in e = x) in
   res_rewrite rhs pf.
 
+Ltac ring_simplify_res_or_nothing_to_simpl e :=
+  match constr:(Set) with
+  | _ => ring_simplify_res_forcing_progress e
+  | _ => res_nothing_to_simpl e
+  end.
+
 Ltac local_ring_simplify parent e :=
   lazymatch expr_kind e with
   | parent => fail "nothing to do here because parent will be ring_simplified too"
-  | _ => let r := ring_simplify_res e in
+  | _ => let r := ring_simplify_res_forcing_progress e in
          let rhs := r NewTerm in
          let sz1 := ring_expr_size e in
          let sz2 := ring_expr_size rhs in
@@ -635,6 +641,11 @@ Section SimplLen.
     intros. subst. unfold List.upto. replace (Z.to_nat i') with O by lia. reflexivity.
   Qed.
 
+  Lemma simpl_len_cons: forall a (l: list A) n,
+      1 + len l = n ->
+      len (cons a l) = n.
+  Proof. intros. subst. rewrite List.length_cons. lia. Qed.
+
   Lemma simpl_len_app: forall (l1 l2: list A) n,
       len l1 + len l2 = n ->
       len (l1 ++ l2) = n.
@@ -662,6 +673,17 @@ Section SimplLen.
     - replace (Z.max n 0) with n by lia. eapply List.len_repeatz. assumption.
   Qed.
 End SimplLen.
+
+Ltac concrete_list_length_err l :=
+  lazymatch l with
+  | nil => constr:(Some O)
+  | cons _ ?t =>
+      lazymatch concrete_list_length_err t with
+      | Some ?r => constr:(Some (S r))
+      | None => constr:(@None nat)
+      end
+  | _ => constr:(@None nat)
+  end.
 
 Ltac bottom_up_simpl parent_kind e :=
   lazymatch e with
@@ -715,25 +737,25 @@ with simpl_len e A x := (* e must be (len x) *)
       let r_i := bottom_up_simpl OtherExpr i in
       let i' := r_i NewTerm in
       let pf_i := r_i EqProof in
-      let r_len_l := bottom_up_simpl OtherExpr (Z.of_nat (List.length l)) in
+      let r_len_l := simpl_len (Z.of_nat (List.length l)) A l in
       let len_l' := r_len_l NewTerm in
       let pf_len_l := r_len_l EqProof in
       match constr:(Set) with
       | _ => (* Case: index i is within bounds *)
           let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): 0 <= i' <= len_l') in
-          let r_diff := ring_simplify_res (Z.sub len_l' i') in
+          let r_diff := ring_simplify_res_or_nothing_to_simpl (Z.sub len_l' i') in
           let diff := r_diff NewTerm in
           let pf_diff := r_diff EqProof in
-          res_rewrite r_diff
+          res_rewrite diff
             uconstr:(@simpl_len_from A l i i' len_l' diff pf_i pf_len_l sidecond pf_diff)
       | _ => (* Case: index i is too big *)
           let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): len_l' <= i') in
           res_rewrite Z0
-            uconstr:(simpl_len_from_pastend A i i' len_l' pf_i pf_len_l sidecond)
+            uconstr:(@simpl_len_from_pastend A i i' len_l' pf_i pf_len_l sidecond)
       | _ => (* Case: index i is too small *)
           let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): i' <= 0) in
           res_rewrite len_l'
-            uconstr:(simpl_len_from_negative A i i' len_l' pf_i pf_len_l sidecond)
+            uconstr:(@simpl_len_from_negative A i i' len_l' pf_i pf_len_l sidecond)
       | _ => (* Case: unknown whether index is is within bounds, so the List.from remains *)
           let r_l := bottom_up_simpl OtherExpr l in
           let l' := r_l NewTerm in
@@ -744,7 +766,7 @@ with simpl_len e A x := (* e must be (len x) *)
       let r_i := bottom_up_simpl OtherExpr i in
       let i' := r_i NewTerm in
       let pf_i := r_i EqProof in
-      let r_len_l := bottom_up_simpl OtherExpr (Z.of_nat (List.length l)) in
+      let r_len_l := simpl_len (Z.of_nat (List.length l)) A l in
       let len_l' := r_len_l NewTerm in
       let pf_len_l := r_len_l EqProof in
       match constr:(Set) with
@@ -754,16 +776,29 @@ with simpl_len e A x := (* e must be (len x) *)
       | _ => (* Case: index i is too big *)
           let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): len_l' <= i') in
           res_rewrite len_l'
-            uconstr:(simpl_len_upto_pastend A i i' len_l' pf_i pf_len_l sidecond)
+            uconstr:(@simpl_len_upto_pastend A i i' len_l' pf_i pf_len_l sidecond)
       | _ => (* Case: index i is too small *)
           let sidecond := constr:(ltac:(bottom_up_simpl_sidecond_hook): i' <= 0) in
           res_rewrite Z0
-            uconstr:(simpl_len_upto_negative A i i' len_l' pf_i pf_len_l sidecond)
+            uconstr:(@simpl_len_upto_negative A i i' len_l' pf_i pf_len_l sidecond)
       | _ => (* Case: unknown whether index is is within bounds, so the List.upto remains *)
           let r_l := bottom_up_simpl OtherExpr l in
           let l' := r_l NewTerm in
           let r := lift_res2 x (@List.upto A) r_i r_l in
           lift_res11 e Z.of_nat (@List.length A) r
+      end
+  | nil => res_convertible Z0
+  | cons ?h ?t =>
+      lazymatch concrete_list_length_err t with
+      | Some ?n => let z := eval cbv in (Z.of_nat (S n)) in res_convertible z
+      | None =>
+          let r_len_t := simpl_len (Z.of_nat (List.length t)) A t in
+          let len_t := r_len_t NewTerm in
+          let pf_len_t := r_len_t EqProof in
+          let r_oneplus := ring_simplify_res_or_nothing_to_simpl (Z.add 1 len_t) in
+          let oneplus := r_oneplus NewTerm in
+          let pf_oneplus := r_oneplus EqProof in
+          res_rewrite oneplus uconstr:(@simpl_len_cons A h t oneplus pf_oneplus)
       end
 
 (* TODO
@@ -828,6 +863,9 @@ Ltac bottom_up_simpl_in_hyp_of_type H t :=
   | _ =>  idtac (* don't force progress *)
   end.
 
+Ltac bottom_up_simpl_in_hyp_of_type_if test H t :=
+  tryif test H t then bottom_up_simpl_in_hyp_of_type H t else idtac.
+
 Ltac bottom_up_simpl_in_letbound_var x b _t :=
   let r := bottom_up_simpl OtherExpr b in
   match r DidSomething with
@@ -844,6 +882,9 @@ Ltac bottom_up_simpl_in_letbound_var x b _t :=
                   would lead to ill-typed terms *)
   end.
 
+Ltac bottom_up_simpl_in_letbound_var_if test x b t :=
+  tryif test x b t then bottom_up_simpl_in_letbound_var x b t else idtac.
+
 Ltac bottom_up_simpl_in_goal :=
   let t := lazymatch goal with |- ?g => g end in
   lazymatch type of t with
@@ -859,19 +900,33 @@ Ltac bottom_up_simpl_in_goal :=
       eapply (rew_Prop_goal t t' pf)
   end.
 
-Ltac bottom_up_simpl_in_hyps := foreach_hyp bottom_up_simpl_in_hyp_of_type.
+Ltac bottom_up_simpl_in_hyps :=
+  foreach_hyp bottom_up_simpl_in_hyp_of_type.
+Ltac bottom_up_simpl_in_hyps_if test :=
+  foreach_hyp (bottom_up_simpl_in_hyp_of_type_if test).
 
-Ltac bottom_up_simpl_in_vars := foreach_var bottom_up_simpl_in_letbound_var.
+Ltac bottom_up_simpl_in_vars :=
+  foreach_var bottom_up_simpl_in_letbound_var.
+Ltac bottom_up_simpl_in_vars_if test :=
+  foreach_var (bottom_up_simpl_in_letbound_var_if test).
 
-Ltac bottom_up_simpl_in_hyps_and_vars := bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars.
+Ltac bottom_up_simpl_in_hyps_and_vars :=
+  bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars.
 
 Ltac bottom_up_simpl_in_all :=
-  bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars; try bottom_up_simpl_in_goal.
+  bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars;
+  try bottom_up_simpl_in_goal.
 
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
 Section Tests.
   Set Ltac Backtrace.
+
+  Goal forall a: Z, a = a + 0 -> a = a + 0 -> True.
+    intros ? E_nosimpl E.
+    bottom_up_simpl_in_hyps_if
+      ltac:(fun h t => tryif unify h E_nosimpl then fail else idtac).
+  Abort.
 
   Context {word: word.word 32} {word_ok: word.ok word}.
 

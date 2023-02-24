@@ -118,12 +118,14 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
       assumption. }
 
     .**/ i = i+1; /**.
-    assert (len arrR' = \[n]-\[i]) by (
-      rewrite ? List.len_app in *;
-      rewrite <- ? sort_preserves_length in *;
-      rewrite ? List.len_app in *;
-      rewrite <- ? sort_preserves_length in *;
-      ZnWords).
+    assert (len arrR' = \[n]-\[i]). {
+      purify_heapletwise_hyps.
+      rewrite ? List.len_app in *.
+      rewrite <- ? sort_preserves_length in *.
+      rewrite ? List.len_app in *.
+      rewrite <- ? sort_preserves_length in *.
+      ZnWords.
+    }
 
   (* at this point we can now close the loop *)
   (* because the lengths of left side and right side have been established *)

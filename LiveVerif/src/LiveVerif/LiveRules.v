@@ -444,8 +444,6 @@ Section WithParams.
       (eapply WP_weaken_cmd; [eauto|intros; eauto using invert_wp_cmd]).
   Qed.
 
-  Definition precond(P: Prop) := P.
-
   Definition after_command: list (string * (list string * list string * cmd)) ->
     cmd -> trace -> mem -> locals -> (trace -> mem -> locals -> Prop) -> Prop := wp_cmd.
 
@@ -504,12 +502,12 @@ Section WithParams.
 
   Lemma wp_store_uint: forall fs sz ea ev a v v_old R t m l rest (post: _->_->_->Prop),
       dexpr1 m l ea a
-        (dexpr1 m l ev v (precond
+        (dexpr1 m l ev v
            (0 <= word.unsigned v < 2 ^ access_size_to_nbits sz /\
             sep (uint (access_size_to_nbits sz) v_old a) R m /\
             (forall m,
                 sep (uint (access_size_to_nbits sz) (word.unsigned v) a) R m ->
-                after_command fs rest t m l post)))) ->
+                after_command fs rest t m l post))) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion Hp; clear Hp. destruct Hp0 as (B & H & C).
@@ -631,10 +629,10 @@ Section WithParams.
       (* definition-site format: *)
       (calleePre -> WeakestPrecondition.call fs fname t m argvs calleePost) ->
       (* use-site format: *)
-      dexprs1 m l arges argvs (precond (calleePre /\
+      dexprs1 m l arges argvs (calleePre /\
          forall t' m' retvs, calleePost t' m' retvs ->
            exists l', map.putmany_of_list_zip resnames retvs l = Some l' /\
-                        after_command fs rest t' m' l' finalPost)) ->
+                        after_command fs rest t' m' l' finalPost) ->
       (* conclusion: *)
       wp_cmd fs (cmd.seq (cmd.call resnames fname arges) rest) t m l finalPost.
   Proof.
