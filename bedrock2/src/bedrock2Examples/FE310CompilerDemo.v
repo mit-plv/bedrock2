@@ -10,7 +10,7 @@ Notation MMInput := "MMInput"%string.
 Notation MMOutput := "MMOutput"%string.
 
 From coqutil.Map Require SortedListWord SortedListString Z_keyed_SortedListMap Empty_set_keyed_map.
-From coqutil Require Import Word.Interface Word.Naive String.
+From coqutil Require Import Word.Interface Word.Naive Datatypes.String.
 Require Import coqutil.Word.Bitwidth32.
 Require Import bedrock2.Semantics.
 Import List.ListNotations.

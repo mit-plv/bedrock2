@@ -444,14 +444,11 @@ Section WithParams.
       (eapply WP_weaken_cmd; [eauto|intros; eauto using invert_wp_cmd]).
   Qed.
 
-  Definition after_command: list (string * (list string * list string * cmd)) ->
-    cmd -> trace -> mem -> locals -> (trace -> mem -> locals -> Prop) -> Prop := wp_cmd.
-
   Definition after_loop: list (string * (list string * list string * cmd)) ->
     cmd -> trace -> mem -> locals -> (trace -> mem -> locals -> Prop) -> Prop := wp_cmd.
 
   Lemma wp_set: forall fs x e v t m l rest post,
-      dexpr1 m l e v (after_command fs rest t m (map.put l x v) post) ->
+      dexpr1 m l e v (wp_cmd fs rest t m (map.put l x v) post) ->
       wp_cmd fs (cmd.seq (cmd.set x e) rest) t m l post.
   Proof.
     intros. inversion H. eapply wp_set0; eassumption.
@@ -493,7 +490,7 @@ Section WithParams.
       dexpr1 m l ea a
         (dexpr1 m l ev v
            (sep (uintptr v_old a) R m /\
-            (forall m, sep (uintptr v a) R m -> after_command fs rest t m l post))) ->
+            (forall m, sep (uintptr v a) R m -> wp_cmd fs rest t m l post))) ->
       wp_cmd fs (cmd.seq (cmd.store access_size.word ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion Hp; clear Hp. destruct Hp0 as (H & C).
@@ -507,7 +504,7 @@ Section WithParams.
             sep (uint (access_size_to_nbits sz) v_old a) R m /\
             (forall m,
                 sep (uint (access_size_to_nbits sz) (word.unsigned v) a) R m ->
-                after_command fs rest t m l post))) ->
+                wp_cmd fs rest t m l post))) ->
       wp_cmd fs (cmd.seq (cmd.store sz ea ev) rest) t m l post.
   Proof.
     intros. inversion H; clear H. inversion Hp; clear Hp. destruct Hp0 as (B & H & C).
@@ -632,7 +629,7 @@ Section WithParams.
       dexprs1 m l arges argvs (calleePre /\
          forall t' m' retvs, calleePost t' m' retvs ->
            exists l', map.putmany_of_list_zip resnames retvs l = Some l' /\
-                        after_command fs rest t' m' l' finalPost) ->
+                        wp_cmd fs rest t' m' l' finalPost) ->
       (* conclusion: *)
       wp_cmd fs (cmd.seq (cmd.call resnames fname arges) rest) t m l finalPost.
   Proof.

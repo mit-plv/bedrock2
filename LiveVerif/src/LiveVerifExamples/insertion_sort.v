@@ -85,7 +85,7 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
 
   (* invariants - true at the beginning of the loop *)
   assert (0 <= \[i] <= \[n]) by ZnWords.
-  assert (len arr = \[n]-\[i]) as lenArrR by bottom_up_simpl_sidecond_hook.
+  assert (len arr = \[n]-\[i]) as lenArrR by hwlia.
   assert (len (sort nil) = \[i]) as lenArrL by
       (bottom_up_simpl_in_goal; rewrite sort_nil; auto).
   replace arr with ((sort nil) ++ arr) in H1 by

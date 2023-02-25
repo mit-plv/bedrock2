@@ -46,17 +46,11 @@ Derive swap_subarrays SuchThat (fun_correct! swap_subarrays) As
   step. step. step. step. step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step. step.
   step. step. step. step. step. step. step. step. step. step. step. step. step.
-
-  lazymatch goal with
-  | |- after_command ?fs ?rest ?t ?m ?l ?post =>
-      change (wp_cmd fs rest t m l post)
-  end.
+  step. step. step. step. step.
 
   assert (\[i] <= n) by ZnWords.
 
 (*clear H4 H2 H8 H5 H11 H6 H0.*)
-
-  purify_heapletwise_hyps.
 
 (* why are we getting these
 
@@ -80,7 +74,7 @@ therefore, need to disallow arrays that take up the whole memory space
 
   (*assert (\[/[2] ^* i] <= n) by ZnWords.*)
 
-  clear H4 H2 H8 H5 H11 H6 H0.
+  clear H4 H2 H5 H6 H0.
 
 
 (*

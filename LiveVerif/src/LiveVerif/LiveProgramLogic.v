@@ -1,5 +1,6 @@
 Require Import Coq.ZArith.ZArith. Local Open Scope Z_scope.
 Require Import Coq.micromega.Lia.
+Require Import coqutil.Z.Lia.
 Require Import Coq.Strings.String.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.Tactics.
@@ -14,8 +15,7 @@ Require Import coqutil.Datatypes.RecordSetters.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
-Require Import bedrock2.ZnWords.
-Require Import bedrock2.groundcbv.
+Require Import bedrock2.unzify.
 Require Import bedrock2.ptsto_bytes bedrock2.Scalars.
 Require Import bedrock2.TacticError. Local Open Scope Z_scope.
 Require Import LiveVerif.string_to_ident.
@@ -26,7 +26,7 @@ Require Import bedrock2.HeapletwiseAutoSplitMerge.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.PurifyHeapletwise.
 Require Import bedrock2.bottom_up_simpl_ltac1.
-Require Import bedrock2.ident_starts_with.
+Require Import coqutil.Tactics.ident_ops.
 Require Import bedrock2.Logging.
 Require Import LiveVerif.LiveRules.
 Require Import LiveVerif.PackageContext.
@@ -64,10 +64,10 @@ Qed.
 
 Definition ready{P: Prop} := P.
 
-Ltac bottom_up_simpl_sidecond_hook ::=
-  purify_heapletwise_hyps;
-  try bottom_up_simpl_in_goal;
-  lia.
+(* heapletwise- and word-aware lia, successor of ZnWords *)
+Ltac hwlia := purify_heapletwise_hyps; rzify_lia.
+
+Ltac bottom_up_simpl_sidecond_hook ::= zify_goal; xlia zchecker.
 
 Ltac start :=
   lazymatch goal with
@@ -199,13 +199,14 @@ Ltac prove_concrete_post_pre :=
            | H: ands nil |- _ => clear H
            end;
     cbn [List.app List.firstn List.nth] in *;
+    zify_hyps;
     repeat match goal with
            | |- _ /\ _ => split
            | |- ?x = ?x => reflexivity
            | |- sep _ _ _ => ecancel_assumption
-           | H: _ \/ _ |- _ =>
+           | H: ?P \/ ?Q |- _ =>
                lazymatch allow_all_splits with
-               | true => destruct H
+               | true => tryif (is_lia P; is_lia Q) then fail else destruct H
                end
            | |- exists _, _ => eexists
            end;
@@ -216,10 +217,13 @@ Create HintDb prove_post.
 Ltac prove_concrete_post :=
   prove_concrete_post_pre;
   try congruence;
-  try ZnWords;
-  intuition (congruence || ZnWords || eauto with prove_post).
+  try (zify_goal; xlia zchecker);
+  unzify;
+  intuition (congruence || eauto with prove_post).
 
-Definition final_postcond_marker(P: Prop) := P.
+Definition expect_final_closing_brace(P: Prop) := P.
+Definition prove_final_post(P: Prop) := P.
+Definition after_add_snippet_marker(P: Prop) := P.
 
 Ltac ret retnames :=
   lazymatch goal with
@@ -239,7 +243,7 @@ Ltac ret retnames :=
     eexists; split;
     [ reflexivity
     | lazymatch goal with
-      | |- ?G => change (final_postcond_marker G)
+      | |- ?G => change (expect_final_closing_brace G)
       end ]
   end.
 
@@ -286,12 +290,11 @@ Ltac close_block :=
           end;
           lazymatch goal with
           | |- wp_cmd _ _ _ _ _ _ => ret (@nil String.string)
-          | |- @final_postcond_marker ?g => idtac (* ret was already called *)
+          | |- expect_final_closing_brace ?g => idtac (* ret was already called *)
           end;
           lazymatch goal with
-          | |- @final_postcond_marker ?g => change g
-          end;
-          prove_concrete_post
+          | |- @expect_final_closing_brace ?g => change (prove_final_post g)
+          end
       | _ => fail "Can't end a block here"
       end
   | _ => fail "no scope marker found"
@@ -460,7 +463,7 @@ Ltac add_snippet s :=
       | SStart => start
       | _ => fail "expected {, but got" s
       end
-  | |- final_postcond_marker _ =>
+  | |- expect_final_closing_brace _ =>
       lazymatch s with
       | SEnd => close_block
       | _ => fail "expected }, but got" s
@@ -598,6 +601,15 @@ Ltac conclusion_shape_based_step logger :=
       lazymatch goal with
       | H: scope_marker IfCondition |- pop_scope_marker ?g => clear H; change g
       end
+  | |- after_add_snippet_marker ?G =>
+      change G;
+      purify_heapletwise_hyps;
+      zify_hyps;
+      logger ltac:(fun _ => idtac "purify & zify")
+  | |- @prove_final_post ?g =>
+      logger ltac:(fun _ => idtac "prove_concrete_post");
+      change g;
+      prove_concrete_post
   | |- True =>
       logger ltac:(fun _ => idtac "constructor");
       constructor
@@ -609,7 +621,7 @@ Ltac conclusion_shape_based_step logger :=
       eapply let_to_dlet; make_fresh x; intro x
   | |- forall t' m' (retvs: list ?word),
       _ -> exists l', map.putmany_of_list_zip _ retvs ?l = Some l' /\
-                        after_command _ _ _ _ _ _ =>
+                        wp_cmd _ _ _ _ _ _ =>
       logger ltac:(fun _ => idtac "intro new state after function call");
       let retvsname := fresh retvs in
       intros ? ? retvsname (? & ? & ?);
@@ -641,12 +653,10 @@ Ltac final_program_logic_step logger :=
         end;
         logger ltac:(fun _ => idtac "eexists")
       | match goal with
-        (* We try ZnWords first because it also solves some goals of shape
-           (_ = _) and (_ /\ _) *)
         | |- _ =>
-            purify_heapletwise_hyps;
-            ZnWords; (* TODO replace by better/faster tactic *)
-            logger ltac:(fun _ => idtac "purify_heapletwise_hyps; ZnWords")
+            (* tried first because it also solves some goals of shape (_ = _) and (_ /\ _) *)
+            zify_goal; xlia zchecker;
+            logger ltac:(fun _ => idtac "xlia zchecker")
         | |- _ = _ =>
             eq_prover_hook;
             logger ltac:(fun _ => idtac "eq_prover_hook")
@@ -658,24 +668,19 @@ Ltac final_program_logic_step logger :=
               | |- ?G => change (@ready G)
               end;
               after_command_simpl_hook;
+              unzify;
               unpurify;
-              logger ltac:(fun _ => idtac "after_command_simpl_hook; unpurify and ready")
+              logger ltac:(fun _ =>
+                             idtac "after_command_simpl_hook; unpurify; unzify and ready")
         end ].
 
-(* needs to run before merging because before merging, some interesting hypotheses
-   are exposed that will get purified into useful facts to prove sideconditions *)
-Ltac program_logic_step_before_merging logger :=
-  lazymatch goal with
-  | |- after_command ?fs ?rest ?t ?m ?l ?post =>
-      logger ltac:(fun _ => idtac "purify_heapletwise_hyps (before merging)");
-      change (wp_cmd fs rest t m l post);
-      purify_heapletwise_hyps;
-      (* to make them more usable for lia (though our zify would do that too),
-         to make them more readable while debugging,
-         and for those that are trivial (eg len [|a; b|] = 2), to make their
-         triviality more obvious so that they will get cleared for being trivial *)
-      bottom_up_simpl_in_hyps_if ltac:(fun h tp => ident_starts_with __pure_ h)
-  end.
+Ltac purify_and_zify_hyp h :=
+  let t := type of h in
+  let wok := get_word_ok_or_dummy in
+  purify_heapletwise_hyp_of_type_cont ltac:(zify_hyp wok) h t;
+  apply_range_bounding_lemma_in_eqs.
+
+Ltac new_heapletwise_hyp_hook h ::= purify_and_zify_hyp h.
 
 Ltac heapletwise_step' logger :=
   heapletwise_step;
@@ -697,7 +702,6 @@ Ltac merge_step' logger :=
 Ltac step0 logger :=
   first [ heapletwise_step' logger
         | conclusion_shape_based_step logger
-        | program_logic_step_before_merging logger
         | split_step' logger
         | merge_step' logger
         | final_program_logic_step logger ].
@@ -709,7 +713,7 @@ Ltac step :=
 Ltac step_is_done :=
   lazymatch goal with
   | |- @ready _ => idtac
-  | |- @final_postcond_marker _ => idtac
+  | |- @expect_final_closing_brace _ => idtac
   | |- don't_know_how_to_prove_equal _ _ => idtac
   | |- after_if _ _ _ _ _ _ => idtac
   | |- after_loop _ _ _ _ _ _ => idtac
@@ -734,7 +738,11 @@ Ltac next_snippet s :=
   | |- after_loop ?fs ?rest ?t ?m ?l ?post => after_loop_cleanup; run_steps_internal_hook
   | |- _ => idtac
   end;
-  add_snippet s.
+  add_snippet s;
+  lazymatch goal with
+  | |- ?G => change (after_add_snippet_marker G)
+  end.
+
 
 (* Standard usage:   .**/ snippet /**.    *)
 Tactic Notation ".*" constr(s) "*" := next_snippet s; run_steps_internal_hook.

@@ -18,7 +18,7 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
 {                                                                          /**. .**/
   uintptr_t i = 0;                                                         /**.
 
-  assert (len bs = \[n]) as lenbs by bottom_up_simpl_sidecond_hook.
+  assert (len bs = \[n]) as lenbs by hwlia.
   let h := lazymatch goal with h: _ |= array _ _ _ _ |- _ => h end in
   replace bs with (List.repeatz \[b] \[i] ++ bs[\[i]:]) in h
       by (subst i; (* TODO heurisits for when to inline vars *)
