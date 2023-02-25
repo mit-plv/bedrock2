@@ -1,3 +1,4 @@
+Require Import Coq.Program.Equality.
 Require Import PyLevelLang.Language.
 Require Import PyLevelLang.Interpret.
 Require Import coqutil.Map.Interface coqutil.Map.Properties coqutil.Tactics.Tactics.
@@ -69,6 +70,112 @@ Section WithMap.
     - destruct (as_const e1); destruct (as_const e2); try easy.
       injection H as H. rewrite <- H. simpl. rewrite IHe1 with (c:=i), IHe2 with (c:=i0); easy.
   Qed.
+
+  Axiom cheat : forall {t}, t.
+
+  Definition fold_unop_minimal {t1 t2 : type} (o : unop t1 t2) : expr t1 -> expr t2 :=
+    match o with
+    | ONeg => fun en => match en with
+                        | EAtom (AInt n) => EAtom (AInt (-n))
+                        | en' => EUnop ONeg en'
+                        end
+    | o => fun e => EUnop o e
+    end.
+
+  Lemma fold_unop_correct_minimal {t1 t2 : type} (l : locals) (o : unop t1 t2) (e : expr t1)
+    : interp_expr l (EUnop o e) = interp_expr l (fold_unop_minimal o e).
+  Proof.
+    induction e; try destruct o; simpl; try reflexivity.
+
+    - dependent destruction a. reflexivity.
+
+    - dependent destruction o. reflexivity.
+  Qed.
+
+  Fail Definition fold_unop_type {t1 t2 : type} (o : unop t1 t2) : expr t1 -> Type := 
+    match o in unop t1' t2' return expr t1' -> Type with
+    | ONeg => fun en => match en with
+                        | EAtom (AInt n) => expr TInt
+                        | EVar TInt s => expr TInt
+                        | ELoc TInt s => expr TInt
+                        end
+    | ONeg => fun en => match en with
+                        | EAtom (AInt n) => expr t2
+                        | _ => unit
+                        end
+    | _ => fun e => unit
+    end.
+
+  Fixpoint fold_unop {t1 t2 : type} (o : unop t1 t2) : expr t1 -> expr t2 :=
+    match o with
+    | ONeg => fun en => match en with 
+                        | EAtom (AInt n) => EAtom (AInt (-n))
+                        | en' => EUnop ONeg en'
+                        end
+    | ONot => fun eb => match eb with 
+                        | EAtom (ABool b) => EAtom (ABool (negb b))
+                        | eb' => EUnop ONot eb'
+                        end
+    | OLength t => fun (el : expr (TList t)) => 
+        match el in expr t' return (match t' with 
+                                   | TList t => expr TInt
+                                   | _ => unit
+                                   end)
+          with 
+        | @EBinop _ _ (TList t) (OCons _) eh et => EBinop OPlus (EAtom (AInt 1)) (fold_unop (OLength _) et) 
+        | EVar (TList t) s => EUnop (OLength t) (EVar (TList t) s)
+        | ELoc (TList t) s => EUnop (OLength t) (ELoc (TList t) s)
+        | @EAtom (TList t) a => EUnop (OLength t) (EAtom a)
+        | @EUnop _ (TList t) o' e1 => EUnop (OLength t) (EUnop o' e1)
+        | @EFlatmap t e1 x e2 => EUnop (OLength t) (EFlatmap e1 x e2)
+        | @EIf (TList t) e1 e2 e3 => EUnop (OLength t) (EIf e1 e2 e3)
+        | @ELet _ (TList t) x e1 e2 => EUnop (OLength t) (ELet x e1 e2)
+        | @EBinop _ _ (TList t) o1 e1 e2 => cheat
+        | _ => tt
+         end
+    | OLengthString => cheat
+    | OFst s t1 t2 => fun (el : expr (TPair s t1 t2)) => 
+        match el in expr t' return (match t' with 
+                                   | TPair s t1 t2 => expr t1
+                                   | _ => unit
+                                   end)
+          with 
+        | EBinop (OPair _ _ _ ) ef es => ef
+        | EVar (TPair s t1 t2) x => EUnop (OFst _ _ _) (EVar _ x)
+        | ELoc (TPair s t1 t2) x => EUnop (OFst _ _ _) (ELoc _ x)
+        | @EAtom (TPair s t1 t2) a => EUnop (OFst _ _ _) (EAtom a)
+        | @EUnop _ (TPair s t1 t2) o' e1 => EUnop (OFst _ _ _) (EUnop o' e1)
+        | @EIf (TPair s t1 t2) e1 e2 e3 => EUnop (OFst _ _ _) (EIf e1 e2 e3)
+        | @ELet _ (TPair s t1 t2) x e1 e2 => EUnop (OFst _ _ _) (ELet x e1 e2)
+        | @EBinop _ _ (TPair s t1 t2) o1 e1 e2 => cheat
+        | _ => tt
+         end
+    | OSnd _ _ _ => cheat
+    end.
+
+  Lemma fold_unop_correct {t1 t2 : type} (l : locals) (o : unop t1 t2) (e : expr t1)
+    : interp_expr l (EUnop o e) = interp_expr l (fold_unop o e).
+  Proof.
+    induction e; try destruct o; simpl; try easy.
+    + destruct a.
+    + admit.
+  Admitted.
+
+  Definition fold_binop {t1 t2 t3 : type} (o : binop t1 t2 t3) : expr t1 -> expr t2 -> expr t3 :=
+    fun e1 e2 => EBinop o e1 e2.
+  Admitted.
+
+  Fixpoint constant_folding {t : type} (e : expr t) : expr t :=
+    match e with
+    | EVar _ x => EVar _ x
+    | ELoc _ x => ELoc _ x
+    | EAtom a => EAtom a
+    | EUnop o e1 => fold_unop o (constant_folding e1)
+    | EBinop o e1 e2 => fold_binop o (constant_folding e1) (constant_folding e2)
+    | EFlatmap e1 x e2 => EFlatmap (constant_folding e1) x (constant_folding e2)
+    | EIf e1 e2 e3 => EIf (constant_folding e1) (constant_folding e2) (constant_folding e3)
+    | ELet x e1 e2 => ELet x (constant_folding e1) (constant_folding e2)
+    end.
 
   Fixpoint constant_folding' {t : type} (e : expr t) : expr t * option (interp_type t) :=
     match e with
