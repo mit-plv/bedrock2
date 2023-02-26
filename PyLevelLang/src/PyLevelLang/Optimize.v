@@ -71,8 +71,6 @@ Section WithMap.
       injection H as H. rewrite <- H. simpl. rewrite IHe1 with (c:=i), IHe2 with (c:=i0); easy.
   Qed.
 
-  Axiom cheat : forall {t}, t.
-
   Definition fold_unop_minimal {t1 t2 : type} (o : unop t1 t2) : expr t1 -> expr t2 :=
     match o with
     | ONeg => fun en => match en with
@@ -92,78 +90,54 @@ Section WithMap.
     - dependent destruction o. reflexivity.
   Qed.
 
-  Fail Definition fold_unop_type {t1 t2 : type} (o : unop t1 t2) : expr t1 -> Type := 
-    match o in unop t1' t2' return expr t1' -> Type with
-    | ONeg => fun en => match en with
-                        | EAtom (AInt n) => expr TInt
-                        | EVar TInt s => expr TInt
-                        | ELoc TInt s => expr TInt
-                        end
-    | ONeg => fun en => match en with
-                        | EAtom (AInt n) => expr t2
-                        | _ => unit
-                        end
-    | _ => fun e => unit
-    end.
+  Definition invert_EPair {X A B} (e : expr (TPair X A B)) : option (expr A * expr B) :=
+    match e in expr t
+    return option match t with TPair _ A' B' => expr A' * expr B' | _ => Empty_set end
+    with @EBinop _a _b _ab op e1 e2 =>
+       match op in binop a b t
+       return expr a -> expr b -> option match t with TPair _ A' B' => expr A' * expr B' | _ => Empty_set end
+       with OPair s a b => fun e1' e2' => Some (e1', e2') | _ => fun _ _ => None
+       end e1 e2
+    | _ => None end.
 
-  Fixpoint fold_unop {t1 t2 : type} (o : unop t1 t2) : expr t1 -> expr t2 :=
-    match o with
-    | ONeg => fun en => match en with 
-                        | EAtom (AInt n) => EAtom (AInt (-n))
-                        | en' => EUnop ONeg en'
-                        end
-    | ONot => fun eb => match eb with 
-                        | EAtom (ABool b) => EAtom (ABool (negb b))
-                        | eb' => EUnop ONot eb'
-                        end
-    | OLength t => fun (el : expr (TList t)) => 
-        match el in expr t' return (match t' with 
-                                   | TList t => expr TInt
-                                   | _ => unit
-                                   end)
-          with 
-        | @EBinop _ _ (TList t) (OCons _) eh et => EBinop OPlus (EAtom (AInt 1)) (fold_unop (OLength _) et) 
-        | EVar (TList t) s => EUnop (OLength t) (EVar (TList t) s)
-        | ELoc (TList t) s => EUnop (OLength t) (ELoc (TList t) s)
-        | @EAtom (TList t) a => EUnop (OLength t) (EAtom a)
-        | @EUnop _ (TList t) o' e1 => EUnop (OLength t) (EUnop o' e1)
-        | @EFlatmap t e1 x e2 => EUnop (OLength t) (EFlatmap e1 x e2)
-        | @EIf (TList t) e1 e2 e3 => EUnop (OLength t) (EIf e1 e2 e3)
-        | @ELet _ (TList t) x e1 e2 => EUnop (OLength t) (ELet x e1 e2)
-        | @EBinop _ _ (TList t) o1 e1 e2 => cheat
-        | _ => tt
-         end
-    | OLengthString => cheat
-    | OFst s t1 t2 => fun (el : expr (TPair s t1 t2)) => 
-        match el in expr t' return (match t' with 
-                                   | TPair s t1 t2 => expr t1
-                                   | _ => unit
-                                   end)
-          with 
-        | EBinop (OPair _ _ _ ) ef es => ef
-        | EVar (TPair s t1 t2) x => EUnop (OFst _ _ _) (EVar _ x)
-        | ELoc (TPair s t1 t2) x => EUnop (OFst _ _ _) (ELoc _ x)
-        | @EAtom (TPair s t1 t2) a => EUnop (OFst _ _ _) (EAtom a)
-        | @EUnop _ (TPair s t1 t2) o' e1 => EUnop (OFst _ _ _) (EUnop o' e1)
-        | @EIf (TPair s t1 t2) e1 e2 e3 => EUnop (OFst _ _ _) (EIf e1 e2 e3)
-        | @ELet _ (TPair s t1 t2) x e1 e2 => EUnop (OFst _ _ _) (ELet x e1 e2)
-        | @EBinop _ _ (TPair s t1 t2) o1 e1 e2 => cheat
-        | _ => tt
-         end
-    | OSnd _ _ _ => cheat
-    end.
+  Definition invert_ECons_nt_cps {A R} (k : forall A, expr A -> expr (TList A) -> R) (e : expr (TList A)) : option R :=
+    match e in expr t return option R
+    with @EBinop _a _b _ab op e1 e2 =>
+       match op in binop a b t
+       return expr a -> expr b -> option R
+       with OCons _ => fun e1' e2' => Some (k _ e1' e2') | _ => fun _ _ => None
+       end e1 e2
+    | _ => None end.
+
+  (* Is [binop] used outside expr? If not, switching it from an three-indexed
+  * type to a type with type-valued accessors for the two inputs may make it
+  * easier to define functions such as the above. This choice less common, though. *)
+
+  Fixpoint fold_unop {t1 t2 : type} (o : unop t1 t2) (e : expr t1) {struct e} : expr t2 :=
+    let oe2 : option (expr t2) :=
+      match o in unop t1 t2 return expr t1 -> option (expr t2) with
+      | (ONeg|ONot) as o => fun e => option_map (reify _) (option_map (interp_unop o) (as_const e))
+      (* IMO the following cases constitute partial evaluation but not constant
+        folding. In particular, recursion is not needed for constant folding. *)
+      | OLength t => invert_ECons_nt_cps (fun _ eh et =>
+          EBinop OPlus (EAtom (AInt 1)) (@fold_unop _ _ (OLength _) et))
+      | OFst s t1 t2 => fun e => option_map fst (invert_EPair e)
+      | OSnd s t1 t2 => fun e => option_map snd (invert_EPair e)
+      | _ => fun _ => None
+      end e in
+    match oe2 with Some x => x | _ => EUnop o e end.
 
   Lemma fold_unop_correct {t1 t2 : type} (l : locals) (o : unop t1 t2) (e : expr t1)
     : interp_expr l (EUnop o e) = interp_expr l (fold_unop o e).
   Proof.
-    induction e; try destruct o; simpl; try easy.
-    + destruct a.
+    induction e; try destruct o; cbn [fold_unop interp_expr].
+    (* still 43 cases after the factoring so far *)
+    + destruct as_const eqn:Hi; cbn in Hi; try apply as_const_correct in Hi; try discriminate; rewrite ?Hi; trivial.
     + admit.
   Admitted.
 
   Definition fold_binop {t1 t2 t3 : type} (o : binop t1 t2 t3) : expr t1 -> expr t2 -> expr t3 :=
     fun e1 e2 => EBinop o e1 e2.
-  Admitted.
 
   Fixpoint constant_folding {t : type} (e : expr t) : expr t :=
     match e with
