@@ -71,24 +71,28 @@ Section WithMap.
       injection H as H. rewrite <- H. simpl. rewrite IHe1 with (c:=i), IHe2 with (c:=i0); easy.
   Qed.
 
-  Definition fold_unop_minimal {t1 t2 : type} (o : unop t1 t2) : expr t1 -> expr t2 :=
-    match o with
-    | ONeg => fun en => match en with
-                        | EAtom (AInt n) => EAtom (AInt (-n))
-                        | en' => EUnop ONeg en'
-                        end
-    | o => fun e => EUnop o e
+  Definition constfold_head {t} (e : expr t) : expr t :=
+    (* This is constant folding. If you don't want to do it for lists,
+    * strings, and pairs, match on a bool here. *)
+    match as_const e with
+    | Some v => reify _ v
+    | _ => e
     end.
 
-  Lemma fold_unop_correct_minimal {t1 t2 : type} (l : locals) (o : unop t1 t2) (e : expr t1)
-    : interp_expr l (EUnop o e) = interp_expr l (fold_unop_minimal o e).
+  Lemma constfold_head_correct l {t} e :
+    interp_expr l (@constfold_head t e) = interp_expr l e.
   Proof.
-    induction e; try destruct o; simpl; try reflexivity.
-
-    - dependent destruction a. reflexivity.
-
-    - dependent destruction o. reflexivity.
+    cbv [constfold_head].
+    case as_const eqn:?; try erewrite reify_correct, as_const_correct; auto.
   Qed.
+
+  Fixpoint eLength {t : type} (e : expr (TList t)) : expr TInt :=
+    match e with
+    | EBinop (OCons t') eh et => EBinop OPlus (EAtom (AInt 1)) (eLength et)
+    | EBinop ORange s e => EBinop OMinus e s
+    | EAtom (ANil _) => EAtom (AInt 0)
+    | _ => EUnop (OLength _) e
+    end.
 
   Definition invert_EPair {X A B} (e : expr (TPair X A B)) : option (expr A * expr B) :=
     match e in expr t
@@ -100,56 +104,62 @@ Section WithMap.
        end e1 e2
     | _ => None end.
 
-  Definition invert_ECons_nt_cps {A R} (k : forall A, expr A -> expr (TList A) -> R) (e : expr (TList A)) : option R :=
-    match e in expr t return option R
-    with @EBinop _a _b _ab op e1 e2 =>
-       match op in binop a b t
-       return expr a -> expr b -> option R
-       with OCons _ => fun e1' e2' => Some (k _ e1' e2') | _ => fun _ _ => None
-       end e1 e2
-    | _ => None end.
+  (* Partial evaluation happens before constant folding *)
+  Definition eUnop {t1 t2 : type} (o : unop t1 t2) (e : expr t1) : expr t2 :=
+    constfold_head (
+    match o in unop t1 t2 return expr t1 -> expr t2 with
+    | OLength t => eLength
+    | OFst s t1 t2 as o => fun e => match invert_EPair e with Some (x, _) => x | _ => EUnop o e end
+    | OSnd s t1 t2 as o => fun e => match invert_EPair e with Some (_, x) => x | _ => EUnop o e end
+    | o => EUnop o
+    end e).
 
-  (* Is [binop] used outside expr? If not, switching it from an three-indexed
-  * type to a type with type-valued accessors for the two inputs may make it
-  * easier to define functions such as the above. This choice less common, though. *)
+  Goal forall s x, eUnop (OLength _) (eUnop (OFst s _ _)
+    (EBinop (OPair s _ _)
+      (EBinop ORange (EAtom (AInt 1)) (EAtom (AInt 5)))
+      (EVar TInt x)))
+  = EAtom (AInt 4).
+  Proof. cbv. solve [trivial]. Abort.
 
-  Fixpoint fold_unop {t1 t2 : type} (o : unop t1 t2) (e : expr t1) {struct e} : expr t2 :=
-    let oe2 : option (expr t2) :=
-      match o in unop t1 t2 return expr t1 -> option (expr t2) with
-      | (ONeg|ONot) as o => fun e => option_map (reify _) (option_map (interp_unop o) (as_const e))
-      (* IMO the following cases constitute partial evaluation but not constant
-        folding. In particular, recursion is not needed for constant folding. *)
-      | OLength t => invert_ECons_nt_cps (fun _ eh et =>
-          EBinop OPlus (EAtom (AInt 1)) (@fold_unop _ _ (OLength _) et))
-      | OFst s t1 t2 => fun e => option_map fst (invert_EPair e)
-      | OSnd s t1 t2 => fun e => option_map snd (invert_EPair e)
-      | _ => fun _ => None
-      end e in
-    match oe2 with Some x => x | _ => EUnop o e end.
-
-  Lemma fold_unop_correct {t1 t2 : type} (l : locals) (o : unop t1 t2) (e : expr t1)
-    : interp_expr l (EUnop o e) = interp_expr l (fold_unop o e).
+  Lemma invert_EPair_correct {X A B} e e1 e2 :
+    @invert_EPair X A B e = Some (e1, e2)
+    <-> e = EBinop (OPair X A B) e1 e2.
   Proof.
-    induction e; try destruct o; cbn [fold_unop interp_expr].
-    (* still 43 cases after the factoring so far *)
-    + destruct as_const eqn:Hi; cbn in Hi; try apply as_const_correct in Hi; try discriminate; rewrite ?Hi; trivial.
-    + admit.
+    clear dependent locals.
+    dependent induction e; cbn; intuition try congruence;
+    dependent induction o; inversion H; congruence.
+  Qed.
+
+  Lemma EUnop_correct {t1 t2 : type} (l : locals) (o : unop t1 t2) (e : expr t1)
+    : interp_expr l (eUnop o e) = interp_expr l (EUnop o e).
+  Proof.
+    cbv [eUnop]; rewrite constfold_head_correct; case o in *; trivial.
+    { admit. }
+    { destruct invert_EPair as [[]|] eqn:H; try apply invert_EPair_correct in H; rewrite ?H; trivial. }
+    { admit. }
   Admitted.
 
-  Definition fold_binop {t1 t2 t3 : type} (o : binop t1 t2 t3) : expr t1 -> expr t2 -> expr t3 :=
-    fun e1 e2 => EBinop o e1 e2.
-
-  Fixpoint constant_folding {t : type} (e : expr t) : expr t :=
+  Definition partial_head {t} (e : expr t) : expr t :=
     match e with
-    | EVar _ x => EVar _ x
-    | ELoc _ x => ELoc _ x
-    | EAtom a => EAtom a
-    | EUnop o e1 => fold_unop o (constant_folding e1)
-    | EBinop o e1 e2 => fold_binop o (constant_folding e1) (constant_folding e2)
-    | EFlatmap e1 x e2 => EFlatmap (constant_folding e1) x (constant_folding e2)
-    | EIf e1 e2 e3 => EIf (constant_folding e1) (constant_folding e2) (constant_folding e3)
-    | ELet x e1 e2 => ELet x (constant_folding e1) (constant_folding e2)
+    | EUnop o e1 => eUnop o e1
+    | e => e
     end.
+
+  Section fold_expr.
+    Context (f : forall {t}, expr t -> expr t). Local Arguments f {_}.
+    Fixpoint fold_expr {t : type} (e : expr t) : expr t :=
+      f
+      match e in expr t return expr t with
+      | EUnop o e1 => EUnop o (fold_expr e1)
+      | EBinop o e1 e2 => EBinop o (fold_expr e1) (fold_expr e2)
+      | EFlatmap e1 x e2 => EFlatmap (fold_expr e1) x (fold_expr e2)
+      | EIf e1 e2 e3 => EIf (fold_expr e1) (fold_expr e2) (fold_expr e3)
+      | ELet x e1 e2 => ELet x (fold_expr e1) (fold_expr e2)
+      | (EVar _ _ | ELoc _ _ | EAtom _) as e => e
+      end.
+  End fold_expr.
+
+  Definition partial {t : type} := @fold_expr (@partial_head) t.
 
   Fixpoint constant_folding' {t : type} (e : expr t) : expr t * option (interp_type t) :=
     match e with
