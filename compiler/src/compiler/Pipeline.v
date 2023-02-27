@@ -256,7 +256,8 @@ Section WithWordAndMem.
       eapply map.try_map_values_bw in E. 2: eassumption.
       fwd.
       eapply map.get_forall_success in E0. 2: eassumption.
-      unfold lookup_and_check_func, check_func, assert in *. fwd.
+      unfold lookup_and_check_func, check_func, assert in *.
+      destruct v1 as ((args1 & rets1) & body1). fwd.
       rewrite <- E1, <- E4.
       split; apply List.NoDup_dedup.
     Qed.

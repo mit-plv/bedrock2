@@ -37,7 +37,14 @@ Derive u_min3 SuchThat (fun_correct! u_min3) As u_min3_ok.                      
   uintptr_t r = u_min(a, b);                                               /**. .**/
   uintptr_t s = u_min(r, c);                                               /**. .**/
   return s;                                                                /**. .**/
-}                                                                          /**.
+}                                                                          /*?.
+
+(* TODO automate *)
+step. step. step.
+all: zify_goal.
+all: subst r s.
+Import micromega.Lia.
+all: xlia zchecker.
 Qed.
 
 End LiveVerif. Comments .**/ //.
