@@ -13,6 +13,7 @@ Inductive sorted : list Z -> Prop :=
     sorted [| x |]
 | sorted_cons : forall x y l,
     x <= y -> sorted (y :: l) -> sorted (x :: y :: l).
+
 Parameter sort : list Z -> list Z.
 Axiom sort_sorted : forall l l', sort l = l' -> sorted l'.
 Axiom sort_perm : forall l l', sort l = l' -> Permutation l l'.
@@ -21,14 +22,20 @@ Axiom sort_preserves_length : forall l, len l = len (sort l).
 Axiom sort_app_preserves_length : forall l1 l2,
   len (sort (l1 ++ l2)) = len (sort l1) + len (sort l2).
 
-Axiom sort_can_split : forall l l1 l2,
-  sorted l -> l = l1++l2 -> sorted l1 /\ sorted l2.
-Axiom sort_can_split' : forall l l1 l2,
-  sort l = l1++l2 -> sort l = sort l1 ++ sort l2.
-
 (* Insertion function for insertion sort *)
 (* insert(p, n, i) assumes A[0..(i-1)] is sorted and try to insert A[i],
    so ultimately A[0..i] is sorted. *)
+
+#[export] Instance spec_of_real_insert: fnspec :=                                   .**/
+void real_insert(uintptr_t p, uintptr_t i) /**#
+  ghost_args := (R: mem -> Prop) (l1 : list Z) (x : Z);
+  requires t m := sep (array (uint 32) (\[i]+1) (sort l1 ++ [|x|]) p) R m;
+  ensures t' m' := t' = t /\
+                   sep (array (uint 32) (\[i]+1) (sort (l1 ++ [|x|])) p) R m'
+            #**/ /**.
+Parameter real_insert : function_with_callees.
+Parameter real_insert_ok : program_logic_goal_for "real_insert" real_insert.
+
 #[export] Instance spec_of_insert: fnspec :=                                   .**/
 void insert(uintptr_t p, uintptr_t n, uintptr_t i) /**#
   ghost_args := (R: mem -> Prop) (l1 l2 : list Z) (x : Z);
@@ -38,37 +45,26 @@ void insert(uintptr_t p, uintptr_t n, uintptr_t i) /**#
                    sep (array (uint 32) \[n] (sort (l1 ++ [|x|]) ++ l2) p) R m' /\
                    len (sort (l1 ++ [|x|])) = \[i]+1
             #**/ /**.
-
-Parameter insert : function_with_callees.
-Parameter insert_ok : program_logic_goal_for "insert" insert.
-
-(* Derive insert SuchThat (fun_correct! insert) As insert_ok.
+Derive insert SuchThat (fun_correct! insert) As insert_ok.
 .**/ { /**.
-  .**/ uintptr_t j = i; /**.
-  rewrite <- sort_nil in H2.
-  ltac1:(set (arrL := (sort l1)) in H2).
-  ltac1:(set (arrR := (sort nil)) in H2).
-  assert (sort l1 = arrL ++ arrR).
-  { subst arrL arrR. rewrite sort_nil. rewrite List.app_nil_r. auto. }
-  assert (len arrL = \[j]).
-  { ltac1:(bottom_up_simpl_in_goal). assumption. }
-  assert (len arrR = \[i]-\[j]).
-  { ltac1:(bottom_up_simpl_in_goal). subst arrR. rewrite sort_nil. auto. }
-  assert (Forall (fun v => x < v) arrR).
-  { subst arrR. rewrite sort_nil. auto. }
+  assert (len (sort l1 ++ [|x|]) = \[i]+1) by (rewrite List.len_app; simpl; ZnWords).
+  assert (len l2 = \[n]-\[i]-1).
+  {
+    unfold with_mem, array in H0.
+    step.
+    step.
+    rewrite List.len_app in H3.
+    ZnWords.
+  }
+  assert ((sort l1 ++ [|x|])[:\[i] + 1] = (sort l1 ++ [|x|])).
+  { rewrite List.upto_pastend. reflexivity. ZnWords. }
 
-  ltac1:(loop invariant above arrL).
-  Std.clearbody [ @j; @arrL; @arrR ].
-  rewrite List.assoc_app_cons in H2.
-
-  .**/ while (j > 0 && load32(p+j-1) > load32(p+j))  /* decreases j */ { /**.
-
-  .**/ } /**.
-
-  (* after this loop, we'll know that x fits right in between *)
-  (* therefore sort arrL ++ [|x|] ++ arrR should be sorted. *)
-Qed. *)
-
+  .**/ real_insert(p, i); /**.
+  instantiate (1 := x) in H5.
+  instantiate (1 := l1) in H5.
+.**/ } /**.
+congruence.
+Qed.
 
 (* Insertion sort *)
 #[export] Instance spec_of_insertion_sort: fnspec :=                                   .**/
