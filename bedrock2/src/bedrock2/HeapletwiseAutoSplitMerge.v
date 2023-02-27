@@ -123,7 +123,7 @@ Section SepLog.
           (sep (array elem size vs[i:i+size] a')
         (* final part *)
             (array elem (n-i-size) vs[i+size:]
-              (word.add a' (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * size))))) m)
+              (word.add a' (word.of_Z (elemSize * size))))) m)
 
       /\
 
@@ -134,7 +134,7 @@ Section SepLog.
           (sep (array elem size vsm a')
         (* final part *)
             (array elem (n-i-size) vsr
-              (word.add a' (word.of_Z (word.unsigned (width := width) (word.of_Z elemSize) * size))))) m  ->
+              (word.add a' (word.of_Z (elemSize * size))))) m  ->
 
         array elem n (vsl ++ vsm ++ vsr) a m
       ).
@@ -169,6 +169,9 @@ Section SepLog.
                  (word.of_Z elemSize) * len vs[:i]))) with a' in * by
         (rewrite List.len_upto by ZnWords;
           destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+      replace (word.of_Z (word.unsigned (word.of_Z elemSize) * size))
+        with (word.of_Z (word := word) (elemSize * size)) in * by
+          (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
       repeat heapletwise_step; ZnWords.
     }
     {
@@ -188,6 +191,9 @@ Section SepLog.
                (word.of_Z (word.unsigned (width := width)
                  (word.of_Z elemSize) * len vsl))) with a' in * by
         (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
+      replace (word.of_Z (word.unsigned (word.of_Z elemSize) * len vsm))
+        with (word.of_Z (word := word) (elemSize * len vsm)) in * by
+          (destruct width_cases as [Ew | Ew]; rewrite Ew in *; ZnWords).
 
       collect_heaplets_into_one_sepclause m'.
       repeat heapletwise_step.
