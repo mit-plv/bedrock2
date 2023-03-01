@@ -68,8 +68,6 @@ Section FlattenExpr1.
              | |- context [?x / 4] => unique pose proof (Z.div_pos x 4)
              end;
       try blia.
-    1: { destruct e2 eqn: Ee2.
-         { destruct (literalFitsInBits true v 12) eqn:El. 
   Qed.
 
   Lemma flattenExprAsBoolExpr_size: forall e s bcond ngs ngs',
