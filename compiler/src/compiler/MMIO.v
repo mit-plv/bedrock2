@@ -142,7 +142,7 @@ Section MMIO1.
       (SSeq (SLit addr magicMMIOAddrLit)
             (SLoop (SLoad Syntax.access_size.four i addr 0)
                    (CondNez i)
-                   (SSeq (SOp s Syntax.bopname.add i i)
+                   (SSeq (SOp s Syntax.bopname.add i (Var i))
                          (SStore Syntax.access_size.four addr s 0)))).
 
     Definition compiled: list Instruction :=
