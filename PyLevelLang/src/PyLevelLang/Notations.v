@@ -12,6 +12,7 @@ Declare Scope pylevel_scope.
 Declare Custom Entry py_expr.
 Declare Custom Entry py_comm.
 
+
 Local Open Scope Z_scope.
 Local Open Scope string_scope.
 Local Open Scope list_scope.
@@ -226,50 +227,462 @@ End Tests.
 
 Unset Printing All.
 
-Section Examples.
+
+
+Section Square_Section.
   Instance tenv : map.map string (type * bool) := SortedListString.map _.
   Instance tenv_ok : map.ok tenv := SortedListString.ok _.
 
+  Definition isSquare (n : Z) : pcommand := <{
+     let "n" := n in
+     for "x" in range(0, "n"+1):
+         if "x"*"x" == "n"
+           then "ans" <- true
+           else skip
+           end
+     end
+     }>.
+
+  Definition isSquare_elaborated (n : Z) : command :=
+     Eval simpl in (match (elaborate_command (map.of_list [("ans", (TBool, true))]) (isSquare n)) with
+                    | Success x => x
+                    | _ => _
+                    end
+        ).
+End Square_Section.
+
+
+
+Section WithMap.
+  Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
+  Context { tenv : map.map string (type * bool) }
+          { tenv_ok : map.ok tenv }.
+
+  Goal interp_command map.empty (isSquare_elaborated 0)
+     = (map.put map.empty "ans" (existT interp_type Bool true)).
+  Proof.
+     unfold isSquare_elaborated.
+     simpl.
+
+     unfold get_local, set_local.
+     repeat rewrite map.get_put_same.
+     rewrite map.get_put_diff by congruence.
+
+     simpl.
+     rewrite !map.get_put_same.
+     rewrite !map.get_put_diff by congruence.
+
+     simpl.
+     rewrite !map.get_put_same.
+     repeat rewrite map.get_empty.
+     simpl.
+
+     rewrite map.remove_put_diff by congruence.
+     rewrite map.remove_put_diff by congruence.
+     rewrite map.remove_put_same.
+
+     rewrite map.remove_put_diff by congruence.
+     rewrite map.remove_empty.
+     rewrite map.remove_put_same.
+     rewrite map.remove_empty.
+     reflexivity.
+  Abort.
+
+
+   Lemma last_range : forall (x : Z) (n : nat),
+      eval_range x (S n) = (eval_range x n) ++ [x + Z.of_nat n].
+   Proof.
+      intros. generalize dependent x.
+      induction n.
+      - intros. rewrite Z.add_0_r. reflexivity.
+      - intros.
+        assert (forall (n : nat),
+           eval_range x (S n) = x :: eval_range (x + 1) n).
+        { easy.  }
+        rewrite H. rewrite IHn.  simpl.
+        repeat (try lia; f_equal).
+   Qed.
+
+   Lemma first_range : forall (x : Z) (n : nat),
+      eval_range x (S n) = x :: eval_range (x + 1) n.
+   Proof.
+      easy.
+   Qed.
+
+   Lemma split_range : forall (x : nat) (n : nat),
+      (x <= n)%nat ->
+      eval_range 0 n =
+      eval_range 0 x ++
+      eval_range (Z.of_nat x) (n - x).
+   Proof.
+      intros. induction n.
+      - simpl. destruct x; try easy.
+      - destruct (x =? S n)%nat eqn:x_Sn.
+        + rewrite Nat.eqb_eq in x_Sn. subst.
+          rewrite Nat.sub_diag. simpl.
+          rewrite app_nil_r. reflexivity.
+        + rewrite last_range.
+          rewrite Nat.eqb_neq in x_Sn.
+          assert (NotEq : forall (a b : nat),
+            (a <= S b)%nat -> a <> S b -> (a <= b)%nat).
+            { lia. }
+
+         apply (NotEq _ _ H) in x_Sn.
+         apply IHn in x_Sn as IH.
+         rewrite IH.
+         rewrite <- app_assoc.
+         repeat f_equal.
+
+         rewrite Nat.sub_succ_l; try lia.
+         rewrite last_range.
+         f_equal. f_equal. lia.
+   Qed.
+
+   Lemma Sx_Sq_le : forall (x n : nat),
+      (S x * S x)%nat = n -> (x*x < n)%nat.
+   Proof.
+      intros. induction x; try lia.
+   Qed.
+
+   Lemma x_Sq_pred_neq : forall (x n : nat),
+      (S x * S x)%nat = n -> (x*x)%nat <> n.
+   Proof.
+      intros. induction x; try lia.
+   Qed.
+
+   Lemma cnt_exists : forall x n,
+      (x < n)%nat -> (exists k : nat, n = (x + S k)%nat).
+   Proof.
+      intros. induction n; try easy.
+      destruct (x =? n)%nat eqn:x_eq_n.
+      - apply Nat.eqb_eq in x_eq_n. subst.
+        exists 0%nat. lia.
+      - apply Nat.eqb_neq in x_eq_n.
+        assert (x <> n -> (x < S n)%nat -> (x < n)%nat).
+        { lia. }
+        specialize (IHn (H0 x_eq_n H)).
+        destruct IHn as [k IHk].
+        exists (S k). lia.
+   Qed.
+
+   Lemma small_loop_false : forall x n, (S x * S x = n)%nat ->
+      fold_left (fun (l' : locals) (v : Z) =>
+      if
+       (match
+          map.get (map.put l' "x" (existT interp_type Int v)) "x"
+        with
+        | Some v0 => proj_expected Int v0
+        | None => 0
+        end *
+        match
+          map.get (map.put l' "x" (existT interp_type Int v)) "x"
+        with
+        | Some v0 => proj_expected Int v0
+        | None => 0
+        end =?
+        match
+          map.get (map.put l' "x" (existT interp_type Int v)) "n"
+        with
+        | Some v0 => proj_expected Int v0
+        | None => 0
+        end)%Z
+      then
+       map.put (map.put l' "x" (existT interp_type Int v)) "ans"
+         (existT interp_type Bool true)
+      else map.put l' "x" (existT interp_type Int v))
+     (eval_range 0 (S x))
+     (@map.put string (sigT (fun t : type => interp_type t)) locals
+                 (@map.empty string (@sigT type (fun t : type => interp_type t))
+                     locals)
+                 "n" (existT interp_type TInt (Z.of_nat n)))
+     = map.put (map.put map.empty "n" (existT interp_type Int (Z.of_nat n))) "x" (existT interp_type Int (Z.of_nat x)).
+   Proof.
+      intros x n x_Sq. apply Sx_Sq_le in x_Sq.
+      induction x.
+      - intros. simpl in x_Sq. subst. cbn.
+        rewrite map.get_put_same.
+        rewrite map.get_put_diff by congruence.
+        rewrite map.get_put_same .
+        destruct n; try easy.
+      - intros.
+        rewrite last_range. rewrite fold_left_app.
+
+        destruct ((x * x =? n)%nat) eqn:x_Sq_eq.
+        * rewrite Nat.eqb_eq in x_Sq_eq.
+          subst.
+          assert ((S x * S x < x * x)%nat -> False).
+          { lia. }
+          easy.
+        * assert ((S x * S x < n)%nat -> (x * x =? n) % nat = false
+                     -> (x * x < n)%nat).
+          { lia. }
+          specialize (H x_Sq x_Sq_eq).
+          specialize (IHx H).
+
+          rewrite IHx. clear IHx.
+          cbn.
+
+          rewrite !map.get_put_same.
+          rewrite !map.get_put_diff by congruence.
+          rewrite !map.get_put_same.
+          cbn.
+
+          destruct n; try easy.
+          + cbn.
+            assert ((S x * S x < S n)%nat ->
+                    ((Pos.of_succ_nat x * Pos.of_succ_nat x
+                    =? Pos.of_succ_nat n)%positive = false)).
+           { destruct (Pos.of_succ_nat x * Pos.of_succ_nat x =?
+                        Pos.of_succ_nat n)%positive eqn:S_x_sq.
+             - rewrite Pos.eqb_eq in S_x_sq. lia.
+             - lia.
+           }
+           specialize (H0 x_Sq).
+           rewrite H0.
+
+           rewrite map.put_put_same.
+           reflexivity.
+   Qed.
+
+   Lemma large_loop_true : forall x k,
+      (fold_left
+        (fun (l' : locals) (v : Z) =>
+         if
+          (match map.get (map.put l' "x" (existT interp_type Int v)) "x" with
+           | Some v0 => proj_expected Int v0
+           | None => 0
+           end *
+           match map.get (map.put l' "x" (existT interp_type Int v)) "x" with
+           | Some v0 => proj_expected Int v0
+           | None => 0
+           end =?
+           match map.get (map.put l' "x" (existT interp_type Int v)) "n" with
+           | Some v0 => proj_expected Int v0
+           | None => 0
+           end)%Z
+         then
+          map.put (map.put l' "x" (existT interp_type Int v)) "ans"
+            (existT interp_type Bool true)
+         else map.put l' "x" (existT interp_type Int v))
+        (eval_range (Z.pos (Pos.of_succ_nat x + 1)) (S k))
+        (map.put
+           (map.put
+              (map.put map.empty "n"
+                 (existT interp_type Int (Z.pos (Pos.of_nat (S x * S x)))))
+              "ans" (existT interp_type Bool true)) "x"
+           (existT interp_type Int (Z.pos (Pos.of_succ_nat x))))
+      = map.put (map.put (map.put map.empty "ans" (existT interp_type Bool true)) "x"
+        (existT interp_type Int
+           match Z.of_nat k with
+           | 0 => Z.pos (Pos.of_succ_nat x + 1)
+           | Z.pos y' => Z.pos (Pos.of_succ_nat x + 1 + y')
+           | Z.neg y' => Z.pos_sub (Pos.of_succ_nat x + 1) y'
+           end)) "n"
+        (existT interp_type Int
+           (Z.pos
+              match (x + x * S x)%nat with
+              | 0%nat => 1
+              | S _ => Pos.succ (Pos.of_nat (x + x * S x))
+              end))).
+   Proof.
+      intros. induction k.
+      - simpl eval_range.
+        simpl fold_left.
+        rewrite map.put_put_same.
+        rewrite map.get_put_same.
+        rewrite (map.put_put_diff _ "n" "ans") by congruence.
+        rewrite (map.put_put_diff _ "n" "x") by congruence.
+        rewrite map.get_put_same.
+
+        simpl.
+        destruct (
+           ((Pos.of_succ_nat x + 1) * (Pos.of_succ_nat x + 1) =?
+            match (x + x * S x)%nat with
+            | 0%nat => 1
+            | S _ => Pos.succ (Pos.of_nat (x + x * S x))
+            end)%positive); try reflexivity.
+         rewrite (map.put_put_diff _ "ans" "x") by congruence.
+         rewrite map.put_put_diff by congruence.
+         rewrite map.put_put_same.
+         rewrite (map.put_put_diff _ "ans" "x") by congruence.
+         reflexivity.
+      - rewrite last_range. rewrite fold_left_app.
+        rewrite IHk. clear IHk.
+        simpl.
+
+        rewrite map.get_put_same.
+        rewrite (map.put_put_diff _ "n" "x") by congruence.
+        rewrite map.get_put_same.
+        cbn.
+
+        destruct (
+           ((Pos.of_succ_nat x + 1 + Pos.of_succ_nat k) *
+            (Pos.of_succ_nat x + 1 + Pos.of_succ_nat k) =?
+            match (x + x * S x)%nat with
+            | 0%nat => 1
+            | S _ => Pos.succ (Pos.of_nat (x + x * S x))
+            end)%positive).
+
+        * rewrite map.put_put_diff by congruence.
+          rewrite map.put_put_same.
+          rewrite (map.put_put_diff _ "x" "ans") by congruence.
+          rewrite map.put_put_same.
+          reflexivity.
+        * rewrite map.put_put_diff by congruence.
+
+          rewrite (map.put_put_diff _ "x" "n") by congruence.
+          rewrite map.put_put_same.
+          rewrite (map.put_put_diff _ "x" "n") by congruence.
+          reflexivity.
+    Qed.
+
+
+   Theorem is_square_exists : forall (n : nat),
+      (exists (x : nat), (x*x)%nat = n) ->
+      interp_command map.empty (isSquare_elaborated (Z.of_nat n))
+      = (map.put map.empty "ans" (existT interp_type Bool true)).
+   Proof.
+      intros n [x xSq].
+
+      simpl.
+
+      unfold set_local.
+      rewrite map.get_put_diff by congruence.
+      rewrite !map.get_empty.
+
+      unfold get_local.
+      rewrite map.get_put_same.
+      simpl.
+
+      assert (x_leq_Sn : (x <= Z.to_nat (Z.of_nat n + 1 - 0))%nat).
+      { replace (Z.of_nat n + 1 - 0) with (Z.of_nat (S n)) by lia.
+         rewrite <- xSq.
+         rewrite Nat2Z.id.
+         induction x; try lia.
+      }
+
+      rewrite (split_range x); try assumption.
+      rewrite fold_left_app.
+      generalize dependent n.
+      destruct x.
+      - intros. subst. simpl.
+        rewrite map.get_put_same.
+        rewrite map.get_put_diff by congruence.
+        rewrite map.get_put_same.
+        cbn.
+        rewrite map.remove_put_diff by congruence.
+        rewrite map.remove_put_same.
+        rewrite !map.remove_put_diff by congruence.
+        rewrite !map.remove_put_same.
+        rewrite map.remove_empty.
+        rewrite map.remove_empty.
+        reflexivity.
+      - intros.
+        specialize (small_loop_false _ _ xSq) as IH.
+        rewrite IH. clear IH.
+
+         cbn.
+         replace ((Z.to_nat (Z.of_nat n + 1 - 0) - S x)%nat) with (n - x)%nat by lia.
+         assert (first_range : forall x n, eval_range x (S n) = x :: eval_range (x + 1) n).
+            { easy. }
+
+         assert (x_le_n : (S x * S x)%nat = n -> (x < n)%nat).
+         { lia. }
+
+         destruct (cnt_exists _ _ (x_le_n xSq)) as [k x_plus_k].
+         rewrite x_plus_k.
+
+         assert ((x + S k - x)%nat = (S k)).
+         { lia. } rewrite H. clear H.
+
+         rewrite first_range.
+
+         simpl.
+         rewrite map.get_put_same.
+         rewrite map.get_put_diff by congruence.
+         rewrite map.get_put_diff by congruence.
+         rewrite map.get_put_same.
+         cbn.
+
+         rewrite <- x_plus_k.
+         destruct n; try lia.
+         simpl.
+
+         assert (((Pos.of_succ_nat x * Pos.of_succ_nat x)%positive
+                  = Pos.of_nat (S x * S x)%nat)).
+         { lia. }
+         rewrite H. clear H.
+
+         rewrite (Pos.of_nat_succ n).
+         rewrite <- xSq.
+
+         assert((Pos.of_nat (S x * S x) =? Pos.of_nat (S x * S x))%positive
+               = true).
+         { rewrite Pos.eqb_eq. lia. }
+
+         rewrite H. clear H.
+         rewrite map.put_put_same.
+         rewrite map.put_put_diff by congruence.
+
+         destruct k.
+         * simpl.
+           rewrite !map.remove_put_same.
+           rewrite !map.remove_put_diff by congruence.
+           rewrite map.remove_put_same by congruence.
+           rewrite !map.remove_empty.
+           reflexivity.
+         * rewrite large_loop_true.
+           rewrite map.put_put_diff by congruence.
+           rewrite map.remove_put_same.
+           rewrite (map.remove_put_diff) by congruence.
+           rewrite map.remove_put_same.
+           rewrite map.remove_put_diff by congruence.
+           rewrite map.remove_empty.
+           rewrite map.remove_put_diff by congruence.
+           rewrite map.remove_empty.
+           reflexivity.
+   Qed.
+
+End WithMap.
+
+
+
+Section Examples.
   Instance locals : map.map string {t & interp_type t} := SortedListString.map _.
   Instance locals_ok : map.ok locals := SortedListString.ok _.
 
-  Definition elaborate_interpret (l : locals) (pc : pcommand) : result locals :=
-    c <- elaborate_command (map.map_values (fun x => (projT1 x, true)) l) pc;;
-    Success (interp_command l c).
-
-  Definition set_local (l : locals) {t : type} (x : string) (v : interp_type t) :
-    locals := map.put l x (existT _ _ v).
-
-  Fixpoint init_locals (vars : list (string * type)) :=
+  Fixpoint init_locals (vars : list (string * type)) : locals :=
      match vars with
      | [] => map.empty
-     | (x, t) :: xs => @set_local (init_locals xs) t x (default_val t)
+     | (x, t) :: xs => set_local (init_locals xs) x (default_val t)
      end.
 
-  Definition run_program (init : locals) (pc : pcommand) :=
-   match elaborate_interpret init pc with
-       | Success x => Success x.(SortedList.value)
-       | Failure e => Failure e
-       end.
+  Definition run_program (init : list (string * (type * bool))) (pc : pcommand)
+     := let locals_map := init_locals (map (fun x => match x with
+                                                    | (x, (t, _)) => (x, t)
+                                                    end) init)
+     in c <- @elaborate_command tenv (map.of_list init) pc;;
+        Success (SortedList.value (interp_command locals_map c)).
 
-  Goal run_program (init_locals [("a", TInt)]) <{ "a" <- 5 }> = Success [("a", existT interp_type TInt 5)].
+
+  Goal run_program [("a", (TInt, true))] <{ "a" <- 5 }> = Success [("a", existT interp_type TInt 5)].
   reflexivity.  Abort.
 
-  Goal run_program (init_locals [("a", TInt)]) <{
+  Goal run_program [("a", (TInt, true))] <{
      let "b" := 100 in
      "a" <- 5 + "b";
      "a" <- "a" + 1
   }> = Success [("a", existT interp_type TInt 106)].
   reflexivity.  Abort.
 
-  Goal run_program (init_locals [("y", TInt)]) <{
+  Goal run_program [("y", (TInt, true))] <{
      let mut "a" := 2 in
      "a" <- (let "x" := 5 in "x"*"a");
      "y" <- "a"
   }> = Success [("y", existT interp_type TInt 10)].
   reflexivity. Abort.
 
-  Goal run_program (init_locals [("x", TInt)]) <{
+  Goal run_program [("x", (TInt, true))] <{
      "x" <- 5;
      (let "y" := ("x" - 2) in
          "x" <- "y" * 100
@@ -277,42 +690,42 @@ Section Examples.
   }> = Success [("x", existT interp_type TInt 300)].
   reflexivity. Abort.
 
-  Goal run_program (init_locals [("o", TInt)]) <{
+  Goal run_program [("o", (TInt, true))] <{
      "o" <- let "x" := 2 in "x"
   }> = Success [("o", existT _ TInt 2)].
   Proof. reflexivity. Abort.
 
-  Goal run_program (init_locals [("o", TInt)]) <{
+  Goal run_program [("o", (TInt, true))] <{
      "o" <- let "x" := 2 in "x"+3*100
   }> = Success [("o", existT _ TInt 302)].
   Proof. reflexivity. Abort.
 
-  Goal run_program (init_locals [("o", TBool)]) <{
+  Goal run_program [("o", (TBool, true))] <{
      "o" <- ! (1 == 1)
   }> = Success [("o", existT _ TBool false)].
   Proof. reflexivity. Abort.
 
-  Goal run_program (init_locals [("o", TInt)]) <{
+  Goal run_program [("o", (TInt, true))] <{
      "o" <- if !(1 == 2) then 5 else 98+1
   }> = Success [("o", existT _ TInt 5)].
   Proof. reflexivity. Abort.
 
-  Goal run_program (init_locals [("o", TList TInt)]) <{
+  Goal run_program [("o", (TList TInt, true))] <{
      "o" <- range(3, 5)
   }> = Success [("o", existT _ (TList TInt) (3 :: 4 :: nil))].
   Proof. reflexivity. Abort.
 
-  Goal run_program (init_locals [("o", TList TInt)]) <{
+  Goal run_program [("o", (TList TInt, true))] <{
      "o" <- flatmap [1, 2] "x" ["x"]
   }> = Success [("o", existT _ (TList TInt) (1 :: 2 :: nil))].
   reflexivity. Abort.
 
-  Goal run_program (init_locals [("o", TList TInt)]) <{
+  Goal run_program [("o", (TList TInt, true))] <{
      "o" <- flatmap [1] "x" ["x"]
   }> = Success [("o", existT _ (TList TInt) (1 :: nil))].
   reflexivity.  Abort.
 
-  Goal run_program (init_locals [("o", TList TInt)]) <{
+  Goal run_program [("o", (TList TInt, true))] <{
      "o" <- flatmap range(1, 10) "x" ["x"*"x"] }>
      = Success [("o", existT interp_type (TList TInt) [1; 4; 9; 16; 25; 36; 49; 64; 81])].
   Proof. reflexivity. Abort.
@@ -325,68 +738,12 @@ Section Examples.
       end
       }>.
 
-   Goal run_program (init_locals [("ans", TBool)])
+   Goal run_program [("ans", (TBool, true))]
       (isEven 4) = Success [("ans", existT interp_type TBool true)].
    Proof. reflexivity. Abort.
 
-   Goal run_program (init_locals [("ans", TBool)])
+   Goal run_program [("ans", (TBool, true))]
       (isEven 3) = Success [("ans", existT interp_type TBool false)].
    Proof. reflexivity. Abort.
-
-   Theorem is_even_correct : forall (n : Z),
-      (exists k, 2*k = n) ->
-      run_program (@set_local map.empty TBool "ans" false)
-      (isEven n) = Success [("ans", existT interp_type TBool true)].
-   Proof.
-      intros n [k k2]. subst.
-      unfold run_program.
-      simpl.
-
-      destruct k;
-         try rewrite Zmod_even;
-         reflexivity.
-   Qed.
-
-
-  (* Program which test whether a number is square or not *)
-
-  Definition isSquare (n : Z) : pcommand := <{
-     let "n" := n in
-     for "x" in range(0, "n"+1):
-         if "x"*"x" == "n"
-           then "ans" <- true
-           else skip
-           end
-     end
-     }>.
-
-   Goal run_program (init_locals [("ans", TBool)])
-      (isSquare 4) = Success [("ans", existT interp_type TBool true)].
-   Proof. reflexivity. Abort.
-
-   Goal run_program (init_locals [("ans", TBool)])
-      (isSquare 25) = Success [("ans", existT interp_type TBool true)].
-   Proof. reflexivity. Abort.
-
-   Goal run_program (init_locals [("ans", TBool)])
-      (isSquare (11*11 )) = Success [("ans", existT interp_type TBool true)].
-   Proof. reflexivity. Abort.
-
-   Goal run_program (init_locals [("ans", TBool)])
-      (isSquare 0) = Success [("ans", existT interp_type TBool true)].
-   Proof. reflexivity. Abort.
-
-   Goal run_program (init_locals [("ans", TBool)])
-      (isSquare 2) = Success [("ans", existT interp_type TBool false)].
-   Proof. reflexivity. Abort.
-
-   Goal run_program (init_locals [("ans", TBool)])
-      (isSquare 13) = Success [("ans", existT interp_type TBool false)].
-   Proof. reflexivity. Abort.
-
-   Goal run_program (init_locals [("ans", TBool)])
-      (isSquare (-2)) = Success [("ans", existT interp_type TBool false)].
-   Proof. reflexivity. Abort.
-
 End Examples.
 
