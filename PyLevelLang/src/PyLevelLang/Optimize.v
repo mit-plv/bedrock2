@@ -45,14 +45,20 @@ Section WithMap.
       + simpl. rewrite IHt. simpl in IHc. rewrite IHc. reflexivity.
   Qed.
 
-  Fixpoint as_const {t : type} (e : expr t) : option (interp_type t) :=
+  Definition invert_atom {t : type} (e : expr t) : option (interp_type t) :=
     match e with
     | EAtom a => Some (interp_atom a)
-    | EUnop o e1 => match as_const e1 with
+    | _ => None
+    end.
+
+  Definition as_const {t : type} (e : expr t) : option (interp_type t) :=
+    match e with
+    | EAtom a => Some (interp_atom a)
+    | EUnop o e1 => match invert_atom e1 with
                     | Some c1 => Some (interp_unop o c1)
                     | _ => None
                     end
-    | EBinop o e1 e2 => match as_const e1, as_const e2 with
+    | EBinop o e1 e2 => match invert_atom e1, invert_atom e2 with
                         | Some c1, Some c2 => Some (interp_binop o c1 c2)
                         | _, _ => None
                         end
@@ -62,20 +68,17 @@ Section WithMap.
   Lemma as_const_correct {t : type} (l : locals) (e : expr t) :
     forall c, as_const e = Some c -> interp_expr l e = c.
   Proof.
-    generalize dependent l.
-    induction e; intros; try easy; simpl in H.
-    - injection H as H. apply H.
-    - destruct (as_const e); try easy.
-      injection H as H. rewrite <- H. simpl. apply f_equal, IHe. reflexivity.
-    - destruct (as_const e1); destruct (as_const e2); try easy.
-      injection H as H. rewrite <- H. simpl. rewrite IHe1 with (c:=i), IHe2 with (c:=i0); easy.
+    destruct e; simpl; intros; try inversion H; auto.
+    - destruct e; try inversion H. reflexivity.
+    - destruct e1; destruct e2; try inversion H. reflexivity.
   Qed.
 
   Definition constfold_head {t} (e : expr t) : expr t :=
-    (* This is constant folding. If you don't want to do it for lists,
-    * strings, and pairs, match on a bool here. *)
-    match as_const e with
-    | Some v => reify _ v
+    match t with
+    | TInt | TBool | TString | TEmpty => match as_const e with
+                                         | Some v => reify _ v
+                                         | _ => e
+                                         end
     | _ => e
     end.
 
@@ -83,13 +86,13 @@ Section WithMap.
     interp_expr l (@constfold_head t e) = interp_expr l e.
   Proof.
     cbv [constfold_head].
-    case as_const eqn:?; try erewrite reify_correct, as_const_correct; auto.
+    repeat destruct_one_match; auto; try erewrite reify_correct, as_const_correct; auto.
   Qed.
 
   Fixpoint eLength {t : type} (e : expr (TList t)) : expr TInt :=
     match e with
     | EBinop (OCons t') eh et => EBinop OPlus (EAtom (AInt 1)) (eLength et)
-    | EBinop ORange s e => EBinop OMinus e s
+    | EBinop ORange s e => EIf (EBinop OLess e s) (EAtom (AInt 0)) (EBinop OMinus e s) (* FIXME *)
     | EAtom (ANil _) => EAtom (AInt 0)
     | _ => EUnop (OLength _) e
     end.
@@ -114,12 +117,15 @@ Section WithMap.
     | o => EUnop o
     end e).
 
+  (*
   Goal forall s x, eUnop (OLength _) (eUnop (OFst s _ _)
     (EBinop (OPair s _ _)
       (EBinop ORange (EAtom (AInt 1)) (EAtom (AInt 5)))
       (EVar TInt x)))
   = EAtom (AInt 4).
   Proof. cbv. solve [trivial]. Abort.
+   *)
+
 
   Lemma invert_EPair_correct {X A B} e e1 e2 :
     @invert_EPair X A B e = Some (e1, e2)
@@ -134,9 +140,20 @@ Section WithMap.
     : interp_expr l (eUnop o e) = interp_expr l (EUnop o e).
   Proof.
     cbv [eUnop]; rewrite constfold_head_correct; case o in *; trivial.
-    { admit. }
+    { dependent induction e; simpl; try reflexivity. 
+      - dependent destruction a. reflexivity. 
+      - dependent destruction o; auto.
+        + cbn [interp_expr interp_binop Datatypes.length interp_atom].
+          rewrite IHe2; auto. cbn [interp_expr interp_unop].
+          rewrite Nat2Z.inj_succ. cbv [Z.succ]. rewrite Z.add_comm. reflexivity.
+        + cbn [interp_expr interp_binop Datatypes.length interp_atom].
+          remember (interp_expr l e1) as s.
+          remember (interp_expr l e2) as e.
+          clear.
+          admit.
+    }
     { destruct invert_EPair as [[]|] eqn:H; try apply invert_EPair_correct in H; rewrite ?H; trivial. }
-    { admit. }
+    { destruct invert_EPair as [[]|] eqn:H; try apply invert_EPair_correct in H; rewrite ?H; trivial. }
   Admitted.
 
   Definition partial_head {t} (e : expr t) : expr t :=
@@ -291,6 +308,19 @@ Section WithMap.
     | ELet x' e1 e2 => eqb x' x || is_name_used x e1 || is_name_used x e2
     end.
 
+  Lemma set_local_same {tx ty : type} (x : string) (vx : interp_type tx) (vy : interp_type ty) (l : locals)
+    : set_local (set_local l x vx) x vy = set_local l x vy.
+  Proof.
+    unfold set_local.
+    apply map.map_ext.
+    intros.
+    rewrite map.get_put_dec.
+    destruct (eqb x k) eqn:E.
+    - rewrite eqb_eq in E. rewrite E. rewrite map.get_put_same. reflexivity.
+    - rewrite eqb_neq in E. rewrite map.get_put_diff; auto.
+      rewrite map.get_put_diff; auto.
+  Qed.
+
   Lemma set_local_comm_diff {tx ty : type} (x y : string) (vx : interp_type tx) (vy : interp_type ty) (l : locals)
     : x <> y -> set_local (set_local l y vy) x vx = set_local (set_local l x vx) y vy.
   Proof.
@@ -379,4 +409,51 @@ Section WithMap.
       + simpl. rewrite IHe1, IHe2. reflexivity.
       + rewrite <- is_name_used_correct; easy.
   Qed.
+
+  Fail Definition flatmap_flatmap_head {t : type} (e : expr t) : expr t :=
+    match e in expr t' return expr t' with
+    | @EFlatmap t1 (@EFlatmap t2 l1 x_inner f_inner) x_outer f_outer => 
+        match type_eq_dec t2 t1 with
+        | left H => let c := cast H (fun t => expr (TList t)) in
+            EFlatmap (c l1) x_inner (EFlatmap (c f_inner) x_outer f_outer)
+        | right H => discriminate H
+        end
+    | e' => e'
+    end.
+
+  Definition flatmap_flatmap_head {t : type} (e : expr t) : expr t.
+  Proof.
+    remember e as e'.
+    destruct e; cycle 5.
+    {  clear Heqe'. destruct e1; cycle 5. 
+      { exact (match is_name_used x0 e2 with
+               | false => EFlatmap e1_1 x0 (EFlatmap e1_2 x e2)
+               | true => e'
+               end). }
+      all: exact e'. }
+    all: exact e'.
+  Defined.
+
+  Lemma flat_map_flat_map :
+    forall {A B C} (l : list A) (f : B -> list C)  (g : A -> list B), 
+    flat_map f (flat_map g l) = flat_map (fun x => flat_map f (g x)) l.
+  Proof.
+    intros.
+    induction l; auto.
+    simpl. rewrite flat_map_app. rewrite IHl. reflexivity.
+  Qed.
+
+  Lemma flatmap_flatmap_head_correct {t : type} (l : locals) (e : expr t)
+    : interp_expr l (flatmap_flatmap_head e) = interp_expr l e.
+  Proof.
+    destruct e; auto.
+    dependent destruction e1; simpl; auto.
+    destruct (is_name_used x e2) eqn:E; simpl; auto.
+    rewrite flat_map_flat_map. apply flat_map_ext. intros. apply flat_map_ext. intros.
+    destruct (eqb x x0) eqn:F.
+    + rewrite eqb_eq in F. rewrite F. rewrite set_local_same. reflexivity.
+    + rewrite eqb_neq in F. rewrite set_local_comm_diff; auto. 
+      symmetry. apply (is_name_used_correct _ e2 x a E).
+  Qed.
+
 End WithMap.
