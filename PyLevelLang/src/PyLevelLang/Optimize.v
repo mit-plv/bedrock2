@@ -7,6 +7,9 @@ From Coq Require Import FunctionalExtensionality.
 
 Local Open Scope Z_scope.
 
+Lemma length_eval_range : forall s l, length (eval_range s l) = l.
+Admitted.
+
 Section WithMap.
   Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
 
@@ -126,7 +129,6 @@ Section WithMap.
   Proof. cbv. solve [trivial]. Abort.
    *)
 
-
   Lemma invert_EPair_correct {X A B} e e1 e2 :
     @invert_EPair X A B e = Some (e1, e2)
     <-> e = EBinop (OPair X A B) e1 e2.
@@ -135,6 +137,7 @@ Section WithMap.
     dependent induction e; cbn; intuition try congruence;
     dependent induction o; inversion H; congruence.
   Qed.
+
 
   Lemma EUnop_correct {t1 t2 : type} (l : locals) (o : unop t1 t2) (e : expr t1)
     : interp_expr l (eUnop o e) = interp_expr l (EUnop o e).
@@ -150,11 +153,16 @@ Section WithMap.
           remember (interp_expr l e1) as s.
           remember (interp_expr l e2) as e.
           clear.
-          admit.
-    }
+          rewrite length_eval_range.
+          destruct (e <? s) eqn:E.
+          * rewrite ZifyInst.of_nat_to_nat_eq.
+            symmetry. apply Z.max_l. rewrite Z.ltb_lt in E.
+            apply Z.le_sub_0. apply Z.lt_le_incl. apply E.
+          * symmetry. apply Z2Nat.id. rewrite Z.ltb_ge in E.
+            apply Zle_minus_le_0. apply E. }
     { destruct invert_EPair as [[]|] eqn:H; try apply invert_EPair_correct in H; rewrite ?H; trivial. }
     { destruct invert_EPair as [[]|] eqn:H; try apply invert_EPair_correct in H; rewrite ?H; trivial. }
-  Admitted.
+  Qed.
 
   Definition partial_head {t} (e : expr t) : expr t :=
     match e with
@@ -248,8 +256,8 @@ Section WithMap.
       + rewrite IHe1, IHe2. reflexivity.
 
     - rewrite IHe1.
-      assert (H: (fun y : interp_type t => interp_expr (set_local l x y) (fst (constant_folding' e2)))
-      = (fun y : interp_type t => interp_expr (set_local l x y) e2)).
+      assert (H: (fun y : interp_type t1 => interp_expr (set_local l x y) (fst (constant_folding' e2)))
+      = (fun y : interp_type t1 => interp_expr (set_local l x y) e2)).
       { apply functional_extensionality. intros. apply IHe2. }
       rewrite <- H.
       reflexivity.
@@ -287,7 +295,7 @@ Section WithMap.
     try rewrite <- IHe; try rewrite <- IHe1; try rewrite <- IHe2; try rewrite <- IHe3; 
     try reflexivity.
 
-    - assert (H:(fun y : interp_type t => interp_expr (set_local l x y) (branch_elim e2)) 
+    - assert (H:(fun y : interp_type t1 => interp_expr (set_local l x y) (branch_elim e2)) 
               = (fun y => interp_expr (set_local l x y) e2)).
       { apply functional_extensionality. intros. rewrite IHe2. reflexivity. }
       rewrite H. reflexivity.
@@ -353,8 +361,8 @@ Section WithMap.
     - rewrite <- IHe1, <- IHe2; destruct (is_name_used x e2); destruct (is_name_used x e1); try easy.
 
     - destruct (is_name_used x e1); destruct (is_name_used x e2); destruct (eqb x0 x) eqn:Hx; simpl in H; try easy.
-      assert (Hf:(fun y0 : interp_type t => interp_expr (set_local l x0 y0) e2)
-              = (fun y0 : interp_type t => interp_expr (set_local (set_local l x y) x0 y0) e2)).
+      assert (Hf:(fun y0 : interp_type t1 => interp_expr (set_local l x0 y0) e2)
+              = (fun y0 : interp_type t1 => interp_expr (set_local (set_local l x y) x0 y0) e2)).
               { apply functional_extensionality. intros. rewrite set_local_comm_diff.
                 + apply IHe2. reflexivity.
                 + apply eqb_neq, Hx.
@@ -398,7 +406,7 @@ Section WithMap.
 
     - rewrite IHe1, IHe2. reflexivity.
 
-    - assert (H:(fun y : interp_type t => interp_expr (set_local l x y) (unused_name_elim e2)) 
+    - assert (H:(fun y : interp_type t1 => interp_expr (set_local l x y) (unused_name_elim e2)) 
               = (fun y => interp_expr (set_local l x y) e2)).
       { apply functional_extensionality. intros. rewrite IHe2. reflexivity. }
       rewrite IHe1, H. reflexivity.
@@ -410,50 +418,38 @@ Section WithMap.
       + rewrite <- is_name_used_correct; easy.
   Qed.
 
-  Fail Definition flatmap_flatmap_head {t : type} (e : expr t) : expr t :=
-    match e in expr t' return expr t' with
-    | @EFlatmap t1 (@EFlatmap t2 l1 x_inner f_inner) x_outer f_outer => 
-        match type_eq_dec t2 t1 with
-        | left H => let c := cast H (fun t => expr (TList t)) in
-            EFlatmap (c l1) x_inner (EFlatmap (c f_inner) x_outer f_outer)
-        | right H => discriminate H
-        end
+  Definition flatmap_flatmap_head {t : type} (e : expr t) : expr t :=
+    match e with
+    | EFlatmap l x f => match l with
+                        | EFlatmap l' y g => if orb (is_name_used y f) (eqb x y)
+                                              then EFlatmap l x f 
+                                              else EFlatmap l' y (EFlatmap g x f) 
+                        | l' => EFlatmap l' x f
+                        end
     | e' => e'
     end.
-
-  Definition flatmap_flatmap_head {t : type} (e : expr t) : expr t.
-  Proof.
-    remember e as e'.
-    destruct e; cycle 5.
-    {  clear Heqe'. destruct e1; cycle 5. 
-      { exact (match is_name_used x0 e2 with
-               | false => EFlatmap e1_1 x0 (EFlatmap e1_2 x e2)
-               | true => e'
-               end). }
-      all: exact e'. }
-    all: exact e'.
-  Defined.
 
   Lemma flat_map_flat_map :
     forall {A B C} (l : list A) (f : B -> list C)  (g : A -> list B), 
     flat_map f (flat_map g l) = flat_map (fun x => flat_map f (g x)) l.
   Proof.
-    intros.
     induction l; auto.
-    simpl. rewrite flat_map_app. rewrite IHl. reflexivity.
+    intros. simpl. rewrite flat_map_app. rewrite IHl. reflexivity.
   Qed.
 
   Lemma flatmap_flatmap_head_correct {t : type} (l : locals) (e : expr t)
     : interp_expr l (flatmap_flatmap_head e) = interp_expr l e.
   Proof.
     destruct e; auto.
-    dependent destruction e1; simpl; auto.
-    destruct (is_name_used x e2) eqn:E; simpl; auto.
-    rewrite flat_map_flat_map. apply flat_map_ext. intros. apply flat_map_ext. intros.
-    destruct (eqb x x0) eqn:F.
-    + rewrite eqb_eq in F. rewrite F. rewrite set_local_same. reflexivity.
-    + rewrite eqb_neq in F. rewrite set_local_comm_diff; auto. 
-      symmetry. apply (is_name_used_correct _ e2 x a E).
+    dependent destruction e1; auto; simpl.
+    destruct_one_match; auto; 
+    simpl. rewrite flat_map_flat_map. f_equal. apply functional_extensionality.
+    intros. f_equal. apply functional_extensionality.
+    intros. symmetry. rewrite set_local_comm_diff.
+    + apply is_name_used_correct. apply E.
+    + apply E.
   Qed.
+
+  Definition flatmap_flatmap {t} : expr t -> expr t := fold_expr (@flatmap_flatmap_head).
 
 End WithMap.
