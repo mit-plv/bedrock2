@@ -242,9 +242,7 @@ Section Proofs.
       all: match goal with
            | y: operand, H: context[Syntax.bopname.eq] |- _ =>
                destr y; simpl in *;
-               [ run1det; run1det; run1done;
-                 rewrite reduce_eq_to_sub_and_lt, map.put_put_same;
-      simpl_MetricRiscvMachine_get_set
+               [ run1det; simpl_MetricRiscvMachine_get_set;  run1det; run1done
                   |   ]; try fwd
            | y: operand |- _ =>
                destr y; simpl in *;
@@ -254,16 +252,16 @@ Section Proofs.
                    ?word.slu_ignores_hibits,
                    ?word.mulhuu_simpl,
                    ?word.divu0_simpl,
-                   ?word.modu0_simpl;
-      simpl_MetricRiscvMachine_get_set
+                   ?word.modu0_simpl in *
                |  ]; try fwd
-           end; simpl in *.
+           end; simpl in *; fwd.
 
       all:  try match goal with
             | H: context[Decode.InvalidInstruction] |- _ =>
                 assert (Encode.verify (Decode.InvalidInstruction (-1)) iset \/
                           valid_InvalidInstruction (Decode.InvalidInstruction (-1))) by
                 ( eapply invert_ptsto_instr; ecancel_assumption)
+             | H: _ |- _ => run1det; run1done
               end.
 
       all:
@@ -282,10 +280,13 @@ Section Proofs.
              | H: 0 <= -1 |- False => destruct H; simpl; reflexivity
              end
           end.
+      all: simpl in *; fwd.
+      all: try match goal with
+               | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
+             end.
 
-      (* TO USE:  simpl_MetricRiscvMachine_get_set. match goal with
-      | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
-      end. | solve_MetricLog.]. *)
+      all: try solve_MetricLog.
+      simpl. rewrite reduce_eq_to_sub_and_lt. symmetry. apply map.put_put_same.
 
     - (* SSet *)
       run1det. run1done.
