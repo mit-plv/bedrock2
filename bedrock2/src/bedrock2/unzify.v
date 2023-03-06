@@ -23,9 +23,6 @@ Module Import word.
   Section WithWord.
     Context {width} {word : word.word width} {word_ok : word.ok word}.
 
-    Lemma modulus_nonzero: 2 ^ width <> 0. (* TODO move next to word.modulus_pos *)
-    Proof. eapply Z.pow_nonzero. 2: eapply word.width_nonneg. cbv. discriminate. Qed.
-
     Lemma unsigned_range_eq{z}{x: word}: word.unsigned x = z -> 0 <= z < 2 ^ width.
     Proof. intros. subst. eapply word.unsigned_range. Qed.
 
@@ -40,7 +37,7 @@ Module Import word.
     Proof.
       intros. subst z'.
       rewrite word.unsigned_of_Z. unfold word.wrap.
-      eapply Z.mod_eq. eapply modulus_nonzero.
+      eapply Z.mod_eq. eapply word.modulus_nonzero.
     Qed.
 
     Lemma unsigned_add_eq_wrap_for_lia: forall (a b: word) (ua ub: Z),
@@ -50,7 +47,7 @@ Module Import word.
     Proof.
       intros. subst.
       rewrite word.unsigned_add. unfold word.wrap.
-      eapply Z.mod_eq. eapply modulus_nonzero.
+      eapply Z.mod_eq. eapply word.modulus_nonzero.
     Qed.
 
     Lemma unsigned_sub_eq_wrap_for_lia: forall (a b: word) (ua ub: Z),
@@ -60,7 +57,7 @@ Module Import word.
     Proof.
       intros. subst.
       rewrite word.unsigned_sub. unfold word.wrap.
-      eapply Z.mod_eq. eapply modulus_nonzero.
+      eapply Z.mod_eq. eapply word.modulus_nonzero.
     Qed.
 
     Lemma unsigned_mul_eq_wrap_for_lia: forall (a b: word) (ua ub: Z),
@@ -70,7 +67,7 @@ Module Import word.
     Proof.
       intros. subst.
       rewrite word.unsigned_mul. unfold word.wrap.
-      eapply Z.mod_eq. eapply modulus_nonzero.
+      eapply Z.mod_eq. eapply word.modulus_nonzero.
     Qed.
 
     Lemma unsigned_slu_shamtZ_eq_wrap_for_lia: forall (x: word) (ux a: Z),
@@ -81,7 +78,7 @@ Module Import word.
     Proof.
       intros. subst. rewrite word.unsigned_slu_shamtZ by lia.
       unfold word.wrap. rewrite Z.shiftl_mul_pow2 by lia.
-      rewrite Z.mod_eq by apply modulus_nonzero.
+      rewrite Z.mod_eq by apply word.modulus_nonzero.
       replace (2 ^ width) with (2 ^ (width - a) * 2 ^ a) at 2.
       2: {
         rewrite <-Z.pow_add_r. 1: f_equal. all: lia.
