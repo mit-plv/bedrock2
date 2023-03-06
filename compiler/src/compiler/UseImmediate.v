@@ -22,7 +22,6 @@ Section WithArguments.
        morphism (word.ring_morph (word := word)),
         constants [word_cst]).
 
-  Search (word.xor ?x ?y = word.xor ?y ?x).
   Ltac destr_exec :=
     match goal with
     | [ |- exec _ (match ?x with | _ => _ end) _ _ _ _ _ ] => destr x

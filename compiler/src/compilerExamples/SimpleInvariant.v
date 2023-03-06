@@ -11,7 +11,6 @@ Require Import compiler.SeparationLogic.
 Require Export coqutil.Word.SimplWordExpr.
 Require Import compiler.GoFlatToRiscv.
 Require Import compiler.DivisibleBy4.
-Require Import compiler.EmitsValid.
 Require Import compiler.MetricsToRiscv.
 Require Import compiler.FlatImp.
 Require Import compiler.RunInstruction.
