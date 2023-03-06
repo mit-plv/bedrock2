@@ -244,7 +244,7 @@ Section Square_Section.
      }>.
 
   Definition isSquare_elaborated (n : Z) : command :=
-     Eval simpl in (match (elaborate_command (map.of_list [("ans", (TBool, true))]) (isSquare n)) with
+     Eval cbv in (match (elaborate_command map.empty (isSquare n)) with
                     | Success x => x
                     | _ => _
                     end
