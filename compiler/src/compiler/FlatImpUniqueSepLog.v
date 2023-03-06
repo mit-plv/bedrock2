@@ -40,6 +40,12 @@ Module exec.
     (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
     Implicit Types post : trace -> mem -> locals -> metrics -> Prop.
 
+    Definition lookup_op_locals (l: locals) (o: operand) :=
+      match o with
+      | Var vo => map.get l vo
+      | Const co => Some (word.of_Z co)
+      end.
+
     Inductive exec:
       stmt varname ->
       trace -> mem -> locals -> metrics ->
@@ -109,7 +115,7 @@ Module exec.
         exec (SLit x v) t m l mc post
     | op: forall t m l mc x op y y' z z' post,
         map.get l y = Some y' ->
-        map.get l z = Some z' ->
+        lookup_op_locals l z = Some z' ->
         post t m (map.put l x (interp_binop op y' z'))
              (addMetricLoads 2
              (addMetricInstructions 2 mc)) ->
