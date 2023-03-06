@@ -235,6 +235,7 @@ Section Square_Section.
 
   Definition isSquare (n : Z) : pcommand := <{
      let "n" := n in
+     let "ans" := true in
      for "x" in range(0, "n"+1):
          if "x"*"x" == "n"
            then "ans" <- true
