@@ -120,7 +120,7 @@ Section SepLog.
         (* first part *)
         sep (array elem i vs[:i] a)
         (* middle subarray part *)
-          (sep (array elem size vs[i:i+size] a')
+          (sep (array elem size vs[i:][:size] a')
         (* final part *)
             (array elem (n-i-size) vs[i+size:]
               (word.add a' (word.of_Z (elemSize * size))))) m)
@@ -146,6 +146,7 @@ Section SepLog.
 
       rewrite List.len_upto by ZnWords.
       rewrite List.len_sized_slice by ZnWords.
+      rewrite List.from_upto_comm by ZnWords.
       rewrite List.from_canon with (i := i+size).
       rewrite List.len_indexed_slice with (i := i+size) (j := len vs) by ZnWords.
 
@@ -162,7 +163,7 @@ Section SepLog.
       heapletwise_step.
       apply Array.array_append in H5.
       heapletwise_step.
-      rewrite List.len_sized_slice in * by ZnWords.
+      rewrite List.len_add_sized_slice in * by ZnWords.
 
       replace (word.add a
                (word.of_Z (word.unsigned (width := width)
