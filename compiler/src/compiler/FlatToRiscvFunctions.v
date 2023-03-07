@@ -1879,8 +1879,12 @@ Section Proofs.
       all:
         match goal with
         | H: Encode.verify (InvalidInstruction (-1)) iset \/
-               valid_InvalidInstruction (InvalidInstruction (-1)) |- _ => exfalso; destruct H; [ unfold Encode.verify in H; simpl in H; destruct H; assumption | unfold valid_InvalidInstruction in H; fwd]
-                                                                            end.
+               valid_InvalidInstruction (InvalidInstruction (-1)) |- _
+          => exfalso; destruct H;
+             [ unfold Encode.verify in H;
+               simpl in H; destruct H; assumption
+             | unfold valid_InvalidInstruction in H; fwd]
+        end.
       all:
         match goal with
         | H: 0 <= -1 < 2^32 |- False
