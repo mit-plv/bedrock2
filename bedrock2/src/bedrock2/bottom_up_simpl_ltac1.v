@@ -501,13 +501,6 @@ Proof.
       idtac e).
 Abort.
 
-Ltac local_word_simpl e :=
-  lazymatch e with
-  | @word.unsigned ?wi ?wo (word.of_Z ?x) =>
-      res_rewrite x (@word.unsigned_of_Z_nowrap wi wo _ x
-                       ltac:(bottom_up_simpl_sidecond_hook))
-  end.
-
 (* Can be customized with ::= *)
 Ltac is_substitutable_rhs rhs :=
   first [ is_var rhs
@@ -525,11 +518,210 @@ Ltac local_subst_small_rhs e :=
             end in
   res_convertible rhs.
 
+Module Z.
+  Lemma div_mul': forall a b: Z, b <> 0 -> b * a / b = a.
+  Proof. intros *. rewrite Z.mul_comm. apply Z.div_mul. Qed.
+End Z.
+
 Ltac local_nonring_nonground_Z_simpl e :=
   lazymatch e with
   | Z.div ?x 1 => res_rewrite x (Z.div_1_r x)
+  (* TODO a division canceler would be less ad-hoc *)
   | Z.div (Z.mul ?x ?y) ?y =>
       res_rewrite x (Z.div_mul x y ltac:(bottom_up_simpl_sidecond_hook))
+  | Z.div (Z.mul ?y ?x) ?y =>
+      res_rewrite x (Z.div_mul' x y ltac:(bottom_up_simpl_sidecond_hook))
+  end.
+
+Module word.
+  Section WithWord.
+    Context {width} {word : word.word width} {word_ok : word.ok word}.
+
+    (* Pushing down word.unsigned: *)
+
+    Lemma unsigned_of_Z_modwrap: forall (z: Z),
+        word.unsigned (word.of_Z (word := word) z) = z mod 2 ^ width.
+    Proof. apply word.unsigned_of_Z. Qed.
+
+    Lemma unsigned_opp_eq_nowrap: forall [a: word] [ua: Z],
+        word.unsigned a = ua ->
+        ua <> 0 ->
+        word.unsigned (word.opp a) = 2 ^ width - ua.
+    Proof. intros. subst. apply word.unsigned_opp_nowrap. assumption. Qed.
+    (* and lemma word.unsigned_opp_0 can be used as-is *)
+
+    Lemma unsigned_add_eq_nowrap: forall [a b: word] [ua ub: Z],
+        word.unsigned a = ua ->
+        word.unsigned b = ub ->
+        ua + ub < 2 ^ width ->
+        word.unsigned (word.add a b) = ua + ub.
+    Proof. intros. subst. apply word.unsigned_add_nowrap. assumption. Qed.
+
+    Lemma unsigned_sub_eq_nowrap: forall [a b: word] [ua ub: Z],
+        word.unsigned a = ua ->
+        word.unsigned b = ub ->
+        0 <= ua - ub ->
+        word.unsigned (word.sub a b) = ua - ub.
+    Proof. intros. subst. apply word.unsigned_sub_nowrap. assumption. Qed.
+
+    Lemma unsigned_mul_eq_nowrap: forall [a b: word] [ua ub: Z],
+        word.unsigned a = ua ->
+        word.unsigned b = ub ->
+        ua * ub < 2 ^ width ->
+        word.unsigned (word.mul a b) = ua * ub.
+    Proof. intros. subst. apply word.unsigned_mul_nowrap. assumption. Qed.
+
+    (* Pushing down word.of_Z: *)
+
+    (* lemma word.of_Z_unsigned can be used as-is *)
+
+    Lemma of_Z_mod: forall (z: Z),
+        word.of_Z (word := word) (z mod 2 ^ width) = word.of_Z (word := word) z.
+    Proof.
+      intros. change (z mod 2 ^ width) with (word.wrap z).
+      rewrite <- word.unsigned_of_Z. apply word.of_Z_unsigned.
+    Qed.
+
+    Lemma of_Z_mod_eq: forall [z: Z] [w: word],
+        word.of_Z z = w ->
+        word.of_Z (z mod 2 ^ width) = w.
+    Proof. intros. subst. apply of_Z_mod. Qed.
+
+    Lemma of_Z_opp_eq: forall [z: Z] [w: word],
+        word.of_Z z = w ->
+        word.of_Z (- z) = word.opp w.
+    Proof. intros. subst. apply word.ring_morph_opp. Qed.
+
+    Lemma of_Z_add_eq: forall [z1 z2: Z] [w1 w2: word],
+        word.of_Z z1 = w1 ->
+        word.of_Z z2 = w2 ->
+        word.of_Z (z1 + z2) = word.add w1 w2.
+    Proof. intros. subst. apply word.ring_morph_add. Qed.
+
+    Lemma of_Z_sub_eq: forall [z1 z2: Z] [w1 w2: word],
+        word.of_Z z1 = w1 ->
+        word.of_Z z2 = w2 ->
+        word.of_Z (z1 - z2) = word.sub w1 w2.
+    Proof. intros. subst. apply word.ring_morph_sub. Qed.
+
+    Lemma of_Z_mul_eq: forall [z1 z2: Z] [w1 w2: word],
+        word.of_Z z1 = w1 ->
+        word.of_Z z2 = w2 ->
+        word.of_Z (z1 * z2) = word.mul w1 w2.
+    Proof. intros. subst. apply word.ring_morph_mul. Qed.
+
+  End WithWord.
+End word.
+
+Ltac push_down_unsigned e w := (* e must be (word.unsigned w) *)
+  lazymatch w with
+  | ?f1 ?a0 =>
+      lazymatch f1 with
+      | @word.of_Z ?width ?word =>
+          match constr:(Set) with
+          | _ => res_rewrite a0 (@word.unsigned_of_Z_nowrap width word _ a0
+                                   ltac:(bottom_up_simpl_sidecond_hook))
+          | _ => res_rewrite (a0 mod 2 ^ width)
+                   (@word.unsigned_of_Z_modwrap width word _ a0)
+          end
+      | @word.opp ?width ?word =>
+          let r_a0 := push_down_unsigned (@word.unsigned width word a0) a0 in
+          let ua0 := r_a0 NewTerm in
+          let pf0 := r_a0 EqProof in
+          lazymatch ua0 with
+          | 0 => res_rewrite 0 (word.unsigned_opp_0 a0 pf0)
+          | _ => match constr:(Set) with
+                 | _ => res_rewrite (2 ^ width - ua0) (word.unsigned_opp_eq_nowrap pf0
+                          ltac:(bottom_up_simpl_sidecond_hook))
+                 | _ => res_nothing_to_simpl e
+                 end
+          end
+      | ?f2 ?a1 =>
+          lazymatch f2 with
+          | @word.add ?width ?word =>
+              push_down_unsigned_app2 e width word
+                (@word.unsigned_add_eq_nowrap width word _ a1 a0) Z.add a1 a0
+          | @word.sub ?width ?word =>
+              push_down_unsigned_app2 e width word
+                (@word.unsigned_sub_eq_nowrap width word _ a1 a0) Z.sub a1 a0
+          | @word.mul ?width ?word =>
+              push_down_unsigned_app2 e width word
+                (@word.unsigned_mul_eq_nowrap width word _ a1 a0) Z.mul a1 a0
+          | _ => res_nothing_to_simpl e
+          end
+      | _ => res_nothing_to_simpl e
+      end
+  | _ => res_nothing_to_simpl e
+  end
+with push_down_unsigned_app2 e width word lem zop a1 a0 :=
+  let r_a0 := push_down_unsigned (@word.unsigned width word a0) a0 in
+  let r_a1 := push_down_unsigned (@word.unsigned width word a1) a1 in
+  let ua0 := r_a0 NewTerm in
+  let ua1 := r_a1 NewTerm in
+  let pf0 := r_a0 EqProof in
+  let pf1 := r_a1 EqProof in
+  match constr:(Set) with
+  | _ => res_rewrite (zop ua1 ua0) (lem _ _ pf1 pf0 ltac:(bottom_up_simpl_sidecond_hook))
+  | _ => res_nothing_to_simpl e
+  end.
+
+Ltac push_down_of_Z width word z :=
+  lazymatch z with
+  | ?f1 ?a0 =>
+      lazymatch f1 with
+      | @word.unsigned width word =>
+          res_rewrite a0 (@word.of_Z_unsigned width word _ a0)
+      | Z.opp =>
+          let r_a0 := push_down_of_Z width word a0 in
+          let a0w := r_a0 NewTerm in
+          let pf0 := r_a0 EqProof in
+          res_rewrite (@word.opp width word a0w) (word.of_Z_opp_eq pf0)
+      | ?f2 ?a1 =>
+          lazymatch f2 with
+          | Z.modulo =>
+              lazymatch a0 with
+              | 2 ^ width =>
+                  let r_a1 := push_down_of_Z width word a1 in
+                  let a1w := r_a1 NewTerm in
+                  let pf1 := r_a1 EqProof in
+                  res_rewrite a1w (word.of_Z_mod_eq pf1)
+              | _ => res_nothing_to_simpl (@word.of_Z width word z)
+              end
+          | Z.add => push_down_of_Z_app2 width word
+                       (@word.of_Z_add_eq width word _ a1 a0) (@word.add width word) a1 a0
+          | Z.sub => push_down_of_Z_app2 width word
+                       (@word.of_Z_sub_eq width word _ a1 a0) (@word.sub width word) a1 a0
+          | Z.mul => push_down_of_Z_app2 width word
+                       (@word.of_Z_mul_eq width word _ a1 a0) (@word.mul width word) a1 a0
+          | _ => res_nothing_to_simpl (@word.of_Z width word z)
+          end
+      | _ => res_nothing_to_simpl (@word.of_Z width word z)
+      end
+  | _ => res_nothing_to_simpl (@word.of_Z width word z)
+  end
+with push_down_of_Z_app2 width word lem wop a1 a0 :=
+  let r_a0 := push_down_of_Z width word a0 in
+  let r_a1 := push_down_of_Z width word a1 in
+  let a0w := r_a0 NewTerm in
+  let a1w := r_a1 NewTerm in
+  let pf0 := r_a0 EqProof in
+  let pf1 := r_a1 EqProof in
+  res_rewrite (wop a1w a0w) (lem _ _ pf1 pf0).
+
+Ltac local_word_simpl e :=
+  lazymatch e with
+  | word.unsigned ?w => push_down_unsigned e w
+  (* Not sure if we want this one:
+     It's useful as a preprocessing step for ring_simplify on words, but if we have
+     \[/[z1 + z2]] where 0 <= z1 + z2 < 2^32, we don't want to push down the of_Z,
+     so we can do the unsigned_of_Z rewrite.
+     --> TODO maybe reactivate, but then, also, in (word.of_Z (word.unsigned (a ^+ b))),
+         prevent push_down of word.unsigned! (because here, we don't even need a
+         sidecondition to get rid of the roundtrip
+  | @word.of_Z ?width ?word ?z => push_down_of_Z width word z *)
+  (* Strictly local subset of the above push_down_of_Z: *)
+  | @word.of_Z ?width ?word (?z mod 2 ^ ?width) =>
+      res_rewrite (@word.of_Z width word z) (@word.of_Z_mod width word _ z)
   end.
 
 Ltac local_simpl_hook parent_kind e0 :=
@@ -539,7 +731,7 @@ Ltac local_simpl_hook parent_kind e0 :=
   | _ => local_zlist_simpl e
   | _ => local_ring_simplify parent_kind e
   | _ => local_ground_number_simpl e
-  | _ => local_word_simpl e
+  | _ => local_word_simpl e (* <-- not strictly local, might do a whole traversal *)
   | _ => local_nonring_nonground_Z_simpl e
   | _ => res_nothing_to_simpl e
   end.
@@ -731,6 +923,16 @@ with bottom_up_simpl_app e parent_kind f a :=
   let e' := r NewTerm in
   let r' := local_simpl_hook parent_kind e' in
   chain_res r r'
+(* Consider `word.unsigned (foo (a + 0) ^+ x ^- foo a ^+ y)`:
+   The argument of word.unsigned needs a first full bottom-up traversal to simplify
+   it into `x ^+ y`, and after that, another push-down-word.unsigned traversal to
+   obtain `word.unsigned x + word.unsigned y` (if no overflow).
+
+   On the other hand, if you start pushing down len too early, not a problem,
+   because list operations don't cancel like word.sub does.
+
+   Therefore, pushing down len is integrated into bottom_up_simpl, whereas
+   pushing down word.unsigned runs after it in local_simpl_hook *)
 with simpl_len e A x := (* e must be (len x) *)
   lazymatch x with
   | List.from ?i ?l =>
@@ -1005,13 +1207,35 @@ Section Tests.
     intros. bottom_up_simpl_in_goal. refl.
   Abort.
 
+  Goal forall (a b: Z),
+      0 <= a + b < 2 ^ 32 ->
+      word.unsigned (word.of_Z (a + b)) - b = a.
+  Proof.
+    intros. bottom_up_simpl_in_goal. refl.
+  Abort.
+
+  Goal forall (foo: Z -> word) (a: Z) (x y: word),
+       word.unsigned x + word.unsigned y < 2 ^ 32 ->
+       word.unsigned (foo (a + 0) ^+ x ^- foo a ^+ y) = word.unsigned x + word.unsigned y.
+  Proof.
+    intros. bottom_up_simpl_in_goal. refl.
+  Abort.
+
+  Goal forall (z: Z), word.of_Z (word.unsigned (word.of_Z z)) = word.of_Z z.
+  Proof.
+    intros. bottom_up_simpl_in_goal. refl.
+  Abort.
+
   (** ** Not supported yet: *)
 
   Goal forall (z1 z2: Z) (y: word),
       word.of_Z (z1 + z2) ^- word.of_Z z1 = y ->
       word.of_Z z2 = y.
   Proof.
-    intros. ring_simplify in H.
+    intros.
+    bottom_up_simpl_in_hyps.
+    ring_simplify in H.
+    (* TODO push_down_of_Z? *)
     (* only simplifies with preprocess [autorewrite with rew_word_morphism] *)
     autorewrite with rew_word_morphism in H.
     ring_simplify in H.
