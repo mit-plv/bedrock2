@@ -93,9 +93,9 @@ Definition _s: var := 9.
 
 Definition test: stmt var :=
   (SSeq (SLoad Syntax.access_size.four _s _addr 0)
-  (SSeq (SOp _a Syntax.bopname.or _inp1 _inp2)
-  (SSeq (SOp _b Syntax.bopname.add _inp1 _inp2)
-  (SSeq (SOp _c Syntax.bopname.sub _inp1 _inp2)
+  (SSeq (SOp _a Syntax.bopname.or _inp1 (Var _inp2))
+  (SSeq (SOp _b Syntax.bopname.add _inp1 (Var _inp2))
+  (SSeq (SOp _c Syntax.bopname.sub _inp1 (Var _inp2))
         (SInteract [_r; _garbage] "Select"%string [_s; _a; _b; _c]))))).
 
 Definition compiled0: list Instruction.
