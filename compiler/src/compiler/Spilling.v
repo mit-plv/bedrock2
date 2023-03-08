@@ -127,10 +127,12 @@ Section Spilling.
     | SLit x n =>
       SLit (ires_reg x) n;;
       save_ires_reg x
-    | SOp x op y z =>
-      load_iarg_reg 1 y;; load_iarg_reg 2 z;;
-      SOp (ires_reg x) op (iarg_reg 1 y) (iarg_reg 2 z);;
-      save_ires_reg x
+    | SOp x op y oz => 
+      load_iarg_reg 1 y;; 
+      match oz with 
+      | Var z => load_iarg_reg 2 z;; SOp (ires_reg x) op (iarg_reg 1 y) (Var (iarg_reg 2 z))
+      | Const _ =>  SOp (ires_reg x) op (iarg_reg 1 y) oz
+      end;; save_ires_reg x
     | SSet x y => (* TODO could be optimized if exactly one is on the stack *)
       load_iarg_reg 1 y;;
       SSet (ires_reg x) (iarg_reg 1 y);;
@@ -167,7 +169,11 @@ Section Spilling.
     | SLoad _ x y _ | SStore _ x y _ | SInlinetable _ x _ y | SSet x y => Z.max x y
     | SStackalloc x n body => Z.max x (max_var body)
     | SLit x _ => x
-    | SOp x _ y z => Z.max x (Z.max y z)
+    | SOp x _ y oz => let vz := match oz with
+                                | Var v => v
+                                | Const _ => 0
+                                end
+                      in Z.max x (Z.max y vz)
     | SIf c s1 s2 | SLoop s1 c s2 => Z.max (max_var_bcond c) (Z.max (max_var s1) (max_var s2))
     | SSeq s1 s2 => Z.max (max_var s1) (max_var s2)
     | SSkip => 0
@@ -224,6 +230,7 @@ Section Spilling.
              | H: _ /\ _ |- _ => destruct H
              | c: bcond _ |- _ => destruct c; simpl
              | |- _ /\ _ => split
+             | y: operand |- _ => destruct y
              end;
       eauto 4 with max_var_sound.
     all: eapply Forall_and;
@@ -346,10 +353,12 @@ Section Spilling.
       valid_vars_src m s ->
       valid_vars_tgt (spill_stmt s).
   Proof.
+    
     unfold valid_vars_src, valid_vars_tgt.
     induction s; simpl; intros;
       repeat match goal with
              | c: bcond Z |- _ => destr c
+             | z: operand |- _ => destruct z
              | |- context[Z.leb ?x ?y] => destr (Z.leb x y)
              | |- _ => progress simpl
              | |- _ => progress unfold spill_tmp, sp, fp, ires_reg, iarg_reg, iarg_reg, ires_reg,
@@ -364,9 +373,7 @@ Section Spilling.
         match type of IH with
         | ?P -> _ => let A := fresh in assert P as A by blia; specialize (IH A); clear A
         end
-      end;
-      eauto;
-      intuition try blia;
+      end; eauto;   intuition try blia;
       try eapply set_reg_range_to_vars_valid_vars;
       try eapply set_vars_to_reg_range_valid_vars;
       unfold a0, a7 in *;
@@ -1693,18 +1700,23 @@ Section Spilling.
       + eassumption.
       + blia.
     - (* exec.op *)
+      unfold exec.lookup_op_locals in *.
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
-      clear mc2 H3. intros.
-      eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
-      clear mc2 H2. intros.
-      eapply exec.seq_cps.
-      eapply exec.op.
-      1: eapply get_iarg_reg_1; eauto with zarith.
-      1: apply map.get_put_same.
-      eapply save_ires_reg_correct.
-      + eassumption.
-      + eassumption.
-      + blia.
+      clear mc2 H3. intros. destruct_one_match; fwd.
+      {
+        eapply exec.seq_cps. eapply exec.seq_cps.  eapply load_iarg_reg_correct; (blia || eassumption || idtac).
+        clear mc2 H2. intros.
+        eapply exec.op.
+        { eapply get_iarg_reg_1; eauto with zarith. }
+        { unfold exec.lookup_op_locals in *. apply map.get_put_same. }
+        { eapply save_ires_reg_correct; (eassumption || blia). }
+      }
+      {
+        eapply exec.seq_cps. eapply exec.op.
+        { apply map.get_put_same. }
+        { unfold exec.lookup_op_locals in *. reflexivity. }
+        { eapply save_ires_reg_correct; (eassumption || blia). }
+      }
     - (* exec.set *)
       eapply exec.seq_cps. eapply load_iarg_reg_correct; (blia || eassumption || idtac).
       clear mc2 H2. intros.

@@ -51,6 +51,8 @@ Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Require Import compiler.LowerPipeline.
 Require Import bedrock2.WeakestPreconditionProperties.
+Require Import compiler.UseImmediate.
+Require Import compiler.UseImmediateDef.
 Import Utility.
 
 Section WithWordAndMem.

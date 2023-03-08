@@ -19,6 +19,7 @@ Require Import compiler.RiscvWordProperties.
 Require Import compiler.FlatToRiscvDef.
 Require Import compiler.FlatToRiscvCommon.
 Require Import compiler.FlatToRiscvLiterals.
+Require Import coqutil.Tactics.fwd.
 
 Open Scope ilist_scope.
 
@@ -237,21 +238,55 @@ Section Proofs.
       match goal with
       | o: Syntax.bopname.bopname |- _ => destruct o
       end;
-      simpl in *; run1det;
-      rewrite ?word.sru_ignores_hibits,
-              ?word.slu_ignores_hibits,
-              ?word.srs_ignores_hibits,
-              ?word.mulhuu_simpl,
-              ?word.divu0_simpl,
-              ?word.modu0_simpl in *;
-      try solve [run1done].
-      simpl_MetricRiscvMachine_get_set.
-      run1det. run1done;
-      [match goal with
-      | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
-      end | solve_MetricLog..].
-      rewrite reduce_eq_to_sub_and_lt.
-      symmetry. apply map.put_put_same.
+      simpl in *.
+      all: match goal with
+           | y: operand, H: context[Syntax.bopname.eq] |- _ =>
+               destr y; simpl in *;
+               [ run1det; simpl_MetricRiscvMachine_get_set;  run1det; run1done
+                  |   ]; try fwd
+           | y: operand |- _ =>
+               destr y; simpl in *;
+               [ run1det; run1done;
+                 rewrite ?word.srs_ignores_hibits,
+                   ?word.sru_ignores_hibits,
+                   ?word.slu_ignores_hibits,
+                   ?word.mulhuu_simpl,
+                   ?word.divu0_simpl,
+                   ?word.modu0_simpl in *
+               |  ]; try fwd
+           end; simpl in *; fwd.
+
+      all:  try match goal with
+            | H: context[Decode.InvalidInstruction] |- _ =>
+                assert (Encode.verify (Decode.InvalidInstruction (-1)) iset \/
+                          valid_InvalidInstruction (Decode.InvalidInstruction (-1))) by
+                ( eapply invert_ptsto_instr; ecancel_assumption)
+             | H: _ |- _ => run1det; run1done
+              end.
+
+      all:
+        try match goal with
+        | H: Encode.verify (Decode.InvalidInstruction (-1)) iset \/
+               valid_InvalidInstruction (Decode.InvalidInstruction (-1)) |- _ =>
+            exfalso; destruct H;
+            [ unfold Encode.verify in H; simpl in H;
+              destruct H; assumption | unfold valid_InvalidInstruction in H]; fwd
+          end.
+      all:
+        try match goal with
+        | H: 0 <= -1 < 2^32 |- False
+          => destruct H;
+             match goal with
+             | H: 0 <= -1 |- False => destruct H; simpl; reflexivity
+             end
+          end.
+      all: simpl in *; fwd.
+      all: try match goal with
+               | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
+             end.
+
+      all: try solve_MetricLog.
+      simpl. rewrite reduce_eq_to_sub_and_lt. symmetry. apply map.put_put_same.
 
     - (* SSet *)
       run1det. run1done.

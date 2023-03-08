@@ -29,6 +29,11 @@ Inductive bbinop: Type :=
 Section Syntax.
   Context {varname: Type}.
 
+  Inductive operand: Type :=
+  | Var (v: varname)
+  | Const (c: Z)
+  .
+
   Inductive bcond: Type :=
     | CondBinary (op: bbinop) (x y: varname)
     | CondNez (x: varname)
@@ -40,7 +45,7 @@ Section Syntax.
     | SInlinetable(sz: Syntax.access_size)(x: varname)(t: list Byte.byte)(i: varname)
     | SStackalloc(x : varname)(nbytes: Z)(body: stmt)
     | SLit(x: varname)(v: Z)
-    | SOp(x: varname)(op: bopname)(y z: varname)
+    | SOp(x: varname)(op: bopname)(y: varname)(z: operand)
     | SSet(x y: varname)
     | SIf(cond: bcond)(bThen bElse: stmt)
     | SLoop(body1: stmt)(cond: bcond)(body2: stmt)
@@ -92,7 +97,7 @@ Section Syntax.
         list_union veq (modVars_as_list veq s1) (modVars_as_list veq s2)
     | SCall binds _ _ | SInteract binds _ _ => list_union veq binds []
     end.
-
+  
   Definition ForallVars_bcond_gen{R: Type}(and: R -> R -> R)(P: varname -> R)(cond: bcond): R :=
     match cond with
     | CondBinary _ x y => and (P x) (P y)
@@ -110,7 +115,11 @@ Section Syntax.
       | SInlinetable _ x _ i => and (P_vars x) (P_vars i)
       | SStackalloc x n body => and (P_vars x) (rec body)
       | SLit x _ => P_vars x
-      | SOp x _ y z => and (P_vars x) (and (P_vars y) (P_vars z))
+      | SOp x _ y z => let op_z := match z with
+                                   | Var v => P_vars v
+                                   | Const _ => T
+                                   end in
+                       and (P_vars x) (and (P_vars y) (op_z))
       | SSet x y => and (P_vars x) (P_vars y)
       | SIf c s1 s2 => and (P_bcond c) (and (rec s1) (rec s2))
       | SLoop s1 c s2 => and (P_bcond c) (and (rec s1) (rec s2))
@@ -164,6 +173,7 @@ Section Syntax.
              | |- andb _ _ = true => apply Bool.andb_true_iff
              | |- _ /\ _ => split
              | |- (_ <=? _)%nat = true => eapply Nat.leb_le
+             | y: operand |- _ => destruct y   
              end;
       eauto using List.Forall_to_forallb, List.forallb_to_Forall.
   Qed.
@@ -179,7 +189,11 @@ Section Syntax.
       (forall x, P x -> Q x) ->
       forall s, Forall_vars_stmt P s -> Forall_vars_stmt Q s.
   Proof.
-    induction s; intros; simpl in *; intuition eauto using ForallVars_bcond_impl, Forall_impl.
+    induction s; intros; simpl in *;
+      repeat match goal with
+          | y : operand |- _ => destruct y
+          | _ => intuition eauto using ForallVars_bcond_impl, Forall_impl
+          end.
   Qed.
 End Syntax.
 
@@ -216,7 +230,7 @@ Section FlatImp1.
         | _, _ => None
         end
       | CondNez x =>
-        match map.get st x with
+        match  map.get st x  with
         | Some mx => Some (negb (word.eqb mx (word.of_Z 0)))
         | None => None
         end
@@ -274,6 +288,12 @@ Module exec.
 
     (* COQBUG(unification finds Type instead of Prop and fails to downgrade *)
     Implicit Types post : trace -> mem -> locals -> metrics -> Prop.
+
+    Definition lookup_op_locals (l: locals) (o: operand) :=
+      match o with
+      | Var vo => map.get l vo
+      | Const co => Some (word.of_Z co)
+      end.
 
     (* alternative semantics which allow non-determinism *)
     Inductive exec:
@@ -352,7 +372,7 @@ Module exec.
         exec (SLit x v) t m l mc post
     | op: forall t m l mc x op y y' z z' post,
         map.get l y = Some y' ->
-        map.get l z = Some z' ->
+        lookup_op_locals l z = Some z' ->
         post t m (map.put l x (interp_binop op y' z'))
              (addMetricLoads 2
              (addMetricInstructions 2 mc)) ->
