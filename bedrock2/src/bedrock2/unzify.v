@@ -463,11 +463,18 @@ Ltac get_word_ok_or_dummy :=
   | _ => constr:(mk_no_word_ok_found)
   end.
 
+Ltac clear_if_dup h :=
+  let tp := type of h in
+  lazymatch goal with
+  | _: tp, _: tp |- _ => clear h
+  | |- _ => idtac
+  end.
+
 Ltac apply_range_bounding_lemma_in_hyp h tp :=
   tryif ident_starts_with __Zrange_ h then
     lazymatch tp with
-    | word.unsigned _ = _ => eapply word.unsigned_range_eq in h
-    | Z.of_nat _ = _ => eapply Z_of_nat_range_eq in h
+    | word.unsigned _ = _ => eapply word.unsigned_range_eq in h; clear_if_dup h
+    | Z.of_nat _ = _ => eapply Z_of_nat_range_eq in h; clear_if_dup h
     | _ => idtac
     end
   else idtac.
