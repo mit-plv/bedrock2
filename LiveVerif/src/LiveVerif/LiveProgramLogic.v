@@ -674,13 +674,20 @@ Ltac final_program_logic_step logger :=
                              idtac "after_command_simpl_hook; unpurify; unzify and ready")
         end ].
 
-Ltac purify_and_zify_hyp h :=
+Ltac simpl_and_zify_hyp wok h t :=
+  (* the bottom_up_simpl step on the purified hyp is needed because its simplifications
+     might reveal how trivial it is, which allows us to clear it later *)
+  bottom_up_simpl_in_hyp_of_type h t;
+  let t' := type of h in
+  zify_hyp wok h t'.
+
+Ltac puri_simpli_zify_hyp h :=
   let t := type of h in
   let wok := get_word_ok_or_dummy in
-  purify_heapletwise_hyp_of_type_cont ltac:(zify_hyp wok) h t;
+  purify_heapletwise_hyp_of_type_cont ltac:(simpl_and_zify_hyp wok) h t;
   apply_range_bounding_lemma_in_eqs.
 
-Ltac new_heapletwise_hyp_hook h ::= purify_and_zify_hyp h.
+Ltac new_heapletwise_hyp_hook h ::= puri_simpli_zify_hyp h.
 
 Ltac heapletwise_step' logger :=
   heapletwise_step;
