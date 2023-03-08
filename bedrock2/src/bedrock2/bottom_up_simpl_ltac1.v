@@ -6,6 +6,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.foreach_hyp.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
+Require Import bedrock2.cancel_div.
 
 (* needed for compatibility with simplification strategies that choose not
    to simplify powers of 2 *)
@@ -518,19 +519,15 @@ Ltac local_subst_small_rhs e :=
             end in
   res_convertible rhs.
 
-Module Z.
-  Lemma div_mul': forall a b: Z, b <> 0 -> b * a / b = a.
-  Proof. intros *. rewrite Z.mul_comm. apply Z.div_mul. Qed.
-End Z.
-
 Ltac local_nonring_nonground_Z_simpl e :=
   lazymatch e with
   | Z.div ?x 1 => res_rewrite x (Z.div_1_r x)
-  (* TODO a division canceler would be less ad-hoc *)
-  | Z.div (Z.mul ?x ?y) ?y =>
-      res_rewrite x (Z.div_mul x y ltac:(bottom_up_simpl_sidecond_hook))
-  | Z.div (Z.mul ?y ?x) ?y =>
-      res_rewrite x (Z.div_mul' x y ltac:(bottom_up_simpl_sidecond_hook))
+  | Z.div ?x ?d =>
+      let x_eq_prod_pf := cancel_div_rec d x in
+      lazymatch type of x_eq_prod_pf with
+      | x = d * ?q => res_rewrite q (@cancel_div_done d x q
+                                       ltac:(bottom_up_simpl_sidecond_hook) x_eq_prod_pf)
+      end
   end.
 
 Module word.
@@ -1225,6 +1222,11 @@ Section Tests.
   Proof.
     intros. bottom_up_simpl_in_goal. refl.
   Abort.
+
+  Goal forall (i j k count d: Z),
+      d <> 0 ->
+      (d * j - i * d + k * d * count) / d - count * k = j - i.
+  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
 
   (** ** Not supported yet: *)
 
