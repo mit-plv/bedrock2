@@ -246,13 +246,7 @@ Section Proofs.
                   |   ]; try fwd
            | y: operand |- _ =>
                destr y; simpl in *;
-               [ run1det; run1done;
-                 rewrite ?word.srs_ignores_hibits,
-                   ?word.sru_ignores_hibits,
-                   ?word.slu_ignores_hibits,
-                   ?word.mulhuu_simpl,
-                   ?word.divu0_simpl,
-                   ?word.modu0_simpl in *
+               [ run1det; run1done
                |  ]; try fwd
            end; simpl in *; fwd.
 
@@ -284,7 +278,12 @@ Section Proofs.
       all: try match goal with
                | H: ?post _ _ _ |- ?post _ _ _ => eqexact H
              end.
-
+      all : rewrite ?word.srs_ignores_hibits,
+            ?word.sru_ignores_hibits,
+            ?word.slu_ignores_hibits,
+            ?word.mulhuu_simpl,
+            ?word.divu0_simpl,
+            ?word.modu0_simpl; trivial.
       all: try solve_MetricLog.
       simpl. rewrite reduce_eq_to_sub_and_lt. symmetry. apply map.put_put_same.
 
