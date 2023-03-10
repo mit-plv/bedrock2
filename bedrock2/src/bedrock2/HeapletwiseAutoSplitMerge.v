@@ -1,6 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 Require Import Coq.Init.Byte.
-Require Import coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Datatypes.Inhabited.
@@ -259,10 +259,10 @@ Section SepLog.
       rewrite sepapps_replace_spec.
     - rewrite (expose_nth_sepapp l n a P sz H1) in H2.
       eapply SeparationLogic.sep_comm. eqapply H2. f_equal.
-      rewrite H0. destruct width_cases; subst width; ZnWords.
+      rewrite H0. rewrite word.of_Z_unsigned, word.add_sub_r_same_r; trivial.
     - rewrite <- (merge_back_nth_sepapp l n a P sz H1).
       eapply SeparationLogic.sep_comm. eqapply H2. f_equal.
-      rewrite H0. destruct width_cases; subst width; ZnWords.
+      rewrite H0. rewrite word.of_Z_unsigned, word.add_sub_r_same_r; trivial.
   Qed.
 
 (* alternative way of expressing "1 past a'":
