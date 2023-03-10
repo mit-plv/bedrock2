@@ -1,3 +1,4 @@
+Require Import Lia.
 Require Import Coq.Program.Equality.
 Require Import PyLevelLang.Language.
 Require Import PyLevelLang.Interpret.
@@ -7,9 +8,11 @@ From Coq Require Import FunctionalExtensionality.
 
 Local Open Scope Z_scope.
 
-Lemma length_eval_range : forall s l, length (eval_range s l) = l.
-Admitted.
-
+Lemma length_eval_range : forall l s, length (eval_range s l) = l.
+Proof.
+  induction l; simpl; auto.
+Qed.
+  
 Section WithMap.
   Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
 
@@ -54,6 +57,15 @@ Section WithMap.
     | _ => None
     end.
 
+  Lemma invert_atom_correct {t : type} (l : locals) (e : expr t) :
+    forall c, invert_atom e = Some c -> interp_expr l e = c.
+  Proof.
+    intros.
+    destruct e; inversion H.
+    simpl.
+    reflexivity.
+  Qed.
+
   Definition as_const {t : type} (e : expr t) : option (interp_type t) :=
     match e with
     | EAtom a => Some (interp_atom a)
@@ -65,15 +77,23 @@ Section WithMap.
                         | Some c1, Some c2 => Some (interp_binop o c1 c2)
                         | _, _ => None
                         end
+    | EIf a e1 e2 => match invert_atom a with
+                     | Some c1 => if c1 then invert_atom e1 else invert_atom e2
+                     | _ => None
+                     end
     | _ => None
     end.
 
   Lemma as_const_correct {t : type} (l : locals) (e : expr t) :
     forall c, as_const e = Some c -> interp_expr l e = c.
   Proof.
-    destruct e; simpl; intros; try inversion H; auto.
+    destruct e; simpl; intros; try solve [inversion H]; auto.
+    - inversion H. reflexivity.
     - destruct e; try inversion H. reflexivity.
     - destruct e1; destruct e2; try inversion H. reflexivity.
+    - dependent induction e1; simpl; simpl in *; try solve [inversion H];
+      dependent induction a; simpl; simpl in *; try solve [inversion H]; 
+      destruct b; simpl; apply invert_atom_correct; apply H.
   Qed.
 
   Definition constfold_head {t} (e : expr t) : expr t :=
@@ -95,10 +115,28 @@ Section WithMap.
   Fixpoint eLength {t : type} (e : expr (TList t)) : expr TInt :=
     match e with
     | EBinop (OCons t') eh et => EBinop OPlus (EAtom (AInt 1)) (eLength et)
-    | EBinop ORange s e => EIf (EBinop OLess e s) (EAtom (AInt 0)) (EBinop OMinus e s) (* FIXME *)
-    | EAtom (ANil _) => EAtom (AInt 0)
-    | _ => EUnop (OLength _) e
+    | EBinop ORange s e => constfold_head (EIf (constfold_head (EBinop OLess e s)) (EAtom (AInt 0)) (constfold_head (EBinop OMinus e s)))
+    | _ => match invert_atom e with
+           | Some nil => EAtom (AInt 0)
+           | _ => EUnop (OLength _) e
+           end
     end.
+
+  Lemma eLength_correct {t : type} (l : locals) (e : expr (TList t)) :
+    interp_expr l (eLength e) = interp_expr l (EUnop (OLength t) e).
+  Proof.
+    dependent induction e; cbn [eLength]; try reflexivity.
+    - case invert_atom eqn:?; trivial. destruct i; trivial.
+      apply invert_atom_correct with (l:=l) in Heqo.
+      cbn in *. rewrite Heqo. reflexivity.
+    - dependent induction o; cbn [invert_atom]; trivial.
+      + cbn [interp_expr interp_binop interp_unop interp_atom Datatypes.length].
+        rewrite IHe2; trivial.
+        cbn [interp_expr interp_binop interp_unop interp_atom Datatypes.length].
+        lia.
+      + repeat (rewrite constfold_head_correct; cbn [interp_expr interp_binop interp_unop interp_atom Datatypes.length]).
+        destruct_one_match; rewrite length_eval_range; lia.
+  Qed.
 
   Definition invert_EPair {X A B} (e : expr (TPair X A B)) : option (expr A * expr B) :=
     match e in expr t
@@ -120,15 +158,6 @@ Section WithMap.
     | o => EUnop o
     end e).
 
-  (*
-  Goal forall s x, eUnop (OLength _) (eUnop (OFst s _ _)
-    (EBinop (OPair s _ _)
-      (EBinop ORange (EAtom (AInt 1)) (EAtom (AInt 5)))
-      (EVar TInt x)))
-  = EAtom (AInt 4).
-  Proof. cbv. solve [trivial]. Abort.
-   *)
-
   Lemma invert_EPair_correct {X A B} e e1 e2 :
     @invert_EPair X A B e = Some (e1, e2)
     <-> e = EBinop (OPair X A B) e1 e2.
@@ -143,23 +172,7 @@ Section WithMap.
     : interp_expr l (eUnop o e) = interp_expr l (EUnop o e).
   Proof.
     cbv [eUnop]; rewrite constfold_head_correct; case o in *; trivial.
-    { dependent induction e; simpl; try reflexivity. 
-      - dependent destruction a. reflexivity. 
-      - dependent destruction o; auto.
-        + cbn [interp_expr interp_binop Datatypes.length interp_atom].
-          rewrite IHe2; auto. cbn [interp_expr interp_unop].
-          rewrite Nat2Z.inj_succ. cbv [Z.succ]. rewrite Z.add_comm. reflexivity.
-        + cbn [interp_expr interp_binop Datatypes.length interp_atom].
-          remember (interp_expr l e1) as s.
-          remember (interp_expr l e2) as e.
-          clear.
-          rewrite length_eval_range.
-          destruct (e <? s) eqn:E.
-          * rewrite ZifyInst.of_nat_to_nat_eq.
-            symmetry. apply Z.max_l. rewrite Z.ltb_lt in E.
-            apply Z.le_sub_0. apply Z.lt_le_incl. apply E.
-          * symmetry. apply Z2Nat.id. rewrite Z.ltb_ge in E.
-            apply Zle_minus_le_0. apply E. }
+    { apply eLength_correct. }
     { destruct invert_EPair as [[]|] eqn:H; try apply invert_EPair_correct in H; rewrite ?H; trivial. }
     { destruct invert_EPair as [[]|] eqn:H; try apply invert_EPair_correct in H; rewrite ?H; trivial. }
   Qed.
@@ -441,7 +454,7 @@ Section WithMap.
     : interp_expr l (flatmap_flatmap_head e) = interp_expr l e.
   Proof.
     destruct e; auto.
-    dependent destruction e1; auto; simpl.
+    dependent induction e1; auto; simpl.
     destruct_one_match; auto; 
     simpl. rewrite flat_map_flat_map. f_equal. apply functional_extensionality.
     intros. f_equal. apply functional_extensionality.
@@ -451,5 +464,13 @@ Section WithMap.
   Qed.
 
   Definition flatmap_flatmap {t} : expr t -> expr t := fold_expr (@flatmap_flatmap_head).
+
+  Goal forall s x, eUnop (OLength _) (eUnop (OFst s _ _)
+    (EBinop (OPair s _ _)
+      (EBinop ORange (EAtom (AInt 1)) (EAtom (AInt 5)))
+      (EVar TInt x)))
+  = EAtom (AInt 4).
+  Proof. cbv. solve [trivial]. Abort.
+
 
 End WithMap.
