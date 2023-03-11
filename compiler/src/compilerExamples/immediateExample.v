@@ -37,8 +37,6 @@ Definition Reg: Set := Z.
 
 Local Existing Instance DefaultRiscvState.
 
-Axiom TODO: forall {T: Type}, T.
-
 Local Instance funpos_env: map.map string Z := SortedListString.map _.
 
 Definition compile_ext_call(posenv: funpos_env)(mypos stackoffset: Z)(s: FlatImp.stmt Z) :=
