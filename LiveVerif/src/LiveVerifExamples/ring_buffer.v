@@ -4,13 +4,17 @@ Require Import LiveVerif.LiveVerifLib.
 Load LiveVerif.
 
 Record raw_ring_buffer_t := {
-  capacity: uint_t 32;
-  dequeue_pos: uint_t 32;
-  n_elems: uint_t 32;
-  data: array_t word capacity;
+  capacity: Z;
+  dequeue_pos: Z;
+  n_elems: Z;
+  data: list word;
 }.
 
-Global Instance raw_ring_buffer: RepPredicate raw_ring_buffer_t := ltac:(create_predicate).
+Definition raw_ring_buffer(r: raw_ring_buffer_t): word -> mem -> Prop := record!
+  (cons (mk_record_field_description capacity (uint 32))
+  (cons (mk_record_field_description dequeue_pos (uint 32))
+  (cons (mk_record_field_description n_elems (uint 32))
+  (cons (mk_record_field_description data (array uintptr (capacity r))) nil)))).
 
 Definition ring_buffer(cap: Z)(vs: list word)(addr: word): mem -> Prop :=
   ex1 (fun b: raw_ring_buffer_t =>
@@ -32,7 +36,7 @@ void ring_buf_enq(uintptr_t b_addr, uintptr_t v) /**#
           * R }> m' #**/                                                   /**.
 Derive ring_buf_enq SuchThat (fun_correct! ring_buf_enq) As ring_buf_enq_ok.    .**/
 {                                                                          /**. .**/
-  uintptr_t i = (load32(b_addr+4) + load32(b_addr+8)) % load32(b_addr);       /**.
+  uintptr_t i = (load32(b_addr+4) + load32(b_addr+8)) % load32(b_addr);    /**.
 
   unfold raw_ring_buffer in *|-.
 

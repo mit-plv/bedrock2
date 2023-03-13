@@ -3,15 +3,19 @@ Require Import LiveVerif.LiveVerifLib.
 Require Import LiveVerifExamples.swap.
 
 Record foo_t := {
-  fieldA: uint_t 32;
-  fieldB: uint_t 32;
-  fieldC: uint_t 32;
-  fieldD: uint_t 32;
+  fieldA: Z;
+  fieldB: Z;
+  fieldC: Z;
+  fieldD: Z;
 }.
 
 Load LiveVerif.
 
-Instance foo: RepPredicate foo_t := ltac:(create_predicate).
+Definition foo(r: foo_t): word -> mem -> Prop := record!
+  (cons (mk_record_field_description fieldA (uint 32))
+  (cons (mk_record_field_description fieldB (uint 32))
+  (cons (mk_record_field_description fieldC (uint 32))
+  (cons (mk_record_field_description fieldD (uint 32)) nil)))).
 
 #[export] Instance spec_of_swap_bc: fnspec :=                                   .**/
 

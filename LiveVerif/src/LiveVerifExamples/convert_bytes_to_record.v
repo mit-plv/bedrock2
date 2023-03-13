@@ -3,23 +3,28 @@ Require Import LiveVerif.LiveVerifLib.
 
 Load LiveVerif.
 
-(* TODO can/should we use Z for n? But then, how to carry 0<=n hypothesis around? *)
-Record bar_t{n: N} := {
-  barA: uint_t 16;
-  barB: uint_t 16;
+Record bar_t := {
+  barA: Z;
+  barB: Z;
   barC: word;
-  barPayload: array_t (uint_t 32) (Z.of_N n);
+  barPayload: list Z
 }.
 Arguments bar_t: clear implicits.
 
-Instance bar(n: N): RepPredicate (bar_t n) := ltac:(create_predicate).
+Definition bar(n: N)(b: bar_t): word -> mem -> Prop := record!
+  (cons (mk_record_field_description barA (uint 16))
+  (cons (mk_record_field_description barB (uint 16))
+  (cons (mk_record_field_description barC uintptr)
+  (cons (mk_record_field_description barPayload (array (uint 32) (Z.of_N n))) nil)))).
 
 Record foo_t := {
-  foobar_n: uint_t 32;
-  foobar: bar_t (Z.to_N foobar_n);
+  foobar_n: Z;
+  foobar: bar_t;
 }.
 
-Instance foo: RepPredicate foo_t := ltac:(create_predicate).
+Definition foo(f: foo_t): word -> mem -> Prop := record!
+  (cons (mk_record_field_description foobar_n (uint 32))
+  (cons (mk_record_field_description foobar (bar (Z.to_N (foobar_n f)))) nil)).
 
 #[export] Instance spec_of_swap_barAB: fnspec :=                                .**/
 

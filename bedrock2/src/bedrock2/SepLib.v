@@ -66,14 +66,6 @@ Ltac is_concrete_list l :=
   purify_rec
 : purify.
 
-(* Type aliases that can inform proof automation, typeclass search,
-   as well as humans on intended usage: *)
-Definition uint_t(nbits: Z) := Z.
-Definition array_t(tp: Type)(nElems: Z) := list tp.
-
-Global Hint Opaque uint_t array_t : typeclass_instances.
-
-
 Definition nbits_to_nbytes(nbits: Z): Z := (Z.max 0 nbits + 7) / 8.
 
 Lemma nbits_to_nbytes_nonneg: forall nbits, 0 <= nbits_to_nbytes nbits.

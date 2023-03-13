@@ -11,7 +11,9 @@ Record node_t := {
   data: word;
   next: word;
 }.
-Instance node: RepPredicate node_t := ltac:(create_predicate).
+Definition node(r: node_t): word -> mem -> Prop := record!
+  (cons (mk_record_field_description data uintptr)
+  (cons (mk_record_field_description next uintptr) nil)).
 
 #[export] Instance spec_of_malloc: fnspec :=                         .**/
 uintptr_t malloc(uintptr_t size)                                     /**#
