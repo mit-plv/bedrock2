@@ -7,13 +7,16 @@ Load LiveVerif.
 (* TODO support functions that don't access any memory *)
 Definition dummy: mem -> Prop := emp True.
 
-Record node_t := {
+Record node := {
   data: word;
   next: word;
 }.
-Definition node(r: node_t): word -> mem -> Prop := record!
-  (cons (mk_record_field_description data uintptr)
-  (cons (mk_record_field_description next uintptr) nil)).
+Definition node_t(r: node): word -> mem -> Prop := .**/
+typedef struct __attribute__ ((__packed__)) {
+  uintptr_t data;
+  uintptr_t next;
+} node_t;
+/**.
 
 #[export] Instance spec_of_malloc: fnspec :=                         .**/
 uintptr_t malloc(uintptr_t size)                                     /**#
@@ -36,7 +39,7 @@ uintptr_t malloc_node(uintptr_t anything)                                 /**#
                              * R }> m                               #**/ /**. *)
   ensures t' m' retPtr := t' = t /\ exists x,
                           <{ * dummy
-                             * node x retPtr
+                             * node_t x retPtr
                              * R }> m'                               #**/ /**.
 Derive malloc_node SuchThat (fun_correct! malloc_node) As malloc_node_ok. .**/
 { /**. .**/
@@ -50,7 +53,7 @@ Derive malloc_node SuchThat (fun_correct! malloc_node) As malloc_node_ok. .**/
   .**/ return r; /**.
 .**/ } /**.
 
-  unfold node.
+  unfold node_t.
   unfold sepapps.
   simpl.
   unfold sepapp.

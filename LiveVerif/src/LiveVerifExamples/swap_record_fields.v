@@ -2,7 +2,7 @@
 Require Import LiveVerif.LiveVerifLib.
 Require Import LiveVerifExamples.swap.
 
-Record foo_t := {
+Record foo := {
   fieldA: Z;
   fieldB: Z;
   fieldC: Z;
@@ -11,20 +11,23 @@ Record foo_t := {
 
 Load LiveVerif.
 
-Definition foo(r: foo_t): word -> mem -> Prop := record!
-  (cons (mk_record_field_description fieldA (uint 32))
-  (cons (mk_record_field_description fieldB (uint 32))
-  (cons (mk_record_field_description fieldC (uint 32))
-  (cons (mk_record_field_description fieldD (uint 32)) nil)))).
+Definition foo_t(r: foo): word -> mem -> Prop := .**/
+typedef struct __attribute__ ((__packed__)) {
+  uint32_t fieldA;
+  uint32_t fieldB;
+  uint32_t fieldC;
+  uint32_t fieldD;
+} foo_t;
+/**.
 
 #[export] Instance spec_of_swap_bc: fnspec :=                                   .**/
 
 void swap_bc(uintptr_t p) /**#
   ghost_args := f (R: mem -> Prop);
-  requires t m := <{ * foo f p
+  requires t m := <{ * foo_t f p
                      * R }> m;
   ensures t' m' := t' = t /\
-       <{ * foo f{{fieldB := fieldC f; fieldC := fieldB f}} p
+       <{ * foo_t f{{fieldB := fieldC f; fieldC := fieldB f}} p
           * R }> m' #**/                                                   /**.
 Derive swap_bc SuchThat (fun_correct! swap_bc) As swap_bc_ok.                   .**/
 {                                                                          /**. .**/

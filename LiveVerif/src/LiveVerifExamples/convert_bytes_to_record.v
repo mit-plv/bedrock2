@@ -3,37 +3,44 @@ Require Import LiveVerif.LiveVerifLib.
 
 Load LiveVerif.
 
-Record bar_t := {
+Record bar := {
   barA: Z;
   barB: Z;
   barC: word;
   barPayload: list Z
 }.
-Arguments bar_t: clear implicits.
 
-Definition bar(n: N)(b: bar_t): word -> mem -> Prop := record!
-  (cons (mk_record_field_description barA (uint 16))
-  (cons (mk_record_field_description barB (uint 16))
-  (cons (mk_record_field_description barC uintptr)
-  (cons (mk_record_field_description barPayload (array (uint 32) (Z.of_N n))) nil)))).
+Definition bar_t(n: N)(b: bar): word -> mem -> Prop := .**/
+typedef struct __attribute__ ((__packed__)) {
+  uint16_t barA;
+  uint16_t barB;
+  uintptr_t barC;
+  uint32_t barPayload[/**# Z.of_N n #**/];
+} bar_t;
+/**.
 
-Record foo_t := {
+Record foo := {
   foobar_n: Z;
-  foobar: bar_t;
+  foobar: bar;
 }.
 
-Definition foo(f: foo_t): word -> mem -> Prop := record!
-  (cons (mk_record_field_description foobar_n (uint 32))
-  (cons (mk_record_field_description foobar (bar (Z.to_N (foobar_n f)))) nil)).
+(* Note: parameterized usage of bar_t is not valid C syntax, and variable-size
+   bar_t can't be used inside another struct. *)
+Definition foo_t(f: foo): word -> mem -> Prop := .**/
+typedef struct __attribute__ ((__packed__)) {
+  uint32_t foobar_n;
+  NOT_C!(bar_t (Z.to_N (foobar_n f))) foobar;
+} foo_t;
+/**.
 
 #[export] Instance spec_of_swap_barAB: fnspec :=                                .**/
 
 void swap_barAB(uintptr_t p) /**#
   ghost_args := n b (R: mem -> Prop);
-  requires t m := <{ * bar n b p
+  requires t m := <{ * bar_t n b p
                      * R }> m;
   ensures t' m' := t' = t /\
-       <{ * bar n b{{ barA := barB b; barB := barA b }} p
+       <{ * bar_t n b{{ barA := barB b; barB := barA b }} p
           * R }> m' #**/                                                   /**.
 Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          .**/
 {                                                                          /**. .**/
@@ -51,7 +58,7 @@ void init_foo(uintptr_t p, uintptr_t barPayloadLen) /**#
   requires t m := <{ * array (uint 8) (12 + 4 * \[barPayloadLen]) bs p
                      * R }> m;
   ensures t' m' := t' = t /\ exists f, f.(foobar_n) = \[barPayloadLen] /\
-       <{ * foo f p
+       <{ * foo_t f p
           * R }> m' #**/                                                   /**.
 Derive init_foo SuchThat (fun_correct! init_foo) As init_foo_ok.                .**/
 {                                                                          /**. .**/

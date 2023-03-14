@@ -23,26 +23,76 @@ Ltac infer_size r descr :=
   end.
 
 Ltac create_predicate fields :=
-  lazymatch goal with
-  | r: _ |- @word.rep _ _ -> @map.rep _ _ _ -> Prop =>
-      let res := map_with_ltac ltac:(infer_size r) fields in
-      exact (sepapps res)
+  lazymatch type of fields with
+  | list (record_field_description ?R) =>
+      lazymatch goal with
+      | r: R |- @word.rep _ _ -> @map.rep _ _ _ -> Prop =>
+          let res := map_with_ltac ltac:(infer_size r) fields in
+          exact (sepapps res)
+      end
   end.
 
 #[export] Hint Extern 20 (PredicateSize ?p) =>
   let h := head p in unfold h; typeclasses eauto
 : typeclass_instances.
 
-(* TODO replace by a notation that looks like C struct definitions *)
 Notation "'record!' fields" := ltac:(create_predicate fields)
   (at level 10, only parsing).
+
+(* The user can decide whether to put the array size between /**# #**/ or not.
+   C compilers will not accept arbitrary Coq expressions in uncommented sizes,
+   but we do not attempt to check that in Coq, because it seems that
+   there is no way to distinguish whether the user wrote `3` or `(Zpos (xI xH))`. *)
+Declare Custom Entry c_array_size.
+Notation "x" := x (in custom c_array_size at level 2, x constr at level 0).
+Notation "/* *# x #* */" := x (in custom c_array_size at level 2, x constr at level 100).
+
+Declare Custom Entry c_type_as_predicate.
+Notation "'uintptr_t'" := uintptr (in custom c_type_as_predicate).
+Notation "'uint32_t'" := (uint 32) (in custom c_type_as_predicate).
+Notation "'uint16_t'" := (uint 16) (in custom c_type_as_predicate).
+Notation "'uint8_t'" := (uint 8) (in custom c_type_as_predicate).
+Notation "'NOT_C!(' x )" := x (in custom c_type_as_predicate, x constr).
+
+Declare Custom Entry c_struct_field.
+Declare Scope c_struct_field_scope.
+Open Scope c_struct_field_scope.
+Notation "'c_struct_field:(' x ')'" := x
+  (at level 0, x custom c_struct_field at level 2, format "c_struct_field:( x )")
+  : c_struct_field_scope.
+Notation "pred fieldname ;" := (mk_record_field_description fieldname pred)
+  (in custom c_struct_field at level 2,
+   pred custom c_type_as_predicate at level 0,
+   fieldname constr at level 0)
+  : c_struct_field_scope.
+Notation "pred fieldname [ sz ] ;" :=
+  (mk_record_field_description fieldname (array pred sz))
+  (in custom c_struct_field at level 2,
+   pred custom c_type_as_predicate at level 0,
+   fieldname constr at level 0,
+   sz custom c_array_size at level 2)
+  : c_struct_field_scope.
+
+Declare Custom Entry c_struct_field_list.
+Notation "'c_struct_field_list:(' x ')'" := x (x custom c_struct_field_list)
+  : c_struct_field_scope.
+Notation "{ x1 .. xN }" := (cons x1 .. (cons xN nil) ..)
+  (in custom c_struct_field_list at level 2,
+   x1 custom c_struct_field, xN custom c_struct_field).
+
+Notation ".* */ 'typedef' 'struct' '__attribute__' '((__packed__))' fs name ; /* *" :=
+  (match fs with (* <-- typechecking x before passing it to Ltac improves error messages *)
+   | name => (* <-- name given to record in C is ignored by Coq *)
+       ltac:(create_predicate fs)
+   end)
+  (at level 200, fs custom c_struct_field_list at level 2, only parsing).
 
 Module Examples_TODO_move.
 
   Definition ARPOperationRequest: Z := 1.
   Definition ARPOperationReply: Z := 2.
 
-  Record ARPPacket_t := mkARPPacket {
+  Record ARPPacket := mkARPPacket {
     htype: Z; (* hardware type *)
     ptype: Z; (* protocol type *)
     hlen: Z;  (* hardware address length (6 for MAC addresses) *)
@@ -54,61 +104,93 @@ Module Examples_TODO_move.
     tpa: list Z; (* target protocol address *)
   }.
 
-  Record EthernetHeader_t := mkEthernetHeader {
+  Record EthernetHeader := mkEthernetHeader {
     dstMAC: list Z;
     srcMAC: list Z;
     etherType: Z;
   }.
 
-  Record var_size_foo_t := {
+  Record var_size_foo := {
     foo_size: Z;
     foo_stuff: Z;
     foo_payload: list Z;
-    foo_trailer: Z;
   }.
 
   Section WithMem.
     Local Open Scope Z_scope.
-    Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}.
-    Context {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
+    Context {width: Z} {BW: Bitwidth width}
+            {word: word.word width} {word_ok: word.ok word}
+            {mem: map.map word Byte.byte} {mem_ok: map.ok mem}.
 
-    Definition ARPPacket(r: ARPPacket_t): word -> mem -> Prop := record!
-      (cons (mk_record_field_description htype (uint 16))
-      (cons (mk_record_field_description ptype (uint 16))
-      (cons (mk_record_field_description hlen (uint 8))
-      (cons (mk_record_field_description plen (uint 8))
-      (cons (mk_record_field_description oper (uint 16))
-      (cons (mk_record_field_description sha (array (uint 8) 6))
-      (cons (mk_record_field_description spa (array (uint 8) 4))
-      (cons (mk_record_field_description tha (array (uint 8) 6))
-      (cons (mk_record_field_description tpa (array (uint 8) 4)) nil))))))))).
+    Goal c_struct_field:(uint32_t foo_size;) =
+         mk_record_field_description foo_size (uint 32).
+    Proof. reflexivity. Abort.
 
-    Goal forall p, (_ : PredicateSize (ARPPacket p)) = 28. intros. reflexivity. Abort.
+    Goal forall l, c_struct_field:(uint16_t foo_payload[/**# Z.of_nat (S l) #**/];) =
+             mk_record_field_description foo_payload (array (uint 16) (Z.of_nat (S l))).
+    Proof. reflexivity. Abort.
 
-    Definition EthernetHeader(r: EthernetHeader_t): word -> mem -> Prop := record!
-      (cons (mk_record_field_description dstMAC (array (uint 8) 6))
-      (cons (mk_record_field_description srcMAC (array (uint 8) 6))
-      (cons (mk_record_field_description etherType (uint 16)) nil))).
+    Goal c_struct_field:(uint16_t foo_payload[4];) =
+         mk_record_field_description foo_payload (array (uint 16) 4).
+    Proof. reflexivity. Abort.
 
-    Goal forall p, (_ : PredicateSize (EthernetHeader p)) = 14. intros. reflexivity. Abort.
+    Goal forall r, c_struct_field_list:({
+      uint32_t foo_size;
+      uint32_t foo_stuff;
+      uint32_t foo_payload[/**# foo_size r #**/];
+    }) =
+    (cons (mk_record_field_description foo_size (uint 32))
+    (cons (mk_record_field_description foo_stuff (uint 32))
+    (cons (mk_record_field_description foo_payload (array (uint 32) (foo_size r))) nil))).
+    Proof. reflexivity. Abort.
 
-    Definition var_size_foo(r: var_size_foo_t): word -> mem -> Prop := record!
-      (cons (mk_record_field_description foo_size (uint 32))
-      (cons (mk_record_field_description foo_stuff (uint 16))
-      (cons (mk_record_field_description foo_payload (array (uint 8) (foo_size r)))
-      (cons (mk_record_field_description foo_trailer (uint 16)) nil)))).
+    Definition var_size_foo_t(r: var_size_foo): word -> mem -> Prop := .**/
+      typedef struct __attribute__ ((__packed__)) {
+        uint32_t foo_size;
+        uint32_t foo_stuff;
+        uint8_t foo_payload[/**# foo_size r #**/];
+      } var_size_foo_t;
+    /**.
 
-    Goal forall p, (_ : PredicateSize (var_size_foo p)) = 6 + (foo_size p * 1 + 2).
+    Goal forall p, (_ : PredicateSize (var_size_foo_t p)) = 8 + (foo_size p * 1).
+    Proof. intros. reflexivity. Abort.
+
+    Definition ARPPacket_t(r: ARPPacket): word -> mem -> Prop := .**/
+      typedef struct __attribute__ ((__packed__)) {
+        uint16_t htype;
+        uint16_t ptype;
+        uint8_t hlen;
+        uint8_t plen;
+        uint16_t oper;
+        uint8_t sha[6];
+        uint8_t spa[4];
+        uint8_t tha[6];
+        uint8_t tpa[4];
+      } ARPPacket_t;
+    /**.
+
+    Goal forall p, (_ : PredicateSize (ARPPacket_t p)) = 28.
+    Proof. intros. reflexivity. Abort.
+
+    Definition EthernetHeader_t(r: EthernetHeader): word -> mem -> Prop := .**/
+      typedef struct __attribute__ ((__packed__)) {
+        uint8_t dstMAC[6];
+        uint8_t srcMAC[6];
+        uint16_t etherType;
+      } EthernetHeader_t;
+    /**.
+
+    Goal forall p, (_ : PredicateSize (EthernetHeader_t p)) = 14.
     Proof. intros. reflexivity. Abort.
 
     (* not a Lemma because this kind of goal will be solved inline by sepcalls canceler *)
-    Goal forall (bs: list Z) (R: mem -> Prop) a m (Rest: EthernetHeader_t -> Prop),
+    Goal forall (bs: list Z) (R: mem -> Prop) a m (Rest: EthernetHeader -> Prop),
         sep (array (uint 8) 14 bs a) R m ->
-        exists h, sep (EthernetHeader h a) R m /\ Rest h.
+        exists h, sep (EthernetHeader_t h a) R m /\ Rest h.
     Proof.
       intros.
       eexists (mkEthernetHeader _ _ _).
-      unfold EthernetHeader.
+      unfold EthernetHeader_t.
       cbn.
     Abort.
   End WithMem.

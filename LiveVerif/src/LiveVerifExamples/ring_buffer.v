@@ -3,22 +3,25 @@ Require Import LiveVerif.LiveVerifLib.
 
 Load LiveVerif.
 
-Record raw_ring_buffer_t := {
+Record raw_ring_buffer := {
   capacity: Z;
   dequeue_pos: Z;
   n_elems: Z;
   data: list word;
 }.
 
-Definition raw_ring_buffer(r: raw_ring_buffer_t): word -> mem -> Prop := record!
-  (cons (mk_record_field_description capacity (uint 32))
-  (cons (mk_record_field_description dequeue_pos (uint 32))
-  (cons (mk_record_field_description n_elems (uint 32))
-  (cons (mk_record_field_description data (array uintptr (capacity r))) nil)))).
+Definition raw_ring_buffer_t(r: raw_ring_buffer): word -> mem -> Prop := .**/
+typedef struct __attribute__ ((__packed__)) {
+  uint32_t capacity;
+  uint32_t dequeue_pos;
+  uint32_t n_elems;
+  uintptr_t data[/**# capacity r #**/];
+} raw_ring_buffer_t;
+/**.
 
 Definition ring_buffer(cap: Z)(vs: list word)(addr: word): mem -> Prop :=
-  ex1 (fun b: raw_ring_buffer_t =>
-    sep (raw_ring_buffer b addr)
+  ex1 (fun b: raw_ring_buffer =>
+    sep (raw_ring_buffer_t b addr)
         (emp (capacity b = cap /\ n_elems b = len vs /\
              (data b ++ data b)[dequeue_pos b : dequeue_pos b + n_elems b] = vs))).
 
@@ -38,7 +41,7 @@ Derive ring_buf_enq SuchThat (fun_correct! ring_buf_enq) As ring_buf_enq_ok.    
 {                                                                          /**. .**/
   uintptr_t i = (load32(b_addr+4) + load32(b_addr+8)) % load32(b_addr);    /**.
 
-  unfold raw_ring_buffer in *|-.
+  unfold raw_ring_buffer_t in *|-.
 
   (* interp_sepapp_tree semi-reification to expose one field *)
 
