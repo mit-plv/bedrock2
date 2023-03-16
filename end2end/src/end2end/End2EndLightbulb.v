@@ -116,7 +116,6 @@ Proof. reflexivity. Qed.
 
 Module PrintProgram.
   Import riscv.Utility.InstructionNotations.
-  Import bedrock2.NotationsCustomEntry.
   Import bedrock2.Hexdump.
   Local Open Scope hexdump_scope.
   Set Printing Width 108.
