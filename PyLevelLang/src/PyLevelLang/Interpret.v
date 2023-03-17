@@ -95,7 +95,7 @@ Section WithMap.
     | OOr => orb
     | OConcat _ => fun a b => app a b
     | OConcatString => String.append
-    | OLess => Z.leb
+    | OLess => Z.ltb
     | OEq _ H => eqb_values H
     | ORepeat _ => fun l n => concat (repeat l (Z.to_nat n))
     | OPair _ _ _ => pair
