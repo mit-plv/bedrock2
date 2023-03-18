@@ -37,6 +37,7 @@ Derive swap_subarrays SuchThat (fun_correct! swap_subarrays) As
   swap_subarrays_ok.                                                            .**/
 {                                                                          /**. .**/
   swap_16s(p + 2 * i, p + 2 * j, count);                                   /**.
+
   Unshelve.
   all: case TODO.
 Qed.

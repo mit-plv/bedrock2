@@ -44,7 +44,7 @@ uintptr_t malloc_node(uintptr_t anything)                                 /**#
 Derive malloc_node SuchThat (fun_correct! malloc_node) As malloc_node_ok. .**/
 { /**. .**/
   uintptr_t r = malloc(2);   /**.
-  assert (len anyData = 2) as Hlen by (purify_heapletwise_hyps; assumption).
+  assert (len anyData = 2) as Hlen by hwlia.
 
   destruct anyData; [discriminate Hlen | idtac].
   destruct anyData; [discriminate Hlen | idtac].

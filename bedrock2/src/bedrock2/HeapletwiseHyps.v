@@ -450,9 +450,21 @@ Ltac replace_with_new_mem_hyp H :=
   (try let HOld' := fresh HOld in rename HOld into HOld' (* fails if HOld got cleared *));
   rename H into HOld.
 
-(* Called whenever a new heapletwise hyp is created whose type is not a star (that will
-   get destructed further) *)
-Ltac new_heapletwise_hyp_hook h := idtac.
+(* Called whenever a new heapletwise hyp is created whose type will get destructed further *)
+Ltac new_heapletwise_hyp_hook h t := idtac.
+
+Ltac new_mem_hyp h :=
+  let t := type of h in
+  let p := lazymatch t with
+           | with_mem ?m ?p => p
+           | ?p ?m => p
+           end in
+  lazymatch p with
+  | sep _ _ => idtac
+  | emp _ => idtac
+  | ex1 _ => idtac
+  | _ => new_heapletwise_hyp_hook h t
+  end.
 
 Ltac split_sep_step :=
   let D := fresh "D" in
@@ -477,8 +489,8 @@ Ltac split_sep_step :=
       | (false, false) => eapply sep_to_with_mem_and_with_mem in H
       end;
       destruct H as (m1 & m2 & H1 & H2 & D);
-      new_heapletwise_hyp_hook H1;
-      new_heapletwise_hyp_hook H2;
+      new_mem_hyp H1;
+      new_mem_hyp H2;
       move m1 before parent_m; (* before in direction of movement == below *)
       move m2 before m1;
       try replace_with_new_mem_hyp H1;

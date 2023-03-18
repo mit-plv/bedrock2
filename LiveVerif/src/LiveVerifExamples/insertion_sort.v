@@ -48,16 +48,9 @@ void insert(uintptr_t p, uintptr_t n, uintptr_t i) /**#
 Derive insert SuchThat (fun_correct! insert) As insert_ok.
 .**/ { /**.
   assert (len (sort l1 ++ [|x|]) = \[i]+1) by (rewrite List.len_app; simpl; ZnWords).
-  assert (len l2 = \[n]-\[i]-1).
-  {
-    unfold with_mem, array in H0.
-    step.
-    step.
-    rewrite List.len_app in H3.
-    ZnWords.
-  }
+  assert (len l2 = \[n]-\[i]-1) by hwlia.
   assert ((sort l1 ++ [|x|])[:\[i] + 1] = (sort l1 ++ [|x|])).
-  { rewrite List.upto_pastend. reflexivity. ZnWords. }
+  { apply List.upto_pastend. hwlia. }
 
   .**/ real_insert(p, i); /**.
   instantiate (1 := x) in H5.
@@ -114,14 +107,6 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
       assumption. }
 
     .**/ i = i+1; /**.
-    assert (len arrR' = \[n]-\[i]). {
-      purify_heapletwise_hyps.
-      rewrite ? List.len_app in *.
-      rewrite <- ? sort_preserves_length in *.
-      rewrite ? List.len_app in *.
-      rewrite <- ? sort_preserves_length in *.
-      ZnWords.
-    }
 
   (* at this point we can now close the loop *)
   (* because the lengths of left side and right side have been established *)

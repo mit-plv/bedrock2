@@ -65,7 +65,7 @@ Qed.
 Definition ready{P: Prop} := P.
 
 (* heapletwise- and word-aware lia, successor of ZnWords *)
-Ltac hwlia := purify_heapletwise_hyps; rzify_lia.
+Ltac hwlia := zify_hyps; puri_simpli_zify_hyps accept_always; zify_goal; xlia zchecker.
 
 Ltac bottom_up_simpl_sidecond_hook ::= zify_goal; xlia zchecker.
 
@@ -172,7 +172,7 @@ Ltac after_command_simpl_hook := default_simpl_in_hyps.
 Ltac concrete_post_simpl_hook := default_simpl_in_all.
 
 Ltac prove_concrete_post_pre :=
-    purify_heapletwise_hyps;
+    puri_simpli_zify_hyps accept_always;
     let H := fresh "M" in collect_heaplets_into_one_sepclause H;
     repeat match goal with
            | H: List.length ?l = S _ |- _ =>
@@ -603,8 +603,8 @@ Ltac conclusion_shape_based_step logger :=
       end
   | |- after_add_snippet_marker ?G =>
       change G;
-      purify_heapletwise_hyps;
       zify_hyps;
+      puri_simpli_zify_hyps accept_unless_follows_by_xlia;
       logger ltac:(fun _ => idtac "purify & zify")
   | |- @prove_final_post ?g =>
       logger ltac:(fun _ => idtac "prove_concrete_post");
@@ -674,20 +674,11 @@ Ltac final_program_logic_step logger :=
                              idtac "after_command_simpl_hook; unpurify; unzify and ready")
         end ].
 
-Ltac simpl_and_zify_hyp wok h t :=
-  (* the bottom_up_simpl step on the purified hyp is needed because its simplifications
-     might reveal how trivial it is, which allows us to clear it later *)
-  bottom_up_simpl_in_hyp_of_type h t;
-  let t' := type of h in
-  zify_hyp wok h t'.
+Ltac new_heapletwise_hyp_hook ::= puri_simpli_zify_hyp accept_unless_follows_by_xlia.
 
-Ltac puri_simpli_zify_hyp h :=
-  let t := type of h in
-  let wok := get_word_ok_or_dummy in
-  purify_heapletwise_hyp_of_type_cont ltac:(simpl_and_zify_hyp wok) h t;
-  apply_range_bounding_lemma_in_eqs.
-
-Ltac new_heapletwise_hyp_hook h ::= puri_simpli_zify_hyp h.
+(* TODO maybe only do fwd_subst in inv_rec, or for only var vars created by fwd,
+   or not at all?
+Ltac fwd_subst H ::= idtac. *)
 
 Ltac heapletwise_step' logger :=
   heapletwise_step;
@@ -717,6 +708,8 @@ Ltac step :=
   assert_no_error; (* <-- useful when debugging with `step. step. step. ...` *)
   step0 run_logger_thunk.
 
+Ltac step_silent := step0 ignore_logger_thunk.
+
 Ltac step_is_done :=
   lazymatch goal with
   | |- @ready _ => idtac
@@ -730,7 +723,7 @@ Ltac run_steps :=
   lazymatch goal with
   | _: tactic_error _ |- _ => idtac
   | |- _ => tryif step_is_done then idtac
-            else tryif step0 ignore_logger_thunk then run_steps
+            else tryif step_silent then run_steps
             else pose_err Error:("The 'step' tactic should not fail here")
   end.
 

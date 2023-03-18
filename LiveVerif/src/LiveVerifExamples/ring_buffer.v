@@ -22,8 +22,22 @@ typedef struct __attribute__ ((__packed__)) {
 Definition ring_buffer(cap: Z)(vs: list word)(addr: word): mem -> Prop :=
   ex1 (fun b: raw_ring_buffer =>
     sep (raw_ring_buffer_t b addr)
-        (emp (capacity b = cap /\ n_elems b = len vs /\
-             (data b ++ data b)[dequeue_pos b : dequeue_pos b + n_elems b] = vs))).
+        (emp (capacity b = cap /\
+              0 <= dequeue_pos b < cap /\
+              0 <= n_elems b <= cap /\
+              len (data b) = cap /\
+              (data b ++ data b)[dequeue_pos b : dequeue_pos b + n_elems b] = vs))).
+
+Lemma purify_ring_buffer: forall cap vs addr,
+    purify (ring_buffer cap vs addr) (len vs <= cap).
+Proof.
+  unfold purify, ring_buffer, ex1. intros. fwd.
+  repeat step_silent.
+  subst.
+  bottom_up_simpl_in_goal.
+  lia.
+Qed.
+Hint Resolve purify_ring_buffer : purify.
 
 Hint Unfold ring_buffer : live_always_unfold.
 
@@ -41,11 +55,8 @@ Derive ring_buf_enq SuchThat (fun_correct! ring_buf_enq) As ring_buf_enq_ok.    
 {                                                                          /**. .**/
   uintptr_t i = (load32(b_addr+4) + load32(b_addr+8)) % load32(b_addr);    /**.
 
-  unfold raw_ring_buffer_t in *|-.
-
-  (* interp_sepapp_tree semi-reification to expose one field *)
-
-  (* TODO support &p->field notation, which would allow writing
+  (* TODO support &p->field notation, which would allow writing this:
+     (but probably need a cast of uintptr to record type first?
   uintptr_t i = (load32(&b_addr->dequeue_pos) + load32(&b_addr->n_elems))
                 % load32(&b_addr->capacity);
 

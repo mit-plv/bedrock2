@@ -415,26 +415,45 @@ Proof. intros. subst. assumption. Qed.
 (* TODO detection of word equal and not equal should also take place under
    logical connectives, but using equality and functional extensionality,
    or using <-> in f_equal-like (morphism) lemmas? *)
-Ltac zify_hyp wok h0 tp0 :=
-  tryif ident_starts_with __Z h0 then idtac else
+Ltac zify_hyp_pf wok h0 tp0 :=
   lazymatch tp0 with
   | @eq (@word.rep _ _) _ _ =>
       let h := constr:(f_equal word.unsigned h0) in
       let tp := type of h in
       let pf := zify_term wok tp in
-      let hf := fresh "__Z_" h0 in pose proof (rew_Prop_hyp _ _ pf h) as hf
+      constr:(rew_Prop_hyp _ _ pf h)
   | not (@eq (@word.rep _ _) _ _) =>
       let h := constr:(word.unsigned_inj' _ _ h0) in
       let tp := type of h in
       let pf := zify_term wok tp in
-      let hf := fresh "__Z_" h0 in pose proof (rew_Prop_hyp _ _ pf h) as hf
+      constr:(rew_Prop_hyp _ _ pf h)
   | _ =>
       let pf := zify_term wok tp0 in
       lazymatch pf with
-      | eq_refl => idtac
-      | _ => let hf := fresh "__Z_" h0 in pose proof (rew_Prop_hyp _ _ pf h0) as hf
+      | eq_refl => h0
+      | _ => constr:(rew_Prop_hyp _ _ pf h0)
       end
   end.
+
+(* if zification did something and created a new hyp hnew of type tnew,
+   return (@Some tnew hnew), else return (@None tp) *)
+Ltac zify_hyp_option wok h tp :=
+  let pf := zify_hyp_pf wok h tp in
+  lazymatch pf with
+  | h => constr:(@None tp)
+  | _ => let hf := fresh "__Z_" h in
+         let __ := match constr:(Set) with
+                   | _ => pose proof pf as hf
+                   end in
+         constr:(Some hf)
+  end.
+
+Ltac zify_hyp wok h tp :=
+  (* __pure hyps were already zified when they were purified,
+     and __Z hyps also don't need to be zified *)
+  tryif ident_starts_with __pure h then idtac
+  else tryif ident_starts_with __Z h then idtac
+  else let __ := zify_hyp_option wok h tp in idtac.
 
 Ltac get_word_instance :=
   lazymatch goal with
@@ -470,16 +489,21 @@ Ltac clear_if_dup h :=
   | |- _ => idtac
   end.
 
+Ltac clear_Z_hyp_if_derivable h :=
+  let tp := type of h in
+  try (clear h; assert_succeeds (idtac; assert tp by xlia zchecker)).
+
 Ltac apply_range_bounding_lemma_in_hyp h tp :=
   tryif ident_starts_with __Zrange_ h then
     lazymatch tp with
-    | word.unsigned _ = _ => eapply word.unsigned_range_eq in h; clear_if_dup h
-    | Z.of_nat _ = _ => eapply Z_of_nat_range_eq in h; clear_if_dup h
+    | word.unsigned _ = _ => eapply word.unsigned_range_eq in h; clear_Z_hyp_if_derivable h
+    | Z.of_nat _ = _ => eapply Z_of_nat_range_eq in h; clear_Z_hyp_if_derivable h
     | _ => idtac
     end
   else idtac.
 
-Ltac apply_range_bounding_lemma_in_eqs := foreach_hyp apply_range_bounding_lemma_in_hyp.
+Ltac apply_range_bounding_lemma_in_eqs :=
+  foreach_hyp_upwards apply_range_bounding_lemma_in_hyp.
 
 Ltac zify_goal :=
   lazymatch goal with
@@ -500,14 +524,6 @@ Ltac zify_hyps :=
   let wok := get_word_ok_or_dummy in
   foreach_var (zify_letbound_var wok);
   foreach_hyp (zify_hyp wok);
-  apply_range_bounding_lemma_in_eqs.
-
-Ltac rzify_lia := zify_hyps; zify_goal; xlia zchecker.
-
-(* note: doesn't zify any letbound vars *)
-Ltac zify_hyps_upto_marker marker :=
-  let wok := get_word_ok_or_dummy in
-  foreach_hyp_upto_marker marker (zify_hyp wok);
   apply_range_bounding_lemma_in_eqs.
 
 (* structure:
@@ -538,6 +554,8 @@ Section Tests.
 
   Context {word: word.word 32} {word_ok: word.ok word}.
   Local Hint Mode Word.Interface.word - : typeclass_instances.
+
+  Ltac rzify_lia := zify_hyps; zify_goal; xlia zchecker.
 
   Goal forall (a b: word) (z: Z), \[a ^+ b] < z -> let c := b ^+ a in \[c] < z.
   Proof. intros. rzify_lia. Qed.
@@ -571,7 +589,7 @@ Section Tests.
     (* Require Import bedrock2.ZnWords. Time ZnWords. *)
     zify_hyps.
     zify_goal.
-    Require Import coqutil.Tactics.Tactics.
+    Import coqutil.Tactics.Tactics.
     forget (\[x1 ^+ (x2 ^- x1) ^>> /[4] ^<< /[3] ^- x1] / \[/[8]]) as X1.
     Z.to_euclidean_division_equations.
     lia.
