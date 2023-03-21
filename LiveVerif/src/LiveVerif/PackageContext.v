@@ -41,7 +41,9 @@ Delimit Scope live_scope with live.
 Local Open Scope live_scope.
 
 Inductive scope_kind :=
-  FunctionBody | IfCondition | ThenBranch | ElseBranch | LoopBody | LoopInvariant.
+| FunctionParams | FunctionBody
+| IfCondition | ThenBranch | ElseBranch
+| LoopBody | LoopInvariant.
 Inductive scope_marker: scope_kind -> Set := mk_scope_marker sk : scope_marker sk.
 
 Notation "'____' sk '____'" := (scope_marker sk) (only printing) : live_scope.

@@ -69,6 +69,12 @@ Ltac hwlia := zify_hyps; puri_simpli_zify_hyps accept_always; zify_goal; xlia zc
 
 Ltac bottom_up_simpl_sidecond_hook ::= zify_goal; xlia zchecker.
 
+Ltac intros_until_trace :=
+  repeat lazymatch goal with
+    | |- forall (_: trace), _ => fail (* done *)
+    | |- forall _, _ => intros ?
+    end.
+
 Ltac start :=
   lazymatch goal with
   | |- @program_logic_goal_for ?fname ?evar ?spec =>
@@ -78,9 +84,14 @@ Ltac start :=
       subst evar;
       unfold program_logic_goal_for, spec;
       let fs := fresh "fs" in
-      intro fs;
-      let n := fresh "Scope0" in pose proof (mk_scope_marker FunctionBody) as n;
-      intros;
+      let fs_ok := fresh "fs_ok" in
+      intros fs fs_ok;
+      let nP := fresh "Scope0" in pose proof (mk_scope_marker FunctionParams) as nP;
+      intros_until_trace;
+      let nB := fresh "Scope0" in pose proof (mk_scope_marker FunctionBody) as nB;
+      lazymatch goal with
+      | |- forall (t : trace) (m : @map.rep (@word.rep _ _) Init.Byte.byte _), _ => intros
+      end;
       WeakestPrecondition.unfold1_call_goal;
       cbv match beta delta [WeakestPrecondition.call_body];
       lazymatch goal with
@@ -100,6 +111,21 @@ Ltac start :=
   | |- _ => fail "goal needs to be of shape (@program_logic_goal_for ?fname ?evar ?spec)"
   end.
 
+Ltac is_function_param x :=
+  lazymatch goal with
+  | p: scope_marker FunctionParams, b: scope_marker FunctionBody |- _ =>
+      ident_is_above p x; ident_is_above x b
+  | _ => fail 1000 "could not find FunctionParams and FunctionBody scope_marker"
+  end.
+
+Ltac is_in_snd x ps :=
+  lazymatch ps with
+  | (_, x) :: _ => idtac
+  | _ :: ?rest => is_in_snd x rest
+  | nil => fail "not found"
+  | _ => fail 1000 ps "is not a concrete enough list"
+  end.
+
 Ltac put_into_current_locals :=
   lazymatch goal with
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
@@ -108,12 +134,12 @@ Ltac put_into_current_locals :=
     (* match again because there might have been a renaming *)
     lazymatch goal with
     | |- wp_cmd ?call ?c ?t ?m (map.put ?l ?x ?v) ?post =>
-        tryif (is_var v; lazymatch l with
-                         | context[(_, v)] => fail
-                         | _ => idtac
-                         end)
-        then (* v is a variable, but not a program variable, so we can rename it into x
-                instead of posing a new variable *)
+        let tuples := lazymatch l with map.of_list ?ts => ts end in
+        tryif (
+            is_var v;
+            assert_fails (idtac; is_function_param v); (* not a ghost or non-ghost arg *)
+            assert_fails (idtac; is_in_snd v tuples) (* not a local program variable *))
+        then (* we can rename v into i instead of posing a new variable *)
           rename v into i
         else (
           (* tradeoff between goal size blowup and not having to follow too many aliases *)

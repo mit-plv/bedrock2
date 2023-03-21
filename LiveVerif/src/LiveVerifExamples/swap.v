@@ -35,8 +35,7 @@ void swap_words(uintptr_t a_addr, uintptr_t b_addr) /**#
           * R }> m' #**/                                                   /**.
 Derive swap_words SuchThat (fun_correct! swap_words) As swap_words_ok.          .**/
 {                                                                          /**. .**/
-  uintptr_t t = load(a_addr);                                              /**.
-  (* TODO: a should not get renamed into t, because it appears in pre and post *) .**/
+  uintptr_t t = load(a_addr);                                              /**. .**/
   store(a_addr, load(b_addr));                                             /**. .**/
   store(b_addr, t);                                                        /**. .**/
 }                                                                          /**.
