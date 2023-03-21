@@ -25,6 +25,7 @@ Require Import compiler.SeparationLogic.
 Require Import bedrock2.Syntax.
 Require Import bedrock2.ZnWords.
 Require Import riscv.Utility.Encode.
+Require riscv.Utility.bverify.
 Require Import riscv.Proofs.EncodeBound.
 Require Import riscv.Proofs.DecodeByExtension.
 Require Import riscv.Proofs.VerifyDecode.
@@ -465,7 +466,7 @@ Section Riscv.
   Qed.
 
   Lemma of_list_word_at_implies_program: forall iset insts addr,
-      Forall (fun inst => verify inst iset) insts ->
+      bverify.validInstructions iset insts ->
       word.unsigned addr mod 4 = 0 ->
       Z.of_nat (Datatypes.length (Pipeline.instrencode insts)) < 2 ^ 32 ->
       impl1 (eq (map.of_list_word_at addr (Pipeline.instrencode insts)))
@@ -570,19 +571,30 @@ Section Riscv.
                            | _ => true
                            end).
 
-  Lemma verify_mul_insts : Forall (fun i => verify i RV32I) mul_insts.
+  Lemma mul_insts_valid :
+    bverify.validInstructions RV32I mul_insts.
   Proof.
-    repeat (eapply Forall_cons || eapply Forall_nil).
-    all : cbv; ssplit; trivial; try congruence.
+    apply bverify.bvalidInstructions_valid.
+    vm_cast_no_check (eq_refl true).
   Qed.
 
-  Lemma verify_not_Invalid: forall inst iset,
-      verify inst iset ->
-      match inst with
-      | InvalidInstruction _ => False
-      | _ => True
-      end.
-  Proof. intros. destruct inst; auto. cbv in H. apply H. Qed.
+  Lemma mul_insts_not_invalid :
+    List.Forall (fun inst => match inst with
+                             | InvalidInstruction _ => False
+                             | _ => True
+                             end) mul_insts.
+  Proof. repeat constructor. Qed.
+
+  Lemma verify_mul_insts : Forall (fun i => verify i RV32I) mul_insts.
+  Proof.
+    eapply Forall_impl.
+    2: eapply Forall_and.
+    2: apply mul_insts_valid.
+    2: apply mul_insts_not_invalid.
+    cbv beta. intros i [V1 V2]. unfold bverify.validInstruction in V1.
+    destruct V1. 1: assumption.
+    unfold bverify.valid_InvalidInstruction in *. fwd. contradiction.
+  Qed.
 
   Lemma In_word_seq: forall n (a start: word),
       In a (List.unfoldn (word.add (word.of_Z 1)) n start) <->
@@ -757,8 +769,7 @@ Section Riscv.
         cbn -[array HList.tuple List.unfoldn List.length Nat.mul load_bytes].
         1: assumption.
         2: reflexivity.
-        2: { eapply Forall_impl. 2: eapply verify_mul_insts.
-             cbv beta. intros. eapply verify_not_Invalid. eassumption. }
+        2: exact mul_insts_not_invalid.
         cbn [seps] in ML'. ecancel_assumption.
       }
       2: { cbn. assumption. }
@@ -831,7 +842,8 @@ Section Riscv.
           { eapply of_list_word_at_implies_program. 2: assumption.
             2: vm_compute; reflexivity.
             eapply Forall_impl. 2: eapply verify_mul_insts.
-            cbv beta. clear. unfold verify. intros i [V1 V2]. split. 1: exact V1.
+            cbv beta. clear. unfold verify, bverify.validInstruction. intros i [V1 V2].
+            left. split. 1: exact V1.
             unfold verify_iset in *.
             destruct i; intuition congruence. } }
         { assumption. }
@@ -845,8 +857,7 @@ Section Riscv.
           1: assumption.
           1: cbn[seps] in *; ecancel_assumption.
           1: exact HeqL.
-          eapply Forall_impl. 2: eapply verify_mul_insts.
-          cbv beta. intros. eapply verify_not_Invalid. eassumption. } } }
+          exact mul_insts_not_invalid. } } }
     { cbv beta. cbn -[array HList.tuple Datatypes.length].
       intros. fwd.
       specialize (C final.(MinimalCSRs.mem) final.(regs)).
@@ -897,7 +908,6 @@ Section Riscv.
         eapply sep_assoc in Hmy.
         eapply Proper_sep_iff1 in Hmy. 3: symmetry; eapply sep_emp_emp. 2: reflexivity.
         eapply sep_emp_r in Hmy as (?&?&?).
-
         eexists.
         eapply sep_emp_r.
         split.
