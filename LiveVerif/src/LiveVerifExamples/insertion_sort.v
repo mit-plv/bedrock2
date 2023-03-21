@@ -53,8 +53,8 @@ Derive insert SuchThat (fun_correct! insert) As insert_ok.
   { apply List.upto_pastend. hwlia. }
 
   .**/ real_insert(p, i); /**.
-  instantiate (1 := x) in H5.
-  instantiate (1 := l1) in H5.
+  2: instantiate (1 := x).
+  2: instantiate (1 := l1).
 .**/ } /**.
 congruence.
 Qed.
@@ -77,10 +77,11 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
   assert (len arr = \[n]-\[i]) as lenArrR by hwlia.
   assert (len (sort nil) = \[i]) as lenArrL by
       (bottom_up_simpl_in_goal; rewrite sort_nil; auto).
-  replace arr with ((sort nil) ++ arr) in H1 by
-    (rewrite sort_nil;
-    rewrite List.app_nil_l;
-    auto).
+  lazymatch goal with
+  | H: _ |= array (uint 32) _ ?arr _ |- _ =>
+      replace arr with ((sort nil) ++ arr) in H by
+        (rewrite sort_nil; rewrite List.app_nil_l; auto)
+  end.
 
   (* assign some names so we can generalize *)
   set (arrL := nil) in * |-;

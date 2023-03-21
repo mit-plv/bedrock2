@@ -108,7 +108,6 @@ Derive sll_prepend SuchThat (fun_correct! sll_prepend) As sll_prepend_ok. .**/
   assert (exists (mm2:mem), m \*/ m2 = mm2) as Hex by admit.
   destruct Hex as [mm2 Hex]. rewrite Hex in D. clear Hex.
   assert (mm2 |= sll (val :: L) r) by admit.
-  clear H0 H5 m m2.
 .**/ } /**.
 Abort.
 
