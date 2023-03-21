@@ -278,6 +278,75 @@ Ltac is_concrete_enough i l is_nonpos_concrete_enough :=
          end
   end.
 
+Ltac non_ring_expr_size e :=
+  lazymatch e with
+  | Zneg _ => uconstr:(2)
+  | _ => lazymatch is_Z_const e with
+         | true => uconstr:(1)
+         | false => uconstr:(2)
+         end
+  end.
+
+Ltac ring_expr_size e :=
+  let r1 x :=
+    let s := ring_expr_size x in uconstr:(1 + s) in
+  let r2 x y :=
+    let s1 := ring_expr_size x in let s2 := ring_expr_size y in uconstr:(1 + s1 + s2) in
+  lazymatch e with
+  | Z.add ?x ?y => r2 x y
+  | Z.sub ?x ?y => r2 x y
+  | Z.mul ?x ?y => r2 x y
+  | Z.opp ?x => r1 x
+  | word.add ?x ?y => r2 x y
+  | word.sub ?x ?y => r2 x y
+  | word.mul ?x ?y => r2 x y
+  | word.opp ?x => r1 x
+  | word.of_Z ?x => non_ring_expr_size x
+  | _ => non_ring_expr_size e
+  end.
+
+Inductive expr_kind := WordRingExpr | ZRingExpr | OtherExpr.
+
+Ltac expr_kind e :=
+  lazymatch e with
+  | Z.add _ _ => ZRingExpr
+  | Z.sub _ _ => ZRingExpr
+  | Z.mul _ _ => ZRingExpr
+  | Z.opp _ => ZRingExpr
+  | word.add _ _ => WordRingExpr
+  | word.sub _ _ => WordRingExpr
+  | word.mul _ _ => WordRingExpr
+  | word.opp _ => WordRingExpr
+  | _ => OtherExpr
+  end.
+
+Ltac ring_simplify_res_forcing_progress e :=
+  let rhs := open_constr:(_) in
+  let x := fresh "x" in
+  let pf := constr:(ltac:(intro x; progress ring_simplify; subst x; reflexivity)
+                     : let x := rhs in e = x) in
+  res_rewrite rhs pf.
+
+Ltac ring_simplify_res_or_nothing_to_simpl e :=
+  match constr:(Set) with
+  | _ => ring_simplify_res_forcing_progress e
+  | _ => res_nothing_to_simpl e
+  end.
+
+Ltac local_ring_simplify parent e :=
+  lazymatch expr_kind e with
+  | parent => fail "nothing to do here because parent will be ring_simplified too"
+  | _ => let r := ring_simplify_res_forcing_progress e in
+         let rhs := r NewTerm in
+         let sz1 := ring_expr_size e in
+         let sz2 := ring_expr_size rhs in
+         let is_shrinking := eval cbv in (Z.ltb sz2 sz1) in
+         lazymatch is_shrinking with
+         | true => r
+         | false => fail "ring_simplify does not shrink the expression size"
+         end
+  end.
+
 Section SimplListLemmas.
   Import List.ZIndexNotations. Local Open Scope zlist_scope.
   Context [A: Type].
@@ -347,75 +416,36 @@ Ltac local_zlist_simpl e :=
   | List.upto ?i (List.app ?l1 ?l2) =>
       res_rewrite (List.upto i l1)
                   (List.upto_app_discard_r l1 l2 i ltac:(bottom_up_simpl_sidecond_hook))
-  end.
-
-Inductive expr_kind := WordRingExpr | ZRingExpr | OtherExpr.
-
-Ltac expr_kind e :=
-  lazymatch e with
-  | Z.add _ _ => ZRingExpr
-  | Z.sub _ _ => ZRingExpr
-  | Z.mul _ _ => ZRingExpr
-  | Z.opp _ => ZRingExpr
-  | word.add _ _ => WordRingExpr
-  | word.sub _ _ => WordRingExpr
-  | word.mul _ _ => WordRingExpr
-  | word.opp _ => WordRingExpr
-  | _ => OtherExpr
-  end.
-
-Ltac non_ring_expr_size e :=
-  lazymatch e with
-  | Zneg _ => uconstr:(2)
-  | _ => lazymatch is_Z_const e with
-         | true => uconstr:(1)
-         | false => uconstr:(2)
-         end
-  end.
-
-Ltac ring_expr_size e :=
-  let r1 x :=
-    let s := ring_expr_size x in uconstr:(1 + s) in
-  let r2 x y :=
-    let s1 := ring_expr_size x in let s2 := ring_expr_size y in uconstr:(1 + s1 + s2) in
-  lazymatch e with
-  | Z.add ?x ?y => r2 x y
-  | Z.sub ?x ?y => r2 x y
-  | Z.mul ?x ?y => r2 x y
-  | Z.opp ?x => r1 x
-  | word.add ?x ?y => r2 x y
-  | word.sub ?x ?y => r2 x y
-  | word.mul ?x ?y => r2 x y
-  | word.opp ?x => r1 x
-  | word.of_Z ?x => non_ring_expr_size x
-  | _ => non_ring_expr_size e
-  end.
-
-Ltac ring_simplify_res_forcing_progress e :=
-  let rhs := open_constr:(_) in
-  let x := fresh "x" in
-  let pf := constr:(ltac:(intro x; progress ring_simplify; subst x; reflexivity)
-                     : let x := rhs in e = x) in
-  res_rewrite rhs pf.
-
-Ltac ring_simplify_res_or_nothing_to_simpl e :=
-  match constr:(Set) with
-  | _ => ring_simplify_res_forcing_progress e
-  | _ => res_nothing_to_simpl e
-  end.
-
-Ltac local_ring_simplify parent e :=
-  lazymatch expr_kind e with
-  | parent => fail "nothing to do here because parent will be ring_simplified too"
-  | _ => let r := ring_simplify_res_forcing_progress e in
-         let rhs := r NewTerm in
-         let sz1 := ring_expr_size e in
-         let sz2 := ring_expr_size rhs in
-         let is_shrinking := eval cbv in (Z.ltb sz2 sz1) in
-         lazymatch is_shrinking with
-         | true => r
-         | false => fail "ring_simplify does not shrink the expression size"
-         end
+  | List.from ?i (List.upto ?j ?l) =>
+      let sz_j := ring_expr_size j in
+      let r_diff := ring_simplify_res_or_nothing_to_simpl (Z.sub j i) in
+      let diff := r_diff NewTerm in
+      let sz_diff := ring_expr_size diff in
+      let is_shrinking := eval cbv in (Z.ltb sz_diff sz_j) in
+      lazymatch is_shrinking with
+      | false => fail "ring_simplify does not shrink the expression size"
+      | true =>
+          let pf_diff := r_diff EqProof in
+          let rhs := constr:(List.upto diff (List.from i l)) in
+          let lem1 := constr:(indexed_slice_to_sized_slice l i j diff) in
+          res_rewrite (List.upto diff (List.from i l))
+            (indexed_slice_to_sized_slice l i j diff
+               ltac:(bottom_up_simpl_sidecond_hook) pf_diff)
+      end
+  | List.upto ?n (List.from ?i ?l) =>
+      let sz_n := ring_expr_size n in
+      let r_sum := ring_simplify_res_or_nothing_to_simpl (Z.add i n) in
+      let sum := r_sum NewTerm in
+      let sz_sum := ring_expr_size sum in
+      let is_shrinking := eval cbv in (Z.ltb sz_sum sz_n) in
+      lazymatch is_shrinking with
+      | false => fail "ring_simplify does not shrink the expression size"
+      | true =>
+          let pf_sum := r_sum EqProof in
+          res_rewrite (List.from i (List.upto sum l))
+            (sized_slice_to_indexed_slice l i n sum
+               ltac:(bottom_up_simpl_sidecond_hook) pf_sum)
+      end
   end.
 
 Ltac is_unary_Z_op op :=
@@ -1255,6 +1285,18 @@ Section Tests.
       d <> 0 ->
       (d * j - i * d + k * d * count) / d - count * k = j - i.
   Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+
+  Goal forall (A: Type) (xs ys: list A) i j,
+      0 <= i <= 3 + j + i ->
+      xs[i : 3 + i + j] = ys ->
+      xs[i:][: j + 3] = ys.
+  Proof. intros. bottom_up_simpl_in_hyps. assumption. Abort.
+
+  Goal forall (A: Type) (xs ys: list A) i j,
+      0 <= i <= j ->
+      xs[i:][: j - i] = ys ->
+      xs[i : j] = ys.
+  Proof. intros. bottom_up_simpl_in_hyps. assumption. Abort.
 
   (** ** Not supported yet: *)
 
