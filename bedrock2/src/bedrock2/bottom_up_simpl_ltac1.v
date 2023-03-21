@@ -278,6 +278,34 @@ Ltac is_concrete_enough i l is_nonpos_concrete_enough :=
          end
   end.
 
+Section SimplListLemmas.
+  Import List.ZIndexNotations. Local Open Scope zlist_scope.
+  Context [A: Type].
+
+  (* A list slice can be expressed in two ways:
+     - indexed: xs[i:j], which is shorthand for xs[:j][i:]
+     - sized: xs[i:][:n]
+     Which one we prefer depends on the AST size of the second number:
+     Sometimes, it's easier to express the end index, but sometimes, it's
+     easier to express the size. *)
+
+  Lemma indexed_slice_to_sized_slice: forall (l: list A) i j n,
+      0 <= i <= j ->
+      j - i = n ->
+      l[i:j] = l[i:][:n].
+  Proof.
+    intros. subst. rewrite List.from_upto_comm by lia. f_equal. f_equal. lia.
+  Qed.
+
+  Lemma sized_slice_to_indexed_slice: forall (l: list A) i n j,
+      0 <= i /\ 0 <= n ->
+      i + n = j ->
+      l[i:][:n] = l[i:j].
+  Proof.
+    intros * [? ?] **. subst. apply List.from_upto_comm; assumption.
+  Qed.
+End SimplListLemmas.
+
 Ltac local_zlist_simpl e :=
   match e with
   | @List.get ?A ?inh ?l ?i =>
