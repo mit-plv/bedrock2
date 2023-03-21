@@ -28,18 +28,23 @@ void swap_subarrays(uintptr_t p, uintptr_t i, uintptr_t j, uintptr_t count) /**#
   requires t m :=
       \[i] + \[count] <= \[j] /\
       \[j] + \[count] <= n /\
-      2 * n < 2 ^ 32 /\ (*  <-- array size fits into a word, TODO add to array definition *)
+      2 * n < 2 ^ 32 /\ (*  <-- array size fits into a word, TODO add to array def *)
       <{ * array (uint 16) n l p
          * R }> m;
   ensures t' m' := t' = t /\
-                  <{ * R * R (* TODO *) }> m' #**/                         /**.
+                  <{ * array (uint 16) n (l[:\[i]] ++
+                                          l[\[j]:][:\[count]] ++
+                                          l[\[i] + \[count] : \[j]] ++
+                                          l[\[i]:][:\[count]] ++
+                                          l[\[count] + \[j]:]) p
+                     * R }> m' #**/                                        /**.
 Derive swap_subarrays SuchThat (fun_correct! swap_subarrays) As
   swap_subarrays_ok.                                                            .**/
 {                                                                          /**. .**/
-  swap_16s(p + 2 * i, p + 2 * j, count);                                   /**.
+  swap_16s(p + 2 * i, p + 2 * j, count);                                   /**. .**/
+}                                                                          /**.
 
-  Unshelve.
-  all: case TODO.
+case TODO.
 Qed.
 
 End LiveVerif. Comments .**/ //.
