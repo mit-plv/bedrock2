@@ -23,7 +23,12 @@ Definition can_eq (t : type) : bool :=
   | _ => false
   end.
 
-Scheme Equality for type. (* creates type_beq and type_eq_dec *)
+Definition type_eq_dec (t1 t2 : type) : {t1 = t2} + {t1 <> t2}.
+decide equality.
+apply string_dec.
+Defined.
+
+Scheme Boolean Equality for type. (* creates type_beq *)
 
 Declare Scope pylevel_scope. Local Open Scope pylevel_scope.
 Notation "t1 =? t2" := (type_beq t1 t2) (at level 70) : pylevel_scope.

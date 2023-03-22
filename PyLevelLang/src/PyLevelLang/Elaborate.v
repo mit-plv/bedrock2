@@ -108,6 +108,7 @@ Section WithMap.
       injection H as [= _ H];
       destruct t; try easy;
       repeat injection H as [= <-];
+      apply Eqdep_dec.inj_pair2_eq_dec in H as [= <-]; try exact type_eq_dec;
       apply wf_EAtom.
   Qed.
 
@@ -398,11 +399,12 @@ Section WithMap.
       destruct (map.get G x) as [[t' [|]] |] eqn : Hmap.
       + (* Some (t', true) *)
         injection H as [= H' H]. rewrite H' in H.
-        injection H as H. rewrite <- H.
+        injection H as H.
+        apply Eqdep_dec.inj_pair2_eq_dec in H as [= <-]; try exact type_eq_dec.
         apply wf_ELoc. now rewrite Hmap, H'.
       + (* Some (t', false) *)
         injection H as [= H' H]. rewrite H' in H.
-        injection H as [= <-].
+        apply Eqdep_dec.inj_pair2_eq_dec in H as [= <-]; try exact type_eq_dec.
         apply wf_EVar. now rewrite Hmap, H'.
       + (* None *)
         discriminate H.

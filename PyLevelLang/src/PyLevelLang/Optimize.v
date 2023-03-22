@@ -163,10 +163,11 @@ Section WithMap.
     <-> e = EBinop (OPair X A B) e1 e2.
   Proof.
     clear dependent locals.
-    dependent induction e; cbn; intuition try congruence;
-    dependent induction o; inversion H; congruence.
+    dependent induction e; cbn; intuition; try congruence;
+    dependent induction o; inversion H; 
+    try apply Eqdep.EqdepTheory.inj_pair2 in H1, H2; try exact type_eq_dec; 
+    congruence.
   Qed.
-
 
   Lemma EUnop_correct {t1 t2 : type} (l : locals) (o : unop t1 t2) (e : expr t1)
     : interp_expr l (eUnop o e) = interp_expr l (EUnop o e).
