@@ -120,6 +120,16 @@ Section Examples.
      = Success [("o", existT interp_type (TList TInt) [1; 4; 9; 16; 25; 36; 49; 64; 81])].
   Proof. reflexivity. Abort.
 
+  Goal run_program [("o", (TInt, true))] <{
+    "o" <- reduce range(1, 10) 0 "x" "y" ("x" + "y") }>
+    = Success [("o", existT interp_type TInt 45)].
+  reflexivity. Abort.
+
+  Goal run_program [("o", (TInt, true))] <{
+    "o" <- reduce range(1, 10) 0 "x" "y" ("x" * "x" + "y") }>
+    = Success [("o", existT interp_type TInt 285)].
+  reflexivity. Abort.
+
    Definition isEven (n : Z) : pcommand := <{
       let "n" := n in
       if "n" % 2 == 0

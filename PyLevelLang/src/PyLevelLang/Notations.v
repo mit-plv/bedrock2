@@ -123,6 +123,8 @@ Notation "'nil[' t ']'"        := (PANil t)
 (* Other pexpr *)
 Notation "'flatmap' e1 x e2"           := (PEFlatmap e1 x%string e2)
    (in custom py_expr at level 99, x constr at level 0) : pylevel_scope.
+Notation "'reduce' e1 e2 x y e3"           := (PEReduce e1 e2 x%string y%string e3)
+   (in custom py_expr at level 99, x constr at level 0, y constr at level 0) : pylevel_scope.
 Notation "'if' p1 'then' p2 'else' p3" := (PEIf p1 p2 p3)
    (in custom py_expr at level 99) : pylevel_scope.
 Notation "'let' x := p1 'in' p2"       := (PELet x p1 p2)
@@ -222,6 +224,5 @@ Section Tests.
                          (PCGets "b" (PEBinop POPlus "x" 1))))
                (PCGets "z" 123).
    reflexivity. Abort.
-
 End Tests.
 
