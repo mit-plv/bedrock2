@@ -49,13 +49,6 @@ Proof.
   end H); easy.
 Defined.
 
-Fixpoint  fold {A B} (fn : A -> B -> A) (a : A) (l : list B) : A :=
-  match l with
-  | nil => a
-  | x :: xs => fold fn (fn a x) xs
-  end.
-
-
 Section WithMap.
   Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
 
@@ -119,9 +112,8 @@ Section WithMap.
     | EIf e1 e2 e3 => if interp_expr l e1 then interp_expr l e2 else interp_expr l e3
     | EReduce l1 a x y fn => let l1' := interp_expr l l1 in
                              let a' := interp_expr l a in
-                             let fn' := fun acc v => interp_expr (set_local (set_local l x v) y acc) fn in
-                             fold fn' a' l1'
-
+                             let fn' := fun v acc => interp_expr (set_local (set_local l x v) y acc) fn in
+                             fold_right fn' a' l1'
     | ELet x e1 e2 => interp_expr (set_local l x (interp_expr l e1)) e2
     end.
 
