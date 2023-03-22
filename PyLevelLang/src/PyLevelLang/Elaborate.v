@@ -52,9 +52,9 @@ Section WithMap.
     | wf_EFlatmap G {t1 t2} (e1 : expr (TList t1)) (x : string)
         (e2 : expr (TList t2)) :
         wf G e1 -> wf (map.put G x (t1, false)) e2 -> wf G (EFlatmap e1 x e2)
-    | wf_EReduce G {t1 t2} (e1 : expr (TList t1)) (e2 : expr t2) (x : string) 
+    | wf_EFold G {t1 t2} (e1 : expr (TList t1)) (e2 : expr t2) (x : string) 
         (y : string) (e3 : expr t2) :
-        wf G e1 -> wf G e2 -> wf (map.put (map.put G x (t1, false)) y (t2, false)) e3 -> wf G (EReduce e1 e2 x y e3)
+        wf G e1 -> wf G e2 -> wf (map.put (map.put G x (t1, false)) y (t2, false)) e3 -> wf G (EFold e1 e2 x y e3)
     | wf_EIf G {t} (e1 : expr TBool) (e2 e3 : expr t) :
         wf G e1 -> wf G e2 -> wf G e3 -> wf G (EIf e1 e2 e3)
     | wf_ELet G {t1 t2} (x : string) (e1 : expr t1) (e2 : expr t2) :
@@ -361,7 +361,7 @@ Section WithMap.
             end e2
         | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
         end e1
-    | PEReduce p1 p2 x y p3 =>
+    | PEFold p1 p2 x y p3 =>
         '(existT _ t1 e1) <- elaborate G p1;;
         match t1 as t' return expr t' -> _ with
         | TList t1 => fun e1 => 
@@ -369,7 +369,7 @@ Section WithMap.
             let G' := map.put (map.put G x (t1, false)) y (t2, false) in
             '(existT _ t3 e3) <- elaborate G' p3;;
             e3' <- enforce_type t2 e3;;
-            Success (existT _ _ (EReduce e1 e2 x y e3'))
+            Success (existT _ _ (EFold e1 e2 x y e3'))
         | _ => fun _ => error:(e1 "has type" t1 "but expected" TList)
         end e1
     | PEIf p1 p2 p3 =>
@@ -438,14 +438,14 @@ Section WithMap.
       apply wf_EFlatmap.
       + now apply IHp1.
       + now apply IHp2.
-    - (* PEReduce p1 p2 x y p3 *)
+    - (* PEFold p1 p2 x y p3 *)
       destruct (elaborate G p1) as [[t1 e1] |] eqn : H1; try easy.
       destruct t1; try easy.
       destruct (elaborate G p2) as [[t2 e2] |] eqn : H2; try easy.
       destruct (elaborate (map.put (map.put G x (t1, false)) y (t2, false)) p3) as [[t3 e3] |] eqn : H3; try easy.
       destruct (enforce_type t2 e3) as [e3' |] eqn : H3'; try easy.
       inversion H.
-      apply wf_EReduce.
+      apply wf_EFold.
       + now apply IHp1.
       + now apply IHp2.
       + apply IHp3. rewrite H3.

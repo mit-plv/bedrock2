@@ -192,7 +192,7 @@ Section WithMap.
       | EUnop o e1 => EUnop o (fold_expr e1)
       | EBinop o e1 e2 => EBinop o (fold_expr e1) (fold_expr e2)
       | EFlatmap e1 x e2 => EFlatmap (fold_expr e1) x (fold_expr e2)
-      | EReduce e1 e2 x y e3 => EReduce (fold_expr e1) (fold_expr e2) x y (fold_expr e3)
+      | EFold e1 e2 x y e3 => EFold (fold_expr e1) (fold_expr e2) x y (fold_expr e3)
       | EIf e1 e2 e3 => EIf (fold_expr e1) (fold_expr e2) (fold_expr e3)
       | ELet x e1 e2 => ELet x (fold_expr e1) (fold_expr e2)
       | (EVar _ _ | ELoc _ _ | EAtom _) as e => e
@@ -220,7 +220,7 @@ Section WithMap.
         | _, _ => (EBinop o e1' e2', None)
         end
     | EFlatmap e1 x e2 => (EFlatmap (fst (constant_folding' e1)) x (fst (constant_folding' e2)), None)
-    | EReduce e1 e2 x y e3 => (EReduce (fst(constant_folding' e1)) (fst(constant_folding' e2)) x y (fst(constant_folding' e3)), None)
+    | EFold e1 e2 x y e3 => (EFold (fst(constant_folding' e1)) (fst(constant_folding' e2)) x y (fst(constant_folding' e3)), None)
     | EIf e1 e2 e3 => (EIf (fst (constant_folding' e1)) (fst (constant_folding' e2)) (fst (constant_folding' e3)), None)
     | ELet x e1 e2 => (ELet x (fst (constant_folding' e1)) (fst (constant_folding' e2)), None)
     end.
@@ -306,7 +306,7 @@ Section WithMap.
         | _ => EIf e1' e2' e3'
         end
     | EFlatmap e1 x e2 => EFlatmap (branch_elim e1) x (branch_elim e2)
-    | EReduce e1 e2 x y e3 => EReduce (branch_elim e1) (branch_elim e2) x y (branch_elim e3)
+    | EFold e1 e2 x y e3 => EFold (branch_elim e1) (branch_elim e2) x y (branch_elim e3)
     | ELet x e1 e2 => ELet x (branch_elim e1) (branch_elim e2)
     end.
 
@@ -339,7 +339,7 @@ Section WithMap.
     | EUnop _ e1 => is_name_used x e1
     | EBinop _ e1 e2 => is_name_used x e1 || is_name_used x e2
     | EFlatmap e1 x' e2 => eqb x' x || is_name_used x e1 || is_name_used x e2
-    | EReduce e1 e2 x' y' e3 => eqb x' x || eqb y' x || is_name_used x e1 || is_name_used x e2 || is_name_used x e3
+    | EFold e1 e2 x' y' e3 => eqb x' x || eqb y' x || is_name_used x e1 || is_name_used x e2 || is_name_used x e3
     | EIf e1 e2 e3 => is_name_used x e1 || is_name_used x e2 || is_name_used x e3
     | ELet x' e1 e2 => eqb x' x || is_name_used x e1 || is_name_used x e2
     end.
@@ -434,7 +434,7 @@ Section WithMap.
     | EUnop o e1 => EUnop o (unused_name_elim e1)
     | EBinop o e1 e2 => EBinop o (unused_name_elim e1) (unused_name_elim e2)
     | EFlatmap e1 x e2 => EFlatmap (unused_name_elim e1) x (unused_name_elim e2)
-    | EReduce e1 e2 x y e3 => EReduce (unused_name_elim e1) (unused_name_elim e2) x y (unused_name_elim e3)
+    | EFold e1 e2 x y e3 => EFold (unused_name_elim e1) (unused_name_elim e2) x y (unused_name_elim e3)
     | EIf e1 e2 e3 => EIf (unused_name_elim e1) (unused_name_elim e2) (unused_name_elim e3)
     | ELet x e1 e2 => if is_name_used x e2 then ELet x (unused_name_elim e1) (unused_name_elim e2) else unused_name_elim e2
     end.

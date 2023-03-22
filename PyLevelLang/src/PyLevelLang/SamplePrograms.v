@@ -121,12 +121,12 @@ Section Examples.
   Proof. reflexivity. Abort.
 
   Goal run_program [("o", (TInt, true))] <{
-    "o" <- reduce range(1, 10) 0 "x" "y" ("x" + "y") }>
+    "o" <- fold range(1, 10) 0 "x" "y" ("x" + "y") }>
     = Success [("o", existT interp_type TInt 45)].
   reflexivity. Abort.
 
   Goal run_program [("o", (TInt, true))] <{
-    "o" <- reduce range(1, 10) 0 "x" "y" ("x" * "x" + "y") }>
+    "o" <- fold range(1, 10) 0 "x" "y" ("x" * "x" + "y") }>
     = Success [("o", existT interp_type TInt 285)].
   reflexivity. Abort.
 
