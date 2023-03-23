@@ -893,8 +893,10 @@ Section SimplLen.
       len (cons a l) = n.
   Proof. intros. subst. rewrite List.length_cons. lia. Qed.
 
-  Lemma simpl_len_app: forall (l1 l2: list A) n,
-      len l1 + len l2 = n ->
+  Lemma simpl_len_app: forall (l1 l2: list A) n1 n2 n,
+      len l1 = n1 ->
+      len l2 = n2 ->
+      n1 + n2 = n ->
       len (l1 ++ l2) = n.
   Proof. intros. subst. eapply List.len_app. Qed.
 
@@ -1057,18 +1059,34 @@ with simpl_len e A x := (* e must be (len x) *)
           let pf_oneplus := r_oneplus EqProof in
           res_rewrite oneplus uconstr:(@simpl_len_cons A h t oneplus pf_oneplus)
       end
-
-(* TODO
-  Lemma simpl_len_app: forall (l1 l2: list A) n,
-      len l1 + len l2 = n ->
-      len (l1 ++ l2) = n.
-  Lemma simpl_len_set: forall (l: list A) i i' n x,
-      i = i' ->
-      len l = n ->
-      0 <= i' < n ->
-      len l[i := x] = n.
-*)
-
+  | @List.app ?tp ?l1 ?l2 =>
+      let r_len_l1 := simpl_len (Z.of_nat (@List.length tp l1)) tp l1 in
+      let r_len_l2 := simpl_len (Z.of_nat (@List.length tp l2)) tp l2 in
+      let len_l1 := r_len_l1 NewTerm in
+      let len_l2 := r_len_l2 NewTerm in
+      let r_sum_lens := ring_simplify_res_or_nothing_to_simpl (Z.add len_l1 len_l2) in
+      let sum_lens := r_sum_lens NewTerm in
+      let pf_len_l1 := r_len_l1 EqProof in
+      let pf_len_l2 := r_len_l2 EqProof in
+      let pf_sum_lens := r_sum_lens EqProof in
+      res_rewrite sum_lens uconstr:(@simpl_len_app tp l1 l2 len_l1 len_l2 sum_lens
+                                      pf_len_l1 pf_len_l2 pf_sum_lens)
+  | @List.set ?tp ?l ?i ?x =>
+      let r_i := bottom_up_simpl OtherExpr i in
+      let i' := r_i NewTerm in
+      let pf_i := r_i EqProof in
+      let r_len_l := simpl_len (Z.of_nat (@List.length tp l)) tp l in
+      let len_l := r_len_l NewTerm in
+      let pf_len_l := r_len_l EqProof in
+      let g := constr:(0 <= i' < len_l) in
+      match constr:(Set) with
+      | _ => let s := constr:(ltac:(bottom_up_simpl_sidecond_hook) : g) in
+             res_rewrite len_l constr:(@simpl_len_set tp l i i' len_l x pf_i pf_len_l s)
+      | _ => (* TODO this is the only place so far where bottom_up_simpl might fail.
+                Design decisions: How to return failures? Should we fail in more places? *)
+          fail 1 "setting element" i' "of" l "requires" g
+            "but that's not provable by bottom_up_simpl_sidecond_hook"
+      end
   | List.repeatz ?a ?n =>
       let r_n := bottom_up_simpl OtherExpr n in
       let n' := r_n NewTerm in
@@ -1297,6 +1315,26 @@ Section Tests.
       xs[i:][: j - i] = ys ->
       xs[i : j] = ys.
   Proof. intros. bottom_up_simpl_in_hyps. assumption. Abort.
+
+  Goal forall (A: Type) (xs ys: list A),
+      len (xs ++ ys) = len xs + len ys.
+  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+
+  Goal forall (A: Type) (xs ys: list A) (x: A) (i: Z),
+      0 <= i < len ys ->
+      len (xs ++ ys ++ xs) = 2 * len xs + len ys.
+  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+
+  Goal forall (A: Type) (xs ys: list A) (x: A) (i: Z) (j: Z),
+      0 <= i < len ys ->
+      0 <= j < i ->
+      len (ys[j := x][i := x]) = len ys.
+  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+
+  Goal forall (A: Type) (xs ys: list A) (x: A) (i: Z),
+      0 <= i < len ys ->
+      len (xs ++ ys[i := x] ++ xs) = 2 * len xs + len ys.
+  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
 
   (** ** Not supported yet: *)
 
