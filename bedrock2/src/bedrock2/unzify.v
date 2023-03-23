@@ -168,9 +168,6 @@ Section ZOps.
   Proof. intros. subst. eapply Z.max_spec. Qed.
 End ZOps.
 
-Lemma f_equal_impl: forall P P' Q Q': Prop, P = P' -> Q = Q' -> (P -> Q) = (P' -> Q').
-Proof. congruence. Qed.
-
 (* Called when e has no simplification opportunities.
    We pose an eq_refl proof so that it will later be turned into `0 <= e < 2 ^ width`,
    but we don't return the name of that hyp, but an eq_refl instead, because we want
@@ -192,6 +189,8 @@ Ltac zify_len_nop e :=
 
 Ltac zify_nop e := constr:(@eq_refl _ e).
 
+Ltac zify_prop_nop e := constr:(iff_refl e).
+
 Ltac zify_term wok e :=
   (*
   let __ := match constr:(Set) with
@@ -202,25 +201,17 @@ Ltac zify_term wok e :=
   lazymatch e with
   | ?f1 ?a0 =>
       lazymatch f1 with
-      | Logic.not => zify_app1 wok e f1 a0
       | @word.unsigned _ _ => zify_unsigned wok a0
       | Z.of_nat => zify_of_nat wok a0
       | Z.opp => zify_app1 wok e f1 a0
       | ?f2 ?a1 =>
           lazymatch f2 with
-          | Logic.and => zify_app2 wok e f2 a1 a0
-          | Logic.or  => zify_app2 wok e f2 a1 a0
-          | Logic.eq  => zify_app2 wok e f2 a1 a0
           | Z.add     => zify_app2 wok e f2 a1 a0
           | Z.sub     => zify_app2 wok e f2 a1 a0
           | Z.mul     => zify_app2 wok e f2 a1 a0
           (* TODO: also pose Euclidean division equations for div and mod *)
           | Z.div     => zify_app2 wok e f2 a1 a0
           | Z.modulo  => zify_app2 wok e f2 a1 a0
-          | Z.le      => zify_app2 wok e f2 a1 a0
-          | Z.lt      => zify_app2 wok e f2 a1 a0
-          | Z.ge      => zify_app2 wok e f2 a1 a0
-          | Z.gt      => zify_app2 wok e f2 a1 a0
           | Z.min     => let pa0 := zify_term wok a0 in
                          let pa1 := zify_term wok a1 in
                          let n := fresh "__Zspecmin_0" in
@@ -235,7 +226,6 @@ Ltac zify_term wok e :=
           end
       | _ => zify_nop e
       end
-  | ?P -> ?Q => zify_impl wok e P Q
   | _ => zify_nop e
   end
   (*
@@ -257,17 +247,6 @@ with zify_app2 wok e f x y :=
       | _ => constr:(f_equal2 f px py)
       end
   | _ => constr:(f_equal2 f px py)
-  end
-with zify_impl wok e x y :=
-  let px := zify_term wok x in
-  let py := zify_term wok y in
-  lazymatch px with
-  | eq_refl =>
-      lazymatch py with
-      | eq_refl => zify_nop e
-      | _ => constr:(f_equal_impl px py)
-      end
-  | _ => constr:(f_equal_impl px py)
   end
 with zify_unsigned wok e :=
   lazymatch e with
@@ -406,33 +385,127 @@ Ltac zify_letbound_var wok x body tp :=
       let n := fresh "__Zdef_" x in pose proof (pf : x = _) as n
   end.
 
-Lemma rew_Prop_hyp: forall (P1 P2: Prop) (pf: P1 = P2), P1 -> P2.
-Proof. intros. subst. assumption. Qed.
+Lemma and_cong: forall (P P' Q Q': Prop),
+    P <-> P' ->
+    Q <-> Q' ->
+    P /\ Q <-> P' /\ Q'.
+Proof. intuition. Qed.
 
-Lemma rew_Prop_goal: forall (P1 P2: Prop) (pf: P1 = P2), P2 -> P1.
-Proof. intros. subst. assumption. Qed.
+Lemma or_cong: forall (P P' Q Q': Prop),
+    P <-> P' ->
+    Q <-> Q' ->
+    P \/ Q <-> P' \/ Q'.
+Proof. intuition. Qed.
 
-(* TODO detection of word equal and not equal should also take place under
-   logical connectives, but using equality and functional extensionality,
-   or using <-> in f_equal-like (morphism) lemmas? *)
-Ltac zify_hyp_pf wok h0 tp0 :=
-  lazymatch tp0 with
-  | @eq (@word.rep _ _) _ _ =>
-      let h := constr:(f_equal word.unsigned h0) in
-      let tp := type of h in
-      let pf := zify_term wok tp in
-      constr:(rew_Prop_hyp _ _ pf h)
-  | not (@eq (@word.rep _ _) _ _) =>
-      let h := constr:(word.unsigned_inj' _ _ h0) in
-      let tp := type of h in
-      let pf := zify_term wok tp in
-      constr:(rew_Prop_hyp _ _ pf h)
-  | _ =>
-      let pf := zify_term wok tp0 in
-      lazymatch pf with
-      | eq_refl => h0
-      | _ => constr:(rew_Prop_hyp _ _ pf h0)
+Lemma impl_cong: forall (P P' Q Q': Prop),
+    P <-> P' ->
+    Q <-> Q' ->
+    (P -> Q) <-> (P' -> Q').
+Proof. intuition. Qed.
+
+Lemma not_cong: forall (P P': Prop),
+    P <-> P' ->
+    (~ P) <-> (~ P').
+Proof. intuition. Qed.
+
+Lemma f_equal2_prop: forall [A B: Type] (f: A -> B -> Prop) (a a': A) (b b': B),
+    a = a' ->
+    b = b' ->
+    (f a b) <-> (f a' b').
+Proof. intros. subst. reflexivity. Qed.
+
+Lemma unsigned_eq_cong{width}{word: word.word width}{word_ok: word.ok word}:
+  forall (x y: word) (ux uy: Z),
+    word.unsigned x = ux ->
+    word.unsigned y = uy ->
+    (x = y) <-> (ux = uy).
+Proof. intros. subst. split; intros; subst; auto using word.unsigned_inj. Qed.
+
+Lemma of_nat_eq_cong: forall (a b: nat) (az bz: Z),
+    Z.of_nat a = az ->
+    Z.of_nat b = bz ->
+    (a = b) <-> (az = bz).
+Proof. intros. subst. split; intros; subst; auto using Nat2Z.inj. Qed.
+
+(* Z.of_nat and word.unsigned are embeddings (injections), so their cong lemmas are iffs,
+   but len is an abstraction, so its cong lemma only holds in one direction.
+   For simplicity, we don't use it right now, but here it is for completeness: *)
+Lemma len_eq_cong[A: Type]: forall (xs ys: list A) (lxs lys: Z),
+    Z.of_nat (List.length xs) = lxs ->
+    Z.of_nat (List.length ys) = lys ->
+    (xs = ys) -> (lxs = lys).
+Proof. intros. subst. reflexivity. Qed.
+
+Ltac zify_prop wok e :=
+  lazymatch e with
+  | @eq ?tp ?x ?y =>
+      lazymatch tp with
+      | @word.rep _ _ =>
+          let px := zify_unsigned wok x in
+          let py := zify_unsigned wok y in
+          (* note: even if px and py are just eq_refl, we still want to transform the
+             equality on words into an equality on Zs, and could do so using f_equal2,
+             but for uniformity, we can also use unsigned_eq_cong *)
+          constr:(unsigned_eq_cong _ _ _ _ px py)
+      | nat =>
+          let px := zify_of_nat wok x in
+          let py := zify_of_nat wok y in
+          constr:(of_nat_eq_cong _ _ _ _ px py)
+      | _ => zify_prop_app2_terms wok e (@eq tp) x y
       end
+  | ?p /\ ?q => zify_prop_app2_props wok e and_cong p q
+  | ?p \/ ?q => zify_prop_app2_props wok e or_cong p q
+  | ?p -> ?q => zify_prop_app2_props wok e impl_cong p q
+  | not ?p =>
+      let pp := zify_prop wok p in
+      lazymatch pp with
+      | iff_refl _ => zify_prop_nop e
+      | _ => constr:(not_cong _ _ pp)
+      end
+  | Z.le ?x ?y => zify_prop_app2_terms wok e Z.le x y
+  | Z.lt ?x ?y => zify_prop_app2_terms wok e Z.lt x y
+  | Z.ge ?x ?y => zify_prop_app2_terms wok e Z.ge x y
+  | Z.gt ?x ?y => zify_prop_app2_terms wok e Z.gt x y
+  | _ => zify_prop_nop e
+  end
+with zify_prop_app2_terms wok e f x y :=
+  let px := zify_term wok x in
+  let py := zify_term wok y in
+  lazymatch px with
+  | eq_refl =>
+      lazymatch py with
+      | eq_refl => zify_prop_nop e
+      | _ => constr:(f_equal2_prop f _ _ _ _ px py)
+      end
+  | _ => constr:(f_equal2_prop f _ _ _ _ px py)
+  end
+with zify_prop_app2_props wok e lem x y :=
+  let px := zify_prop wok x in
+  let py := zify_prop wok y in
+  lazymatch px with
+  | iff_refl _ =>
+      lazymatch py with
+      | iff_refl _ => zify_prop_nop e
+      | _ => constr:(lem _ _ _ _ px py)
+      end
+  | _ => constr:(lem _ _ _ _ px py)
+  end.
+
+Lemma iff_to_fw_impl(P1 P2: Prop): (P1 <-> P2) -> (P1 -> P2).
+Proof. exact (@proj1 _ _). Qed.
+
+Lemma iff_to_bw_impl(P1 P2: Prop): (P1 <-> P2) -> (P2 -> P1).
+Proof. exact (@proj2 _ _). Qed.
+
+Ltac zify_hyp_pf wok h tp :=
+  lazymatch type of tp with
+  | Prop =>
+      let pf := zify_prop wok tp in
+      lazymatch pf with
+      | iff_refl _ => h
+      | _ => constr:(iff_to_fw_impl _ _ pf h)
+      end
+  | _ => h
   end.
 
 (* if zification did something and created a new hyp hnew of type tnew,
@@ -506,18 +579,10 @@ Ltac apply_range_bounding_lemma_in_eqs :=
   foreach_hyp_upwards apply_range_bounding_lemma_in_hyp.
 
 Ltac zify_goal :=
-  lazymatch goal with
-  | |- @eq (@word.rep _ _) _ _ => eapply word.unsigned_inj
-  | |- _ <> _ => intro
-  | |- _ => idtac
-  end;
-  lazymatch goal with
-  | |- ?G =>
-      is_lia G;
-      let wok := get_word_ok_or_dummy in
-      let pf := zify_term wok G in
-      eapply (rew_Prop_goal _ _ pf)
-  end;
+  let g := lazymatch goal with |- ?g => g end in
+  let wok := get_word_ok_or_dummy in
+  let pf := zify_prop wok g in
+  eapply (iff_to_bw_impl _ _ pf);
   apply_range_bounding_lemma_in_eqs.
 
 Ltac zify_hyps :=
@@ -558,7 +623,7 @@ Section Tests.
   Ltac rzify_lia := zify_hyps; zify_goal; xlia zchecker.
 
   Goal forall (a b: word) (z: Z), \[a ^+ b] < z -> let c := b ^+ a in \[c] < z.
-  Proof. intros. rzify_lia. Qed.
+  Proof. intros. try rzify_lia. Qed.
 
   Goal forall (a b: nat) (z: Z),
       Z.of_nat (Nat.add a b) < z ->
@@ -567,6 +632,21 @@ Section Tests.
   Proof. intros. rzify_lia. Qed.
 
   Goal forall (a b: word) (z: Z), \[a ^+ b] < z -> let c := \[b ^+ a] in c < z.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b r: word),
+      \[r] = Z.min \[b] \[a] ->
+      \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b: word),
+      a <> b ->
+      \[a ^- b] <> 0.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b c: word),
+      b <> a /\ c <> b /\ c <> a ->
+      a ^- b <> word.of_Z 0 /\ b ^- c <> word.of_Z 0.
   Proof. intros. rzify_lia. Qed.
 
   Goal forall (left0 right : word) (xs : list word),
