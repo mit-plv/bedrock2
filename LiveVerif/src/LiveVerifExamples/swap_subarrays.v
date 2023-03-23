@@ -35,14 +35,20 @@ void swap_subarrays(uintptr_t p, uintptr_t i, uintptr_t j, uintptr_t count) /**#
                   <{ * array (uint 16) n (l[:\[i]] ++
                                           l[\[j]:][:\[count]] ++
                                           l[\[i] + \[count] : \[j]] ++
-                                          l[\[i]:][:\[count]] ++
+                                          l[\[i]:][:\[count]+123] ++
                                           l[\[count] + \[j]:]) p
                      * R }> m' #**/                                        /**.
 Derive swap_subarrays SuchThat (fun_correct! swap_subarrays) As
   swap_subarrays_ok.                                                            .**/
 {                                                                          /**. .**/
   swap_16s(p + 2 * i, p + 2 * j, count);                                   /**. .**/
-}                                                                          /**.
+}                                                                          /*?.
+
+step. step. (* <-- TODO here, prove_concrete_post calls unzify. Not good,
+               put more prove_conrete_post code into step? *)
+step. step. step. step. step.
+step. step. step.
+  case TODO.
 Qed.
 
 End LiveVerif. Comments .**/ //.

@@ -375,25 +375,24 @@ Ltac should_unpack P :=
  | _ => constr:(false)
  end.
 
-Ltac clear_if_dup H :=
+Ltac clear_if_dup_or_trivial H :=
   let t := type of H in
-  match goal with
-  | H': t |- _ => tryif constr_eq H H' then fail else clear H
-  | |- _ => idtac
+  lazymatch t with
+  | True => clear H
+  | ?x = ?x => clear H
+  | _ => match goal with
+         | H': t |- _ => tryif constr_eq H H' then fail else clear H
+         | |- _ => idtac
+         end
   end.
 
-(* Purify H, but if that leads to something non-interesting (just `True` or an already
-   known fact), clear H *)
-Ltac purify_hyp_instead_of_clearing H :=
+Ltac heapletwise_hyp_pre_clear_default H :=
   let tHOrig := type of H in
   unfold with_mem in H;
   lazymatch type of H with
   | ?P ?m =>
-      tryif is_var P then (
-        (* It's a frame, nothing to purify, so just clear.
-           If m is used elsewhere (eg in an (eq m) in a frame), we fail, so H remains. *)
-        clear H m
-      ) else (
+      tryif is_var P then idtac (* It's a frame, nothing to purify *)
+      else (
         let g := open_constr:(purify P _) in
         let pf := match constr:(Set) with
                   | _ => constr:(ltac:(eauto with purify) : g)
@@ -402,18 +401,29 @@ Ltac purify_hyp_instead_of_clearing H :=
         lazymatch pf with
         | tt => pose_err Error:(g "can't be solved by" "eauto with purify");
                 change tHOrig in H
-        | _ => lazymatch g with
-               | purify _ True => clear H; try clear m
-               | purify _ _ => eapply pf in H; try clear m; clear_if_dup H
-               end
+        | _ => let HP := fresh "old_" H "_pure" in pose proof (pf _ H) as HP;
+               clear_if_dup_or_trivial HP
         end
       )
   end.
 
-Ltac purify_heapletwise_hyps_instead_of_clearing :=
+Ltac heapletwise_hyp_pre_clear_hook H := heapletwise_hyp_pre_clear_default H.
+
+Ltac clear_heapletwise_hyp H :=
+  let tH := type of H in
+  let m := lazymatch tH with
+           | with_mem ?m _ => m
+           | _ ?m => m
+           | _ => fail 1000 H "has unexpected shape" tH
+           end in
+  heapletwise_hyp_pre_clear_hook H;
+  (clear H || fail 1000 "Can't clear" H ": probably a bug!");
+  try clear m.
+
+Ltac clear_heapletwise_hyps :=
   repeat match goal with
          | _: tactic_error _ |- _ => fail 1 (* pose at most one error *)
-         | H: with_mem _ _ |- _ => purify_hyp_instead_of_clearing H
+         | H: with_mem _ _ |- _ => clear_heapletwise_hyp H
          end.
 
 (* can be overridden using ::= *)
@@ -446,8 +456,7 @@ Ltac replace_with_new_mem_hyp H :=
                             end in HOld
               end in
   move H before HOld;
-  purify_hyp_instead_of_clearing HOld;
-  (try let HOld' := fresh HOld in rename HOld into HOld' (* fails if HOld got cleared *));
+  clear_heapletwise_hyp HOld;
   rename H into HOld.
 
 (* Called whenever a new heapletwise hyp is created whose type will get destructed further *)
@@ -649,9 +658,6 @@ Ltac intro_step :=
   | H: with_mem _ _ |- sep _ _ _ -> _ =>
       let H' := fresh "H0" in
       intro H'; move H' before H
-  | |- ?Q ?mNew -> ?nondependent_body =>
-      let H := fresh "H0" in
-      replace_with_new_mem_hyp H
   end.
 
 Ltac and_step :=

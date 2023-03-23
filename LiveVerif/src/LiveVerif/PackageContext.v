@@ -623,7 +623,7 @@ Ltac normalize_locals_eq :=
   end.
 
 Ltac after_if :=
-  purify_heapletwise_hyps_instead_of_clearing;
+  clear_heapletwise_hyps;
   intros ? ? ? ? ?;
   repeat pull_dlet_and_exists_step;
   repeat merge_and_pair constr_eqb merge_ands_at_indices_same_prop;
