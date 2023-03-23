@@ -44,7 +44,17 @@ As sort3_separate_args_ok.                                                    .*
     store32(a1, w1);                                                     /**. .**/
     store32(a2, w2);                                                     /**. .**/
   } /**. end if.                                                              .**/
-}                                                                        /**.
+}                                                                        /*?.
+step. step. step. step. step. step. step. step. step. step. step. step.
+step.
+(* TODO automate *)
+subst_all_let_bound_vars.
+destruct_ifs.
+all: bottom_up_simpl_in_goal.
+all: bottom_up_simpl_in_hyps.
+all: split.
+all: eauto with prove_post.
+all: lia.
 Qed.
 
 End LiveVerif. Comments .**/ //.

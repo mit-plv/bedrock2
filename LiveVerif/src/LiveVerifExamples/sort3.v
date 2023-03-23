@@ -36,10 +36,7 @@ Derive sort3 SuchThat (fun_correct! sort3) As sort3_ok.                       .*
   } else {                                                               /**. .**/
     store32(a+4, w1);                                                    /**. .**/
     store32(a+8, w2);                                                    /**. .**/
-  } /**. end if.
-
-Ltac allow_all_substs ::= constr:(false).
-Ltac allow_all_splits ::= constr:(false).                                     .**/
+  } /**. end if.                                                              .**/
 }                                                                        /**.
 Abort.
 

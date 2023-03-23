@@ -19,8 +19,26 @@ Derive u_min SuchThat (fun_correct! u_min) As u_min_ok.                         
   } else {                                                                 /**. .**/
     r = b;                                                                 /**. .**/
   } /**. end if.                                                                .**/
-  return r;                                                                /**. .**/
-}                                                                          /**.
+  return r;                                                                /**.
+
+(* TODO __Zdef_c : c = word.ltu a b should be more zified *)
+rewrite word.unsigned_ltu in __Zdef_c.
+
+ .**/
+}                                                                          /*?.
+
+step.
+clear __Zdef_c0  __Zdef_r0. (* TODO don't dupicate *)
+step. step. step. step. step. step. step. step.
+
+(* TODO zify ifs if their boolean condition is understood by lia *)
+
+assert ((\[a] <? \[b]) = true /\ \[if c then a else b] = \[a] \/
+        (\[a] <? \[b]) = false /\ \[if c then a else b] = \[b]) as __Zdef_if_0.
+{ rewrite ?word.unsigned_ltu in __Zdef_c. clearbody c. subst c. destruct_one_match; auto. }
+
+step.
+
 Qed.
 
 #[export] Instance spec_of_u_min3: fnspec :=                                    .**/
@@ -37,14 +55,7 @@ Derive u_min3 SuchThat (fun_correct! u_min3) As u_min3_ok.                      
   uintptr_t r = u_min(a, b);                                               /**. .**/
   uintptr_t s = u_min(r, c);                                               /**. .**/
   return s;                                                                /**. .**/
-}                                                                          /*?.
-
-(* TODO automate *)
-step. step. step.
-all: zify_goal.
-all: subst r s.
-Import micromega.Lia.
-all: xlia zchecker.
+}                                                                          /**.
 Qed.
 
 End LiveVerif. Comments .**/ //.

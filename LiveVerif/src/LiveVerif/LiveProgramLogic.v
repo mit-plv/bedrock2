@@ -181,9 +181,6 @@ Ltac destruct_ifs :=
              let t := type of b in constr_eq t bool; destr b
          end.
 
-Ltac allow_all_substs := constr:(true). (* TODO default to false *)
-Ltac allow_all_splits := constr:(true). (* TODO default to false *)
-
 Ltac default_simpl_in_hyps :=
   repeat (bottom_up_simpl_in_hyps_if
             ltac:(fun h t => tryif ident_starts_with __ h then fail else idtac);
@@ -195,12 +192,12 @@ Ltac default_simpl_in_all :=
   default_simpl_in_hyps; try bottom_up_simpl_in_goal; try record.simp_goal.
 
 Ltac after_command_simpl_hook := default_simpl_in_hyps.
-Ltac concrete_post_simpl_hook := default_simpl_in_all.
 
-Ltac prove_concrete_post_pre :=
-    puri_simpli_zify_hyps accept_always;
-    let H := fresh "M" in collect_heaplets_into_one_sepclause H;
-    repeat match goal with
+(* Some ingredients for proving postconditions at end of blocks,
+   too expensive in general, but useful when applied carefully. *)
+
+Ltac destruct_lists_of_concrete_nat_length :=
+  repeat match goal with
            | H: List.length ?l = S _ |- _ =>
                is_var l; destruct l;
                [ discriminate H
@@ -209,46 +206,27 @@ Ltac prove_concrete_post_pre :=
                is_var l; destruct l;
                [ clear H
                | discriminate H ]
-           end;
-    lazymatch allow_all_substs with
-    | true => repeat match goal with
-                | x := _ |- _ => subst x
-                end
-    | false => idtac
-    end;
-    lazymatch allow_all_splits with
-    | true => destruct_ifs
-    | false => idtac
-    end;
+           end.
+
+Ltac subst_all_let_bound_vars :=
+  repeat match goal with
+    | x := _ |- _ => subst x
+    end.
+
+Ltac destruct_ands_list :=
     repeat match goal with
            | H: ands (_ :: _) |- _ => destruct H
            | H: ands nil |- _ => clear H
-           end;
-    cbn [List.app List.firstn List.nth] in *;
-    zify_hyps;
-    repeat match goal with
-           | |- _ /\ _ => split
-           | |- ?x = ?x => reflexivity
-           | |- sep _ _ _ => ecancel_assumption
-           | H: ?P \/ ?Q |- _ =>
-               lazymatch allow_all_splits with
-               | true => tryif (is_lia P; is_lia Q) then fail else destruct H
-               end
-           | |- exists _, _ => eexists
-           end;
-    concrete_post_simpl_hook.
+           end.
+
+Ltac destruct_ors :=
+  repeat match goal with
+    | H: ?P \/ ?Q |- _ => tryif (is_lia P; is_lia Q) then fail else destruct H
+    end.
 
 Create HintDb prove_post.
 
-Ltac prove_concrete_post :=
-  prove_concrete_post_pre;
-  try congruence;
-  try (zify_goal; xlia zchecker);
-  unzify;
-  intuition (congruence || eauto with prove_post).
-
 Definition expect_final_closing_brace(P: Prop) := P.
-Definition prove_final_post(P: Prop) := P.
 Definition after_add_snippet_marker(P: Prop) := P.
 
 Ltac ret retnames :=
@@ -283,8 +261,6 @@ Ltac package_heapletwise_context :=
   let H := fresh "M" in collect_heaplets_into_one_sepclause H;
   package_context.
 
-Ltac prove_loop_invariant := try solve [prove_concrete_post].
-
 Ltac unset_loop_body_vars :=
   lazymatch goal with
   | |- wp_cmd _ _ _ _ (map.of_list ?l) ?post =>
@@ -302,11 +278,7 @@ Ltac close_block :=
           package_heapletwise_context
       | LoopBody =>
           unset_loop_body_vars;
-          eapply wp_skip;
-          lazymatch goal with
-          | |- exists _, _ /\ _ => eexists; split
-          end;
-          prove_loop_invariant
+          eapply wp_skip
       | FunctionBody =>
           lazymatch goal with
           | H: functions_correct ?fs ?l |- _ =>
@@ -319,7 +291,7 @@ Ltac close_block :=
           | |- expect_final_closing_brace ?g => idtac (* ret was already called *)
           end;
           lazymatch goal with
-          | |- @expect_final_closing_brace ?g => change (prove_final_post g)
+          | |- @expect_final_closing_brace ?g => change g
           end
       | _ => fail "Can't end a block here"
       end
@@ -632,10 +604,6 @@ Ltac conclusion_shape_based_step logger :=
       zify_hyps;
       puri_simpli_zify_hyps accept_unless_follows_by_xlia;
       logger ltac:(fun _ => idtac "purify & zify")
-  | |- @prove_final_post ?g =>
-      logger ltac:(fun _ => idtac "prove_concrete_post");
-      change g;
-      prove_concrete_post
   | |- True =>
       logger ltac:(fun _ => idtac "constructor");
       constructor

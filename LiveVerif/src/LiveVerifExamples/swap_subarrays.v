@@ -44,11 +44,12 @@ Derive swap_subarrays SuchThat (fun_correct! swap_subarrays) As
   swap_16s(p + 2 * i, p + 2 * j, count);                                   /**. .**/
 }                                                                          /*?.
 
-step. step. (* <-- TODO here, prove_concrete_post calls unzify. Not good,
-               put more prove_conrete_post code into step? *)
 step. step. step. step. step.
-step. step. step.
-  case TODO.
+step. step. step. step. step.
+step. step.
+(* TODO eq_prover should do safe f_equal calls based on injectivity *)
+replace (\[count] + 123) with \[count] by case TODO.
+reflexivity.
 Qed.
 
 End LiveVerif. Comments .**/ //.

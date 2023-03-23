@@ -34,6 +34,11 @@ Proof.
   ZnWords.
 Qed.
 
+(* TODO also something like  word.unsigned (if c then a else b) = ... ? *)
+Lemma if_to_or: forall (c: bool) (P Q: Prop),
+    (if c then P else Q) -> c = true /\ P \/ c = false /\ Q.
+Proof. intros. destruct c; auto. Qed.
+
 #[export] Instance spec_of_fibonacci: fnspec :=                                 .**/
 
 uintptr_t fibonacci(uintptr_t n) /**#
@@ -69,9 +74,20 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
     rewrite fib_recursion by ZnWords; reflexivity.                              .**/
   }                                                                        /**. .**/
   return b;                                                                /**. .**/
-}                                                                          /**.
-{ unfold fib. bottom_up_simpl_in_goal. reflexivity. }
-{ replace i with n by ZnWords. reflexivity. }
+}                                                                          /*?.
+
+step. step. step. step. step. step. step. step. step.
+unfold ands in H2.
+rewrite word.unsigned_eqb in __Zdef_c.
+eapply if_to_or in H2.
+rewrite __Zdef_c in H2.
+rewrite word.unsigned_of_Z_0 in *.
+zify_hyps.
+destruct c; subst_all_let_bound_vars.
+{ unfold fib. replace \[n] with 0 by lia. bottom_up_simpl_in_goal. reflexivity. }
+{ destruct H2; try lia.
+  unfold fib.
+  replace \[i] with \[n] by lia. reflexivity. }
 Qed.
 
 End LiveVerif. Comments .**/ //.
