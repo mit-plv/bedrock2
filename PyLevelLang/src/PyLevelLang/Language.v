@@ -23,7 +23,12 @@ Definition can_eq (t : type) : bool :=
   | _ => false
   end.
 
-Scheme Equality for type. (* creates type_beq and type_eq_dec *)
+Definition type_eq_dec (t1 t2 : type) : {t1 = t2} + {t1 <> t2}.
+decide equality.
+apply string_dec.
+Defined.
+
+Scheme Boolean Equality for type. (* creates type_beq *)
 
 Declare Scope pylevel_scope. Local Open Scope pylevel_scope.
 Notation "t1 =? t2" := (type_beq t1 t2) (at level 70) : pylevel_scope.
@@ -101,6 +106,7 @@ Inductive pexpr : Type :=
   | PEUnop (po : punop) (p : pexpr)
   | PEBinop (po : pbinop) (p1 p2 : pexpr)
   | PEFlatmap (p1 : pexpr) (x : string) (p2 : pexpr)
+  | PEFold (p1 : pexpr) (p2 : pexpr) (x : string) (y : string) (p2 : pexpr)
   | PEIf (p1 p2 p3 : pexpr)
   | PELet (x : string) (p1 p2 : pexpr)
   | PERecord (xs : list (string * pexpr))
@@ -117,6 +123,7 @@ Inductive expr : type -> Type :=
   | EBinop {t1 t2 t3 : type} (o : binop t1 t2 t3) (e1 : expr t1) (e2: expr t2) : expr t3
   | EFlatmap {t1 t2 : type} (e1 : expr (TList t1)) (x : string) (e2 : expr (TList t2))
       : expr (TList t2)
+  | EFold {t1 t2 : type} (e1 : expr (TList t1)) (e2 : expr t2) (x y : string) (e3 : expr t2) : expr t2
   | EIf {t : type} (e1 : expr TBool) (e2 e3 : expr t) : expr t
   | ELet {t1 t2 : type} (x : string) (e1 : expr t1) (e2 : expr t2) : expr t2.
 

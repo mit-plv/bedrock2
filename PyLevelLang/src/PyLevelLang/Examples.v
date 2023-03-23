@@ -158,4 +158,8 @@ Section Examples.
       (EBinop (OEq TBool eq_refl)
         (EAtom (ABool true)) (EAtom (ABool false)))).
   reflexivity. Qed.
+
+  Definition ex10 : expr _ :=
+    EFold (EBinop (OCons _) (EAtom (AInt 2)) (EBinop (OCons _) (EAtom (AInt 5)) (EAtom (ANil _)))) (EAtom (AInt 3)) "x" "y" (EBinop OPlus (EVar _ "x") (EVar _ "y")).
+  Compute interp_expr map.empty ex10.
 End Examples.

@@ -163,10 +163,11 @@ Section WithMap.
     <-> e = EBinop (OPair X A B) e1 e2.
   Proof.
     clear dependent locals.
-    dependent induction e; cbn; intuition try congruence;
-    dependent induction o; inversion H; congruence.
+    dependent induction e; cbn; intuition; try congruence;
+    dependent induction o; inversion H; 
+    try apply Eqdep.EqdepTheory.inj_pair2 in H1, H2; try exact type_eq_dec; 
+    congruence.
   Qed.
-
 
   Lemma EUnop_correct {t1 t2 : type} (l : locals) (o : unop t1 t2) (e : expr t1)
     : interp_expr l (eUnop o e) = interp_expr l (EUnop o e).
@@ -191,6 +192,7 @@ Section WithMap.
       | EUnop o e1 => EUnop o (fold_expr e1)
       | EBinop o e1 e2 => EBinop o (fold_expr e1) (fold_expr e2)
       | EFlatmap e1 x e2 => EFlatmap (fold_expr e1) x (fold_expr e2)
+      | EFold e1 e2 x y e3 => EFold (fold_expr e1) (fold_expr e2) x y (fold_expr e3)
       | EIf e1 e2 e3 => EIf (fold_expr e1) (fold_expr e2) (fold_expr e3)
       | ELet x e1 e2 => ELet x (fold_expr e1) (fold_expr e2)
       | (EVar _ _ | ELoc _ _ | EAtom _) as e => e
@@ -218,6 +220,7 @@ Section WithMap.
         | _, _ => (EBinop o e1' e2', None)
         end
     | EFlatmap e1 x e2 => (EFlatmap (fst (constant_folding' e1)) x (fst (constant_folding' e2)), None)
+    | EFold e1 e2 x y e3 => (EFold (fst(constant_folding' e1)) (fst(constant_folding' e2)) x y (fst(constant_folding' e3)), None)
     | EIf e1 e2 e3 => (EIf (fst (constant_folding' e1)) (fst (constant_folding' e2)) (fst (constant_folding' e3)), None)
     | ELet x e1 e2 => (ELet x (fst (constant_folding' e1)) (fst (constant_folding' e2)), None)
     end.
@@ -275,6 +278,12 @@ Section WithMap.
       rewrite <- H.
       reflexivity.
 
+    - rewrite IHe1.
+      f_equal; eauto.
+      apply functional_extensionality. intros.
+      apply functional_extensionality. intros.
+      easy.
+
     - rewrite IHe1, IHe2, IHe3. reflexivity.
 
     - rewrite IHe1, IHe2. reflexivity.
@@ -297,6 +306,7 @@ Section WithMap.
         | _ => EIf e1' e2' e3'
         end
     | EFlatmap e1 x e2 => EFlatmap (branch_elim e1) x (branch_elim e2)
+    | EFold e1 e2 x y e3 => EFold (branch_elim e1) (branch_elim e2) x y (branch_elim e3)
     | ELet x e1 e2 => ELet x (branch_elim e1) (branch_elim e2)
     end.
 
@@ -313,6 +323,10 @@ Section WithMap.
       { apply functional_extensionality. intros. rewrite IHe2. reflexivity. }
       rewrite H. reflexivity.
 
+    - f_equal. 
+      do 2 (apply functional_extensionality; intros).
+      easy.
+
     - destruct (as_const (branch_elim e1)) eqn:H; try easy.
       destruct i; rewrite (as_const_correct l (branch_elim e1) _ H); reflexivity.
   Qed.
@@ -325,6 +339,7 @@ Section WithMap.
     | EUnop _ e1 => is_name_used x e1
     | EBinop _ e1 e2 => is_name_used x e1 || is_name_used x e2
     | EFlatmap e1 x' e2 => eqb x' x || is_name_used x e1 || is_name_used x e2
+    | EFold e1 e2 x' y' e3 => eqb x' x || eqb y' x || is_name_used x e1 || is_name_used x e2 || is_name_used x e3
     | EIf e1 e2 e3 => is_name_used x e1 || is_name_used x e2 || is_name_used x e3
     | ELet x' e1 e2 => eqb x' x || is_name_used x e1 || is_name_used x e2
     end.
@@ -380,7 +395,21 @@ Section WithMap.
                 + apply IHe2. reflexivity.
                 + apply eqb_neq, Hx.
               }
-              rewrite Hf. rewrite <- IHe1; easy. 
+              rewrite Hf. rewrite <- IHe1; easy.
+
+    - destruct (eqb x0 x) eqn:H0x; 
+      destruct (eqb y x) eqn:Hyx;
+      destruct (is_name_used x e1) eqn:He1;
+      destruct (is_name_used x e2) eqn:He2;
+      destruct (is_name_used x e3) eqn:He3; 
+      try discriminate H.
+      f_equal; eauto.
+      do 2 (apply functional_extensionality; intros).
+      rewrite <- set_local_comm_diff with (x := x); cycle 1.
+      { apply eqb_neq. rewrite eqb_sym. assumption. }
+      rewrite <- set_local_comm_diff with (x := x); cycle 1.
+      { apply eqb_neq. rewrite eqb_sym. assumption. }
+      apply IHe3. reflexivity.
 
     - rewrite <- IHe1, <- IHe2, <- IHe3;
       destruct (is_name_used x e1); 
@@ -405,6 +434,7 @@ Section WithMap.
     | EUnop o e1 => EUnop o (unused_name_elim e1)
     | EBinop o e1 e2 => EBinop o (unused_name_elim e1) (unused_name_elim e2)
     | EFlatmap e1 x e2 => EFlatmap (unused_name_elim e1) x (unused_name_elim e2)
+    | EFold e1 e2 x y e3 => EFold (unused_name_elim e1) (unused_name_elim e2) x y (unused_name_elim e3)
     | EIf e1 e2 e3 => EIf (unused_name_elim e1) (unused_name_elim e2) (unused_name_elim e3)
     | ELet x e1 e2 => if is_name_used x e2 then ELet x (unused_name_elim e1) (unused_name_elim e2) else unused_name_elim e2
     end.
@@ -423,6 +453,10 @@ Section WithMap.
               = (fun y => interp_expr (set_local l x y) e2)).
       { apply functional_extensionality. intros. rewrite IHe2. reflexivity. }
       rewrite IHe1, H. reflexivity.
+
+    - f_equal; eauto.
+      do 2 (apply functional_extensionality; intros).
+      eauto.
 
     - rewrite IHe1, IHe2, IHe3. reflexivity.
 

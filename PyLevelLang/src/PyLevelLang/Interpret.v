@@ -49,7 +49,6 @@ Proof.
   end H); easy.
 Defined.
 
-
 Section WithMap.
   Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
 
@@ -111,6 +110,10 @@ Section WithMap.
     | EBinop o e1 e2 => interp_binop o (interp_expr l e1) (interp_expr l e2)
     | EFlatmap l1 x fn => flat_map (fun y => interp_expr (set_local l x y) fn) (interp_expr l l1)
     | EIf e1 e2 e3 => if interp_expr l e1 then interp_expr l e2 else interp_expr l e3
+    | EFold l1 a x y fn => let l1' := interp_expr l l1 in
+                             let a' := interp_expr l a in
+                             let fn' := fun v acc => interp_expr (set_local (set_local l x v) y acc) fn in
+                             fold_right fn' a' l1'
     | ELet x e1 e2 => interp_expr (set_local l x (interp_expr l e1)) e2
     end.
 
