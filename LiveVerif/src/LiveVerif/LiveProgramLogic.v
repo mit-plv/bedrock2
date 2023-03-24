@@ -26,6 +26,7 @@ Require Import bedrock2.HeapletwiseAutoSplitMerge.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.PurifyHeapletwise.
 Require Import bedrock2.bottom_up_simpl_ltac1.
+Require Import bedrock2.safe_f_equal.
 Require Import coqutil.Tactics.ident_ops.
 Require Import bedrock2.Logging.
 Require Import LiveVerif.LiveRules.
@@ -651,12 +652,11 @@ Ltac final_program_logic_step logger :=
             (* tried first because it also solves some goals of shape (_ = _) and (_ /\ _) *)
             zify_goal; xlia zchecker;
             logger ltac:(fun _ => idtac "xlia zchecker")
-        | |- _ = _ =>
-            eq_prover_hook;
-            logger ltac:(fun _ => idtac "eq_prover_hook")
         | |- ?P /\ ?Q =>
             split;
             logger ltac:(fun _ => idtac "split")
+        | |- _ = _ => safe_f_equal_step; logger ltac:(fun _ => idtac "safe_f_equal_step")
+        | |- _ = _ => eq_prover_hook; logger ltac:(fun _ => idtac "eq_prover_hook")
         | |- wp_cmd _ _ _ _ _ _ =>
               lazymatch goal with
               | |- ?G => change (@ready G)

@@ -35,21 +35,14 @@ void swap_subarrays(uintptr_t p, uintptr_t i, uintptr_t j, uintptr_t count) /**#
                   <{ * array (uint 16) n (l[:\[i]] ++
                                           l[\[j]:][:\[count]] ++
                                           l[\[i] + \[count] : \[j]] ++
-                                          l[\[i]:][:\[count]+123] ++
+                                          l[\[i]:][:\[count]] ++
                                           l[\[count] + \[j]:]) p
                      * R }> m' #**/                                        /**.
 Derive swap_subarrays SuchThat (fun_correct! swap_subarrays) As
   swap_subarrays_ok.                                                            .**/
 {                                                                          /**. .**/
   swap_16s(p + 2 * i, p + 2 * j, count);                                   /**. .**/
-}                                                                          /*?.
-
-step. step. step. step. step.
-step. step. step. step. step.
-step. step.
-(* TODO eq_prover should do safe f_equal calls based on injectivity *)
-replace (\[count] + 123) with \[count] by case TODO.
-reflexivity.
+}                                                                          /**.
 Qed.
 
 End LiveVerif. Comments .**/ //.

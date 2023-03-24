@@ -1,4 +1,4 @@
-(* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
+(* -*- eval: (load-file "../../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
 
 Ltac pose_err e ::= pose_err_silent e.
