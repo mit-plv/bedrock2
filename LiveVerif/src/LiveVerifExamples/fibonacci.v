@@ -78,10 +78,8 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
 
 step. step. step. step. step. step. step. step. step.
 unfold ands in H2.
-rewrite word.unsigned_eqb in __Zdef_c.
 eapply if_to_or in H2.
 rewrite __Zdef_c in H2.
-rewrite word.unsigned_of_Z_0 in *.
 zify_hyps.
 destruct c; subst_all_let_bound_vars.
 { unfold fib. replace \[n] with 0 by lia. bottom_up_simpl_in_goal. reflexivity. }

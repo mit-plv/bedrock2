@@ -19,16 +19,10 @@ Derive u_min SuchThat (fun_correct! u_min) As u_min_ok.                         
   } else {                                                                 /**. .**/
     r = b;                                                                 /**. .**/
   } /**. end if.                                                                .**/
-  return r;                                                                /**.
-
-(* TODO __Zdef_c : c = word.ltu a b should be more zified *)
-rewrite word.unsigned_ltu in __Zdef_c.
-
- .**/
+  return r;                                                                /**. .**/
 }                                                                          /*?.
 
 step.
-clear __Zdef_c0  __Zdef_r0. (* TODO don't dupicate *)
 step. step. step. step. step. step. step. step.
 
 (* TODO zify ifs if their boolean condition is understood by lia *)

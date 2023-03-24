@@ -97,6 +97,18 @@ Module Import word.
       rewrite Z.shiftr_div_pow2 by lia. reflexivity.
     Qed.
 
+    Lemma unsigned_ltu_eq: forall (a b: word) (ua ub: Z),
+        word.unsigned a = ua ->
+        word.unsigned b = ub ->
+        word.ltu a b = Z.ltb ua ub.
+    Proof. intros. subst. apply word.unsigned_ltu. Qed.
+
+    Lemma unsigned_eqb_eq: forall (a b: word) (ua ub: Z),
+        word.unsigned a = ua ->
+        word.unsigned b = ub ->
+        word.eqb a b = Z.eqb ua ub.
+    Proof. intros. subst. apply word.unsigned_eqb. Qed.
+
   End WithWord.
 End word.
 
@@ -222,6 +234,8 @@ Ltac zify_term wok e :=
                          let n := fresh "__Zspecmax_0" in
                          let __ := unique_pose_proof_name n (Z_max_spec_eq pa1 pa0) in
                          zify_nop e
+          | @word.ltu _ _ => zify_u_u_bool wok e (@unsigned_ltu_eq _ _ wok) a1 a0
+          | @word.eqb _ _ => zify_u_u_bool wok e (@unsigned_eqb_eq _ _ wok) a1 a0
           | _ => zify_nop e
           end
       | _ => zify_nop e
@@ -231,6 +245,10 @@ Ltac zify_term wok e :=
   (*
   in let __ := match constr:(Set) with _ => idtac "} =" res end in res
   *)
+with zify_u_u_bool wok e lem x y :=
+  let px := zify_unsigned wok x in
+  let py := zify_unsigned wok y in
+  constr:(lem _ _ _ _ px py)
 with zify_app1 wok e f x :=
   let px := zify_term wok x in
   lazymatch px with
@@ -376,13 +394,22 @@ Ltac zify_letbound_var wok x body tp :=
   lazymatch tp with
   | @word.rep _ _ =>
       let pf := zify_unsigned wok body in
-      let n := fresh "__Zdef_" x in pose proof (pf : word.unsigned x = _) as n
+      let n := fresh "__Zdef_" x in
+      let __ := unique_pose_proof_name n (pf : word.unsigned x = _) in
+      idtac
   | nat =>
       let pf := zify_of_nat wok body in
-      let n := fresh "__Zdef_" x in pose proof (pf : Z.of_nat x = _) as n
+      let n := fresh "__Zdef_" x in
+      let __ := unique_pose_proof_name n (pf : Z.of_nat x = _) in
+      idtac
   | _ =>
       let pf := zify_term wok body in
-      let n := fresh "__Zdef_" x in pose proof (pf : x = _) as n
+      lazymatch pf with
+      | eq_refl => idtac
+      | _ => let n := fresh "__Zdef_" x in
+             let __ := unique_pose_proof_name n (pf : x = _) in
+             idtac
+      end
   end.
 
 Lemma and_cong: forall (P P' Q Q': Prop),
