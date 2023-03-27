@@ -109,6 +109,13 @@ Module Import word.
         word.eqb a b = Z.eqb ua ub.
     Proof. intros. subst. apply word.unsigned_eqb. Qed.
 
+    Lemma unsigned_if_eq_for_lia: forall (c crhs: bool) (a b: word) (ua ub: Z),
+        c = crhs ->
+        word.unsigned a = ua ->
+        word.unsigned b = ub ->
+        crhs = true /\ word.unsigned (if c then a else b) = ua \/
+        crhs = false /\ word.unsigned (if c then a else b) = ub.
+    Proof using. intros. subst. destruct crhs; intuition. Qed.
   End WithWord.
 End word.
 
@@ -178,6 +185,14 @@ Section ZOps.
       y = y' ->
       x' < y' /\ Z.max x y = y' \/ y' <= x' /\ Z.max x y = x'.
   Proof. intros. subst. eapply Z.max_spec. Qed.
+
+  Lemma zify_Z_if: forall (c crhs: bool) (a b a' b': Z),
+      c = crhs ->
+      a = a' ->
+      b = b' ->
+      crhs = true /\ (if c then a else b) = a' \/
+      crhs = false /\ (if c then a else b) = b'.
+  Proof. intros. subst a' b' crhs. destruct c; intuition. Qed.
 End ZOps.
 
 (* Called when e has no simplification opportunities.
@@ -224,6 +239,8 @@ Ltac zify_term wok e :=
           (* TODO: also pose Euclidean division equations for div and mod *)
           | Z.div     => zify_app2 wok e f2 a1 a0
           | Z.modulo  => zify_app2 wok e f2 a1 a0
+          | Z.ltb     => zify_app2 wok e f2 a1 a0
+          | Z.leb     => zify_app2 wok e f2 a1 a0
           | Z.min     => let pa0 := zify_term wok a0 in
                          let pa1 := zify_term wok a1 in
                          let n := fresh "__Zspecmin_0" in
@@ -240,11 +257,30 @@ Ltac zify_term wok e :=
           end
       | _ => zify_nop e
       end
+  | match ?c in bool return Z with
+    | true => ?a
+    | false => ?b
+    end =>
+      lazymatch zify_lia_bool wok c with
+      | tt => zify_nop e
+      | ?pc => let pa := zify_term wok a in
+               let pb := zify_term wok b in
+               let n := fresh "__Zspecif_0" in
+               let __ := unique_pose_proof_name n (zify_Z_if c _ a b _ _ pc pa pb) in
+               zify_nop e
+      end
   | _ => zify_nop e
   end
   (*
   in let __ := match constr:(Set) with _ => idtac "} =" res end in res
   *)
+with zify_lia_bool wok c0 :=
+  let c := rdelta_var c0 in
+  match constr:(Set) with
+  | _ => let pc := zify_term wok c in
+         let __ := lazymatch type of pc with | _ = ?rhs => is_lia_bool rhs end in pc
+  | _ => constr:(tt)
+  end
 with zify_u_u_bool wok e lem x y :=
   let px := zify_unsigned wok x in
   let py := zify_unsigned wok y in
@@ -289,6 +325,19 @@ with zify_unsigned wok e :=
           | _ => zify_unsigned_nop e
           end
       | _ => zify_unsigned_nop e
+      end
+  | match ?c with
+    | true => ?a
+    | false => ?b
+    end =>
+      lazymatch zify_lia_bool wok c with
+      | tt => zify_unsigned_nop e
+      | ?pc =>
+          let pa := zify_unsigned wok a in
+          let pb := zify_unsigned wok b in
+          let n := fresh "__Zspecif_0" in
+          let __ := unique_pose_proof_name n (unsigned_if_eq_for_lia c _ a b _ _ pc pa pb) in
+          zify_unsigned_nop e
       end
   | _ => (* Note: If e is a let-bound variable whose rhs is eg (word.add foo bar), we
             don't see through this var definition, so do we miss zification opportunities?
@@ -402,7 +451,13 @@ Ltac zify_letbound_var wok x body tp :=
       let n := fresh "__Zdef_" x in
       let __ := unique_pose_proof_name n (pf : Z.of_nat x = _) in
       idtac
-  | _ =>
+  | Z => (* xlia zchecker requires that := is turned into =, so we pose a proof
+            even if it's just eq_refl *)
+      let pf := zify_term wok body in
+      let n := fresh "__Zdef_" x in
+      let __ := unique_pose_proof_name n (pf : x = _) in
+      idtac
+  | _ => (* only pose proof if it's more interesting than eq_refl *)
       let pf := zify_term wok body in
       lazymatch pf with
       | eq_refl => idtac
@@ -411,6 +466,13 @@ Ltac zify_letbound_var wok x body tp :=
              idtac
       end
   end.
+
+Lemma zify_Prop_if: forall (c c': bool) (P Q P' Q': Prop),
+    c = c' ->
+    P <-> P' ->
+    Q <-> Q' ->
+    (if c then P else Q) <-> c' = true /\ P' \/ c' = false /\ Q'.
+Proof. intros. split; subst c'; destruct c; intuition discriminate. Qed.
 
 Lemma and_cong: forall (P P' Q Q': Prop),
     P <-> P' ->
@@ -489,6 +551,14 @@ Ltac zify_prop wok e :=
       | iff_refl _ => zify_prop_nop e
       | _ => constr:(not_cong _ _ pp)
       end
+  | match ?c with
+    | true => ?a
+    | false => ?b
+    end =>
+      let pc := zify_term wok c in
+      let pa := zify_prop wok a in
+      let pb := zify_prop wok b in
+      constr:(zify_Prop_if _ _ _ _ _ _ pc pa pb)
   | Z.le ?x ?y => zify_prop_app2_terms wok e Z.le x y
   | Z.lt ?x ?y => zify_prop_app2_terms wok e Z.lt x y
   | Z.ge ?x ?y => zify_prop_app2_terms wok e Z.ge x y
@@ -674,6 +744,46 @@ Section Tests.
   Goal forall (a b c: word),
       b <> a /\ c <> b /\ c <> a ->
       a ^- b <> word.of_Z 0 /\ b ^- c <> word.of_Z 0.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b x y: word),
+      (if word.ltu a b then word.ltu x y = true else word.ltu x y = false) ->
+      \[a] < \[b] ->
+      \[x] < \[y].
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b: Z),
+      let r := if Z.ltb a b then a else b in
+      a < b /\ r = a \/ b <= a /\ r = b.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b: Z),
+      let c := Z.ltb a b in
+      let r := if c then a else b in
+      a < b /\ r = a \/ b <= a /\ r = b.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b: Z),
+      let c := Z.ltb a b in
+      let r := if c then a else word.unsigned (word.of_Z b) in
+      a < b /\ r = a \/ b <= a /\ r + 2 ^ 32 * (b / 2 ^ 32) = b.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b: word),
+      let c := Z.ltb \[b ^+ a ^- b] \[b] in
+      let r := if c then a else b in
+      \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b: word),
+      let r := if word.ltu (b ^+ a ^- b) b then a else b in
+      \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b: word),
+      let c := word.ltu a b in
+      let r := if c then a else b in
+      \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
   Proof. intros. rzify_lia. Qed.
 
   Goal forall (left0 right : word) (xs : list word),

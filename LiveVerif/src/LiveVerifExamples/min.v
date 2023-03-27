@@ -20,19 +20,7 @@ Derive u_min SuchThat (fun_correct! u_min) As u_min_ok.                         
     r = b;                                                                 /**. .**/
   } /**. end if.                                                                .**/
   return r;                                                                /**. .**/
-}                                                                          /*?.
-
-step.
-step. step. step. step. step. step. step. step.
-
-(* TODO zify ifs if their boolean condition is understood by lia *)
-
-assert ((\[a] <? \[b]) = true /\ \[if c then a else b] = \[a] \/
-        (\[a] <? \[b]) = false /\ \[if c then a else b] = \[b]) as __Zdef_if_0.
-{ rewrite ?word.unsigned_ltu in __Zdef_c. clearbody c. subst c. destruct_one_match; auto. }
-
-step.
-
+}                                                                          /**.
 Qed.
 
 #[export] Instance spec_of_u_min3: fnspec :=                                    .**/
