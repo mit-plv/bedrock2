@@ -1336,6 +1336,20 @@ Section Tests.
       len (xs ++ ys[i := x] ++ xs) = 2 * len xs + len ys.
   Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
 
+
+  (** ** Half-supported: *)
+
+  Goal forall (A: Type) (l1 l2: list A) (i: Z),
+      len l1 = i ->
+      (l1 ++ l2)[0:][:i] = l1.
+  Proof.
+    intros.
+    (* TODO this should work in one go *)
+    bottom_up_simpl_in_goal. bottom_up_simpl_in_goal.
+    refl.
+  Abort.
+
+
   (** ** Not supported yet: *)
 
   Goal forall (z1 z2: Z) (y: word),

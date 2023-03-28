@@ -546,21 +546,22 @@ Notation "'don't_know_how_to_prove_equal' x y" :=
   (only printing, at level 10, x at level 0, y at level 0,
    format "don't_know_how_to_prove_equal '//' x '//' y").
 
-Ltac default_eq_prover :=
+Ltac default_eq_prover_step :=
   match goal with
-  | |- ?l = ?r => _syntactic_unify_deltavar l r; reflexivity
-  | H: ?l = ?r |- ?l = ?r => exact H
-  | |- _ => repeat match goal with
-              | x := _ |- _ => subst x
-              end;
-            try bottom_up_simpl_in_goal;
-            lazymatch goal with
-            | |- ?l = ?r => tryif constr_eq l r then reflexivity
-                            else change (don't_know_how_to_prove_equal l r)
-            end
+  | |- ?l = ?r =>
+      (* Note: this step is convenient, but not safe in general!
+         For instance, if the goal is `?a ++ ?b = xs ++ ys` and
+         a and b also appear elsewhere, maybe `xs ++ ys` needs to
+         be split at a different point before instantiating a and b *)
+      _syntactic_unify_deltavar l r (* <- instantiates evars *); reflexivity
+  | |- _ => bottom_up_simpl_in_goal (* fails if nothing to simplify *)
+  | |- _ => safe_f_equal_step
+  | |- ?l = ?r => subst l
+  | |- ?l = ?r => subst r
+  | |- ?l = ?r => change (don't_know_how_to_prove_equal l r)
   end.
 
-Ltac eq_prover_hook := default_eq_prover.
+Ltac eq_prover_step_hook := default_eq_prover_step.
 
 Ltac eval_dexpr_bool3_step e :=
   lazymatch e with
@@ -665,16 +666,14 @@ Ltac final_program_logic_step logger :=
         | |- exists _, _ => eexists
         end;
         logger ltac:(fun _ => idtac "eexists")
-      | match goal with
-        | |- _ =>
-            (* tried first because it also solves some goals of shape (_ = _) and (_ /\ _) *)
-            zify_goal; xlia zchecker;
-            logger ltac:(fun _ => idtac "xlia zchecker")
+      | (* tried first because it also solves some goals of shape (_ = _) and (_ /\ _) *)
+        zify_goal; xlia zchecker;
+        logger ltac:(fun _ => idtac "xlia zchecker")
+      | lazymatch goal with
         | |- ?P /\ ?Q =>
             split;
             logger ltac:(fun _ => idtac "split")
-        | |- _ = _ => safe_f_equal_step; logger ltac:(fun _ => idtac "safe_f_equal_step")
-        | |- _ = _ => eq_prover_hook; logger ltac:(fun _ => idtac "eq_prover_hook")
+        | |- _ = _ => eq_prover_step_hook; logger ltac:(fun _ => idtac "eq_prover_step_hook")
         | |- wp_cmd _ _ _ _ _ _ =>
               lazymatch goal with
               | |- ?G => change (@ready G)

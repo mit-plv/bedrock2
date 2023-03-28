@@ -48,7 +48,7 @@ Derive swap_barAB SuchThat (fun_correct! swap_barAB) As swap_barAB_ok.          
   store16(p+2, load16(p));                                                 /**. .**/
   store16(p, tmp);                                                         /**. .**/
 }                                                                          /**.
-reflexivity.
+subst tmp. bottom_up_simpl_in_goal. reflexivity.
 Qed.
 
 #[export] Instance spec_of_init_foo: fnspec :=                                  .**/

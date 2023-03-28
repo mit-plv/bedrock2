@@ -34,6 +34,9 @@ Proof.
   ZnWords.
 Qed.
 
+(* Tells the proof automation to apply f_equal on goals of shape `fib _ = fib _` *)
+#[local] Instance fib_inj: fake_injective fib. Qed.
+
 (* TODO also something like  word.unsigned (if c then a else b) = ... ? *)
 Lemma if_to_or: forall (c: bool) (P Q: Prop),
     (if c then P else Q) -> c = true /\ P \/ c = false /\ Q.
@@ -71,7 +74,7 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
       b = t;                                                               /**. .**/
       i = i + 1;                                                           /**. .**/
     }                                                                      /**.
-    rewrite fib_recursion by ZnWords; reflexivity.                              .**/
+    subst a' b' i. rewrite fib_recursion by ZnWords; reflexivity.               .**/
   }                                                                        /**. .**/
   return b;                                                                /**. .**/
 }                                                                          /*?.

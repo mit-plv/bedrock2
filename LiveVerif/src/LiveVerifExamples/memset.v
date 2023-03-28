@@ -28,23 +28,17 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
                                                                                 .**/
   while (i < n) /* decreases (n ^- i) */ {                                 /**. .**/
     store8(a + i, b);                                                      /**. .**/
-     i = i + 1;                                                            /**.
+     i = i + 1;                                                            /**. .**/
+  }                                                                        /**.
 
-     (* TODO if canceling is on same range with different values, assert
-        equality between values and automate proving list equality.
-        Here, little hope for a canonical form that both sides can reach. *)
-     1: replace (List.repeatz \[b] \[i'] ++ \[b] :: bs[\[i'] + 1:]) with
-             (List.repeatz \[b] \[i' ^+ /[1]] ++ bs[\[i' ^+ /[1]]:]) in *.
-     2: {
-       unfold List.repeatz.
-       replace (Z.to_nat \[i' ^+ /[1]]) with (Z.to_nat \[i'] + 1)%nat by ZnWords.
-       rewrite List.repeat_app.
-       rewrite <- List.app_assoc.
-       replace (\[i' ^+ /[1]]) with (\[i'] + 1) by ZnWords.
-       reflexivity.
-     }
+  (* TODO in series of List.app, try to merge each pair of two adjacent lists *)
+  unfold List.repeatz. subst i.
+  replace (Z.to_nat \[i' ^+ /[1]]) with (Z.to_nat \[i'] + 1)%nat by steps.
+  rewrite List.repeat_app.
+  rewrite <- List.app_assoc.
+  replace (\[i' ^+ /[1]]) with (\[i'] + 1) by steps.
+  reflexivity.
                                                                                 .**/
-  } /**. end while.                                                             .**/
 }                                                                          /**.
 Qed.
 
