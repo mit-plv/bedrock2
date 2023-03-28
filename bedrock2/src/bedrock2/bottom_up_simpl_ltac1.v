@@ -190,6 +190,12 @@ Ltac chain_res r1 r2 :=
   | false => r2
   end.
 
+Ltac debug_sidecond :=
+  lazymatch goal with
+  | |- ?g => idtac g
+  end;
+  time lia.
+
 Ltac bottom_up_simpl_sidecond_hook := lia. (* OR xlia zchecker if already zified *)
 
 (* local_X_simpl tactics:
@@ -347,6 +353,82 @@ Ltac local_ring_simplify parent e :=
          end
   end.
 
+Module List.
+  Import List.ZIndexNotations. Local Open Scope zlist_scope.
+
+  (* Given `e` of type `list A`, returns `xss` of type `list (list A)` such that
+     `List.apps xss` is convertible to `e`, and as long as possible.
+     (Side question: What would it take to prove such a spec?) *)
+  Ltac reify_apps e :=
+    lazymatch e with
+    | List.app ?xs ?ys => let r := reify_apps ys in constr:(cons xs r)
+    | _ => constr:([|e|])
+    end.
+
+  Goal forall l: list Z, True.
+    intros.
+    lazymatch reify_apps ([|1; 2|] ++ ([|3|] ++ [|4|]) ++ (l ++ [|5|])) with
+    | [|[|1; 2|]; [|3|] ++ [|4|]; l; [|5|]|] => idtac
+    end.
+  Abort.
+
+  Section WithA.
+    Context [A: Type].
+
+    (* TODO begin move *)
+    Lemma upto_app: forall (i: Z) (l1 l2 : list A),
+        List.upto i (l1 ++ l2) = List.upto i l1 ++ List.upto (i - len l1) l2.
+    Proof. unfold List.upto. intros. rewrite List.firstn_app. f_equal. f_equal. lia. Qed.
+    (* TODO end move *)
+
+    (* Same as List.concat, but does not result in a trailing `++ nil` when unfolded *)
+    Fixpoint apps(xss: list (list A)): list A :=
+      match xss with
+      | nil => nil
+      | ys :: nil => ys
+      | h :: t => h ++ apps t
+      end.
+
+    Lemma apps_concat: forall (xss: list (list A)), apps xss = List.concat xss.
+    Proof.
+      induction xss. 1: reflexivity.
+      simpl. rewrite <- IHxss.
+      destruct xss; try reflexivity.
+      simpl. symmetry. apply List.app_nil_r.
+    Qed.
+
+    Definition cbn_firstn: nat -> list (list A) -> list (list A) :=
+      Eval unfold List.firstn in @List.firstn (list A).
+
+    Definition cbn_skipn: nat -> list (list A) -> list (list A) :=
+      Eval unfold List.skipn in @List.skipn (list A).
+
+    Fixpoint cbn_len_sum(xss: list (list A)): Z :=
+      match xss with
+      | nil => 0
+      | h :: t => len h + cbn_len_sum t
+      end.
+
+    (* alternative to try out: zipper style: reversed left list of lists *)
+
+    Lemma upto_apps: forall n i (xs: list A) (xss: list (list A))
+                            (ys: list A) (yss: list (list A)),
+        cbn_firstn n xss = yss ->
+        apps xss = xs ->
+        apps yss = ys ->
+        i <= cbn_len_sum yss ->
+        List.upto i xs = List.upto i ys.
+    Proof.
+      intros. subst. rewrite 2apps_concat. revert i xss H2.
+      induction n; intros; simpl in *.
+      - rewrite 2List.upto_beginning; trivial.
+      - destruct xss. 1: reflexivity.
+        simpl in *.
+        do 2 rewrite upto_app. f_equal. apply IHn. lia.
+    Qed.
+  End WithA.
+End List.
+
 Section SimplListLemmas.
   Import List.ZIndexNotations. Local Open Scope zlist_scope.
   Context [A: Type].
@@ -380,29 +462,6 @@ Ltac local_zlist_simpl e :=
   | @List.get ?A ?inh ?l ?i =>
       lazymatch is_concrete_enough i l false with
       | true => let x := convertible_list_get inh l i in res_convertible x
-      end
-  | @List.from ?A ?i ?l =>
-      lazymatch is_concrete_enough i l true with
-      | true => let l' := convertible_list_from i l in res_convertible l'
-      | false =>
-          match l with
-          | List.from ?j ?ll =>
-              res_rewrite (List.from (Z.add j i) ll)
-                (List.from_from ll j i ltac:(bottom_up_simpl_sidecond_hook)
-                                       ltac:(bottom_up_simpl_sidecond_hook))
-          | _ => res_rewrite l
-                   (List.from_beginning l i ltac:(bottom_up_simpl_sidecond_hook))
-          | _ => res_rewrite (@nil A)
-                   (List.from_pastend l i ltac:(bottom_up_simpl_sidecond_hook))
-          end
-      end
-  | @List.upto ?A ?i ?l =>
-      match is_concrete_enough i l true with
-      | true => let l' := convertible_list_upto i l in res_convertible l'
-      | false => res_rewrite (@nil A)
-                   (List.upto_beginning l i ltac:(bottom_up_simpl_sidecond_hook))
-      | false => res_rewrite l
-                   (List.upto_pastend l i ltac:(bottom_up_simpl_sidecond_hook))
       end
   | @List.repeatz ?A _ Z0 => res_convertible uconstr:(@nil A)
   | List.app ?xs nil => res_rewrite xs uconstr:(List.app_nil_r xs)
@@ -445,6 +504,29 @@ Ltac local_zlist_simpl e :=
           res_rewrite (List.from i (List.upto sum l))
             (sized_slice_to_indexed_slice l i n sum
                ltac:(bottom_up_simpl_sidecond_hook) pf_sum)
+      end
+  | @List.from ?A ?i ?l =>
+      lazymatch is_concrete_enough i l true with
+      | true => let l' := convertible_list_from i l in res_convertible l'
+      | false =>
+          match l with
+          | List.from ?j ?ll =>
+              res_rewrite (List.from (Z.add j i) ll)
+                (List.from_from ll j i ltac:(bottom_up_simpl_sidecond_hook)
+                                       ltac:(bottom_up_simpl_sidecond_hook))
+          | _ => res_rewrite l
+                   (List.from_beginning l i ltac:(bottom_up_simpl_sidecond_hook))
+          | _ => res_rewrite (@nil A)
+                   (List.from_pastend l i ltac:(bottom_up_simpl_sidecond_hook))
+          end
+      end
+  | @List.upto ?A ?i ?l =>
+      match is_concrete_enough i l true with
+      | true => let l' := convertible_list_upto i l in res_convertible l'
+      | false => res_rewrite (@nil A)
+                   (List.upto_beginning l i ltac:(bottom_up_simpl_sidecond_hook))
+      | false => res_rewrite l
+                   (List.upto_pastend l i ltac:(bottom_up_simpl_sidecond_hook))
       end
   end.
 
@@ -1338,6 +1420,19 @@ Section Tests.
 
 
   (** ** Half-supported: *)
+
+  Goal forall (A: Type) (l1 l2: list A) (i: Z),
+      len l1 = i ->
+      (l1 ++ l2)[:i] = l1.
+  Proof.
+    intros.
+    (* TODO this should work in one go
+
+       List.upto needs to be pushed down, ie called again on result of
+       first simplification:
+       (l1 ++ l2)[:i] --> l1[:i] --> l1 *)
+    bottom_up_simpl_in_goal. bottom_up_simpl_in_goal. refl.
+  Abort.
 
   Goal forall (A: Type) (l1 l2: list A) (i: Z),
       len l1 = i ->
