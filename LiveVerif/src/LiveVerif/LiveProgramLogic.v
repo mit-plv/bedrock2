@@ -63,6 +63,29 @@ Proof.
   exact H0.
 Qed.
 
+(* State container, defined in such a way that updating the state doesn't affect or grow
+   the proof term: *)
+
+Definition currently(contents: Type) := unit.
+
+Ltac pose_state s :=
+  let n := fresh "state" in
+  pose proof (tt : currently s) as n;
+  move n at top.
+
+Ltac get_state :=
+  lazymatch reverse goal with
+  | state: currently ?s |- _ => s
+  end.
+
+Ltac set_state s :=
+  lazymatch reverse goal with
+  | state: currently _ |- _ => change (currently s) in state
+  end.
+
+Inductive displaying: Type :=.
+Inductive stepping: Type :=.
+
 Definition ready{P: Prop} := P.
 
 (* heapletwise- and word-aware lia, successor of ZnWords *)
@@ -108,7 +131,8 @@ Ltac start :=
              unify locals_evar (map.of_list kvs);
              reflexivity
         end
-      | ]
+      | ];
+      pose_state stepping
   | |- _ => fail "goal needs to be of shape (@program_logic_goal_for ?fname ?evar ?spec)"
   end.
 
@@ -228,7 +252,6 @@ Ltac destruct_ors :=
 Create HintDb prove_post.
 
 Definition expect_final_closing_brace(P: Prop) := P.
-Definition after_add_snippet_marker(P: Prop) := P.
 
 Ltac ret retnames :=
   lazymatch goal with
@@ -600,11 +623,6 @@ Ltac conclusion_shape_based_step logger :=
       lazymatch goal with
       | H: scope_marker IfCondition |- pop_scope_marker ?g => clear H; change g
       end
-  | |- after_add_snippet_marker ?G =>
-      change G;
-      zify_hyps;
-      puri_simpli_zify_hyps accept_unless_follows_by_xlia;
-      logger ltac:(fun _ => idtac "purify & zify")
   | |- True =>
       logger ltac:(fun _ => idtac "constructor");
       constructor
@@ -664,6 +682,7 @@ Ltac final_program_logic_step logger :=
               after_command_simpl_hook;
               unzify;
               unpurify;
+              set_state displaying;
               logger ltac:(fun _ =>
                              idtac "after_command_simpl_hook; unpurify; unzify and ready")
         end ].
@@ -694,9 +713,20 @@ Ltac merge_step' logger :=
       logger ltac:(fun _ => idtac "merge_step")
   end.
 
+Ltac undisplay logger :=
+  lazymatch reverse goal with
+  | _: currently ?s |- _ =>
+      constr_eq s displaying;
+      zify_hyps;
+      puri_simpli_zify_hyps accept_unless_follows_by_xlia;
+      set_state stepping;
+      logger ltac:(fun _ => idtac "purify & zify")
+  end.
+
 Ltac step0 logger :=
   first [ heapletwise_step' logger
         | conclusion_shape_based_step logger
+        | undisplay logger
         | split_step' logger
         | merge_step' logger
         | final_program_logic_step logger ].
@@ -716,17 +746,17 @@ Ltac step_is_done :=
   | |- after_loop _ _ _ _ _ _ => idtac
   end.
 
-Ltac run_steps :=
+Ltac steps :=
   lazymatch goal with
   | _: tactic_error _ |- _ => idtac
   | |- _ => tryif step_is_done then idtac
-            else tryif step_silent then run_steps
+            else tryif step_silent then steps
             else pose_err Error:("The 'step' tactic should not fail here")
   end.
 
 (* If really needed, this hook can be overridden with idtac for debugging,
    but the preferred way is to use /*?. instead of /**. *)
-Ltac run_steps_internal_hook := run_steps.
+Ltac run_steps_internal_hook := steps.
 
 Ltac next_snippet s :=
   assert_no_error;
@@ -735,11 +765,7 @@ Ltac next_snippet s :=
   | |- after_loop ?fs ?rest ?t ?m ?l ?post => after_loop_cleanup; run_steps_internal_hook
   | |- _ => idtac
   end;
-  add_snippet s;
-  lazymatch goal with
-  | |- ?G => change (after_add_snippet_marker G)
-  end.
-
+  add_snippet s.
 
 (* Standard usage:   .**/ snippet /**.    *)
 Tactic Notation ".*" constr(s) "*" := next_snippet s; run_steps_internal_hook.

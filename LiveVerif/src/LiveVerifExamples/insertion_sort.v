@@ -51,7 +51,6 @@ Derive insert SuchThat (fun_correct! insert) As insert_ok.
   assert (len l2 = \[n]-\[i]-1) by hwlia.
   assert ((sort l1 ++ [|x|])[:\[i] + 1] = (sort l1 ++ [|x|])).
   { apply List.upto_pastend. hwlia. }
-
   .**/ real_insert(p, i); /**.
   2: instantiate (1 := x).
   2: instantiate (1 := l1).

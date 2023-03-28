@@ -16,7 +16,7 @@ Goal forall n l (i j count p: word) R (m' m1 m: mem),
           l[\[i] + \[count] : \[j]] ++ l[\[i]:][:\[count] + 123] ++ l[\[count] + \[j]:]) p
      * R }> m'.
 Proof.
-  intros. repeat step.
+  intros. steps.
   lazymatch goal with
   | |- don't_know_how_to_prove_equal (l[\[i]:][:\[count]]) (l[\[i]:][:\[count] + 123]) =>
       idtac

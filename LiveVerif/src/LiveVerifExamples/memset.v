@@ -20,14 +20,10 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
 
   assert (len bs = \[n]) as lenbs by hwlia.
   let h := lazymatch goal with h: _ |= array _ _ _ _ |- _ => h end in
-  replace bs with (List.repeatz \[b] \[i] ++ bs[\[i]:]) in h
-      by (subst i; (* TODO heurisits for when to inline vars *)
-          bottom_up_simpl_in_goal;
-          syntactic_exact_deltavar (@eq_refl _ _)).
+  replace bs with (List.repeatz \[b] \[i] ++ bs[\[i]:]) in h by steps.
   loop invariant above i.
   move lenbs before R.
-  lazymatch goal with h: _ < 2 ^ 8 |- _ => move h before R end.
-  assert (0 <= \[i] <= \[n]) by ZnWords.
+  assert (0 <= \[i] <= \[n]) by steps.
   clearbody i.
                                                                                 .**/
   while (i < n) /* decreases (n ^- i) */ {                                 /**. .**/
