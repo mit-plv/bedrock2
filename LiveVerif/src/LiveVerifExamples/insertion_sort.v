@@ -1,3 +1,4 @@
+(* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import coqutil.Sorting.Permutation.
 Require Import LiveVerif.LiveVerifLib.
 Require Import List Lia.
@@ -49,7 +50,18 @@ Derive insert SuchThat (fun_correct! insert) As insert_ok.
 .**/ { /**.
   assert (len (sort l1 ++ [|x|]) = \[i]+1) by (rewrite List.len_app; simpl; ZnWords).
   .**/ real_insert(p, i); /**.
-.**/ } /**.
+  2: {
+    replace (sort l1 ++ x :: l2) with ((sort l1 ++ [|x|]) ++ l2) by steps.
+    rewrite List.upto_app_discard_r by steps.
+    rewrite List.upto_pastend by steps.
+    reflexivity.
+  }
+.**/ } /*?.
+step. step. step. step. step. step. step. step. step. step. step. step.
+step.
+change (x :: l2) with ([|x|] ++ l2).
+rewrite List.from_app_discard_l.
+step. step. cbn. step.
 Qed.
 
 (* Insertion sort *)
