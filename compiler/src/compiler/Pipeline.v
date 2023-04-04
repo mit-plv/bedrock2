@@ -51,8 +51,8 @@ Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Require Import compiler.LowerPipeline.
 Require Import bedrock2.WeakestPreconditionProperties.
-Require Import compiler.UseImmediate.
 Require Import compiler.UseImmediateDef.
+Require Import compiler.UseImmediate.
 Import Utility.
 
 Section WithWordAndMem.
@@ -134,6 +134,11 @@ Section WithWordAndMem.
                 List.length (compile_ext_call posmap1 pos1 stackoffset c) =
                 List.length (compile_ext_call posmap2 pos2 stackoffset c)).
 
+    Definition is5BitImmediate(x: Z) : bool :=
+      andb (Z.leb 0 x) (Z.ltb x 32).
+    Definition is12BitImmediate(x: Z) : bool :=
+      andb (Z.leb (-2048) x) (Z.ltb x 2048).
+
     Definition locals_based_call_spec{Var Cmd: Type}{locals: map.map Var word}
                (Exec: string_keyed_map (list Var * list Var * Cmd) ->
                       Cmd -> trace -> mem -> locals -> MetricLog ->
@@ -164,6 +169,12 @@ Section WithWordAndMem.
       Valid := map.forall_values ParamsNoDup;
       Call := locals_based_call_spec FlatImp.exec;
     |}.
+
+    (* |                 *)
+    (* | UseImmediate    *)
+    (* V                 *)
+    (* FlatWithStrVars   *)
+
     (* |                 *)
     (* | RegAlloc        *)
     (* V                 *)
@@ -246,6 +257,46 @@ Section WithWordAndMem.
           eapply ListSet.In_list_union_l. eapply ListSet.In_list_union_l. assumption.
         + eapply @freshNameGenState_disjoint_fbody.
       - simpl. intros. fwd. eauto using map.getmany_of_list_extends.
+    Qed.
+
+    Lemma useimmediate_functions_NoDup: forall funs funs',
+        (forall f argnames retnames body,
+          map.get funs f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames) ->
+        (useimmediate_functions is5BitImmediate is12BitImmediate) funs = Success funs' ->
+        forall f argnames retnames body,
+          map.get funs' f = Some (argnames, retnames, body) -> NoDup argnames /\ NoDup retnames.
+    Proof.
+      unfold useimmediate_functions. intros.
+      eapply map.try_map_values_bw in H0.
+      2: { eassumption.  }
+      unfold useimmediate_function in *.
+      fwd.
+      eapply H.
+      eassumption.
+    Qed.
+
+    Lemma useimmediate_correct: phase_correct FlatWithStrVars FlatWithStrVars (useimmediate_functions is5BitImmediate is12BitImmediate).
+    Proof.
+      unfold FlatWithStrVars.
+      split; cbn.
+      { unfold map.forall_values, ParamsNoDup. intros.
+        destruct v as  ((argnames & retnames) & body).
+        eapply useimmediate_functions_NoDup; try eassumption.
+        intros. specialize H0 with (1 := H2).
+        simpl in H0. assumption.
+      }
+
+      unfold locals_based_call_spec. intros. fwd.
+      pose proof H0 as GI.
+      unfold  useimmediate_functions in GI.
+      eapply map.try_map_values_fw in GI. 2: eassumption.
+      unfold useimmediate_function in GI. fwd.
+      eexists _, _, _, _. split. 1: eassumption. split. 1: eassumption.
+      intros.
+      eapply exec.weaken.
+      - eapply useImmediate_correct_aux.
+        all: eauto.
+      - eauto.
     Qed.
 
     Lemma regalloc_functions_NoDup: forall funs funs',
@@ -386,17 +437,19 @@ Section WithWordAndMem.
       string_keyed_map (list string * list string * cmd) ->
       result (list Instruction * string_keyed_map Z * Z) :=
       (compose_phases flatten_functions
+      (compose_phases (useimmediate_functions is5BitImmediate is12BitImmediate)
       (compose_phases regalloc_functions
       (compose_phases spill_functions
-                      (riscvPhase compile_ext_call)))).
+                      (riscvPhase compile_ext_call))))).
 
     Lemma composed_compiler_correct: phase_correct SrcLang RiscvLang composed_compile.
     Proof.
       unfold composed_compile.
       exact (compose_phases_correct flattening_correct
+            (compose_phases_correct useimmediate_correct
             (compose_phases_correct regalloc_correct
             (compose_phases_correct spilling_correct
-                                    riscv_phase_correct))).
+                                    riscv_phase_correct)))).
     Qed.
 
     Definition compile(funs: list (string * (list string * list string * cmd))):

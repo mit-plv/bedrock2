@@ -89,6 +89,7 @@ Lemma verify_handler_insts : Forall (fun i => verify i Decode.RV32I) handler_ins
 Proof.
   repeat (eapply Forall_cons || eapply Forall_nil).
   all : cbv; ssplit; trivial; try congruence.
+  all : left; reflexivity.
 Qed.
 
 Lemma byte_list_to_word_list_roundtrip: forall bs,
