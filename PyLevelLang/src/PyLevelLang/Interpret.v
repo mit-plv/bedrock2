@@ -4,11 +4,8 @@ Require Import Coq.Numbers.DecimalString.
 
 Local Open Scope Z_scope.
 
-Section WithWord.
-Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
-Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
-
-Fixpoint interp_type (t : type) : Type :=
+Fixpoint interp_type {width : Z} {BW : Bitwidth width} {word : word.word width}
+  (t : type) : Type :=
   match t with
   | TWord => word
   | TInt => Z
@@ -18,6 +15,10 @@ Fixpoint interp_type (t : type) : Type :=
   | TList t' => list (interp_type t')
   | TEmpty => unit
   end.
+
+Section WithWord.
+Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
 Fixpoint default_val (t : type) : interp_type t :=
   match t as t' return interp_type t' with
