@@ -1,5 +1,6 @@
 Require Import PyLevelLang.Language.
 Require Import coqutil.Map.Interface coqutil.Map.SortedListString.
+Require Import Coq.Numbers.DecimalString.
 
 Local Open Scope Z_scope.
 
@@ -79,6 +80,7 @@ Section WithMap.
     | OLengthString => fun x => Z.of_nat (String.length x)
     | OFst _ _ _ => fst
     | OSnd _ _ _ => snd
+    | OIntToString => fun n => DecimalString.NilZero.string_of_int (BinInt.Z.to_int n)
     end.
 
   Definition interp_binop {t1 t2 t3: type} (o : binop t1 t2 t3) : 

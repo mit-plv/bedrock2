@@ -52,7 +52,8 @@ Inductive atom : type -> Type :=
 Inductive punop : Type :=
   | PONeg
   | PONot
-  | POLength.
+  | POLength
+  | POIntToString.
 
 (* Unary operators (typed) *)
 Inductive unop : type -> type -> Type :=
@@ -61,7 +62,8 @@ Inductive unop : type -> type -> Type :=
   | OLength : forall t, unop (TList t) TInt
   | OLengthString : unop TString TInt
   | OFst : forall s t1 t2, unop (TPair s t1 t2) t1
-  | OSnd : forall s t1 t2, unop (TPair s t1 t2) t2.
+  | OSnd : forall s t1 t2, unop (TPair s t1 t2) t2
+  | OIntToString : unop TInt TString.
 
 (* Binary operators (untyped) *)
 Inductive pbinop : Type :=
