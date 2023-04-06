@@ -6,14 +6,160 @@ Require Import coqutil.Map.Interface coqutil.Map.SortedListString coqutil.Map.Pr
 Require Import coqutil.Datatypes.Result.
 Require Import Coq.Lists.List.
 Require Import Lia.
+Require Import Coq.Numbers.DecimalString.
 Import ListNotations.
 Import ResultMonadNotations.
+
+Require Import Coq.Program.Tactics.
 
 Local Open Scope Z_scope.
 Local Open Scope string_scope.
 Local Open Scope list_scope.
 
 Local Open Scope pylevel_scope.
+
+
+(*
+   JSON Values can be
+   * A list of other values (TList)
+   * An object of key value pairs, represented as TPair key value rest,
+     where rest is more nested pairs (until Tempty)
+   * A TInt, TBool, or TString
+*)
+
+Definition to_json_field_list_body to_json to_json_field_list t : interp_type t -> string :=
+   match t as t return (interp_type t -> string) with
+   | TPair key t1 t2 => fun s =>
+       match s with
+       | (a, rest) =>
+           match t2 with
+           | TEmpty => append (append key ": ") (to_json t1 a)
+           | _ => append (append (append (append
+                   key ": ") (to_json t1 a)) ", ") (to_json_field_list t2 rest)
+           end
+         end
+   | TEmpty => fun i => ""
+   | _ => fun s => "Error this type cannot be conerted to a json object"
+   end.
+Fixpoint to_json t : interp_type t -> string :=
+   match t as t return (interp_type t -> string) with
+   | TInt => fun n => DecimalString.NilZero.string_of_int (BinInt.Z.to_int n)
+   | TBool => fun i => match i with
+                      | true => "true"
+                      | false => "false"
+                       end
+   | TString => fun s => append (append """" s) """"
+   | TList t => fun s => append (append "[" (String.concat ", " (map (to_json _) s))) "]"
+   | TPair key t1 t2 => fun s =>
+         append (append "{" (to_json_field_list_body to_json to_json_field_list (TPair key t1 t2) s)) "}"
+   | TEmpty => fun i => ""
+   end
+with to_json_field_list t : interp_type t -> string := to_json_field_list_body to_json to_json_field_list t.
+
+
+Definition generate_json_field_list_body generate_json generate_json_field_list (t : type) (field : expr t) : expr String :=
+  match t as t return (expr t -> expr String) with
+  | TPair key t1 t2 => fun f =>
+      EBinop OConcatString (EBinop OConcatString (EBinop OConcatString
+          (EAtom (AString key))
+          (EAtom (AString ": ")))
+          (generate_json t1 (EUnop (OFst _ _ _) f)))
+          (EIf (EBinop (OEq TString eq_refl) (generate_json_field_list t2 (EUnop (OSnd _ _ _) f)) (EAtom (AString "")))
+          (EAtom (AString ""))
+          (EBinop OConcatString (EAtom (AString ", "))
+            (generate_json_field_list t2 (EUnop (OSnd _ _ _) f))))
+  | TEmpty => fun f => EAtom (AString "")
+  | _ => fun f => EAtom (AString "Error this type cannot be conerted to a json object")
+  end field.
+Fixpoint generate_json (t : type) (field : expr t) : expr String :=
+  match t as t return (expr t -> expr String) with
+  | TInt => fun f => EAtom (AString "int")
+  | TBool => fun f =>
+      EIf (EBinop (OEq TBool eq_refl) f (EAtom (ABool true)))
+          (EAtom (AString "true")) (EAtom (AString "false"))
+  | TString => fun f => EBinop OConcatString (EBinop OConcatString (EAtom (AString """")) f) (EAtom (AString """"))
+  | TList t => fun f => EBinop OConcatString
+      (EAtom (AString "["))
+      (EFold f (EAtom (AString "]")) "v" "acc"
+             (EBinop OConcatString (EBinop OConcatString
+             (generate_json t (EVar t "v"))
+             (EIf (EBinop (OEq TString eq_refl) (EVar String "acc") (EAtom (AString "]")))
+                  (EAtom (AString "")) (EAtom (AString ", "))))
+             (EVar String "acc")))
+  | TPair key t1 t2 => fun f =>
+      EBinop OConcatString (EBinop OConcatString
+          (EAtom (AString "{"))
+          (generate_json_field_list_body generate_json generate_json_field_list (TPair key t1 t2) f))
+          (EAtom (AString "}"))
+  | TEmpty => fun f => EAtom (AString "")
+  end field
+with
+  generate_json_field_list t : expr t -> expr String
+    := generate_json_field_list_body generate_json generate_json_field_list t.
+
+Section Generate_Json_Tests_Section.
+  Instance locals : map.map string {t & interp_type t} := SortedListString.map _.
+  Instance locals_ok : map.ok locals := SortedListString.ok _.
+
+  Goal to_json (TList (TList TInt)) [[1]; [3; 33]; [5; 55; 555]]
+    = "[[1], [3, 33], [5, 55, 555]]".
+  reflexivity. Abort.
+
+  Goal to_json (TPair "foo" TString (TPair "bar" TInt TEmpty)) ("hi", (7, tt))
+  = "{foo: ""hi"", bar: 7}".
+  reflexivity. Abort.
+
+  Goal interp_expr (map.put map.empty "x" (existT interp_type Bool true))
+        (generate_json TBool (EVar TBool "x")) = "true".
+  reflexivity. Abort.
+
+  Goal interp_expr (map.put map.empty "x" (existT interp_type Bool true))
+        (generate_json TBool (EVar TBool "x")) = "true".
+  reflexivity. Abort.
+
+  Goal interp_expr (map.put map.empty "x" (existT interp_type String "str"))
+        (generate_json TString (EVar TString "x")) = """str""".
+  reflexivity. Abort.
+
+  Goal interp_expr (map.put map.empty "x" (existT interp_type (TList Bool) [true; false; false]))
+        (generate_json (TList Bool) (EVar (TList Bool) "x")) = "[true, false, false]".
+  reflexivity. Abort.
+
+  Goal interp_expr (map.put map.empty "x" (existT interp_type (TPair "foo" TString (TPair "bar" TInt TEmpty))
+        ("hi", (7, tt))))
+        (generate_json (TPair "foo" TString (TPair "bar" TInt TEmpty)) (EVar (TPair "foo" TString (TPair "bar" TInt TEmpty)) "x"))
+        = "{foo: ""hi"", bar: int}".
+  reflexivity. Abort.
+
+  Goal interp_expr (map.put map.empty "x"
+      (existT interp_type (TPair "foo" TString (TPair "bar" (TPair "baz" TString TEmpty) TEmpty))
+                          ("a", (("b", tt), tt))))
+        (generate_json (TPair "foo" TString (TPair "bar" (TPair "baz" TString TEmpty) TEmpty)) (EVar _ "x"))
+        = "{foo: ""a"", bar: {baz: ""b""}}".
+  reflexivity. Abort.
+
+  Goal interp_expr (map.put map.empty "x"
+      (existT interp_type (TPair "foo" (TPair "bar" (TPair "baz" TString TEmpty) TEmpty) (TPair "bar" (TPair "baz" TString TEmpty) TEmpty))
+                          ((("a", tt), tt), (("b", tt), tt))))
+        (generate_json (TPair "foo" (TPair "bar" (TPair "baz" TString TEmpty) TEmpty) (TPair "bar" (TPair "baz" TString TEmpty) TEmpty)) (EVar _ "x"))
+        = "{foo: {bar: {baz: ""a""}}, bar: {baz: ""b""}}".
+  reflexivity. Abort.
+
+  Goal interp_expr (map.put map.empty "x"
+      (existT interp_type (TList (TList TString))
+                          [["a"; "b"]; ["c"; "d"]]))
+        (generate_json (TList (TList TString)) (EVar _ "x"))
+        = "[[""a"", ""b""], [""c"", ""d""]]".
+  reflexivity. Abort.
+
+  Goal interp_expr (map.put map.empty "x"
+      (existT interp_type (TList (TList TString))
+                          [[]; ["a"; ""]]))
+        (generate_json (TList (TList TString)) (EVar _ "x"))
+        = "[[], [""a"", """"]]".
+  reflexivity. Abort.
+End Generate_Json_Tests_Section.
+
 
 Section Square_Section.
   Instance tenv : map.map string (type * bool) := SortedListString.map _.
@@ -38,9 +184,6 @@ Section Square_Section.
 End Square_Section.
 
 Section Examples.
-  Instance locals : map.map string {t & interp_type t} := SortedListString.map _.
-  Instance locals_ok : map.ok locals := SortedListString.ok _.
-
   Fixpoint init_locals (vars : list (string * type)) : locals :=
      match vars with
      | [] => map.empty
