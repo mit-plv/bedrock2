@@ -10,9 +10,6 @@ Require Import coqutil.Byte coqutil.Word.Interface coqutil.Word.Bitwidth coqutil
 
 Require Import coqutil.Tactics.fwd.
 
-Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
-Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
-
 Definition compile_atom {t : type} (a : atom t) : result Syntax.expr :=
   match a with
   | AWord z => Success (Syntax.expr.literal z)
@@ -91,12 +88,18 @@ Fixpoint compile_expr {t : type} (e : expr t) : result Syntax.expr :=
   | _ => error:("unimplemented")
   end.
 
+Definition compile_expr' {t : type} (e : expr t) : result (Syntax.cmd * Syntax.expr) :=
+  e' <- compile_expr e;;
+  Success (Syntax.cmd.skip, e').
+
 Section WithMap.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Context {tenv : map.map string (type * bool)} {tenv_ok : map.ok tenv}.
   Context {locals: map.map string {t & interp_type (word := word) t}} {locals_ok: map.ok locals}.
-  (* Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}. *)
-  (* Context {word_ok: word.ok word} {mem_ok: map.ok mem}. *)
   Context {locals': map.map string word} {locals'_ok: map.ok locals}.
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
+  Context {ext_spec: ExtSpec}.
 
   Inductive value_relation : forall {t : type}, interp_type t -> word -> Prop :=
     | RWord (w : word) : value_relation (t := TWord) w w
@@ -248,6 +251,26 @@ Section WithMap.
                rewrite <- H6, <- H9 in Heq; apply word.eqb_true in Heq;
                simpl in Heq; (rewrite Heq || rewrite <- Heq); apply RBool.
   Qed.
+
+  Lemma compile'_correct : forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr),
+    wf map.empty e ->
+    compile_expr' e = Success (c, e') -> forall tr m l mc,
+    exec (map.empty) c tr m l mc (fun tr' m' l' mc' => exists (w : word),
+      eval_expr_old m' l' e' = Some w /\
+      value_relation (interp_expr map.empty e) w
+    ).
+  Proof.
+    intros t e c e' He He' tr m l mc.
+    unfold compile_expr' in He'.
+    fwd.
+    apply exec.skip.
+    assert (m = map.empty) as [= ->].
+    { admit. }
+    assert (l = map.empty) as [= ->].
+    { admit. }
+    now apply compile_correct.
+  Admitted.
+
 End WithMap.
 
 Compute (compile_expr (EAtom (AWord 4))).
