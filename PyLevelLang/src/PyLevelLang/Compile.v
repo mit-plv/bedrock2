@@ -158,7 +158,7 @@ Section WithMap.
         simpl;
         fwd;
         inversion He;
-        injection H4 as [= ->];
+        apply Eqdep_dec.inj_pair2_eq_dec in H4 as [= ->]; try exact type_eq_dec;
         specialize IHe with (1 := H2) (2 := eq_refl);
         fwd;
         eexists.
@@ -183,9 +183,9 @@ Section WithMap.
         simpl;
         fwd;
         inversion He;
-        injection H5 as [= ->];
+        apply Eqdep_dec.inj_pair2_eq_dec in H5 as [= ->]; try exact type_eq_dec;
         injection H6 as [= ->];
-        injection H5 as [= ->];
+        apply Eqdep_dec.inj_pair2_eq_dec in H5 as [= ->]; try exact type_eq_dec;
         specialize IHe1 with (1 := H3) (2 := eq_refl);
         specialize IHe2 with (1 := H7) (2 := eq_refl);
         fwd;
