@@ -7,7 +7,7 @@ Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.foreach_hyp.
 Require Import bedrock2.WordNotations. Local Open Scope word_scope.
-Require Import bedrock2.cancel_div.
+Require Import bedrock2.cancel_div_ltac1.
 
 (* needed for compatibility with simplification strategies that choose not
    to simplify powers of 2 *)
@@ -15,10 +15,7 @@ Ltac is_Z_const e :=
   lazymatch e with
   | Z.pow ?x ?y =>
       lazymatch isZcst x with
-      | true => lazymatch isZcst y with
-                | true => constr:(true)
-                | false => constr:(false)
-                end
+      | true => isZcst y
       | false => constr:(false)
       end
   | _ => isZcst e

@@ -27,7 +27,7 @@ Require bedrock2.WeakestPreconditionProperties.
 From coqutil.Tactics Require Import Tactics letexists eabstract.
 Require Import bedrock2.ProgramLogic bedrock2.Scalars.
 Require Import coqutil.Word.Interface.
-From coqutil Require Import rdelta.
+Require Import coqutil.Tactics.rdelta.
 
 Section WithParameters.
   Context {word: word.word 32} {mem: map.map word Byte.byte}.
