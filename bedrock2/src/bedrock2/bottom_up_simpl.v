@@ -8,6 +8,7 @@ Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Tactics.foreach_hyp.
+Require bedrock2.WordNotations.
 Require Import bedrock2.cancel_div.
 
 Ltac2 rec is_positive_literal(e: constr): bool :=
@@ -43,53 +44,58 @@ Ltac2 rec is_nat_const(n: constr): bool :=
   | _ => false
   end.
 
-(* Two aliases of eq_refl, one that means "nothing was simplified", and one that
-   means "some conversion to x happened" *)
-Definition eq_nop[A: Type](x: A): x = x := eq_refl.
-Definition eq_conv[A: Type](x: A): x = x := eq_refl.
-
 (* To be treated opaquely and only manipulated through the API that follows.
    Alternative representations to try out:
    - Ltac2 records
    - uconstr
    - resulting term of simplification as constr, proof term as uconstr or custom type *)
-Ltac2 Type res := {
-  proof: constr
-}.
+Ltac2 Type res :=
+  [ ResNop(constr) (* new and old term *)
+  | ResConvertible(constr) (* new term *)
+  | ResRewrite(constr, constr) (* new term, proof *) ].
 
 Ltac2 new_term(r: res): constr :=
-  (* extra parentheses needed because of https://github.com/coq/coq/issues/16432 *)
-  lazy_match! Constr.type (r.(proof)) with
-  | _ = ?x => x
+  match r with
+  | ResNop t => t
+  | ResConvertible t => t
+  | ResRewrite t _ => t
   end.
 
-Ltac2 eq_proof(r: res): constr := r.(proof).
+Ltac2 eq_proof(r: res): constr :=
+  match r with
+  | ResNop t => '(@eq_refl _ $t)
+  | ResConvertible t => '(@eq_refl _ $t)
+  | ResRewrite _ pf => pf
+  end.
 
 Ltac2 did_something(r: res): bool :=
-  lazy_match! r.(proof) with
-  | eq_nop _ => false
-  | _ => true
+  match r with
+  | ResNop _ => false
+  | ResConvertible _ => true
+  | ResRewrite _ _ => true
   end.
 
 Ltac2 is_convertible(r: res): bool :=
-  lazy_match! r.(proof) with
-  | eq_nop _ => true
-  | eq_conv _ => true
-  | _ => false
+  match r with
+  | ResNop _ => true
+  | ResConvertible _ => true
+  | ResRewrite _ _ => false
   end.
 
 Ltac2 res_convertible(new_term: constr): res :=
-  { proof := '(eq_conv $new_term) }.
+  ResConvertible new_term.
 
 (* new_term must be convertible to the rhs of eq_proof's type *)
 Ltac2 res_rewrite_to(new_term: constr)(eq_proof: constr): res :=
-  { proof := '(eq_trans $eq_proof (@eq_refl _ $new_term)) }.
+  ResRewrite new_term eq_proof.
 
 Ltac2 res_rewrite(eq_proof: constr): res :=
-  { proof := eq_proof }.
+  lazy_match! Constr.type eq_proof with
+  | _ = ?rhs => ResRewrite rhs eq_proof
+  end.
 
 Ltac2 res_nothing_to_simpl(original_term: constr): res :=
-  { proof := '(eq_nop $original_term) }.
+  ResNop original_term.
 
 (* original: term of shape (f a)
    f: constr
@@ -576,27 +582,28 @@ Ltac2 rec push_down_upto(force_progress: bool)(treat_app: bool)
           '1%nat
           (list_length_as_nat xss) in
         (* n=0 (nothing to do) and n=list_length xss (result is nil) not handled here *)
-        let upto_apps_pf := '(List.upto_apps _ $i $l $xss _ _ $le_pf
+        let ys := open_constr:(_) in
+        let upto_apps_pf := '(List.upto_apps _ $i $l $xss $ys _ $le_pf
                                       ltac2:(cbn [List.cbn_dropRight]; reflexivity)
                                       eq_refl
                                       ltac2:(cbn [List.apps]; reflexivity)) in
         let res_upto_apps := res_rewrite upto_apps_pf in
-        let res_rec := push_down_upto false false tp i (new_term res_upto_apps) in
+        let res_rec := push_down_upto false false tp i ys in
         chain_res res_upto_apps res_rec
       else gfail "try next match branch"
-    | List.from ?j ?l =>
+  | List.from ?j ?l =>
       let n := i in (* sized slice of size n: l[j:][:n] *)
       let r_sum := ring_simplify_res_or_nothing_to_simpl '(Z.add $j $n) in
       let sum := new_term r_sum in
       if Int.lt (ring_expr_size sum) (ring_expr_size n) then
         let pf_sum := eq_proof r_sum in
         res_rewrite '(sized_slice_to_indexed_slice $l $j $n $sum
-                              ltac2:(bottom_up_simpl_sidecond_hook) $pf_sum)
+                              ltac2:(bottom_up_simpl_sidecond_hook ()) $pf_sum)
       else gfail "ring_simplify does not shrink the expression size"
-  | List.upto ?j ?l =>
-      let r1 := res_rewrite '(List.upto_upto_subsume $j $i $l
+  | List.upto ?j ?ll =>
+      let r1 := res_rewrite '(List.upto_upto_subsume $j $i $ll
                                       ltac2:(bottom_up_simpl_sidecond_hook ())) in
-      let r2 := push_down_upto false true tp i l in
+      let r2 := push_down_upto false true tp i ll in
       chain_res r1 r2
   | _ => if is_concrete_enough i l true then
            let l' := convertible_list_upto i l in res_convertible l'
@@ -868,9 +875,9 @@ Ltac2 rec push_down_unsigned(w: constr): res :=
       lazy_match! f1 with
       | @word.of_Z ?width ?word =>
           first_val
-            [ res_rewrite '(word.unsigned_of_Z_nowrap $a0
+            [ res_rewrite '(@word.unsigned_of_Z_nowrap $width $word _ $a0
                               ltac2:(bottom_up_simpl_sidecond_hook ()))
-            | res_rewrite '(word.unsigned_of_Z_modwrap $a0) ]
+            | res_rewrite '(@word.unsigned_of_Z_modwrap $width $word _ $a0) ]
       | @word.opp ?width ?word =>
           let r_a0 := push_down_unsigned a0 in
           let pf0 := eq_proof r_a0 in
@@ -913,16 +920,6 @@ Ltac2 local_word_simpl(e: constr): res :=
   | @word.of_Z ?width ?word (?z mod 2 ^ ?width) =>
       res_rewrite '(@word.of_Z_mod $width $word _ $z)
   end.
-
-Ltac2 local_simpl_hook(parent_kind: expr_kind)(e: constr): res :=
-  first_val
-    [ local_subst_small_rhs e
-    | local_zlist_simpl e
-    | local_ring_simplify parent_kind e
-    | local_ground_number_simpl e
-    | local_word_simpl e (* <-- not strictly local, might do a whole traversal *)
-    | local_nonring_nonground_Z_simpl e
-    | res_nothing_to_simpl e ].
 
 (* Nodes like eg (List.length (cons a (cons b (app (cons c xs) ys)))) can
    require an arbitrary number of simplification steps at the same node.
@@ -1141,53 +1138,44 @@ Ltac2 rec push_down_len(x: constr): res :=
   | _ => res_nothing_to_simpl '(Z.of_nat (List.length $x))
   end.
 
-(*
-Ltac2 bottom_up_simpl parent_kind e :=
+Ltac2 push_down_len_top(e: constr): res :=
   lazy_match! e with
-  | Z.add ?x ?y => bottom_up_simpl_app2 e parent_kind ZRingExpr Z.add x y
-  | Z.sub ?x ?y => bottom_up_simpl_app2 e parent_kind ZRingExpr Z.sub x y
-  | Z.mul ?x ?y => bottom_up_simpl_app2 e parent_kind ZRingExpr Z.mul x y
-  | Z.opp ?x    => bottom_up_simpl_app1 e parent_kind ZRingExpr Z.opp x
-  | @word.add ?wi ?wo ?x ?y =>
-      bottom_up_simpl_app2 e parent_kind WordRingExpr (@word.add wi wo) x y
-  | @word.sub ?wi ?wo ?x ?y =>
-      bottom_up_simpl_app2 e parent_kind WordRingExpr (@word.sub wi wo) x y
-  | @word.mul ?wi ?wo ?x ?y =>
-      bottom_up_simpl_app2 e parent_kind WordRingExpr (@word.mul wi wo) x y
-  | @word.opp ?wi ?wo ?x    =>
-      bottom_up_simpl_app1 e parent_kind WordRingExpr (@word.opp wi wo) x
-  | Z.of_nat (@List.length ?A ?l) => push_down_len e A l
-  | ?f1 ?a1 =>
-      lazy_match! f1 with
-      | ?f2 ?a2 =>
-          lazy_match! f2 with
-          | _ _ => bottom_up_simpl_app e parent_kind f1 a1
-          | _ => bottom_up_simpl_app2 e parent_kind OtherExpr f2 a2 a1
-          end
-      | _ => bottom_up_simpl_app1 e parent_kind OtherExpr f1 a1
-      end
-  | _ => local_simpl_hook parent_kind e
-  end
-with bottom_up_simpl_app1 e parent_kind current_kind f a1 :=
-  let r1 := bottom_up_simpl current_kind a1 in
-  let r := lift_res1 e f r1 in
-  let e' := r NewTerm in
-  let r' := local_simpl_hook parent_kind e' in
-  chain_res r r'
-with bottom_up_simpl_app2 e parent_kind current_kind f a1 a2 :=
-  let r1 := bottom_up_simpl current_kind a1 in
-  let r2 := bottom_up_simpl current_kind a2 in
-  let r := lift_res2 e f r1 r2 in
-  let e' := r NewTerm in
-  let r' := local_simpl_hook parent_kind e' in
-  chain_res r r'
-with bottom_up_simpl_app e parent_kind f a :=
-  let r1 := bottom_up_simpl OtherExpr f in
-  let r2 := bottom_up_simpl OtherExpr a in
-  let r := lift_res_app e r1 r2 in
-  let e' := r NewTerm in
-  let r' := local_simpl_hook parent_kind e' in
-  chain_res r r'.
+  | Z.of_nat (List.length ?l) => push_down_len l
+  end.
+
+Ltac2 mutable local_simpl_hook(parent_kind: expr_kind)(e: constr): res :=
+  first_val
+    [ local_subst_small_rhs e
+    | local_zlist_simpl e
+    | local_ring_simplify parent_kind e
+    | local_ground_number_simpl e
+    | push_down_len_top e
+    | local_word_simpl e (* <-- not strictly local, might do a whole traversal *)
+    | local_nonring_nonground_Z_simpl e
+    | res_nothing_to_simpl e ].
+
+Ltac2 rec bottom_up_simpl(parent_kind: expr_kind)(e: constr): res :=
+  let current_kind := get_expr_kind e in
+  let r_rec :=
+    match current_kind with
+    | OtherExpr =>
+        lazy_match! e with
+        | ?f ?x => lift_res_app e
+                     (bottom_up_simpl OtherExpr f)
+                     (bottom_up_simpl OtherExpr x)
+        | _ => res_nothing_to_simpl e (* TODO enter into match, -> ? *)
+        end
+    | _ => (* head of app is a known function symbol that doesn't need to be simplified *)
+        lazy_match! e with
+        | ?f ?x ?y => lift_res2 e f
+                        (bottom_up_simpl current_kind x)
+                        (bottom_up_simpl current_kind y)
+        | ?f ?x => lift_res1 e f (bottom_up_simpl current_kind x)
+        | _ => res_nothing_to_simpl e (* TODO enter into match, -> ? *)
+        end
+    end in
+  let r_loc := local_simpl_hook parent_kind (new_term r_rec) in
+  chain_res r_rec r_loc.
 
 (* Consider `word.unsigned (foo (a + 0) ^+ x ^- foo a ^+ y)`:
    The argument of word.unsigned needs a first full bottom-up traversal to simplify
@@ -1206,39 +1194,36 @@ Proof. intros. subst. assumption. Qed.
 Lemma rew_Prop_goal: forall (P1 P2: Prop) (pf: P1 = P2), P2 -> P1.
 Proof. intros. subst. assumption. Qed.
 
-Ltac2 bottom_up_simpl_in_hyp H :=
-  let t := type of H in
-  lazy_match! type of t with
-  | Prop => idtac
-  | _ => fail "not a Prop"
-  end;
-  let r := bottom_up_simpl OtherExpr t in
-  lazy_match! r DidSomething with
-  | false => fail "nothing to simplify"
-  | true =>
-      let pf := r EqProof in
-      let t' := r NewTerm in
-      eapply (rew_Prop_hyp t t' pf) in H
-  end.
-
-Ltac2 bottom_up_simpl_in_hyp_of_type H t :=
-  lazy_match! type of t with
+Ltac2 bottom_up_simpl_in_hyp(h: ident): unit :=
+  let t := Constr.type (Control.hyp h) in
+  lazy_match! Constr.type t with
   | Prop =>
       let r := bottom_up_simpl OtherExpr t in
-      lazy_match! r DidSomething with
-      | false => idtac (* don't force progress *)
-      | true =>
-          let pf := r EqProof in
-          let t' := r NewTerm in
-          eapply (rew_Prop_hyp t t' pf) in H
-      end
-  | _ =>  idtac (* don't force progress *)
+      if did_something r then
+        let pf := eq_proof r in
+        let t' := new_term r in
+        eapply (rew_Prop_hyp $t $t' $pf) in $h
+      else fail "nothing to simplify"
+  | _ => fail "not a Prop"
   end.
 
-Ltac2 bottom_up_simpl_in_hyp_of_type_if test H t :=
-  tryif test H t then bottom_up_simpl_in_hyp_of_type H t else idtac.
+Ltac2 bottom_up_simpl_in_hyp_of_type(h: ident)(t: constr): unit :=
+  lazy_match! Constr.type t with
+  | Prop =>
+      let r := bottom_up_simpl OtherExpr t in
+      if did_something r then
+        let pf := eq_proof r in
+        let t' := new_term r in
+        eapply (rew_Prop_hyp $t $t' $pf) in $h
+      else () (* don't force progress *)
+  | _ => () (* don't force progress *)
+  end.
 
-Ltac2 bottom_up_simpl_in_letbound_var x b _t :=
+Ltac2 bottom_up_simpl_in_hyp_of_type_if
+  (test: ident -> constr -> bool)(h: ident)(t: constr): unit :=
+  if test h t then bottom_up_simpl_in_hyp_of_type h t else ().
+
+Ltac2 bottom_up_simpl_in_letbound_var x b _t := (). (* TODO, mabybe just in Ltac1?
   let r := bottom_up_simpl OtherExpr b in
   match r DidSomething with
   | true =>
@@ -1254,40 +1239,55 @@ Ltac2 bottom_up_simpl_in_letbound_var x b _t :=
                   would lead to ill-typed terms *)
   end.
 
-Ltac2 bottom_up_simpl_in_letbound_var_if test x b t :=
-  tryif test x b t then bottom_up_simpl_in_letbound_var x b t else idtac.
+Ltac2 bottom_up_simpl_in_letbound_var(x: ident)(b: constr)(_t: constr): unit :=
+  let r := bottom_up_simpl OtherExpr b in
+  if did_something r then (
+    (* can fail if x appears in the type of other expressions and rewriting in
+       the body of x would lead to ill-typed terms *)
+    try (let pf := eq_proof r in
+         let b' := new_term r in
+         let y := Fresh.in_goal x in
+         Std.rename [(x, y)];
+         pose (x := $b');
+         move x after y;
+         replace $y with $x in * by (subst x y; symmetry; exact pf);
+         clear y)
+  ) else ().
+*)
 
-Ltac2 bottom_up_simpl_in_goal :=
-  let t := lazy_match! goal with |- ?g => g end in
-  lazy_match! type of t with
-  | Prop => idtac
+Ltac2 bottom_up_simpl_in_letbound_var_if test x b t := (). (* TODO
+  tryif test x b t then bottom_up_simpl_in_letbound_var x b t else idtac.
+*)
+
+Ltac2 bottom_up_simpl_in_goal () :=
+  let t := Control.goal () in
+  lazy_match! Constr.type t with
+  | Prop =>
+      let r := bottom_up_simpl OtherExpr t in
+      if did_something r then
+        let pf := eq_proof r in
+        let t' := new_term r in
+        eapply (rew_Prop_goal $t $t' $pf)
+      else fail "nothing to simplify"
   | _ => fail "not a Prop"
-  end;
-  let r := bottom_up_simpl OtherExpr t in
-  lazy_match! r DidSomething with
-  | false => fail "nothing to simplify"
-  | true =>
-      let pf := r EqProof in
-      let t' := r NewTerm in
-      eapply (rew_Prop_goal t t' pf)
   end.
 
-Ltac2 bottom_up_simpl_in_hyps :=
+Ltac2 bottom_up_simpl_in_hyps () :=
   foreach_hyp bottom_up_simpl_in_hyp_of_type.
 Ltac2 bottom_up_simpl_in_hyps_if test :=
   foreach_hyp (bottom_up_simpl_in_hyp_of_type_if test).
 
-Ltac2 bottom_up_simpl_in_vars :=
+Ltac2 bottom_up_simpl_in_vars () :=
   foreach_var bottom_up_simpl_in_letbound_var.
 Ltac2 bottom_up_simpl_in_vars_if test :=
   foreach_var (bottom_up_simpl_in_letbound_var_if test).
 
-Ltac2 bottom_up_simpl_in_hyps_and_vars :=
-  bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars.
+Ltac2 bottom_up_simpl_in_hyps_and_vars () :=
+  bottom_up_simpl_in_hyps (); bottom_up_simpl_in_vars ().
 
-Ltac2 bottom_up_simpl_in_all :=
-  bottom_up_simpl_in_hyps; bottom_up_simpl_in_vars;
-  try bottom_up_simpl_in_goal.
+Ltac2 bottom_up_simpl_in_all () :=
+  bottom_up_simpl_in_hyps (); bottom_up_simpl_in_vars ();
+  try bottom_up_simpl_in_goal ().
 
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
@@ -1295,10 +1295,10 @@ Section Tests.
   Set Ltac2 Backtrace.
 
   Goal forall a: Z, a = a + 0 -> a = a + 0 -> True.
-    intros ? E_nosimpl E.
-    bottom_up_simpl_in_hyps_if
-      ltac:(fun h t => tryif unify h E_nosimpl then fail else idtac).
-  Abort.
+    intros ? e_nosimpl e.
+    bottom_up_simpl_in_hyps_if (fun h t => neg (Ident.equal h @e_nosimpl)).
+    constructor.
+  Succeed Qed. Abort.
 
   Context {word: word.word 32} {word_ok: word.ok word}.
 
@@ -1311,41 +1311,45 @@ Section Tests.
   Hypothesis Q: list Z -> Prop.
 
   Import ZList.List.ZIndexNotations. Local Open Scope zlist_scope.
+  Import bedrock2.WordNotations. Local Open Scope word_scope.
 
-  Ltac2 refl :=
+  Ltac2 refl0 () :=
     lazy_match! goal with
-    | |- ?x = ?x => reflexivity
+    | [ |- ?x = ?x ] => reflexivity
     end.
+  Ltac2 Notation refl := refl0 ().
 
   Goal forall (n b: Z) (bs: list Z),
       Q (List.repeatz b (n - n) ++ bs[2/4:] ++
            List.repeatz b (word.unsigned (word.of_Z 0))) = Q bs.
   Proof.
-    intros. bottom_up_simpl_in_goal. refl.
+    intros. bottom_up_simpl_in_goal (). refl.
   Qed.
 
   Goal forall (byte_of_Z: Z -> Byte.byte) (b: word) (bs: list Byte.byte),
       List.repeatz (byte_of_Z \[b]) \[/[0]] ++ bs[\[/[0]]:] = bs.
   Proof.
-    intros. bottom_up_simpl_in_goal. refl.
+    intros. bottom_up_simpl_in_goal (). refl.
   Qed.
 
   Goal forall a: word, P (word.unsigned (a ^+ word.of_Z 8 ^- a) / 4) -> P 2.
   Proof.
-    intros. bottom_up_simpl_in_hyp H. exact H.
+    intros. bottom_up_simpl_in_hyp @H. exact H.
   Qed.
 
   Goal forall a b: Z, (a + a, a + 1) = (2 * a, 1 + b) -> (2 * a, a + 1) = (2 * a, 1 + b).
   Proof.
     (* should not do simplifications that only reorder / don't decrease the size *)
-    intros. bottom_up_simpl_in_hyp H.
+    intros. bottom_up_simpl_in_hyp @H.
     exact H.
-  Abort.
+  Succeed Qed. Abort.
 
   Goal forall a b c: Z, a + a + a = b -> a + a + a = c -> b = c.
   Proof.
-    intros. bottom_up_simpl_in_hyps. rewrite <- H, H0. refl.
-  Abort.
+    intros. bottom_up_simpl_in_hyps (). Std.transitivity '(3 * a).
+    - rewrite <- H. refl.
+    - rewrite <- H0. refl.
+  Succeed Qed. Abort.
 
   Goal forall mtvec_base: Z,
       (word.add (word.add (word.mul (word.of_Z 4) (word.of_Z mtvec_base)) (word.of_Z 144))
@@ -1355,104 +1359,104 @@ Section Tests.
                   (word.add (word.mul (word.of_Z 4) (word.of_Z mtvec_base))
                      (word.of_Z 144))) / 4)))))) = /[4] ^* /[mtvec_base] ^+ /[148].
   Proof.
-    intros. bottom_up_simpl_in_goal. refl.
+    intros. bottom_up_simpl_in_goal (). refl.
   Qed.
 
   Goal forall (stack_hi: Z) (f: word -> Z),
       f (word.add (word.of_Z stack_hi) (word.of_Z (-128))) =
       f (word.sub (word.of_Z stack_hi) (word.of_Z 128)).
   Proof.
-    intros. bottom_up_simpl_in_goal. refl.
+    intros. bottom_up_simpl_in_goal (). refl.
   Qed.
 
   Goal forall (T: Type) (l: list T) (a b c: T),
       (a :: b :: c :: l)[:5] = a :: b :: c :: l[:2].
   Proof.
-    intros. bottom_up_simpl_in_goal. refl.
-  Abort.
+    intros. bottom_up_simpl_in_goal (). refl.
+  Succeed Qed. Abort.
 
   Goal forall (A: Type) (l: list A) (x y z: A),
       ([|x; y|] ++ l)[:2] ++ ([|x; y; z|] ++ l)[2:] = x :: y :: z :: l.
   Proof.
-    intros. bottom_up_simpl_in_goal. refl.
-  Abort.
+    intros. bottom_up_simpl_in_goal (). refl.
+  Succeed Qed. Abort.
 
   Goal forall (a b: Z),
       0 <= a + b < 2 ^ 32 ->
       word.unsigned (word.of_Z (a + b)) - b = a.
   Proof.
-    intros. bottom_up_simpl_in_goal. refl.
-  Abort.
+    intros. bottom_up_simpl_in_goal (). refl.
+  Succeed Qed. Abort.
 
   Goal forall (foo: Z -> word) (a: Z) (x y: word),
        word.unsigned x + word.unsigned y < 2 ^ 32 ->
        word.unsigned (foo (a + 0) ^+ x ^- foo a ^+ y) = word.unsigned x + word.unsigned y.
   Proof.
-    intros. bottom_up_simpl_in_goal. refl.
-  Abort.
+    intros. bottom_up_simpl_in_goal (). refl.
+  Succeed Qed. Abort.
 
   Goal forall (z: Z), word.of_Z (word.unsigned (word.of_Z z)) = word.of_Z z.
   Proof.
-    intros. bottom_up_simpl_in_goal. refl.
-  Abort.
+    intros. bottom_up_simpl_in_goal (). refl.
+  Succeed Qed. Abort.
 
   Goal forall (i j k count d: Z),
       d <> 0 ->
       (d * j - i * d + k * d * count) / d - count * k = j - i.
-  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall (A: Type) (xs ys: list A) i j,
       0 <= i <= 3 + j + i ->
       xs[i : 3 + i + j] = ys ->
       xs[i:][: j + 3] = ys.
-  Proof. intros. bottom_up_simpl_in_hyps. assumption. Abort.
+  Proof. intros. bottom_up_simpl_in_hyps (). assumption. Succeed Qed. Abort.
 
   Goal forall (A: Type) (xs ys: list A) i j,
       0 <= i <= j ->
       xs[i:][: j - i] = ys ->
       xs[i : j] = ys.
-  Proof. intros. bottom_up_simpl_in_hyps. assumption. Abort.
+  Proof. intros. bottom_up_simpl_in_hyps (). assumption. Succeed Qed. Abort.
 
   Goal forall (A: Type) (xs ys: list A),
       len (xs ++ ys) = len xs + len ys.
-  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall (A: Type) (xs ys: list A) (x: A) (i: Z),
       0 <= i < len ys ->
       len (xs ++ ys ++ xs) = 2 * len xs + len ys.
-  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall (A: Type) (xs ys: list A) (x: A) (i: Z) (j: Z),
       0 <= i < len ys ->
       0 <= j < i ->
       len (ys[j := x][i := x]) = len ys.
-  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall (A: Type) (xs ys: list A) (x: A) (i: Z),
       0 <= i < len ys ->
       len (xs ++ ys[i := x] ++ xs) = 2 * len xs + len ys.
-  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall (A: Type) (xs1 xs2 xs3 xs4 xs5 xs6: list A),
       (xs1 ++ xs2) ++ (xs3 ++ xs4 ++ xs5) ++ xs6 = xs1 ++ xs2 ++ xs3 ++ xs4 ++ xs5 ++ xs6.
-  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall (A: Type) (l1 l2: list A) (i: Z),
       len l1 = i ->
       (l1 ++ l2)[:i] = l1.
-  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall (A: Type) (l1 l2: list A) (i: Z),
       len l1 = i ->
       (l1 ++ l2)[0:][:i] = l1.
-  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall (A: Type) (l1 l2: list A) (i: Z),
       0 <= i <= len l1 ->
       (l1 ++ l2)[:i] = l1[:i].
-  Proof. intros. bottom_up_simpl_in_goal. refl. Abort.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
-  Ltac2 bottom_up_simpl_sidecond_hook ::=
+  Ltac2 Set bottom_up_simpl_sidecond_hook := fun _ =>
     rewrite ?List.len_app, ?List.len_upto, ?List.len_from by lia; lia (*debug_sidecond*).
 
   Goal forall (A: Type) (xs1 xs2 xs3 xs4 xs5 xs6: list A) i j k s,
@@ -1463,11 +1467,11 @@ Section Tests.
       ((xs1 ++ xs2) ++ (xs3[j:] ++ xs4[:k] ++ xs5) ++ xs6)[:i] =
       (xs1 ++ xs2 ++ xs3[j:] ++ xs4[:k])[:i].
   Proof.
-    intros. bottom_up_simpl_in_goal.
+    intros. bottom_up_simpl_in_goal ().
     (* TODO heuristics to decide whether it's worth pushing it down further to obtain
        xs1 ++ xs2 ++ xs3[j:] ++ xs4[:k][:i - len xs1 - len xs2 - len x3 + j] *)
     refl.
-  Abort.
+  Succeed Qed. Abort.
 
 
   (** ** Not supported yet: *)
@@ -1475,12 +1479,12 @@ Section Tests.
   Goal forall (A: Type) (l1 l2: list A) (x: A) (i: Z),
       len l1 = i ->
       (l1 ++ [|x|] ++ l2)[:i + 1] = l1 ++ [|x|].
-  Proof. intros. bottom_up_simpl_in_goal. Fail refl. Abort.
+  Proof. intros. bottom_up_simpl_in_goal (). Fail refl. Abort.
 
   Goal forall (A: Type) (l1 l2: list A) (x: A) (i: Z),
       len l1 = i ->
       (l1 ++ x :: l2)[:i + 1] = l1 ++ [|x|].
-  Proof. intros. Fail bottom_up_simpl_in_goal. Abort.
+  Proof. intros. Fail bottom_up_simpl_in_goal (). Abort.
 
   Goal forall (z1 z2: Z) (y: word),
       word.of_Z (z1 + z2) ^- word.of_Z z1 = y ->
@@ -1488,13 +1492,13 @@ Section Tests.
   Proof.
     intros.
     bottom_up_simpl_in_hyps.
-    ring_simplify in H.
+    ltac1:(ring_simplify in H).
     (* TODO push_down_of_Z? *)
     (* only simplifies with preprocess [autorewrite with rew_word_morphism] *)
-    autorewrite with rew_word_morphism in H.
-    ring_simplify in H.
+    ltac1:(autorewrite with rew_word_morphism in H).
+    ltac1:(ring_simplify in H).
     exact H.
-  Abort.
+  Succeed Qed. Abort.
 
   Context (f: Z -> Z).
 
@@ -1502,13 +1506,12 @@ Section Tests.
   Proof.
     intros.
     (* no effect: *)
-    ring_simplify (z1 + z2) in H.
-    ring_simplify (z2 + z1) in H.
+    ltac1:(ring_simplify (z1 + z2) in H).
+    ltac1:(ring_simplify (z2 + z1) in H).
     (* has effect: *)
-    ring_simplify (z1 + z2) (z2 + z1) in H.
-    ring_simplify in H.
+    ltac1:(ring_simplify (z1 + z2) (z2 + z1) in H).
+    ltac1:(ring_simplify in H).
     assumption.
-  Abort.
+  Succeed Qed. Abort.
 
 End Tests.
-*)
