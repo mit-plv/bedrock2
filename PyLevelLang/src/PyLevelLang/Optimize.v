@@ -7,6 +7,7 @@ Require Import Coq.Lists.List.
 From Coq Require Import FunctionalExtensionality.
 
 Local Open Scope Z_scope.
+Local Open Scope bool_scope.
 
 Lemma length_eval_range : forall l s, length (eval_range s l) = l.
 Proof.
@@ -506,5 +507,163 @@ Section WithMap.
   = EAtom (AInt 4).
   Proof. cbv. solve [trivial]. Abort.
 
+  Lemma fold_flatmap : forall {A B C} (l : list A) (f : A -> list B) (g : B -> C -> C) (a : C),
+    fold_right g a (flat_map f l) = fold_right (fun x y => fold_right g y (f x)) a l.
+  Proof.
+    induction l; eauto.
+    intros. cbn. rewrite fold_right_app. f_equal. eauto.
+  Qed.
 
+  Definition fold_flatmap_head {t : type} (e : expr t) : expr t :=
+    match e with
+    | EFold l a x y f => match l with
+                         | EFlatmap l' z g => 
+                             if is_name_used z f || is_name_used y g || String.eqb x y || String.eqb x z || String.eqb y z
+                             then EFold (EFlatmap l' z g) a x y f
+                             else EFold l' a z y (EFold g (EVar _ y) x y f)
+                         | l' => EFold l' a x y f
+                         end
+    | e' => e'
+    end.
+
+  (* Should be in Coqutil *)
+  Lemma bool_dec_refl : forall b, Bool.bool_dec b b = left eq_refl.
+  Proof.
+    intros.
+    destruct b; simpl; eauto.
+  Qed.
+
+  Lemma ascii_dec_refl : forall c, Ascii.ascii_dec c c = left eq_refl.
+  Proof.
+    intros.
+    destruct c; eauto. 
+    repeat (simpl; rewrite bool_dec_refl). simpl. f_equal.
+  Qed.
+
+  Lemma string_dec_refl : forall s, string_dec s s =  left eq_refl.
+  Proof.
+    intros.
+    induction s; simpl; eauto.
+    repeat (simpl; rewrite ascii_dec_refl). simpl. rewrite IHs. simpl. f_equal.
+  Qed.
+
+  Lemma type_eq_dec_refl : forall t, type_eq_dec t t = left eq_refl.
+  Proof.
+    induction t; eauto; simpl.
+    - rewrite string_dec_refl. simpl. 
+      rewrite IHt1. simpl.
+      rewrite IHt2. simpl.
+      f_equal.
+    - rewrite IHt. simpl.
+      f_equal.
+  Qed.
+
+  Lemma fold_flatmap_head_correct {t : type} (l : locals) (e : expr t)
+    : interp_expr l (fold_flatmap_head e) = interp_expr l e.
+  Proof.
+    destruct e; eauto.
+    dependent induction e1; eauto; simpl.
+    destruct_one_match; eauto.
+    simpl. rewrite fold_flatmap. f_equal. apply functional_extensionality.
+    intros. f_equal. apply functional_extensionality.
+    intros. f_equal.
+    - apply functional_extensionality. intros.
+      apply functional_extensionality. intros.
+      repeat rewrite set_local_comm_diff with (y := x); try apply E.
+      rewrite set_local_comm_diff with (x := x0); try apply E.
+      rewrite set_local_same.
+      symmetry. apply is_name_used_correct. apply E.
+    - unfold get_local, set_local.
+      rewrite map.get_put_same.
+      unfold proj_expected. simpl.
+      rewrite type_eq_dec_refl. reflexivity.
+    - symmetry. apply is_name_used_correct. apply E.
+  Qed.
+
+  Definition invert_singleton {t : type} (e : expr (TList t)) : option (expr t) :=
+    match e in expr t' return option (expr t) with
+    | EBinop (OCons t') h (EAtom (ANil _)) => match type_eq_dec t' t with
+                               | left H => Some (cast H _ h)
+                               | right _ => None
+                               end
+    | _ => None
+    end.
+
+  Definition fold_flatmap_singleton_head {t : type} (e : expr t) : expr t :=
+    match e with
+    | EFold l a x y f => match l with
+                         | EFlatmap l' z g => 
+                             if is_name_used z f || is_name_used y g || String.eqb x y || String.eqb x z || String.eqb y z
+                             then EFold (EFlatmap l' z g) a x y f
+                             else match invert_singleton g with
+                                  | Some e => EFold l' a z y (ELet x e f)
+                                  | None => EFold (EFlatmap l' z g) a x y f
+                                  end
+                         | l' => EFold l' a x y f
+                         end
+    | e' => e'
+    end.
+
+  Compute fold_flatmap_singleton_head 
+    (EFold 
+      (EFlatmap 
+        (EBinop 
+          (OCons TInt) 
+          (EAtom (AInt 3))
+          (EAtom (ANil TInt))
+        )
+        "z"
+        (EBinop
+          (OCons TInt)
+          (EBinop 
+            OTimes
+            (EVar TInt "z")
+            (EVar TInt "z")
+          )
+          (EAtom (ANil TInt))
+        )
+      )
+      (EAtom (AInt 0))
+      "x" "y" 
+      (EBinop 
+        OPlus 
+        (EVar TInt "x")
+        (EVar TInt "y")
+      )
+    ).
+
+  Lemma fold_flatmap_singleton {A B C} (l : list A) (f : A -> B) (g : B -> C -> C) (a : C):
+    
+    fold_right g a (flat_map (fun x => f x :: nil) l) = fold_right (fun x y => g (f x) y) a l.
+  Proof.
+    induction l; eauto.
+    intros. cbn. f_equal. eauto.
+  Qed.
+
+  Lemma fold_flatmap_singleton_head_correct {t : type} (l : locals) (e : expr t)
+    : interp_expr l (fold_flatmap_singleton_head e) = interp_expr l e.
+  Proof.
+    destruct e; eauto.
+    dependent induction e1; eauto; simpl.
+    repeat (destruct_one_match; eauto).
+    unfold invert_singleton in *.
+    dependent induction e1_2; simpl in E0; try discriminate.
+    dependent induction o; simpl in E0; try discriminate.
+    dependent induction e1_2_2;  simpl in E0; try discriminate.
+    dependent induction a.
+    rewrite type_eq_dec_refl in E0. injection E0 as E0. subst.
+    simpl.
+    rewrite fold_flatmap_singleton.
+    f_equal. repeat (apply functional_extensionality; intros).
+    cbn [is_name_used] in E.
+    rewrite! Bool.orb_false_r in E.
+    repeat rewrite set_local_comm_diff with (y := x); try apply E.
+    rewrite <- is_name_used_correct; try apply E.
+    f_equal.
+    rewrite set_local_comm_diff with (x := x0); try apply E.
+    do 2 f_equal.
+    rewrite set_local_comm_diff with (x := x).
+    - rewrite <- is_name_used_correct; try apply E. reflexivity.
+    - apply not_eq_sym. apply E.
+  Qed.
 End WithMap.
