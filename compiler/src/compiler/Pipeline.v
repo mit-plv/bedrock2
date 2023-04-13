@@ -51,8 +51,9 @@ Require Import coqutil.Tactics.autoforward.
 Require Import compiler.FitsStack.
 Require Import compiler.LowerPipeline.
 Require Import bedrock2.WeakestPreconditionProperties.
-Require Import compiler.UseImmediateDef.
-Require Import compiler.UseImmediate.
+Require Export compiler.UseImmediateDef.
+Require Export compiler.UseImmediate.
+Require Export compiler.DeadAssignmentDef.
 Import Utility.
 
 Section WithWordAndMem.
@@ -440,7 +441,8 @@ Section WithWordAndMem.
       (compose_phases (useimmediate_functions is5BitImmediate is12BitImmediate)
       (compose_phases regalloc_functions
       (compose_phases spill_functions
-                      (riscvPhase compile_ext_call))))).
+         (riscvPhase compile_ext_call))))).
+
 
     Lemma composed_compiler_correct: phase_correct SrcLang RiscvLang composed_compile.
     Proof.
@@ -459,6 +461,24 @@ Section WithWordAndMem.
       | Failure e => Failure e
       end.
 
+    (* only for testing the dead assignment phase, remove in the future *)
+    Definition composed_compile':
+      string_keyed_map (list string * list string * cmd) ->
+      result (list Instruction * string_keyed_map Z * Z) :=
+      (compose_phases flatten_functions
+      (compose_phases (useimmediate_functions is5BitImmediate is12BitImmediate)
+      (compose_phases deadassignment_functions
+      (compose_phases regalloc_functions
+      (compose_phases spill_functions
+         (riscvPhase compile_ext_call)))))).
+
+    (* only for testing the dead assignment phase, remove in the future *)
+     Definition compile'(funs: list (string * (list string * list string * cmd))):
+      result (list Instruction * list (string * Z) * Z) :=
+      match composed_compile' (map.of_list funs) with
+      | Success (insts, pos, space) => Success (insts, map.tuples pos, space)
+      | Failure e => Failure e
+      end.
     Definition valid_src_fun: (string * (list string * list string * cmd)) -> bool :=
       fun '(name, (args, rets, body)) =>
         andb (List.list_eqb String.eqb (List.dedup String.eqb args) args)

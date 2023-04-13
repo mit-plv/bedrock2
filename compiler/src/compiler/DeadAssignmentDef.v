@@ -5,65 +5,73 @@ Require Import bedrock2.Syntax.
 Require Import coqutil.Tactics.fwd.
 Require Import String.
 Open Scope Z_scope.
-
+Require Import coqutil.Map.MapEauto.
+Require Import coqutil.Datatypes.ListSet.
 Local Notation var := String.string (only parsing).
 
 Section WithArgs.
-  Context (is5BitImmediate : Z -> bool).
-  Context (is12BitImmediate: Z -> bool).
 
   Context {env: map.map String.string (list var * list var * stmt var)}.
 
-  Fixpoint useImmediate(s: stmt string) : stmt string :=
+  Local Notation bcond  := (@FlatImp.bcond var).
+
+  Definition accessed_vars_bcond(c: bcond): list var :=
+    match c with
+    | CondBinary _ x y => list_union String.eqb [x] [y]
+    | CondNez x => [x]
+    end.
+
+  Fixpoint live(s: stmt var)(used_after: list var): list var :=
     match s with
-    | SIf c s1 s2 => SIf c (useImmediate s1) (useImmediate s2)
-    | SLoop s1 c s2 => SLoop (useImmediate s1) c (useImmediate s2)
-    | SStackalloc v1 sz1 s => SStackalloc v1 sz1 (useImmediate s)
+    | SSet x y
+    | SLoad _ x y _
+    | SInlinetable _ x _ y =>
+        list_union String.eqb [y] (list_diff String.eqb used_after [x])
+    | SStore _ a x _ => list_union String.eqb [a; x] used_after
+    | SStackalloc x _ body => list_diff String.eqb (live body used_after) [x]
+    | SLit x _ => list_diff String.eqb used_after [x]
+    | SOp x _ y z => let var_z := match z with
+                                | Var vz => [vz]
+                                | Const _ => []
+                                end in
+                     list_union String.eqb ([y] ++ var_z) (list_diff String.eqb used_after [x])
+    | SIf c s1 s2 => list_union String.eqb
+                       (list_union String.eqb (live s1 used_after) (live s2 used_after))
+                       (accessed_vars_bcond c)
+    | SSeq s1 s2 => live s1 (live s2 used_after)
+    | SLoop s1 c s2 =>
+        live s1 (list_union String.eqb (accessed_vars_bcond c) (list_union String.eqb used_after (live s2 [])))
+    | SSkip => used_after
+    | SCall binds _ args
+    | SInteract binds _ args => list_union String.eqb args (list_diff String.eqb used_after binds)
+    end.
+
+  Fixpoint deadAssignment(used_after: list var)(s: stmt var) : stmt var :=
+    let deadAssignment' := deadAssignment used_after in
+    match s with
+    | SIf c s1 s2 => SIf c (deadAssignment' s1) (deadAssignment' s2)
+    | SLoop s1 c s2 => SLoop s1 c s2 (* loops are scary so skipping this case for now *)
+    | SStackalloc v1 sz1 s => SStackalloc v1 sz1 (deadAssignment' s)
     | SSeq s1 s2 =>
-        let default := SSeq (useImmediate s1) (useImmediate s2) in
-        match s1, s2 with
-        | SLit v1 l1, SOp v2 op v2a (Var v2b) =>
-            match op with
-            | Syntax.bopname.add
-            | Syntax.bopname.and
-            | Syntax.bopname.or
-            | Syntax.bopname.xor => if (is12BitImmediate l1) then
-                                      if eqb v1 v2b then
-                                        SSeq s1 (SOp v2 op v2a (Const l1))
-                                      else if eqb v1 v2a then
-                                             SSeq s1 (SOp v2 op v2b (Const l1))
-                                           else default
-                                    else default
-            | Syntax.bopname.ltu
-            | Syntax.bopname.lts => if (is12BitImmediate l1) then
-                                      if eqb v1 v2b then
-                                        SSeq s1 (SOp v2 op v2a (Const l1))
-                                      else default
-                                    else default
-            | Syntax.bopname.srs
-            | Syntax.bopname.sru
-            | Syntax.bopname.slu => if (is5BitImmediate l1) then
-                                      if eqb v1 v2b then
-                                        SSeq s1 (SOp v2 op v2a (Const l1))
-                                      else default
-                                    else default
-            | Syntax.bopname.sub => if (is12BitImmediate (-l1)) then
-                                      if eqb v1 v2b then
-                                        SSeq s1 (SOp v2 Syntax.bopname.add v2a (Const (-l1)))
-                                      else default
-                                    else default
-            | _ => default
-            end
-        | _, _ => default
-        end
+        let s2' := deadAssignment' s2 in
+        let s1_used_after := live s2' used_after in
+        SSeq (deadAssignment s1_used_after s1) (s2')
+    | SLit x v =>
+        if existsb (String.eqb x) used_after
+        then s else SSkip
+    | SOp x op v1 v2 =>
+        if existsb (String.eqb x) used_after
+        then s else SSkip
     | _ => s
     end.
 
-  Definition useimmediate_function: (list string * list string * stmt string) -> result (list string * list string * stmt string) :=
+  Definition deadassignment_function: (list string * list string * stmt string) -> result (list string * list string * stmt string) :=
     fun '(argnames, retnames, body) =>
-      let body' := useImmediate body in
+      let body' := deadAssignment retnames body in
       Success (argnames, retnames, body').
 
-  Definition useimmediate_functions : env -> result env :=
-    map.try_map_values useimmediate_function.
+  Definition deadassignment_functions : env -> result env :=
+    map.try_map_values deadassignment_function.
+
+
 End WithArgs.
