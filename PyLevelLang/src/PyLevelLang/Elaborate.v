@@ -303,9 +303,15 @@ Section WithMap.
         e2' <- enforce_type (TList t1) e2;;
         Success (existT _ _ (EBinop (OCons _) e1 e2'))
     | PORange =>
-        e1' <- enforce_type TInt e1;;
-        e2' <- enforce_type TInt e2;;
-        Success (existT _ _ (EBinop ORange e1' e2'))
+        e2' <- enforce_type t1 e2;;
+        match t1 as t' return expr t' -> expr t' -> _ with
+        | TWord => fun e1 e2' =>
+            Success (existT _ _ (EBinop OWRange e1 e2'))
+        | TInt => fun e1 e2' =>
+            Success (existT _ _ (EBinop ORange e1 e2'))
+        | _ => fun _ _ =>
+            error:(e1 "has type" t1 "but expected" TWord "or" TInt)
+        end e1 e2'
     end.
 
   Lemma elaborate_binop_wf (po : pbinop)

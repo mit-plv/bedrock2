@@ -69,7 +69,8 @@ Definition compile_binop {t1 t2 t3 : type} (o : binop t1 t2 t3) :
   | ORepeat _
   | OPair _ _ _
   | OCons _
-  | ORange =>
+  | ORange
+  | OWRange =>
       error:("unimplemented")
   end.
 
