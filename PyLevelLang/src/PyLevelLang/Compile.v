@@ -255,22 +255,18 @@ Section WithMap.
 
   Lemma compile'_correct : forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr),
     wf map.empty e ->
-    compile_expr' e = Success (c, e') -> forall tr m l mc,
-    exec (map.empty) c tr m l mc (fun tr' m' l' mc' => exists (w : word),
+    compile_expr' e = Success (c, e') -> forall tr mc,
+    exec (map.empty) c tr map.empty map.empty mc (fun tr' m' l' mc' => exists (w : word),
       eval_expr_old m' l' e' = Some w /\
       value_relation (interp_expr map.empty e) w
     ).
   Proof.
-    intros t e c e' He He' tr m l mc.
+    intros t e c e' He He' tr mc.
     unfold compile_expr' in He'.
     fwd.
     apply exec.skip.
-    assert (m = map.empty) as [= ->].
-    { admit. }
-    assert (l = map.empty) as [= ->].
-    { admit. }
     now apply compile_correct.
-  Admitted.
+  Qed.
 
 End WithMap.
 
