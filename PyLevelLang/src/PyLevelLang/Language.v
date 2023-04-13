@@ -117,7 +117,8 @@ Inductive binop : type -> type -> type -> Type :=
   | ORepeat : forall t, binop (TList t) TInt (TList t)
   | OPair : forall s t1 t2, binop t1 t2 (TPair s t1 t2)
   | OCons : forall t, binop t (TList t) (TList t)
-  | ORange : binop TInt TInt (TList TInt).
+  | ORange : binop TInt TInt (TList TInt)
+  | OWRange : binop TWord TWord (TList TWord).
 
 (* "Pre-expression": untyped expressions from surface-level parsing. *)
 Inductive pexpr : Type :=

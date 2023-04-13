@@ -37,6 +37,12 @@ Fixpoint eval_range (lo : Z) (len : nat) : list Z :=
   | S n => lo :: eval_range (lo + 1) n
   end.
 
+Fixpoint eval_range_word (lo : word) (len : nat) : list word :=
+  match len with
+  | 0%nat => nil
+  | S n => lo :: eval_range_word (word.add lo (word.of_Z 1)) n
+  end.
+
 Definition proj_expected (t_expected : type) (v : {t_actual & interp_type t_actual}) : 
   interp_type t_expected :=
   match type_eq_dec (projT1 v) t_expected with
@@ -121,6 +127,7 @@ Section WithMap.
     | OPair _ _ _ => pair
     | OCons _ => cons
     | ORange => fun s e => eval_range s (Z.to_nat (e - s))
+    | OWRange => fun s e => eval_range_word s (Z.to_nat (word.unsigned e - word.unsigned s))
     end.
 
   Fixpoint interp_expr (l : locals) {t : type} (e : expr t) : interp_type t :=
