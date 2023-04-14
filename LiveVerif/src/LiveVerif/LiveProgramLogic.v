@@ -562,12 +562,9 @@ Notation "'don't_know_how_to_prove_equal' x y" :=
 
 Ltac default_eq_prover_step :=
   match goal with
-  | |- ?l = ?r =>
-      (* Note: this step is convenient, but not safe in general!
-         For instance, if the goal is `?a ++ ?b = xs ++ ys` and
-         a and b also appear elsewhere, maybe `xs ++ ys` needs to
-         be split at a different point before instantiating a and b *)
-      _syntactic_unify_deltavar l r (* <- instantiates evars *); reflexivity
+  | |- ?l = ?r => is_evar l; reflexivity
+  | |- ?l = ?r => is_evar r; reflexivity
+  | |- ?l = ?r => constr_eq l r; reflexivity
   | |- _ => bottom_up_simpl_in_goal (* fails if nothing to simplify *)
   | |- _ => safe_f_equal_step
   | |- ?l = ?r => subst l

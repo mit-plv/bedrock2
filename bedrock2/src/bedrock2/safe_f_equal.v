@@ -15,14 +15,30 @@ Proof. intros. subst. reflexivity. Qed.
 
 Require Import Coq.Program.Basics.
 
+Lemma f_equal_app[A B: Type][f g: A -> B][x y: A]: f = g -> x = y -> f x = g y.
+Proof. intros. subst. reflexivity. Qed.
+
+Ltac head_of_app t :=
+  lazymatch t with
+  | ?f _ => head_of_app f
+  | _ => t
+  end.
+
 Ltac safe_f_equal_step :=
-  lazymatch goal with
-  | |- ?f ?y1 = ?f ?y2 =>
-      let _inj := constr:(_ : fake_injective f) in
-      eapply (f_equal f)
-  | |- ?f ?x1 ?y = ?f ?x2 ?y =>
-      let _inj := constr:(_ : fake_injective (flip f y)) in
-      eapply (f_equal_vary_2ndlast f x1 x2 y)
+  match goal with
+  | |- ?l _ = ?r _ =>
+      let hl := head_of_app l in is_constructor hl;
+      let hr := head_of_app r in is_constructor hr;
+      constr_eq hl hr;
+      eapply f_equal_app
+  | _ => lazymatch goal with
+         | |- ?f ?y1 = ?f ?y2 =>
+             let _inj := constr:(_ : fake_injective f) in
+             eapply (f_equal f)
+         | |- ?f ?x1 ?y = ?f ?x2 ?y =>
+             let _inj := constr:(_ : fake_injective (flip f y)) in
+             eapply (f_equal_vary_2ndlast f x1 x2 y)
+         end
   end.
 
 Ltac safe_f_equal := repeat safe_f_equal_step.
@@ -63,10 +79,25 @@ Section WithMem.
         l3a = l3b ->
         array (uint 16) n (l1 ++ l2 ++ l3a ++ l4) a =
         array (uint 16) n (l1 ++ l2 ++ l3b ++ l4) a.
-    Proof. intros. f_equal. safe_f_equal. assumption. Abort.
+    Proof. intros. safe_f_equal. assumption. Succeed Qed. Abort.
+
+    Goal forall (l1 l1' l2: list nat), l1 = l1' -> l1 ++ l2 = l1' ++ l2.
+    Proof. intros. safe_f_equal. assumption. Succeed Qed. Abort.
+
+    Goal forall (l1 l2 l2': list nat), l2 = l2' -> l1 ++ l2 = l1 ++ l2'.
+    Proof. intros. safe_f_equal. assumption. Succeed Qed. Abort.
 
     Goal forall (a b: nat),
         a + b = b + a.
-    Proof. intros. safe_f_equal. apply Nat.add_comm. Abort.
+    Proof. intros. safe_f_equal. apply Nat.add_comm. Succeed Qed. Abort.
+
+    Inductive foo(a: nat): nat -> Set :=
+    | foo_empty: foo a O
+    | foo_nonempty(x y z: nat): foo a x.
+
+    Goal forall a x y y' z z',
+        y = y' -> z = z' ->
+        foo_nonempty a x y z = foo_nonempty a x y' z'.
+    Proof. intros. safe_f_equal. 1: reflexivity. all: assumption. Succeed Qed. Abort.
   End Tests.
 End WithMem.

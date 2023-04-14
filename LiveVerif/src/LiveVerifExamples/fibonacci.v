@@ -79,7 +79,7 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
   return b;                                                                /**. .**/
 }                                                                          /*?.
 
-step. step. step. step. step. step. step. step. step.
+step. step. step. step. step. step. step. step. step. step. step. step. step.
 unfold ands in H2.
 eapply if_to_or in H2.
 rewrite __Zdef_c in H2.
