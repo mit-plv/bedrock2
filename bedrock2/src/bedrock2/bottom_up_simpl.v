@@ -869,41 +869,45 @@ Module word.
   End WithWord.
 End word.
 
+(* Note: we use '(...) most of the time, but when we rely on typeclass search,
+   (eg to find a word.ok), we have to use constr:(...), because '(...) does not
+   run typeclass search, and instead just creates and shelves an evar. *)
+
 Ltac2 rec push_down_unsigned(w: constr): res :=
   lazy_match! w with
   | ?f1 ?a0 =>
       lazy_match! f1 with
       | @word.of_Z ?width ?word =>
           first_val
-            [ res_rewrite '(@word.unsigned_of_Z_nowrap $width $word _ $a0
-                              ltac2:(bottom_up_simpl_sidecond_hook ()))
-            | res_rewrite '(@word.unsigned_of_Z_modwrap $width $word _ $a0) ]
+            [ res_rewrite constr:(@word.unsigned_of_Z_nowrap $width $word _ $a0
+                                    ltac2:(bottom_up_simpl_sidecond_hook ()))
+            | res_rewrite constr:(@word.unsigned_of_Z_modwrap $width $word _ $a0) ]
       | @word.opp ?width ?word =>
           let r_a0 := push_down_unsigned a0 in
           let pf0 := eq_proof r_a0 in
           lazy_match! new_term r_a0 with
-          | 0 => res_rewrite '(word.unsigned_opp_0 $a0 $pf0)
-          | _ => first_val [ res_rewrite '(word.unsigned_opp_eq_nowrap $pf0
+          | 0 => res_rewrite constr:(word.unsigned_opp_0 $a0 $pf0)
+          | _ => first_val [ res_rewrite constr:(word.unsigned_opp_eq_nowrap $pf0
                                              ltac2:(bottom_up_simpl_sidecond_hook ()))
-                           | res_nothing_to_simpl '(word.unsigned $w) ]
+                           | res_nothing_to_simpl constr:(word.unsigned $w) ]
           end
       | ?f2 ?a1 =>
           lazy_match! f2 with
           | word.add => push_down_unsigned_app2 w 'word.unsigned_add_eq_nowrap a1 a0
           | word.sub => push_down_unsigned_app2 w 'word.unsigned_sub_eq_nowrap a1 a0
           | word.mul => push_down_unsigned_app2 w 'word.unsigned_mul_eq_nowrap a1 a0
-          | _ => res_nothing_to_simpl '(word.unsigned $w)
+          | _ => res_nothing_to_simpl constr:(word.unsigned $w)
           end
-      | _ => res_nothing_to_simpl '(word.unsigned $w)
+      | _ => res_nothing_to_simpl constr:(word.unsigned $w)
       end
-  | _ => res_nothing_to_simpl '(word.unsigned $w)
+  | _ => res_nothing_to_simpl constr:(word.unsigned $w)
   end
 with push_down_unsigned_app2(w: constr)(lem: constr)(a1: constr)(a0: constr): res :=
   let pf0 := eq_proof (push_down_unsigned a0) in
   let pf1 := eq_proof (push_down_unsigned a1) in
   first_val
-    [ res_rewrite '($lem _ _ _ _ _ _ _ $pf1 $pf0 ltac2:(bottom_up_simpl_sidecond_hook ()))
-    | res_nothing_to_simpl '(word.unsigned $w) ].
+    [ res_rewrite constr:($lem _ _ _ _ _ _ _ $pf1 $pf0 ltac2:(bottom_up_simpl_sidecond_hook ()))
+    | res_nothing_to_simpl constr:(word.unsigned $w) ].
 
 Ltac2 local_word_simpl(e: constr): res :=
   lazy_match! e with
@@ -918,7 +922,7 @@ Ltac2 local_word_simpl(e: constr): res :=
   | @word.of_Z ?width ?word ?z => push_down_of_Z width word z *)
   (* Strictly local subset of the above push_down_of_Z: *)
   | @word.of_Z ?width ?word (?z mod 2 ^ ?width) =>
-      res_rewrite '(@word.of_Z_mod $width $word _ $z)
+      res_rewrite constr:(@word.of_Z_mod $width $word _ $z)
   end.
 
 (* Nodes like eg (List.length (cons a (cons b (app (cons c xs) ys)))) can
@@ -1223,41 +1227,32 @@ Ltac2 bottom_up_simpl_in_hyp_of_type_if
   (test: ident -> constr -> bool)(h: ident)(t: constr): unit :=
   if test h t then bottom_up_simpl_in_hyp_of_type h t else ().
 
-Ltac2 bottom_up_simpl_in_letbound_var x b _t := (). (* TODO, mabybe just in Ltac1?
-  let r := bottom_up_simpl OtherExpr b in
-  match r DidSomething with
-  | true =>
-      let pf := r EqProof in
-      let b' := r NewTerm in
-      let y := fresh in rename x into y;
-      pose (x := b');
-      move x after y;
-      replace y with x in * by (subst x y; symmetry; exact pf);
-      clear y
-  | _ => idtac (* might get here because `r DidSomething = false` or because
-                  x appears in the type of other expressions and rewriting in the body of x
-                  would lead to ill-typed terms *)
-  end.
-
 Ltac2 bottom_up_simpl_in_letbound_var(x: ident)(b: constr)(_t: constr): unit :=
   let r := bottom_up_simpl OtherExpr b in
-  if did_something r then (
-    (* can fail if x appears in the type of other expressions and rewriting in
-       the body of x would lead to ill-typed terms *)
-    try (let pf := eq_proof r in
-         let b' := new_term r in
-         let y := Fresh.in_goal x in
-         Std.rename [(x, y)];
-         pose (x := $b');
-         move x after y;
-         replace $y with $x in * by (subst x y; symmetry; exact pf);
-         clear y)
-  ) else ().
-*)
-
-Ltac2 bottom_up_simpl_in_letbound_var_if test x b t := (). (* TODO
-  tryif test x b t then bottom_up_simpl_in_letbound_var x b t else idtac.
-*)
+  if did_something r then
+    (* Note: will fail if x appears in the type of other expressions in a
+       way that would lead to ill-typed terms, or if x appears on the rhs
+       of another let-bound var, because `rewrite` doesn't affect the rhs
+       of let-bound vars, so the clear will fail. *)
+    (try (
+      let e := Fresh.in_goal @e in
+      let b' := new_term r in
+      let pf := eq_proof r in
+      let x_as_constr := Control.hyp x in
+      let y := Fresh.in_goal x in
+      pose ($y := $b');
+      let y_as_constr := Control.hyp y in
+      (* Note: we feed pf into the proof engine before doing anything like
+         `rewrite` or `replace`, because these might rename variables in such
+         a way that pf doesn't typecheck any more! *)
+      (assert ($x_as_constr = $y_as_constr) as $e
+          by exact $pf); (* `subst x y` is done by conversion *)
+      let e_as_constr := Control.hyp e in
+      rewrite $e_as_constr in *;
+      move $y after $x;
+      clear $x $e;
+      Std.rename [(y, x)]))
+  else ().
 
 Ltac2 bottom_up_simpl_in_goal () :=
   let t := Control.goal () in
@@ -1274,13 +1269,9 @@ Ltac2 bottom_up_simpl_in_goal () :=
 
 Ltac2 bottom_up_simpl_in_hyps () :=
   foreach_hyp bottom_up_simpl_in_hyp_of_type.
-Ltac2 bottom_up_simpl_in_hyps_if test :=
-  foreach_hyp (bottom_up_simpl_in_hyp_of_type_if test).
 
 Ltac2 bottom_up_simpl_in_vars () :=
   foreach_var bottom_up_simpl_in_letbound_var.
-Ltac2 bottom_up_simpl_in_vars_if test :=
-  foreach_var (bottom_up_simpl_in_letbound_var_if test).
 
 Ltac2 bottom_up_simpl_in_hyps_and_vars () :=
   bottom_up_simpl_in_hyps (); bottom_up_simpl_in_vars ().
@@ -1289,6 +1280,19 @@ Ltac2 bottom_up_simpl_in_all () :=
   bottom_up_simpl_in_hyps (); bottom_up_simpl_in_vars ();
   try bottom_up_simpl_in_goal ().
 
+Ltac bottom_up_simpl_in_hyp :=
+  ltac2:(h1 |- bottom_up_simpl_in_hyp (Option.get (Ltac1.to_ident h1))).
+
+Ltac bottom_up_simpl_in_goal := ltac2:(bottom_up_simpl_in_goal ()).
+
+Ltac bottom_up_simpl_in_hyps := ltac2:(bottom_up_simpl_in_hyps ()).
+
+Ltac bottom_up_simpl_in_vars := ltac2:(bottom_up_simpl_in_vars ()).
+
+Ltac bottom_up_simpl_in_hyps_and_vars := ltac2:(bottom_up_simpl_in_hyps_and_vars ()).
+
+Ltac bottom_up_simpl_in_all := ltac2:(bottom_up_simpl_in_all ()).
+
 Local Hint Mode Word.Interface.word - : typeclass_instances.
 
 Section Tests.
@@ -1296,7 +1300,8 @@ Section Tests.
 
   Goal forall a: Z, a = a + 0 -> a = a + 0 -> True.
     intros ? e_nosimpl e.
-    bottom_up_simpl_in_hyps_if (fun h t => neg (Ident.equal h @e_nosimpl)).
+    foreach_hyp (fun h t => if Ident.equal h @e_nosimpl then ()
+                            else bottom_up_simpl_in_hyp_of_type h t).
     constructor.
   Succeed Qed. Abort.
 
@@ -1322,15 +1327,28 @@ Section Tests.
   Goal forall (n b: Z) (bs: list Z),
       Q (List.repeatz b (n - n) ++ bs[2/4:] ++
            List.repeatz b (word.unsigned (word.of_Z 0))) = Q bs.
-  Proof.
-    intros. bottom_up_simpl_in_goal (). refl.
-  Qed.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
 
   Goal forall (byte_of_Z: Z -> Byte.byte) (b: word) (bs: list Byte.byte),
       List.repeatz (byte_of_Z \[b]) \[/[0]] ++ bs[\[/[0]]:] = bs.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  Goal forall a, 0 <= a < 2 ^ 32 -> let w := \[/[a]] in w = a.
+  Proof. intros. bottom_up_simpl_in_vars (). subst w. refl. Succeed Qed. Abort.
+
+  Goal forall a, 0 <= a < 2 ^ 32 -> let x := [|a|][0] in let w := \[/[a]] in w = x.
+  Proof. intros. bottom_up_simpl_in_vars (). subst x w. refl. Succeed Qed. Abort.
+
+  Goal forall a,
+      0 <= a < 2 ^ 32 -> let w := 1 + \[/[a]] in let y := w in w = 0 -> y = 1 + \[/[a]].
   Proof.
-    intros. bottom_up_simpl_in_goal (). refl.
-  Qed.
+    intros.
+    (* Note: w can only be simplified if we `subst y` before, because
+       replacing old w by new w in y's body can't be done by replace/rewrite *)
+    bottom_up_simpl_in_vars ().
+    subst w y.
+    refl.
+  Succeed Qed. Abort.
 
   Goal forall a: word, P (word.unsigned (a ^+ word.of_Z 8 ^- a) / 4) -> P 2.
   Proof.
@@ -1491,7 +1509,7 @@ Section Tests.
       word.of_Z z2 = y.
   Proof.
     intros.
-    bottom_up_simpl_in_hyps.
+    bottom_up_simpl_in_hyps ().
     ltac1:(ring_simplify in H).
     (* TODO push_down_of_Z? *)
     (* only simplifies with preprocess [autorewrite with rew_word_morphism] *)
