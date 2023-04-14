@@ -73,7 +73,7 @@ Definition generate_json_field_list_body generate_json generate_json_field_list 
   end field.
 Fixpoint generate_json (t : type) (field : expr t) : expr String :=
   match t as t return (expr t -> expr String) with
-  | TInt => fun f => EAtom (AString "int")
+  | TInt => fun f => EUnop OIntToString f
   | TBool => fun f =>
       EIf (EBinop (OEq TBool eq_refl) f (EAtom (ABool true)))
           (EAtom (AString "true")) (EAtom (AString "false"))
@@ -128,7 +128,7 @@ Section Generate_Json_Tests_Section.
   Goal interp_expr (map.put map.empty "x" (existT interp_type (TPair "foo" TString (TPair "bar" TInt TEmpty))
         ("hi", (7, tt))))
         (generate_json (TPair "foo" TString (TPair "bar" TInt TEmpty)) (EVar (TPair "foo" TString (TPair "bar" TInt TEmpty)) "x"))
-        = "{foo: ""hi"", bar: int}".
+        = "{foo: ""hi"", bar: 7}".
   reflexivity. Abort.
 
   Goal interp_expr (map.put map.empty "x"

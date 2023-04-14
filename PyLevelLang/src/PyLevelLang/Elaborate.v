@@ -130,6 +130,9 @@ Section WithMap.
         | _ => fun _ =>
             error:(e "has type" t "but expected" TList "or" TString)
         end e
+    | POIntToString =>
+        e' <- enforce_type TInt e;;
+        Success (existT _ _ (EUnop OIntToString e'))
     end.
 
   Lemma elaborate_unop_wf (po : punop) {t : type} (e : expr t) : forall G t' e',
