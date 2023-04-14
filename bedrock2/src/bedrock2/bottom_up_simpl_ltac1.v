@@ -313,13 +313,6 @@ Ltac convertible_list_from i l :=
          end
   end.
 
-(* only works if l1 is made up of just cons and nil *)
-Ltac prepend_concrete_list l1 l2 :=
-  lazymatch l1 with
-  | cons ?h ?t => let r := prepend_concrete_list t l2 in constr:(cons h r)
-  | nil => l2
-  end.
-
 Ltac is_concrete_enough i l is_nonpos_concrete_enough :=
   lazymatch l with
   | nil => isZcst i
@@ -1158,17 +1151,6 @@ Section SimplLen.
   Qed.
 End SimplLen.
 
-Ltac concrete_list_length_err l :=
-  lazymatch l with
-  | nil => constr:(Some O)
-  | cons _ ?t =>
-      lazymatch concrete_list_length_err t with
-      | Some ?r => constr:(Some (S r))
-      | None => constr:(@None nat)
-      end
-  | _ => constr:(@None nat)
-  end.
-
 Ltac bottom_up_simpl parent_kind e :=
   lazymatch e with
   | Z.add ?x ?y => bottom_up_simpl_app2 e parent_kind ZRingExpr Z.add x y
@@ -1283,7 +1265,7 @@ with simpl_len e A x := (* e must be (len x) *)
       end
   | nil => res_convertible Z0
   | cons ?h ?t =>
-      lazymatch concrete_list_length_err t with
+      lazymatch list_length_option t with
       | Some ?n => let z := eval cbv in (Z.of_nat (S n)) in res_convertible z
       | None =>
           let r_len_t := simpl_len (Z.of_nat (List.length t)) A t in

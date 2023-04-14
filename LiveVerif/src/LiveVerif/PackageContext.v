@@ -18,7 +18,6 @@ Require Import bedrock2.TacticError. Local Open Scope Z_scope.
 Require Import LiveVerif.string_to_ident.
 Require Import bedrock2.ident_to_string.
 Require Import bedrock2.HeapletwiseHyps.
-Require Import bedrock2.bottom_up_simpl_ltac1.
 Require Import LiveVerif.LiveRules.
 
 Definition dlet{A B: Type}(rhs: A)(body: A -> B): B := body rhs.
@@ -574,11 +573,21 @@ Ltac merge_sep_pair_step :=
       (eapply merge_seps_done in H; cbn [seps] in H)
   end.
 
+(* Can be customized with ::= *)
+Ltac is_substitutable_rhs_after_if rhs :=
+  first [ is_var rhs
+        | is_const rhs
+        | lazymatch isZcst rhs with true => idtac end
+        | lazymatch rhs with
+          | word.of_Z ?x => is_substitutable_rhs_after_if x
+          | word.unsigned ?x => is_substitutable_rhs_after_if x
+          end ].
+
 (* Note: Don't do this when some variables are local variables, because
    we always want to keep local variables as let-bound context variables. *)
 Ltac subst_small_rhses :=
   repeat match goal with
-    | x := ?rhs |- _ => is_substitutable_rhs rhs; subst x
+    | x := ?rhs |- _ => is_substitutable_rhs_after_if rhs; subst x
     end.
 
 Ltac list_map_ignoring_failures f l :=

@@ -6,6 +6,7 @@ Require Import coqutil.Datatypes.ZList.
 Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.syntactic_unify.
+Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.fold_hyps.
 Require Import coqutil.Datatypes.RecordSetters.
@@ -16,7 +17,7 @@ Require Import bedrock2.sepapp.
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.TacticError.
 Require Import bedrock2.HeapletwiseHyps.
-Require Import bedrock2.bottom_up_simpl_ltac1.
+Require Import bedrock2.bottom_up_simpl.
 Require Import bedrock2.Map.SeparationLogic.
 
 Import ZList.List.ZIndexNotations.
@@ -347,7 +348,7 @@ Ltac find_field_index_from_offset :=
   lazymatch goal with
   | |- sepapps_offset ?i_ev ?l = ?ofs =>
       tryif is_evar i_ev then
-        lazymatch concrete_list_length_err l with
+        lazymatch list_length_option l with
         | Some ?n => once (let i := pick_nat n in unify i_ev i; reflexivity)
         | None => fail 1000 l "is not a concrete list"
         end

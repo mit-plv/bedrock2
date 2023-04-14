@@ -25,7 +25,7 @@ Require Import bedrock2.HeapletwiseHyps.
 Require Import bedrock2.HeapletwiseAutoSplitMerge.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.PurifyHeapletwise.
-Require Import bedrock2.bottom_up_simpl_ltac1.
+Require Import bedrock2.bottom_up_simpl.
 Require Import bedrock2.safe_f_equal.
 Require Import coqutil.Tactics.ident_ops.
 Require Import bedrock2.Logging.
@@ -91,7 +91,7 @@ Definition ready{P: Prop} := P.
 (* heapletwise- and word-aware lia, successor of ZnWords *)
 Ltac hwlia := zify_hyps; puri_simpli_zify_hyps accept_always; zify_goal; xlia zchecker.
 
-Ltac bottom_up_simpl_sidecond_hook ::= zify_goal; xlia zchecker.
+Ltac2 Set bottom_up_simpl_sidecond_hook := fun _ => ltac1:(zify_goal; xlia zchecker).
 
 Ltac intros_until_trace :=
   repeat lazymatch goal with
@@ -206,12 +206,16 @@ Ltac destruct_ifs :=
              let t := type of b in constr_eq t bool; destr b
          end.
 
-Ltac default_simpl_in_hyps :=
-  repeat (bottom_up_simpl_in_hyps_if
-            ltac:(fun h t => tryif ident_starts_with __ h then fail else idtac);
-          bottom_up_simpl_in_vars_if
-            ltac:(fun h b t => tryif ident_starts_with __ h then fail else idtac));
-  try record.simp_hyps.
+Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
+
+Ltac2 default_simpl_in_hyps () :=
+  repeat (foreach_hyp (fun h t => if Ident.starts_with @__ h then ()
+                                  else bottom_up_simpl_in_hyp_of_type h t);
+          foreach_var (fun h b t => if Ident.starts_with @__ h then ()
+                                  else bottom_up_simpl_in_letbound_var h b t));
+  try record.simp_hyps ().
+
+Ltac default_simpl_in_hyps := ltac2:(default_simpl_in_hyps ()).
 
 Ltac default_simpl_in_all :=
   default_simpl_in_hyps; try bottom_up_simpl_in_goal; try record.simp_goal.
@@ -530,13 +534,23 @@ Ltac subst_unless_local_var x :=
       end
   end.
 
+(* Can be customized with ::= *)
+Ltac is_substitutable_rhs_cleanup rhs :=
+  first [ is_var rhs
+        | is_const rhs
+        | lazymatch isZcst rhs with true => idtac end
+        | lazymatch rhs with
+          | word.of_Z ?x => is_substitutable_rhs_cleanup x
+          | word.unsigned ?x => is_substitutable_rhs_cleanup x
+          end ].
+
 Ltac cleanup_step :=
   match goal with
-  | x := ?rhs |- _ => is_substitutable_rhs rhs; subst_unless_local_var x
+  | x := ?rhs |- _ => is_substitutable_rhs_cleanup rhs; subst_unless_local_var x
   | x := _ |- _ => clear x
   | _: ?x = ?y |- _ =>
-      first [ is_var x; is_substitutable_rhs y; subst_unless_local_var x
-            | is_var y; is_substitutable_rhs x; subst_unless_local_var y ]
+      first [ is_var x; is_substitutable_rhs_cleanup y; subst_unless_local_var x
+            | is_var y; is_substitutable_rhs_cleanup x; subst_unless_local_var y ]
   | |- _ => progress fwd
   end.
 

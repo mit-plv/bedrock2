@@ -6,7 +6,7 @@ Require Import coqutil.Tactics.fold_hyps coqutil.Tactics.foreach_hyp.
 Require Import bedrock2.PurifySep.
 Require Import bedrock2.HeapletwiseHyps.
 Require Import coqutil.Tactics.ident_ops.
-Require Import bedrock2.bottom_up_simpl_ltac1.
+Require Import bedrock2.bottom_up_simpl.
 Require Import bedrock2.unzify.
 
 Ltac is_var_b x :=

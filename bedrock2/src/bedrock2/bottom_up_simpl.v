@@ -1254,7 +1254,10 @@ Ltac2 bottom_up_simpl_in_letbound_var(x: ident)(b: constr)(_t: constr): unit :=
       Std.rename [(y, x)]))
   else ().
 
-Ltac2 bottom_up_simpl_in_goal () :=
+(* foreach_hyp/var already focus, and bottom_up_simpl_in_hyp only makes sense
+   when already focused, but if we do `all: bottom_up_simpl_in_goal ()`, we
+   have to focus explicitly. *)
+Ltac2 bottom_up_simpl_in_goal () := Control.enter (fun _ =>
   let t := Control.goal () in
   lazy_match! Constr.type t with
   | Prop =>
@@ -1265,7 +1268,7 @@ Ltac2 bottom_up_simpl_in_goal () :=
         eapply (rew_Prop_goal $t $t' $pf)
       else fail "nothing to simplify"
   | _ => fail "not a Prop"
-  end.
+  end).
 
 Ltac2 bottom_up_simpl_in_hyps () :=
   foreach_hyp bottom_up_simpl_in_hyp_of_type.
@@ -1280,8 +1283,16 @@ Ltac2 bottom_up_simpl_in_all () :=
   bottom_up_simpl_in_hyps (); bottom_up_simpl_in_vars ();
   try bottom_up_simpl_in_goal ().
 
-Ltac bottom_up_simpl_in_hyp :=
+Ltac _bottom_up_simpl_in_hyp :=
   ltac2:(h1 |- bottom_up_simpl_in_hyp (Option.get (Ltac1.to_ident h1))).
+Tactic Notation "bottom_up_simpl_in_hyp" ident(h) := _bottom_up_simpl_in_hyp h.
+
+Ltac _bottom_up_simpl_in_hyp_of_type :=
+  ltac2:(h1 t1 |- bottom_up_simpl_in_hyp_of_type
+                    (Option.get (Ltac1.to_ident h1))
+                    (Option.get (Ltac1.to_constr t1))).
+Tactic Notation "bottom_up_simpl_in_hyp_of_type" ident(h) constr(t) :=
+  _bottom_up_simpl_in_hyp_of_type h t.
 
 Ltac bottom_up_simpl_in_goal := ltac2:(bottom_up_simpl_in_goal ()).
 

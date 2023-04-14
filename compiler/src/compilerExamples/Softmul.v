@@ -39,7 +39,7 @@ Require Import compilerExamples.SoftmulBedrock2.
 Require Import compilerExamples.SoftmulCompile.
 Require Import bedrock2.SepAutoArray bedrock2.SepAutoExports.
 Require Import bedrock2.SepBulletPoints.
-Require Import bedrock2.bottom_up_simpl_ltac1.
+Require Import bedrock2.bottom_up_simpl.
 Local Open Scope sep_bullets_scope. Undelimit Scope sep_scope.
 
 Ltac assertZcst x :=
