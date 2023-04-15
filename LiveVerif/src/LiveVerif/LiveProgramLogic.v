@@ -638,23 +638,19 @@ Ltac conclusion_shape_based_step logger :=
   | |- True =>
       logger ltac:(fun _ => idtac "constructor");
       constructor
+  | |- update_locals ?ks ?vs ?l ?post =>
+      logger ltac:(fun _ => idtac "unfold update_locals");
+      try subst vs;
+      unfold update_locals
   | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
       logger ltac:(fun _ => idtac "put_into_current_locals");
       put_into_current_locals
   | |- dlet _ (fun x => _) =>
       logger ltac:(fun _ => idtac "introducing dlet");
       eapply let_to_dlet; make_fresh x; intro x
-  | |- forall t' m' (retvs: list ?word),
-      _ -> exists l', map.putmany_of_list_zip _ retvs ?l = Some l' /\
-                        wp_cmd _ _ _ _ _ _ =>
+  | |- forall t' m' (retvs: list ?word), _ -> update_locals _ retvs ?l _ =>
       logger ltac:(fun _ => idtac "intro new state after function call");
-      let retvsname := fresh retvs in
-      intros ? ? retvsname (? & ? & ?);
-      subst retvsname
-  | |- exists (l: @map.rep String.string (@word.rep _ _) _),
-      map.putmany_of_list_zip _ _ _ = Some _ /\ _ =>
-      logger ltac:(fun _ => idtac "put return values of function call into locals map");
-      eexists; split; [reflexivity| ]
+      intros
   | |- @eq (@map.rep string (@word.rep _ _) _) (map.of_list _) (map.of_list _) =>
       logger ltac:(fun _ => idtac "proving equality between two locals maps");
       (* doesn't make the goal unprovable because we keep tuple lists passed

@@ -369,6 +369,22 @@ Section WithParams.
     inversion H. assumption.
   Qed.
 
+  Fixpoint update_locals(keys: list string)(vals: list word)
+    (l: locals)(post: locals -> Prop) :=
+    match keys, vals with
+    | cons k ks, cons v vs => update_locals ks vs (map.put l k v) post
+    | nil, nil => post l
+    | _, _ => False
+    end.
+
+  Lemma update_locals_spec: forall keys vals l post,
+      update_locals keys vals l post <->
+      (exists l', map.putmany_of_list_zip keys vals l = Some l' /\ post l').
+  Proof.
+    induction keys; intros; split; simpl; intros; destruct vals;
+      fwd; try contradiction; try discriminate; eauto; try eapply IHkeys; eauto.
+  Qed.
+
   Lemma wp_set0: forall fs x e v t m l rest post,
       dexpr m l e v ->
       wp_cmd fs rest t m (map.put l x v) post ->
@@ -448,10 +464,11 @@ Section WithParams.
     cmd -> trace -> mem -> locals -> (trace -> mem -> locals -> Prop) -> Prop := wp_cmd.
 
   Lemma wp_set: forall fs x e v t m l rest post,
-      dexpr1 m l e v (wp_cmd fs rest t m (map.put l x v) post) ->
+      dexpr1 m l e v (update_locals (cons x nil) (cons v nil) l
+                        (fun l' => wp_cmd fs rest t m l' post)) ->
       wp_cmd fs (cmd.seq (cmd.set x e) rest) t m l post.
   Proof.
-    intros. inversion H. eapply wp_set0; eassumption.
+    unfold update_locals. intros. inversion H. eapply wp_set0; eassumption.
   Qed.
 
   Lemma wp_unset: forall fs x t m l rest post,
@@ -628,12 +645,13 @@ Section WithParams.
       (* use-site format: *)
       dexprs1 m l arges argvs (calleePre /\
          forall t' m' retvs, calleePost t' m' retvs ->
-           exists l', map.putmany_of_list_zip resnames retvs l = Some l' /\
-                        wp_cmd fs rest t' m' l' finalPost) ->
+                             update_locals resnames retvs l (fun l' =>
+                                 wp_cmd fs rest t' m' l' finalPost)) ->
       (* conclusion: *)
       wp_cmd fs (cmd.seq (cmd.call resnames fname arges) rest) t m l finalPost.
   Proof.
     intros. inversion H0. clear H0. destruct Hp as (Pre & Impl).
+    setoid_rewrite update_locals_spec in Impl.
     specialize (H Pre). clear Pre.
     eapply wp_seq.
     eapply wp_call0. 1: eassumption.
