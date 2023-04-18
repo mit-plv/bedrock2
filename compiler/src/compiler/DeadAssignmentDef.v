@@ -50,16 +50,30 @@ Section WithArgs.
     let deadAssignment' := deadAssignment used_after in
     match s with
     | SIf c s1 s2 => SIf c (deadAssignment' s1) (deadAssignment' s2)
-    | SLoop s1 c s2 => SLoop s1 c s2 (* loops are scary so skipping this case for now *)
+    | SLoop s1 c s2 =>
+        let after_s1 := (list_union String.eqb (used_after) (accessed_vars_bcond c))
+        in let after_s2 := live s2 after_s1
+           in let after_s1' :=  (list_union
+                                   String.eqb
+                                   used_after
+                                   (list_union
+                                      String.eqb
+                                      (after_s2)
+                                      (accessed_vars_bcond c)))
+              in let after_s2' := live s2 after_s1'
+                 in SLoop (deadAssignment after_s1' s1) c (deadAssignment after_s2' s2)
     | SStackalloc v1 sz1 s => SStackalloc v1 sz1 (deadAssignment' s)
     | SSeq s1 s2 =>
         let s2' := deadAssignment' s2 in
         let s1_used_after := live s2' used_after in
         SSeq (deadAssignment s1_used_after s1) (s2')
-    | SLit x v =>
+    | SLit x _ =>
         if existsb (String.eqb x) used_after
         then s else SSkip
-    | SOp x op v1 v2 =>
+    | SOp x _ _ _ =>
+        if existsb (String.eqb x) used_after
+        then s else SSkip
+    | SSet x _ =>
         if existsb (String.eqb x) used_after
         then s else SSkip
     | _ => s

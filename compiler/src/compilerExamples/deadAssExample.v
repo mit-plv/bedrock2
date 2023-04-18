@@ -51,21 +51,6 @@ Local Instance funpos_env: map.map string Z := SortedListString.map _.
                               (cmd.set "ret_val" (expr.literal 369)))
         )))).
 
-(* test to avoid breaking loops by doing nothing in a loop *)
-  Definition test_loop : (string * (list string * list string * cmd))
-    :=  ("main", ([]: list string, ["ret_val"],
-                     (cmd.stackalloc "x" 4
-                        (cmd.seq (cmd.set "ret_val" (expr.literal 1))
-                           (cmd.while (expr.var "x")
-                              (cmd.seq
-                                 (cmd.set "ret_val"
-                                    (expr.op bopname.add
-                                       (expr.var "ret_val")
-                                       (expr.var "ret_val")))
-                                 (cmd.set "x"
-                                    (expr.op bopname.sub
-                                       (expr.var "x")
-                                       (expr.literal 1))))))))).
 
 
 (* test to check breaking a call*)
@@ -78,8 +63,53 @@ Local Instance funpos_env: map.map string Z := SortedListString.map _.
 
   Definition test_call:  (string * (list string * list string * cmd))
     :=  ("main", ([]: list string, ["ret_val"],
-                     (cmd.call ["ret_val"] "add" [expr.literal 101; expr.literal 123]))).
+                     (cmd.call ["ret_val"] "add" [expr.literal 131; expr.literal (-97)]))).
+  (* test to check simple loops *)
+  Definition test_loop_fn : (string * (list string * list string * cmd))
+    :=  ("add", (["x"; "y"], ["ret_val"],
+                  (cmd.seq (cmd.set "ret_val" (expr.var "x"))
+                     (cmd.while
+                        (expr.op
+                           bopname.or
+                           (expr.op
+                              bopname.lts
+                              (expr.var "y")
+                              (expr.literal 0))
+                           (expr.op
+                              bopname.lts
+                              (expr.literal 0)
+                              (expr.var "y")))
+                        (cmd.cond
+                           (expr.op
+                              bopname.lts
+                              (expr.var "y")
+                              (expr.literal 0))
+                           (cmd.seq
+                              (cmd.set "ret_val"
+                                 (expr.op
+                                    bopname.sub
+                                    (expr.var "ret_val")
+                                    (expr.literal 1)))
+                              (cmd.set "y"
+                                 (expr.op
+                                    bopname.add
+                                    (expr.var "y")
+                                    (expr.literal 1))))
+                           (cmd.seq
+                              (cmd.set "ret_val"
+                                 (expr.op
+                                    bopname.add
+                                    (expr.var "ret_val")
+                                    (expr.literal 1)))
+                              (cmd.set "y"
+                                 (expr.op
+                                    bopname.sub
+                                    (expr.var "y")
+                                    (expr.literal 1))))))))).
 
+  Definition test_loop:  (string * (list string * list string * cmd))
+    :=  ("main", ([]: list string, ["ret_val"],
+                     (cmd.call ["ret_val"] "add" [expr.literal 131; expr.literal (-97)]))).
 
   Definition compile_ext_call(posenv: funpos_env)(mypos stackoffset: Z)(s: FlatImp.stmt Z) : list Instruction := [].
 
@@ -98,7 +128,7 @@ Definition imm_asm: list (list Instruction).
                           ([test_constant] ::
                              [test_stackalloc] ::
                              [test_ifelse] ::
-                             [test_loop] ::
+                             [test_loop_fn; test_loop] ::
                              [test_call_fn; test_call] :: [])) in set (res := r).
   match goal with
   | res := Success (?x) |- _ => exact x
@@ -117,7 +147,7 @@ Definition imm_asm' : list (list Instruction).
                           ([test_constant] ::
                              [test_stackalloc] ::
                              [test_ifelse] ::
-                             [test_loop] ::
+                             [test_loop_fn; test_loop] ::
                              [test_call_fn; test_call] :: []))  in set (res := r).
   match goal with
   | res := Success (?x) |- _ => exact x
@@ -132,12 +162,12 @@ End PrintAssembly.
 
 Module PrintAssembly'.
   Import riscv.Utility.InstructionNotations.
-  Goal True. let r := eval unfold imm_asm' in imm_asm' in idtac (* r *) . Abort.
+  Goal True. let r := eval unfold imm_asm' in imm_asm' in idtac (* r *)  . Abort.
 
 End PrintAssembly'.
 
 Module CheckAssembly.
-  Goal Forall (bverify.validInstructions RV32I) imm_asm.
+  Goal Forall (bverify.validInstructions RV32I) imm_asm'.
     repeat (constructor; [solve
                             [apply bverify.bvalidInstructions_valid;
                              vm_compute; reflexivity]
