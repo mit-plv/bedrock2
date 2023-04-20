@@ -93,6 +93,23 @@ Definition compile_expr' {t : type} (e : expr t) : result (Syntax.cmd * Syntax.e
   e' <- compile_expr e;;
   Success (Syntax.cmd.skip, e').
 
+Fixpoint compile_expr'' {t : type} (e : expr t) : result (Syntax.cmd * Syntax.expr) :=
+  match e with
+  | EAtom a =>
+      e' <- compile_atom a;;
+      Success (Syntax.cmd.skip, e')
+  | EUnop o e1 =>
+      f <- compile_unop o;;
+      '(c1, e1') <- compile_expr'' e1;;
+      Success (c1, f e1')
+  | EBinop o e1 e2 =>
+      f <- compile_binop o;;
+      '(c1, e1') <- compile_expr'' e1;;
+      '(c2, e2') <- compile_expr'' e2;;
+      Success (Syntax.cmd.seq c1 c2, f e1' e2')
+  | _ => error:("unimplemented")
+  end.
+
 Section WithMap.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
   Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
@@ -267,6 +284,97 @@ Section WithMap.
     apply exec.skip.
     now apply compile_correct.
   Qed.
+
+  Lemma compile''_correct : forall {t} (e : expr t) (c : Syntax.cmd) (e' : Syntax.expr),
+    wf map.empty e ->
+    compile_expr'' e = Success (c, e') -> forall tr mc,
+    exec (map.empty) c tr map.empty map.empty mc (fun tr' m' l' mc' => exists (w : word),
+      eval_expr_old m' l' e' = Some w /\
+      value_relation (interp_expr map.empty e) w
+    ).
+  Proof.
+    intros t. induction e; intros c e' He He' tr mc; try easy.
+    - (* EAtom a *)
+      unfold compile_expr'' in He'.
+      fwd.
+      apply exec.skip.
+      destruct a; try easy.
+      + (* AInt n *)
+        injection E as [= <-].
+        simpl.
+        exists (word.of_Z (word.wrap n)).
+        split; rewrite <- word.unsigned_of_Z, word.of_Z_unsigned; try easy.
+        apply RWord.
+      + (* ABool b *)
+        injection E as [= <-].
+        simpl.
+        exists (word.of_Z (Z.b2z b)).
+        split; try easy.
+        apply RBool.
+    - (* EUnop o e *)
+      unfold compile_expr'' in He'.
+      fwd.
+      destruct o; try easy.
+      all:
+        simpl in E;
+        simpl;
+        fwd;
+        inversion He;
+        apply Eqdep_dec.inj_pair2_eq_dec in H4 as [= ->]; try exact type_eq_dec;
+        specialize IHe with (1 := H2) (2 := E0) (tr := tr) (mc := mc);
+        apply exec.weaken with (post1 := fun tr' m' l' mc' => exists w,
+          eval_expr_old m' l' e0 = Some w /\
+          value_relation (interp_expr map.empty e) w
+        ); try easy;
+        intros tr' m' l' mc' Hw;
+        fwd;
+        eexists.
+      + (* OWNeg *)
+        split.
+        * simpl.
+          fwd.
+          now rewrite Properties.word.sub_0_l.
+        * inversion Hwp1. rewrite H6 in H5.
+          rewrite (interp_type_eq _ _ H5).
+          apply RWord.
+      + (* ONot *)
+        split.
+        * simpl. now fwd.
+        * inversion Hwp1.
+          rewrite (interp_type_eq _ _ H5).
+          rewrite <- Properties.word.ring_morph_sub.
+          destruct b; apply RBool.
+    - (* EBinop o e1 e2 *)
+      unfold compile_expr'' in He'.
+      destruct o; try easy.
+      all:
+        simpl in He';
+        simpl;
+        fwd;
+        inversion He;
+        apply Eqdep_dec.inj_pair2_eq_dec in H5 as [= ->]; try exact type_eq_dec;
+        injection H6 as [= ->];
+        apply Eqdep_dec.inj_pair2_eq_dec in H5 as [= ->]; try exact type_eq_dec;
+        specialize IHe1 with (1 := H3) (2 := E);
+        specialize IHe2 with (1 := H7) (2 := E0).
+      all: admit.
+
+      (* + apply exec.seq with (mid := fun tr' m' l' mc' => exists w, *)
+      (*     eval_expr_old m' l' e = Some w /\ *)
+      (*     value_relation (interp_expr map.empty e1) w *)
+      (*   ); try easy. *)
+      (*   intros tr' m' l' mc' Hw. *)
+      (*   assert (m' = map.empty). { admit. } *)
+      (*   assert (l' = map.empty). { admit. } *)
+      (*   rewrite H5, H6. *)
+      (*   apply exec.weaken with (post1 := fun tr'' m'' l'' mc'' => exists w', *)
+      (*     eval_expr_old m'' l'' e0 = Some w' /\ *)
+      (*     value_relation (interp_expr map.empty e2) w' *)
+      (*   ); try easy. *)
+      (*   intros tr'' m'' l'' mc'' Hw'. *)
+      (*   eexists. *)
+      (*   admit. *)
+  Admitted.
 
 End WithMap.
 
