@@ -51,17 +51,9 @@ Section WithArgs.
     match s with
     | SIf c s1 s2 => SIf c (deadAssignment' s1) (deadAssignment' s2)
     | SLoop s1 c s2 =>
-        let after_s1 := (list_union String.eqb (used_after) (accessed_vars_bcond c))
-        in let after_s2 := live s2 after_s1
-           in let after_s1' :=  (list_union
-                                   String.eqb
-                                   used_after
-                                   (list_union
-                                      String.eqb
-                                      (after_s2)
-                                      (accessed_vars_bcond c)))
-              in let after_s2' := live s2 after_s1'
-                 in SLoop (deadAssignment after_s1' s1) c (deadAssignment after_s2' s2)
+        let used_after_s1 := (list_union String.eqb (accessed_vars_bcond c) (list_union String.eqb used_after (live s2 []))) in
+        let used_after_s2 := (live s1 used_after_s1) in
+        SLoop (deadAssignment used_after_s1 s1) c (deadAssignment used_after_s2 s2)
     | SStackalloc v1 sz1 s => SStackalloc v1 sz1 (deadAssignment' s)
     | SSeq s1 s2 =>
         let s2' := deadAssignment' s2 in

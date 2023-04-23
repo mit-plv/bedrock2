@@ -24,92 +24,75 @@ Local Instance funpos_env: map.map string Z := SortedListString.map _.
      be used *)
   Definition test_constant : (string * (list string * list string * cmd))
     :=  ("main", ([]: list string, ["ret_val"],
-                     (cmd.seq
-                           (cmd.set "ret_val" (expr.literal 420))
-                           (cmd.set "ret_val" (expr.literal 69))))).
+                     (cmd.set "ret_val" (expr.literal 4193)))).
 
-  (* making sure that the optimization doesn't optimize out an assignment to the
-     same variable (e.g. x = x + constant), and that it recurses into a stack alloc. *)
+  (* making sure that the optimization recurses into a stack alloc. *)
   Definition test_stackalloc : (string * (list string * list string * cmd))
     :=  ("main", ([]: list string, ["ret_val"],
                      (cmd.stackalloc "x" 4
-                        (cmd.seq (cmd.set "x" (expr.literal 127))
-                           (cmd.seq (cmd.set "x" (expr.op bopname.add (expr.var "x")
-                                                    (expr.literal 85)))
-                                    (cmd.set "ret_val" (expr.var "x"))))))).
+                        (cmd.seq (cmd.set "x" (expr.literal 1303))
+                        (cmd.stackalloc "y" 4
+                              (cmd.seq (cmd.set "y" (expr.literal 1217))
+                                 (cmd.set "ret_val" (expr.var "x")))))))).
 
 
   (* checking that if-else's are recursed into *)
   Definition test_ifelse : (string * (list string * list string * cmd))
     :=  ("main", ([]: list string, ["ret_val"],
-                     (cmd.seq (cmd.set "ret_val" (expr.literal 91))
-                        (cmd.cond
-                           (expr.var "ret_val")
-                           (cmd.set "ret_val" (expr.literal 63))
-                           (cmd.seq
-                              (cmd.set "ret_val" (expr.literal 123))
-                              (cmd.set "ret_val" (expr.literal 369)))
-        )))).
-
+                     (cmd.stackalloc "x" 4
+                        (cmd.stackalloc "y" 4
+                        (cmd.seq (cmd.set "x" (expr.literal 7307))
+                           (cmd.seq (cmd.set "y" (expr.literal 1711))
+                              (cmd.cond
+                                 (expr.literal 9)
+                                 (cmd.set "ret_val" (expr.literal 6409))
+                                 (cmd.set "ret_val" (expr.var "x"))))))))).
 
 
 (* test to check breaking a call*)
   Definition test_call_fn : (string * (list string * list string * cmd))
-    :=  ("add", (["x"; "y"], ["ret_val"],
-                  (cmd.set "ret_val"
-                     (expr.op bopname.add
-                        (expr.var "x")
-                        (expr.var "y"))))).
+    :=  ("first_arg", (["x"; "y"], ["ret_val"],
+                  (cmd.set "ret_val" (expr.var "x")))).
 
   Definition test_call:  (string * (list string * list string * cmd))
     :=  ("main", ([]: list string, ["ret_val"],
-                     (cmd.call ["ret_val"] "add" [expr.literal 131; expr.literal (-97)]))).
+                      (cmd.stackalloc "x" 4
+                         (cmd.stackalloc "y" 4
+                            (cmd.stackalloc "z" 4
+                               (cmd.seq (cmd.set "x" (expr.literal 7307))
+                                  (cmd.seq (cmd.set "y" (expr.literal 1711))
+                                     (cmd.seq (cmd.set "z" (expr.literal 9231))
+                                        (cmd.call ["ret_val"] "first_arg" [expr.var "x"; expr.var "y"]))))))))).
+
   (* test to check simple loops *)
   Definition test_loop_fn : (string * (list string * list string * cmd))
-    :=  ("add", (["x"; "y"], ["ret_val"],
-                  (cmd.seq (cmd.set "ret_val" (expr.var "x"))
+    :=  ("return_1019", (["x"; "y"], ["ret_val"],
+                  (cmd.seq (cmd.set "ret_val" (expr.literal 0))
                      (cmd.while
                         (expr.op
-                           bopname.or
-                           (expr.op
-                              bopname.lts
-                              (expr.var "y")
-                              (expr.literal 0))
-                           (expr.op
-                              bopname.lts
-                              (expr.literal 0)
-                              (expr.var "y")))
-                        (cmd.cond
-                           (expr.op
-                              bopname.lts
-                              (expr.var "y")
-                              (expr.literal 0))
-                           (cmd.seq
-                              (cmd.set "ret_val"
-                                 (expr.op
-                                    bopname.sub
-                                    (expr.var "ret_val")
-                                    (expr.literal 1)))
-                              (cmd.set "y"
-                                 (expr.op
-                                    bopname.add
-                                    (expr.var "y")
-                                    (expr.literal 1))))
+                           bopname.sub
+                           (expr.var "ret_val")
+                           (expr.literal 1019)
+                        )
+                        (cmd.seq
+                           (cmd.set "x" (expr.op
+                                           bopname.add
+                                              (expr.var "x")
+                                              (expr.literal 706)))
                            (cmd.seq
                               (cmd.set "ret_val"
                                  (expr.op
                                     bopname.add
                                     (expr.var "ret_val")
                                     (expr.literal 1)))
-                              (cmd.set "y"
-                                 (expr.op
-                                    bopname.sub
-                                    (expr.var "y")
-                                    (expr.literal 1))))))))).
+                              (cmd.set "y" (expr.op
+                                              bopname.xor
+                                              (expr.var "x")
+                                              (expr.literal 4902))))))))).
 
   Definition test_loop:  (string * (list string * list string * cmd))
     :=  ("main", ([]: list string, ["ret_val"],
-                     (cmd.call ["ret_val"] "add" [expr.literal 131; expr.literal (-97)]))).
+                     (cmd.call ["ret_val"] "return_1019" [expr.literal 131; expr.literal (-97)]))).
 
   Definition compile_ext_call(posenv: funpos_env)(mypos stackoffset: Z)(s: FlatImp.stmt Z) : list Instruction := [].
 
@@ -156,13 +139,13 @@ Defined.
 
 Module PrintAssembly.
   Import riscv.Utility.InstructionNotations.
-  Goal True. let r := eval unfold imm_asm in imm_asm in idtac (* r *)  . Abort.
+  Goal True. let r := eval unfold imm_asm in imm_asm in idtac (* r *). Abort.
 End PrintAssembly.
 
 
 Module PrintAssembly'.
   Import riscv.Utility.InstructionNotations.
-  Goal True. let r := eval unfold imm_asm' in imm_asm' in idtac (* r *)  . Abort.
+  Goal True. let r := eval unfold imm_asm' in imm_asm' in idtac (* r *). Abort.
 
 End PrintAssembly'.
 
