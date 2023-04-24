@@ -3,12 +3,13 @@ Require Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
 Require Import coqutil.Tactics.rdelta.
 Require Import coqutil.Datatypes.Inhabited.
 Require Import coqutil.Map.Interface.
-Require Import coqutil.Word.Interface coqutil.Word.Properties.
+Require Import coqutil.Word.Interface coqutil.Word.Bitwidth coqutil.Word.Properties.
 Require Import coqutil.Tactics.syntactic_unify.
 Require Import bedrock2.find_hyp.
 Require Import coqutil.Tactics.fwd.
 Require Import coqutil.Tactics.Tactics.
 Require Import coqutil.Tactics.ltac_list_ops.
+Require Import coqutil.Tactics.ident_ops.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
@@ -65,34 +66,106 @@ Lemma ands_nil: ands nil. Proof. cbn. auto. Qed.
 Lemma ands_cons: forall [P: Prop] [Ps: list Prop], P -> ands Ps -> ands (P :: Ps).
 Proof. cbn. auto. Qed.
 
-(* Note: contrary to add_last_var_to_post, this one makes Post a goal rather
-   than a hypothesis, because if it was a hypothesis, it wouldn't be possible
-   to clear vars *)
-Ltac add_last_hyp_to_post :=
-  let last_hyp := match goal with H: _ |- _ => H end in
-  let T := type of last_hyp in
-  lazymatch T with
-  | scope_marker _ => fail "done (scope marker reached)"
-  | _ ?m => let t := type of m in
-            lazymatch t with
-            | @map.rep (@word.rep _ _) Init.Byte.byte _ => flatten_seps_in last_hyp
-            | _ => idtac
-            end
-  | _ => idtac
-  end;
-  lazymatch type of T with
-  | Prop => refine (ands_cons last_hyp _); clear last_hyp
-  | _ => clear last_hyp
+Ltac has_unique_eq_def x :=
+  match goal with
+  | H1: x = _, H2: x = _ |- _ => fail 1 x "has two definitions:" H1 "and" H2
+  | H1: x = _, H2: _ = x |- _ => fail 1 x "has two definitions:" H1 "and" H2
+  | H1: _ = x, H2: _ = x |- _ => fail 1 x "has two definitions:" H1 "and" H2
+  | H: x = _ |- _ => idtac
+  | H: _ = x |- _ => idtac
+  | |- _ => fail 1 x "has no definition"
   end.
 
-Ltac is_in_post_evar_scope x :=
-  lazymatch goal with
-  | |- ?E ?T ?M ?L =>
-      lazymatch type of E with
-      | ?Trace -> ?Mem -> ?Locals -> Prop =>
-          assert_succeeds (unify E (fun (_: Trace) (_: Mem) (_: Locals) => x = x))
-      end
+Ltac has_no_eq_def x :=
+  match goal with
+  | H: x = _ |- _ => fail 1 x "has definition" H
+  | H: _ = x |- _ => fail 1 x "has definition" H
+  | |- _ => idtac
   end.
+
+Ltac not_letbound x :=
+  assert_fails (idtac; let _ := eval cbv delta [x] in x in idtac).
+
+Ltac subst_vars_with_unique_var_rhs :=
+  repeat match goal with
+    | H: ?x = ?rhs |- _ => is_var x; is_var rhs; not_letbound x; has_unique_eq_def x; subst x
+    | x := ?rhs |- _ => is_var rhs; has_no_eq_def x; subst x
+    end.
+
+(* Can be customized with ::= *)
+Ltac is_substitutable_rhs_for_package_context rhs :=
+  first [ is_var rhs
+        | is_const rhs
+        | lazymatch isZcst rhs with true => idtac end
+        | lazymatch rhs with
+          | word.of_Z ?x => is_substitutable_rhs_for_package_context x
+          | word.unsigned ?x => is_substitutable_rhs_for_package_context x
+          end ].
+
+(* Note: Don't do this when some variables are local variables, because
+   we always want to keep local variables as variables in the context. *)
+Ltac subst_small_rhses :=
+  repeat match goal with
+    | H: ?x = ?rhs |- _ =>
+        is_var x;
+        is_substitutable_rhs_for_package_context rhs;
+        not_letbound x;
+        has_unique_eq_def x;
+        subst x
+    end.
+
+Ltac add_hyp_to_post Post :=
+  match goal with
+  | H: ?T |- _ =>
+      tryif constr_eq H Post then fail else idtac;
+      tryif ident_starts_with Def H then fail else idtac; (* to be added last as an elet *)
+      lazymatch T with
+      | scope_marker _ => fail 1 "done (scope marker reached)"
+      | _ ?m => let t := type of m in
+                lazymatch t with
+                | @map.rep (@word.rep _ _) Init.Byte.byte _ => flatten_seps_in H
+                | _ => idtac
+                end
+      | _ => idtac
+      end;
+      eapply (ands_cons H) in Post; clear H
+  end.
+
+Ltac add_eq_as_elet_to_post E Post :=
+  lazymatch type of E with
+  | ?x = ?rhs =>
+      vpattern x in Post;
+      lazymatch type of Post with
+      | ?f x => eapply (mk_elet rhs f x E) in Post
+      end;
+      clear x E
+  end.
+
+Ltac add_var_as_exists_to_post x Post :=
+  vpattern x in Post;
+  lazymatch type of Post with
+  | ?f x => eapply (ex_intro f x) in Post
+  end;
+  clear x.
+
+Ltac last_var_except p :=
+  match goal with
+  | x: _ |- _ => lazymatch x with
+                 | p => fail
+                 | _ => x
+                 end
+  end.
+
+Ltac add_last_var_or_hyp_to_post Post :=
+  let lastvar := last_var_except Post in
+  let T := type of lastvar in
+  lazymatch T with
+  | scope_marker _ => fail "done (scope marker reached)"
+  | _ => idtac
+  end;
+  tryif ident_starts_with Def lastvar then
+    add_eq_as_elet_to_post lastvar Post
+  else (clear lastvar || add_var_as_exists_to_post lastvar Post).
 
 Ltac add_equality_to_post x Post :=
   let y := fresh "etmp0" in
@@ -104,79 +177,59 @@ Ltac add_equality_to_post x Post :=
   | |- context C[x] => let C' := context C[y] in change C'
   end;
   eapply (ands_cons (eq_refl y : y = x)) in Post;
-  clearbody y.
+  clearbody y;
+  (* y (t or m or l or measure) will be patterned out at end of package_context *)
+  move y at top.
 
 Ltac add_equalities_to_post Post :=
   lazymatch goal with
   (* loop invariant *)
   | |- ?E ?Measure ?T ?M ?L =>
       add_equality_to_post L Post;
+      move M at top;
       add_equality_to_post T Post;
       add_equality_to_post Measure Post
   (* if branch post *)
   | |- ?E ?T ?M ?L =>
       add_equality_to_post L Post;
+      move M at top;
       add_equality_to_post T Post
-  end.
-
-Ltac add_var_to_post x Post :=
-  first
-    [ let rhs := eval cbv delta [x] in x in
-      (tryif is_var rhs then idtac else (
-        vpattern x in Post;
-        lazymatch type of Post with
-        | ?f x => change (dlet x f) in Post
-        end));
-      subst x
-    | vpattern x in Post;
-      eapply ex_intro in Post;
-      clear x ].
-
-Ltac add_last_var_to_post Post :=
-  let lastvar :=
-    match goal with
-    | x: _ |- _ =>
-        let __ := match constr:(Set) with
-                  | _ => assert_fails (constr_eq x Post)
-                  end in x
-    end in
-  let T := type of lastvar in
-  lazymatch T with
-  | scope_marker _ => fail "done (scope marker reached)"
-  | _ => idtac
-  end;
-  lazymatch type of T with
-  | Prop => clear lastvar
-  | _ => lazymatch goal with
-         (* at the beginning of a while loop, where we have to instantiate the
-            loop invariant, the goal is of form (?invariant measure_tmp t_tmp m_tmp l_tmp *)
-         | |- _ lastvar _ _ _ => move lastvar at top
-         (* after an if branch, the goal is of form (?post t_tmp m_tmp l_tmp) *)
-         | |- _ lastvar _ _ => move lastvar at top
-         | |- _ _ lastvar _ => move lastvar at top
-         | |- _ _ _ lastvar => move lastvar at top
-         (* if lastvar is not a _tmp var to be patterned out later, add it to post: *)
-         | |- _ => add_var_to_post lastvar Post
-         end
   end.
 
 Ltac package_context :=
   lazymatch goal with
   | H: _ ?m |- ?E ?t ?m ?l =>
       (* always package sep log assertion, even if memory was not changed in current block *)
-      move H at bottom
+      move H at bottom;
+      (* when proving a loop invariant at the end of a loop body, it tends to work better
+         if memory hyps come earlier, because they can help determine evars *)
+      lazymatch goal with
+      | s: scope_marker _ |- _ =>
+          move H before s (* <-- "before" in the direction of movement *)
+      end
+      (* Note: the two above moves should be replaced by one single `move H below s`,
+         but `below` is not implemented yet: https://github.com/coq/coq/issues/15209 *)
   | |- ?E ?t ?m ?l => fail "No separation logic hypothesis about" m "found"
   end;
+  (* TODO this subst is a bit ad-hoc and should be subsumed by more general
+     after-if postprocessing that recognizes which existentials that appear
+     in both branches correspond to the same program variable *)
+  subst_small_rhses;
   let Post := fresh "Post" in
-  eassert _ as Post by (repeat add_last_hyp_to_post; apply ands_nil);
+  pose proof ands_nil as Post;
+  repeat add_hyp_to_post Post;
   add_equalities_to_post Post;
-  repeat add_last_var_to_post Post;
+  repeat add_last_var_or_hyp_to_post Post;
+  let lasthyp := last_var_except Post in
+  lazymatch type of lasthyp with
+  | scope_marker _ => idtac
+  | _ => idtac "Warning: package_context failed to package" lasthyp "(and maybe more)"
+  end;
   lazymatch goal with
   | |- _ ?Measure ?T ?M ?L => pattern Measure, T, M, L in Post
   | |- _ ?T ?M ?L => pattern T, M, L in Post
   end;
   exact Post.
-
 
 Section MergingAnd.
   Lemma if_dlet_l_inline: forall (b: bool) (T: Type) (rhs: T) (body: T -> Prop) (P: Prop),
@@ -448,7 +501,9 @@ Ltac is_fresh x := assert_succeeds (pose proof tt as x).
    old versions of local variables from the current ones, because C variable names
    cannot contain '.
    Note that in order to pass an ident from Ltac1 to Ltac2, we have to convert
-   it to a constr, which only works if the ident refers to an existing variable. *)
+   it to a constr, which only works if the ident refers to an existing variable.
+   TODO using Ltac1 Tactic Notation and Ltac2's Ltac1.to_ident, we could also
+   pass an ident from Ltac1 to Ltac2, and simplify the code a bit. *)
 Ltac make_fresh x :=
   tryif is_fresh x then idtac else make_existing_ident_fresh constr:(x).
 
@@ -457,27 +512,42 @@ Ltac make_fresh x :=
   tryif is_fresh x then idtac else let x' := fresh x "'" in rename x into x'.
 *)
 
-Ltac letbind_locals start_index :=
-  lazymatch goal with
-  | |- wp_cmd _ _ _ _ (map.of_list ?kvs) _ =>
-      lazymatch eval hnf in (List.nth_error kvs start_index) with
-      | None => idtac (* done *)
-      | Some (?name, ?val) =>
-          tryif is_var val then
-            letbind_locals (S start_index)
-          else (
-            let tmp := fresh in
-            set (tmp := val);
-            let namei := string_to_ident name in
-            make_fresh namei;
-            rename tmp into namei;
-            letbind_locals (S start_index)
-         )
-      end
-  end.
+Section PullELet.
+  Context {A: Type}.
 
-Ltac pull_dlet_and_exists_step :=
+  Lemma pull_if_elet_l (c: bool) (a: A) (P: A -> Prop) (F: Prop):
+    (if c then elet a P else F) -> elet a (fun x => if c then P x else F).
+  Proof.
+    destruct c.
+    - intros [x E B]. econstructor; eassumption.
+    - intros. econstructor. 1: reflexivity. assumption.
+  Qed.
+
+  Lemma pull_if_elet_r (c: bool) (a: A) (P: A -> Prop) (T: Prop):
+    (if c then T else elet a P) -> elet a (fun x => if c then T else P x).
+  Proof.
+    destruct c.
+    - intros. econstructor. 1: reflexivity. assumption.
+    - intros [x E B]. econstructor; eassumption.
+  Qed.
+End PullELet.
+
+Ltac pull_elet_dlet_and_exists_step :=
   lazymatch goal with
+  | H: if _ then elet _ (fun x => _) else _ |- _ =>
+      make_fresh x;
+      lazymatch type of H with
+      | if ?c then elet ?rhs ?body else ?els =>
+          eapply (pull_if_elet_l c rhs body els) in H;
+          destruct H as [x ?Def0 H]
+      end
+  | H: if _ then _ else elet _ (fun x => _) |- _ =>
+      make_fresh x;
+      lazymatch type of H with
+      | if ?c then ?thn else elet ?rhs ?body =>
+          eapply (pull_if_elet_r c rhs body thn) in H;
+          destruct H as [x ?Def0 H]
+      end
   | H: if _ then dlet _ (fun x => _) else _ |- _ =>
       make_fresh x;
       lazymatch type of H with
@@ -530,8 +600,9 @@ Ltac same_lhs P Q :=
   | ?lhs = _ =>
       lazymatch Q with
       | lhs = _ => constr:(true)
-      | _ = _ => constr:(false)
+      | _ => constr:(false)
       end
+  | _ => constr:(false)
   end.
 
 Ltac same_addr_and_pred P Q :=
@@ -553,7 +624,7 @@ Ltac neg_prop P Q :=
 Ltac seps_about_same_mem x y :=
   lazymatch x with
   | seps _ ?m => lazymatch y with
-                 | seps _ ?m => constr:(true)
+                 | seps _ m => constr:(true)
                  | _ => constr:(false)
                  end
   | _ => constr:(false)
@@ -569,26 +640,19 @@ Ltac merge_sep_pair_step :=
   lazymatch goal with
   | H: seps ((seps (if ?b then ?Ps else ?Qs)) :: ?Rs) ?m |- _ =>
       merge_pair H Ps Qs constr_eqb (merge_seps_at_indices_same m) ||
-      merge_pair H Ps Qs same_addr_and_pred (merge_seps_at_indices_same_addr_and_pred m) ||
-      (eapply merge_seps_done in H; cbn [seps] in H)
+      merge_pair H Ps Qs same_addr_and_pred (merge_seps_at_indices_same_addr_and_pred m)
   end.
 
-(* Can be customized with ::= *)
-Ltac is_substitutable_rhs_after_if rhs :=
-  first [ is_var rhs
-        | is_const rhs
-        | lazymatch isZcst rhs with true => idtac end
-        | lazymatch rhs with
-          | word.of_Z ?x => is_substitutable_rhs_after_if x
-          | word.unsigned ?x => is_substitutable_rhs_after_if x
-          end ].
-
-(* Note: Don't do this when some variables are local variables, because
-   we always want to keep local variables as let-bound context variables. *)
-Ltac subst_small_rhses :=
-  repeat match goal with
-    | x := ?rhs |- _ => is_substitutable_rhs_after_if rhs; subst x
-    end.
+Ltac merge_seps_done :=
+  lazymatch goal with
+  | H: seps ((seps (if ?b then nil else nil)) :: ?Rs) ?m |- _ =>
+      (* memory was modified in different ways in then/else branch *)
+      eapply merge_seps_done in H; cbn [seps] in H
+  | H: seps _ _ |- _ =>
+      (* memory was not modified (or in exactly the same way in both branches) *)
+      cbn [seps] in H
+  | |- _ => fail 1000 "failed to match the sepclauses of the then-branch and else-branch"
+  end.
 
 Ltac list_map_ignoring_failures f l :=
   lazymatch l with
@@ -633,43 +697,41 @@ Ltac normalize_locals_eq :=
 
 Ltac after_if :=
   clear_heapletwise_hyps;
-  intros ? ? ? ? ?;
-  repeat pull_dlet_and_exists_step;
+  intros ? ? ? [?c ?Def0 ?];
+  repeat pull_elet_dlet_and_exists_step;
   repeat merge_and_pair constr_eqb merge_ands_at_indices_same_prop;
   repeat merge_and_pair neg_prop merge_ands_at_indices_neg_prop;
   repeat merge_and_pair same_lhs merge_ands_at_indices_same_lhs;
   repeat merge_and_pair seps_about_same_mem merge_ands_at_indices_seps_same_mem;
   repeat merge_sep_pair_step;
-  cbn [seps] in *;
+  merge_seps_done;
   try match goal with
     | H: if _ then ands nil else ands nil |- _ => clear H
     end;
+  (* TODO this subst is a bit ad-hoc and should be subsumed by more general techniques *)
   subst_small_rhses;
   lazymatch goal with
   | H: ?l = (if _ then map.of_list ?l1 else map.of_list ?l2) |- wp_cmd _ _ _ _ ?l _ =>
       (* common case: then branch and else branch modified locals in different ways *)
       let only_in_l1 := list_map_ignoring_failures ltac:(key_of_pair_if_not_in l2) l1 in
       let only_in_l2 := list_map_ignoring_failures ltac:(key_of_pair_if_not_in l1) l2 in
-      subst l;
       eapply (wp_unset_many_after_if (List.app only_in_l1 only_in_l2));
-      [ normalize_locals_eq; reflexivity
+      [ exact H
       | normalize_locals_eq; reflexivity
-      | repeat first [ rewrite push_if_into_cons_tuple_same_key
-                     | rewrite if_same
-                     | rewrite push_if_into_arg1
-                     | rewrite push_if_into_arg2 ];
-        reflexivity
-      | ]
+      | normalize_locals_eq; reflexivity
+      | eapply push_if_into_merge_locals ];
+      clear H
   | H: ?l = map.of_list _ |- wp_cmd _ _ _ _ ?l _ =>
       (* special case: then branch and else branch modified locals in exactly the same
          way, so `merge_and_pair constr_eqb merge_ands_at_indices_same_prop` already
          got rid (or did not introduce at all) the if *)
       subst l
-  end;
-  letbind_locals 0%nat.
+  end.
 
 Ltac destruct_loop_invariant_step :=
   lazymatch goal with
+  | H: elet _ (fun x => _) |- _ => make_fresh x; destruct H as [x ?Def0 H]
+  | H: exists x,  _ |- _ => make_fresh x; destruct H as [x H]
   | H: dlet _ (fun x => _) |- _ =>
       make_fresh x;
       lazymatch type of H with
@@ -678,7 +740,6 @@ Ltac destruct_loop_invariant_step :=
           let t := beta1 body x in
           change t in H
       end
-  | H: exists x,  _ |- _ => make_fresh x; destruct H as [x H]
   | H: _ /\ True |- _ => apply proj1 in H
   | H: _ /\ _ |- _ =>
       let t := type of H in is_destructible_and t; destruct H as [? H]

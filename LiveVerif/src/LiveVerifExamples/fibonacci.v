@@ -1,6 +1,5 @@
 (* -*- eval: (load-file "../LiveVerif/live_verif_setup.el"); -*- *)
 Require Import LiveVerif.LiveVerifLib.
-Require Import coqutil.Tactics.let_binding_to_eq.
 
 Load LiveVerif.
 
@@ -57,16 +56,13 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
     b = 1;                                                                 /**. .**/
     uintptr_t i = 1;                                                       /**.
 
-    let_bindings_to_eqs.
-    replace /[0] with (fib (i ^- /[1])) in Ha by
-        (subst; unfold fib; bottom_up_simpl_in_goal; reflexivity).
-    replace /[1] with (fib i) in Hb by
-        (subst; unfold fib; bottom_up_simpl_in_goal; reflexivity).
-    assert (1 <= \[i] <= \[n]) by ZnWords.
-    eqs_to_let_bindings.
-    clearbody i; move b after a.
-
-    loop invariant above i.                                                     .**/
+    swap /[0] with (fib (i ^- /[1])) in #(a = /[0]).
+    { unfold fib, fib_nat. steps. }
+    swap /[1] with (fib i) in #(b = /[1]).
+    { unfold fib, fib_nat. steps. }
+    prove (1 <= \[i] <= \[n]).
+    delete #(i = ??).
+    loop invariant above a.                                                     .**/
 
     while (i < n) /* decreases (\[n]-\[i]) */ {                            /**. .**/
       uintptr_t t = a + b;                                                 /**. .**/
@@ -74,21 +70,18 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
       b = t;                                                               /**. .**/
       i = i + 1;                                                           /**. .**/
     }                                                                      /**.
-    subst a' b' i. rewrite fib_recursion by ZnWords; reflexivity.               .**/
+    subst a' i. rewrite fib_recursion by steps; reflexivity.                    .**/
   }                                                                        /**. .**/
   return b;                                                                /**. .**/
 }                                                                          /*?.
 
 step. step. step. step. step. step. step. step. step. step. step. step. step.
 unfold ands in H2.
-eapply if_to_or in H2.
-rewrite __Zdef_c in H2.
-zify_hyps.
 destruct c; subst_all_let_bound_vars.
-{ unfold fib. replace \[n] with 0 by lia. bottom_up_simpl_in_goal. reflexivity. }
-{ destruct H2; try lia.
-  unfold fib.
-  replace \[i] with \[n] by lia. reflexivity. }
+{ unfold fib. replace \[n'] with 0 by lia. bottom_up_simpl_in_goal. reflexivity. }
+{ destruct __Z_H2; try lia.
+  unfold fib, ands in *.
+  replace \[n'] with \[i] by lia. steps. }
 Qed.
 
 End LiveVerif. Comments .**/ //.

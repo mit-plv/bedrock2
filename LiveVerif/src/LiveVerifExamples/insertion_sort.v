@@ -94,8 +94,9 @@ Derive insertion_sort SuchThat (fun_correct! insertion_sort) As insertion_sort_o
   assert (arr = arrL ++ arrR) as HarrSplit by (subst arrL arrR; auto).
 
   (* generalize *)
-  loop invariant above arrL;
-  clearbody i arrL arrR.
+  loop invariant above i.
+  clearbody arrL arrR.
+  delete #(i = ??).
 
   .**/ while (i < n) /* decreases (n ^- i) */ { /**.
 

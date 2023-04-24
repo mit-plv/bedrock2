@@ -151,29 +151,42 @@ Ltac is_in_snd x ps :=
   | _ => fail 1000 ps "is not a concrete enough list"
   end.
 
+Ltac intro_word name :=
+  let lowest :=
+    match goal with
+    | h: ?t |- _ =>
+        lazymatch t with
+        | @word.rep _ _ => h
+        | scope_marker _ => h
+        | trace => h
+        end
+    end in
+  intro name before lowest.
+
 Ltac put_into_current_locals :=
   lazymatch goal with
-  | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
-    let i := string_to_ident x in
-    make_fresh i;
-    (* match again because there might have been a renaming *)
-    lazymatch goal with
-    | |- wp_cmd ?call ?c ?t ?m (map.put ?l ?x ?v) ?post =>
-        let tuples := lazymatch l with map.of_list ?ts => ts end in
-        tryif (
-            is_var v;
-            assert_fails (idtac; is_function_param v); (* not a ghost or non-ghost arg *)
-            assert_fails (idtac; is_in_snd v tuples) (* not a local program variable *))
-        then (* we can rename v into i instead of posing a new variable *)
-          rename v into i
-        else (
-          (* tradeoff between goal size blowup and not having to follow too many aliases *)
-          let v' := rdelta_var v in
-          pose (i := v');
-          change (wp_cmd call c t m (map.put l x i) post)
-        )
-    end;
-    normalize_locals_wp
+  | |- update_locals ?ks ?vs _ _ => try subst vs
+  end;
+  lazymatch goal with
+  | |- update_locals nil nil ?l ?post => unfold update_locals
+  | |- update_locals (cons ?x nil) (cons ?v nil) ?l ?post =>
+      let i := string_to_ident x in
+      make_fresh i;
+      (* match again because there might have been a renaming *)
+      lazymatch goal with
+      | |- update_locals (cons ?x nil) (cons ?v nil) ?l ?post =>
+          let tuples := lazymatch l with map.of_list ?ts => ts end in
+          tryif (
+              is_var v;
+              assert_fails (idtac; is_function_param v); (* not a ghost or non-ghost arg *)
+              assert_fails (idtac; is_in_snd v tuples) (* not a local program variable *))
+          then (* we can rename v into i instead of creating a new variable & equation *)
+            (rename v into i; unfold update_locals)
+          else
+            (eapply update_one_local_eq; intro_word i; let h := fresh "Def0" in intro h)
+      end;
+      normalize_locals_wp
+  | |- update_locals ?ks ?vs _ _ => fail 1000 "update_locals for" ks "and" vs "not supported"
   end.
 
 Ltac clear_until_LoopInvariant_marker :=
@@ -209,10 +222,9 @@ Ltac destruct_ifs :=
 Import Ltac2.Ltac2. Set Default Proof Mode "Classic".
 
 Ltac2 default_simpl_in_hyps () :=
-  repeat (foreach_hyp (fun h t => if Ident.starts_with @__ h then ()
-                                  else bottom_up_simpl_in_hyp_of_type h t);
-          foreach_var (fun h b t => if Ident.starts_with @__ h then ()
-                                  else bottom_up_simpl_in_letbound_var h b t));
+  repeat (foreach_hyp (fun h t =>
+                         if Ident.starts_with @__ h then ()
+                         else bottom_up_simpl_in_hyp_of_type silent_if_no_progress h t));
   try record.simp_hyps ().
 
 Ltac default_simpl_in_hyps := ltac2:(default_simpl_in_hyps ()).
@@ -593,6 +605,9 @@ Ltac eval_dexpr1_step e :=
   | expr.load _ _ => eapply dexpr1_load_uint
   end.
 
+Lemma eq_if_same{A: Type}(c: bool)(lhs rhs: A)(H: lhs = if c then rhs else rhs): lhs = rhs.
+Proof. intros. destruct c; exact H. Qed.
+
 Ltac conclusion_shape_based_step logger :=
   lazymatch goal with
   | |- dexpr_bool3 _ _ ?e _ _ _ _ =>
@@ -638,16 +653,25 @@ Ltac conclusion_shape_based_step logger :=
   | |- True =>
       logger ltac:(fun _ => idtac "constructor");
       constructor
-  | |- update_locals ?ks ?vs ?l ?post =>
-      logger ltac:(fun _ => idtac "unfold update_locals");
-      try subst vs;
-      unfold update_locals
-  | |- wp_cmd _ _ _ _ (map.put ?l ?x ?v) _ =>
-      logger ltac:(fun _ => idtac "put_into_current_locals");
-      put_into_current_locals
   | |- dlet _ (fun x => _) =>
       logger ltac:(fun _ => idtac "introducing dlet");
       eapply let_to_dlet; make_fresh x; intro x
+  | |- merge_locals _ (cons (?x, ?v1) _) (cons (?x, ?v2) _) _ =>
+      tryif constr_eq v1 v2; is_var v1 then (
+        logger ltac:(fun _ => idtac "merge_locals with equal key/value on both sides");
+        eapply merge_locals_same
+      ) else (
+        logger ltac:(fun _ => idtac "introducing local of merge_locals");
+        let i := string_to_ident x in
+        make_fresh i;
+        intro_word i;
+        let h := fresh "Def0" in
+        intro h;
+        repeat first [ rewrite push_if_into_arg1 in h | rewrite push_if_into_arg2 in h ]
+      )
+  | |- merge_locals _ nil nil _ =>
+      logger ltac:(fun _ => idtac "merge_locals done");
+      unfold merge_locals
   | |- forall t' m' (retvs: list ?word), _ -> update_locals _ retvs ?l _ =>
       logger ltac:(fun _ => idtac "intro new state after function call");
       intros
@@ -667,10 +691,15 @@ Ltac final_program_logic_step logger :=
   first
       [ cleanup_step;
         logger ltac:(fun _ => idtac "cleanup_step")
+      | (* Note: only invoked here because we first need to destruct /\ (done by
+           cleanup_step) in hyps so that (retvs = [| ... |]) gets exposed *)
+        put_into_current_locals;
+        logger ltac:(fun _ => idtac "put_into_current_locals")
       | progress autounfold with live_always_unfold in *;
         logger ltac:(fun _ => idtac "progress autounfold with live_always_unfold in *")
       | lazymatch goal with
         | |- exists _, _ => eexists
+        | |- elet _ _ => refine (mk_elet _ _ _ eq_refl _)
         end;
         logger ltac:(fun _ => idtac "eexists")
       | (* tried first because it also solves some goals of shape (_ = _) and (_ /\ _) *)

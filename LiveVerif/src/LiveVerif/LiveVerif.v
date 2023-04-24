@@ -13,6 +13,8 @@ Section LiveVerif.
   Local Open Scope live_scope.
   Local Open Scope bool_scope.
 
+  Local Hint Mode Word.Interface.word - : typeclass_instances.
+
   Add Ring wring : (Properties.word.ring_theory (word := word))
         ((*This preprocessing is too expensive to be always run, especially if
            we do many ring_simplify in a sequence, in which case it's sufficient
@@ -38,3 +40,4 @@ Section LiveVerif.
 
   Local Arguments after_if {width BW word mem locals ext_spec fs b Q1 Q2 rest post}.
   Local Arguments after_loop {width BW word mem locals ext_spec fs c t m l post}.
+  Local Arguments expect_final_closing_brace {_}.

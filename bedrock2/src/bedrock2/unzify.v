@@ -276,9 +276,11 @@ Ltac zify_term wok e :=
   *)
 with zify_lia_bool wok c0 :=
   let c := rdelta_var c0 in
-  match constr:(Set) with
-  | _ => let pc := zify_term wok c in
-         let __ := lazymatch type of pc with | _ = ?rhs => is_lia_bool rhs end in pc
+  match goal with
+  | |- _ => let pc := zify_term wok c in
+            let __ := lazymatch type of pc with | _ = ?rhs => is_lia_bool rhs end in pc
+  | h: c = ?rhs |- _ =>
+      let __ := match constr:(Set) with _ => is_lia_bool rhs end in h
   | _ => constr:(tt)
   end
 with zify_u_u_bool wok e lem x y :=
@@ -783,6 +785,42 @@ Section Tests.
   Goal forall (a b: word),
       let c := word.ltu a b in
       let r := if c then a else b in
+      \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
+  Proof. intros. rzify_lia. Qed.
+
+  (* same tests as above but with = instead of := *)
+
+  Goal forall (a b r: Z),
+      r = (if Z.ltb a b then a else b) ->
+      a < b /\ r = a \/ b <= a /\ r = b.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b r: Z) c,
+      c = Z.ltb a b ->
+      r = (if c then a else b) ->
+      a < b /\ r = a \/ b <= a /\ r = b.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b r: Z) c,
+      c = Z.ltb a b ->
+      r = (if c then a else word.unsigned (word.of_Z b)) ->
+      a < b /\ r = a \/ b <= a /\ r + 2 ^ 32 * (b / 2 ^ 32) = b.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b r: word) c,
+      c = Z.ltb \[b ^+ a ^- b] \[b] ->
+      r = (if c then a else b) ->
+      \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b r: word),
+      r = (if word.ltu (b ^+ a ^- b) b then a else b) ->
+      \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
+  Proof. intros. rzify_lia. Qed.
+
+  Goal forall (a b r: word) c,
+      c = word.ltu a b ->
+      r = (if c then a else b) ->
       \[a] < \[b] /\ r = a \/ \[b] <= \[a] /\ r = b.
   Proof. intros. rzify_lia. Qed.
 

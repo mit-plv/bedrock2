@@ -13,6 +13,11 @@ Require Import bedrock2.WeakestPrecondition bedrock2.ProgramLogic bedrock2.Loops
 Require Import bedrock2.ZnWords.
 Require Import bedrock2.SepLib.
 
+(* A let-binding using an equality instead of :=, living in Prop.
+   Equivalent to (exists x, x = rhs /\ body x). *)
+Inductive elet{A: Type}(rhs: A)(body: A -> Prop): Prop :=
+| mk_elet(x: A)(_: x = rhs)(_: body x).
+
 Section WithParams.
   Import bedrock2.Syntax.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {word_ok: word.ok word}
@@ -385,6 +390,11 @@ Section WithParams.
       fwd; try contradiction; try discriminate; eauto; try eapply IHkeys; eauto.
   Qed.
 
+  Lemma update_one_local_eq: forall s v l (post: locals -> Prop),
+      (forall x, x = v -> post (map.put l s x)) ->
+      update_locals (cons s nil) (cons v nil) l post.
+  Proof. unfold update_locals. intros. apply (H _ eq_refl). Qed.
+
   Lemma wp_set0: forall fs x e v t m l rest post,
       dexpr m l e v ->
       wp_cmd fs rest t m (map.put l x v) post ->
@@ -442,6 +452,46 @@ Section WithParams.
       destruct width_cases as [W|W]; subst width; reflexivity.
   Qed.
 
+  Definition merge_locals(c: bool):
+    list (string * word) -> list (string * word) -> (list (string * word) -> Prop) -> Prop :=
+    fix rec l1 l2 post :=
+      match l1, l2 with
+      | cons (x1, v1) t1, cons (x2, v2) t2 =>
+          if String.eqb x1 x2
+          then (forall v, v = (if c then v1 else v2) ->
+                          rec t1 t2 (fun l => post (cons (x1, v) l)))
+          else False
+      | nil, nil => post nil
+      | _, _ => False
+      end.
+
+  Lemma push_if_into_merge_locals: forall c kvs1 kvs2 post,
+    merge_locals c kvs1 kvs2 post ->
+    post (if c then kvs1 else kvs2).
+  Proof.
+    induction kvs1; intros; destruct kvs2; destruct c;
+      repeat match goal with
+        | a: _ * _ |- _ => destruct a
+        end;
+      simpl in *;
+      repeat destruct_one_match_hyp;
+      eauto; try contradiction;
+      repeat match goal with
+        | H: forall _, _ -> _ |- _ => specialize (H _ eq_refl)
+        | IH: _, H: _ |- _ => specialize IH with (1 := H)
+        end;
+      cbv beta in *;
+      assumption.
+  Qed.
+
+  Lemma merge_locals_same: forall c h t1 t2 post,
+      merge_locals c t1 t2 (fun l => post (cons h l)) ->
+      merge_locals c (cons h t1) (cons h t2) post.
+  Proof.
+    simpl. intros. destruct h as [x v]. rewrite String.eqb_refl. intros. subst.
+    destruct c; assumption.
+  Qed.
+
   Lemma wp_if0: forall fs c thn els rest b Q1 Q2 t m l post,
       dexpr m l c b ->
       (word.unsigned b <> 0 -> wp_cmd fs thn t m l Q1) ->
@@ -493,14 +543,14 @@ Section WithParams.
       wp_cmd fs (cmd.seq (unset_many vars) rest) t m l post.
   Proof. intros. eapply wp_seq. eapply wp_unset_many0. assumption. Qed.
 
-  Lemma wp_unset_many_after_if: forall vars (b: bool) fs t m l1 l2 l' l1' l2' rest post,
-      map.remove_many l1 vars = l1' ->
-      map.remove_many l2 vars = l2' ->
-      (if b then l1' else l2') = l' ->
-      wp_cmd fs rest t m l' post ->
-      wp_cmd fs (cmd.seq (unset_many vars) rest) t m (if b then l1 else l2) post.
+  Lemma wp_unset_many_after_if: forall vars (b: bool) fs t m l l1 l2 li1 li2 rest post,
+      l = (if b then l1 else l2) ->
+      map.remove_many l1 vars = map.of_list li1 ->
+      map.remove_many l2 vars = map.of_list li2 ->
+      wp_cmd fs rest t m (map.of_list (if b then li1 else li2)) post ->
+      wp_cmd fs (cmd.seq (unset_many vars) rest) t m l post.
   Proof.
-    intros. eapply wp_unset_many. subst. destruct b; assumption.
+    intros. subst. eapply wp_unset_many. destruct b; congruence.
   Qed.
 
   Lemma wp_store_uintptr: forall fs ea ev a v v_old R t m l rest (post: _->_->_->Prop),
@@ -531,8 +581,8 @@ Section WithParams.
   Definition then_branch_marker(P: Prop) := P.
   Definition else_branch_marker(P: Prop) := P.
   Definition after_if fs (b: bool) (Q1 Q2: trace -> mem -> locals -> Prop) rest post :=
-    forall t m l, let c := b in
-      (if c then Q1 t m l else Q2 t m l) ->
+    forall t m l, elet b (fun c =>
+      if c then Q1 t m l else Q2 t m l) ->
       wp_cmd fs rest t m l post.
   Definition pop_scope_marker(P: Prop) := P.
 
@@ -560,7 +610,8 @@ Section WithParams.
           by (destruct width_cases as [W|W]; rewrite W in *; lia).
       exact C.
     }
-    all: intros * [(? & ?) | (? & ?)]; try (exfalso; congruence); eauto.
+    all: intros * [(? & ?) | (? & ?)].
+    all: eapply H1; econstructor; try reflexivity; simpl; eassumption.
   Qed.
 
   Definition loop_body_marker(P: Prop) := P.

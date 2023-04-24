@@ -776,9 +776,44 @@ Ltac2 mutable rec is_substitutable_rhs(rhs: constr): bool :=
   | _ => false
   end.
 
-Ltac2 local_subst_small_rhs(e: constr): res :=
-  let rhs := progress_rdelta_var e in
-  if is_substitutable_rhs rhs then res_convertible rhs else gfail "not substitutable".
+(* After following a series of `var1 = var2` equations, we arrive at an equation
+   of the form `var = rhs` with `rhs` not a var, but potentially small enough
+   to be substituted. This function tells if `rhs` is indeed "small enough". *)
+Ltac2 mutable is_small_terminal_rhs(rhs: constr): bool :=
+  neg (Constr.is_var rhs) && is_substitutable_rhs rhs.
+
+Ltac2 constr_to_var_ref(c: constr): Std.reference option :=
+  match Constr.Unsafe.kind c with
+  | Constr.Unsafe.Var id => Some (Std.VarRef id)
+  | _ => None
+  end.
+
+Ltac2 rec unfold_to_const(seen: constr list)(e: constr): res :=
+  let exploit_eq := fun (new: constr)(r: res) =>
+    if List.exist (Constr.equal new) seen then Control.zero Not_applicable else
+    if is_small_terminal_rhs new then r else
+    chain_res r (unfold_to_const (new :: seen) new) in
+  match constr_to_var_ref e with
+  | Some ref =>
+      (* Beware: Ltac2's Std.eval_cbv does not match Ltac1's `eval cbv in`!
+         https://github.com/coq/coq/issues/14303
+         Ltac2 silently does nothing if r is not unfoldable. *)
+      let e' := Std.eval_cbv_delta [ref] e in
+      if Constr.equal e e' then
+        match! goal with
+        | [ h: ?lhs = ?rhs |- _ ] =>
+            if Constr.equal lhs e
+            then exploit_eq rhs (res_rewrite (Control.hyp h))
+            else if Constr.equal rhs e
+            then exploit_eq lhs (res_rewrite (let h := Control.hyp h in constr:(eq_sym $h)))
+            else Control.zero Not_applicable
+        end
+      else exploit_eq e' (res_convertible e')
+  | None => Control.zero Not_applicable
+  end.
+
+Ltac2 local_follow_eqs_until_const_val(e: constr): res :=
+  unfold_to_const [] e.
 
 Ltac2 local_nonring_nonground_Z_simpl e :=
   lazy_match! e with
@@ -923,6 +958,8 @@ Ltac2 local_word_simpl(e: constr): res :=
   (* Strictly local subset of the above push_down_of_Z: *)
   | @word.of_Z ?width ?word (?z mod 2 ^ ?width) =>
       res_rewrite constr:(@word.of_Z_mod $width $word _ $z)
+  | @word.of_Z ?width ?word (word.unsigned ?w) =>
+      res_rewrite constr:(@word.of_Z_unsigned $width $word _ $w)
   end.
 
 (* Nodes like eg (List.length (cons a (cons b (app (cons c xs) ys)))) can
@@ -1149,7 +1186,7 @@ Ltac2 push_down_len_top(e: constr): res :=
 
 Ltac2 mutable local_simpl_hook(parent_kind: expr_kind)(e: constr): res :=
   first_val
-    [ local_subst_small_rhs e
+    [ local_follow_eqs_until_const_val e
     | local_zlist_simpl e
     | local_ring_simplify parent_kind e
     | local_ground_number_simpl e
@@ -1198,34 +1235,27 @@ Proof. intros. subst. assumption. Qed.
 Lemma rew_Prop_goal: forall (P1 P2: Prop) (pf: P1 = P2), P2 -> P1.
 Proof. intros. subst. assumption. Qed.
 
+Definition forbidden(P: Prop) := P.
+
+Ltac2 fail_if_no_progress () := fail "nothing to simplify".
+Ltac2 silent_if_no_progress () := ().
+Ltac2 bottom_up_simpl_in_hyp_of_type(no_progress: unit -> unit)(h: ident)(t: constr): unit :=
+  lazy_match! Constr.type t with
+  | Prop =>
+      change (forbidden $t) in $h; (* don't use h to simplify itself *)
+      let r := bottom_up_simpl OtherExpr t in
+      change $t in $h;
+      if did_something r then
+        let pf := eq_proof r in
+        let t' := new_term r in
+        eapply (rew_Prop_hyp $t $t' $pf) in $h
+      else no_progress ()
+  | _ => no_progress ()
+  end.
+
 Ltac2 bottom_up_simpl_in_hyp(h: ident): unit :=
   let t := Constr.type (Control.hyp h) in
-  lazy_match! Constr.type t with
-  | Prop =>
-      let r := bottom_up_simpl OtherExpr t in
-      if did_something r then
-        let pf := eq_proof r in
-        let t' := new_term r in
-        eapply (rew_Prop_hyp $t $t' $pf) in $h
-      else fail "nothing to simplify"
-  | _ => fail "not a Prop"
-  end.
-
-Ltac2 bottom_up_simpl_in_hyp_of_type(h: ident)(t: constr): unit :=
-  lazy_match! Constr.type t with
-  | Prop =>
-      let r := bottom_up_simpl OtherExpr t in
-      if did_something r then
-        let pf := eq_proof r in
-        let t' := new_term r in
-        eapply (rew_Prop_hyp $t $t' $pf) in $h
-      else () (* don't force progress *)
-  | _ => () (* don't force progress *)
-  end.
-
-Ltac2 bottom_up_simpl_in_hyp_of_type_if
-  (test: ident -> constr -> bool)(h: ident)(t: constr): unit :=
-  if test h t then bottom_up_simpl_in_hyp_of_type h t else ().
+  bottom_up_simpl_in_hyp_of_type fail_if_no_progress h t.
 
 Ltac2 bottom_up_simpl_in_letbound_var(x: ident)(b: constr)(_t: constr): unit :=
   let r := bottom_up_simpl OtherExpr b in
@@ -1271,7 +1301,7 @@ Ltac2 bottom_up_simpl_in_goal () := Control.enter (fun _ =>
   end).
 
 Ltac2 bottom_up_simpl_in_hyps () :=
-  foreach_hyp bottom_up_simpl_in_hyp_of_type.
+  foreach_hyp (bottom_up_simpl_in_hyp_of_type silent_if_no_progress).
 
 Ltac2 bottom_up_simpl_in_vars () :=
   foreach_var bottom_up_simpl_in_letbound_var.
@@ -1288,7 +1318,7 @@ Ltac _bottom_up_simpl_in_hyp :=
 Tactic Notation "bottom_up_simpl_in_hyp" ident(h) := _bottom_up_simpl_in_hyp h.
 
 Ltac _bottom_up_simpl_in_hyp_of_type :=
-  ltac2:(h1 t1 |- bottom_up_simpl_in_hyp_of_type
+  ltac2:(h1 t1 |- bottom_up_simpl_in_hyp_of_type silent_if_no_progress
                     (Option.get (Ltac1.to_ident h1))
                     (Option.get (Ltac1.to_constr t1))).
 Tactic Notation "bottom_up_simpl_in_hyp_of_type" ident(h) constr(t) :=
@@ -1312,7 +1342,7 @@ Section Tests.
   Goal forall a: Z, a = a + 0 -> a = a + 0 -> True.
     intros ? e_nosimpl e.
     foreach_hyp (fun h t => if Ident.equal h @e_nosimpl then ()
-                            else bottom_up_simpl_in_hyp_of_type h t).
+                            else bottom_up_simpl_in_hyp_of_type silent_if_no_progress h t).
     constructor.
   Succeed Qed. Abort.
 
@@ -1360,6 +1390,25 @@ Section Tests.
     subst w y.
     refl.
   Succeed Qed. Abort.
+
+  (* don't loop infinitely on circular equalities between vars *)
+  Goal forall (w1 w2 w3: word),
+      w1 = /[1] ->
+      w1 = w2 ->
+      w2 = w3 ->
+      w3 = w1 ->
+      w2 = /[1].
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  Goal forall a b, /[\[a ^+ b]] = a ^+ b.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  Goal forall w z, z = \[w] -> /[z] = w.
+  Proof. intros. bottom_up_simpl_in_goal (). refl. Succeed Qed. Abort.
+
+  (* don't turn the hypothesis `a = 1` into `1 = 1` *)
+  Goal forall (a: Z), a = 1 -> a = 1.
+  Proof. intros. bottom_up_simpl_in_hyps (). assumption. Succeed Qed. Abort.
 
   Goal forall a: word, P (word.unsigned (a ^+ word.of_Z 8 ^- a) / 4) -> P 2.
   Proof.
@@ -1504,6 +1553,9 @@ Section Tests.
 
 
   (** ** Not supported yet: *)
+
+  Goal forall a b z, z = \[a ^+ b] -> /[z] = a ^+ b.
+  Proof. intros. Abort.
 
   Goal forall (A: Type) (l1 l2: list A) (x: A) (i: Z),
       len l1 = i ->

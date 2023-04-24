@@ -18,13 +18,12 @@ Derive memset SuchThat (fun_correct! memset) As memset_ok.                      
 {                                                                          /**. .**/
   uintptr_t i = 0;                                                         /**.
 
-  assert (len bs = \[n]) as lenbs by hwlia.
-  let h := lazymatch goal with h: _ |= array _ _ _ _ |- _ => h end in
-  replace bs with (List.repeatz \[b] \[i] ++ bs[\[i]:]) in h by steps.
+  swap bs with (List.repeatz \[b] \[i] ++ bs[\[i]:]) in #(array (uint 8)).
+  prove (len bs = \[n]) as lenbs.
   loop invariant above i.
-  move lenbs before R.
-  assert (0 <= \[i] <= \[n]) by steps.
-  clearbody i.
+  move lenbs before t.
+  prove (0 <= \[i] <= \[n]).
+  delete #(i = ??).
                                                                                 .**/
   while (i < n) /* decreases (n ^- i) */ {                                 /**. .**/
     store8(a + i, b);                                                      /**. .**/
