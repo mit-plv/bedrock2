@@ -512,6 +512,18 @@ Ltac make_fresh x :=
   tryif is_fresh x then idtac else let x' := fresh x "'" in rename x into x'.
 *)
 
+Ltac intro_word name :=
+  let lowest :=
+    match goal with
+    | h: ?t |- _ =>
+        lazymatch t with
+        | @word.rep _ _ => h
+        | scope_marker _ => h
+        | trace => h
+        end
+    end in
+  intro name before lowest.
+
 Section PullELet.
   Context {A: Type}.
 
@@ -539,14 +551,20 @@ Ltac pull_elet_dlet_and_exists_step :=
       lazymatch type of H with
       | if ?c then elet ?rhs ?body else ?els =>
           eapply (pull_if_elet_l c rhs body els) in H;
-          destruct H as [x ?Def0 H]
+          case H;
+          clear H;
+          intro_word x;
+          intros ?Def0 H
       end
   | H: if _ then _ else elet _ (fun x => _) |- _ =>
       make_fresh x;
       lazymatch type of H with
       | if ?c then ?thn else elet ?rhs ?body =>
           eapply (pull_if_elet_r c rhs body thn) in H;
-          destruct H as [x ?Def0 H]
+          case H;
+          clear H;
+          intro_word x;
+          intros ?Def0 H
       end
   | H: if _ then dlet _ (fun x => _) else _ |- _ =>
       make_fresh x;

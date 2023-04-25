@@ -151,18 +151,6 @@ Ltac is_in_snd x ps :=
   | _ => fail 1000 ps "is not a concrete enough list"
   end.
 
-Ltac intro_word name :=
-  let lowest :=
-    match goal with
-    | h: ?t |- _ =>
-        lazymatch t with
-        | @word.rep _ _ => h
-        | scope_marker _ => h
-        | trace => h
-        end
-    end in
-  intro name before lowest.
-
 Ltac put_into_current_locals :=
   lazymatch goal with
   | |- update_locals ?ks ?vs _ _ => try subst vs
