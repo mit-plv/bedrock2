@@ -199,6 +199,7 @@ Ltac clear_until_LoopInvariant_marker :=
   match goal with
   | x: ?T |- _ => lazymatch T with
                   | scope_marker LoopInvariant => clear x
+                  | _ => fail "call 'loop invariant above my_var.' before the loop"
                   end
   end.
 
