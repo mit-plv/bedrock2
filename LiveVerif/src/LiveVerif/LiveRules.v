@@ -14,7 +14,17 @@ Require Import bedrock2.ZnWords.
 Require Import bedrock2.SepLib.
 
 (* A let-binding using an equality instead of :=, living in Prop.
-   Equivalent to (exists x, x = rhs /\ body x). *)
+   Equivalent to (exists x, x = rhs /\ body x).
+   We don't use regular exists to make the intention recognizable by tactics.
+   In particular, note that
+     if c then exists x, x = rhs /\ P x else F
+   implies
+     exists x, if c then x = rhs /\ P x else F
+   but this step is a bad step to apply, because it loses information:
+   After destructing the exists, we can't pull the `x = rhs` out of the then-branch
+   any more.
+   However, if we pull out the exist and the equality at the same time, it works.
+   (All of this assumes that the type of x is inhabited). *)
 Inductive elet{A: Type}(rhs: A)(body: A -> Prop): Prop :=
 | mk_elet(x: A)(_: x = rhs)(_: body x).
 
