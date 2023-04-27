@@ -28,7 +28,8 @@ Definition compile_unop {t1 t2 : type} (o : unop t1 t2) :
   | OLength _
   | OLengthString
   | OFst _ _ _
-  | OSnd _ _ _ =>
+  | OSnd _ _ _
+  | OIntToString =>
       error:("unimplemented")
   end.
 

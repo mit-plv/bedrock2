@@ -18,6 +18,9 @@ Local Open Scope list_scope.
 
 Local Open Scope pylevel_scope.
 
+Section WithWord.
+Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
 
 (*
    JSON Values can be
@@ -43,6 +46,7 @@ Definition to_json_field_list_body to_json to_json_field_list t : interp_type t 
    end.
 Fixpoint to_json t : interp_type t -> string :=
    match t as t return (interp_type t -> string) with
+   | TWord => fun w => ""
    | TInt => fun n => DecimalString.NilZero.string_of_int (BinInt.Z.to_int n)
    | TBool => fun i => match i with
                       | true => "true"
@@ -73,6 +77,7 @@ Definition generate_json_field_list_body generate_json generate_json_field_list 
   end field.
 Fixpoint generate_json (t : type) (field : expr t) : expr String :=
   match t as t return (expr t -> expr String) with
+  | TWord => fun f => EAtom (AString "")
   | TInt => fun f => EUnop OIntToString f
   | TBool => fun f =>
       EIf (EBinop (OEq TBool eq_refl) f (EAtom (ABool true)))
@@ -682,4 +687,6 @@ Section WithMap.
            reflexivity.
    Qed.
 End WithMap.
+
+End WithWord.
 
