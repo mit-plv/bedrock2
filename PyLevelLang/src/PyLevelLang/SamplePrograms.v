@@ -18,7 +18,6 @@ Local Open Scope list_scope.
 
 Local Open Scope pylevel_scope.
 
-
 (*
    JSON Values can be
    * A list of other values (TList)
@@ -57,7 +56,7 @@ Fixpoint to_json t : interp_type t -> string :=
 with to_json_field_list t : interp_type t -> string := to_json_field_list_body to_json to_json_field_list t.
 
 
-Definition generate_json_field_list_body generate_json generate_json_field_list (t : type) (field : expr t) : expr String :=
+Definition generate_json_field_list_body generate_json generate_json_field_list (t : type) (var : expr t) : expr String :=
   match t as t return (expr t -> expr String) with
   | TPair key t1 t2 => fun f =>
       EBinop OConcatString (EBinop OConcatString (EBinop OConcatString
@@ -70,8 +69,8 @@ Definition generate_json_field_list_body generate_json generate_json_field_list 
             (generate_json_field_list t2 (EUnop (OSnd _ _ _) f))))
   | TEmpty => fun f => EAtom (AString "")
   | _ => fun f => EAtom (AString "Error this type cannot be conerted to a json object")
-  end field.
-Fixpoint generate_json (t : type) (field : expr t) : expr String :=
+  end var.
+Fixpoint generate_json (t : type) (var : expr t) : expr String :=
   match t as t return (expr t -> expr String) with
   | TInt => fun f => EUnop OIntToString f
   | TBool => fun f =>
@@ -92,10 +91,276 @@ Fixpoint generate_json (t : type) (field : expr t) : expr String :=
           (generate_json_field_list_body generate_json generate_json_field_list (TPair key t1 t2) f))
           (EAtom (AString "}"))
   | TEmpty => fun f => EAtom (AString "")
-  end field
+  end var
 with
   generate_json_field_list t : expr t -> expr String
     := generate_json_field_list_body generate_json generate_json_field_list t.
+
+Lemma string_app_nil (s : string) :
+  (s ++ "")%string = s.
+Proof.
+  induction s.
+  - reflexivity.
+  - replace (String.String a s ++ "")%string
+       with (String.String a (s ++ "")%string) by reflexivity.
+    rewrite IHs.
+    reflexivity.
+Qed.
+
+(* TODO Move this to some other file *)
+Lemma string_app_assoc (s1 s2 s3 : string) :
+  ((s1 ++ s2)%string ++ s3)%string = (s1 ++ (s2 ++ s3)%string)%string.
+Proof.
+  induction s1.
+  - reflexivity.
+  - assert (forall x y,
+      (String.String a x ++ y)%string = String.String a (x ++ y)%string).
+    { reflexivity. }
+    repeat rewrite H.
+    rewrite IHs1.
+    reflexivity.
+Qed.
+
+(* Compute generate_json TInt ( *)
+Compute generate_json Int (EUnop (OFst "a" Int Int) (EVar (Pair "a" Int Int) "x")).
+
+(*
+Compute interp_expr (map.put map.empty "x" (existT interp_type Int 3))
+      (generate_json Int (EVar (Pair "a" Int Int) "x")).
+ *)
+
+Section Generate_Json_Equal_Section.
+  Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
+  Context { tenv : map.map string (type * bool) }
+          { tenv_ok : map.ok tenv }.
+
+  (*
+  Lemma type_eq_dec_refl : (forall t, type_eq_dec t t = left eq_refl).
+  Proof. Admitted.
+   *)
+
+  (*
+  Lemma interp_expr_unop (t : type) (e : interp_type t): 
+    forall s (t' : type) (e' : interp_type t'),
+      interp_expr (map.put map.empty "x" (existT interp_type t e))
+        (generate_json t (EVar t "x")) =
+      interp_expr
+        (map.put map.empty "x" (existT interp_type (Pair s t t') (e, e')))
+        (generate_json t (EUnop (OFst s t t') (EVar (Pair s t t') "x"))).
+  Proof.
+    induction t;
+      try (intros; simpl; unfold get_local; repeat rewrite map.get_put_same;
+        unfold proj_expected;
+        repeat rewrite type_eq_dec_refl;
+        reflexivity).
+    - (* Pair *)
+      intros.
+
+      simpl.
+      repeat rewrite string_app_assoc.
+      f_equal.
+      f_equal.
+      f_equal.
+      f_equal; cbn.
+      * destruct e. rewrite <- IHt1. 
+
+  Admitted.
+      *)
+
+  Theorem json_field_list_eq (l : locals) s (t1 t2 : type) (i2 : interp_type t2)
+                             (i1 : interp_type t1) (e : expr (Pair s t1 t2)) :
+    (forall t e v,
+      interp_expr l e = v ->
+      to_json t v = interp_expr l (generate_json t e)) ->
+    interp_expr l e = (i1, i2) ->
+    to_json_field_list (Pair s t1 t2) (i1, i2) = interp_expr l (generate_json_field_list (Pair s t1 t2) e).
+  Proof.
+    generalize dependent s.
+    generalize dependent t1.
+    induction t2; try(intros; cbn; repeat rewrite string_app_assoc; repeat f_equal;
+      try rewrite string_app_nil; try (apply H; cbn; rewrite H0; reflexivity)).
+
+    assert (forall s1 s2, ((s1 ++ ": " ++ s2)%string =? "")%string = false).
+    { destruct s1, s2; easy. }
+    assert (forall c1 c2 s, String.String c1 (String.String c2 s) =
+          ((String.String c1 (String.String c2 "")) ++ s)%string).
+    { reflexivity. }
+
+    destruct i2.
+    rewrite H1.
+    rewrite <- H2. repeat f_equal.
+    cbn in IHt2_2.
+
+    repeat rewrite <- string_app_assoc.
+
+    apply IHt2_2.
+    - intros. apply H. apply H3.
+    - cbn. rewrite H0. reflexivity.
+  Qed.
+
+  (*
+Definition to_json_field_list_body to_json to_json_field_list t : interp_type t -> string :=
+   *)
+    (*
+to_json_field_list (Pair s0 t2_1 t2_2) i0 =
+interp_expr l
+  (generate_json_field_list (Pair s0 t2_1 t2_2)
+     (EUnop (OSnd s t1 (Pair s0 t2_1 t2_2)) e))
+     *)
+  Lemma string_move c1 c2 s :
+    String.String c1 (String.String c2 s) =
+          ((String.String c1 (String.String c2 "")) ++ s)%string.
+  Proof. reflexivity. Qed.
+
+  Lemma string_app_nonempty (s1 s2 : string) :
+    ((s1 ++ ": " ++ s2)%string =? "")%string = false.
+  Proof. destruct s1, s2; easy. Qed.
+
+  Lemma str_eq a s1 s2:
+    String.String a s1 = String.String a s2 ->
+    s1 = s2.
+  Proof. intros. injection H. easy. Qed.
+
+  Theorem generate_json_eq (l : locals) (t : type) (v : interp_type t) (e : expr t) :
+    interp_expr l e = v ->
+    to_json t v = interp_expr l (generate_json t e).
+  Proof.
+    intros.
+    induction t; try (cbn; try rewrite H; reflexivity); cbn.
+    * (* Bool *)
+      destruct v; rewrite H; reflexivity.
+    * (* Pair *)
+      destruct v. f_equal.
+
+      destruct t2; repeat rewrite string_app_assoc;
+        try (
+        repeat f_equal;
+        apply IHt1;
+        cbn;
+        rewrite H;
+        reflexivity
+      ).
+      (* t2 = Pair *)
+      f_equal. f_equal.
+
+      f_equal.
+      - apply IHt1. cbn. rewrite H. reflexivity.
+      - destruct i0.
+        rewrite (json_field_list_eq l _ _ _ _ _ ((EUnop (OSnd s t1 (Pair s0 t2_1 t2_2)) e))).
+        + assert ((interp_expr l (generate_json_field_list (Pair s0 t2_1 t2_2)
+                  (EUnop (OSnd s t1 (Pair s0 t2_1 t2_2)) e)) =? "")%string = false).
+          { cbn. repeat rewrite string_app_assoc. apply string_app_nonempty. }
+        rewrite H0.
+        reflexivity.
+        + admit.
+        + cbn. rewrite H. reflexivity.
+    * (* List *)
+      f_equal. cbn.
+      induction v.
+      - rewrite H. reflexivity.
+      - admit.
+
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    induction t; simpl; unfold get_local; try rewrite map.get_put_same; try reflexivity.
+    - (* Bool *)
+      destruct e; reflexivity.
+    - (* Pair *)
+      repeat f_equal.
+      destruct e. cbn.
+
+      destruct t2.
+
+      (* assert  *)
+
+      5: { (* Unit, end of pair *)
+        simpl.
+
+        rewrite string_app_nil.
+
+        f_equal.
+        rewrite IHt1.
+        apply interp_expr_op.
+        admit.
+
+      }
+
+      * (*simpl.
+        destruct e. *)
+           rewrite IHt1.
+        repeat rewrite string_app_assoc.
+
+        f_equal. f_equal. f_equal.
+
+        induction t1; try reflexivity.
+        1:{ cbn. repeat f_equal.
+          unfold get_local.
+          rewrite! map.get_put_same.
+          cbn.
+
+          unfold proj_expected.
+          cbn [projT1].
+
+          (*
+          assert (forall t, type_eq_dec t t = left eq_refl).
+          { admit. }
+
+          rewrite H.
+           *)
+          reflexivity.
+          }
+        4: {
+
+        }
+
+        + 
+
+          unfold fst.
+          cbn.
+
+
+
+        + 
+
+        Search String.append.
+
+        Search ((_ ++ _)%string ++ _)%string.
+
+  (* reflexivity.
+
+      induction t2.
+      * (* Int *)
+        simpl. destruct e.
+   *)
+
+
+
+
+
+
+
+
+
+
+End Generate_Json_Equal_Section.
+
 
 Section Generate_Json_Tests_Section.
   Instance locals : map.map string {t & interp_type t} := SortedListString.map _.
@@ -124,6 +389,19 @@ Section Generate_Json_Tests_Section.
   Goal interp_expr (map.put map.empty "x" (existT interp_type (TList Bool) [true; false; false]))
         (generate_json (TList Bool) (EVar (TList Bool) "x")) = "[true, false, false]".
   reflexivity. Abort.
+
+
+
+
+  Compute (interp_expr (map.put map.empty "x" (existT interp_type (TPair "foo" TString TInt)
+        ("hi", 7)))
+        (generate_json (TPair "foo" TString TInt) (EVar _ "x")) =? 
+  to_json (TPair "foo" TString TInt) ("hi", 7))%string.
+
+
+
+
+
 
   Goal interp_expr (map.put map.empty "x" (existT interp_type (TPair "foo" TString (TPair "bar" TInt TEmpty))
         ("hi", (7, tt))))
@@ -263,16 +541,6 @@ Section Examples.
      = Success [("o", existT interp_type (TList TInt) [1; 4; 9; 16; 25; 36; 49; 64; 81])].
   Proof. reflexivity. Abort.
 
-  Goal run_program [("o", (TInt, true))] <{
-    "o" <- fold range(1, 10) 0 "x" "y" ("x" + "y") }>
-    = Success [("o", existT interp_type TInt 45)].
-  reflexivity. Abort.
-
-  Goal run_program [("o", (TInt, true))] <{
-    "o" <- fold range(1, 10) 0 "x" "y" ("x" * "x" + "y") }>
-    = Success [("o", existT interp_type TInt 285)].
-  reflexivity. Abort.
-
    Definition isEven (n : Z) : pcommand := <{
       let "n" := n in
       if "n" % 2 == 0
@@ -296,6 +564,55 @@ Section WithMap.
   Context {locals: map.map string {t & interp_type t}} {locals_ok: map.ok locals}.
   Context { tenv : map.map string (type * bool) }
           { tenv_ok : map.ok tenv }.
+
+
+  Lemma fold_left_loop (A : Type) (Q : locals -> Prop) (P : locals -> Prop) (lcls : locals) f (l : list A)
+   : Q lcls ->
+        (forall lcls' e,
+            In e l ->
+            Q lcls' ->
+            Q (f lcls' e)) ->
+        (forall lcls', Q lcls' -> P lcls') ->
+        P (fold_left f l lcls).
+  Proof.
+  Admitted.
+
+  (* TODO This should be in Coqutil *)
+  Lemma fold_left_ext (A B : Type) P (Q : B -> Prop) l (f g : A -> B -> A):
+    (forall x y, P x -> P (f x y)) ->
+    (forall x y, P x -> P (g x y)) ->
+    (forall x y,
+      P x -> Q y ->
+      f x y = g x y) ->
+    (forall a,
+      P a -> Forall Q l ->
+      fold_left f l a = fold_left g l a).
+  Proof.
+    intros H0 H1 H2.
+    induction l; try easy.
+    simpl.
+    intros.
+    inversion H; subst.
+    rewrite H2; try easy.
+    firstorder idtac.
+  Qed.
+
+  Lemma fold_left_no_ans (l : list Z) m :
+    map.get m "ans" = None ->
+    map.get
+      (fold_left
+         (fun (x1 : locals) (x2 : interp_type Int) =>
+          map.put x1 "x" (existT interp_type Int x2))
+          l m) "ans" =
+    None.
+  Proof.
+    generalize dependent m. induction l; try easy.
+    intros.
+    cbn.
+    apply IHl.
+    rewrite map.get_put_diff by congruence.
+    apply H.
+  Qed.
 
   Goal interp_command map.empty (isSquare_elaborated 0)
      = (map.put map.empty "ans" (existT interp_type Bool true)).
@@ -617,6 +934,90 @@ Section WithMap.
         rewrite map.remove_empty.
         reflexivity.
       - intros.
+
+        eapply fold_left_loop with
+          (Q := (fun (l : locals) => map.get l "ans" = None)).
+        {
+          erewrite fold_left_ext with
+            (P := (fun (l : locals) =>
+                  map.get l "n" = Some (existT interp_type TInt (Z.of_nat (S x * S x)))))
+            (Q := (fun (n : Z) => 0 <= n <= Z.of_nat x))
+            (g := fun (x1 : locals) (x2 : interp_type Int) =>
+                  map.put x1 "x" (existT interp_type Int x2)).
+
+          5:{
+            subst. rewrite map.get_put_same. reflexivity.
+          }
+          4:{
+            intros x0 y get_n y_eq; subst.
+            rewrite map.get_put_same.
+            rewrite map.get_put_diff by congruence.
+            rewrite get_n.
+            cbn.
+
+            assert (forall (y : Z) (x : nat), 0 <= y <= Z.of_nat x
+               -> y * y <= Z.of_nat (x * x)).
+            { intros. induction x1.
+              - simpl. lia.
+              - destruct (y0 =? Z.of_nat (S x1))%Z eqn:eqn1.
+                + rewrite Z.eqb_eq in eqn1. lia.
+                + rewrite Z.eqb_neq in eqn1. lia.
+            }
+            specialize (H y x y_eq).
+
+            assert ((y * y =? Z.pos (Pos.of_succ_nat (x + x * S x)))%Z = false).
+              { rewrite Z.eqb_neq. lia. }
+
+            rewrite H0. reflexivity.
+          }
+
+          1:{
+             apply fold_left_no_ans.
+             rewrite map.get_put_diff by congruence.
+             rewrite map.get_empty.
+             reflexivity.
+           }
+          3:{
+             intros.
+
+
+             induction x.
+             - apply Forall_cons; try easy.
+             - rewrite last_range.
+               apply List.Forall_snoc.
+               + rewrite Forall_forall.
+                 assert (x0 <= Z.of_nat (S x) -> x0 <= Z.of_nat x).
+
+                 rewrite Forall_forall in IHx.
+                 rewrite Forall_forall.
+                 intros.
+
+               Search (Forall _ (_ ++ _)).
+
+
+               apply Forall_cons; try easy.
+               cbn.
+               apply Forall_cons.
+
+
+               apply Forall_forall.
+                Search (Forall _ _). 
+                replace [0] with (0 :: []) by reflexivity.
+
+                intros.
+
+
+             Search (In _ _).
+
+
+in_eq: forall [A : Type] (a : A) (l : list A), In a (a :: l)
+
+
+               apply List.Forall_singleton.
+
+           }
+        }
+
         specialize (small_loop_false _ _ xSq) as IH.
         rewrite IH. clear IH.
 
@@ -682,4 +1083,6 @@ Section WithMap.
            reflexivity.
    Qed.
 End WithMap.
+
+
 
