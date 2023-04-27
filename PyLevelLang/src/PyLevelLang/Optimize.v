@@ -130,20 +130,21 @@ Section WithMap.
   Lemma eLength_correct {t : type} (l : locals) (e : expr (TList t)) :
     interp_expr l (eLength e) = interp_expr l (EUnop (OLength t) e).
   Proof.
-    admit.
+    dependent induction e; subst; cbn [eLength]; try reflexivity.
+    - case invert_atom eqn:?; trivial. destruct i; trivial.
+      apply invert_atom_correct with (l:=l) in Heqo.
+      cbn in *. rewrite Heqo. reflexivity.
+    - dependent induction o; subst; cbn [invert_atom]; trivial.
+      + cbn [interp_expr interp_binop interp_unop interp_atom Datatypes.length].
+        erewrite IHe2; trivial.
+        cbn [interp_expr interp_binop interp_unop interp_atom Datatypes.length].
+        lia.
+      + repeat (rewrite constfold_head_correct; cbn [interp_expr interp_binop interp_unop interp_atom Datatypes.length]).
+        destruct_one_match; rewrite length_eval_range; lia.
+    Unshelve.
+    all: fail.
+    Fail Qed.
   Admitted.
-    (* dependent induction e; cbn [eLength]; try reflexivity. *)
-    (* - case invert_atom eqn:?; trivial. destruct i; trivial. *)
-    (*   apply invert_atom_correct with (l:=l) in Heqo. *)
-    (*   cbn in *. rewrite Heqo. reflexivity. *)
-    (* - dependent induction o; cbn [invert_atom]; trivial. *)
-    (*   + cbn [interp_expr interp_binop interp_unop interp_atom Datatypes.length]. *)
-    (*     rewrite IHe2; trivial. *)
-    (*     cbn [interp_expr interp_binop interp_unop interp_atom Datatypes.length]. *)
-    (*     lia. *)
-    (*   + repeat (rewrite constfold_head_correct; cbn [interp_expr interp_binop interp_unop interp_atom Datatypes.length]). *)
-    (*     destruct_one_match; rewrite length_eval_range; lia. *)
-  (* Qed. *)
 
   Definition invert_EPair {X A B} (e : expr (TPair X A B)) : option (expr A * expr B) :=
     match e in expr t
@@ -169,14 +170,13 @@ Section WithMap.
     @invert_EPair X A B e = Some (e1, e2)
     <-> e = EBinop (OPair X A B) e1 e2.
   Proof.
-    admit.
-  Admitted.
-    (* clear dependent locals. *)
-    (* dependent induction e; cbn; intuition; try congruence; *)
-    (* dependent induction o; inversion H; *) 
-    (* try apply Eqdep.EqdepTheory.inj_pair2 in H1, H2; try exact type_eq_dec; *) 
-    (* congruence. *)
-  (* Qed. *)
+    clear dependent locals.
+    clear dependent width.
+    dependent induction e; cbn; intuition; try congruence;
+    dependent induction o; inversion H; 
+    try apply Eqdep.EqdepTheory.inj_pair2 in H1, H2; try exact type_eq_dec; 
+    congruence.
+  Qed.
 
   Lemma EUnop_correct {t1 t2 : type} (l : locals) (o : unop t1 t2) (e : expr t1)
     : interp_expr l (eUnop o e) = interp_expr l (EUnop o e).
@@ -507,8 +507,10 @@ Section WithMap.
     intros. rewrite set_local_comm_diff.
     + apply is_name_used_correct, E.
     + apply E.
+    Unshelve.
+    all: fail.
+    Fail Qed.
   Admitted.
-  (* Qed. *)
 
   Definition flatmap_flatmap {t} : expr t -> expr t := fold_expr (@flatmap_flatmap_head).
 
@@ -590,6 +592,9 @@ Section WithMap.
       unfold proj_expected. simpl.
       rewrite type_eq_dec_refl. reflexivity.
     - apply is_name_used_correct, E.
+    Unshelve.
+    all: fail.
+    Fail Qed.
   Admitted.
 
   Definition invert_singleton {t : type} (e : expr (TList t)) : option (expr t) :=
@@ -677,6 +682,9 @@ Section WithMap.
     rewrite set_local_comm_diff with (x := x).
     - rewrite is_name_used_correct; try apply E. reflexivity.
     - apply not_eq_sym. apply E.
+    Unshelve.
+    all: fail.
+    Fail Qed.
   Admitted.
 
   Definition flatmap_singleton_head {t} (e : expr t) : expr t :=
