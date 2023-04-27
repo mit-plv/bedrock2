@@ -6,6 +6,9 @@ Require Import coqutil.Datatypes.Result.
 Import ResultMonadNotations.
 
 Section Examples.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+
   Instance tenv : map.map string (type * bool) := SortedListString.map _.
   Instance tenv_ok : map.ok tenv := SortedListString.ok _.
   

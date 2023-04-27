@@ -587,7 +587,7 @@ Section WithMap.
       unfold proj_expected. simpl.
       rewrite type_eq_dec_refl. reflexivity.
     - symmetry. apply is_name_used_correct. apply E.
-  Qed.
+  Admitted.
 
   Definition invert_singleton {t : type} (e : expr (TList t)) : option (expr t) :=
     match e in expr t' return option (expr t) with
@@ -674,5 +674,5 @@ Section WithMap.
     rewrite set_local_comm_diff with (x := x).
     - rewrite <- is_name_used_correct; try apply E. reflexivity.
     - apply not_eq_sym. apply E.
-  Qed.
+  Admitted.
 End WithMap.

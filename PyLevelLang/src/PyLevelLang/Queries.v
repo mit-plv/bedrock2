@@ -14,6 +14,8 @@ Local Open Scope list_scope.
 
 
 Section Queries_Section.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
   Instance tenv : map.map string (type * bool) := SortedListString.map _.
   Instance tenv_ok : map.ok tenv := SortedListString.ok _.
   Instance locals : map.map string {t & interp_type t} := SortedListString.map _.
@@ -68,6 +70,7 @@ Section Queries_Section.
 
   Fixpoint as_pexpr {t : type} (v : interp_type t) : pexpr := 
     match t return interp_type t -> pexpr with
+    | TWord => fun v => PEAtom (PAWord (word.unsigned v))
     | TInt => fun v => PEAtom (PAInt v)
     | TBool => fun v => PEAtom (PABool v)
     | TString => fun v => PEAtom (PAString v)
