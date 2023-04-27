@@ -6,6 +6,7 @@ Require Import coqutil.Map.Interface coqutil.Map.Properties.
 Require coqutil.Map.SortedListString. (* for function env, other maps are kept abstract *)
 Require Import coqutil.Word.Interface coqutil.Word.Properties coqutil.Word.Bitwidth.
 Require Import coqutil.Tactics.Tactics coqutil.Tactics.fwd.
+Require Import coqutil.Datatypes.ListSet.
 Require Import bedrock2.Syntax bedrock2.Semantics.
 Require Import bedrock2.Lift1Prop.
 Require Import bedrock2.Map.Separation bedrock2.Map.SeparationLogic bedrock2.Array.
@@ -596,32 +597,74 @@ Section WithParams.
       wp_cmd fs rest t m l post.
   Definition pop_scope_marker(P: Prop) := P.
 
-  Lemma wp_if_bool_dexpr: forall fs c thn els rest t0 m0 l0 b Q1 Q2 post,
+  Definition cons_structure_exposing_reversing_equality[A: Type](lhs rhs: list A): Prop :=
+    match List.rev' rhs with
+    | cons h t => lhs = cons h t
+    | nil => lhs = nil
+    end.
+  Remark explanation:
+    exists l, cons_structure_exposing_reversing_equality
+                l (List.app (cons (1+1) (cons (2+2) nil)) (cons (3+3) (cons (4+4) nil)))
+              /\ l = l.
+  Proof.
+    eexists. split. 1: reflexivity.
+    (* Note how the evar got instantiated to a list whose cons structure is fully exposed,
+       but the elements were not simplified at all *)
+    reflexivity.
+  Succeed Qed. Abort.
+
+  Lemma cons_structure_exposing_reversing_equality_spec[A: Type](lhs rhs: list A):
+    cons_structure_exposing_reversing_equality lhs rhs <-> lhs = List.rev rhs.
+  Proof.
+    rewrite List.rev_alt.
+    unfold cons_structure_exposing_reversing_equality. unfold List.rev'.
+    destruct_one_match; reflexivity.
+  Qed.
+
+  Definition branch_post(initial_locals: locals)(new_vars: list string)
+                        (Q: trace -> mem -> locals -> Prop)
+                        (t: trace)(m: mem)(l: locals): Prop :=
+    cons_structure_exposing_reversing_equality new_vars
+      (list_diff String.eqb (map.keys l) (map.keys initial_locals)) /\
+    (* ^- Note: the above equality is not needed to make the proof of wp_if_bool_dexpr work:
+          We are free to unset whatever variables we want at the end of a branch.
+          But picking new_vars such that the equality holds is what's consistent
+          with C scoping rules: if a variable was declared in both branches, but
+          not before the if, it's not available after the if. *)
+    Q t m (map.remove_many l new_vars).
+
+  Lemma wp_if_bool_dexpr fs c thn els rest t0 m0 l0 b new_thn_vars new_els_vars Q1 Q2 post:
       dexpr_bool3 m0 l0 c b
-        (then_branch_marker (wp_cmd fs thn t0 m0 l0 Q1))
-        (else_branch_marker (wp_cmd fs els t0 m0 l0 Q2))
+        (then_branch_marker (wp_cmd fs thn t0 m0 l0 (branch_post l0 new_thn_vars Q1)))
+        (else_branch_marker (wp_cmd fs els t0 m0 l0 (branch_post l0 new_els_vars Q2)))
         (pop_scope_marker (after_if fs b Q1 Q2 rest post)) ->
-      wp_cmd fs (cmd.seq (cmd.cond c thn els) rest) t0 m0 l0 post.
+      wp_cmd fs (cmd.seq (cmd.cond c (cmd.seq thn (unset_many new_thn_vars))
+                                     (cmd.seq els (unset_many new_els_vars)))
+                         rest) t0 m0 l0 post.
   Proof.
     intros. inversion H. subst. clear H.
     unfold then_branch_marker, else_branch_marker, pop_scope_marker,
       after_if, bool_expr_branches in *.
     destruct H2.
-    destr (word.eqb v (word.of_Z 0));
-      (eapply wp_if0;
-       [ eassumption
-       | intro C;
-         rewrite ?word.unsigned_of_Z_nowrap in C
-             by (destruct width_cases as [W|W]; rewrite W in *; lia);
-         try congruence; cbn in *; eauto ..]).
-    2: {
+    destr (word.eqb v (word.of_Z 0)); (eapply wp_if0; [ eassumption | .. ]).
+    all: try (intro C; rewrite ?word.unsigned_of_Z_nowrap in C
+                  by (destruct width_cases as [W|W]; rewrite W in *; lia); try congruence).
+    4: {
       exfalso. eapply E. eapply word.unsigned_inj.
       rewrite word.unsigned_of_Z_nowrap
           by (destruct width_cases as [W|W]; rewrite W in *; lia).
       exact C.
     }
-    all: intros * [(? & ?) | (? & ?)].
-    all: eapply H1; econstructor; try reflexivity; simpl; eassumption.
+    2,4: intros * [(? & ?) | (? & ?)].
+    2-5: eapply H1; econstructor; try reflexivity; simpl; eassumption.
+    all: eapply wp_seq.
+    all: eapply weaken_wp_cmd.
+    all: simpl in *.
+    1,3: exact H.
+    all: unfold branch_post.
+    all: intros * [? ?]; subst.
+    all: eapply wp_unset_many0.
+    all: assumption.
   Qed.
 
   Definition loop_body_marker(P: Prop) := P.

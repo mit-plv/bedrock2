@@ -713,6 +713,13 @@ Ltac normalize_locals_eq :=
   | |- ?l = ?r => let l' := normalize_locals_expr l in change (l' = r)
   end.
 
+Ltac normalize_locals_post :=
+  lazymatch goal with
+  | |- ?post ?t ?m ?l =>
+        let l' := normalize_locals_expr l in
+        change (post t m l')
+  end.
+
 Ltac after_if :=
   clear_heapletwise_hyps;
   intros ? ? ? [?c ?Def0 ?];

@@ -303,8 +303,7 @@ Ltac close_block :=
   | B: scope_marker ?sk |- _ =>
       lazymatch sk with
       | ElseBranch =>
-          eapply wp_skip;
-          package_heapletwise_context
+          eapply wp_skip (* leaves a branch_post marker to be taken care of by step *)
       | LoopBody =>
           unset_loop_body_vars;
           eapply wp_skip
@@ -473,8 +472,7 @@ Ltac add_regular_snippet s :=
               pose proof (mk_scope_marker IfCondition) as n
   | SElse =>
       assert_scope_kind ThenBranch;
-      eapply wp_skip;
-      package_heapletwise_context
+      eapply wp_skip (* leaves a branch_post marker to be taken care of by step *)
   | SWhile ?cond ?measure0 => while cond measure0
   | SStart => fail "SStart can only be used to start a function"
   | SEnd => close_block
@@ -624,6 +622,10 @@ Ltac conclusion_shape_based_step logger :=
       let n := fresh "Scope0" in
       pose proof (mk_scope_marker ElseBranch) as n;
       change G
+  | |- branch_post ?l0 ?new_vars ?Q ?t ?m ?l =>
+      split; [ reflexivity | ];
+      normalize_locals_post;
+      package_heapletwise_context
   | |- loop_body_marker ?G =>
       logger ltac:(fun _ => idtac "Starting loop body");
       (* (mk_scope_marker LoopBody) is already posed by while tactic,
