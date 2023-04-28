@@ -729,8 +729,6 @@ Ltac after_if :=
   try match goal with
     | H: if _ then ands nil else ands nil |- _ => clear H
     end;
-  (* TODO this subst is a bit ad-hoc and should be subsumed by more general techniques *)
-  subst_small_rhses;
   lazymatch goal with
   | H: ?l = (if _ then map.of_list ?l1 else map.of_list ?l2) |- wp_cmd _ _ _ _ ?l _ =>
       (* common case: then branch and else branch modified locals in different ways *)
