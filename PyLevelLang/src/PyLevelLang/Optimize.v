@@ -126,6 +126,12 @@ Section WithMap.
            | _ => EUnop (OLength _) e
            end
     end.
+End WithMap.
+
+Section WithMap2.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {locals: map.map string {t & interp_type (width := width) t}} {locals_ok: map.ok locals}.
 
   Lemma eLength_correct {t : type} (l : locals) (e : expr (TList t)) :
     interp_expr l (eLength e) = interp_expr l (EUnop (OLength t) e).
@@ -141,10 +147,7 @@ Section WithMap.
         lia.
       + repeat (rewrite constfold_head_correct; cbn [interp_expr interp_binop interp_unop interp_atom Datatypes.length]).
         destruct_one_match; rewrite length_eval_range; lia.
-    Unshelve.
-    all: fail.
-    Fail Qed.
-  Admitted.
+  Qed.
 
   Definition invert_EPair {X A B} (e : expr (TPair X A B)) : option (expr A * expr B) :=
     match e in expr t
@@ -492,6 +495,12 @@ Section WithMap.
     induction l; auto.
     intros. simpl. rewrite flat_map_app. rewrite IHl. reflexivity.
   Qed.
+End WithMap2.
+
+Section WithMap3.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word byte}.
+  Context {word_ok: word.ok word} {mem_ok: map.ok mem}.
+  Context {locals: map.map string {t & interp_type (width := width) t}} {locals_ok: map.ok locals}.
 
   Lemma flatmap_flatmap_head_correct {t : type} (l : locals) (e : expr t)
     : interp_expr l (flatmap_flatmap_head e) = interp_expr l e.
@@ -504,10 +513,7 @@ Section WithMap.
     intros. symmetry. rewrite set_local_comm_diff.
     + apply is_name_used_correct. apply E.
     + apply E.
-    Unshelve.
-    all: fail.
-    Fail Qed.
-  Admitted.
+  Qed.
 
   Definition flatmap_flatmap {t} : expr t -> expr t := fold_expr (@flatmap_flatmap_head).
 
@@ -589,10 +595,7 @@ Section WithMap.
       unfold proj_expected. simpl.
       rewrite type_eq_dec_refl. reflexivity.
     - symmetry. apply is_name_used_correct. apply E.
-    Unshelve.
-    all: fail.
-    Fail Qed.
-  Admitted.
+  Qed.
 
   Definition invert_singleton {t : type} (e : expr (TList t)) : option (expr t) :=
     match e in expr t' return option (expr t) with
@@ -679,8 +682,5 @@ Section WithMap.
     rewrite set_local_comm_diff with (x := x).
     - rewrite <- is_name_used_correct; try apply E. reflexivity.
     - apply not_eq_sym. apply E.
-    Unshelve.
-    all: fail.
-    Fail Qed.
-  Admitted.
-End WithMap.
+  Qed.
+End WithMap3.
