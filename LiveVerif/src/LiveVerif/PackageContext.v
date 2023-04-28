@@ -211,10 +211,6 @@ Ltac package_context :=
          but `below` is not implemented yet: https://github.com/coq/coq/issues/15209 *)
   | |- ?E ?t ?m ?l => fail "No separation logic hypothesis about" m "found"
   end;
-  (* TODO this subst is a bit ad-hoc and should be subsumed by more general
-     after-if postprocessing that recognizes which existentials that appear
-     in both branches correspond to the same program variable *)
-  subst_small_rhses;
   let Post := fresh "Post" in
   pose proof ands_nil as Post;
   repeat add_hyp_to_post Post;

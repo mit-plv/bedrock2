@@ -78,10 +78,10 @@ Derive fibonacci SuchThat (fun_correct! fibonacci) As fibonacci_ok.             
 step. step. step. step. step. step. step. step. step. step. step. step. step.
 unfold ands in H2.
 destruct c; subst_all_let_bound_vars.
-{ unfold fib. replace \[n'] with 0 by lia. bottom_up_simpl_in_goal. reflexivity. }
+{ unfold fib. replace \[n] with 0 by lia. bottom_up_simpl_in_goal. reflexivity. }
 { destruct __Z_H2; try lia.
   unfold fib, ands in *.
-  replace \[n'] with \[i] by lia. steps. }
+  replace \[n] with \[i] by lia. steps. }
 Qed.
 
 End LiveVerif. Comments .**/ //.
